@@ -2,30 +2,30 @@ import {
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  FrontierPeakV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  FrontierPeakSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
-  ValidationMachineStateV1Schema,
-  ValidationTraceDescriptorV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceDescriptorSchema,
+  ValidationTraceProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const MissingRedeemerSubjectV1Schema = Data.Object({
+export const MissingRedeemerSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-const FrontierSchema = Data.Array(FrontierPeakV1Schema);
-export const MissingRedeemerScriptDiscoveryV1Schema = Data.Object({
+const FrontierSchema = Data.Array(FrontierPeakSchema);
+export const MissingRedeemerScriptDiscoverySchema = Data.Object({
   purpose_cursor: Data.Integer(),
   source_cursor: Data.Integer(),
   redeemer_cursor: Data.Integer(),
@@ -42,7 +42,7 @@ export const MissingRedeemerScriptDiscoveryV1Schema = Data.Object({
   execution_count: Data.Integer(),
   execution_peaks: FrontierSchema,
 });
-export const MissingRedeemerReceiveScanV1Schema = Data.Object({
+export const MissingRedeemerReceiveScanSchema = Data.Object({
   source_count: Data.Integer(),
   source_peaks: FrontierSchema,
   receive_count: Data.Integer(),
@@ -50,12 +50,12 @@ export const MissingRedeemerReceiveScanV1Schema = Data.Object({
   candidate_hash: Data.Bytes(),
   descriptor_peaks: FrontierSchema,
 });
-export const MissingRedeemerObserverScanV1Schema = Data.Object({
+export const MissingRedeemerObserverScanSchema = Data.Object({
   total_count: Data.Integer(),
   seen: Data.Integer(),
   previous_hash: Data.Bytes(),
 });
-export const MissingRedeemerMintFoldV1Schema = Data.Object({
+export const MissingRedeemerMintFoldSchema = Data.Object({
   policy_count: Data.Integer(),
   policy_cursor: Data.Integer(),
   previous_policy: Data.Bytes(),
@@ -69,7 +69,7 @@ export const MissingRedeemerMintFoldV1Schema = Data.Object({
   asset_count: Data.Integer(),
   asset_peaks: FrontierSchema,
 });
-export const MissingRedeemerScriptSourcesControlV1Schema = Data.Object({
+export const MissingRedeemerScriptSourcesControlSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   field_preimage_lengths_cbor: Data.Bytes(),
@@ -94,26 +94,26 @@ export const MissingRedeemerScriptSourcesControlV1Schema = Data.Object({
   output_count: Data.Integer(),
   output_peaks: FrontierSchema,
   output_total_count: Data.Integer(),
-  receive_scan: MissingRedeemerReceiveScanV1Schema,
+  receive_scan: MissingRedeemerReceiveScanSchema,
   source_total_count: Data.Integer(),
   redeemer_total_count: Data.Integer(),
-  observer_scan: MissingRedeemerObserverScanV1Schema,
-  discovery: MissingRedeemerScriptDiscoveryV1Schema,
+  observer_scan: MissingRedeemerObserverScanSchema,
+  discovery: MissingRedeemerScriptDiscoverySchema,
   output_proof: Data.Nullable(Data.Any()),
   pending_source_cbor: Data.Bytes(),
-  mint_fold: MissingRedeemerMintFoldV1Schema,
+  mint_fold: MissingRedeemerMintFoldSchema,
   resolution_schedule_hash: Data.Bytes(),
 });
-export const MissingRedeemerBoundPurposeV1Schema = Data.Object({
-  subject: MissingRedeemerSubjectV1Schema,
+export const MissingRedeemerBoundPurposeSchema = Data.Object({
+  subject: MissingRedeemerSubjectSchema,
   witness_set_hash: Data.Bytes(),
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
   purpose_kind: Data.Integer(),
   purpose_index: Data.Integer(),
 });
-export const MissingRedeemerAuthenticatedPurposeV1Schema = Data.Object({
-  bound: MissingRedeemerBoundPurposeV1Schema,
+export const MissingRedeemerAuthenticatedPurposeSchema = Data.Object({
+  bound: MissingRedeemerBoundPurposeSchema,
   purpose_count: Data.Integer(),
   redeemer_tag: Data.Integer(),
   required_script_hash: Data.Bytes(),
@@ -121,28 +121,28 @@ export const MissingRedeemerAuthenticatedPurposeV1Schema = Data.Object({
   source_language_tag: Data.Integer(),
   source_leaf: Data.Bytes(),
 });
-export const MissingRedeemerAuthenticatedStageTenV1Schema = Data.Object({
-  bound: MissingRedeemerBoundPurposeV1Schema,
+export const MissingRedeemerAuthenticatedStageTenSchema = Data.Object({
+  bound: MissingRedeemerBoundPurposeSchema,
   source_count: Data.Integer(),
   source_peaks: FrontierSchema,
   purpose_count: Data.Integer(),
   purpose_peaks: FrontierSchema,
-  discovery: MissingRedeemerScriptDiscoveryV1Schema,
+  discovery: MissingRedeemerScriptDiscoverySchema,
 });
-export const MissingRedeemerAuthenticatedDescriptorV1Schema = Data.Object({
-  bound: MissingRedeemerBoundPurposeV1Schema,
+export const MissingRedeemerAuthenticatedDescriptorSchema = Data.Object({
+  bound: MissingRedeemerBoundPurposeSchema,
   event_key_hash: Data.Bytes(),
-  descriptor: ValidationTraceDescriptorV1Schema,
+  descriptor: ValidationTraceDescriptorSchema,
 });
-export const MissingRedeemerScanV1Schema = Data.Object({
-  authenticated: MissingRedeemerAuthenticatedPurposeV1Schema,
+export const MissingRedeemerScanSchema = Data.Object({
+  authenticated: MissingRedeemerAuthenticatedPurposeSchema,
   checkpoint_hash: Data.Bytes(),
   cursor: Data.Integer(),
   item_count: Data.Integer(),
   found: Data.Boolean(),
 });
-export const MissingRedeemerDecisionV1Schema = Data.Object({
-  bound: MissingRedeemerBoundPurposeV1Schema,
+export const MissingRedeemerDecisionSchema = Data.Object({
+  bound: MissingRedeemerBoundPurposeSchema,
   redeemer_missing: Data.Boolean(),
 });
 const Source = Data.Enum([
@@ -153,54 +153,52 @@ const Source = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const MissingRedeemerStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      source: Source,
-      purpose_kind: Data.Integer(),
-      purpose_index: Data.Integer(),
-    }),
-  );
-export const MissingRedeemerStep02DatumV1Schema = faultProofStepDatumSchema(
-  MissingRedeemerBoundPurposeV1Schema,
+export const MissingRedeemerStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    source: Source,
+    purpose_kind: Data.Integer(),
+    purpose_index: Data.Integer(),
+  }),
 );
-export const MissingRedeemerStep02RedeemerV1Schema =
+export const MissingRedeemerStep02DatumSchema = faultProofStepDatumSchema(
+  MissingRedeemerBoundPurposeSchema,
+);
+export const MissingRedeemerStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    trace_membership: rootMembershipProofSchema(
+      EventKeySchema,
+      ValidationTraceDescriptorSchema,
+    ),
+  }),
+);
+export const MissingRedeemerStep02aDatumSchema = faultProofStepDatumSchema(
+  MissingRedeemerAuthenticatedDescriptorSchema,
+);
+export const MissingRedeemerStep02aRedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      trace_membership: rootMembershipProofSchema(
-        EventKeySchema,
-        ValidationTraceDescriptorV1Schema,
-      ),
+      machine_state: ValidationMachineStateSchema,
+      trace_proof: ValidationTraceProofSchema,
+      control: MissingRedeemerScriptSourcesControlSchema,
     }),
   );
-export const MissingRedeemerStep02aDatumV1Schema = faultProofStepDatumSchema(
-  MissingRedeemerAuthenticatedDescriptorV1Schema,
+export const MissingRedeemerStep02bDatumSchema = faultProofStepDatumSchema(
+  MissingRedeemerAuthenticatedStageTenSchema,
 );
-export const MissingRedeemerStep02aRedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      machine_state: ValidationMachineStateV1Schema,
-      trace_proof: ValidationTraceProofV1Schema,
-      control: MissingRedeemerScriptSourcesControlV1Schema,
-    }),
-  );
-export const MissingRedeemerStep02bDatumV1Schema = faultProofStepDatumSchema(
-  MissingRedeemerAuthenticatedStageTenV1Schema,
-);
-export const MissingRedeemerStep02bRedeemerV1Schema =
+export const MissingRedeemerStep02bRedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
@@ -216,80 +214,77 @@ export const MissingRedeemerStep02bRedeemerV1Schema =
       source_siblings: Data.Array(Data.Bytes()),
     }),
   );
-export const MissingRedeemerAuthenticationStateV1Schema = Data.Enum([
+export const MissingRedeemerAuthenticationStateSchema = Data.Enum([
   Data.Object({
     Ready: Data.Object({
-      authenticated: MissingRedeemerAuthenticatedPurposeV1Schema,
+      authenticated: MissingRedeemerAuthenticatedPurposeSchema,
     }),
   }),
   Data.Object({
     Grammar: Data.Object({
-      authenticated: MissingRedeemerAuthenticatedPurposeV1Schema,
+      authenticated: MissingRedeemerAuthenticatedPurposeSchema,
       checkpoint_hash: Data.Bytes(),
     }),
   }),
 ]);
-export const MissingRedeemerStep03DatumV1Schema = faultProofStepDatumSchema(
-  MissingRedeemerAuthenticationStateV1Schema,
+export const MissingRedeemerStep03DatumSchema = faultProofStepDatumSchema(
+  MissingRedeemerAuthenticationStateSchema,
 );
-export const MissingRedeemerStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Enum([
-      Data.Object({
-        AuthenticateDirect: Data.Object({
-          input_index: Data.Integer(),
-          output_index: Data.Integer(),
-          opening: FieldOpeningV1Schema,
-        }),
-      }),
-      Data.Object({
-        StartGrammar: Data.Object({
-          input_index: Data.Integer(),
-          output_index: Data.Integer(),
-          opening: FieldOpeningV1Schema,
-          item_budget: Data.Integer(),
-        }),
-      }),
-      Data.Object({
-        ResumeGrammar: Data.Object({
-          input_index: Data.Integer(),
-          output_index: Data.Integer(),
-          opening: FieldOpeningV1Schema,
-          checkpoint_bytes: Data.Bytes(),
-          item_budget: Data.Integer(),
-        }),
-      }),
-      Data.Object({
-        FinishGrammar: Data.Object({
-          input_index: Data.Integer(),
-          output_index: Data.Integer(),
-          opening: FieldOpeningV1Schema,
-          checkpoint_bytes: Data.Bytes(),
-        }),
-      }),
-    ]),
-  );
-export const MissingRedeemerStep04DatumV1Schema = faultProofStepDatumSchema(
-  MissingRedeemerScanV1Schema,
-);
-export const MissingRedeemerStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
+export const MissingRedeemerStep03RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Enum([
     Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
-      checkpoint_bytes: Data.Bytes(),
-      item_budget: Data.Integer(),
+      AuthenticateDirect: Data.Object({
+        input_index: Data.Integer(),
+        output_index: Data.Integer(),
+        opening: FieldOpeningSchema,
+      }),
     }),
-  );
-export const MissingRedeemerStep05DatumV1Schema = faultProofStepDatumSchema(
-  MissingRedeemerDecisionV1Schema,
-);
-export const MissingRedeemerStep05RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
     Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      fraud_proof_mint_redeemer_index: Data.Integer(),
+      StartGrammar: Data.Object({
+        input_index: Data.Integer(),
+        output_index: Data.Integer(),
+        opening: FieldOpeningSchema,
+        item_budget: Data.Integer(),
+      }),
     }),
-  );
+    Data.Object({
+      ResumeGrammar: Data.Object({
+        input_index: Data.Integer(),
+        output_index: Data.Integer(),
+        opening: FieldOpeningSchema,
+        checkpoint_bytes: Data.Bytes(),
+        item_budget: Data.Integer(),
+      }),
+    }),
+    Data.Object({
+      FinishGrammar: Data.Object({
+        input_index: Data.Integer(),
+        output_index: Data.Integer(),
+        opening: FieldOpeningSchema,
+        checkpoint_bytes: Data.Bytes(),
+      }),
+    }),
+  ]),
+);
+export const MissingRedeemerStep04DatumSchema = faultProofStepDatumSchema(
+  MissingRedeemerScanSchema,
+);
+export const MissingRedeemerStep04RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    opening: FieldOpeningSchema,
+    checkpoint_bytes: Data.Bytes(),
+    item_budget: Data.Integer(),
+  }),
+);
+export const MissingRedeemerStep05DatumSchema = faultProofStepDatumSchema(
+  MissingRedeemerDecisionSchema,
+);
+export const MissingRedeemerStep05RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    fraud_proof_mint_redeemer_index: Data.Integer(),
+  }),
+);

@@ -2,8 +2,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  isExplicitTransactionNetworkMismatchV1,
-  NetworkIdFaultV1Schema,
+  isExplicitTransactionNetworkMismatch,
+  NetworkIdFaultSchema,
   NetworkIdStep01SpendRedeemerSchema,
   NetworkIdStep02DatumSchema,
   NetworkIdStep02SpendRedeemerSchema,
@@ -14,19 +14,19 @@ const h32 = "22".repeat(32);
 
 describe("Q35 network-id wire codec", () => {
   it("pins all claim constructor indices", () => {
-    expect(Data.to("TransactionNetwork" as never, NetworkIdFaultV1Schema)).toBe(
+    expect(Data.to("TransactionNetwork" as never, NetworkIdFaultSchema)).toBe(
       "d87980",
     );
     expect(
       Data.to(
         { OutputNetwork: { output_index: 11n } } as never,
-        NetworkIdFaultV1Schema,
+        NetworkIdFaultSchema,
       ),
     ).toBe("d87a9f0bff");
     expect(
       Data.to(
         { OutputNetworkUtxo: { observed_network_id: 7n } } as never,
-        NetworkIdFaultV1Schema,
+        NetworkIdFaultSchema,
       ),
     ).toBe("d87b9f07ff");
   });
@@ -107,13 +107,13 @@ describe("Q35 network-id wire codec", () => {
 
   it("does not misclassify Cardano's absent transaction network", () => {
     expect(
-      isExplicitTransactionNetworkMismatchV1({
+      isExplicitTransactionNetworkMismatch({
         committedNetworkId: 255n,
         expectedNetworkId: 0n,
       }),
     ).toBe(false);
     expect(
-      isExplicitTransactionNetworkMismatchV1({
+      isExplicitTransactionNetworkMismatch({
         committedNetworkId: 1n,
         expectedNetworkId: 0n,
       }),

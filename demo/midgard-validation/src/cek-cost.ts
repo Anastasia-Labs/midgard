@@ -6,7 +6,7 @@ import {
 } from "@harmoniclabs/plutus-machine";
 import { UPLCBuiltinTag } from "@harmoniclabs/uplc";
 
-export type MidgardCekBuiltinBudgetV1 = {
+export type MidgardCekBuiltinBudget = {
   readonly cpu: bigint;
   readonly memory: bigint;
 };
@@ -14,7 +14,7 @@ export type MidgardCekBuiltinBudgetV1 = {
 const MIN_BUILTIN_TAG = 0;
 const MAX_BUILTIN_TAG = 86;
 
-export const MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS_V1 =
+export const MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS =
   costModelV3ToBuiltinCosts(
     toCostModelV3([
       ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
@@ -32,10 +32,10 @@ const assertCostSize = (size: bigint): void => {
  * supplied by the CEK semantics. Callers must normalize polymorphic and
  * bitwise arguments exactly as cardano-node does before calling this helper.
  */
-export const computeMidgardCekBuiltinBudgetV1 = (
+export const computeMidgardCekBuiltinBudget = (
   tag: number,
   costArgumentSizes: readonly bigint[],
-): MidgardCekBuiltinBudgetV1 => {
+): MidgardCekBuiltinBudget => {
   if (
     !Number.isInteger(tag) ||
     tag < MIN_BUILTIN_TAG ||
@@ -52,7 +52,7 @@ export const computeMidgardCekBuiltinBudgetV1 = (
   }
   costArgumentSizes.forEach(assertCostSize);
 
-  const costs = MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS_V1(builtinTag);
+  const costs = MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS(builtinTag);
   const cpuAt = costs.cpu.at.bind(costs.cpu) as (...sizes: bigint[]) => bigint;
   const memoryAt = costs.mem.at.bind(costs.mem) as (
     ...sizes: bigint[]
@@ -67,7 +67,7 @@ export const computeMidgardCekBuiltinBudgetV1 = (
  * Tags 75-77 charge both byte-string arguments after the selected
  * extend/truncate policy has made their lengths equal.
  */
-export const normalizeMidgardCekBitwiseCostSizesV1 = (
+export const normalizeMidgardCekBitwiseCostSizes = (
   shouldExtend: boolean,
   leftSize: bigint,
   rightSize: bigint,

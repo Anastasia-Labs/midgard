@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildVanRossemFitLedgerV1,
-  writeVanRossemFitLedgerV1,
+  buildVanRossemFitLedger,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
-export const redeemerCanonicityFitMeasurementsV1 = [
+export const redeemerCanonicityFitMeasurements = [
   [
     "reference-step-01",
     "publication",
@@ -122,13 +122,13 @@ export const redeemerCanonicityFitMeasurementsV1 = [
   ],
 ] as const;
 
-export const buildRedeemerCanonicityFitLedgerV1 = () =>
-  buildVanRossemFitLedgerV1({
+export const buildRedeemerCanonicityFitLedger = () =>
+  buildVanRossemFitLedger({
     category: "redeemerCanonicity",
     blueprintSha256:
       "e0ce6388662482aaa614e94a2eef0fa63c48f1729e1a9ed9507c22759e27e756",
     compilerVersion: "v1.1.23+5adf783",
-    measurements: redeemerCanonicityFitMeasurementsV1.map(
+    measurements: redeemerCanonicityFitMeasurements.map(
       ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
         name,
         kind,
@@ -142,15 +142,15 @@ export const buildRedeemerCanonicityFitLedgerV1 = () =>
 
 describe("redeemerCanonicity signed Van Rossem fit ledger", () => {
   it("reproduces every publication and maximum lifecycle row", async () => {
-    const ledger = buildRedeemerCanonicityFitLedgerV1();
+    const ledger = buildRedeemerCanonicityFitLedger();
     const url = new URL(
       "../../../docs/fault-proofs/size-plans/redeemer-canonicity-v1-fit-ledger.json",
       import.meta.url,
     );
     if (process.env.MIDGARD_UPDATE_REDEEMER_CANONICITY_LEDGER === "1")
-      await writeVanRossemFitLedgerV1(url.pathname, ledger);
+      await writeVanRossemFitLedger(url.pathname, ledger);
     expect(ledger.entries).toHaveLength(
-      redeemerCanonicityFitMeasurementsV1.length,
+      redeemerCanonicityFitMeasurements.length,
     );
     expect(
       ledger.entries.every(

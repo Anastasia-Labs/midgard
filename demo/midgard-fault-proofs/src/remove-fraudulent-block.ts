@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
-import { parseDeploymentManifestV1Economics } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -12,9 +12,9 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   type FraudProverRewardPlan,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  hashBlockHeaderV1,
+  hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
@@ -86,10 +86,10 @@ import {
 } from "./runtime.js";
 import { selectFeeInput } from "./submit-step-01.js";
 import {
-  CapturedLocallyEvaluatedTransactionV1,
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  CapturedLocallyEvaluatedTransaction,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export const STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS = 300_000n;
@@ -98,7 +98,7 @@ const DEFAULT_NODE_ADMIN_KEY_ENV = "MIDGARD_NODE_ADMIN_KEY";
 const STATE_QUEUE_MUTATION_LEASE_ENDPOINT = "stateQueueMutationLease";
 const FAULT_PROOF_LEASE_HOLDER = "fault_proof_removal";
 
-export type FraudSlashEconomicsPolicyV1 = Readonly<{
+export type FraudSlashEconomicsPolicy = Readonly<{
   profile: "public-preprod-launch-v1" | "bounded-acceptance-v1";
   requiredBondLovelace: bigint;
   slashingPenaltyLovelace: bigint;
@@ -107,9 +107,9 @@ export type FraudSlashEconomicsPolicyV1 = Readonly<{
   proverCollateralFloorLovelace: bigint;
 }>;
 
-export const fraudSlashEconomicsFromDeploymentManifestV1 = (
+export const fraudSlashEconomicsFromDeploymentManifest = (
   deploymentInfo: unknown,
-): FraudSlashEconomicsPolicyV1 => {
+): FraudSlashEconomicsPolicy => {
   if (
     typeof deploymentInfo !== "object" ||
     deploymentInfo === null ||
@@ -120,7 +120,7 @@ export const fraudSlashEconomicsFromDeploymentManifestV1 = (
     throw new Error("Deployment manifest must be an object.");
   }
   const manifest = deploymentInfo as { readonly economics?: unknown };
-  const economics = parseDeploymentManifestV1Economics(manifest.economics);
+  const economics = parseDeploymentManifestEconomics(manifest.economics);
   return {
     profile: economics.profile,
     requiredBondLovelace: BigInt(economics.requiredBondLovelace),
@@ -135,8 +135,8 @@ export const fraudSlashEconomicsFromDeploymentManifestV1 = (
   };
 };
 
-export const resolveFraudSlashEconomicsV1 = (
-  economics: FraudSlashEconomicsPolicyV1,
+export const resolveFraudSlashEconomics = (
+  economics: FraudSlashEconomicsPolicy,
   operatorNodeLovelace: bigint,
 ): Readonly<{
   requiredBondLovelace: bigint;
@@ -179,7 +179,7 @@ export const resolveFraudSlashEconomicsV1 = (
   );
 };
 
-export const fraudRemovalUsesWalletCoinSelectionV1 = (
+export const fraudRemovalUsesWalletCoinSelection = (
   approach:
     | "SlashActiveOperator"
     | "SlashRetiredOperator"
@@ -191,7 +191,7 @@ const utxoLovelace = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
 const sumUtxoLovelace = (utxos: readonly UTxO[]): bigint =>
   utxos.reduce((total, utxo) => total + utxoLovelace(utxo), 0n);
 
-const assertExactFraudSlashLovelaceConservationV1 = ({
+const assertExactFraudSlashLovelaceConservation = ({
   stateQueueAnchor,
   removedStateQueueNode,
   slashing,
@@ -203,7 +203,7 @@ const assertExactFraudSlashLovelaceConservationV1 = ({
     EmulatorStateQueueRemoveSlashingParams,
     { readonly kind: "operatorAlreadySlashed" }
   >;
-  readonly economics: ReturnType<typeof resolveFraudSlashEconomicsV1>;
+  readonly economics: ReturnType<typeof resolveFraudSlashEconomics>;
 }): void => {
   const stateQueueInputLovelace =
     utxoLovelace(stateQueueAnchor.utxo) +
@@ -1149,9 +1149,9 @@ const requireStateQueueHeaderHash = async (
     );
   }
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNode.datum),
+    getHeaderFromStateQueueDatum(stateQueueNode.datum),
   );
-  const computedHeaderHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const computedHeaderHash = await Effect.runPromise(hashBlockHeader(header));
   if (computedHeaderHash !== assetHeaderHash) {
     throw new Error(
       `State-queue block datum hash mismatch for ${outRefLabel(stateQueueNode.utxo)}: asset=${assetHeaderHash}, computed=${computedHeaderHash}.`,
@@ -2413,7 +2413,7 @@ export const submitRemoveFraudulentBlock = async ({
    */
   readonly fraudProverRewardLovelace?: bigint;
   /** Production workflow seam for each descendant/target removal tx. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<SubmitRemoveFraudulentBlockResult> => {
   const headerHash = parseHex(
     fraudulentHeaderHash,
@@ -2422,7 +2422,7 @@ export const submitRemoveFraudulentBlock = async ({
   );
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const deploymentEconomics =
-    fraudSlashEconomicsFromDeploymentManifestV1(deploymentInfo);
+    fraudSlashEconomicsFromDeploymentManifest(deploymentInfo);
   const contracts =
     typeof fraudCategory === "string"
       ? await buildRemovalContracts({
@@ -2546,7 +2546,7 @@ export const submitRemoveFraudulentBlock = async ({
     throw new Error(`State queue does not contain block ${headerHash}.`);
   }
   const fraudulentHeader = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(initialTarget.datum),
+    getHeaderFromStateQueueDatum(initialTarget.datum),
   );
   const fraudulentOperator = fraudulentHeader.operatorVkey;
   const initialStateQueueRootOutRef = outRefLabel(topology.root.utxo);
@@ -2638,7 +2638,7 @@ export const submitRemoveFraudulentBlock = async ({
     const slashEconomics =
       operatorSlashingPlan.approach === "OperatorAlreadySlashed"
         ? null
-        : resolveFraudSlashEconomicsV1(
+        : resolveFraudSlashEconomics(
             deploymentEconomics,
             operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
           );
@@ -2676,7 +2676,7 @@ export const submitRemoveFraudulentBlock = async ({
           "Bond-backed fraud slash unexpectedly resolved to OperatorAlreadySlashed.",
         );
       }
-      assertExactFraudSlashLovelaceConservationV1({
+      assertExactFraudSlashLovelaceConservation({
         stateQueueAnchor: anchor,
         removedStateQueueNode: removed,
         slashing,
@@ -2766,7 +2766,7 @@ export const submitRemoveFraudulentBlock = async ({
       // Ordinary coin selection would add an unrelated wallet UTxO and let
       // CML absorb a sub-minimum change residual into the fee, violating the
       // exact F04 fee. Collateral selection remains independent and enabled.
-      coinSelection: fraudRemovalUsesWalletCoinSelectionV1(
+      coinSelection: fraudRemovalUsesWalletCoinSelection(
         operatorSlashingPlan.approach,
       ),
       localUPLCEval: true,
@@ -2778,9 +2778,9 @@ export const submitRemoveFraudulentBlock = async ({
     }
 
     const signed = await unsigned.sign.withWallet().complete();
-    const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    const expectedTxHash = await reachFraudProofPreSubmitBoundary({
       signed,
-      referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      referenceScripts: workflowReferenceScriptsUsedByTransaction({
         signed,
         candidates: [
           {
@@ -2941,7 +2941,7 @@ export const submitRemoveFraudulentBlock = async ({
     // body has passed local evaluation. Its adapter retains and renews the
     // acquired lease across durable intent and submission, so failing it here
     // would reopen the append/removal race in that crash boundary.
-    if (error instanceof CapturedLocallyEvaluatedTransactionV1) {
+    if (error instanceof CapturedLocallyEvaluatedTransaction) {
       throw error;
     }
     if (

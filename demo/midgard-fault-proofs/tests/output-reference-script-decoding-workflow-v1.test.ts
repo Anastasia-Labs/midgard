@@ -1,15 +1,15 @@
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  cancelOutputReferenceScriptDecodingWorkflowV1,
-  nextOutputReferenceScriptDecodingActionV1,
-  type OutputReferenceScriptDecodingJournalEntryV1,
-  runOutputReferenceScriptDecodingWorkflowV1,
+  cancelOutputReferenceScriptDecodingWorkflow,
+  nextOutputReferenceScriptDecodingAction,
+  type OutputReferenceScriptDecodingJournalEntry,
+  runOutputReferenceScriptDecodingWorkflow,
 } from "../src/output-reference-script-decoding/index.js";
 
 const evidence = {
-  subject: acceptedVerdictSubjectV1("11".repeat(32)),
+  subject: acceptedVerdictSubject("11".repeat(32)),
   outputIndex: 0,
   canonicalTransactionCborHex: "aa",
   outputFieldPreimageHex: "bb",
@@ -40,9 +40,7 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
         "step06",
         "proven",
         "removed",
-      ].map((stage) =>
-        nextOutputReferenceScriptDecodingActionV1(stage as never),
-      ),
+      ].map((stage) => nextOutputReferenceScriptDecodingAction(stage as never)),
     ).toEqual([
       "submitInit",
       "submitStep01",
@@ -57,12 +55,12 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
   });
 
   it("reconciles exact crash intent and refuses stage substitution", async () => {
-    const entries: OutputReferenceScriptDecodingJournalEntryV1[] = [];
+    const entries: OutputReferenceScriptDecodingJournalEntry[] = [];
     let stage: "none" | "step01" = "none";
     let builds = 0;
     const journal = {
       load: async () => entries,
-      append: async (entry: OutputReferenceScriptDecodingJournalEntryV1) => {
+      append: async (entry: OutputReferenceScriptDecodingJournalEntry) => {
         entries.push(entry);
       },
     };
@@ -88,7 +86,7 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
       },
     };
     await expect(
-      runOutputReferenceScriptDecodingWorkflowV1({
+      runOutputReferenceScriptDecodingWorkflow({
         evidence,
         journal,
         actuator,
@@ -97,7 +95,7 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
     expect(builds).toBe(1);
     expect(entries[0]?.phase).toBe("intent");
     await expect(
-      runOutputReferenceScriptDecodingWorkflowV1({
+      runOutputReferenceScriptDecodingWorkflow({
         evidence,
         journal,
         actuator,
@@ -107,7 +105,7 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
     entries.splice(1);
     stage = "none";
     await expect(
-      runOutputReferenceScriptDecodingWorkflowV1({
+      runOutputReferenceScriptDecodingWorkflow({
         evidence,
         journal,
         actuator,
@@ -118,11 +116,11 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
   it.each(["outputScan", "referenceBind"] as const)(
     "cancels the separated %s step with exact identity",
     async (initial) => {
-      const entries: OutputReferenceScriptDecodingJournalEntryV1[] = [];
+      const entries: OutputReferenceScriptDecodingJournalEntry[] = [];
       let stage: typeof initial | "cancelled" = initial;
       const journal = {
         load: async () => entries,
-        append: async (entry: OutputReferenceScriptDecodingJournalEntryV1) => {
+        append: async (entry: OutputReferenceScriptDecodingJournalEntry) => {
           entries.push(entry);
         },
       };
@@ -140,7 +138,7 @@ describe("outputReferenceScriptDecoding durable workflow", () => {
         }),
       };
       await expect(
-        cancelOutputReferenceScriptDecodingWorkflowV1({
+        cancelOutputReferenceScriptDecodingWorkflow({
           evidence,
           journal,
           actuator,

@@ -7,7 +7,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/unused_script_witness/step_01.main.spend",
   "fraud_proofs/unused_script_witness/step_02.main.spend",
   "fraud_proofs/unused_script_witness/step_03.main.spend",
@@ -15,21 +15,21 @@ export const UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1 = Object.freeze([
   "fraud_proofs/unused_script_witness/step_05.main.spend",
   "fraud_proofs/unused_script_witness/step_06.main.spend",
 ] as const);
-export type UnusedScriptWitnessStepContractV1 = Readonly<{
+export type UnusedScriptWitnessStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type UnusedScriptWitnessContractsV1 = Readonly<{
+export type UnusedScriptWitnessContracts = Readonly<{
   steps: readonly [
-    UnusedScriptWitnessStepContractV1,
-    UnusedScriptWitnessStepContractV1,
-    UnusedScriptWitnessStepContractV1,
-    UnusedScriptWitnessStepContractV1,
-    UnusedScriptWitnessStepContractV1,
-    UnusedScriptWitnessStepContractV1,
+    UnusedScriptWitnessStepContract,
+    UnusedScriptWitnessStepContract,
+    UnusedScriptWitnessStepContract,
+    UnusedScriptWitnessStepContract,
+    UnusedScriptWitnessStepContract,
+    UnusedScriptWitnessStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -49,7 +49,7 @@ type Blueprint = Readonly<{
     parameters?: readonly unknown[];
   }>[];
 }>;
-export const applyUnusedScriptWitnessScriptsV1 = ({
+export const applyUnusedScriptWitnessScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -63,9 +63,9 @@ export const applyUnusedScriptWitnessScriptsV1 = ({
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
-}): UnusedScriptWitnessContractsV1["steps"] => {
+}): UnusedScriptWitnessContracts["steps"] => {
   const apply = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1[index]!;
+    const blueprintTitle = UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

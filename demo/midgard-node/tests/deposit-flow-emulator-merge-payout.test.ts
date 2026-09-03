@@ -17,7 +17,7 @@ import {
   Database,
   decodeNodeUtxo,
   Effect,
-  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialSidecar,
   ensureSeparateCollateralUtxo,
   expectedAuthenticatedEventRoot,
   fetchLatestCommittedBlock,
@@ -148,10 +148,10 @@ describe.sequential("deposit flow emulator", () => {
       ),
     ).toHaveLength(1);
     const queuedHeaderBeforeMerge = await Effect.runPromise(
-      SDK.getHeaderV1FromStateQueueDatum(queuedBlockBeforeMerge.datum),
+      SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
     );
     const queuedHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeaderV1(queuedHeaderBeforeMerge),
+      SDK.hashBlockHeader(queuedHeaderBeforeMerge),
     );
     expect(queuedBlockBeforeMerge.datum.key).toEqual({
       Key: { key: queuedHeaderHash },
@@ -402,7 +402,7 @@ describe.sequential("deposit flow emulator", () => {
       requestedAssets: { lovelace: 2_000_000n },
       networkId: 0n,
     });
-    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecarV1(
+    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar(
       [],
     );
     const admittedL2Transfer = await runNodeDatabaseEffect(

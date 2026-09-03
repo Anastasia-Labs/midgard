@@ -4,11 +4,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applySpendInputSignerMissingScriptsV1,
-  SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1,
+  applySpendInputSignerMissingScripts,
+  SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
 } from "../src/spend-input-signer-missing/index.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -19,17 +19,17 @@ const blueprint = readBlueprint(realBlueprintPath);
 describe("spendInputSignerMissing signed publication fit", () => {
   it("publishes all five fully applied scripts with ordinary L1 limits", async () => {
     expect(
-      SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1.every((title) =>
+      SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES.every((title) =>
         blueprint.validators.some((validator) => validator.title === title),
       ),
     ).toBe(true);
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
     const proofAddressData = await Effect.runPromise(
       addressDataFromBech32(
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = applySpendInputSignerMissingScriptsV1({
+    const steps = applySpendInputSignerMissingScripts({
       blueprint,
       network: "Preprod",
       computationThreadPolicyId: harness.contracts.computationThread.policyId,

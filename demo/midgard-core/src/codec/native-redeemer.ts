@@ -2,21 +2,21 @@ import { CML } from "@lucid-evolution/lucid";
 
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  assertMidgardPlutusDataWellFormedV1,
+  assertMidgardPlutusDataWellFormed,
 } from "../plutus-data-cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
-  decodeMidgardFieldPreimageV1,
-  encodeMidgardFieldPreimageV1,
+  decodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimage,
 } from "./native-tx-field-access-v1.js";
 import {
-  decodeMidgardRedeemerWitnessItemV1,
-  midgardRedeemerPurposeFromTagV1,
+  decodeMidgardRedeemerWitnessItem,
+  midgardRedeemerPurposeFromTag,
 } from "./native-tx-field-item-decoders-v1.js";
 import {
-  encodeMidgardRedeemerWitnessItemV1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  type MidgardRedeemerPurposeV1,
+  encodeMidgardRedeemerWitnessItem,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  type MidgardRedeemerPurpose,
 } from "./native-tx-field-items-v1.js";
 
 export type NormalizedRedeemer = {
@@ -84,7 +84,7 @@ const ensureSupportedCardanoRedeemerTag = (
 /**
  * Validates one canonical Plutus Data value without materializing a CML
  * object. Well-formedness uses the recursion-free
- * `assertMidgardPlutusDataWellFormedV1` pass instead of the former
+ * `assertMidgardPlutusDataWellFormed` pass instead of the former
  * `CML.PlutusData.from_cbor_bytes` probe, whose wasm build traps near 1,522
  * nested nodes, so validation depth is bounded only by the bytes that carry
  * the value.
@@ -95,7 +95,7 @@ const validateCanonicalPlutusDataCbor = (
 ): Buffer => {
   const source = Buffer.from(dataCbor);
   try {
-    assertMidgardPlutusDataWellFormedV1(source);
+    assertMidgardPlutusDataWellFormed(source);
   } catch (error) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
@@ -176,8 +176,8 @@ const normalizeCardanoPlutusData = (
  * so a future divergence between the two numberings surfaces here instead of
  * silently changing committed bytes.
  *
- * The table read is `midgardRedeemerPurposeFromTagV1`, the §5.3 decoder's own —
- * not a reverse scan of `MIDGARD_REDEEMER_PURPOSE_TAGS_V1` spelled again here.
+ * The table read is `midgardRedeemerPurposeFromTag`, the §5.3 decoder's own —
+ * not a reverse scan of `MIDGARD_REDEEMER_PURPOSE_TAGS` spelled again here.
  * Only the diagnostic differs: a tag out of §5.3's set reached from Cardano is an
  * unsupported *conversion*, which is the error class this module's callers
  * discriminate on, so the decoder's grammar error is re-raised as one.
@@ -185,9 +185,9 @@ const normalizeCardanoPlutusData = (
 const midgardRedeemerPurposeForCardanoTag = (
   tag: CML.RedeemerTag,
   fieldName: string,
-): MidgardRedeemerPurposeV1 => {
+): MidgardRedeemerPurpose => {
   try {
-    return midgardRedeemerPurposeFromTagV1(Number(tag));
+    return midgardRedeemerPurposeFromTag(Number(tag));
   } catch {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.ConversionUnsupportedFeature,
@@ -208,9 +208,9 @@ const encodeMidgardRedeemerPreimageCbor = (
   redeemers: readonly NormalizedRedeemer[],
   fieldName: string,
 ): Buffer =>
-  encodeMidgardFieldPreimageV1(
+  encodeMidgardFieldPreimage(
     redeemers.map((redeemer) =>
-      encodeMidgardRedeemerWitnessItemV1({
+      encodeMidgardRedeemerWitnessItem({
         purpose: midgardRedeemerPurposeForCardanoTag(redeemer.tag, fieldName),
         index: redeemer.index,
         redeemerCbor: redeemer.dataCbor,
@@ -224,7 +224,7 @@ export const cardanoRedeemersToMidgardPreimageCbor = (
   fieldName = "transaction_witness_set.redeemers",
 ): Buffer => {
   if (redeemers === undefined) {
-    return encodeMidgardFieldPreimageV1([]);
+    return encodeMidgardFieldPreimage([]);
   }
 
   const flat = redeemers.to_flat_format();
@@ -265,13 +265,13 @@ export const decodeMidgardRedeemerPreimageCbor = (
   fieldName = "native.redeemers",
 ): readonly NormalizedRedeemer[] =>
   normalizeRedeemers(
-    decodeMidgardFieldPreimageV1(preimageCbor)
-      .map(decodeMidgardRedeemerWitnessItemV1)
+    decodeMidgardFieldPreimage(preimageCbor)
+      .map(decodeMidgardRedeemerWitnessItem)
       .map((witness, index): NormalizedRedeemer => {
         const itemField = `${fieldName}[${index}]`;
         return {
           tag: ensureSupportedCardanoRedeemerTag(
-            MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose],
+            MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose],
             itemField,
           ),
           index: witness.index,

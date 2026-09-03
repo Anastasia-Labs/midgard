@@ -14,20 +14,20 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
+  encodeMidgardTxInputCanonical,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
@@ -57,8 +57,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { InputSetUniquenessContractsV1 } from "../../src/input-set-uniqueness/contracts-v1.js";
-import { requireInputSetUniquenessThreadUtxoV1 } from "../../src/input-set-uniqueness/submit-common-v1.js";
+import type { InputSetUniquenessContracts } from "../../src/input-set-uniqueness/contracts-v1.js";
+import { requireInputSetUniquenessThreadUtxo } from "../../src/input-set-uniqueness/submit-common-v1.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -75,34 +75,34 @@ import {
 } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
-import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
+import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
 import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   makeNativeTx,
-  network as emulatorNetworkV1,
+  network as emulatorNetwork,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export { expectOnchainRefusalV1 } from "./native-script-decoding-emulator-v1.js";
+export { expectOnchainRefusal } from "./native-script-decoding-emulator-v1.js";
 
 // ---------------------------------------------------------------------------
 // The committed transaction and its MPF inclusion
 // ---------------------------------------------------------------------------
 
 /** A readable fixture out-ref: `tx_id` is one byte repeated 32 times. */
-export const isuOutRefV1 = (
+export const isuOutRef = (
   txIdByte: string,
   outputIndex: number,
 ): MidgardTxInput => ({
@@ -111,10 +111,10 @@ export const isuOutRefV1 = (
 });
 
 /** The canonical §5.3 item bytes for one out-ref, hex. */
-export const isuItemCborV1 = (outRef: MidgardTxInput): string =>
-  Buffer.from(encodeMidgardTxInputCanonicalV1(outRef)).toString("hex");
+export const isuItemCbor = (outRef: MidgardTxInput): string =>
+  Buffer.from(encodeMidgardTxInputCanonical(outRef)).toString("hex");
 
-export type InputSetUniquenessFixtureV1 = {
+export type InputSetUniquenessFixture = {
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly nativeTxId: string;
@@ -140,7 +140,7 @@ export type InputSetUniquenessFixtureV1 = {
  * the operator honestly recorded as a no-op, which the family must never
  * convict however degenerate its input sets are.
  */
-export const buildInputSetUniquenessFixtureV1 = async ({
+export const buildInputSetUniquenessFixture = async ({
   spendInputs,
   referenceInputs,
   validity = "TxIsValid",
@@ -148,57 +148,54 @@ export const buildInputSetUniquenessFixtureV1 = async ({
   readonly spendInputs: readonly MidgardTxInput[];
   readonly referenceInputs: readonly MidgardTxInput[];
   readonly validity?: "TxIsValid" | "TxIsInvalid";
-}): Promise<InputSetUniquenessFixtureV1> => {
+}): Promise<InputSetUniquenessFixture> => {
   const spendItems = spendInputs.map((outRef) =>
-    Buffer.from(encodeMidgardTxInputCanonicalV1(outRef)),
+    Buffer.from(encodeMidgardTxInputCanonical(outRef)),
   );
   const referenceItems = referenceInputs.map((outRef) =>
-    Buffer.from(encodeMidgardTxInputCanonicalV1(outRef)),
+    Buffer.from(encodeMidgardTxInputCanonical(outRef)),
   );
-  const badTx: MidgardNativeTxFullV1 =
-    materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
-      validity,
-      body: {
-        spendInputsPreimageCbor: encodeCbor(spendItems),
-        referenceInputsPreimageCbor:
-          referenceItems.length === 0
-            ? EMPTY_CBOR_LIST
-            : encodeCbor(referenceItems),
-        outputsPreimageCbor: encodeCbor([Buffer.from("f0".repeat(32), "hex")]),
-        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-        mintPreimageCbor: EMPTY_CBOR_LIST,
-        scriptIntegrityHash: EMPTY_NULL_ROOT,
-        auxiliaryDataHash: EMPTY_NULL_ROOT,
-        fee: 1_000n,
-        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-        networkId: 0n,
-      },
-      witnessSet: {
-        addrTxWitsPreimageCbor: encodeCbor([
-          Buffer.from("f1".repeat(32), "hex"),
-        ]),
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      },
-    });
+  const badTx: MidgardNativeTxFull = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity,
+    body: {
+      spendInputsPreimageCbor: encodeCbor(spendItems),
+      referenceInputsPreimageCbor:
+        referenceItems.length === 0
+          ? EMPTY_CBOR_LIST
+          : encodeCbor(referenceItems),
+      outputsPreimageCbor: encodeCbor([Buffer.from("f0".repeat(32), "hex")]),
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      fee: 1_000n,
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      networkId: 0n,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: encodeCbor([Buffer.from("f1".repeat(32), "hex")]),
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  });
   // One honest decoy leaf, so the membership proof has at least one step.
   const decoyTx = makeNativeTx({
     spendInputCbors: [
-      Buffer.from(encodeMidgardTxInputCanonicalV1(isuOutRefV1("dd", 0))),
+      Buffer.from(encodeMidgardTxInputCanonical(isuOutRef("dd", 0))),
     ],
     fee: 5n,
   });
-  const badTxId = computeMidgardNativeTxIdV1(badTx).toString("hex");
+  const badTxId = computeMidgardNativeTxId(badTx).toString("hex");
   const badTxCompactCbor = Buffer.from(
-    encodeMidgardNativeTxCompactV1(badTx.compact),
+    encodeMidgardNativeTxCompact(badTx.compact),
   ).toString("hex");
   const badTxSourceCbor = l2TransactionSourceCborV1(badTx);
-  const forcedSource = deriveMidgardNativeTxProofSourceV1(badTx);
+  const forcedSource = deriveMidgardNativeTxProofSource(badTx);
   const decoyTxSourceCbor = l2TransactionSourceCborV1(decoyTx);
-  const decoyTxId = computeMidgardNativeTxIdV1(decoyTx).toString("hex");
+  const decoyTxId = computeMidgardNativeTxId(decoyTx).toString("hex");
   if (decoyTxId === badTxId) {
     throw new Error("fixture decoy collides with the disputed transaction");
   }
@@ -238,7 +235,7 @@ export const buildInputSetUniquenessFixtureV1 = async ({
       field_preimage_lengths_cbor:
         forcedSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    fullTransactionCbor: encodeMidgardNativeTxCanonicalV1(badTx),
+    fullTransactionCbor: encodeMidgardNativeTxCanonical(badTx),
   };
 };
 
@@ -246,8 +243,8 @@ export const buildInputSetUniquenessFixtureV1 = async ({
 // Harness, committed header, reference scripts, removal category
 // ---------------------------------------------------------------------------
 
-export const makeInputSetUniquenessEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeInputSetUniquenessEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realInputSetUniqueness: true,
       alwaysFraudProofCatalogue: true,
@@ -269,20 +266,20 @@ export const makeInputSetUniquenessEmulatorHarnessV1 = async () => {
   return { ...harness, family, category };
 };
 
-export type InputSetUniquenessHarnessV1 = Awaited<
-  ReturnType<typeof makeInputSetUniquenessEmulatorHarnessV1>
+export type InputSetUniquenessHarness = Awaited<
+  ReturnType<typeof makeInputSetUniquenessEmulatorHarness>
 >;
 
 /**
  * Commits a header carrying the fixture's counted `transactions_root` on the
  * emulator, ready for Init.
  */
-export const setupInputSetUniquenessScenarioV1 = async ({
+export const setupInputSetUniquenessScenario = async ({
   harness,
   fixture,
 }: {
-  readonly harness: InputSetUniquenessHarnessV1;
-  readonly fixture: InputSetUniquenessFixtureV1;
+  readonly harness: InputSetUniquenessHarness;
+  readonly fixture: InputSetUniquenessFixture;
 }) => {
   const {
     emulator,
@@ -295,7 +292,7 @@ export const setupInputSetUniquenessScenarioV1 = async ({
     nonceUtxo,
   } = harness;
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: proverLucid,
       realBlueprint,
       computationThreadMintingScript: family.computationThread.mintingScript,
@@ -328,14 +325,14 @@ export const setupInputSetUniquenessScenarioV1 = async ({
  * Publishes all four step validators as reference scripts (production deployment
  * shape per the standing reference-script ruling).
  */
-export const publishInputSetUniquenessReferenceScriptsV1 = async ({
+export const publishInputSetUniquenessReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -353,7 +350,7 @@ export const publishInputSetUniquenessReferenceScriptsV1 = async ({
 // ---------------------------------------------------------------------------
 // Raw builders — the honest submitters' transactions WITHOUT their local
 // fail-closed guards, so the adversarial suite can watch the VALIDATOR refuse
-// (see `expectOnchainRefusalV1`). Production code never takes these paths.
+// (see `expectOnchainRefusal`). Production code never takes these paths.
 // ---------------------------------------------------------------------------
 
 /**
@@ -362,7 +359,7 @@ export const publishInputSetUniquenessReferenceScriptsV1 = async ({
  * so an honestly-rejected committed leaf reaches the validator's own
  * `validity_code == 0` refusal.
  */
-export const submitRawInputSetUniquenessBindV1 = async ({
+export const submitRawInputSetUniquenessBind = async ({
   harness,
   threadOutRef,
   stateQueueBlockOutRef,
@@ -370,24 +367,25 @@ export const submitRawInputSetUniquenessBindV1 = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
 }: {
-  readonly harness: InputSetUniquenessHarnessV1;
+  readonly harness: InputSetUniquenessHarness;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const contracts = harness.family;
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId: harness.category.categoryId,
       stepIndex: 0,
       threadOutRef,
-    });
+    },
+  );
   const stateQueueBlockUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(stateQueueBlockOutRef, "--state-queue-block-out-ref"),
@@ -396,7 +394,7 @@ export const submitRawInputSetUniquenessBindV1 = async ({
   const hubOracleUtxo = await requireSingletonUtxo({
     lucid,
     address: credentialToAddress(
-      emulatorNetworkV1,
+      emulatorNetwork,
       scriptHashToCredential(contracts.hubOraclePolicyId),
     ),
     unit: toUnit(contracts.hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
@@ -410,15 +408,15 @@ export const submitRawInputSetUniquenessBindV1 = async ({
     ),
   };
   const phasRewardAddress = phasMembershipRewardAddress(
-    emulatorNetworkV1,
+    emulatorNetwork,
     phasMembershipScript,
   );
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw input-set-uniqueness PHAS membership",
   });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "raw input-set-uniqueness step-01",
@@ -530,7 +528,7 @@ export const submitRawInputSetUniquenessBindV1 = async ({
 };
 
 /** The finalize layout a raw args builder is handed. */
-export type RawInputSetUniquenessFinalizeLayoutV1 = {
+export type RawInputSetUniquenessFinalizeLayout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
   readonly fraudProofMintRedeemerIndex: bigint;
@@ -542,32 +540,33 @@ export type RawInputSetUniquenessFinalizeLayoutV1 = {
  * conviction twins, so a claim the validator must refuse — unequal items,
  * `i >= j`, an out-of-range index — reaches the exact on-chain check.
  */
-export const submitRawInputSetUniquenessFinalizeV1 = async ({
+export const submitRawInputSetUniquenessFinalize = async ({
   harness,
   threadOutRef,
   buildArgs,
   referenceScriptUtxo,
   witnessReferenceScripts,
 }: {
-  readonly harness: InputSetUniquenessHarnessV1;
+  readonly harness: InputSetUniquenessHarness;
   readonly threadOutRef: string;
   readonly buildArgs: (
-    layout: RawInputSetUniquenessFinalizeLayoutV1,
+    layout: RawInputSetUniquenessFinalizeLayout,
   ) => InputSetUniquenessStep02Args;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const contracts = harness.family;
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId: harness.category.categoryId,
       stepIndex: 1,
       threadOutRef,
-    });
+    },
+  );
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
@@ -641,17 +640,17 @@ export const submitRawInputSetUniquenessFinalizeV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw input-set-uniqueness computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: "raw input-set-uniqueness fraud-proof mint",
   });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "raw input-set-uniqueness step-02",

@@ -1,7 +1,7 @@
 import {
   InputSetUniquenessStep04DatumSchema,
   InputSetUniquenessStep04SpendRedeemerSchema,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -14,30 +14,30 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { InputSetUniquenessContracts } from "./contracts-v1.js";
 import {
-  requireInputSetUniquenessReferenceScriptV1,
-  requireInputSetUniquenessStepStateV1,
-  requireInputSetUniquenessThreadUtxoV1,
+  requireInputSetUniquenessReferenceScript,
+  requireInputSetUniquenessStepState,
+  requireInputSetUniquenessThreadUtxo,
 } from "./submit-common-v1.js";
 import {
-  inputSetUnionIsStrictlyIncreasingV1,
-  inputSetUniquenessCheckpointV1,
-  type InputSetUniqueScanStateV1,
+  inputSetUnionIsStrictlyIncreasing,
+  inputSetUniquenessCheckpoint,
+  type InputSetUniqueScanState,
 } from "./wrongful-rejection-v1.js";
 
-const requireAuthenticState = (state: InputSetUniqueScanStateV1) => {
-  const expected = inputSetUniquenessCheckpointV1({
+const requireAuthenticState = (state: InputSetUniqueScanState) => {
+  const expected = inputSetUniquenessCheckpoint({
     bound: state.bound,
     spendCount: state.spend_count,
     referenceCount: state.reference_count,
@@ -50,7 +50,7 @@ const requireAuthenticState = (state: InputSetUniqueScanStateV1) => {
   }
 };
 
-export const submitInputSetUniquenessStep04AdvanceV1 = async ({
+export const submitInputSetUniquenessStep04Advance = async ({
   lucid,
   contracts,
   categoryId,
@@ -66,7 +66,7 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -76,26 +76,25 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3 as const;
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId,
       stepIndex,
       threadOutRef,
-    });
-  const state = requireInputSetUniquenessStepStateV1<InputSetUniqueScanStateV1>(
-    {
-      threadUtxo,
-      signer,
-      schema: InputSetUniquenessStep04DatumSchema as never,
-      stepIndex,
     },
   );
+  const state = requireInputSetUniquenessStepState<InputSetUniqueScanState>({
+    threadUtxo,
+    signer,
+    schema: InputSetUniquenessStep04DatumSchema as never,
+    stepIndex,
+  });
   requireAuthenticState(state);
   if (
     state.next_expected_script_hash !== contracts.steps[3].spendingScriptHash
@@ -123,10 +122,10 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
     }
     previousItem = item;
   }
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: readingSpend
-      ? MIDGARD_FIELD_INDEX_V1.spendInputs
-      : MIDGARD_FIELD_INDEX_V1.referenceInputs,
+      ? MIDGARD_FIELD_INDEX.spendInputs
+      : MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: state.bound.subject.transaction_id,
     nativeTxCompactCbor,
     itemCbors: items.map((value) => Buffer.from(value, "hex")),
@@ -135,7 +134,7 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
   });
   const carriageUtxos = [
     ...(publishedCarriageUtxos ??
-      (await publishFaultProofFieldCarriageV1({
+      (await publishFaultProofFieldCarriage({
         lucid,
         signer,
         planned,
@@ -149,9 +148,9 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
     cursor: state.cursor + BigInt(batch.length),
     previous_item: previousItem,
   };
-  const nextState: InputSetUniqueScanStateV1 = {
+  const nextState: InputSetUniqueScanState = {
     ...nextPartial,
-    checkpoint_hash: inputSetUniquenessCheckpointV1({
+    checkpoint_hash: inputSetUniquenessCheckpoint({
       bound: state.bound,
       spendCount: state.spend_count,
       referenceCount: state.reference_count,
@@ -169,7 +168,7 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireInputSetUniquenessReferenceScriptV1({
+  const stepReference = requireInputSetUniquenessReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
@@ -194,7 +193,7 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
             Advance: {
               input_index: inputIndex,
               output_index: outputIndex,
-              field_opening: faultProofFieldOpeningV1({
+              field_opening: faultProofFieldOpening({
                 planned,
                 referenceInputs: [...carriageUtxos, stepReference],
                 certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -208,7 +207,7 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -232,7 +231,7 @@ export const submitInputSetUniquenessStep04AdvanceV1 = async ({
   });
 };
 
-export const submitInputSetUniquenessStep04FinalizeV1 = async ({
+export const submitInputSetUniquenessStep04Finalize = async ({
   lucid,
   contracts,
   categoryId,
@@ -246,45 +245,44 @@ export const submitInputSetUniquenessStep04FinalizeV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly spendInputItemCbors: readonly string[];
   readonly referenceInputItemCbors: readonly string[];
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3 as const;
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId,
       stepIndex,
       threadOutRef,
-    });
-  const state = requireInputSetUniquenessStepStateV1<InputSetUniqueScanStateV1>(
-    {
-      threadUtxo,
-      signer,
-      schema: InputSetUniquenessStep04DatumSchema as never,
-      stepIndex,
     },
   );
+  const state = requireInputSetUniquenessStepState<InputSetUniqueScanState>({
+    threadUtxo,
+    signer,
+    schema: InputSetUniquenessStep04DatumSchema as never,
+    stepIndex,
+  });
   requireAuthenticState(state);
   if (
     state.cursor !== state.spend_count + state.reference_count ||
-    !inputSetUnionIsStrictlyIncreasingV1({
+    !inputSetUnionIsStrictlyIncreasing({
       spendInputItemCbors,
       referenceInputItemCbors,
     })
   ) {
     throw new Error("input-set-uniqueness: complete unique scan is absent");
   }
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "input-set-uniqueness",
     stepIndex,

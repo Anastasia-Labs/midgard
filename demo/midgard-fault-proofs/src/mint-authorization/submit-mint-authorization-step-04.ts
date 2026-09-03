@@ -18,18 +18,18 @@
  * early completion.
  */
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardLedgerOutputCommitment,
+  decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import type {
   MintAuthorizationStep04Args,
-  MintAuthorizationStep04StateV1,
-  MintAuthorizationStep05StateV1,
+  MintAuthorizationStep04State,
+  MintAuthorizationStep05State,
 } from "@al-ft/midgard-sdk";
 import {
-  MIDGARD_FIELD_INDEX_V1,
-  MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+  MIDGARD_FIELD_INDEX,
+  MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MintAuthorizationStep04Datum,
   MintAuthorizationStep04SpendRedeemer,
   MintAuthorizationStep05Datum,
@@ -45,9 +45,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -56,26 +56,26 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
+import type { MintAuthorizationContracts } from "./contracts-v1.js";
 import {
-  buildMintAuthorizationLedgerMembershipV1,
-  type MintAuthorizationLedgerTrieHandleV1,
+  buildMintAuthorizationLedgerMembership,
+  type MintAuthorizationLedgerTrieHandle,
 } from "./evidence-v1.js";
 import {
-  mintAuthorizationStepLabelV1,
+  mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
-  requireMintAuthorizationReferenceScriptV1,
-  requireMintAuthorizationStepStateV1,
-  requireMintAuthorizationThreadUtxoV1,
+  requireMintAuthorizationReferenceScript,
+  requireMintAuthorizationStepState,
+  requireMintAuthorizationThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = mintAuthorizationStepLabelV1(3);
+const STEP_LABEL = mintAuthorizationStepLabel(3);
 
 export type SubmitMintAuthorizationStep04Result = {
   readonly txHash: string;
@@ -96,7 +96,7 @@ export type SubmitMintAuthorizationStep04Result = {
 
 type Step04Shared = {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintAuthorizationContractsV1;
+  readonly contracts: MintAuthorizationContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -112,31 +112,31 @@ type Step04Shared = {
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 };
 
 const prepareStep04 = async (shared: Step04Shared) => {
-  const { threadUtxo, threadToken } =
-    await requireMintAuthorizationThreadUtxoV1({
-      lucid: shared.lucid,
-      contracts: shared.contracts,
-      categoryId: shared.categoryId,
-      stepIndex: 3,
-      threadOutRef: shared.threadOutRef,
-    });
-  const state: MintAuthorizationStep04StateV1 =
-    requireMintAuthorizationStepStateV1({
+  const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
+    lucid: shared.lucid,
+    contracts: shared.contracts,
+    categoryId: shared.categoryId,
+    stepIndex: 3,
+    threadOutRef: shared.threadOutRef,
+  });
+  const state: MintAuthorizationStep04State = requireMintAuthorizationStepState(
+    {
       threadUtxo,
       signer: shared.signer,
       schema: MintAuthorizationStep04Datum,
       stepIndex: 3,
-    });
+    },
+  );
   // The §8.8 door: plan field 1 against the bound tx id, then let the byte
   // length pick the tier — a scan over a large committed reference-input list
   // publishes tier-2 carriage rather than forcing it.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: shared.nativeTxCompactCbor,
     itemCbors: shared.referenceInputsItemCbors.map((hex) =>
@@ -145,9 +145,9 @@ const prepareStep04 = async (shared: Step04Shared) => {
     owner: shared.signer.paymentKeyHash,
     label: `${STEP_LABEL} reference-inputs`,
   });
-  const referenceItems = decodeMidgardFieldPreimageV1(planned.preimage);
+  const referenceItems = decodeMidgardFieldPreimage(planned.preimage);
   shared.signer.selectWallet(shared.lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+  const carriageUtxos = await publishFaultProofFieldCarriage({
     lucid: shared.lucid,
     signer: shared.signer,
     planned,
@@ -187,7 +187,7 @@ const submitPreparedStep04 = async ({
     readonly unit: string;
     readonly fraudulentHeaderHash: string;
   };
-  readonly planned: ReturnType<typeof planFaultProofFieldOpeningV1>;
+  readonly planned: ReturnType<typeof planFaultProofFieldOpening>;
   readonly carriageUtxos: readonly UTxO[];
   readonly fieldReferenceInputs: readonly UTxO[];
   /** 3 = the self-loop back to step-04's own address, 4 = step-05. */
@@ -199,7 +199,7 @@ const submitPreparedStep04 = async ({
       readonly inputIndex: bigint;
       readonly outputIndex: bigint;
     },
-    referenceInputsOpening: ReturnType<typeof faultProofFieldOpeningV1>,
+    referenceInputsOpening: ReturnType<typeof faultProofFieldOpening>,
   ) => MintAuthorizationStep04Args;
 }): Promise<SubmitMintAuthorizationStep04Result> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
@@ -208,12 +208,12 @@ const submitPreparedStep04 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireMintAuthorizationReferenceScriptV1({
+      : requireMintAuthorizationReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[3].spendingScriptHash,
           stepIndex: 3,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[3].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -225,7 +225,7 @@ const submitPreparedStep04 = async ({
     ...fieldReferenceInputs,
     ...stepCarriage.referenceInputs,
   ];
-  const referenceInputsOpening = faultProofFieldOpeningV1({
+  const referenceInputsOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -295,9 +295,9 @@ const submitPreparedStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -343,7 +343,7 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
   ...shared
 }: Step04Shared & {
   /** Pre-state ledger trie handle; its root must be `prior_ledger_root`. */
-  readonly trie: MintAuthorizationLedgerTrieHandleV1;
+  readonly trie: MintAuthorizationLedgerTrieHandle;
   /** The scanned outpoint's ledger descriptor bytes, hex (the MPF value). */
   readonly descriptorCborHex: string;
 }): Promise<SubmitMintAuthorizationStep04Result> => {
@@ -364,8 +364,8 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
   }
   const outpointKey = Buffer.from(referenceItems[Number(cursor)]);
   // Local twin of the validator's canonical-item read (fail-closed).
-  decodeMidgardSpendInputItemV1(outpointKey);
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+  decodeMidgardSpendInputItem(outpointKey);
+  const descriptor = decodeMidgardLedgerOutputCommitment(
     Buffer.from(descriptorCborHex, "hex"),
   );
   if (
@@ -376,13 +376,13 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
       `the resolved reference input at cursor ${cursor.toString()} carries a reference script hashing to the claimed policy ${state.policy_id} — the absence claim is false.`,
     );
   }
-  const ledgerMembershipProof = await buildMintAuthorizationLedgerMembershipV1({
+  const ledgerMembershipProof = await buildMintAuthorizationLedgerMembership({
     trie,
     outpointKey,
     priorLedgerRootHex: state.prior_ledger_root,
   });
 
-  const nextState: MintAuthorizationStep04StateV1 = {
+  const nextState: MintAuthorizationStep04State = {
     ...state,
     ref_cursor: cursor + 1n,
   };
@@ -430,9 +430,9 @@ export const submitMintAuthorizationStep04AdvanceComplete = async (
       `ref cursor ${state.ref_cursor.toString()} has not covered the committed field 1's ${referenceItems.length.toString()} items — the scan is incomplete.`,
     );
   }
-  const step05State: MintAuthorizationStep05StateV1 = {
+  const step05State: MintAuthorizationStep05State = {
     policy_id: state.policy_id,
-    direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+    direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   };
   const nextStepDatum = Data.to(
     { fraud_prover: shared.signer.paymentKeyHash, data: step05State },

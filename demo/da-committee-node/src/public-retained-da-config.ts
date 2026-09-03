@@ -1,14 +1,14 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  assertMidgardConsensusV1ReleaseReady,
-  isMidgardConsensusProfileV1,
+  assertMidgardConsensusReleaseReady,
+  isMidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   normalizeDaDeploymentFingerprintHex,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
-import { verifyFinalizedDeploymentManifestV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import type { PublicRetainedDaRuntimeConfig } from "./config.js";
 import { normalizeHex } from "./utils/hex.js";
@@ -129,11 +129,11 @@ const verifyContractDeployment = (
   value: Record<string, unknown>,
   path: string,
 ): { readonly manifestId: string; readonly network: string } => {
-  const verified = verifyFinalizedDeploymentManifestV1(value);
-  if (!isMidgardConsensusProfileV1(verified.consensusProfile)) {
+  const verified = verifyFinalizedDeploymentManifest(value);
+  if (!isMidgardConsensusProfile(verified.consensusProfile)) {
     throw new Error(`${path} does not contain the exact V1 consensus profile`);
   }
-  assertMidgardConsensusV1ReleaseReady();
+  assertMidgardConsensusReleaseReady();
   if (typeof verified.network !== "string" || verified.network.length === 0) {
     throw new Error(`${path} does not contain a deployment network`);
   }

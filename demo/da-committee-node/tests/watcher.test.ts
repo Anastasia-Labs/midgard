@@ -1,4 +1,4 @@
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -13,15 +13,15 @@ import type { DaPayloadCandidate, DaPayloadSource } from "../src/da/source.js";
 import type {
   DaAttestationCandidateRecord,
   DaSignatureRecord,
-  DaStoredPayloadCountSetV1,
-  DaStoredPayloadRootSetV1,
-  HeaderV1,
+  DaStoredPayloadCountSet,
+  DaStoredPayloadRootSet,
+  Header,
 } from "../src/domain.js";
 import type { ChainSyncCursor, ChainSyncEvent } from "../src/l1/provider.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
 import {
-  type DaAvailabilityCommitmentAuthorityV1,
-  deriveExpectedDaAvailabilityCommitmentV1,
+  type DaAvailabilityCommitmentAuthority,
+  deriveExpectedDaAvailabilityCommitment,
 } from "../src/peer/signatures.js";
 import {
   loadDaSigner,
@@ -65,7 +65,7 @@ type CommitmentConfig = Pick<
 
 const commitmentAuthority = (
   config: CommitmentConfig,
-): DaAvailabilityCommitmentAuthorityV1 => ({
+): DaAvailabilityCommitmentAuthority => ({
   deploymentIdentity: config.hubOraclePolicyId,
   bondOwnerCredential: config.availabilityChallenge.bondOwnerCredential,
   responseGeometry: config.availabilityChallenge.responseGeometry,
@@ -76,17 +76,17 @@ const expectedCommitment = (
   headerHash: string,
   payloadCbor: Buffer,
 ) =>
-  deriveExpectedDaAvailabilityCommitmentV1({
+  deriveExpectedDaAvailabilityCommitment({
     authority: commitmentAuthority(config),
     headerHash,
     payloadCborHex: payloadCbor.toString("hex"),
   });
 
-const attestedDaStatus = (): SDK.DaAvailabilityStateQueueStatusV1 => ({
+const attestedDaStatus = (): SDK.DaAvailabilityStateQueueStatus => ({
   Attested: { da_bond_asset_name: "aa".repeat(32) },
 });
 
-const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
+const rootSummaryFromHeader = (header: Header): DaStoredPayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -97,9 +97,7 @@ const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
   validationTracesRoot: header.validationTracesRoot,
 });
 
-const countSummaryFromHeader = (
-  header: HeaderV1,
-): DaStoredPayloadCountSetV1 => ({
+const countSummaryFromHeader = (header: Header): DaStoredPayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -1225,10 +1223,9 @@ describe("WatcherService", () => {
     const { header, headerHash } = await makePayloadFixture();
     // A payload-submit ACK can retain a canonical outer envelope whose inner
     // body is malformed.  The watcher remains the sole semantic gate.
-    const invalidPayload = await wrapDaPayloadV1(
-      Buffer.from("deadbeef", "hex"),
-      { mode: "identity" },
-    );
+    const invalidPayload = await wrapDaPayload(Buffer.from("deadbeef", "hex"), {
+      mode: "identity",
+    });
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({
@@ -1727,7 +1724,7 @@ describe("WatcherService", () => {
         providerSource: "fixture",
       },
       validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+        payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "ab".repeat(32) + "#0",
         headerHash,
@@ -2050,7 +2047,7 @@ describe("WatcherService", () => {
       source: "peer",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+        payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "peer#0",
         headerHash,
@@ -2083,7 +2080,7 @@ describe("WatcherService", () => {
       source: "peer",
       l1ChainPoint: {},
       validation: {
-        payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+        payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
         rootsMatch: true,
         stateQueueOutRef: "stale#0",
         headerHash,
@@ -2217,7 +2214,7 @@ describe("WatcherService", () => {
         source: "peer",
         l1ChainPoint: {},
         validation: {
-          payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+          payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
           rootsMatch: true,
           stateQueueOutRef: "peer#0",
           headerHash,
@@ -2250,7 +2247,7 @@ describe("WatcherService", () => {
         source: "peer",
         l1ChainPoint: {},
         validation: {
-          payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+          payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
           rootsMatch: true,
           stateQueueOutRef: "peer#1",
           headerHash,

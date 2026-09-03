@@ -5,21 +5,18 @@
  */
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardOutputFieldPreimageV1,
-  encodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardOutputFieldPreimage,
+  encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
-import type { FieldCarriageV1, FieldOpeningV1 } from "@al-ft/midgard-sdk";
-import {
-  fieldOpeningV1ForField,
-  MIDGARD_FIELD_INDEX_V1,
-} from "@al-ft/midgard-sdk";
+import type { FieldCarriage, FieldOpening } from "@al-ft/midgard-sdk";
+import { fieldOpeningForField, MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 
-export type NetworkIdFaultClaimV1 =
+export type NetworkIdFaultClaim =
   | { readonly kind: "transaction-network" }
   | { readonly kind: "output-network"; readonly outputIndex: bigint };
 
-export type RetainedDaNetworkIdEvidenceV1 = {
+export type RetainedDaNetworkIdEvidence = {
   readonly source: "retained-da";
   readonly evidenceSourceId: string;
   /** Exact canonical full native-V1 item selected from retained block DA. */
@@ -33,7 +30,7 @@ const expectNetwork = (value: bigint, label: string): 0n | 1n => {
   return value;
 };
 
-const exactCanonicalTransaction = (evidence: RetainedDaNetworkIdEvidenceV1) => {
+const exactCanonicalTransaction = (evidence: RetainedDaNetworkIdEvidence) => {
   if (
     evidence.source !== "retained-da" ||
     evidence.evidenceSourceId.length === 0
@@ -50,33 +47,33 @@ const exactCanonicalTransaction = (evidence: RetainedDaNetworkIdEvidenceV1) => {
       "network-id evidence must carry canonical full native-V1 CBOR as lowercase hex",
     );
   }
-  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
     Buffer.from(evidence.nativeTxCanonicalCbor, "hex"),
   );
   return {
     tx,
-    nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(tx.compact).toString(
+    nativeTxCompactCbor: encodeMidgardNativeTxCompact(tx.compact).toString(
       "hex",
     ),
     outputsPreimageCbor: tx.body.outputsPreimageCbor.toString("hex"),
-    outputs: decodeMidgardOutputFieldPreimageV1(tx.body.outputsPreimageCbor),
+    outputs: decodeMidgardOutputFieldPreimage(tx.body.outputsPreimageCbor),
   };
 };
 
 /** Finds every convictable claim in deterministic family order. */
-export const findNetworkIdFaultsV1 = ({
+export const findNetworkIdFaults = ({
   evidence,
   expectedNetworkId,
 }: {
-  readonly evidence: RetainedDaNetworkIdEvidenceV1;
+  readonly evidence: RetainedDaNetworkIdEvidence;
   readonly expectedNetworkId: bigint;
-}): readonly NetworkIdFaultClaimV1[] => {
+}): readonly NetworkIdFaultClaim[] => {
   const expected = expectNetwork(expectedNetworkId, "expected network id");
   const inspected = exactCanonicalTransaction(evidence);
   // TxIsInvalid is an honest no-op, not a block fault.
   if (inspected.tx.validity !== "TxIsValid") return [];
 
-  const faults: NetworkIdFaultClaimV1[] = [];
+  const faults: NetworkIdFaultClaim[] = [];
   if (
     inspected.tx.body.networkId !== 255n &&
     inspected.tx.body.networkId !== expected
@@ -97,11 +94,11 @@ export const findNetworkIdFaultsV1 = ({
   return faults;
 };
 
-export const requireNetworkIdFaultV1 = (args: {
-  readonly evidence: RetainedDaNetworkIdEvidenceV1;
+export const requireNetworkIdFault = (args: {
+  readonly evidence: RetainedDaNetworkIdEvidence;
   readonly expectedNetworkId: bigint;
-}): NetworkIdFaultClaimV1 => {
-  const [fault] = findNetworkIdFaultsV1(args);
+}): NetworkIdFaultClaim => {
+  const [fault] = findNetworkIdFaults(args);
   if (fault === undefined) {
     throw new Error("the retained transaction has no network-id fault");
   }
@@ -113,13 +110,13 @@ export const requireNetworkIdFaultV1 = (args: {
  * resolved against the proof transaction's complete reference-input set; it
  * is never resolved against a carriage-only subset.
  */
-export const networkIdOutputsOpeningV1 = ({
+export const networkIdOutputsOpening = ({
   evidence,
   carriage,
 }: {
-  readonly evidence: RetainedDaNetworkIdEvidenceV1;
-  readonly carriage: FieldCarriageV1;
-}): FieldOpeningV1 => {
+  readonly evidence: RetainedDaNetworkIdEvidence;
+  readonly carriage: FieldCarriage;
+}): FieldOpening => {
   const inspected = exactCanonicalTransaction(evidence);
   if (
     "Inline" in carriage &&
@@ -129,8 +126,8 @@ export const networkIdOutputsOpeningV1 = ({
       "inline network-id output opening does not equal the retained transaction's outputs preimage",
     );
   }
-  return fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  return fieldOpeningForField({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     nativeTxCompactCbor: inspected.nativeTxCompactCbor,
     carriage,
   });

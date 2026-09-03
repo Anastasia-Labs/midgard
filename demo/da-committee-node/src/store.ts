@@ -11,9 +11,9 @@ import {
 import { dirname, join } from "node:path";
 
 import {
-  assertDeploymentMarkerV1Matches,
-  type DeploymentMarkerV1,
-  parseDeploymentMarkerV1,
+  assertDeploymentMarkerMatches,
+  type DeploymentMarker,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import type {
@@ -24,25 +24,25 @@ import type {
   DaPeerNonceRecord,
   DaSignatureRecord,
   DaSignatureRecordV1,
-  DaStoredConflictEvidenceRecordV1,
-  DaStoredPayloadRecordV1,
+  DaStoredConflictEvidenceRecord,
+  DaStoredPayloadRecord,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
 import {
-  parseDaSignatureRecordV1,
-  parseDaStoredConflictEvidenceRecordV1,
-  parseDaStoredPayloadRecordV1,
+  parseDaSignatureRecord,
+  parseDaStoredConflictEvidenceRecord,
+  parseDaStoredPayloadRecord,
 } from "./domain.js";
-import type { StateQueueReplayAnchorV1 } from "./l1/state-queue-scanner.js";
+import type { StateQueueReplayAnchor } from "./l1/state-queue-scanner.js";
 
 type StoreData = {
   readonly deployment?: WatcherDeploymentRecord;
   readonly chainCursor?: L1SourceState;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
-  readonly daPayloads: Record<string, DaStoredPayloadRecordV1>;
+  readonly daPayloads: Record<string, DaStoredPayloadRecord>;
   readonly daSignatures: Record<string, DaSignatureRecordV1>;
-  readonly daConflictEvidence: Record<string, DaStoredConflictEvidenceRecordV1>;
+  readonly daConflictEvidence: Record<string, DaStoredConflictEvidenceRecord>;
   readonly daAttestationCandidates: Record<
     string,
     DaAttestationCandidateRecord
@@ -102,13 +102,13 @@ export type L1SourceState = {
   readonly status: "healthy" | "quarantined";
   readonly observations: readonly L1ObservedDecision[];
   readonly observedAt: string;
-  readonly stateQueueReplayAnchor?: StateQueueReplayAnchorV1;
+  readonly stateQueueReplayAnchor?: StateQueueReplayAnchor;
   readonly quarantineReason?: string;
   readonly quarantinedAt?: string;
 };
 
 export type WatcherDeploymentRecord = {
-  readonly marker: DeploymentMarkerV1;
+  readonly marker: DeploymentMarker;
   readonly manifestSha256: string;
   readonly contractDeploymentInfoSha256: string;
   readonly manifestRaw: string;
@@ -117,7 +117,7 @@ export type WatcherDeploymentRecord = {
 export interface WatcherStore {
   close?(): Promise<void>;
   initDeployment(args: {
-    readonly marker: DeploymentMarkerV1;
+    readonly marker: DeploymentMarker;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
@@ -153,7 +153,7 @@ export interface WatcherStore {
   saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord>;
   getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined>;
   /** Q54 retention enforcement: full retained DA payload set. */
-  listDaPayloads(): Promise<readonly DaStoredPayloadRecordV1[]>;
+  listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]>;
   /**
    * Q54 retention enforcement: removes one retained DA payload. Returns whether
    * a row existed. Callers must consult `daRetentionPruneDecisionV1` first.
@@ -167,11 +167,11 @@ export interface WatcherStore {
   }): Promise<DaSignatureRecord | undefined>;
   listDaSignatures(headerHash?: string): Promise<readonly DaSignatureRecord[]>;
   saveDaConflictEvidence(
-    record: DaStoredConflictEvidenceRecordV1,
+    record: DaStoredConflictEvidenceRecord,
   ): Promise<boolean>;
   listDaConflictEvidence(
     headerHash?: string,
-  ): Promise<readonly DaStoredConflictEvidenceRecordV1[]>;
+  ): Promise<readonly DaStoredConflictEvidenceRecord[]>;
   saveDaAttestationCandidate(
     record: DaAttestationCandidateRecord,
   ): Promise<void>;
@@ -268,16 +268,16 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   async initDeployment(args: {
-    readonly marker: DeploymentMarkerV1;
+    readonly marker: DeploymentMarker;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
     await this.mutate((data) => {
-      const marker = parseDeploymentMarkerV1(args.marker);
+      const marker = parseDeploymentMarker(args.marker);
       if (data.deployment !== undefined) {
         try {
-          assertDeploymentMarkerV1Matches(
+          assertDeploymentMarkerMatches(
             marker,
             data.deployment.marker,
             "DA file store",
@@ -348,7 +348,7 @@ export class JsonFileWatcherStore implements WatcherStore {
     const signature =
       args.signature === undefined
         ? undefined
-        : parseDaSignatureRecordV1(args.signature);
+        : parseDaSignatureRecord(args.signature);
     assertDecisionSignature(effect, signature);
     await this.mutate((data) => {
       const sourceState = mergeL1SourceState(
@@ -410,7 +410,7 @@ export class JsonFileWatcherStore implements WatcherStore {
       const signature =
         args.signature === undefined
           ? undefined
-          : parseDaSignatureRecordV1(args.signature);
+          : parseDaSignatureRecord(args.signature);
       assertDecisionSignature(existing, signature);
       const completed = parseDecisionOutboxRecord({
         ...existing,
@@ -568,11 +568,9 @@ export class JsonFileWatcherStore implements WatcherStore {
     return data.stateQueueHeaders[headerHash];
   }
 
-  async saveDaPayload(
-    record: DaPayloadRecord,
-  ): Promise<DaStoredPayloadRecordV1> {
-    const canonicalRecord = parseDaStoredPayloadRecordV1(record);
-    let saved: DaStoredPayloadRecordV1 = canonicalRecord;
+  async saveDaPayload(record: DaPayloadRecord): Promise<DaStoredPayloadRecord> {
+    const canonicalRecord = parseDaStoredPayloadRecord(record);
+    let saved: DaStoredPayloadRecord = canonicalRecord;
     await this.mutate((data) => {
       const existing = data.daPayloads[canonicalRecord.headerHash];
       saved = resolveDaPayloadSave(existing, canonicalRecord);
@@ -589,12 +587,12 @@ export class JsonFileWatcherStore implements WatcherStore {
 
   async getDaPayload(
     headerHash: string,
-  ): Promise<DaStoredPayloadRecordV1 | undefined> {
+  ): Promise<DaStoredPayloadRecord | undefined> {
     const data = await this.read();
     return data.daPayloads[headerHash];
   }
 
-  async listDaPayloads(): Promise<readonly DaStoredPayloadRecordV1[]> {
+  async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
     const data = await this.read();
     return Object.values(data.daPayloads).sort((left, right) =>
       left.headerHash.localeCompare(right.headerHash),
@@ -616,7 +614,7 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
-    const canonicalRecord = parseDaSignatureRecordV1(record);
+    const canonicalRecord = parseDaSignatureRecord(record);
     await this.mutate((data) => {
       if (data.chainCursor?.status === "quarantined") {
         throw new Error(
@@ -672,9 +670,9 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   async saveDaConflictEvidence(
-    record: DaStoredConflictEvidenceRecordV1,
+    record: DaStoredConflictEvidenceRecord,
   ): Promise<boolean> {
-    const canonicalRecord = parseDaStoredConflictEvidenceRecordV1(record);
+    const canonicalRecord = parseDaStoredConflictEvidenceRecord(record);
     let accepted = false;
     await this.mutate((data) => {
       const key = conflictEvidenceKey(canonicalRecord);
@@ -695,7 +693,7 @@ export class JsonFileWatcherStore implements WatcherStore {
 
   async listDaConflictEvidence(
     headerHash?: string,
-  ): Promise<readonly DaStoredConflictEvidenceRecordV1[]> {
+  ): Promise<readonly DaStoredConflictEvidenceRecord[]> {
     const data = await this.read();
     return Object.values(data.daConflictEvidence)
       .filter(
@@ -892,7 +890,7 @@ const signatureKey = (
 
 const conflictEvidenceKey = (
   record: Pick<
-    DaStoredConflictEvidenceRecordV1,
+    DaStoredConflictEvidenceRecord,
     "deploymentFingerprint" | "evidenceHash"
   >,
 ): string => `${record.deploymentFingerprint}:${record.evidenceHash}`;
@@ -922,9 +920,9 @@ const terminalPayloadStatuses = new Set<DaPayloadRecord["validationStatus"]>([
 ]);
 
 export const resolveDaPayloadSave = (
-  existing: DaStoredPayloadRecordV1 | undefined,
-  record: DaStoredPayloadRecordV1,
-): DaStoredPayloadRecordV1 => {
+  existing: DaStoredPayloadRecord | undefined,
+  record: DaStoredPayloadRecord,
+): DaStoredPayloadRecord => {
   if (existing === undefined) {
     return withDerivedPayloadFetchStatus(record);
   }
@@ -962,7 +960,7 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
   readonly payloadCbor: Uint8Array;
   readonly payloadSha256: string;
   readonly receivedAt: Date;
-}): DaStoredPayloadRecordV1 => ({
+}): DaStoredPayloadRecord => ({
   deploymentFingerprint: args.deploymentFingerprint,
   headerHash: args.headerHash,
   payloadSchemaVersion: args.payloadSchemaVersion,
@@ -977,8 +975,8 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
 });
 
 const withDerivedPayloadFetchStatus = (
-  record: DaStoredPayloadRecordV1,
-): DaStoredPayloadRecordV1 => {
+  record: DaStoredPayloadRecord,
+): DaStoredPayloadRecord => {
   if (record.payloadFetchStatus !== undefined) {
     return record;
   }
@@ -1020,13 +1018,13 @@ const normalizeStoreData = (value: unknown): StoreData => {
     stateQueueHeaders: record.stateQueueHeaders ?? {},
     daPayloads: parseStoredRecordMap(
       record.daPayloads,
-      parseDaStoredPayloadRecordV1,
+      parseDaStoredPayloadRecord,
       (entry) => entry.headerHash,
       "DA stored payload records V1",
     ),
     daSignatures: parseStoredRecordMap(
       record.daSignatures,
-      parseDaSignatureRecordV1,
+      parseDaSignatureRecord,
       (entry) =>
         signatureKey(
           entry.headerHash,
@@ -1037,7 +1035,7 @@ const normalizeStoreData = (value: unknown): StoreData => {
     ),
     daConflictEvidence: parseStoredRecordMap(
       record.daConflictEvidence,
-      parseDaStoredConflictEvidenceRecordV1,
+      parseDaStoredConflictEvidenceRecord,
       conflictEvidenceKey,
       "DA conflict evidence records V1",
     ),
@@ -1091,7 +1089,7 @@ const parseWatcherDeploymentRecord = (
     );
   }
   return {
-    marker: parseDeploymentMarkerV1(record.marker),
+    marker: parseDeploymentMarker(record.marker),
     manifestSha256: digest("manifestSha256"),
     contractDeploymentInfoSha256: digest("contractDeploymentInfoSha256"),
     manifestRaw: record.manifestRaw,
@@ -1445,14 +1443,14 @@ const assertDecisionSignature = (
   }
 };
 
-const parseStateQueueReplayAnchorV1 = (
+const parseStateQueueReplayAnchor = (
   value: unknown,
-): StateQueueReplayAnchorV1 | undefined => {
+): StateQueueReplayAnchor | undefined => {
   if (value === undefined) return undefined;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const anchor = value as Partial<StateQueueReplayAnchorV1>;
+  const anchor = value as Partial<StateQueueReplayAnchor>;
   const keys = [
     "deploymentIdentityDigest",
     "stateQueuePolicyId",
@@ -1501,7 +1499,7 @@ const parseStateQueueReplayAnchorV1 = (
   return {
     deploymentIdentityDigest: anchor.deploymentIdentityDigest,
     stateQueuePolicyId: anchor.stateQueuePolicyId,
-    queue: queue as StateQueueReplayAnchorV1["queue"],
+    queue: queue as StateQueueReplayAnchor["queue"],
     blockNo: anchor.blockNo,
     transactionIndex: anchor.transactionIndex,
   };
@@ -1615,7 +1613,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
   ) {
     throw new Error("watcher L1 source observations contain duplicate headers");
   }
-  const stateQueueReplayAnchor = parseStateQueueReplayAnchorV1(
+  const stateQueueReplayAnchor = parseStateQueueReplayAnchor(
     state.stateQueueReplayAnchor,
   );
   if (

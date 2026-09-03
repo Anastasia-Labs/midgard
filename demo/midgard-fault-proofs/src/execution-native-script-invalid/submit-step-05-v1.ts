@@ -1,6 +1,6 @@
 import {
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -14,54 +14,54 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
-  type ExecutionNativeScriptInvalidContractsV1,
+  type ExecutionNativeScriptInvalidContracts,
 } from "./contracts-v1.js";
 import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1,
-  EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1,
-  executionNativeScriptInvalidSignerScanStateV1,
-  resolveExecutionNativeScriptInvalidSignerCheckpointV1,
+  EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH,
+  EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH,
+  executionNativeScriptInvalidSignerScanState,
+  resolveExecutionNativeScriptInvalidSignerCheckpoint,
 } from "./evidence-machine-v1.js";
 import {
-  ExecutionNativeScriptInvalidStep05DatumV1Schema,
-  ExecutionNativeScriptInvalidStep05RedeemerV1Schema,
-  ExecutionNativeScriptInvalidStep06DatumV1Schema,
+  ExecutionNativeScriptInvalidStep05DatumSchema,
+  ExecutionNativeScriptInvalidStep05RedeemerSchema,
+  ExecutionNativeScriptInvalidStep06DatumSchema,
 } from "./schemas-v1.js";
 
 type State = NonNullable<
-  Data.Static<typeof ExecutionNativeScriptInvalidStep05DatumV1Schema>["data"]
+  Data.Static<typeof ExecutionNativeScriptInvalidStep05DatumSchema>["data"]
 >;
 type Step04Datum = Data.Static<
-  typeof ExecutionNativeScriptInvalidStep05DatumV1Schema
+  typeof ExecutionNativeScriptInvalidStep05DatumSchema
 >;
 const Step04Datum =
-  ExecutionNativeScriptInvalidStep05DatumV1Schema as unknown as Step04Datum;
+  ExecutionNativeScriptInvalidStep05DatumSchema as unknown as Step04Datum;
 type Step05Datum = Data.Static<
-  typeof ExecutionNativeScriptInvalidStep06DatumV1Schema
+  typeof ExecutionNativeScriptInvalidStep06DatumSchema
 >;
 const Step05Datum =
-  ExecutionNativeScriptInvalidStep06DatumV1Schema as unknown as Step05Datum;
+  ExecutionNativeScriptInvalidStep06DatumSchema as unknown as Step05Datum;
 type Redeemer = Data.Static<
-  typeof ExecutionNativeScriptInvalidStep05RedeemerV1Schema
+  typeof ExecutionNativeScriptInvalidStep05RedeemerSchema
 >;
 const Redeemer =
-  ExecutionNativeScriptInvalidStep05RedeemerV1Schema as unknown as Redeemer;
+  ExecutionNativeScriptInvalidStep05RedeemerSchema as unknown as Redeemer;
 
 export const submitExecutionNativeScriptInvalidStep05 = async ({
   lucid,
@@ -81,7 +81,7 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ExecutionNativeScriptInvalidContractsV1;
+  readonly contracts: ExecutionNativeScriptInvalidContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -92,13 +92,13 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -106,15 +106,15 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
     schema: Step04Datum,
     family: FAMILY,
     stepIndex,
   });
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
     itemCbors: addressWitnessItems,
@@ -124,7 +124,7 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
     anchorWitnessSetHash: state.bad_tx_witness_set_hash,
     label: `${label} field 7`,
   });
-  const current = resolveExecutionNativeScriptInvalidSignerCheckpointV1({
+  const current = resolveExecutionNativeScriptInvalidSignerCheckpoint({
     txId: state.bad_tx_id,
     itemCount: addressWitnessItems.length,
     totalLength: planned.preimage.length,
@@ -135,10 +135,10 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
   }
   const remainingItems = addressWitnessItems.length - current.nextItemIndex;
   const batchSize =
-    remainingItems <= EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1
+    remainingItems <= EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH
       ? remainingItems
-      : EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1;
-  const next = executionNativeScriptInvalidSignerScanStateV1({
+      : EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH;
+  const next = executionNativeScriptInvalidSignerScanState({
     txId: state.bad_tx_id,
     addressWitnessItems,
     totalLength: planned.preimage.length,
@@ -149,7 +149,7 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -157,13 +157,13 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
       label: `${label} field 7`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -245,7 +245,7 @@ export const submitExecutionNativeScriptInvalidStep05 = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

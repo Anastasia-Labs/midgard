@@ -7,13 +7,13 @@
  */
 import { Effect } from "effect";
 
-import type { NativeScriptDecodingFindingV1 } from "./finding-v1.js";
+import type { NativeScriptDecodingFinding } from "./finding-v1.js";
 import {
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
-  type NativeScriptDecodingProofOutcomeV1,
-  type NativeScriptDecodingProverDepsV1,
-  type NativeScriptDecodingProverPolicyV1,
-  runNativeScriptDecodingProverV1,
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingProofOutcome,
+  type NativeScriptDecodingProverDeps,
+  type NativeScriptDecodingProverPolicy,
+  runNativeScriptDecodingProver,
 } from "./prover-v1.js";
 import { nativeScriptDecodingSubmitError } from "./submit-common-v1.js";
 
@@ -25,9 +25,9 @@ import { nativeScriptDecodingSubmitError } from "./submit-common-v1.js";
  * while the §3.2/3.3 provability boundary still holds (the core never
  * relaxes it).
  */
-export const NATIVE_SCRIPT_DECODING_CLI_PROVER_POLICY_V1: NativeScriptDecodingProverPolicyV1 =
+export const NATIVE_SCRIPT_DECODING_CLI_PROVER_POLICY: NativeScriptDecodingProverPolicy =
   Object.freeze({
-    ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
+    ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
     minSettlementDepth: 0n,
     maxThreadBudgetLovelace: null,
     maturityGuardFactor: 0,
@@ -37,20 +37,20 @@ export const NATIVE_SCRIPT_DECODING_CLI_PROVER_POLICY_V1: NativeScriptDecodingPr
  * One-shot manual proving: drives the finding end-to-end (or resumes its
  * thread) under the permissive CLI policy and the operator's wallet.
  */
-export const proveNativeScriptDecodingFaultOnceV1 = async ({
+export const proveNativeScriptDecodingFaultOnce = async ({
   finding,
   deps,
   policyOverrides,
 }: {
-  readonly finding: NativeScriptDecodingFindingV1;
-  readonly deps: Omit<NativeScriptDecodingProverDepsV1, "policy">;
+  readonly finding: NativeScriptDecodingFinding;
+  readonly deps: Omit<NativeScriptDecodingProverDeps, "policy">;
   /** Operator-set gates on top of the permissive base, when wanted. */
-  readonly policyOverrides?: Partial<NativeScriptDecodingProverPolicyV1>;
-}): Promise<NativeScriptDecodingProofOutcomeV1> =>
-  runNativeScriptDecodingProverV1(finding, {
+  readonly policyOverrides?: Partial<NativeScriptDecodingProverPolicy>;
+}): Promise<NativeScriptDecodingProofOutcome> =>
+  runNativeScriptDecodingProver(finding, {
     ...deps,
     policy: {
-      ...NATIVE_SCRIPT_DECODING_CLI_PROVER_POLICY_V1,
+      ...NATIVE_SCRIPT_DECODING_CLI_PROVER_POLICY,
       ...policyOverrides,
     },
   });
@@ -63,7 +63,7 @@ export const proveNativeScriptDecodingFaultOnceV1 = async ({
  * prover wallet distinct from the watcher's operational identity — the
  * adapter refuses to run autonomously on the operational wallet.
  */
-export type NativeScriptDecodingProverFiberConfigV1 = {
+export type NativeScriptDecodingProverFiberConfig = {
   /** Default false: the fiber exits immediately without proving. */
   readonly enabled: boolean;
   /** Payment key hash of the dedicated prover wallet `deps.signer` holds. */
@@ -72,7 +72,7 @@ export type NativeScriptDecodingProverFiberConfigV1 = {
   readonly watcherOperationalPaymentKeyHash: string;
 };
 
-export type NativeScriptDecodingProverFiberSummaryV1 = {
+export type NativeScriptDecodingProverFiberSummary = {
   readonly processed: number;
   readonly proven: number;
   readonly refused: number;
@@ -86,21 +86,21 @@ export type NativeScriptDecodingProverFiberSummaryV1 = {
  * before its slot frees (stalls do not retry here — a stalled thread is
  * an operator decision, resumable by re-emitting the finding).
  */
-export const runNativeScriptDecodingProverFiberV1 = async ({
+export const runNativeScriptDecodingProverFiber = async ({
   deps,
   config,
   findings,
   onOutcome,
 }: {
-  readonly deps: NativeScriptDecodingProverDepsV1;
-  readonly config: NativeScriptDecodingProverFiberConfigV1;
-  readonly findings: AsyncIterable<NativeScriptDecodingFindingV1>;
+  readonly deps: NativeScriptDecodingProverDeps;
+  readonly config: NativeScriptDecodingProverFiberConfig;
+  readonly findings: AsyncIterable<NativeScriptDecodingFinding>;
   /** Optional hook past the journal, e.g. for watcher metrics. */
   readonly onOutcome?: (
-    finding: NativeScriptDecodingFindingV1,
-    outcome: NativeScriptDecodingProofOutcomeV1,
+    finding: NativeScriptDecodingFinding,
+    outcome: NativeScriptDecodingProofOutcome,
   ) => void | Promise<void>;
-}): Promise<NativeScriptDecodingProverFiberSummaryV1> => {
+}): Promise<NativeScriptDecodingProverFiberSummary> => {
   if (!config.enabled) {
     return { processed: 0, proven: 0, refused: 0, stalled: 0 };
   }
@@ -122,8 +122,8 @@ export const runNativeScriptDecodingProverFiberV1 = async ({
   let refused = 0;
   let stalled = 0;
 
-  const prove = async (finding: NativeScriptDecodingFindingV1) => {
-    const outcome = await runNativeScriptDecodingProverV1(finding, deps);
+  const prove = async (finding: NativeScriptDecodingFinding) => {
+    const outcome = await runNativeScriptDecodingProver(finding, deps);
     processed += 1;
     if (outcome.kind === "proven") {
       proven += 1;
@@ -149,17 +149,17 @@ export const runNativeScriptDecodingProverFiberV1 = async ({
 };
 
 /** The fiber as an Effect, for mounting in the watcher's runtime. */
-export const nativeScriptDecodingProverFiberV1 = (args: {
-  readonly deps: NativeScriptDecodingProverDepsV1;
-  readonly config: NativeScriptDecodingProverFiberConfigV1;
-  readonly findings: AsyncIterable<NativeScriptDecodingFindingV1>;
+export const nativeScriptDecodingProverFiber = (args: {
+  readonly deps: NativeScriptDecodingProverDeps;
+  readonly config: NativeScriptDecodingProverFiberConfig;
+  readonly findings: AsyncIterable<NativeScriptDecodingFinding>;
   readonly onOutcome?: (
-    finding: NativeScriptDecodingFindingV1,
-    outcome: NativeScriptDecodingProofOutcomeV1,
+    finding: NativeScriptDecodingFinding,
+    outcome: NativeScriptDecodingProofOutcome,
   ) => void | Promise<void>;
-}): Effect.Effect<NativeScriptDecodingProverFiberSummaryV1, Error> =>
+}): Effect.Effect<NativeScriptDecodingProverFiberSummary, Error> =>
   Effect.tryPromise({
-    try: () => runNativeScriptDecodingProverFiberV1(args),
+    try: () => runNativeScriptDecodingProverFiber(args),
     catch: (cause) =>
       cause instanceof Error ? cause : new Error(String(cause)),
   });

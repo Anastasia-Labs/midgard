@@ -2,13 +2,13 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  type ForcedLeafEvidenceV1,
-  forcedLeafVerdictSubjectV1,
-  requireForcedLeafAcceptedV1,
-  requireForcedLeafRejectedForV1,
+  type ForcedLeafEvidence,
+  forcedLeafVerdictSubject,
+  requireForcedLeafAccepted,
+  requireForcedLeafRejectedFor,
 } from "../src/evidence/forced-leaf-evidence-v1.js";
 
-const evidence = (verdict: SDK.OperatorVerdictV1): ForcedLeafEvidenceV1 =>
+const evidence = (verdict: SDK.OperatorVerdict): ForcedLeafEvidence =>
   ({
     eventKey: {
       ForcedTransactionEventKey: {
@@ -26,16 +26,14 @@ const evidence = (verdict: SDK.OperatorVerdictV1): ForcedLeafEvidenceV1 =>
       verdict,
     },
     fullTransactionCbor: Buffer.from("00", "hex"),
-    membership: {} as ForcedLeafEvidenceV1["membership"],
-  }) satisfies ForcedLeafEvidenceV1;
+    membership: {} as ForcedLeafEvidence["membership"],
+  }) satisfies ForcedLeafEvidence;
 
 describe("forced-leaf evidence v1", () => {
   it("binds acceptance and rejection polarity", () => {
-    expect(
-      requireForcedLeafAcceptedV1(evidence("ForcedTxValid")),
-    ).toBeDefined();
+    expect(requireForcedLeafAccepted(evidence("ForcedTxValid"))).toBeDefined();
     expect(() =>
-      requireForcedLeafRejectedForV1(evidence("ForcedTxValid"), "EmptyInputs"),
+      requireForcedLeafRejectedFor(evidence("ForcedTxValid"), "EmptyInputs"),
     ).toThrow(/expected an explicit rejection/);
   });
 
@@ -46,16 +44,16 @@ describe("forced-leaf evidence v1", () => {
       },
     });
     expect(
-      requireForcedLeafRejectedForV1(rejected, {
+      requireForcedLeafRejectedFor(rejected, {
         InputNotFound: { source_kind: 0n, input_index: 3n },
       }),
     ).toBe(rejected);
     expect(() =>
-      requireForcedLeafRejectedForV1(rejected, {
+      requireForcedLeafRejectedFor(rejected, {
         InputNotFound: { source_kind: 1n, input_index: 3n },
       }),
     ).toThrow(/coordinate differs/);
-    const subject = forcedLeafVerdictSubjectV1({
+    const subject = forcedLeafVerdictSubject({
       ...rejected,
       membership: {
         ...rejected.membership,

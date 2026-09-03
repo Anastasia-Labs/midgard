@@ -1,5 +1,5 @@
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -12,61 +12,61 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingRedeemerContractsV1 } from "./contracts-v1.js";
-import type { MissingRedeemerEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingRedeemerContracts } from "./contracts-v1.js";
+import type { MissingRedeemerEvidence } from "./family-v1.js";
 import {
-  MissingRedeemerAuthenticationStateV1Schema,
-  MissingRedeemerScanV1Schema,
-  MissingRedeemerStep03DatumV1Schema,
-  MissingRedeemerStep03RedeemerV1Schema,
-  MissingRedeemerStep04DatumV1Schema,
-  MissingRedeemerStep04RedeemerV1Schema,
-  MissingRedeemerStep05DatumV1Schema,
+  MissingRedeemerAuthenticationStateSchema,
+  MissingRedeemerScanSchema,
+  MissingRedeemerStep03DatumSchema,
+  MissingRedeemerStep03RedeemerSchema,
+  MissingRedeemerStep04DatumSchema,
+  MissingRedeemerStep04RedeemerSchema,
+  MissingRedeemerStep05DatumSchema,
 } from "./schemas-v1.js";
 import {
-  encodeMissingRedeemerGrammarCheckpointV1,
-  encodeMissingRedeemerWalkCheckpointV1,
-  hashMissingRedeemerGrammarCheckpointV1,
-  hashMissingRedeemerWalkCheckpointV1,
-  type MissingRedeemerStagedPlanV1,
+  encodeMissingRedeemerGrammarCheckpoint,
+  encodeMissingRedeemerWalkCheckpoint,
+  hashMissingRedeemerGrammarCheckpoint,
+  hashMissingRedeemerWalkCheckpoint,
+  type MissingRedeemerStagedPlan,
 } from "./staged-plan-v1.js";
 
 const FAMILY = "missing-redeemer";
-export type MissingRedeemerStep03ActionV1 =
+export type MissingRedeemerStep03Action =
   | { readonly kind: "direct" }
   | { readonly kind: "grammar_start" }
   | { readonly kind: "grammar_resume"; readonly ordinal: number }
   | { readonly kind: "grammar_finish" };
 type Common = Readonly<{
   lucid: LucidEvolution;
-  contracts: MissingRedeemerContractsV1;
+  contracts: MissingRedeemerContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: MissingRedeemerEvidenceV1;
+  evidence: MissingRedeemerEvidence;
   nativeTxCompactCbor: string;
-  staged: MissingRedeemerStagedPlanV1;
+  staged: MissingRedeemerStagedPlan;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }>;
 
 const opening = async (common: Common, stepIndex: number) => {
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 8,
     anchorTxId: common.evidence.subject.transaction_id,
     nativeTxCompactCbor: common.nativeTxCompactCbor,
@@ -75,7 +75,7 @@ const opening = async (common: Common, stepIndex: number) => {
     publish: true,
     label: "missingRedeemer field 8",
   });
-  const carriageUtxos = await resolveFaultProofFieldCarriagePublicationsV1({
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid: common.lucid,
     publisherAddress: common.signer.address,
     planned,
@@ -84,7 +84,7 @@ const opening = async (common: Common, stepIndex: number) => {
     throw new Error("missingRedeemer field carriage disappeared");
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? await resolveFaultProofFieldPreimageCertificateV1({
+      ? await resolveFaultProofFieldPreimageCertificate({
           lucid: common.lucid,
           network: common.lucid.config().network!,
           planned,
@@ -94,13 +94,13 @@ const opening = async (common: Common, stepIndex: number) => {
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("missingRedeemer field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: common.referenceScriptUtxo,
     expectedScriptHash: common.contracts.steps[stepIndex]!.spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
-  const value: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const value: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -119,11 +119,11 @@ const opening = async (common: Common, stepIndex: number) => {
   };
 };
 
-export const submitMissingRedeemerStep03V1 = async (
-  common: Common & { action: MissingRedeemerStep03ActionV1 },
+export const submitMissingRedeemerStep03 = async (
+  common: Common & { action: MissingRedeemerStep03Action },
 ) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid: common.lucid,
     contracts: common.contracts,
     categoryId: common.categoryId,
@@ -131,12 +131,12 @@ export const submitMissingRedeemerStep03V1 = async (
     stepIndex,
     threadOutRef: common.threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof MissingRedeemerAuthenticationStateV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof MissingRedeemerAuthenticationStateSchema>
   >({
     threadUtxo,
     signer: common.signer,
-    schema: MissingRedeemerStep03DatumV1Schema as never,
+    schema: MissingRedeemerStep03DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -156,7 +156,7 @@ export const submitMissingRedeemerStep03V1 = async (
   const nextData = advances
     ? {
         authenticated,
-        checkpoint_hash: hashMissingRedeemerWalkCheckpointV1(
+        checkpoint_hash: hashMissingRedeemerWalkCheckpoint(
           common.staged.initialWalk,
         ),
         cursor: 0n,
@@ -166,12 +166,12 @@ export const submitMissingRedeemerStep03V1 = async (
     : {
         Grammar: {
           authenticated,
-          checkpoint_hash: hashMissingRedeemerGrammarCheckpointV1(grammar!),
+          checkpoint_hash: hashMissingRedeemerGrammarCheckpoint(grammar!),
         },
       };
   const nextSchema = advances
-    ? MissingRedeemerStep04DatumV1Schema
-    : MissingRedeemerStep03DatumV1Schema;
+    ? MissingRedeemerStep04DatumSchema
+    : MissingRedeemerStep03DatumSchema;
   const nextStep = advances
     ? common.contracts.steps[5]
     : common.contracts.steps[4];
@@ -203,7 +203,7 @@ export const submitMissingRedeemerStep03V1 = async (
             ? {
                 ResumeGrammar: {
                   ...base,
-                  checkpoint_bytes: encodeMissingRedeemerGrammarCheckpointV1(
+                  checkpoint_bytes: encodeMissingRedeemerGrammarCheckpoint(
                     common.staged.grammar[common.action.ordinal - 1]!,
                   ).toString("hex"),
                   item_budget: 16n,
@@ -212,18 +212,18 @@ export const submitMissingRedeemerStep03V1 = async (
             : {
                 FinishGrammar: {
                   ...base,
-                  checkpoint_bytes: encodeMissingRedeemerGrammarCheckpointV1(
+                  checkpoint_bytes: encodeMissingRedeemerGrammarCheckpoint(
                     common.staged.grammar.at(-1)!,
                   ).toString("hex"),
                 },
               };
     return Data.to(
       { Continue: [args] } as never,
-      MissingRedeemerStep03RedeemerV1Schema as never,
+      MissingRedeemerStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   common.signer.selectWallet(common.lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid: common.lucid,
     signerPaymentKeyHash: common.signer.paymentKeyHash,
     threadUtxo,
@@ -245,9 +245,9 @@ export const submitMissingRedeemerStep03V1 = async (
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };
 
-export const submitMissingRedeemerStep04V1 = async (common: Common) => {
+export const submitMissingRedeemerStep04 = async (common: Common) => {
   const stepIndex = 5;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid: common.lucid,
     contracts: common.contracts,
     categoryId: common.categoryId,
@@ -255,12 +255,12 @@ export const submitMissingRedeemerStep04V1 = async (common: Common) => {
     stepIndex,
     threadOutRef: common.threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof MissingRedeemerScanV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof MissingRedeemerScanSchema>
   >({
     threadUtxo,
     signer: common.signer,
-    schema: MissingRedeemerStep04DatumV1Schema as never,
+    schema: MissingRedeemerStep04DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -271,7 +271,7 @@ export const submitMissingRedeemerStep04V1 = async (common: Common) => {
       : common.staged.walk.find((item) => item.nextItemIndex === cursor);
   if (
     checkpoint === undefined ||
-    hashMissingRedeemerWalkCheckpointV1(checkpoint) !== state.checkpoint_hash
+    hashMissingRedeemerWalkCheckpoint(checkpoint) !== state.checkpoint_hash
   )
     throw new Error("missingRedeemer scan checkpoint is unreachable");
   const nextCursor = Math.min(cursor + 16, common.evidence.itemCount);
@@ -295,11 +295,11 @@ export const submitMissingRedeemerStep04V1 = async (common: Common) => {
         ...state,
         cursor: BigInt(nextCursor),
         found,
-        checkpoint_hash: hashMissingRedeemerWalkCheckpointV1(nextCheckpoint),
+        checkpoint_hash: hashMissingRedeemerWalkCheckpoint(nextCheckpoint),
       };
   const nextSchema = terminal
-    ? MissingRedeemerStep05DatumV1Schema
-    : MissingRedeemerStep04DatumV1Schema;
+    ? MissingRedeemerStep05DatumSchema
+    : MissingRedeemerStep04DatumSchema;
   const nextStep = terminal
     ? common.contracts.steps[6]
     : common.contracts.steps[5];
@@ -326,16 +326,16 @@ export const submitMissingRedeemerStep04V1 = async (common: Common) => {
             output_index: outputIndex,
             opening: field.value,
             checkpoint_bytes:
-              encodeMissingRedeemerWalkCheckpointV1(checkpoint).toString("hex"),
+              encodeMissingRedeemerWalkCheckpoint(checkpoint).toString("hex"),
             item_budget: 16n,
           },
         ],
       } as never,
-      MissingRedeemerStep04RedeemerV1Schema as never,
+      MissingRedeemerStep04RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   common.signer.selectWallet(common.lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid: common.lucid,
     signerPaymentKeyHash: common.signer.paymentKeyHash,
     threadUtxo,

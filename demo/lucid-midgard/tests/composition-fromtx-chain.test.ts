@@ -1,12 +1,12 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxCompact,
   encodeCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -32,13 +32,13 @@ const protocolInfo = (
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: 0n,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
   submissionLimits: {
     maxSubmitTxCborBytes:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -151,7 +151,7 @@ describe("fromTx, compose, and local chaining", () => {
     const input = makeUtxo(makeOutRef(0x12), address, {
       lovelace: 2_000_000n,
     });
-    const canonical = buildMidgardCanonicalCekProgramV1(
+    const canonical = buildMidgardCanonicalCekProgram(
       Buffer.from("010100200101", "hex"),
     );
     const completed = await midgard
@@ -277,10 +277,10 @@ describe("fromTx, compose, and local chaining", () => {
       ...completed.tx.witnessSet,
       addrTxWitsPreimageCbor,
     };
-    const staleTx: MidgardNativeTxFullV1 = {
+    const staleTx: MidgardNativeTxFull = {
       ...completed.tx,
       witnessSet,
-      compact: deriveMidgardNativeTxCompactV1(
+      compact: deriveMidgardNativeTxCompact(
         completed.tx.body,
         witnessSet,
         completed.tx.validity,

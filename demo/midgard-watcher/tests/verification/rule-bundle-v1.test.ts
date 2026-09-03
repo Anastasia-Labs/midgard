@@ -1,55 +1,55 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
 import {
-  MIDGARD_CONSENSUS_FEATURES_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  MIDGARD_CONSENSUS_FEATURES,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
-  makeDeploymentMarkerV1,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+  DEPLOYMENT_MANIFEST_STEP_NAMES,
+  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  makeWatcherDeploymentIdentitySignaturePayloadV1,
-  verifyWatcherDeploymentIdentityV1,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
+  makeWatcherDeploymentIdentitySignaturePayload,
+  verifyWatcherDeploymentIdentity,
+  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityErrorCode,
-  type WatcherDeploymentIdentityPolicyV1,
-  type WatcherDeploymentTrustRootV1,
+  type WatcherDeploymentIdentityPolicy,
+  type WatcherDeploymentTrustRoot,
 } from "../../src/runtime/deployment-identity.js";
 import {
-  computeWatcherRuleBundleV1Commitment,
-  encodeWatcherRuleBundleV1,
-  loadWatcherRuleBundleV1,
-  makeWatcherCanonicalRuleBundleV1,
-  parseWatcherRuleBundleV1,
-  WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-  WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY,
-  WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
-  WatcherRuleBundleV1Error,
-  type WatcherRuleBundleV1ErrorCode,
+  computeWatcherRuleBundleCommitment,
+  encodeWatcherRuleBundle,
+  loadWatcherRuleBundle,
+  makeWatcherCanonicalRuleBundle,
+  parseWatcherRuleBundle,
+  WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+  WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
+  WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+  WatcherRuleBundleError,
+  type WatcherRuleBundleErrorCode,
 } from "../../src/verification/rule-bundle-v1.js";
 import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
-import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "../support/deployment-authority-fixture.js";
+import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
 
@@ -84,7 +84,7 @@ const referenceOutRefByContract = new Map<
   string,
   { txHash: string; outputIndex: number }
 >(
-  Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+  Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
     (contractName, outputIndex) => [
       contractName,
       { txHash: h32("2"), outputIndex },
@@ -94,7 +94,7 @@ const referenceOutRefByContract = new Map<
 
 const canonicalManifestIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName, index) => {
       const contractScriptCbor = (index + 1).toString(16).padStart(2, "0");
       return [
         contractName,
@@ -124,43 +124,44 @@ const canonicalManifestIdentity = (): MutableRecord => {
   contracts.fraudProofCatalogueMint.fraudProofCatalogue =
     canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([role, contractName]) => {
-      const outRef = referenceOutRefByContract.get(contractName);
-      if (outRef === undefined) {
-        throw new Error("Missing canonical test reference outref");
-      }
-      const tokenName =
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => {
+        const outRef = referenceOutRefByContract.get(contractName);
+        if (outRef === undefined) {
+          throw new Error("Missing canonical test reference outref");
+        }
+        const tokenName =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
+          ];
+        return [
+          role,
+          {
+            status: "confirmed",
+            roleUnit:
+              NATIVE_SCRIPT_HASH +
+              Buffer.from(tokenName, "utf8").toString("hex"),
+            scriptHash: contracts[contractName].scriptHash,
+            outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
+          },
         ];
-      return [
-        role,
-        {
-          status: "confirmed",
-          roleUnit:
-            NATIVE_SCRIPT_HASH + Buffer.from(tokenName, "utf8").toString("hex"),
-          scriptHash: contracts[contractName].scriptHash,
-          outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-        },
-      ];
-    }),
+      },
+    ),
   );
   return {
     schemaVersion: "midgard-deployment-manifest-v1",
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preprod",
     cardanoProtocolParameters: {
-      snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
-      digest: computeDeploymentManifestV1JsonDigest(
-        WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+      snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
+      digest: computeDeploymentManifestJsonDigest(
+        WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
       ),
     },
     genesis: {
       headerHash: "00".repeat(28),
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest([]),
+      utxoSetDigest: computeDeploymentManifestJsonDigest([]),
     },
     createdAt: "2026-07-28T00:00:00.000Z",
     updatedAt: "2026-07-28T00:00:00.000Z",
@@ -180,7 +181,7 @@ const canonicalManifestIdentity = (): MutableRecord => {
         expiresAtUnixTime: 1,
         timelockDurationMs: 1,
       },
-      tokenNames: DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
+      tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
       postTimelockAudit: {
         required: true,
         rule: "No authenticated reference-script output may change.",
@@ -193,12 +194,12 @@ const canonicalManifestIdentity = (): MutableRecord => {
       committeeSignersHash: DA_SIGNERS_HASH,
       threshold: 1,
       transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         envelopeEncoding: "identity",
         zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS_V1,
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
     proofEvidence: {
@@ -206,7 +207,7 @@ const canonicalManifestIdentity = (): MutableRecord => {
       blueprintHash: BLUEPRINT_HASH,
     },
     steps: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_STEP_NAMES.map((stepName) => [
+      DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
         stepName,
         {
           status:
@@ -219,16 +220,16 @@ const canonicalManifestIdentity = (): MutableRecord => {
       ]),
     ),
     validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
     economics:
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
-    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
@@ -255,12 +256,12 @@ const canonicalManifestIdentity = (): MutableRecord => {
 
 const withManifestId = (identity: MutableRecord): MutableRecord => ({
   ...identity,
-  manifestId: computeDeploymentManifestV1Id(identity),
+  manifestId: computeDeploymentManifestId(identity),
 });
 
 const makeTrustRoot = (): {
   readonly privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"];
-  readonly trustRoot: WatcherDeploymentTrustRootV1;
+  readonly trustRoot: WatcherDeploymentTrustRoot;
 } => {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const publicKeySpkiDer = publicKey.export({
@@ -279,7 +280,7 @@ const makeTrustRoot = (): {
 
 const appliedScriptHashes = (manifest: MutableRecord): Record<string, string> =>
   Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => [
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => [
       contractName,
       manifest.contracts[contractName].scriptHash,
     ]),
@@ -289,7 +290,7 @@ const referenceScriptPolicy = (
   manifest: MutableRecord,
 ): Record<string, { scriptHash: string; outRef: string }> =>
   Object.fromEntries(
-    Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+    Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
       (role) => [
         role,
         {
@@ -302,7 +303,7 @@ const referenceScriptPolicy = (
 
 const cataloguePolicy = (
   manifest: MutableRecord,
-): WatcherDeploymentIdentityPolicyV1["fraudProofCatalogue"] => {
+): WatcherDeploymentIdentityPolicy["fraudProofCatalogue"] => {
   const catalogue =
     manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue;
   return {
@@ -318,14 +319,14 @@ const cataloguePolicy = (
         ],
       ),
     ),
-  } as WatcherDeploymentIdentityPolicyV1["fraudProofCatalogue"];
+  } as WatcherDeploymentIdentityPolicy["fraudProofCatalogue"];
 };
 
 type SignedAuthorityFixture = Readonly<{
   signedIdentity: MutableRecord;
-  policy: WatcherDeploymentIdentityPolicyV1;
-  trustRoots: readonly WatcherDeploymentTrustRootV1[];
-  durableMarker: ReturnType<typeof makeDeploymentMarkerV1>;
+  policy: WatcherDeploymentIdentityPolicy;
+  trustRoots: readonly WatcherDeploymentTrustRoot[];
+  durableMarker: ReturnType<typeof makeDeploymentMarker>;
 }>;
 
 const fixture = () => {
@@ -334,7 +335,7 @@ const fixture = () => {
     "transition-order-v1": h32("8"),
     "validation-machine-v1": h32("9"),
   });
-  const bundle = makeWatcherCanonicalRuleBundleV1({
+  const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
       manifestId: manifest.manifestId,
       network: "Preprod",
@@ -343,14 +344,14 @@ const fixture = () => {
     },
     targetParameterSnapshot: TARGET_PARAMETERS,
   });
-  const ruleBundleCommitment = computeWatcherRuleBundleV1Commitment(bundle);
+  const ruleBundleCommitment = computeWatcherRuleBundleCommitment(bundle);
   const releaseBindings = {
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
     ruleBundleCommitment,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
-      identityDigest: computeDeploymentManifestV1JsonDigest(manifest.da),
+      identityDigest: computeDeploymentManifestJsonDigest(manifest.da),
     },
     releaseEvidence: {
       digest: RELEASE_DIGEST,
@@ -359,7 +360,7 @@ const fixture = () => {
   };
   const { privateKey, trustRoot } = makeTrustRoot();
   const signedIdentity: MutableRecord = {
-    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
     manifest,
     releaseBindings,
     attestation: {
@@ -368,7 +369,7 @@ const fixture = () => {
       signature: "",
     },
   };
-  const policy: WatcherDeploymentIdentityPolicyV1 = {
+  const policy: WatcherDeploymentIdentityPolicy = {
     network: "Preprod",
     hubOracleOneShotOutRef: manifest.hubOracleOneShot.outRef,
     appliedScriptHashes: appliedScriptHashes(manifest),
@@ -383,7 +384,7 @@ const fixture = () => {
   };
   signedIdentity.attestation.signature = sign(
     null,
-    makeWatcherDeploymentIdentitySignaturePayloadV1(
+    makeWatcherDeploymentIdentitySignaturePayload(
       manifest.manifestId,
       releaseBindings,
     ),
@@ -393,12 +394,12 @@ const fixture = () => {
     signedIdentity,
     policy,
     trustRoots: Object.freeze([trustRoot]),
-    durableMarker: makeDeploymentMarkerV1(manifest.manifestId),
+    durableMarker: makeDeploymentMarker(manifest.manifestId),
   });
   return {
     authority,
     bundle,
-    verifiedIdentity: verifyWatcherDeploymentIdentityV1(authority),
+    verifiedIdentity: verifyWatcherDeploymentIdentity(authority),
   };
 };
 
@@ -413,14 +414,14 @@ const clone = <T>(value: T): Mutable<T> =>
 
 const rejected = (
   action: () => unknown,
-  code: WatcherRuleBundleV1ErrorCode,
+  code: WatcherRuleBundleErrorCode,
   path: string,
-): WatcherRuleBundleV1Error => {
+): WatcherRuleBundleError => {
   try {
     action();
   } catch (error) {
-    expect(error).toBeInstanceOf(WatcherRuleBundleV1Error);
-    const ruleError = error as WatcherRuleBundleV1Error;
+    expect(error).toBeInstanceOf(WatcherRuleBundleError);
+    const ruleError = error as WatcherRuleBundleError;
     expect(ruleError.code).toBe(code);
     expect(ruleError.path).toBe(path);
     return ruleError;
@@ -448,7 +449,7 @@ const authorityRejected = (
 describe("watcher canonical V1 rule bundle", () => {
   it("loads the one exact W02-bound V1 profile, features, parameters, priorities, and programs", () => {
     const { authority, bundle, verifiedIdentity } = fixture();
-    const loaded = loadWatcherRuleBundleV1({
+    const loaded = loadWatcherRuleBundle({
       ...authority,
       ruleBundle: bundle,
     });
@@ -457,27 +458,27 @@ describe("watcher canonical V1 rule bundle", () => {
       verifiedIdentity.ruleBundleCommitment,
     );
     expect(loaded.ruleBundle.consensusProfileDigest).toBe(
-      MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+      MIDGARD_CONSENSUS_PROFILE_DIGEST,
     );
     expect(loaded.ruleBundle.features).toEqual(
-      MIDGARD_CONSENSUS_FEATURES_V1.map((featureId) => ({
+      MIDGARD_CONSENSUS_FEATURES.map((featureId) => ({
         featureId,
         enabled: true,
       })),
     );
-    expect(loaded.ruleBundle.limits).toBe(MIDGARD_CONSENSUS_LIMITS_V1);
+    expect(loaded.ruleBundle.limits).toBe(MIDGARD_CONSENSUS_LIMITS);
     expect(loaded.ruleBundle.targetParameters).toEqual({
       snapshot: TARGET_PARAMETERS,
-      digest: computeDeploymentManifestV1JsonDigest(TARGET_PARAMETERS),
+      digest: computeDeploymentManifestJsonDigest(TARGET_PARAMETERS),
     });
     expect(loaded.ruleBundle.transitionPriority).toBe(
-      WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY,
+      WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
     );
     expect(loaded.ruleBundle.validation.phasePriority).toBe(
-      WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
+      WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
     );
     expect(loaded.ruleBundle.validation.rejectionSelection).toBe(
-      WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
+      WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
     );
     expect(loaded.ruleBundle.programCommitments).toEqual(
       verifiedIdentity.programCommitments,
@@ -492,15 +493,15 @@ describe("watcher canonical V1 rule bundle", () => {
 
   it("has deterministic bytes and survives exact JSON restart serialization", () => {
     const { authority, bundle, verifiedIdentity } = fixture();
-    const firstBytes = encodeWatcherRuleBundleV1(bundle);
+    const firstBytes = encodeWatcherRuleBundle(bundle);
     const restarted = JSON.parse(firstBytes.toString("utf8")) as unknown;
-    const loaded = loadWatcherRuleBundleV1({
+    const loaded = loadWatcherRuleBundle({
       ...clone(authority),
       ruleBundle: restarted,
     });
 
-    expect(encodeWatcherRuleBundleV1(loaded.ruleBundle)).toEqual(firstBytes);
-    expect(computeWatcherRuleBundleV1Commitment(restarted)).toBe(
+    expect(encodeWatcherRuleBundle(loaded.ruleBundle)).toEqual(firstBytes);
+    expect(computeWatcherRuleBundleCommitment(restarted)).toBe(
       verifiedIdentity.ruleBundleCommitment,
     );
     expect(Object.keys(loaded.ruleBundle.targetParameters.snapshot)).toEqual(
@@ -514,7 +515,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const unknownVersion = clone(bundle) as Record<string, unknown>;
     unknownVersion.ruleBundleVersion = 2;
     rejected(
-      () => parseWatcherRuleBundleV1(unknownVersion),
+      () => parseWatcherRuleBundle(unknownVersion),
       "unsupported_version",
       "$.ruleBundleVersion",
     );
@@ -522,7 +523,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const adjacentSchema = clone(bundle) as Record<string, unknown>;
     adjacentSchema.schemaVersion = "midgard-watcher-rule-bundle-v2";
     rejected(
-      () => parseWatcherRuleBundleV1(adjacentSchema),
+      () => parseWatcherRuleBundle(adjacentSchema),
       "unsupported_version",
       "$.schemaVersion",
     );
@@ -530,7 +531,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const missing = clone(bundle) as Record<string, unknown>;
     delete missing.validation;
     rejected(
-      () => parseWatcherRuleBundleV1(missing),
+      () => parseWatcherRuleBundle(missing),
       "missing_field",
       "$.validation",
     );
@@ -538,12 +539,12 @@ describe("watcher canonical V1 rule bundle", () => {
     const extra = clone(bundle) as Record<string, unknown>;
     extra.compatibility = true;
     rejected(
-      () => parseWatcherRuleBundleV1(extra),
+      () => parseWatcherRuleBundle(extra),
       "unknown_field",
       "$.compatibility",
     );
 
-    rejected(() => parseWatcherRuleBundleV1([bundle]), "invalid_field", "$");
+    rejected(() => parseWatcherRuleBundle([bundle]), "invalid_field", "$");
   });
 
   it("rejects every feature-set weakening, extension, duplication, or reordering", () => {
@@ -552,7 +553,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const disabled = clone(bundle);
     disabled.features[0]!.enabled = false as true;
     rejected(
-      () => parseWatcherRuleBundleV1(disabled),
+      () => parseWatcherRuleBundle(disabled),
       "disabled_feature",
       "$.features[0].enabled",
     );
@@ -561,7 +562,7 @@ describe("watcher canonical V1 rule bundle", () => {
     unknown.features[0]!.featureId =
       "watcher_only_feature" as (typeof unknown.features)[number]["featureId"];
     rejected(
-      () => parseWatcherRuleBundleV1(unknown),
+      () => parseWatcherRuleBundle(unknown),
       "unknown_feature",
       "$.features[0].featureId",
     );
@@ -569,7 +570,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const missing = clone(bundle);
     missing.features.pop();
     rejected(
-      () => parseWatcherRuleBundleV1(missing),
+      () => parseWatcherRuleBundle(missing),
       "feature_set_mismatch",
       "$.features",
     );
@@ -577,7 +578,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const duplicate = clone(bundle);
     duplicate.features[1] = clone(duplicate.features[0]!);
     rejected(
-      () => parseWatcherRuleBundleV1(duplicate),
+      () => parseWatcherRuleBundle(duplicate),
       "feature_set_mismatch",
       "$.features",
     );
@@ -585,7 +586,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const extra = clone(bundle);
     extra.features.push(clone(extra.features[0]!));
     rejected(
-      () => parseWatcherRuleBundleV1(extra),
+      () => parseWatcherRuleBundle(extra),
       "feature_set_mismatch",
       "$.features",
     );
@@ -596,7 +597,7 @@ describe("watcher canonical V1 rule bundle", () => {
       reordered.features[0]!,
     ];
     rejected(
-      () => parseWatcherRuleBundleV1(reordered),
+      () => parseWatcherRuleBundle(reordered),
       "feature_set_mismatch",
       "$.features",
     );
@@ -608,7 +609,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const profile = clone(bundle);
     profile.consensusProfileDigest = h32("a");
     rejected(
-      () => parseWatcherRuleBundleV1(profile),
+      () => parseWatcherRuleBundle(profile),
       "consensus_profile_mismatch",
       "$.consensusProfileDigest",
     );
@@ -616,7 +617,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const limit = clone(bundle);
     (limit.limits as Record<string, number>).maxL2TransactionCount += 1;
     rejected(
-      () => parseWatcherRuleBundleV1(limit),
+      () => parseWatcherRuleBundle(limit),
       "consensus_profile_mismatch",
       "$.limits.maxL2TransactionCount",
     );
@@ -624,7 +625,7 @@ describe("watcher canonical V1 rule bundle", () => {
     const target = clone(bundle);
     (target.targetParameters.snapshot as Record<string, unknown>).minFeeA = 45;
     rejected(
-      () => parseWatcherRuleBundleV1(target),
+      () => parseWatcherRuleBundle(target),
       "target_parameters_mismatch",
       "$.targetParameters.digest",
     );
@@ -635,7 +636,7 @@ describe("watcher canonical V1 rule bundle", () => {
       transition.transitionPriority[0]!,
     ];
     rejected(
-      () => parseWatcherRuleBundleV1(transition),
+      () => parseWatcherRuleBundle(transition),
       "transition_priority_mismatch",
       "$.transitionPriority",
     );
@@ -649,7 +650,7 @@ describe("watcher canonical V1 rule bundle", () => {
       validation.validation.phasePriority[0]!,
     ];
     rejected(
-      () => parseWatcherRuleBundleV1(validation),
+      () => parseWatcherRuleBundle(validation),
       "validation_priority_mismatch",
       "$.validation.phasePriority",
     );
@@ -658,7 +659,7 @@ describe("watcher canonical V1 rule bundle", () => {
     selection.validation.rejectionSelection =
       "watcher_first_observed_rejection_v1" as typeof selection.validation.rejectionSelection;
     rejected(
-      () => parseWatcherRuleBundleV1(selection),
+      () => parseWatcherRuleBundle(selection),
       "validation_priority_mismatch",
       "$.validation.rejectionSelection",
     );
@@ -671,7 +672,7 @@ describe("watcher canonical V1 rule bundle", () => {
     program.programCommitments["validation-machine-v1"] = h32("a");
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: program,
         }),
@@ -683,7 +684,7 @@ describe("watcher canonical V1 rule bundle", () => {
     delete missingProgram.programCommitments["validation-machine-v1"];
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: missingProgram,
         }),
@@ -695,7 +696,7 @@ describe("watcher canonical V1 rule bundle", () => {
     extraProgram.programCommitments["watcher-folklore-v1"] = h32("b");
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: extraProgram,
         }),
@@ -705,12 +706,12 @@ describe("watcher canonical V1 rule bundle", () => {
 
     const content = clone(bundle);
     (content.targetParameters.snapshot as Record<string, unknown>).minFeeA = 45;
-    content.targetParameters.digest = computeDeploymentManifestV1JsonDigest(
+    content.targetParameters.digest = computeDeploymentManifestJsonDigest(
       content.targetParameters.snapshot,
     );
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: content,
         }),
@@ -726,7 +727,7 @@ describe("watcher canonical V1 rule bundle", () => {
     deployment.deploymentManifestId = h32("a");
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: deployment,
         }),
@@ -738,7 +739,7 @@ describe("watcher canonical V1 rule bundle", () => {
     network.network = "Preview";
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: network,
         }),
@@ -750,7 +751,7 @@ describe("watcher canonical V1 rule bundle", () => {
     release.releaseEvidenceDigest = h32("b");
     rejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           ruleBundle: release,
         }),
@@ -760,9 +761,9 @@ describe("watcher canonical V1 rule bundle", () => {
 
     authorityRejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
-          durableMarker: makeDeploymentMarkerV1(h32("c")),
+          durableMarker: makeDeploymentMarker(h32("c")),
           ruleBundle: bundle,
         }),
       "durable_marker_mismatch",
@@ -775,7 +776,7 @@ describe("watcher canonical V1 rule bundle", () => {
 
     authorityRejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           signedIdentity: verifiedIdentity,
           ruleBundle: bundle,
@@ -790,7 +791,7 @@ describe("watcher canonical V1 rule bundle", () => {
     invalidSignature.signedIdentity.attestation.signature = `${signature.startsWith("0") ? "1" : "0"}${signature.slice(1)}`;
     authorityRejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...invalidSignature,
           ruleBundle: bundle,
         }),
@@ -802,7 +803,7 @@ describe("watcher canonical V1 rule bundle", () => {
     mismatchedPolicy.ruleBundleCommitment = h32("a");
     authorityRejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           policy: mismatchedPolicy,
           ruleBundle: bundle,
@@ -813,7 +814,7 @@ describe("watcher canonical V1 rule bundle", () => {
 
     authorityRejected(
       () =>
-        loadWatcherRuleBundleV1({
+        loadWatcherRuleBundle({
           ...authority,
           trustRoots: [makeTrustRoot().trustRoot],
           ruleBundle: bundle,
@@ -824,13 +825,11 @@ describe("watcher canonical V1 rule bundle", () => {
   });
 
   it("derives the validation priority from the production canonical phase codes", () => {
-    const productionOrder = Object.entries(MidgardValidationPhase)
+    const order = Object.entries(MidgardValidationPhase)
       .sort((left, right) => left[1] - right[1])
       .map(([phase]) => phase);
-    expect(WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY).toEqual(
-      productionOrder,
-    );
-    expect(productionOrder).toEqual([
+    expect(WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY).toEqual(order);
+    expect(order).toEqual([
       "canonicalDecode",
       "compactBinding",
       "staticLedgerRules",

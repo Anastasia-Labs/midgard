@@ -25,7 +25,7 @@ import { isAbsolute, join } from "node:path";
  * suite has finished checking it against its own pinned expectations, so the
  * generator can never be handed values this suite would itself reject.
  */
-export const publishAikenVectorV1 = (
+export const publishAikenVector = (
   name: string,
   vector: Readonly<Record<string, unknown>>,
 ): void => {

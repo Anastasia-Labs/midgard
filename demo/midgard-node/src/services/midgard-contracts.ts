@@ -4,16 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  assertMidgardConsensusV1ReleaseReady,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  type MidgardConsensusProfileV1,
+  assertMidgardConsensusReleaseReady,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  assertDeploymentMarkerV1Matches,
-  type DeploymentManifestV1L1Finality,
-  type DeploymentMarkerV1,
-  makeDeploymentMarkerV1,
-  parseDeploymentManifestV1AvailabilityChallenge,
+  assertDeploymentMarkerMatches,
+  type DeploymentManifestL1Finality,
+  type DeploymentMarker,
+  makeDeploymentMarker,
+  parseDeploymentManifestAvailabilityChallenge,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
@@ -36,8 +36,8 @@ import {
 import { Effect, Layer } from "effect";
 
 import {
-  type DeploymentManifestV1Value,
-  parseDeploymentManifestV1Value,
+  type DeploymentManifestValue,
+  parseDeploymentManifestValue,
 } from "../deployment-manifest-v1.js";
 import {
   defaultDeploymentRunStatePath,
@@ -78,19 +78,19 @@ type DeploymentManifestContractEntry = {
   readonly scriptHash?: unknown;
 };
 
-type DeploymentManifestCandidate = DeploymentManifestV1Value & {
+type DeploymentManifestCandidate = DeploymentManifestValue & {
   readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
 };
 
 export type ContractDeploymentIdentityValue = {
   readonly kind: "manifest" | "derived";
   readonly manifestId?: string;
-  readonly deploymentMarker?: DeploymentMarkerV1;
+  readonly deploymentMarker?: DeploymentMarker;
   readonly path?: string;
-  readonly consensusProfile: MidgardConsensusProfileV1;
-  readonly l1Finality?: DeploymentManifestV1L1Finality;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly l1Finality?: DeploymentManifestL1Finality;
   /** Exact parser-admitted manifest; absent for derived/dev contract bundles. */
-  readonly manifest?: DeploymentManifestV1Value;
+  readonly manifest?: DeploymentManifestValue;
 };
 
 type MidgardContractRuntimeValue = {
@@ -98,14 +98,12 @@ type MidgardContractRuntimeValue = {
   readonly identity: ContractDeploymentIdentityValue;
 };
 
-export const availabilityParametersFromManifestV1 = (
+export const availabilityParametersFromManifest = (
   value: unknown,
-): SDK.DaAvailabilityParametersV1 => {
-  const parsed = parseDeploymentManifestV1AvailabilityChallenge(value);
-  return SDK.daAvailabilityParametersV1({
-    responseGeometry: SDK.availabilityResponseGeometryV1(
-      parsed.responseGeometry,
-    ),
+): SDK.DaAvailabilityParameters => {
+  const parsed = parseDeploymentManifestAvailabilityChallenge(value);
+  return SDK.daAvailabilityParameters({
+    responseGeometry: SDK.availabilityResponseGeometry(parsed.responseGeometry),
     daBondLovelace: BigInt(parsed.daBondLovelace),
     challengerBondLovelace: BigInt(parsed.challengerBondLovelace),
     maxOpenFeeLovelace: BigInt(parsed.maxOpenFeeLovelace),
@@ -117,7 +115,7 @@ export const availabilityParametersFromManifestV1 = (
 };
 
 export const availabilityParametersFromExplicitEnvironment =
-  (): SDK.DaAvailabilityParametersV1 => {
+  (): SDK.DaAvailabilityParameters => {
     const integer = (name: string): number => {
       const raw = process.env[name]?.trim();
       if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) {
@@ -131,7 +129,7 @@ export const availabilityParametersFromExplicitEnvironment =
       }
       return parsed;
     };
-    return availabilityParametersFromManifestV1({
+    return availabilityParametersFromManifest({
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
         smallResponseWindowMs: 3_600_000,
@@ -327,7 +325,7 @@ const loadReferenceScriptAuthValidator = (): Effect.Effect<
 export const parseRuntimeDeploymentManifest = (
   raw: unknown,
 ): DeploymentManifestCandidate =>
-  parseDeploymentManifestV1Value(raw) as DeploymentManifestCandidate;
+  parseDeploymentManifestValue(raw) as DeploymentManifestCandidate;
 
 export const readRuntimeDeploymentManifestFile = (
   deploymentInfoPath: string,
@@ -1724,7 +1722,7 @@ export type HubOracleOneShotOutRef = {
 
 export type RealContractDeploymentParameters = {
   readonly referenceScriptAuth: SDK.MintingValidator;
-  readonly availabilityChallengeParameters: SDK.DaAvailabilityParametersV1;
+  readonly availabilityChallengeParameters: SDK.DaAvailabilityParameters;
   readonly daParamsGovernorInitOutRef?: HubOracleOneShotOutRef;
   readonly daParamsMaxCommitteeSize?: number;
   readonly daParamsMaxOwnerCount?: number;
@@ -2052,10 +2050,10 @@ const buildRealDaAttestationValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   referenceScriptAuthPolicyId: string,
-  availabilityParameters: SDK.DaAvailabilityParametersV1,
+  availabilityParameters: SDK.DaAvailabilityParameters,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> => {
   const encodedParameters = Data.from(
-    SDK.encodeDaAvailabilityParametersV1(availabilityParameters),
+    SDK.encodeDaAvailabilityParameters(availabilityParameters),
   );
   return buildRealAuthenticatedValidator(
     network,
@@ -2078,18 +2076,18 @@ const buildRealDaAttestationValidator = (
 const buildRealAvailabilityChallengeValidator = (
   network: Network,
   hubOraclePolicyId: string,
-  parameters: SDK.DaAvailabilityParametersV1,
+  parameters: SDK.DaAvailabilityParameters,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   buildRealAuthenticatedValidator(
     network,
     REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES,
     [
       hubOraclePolicyId,
-      Data.from(SDK.encodeDaAvailabilityParametersV1(parameters)),
+      Data.from(SDK.encodeDaAvailabilityParameters(parameters)),
     ],
     () => [
       hubOraclePolicyId,
-      Data.from(SDK.encodeDaAvailabilityParametersV1(parameters)),
+      Data.from(SDK.encodeDaAvailabilityParameters(parameters)),
     ],
   );
 
@@ -2471,7 +2469,7 @@ const buildRealStateQueueValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   referenceScriptAuthPolicyId: string,
-): Effect.Effect<SDK.StateQueueValidatorV1, Error> =>
+): Effect.Effect<SDK.StateQueueValidator, Error> =>
   Effect.gen(function* () {
     const activeOperatorsAddress = yield* Effect.mapError(
       Effect.map(
@@ -3084,7 +3082,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
   });
   if (configuredManifest !== undefined) {
     yield* Effect.try({
-      try: assertMidgardConsensusV1ReleaseReady,
+      try: assertMidgardConsensusReleaseReady,
       catch: (cause) =>
         new Error(
           `Configured V1 deployment is fail-closed: ${formatUnknownError(
@@ -3134,10 +3132,10 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     if (runState !== null) {
       yield* Effect.try({
         try: () => {
-          const marker = makeDeploymentMarkerV1(
+          const marker = makeDeploymentMarker(
             configuredManifest.manifest.manifestId,
           );
-          assertDeploymentMarkerV1Matches(
+          assertDeploymentMarkerMatches(
             marker,
             runState.identity.deploymentMarker,
             "node deployment run state",
@@ -3174,7 +3172,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
       identity: {
         kind: "manifest",
         manifestId: configuredManifest.manifest.manifestId,
-        deploymentMarker: makeDeploymentMarkerV1(
+        deploymentMarker: makeDeploymentMarker(
           configuredManifest.manifest.manifestId,
         ),
         path: configuredManifest.path,
@@ -3207,7 +3205,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     contracts: resolvedContracts,
     identity: {
       kind: "derived",
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     },
   };
   return runtime;

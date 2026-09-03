@@ -2,8 +2,8 @@ import type {
   Hash32,
   MidgardAddress,
   MidgardDatum,
-  MidgardNativeTxCompactV1,
-  MidgardNativeTxWitnessSetCompactV1,
+  MidgardNativeTxCompact,
+  MidgardNativeTxWitnessSetCompact,
   MidgardTxValidity,
   MidgardValue,
   MidgardVersionedScript,
@@ -298,10 +298,10 @@ export type MidgardSubmittedTx = {
   /** Hash commitments derived from the submitted canonical transaction. */
   readonly commitments: {
     /** Compact transaction commitment whose body hash is the transaction id. */
-    readonly transactionCompact: MidgardNativeTxCompactV1;
+    readonly transactionCompact: MidgardNativeTxCompact;
 
     /** Compact witness-set roots derived from submitted witness preimages. */
-    readonly witnessSetCompact: MidgardNativeTxWitnessSetCompactV1;
+    readonly witnessSetCompact: MidgardNativeTxWitnessSetCompact;
 
     /** Redeemer witness root committed by script-integrity validation. */
     readonly redeemerWitnessHash: Blake2b256Hash;

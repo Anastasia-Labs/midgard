@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { makeFaultProofEmulatorHarnessV1 } from "./harness.js";
+import { makeFaultProofEmulatorHarness } from "./harness.js";
 
 const APPENDED_CATEGORY_NAMES = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(11);
 
@@ -16,7 +16,7 @@ describe("fault-proof emulator catalogue registration", () => {
   ] as const)(
     "registers the selected real %s first step",
     async (categoryName, optionName) => {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: {
           [optionName]: true,
           alwaysFraudProofCatalogue: true,
@@ -32,7 +32,7 @@ describe("fault-proof emulator catalogue registration", () => {
   );
 
   it("registers every appended production category from its canonical chain", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
 
     // Guard against a vacuous loop. 32 canonical categories minus the 11
     // foundational ones; the wave appended networkId, missingNativeScriptUtxo,

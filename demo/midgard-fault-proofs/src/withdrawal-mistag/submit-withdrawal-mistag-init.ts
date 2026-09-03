@@ -2,20 +2,20 @@
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
 import {
-  type NativeScriptDecodingInitContractsV1,
+  type NativeScriptDecodingInitContracts,
   submitNativeScriptDecodingInit,
 } from "../native-script-decoding/submit-native-script-decoding-init.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  type WithdrawalMistagCatalogueCategoryV1,
-  type WithdrawalMistagContractsV1,
+  type WithdrawalMistagCatalogueCategory,
+  type WithdrawalMistagContracts,
 } from "./contracts-v1.js";
 
 const genericInitContracts = (
-  contracts: WithdrawalMistagContractsV1,
-): NativeScriptDecodingInitContractsV1 => ({
+  contracts: WithdrawalMistagContracts,
+): NativeScriptDecodingInitContracts => ({
   steps: [
     contracts.steps[0],
     contracts.steps[1],
@@ -38,8 +38,8 @@ export const submitWithdrawalMistagInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: WithdrawalMistagContractsV1;
-  readonly category: WithdrawalMistagCatalogueCategoryV1;
+  readonly contracts: WithdrawalMistagContracts;
+  readonly category: WithdrawalMistagCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -52,8 +52,8 @@ export const submitWithdrawalMistagInit = async ({
    * Published witness reference scripts, forwarded to the generic init;
    * every role used by this transaction must be published.
    */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) =>
   await submitNativeScriptDecodingInit({

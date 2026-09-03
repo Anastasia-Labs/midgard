@@ -1,26 +1,26 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import { decodeMidgardNativeTxCompactV1 } from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxOutputCanonicalV1,
+  encodeMidgardTxOutputCanonical,
   type MidgardTxInput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-sdk";
 
-import { midgardTxOutputFromCanonicalCborV1 } from "../prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "../prepare-input-no-idx.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 
-export const PRODUCTION_NATIVE_INDEX_ARTIFACT_HELPER_V1 =
+export const NATIVE_INDEX_ARTIFACT_HELPER =
   "midgard-production-native-index-artifact-helper-v1" as const;
 
-export const HEX_28_V1 = /^[0-9a-f]{56}$/u;
-export const HEX_32_V1 = /^[0-9a-f]{64}$/u;
-export const EVEN_HEX_V1 = /^(?:[0-9a-f]{2})+$/u;
-export const NATURAL_DECIMAL_V1 = /^(?:0|[1-9][0-9]*)$/u;
+export const HEX_28 = /^[0-9a-f]{56}$/u;
+export const HEX_32 = /^[0-9a-f]{64}$/u;
+export const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
+export const NATURAL_DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
 
-export type ProductionNativeInclusionArtifactV1 = Readonly<{
+export type NativeInclusionArtifact = Readonly<{
   nativeTxId: string;
   nativeTxCompactCbor: string;
   l2TransactionSourceCbor: string;
@@ -28,7 +28,7 @@ export type ProductionNativeInclusionArtifactV1 = Readonly<{
   txMembershipProofCbor: string;
 }>;
 
-export const exactJournalRecordV1 = (
+export const exactJournalRecord = (
   value: unknown,
   keys: readonly string[],
   label: string,
@@ -54,7 +54,7 @@ export const exactJournalRecordV1 = (
   return record;
 };
 
-export const canonicalHexV1 = (
+export const canonicalHex = (
   value: unknown,
   pattern: RegExp,
   label: string,
@@ -65,17 +65,17 @@ export const canonicalHexV1 = (
   return value;
 };
 
-export const canonicalNaturalStringV1 = (
+export const canonicalNaturalString = (
   value: unknown,
   label: string,
 ): string => {
-  if (typeof value !== "string" || !NATURAL_DECIMAL_V1.test(value)) {
+  if (typeof value !== "string" || !NATURAL_DECIMAL.test(value)) {
     throw new Error(`${label} is not a canonical natural decimal`);
   }
   return value;
 };
 
-export const safeNaturalNumberV1 = (value: unknown, label: string): number => {
+export const safeNaturalNumber = (value: unknown, label: string): number => {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
@@ -111,14 +111,14 @@ const proofSteps = (
     };
   });
 
-export const admitProductionNativeInclusionArtifactV1 = (
+export const admitNativeInclusionArtifact = (
   value: unknown,
   label: string,
 ): Readonly<{
-  artifact: ProductionNativeInclusionArtifactV1;
+  artifact: NativeInclusionArtifact;
   inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
 }> => {
-  const parsed = exactJournalRecordV1(
+  const parsed = exactJournalRecord(
     value,
     [
       "nativeTxId",
@@ -130,32 +130,32 @@ export const admitProductionNativeInclusionArtifactV1 = (
     label,
   );
   const artifact = Object.freeze({
-    nativeTxId: canonicalHexV1(parsed.nativeTxId, HEX_32_V1, `${label} tx id`),
-    nativeTxCompactCbor: canonicalHexV1(
+    nativeTxId: canonicalHex(parsed.nativeTxId, HEX_32, `${label} tx id`),
+    nativeTxCompactCbor: canonicalHex(
       parsed.nativeTxCompactCbor,
-      EVEN_HEX_V1,
+      EVEN_HEX,
       `${label} compact transaction`,
     ),
-    l2TransactionSourceCbor: canonicalHexV1(
+    l2TransactionSourceCbor: canonicalHex(
       parsed.l2TransactionSourceCbor,
-      EVEN_HEX_V1,
+      EVEN_HEX,
       `${label} transaction source`,
     ),
-    transactionsPhasRoot: canonicalHexV1(
+    transactionsPhasRoot: canonicalHex(
       parsed.transactionsPhasRoot,
-      HEX_32_V1,
+      HEX_32,
       `${label} PHAS root`,
     ),
-    txMembershipProofCbor: canonicalHexV1(
+    txMembershipProofCbor: canonicalHex(
       parsed.txMembershipProofCbor,
-      EVEN_HEX_V1,
+      EVEN_HEX,
       `${label} membership proof`,
     ),
   });
   const inclusion = parseSubmitStep01TxInclusion({
     nativeTxId: artifact.nativeTxId,
     nativeTx: nativeTxFromCoreCompact(
-      decodeMidgardNativeTxCompactV1(
+      decodeMidgardNativeTxCompact(
         Buffer.from(artifact.nativeTxCompactCbor, "hex"),
       ),
     ),
@@ -183,7 +183,7 @@ export const admitProductionNativeInclusionArtifactV1 = (
   return Object.freeze({ artifact, inclusion });
 };
 
-export const admitProductionTxInputListV1 = (
+export const admitTxInputList = (
   value: unknown,
   label: string,
 ): Readonly<{
@@ -195,18 +195,18 @@ export const admitProductionTxInputListV1 = (
   }
   const json = Object.freeze(
     value.map((entry, index) => {
-      const parsed = exactJournalRecordV1(
+      const parsed = exactJournalRecord(
         entry,
         ["tx_id", "output_index"],
         `${label}[${index.toString()}]`,
       );
       return Object.freeze({
-        tx_id: canonicalHexV1(
+        tx_id: canonicalHex(
           parsed.tx_id,
-          HEX_32_V1,
+          HEX_32,
           `${label}[${index.toString()}].tx_id`,
         ),
-        output_index: canonicalNaturalStringV1(
+        output_index: canonicalNaturalString(
           parsed.output_index,
           `${label}[${index.toString()}].output_index`,
         ),
@@ -224,7 +224,7 @@ export const admitProductionTxInputListV1 = (
   });
 };
 
-export const admitProductionOutputCborListV1 = (
+export const admitOutputCborList = (
   value: unknown,
   label: string,
 ): Readonly<{
@@ -236,14 +236,14 @@ export const admitProductionOutputCborListV1 = (
   }
   const json = Object.freeze(
     value.map((item, index) =>
-      canonicalHexV1(item, EVEN_HEX_V1, `${label}[${index.toString()}]`),
+      canonicalHex(item, EVEN_HEX, `${label}[${index.toString()}]`),
     ),
   );
   const outputs = Object.freeze(
     json.map((item, index) => {
       const bytes = Buffer.from(item, "hex");
-      const output = midgardTxOutputFromCanonicalCborV1(bytes);
-      if (!encodeMidgardTxOutputCanonicalV1(output).equals(bytes)) {
+      const output = midgardTxOutputFromCanonicalCbor(bytes);
+      if (!encodeMidgardTxOutputCanonical(output).equals(bytes)) {
         throw new Error(`${label}[${index.toString()}] is not canonical`);
       }
       return output;

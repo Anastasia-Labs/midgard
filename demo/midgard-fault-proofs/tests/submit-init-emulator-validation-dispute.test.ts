@@ -9,7 +9,7 @@
  */
 
 import {
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import {
@@ -41,9 +41,9 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
-  VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+  VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES,
   validationDisputeValidityRange,
-  validationSemanticResolverGlobalIndexV1,
+  validationSemanticResolverGlobalIndex,
 } from "../src/index.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -60,14 +60,14 @@ import {
   expectSingleUtxoWithUnit,
   network,
   publishAuthenticatedValidationDisputeControl,
-  publishFaultProofWitnessReferenceScriptsV1,
-  publishOperatorLifecycleReferenceScriptsV1,
+  publishFaultProofWitnessReferenceScripts,
+  publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   runEmulatorLifecycleStage,
-  seedDualAddressPartyAccountsV1,
+  seedDualAddressPartyAccounts,
   submitSetupTx,
   type ValidationDisputeControlPublicationTarget,
   validationDisputeControlPublicationTargets,
@@ -174,7 +174,7 @@ describe("fault-proof emulator integration", () => {
         fraudProofCataloguePolicyId: "22".repeat(28),
       }),
     );
-    const cekOffset = validationSemanticResolverGlobalIndexV1(11, 0);
+    const cekOffset = validationSemanticResolverGlobalIndex(11, 0);
     const cekSemantics = {
       finish: contracts.validationTraceDispute.semanticResolvers[cekOffset]!,
       1: contracts.validationTraceDispute.semanticResolvers[cekOffset + 1]!,
@@ -198,7 +198,7 @@ describe("fault-proof emulator integration", () => {
     for (const semanticResolverIndex of [1, 2, 3] as const) {
       const semantic = cekSemantics[semanticResolverIndex];
       const entryName =
-        VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+        VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
           semanticResolverIndex
         ];
       const appliedResolverBytes = semantic.spendingScript.script.length / 2;
@@ -250,7 +250,7 @@ describe("fault-proof emulator integration", () => {
       name: "reference",
       inlineDatumPayloadBytes: 13_600,
       minimumCompleteItemBytes:
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
+        MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
       expectedCarriage: "reference" as const,
     },
   ])(
@@ -269,15 +269,15 @@ describe("fault-proof emulator integration", () => {
       // Both parties are seeded at the base address `selectWallet.fromSeed`
       // derives and at the enterprise address `resolveProverSigner` derives,
       // because this journey selects through both; see
-      // `seedDualAddressPartyAccountsV1`.
+      // `seedDualAddressPartyAccounts`.
       const emulator = new Emulator(
         [
-          ...seedDualAddressPartyAccountsV1({
+          ...seedDualAddressPartyAccounts({
             account: operator,
             feeUtxoCount,
             feeUtxoLovelace,
           }),
-          ...seedDualAddressPartyAccountsV1({
+          ...seedDualAddressPartyAccounts({
             account: challenger,
             feeUtxoCount,
             feeUtxoLovelace,
@@ -320,13 +320,13 @@ describe("fault-proof emulator integration", () => {
       const contracts = {
         ...baseContracts,
         operatorLifecycleReferenceScripts:
-          await publishOperatorLifecycleReferenceScriptsV1({
+          await publishOperatorLifecycleReferenceScripts({
             lucid: challengerLucid,
             contracts: baseContracts,
           }),
       };
       const witnessReferenceScripts =
-        await publishFaultProofWitnessReferenceScriptsV1({
+        await publishFaultProofWitnessReferenceScripts({
           lucid: challengerLucid,
           realBlueprint,
           computationThreadMintingScript:

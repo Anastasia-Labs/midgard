@@ -8,11 +8,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY_V1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1,
+  PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY,
+  PROTECTED_OUTPUT_SIGNER_MISSING_ID,
 } from "./protected-output-signer-missing-v1.js";
 
-export const PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1 = [
+export const PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES = [
   "fraud_proofs/protected_output_signer_missing/step_01.main.spend",
   "fraud_proofs/protected_output_signer_missing/step_02.main.spend",
   "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
@@ -20,15 +20,15 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1 = [
   "fraud_proofs/protected_output_signer_missing/step_05.main.spend",
 ] as const;
 
-export type ProtectedOutputSignerAppliedStepV1 = Readonly<{
+export type ProtectedOutputSignerAppliedStep = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type ProtectedOutputSignerMissingContractsV1 = Readonly<{
-  steps: ProtectedOutputSignerProductionManifestV1["steps"];
+export type ProtectedOutputSignerMissingContracts = Readonly<{
+  steps: ProtectedOutputSignerManifest["steps"];
   computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;
@@ -43,24 +43,24 @@ export type ProtectedOutputSignerMissingContractsV1 = Readonly<{
   fieldPreimageCertificatePolicyId: string;
   fieldPreimageCertificateMintingScript: Script;
 }>;
-export type ProtectedOutputSignerBlueprintV1 = Readonly<{
+export type ProtectedOutputSignerBlueprint = Readonly<{
   validators: readonly Readonly<{
     title: string;
     compiledCode: string;
     parameters?: readonly unknown[];
   }>[];
 }>;
-export type ProtectedOutputSignerProductionManifestV1 = Readonly<{
+export type ProtectedOutputSignerManifest = Readonly<{
   schemaVersion: "protected-output-signer-missing-production-manifest-v1";
-  category: typeof PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY_V1;
-  categoryId: typeof PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1;
+  category: typeof PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY;
+  categoryId: typeof PROTECTED_OUTPUT_SIGNER_MISSING_ID;
   network: Network;
   steps: readonly [
-    ProtectedOutputSignerAppliedStepV1,
-    ProtectedOutputSignerAppliedStepV1,
-    ProtectedOutputSignerAppliedStepV1,
-    ProtectedOutputSignerAppliedStepV1,
-    ProtectedOutputSignerAppliedStepV1,
+    ProtectedOutputSignerAppliedStep,
+    ProtectedOutputSignerAppliedStep,
+    ProtectedOutputSignerAppliedStep,
+    ProtectedOutputSignerAppliedStep,
+    ProtectedOutputSignerAppliedStep,
   ];
   firstStepHash: string;
   computationThreadPolicyId: string;
@@ -71,7 +71,7 @@ export type ProtectedOutputSignerProductionManifestV1 = Readonly<{
   stateQueuePolicyId: string;
 }>;
 
-export const applyProtectedOutputSignerMissingScriptsV1 = ({
+export const applyProtectedOutputSignerMissingScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -80,20 +80,20 @@ export const applyProtectedOutputSignerMissingScriptsV1 = ({
   fieldPreimageCertificatePolicyId,
   hubOracleScriptHash,
 }: {
-  readonly blueprint: ProtectedOutputSignerBlueprintV1;
+  readonly blueprint: ProtectedOutputSignerBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): ProtectedOutputSignerProductionManifestV1["steps"] => {
+}): ProtectedOutputSignerManifest["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): ProtectedOutputSignerAppliedStepV1 => {
+  ): ProtectedOutputSignerAppliedStep => {
     const blueprintTitle =
-      PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1[index]!;
+      PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       (entry) => entry.title === blueprintTitle,
     );
@@ -145,21 +145,21 @@ export const applyProtectedOutputSignerMissingScriptsV1 = ({
   return [step01, step02, step03, step04, step05];
 };
 
-export const loadProtectedOutputSignerMissingProductionManifestV1 = (
-  manifest: ProtectedOutputSignerProductionManifestV1,
-): ProtectedOutputSignerProductionManifestV1 => {
+export const loadProtectedOutputSignerMissingManifest = (
+  manifest: ProtectedOutputSignerManifest,
+): ProtectedOutputSignerManifest => {
   if (
     manifest.schemaVersion !==
       "protected-output-signer-missing-production-manifest-v1" ||
-    manifest.category !== PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY_V1 ||
-    manifest.categoryId !== PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1 ||
+    manifest.category !== PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY ||
+    manifest.categoryId !== PROTECTED_OUTPUT_SIGNER_MISSING_ID ||
     manifest.firstStepHash !== manifest.steps[0].spendingScriptHash
   )
     throw new Error("protectedOutputSignerMissing manifest identity changed");
   manifest.steps.forEach((step, index) => {
     if (
       step.blueprintTitle !==
-        PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1[index] ||
+        PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index] ||
       validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash ||
       validatorToAddress(manifest.network, step.spendingScript) !==
         step.spendingScriptAddress ||

@@ -1,15 +1,15 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardSpendInputItemV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  encodeMidgardFieldPreimage,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -18,10 +18,10 @@ import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  planNetworkIdOutputsOpeningV1,
-  type PreparedNetworkIdWrongfulRejectionV1,
+  planNetworkIdOutputsOpening,
+  type PreparedNetworkIdWrongfulRejection,
   submitNetworkIdCancel,
-  submitNetworkIdForcedStep01V1,
+  submitNetworkIdForcedStep01,
   submitNetworkIdInit,
   submitNetworkIdStep02,
 } from "../src/network-id/index.js";
@@ -33,8 +33,8 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
-  makeNetworkIdEmulatorHarnessV1,
-  publishNetworkIdReferenceScriptsV1,
+  makeNetworkIdEmulatorHarness,
+  publishNetworkIdReferenceScripts,
 } from "./support/network-id-emulator-v1.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
@@ -43,7 +43,7 @@ const network = "Custom" as const;
 
 describe("networkId wrongful-rejection real lifecycle", () => {
   it("runs Init, cancels every step, restarts by out-ref, mints, and removes", async () => {
-    const harness = await makeNetworkIdEmulatorHarnessV1();
+    const harness = await makeNetworkIdEmulatorHarness();
     const credential = getAddressDetails(
       await harness.funderLucid.wallet().address(),
     ).paymentCredential;
@@ -56,7 +56,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
           harness.emulator.now() + 120_000,
         ) - 1,
     });
-    const input = encodeMidgardSpendInputItemV1({
+    const input = encodeMidgardSpendInputItem({
       txId: Buffer.from("77".repeat(32), "hex"),
       outputIndex: 0,
     });
@@ -64,7 +64,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x44)]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
-    const invalid = adjudicateMidgardNativeTxFullV1Validity(
+    const invalid = adjudicateMidgardNativeTxFullValidity(
       makeNativeTx({
         spendInputCbors: [input],
         outputCbors: [output],
@@ -72,8 +72,8 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       }),
       "TxIsInvalid",
     );
-    const transactionId = computeMidgardNativeTxIdV1(invalid).toString("hex");
-    const proofSource = deriveMidgardNativeTxProofSourceV1(invalid);
+    const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
+    const proofSource = deriveMidgardNativeTxProofSource(invalid);
     const forcedTransaction = {
       tx_id: transactionId,
       source: {
@@ -88,7 +88,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     const sourceKey = base.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -121,12 +121,12 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       catalogue: harness.catalogue,
       header,
     });
-    const subject = forcedVerdictSubjectV1({
+    const subject = forcedVerdictSubject({
       transactionId,
       sourceKey,
       rejectionReason: "NetworkIdMismatch",
     });
-    const prepared: PreparedNetworkIdWrongfulRejectionV1 = {
+    const prepared: PreparedNetworkIdWrongfulRejection = {
       headerHash: setup.headerHash,
       expectedNetworkId: 0n,
       badTxId: transactionId,
@@ -142,12 +142,12 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         committedNetworkId: 0n,
         outputNetworkIds: [0n],
         outputsItemCbors: [output.toString("hex")],
-        outputsPreimageCbor: encodeMidgardFieldPreimageV1([output]).toString(
+        outputsPreimageCbor: encodeMidgardFieldPreimage([output]).toString(
           "hex",
         ),
       },
     };
-    const [step01Ref, step02Ref] = await publishNetworkIdReferenceScriptsV1({
+    const [step01Ref, step02Ref] = await publishNetworkIdReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.networkId,
     });
@@ -179,7 +179,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     const bind = async (threadOutRef: string) => {
       console.info("[network-id-forced-stage] bind");
       const captured = await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedStep01V1({
+        submitNetworkIdForcedStep01({
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -219,7 +219,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     await cancel(await initialize(), 0, step01Ref);
     await cancel(await bind(await initialize()), 1, step02Ref);
     const secondOutRef = await bind(await initialize());
-    const opening = planNetworkIdOutputsOpeningV1({
+    const opening = planNetworkIdOutputsOpening({
       prepared,
       owner: harness.proverSigner.paymentKeyHash,
       publish: true,

@@ -1,33 +1,33 @@
 import type {
-  MidgardBlake2b256TraceControlV1,
-  MidgardBoundedItemChunkProofV1,
-  MidgardCekDataBytesControlV1,
-  MidgardCekDataFrameV1,
-  MidgardCekDataIntegerControlV1,
-  MidgardCekDataTraverseControlV1,
-  MidgardCekSourceBlobControlV1,
-  MidgardLedgerOutputProofWitnessV1,
-  MidgardMpfProofDescriptorV1,
-  MidgardMpfProofFrameV1,
-  MidgardMpfProofStepV1,
-  MidgardRedeemerItemProofControlV1,
-  MidgardRedeemerItemProofWitnessV1,
-  MidgardValidationMachineStateV1,
-  MidgardValidationMerkleFrontierV1,
-  MidgardValidationMerkleMembershipV1,
+  MidgardBlake2b256TraceControl,
+  MidgardBoundedItemChunkProof,
+  MidgardCekDataBytesControl,
+  MidgardCekDataFrame,
+  MidgardCekDataIntegerControl,
+  MidgardCekDataTraverseControl,
+  MidgardCekSourceBlobControl,
+  MidgardLedgerOutputProofWitness,
+  MidgardMpfProofDescriptor,
+  MidgardMpfProofFrame,
+  MidgardMpfProofStep,
+  MidgardRedeemerItemProofControl,
+  MidgardRedeemerItemProofWitness,
+  MidgardValidationMachineState,
+  MidgardValidationMerkleFrontier,
+  MidgardValidationMerkleMembership,
   MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
-  advanceMidgardRedeemerItemProofV1,
-  decodeMidgardCekProgramEnvelopeV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  hashMidgardCekProgramEnvelopeV1,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  midgardRedeemerItemDescriptorV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  advanceMidgardRedeemerItemProof,
+  decodeMidgardCekProgramEnvelope,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  hashMidgardCekProgramEnvelope,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  MIDGARD_CONSENSUS_LIMITS,
+  midgardRedeemerItemDescriptor,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import {
   asArray,
@@ -40,27 +40,27 @@ import {
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import {
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  type MidgardFieldCarriageV1,
-  selectMidgardFieldCarriageTierV1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  type MidgardFieldCarriage,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type {
-  MidgardCekContextPartsControlV1,
-  MidgardCekFinalContextControlV1,
-  MidgardCekRedeemerContextControlV1,
-  MidgardCekTxInfoAssemblyControlV1,
+  MidgardCekContextPartsControl,
+  MidgardCekFinalContextControl,
+  MidgardCekRedeemerContextControl,
+  MidgardCekTxInfoAssemblyControl,
 } from "./cek-context.js";
-import { midgardCekCoreStepDataV1 } from "./cek-data.js";
+import { midgardCekCoreStepData } from "./cek-data.js";
 import type {
-  MidgardCekDataSequenceSummaryV1,
-  MidgardCekDataSummaryV1,
+  MidgardCekDataSequenceSummary,
+  MidgardCekDataSummary,
 } from "./script-context-proof.js";
 import {
   type DeterministicValidationMachineTrace,
-  emptyMidgardInputResolutionScheduleV1,
-  type ValidationMachineFieldCarriagePlanInputV1,
+  emptyMidgardInputResolutionSchedule,
+  type ValidationMachineFieldCarriagePlanInput,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./validation-machine/index.js";
@@ -85,11 +85,11 @@ const proofData = (proofCbor: Uint8Array): PlutusData =>
   Data.from(bytes(proofCbor)) as PlutusData;
 
 const frontierPeaksData = (
-  frontier: MidgardValidationMerkleFrontierV1,
+  frontier: MidgardValidationMerkleFrontier,
 ): readonly ConstructorData[] =>
   frontier.peaks.map((peak) => record([int(peak.height), bytes(peak.hash)]));
 
-const mpfProofStepData = (step: MidgardMpfProofStepV1): ConstructorData => {
+const mpfProofStepData = (step: MidgardMpfProofStep): ConstructorData => {
   if (step.kind === "branch") {
     return new Constr(0, [int(step.skip), bytes(step.neighbors)]);
   }
@@ -106,7 +106,7 @@ const mpfProofStepData = (step: MidgardMpfProofStepV1): ConstructorData => {
   return new Constr(2, [int(step.skip), bytes(step.key), bytes(step.value)]);
 };
 
-const mpfProofFrameData = (frame: MidgardMpfProofFrameV1): ConstructorData =>
+const mpfProofFrameData = (frame: MidgardMpfProofFrame): ConstructorData =>
   record([
     int(frame.version),
     int(frame.frameIndex),
@@ -116,7 +116,7 @@ const mpfProofFrameData = (frame: MidgardMpfProofFrameV1): ConstructorData =>
   ]);
 
 const mpfProofDescriptorData = (
-  descriptor: MidgardMpfProofDescriptorV1,
+  descriptor: MidgardMpfProofDescriptor,
 ): ConstructorData =>
   record([
     int(descriptor.version),
@@ -126,8 +126,8 @@ const mpfProofDescriptorData = (
   ]);
 
 const ledgerDeltaOperationProofData = (
-  descriptor: MidgardMpfProofDescriptorV1,
-  membership: MidgardValidationMerkleMembershipV1,
+  descriptor: MidgardMpfProofDescriptor,
+  membership: MidgardValidationMerkleMembership,
 ): ConstructorData =>
   record([
     mpfProofDescriptorData(descriptor),
@@ -143,7 +143,7 @@ const ledgerDeltaOperationProofData = (
  * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak:168`: `Inline` 0,
  * `RawUtxo` 1, `Certified` 2.
  */
-const fieldCarriageData = (carriage: MidgardFieldCarriageV1): PlutusData => {
+const fieldCarriageData = (carriage: MidgardFieldCarriage): PlutusData => {
   switch (carriage.carriage) {
     case "Inline":
       return new Constr(0, [bytes(carriage.preimage)]);
@@ -173,9 +173,9 @@ const fieldCarriageData = (carriage: MidgardFieldCarriageV1): PlutusData => {
  * inputs; `resolveMidgardFieldCarriageAgainstReferenceInputsV1` in
  * `@al-ft/midgard-sdk` is the one this repository builds against.
  */
-export type ValidationMachineFieldCarriageResolverV1 = (
-  planInput: ValidationMachineFieldCarriagePlanInputV1,
-) => MidgardFieldCarriageV1;
+export type ValidationMachineFieldCarriageResolver = (
+  planInput: ValidationMachineFieldCarriagePlanInput,
+) => MidgardFieldCarriage;
 
 /**
  * Raised when an auxiliary is encoded without a carriage resolver and §8.4 does
@@ -189,7 +189,7 @@ export type ValidationMachineFieldCarriageResolverV1 = (
  * `Inline` anyway would name a carriage §8.4 does not admit for that length, and
  * inventing indices would name references no transaction can satisfy.
  */
-export class ValidationMachineCarriageResolutionRequiredErrorV1 extends Error {
+export class ValidationMachineCarriageResolutionRequiredError extends Error {
   override readonly name = "ValidationMachineCarriageResolutionRequiredErrorV1";
   readonly fieldIndex: number;
   readonly preimageLength: number;
@@ -209,7 +209,7 @@ export class ValidationMachineCarriageResolutionRequiredErrorV1 extends Error {
       `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
         `which §8.4's partition carries as tier-${selectedTier === "RawUtxo" ? "2" : "3"} ` +
         `\`${selectedTier}\` rather than tier-1 \`Inline\` (cap ` +
-        `${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()} bytes), so its carriage is ` +
+        `${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES.toString()} bytes), so its carriage is ` +
         "positional reference-input indices that §8.7 resolves by content against a concrete " +
         "transaction. Encoding this auxiliary requires a carriage resolver built from that " +
         "transaction's complete reference-input set.",
@@ -217,7 +217,7 @@ export class ValidationMachineCarriageResolutionRequiredErrorV1 extends Error {
     this.fieldIndex = fieldIndex;
     this.preimageLength = preimageLength;
     this.selectedTier = selectedTier;
-    this.maxTier1PreimageBytes = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1;
+    this.maxTier1PreimageBytes = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES;
   }
 }
 
@@ -229,11 +229,11 @@ export class ValidationMachineCarriageResolutionRequiredErrorV1 extends Error {
  * reference inputs; the ones above it must, and this is what makes that
  * non-optional rather than silently wrong.
  */
-export const inlineFieldCarriageResolverV1: ValidationMachineFieldCarriageResolverV1 =
+export const inlineFieldCarriageResolver: ValidationMachineFieldCarriageResolver =
   ({ fieldIndex, fieldPreimage }) => {
-    const tier = selectMidgardFieldCarriageTierV1(fieldPreimage.length);
+    const tier = selectMidgardFieldCarriageTier(fieldPreimage.length);
     if (tier !== "Inline") {
-      throw new ValidationMachineCarriageResolutionRequiredErrorV1({
+      throw new ValidationMachineCarriageResolutionRequiredError({
         fieldIndex,
         preimageLength: fieldPreimage.length,
         selectedTier: tier,
@@ -254,12 +254,12 @@ export const inlineFieldCarriageResolverV1: ValidationMachineFieldCarriageResolv
  * observe-stage door's §8.4 partition refuses on-chain, discovered only at
  * submission.
  */
-export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
+export class ValidationMachineCarriageTierMismatchError extends Error {
   override readonly name = "ValidationMachineCarriageTierMismatchErrorV1";
   readonly fieldIndex: number;
   readonly preimageLength: number;
-  readonly expectedTier: MidgardFieldCarriageV1["carriage"];
-  readonly returnedTier: MidgardFieldCarriageV1["carriage"];
+  readonly expectedTier: MidgardFieldCarriage["carriage"];
+  readonly returnedTier: MidgardFieldCarriage["carriage"];
 
   constructor({
     fieldIndex,
@@ -269,8 +269,8 @@ export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
   }: {
     readonly fieldIndex: number;
     readonly preimageLength: number;
-    readonly expectedTier: MidgardFieldCarriageV1["carriage"];
-    readonly returnedTier: MidgardFieldCarriageV1["carriage"];
+    readonly expectedTier: MidgardFieldCarriage["carriage"];
+    readonly returnedTier: MidgardFieldCarriage["carriage"];
   }) {
     super(
       `V1 field ${fieldIndex.toString()} has a ${preimageLength.toString()}-byte §5.1 preimage, ` +
@@ -300,7 +300,7 @@ export class ValidationMachineCarriageTierMismatchErrorV1 extends Error {
  * convention rather than by construction, which is the same class as the tier
  * substitution.
  */
-export class ValidationMachineCarriagePreimageSubstitutedErrorV1 extends Error {
+export class ValidationMachineCarriagePreimageSubstitutedError extends Error {
   override readonly name =
     "ValidationMachineCarriagePreimageSubstitutedErrorV1";
   readonly fieldIndex: number;
@@ -345,15 +345,15 @@ export class ValidationMachineCarriagePreimageSubstitutedErrorV1 extends Error {
  * the door resolves and `assertMidgardFieldCarriageResolvesAtDoorV1` guards.
  */
 const resolvedFieldCarriageData = (
-  resolveFieldCarriage: ValidationMachineFieldCarriageResolverV1,
-  planInput: ValidationMachineFieldCarriagePlanInputV1,
+  resolveFieldCarriage: ValidationMachineFieldCarriageResolver,
+  planInput: ValidationMachineFieldCarriagePlanInput,
 ): PlutusData => {
   const carriage = resolveFieldCarriage(planInput);
-  const expectedTier = selectMidgardFieldCarriageTierV1(
+  const expectedTier = selectMidgardFieldCarriageTier(
     planInput.fieldPreimage.length,
   );
   if (carriage.carriage !== expectedTier) {
-    throw new ValidationMachineCarriageTierMismatchErrorV1({
+    throw new ValidationMachineCarriageTierMismatchError({
       fieldIndex: planInput.fieldIndex,
       preimageLength: planInput.fieldPreimage.length,
       expectedTier,
@@ -364,7 +364,7 @@ const resolvedFieldCarriageData = (
     carriage.carriage === "Inline" &&
     !carriage.preimage.equals(planInput.fieldPreimage)
   ) {
-    throw new ValidationMachineCarriagePreimageSubstitutedErrorV1({
+    throw new ValidationMachineCarriagePreimageSubstitutedError({
       fieldIndex: planInput.fieldIndex,
       preimageLength: planInput.fieldPreimage.length,
       returnedPreimageLength: carriage.preimage.length,
@@ -373,9 +373,7 @@ const resolvedFieldCarriageData = (
   return fieldCarriageData(carriage);
 };
 
-const chunkProofData = (
-  proof: MidgardBoundedItemChunkProofV1,
-): ConstructorData =>
+const chunkProofData = (proof: MidgardBoundedItemChunkProof): ConstructorData =>
   record([
     int(proof.version),
     int(proof.fieldIndex),
@@ -425,11 +423,11 @@ const signerProofData = (
   }
 };
 
-const summaryData = (summary: MidgardCekDataSummaryV1): ConstructorData =>
+const summaryData = (summary: MidgardCekDataSummary): ConstructorData =>
   record([bytes(summary.root), summary.cborLength, summary.memory]);
 
 const sequenceSummaryData = (
-  summary: MidgardCekDataSequenceSummaryV1,
+  summary: MidgardCekDataSequenceSummary,
 ): ConstructorData =>
   record([
     bytes(summary.root),
@@ -438,9 +436,7 @@ const sequenceSummaryData = (
     summary.memory,
   ]);
 
-const dataTraverseFrameData = (
-  frame: MidgardCekDataFrameV1,
-): ConstructorData => {
+const dataTraverseFrameData = (frame: MidgardCekDataFrame): ConstructorData => {
   const kind =
     frame.kind === "constrSmall"
       ? 0
@@ -473,7 +469,7 @@ const dataTraverseFrameData = (
 
 const dataTraverseActionData = (
   action: Extract<
-    MidgardLedgerOutputProofWitnessV1,
+    MidgardLedgerOutputProofWitness,
     { readonly kind: "datum" }
   >["action"],
 ): ConstructorData => {
@@ -517,7 +513,7 @@ const dataTraverseActionData = (
 };
 
 const ledgerOutputProofWitnessData = (
-  witness: MidgardLedgerOutputProofWitnessV1,
+  witness: MidgardLedgerOutputProofWitness,
 ): ConstructorData => {
   if (witness === null) return new Constr(0, []);
   switch (witness.kind) {
@@ -554,7 +550,7 @@ const ledgerOutputProofWitnessData = (
 };
 
 const redeemerControlData = (
-  control: MidgardCekRedeemerContextControlV1,
+  control: MidgardCekRedeemerContextControl,
 ): ConstructorData =>
   record([
     int(control.cursor),
@@ -566,7 +562,7 @@ const redeemerControlData = (
   ]);
 
 const finalContextControlData = (
-  control: MidgardCekFinalContextControlV1,
+  control: MidgardCekFinalContextControl,
 ): ConstructorData =>
   record([
     summaryData(control.txInfo),
@@ -575,7 +571,7 @@ const finalContextControlData = (
   ]);
 
 const contextPartsControlData = (
-  control: MidgardCekContextPartsControlV1,
+  control: MidgardCekContextPartsControl,
 ): ConstructorData =>
   record([
     sequenceSummaryData(control.redeemerItems),
@@ -584,7 +580,7 @@ const contextPartsControlData = (
   ]);
 
 const txInfoAssemblyControlData = (
-  control: MidgardCekTxInfoAssemblyControlV1,
+  control: MidgardCekTxInfoAssemblyControl,
 ): ConstructorData =>
   record([
     sequenceSummaryData(control.tailFields),
@@ -593,10 +589,10 @@ const txInfoAssemblyControlData = (
   ]);
 
 const redeemerItemControlData = (
-  control: MidgardRedeemerItemProofControlV1,
+  control: MidgardRedeemerItemProofControl,
 ): ConstructorData => {
   const blake2b256ControlData = (
-    hash: MidgardBlake2b256TraceControlV1,
+    hash: MidgardBlake2b256TraceControl,
   ): ConstructorData =>
     record([
       int(hash.version),
@@ -609,9 +605,7 @@ const redeemerItemControlData = (
       bytes(hash.workingValue),
       int(hash.round),
     ]);
-  const sourceBlobData = (
-    blob: MidgardCekSourceBlobControlV1,
-  ): ConstructorData =>
+  const sourceBlobData = (blob: MidgardCekSourceBlobControl): ConstructorData =>
     record([
       int(blob.version),
       int(blob.stage),
@@ -627,7 +621,7 @@ const redeemerItemControlData = (
       option(blob.activeHash, blake2b256ControlData),
     ]);
   const integerControlData = (
-    integer: MidgardCekDataIntegerControlV1,
+    integer: MidgardCekDataIntegerControl,
   ): ConstructorData =>
     record([
       int(integer.version),
@@ -638,7 +632,7 @@ const redeemerItemControlData = (
       option(integer.blob, sourceBlobData),
     ]);
   const bytesControlData = (
-    byteControl: MidgardCekDataBytesControlV1,
+    byteControl: MidgardCekDataBytesControl,
   ): ConstructorData =>
     record([
       int(byteControl.version),
@@ -649,7 +643,7 @@ const redeemerItemControlData = (
       option(byteControl.blob, sourceBlobData),
     ]);
   const traversalData = (
-    traversal: MidgardCekDataTraverseControlV1,
+    traversal: MidgardCekDataTraverseControl,
   ): ConstructorData =>
     record([
       int(traversal.version),
@@ -684,7 +678,7 @@ const redeemerItemControlData = (
 };
 
 const redeemerItemProofWitnessData = (
-  witness: MidgardRedeemerItemProofWitnessV1,
+  witness: MidgardRedeemerItemProofWitness,
 ): ConstructorData => {
   const action =
     witness.action.kind === "openHeader"
@@ -1001,7 +995,7 @@ const ledgerDeltaControlStatus = (
  * (`cek_context_step_semantic_v1`) and the core step
  * (`cek_core_step_semantic_v1`).
  */
-export type CekStepKindV1 = "finish" | "selection" | "context" | "core";
+export type CekStepKind = "finish" | "selection" | "context" | "core";
 
 /**
  * The cek work witness is the nine-field list
@@ -1030,9 +1024,7 @@ export type CekStepKindV1 = "finish" | "selection" | "context" | "core";
  * last native selection) itself, and `finish` is the stand-alone hand-off of
  * a trace with nothing left to select.
  */
-export const cekKindV1 = (
-  witness: ValidationMachineWorkWitness,
-): CekStepKindV1 => {
+export const cekKind = (witness: ValidationMachineWorkWitness): CekStepKind => {
   const control = asArray(decodeSingleCbor(witness.cbor), "cek_witness");
   if (control.length !== 9) {
     throw new Error("cek_witness has an invalid field count");
@@ -1069,7 +1061,7 @@ export const cekKindV1 = (
  * prepare validator (lib `verify_value_and_mint`), one per reachable
  * `(stage, auxiliary)` pair of the stage bodies.
  */
-export type ValueAndMintStepKindV1 =
+export type ValueAndMintStepKind =
   | "begin"
   | "replayBegin"
   | "replayInput"
@@ -1094,9 +1086,9 @@ export type ValueAndMintStepKindV1 =
  * auxiliary does not match the kind its control names is refused at the
  * submission encoder, exactly as the resolver would refuse it.
  */
-export const valueAndMintKindV1 = (
+export const valueAndMintKind = (
   witness: ValidationMachineWorkWitness,
-): ValueAndMintStepKindV1 => {
+): ValueAndMintStepKind => {
   const control = asArray(
     decodeSingleCbor(witness.cbor),
     "value_and_mint_control",
@@ -1128,7 +1120,7 @@ export const valueAndMintKindV1 = (
       const remainingScheduleEmpty = asBytes(
         control[7],
         "value_and_mint_control.replay_remaining_schedule_hash",
-      ).equals(emptyMidgardInputResolutionScheduleV1());
+      ).equals(emptyMidgardInputResolutionSchedule());
       if (remainingScheduleEmpty) {
         return "replayFinish";
       }
@@ -1215,7 +1207,7 @@ const nativePayloadChildCount = ({
   readonly stage: number;
 }): number => {
   const expectedChunkIndex = Math.floor(
-    cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+    cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   );
   if (witness.chunkProof.chunkIndex !== expectedChunkIndex) {
     throw new Error(
@@ -1226,8 +1218,7 @@ const nativePayloadChildCount = ({
     witness.chunkProof.chunk,
     witness.nextChunkProof?.chunk ?? Buffer.alloc(0),
   ]);
-  let offset =
-    cursor - expectedChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+  let offset = cursor - expectedChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
   if (stage === 6) {
     offset = readCborUnsigned(
       window,
@@ -1243,7 +1234,7 @@ const nativePayloadChildCount = ({
   return children.length;
 };
 
-export const validationSemanticResolverIndexV1 = (
+export const validationSemanticResolverIndex = (
   witness: ValidationMachineWorkWitness,
 ): number => {
   const auxiliary = witness.auxiliary;
@@ -1398,12 +1389,12 @@ export const validationSemanticResolverIndexV1 = (
           auxiliary.kind === "redeemerItemStep" &&
           auxiliary.redeemerControl === null
         ) {
-          const next = advanceMidgardRedeemerItemProofV1({
+          const next = advanceMidgardRedeemerItemProof({
             control: auxiliary.control,
             witness: auxiliary.witness,
           });
           const descriptor =
-            next === null ? null : midgardRedeemerItemDescriptorV1(next);
+            next === null ? null : midgardRedeemerItemDescriptor(next);
           if (descriptor === null) return 21;
           const purpose = scriptSourcesDiscoveryCurrentPurpose(witness);
           return descriptor.purposeTag === [0, 1, 3, 6][purpose.purposeKind] &&
@@ -1458,7 +1449,7 @@ export const validationSemanticResolverIndexV1 = (
     // Both kind switches below are exhaustive over their kind unions and
     // return on every arm, so neither needs (nor may carry) a trailing break.
     case "cek":
-      switch (cekKindV1(witness)) {
+      switch (cekKind(witness)) {
         case "core":
           return 3;
         case "context":
@@ -1470,7 +1461,7 @@ export const validationSemanticResolverIndexV1 = (
       }
     // eslint-disable-next-line no-fallthrough
     case "valueAndMint":
-      switch (valueAndMintKindV1(witness)) {
+      switch (valueAndMintKind(witness)) {
         case "begin":
           return 0;
         case "replayBegin":
@@ -1503,54 +1494,54 @@ export const validationSemanticResolverIndexV1 = (
   );
 };
 
-export type ValidationOneStepArgumentV1 = {
+export type ValidationOneStepArgument = {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
   readonly transitionCbor: Buffer;
   readonly auxiliaryCbor: Buffer;
   readonly evidenceCbor: Buffer;
-  readonly cekRouteMaterial?: CekRouteMaterialV1;
+  readonly cekRouteMaterial?: CekRouteMaterial;
 };
 
-export type CekRouteMaterialV1 = {
+export type CekRouteMaterial = {
   readonly envelopeCbor: Buffer;
   readonly programMaterialSidecarCbor: Buffer;
   readonly programEnvelopeHash: Buffer;
 };
 
-const CEK_ROUTE_MATERIAL_KEYS_V1 = Object.freeze([
+const CEK_ROUTE_MATERIAL_KEYS = Object.freeze([
   "envelopeCbor",
   "programMaterialSidecarCbor",
   "programEnvelopeHash",
 ] as const);
 
-const exactCekRouteMaterialObjectV1 = (
+const exactCekRouteMaterialObject = (
   value: unknown,
-): Record<(typeof CEK_ROUTE_MATERIAL_KEYS_V1)[number], unknown> => {
+): Record<(typeof CEK_ROUTE_MATERIAL_KEYS)[number], unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("CEK route material must be an object");
   }
   const actual = Object.keys(value).sort();
-  const expected = [...CEK_ROUTE_MATERIAL_KEYS_V1].sort();
+  const expected = [...CEK_ROUTE_MATERIAL_KEYS].sort();
   if (
     actual.length !== expected.length ||
     actual.some((key, index) => key !== expected[index])
   ) {
     throw new Error(
-      `CEK route material must contain exactly ${CEK_ROUTE_MATERIAL_KEYS_V1.join(", ")}`,
+      `CEK route material must contain exactly ${CEK_ROUTE_MATERIAL_KEYS.join(", ")}`,
     );
   }
-  return value as Record<(typeof CEK_ROUTE_MATERIAL_KEYS_V1)[number], unknown>;
+  return value as Record<(typeof CEK_ROUTE_MATERIAL_KEYS)[number], unknown>;
 };
 
-const exactBytesV1 = (value: unknown, label: string): Buffer => {
+const exactBytes = (value: unknown, label: string): Buffer => {
   if (!(value instanceof Uint8Array)) {
     throw new Error(`${label} must be bytes`);
   }
   return Buffer.from(value);
 };
 
-export const extractCekProgramEnvelopeFromFirstSourceChunkV1 = ({
+export const extractCekProgramEnvelopeFromFirstSourceChunk = ({
   chunk,
   languageTag,
 }: {
@@ -1589,7 +1580,7 @@ export const extractCekProgramEnvelopeFromFirstSourceChunkV1 = ({
  * must be canonical, and the sidecar must be exactly the complete graph for
  * that one envelope.
  */
-export const validateCekRouteMaterialV1 = ({
+export const validateCekRouteMaterial = ({
   value,
   firstSourceChunk,
   languageTag,
@@ -1597,13 +1588,13 @@ export const validateCekRouteMaterialV1 = ({
   readonly value: unknown;
   readonly firstSourceChunk: Uint8Array;
   readonly languageTag: 3 | 128;
-}): CekRouteMaterialV1 => {
-  const routeMaterial = exactCekRouteMaterialObjectV1(value);
-  const envelopeCbor = exactBytesV1(
+}): CekRouteMaterial => {
+  const routeMaterial = exactCekRouteMaterialObject(value);
+  const envelopeCbor = exactBytes(
     routeMaterial.envelopeCbor,
     "CEK route envelope CBOR",
   );
-  const selectedEnvelopeCbor = extractCekProgramEnvelopeFromFirstSourceChunkV1({
+  const selectedEnvelopeCbor = extractCekProgramEnvelopeFromFirstSourceChunk({
     chunk: firstSourceChunk,
     languageTag,
   });
@@ -1612,31 +1603,31 @@ export const validateCekRouteMaterialV1 = ({
       "CEK route envelope must equal the selected first-source-chunk payload",
     );
   }
-  const envelope = decodeMidgardCekProgramEnvelopeV1(envelopeCbor);
-  if (!encodeMidgardCekProgramEnvelopeV1(envelope).equals(envelopeCbor)) {
+  const envelope = decodeMidgardCekProgramEnvelope(envelopeCbor);
+  if (!encodeMidgardCekProgramEnvelope(envelope).equals(envelopeCbor)) {
     throw new Error("CEK route envelope CBOR is not canonical");
   }
-  const programMaterialSidecarCbor = exactBytesV1(
+  const programMaterialSidecarCbor = exactBytes(
     routeMaterial.programMaterialSidecarCbor,
     "CEK route program-material sidecar CBOR",
   );
-  const entries = decodeMidgardCekProgramMaterialSidecarV1(
+  const entries = decodeMidgardCekProgramMaterialSidecar(
     programMaterialSidecarCbor,
   );
   if (
-    !encodeMidgardCekProgramMaterialSidecarV1(entries).equals(
+    !encodeMidgardCekProgramMaterialSidecar(entries).equals(
       programMaterialSidecarCbor,
     )
   ) {
     throw new Error("CEK route program-material sidecar CBOR is not canonical");
   }
-  verifyMidgardCekProgramMaterialBundleV1([envelope], entries);
-  const programEnvelopeHash = exactBytesV1(
+  verifyMidgardCekProgramMaterialBundle([envelope], entries);
+  const programEnvelopeHash = exactBytes(
     routeMaterial.programEnvelopeHash,
     "CEK route program-envelope hash",
   );
   const canonicalEnvelopeHash = Buffer.from(
-    hashMidgardCekProgramEnvelopeV1(envelope),
+    hashMidgardCekProgramEnvelope(envelope),
   );
   if (
     programEnvelopeHash.length !== 32 ||
@@ -1651,13 +1642,13 @@ export const validateCekRouteMaterialV1 = ({
   });
 };
 
-const buildCekRouteMaterialV1 = ({
+const buildCekRouteMaterial = ({
   trace,
   witness,
 }: {
   readonly trace: DeterministicValidationMachineTrace;
   readonly witness: ValidationMachineWorkWitness;
-}): CekRouteMaterialV1 | undefined => {
+}): CekRouteMaterial | undefined => {
   if (
     witness.phase !== "cek" ||
     witness.auxiliary?.kind !== "nativeExecutionScan" ||
@@ -1665,24 +1656,24 @@ const buildCekRouteMaterialV1 = ({
   ) {
     return undefined;
   }
-  const envelopeCbor = extractCekProgramEnvelopeFromFirstSourceChunkV1({
+  const envelopeCbor = extractCekProgramEnvelopeFromFirstSourceChunk({
     chunk: witness.auxiliary.firstChunkProof.chunk,
     languageTag: witness.auxiliary.languageTag,
   });
-  const envelope = decodeMidgardCekProgramEnvelopeV1(envelopeCbor);
-  return validateCekRouteMaterialV1({
+  const envelope = decodeMidgardCekProgramEnvelope(envelopeCbor);
+  return validateCekRouteMaterial({
     value: {
       envelopeCbor,
       programMaterialSidecarCbor: trace.programMaterialSidecarCbor,
-      programEnvelopeHash: hashMidgardCekProgramEnvelopeV1(envelope),
+      programEnvelopeHash: hashMidgardCekProgramEnvelope(envelope),
     },
     firstSourceChunk: witness.auxiliary.firstChunkProof.chunk,
     languageTag: witness.auxiliary.languageTag,
   });
 };
 
-export const validationMachineStateDataV1 = (
-  state: MidgardValidationMachineStateV1,
+export const validationMachineStateData = (
+  state: MidgardValidationMachineState,
 ): ConstructorData =>
   record([
     int(state.machineVersion),
@@ -1724,18 +1715,18 @@ export const validationMachineStateDataV1 = (
     bytes(state.ledgerDeltaRoot),
   ]);
 
-export const validationOneStepWitnessDataV1 = ({
+export const validationOneStepWitnessData = ({
   witness,
   claimedSuccessor,
 }: {
   readonly witness: ValidationMachineWorkWitness;
-  readonly claimedSuccessor: MidgardValidationMachineStateV1;
+  readonly claimedSuccessor: MidgardValidationMachineState;
 }): ConstructorData =>
-  record([bytes(witness.cbor), validationMachineStateDataV1(claimedSuccessor)]);
+  record([bytes(witness.cbor), validationMachineStateData(claimedSuccessor)]);
 
-export const validationAuxiliaryWitnessDataV1 = (
+export const validationAuxiliaryWitnessData = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
-  resolveFieldCarriage: ValidationMachineFieldCarriageResolverV1 = inlineFieldCarriageResolverV1,
+  resolveFieldCarriage: ValidationMachineFieldCarriageResolver = inlineFieldCarriageResolver,
 ): PlutusData => {
   if (auxiliary === null) return new Constr(0, []);
   switch (auxiliary.kind) {
@@ -1836,7 +1827,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         chunkProofData(auxiliary.firstChunkProof),
       ]);
     case "cekCoreStep":
-      return new Constr(12, [midgardCekCoreStepDataV1(auxiliary.step)]);
+      return new Constr(12, [midgardCekCoreStepData(auxiliary.step)]);
     case "cekResolvedContextItem":
       return new Constr(13, [
         sourceKind(auxiliary.sourceKind),
@@ -2027,22 +2018,19 @@ export const validationAuxiliaryWitnessDataV1 = (
   }
 };
 
-export const encodeValidationOneStepWitnessCborV1 = (input: {
+export const encodeValidationOneStepWitnessCbor = (input: {
   readonly witness: ValidationMachineWorkWitness;
-  readonly claimedSuccessor: MidgardValidationMachineStateV1;
+  readonly claimedSuccessor: MidgardValidationMachineState;
 }): Buffer =>
-  Buffer.from(Data.to(validationOneStepWitnessDataV1(input) as never), "hex");
+  Buffer.from(Data.to(validationOneStepWitnessData(input) as never), "hex");
 
-export const encodeValidationAuxiliaryWitnessCborV1 = (
+export const encodeValidationAuxiliaryWitnessCbor = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
-  resolveFieldCarriage?: ValidationMachineFieldCarriageResolverV1,
+  resolveFieldCarriage?: ValidationMachineFieldCarriageResolver,
 ): Buffer =>
   Buffer.from(
     Data.to(
-      validationAuxiliaryWitnessDataV1(
-        auxiliary,
-        resolveFieldCarriage,
-      ) as never,
+      validationAuxiliaryWitnessData(auxiliary, resolveFieldCarriage) as never,
     ),
     "hex",
   );
@@ -2055,15 +2043,15 @@ export const encodeValidationAuxiliaryWitnessCborV1 = (
  * above the cap it is required, and its absence is a refusal rather than a
  * fabricated index.
  */
-export const buildValidationOneStepArgumentV1 = ({
+export const buildValidationOneStepArgument = ({
   trace,
   stateIndex,
   resolveFieldCarriage,
 }: {
   readonly trace: DeterministicValidationMachineTrace;
   readonly stateIndex: number;
-  readonly resolveFieldCarriage?: ValidationMachineFieldCarriageResolverV1;
-}): ValidationOneStepArgumentV1 => {
+  readonly resolveFieldCarriage?: ValidationMachineFieldCarriageResolver;
+}): ValidationOneStepArgument => {
   if (!Number.isSafeInteger(stateIndex) || stateIndex < 0) {
     throw new Error(
       "validation one-step state index must be a non-negative safe integer",
@@ -2090,11 +2078,11 @@ export const buildValidationOneStepArgumentV1 = ({
       "validation one-step witness is not aligned with its trace states",
     );
   }
-  const transitionData = validationOneStepWitnessDataV1({
+  const transitionData = validationOneStepWitnessData({
     witness,
     claimedSuccessor,
   });
-  const auxiliaryData = validationAuxiliaryWitnessDataV1(
+  const auxiliaryData = validationAuxiliaryWitnessData(
     witness.auxiliary,
     resolveFieldCarriage,
   );
@@ -2104,7 +2092,7 @@ export const buildValidationOneStepArgumentV1 = ({
     Data.to(record([transitionData, auxiliaryData]) as never),
     "hex",
   );
-  const maximum = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+  const maximum = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
   if (
     transitionCbor.length >= maximum ||
     auxiliaryCbor.length >= maximum ||
@@ -2114,10 +2102,10 @@ export const buildValidationOneStepArgumentV1 = ({
       `validation transition ${stateIndex.toString()} exceeds the strict L1 preimage envelope`,
     );
   }
-  const cekRouteMaterial = buildCekRouteMaterialV1({ trace, witness });
+  const cekRouteMaterial = buildCekRouteMaterial({ trace, witness });
   return {
     resolverIndex: resolverPhaseIndex(pre.phase),
-    semanticResolverIndex: validationSemanticResolverIndexV1(witness),
+    semanticResolverIndex: validationSemanticResolverIndex(witness),
     transitionCbor,
     auxiliaryCbor,
     evidenceCbor,

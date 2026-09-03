@@ -1,10 +1,10 @@
 import {
   decodeMidgardAddressBytes,
   decodeMidgardNativeScript,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
   encodeMidgardAddressText,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   isProtectedMidgardAddress,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
@@ -472,13 +472,13 @@ export const authoredOutput = ({
  * column. On-chain `ledger_outref_key`
  * (`onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak`) derives
  * the trie key through `encode_midgard_tx_input`, the same encoder — so this
- * must stay `encodeMidgardSpendInputItemV1` and never CML's minimal-index
+ * must stay `encodeMidgardSpendInputItem` and never CML's minimal-index
  * `TransactionInput` CBOR, which is 36 bytes for indices 0–23. See
  * `docs/spec/midgard-tx.md` §5.3.
  */
 export const outRefToCbor = (outRef: OutRef): Buffer => {
   const normalized = normalizeOutRef(outRef);
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: hexToBytes(normalized.txHash, { fieldName: "outRef.txHash" }),
     outputIndex: normalized.outputIndex,
   });
@@ -488,7 +488,7 @@ const decodeOutRefCbor = (
   outRefCbor: Uint8Array,
 ): { readonly outRef: OutRef; readonly cbor: Buffer } => {
   try {
-    const decoded = decodeMidgardSpendInputItemV1(outRefCbor);
+    const decoded = decodeMidgardSpendInputItem(outRefCbor);
     return {
       outRef: normalizeOutRef({
         txHash: Buffer.from(decoded.txId).toString("hex"),
@@ -497,7 +497,7 @@ const decodeOutRefCbor = (
       // Re-encode rather than copy the input: the §5.3 form has exactly one
       // spelling, so a decode that round-trips to different bytes is a bug in
       // the caller's bytes, not a shape this builder should carry forward.
-      cbor: encodeMidgardSpendInputItemV1(decoded),
+      cbor: encodeMidgardSpendInputItem(decoded),
     };
   } catch (cause) {
     throw new BuilderInvariantError(

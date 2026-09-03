@@ -1,4 +1,4 @@
-import { decodeMidgardLedgerOutputCommitmentV1 } from "@al-ft/midgard-core";
+import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
 import {
   MinAdaStep03DatumSchema,
   MinAdaStep03SpendRedeemerSchema,
@@ -8,7 +8,7 @@ import {
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
-import { outputMeetsMinAdaV1 } from "@al-ft/midgard-validation";
+import { outputMeetsMinAda } from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -17,18 +17,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
-  type MinAdaContractsV1,
+  type MinAdaContracts,
 } from "./contracts-v1.js";
 
 type State = NonNullable<Data.Static<typeof MinAdaStep03DatumSchema>["data"]>;
@@ -54,18 +54,18 @@ export const submitMinAdaUtxoStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MinAdaContractsV1;
+  readonly contracts: MinAdaContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly coinsPerUtxoByte: bigint;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -73,7 +73,7 @@ export const submitMinAdaUtxoStep03 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
     schema: Step03Datum,
@@ -84,7 +84,7 @@ export const submitMinAdaUtxoStep03 = async ({
     "MinAdaTxDescriptor" in state
       ? state.MinAdaTxDescriptor
       : (() => {
-          const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+          const descriptor = decodeMidgardLedgerOutputCommitment(
             Buffer.from(state.MinAdaUtxoDescriptor.descriptor_cbor, "hex"),
           );
           return {
@@ -94,14 +94,14 @@ export const submitMinAdaUtxoStep03 = async ({
         })();
   if (
     coinsPerUtxoByte <= 0n ||
-    outputMeetsMinAdaV1(coinsPerUtxoByte, facts.total_length, facts.lovelace)
+    outputMeetsMinAda(coinsPerUtxoByte, facts.total_length, facts.lovelace)
   ) {
     throw new Error(
       `${label}: authenticated descriptor does not violate min-Ada`,
     );
   }
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -142,7 +142,7 @@ export const submitMinAdaUtxoStep03 = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

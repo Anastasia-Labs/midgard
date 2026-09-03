@@ -1,6 +1,6 @@
-import type { MidgardCekProgramEnvelopeV1 } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { collectMidgardV1ReferencedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import type { MidgardCekProgramEnvelope } from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { collectMidgardReferencedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import {
   LedgerColumns,
   type PhaseAResult,
@@ -314,7 +314,7 @@ type AcceptedReferenceProgramCandidate = {
 export const collectAcceptedReferenceProgramEnvelopes = (
   accepted: readonly AcceptedReferenceProgramCandidate[],
   preState: ReadonlyMap<string, Buffer>,
-): ReadonlyMap<string, readonly MidgardCekProgramEnvelopeV1[]> => {
+): ReadonlyMap<string, readonly MidgardCekProgramEnvelope[]> => {
   const resolvedOutputs = new Map<string, Uint8Array>(preState);
   for (const candidate of accepted) {
     for (const produced of candidate.graph.produced) {
@@ -326,15 +326,12 @@ export const collectAcceptedReferenceProgramEnvelopes = (
   }
   return new Map(
     accepted.map((candidate) => {
-      const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
         candidate.submission.txCbor,
       );
       return [
         Buffer.from(candidate.ledgerTx.txId).toString("hex"),
-        collectMidgardV1ReferencedProgramEnvelopes(
-          canonicalTx,
-          resolvedOutputs,
-        ),
+        collectMidgardReferencedProgramEnvelopes(canonicalTx, resolvedOutputs),
       ] as const;
     }),
   );

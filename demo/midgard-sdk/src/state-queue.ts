@@ -39,17 +39,17 @@ import {
 } from "./correction-lock.js";
 import { getStateToken } from "./internals.js";
 import {
-  castStateQueueNodeV1ToData,
+  castStateQueueNodeToData,
   ConfirmedState,
-  confirmedStateNextHeaderProtocolVersionV1,
-  getHeaderV1FromStateQueueDatum,
-  hashBlockHeaderV1,
+  confirmedStateNextHeaderProtocolVersion,
+  getHeaderFromStateQueueDatum,
+  hashBlockHeader,
+  Header,
   HeaderHashSchema,
+  HeaderTransitionCommitments,
   HeaderTransitionCommitmentsError,
-  HeaderTransitionCommitmentsV1,
-  HeaderV1,
   NO_DA_ATTESTATION,
-  validateHeaderTransitionCommitmentsV1Program,
+  validateHeaderTransitionCommitmentsProgram,
 } from "./ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -232,29 +232,29 @@ export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
 export const StateQueueRedeemer =
   StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
 
-export const StateQueueYieldRedeemerV1Schema = Data.Enum([
+export const StateQueueYieldRedeemerSchema = Data.Enum([
   Data.Literal("YieldStateQueueV1"),
 ]);
-export type StateQueueYieldRedeemerV1 = Data.Static<
-  typeof StateQueueYieldRedeemerV1Schema
+export type StateQueueYieldRedeemer = Data.Static<
+  typeof StateQueueYieldRedeemerSchema
 >;
-export const StateQueueYieldRedeemerV1 =
-  StateQueueYieldRedeemerV1Schema as unknown as StateQueueYieldRedeemerV1;
+export const StateQueueYieldRedeemer =
+  StateQueueYieldRedeemerSchema as unknown as StateQueueYieldRedeemer;
 
 /** Encode Aiken's sole fieldless `YieldStateQueueV1` constructor. */
-export const encodeStateQueueYieldRedeemerV1 = (): string => Data.void();
+export const encodeStateQueueYieldRedeemer = (): string => Data.void();
 
-export type StateQueueYieldWitnessV1 = {
+export type StateQueueYieldWitness = {
   /** Authenticated deployment output carrying the arm-specific reference script. */
   readonly referenceInput: UTxO;
   /** The same rewarding script, used to derive its network reward address. */
   readonly script: Script;
 };
 
-const applyStateQueueZeroYieldV1 = (
+const applyStateQueueZeroYield = (
   lucid: LucidEvolution,
   tx: TxBuilder,
-  witness: StateQueueYieldWitnessV1,
+  witness: StateQueueYieldWitness,
 ): TxBuilder => {
   const network = lucid.config().network;
   if (network === undefined) {
@@ -263,7 +263,7 @@ const applyStateQueueZeroYieldV1 = (
     );
   }
   return tx.withdraw(scriptRewardAddress(network, witness.script), 0n, (() =>
-    encodeStateQueueYieldRedeemerV1()) satisfies BuildTxWithRedeemer);
+    encodeStateQueueYieldRedeemer()) satisfies BuildTxWithRedeemer);
 };
 
 export const StateQueueSpendRedeemerSchema = Data.Enum([
@@ -335,7 +335,7 @@ export type StateQueueFetchConfig = {
  */
 export type EmulatorStateQueueCommitBlockHeaderParams = {
   anchorUTxO: StateQueueUTxO;
-  newHeader: HeaderV1;
+  newHeader: Header;
   additionalInputs?: readonly UTxO[];
   validFrom?: bigint;
   validTo?: bigint;
@@ -356,7 +356,7 @@ export type EmulatorStateQueueCommitBlockHeaderParams = {
   };
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
-  readonly yieldWitness: StateQueueYieldWitnessV1;
+  readonly yieldWitness: StateQueueYieldWitness;
 };
 
 type AlreadySlashedRemoveParams = {
@@ -458,7 +458,7 @@ type EmulatorStateQueueRemoveLastFraudulentBlockHeaderCommonParams = {
   additionalRefInputs?: readonly UTxO[];
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
-  readonly yieldWitness: StateQueueYieldWitnessV1;
+  readonly yieldWitness: StateQueueYieldWitness;
   referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
   slashing: EmulatorStateQueueRemoveSlashingParams;
   stateQueueMintRedeemer?: BuildTxWithRedeemer;
@@ -483,7 +483,7 @@ type EmulatorStateQueueRemoveFraudulentBlocksLinkParams = {
   additionalRefInputs?: readonly UTxO[];
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
-  readonly yieldWitness: StateQueueYieldWitnessV1;
+  readonly yieldWitness: StateQueueYieldWitness;
   referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
   slashing: EmulatorStateQueueRemoveSlashingParams;
   stateQueueMintRedeemer?: BuildTxWithRedeemer;
@@ -894,7 +894,7 @@ type StateQueueRemovalTxAssemblyParams = {
   readonly stateQueueMintingScript: Script;
   readonly referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
   readonly slashing: EmulatorStateQueueRemoveSlashingParams;
-  readonly yieldWitness: StateQueueYieldWitnessV1;
+  readonly yieldWitness: StateQueueYieldWitness;
 };
 
 const buildStateQueueRemovalTx = (
@@ -997,7 +997,7 @@ const buildStateQueueRemovalTx = (
     params.slashing,
     params.referenceScripts,
   );
-  return applyStateQueueZeroYieldV1(lucid, withSlashing, params.yieldWitness);
+  return applyStateQueueZeroYield(lucid, withSlashing, params.yieldWitness);
 };
 
 const requireFraudProofCorrectionIdentity = (
@@ -1077,7 +1077,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
         }),
       );
     }
-    const newHeaderHash = yield* hashBlockHeaderV1(params.newHeader);
+    const newHeaderHash = yield* hashBlockHeader(params.newHeader);
     const newBlockAssetName =
       STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash;
     const newBlockAssets: Assets = {
@@ -1090,7 +1090,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
     const newBlockDatum: LinkedListNodeView = {
       key: { Key: { key: newHeaderHash } },
       next: "Empty",
-      data: castStateQueueNodeV1ToData({
+      data: castStateQueueNodeToData({
         header: params.newHeader,
         da_attestation: NO_DA_ATTESTATION,
       }) as LinkedListNodeView["data"],
@@ -1210,7 +1210,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       .attach.Script(params.stateQueueMintingScript)
       .attach.Script(params.activeOperatorSpendingScript);
 
-    tx = applyStateQueueZeroYieldV1(lucid, tx, params.yieldWitness);
+    tx = applyStateQueueZeroYield(lucid, tx, params.yieldWitness);
 
     if (params.validFrom !== undefined) {
       tx = tx.validFrom(Number(params.validFrom));
@@ -1510,7 +1510,7 @@ type StateQueueTimeoutRemovalCommonParams = {
   readonly validTo: bigint;
   readonly stateQueueSpendingScript: Script;
   readonly stateQueueMintingScript: Script;
-  readonly yieldWitness: StateQueueYieldWitnessV1;
+  readonly yieldWitness: StateQueueYieldWitness;
   readonly referenceScripts?: StateQueueTimeoutRemovalReferenceScriptUTxOs;
 };
 
@@ -1627,7 +1627,7 @@ const timeoutRemovalBaseTx = ({
     params.referenceScripts?.stateQueueMint === undefined
       ? tx.attach.Script(params.stateQueueMintingScript)
       : tx;
-  return applyStateQueueZeroYieldV1(lucid, withMintScript, params.yieldWitness);
+  return applyStateQueueZeroYield(lucid, withMintScript, params.yieldWitness);
 };
 
 /**
@@ -1824,21 +1824,21 @@ export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
  * Builds the canonical V1 state-queue header and linked-list update. It
  * accepts only StateQueueNodeV1 and commits the validation-trace root/count.
  */
-export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
+export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
   lucid: LucidEvolution,
   latestBlocksDatum: LinkedListNodeView,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
-  transitionCommitments: HeaderTransitionCommitmentsV1,
+  transitionCommitments: HeaderTransitionCommitments,
   endTime: POSIXTime,
   validationContext: Pick<
-    HeaderV1,
+    Header,
     "blockSlot" | "expectedNetworkId" | "minFeeA" | "minFeeB"
   >,
 ): Effect.Effect<
-  { nodeDatum: LinkedListNodeView; header: HeaderV1 },
+  { nodeDatum: LinkedListNodeView; header: Header },
   | DataCoercionError
   | HeaderTransitionCommitmentsError
   | LucidError
@@ -1854,7 +1854,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
         }),
     });
     const operatorVkey = paymentCredentialOf(walletAddress).hash;
-    const commitments = yield* validateHeaderTransitionCommitmentsV1Program({
+    const commitments = yield* validateHeaderTransitionCommitmentsProgram({
       ...transitionCommitments,
       withdrawalsRoot,
       transactionsRoot,
@@ -1865,7 +1865,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
       const nextProtocolVersion =
-        confirmedStateNextHeaderProtocolVersionV1(confirmedState);
+        confirmedStateNextHeaderProtocolVersion(confirmedState);
       if (nextProtocolVersion === null) {
         return yield* Effect.fail(
           new DataCoercionError({
@@ -1875,7 +1875,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
           }),
         );
       }
-      const newHeader: HeaderV1 = {
+      const newHeader: Header = {
         prevUtxosRoot: confirmedState.utxoRoot,
         utxosRoot: newUTxOsRoot,
         withdrawalsRoot,
@@ -1899,7 +1899,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
         operatorVkey,
         protocolVersion: nextProtocolVersion,
       };
-      const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
+      const newHeaderHash = yield* hashBlockHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
@@ -1909,10 +1909,9 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
       };
     }
 
-    const latestHeader =
-      yield* getHeaderV1FromStateQueueDatum(latestBlocksDatum);
-    const prevHeaderHash = yield* hashBlockHeaderV1(latestHeader);
-    const newHeader: HeaderV1 = {
+    const latestHeader = yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
+    const prevHeaderHash = yield* hashBlockHeader(latestHeader);
+    const newHeader: Header = {
       ...latestHeader,
       prevUtxosRoot: latestHeader.utxosRoot,
       utxosRoot: newUTxOsRoot,
@@ -1936,7 +1935,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
       prevHeaderHash,
       operatorVkey,
     };
-    const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
+    const newHeaderHash = yield* hashBlockHeader(newHeader);
     return {
       nodeDatum: {
         ...latestBlocksDatum,

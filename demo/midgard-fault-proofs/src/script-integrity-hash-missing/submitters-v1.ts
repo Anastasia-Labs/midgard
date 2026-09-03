@@ -10,30 +10,30 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import {
-  requireLinearFaultInitialDatumV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultInitialDatum,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ScriptIntegrityHashMissingContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ScriptIntegrityHashMissingContracts } from "./contracts-v1.js";
 import {
-  ScriptIntegritySpendRedeemersV1,
-  ScriptIntegrityStepDatumsV1,
+  ScriptIntegritySpendRedeemers,
+  ScriptIntegrityStepDatums,
 } from "./schemas-v1.js";
 
 const FAMILY = "script-integrity-hash-missing";
 
-export type ScriptIntegrityHashMissingContinueArgsV1 = {
+export type ScriptIntegrityHashMissingContinueArgs = {
   readonly lucid: LucidEvolution;
-  readonly contracts: ScriptIntegrityHashMissingContractsV1;
+  readonly contracts: ScriptIntegrityHashMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -45,12 +45,12 @@ export type ScriptIntegrityHashMissingContinueArgsV1 = {
   readonly referenceScriptUtxo: UTxO;
   /** Raw chunks and field certificates are reference inputs, never wallet inputs. */
   readonly authenticatedCarriageUtxos?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 };
 
 const requireCertifiedCarriage = (
-  contracts: ScriptIntegrityHashMissingContractsV1,
+  contracts: ScriptIntegrityHashMissingContracts,
   utxos: readonly UTxO[],
 ): void => {
   if (utxos.length === 0)
@@ -74,7 +74,7 @@ const requireCertifiedCarriage = (
 const submitContinue = async (
   physicalStep: 0 | 1 | 2 | 3 | 4 | 5,
   nextPhysicalStep: 0 | 1 | 2 | 3 | 4 | 5 | 6,
-  args: ScriptIntegrityHashMissingContinueArgsV1,
+  args: ScriptIntegrityHashMissingContinueArgs,
 ) => {
   const {
     lucid,
@@ -91,7 +91,7 @@ const submitContinue = async (
   } = args;
   if (physicalStep >= 3)
     requireCertifiedCarriage(contracts, authenticatedCarriageUtxos);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -100,17 +100,17 @@ const submitContinue = async (
     threadOutRef,
   });
   if (physicalStep === 0) {
-    requireLinearFaultInitialDatumV1({ threadUtxo, signer, family: FAMILY });
+    requireLinearFaultInitialDatum({ threadUtxo, signer, family: FAMILY });
   } else {
-    requireLinearFaultStepStateV1({
+    requireLinearFaultStepState({
       threadUtxo,
       signer,
-      schema: ScriptIntegrityStepDatumsV1[physicalStep] as never,
+      schema: ScriptIntegrityStepDatums[physicalStep] as never,
       family: FAMILY,
       stepIndex: physicalStep,
     });
   }
-  const reference = requireLinearFaultReferenceScriptV1({
+  const reference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[physicalStep].spendingScriptHash,
     family: FAMILY,
@@ -138,11 +138,11 @@ const submitContinue = async (
     };
     return Data.to(
       { Continue: [buildArgs(layout)] } as never,
-      ScriptIntegritySpendRedeemersV1[physicalStep] as never,
+      ScriptIntegritySpendRedeemers[physicalStep] as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -166,31 +166,31 @@ const submitContinue = async (
   };
 };
 
-export const submitScriptIntegrityHashMissingStep01V1 = (
-  args: ScriptIntegrityHashMissingContinueArgsV1,
+export const submitScriptIntegrityHashMissingStep01 = (
+  args: ScriptIntegrityHashMissingContinueArgs,
 ) => submitContinue(0, 1, args);
-export const submitScriptIntegrityHashMissingStep02V1 = (
-  args: ScriptIntegrityHashMissingContinueArgsV1,
+export const submitScriptIntegrityHashMissingStep02 = (
+  args: ScriptIntegrityHashMissingContinueArgs,
 ) => submitContinue(1, 2, args);
-export const submitScriptIntegrityHashMissingStep03V1 = (
-  args: ScriptIntegrityHashMissingContinueArgsV1 & {
+export const submitScriptIntegrityHashMissingStep03 = (
+  args: ScriptIntegrityHashMissingContinueArgs & {
     readonly staged?: boolean;
   },
 ) => submitContinue(2, args.staged === true ? 3 : 6, args);
 /** Self-loops while grammar remains pending; set `closes` to enter semantic scan. */
-export const submitScriptIntegrityHashMissingScriptGrammarV1 = (
-  args: ScriptIntegrityHashMissingContinueArgsV1 & { readonly closes: boolean },
+export const submitScriptIntegrityHashMissingScriptGrammar = (
+  args: ScriptIntegrityHashMissingContinueArgs & { readonly closes: boolean },
 ) => submitContinue(3, args.closes ? 4 : 3, args);
 /** Self-loops until all authenticated script items have been folded. */
-export const submitScriptIntegrityHashMissingScriptScanV1 = (
-  args: ScriptIntegrityHashMissingContinueArgsV1 & { readonly closes: boolean },
+export const submitScriptIntegrityHashMissingScriptScan = (
+  args: ScriptIntegrityHashMissingContinueArgs & { readonly closes: boolean },
 ) => submitContinue(4, args.closes ? 5 : 4, args);
 /** Self-loops while field 8 grammar certification remains pending. */
-export const submitScriptIntegrityHashMissingRedeemerGrammarV1 = (
-  args: ScriptIntegrityHashMissingContinueArgsV1 & { readonly closes: boolean },
+export const submitScriptIntegrityHashMissingRedeemerGrammar = (
+  args: ScriptIntegrityHashMissingContinueArgs & { readonly closes: boolean },
 ) => submitContinue(5, args.closes ? 6 : 5, args);
 
-export const submitScriptIntegrityHashMissingStep04V1 = async ({
+export const submitScriptIntegrityHashMissingStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -201,13 +201,13 @@ export const submitScriptIntegrityHashMissingStep04V1 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: Omit<
-  ScriptIntegrityHashMissingContinueArgsV1,
+  ScriptIntegrityHashMissingContinueArgs,
   "nextDatum" | "buildArgs" | "authenticatedCarriageUtxos"
 > & {
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }) => {
   const physicalStep = 6;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -215,14 +215,14 @@ export const submitScriptIntegrityHashMissingStep04V1 = async ({
     stepIndex: physicalStep,
     threadOutRef,
   });
-  requireLinearFaultStepStateV1({
+  requireLinearFaultStepState({
     threadUtxo,
     signer,
-    schema: ScriptIntegrityStepDatumsV1[physicalStep] as never,
+    schema: ScriptIntegrityStepDatums[physicalStep] as never,
     family: FAMILY,
     stepIndex: physicalStep,
   });
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex: physicalStep,
@@ -232,7 +232,7 @@ export const submitScriptIntegrityHashMissingStep04V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ScriptIntegritySpendRedeemersV1[physicalStep],
+    spendRedeemerSchema: ScriptIntegritySpendRedeemers[physicalStep],
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,
@@ -250,7 +250,7 @@ export const submitScriptIntegrityHashMissingStep04V1 = async ({
 };
 
 /** The generic cancel resolves the current one of all seven reachable addresses. */
-export const submitScriptIntegrityHashMissingCancelV1 = async ({
+export const submitScriptIntegrityHashMissingCancel = async ({
   lucid,
   contracts,
   categoryId,
@@ -261,12 +261,12 @@ export const submitScriptIntegrityHashMissingCancelV1 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: Omit<
-  ScriptIntegrityHashMissingContinueArgsV1,
+  ScriptIntegrityHashMissingContinueArgs,
   "nextDatum" | "buildArgs" | "authenticatedCarriageUtxos"
 > & {
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }) =>
-  await submitLinearFaultCancelV1({
+  await submitLinearFaultCancel({
     lucid,
     family: FAMILY,
     steps: contracts.steps,

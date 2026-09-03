@@ -4,11 +4,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyUnusedScriptWitnessScriptsV1,
-  UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1,
+  applyUnusedScriptWitnessScripts,
+  UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES,
 } from "../src/unused-script-witness/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -20,17 +20,17 @@ const publicationReserveBytes = 15_872;
 describe("unusedScriptWitness signed publication fit", () => {
   it("publishes all six fully applied validators within ordinary L1 limits", async () => {
     expect(
-      UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1.every((title) =>
+      UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES.every((title) =>
         blueprint.validators.some((validator) => validator.title === title),
       ),
     ).toBe(true);
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
     const addressData = await Effect.runPromise(
       addressDataFromBech32(
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = applyUnusedScriptWitnessScriptsV1({
+    const steps = applyUnusedScriptWitnessScripts({
       blueprint,
       network: "Preprod",
       computationThreadPolicyId: harness.contracts.computationThread.policyId,

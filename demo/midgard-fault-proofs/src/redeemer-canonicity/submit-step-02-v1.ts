@@ -1,9 +1,9 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -16,32 +16,32 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { RedeemerCanonicityContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { RedeemerCanonicityContracts } from "./contracts-v1.js";
 import {
-  REDEEMER_CANONICITY_FIELD_INDEX_V1,
-  type RedeemerCanonicityEvidenceV1,
+  REDEEMER_CANONICITY_FIELD_INDEX,
+  type RedeemerCanonicityEvidence,
 } from "./family-v1.js";
 import {
-  RedeemerCanonicityStep02DatumV1Schema,
-  RedeemerCanonicityStep02RedeemerV1Schema,
-  RedeemerCanonicityStep03DatumV1Schema,
+  RedeemerCanonicityStep02DatumSchema,
+  RedeemerCanonicityStep02RedeemerSchema,
+  RedeemerCanonicityStep03DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitRedeemerCanonicityStep02V1 = async ({
+export const submitRedeemerCanonicityStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -61,11 +61,11 @@ export const submitRedeemerCanonicityStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: RedeemerCanonicityContractsV1;
+  readonly contracts: RedeemerCanonicityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: RedeemerCanonicityEvidenceV1;
+  readonly evidence: RedeemerCanonicityEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly publishCarriage?: boolean;
@@ -73,13 +73,13 @@ export const submitRedeemerCanonicityStep02V1 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -87,14 +87,14 @@ export const submitRedeemerCanonicityStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     witness_set_hash: string;
     redeemer_index: bigint;
   }>({
     threadUtxo,
     signer,
-    schema: RedeemerCanonicityStep02DatumV1Schema as never,
+    schema: RedeemerCanonicityStep02DatumSchema as never,
     family: "redeemer-canonicity",
     stepIndex,
   });
@@ -102,14 +102,14 @@ export const submitRedeemerCanonicityStep02V1 = async ({
     throw new Error(
       "redeemer-canonicity: opening coordinate differs from thread",
     );
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
-  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(witnessSetCompactCbor, "hex"),
   );
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: REDEEMER_CANONICITY_FIELD_INDEX_V1,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: REDEEMER_CANONICITY_FIELD_INDEX,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
     itemCbors: items,
@@ -130,7 +130,7 @@ export const submitRedeemerCanonicityStep02V1 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -142,7 +142,7 @@ export const submitRedeemerCanonicityStep02V1 = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network: lucid.config().network!,
             signer,
@@ -164,13 +164,13 @@ export const submitRedeemerCanonicityStep02V1 = async ({
           })
         ).certificateUtxo
       : undefined);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "redeemer-canonicity",
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -192,7 +192,7 @@ export const submitRedeemerCanonicityStep02V1 = async ({
         canonical: evidence.canonical,
       },
     } as never,
-    RedeemerCanonicityStep03DatumV1Schema as never,
+    RedeemerCanonicityStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
@@ -218,10 +218,10 @@ export const submitRedeemerCanonicityStep02V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, opening },
         ],
       } as never,
-      RedeemerCanonicityStep02RedeemerV1Schema as never,
+      RedeemerCanonicityStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

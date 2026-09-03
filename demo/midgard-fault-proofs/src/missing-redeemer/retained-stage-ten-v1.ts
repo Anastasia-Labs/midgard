@@ -1,25 +1,25 @@
 import {
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
-  type MidgardValidationMachineStateV1,
-  type MidgardValidationMerkleFrontierV1,
-  verifyMidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationTraceProofV1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptPurposeLeaf,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+  type MidgardValidationMachineState,
+  type MidgardValidationMerkleFrontier,
+  verifyMidgardValidationMerkleMembership,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   Proof,
   ROOT_DOMAINS,
   validationTraceDescriptorCoreFromData,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -28,21 +28,19 @@ import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
-import { MissingRedeemerScriptSourcesControlV1Schema } from "./schemas-v1.js";
+import { MissingRedeemerScriptSourcesControlSchema } from "./schemas-v1.js";
 
 type EncodedEntry = Readonly<{ key: Uint8Array; value: Uint8Array }>;
-type Control = Data.Static<typeof MissingRedeemerScriptSourcesControlV1Schema>;
+type Control = Data.Static<typeof MissingRedeemerScriptSourcesControlSchema>;
 
-export type MissingRedeemerStageTenAuthenticationV1 = Readonly<{
+export type MissingRedeemerStageTenAuthentication = Readonly<{
   validationTracesRoot: string;
   validationTraceCount: bigint;
   traceMembership: Readonly<Record<string, unknown>>;
   machineState: ReturnType<
-    typeof decodeRetainedValidationWitnessV1
+    typeof decodeRetainedValidationWitness
   >["machine_state"];
-  traceProof: ReturnType<
-    typeof decodeRetainedValidationWitnessV1
-  >["trace_proof"];
+  traceProof: ReturnType<typeof decodeRetainedValidationWitness>["trace_proof"];
   control: Control;
   absolutePurposeIndex: bigint;
   purposeSiblings: readonly string[];
@@ -119,7 +117,7 @@ const decodeDiscovery = (value: unknown): Control["discovery"] => {
 };
 
 /** Converts the exact 31-field stage-10 work witness into its Aiken datum. */
-export const decodeMissingRedeemerStageTenControlV1 = (
+export const decodeMissingRedeemerStageTenControl = (
   witnessCbor: Uint8Array,
 ): Control => {
   const fields = array(decodeSingleCbor(witnessCbor), "stage-10 control");
@@ -208,16 +206,16 @@ export const decodeMissingRedeemerStageTenControlV1 = (
   const canonical = Data.from(
     Data.to(
       control as never,
-      MissingRedeemerScriptSourcesControlV1Schema as never,
+      MissingRedeemerScriptSourcesControlSchema as never,
     ),
-    MissingRedeemerScriptSourcesControlV1Schema as never,
+    MissingRedeemerScriptSourcesControlSchema as never,
   ) as Control;
   return canonical;
 };
 
 const machineState = (
-  state: ReturnType<typeof decodeRetainedValidationWitnessV1>["machine_state"],
-): MidgardValidationMachineStateV1 => {
+  state: ReturnType<typeof decodeRetainedValidationWitness>["machine_state"],
+): MidgardValidationMachineState => {
   if (state.phase !== "ScriptSources")
     throw new Error("missingRedeemer retained machine phase changed");
   const version = exactNumber(state.machine_version, "machine version");
@@ -249,7 +247,7 @@ const machineState = (
 const coreFrontier = (
   count: bigint,
   peaks: readonly { height: bigint; hash: string }[],
-): MidgardValidationMerkleFrontierV1 => ({
+): MidgardValidationMerkleFrontier => ({
   count: exactNumber(count, "frontier count"),
   peaks: peaks.map(({ height, hash }) => ({
     height: exactNumber(height, "frontier height"),
@@ -258,281 +256,276 @@ const coreFrontier = (
 });
 
 /** Strict callback-free reconstruction from public retained validation DA. */
-export const buildMissingRedeemerStageTenAuthenticationFromRetainedDaV1 =
-  async ({
-    eventKey,
-    transactionId,
-    purposeKind,
-    purposeIndex,
-    authenticatedValidationTraceEntries,
-    retainedValidationWitnessEntries,
-    expectedValidationTracesRoot,
-  }: {
-    eventKey: EventKey;
-    transactionId: string;
-    purposeKind: 0 | 1 | 2 | 3;
-    purposeIndex: number;
-    authenticatedValidationTraceEntries: readonly EncodedEntry[];
-    retainedValidationWitnessEntries: readonly EncodedEntry[];
-    expectedValidationTracesRoot: string;
-  }): Promise<MissingRedeemerStageTenAuthenticationV1> => {
-    const eventKeyCbor = Buffer.from(
-      Data.to(eventKey as never, EventKeySchema),
+export const buildMissingRedeemerStageTenAuthenticationFromRetainedDa = async ({
+  eventKey,
+  transactionId,
+  purposeKind,
+  purposeIndex,
+  authenticatedValidationTraceEntries,
+  retainedValidationWitnessEntries,
+  expectedValidationTracesRoot,
+}: {
+  eventKey: EventKey;
+  transactionId: string;
+  purposeKind: 0 | 1 | 2 | 3;
+  purposeIndex: number;
+  authenticatedValidationTraceEntries: readonly EncodedEntry[];
+  retainedValidationWitnessEntries: readonly EncodedEntry[];
+  expectedValidationTracesRoot: string;
+}): Promise<MissingRedeemerStageTenAuthentication> => {
+  const eventKeyCbor = Buffer.from(
+    Data.to(eventKey as never, EventKeySchema),
+    "hex",
+  );
+  const descriptorEntries = authenticatedValidationTraceEntries.map(
+    ({ key, value }) => ({
+      key: Buffer.from(key),
+      value: Buffer.from(value),
+    }),
+  );
+  const descriptorMatches = descriptorEntries.filter(({ key }) =>
+    key.equals(eventKeyCbor),
+  );
+  if (descriptorMatches.length !== 1)
+    throw new Error(
+      "missingRedeemer validation descriptor is absent or duplicated",
+    );
+  const descriptorData = Data.from(
+    descriptorMatches[0]!.value.toString("hex"),
+    ValidationTraceDescriptorSchema,
+  ) as unknown as import("@al-ft/midgard-sdk").ValidationTraceDescriptor;
+  const descriptor = validationTraceDescriptorCoreFromData(descriptorData);
+  const eventEntries = retainedValidationWitnessEntries.flatMap((entry) => {
+    const key = decodeRetainedValidationWitnessKey(entry.key);
+    const keyCbor = Buffer.from(
+      Data.to(key.event_key as never, EventKeySchema),
       "hex",
     );
-    const descriptorEntries = authenticatedValidationTraceEntries.map(
-      ({ key, value }) => ({
-        key: Buffer.from(key),
-        value: Buffer.from(value),
-      }),
-    );
-    const descriptorMatches = descriptorEntries.filter(({ key }) =>
-      key.equals(eventKeyCbor),
-    );
-    if (descriptorMatches.length !== 1)
-      throw new Error(
-        "missingRedeemer validation descriptor is absent or duplicated",
-      );
-    const descriptorData = Data.from(
-      descriptorMatches[0]!.value.toString("hex"),
-      ValidationTraceDescriptorV1Schema,
-    ) as unknown as import("@al-ft/midgard-sdk").ValidationTraceDescriptorV1;
-    const descriptor = validationTraceDescriptorCoreFromData(descriptorData);
-    const eventEntries = retainedValidationWitnessEntries.flatMap((entry) => {
-      const key = decodeRetainedValidationWitnessKeyV1(entry.key);
-      const keyCbor = Buffer.from(
-        Data.to(key.event_key as never, EventKeySchema),
-        "hex",
-      );
-      return keyCbor.equals(eventKeyCbor)
-        ? [{ key, retained: decodeRetainedValidationWitnessV1(entry.value) }]
-        : [];
-    });
-    const validated = eventEntries
-      .filter(
-        ({ retained }) =>
-          retained.phase === 8n &&
-          retained.machine_state.phase === "ScriptSources",
-      )
-      .map(({ key, retained }) => {
-        const state = machineState(retained.machine_state);
-        const proof = validationTraceProofCoreFromData(retained.trace_proof);
-        if (
-          retained.phase !== 8n ||
-          retained.program_counter !== retained.machine_state.program_counter ||
-          state.transactionId.toString("hex") !== transactionId ||
-          !state.eventKeyHash.equals(
-            hashMidgardValidationEventKeyV1(eventKeyCbor),
-          ) ||
-          !hashMidgardValidationMachineStateV1(state).equals(proof.stateHash) ||
-          !verifyMidgardValidationTraceProofV1({ descriptor, proof }) ||
-          !state.workRoot.equals(
-            hashMidgardValidationWorkWitnessV1({
-              phase: "scriptSources",
-              programCounter: state.programCounter,
-              witnessCbor: Buffer.from(retained.witness_cbor, "hex"),
-            }),
-          )
+    return keyCbor.equals(eventKeyCbor)
+      ? [{ key, retained: decodeRetainedValidationWitness(entry.value) }]
+      : [];
+  });
+  const validated = eventEntries
+    .filter(
+      ({ retained }) =>
+        retained.phase === 8n &&
+        retained.machine_state.phase === "ScriptSources",
+    )
+    .map(({ key, retained }) => {
+      const state = machineState(retained.machine_state);
+      const proof = validationTraceProofCoreFromData(retained.trace_proof);
+      if (
+        retained.phase !== 8n ||
+        retained.program_counter !== retained.machine_state.program_counter ||
+        state.transactionId.toString("hex") !== transactionId ||
+        !state.eventKeyHash.equals(
+          hashMidgardValidationEventKey(eventKeyCbor),
+        ) ||
+        !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
+        !verifyMidgardValidationTraceProof({ descriptor, proof }) ||
+        !state.workRoot.equals(
+          hashMidgardValidationWorkWitness({
+            phase: "scriptSources",
+            programCounter: state.programCounter,
+            witnessCbor: Buffer.from(retained.witness_cbor, "hex"),
+          }),
         )
-          throw new Error(
-            "missingRedeemer retained state/proof/work witness is invalid",
-          );
-        return { key, retained };
-      });
-    const terminals = validated.flatMap(({ retained }) => {
-      if (retained.auxiliary !== "NoAuxiliaryWitness") return [];
-      try {
-        const control = decodeMissingRedeemerStageTenControlV1(
-          Buffer.from(retained.witness_cbor, "hex"),
+      )
+        throw new Error(
+          "missingRedeemer retained state/proof/work witness is invalid",
         );
-        return control.discovery.current_purpose_kind === BigInt(purposeKind) &&
-          control.discovery.current_purpose_index === BigInt(purposeIndex)
-          ? [{ retained, control }]
-          : [];
-      } catch {
-        return [];
-      }
+      return { key, retained };
     });
-    if (terminals.length !== 1)
-      throw new Error(
-        "missingRedeemer exact terminal stage-10 state is absent or duplicated",
+  const terminals = validated.flatMap(({ retained }) => {
+    if (retained.auxiliary !== "NoAuxiliaryWitness") return [];
+    try {
+      const control = decodeMissingRedeemerStageTenControl(
+        Buffer.from(retained.witness_cbor, "hex"),
       );
-    const { retained, control } = terminals[0]!;
-    const acceptedEvent = "L2TransactionEventKey" in eventKey;
-    if (
-      retained.machine_state.source_kind !==
-        (acceptedEvent ? "Normal" : "Forced") ||
-      descriptor.verdict !== (acceptedEvent ? "accepted" : "rejected") ||
-      retained.machine_state.verdict !== "Pending"
-    )
-      throw new Error("missingRedeemer retained direction/verdict changed");
-    const discovery = control.discovery;
-    if (
-      discovery.matched_language_tag !== 3n &&
-      discovery.matched_language_tag !== 128n
-    )
-      throw new Error("missingRedeemer selected source is not Plutus");
-    const purposeCandidates = validated.flatMap(({ retained: item }) => {
-      const auxiliary = item.auxiliary;
-      if (
-        !(
-          typeof auxiliary === "object" &&
-          "ScriptPurposeScanWitness" in auxiliary
-        )
-      )
-        return [];
-      const purpose = auxiliary.ScriptPurposeScanWitness;
-      return purpose.purpose_kind === BigInt(purposeKind) &&
-        purpose.purpose_index === BigInt(purposeIndex) &&
-        purpose.script_hash === discovery.current_script_hash &&
-        purpose.subject === discovery.current_subject
-        ? [purpose]
+      return control.discovery.current_purpose_kind === BigInt(purposeKind) &&
+        control.discovery.current_purpose_index === BigInt(purposeIndex)
+        ? [{ retained, control }]
         : [];
-    });
-    const purposeUnique = new Map(
-      purposeCandidates.map((value) => [
-        [
-          value.purpose_kind.toString(),
-          value.purpose_index.toString(),
-          value.script_hash,
-          value.subject,
-          value.siblings.join(":"),
-        ].join("/"),
-        value,
-      ]),
+    } catch {
+      return [];
+    }
+  });
+  if (terminals.length !== 1)
+    throw new Error(
+      "missingRedeemer exact terminal stage-10 state is absent or duplicated",
     );
-    if (purposeUnique.size !== 1)
-      throw new Error(
-        "missingRedeemer purpose membership witness is absent or ambiguous",
-      );
-    const purpose = [...purposeUnique.values()][0]!;
-    const purposeLeaf = hashMidgardScriptPurposeLeafV1({
-      purposeKind,
-      purposeIndex: BigInt(purposeIndex),
-      scriptHash: Buffer.from(purpose.script_hash, "hex"),
-      subject: Buffer.from(purpose.subject, "hex"),
-    });
+  const { retained, control } = terminals[0]!;
+  const acceptedEvent = "L2TransactionEventKey" in eventKey;
+  if (
+    retained.machine_state.source_kind !==
+      (acceptedEvent ? "Normal" : "Forced") ||
+    descriptor.verdict !== (acceptedEvent ? "accepted" : "rejected") ||
+    retained.machine_state.verdict !== "Pending"
+  )
+    throw new Error("missingRedeemer retained direction/verdict changed");
+  const discovery = control.discovery;
+  if (
+    discovery.matched_language_tag !== 3n &&
+    discovery.matched_language_tag !== 128n
+  )
+    throw new Error("missingRedeemer selected source is not Plutus");
+  const purposeCandidates = validated.flatMap(({ retained: item }) => {
+    const auxiliary = item.auxiliary;
     if (
-      !verifyMidgardValidationMerkleMembershipV1({
-        frontier: coreFrontier(control.purpose_count, control.purpose_peaks),
-        leafIndex: exactNumber(
-          discovery.purpose_cursor,
-          "absolute purpose index",
-        ),
-        leafHash: purposeLeaf,
-        siblings: purpose.siblings.map((value) => Buffer.from(value, "hex")),
-      })
-    )
-      throw new Error("missingRedeemer purpose membership is invalid");
-    const sourceCandidates = validated.flatMap(({ retained: item }) => {
-      const auxiliary = item.auxiliary;
-      if (
-        !(
-          typeof auxiliary === "object" &&
-          "ScriptSourceScanWitness" in auxiliary
-        )
+      !(
+        typeof auxiliary === "object" && "ScriptPurposeScanWitness" in auxiliary
       )
-        return [];
-      const source = auxiliary.ScriptSourceScanWitness;
-      return source.source_index === discovery.matched_source_index &&
-        source.script_language_tag === discovery.matched_language_tag &&
-        source.script_hash === discovery.current_script_hash
-        ? [source]
-        : [];
-    });
-    const sourceUnique = new Map(
-      sourceCandidates.map((value) => [
-        [
-          value.source_index.toString(),
-          value.origin_kind.toString(),
-          value.source_key,
-          value.script_language_tag.toString(),
-          value.script_hash,
-          value.script_total_length.toString(),
-          value.script_item_commitment,
-          value.siblings.join(":"),
-        ].join("/"),
-        value,
-      ]),
-    );
-    if (sourceUnique.size !== 1)
-      throw new Error(
-        "missingRedeemer source membership witness is absent or ambiguous",
-      );
-    const source = [...sourceUnique.values()][0]!;
-    if (source.origin_kind !== 0n && source.origin_kind !== 1n)
-      throw new Error("missingRedeemer source origin changed");
-    if (
-      source.origin_kind === 0n &&
-      source.source_key !== encodeCbor(source.source_index).toString("hex")
     )
-      throw new Error("missingRedeemer inline source key/index changed");
-    const sourceLeaf =
-      source.origin_kind === 0n
-        ? hashMidgardInlineScriptSourceLeafV1({
-            sourceIndex: source.source_index,
-            scriptLanguageTag: Number(source.script_language_tag) as 3 | 128,
-            scriptHash: Buffer.from(source.script_hash, "hex"),
-            scriptTotalLength: exactNumber(
-              source.script_total_length,
-              "source length",
-            ),
-            itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
-          })
-        : hashMidgardReferenceScriptSourceLeafV1({
-            sourceKey: Buffer.from(source.source_key, "hex"),
-            scriptLanguageTag: Number(source.script_language_tag) as 3 | 128,
-            scriptHash: Buffer.from(source.script_hash, "hex"),
-            scriptTotalLength: exactNumber(
-              source.script_total_length,
-              "source length",
-            ),
-            itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
-          });
+      return [];
+    const purpose = auxiliary.ScriptPurposeScanWitness;
+    return purpose.purpose_kind === BigInt(purposeKind) &&
+      purpose.purpose_index === BigInt(purposeIndex) &&
+      purpose.script_hash === discovery.current_script_hash &&
+      purpose.subject === discovery.current_subject
+      ? [purpose]
+      : [];
+  });
+  const purposeUnique = new Map(
+    purposeCandidates.map((value) => [
+      [
+        value.purpose_kind.toString(),
+        value.purpose_index.toString(),
+        value.script_hash,
+        value.subject,
+        value.siblings.join(":"),
+      ].join("/"),
+      value,
+    ]),
+  );
+  if (purposeUnique.size !== 1)
+    throw new Error(
+      "missingRedeemer purpose membership witness is absent or ambiguous",
+    );
+  const purpose = [...purposeUnique.values()][0]!;
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
+    purposeKind,
+    purposeIndex: BigInt(purposeIndex),
+    scriptHash: Buffer.from(purpose.script_hash, "hex"),
+    subject: Buffer.from(purpose.subject, "hex"),
+  });
+  if (
+    !verifyMidgardValidationMerkleMembership({
+      frontier: coreFrontier(control.purpose_count, control.purpose_peaks),
+      leafIndex: exactNumber(
+        discovery.purpose_cursor,
+        "absolute purpose index",
+      ),
+      leafHash: purposeLeaf,
+      siblings: purpose.siblings.map((value) => Buffer.from(value, "hex")),
+    })
+  )
+    throw new Error("missingRedeemer purpose membership is invalid");
+  const sourceCandidates = validated.flatMap(({ retained: item }) => {
+    const auxiliary = item.auxiliary;
     if (
-      sourceLeaf.toString("hex") !== discovery.matched_source_leaf ||
-      !verifyMidgardValidationMerkleMembershipV1({
-        frontier: coreFrontier(control.source_count, control.source_peaks),
-        leafIndex: exactNumber(source.source_index, "source index"),
-        leafHash: sourceLeaf,
-        siblings: source.siblings.map((value) => Buffer.from(value, "hex")),
-      })
+      !(typeof auxiliary === "object" && "ScriptSourceScanWitness" in auxiliary)
     )
-      throw new Error("missingRedeemer source membership is invalid");
-    const root = await buildCountedRoot(
-      ROOT_DOMAINS.validationTraces,
-      descriptorEntries,
+      return [];
+    const source = auxiliary.ScriptSourceScanWitness;
+    return source.source_index === discovery.matched_source_index &&
+      source.script_language_tag === discovery.matched_language_tag &&
+      source.script_hash === discovery.current_script_hash
+      ? [source]
+      : [];
+  });
+  const sourceUnique = new Map(
+    sourceCandidates.map((value) => [
+      [
+        value.source_index.toString(),
+        value.origin_kind.toString(),
+        value.source_key,
+        value.script_language_tag.toString(),
+        value.script_hash,
+        value.script_total_length.toString(),
+        value.script_item_commitment,
+        value.siblings.join(":"),
+      ].join("/"),
+      value,
+    ]),
+  );
+  if (sourceUnique.size !== 1)
+    throw new Error(
+      "missingRedeemer source membership witness is absent or ambiguous",
     );
-    if (root.root !== expectedValidationTracesRoot)
-      throw new Error("missingRedeemer retained validation root changed");
-    const membership = await keyValuePhasProof(
-      { root: root.phasRoot, count: root.count, entries: root.entries },
-      eventKeyCbor,
-      descriptorMatches[0]!.value,
-    );
-    return Object.freeze({
-      validationTracesRoot: root.root,
-      validationTraceCount: root.count,
-      traceMembership: {
-        domain: root.domain,
-        root: root.root,
-        phas_root: root.phasRoot,
-        count: root.count,
-        key: eventKey,
-        value: descriptorData,
-        proof: Data.from(Data.to(membership, Proof), Proof),
-      },
-      machineState: retained.machine_state,
-      traceProof: retained.trace_proof,
-      control,
-      absolutePurposeIndex: discovery.purpose_cursor,
-      purposeSiblings: purpose.siblings,
-      sourceOriginKind: source.origin_kind,
-      sourceKey: source.source_key,
-      sourceLanguageTag: discovery.matched_language_tag,
-      sourceScriptHash: source.script_hash,
-      sourceTotalLength: source.script_total_length,
-      sourceItemCommitment: source.script_item_commitment,
-      sourceSiblings: source.siblings,
-    });
-  };
+  const source = [...sourceUnique.values()][0]!;
+  if (source.origin_kind !== 0n && source.origin_kind !== 1n)
+    throw new Error("missingRedeemer source origin changed");
+  if (
+    source.origin_kind === 0n &&
+    source.source_key !== encodeCbor(source.source_index).toString("hex")
+  )
+    throw new Error("missingRedeemer inline source key/index changed");
+  const sourceLeaf =
+    source.origin_kind === 0n
+      ? hashMidgardInlineScriptSourceLeaf({
+          sourceIndex: source.source_index,
+          scriptLanguageTag: Number(source.script_language_tag) as 3 | 128,
+          scriptHash: Buffer.from(source.script_hash, "hex"),
+          scriptTotalLength: exactNumber(
+            source.script_total_length,
+            "source length",
+          ),
+          itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
+        })
+      : hashMidgardReferenceScriptSourceLeaf({
+          sourceKey: Buffer.from(source.source_key, "hex"),
+          scriptLanguageTag: Number(source.script_language_tag) as 3 | 128,
+          scriptHash: Buffer.from(source.script_hash, "hex"),
+          scriptTotalLength: exactNumber(
+            source.script_total_length,
+            "source length",
+          ),
+          itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
+        });
+  if (
+    sourceLeaf.toString("hex") !== discovery.matched_source_leaf ||
+    !verifyMidgardValidationMerkleMembership({
+      frontier: coreFrontier(control.source_count, control.source_peaks),
+      leafIndex: exactNumber(source.source_index, "source index"),
+      leafHash: sourceLeaf,
+      siblings: source.siblings.map((value) => Buffer.from(value, "hex")),
+    })
+  )
+    throw new Error("missingRedeemer source membership is invalid");
+  const root = await buildCountedRoot(
+    ROOT_DOMAINS.validationTraces,
+    descriptorEntries,
+  );
+  if (root.root !== expectedValidationTracesRoot)
+    throw new Error("missingRedeemer retained validation root changed");
+  const membership = await keyValuePhasProof(
+    { root: root.phasRoot, count: root.count, entries: root.entries },
+    eventKeyCbor,
+    descriptorMatches[0]!.value,
+  );
+  return Object.freeze({
+    validationTracesRoot: root.root,
+    validationTraceCount: root.count,
+    traceMembership: {
+      domain: root.domain,
+      root: root.root,
+      phas_root: root.phasRoot,
+      count: root.count,
+      key: eventKey,
+      value: descriptorData,
+      proof: Data.from(Data.to(membership, Proof), Proof),
+    },
+    machineState: retained.machine_state,
+    traceProof: retained.trace_proof,
+    control,
+    absolutePurposeIndex: discovery.purpose_cursor,
+    purposeSiblings: purpose.siblings,
+    sourceOriginKind: source.origin_kind,
+    sourceKey: source.source_key,
+    sourceLanguageTag: discovery.matched_language_tag,
+    sourceScriptHash: source.script_hash,
+    sourceTotalLength: source.script_total_length,
+    sourceItemCommitment: source.script_item_commitment,
+    sourceSiblings: source.siblings,
+  });
+};

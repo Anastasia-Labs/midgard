@@ -1,13 +1,13 @@
 import { computeHash32 } from "./codec/hash.js";
 import {
-  MIDGARD_CONSENSUS_FEATURES_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  MIDGARD_CONSENSUS_FEATURES,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "./consensus-profile-v1.js";
 
-export const MIDGARD_CAPABILITY_PARITY_REPORT_V1_VERSION = 1 as const;
+export const MIDGARD_CAPABILITY_PARITY_REPORT_VERSION = 1 as const;
 
-export const MIDGARD_CAPABILITY_DIMENSIONS_V1 = Object.freeze([
+export const MIDGARD_CAPABILITY_DIMENSIONS = Object.freeze([
   "total_transaction_bytes",
   "spend_inputs_field_bytes",
   "reference_inputs_field_bytes",
@@ -48,10 +48,10 @@ export const MIDGARD_CAPABILITY_DIMENSIONS_V1 = Object.freeze([
   "feature_invalid_forced_transactions",
 ] as const);
 
-export type MidgardCapabilityDimensionV1 =
-  (typeof MIDGARD_CAPABILITY_DIMENSIONS_V1)[number];
+export type MidgardCapabilityDimension =
+  (typeof MIDGARD_CAPABILITY_DIMENSIONS)[number];
 
-export type CardanoCapabilitySnapshotV1 = Readonly<{
+export type CardanoCapabilitySnapshot = Readonly<{
   version: 1;
   network: string;
   effectiveEpoch: number;
@@ -76,7 +76,7 @@ export type CardanoCapabilitySnapshotV1 = Readonly<{
   }>;
 }>;
 
-export type MidgardCapabilityBoundaryEvidenceV1 = Readonly<{
+export type MidgardCapabilityBoundaryEvidence = Readonly<{
   cardanoBoundaryFixtureDigest: string;
   midgardAdjacentBoundaryDigest: string;
   normalProofPathDigest: string;
@@ -85,26 +85,24 @@ export type MidgardCapabilityBoundaryEvidenceV1 = Readonly<{
   concreteMeasurementsDigest: string;
 }>;
 
-export type MidgardCapabilityBoundaryEvidenceSetV1 = Readonly<
-  Partial<
-    Record<MidgardCapabilityDimensionV1, MidgardCapabilityBoundaryEvidenceV1>
-  >
+export type MidgardCapabilityBoundaryEvidenceSet = Readonly<
+  Partial<Record<MidgardCapabilityDimension, MidgardCapabilityBoundaryEvidence>>
 >;
 
-export type MidgardCapabilityParityRowV1 = Readonly<{
-  dimension: MidgardCapabilityDimensionV1;
+export type MidgardCapabilityParityRow = Readonly<{
+  dimension: MidgardCapabilityDimension;
   comparison: "greater_than_or_equal";
   cardanoRequired: string | null;
   midgardSupported: string;
   status: "pass" | "fail" | "unknown";
 }>;
 
-export type MidgardCapabilityParityReportV1 = Readonly<{
+export type MidgardCapabilityParityReport = Readonly<{
   version: 1;
   profileDigest: string;
-  cardanoSnapshot: CardanoCapabilitySnapshotV1;
-  rows: readonly MidgardCapabilityParityRowV1[];
-  boundaryEvidence: MidgardCapabilityBoundaryEvidenceSetV1;
+  cardanoSnapshot: CardanoCapabilitySnapshot;
+  rows: readonly MidgardCapabilityParityRow[];
+  boundaryEvidence: MidgardCapabilityBoundaryEvidenceSet;
   blockers: readonly string[];
   reportDigest: string | null;
 }>;
@@ -159,13 +157,13 @@ const stableJson = (value: unknown): string =>
   JSON.stringify(stableJsonValue(value));
 
 const dimensionFeature = (
-  dimension: MidgardCapabilityDimensionV1,
+  dimension: MidgardCapabilityDimension,
 ): string | null =>
   dimension.startsWith("feature_") ? dimension.slice("feature_".length) : null;
 
 const cardanoRequiredForDimension = (
-  dimension: MidgardCapabilityDimensionV1,
-  snapshot: CardanoCapabilitySnapshotV1,
+  dimension: MidgardCapabilityDimension,
+  snapshot: CardanoCapabilitySnapshot,
 ): bigint | null => {
   const parameters = snapshot.parameters;
   // Feature dimensions intentionally share the default feature fallback.
@@ -224,9 +222,9 @@ const cardanoRequiredForDimension = (
 };
 
 const midgardSupportedForDimension = (
-  dimension: MidgardCapabilityDimensionV1,
+  dimension: MidgardCapabilityDimension,
 ): bigint => {
-  const limits = MIDGARD_CONSENSUS_LIMITS_V1;
+  const limits = MIDGARD_CONSENSUS_LIMITS;
   // Feature dimensions intentionally share the default support value.
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (dimension) {
@@ -283,8 +281,8 @@ const midgardSupportedForDimension = (
     default: {
       const feature = dimensionFeature(dimension);
       return feature !== null &&
-        MIDGARD_CONSENSUS_FEATURES_V1.includes(
-          feature as (typeof MIDGARD_CONSENSUS_FEATURES_V1)[number],
+        MIDGARD_CONSENSUS_FEATURES.includes(
+          feature as (typeof MIDGARD_CONSENSUS_FEATURES)[number],
         )
         ? 1n
         : 0n;
@@ -293,7 +291,7 @@ const midgardSupportedForDimension = (
 };
 
 const boundaryEvidenceIsComplete = (
-  evidence: MidgardCapabilityBoundaryEvidenceV1 | undefined,
+  evidence: MidgardCapabilityBoundaryEvidence | undefined,
 ): boolean =>
   evidence !== undefined &&
   Object.values(evidence).length === 6 &&
@@ -301,7 +299,7 @@ const boundaryEvidenceIsComplete = (
     (digest) => typeof digest === "string" && HASH_32_PATTERN.test(digest),
   );
 
-const snapshotBlockers = (snapshot: CardanoCapabilitySnapshotV1): string[] => {
+const snapshotBlockers = (snapshot: CardanoCapabilitySnapshot): string[] => {
   const blockers: string[] = [];
   if (snapshot.version !== 1) blockers.push("unsupported_snapshot_version");
   if (snapshot.source.kind !== "trusted_cardano_node") {
@@ -343,11 +341,11 @@ const snapshotBlockers = (snapshot: CardanoCapabilitySnapshotV1): string[] => {
   return blockers;
 };
 
-export const buildMidgardCapabilityParityReportV1 = (
-  cardanoSnapshot: CardanoCapabilitySnapshotV1,
-  boundaryEvidence: MidgardCapabilityBoundaryEvidenceSetV1,
-): MidgardCapabilityParityReportV1 => {
-  const rows = MIDGARD_CAPABILITY_DIMENSIONS_V1.map((dimension) => {
+export const buildMidgardCapabilityParityReport = (
+  cardanoSnapshot: CardanoCapabilitySnapshot,
+  boundaryEvidence: MidgardCapabilityBoundaryEvidenceSet,
+): MidgardCapabilityParityReport => {
+  const rows = MIDGARD_CAPABILITY_DIMENSIONS.map((dimension) => {
     const cardanoRequired = cardanoRequiredForDimension(
       dimension,
       cardanoSnapshot,
@@ -376,8 +374,8 @@ export const buildMidgardCapabilityParityReportV1 = (
     }
   }
   const unsignedReport = Object.freeze({
-    version: MIDGARD_CAPABILITY_PARITY_REPORT_V1_VERSION,
-    profileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    version: MIDGARD_CAPABILITY_PARITY_REPORT_VERSION,
+    profileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     cardanoSnapshot,
     rows: Object.freeze(rows),
     boundaryEvidence,
@@ -395,10 +393,10 @@ export const buildMidgardCapabilityParityReportV1 = (
   });
 };
 
-export const assertMidgardCapabilityParityReportV1Complete = (
-  report: MidgardCapabilityParityReportV1,
+export const assertMidgardCapabilityParityReportComplete = (
+  report: MidgardCapabilityParityReport,
 ): void => {
-  const rebuilt = buildMidgardCapabilityParityReportV1(
+  const rebuilt = buildMidgardCapabilityParityReport(
     report.cardanoSnapshot,
     report.boundaryEvidence,
   );

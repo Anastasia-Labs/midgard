@@ -1,8 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { computeDeploymentManifestV1Id } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@al-ft/midgard-core/consensus-profile-v1", async (importOriginal) => {
@@ -12,7 +12,7 @@ vi.mock("@al-ft/midgard-core/consensus-profile-v1", async (importOriginal) => {
     >();
   return {
     ...original,
-    assertMidgardConsensusV1ReleaseReady: (): void => undefined,
+    assertMidgardConsensusReleaseReady: (): void => undefined,
   };
 });
 
@@ -66,7 +66,7 @@ describe("loadWatcherConfig", () => {
     await expect(
       loadWatcherConfig(libp2pConfigEnv(dir, manifestPath, deploymentInfoPath)),
     ).resolves.toMatchObject({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
 
     await writeFile(
@@ -1270,7 +1270,7 @@ const withRecomputedDeploymentManifestId = (
   const { manifestId: _manifestId, ...identityInput } = manifest;
   return {
     ...identityInput,
-    manifestId: computeDeploymentManifestV1Id(identityInput),
+    manifestId: computeDeploymentManifestId(identityInput),
   };
 };
 

@@ -5,10 +5,10 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import { ValidationSourceMembershipV1Schema } from "../src/index.js";
+import { ValidationSourceMembershipSchema } from "../src/index.js";
 
-type ValidationSourceMembershipV1 = Data.Static<
-  typeof ValidationSourceMembershipV1Schema
+type ValidationSourceMembership = Data.Static<
+  typeof ValidationSourceMembershipSchema
 >;
 
 const h32 = (byte: number): string =>
@@ -16,7 +16,7 @@ const h32 = (byte: number): string =>
 const digest = (hex: string): string =>
   Buffer.from(blake2b(Buffer.from(hex, "hex"), { dkLen: 32 })).toString("hex");
 
-const forced: ValidationSourceMembershipV1 = {
+const forced: ValidationSourceMembership = {
   ForcedValidationSource: {
     membership: {
       domain: "ForcedTransactionsV1RootDomain",
@@ -45,7 +45,7 @@ const forced: ValidationSourceMembershipV1 = {
   },
 };
 
-const normal: ValidationSourceMembershipV1 = {
+const normal: ValidationSourceMembership = {
   NormalValidationSource: {
     membership: {
       domain: "TransactionsV1RootDomain",
@@ -75,14 +75,14 @@ const EXPECTED = {
     "b5b9145726bab81ec5920f168df2c176d56b45e64cc00b6cae07dbbcf0f94f3d",
 } as const;
 
-const encodeExact = (value: ValidationSourceMembershipV1): string =>
-  Data.to(value as never, ValidationSourceMembershipV1Schema as never);
+const encodeExact = (value: ValidationSourceMembership): string =>
+  Data.to(value as never, ValidationSourceMembershipSchema as never);
 
-const decodeExact = (cborHex: string): ValidationSourceMembershipV1 => {
+const decodeExact = (cborHex: string): ValidationSourceMembership => {
   const decoded = Data.from(
     cborHex,
-    ValidationSourceMembershipV1Schema as never,
-  ) as unknown as ValidationSourceMembershipV1;
+    ValidationSourceMembershipSchema as never,
+  ) as unknown as ValidationSourceMembership;
   if (encodeExact(decoded) !== cborHex) {
     throw new Error("ValidationSourceMembershipV1 CBOR is not canonical");
   }

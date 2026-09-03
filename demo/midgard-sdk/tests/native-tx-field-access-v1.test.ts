@@ -1,20 +1,20 @@
 import { readFileSync } from "node:fs";
 
-import { MIDGARD_MAX_TIER3_CHUNK_COUNT_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { MIDGARD_MAX_TIER3_CHUNK_COUNT } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { EMPTY_SPEND_INPUTS_HASH } from "../src/fraud-proof/zero-input.js";
 import {
-  EMPTY_FIELD_COMMITMENT_HEX_V1,
-  FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
-  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
-  FIELD_VIEW_V1_CONSTRUCTOR_INDEXES,
-  FieldCarriageV1,
-  FieldPreimageCertificateMintRedeemerV1,
-  FieldPreimageCertificateV1,
-  FieldViewV1,
+  EMPTY_FIELD_COMMITMENT_HEX,
+  FIELD_CARRIAGE_CONSTRUCTOR_INDEXES,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES,
+  FIELD_VIEW_CONSTRUCTOR_INDEXES,
+  FieldCarriage,
+  FieldPreimageCertificate,
+  FieldPreimageCertificateMintRedeemer,
+  FieldView,
 } from "../src/native-tx-field-access-v1.js";
 
 /**
@@ -87,7 +87,7 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
       "RawUtxo",
       "Certified",
     ]);
-    expect(FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES).toEqual({
+    expect(FIELD_CARRIAGE_CONSTRUCTOR_INDEXES).toEqual({
       Inline: 0,
       RawUtxo: 1,
       Certified: 2,
@@ -99,10 +99,10 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
     // the payload sits directly in the constructor: `Inline { preimage }` is
     // `Constr 0 [B]`, never `Constr 0 [Constr 0 [B]]`. A `Data.Tuple` payload
     // would produce the second shape and this assertion is what catches it.
-    const inline = Data.to({ Inline: { preimage: "80" } }, FieldCarriageV1);
+    const inline = Data.to({ Inline: { preimage: "80" } }, FieldCarriage);
     const rawUtxo = Data.to(
       { RawUtxo: { ref_input_index: 3n } },
-      FieldCarriageV1,
+      FieldCarriage,
     );
     const certified = Data.to(
       {
@@ -111,7 +111,7 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
           chunk_ref_input_indices: [2n, 3n],
         },
       },
-      FieldCarriageV1,
+      FieldCarriage,
     );
 
     expect(inline).toBe("d8799f4180ff");
@@ -122,13 +122,13 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
     expect(rawUtxo.startsWith(constructorTagPrefix(1))).toBe(true);
     expect(certified.startsWith(constructorTagPrefix(2))).toBe(true);
 
-    expect(Data.from(inline, FieldCarriageV1)).toEqual({
+    expect(Data.from(inline, FieldCarriage)).toEqual({
       Inline: { preimage: "80" },
     });
-    expect(Data.from(rawUtxo, FieldCarriageV1)).toEqual({
+    expect(Data.from(rawUtxo, FieldCarriage)).toEqual({
       RawUtxo: { ref_input_index: 3n },
     });
-    expect(Data.from(certified, FieldCarriageV1)).toEqual({
+    expect(Data.from(certified, FieldCarriage)).toEqual({
       Certified: {
         cert_ref_input_index: 1n,
         chunk_ref_input_indices: [2n, 3n],
@@ -144,7 +144,7 @@ describe("§8.8 FieldViewV1 wire contract", () => {
       "Chunked",
       "ProvisionalWhole",
     ]);
-    expect(FIELD_VIEW_V1_CONSTRUCTOR_INDEXES).toEqual({
+    expect(FIELD_VIEW_CONSTRUCTOR_INDEXES).toEqual({
       Whole: 0,
       Chunked: 1,
       ProvisionalWhole: 2,
@@ -154,7 +154,7 @@ describe("§8.8 FieldViewV1 wire contract", () => {
   it("round-trips both variants at their frozen tags, fields flat", () => {
     const whole = Data.to(
       { Whole: { bytes: "80", count: 0n, stride: 40n } },
-      FieldViewV1,
+      FieldView,
     );
     const chunked = Data.to(
       {
@@ -165,16 +165,16 @@ describe("§8.8 FieldViewV1 wire contract", () => {
           stride: 0n,
         },
       },
-      FieldViewV1,
+      FieldView,
     );
     expect(whole).toBe("d8799f4180001828ff");
     expect(chunked).toBe(`d87a9f9f4180ff9f5820${h32("ab")}ff0000ff`);
     expect(whole.startsWith(constructorTagPrefix(0))).toBe(true);
     expect(chunked.startsWith(constructorTagPrefix(1))).toBe(true);
-    expect(Data.from(whole, FieldViewV1)).toEqual({
+    expect(Data.from(whole, FieldView)).toEqual({
       Whole: { bytes: "80", count: 0n, stride: 40n },
     });
-    expect(Data.from(chunked, FieldViewV1)).toEqual({
+    expect(Data.from(chunked, FieldView)).toEqual({
       Chunked: {
         chunks: ["80"],
         chunk_digests: [h32("ab")],
@@ -213,8 +213,8 @@ describe("§8.6 FieldPreimageCertificateV1 datum", () => {
       total_length: 16_417n,
       chunk_digests: [h32("33"), h32("44")],
     };
-    const encoded = Data.to(certificate, FieldPreimageCertificateV1);
-    expect(Data.from(encoded, FieldPreimageCertificateV1)).toEqual(certificate);
+    const encoded = Data.to(certificate, FieldPreimageCertificate);
+    expect(Data.from(encoded, FieldPreimageCertificate)).toEqual(certificate);
   });
 });
 
@@ -227,7 +227,7 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
       ),
     ).toEqual(["Certify", "Retire"]);
     expect(
-      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
+      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES,
     ).toEqual({ Certify: 0, Retire: 1 });
   });
 
@@ -259,11 +259,11 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
           output_index: 0n,
         },
       },
-      FieldPreimageCertificateMintRedeemerV1,
+      FieldPreimageCertificateMintRedeemer,
     );
     expect(certify).toBe("d8799f41a141b29f000102ff00ff");
     expect(certify.startsWith(constructorTagPrefix(0))).toBe(true);
-    expect(Data.from(certify, FieldPreimageCertificateMintRedeemerV1)).toEqual({
+    expect(Data.from(certify, FieldPreimageCertificateMintRedeemer)).toEqual({
       Certify: {
         compact_cbor: "a1",
         witness_set_compact_cbor: "b2",
@@ -274,10 +274,10 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
   });
 
   it("encodes Retire as a bare Constr 1", () => {
-    const retire = Data.to("Retire", FieldPreimageCertificateMintRedeemerV1);
+    const retire = Data.to("Retire", FieldPreimageCertificateMintRedeemer);
     expect(retire).toBe("d87a80");
     expect(retire.startsWith(constructorTagPrefix(1))).toBe(true);
-    expect(Data.from(retire, FieldPreimageCertificateMintRedeemerV1)).toBe(
+    expect(Data.from(retire, FieldPreimageCertificateMintRedeemer)).toBe(
       "Retire",
     );
   });
@@ -287,7 +287,7 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
     // codec's — so the assertion here is that the *core* constant the builders
     // clamp against is still three, and that a redeemer naming more is a thing
     // an off-chain builder has to refuse rather than something the schema does.
-    expect(MIDGARD_MAX_TIER3_CHUNK_COUNT_V1).toBe(3);
+    expect(MIDGARD_MAX_TIER3_CHUNK_COUNT).toBe(3);
     const overlong = Data.to(
       {
         Certify: {
@@ -297,7 +297,7 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
           output_index: 0n,
         },
       },
-      FieldPreimageCertificateMintRedeemerV1,
+      FieldPreimageCertificateMintRedeemer,
     );
     expect(overlong.startsWith(constructorTagPrefix(0))).toBe(true);
   });
@@ -306,7 +306,7 @@ describe("§8.6 FieldPreimageCertificateMintRedeemerV1 wire contract", () => {
 describe("§4/§8.6 values a builder must reproduce", () => {
   it("pins the field-independent empty-field commitment", () => {
     // The cross-language vector the zero-input step-02 validator names.
-    expect(EMPTY_FIELD_COMMITMENT_HEX_V1).toBe(
+    expect(EMPTY_FIELD_COMMITMENT_HEX).toBe(
       "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
     );
   });
@@ -325,7 +325,7 @@ describe("§4/§8.6 values a builder must reproduce", () => {
     // `80`. Asserting equality rather than the gap is what keeps a regression from
     // silently re-opening it. The blueprint that pins the on-chain half is
     // regenerated once, in #579.
-    expect(EMPTY_SPEND_INPUTS_HASH).toBe(EMPTY_FIELD_COMMITMENT_HEX_V1);
+    expect(EMPTY_SPEND_INPUTS_HASH).toBe(EMPTY_FIELD_COMMITMENT_HEX);
   });
 
   it("pins the constant certificate token name (#606)", () => {
@@ -333,10 +333,10 @@ describe("§4/§8.6 values a builder must reproduce", () => {
     // "MIDGARD_FIELD_PREIMAGE_CERT", 27 bytes. The identity the retired
     // per-(tx_id, field_index) derivation carried lives in the datum, which
     // now also welds the §4 commitment (`field_hash`).
-    expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1).toBe(
+    expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX).toBe(
       Buffer.from("MIDGARD_FIELD_PREIMAGE_CERT", "ascii").toString("hex"),
     );
-    expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1).toMatch(
+    expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX).toMatch(
       /^[0-9a-f]{54}$/u,
     );
   });

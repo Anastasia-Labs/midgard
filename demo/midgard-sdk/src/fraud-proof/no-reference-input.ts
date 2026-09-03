@@ -9,7 +9,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -93,7 +93,7 @@ export const NoReferenceInputStep02Datum =
 export const NoReferenceInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  reference_inputs_opening: FieldOpeningV1Schema,
+  reference_inputs_opening: FieldOpeningSchema,
   bad_reference_input_index: Data.Integer(),
 });
 export type NoReferenceInputStep02Args = Data.Static<

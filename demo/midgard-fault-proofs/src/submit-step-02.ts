@@ -32,12 +32,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
@@ -68,14 +68,14 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitStep02CliConfig = SubmitProviderConfig & {
@@ -184,13 +184,13 @@ export const submitStep02 = async ({
    * the second transaction's membership proof reaches L1 through them and
    * never enters this transaction (issue #545).
    */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Production workflow seam: invoked after local evaluation, before I/O. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep02Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -285,18 +285,18 @@ export const submitStep02 = async ({
     network,
     chunkedVerifyScript,
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.doubleSpend.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "double-spend step 02 validator",
   });
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: "double-spend step 02 chunked verify",
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: "double-spend step 02 PHAS membership",
@@ -438,21 +438,21 @@ export const submitStep02 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 02 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-02",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.doubleSpend.steps[1].spendingScript,
       }),
       carriedByChunks
-        ? workflowReferenceScriptV1({
+        ? workflowReferenceScript({
             role: "V1 MPF chunked-verify withdrawal",
             utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
             expectedScript: chunkedVerifyScript,
           })
-        : workflowReferenceScriptV1({
+        : workflowReferenceScript({
             role: "membership proof withdrawal",
             utxo: witnessReferenceScripts?.phasMembershipWithdraw,
             expectedScript: phasMembershipScript,
@@ -502,7 +502,7 @@ export const submitStep02 = async ({
 export const submitStep02FromFiles = async (
   config: SubmitStep02CliConfig,
 ): Promise<SubmitStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-step-02",
   });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(

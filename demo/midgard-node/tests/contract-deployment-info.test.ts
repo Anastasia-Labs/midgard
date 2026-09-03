@@ -2,15 +2,15 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type {
   MidgardValidators,
   ReferenceScriptAuthPolicyDeploymentInfo,
@@ -31,22 +31,22 @@ import { describe, expect } from "vitest";
 import {
   buildContractDeploymentInfoFromContracts,
   buildContractDeploymentInfoProgram,
-  buildDeploymentManifestV1,
+  buildDeploymentManifest,
   buildReferenceScriptOutRefMap,
-  cardanoProtocolParametersIdentityV1FromProvider,
+  cardanoProtocolParametersIdentityFromProvider,
   defaultContractDeploymentInfoOutputPath,
-  DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
   type DeploymentManifestBuildContext,
-  type DeploymentManifestV1IdentityContext,
-  parseDeploymentManifestV1,
+  type DeploymentManifestIdentityContext,
+  parseDeploymentManifest,
   verifyDeploymentManifestAgainstConfig,
 } from "../src/commands/contract-deployment-info.js";
 import {
+  computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
-  computeDeploymentManifestV1DaCommitteeSignersHash,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestV1JsonValue,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
 } from "../src/deployment-manifest-v1.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
@@ -57,7 +57,7 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
-import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
+import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge-v1.js";
 
 const testReferenceScriptAuthPolicy = (
   _policyId: string,
@@ -101,33 +101,32 @@ const TEST_CARDANO_PARAMETERS = {
     maximumSizeBytes: "204800",
   },
 } as const;
-const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
-  availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
-  economics:
-    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestIdentityContext = {
+  availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
+  economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   cardanoProtocolParameters: {
     snapshot: TEST_CARDANO_PARAMETERS,
-    digest: computeDeploymentManifestV1JsonDigest(TEST_CARDANO_PARAMETERS),
+    digest: computeDeploymentManifestJsonDigest(TEST_CARDANO_PARAMETERS),
   },
   genesis: {
     headerHash: "00".repeat(28),
-    utxoSetDigest: computeDeploymentManifestV1JsonDigest(
-      normalizeDeploymentManifestV1JsonValue([]),
+    utxoSetDigest: computeDeploymentManifestJsonDigest(
+      normalizeDeploymentManifestJsonValue([]),
     ),
   },
   da: {
     committeeVkeys: [TEST_DA_VKEY],
-    committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+    committeeSignersHash: computeDeploymentManifestDaCommitteeSignersHash([
       TEST_DA_VKEY,
     ]),
     threshold: 1,
     transportProfile: {
-      protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+      protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
       envelopeEncoding: "identity" as const,
       zstdLevel: 3,
-      limits: DA_TRANSPORT_LIMITS_V1,
-      retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      limits: DA_TRANSPORT_LIMITS,
+      retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   },
   proofEvidence: {
@@ -151,7 +150,7 @@ const buildFinalizedContractDeploymentInfo = (
       authPolicy,
       new Map(
         Object.values(
-          DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
         ).map((contractName, outputIndex) => [
           contractName,
           { txHash: "33".repeat(32), outputIndex },
@@ -176,7 +175,7 @@ const TEST_FINALIZED_MANIFEST_BUILD_CONTEXT = {
 describe("contract deployment info", () => {
   it("derives the exact Cardano parameter snapshot and digest from the configured provider", async () => {
     let calls = 0;
-    const identity = await cardanoProtocolParametersIdentityV1FromProvider(
+    const identity = await cardanoProtocolParametersIdentityFromProvider(
       {
         getProtocolParameters: async () => {
           calls += 1;
@@ -223,7 +222,7 @@ describe("contract deployment info", () => {
     expect(calls).toBe(1);
     expect(identity.snapshot).toEqual(TEST_CARDANO_PARAMETERS);
     expect(identity.digest).toBe(
-      computeDeploymentManifestV1JsonDigest(identity.snapshot),
+      computeDeploymentManifestJsonDigest(identity.snapshot),
     );
   });
 
@@ -620,20 +619,18 @@ describe("contract deployment info", () => {
           authPolicy,
         );
 
-        const first = buildDeploymentManifestV1(deploymentInfo, {
+        const first = buildDeploymentManifest(deploymentInfo, {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
           now: new Date("2026-06-18T00:00:00.000Z"),
         });
-        const second = buildDeploymentManifestV1(deploymentInfo, {
+        const second = buildDeploymentManifest(deploymentInfo, {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
           now: new Date("2026-06-19T00:00:00.000Z"),
           existingManifest: first,
         });
 
-        expect(first.schemaVersion).toEqual(
-          DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-        );
-        expect(first.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE_V1);
+        expect(first.schemaVersion).toEqual(DEPLOYMENT_MANIFEST_SCHEMA_VERSION);
+        expect(first.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE);
         expect(first.manifestId).toEqual(second.manifestId);
         expect(second.createdAt).toEqual(first.createdAt);
         expect(second.updatedAt).toEqual(first.updatedAt);
@@ -650,7 +647,7 @@ describe("contract deployment info", () => {
         expect(
           second.referenceScripts["state-queue minting"]?.roleUnit,
         ).toContain(authPolicy.policyId);
-        expect(parseDeploymentManifestV1(second).manifestId).toEqual(
+        expect(parseDeploymentManifest(second).manifestId).toEqual(
           second.manifestId,
         );
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
@@ -669,28 +666,27 @@ describe("contract deployment info", () => {
           contracts,
           authPolicy,
         );
-        const manifest = buildDeploymentManifestV1(deploymentInfo, {
+        const manifest = buildDeploymentManifest(deploymentInfo, {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
           now: new Date("2026-07-23T00:00:00.000Z"),
         });
 
         expect(manifest.schemaVersion).toEqual(
-          MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
+          MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
         );
-        expect(manifest.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE_V1);
+        expect(manifest.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE);
         expect(manifest.validationDispute).toEqual({
-          version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+          version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
           responseWindowMs:
-            MIDGARD_CONSENSUS_PROFILE_V1.limits
-              .validationDisputeResponseWindowMs,
+            MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
           maxBisectionRounds:
-            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-          maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+            MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+          maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
         });
         expect(manifest.contracts.validationTraceDispute.scriptHash).toMatch(
           /^[0-9a-f]{56}$/u,
         );
-        expect(parseDeploymentManifestV1(manifest).manifestId).toEqual(
+        expect(parseDeploymentManifest(manifest).manifestId).toEqual(
           manifest.manifestId,
         );
 
@@ -699,7 +695,7 @@ describe("contract deployment info", () => {
           ...withoutValidationDispute
         } = deploymentInfo.contracts;
         expect(() =>
-          buildDeploymentManifestV1(
+          buildDeploymentManifest(
             {
               ...deploymentInfo,
               contracts: withoutValidationDispute,
@@ -723,7 +719,7 @@ describe("contract deployment info", () => {
         contracts,
         authPolicy,
       );
-      const manifest = buildDeploymentManifestV1(deploymentInfo, {
+      const manifest = buildDeploymentManifest(deploymentInfo, {
         ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
       });
 
@@ -753,7 +749,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
-      const manifest = buildDeploymentManifestV1(
+      const manifest = buildDeploymentManifest(
         yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
         {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
@@ -761,7 +757,7 @@ describe("contract deployment info", () => {
       );
 
       expect(() =>
-        parseDeploymentManifestV1({
+        parseDeploymentManifest({
           ...manifest,
           hubOracleOneShot: {
             ...manifest.hubOracleOneShot,
@@ -781,7 +777,7 @@ describe("contract deployment info", () => {
         }),
       ).toThrow(/Deployment manifest id mismatch/);
       expect(() =>
-        parseDeploymentManifestV1({
+        parseDeploymentManifest({
           ...manifest,
           consensusProfile: {
             ...manifest.consensusProfile,
@@ -808,7 +804,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
-      const manifest = buildDeploymentManifestV1(
+      const manifest = buildDeploymentManifest(
         yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
         {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
@@ -818,7 +814,7 @@ describe("contract deployment info", () => {
       const { manifestId: _manifestId, ...identityInput } = manifest;
       const invalidNetwork = { ...identityInput, network: "Bogus" };
       expect(() =>
-        parseDeploymentManifestV1({
+        parseDeploymentManifest({
           ...invalidNetwork,
           manifestId: computeDeploymentManifestId(invalidNetwork),
         }),
@@ -835,7 +831,7 @@ describe("contract deployment info", () => {
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
         );
-        const manifest = buildDeploymentManifestV1(
+        const manifest = buildDeploymentManifest(
           yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
           {
             ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
@@ -906,7 +902,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
-      const manifest = buildDeploymentManifestV1(
+      const manifest = buildDeploymentManifest(
         yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
         {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,

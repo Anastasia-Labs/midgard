@@ -1,19 +1,19 @@
 import {
-  admitFraudProofRawL1PointV1,
-  admitFraudProofRawL1SnapshotV1,
-  admitFraudProofRawL1UtxoV1,
-  computeFraudProofRawL1RollbackCursorV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
-  type FraudProofRawL1PointV1,
-  type FraudProofRawL1SnapshotAuthorityV1,
-  type FraudProofRawL1SnapshotRequestV1,
-  type FraudProofRawL1TransactionV1,
-  type FraudProofRawL1UtxoV1,
+  admitFraudProofRawL1Point,
+  admitFraudProofRawL1Snapshot,
+  admitFraudProofRawL1Utxo,
+  computeFraudProofRawL1RollbackCursor,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
+  type FraudProofRawL1Point,
+  type FraudProofRawL1SnapshotAuthority,
+  type FraudProofRawL1SnapshotRequest,
+  type FraudProofRawL1Transaction,
+  type FraudProofRawL1Utxo,
 } from "./raw-l1-snapshot-v1.js";
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy-v1.js";
 
-export const LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE_V1 =
+export const LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE =
   "midgard-local-kupmios-fraud-proof-raw-source-v1" as const;
 
 /**
@@ -21,33 +21,33 @@ export const LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE_V1 =
  * untrusted: this package parses the pages, binds both providers to one pinned
  * point, and admits the final canonical bytes.
  */
-export interface LocalKupmiosFraudProofRawSourceV1 {
-  readonly sourceVersion: typeof LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE_V1;
+export interface LocalKupmiosFraudProofRawSource {
+  readonly sourceVersion: typeof LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE;
   readonly sourceId: string;
   readonly kupoHttpUrl: string;
   readonly ogmiosWebSocketUrl: string;
   readBoundary(): Promise<unknown>;
   /** Exact ordered raw block capture for independently authenticated readers. */
   readBlockAtPoint(input: {
-    readonly point: FraudProofRawL1PointV1;
+    readonly point: FraudProofRawL1Point;
   }): Promise<unknown>;
   scanAddressPage(input: {
     readonly address: string;
-    readonly throughPoint: FraudProofRawL1PointV1;
+    readonly throughPoint: FraudProofRawL1Point;
     readonly after: string | null;
   }): Promise<unknown>;
   scanUnitHistoryPage(input: {
     readonly unit: string;
     readonly fromGenesis: true;
-    readonly throughPoint: FraudProofRawL1PointV1;
+    readonly throughPoint: FraudProofRawL1Point;
     readonly after: string | null;
   }): Promise<unknown>;
   readTransaction(input: {
     readonly txHash: string;
-    readonly expectedInclusionPoint: FraudProofRawL1PointV1;
+    readonly expectedInclusionPoint: FraudProofRawL1Point;
   }): Promise<unknown>;
   confirmCanonicalPoint(input: {
-    readonly point: FraudProofRawL1PointV1;
+    readonly point: FraudProofRawL1Point;
   }): Promise<unknown>;
 }
 
@@ -125,8 +125,8 @@ const assertLoopback = (value: string, label: string): void => {
 };
 
 const samePoint = (
-  left: FraudProofRawL1PointV1,
-  right: FraudProofRawL1PointV1,
+  left: FraudProofRawL1Point,
+  right: FraudProofRawL1Point,
 ): boolean =>
   left.slot === right.slot &&
   left.blockNo === right.blockNo &&
@@ -136,8 +136,8 @@ const samePoint = (
 const parseBoundary = (
   value: unknown,
 ): {
-  readonly kupoCheckpoint: FraudProofRawL1PointV1;
-  readonly ogmiosTip: FraudProofRawL1PointV1;
+  readonly kupoCheckpoint: FraudProofRawL1Point;
+  readonly ogmiosTip: FraudProofRawL1Point;
 } => {
   const parsed = exact(
     value,
@@ -145,11 +145,11 @@ const parseBoundary = (
     "Kupmios boundary",
   );
   return {
-    kupoCheckpoint: admitFraudProofRawL1PointV1(
+    kupoCheckpoint: admitFraudProofRawL1Point(
       parsed.kupoCheckpoint,
       "Kupmios Kupo checkpoint",
     ),
-    ogmiosTip: admitFraudProofRawL1PointV1(
+    ogmiosTip: admitFraudProofRawL1Point(
       parsed.ogmiosTip,
       "Kupmios Ogmios tip",
     ),
@@ -178,11 +178,11 @@ const scanAllAddressUtxos = async ({
   address,
   throughPoint,
 }: {
-  readonly source: LocalKupmiosFraudProofRawSourceV1;
+  readonly source: LocalKupmiosFraudProofRawSource;
   readonly address: string;
-  readonly throughPoint: FraudProofRawL1PointV1;
-}): Promise<readonly FraudProofRawL1UtxoV1[]> => {
-  const result: FraudProofRawL1UtxoV1[] = [];
+  readonly throughPoint: FraudProofRawL1Point;
+}): Promise<readonly FraudProofRawL1Utxo[]> => {
+  const result: FraudProofRawL1Utxo[] = [];
   const seenCursors = new Set<string>();
   let after: string | null = null;
   for (let pageIndex = 0; pageIndex < MAX_PAGE_COUNT; pageIndex += 1) {
@@ -192,7 +192,7 @@ const scanAllAddressUtxos = async ({
       ["checkpoint", "utxos", "nextCursor", "complete"],
       label,
     );
-    const checkpoint = admitFraudProofRawL1PointV1(
+    const checkpoint = admitFraudProofRawL1Point(
       parsed.checkpoint,
       `${label}.checkpoint`,
     );
@@ -201,10 +201,7 @@ const scanAllAddressUtxos = async ({
     }
     result.push(
       ...array(parsed.utxos, `${label}.utxos`).map((entry, index) =>
-        admitFraudProofRawL1UtxoV1(
-          entry,
-          `${label}.utxos[${index.toString()}]`,
-        ),
+        admitFraudProofRawL1Utxo(entry, `${label}.utxos[${index.toString()}]`),
       ),
     );
     const tail = parsePageTail(parsed, label);
@@ -227,7 +224,7 @@ const scanAllAddressUtxos = async ({
 
 type UnitHistoryTransaction = {
   readonly txHash: string;
-  readonly inclusionPoint: FraudProofRawL1PointV1;
+  readonly inclusionPoint: FraudProofRawL1Point;
 };
 
 const scanCompleteUnitHistory = async ({
@@ -235,9 +232,9 @@ const scanCompleteUnitHistory = async ({
   unit,
   throughPoint,
 }: {
-  readonly source: LocalKupmiosFraudProofRawSourceV1;
+  readonly source: LocalKupmiosFraudProofRawSource;
   readonly unit: string;
-  readonly throughPoint: FraudProofRawL1PointV1;
+  readonly throughPoint: FraudProofRawL1Point;
 }): Promise<readonly UnitHistoryTransaction[]> => {
   const result: UnitHistoryTransaction[] = [];
   const seenCursors = new Set<string>();
@@ -254,7 +251,7 @@ const scanCompleteUnitHistory = async ({
       ["checkpoint", "transactions", "nextCursor", "complete"],
       label,
     );
-    const checkpoint = admitFraudProofRawL1PointV1(
+    const checkpoint = admitFraudProofRawL1Point(
       parsed.checkpoint,
       `${label}.checkpoint`,
     );
@@ -272,7 +269,7 @@ const scanCompleteUnitHistory = async ({
           );
           return {
             txHash: txHash(transaction.txHash, `${transactionLabel}.txHash`),
-            inclusionPoint: admitFraudProofRawL1PointV1(
+            inclusionPoint: admitFraudProofRawL1Point(
               transaction.inclusionPoint,
               `${transactionLabel}.inclusionPoint`,
             ),
@@ -302,9 +299,9 @@ const readCrossCheckedTransaction = async ({
   source,
   expected,
 }: {
-  readonly source: LocalKupmiosFraudProofRawSourceV1;
+  readonly source: LocalKupmiosFraudProofRawSource;
   readonly expected: UnitHistoryTransaction;
-}): Promise<FraudProofRawL1TransactionV1> => {
+}): Promise<FraudProofRawL1Transaction> => {
   const parsed = exact(
     await source.readTransaction({
       txHash: expected.txHash,
@@ -319,13 +316,13 @@ const readCrossCheckedTransaction = async ({
     `Kupo transaction ${expected.txHash}`,
   );
   const kupoTxHash = txHash(kupo.txHash, "Kupo transaction hash");
-  const kupoPoint = admitFraudProofRawL1PointV1(
+  const kupoPoint = admitFraudProofRawL1Point(
     kupo.inclusionPoint,
     "Kupo transaction inclusion point",
   );
   const ogmios = record(parsed.ogmios, `Ogmios transaction ${expected.txHash}`);
   const ogmiosTxHash = txHash(ogmios.txHash, "Ogmios transaction hash");
-  const ogmiosPoint = admitFraudProofRawL1PointV1(
+  const ogmiosPoint = admitFraudProofRawL1Point(
     ogmios.inclusionPoint,
     "Ogmios transaction inclusion point",
   );
@@ -339,22 +336,22 @@ const readCrossCheckedTransaction = async ({
       `Kupo and Ogmios disagree about transaction ${expected.txHash}`,
     );
   }
-  return parsed.ogmios as FraudProofRawL1TransactionV1;
+  return parsed.ogmios as FraudProofRawL1Transaction;
 };
 
 const confirmPinnedPoint = async ({
   source,
   point,
 }: {
-  readonly source: LocalKupmiosFraudProofRawSourceV1;
-  readonly point: FraudProofRawL1PointV1;
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly point: FraudProofRawL1Point;
 }): Promise<void> => {
   const parsed = exact(
     await source.confirmCanonicalPoint({ point }),
     ["canonical", "point"],
     "Kupmios canonical-point confirmation",
   );
-  const confirmed = admitFraudProofRawL1PointV1(
+  const confirmed = admitFraudProofRawL1Point(
     parsed.point,
     "Kupmios confirmed point",
   );
@@ -363,22 +360,22 @@ const confirmPinnedPoint = async ({
   }
 };
 
-export const createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 = ({
+export const createLocalKupmiosFraudProofRawL1SnapshotAuthority = ({
   source,
   releaseFinality,
 }: {
-  readonly source: LocalKupmiosFraudProofRawSourceV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): FraudProofRawL1SnapshotAuthorityV1 => {
-  if (source.sourceVersion !== LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE_V1) {
+  readonly source: LocalKupmiosFraudProofRawSource;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): FraudProofRawL1SnapshotAuthority => {
+  if (source.sourceVersion !== LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE) {
     throw new Error("local Kupmios raw source has an unsupported version");
   }
   const sourceId = nonEmptyString(source.sourceId, "local Kupmios sourceId");
   assertLoopback(source.kupoHttpUrl, "Kupo URL");
   assertLoopback(source.ogmiosWebSocketUrl, "Ogmios URL");
   return {
-    authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1,
-    capture: async (request: FraudProofRawL1SnapshotRequestV1) => {
+    authorityVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+    capture: async (request: FraudProofRawL1SnapshotRequest) => {
       const boundary = parseBoundary(await source.readBoundary());
       const scopes = await Promise.all(
         request.scopes.map(async (scope) => ({
@@ -400,7 +397,7 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 = ({
           }),
         })),
       );
-      const inclusionByHash = new Map<string, FraudProofRawL1PointV1>();
+      const inclusionByHash = new Map<string, FraudProofRawL1Point>();
       for (const history of histories) {
         for (const transaction of history.transactions) {
           const previous = inclusionByHash.get(transaction.txHash);
@@ -437,7 +434,7 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 = ({
         throw new Error("Kupmios boundary has an invalid confirmation depth");
       }
       const snapshot = {
-        schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
         deploymentIdentityDigest: request.deploymentIdentityDigest,
         releaseIdentityDigest: request.releaseIdentityDigest,
         finalityPolicyDigest: request.finalityPolicyDigest,
@@ -454,7 +451,7 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 = ({
           point: boundary.kupoCheckpoint,
           tip: boundary.ogmiosTip,
           confirmationDepth: Number(confirmationDepth),
-          rollbackCursor: computeFraudProofRawL1RollbackCursorV1({
+          rollbackCursor: computeFraudProofRawL1RollbackCursor({
             deploymentIdentityDigest: request.deploymentIdentityDigest,
             releaseIdentityDigest: request.releaseIdentityDigest,
             finalityPolicyDigest: request.finalityPolicyDigest,
@@ -474,7 +471,7 @@ export const createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 = ({
         })),
         transactions,
       };
-      return admitFraudProofRawL1SnapshotV1({
+      return admitFraudProofRawL1Snapshot({
         value: snapshot,
         request,
         releaseFinality,

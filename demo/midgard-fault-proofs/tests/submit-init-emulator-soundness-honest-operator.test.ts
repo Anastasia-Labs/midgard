@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildHonestAcceptedValidationDisputeFixture,
-  EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1,
+  EMPTY_CLAIMED_LEDGER_DELTA_ROOT,
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -55,7 +55,7 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
     expect(fixture.challengerTrace.tree.descriptor.verdict).toBe("rejected");
     expect(fixture.claimedLedgerDeltaRoot).toHaveLength(32);
     expect(
-      fixture.claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
+      fixture.claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT),
     ).toBe(false);
     const { lowIndex, highIndex } = fixture.evidence.finalDispute;
     expect(highIndex).toBe(lowIndex + 1);

@@ -1,43 +1,43 @@
 import {
-  buildMidgardBoundedItemV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  type MidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardBoundedItem,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  type MidgardValidationMerkleMembership,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import {
-  encodeVerdictSubjectV1,
+  encodeVerdictSubject,
   hashHexWithBlake2b,
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  type RejectionReasonV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type RejectionReason,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-export const MISSING_SCRIPT_SOURCE_CATEGORY_V1 = "missingScriptSource" as const;
-export const MISSING_SCRIPT_SOURCE_ID_V1 = "0000002d" as const;
-export const MissingScriptSourceViolationIdsV1 = Object.freeze({
+export const MISSING_SCRIPT_SOURCE_CATEGORY = "missingScriptSource" as const;
+export const MISSING_SCRIPT_SOURCE_ID = "0000002d" as const;
+export const MissingScriptSourceViolationIds = Object.freeze({
   Missing: "script-source-missing",
 } as const);
 
-export const missingScriptSourceViolationIdV1 = (_resultClass?: number) =>
-  MissingScriptSourceViolationIdsV1.Missing;
+export const missingScriptSourceViolationId = (_resultClass?: number) =>
+  MissingScriptSourceViolationIds.Missing;
 
-export const MissingScriptSourceResultClassesV1 = Object.freeze({
+export const MissingScriptSourceResultClasses = Object.freeze({
   Pending: -1,
   Present: -2,
   NoFault: -2,
   Missing: 0,
 } as const);
-export type MissingScriptSourceResultClassV1 =
-  (typeof MissingScriptSourceResultClassesV1)[keyof typeof MissingScriptSourceResultClassesV1];
+export type MissingScriptSourceResultClass =
+  (typeof MissingScriptSourceResultClasses)[keyof typeof MissingScriptSourceResultClasses];
 
 const fail = (message: string): never => {
-  throw new Error(`${MISSING_SCRIPT_SOURCE_CATEGORY_V1}: ${message}`);
+  throw new Error(`${MISSING_SCRIPT_SOURCE_CATEGORY}: ${message}`);
 };
 const exactHex = (value: string, bytes: number, label: string): string => {
   if (!new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value))
@@ -51,10 +51,10 @@ const exactIndex = (value: number, label: string): number => {
 };
 
 const accusedClassV1 = (
-  reason: RejectionReasonV1,
+  reason: RejectionReason,
   purposeKind: number,
   purposeIndex: number,
-): MissingScriptSourceResultClassV1 => {
+): MissingScriptSourceResultClass => {
   if (typeof reason === "string") return fail("typed reason is outside family");
   if (!("ScriptSourceMissing" in reason))
     return fail("typed reason is outside missing-script-source");
@@ -64,25 +64,25 @@ const accusedClassV1 = (
     payload.purpose_index !== BigInt(purposeIndex)
   )
     return fail("typed reason purpose coordinate differs");
-  return MissingScriptSourceResultClassesV1.Missing;
+  return MissingScriptSourceResultClasses.Missing;
 };
 
-export type MissingScriptSourceFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type MissingScriptSourceFinding = Readonly<{
+  subject: VerdictSubject;
   purposeKind?: 0 | 1 | 2 | 3;
   purposeIndex?: number;
   /** Absolute consensus purpose-frontier index. */
   executionIndex: number;
 }>;
 
-export const classifyMissingScriptSourceFindingV1 = (
-  finding: MissingScriptSourceFindingV1,
-): MissingScriptSourceFindingV1 & {
+export const classifyMissingScriptSourceFinding = (
+  finding: MissingScriptSourceFinding,
+): MissingScriptSourceFinding & {
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: number;
-  readonly accusedClass: MissingScriptSourceResultClassV1;
+  readonly accusedClass: MissingScriptSourceResultClass;
 } => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   const reasonPayload =
     finding.subject.rejection_reason !== null &&
@@ -103,7 +103,7 @@ export const classifyMissingScriptSourceFindingV1 = (
   exactIndex(purposeIndex, "purpose index");
   exactIndex(finding.executionIndex, "execution index");
   const accusedClass =
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
+    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
       ? finding.subject.rejection_reason === null
         ? fail("wrongful rejection carries no typed reason")
         : accusedClassV1(
@@ -112,9 +112,9 @@ export const classifyMissingScriptSourceFindingV1 = (
             purposeIndex,
           )
       : finding.subject.direction ===
-            PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 &&
+            PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE &&
           finding.subject.rejection_reason === null
-        ? MissingScriptSourceResultClassesV1.Pending
+        ? MissingScriptSourceResultClasses.Pending
         : fail("direction/reason polarity is invalid");
   return Object.freeze({
     ...finding,
@@ -124,7 +124,7 @@ export const classifyMissingScriptSourceFindingV1 = (
   });
 };
 
-export type ExecutionSourceDescriptorV1 = Readonly<{
+export type ExecutionSourceDescriptor = Readonly<{
   sourceIndex: number;
   originKind: 0 | 1;
   sourceKeyHex: string;
@@ -137,38 +137,38 @@ export type ExecutionSourceDescriptorV1 = Readonly<{
   purposeIndex: number;
   purposeSubjectHex: string;
   redeemerLeafHex: "";
-  purposeMembership: MidgardValidationMerkleMembershipV1;
-  sourceMembership: MidgardValidationMerkleMembershipV1;
-  executionMembership: MidgardValidationMerkleMembershipV1;
+  purposeMembership: MidgardValidationMerkleMembership;
+  sourceMembership: MidgardValidationMerkleMembership;
+  executionMembership: MidgardValidationMerkleMembership;
 }>;
 
-export type MissingScriptSourceEvidenceV1 = Readonly<{
-  finding: ReturnType<typeof classifyMissingScriptSourceFindingV1>;
-  descriptor: ExecutionSourceDescriptorV1;
+export type MissingScriptSourceEvidence = Readonly<{
+  finding: ReturnType<typeof classifyMissingScriptSourceFinding>;
+  descriptor: ExecutionSourceDescriptor;
   itemCommitmentHex: string;
   itemLength: number;
   sourceLeafHex: string;
   purposeLeafHex: string;
   executionLeafHex: string;
-  resultClass: MissingScriptSourceResultClassV1;
+  resultClass: MissingScriptSourceResultClass;
   initialControlCbor: string;
   chunkProofCount: number;
   sourceCount: number;
   foundAtSourceIndex: number | null;
   /** Complete consensus-ordered witness, resolved-spend, resolved-reference frontier. */
-  sources: readonly ExecutionSourceDescriptorV1[];
+  sources: readonly ExecutionSourceDescriptor[];
 }>;
 
-export const prepareMissingScriptSourceEvidenceV1 = ({
+export const prepareMissingScriptSourceEvidence = ({
   finding: rawFinding,
   descriptor,
   sources = [descriptor],
 }: {
-  readonly finding: MissingScriptSourceFindingV1;
-  readonly descriptor: ExecutionSourceDescriptorV1;
-  readonly sources?: readonly ExecutionSourceDescriptorV1[];
-}): MissingScriptSourceEvidenceV1 => {
-  const finding = classifyMissingScriptSourceFindingV1(rawFinding);
+  readonly finding: MissingScriptSourceFinding;
+  readonly descriptor: ExecutionSourceDescriptor;
+  readonly sources?: readonly ExecutionSourceDescriptor[];
+}): MissingScriptSourceEvidence => {
+  const finding = classifyMissingScriptSourceFinding(rawFinding);
   exactIndex(descriptor.sourceIndex, "source index");
   const item = Buffer.from(descriptor.scriptItemHex, "hex");
   if (item.toString("hex") !== descriptor.scriptItemHex)
@@ -187,7 +187,7 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
   const bounded =
     item.length === 0
       ? null
-      : buildMidgardBoundedItemV1({
+      : buildMidgardBoundedItem({
           fieldIndex: descriptor.originKind === 0 ? 6 : 2,
           itemIndex,
           bytes: item,
@@ -199,7 +199,7 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
     fail("source descriptor omitted item commitment");
   exactIndex(itemLength, "script total length");
   exactHex(itemCommitmentHex, 32, "script item commitment");
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind: finding.purposeKind,
     purposeIndex: BigInt(finding.purposeIndex),
     scriptHash,
@@ -207,21 +207,21 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
   });
   const sourceLeaf =
     descriptor.originKind === 0
-      ? hashMidgardInlineScriptSourceLeafV1({
+      ? hashMidgardInlineScriptSourceLeaf({
           sourceIndex: BigInt(descriptor.sourceIndex),
           scriptLanguageTag: 0,
           scriptHash,
           scriptTotalLength: itemLength,
           itemCommitment: Buffer.from(itemCommitmentHex, "hex"),
         })
-      : hashMidgardReferenceScriptSourceLeafV1({
+      : hashMidgardReferenceScriptSourceLeaf({
           sourceKey,
           scriptLanguageTag: 0,
           scriptHash,
           scriptTotalLength: itemLength,
           itemCommitment: Buffer.from(itemCommitmentHex, "hex"),
         });
-  const executionLeaf = hashMidgardScriptExecutionLeafV1({
+  const executionLeaf = hashMidgardScriptExecutionLeaf({
     languageTag: 0,
     purposeLeaf,
     sourceLeaf,
@@ -239,7 +239,7 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
     if (
       membership.leafIndex !== index ||
       !Buffer.from(membership.leafHash).equals(leaf) ||
-      !verifyMidgardValidationMerkleMembershipV1(membership)
+      !verifyMidgardValidationMerkleMembership(membership)
     )
       return fail(`${label} frontier membership was substituted`);
   }
@@ -266,7 +266,7 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
     const sourceBounded =
       sourceItem.length === 0
         ? null
-        : buildMidgardBoundedItemV1({
+        : buildMidgardBoundedItem({
             fieldIndex: source.originKind === 0 ? 6 : 2,
             itemIndex:
               source.originKind === 0
@@ -282,14 +282,14 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
     const sourceHash = Buffer.from(source.scriptHashHex, "hex");
     const authenticatedLeaf =
       source.originKind === 0
-        ? hashMidgardInlineScriptSourceLeafV1({
+        ? hashMidgardInlineScriptSourceLeaf({
             sourceIndex: BigInt(source.sourceIndex),
             scriptLanguageTag: source.languageTag,
             scriptHash: sourceHash,
             scriptTotalLength: sourceLength,
             itemCommitment: Buffer.from(sourceCommitmentHex, "hex"),
           })
-        : hashMidgardReferenceScriptSourceLeafV1({
+        : hashMidgardReferenceScriptSourceLeaf({
             sourceKey: Buffer.from(source.sourceKeyHex, "hex"),
             scriptLanguageTag: source.languageTag,
             scriptHash: sourceHash,
@@ -301,7 +301,7 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
       !Buffer.from(source.sourceMembership.leafHash).equals(
         authenticatedLeaf,
       ) ||
-      !verifyMidgardValidationMerkleMembershipV1(source.sourceMembership)
+      !verifyMidgardValidationMerkleMembership(source.sourceMembership)
     )
       return fail("source frontier membership was substituted");
     if (
@@ -312,8 +312,8 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
   }
   const resultClass =
     foundAtSourceIndex === null
-      ? MissingScriptSourceResultClassesV1.Missing
-      : MissingScriptSourceResultClassesV1.Present;
+      ? MissingScriptSourceResultClasses.Missing
+      : MissingScriptSourceResultClasses.Present;
   return Object.freeze({
     finding,
     descriptor,
@@ -333,13 +333,13 @@ export const prepareMissingScriptSourceEvidenceV1 = ({
   });
 };
 
-export const missingScriptSourceEvidenceClosesV1 = (
-  evidence: MissingScriptSourceEvidenceV1,
+export const missingScriptSourceEvidenceCloses = (
+  evidence: MissingScriptSourceEvidence,
 ): boolean =>
   evidence.finding.subject.direction ===
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
-    ? evidence.resultClass === MissingScriptSourceResultClassesV1.Missing
-    : evidence.resultClass === MissingScriptSourceResultClassesV1.Present;
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
+    ? evidence.resultClass === MissingScriptSourceResultClasses.Missing
+    : evidence.resultClass === MissingScriptSourceResultClasses.Present;
 
 const cborHead = (major: number, value: number): Buffer => {
   if (value < 24) return Buffer.from([(major << 5) | value]);
@@ -358,12 +358,12 @@ const cborHead = (major: number, value: number): Buffer => {
 const cborBytes = (value: Buffer): Buffer =>
   Buffer.concat([cborHead(2, value.length), value]);
 
-export const missingScriptSourceCheckpointV1 = ({
+export const missingScriptSourceCheckpoint = ({
   evidence,
   controlCbor,
   nextExpectedScriptHash,
 }: {
-  readonly evidence: MissingScriptSourceEvidenceV1;
+  readonly evidence: MissingScriptSourceEvidence;
   readonly controlCbor: string;
   readonly nextExpectedScriptHash: string;
 }): string => {
@@ -372,7 +372,7 @@ export const missingScriptSourceCheckpointV1 = ({
       "midgard/fraud-proofs/missing-script-source/checkpoint-v1",
       "ascii",
     ),
-    encodeVerdictSubjectV1(evidence.finding.subject),
+    encodeVerdictSubject(evidence.finding.subject),
     cborHead(0, evidence.finding.executionIndex),
     cborHead(0, evidence.descriptor.sourceIndex),
     cborHead(0, evidence.descriptor.originKind),
@@ -390,7 +390,7 @@ export const missingScriptSourceCheckpointV1 = ({
   return Effect.runSync(hashHexWithBlake2b(bytes.toString("hex"), 32));
 };
 
-export const MISSING_SCRIPT_SOURCE_STAGES_V1 = [
+export const MISSING_SCRIPT_SOURCE_STAGES = [
   "none",
   "step01",
   "step02",
@@ -400,11 +400,11 @@ export const MISSING_SCRIPT_SOURCE_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type MissingScriptSourceStageV1 =
-  (typeof MISSING_SCRIPT_SOURCE_STAGES_V1)[number];
+export type MissingScriptSourceStage =
+  (typeof MISSING_SCRIPT_SOURCE_STAGES)[number];
 
-export const nextMissingScriptSourceActionV1 = (
-  stage: MissingScriptSourceStageV1,
+export const nextMissingScriptSourceAction = (
+  stage: MissingScriptSourceStage,
 ) =>
   (
     ({
@@ -419,8 +419,8 @@ export const nextMissingScriptSourceActionV1 = (
     }) as const
   )[stage];
 
-export const missingScriptSourceEvidenceIdentityV1 = (
-  evidence: MissingScriptSourceEvidenceV1,
+export const missingScriptSourceEvidenceIdentity = (
+  evidence: MissingScriptSourceEvidence,
 ): string =>
   [
     evidence.finding.subject.transaction_id,

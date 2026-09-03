@@ -43,7 +43,7 @@
  *     carriage means and nothing about whether its bytes are the field's — the
  *     door therefore discharges the policy's obligation itself, hashing the
  *     concatenated chunks against `expectedCommitment`. See
- *     {@link buildMidgardChunkedFieldViewV1} for what it costs and why §4
+ *     {@link buildMidgardChunkedFieldView} for what it costs and why §4
  *     leaves no cheaper option.
  *
  * **The two acceptance sets are not identical at tier 3, and diverge in both
@@ -61,7 +61,7 @@
  *     another**. Looser: that door concatenates the chunks and hands them to
  *     `whole_view`, which runs the full §5.1 `walk_to_end` count-consistency check
  *     for the variable-width fields; this module deliberately does not (see
- *     {@link buildMidgardChunkedFieldViewV1}, "Why no walk here") and substitutes
+ *     {@link buildMidgardChunkedFieldView}, "Why no walk here") and substitutes
  *     the O(1) `header_len + count ≤ total_length` bound. Stricter: that door
  *     collapses to a `Whole` view and *discards* the certificate's digest vector,
  *     so nothing afterwards ever checks a chunk against its certified digest,
@@ -98,19 +98,19 @@ import { computeHash32 } from "./hash.js";
 // ---------------------------------------------------------------------------
 
 /** §2.5. The nine committed fields. Field identity is positional. */
-export const MIDGARD_FIELD_COUNT_V1 = 9;
+export const MIDGARD_FIELD_COUNT = 9;
 
 /** §5.4. Retained from the counted era by owner ruling. */
-export const MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 = 32_768;
+export const MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES = 32_768;
 
 /** §5.4. Field 0's own bound equals the aggregate bound. */
-export const MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES_V1 = 32_768;
+export const MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES = 32_768;
 
 /** §5.4. The operative spend maximum, a Cardano shape bound. */
-export const MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1 = 296;
+export const MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT = 296;
 
 /** §5.1 caps the item-count header at the `99 NNNN` form. */
-export const MIDGARD_MAX_FIELD_ITEM_COUNT_V1 = 65_535;
+export const MIDGARD_MAX_FIELD_ITEM_COUNT = 65_535;
 
 /**
  * §8.3 tier-2 bound and tier-3 chunk size — the value the spec's §8.3 erratum
@@ -129,13 +129,13 @@ export const MIDGARD_MAX_FIELD_ITEM_COUNT_V1 = 65_535;
  * agree, and that assertion is what keeps `K` a measured bound instead of a
  * literal.
  *
- * `ceil(32,768 / 15,148) = 3`, so {@link MIDGARD_MAX_TIER3_CHUNK_COUNT_V1} is
+ * `ceil(32,768 / 15,148) = 3`, so {@link MIDGARD_MAX_TIER3_CHUNK_COUNT} is
  * unmoved by the re-pin. The Aiken twin `chunk_bytes_k` in
  * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` moves in the same
  * commit, because it is the *split*, not merely a bound: every fixture, golden,
  * corner and cost row taken at a 15,900-byte boundary re-derives with it.
  */
-export const MIDGARD_CHUNK_BYTES_K_V1 = 15_148;
+export const MIDGARD_CHUNK_BYTES_K = 15_148;
 
 /**
  * §8.3 tier-1 bound. **PROVISIONAL**, and still unmeasured: `maxTxSize`
@@ -144,41 +144,41 @@ export const MIDGARD_CHUNK_BYTES_K_V1 = 15_148;
  * 14,336-byte preimage occupies 14,786 bytes once encoded as Plutus Data, so
  * 450 of the 2,048-byte allowance is spent before any step machinery exists.
  */
-export const MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 = 14_336;
+export const MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES = 14_336;
 
 /** §8.3, derived: `ceil(32,768 / K)`. */
-export const MIDGARD_MAX_TIER3_CHUNK_COUNT_V1 = 3;
+export const MIDGARD_MAX_TIER3_CHUNK_COUNT = 3;
 
 /** §5.3. Each fixed-width item carries a two-byte `58 LL` wrapper. */
-export const MIDGARD_FIXED_ITEM_WRAPPER_BYTES_V1 = 2;
+export const MIDGARD_FIXED_ITEM_WRAPPER_BYTES = 2;
 
 /** §5.3 fields 0/1: `82 ‖ 58 20 tx_id ‖ 19 index_be16`. */
-export const MIDGARD_SPEND_INPUT_ITEM_BYTES_V1 = 38;
-export const MIDGARD_SPEND_INPUT_STRIDE_V1 = 40;
+export const MIDGARD_SPEND_INPUT_ITEM_BYTES = 38;
+export const MIDGARD_SPEND_INPUT_STRIDE = 40;
 
 /** §5.3 fields 3/4: a raw 28-byte hash per item. */
-export const MIDGARD_HASH28_ITEM_BYTES_V1 = 28;
-export const MIDGARD_HASH28_STRIDE_V1 = 30;
+export const MIDGARD_HASH28_ITEM_BYTES = 28;
+export const MIDGARD_HASH28_STRIDE = 30;
 
 /** §5.3 field 7: `82 ‖ 58 20 vkey(32) ‖ 58 40 signature(64)`. */
-export const MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1 = 101;
-export const MIDGARD_ADDRESS_WITNESS_STRIDE_V1 = 103;
+export const MIDGARD_ADDRESS_WITNESS_ITEM_BYTES = 101;
+export const MIDGARD_ADDRESS_WITNESS_STRIDE = 103;
 
 /** Fields 2/5/6/8 are variable-width: top-level access walks the envelope. */
-export const MIDGARD_WALK_DERIVED_STRIDE_V1 = 0;
+export const MIDGARD_WALK_DERIVED_STRIDE = 0;
 
 /**
  * §8.8. Constructor order is frozen consensus wire format; off-chain builders
  * emit exactly these Constr tags. The array index *is* the tag.
  */
-export const MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1 = [
+export const MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS = [
   "Inline",
   "RawUtxo",
   "Certified",
 ] as const;
 
 /** §8.8. Frozen alongside the carriage tags. */
-export const MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1 = [
+export const MIDGARD_FIELD_VIEW_CONSTRUCTORS = [
   "Whole",
   "Chunked",
   "ProvisionalWhole",
@@ -216,11 +216,11 @@ const exactCount = (value: number, label: string): number => {
 };
 
 /** §2.5's `0..8` bound, enforced rather than assumed of the caller. */
-export const exactMidgardFieldIndexV1 = (fieldIndex: number): number => {
+export const exactMidgardFieldIndex = (fieldIndex: number): number => {
   if (
     !Number.isSafeInteger(fieldIndex) ||
     fieldIndex < 0 ||
-    fieldIndex >= MIDGARD_FIELD_COUNT_V1
+    fieldIndex >= MIDGARD_FIELD_COUNT
   ) {
     return failField(
       "native-V1 field index must be 0..8",
@@ -274,7 +274,7 @@ const wholeReader =
  * §5.1 `definite_array_header(N)`: `80+N` for N ≤ 23, `98 NN` for N ≤ 255,
  * `99 NNNN` for N ≤ 65,535 — minimal width, capped at the two-byte form.
  */
-export const encodeMidgardFieldArrayHeaderV1 = (count: number): Buffer => {
+export const encodeMidgardFieldArrayHeader = (count: number): Buffer => {
   const exact = exactCount(count, "field item count");
   if (exact <= 23) {
     return Buffer.from([0x80 + exact]);
@@ -282,7 +282,7 @@ export const encodeMidgardFieldArrayHeaderV1 = (count: number): Buffer => {
   if (exact <= 0xff) {
     return Buffer.from([0x98, exact]);
   }
-  if (exact > MIDGARD_MAX_FIELD_ITEM_COUNT_V1) {
+  if (exact > MIDGARD_MAX_FIELD_ITEM_COUNT) {
     return failField(
       "field item count exceeds the §5.1 `99 NNNN` bound",
       `count=${exact}`,
@@ -296,7 +296,7 @@ export const encodeMidgardFieldArrayHeaderV1 = (count: number): Buffer => {
  *
  * **The `5a` branch is deliberately kept, and deliberately unreachable.** §5.1's
  * grammar stops at `59 LLLL`, so the four-byte head this emits for a payload
- * above 65,535 bytes is one that {@link decodeMidgardFieldPreimageV1} and the
+ * above 65,535 bytes is one that {@link decodeMidgardFieldPreimage} and the
  * door's item reader both refuse. The asymmetry is not this module's invention:
  * it is `codec.encode_definite_bytes`, a general CBOR encoder serving the whole
  * native-tx codec rather than §5.1 alone, transcribed exactly.
@@ -306,14 +306,14 @@ export const encodeMidgardFieldArrayHeaderV1 = (count: number): Buffer => {
  * and narrowing the Aiken side is a consensus change to a shared encoder.
  * Reachability is closed instead where §5.4 already lives: every entry point
  * that admits a preimage bounds it at 32,768 bytes
- * ({@link buildMidgardWholeFieldViewV1}, {@link buildMidgardChunkedFieldViewV1},
- * {@link selectMidgardFieldCarriageTierV1},
- * {@link splitMidgardFieldPreimageIntoChunksV1}), and one item wide enough to
+ * ({@link buildMidgardWholeFieldView}, {@link buildMidgardChunkedFieldView},
+ * {@link selectMidgardFieldCarriageTier},
+ * {@link splitMidgardFieldPreimageIntoChunks}), and one item wide enough to
  * reach `5a` needs a field twice that bound. A caller that assembles a preimage
- * with {@link encodeMidgardFieldPreimageV1} and never presents it to a door has
+ * with {@link encodeMidgardFieldPreimage} and never presents it to a door has
  * left the format already, and gets bytes no door will read back.
  */
-export const encodeMidgardDefiniteBytesV1 = (payload: Uint8Array): Buffer => {
+export const encodeMidgardDefiniteBytes = (payload: Uint8Array): Buffer => {
   const length = payload.length;
   if (length <= 23) {
     return Buffer.concat([Buffer.from([0x40 + length]), payload]);
@@ -337,15 +337,15 @@ export const encodeMidgardDefiniteBytesV1 = (payload: Uint8Array): Buffer => {
  * §5.1. A definite array header followed by one definite byte-string-wrapped
  * item per element. All nine fields share it; an empty field is exactly `80`.
  */
-export const encodeMidgardFieldPreimageV1 = (
+export const encodeMidgardFieldPreimage = (
   items: readonly Uint8Array[],
 ): Buffer =>
   Buffer.concat([
-    encodeMidgardFieldArrayHeaderV1(items.length),
-    ...items.map(encodeMidgardDefiniteBytesV1),
+    encodeMidgardFieldArrayHeader(items.length),
+    ...items.map(encodeMidgardDefiniteBytes),
   ]);
 
-export type MidgardFieldArrayHeaderV1 = {
+export type MidgardFieldArrayHeader = {
   /** Offset one past the header. */
   readonly nextOffset: number;
   readonly count: number;
@@ -370,10 +370,10 @@ const byteAt = (bytes: Uint8Array, offset: number): number => {
  * envelope decoded in this package goes through this function, so the grammar
  * has one verdict rather than two.
  */
-export const decodeMidgardFieldArrayHeaderV1At = (
+export const decodeMidgardFieldArrayHeaderAt = (
   bytes: Uint8Array,
   offset: number,
-): MidgardFieldArrayHeaderV1 => {
+): MidgardFieldArrayHeader => {
   const tag = byteAt(bytes, offset);
   if (tag >= 0x80 && tag <= 0x97) {
     return { nextOffset: offset + 1, count: tag - 0x80 };
@@ -404,9 +404,9 @@ export const decodeMidgardFieldArrayHeaderV1At = (
   return { nextOffset: offset + 3, count };
 };
 
-export const decodeMidgardFieldArrayHeaderV1 = (
+export const decodeMidgardFieldArrayHeader = (
   preimage: Uint8Array,
-): MidgardFieldArrayHeaderV1 => decodeMidgardFieldArrayHeaderV1At(preimage, 0);
+): MidgardFieldArrayHeader => decodeMidgardFieldArrayHeaderAt(preimage, 0);
 
 /**
  * §5.1's `definite_bytes_header(L)` at `offset`, minimal width, capped at
@@ -448,7 +448,7 @@ const decodeItemHeaderAt = (
 };
 
 /** The §5.1 header width a given item count occupies. */
-export const midgardFieldHeaderLengthForCountV1 = (count: number): number => {
+export const midgardFieldHeaderLengthForCount = (count: number): number => {
   const exact = exactCount(count, "field item count");
   if (exact <= 23) {
     return 1;
@@ -456,7 +456,7 @@ export const midgardFieldHeaderLengthForCountV1 = (count: number): number => {
   if (exact <= 0xff) {
     return 2;
   }
-  if (exact > MIDGARD_MAX_FIELD_ITEM_COUNT_V1) {
+  if (exact > MIDGARD_MAX_FIELD_ITEM_COUNT) {
     return failField(
       "field item count exceeds the §5.1 `99 NNNN` bound",
       `count=${exact}`,
@@ -470,11 +470,11 @@ export const midgardFieldHeaderLengthForCountV1 = (count: number): number => {
  * an item count disagreeing with the walked content, and trailing bytes after
  * item `N-1` all reject.
  */
-export const decodeMidgardFieldPreimageV1 = (
+export const decodeMidgardFieldPreimage = (
   preimage: Uint8Array,
 ): readonly Buffer[] => {
   const read = wholeReader(preimage);
-  const { nextOffset, count } = decodeMidgardFieldArrayHeaderV1(preimage);
+  const { nextOffset, count } = decodeMidgardFieldArrayHeader(preimage);
   const items: Buffer[] = [];
   let cursor = nextOffset;
   for (let index = 0; index < count; index += 1) {
@@ -499,13 +499,13 @@ export const decodeMidgardFieldPreimageV1 = (
  * §4 — plain hashing. No domain tag, no version prefix, no field index in the
  * hash input; a watcher needs the raw bytes and `blake2b_256`, nothing else.
  */
-export const midgardFieldCommitmentV1 = (preimage: Uint8Array): Buffer =>
+export const midgardFieldCommitment = (preimage: Uint8Array): Buffer =>
   computeHash32(preimage);
 
-/** The producer twin of {@link midgardFieldCommitmentV1}: envelope, then hash. */
-export const midgardFieldCommitmentFromItemsV1 = (
+/** The producer twin of {@link midgardFieldCommitment}: envelope, then hash. */
+export const midgardFieldCommitmentFromItems = (
   items: readonly Uint8Array[],
-): Buffer => midgardFieldCommitmentV1(encodeMidgardFieldPreimageV1(items));
+): Buffer => midgardFieldCommitment(encodeMidgardFieldPreimage(items));
 
 /**
  * `blake2b_256(#"80")` — what every empty field commits to.
@@ -515,22 +515,22 @@ export const midgardFieldCommitmentFromItemsV1 = (
  * `native_tx_field_access_v1.empty_field_commitment`; the cross-language
  * golden vector proves the two against each other.
  */
-export const MIDGARD_EMPTY_FIELD_COMMITMENT_V1: Buffer =
-  midgardFieldCommitmentFromItemsV1([]);
+export const MIDGARD_EMPTY_FIELD_COMMITMENT: Buffer =
+  midgardFieldCommitmentFromItems([]);
 
 /** §5.3 stride table. `0` marks the variable-width fields. */
-export const midgardFieldStrideV1 = (fieldIndex: number): number => {
-  const exact = exactMidgardFieldIndexV1(fieldIndex);
+export const midgardFieldStride = (fieldIndex: number): number => {
+  const exact = exactMidgardFieldIndex(fieldIndex);
   if (exact === 0 || exact === 1) {
-    return MIDGARD_SPEND_INPUT_STRIDE_V1;
+    return MIDGARD_SPEND_INPUT_STRIDE;
   }
   if (exact === 3 || exact === 4) {
-    return MIDGARD_HASH28_STRIDE_V1;
+    return MIDGARD_HASH28_STRIDE;
   }
   if (exact === 7) {
-    return MIDGARD_ADDRESS_WITNESS_STRIDE_V1;
+    return MIDGARD_ADDRESS_WITNESS_STRIDE;
   }
-  return MIDGARD_WALK_DERIVED_STRIDE_V1;
+  return MIDGARD_WALK_DERIVED_STRIDE;
 };
 
 // ---------------------------------------------------------------------------
@@ -541,38 +541,34 @@ export const midgardFieldStrideV1 = (fieldIndex: number): number => {
  * §8.4's deterministic split rule: chunk `j` is bytes `[j·K, (j+1)·K)` with a
  * ragged last chunk, minimum-necessary chunks by construction.
  */
-export const midgardExpectedChunkCountV1 = (totalLength: number): number => {
+export const midgardExpectedChunkCount = (totalLength: number): number => {
   const exact = exactCount(totalLength, "preimage total length");
   if (exact === 0) {
     return failField("tier-3 total length must be positive", "total_length=0");
   }
-  return Math.ceil(exact / MIDGARD_CHUNK_BYTES_K_V1);
+  return Math.ceil(exact / MIDGARD_CHUNK_BYTES_K);
 };
 
 /**
  * §8.4. Determinism is what makes independent publishers byte-compatible:
  * identical chunks, identical digest vectors, interchangeable certificates.
  */
-export const splitMidgardFieldPreimageIntoChunksV1 = (
+export const splitMidgardFieldPreimageIntoChunks = (
   preimage: Uint8Array,
 ): readonly Buffer[] => {
-  if (preimage.length > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1) {
+  if (preimage.length > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) {
     return failField(
       "field preimage exceeds the §5.4 aggregate bound",
       `length=${preimage.length}`,
     );
   }
   const chunks: Buffer[] = [];
-  for (
-    let start = 0;
-    start < preimage.length;
-    start += MIDGARD_CHUNK_BYTES_K_V1
-  ) {
+  for (let start = 0; start < preimage.length; start += MIDGARD_CHUNK_BYTES_K) {
     chunks.push(
       Buffer.from(
         preimage.subarray(
           start,
-          Math.min(start + MIDGARD_CHUNK_BYTES_K_V1, preimage.length),
+          Math.min(start + MIDGARD_CHUNK_BYTES_K, preimage.length),
         ),
       ),
     );
@@ -581,7 +577,7 @@ export const splitMidgardFieldPreimageIntoChunksV1 = (
 };
 
 /** §8.6. The tier-3 digest manifest the certificate validator mints. */
-export type MidgardFieldPreimageCertificateV1 = {
+export type MidgardFieldPreimageCertificate = {
   /** Min-Ada reclaim authority, set by the minter. 28-byte vkey hash. */
   readonly owner: Buffer;
   /** The L2 transaction's id (32 bytes). */
@@ -628,7 +624,7 @@ const exactBytes = (
  * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`, pinned by the
  * cross-language golden channel.
  */
-export const MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1: Buffer =
+export const MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME: Buffer =
   Buffer.from("MIDGARD_FIELD_PREIMAGE_CERT", "ascii");
 
 /**
@@ -638,7 +634,7 @@ export const MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1: Buffer =
  * partition, so a preimage that fits tier 1 or tier 2 has exactly one
  * admissible carriage.
  */
-export const deriveMidgardFieldPreimageCertificateV1 = ({
+export const deriveMidgardFieldPreimageCertificate = ({
   owner,
   txId,
   fieldIndex,
@@ -648,23 +644,23 @@ export const deriveMidgardFieldPreimageCertificateV1 = ({
   readonly txId: Uint8Array;
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
-}): MidgardFieldPreimageCertificateV1 => {
-  if (preimage.length <= MIDGARD_CHUNK_BYTES_K_V1) {
+}): MidgardFieldPreimageCertificate => {
+  if (preimage.length <= MIDGARD_CHUNK_BYTES_K) {
     return failField(
       "tier-3 certification requires preimage_len > K (§8.4)",
-      `length=${preimage.length},k=${MIDGARD_CHUNK_BYTES_K_V1}`,
+      `length=${preimage.length},k=${MIDGARD_CHUNK_BYTES_K}`,
     );
   }
-  const chunks = splitMidgardFieldPreimageIntoChunksV1(preimage);
+  const chunks = splitMidgardFieldPreimageIntoChunks(preimage);
   return {
     owner: exactBytes(owner, 28, "certificate owner"),
     txId: exactBytes(txId, 32, "certificate tx_id"),
-    fieldIndex: exactMidgardFieldIndexV1(fieldIndex),
+    fieldIndex: exactMidgardFieldIndex(fieldIndex),
     // The mint weld (#606): the §4 commitment of the bytes themselves, the
     // same value the policy checks `hash(concat(chunks))` against.
-    fieldHash: midgardFieldCommitmentV1(preimage),
+    fieldHash: midgardFieldCommitment(preimage),
     totalLength: preimage.length,
-    chunkDigests: chunks.map(midgardFieldCommitmentV1),
+    chunkDigests: chunks.map(midgardFieldCommitment),
   };
 };
 
@@ -677,7 +673,7 @@ export const deriveMidgardFieldPreimageCertificateV1 = ({
  * Constructor order is frozen: `Inline` is Constr 0, `RawUtxo` 1,
  * `Certified` 2.
  */
-export type MidgardFieldCarriageV1 =
+export type MidgardFieldCarriage =
   | {
       /** Tier 1 — the step's own redeemer carries the preimage. */
       readonly carriage: "Inline";
@@ -706,7 +702,7 @@ export type MidgardFieldCarriageV1 =
  * An authenticated field, ready to slice. Carriage tier is an encoding detail
  * that consumer logic never branches on — the accessors read both variants.
  */
-export type MidgardFieldViewV1 =
+export type MidgardFieldView =
   | {
       /** Tiers 1–2: the whole preimage is present and hash-checked. */
       readonly view: "Whole";
@@ -730,20 +726,20 @@ export type MidgardFieldViewV1 =
  * §8, simplest-fitting-first. The ladder is a partition (§8.4), so a preimage
  * has exactly one admissible carriage and a builder never chooses.
  */
-export const selectMidgardFieldCarriageTierV1 = (
+export const selectMidgardFieldCarriageTier = (
   preimageLength: number,
-): (typeof MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1)[number] => {
+): (typeof MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS)[number] => {
   const exact = exactCount(preimageLength, "preimage length");
-  if (exact > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1) {
+  if (exact > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) {
     return failField(
       "field preimage exceeds the §5.4 aggregate bound",
       `length=${exact}`,
     );
   }
-  if (exact <= MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1) {
+  if (exact <= MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES) {
     return "Inline";
   }
-  if (exact <= MIDGARD_CHUNK_BYTES_K_V1) {
+  if (exact <= MIDGARD_CHUNK_BYTES_K) {
     return "RawUtxo";
   }
   return "Certified";
@@ -758,9 +754,9 @@ export const selectMidgardFieldCarriageTierV1 = (
  * laziness that matters is "a chunk nobody reads is never hashed"; re-hashing
  * on every read is an on-chain artifact of having nowhere to record the fact.
  */
-const verifiedChunkIndexes = new WeakMap<MidgardFieldViewV1, Set<number>>();
+const verifiedChunkIndexes = new WeakMap<MidgardFieldView, Set<number>>();
 
-const verifiedChunksOf = (view: MidgardFieldViewV1): Set<number> => {
+const verifiedChunksOf = (view: MidgardFieldView): Set<number> => {
   const existing = verifiedChunkIndexes.get(view);
   if (existing !== undefined) {
     return existing;
@@ -776,7 +772,7 @@ const verifiedChunksOf = (view: MidgardFieldViewV1): Set<number> => {
  * read at tier-3 construction), which verifies without remembering.
  */
 const verifyChunk = (
-  view: MidgardFieldViewV1 | undefined,
+  view: MidgardFieldView | undefined,
   chunks: readonly Buffer[],
   chunkDigests: readonly Buffer[],
   chunkIndex: number,
@@ -793,7 +789,7 @@ const verifyChunk = (
   if (verified?.has(chunkIndex) === true) {
     return chunk;
   }
-  if (!midgardFieldCommitmentV1(chunk).equals(digest)) {
+  if (!midgardFieldCommitment(chunk).equals(digest)) {
     return failHash(
       "chunk does not match its certified digest",
       `chunk_index=${chunkIndex}`,
@@ -804,7 +800,7 @@ const verifyChunk = (
 };
 
 const readChunkedRange = (
-  view: MidgardFieldViewV1 | undefined,
+  view: MidgardFieldView | undefined,
   chunks: readonly Buffer[],
   chunkDigests: readonly Buffer[],
   offset: number,
@@ -820,8 +816,8 @@ const readChunkedRange = (
   let cursor = offset;
   let remaining = length;
   while (remaining > 0) {
-    const chunkIndex = Math.floor(cursor / MIDGARD_CHUNK_BYTES_K_V1);
-    const within = cursor - chunkIndex * MIDGARD_CHUNK_BYTES_K_V1;
+    const chunkIndex = Math.floor(cursor / MIDGARD_CHUNK_BYTES_K);
+    const within = cursor - chunkIndex * MIDGARD_CHUNK_BYTES_K;
     const chunk = verifyChunk(view, chunks, chunkDigests, chunkIndex);
     const available = chunk.length - within;
     if (available <= 0) {
@@ -868,7 +864,7 @@ const walkToEnd = (
  * canonicality for a fixed-stride field is proved at each read instead, so a
  * field with 296 items does not pay 296 wrapper decodes to answer one dispute.
  */
-export const buildMidgardWholeFieldViewV1 = ({
+export const buildMidgardWholeFieldView = ({
   fieldIndex,
   preimage,
   expectedCommitment,
@@ -876,10 +872,10 @@ export const buildMidgardWholeFieldViewV1 = ({
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
   readonly expectedCommitment: Uint8Array;
-}): MidgardFieldViewV1 => {
-  const stride = midgardFieldStrideV1(fieldIndex);
+}): MidgardFieldView => {
+  const stride = midgardFieldStride(fieldIndex);
   const bytes = Buffer.from(preimage);
-  const actual = midgardFieldCommitmentV1(bytes);
+  const actual = midgardFieldCommitment(bytes);
   if (!actual.equals(Buffer.from(expectedCommitment))) {
     return failHash(
       "field preimage does not match the committed field hash",
@@ -887,15 +883,15 @@ export const buildMidgardWholeFieldViewV1 = ({
     );
   }
   const totalLength = bytes.length;
-  if (totalLength > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1) {
+  if (totalLength > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) {
     return failField(
       "field preimage exceeds the §5.4 aggregate bound",
       `length=${totalLength}`,
     );
   }
   const { nextOffset: headerLength, count } =
-    decodeMidgardFieldArrayHeaderV1(bytes);
-  if (stride > MIDGARD_WALK_DERIVED_STRIDE_V1) {
+    decodeMidgardFieldArrayHeader(bytes);
+  if (stride > MIDGARD_WALK_DERIVED_STRIDE) {
     if (headerLength + stride * count !== totalLength) {
       return failGrammar(
         "§7.4 count consistency failed for a fixed-stride field",
@@ -919,7 +915,7 @@ const countFromTotalLength = (stride: number, totalLength: number): number => {
         ? candidate >= 0 && candidate <= 23
         : headerLength === 2
           ? candidate >= 24 && candidate <= 0xff
-          : candidate > 0xff && candidate <= MIDGARD_MAX_FIELD_ITEM_COUNT_V1;
+          : candidate > 0xff && candidate <= MIDGARD_MAX_FIELD_ITEM_COUNT;
     if (inRange && headerLength + stride * candidate === totalLength) {
       return candidate;
     }
@@ -939,7 +935,7 @@ const countFromTotalLength = (stride: number, totalLength: number): number => {
  * mint-verified — the policy checked the chunks against the field hash, so
  * `totalLength` and the digest vector arrive as authenticated data and
  * `certified_view` never re-hashes anything. Off-chain a
- * `MidgardFieldPreimageCertificateV1` is just a record the caller handed over;
+ * `MidgardFieldPreimageCertificate` is just a record the caller handed over;
  * no policy stands behind it, and the §8.6 constant asset name a door can
  * check names the policy, never the content (#606). Authentication therefore
  * has to happen here or nowhere, and §4 commits the *whole* preimage under one
@@ -948,7 +944,7 @@ const countFromTotalLength = (stride: number, totalLength: number): number => {
  *
  * That is the trade this function makes: one `blake2b_256` over at most 32,768
  * bytes (§5.4) at construction, in exchange for a view whose bytes are the
- * field's. It is the same bound `buildMidgardWholeFieldViewV1` already pays for
+ * field's. It is the same bound `buildMidgardWholeFieldView` already pays for
  * tiers 1–2, and §7.1 authenticate-once means a caller pays it per field, not
  * per read. What it does *not* buy back is chunk-level laziness at the door: a
  * caller that reads one item still hashes the whole preimage, because §4 gives
@@ -974,13 +970,13 @@ const countFromTotalLength = (stride: number, totalLength: number): number => {
  * its end at construction would spend `N` chunk hashes on-chain, and running
  * the walk only here would accept preimages the on-chain door accepts too —
  * a divergence in the wrong direction. So the §5.1 count-consistency check
- * `buildMidgardWholeFieldViewV1` runs is not available here, and this function
+ * `buildMidgardWholeFieldView` runs is not available here, and this function
  * does not pretend otherwise: a fixed-stride field keeps the full §7.4
  * arithmetic check against `totalLength`, and a variable-width field's header
  * count is committed but never reconciled with its content, which is why
- * {@link midgardFieldItemCountV1} refuses to answer for one.
+ * {@link midgardFieldItemCount} refuses to answer for one.
  */
-export const buildMidgardChunkedFieldViewV1 = ({
+export const buildMidgardChunkedFieldView = ({
   fieldIndex,
   txId,
   certificate,
@@ -989,18 +985,18 @@ export const buildMidgardChunkedFieldViewV1 = ({
 }: {
   readonly fieldIndex: number;
   readonly txId: Uint8Array;
-  readonly certificate: MidgardFieldPreimageCertificateV1;
+  readonly certificate: MidgardFieldPreimageCertificate;
   readonly chunks: readonly Uint8Array[];
   /**
    * §4's committed field hash, extracted positionally from a compact structure
-   * by the caller — the same obligation {@link buildMidgardWholeFieldViewV1}
+   * by the caller — the same obligation {@link buildMidgardWholeFieldView}
    * carries, and required for the same reason: a view is an *authenticated*
    * field, so there is no admissible way to build one without it.
    */
   readonly expectedCommitment: Uint8Array;
-}): MidgardFieldViewV1 => {
-  const exactField = exactMidgardFieldIndexV1(fieldIndex);
-  const stride = midgardFieldStrideV1(exactField);
+}): MidgardFieldView => {
+  const exactField = exactMidgardFieldIndex(fieldIndex);
+  const stride = midgardFieldStride(exactField);
   if (!certificate.txId.equals(Buffer.from(txId))) {
     return failField(
       "certificate tx_id does not match the authenticated transaction",
@@ -1030,26 +1026,26 @@ export const buildMidgardChunkedFieldViewV1 = ({
   // without it a single-chunk "certificate" authenticates a preimage of any
   // size, and every structural check tiers 1-2 run at view construction can be
   // side-stepped by re-carrying the same bytes here.
-  if (totalLength <= MIDGARD_CHUNK_BYTES_K_V1) {
+  if (totalLength <= MIDGARD_CHUNK_BYTES_K) {
     return failField(
       "tier-3 certificate must declare total_length > K (§8.4)",
       `total_length=${totalLength}`,
     );
   }
-  if (totalLength > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1) {
+  if (totalLength > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) {
     return failField(
       "certificate total_length exceeds the §5.4 aggregate bound",
       `total_length=${totalLength}`,
     );
   }
   const chunkCount = certificate.chunkDigests.length;
-  if (chunkCount !== midgardExpectedChunkCountV1(totalLength)) {
+  if (chunkCount !== midgardExpectedChunkCount(totalLength)) {
     return failField(
       "certificate digest vector does not match the §8.4 chunk count",
       `digests=${chunkCount},total_length=${totalLength}`,
     );
   }
-  if (chunkCount > MIDGARD_MAX_TIER3_CHUNK_COUNT_V1) {
+  if (chunkCount > MIDGARD_MAX_TIER3_CHUNK_COUNT) {
     return failField(
       "certificate exceeds the §8.3 maximum tier-3 chunk count",
       `digests=${chunkCount}`,
@@ -1064,8 +1060,8 @@ export const buildMidgardChunkedFieldViewV1 = ({
   const exactChunks = chunks.map((chunk, index) => {
     const expected =
       index === chunkCount - 1
-        ? totalLength - index * MIDGARD_CHUNK_BYTES_K_V1
-        : MIDGARD_CHUNK_BYTES_K_V1;
+        ? totalLength - index * MIDGARD_CHUNK_BYTES_K
+        : MIDGARD_CHUNK_BYTES_K;
     if (chunk.length !== expected) {
       return failField(
         "chunk length disagrees with the §8.4 deterministic split",
@@ -1078,7 +1074,7 @@ export const buildMidgardChunkedFieldViewV1 = ({
   // `totalLength` bytes, so this is the field's preimage or it is nothing.
   // On-chain this check belongs to the certificate minting policy and reaches
   // the door as a token; off-chain there is no policy, so it is made here.
-  const actual = midgardFieldCommitmentV1(Buffer.concat(exactChunks));
+  const actual = midgardFieldCommitment(Buffer.concat(exactChunks));
   if (!actual.equals(Buffer.from(expectedCommitment))) {
     return failHash(
       "field preimage does not match the committed field hash",
@@ -1088,7 +1084,7 @@ export const buildMidgardChunkedFieldViewV1 = ({
   const digests = certificate.chunkDigests.map((digest, index) =>
     exactBytes(digest, 32, `certificate chunk digest ${index}`),
   );
-  if (stride > MIDGARD_WALK_DERIVED_STRIDE_V1) {
+  if (stride > MIDGARD_WALK_DERIVED_STRIDE) {
     // §7.4 count consistency against the mint-verified `totalLength`; no chunk
     // hash is spent to learn the count (§8.6).
     return {
@@ -1105,7 +1101,7 @@ export const buildMidgardChunkedFieldViewV1 = ({
   // `totalLength` always leaves three bytes to read.
   const header = readChunkedRange(undefined, exactChunks, digests, 0, 3);
   const { nextOffset: headerLength, count } =
-    decodeMidgardFieldArrayHeaderV1(header);
+    decodeMidgardFieldArrayHeader(header);
   // The one count check that is O(1) here: an enveloped item is at least one
   // byte (`40`), so `count` items cannot fit in fewer than `count` bytes. This
   // bounds the read guard below; it does not authenticate the count.
@@ -1125,11 +1121,11 @@ export const buildMidgardChunkedFieldViewV1 = ({
 };
 
 /** What a resolved reference input contributes to carriage resolution. */
-export type ResolvedCarriageReferenceInputV1 = {
+export type ResolvedCarriageReferenceInput = {
   /** §8.5 raw carriage: the nothing-but-bytes inline datum payload. */
   readonly inlineDatumBytes?: Uint8Array;
   /** §8.6 manifest: the decoded certificate datum. */
-  readonly certificate?: MidgardFieldPreimageCertificateV1;
+  readonly certificate?: MidgardFieldPreimageCertificate;
   /**
    * The certificate token's asset name as observed at that UTxO, checked
    * against the §8.6 constant when supplied (#606: every certificate token
@@ -1138,7 +1134,7 @@ export type ResolvedCarriageReferenceInputV1 = {
    * This is an *identity* check, not an authentication: it catches a carriage
    * pointing at a token that is not the certificate policy's at all. What
    * proves the bytes are the field's is the §4 commitment check in
-   * {@link buildMidgardChunkedFieldViewV1} together with the welded
+   * {@link buildMidgardChunkedFieldView} together with the welded
    * `fieldHash` equality, neither of which depends on this field being
    * supplied.
    */
@@ -1146,9 +1142,9 @@ export type ResolvedCarriageReferenceInputV1 = {
 };
 
 const referenceInputAt = (
-  referenceInputs: readonly ResolvedCarriageReferenceInputV1[],
+  referenceInputs: readonly ResolvedCarriageReferenceInput[],
   index: number,
-): ResolvedCarriageReferenceInputV1 => {
+): ResolvedCarriageReferenceInput => {
   if (!Number.isSafeInteger(index) || index < 0) {
     return failField("reference-input index must be non-negative", `${index}`);
   }
@@ -1163,7 +1159,7 @@ const referenceInputAt = (
 };
 
 const rawCarriageBytes = (
-  referenceInputs: readonly ResolvedCarriageReferenceInputV1[],
+  referenceInputs: readonly ResolvedCarriageReferenceInput[],
   index: number,
 ): Uint8Array => {
   const input = referenceInputAt(referenceInputs, index);
@@ -1198,7 +1194,7 @@ const rawCarriageBytes = (
  * encoding detail: the same forged bytes are refused whichever tier presents
  * them.
  */
-export const authenticatedMidgardFieldViewV1 = ({
+export const authenticatedMidgardFieldView = ({
   fieldIndex,
   txId,
   expectedCommitment,
@@ -1208,19 +1204,19 @@ export const authenticatedMidgardFieldViewV1 = ({
   readonly fieldIndex: number;
   readonly txId: Uint8Array;
   readonly expectedCommitment: Uint8Array;
-  readonly carriage: MidgardFieldCarriageV1;
-  readonly referenceInputs?: readonly ResolvedCarriageReferenceInputV1[];
-}): MidgardFieldViewV1 => {
-  const exactField = exactMidgardFieldIndexV1(fieldIndex);
+  readonly carriage: MidgardFieldCarriage;
+  readonly referenceInputs?: readonly ResolvedCarriageReferenceInput[];
+}): MidgardFieldView => {
+  const exactField = exactMidgardFieldIndex(fieldIndex);
   switch (carriage.carriage) {
     case "Inline":
-      return buildMidgardWholeFieldViewV1({
+      return buildMidgardWholeFieldView({
         fieldIndex: exactField,
         preimage: carriage.preimage,
         expectedCommitment,
       });
     case "RawUtxo":
-      return buildMidgardWholeFieldViewV1({
+      return buildMidgardWholeFieldView({
         fieldIndex: exactField,
         preimage: rawCarriageBytes(referenceInputs, carriage.refInputIndex),
         expectedCommitment,
@@ -1238,16 +1234,16 @@ export const authenticatedMidgardFieldViewV1 = ({
       }
       if (
         certInput.certificateAssetName !== undefined &&
-        !MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.equals(
+        !MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.equals(
           Buffer.from(certInput.certificateAssetName),
         )
       ) {
         return failField(
           "certificate token is not the §8.6 constant name (#606)",
-          `expected=${MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("hex")}`,
+          `expected=${MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("hex")}`,
         );
       }
-      return buildMidgardChunkedFieldViewV1({
+      return buildMidgardChunkedFieldView({
         fieldIndex: exactField,
         txId,
         certificate: certInput.certificate,
@@ -1276,14 +1272,14 @@ export const authenticatedMidgardFieldViewV1 = ({
  * with the items that follow — that is §5.1's walk, and tier 3 does not run it.
  * Rather than return a number nobody checked — which a count-consuming rule
  * would take for a fact — the door declines to answer. Reads are unaffected:
- * {@link midgardFieldItemAtV1} still serves such a view, and the envelope walk
+ * {@link midgardFieldItemAt} still serves such a view, and the envelope walk
  * behind it fails closed the moment it leaves the committed bytes.
  */
-export const midgardFieldItemCountV1 = (view: MidgardFieldViewV1): number => {
+export const midgardFieldItemCount = (view: MidgardFieldView): number => {
   if (view.view === "Whole") {
     return view.count;
   }
-  if (view.stride <= MIDGARD_WALK_DERIVED_STRIDE_V1) {
+  if (view.stride <= MIDGARD_WALK_DERIVED_STRIDE) {
     return failField(
       "a variable-width field carried under tier 3 has no authenticated item count (§7.4)",
       "carriage=Certified",
@@ -1297,9 +1293,9 @@ export const midgardFieldItemCountV1 = (view: MidgardFieldViewV1): number => {
  * Private, and used only as the range guard on a read — never handed to a
  * caller as the item count.
  */
-const declaredItemCount = (view: MidgardFieldViewV1): number => view.count;
+const declaredItemCount = (view: MidgardFieldView): number => view.count;
 
-export const midgardFieldTotalLengthV1 = (view: MidgardFieldViewV1): number =>
+export const midgardFieldTotalLength = (view: MidgardFieldView): number =>
   view.view === "Whole"
     ? view.bytes.length
     : view.chunks.reduce((total, chunk) => total + chunk.length, 0);
@@ -1308,8 +1304,8 @@ export const midgardFieldTotalLengthV1 = (view: MidgardFieldViewV1): number =>
  * Reads `length` bytes at `offset`, stitching across chunk boundaries and
  * verifying every chunk it touches (§8.8 straddle awareness, lazy verify).
  */
-export const midgardFieldReadRangeV1 = (
-  view: MidgardFieldViewV1,
+export const midgardFieldReadRange = (
+  view: MidgardFieldView,
   offset: number,
   length: number,
 ): Buffer =>
@@ -1318,11 +1314,11 @@ export const midgardFieldReadRangeV1 = (
     : readChunkedRange(view, view.chunks, view.chunkDigests, offset, length);
 
 const viewReader =
-  (view: MidgardFieldViewV1) =>
+  (view: MidgardFieldView) =>
   (offset: number, length: number): Buffer =>
-    midgardFieldReadRangeV1(view, offset, length);
+    midgardFieldReadRange(view, offset, length);
 
-export type MidgardFieldItemExtentV1 = {
+export type MidgardFieldItemExtent = {
   readonly offset: number;
   readonly length: number;
 };
@@ -1339,10 +1335,10 @@ export type MidgardFieldItemExtentV1 = {
  * admissible byte forms for one logical field, which §6.1 forbids and which
  * would leave a non-canonically committed preimage unfaultable.
  */
-export const midgardFieldItemExtentV1 = (
-  view: MidgardFieldViewV1,
+export const midgardFieldItemExtent = (
+  view: MidgardFieldView,
   index: number,
-): MidgardFieldItemExtentV1 => {
+): MidgardFieldItemExtent => {
   const count = declaredItemCount(view);
   if (!Number.isSafeInteger(index) || index < 0 || index >= count) {
     return failField(
@@ -1351,15 +1347,15 @@ export const midgardFieldItemExtentV1 = (
     );
   }
   const read = viewReader(view);
-  const headerLength = midgardFieldHeaderLengthForCountV1(count);
-  if (view.stride > MIDGARD_WALK_DERIVED_STRIDE_V1) {
+  const headerLength = midgardFieldHeaderLengthForCount(count);
+  if (view.stride > MIDGARD_WALK_DERIVED_STRIDE) {
     const itemOffset = headerLength + view.stride * index;
     const { payloadOffset, length } = decodeItemHeaderAt(read, itemOffset);
     // Every fixed stride in §5.3 wraps 24..255 payload bytes, so the canonical
     // wrapper is exactly the two-byte `58 LL` form and the stride pins `LL`.
     if (
-      payloadOffset !== itemOffset + MIDGARD_FIXED_ITEM_WRAPPER_BYTES_V1 ||
-      length !== view.stride - MIDGARD_FIXED_ITEM_WRAPPER_BYTES_V1
+      payloadOffset !== itemOffset + MIDGARD_FIXED_ITEM_WRAPPER_BYTES ||
+      length !== view.stride - MIDGARD_FIXED_ITEM_WRAPPER_BYTES
     ) {
       return failGrammar(
         "fixed-stride item wrapper is not the canonical §5.1 spelling",
@@ -1383,10 +1379,10 @@ export const midgardFieldItemExtentV1 = (
  * stripped. Fails unless `0 ≤ index < count` **and** the item's full byte
  * range lies inside the preimage (§7.3).
  */
-export const midgardFieldItemAtV1 = (
-  view: MidgardFieldViewV1,
+export const midgardFieldItemAt = (
+  view: MidgardFieldView,
   index: number,
 ): Buffer => {
-  const { offset, length } = midgardFieldItemExtentV1(view, index);
-  return midgardFieldReadRangeV1(view, offset, length);
+  const { offset, length } = midgardFieldItemExtent(view, index);
+  return midgardFieldReadRange(view, offset, length);
 };

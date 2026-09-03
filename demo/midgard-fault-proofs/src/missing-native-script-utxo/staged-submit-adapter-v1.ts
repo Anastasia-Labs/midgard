@@ -1,5 +1,5 @@
-import type { MissingNativeScriptTxContractsV1 } from "../missing-native-script-tx/contracts-v1.js";
-import type { MissingNativeScriptUtxoContractsV1 } from "./contracts-v1.js";
+import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts-v1.js";
+import type { MissingNativeScriptUtxoContracts } from "./contracts-v1.js";
 
 /**
  * The Q33 and Q17 staged field-6 validators deliberately share the exact
@@ -7,9 +7,9 @@ import type { MissingNativeScriptUtxoContractsV1 } from "./contracts-v1.js";
  * already-audited transaction builder is reused without duplicating its
  * reference-script and checkpoint validation logic.
  */
-export const missingNativeScriptUtxoStagedContractsV1 = (
-  contracts: MissingNativeScriptUtxoContractsV1,
-): MissingNativeScriptTxContractsV1 => {
+export const missingNativeScriptUtxoStagedContracts = (
+  contracts: MissingNativeScriptUtxoContracts,
+): MissingNativeScriptTxContracts => {
   const unused = contracts.steps[0];
   return {
     steps: [

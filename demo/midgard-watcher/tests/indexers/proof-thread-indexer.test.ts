@@ -4,10 +4,10 @@ import { type Server } from "node:net";
 import { join } from "node:path";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  availabilityResponseGeometryV1,
-  buildDaAvailabilityCommitmentV1,
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,
   FraudProofComputationThreadRedeemer,
@@ -20,59 +20,59 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  evaluateWatcherProofThreadIndexerV1 as evaluateWatcherProofThreadIndexerV1Raw,
-  makeWatcherProofThreadJournalV1,
-  makeWatcherProofThreadLayoutV1,
-  makeWatcherProofThreadObservationV1,
-  makeWatcherProofThreadPolicyV1,
-  parseWatcherProofThreadResultV1 as parseWatcherProofThreadResultV1Raw,
-  parseWatcherProofThreadStateV1 as parseWatcherProofThreadStateV1Raw,
-  WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1,
-  WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-  WATCHER_PROOF_THREAD_V1_BOUNDS,
-  type WatcherProofThreadFamilyV1,
-  type WatcherProofThreadJournalV1,
-  type WatcherProofThreadObservationV1,
-  type WatcherProofThreadPolicyV1,
-  type WatcherProofThreadPublicContextV1,
-  type WatcherProofThreadStateV1,
+  evaluateWatcherProofThreadIndexer as evaluateWatcherProofThreadIndexerRaw,
+  makeWatcherProofThreadJournal,
+  makeWatcherProofThreadLayout,
+  makeWatcherProofThreadObservation,
+  makeWatcherProofThreadPolicy,
+  parseWatcherProofThreadResult as parseWatcherProofThreadResultRaw,
+  parseWatcherProofThreadState as parseWatcherProofThreadStateRaw,
+  WATCHER_PROOF_THREAD_BOUNDS,
+  WATCHER_PROOF_THREAD_FAMILY_AUTHORITY,
+  WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
+  type WatcherProofThreadFamily,
+  type WatcherProofThreadJournal,
+  type WatcherProofThreadObservation,
+  type WatcherProofThreadPolicy,
+  type WatcherProofThreadPublicContext,
+  type WatcherProofThreadState,
 } from "../../src/indexers/proof-thread-indexer.js";
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
-  type WatcherFinalityStateV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
+  type WatcherFinalityState,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1RedeemerV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block as normalizeWatcherL1BlockRaw,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1Provider,
+  type WatcherL1Redeemer,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw } from "../../src/l1/multi-provider-consistency.js";
 import {
-  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
-  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
-  makeWatcherRollbackBootstrapStateV1,
-  type WatcherPostFinalityRecoveryInputV1,
+  evaluateWatcherPostFinalityRecovery as evaluateWatcherPostFinalityRecoveryRaw,
+  evaluateWatcherRollback as evaluateWatcherRollbackRaw,
+  makeWatcherRollbackBootstrapState,
+  type WatcherPostFinalityRecoveryInput,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  type WatcherDurableRecordsV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  type WatcherDurableRecords,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  type WatcherProtocolUtxoV1,
+  type WatcherProtocolUtxo,
 } from "../../src/storage/durable-store.js";
 import {
   canonicalDigest as digest,
@@ -81,10 +81,10 @@ import {
 import {
   h28,
   h32,
-  makeWatcherAuthorityContractsV1,
-  makeWatcherDeploymentAuthorityFixtureV1,
+  makeWatcherAuthorityContracts,
+  makeWatcherDeploymentAuthorityFixture,
 } from "../support/deployment-authority-fixture.js";
-import { makeWatcherTlsTransportFixtureV1 } from "../support/tls-transport-fixture.js";
+import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
 
 const RELEASE_DIGEST = h32("66");
 const BLUEPRINT_HASH = h32("55");
@@ -121,7 +121,7 @@ const scriptAddress = (hash: string): string =>
     Buffer.concat([Buffer.from([0x70]), Buffer.from(hash, "hex")]),
   ).to_hex();
 
-const publicBytes = (hex: string) => makeWatcherL1PublicBytesV1(hex);
+const publicBytes = (hex: string) => makeWatcherL1PublicBytes(hex);
 const canonicalData = (hex: string): string =>
   CML.PlutusData.from_cbor_hex(hex).to_canonical_cbor_hex();
 
@@ -144,9 +144,9 @@ const linearNextStepIndexes = (
   );
 
 const makeDeploymentAuthority = () => {
-  const contractSet = makeWatcherAuthorityContractsV1();
-  const families: readonly WatcherProofThreadFamilyV1[] = Object.freeze(
-    Object.entries(WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1)
+  const contractSet = makeWatcherAuthorityContracts();
+  const families: readonly WatcherProofThreadFamily[] = Object.freeze(
+    Object.entries(WATCHER_PROOF_THREAD_FAMILY_AUTHORITY)
       .map(([catalogueCategory, familyAuthority]) => {
         const category =
           contractSet.fraudProofCatalogue.categories[
@@ -198,7 +198,7 @@ const makeDeploymentAuthority = () => {
       })
       .sort((left, right) => left.familyId.localeCompare(right.familyId)),
   );
-  const fixture = makeWatcherDeploymentAuthorityFixtureV1({
+  const fixture = makeWatcherDeploymentAuthorityFixture({
     contractSet,
     releaseDigest: RELEASE_DIGEST,
     blueprintHash: BLUEPRINT_HASH,
@@ -227,7 +227,7 @@ const makeDeploymentAuthority = () => {
 
 const authority = makeDeploymentAuthority();
 const applied = authority.deploymentAuthority.policy.appliedScriptHashes;
-const policy = makeWatcherProofThreadPolicyV1({
+const policy = makeWatcherProofThreadPolicy({
   network: "Preprod",
   releaseEvidenceDigest: RELEASE_DIGEST,
   deploymentMarker: authority.marker,
@@ -239,10 +239,10 @@ const policy = makeWatcherProofThreadPolicyV1({
   fraudProofAddressHex: scriptAddress(applied.fraudProofSpend!),
   families: authority.families,
   maximumHistoryEntries: "32",
-}) as WatcherProofThreadPolicyV1;
+}) as WatcherProofThreadPolicy;
 
-const makeFinalityPolicy = (source: unknown): WatcherFinalityPolicyV1 =>
-  makeWatcherFinalityPolicyV1(
+const makeFinalityPolicy = (source: unknown): WatcherFinalityPolicy =>
+  makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "development",
@@ -293,7 +293,7 @@ const makeFinalityPolicy = (source: unknown): WatcherFinalityPolicyV1 =>
       },
     },
     authority.result,
-  ) as WatcherFinalityPolicyV1;
+  ) as WatcherFinalityPolicy;
 
 const externalSource = {
   sourceMode: "external_providers",
@@ -311,20 +311,20 @@ const externalSource = {
   ],
 } as const;
 
-let finalityPolicy: WatcherFinalityPolicyV1;
+let finalityPolicy: WatcherFinalityPolicy;
 
-let providers: readonly WatcherAuthenticatedL1ProviderV1[];
+let providers: readonly WatcherAuthenticatedL1Provider[];
 
-const watcherTransportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const watcherTransportContexts: WatcherL1TransportAttestationContext[] = [];
 const normalizedTransportContexts = new WeakMap<
   object,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 const watcherTransportServers: Server[] = [];
 let watcherTransportFixtureDirectory = "";
 
 const makeTlsTransportFixture = async (name: string) =>
-  await makeWatcherTlsTransportFixtureV1(
+  await makeWatcherTlsTransportFixture(
     watcherTransportFixtureDirectory,
     watcherTransportServers,
     name,
@@ -348,7 +348,7 @@ beforeAll(async () => {
         throw new Error("missing external-provider fixture policy");
       }
       (configuredProvider as Mutable).endpoint = endpoint;
-      return await establishWatcherExternalProviderTransportV1({
+      return await establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId: providerId!,
         operatorIdentitySha256: operatorIdentitySha256!,
@@ -362,13 +362,13 @@ beforeAll(async () => {
   watcherTransportContexts.push(...externalTransports);
   finalityPolicy = makeFinalityPolicy(externalSource);
   providers = externalTransports.map(
-    (context) => watcherL1TransportAttestationDetailsV1(context)!.provider,
+    (context) => watcherL1TransportAttestationDetails(context)!.provider,
   );
 });
 
 afterAll(async () => {
   for (const context of watcherTransportContexts) {
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
   }
   for (const server of watcherTransportServers) {
     server.close();
@@ -381,9 +381,9 @@ afterAll(async () => {
 
 const transportForProvider = (
   authenticatedProvider: unknown,
-): WatcherL1TransportAttestationContextV1 => {
+): WatcherL1TransportAttestationContext => {
   const matches = watcherTransportContexts.filter((context) => {
-    const details = watcherL1TransportAttestationDetailsV1(context);
+    const details = watcherL1TransportAttestationDetails(context);
     return (
       details !== null &&
       JSON.stringify(details.provider) === JSON.stringify(authenticatedProvider)
@@ -395,21 +395,21 @@ const transportForProvider = (
   return matches[0]!;
 };
 
-const normalizeWatcherL1BlockV1 = (
+const normalizeWatcherL1Block = (
   authenticatedProvider: unknown,
   observation: unknown,
 ) => {
   const transport = transportForProvider(authenticatedProvider);
-  const normalized = normalizeWatcherL1BlockV1Raw(transport, observation);
+  const normalized = normalizeWatcherL1BlockRaw(transport, observation);
   normalizedTransportContexts.set(normalized, transport);
   return normalized;
 };
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: readonly unknown[],
 ) =>
-  evaluateWatcherMultiProviderConsistencyV1Raw(
+  evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     observations.map((observation) => {
@@ -424,13 +424,13 @@ const evaluateWatcherMultiProviderConsistencyV1 = (
     }),
   );
 
-const evaluateWatcherProofThreadIndexerV1 = (
+const evaluateWatcherProofThreadIndexer = (
   policyInput: unknown,
   previousStateInput: unknown,
   observationInput: unknown,
   publicContextInput: unknown,
 ) =>
-  evaluateWatcherProofThreadIndexerV1Raw(
+  evaluateWatcherProofThreadIndexerRaw(
     policyInput,
     previousStateInput,
     observationInput,
@@ -438,26 +438,22 @@ const evaluateWatcherProofThreadIndexerV1 = (
     watcherTransportContexts,
   );
 
-const parseWatcherProofThreadStateV1 = (value: unknown, policyInput: unknown) =>
-  parseWatcherProofThreadStateV1Raw(
-    value,
-    policyInput,
-    watcherTransportContexts,
-  );
+const parseWatcherProofThreadState = (value: unknown, policyInput: unknown) =>
+  parseWatcherProofThreadStateRaw(value, policyInput, watcherTransportContexts);
 
-const parseWatcherProofThreadResultV1 = (
+const parseWatcherProofThreadResult = (
   value: unknown,
   context: Omit<
-    Parameters<typeof parseWatcherProofThreadResultV1Raw>[1],
+    Parameters<typeof parseWatcherProofThreadResultRaw>[1],
     "transportAttestations"
   >,
 ) =>
-  parseWatcherProofThreadResultV1Raw(value, {
+  parseWatcherProofThreadResultRaw(value, {
     ...context,
     transportAttestations: watcherTransportContexts,
   });
 
-const evaluateWatcherRollbackV1 = (
+const evaluateWatcherRollback = (
   policyInput: unknown,
   storeInput: unknown,
   previousFinalityStateInput: unknown,
@@ -467,7 +463,7 @@ const evaluateWatcherRollbackV1 = (
   rollbackBootstrapStateInput: unknown,
   trustedCheckpointAuthorityInput: unknown = undefined,
 ) =>
-  evaluateWatcherRollbackV1Raw(
+  evaluateWatcherRollbackRaw(
     policyInput,
     storeInput,
     previousFinalityStateInput,
@@ -479,10 +475,10 @@ const evaluateWatcherRollbackV1 = (
     watcherTransportContexts,
   );
 
-const evaluateWatcherPostFinalityRecoveryV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
+const evaluateWatcherPostFinalityRecovery = (
+  input: WatcherPostFinalityRecoveryInput,
 ) =>
-  evaluateWatcherPostFinalityRecoveryV1Raw({
+  evaluateWatcherPostFinalityRecoveryRaw({
     ...input,
     transportAttestations: watcherTransportContexts,
   });
@@ -492,8 +488,8 @@ type FixtureSourceMode = "external_providers";
 const sourceFixture = (
   _sourceMode: FixtureSourceMode,
 ): Readonly<{
-  policy: WatcherFinalityPolicyV1;
-  providers: readonly WatcherAuthenticatedL1ProviderV1[];
+  policy: WatcherFinalityPolicy;
+  providers: readonly WatcherAuthenticatedL1Provider[];
   consistencyConfig: unknown;
 }> => ({
   policy: finalityPolicy,
@@ -555,7 +551,7 @@ type TxFixture = Readonly<{
   txHash: string;
   outputs: readonly CML.TransactionOutput[];
   redeemers: readonly Readonly<{
-    purpose: WatcherL1RedeemerV1["purpose"];
+    purpose: WatcherL1Redeemer["purpose"];
     index: string;
     bytesHex: string;
   }>[];
@@ -566,7 +562,7 @@ const SCRIPT_DATA_HASH = CML.ScriptDataHash.from_raw_bytes(
 );
 
 const redeemerTag = (
-  purpose: WatcherL1RedeemerV1["purpose"],
+  purpose: WatcherL1Redeemer["purpose"],
 ): CML.RedeemerTag => {
   switch (purpose) {
     case "spend":
@@ -676,7 +672,7 @@ const policyIndex = (body: CML.TransactionBody, policyId: string): string => {
   throw new Error(`missing fixture mint policy ${policyId}`);
 };
 
-const stepTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
+const stepTransaction = (source: WatcherProofThreadJournal): TxFixture => {
   const family = policy.families.find(
     ({ familyId }) => familyId === source.familyId,
   )!;
@@ -713,7 +709,7 @@ const stepTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
   };
 };
 
-const successTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
+const successTransaction = (source: WatcherProofThreadJournal): TxFixture => {
   const proofOutput = outputWithToken(
     policy.fraudProofAddressHex,
     policy.fraudProofPolicyId,
@@ -781,7 +777,7 @@ const successTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
   };
 };
 
-const cancelTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
+const cancelTransaction = (source: WatcherProofThreadJournal): TxFixture => {
   const change = CML.TransactionOutput.new(
     CML.Address.from_hex(scriptAddress(h28("73"))),
     CML.Value.from_coin(2_000_000n),
@@ -826,7 +822,7 @@ const cancelTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
   };
 };
 
-const removalTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
+const removalTransaction = (source: WatcherProofThreadJournal): TxFixture => {
   const change = CML.TransactionOutput.new(
     CML.Address.from_hex(scriptAddress(h28("74"))),
     CML.Value.from_coin(2_000_000n),
@@ -911,13 +907,13 @@ type RawObservationOptions = Readonly<{
 }>;
 
 const rawObservation = (
-  provider: WatcherAuthenticatedL1ProviderV1,
+  provider: WatcherAuthenticatedL1Provider,
   fixture: TxFixture,
   depth: string,
   ordinal = 0,
   options: RawObservationOptions = {},
 ) => ({
-  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
   network: "Preprod",
   providerId: provider.providerId,
   chainPoint: {
@@ -945,30 +941,30 @@ const rawObservation = (
 });
 
 const normalize = (
-  provider: WatcherAuthenticatedL1ProviderV1,
+  provider: WatcherAuthenticatedL1Provider,
   fixture: TxFixture,
   depth: string,
   ordinal = 0,
   options: RawObservationOptions = {},
-): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(
+): WatcherNormalizedL1Block =>
+  normalizeWatcherL1Block(
     provider,
     rawObservation(provider, fixture, depth, ordinal, options),
   );
 
 const protocolUtxo = (
   outRef: string,
-  role: WatcherProtocolUtxoV1["role"],
+  role: WatcherProtocolUtxo["role"],
   chainPointId: string,
   outputHex: string,
-): WatcherProtocolUtxoV1 => ({
+): WatcherProtocolUtxo => ({
   outRef,
   role,
   chainPointId,
-  output: makeWatcherDurablePayloadV1(outputHex),
+  output: makeWatcherDurablePayload(outputHex),
 });
 
-const emptyRecords = (): WatcherDurableRecordsV1 => ({
+const emptyRecords = (): WatcherDurableRecords => ({
   l1Observations: [],
   chainPoints: [],
   protocolUtxos: [],
@@ -984,7 +980,7 @@ const emptyRecords = (): WatcherDurableRecordsV1 => ({
   correctionResults: [],
 });
 
-const baseStore = (fixture: TxFixture): WatcherDurableStoreV1 => {
+const baseStore = (fixture: TxFixture): WatcherDurableStore => {
   const records = emptyRecords();
   const priorPoint = {
     chainPointId: h32("50"),
@@ -994,7 +990,7 @@ const baseStore = (fixture: TxFixture): WatcherDurableStoreV1 => {
     blockNo: "90",
     depth: "20",
   };
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker: authority.marker,
     revision: "0",
     records: {
@@ -1018,7 +1014,7 @@ const baseStore = (fixture: TxFixture): WatcherDurableStoreV1 => {
         {
           inputId: h32("52"),
           kind: "da_payload",
-          payload: makeWatcherDurablePayloadV1("80"),
+          payload: makeWatcherDurablePayload("80"),
         },
       ],
       reconstructedStates: [
@@ -1028,7 +1024,7 @@ const baseStore = (fixture: TxFixture): WatcherDurableStoreV1 => {
           priorStateRoot: h32("53"),
           postStateRoot: h32("54"),
           inputIds: [h32("52")],
-          state: makeWatcherDurablePayloadV1("80"),
+          state: makeWatcherDurablePayload("80"),
         },
       ],
       decisions: [
@@ -1044,7 +1040,7 @@ const baseStore = (fixture: TxFixture): WatcherDurableStoreV1 => {
           faultId: FAULT_ID,
           blockHash: FRAUD_BLOCK,
           familyId: "invalid-range",
-          evidence: makeWatcherDurablePayloadV1("80"),
+          evidence: makeWatcherDurablePayload("80"),
         },
       ],
       submissions: [
@@ -1066,18 +1062,18 @@ const appendPublicStore = ({
   phase,
   applyEffects,
 }: {
-  source: WatcherDurableStoreV1;
-  block: WatcherNormalizedL1BlockV1;
+  source: WatcherDurableStore;
+  block: WatcherNormalizedL1Block;
   fixture: TxFixture;
   phase: "pending" | "final";
   applyEffects: boolean;
-}): WatcherDurableStoreV1 => {
-  const encoded = encodeWatcherNormalizedL1BlockV1(block).toString("hex");
+}): WatcherDurableStore => {
+  const encoded = encodeWatcherNormalizedL1Block(block).toString("hex");
   const observation = {
     observationId: block.observationDigest,
     providerId: block.provider.providerId,
     chainPointId: block.chainPoint.chainPointId,
-    payload: makeWatcherDurablePayloadV1(encoded),
+    payload: makeWatcherDurablePayload(encoded),
   };
   const point = {
     chainPointId: block.chainPoint.chainPointId,
@@ -1114,7 +1110,7 @@ const appendPublicStore = ({
     return existing === undefined || !same(existing, created);
   });
   const transactionEffects = applyEffects
-    ? journalWatcherProtocolUtxoTransitionV1({
+    ? journalWatcherProtocolUtxoTransition({
         sourceStore: source,
         nextChainPoints: chainPoints,
         nextProtocolUtxos: [...source.protocolUtxos, ...missingProtocolUtxos],
@@ -1133,7 +1129,7 @@ const appendPublicStore = ({
     status:
       phase === "pending" ? ("observed" as const) : ("confirmed" as const),
   };
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker: authority.marker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -1159,8 +1155,8 @@ const journalIdentity = digest({
   faultId: FAULT_ID,
 });
 
-const initJournal = (fixture: TxFixture): WatcherProofThreadJournalV1 =>
-  makeWatcherProofThreadJournalV1({
+const initJournal = (fixture: TxFixture): WatcherProofThreadJournal =>
+  makeWatcherProofThreadJournal({
     journalId: journalIdentity,
     faultId: FAULT_ID,
     familyId: "invalid-range",
@@ -1183,17 +1179,17 @@ const initJournal = (fixture: TxFixture): WatcherProofThreadJournalV1 =>
 
 type InitStage = Readonly<{
   fixture: TxFixture;
-  block: WatcherNormalizedL1BlockV1;
-  sourceStore: WatcherDurableStoreV1;
-  store: WatcherDurableStoreV1;
-  observation: WatcherProofThreadObservationV1;
-  context: WatcherProofThreadPublicContextV1;
-  finalityState: WatcherFinalityStateV1;
-  journal: WatcherProofThreadJournalV1;
+  block: WatcherNormalizedL1Block;
+  sourceStore: WatcherDurableStore;
+  store: WatcherDurableStore;
+  observation: WatcherProofThreadObservation;
+  context: WatcherProofThreadPublicContext;
+  finalityState: WatcherFinalityState;
+  journal: WatcherProofThreadJournal;
 }>;
 
 type ProofThreadFinalityLineage = NonNullable<
-  WatcherProofThreadPublicContextV1["finalityAuthority"]
+  WatcherProofThreadPublicContext["finalityAuthority"]
 >["lineage"];
 
 const proofThreadFinalityLineageByStateDigest = new Map<
@@ -1211,9 +1207,9 @@ const initStage = ({
   ordinal = 0,
 }: {
   phase: "pending" | "final";
-  previousState: WatcherProofThreadStateV1 | null;
-  previousFinalityState: WatcherFinalityStateV1 | null;
-  sourceStore?: WatcherDurableStoreV1;
+  previousState: WatcherProofThreadState | null;
+  previousFinalityState: WatcherFinalityState | null;
+  sourceStore?: WatcherDurableStore;
   sourceMode?: FixtureSourceMode;
   transactionIsValid?: boolean;
   ordinal?: number;
@@ -1224,7 +1220,7 @@ const initStage = ({
   const normalized = l1.providers.map((provider) =>
     normalize(provider, fixture, depth, ordinal, { transactionIsValid }),
   );
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     l1.consistencyConfig,
     normalized,
   );
@@ -1234,7 +1230,7 @@ const initStage = ({
       : (proofThreadFinalityLineageByStateDigest.get(
           previousFinalityState.stateDigest,
         ) ?? []);
-  const finalityResult = evaluateWatcherFinalityV1(
+  const finalityResult = evaluateWatcherFinality(
     l1.policy,
     previousFinalityState,
     consistency,
@@ -1267,7 +1263,7 @@ const initStage = ({
     applyEffects: previousState?.pending === null || previousState === null,
   });
   const journal = initJournal(fixture);
-  const observation = makeWatcherProofThreadObservationV1({
+  const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1280,23 +1276,23 @@ const initStage = ({
     blockNo: normalized[0]!.chainPoint.blockNo,
     transactionHash: fixture.txHash,
     publicInputDigest: createHash("sha256")
-      .update(encodeWatcherNormalizedL1BlockV1(normalized[0]!))
+      .update(encodeWatcherNormalizedL1Block(normalized[0]!))
       .digest("hex"),
     sourceObservationDigest: normalized[0]!.observationDigest,
     chainPointId: normalized[0]!.chainPoint.chainPointId,
     sourceDurableStoreDigest: createHash("sha256")
-      .update(encodeWatcherDurableStoreV1(sourceStore))
+      .update(encodeWatcherDurableStore(sourceStore))
       .digest("hex"),
     sourceDurableStoreRevision: sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     durableStoreRevision: store.revision,
     predecessorStateDigest: previousState?.stateDigest ?? null,
     submissionId: SUBMISSION_ID,
     confirmationId: CONFIRMATION_ID,
     rollbackTargetStateDigest: null,
-    layout: makeWatcherProofThreadLayoutV1({
+    layout: makeWatcherProofThreadLayout({
       threadInputIndex: null,
       threadOutputIndex: "0",
       proofTokenOutputIndex: null,
@@ -1307,8 +1303,8 @@ const initStage = ({
     })!,
     journal,
   })!;
-  const context: WatcherProofThreadPublicContextV1 = {
-    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const context: WatcherProofThreadPublicContext = {
+    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: l1.providers[0],
     l1Observation: rawObservation(l1.providers[0]!, fixture, depth, ordinal, {
       transactionIsValid,
@@ -1349,11 +1345,11 @@ const transitionIds = (ordinal: number) => ({
 });
 
 const addSubmittedTransaction = (
-  source: WatcherDurableStoreV1,
+  source: WatcherDurableStore,
   fixture: TxFixture,
   submissionId: string,
-): WatcherDurableStoreV1 =>
-  makeWatcherDurableStoreV1({
+): WatcherDurableStore =>
+  makeWatcherDurableStore({
     deploymentMarker: authority.marker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -1393,8 +1389,8 @@ const appendTransitionStore = ({
   correctionId,
   applyEffects,
 }: {
-  source: WatcherDurableStoreV1;
-  block: WatcherNormalizedL1BlockV1;
+  source: WatcherDurableStore;
+  block: WatcherNormalizedL1Block;
   fixture: TxFixture;
   transitionKind: OrdinaryTransition;
   phase: "pending" | "final";
@@ -1402,13 +1398,13 @@ const appendTransitionStore = ({
   confirmationId: string;
   correctionId: string;
   applyEffects: boolean;
-}): WatcherDurableStoreV1 => {
-  const encoded = encodeWatcherNormalizedL1BlockV1(block).toString("hex");
+}): WatcherDurableStore => {
+  const encoded = encodeWatcherNormalizedL1Block(block).toString("hex");
   const observation = {
     observationId: block.observationDigest,
     providerId: block.provider.providerId,
     chainPointId: block.chainPoint.chainPointId,
-    payload: makeWatcherDurablePayloadV1(encoded),
+    payload: makeWatcherDurablePayload(encoded),
   };
   const point = {
     chainPointId: block.chainPoint.chainPointId,
@@ -1449,7 +1445,7 @@ const appendTransitionStore = ({
       ]
     : source.protocolUtxos;
   const transactionEffects = applyEffects
-    ? journalWatcherProtocolUtxoTransitionV1({
+    ? journalWatcherProtocolUtxoTransition({
         sourceStore: source,
         nextChainPoints: chainPoints,
         nextProtocolUtxos: nextProtocol,
@@ -1483,7 +1479,7 @@ const appendTransitionStore = ({
           },
         ]
       : source.correctionResults;
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker: authority.marker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -1511,14 +1507,14 @@ const transitionJournal = ({
   confirmationId,
   correctionId,
 }: {
-  source: WatcherProofThreadJournalV1;
+  source: WatcherProofThreadJournal;
   fixture: TxFixture;
   transitionKind: OrdinaryTransition;
   submissionId: string;
   confirmationId: string;
   correctionId: string;
-}): WatcherProofThreadJournalV1 =>
-  makeWatcherProofThreadJournalV1({
+}): WatcherProofThreadJournal =>
+  makeWatcherProofThreadJournal({
     journalId: source.journalId,
     faultId: source.faultId,
     familyId: source.familyId,
@@ -1552,7 +1548,7 @@ const transitionJournal = ({
   })!;
 
 const transitionLayout = (transitionKind: OrdinaryTransition) =>
-  makeWatcherProofThreadLayoutV1({
+  makeWatcherProofThreadLayout({
     threadInputIndex:
       transitionKind === "step" ||
       transitionKind === "success" ||
@@ -1580,13 +1576,13 @@ const transitionLayout = (transitionKind: OrdinaryTransition) =>
 
 type TransitionStage = Readonly<{
   fixture: TxFixture;
-  block: WatcherNormalizedL1BlockV1;
-  sourceStore: WatcherDurableStoreV1;
-  store: WatcherDurableStoreV1;
-  observation: WatcherProofThreadObservationV1;
-  context: WatcherProofThreadPublicContextV1;
-  finalityState: WatcherFinalityStateV1;
-  journal: WatcherProofThreadJournalV1;
+  block: WatcherNormalizedL1Block;
+  sourceStore: WatcherDurableStore;
+  store: WatcherDurableStore;
+  observation: WatcherProofThreadObservation;
+  context: WatcherProofThreadPublicContext;
+  finalityState: WatcherFinalityState;
+  journal: WatcherProofThreadJournal;
 }>;
 
 const transitionStage = ({
@@ -1605,10 +1601,10 @@ const transitionStage = ({
   transitionKind: OrdinaryTransition;
   fixture: TxFixture;
   phase: "pending" | "final";
-  previousState: WatcherProofThreadStateV1;
-  previousFinalityState: WatcherFinalityStateV1 | null;
-  sourceStore: WatcherDurableStoreV1;
-  sourceJournal: WatcherProofThreadJournalV1;
+  previousState: WatcherProofThreadState;
+  previousFinalityState: WatcherFinalityState | null;
+  sourceStore: WatcherDurableStore;
+  sourceJournal: WatcherProofThreadJournal;
   ordinal: number;
   sourceMode?: FixtureSourceMode;
   blockTransactions?: RawObservationOptions["transactions"];
@@ -1622,7 +1618,7 @@ const transitionStage = ({
   const normalized = l1.providers.map((provider) =>
     normalize(provider, fixture, depth, blockOrdinal, observationOptions),
   );
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     l1.consistencyConfig,
     normalized,
   );
@@ -1632,7 +1628,7 @@ const transitionStage = ({
       : (proofThreadFinalityLineageByStateDigest.get(
           previousFinalityState.stateDigest,
         ) ?? []);
-  const finalityResult = evaluateWatcherFinalityV1(
+  const finalityResult = evaluateWatcherFinality(
     l1.policy,
     previousFinalityState,
     consistency,
@@ -1675,7 +1671,7 @@ const transitionStage = ({
     transitionKind,
     ...ids,
   });
-  const observation = makeWatcherProofThreadObservationV1({
+  const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1688,16 +1684,16 @@ const transitionStage = ({
     blockNo: normalized[0]!.chainPoint.blockNo,
     transactionHash: fixture.txHash,
     publicInputDigest: createHash("sha256")
-      .update(encodeWatcherNormalizedL1BlockV1(normalized[0]!))
+      .update(encodeWatcherNormalizedL1Block(normalized[0]!))
       .digest("hex"),
     sourceObservationDigest: normalized[0]!.observationDigest,
     chainPointId: normalized[0]!.chainPoint.chainPointId,
     sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(sourceStore),
+      encodeWatcherDurableStore(sourceStore),
     ),
     sourceDurableStoreRevision: sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     durableStoreRevision: store.revision,
     predecessorStateDigest: previousState.stateDigest,
@@ -1707,8 +1703,8 @@ const transitionStage = ({
     layout: transitionLayout(transitionKind),
     journal,
   })!;
-  const context: WatcherProofThreadPublicContextV1 = {
-    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const context: WatcherProofThreadPublicContext = {
+    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: l1.providers[0],
     l1Observation: rawObservation(
       l1.providers[0]!,
@@ -1755,15 +1751,15 @@ const runFinalTransition = ({
 }: {
   transitionKind: OrdinaryTransition;
   fixture: TxFixture;
-  previousState: WatcherProofThreadStateV1;
-  previousFinalityState: WatcherFinalityStateV1 | null;
-  sourceStore: WatcherDurableStoreV1;
-  sourceJournal: WatcherProofThreadJournalV1;
+  previousState: WatcherProofThreadState;
+  previousFinalityState: WatcherFinalityState | null;
+  sourceStore: WatcherDurableStore;
+  sourceJournal: WatcherProofThreadJournal;
   ordinal: number;
 }): Readonly<{
   pending: TransitionStage;
   final: TransitionStage;
-  state: WatcherProofThreadStateV1;
+  state: WatcherProofThreadState;
 }> => {
   const pending = transitionStage({
     transitionKind,
@@ -1775,7 +1771,7 @@ const runFinalTransition = ({
     sourceJournal,
     ordinal,
   });
-  const pendingResult = evaluateWatcherProofThreadIndexerV1(
+  const pendingResult = evaluateWatcherProofThreadIndexer(
     policy,
     previousState,
     pending.observation,
@@ -1800,7 +1796,7 @@ const runFinalTransition = ({
     sourceJournal,
     ordinal,
   });
-  const finalResult = evaluateWatcherProofThreadIndexerV1(
+  const finalResult = evaluateWatcherProofThreadIndexer(
     policy,
     pendingResult.state,
     final.observation,
@@ -1819,10 +1815,10 @@ const runFinalTransition = ({
 };
 
 const persistNormalizedObservations = (
-  source: WatcherDurableStoreV1,
-  observations: readonly WatcherNormalizedL1BlockV1[],
-): WatcherDurableStoreV1 =>
-  makeWatcherDurableStoreV1({
+  source: WatcherDurableStore,
+  observations: readonly WatcherNormalizedL1Block[],
+): WatcherDurableStore =>
+  makeWatcherDurableStore({
     deploymentMarker: authority.marker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -1831,12 +1827,12 @@ const persistNormalizedObservations = (
         ...source.l1Observations,
         ...observations.map((block) => {
           const bytesHex =
-            encodeWatcherNormalizedL1BlockV1(block).toString("hex");
+            encodeWatcherNormalizedL1Block(block).toString("hex");
           return {
             observationId: block.observationDigest,
             providerId: block.provider.providerId,
             chainPointId: block.chainPoint.chainPointId,
-            payload: makeWatcherDurablePayloadV1(bytesHex),
+            payload: makeWatcherDurablePayload(bytesHex),
           };
         }),
       ],
@@ -1855,9 +1851,9 @@ const persistNormalizedObservations = (
   });
 
 const persistRecoveryObservations = (
-  source: WatcherDurableStoreV1,
-  observations: readonly WatcherNormalizedL1BlockV1[],
-): WatcherDurableStoreV1 => {
+  source: WatcherDurableStore,
+  observations: readonly WatcherNormalizedL1Block[],
+): WatcherDurableStore => {
   const l1Observations = new Map(
     source.l1Observations.map((entry) => [entry.observationId, entry]),
   );
@@ -1869,8 +1865,8 @@ const persistRecoveryObservations = (
       observationId: block.observationDigest,
       providerId: block.provider.providerId,
       chainPointId: block.chainPoint.chainPointId,
-      payload: makeWatcherDurablePayloadV1(
-        encodeWatcherNormalizedL1BlockV1(block).toString("hex"),
+      payload: makeWatcherDurablePayload(
+        encodeWatcherNormalizedL1Block(block).toString("hex"),
       ),
     });
     chainPoints.set(block.chainPoint.chainPointId, {
@@ -1882,7 +1878,7 @@ const persistRecoveryObservations = (
       depth: block.chainPoint.depth,
     });
   }
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker: authority.marker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -1895,7 +1891,7 @@ const persistRecoveryObservations = (
 
 type PostFinalityProofRecoveryStage = Readonly<{
   fixture: TxFixture;
-  store: WatcherDurableStoreV1;
+  store: WatcherDurableStore;
 }>;
 
 const postFinalityProofRecoveryBundle = (
@@ -1911,18 +1907,18 @@ const postFinalityProofRecoveryBundle = (
   const commonRawObservations = l1.providers.map((provider) =>
     rawObservation(provider, common.fixture, "0", 0),
   );
-  const commonConsistency = evaluateWatcherMultiProviderConsistencyV1(
+  const commonConsistency = evaluateWatcherMultiProviderConsistency(
     l1.consistencyConfig,
     commonBlocks,
   );
   const orphanPendingBlocks = l1.providers.map((provider) =>
     normalize(provider, orphan.fixture, "1", 1),
   );
-  const orphanPendingConsistency = evaluateWatcherMultiProviderConsistencyV1(
+  const orphanPendingConsistency = evaluateWatcherMultiProviderConsistency(
     l1.consistencyConfig,
     orphanPendingBlocks,
   );
-  const orphanPending = evaluateWatcherFinalityV1(
+  const orphanPending = evaluateWatcherFinality(
     l1.policy,
     null,
     orphanPendingConsistency,
@@ -1931,18 +1927,18 @@ const postFinalityProofRecoveryBundle = (
   const orphanFinalBlocks = l1.providers.map((provider) =>
     normalize(provider, orphan.fixture, "2", 1),
   );
-  const orphanFinalConsistency = evaluateWatcherMultiProviderConsistencyV1(
+  const orphanFinalConsistency = evaluateWatcherMultiProviderConsistency(
     l1.consistencyConfig,
     orphanFinalBlocks,
   );
-  const orphanFinalized = evaluateWatcherFinalityV1(
+  const orphanFinalized = evaluateWatcherFinality(
     l1.policy,
     orphanPending.state,
     orphanFinalConsistency,
   );
   expect(orphanFinalized.action).toBe("finalize");
-  const replacementRaw = (provider: WatcherAuthenticatedL1ProviderV1) => ({
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  const replacementRaw = (provider: WatcherAuthenticatedL1Provider) => ({
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId: provider.providerId,
     chainPoint: {
@@ -1958,9 +1954,9 @@ const postFinalityProofRecoveryBundle = (
     replacementRaw(provider),
   );
   const replacementBlocks = l1.providers.map((provider, index) =>
-    normalizeWatcherL1BlockV1(provider, replacementRawObservations[index]!),
+    normalizeWatcherL1Block(provider, replacementRawObservations[index]!),
   );
-  const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+  const replacementConsistency = evaluateWatcherMultiProviderConsistency(
     l1.consistencyConfig,
     replacementBlocks,
   );
@@ -1977,18 +1973,18 @@ const postFinalityProofRecoveryBundle = (
         h32((0x40 + ordinal - 1).toString(16).padStart(2, "0"));
     }
     const blocks = l1.providers.map((provider, index) =>
-      normalizeWatcherL1BlockV1(provider, rawObservations[index]!),
+      normalizeWatcherL1Block(provider, rawObservations[index]!),
     );
     return {
       rawObservations,
       blocks,
-      consistency: evaluateWatcherMultiProviderConsistencyV1(
+      consistency: evaluateWatcherMultiProviderConsistency(
         l1.consistencyConfig,
         blocks,
       ),
     };
   });
-  const contradiction = evaluateWatcherFinalityV1(
+  const contradiction = evaluateWatcherFinality(
     l1.policy,
     orphanFinalized.state,
     replacementTail.at(-1)!.consistency,
@@ -2001,12 +1997,12 @@ const postFinalityProofRecoveryBundle = (
     ...replacementBlocks,
     ...replacementTail.flatMap(({ blocks }) => blocks),
   ]);
-  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapState(
     l1.policy,
     sourceStore,
     orphanFinalized.state,
   )!;
-  const incident = evaluateWatcherRollbackV1(
+  const incident = evaluateWatcherRollback(
     l1.policy,
     sourceStore,
     orphanFinalized.state,
@@ -2021,7 +2017,7 @@ const postFinalityProofRecoveryBundle = (
   });
   expect(incident.nextStore).not.toBeNull();
   expect(incident.rollbackState?.incident).not.toBeNull();
-  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+  const recoveryInput: WatcherPostFinalityRecoveryInput = {
     policy: l1.policy,
     sourceStore: incident.nextStore,
     currentStore: incident.nextStore,
@@ -2035,7 +2031,7 @@ const postFinalityProofRecoveryBundle = (
     ],
     previousRecoveryState: null,
   };
-  const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  const recovery = evaluateWatcherPostFinalityRecovery(recoveryInput);
   expect(recovery).toMatchObject({
     action: "rewind_and_replay",
     protocolDecision: "resume_replay",
@@ -2075,7 +2071,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     previousFinalityState: null,
     sourceMode,
   });
-  const commonPendingResult = evaluateWatcherProofThreadIndexerV1(
+  const commonPendingResult = evaluateWatcherProofThreadIndexer(
     policy,
     null,
     commonPending.observation,
@@ -2089,7 +2085,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     sourceStore: commonPending.store,
     sourceMode,
   });
-  const commonFinalResult = evaluateWatcherProofThreadIndexerV1(
+  const commonFinalResult = evaluateWatcherProofThreadIndexer(
     policy,
     commonPendingResult.state,
     commonFinal.observation,
@@ -2117,7 +2113,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     ordinal: 1,
     sourceMode,
   });
-  const orphanPendingResult = evaluateWatcherProofThreadIndexerV1(
+  const orphanPendingResult = evaluateWatcherProofThreadIndexer(
     policy,
     commonFinalResult.state,
     orphanPending.observation,
@@ -2135,7 +2131,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     ordinal: 1,
     sourceMode,
   });
-  const orphanFinalResult = evaluateWatcherProofThreadIndexerV1(
+  const orphanFinalResult = evaluateWatcherProofThreadIndexer(
     policy,
     orphanPendingResult.state,
     orphanFinal.observation,
@@ -2159,8 +2155,8 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
   );
   const common = bundle.commonBlocks[0]!;
   const replacement = bundle.replacementBlocks[0]!;
-  const sourceStore = bundle.recoveryInput.sourceStore as WatcherDurableStoreV1;
-  const observation = makeWatcherProofThreadObservationV1({
+  const sourceStore = bundle.recoveryInput.sourceStore as WatcherDurableStore;
+  const observation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -2173,16 +2169,16 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     blockNo: common.chainPoint.blockNo,
     transactionHash: null,
     publicInputDigest: createHash("sha256")
-      .update(encodeWatcherNormalizedL1BlockV1(common))
+      .update(encodeWatcherNormalizedL1Block(common))
       .digest("hex"),
     sourceObservationDigest: common.observationDigest,
     chainPointId: common.chainPoint.chainPointId,
     sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(sourceStore),
+      encodeWatcherDurableStore(sourceStore),
     ),
     sourceDurableStoreRevision: sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(bundle.recovery.nextStore!),
+      encodeWatcherDurableStore(bundle.recovery.nextStore!),
     ),
     durableStoreRevision: bundle.recovery.nextStore!.revision,
     predecessorStateDigest: orphanFinalResult.state!.stateDigest,
@@ -2192,8 +2188,8 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     layout: null,
     journal: null,
   })!;
-  const context: WatcherProofThreadPublicContextV1 = {
-    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const context: WatcherProofThreadPublicContext = {
+    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: null,
     l1Observation: null,
     sourceDurableStore: sourceStore,
@@ -2223,7 +2219,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     transitionKind: "cancel",
     ...resumeIds,
   });
-  const resumeFinality = evaluateWatcherFinalityV1(
+  const resumeFinality = evaluateWatcherFinality(
     bundle.finalityPolicy,
     null,
     bundle.replacementConsistency,
@@ -2232,7 +2228,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     action: "observe_pending",
     protocolDecision: "hold",
   });
-  const resumeObservation = makeWatcherProofThreadObservationV1({
+  const resumeObservation = makeWatcherProofThreadObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -2245,16 +2241,16 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     blockNo: replacement.chainPoint.blockNo,
     transactionHash: resumeFixture.txHash,
     publicInputDigest: createHash("sha256")
-      .update(encodeWatcherNormalizedL1BlockV1(replacement))
+      .update(encodeWatcherNormalizedL1Block(replacement))
       .digest("hex"),
     sourceObservationDigest: replacement.observationDigest,
     chainPointId: replacement.chainPoint.chainPointId,
     sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(bundle.recovery.nextStore!),
+      encodeWatcherDurableStore(bundle.recovery.nextStore!),
     ),
     sourceDurableStoreRevision: bundle.recovery.nextStore!.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(resumeStore),
+      encodeWatcherDurableStore(resumeStore),
     ),
     durableStoreRevision: resumeStore.revision,
     predecessorStateDigest: null,
@@ -2264,8 +2260,8 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     layout: transitionLayout("cancel"),
     journal: resumeJournal,
   })!;
-  const resumeContext: WatcherProofThreadPublicContextV1 = {
-    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const resumeContext: WatcherProofThreadPublicContext = {
+    schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: bundle.providers[0],
     l1Observation: bundle.replacementRawObservations[0],
     sourceDurableStore: bundle.recovery.nextStore!,
@@ -2316,7 +2312,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       [...watcherTransportContexts, providerATransport],
     ]) {
       expect(
-        evaluateWatcherProofThreadIndexerV1Raw(
+        evaluateWatcherProofThreadIndexerRaw(
           policy,
           null,
           external.observation,
@@ -2342,7 +2338,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       applied.fraudProofSpend,
     );
     expect(
-      makeWatcherProofThreadPolicyV1({
+      makeWatcherProofThreadPolicy({
         network: "Preprod",
         releaseEvidenceDigest: RELEASE_DIGEST,
         deploymentMarker: authority.marker,
@@ -2358,14 +2354,14 @@ describe("W17 public proof/computation-thread indexer", () => {
     ).toBeNull();
     expect(policy).not.toBeNull();
     expect(policy.families).toHaveLength(
-      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
     );
     expect(
       [...policy.families.map(({ catalogueCategory }) => catalogueCategory)]
         .sort()
         .join(","),
     ).toBe(
-      [...DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER]
+      [...DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER]
         .sort()
         .join(","),
     );
@@ -2388,8 +2384,8 @@ describe("W17 public proof/computation-thread indexer", () => {
     ]);
     for (const family of policy.families) {
       const registered =
-        WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[
-          family.catalogueCategory as keyof typeof WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1
+        WATCHER_PROOF_THREAD_FAMILY_AUTHORITY[
+          family.catalogueCategory as keyof typeof WATCHER_PROOF_THREAD_FAMILY_AUTHORITY
         ];
       expect(family.familyId).toBe(registered.familyId);
       expect(family.stepScriptHashes).toHaveLength(registered.stepCount);
@@ -2414,7 +2410,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const result = evaluateWatcherProofThreadIndexerV1(
+    const result = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       stage.observation,
@@ -2441,7 +2437,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     };
 
     expect(
-      makeWatcherProofThreadPolicyV1({
+      makeWatcherProofThreadPolicy({
         ...base,
         families: authority.families.slice(1),
       }),
@@ -2455,9 +2451,9 @@ describe("W17 public proof/computation-thread indexer", () => {
     )!;
     routed.nextStepIndexes[0] = ["1", "1", "2", "3", "4", "5", "6", "7"];
     expect(
-      makeWatcherProofThreadPolicyV1({
+      makeWatcherProofThreadPolicy({
         ...base,
-        families: ambiguous as unknown as WatcherProofThreadFamilyV1[],
+        families: ambiguous as unknown as WatcherProofThreadFamily[],
       }),
     ).toBeNull();
 
@@ -2469,9 +2465,9 @@ describe("W17 public proof/computation-thread indexer", () => {
     )!;
     linear.nextStepIndexes = [[], []];
     expect(
-      makeWatcherProofThreadPolicyV1({
+      makeWatcherProofThreadPolicy({
         ...base,
-        families: unreachable as unknown as WatcherProofThreadFamilyV1[],
+        families: unreachable as unknown as WatcherProofThreadFamily[],
       }),
     ).toBeNull();
   });
@@ -2482,7 +2478,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const pendingResult = evaluateWatcherProofThreadIndexerV1(
+    const pendingResult = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       pending.observation,
@@ -2508,7 +2504,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: pending.finalityState,
       sourceStore: pending.store,
     });
-    const finalResult = evaluateWatcherProofThreadIndexerV1(
+    const finalResult = evaluateWatcherProofThreadIndexer(
       policy,
       pendingResult.state,
       final.observation,
@@ -2521,11 +2517,11 @@ describe("W17 public proof/computation-thread indexer", () => {
     });
     expect(finalResult.state?.journal).toEqual(final.journal);
     expect(finalResult.state?.pending).toBeNull();
-    expect(parseWatcherProofThreadStateV1(finalResult.state, policy)).toEqual(
+    expect(parseWatcherProofThreadState(finalResult.state, policy)).toEqual(
       finalResult.state,
     );
     expect(
-      parseWatcherProofThreadResultV1(finalResult, {
+      parseWatcherProofThreadResult(finalResult, {
         policy,
         previousState: pendingResult.state,
         observation: final.observation,
@@ -2540,7 +2536,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const pendingResult = evaluateWatcherProofThreadIndexerV1(
+    const pendingResult = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       pending.observation,
@@ -2548,7 +2544,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     );
     expect(pendingResult.action).toBe("accept");
 
-    const sameRevisionSource = makeWatcherDurableStoreV1({
+    const sameRevisionSource = makeWatcherDurableStore({
       deploymentMarker: authority.marker,
       revision: pending.store.revision,
       records: {
@@ -2558,7 +2554,7 @@ describe("W17 public proof/computation-thread indexer", () => {
           {
             inputId: h32("d1"),
             kind: "da_payload",
-            payload: makeWatcherDurablePayloadV1("81"),
+            payload: makeWatcherDurablePayload("81"),
           },
         ],
       },
@@ -2566,12 +2562,10 @@ describe("W17 public proof/computation-thread indexer", () => {
     expect(sameRevisionSource.revision).toBe(pending.store.revision);
     expect(
       watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(sameRevisionSource),
+        encodeWatcherDurableStore(sameRevisionSource),
       ),
     ).not.toBe(
-      watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(pending.store),
-      ),
+      watcherDurableStoreBytesSha256(encodeWatcherDurableStore(pending.store)),
     );
 
     const final = initStage({
@@ -2581,7 +2575,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       sourceStore: sameRevisionSource,
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         pendingResult.state,
         final.observation,
@@ -2598,7 +2592,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     const aggregateFragmentHex = "ab".repeat(8_500_000);
     const sourceFixtureValue = initTransaction();
     const aggregateBaseStore = baseStore(sourceFixtureValue);
-    const bulkySource = makeWatcherDurableStoreV1({
+    const bulkySource = makeWatcherDurableStore({
       deploymentMarker: authority.marker,
       revision: (BigInt(aggregateBaseStore.revision) + 1n).toString(),
       records: {
@@ -2608,7 +2602,7 @@ describe("W17 public proof/computation-thread indexer", () => {
           {
             inputId: h32("d2"),
             kind: "da_payload",
-            payload: makeWatcherDurablePayloadV1(aggregateFragmentHex),
+            payload: makeWatcherDurablePayload(aggregateFragmentHex),
           },
         ],
       },
@@ -2619,7 +2613,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: null,
       sourceStore: bulkySource,
     });
-    const pendingResult = evaluateWatcherProofThreadIndexerV1(
+    const pendingResult = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       pending.observation,
@@ -2632,7 +2626,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: pending.finalityState,
       sourceStore: pending.store,
     });
-    const finalResult = evaluateWatcherProofThreadIndexerV1(
+    const finalResult = evaluateWatcherProofThreadIndexer(
       policy,
       pendingResult.state,
       final.observation,
@@ -2641,15 +2635,12 @@ describe("W17 public proof/computation-thread indexer", () => {
     expect(finalResult.action).toBe("accept");
     expect(finalResult.state?.transitionHistory).toHaveLength(2);
     expect(
-      parseWatcherProofThreadStateV1(
-        structuredClone(finalResult.state),
-        policy,
-      ),
+      parseWatcherProofThreadState(structuredClone(finalResult.state), policy),
     ).toBeNull();
 
     const cyclic = structuredClone(pendingResult.state) as Mutable;
     cyclic.transitionHistory.push(cyclic);
-    expect(parseWatcherProofThreadStateV1(cyclic, policy)).toBeNull();
+    expect(parseWatcherProofThreadState(cyclic, policy)).toBeNull();
   }, 60_000);
 
   it("orders distinct same-block proof transactions and rejects reversed or forged ordinals", () => {
@@ -2658,7 +2649,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+    const initPendingResult = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       initPending.observation,
@@ -2670,7 +2661,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: initPending.finalityState,
       sourceStore: initPending.store,
     });
-    const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+    const initFinalResult = evaluateWatcherProofThreadIndexer(
       policy,
       initPendingResult.state,
       initFinal.observation,
@@ -2701,7 +2692,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       blockTransactions: orderedTransactions,
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         initFinalResult.state,
         ordered.observation,
@@ -2728,7 +2719,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       ],
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         initFinalResult.state,
         reversed.observation,
@@ -2767,7 +2758,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousFinalityState: null,
         sourceMode,
       });
-      const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+      const initPendingResult = evaluateWatcherProofThreadIndexer(
         policy,
         null,
         initPending.observation,
@@ -2780,7 +2771,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceStore: initPending.store,
         sourceMode,
       });
-      const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+      const initFinalResult = evaluateWatcherProofThreadIndexer(
         policy,
         initPendingResult.state,
         initFinal.observation,
@@ -2791,7 +2782,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       const fixture = stepTransaction(initFinal.journal);
       const l1 = sourceFixture(sourceMode);
       const finalityStep = (
-        previousState: WatcherFinalityStateV1 | null,
+        previousState: WatcherFinalityState | null,
         depth: string,
         ordinal: number,
         empty: boolean,
@@ -2805,11 +2796,11 @@ describe("W17 public proof/computation-thread indexer", () => {
             empty,
           }),
         }));
-        const consistency = evaluateWatcherMultiProviderConsistencyV1(
+        const consistency = evaluateWatcherMultiProviderConsistency(
           l1.consistencyConfig,
           blocks,
         );
-        const result = evaluateWatcherFinalityV1(
+        const result = evaluateWatcherFinality(
           l1.policy,
           previousState,
           consistency,
@@ -2856,7 +2847,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceMode,
       });
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           initFinalResult.state,
           step.observation,
@@ -2886,7 +2877,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         utxos: [],
       });
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           null,
           phantom.observation,
@@ -2906,7 +2897,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+    const initPendingResult = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       initPending.observation,
@@ -2919,7 +2910,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: initPending.finalityState,
       sourceStore: initPending.store,
     });
-    const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+    const initFinalResult = evaluateWatcherProofThreadIndexer(
       policy,
       initPendingResult.state,
       initFinal.observation,
@@ -3036,7 +3027,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousState: null,
         previousFinalityState: null,
       });
-      const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+      const initPendingResult = evaluateWatcherProofThreadIndexer(
         policy,
         null,
         initPending.observation,
@@ -3048,7 +3039,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousFinalityState: initPending.finalityState,
         sourceStore: initPending.store,
       });
-      const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+      const initFinalResult = evaluateWatcherProofThreadIndexer(
         policy,
         initPendingResult.state,
         initFinal.observation,
@@ -3063,9 +3054,9 @@ describe("W17 public proof/computation-thread indexer", () => {
       const continuitySentinel = {
         inputId: h32("de"),
         kind: "da_payload" as const,
-        payload: makeWatcherDurablePayloadV1("81"),
+        payload: makeWatcherDurablePayload("81"),
       };
-      const stepSource = makeWatcherDurableStoreV1({
+      const stepSource = makeWatcherDurableStore({
         deploymentMarker: authority.marker,
         revision: (BigInt(submittedStepSource.revision) + 1n).toString(),
         records: {
@@ -3087,7 +3078,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         ordinal: 1,
         sourceMode,
       });
-      const stepPendingResult = evaluateWatcherProofThreadIndexerV1(
+      const stepPendingResult = evaluateWatcherProofThreadIndexer(
         policy,
         initFinalResult.state,
         stepPending.observation,
@@ -3102,7 +3093,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       const replacement = replacementL1.providers.map((provider) =>
         normalize(provider, stepFixture, "1", 2),
       );
-      const consistency = evaluateWatcherMultiProviderConsistencyV1(
+      const consistency = evaluateWatcherMultiProviderConsistency(
         replacementL1.consistencyConfig,
         replacement,
       );
@@ -3113,7 +3104,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       });
       expect(consistency.independentProviderCount).toBe(2);
       expect(consistency.queryObservationCount).toBe(0);
-      const finalityResult = evaluateWatcherFinalityV1(
+      const finalityResult = evaluateWatcherFinality(
         replacementL1.policy,
         stepPending.finalityState,
         consistency,
@@ -3123,7 +3114,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         stepPending.store,
         replacement,
       );
-      const bootstrap = makeWatcherRollbackBootstrapStateV1(
+      const bootstrap = makeWatcherRollbackBootstrapState(
         replacementL1.policy,
         rollbackSource,
         stepPending.finalityState,
@@ -3138,7 +3129,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousRollbackState: bootstrap,
         rollbackBootstrapState: bootstrap,
       };
-      const rollbackResult = evaluateWatcherRollbackV1(
+      const rollbackResult = evaluateWatcherRollback(
         replacementL1.policy,
         rollbackSource,
         stepPending.finalityState,
@@ -3156,7 +3147,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       );
       expect(rollbackResult.nextStore).not.toBeNull();
       const replacementBlock = replacement[0]!;
-      const rollbackObservation = makeWatcherProofThreadObservationV1({
+      const rollbackObservation = makeWatcherProofThreadObservation({
         policyDigest: policy.policyDigest,
         network: policy.network,
         releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3169,16 +3160,16 @@ describe("W17 public proof/computation-thread indexer", () => {
         blockNo: replacementBlock.chainPoint.blockNo,
         transactionHash: null,
         publicInputDigest: createHash("sha256")
-          .update(encodeWatcherNormalizedL1BlockV1(replacementBlock))
+          .update(encodeWatcherNormalizedL1Block(replacementBlock))
           .digest("hex"),
         sourceObservationDigest: replacementBlock.observationDigest,
         chainPointId: replacementBlock.chainPoint.chainPointId,
         sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(rollbackSource),
+          encodeWatcherDurableStore(rollbackSource),
         ),
         sourceDurableStoreRevision: rollbackSource.revision,
         durableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+          encodeWatcherDurableStore(rollbackResult.nextStore!),
         ),
         durableStoreRevision: rollbackResult.nextStore!.revision,
         predecessorStateDigest: stepPendingResult.state!.stateDigest,
@@ -3188,8 +3179,8 @@ describe("W17 public proof/computation-thread indexer", () => {
         layout: null,
         journal: null,
       })!;
-      const rollbackPublicContext: WatcherProofThreadPublicContextV1 = {
-        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+      const rollbackPublicContext: WatcherProofThreadPublicContext = {
+        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
         authenticatedProvider: null,
         l1Observation: null,
         sourceDurableStore: rollbackSource,
@@ -3203,7 +3194,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceJournal: initFinal.journal,
         durableJournal: initFinal.journal,
       };
-      const indexed = evaluateWatcherProofThreadIndexerV1(
+      const indexed = evaluateWatcherProofThreadIndexer(
         policy,
         stepPendingResult.state,
         rollbackObservation,
@@ -3222,7 +3213,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       expect(indexed.state?.auditHistory.at(-1)?.status).toBe("rollback");
       expect(indexed.state?.transitionHistory).toHaveLength(4);
       expect(
-        parseWatcherProofThreadStateV1(structuredClone(indexed.state), policy),
+        parseWatcherProofThreadState(structuredClone(indexed.state), policy),
       ).toEqual(indexed.state);
 
       const {
@@ -3235,7 +3226,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceStore: rollbackResult.nextStore!,
         previousRollbackState: rollbackResult.rollbackState,
       };
-      const duplicateRollbackResult = evaluateWatcherRollbackV1(
+      const duplicateRollbackResult = evaluateWatcherRollback(
         replacementL1.policy,
         rollbackResult.nextStore,
         stepPending.finalityState,
@@ -3245,20 +3236,20 @@ describe("W17 public proof/computation-thread indexer", () => {
         bootstrap,
       );
       expect(duplicateRollbackResult.action).toBe("duplicate_rewind");
-      const duplicateRollbackObservation = makeWatcherProofThreadObservationV1({
+      const duplicateRollbackObservation = makeWatcherProofThreadObservation({
         ...rollbackObservationInput,
         sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+          encodeWatcherDurableStore(rollbackResult.nextStore!),
         ),
         sourceDurableStoreRevision: rollbackResult.nextStore!.revision,
         durableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+          encodeWatcherDurableStore(rollbackResult.nextStore!),
         ),
         durableStoreRevision: rollbackResult.nextStore!.revision,
         predecessorStateDigest: indexed.state!.stateDigest,
       })!;
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           indexed.state,
           duplicateRollbackObservation,
@@ -3277,7 +3268,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         reasonCodes: ["duplicate_observation"],
         state: indexed.state,
       });
-      const divergentRollbackSource = makeWatcherDurableStoreV1({
+      const divergentRollbackSource = makeWatcherDurableStore({
         deploymentMarker: authority.marker,
         revision: rollbackSource.revision,
         records: {
@@ -3287,7 +3278,7 @@ describe("W17 public proof/computation-thread indexer", () => {
           ),
         },
       });
-      const divergentBootstrap = makeWatcherRollbackBootstrapStateV1(
+      const divergentBootstrap = makeWatcherRollbackBootstrapState(
         replacementL1.policy,
         divergentRollbackSource,
         stepPending.finalityState,
@@ -3301,7 +3292,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousRollbackState: divergentBootstrap,
         rollbackBootstrapState: divergentBootstrap,
       };
-      const divergentRollbackResult = evaluateWatcherRollbackV1(
+      const divergentRollbackResult = evaluateWatcherRollback(
         replacementL1.policy,
         divergentRollbackSource,
         stepPending.finalityState,
@@ -3311,19 +3302,19 @@ describe("W17 public proof/computation-thread indexer", () => {
         divergentBootstrap,
       );
       expect(divergentRollbackResult.action).toBe("apply_rewind");
-      const divergentRollbackObservation = makeWatcherProofThreadObservationV1({
+      const divergentRollbackObservation = makeWatcherProofThreadObservation({
         ...rollbackObservationInput,
         sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(divergentRollbackSource),
+          encodeWatcherDurableStore(divergentRollbackSource),
         ),
         sourceDurableStoreRevision: divergentRollbackSource.revision,
         durableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(divergentRollbackResult.nextStore!),
+          encodeWatcherDurableStore(divergentRollbackResult.nextStore!),
         ),
         durableStoreRevision: divergentRollbackResult.nextStore!.revision,
       })!;
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           stepPendingResult.state,
           divergentRollbackObservation,
@@ -3351,7 +3342,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         observationDigest: _predecessorDigest,
         ...predecessorObservation
       } = predecessorTransition.observation;
-      predecessorTransition.observation = makeWatcherProofThreadObservationV1({
+      predecessorTransition.observation = makeWatcherProofThreadObservation({
         ...predecessorObservation,
         predecessorStateDigest: h32("bd"),
       })!;
@@ -3368,7 +3359,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         rehashedPredecessor.auditHistory.length - 1
       ] = rehashProofThreadAudit(rollbackAudit);
       expect(
-        parseWatcherProofThreadStateV1(
+        parseWatcherProofThreadState(
           rehashProofThreadState(rehashedPredecessor),
           policy,
         ),
@@ -3391,7 +3382,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         swappedRollbackResult.auditHistory.length - 1
       ] = rehashProofThreadAudit(swappedAudit);
       expect(
-        parseWatcherProofThreadStateV1(
+        parseWatcherProofThreadState(
           rehashProofThreadState(swappedRollbackResult),
           policy,
         ),
@@ -3417,7 +3408,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         swappedRollbackContext.auditHistory.length - 1
       ] = rehashProofThreadAudit(contextAudit);
       expect(
-        parseWatcherProofThreadStateV1(
+        parseWatcherProofThreadState(
           rehashProofThreadState(swappedRollbackContext),
           policy,
         ),
@@ -3429,18 +3420,12 @@ describe("W17 public proof/computation-thread indexer", () => {
         reordered.transitionHistory[0],
       ];
       expect(
-        parseWatcherProofThreadStateV1(
-          rehashProofThreadState(reordered),
-          policy,
-        ),
+        parseWatcherProofThreadState(rehashProofThreadState(reordered), policy),
       ).toBeNull();
       const truncated = structuredClone(indexed.state) as Mutable;
       truncated.transitionHistory = truncated.transitionHistory.slice(1);
       expect(
-        parseWatcherProofThreadStateV1(
-          rehashProofThreadState(truncated),
-          policy,
-        ),
+        parseWatcherProofThreadState(rehashProofThreadState(truncated), policy),
       ).toBeNull();
       const {
         schemaVersion: _rollbackObservationSchema,
@@ -3457,12 +3442,12 @@ describe("W17 public proof/computation-thread indexer", () => {
         ["publicInputDigest", h32("b6")],
       ] as const;
       for (const [field, hostileValue] of anchorMutations) {
-        const hostileObservation = makeWatcherProofThreadObservationV1({
+        const hostileObservation = makeWatcherProofThreadObservation({
           ...rollbackObservationWithoutDigest,
           [field]: hostileValue,
         })!;
         expect(
-          evaluateWatcherProofThreadIndexerV1(
+          evaluateWatcherProofThreadIndexer(
             policy,
             stepPendingResult.state,
             hostileObservation,
@@ -3478,7 +3463,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       const hostile = structuredClone(rollbackResult);
       (hostile.removedRecords as Mutable).confirmationIds = [];
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           stepPendingResult.state,
           rollbackObservation,
@@ -3504,7 +3489,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousFinalityState: null,
         sourceMode,
       });
-      const pendingResult = evaluateWatcherProofThreadIndexerV1(
+      const pendingResult = evaluateWatcherProofThreadIndexer(
         policy,
         null,
         pending.observation,
@@ -3515,9 +3500,9 @@ describe("W17 public proof/computation-thread indexer", () => {
       const unrelatedInput = {
         inputId: h32("e1"),
         kind: "da_payload" as const,
-        payload: makeWatcherDurablePayloadV1("81"),
+        payload: makeWatcherDurablePayload("81"),
       };
-      const sourceWithUnrelatedUpdate = makeWatcherDurableStoreV1({
+      const sourceWithUnrelatedUpdate = makeWatcherDurableStore({
         deploymentMarker: authority.marker,
         revision: (BigInt(pending.store.revision) + 1n).toString(),
         records: {
@@ -3529,11 +3514,11 @@ describe("W17 public proof/computation-thread indexer", () => {
       const replacementBlocks = l1.providers.map((provider) =>
         normalize(provider, pending.fixture, "1", 1),
       );
-      const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      const replacementConsistency = evaluateWatcherMultiProviderConsistency(
         l1.consistencyConfig,
         replacementBlocks,
       );
-      const replacementFinality = evaluateWatcherFinalityV1(
+      const replacementFinality = evaluateWatcherFinality(
         l1.policy,
         pending.finalityState,
         replacementConsistency,
@@ -3546,7 +3531,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceWithUnrelatedUpdate,
         replacementBlocks,
       );
-      const bootstrap = makeWatcherRollbackBootstrapStateV1(
+      const bootstrap = makeWatcherRollbackBootstrapState(
         l1.policy,
         rollbackSource,
         pending.finalityState,
@@ -3560,7 +3545,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousRollbackState: bootstrap,
         rollbackBootstrapState: bootstrap,
       };
-      const rollbackResult = evaluateWatcherRollbackV1(
+      const rollbackResult = evaluateWatcherRollback(
         l1.policy,
         rollbackSource,
         pending.finalityState,
@@ -3578,7 +3563,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       );
 
       const replacement = replacementBlocks[0]!;
-      const rollbackObservation = makeWatcherProofThreadObservationV1({
+      const rollbackObservation = makeWatcherProofThreadObservation({
         policyDigest: policy.policyDigest,
         network: policy.network,
         releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3591,16 +3576,16 @@ describe("W17 public proof/computation-thread indexer", () => {
         blockNo: replacement.chainPoint.blockNo,
         transactionHash: null,
         publicInputDigest: createHash("sha256")
-          .update(encodeWatcherNormalizedL1BlockV1(replacement))
+          .update(encodeWatcherNormalizedL1Block(replacement))
           .digest("hex"),
         sourceObservationDigest: replacement.observationDigest,
         chainPointId: replacement.chainPoint.chainPointId,
         sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(rollbackSource),
+          encodeWatcherDurableStore(rollbackSource),
         ),
         sourceDurableStoreRevision: rollbackSource.revision,
         durableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+          encodeWatcherDurableStore(rollbackResult.nextStore!),
         ),
         durableStoreRevision: rollbackResult.nextStore!.revision,
         predecessorStateDigest: pendingResult.state!.stateDigest,
@@ -3610,8 +3595,8 @@ describe("W17 public proof/computation-thread indexer", () => {
         layout: null,
         journal: null,
       })!;
-      const rollbackPublicContext: WatcherProofThreadPublicContextV1 = {
-        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+      const rollbackPublicContext: WatcherProofThreadPublicContext = {
+        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
         authenticatedProvider: null,
         l1Observation: null,
         sourceDurableStore: rollbackSource,
@@ -3625,7 +3610,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceJournal: null,
         durableJournal: null,
       };
-      const rewound = evaluateWatcherProofThreadIndexerV1(
+      const rewound = evaluateWatcherProofThreadIndexer(
         policy,
         pendingResult.state,
         rollbackObservation,
@@ -3644,14 +3629,14 @@ describe("W17 public proof/computation-thread indexer", () => {
           ]),
         },
       });
-      const restartedState = parseWatcherProofThreadStateV1(
+      const restartedState = parseWatcherProofThreadState(
         structuredClone(rewound.state),
         policy,
       );
       expect(restartedState).toEqual(rewound.state);
 
       const restartFixture = initTransaction();
-      const restartSource = makeWatcherDurableStoreV1({
+      const restartSource = makeWatcherDurableStore({
         deploymentMarker: authority.marker,
         revision: (BigInt(rollbackResult.nextStore!.revision) + 1n).toString(),
         records: {
@@ -3678,7 +3663,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceMode,
         ordinal: 2,
       });
-      const restartedResult = evaluateWatcherProofThreadIndexerV1(
+      const restartedResult = evaluateWatcherProofThreadIndexer(
         policy,
         restartedState,
         restarted.observation,
@@ -3709,7 +3694,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         structuredClone(authority.observations[0]),
       );
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           null,
           initial.observation,
@@ -3722,12 +3707,12 @@ describe("W17 public proof/computation-thread indexer", () => {
       const excessiveWidth = structuredClone(initial.context);
       (excessiveWidth.finalityAuthority as Mutable).lineage = Array.from(
         {
-          length: WATCHER_PROOF_THREAD_V1_BOUNDS.evidenceContainerEntries + 1,
+          length: WATCHER_PROOF_THREAD_BOUNDS.evidenceContainerEntries + 1,
         },
         () => null,
       );
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           null,
           initial.observation,
@@ -3742,7 +3727,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         cyclic.finalityAuthority,
       ];
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           null,
           initial.observation,
@@ -3753,7 +3738,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         reasonCodes: ["malformed_public_context"],
       });
 
-      const pendingResult = evaluateWatcherProofThreadIndexerV1(
+      const pendingResult = evaluateWatcherProofThreadIndexer(
         policy,
         null,
         initial.observation,
@@ -3767,7 +3752,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceStore: initial.store,
         sourceMode,
       });
-      const finalizedResult = evaluateWatcherProofThreadIndexerV1(
+      const finalizedResult = evaluateWatcherProofThreadIndexer(
         policy,
         pendingResult.state,
         finalized.observation,
@@ -3793,7 +3778,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceMode,
       });
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           finalizedResult.state,
           twoStepFork.observation,
@@ -3817,15 +3802,15 @@ describe("W17 public proof/computation-thread indexer", () => {
       observationDigest: _observationDigest,
       ...observationWithoutDigest
     } = pending.observation;
-    const wrongLayout = makeWatcherProofThreadObservationV1({
+    const wrongLayout = makeWatcherProofThreadObservation({
       ...observationWithoutDigest,
-      layout: makeWatcherProofThreadLayoutV1({
+      layout: makeWatcherProofThreadLayout({
         ...pending.observation.layout!,
         computationThreadMintRedeemerGlobalIndex: "1",
       })!,
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         null,
         wrongLayout,
@@ -3838,32 +3823,27 @@ describe("W17 public proof/computation-thread indexer", () => {
       journalDigest: _journalDigest,
       ...journalWithoutDigest
     } = pending.journal;
-    const wrongJournal = makeWatcherProofThreadJournalV1({
+    const wrongJournal = makeWatcherProofThreadJournal({
       ...journalWithoutDigest,
       threadOutRef: `${pending.fixture.txHash}#1`,
       confirmedTransactionHashes: pending.journal.confirmedTransactionHashes,
     });
-    const wrongJournalObservation = makeWatcherProofThreadObservationV1({
+    const wrongJournalObservation = makeWatcherProofThreadObservation({
       ...observationWithoutDigest,
       journal: wrongJournal,
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(
-        policy,
-        null,
-        wrongJournalObservation,
-        {
-          ...pending.context,
-          durableJournal: wrongJournal,
-        },
-      ).action,
+      evaluateWatcherProofThreadIndexer(policy, null, wrongJournalObservation, {
+        ...pending.context,
+        durableJournal: wrongJournal,
+      }).action,
     ).toBe("reject");
 
     const wrongFinality = structuredClone(pending.context);
     (wrongFinality.finalityAuthority as Mutable).result.protocolDecision =
       "finality_granted";
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         null,
         pending.observation,
@@ -3871,7 +3851,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       ).action,
     ).toBe("reject");
 
-    const wrongStore = makeWatcherDurableStoreV1({
+    const wrongStore = makeWatcherDurableStore({
       deploymentMarker: authority.marker,
       revision: pending.store.revision,
       records: {
@@ -3883,7 +3863,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       },
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(policy, null, pending.observation, {
+      evaluateWatcherProofThreadIndexer(policy, null, pending.observation, {
         ...pending.context,
         durableStore: wrongStore,
       }).action,
@@ -3894,7 +3874,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     "consumes exact %s W13 recovery, prunes only the orphan W17 lineage, and restarts idempotently",
     (sourceMode) => {
       const scenario = postFinalityProofThreadScenario(sourceMode);
-      const indexed = evaluateWatcherProofThreadIndexerV1(
+      const indexed = evaluateWatcherProofThreadIndexer(
         policy,
         scenario.orphanState,
         scenario.observation,
@@ -3924,7 +3904,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         },
       });
       const foreignRoles = new Set(["hub_oracle", "state_queue"]);
-      const foreign = (store: WatcherDurableStoreV1) => ({
+      const foreign = (store: WatcherDurableStore) => ({
         protocolUtxos: store.protocolUtxos.filter(({ role }) =>
           foreignRoles.has(role),
         ),
@@ -3933,16 +3913,16 @@ describe("W17 public proof/computation-thread indexer", () => {
         ),
       });
       expect(foreign(scenario.recovery.nextStore!)).toEqual(
-        foreign(scenario.recoveryInput.sourceStore as WatcherDurableStoreV1),
+        foreign(scenario.recoveryInput.sourceStore as WatcherDurableStore),
       );
 
-      const restarted = parseWatcherProofThreadStateV1(
+      const restarted = parseWatcherProofThreadState(
         structuredClone(indexed.state),
         policy,
       );
       expect(restarted).toEqual(indexed.state);
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           scenario.orphanState,
           scenario.observation,
@@ -3950,7 +3930,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         ),
       ).toEqual(indexed);
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           restarted,
           scenario.observation,
@@ -3967,12 +3947,12 @@ describe("W17 public proof/computation-thread indexer", () => {
         observationDigest: _resumeDigest,
         ...resumeFields
       } = scenario.resumeObservation;
-      const resumeObservation = makeWatcherProofThreadObservationV1({
+      const resumeObservation = makeWatcherProofThreadObservation({
         ...resumeFields,
         predecessorStateDigest: restarted!.stateDigest,
       })!;
       expect(
-        evaluateWatcherProofThreadIndexerV1(
+        evaluateWatcherProofThreadIndexer(
           policy,
           restarted,
           resumeObservation,
@@ -3995,10 +3975,10 @@ describe("W17 public proof/computation-thread indexer", () => {
   it("rejects forged, mismatched-path, wrong-target, wrong-mode, replacement-mismatched, and duplicate-only W13 recovery", () => {
     const scenario = postFinalityProofThreadScenario("external_providers");
     const evaluate = (
-      observation: WatcherProofThreadObservationV1,
-      context: WatcherProofThreadPublicContextV1,
+      observation: WatcherProofThreadObservation,
+      context: WatcherProofThreadPublicContext,
     ) =>
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         scenario.orphanState,
         observation,
@@ -4007,7 +3987,7 @@ describe("W17 public proof/computation-thread indexer", () => {
 
     const forged = structuredClone(
       scenario.context,
-    ) as WatcherProofThreadPublicContextV1;
+    ) as WatcherProofThreadPublicContext;
     const forgedResult = forged.rollbackAuthority!.result as Mutable;
     forgedResult.nextStoreDigest = h32("ff");
     const { resultDigest: _forgedDigest, ...forgedCanonical } = forgedResult;
@@ -4019,7 +3999,7 @@ describe("W17 public proof/computation-thread indexer", () => {
 
     const mismatchedPath = structuredClone(
       scenario.context,
-    ) as WatcherProofThreadPublicContextV1;
+    ) as WatcherProofThreadPublicContext;
     const mismatchedInput = mismatchedPath.rollbackAuthority!
       .context as Mutable;
     mismatchedInput.replacementCanonicalPath =
@@ -4031,7 +4011,7 @@ describe("W17 public proof/computation-thread indexer", () => {
 
     const wrongMode = structuredClone(
       scenario.context,
-    ) as WatcherProofThreadPublicContextV1;
+    ) as WatcherProofThreadPublicContext;
     (wrongMode.rollbackAuthority!.context as Mutable).policy = {
       ...finalityPolicy,
       sourceMode: "local_node",
@@ -4046,7 +4026,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       observationDigest: _observationDigest,
       ...observationFields
     } = scenario.observation;
-    const wrongTarget = makeWatcherProofThreadObservationV1({
+    const wrongTarget = makeWatcherProofThreadObservation({
       ...observationFields,
       rollbackTargetStateDigest: scenario.orphanState.stateDigest,
     })!;
@@ -4055,7 +4035,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       reasonCodes: ["rollback_mismatch"],
     });
     const commonObservation = scenario.commonState.history.at(-1)!.observation;
-    const wrongReplacement = makeWatcherProofThreadObservationV1({
+    const wrongReplacement = makeWatcherProofThreadObservation({
       ...observationFields,
       pointDigest: commonObservation.pointDigest,
       blockHash: commonObservation.blockHash,
@@ -4070,13 +4050,13 @@ describe("W17 public proof/computation-thread indexer", () => {
       reasonCodes: ["rollback_authority_mismatch"],
     });
 
-    const duplicateInput: WatcherPostFinalityRecoveryInputV1 = {
+    const duplicateInput: WatcherPostFinalityRecoveryInput = {
       ...scenario.recoveryInput,
       currentStore: scenario.recovery.nextStore,
       previousRecoveryState: scenario.recovery.recoveryState,
     };
     const duplicateRecovery =
-      evaluateWatcherPostFinalityRecoveryV1(duplicateInput);
+      evaluateWatcherPostFinalityRecovery(duplicateInput);
     expect(duplicateRecovery.action).toBe("duplicate_recovery");
     const duplicateOnly = {
       ...scenario.context,
@@ -4099,7 +4079,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const wrongRoleStore = makeWatcherDurableStoreV1({
+    const wrongRoleStore = makeWatcherDurableStore({
       deploymentMarker: authority.marker,
       revision: pending.store.revision,
       records: {
@@ -4116,14 +4096,14 @@ describe("W17 public proof/computation-thread indexer", () => {
       observationDigest: _observationDigest,
       ...observationFields
     } = pending.observation;
-    const wrongRoleObservation = makeWatcherProofThreadObservationV1({
+    const wrongRoleObservation = makeWatcherProofThreadObservation({
       ...observationFields,
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(wrongRoleStore),
+        encodeWatcherDurableStore(wrongRoleStore),
       ),
     })!;
     expect(
-      evaluateWatcherProofThreadIndexerV1(policy, null, wrongRoleObservation, {
+      evaluateWatcherProofThreadIndexer(policy, null, wrongRoleObservation, {
         ...pending.context,
         durableStore: wrongRoleStore,
       }),
@@ -4138,9 +4118,9 @@ describe("W17 public proof/computation-thread indexer", () => {
     const seed = baseStore(fixture);
     const priorChainPointId = seed.chainPoints[0]!.chainPointId;
     const withProtocolUtxo = (
-      durable: WatcherProtocolUtxoV1,
-    ): WatcherDurableStoreV1 =>
-      makeWatcherDurableStoreV1({
+      durable: WatcherProtocolUtxo,
+    ): WatcherDurableStore =>
+      makeWatcherDurableStore({
         deploymentMarker: authority.marker,
         revision: seed.revision,
         records: {
@@ -4154,7 +4134,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: null,
       previousFinalityState: null,
     });
-    const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+    const initPendingResult = evaluateWatcherProofThreadIndexer(
       policy,
       null,
       initPending.observation,
@@ -4167,7 +4147,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: initPending.finalityState,
       sourceStore: initPending.store,
     });
-    const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+    const initFinalResult = evaluateWatcherProofThreadIndexer(
       policy,
       initPendingResult.state,
       initFinal.observation,
@@ -4190,7 +4170,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       sourceJournal: initFinal.journal,
       ordinal: 7,
     });
-    const hostileStore = makeWatcherDurableStoreV1({
+    const hostileStore = makeWatcherDurableStore({
       deploymentMarker: authority.marker,
       revision: cancel.store.revision,
       records: {
@@ -4211,14 +4191,14 @@ describe("W17 public proof/computation-thread indexer", () => {
       observationDigest: _hostileDigest,
       ...hostileFields
     } = cancel.observation;
-    const hostileObservation = makeWatcherProofThreadObservationV1({
+    const hostileObservation = makeWatcherProofThreadObservation({
       ...hostileFields,
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(hostileStore),
+        encodeWatcherDurableStore(hostileStore),
       ),
     })!;
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         initFinalResult.state,
         hostileObservation,
@@ -4236,12 +4216,12 @@ describe("W17 public proof/computation-thread indexer", () => {
     const daDatum = Data.to(
       {
         header_hash: headerHash,
-        availability_commitment: buildDaAvailabilityCommitmentV1({
+        availability_commitment: buildDaAvailabilityCommitment({
           deploymentIdentity: h28("de"),
           headerHash,
           payload: Uint8Array.of(1),
           bondOwner: h28("df"),
-          responseGeometry: availabilityResponseGeometryV1({
+          responseGeometry: availabilityResponseGeometry({
             chunkByteLength: 14_020,
             trancheByteLength: 4_194_304,
             maxTrancheCount: 16,
@@ -4279,7 +4259,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       sourceStore: legitimateSource,
     });
     expect(
-      evaluateWatcherProofThreadIndexerV1(
+      evaluateWatcherProofThreadIndexer(
         policy,
         null,
         legitimate.observation,

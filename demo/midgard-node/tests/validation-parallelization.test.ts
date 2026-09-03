@@ -1,15 +1,15 @@
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxBodyCompactV1,
-  deriveMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxBodyCompactV1,
-  encodeMidgardNativeTxCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxBodyCanonicalV1,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxWitnessSetCanonicalV1,
+  type MidgardNativeTxBodyCanonical,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import {
   buildPhaseAValidatedTx,
@@ -93,11 +93,11 @@ const makeNativeTx = ({
   readonly outputs: readonly Buffer[];
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
-}): MidgardNativeTxFullV1 => {
+}): MidgardNativeTxFull => {
   const spendInputsPreimageCbor = encodeByteList(spent);
   const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
   const outputsPreimageCbor = encodeByteList(outputs);
-  const body: MidgardNativeTxBodyCanonicalV1 = {
+  const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor,
     referenceInputsPreimageCbor,
     outputsPreimageCbor,
@@ -112,11 +112,9 @@ const makeNativeTx = ({
     networkId: 0n,
   };
   const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompactV1(
-      deriveMidgardNativeTxBodyCompactV1(body),
-    ),
+    encodeMidgardNativeTxBodyCompact(deriveMidgardNativeTxBodyCompact(body)),
   );
-  const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
+  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor: encodeByteList([
       Buffer.from(
         CML.make_vkey_witness(
@@ -129,11 +127,11 @@ const makeNativeTx = ({
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
   return {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body,
     witnessSet,
-    compact: deriveMidgardNativeTxCompactV1(body, witnessSet, "TxIsValid"),
+    compact: deriveMidgardNativeTxCompact(body, witnessSet, "TxIsValid"),
   };
 };
 
@@ -170,7 +168,7 @@ const makeCandidate = ({
     validityIntervalStart,
     validityIntervalEnd,
   });
-  const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+  const txCbor = encodeMidgardNativeTxCanonical(tx);
   const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(txCbor);
   return buildPhaseAValidatedTx({
     ledgerTx: submittedTx.ledgerTx,
@@ -236,9 +234,9 @@ describe("validation parallelization", () => {
         spent: [spent],
         outputs: [makeOutput(testAddress, 10n)],
       });
-      const nativeTxBytes = encodeMidgardNativeTxCanonicalV1(nativeTx);
+      const nativeTxBytes = encodeMidgardNativeTxCanonical(nativeTx);
       return {
-        txId: computeMidgardNativeTxIdV1(nativeTx),
+        txId: computeMidgardNativeTxId(nativeTx),
         txCbor: nativeTxBytes,
         arrivalSeq: BigInt(index),
         createdAt: new Date(0),

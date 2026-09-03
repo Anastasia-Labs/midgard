@@ -22,7 +22,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -41,14 +41,14 @@ import {
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
@@ -248,7 +248,7 @@ const makeComputationThreadSuccessRedeemer = ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-export const submitInvalidRangeStep02 = async ({
+export const submitInvalidRangeStep02V1 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -269,8 +269,8 @@ export const submitInvalidRangeStep02 = async ({
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidRangeStep02Result> => {
   const { invalidRangeCategory, contracts } =
@@ -327,17 +327,17 @@ export const submitInvalidRangeStep02 = async ({
   };
   let spendLayout: InvalidRangeStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.invalidRange.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "invalid-range step 02 validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "invalid-range step 02 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "invalid-range step 02 fraud-proof mint",
@@ -412,9 +412,9 @@ export const submitInvalidRangeStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -480,7 +480,7 @@ export const submitInvalidRangeStep02 = async ({
 export const submitInvalidRangeStep02FromFiles = async (
   config: SubmitInvalidRangeStep02CliConfig,
 ): Promise<SubmitInvalidRangeStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-invalid-range-step-02",
   });
   const [blueprint, deploymentInfo, lucid] = await Promise.all([
@@ -489,7 +489,7 @@ export const submitInvalidRangeStep02FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitInvalidRangeStep02({
+  return await submitInvalidRangeStep02V1({
     lucid,
     blueprint,
     deploymentInfo,

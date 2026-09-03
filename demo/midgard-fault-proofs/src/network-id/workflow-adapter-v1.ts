@@ -4,16 +4,13 @@
  * dependency because every publication/certificate needs its own journaled
  * action before the final proof transaction.
  */
+import { decodeMidgardNativeTxCompact, outRefLabel } from "@al-ft/midgard-core";
 import {
-  decodeMidgardNativeTxCompactV1,
-  outRefLabel,
-} from "@al-ft/midgard-core";
-import {
-  type AuthenticatedStateQueueHeaderObservationV1,
-  deriveFieldPreimageCertificationV1,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
+  type AuthenticatedStateQueueHeaderObservation,
+  deriveFieldPreimageCertification,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   FraudProofComputationThreadStepDatum,
-  type NetworkIdFaultV1,
+  type NetworkIdFault,
   NetworkIdStep02Datum,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@al-ft/midgard-sdk";
@@ -24,14 +21,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  certifyFaultProofFieldCarriageV1,
-  fieldPreimageCertificateAddressV1,
-  findMissingFaultProofFieldPublicationV1,
-  publishFaultProofFieldCarriageV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  certifyFaultProofFieldCarriage,
+  fieldPreimageCertificateAddress,
+  findMissingFaultProofFieldPublication,
+  publishFaultProofFieldCarriage,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import type {
   RemoveFraudulentBlockExplicitCategory,
@@ -43,75 +40,75 @@ import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { nativeTxFromCoreCompact } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1 } from "../workflow/complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import type {
-  FraudProofWorkflowJournalStoreV1,
-  FraudProofWorkflowTerminalV1,
-  JournalJsonObjectV1,
+  FraudProofWorkflowJournalStore,
+  FraudProofWorkflowTerminal,
+  JournalJsonObject,
 } from "../workflow/journal-v1.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSourceV1,
-  type LocalKupmiosHttpOgmiosSourceConfigV1,
+  createLocalKupmiosHttpOgmiosRawSource,
+  type LocalKupmiosHttpOgmiosSourceConfig,
 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 } from "../workflow/local-kupmios-raw-l1-authority-v1.js";
+import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "../workflow/local-kupmios-raw-l1-authority-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowObservationV1,
-  type FraudProofWorkflowPreflightV1,
-  type FraudProofWorkflowReconcileResultV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowObservation,
+  type FraudProofWorkflowPreflight,
+  type FraudProofWorkflowReconcileResult,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator-v1.js";
 import {
-  deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1,
-  deriveFraudProofRawL1FamilyStageV1,
-  type FraudProofRawL1FamilyDefinitionV1,
-  type FraudProofRawL1FamilyStageV1,
-  fraudProofRawL1SnapshotRequestForFamilyV1,
+  deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
+  deriveFraudProofRawL1FamilyStage,
+  type FraudProofRawL1FamilyDefinition,
+  type FraudProofRawL1FamilyStage,
+  fraudProofRawL1SnapshotRequestForFamily,
 } from "../workflow/raw-l1-family-derivation-v1.js";
 import {
-  createFraudProofAuthenticatedPublicationObserverV1,
-  type FraudProofAuthenticatedPublicationObserverV1,
+  createFraudProofAuthenticatedPublicationObserver,
+  type FraudProofAuthenticatedPublicationObserver,
 } from "../workflow/raw-l1-publication-observation-v1.js";
 import {
-  admitFraudProofRawL1SnapshotV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1,
-  type FraudProofRawL1SnapshotAuthorityV1,
+  admitFraudProofRawL1Snapshot,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofRawL1SnapshotAuthority,
 } from "../workflow/raw-l1-snapshot-v1.js";
-import type { VerifiedFraudProofReleaseEconomicsPolicyV1 } from "../workflow/release-economics-policy-v1.js";
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "../workflow/release-finality-policy-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "../workflow/release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../workflow/release-economics-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type FraudProofPreSubmitBoundaryV1,
-  LOCAL_UPLC_EVALUATOR_V1,
-  type LocallyEvaluatedTransactionV1,
-  requireReferenceOnlyScriptWitnessesV1,
-  submitCapturedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  type FraudProofPreSubmitBoundary,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
 import {
-  planNetworkIdOutputsOpeningV1,
-  type PreparedNetworkIdProofV1,
-  prepareNetworkIdFromCanonicalEvidenceV1,
+  planNetworkIdOutputsOpening,
+  type PreparedNetworkIdProof,
+  prepareNetworkIdFromCanonicalEvidence,
 } from "./prepare-v1.js";
-import type { NetworkIdCatalogueCategoryV1 } from "./submit-common-v1.js";
+import type { NetworkIdCatalogueCategory } from "./submit-common-v1.js";
 import { submitNetworkIdInit } from "./submit-network-id-init.js";
 import { submitNetworkIdStep01 } from "./submit-network-id-step-01.js";
 import { submitNetworkIdStep02 } from "./submit-network-id-step-02.js";
@@ -119,7 +116,7 @@ import { submitNetworkIdStep02 } from "./submit-network-id-step-02.js";
 const ARTIFACT_VERSION = "midgard-network-id-workflow-artifact-v1" as const;
 const CATEGORY = "networkId";
 
-type NetworkIdWorkflowArtifactV1 = {
+type NetworkIdWorkflowArtifact = {
   readonly schemaVersion: typeof ARTIFACT_VERSION;
   readonly headerHash: string;
   readonly expectedNetworkId: "0" | "1";
@@ -135,7 +132,7 @@ type NetworkIdWorkflowArtifactV1 = {
 };
 
 type WorkflowContext = Parameters<
-  FraudProofFamilyWorkflowAdapterV1["observe"]
+  FraudProofFamilyWorkflowAdapter["observe"]
 >[0];
 
 type ActionKind =
@@ -153,7 +150,7 @@ const requireString = (value: unknown, label: string): string => {
   return value;
 };
 
-const actionKind = (action: FraudProofWorkflowActionV1): ActionKind => {
+const actionKind = (action: FraudProofWorkflowAction): ActionKind => {
   const kind = action.input.kind;
   if (
     kind !== "init" &&
@@ -172,7 +169,7 @@ const action = (
   kind: ActionKind,
   input: Readonly<Record<string, string>>,
   actionId = `network-id:${kind}:${Object.values(input).join(":")}`,
-): FraudProofWorkflowActionV1 => ({
+): FraudProofWorkflowAction => ({
   actionId,
   input: { kind, ...input },
 });
@@ -196,8 +193,8 @@ const contentActionId = ({
 };
 
 const artifactFromPrepared = (
-  prepared: PreparedNetworkIdProofV1,
-): NetworkIdWorkflowArtifactV1 => ({
+  prepared: PreparedNetworkIdProof,
+): NetworkIdWorkflowArtifact => ({
   schemaVersion: ARTIFACT_VERSION,
   headerHash: prepared.headerHash,
   expectedNetworkId: prepared.expectedNetworkId.toString() as "0" | "1",
@@ -217,8 +214,8 @@ const artifactFromPrepared = (
 
 const preparedFromArtifact = (
   value: WorkflowContext["artifact"],
-): PreparedNetworkIdProofV1 => {
-  const artifact = value as unknown as NetworkIdWorkflowArtifactV1;
+): PreparedNetworkIdProof => {
+  const artifact = value as unknown as NetworkIdWorkflowArtifact;
   if (artifact.schemaVersion !== ARTIFACT_VERSION) {
     throw new Error("network-id workflow artifact has an unsupported version");
   }
@@ -240,7 +237,7 @@ const preparedFromArtifact = (
   ) {
     throw new Error("network-id workflow artifact has an inconsistent fault");
   }
-  const fault: NetworkIdFaultV1 =
+  const fault: NetworkIdFault =
     artifact.faultKind === "transaction-network"
       ? "TransactionNetwork"
       : { OutputNetwork: { output_index: outputIndex! } };
@@ -265,7 +262,7 @@ const preparedFromArtifact = (
     txInclusion: {
       nativeTxId: artifact.badTxId,
       nativeTx: nativeTxFromCoreCompact(
-        decodeMidgardNativeTxCompactV1(
+        decodeMidgardNativeTxCompact(
           Buffer.from(artifact.nativeTxCompactCbor, "hex"),
         ),
       ),
@@ -303,8 +300,8 @@ const latestRemovalIntent = (context: WorkflowContext) =>
         event.actionInput.kind === "remove",
     );
 
-const parseMutationLeaseRecoveryV1 = (
-  recovery: JournalJsonObjectV1 | undefined,
+const parseMutationLeaseRecovery = (
+  recovery: JournalJsonObject | undefined,
 ): { readonly token: string; readonly source: string } | undefined => {
   if (recovery === undefined) return undefined;
   const value = recovery.stateQueueMutationLease;
@@ -333,15 +330,15 @@ const parseMutationLeaseRecoveryV1 = (
   return { token: parsed.token, source: parsed.source };
 };
 
-const recoverMutationLeaseV1 = async ({
+const recoverMutationLease = async ({
   config,
   txHash,
   durableRecovery,
   mutationLeaseByTxHash,
 }: {
-  readonly config: NetworkIdWorkflowAdapterConfigV1;
+  readonly config: NetworkIdWorkflowAdapterConfig;
   readonly txHash: string;
-  readonly durableRecovery: JournalJsonObjectV1 | undefined;
+  readonly durableRecovery: JournalJsonObject | undefined;
   readonly mutationLeaseByTxHash: Map<string, StateQueueMutationLease>;
 }): Promise<
   | { readonly kind: "ok"; readonly lease: StateQueueMutationLease | undefined }
@@ -349,7 +346,7 @@ const recoverMutationLeaseV1 = async ({
 > => {
   let identity: { readonly token: string; readonly source: string } | undefined;
   try {
-    identity = parseMutationLeaseRecoveryV1(durableRecovery);
+    identity = parseMutationLeaseRecovery(durableRecovery);
   } catch (cause) {
     return {
       kind: "conflict",
@@ -387,45 +384,45 @@ const recoverMutationLeaseV1 = async ({
   }
 };
 
-export type NetworkIdWorkflowTerminalFactsV1 = {
-  readonly economics: FraudProofWorkflowTerminalV1["economics"];
-  readonly observedAt: FraudProofWorkflowTerminalV1["observedAt"];
+export type NetworkIdWorkflowTerminalFacts = {
+  readonly economics: FraudProofWorkflowTerminal["economics"];
+  readonly observedAt: FraudProofWorkflowTerminal["observedAt"];
 };
 
-export interface NetworkIdRawL1ObservationPortV1 {
-  readonly publications?: FraudProofAuthenticatedPublicationObserverV1;
+export interface NetworkIdRawL1ObservationPort {
+  readonly publications?: FraudProofAuthenticatedPublicationObserver;
   observeHeader?(input: {
     readonly headerHash: string;
-  }): Promise<AuthenticatedStateQueueHeaderObservationV1>;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
   transactionConfirmed?(input: {
     readonly headerHash: string;
     readonly txHash: string;
   }): Promise<boolean>;
   observe(input: {
     readonly headerHash: string;
-  }): Promise<FraudProofRawL1FamilyStageV1>;
+  }): Promise<FraudProofRawL1FamilyStage>;
 }
 
-export const createNetworkIdRawL1ObservationPortV1 = ({
+export const createNetworkIdRawL1ObservationPort = ({
   authority,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly authority: FraudProofRawL1SnapshotAuthorityV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly authority: FraudProofRawL1SnapshotAuthority;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
-}): NetworkIdRawL1ObservationPortV1 => {
+}): NetworkIdRawL1ObservationPort => {
   if (
-    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1 ||
+    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length !== 2
   ) {
     throw new Error("network-id raw L1 observation authority is incomplete");
   }
-  const request = fraudProofRawL1SnapshotRequestForFamilyV1({
+  const request = fraudProofRawL1SnapshotRequestForFamily({
     definition,
     releaseFinality,
   });
@@ -433,14 +430,14 @@ export const createNetworkIdRawL1ObservationPortV1 = ({
     if (headerHash !== definition.headerHash) {
       throw new Error("network-id raw L1 observation changed the header");
     }
-    return admitFraudProofRawL1SnapshotV1({
+    return admitFraudProofRawL1Snapshot({
       value: await authority.capture(request),
       request,
       releaseFinality,
     });
   };
   return {
-    publications: createFraudProofAuthenticatedPublicationObserverV1({
+    publications: createFraudProofAuthenticatedPublicationObserver({
       authority,
       releaseFinality,
     }),
@@ -449,13 +446,13 @@ export const createNetworkIdRawL1ObservationPortV1 = ({
         (transaction) => transaction.txHash === txHash,
       ),
     observeHeader: async ({ headerHash }) =>
-      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1({
+      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
         definition,
       }),
     observe: async ({ headerHash }) => {
       const snapshot = await capture(headerHash);
-      return await deriveFraudProofRawL1FamilyStageV1({
+      return await deriveFraudProofRawL1FamilyStage({
         snapshot,
         definition,
         releaseEconomics,
@@ -465,28 +462,25 @@ export const createNetworkIdRawL1ObservationPortV1 = ({
 };
 
 /** Concrete loopback Kupo HTTP + Ogmios WS production construction. */
-export const createNetworkIdLocalKupmiosL1ObservationPortV1 = ({
+export const createNetworkIdLocalKupmiosL1ObservationPort = ({
   source,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly source: Omit<
-    LocalKupmiosHttpOgmiosSourceConfigV1,
-    "releaseFinality"
-  >;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "networkId";
   };
-}): NetworkIdRawL1ObservationPortV1 => {
-  const rawSource = createLocalKupmiosHttpOgmiosRawSourceV1({
+}): NetworkIdRawL1ObservationPort => {
+  const rawSource = createLocalKupmiosHttpOgmiosRawSource({
     ...source,
     releaseFinality,
   });
-  return createNetworkIdRawL1ObservationPortV1({
-    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+  return createNetworkIdRawL1ObservationPort({
+    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
     }),
@@ -497,10 +491,10 @@ export const createNetworkIdLocalKupmiosL1ObservationPortV1 = ({
 };
 
 /** Independent second raw-L1 observation for terminal admission. */
-export const createNetworkIdAuthenticatedL1TerminalVerifierV1 = (
-  l1: NetworkIdRawL1ObservationPortV1,
-): FraudProofWorkflowTerminalVerifierV1 => ({
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+export const createNetworkIdAuthenticatedL1TerminalVerifier = (
+  l1: NetworkIdRawL1ObservationPort,
+): FraudProofWorkflowTerminalVerifier => ({
+  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   verify: async ({ identity, candidate, releaseFinality }) => {
     if (identity.target.kind !== "state_queue_header") {
       throw new Error(
@@ -532,13 +526,13 @@ export const createNetworkIdAuthenticatedL1TerminalVerifierV1 = (
   },
 });
 
-export type NetworkIdWorkflowAdapterConfigV1 = {
+export type NetworkIdWorkflowAdapterConfig = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly stateQueueAddress: string;
-  readonly category: NetworkIdCatalogueCategoryV1;
+  readonly category: NetworkIdCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -547,7 +541,7 @@ export type NetworkIdWorkflowAdapterConfigV1 = {
   readonly signer: ResolvedProverSigner;
   readonly stepReferenceScripts: readonly [UTxO, UTxO];
   readonly fieldPreimageCertificateReferenceScript: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly removal: {
     readonly deploymentInfo: unknown;
     readonly category:
@@ -562,19 +556,19 @@ export type NetworkIdWorkflowAdapterConfigV1 = {
     readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   };
   /** Strict production route; omit only in emulator/diagnostic construction. */
-  readonly rawL1?: NetworkIdRawL1ObservationPortV1;
+  readonly rawL1?: NetworkIdRawL1ObservationPort;
   /** Candidate chain facts; the shared independent verifier reauthenticates them. */
   readonly terminalFacts?: (input: {
     readonly headerHash: string;
     readonly removalTxHash: string;
     readonly proofTokenOutRef: string;
-  }) => Promise<NetworkIdWorkflowTerminalFactsV1>;
+  }) => Promise<NetworkIdWorkflowTerminalFacts>;
 };
 
-type NetworkIdRemovalConfigV1 = NetworkIdWorkflowAdapterConfigV1["removal"];
+type NetworkIdRemovalConfig = NetworkIdWorkflowAdapterConfig["removal"];
 
-export type ManifestBoundNetworkIdWorkflowConfigV1 = Omit<
-  NetworkIdWorkflowAdapterConfigV1,
+export type ManifestBoundNetworkIdWorkflowConfig = Omit<
+  NetworkIdWorkflowAdapterConfig,
   | "blueprint"
   | "network"
   | "contracts"
@@ -590,12 +584,9 @@ export type ManifestBoundNetworkIdWorkflowConfigV1 = Omit<
   readonly blueprintJson: string;
   readonly deploymentInfo: unknown;
   readonly headerHash: string;
-  readonly source: Omit<
-    LocalKupmiosHttpOgmiosSourceConfigV1,
-    "releaseFinality"
-  >;
+  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   readonly removal: Omit<
-    NetworkIdRemovalConfigV1,
+    NetworkIdRemovalConfig,
     | "deploymentInfo"
     | "category"
     | "isCurrentHead"
@@ -606,7 +597,7 @@ export type ManifestBoundNetworkIdWorkflowConfigV1 = Omit<
   };
   readonly witnessReferenceScripts: Required<
     Pick<
-      FaultProofWitnessReferenceScriptsV1,
+      FaultProofWitnessReferenceScripts,
       | "computationThreadMint"
       | "fraudProofMint"
       | "phasMembershipWithdraw"
@@ -616,19 +607,19 @@ export type ManifestBoundNetworkIdWorkflowConfigV1 = Omit<
   >;
 };
 
-export type ManifestBoundNetworkIdWorkflowV1 = {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"networkId">;
-  readonly adapterConfig: NetworkIdWorkflowAdapterConfigV1;
-  readonly adapter: FraudProofFamilyWorkflowAdapterV1;
-  readonly terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundNetworkIdWorkflow = {
+  readonly binding: FraudProofWorkflowDeploymentBinding<"networkId">;
+  readonly adapterConfig: NetworkIdWorkflowAdapterConfig;
+  readonly adapter: FraudProofFamilyWorkflowAdapter;
+  readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 };
 
-export type ManifestBoundNetworkIdRuntimeSealV1 = {
+export type ManifestBoundNetworkIdRuntimeSeal = {
   readonly stepReferenceScripts: readonly [UTxO, UTxO];
   readonly fieldPreimageCertificateReferenceScript: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly removal: ManifestBoundNetworkIdWorkflowConfigV1["removal"] & {
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly removal: ManifestBoundNetworkIdWorkflowConfig["removal"] & {
     readonly requireReferenceScripts: true;
   };
 };
@@ -640,7 +631,7 @@ export type ManifestBoundNetworkIdRuntimeSealV1 = {
  * after the caller object is spread. Every supplied reference UTxO is also
  * matched to its exact finalized manifest role, out-ref, and script hash.
  */
-export const sealManifestBoundNetworkIdRuntimeV1 = ({
+export const sealManifestBoundNetworkIdRuntime = ({
   binding,
   signer,
   stepReferenceScripts,
@@ -649,22 +640,22 @@ export const sealManifestBoundNetworkIdRuntimeV1 = ({
   removal,
 }: {
   readonly binding: Pick<
-    FraudProofWorkflowDeploymentBindingV1<"networkId">,
+    FraudProofWorkflowDeploymentBinding<"networkId">,
     "network" | "referenceScriptsByContract"
   >;
   readonly signer: ResolvedProverSigner;
   readonly stepReferenceScripts: readonly [UTxO, UTxO];
   readonly fieldPreimageCertificateReferenceScript: UTxO;
-  readonly witnessReferenceScripts: ManifestBoundNetworkIdWorkflowConfigV1["witnessReferenceScripts"];
-  readonly removal: ManifestBoundNetworkIdWorkflowConfigV1["removal"];
-}): ManifestBoundNetworkIdRuntimeSealV1 => {
-  assertManifestBoundWorkflowSignerV1({
+  readonly witnessReferenceScripts: ManifestBoundNetworkIdWorkflowConfig["witnessReferenceScripts"];
+  readonly removal: ManifestBoundNetworkIdWorkflowConfig["removal"];
+}): ManifestBoundNetworkIdRuntimeSeal => {
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: signer.address,
     paymentKeyHash: signer.paymentKeyHash,
   });
   const requireReference = (contractName: string, utxo: UTxO): UTxO =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo,
@@ -708,10 +699,10 @@ export const sealManifestBoundNetworkIdRuntimeV1 = ({
 };
 
 /** Manifest-closed production construction for Q35. */
-export const createManifestBoundNetworkIdWorkflowV1 = async (
-  config: ManifestBoundNetworkIdWorkflowConfigV1,
-): Promise<ManifestBoundNetworkIdWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundNetworkIdWorkflow = async (
+  config: ManifestBoundNetworkIdWorkflowConfig,
+): Promise<ManifestBoundNetworkIdWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -734,7 +725,7 @@ export const createManifestBoundNetworkIdWorkflowV1 = async (
       "network-id deployment omitted the field-preimage certificate policy",
     );
   }
-  const sealedRuntime = sealManifestBoundNetworkIdRuntimeV1({
+  const sealedRuntime = sealManifestBoundNetworkIdRuntime({
     binding,
     signer: config.signer,
     stepReferenceScripts: config.stepReferenceScripts,
@@ -743,13 +734,13 @@ export const createManifestBoundNetworkIdWorkflowV1 = async (
     witnessReferenceScripts: config.witnessReferenceScripts,
     removal: config.removal,
   });
-  const rawL1 = createNetworkIdLocalKupmiosL1ObservationPortV1({
+  const rawL1 = createNetworkIdLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const adapterConfig: NetworkIdWorkflowAdapterConfigV1 = {
+  const adapterConfig: NetworkIdWorkflowAdapterConfig = {
     lucid: config.lucid,
     blueprint: binding.blueprint,
     network: binding.network,
@@ -790,10 +781,10 @@ export const createManifestBoundNetworkIdWorkflowV1 = async (
   return {
     binding,
     adapterConfig,
-    adapter: createNetworkIdWorkflowAdapterV1(adapterConfig),
-    terminalVerifier: createNetworkIdAuthenticatedL1TerminalVerifierV1(rawL1),
+    adapter: createNetworkIdWorkflowAdapter(adapterConfig),
+    terminalVerifier: createNetworkIdAuthenticatedL1TerminalVerifier(rawL1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   };
 };
 
@@ -802,20 +793,20 @@ export const createManifestBoundNetworkIdWorkflowV1 = async (
  * the post-local-evaluation/pre-network boundary, journals that hash through
  * the shared orchestrator, then submits exactly the captured body.
  */
-export const createNetworkIdWorkflowAdapterV1 = (
-  config: NetworkIdWorkflowAdapterConfigV1,
-): FraudProofFamilyWorkflowAdapterV1 => {
+export const createNetworkIdWorkflowAdapter = (
+  config: NetworkIdWorkflowAdapterConfig,
+): FraudProofFamilyWorkflowAdapter => {
   const captured = new Map<
     string,
     {
-      readonly transaction: LocallyEvaluatedTransactionV1;
+      readonly transaction: LocallyEvaluatedTransaction;
       readonly mutationLease?: StateQueueMutationLease;
     }
   >();
   const mutationLeaseByTxHash = new Map<string, StateQueueMutationLease>();
   const category = CATEGORY;
 
-  const live = async (prepared: PreparedNetworkIdProofV1) => {
+  const live = async (prepared: PreparedNetworkIdProof) => {
     const threadUnit = toUnit(
       config.contracts.computationThread.policyId,
       `${config.category.categoryId}${prepared.headerHash}`,
@@ -868,7 +859,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
     publications,
     certificate,
   }: {
-    readonly prepared: PreparedNetworkIdProofV1;
+    readonly prepared: PreparedNetworkIdProof;
     readonly publications: readonly UTxO[];
     readonly certificate?: UTxO;
   }): Promise<void> => {
@@ -907,14 +898,14 @@ export const createNetworkIdWorkflowAdapterV1 = (
       const observed = await observer.observeExact({
         headerHash: prepared.headerHash,
         kind: "field_certificate",
-        address: fieldPreimageCertificateAddressV1({
+        address: fieldPreimageCertificateAddress({
           network: config.network,
           certificatePolicyId:
             config.contracts.fieldPreimageCertificatePolicyId,
         }),
         expectedOutRef: outRefLabel(certificate),
         expectedDatumCbor: certificate.datum,
-        expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`,
+        expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
       });
       if (observed.kind !== "confirmed") {
         throw new Error(
@@ -926,7 +917,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
 
   const observe = async (
     context: WorkflowContext,
-  ): Promise<FraudProofWorkflowObservationV1> => {
+  ): Promise<FraudProofWorkflowObservation> => {
     const prepared = preparedFromArtifact(context.artifact);
     const rawStage = await config.rawL1?.observe({
       headerHash: prepared.headerHash,
@@ -1064,11 +1055,11 @@ export const createNetworkIdWorkflowAdapterV1 = (
     }
     if (step02OutRef !== undefined) {
       if (prepared.faultClaim.kind === "output-network") {
-        const opening = planNetworkIdOutputsOpeningV1({
+        const opening = planNetworkIdOutputsOpening({
           prepared,
           owner: config.signer.paymentKeyHash,
         });
-        const missing = await findMissingFaultProofFieldPublicationV1({
+        const missing = await findMissingFaultProofFieldPublication({
           lucid: config.lucid,
           publisherAddress: config.signer.address,
           planned: opening,
@@ -1089,18 +1080,16 @@ export const createNetworkIdWorkflowAdapterV1 = (
           };
         }
         if (opening.plan.tier === "Certified") {
-          const certificate = await resolveFaultProofFieldPreimageCertificateV1(
-            {
-              lucid: config.lucid,
-              network: config.network,
-              planned: opening,
-              certificatePolicyId:
-                config.contracts.fieldPreimageCertificatePolicyId,
-            },
-          );
+          const certificate = await resolveFaultProofFieldPreimageCertificate({
+            lucid: config.lucid,
+            network: config.network,
+            planned: opening,
+            certificatePolicyId:
+              config.contracts.fieldPreimageCertificatePolicyId,
+          });
           if (certificate === undefined) {
             const publications =
-              await resolveFaultProofFieldCarriagePublicationsV1({
+              await resolveFaultProofFieldCarriagePublications({
                 lucid: config.lucid,
                 publisherAddress: config.signer.address,
                 planned: opening,
@@ -1158,27 +1147,27 @@ export const createNetworkIdWorkflowAdapterV1 = (
   };
 
   return {
-    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category,
-    safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async ({
       evidence,
     }: {
-      readonly evidence: CanonicalBlockEvidenceV1;
-    }): Promise<JournalJsonObjectV1> =>
+      readonly evidence: CanonicalBlockEvidence;
+    }): Promise<JournalJsonObject> =>
       artifactFromPrepared(
-        await prepareNetworkIdFromCanonicalEvidenceV1({
+        await prepareNetworkIdFromCanonicalEvidence({
           evidence,
           expectedNetworkId: config.contracts.expectedNetworkId,
         }),
       ),
     observe,
-    preflight: async (context): Promise<FraudProofWorkflowPreflightV1> => {
+    preflight: async (context): Promise<FraudProofWorkflowPreflight> => {
       const prepared = preparedFromArtifact(context.artifact);
       const kind = actionKind(context.action);
       let mutationLease: StateQueueMutationLease | undefined;
       const boundaryInvocation = async (
-        boundary: FraudProofPreSubmitBoundaryV1,
+        boundary: FraudProofPreSubmitBoundary,
       ) => {
         if (kind === "init") {
           await submitNetworkIdInit({
@@ -1229,7 +1218,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
               "transaction-network faults have no field-carriage action",
             );
           }
-          const opening = planNetworkIdOutputsOpeningV1({
+          const opening = planNetworkIdOutputsOpening({
             prepared,
             owner: config.signer.paymentKeyHash,
           });
@@ -1239,7 +1228,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
             );
           }
           if (kind === "publish_field") {
-            const missing = await findMissingFaultProofFieldPublicationV1({
+            const missing = await findMissingFaultProofFieldPublication({
               lucid: config.lucid,
               publisherAddress: config.signer.address,
               planned: opening,
@@ -1252,7 +1241,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
                 "network-id publication action is not the next missing plan chunk",
               );
             }
-            await publishFaultProofFieldCarriageV1({
+            await publishFaultProofFieldCarriage({
               lucid: config.lucid,
               signer: config.signer,
               planned: opening,
@@ -1267,12 +1256,13 @@ export const createNetworkIdWorkflowAdapterV1 = (
               "network-id certification action requires tier-3 carriage",
             );
           }
-          const publications =
-            await resolveFaultProofFieldCarriagePublicationsV1({
+          const publications = await resolveFaultProofFieldCarriagePublications(
+            {
               lucid: config.lucid,
               publisherAddress: config.signer.address,
               planned: opening,
-            });
+            },
+          );
           if (publications === undefined) {
             throw new Error(
               "network-id tier-3 publications are not observable on L1",
@@ -1287,7 +1277,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
               "network-id certification action changed the observed chunks",
             );
           }
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid: config.lucid,
             network: config.network,
             signer: config.signer,
@@ -1308,7 +1298,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
         if (kind === "step02") {
           const opening =
             prepared.faultClaim.kind === "output-network"
-              ? planNetworkIdOutputsOpeningV1({
+              ? planNetworkIdOutputsOpening({
                   prepared,
                   owner: config.signer.paymentKeyHash,
                 })
@@ -1316,7 +1306,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
           const publications =
             opening === undefined
               ? []
-              : await resolveFaultProofFieldCarriagePublicationsV1({
+              : await resolveFaultProofFieldCarriagePublications({
                   lucid: config.lucid,
                   publisherAddress: config.signer.address,
                   planned: opening,
@@ -1328,7 +1318,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
           }
           const certificate =
             opening?.plan.tier === "Certified"
-              ? await resolveFaultProofFieldPreimageCertificateV1({
+              ? await resolveFaultProofFieldPreimageCertificate({
                   lucid: config.lucid,
                   network: config.network,
                   planned: opening,
@@ -1413,7 +1403,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
             : { validTo: config.removal.validTo }),
           preSubmitBoundary: async (transaction) => {
             if (
-              !workflowTransactionInputOutRefsV1(transaction.signed).includes(
+              !workflowTransactionInputOutRefs(transaction.signed).includes(
                 requireString(
                   context.action.input.stateQueueBlockOutRef,
                   "next removal out-ref",
@@ -1425,7 +1415,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
               );
             }
             if (
-              !workflowTransactionReferenceInputOutRefsV1(
+              !workflowTransactionReferenceInputOutRefs(
                 transaction.signed,
               ).includes(
                 requireString(
@@ -1444,8 +1434,8 @@ export const createNetworkIdWorkflowAdapterV1 = (
         });
       };
       const transaction =
-        await captureLocallyEvaluatedTransactionV1(boundaryInvocation);
-      requireReferenceOnlyScriptWitnessesV1({
+        await captureLocallyEvaluatedTransaction(boundaryInvocation);
+      requireReferenceOnlyScriptWitnesses({
         transaction,
         label: "network-id production transaction",
       });
@@ -1472,7 +1462,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
         scriptExecution: "reference_scripts",
         localUplcEvaluation: {
           status: "passed",
-          evaluator: LOCAL_UPLC_EVALUATOR_V1,
+          evaluator: LOCAL_UPLC_EVALUATOR,
         },
         referenceScripts: transaction.referenceScripts,
         ...(mutationLease === undefined
@@ -1500,7 +1490,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
             "captured locally evaluated transaction is unavailable or differs from the journaled preflight hash",
         };
       }
-      const recovery = parseMutationLeaseRecoveryV1(
+      const recovery = parseMutationLeaseRecovery(
         context.preflight.durableRecovery,
       );
       if (
@@ -1514,7 +1504,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
         );
       }
       try {
-        const txHash = await submitCapturedTransactionV1(prepared.transaction);
+        const txHash = await submitCapturedTransaction(prepared.transaction);
         captured.delete(key);
         if (prepared.mutationLease !== undefined) {
           mutationLeaseByTxHash.set(txHash, prepared.mutationLease);
@@ -1528,9 +1518,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
         };
       }
     },
-    reconcile: async (
-      context,
-    ): Promise<FraudProofWorkflowReconcileResultV1> => {
+    reconcile: async (context): Promise<FraudProofWorkflowReconcileResult> => {
       const prepared = preparedFromArtifact(context.artifact);
       const kind = actionKind(context.action);
       let advanced: boolean;
@@ -1541,7 +1529,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
             reason: "field action exists for a transaction-network fault",
           };
         }
-        const opening = planNetworkIdOutputsOpeningV1({
+        const opening = planNetworkIdOutputsOpening({
           prepared,
           owner: config.signer.paymentKeyHash,
         });
@@ -1585,35 +1573,31 @@ export const createNetworkIdWorkflowAdapterV1 = (
           });
           advanced = observation.kind === "confirmed";
         } else {
-          const certificate = await resolveFaultProofFieldPreimageCertificateV1(
-            {
-              lucid: config.lucid,
-              network: config.network,
-              planned: opening,
-              certificatePolicyId:
-                config.contracts.fieldPreimageCertificatePolicyId,
-            },
-          );
+          const certificate = await resolveFaultProofFieldPreimageCertificate({
+            lucid: config.lucid,
+            network: config.network,
+            planned: opening,
+            certificatePolicyId:
+              config.contracts.fieldPreimageCertificatePolicyId,
+          });
           if (
             certificate === undefined ||
             certificate.txHash !== context.txHash
           ) {
             return { kind: "not_found" };
           }
-          const certification = deriveFieldPreimageCertificationV1(
-            opening.plan,
-          );
+          const certification = deriveFieldPreimageCertification(opening.plan);
           const observation = await observer.observeExact({
             headerHash: prepared.headerHash,
             kind: "field_certificate",
-            address: fieldPreimageCertificateAddressV1({
+            address: fieldPreimageCertificateAddress({
               network: config.network,
               certificatePolicyId:
                 config.contracts.fieldPreimageCertificatePolicyId,
             }),
             expectedOutRef: outRefLabel(certificate),
             expectedDatumCbor: certification.datumCbor,
-            expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`,
+            expectedUnit: `${config.contracts.fieldPreimageCertificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
           });
           advanced = observation.kind === "confirmed";
         }
@@ -1686,7 +1670,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
         const recovery =
           context.txHash === undefined
             ? { kind: "ok" as const, lease: undefined }
-            : await recoverMutationLeaseV1({
+            : await recoverMutationLease({
                 config,
                 txHash: context.txHash,
                 durableRecovery: context.durableRecovery,
@@ -1702,7 +1686,7 @@ export const createNetworkIdWorkflowAdapterV1 = (
       const recovery =
         context.txHash === undefined
           ? { kind: "ok" as const, lease: undefined }
-          : await recoverMutationLeaseV1({
+          : await recoverMutationLease({
               config,
               txHash: context.txHash,
               durableRecovery: context.durableRecovery,
@@ -1716,19 +1700,19 @@ export const createNetworkIdWorkflowAdapterV1 = (
 };
 
 /** Production run/resume with its header derived from admitted raw L1 bytes. */
-export const runOrResumeManifestBoundNetworkIdWorkflowV1 = async ({
+export const runOrResumeManifestBoundNetworkIdWorkflow = async ({
   workflow,
   sources,
   journal,
   maxSubmissionAttempts,
   maxActions,
 }: {
-  readonly workflow: ManifestBoundNetworkIdWorkflowV1;
+  readonly workflow: ManifestBoundNetworkIdWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+}): Promise<FraudProofWorkflowRunResult> => {
   const rawL1 = workflow.adapterConfig.rawL1;
   const observeHeader = rawL1?.observeHeader;
   if (observeHeader === undefined) {
@@ -1739,12 +1723,12 @@ export const runOrResumeManifestBoundNetworkIdWorkflowV1 = async ({
   const observation = await observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["networkId"],
     }),

@@ -3,12 +3,12 @@
  */
 
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
-import { type MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -22,7 +22,7 @@ import {
 } from "./trace-events.js";
 
 export type ValidationTraceBuildInput = {
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly blockEndTime: Date;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;
@@ -35,7 +35,7 @@ export type RetainedValidationTraceMember = {
   readonly eventKey: SDK.EventKey;
   readonly keyCbor: Buffer;
   readonly valueCbor: Buffer;
-  readonly value: SDK.ValidationTraceDescriptorV1;
+  readonly value: SDK.ValidationTraceDescriptor;
   readonly witnesses: readonly SDK.DaPayloadEntry[];
 };
 
@@ -86,7 +86,7 @@ export const buildDeterministicValidationTraceMembers = (
               }),
           ),
         );
-        const descriptor: SDK.ValidationTraceDescriptorV1 = {
+        const descriptor: SDK.ValidationTraceDescriptor = {
           schema_version: BigInt(trace.tree.descriptor.schemaVersion),
           machine_version: BigInt(trace.tree.descriptor.machineVersion),
           trace_root: trace.tree.descriptor.traceRoot.toString("hex"),
@@ -161,17 +161,17 @@ export const buildDeterministicValidationTraceMembers = (
           const retainedCoordinate = retainedNativeExecution
             ? BigInt(witness.auxiliary.executionIndex)
             : BigInt(stateIndex) - BigInt(trace.witnesses.length);
-          const key: SDK.RetainedValidationWitnessKeyV1 = {
+          const key: SDK.RetainedValidationWitnessKey = {
             event_key: transaction.eventKey,
             execution_index: retainedCoordinate,
           };
           const auxiliary = LucidData.from(
             LucidData.to(
-              validationAuxiliaryWitnessDataV1(witness.auxiliary) as never,
+              validationAuxiliaryWitnessData(witness.auxiliary) as never,
             ),
-            SDK.ValidationAuxiliaryWitnessV1Schema,
-          ) as unknown as SDK.ValidationAuxiliaryWitnessV1;
-          const value: SDK.RetainedValidationWitnessV1 = {
+            SDK.ValidationAuxiliaryWitnessSchema,
+          ) as unknown as SDK.ValidationAuxiliaryWitness;
+          const value: SDK.RetainedValidationWitness = {
             machine_state: SDK.validationMachineStateDataFromCore(
               trace.states[stateIndex]!,
             ),
@@ -193,8 +193,8 @@ export const buildDeterministicValidationTraceMembers = (
           };
           return [
             [
-              SDK.encodeRetainedValidationWitnessKeyV1(key).toString("hex"),
-              SDK.encodeRetainedValidationWitnessV1(value).toString("hex"),
+              SDK.encodeRetainedValidationWitnessKey(key).toString("hex"),
+              SDK.encodeRetainedValidationWitness(value).toString("hex"),
             ] satisfies SDK.DaPayloadEntry,
           ];
         });
@@ -204,7 +204,7 @@ export const buildDeterministicValidationTraceMembers = (
           valueCbor: Buffer.from(
             LucidData.to(
               descriptor as never,
-              SDK.ValidationTraceDescriptorV1 as never,
+              SDK.ValidationTraceDescriptor as never,
             ),
             "hex",
           ),

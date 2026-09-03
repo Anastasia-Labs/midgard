@@ -5,14 +5,14 @@ import {
   cardanoRedeemersToMidgardPreimageCbor,
   midgardRedeemersToCardano,
 } from "../src/codec/native-redeemer.js";
-import { encodeMidgardFieldPreimageForFieldV1 } from "../src/codec/native-tx-field-items-v1.js";
+import { encodeMidgardFieldPreimageForField } from "../src/codec/native-tx-field-items-v1.js";
 
 const unaryConstructorDataCborHex = (depth: number): string =>
   "d8799f".repeat(depth) + "00" + "ff".repeat(depth);
 
 /** A one-item field-8 preimage under §5.1's envelope. */
 const spendRedeemerPreimage = (dataCborHex: string): Buffer =>
-  encodeMidgardFieldPreimageForFieldV1({
+  encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items: [
       {

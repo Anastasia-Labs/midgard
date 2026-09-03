@@ -1,7 +1,7 @@
 import {
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  type MidgardNativeTxFullV1,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 
 import {
@@ -308,7 +308,7 @@ export const buildBalancedCompletion = ({
     state: BuilderState,
   ) => ScriptMaterialization;
 }): {
-  readonly tx: MidgardNativeTxFullV1;
+  readonly tx: MidgardNativeTxFull;
   readonly metadata: Omit<CompleteTxMetadata, "localValidation">;
 } => {
   const { changeAddress, feePolicy, walletInputs } = resolved;
@@ -353,7 +353,7 @@ export const buildBalancedCompletion = ({
       spendInputs: selectedInputs.map(cloneUtxo),
       outputs,
     };
-    const candidateTx = materializeMidgardNativeTxFromCanonicalV1(
+    const candidateTx = materializeMidgardNativeTxFromCanonical(
       buildCanonicalUnsignedTx(
         candidateState,
         fee,
@@ -381,7 +381,7 @@ export const buildBalancedCompletion = ({
           referenceInputCount: candidateState.referenceInputs.length,
           outputCount: candidateState.outputs.length,
           requiredSignerCount: candidateState.requiredSigners.length,
-          txByteLength: encodeMidgardNativeTxCanonicalV1(candidateTx).length,
+          txByteLength: encodeMidgardNativeTxCanonical(candidateTx).length,
           feeIterations: iteration,
           balanced: true,
           changeAddress,

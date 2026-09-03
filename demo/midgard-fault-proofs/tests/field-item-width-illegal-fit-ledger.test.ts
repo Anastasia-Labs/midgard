@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const measurements = [
   [
@@ -153,7 +153,7 @@ const measurements = [
 
 describe("field-item-width-illegal signed Van Rossem fit ledger", () => {
   it("retains positive signed-byte, memory, and CPU margins", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "fieldItemWidthIllegal:00000021:testnet",
       blueprintSha256:
         "99c8108c2fb404035c10aec076ab37493804b967fa347f6b31428c102feb5a7d",

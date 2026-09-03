@@ -1,9 +1,9 @@
 import {
-  encodeMidgardCekProgramMaterialDaValueV1,
-  mergeMidgardCekProgramMaterialSidecarsV1,
+  encodeMidgardCekProgramMaterialDaValue,
+  mergeMidgardCekProgramMaterialSidecars,
 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric } from "effect";
@@ -18,7 +18,7 @@ import { DatabaseError } from "../../database/utils/common.js";
 import {
   encodeTransactionRootValue,
   keyValuePhasRoot,
-  ledgerOutputToInsertBatchOpV1,
+  ledgerOutputToInsertBatchOp,
   type MpfError,
 } from "../../mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
@@ -49,8 +49,8 @@ type PayloadUtxoEntry = {
   readonly output: Buffer;
 };
 
-type DecodedForcedTransactionJournalMemberV1 =
-  ForcedTransactionsDB.ForcedTransactionJournalMemberV1 & {
+type DecodedForcedTransactionJournalMember =
+  ForcedTransactionsDB.ForcedTransactionJournalMember & {
     readonly key: Buffer;
   };
 
@@ -77,7 +77,7 @@ const bufferEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
 
 const journalCekProgramMaterial = (
   record: PendingBlockFinalizationsDB.Record,
-  forcedMembers: readonly DecodedForcedTransactionJournalMemberV1[],
+  forcedMembers: readonly DecodedForcedTransactionJournalMember[],
 ): readonly SDK.DaPayloadEntry[] => {
   const sidecars: Buffer[] = [];
   for (const member of record.txMembers) {
@@ -99,10 +99,10 @@ const journalCekProgramMaterial = (
     sidecars.push(Buffer.from(forced.programMaterialSidecarCbor));
   }
   return Object.freeze(
-    mergeMidgardCekProgramMaterialSidecarsV1(sidecars).map((entry) =>
+    mergeMidgardCekProgramMaterialSidecars(sidecars).map((entry) =>
       bufferEntry(
         Buffer.from(entry.root),
-        encodeMidgardCekProgramMaterialDaValueV1(entry),
+        encodeMidgardCekProgramMaterialDaValue(entry),
       ),
     ),
   );
@@ -123,7 +123,7 @@ const entryValues = (
 ): readonly Buffer[] => entries.map(([, value]) => Buffer.from(value, "hex"));
 
 export const computeDaPayloadRoots = (
-  payload: SDK.DaPayloadV1,
+  payload: SDK.DaPayload,
 ): Effect.Effect<PayloadRootSet, DatabaseError | MpfError> =>
   Effect.gen(function* () {
     const body = payload.block_body;
@@ -131,7 +131,7 @@ export const computeDaPayloadRoots = (
     const utxoDescriptorOps = yield* Effect.try({
       try: () =>
         body.utxos.map(([outRef, output]) =>
-          ledgerOutputToInsertBatchOpV1({
+          ledgerOutputToInsertBatchOp({
             outRef: Buffer.from(outRef, "hex"),
             outputCbor: Buffer.from(output, "hex"),
           }),
@@ -257,7 +257,7 @@ const expectedCounts = (
     record[PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT],
 });
 
-const headerRoots = (header: SDK.HeaderV1): PayloadRootSet => ({
+const headerRoots = (header: SDK.Header): PayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -268,7 +268,7 @@ const headerRoots = (header: SDK.HeaderV1): PayloadRootSet => ({
   validationTracesRoot: header.validationTracesRoot,
 });
 
-const headerCounts = (header: SDK.HeaderV1): PayloadCountSet => ({
+const headerCounts = (header: SDK.Header): PayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -331,7 +331,7 @@ const countMismatches = (
       : "validation_trace_count",
   ].filter((field): field is string => field !== null);
 
-const payloadMemberCounts = (payload: SDK.DaPayloadV1): PayloadCountSet => ({
+const payloadMemberCounts = (payload: SDK.DaPayload): PayloadCountSet => ({
   withdrawalCount: BigInt(payload.block_body.withdrawals.length),
   forcedTransactionCount: BigInt(payload.block_body.forced_transactions.length),
   l2TransactionCount: BigInt(payload.block_body.transactions.length),
@@ -345,18 +345,18 @@ const payloadMemberCounts = (payload: SDK.DaPayloadV1): PayloadCountSet => ({
   validationTraceCount: BigInt(payload.block_body.validation_traces.length),
 });
 
-const payloadDeclaredCounts = (payload: SDK.DaPayloadV1): PayloadCountSet =>
+const payloadDeclaredCounts = (payload: SDK.DaPayload): PayloadCountSet =>
   payload.block_body.counts;
 
 const decodeHeader = (
   record: PendingBlockFinalizationsDB.Record,
-): Effect.Effect<SDK.HeaderV1, DatabaseError> =>
+): Effect.Effect<SDK.Header, DatabaseError> =>
   Effect.try({
     try: () =>
       LucidData.from(
         record[PendingBlockFinalizationsDB.Columns.HEADER_CBOR].toString("hex"),
-        SDK.HeaderV1,
-      ) as SDK.HeaderV1,
+        SDK.Header,
+      ) as SDK.Header,
     catch: (cause) =>
       new DatabaseError({
         table: PendingBlockFinalizationsDB.tableName,
@@ -372,8 +372,8 @@ const verifyPayloadCommitments = ({
   roots,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
-  readonly header: SDK.HeaderV1;
-  readonly payload: SDK.DaPayloadV1;
+  readonly header: SDK.Header;
+  readonly payload: SDK.DaPayload;
   readonly roots: PayloadRootSet;
 }): Effect.Effect<void, DatabaseError> =>
   Effect.gen(function* () {
@@ -381,8 +381,8 @@ const verifyPayloadCommitments = ({
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
     if (
       record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID] !==
-        MIDGARD_CONSENSUS_PROFILE_V1.profileId ||
-      payload.version !== SDK.DA_PAYLOAD_V1_VERSION
+        MIDGARD_CONSENSUS_PROFILE.profileId ||
+      payload.version !== SDK.DA_PAYLOAD_VERSION
     ) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -395,7 +395,7 @@ const verifyPayloadCommitments = ({
         }),
       );
     }
-    const computedHeaderHash = yield* SDK.hashBlockHeaderV1(header).pipe(
+    const computedHeaderHash = yield* SDK.hashBlockHeader(header).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -463,7 +463,7 @@ export const buildDaPayloadInsert = ({
     const counts = expectedCounts(record);
     const profileId =
       record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID];
-    if (profileId !== MIDGARD_CONSENSUS_PROFILE_V1.profileId) {
+    if (profileId !== MIDGARD_CONSENSUS_PROFILE.profileId) {
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
@@ -479,7 +479,7 @@ export const buildDaPayloadInsert = ({
           key: Buffer.from(
             member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
           ),
-          ...ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
+          ...ForcedTransactionsDB.decodeForcedTransactionJournalMember(
             member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
           ),
         })),
@@ -506,7 +506,7 @@ export const buildDaPayloadInsert = ({
         member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
         encodeTransactionRootValue(
           member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
-          MIDGARD_CONSENSUS_PROFILE_V1,
+          MIDGARD_CONSENSUS_PROFILE,
         ),
       ),
     );
@@ -563,8 +563,8 @@ export const buildDaPayloadInsert = ({
         ),
       ),
     } as const;
-    const payload: SDK.DaPayloadV1 = {
-      version: SDK.DA_PAYLOAD_V1_VERSION,
+    const payload: SDK.DaPayload = {
+      version: SDK.DA_PAYLOAD_VERSION,
       block_body: {
         ...commonBody,
         header,
@@ -595,7 +595,7 @@ export const buildDaPayloadInsert = ({
     };
     const roots = yield* computeDaPayloadRoots(payload);
     yield* verifyPayloadCommitments({ record, header, payload, roots });
-    const innerPayloadCbor = SDK.encodeDaPayloadV1(payload);
+    const innerPayloadCbor = SDK.encodeDaPayload(payload);
     const envelopeConfig =
       envelope ??
       (() => {
@@ -605,7 +605,7 @@ export const buildDaPayloadInsert = ({
     const compressionStartedAt = Date.now();
     const payloadCbor = yield* Effect.tryPromise({
       try: () =>
-        wrapDaPayloadV1(innerPayloadCbor, {
+        wrapDaPayload(innerPayloadCbor, {
           mode: envelopeConfig.mode,
           zstdLevel: envelopeConfig.zstdLevel,
         }),

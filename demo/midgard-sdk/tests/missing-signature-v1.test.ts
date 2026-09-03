@@ -109,7 +109,7 @@ describe("missing-signature v1 SDK wire twins", () => {
   });
 
   it("pins canonical field-7 checkpoints and rejects unreachable thread state", () => {
-    const checkpoint = SDK.missingSignatureFieldWalkCheckpointV1({
+    const checkpoint = SDK.missingSignatureFieldWalkCheckpoint({
       txId: h32("22"),
       itemCount: 140,
       totalLength: 2 + 140 * 103,
@@ -121,7 +121,7 @@ describe("missing-signature v1 SDK wire twins", () => {
     );
     expect(checkpoint.checkpointHash).toMatch(/^[0-9a-f]{64}$/u);
     expect(
-      SDK.resolveMissingSignatureFieldWalkCheckpointV1({
+      SDK.resolveMissingSignatureFieldWalkCheckpoint({
         txId: h32("22"),
         itemCount: 140,
         totalLength: 2 + 140 * 103,
@@ -129,7 +129,7 @@ describe("missing-signature v1 SDK wire twins", () => {
       }),
     ).toStrictEqual(checkpoint);
     expect(() =>
-      SDK.resolveMissingSignatureFieldWalkCheckpointV1({
+      SDK.resolveMissingSignatureFieldWalkCheckpoint({
         txId: h32("22"),
         itemCount: 140,
         totalLength: 2 + 140 * 103,
@@ -140,16 +140,16 @@ describe("missing-signature v1 SDK wire twins", () => {
 
   it("pins the vkey lift, missing-ordinal selection, and test-independent asset name", () => {
     const vkey = "99".repeat(32);
-    const hash = SDK.missingSignatureVkeyHashV1(vkey);
+    const hash = SDK.missingSignatureVkeyHash(vkey);
     expect(hash).toMatch(/^[0-9a-f]{56}$/u);
     expect(
-      SDK.findMissingRequiredSignerIndexV1({
+      SDK.findMissingRequiredSignerIndex({
         requiredSignerHashes: [h28("aa"), hash],
         addrTxWits: [{ verification_key: vkey, signature: "bb".repeat(64) }],
       }),
     ).toBe(0);
     expect(
-      SDK.missingSignatureThreadTokenAssetNameV1("0000000e", "cc".repeat(28)),
+      SDK.missingSignatureThreadTokenAssetName("0000000e", "cc".repeat(28)),
     ).toBe(`0000000e${"cc".repeat(28)}`);
   });
 });

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { MissingScriptSourceEvidenceV1 } from "./family-v1.js";
-import { missingScriptSourceEvidenceIdentityV1 } from "./family-v1.js";
+import type { MissingScriptSourceEvidence } from "./family-v1.js";
+import { missingScriptSourceEvidenceIdentity } from "./family-v1.js";
 
-export const MISSING_SCRIPT_SOURCE_WORKFLOW_STAGES_V1 = [
+export const MISSING_SCRIPT_SOURCE_WORKFLOW_STAGES = [
   "none",
   "step01",
   "step02",
@@ -13,9 +13,9 @@ export const MISSING_SCRIPT_SOURCE_WORKFLOW_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type MissingScriptSourceWorkflowStageV1 =
-  (typeof MISSING_SCRIPT_SOURCE_WORKFLOW_STAGES_V1)[number];
-export type MissingScriptSourceWorkflowActionV1 =
+export type MissingScriptSourceWorkflowStage =
+  (typeof MISSING_SCRIPT_SOURCE_WORKFLOW_STAGES)[number];
+export type MissingScriptSourceWorkflowAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -25,38 +25,38 @@ export type MissingScriptSourceWorkflowActionV1 =
   | "removeDescendants"
   | "cancel";
 
-export type MissingScriptSourceCursorV1 = Readonly<{
-  stage: MissingScriptSourceWorkflowStageV1;
+export type MissingScriptSourceCursor = Readonly<{
+  stage: MissingScriptSourceWorkflowStage;
   threadOutRef: string;
   checkpointHash: string;
   controlCbor: string;
 }>;
 
-export type MissingScriptSourceJournalEntryV1 = Readonly<{
+export type MissingScriptSourceJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  action: MissingScriptSourceWorkflowActionV1;
+  action: MissingScriptSourceWorkflowAction;
   phase: "intent" | "submitted" | "confirmed";
-  source: MissingScriptSourceCursorV1;
-  target: MissingScriptSourceCursorV1;
+  source: MissingScriptSourceCursor;
+  target: MissingScriptSourceCursor;
   txHash: string;
 }>;
 
-export interface MissingScriptSourceJournalV1 {
-  load(identity: string): Promise<readonly MissingScriptSourceJournalEntryV1[]>;
-  append(entry: MissingScriptSourceJournalEntryV1): Promise<void>;
+export interface MissingScriptSourceJournal {
+  load(identity: string): Promise<readonly MissingScriptSourceJournalEntry[]>;
+  append(entry: MissingScriptSourceJournalEntry): Promise<void>;
 }
 
-export interface MissingScriptSourceTransactionPortV1 {
-  observe(identity: string): Promise<MissingScriptSourceCursorV1>;
+export interface MissingScriptSourceTransactionPort {
+  observe(identity: string): Promise<MissingScriptSourceCursor>;
   capture(input: {
-    action: MissingScriptSourceWorkflowActionV1;
-    evidence: MissingScriptSourceEvidenceV1;
-    source: MissingScriptSourceCursorV1;
+    action: MissingScriptSourceWorkflowAction;
+    evidence: MissingScriptSourceEvidence;
+    source: MissingScriptSourceCursor;
   }): Promise<
     Readonly<{
       txHash: string;
-      target: MissingScriptSourceCursorV1;
+      target: MissingScriptSourceCursor;
       submit: () => Promise<string>;
     }>
   >;
@@ -64,8 +64,8 @@ export interface MissingScriptSourceTransactionPortV1 {
 }
 
 const actionFor = (
-  stage: MissingScriptSourceWorkflowStageV1,
-): MissingScriptSourceWorkflowActionV1 | "done" =>
+  stage: MissingScriptSourceWorkflowStage,
+): MissingScriptSourceWorkflowAction | "done" =>
   ({
     none: "submitInit",
     step01: "submitStep01",
@@ -75,13 +75,13 @@ const actionFor = (
     proven: "removeDescendants",
     removed: "done",
     cancelled: "done",
-  })[stage] as MissingScriptSourceWorkflowActionV1 | "done";
+  })[stage] as MissingScriptSourceWorkflowAction | "done";
 
-const cursorDigest = (cursor: MissingScriptSourceCursorV1): string =>
+const cursorDigest = (cursor: MissingScriptSourceCursor): string =>
   createHash("sha256").update(JSON.stringify(cursor)).digest("hex");
 
 const validate = (
-  entries: readonly MissingScriptSourceJournalEntryV1[],
+  entries: readonly MissingScriptSourceJournalEntry[],
   identity: string,
 ): void => {
   entries.forEach((entry, sequence) => {
@@ -92,7 +92,7 @@ const validate = (
   });
 };
 
-const unresolved = (entries: readonly MissingScriptSourceJournalEntryV1[]) =>
+const unresolved = (entries: readonly MissingScriptSourceJournalEntry[]) =>
   [...entries]
     .reverse()
     .find(
@@ -107,16 +107,16 @@ const unresolved = (entries: readonly MissingScriptSourceJournalEntryV1[]) =>
     );
 
 /** Durable family loop. The production factory owns both supplied ports. */
-export const runMissingScriptSourceWorkflowV1 = async ({
+export const runMissingScriptSourceWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: MissingScriptSourceEvidenceV1;
-  journal: MissingScriptSourceJournalV1;
-  transactions: MissingScriptSourceTransactionPortV1;
-}): Promise<MissingScriptSourceWorkflowStageV1> => {
-  const identity = missingScriptSourceEvidenceIdentityV1(evidence);
+  evidence: MissingScriptSourceEvidence;
+  journal: MissingScriptSourceJournal;
+  transactions: MissingScriptSourceTransactionPort;
+}): Promise<MissingScriptSourceWorkflowStage> => {
+  const identity = missingScriptSourceEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     validate(entries, identity);
@@ -145,7 +145,7 @@ export const runMissingScriptSourceWorkflowV1 = async ({
     if (!/^[0-9a-f]{64}$/u.test(captured.txHash))
       throw new Error("missingScriptSource captured transaction is malformed");
     const nextSequence = entries.length;
-    const intent: MissingScriptSourceJournalEntryV1 = {
+    const intent: MissingScriptSourceJournalEntry = {
       sequence: nextSequence,
       identity,
       action,
@@ -168,16 +168,16 @@ export const runMissingScriptSourceWorkflowV1 = async ({
   }
 };
 
-export const cancelMissingScriptSourceWorkflowV1 = async ({
+export const cancelMissingScriptSourceWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: MissingScriptSourceEvidenceV1;
-  journal: MissingScriptSourceJournalV1;
-  transactions: MissingScriptSourceTransactionPortV1;
+  evidence: MissingScriptSourceEvidence;
+  journal: MissingScriptSourceJournal;
+  transactions: MissingScriptSourceTransactionPort;
 }): Promise<"cancelled"> => {
-  const identity = missingScriptSourceEvidenceIdentityV1(evidence);
+  const identity = missingScriptSourceEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   if (unresolved(entries) !== undefined)
@@ -193,7 +193,7 @@ export const cancelMissingScriptSourceWorkflowV1 = async ({
   if (captured.target.stage !== "cancelled")
     throw new Error("missingScriptSource cancellation target changed");
   const nextSequence = entries.length;
-  const intent: MissingScriptSourceJournalEntryV1 = {
+  const intent: MissingScriptSourceJournalEntry = {
     sequence: nextSequence,
     identity,
     action: "cancel",

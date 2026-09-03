@@ -5,42 +5,42 @@
  * allowed to consume: an authenticated L1 header observation and public
  * retained-DA payload bytes. There is no operator REST/DB/file input.
  */
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { fetchProductionFraudProofEvidenceV1 } from "../src/evidence/production-fraud-proof-evidence-v1.js";
+import { fetchFraudProofEvidence } from "../src/evidence/production-fraud-proof-evidence-v1.js";
 import {
-  classifyCommittedTransactionsLeavesV1,
-  daHashPreimageBlockEvidenceFromVerifiedPayloadV1,
-  DaHashPreimageRejectionV1,
-  prepareDaHashPreimageFromCommittedLeavesV1,
+  classifyCommittedTransactionsLeaves,
+  daHashPreimageBlockEvidenceFromVerifiedPayload,
+  DaHashPreimageRejection,
+  prepareDaHashPreimageFromCommittedLeaves,
 } from "../src/prepare-da-hash-preimage.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
-  type CanonicalBlockFixtureV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  type CanonicalBlockFixture,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const FOREIGN_COMMITTED_KEY =
   "9999999999999999999999999999999999999999999999999999999999999999";
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
 };
 
-const buildBlock = async (): Promise<CanonicalBlockFixtureV1> =>
-  await buildCanonicalBlockFixtureV1({
+const buildBlock = async (): Promise<CanonicalBlockFixture> =>
+  await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x21, 0n)],
         fee: 1_000_000n,
       }),
@@ -76,23 +76,23 @@ const recommitLeaf = async ({
   committedKey,
   leafValue,
 }: {
-  readonly fixture: CanonicalBlockFixtureV1;
+  readonly fixture: CanonicalBlockFixture;
   readonly committedKey: string;
   readonly leafValue: Buffer;
 }): Promise<{
   readonly payloadEnvelopeCbor: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly transactionsRoot: string;
 }> => {
   const counted = await buildCountedRoot(SDK.ROOT_DOMAINS.transactionsV1, [
     { key: Buffer.from(committedKey, "hex"), value: leafValue },
   ]);
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...fixture.header,
     transactionsRoot: counted.root,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
     ...fixture.payload,
     block_body: {
       ...fixture.payload.block_body,
@@ -102,10 +102,10 @@ const recommitLeaf = async ({
     },
   };
   return {
-    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
-    observation: authenticatedHeaderObservationV1({
+    observation: authenticatedHeaderObservation({
       ...fixture,
       header,
       headerHash,
@@ -118,7 +118,7 @@ describe("Q44 da-hash-preimage leaf classification", () => {
   it("classifies an honestly keyed source leaf as compliant", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
-    const leaves = classifyCommittedTransactionsLeavesV1([
+    const leaves = classifyCommittedTransactionsLeaves([
       [tx.txId, tx.sourceValueBytes.toString("hex")],
     ]);
     expect(leaves).toHaveLength(1);
@@ -129,7 +129,7 @@ describe("Q44 da-hash-preimage leaf classification", () => {
   it("classifies a foreign-keyed leaf as a violation", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
-    const leaves = classifyCommittedTransactionsLeavesV1([
+    const leaves = classifyCommittedTransactionsLeaves([
       [FOREIGN_COMMITTED_KEY, tx.sourceValueBytes.toString("hex")],
     ]);
     expect(leaves[0].committedTxId).toBe(FOREIGN_COMMITTED_KEY);
@@ -147,24 +147,23 @@ describe("Q44 da-hash-preimage leaf classification", () => {
         ...tx.source,
         source: { ...tx.source.source, witness_set_compact_cbor: "80" },
       },
-      SDK.L2TransactionSourceV1,
+      SDK.L2TransactionSource,
     );
     const derivedIdMismatch = Data.to(
       { ...tx.source, tx_id: FOREIGN_COMMITTED_KEY },
-      SDK.L2TransactionSourceV1,
+      SDK.L2TransactionSource,
     );
     expect(
-      classifyCommittedTransactionsLeavesV1([
+      classifyCommittedTransactionsLeaves([
         [FOREIGN_COMMITTED_KEY, "deadbeef"],
       ])[0]?.verdict,
     ).toBe("MalformedSource");
     expect(
-      classifyCommittedTransactionsLeavesV1([
-        [tx.txId, malformedProofSource],
-      ])[0]?.verdict,
+      classifyCommittedTransactionsLeaves([[tx.txId, malformedProofSource]])[0]
+        ?.verdict,
     ).toBe("MalformedProofSource");
     expect(
-      classifyCommittedTransactionsLeavesV1([
+      classifyCommittedTransactionsLeaves([
         [FOREIGN_COMMITTED_KEY, derivedIdMismatch],
       ])[0]?.verdict,
     ).toBe("DerivedIdMismatch");
@@ -180,7 +179,7 @@ describe("Q44 da-hash-preimage proof plan", () => {
       committedKey: FOREIGN_COMMITTED_KEY,
       leafValue: tx.sourceValueBytes,
     });
-    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayload({
       observation: recommitted.observation,
       payloadEnvelopeCbor: recommitted.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
@@ -190,7 +189,7 @@ describe("Q44 da-hash-preimage proof plan", () => {
       recommitted.transactionsRoot,
     );
 
-    const plan = await prepareDaHashPreimageFromCommittedLeavesV1({
+    const plan = await prepareDaHashPreimageFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedTransactionsRoot: evidence.committedTransactionsRoot,
       l2TransactionCount: evidence.l2TransactionCount,
@@ -218,12 +217,12 @@ describe("Q44 da-hash-preimage proof plan", () => {
       committedKey: FOREIGN_COMMITTED_KEY,
       leafValue: garbage,
     });
-    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayload({
       observation: recommitted.observation,
       payloadEnvelopeCbor: recommitted.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
     });
-    const plan = await prepareDaHashPreimageFromCommittedLeavesV1({
+    const plan = await prepareDaHashPreimageFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedTransactionsRoot: evidence.committedTransactionsRoot,
       l2TransactionCount: evidence.l2TransactionCount,
@@ -242,13 +241,13 @@ describe("Q44 da-hash-preimage proof plan", () => {
       committedKey: tx.txId,
       leafValue: tx.sourceValueBytes,
     });
-    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayload({
       observation: recommitted.observation,
       payloadEnvelopeCbor: recommitted.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
     });
     await expect(
-      prepareDaHashPreimageFromCommittedLeavesV1({
+      prepareDaHashPreimageFromCommittedLeaves({
         headerHash: evidence.headerHash,
         committedTransactionsRoot: evidence.committedTransactionsRoot,
         l2TransactionCount: evidence.l2TransactionCount,
@@ -261,7 +260,7 @@ describe("Q44 da-hash-preimage proof plan", () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
     await expect(
-      prepareDaHashPreimageFromCommittedLeavesV1({
+      prepareDaHashPreimageFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedTransactionsRoot: fixture.payloadSourceTransactionsRoot,
         l2TransactionCount: 1n,
@@ -273,14 +272,14 @@ describe("Q44 da-hash-preimage proof plan", () => {
   it("accepts the canonical source-leaf convention as the valid negative", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
-    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(fixture),
+    const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(fixture),
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
     });
     expect(evidence.entries[0][1]).toBe(tx.sourceValueBytes.toString("hex"));
     await expect(
-      prepareDaHashPreimageFromCommittedLeavesV1({
+      prepareDaHashPreimageFromCommittedLeaves({
         headerHash: evidence.headerHash,
         committedTransactionsRoot: evidence.committedTransactionsRoot,
         l2TransactionCount: evidence.l2TransactionCount,
@@ -294,8 +293,8 @@ describe("Q44 da-hash-preimage evidence admission", () => {
   it("rejects operator-private DA provenance", async () => {
     const fixture = await buildBlock();
     await expect(
-      daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      daHashPreimageBlockEvidenceFromVerifiedPayload({
+        observation: authenticatedHeaderObservation(fixture),
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         daProvenance: {
           trustClass: "operator_admin_api",
@@ -309,9 +308,9 @@ describe("Q44 da-hash-preimage evidence admission", () => {
 
   it("rejects a payload whose embedded header is not the observed one", async () => {
     const fixture = await buildBlock();
-    const other = await buildCanonicalBlockFixtureV1({
+    const other = await buildCanonicalBlockFixture({
       transactions: [
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [outRefCbor(0x22, 1n)],
           fee: 2_000_000n,
         }),
@@ -319,12 +318,12 @@ describe("Q44 da-hash-preimage evidence admission", () => {
       transactionsRootMode: "payloadSource",
     });
     await expect(
-      daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      daHashPreimageBlockEvidenceFromVerifiedPayload({
+        observation: authenticatedHeaderObservation(fixture),
         payloadEnvelopeCbor: other.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
       }),
-    ).rejects.toBeInstanceOf(DaHashPreimageRejectionV1);
+    ).rejects.toBeInstanceOf(DaHashPreimageRejection);
   });
 });
 
@@ -332,8 +331,8 @@ describe("Q44 exact production evidence route", () => {
   it("uses canonical reconstruction for an honest source leaf", async () => {
     const fixture = await buildBlock();
     await expect(
-      fetchProductionFraudProofEvidenceV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      fetchFraudProofEvidence({
+        observation: authenticatedHeaderObservation(fixture),
         sources: [retainedSource(fixture.payloadEnvelopeCbor)],
         retries: 0,
       }),
@@ -348,7 +347,7 @@ describe("Q44 exact production evidence route", () => {
       committedKey: FOREIGN_COMMITTED_KEY,
       leafValue: tx.sourceValueBytes,
     });
-    const routed = await fetchProductionFraudProofEvidenceV1({
+    const routed = await fetchFraudProofEvidence({
       observation: recommitted.observation,
       sources: [retainedSource(recommitted.payloadEnvelopeCbor)],
       retries: 0,
@@ -368,7 +367,7 @@ describe("Q44 exact production evidence route", () => {
   it("does not turn a forged raw root/key/value substitution into Q44", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
-    const forgedPayload: SDK.DaPayloadV1 = {
+    const forgedPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -377,13 +376,13 @@ describe("Q44 exact production evidence route", () => {
         ],
       },
     };
-    const forgedEnvelope = await wrapDaPayloadV1(
-      SDK.encodeDaPayloadV1(forgedPayload),
+    const forgedEnvelope = await wrapDaPayload(
+      SDK.encodeDaPayload(forgedPayload),
       { mode: "identity" },
     );
     await expect(
-      fetchProductionFraudProofEvidenceV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      fetchFraudProofEvidence({
+        observation: authenticatedHeaderObservation(fixture),
         sources: [retainedSource(forgedEnvelope)],
         retries: 0,
       }),
@@ -399,8 +398,8 @@ describe("Q44 exact production evidence route", () => {
       },
     };
     await expect(
-      fetchProductionFraudProofEvidenceV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      fetchFraudProofEvidence({
+        observation: authenticatedHeaderObservation(fixture),
         sources: [failed],
         retries: 0,
       }),
@@ -410,8 +409,8 @@ describe("Q44 exact production evidence route", () => {
   it("does not fall through on L1 finality or DA provenance errors", async () => {
     const fixture = await buildBlock();
     await expect(
-      fetchProductionFraudProofEvidenceV1({
-        observation: authenticatedHeaderObservationV1(fixture, {
+      fetchFraudProofEvidence({
+        observation: authenticatedHeaderObservation(fixture, {
           confirmationDepth: 1,
         }),
         sources: [retainedSource(fixture.payloadEnvelopeCbor)],
@@ -437,8 +436,8 @@ describe("Q44 exact production evidence route", () => {
       }),
     };
     await expect(
-      fetchProductionFraudProofEvidenceV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      fetchFraudProofEvidence({
+        observation: authenticatedHeaderObservation(fixture),
         sources: [privateSource],
         retries: 0,
       }),

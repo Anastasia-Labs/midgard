@@ -1,24 +1,24 @@
 import type {
-  MidgardCekDataListNodeV1,
-  MidgardCekDataNodeV1,
-  MidgardCekDataPairNodeV1,
-  MidgardCekMachineStateV1,
-  MidgardCekValueNodeV1,
+  MidgardCekDataListNode,
+  MidgardCekDataNode,
+  MidgardCekDataPairNode,
+  MidgardCekMachineState,
+  MidgardCekValueNode,
 } from "@al-ft/midgard-core";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type {
-  MidgardCekBlsExpressionWitnessV1,
-  MidgardCekDirectValueWitnessV1,
-  MidgardCekRuntimeValueWitnessV1,
+  MidgardCekBlsExpressionWitness,
+  MidgardCekDirectValueWitness,
+  MidgardCekRuntimeValueWitness,
 } from "./cek-builtin.js";
-import type { MidgardCekConstantWitnessV1 } from "./cek-constant.js";
+import type { MidgardCekConstantWitness } from "./cek-constant.js";
 import type {
-  MidgardCekCoreStepWitnessV1,
-  MidgardCekEnvironmentSummaryV1,
-  MidgardCekMapConversionControlV1,
-  MidgardCekMapConversionStartWitnessV1,
-  MidgardCekSemanticBuiltinWitnessV1,
+  MidgardCekCoreStepWitness,
+  MidgardCekEnvironmentSummary,
+  MidgardCekMapConversionControl,
+  MidgardCekMapConversionStartWitness,
+  MidgardCekSemanticBuiltinWitness,
 } from "./cek-machine.js";
 
 type CekData = Constr<unknown>;
@@ -30,8 +30,8 @@ const unreachable = (value: never): never => {
   throw new Error(`unknown V1 CEK data variant ${String(value)}`);
 };
 
-export const midgardCekMachineStateDataV1 = (
-  state: MidgardCekMachineStateV1,
+export const midgardCekMachineStateData = (
+  state: MidgardCekMachineState,
 ): CekData =>
   new Constr(0, [
     BigInt(
@@ -56,11 +56,11 @@ export const midgardCekMachineStateDataV1 = (
     state.memory,
   ]);
 
-const constantWitnessData = (witness: MidgardCekConstantWitnessV1): CekData =>
+const constantWitnessData = (witness: MidgardCekConstantWitness): CekData =>
   new Constr(0, [bytesData(witness.typeCbor), bytesData(witness.payloadCbor)]);
 
 const environmentSummaryData = (
-  summary: MidgardCekEnvironmentSummaryV1,
+  summary: MidgardCekEnvironmentSummary,
 ): CekData =>
   summary.kind === "empty"
     ? new Constr(0, [])
@@ -70,7 +70,7 @@ const environmentSummaryData = (
         summary.length,
       ]);
 
-const machineValueData = (value: MidgardCekValueNodeV1): CekData => {
+const machineValueData = (value: MidgardCekValueNode): CekData => {
   switch (value.kind) {
     case "constant":
       return new Constr(0, [
@@ -110,7 +110,7 @@ const machineValueData = (value: MidgardCekValueNodeV1): CekData => {
   }
 };
 
-const directValueData = (value: MidgardCekDirectValueWitnessV1): CekData => {
+const directValueData = (value: MidgardCekDirectValueWitness): CekData => {
   switch (value.kind) {
     case "constant":
       return new Constr(0, [constantWitnessData(value.witness)]);
@@ -133,7 +133,7 @@ const directValueData = (value: MidgardCekDirectValueWitnessV1): CekData => {
   }
 };
 
-const runtimeValueData = (value: MidgardCekRuntimeValueWitnessV1): CekData => {
+const runtimeValueData = (value: MidgardCekRuntimeValueWitness): CekData => {
   switch (value.kind) {
     case "constant":
       return new Constr(0, [constantWitnessData(value.witness)]);
@@ -178,7 +178,7 @@ const runtimeValueData = (value: MidgardCekRuntimeValueWitnessV1): CekData => {
 };
 
 const blsExpressionData = (
-  expression: MidgardCekBlsExpressionWitnessV1,
+  expression: MidgardCekBlsExpressionWitness,
 ): CekData =>
   expression.kind === "millerLoop"
     ? new Constr(0, [
@@ -190,7 +190,7 @@ const blsExpressionData = (
         blsExpressionData(expression.right),
       ]);
 
-const dataNodeData = (node: MidgardCekDataNodeV1): CekData => {
+const dataNodeData = (node: MidgardCekDataNode): CekData => {
   switch (node.kind) {
     case "constrSmall":
       return new Constr(0, [
@@ -242,7 +242,7 @@ const dataNodeData = (node: MidgardCekDataNodeV1): CekData => {
   }
 };
 
-const dataListNodeData = (node: MidgardCekDataListNodeV1): CekData =>
+const dataListNodeData = (node: MidgardCekDataListNode): CekData =>
   new Constr(0, [
     bytesData(node.head),
     node.headCborLength,
@@ -253,7 +253,7 @@ const dataListNodeData = (node: MidgardCekDataListNodeV1): CekData =>
     node.memory,
   ]);
 
-const dataPairNodeData = (node: MidgardCekDataPairNodeV1): CekData =>
+const dataPairNodeData = (node: MidgardCekDataPairNode): CekData =>
   new Constr(0, [
     bytesData(node.key),
     node.keyCborLength,
@@ -274,7 +274,7 @@ const optionData = <T>(
   value === null ? new Constr(1, []) : new Constr(0, [encode(value)]);
 
 const semanticBuiltinWitnessData = (
-  witness: MidgardCekSemanticBuiltinWitnessV1,
+  witness: MidgardCekSemanticBuiltinWitness,
 ): CekData =>
   new Constr(0, [
     witness.dataNodes.map(dataNodeData),
@@ -284,7 +284,7 @@ const semanticBuiltinWitnessData = (
   ]);
 
 const mapConversionControlData = (
-  control: MidgardCekMapConversionControlV1,
+  control: MidgardCekMapConversionControl,
 ): CekData =>
   new Constr(0, [
     control.tag,
@@ -302,7 +302,7 @@ const mapConversionControlData = (
   ]);
 
 const mapConversionStartWitnessData = (
-  witness: MidgardCekMapConversionStartWitnessV1,
+  witness: MidgardCekMapConversionStartWitness,
 ): CekData =>
   new Constr(0, [
     dataNodeData(witness.sourceNode),
@@ -313,8 +313,8 @@ const mapConversionStartWitnessData = (
     optionData(witness.resultPairs, dataPairNodeData),
   ]);
 
-export const midgardCekCoreStepWitnessDataV1 = (
-  witness: MidgardCekCoreStepWitnessV1,
+export const midgardCekCoreStepWitnessData = (
+  witness: MidgardCekCoreStepWitness,
 ): CekData => {
   switch (witness.kind) {
     case "computeVariable":
@@ -558,23 +558,20 @@ export const midgardCekCoreStepWitnessDataV1 = (
   }
 };
 
-export const midgardCekCoreStepDataV1 = (step: {
-  readonly pre: MidgardCekMachineStateV1;
-  readonly post: MidgardCekMachineStateV1;
-  readonly witness: MidgardCekCoreStepWitnessV1;
+export const midgardCekCoreStepData = (step: {
+  readonly pre: MidgardCekMachineState;
+  readonly post: MidgardCekMachineState;
+  readonly witness: MidgardCekCoreStepWitness;
 }): CekData =>
   new Constr(0, [
-    midgardCekMachineStateDataV1(step.pre),
-    midgardCekMachineStateDataV1(step.post),
-    midgardCekCoreStepWitnessDataV1(step.witness),
+    midgardCekMachineStateData(step.pre),
+    midgardCekMachineStateData(step.post),
+    midgardCekCoreStepWitnessData(step.witness),
   ]);
 
-export const encodeMidgardCekCoreStepDataCborV1 = (step: {
-  readonly pre: MidgardCekMachineStateV1;
-  readonly post: MidgardCekMachineStateV1;
-  readonly witness: MidgardCekCoreStepWitnessV1;
+export const encodeMidgardCekCoreStepDataCbor = (step: {
+  readonly pre: MidgardCekMachineState;
+  readonly post: MidgardCekMachineState;
+  readonly witness: MidgardCekCoreStepWitness;
 }): Buffer =>
-  Buffer.from(
-    Data.to(midgardCekCoreStepDataV1(step) as unknown as Data),
-    "hex",
-  );
+  Buffer.from(Data.to(midgardCekCoreStepData(step) as unknown as Data), "hex");

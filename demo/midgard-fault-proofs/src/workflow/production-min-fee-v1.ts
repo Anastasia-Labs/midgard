@@ -1,29 +1,29 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  decodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
   FraudProofComputationThreadStepDatum,
-  MIN_FEE_VIOLATION_ID_V1,
+  MIN_FEE_VIOLATION_ID,
   MinFeeStep02Datum,
-  minimumFeeFromProofSourceV1,
+  minimumFeeFromProofSource,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  type CanonicalEvidenceBuilderInputV1,
-  prepareMinFeeFromCanonicalEvidenceV1,
+  type CanonicalEvidenceBuilderInput,
+  prepareMinFeeFromCanonicalEvidence,
 } from "../evidence/prepare-from-evidence-v1.js";
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
-import type { MinFeeContractsV1 } from "../min-fee-contracts-v1.js";
+import type { MinFeeContracts } from "../min-fee-contracts-v1.js";
 import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
@@ -33,7 +33,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { submitMinFeeInit } from "../submit-min-fee-init.js";
 import { submitMinFeeStep01 } from "../submit-min-fee-step-01.js";
 import {
-  type MinFeeFieldItemCborsV1,
+  type MinFeeFieldItemCbors,
   submitMinFeeStep02,
 } from "../submit-min-fee-step-02.js";
 import {
@@ -41,63 +41,63 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriageRequirementV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriageRequirement,
+  withFieldCarriagePrerequisite,
 } from "./production-field-carriage-prerequisite-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
 import {
-  createAuthenticatedProofChunkPrerequisitePortV1,
-  resolveDirectFirstProofChunksV1,
-  withProductionProofChunkPrerequisiteV1,
+  createAuthenticatedProofChunkPrerequisitePort,
+  resolveDirectFirstProofChunks,
+  withProofChunkPrerequisite,
 } from "./production-proof-chunk-prerequisite-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_MIN_FEE_ARTIFACT_V1 =
+export const MIN_FEE_ARTIFACT =
   "midgard-production-min-fee-artifact-v1" as const;
 
-export type ProductionMinFeeArtifactV1 = JournalJsonObjectV1 &
+export type MinFeeArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_MIN_FEE_ARTIFACT_V1;
+    schemaVersion: typeof MIN_FEE_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
@@ -120,12 +120,12 @@ export type ProductionMinFeeArtifactV1 = JournalJsonObjectV1 &
     shortfall: string;
   }>;
 
-type AdmittedProductionMinFeeArtifactV1 = Readonly<{
-  artifact: ProductionMinFeeArtifactV1;
+type AdmittedMinFeeArtifact = Readonly<{
+  artifact: MinFeeArtifact;
   inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
   witnessSet: NativeTxWitnessSetCompact;
-  fieldItemCbors: MinFeeFieldItemCborsV1;
-  fieldPlans: readonly FaultProofFieldOpeningPlanV1[];
+  fieldItemCbors: MinFeeFieldItemCbors;
+  fieldPlans: readonly FaultProofFieldOpeningPlan[];
 }>;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -252,7 +252,7 @@ const parseWitnessSet = (value: unknown): NativeTxWitnessSetCompact => {
   };
 };
 
-const parseFieldItems = (value: unknown): MinFeeFieldItemCborsV1 => {
+const parseFieldItems = (value: unknown): MinFeeFieldItemCbors => {
   if (!Array.isArray(value) || value.length !== FIELD_COUNT) {
     throw new Error("min-fee artifact requires exactly nine field item lists");
   }
@@ -272,12 +272,12 @@ const parseFieldItems = (value: unknown): MinFeeFieldItemCborsV1 => {
         "hex",
       ),
     );
-  }) as unknown as MinFeeFieldItemCborsV1;
+  }) as unknown as MinFeeFieldItemCbors;
 };
 
 const parseArtifact = (
   value: unknown,
-): Omit<AdmittedProductionMinFeeArtifactV1, "fieldPlans"> => {
+): Omit<AdmittedMinFeeArtifact, "fieldPlans"> => {
   const parsed = exact(
     value,
     [
@@ -302,14 +302,14 @@ const parseArtifact = (
     "min-fee production artifact",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_MIN_FEE_ARTIFACT_V1 ||
+    parsed.schemaVersion !== MIN_FEE_ARTIFACT ||
     typeof parsed.detectionId !== "string" ||
     parsed.detectionId.trim() !== parsed.detectionId
   ) {
     throw new Error("min-fee production artifact identity changed");
   }
-  const artifact: ProductionMinFeeArtifactV1 = Object.freeze({
-    schemaVersion: PRODUCTION_MIN_FEE_ARTIFACT_V1,
+  const artifact: MinFeeArtifact = Object.freeze({
+    schemaVersion: MIN_FEE_ARTIFACT,
     headerHash: canonicalHex(parsed.headerHash, HEX_28, "min-fee header"),
     detectionId: parsed.detectionId,
     position: naturalNumber(parsed.position, "min-fee position"),
@@ -348,7 +348,7 @@ const parseArtifact = (
     shortfall: naturalString(parsed.shortfall, "shortfall"),
   });
   const fieldItemCbors = parseFieldItems(parsed.fieldItemCbors);
-  const compact = decodeMidgardNativeTxCompactV1(
+  const compact = decodeMidgardNativeTxCompact(
     Buffer.from(artifact.nativeTxCompactCbor, "hex"),
   );
   const inclusion = parseSubmitStep01TxInclusion({
@@ -383,16 +383,16 @@ const parseArtifact = (
   });
 };
 
-export const admitProductionMinFeeArtifactV1 = (
+export const admitMinFeeArtifact = (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): AdmittedProductionMinFeeArtifactV1 => {
+): AdmittedMinFeeArtifact => {
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("min-fee carriage owner must be a 28-byte key hash");
   }
   const parsed = parseArtifact(value);
   const fieldPlans = parsed.fieldItemCbors.map((items, fieldIndex) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: parsed.artifact.nativeTxId,
       nativeTxCompactCbor: parsed.artifact.nativeTxCompactCbor,
@@ -408,13 +408,13 @@ export const admitProductionMinFeeArtifactV1 = (
       label: `min-fee artifact field ${fieldIndex.toString()}`,
     }),
   );
-  const boundary = minimumFeeFromProofSourceV1({
+  const boundary = minimumFeeFromProofSource({
     source: {
       compactCbor: Buffer.from(parsed.artifact.nativeTxCompactCbor, "hex"),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
         witnessSetCore(parsed.witnessSet),
       ),
-      fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
+      fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
         fieldPlans.map((plan) => plan.preimage.length),
       ),
     },
@@ -422,7 +422,7 @@ export const admitProductionMinFeeArtifactV1 = (
     minFeeB: BigInt(parsed.artifact.minFeeB),
   });
   const fee = parsed.inclusion.nativeTx.body.fee;
-  const expectedDetection = `${MIN_FEE_VIOLATION_ID_V1}:${parsed.artifact.position.toString()}:${parsed.artifact.nativeTxId}:${fee.toString()}:${boundary.minimumFee.toString()}`;
+  const expectedDetection = `${MIN_FEE_VIOLATION_ID}:${parsed.artifact.position.toString()}:${parsed.artifact.nativeTxId}:${fee.toString()}:${boundary.minimumFee.toString()}`;
   if (
     fee >= boundary.minimumFee ||
     parsed.artifact.fee !== fee.toString() ||
@@ -438,20 +438,20 @@ export const admitProductionMinFeeArtifactV1 = (
 
 const selectedTxId = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >,
 ): string => {
   if (
     classification.category !== "minFee" ||
-    classification.selected.violationId !== MIN_FEE_VIOLATION_ID_V1
+    classification.selected.violationId !== MIN_FEE_VIOLATION_ID
   ) {
     throw new Error("min-fee workflow received another classification");
   }
   const fields = classification.selected.detectionId.split(":");
   if (
     fields.length !== 5 ||
-    fields[0] !== MIN_FEE_VIOLATION_ID_V1 ||
+    fields[0] !== MIN_FEE_VIOLATION_ID ||
     !NATURAL.test(fields[1] ?? "") ||
     !HEX_32.test(fields[2] ?? "") ||
     !NATURAL.test(fields[3] ?? "") ||
@@ -463,34 +463,34 @@ const selectedTxId = (
   return fields[2]!;
 };
 
-export const prepareProductionMinFeeArtifactV1 = async ({
+export const prepareMinFeeArtifact = async ({
   evidence,
   classification,
   categoryId,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
   readonly categoryId: string;
-}): Promise<ProductionMinFeeArtifactV1> => {
+}): Promise<MinFeeArtifact> => {
   if (
     classification.headerHash !== evidence.headerHash ||
     classification.selected.position > BigInt(Number.MAX_SAFE_INTEGER)
   ) {
     throw new Error("min-fee classification differs from canonical evidence");
   }
-  const prepared = await prepareMinFeeFromCanonicalEvidenceV1({
+  const prepared = await prepareMinFeeFromCanonicalEvidence({
     evidence,
     txId: selectedTxId(classification),
     categoryId,
   });
-  const detectionId = `${MIN_FEE_VIOLATION_ID_V1}:${classification.selected.position.toString()}:${prepared.tx.nodeTxId}:${prepared.tx.fee.toString()}:${prepared.tx.minimumFee.toString()}`;
+  const detectionId = `${MIN_FEE_VIOLATION_ID}:${classification.selected.position.toString()}:${prepared.tx.nodeTxId}:${prepared.tx.fee.toString()}:${prepared.tx.minimumFee.toString()}`;
   if (classification.selected.detectionId !== detectionId) {
     throw new Error("min-fee prepared evidence changed classification");
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_MIN_FEE_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: MIN_FEE_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId,
     position: Number(classification.selected.position),
@@ -507,14 +507,14 @@ export const prepareProductionMinFeeArtifactV1 = async ({
     canonicalTxSize: prepared.tx.canonicalTxSize.toString(),
     minimumFee: prepared.tx.minimumFee.toString(),
     shortfall: prepared.tx.shortfall.toString(),
-  }) as ProductionMinFeeArtifactV1;
-  admitProductionMinFeeArtifactV1(artifact);
+  }) as MinFeeArtifact;
+  admitMinFeeArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type MinFeeWorkflowReferenceScriptsV1 = Readonly<{
+export type MinFeeWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -523,23 +523,23 @@ export type MinFeeWorkflowReferenceScriptsV1 = Readonly<{
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-type BoundConfigV1 = Readonly<{
+type BoundConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"minFee">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"minFee">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  contracts: MinFeeContractsV1;
-  category: FraudProofWorkflowDeploymentBindingV1<"minFee">["resolvedContracts"]["category"];
-  catalogue: FraudProofWorkflowDeploymentBindingV1<"minFee">["catalogue"];
-  referenceScripts: MinFeeWorkflowReferenceScriptsV1;
+  contracts: MinFeeContracts;
+  category: FraudProofWorkflowDeploymentBinding<"minFee">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"minFee">["catalogue"];
+  referenceScripts: MinFeeWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
 
 const actionInput = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "min-fee workflow action");
   if (
@@ -567,7 +567,7 @@ const captureRemoval = async ({
   config,
   input,
 }: {
-  readonly config: BoundConfigV1;
+  readonly config: BoundConfig;
   readonly input: Readonly<Record<string, unknown>>;
 }) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -581,7 +581,7 @@ const captureRemoval = async ({
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -596,7 +596,7 @@ const captureRemoval = async ({
         fraudProverRewardLovelace: config.fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             )
           ) {
@@ -605,7 +605,7 @@ const captureRemoval = async ({
             );
           }
           if (
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -624,9 +624,9 @@ const captureRemoval = async ({
   });
 };
 
-const resolveFieldCarriagesV1 = async (
-  config: BoundConfigV1,
-  admitted: AdmittedProductionMinFeeArtifactV1,
+const resolveFieldCarriages = async (
+  config: BoundConfig,
+  admitted: AdmittedMinFeeArtifact,
 ): Promise<
   Readonly<{ publications: readonly UTxO[]; certificates: readonly UTxO[] }>
 > => {
@@ -634,7 +634,7 @@ const resolveFieldCarriagesV1 = async (
   const certificates: UTxO[] = [];
   for (const plan of admitted.fieldPlans) {
     const resolvedPublications =
-      await resolveFaultProofFieldCarriagePublicationsV1({
+      await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
         publisherAddress: config.signer.address,
         planned: plan,
@@ -645,7 +645,7 @@ const resolveFieldCarriagesV1 = async (
       );
     }
     publications.push(...resolvedPublications);
-    const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+    const certificate = await resolveFaultProofFieldPreimageCertificate({
       lucid: config.lucid,
       network: config.network,
       planned: plan,
@@ -665,18 +665,18 @@ const resolveFieldCarriagesV1 = async (
 };
 
 const createTransactionPort = (
-  config: BoundConfigV1,
-): ProductionLinearFamilyTransactionPortV1<"minFee"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"minFee"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "minFee",
   prepare: async ({ evidence, classification }) =>
-    await prepareProductionMinFeeArtifactV1({
+    await prepareMinFeeArtifact({
       evidence,
       classification,
       categoryId: config.category.categoryId,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitProductionMinFeeArtifactV1(
+    const admitted = admitMinFeeArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -686,7 +686,7 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMinFeeInit({
               lucid: config.lucid,
@@ -710,14 +710,14 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_01") {
-      const chunks = await resolveDirectFirstProofChunksV1({
+      const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
         address: config.signer.address,
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMinFeeStep01({
               lucid: config.lucid,
@@ -743,9 +743,9 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_02") {
-      const carriages = await resolveFieldCarriagesV1(config, admitted);
+      const carriages = await resolveFieldCarriages(config, admitted);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMinFeeStep02({
               lucid: config.lucid,
@@ -778,31 +778,31 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundMinFeeWorkflowConfigV1 = Readonly<{
+export type ManifestBoundMinFeeWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: MinFeeWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: MinFeeWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundMinFeeWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"minFee">;
-  l1: FraudProofFamilyL1ObservationPortV1<"minFee">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"minFee">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundMinFeeWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"minFee">;
+  l1: FraudProofFamilyL1ObservationPort<"minFee">;
+  transactions: LinearFamilyTransactionPort<"minFee">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundMinFeeWorkflowV1 = async (
-  config: ManifestBoundMinFeeWorkflowConfigV1,
-): Promise<ManifestBoundMinFeeWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundMinFeeWorkflow = async (
+  config: ManifestBoundMinFeeWorkflowConfig,
+): Promise<ManifestBoundMinFeeWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -811,7 +811,7 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [FraudProofComputationThreadStepDatum, MinFeeStep02Datum],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -826,48 +826,48 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
   ) {
     throw new Error("min-fee manifest binding omitted required contracts");
   }
-  const references: MinFeeWorkflowReferenceScriptsV1 = Object.freeze({
+  const references: MinFeeWorkflowReferenceScripts = Object.freeze({
     steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMinFee",
         utxo: config.referenceScripts.steps[0],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMinFeeStep02",
         utxo: config.referenceScripts.steps[1],
       }),
     ] as const),
     witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: config.referenceScripts.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: config.referenceScripts.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
       }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "chunkedVerifyWithdraw",
         utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
       }),
     }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxoV1({
+    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: "fieldPreimageCertificateMint",
       utxo: config.referenceScripts.fieldPreimageCertificateMint,
     }),
   });
-  const contracts: MinFeeContractsV1 = Object.freeze({
+  const contracts: MinFeeContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -881,7 +881,7 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -907,7 +907,7 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
       binding.releaseEconomics.policy.fraudProverRewardLovelace,
     ),
   });
-  let adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  let adapter = createLinearFamilyWorkflowAdapter({
     category: "minFee",
     l1,
     transactions,
@@ -919,7 +919,7 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
   // deterministically by fields 1..8 before the proof step can execute.
   for (let fieldIndex = 0; fieldIndex < FIELD_COUNT; fieldIndex += 1) {
     const index = fieldIndex;
-    const prerequisite = createAuthenticatedFieldCarriagePrerequisitePortV1({
+    const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
       category: "minFee",
       lucid: config.lucid,
       network: binding.network,
@@ -928,7 +928,7 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
       requirementForAction: ({ action, artifact }) => {
         const input = record(action.input, "min-fee prerequisite action");
         if (input.stage !== "step_02") return null;
-        const admitted = admitProductionMinFeeArtifactV1(
+        const admitted = admitMinFeeArtifact(
           artifact,
           config.signer.paymentKeyHash,
         );
@@ -939,7 +939,7 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
         return {
           planned,
           compactCbor: admitted.artifact.nativeTxCompactCbor,
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
             witnessSetCore(admitted.witnessSet),
           ).toString("hex"),
           certificate: {
@@ -947,18 +947,18 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
             mintingScript: certificate.mintingScript,
             referenceScriptUtxo: references.fieldPreimageCertificateMint,
           },
-        } satisfies ProductionFieldCarriageRequirementV1;
+        } satisfies FieldCarriageRequirement;
       },
       transactionConfirmed: async ({ headerHash, txHash }) =>
         await l1.transactionConfirmed({ headerHash, txHash }),
     });
-    adapter = withProductionFieldCarriagePrerequisiteV1({
+    adapter = withFieldCarriagePrerequisite({
       category: "minFee",
       base: adapter,
       prerequisite,
     });
   }
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePortV1({
+  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
     category: "minFee",
     lucid: config.lucid,
     network: binding.network,
@@ -967,16 +967,14 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
     proofCborForAction: ({ action, artifact }) => {
       const input = record(action.input, "min-fee proof prerequisite action");
       return input.stage === "step_01"
-        ? admitProductionMinFeeArtifactV1(
-            artifact,
-            config.signer.paymentKeyHash,
-          ).artifact.txMembershipProofCbor
+        ? admitMinFeeArtifact(artifact, config.signer.paymentKeyHash).artifact
+            .txMembershipProofCbor
         : null;
     },
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
-  adapter = withProductionProofChunkPrerequisiteV1({
+  adapter = withProofChunkPrerequisite({
     category: "minFee",
     base: adapter,
     prerequisite: proofPrerequisite,
@@ -986,31 +984,30 @@ export const createManifestBoundMinFeeWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundMinFeeWorkflowV1 = async ({
+export const runOrResumeManifestBoundMinFeeWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundMinFeeWorkflowV1;
+  readonly workflow: ManifestBoundMinFeeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: MIN_FEE_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["minFee"],
     }),

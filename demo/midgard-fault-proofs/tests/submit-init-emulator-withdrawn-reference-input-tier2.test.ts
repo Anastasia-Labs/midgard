@@ -18,9 +18,9 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -36,9 +36,9 @@ import {
   network,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  makeWithdrawnReferenceInputEmulatorHarnessV1,
-  publishWithdrawnReferenceInputReferenceScriptsV1,
-  setupWithdrawnReferenceInputScenarioV1,
+  makeWithdrawnReferenceInputEmulatorHarness,
+  publishWithdrawnReferenceInputReferenceScripts,
+  setupWithdrawnReferenceInputScenario,
 } from "./support/withdrawn-reference-input-emulator-v1.js";
 
 /**
@@ -51,25 +51,23 @@ const TIER2_DECOY_REFERENCE_INPUT_COUNT = 364;
 
 describe("withdrawn-reference-input emulator tier-2 carriage", () => {
   it("convicts a withdrawn reference input buried in a 14,603-byte field through a size-selected RawUtxo publication", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const scenario = await setupWithdrawnReferenceInputScenarioV1({
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const scenario = await setupWithdrawnReferenceInputScenario({
       harness,
       decoyReferenceInputCount: TIER2_DECOY_REFERENCE_INPUT_COUNT,
     });
     // The size, not any flag, is what selects tier 2: past the tier-1
     // redeemer bound, within one publication.
-    const preimage = encodeMidgardFieldPreimageV1(
-      scenario.prepared.referenceInputs.map(
-        SDK.encodeMidgardTxInputCanonicalV1,
-      ),
+    const preimage = encodeMidgardFieldPreimage(
+      scenario.prepared.referenceInputs.map(SDK.encodeMidgardTxInputCanonical),
     );
     expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
 
     const [step01Ref, step02Ref, step03Ref] =
-      await publishWithdrawnReferenceInputReferenceScriptsV1({
+      await publishWithdrawnReferenceInputReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.family,
       });
@@ -124,7 +122,7 @@ describe("withdrawn-reference-input emulator tier-2 carriage", () => {
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
     // the prover's address as a bytes-only inline datum, referenced rather
     // than carried in the step's own redeemer.
-    const expectedDatum = SDK.fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await harness.proverLucid.utxosAt(harness.proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);

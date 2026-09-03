@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  proveMissingSignatureFaultV1,
+  proveMissingSignatureFault,
   submitMissingSignatureCancel,
   submitMissingSignatureInit,
   submitMissingSignatureStep01,
@@ -13,19 +13,17 @@ import {
   submitMissingSignatureStep04,
 } from "../src/missing-signature/index.js";
 import {
-  makeMissingSignatureEmulatorHarnessV1,
-  MISSING_SIGNATURE_TARGET_VKEY_V1,
-  missingSignatureFindingV1,
-  missingSignatureProverDepsV1,
-  publishMissingSignatureReferenceScriptsV1,
-  setupMissingSignatureScenarioV1,
+  makeMissingSignatureEmulatorHarness,
+  MISSING_SIGNATURE_TARGET_VKEY,
+  missingSignatureFinding,
+  missingSignatureProverDeps,
+  publishMissingSignatureReferenceScripts,
+  setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
-type Harness = Awaited<
-  ReturnType<typeof makeMissingSignatureEmulatorHarnessV1>
->;
-type Scenario = Awaited<ReturnType<typeof setupMissingSignatureScenarioV1>>;
+type Harness = Awaited<ReturnType<typeof makeMissingSignatureEmulatorHarness>>;
+type Scenario = Awaited<ReturnType<typeof setupMissingSignatureScenario>>;
 type References = readonly [UTxO, UTxO, UTxO, UTxO];
 
 const init = async (harness: Harness, scenario: Scenario) =>
@@ -92,7 +90,7 @@ const advanceTo = async (
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: outRef,
-      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY_V1,
+      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY,
       referenceScriptUtxo: references[2],
     })
   ).nextThreadOutRef;
@@ -100,9 +98,9 @@ const advanceTo = async (
 
 describe("missing-signature negatives and resume", () => {
   it("cancels at every step and re-initializes after each explicit abort", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({ harness });
-    const references = await publishMissingSignatureReferenceScriptsV1({
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({ harness });
+    const references = await publishMissingSignatureReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.missingSignature,
     });
@@ -137,17 +135,17 @@ describe("missing-signature negatives and resume", () => {
 
   it("reconstructs and completes from each of the four holding addresses", async () => {
     for (const stepIndex of [0, 1, 2, 3] as const) {
-      const harness = await makeMissingSignatureEmulatorHarnessV1();
-      const scenario = await setupMissingSignatureScenarioV1({ harness });
-      const references = await publishMissingSignatureReferenceScriptsV1({
+      const harness = await makeMissingSignatureEmulatorHarness();
+      const scenario = await setupMissingSignatureScenario({ harness });
+      const references = await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
       await advanceTo(harness, scenario, references, stepIndex);
       const outcome = await Effect.runPromise(
-        proveMissingSignatureFaultV1(
-          missingSignatureFindingV1(scenario),
-          missingSignatureProverDepsV1({
+        proveMissingSignatureFault(
+          missingSignatureFinding(scenario),
+          missingSignatureProverDeps({
             harness,
             scenario,
             referenceScriptUtxos: {
@@ -168,12 +166,12 @@ describe("missing-signature negatives and resume", () => {
 
   it("resumes and explicitly cancels from an authenticated interior step-04 checkpoint", async () => {
     const buildInterior = async () => {
-      const harness = await makeMissingSignatureEmulatorHarnessV1();
-      const scenario = await setupMissingSignatureScenarioV1({
+      const harness = await makeMissingSignatureEmulatorHarness();
+      const scenario = await setupMissingSignatureScenario({
         harness,
         decoyWitnessCount: 64,
       });
-      const references = await publishMissingSignatureReferenceScriptsV1({
+      const references = await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
@@ -199,9 +197,9 @@ describe("missing-signature negatives and resume", () => {
 
     const resumable = await buildInterior();
     const resumed = await Effect.runPromise(
-      proveMissingSignatureFaultV1(
-        missingSignatureFindingV1(resumable.scenario),
-        missingSignatureProverDepsV1({
+      proveMissingSignatureFault(
+        missingSignatureFinding(resumable.scenario),
+        missingSignatureProverDeps({
           harness: resumable.harness,
           scenario: resumable.scenario,
           referenceScriptUtxos: {
@@ -240,9 +238,9 @@ describe("missing-signature negatives and resume", () => {
   }, 600_000);
 
   it("refuses out-of-range, stale compact, wrong-vkey, and foreign witness evidence before submission", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({ harness });
-    const references = await publishMissingSignatureReferenceScriptsV1({
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({ harness });
+    const references = await publishMissingSignatureReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.missingSignature,
     });
@@ -302,7 +300,7 @@ describe("missing-signature negatives and resume", () => {
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step03.nextThreadOutRef,
-      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY_V1,
+      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY,
       referenceScriptUtxo: references[2],
     });
     await expect(

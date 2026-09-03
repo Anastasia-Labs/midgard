@@ -253,7 +253,7 @@ mustReject(
   "V02 drops a member while keeping its declared arity",
   /V02.*\.exactFields pins 7 members for declared arrayArity 8/su,
   (candidate) => {
-    formOf(candidate, "V02", "ValidationTraceDescriptorV1").exactFields.pop();
+    formOf(candidate, "V02", "ValidationTraceDescriptor").exactFields.pop();
   },
 );
 
@@ -262,7 +262,7 @@ mustReject(
   "V01 replaces its per-index pins with bare labels",
   /V01.*has a cross-language counterpart and a declared arrayArity 15, so its exactFields must pin each member by index/su,
   (candidate) => {
-    const form = formOf(candidate, "V01", "ValidationMachineStateV1");
+    const form = formOf(candidate, "V01", "ValidationMachineState");
     form.exactFields = form.exactFields.map((field) =>
       field.replace(/^\d+:\s*/u, ""),
     );

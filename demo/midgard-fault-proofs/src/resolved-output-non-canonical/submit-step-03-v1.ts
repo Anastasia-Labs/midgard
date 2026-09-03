@@ -1,6 +1,6 @@
 import {
-  encodeMidgardSpendInputItemV1,
-  initialMidgardLedgerOutputScanControlV1,
+  encodeMidgardSpendInputItem,
+  initialMidgardLedgerOutputScanControl,
 } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
@@ -17,9 +17,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -30,26 +30,26 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ResolvedOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { ResolvedOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  type ResolvedOutputEvidenceV1,
-  resolvedOutputScanControlDataV1,
+  type ResolvedOutputEvidence,
+  resolvedOutputScanControlData,
 } from "./resolved-output-non-canonical-v1.js";
 import {
-  ResolvedOutputStep03DatumV1Schema,
-  ResolvedOutputStep03RedeemerV1Schema,
-  ResolvedOutputStep04DatumV1Schema,
+  ResolvedOutputStep03DatumSchema,
+  ResolvedOutputStep03RedeemerSchema,
+  ResolvedOutputStep04DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitResolvedOutputNonCanonicalStep03V1 = async ({
+export const submitResolvedOutputNonCanonicalStep03 = async ({
   lucid,
   network,
   contracts,
@@ -64,18 +64,18 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly contracts: ResolvedOutputNonCanonicalContractsV1;
+  readonly contracts: ResolvedOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ResolvedOutputEvidenceV1;
+  readonly evidence: ResolvedOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -83,14 +83,14 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     prior_root: string;
     out_ref: { transactionId: string; outputIndex: bigint };
   }>({
     threadUtxo,
     signer,
-    schema: ResolvedOutputStep03DatumV1Schema as never,
+    schema: ResolvedOutputStep03DatumSchema as never,
     family: "resolved-output-non-canonical",
     stepIndex,
   });
@@ -107,7 +107,7 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
       "resolved-output-non-canonical: production predecessor membership object is absent",
     );
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "resolved-output-non-canonical",
@@ -125,7 +125,7 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
     network,
     exactMembershipScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: exactMembershipScript,
     referenceUtxo: membershipReference,
     label: "resolved-output-non-canonical predecessor membership",
@@ -136,12 +136,12 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
       data: {
         subject: evidence.subject,
         descriptor_cbor: evidence.resolved.descriptorCborHex,
-        control: resolvedOutputScanControlDataV1(
-          initialMidgardLedgerOutputScanControlV1(),
+        control: resolvedOutputScanControlData(
+          initialMidgardLedgerOutputScanControl(),
         ),
       },
     } as never,
-    ResolvedOutputStep04DatumV1Schema as never,
+    ResolvedOutputStep04DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[3].spendingScriptAddress,
@@ -149,7 +149,7 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
     unit: threadToken.unit,
   });
   let outputIndex: bigint | undefined;
-  const keyBytes = encodeMidgardSpendInputItemV1({
+  const keyBytes = encodeMidgardSpendInputItem({
     txId: Buffer.from(evidence.resolved.transactionId, "hex"),
     outputIndex: evidence.resolved.outputIndex,
   }).toString("hex");
@@ -190,7 +190,7 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
           },
         ],
       } as never,
-      ResolvedOutputStep03RedeemerV1Schema as never,
+      ResolvedOutputStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -225,15 +225,15 @@ export const submitResolvedOutputNonCanonicalStep03V1 = async ({
   if (outputIndex === undefined)
     throw new Error("resolved-output-non-canonical: step-03 layout unresolved");
   const signed = await unsigned.sign.withWallet().complete();
-  const expected = await reachFraudProofPreSubmitBoundaryV1({
+  const expected = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "resolved-output-non-canonical-step-03",
         utxo: stepReference,
         expectedScript: contracts.steps[2].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "resolved-output-non-canonical-membership",
         utxo: membershipReference,
         expectedScript: exactMembershipScript,

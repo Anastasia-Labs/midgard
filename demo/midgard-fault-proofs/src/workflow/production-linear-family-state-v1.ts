@@ -1,24 +1,24 @@
 import {
-  assertSecurityGradeEvidenceV1,
-  type EvidenceProvenanceV1,
+  assertSecurityGradeEvidence,
+  type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 
-import type { FraudProofWorkflowTerminalV1 } from "./journal-v1.js";
+import type { FraudProofWorkflowTerminal } from "./journal-v1.js";
 import type {
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowObservationV1,
-  FraudProofWorkflowReconcileResultV1,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowObservation,
+  FraudProofWorkflowReconcileResult,
 } from "./orchestrator-v1.js";
 import {
-  PRODUCTION_LINEAR_FAMILY_SPEC_V1,
-  type ProductionLinearFamilyCategoryV1,
-  type ProductionLinearFamilySpecV1,
-  productionLinearFamilySpecV1,
-  type ProductionLinearFamilyStepV1,
+  LINEAR_FAMILY_SPEC,
+  type LinearFamilyCategory,
+  type LinearFamilySpec,
+  linearFamilySpec,
+  type LinearFamilyStep,
 } from "./production-linear-family-spec-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "./raw-l1-family-derivation-v1.js";
+import type { FraudProofRawL1FamilyStage } from "./raw-l1-family-derivation-v1.js";
 
-export const PRODUCTION_LINEAR_FAMILY_ACTION_V1 =
+export const LINEAR_FAMILY_ACTION =
   "midgard-production-linear-family-action-v1" as const;
 
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
@@ -34,9 +34,9 @@ const canonicalOutRef = (value: string, label: string): string => {
 const transactionHashOf = (outRef: string): string => outRef.split("#")[0]!;
 
 const stageStep = (
-  spec: ProductionLinearFamilySpecV1,
+  spec: LinearFamilySpec,
   ordinal: number,
-): ProductionLinearFamilyStepV1 => {
+): LinearFamilyStep => {
   const step = spec.steps[ordinal - 1];
   if (step === undefined || step.ordinal !== ordinal) {
     throw new Error(
@@ -47,21 +47,21 @@ const stageStep = (
 };
 
 /** Strictly admits a raw-derived stage before it can control workflow dispatch. */
-export const admitProductionLinearFamilyStageV1 = ({
+export const admitLinearFamilyStage = ({
   spec,
   headerHash,
   provenance,
   stage,
 }: {
-  readonly spec: ProductionLinearFamilySpecV1;
+  readonly spec: LinearFamilySpec;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
-}): FraudProofRawL1FamilyStageV1 => {
-  if (spec.schemaVersion !== PRODUCTION_LINEAR_FAMILY_SPEC_V1) {
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
+}): FraudProofRawL1FamilyStage => {
+  if (spec.schemaVersion !== LINEAR_FAMILY_SPEC) {
     throw new Error(`${spec.category} linear family spec version changed`);
   }
-  const admitted = assertSecurityGradeEvidenceV1(provenance);
+  const admitted = assertSecurityGradeEvidence(provenance);
   if (admitted.trustClass !== "authenticated_cardano_l1") {
     throw new Error(
       `${spec.category} linear workflow observation is not authenticated Cardano L1`,
@@ -92,8 +92,8 @@ export const admitProductionLinearFamilyStageV1 = ({
 
 const action = (
   actionId: string,
-  input: FraudProofWorkflowActionV1["input"],
-): FraudProofWorkflowActionV1 => Object.freeze({ actionId, input });
+  input: FraudProofWorkflowAction["input"],
+): FraudProofWorkflowAction => Object.freeze({ actionId, input });
 
 /**
  * Maps one authenticated chain stage to exactly one content-addressed action.
@@ -104,9 +104,7 @@ const action = (
  * an adapter is selected. The mutable state-queue outref is still included in
  * every step id because it is not fixed by that workflow identity.
  */
-export const productionLinearFamilyObservationV1 = <
-  Category extends ProductionLinearFamilyCategoryV1,
->({
+export const linearFamilyObservation = <Category extends LinearFamilyCategory>({
   category,
   headerHash,
   provenance,
@@ -114,11 +112,11 @@ export const productionLinearFamilyObservationV1 = <
 }: {
   readonly category: Category;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
-}): FraudProofWorkflowObservationV1 => {
-  const spec = productionLinearFamilySpecV1(category);
-  const admitted = admitProductionLinearFamilyStageV1({
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
+}): FraudProofWorkflowObservation => {
+  const spec = linearFamilySpec(category);
+  const admitted = admitLinearFamilyStage({
     spec,
     headerHash,
     provenance,
@@ -131,7 +129,7 @@ export const productionLinearFamilyObservationV1 = <
     return {
       kind: "action_required",
       action: action(`init:${admitted.stateQueueBlockOutRef}`, {
-        schemaVersion: PRODUCTION_LINEAR_FAMILY_ACTION_V1,
+        schemaVersion: LINEAR_FAMILY_ACTION,
         category,
         stage: "init",
         stateQueueBlockOutRef: admitted.stateQueueBlockOutRef,
@@ -145,7 +143,7 @@ export const productionLinearFamilyObservationV1 = <
       action: action(
         `${step.actionId}:${admitted.threadOutRef}:${admitted.stateQueueBlockOutRef}`,
         {
-          schemaVersion: PRODUCTION_LINEAR_FAMILY_ACTION_V1,
+          schemaVersion: LINEAR_FAMILY_ACTION,
           category,
           stage: step.actionId,
           ordinal: step.ordinal,
@@ -160,7 +158,7 @@ export const productionLinearFamilyObservationV1 = <
     action: action(
       `remove:${admitted.nextRemovalOutRef}:${admitted.fraudProofOutRef}:${admitted.stateQueueBlockOutRef}`,
       {
-        schemaVersion: PRODUCTION_LINEAR_FAMILY_ACTION_V1,
+        schemaVersion: LINEAR_FAMILY_ACTION,
         category,
         stage: "remove",
         fraudProofOutRef: admitted.fraudProofOutRef,
@@ -173,23 +171,23 @@ export const productionLinearFamilyObservationV1 = <
   };
 };
 
-type LinearActionStageV1 = "init" | "remove" | `step_0${1 | 2 | 3 | 4}`;
+type LinearActionStage = "init" | "remove" | `step_0${1 | 2 | 3 | 4}`;
 
 const parsedAction = ({
   category,
   action,
 }: {
-  readonly category: ProductionLinearFamilyCategoryV1;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly category: LinearFamilyCategory;
+  readonly action: FraudProofWorkflowAction;
 }): {
-  readonly stage: LinearActionStageV1;
+  readonly stage: LinearActionStage;
   readonly ordinal?: 1 | 2 | 3 | 4;
   readonly inputOutRef: string;
   readonly proofOutRef?: string;
 } => {
   const input = action.input;
   if (
-    input.schemaVersion !== PRODUCTION_LINEAR_FAMILY_ACTION_V1 ||
+    input.schemaVersion !== LINEAR_FAMILY_ACTION ||
     input.category !== category ||
     typeof input.stage !== "string"
   ) {
@@ -239,7 +237,7 @@ const parsedAction = ({
     throw new Error(`${category} workflow action names an unknown stage`);
   }
   const ordinal = Number(input.stage.slice(-1)) as 1 | 2 | 3 | 4;
-  const step = stageStep(productionLinearFamilySpecV1(category), ordinal);
+  const step = stageStep(linearFamilySpec(category), ordinal);
   if (
     input.stage !== step.actionId ||
     input.ordinal !== ordinal ||
@@ -269,9 +267,9 @@ const exactSuccessor = ({
   stage,
   txHash,
 }: {
-  readonly spec: ProductionLinearFamilySpecV1;
+  readonly spec: LinearFamilySpec;
   readonly parsed: ReturnType<typeof parsedAction>;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly txHash: string;
 }): boolean => {
   if (parsed.stage === "init") {
@@ -312,13 +310,13 @@ const sameRequiredAction = ({
   stage,
   actionId,
 }: {
-  readonly category: ProductionLinearFamilyCategoryV1;
+  readonly category: LinearFamilyCategory;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly actionId: string;
 }): boolean => {
-  const observed = productionLinearFamilyObservationV1({
+  const observed = linearFamilyObservation({
     category,
     headerHash,
     provenance,
@@ -335,7 +333,7 @@ const sameRequiredAction = ({
  * are a conflict. A stale removal input that was never included may be rebuilt
  * under its new outref and therefore returns `not_found`.
  */
-export const reconcileProductionLinearFamilyActionV1 = async ({
+export const reconcileLinearFamilyAction = async ({
   category,
   headerHash,
   action,
@@ -344,16 +342,16 @@ export const reconcileProductionLinearFamilyActionV1 = async ({
   stage,
   transactionConfirmed,
 }: {
-  readonly category: ProductionLinearFamilyCategoryV1;
+  readonly category: LinearFamilyCategory;
   readonly headerHash: string;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly action: FraudProofWorkflowAction;
   readonly txHash?: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
-}): Promise<FraudProofWorkflowReconcileResultV1> => {
-  const spec = productionLinearFamilySpecV1(category);
-  const admittedStage = admitProductionLinearFamilyStageV1({
+}): Promise<FraudProofWorkflowReconcileResult> => {
+  const spec = linearFamilySpec(category);
+  const admittedStage = admitLinearFamilyStage({
     spec,
     headerHash,
     provenance,
@@ -413,7 +411,7 @@ export const reconcileProductionLinearFamilyActionV1 = async ({
   };
 };
 
-export type ProductionLinearFamilyObservedTerminalV1 = Readonly<{
+export type LinearFamilyObservedTerminal = Readonly<{
   kind: "completed";
-  terminal: FraudProofWorkflowTerminalV1;
+  terminal: FraudProofWorkflowTerminal;
 }>;

@@ -5,13 +5,13 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES,
-  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
-  FIELD_VIEW_V1_CONSTRUCTOR_INDEXES,
-  FieldCarriageV1,
-  FieldPreimageCertificateMintRedeemerV1,
-  FieldPreimageCertificateV1,
-  FieldViewV1,
+  FIELD_CARRIAGE_CONSTRUCTOR_INDEXES,
+  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES,
+  FIELD_VIEW_CONSTRUCTOR_INDEXES,
+  FieldCarriage,
+  FieldPreimageCertificate,
+  FieldPreimageCertificateMintRedeemer,
+  FieldView,
 } from "../src/native-tx-field-access-v1.js";
 
 /**
@@ -102,13 +102,13 @@ const rehydrate = (value: unknown): unknown => {
 const schemaFor = (aikenType: string): unknown => {
   switch (aikenType) {
     case "FieldCarriageV1":
-      return FieldCarriageV1;
+      return FieldCarriage;
     case "FieldViewV1":
-      return FieldViewV1;
+      return FieldView;
     case "FieldPreimageCertificateV1":
-      return FieldPreimageCertificateV1;
+      return FieldPreimageCertificate;
     case "FieldPreimageCertificateMintRedeemerV1":
-      return FieldPreimageCertificateMintRedeemerV1;
+      return FieldPreimageCertificateMintRedeemer;
     default:
       throw new Error(`unknown golden vector type ${aikenType}`);
   }
@@ -156,14 +156,14 @@ describe("§8.6/§8.8 carriage wire goldens — provenance", () => {
   it("holds the source constants to the same frozen tags", () => {
     // The fixture and the constants it was built from are pinned separately, so
     // neither can absorb a reorder by agreeing with the other.
-    expect(FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES).toEqual(
+    expect(FIELD_CARRIAGE_CONSTRUCTOR_INDEXES).toEqual(
       FROZEN_CONSTRUCTOR_INDEXES.FieldCarriageV1,
     );
-    expect(FIELD_VIEW_V1_CONSTRUCTOR_INDEXES).toEqual(
+    expect(FIELD_VIEW_CONSTRUCTOR_INDEXES).toEqual(
       FROZEN_CONSTRUCTOR_INDEXES.FieldViewV1,
     );
     expect(
-      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
+      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES,
     ).toEqual(
       FROZEN_CONSTRUCTOR_INDEXES.FieldPreimageCertificateMintRedeemerV1,
     );

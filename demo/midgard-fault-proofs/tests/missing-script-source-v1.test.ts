@@ -1,47 +1,47 @@
 import {
-  buildMidgardBoundedItemV1,
-  buildMidgardValidationMerkleMembershipV1,
-  encodeMidgardSpendInputItemV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
+  buildMidgardBoundedItem,
+  buildMidgardValidationMerkleMembership,
+  encodeMidgardSpendInputItem,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyMissingScriptSourceFindingV1,
-  type ExecutionSourceDescriptorV1,
-  missingScriptSourceCheckpointV1,
-  missingScriptSourceEvidenceClosesV1,
-  missingScriptSourceEvidenceIdentityV1,
-  missingScriptSourceViolationIdV1,
-  nextMissingScriptSourceActionV1,
-  prepareMissingScriptSourceEvidenceV1,
+  classifyMissingScriptSourceFinding,
+  type ExecutionSourceDescriptor,
+  missingScriptSourceCheckpoint,
+  missingScriptSourceEvidenceCloses,
+  missingScriptSourceEvidenceIdentity,
+  missingScriptSourceViolationId,
+  nextMissingScriptSourceAction,
+  prepareMissingScriptSourceEvidence,
 } from "../src/missing-script-source/family-v1.js";
 import {
-  MISSING_SCRIPT_SOURCE_PRODUCTION_CONFIG_KEYS_V1,
-  MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS_V1,
+  MISSING_SCRIPT_SOURCE_CONFIG_KEYS,
+  MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS,
 } from "../src/missing-script-source/production-v1.js";
 import {
-  advanceMissingScriptSourceScanV1,
-  bindMissingScriptSourceUniverseV1,
-  initialMissingScriptSourceScanV1,
-  missingScriptSourceScanIsCompleteV1,
+  advanceMissingScriptSourceScan,
+  bindMissingScriptSourceUniverse,
+  initialMissingScriptSourceScan,
+  missingScriptSourceScanIsComplete,
 } from "../src/missing-script-source/universe-scan-v1.js";
 
 const txId = "11".repeat(32);
 const requiredHash = "22".repeat(28);
 const otherHash = "33".repeat(28);
 const item = Buffer.from("8200581c" + "44".repeat(28), "hex");
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const forced = (purposeKind: number, purposeIndex: number) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "55".repeat(32), outputIndex: 0n },
     rejectionReason: {
@@ -53,7 +53,7 @@ const forced = (purposeKind: number, purposeIndex: number) =>
   });
 
 const sourceKey = (index: number) => {
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: Buffer.alloc(32, 0x66),
     outputIndex: index,
   }).toString("hex");
@@ -64,8 +64,8 @@ const descriptors = (
   origins: readonly (0 | 1)[],
   purposeKind: 0 | 1 | 2 | 3,
   purposeIndex: number,
-): readonly ExecutionSourceDescriptorV1[] => {
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+): readonly ExecutionSourceDescriptor[] => {
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind,
     purposeIndex: BigInt(purposeIndex),
     scriptHash: Buffer.from(requiredHash, "hex"),
@@ -73,20 +73,20 @@ const descriptors = (
   });
   const sourceLeaves = hashes.map((scriptHashHex, index) => {
     const originKind = origins[index]!;
-    const bounded = buildMidgardBoundedItemV1({
+    const bounded = buildMidgardBoundedItem({
       fieldIndex: originKind === 0 ? 6 : 2,
       itemIndex: index,
       bytes: item,
     });
     return originKind === 0
-      ? hashMidgardInlineScriptSourceLeafV1({
+      ? hashMidgardInlineScriptSourceLeaf({
           sourceIndex: BigInt(index),
           scriptLanguageTag: 0,
           scriptHash: Buffer.from(scriptHashHex, "hex"),
           scriptTotalLength: item.length,
           itemCommitment: bounded.commitment,
         })
-      : hashMidgardReferenceScriptSourceLeafV1({
+      : hashMidgardReferenceScriptSourceLeaf({
           sourceKey: Buffer.from(sourceKey(index), "hex"),
           scriptLanguageTag: 0,
           scriptHash: Buffer.from(scriptHashHex, "hex"),
@@ -96,7 +96,7 @@ const descriptors = (
   });
   return hashes.map((scriptHashHex, index) => {
     const sourceLeaf = sourceLeaves[index]!;
-    const executionLeaf = hashMidgardScriptExecutionLeafV1({
+    const executionLeaf = hashMidgardScriptExecutionLeaf({
       languageTag: 0,
       purposeLeaf,
       sourceLeaf,
@@ -112,15 +112,15 @@ const descriptors = (
       purposeIndex,
       purposeSubjectHex: "aa",
       redeemerLeafHex: "",
-      purposeMembership: buildMidgardValidationMerkleMembershipV1(
+      purposeMembership: buildMidgardValidationMerkleMembership(
         [purposeLeaf],
         0,
       ),
-      sourceMembership: buildMidgardValidationMerkleMembershipV1(
+      sourceMembership: buildMidgardValidationMerkleMembership(
         sourceLeaves,
         index,
       ),
-      executionMembership: buildMidgardValidationMerkleMembershipV1(
+      executionMembership: buildMidgardValidationMerkleMembership(
         [executionLeaf],
         0,
       ),
@@ -154,7 +154,7 @@ const evidence = ({
     purposeKind,
     purposeIndex,
   )[0]!;
-  return prepareMissingScriptSourceEvidenceV1({
+  return prepareMissingScriptSourceEvidence({
     finding: { subject, purposeKind, purposeIndex, executionIndex: 0 },
     descriptor: target,
     sources,
@@ -163,8 +163,8 @@ const evidence = ({
 
 describe("missingScriptSource V1", () => {
   it("freezes ID 2d, callback-free config, and six physical datum ABIs", () => {
-    expect(missingScriptSourceViolationIdV1()).toBe("script-source-missing");
-    expect(MISSING_SCRIPT_SOURCE_PRODUCTION_CONFIG_KEYS_V1).toEqual([
+    expect(missingScriptSourceViolationId()).toBe("script-source-missing");
+    expect(MISSING_SCRIPT_SOURCE_CONFIG_KEYS).toEqual([
       "manifest",
       "blueprintJson",
       "deploymentInfo",
@@ -176,8 +176,8 @@ describe("missingScriptSource V1", () => {
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
     ]);
-    expect(MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS_V1).toHaveLength(6);
-    expect(MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS_V1[0]).toBe(
+    expect(MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS).toHaveLength(6);
+    expect(MISSING_SCRIPT_SOURCE_STEP_DATUM_SCHEMAS[0]).toBe(
       FraudProofComputationThreadStepDatum,
     );
   });
@@ -188,7 +188,7 @@ describe("missingScriptSource V1", () => {
       const exact = evidence({ purposeKind });
       expect(exact.sourceCount).toBe(3);
       expect(exact.foundAtSourceIndex).toBeNull();
-      expect(missingScriptSourceEvidenceClosesV1(exact)).toBe(true);
+      expect(missingScriptSourceEvidenceCloses(exact)).toBe(true);
     },
   );
 
@@ -203,19 +203,19 @@ describe("missingScriptSource V1", () => {
         ),
       });
       expect(exact.foundAtSourceIndex).toBe(location);
-      expect(missingScriptSourceEvidenceClosesV1(exact)).toBe(true);
+      expect(missingScriptSourceEvidenceCloses(exact)).toBe(true);
     },
   );
 
   it("refuses honest verdicts and exact purpose-coordinate substitution", () => {
     expect(
-      missingScriptSourceEvidenceClosesV1(evidence({ hashes: [requiredHash] })),
+      missingScriptSourceEvidenceCloses(evidence({ hashes: [requiredHash] })),
     ).toBe(false);
     expect(
-      missingScriptSourceEvidenceClosesV1(evidence({ subject: forced(0, 0) })),
+      missingScriptSourceEvidenceCloses(evidence({ subject: forced(0, 0) })),
     ).toBe(false);
     expect(() =>
-      classifyMissingScriptSourceFindingV1({
+      classifyMissingScriptSourceFinding({
         subject: forced(2, 7),
         purposeKind: 2,
         purposeIndex: 6,
@@ -223,7 +223,7 @@ describe("missingScriptSource V1", () => {
       }),
     ).toThrow(/purpose coordinate differs/u);
     expect(() =>
-      classifyMissingScriptSourceFindingV1({
+      classifyMissingScriptSourceFinding({
         subject: forced(0, 0),
         purposeKind: 4 as never,
         purposeIndex: 0,
@@ -236,7 +236,7 @@ describe("missingScriptSource V1", () => {
     const sources = descriptors([otherHash, otherHash], [0, 1], 0, 0);
     const target = descriptors([requiredHash], [0], 0, 0)[0]!;
     expect(() =>
-      prepareMissingScriptSourceEvidenceV1({
+      prepareMissingScriptSourceEvidence({
         finding: {
           subject: accepted,
           purposeKind: 0,
@@ -248,7 +248,7 @@ describe("missingScriptSource V1", () => {
       }),
     ).toThrow(/complete and consensus ordered/u);
     expect(() =>
-      prepareMissingScriptSourceEvidenceV1({
+      prepareMissingScriptSourceEvidence({
         finding: {
           subject: accepted,
           purposeKind: 0,
@@ -264,25 +264,25 @@ describe("missingScriptSource V1", () => {
 
   it("domain-separates resumable checkpoint and durable identity", () => {
     const exact = evidence();
-    const checkpoint = missingScriptSourceCheckpointV1({
+    const checkpoint = missingScriptSourceCheckpoint({
       evidence: exact,
       controlCbor: "",
       nextExpectedScriptHash: "77".repeat(28),
     });
     expect(checkpoint).toMatch(/^[0-9a-f]{64}$/u);
     expect(
-      missingScriptSourceCheckpointV1({
+      missingScriptSourceCheckpoint({
         evidence: exact,
         controlCbor: "00",
         nextExpectedScriptHash: "77".repeat(28),
       }),
     ).not.toBe(checkpoint);
-    expect(missingScriptSourceEvidenceIdentityV1(exact)).toContain(":0:0:");
-    expect(nextMissingScriptSourceActionV1("scan")).toBe("submitScanOrResume");
+    expect(missingScriptSourceEvidenceIdentity(exact)).toContain(":0:0:");
+    expect(nextMissingScriptSourceAction("scan")).toBe("submitScanOrResume");
   });
 
   it("scans the complete maximum frontier across resumptions", () => {
-    const universe = bindMissingScriptSourceUniverseV1({
+    const universe = bindMissingScriptSourceUniverse({
       purposeKind: 3,
       purposeIndex: 7,
       requiredScriptHashHex: requiredHash,
@@ -294,8 +294,8 @@ describe("missingScriptSource V1", () => {
         itemCommitmentHex: "88".repeat(32),
       })),
     });
-    let state = initialMissingScriptSourceScanV1(universe, "99".repeat(28));
-    state = advanceMissingScriptSourceScanV1({
+    let state = initialMissingScriptSourceScan(universe, "99".repeat(28));
+    state = advanceMissingScriptSourceScan({
       universe,
       prior: state,
       scanScriptHashHex: "99".repeat(28),
@@ -303,7 +303,7 @@ describe("missingScriptSource V1", () => {
     });
     expect(state.cursor).toBe(24);
     expect(state.found).toBe(false);
-    state = advanceMissingScriptSourceScanV1({
+    state = advanceMissingScriptSourceScan({
       universe,
       prior: state,
       scanScriptHashHex: "99".repeat(28),
@@ -311,18 +311,18 @@ describe("missingScriptSource V1", () => {
     });
     expect(state.cursor).toBe(48);
     expect(state.found).toBe(true);
-    state = advanceMissingScriptSourceScanV1({
+    state = advanceMissingScriptSourceScan({
       universe,
       prior: state,
       scanScriptHashHex: "99".repeat(28),
       finalScriptHashHex: "aa".repeat(28),
     });
-    expect(missingScriptSourceScanIsCompleteV1(state)).toBe(true);
+    expect(missingScriptSourceScanIsComplete(state)).toBe(true);
     expect(state.nextExpectedScriptHashHex).toBe("aa".repeat(28));
   });
 
   it("refuses resumed checkpoint, total, identity, and frontier-order substitution", () => {
-    const universe = bindMissingScriptSourceUniverseV1({
+    const universe = bindMissingScriptSourceUniverse({
       purposeKind: 0,
       purposeIndex: 0,
       requiredScriptHashHex: requiredHash,
@@ -336,7 +336,7 @@ describe("missingScriptSource V1", () => {
         },
       ],
     });
-    const prior = initialMissingScriptSourceScanV1(universe, "99".repeat(28));
+    const prior = initialMissingScriptSourceScan(universe, "99".repeat(28));
     for (const mutation of [
       { ...prior, cursor: 1 },
       { ...prior, totalCount: 2 },
@@ -344,7 +344,7 @@ describe("missingScriptSource V1", () => {
       { ...prior, checkpointHashHex: "ee".repeat(32) },
     ])
       expect(() =>
-        advanceMissingScriptSourceScanV1({
+        advanceMissingScriptSourceScan({
           universe,
           prior: mutation,
           scanScriptHashHex: "99".repeat(28),
@@ -352,7 +352,7 @@ describe("missingScriptSource V1", () => {
         }),
       ).toThrow(/substituted/u);
     expect(() =>
-      bindMissingScriptSourceUniverseV1({
+      bindMissingScriptSourceUniverse({
         ...universe,
         sources: [{ ...universe.sources[0]!, sourceIndex: 1 }],
       }),

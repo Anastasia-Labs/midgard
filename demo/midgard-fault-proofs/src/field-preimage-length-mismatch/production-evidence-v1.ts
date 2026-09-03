@@ -1,50 +1,50 @@
 import { createHash } from "node:crypto";
 
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxProofFieldLengths,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
-  type CanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence-v1.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  fieldPreimageLengthCommittedClaimV1,
-  prepareAcceptedFieldPreimageLengthMismatchV1,
+  fieldPreimageLengthCommittedClaim,
+  prepareAcceptedFieldPreimageLengthMismatch,
 } from "./prepare-accepted-v1.js";
-import type { FieldPreimageLengthProductionStageV1 } from "./production-config-v1.js";
+import type { FieldPreimageLengthStage } from "./production-config-v1.js";
 import {
-  type PreparedFieldPreimageLengthWorkflowV1,
-  prepareFieldPreimageLengthWorkflowV1,
+  type PreparedFieldPreimageLengthWorkflow,
+  prepareFieldPreimageLengthWorkflow,
 } from "./workflow-v1.js";
 
-export const FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1 =
+export const FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID =
   "field-preimage-length-mismatch" as const;
 
 /** Complete canonical scan of forced wrongful-rejection contradictions. */
-export const detectFieldPreimageLengthCompleteReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly CanonicalViolationDetectionV1[] => {
-  const detections: CanonicalViolationDetectionV1[] = [];
+export const detectFieldPreimageLengthCompleteReplay = (
+  block: CanonicalBlockEvidence,
+): readonly CanonicalViolationDetection[] => {
+  const detections: CanonicalViolationDetection[] = [];
   for (const [
     position,
     forced,
@@ -58,12 +58,12 @@ export const detectFieldPreimageLengthCompleteReplayV1 = (
       continue;
     }
     const fieldIndex = Number(reason.FieldPreimageLengthMismatch.field_index);
-    const adjudicated = adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(forced.fullTransactionCbor),
+    const adjudicated = adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
       "TxIsInvalid",
     );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-      encodeMidgardNativeTxCanonicalV1(adjudicated),
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      encodeMidgardNativeTxCanonical(adjudicated),
     );
     if (
       material.transactionId.toString("hex") !== forced.value.tx_id ||
@@ -82,13 +82,13 @@ export const detectFieldPreimageLengthCompleteReplayV1 = (
         "fieldPreimageLengthMismatch forced coordinate is absent",
       );
     }
-    const declaredLength = decodeMidgardNativeTxProofFieldLengthsV1(
+    const declaredLength = decodeMidgardNativeTxProofFieldLengths(
       Buffer.from(forced.value.source.field_preimage_lengths_cbor, "hex"),
     )[fieldIndex]!;
     // A truthful forced rejection is healthy for this family. Only equality
     // contradicts the operator's exact mismatch reason.
     if (declaredLength !== preimage.length) continue;
-    prepareFieldPreimageLengthWorkflowV1({
+    prepareFieldPreimageLengthWorkflow({
       headerHash: block.headerHash,
       transactionId: forced.value.tx_id,
       direction: "wrongfulRejection",
@@ -98,37 +98,37 @@ export const detectFieldPreimageLengthCompleteReplayV1 = (
       forcedRejectionReason: reason,
     });
     detections.push({
-      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1}:${position.toString()}:${forced.value.tx_id}:${fieldIndex.toString()}:wrongfulRejection`,
+      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${position.toString()}:${forced.value.tx_id}:${fieldIndex.toString()}:wrongfulRejection`,
       headerHash: block.headerHash,
-      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1,
+      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
       position: BigInt(position),
     });
   }
   return Object.freeze(detections);
 };
 
-export type AuthenticatedFieldPreimageLengthProductionEvidenceV1 = Readonly<{
-  prepared: PreparedFieldPreimageLengthWorkflowV1;
+export type AuthenticatedFieldPreimageLengthEvidence = Readonly<{
+  prepared: PreparedFieldPreimageLengthWorkflow;
   fieldMaterial: Readonly<{
     nativeTxCompactCbor: string;
     witnessSetCompactCbor: string;
     itemCbors: readonly string[];
   }>;
   stageEvidence: Omit<
-    FieldPreimageLengthProductionStageV1,
+    FieldPreimageLengthStage,
     "fraudulentBlockOutRef" | "threadOutRef" | "cancelStepIndex"
   >;
 }>;
 
-export type RoutedFieldPreimageLengthProductionEvidenceV1 =
-  AuthenticatedFieldPreimageLengthProductionEvidenceV1 &
+export type RoutedFieldPreimageLengthEvidence =
+  AuthenticatedFieldPreimageLengthEvidence &
     Readonly<{
       position: bigint;
       payloadEnvelopeSha256: string;
       payloadSha256: string;
     }>;
 
-const inlineCarriage = (preimage: Uint8Array): SDK.FieldCarriageV1 => ({
+const inlineCarriage = (preimage: Uint8Array): SDK.FieldCarriage => ({
   Inline: { preimage: Buffer.from(preimage).toString("hex") },
 });
 
@@ -149,33 +149,33 @@ const canonicalData = <T>(
   return decoded;
 };
 
-const exactAcceptedRawFindingV1 = async ({
+const exactAcceptedRawFinding = async ({
   observation,
   payloadEnvelopeCbor,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-}): Promise<RoutedFieldPreimageLengthProductionEvidenceV1> => {
+}): Promise<RoutedFieldPreimageLengthEvidence> => {
   const payloadCbor = Buffer.from(
     (
-      await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      await unwrapDaPayload(payloadEnvelopeCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
       })
     ).innerBytes,
   );
-  const payload = SDK.decodeDaPayloadV1(payloadCbor);
-  if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor)) {
+  const payload = SDK.decodeDaPayload(payloadCbor);
+  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
     throw new Error("fieldPreimageLengthMismatch DA payload is not canonical");
   }
   const body = payload.block_body;
   const embeddedHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(body.header),
+    SDK.hashBlockHeader(body.header),
   );
   if (
     embeddedHash !== body.header_hash ||
     embeddedHash !== observation.headerHash ||
-    Data.to(body.header as never, SDK.HeaderV1 as never) !==
-      Data.to(observation.header as never, SDK.HeaderV1 as never)
+    Data.to(body.header as never, SDK.Header as never) !==
+      Data.to(observation.header as never, SDK.Header as never)
   ) {
     throw new Error(
       "fieldPreimageLengthMismatch retained DA changed the authenticated L1 header",
@@ -199,9 +199,9 @@ const exactAcceptedRawFindingV1 = async ({
     readonly canonicalTransactionCbor: Buffer;
   }[] = [];
   for (const [index, [key, valueCbor]] of body.transactions.entries()) {
-    const source = canonicalData<SDK.L2TransactionSourceV1>(
+    const source = canonicalData<SDK.L2TransactionSource>(
       valueCbor,
-      SDK.L2TransactionSourceV1Schema,
+      SDK.L2TransactionSourceSchema,
       `fieldPreimageLengthMismatch transactions[${index.toString()}]`,
     );
     const canonicalTransactionCbor = preimages.get(key);
@@ -210,7 +210,7 @@ const exactAcceptedRawFindingV1 = async ({
         `fieldPreimageLengthMismatch transaction_preimages omitted ${key}`,
       );
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       canonicalTransactionCbor,
     );
     if (
@@ -225,10 +225,10 @@ const exactAcceptedRawFindingV1 = async ({
         `fieldPreimageLengthMismatch transactions[${index.toString()}] differs outside its field-length vector`,
       );
     }
-    const declared = decodeMidgardNativeTxProofFieldLengthsV1(
+    const declared = decodeMidgardNativeTxProofFieldLengths(
       Buffer.from(source.source.field_preimage_lengths_cbor, "hex"),
     );
-    const canonical = decodeMidgardNativeTxProofFieldLengthsV1(
+    const canonical = decodeMidgardNativeTxProofFieldLengths(
       material.proofSource.fieldPreimageLengthsCbor,
     );
     for (let fieldIndex = 0; fieldIndex < canonical.length; fieldIndex += 1) {
@@ -253,7 +253,7 @@ const exactAcceptedRawFindingV1 = async ({
     );
   }
   const finding = findings[0]!;
-  const direct = await prepareAcceptedFieldPreimageLengthMismatchV1({
+  const direct = await prepareAcceptedFieldPreimageLengthMismatch({
     headerHash: observation.headerHash,
     committedTransactionsRoot: observation.header.transactionsRoot,
     l2TransactionCount: observation.header.l2TransactionCount,
@@ -263,7 +263,7 @@ const exactAcceptedRawFindingV1 = async ({
     fieldIndex: finding.fieldIndex,
     deferNonInlineClaim: true,
   });
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     finding.canonicalTransactionCbor,
   );
   const fieldPreimage = material.fieldPreimages[finding.fieldIndex]!;
@@ -278,7 +278,7 @@ const exactAcceptedRawFindingV1 = async ({
       witnessSetCompactCbor:
         material.proofSource.witnessSetCompactCbor.toString("hex"),
       itemCbors: Object.freeze(
-        decodeMidgardFieldPreimageV1(fieldPreimage).map((item) =>
+        decodeMidgardFieldPreimage(fieldPreimage).map((item) =>
           item.toString("hex"),
         ),
       ),
@@ -290,12 +290,10 @@ const exactAcceptedRawFindingV1 = async ({
   });
 };
 
-const exactForcedFindingV1 = async (
-  block: Awaited<
-    ReturnType<typeof canonicalBlockEvidenceFromVerifiedPayloadV1>
-  >,
-): Promise<AuthenticatedFieldPreimageLengthProductionEvidenceV1> => {
-  const findings: AuthenticatedFieldPreimageLengthProductionEvidenceV1[] = [];
+const exactForcedFinding = async (
+  block: Awaited<ReturnType<typeof canonicalBlockEvidenceFromVerifiedPayload>>,
+): Promise<AuthenticatedFieldPreimageLengthEvidence> => {
+  const findings: AuthenticatedFieldPreimageLengthEvidence[] = [];
   for (const forced of block.reconstruction.forcedTransactions) {
     if (forced.value.verdict === "ForcedTxValid") continue;
     const reason = forced.value.verdict.ForcedTxInvalid.reason;
@@ -306,12 +304,12 @@ const exactForcedFindingV1 = async (
       continue;
     }
     const fieldIndex = Number(reason.FieldPreimageLengthMismatch.field_index);
-    const adjudicated = adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(forced.fullTransactionCbor),
+    const adjudicated = adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
       "TxIsInvalid",
     );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-      encodeMidgardNativeTxCanonicalV1(adjudicated),
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      encodeMidgardNativeTxCanonical(adjudicated),
     );
     if (
       material.transactionId.toString("hex") !== forced.value.tx_id ||
@@ -330,7 +328,7 @@ const exactForcedFindingV1 = async (
         "fieldPreimageLengthMismatch forced coordinate is absent",
       );
     }
-    const basePrepared = prepareFieldPreimageLengthWorkflowV1({
+    const basePrepared = prepareFieldPreimageLengthWorkflow({
       headerHash: block.headerHash,
       transactionId: forced.value.tx_id,
       direction: "wrongfulRejection",
@@ -342,7 +340,7 @@ const exactForcedFindingV1 = async (
       fieldPreimage: preimage,
       forcedRejectionReason: reason,
     });
-    const prepared: PreparedFieldPreimageLengthWorkflowV1 = Object.freeze({
+    const prepared: PreparedFieldPreimageLengthWorkflow = Object.freeze({
       ...basePrepared,
       evidenceDigest: createHash("sha256")
         .update(basePrepared.evidenceDigest, "hex")
@@ -351,7 +349,7 @@ const exactForcedFindingV1 = async (
           "hex",
         )
         .update(
-          Data.to(reason as never, SDK.RejectionReasonV1Schema as never),
+          Data.to(reason as never, SDK.RejectionReasonSchema as never),
           "hex",
         )
         .digest("hex"),
@@ -371,7 +369,7 @@ const exactForcedFindingV1 = async (
           witnessSetCompactCbor:
             material.proofSource.witnessSetCompactCbor.toString("hex"),
           itemCbors: Object.freeze(
-            decodeMidgardFieldPreimageV1(preimage).map((item) =>
+            decodeMidgardFieldPreimage(preimage).map((item) =>
               item.toString("hex"),
             ),
           ),
@@ -382,7 +380,7 @@ const exactForcedFindingV1 = async (
           forcedMembership: membership,
           ...(prepared.carriage === "Inline"
             ? {
-                forcedClaim: fieldPreimageLengthCommittedClaimV1({
+                forcedClaim: fieldPreimageLengthCommittedClaim({
                   fieldIndex,
                   witnessSetCompactCbor:
                     material.proofSource.witnessSetCompactCbor,
@@ -407,8 +405,8 @@ const exactForcedFindingV1 = async (
  * reconstructor reported the narrowly typed field-length source mismatch.
  * The caller must have authenticated the observation and DA provenance first.
  */
-export const fieldPreimageLengthProductionEvidenceFromVerifiedPayloadV1 =
-  exactAcceptedRawFindingV1;
+export const fieldPreimageLengthEvidenceFromVerifiedPayload =
+  exactAcceptedRawFinding;
 
 /**
  * Package-owned production classifier. It first admits the full canonical
@@ -416,43 +414,42 @@ export const fieldPreimageLengthProductionEvidenceFromVerifiedPayloadV1 =
  * to the raw transactions-root branch; every other reconstruction failure is
  * preserved as a rejection.
  */
-export const detectAuthenticatedFieldPreimageLengthProductionEvidenceV1 =
-  async ({
+export const detectAuthenticatedFieldPreimageLengthEvidence = async ({
+  observation,
+  sources,
+}: {
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly sources: readonly RetainedDaPayloadSource[];
+}): Promise<AuthenticatedFieldPreimageLengthEvidence> => {
+  const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({
     observation,
+  });
+  const fetched = await fetchRetainedDaPayloadByHeaderHash({
+    headerHash: admitted.headerHash,
     sources,
-  }: {
-    readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
-    readonly sources: readonly RetainedDaPayloadSource[];
-  }): Promise<AuthenticatedFieldPreimageLengthProductionEvidenceV1> => {
-    const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
-      observation,
-    });
-    const fetched = await fetchRetainedDaPayloadByHeaderHash({
-      headerHash: admitted.headerHash,
-      sources,
-    });
-    const provenance = SDK.assertSecurityGradeEvidenceV1(
-      SDK.admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
-    );
-    try {
-      return await exactForcedFindingV1(
-        await canonicalBlockEvidenceFromVerifiedPayloadV1({
-          observation: admitted,
-          payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-          daProvenance: provenance,
-        }),
-      );
-    } catch (cause) {
-      if (
-        !(cause instanceof Error) ||
-        cause.name !== "TransitionTraceChallengerError" ||
-        !cause.message.startsWith("Failed to authenticate transactions[")
-      ) {
-        throw cause;
-      }
-      return await exactAcceptedRawFindingV1({
+  });
+  const provenance = SDK.assertSecurityGradeEvidence(
+    SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
+  );
+  try {
+    return await exactForcedFinding(
+      await canonicalBlockEvidenceFromVerifiedPayload({
         observation: admitted,
         payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-      });
+        daProvenance: provenance,
+      }),
+    );
+  } catch (cause) {
+    if (
+      !(cause instanceof Error) ||
+      cause.name !== "TransitionTraceChallengerError" ||
+      !cause.message.startsWith("Failed to authenticate transactions[")
+    ) {
+      throw cause;
     }
-  };
+    return await exactAcceptedRawFinding({
+      observation: admitted,
+      payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+    });
+  }
+};

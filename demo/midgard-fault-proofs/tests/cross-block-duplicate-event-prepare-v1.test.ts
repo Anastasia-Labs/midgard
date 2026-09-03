@@ -3,10 +3,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  type AuthenticatedSettlementEvidenceV1,
-  prepareCrossBlockDuplicateEventV1,
+  type AuthenticatedSettlementEvidence,
+  prepareCrossBlockDuplicateEvent,
 } from "../src/cross-block-duplicate-event/index.js";
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
   buildCountedRoot,
   type CountedRoot,
@@ -38,7 +38,7 @@ const WITHDRAWAL_VALUE: SDK.WithdrawalInfo = {
   signature: ["76".repeat(32), "77".repeat(64)],
   validity: "WithdrawalIsValid",
 };
-const FORCED_TRANSACTION_VALUE: SDK.ForcedInclusionTxV1 = {
+const FORCED_TRANSACTION_VALUE: SDK.ForcedInclusionTx = {
   tx_id: "78".repeat(32),
   source: {
     compact_cbor: "80",
@@ -48,7 +48,7 @@ const FORCED_TRANSACTION_VALUE: SDK.ForcedInclusionTxV1 = {
   verdict: "ForcedTxValid",
 };
 
-const L1_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const L1_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-cardano-node",
   grade: "security",
@@ -66,7 +66,7 @@ const evidence = async (
   kind: "deposit" | "withdrawal" | "forced-transaction",
   headerHash: string,
 ): Promise<{
-  readonly block: CanonicalBlockEvidenceV1;
+  readonly block: CanonicalBlockEvidence;
   readonly root: string;
 }> => {
   const keyBytes = Buffer.from(Data.to(EVENT_KEY, SDK.OutputReference), "hex");
@@ -81,7 +81,7 @@ const evidence = async (
       ? SDK.DepositInfo
       : kind === "withdrawal"
         ? SDK.WithdrawalInfo
-        : SDK.ForcedInclusionTxV1;
+        : SDK.ForcedInclusionTx;
   const valueBytes = Buffer.from(
     Data.to(value as never, valueSchema as never),
     "hex",
@@ -129,7 +129,7 @@ const evidence = async (
             : emptyRoot(SDK.ROOT_DOMAINS.forcedTransactionsV1),
       },
     },
-  } as unknown as CanonicalBlockEvidenceV1;
+  } as unknown as CanonicalBlockEvidence;
   return { block, root: counted.root };
 };
 
@@ -141,9 +141,9 @@ const settlementEvidence = ({
   readonly headerHash: string;
   readonly root: string;
   readonly kind: "deposit" | "withdrawal" | "forced-transaction";
-}): AuthenticatedSettlementEvidenceV1 => ({
+}): AuthenticatedSettlementEvidence => ({
   observation: {
-    schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+    schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
     sourceMode: "local_node",
     provenance: L1_PROVENANCE,
     chainPoint: { slot: 1n, blockHash: "81".repeat(32) },
@@ -168,7 +168,7 @@ describe.each(["deposit", "withdrawal", "forced-transaction"] as const)(
     it("builds two canonical counted-root openings", async () => {
       const challenged = await evidence(kind, "83".repeat(28));
       const settled = await evidence(kind, "84".repeat(28));
-      const prepared = await prepareCrossBlockDuplicateEventV1({
+      const prepared = await prepareCrossBlockDuplicateEvent({
         challenged: challenged.block,
         settled: settled.block,
         settlement: settlementEvidence({
@@ -203,26 +203,26 @@ describe("cross-block duplicate settlement admission", () => {
       eventKey: EVENT_KEY,
     };
     await expect(
-      prepareCrossBlockDuplicateEventV1({
+      prepareCrossBlockDuplicateEvent({
         ...base,
         settled: challenged.block,
         settlement: { ...authentic, assetName: challenged.block.headerHash },
       }),
     ).rejects.toThrow(/same header/u);
     await expect(
-      prepareCrossBlockDuplicateEventV1({
+      prepareCrossBlockDuplicateEvent({
         ...base,
         settlement: { ...authentic, live: false },
       }),
     ).rejects.toThrow(/no longer live/u);
     await expect(
-      prepareCrossBlockDuplicateEventV1({
+      prepareCrossBlockDuplicateEvent({
         ...base,
         settlement: { ...authentic, assetName: "87".repeat(28) },
       }),
     ).rejects.toThrow(/does not bind/u);
     await expect(
-      prepareCrossBlockDuplicateEventV1({
+      prepareCrossBlockDuplicateEvent({
         ...base,
         settlement: {
           ...authentic,

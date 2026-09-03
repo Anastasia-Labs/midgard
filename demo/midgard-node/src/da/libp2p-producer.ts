@@ -4,32 +4,32 @@ import { readFile } from "node:fs/promises";
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
-  type DaCapabilitiesResponseV1,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+  type DaCapabilitiesResponse,
   daDeploymentFingerprintFromHex,
   DaGossipTopic,
   daGossipTopic,
   type DaLibp2pRuntimeManifest,
-  type DaMetadataByHeaderResponseV1,
-  type DaPayloadByHeaderResponseV1,
-  type DaPayloadChunkManifestV1,
-  type DaPayloadSubmitResponseV1,
+  type DaMetadataByHeaderResponse,
+  type DaPayloadByHeaderResponse,
+  type DaPayloadChunkManifest,
+  type DaPayloadSubmitResponse,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
   DaTransportSigningDomain,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderRequestV1Cbor,
-  decodeDaPayloadChunkRequestV1Cbor,
-  decodeDaPayloadSubmitResponseV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaPayloadAnnouncementV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaPayloadChunkResponseV1Cbor,
-  encodeDaPayloadSubmitRequestV1Cbor,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaPayloadChunkRequestCbor,
+  decodeDaPayloadSubmitResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadAnnouncementCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaPayloadChunkResponseCbor,
+  encodeDaPayloadSubmitRequestCbor,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
@@ -121,7 +121,7 @@ export type DaProducerPeerResult = {
   readonly peerId: string;
   readonly signerIndex: number;
   readonly protocolId: string;
-  readonly status: DaPayloadSubmitResponseV1["status"] | "transport_error";
+  readonly status: DaPayloadSubmitResponse["status"] | "transport_error";
   readonly payloadHash: string;
   readonly error?: string;
 };
@@ -172,7 +172,7 @@ export type DaLibp2pPreflightPeerResult = {
   readonly address: readonly string[];
   readonly protocolId: string;
   readonly status: DaLibp2pPreflightPeerStatus;
-  readonly metadataStatus?: DaMetadataByHeaderResponseV1["status"];
+  readonly metadataStatus?: DaMetadataByHeaderResponse["status"];
   readonly error?: string;
 };
 
@@ -233,7 +233,7 @@ export type DaEnvelopeCapabilityPeerResult = {
   readonly peerId: string;
   readonly signerIndex: number;
   readonly capable: boolean;
-  readonly capabilities?: DaCapabilitiesResponseV1;
+  readonly capabilities?: DaCapabilitiesResponse;
   readonly error?: string;
 };
 
@@ -383,12 +383,12 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
   addHandler(DaRequestResponseProtocol.payloadByHeader, async (requestCbor) => {
     const request = decodeRetainedPayloadRequest(
-      () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadByHeaderRequestCbor(requestCbor),
       "payload-by-header request",
     );
     const headerHash = request.headerHash;
     if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash: null,
@@ -400,7 +400,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
     const resolved = await resolveRow(headerHash);
     if (resolved.kind !== "found") {
-      return encodeDaPayloadByHeaderResponseV1Cbor(
+      return encodeDaPayloadByHeaderResponseCbor(
         retainedPayloadAbsentResponse(headerHash, resolved),
       );
     }
@@ -408,7 +408,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       request.acceptedPayloadHashes !== null &&
       !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
     ) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "conflict",
         headerHash,
         payloadHash: resolved.payloadHash,
@@ -423,7 +423,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       manifest.maxInlineResponseBytes,
     );
     if (resolved.payloadBytes.length <= inlineLimit) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "found_inline",
         headerHash,
         payloadHash: resolved.payloadHash,
@@ -433,7 +433,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       });
     }
 
-    return encodeDaPayloadByHeaderResponseV1Cbor({
+    return encodeDaPayloadByHeaderResponseCbor({
       status: "found_chunked",
       headerHash,
       payloadHash: resolved.payloadHash,
@@ -448,13 +448,13 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
   addHandler(DaRequestResponseProtocol.payloadChunk, async (requestCbor) => {
     const request = decodeRetainedPayloadRequest(
-      () => decodeDaPayloadChunkRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadChunkRequestCbor(requestCbor),
       "payload-chunk request",
     );
     const headerHash = request.headerHash;
     const payloadHash = request.payloadHash;
     if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-      return encodeDaPayloadChunkResponseV1Cbor({
+      return encodeDaPayloadChunkResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash,
@@ -488,7 +488,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
       offset,
       Math.min(offset + manifest.maxChunkBytes, resolved.payloadBytes.length),
     );
-    return encodeDaPayloadChunkResponseV1Cbor({
+    return encodeDaPayloadChunkResponseCbor({
       status: "found",
       headerHash,
       payloadHash,
@@ -502,12 +502,12 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
     DaRequestResponseProtocol.metadataByHeader,
     async (requestCbor) => {
       const request = decodeRetainedPayloadRequest(
-        () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+        () => decodeDaPayloadByHeaderRequestCbor(requestCbor),
         "metadata-by-header request",
       );
       const headerHash = request.headerHash;
       if (!request.deploymentFingerprint.equals(deploymentFingerprint)) {
-        return encodeDaMetadataByHeaderResponseV1Cbor({
+        return encodeDaMetadataByHeaderResponseCbor({
           ...emptyRetainedPayloadMetadataResponse(headerHash),
           status: "rejected",
         });
@@ -515,7 +515,7 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
 
       const resolved = await resolveRow(headerHash);
       if (resolved.kind !== "found") {
-        return encodeDaMetadataByHeaderResponseV1Cbor(
+        return encodeDaMetadataByHeaderResponseCbor(
           retainedPayloadMetadataAbsentResponse(headerHash, resolved),
         );
       }
@@ -523,14 +523,14 @@ export const createDaLibp2pRetainedPayloadRequestHandlers = ({
         request.acceptedPayloadHashes !== null &&
         !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
       ) {
-        return encodeDaMetadataByHeaderResponseV1Cbor({
+        return encodeDaMetadataByHeaderResponseCbor({
           ...emptyRetainedPayloadMetadataResponse(headerHash),
           status: "conflict",
           payloadHash: resolved.payloadHash,
         });
       }
 
-      return encodeDaMetadataByHeaderResponseV1Cbor(
+      return encodeDaMetadataByHeaderResponseCbor(
         metadataForRetainedPayload(headerHash, resolved),
       );
     },
@@ -612,7 +612,7 @@ export const publishDaPayloadAnnouncement = async ({
       payloadAnnouncementSigningPreimage(announcementWithoutSignature),
     ),
   );
-  const announcementBytes = encodeDaPayloadAnnouncementV1Cbor({
+  const announcementBytes = encodeDaPayloadAnnouncementCbor({
     ...announcementWithoutSignature,
     signature,
   });
@@ -662,7 +662,7 @@ export const publishDaPayloadInsert = async ({
     manifest.deploymentFingerprint,
     DaRequestResponseProtocol.payloadSubmit,
   );
-  const request = encodeDaPayloadSubmitRequestV1Cbor({
+  const request = encodeDaPayloadSubmitRequestCbor({
     deploymentFingerprint,
     headerHash,
     payloadHash,
@@ -1077,7 +1077,7 @@ export const reconcileDaPayloadPeerFromEnv = (
           manifest.deploymentFingerprint,
           DaRequestResponseProtocol.payloadSubmit,
         );
-        const request = encodeDaPayloadSubmitRequestV1Cbor({
+        const request = encodeDaPayloadSubmitRequestCbor({
           deploymentFingerprint: daDeploymentFingerprintFromHex(
             manifest.deploymentFingerprint,
           ),
@@ -1196,7 +1196,7 @@ export const runDaLibp2pPreflightFromEnv = async (
 const capabilityMismatch = (
   manifest: DaProducerPublicationManifest,
   mode: DaEnvelopeCapabilityMode,
-  response: DaCapabilitiesResponseV1,
+  response: DaCapabilitiesResponse,
 ): string | undefined => {
   if (
     !response.deploymentFingerprint.equals(
@@ -1252,7 +1252,7 @@ export const probeDaEnvelopeCapabilities = async ({
     manifest.deploymentFingerprint,
     DaRequestResponseProtocol.capabilities,
   );
-  const request = encodeDaCapabilitiesRequestV1Cbor({
+  const request = encodeDaCapabilitiesRequestCbor({
     deploymentFingerprint: daDeploymentFingerprintFromHex(
       manifest.deploymentFingerprint,
     ),
@@ -1260,7 +1260,7 @@ export const probeDaEnvelopeCapabilities = async ({
   return Promise.all(
     manifest.committeePeers.map(async (peer) => {
       try {
-        const capabilities = decodeDaCapabilitiesResponseV1Cbor(
+        const capabilities = decodeDaCapabilitiesResponseCbor(
           await transport.request(
             peer,
             protocolId,
@@ -1348,7 +1348,7 @@ export const runDaLibp2pPreflight = async ({
     manifest.deploymentFingerprint,
     DaRequestResponseProtocol.metadataByHeader,
   );
-  const request = encodeDaPayloadByHeaderRequestV1Cbor({
+  const request = encodeDaPayloadByHeaderRequestCbor({
     deploymentFingerprint: daDeploymentFingerprintFromHex(
       manifest.deploymentFingerprint,
     ),
@@ -1856,7 +1856,7 @@ const submitPayloadToPeer = async ({
             maxChunkBytes,
           )
         : await transport.request(peer, protocolId, request, timeoutMs);
-    const response = decodeDaPayloadSubmitResponseV1Cbor(responseBytes);
+    const response = decodeDaPayloadSubmitResponseCbor(responseBytes);
     if (!response.headerHash.equals(headerHash)) {
       throw new Error("payload-submit response header_hash mismatch");
     }
@@ -1903,7 +1903,7 @@ const preflightCommitteePeer = async ({
       request,
       timeoutMs,
     );
-    const response = decodeDaMetadataByHeaderResponseV1Cbor(responseBytes);
+    const response = decodeDaMetadataByHeaderResponseCbor(responseBytes);
     if (response.status === "not_found" || response.status === "found") {
       return {
         peerId: peer.peerId,
@@ -1974,7 +1974,7 @@ const resolveRetainedPayloadRow = (
 const retainedPayloadAbsentResponse = (
   headerHash: Buffer,
   resolution: Exclude<RetainedPayloadResolution, { readonly kind: "found" }>,
-): DaPayloadByHeaderResponseV1 => {
+): DaPayloadByHeaderResponse => {
   switch (resolution.kind) {
     case "missing":
       return {
@@ -1999,7 +1999,7 @@ const retainedPayloadAbsentResponse = (
 
 const emptyRetainedPayloadMetadataResponse = (
   headerHash: Buffer,
-): Omit<DaMetadataByHeaderResponseV1, "status"> => ({
+): Omit<DaMetadataByHeaderResponse, "status"> => ({
   headerHash,
   payloadHash: null,
   payloadSchemaVersion: null,
@@ -2015,7 +2015,7 @@ const emptyRetainedPayloadMetadataResponse = (
 const retainedPayloadMetadataAbsentResponse = (
   headerHash: Buffer,
   resolution: Exclude<RetainedPayloadResolution, { readonly kind: "found" }>,
-): DaMetadataByHeaderResponseV1 => {
+): DaMetadataByHeaderResponse => {
   switch (resolution.kind) {
     case "missing":
       return {
@@ -2033,7 +2033,7 @@ const retainedPayloadMetadataAbsentResponse = (
 const metadataForRetainedPayload = (
   headerHash: Buffer,
   resolved: Extract<RetainedPayloadResolution, { readonly kind: "found" }>,
-): DaMetadataByHeaderResponseV1 => ({
+): DaMetadataByHeaderResponse => ({
   status: "found",
   headerHash,
   payloadHash: resolved.payloadHash,
@@ -2059,7 +2059,7 @@ const rootHexToBytes = (value: string, fieldName: string): Buffer =>
 const retainedPayloadChunkManifestFor = (
   payloadBytes: Buffer,
   chunkSize: number,
-): DaPayloadChunkManifestV1 => {
+): DaPayloadChunkManifest => {
   const chunkHashes: Buffer[] = [];
   for (let offset = 0; offset < payloadBytes.length; offset += chunkSize) {
     chunkHashes.push(
@@ -2079,7 +2079,7 @@ const encodeRetainedPayloadChunkNotFound = (
   payloadHash: Buffer,
   chunkIndex: number,
 ): Buffer =>
-  encodeDaPayloadChunkResponseV1Cbor({
+  encodeDaPayloadChunkResponseCbor({
     status: "not_found",
     headerHash,
     payloadHash,
@@ -2114,8 +2114,8 @@ const payloadAnnouncementSigningPreimage = (message: {
   Buffer.concat([
     Buffer.from(DaTransportSigningDomain.payloadAnnouncement, "utf8"),
     Buffer.from([0]),
-    Buffer.from([DA_TRANSPORT_V1_PROTOCOL_VERSION]),
-    encodeDaPayloadAnnouncementV1Cbor({
+    Buffer.from([DA_TRANSPORT_PROTOCOL_VERSION]),
+    encodeDaPayloadAnnouncementCbor({
       ...message,
       signature: Buffer.alloc(0),
     }),
@@ -2414,7 +2414,7 @@ export const encodeLengthPrefixedDaFrameForTest = encodeFrame;
 export const writeSharedDaFrameChunksForTest = writeSharedFrameChunks;
 export const decodeLengthPrefixedDaFrameForTest = (
   frame: Buffer,
-  maxBytes = DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+  maxBytes = DA_TRANSPORT_LIMITS.maxPayloadBytes,
 ): Buffer => {
   if (frame.length < 4) {
     throw new Error("frame is truncated");

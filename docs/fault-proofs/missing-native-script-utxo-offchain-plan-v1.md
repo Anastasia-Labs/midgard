@@ -23,7 +23,7 @@ cannot convict.
 - off-chain family:
   `demo/midgard-fault-proofs/src/missing-native-script-utxo/`
 - production runner factory:
-  `createMissingNativeScriptUtxoProductionWorkflowRunnerV1`
+  `createMissingNativeScriptUtxoWorkflowRunner`
 - Aiken tests: `staged-v1.test.ak`
 - retained-history/evidence tests:
   `demo/midgard-fault-proofs/tests/native-script-family-evidence-v1.test.ts`

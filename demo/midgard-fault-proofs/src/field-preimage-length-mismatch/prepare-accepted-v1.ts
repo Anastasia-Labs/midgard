@@ -10,15 +10,15 @@
  * disputed value.
  */
 import {
-  decodeMidgardNativeTxWitnessSetCompactV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  decodeMidgardNativeTxWitnessSetCompact,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import {
-  type CommittedFieldClaimV1,
-  type FieldCarriageV1,
-  isMidgardWitnessSetFieldV1,
-  type L2TransactionSourceV1,
-  L2TransactionSourceV1Schema,
+  type CommittedFieldClaim,
+  type FieldCarriage,
+  isMidgardWitnessSetField,
+  type L2TransactionSource,
+  L2TransactionSourceSchema,
   Proof,
   type Proof as SDKProof,
 } from "@al-ft/midgard-sdk";
@@ -27,17 +27,17 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatchV1,
+  requireTransactionsRootMatch,
 } from "../prepare-double-spend.js";
 import { nativeTxFromCoreCompact } from "../submit-step-01.js";
 import {
-  type PreparedFieldPreimageLengthWorkflowV1,
-  prepareFieldPreimageLengthWorkflowV1,
+  type PreparedFieldPreimageLengthWorkflow,
+  prepareFieldPreimageLengthWorkflow,
 } from "./workflow-v1.js";
 
-export type PreparedAcceptedFieldPreimageLengthMismatchV1 = Readonly<{
-  prepared: PreparedFieldPreimageLengthWorkflowV1;
-  claim: CommittedFieldClaimV1;
+export type PreparedAcceptedFieldPreimageLengthMismatch = Readonly<{
+  prepared: PreparedFieldPreimageLengthWorkflow;
+  claim: CommittedFieldClaim;
   inclusion: Readonly<{
     nativeTxId: string;
     nativeTx: ReturnType<typeof nativeTxFromCoreCompact>;
@@ -49,25 +49,23 @@ export type PreparedAcceptedFieldPreimageLengthMismatchV1 = Readonly<{
   }>;
 }>;
 
-export type PreparedAcceptedFieldPreimageLengthMismatchDeferredV1 = Readonly<{
-  prepared: PreparedFieldPreimageLengthWorkflowV1;
+export type PreparedAcceptedFieldPreimageLengthMismatchDeferred = Readonly<{
+  prepared: PreparedFieldPreimageLengthWorkflow;
   claim: null;
-  inclusion: PreparedAcceptedFieldPreimageLengthMismatchV1["inclusion"];
+  inclusion: PreparedAcceptedFieldPreimageLengthMismatch["inclusion"];
 }>;
 
-export const fieldPreimageLengthCommittedClaimV1 = ({
+export const fieldPreimageLengthCommittedClaim = ({
   fieldIndex,
   witnessSetCompactCbor,
   carriage,
 }: {
   readonly fieldIndex: number;
   readonly witnessSetCompactCbor: Uint8Array;
-  readonly carriage: FieldCarriageV1;
-}): CommittedFieldClaimV1 => {
-  const witness = decodeMidgardNativeTxWitnessSetCompactV1(
-    witnessSetCompactCbor,
-  );
-  return isMidgardWitnessSetFieldV1(fieldIndex)
+  readonly carriage: FieldCarriage;
+}): CommittedFieldClaim => {
+  const witness = decodeMidgardNativeTxWitnessSetCompact(witnessSetCompactCbor);
+  return isMidgardWitnessSetField(fieldIndex)
     ? {
         WitnessFieldClaim: {
           field_index: BigInt(fieldIndex),
@@ -95,7 +93,7 @@ const exactHex = (value: string, label: string): string => {
  * exact raw retained-DA transaction leaves; `canonicalTransactionCbor` is the
  * matching retained transaction preimage, not a reconstructed-block verdict.
  */
-type AcceptedInputV1 = {
+type AcceptedInput = {
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;
   readonly l2TransactionCount: bigint;
@@ -103,17 +101,17 @@ type AcceptedInputV1 = {
   readonly transactionId: string;
   readonly canonicalTransactionCbor: Uint8Array;
   readonly fieldIndex: number;
-  readonly carriage?: FieldCarriageV1;
+  readonly carriage?: FieldCarriage;
   readonly deferNonInlineClaim?: boolean;
 };
 
-export function prepareAcceptedFieldPreimageLengthMismatchV1(
-  input: AcceptedInputV1 & { readonly deferNonInlineClaim: true },
-): Promise<PreparedAcceptedFieldPreimageLengthMismatchDeferredV1>;
-export function prepareAcceptedFieldPreimageLengthMismatchV1(
-  input: AcceptedInputV1 & { readonly deferNonInlineClaim?: false },
-): Promise<PreparedAcceptedFieldPreimageLengthMismatchV1>;
-export async function prepareAcceptedFieldPreimageLengthMismatchV1({
+export function prepareAcceptedFieldPreimageLengthMismatch(
+  input: AcceptedInput & { readonly deferNonInlineClaim: true },
+): Promise<PreparedAcceptedFieldPreimageLengthMismatchDeferred>;
+export function prepareAcceptedFieldPreimageLengthMismatch(
+  input: AcceptedInput & { readonly deferNonInlineClaim?: false },
+): Promise<PreparedAcceptedFieldPreimageLengthMismatch>;
+export async function prepareAcceptedFieldPreimageLengthMismatch({
   headerHash,
   committedTransactionsRoot,
   l2TransactionCount,
@@ -123,9 +121,9 @@ export async function prepareAcceptedFieldPreimageLengthMismatchV1({
   fieldIndex,
   carriage: suppliedCarriage,
   deferNonInlineClaim = false,
-}: AcceptedInputV1): Promise<
-  | PreparedAcceptedFieldPreimageLengthMismatchV1
-  | PreparedAcceptedFieldPreimageLengthMismatchDeferredV1
+}: AcceptedInput): Promise<
+  | PreparedAcceptedFieldPreimageLengthMismatch
+  | PreparedAcceptedFieldPreimageLengthMismatchDeferred
 > {
   const normalizedId = transactionId.toLowerCase();
   if (!/^[0-9a-f]{64}$/u.test(normalizedId)) {
@@ -152,7 +150,7 @@ export async function prepareAcceptedFieldPreimageLengthMismatchV1({
     ),
   }));
   const trie = await buildTrieView(phasEntries);
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: trie.root,
     expectedTransactionsRoot: committedTransactionsRoot.toLowerCase(),
     count: l2TransactionCount,
@@ -164,24 +162,23 @@ export async function prepareAcceptedFieldPreimageLengthMismatchV1({
     );
   }
   const sourceCbor = exactHex(selected[1], "accepted transaction source");
-  let source: L2TransactionSourceV1;
+  let source: L2TransactionSource;
   try {
     source = Data.from(
       sourceCbor,
-      L2TransactionSourceV1Schema as never,
-    ) as L2TransactionSourceV1;
+      L2TransactionSourceSchema as never,
+    ) as L2TransactionSource;
   } catch (cause) {
     throw new Error(
       `accepted transaction source does not decode: ${String(cause)}`,
     );
   }
   if (
-    Data.to(source as never, L2TransactionSourceV1Schema as never) !==
-    sourceCbor
+    Data.to(source as never, L2TransactionSourceSchema as never) !== sourceCbor
   ) {
     throw new Error("accepted transaction source is not canonical Data");
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     canonicalTransactionCbor,
   );
   if (
@@ -199,7 +196,7 @@ export async function prepareAcceptedFieldPreimageLengthMismatchV1({
   const preimage = material.fieldPreimages[fieldIndex];
   if (preimage === undefined)
     throw new Error("retained field preimage is absent");
-  const prepared = prepareFieldPreimageLengthWorkflowV1({
+  const prepared = prepareFieldPreimageLengthWorkflow({
     headerHash,
     transactionId: normalizedId,
     direction: "wrongfulAcceptance",
@@ -219,7 +216,7 @@ export async function prepareAcceptedFieldPreimageLengthMismatchV1({
       "direct accepted preparer requires a separately published RawUtxo/Certified carriage",
     );
   }
-  const carriage: FieldCarriageV1 | undefined =
+  const carriage: FieldCarriage | undefined =
     suppliedCarriage ??
     (prepared.carriage === "Inline"
       ? { Inline: { preimage: preimage.toString("hex") } }
@@ -232,7 +229,7 @@ export async function prepareAcceptedFieldPreimageLengthMismatchV1({
   const claim =
     carriage === undefined
       ? null
-      : fieldPreimageLengthCommittedClaimV1({
+      : fieldPreimageLengthCommittedClaim({
           fieldIndex,
           witnessSetCompactCbor: material.proofSource.witnessSetCompactCbor,
           carriage,

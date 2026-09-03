@@ -1,38 +1,38 @@
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardMintFieldPreimageV1,
+  computeMidgardNativeTxId,
+  decodeMidgardFieldPreimage,
+  decodeMidgardMintFieldPreimage,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeTxCompactV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxCompact,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_NULL_ROOT,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardHash28ItemV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardHash28Item,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
-  MIDGARD_MAX_OUTPUT_INDEX_V1,
+  MIDGARD_MAX_OUTPUT_INDEX,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxBodyCanonicalV1,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxWitnessSetCanonicalV1,
-  midgardRedeemerPurposeFromTagV1,
+  type MidgardNativeTxBodyCanonical,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxWitnessSetCanonical,
+  midgardRedeemerPurposeFromTag,
   MidgardScriptHashPrefixes,
   MidgardTxCodecError,
   MidgardTxCodecErrorCodes,
   type MidgardTxOutput,
-  sortMidgardMintItemsV1,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
 import {
   readCborArrayHeader,
@@ -104,7 +104,7 @@ export class MidgardLedgerTxDecodeError extends Error {
   }
 }
 
-export type MidgardProjectedRawScriptWitnessV1 = Readonly<{
+export type MidgardProjectedRawScriptWitness = Readonly<{
   index: number;
   languageTag: 0 | 3 | 128;
   scriptBytes: Buffer;
@@ -112,18 +112,18 @@ export type MidgardProjectedRawScriptWitnessV1 = Readonly<{
   hash: MidgardScriptHash;
 }>;
 
-export type MidgardRawEnvelopePhaseAProjectionV1 = Readonly<{
+export type MidgardRawEnvelopePhaseAProjection = Readonly<{
   canonical: ReturnType<
-    typeof deriveMidgardNativeTxFaultEvidenceMaterialV1
+    typeof deriveMidgardNativeTxFaultEvidenceMaterial
   >["canonical"];
   transactionId: Buffer;
-  scriptWitnesses: readonly MidgardProjectedRawScriptWitnessV1[];
+  scriptWitnesses: readonly MidgardProjectedRawScriptWitness[];
   ledgerTx: Omit<
     MidgardLedgerTx,
     "scriptWitnesses" | "nativeScriptHashes" | "plutusScriptHashes"
   > &
     Readonly<{
-      scriptWitnesses: readonly MidgardProjectedRawScriptWitnessV1[];
+      scriptWitnesses: readonly MidgardProjectedRawScriptWitness[];
       nativeScriptHashes: readonly MidgardScriptHash[];
       plutusScriptHashes: readonly MidgardScriptHash[];
     }>;
@@ -207,8 +207,8 @@ const assertBufferArrayEquals = (
 };
 
 const copyNativeTxCompact = (
-  compact: MidgardNativeTxFullV1["compact"],
-): MidgardNativeTxFullV1["compact"] => ({
+  compact: MidgardNativeTxFull["compact"],
+): MidgardNativeTxFull["compact"] => ({
   version: compact.version,
   transactionBody: {
     spendInputsHash: copyBuffer(compact.transactionBody.spendInputsHash),
@@ -237,8 +237,8 @@ const copyNativeTxCompact = (
 });
 
 const copyNativeWitnessSetCompact = (
-  witnessSet: ReturnType<typeof deriveMidgardNativeTxWitnessSetCompactV1>,
-): ReturnType<typeof deriveMidgardNativeTxWitnessSetCompactV1> => ({
+  witnessSet: ReturnType<typeof deriveMidgardNativeTxWitnessSetCompact>,
+): ReturnType<typeof deriveMidgardNativeTxWitnessSetCompact> => ({
   addrTxWitsHash: copyBuffer(witnessSet.addrTxWitsHash),
   scriptTxWitsHash: copyBuffer(witnessSet.scriptTxWitsHash),
   redeemerTxWitsHash: copyBuffer(witnessSet.redeemerTxWitsHash),
@@ -250,7 +250,7 @@ const copyNativeWitnessSetCompact = (
  * `decodeMidgardNativeByteListPreimage`, which is what reads these back.
  */
 const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
-  encodeMidgardFieldPreimageV1(items);
+  encodeMidgardFieldPreimage(items);
 
 /**
  * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, a fixed 38 bytes.
@@ -267,7 +267,7 @@ const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
 export const decodeMidgardOutRefBytes = (
   inputBytes: Uint8Array,
 ): MidgardOutRef => {
-  const decoded = decodeMidgardSpendInputItemV1(inputBytes);
+  const decoded = decodeMidgardSpendInputItem(inputBytes);
   return {
     txId: Buffer.from(decoded.txId) as MidgardTxId,
     index: BigInt(decoded.outputIndex),
@@ -285,13 +285,13 @@ export const decodeMidgardOutRefBytes = (
  * the field-0/1 item encoder. See `docs/spec/midgard-tx.md` §5.3.
  */
 const encodeOutRef = (outRef: MidgardOutRef, fieldName: string): Buffer => {
-  if (outRef.index < 0n || outRef.index > BigInt(MIDGARD_MAX_OUTPUT_INDEX_V1)) {
+  if (outRef.index < 0n || outRef.index > BigInt(MIDGARD_MAX_OUTPUT_INDEX)) {
     failEncode(
       `${fieldName}.index must be 0..65,535 (§5.3 fixed uint16 output index)`,
       `index=${outRef.index.toString()}`,
     );
   }
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: copyBuffer(assertHash32(outRef.txId, `${fieldName}.txId`)),
     outputIndex: Number(outRef.index),
   });
@@ -362,7 +362,7 @@ const decodeHashList = (
   );
 
 /**
- * §5.3 fields 3/4: the item *is* the raw 28-byte hash. `encodeMidgardHash28ItemV1`
+ * §5.3 fields 3/4: the item *is* the raw 28-byte hash. `encodeMidgardHash28Item`
  * is the §5.3 encoder; `assertHash28` stays in front of it only to name the field
  * and index in the diagnostic, which the grammar-level encoder cannot.
  */
@@ -372,7 +372,7 @@ const encodeHashList = (
 ): Buffer =>
   encodeByteList(
     hashes.map((hash, index) =>
-      encodeMidgardHash28ItemV1(assertHash28(hash, `${fieldName}[${index}]`)),
+      encodeMidgardHash28Item(assertHash28(hash, `${fieldName}[${index}]`)),
     ),
   );
 
@@ -488,9 +488,9 @@ const encodeVKeyWitnesses = (
     }
     // §5.3 field 7 is `82 ‖ 58 20 vkey ‖ 58 40 signature`, a Midgard grammar rule
     // — not "whatever CML serializes a Vkeywitness to". They agree today, which is
-    // exactly why the dependency was invisible; `encodeMidgardAddressWitnessItemV1`
+    // exactly why the dependency was invisible; `encodeMidgardAddressWitnessItem`
     // is the encoder that owes the on-chain reader its 101-byte width.
-    return encodeMidgardAddressWitnessItemV1({
+    return encodeMidgardAddressWitnessItem({
       verificationKey: Buffer.from(publicKey.to_raw_bytes()),
       signature: witness.signature,
     });
@@ -577,7 +577,7 @@ const encodeScriptWitnesses = (
 const decodeMint = (preimageCbor: Uint8Array): MidgardLedgerMint => {
   let items;
   try {
-    items = decodeMidgardMintFieldPreimageV1(preimageCbor);
+    items = decodeMidgardMintFieldPreimage(preimageCbor);
   } catch (e) {
     return failDecode(
       "native.mint is not a canonical \u00a75.6 mint field preimage",
@@ -618,7 +618,7 @@ const ensureAssetName = (
  * The flat asset list is grouped by policy here — that grouping and its
  * duplicate check are this module's own invariant about `MidgardLedgerMint`'s
  * shape, and they have no counterpart in the byte grammar. Ordering is then
- * *enforced* by `encodeMidgardFieldPreimageForFieldV1` at both levels rather
+ * *enforced* by `encodeMidgardFieldPreimageForField` at both levels rather
  * than merely applied here.
  */
 const encodeMint = (mint: MidgardLedgerMint): Buffer => {
@@ -665,9 +665,9 @@ const encodeMint = (mint: MidgardLedgerMint): Buffer => {
     policies.set(policyKey, policy);
   }
 
-  return encodeMidgardFieldPreimageForFieldV1({
+  return encodeMidgardFieldPreimageForField({
     fieldIndex: 5,
-    items: sortMidgardMintItemsV1(
+    items: sortMidgardMintItems(
       [...policies.values()].map((policy) => ({
         policyId: policy.policyId,
         assets: [...policy.assets.values()],
@@ -702,7 +702,7 @@ const encodeRedeemers = (
     }
     return left.index < right.index ? -1 : left.index > right.index ? 1 : 0;
   });
-  return encodeMidgardFieldPreimageForFieldV1({
+  return encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items: ordered.map((redeemer) => {
       const key = `${redeemer.tag}:${redeemer.index.toString(10)}`;
@@ -711,7 +711,7 @@ const encodeRedeemers = (
       }
       seen.add(key);
       return {
-        purpose: midgardRedeemerPurposeFromTagV1(redeemer.tag),
+        purpose: midgardRedeemerPurposeFromTag(redeemer.tag),
         index: redeemer.index,
         redeemerCbor: Buffer.from(
           plutusDataToCborHex(redeemer.data, { canonical: true }),
@@ -746,9 +746,9 @@ const assertRequiresPlutusEvaluation = (tx: MidgardLedgerTx): void => {
   }
 };
 
-const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFullV1 => {
+const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFull => {
   assertRequiresPlutusEvaluation(tx);
-  const body: MidgardNativeTxBodyCanonicalV1 = {
+  const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor: encodeOutRefList(tx.spendInputs, "spendInputs"),
     referenceInputsPreimageCbor: encodeOutRefList(
       tx.referenceInputs,
@@ -774,25 +774,25 @@ const toNativeTx = (tx: MidgardLedgerTx): MidgardNativeTxFullV1 => {
     auxiliaryDataHash: assertHash32(tx.auxiliaryDataHash, "auxiliaryDataHash"),
     networkId: encodeOptionalNetworkId(tx.networkId),
   };
-  const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
+  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor: encodeVKeyWitnesses(tx),
     scriptTxWitsPreimageCbor: encodeScriptWitnesses(tx),
     redeemerTxWitsPreimageCbor: encodeRedeemers(tx.redeemers),
   };
-  const nativeTx: MidgardNativeTxFullV1 = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const nativeTx: MidgardNativeTxFull = {
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: tx.validity,
     body,
     witnessSet,
-    compact: deriveMidgardNativeTxCompactV1(body, witnessSet, tx.validity),
+    compact: deriveMidgardNativeTxCompact(body, witnessSet, tx.validity),
   };
-  const computedTxId = computeMidgardNativeTxIdV1(nativeTx);
+  const computedTxId = computeMidgardNativeTxId(nativeTx);
   assertBufferEquals("txId", tx.txId, computedTxId);
   return nativeTx;
 };
 
 const decodeMidgardLedgerTxFromNativeTx = (
-  nativeTx: MidgardNativeTxFullV1,
+  nativeTx: MidgardNativeTxFull,
 ): MidgardLedgerTx => {
   const vkeyWitnesses = decodeVKeyWitnesses(
     nativeTx.witnessSet.addrTxWitsPreimageCbor,
@@ -804,7 +804,7 @@ const decodeMidgardLedgerTxFromNativeTx = (
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
   );
   const tx: MidgardLedgerTx = {
-    txId: computeMidgardNativeTxIdV1(nativeTx) as MidgardTxId,
+    txId: computeMidgardNativeTxId(nativeTx) as MidgardTxId,
     validity: nativeTx.validity,
     fee: nativeTx.body.fee,
     networkId: optionalNetworkId(nativeTx.body.networkId),
@@ -847,11 +847,11 @@ const decodeMidgardLedgerTxFromNativeTx = (
 };
 
 const envelopeFromNativeTx = (
-  nativeTx: MidgardNativeTxFullV1,
+  nativeTx: MidgardNativeTxFull,
   txCbor: Uint8Array,
 ): MidgardSubmittedTx => {
   const witnessSetCompact = copyNativeWitnessSetCompact(
-    deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+    deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
   );
   return {
     txCbor: Buffer.from(txCbor),
@@ -867,9 +867,9 @@ const envelopeFromNativeTx = (
 export const decodeMidgardSubmittedTxFromCanonicalCbor = (
   txCbor: Uint8Array,
 ): MidgardSubmittedTx => {
-  let nativeTx: MidgardNativeTxFullV1;
+  let nativeTx: MidgardNativeTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
   } catch (e) {
     throw new MidgardLedgerTxDecodeError("canonical-cbor", e);
   }
@@ -885,10 +885,10 @@ export const decodeMidgardSubmittedTxFromCanonicalCbor = (
   }
 };
 
-const projectRawScriptWitnessesV1 = (
+const projectRawScriptWitnesses = (
   preimageCbor: Uint8Array,
-): readonly MidgardProjectedRawScriptWitnessV1[] =>
-  decodeMidgardFieldPreimageV1(preimageCbor).map((item, index) => {
+): readonly MidgardProjectedRawScriptWitness[] =>
+  decodeMidgardFieldPreimage(preimageCbor).map((item, index) => {
     const outer = readCborArrayHeader(item, 0, "raw_script_witness");
     if (outer.length !== 2)
       failDecode("raw script witness must contain two fields");
@@ -931,9 +931,9 @@ const projectRawScriptWitnessesV1 = (
     });
   });
 
-const validateRawProjectionNonScriptFieldsV1 = (
+const validateRawProjectionNonScriptFields = (
   canonical: ReturnType<
-    typeof deriveMidgardNativeTxFaultEvidenceMaterialV1
+    typeof deriveMidgardNativeTxFaultEvidenceMaterial
   >["canonical"],
 ): void => {
   decodeOutRefList(
@@ -962,11 +962,11 @@ const validateRawProjectionNonScriptFieldsV1 = (
  */
 export const projectMidgardRawEnvelopeForPhaseAV1 = (
   txCbor: Uint8Array,
-): MidgardRawEnvelopePhaseAProjectionV1 => {
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(txCbor);
+): MidgardRawEnvelopePhaseAProjection => {
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
   try {
-    validateRawProjectionNonScriptFieldsV1(material.canonical);
-    const scriptWitnesses = projectRawScriptWitnessesV1(
+    validateRawProjectionNonScriptFields(material.canonical);
+    const scriptWitnesses = projectRawScriptWitnesses(
       material.canonical.witnessSet.scriptTxWitsPreimageCbor,
     );
     let canonicalSubmittedTx: MidgardSubmittedTx | null = null;
@@ -1013,7 +1013,7 @@ export const projectMidgardRawEnvelopeForPhaseAV1 = (
     const redeemers = decodeRedeemers(
       material.canonical.witnessSet.redeemerTxWitsPreimageCbor,
     );
-    const ledgerTx: MidgardRawEnvelopePhaseAProjectionV1["ledgerTx"] = {
+    const ledgerTx: MidgardRawEnvelopePhaseAProjection["ledgerTx"] = {
       txId: Buffer.from(material.transactionId) as MidgardTxId,
       validity: material.canonical.validity,
       fee: material.canonical.body.fee,
@@ -1086,4 +1086,4 @@ export const decodeMidgardLedgerTxFromCanonicalCbor = (
 
 export const encodeMidgardLedgerTxToCanonicalCbor = (
   tx: MidgardLedgerTx,
-): Buffer => encodeMidgardNativeTxCanonicalV1(toNativeTx(tx));
+): Buffer => encodeMidgardNativeTxCanonical(toNativeTx(tx));

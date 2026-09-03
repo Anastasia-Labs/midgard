@@ -4,7 +4,7 @@
  *
  * Takes the challenged transaction's STRUCTURED outputs and mint items and
  * derives the committed field preimages itself
- * (`encodeMidgardFieldItemsV1` under the §5.1 envelope), so the expected
+ * (`encodeMidgardFieldItems` under the §5.1 envelope), so the expected
  * `final_delta` can be computed locally with the same restricted fold the
  * validator runs: every output's claimed quantity is outflow; a token claim
  * adds the mint field's claimed entries; an ADA claim subtracts the
@@ -12,7 +12,7 @@
  * unmintable, plan §1.2).
  *
  * Both carriages go through the §8.8 door's planner
- * (`planFaultProofFieldOpeningV1`), which pre-validates every check the door
+ * (`planFaultProofFieldOpening`), which pre-validates every check the door
  * makes and selects the tier purely from the preimage's own length (§8.4): a
  * small field rides tier-1 (`Inline`) in this step's own redeemer, and a
  * preimage over the 14,336-byte tier-1 cap is published as a tier-2
@@ -22,12 +22,12 @@
  * and the step's own reference script).
  */
 import type {
-  MidgardMintPolicyItemV1,
+  MidgardMintPolicyItem,
   MidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { encodeMidgardFieldItemsV1 } from "@al-ft/midgard-core";
+import { encodeMidgardFieldItems } from "@al-ft/midgard-core";
 import {
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -41,10 +41,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldCarriageV1,
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldCarriage,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -53,16 +53,16 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
-import { claimedQuantityOfValueV1 } from "./evidence-v1.js";
+import type { ValueNotPreservedContracts } from "./contracts-v1.js";
+import { claimedQuantityOfValue } from "./evidence-v1.js";
 import {
-  type ClaimedAssetV1,
+  type ClaimedAsset,
   ValueNotPreservedStep03Datum,
   ValueNotPreservedStep03SpendRedeemer,
   type ValueNotPreservedStep03State,
@@ -70,19 +70,19 @@ import {
   type ValueNotPreservedStep04State,
 } from "./schemas-v1.js";
 import {
-  requireValueNotPreservedReferenceScriptV1,
-  requireValueNotPreservedStepStateV1,
-  requireValueNotPreservedThreadUtxoV1,
-  valueNotPreservedStepLabelV1,
+  requireValueNotPreservedReferenceScript,
+  requireValueNotPreservedStepState,
+  requireValueNotPreservedThreadUtxo,
+  valueNotPreservedStepLabel,
   valueNotPreservedSubmitError,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = valueNotPreservedStepLabelV1(2);
+const STEP_LABEL = valueNotPreservedStepLabel(2);
 
 /** The mint field's claimed-asset total — the validator's stage-four fold. */
-const mintClaimedQuantityV1 = (
-  claim: ClaimedAssetV1,
-  mintItems: readonly MidgardMintPolicyItemV1[],
+const mintClaimedQuantity = (
+  claim: ClaimedAsset,
+  mintItems: readonly MidgardMintPolicyItem[],
 ): bigint => {
   if (claim === "AdaAsset") return 0n;
   let total = 0n;
@@ -160,7 +160,7 @@ export const submitValueNotPreservedStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -172,7 +172,7 @@ export const submitValueNotPreservedStep03 = async ({
    * The transaction's mint items, exactly as committed (field 5) — for a
    * token claim. MUST be null for an ADA claim (no mint carriage).
    */
-  readonly mintItems: readonly MidgardMintPolicyItemV1[] | null;
+  readonly mintItems: readonly MidgardMintPolicyItem[] | null;
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /**
@@ -185,29 +185,29 @@ export const submitValueNotPreservedStep03 = async ({
    * publication whose bytes differ from the committed field hash.
    */
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep03Result> => {
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 2,
-      threadOutRef,
-    });
-  const state: ValueNotPreservedStep03State =
-    requireValueNotPreservedStepStateV1({
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 2,
+    threadOutRef,
+  });
+  const state: ValueNotPreservedStep03State = requireValueNotPreservedStepState(
+    {
       threadUtxo,
       signer,
       schema: ValueNotPreservedStep03Datum,
       stepIndex: 2,
-    });
+    },
+  );
 
   // The validator's stage-three fold, run locally over the same preimage.
   const outflow = outputs.reduce(
     (total, output) =>
-      total + claimedQuantityOfValueV1(state.claimed_asset, output.value),
+      total + claimedQuantityOfValue(state.claimed_asset, output.value),
     0n,
   );
   const deltaAfterOutputs = state.claimed_delta - outflow;
@@ -226,28 +226,28 @@ export const submitValueNotPreservedStep03 = async ({
       );
     }
     finalDelta =
-      deltaAfterOutputs + mintClaimedQuantityV1(state.claimed_asset, mintItems);
+      deltaAfterOutputs + mintClaimedQuantity(state.claimed_asset, mintItems);
   }
 
   // The §8.8 door: plan each field, publish whatever the tier demands, open.
   // The tier is a pure function of the preimage's length — nothing here
   // forces one.
-  const outputsPlan = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  const outputsPlan = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
-    itemCbors: encodeMidgardFieldItemsV1({ fieldIndex: 2, items: outputs }),
+    itemCbors: encodeMidgardFieldItems({ fieldIndex: 2, items: outputs }),
     owner: signer.paymentKeyHash,
     label: `${STEP_LABEL} outputs`,
   });
-  const mintPlan: FaultProofFieldOpeningPlanV1 | null =
+  const mintPlan: FaultProofFieldOpeningPlan | null =
     mintItems === null
       ? null
-      : planFaultProofFieldOpeningV1({
-          fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
+      : planFaultProofFieldOpening({
+          fieldIndex: MIDGARD_FIELD_INDEX.mint,
           anchorTxId: state.bad_tx_id,
           nativeTxCompactCbor,
-          itemCbors: encodeMidgardFieldItemsV1({
+          itemCbors: encodeMidgardFieldItems({
             fieldIndex: 5,
             items: mintItems,
           }),
@@ -259,7 +259,7 @@ export const submitValueNotPreservedStep03 = async ({
   // the whole point is that ONLY the injected bytes ride as the carriage.
   const outputsCarriageUtxos =
     unsafeSpendFieldRawUtxoForTest === undefined
-      ? await publishFaultProofFieldCarriageV1({
+      ? await publishFaultProofFieldCarriage({
           lucid,
           signer,
           planned: outputsPlan,
@@ -270,7 +270,7 @@ export const submitValueNotPreservedStep03 = async ({
   const mintCarriageUtxos =
     mintPlan === null
       ? []
-      : await publishFaultProofFieldCarriageV1({
+      : await publishFaultProofFieldCarriage({
           lucid,
           signer,
           planned: mintPlan,
@@ -281,12 +281,12 @@ export const submitValueNotPreservedStep03 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireValueNotPreservedReferenceScriptV1({
+      : requireValueNotPreservedReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[2].spendingScriptHash,
           stepIndex: 2,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[2].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -303,7 +303,7 @@ export const submitValueNotPreservedStep03 = async ({
   // accidentally correct for some out-ref orderings.
   const outputsCarriage =
     unsafeSpendFieldRawUtxoForTest === undefined
-      ? faultProofFieldCarriageV1({
+      ? faultProofFieldCarriage({
           planned: outputsPlan,
           referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -313,7 +313,7 @@ export const submitValueNotPreservedStep03 = async ({
   const mintCarriage =
     mintPlan === null
       ? null
-      : faultProofFieldCarriageV1({
+      : faultProofFieldCarriage({
           planned: mintPlan,
           referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -428,9 +428,9 @@ export const submitValueNotPreservedStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

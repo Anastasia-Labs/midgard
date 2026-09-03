@@ -1,9 +1,9 @@
 import {
-  MIDGARD_RETENTION_WINDOW_V1,
-  RETENTION_MS_PER_DAY_V1,
+  MIDGARD_RETENTION_WINDOW,
+  RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
 
-const DAY_IN_MILLIS = RETENTION_MS_PER_DAY_V1;
+const DAY_IN_MILLIS = RETENTION_MS_PER_DAY;
 
 /**
  * Minimum enabled DA payload retention, in days.
@@ -14,7 +14,7 @@ const DAY_IN_MILLIS = RETENTION_MS_PER_DAY_V1;
  * `da.transportProfile.retentionDays`.
  */
 export const MIN_DA_PAYLOAD_RETENTION_DAYS =
-  MIDGARD_RETENTION_WINDOW_V1.retentionDays;
+  MIDGARD_RETENTION_WINDOW.retentionDays;
 
 export const validateRetentionDays = (retentionDays: number): number => {
   if (!Number.isSafeInteger(retentionDays) || retentionDays < 0) {
@@ -32,9 +32,9 @@ export const validateRetentionDays = (retentionDays: number): number => {
  * Binds enabled retention to deployment identity: a node may retain longer than
  * the deployment manifest promises, never shorter. Fails closed at config load.
  */
-export const assertRetentionDaysMatchesDeploymentV1 = (
+export const assertRetentionDaysMatchesDeployment = (
   retentionDays: number,
-  manifestRetentionDays: number = MIDGARD_RETENTION_WINDOW_V1.retentionDays,
+  manifestRetentionDays: number = MIDGARD_RETENTION_WINDOW.retentionDays,
 ): number => {
   const days = validateRetentionDays(retentionDays);
   if (
@@ -76,4 +76,4 @@ export const computeRetentionCutoff = (
  * maturity). The measured dispute schedule is never used here.
  */
 export const computeChallengeableCutoff = (now: Date): Date =>
-  new Date(now.getTime() - MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs);
+  new Date(now.getTime() - MIDGARD_RETENTION_WINDOW.requiredRetentionMs);

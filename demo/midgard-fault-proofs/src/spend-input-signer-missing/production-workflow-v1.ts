@@ -1,38 +1,38 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
-  type ForcedInclusionTxV1,
+  type ForcedInclusionTx,
   type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadStepDatum,
-  type HeaderV1,
+  type Header,
   type OutputReference,
   OutputReferenceSchema,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
-  RejectionReasonV1Schema,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
+  RejectionReasonSchema,
   type RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  type CanonicalBlockEvidenceV1,
-  fetchCanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
-import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1 } from "../resolved-output-non-canonical/resolved-output-non-canonical-v1.js";
+import { deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus } from "../resolved-output-non-canonical/resolved-output-non-canonical-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   parseSubmitStep01TxInclusion,
@@ -43,69 +43,69 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  type FraudProofWorkflowJournalStoreV1,
+  DirectoryFraudProofWorkflowJournalStore,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  type ProductionHistoricalNativeScriptCheckpointStoreV1,
-  type ProductionHistoricalNativeScriptHistorySourceV1,
-  resolveProductionHistoricalNativeScriptCorpusV1,
+  type HistoricalNativeScriptCheckpointStore,
+  type HistoricalNativeScriptHistorySource,
+  resolveHistoricalNativeScriptCorpus,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
-import { createSpendInputSignerMissingCentralJournalAdapterV1 } from "./central-journal-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
+import { createSpendInputSignerMissingCentralJournalAdapter } from "./central-journal-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
 import {
-  SpendInputSignerStep02DatumV1Schema,
-  SpendInputSignerStep03DatumV1Schema,
-  SpendInputSignerStep04DatumV1Schema,
-  SpendInputSignerStep05DatumV1Schema,
+  SpendInputSignerStep02DatumSchema,
+  SpendInputSignerStep03DatumSchema,
+  SpendInputSignerStep04DatumSchema,
+  SpendInputSignerStep05DatumSchema,
 } from "./schemas-v1.js";
 import {
-  detectSpendInputSignerMissingCompleteReplayV1,
-  type SpendInputSignerMissingEvidenceV1,
+  detectSpendInputSignerMissingCompleteReplay,
+  type SpendInputSignerMissingEvidence,
 } from "./spend-input-signer-missing-v1.js";
-import { submitSpendInputSignerMissingCancelV1 } from "./submit-cancel-v1.js";
-import { submitSpendInputSignerMissingStep01AcceptedV1 } from "./submit-step-01-accepted-v1.js";
-import { submitSpendInputSignerMissingStep01ForcedV1 } from "./submit-step-01-forced-v1.js";
-import { submitSpendInputSignerMissingStep02V1 } from "./submit-step-02-v1.js";
-import { submitSpendInputSignerMissingStep03V1 } from "./submit-step-03-v1.js";
-import { submitSpendInputSignerMissingStep04V1 } from "./submit-step-04-v1.js";
-import { submitSpendInputSignerMissingStep05V1 } from "./submit-step-05-v1.js";
+import { submitSpendInputSignerMissingCancel } from "./submit-cancel-v1.js";
+import { submitSpendInputSignerMissingStep01Accepted } from "./submit-step-01-accepted-v1.js";
+import { submitSpendInputSignerMissingStep01Forced } from "./submit-step-01-forced-v1.js";
+import { submitSpendInputSignerMissingStep02 } from "./submit-step-02-v1.js";
+import { submitSpendInputSignerMissingStep03 } from "./submit-step-03-v1.js";
+import { submitSpendInputSignerMissingStep04 } from "./submit-step-04-v1.js";
+import { submitSpendInputSignerMissingStep05 } from "./submit-step-05-v1.js";
 import {
-  nextSpendInputSignerActionV1,
-  type SpendInputSignerJournalV1,
-  type SpendInputSignerStageV1,
-  spendInputSignerWorkflowEvidenceIdentityV1,
+  nextSpendInputSignerAction,
+  type SpendInputSignerJournal,
+  type SpendInputSignerStage,
+  spendInputSignerWorkflowEvidenceIdentity,
 } from "./workflow-v1.js";
 
-export const SPEND_INPUT_SIGNER_MISSING_PRODUCTION_WORKFLOW_V1 =
+export const SPEND_INPUT_SIGNER_MISSING_WORKFLOW =
   "midgard-spend-input-signer-missing-production-workflow-v1" as const;
-export const SPEND_INPUT_SIGNER_MISSING_VIOLATION_ID_V1 =
+export const SPEND_INPUT_SIGNER_MISSING_VIOLATION_ID =
   "spend-input-signer-missing" as const;
 
-export const SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1 = Object.freeze({
+export const SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS = Object.freeze({
   step01: "fraudProofSpendInputSignerMissing",
   step02: "fraudProofSpendInputSignerMissingStep02",
   step03: "fraudProofSpendInputSignerMissingStep03",
@@ -117,49 +117,49 @@ export const SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1 = Object.freeze({
   fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
 } as const);
 
-export type SpendInputSignerMissingProductionReferenceScriptsV1 = Readonly<{
+export type SpendInputSignerMissingReferenceScripts = Readonly<{
   step01: UTxO;
   step02: UTxO;
   step03: UTxO;
   step04: UTxO;
   step05: UTxO;
   fieldPreimageCertificateMint: UTxO;
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-export type ManifestBoundSpendInputSignerMissingConfigV1 = Readonly<{
-  schemaVersion: typeof SPEND_INPUT_SIGNER_MISSING_PRODUCTION_WORKFLOW_V1;
+export type ManifestBoundSpendInputSignerMissingConfig = Readonly<{
+  schemaVersion: typeof SPEND_INPUT_SIGNER_MISSING_WORKFLOW;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  binding: SpendInputSignerMissingDeploymentBindingV1;
-  contracts: SpendInputSignerMissingContractsV1;
-  referenceScripts: SpendInputSignerMissingProductionReferenceScriptsV1;
+  binding: SpendInputSignerMissingDeploymentBinding;
+  contracts: SpendInputSignerMissingContracts;
+  referenceScripts: SpendInputSignerMissingReferenceScripts;
 }>;
 
-export type SpendInputSignerMissingDeploymentBindingV1 = Omit<
-  FraudProofWorkflowDeploymentBindingV1<FraudProofCatalogueCategoryName>,
+export type SpendInputSignerMissingDeploymentBinding = Omit<
+  FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
   "definition"
 > &
   Readonly<{
     definition: Omit<
-      FraudProofWorkflowDeploymentBindingV1<FraudProofCatalogueCategoryName>["definition"],
+      FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>["definition"],
       "category"
     > &
       Readonly<{ category: "spendInputSignerMissing" }>;
   }>;
 
-export type LoadManifestBoundSpendInputSignerMissingConfigV1 = Readonly<{
+export type LoadManifestBoundSpendInputSignerMissingConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
-  referenceScripts: SpendInputSignerMissingProductionReferenceScriptsV1;
+  referenceScripts: SpendInputSignerMissingReferenceScripts;
 }>;
 
 const bindReference = ({
@@ -167,20 +167,20 @@ const bindReference = ({
   contractName,
   utxo,
 }: {
-  readonly binding: SpendInputSignerMissingDeploymentBindingV1;
+  readonly binding: SpendInputSignerMissingDeploymentBinding;
   readonly contractName: string;
   readonly utxo: UTxO;
 }): UTxO =>
-  requireManifestBoundReferenceScriptUtxoV1({ binding, contractName, utxo });
+  requireManifestBoundReferenceScriptUtxo({ binding, contractName, utxo });
 
-export const bindSpendInputSignerMissingReferenceScriptsV1 = ({
+export const bindSpendInputSignerMissingReferenceScripts = ({
   binding,
   referenceScripts,
 }: {
-  readonly binding: SpendInputSignerMissingDeploymentBindingV1;
-  readonly referenceScripts: SpendInputSignerMissingProductionReferenceScriptsV1;
-}): SpendInputSignerMissingProductionReferenceScriptsV1 => {
-  const names = SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1;
+  readonly binding: SpendInputSignerMissingDeploymentBinding;
+  readonly referenceScripts: SpendInputSignerMissingReferenceScripts;
+}): SpendInputSignerMissingReferenceScripts => {
+  const names = SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS;
   return Object.freeze({
     step01: bindReference({
       binding,
@@ -233,10 +233,10 @@ export const bindSpendInputSignerMissingReferenceScriptsV1 = ({
   });
 };
 
-export const loadManifestBoundSpendInputSignerMissingConfigV1 = async (
-  input: LoadManifestBoundSpendInputSignerMissingConfigV1,
-): Promise<ManifestBoundSpendInputSignerMissingConfigV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const loadManifestBoundSpendInputSignerMissingConfig = async (
+  input: LoadManifestBoundSpendInputSignerMissingConfig,
+): Promise<ManifestBoundSpendInputSignerMissingConfig> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
@@ -245,19 +245,19 @@ export const loadManifestBoundSpendInputSignerMissingConfigV1 = async (
     proverCredential: input.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      SpendInputSignerStep02DatumV1Schema,
-      SpendInputSignerStep03DatumV1Schema,
-      SpendInputSignerStep04DatumV1Schema,
-      SpendInputSignerStep05DatumV1Schema,
+      SpendInputSignerStep02DatumSchema,
+      SpendInputSignerStep03DatumSchema,
+      SpendInputSignerStep04DatumSchema,
+      SpendInputSignerStep05DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
   const localContracts = binding.resolvedContracts.contracts as unknown as {
-    readonly spendInputSignerMissing?: SpendInputSignerMissingContractsV1;
+    readonly spendInputSignerMissing?: SpendInputSignerMissingContracts;
   };
   const chain = localContracts.spendInputSignerMissing;
   const certificate = binding.fieldPreimageCertificate;
@@ -271,15 +271,15 @@ export const loadManifestBoundSpendInputSignerMissingConfigV1 = async (
       "spendInputSignerMissing deployment omitted field-preimage certificate",
     );
   }
-  const referenceScripts = bindSpendInputSignerMissingReferenceScriptsV1({
-    binding: binding as unknown as SpendInputSignerMissingDeploymentBindingV1,
+  const referenceScripts = bindSpendInputSignerMissingReferenceScripts({
+    binding: binding as unknown as SpendInputSignerMissingDeploymentBinding,
     referenceScripts: input.referenceScripts,
   });
   return Object.freeze({
-    schemaVersion: SPEND_INPUT_SIGNER_MISSING_PRODUCTION_WORKFLOW_V1,
+    schemaVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
     lucid: input.lucid,
     signer: input.signer,
-    binding: binding as unknown as SpendInputSignerMissingDeploymentBindingV1,
+    binding: binding as unknown as SpendInputSignerMissingDeploymentBinding,
     contracts: {
       steps: chain.steps.map((step, index) => ({
         ...step,
@@ -306,7 +306,7 @@ export const loadManifestBoundSpendInputSignerMissingConfigV1 = async (
             referenceScripts.step05,
           ][index]!.outputIndex.toString(),
         ),
-      })) as unknown as SpendInputSignerMissingContractsV1["steps"],
+      })) as unknown as SpendInputSignerMissingContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
       hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
@@ -318,15 +318,15 @@ export const loadManifestBoundSpendInputSignerMissingConfigV1 = async (
   });
 };
 
-export type SpendInputSignerMissingProductionStageV1 = Readonly<{
+export type SpendInputSignerMissingStage = Readonly<{
   fraudulentBlockOutRef: string;
   threadOutRef?: string;
   threadUtxo?: UTxO;
   threadToken?: Readonly<{ unit: string; fraudulentHeaderHash: string }>;
   stateQueueBlockOutRef?: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
   nativeTxCompactCbor?: string;
   witnessSetCompactCbor?: string;
@@ -337,24 +337,24 @@ export type SpendInputSignerMissingProductionStageV1 = Readonly<{
 }>;
 
 /** Derives the only admissible family evidence from L1-bound public retained DA. */
-export type SpendInputSignerMissingAuthenticatedSourceV1 = Readonly<{
+export type SpendInputSignerMissingAuthenticatedSource = Readonly<{
   nativeTxCompactCbor: string;
   witnessSetCompactCbor: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
 }>;
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
-export const deriveSpendInputSignerMissingAuthenticatedSourceV1 = async ({
+export const deriveSpendInputSignerMissingAuthenticatedSource = async ({
   block,
   evidence,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
-}): Promise<SpendInputSignerMissingAuthenticatedSourceV1> => {
-  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1) {
+  readonly block: CanonicalBlockEvidence;
+  readonly evidence: SpendInputSignerMissingEvidence;
+}): Promise<SpendInputSignerMissingAuthenticatedSource> => {
+  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
     );
@@ -366,7 +366,7 @@ export const deriveSpendInputSignerMissingAuthenticatedSourceV1 = async ({
         "spendInputSignerMissing accepted subject disappeared from retained DA",
       );
     }
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
     if (
       trie.root !== block.reconstruction.rootData.transactions.phasRoot ||
       trie.root !== block.inclusionRootAuthentication.sourceValuePhasRoot
@@ -375,7 +375,7 @@ export const deriveSpendInputSignerMissingAuthenticatedSourceV1 = async ({
         "spendInputSignerMissing accepted source trie differs from authenticated reconstruction",
       );
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(selected.txCbor, "hex"),
     );
     return Object.freeze({
@@ -413,22 +413,20 @@ export const deriveSpendInputSignerMissingAuthenticatedSourceV1 = async ({
   const reason = forced.value.verdict.ForcedTxInvalid.reason;
   if (
     evidence.subject.rejection_reason === null ||
-    Data.to(reason as never, RejectionReasonV1Schema as never) !==
+    Data.to(reason as never, RejectionReasonSchema as never) !==
       Data.to(
         evidence.subject.rejection_reason as never,
-        RejectionReasonV1Schema as never,
+        RejectionReasonSchema as never,
       )
   ) {
     throw new Error(
       "spendInputSignerMissing forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-    encodeMidgardNativeTxCanonicalV1(
-      adjudicateMidgardNativeTxFullV1Validity(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(
-          forced.fullTransactionCbor,
-        ),
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(
+        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
         "TxIsInvalid",
       ),
     ),
@@ -462,10 +460,10 @@ export const deriveSpendInputSignerMissingAuthenticatedSourceV1 = async ({
 };
 
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
-type SpendInputSignerMissingProductionRuntimeLoaderV1 = Readonly<{
-  config: LoadManifestBoundSpendInputSignerMissingConfigV1;
-  journal: SpendInputSignerJournalV1;
-  observe: (identity: string) => Promise<SpendInputSignerStageV1>;
+type SpendInputSignerMissingRuntimeLoader = Readonly<{
+  config: LoadManifestBoundSpendInputSignerMissingConfig;
+  journal: SpendInputSignerJournal;
+  observe: (identity: string) => Promise<SpendInputSignerStage>;
   resolveStage: (input: {
     readonly action:
       | "submitInit"
@@ -476,20 +474,20 @@ type SpendInputSignerMissingProductionRuntimeLoaderV1 = Readonly<{
       | "submitStep05"
       | "removeDescendants"
       | "cancel";
-    readonly evidence: SpendInputSignerMissingEvidenceV1;
-  }) => Promise<SpendInputSignerMissingProductionStageV1>;
+    readonly evidence: SpendInputSignerMissingEvidence;
+  }) => Promise<SpendInputSignerMissingStage>;
 }>;
 
-export const createSpendInputSignerMissingRawL1StageResolverV1 =
+export const createSpendInputSignerMissingRawL1StageResolver =
   ({
     config,
     l1,
     source,
   }: {
-    readonly config: ManifestBoundSpendInputSignerMissingConfigV1;
-    readonly l1: FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>;
-    readonly source: SpendInputSignerMissingAuthenticatedSourceV1;
-  }): SpendInputSignerMissingProductionRuntimeLoaderV1["resolveStage"] =>
+    readonly config: ManifestBoundSpendInputSignerMissingConfig;
+    readonly l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
+    readonly source: SpendInputSignerMissingAuthenticatedSource;
+  }): SpendInputSignerMissingRuntimeLoader["resolveStage"] =>
   async ({ action, evidence }) => {
     const observed = await l1.observe({
       headerHash: config.binding.definition.headerHash,
@@ -533,7 +531,7 @@ export const createSpendInputSignerMissingRawL1StageResolverV1 =
       witnessSetCompactCbor: source.witnessSetCompactCbor,
     };
     if (action !== "submitStep01") return common;
-    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED_V1) {
+    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED) {
       return {
         ...common,
         forcedHeader: required(
@@ -550,7 +548,7 @@ export const createSpendInputSignerMissingRawL1StageResolverV1 =
         ),
       };
     }
-    const thread = await requireLinearFaultThreadUtxoV1({
+    const thread = await requireLinearFaultThreadUtxo({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -576,18 +574,18 @@ const required = <T>(value: T | undefined, label: string): T => {
   return value;
 };
 
-const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
+const createManifestBoundSpendInputSignerMissingSubmission = ({
   config,
   observe,
   resolveStage,
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundSpendInputSignerMissingConfigV1;
-  readonly observe: (identity: string) => Promise<SpendInputSignerStageV1>;
-  readonly resolveStage: SpendInputSignerMissingProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundSpendInputSignerMissingConfig;
+  readonly observe: (identity: string) => Promise<SpendInputSignerStage>;
+  readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createSpendInputSignerMissingCentralJournalAdapterV1
+    typeof createSpendInputSignerMissingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => ({
@@ -601,13 +599,13 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
       | "submitScan"
       | "submitStep05"
       | "removeDescendants",
-    evidence: SpendInputSignerMissingEvidenceV1,
+    evidence: SpendInputSignerMissingEvidence,
   ) => {
     if (evidence.subject.transaction_id.length !== 64)
       throw new Error(
         "spendInputSignerMissing evidence transaction id is not canonical",
       );
-    const familyIdentity = spendInputSignerWorkflowEvidenceIdentityV1(evidence);
+    const familyIdentity = spendInputSignerWorkflowEvidenceIdentity(evidence);
     const transition =
       action === "submitInit"
         ? (["none", "step01"] as const)
@@ -655,10 +653,8 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
       };
     }
     if (action === "submitStep01") {
-      if (
-        evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1
-      ) {
-        const result = await submitSpendInputSignerMissingStep01AcceptedV1({
+      if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
+        const result = await submitSpendInputSignerMissingStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -687,11 +683,11 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
           outputReference: result.nextThreadOutRef,
         };
       }
-      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED_V1)
+      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED)
         throw new Error(
           "spendInputSignerMissing evidence source kind is invalid",
         );
-      const result = await submitSpendInputSignerMissingStep01ForcedV1({
+      const result = await submitSpendInputSignerMissingStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -719,7 +715,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
     }
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitSpendInputSignerMissingStep02V1({
+      const result = await submitSpendInputSignerMissingStep02({
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -774,7 +770,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
     }
     if (action === "submitStep03") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitSpendInputSignerMissingStep03V1({
+      const result = await submitSpendInputSignerMissingStep03({
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -827,7 +823,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
     }
     if (action === "submitScan") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitSpendInputSignerMissingStep04V1({
+      const result = await submitSpendInputSignerMissingStep04({
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -882,7 +878,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
       };
     }
     if (action === "submitStep05") {
-      const result = await submitSpendInputSignerMissingStep05V1({
+      const result = await submitSpendInputSignerMissingStep05({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -939,7 +935,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
   },
   cancel: async (
     current: "step01" | "step02" | "step03" | "scanning" | "step05",
-    evidence: SpendInputSignerMissingEvidenceV1,
+    evidence: SpendInputSignerMissingEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index =
@@ -952,7 +948,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
             : current === "scanning"
               ? 3
               : 4;
-    const result = await submitSpendInputSignerMissingCancelV1({
+    const result = await submitSpendInputSignerMissingCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -975,7 +971,7 @@ const createManifestBoundSpendInputSignerMissingSubmissionV1 = ({
   },
 });
 
-const createManifestBoundSpendInputSignerMissingProductionRuntimeV1 = ({
+const createManifestBoundSpendInputSignerMissingRuntime = ({
   config,
   journal,
   observe,
@@ -983,16 +979,16 @@ const createManifestBoundSpendInputSignerMissingProductionRuntimeV1 = ({
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundSpendInputSignerMissingConfigV1;
-  readonly journal: SpendInputSignerJournalV1;
-  readonly observe: SpendInputSignerMissingProductionRuntimeLoaderV1["observe"];
-  readonly resolveStage: SpendInputSignerMissingProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundSpendInputSignerMissingConfig;
+  readonly journal: SpendInputSignerJournal;
+  readonly observe: SpendInputSignerMissingRuntimeLoader["observe"];
+  readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createSpendInputSignerMissingCentralJournalAdapterV1
+    typeof createSpendInputSignerMissingCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
-  const submission = createManifestBoundSpendInputSignerMissingSubmissionV1({
+  const submission = createManifestBoundSpendInputSignerMissingSubmission({
     config,
     observe: async (identity) => {
       const observed = await observe(identity);
@@ -1004,13 +1000,13 @@ const createManifestBoundSpendInputSignerMissingProductionRuntimeV1 = ({
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({
-    runtimeVersion: SPEND_INPUT_SIGNER_MISSING_PRODUCTION_WORKFLOW_V1,
+    runtimeVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
     config,
-    runOrResume: async (evidence: SpendInputSignerMissingEvidenceV1) => {
-      const identity = spendInputSignerWorkflowEvidenceIdentityV1(evidence);
+    runOrResume: async (evidence: SpendInputSignerMissingEvidence) => {
+      const identity = spendInputSignerWorkflowEvidenceIdentity(evidence);
       for (;;) {
         const stage = await submission.observe(identity);
-        const action = nextSpendInputSignerActionV1(stage);
+        const action = nextSpendInputSignerAction(stage);
         if (action === "done") return stage;
         if (action === "cancel")
           throw new Error(
@@ -1031,40 +1027,40 @@ const createManifestBoundSpendInputSignerMissingProductionRuntimeV1 = ({
   });
 };
 
-export type ManifestBoundSpendInputSignerMissingWorkflowConfigV1 =
-  LoadManifestBoundSpendInputSignerMissingConfigV1 &
+export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
+  LoadManifestBoundSpendInputSignerMissingConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-      historicalCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-      historicalSource: ProductionHistoricalNativeScriptHistorySourceV1;
+      historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
+      historicalSource: HistoricalNativeScriptHistorySource;
     }>;
 
-export type ManifestBoundSpendInputSignerMissingWorkflowV1 = Readonly<{
-  workflowVersion: typeof SPEND_INPUT_SIGNER_MISSING_PRODUCTION_WORKFLOW_V1;
-  config: ManifestBoundSpendInputSignerMissingConfigV1;
-  binding: SpendInputSignerMissingDeploymentBindingV1;
-  l1: FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>;
+export type ManifestBoundSpendInputSignerMissingWorkflow = Readonly<{
+  workflowVersion: typeof SPEND_INPUT_SIGNER_MISSING_WORKFLOW;
+  config: ManifestBoundSpendInputSignerMissingConfig;
+  binding: SpendInputSignerMissingDeploymentBinding;
+  l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
-  historicalCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  historicalSource: ProductionHistoricalNativeScriptHistorySourceV1;
+  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalSource: HistoricalNativeScriptHistorySource;
 }>;
 
 /** Production installation factory; no evidence object is accepted here. */
-export const createManifestBoundSpendInputSignerMissingWorkflowV1 = async (
-  input: ManifestBoundSpendInputSignerMissingWorkflowConfigV1,
-): Promise<ManifestBoundSpendInputSignerMissingWorkflowV1> => {
-  const config = await loadManifestBoundSpendInputSignerMissingConfigV1(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+export const createManifestBoundSpendInputSignerMissingWorkflow = async (
+  input: ManifestBoundSpendInputSignerMissingWorkflowConfig,
+): Promise<ManifestBoundSpendInputSignerMissingWorkflow> => {
+  const config = await loadManifestBoundSpendInputSignerMissingConfig(input);
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: input.source,
     releaseFinality: config.binding.releaseFinality,
     releaseEconomics: config.binding.releaseEconomics,
     definition: config.binding.definition as never,
   });
   return Object.freeze({
-    workflowVersion: SPEND_INPUT_SIGNER_MISSING_PRODUCTION_WORKFLOW_V1,
+    workflowVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
     config,
     binding: config.binding,
     l1,
@@ -1079,10 +1075,10 @@ export const createManifestBoundSpendInputSignerMissingWorkflowV1 = async (
 const spendInputSignerStageFromL1 = (
   stage: Awaited<
     ReturnType<
-      FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>["observe"]
+      FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>["observe"]
     >
   >["stage"],
-): SpendInputSignerStageV1 => {
+): SpendInputSignerStage => {
   switch (stage.kind) {
     case "not_started":
       return "none";
@@ -1106,12 +1102,12 @@ const spendInputSignerStageFromL1 = (
  * Watcher-facing runner. Evidence is always reconstructed from authenticated
  * L1 plus public retained DA; unknown/caller-authored evidence fields fail.
  */
-export const runOrResumeManifestBoundSpendInputSignerMissingWorkflowV1 =
+export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
   async (input: {
-    readonly workflow: ManifestBoundSpendInputSignerMissingWorkflowV1;
+    readonly workflow: ManifestBoundSpendInputSignerMissingWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: SpendInputSignerJournalV1;
-  }): Promise<SpendInputSignerStageV1> => {
+    readonly journal: SpendInputSignerJournal;
+  }): Promise<SpendInputSignerStage> => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
       throw new Error(
         "spendInputSignerMissing runner rejects caller-authored evidence inputs",
@@ -1119,11 +1115,11 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflowV1 =
     }
     const headerHash = input.workflow.binding.definition.headerHash;
     const observation = await input.workflow.l1.observeHeader({ headerHash });
-    const canonical = await fetchCanonicalBlockEvidenceV1({
+    const canonical = await fetchCanonicalBlockEvidence({
       observation,
       sources: input.sources,
     });
-    const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+    const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: input.workflow.binding.deploymentFingerprint,
       checkpointStore: input.workflow.historicalCheckpointStore,
       historySource: input.workflow.historicalSource,
@@ -1131,11 +1127,11 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflowV1 =
       sources: input.sources,
     });
     const priorLedger =
-      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1({
+      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
         block: canonical,
         corpus,
       });
-    const findings = detectSpendInputSignerMissingCompleteReplayV1({
+    const findings = detectSpendInputSignerMissingCompleteReplay({
       block: canonical,
       priorLedger,
     });
@@ -1144,42 +1140,41 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflowV1 =
         `spendInputSignerMissing public replay yielded ${findings.length.toString()} exact findings`,
       );
     const evidence = findings[0]!;
-    const source = await deriveSpendInputSignerMissingAuthenticatedSourceV1({
+    const source = await deriveSpendInputSignerMissingAuthenticatedSource({
       block: canonical,
       evidence,
     });
-    const runtime =
-      createManifestBoundSpendInputSignerMissingProductionRuntimeV1({
+    const runtime = createManifestBoundSpendInputSignerMissingRuntime({
+      config: input.workflow.config,
+      journal: input.journal,
+      observe: async () =>
+        spendInputSignerStageFromL1(
+          (await input.workflow.l1.observe({ headerHash })).stage,
+        ),
+      resolveStage: createSpendInputSignerMissingRawL1StageResolver({
         config: input.workflow.config,
-        journal: input.journal,
-        observe: async () =>
-          spendInputSignerStageFromL1(
-            (await input.workflow.l1.observe({ headerHash })).stage,
-          ),
-        resolveStage: createSpendInputSignerMissingRawL1StageResolverV1({
-          config: input.workflow.config,
-          l1: input.workflow.l1,
-          source,
-        }),
-      });
+        l1: input.workflow.l1,
+        source,
+      }),
+    });
     return await runtime.runOrResume(evidence);
   };
 
-export const executeManifestBoundSpendInputSignerMissingWorkflowV1 = async ({
+export const executeManifestBoundSpendInputSignerMissingWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundSpendInputSignerMissingWorkflowV1;
+  readonly workflow: ManifestBoundSpendInputSignerMissingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<SpendInputSignerStageV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<SpendInputSignerStage> => {
   const headerHash = workflow.binding.definition.headerHash;
-  const canonical = await fetchCanonicalBlockEvidenceV1({
+  const canonical = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
-  const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+  const corpus = await resolveHistoricalNativeScriptCorpus({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     checkpointStore: workflow.historicalCheckpointStore,
     historySource: workflow.historicalSource,
@@ -1187,11 +1182,11 @@ export const executeManifestBoundSpendInputSignerMissingWorkflowV1 = async ({
     sources,
   });
   const priorLedger =
-    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1({
+    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
       block: canonical,
       corpus,
     });
-  const findings = detectSpendInputSignerMissingCompleteReplayV1({
+  const findings = detectSpendInputSignerMissingCompleteReplay({
     block: canonical,
     priorLedger,
   });
@@ -1200,11 +1195,11 @@ export const executeManifestBoundSpendInputSignerMissingWorkflowV1 = async ({
       `spendInputSignerMissing public replay yielded ${findings.length.toString()} exact findings`,
     );
   const evidence = findings[0]!;
-  const source = await deriveSpendInputSignerMissingAuthenticatedSourceV1({
+  const source = await deriveSpendInputSignerMissingAuthenticatedSource({
     block: canonical,
     evidence,
   });
-  const centralJournal = createSpendInputSignerMissingCentralJournalAdapterV1({
+  const centralJournal = createSpendInputSignerMissingCentralJournalAdapter({
     store: journal,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     headerHash,
@@ -1212,61 +1207,59 @@ export const executeManifestBoundSpendInputSignerMissingWorkflowV1 = async ({
     transactionConfirmed: async (txHash) =>
       await workflow.l1.transactionConfirmed({ headerHash, txHash }),
   });
-  const runtime = createManifestBoundSpendInputSignerMissingProductionRuntimeV1(
-    {
+  const runtime = createManifestBoundSpendInputSignerMissingRuntime({
+    config: workflow.config,
+    journal: centralJournal.familyJournal,
+    observe: async () =>
+      spendInputSignerStageFromL1(
+        (await workflow.l1.observe({ headerHash })).stage,
+      ),
+    resolveStage: createSpendInputSignerMissingRawL1StageResolver({
       config: workflow.config,
-      journal: centralJournal.familyJournal,
-      observe: async () =>
-        spendInputSignerStageFromL1(
-          (await workflow.l1.observe({ headerHash })).stage,
-        ),
-      resolveStage: createSpendInputSignerMissingRawL1StageResolverV1({
-        config: workflow.config,
-        l1: workflow.l1,
-        source,
-      }),
-      centralJournal,
-      stateQueueMutationLeaseCoordinator:
-        workflow.stateQueueMutationLeaseCoordinator,
-    },
-  );
+      l1: workflow.l1,
+      source,
+    }),
+    centralJournal,
+    stateQueueMutationLeaseCoordinator:
+      workflow.stateQueueMutationLeaseCoordinator,
+  });
   return await runtime.runOrResume(evidence);
 };
 
-export type LoadedSpendInputSignerMissingProductionWorkflowV1 = Readonly<{
+export type LoadedSpendInputSignerMissingWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundSpendInputSignerMissingWorkflowConfigV1;
+  config: ManifestBoundSpendInputSignerMissingWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadSpendInputSignerMissingProductionWorkflowV1 = (input: {
+export type LoadSpendInputSignerMissingWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedSpendInputSignerMissingProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedSpendInputSignerMissingWorkflow>;
 
 /**
  * Family-local runner surface for central admission. It consumes only a
  * manifest/runtime path and concrete public-DA transports; neither evidence
  * nor a watcher-owned journal implementation can enter this boundary.
  */
-export const createSpendInputSignerMissingProductionWorkflowRunnerSurfaceV1 = ({
+export const createSpendInputSignerMissingWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  readonly loadRuntimeConfig: LoadSpendInputSignerMissingProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  readonly loadRuntimeConfig: LoadSpendInputSignerMissingWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (String(invocation.category) !== "spendInputSignerMissing") {
         throw new Error(
           `spendInputSignerMissing production runner category mismatch: ${invocation.category}`,
         );
       }
-      const journal = bindProductionWorkflowFundingReservationJournalV1({
+      const journal = bindWorkflowFundingReservationJournal({
         permit: invocation.fundingReservationPermit,
-        journal: bindProductionWorkflowActuationJournalV1({
-          journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
             invocation.journalDirectory,
           ),
           permit: invocation.actuationPermit,
@@ -1277,7 +1270,7 @@ export const createSpendInputSignerMissingProductionWorkflowRunnerSurfaceV1 = ({
           headerHash: invocation.headerHash,
         }),
       });
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
         category: "spendInputSignerMissing" as FraudProofCatalogueCategoryName,
@@ -1313,7 +1306,7 @@ export const createSpendInputSignerMissingProductionWorkflowRunnerSurfaceV1 = ({
           );
         }
         const workflow =
-          await createManifestBoundSpendInputSignerMissingWorkflowV1(
+          await createManifestBoundSpendInputSignerMissingWorkflow(
             loaded.config,
           );
         if (
@@ -1328,7 +1321,7 @@ export const createSpendInputSignerMissingProductionWorkflowRunnerSurfaceV1 = ({
             "spendInputSignerMissing manifest-bound workflow identity differs from invocation",
           );
         }
-        return await executeManifestBoundSpendInputSignerMissingWorkflowV1({
+        return await executeManifestBoundSpendInputSignerMissingWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

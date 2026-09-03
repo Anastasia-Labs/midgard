@@ -39,7 +39,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildFaultProofContracts,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
@@ -185,7 +185,7 @@ describe("zz605/zz609 validation-trace resolver parameter arity", () => {
           // cek direct resolver onto the execution-selection semantic), so its
           // hash is likewise a pure function of the blueprint.
           scriptHashOf(
-            requireValidator(CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1).compiledCode,
+            requireValidator(CEK_PROGRAM_MATERIAL_SPEND_TITLE).compiledCode,
           ),
         ],
       ]);

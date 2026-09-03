@@ -2,18 +2,18 @@ import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
 import { Data, toHex } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { ValidationAuxiliaryWitnessV1Schema } from "./fraud-proof/validation-auxiliary-witness-v1.js";
+import { ValidationAuxiliaryWitnessSchema } from "./fraud-proof/validation-auxiliary-witness-v1.js";
 import {
-  ValidationMachineStateV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceProofSchema,
 } from "./fraud-proof/validation-dispute.js";
 import {
   EventKeySchema,
   HeaderHashSchema,
-  HeaderV1Schema,
+  HeaderSchema,
 } from "./ledger-state.js";
 
-export const DA_PAYLOAD_V1_VERSION = 1n;
+export const DA_PAYLOAD_VERSION = 1n;
 
 export const DaPayloadEntrySchema = Data.Tuple([Data.Bytes(), Data.Bytes()]);
 export type DaPayloadEntry = Data.Static<typeof DaPayloadEntrySchema>;
@@ -26,12 +26,12 @@ export const DaPayloadEntry = DaPayloadEntrySchema as unknown as DaPayloadEntry;
  * the exact ScriptIntegrity stage-3 terminal control and ValueAndMint asset
  * mutations.
  */
-export const RetainedValidationWitnessKeyV1Schema = Data.Object({
+export const RetainedValidationWitnessKeySchema = Data.Object({
   event_key: EventKeySchema,
   execution_index: Data.Integer(),
 });
-export type RetainedValidationWitnessKeyV1 = Data.Static<
-  typeof RetainedValidationWitnessKeyV1Schema
+export type RetainedValidationWitnessKey = Data.Static<
+  typeof RetainedValidationWitnessKeySchema
 >;
 
 /**
@@ -44,28 +44,28 @@ export type RetainedValidationWitnessKeyV1 = Data.Static<
  * must additionally verify any auxiliary membership against the authenticated
  * terminal frontier they use.
  */
-export const RetainedValidationWitnessV1Schema = Data.Object({
-  machine_state: ValidationMachineStateV1Schema,
-  trace_proof: ValidationTraceProofV1Schema,
+export const RetainedValidationWitnessSchema = Data.Object({
+  machine_state: ValidationMachineStateSchema,
+  trace_proof: ValidationTraceProofSchema,
   phase: Data.Integer(),
   program_counter: Data.Integer(),
   witness_cbor: Data.Bytes(),
-  auxiliary: ValidationAuxiliaryWitnessV1Schema,
+  auxiliary: ValidationAuxiliaryWitnessSchema,
 });
-export type RetainedValidationWitnessV1 = Data.Static<
-  typeof RetainedValidationWitnessV1Schema
+export type RetainedValidationWitness = Data.Static<
+  typeof RetainedValidationWitnessSchema
 >;
 
 const canonicalDataBytes = <T>(value: T, schema: unknown): Buffer =>
   Buffer.from(Data.to(value as never, schema as never), "hex");
 
-export const encodeRetainedValidationWitnessKeyV1 = (
-  key: RetainedValidationWitnessKeyV1,
-): Buffer => canonicalDataBytes(key, RetainedValidationWitnessKeyV1Schema);
+export const encodeRetainedValidationWitnessKey = (
+  key: RetainedValidationWitnessKey,
+): Buffer => canonicalDataBytes(key, RetainedValidationWitnessKeySchema);
 
-export const encodeRetainedValidationWitnessV1 = (
-  witness: RetainedValidationWitnessV1,
-): Buffer => canonicalDataBytes(witness, RetainedValidationWitnessV1Schema);
+export const encodeRetainedValidationWitness = (
+  witness: RetainedValidationWitness,
+): Buffer => canonicalDataBytes(witness, RetainedValidationWitnessSchema);
 
 const decodeCanonicalData = <T>(
   bytes: Uint8Array,
@@ -75,30 +75,30 @@ const decodeCanonicalData = <T>(
   const exact = Buffer.from(bytes);
   const decoded = Data.from(exact.toString("hex"), schema as never) as T;
   if (!canonicalDataBytes(decoded, schema).equals(exact)) {
-    throw new DaPayloadV1NonCanonicalError(`${fieldName} is not canonical`);
+    throw new DaPayloadNonCanonicalError(`${fieldName} is not canonical`);
   }
   return decoded;
 };
 
-export const decodeRetainedValidationWitnessKeyV1 = (
+export const decodeRetainedValidationWitnessKey = (
   bytes: Uint8Array,
-): RetainedValidationWitnessKeyV1 =>
+): RetainedValidationWitnessKey =>
   decodeCanonicalData(
     bytes,
-    RetainedValidationWitnessKeyV1Schema,
+    RetainedValidationWitnessKeySchema,
     "retained validation witness key",
   );
 
-export const decodeRetainedValidationWitnessV1 = (
+export const decodeRetainedValidationWitness = (
   bytes: Uint8Array,
-): RetainedValidationWitnessV1 =>
+): RetainedValidationWitness =>
   decodeCanonicalData(
     bytes,
-    RetainedValidationWitnessV1Schema,
+    RetainedValidationWitnessSchema,
     "retained validation witness",
   );
 
-export const DaPayloadCountsV1Schema = Data.Object({
+export const DaPayloadCountsSchema = Data.Object({
   withdrawalCount: Data.Integer(),
   forcedTransactionCount: Data.Integer(),
   l2TransactionCount: Data.Integer(),
@@ -107,18 +107,18 @@ export const DaPayloadCountsV1Schema = Data.Object({
   transitionStepCount: Data.Integer(),
   validationTraceCount: Data.Integer(),
 });
-export type DaPayloadCountsV1 = Data.Static<typeof DaPayloadCountsV1Schema>;
-export const DaPayloadCountsV1 =
-  DaPayloadCountsV1Schema as unknown as DaPayloadCountsV1;
+export type DaPayloadCounts = Data.Static<typeof DaPayloadCountsSchema>;
+export const DaPayloadCounts =
+  DaPayloadCountsSchema as unknown as DaPayloadCounts;
 
 /**
  * V1 DA separates the compact, root-committed transaction sources from
  * their canonical full preimages. This keeps every L1 membership value inside
  * the proof envelope while retaining all data needed to replay validation.
  */
-export const DaPayloadBodyV1Schema = Data.Object({
+export const DaPayloadBodySchema = Data.Object({
   header_hash: HeaderHashSchema,
-  header: HeaderV1Schema,
+  header: HeaderSchema,
   utxos: Data.Array(DaPayloadEntrySchema),
   withdrawals: Data.Array(DaPayloadEntrySchema),
   forced_transactions: Data.Array(DaPayloadEntrySchema),
@@ -131,23 +131,22 @@ export const DaPayloadBodyV1Schema = Data.Object({
   event_to_step: Data.Array(DaPayloadEntrySchema),
   validation_traces: Data.Array(DaPayloadEntrySchema),
   validation_trace_witnesses: Data.Array(DaPayloadEntrySchema),
-  counts: DaPayloadCountsV1Schema,
+  counts: DaPayloadCountsSchema,
 });
-export type DaPayloadBodyV1 = Data.Static<typeof DaPayloadBodyV1Schema>;
-export const DaPayloadBodyV1 =
-  DaPayloadBodyV1Schema as unknown as DaPayloadBodyV1;
+export type DaPayloadBody = Data.Static<typeof DaPayloadBodySchema>;
+export const DaPayloadBody = DaPayloadBodySchema as unknown as DaPayloadBody;
 
-export const DaPayloadV1Schema = Data.Object({
+export const DaPayloadSchema = Data.Object({
   version: Data.Integer(),
-  block_body: DaPayloadBodyV1Schema,
+  block_body: DaPayloadBodySchema,
 });
-export type DaPayloadV1 = Data.Static<typeof DaPayloadV1Schema>;
-export const DaPayloadV1 = DaPayloadV1Schema as unknown as DaPayloadV1;
+export type DaPayload = Data.Static<typeof DaPayloadSchema>;
+export const DaPayload = DaPayloadSchema as unknown as DaPayload;
 
 const MAX_CBOR_UINT64 = 0xffff_ffff_ffff_ffffn;
 const PLUTUS_BYTES_CHUNK = 64;
 
-export class DaPayloadV1NonCanonicalError extends Error {
+export class DaPayloadNonCanonicalError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DaPayloadV1NonCanonicalError";
@@ -268,7 +267,7 @@ const writeList = (
   writer.writeByte(0xff);
 };
 
-const payloadV1Integers = (payload: DaPayloadV1): readonly bigint[] => {
+const payloadIntegers = (payload: DaPayload): readonly bigint[] => {
   const { header, counts } = payload.block_body;
   return [
     payload.version,
@@ -381,8 +380,8 @@ const listSize = (entries: readonly DaPayloadEntry[]): number =>
 const constructorSize = (fieldSizes: readonly number[]): number =>
   4 + fieldSizes.reduce((total, size) => total + size, 0);
 
-const encodedPayloadV1Size = (
-  payload: DaPayloadV1,
+const encodedPayloadSize = (
+  payload: DaPayload,
   utxoEncodedListSize = listSize(payload.block_body.utxos),
 ): number => {
   const body = payload.block_body;
@@ -444,23 +443,20 @@ const encodedPayloadV1Size = (
   return constructorSize([integerSize(payload.version), bodySize]);
 };
 
-/** Exact encoded inner DaPayloadV1 size without allocating its CBOR bytes. */
-export const daPayloadV1EncodedSize = (payload: DaPayloadV1): number =>
-  encodedPayloadV1Size(payload);
+/** Exact encoded inner DaPayload size without allocating its CBOR bytes. */
+export const daPayloadEncodedSize = (payload: DaPayload): number =>
+  encodedPayloadSize(payload);
 
 /**
  * Exact encoded inner size when the full UTxO list is represented by a
  * durable entry-count/tuple-byte aggregate rather than materialized in RAM.
  * The `payload.block_body.utxos` value is ignored.
  */
-export const daPayloadV1EncodedSizeFromUtxoAggregate = (
-  payload: DaPayloadV1,
+export const daPayloadEncodedSizeFromUtxoAggregate = (
+  payload: DaPayload,
   utxos: DaPayloadEntrySizeAggregate,
 ): number =>
-  encodedPayloadV1Size(
-    payload,
-    daPayloadEntriesEncodedSizeFromAggregate(utxos),
-  );
+  encodedPayloadSize(payload, daPayloadEntriesEncodedSizeFromAggregate(utxos));
 
 /**
  * Encodes the canonical V1 Plutus-Data wire format directly into byte chunks.
@@ -468,19 +464,19 @@ export const daPayloadV1EncodedSizeFromUtxoAggregate = (
  * that doubles the largest allocation and creates severe GC pressure. The
  * direct encoder is byte-identical for the protocol's uint64 integer domain.
  */
-export const encodeDaPayloadV1 = (payload: DaPayloadV1): Buffer => {
-  if (payload.version !== DA_PAYLOAD_V1_VERSION) {
+export const encodeDaPayload = (payload: DaPayload): Buffer => {
+  if (payload.version !== DA_PAYLOAD_VERSION) {
     throw new Error(
-      `DaPayloadV1 version must equal ${DA_PAYLOAD_V1_VERSION.toString()}`,
+      `DaPayloadV1 version must equal ${DA_PAYLOAD_VERSION.toString()}`,
     );
   }
-  if (!payloadV1Integers(payload).every(isNativeCborInteger)) {
+  if (!payloadIntegers(payload).every(isNativeCborInteger)) {
     throw new Error(
       "DaPayloadV1 protocol integers must fit the native CBOR integer range",
     );
   }
 
-  const writer = new ExactBufferWriter(encodedPayloadV1Size(payload));
+  const writer = new ExactBufferWriter(encodedPayloadSize(payload));
   const body = payload.block_body;
   writeConstructorStart(writer);
   writeInteger(writer, payload.version);
@@ -545,7 +541,7 @@ export const encodeDaPayloadV1 = (payload: DaPayloadV1): Buffer => {
   return writer.finish();
 };
 
-class DaPayloadV1Reader {
+class DaPayloadReader {
   readonly #bytes: Buffer;
   #offset = 0;
 
@@ -553,13 +549,11 @@ class DaPayloadV1Reader {
     this.#bytes = bytes;
   }
 
-  read(): DaPayloadV1 {
+  read(): DaPayload {
     this.#constructorStart("payload");
     const version = this.#integer("payload.version");
-    if (version !== DA_PAYLOAD_V1_VERSION) {
-      this.#fail(
-        `payload.version must equal ${DA_PAYLOAD_V1_VERSION.toString()}`,
-      );
+    if (version !== DA_PAYLOAD_VERSION) {
+      this.#fail(`payload.version must equal ${DA_PAYLOAD_VERSION.toString()}`);
     }
     this.#constructorStart("payload.block_body");
     const header_hash = this.#bytesHex("payload.block_body.header_hash");
@@ -831,7 +825,7 @@ class DaPayloadV1Reader {
   }
 
   #nonCanonical(message: string): never {
-    throw new DaPayloadV1NonCanonicalError(
+    throw new DaPayloadNonCanonicalError(
       `${message} at offset ${this.#offset.toString()}`,
     );
   }
@@ -841,8 +835,8 @@ class DaPayloadV1Reader {
  * Fail-closed canonical wire decoder used at untrusted transport boundaries.
  * It never falls back to Lucid's whole-payload hex/object conversion.
  */
-export const decodeDaPayloadV1 = (payloadCbor: Buffer): DaPayloadV1 =>
-  new DaPayloadV1Reader(payloadCbor).read();
+export const decodeDaPayload = (payloadCbor: Buffer): DaPayload =>
+  new DaPayloadReader(payloadCbor).read();
 
 export const daPayloadHashHex = (payloadCbor: Buffer): string =>
   toHex(sha256(payloadCbor));

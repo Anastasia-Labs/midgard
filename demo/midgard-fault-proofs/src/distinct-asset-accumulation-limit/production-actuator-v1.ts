@@ -1,49 +1,49 @@
 import {
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { DistinctAssetAccumulationContractsV1 } from "./contracts-v1.js";
+import type { DistinctAssetAccumulationContracts } from "./contracts-v1.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
-  type DistinctAssetAccumulationEvidenceV1,
-  type DistinctAssetAccumulationFindingV1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+  type DistinctAssetAccumulationEvidence,
+  type DistinctAssetAccumulationFinding,
 } from "./family-v1.js";
-import type { DistinctAssetFoldActionV1 } from "./submit-fold-v1.js";
-import { submitDistinctAssetAccumulationFoldV1 } from "./submit-fold-v1.js";
+import type { DistinctAssetFoldAction } from "./submit-fold-v1.js";
+import { submitDistinctAssetAccumulationFold } from "./submit-fold-v1.js";
 import {
-  submitDistinctAssetAccumulationStep01AcceptedV1,
-  submitDistinctAssetAccumulationStep01ForcedV1,
+  submitDistinctAssetAccumulationStep01Accepted,
+  submitDistinctAssetAccumulationStep01Forced,
 } from "./submit-step-01-v1.js";
 import {
-  type DistinctAssetAccumulatorAuthenticationV1,
-  submitDistinctAssetAccumulationStep02V1,
+  type DistinctAssetAccumulatorAuthentication,
+  submitDistinctAssetAccumulationStep02,
 } from "./submit-step-02-v1.js";
-import { submitDistinctAssetAccumulationStep06V1 } from "./submit-step-06-v1.js";
+import { submitDistinctAssetAccumulationStep06 } from "./submit-step-06-v1.js";
 
-export type DistinctAssetAccumulationWorkflowReferencesV1 = Readonly<{
+export type DistinctAssetAccumulationWorkflowReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
-export type DistinctAssetAccumulationActuationArtifactV1 = Readonly<{
+export type DistinctAssetAccumulationActuationArtifact = Readonly<{
   headerHash: string;
-  finding: DistinctAssetAccumulationFindingV1;
-  evidence: DistinctAssetAccumulationEvidenceV1;
+  finding: DistinctAssetAccumulationFinding;
+  evidence: DistinctAssetAccumulationEvidence;
   accepted?: Readonly<{
     txInclusion: SubmitStep01TxInclusion;
     validationTracesRoot: string;
@@ -53,14 +53,14 @@ export type DistinctAssetAccumulationActuationArtifactV1 = Readonly<{
     header: Readonly<Record<string, unknown>>;
     [field: string]: unknown;
   }>;
-  authentication: DistinctAssetAccumulatorAuthenticationV1;
+  authentication: DistinctAssetAccumulatorAuthentication;
   folds: readonly [
-    DistinctAssetFoldActionV1,
-    DistinctAssetFoldActionV1,
-    DistinctAssetFoldActionV1,
+    DistinctAssetFoldAction,
+    DistinctAssetFoldAction,
+    DistinctAssetFoldAction,
   ];
 }>;
-export type DistinctAssetAccumulationActuatorActionV1 =
+export type DistinctAssetAccumulationActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step01";
@@ -79,40 +79,40 @@ export type DistinctAssetAccumulationActuatorActionV1 =
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
-export type DistinctAssetAccumulationCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type DistinctAssetAccumulationCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
 
-export type DistinctAssetAccumulationActuatorConfigV1 = Readonly<{
+export type DistinctAssetAccumulationActuatorConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
   network: Network;
   signer: ResolvedProverSigner;
   categoryId: string;
-  contracts: DistinctAssetAccumulationContractsV1;
-  references: DistinctAssetAccumulationWorkflowReferencesV1;
+  contracts: DistinctAssetAccumulationContracts;
+  references: DistinctAssetAccumulationWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProofSpendingScriptHash: string;
   fraudProverRewardLovelace: bigint;
 }>;
 
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<DistinctAssetAccumulationCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<DistinctAssetAccumulationCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /**
  * Family actuator. Builders stop after local UPLC evaluation and signing;
  * the durable production workflow remains the sole submit authority.
  */
-export const createDistinctAssetAccumulationActuatorV1 = (
-  config: DistinctAssetAccumulationActuatorConfigV1,
+export const createDistinctAssetAccumulationActuator = (
+  config: DistinctAssetAccumulationActuatorConfig,
 ) => {
   if (config.categoryId !== "00000035")
     throw new Error("distinctAssetAccumulationLimit category id changed");
@@ -121,9 +121,9 @@ export const createDistinctAssetAccumulationActuatorV1 = (
       action,
       artifact,
     }: {
-      readonly action: DistinctAssetAccumulationActuatorActionV1;
-      readonly artifact: DistinctAssetAccumulationActuationArtifactV1;
-    }): Promise<DistinctAssetAccumulationCapturedActionV1> => {
+      readonly action: DistinctAssetAccumulationActuatorAction;
+      readonly artifact: DistinctAssetAccumulationActuationArtifact;
+    }): Promise<DistinctAssetAccumulationCapturedAction> => {
       if (!/^[0-9a-f]{64}$/u.test(artifact.headerHash))
         throw new Error(
           "distinctAssetAccumulationLimit artifact header changed",
@@ -145,8 +145,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
             deploymentInfo: config.deploymentInfo,
             network: config.network,
             signer: config.signer,
-            fraudCategory:
-              DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1 as never,
+            fraudCategory: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY as never,
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
@@ -163,10 +162,10 @@ export const createDistinctAssetAccumulationActuatorV1 = (
         if (
           (accepted !== undefined &&
             artifact.finding.subject.source_kind !==
-              PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1) ||
+              PROOF_THREAD_SOURCE_KIND_ACCEPTED) ||
           (artifact.forcedSource !== undefined &&
             artifact.finding.subject.source_kind !==
-              PROOF_THREAD_SOURCE_KIND_FORCED_V1)
+              PROOF_THREAD_SOURCE_KIND_FORCED)
         )
           throw new Error(
             "distinctAssetAccumulationLimit source polarity changed",
@@ -174,7 +173,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
         if (accepted !== undefined)
           return await capture(async (preSubmitBoundary) => {
             const { threadUtxo, threadToken } =
-              await requireLinearFaultThreadUtxoV1({
+              await requireLinearFaultThreadUtxo({
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.categoryId,
@@ -182,7 +181,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
                 stepIndex: 0,
                 threadOutRef: action.threadOutRef,
               });
-            await submitDistinctAssetAccumulationStep01AcceptedV1({
+            await submitDistinctAssetAccumulationStep01Accepted({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -206,7 +205,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
             "distinctAssetAccumulationLimit forced source disappeared",
           );
         return await capture(async (preSubmitBoundary) => {
-          await submitDistinctAssetAccumulationStep01ForcedV1({
+          await submitDistinctAssetAccumulationStep01Forced({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId: config.categoryId,
@@ -222,7 +221,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
       }
       if (action.stage === "step02")
         return await capture(async (preSubmitBoundary) => {
-          await submitDistinctAssetAccumulationStep02V1({
+          await submitDistinctAssetAccumulationStep02({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId: config.categoryId,
@@ -236,7 +235,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
         });
       if (action.stage === "fold")
         return await capture(async (preSubmitBoundary) => {
-          await submitDistinctAssetAccumulationFoldV1({
+          await submitDistinctAssetAccumulationFold({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId: config.categoryId,
@@ -251,7 +250,7 @@ export const createDistinctAssetAccumulationActuatorV1 = (
         });
       if (action.stage === "step06")
         return await capture(async (preSubmitBoundary) => {
-          await submitDistinctAssetAccumulationStep06V1({
+          await submitDistinctAssetAccumulationStep06({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId: config.categoryId,
@@ -264,9 +263,9 @@ export const createDistinctAssetAccumulationActuatorV1 = (
             awaitConfirmation: false,
           });
         });
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
-          name: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
+          name: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
           categoryId: config.categoryId,
           firstStepDeploymentEntry: "fraudProofDistinctAssetAccumulationLimit",
           firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
@@ -285,11 +284,11 @@ export const createDistinctAssetAccumulationActuatorV1 = (
         headerHash: artifact.headerHash,
         input: {
           schemaVersion: "midgard-production-cursor-family-action-v1",
-          category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
+          category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: config.fraudProverRewardLovelace,

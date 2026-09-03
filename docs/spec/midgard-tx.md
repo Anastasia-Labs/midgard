@@ -174,8 +174,8 @@ order:
 - **Level 2 — transaction id:**
   `tx_id = blake2b_256("MidgardNativeTxBodyV1" ‖ uint(version) ‖ body_cbor)`
   where `body_cbor` is the §2.1 encoding (domain string as raw ASCII bytes).
-- The full-transaction commitment (`"MidgardNativeTxFullV1"` domain) and the
-  proof-source commitment (`"MidgardNativeTxProofSourceV1"` domain, over
+- The full-transaction commitment (`"MidgardNativeTxFull"` domain) and the
+  proof-source commitment (`"MidgardNativeTxProofSource"` domain, over
   `83` followed by `bytes(compact_cbor)`,
   `bytes(witness_set_compact_cbor)`, and
   `bytes(field_preimage_lengths_cbor)`) keep their current forms.
@@ -285,7 +285,7 @@ Item-level rules:
   (`onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak`) is a
   direct call to `encode_midgard_tx_input`, the field-0/1 item encoder. In
   TypeScript the one spelling is
-  `encodeMidgardSpendInputItemV1`
+  `encodeMidgardSpendInputItem`
   (`demo/midgard-core/src/codec/native-tx-field-items-v1.ts`), reached
   through `outRefToCbor` / `utxoOutRefCbor`
   (`demo/lucid-midgard/src/core/output.ts`) and `midgardOutRefToCbor`
@@ -295,7 +295,7 @@ Item-level rules:
   the on-chain side never computes. (From 256 up the minimal index is
   already `19 XXXX`, so the two agree there and only indices below 256 can
   carry a stale key.) Decoders of a trie key or `outref` column are
-  `decode_midgard_tx_input_cbor` / `decodeMidgardSpendInputItemV1`, which
+  `decode_midgard_tx_input_cbor` / `decodeMidgardSpendInputItem`, which
   both enforce the exact 38-byte width and the `0x19` index head — the
   width is what rejects a non-minimal `59 0020` tx_id header, which a
   positional reader would otherwise decode to the same out-ref.
@@ -533,7 +533,7 @@ neighbours read against this table.
 
 | constant                            | value                               | status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED, re-pinned and applied — erratum E1 below is normative for this row.** 15,148 is the measured reserve-clearing publication frontier, and both `chunk_bytes_k` and `MIDGARD_CHUNK_BYTES_K_V1` now read it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `K` (chunk size / tier-2 bound)     | ~~15,900 bytes~~ → **15,148 bytes** | **FALSIFIED, re-pinned and applied — erratum E1 below is normative for this row.** 15,148 is the measured reserve-clearing publication frontier, and both `chunk_bytes_k` and `MIDGARD_CHUNK_BYTES_K` now read it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `maxTier1RedeemerPreimageBytes`     | **14,336 bytes**                    | **RESOLVED into the R6 split reading (owner-signed 2026-08-22 on the #622 sign-off table; executed at the #617 wave re-freeze).** The bound is retained at 14,336 under two distinct readings. (i) *Mooted on the complete-item direct path*: since Option B (#620) the item preimage rides the OBSERVE door, not the authenticate redeemer, and the contiguous direct fit ends at a 14,004-byte item — items 14,005–14,336 are refused PRE-SIGN at the projected envelope and auto-demote to the publication/reference route, measured completing to award. The #611 measurements (17,389 signed bytes at the cap; bisected 13,357-byte frontier) measured the retired authenticate-carriage wire and no longer describe any deployed transaction. (ii) *Retained general-phase*: 14,336 is exactly the measured reference-route stageability boundary — item 14,336 stages end-to-end (publication 15,135 B, by-reference observe 1,959 B, award; dispute-chain total 162,657 B) and 14,337 refuses as tier-2 carriage — and it sits 60 B under the 14,396-byte single-publication ceiling. The parameter is therefore not repriced: measurement confirms it rather than leaving authority pending. |
 | `maxTransactionAggregateFieldBytes` | 32,768 bytes                        | retained                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | maximum tier-3 chunk count          | `⌈32,768 / K⌉ = 3`                  | derived; unchanged by the re-pin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -570,7 +570,7 @@ value are in E1 immediately after this list.
   key address, and the measured framing for that shape is small —
   `maxFieldPublicationDatumBytes` 4,574 →
   `maxFieldPublicationUnsignedTransactionBytes` 4,675, i.e. 101 bytes of
-  unsigned framing (`MIDGARD_V1_ENVELOPE_MEASUREMENTS`,
+  unsigned framing (`MIDGARD_ENVELOPE_MEASUREMENTS`,
   `demo/midgard-core/src/consensus-profile-v1.ts`) — leaving room for a
   15,900-byte chunk plus datum envelope, output, fee, and one vkey witness
   inside 16,384. **Phase-4 cross-check, mandatory:** the counted-era
@@ -588,7 +588,7 @@ value are in E1 immediately after this list.
   `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
   (**Corrected 2026-08-14**, owner ruling: these two were 15,489 and 14,993,
   about 80 bytes below the shape they describe. The error was internal to
-  `MIDGARD_V1_ENVELOPE_MEASUREMENTS` — the same block's
+  `MIDGARD_ENVELOPE_MEASUREMENTS` — the same block's
   `maxReliableCompleteItemPublicationDatumBytes` 15,624,
   `...MinAdaLovelace` 68,231,610 and `...FeeLovelace` 853,925 are
   measurements of that same publication and all three land on an item size
@@ -713,7 +713,7 @@ that does not fit, and 15,149 the first that does not clear the reserve.
   (`5f 5840 … ff`), and each chunk pays a two-byte head. At the exact frontier
   that is 492 bytes; at 15,900 it is 500; at 14,336 it is 450.
 
-`midgardCarriagePublicationBytesV1` in
+`midgardCarriagePublicationBytes` in
 `demo/midgard-core/src/codec/native-tx-carriage-v1.ts` is that decomposition as
 a function, and the emulator measurement asserts it reproduces the real signed
 transaction size **to the byte at every payload size it is sampled at**, on both
@@ -786,9 +786,9 @@ certification are defined over; it stays total. The refusal belongs where a
 transaction is built.
 
 **The build-time guard stays, and is now a guard rather than the mitigation.**
-`midgardFieldCarriagePublishabilityV1` reports every chunk of a plan that
+`midgardFieldCarriagePublishability` reports every chunk of a plan that
 `maxTxSize` will not accept and by how much, and
-`buildUnsignedFieldPreimagePublicationV1Program` refuses to build one, naming this
+`buildUnsignedFieldPreimagePublicationProgram` refuses to build one, naming this
 erratum. A caller may raise the builder's limit (bounded by the §5.4 cap) for
 measurement work, so it is a fail-closed default rather than an inescapable
 invariant. What the re-pin changed is what the guard catches: before it, _every_
@@ -805,10 +805,10 @@ system, and all of it moved in one commit rather than being carried as a live
 spec/code divergence:
 
 - `chunk_bytes_k` in `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` and
-  `MIDGARD_CHUNK_BYTES_K_V1` in
+  `MIDGARD_CHUNK_BYTES_K` in
   `demo/midgard-core/src/codec/native-tx-field-access-v1.ts` both read 15,148.
   The TypeScript half is asserted **equal to the derived frontier**
-  (`MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1`) rather than merely equal to a
+  (`MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES`) rather than merely equal to a
   literal, so `K` cannot drift away from the measurement that fixes it.
 - The #569 cross-language straddle vector re-derived from its producer:
   `chunkLengths [15,148, 855]`, and the straddling item moved from 397 to **378**
@@ -1200,7 +1200,7 @@ under tier 3.
   content at mint, the token lands at the script address, and spending
   requires burning the token plus the owner's signature.
 
-### 8.6 `FieldPreimageCertificateV1`
+### 8.6 `FieldPreimageCertificate`
 
 ```
 FieldPreimageCertificateV1 {
@@ -1709,7 +1709,7 @@ why it went unchallenged. The cause was not in the flat measurement but in the
 counted-era frontiers it subtracts from: they were pinned at 15,489 and 14,993,
 about 80 bytes below what the counted publisher actually reaches, while the three
 sibling measurements of that same publication in the same
-`MIDGARD_V1_ENVELOPE_MEASUREMENTS` block had recorded 15,073's datum bytes,
+`MIDGARD_ENVELOPE_MEASUREMENTS` block had recorded 15,073's datum bytes,
 min-Ada and fee all along. The gain is +74 / +75 B. It is smaller and it is not
 symmetric, and both of those are the measurement rather than the story.
 
@@ -1734,7 +1734,7 @@ applied in both languages. See §8.3.
 ### 8.11 Forced-order material carriage (normative)
 
 An **L1 forced order** commits to an L2 transaction it wants included: its datum
-is `TxOrderPayloadV1 { tx_id, transaction_commitment, source }`, and its
+is `TxOrderPayload { tx_id, transaction_commitment, source }`, and its
 `source`'s compact structures carry §4's nine field commitments. This subsection
 is normative for how that transaction's material reaches L1. (Owner ruling,
 2026-08-11; it supersedes the earlier all-fields-empty stopgap.)
@@ -1759,7 +1759,7 @@ written against §8.7.)
 **Carriage is prover-chosen per non-empty field, supplied in the mint
 redeemer.** For each of §2.5's nine slots whose committed hash is not
 `field_commitment(#"80")`, the order's mint redeemer supplies one §8.8
-`FieldCarriageV1`, and the mint authenticates it against that slot's commitment
+`FieldCarriage`, and the mint authenticates it against that slot's commitment
 through the field-access door:
 
 - The vector is **positional over the non-empty slots in ascending field
@@ -1887,9 +1887,9 @@ both readers.
    width assertion, mint policy/asset ordering, and the §6.2 acceptance
    boundaries (2⁶⁴ ± 1 bignums, constructor alternatives 127/128).
    The **frozen wire types** are held to the same standard and by the same
-   means: the §8.8 `FieldCarriageV1`/`FieldViewV1` sums, the §8.6
-   `FieldPreimageCertificateV1` datum and the §8.6
-   `FieldPreimageCertificateMintRedeemerV1` are pinned by shared vectors that
+   means: the §8.8 `FieldCarriage`/`FieldView` sums, the §8.6
+   `FieldPreimageCertificate` datum and the §8.6
+   `FieldPreimageCertificateMintRedeemer` are pinned by shared vectors that
    the off-chain producer encodes and the on-chain decoder both **decodes and
    re-serialises** — decoding alone would miss an encoder emitting a shape the
    decoder tolerates. Every constructor tag is pinned positionally against the
@@ -1901,7 +1901,7 @@ both readers.
    64-byte definite chunks, so a `>=` written where the rule says `>` is caught
    at the exact width where it is the only difference. Every wire type whose
    shape can reach that width carries a crossing vector.
-   `FieldPreimageCertificateV1` is the sole exception and is one structurally,
+   `FieldPreimageCertificate` is the sole exception and is one structurally,
    not by omission: each of its fields is fixed-width and at most 32 bytes
    (owner 28, tx-id 32, `field_hash` 32 since #606, each digest 32), so no
    value of that type can carry a byte string wide enough to chunk. The
@@ -2029,7 +2029,7 @@ is the same path with `.test.ak`.
 ### 10.1 What a walk is
 
 A **walk** is a position over one field of one transaction, advanced by
-offset-and-slice reads against an authenticated `FieldViewV1` (§8.8). It has
+offset-and-slice reads against an authenticated `FieldView` (§8.8). It has
 exactly two operations that move it — take the next item, or relocate forward
 by `n` items — and one that opens it.
 
@@ -2353,7 +2353,7 @@ to be established three times over.
 reaches an intra-item mechanism from §10's `walk_next` or from
 `field_item_at`, both of which read it through the §8.8 door after the door's
 §7.1 hash check. §11 is therefore a pure function of bytes §7 already
-authenticated, and it never takes a `FieldViewV1`: re-reading interior bytes
+authenticated, and it never takes a `FieldView`: re-reading interior bytes
 through the view would make every byte pay tier-3's per-read chunk
 verification, which is the opposite of what §8.4's guarantee is for.
 
@@ -2826,7 +2826,7 @@ A **fault statement** names one wrong thing about one transaction. It carries:
 
 It carries **no preimage bytes**, and that is the whole of witness minimality
 here. The fraudulent item's bytes reach the adjudication from the authenticated
-`FieldViewV1` — through §10's walk, which read them from bytes the §8.8 door
+`FieldView` — through §10's walk, which read them from bytes the §8.8 door
 had already hashed against the positionally-extracted field commitment (§7.1).
 A step therefore pays the authenticate-once check for the fields it touches and
 **nothing beyond it**: there is no re-supply of the field, of the item, or of
@@ -3330,7 +3330,7 @@ and neither is a special case of the other:
 | --------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | what is accused | one item, at `(field_index, item_index)`                                                    | one field, at `field_index`                                                                     |
 | the envelope    | must be well-formed — the walk that reaches the item is the door's, and it aborts otherwise | must **not** be well-formed; that is the whole accusation                                       |
-| what is read    | exactly one item's bytes (§12.3), through a `FieldViewV1`                                   | the whole preimage, as bytes, through no view at all                                            |
+| what is read    | exactly one item's bytes (§12.3), through a `FieldView`                                   | the whole preimage, as bytes, through no view at all                                            |
 | who decides     | the caller's per-item predicate, which this document does not define                        | §5.1's grammar, defined below and defined nowhere else                                          |
 | item index      | carried, and load-bearing                                                                   | **absent** — an ungrammatical envelope has no item indices, so there is nothing for one to name |
 
@@ -3492,7 +3492,7 @@ derivation against the rule.
    compact structure this step extracts a commitment from means nothing until
    the id derived from it is the committed key.
 2. The prover supplies **which** of §2.5's nine slots is accused and a §8.8
-   `FieldCarriageV1` for it. The accused slot's expected commitment is
+   `FieldCarriage` for it. The accused slot's expected commitment is
    obtained by positional extraction from the committed compact structures
    (§4) — never as a free-standing argument — and the carried bytes are
    hashed against it. A prover supplying anything else **aborts** (§7.3),
@@ -3516,7 +3516,7 @@ Five further conditions are normative:
   authenticated in the transaction that read them, and re-supplying them
   would be re-supplying a field the first transaction already paid for.
 - **The reading path MUST NOT be a view door.** Both §8.8 doors materialise a
-  `FieldViewV1` and therefore run §5.1's walk under `expect`; reaching the
+  `FieldView` and therefore run §5.1's walk under `expect`; reaching the
   verdict through either would reproduce inside this family the stall it
   exists to end. The door entry point this family uses returns the
   hash-checked **bytes** and runs no §5.1 check at all. It MUST NOT be used
@@ -3816,7 +3816,7 @@ evidence and derives, the second holds the derivation against the rule.
    `transactions_root` by the shared native inclusion path, including the
    codec precondition every native family runs.
 2. The prover supplies **which** of §2.5's nine slots is accused and a §8.8
-   `FieldCarriageV1` for it, as §12.7's `CommittedFieldClaimV1` — the same
+   `FieldCarriage` for it, as §12.7's `CommittedFieldClaim` — the same
    wire type, reused rather than re-declared, because the accusation the two
    sibling fault kinds make is the same accusation and §6.1's one-spelling
    rule applies to a wire type as much as to a scalar. The accused slot's
@@ -3847,7 +3847,7 @@ Five further conditions are normative:
   families are held apart by the script hashes their step-01s pin and by
   these two types, not by convention.
 - **The reading path MUST NOT be a view door.** Both §8.8 doors materialise a
-  `FieldViewV1` and therefore run the very `expect`s under accusation.
+  `FieldView` and therefore run the very `expect`s under accusation.
   §12.7's `authenticated_committed_preimage` — the non-aborting entry point
   that returns the hash-checked bytes and runs no §5.1, §7.4 or §5.4 check —
   is reused unchanged and is the only door entry point this family uses.
@@ -4018,7 +4018,7 @@ pub type OperatorVerdictV1 {
 }
 ```
 
-`RejectionReasonV1` is the fully enumerated space of rejection verdicts — 47
+`RejectionReason` is the fully enumerated space of rejection verdicts — 47
 constructors, each carrying only subject coordinates (never expected values,
 hashes, or recomputable arguments). Its arm inventory, payload conventions
 and per-arm refutability analysis are owned by
@@ -4078,7 +4078,7 @@ constant against its ASCII bytes.
 
 ### 13.3 The bridge, and what is frozen
 
-`rejection_code_of : RejectionReasonV1 -> ByteArray` is the **total
+`rejection_code_of : RejectionReason -> ByteArray` is the **total
 surjection** from the 47 arms onto the 19 codes (every arm maps; every code
 is hit). A rejecting validation-trace descriptor commits
 
@@ -4093,8 +4093,8 @@ to — the arm-level verdict and the code-level machine channel are bound
 through this bridge, in that direction only.
 
 **Frozen by the #640 rulings (2026-08-24):** the descriptor format
-(`ValidationTraceDescriptorV1`), the machine state format
-(`ValidationMachineStateV1`), the 19 code byte values, and the
+(`ValidationTraceDescriptor`), the machine state format
+(`ValidationMachineState`), the 19 code byte values, and the
 domain-separated hash above. The 47-arm type and the bridge are the revision
 surface: a `RejectionReasonV2` is a new leaf schema version whose bridge
 back to this register is its own compatibility obligation (catalogue §6,

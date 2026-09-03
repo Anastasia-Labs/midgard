@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  decodeArchitectureGCommitCandidateSeedInputV1,
-  decodeArchitectureGCorpusFundingV1,
+  decodeArchitectureGCommitCandidateSeedInput,
+  decodeArchitectureGCorpusFunding,
   toJsonSafeCount,
-  validateArchitectureGCommitCandidateSeedResultV1,
+  validateArchitectureGCommitCandidateSeedResult,
 } from "../src/workers/utils/mpf-commit-candidate-artifacts.js";
 
 const hash = (byte: number): string =>
@@ -88,7 +88,7 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
 
   it("accepts the complete canonical seed input", () => {
     const value = seedInput();
-    expect(decodeArchitectureGCommitCandidateSeedInputV1(value)).toBe(value);
+    expect(decodeArchitectureGCommitCandidateSeedInput(value)).toBe(value);
   });
 
   it.each([
@@ -113,15 +113,13 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
   ])("rejects an incomplete or noncanonical seed input %#", (mutate) => {
     const value = seedInput();
     mutate(value);
-    expect(() =>
-      decodeArchitectureGCommitCandidateSeedInputV1(value),
-    ).toThrow();
+    expect(() => decodeArchitectureGCommitCandidateSeedInput(value)).toThrow();
   });
 
   it("accepts funding only when top-level and entry identities are exact", () => {
     const value = funding();
     expect(
-      decodeArchitectureGCorpusFundingV1({
+      decodeArchitectureGCorpusFunding({
         value,
         expectedCorpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
         expectedSliceSha256: hash(11),
@@ -161,7 +159,7 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
     const value = funding();
     mutate(value);
     expect(() =>
-      decodeArchitectureGCorpusFundingV1({
+      decodeArchitectureGCorpusFunding({
         value,
         expectedCorpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
         expectedSliceSha256: hash(11),
@@ -176,7 +174,7 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
   it("rejects a funding map whose wallet/outref order is not the selected corpus root order", () => {
     const value = funding();
     expect(() =>
-      decodeArchitectureGCorpusFundingV1({
+      decodeArchitectureGCorpusFunding({
         value,
         expectedCorpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
         expectedSliceSha256: hash(11),
@@ -205,7 +203,7 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
       deltaCount: 2,
     };
     const validate = (candidate: unknown) =>
-      validateArchitectureGCommitCandidateSeedResultV1({
+      validateArchitectureGCommitCandidateSeedResult({
         value: candidate,
         expectedDatabaseName: value.databaseName,
         expectedCorpusSliceSha256: hash(11),

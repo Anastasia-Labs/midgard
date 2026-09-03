@@ -40,13 +40,13 @@ import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,
 } from "../../../src/index.js";
-import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
-import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
+import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
+import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../../../src/witness-reference-scripts-v1.js";
 import {
   alwaysSucceedsBlueprintPath,
@@ -68,12 +68,12 @@ import {
 } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
-  type MinAdaYieldReferenceScriptsV1,
-  type OperatorLifecycleReferenceScriptsV1,
-  publishFaultProofWitnessReferenceScriptsV1,
-  publishHarnessFaultProofReferenceScriptsV1,
-  publishMinAdaYieldReferenceScriptsV1,
-  publishOperatorLifecycleReferenceScriptsV1,
+  type MinAdaYieldReferenceScripts,
+  type OperatorLifecycleReferenceScripts,
+  publishFaultProofWitnessReferenceScripts,
+  publishHarnessFaultProofReferenceScripts,
+  publishMinAdaYieldReferenceScripts,
+  publishOperatorLifecycleReferenceScripts,
 } from "./reference-scripts.js";
 
 const encodeCatalogueMembershipRedeemer = ({
@@ -107,7 +107,7 @@ const encodeCatalogueMembershipRedeemer = ({
  * withdrawal carrying the category proof, and the `Init` mint redeemer. It
  * remains here as the focused Q39/Q40 emulator adapter.
  */
-export const submitFabricatedFamilyInitV1 = async ({
+export const submitFabricatedFamilyInit = async ({
   lucid,
   realBlueprint,
   contracts,
@@ -127,14 +127,12 @@ export const submitFabricatedFamilyInitV1 = async ({
   >;
   readonly catalogueRoot: string;
   readonly category: FraudProofCatalogueCategoryDeploymentInfo;
-  readonly family:
-    | FabricatedDepositContractsV1
-    | FabricatedWithdrawalContractsV1;
+  readonly family: FabricatedDepositContracts | FabricatedWithdrawalContracts;
   readonly familyLabel: string;
   readonly signer: ReturnType<typeof resolveProverSigner>;
   readonly fraudulentBlockOutRef: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
 }): Promise<{
   readonly txHash: string;
   readonly fraudulentHeaderHash: string;
@@ -257,12 +255,12 @@ export const submitFabricatedFamilyInitV1 = async ({
   signer.selectWallet(lucid);
   // Owner ruling 2026-08-26: witness scripts resolve from published reference
   // scripts wherever the scenario requires them; missing entries fail closed.
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: family.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${familyLabel} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${familyLabel} init phas membership withdrawal`,
@@ -315,7 +313,7 @@ export const submitFabricatedFamilyInitV1 = async ({
   };
 };
 
-export type FaultProofEmulatorHarnessV1 = {
+export type FaultProofEmulatorHarness = {
   readonly realBlueprint: Blueprint;
   readonly alwaysBlueprint: Blueprint;
   readonly emulator: Emulator;
@@ -327,13 +325,13 @@ export type FaultProofEmulatorHarnessV1 = {
     ReturnType<typeof buildMinimalFaultProofContracts>
   > & {
     readonly referenceScriptAuth: ReferenceScriptAuthPolicy;
-    readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScriptsV1;
-    readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScriptsV1;
+    readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScripts;
+    readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
   };
   readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly faultProofReferenceScripts: Awaited<
-    ReturnType<typeof publishHarnessFaultProofReferenceScriptsV1>
+    ReturnType<typeof publishHarnessFaultProofReferenceScripts>
   >;
 };
 
@@ -349,7 +347,7 @@ export type FaultProofEmulatorHarnessV1 = {
  * Shared witness scripts are published here exactly once per scenario harness
  * so every downstream submitter sees the same immutable reference UTxOs.
  */
-export const makeFaultProofEmulatorHarnessV1 = async ({
+export const makeFaultProofEmulatorHarness = async ({
   contractOptions = {},
   accounts,
   emulatorTimeMs,
@@ -369,7 +367,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     funderLucid: Awaited<ReturnType<typeof Lucid>>,
     realBlueprint: Blueprint,
   ) => Promise<void>;
-} = {}): Promise<FaultProofEmulatorHarnessV1> => {
+} = {}): Promise<FaultProofEmulatorHarness> => {
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
   const funder =
@@ -420,7 +418,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     referenceScriptAuth,
   };
   const operatorLifecycleReferenceScripts =
-    await publishOperatorLifecycleReferenceScriptsV1({
+    await publishOperatorLifecycleReferenceScripts({
       // Keep the funder's deployment nonce unspent. These immutable reference
       // scripts are chain-global and the prover wallet is already the harness
       // publisher for the fraud-proof witness roster below.
@@ -435,7 +433,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     stagedContracts.fraudProofs,
   );
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: proverLucid,
       realBlueprint,
       computationThreadMintingScript:
@@ -454,7 +452,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   const minAdaYieldReferenceScripts =
     contractsWithWitnesses.minAda === undefined
       ? undefined
-      : await publishMinAdaYieldReferenceScriptsV1({
+      : await publishMinAdaYieldReferenceScripts({
           lucid: proverLucid,
           contracts: contractsWithWitnesses,
         });
@@ -465,7 +463,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
       : { minAdaYieldReferenceScripts }),
   };
   const faultProofReferenceScripts =
-    await publishHarnessFaultProofReferenceScriptsV1({
+    await publishHarnessFaultProofReferenceScripts({
       lucid: proverLucid,
       contracts,
     });

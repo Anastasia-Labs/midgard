@@ -5,10 +5,10 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { WatcherProductionStateQueueObservationV1 } from "../../src/indexers/production-state-queue-observation-v1.js";
+import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/production-state-queue-observation-v1.js";
 import {
-  openWatcherSqliteDurableBackendV1,
-  unsafeOpenWatcherSqliteDurableBackendForTestV1,
+  openWatcherSqliteDurableBackend,
+  unsafeOpenWatcherSqliteDurableBackendForTest,
 } from "../../src/storage/sqlite-durable-backend-v1.js";
 
 const directories: string[] = [];
@@ -24,7 +24,7 @@ const hex32 = (value: number): string => value.toString(16).padStart(64, "0");
 const stateQueueObservation = (
   value: number,
   previousObservationDigest: string | null,
-): WatcherProductionStateQueueObservationV1 =>
+): WatcherAuthenticatedStateQueueObservation =>
   Object.freeze({
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
     deploymentIdentityDigest: "11".repeat(32),
@@ -62,7 +62,7 @@ describe("production watcher SQLite durable backend", () => {
     const path = join(await directory(), "watcher.sqlite");
     const first = bytes("first complete snapshot");
     const second = bytes("second complete snapshot");
-    const opened = await openWatcherSqliteDurableBackendV1({ path });
+    const opened = await openWatcherSqliteDurableBackend({ path });
     expect(await opened.backend.read()).toBeNull();
     expect(await opened.backend.compareAndSwap(null, first)).toBe(true);
     expect(await opened.backend.compareAndSwap(null, second)).toBe(false);
@@ -75,7 +75,7 @@ describe("production watcher SQLite durable backend", () => {
     expect(await opened.backend.read()).toEqual(second);
     opened.close();
 
-    const restarted = await openWatcherSqliteDurableBackendV1({ path });
+    const restarted = await openWatcherSqliteDurableBackend({ path });
     try {
       expect(await restarted.backend.read()).toEqual(second);
     } finally {
@@ -85,7 +85,7 @@ describe("production watcher SQLite durable backend", () => {
 
   it("detects caller-external database corruption instead of trusting stored hashes", async () => {
     const path = join(await directory(), "watcher.sqlite");
-    const opened = await openWatcherSqliteDurableBackendV1({ path });
+    const opened = await openWatcherSqliteDurableBackend({ path });
     const first = bytes("authenticated snapshot");
     expect(await opened.backend.compareAndSwap(null, first)).toBe(true);
     opened.close();
@@ -98,7 +98,7 @@ describe("production watcher SQLite durable backend", () => {
       .run(bytes("substituted snapshot"));
     hostile.close();
 
-    const reopened = await openWatcherSqliteDurableBackendV1({ path });
+    const reopened = await openWatcherSqliteDurableBackend({ path });
     try {
       await expect(reopened.backend.read()).rejects.toThrow("digest mismatch");
       await expect(
@@ -111,13 +111,13 @@ describe("production watcher SQLite durable backend", () => {
 
   it("refuses temporary and symlink-traversing persistence paths", async () => {
     await expect(
-      openWatcherSqliteDurableBackendV1({ path: "/tmp/watcher.sqlite" }),
+      openWatcherSqliteDurableBackend({ path: "/tmp/watcher.sqlite" }),
     ).rejects.toThrow("canonical durable path");
   });
 
   it("persists one exact sparse observation chain and revokes the rolled-back suffix", async () => {
     const path = join(await directory(), "watcher.sqlite");
-    const opened = await unsafeOpenWatcherSqliteDurableBackendForTestV1(
+    const opened = await unsafeOpenWatcherSqliteDurableBackendForTest(
       { path },
       () => undefined,
     );
@@ -168,7 +168,7 @@ describe("production watcher SQLite durable backend", () => {
       .run();
     sequenceGap.close();
 
-    const restarted = await unsafeOpenWatcherSqliteDurableBackendForTestV1(
+    const restarted = await unsafeOpenWatcherSqliteDurableBackendForTest(
       { path },
       () => undefined,
     );
@@ -191,13 +191,13 @@ describe("production watcher SQLite durable backend", () => {
 
   it("rejects structural observations and detects persisted sparse-cache substitution", async () => {
     const path = join(await directory(), "watcher.sqlite");
-    const production = await openWatcherSqliteDurableBackendV1({ path });
+    const production = await openWatcherSqliteDurableBackend({ path });
     await expect(
       production.stateQueueObservations.append(stateQueueObservation(1, null)),
     ).rejects.toThrow("was not admitted");
     production.close();
 
-    const seeded = await unsafeOpenWatcherSqliteDurableBackendForTestV1(
+    const seeded = await unsafeOpenWatcherSqliteDurableBackendForTest(
       { path },
       () => undefined,
     );
@@ -212,7 +212,7 @@ describe("production watcher SQLite durable backend", () => {
       .run("{}");
     hostile.close();
 
-    const reopened = await unsafeOpenWatcherSqliteDurableBackendForTestV1(
+    const reopened = await unsafeOpenWatcherSqliteDurableBackendForTest(
       { path },
       () => undefined,
     );

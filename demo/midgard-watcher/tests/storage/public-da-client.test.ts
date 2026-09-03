@@ -1,51 +1,51 @@
 import {
-  DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
+  DA_PAYLOAD_INNER_SCHEMA_VERSION,
   DaPayloadContentEncoding,
-  encodeDaPayloadEnvelopeV1,
-  wrapDaPayloadV1,
+  encodeDaPayloadEnvelope,
+  wrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
-  type DaCapabilitiesResponseV1,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+  type DaCapabilitiesResponse,
   daDeploymentFingerprintFromHex,
-  type DaPayloadByHeaderResponseV1,
-  type DaPayloadChunkManifestV1,
-  type DaPayloadChunkResponseV1,
+  type DaPayloadByHeaderResponse,
+  type DaPayloadChunkManifest,
+  type DaPayloadChunkResponse,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaPayloadByHeaderRequestV1Cbor,
-  decodeDaPayloadChunkRequestV1Cbor,
-  encodeDaCapabilitiesResponseV1Cbor,
-  encodeDaEventToStepByEventResponseV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaPayloadChunkResponseV1Cbor,
-  encodeDaProofBundleByHeaderResponseV1Cbor,
-  encodeDaTraceStepByIndexResponseV1Cbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaPayloadChunkRequestCbor,
+  encodeDaCapabilitiesResponseCbor,
+  encodeDaEventToStepByEventResponseCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaPayloadChunkResponseCbor,
+  encodeDaProofBundleByHeaderResponseCbor,
+  encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  DA_PAYLOAD_V1_VERSION,
-  type DaPayloadV1,
+  DA_PAYLOAD_VERSION,
+  type DaPayload,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
+  encodeDaPayload,
 } from "@al-ft/midgard-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { WatcherConfig } from "../../src/runtime/config.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentityV1 } from "../../src/runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import {
-  type WatcherPublicDaAttemptV1,
-  WatcherPublicDaClientErrorV1,
-  WatcherPublicDaClientV1,
-  type WatcherPublicDaClockV1,
+  type WatcherPublicDaAttempt,
+  WatcherPublicDaClient,
+  WatcherPublicDaClientError,
+  type WatcherPublicDaClock,
   type WatcherPublicDaLibp2pTransportV1,
-  type WatcherPublicDaRequestV1,
+  type WatcherPublicDaRequest,
 } from "../../src/storage/public-da-client.js";
 import {
-  encodeWatcherPublicDaFrameV1,
-  readWatcherPublicDaFramesV1,
+  encodeWatcherPublicDaFrame,
+  readWatcherPublicDaFrames,
   WatcherPublicDaLibp2pTransport,
 } from "../../src/storage/public-da-libp2p-transport.js";
 
@@ -143,7 +143,7 @@ const identityOf = (options?: {
   readonly manifestId?: string;
   readonly markerManifestId?: string;
   readonly network?: "Mainnet" | "Preprod" | "Preview";
-}): VerifiedWatcherDeploymentIdentityV1 => {
+}): VerifiedWatcherDeploymentIdentity => {
   const manifestId = options?.manifestId ?? FINGERPRINT;
   return {
     manifestId,
@@ -152,13 +152,13 @@ const identityOf = (options?: {
     releaseEvidenceDigest: repeatHex(0x33, 32),
     ruleBundleCommitment: repeatHex(0x44, 32),
     programCommitments: {},
-    durableMarker: makeDeploymentMarkerV1(
+    durableMarker: makeDeploymentMarker(
       options?.markerManifestId ?? manifestId,
     ),
   };
 };
 
-const daPayload = (headerHash: string): DaPayloadV1 => {
+const daPayload = (headerHash: string): DaPayload => {
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
@@ -169,7 +169,7 @@ const daPayload = (headerHash: string): DaPayloadV1 => {
     validationTraceCount: 1n,
   };
   return {
-    version: DA_PAYLOAD_V1_VERSION,
+    version: DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header: {
@@ -219,8 +219,8 @@ type PayloadFixture = Readonly<{
 const makePayloadFixture = async (
   headerHash: string,
 ): Promise<PayloadFixture> => {
-  const innerCbor = encodeDaPayloadV1(daPayload(headerHash));
-  const envelope = await wrapDaPayloadV1(innerCbor, { mode: "identity" });
+  const innerCbor = encodeDaPayload(daPayload(headerHash));
+  const envelope = await wrapDaPayload(innerCbor, { mode: "identity" });
   return {
     innerCbor,
     envelope,
@@ -233,17 +233,17 @@ const makePayloadFixture = async (
 // ---------------------------------------------------------------------------
 
 type ProtocolHandler = (
-  request: WatcherPublicDaRequestV1,
+  request: WatcherPublicDaRequest,
 ) => Promise<Uint8Array> | Uint8Array;
 
 type PeerScript = Partial<Record<DaRequestResponseProtocol, ProtocolHandler>>;
 
 class ScriptedTransport implements WatcherPublicDaLibp2pTransportV1 {
-  readonly calls: WatcherPublicDaRequestV1[] = [];
+  readonly calls: WatcherPublicDaRequest[] = [];
 
   constructor(private readonly script: Readonly<Record<string, PeerScript>>) {}
 
-  async request(request: WatcherPublicDaRequestV1): Promise<Uint8Array> {
+  async request(request: WatcherPublicDaRequest): Promise<Uint8Array> {
     this.calls.push(request);
     const peer = this.script[request.peerIdentity];
     if (peer === undefined) {
@@ -278,7 +278,7 @@ class ScriptedTransport implements WatcherPublicDaLibp2pTransportV1 {
  * settles between two firings — real time is used for ordering only, never
  * for measurement.
  */
-const makeVirtualClock = (): WatcherPublicDaClockV1 => {
+const makeVirtualClock = (): WatcherPublicDaClock => {
   type VirtualTimer = { readonly dueAt: number; readonly callback: () => void };
   const timers = new Map<number, VirtualTimer>();
   let now = 0;
@@ -337,12 +337,12 @@ const hangUntilAborted: ProtocolHandler = async (request) =>
   });
 
 const capabilitiesBytes = (
-  overrides: Partial<DaCapabilitiesResponseV1> = {},
+  overrides: Partial<DaCapabilitiesResponse> = {},
 ): Buffer =>
-  encodeDaCapabilitiesResponseV1Cbor({
+  encodeDaCapabilitiesResponseCbor({
     deploymentFingerprint: daDeploymentFingerprintFromHex(FINGERPRINT),
-    transportProtocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-    payloadSchemaVersions: [DA_PAYLOAD_INNER_V1_SCHEMA_VERSION],
+    transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+    payloadSchemaVersions: [DA_PAYLOAD_INNER_SCHEMA_VERSION],
     envelopeContentEncodings: [
       DaPayloadContentEncoding.identity,
       DaPayloadContentEncoding.zstd,
@@ -356,9 +356,9 @@ const capabilitiesBytes = (
   });
 
 const payloadByHeaderBytes = (
-  overrides: Partial<DaPayloadByHeaderResponseV1> = {},
+  overrides: Partial<DaPayloadByHeaderResponse> = {},
 ): Buffer =>
-  encodeDaPayloadByHeaderResponseV1Cbor({
+  encodeDaPayloadByHeaderResponseCbor({
     status: "found_inline",
     headerHash: Buffer.from(HEADER_HASH, "hex"),
     payloadHash: null,
@@ -369,10 +369,10 @@ const payloadByHeaderBytes = (
   });
 
 const chunkResponseBytes = (
-  overrides: Partial<DaPayloadChunkResponseV1> &
-    Pick<DaPayloadChunkResponseV1, "payloadHash" | "chunkIndex">,
+  overrides: Partial<DaPayloadChunkResponse> &
+    Pick<DaPayloadChunkResponse, "payloadHash" | "chunkIndex">,
 ): Buffer =>
-  encodeDaPayloadChunkResponseV1Cbor({
+  encodeDaPayloadChunkResponseCbor({
     status: "found",
     headerHash: Buffer.from(HEADER_HASH, "hex"),
     chunkBytes: null,
@@ -385,7 +385,7 @@ const chunksOf = (
   chunkSize: number,
 ): {
   readonly chunks: Buffer[];
-  readonly manifest: DaPayloadChunkManifestV1;
+  readonly manifest: DaPayloadChunkManifest;
 } => {
   const chunks: Buffer[] = [];
   for (let offset = 0; offset < bytes.length; offset += chunkSize) {
@@ -407,9 +407,9 @@ const chunksOf = (
 const clientWith = (
   transport: WatcherPublicDaLibp2pTransportV1,
   configOptions?: Parameters<typeof rawConfig>[0],
-  clock?: WatcherPublicDaClockV1,
-): WatcherPublicDaClientV1 =>
-  new WatcherPublicDaClientV1({
+  clock?: WatcherPublicDaClock,
+): WatcherPublicDaClient =>
+  new WatcherPublicDaClient({
     config: configOf(configOptions),
     deploymentIdentity: identityOf(),
     transport,
@@ -418,18 +418,18 @@ const clientWith = (
 
 const expectClientError = async (
   promise: Promise<unknown>,
-): Promise<WatcherPublicDaClientErrorV1> => {
+): Promise<WatcherPublicDaClientError> => {
   try {
     await promise;
   } catch (error) {
-    expect(error).toBeInstanceOf(WatcherPublicDaClientErrorV1);
-    return error as WatcherPublicDaClientErrorV1;
+    expect(error).toBeInstanceOf(WatcherPublicDaClientError);
+    return error as WatcherPublicDaClientError;
   }
   throw new Error("expected WatcherPublicDaClientErrorV1, request succeeded");
 };
 
 const statuses = (
-  attempts: readonly WatcherPublicDaAttemptV1[],
+  attempts: readonly WatcherPublicDaAttempt[],
 ): readonly string[] => attempts.map((attempt) => attempt.status);
 
 let fixture: PayloadFixture;
@@ -442,8 +442,8 @@ beforeEach(async () => {
 
 /** Single peer that negotiates cleanly and serves the canonical inline payload. */
 const honestInlineScript = (
-  overrides: Partial<DaPayloadByHeaderResponseV1> = {},
-  capabilityOverrides: Partial<DaCapabilitiesResponseV1> = {},
+  overrides: Partial<DaPayloadByHeaderResponse> = {},
+  capabilityOverrides: Partial<DaCapabilitiesResponse> = {},
 ): Record<string, PeerScript> => ({
   [PEERS[0]!]: {
     capabilities: () => capabilitiesBytes(capabilityOverrides),
@@ -467,7 +467,7 @@ describe("WatcherPublicDaClientV1 construction", () => {
   };
 
   it("accepts a well-formed config, identity, and transport", () => {
-    const client = new WatcherPublicDaClientV1({
+    const client = new WatcherPublicDaClient({
       config: configOf(),
       deploymentIdentity: identityOf(),
       transport: validTransport,
@@ -477,11 +477,11 @@ describe("WatcherPublicDaClientV1 construction", () => {
 
   const constructionFailure = (options: {
     readonly config?: WatcherConfig;
-    readonly deploymentIdentity?: VerifiedWatcherDeploymentIdentityV1;
+    readonly deploymentIdentity?: VerifiedWatcherDeploymentIdentity;
     readonly transport?: WatcherPublicDaLibp2pTransportV1;
-  }): WatcherPublicDaClientErrorV1 => {
+  }): WatcherPublicDaClientError => {
     try {
-      new WatcherPublicDaClientV1({
+      new WatcherPublicDaClient({
         config: "config" in options ? options.config! : configOf(),
         deploymentIdentity:
           "deploymentIdentity" in options
@@ -492,8 +492,8 @@ describe("WatcherPublicDaClientV1 construction", () => {
         transport: "transport" in options ? options.transport! : validTransport,
       });
     } catch (error) {
-      expect(error).toBeInstanceOf(WatcherPublicDaClientErrorV1);
-      return error as WatcherPublicDaClientErrorV1;
+      expect(error).toBeInstanceOf(WatcherPublicDaClientError);
+      return error as WatcherPublicDaClientError;
     }
     throw new Error("expected construction to fail");
   };
@@ -556,7 +556,7 @@ describe("WatcherPublicDaClientV1 construction", () => {
    * operator cannot influence. This stands in for a genuine internal defect.
    */
   const identityWithUnparseableManifestId =
-    (): VerifiedWatcherDeploymentIdentityV1 => ({
+    (): VerifiedWatcherDeploymentIdentity => ({
       ...identityOf(),
       manifestId: "not-a-fingerprint",
     });
@@ -601,7 +601,7 @@ describe("WatcherPublicDaClientV1 construction", () => {
 // ---------------------------------------------------------------------------
 
 describe("WatcherPublicDaClientV1 request validation", () => {
-  const client = (): WatcherPublicDaClientV1 =>
+  const client = (): WatcherPublicDaClient =>
     clientWith(new ScriptedTransport({}));
 
   it.each([
@@ -683,7 +683,7 @@ describe("WatcherPublicDaClientV1 capability negotiation", () => {
       "capabilities",
       "payload-by-header",
     ]);
-    const inlineRequest = decodeDaPayloadByHeaderRequestV1Cbor(
+    const inlineRequest = decodeDaPayloadByHeaderRequestCbor(
       transport.calls[1]!.requestCbor,
     );
     // maxInlineBytes echoes the negotiated (clamped) inline ceiling.
@@ -741,7 +741,7 @@ describe("WatcherPublicDaClientV1 capability negotiation", () => {
     const transport = new ScriptedTransport({
       [PEERS[0]!]: {
         capabilities: () =>
-          capabilitiesBytes(overrides as Partial<DaCapabilitiesResponseV1>),
+          capabilitiesBytes(overrides as Partial<DaCapabilitiesResponse>),
       },
     });
     const error = await expectClientError(
@@ -825,7 +825,7 @@ describe("WatcherPublicDaClientV1 inline payload verification", () => {
     tamperedInner[tamperedInner.length - 1] ^= 0x01;
     // Envelope is internally inconsistent: body is tampered but innerSha256
     // still commits to the original inner bytes.
-    const envelope = encodeDaPayloadEnvelopeV1({
+    const envelope = encodeDaPayloadEnvelope({
       version: 1,
       contentEncoding: DaPayloadContentEncoding.identity,
       innerBytes: fixture.innerCbor.length,
@@ -891,7 +891,7 @@ describe("WatcherPublicDaClientV1 inline payload verification", () => {
       ],
     });
     expect(result.payloadHash).toBe(fixture.payloadHash.toString("hex"));
-    const request = decodeDaPayloadByHeaderRequestV1Cbor(
+    const request = decodeDaPayloadByHeaderRequestCbor(
       transport.calls[1]!.requestCbor,
     );
     expect(request.acceptedPayloadHashes).toHaveLength(2);
@@ -1019,7 +1019,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
             maxChunkBytes: 1_000,
           }),
         "trace-step-by-index": () =>
-          encodeDaTraceStepByIndexResponseV1Cbor({
+          encodeDaTraceStepByIndexResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             stepIndex: 0,
@@ -1049,7 +1049,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
             maxChunkBytes: 1_000,
           }),
         "trace-step-by-index": () =>
-          encodeDaTraceStepByIndexResponseV1Cbor({
+          encodeDaTraceStepByIndexResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             stepIndex: 3,
@@ -1084,7 +1084,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "trace-step-by-index": () =>
-          encodeDaTraceStepByIndexResponseV1Cbor({
+          encodeDaTraceStepByIndexResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             stepIndex: 0,
@@ -1108,7 +1108,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "event-to-step-by-event": () =>
-          encodeDaEventToStepByEventResponseV1Cbor({
+          encodeDaEventToStepByEventResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             eventKey: Buffer.from(eventKey, "hex"),
@@ -1132,7 +1132,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "event-to-step-by-event": () =>
-          encodeDaEventToStepByEventResponseV1Cbor({
+          encodeDaEventToStepByEventResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             eventKey: Buffer.from(eventKey, "hex"),
@@ -1155,7 +1155,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "proof-bundle-by-header": () =>
-          encodeDaProofBundleByHeaderResponseV1Cbor({
+          encodeDaProofBundleByHeaderResponseCbor({
             status: "found_inline",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             proofBundleHash: computeDaSha256Hash(Buffer.alloc(0)),
@@ -1178,7 +1178,7 @@ describe("WatcherPublicDaClientV1 bounds enforcement", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "trace-step-by-index": () =>
-          encodeDaTraceStepByIndexResponseV1Cbor({
+          encodeDaTraceStepByIndexResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             stepIndex: 9,
@@ -1205,14 +1205,14 @@ describe("WatcherPublicDaClientV1 chunked payload retrieval", () => {
   const CHUNK_SIZE = 64;
 
   const chunkedScript = (options?: {
-    readonly manifest?: DaPayloadChunkManifestV1;
+    readonly manifest?: DaPayloadChunkManifest;
     readonly chunkFor?: (index: number, chunks: readonly Buffer[]) => Buffer;
     readonly chunkHashFor?: (
       index: number,
       chunks: readonly Buffer[],
     ) => Buffer;
     readonly chunkIndexFor?: (index: number) => number;
-    readonly chunkStatus?: DaPayloadChunkResponseV1["status"];
+    readonly chunkStatus?: DaPayloadChunkResponse["status"];
   }): Record<string, PeerScript> => {
     const { chunks, manifest } = chunksOf(fixture.envelope, CHUNK_SIZE);
     return {
@@ -1231,9 +1231,7 @@ describe("WatcherPublicDaClientV1 chunked payload retrieval", () => {
             chunkManifest: options?.manifest ?? manifest,
           }),
         "payload-chunk": (request) => {
-          const decoded = decodeDaPayloadChunkRequestV1Cbor(
-            request.requestCbor,
-          );
+          const decoded = decodeDaPayloadChunkRequestCbor(request.requestCbor);
           const index = decoded.chunkIndex;
           return chunkResponseBytes({
             status: options?.chunkStatus ?? "found",
@@ -1276,8 +1274,7 @@ describe("WatcherPublicDaClientV1 chunked payload retrieval", () => {
     const requested = transport.calls
       .filter((call) => call.protocol === "payload-chunk")
       .map(
-        (call) =>
-          decodeDaPayloadChunkRequestV1Cbor(call.requestCbor).chunkIndex,
+        (call) => decodeDaPayloadChunkRequestCbor(call.requestCbor).chunkIndex,
       );
     expect(requested).toEqual(chunks.map((_, index) => index));
   });
@@ -1861,7 +1858,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "proof-bundle-by-header": () =>
-          encodeDaProofBundleByHeaderResponseV1Cbor({
+          encodeDaProofBundleByHeaderResponseCbor({
             status: "found_inline",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             proofBundleHash: computeDaSha256Hash(proofBundle),
@@ -1886,7 +1883,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "proof-bundle-by-header": () =>
-          encodeDaProofBundleByHeaderResponseV1Cbor({
+          encodeDaProofBundleByHeaderResponseCbor({
             status: "found_inline",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             proofBundleHash: computeDaSha256Hash(Buffer.from("elsewhere")),
@@ -1910,7 +1907,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "proof-bundle-by-header": () =>
-          encodeDaProofBundleByHeaderResponseV1Cbor({
+          encodeDaProofBundleByHeaderResponseCbor({
             status: "found_chunked",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             proofBundleHash: computeDaSha256Hash(proofBundle),
@@ -1936,7 +1933,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "event-to-step-by-event": () =>
-          encodeDaEventToStepByEventResponseV1Cbor({
+          encodeDaEventToStepByEventResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             eventKey: Buffer.from(eventKey, "hex"),
@@ -1964,7 +1961,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "event-to-step-by-event": () =>
-          encodeDaEventToStepByEventResponseV1Cbor({
+          encodeDaEventToStepByEventResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             eventKey: Buffer.from(eventKey, "hex"),
@@ -1986,7 +1983,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "event-to-step-by-event": () =>
-          encodeDaEventToStepByEventResponseV1Cbor({
+          encodeDaEventToStepByEventResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             eventKey: Buffer.from("ffffffff", "hex"),
@@ -2010,7 +2007,7 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
       [PEERS[0]!]: {
         capabilities: () => capabilitiesBytes(),
         "event-to-step-by-event": () =>
-          encodeDaEventToStepByEventResponseV1Cbor({
+          encodeDaEventToStepByEventResponseCbor({
             status: "found",
             headerHash: Buffer.from(HEADER_HASH, "hex"),
             eventKey: Buffer.from(eventKey, "hex"),
@@ -2038,7 +2035,7 @@ describe("WatcherPublicDaLibp2pTransport", () => {
     "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
   const requestFor = (
     signal = new AbortController().signal,
-  ): WatcherPublicDaRequestV1 => ({
+  ): WatcherPublicDaRequest => ({
     peerIdentity: "public-da-a",
     peerId: authenticatedPeerId,
     multiaddr: `/dns4/public-da.example/tcp/39003/p2p/${authenticatedPeerId}`,
@@ -2053,24 +2050,24 @@ describe("WatcherPublicDaLibp2pTransport", () => {
   });
 
   it("uses exact bounded framing across fragments and rejects adjacent responses", async () => {
-    const frame = encodeWatcherPublicDaFrameV1(Buffer.from("response"), 32);
+    const frame = encodeWatcherPublicDaFrame(Buffer.from("response"), 32);
     const decoded = await collectBuffers(
-      readWatcherPublicDaFramesV1(
+      readWatcherPublicDaFrames(
         asAsyncIterable([frame.subarray(0, 3), frame.subarray(3)]),
         32,
       ),
     );
     expect(decoded).toEqual([Buffer.from("response")]);
 
-    expect(() => encodeWatcherPublicDaFrameV1(Buffer.alloc(0), 32)).toThrow(
+    expect(() => encodeWatcherPublicDaFrame(Buffer.alloc(0), 32)).toThrow(
       /must not be empty/u,
     );
-    expect(() => encodeWatcherPublicDaFrameV1(Buffer.alloc(33), 32)).toThrow(
+    expect(() => encodeWatcherPublicDaFrame(Buffer.alloc(33), 32)).toThrow(
       /exceeds configured bound/u,
     );
     await expect(
       collectBuffers(
-        readWatcherPublicDaFramesV1(asAsyncIterable([Buffer.from([0, 0])]), 32),
+        readWatcherPublicDaFrames(asAsyncIterable([Buffer.from([0, 0])]), 32),
       ),
     ).rejects.toThrow(/incomplete/u);
   });
@@ -2085,7 +2082,7 @@ describe("WatcherPublicDaLibp2pTransport", () => {
       close: async (): Promise<void> => undefined,
       abort: (): void => undefined,
       async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-        yield encodeWatcherPublicDaFrameV1(Buffer.from("response"));
+        yield encodeWatcherPublicDaFrame(Buffer.from("response"));
       },
     };
     const transport = new WatcherPublicDaLibp2pTransport({

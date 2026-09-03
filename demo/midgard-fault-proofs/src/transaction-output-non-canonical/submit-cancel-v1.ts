@@ -1,12 +1,12 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { TransactionOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { TransactionOutputNonCanonicalContracts } from "./contracts-v1.js";
 
-export const submitTransactionOutputNonCanonicalCancelV1 = async ({
+export const submitTransactionOutputNonCanonicalCancel = async ({
   lucid,
   contracts,
   categoryId,
@@ -18,16 +18,16 @@ export const submitTransactionOutputNonCanonicalCancelV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: TransactionOutputNonCanonicalContractsV1;
+  readonly contracts: TransactionOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) =>
-  await submitLinearFaultCancelV1({
+  await submitLinearFaultCancel({
     lucid,
     family: "transaction-output-non-canonical",
     steps: contracts.steps,

@@ -25,7 +25,7 @@ vi.mock("../src/workers/utils/scheduler-refresh.js", () => ({
 }));
 
 vi.mock("../src/workers/utils/commit-end-time.js", () => ({
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS: 1_000,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS: 1_000,
 }));
 
 vi.mock("../src/database/index.js", async () => {

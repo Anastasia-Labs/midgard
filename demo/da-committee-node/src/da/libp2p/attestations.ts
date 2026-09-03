@@ -1,13 +1,13 @@
 import {
-  type DaAttestationGossipV1,
+  type DaAttestationGossip,
   DaGossipTopic,
   DaRequestResponseProtocol,
-  decodeDaAttestationGossipV1Cbor,
-  decodeDaAttestationsByHeaderRequestV1Cbor,
-  decodeDaAttestationsByHeaderResponseV1Cbor,
-  encodeDaAttestationGossipV1Cbor,
-  encodeDaAttestationsByHeaderRequestV1Cbor,
-  encodeDaAttestationsByHeaderResponseV1Cbor,
+  decodeDaAttestationGossipCbor,
+  decodeDaAttestationsByHeaderRequestCbor,
+  decodeDaAttestationsByHeaderResponseCbor,
+  encodeDaAttestationGossipCbor,
+  encodeDaAttestationsByHeaderRequestCbor,
+  encodeDaAttestationsByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
@@ -15,16 +15,16 @@ import type { Libp2pDaTransportLimits } from "../../config.js";
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
-  DaStoredPayloadCountSetV1,
-  DaStoredPayloadRootSetV1,
-  DaStoredValidationSummaryV1,
+  DaStoredPayloadCountSet,
+  DaStoredPayloadRootSet,
+  DaStoredValidationSummary,
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../../domain.js";
 import {
-  buildDaSignatureConflictEvidenceV1,
-  type DaAvailabilityCommitmentAuthorityV1,
-  deriveExpectedDaAvailabilityCommitmentV1,
+  buildDaSignatureConflictEvidence,
+  type DaAvailabilityCommitmentAuthority,
+  deriveExpectedDaAvailabilityCommitment,
   validateDaSignatureRecord,
 } from "../../peer/signatures.js";
 import type { DaCommitteeValidation } from "../../signer.js";
@@ -63,7 +63,7 @@ export type StoreBackedDaAttestationProtocolDeps = {
   readonly deploymentFingerprint: string;
   readonly localPeerId: string;
   readonly committeeValidation: DaCommitteeValidation;
-  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1;
+  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
   readonly store: Pick<
     WatcherStore,
     | "getDaPayload"
@@ -130,7 +130,7 @@ export class StoreBackedDaAttestationProtocol {
     );
     await this.deps.store.saveDaSignature(canonicalCandidate);
     if (priorSameHeaderSigner !== undefined) {
-      const conflict = buildDaSignatureConflictEvidenceV1({
+      const conflict = buildDaSignatureConflictEvidence({
         first: priorSameHeaderSigner,
         second: canonicalCandidate,
         daVkey:
@@ -178,13 +178,13 @@ export class StoreBackedDaAttestationProtocol {
   async handleAttestationsByHeaderRequest(
     requestCbor: Uint8Array,
   ): Promise<Buffer> {
-    const request = decodeDaAttestationsByHeaderRequestV1Cbor(requestCbor);
+    const request = decodeDaAttestationsByHeaderRequestCbor(requestCbor);
     const headerHash = request.headerHash.toString("hex");
     if (
       request.deploymentFingerprint.toString("hex") !==
       this.deps.deploymentFingerprint
     ) {
-      return encodeDaAttestationsByHeaderResponseV1Cbor({
+      return encodeDaAttestationsByHeaderResponseCbor({
         status: "rejected",
         headerHash: request.headerHash,
         attestations: [],
@@ -196,7 +196,7 @@ export class StoreBackedDaAttestationProtocol {
       request.acceptedSignerIndexes === null
         ? undefined
         : new Set(request.acceptedSignerIndexes);
-    const attestations: DaAttestationGossipV1[] = [];
+    const attestations: DaAttestationGossip[] = [];
     for (const record of records) {
       if (
         request.maxAttestations !== null &&
@@ -216,7 +216,7 @@ export class StoreBackedDaAttestationProtocol {
         continue;
       }
     }
-    return encodeDaAttestationsByHeaderResponseV1Cbor({
+    return encodeDaAttestationsByHeaderResponseCbor({
       status: attestations.length > 0 ? "found" : "not_found",
       headerHash: request.headerHash,
       attestations,
@@ -224,7 +224,7 @@ export class StoreBackedDaAttestationProtocol {
     });
   }
 
-  gossipMessageFor(record: DaSignatureRecord): DaAttestationGossipV1 {
+  gossipMessageFor(record: DaSignatureRecord): DaAttestationGossip {
     const daVkey =
       this.deps.committeeValidation.committeeKeys[record.signerIndex];
     if (daVkey === undefined) {
@@ -237,7 +237,7 @@ export class StoreBackedDaAttestationProtocol {
     });
   }
 
-  availabilityCommitmentAuthority(): DaAvailabilityCommitmentAuthorityV1 {
+  availabilityCommitmentAuthority(): DaAvailabilityCommitmentAuthority {
     return this.deps.availabilityCommitmentAuthority;
   }
 
@@ -251,7 +251,7 @@ export class StoreBackedDaAttestationProtocol {
     if (!isVerifiedPayload(payload)) {
       return [];
     }
-    const expected = deriveExpectedDaAvailabilityCommitmentV1({
+    const expected = deriveExpectedDaAvailabilityCommitment({
       authority: this.deps.availabilityCommitmentAuthority,
       headerHash,
       payloadCborHex: payload.payloadCborHex,
@@ -275,7 +275,7 @@ export const daAttestationGossipFromRecord = ({
   readonly daVkey: string;
   readonly announcedByPeerId: string;
   readonly retentionUntilSlot?: number;
-}): DaAttestationGossipV1 => ({
+}): DaAttestationGossip => ({
   deploymentFingerprint: Buffer.from(record.deploymentFingerprint, "hex"),
   headerHash: Buffer.from(record.headerHash, "hex"),
   payloadHash: Buffer.from(record.payloadHash, "hex"),
@@ -295,12 +295,12 @@ export const daAttestationGossipFromRecord = ({
 });
 
 export const encodeDaAttestationGossip = (
-  message: DaAttestationGossipV1,
-): Buffer => encodeDaAttestationGossipV1Cbor(message);
+  message: DaAttestationGossip,
+): Buffer => encodeDaAttestationGossipCbor(message);
 
 export const decodeDaAttestationGossip = (
   bytes: Uint8Array,
-): DaAttestationGossipV1 => decodeDaAttestationGossipV1Cbor(bytes);
+): DaAttestationGossip => decodeDaAttestationGossipCbor(bytes);
 
 export type DaLibp2pAttestationExchangeOptions = {
   readonly deploymentFingerprint: string;
@@ -360,14 +360,14 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
     if (registryEntry === undefined) {
       throw new Error(`unknown DA libp2p attestation peer ${peer.peerId}`);
     }
-    const response = decodeDaAttestationsByHeaderResponseV1Cbor(
+    const response = decodeDaAttestationsByHeaderResponseCbor(
       await this.options.node.request({
         peer: registryEntry,
         protocolId: this.protocolId(
           DaRequestResponseProtocol.attestationsByHeader,
         ),
         timeoutMs: this.options.requestTimeoutMs,
-        payload: encodeDaAttestationsByHeaderRequestV1Cbor({
+        payload: encodeDaAttestationsByHeaderRequestCbor({
           deploymentFingerprint: Buffer.from(deploymentFingerprint, "hex"),
           headerHash: Buffer.from(headerHash, "hex"),
           acceptedSignerIndexes: null,
@@ -400,7 +400,7 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
     attestation,
   }: {
     readonly peer: DaPeerRegistryEntry;
-    readonly attestation: DaAttestationGossipV1;
+    readonly attestation: DaAttestationGossip;
   }): Promise<DaSignatureRecord | undefined> {
     const headerHash = attestation.headerHash.toString("hex");
     if (
@@ -507,14 +507,14 @@ const isVerifiedPayload = (
   payload.payloadSha256.length > 0;
 
 const expectedCommitmentValidation = (
-  authority: DaAvailabilityCommitmentAuthorityV1,
+  authority: DaAvailabilityCommitmentAuthority,
   headerHash: string,
   payload: DaPayloadRecord,
 ): Readonly<{
   expectedAvailabilityCommitmentCbor: string;
   expectedAvailabilityCommitmentDigest: string;
 }> => {
-  const expected = deriveExpectedDaAvailabilityCommitmentV1({
+  const expected = deriveExpectedDaAvailabilityCommitment({
     authority,
     headerHash,
     payloadCborHex: payload.payloadCborHex,
@@ -527,9 +527,9 @@ const expectedCommitmentValidation = (
 
 const validationSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-  rootSummary: DaStoredPayloadRootSetV1,
-): DaStoredValidationSummaryV1 => ({
-  payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+  rootSummary: DaStoredPayloadRootSet,
+): DaStoredValidationSummary => ({
+  payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
   rootsMatch: true,
   stateQueueOutRef: header.stateQueueOutRef,
   headerHash: header.headerHash,
@@ -547,7 +547,7 @@ const validationSummaryFromHeader = (
 const rootSummaryFromHeader = (
   header: StateQueueHeaderRecord,
   rootSummary?: PayloadRootSet,
-): DaStoredPayloadRootSetV1 => ({
+): DaStoredPayloadRootSet => ({
   ...(rootSummary ?? {
     utxosRoot: header.header.utxosRoot,
     transactionsRoot: header.header.transactionsRoot,
@@ -562,7 +562,7 @@ const rootSummaryFromHeader = (
 
 const countSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-): DaStoredPayloadCountSetV1 => ({
+): DaStoredPayloadCountSet => ({
   withdrawalCount: header.header.withdrawalCount,
   forcedTransactionCount: header.header.forcedTransactionCount,
   l2TransactionCount: header.header.l2TransactionCount,

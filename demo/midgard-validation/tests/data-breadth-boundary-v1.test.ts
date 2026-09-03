@@ -2,36 +2,36 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
 import {
-  advanceMidgardCekDataTraverseV1,
-  advanceMidgardRedeemerItemProofV1,
-  buildMidgardLedgerOutputProofTraceV1,
-  buildMidgardRedeemerItemProofTraceV1,
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  advanceMidgardCekDataTraverse,
+  advanceMidgardRedeemerItemProof,
+  buildMidgardLedgerOutputProofTrace,
+  buildMidgardRedeemerItemProofTrace,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardCekProgramMaterialSidecarV1,
+  decodeMidgardCekProgramMaterialSidecar,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  encodeMidgardCekDataFrameV1,
-  encodeMidgardCekDataTraverseControlV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardCekDataFrame,
+  encodeMidgardCekDataTraverseControl,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardVersionedScriptListPreimage,
-  finalizeMidgardCekDataTraverseV1,
-  finalizeMidgardRedeemerItemProofV1,
+  finalizeMidgardCekDataTraverse,
+  finalizeMidgardRedeemerItemProof,
   hashMidgardVersionedScript,
-  isExactMidgardLedgerOutputProofTerminalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-  midgardFieldCommitmentV1,
+  isExactMidgardLedgerOutputProofTerminal,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
+  midgardFieldCommitment,
   midgardNativeTxFullToCardanoTxEncoding,
-  midgardRedeemerItemDescriptorV1,
-  MidgardRedeemerItemProofModesV1,
-  nextMidgardCekDataTraverseSpanV1,
-  nextMidgardRedeemerItemProofSpanV1,
-  validateMidgardConsensusV1Tx,
-  verifyMidgardCekProgramMaterialBundleV1,
+  midgardRedeemerItemDescriptor,
+  MidgardRedeemerItemProofModes,
+  nextMidgardCekDataTraverseSpan,
+  nextMidgardRedeemerItemProofSpan,
+  validateMidgardConsensusTx,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
@@ -45,23 +45,23 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardCanonicalScriptArtifactV1 } from "../src/cek-program.js";
+import { buildMidgardCanonicalScriptArtifact } from "../src/cek-program.js";
 import { decodeMidgardRedeemers } from "../src/midgard-redeemers.js";
-import { countedMachineFieldTraceV1 } from "../src/validation-machine/index.js";
+import { countedMachineFieldTrace } from "../src/validation-machine/index.js";
 import {
-  buildCollateralFreeMidgardSchemaParallelCandidateV1,
-  buildSignedCardanoNestedDatumCandidateV1,
-  buildSignedCardanoSpendRedeemersCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  findSignedCardanoCollectionBoundaryV1,
-  measureCollateralizedPlutusFeasibilityCandidateV1,
-  measureMidgardCompleteItemCarriageFitV1,
-  measureSignedCardanoNestedDatumV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildCollateralFreeMidgardSchemaParallelCandidate,
+  buildSignedCardanoNestedDatumCandidate,
+  buildSignedCardanoSpendRedeemersCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  CARDANO_BOUNDARY_TOTAL_COLLATERAL,
+  deterministicCardanoBoundaryPrivateKey,
+  findSignedCardanoCollectionBoundary,
+  measureCollateralizedPlutusFeasibilityCandidate,
+  measureMidgardCompleteItemCarriageFit,
+  measureSignedCardanoNestedDatum,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary-v1.js";
 
 type DataBreadthKind = "constructor" | "list" | "map";
 
@@ -126,7 +126,7 @@ const cborMapHeaderHex = (pairCount: number): string => {
   return `ba${pairCount.toString(16).padStart(8, "0")}`;
 };
 
-const cardanoBreadthDataCborV1 = (
+const cardanoBreadthDataCbor = (
   kind: DataBreadthKind,
   breadth: number,
 ): string => {
@@ -149,16 +149,14 @@ const cardanoBreadthDataCborV1 = (
 const dataNodeCount = (kind: DataBreadthKind, breadth: number): number =>
   kind === "map" ? breadth * 2 + 1 : breadth + 1;
 
-type ProductionDataTraverseStepV1 = {
+type DataTraverseStep = {
   readonly control: Parameters<
-    typeof advanceMidgardCekDataTraverseV1
+    typeof advanceMidgardCekDataTraverse
   >[0]["control"];
   readonly action: Parameters<
-    typeof advanceMidgardCekDataTraverseV1
+    typeof advanceMidgardCekDataTraverse
   >[0]["action"];
-  readonly next: Parameters<
-    typeof advanceMidgardCekDataTraverseV1
-  >[0]["control"];
+  readonly next: Parameters<typeof advanceMidgardCekDataTraverse>[0]["control"];
 };
 
 const unsignedByteLength = (value: number): number => {
@@ -222,14 +220,14 @@ const assertExactBreadthSemantics = (
   }
 };
 
-const assertExactProductionFoldSemantics = ({
+const assertExactFoldSemantics = ({
   kind,
   breadth,
   steps,
 }: {
   readonly kind: DataBreadthKind;
   readonly breadth: number;
-  readonly steps: readonly ProductionDataTraverseStepV1[];
+  readonly steps: readonly DataTraverseStep[];
 }): void => {
   const folds = steps.flatMap(({ action }) =>
     action?.kind === "foldList" || action?.kind === "foldMap" ? [action] : [],
@@ -319,10 +317,8 @@ const jsonSummary = (summary: {
   memory: summary.memory.toString(),
 });
 
-const jsonFrame = (
-  frame: Parameters<typeof encodeMidgardCekDataFrameV1>[0],
-) => ({
-  cborHex: encodeMidgardCekDataFrameV1(frame).toString("hex"),
+const jsonFrame = (frame: Parameters<typeof encodeMidgardCekDataFrame>[0]) => ({
+  cborHex: encodeMidgardCekDataFrame(frame).toString("hex"),
   kind: frame.kind,
   ...(frame.kind === "constrSmall"
     ? { constructor: frame.constructor.toString() }
@@ -353,9 +349,9 @@ const jsonFrame = (
 
 const exactBroadFrontierVector = (
   kind: DataBreadthKind,
-  steps: readonly ProductionDataTraverseStepV1[],
+  steps: readonly DataTraverseStep[],
 ) => {
-  let step: ProductionDataTraverseStepV1 | undefined;
+  let step: DataTraverseStep | undefined;
   let membershipDepth = -1;
   for (const candidate of steps) {
     const action = candidate.action;
@@ -390,7 +386,7 @@ const exactBroadFrontierVector = (
           pairIndex: action.pairIndex - 1,
         };
   expect(
-    advanceMidgardCekDataTraverseV1({
+    advanceMidgardCekDataTraverse({
       control: step.control,
       sourceBytes: null,
       action: mutatedAction,
@@ -409,7 +405,7 @@ const exactBroadFrontierVector = (
   };
   if (action.kind === "foldList") {
     expect(
-      advanceMidgardCekDataTraverseV1({
+      advanceMidgardCekDataTraverse({
         control: step.control,
         sourceBytes: null,
         action: {
@@ -420,7 +416,7 @@ const exactBroadFrontierVector = (
     ).toBeNull();
   } else {
     expect(
-      advanceMidgardCekDataTraverseV1({
+      advanceMidgardCekDataTraverse({
         control: step.control,
         sourceBytes: null,
         action: {
@@ -430,7 +426,7 @@ const exactBroadFrontierVector = (
       }),
     ).toBeNull();
     expect(
-      advanceMidgardCekDataTraverseV1({
+      advanceMidgardCekDataTraverse({
         control: step.control,
         sourceBytes: null,
         action: {
@@ -441,7 +437,7 @@ const exactBroadFrontierVector = (
     ).toBeNull();
   }
   return {
-    preControlCborHex: encodeMidgardCekDataTraverseControlV1(
+    preControlCborHex: encodeMidgardCekDataTraverseControl(
       step.control,
     ).toString("hex"),
     sourceBytesHex: null,
@@ -470,20 +466,18 @@ const exactBroadFrontierVector = (
               Buffer.from(sibling).toString("hex"),
             ),
           },
-    postControlCborHex: encodeMidgardCekDataTraverseControlV1(
-      step.next,
-    ).toString("hex"),
+    postControlCborHex: encodeMidgardCekDataTraverseControl(step.next).toString(
+      "hex",
+    ),
   };
 };
 
-const exactTerminalVector = (
-  steps: readonly ProductionDataTraverseStepV1[],
-) => {
+const exactTerminalVector = (steps: readonly DataTraverseStep[]) => {
   const terminalStep = steps.at(-1);
   if (terminalStep?.action?.kind !== "finalizeFrame") {
     throw new Error("Broad Data trace lost its final frame");
   }
-  const summary = finalizeMidgardCekDataTraverseV1(terminalStep.next);
+  const summary = finalizeMidgardCekDataTraverse(terminalStep.next);
   if (summary === null) {
     throw new Error("Broad Data trace did not terminate");
   }
@@ -498,7 +492,7 @@ const exactTerminalVector = (
     },
   };
   expect(
-    advanceMidgardCekDataTraverseV1({
+    advanceMidgardCekDataTraverse({
       control: terminalStep.control,
       sourceBytes: null,
       action: {
@@ -508,13 +502,13 @@ const exactTerminalVector = (
     }),
   ).toBeNull();
   return {
-    preControlCborHex: encodeMidgardCekDataTraverseControlV1(
+    preControlCborHex: encodeMidgardCekDataTraverseControl(
       terminalStep.control,
     ).toString("hex"),
-    frameCborHex: encodeMidgardCekDataFrameV1(
-      terminalStep.action.frame,
-    ).toString("hex"),
-    postControlCborHex: encodeMidgardCekDataTraverseControlV1(
+    frameCborHex: encodeMidgardCekDataFrame(terminalStep.action.frame).toString(
+      "hex",
+    ),
+    postControlCborHex: encodeMidgardCekDataTraverseControl(
       terminalStep.next,
     ).toString("hex"),
     summary: {
@@ -525,19 +519,17 @@ const exactTerminalVector = (
   };
 };
 
-const maximumSourceSpan = (
-  steps: readonly ProductionDataTraverseStepV1[],
-): number =>
+const maximumSourceSpan = (steps: readonly DataTraverseStep[]): number =>
   steps.reduce(
     (maximum, { control }) =>
-      Math.max(maximum, nextMidgardCekDataTraverseSpanV1(control)?.length ?? 0),
+      Math.max(maximum, nextMidgardCekDataTraverseSpan(control)?.length ?? 0),
     0,
   );
 
 const extractAuthenticatedLedgerOutputDataSteps = (
-  trace: ReturnType<typeof buildMidgardLedgerOutputProofTraceV1>,
-): readonly ProductionDataTraverseStepV1[] => {
-  const dataSteps: ProductionDataTraverseStepV1[] = [];
+  trace: ReturnType<typeof buildMidgardLedgerOutputProofTrace>,
+): readonly DataTraverseStep[] => {
+  const dataSteps: DataTraverseStep[] = [];
   let expectedControl = trace.initial;
   for (let index = 0; index < trace.steps.length; index += 1) {
     const { control, witness, next } = trace.steps[index]!;
@@ -561,7 +553,7 @@ const extractAuthenticatedLedgerOutputDataSteps = (
   }
   if (
     expectedControl !== trace.terminal ||
-    !isExactMidgardLedgerOutputProofTerminalV1(trace.terminal)
+    !isExactMidgardLedgerOutputProofTerminal(trace.terminal)
   ) {
     throw new Error("ledger-output production trace did not terminate");
   }
@@ -569,12 +561,12 @@ const extractAuthenticatedLedgerOutputDataSteps = (
 };
 
 const replayRedeemerItemProof = (
-  trace: ReturnType<typeof buildMidgardRedeemerItemProofTraceV1>,
-): readonly ProductionDataTraverseStepV1[] => {
-  const dataSteps: ProductionDataTraverseStepV1[] = [];
+  trace: ReturnType<typeof buildMidgardRedeemerItemProofTrace>,
+): readonly DataTraverseStep[] => {
+  const dataSteps: DataTraverseStep[] = [];
   for (let index = 0; index < trace.steps.length; index += 1) {
     const { control, witness, next } = trace.steps[index]!;
-    const replay = advanceMidgardRedeemerItemProofV1({
+    const replay = advanceMidgardRedeemerItemProof({
       control,
       witness,
     });
@@ -599,7 +591,7 @@ const replayRedeemerItemProof = (
 };
 
 const maximumDatumChunkBytes = (
-  trace: ReturnType<typeof buildMidgardLedgerOutputProofTraceV1>,
+  trace: ReturnType<typeof buildMidgardLedgerOutputProofTrace>,
 ): number =>
   trace.steps.reduce((maximum, { witness }) => {
     if (witness?.kind !== "datum") return maximum;
@@ -611,7 +603,7 @@ const maximumDatumChunkBytes = (
   }, 0);
 
 const maximumRedeemerChunkBytes = (
-  trace: ReturnType<typeof buildMidgardRedeemerItemProofTraceV1>,
+  trace: ReturnType<typeof buildMidgardRedeemerItemProofTrace>,
 ): number =>
   trace.steps.reduce(
     (maximum, { witness }) =>
@@ -631,7 +623,7 @@ const maximumRedeemerChunkBytes = (
  * breadth the search must land on, its adjacent overflow, and both signed
  * transaction sizes and Data CBOR sizes.
  */
-const MAXIMUM_DATUM_BREADTH_BOUNDARY_V1 = {
+const MAXIMUM_DATUM_BREADTH_BOUNDARY = {
   constructor: {
     acceptedBreadth: 16_166,
     acceptedDataCborBytes: 16_173,
@@ -658,7 +650,7 @@ const MAXIMUM_DATUM_BREADTH_BOUNDARY_V1 = {
   },
 } as const;
 
-const MAXIMUM_REDEEMER_BREADTH_BOUNDARY_V1 = {
+const MAXIMUM_REDEEMER_BREADTH_BOUNDARY = {
   constructor: {
     acceptedBreadth: 15_977,
     acceptedDataCborBytes: 15_984,
@@ -689,7 +681,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
   it.each(["constructor", "list", "map"] as const)(
     "retains maximum %s breadth through the inline-datum path",
     async (kind) => {
-      const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+      const privateKey = deterministicCardanoBoundaryPrivateKey(0);
       const funder = {
         seedPhrase: "",
         privateKey: privateKey.to_bech32(),
@@ -703,42 +695,42 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       };
 
       const buildCandidate = (breadth: number) =>
-        buildSignedCardanoNestedDatumCandidateV1({
+        buildSignedCardanoNestedDatumCandidate({
           privateKeyBech32: funder.privateKey,
           inputTransactionId: "00".repeat(32),
           inputOutputIndex: 0n,
           inputLovelace: funder.assets.lovelace,
           recipientAddress: funder.address,
           requestedNestedLeafCount: breadth,
-          nestedDatumCborHex: cardanoBreadthDataCborV1(kind, breadth),
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          nestedDatumCborHex: cardanoBreadthDataCbor(kind, breadth),
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
         });
-      const boundary = await findSignedCardanoCollectionBoundaryV1({
-        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      const boundary = await findSignedCardanoCollectionBoundary({
+        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
         buildSignedCandidate: buildCandidate,
       });
-      const accepted = measureSignedCardanoNestedDatumV1(
+      const accepted = measureSignedCardanoNestedDatum(
         boundary.accepted.cborHex,
       );
-      const adjacent = measureSignedCardanoNestedDatumV1(
+      const adjacent = measureSignedCardanoNestedDatum(
         boundary.adjacent.cborHex,
       );
-      const acceptedDataCborHex = cardanoBreadthDataCborV1(
+      const acceptedDataCborHex = cardanoBreadthDataCbor(
         kind,
         boundary.accepted.requestedItemCount,
       );
-      const adjacentDataCborHex = cardanoBreadthDataCborV1(
+      const adjacentDataCborHex = cardanoBreadthDataCbor(
         kind,
         boundary.adjacent.requestedItemCount,
       );
       expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-        CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+        CARDANO_BOUNDARY_MAX_TX_SIZE,
       );
       expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-        CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+        CARDANO_BOUNDARY_MAX_TX_SIZE,
       );
       expect(boundary.adjacent.requestedItemCount).toBe(
         boundary.accepted.requestedItemCount + 1,
@@ -753,7 +745,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         adjacentBreadth: boundary.adjacent.requestedItemCount,
         adjacentDataCborBytes: adjacentDataCborHex.length / 2,
         adjacentSignedBytes: boundary.adjacent.signedBytes,
-      }).toEqual(MAXIMUM_DATUM_BREADTH_BOUNDARY_V1[kind]);
+      }).toEqual(MAXIMUM_DATUM_BREADTH_BOUNDARY[kind]);
       expect(accepted.datumCborHex).toBe(acceptedDataCborHex);
       expect(adjacent.datumCborHex).toBe(adjacentDataCborHex);
       assertExactBreadthSemantics(
@@ -782,11 +774,11 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         collateralInputCount: 0,
       });
 
-      const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(boundary.accepted.cborHex, "hex"),
       );
-      const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-      expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+      const native = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
+      expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
       const outputCbors = decodeMidgardNativeByteListPreimage(
         native.body.outputsPreimageCbor,
         "native.outputs",
@@ -794,18 +786,18 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(outputCbors).toHaveLength(1);
       const output = decodeMidgardTxOutput(outputCbors[0]!);
       expect(output.datum?.cbor.toString("hex")).toBe(acceptedDataCborHex);
-      const outputTrace = buildMidgardLedgerOutputProofTraceV1({
+      const outputTrace = buildMidgardLedgerOutputProofTrace({
         outputIndex: 0,
         outputCbor: outputCbors[0]!,
       });
       const dataSteps = extractAuthenticatedLedgerOutputDataSteps(outputTrace);
       expect(dataSteps.at(-1)?.action?.kind).toBe("finalizeFrame");
-      assertExactProductionFoldSemantics({
+      assertExactFoldSemantics({
         kind,
         breadth: boundary.accepted.requestedItemCount,
         steps: dataSteps,
       });
-      const terminalSummary = finalizeMidgardCekDataTraverseV1(
+      const terminalSummary = finalizeMidgardCekDataTraverse(
         outputTrace.terminal.datum!,
       );
       expect(terminalSummary).not.toBeNull();
@@ -816,13 +808,13 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         summary: terminalSummary!,
       });
       expect(maximumSourceSpan(dataSteps)).toBeLessThanOrEqual(
-        MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+        MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
       );
       expect(maximumSourceSpan(dataSteps)).toBeLessThanOrEqual(132);
       expect(maximumDatumChunkBytes(outputTrace)).toBeLessThanOrEqual(
-        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
       );
-      const reconstructed = measureSignedCardanoNestedDatumV1(
+      const reconstructed = measureSignedCardanoNestedDatum(
         Buffer.from(midgardNativeTxFullToCardanoTxEncoding(native)).toString(
           "hex",
         ),
@@ -839,11 +831,11 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
 
       const emulator = new Emulator(
         [funder],
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
       );
       const txHash = await emulator.submitTx(boundary.accepted.cborHex);
       await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
-      await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+      await exerciseMidgardRetainedDaCanonicalBoundary({
         canonicalTransactionCbor: canonical,
         corpusLabel: `maximum-${kind}-datum-breadth`,
       });
@@ -896,7 +888,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
   it.each(["constructor", "list", "map"] as const)(
     "measures complete %s Data direct and reference carriage before any bounded fallback",
     async (kind) => {
-      const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+      const privateKey = deterministicCardanoBoundaryPrivateKey(0);
       const addressBytes = Buffer.from(
         CML.EnterpriseAddress.new(
           0,
@@ -911,11 +903,11 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           value: { lovelace: 30_000_000n, assets: new Map() },
           datum: {
             kind: "inline",
-            cbor: Buffer.from(cardanoBreadthDataCborV1(kind, breadth), "hex"),
+            cbor: Buffer.from(cardanoBreadthDataCbor(kind, breadth), "hex"),
           },
         });
       const fitForBreadth = (breadth: number) =>
-        measureMidgardCompleteItemCarriageFitV1({
+        measureMidgardCompleteItemCarriageFit({
           fieldIndex: 2,
           itemIndex: 0,
           itemCbor: outputItemForBreadth(breadth),
@@ -986,7 +978,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       // complete routes. Its overflow is the §3.2 necessity for the bounded
       // Data traversal the sibling cases exercise.
       const buildCandidate = (breadth: number) =>
-        buildSignedCardanoNestedDatumCandidateV1({
+        buildSignedCardanoNestedDatumCandidate({
           privateKeyBech32: privateKey.to_bech32(),
           inputTransactionId: "00".repeat(32),
           inputOutputIndex: 0n,
@@ -998,21 +990,21 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
             .to_address()
             .to_bech32(),
           requestedNestedLeafCount: breadth,
-          nestedDatumCborHex: cardanoBreadthDataCborV1(kind, breadth),
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          nestedDatumCborHex: cardanoBreadthDataCbor(kind, breadth),
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
         });
-      const boundary = await findSignedCardanoCollectionBoundaryV1({
-        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      const boundary = await findSignedCardanoCollectionBoundary({
+        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
         buildSignedCandidate: buildCandidate,
       });
-      const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(boundary.accepted.cborHex, "hex"),
       );
-      const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-      expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+      const native = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
+      expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
       const outputCbors = decodeMidgardNativeByteListPreimage(
         native.body.outputsPreimageCbor,
         "native.outputs",
@@ -1021,9 +1013,9 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(
         decodeMidgardTxOutput(outputCbors[0]!).datum?.cbor.toString("hex"),
       ).toBe(
-        cardanoBreadthDataCborV1(kind, boundary.accepted.requestedItemCount),
+        cardanoBreadthDataCbor(kind, boundary.accepted.requestedItemCount),
       );
-      const maximumFit = measureMidgardCompleteItemCarriageFitV1({
+      const maximumFit = measureMidgardCompleteItemCarriageFit({
         fieldIndex: 2,
         itemIndex: 0,
         itemCbor: outputCbors[0]!,
@@ -1074,7 +1066,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
   );
 
   it("retains maximum constructor/list/map breadth through genuine Cardano redeemers and the Midgard schema projection", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const walletAddress = CML.EnterpriseAddress.new(
       0,
       CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -1105,7 +1097,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
     ];
     const seedEmulator = new Emulator(
       genesis,
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const walletInputs = (await seedEmulator.getUtxos(walletAddress)).sort(
       (left, right) => left.outputIndex - right.outputIndex,
@@ -1121,7 +1113,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       .attach.SpendingValidator(spendingScript)
       .complete({ localUPLCEval: true });
     const signedSeed = await completedSeed.sign.withWallet().complete();
-    const seed = measureCollateralizedPlutusFeasibilityCandidateV1(
+    const seed = measureCollateralizedPlutusFeasibilityCandidate(
       signedSeed.toCBOR(),
     );
     const seedTransaction = CML.Transaction.from_cbor_hex(signedSeed.toCBOR());
@@ -1131,52 +1123,52 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
 
     for (const kind of ["constructor", "list", "map"] as const) {
       const buildCandidate = async (breadth: number) => {
-        const candidate = await buildSignedCardanoSpendRedeemersCandidateV1({
+        const candidate = await buildSignedCardanoSpendRedeemersCandidate({
           privateKeyBech32: privateKey.to_bech32(),
           feeFundingInput: walletInputs[0]!,
           collateralInput: walletInputs[1]!,
           availableScriptInputs: scriptInputs,
           recipientAddress: walletAddress,
           plutusV3ScriptCborHex: seedScripts!.get(0).to_cbor_hex(),
-          redeemerDataCborHex: cardanoBreadthDataCborV1(kind, breadth),
+          redeemerDataCborHex: cardanoBreadthDataCbor(kind, breadth),
           executionMemory: seed.executionMemory,
           executionSteps: seed.executionSteps,
           requestedRedeemerCount: 1,
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
-          priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
-          priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
+          priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.priceMem,
+          priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.priceStep,
           collateralPercentage:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.collateralPercentage,
-          costModels: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.collateralPercentage,
+          costModels: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.costModels,
         });
         return { ...candidate, requestedItemCount: breadth };
       };
-      const boundary = await findSignedCardanoCollectionBoundaryV1({
-        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      const boundary = await findSignedCardanoCollectionBoundary({
+        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
         buildSignedCandidate: buildCandidate,
       });
-      const accepted = measureCollateralizedPlutusFeasibilityCandidateV1(
+      const accepted = measureCollateralizedPlutusFeasibilityCandidate(
         boundary.accepted.cborHex,
       );
-      const adjacent = measureCollateralizedPlutusFeasibilityCandidateV1(
+      const adjacent = measureCollateralizedPlutusFeasibilityCandidate(
         boundary.adjacent.cborHex,
       );
-      const acceptedDataCborHex = cardanoBreadthDataCborV1(
+      const acceptedDataCborHex = cardanoBreadthDataCbor(
         kind,
         boundary.accepted.requestedItemCount,
       );
-      const adjacentDataCborHex = cardanoBreadthDataCborV1(
+      const adjacentDataCborHex = cardanoBreadthDataCbor(
         kind,
         boundary.adjacent.requestedItemCount,
       );
       expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-        CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+        CARDANO_BOUNDARY_MAX_TX_SIZE,
       );
       expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-        CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+        CARDANO_BOUNDARY_MAX_TX_SIZE,
       );
       expect(boundary.adjacent.requestedItemCount).toBe(
         boundary.accepted.requestedItemCount + 1,
@@ -1191,7 +1183,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         adjacentBreadth: boundary.adjacent.requestedItemCount,
         adjacentDataCborBytes: adjacentDataCborHex.length / 2,
         adjacentSignedBytes: boundary.adjacent.signedBytes,
-      }).toEqual(MAXIMUM_REDEEMER_BREADTH_BOUNDARY_V1[kind]);
+      }).toEqual(MAXIMUM_REDEEMER_BREADTH_BOUNDARY[kind]);
       expect(accepted.redeemerCount).toBe(1);
       expect(adjacent.redeemerCount).toBe(1);
       expect(accepted.redeemerTags).toEqual([CML.RedeemerTag.Spend]);
@@ -1210,9 +1202,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       );
       expect(accepted.executionMemory).toBe(seed.executionMemory);
       expect(accepted.executionSteps).toBe(seed.executionSteps);
-      expect(accepted.totalCollateral).toBe(
-        CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-      );
+      expect(accepted.totalCollateral).toBe(CARDANO_BOUNDARY_TOTAL_COLLATERAL);
       const acceptedTransaction = CML.Transaction.from_cbor_hex(
         boundary.accepted.cborHex,
       );
@@ -1225,18 +1215,18 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       const sourceRawFlatProgramBytes = Buffer.from(
         acceptedScripts!.get(0).to_raw_bytes(),
       );
-      const artifact = buildMidgardCanonicalScriptArtifactV1({
+      const artifact = buildMidgardCanonicalScriptArtifact({
         language: "PlutusV3",
         sourceRawFlatProgramBytes,
       });
-      const canonicalMaterialEntries = decodeMidgardCekProgramMaterialSidecarV1(
+      const canonicalMaterialEntries = decodeMidgardCekProgramMaterialSidecar(
         artifact.canonicalMaterialSidecarCbor,
       );
       expect(canonicalMaterialEntries).toEqual(
         artifact.canonicalMaterialEntries,
       );
       expect(
-        verifyMidgardCekProgramMaterialBundleV1(
+        verifyMidgardCekProgramMaterialBundle(
           [artifact.canonicalProgram.envelope],
           canonicalMaterialEntries,
         ),
@@ -1262,7 +1252,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           }
         | undefined;
       try {
-        cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        cardanoTxBytesToMidgardNativeTxCanonicalCbor(
           Buffer.from(boundary.accepted.cborHex, "hex"),
         );
       } catch (error) {
@@ -1285,7 +1275,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       });
 
       const schemaProjectionSource =
-        buildCollateralFreeMidgardSchemaParallelCandidateV1({
+        buildCollateralFreeMidgardSchemaParallelCandidate({
           collateralizedCardanoCborHex: boundary.accepted.cborHex,
           privateKeyBech32: privateKey.to_bech32(),
         });
@@ -1350,10 +1340,10 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         schemaProjectionSourceShape.body().script_data_hash()?.to_hex(),
       ).toBe(acceptedTransaction.body().script_data_hash()?.to_hex());
       const schemaSourceCanonical =
-        cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        cardanoTxBytesToMidgardNativeTxCanonicalCbor(
           Buffer.from(schemaProjectionSource.cborHex, "hex"),
         );
-      const schemaSourceNative = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const schemaSourceNative = decodeMidgardNativeTxFullFromCanonicalCbor(
         schemaSourceCanonical,
       );
       const sourceScripts = decodeMidgardVersionedScriptListPreimage(
@@ -1373,7 +1363,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       );
       const projectedScriptIntegrityHash =
         computeScriptIntegrityHashForLanguages(
-          midgardFieldCommitmentV1(
+          midgardFieldCommitment(
             schemaSourceNative.witnessSet.redeemerTxWitsPreimageCbor,
           ),
           ["PlutusV3"],
@@ -1384,14 +1374,14 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       );
       expect(projectedScriptIntegrityHash).toEqual(
         computeScriptIntegrityHashForLanguages(
-          midgardFieldCommitmentV1(
+          midgardFieldCommitment(
             schemaSourceNative.witnessSet.redeemerTxWitsPreimageCbor,
           ),
           ["PlutusV3"],
         ),
       );
 
-      const schemaProjection = materializeMidgardNativeTxFromCanonicalV1({
+      const schemaProjection = materializeMidgardNativeTxFromCanonical({
         version: schemaSourceNative.version,
         validity: schemaSourceNative.validity,
         body: {
@@ -1406,8 +1396,8 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           ]),
         },
       });
-      const canonical = encodeMidgardNativeTxCanonicalV1(schemaProjection);
-      const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
+      const canonical = encodeMidgardNativeTxCanonical(schemaProjection);
+      const native = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
       expect(native.witnessSet.addrTxWitsPreimageCbor).toEqual(
         Buffer.from([0x80]),
       );
@@ -1423,7 +1413,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(hashMidgardVersionedScript(projectedScripts[0]!)).toBe(
         artifact.canonicalMidgardCredentialScriptHash,
       );
-      expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+      expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
       const redeemers = decodeMidgardRedeemers(
         native.witnessSet.redeemerTxWitsPreimageCbor,
       );
@@ -1437,23 +1427,23 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
           steps: seed.executionSteps,
         },
       });
-      const field = countedMachineFieldTraceV1(
+      const field = countedMachineFieldTrace(
         8,
         native.witnessSet.redeemerTxWitsPreimageCbor,
       );
       expect(field.items).toHaveLength(1);
       const item = field.items[0]!;
-      const itemTrace = buildMidgardRedeemerItemProofTraceV1({
+      const itemTrace = buildMidgardRedeemerItemProofTrace({
         itemIndex: item.itemIndex,
         itemCount: field.items.length,
         itemBytes: item.bytes,
-        mode: MidgardRedeemerItemProofModesV1.Data,
+        mode: MidgardRedeemerItemProofModes.Data,
         expectedPurposeTag: CML.RedeemerTag.Spend,
         expectedPointerIndex: 1,
       });
       expect(itemTrace.steps[0]?.witness.action.kind).toBe("openHeader");
       expect(itemTrace.steps[1]?.witness.action.kind).toBe("openTail");
-      const descriptor = midgardRedeemerItemDescriptorV1(
+      const descriptor = midgardRedeemerItemDescriptor(
         itemTrace.steps[1]!.next,
       );
       expect(descriptor).toMatchObject({
@@ -1469,12 +1459,12 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(descriptor?.itemCommitment).toEqual(item.commitment);
       const dataSteps = replayRedeemerItemProof(itemTrace);
       expect(dataSteps.at(-1)?.action?.kind).toBe("finalizeFrame");
-      assertExactProductionFoldSemantics({
+      assertExactFoldSemantics({
         kind,
         breadth: boundary.accepted.requestedItemCount,
         steps: dataSteps,
       });
-      const terminalSummary = finalizeMidgardRedeemerItemProofV1(
+      const terminalSummary = finalizeMidgardRedeemerItemProof(
         itemTrace.terminal,
       );
       expect(terminalSummary).not.toBeNull();
@@ -1488,24 +1478,24 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         (maximum, { control }) =>
           Math.max(
             maximum,
-            nextMidgardRedeemerItemProofSpanV1(control)?.length ?? 0,
+            nextMidgardRedeemerItemProofSpan(control)?.length ?? 0,
           ),
         0,
       );
       expect(maximumItemSourceSpan).toBeLessThanOrEqual(
-        MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+        MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
       );
       expect(maximumItemSourceSpan).toBeLessThanOrEqual(132);
       expect(maximumRedeemerChunkBytes(itemTrace)).toBeLessThanOrEqual(
-        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+        MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
       );
       const emulator = new Emulator(
         genesis,
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
       );
       const txHash = await emulator.submitTx(boundary.accepted.cborHex);
       await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
-      await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+      await exerciseMidgardRetainedDaCanonicalBoundary({
         canonicalTransactionCbor: canonical,
         corpusLabel: `maximum-${kind}-redeemer-breadth`,
         canonicalMaterialSidecarCbor: artifact.canonicalMaterialSidecarCbor,

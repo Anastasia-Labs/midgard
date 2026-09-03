@@ -1,47 +1,47 @@
 import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
-import { encodeVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { encodeVerdictSubject } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  AcceptedSelectedPurposeV1Schema,
-  AcceptedSelectedSourceV1Schema,
-  ExecutionNativeScriptInvalidAcceptedStateV1Schema,
-  ExecutionNativeScriptInvalidBoundV1Schema,
+  AcceptedSelectedPurposeSchema,
+  AcceptedSelectedSourceSchema,
+  ExecutionNativeScriptInvalidAcceptedStateSchema,
+  ExecutionNativeScriptInvalidBoundSchema,
 } from "./schemas-v1.js";
 
-export const EXECUTION_NATIVE_ACCEPTED_CHECKPOINT_DOMAIN_V1 =
+export const EXECUTION_NATIVE_ACCEPTED_CHECKPOINT_DOMAIN =
   "midgard/fraud-proofs/execution-native-script-invalid/accepted-reconstruction-v1";
 
-export type AcceptedReconstructionBoundV1 = Data.Static<
-  typeof ExecutionNativeScriptInvalidBoundV1Schema
+export type AcceptedReconstructionBound = Data.Static<
+  typeof ExecutionNativeScriptInvalidBoundSchema
 >;
-export type AcceptedReconstructionStateV1 = Data.Static<
-  typeof ExecutionNativeScriptInvalidAcceptedStateV1Schema
+export type AcceptedReconstructionState = Data.Static<
+  typeof ExecutionNativeScriptInvalidAcceptedStateSchema
 >;
-export type AcceptedSelectedPurposeV1 = Data.Static<
-  typeof AcceptedSelectedPurposeV1Schema
+export type AcceptedSelectedPurpose = Data.Static<
+  typeof AcceptedSelectedPurposeSchema
 >;
-export type AcceptedSelectedSourceV1 = Data.Static<
-  typeof AcceptedSelectedSourceV1Schema
+export type AcceptedSelectedSource = Data.Static<
+  typeof AcceptedSelectedSourceSchema
 >;
 
 const cbor = (value: unknown): Buffer =>
   Buffer.from(encodeCbor(value as never));
 const plutusOption = (
-  value: AcceptedSelectedPurposeV1 | AcceptedSelectedSourceV1 | null,
+  value: AcceptedSelectedPurpose | AcceptedSelectedSource | null,
   schema:
-    | typeof AcceptedSelectedPurposeV1Schema
-    | typeof AcceptedSelectedSourceV1Schema,
+    | typeof AcceptedSelectedPurposeSchema
+    | typeof AcceptedSelectedSourceSchema,
 ): Buffer =>
   Buffer.from(Data.to(value as never, Data.Nullable(schema) as never), "hex");
 
-export const checkpointAcceptedReconstructionV1 = (
-  state: Omit<AcceptedReconstructionStateV1, "checkpoint_hash">,
+export const checkpointAcceptedReconstruction = (
+  state: Omit<AcceptedReconstructionState, "checkpoint_hash">,
 ): string =>
   computeHash32(
     Buffer.concat([
-      Buffer.from(EXECUTION_NATIVE_ACCEPTED_CHECKPOINT_DOMAIN_V1),
-      Buffer.from(encodeVerdictSubjectV1(state.bound.subject)),
+      Buffer.from(EXECUTION_NATIVE_ACCEPTED_CHECKPOINT_DOMAIN),
+      Buffer.from(encodeVerdictSubject(state.bound.subject)),
       cbor(Buffer.from(state.bound.compact_cbor, "hex")),
       Buffer.from(state.bound.prior_ledger_root, "hex"),
       cbor(state.bound.execution_index),
@@ -52,28 +52,28 @@ export const checkpointAcceptedReconstructionV1 = (
       cbor(Buffer.from(state.receive_candidate, "hex")),
       cbor(state.source_base_index),
       cbor(state.source_cursor),
-      plutusOption(state.selected_purpose, AcceptedSelectedPurposeV1Schema),
-      plutusOption(state.selected_source, AcceptedSelectedSourceV1Schema),
+      plutusOption(state.selected_purpose, AcceptedSelectedPurposeSchema),
+      plutusOption(state.selected_source, AcceptedSelectedSourceSchema),
       cbor(Buffer.from(state.next_expected_script_hash, "hex")),
     ]),
   ).toString("hex");
 
-export const sealAcceptedReconstructionStateV1 = (
-  state: Omit<AcceptedReconstructionStateV1, "checkpoint_hash">,
-): AcceptedReconstructionStateV1 =>
+export const sealAcceptedReconstructionState = (
+  state: Omit<AcceptedReconstructionState, "checkpoint_hash">,
+): AcceptedReconstructionState =>
   Object.freeze({
     ...state,
-    checkpoint_hash: checkpointAcceptedReconstructionV1(state),
+    checkpoint_hash: checkpointAcceptedReconstruction(state),
   });
 
-export const initialAcceptedReconstructionStateV1 = ({
+export const initialAcceptedReconstructionState = ({
   bound,
   nextScriptHash,
 }: {
-  bound: AcceptedReconstructionBoundV1;
+  bound: AcceptedReconstructionBound;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 =>
-  sealAcceptedReconstructionStateV1({
+}): AcceptedReconstructionState =>
+  sealAcceptedReconstructionState({
     bound,
     phase: 0n,
     field_cursor: 0n,
@@ -87,30 +87,30 @@ export const initialAcceptedReconstructionStateV1 = ({
     next_expected_script_hash: nextScriptHash,
   });
 
-export const acceptedAdvanceNonScriptV1 = ({
+export const acceptedAdvanceNonScript = ({
   state,
   canonicalKey,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   canonicalKey: string;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 =>
-  sealAcceptedReconstructionStateV1({
+}): AcceptedReconstructionState =>
+  sealAcceptedReconstructionState({
     ...state,
     field_cursor: state.field_cursor + 1n,
     previous_key: canonicalKey,
     next_expected_script_hash: nextScriptHash,
   });
 
-export const acceptedFinishPurposePhaseV1 = ({
+export const acceptedFinishPurposePhase = ({
   state,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 =>
-  sealAcceptedReconstructionStateV1({
+}): AcceptedReconstructionState =>
+  sealAcceptedReconstructionState({
     ...state,
     phase: state.selected_purpose === null ? state.phase + 1n : 4n,
     field_cursor: 0n,
@@ -118,7 +118,7 @@ export const acceptedFinishPurposePhaseV1 = ({
     next_expected_script_hash: nextScriptHash,
   });
 
-export const acceptedAppendPurposeV1 = ({
+export const acceptedAppendPurpose = ({
   state,
   purposeKind,
   purposeIndex,
@@ -127,14 +127,14 @@ export const acceptedAppendPurposeV1 = ({
   canonicalKey,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   purposeKind: bigint;
   purposeIndex: bigint;
   scriptHash: string;
   subject: string;
   canonicalKey: string;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 => {
+}): AcceptedReconstructionState => {
   const selected =
     state.execution_cursor === state.bound.execution_index
       ? {
@@ -144,7 +144,7 @@ export const acceptedAppendPurposeV1 = ({
           subject,
         }
       : null;
-  return sealAcceptedReconstructionStateV1({
+  return sealAcceptedReconstructionState({
     ...state,
     phase: selected === null ? state.phase : 4n,
     field_cursor: selected === null ? state.field_cursor + 1n : 0n,
@@ -155,16 +155,16 @@ export const acceptedAppendPurposeV1 = ({
   });
 };
 
-export const acceptedAppendSourceV1 = ({
+export const acceptedAppendSource = ({
   state,
   source,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
-  source: AcceptedSelectedSourceV1;
+  state: AcceptedReconstructionState;
+  source: AcceptedSelectedSource;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 =>
-  sealAcceptedReconstructionStateV1({
+}): AcceptedReconstructionState =>
+  sealAcceptedReconstructionState({
     ...state,
     field_cursor: state.field_cursor + 1n,
     source_cursor: state.source_cursor + 1n,
@@ -175,22 +175,22 @@ export const acceptedAppendSourceV1 = ({
     next_expected_script_hash: nextScriptHash,
   });
 
-export const acceptedScanReceiveOutputV1 = ({
+export const acceptedScanReceiveOutput = ({
   state,
   candidate,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   candidate: string | null;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 => {
+}): AcceptedReconstructionState => {
   const receiveCandidate =
     candidate !== null &&
     (state.previous_key === "" || state.previous_key < candidate) &&
     (state.receive_candidate === "" || candidate < state.receive_candidate)
       ? candidate
       : state.receive_candidate;
-  return sealAcceptedReconstructionStateV1({
+  return sealAcceptedReconstructionState({
     ...state,
     field_cursor: state.field_cursor + 1n,
     receive_candidate: receiveCandidate,
@@ -198,18 +198,18 @@ export const acceptedScanReceiveOutputV1 = ({
   });
 };
 
-export const acceptedFinishReceivePassV1 = ({
+export const acceptedFinishReceivePass = ({
   state,
   nextScanScriptHash,
   nextSourceScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   nextScanScriptHash: string;
   nextSourceScriptHash: string;
-}): AcceptedReconstructionStateV1 => {
+}): AcceptedReconstructionState => {
   if (state.receive_candidate === "")
     throw new Error("accepted receive pass has no script candidate");
-  const emitted = acceptedAppendPurposeV1({
+  const emitted = acceptedAppendPurpose({
     state,
     purposeKind: 3n,
     purposeIndex: state.execution_cursor,
@@ -221,34 +221,34 @@ export const acceptedFinishReceivePassV1 = ({
         ? nextSourceScriptHash
         : nextScanScriptHash,
   });
-  return sealAcceptedReconstructionStateV1({
+  return sealAcceptedReconstructionState({
     ...emitted,
     field_cursor: 0n,
     receive_candidate: "",
   });
 };
 
-export const acceptedAdvanceReferenceWithoutSourceV1 = ({
+export const acceptedAdvanceReferenceWithoutSource = ({
   state,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 =>
-  sealAcceptedReconstructionStateV1({
+}): AcceptedReconstructionState =>
+  sealAcceptedReconstructionState({
     ...state,
     field_cursor: state.field_cursor + 1n,
     next_expected_script_hash: nextScriptHash,
   });
 
-export const acceptedFinishInlineSourcesV1 = ({
+export const acceptedFinishInlineSources = ({
   state,
   nextScriptHash,
 }: {
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   nextScriptHash: string;
-}): AcceptedReconstructionStateV1 =>
-  sealAcceptedReconstructionStateV1({
+}): AcceptedReconstructionState =>
+  sealAcceptedReconstructionState({
     ...state,
     phase: 5n,
     field_cursor: 0n,

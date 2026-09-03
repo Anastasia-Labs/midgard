@@ -11,33 +11,33 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ReceivePurposeLanguageContractsV1 } from "./contracts-v1.js";
-import type { ReceivePurposeLanguageEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ReceivePurposeLanguageContracts } from "./contracts-v1.js";
+import type { ReceivePurposeLanguageEvidence } from "./family-v1.js";
 import {
-  AuthenticatedReceiveLanguageV1Schema,
-  ReceivePurposeBoundExecutionV1Schema,
-  ReceivePurposeStep02DatumV1Schema,
-  ReceivePurposeStep02RedeemerV1Schema,
-  ReceivePurposeStep03DatumV1Schema,
+  AuthenticatedReceiveLanguageSchema,
+  ReceivePurposeBoundExecutionSchema,
+  ReceivePurposeStep02DatumSchema,
+  ReceivePurposeStep02RedeemerSchema,
+  ReceivePurposeStep03DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "receive-purpose-language";
-export type ReceivePurposeLanguageAuthenticationV1 = Omit<
+export type ReceivePurposeLanguageAuthentication = Omit<
   Extract<
-    Data.Static<typeof ReceivePurposeStep02RedeemerV1Schema>,
+    Data.Static<typeof ReceivePurposeStep02RedeemerSchema>,
     { Continue: unknown }
   >["Continue"][0],
   "input_index" | "output_index"
 >;
-export const submitReceivePurposeLanguageStep02V1 = async ({
+export const submitReceivePurposeLanguageStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -50,18 +50,18 @@ export const submitReceivePurposeLanguageStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ReceivePurposeLanguageContractsV1;
+  contracts: ReceivePurposeLanguageContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: ReceivePurposeLanguageEvidenceV1;
-  authentication: ReceivePurposeLanguageAuthenticationV1;
+  evidence: ReceivePurposeLanguageEvidence;
+  authentication: ReceivePurposeLanguageAuthentication;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -69,12 +69,12 @@ export const submitReceivePurposeLanguageStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const bound = requireLinearFaultStepStateV1<
-    Data.Static<typeof ReceivePurposeBoundExecutionV1Schema>
+  const bound = requireLinearFaultStepState<
+    Data.Static<typeof ReceivePurposeBoundExecutionSchema>
   >({
     threadUtxo,
     signer,
-    schema: ReceivePurposeStep02DatumV1Schema as never,
+    schema: ReceivePurposeStep02DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -88,29 +88,28 @@ export const submitReceivePurposeLanguageStep02V1 = async ({
     throw new Error(
       `${FAMILY}: retained purpose/language authentication differs from bound evidence`,
     );
-  const authenticated: Data.Static<
-    typeof AuthenticatedReceiveLanguageV1Schema
-  > = {
-    bound,
-    prior_ledger_root: authentication.machine_state.prior_ledger_root,
-    purpose_kind: 3n,
-    purpose_index: authentication.purpose_index,
-    source_index: authentication.source_index,
-    origin_kind: authentication.origin_kind,
-    source_key: authentication.source_key,
-    language_tag: authentication.language_tag,
-    script_hash: authentication.script_hash,
-  };
+  const authenticated: Data.Static<typeof AuthenticatedReceiveLanguageSchema> =
+    {
+      bound,
+      prior_ledger_root: authentication.machine_state.prior_ledger_root,
+      purpose_kind: 3n,
+      purpose_index: authentication.purpose_index,
+      source_index: authentication.source_index,
+      origin_kind: authentication.origin_kind,
+      source_key: authentication.source_key,
+      language_tag: authentication.language_tag,
+      script_hash: authentication.script_hash,
+    };
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: authenticated } as never,
-    ReceivePurposeStep03DatumV1Schema as never,
+    ReceivePurposeStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -135,11 +134,11 @@ export const submitReceivePurposeLanguageStep02V1 = async ({
           },
         ],
       } as never,
-      ReceivePurposeStep02RedeemerV1Schema as never,
+      ReceivePurposeStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

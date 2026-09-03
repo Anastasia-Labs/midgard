@@ -1,24 +1,24 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardBoundedItemV1,
-  computeMidgardNativeTxIdV1,
+  buildMidgardBoundedItem,
+  computeMidgardNativeTxId,
   decodeMidgardDatum,
-  decodeMidgardLedgerOutputCommitmentV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardLedgerOutputCommitmentV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardLedgerOutputCommitment,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardLedgerOutputCommitment,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -26,33 +26,33 @@ import { describe, expect, it } from "vitest";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
-  prepareResolvedOutputNonCanonicalEvidenceV1,
-  RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1,
-  RESOLVED_OUTPUT_NON_CANONICAL_ID_V1,
-  type ResolvedOutputNonCanonicalContractsV1,
-  submitResolvedOutputNonCanonicalCancelV1,
-  submitResolvedOutputNonCanonicalStep01AcceptedV1,
-  submitResolvedOutputNonCanonicalStep02V1,
-  submitResolvedOutputNonCanonicalStep03V1,
-  submitResolvedOutputNonCanonicalStep04V1,
-  submitResolvedOutputNonCanonicalStep05V1,
+  prepareResolvedOutputNonCanonicalEvidence,
+  RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+  RESOLVED_OUTPUT_NON_CANONICAL_ID,
+  type ResolvedOutputNonCanonicalContracts,
+  submitResolvedOutputNonCanonicalCancel,
+  submitResolvedOutputNonCanonicalStep01Accepted,
+  submitResolvedOutputNonCanonicalStep02,
+  submitResolvedOutputNonCanonicalStep03,
+  submitResolvedOutputNonCanonicalStep04,
+  submitResolvedOutputNonCanonicalStep05,
 } from "../src/resolved-output-non-canonical/index.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { applyCompiledScript } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
   countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
   insertAdversarialMembershipSiblings,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -66,7 +66,7 @@ const firstStepDeploymentEntry = "fraudProofResolvedOutputNonCanonical";
 
 describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
   it("runs accepted Init through scan, final mint, and removal before central registration", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -74,7 +74,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1;
+    const titles = RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES;
     const step05 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles[4], [
         harness.contracts.fraudProof.policyId,
@@ -109,12 +109,12 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       ]),
     );
     const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: ResolvedOutputNonCanonicalContractsV1 = {
+    const contracts: ResolvedOutputNonCanonicalContracts = {
       steps: steps.map((step, index) => ({
         ...step,
         blueprintTitle: titles[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as ResolvedOutputNonCanonicalContractsV1["steps"],
+      })) as unknown as ResolvedOutputNonCanonicalContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -128,7 +128,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         resolvedOutputNonCanonical: {
-          categoryId: RESOLVED_OUTPUT_NON_CANONICAL_ID_V1,
+          categoryId: RESOLVED_OUTPUT_NON_CANONICAL_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -155,7 +155,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       Buffer.alloc(16_384 - canonicalPrefix.length),
     ]);
     const priorTxId = "ab".repeat(32);
-    const outRefBytes = encodeMidgardSpendInputItemV1({
+    const outRefBytes = encodeMidgardSpendInputItem({
       txId: Buffer.from(priorTxId, "hex"),
       outputIndex: 0,
     });
@@ -163,19 +163,19 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 1)]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
-    const template = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const template = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 0,
       outputCbor: templateOutput,
     });
-    const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+    const descriptor = decodeMidgardLedgerOutputCommitment(
       template.descriptorCbor,
     );
-    const bounded = buildMidgardBoundedItemV1({
+    const bounded = buildMidgardBoundedItem({
       fieldIndex: 2,
       itemIndex: 0,
       bytes: malformedOutput,
     });
-    const descriptorCbor = encodeMidgardLedgerOutputCommitmentV1({
+    const descriptorCbor = encodeMidgardLedgerOutputCommitment({
       ...descriptor,
       totalLength: malformedOutput.length,
       itemCommitment: bounded.commitment,
@@ -196,8 +196,8 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       fee: 7n,
       outputCbors: [],
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -217,7 +217,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const predecessor = await setupFraudulentBlockV1({
+    const predecessor = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -226,10 +226,10 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
         transactionsRoot,
         l2TransactionCount: 1n,
         utxosRoot: priorRoot,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
       },
     });
-    const targetStart = emulatorSuccessorHeaderStartV1({
+    const targetStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: predecessor.header.endTime,
       emulator: harness.emulator,
     });
@@ -259,10 +259,10 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       fraudulentBlockOutRef: target.successorOutRef,
       headerHash: target.successorHeaderHash,
     };
-    const evidence = prepareResolvedOutputNonCanonicalEvidenceV1({
-      subject: acceptedVerdictSubjectV1(nativeTxId),
+    const evidence = prepareResolvedOutputNonCanonicalEvidence({
+      subject: acceptedVerdictSubject(nativeTxId),
       coordinate: { sourceKind: 0, inputIndex: 0 },
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(nativeTx),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: {
         priorRoot,
         transactionId: priorTxId,
@@ -317,7 +317,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       }),
     );
     const cancellation = await captureEmulatorSubmission(harness.emulator, () =>
-      submitResolvedOutputNonCanonicalCancelV1({
+      submitResolvedOutputNonCanonicalCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -354,7 +354,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitResolvedOutputNonCanonicalStep01AcceptedV1({
+      submitResolvedOutputNonCanonicalStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -373,7 +373,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
       }),
     );
     const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitResolvedOutputNonCanonicalStep02V1({
+      submitResolvedOutputNonCanonicalStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -381,15 +381,15 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
         threadOutRef: step01Result.result.nextThreadOutRef,
         evidence,
         nativeTxCompactCbor: compactCbor.toString("hex"),
-        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-          deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+          deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
         ).toString("hex"),
         referenceScriptUtxo: references[1]!,
         certificateReferenceScriptUtxo: certificateReference,
       }),
     );
     const step03Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitResolvedOutputNonCanonicalStep03V1({
+      submitResolvedOutputNonCanonicalStep03({
         lucid: harness.proverLucid,
         network,
         contracts,
@@ -407,7 +407,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
     let reconstructionThreadOutRef = step03Result.result.nextThreadOutRef;
     for (;;) {
       const result = await captureEmulatorSubmission(harness.emulator, () =>
-        submitResolvedOutputNonCanonicalStep04V1({
+        submitResolvedOutputNonCanonicalStep04({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -423,7 +423,7 @@ describe("resolvedOutputNonCanonical local-catalogue lifecycle", () => {
     }
     expect(step04Results.length).toBeGreaterThan(1);
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitResolvedOutputNonCanonicalStep05V1({
+      submitResolvedOutputNonCanonicalStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

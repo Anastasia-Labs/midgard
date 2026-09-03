@@ -2,22 +2,22 @@ import {
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  ForcedInclusionTxV1Schema,
-  FrontierPeakV1Schema,
-  HeaderV1Schema,
+  ForcedInclusionTxSchema,
+  FrontierPeakSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
   ProofSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
-  ValidationMachineStateV1Schema,
-  ValidationTraceDescriptorV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceDescriptorSchema,
+  ValidationTraceProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-const FrontierSchema = Data.Array(FrontierPeakV1Schema);
-const NativeScriptsControlV1Schema = Data.Object({
+const FrontierSchema = Data.Array(FrontierPeakSchema);
+const NativeScriptsControlSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   field_preimage_lengths_cbor: Data.Bytes(),
@@ -46,27 +46,27 @@ const NativeScriptsControlV1Schema = Data.Object({
   resolution_schedule_hash: Data.Bytes(),
 });
 
-export const DistinctAssetVerdictSubjectV1Schema = Data.Object({
+export const DistinctAssetVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const DistinctAssetCoordinateV1Schema = Data.Object({
+export const DistinctAssetCoordinateSchema = Data.Object({
   fold: Data.Integer(),
   primary_index: Data.Integer(),
   asset_index: Data.Integer(),
 });
-export const DistinctAssetBoundV1Schema = Data.Object({
-  subject: DistinctAssetVerdictSubjectV1Schema,
+export const DistinctAssetBoundSchema = Data.Object({
+  subject: DistinctAssetVerdictSubjectSchema,
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
-  coordinate: DistinctAssetCoordinateV1Schema,
+  coordinate: DistinctAssetCoordinateSchema,
 });
-export const DistinctAssetValueAndMintControlV1Schema = Data.Object({
-  native_control: NativeScriptsControlV1Schema,
+export const DistinctAssetValueAndMintControlSchema = Data.Object({
+  native_control: NativeScriptsControlSchema,
   stage: Data.Integer(),
   replay_schedule_hash: Data.Bytes(),
   replay_cursor: Data.Integer(),
@@ -84,16 +84,16 @@ export const DistinctAssetValueAndMintControlV1Schema = Data.Object({
     nonzero_asset_count: Data.Integer(),
   }),
 });
-export const DistinctAssetFoldStateV1Schema = Data.Object({
-  bound: DistinctAssetBoundV1Schema,
-  control: Data.Nullable(DistinctAssetValueAndMintControlV1Schema),
+export const DistinctAssetFoldStateSchema = Data.Object({
+  bound: DistinctAssetBoundSchema,
+  control: Data.Nullable(DistinctAssetValueAndMintControlSchema),
   stage: Data.Integer(),
   decisive_fault_holds: Data.Nullable(Data.Boolean()),
 });
-export const DistinctAssetStep02DatumV1Schema = faultProofStepDatumSchema(
-  DistinctAssetBoundV1Schema,
+export const DistinctAssetStep02DatumSchema = faultProofStepDatumSchema(
+  DistinctAssetBoundSchema,
 );
-export const DistinctAssetStep01SourceV1Schema = Data.Enum([
+export const DistinctAssetStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -101,55 +101,52 @@ export const DistinctAssetStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const DistinctAssetStep01RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const DistinctAssetStep01RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
-    source: DistinctAssetStep01SourceV1Schema,
-    coordinate: DistinctAssetCoordinateV1Schema,
+    source: DistinctAssetStep01SourceSchema,
+    coordinate: DistinctAssetCoordinateSchema,
   }),
 );
-export const DistinctAssetStep02RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const DistinctAssetStep02RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     trace_membership: rootMembershipProofSchema(
       EventKeySchema,
-      ValidationTraceDescriptorV1Schema,
+      ValidationTraceDescriptorSchema,
     ),
-    pre: ValidationMachineStateV1Schema,
-    trace_proof: ValidationTraceProofV1Schema,
-    control: DistinctAssetValueAndMintControlV1Schema,
+    pre: ValidationMachineStateSchema,
+    trace_proof: ValidationTraceProofSchema,
+    control: DistinctAssetValueAndMintControlSchema,
   }),
 );
-export const DistinctAssetStep03DatumV1Schema = faultProofStepDatumSchema(
-  DistinctAssetFoldStateV1Schema,
+export const DistinctAssetStep03DatumSchema = faultProofStepDatumSchema(
+  DistinctAssetFoldStateSchema,
 );
-export const DistinctAssetStep04DatumV1Schema =
-  DistinctAssetStep03DatumV1Schema;
-export const DistinctAssetStep05DatumV1Schema =
-  DistinctAssetStep03DatumV1Schema;
-export const DistinctAssetStep06DatumV1Schema =
-  DistinctAssetStep03DatumV1Schema;
-const ValueAssetMutationWitnessV1Schema = Data.Object({
+export const DistinctAssetStep04DatumSchema = DistinctAssetStep03DatumSchema;
+export const DistinctAssetStep05DatumSchema = DistinctAssetStep03DatumSchema;
+export const DistinctAssetStep06DatumSchema = DistinctAssetStep03DatumSchema;
+const ValueAssetMutationWitnessSchema = Data.Object({
   delta_was_present: Data.Boolean(),
   old_delta: Data.Integer(),
   delta_proof: ProofSchema,
 });
-const CommonLayoutV1Schema = Data.Object({
+const CommonLayoutSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
 });
-export const DistinctAssetStep03RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const DistinctAssetStep03RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Enum([
-    Data.Object({ Skip: CommonLayoutV1Schema }),
+    Data.Object({ Skip: CommonLayoutSchema }),
     Data.Object({
       Authenticate: Data.Object({
         input_index: Data.Integer(),
@@ -165,15 +162,15 @@ export const DistinctAssetStep03RedeemerV1Schema = faultProofStepRedeemerSchema(
           quantity: Data.Integer(),
           asset_peaks: FrontierSchema,
           asset_siblings: Data.Array(Data.Bytes()),
-          mutation: ValueAssetMutationWitnessV1Schema,
+          mutation: ValueAssetMutationWitnessSchema,
         }),
       }),
     }),
   ]),
 );
-export const DistinctAssetStep04RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const DistinctAssetStep04RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Enum([
-    Data.Object({ Skip: CommonLayoutV1Schema }),
+    Data.Object({ Skip: CommonLayoutSchema }),
     Data.Object({
       Authenticate: Data.Object({
         input_index: Data.Integer(),
@@ -187,15 +184,15 @@ export const DistinctAssetStep04RedeemerV1Schema = faultProofStepRedeemerSchema(
           quantity: Data.Integer(),
           asset_peaks: FrontierSchema,
           asset_siblings: Data.Array(Data.Bytes()),
-          mutation: ValueAssetMutationWitnessV1Schema,
+          mutation: ValueAssetMutationWitnessSchema,
         }),
       }),
     }),
   ]),
 );
-export const DistinctAssetStep05RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const DistinctAssetStep05RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Enum([
-    Data.Object({ Skip: CommonLayoutV1Schema }),
+    Data.Object({ Skip: CommonLayoutSchema }),
     Data.Object({
       Authenticate: Data.Object({
         input_index: Data.Integer(),
@@ -206,24 +203,24 @@ export const DistinctAssetStep05RedeemerV1Schema = faultProofStepRedeemerSchema(
           asset_name: Data.Bytes(),
           quantity: Data.Integer(),
           siblings: Data.Array(Data.Bytes()),
-          mutation: ValueAssetMutationWitnessV1Schema,
+          mutation: ValueAssetMutationWitnessSchema,
         }),
       }),
     }),
   ]),
 );
-export const DistinctAssetStep06RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const DistinctAssetStep06RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     fraud_proof_mint_redeemer_index: Data.Integer(),
   }),
 );
-export const DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS_V1 = Object.freeze([
-  DistinctAssetStep02DatumV1Schema,
-  DistinctAssetStep03DatumV1Schema,
-  DistinctAssetStep04DatumV1Schema,
-  DistinctAssetStep05DatumV1Schema,
-  DistinctAssetStep06DatumV1Schema,
-  DistinctAssetStep06DatumV1Schema,
+export const DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS = Object.freeze([
+  DistinctAssetStep02DatumSchema,
+  DistinctAssetStep03DatumSchema,
+  DistinctAssetStep04DatumSchema,
+  DistinctAssetStep05DatumSchema,
+  DistinctAssetStep06DatumSchema,
+  DistinctAssetStep06DatumSchema,
 ] as const);

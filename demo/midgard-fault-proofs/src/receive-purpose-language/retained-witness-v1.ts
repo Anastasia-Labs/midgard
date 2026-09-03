@@ -1,13 +1,13 @@
 import type { EventKey } from "@al-ft/midgard-sdk";
 
-import { buildExecutionSourceMachineAuthenticationFromRetainedDaV1 } from "../execution-source-script-decoding/retained-witness-v1.js";
-import type { ReceivePurposeLanguageDescriptorV1 } from "./family-v1.js";
-import type { ReceivePurposeLanguageAuthenticationV1 } from "./submit-step-02-v1.js";
+import { buildExecutionSourceMachineAuthenticationFromRetainedDa } from "../execution-source-script-decoding/retained-witness-v1.js";
+import type { ReceivePurposeLanguageDescriptor } from "./family-v1.js";
+import type { ReceivePurposeLanguageAuthentication } from "./submit-step-02-v1.js";
 
 type EncodedEntry = Readonly<{ key: Uint8Array; value: Uint8Array }>;
 
 /** Strict retained-DA reconstruction for category 34's purpose/language bind. */
-export const buildReceivePurposeLanguageAuthenticationFromRetainedDaV1 =
+export const buildReceivePurposeLanguageAuthenticationFromRetainedDa =
   async (args: {
     readonly eventKey: EventKey;
     readonly executionIndex: number;
@@ -19,11 +19,11 @@ export const buildReceivePurposeLanguageAuthenticationFromRetainedDaV1 =
     Readonly<{
       validationTracesRoot: string;
       validationTraceCount: bigint;
-      authentication: ReceivePurposeLanguageAuthenticationV1;
+      authentication: ReceivePurposeLanguageAuthentication;
     }>
   > => {
     const rebuilt =
-      await buildExecutionSourceMachineAuthenticationFromRetainedDaV1({
+      await buildExecutionSourceMachineAuthenticationFromRetainedDa({
         ...args,
         expectedPurposeKind: 3,
       });
@@ -41,10 +41,10 @@ const exactNumber = (value: bigint, label: string): number => {
 };
 
 /** Converts retained authentication into the pure evidence descriptor twin. */
-export const receivePurposeLanguageDescriptorFromAuthenticationV1 = (
-  authentication: ReceivePurposeLanguageAuthenticationV1,
+export const receivePurposeLanguageDescriptorFromAuthentication = (
+  authentication: ReceivePurposeLanguageAuthentication,
   executionIndex: number,
-): ReceivePurposeLanguageDescriptorV1 => {
+): ReceivePurposeLanguageDescriptor => {
   const frontier = (
     count: bigint,
     peaks: readonly Readonly<{ height: bigint; hash: string }>[],

@@ -3,36 +3,36 @@ import { createHash } from "node:crypto";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
 } from "../workflow/journal-v1.js";
-import type { FraudProofWorkflowActionV1 } from "../workflow/orchestrator-v1.js";
-import { assertProductionWorkflowJournalActuationV1 } from "../workflow/production-actuation-permit-v1.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator-v1.js";
+import { assertWorkflowJournalActuation } from "../workflow/production-actuation-permit-v1.js";
 import {
-  abandonProductionWorkflowFundingReservationTransactionV1,
-  assertProductionWorkflowFundingReservationReadyToSubmitV1,
-  beginProductionWorkflowFundingReservationActionV1,
-  confirmProductionWorkflowFundingReservationTransactionV1,
-  conflictProductionWorkflowFundingReservationTransactionV1,
-  prepareProductionWorkflowFundingReservationTransactionV1,
+  abandonWorkflowFundingReservationTransaction,
+  assertWorkflowFundingReservationReadyToSubmit,
+  beginWorkflowFundingReservationAction,
+  confirmWorkflowFundingReservationTransaction,
+  conflictWorkflowFundingReservationTransaction,
+  prepareWorkflowFundingReservationTransaction,
 } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  bindProductionWorkflowPreflightTransactionV1,
-  type FraudProofPreSubmitBoundaryV1,
-  LOCAL_UPLC_EVALUATOR_V1,
+  bindWorkflowPreflightTransaction,
+  type FraudProofPreSubmitBoundary,
+  LOCAL_UPLC_EVALUATOR,
 } from "../workflow/transaction-boundary-v1.js";
 import type {
-  TransactionOutputActionV1,
-  TransactionOutputJournalEntryV1,
-  TransactionOutputJournalV1,
-  TransactionOutputStageV1,
+  TransactionOutputAction,
+  TransactionOutputJournal,
+  TransactionOutputJournalEntry,
+  TransactionOutputStage,
 } from "./transaction-output-non-canonical-v1.js";
 
-const familyWorkflowIdV1 = (identity: FraudProofWorkflowIdentityV1): string => {
+const familyWorkflowId = (identity: FraudProofWorkflowIdentity): string => {
   if (!/^[0-9a-f]{64}$/u.test(identity.deploymentFingerprint))
     throw new Error(
       "transactionOutputNonCanonical deployment fingerprint is invalid",
@@ -47,7 +47,7 @@ const familyWorkflowIdV1 = (identity: FraudProofWorkflowIdentityV1): string => {
   return createHash("sha256")
     .update(
       [
-        FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+        FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
         identity.deploymentFingerprint,
         "transactionOutputNonCanonical",
         `header:${identity.target.headerHash}`,
@@ -59,16 +59,16 @@ const familyWorkflowIdV1 = (identity: FraudProofWorkflowIdentityV1): string => {
     .digest("hex");
 };
 
-type SubmitAction = Exclude<TransactionOutputActionV1, "done">;
+type SubmitAction = Exclude<TransactionOutputAction, "done">;
 type DurableRecovery = Readonly<{
   familyIdentity: string;
-  sourceStage: TransactionOutputStageV1;
-  targetStage: TransactionOutputStageV1;
+  sourceStage: TransactionOutputStage;
+  targetStage: TransactionOutputStage;
   auxiliary?: boolean;
 }>;
 
 const TX_HASH = /^[0-9a-f]{64}$/u;
-const stages: readonly TransactionOutputStageV1[] = [
+const stages: readonly TransactionOutputStage[] = [
   "none",
   "step01",
   "step02",
@@ -83,7 +83,7 @@ const actionId = (action: SubmitAction): string =>
 const now = (): string => new Date().toISOString();
 
 const recoveryFrom = (
-  entry: FraudProofWorkflowJournalEntryV1,
+  entry: FraudProofWorkflowJournalEntry,
 ): DurableRecovery => {
   if (entry.event.kind !== "submission_intent") {
     throw new Error(
@@ -98,8 +98,8 @@ const recoveryFrom = (
     typeof familyIdentity !== "string" ||
     typeof sourceStage !== "string" ||
     typeof targetStage !== "string" ||
-    !stages.includes(sourceStage as TransactionOutputStageV1) ||
-    !stages.includes(targetStage as TransactionOutputStageV1)
+    !stages.includes(sourceStage as TransactionOutputStage) ||
+    !stages.includes(targetStage as TransactionOutputStage)
   ) {
     throw new Error(
       "transactionOutputNonCanonical durable intent is incomplete",
@@ -107,14 +107,14 @@ const recoveryFrom = (
   }
   return {
     familyIdentity,
-    sourceStage: sourceStage as TransactionOutputStageV1,
-    targetStage: targetStage as TransactionOutputStageV1,
+    sourceStage: sourceStage as TransactionOutputStage,
+    targetStage: targetStage as TransactionOutputStage,
     ...(value?.auxiliary === true ? { auxiliary: true } : {}),
   };
 };
 
 const actionFinishedAfter = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   sequence: number,
   wantedActionId: string,
 ): boolean =>
@@ -129,8 +129,8 @@ const actionFinishedAfter = (
   });
 
 const unresolvedIntent = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
-): FraudProofWorkflowJournalEntryV1 | undefined =>
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): FraudProofWorkflowJournalEntry | undefined =>
   [...entries].reverse().find((entry) => {
     const event = entry.event;
     return (
@@ -140,21 +140,21 @@ const unresolvedIntent = (
   });
 
 /** Central-journal bridge with exact post-restart raw-L1 reconciliation. */
-export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
+export const createTransactionOutputNonCanonicalCentralJournalAdapter = ({
   store,
   deploymentFingerprint,
   headerHash,
   decisionDigest,
   transactionConfirmed,
 }: {
-  readonly store: FraudProofWorkflowJournalStoreV1;
+  readonly store: FraudProofWorkflowJournalStore;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
   readonly decisionDigest: string;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
 }) => {
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint,
     category:
       "transactionOutputNonCanonical" as FraudProofCatalogueCategoryName,
@@ -163,16 +163,16 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
   };
   // Byte-for-byte the central workflow-id preimage, kept family-local until
   // the frozen category is admitted to the SDK union.
-  const workflowId = familyWorkflowIdV1(identity);
+  const workflowId = familyWorkflowId(identity);
   const entries = async () => await store.load(workflowId);
   const appendEvent = async (
-    event: FraudProofWorkflowJournalEntryV1["event"],
+    event: FraudProofWorkflowJournalEntry["event"],
   ): Promise<void> => {
     let current = await entries();
     if (current.length === 0) {
       await store.append(
         {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
           workflowId,
           identity,
           sequence: 0,
@@ -185,7 +185,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
     }
     await store.append(
       {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
         workflowId,
         identity,
         sequence: current.length,
@@ -198,14 +198,14 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
   const workflowAction = (
     kind: SubmitAction,
     recovery: DurableRecovery,
-  ): FraudProofWorkflowActionV1 => ({
+  ): FraudProofWorkflowAction => ({
     actionId: actionId(kind),
     input: { actionKind: actionId(kind), ...recovery },
   });
   const assertActuation = (
     checkpoint: "before_preflight" | "before_submit" | "before_reconcile",
   ): void =>
-    assertProductionWorkflowJournalActuationV1({
+    assertWorkflowJournalActuation({
       journal: store,
       deploymentFingerprint,
       category:
@@ -221,7 +221,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
       category: "transactionOutputNonCanonical",
       familyIdentity,
     };
-    const artifactDigest = journalJsonDigestV1(artifact);
+    const artifactDigest = journalJsonDigest(artifact);
     if (prepared?.event.kind === "prepared") {
       if (prepared.event.artifactDigest !== artifactDigest) {
         throw new Error(
@@ -236,8 +236,8 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
   const begin = async (
     kind: SubmitAction,
     familyIdentity: string,
-    sourceStage: TransactionOutputStageV1,
-    targetStage: TransactionOutputStageV1,
+    sourceStage: TransactionOutputStage,
+    targetStage: TransactionOutputStage,
   ): Promise<void> => {
     await ensurePrepared(familyIdentity);
     if (unresolvedIntent(await entries()) !== undefined) {
@@ -246,7 +246,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
       );
     }
     assertActuation("before_preflight");
-    await beginProductionWorkflowFundingReservationActionV1({
+    await beginWorkflowFundingReservationAction({
       journal: store,
       action: workflowAction(kind, {
         familyIdentity,
@@ -260,9 +260,9 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
     (
       kind: SubmitAction,
       familyIdentity: string,
-      sourceStage: TransactionOutputStageV1,
-      targetStage: TransactionOutputStageV1,
-    ): FraudProofPreSubmitBoundaryV1 =>
+      sourceStage: TransactionOutputStage,
+      targetStage: TransactionOutputStage,
+    ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       if (!TX_HASH.test(transaction.txHash)) {
         throw new Error(
@@ -290,25 +290,25 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
             event.kind === "submission_intent" &&
             event.actionId === action.actionId,
         ).length + 1;
-      const preflight = bindProductionWorkflowPreflightTransactionV1(
+      const preflight = bindWorkflowPreflightTransaction(
         {
           actionId: action.actionId,
           txHash: transaction.txHash,
           scriptExecution: "reference_scripts" as const,
           localUplcEvaluation: {
             status: "passed" as const,
-            evaluator: LOCAL_UPLC_EVALUATOR_V1,
+            evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: transaction.referenceScripts,
           durableRecovery: recovery,
         },
         transaction.signed,
       );
-      await beginProductionWorkflowFundingReservationActionV1({
+      await beginWorkflowFundingReservationAction({
         journal: store,
         action,
       });
-      await prepareProductionWorkflowFundingReservationTransactionV1({
+      await prepareWorkflowFundingReservationTransaction({
         journal: store,
         action,
         preflight,
@@ -317,7 +317,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
         kind: "preflight_passed",
         actionId: action.actionId,
         txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR_V1,
+        localEvaluator: LOCAL_UPLC_EVALUATOR,
         referenceScripts: transaction.referenceScripts,
       });
       await appendEvent({
@@ -329,14 +329,14 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
         txHash: transaction.txHash,
       });
       assertActuation("before_submit");
-      await assertProductionWorkflowFundingReservationReadyToSubmitV1({
+      await assertWorkflowFundingReservationReadyToSubmit({
         journal: store,
         transactionHash: transaction.txHash,
       });
     };
 
   const reconcile = async (
-    observedStage: TransactionOutputStageV1,
+    observedStage: TransactionOutputStage,
   ): Promise<void> => {
     const intent = unresolvedIntent(await entries());
     if (intent?.event.kind !== "submission_intent") return;
@@ -344,7 +344,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
     const recovery = recoveryFrom(intent);
     const confirmed = await transactionConfirmed(intent.event.txHash);
     if (confirmed && observedStage === recovery.targetStage) {
-      await confirmProductionWorkflowFundingReservationTransactionV1({
+      await confirmWorkflowFundingReservationTransaction({
         journal: store,
         transactionHash: intent.event.txHash,
       });
@@ -362,7 +362,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
       return;
     }
     if (!confirmed && observedStage === recovery.sourceStage) {
-      await abandonProductionWorkflowFundingReservationTransactionV1({
+      await abandonWorkflowFundingReservationTransaction({
         journal: store,
         transactionHash: intent.event.txHash,
       });
@@ -373,7 +373,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
       });
       return;
     }
-    await conflictProductionWorkflowFundingReservationTransactionV1({
+    await conflictWorkflowFundingReservationTransaction({
       journal: store,
       transactionHash: intent.event.txHash,
     });
@@ -386,9 +386,9 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
     (
       kind: "publication" | "certificate",
       familyIdentity: string,
-      stage: TransactionOutputStageV1,
+      stage: TransactionOutputStage,
       captured: string[],
-    ): FraudProofPreSubmitBoundaryV1 =>
+    ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       await ensurePrepared(familyIdentity);
       const pending = unresolvedIntent(await entries());
@@ -407,7 +407,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
         targetStage: stage,
         auxiliary: true,
       } as const;
-      const action: FraudProofWorkflowActionV1 = {
+      const action: FraudProofWorkflowAction = {
         actionId: id,
         input: {
           actionKind:
@@ -417,25 +417,25 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
           kind,
         },
       };
-      const preflight = bindProductionWorkflowPreflightTransactionV1(
+      const preflight = bindWorkflowPreflightTransaction(
         {
           actionId: id,
           txHash: transaction.txHash,
           scriptExecution: "reference_scripts" as const,
           localUplcEvaluation: {
             status: "passed" as const,
-            evaluator: LOCAL_UPLC_EVALUATOR_V1,
+            evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: transaction.referenceScripts,
           durableRecovery: recovery,
         },
         transaction.signed,
       );
-      await beginProductionWorkflowFundingReservationActionV1({
+      await beginWorkflowFundingReservationAction({
         journal: store,
         action,
       });
-      await prepareProductionWorkflowFundingReservationTransactionV1({
+      await prepareWorkflowFundingReservationTransaction({
         journal: store,
         action,
         preflight,
@@ -444,7 +444,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
         kind: "preflight_passed",
         actionId: id,
         txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR_V1,
+        localEvaluator: LOCAL_UPLC_EVALUATOR,
         referenceScripts: transaction.referenceScripts,
       });
       await appendEvent({
@@ -457,7 +457,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
       });
       captured.push(transaction.txHash);
       assertActuation("before_submit");
-      await assertProductionWorkflowFundingReservationReadyToSubmitV1({
+      await assertWorkflowFundingReservationReadyToSubmit({
         journal: store,
         transactionHash: transaction.txHash,
       });
@@ -487,7 +487,7 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
         "transactionOutputNonCanonical auxiliary transaction is not authenticated on L1",
       );
     }
-    await confirmProductionWorkflowFundingReservationTransactionV1({
+    await confirmWorkflowFundingReservationTransaction({
       journal: store,
       transactionHash: txHash,
     });
@@ -510,10 +510,10 @@ export const createTransactionOutputNonCanonicalCentralJournalAdapterV1 = ({
     });
   };
 
-  const familyJournal: TransactionOutputJournalV1 = {
+  const familyJournal: TransactionOutputJournal = {
     load: async (familyIdentity) => {
       const current = await entries();
-      const result: TransactionOutputJournalEntryV1[] = [];
+      const result: TransactionOutputJournalEntry[] = [];
       for (const entry of current) {
         const confirmedEvent = entry.event;
         if (confirmedEvent.kind !== "confirmed") continue;

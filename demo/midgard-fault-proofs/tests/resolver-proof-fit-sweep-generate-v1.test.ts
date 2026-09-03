@@ -85,12 +85,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MIDGARD_CONSENSUS_LIMITS_V1, outRefLabel } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS, outRefLabel } from "@al-ft/midgard-core";
 import {
   buildValidationTraceDisputeFaultProofContracts,
   parseFaultProofBlueprint,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
-  VALIDATION_TRACE_RESOLVER_COUNT_V1,
+  VALIDATION_TRACE_RESOLVER_COUNT,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
@@ -117,8 +117,8 @@ import {
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
   validationDisputeValidityRange,
-  validationResolverIndexV1,
-  validationSemanticResolverGlobalIndexV1,
+  validationResolverIndex,
+  validationSemanticResolverGlobalIndex,
 } from "../src/index.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -128,7 +128,7 @@ import {
   buildAcceptedClaimOverRejectingTransactionFixture,
   buildCatalogueDeploymentInfo,
   buildMinimalFaultProofContracts,
-  buildNonEmptyClaimedLedgerDeltaRootV1,
+  buildNonEmptyClaimedLedgerDeltaRoot,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   cloneBlueprint,
@@ -136,14 +136,14 @@ import {
   expectSingleUtxoWithUnit,
   measureCompleteSignedTransaction,
   network,
-  publishFaultProofWitnessReferenceScriptsV1,
-  publishOperatorLifecycleReferenceScriptsV1,
+  publishFaultProofWitnessReferenceScripts,
+  publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   runEmulatorLifecycleStage,
-  seedDualAddressPartyAccountsV1,
+  seedDualAddressPartyAccounts,
   stageAuthenticatedValidationDisputePublication,
   submitSetupTx,
   withRealL1MaxTxSize,
@@ -165,13 +165,12 @@ const FIXED_EMULATOR_TIME_MS = 1_700_000_000_000;
 const HUB_ORACLE_POLICY_ID = "11".repeat(28);
 const FRAUD_PROOF_CATALOGUE_POLICY_ID = "22".repeat(28);
 
-const MAX_L1_PROOF_TX_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const MAX_L1_PROOF_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 const RESERVED_CPU_UNITS = BigInt(
-  Math.floor(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8),
+  Math.floor(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8),
 );
 const RESERVED_MEMORY_UNITS = BigInt(
-  Math.floor(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits * 0.8),
+  Math.floor(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits * 0.8),
 );
 // Real Cardano PlutusV3 script-execution price coefficients (the same
 // constants `@lucid-evolution/lucid`'s `PROTOCOL_PARAMETERS_DEFAULT` uses).
@@ -287,12 +286,12 @@ const runResolverScenario = async ({
   // the enterprise one (same dual-address seam as the dispute journeys).
   const emulator = new Emulator(
     [
-      ...seedDualAddressPartyAccountsV1({
+      ...seedDualAddressPartyAccounts({
         account: operator,
         feeUtxoCount,
         feeUtxoLovelace,
       }),
-      ...seedDualAddressPartyAccountsV1({
+      ...seedDualAddressPartyAccounts({
         account: challenger,
         feeUtxoCount,
         feeUtxoLovelace,
@@ -335,13 +334,13 @@ const runResolverScenario = async ({
   const contracts = {
     ...baseContracts,
     operatorLifecycleReferenceScripts:
-      await publishOperatorLifecycleReferenceScriptsV1({
+      await publishOperatorLifecycleReferenceScripts({
         lucid: challengerLucid,
         contracts: baseContracts,
       }),
   };
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: challengerLucid,
       realBlueprint,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
@@ -758,7 +757,7 @@ const runResolverScenario = async ({
   // Publish the exact selected semantic resolver once, resolved through the
   // very helper the submit path uses, so the published body is byte-identical
   // to the one the resolution will hash-check (dispute-scenario precedent).
-  const sweepSemanticGlobalIndex = validationSemanticResolverGlobalIndexV1(
+  const sweepSemanticGlobalIndex = validationSemanticResolverGlobalIndex(
     (fixture.evidence.oneStepArgument as { resolverIndex: number })
       .resolverIndex,
     (fixture.evidence.oneStepArgument as { semanticResolverIndex: number })
@@ -841,7 +840,7 @@ const runResolverScenario = async ({
     fixture.evidence.oneStepArgument as { resolverIndex: number }
   ).resolverIndex;
   const semanticResolverIndex = selectedResult.semanticResolverIndex as number;
-  const semanticGlobalIndex = validationSemanticResolverGlobalIndexV1(
+  const semanticGlobalIndex = validationSemanticResolverGlobalIndex(
     resolverIndex,
     semanticResolverIndex,
   );
@@ -899,9 +898,9 @@ describe.skipIf(!REGENERATE)(
         }),
       );
       const dispute = scriptHashContracts.validationTraceDispute;
-      if (dispute.resolvers.length !== VALIDATION_TRACE_RESOLVER_COUNT_V1) {
+      if (dispute.resolvers.length !== VALIDATION_TRACE_RESOLVER_COUNT) {
         throw new Error(
-          `resolvers length ${String(dispute.resolvers.length)} !== ${String(VALIDATION_TRACE_RESOLVER_COUNT_V1)}`,
+          `resolvers length ${String(dispute.resolvers.length)} !== ${String(VALIDATION_TRACE_RESOLVER_COUNT)}`,
         );
       }
       if (dispute.prepareResolvers.length !== 14) {
@@ -973,12 +972,11 @@ describe.skipIf(!REGENERATE)(
           buildAcceptedClaimOverRejectingTransactionFixture({
             operatorVkey,
             now,
-            claimedLedgerDeltaRoot:
-              await buildNonEmptyClaimedLedgerDeltaRootV1(),
+            claimedLedgerDeltaRoot: await buildNonEmptyClaimedLedgerDeltaRoot(),
           }),
         needsItemSemanticPublication: false,
       });
-      if (inputSets.resolverIndex !== validationResolverIndexV1("InputSets")) {
+      if (inputSets.resolverIndex !== validationResolverIndex("InputSets")) {
         throw new Error(
           `expected buildAcceptedClaimOverRejectingTransactionFixture to reach the InputSets resolverIndex, got ${inputSets.resolverIndex.toString()}`,
         );
@@ -1060,7 +1058,7 @@ describe.skipIf(!REGENERATE)(
       )[] = [];
       for (
         let resolverIndex = 0;
-        resolverIndex < VALIDATION_TRACE_RESOLVER_COUNT_V1;
+        resolverIndex < VALIDATION_TRACE_RESOLVER_COUNT;
         resolverIndex += 1
       ) {
         const label = `resolverIndex ${resolverIndex.toString()}`;

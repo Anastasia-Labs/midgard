@@ -2,25 +2,25 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+  DEPLOYMENT_MANIFEST_STEP_NAMES,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -128,10 +128,10 @@ export const buildDaDeploymentFixture = async (
 ): Promise<Record<string, unknown>> => {
   const fixtureContracts = requireFixtureContracts(fixture);
   const referenceScriptContractNames = new Set<string>(
-    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+    Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
   );
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => {
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => {
       const source = requireFixtureContract(
         fixtureContracts[contractName],
         contractName,
@@ -282,30 +282,30 @@ export const buildDaDeploymentFixture = async (
     }),
   };
   const referenceScripts = Object.fromEntries(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([role, contractName]) => {
-      const contract = contracts[contractName]!;
-      const outRef = contract.refScriptUTxO as {
-        readonly txHash: string;
-        readonly outputIndex: number;
-      };
-      const tokenName =
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => {
+        const contract = contracts[contractName]!;
+        const outRef = contract.refScriptUTxO as {
+          readonly txHash: string;
+          readonly outputIndex: number;
+        };
+        const tokenName =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
+          ];
+        return [
+          role,
+          {
+            status: "confirmed",
+            roleUnit:
+              referenceScriptAuthPolicyId +
+              Buffer.from(tokenName, "utf8").toString("hex"),
+            scriptHash: contract.scriptHash,
+            outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
+          },
         ];
-      return [
-        role,
-        {
-          status: "confirmed",
-          roleUnit:
-            referenceScriptAuthPolicyId +
-            Buffer.from(tokenName, "utf8").toString("hex"),
-          scriptHash: contract.scriptHash,
-          outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-        },
-      ];
-    }),
+      },
+    ),
   );
   const committeeVkey = "01".repeat(32);
   const cardanoProtocolParameterSnapshot = {
@@ -327,13 +327,13 @@ export const buildDaDeploymentFixture = async (
     },
   } as const;
   const identityInput = {
-    schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preview",
     cardanoProtocolParameters: {
       snapshot: cardanoProtocolParameterSnapshot,
-      digest: computeDeploymentManifestV1JsonDigest(
+      digest: computeDeploymentManifestJsonDigest(
         cardanoProtocolParameterSnapshot,
       ),
     },
@@ -360,7 +360,7 @@ export const buildDaDeploymentFixture = async (
         expiresAtUnixTime: 1,
         timelockDurationMs: 1,
       },
-      tokenNames: DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
+      tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
       postTimelockAudit: {
         required: true,
         rule: "fixture audit",
@@ -375,20 +375,20 @@ export const buildDaDeploymentFixture = async (
       ),
       threshold: 1,
       transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         envelopeEncoding: "identity",
         zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS_V1,
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
     proofEvidence: {
-      digest: MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
       blueprintHash: "00".repeat(32),
     },
     steps: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_STEP_NAMES.map((stepName) => [
+      DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
         stepName,
         {
           status:
@@ -401,16 +401,16 @@ export const buildDaDeploymentFixture = async (
       ]),
     ),
     validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
-    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     economics:
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
@@ -435,7 +435,7 @@ export const buildDaDeploymentFixture = async (
   };
   return {
     ...identityInput,
-    manifestId: computeDeploymentManifestV1Id(identityInput),
+    manifestId: computeDeploymentManifestId(identityInput),
   };
 };
 
@@ -446,8 +446,8 @@ const requireFixtureContracts = (
   if (!isRecord(value)) {
     throw new Error("DA deployment fixture contracts must be an object");
   }
-  const expected = new Set<string>(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES);
-  const missing = DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.filter(
+  const expected = new Set<string>(DEPLOYMENT_MANIFEST_CONTRACT_NAMES);
+  const missing = DEPLOYMENT_MANIFEST_CONTRACT_NAMES.filter(
     (contractName) => !Object.hasOwn(value, contractName),
   );
   if (missing.length > 0) {

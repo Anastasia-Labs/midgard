@@ -16,8 +16,8 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
 } from "./linear-fault-family-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -31,20 +31,20 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 const CancelSchema = faultProofStepRedeemerSchema(Data.Any());
 type Cancel = Data.Static<typeof CancelSchema>;
 const Cancel = CancelSchema as unknown as Cancel;
 
-export const submitLinearFaultCancelV1 = async ({
+export const submitLinearFaultCancel = async ({
   lucid,
   family,
   steps,
@@ -72,8 +72,8 @@ export const submitLinearFaultCancelV1 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -88,7 +88,7 @@ export const submitLinearFaultCancelV1 = async ({
   if (stepIndex < 0 || step === undefined) {
     throw new Error(`${family}: ${outRefLabel(threadUtxo)} is not at a step`);
   }
-  const label = linearFaultStepLabelV1(family, stepIndex);
+  const label = linearFaultStepLabel(family, stepIndex);
   const token = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: computationThread.policyId,
@@ -104,13 +104,13 @@ export const submitLinearFaultCancelV1 = async ({
     throw new Error(`${family}: signer does not own thread`);
   }
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: step.spendingScriptHash,
     family,
     stepIndex,
   });
-  const burn = witnessMintingPolicyCarriageV1({
+  const burn = witnessMintingPolicyCarriage({
     script: computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: `${label} burn`,
@@ -159,15 +159,15 @@ export const submitLinearFaultCancelV1 = async ({
     throw new Error(`${label}: unresolved cancellation layout`);
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-cancel`,
         utxo: stepReference,
         expectedScript: step.spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-cancel-burn`,
         utxo: witnessReferenceScripts.computationThreadMint,
         expectedScript: computationThread.mintingScript,

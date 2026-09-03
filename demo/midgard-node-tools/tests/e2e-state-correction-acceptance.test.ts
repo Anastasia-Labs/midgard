@@ -3,16 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   E2E_STATE_CORRECTION_ACCEPTANCE_SCHEMA_VERSION,
-  type E2EStateCorrectionAcceptanceV1,
-  parseE2EStateCorrectionAcceptanceV1,
+  type E2EStateCorrectionAcceptance,
+  parseE2EStateCorrectionAcceptance,
   REQUIRED_STATE_CORRECTION_RECOVERY_DRILL_IDS,
   stateCorrectionAcceptanceEvidence,
-  stateCorrectionLocalReadinessEvidenceV1,
+  stateCorrectionLocalReadinessEvidence,
 } from "../src/commands/e2e-state-correction-acceptance.js";
 
 const hash = (index: number): string => index.toString(16).padStart(64, "0");
 
-const acceptanceFixture = (): E2EStateCorrectionAcceptanceV1 => {
+const acceptanceFixture = (): E2EStateCorrectionAcceptance => {
   let nextHash = 1;
   const takeHash = (): string => hash(nextHash++);
   return {
@@ -116,7 +116,7 @@ const acceptanceFixture = (): E2EStateCorrectionAcceptanceV1 => {
   };
 };
 
-const finalizedFixture = (): E2EStateCorrectionAcceptanceV1 => {
+const finalizedFixture = (): E2EStateCorrectionAcceptance => {
   const fixture = acceptanceFixture();
   return {
     ...fixture,
@@ -132,7 +132,7 @@ const finalizedFixture = (): E2EStateCorrectionAcceptanceV1 => {
 
 describe("state-correction acceptance evidence", () => {
   it("keeps Q56 and Q58 finalizer readiness explicitly fail closed", () => {
-    const gates = stateCorrectionLocalReadinessEvidenceV1({
+    const gates = stateCorrectionLocalReadinessEvidence({
       availabilityChallengeCapability: "missing",
     });
     expect(gates).toEqual([
@@ -153,7 +153,7 @@ describe("state-correction acceptance evidence", () => {
 
   it("keeps a complete aggregate blocked until independent provenance is reconciled", () => {
     const fixture = finalizedFixture();
-    const parsed = parseE2EStateCorrectionAcceptanceV1(fixture);
+    const parsed = parseE2EStateCorrectionAcceptance(fixture);
     const evidence = stateCorrectionAcceptanceEvidence({
       expectedRunId: fixture.runId,
       evidence: parsed,
@@ -205,7 +205,7 @@ describe("state-correction acceptance evidence", () => {
   it("rejects an omitted family instead of accepting a partial sweep", () => {
     const fixture = finalizedFixture();
     expect(() =>
-      parseE2EStateCorrectionAcceptanceV1({
+      parseE2EStateCorrectionAcceptance({
         ...fixture,
         families: fixture.families.slice(0, -1),
       }),
@@ -215,7 +215,7 @@ describe("state-correction acceptance evidence", () => {
   it("rejects inexact slash or prover economics", () => {
     const fixture = finalizedFixture();
     expect(() =>
-      parseE2EStateCorrectionAcceptanceV1({
+      parseE2EStateCorrectionAcceptance({
         ...fixture,
         families: fixture.families.map((family, index) =>
           index === 0
@@ -230,7 +230,7 @@ describe("state-correction acceptance evidence", () => {
     const fixture = finalizedFixture();
     const first = fixture.recoveryDrills[0]!;
     expect(() =>
-      parseE2EStateCorrectionAcceptanceV1({
+      parseE2EStateCorrectionAcceptance({
         ...fixture,
         recoveryDrills: [
           { ...first, lostEvidence: 1 },
@@ -239,7 +239,7 @@ describe("state-correction acceptance evidence", () => {
       }),
     ).toThrow(/lostEvidence must be 0/u);
     expect(() =>
-      parseE2EStateCorrectionAcceptanceV1({
+      parseE2EStateCorrectionAcceptance({
         ...fixture,
         recoveryDrills: fixture.recoveryDrills.slice(0, -1),
       }),
@@ -249,7 +249,7 @@ describe("state-correction acceptance evidence", () => {
   it("rejects a forced direction without public autonomous correction", () => {
     const fixture = finalizedFixture();
     expect(() =>
-      parseE2EStateCorrectionAcceptanceV1({
+      parseE2EStateCorrectionAcceptance({
         ...fixture,
         forcedClassifications: fixture.forcedClassifications.map(
           (drill, index) =>
@@ -262,7 +262,7 @@ describe("state-correction acceptance evidence", () => {
   it("rejects payout destination, payout value, and reserve value mismatches", () => {
     const fixture = finalizedFixture();
     expect(() =>
-      parseE2EStateCorrectionAcceptanceV1({
+      parseE2EStateCorrectionAcceptance({
         ...fixture,
         withdrawalReservePayout: {
           ...fixture.withdrawalReservePayout,

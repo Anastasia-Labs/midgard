@@ -1,10 +1,10 @@
 import { Pool } from "pg";
 
 import type {
-  DaStoredPayloadRecordV1,
+  DaStoredPayloadRecord,
   StateQueueHeaderRecord,
 } from "../domain.js";
-import { parseDaStoredPayloadRecordV1 } from "../domain.js";
+import { parseDaStoredPayloadRecord } from "../domain.js";
 import type { WatcherStore } from "../store.js";
 
 /** The complete storage authority of the standalone public listener. */
@@ -74,7 +74,7 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
 
   async getDaPayload(
     headerHash: string,
-  ): Promise<DaStoredPayloadRecordV1 | undefined> {
+  ): Promise<DaStoredPayloadRecord | undefined> {
     return this.withReadOnlyTransaction(async (client) => {
       const result = await client.query<StoredRecordRow>(
         "SELECT record FROM watcher_da_payloads WHERE header_hash = $1",
@@ -82,7 +82,7 @@ export class PostgresPublicRetainedDaStore implements PublicRetainedDaStore {
       );
       const record = result.rows[0]?.record;
       if (record === undefined) return undefined;
-      const parsed = parseDaStoredPayloadRecordV1(record);
+      const parsed = parseDaStoredPayloadRecord(record);
       if (parsed.headerHash !== headerHash) {
         throw new Error(
           "public retained-DA payload row key does not match record identity",

@@ -2,7 +2,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -11,7 +11,7 @@ import {
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
-export const MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1 =
+export const MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID =
   "missing-native-script-utxo" as const;
 
 export const MissingNativeScriptUtxoStep01DatumSchema =
@@ -33,7 +33,7 @@ export const MissingNativeScriptUtxoStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   bad_input_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
 });
 export const MissingNativeScriptUtxoStep02SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptUtxoStep02ArgsSchema);
@@ -72,7 +72,7 @@ export const MissingNativeScriptUtxoStep04ArgsSchema = Data.Object({
 export const MissingNativeScriptUtxoStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptUtxoStep04ArgsSchema);
 
-export const MissingNativeScriptUtxoPhaseV1Schema = Data.Enum([
+export const MissingNativeScriptUtxoPhaseSchema = Data.Enum([
   Data.Literal("Ready"),
   Data.Object({
     GrammarCertification: Data.Object({ checkpoint_hash: H32Schema }),
@@ -84,15 +84,15 @@ export const MissingNativeScriptUtxoPhaseV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type MissingNativeScriptUtxoPhaseV1 = Data.Static<
-  typeof MissingNativeScriptUtxoPhaseV1Schema
+export type MissingNativeScriptUtxoPhase = Data.Static<
+  typeof MissingNativeScriptUtxoPhaseSchema
 >;
 
 export const MissingNativeScriptUtxoStep05StateSchema = Data.Object({
   expected_missing_script_hash: Data.Bytes(),
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
-  phase: MissingNativeScriptUtxoPhaseV1Schema,
+  phase: MissingNativeScriptUtxoPhaseSchema,
 });
 export const MissingNativeScriptUtxoStep05DatumSchema =
   faultProofStepDatumSchema(MissingNativeScriptUtxoStep05StateSchema);
@@ -102,14 +102,14 @@ export const MissingNativeScriptUtxoStep05ArgsSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({
     StartGrammarCertification: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       item_budget: Data.Integer(),
     }),
   }),
@@ -124,7 +124,7 @@ export const MissingNativeScriptUtxoStep06ArgsSchema = Data.Enum([
     ResumeGrammarCertification: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -133,7 +133,7 @@ export const MissingNativeScriptUtxoStep06ArgsSchema = Data.Enum([
     StartSemanticScan: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       grammar_checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -149,7 +149,7 @@ export const MissingNativeScriptUtxoStep07ArgsSchema = Data.Enum([
     ResumeSemanticScan: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -159,7 +159,7 @@ export const MissingNativeScriptUtxoStep07ArgsSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -168,7 +168,7 @@ export const MissingNativeScriptUtxoStep07ArgsSchema = Data.Enum([
 export const MissingNativeScriptUtxoStep07SpendRedeemerSchema =
   faultProofStepRedeemerSchema(MissingNativeScriptUtxoStep07ArgsSchema);
 
-export const MISSING_NATIVE_SCRIPT_UTXO_STEP_NAMES_V1 = [
+export const MISSING_NATIVE_SCRIPT_UTXO_STEP_NAMES = [
   "step_01",
   "step_02",
   "step_03",

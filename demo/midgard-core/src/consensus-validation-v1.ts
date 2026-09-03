@@ -1,30 +1,30 @@
-import { decodeMidgardCekProgramEnvelopeV1 } from "./cek-proof.js";
+import { decodeMidgardCekProgramEnvelope } from "./cek-proof.js";
 import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
 import {
-  computeMidgardNativeTxProofCommitmentV1,
+  computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxCompactV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxProofSourceV1,
-  verifyMidgardNativeTxProofSourceV1,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxProofFieldLengths,
+  decodeMidgardNativeTxWitnessSetCompact,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  encodeMidgardNativeTxCanonical,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxProofSource,
+  verifyMidgardNativeTxProofSource,
 } from "./codec/native.js";
 import {
   EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
 } from "./codec/native-constants.js";
 import type { MidgardNativeScript } from "./codec/native-script.js";
-import { midgardFieldCommitmentV1 } from "./codec/native-tx-field-access-v1.js";
+import { midgardFieldCommitment } from "./codec/native-tx-field-access-v1.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import { midgardValueToCmlValue } from "./codec/value.js";
 import { decodeMidgardVersionedScriptListPreimage } from "./codec/versioned-script.js";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "./consensus-profile-v1.js";
+import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile-v1.js";
 
-export type MidgardConsensusV1ViolationCode =
+export type MidgardConsensusViolationCode =
   | "E_TX_VERSION"
   | "E_TX_SIZE"
   | "E_IS_VALID_FALSE_FORBIDDEN"
@@ -45,13 +45,13 @@ export type MidgardConsensusV1ViolationCode =
   | "E_NATIVE_SCRIPT_NODE_COUNT"
   | "E_ASSET_COUNT";
 
-export type MidgardConsensusV1Violation = {
-  readonly code: MidgardConsensusV1ViolationCode;
+export type MidgardConsensusViolation = {
+  readonly code: MidgardConsensusViolationCode;
   readonly featureId: string;
   readonly detail: string;
 };
 
-export const MIDGARD_V1_TX_FIELD_NAMES = [
+export const MIDGARD_TX_FIELD_NAMES = [
   "spend_inputs",
   "reference_inputs",
   "outputs",
@@ -63,11 +63,11 @@ export const MIDGARD_V1_TX_FIELD_NAMES = [
   "redeemers",
 ] as const;
 
-export type MidgardV1TxFieldName = (typeof MIDGARD_V1_TX_FIELD_NAMES)[number];
+export type MidgardTxFieldName = (typeof MIDGARD_TX_FIELD_NAMES)[number];
 
-export type MidgardV1TxFieldPreimage = {
+export type MidgardTxFieldPreimage = {
   readonly fieldIndex: number;
-  readonly fieldName: MidgardV1TxFieldName;
+  readonly fieldName: MidgardTxFieldName;
   readonly preimageCbor: Buffer;
   readonly expectedHash: Buffer;
 };
@@ -84,15 +84,15 @@ export type MidgardV1TxFieldPreimage = {
  * a consumer that only checked one of the two structures would pass a transaction
  * whose material lives in the other.
  *
- * It does **not** authenticate the source. `verifyMidgardNativeTxProofSourceV1`
+ * It does **not** authenticate the source. `verifyMidgardNativeTxProofSource`
  * and the `transaction_commitment` comparison are the caller's, exactly as the
  * on-chain door leaves `witness_set_hash`'s own provenance to its caller.
  */
-export const midgardV1TxFieldCommitmentsFromSourceV1 = (
-  source: MidgardNativeTxProofSourceV1,
+export const midgardTxFieldCommitmentsFromSource = (
+  source: MidgardNativeTxProofSource,
 ): readonly Buffer[] => {
-  const compact = decodeMidgardNativeTxCompactV1(source.compactCbor);
-  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+  const compact = decodeMidgardNativeTxCompact(source.compactCbor);
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
     source.witnessSetCompactCbor,
   );
   return [
@@ -108,13 +108,13 @@ export const midgardV1TxFieldCommitmentsFromSourceV1 = (
   ].map((hash) => Buffer.from(hash));
 };
 
-export const deriveMidgardV1TxFieldPreimages = (
+export const deriveMidgardTxFieldPreimages = (
   canonicalTransactionCbor: Uint8Array,
-): readonly MidgardV1TxFieldPreimage[] => {
-  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+): readonly MidgardTxFieldPreimage[] => {
+  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
     canonicalTransactionCbor,
   );
-  const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+  const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
     canonicalTransactionCbor,
   );
   const preimages = [
@@ -128,16 +128,16 @@ export const deriveMidgardV1TxFieldPreimages = (
     tx.witnessSet.addrTxWitsPreimageCbor,
     tx.witnessSet.redeemerTxWitsPreimageCbor,
   ] as const;
-  const hashes = midgardV1TxFieldCommitmentsFromSourceV1(source);
+  const hashes = midgardTxFieldCommitmentsFromSource(source);
   return preimages.map((preimageCbor, fieldIndex) => ({
     fieldIndex,
-    fieldName: MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]!,
+    fieldName: MIDGARD_TX_FIELD_NAMES[fieldIndex]!,
     preimageCbor: Buffer.from(preimageCbor),
     expectedHash: hashes[fieldIndex]!,
   }));
 };
 
-export const verifyMidgardV1TxFieldPreimage = ({
+export const verifyMidgardTxFieldPreimage = ({
   transactionId,
   transactionCommitment,
   source,
@@ -146,48 +146,48 @@ export const verifyMidgardV1TxFieldPreimage = ({
 }: {
   readonly transactionId: Uint8Array;
   readonly transactionCommitment: Uint8Array;
-  readonly source: MidgardNativeTxProofSourceV1;
+  readonly source: MidgardNativeTxProofSource;
   readonly fieldIndex: number;
   readonly preimageCbor: Uint8Array;
-}): MidgardV1TxFieldPreimage => {
+}): MidgardTxFieldPreimage => {
   if (
     !Number.isSafeInteger(fieldIndex) ||
     fieldIndex < 0 ||
-    fieldIndex >= MIDGARD_V1_TX_FIELD_NAMES.length
+    fieldIndex >= MIDGARD_TX_FIELD_NAMES.length
   ) {
     throw new Error(`unknown V1 transaction field index ${fieldIndex}`);
   }
-  verifyMidgardNativeTxProofSourceV1({ transactionId, source });
-  const computedCommitment = computeMidgardNativeTxProofCommitmentV1(source);
+  verifyMidgardNativeTxProofSource({ transactionId, source });
+  const computedCommitment = computeMidgardNativeTxProofCommitment(source);
   if (!computedCommitment.equals(Buffer.from(transactionCommitment))) {
     throw new Error(
       "V1 transaction field source does not match transaction commitment",
     );
   }
-  const hashes = midgardV1TxFieldCommitmentsFromSourceV1(source);
-  const committedLength = decodeMidgardNativeTxProofFieldLengthsV1(
+  const hashes = midgardTxFieldCommitmentsFromSource(source);
+  const committedLength = decodeMidgardNativeTxProofFieldLengths(
     source.fieldPreimageLengthsCbor,
   )[fieldIndex]!;
   if (preimageCbor.length !== committedLength) {
     throw new Error(
-      `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} preimage length does not match its compact source: ${preimageCbor.length.toString()} != ${committedLength.toString()}`,
+      `V1 ${MIDGARD_TX_FIELD_NAMES[fieldIndex]} preimage length does not match its compact source: ${preimageCbor.length.toString()} != ${committedLength.toString()}`,
     );
   }
   const expectedHash = hashes[fieldIndex]!;
-  if (!midgardFieldCommitmentV1(preimageCbor).equals(expectedHash)) {
+  if (!midgardFieldCommitment(preimageCbor).equals(expectedHash)) {
     throw new Error(
-      `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} preimage hash mismatch`,
+      `V1 ${MIDGARD_TX_FIELD_NAMES[fieldIndex]} preimage hash mismatch`,
     );
   }
   return {
     fieldIndex,
-    fieldName: MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]!,
+    fieldName: MIDGARD_TX_FIELD_NAMES[fieldIndex]!,
     preimageCbor: Buffer.from(preimageCbor),
     expectedHash,
   };
 };
 
-export const reconstructMidgardTransactionV1 = ({
+export const reconstructMidgardTransaction = ({
   transactionId,
   transactionCommitment,
   source,
@@ -195,16 +195,16 @@ export const reconstructMidgardTransactionV1 = ({
 }: {
   readonly transactionId: Uint8Array;
   readonly transactionCommitment: Uint8Array;
-  readonly source: MidgardNativeTxProofSourceV1;
+  readonly source: MidgardNativeTxProofSource;
   readonly fieldPreimages: readonly Uint8Array[];
 }): Buffer => {
-  if (fieldPreimages.length !== MIDGARD_V1_TX_FIELD_NAMES.length) {
+  if (fieldPreimages.length !== MIDGARD_TX_FIELD_NAMES.length) {
     throw new Error(
-      `V1 transaction reconstruction requires exactly ${MIDGARD_V1_TX_FIELD_NAMES.length.toString()} field preimages`,
+      `V1 transaction reconstruction requires exactly ${MIDGARD_TX_FIELD_NAMES.length.toString()} field preimages`,
     );
   }
   const verified = fieldPreimages.map((preimageCbor, fieldIndex) =>
-    verifyMidgardV1TxFieldPreimage({
+    verifyMidgardTxFieldPreimage({
       transactionId,
       transactionCommitment,
       source,
@@ -212,11 +212,11 @@ export const reconstructMidgardTransactionV1 = ({
       preimageCbor,
     }),
   );
-  const compact = verifyMidgardNativeTxProofSourceV1({
+  const compact = verifyMidgardNativeTxProofSource({
     transactionId,
     source,
   });
-  return encodeMidgardNativeTxCanonicalV1({
+  return encodeMidgardNativeTxCanonical({
     version: compact.version,
     validity: compact.validity,
     body: {
@@ -244,17 +244,17 @@ export const reconstructMidgardTransactionV1 = ({
 };
 
 const violation = (
-  code: MidgardConsensusV1ViolationCode,
+  code: MidgardConsensusViolationCode,
   featureId: string,
   detail: string,
-): MidgardConsensusV1Violation => ({ code, featureId, detail });
+): MidgardConsensusViolation => ({ code, featureId, detail });
 
 const enforceCount = (
   count: number,
   maximum: number,
-  code: MidgardConsensusV1ViolationCode,
+  code: MidgardConsensusViolationCode,
   featureId: string,
-): MidgardConsensusV1Violation | null =>
+): MidgardConsensusViolation | null =>
   count <= maximum
     ? null
     : violation(code, featureId, `${count.toString()} > ${maximum.toString()}`);
@@ -263,7 +263,7 @@ const enforcePreimageSize = (
   bytes: Uint8Array,
   maximum: number,
   featureId: string,
-): MidgardConsensusV1Violation | null =>
+): MidgardConsensusViolation | null =>
   bytes.length <= maximum
     ? null
     : violation(
@@ -292,8 +292,8 @@ const nativeScriptComplexity = (
     depth = Math.max(depth, current.depth);
     nodeCount += 1;
     if (
-      depth > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth ||
-      nodeCount > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount
+      depth > MIDGARD_CONSENSUS_LIMITS.maxNativeScriptDepth ||
+      nodeCount > MIDGARD_CONSENSUS_LIMITS.maxNativeScriptNodeCount
     ) {
       return { depth, nodeCount };
     }
@@ -323,22 +323,22 @@ const nativeScriptComplexity = (
 const nativeScriptBoundViolation = (
   script: MidgardNativeScript,
   featureId: string,
-): MidgardConsensusV1Violation | null => {
+): MidgardConsensusViolation | null => {
   const complexity = nativeScriptComplexity(script);
-  if (complexity.depth > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth) {
+  if (complexity.depth > MIDGARD_CONSENSUS_LIMITS.maxNativeScriptDepth) {
     return violation(
       "E_NATIVE_SCRIPT_DEPTH",
       featureId,
-      `${complexity.depth.toString()} > ${MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth.toString()}`,
+      `${complexity.depth.toString()} > ${MIDGARD_CONSENSUS_LIMITS.maxNativeScriptDepth.toString()}`,
     );
   }
   if (
-    complexity.nodeCount > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount
+    complexity.nodeCount > MIDGARD_CONSENSUS_LIMITS.maxNativeScriptNodeCount
   ) {
     return violation(
       "E_NATIVE_SCRIPT_NODE_COUNT",
       featureId,
-      `${complexity.nodeCount.toString()} > ${MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount.toString()}`,
+      `${complexity.nodeCount.toString()} > ${MIDGARD_CONSENSUS_LIMITS.maxNativeScriptNodeCount.toString()}`,
     );
   }
   return null;
@@ -348,16 +348,16 @@ const nativeScriptBoundViolation = (
  * Enforces the proof-fit bounds that can be checked from canonical V1 bytes.
  * Semantic validity remains the responsibility of ValidationMachineV1.
  */
-export const validateMidgardConsensusV1Tx = (
-  tx: MidgardNativeTxFullV1,
+export const validateMidgardConsensusTx = (
+  tx: MidgardNativeTxFull,
   canonicalCborByteLength: number,
-): MidgardConsensusV1Violation | null => {
-  const limits = MIDGARD_CONSENSUS_LIMITS_V1;
-  if (tx.version !== MIDGARD_NATIVE_TX_V1_VERSION) {
+): MidgardConsensusViolation | null => {
+  const limits = MIDGARD_CONSENSUS_LIMITS;
+  if (tx.version !== MIDGARD_NATIVE_TX_VERSION) {
     return violation(
       "E_TX_VERSION",
       "native_transaction_version",
-      `V1 profile requires native transaction version ${MIDGARD_NATIVE_TX_V1_VERSION.toString()}, got ${tx.version.toString()}`,
+      `V1 profile requires native transaction version ${MIDGARD_NATIVE_TX_VERSION.toString()}, got ${tx.version.toString()}`,
     );
   }
   if (canonicalCborByteLength > limits.maxTxCanonicalCborBytes) {
@@ -526,7 +526,7 @@ export const validateMidgardConsensusV1Tx = (
       if (nativeBound !== null) return nativeBound;
     } else {
       try {
-        decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+        decodeMidgardCekProgramEnvelope(script.scriptBytes);
       } catch (error) {
         return violation(
           "E_SCRIPT_PROGRAM_ENCODING",
@@ -570,7 +570,7 @@ export const validateMidgardConsensusV1Tx = (
       if (nativeBound !== null) return nativeBound;
     } else if (output.script_ref !== undefined) {
       try {
-        decodeMidgardCekProgramEnvelopeV1(output.script_ref.scriptBytes);
+        decodeMidgardCekProgramEnvelope(output.script_ref.scriptBytes);
       } catch (error) {
         return violation(
           "E_SCRIPT_PROGRAM_ENCODING",
@@ -608,10 +608,10 @@ export const validateMidgardConsensusV1Tx = (
   return null;
 };
 
-export const validateMidgardConsensusV1TxCbor = (
+export const validateMidgardConsensusTxCbor = (
   txCbor: Uint8Array,
-): MidgardConsensusV1Violation | null =>
-  validateMidgardConsensusV1Tx(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor),
+): MidgardConsensusViolation | null =>
+  validateMidgardConsensusTx(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
     txCbor.length,
   );

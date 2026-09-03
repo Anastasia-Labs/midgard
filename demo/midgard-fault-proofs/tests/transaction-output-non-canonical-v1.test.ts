@@ -1,17 +1,17 @@
 import {
-  encodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardFieldPreimage,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyTransactionOutputFindingV1,
-  prepareTransactionOutputEvidenceV1,
-  transactionOutputEvidenceClosesV1,
+  classifyTransactionOutputFinding,
+  prepareTransactionOutputEvidence,
+  transactionOutputEvidenceCloses,
 } from "../src/transaction-output-non-canonical/transaction-output-non-canonical-v1.js";
 
 const txId = "00".repeat(32);
@@ -23,9 +23,9 @@ const malformed = Buffer.from(
   "b80200581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a0",
   "hex",
 );
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const forced = (index: number) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
     rejectionReason: { OutputNonCanonical: { output_index: BigInt(index) } },
@@ -35,46 +35,46 @@ const evidence = (
   item: Buffer,
   extra: readonly Buffer[] = [],
 ) => {
-  const fieldPreimage = encodeMidgardFieldPreimageV1([item, ...extra]);
-  return prepareTransactionOutputEvidenceV1({
+  const fieldPreimage = encodeMidgardFieldPreimage([item, ...extra]);
+  return prepareTransactionOutputEvidence({
     finding: { subject, fieldIndex: 2, itemIndex: 0 },
     fieldPreimage,
     committedFieldHashHex:
-      midgardFieldCommitmentV1(fieldPreimage).toString("hex"),
+      midgardFieldCommitment(fieldPreimage).toString("hex"),
   });
 };
 
 describe("transactionOutputNonCanonical V1", () => {
   it("convicts both verdict polarities and refuses both honest polarities", () => {
+    expect(transactionOutputEvidenceCloses(evidence(accepted, malformed))).toBe(
+      true,
+    );
     expect(
-      transactionOutputEvidenceClosesV1(evidence(accepted, malformed)),
+      transactionOutputEvidenceCloses(evidence(forced(0), canonical)),
     ).toBe(true);
+    expect(transactionOutputEvidenceCloses(evidence(accepted, canonical))).toBe(
+      false,
+    );
     expect(
-      transactionOutputEvidenceClosesV1(evidence(forced(0), canonical)),
-    ).toBe(true);
-    expect(
-      transactionOutputEvidenceClosesV1(evidence(accepted, canonical)),
-    ).toBe(false);
-    expect(
-      transactionOutputEvidenceClosesV1(evidence(forced(0), malformed)),
+      transactionOutputEvidenceCloses(evidence(forced(0), malformed)),
     ).toBe(false);
   });
 
   it("binds the exact OutputNonCanonical coordinate", () => {
     expect(() =>
-      classifyTransactionOutputFindingV1({
+      classifyTransactionOutputFinding({
         subject: forced(1),
         fieldIndex: 2,
         itemIndex: 0,
       }),
     ).toThrow(/coordinate differs/u);
-    const wrong = forcedVerdictSubjectV1({
+    const wrong = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
       rejectionReason: { FieldPreimageLengthMismatch: { field_index: 2n } },
     });
     expect(() =>
-      classifyTransactionOutputFindingV1({
+      classifyTransactionOutputFinding({
         subject: wrong,
         fieldIndex: 2,
         itemIndex: 0,
@@ -83,46 +83,46 @@ describe("transactionOutputNonCanonical V1", () => {
   });
 
   it("refuses substituted commitments and the 16,385-byte adjacent family boundary", () => {
-    const fieldPreimage = encodeMidgardFieldPreimageV1([canonical]);
+    const fieldPreimage = encodeMidgardFieldPreimage([canonical]);
     expect(() =>
-      prepareTransactionOutputEvidenceV1({
+      prepareTransactionOutputEvidence({
         finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
         fieldPreimage,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/commitment differs/u);
-    const over = encodeMidgardFieldPreimageV1([Buffer.alloc(16_385)]);
+    const over = encodeMidgardFieldPreimage([Buffer.alloc(16_385)]);
     expect(() =>
-      prepareTransactionOutputEvidenceV1({
+      prepareTransactionOutputEvidence({
         finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
         fieldPreimage: over,
-        committedFieldHashHex: midgardFieldCommitmentV1(over).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(over).toString("hex"),
       }),
     ).toThrow(/fieldItemWidthIllegal/u);
-    const maximumField = encodeMidgardFieldPreimageV1([
+    const maximumField = encodeMidgardFieldPreimage([
       Buffer.alloc(16_384),
       Buffer.alloc(16_377),
     ]);
     expect(maximumField).toHaveLength(32_768);
     expect(
-      prepareTransactionOutputEvidenceV1({
+      prepareTransactionOutputEvidence({
         finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
         fieldPreimage: maximumField,
         committedFieldHashHex:
-          midgardFieldCommitmentV1(maximumField).toString("hex"),
+          midgardFieldCommitment(maximumField).toString("hex"),
       }).carriage,
     ).toBe("Certified");
-    const oversizedField = encodeMidgardFieldPreimageV1([
+    const oversizedField = encodeMidgardFieldPreimage([
       Buffer.alloc(16_384),
       Buffer.alloc(16_378),
     ]);
     expect(oversizedField).toHaveLength(32_769);
     expect(() =>
-      prepareTransactionOutputEvidenceV1({
+      prepareTransactionOutputEvidence({
         finding: { subject: accepted, fieldIndex: 2, itemIndex: 0 },
         fieldPreimage: oversizedField,
         committedFieldHashHex:
-          midgardFieldCommitmentV1(oversizedField).toString("hex"),
+          midgardFieldCommitment(oversizedField).toString("hex"),
       }),
     ).toThrow();
   });

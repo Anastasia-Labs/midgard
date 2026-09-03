@@ -1,30 +1,30 @@
 import {
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardFieldPreimage,
+  encodeMidgardRedeemerWitnessItem,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyRedeemerCanonicityFindingV1,
-  prepareRedeemerCanonicityEvidenceV1,
-  redeemerCanonicityEvidenceClosesV1,
-  selectCanonicalRedeemerCanonicityEvidenceV1,
+  classifyRedeemerCanonicityFinding,
+  prepareRedeemerCanonicityEvidence,
+  redeemerCanonicityEvidenceCloses,
+  selectCanonicalRedeemerCanonicityEvidence,
 } from "../src/redeemer-canonicity/family-v1.js";
 import {
-  reconcileRedeemerCanonicityStateV1,
-  type RedeemerCanonicityDurableStateV1,
-  runRedeemerCanonicityWorkflowV1,
+  reconcileRedeemerCanonicityState,
+  type RedeemerCanonicityDurableState,
+  runRedeemerCanonicityWorkflow,
 } from "../src/redeemer-canonicity/workflow-v1.js";
 
 const txId = "00".repeat(32);
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const rejected = (index: number) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
     rejectionReason: {
@@ -33,7 +33,7 @@ const rejected = (index: number) =>
   });
 
 const item = (data: string, index = 0) =>
-  encodeMidgardRedeemerWitnessItemV1({
+  encodeMidgardRedeemerWitnessItem({
     purpose: "Spend",
     index: BigInt(index),
     redeemerCbor: Buffer.from(data, "hex"),
@@ -41,11 +41,11 @@ const item = (data: string, index = 0) =>
   });
 
 const evidence = (subject: typeof accepted, data: string, index = 0) => {
-  const field = encodeMidgardFieldPreimageV1([item(data, index)]);
-  return prepareRedeemerCanonicityEvidenceV1({
+  const field = encodeMidgardFieldPreimage([item(data, index)]);
+  return prepareRedeemerCanonicityEvidence({
     finding: { subject, redeemerIndex: index },
     fieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
 };
 
@@ -55,29 +55,29 @@ describe("redeemerCanonicity V1", () => {
     const canonical = evidence(rejected(0), "00");
     expect(malformed.canonical).toBe(false);
     expect(malformed.trace).toBeNull();
-    expect(redeemerCanonicityEvidenceClosesV1(malformed)).toBe(true);
+    expect(redeemerCanonicityEvidenceCloses(malformed)).toBe(true);
     expect(canonical.canonical).toBe(true);
     expect(canonical.trace?.steps.length).toBeGreaterThan(2);
-    expect(redeemerCanonicityEvidenceClosesV1(canonical)).toBe(true);
+    expect(redeemerCanonicityEvidenceCloses(canonical)).toBe(true);
   });
 
   it("refuses honest verdicts", () => {
-    expect(redeemerCanonicityEvidenceClosesV1(evidence(accepted, "00"))).toBe(
+    expect(redeemerCanonicityEvidenceCloses(evidence(accepted, "00"))).toBe(
       false,
     );
     expect(
-      redeemerCanonicityEvidenceClosesV1(evidence(rejected(0), "1800")),
+      redeemerCanonicityEvidenceCloses(evidence(rejected(0), "1800")),
     ).toBe(false);
   });
 
   it("binds the exact reason and coordinate", () => {
     expect(() =>
-      classifyRedeemerCanonicityFindingV1({
+      classifyRedeemerCanonicityFinding({
         subject: rejected(1),
         redeemerIndex: 0,
       }),
     ).toThrow(/coordinate changed/u);
-    const wrong = forcedVerdictSubjectV1({
+    const wrong = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
       rejectionReason: {
@@ -85,7 +85,7 @@ describe("redeemerCanonicity V1", () => {
       },
     });
     expect(() =>
-      classifyRedeemerCanonicityFindingV1({
+      classifyRedeemerCanonicityFinding({
         subject: wrong,
         redeemerIndex: 0,
       }),
@@ -93,36 +93,36 @@ describe("redeemerCanonicity V1", () => {
   });
 
   it("refuses commitment, item, and transaction substitution", () => {
-    const field = encodeMidgardFieldPreimageV1([item("00")]);
+    const field = encodeMidgardFieldPreimage([item("00")]);
     expect(() =>
-      prepareRedeemerCanonicityEvidenceV1({
+      prepareRedeemerCanonicityEvidence({
         finding: { subject: accepted, redeemerIndex: 0 },
         fieldPreimage: field,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/commitment/u);
     expect(() =>
-      prepareRedeemerCanonicityEvidenceV1({
+      prepareRedeemerCanonicityEvidence({
         finding: { subject: accepted, redeemerIndex: 1 },
         fieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       }),
     ).toThrow(/outside/u);
   });
 
   it("selects the canonical lowest coordinate deterministically", () => {
     const first = evidence(accepted, "1800", 0);
-    const secondField = encodeMidgardFieldPreimageV1([
+    const secondField = encodeMidgardFieldPreimage([
       item("00", 0),
       item("1800", 1),
     ]);
-    const second = prepareRedeemerCanonicityEvidenceV1({
+    const second = prepareRedeemerCanonicityEvidence({
       finding: { subject: accepted, redeemerIndex: 1 },
       fieldPreimage: secondField,
       committedFieldHashHex:
-        midgardFieldCommitmentV1(secondField).toString("hex"),
+        midgardFieldCommitment(secondField).toString("hex"),
     });
-    expect(selectCanonicalRedeemerCanonicityEvidenceV1([second, first])).toBe(
+    expect(selectCanonicalRedeemerCanonicityEvidence([second, first])).toBe(
       first,
     );
   });
@@ -131,8 +131,8 @@ describe("redeemerCanonicity V1", () => {
 describe("redeemerCanonicity durable workflow", () => {
   it("reconstructs each next action from authenticated chain state", async () => {
     const prepared = evidence(rejected(0), "00");
-    const entries: RedeemerCanonicityDurableStateV1[] = [];
-    let state: RedeemerCanonicityDurableStateV1 = {
+    const entries: RedeemerCanonicityDurableState[] = [];
+    let state: RedeemerCanonicityDurableState = {
       stage: "none",
       decodeCursor: 0,
       txHash: "00".repeat(32),
@@ -140,7 +140,7 @@ describe("redeemerCanonicity durable workflow", () => {
     };
     const stages = ["step01", "step02", "step03", "proven", "removed"] as const;
     let submitted = 0;
-    const result = await runRedeemerCanonicityWorkflowV1({
+    const result = await runRedeemerCanonicityWorkflow({
       evidence: prepared,
       journal: {
         load: async () => entries,
@@ -172,20 +172,20 @@ describe("redeemerCanonicity durable workflow", () => {
   });
 
   it("fails closed on checkpoint or stage regression", () => {
-    const recorded: RedeemerCanonicityDurableStateV1 = {
+    const recorded: RedeemerCanonicityDurableState = {
       stage: "step02",
       decodeCursor: 2,
       txHash: "11".repeat(32),
       outputReference: "11".repeat(32) + "#0",
     };
     expect(() =>
-      reconcileRedeemerCanonicityStateV1({
+      reconcileRedeemerCanonicityState({
         journal: [recorded],
         observed: { ...recorded, decodeCursor: 1 },
       }),
     ).toThrow(/checkpoint regressed/u);
     expect(() =>
-      reconcileRedeemerCanonicityStateV1({
+      reconcileRedeemerCanonicityState({
         journal: [recorded],
         observed: { ...recorded, stage: "step01" },
       }),

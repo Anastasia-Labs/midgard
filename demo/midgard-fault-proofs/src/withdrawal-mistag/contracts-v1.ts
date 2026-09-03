@@ -2,7 +2,7 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const WITHDRAWAL_MISTAG_CATEGORY_LABEL = "withdrawal-mistag";
 
-export const WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1 = {
+export const WITHDRAWAL_MISTAG_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/withdrawal_mistag/step_01.main.spend",
   step02: "fraud_proofs/withdrawal_mistag/step_02.main.spend",
   step03: "fraud_proofs/withdrawal_mistag/step_03.main.spend",
@@ -10,20 +10,20 @@ export const WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1 = {
   step05: "fraud_proofs/withdrawal_mistag/step_05.main.spend",
 } as const;
 
-export type WithdrawalMistagStepContractV1 = {
+export type WithdrawalMistagStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
 /** Applied backwards with the exact parameter order pinned in the plan. */
-export type WithdrawalMistagContractsV1 = {
+export type WithdrawalMistagContracts = {
   readonly steps: readonly [
-    WithdrawalMistagStepContractV1,
-    WithdrawalMistagStepContractV1,
-    WithdrawalMistagStepContractV1,
-    WithdrawalMistagStepContractV1,
-    WithdrawalMistagStepContractV1,
+    WithdrawalMistagStepContract,
+    WithdrawalMistagStepContract,
+    WithdrawalMistagStepContract,
+    WithdrawalMistagStepContract,
+    WithdrawalMistagStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;
@@ -39,7 +39,7 @@ export type WithdrawalMistagContractsV1 = {
   readonly stateQueuePolicyId: string;
 };
 
-export type WithdrawalMistagCatalogueCategoryV1 = {
+export type WithdrawalMistagCatalogueCategory = {
   readonly categoryId: "00000014";
   readonly scriptHash: string;
   readonly membershipProofCbor: string;

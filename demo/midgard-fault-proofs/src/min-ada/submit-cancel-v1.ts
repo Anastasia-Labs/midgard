@@ -1,16 +1,16 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import {
   MIN_ADA_CATEGORY_LABEL,
-  type MinAdaContractsV1,
+  type MinAdaContracts,
 } from "./contracts-v1.js";
 
-type Base = Parameters<typeof submitLinearFaultCancelV1>[0];
+type Base = Parameters<typeof submitLinearFaultCancel>[0];
 export const submitMinAdaCancel = async (
   params: Omit<Base, "family" | "steps" | "computationThread"> & {
-    readonly contracts: MinAdaContractsV1;
+    readonly contracts: MinAdaContracts;
   },
 ) =>
-  await submitLinearFaultCancelV1({
+  await submitLinearFaultCancel({
     ...params,
     family: MIN_ADA_CATEGORY_LABEL,
     steps: params.contracts.steps,

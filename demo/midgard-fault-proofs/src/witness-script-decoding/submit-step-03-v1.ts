@@ -1,15 +1,15 @@
 import {
-  MidgardNativeScriptDecodingDirectionsV1,
-  type MidgardNativeScriptDecodingRefusalClassV1,
+  MidgardNativeScriptDecodingDirections,
+  type MidgardNativeScriptDecodingRefusalClass,
 } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  type WitnessScriptDecodingScanStateV1,
-  WitnessScriptDecodingStep03DatumV1Schema,
-  WitnessScriptDecodingStep03RedeemerV1Schema,
-  WitnessScriptDecodingStep04DatumV1Schema,
+  type WitnessScriptDecodingScanState,
+  WitnessScriptDecodingStep03DatumSchema,
+  WitnessScriptDecodingStep03RedeemerSchema,
+  WitnessScriptDecodingStep04DatumSchema,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -19,38 +19,38 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import {
-  nativeScriptDecodingFrameDataV1,
-  nativeScriptDecodingScanArgsEvidenceV1,
-  nativeScriptDecodingWindowProofsV1,
+  nativeScriptDecodingFrameData,
+  nativeScriptDecodingScanArgsEvidence,
+  nativeScriptDecodingWindowProofs,
 } from "../native-script-decoding/evidence-v1.js";
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NativeScriptDecodingPlanRoutesV1,
+  buildNativeScriptDecodingScanPlan,
+  NativeScriptDecodingPlanRoutes,
 } from "../native-script-decoding/scan-plan-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   WITNESS_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type WitnessScriptDecodingContractsV1,
+  type WitnessScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  witnessScriptDecodingCheckpointV1,
-  type WitnessScriptDecodingEvidenceV1,
-  WitnessScriptDecodingResultClassesV1,
+  witnessScriptDecodingCheckpoint,
+  type WitnessScriptDecodingEvidence,
+  WitnessScriptDecodingResultClasses,
 } from "./witness-script-decoding-v1.js";
 
 const mappedRefusal = (
-  refusalClass: MidgardNativeScriptDecodingRefusalClassV1,
+  refusalClass: MidgardNativeScriptDecodingRefusalClass,
 ): bigint => BigInt(refusalClass + 1);
 
-export const submitWitnessScriptDecodingStep03V1 = async ({
+export const submitWitnessScriptDecodingStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -63,20 +63,20 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WitnessScriptDecodingContractsV1;
+  readonly contracts: WitnessScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: WitnessScriptDecodingEvidenceV1;
+  readonly evidence: WitnessScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly preSubmitBoundaryForResult?: (
     closed: boolean,
-  ) => Promise<FraudProofPreSubmitBoundaryV1 | undefined>;
+  ) => Promise<FraudProofPreSubmitBoundary | undefined>;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -84,20 +84,18 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<WitnessScriptDecodingScanStateV1>(
-    {
-      threadUtxo,
-      signer,
-      schema: WitnessScriptDecodingStep03DatumV1Schema as never,
-      family: FAMILY,
-      stepIndex,
-    },
-  );
+  const state = requireLinearFaultStepState<WitnessScriptDecodingScanState>({
+    threadUtxo,
+    signer,
+    schema: WitnessScriptDecodingStep03DatumSchema as never,
+    family: FAMILY,
+    stepIndex,
+  });
   if (
     state.item_commitment !== evidence.itemCommitmentHex ||
     state.total_length !== BigInt(evidence.itemLength) ||
     state.checkpoint_hash !==
-      witnessScriptDecodingCheckpointV1({
+      witnessScriptDecodingCheckpoint({
         evidence,
         controlCbor: state.control_cbor,
         nextExpectedScriptHash: state.next_expected_script_hash,
@@ -111,35 +109,35 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
   let args: {
     readonly control_cbor: string;
     readonly chunk_proof: ReturnType<
-      typeof nativeScriptDecodingWindowProofsV1
+      typeof nativeScriptDecodingWindowProofs
     >["chunk_proof"];
     readonly next_chunk_proof: ReturnType<
-      typeof nativeScriptDecodingWindowProofsV1
+      typeof nativeScriptDecodingWindowProofs
     >["next_chunk_proof"];
     readonly frames: readonly ReturnType<
-      typeof nativeScriptDecodingFrameDataV1
+      typeof nativeScriptDecodingFrameData
     >[];
     readonly step_budget: bigint;
   };
   let nextControl = state.control_cbor;
   let nextClass = state.result_class;
   let closes =
-    state.result_class !== BigInt(WitnessScriptDecodingResultClassesV1.Pending);
+    state.result_class !== BigInt(WitnessScriptDecodingResultClasses.Pending);
   let route: "closed" | "segment" | "verdict" = "closed";
 
   if (!closes) {
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: Buffer.from(evidence.itemHex, "hex"),
       direction: Number(evidence.finding.subject.direction) as 0 | 1,
     });
-    if (plan.route !== NativeScriptDecodingPlanRoutesV1.Machine) {
+    if (plan.route !== NativeScriptDecodingPlanRoutes.Machine) {
       throw new Error(`${FAMILY}: pending state has a non-machine plan`);
     }
     const segment = plan.segments.find(
       ({ controlBefore }) => controlBefore.cborHex === state.control_cbor,
     );
     if (segment !== undefined) {
-      args = nativeScriptDecodingScanArgsEvidenceV1({
+      args = nativeScriptDecodingScanArgsEvidence({
         segment,
         fieldIndex: 6,
         itemIndex: evidence.finding.scriptIndex,
@@ -149,13 +147,13 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
       closes =
         isLast &&
         plan.direction ===
-          MidgardNativeScriptDecodingDirectionsV1.WrongfulRejection;
+          MidgardNativeScriptDecodingDirections.WrongfulRejection;
       // `closed_state_v1` preserves the authenticated pre-fold control; only
       // a resumable advance commits the fold's returned control.
       nextControl = closes ? state.control_cbor : segment.controlAfter.cborHex;
       nextClass = closes
-        ? BigInt(WitnessScriptDecodingResultClassesV1.NoFault)
-        : BigInt(WitnessScriptDecodingResultClassesV1.Pending);
+        ? BigInt(WitnessScriptDecodingResultClasses.NoFault)
+        : BigInt(WitnessScriptDecodingResultClasses.Pending);
       route = "segment";
     } else if (plan.verdict.control?.cborHex === state.control_cbor) {
       const refusal = plan.verdict.refusalClass;
@@ -166,7 +164,7 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
       }
       args = {
         control_cbor: state.control_cbor,
-        ...nativeScriptDecodingWindowProofsV1({
+        ...nativeScriptDecodingWindowProofs({
           window: plan.verdict.window,
           fieldIndex: 6,
           itemIndex: evidence.finding.scriptIndex,
@@ -196,11 +194,11 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
   const nextStepIndex = closes ? 3 : 2;
   const nextExpectedScriptHash =
     contracts.steps[nextStepIndex].spendingScriptHash;
-  const nextState: WitnessScriptDecodingScanStateV1 = {
+  const nextState: WitnessScriptDecodingScanState = {
     ...state,
     control_cbor: nextControl,
     next_expected_script_hash: nextExpectedScriptHash,
-    checkpoint_hash: witnessScriptDecodingCheckpointV1({
+    checkpoint_hash: witnessScriptDecodingCheckpoint({
       evidence,
       controlCbor: nextControl,
       nextExpectedScriptHash,
@@ -208,8 +206,8 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
     result_class: nextClass,
   };
   const nextSchema = closes
-    ? WitnessScriptDecodingStep04DatumV1Schema
-    : WitnessScriptDecodingStep03DatumV1Schema;
+    ? WitnessScriptDecodingStep04DatumSchema
+    : WitnessScriptDecodingStep03DatumSchema;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
     nextSchema as never,
@@ -219,7 +217,7 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -240,7 +238,7 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, ...args },
         ],
       } as never,
-      WitnessScriptDecodingStep03RedeemerV1Schema as never,
+      WitnessScriptDecodingStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
@@ -248,7 +246,7 @@ export const submitWitnessScriptDecodingStep03V1 = async ({
     preSubmitBoundaryForResult === undefined
       ? preSubmitBoundary
       : await preSubmitBoundaryForResult(closes);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

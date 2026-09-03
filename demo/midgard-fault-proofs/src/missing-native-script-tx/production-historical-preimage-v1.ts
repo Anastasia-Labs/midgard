@@ -1,43 +1,43 @@
 import { createHash } from "node:crypto";
 
 import {
-  PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PREIMAGE_V1,
-  type ProductionHistoricalNativeScriptCorpusPreimageV1,
-  type ProductionHistoricalNativeScriptCorpusV1,
-  productionHistoricalNativeScriptPreimageFromCorpusV1,
-  requireProductionHistoricalNativeScriptCorpusPreimageV1,
+  HISTORICAL_NATIVE_SCRIPT_PREIMAGE,
+  type HistoricalNativeScriptCorpus,
+  type HistoricalNativeScriptCorpusPreimage,
+  historicalNativeScriptPreimageFromCorpus,
+  requireHistoricalNativeScriptCorpusPreimage,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
 import {
-  admitFraudProofRawL1PointV1,
-  type FraudProofRawL1PointV1,
+  admitFraudProofRawL1Point,
+  type FraudProofRawL1Point,
 } from "../workflow/raw-l1-snapshot-v1.js";
-import { type VerifiedFraudProofReleaseFinalityPolicyV1 } from "../workflow/release-finality-policy-v1.js";
+import { type VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy-v1.js";
 import {
-  admitHistoricalNativeScriptEvidenceV1,
-  historicalNativeScriptBytesV1,
-  type HistoricalNativeScriptEvidenceV1,
-  type HistoricalNativeScriptSourceRosterV1,
+  admitHistoricalNativeScriptEvidence,
+  historicalNativeScriptBytes,
+  type HistoricalNativeScriptEvidence,
+  type HistoricalNativeScriptSourceRoster,
 } from "./historical-script-v1.js";
 
-export type ProductionHistoricalNativeScriptPreimageV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PREIMAGE_V1;
+export type HistoricalNativeScriptPreimage = Readonly<{
+  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_PREIMAGE;
   throughHeaderHash: string;
   scriptHash: string;
   scriptBytesHex: string;
-  occurrences: ProductionHistoricalNativeScriptCorpusPreimageV1["occurrences"];
+  occurrences: HistoricalNativeScriptCorpusPreimage["occurrences"];
   providerRosterDigest: string;
   corpusDigest: string;
   checkpointDigest: string;
   preimageDigest: string;
   /** Full exact publication/block/provider evidence, not an opaque digest. */
-  historicalL1Corroboration: HistoricalNativeScriptEvidenceV1;
+  historicalL1Corroboration: HistoricalNativeScriptEvidence;
   artifactDigest: string;
 }>;
 
-export type AdmittedProductionHistoricalNativeScriptPreimageV1 = Readonly<{
-  artifact: ProductionHistoricalNativeScriptPreimageV1;
+export type AdmittedHistoricalNativeScriptPreimage = Readonly<{
+  artifact: HistoricalNativeScriptPreimage;
   scriptBytes: Uint8Array;
-  corroboration: HistoricalNativeScriptEvidenceV1;
+  corroboration: HistoricalNativeScriptEvidence;
 }>;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -80,8 +80,8 @@ const sha256 = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 const frozenOccurrences = (
-  preimage: ProductionHistoricalNativeScriptCorpusPreimageV1,
-): ProductionHistoricalNativeScriptCorpusPreimageV1["occurrences"] =>
+  preimage: HistoricalNativeScriptCorpusPreimage,
+): HistoricalNativeScriptCorpusPreimage["occurrences"] =>
   Object.freeze(
     preimage.occurrences.map((occurrence) => Object.freeze({ ...occurrence })),
   );
@@ -90,11 +90,11 @@ const artifactWithoutDigest = ({
   preimage,
   corroboration,
 }: {
-  readonly preimage: ProductionHistoricalNativeScriptCorpusPreimageV1;
-  readonly corroboration: HistoricalNativeScriptEvidenceV1;
+  readonly preimage: HistoricalNativeScriptCorpusPreimage;
+  readonly corroboration: HistoricalNativeScriptEvidence;
 }) =>
   Object.freeze({
-    schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PREIMAGE_V1,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_PREIMAGE,
     throughHeaderHash: preimage.throughHeaderHash,
     scriptHash: preimage.scriptHash,
     scriptBytesHex: preimage.scriptBytesHex,
@@ -110,9 +110,9 @@ const seal = ({
   preimage,
   corroboration,
 }: {
-  readonly preimage: ProductionHistoricalNativeScriptCorpusPreimageV1;
-  readonly corroboration: HistoricalNativeScriptEvidenceV1;
-}): ProductionHistoricalNativeScriptPreimageV1 => {
+  readonly preimage: HistoricalNativeScriptCorpusPreimage;
+  readonly corroboration: HistoricalNativeScriptEvidence;
+}): HistoricalNativeScriptPreimage => {
   const withoutDigest = artifactWithoutDigest({ preimage, corroboration });
   return Object.freeze({
     ...withoutDigest,
@@ -124,13 +124,13 @@ const matchingPreimage = ({
   corpus,
   expectedScriptHash,
 }: {
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly corpus: HistoricalNativeScriptCorpus;
   readonly expectedScriptHash: string;
-}): ProductionHistoricalNativeScriptCorpusPreimageV1 => {
+}): HistoricalNativeScriptCorpusPreimage => {
   if (!HEX_28.test(expectedScriptHash)) {
     throw new Error("historical native-script preimage hash is invalid");
   }
-  const preimage = productionHistoricalNativeScriptPreimageFromCorpusV1({
+  const preimage = historicalNativeScriptPreimageFromCorpus({
     corpus,
     scriptHash: expectedScriptHash,
   });
@@ -139,7 +139,7 @@ const matchingPreimage = ({
       "authenticated complete history has no native-script preimage",
     );
   }
-  return requireProductionHistoricalNativeScriptCorpusPreimageV1(preimage);
+  return requireHistoricalNativeScriptCorpusPreimage(preimage);
 };
 
 /**
@@ -148,24 +148,24 @@ const matchingPreimage = ({
  * exact preimage and occurrence, while admitted local-node/quorum L1 history
  * supplies the exact publication transaction and canonical block placement.
  */
-export const prepareProductionHistoricalNativeScriptPreimageV1 = ({
+export const prepareHistoricalNativeScriptPreimage = ({
   corpus,
   expectedHeaderHash,
   expectedScriptHash,
   corroboration,
 }: {
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly corpus: HistoricalNativeScriptCorpus;
   readonly expectedHeaderHash: string;
   readonly expectedScriptHash: string;
-  readonly corroboration: HistoricalNativeScriptEvidenceV1;
-}): ProductionHistoricalNativeScriptPreimageV1 => {
+  readonly corroboration: HistoricalNativeScriptEvidence;
+}): HistoricalNativeScriptPreimage => {
   if (corpus.throughHeaderHash !== expectedHeaderHash) {
     throw new Error(
       "authenticated complete history does not end at the challenged header",
     );
   }
   const preimage = matchingPreimage({ corpus, expectedScriptHash });
-  const corroboratingBytes = historicalNativeScriptBytesV1(corroboration);
+  const corroboratingBytes = historicalNativeScriptBytes(corroboration);
   if (
     corroboration.expectedScriptHash !== expectedScriptHash ||
     corroboration.applicationOverlayDigest !== preimage.providerRosterDigest ||
@@ -182,7 +182,7 @@ export const prepareProductionHistoricalNativeScriptPreimageV1 = ({
  * Re-admits a journal-loaded record against both current opaque authorities.
  * A structural clone of either authority is rejected by its owning module.
  */
-export const admitProductionHistoricalNativeScriptPreimageV1 = async ({
+export const admitHistoricalNativeScriptPreimage = async ({
   value,
   corpus,
   expectedHeaderHash,
@@ -192,13 +192,13 @@ export const admitProductionHistoricalNativeScriptPreimageV1 = async ({
   releaseFinality,
 }: {
   readonly value: unknown;
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly corpus: HistoricalNativeScriptCorpus;
   readonly expectedHeaderHash: string;
   readonly expectedScriptHash: string;
-  readonly roster: HistoricalNativeScriptSourceRosterV1;
-  readonly throughPoint: FraudProofRawL1PointV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): Promise<AdmittedProductionHistoricalNativeScriptPreimageV1> => {
+  readonly roster: HistoricalNativeScriptSourceRoster;
+  readonly throughPoint: FraudProofRawL1Point;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): Promise<AdmittedHistoricalNativeScriptPreimage> => {
   const parsed = exactRecord(
     value,
     [
@@ -216,18 +216,16 @@ export const admitProductionHistoricalNativeScriptPreimageV1 = async ({
     ],
     "production historical native-script preimage",
   );
-  if (
-    parsed.schemaVersion !== PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PREIMAGE_V1
-  ) {
+  if (parsed.schemaVersion !== HISTORICAL_NATIVE_SCRIPT_PREIMAGE) {
     throw new Error(
       "production historical native-script preimage schema changed",
     );
   }
-  const throughPoint = admitFraudProofRawL1PointV1(
+  const throughPoint = admitFraudProofRawL1Point(
     untrustedThroughPoint,
     "production historical native-script through point",
   );
-  const corroboration = await admitHistoricalNativeScriptEvidenceV1({
+  const corroboration = await admitHistoricalNativeScriptEvidence({
     value: parsed.historicalL1Corroboration,
     roster,
     expectedScriptHash,

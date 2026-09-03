@@ -10,7 +10,7 @@ export {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
 } from "../workers/utils/mpf/phas.js";
-export type { ParkedEventFlatOverlayV1 } from "../workers/utils/mpf-event-flat.js";
+export type { ParkedEventFlatOverlay } from "../workers/utils/mpf-event-flat.js";
 export {
   COMMIT_REJECT_CODE_DECODE_FAILED,
   COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
@@ -36,15 +36,15 @@ export {
   type MpfPathHydrationMode,
   type MpfScratchBuild,
   type MpfStoreDiagnostics,
-  type ParkedMpfOverlayV1,
+  type ParkedMpfOverlay,
   resetMpfArenaLimits,
   setMpfScratchBuild,
 } from "./engine-config.js";
 export { MpfError } from "./errors.js";
 export {
-  type ClassifiedForcedTransactionV1,
-  classifyForcedTransactionsV1,
-  type ForcedProgramMaterialSidecarResolverV1,
+  type ClassifiedForcedTransaction,
+  classifyForcedTransactions,
+  type ForcedProgramMaterialSidecarResolver,
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedForcedTransactionEntriesForWindow,
   resolveIncludedWithdrawalEntriesForWindow,
@@ -52,7 +52,7 @@ export {
 export {
   type LedgerDelta,
   ledgerEntryToInsertBatchOp,
-  ledgerOutputToInsertBatchOpV1,
+  ledgerOutputToInsertBatchOp,
 } from "./ledger-delta.js";
 export {
   computeLedgerMpfRootFromLedgerEntries,
@@ -62,7 +62,7 @@ export {
   makeMpfs,
   synchronizeCommitMpfStoresFromConfirmedLedger,
   synchronizeCommitMpfStoresFromLedgerEntries,
-  utxoToLedgerInsertMaterialV1,
+  utxoToLedgerInsertMaterial,
 } from "./ledger-hydration.js";
 export {
   type DecodedMempoolTxForCommit,
@@ -108,14 +108,14 @@ export {
 export {
   applyTraceLedgerOpsToMpf,
   buildEventToStepMembersFromTrace,
-  buildNativeProductionRootProbe,
+  buildNativeRootProbe,
   buildNativeTransitionTraceResult,
   buildTransactionsSourceRoot,
   buildTransitionTraceResult,
   indexTransitionTraceMembersByEventKey,
   type NativeMpfBuildContext,
   type NativeMpfReplayBuild,
-  type NativeProductionRootProbeResult,
+  type NativeRootProbeResult,
   type TransitionTraceBuildResult,
 } from "./transition-trace.js";
 export {

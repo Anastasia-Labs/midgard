@@ -1,12 +1,12 @@
 import { createServer } from "node:net";
 
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
-  decodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaPayloadSubmitResponseV1Cbor,
+  DA_TRANSPORT_LIMITS,
+  decodeDaPayloadSubmitRequestCbor,
+  encodeDaPayloadSubmitResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import type {
@@ -23,7 +23,7 @@ import {
   readSingleDaStreamFrame,
   writeDaStreamFrame,
 } from "da-committee-node/da/libp2p/DaStreamCodec";
-import { hashBlockHeaderV1 } from "da-committee-node/l1/state-queue-scanner";
+import { hashBlockHeader } from "da-committee-node/l1/state-queue-scanner";
 import { JsonFileWatcherStore } from "da-committee-node/store";
 import { describe, expect, it } from "vitest";
 
@@ -96,16 +96,16 @@ describe("real multi-peer DA publication", () => {
           strictSign: true,
           emitSelf: false,
           allowedTopicsOnly: true,
-          maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+          maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
         },
         limits: {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-          maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-          maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-          maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-          requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+          maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+          maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+          maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+          requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
         },
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
         peers: [...committeePeers, producerPeer],
       };
       const requestHandlers = new Map(
@@ -128,14 +128,14 @@ describe("real multi-peer DA publication", () => {
           await new Promise((resolve) => setTimeout(resolve, 14_000));
         }
         if (index === 2 && rejectEnvelopeOnThirdPeer) {
-          const request = decodeDaPayloadSubmitRequestV1Cbor(
+          const request = decodeDaPayloadSubmitRequestCbor(
             await readSingleDaStreamFrame(context.stream, {
               maxFrameBytes: config.limits.maxPayloadBytes,
             }),
           );
           await writeDaStreamFrame(
             context.stream,
-            encodeDaPayloadSubmitResponseV1Cbor({
+            encodeDaPayloadSubmitResponseCbor({
               status: "rejected",
               headerHash: request.headerHash,
               payloadHash: request.payloadHash,
@@ -159,12 +159,12 @@ describe("real multi-peer DA publication", () => {
       contractDeploymentManifestId: DEPLOYMENT,
       localPrivateKeySource: producerSeed,
       threshold: 2,
-      requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+      requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
       listenMultiaddrs: [],
       announceMultiaddrs: [
         `/ip4/127.0.0.1/tcp/0/p2p/${producerIdentity.peerId}`,
@@ -197,7 +197,7 @@ describe("real multi-peer DA publication", () => {
       });
       expect(capabilities.every((result) => result.capable)).toBe(true);
       const fixture = await makePayloadFixture();
-      const envelope = await wrapDaPayloadV1(fixture.innerPayloadCbor, {
+      const envelope = await wrapDaPayload(fixture.innerPayloadCbor, {
         mode: "zstd",
         zstdLevel: 3,
       });
@@ -242,8 +242,8 @@ describe("real multi-peer DA publication", () => {
         startTime: fixture.header.startTime + 10n,
         endTime: fixture.header.endTime + 10n,
       };
-      const secondHeaderHash = hashBlockHeaderV1(secondHeader);
-      const secondPayloadCbor = SDK.encodeDaPayloadV1({
+      const secondHeaderHash = hashBlockHeader(secondHeader);
+      const secondPayloadCbor = SDK.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -251,7 +251,7 @@ describe("real multi-peer DA publication", () => {
           header: secondHeader,
         },
       });
-      const secondEnvelope = await wrapDaPayloadV1(secondPayloadCbor, {
+      const secondEnvelope = await wrapDaPayload(secondPayloadCbor, {
         mode: "zstd",
         zstdLevel: 3,
       });
@@ -337,7 +337,7 @@ const insertFromFixture = (
   envelope: Buffer,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: envelope,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(envelope),

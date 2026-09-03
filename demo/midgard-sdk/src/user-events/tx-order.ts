@@ -1,35 +1,35 @@
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  decodeMidgardCekProgramMaterialEntryV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramMaterialEntryV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  hashMidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramMaterialEntryV1,
-  midgardCekProgramMaterialKindTagV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  decodeMidgardCekProgramEnvelope,
+  decodeMidgardCekProgramMaterialEntry,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramMaterialEntry,
+  encodeMidgardCekProgramMaterialSidecar,
+  hashMidgardCekProgramEnvelope,
+  type MidgardCekProgramMaterialEntry,
+  midgardCekProgramMaterialKindTag,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
-  type MidgardFieldCarriagePlanV1,
-  planMidgardFieldCarriageV1,
+  type MidgardFieldCarriagePlan,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
-  encodeMidgardFieldArrayHeaderV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardFieldArrayHeader,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  deriveMidgardV1TxFieldPreimages,
-  validateMidgardConsensusV1TxCbor,
+  deriveMidgardTxFieldPreimages,
+  validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
   type Assets,
@@ -55,24 +55,24 @@ import {
   POSIXTimeSchema,
 } from "../common.js";
 import {
-  resolveCertificateReferenceIndexV1,
-  resolveChunkReferenceIndicesV1,
+  resolveCertificateReferenceIndex,
+  resolveChunkReferenceIndices,
 } from "../fraud-proof/field-preimage-carriage-v1.js";
 import { HubOracleError } from "../hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
-  CekProgramMaterialDatumV1,
-  CekProgramMaterialDatumV1Schema,
-  NativeTxProofSourceV1,
-  TxOrderEventV1Schema,
+  CekProgramMaterialDatum,
+  CekProgramMaterialDatumSchema,
+  NativeTxProofSource,
+  TxOrderEventSchema,
 } from "../ledger-state.js";
 import {
-  type FieldCarriageV1,
-  FieldCarriageV1Schema,
+  type FieldCarriage,
+  FieldCarriageSchema,
 } from "../native-tx-field-access-v1.js";
-import { OperatorVerdictV1Schema } from "../rejection-reason-v1.js";
+import { OperatorVerdictSchema } from "../rejection-reason-v1.js";
 import { RawRootMembershipProofSchema } from "../transition-trace.js";
 import {
   buildCompletedUserEventMintTxProgram,
@@ -88,7 +88,7 @@ import {
   UserEventMintRedeemerSchema,
 } from "./internals.js";
 
-export const TxOrderRefundAddressV1Schema = Data.Object({
+export const TxOrderRefundAddressSchema = Data.Object({
   paymentCredential: CredentialSchema,
   stakeCredential: Data.Nullable(
     Data.Enum([
@@ -105,90 +105,90 @@ export const TxOrderRefundAddressV1Schema = Data.Object({
     ]),
   ),
 });
-export type TxOrderRefundAddressV1 = Data.Static<
-  typeof TxOrderRefundAddressV1Schema
+export type TxOrderRefundAddress = Data.Static<
+  typeof TxOrderRefundAddressSchema
 >;
-export const TxOrderRefundAddressV1 =
-  TxOrderRefundAddressV1Schema as unknown as TxOrderRefundAddressV1;
+export const TxOrderRefundAddress =
+  TxOrderRefundAddressSchema as unknown as TxOrderRefundAddress;
 
-export const TxOrderDatumV1Schema = Data.Object({
-  event: TxOrderEventV1Schema,
+export const TxOrderDatumSchema = Data.Object({
+  event: TxOrderEventSchema,
   inclusion_time: POSIXTimeSchema,
   witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  refund_address: TxOrderRefundAddressV1Schema,
+  refund_address: TxOrderRefundAddressSchema,
   refund_datum: CardanoDatumSchema,
 });
-export type TxOrderDatumV1 = Data.Static<typeof TxOrderDatumV1Schema>;
-export const TxOrderDatumV1 = TxOrderDatumV1Schema as unknown as TxOrderDatumV1;
+export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
+export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
 
 type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
-const encodeCanonicalPlutusDataV1 = <A>(
+const encodeCanonicalPlutusData = <A>(
   value: A,
   schema: PlutusDataSchema,
 ): Buffer => Buffer.from(Data.to(value as never, schema as never), "hex");
 
-const decodeCanonicalPlutusDataV1 = <A>(
+const decodeCanonicalPlutusData = <A>(
   bytes: Uint8Array,
   schema: PlutusDataSchema,
   label: string,
 ): A => {
   const input = Buffer.from(bytes);
   const decoded = Data.from(input.toString("hex"), schema as never) as A;
-  if (!encodeCanonicalPlutusDataV1(decoded, schema).equals(input)) {
+  if (!encodeCanonicalPlutusData(decoded, schema).equals(input)) {
     throw new Error(`${label} CBOR must use its exact canonical encoding`);
   }
   return decoded;
 };
 
-export const encodeTxOrderDatumV1Cbor = (datum: TxOrderDatumV1): Buffer =>
-  encodeCanonicalPlutusDataV1(datum, TxOrderDatumV1Schema);
+export const encodeTxOrderDatumCbor = (datum: TxOrderDatum): Buffer =>
+  encodeCanonicalPlutusData(datum, TxOrderDatumSchema);
 
-export const decodeTxOrderDatumV1Cbor = (bytes: Uint8Array): TxOrderDatumV1 =>
-  decodeCanonicalPlutusDataV1(bytes, TxOrderDatumV1Schema, "TxOrderDatumV1");
+export const decodeTxOrderDatumCbor = (bytes: Uint8Array): TxOrderDatum =>
+  decodeCanonicalPlutusData(bytes, TxOrderDatumSchema, "TxOrderDatumV1");
 
-export const decodeCekProgramMaterialDatumV1Cbor = (
+export const decodeCekProgramMaterialDatumCbor = (
   bytes: Uint8Array,
-): CekProgramMaterialDatumV1 =>
-  decodeCanonicalPlutusDataV1(
+): CekProgramMaterialDatum =>
+  decodeCanonicalPlutusData(
     bytes,
-    CekProgramMaterialDatumV1Schema,
+    CekProgramMaterialDatumSchema,
     "CekProgramMaterialDatumV1",
   );
 
-export const CEK_SINGLE_PUBLICATION_DATUM_V1_VERSION = 1n;
+export const CEK_SINGLE_PUBLICATION_DATUM_VERSION = 1n;
 
 /** Exact datum ABI for one immutable, reference-only complete CEK graph. */
-export const CekSinglePublicationDatumV1Schema = Data.Object({
+export const CekSinglePublicationDatumSchema = Data.Object({
   version: Data.Integer(),
   program_envelope_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
   sidecar_cbor: Data.Bytes(),
 });
-export type CekSinglePublicationDatumV1 = Data.Static<
-  typeof CekSinglePublicationDatumV1Schema
+export type CekSinglePublicationDatum = Data.Static<
+  typeof CekSinglePublicationDatumSchema
 >;
-export const CekSinglePublicationDatumV1 =
-  CekSinglePublicationDatumV1Schema as unknown as CekSinglePublicationDatumV1;
+export const CekSinglePublicationDatum =
+  CekSinglePublicationDatumSchema as unknown as CekSinglePublicationDatum;
 
-const assertCekSinglePublicationDatumV1 = (
-  datum: CekSinglePublicationDatumV1,
+const assertCekSinglePublicationDatum = (
+  datum: CekSinglePublicationDatum,
 ): void => {
-  if (datum.version !== CEK_SINGLE_PUBLICATION_DATUM_V1_VERSION) {
+  if (datum.version !== CEK_SINGLE_PUBLICATION_DATUM_VERSION) {
     throw new Error("CEK single-publication datum must use version 1");
   }
 };
 
-export const encodeCekSinglePublicationDatumV1Cbor = (
-  datum: CekSinglePublicationDatumV1,
+export const encodeCekSinglePublicationDatumCbor = (
+  datum: CekSinglePublicationDatum,
 ): Buffer => {
-  assertCekSinglePublicationDatumV1(datum);
-  const encoded = encodeCanonicalPlutusDataV1(
+  assertCekSinglePublicationDatum(datum);
+  const encoded = encodeCanonicalPlutusData(
     datum,
-    CekSinglePublicationDatumV1Schema,
+    CekSinglePublicationDatumSchema,
   );
   if (
     encoded.length >
-    MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes
+    MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes
   ) {
     throw new Error(
       "CEK single-publication datum exceeds the reliable complete-item datum envelope",
@@ -197,22 +197,22 @@ export const encodeCekSinglePublicationDatumV1Cbor = (
   return encoded;
 };
 
-export const decodeCekSinglePublicationDatumV1Cbor = (
+export const decodeCekSinglePublicationDatumCbor = (
   bytes: Uint8Array,
-): CekSinglePublicationDatumV1 => {
-  const datum = decodeCanonicalPlutusDataV1(
+): CekSinglePublicationDatum => {
+  const datum = decodeCanonicalPlutusData(
     bytes,
-    CekSinglePublicationDatumV1Schema,
+    CekSinglePublicationDatumSchema,
     "CekSinglePublicationDatumV1",
-  ) as CekSinglePublicationDatumV1;
-  assertCekSinglePublicationDatumV1(datum);
+  ) as CekSinglePublicationDatum;
+  assertCekSinglePublicationDatum(datum);
   // Reuse the encoder so decoded data is also bounded by the pinned
   // single-publication datum envelope.
-  encodeCekSinglePublicationDatumV1Cbor(datum);
+  encodeCekSinglePublicationDatumCbor(datum);
   return Object.freeze({ ...datum });
 };
 
-export const TxOrderSpendRedeemerV1Schema = Data.Object({
+export const TxOrderSpendRedeemerSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
@@ -220,13 +220,13 @@ export const TxOrderSpendRedeemerV1Schema = Data.Object({
   burn_redeemer_index: Data.Integer(),
   membership_proof: RawRootMembershipProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
-  validity_override: OperatorVerdictV1Schema,
+  validity_override: OperatorVerdictSchema,
 });
-export type TxOrderSpendRedeemerV1 = Data.Static<
-  typeof TxOrderSpendRedeemerV1Schema
+export type TxOrderSpendRedeemer = Data.Static<
+  typeof TxOrderSpendRedeemerSchema
 >;
-export const TxOrderSpendRedeemerV1 =
-  TxOrderSpendRedeemerV1Schema as unknown as TxOrderSpendRedeemerV1;
+export const TxOrderSpendRedeemer =
+  TxOrderSpendRedeemerSchema as unknown as TxOrderSpendRedeemer;
 
 /**
  * The tx-order minting policy's redeemer — `midgard/user_events/tx_order_v1`'s
@@ -243,32 +243,30 @@ export const TxOrderSpendRedeemerV1 =
  * already knows that slot from the nine commitments. The vector must be
  * exhausted exactly: neither a missing nor a spare entry is admitted.
  */
-export const TxOrderMintRedeemerV1Schema = Data.Object({
+export const TxOrderMintRedeemerSchema = Data.Object({
   event: UserEventMintRedeemerSchema,
-  material_carriage: Data.Array(FieldCarriageV1Schema),
+  material_carriage: Data.Array(FieldCarriageSchema),
 });
-export type TxOrderMintRedeemerV1 = Data.Static<
-  typeof TxOrderMintRedeemerV1Schema
->;
-export const TxOrderMintRedeemerV1 =
-  TxOrderMintRedeemerV1Schema as unknown as TxOrderMintRedeemerV1;
+export type TxOrderMintRedeemer = Data.Static<typeof TxOrderMintRedeemerSchema>;
+export const TxOrderMintRedeemer =
+  TxOrderMintRedeemerSchema as unknown as TxOrderMintRedeemer;
 
-export const encodeTxOrderMintRedeemerV1Cbor = (
-  redeemer: TxOrderMintRedeemerV1,
-): Buffer => encodeCanonicalPlutusDataV1(redeemer, TxOrderMintRedeemerV1Schema);
+export const encodeTxOrderMintRedeemerCbor = (
+  redeemer: TxOrderMintRedeemer,
+): Buffer => encodeCanonicalPlutusData(redeemer, TxOrderMintRedeemerSchema);
 
-export type TxOrderUTxOV1 = AuthenticUTxO<TxOrderDatumV1, UserEventExtraFields>;
+export type TxOrderUTxOV1 = AuthenticUTxO<TxOrderDatum, UserEventExtraFields>;
 
-export const utxosToTxOrderUTxOsV1 = (
+export const utxosToTxOrderUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
 ): Effect.Effect<TxOrderUTxOV1[]> =>
-  authenticateUTxOs<TxOrderDatumV1, UserEventExtraFields>(
+  authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
-    TxOrderDatumV1,
+    TxOrderDatum,
     (datum, utxo) => {
-      decodeTxOrderDatumV1Cbor(Buffer.from(utxo.datum!, "hex"));
+      decodeTxOrderDatumCbor(Buffer.from(utxo.datum!, "hex"));
       return {
         ...userEventCborFieldsFromInlineDatum(utxo),
         inclusionTime: new Date(Number(datum.inclusion_time)),
@@ -276,29 +274,29 @@ export const utxosToTxOrderUTxOsV1 = (
     },
   );
 
-export const fetchTxOrderUTxOsV1Program = (
+export const fetchTxOrderUTxOsProgram = (
   lucid: LucidEvolution,
   config: UserEventFetchConfig,
 ): Effect.Effect<TxOrderUTxOV1[], LucidError> =>
   fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
-    utxosToTxOrderUTxOsV1(utxos, config.eventPolicyId),
+    utxosToTxOrderUTxOs(utxos, config.eventPolicyId),
   );
 
-export const fetchTxOrderUTxOsV1 = (
+export const fetchTxOrderUTxOs = (
   lucid: LucidEvolution,
   config: UserEventFetchConfig,
-) => makeReturn(fetchTxOrderUTxOsV1Program(lucid, config));
+) => makeReturn(fetchTxOrderUTxOsProgram(lucid, config));
 
 export type SubmitTxOrderReferenceScripts = {
   readonly txOrderMinting: UTxO;
 };
 
-export type SubmitTxOrderV1Config = {
+export type SubmitTxOrderConfig = {
   /** Exact bounded canonical native-V1 transaction bytes. */
   readonly nativeTxCbor: string;
   /** Reserved while the order's §8 field carriage is prepared. */
   readonly nonceInput: UTxO;
-  readonly refundAddress: TxOrderRefundAddressV1;
+  readonly refundAddress: TxOrderRefundAddress;
   readonly refundDatum?: CardanoDatum;
   readonly lovelace?: bigint;
   readonly referenceScripts?: SubmitTxOrderReferenceScripts;
@@ -312,7 +310,7 @@ export type SubmitTxOrderV1Config = {
    * Whatever is listed here is read by the order transaction and indexed
    * positionally in its mint redeemer, so a stale entry is not free — it shifts
    * every index after it. Pass exactly the carriage
-   * {@link planTxOrderMaterialCarriageV1} says is referenced.
+   * {@link planTxOrderMaterialCarriage} says is referenced.
    */
   readonly carriageReferenceInputs?: readonly UTxO[];
   /**
@@ -326,7 +324,7 @@ export type SubmitTxOrderV1Config = {
    */
   readonly fieldPreimageCertificatePolicyId?: string;
   /**
-   * Overrides {@link MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES_V1}. Lower it
+   * Overrides {@link MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES}. Lower it
    * to force fields onto predeployed carriage; there is no consensus threshold to
    * violate, only this transaction's own byte budget.
    */
@@ -337,11 +335,11 @@ export type SubmitTxOrderV1Config = {
  * One non-empty field of a forced order's material, with the §8 carriage its
  * preimage requires.
  *
- * `plan` comes straight from {@link planMidgardFieldCarriageV1}, so the tier is
+ * `plan` comes straight from {@link planMidgardFieldCarriage}, so the tier is
  * §8.4's partition rather than this module's choice, and `publications` is the
  * exact set of raw carriage UTxOs a publisher has to create.
  */
-export type TxOrderFieldCarriageV1 = {
+export type TxOrderFieldCarriage = {
   readonly fieldIndex: number;
   readonly fieldName: string;
   /** The §5.1 enveloped field preimage. */
@@ -353,12 +351,12 @@ export type TxOrderFieldCarriageV1 = {
    *
    * Since #585 this is also, necessarily, the hash the compact structure beside
    * it carries: `deriveNativeTxBodyCompact` derives the nine field commitments
-   * the same way. {@link deriveTxOrderMaterialV1} asserts the two equal per field
+   * the same way. {@link deriveTxOrderMaterial} asserts the two equal per field
    * rather than leaving it implied — the equality is the whole point of the
    * reversion, and before #585 it was false.
    */
   readonly commitment: string;
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
 };
 
 /**
@@ -373,15 +371,15 @@ export type TxOrderFieldCarriageV1 = {
  * (§4), so there are no per-item openings to publish and the unit of carriage is
  * the field, not the item.
  */
-export type TxOrderMaterialV1 = {
+export type TxOrderMaterial = {
   readonly transactionId: string;
   readonly transactionCommitment: string;
-  readonly source: NativeTxProofSourceV1;
+  readonly source: NativeTxProofSource;
   /**
    * One entry per field whose §5.1 preimage is not the empty field `80`, in
    * ascending field index. Empty for a transaction with nine empty fields.
    */
-  readonly carriage: readonly TxOrderFieldCarriageV1[];
+  readonly carriage: readonly TxOrderFieldCarriage[];
 };
 
 /**
@@ -398,42 +396,42 @@ export type TxOrderMaterialV1 = {
  * The plans this returns are the §8.4 length partition's — tier 1 for anything
  * that fits a redeemer, tier 2 up to `K`, tier 3 above it. Which of tiers 1–2 a
  * given field actually uses in the order transaction is a budget question, not a
- * length question, and is answered by {@link planTxOrderMaterialCarriageV1}.
+ * length question, and is answered by {@link planTxOrderMaterialCarriage}.
  */
-export const deriveTxOrderMaterialV1 = ({
+export const deriveTxOrderMaterial = ({
   nativeTxCbor,
   owner,
 }: {
   readonly nativeTxCbor: Uint8Array;
   readonly owner: Uint8Array;
-}): TxOrderMaterialV1 => {
-  const violation = validateMidgardConsensusV1TxCbor(nativeTxCbor);
+}): TxOrderMaterial => {
+  const violation = validateMidgardConsensusTxCbor(nativeTxCbor);
   if (violation !== null) {
     throw new Error(
       `${violation.code} ${violation.featureId}: ${violation.detail}`,
     );
   }
-  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
-  const transactionId = computeMidgardNativeTxIdV1(tx);
-  const proofSource = deriveMidgardNativeTxProofSourceV1(tx);
-  const source: NativeTxProofSourceV1 = {
+  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor);
+  const transactionId = computeMidgardNativeTxId(tx);
+  const proofSource = deriveMidgardNativeTxProofSource(tx);
+  const source: NativeTxProofSource = {
     compact_cbor: proofSource.compactCbor.toString("hex"),
     witness_set_compact_cbor: proofSource.witnessSetCompactCbor.toString("hex"),
     field_preimage_lengths_cbor:
       proofSource.fieldPreimageLengthsCbor.toString("hex"),
   };
-  const carriage: TxOrderFieldCarriageV1[] = [];
+  const carriage: TxOrderFieldCarriage[] = [];
   // §5.1's empty field is the one-byte definite-array header `80`. The on-chain
   // `next_non_empty_field` decides the same thing by comparing the committed hash
   // against `empty_field_commitment`; since #585 the two spellings agree by
   // construction, and testing the bytes keeps this loop independent of whether a
   // payload's declared hashes are trustworthy yet.
-  const emptyFieldPreimage = encodeMidgardFieldArrayHeaderV1(0);
-  for (const field of deriveMidgardV1TxFieldPreimages(nativeTxCbor)) {
+  const emptyFieldPreimage = encodeMidgardFieldArrayHeader(0);
+  for (const field of deriveMidgardTxFieldPreimages(nativeTxCbor)) {
     if (field.preimageCbor.equals(emptyFieldPreimage)) {
       continue;
     }
-    const commitment = midgardFieldCommitmentV1(field.preimageCbor);
+    const commitment = midgardFieldCommitment(field.preimageCbor);
     // §4: the compact structure's field hash *is* this commitment. Asserting it
     // here is what makes a producer bug surface at the producer rather than as an
     // unsatisfiable dispute later.
@@ -447,7 +445,7 @@ export const deriveTxOrderMaterialV1 = ({
       fieldName: field.fieldName,
       preimage: field.preimageCbor,
       commitment: commitment.toString("hex"),
-      plan: planMidgardFieldCarriageV1({
+      plan: planMidgardFieldCarriage({
         owner,
         txId: transactionId,
         fieldIndex: field.fieldIndex,
@@ -458,7 +456,7 @@ export const deriveTxOrderMaterialV1 = ({
   return {
     transactionId: transactionId.toString("hex"),
     transactionCommitment:
-      computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex"),
+      computeMidgardNativeTxProofCommitment(proofSource).toString("hex"),
     source,
     carriage: Object.freeze(carriage),
   };
@@ -478,7 +476,7 @@ export const deriveTxOrderMaterialV1 = ({
  * order's inline preimages against *this* transaction's other content. They agree
  * numerically today, and a re-pin of either must not silently move the other.
  */
-const MIDGARD_TX_ORDER_MACHINERY_ALLOWANCE_BYTES_V1 = 2_048;
+const MIDGARD_TX_ORDER_MACHINERY_ALLOWANCE_BYTES = 2_048;
 
 /**
  * The order transaction's own reserve for inline (tier-1) carriage, in bytes —
@@ -496,12 +494,12 @@ const MIDGARD_TX_ORDER_MACHINERY_ALLOWANCE_BYTES_V1 = 2_048;
  * per-field constant is the wrong shape for this decision even when it carries
  * the right number.
  */
-export const MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES_V1 =
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes -
-  MIDGARD_TX_ORDER_MACHINERY_ALLOWANCE_BYTES_V1;
+export const MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES =
+  MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes -
+  MIDGARD_TX_ORDER_MACHINERY_ALLOWANCE_BYTES;
 
 /** One field of an order's material, with the carriage the order will use. */
-export type TxOrderPlannedFieldCarriageV1 = {
+export type TxOrderPlannedFieldCarriage = {
   readonly fieldIndex: number;
   readonly fieldName: string;
   readonly preimage: Buffer;
@@ -511,24 +509,24 @@ export type TxOrderPlannedFieldCarriageV1 = {
    * the mint redeemer will name, so `publications` is exactly what has to exist
    * on-chain *before* the order transaction is built.
    */
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
 };
 
 /**
  * A forced order's carriage decision, per non-empty field.
  *
- * `inline` and `referenced` partition {@link TxOrderMaterialV1.carriage}, both in
+ * `inline` and `referenced` partition {@link TxOrderMaterial.carriage}, both in
  * ascending field index, and their concatenation in that order is *not* the
  * redeemer vector — the redeemer is positional over all non-empty fields, so it
  * is assembled by merging the two back into field order. {@link carriage} is that
  * merge, and is what a builder walks.
  */
-export type TxOrderCarriagePlanV1 = {
-  readonly carriage: readonly TxOrderPlannedFieldCarriageV1[];
+export type TxOrderCarriagePlan = {
+  readonly carriage: readonly TxOrderPlannedFieldCarriage[];
   /** Fields riding in the order transaction's own mint redeemer. */
-  readonly inline: readonly TxOrderPlannedFieldCarriageV1[];
+  readonly inline: readonly TxOrderPlannedFieldCarriage[];
   /** Fields whose preimages must be published before the order is built. */
-  readonly referenced: readonly TxOrderPlannedFieldCarriageV1[];
+  readonly referenced: readonly TxOrderPlannedFieldCarriage[];
   /** Total inline preimage bytes, against the reserve that admitted them. */
   readonly inlineBytes: number;
   readonly inlineReserveBytes: number;
@@ -548,18 +546,18 @@ export type TxOrderCarriagePlanV1 = {
  * referenced datums are not part of it.
  *
  * `owner` must be the creator's payment key hash — see
- * {@link deriveTxOrderMaterialV1} on why reclaim authority is a key and not a
+ * {@link deriveTxOrderMaterial} on why reclaim authority is a key and not a
  * script.
  */
-export const planTxOrderMaterialCarriageV1 = ({
+export const planTxOrderMaterialCarriage = ({
   material,
   owner,
-  inlineReserveBytes = MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES_V1,
+  inlineReserveBytes = MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES,
 }: {
-  readonly material: TxOrderMaterialV1;
+  readonly material: TxOrderMaterial;
   readonly owner: Uint8Array;
   readonly inlineReserveBytes?: number;
-}): TxOrderCarriagePlanV1 => {
+}): TxOrderCarriagePlan => {
   if (!Number.isSafeInteger(inlineReserveBytes) || inlineReserveBytes < 0) {
     throw new Error(
       `inlineReserveBytes must be a non-negative integer, got ${String(inlineReserveBytes)}`,
@@ -583,7 +581,7 @@ export const planTxOrderMaterialCarriageV1 = ({
     inlineFieldIndices.add(field.fieldIndex);
   }
   const carriage = material.carriage.map(
-    (field): TxOrderPlannedFieldCarriageV1 => ({
+    (field): TxOrderPlannedFieldCarriage => ({
       fieldIndex: field.fieldIndex,
       fieldName: field.fieldName,
       preimage: field.preimage,
@@ -591,7 +589,7 @@ export const planTxOrderMaterialCarriageV1 = ({
       plan:
         field.plan.tier === "Inline" && inlineFieldIndices.has(field.fieldIndex)
           ? field.plan
-          : planMidgardFieldCarriageV1({
+          : planMidgardFieldCarriage({
               owner,
               txId: transactionId,
               fieldIndex: field.fieldIndex,
@@ -664,20 +662,20 @@ const requireTxOrderCreatorKeyHashProgram = (
  * matching rules here to answer the same question a second way is how the two
  * answers come to disagree.
  */
-const carriageIsResolvableV1 = (
-  field: TxOrderPlannedFieldCarriageV1,
+const carriageIsResolvable = (
+  field: TxOrderPlannedFieldCarriage,
   referenceInputs: readonly UTxO[],
   certificatePolicyId: string | undefined,
 ): boolean => {
   try {
-    resolveChunkReferenceIndicesV1({ plan: field.plan, referenceInputs });
+    resolveChunkReferenceIndices({ plan: field.plan, referenceInputs });
     if (field.plan.tier !== "Certified") {
       return true;
     }
     if (certificatePolicyId === undefined || field.plan.certificate === null) {
       return false;
     }
-    resolveCertificateReferenceIndexV1({
+    resolveCertificateReferenceIndex({
       certificatePolicyId,
       txIdHex: field.plan.txId.toString("hex"),
       fieldIndex: field.plan.fieldIndex,
@@ -707,12 +705,12 @@ const carriageIsResolvableV1 = (
  * reference-input set, because that is what the ledger hands the validator — the
  * same discipline every other positional redeemer in this package keeps.
  */
-export const txOrderMaterialCarriageVectorV1 = ({
+export const txOrderMaterialCarriageVector = ({
   plan,
   certificatePolicyId,
   referenceInputs,
 }: {
-  readonly plan: TxOrderCarriagePlanV1;
+  readonly plan: TxOrderCarriagePlan;
   /**
    * The §8.6 certificate minting policy id — the same deployment role the
    * tx-order mint takes as its second parameter.
@@ -726,12 +724,12 @@ export const txOrderMaterialCarriageVectorV1 = ({
    */
   readonly certificatePolicyId?: string;
   readonly referenceInputs: readonly UTxO[];
-}): readonly FieldCarriageV1[] =>
-  plan.carriage.map((field): FieldCarriageV1 => {
+}): readonly FieldCarriage[] =>
+  plan.carriage.map((field): FieldCarriage => {
     if (field.plan.tier === "Inline") {
       return { Inline: { preimage: field.preimage.toString("hex") } };
     }
-    const chunkIndices = resolveChunkReferenceIndicesV1({
+    const chunkIndices = resolveChunkReferenceIndices({
       plan: field.plan,
       referenceInputs,
     });
@@ -755,7 +753,7 @@ export const txOrderMaterialCarriageVectorV1 = ({
           "by policy id, but no `certificatePolicyId` was supplied",
       );
     }
-    const certificateIndex = resolveCertificateReferenceIndexV1({
+    const certificateIndex = resolveCertificateReferenceIndex({
       certificatePolicyId,
       txIdHex: field.plan.txId.toString("hex"),
       fieldIndex: field.plan.fieldIndex,
@@ -771,20 +769,20 @@ export const txOrderMaterialCarriageVectorV1 = ({
     };
   });
 
-export type PublishCekProgramMaterialV1Config = {
-  readonly entries: readonly MidgardCekProgramMaterialEntryV1[];
+export type PublishCekProgramMaterialConfig = {
+  readonly entries: readonly MidgardCekProgramMaterialEntry[];
   readonly lovelacePerEntry?: bigint;
 };
 
-export type CekProgramMaterialPublicationV1 = {
-  readonly entry: MidgardCekProgramMaterialEntryV1;
-  readonly datum: CekProgramMaterialDatumV1;
+export type CekProgramMaterialPublication = {
+  readonly entry: MidgardCekProgramMaterialEntry;
+  readonly datum: CekProgramMaterialDatum;
   readonly datumCbor: string;
 };
 
-export type CekSinglePublicationV1 = {
+export type CekSinglePublication = {
   readonly programEnvelopeHash: string;
-  readonly datum: CekSinglePublicationDatumV1;
+  readonly datum: CekSinglePublicationDatum;
   readonly datumCbor: string;
 };
 
@@ -793,39 +791,39 @@ export type CekSinglePublicationV1 = {
  * copied before validation so later caller mutation cannot alter publication
  * identity or bytes.
  */
-export const deriveCekSinglePublicationV1 = ({
+export const deriveCekSinglePublication = ({
   envelopeCbor,
   sidecarCbor,
 }: {
   readonly envelopeCbor: Uint8Array;
   readonly sidecarCbor: Uint8Array;
-}): CekSinglePublicationV1 => {
+}): CekSinglePublication => {
   const exactEnvelopeCbor = Buffer.from(envelopeCbor);
   const exactSidecarCbor = Buffer.from(sidecarCbor);
-  const envelope = decodeMidgardCekProgramEnvelopeV1(exactEnvelopeCbor);
-  const material = decodeMidgardCekProgramMaterialSidecarV1(exactSidecarCbor);
+  const envelope = decodeMidgardCekProgramEnvelope(exactEnvelopeCbor);
+  const material = decodeMidgardCekProgramMaterialSidecar(exactSidecarCbor);
   if (
-    !encodeMidgardCekProgramMaterialSidecarV1(material).equals(exactSidecarCbor)
+    !encodeMidgardCekProgramMaterialSidecar(material).equals(exactSidecarCbor)
   ) {
     throw new Error("CEK single-publication sidecar CBOR is not canonical");
   }
-  verifyMidgardCekProgramMaterialBundleV1([envelope], material);
+  verifyMidgardCekProgramMaterialBundle([envelope], material);
   const programEnvelopeHash = Buffer.from(
-    hashMidgardCekProgramEnvelopeV1(envelope),
+    hashMidgardCekProgramEnvelope(envelope),
   ).toString("hex");
-  const datum: CekSinglePublicationDatumV1 = Object.freeze({
-    version: CEK_SINGLE_PUBLICATION_DATUM_V1_VERSION,
+  const datum: CekSinglePublicationDatum = Object.freeze({
+    version: CEK_SINGLE_PUBLICATION_DATUM_VERSION,
     program_envelope_hash: programEnvelopeHash,
     sidecar_cbor: exactSidecarCbor.toString("hex"),
   });
   return Object.freeze({
     programEnvelopeHash,
     datum,
-    datumCbor: encodeCekSinglePublicationDatumV1Cbor(datum).toString("hex"),
+    datumCbor: encodeCekSinglePublicationDatumCbor(datum).toString("hex"),
   });
 };
 
-export type PublishCekSinglePublicationV1Config = {
+export type PublishCekSinglePublicationConfig = {
   readonly envelopeCbor: Uint8Array;
   readonly sidecarCbor: Uint8Array;
   /** May increase funding, but cannot underfund the exact minimum Ada. */
@@ -851,13 +849,13 @@ const resolveProtocolParameters = async (
  * Calculates the exact stabilized minimum Ada for a CEK material UTxO with
  * its actual script address and inline datum.
  */
-export const minimumLovelaceForCekProgramMaterialPublicationV1 = ({
+export const minimumLovelaceForCekProgramMaterialPublication = ({
   contracts,
   publication,
   coinsPerUtxoByte,
 }: {
   readonly contracts: Pick<MidgardValidators, "cekProgramMaterial">;
-  readonly publication: CekProgramMaterialPublicationV1;
+  readonly publication: CekProgramMaterialPublication;
   readonly coinsPerUtxoByte: bigint;
 }): bigint => {
   const address = CML.Address.from_bech32(
@@ -891,13 +889,13 @@ export const minimumLovelaceForCekProgramMaterialPublicationV1 = ({
  * Calculates the exact stabilized minimum Ada for an immutable complete CEK
  * material datum at its actual reference-only script address.
  */
-export const minimumLovelaceForCekSinglePublicationV1 = ({
+export const minimumLovelaceForCekSinglePublication = ({
   contracts,
   publication,
   coinsPerUtxoByte,
 }: {
   readonly contracts: Pick<MidgardValidators, "cekProgramMaterial">;
-  readonly publication: CekSinglePublicationV1;
+  readonly publication: CekSinglePublication;
   readonly coinsPerUtxoByte: bigint;
 }): bigint => {
   const address = CML.Address.from_bech32(
@@ -927,31 +925,31 @@ export const minimumLovelaceForCekSinglePublicationV1 = ({
   );
 };
 
-export const deriveCekProgramMaterialPublicationsV1 = (
-  entries: readonly MidgardCekProgramMaterialEntryV1[],
-): readonly CekProgramMaterialPublicationV1[] => {
+export const deriveCekProgramMaterialPublications = (
+  entries: readonly MidgardCekProgramMaterialEntry[],
+): readonly CekProgramMaterialPublication[] => {
   if (entries.length === 0) {
     throw new Error("CEK program-material publication cannot be empty");
   }
   const seen = new Set<string>();
   return Object.freeze(
     entries.map((entry) => {
-      const exact = decodeMidgardCekProgramMaterialEntryV1(
-        encodeMidgardCekProgramMaterialEntryV1(entry),
+      const exact = decodeMidgardCekProgramMaterialEntry(
+        encodeMidgardCekProgramMaterialEntry(entry),
       );
       const root = Buffer.from(exact.root).toString("hex");
       if (seen.has(root)) {
         throw new Error(`duplicate CEK program-material root ${root}`);
       }
       seen.add(root);
-      const datum: CekProgramMaterialDatumV1 = {
-        kind: midgardCekProgramMaterialKindTagV1(exact.kind),
+      const datum: CekProgramMaterialDatum = {
+        kind: midgardCekProgramMaterialKindTag(exact.kind),
         root,
         preimage: exact.preimage.toString("hex"),
       };
-      const datumCbor = Data.to(datum, CekProgramMaterialDatumV1);
+      const datumCbor = Data.to(datum, CekProgramMaterialDatum);
       const datumBytes = Buffer.byteLength(datumCbor, "hex");
-      if (datumBytes > MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes) {
+      if (datumBytes > MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes) {
         throw new Error(
           `CEK program-material datum ${root} exceeds the independently revealable L1 proof field bound`,
         );
@@ -961,25 +959,24 @@ export const deriveCekProgramMaterialPublicationsV1 = (
   );
 };
 
-export const buildUnsignedCekProgramMaterialV1Program = (
+export const buildUnsignedCekProgramMaterialProgram = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  config: PublishCekProgramMaterialV1Config,
+  config: PublishCekProgramMaterialConfig,
 ): Effect.Effect<TxSignBuilder, UserEventBuildError> =>
   Effect.tryPromise({
     try: async () => {
-      const publications = deriveCekProgramMaterialPublicationsV1(
-        config.entries,
-      );
+      const publications = deriveCekProgramMaterialPublications(config.entries);
       const protocolParameters = await resolveProtocolParameters(lucid);
       let tx = lucid.newTx();
       for (const publication of publications) {
-        const minimumLovelace =
-          minimumLovelaceForCekProgramMaterialPublicationV1({
+        const minimumLovelace = minimumLovelaceForCekProgramMaterialPublication(
+          {
             contracts,
             publication,
             coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
-          });
+          },
+        );
         tx = tx.pay.ToAddressWithData(
           contracts.cekProgramMaterial.spendingScriptAddress,
           { kind: "inline", value: publication.datumCbor },
@@ -1007,16 +1004,16 @@ export const buildUnsignedCekProgramMaterialV1Program = (
  * inline datum. It has no spending path and therefore creates no mutable
  * state transition.
  */
-export const buildUnsignedCekSinglePublicationV1Program = (
+export const buildUnsignedCekSinglePublicationProgram = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  config: PublishCekSinglePublicationV1Config,
+  config: PublishCekSinglePublicationConfig,
 ): Effect.Effect<TxSignBuilder, UserEventBuildError> =>
   Effect.tryPromise({
     try: async () => {
-      const publication = deriveCekSinglePublicationV1(config);
+      const publication = deriveCekSinglePublication(config);
       const protocolParameters = await resolveProtocolParameters(lucid);
-      const minimumLovelace = minimumLovelaceForCekSinglePublicationV1({
+      const minimumLovelace = minimumLovelaceForCekSinglePublication({
         contracts,
         publication,
         coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
@@ -1056,10 +1053,10 @@ export type TxOrderBuildMetadata = {
 
 const DEFAULT_TX_ORDER_LOVELACE = 3_000_000n;
 
-export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
+export const buildUnsignedTxOrderTxWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  config: SubmitTxOrderV1Config,
+  config: SubmitTxOrderConfig,
 ): Effect.Effect<
   {
     readonly tx: TxSignBuilder;
@@ -1118,7 +1115,7 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
     const carriageReferenceInputs = config.carriageReferenceInputs ?? [];
     const order = yield* Effect.try({
       try: () => {
-        const material = deriveTxOrderMaterialV1({
+        const material = deriveTxOrderMaterial({
           nativeTxCbor,
           // §8.5/§8.7 under #594's ruling: reclaim is an ordinary key spend at
           // any time after the mint, so the min-Ada authority a tier-3
@@ -1127,7 +1124,7 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
           // (#589); it never was the right authority.
           owner: creatorPaymentKeyHash,
         });
-        const plan = planTxOrderMaterialCarriageV1({
+        const plan = planTxOrderMaterialCarriage({
           material,
           owner: creatorPaymentKeyHash,
           inlineReserveBytes: config.inlineCarriageReserveBytes,
@@ -1154,7 +1151,7 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
         // resolved against the UTxO set as it stands before it.
         const unpublished = plan.referenced.filter(
           (field) =>
-            !carriageIsResolvableV1(
+            !carriageIsResolvable(
               field,
               carriageReferenceInputs,
               config.fieldPreimageCertificatePolicyId,
@@ -1181,7 +1178,7 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
         }),
     });
     const material = order.material;
-    const txOrderDatum: TxOrderDatumV1 = {
+    const txOrderDatum: TxOrderDatum = {
       event: {
         id: txOrderId,
         tx: {
@@ -1195,7 +1192,7 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
       refund_address: config.refundAddress,
       refund_datum: config.refundDatum ?? "NoDatum",
     };
-    const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatumV1);
+    const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
     const outputAssets: Assets = {
       lovelace: config.lovelace ?? DEFAULT_TX_ORDER_LOVELACE,
       [txOrderUnit]: 1n,
@@ -1240,14 +1237,14 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
             // `user_events.MintRedeemer`'s and lives with that type.
             event: userEventAuthenticateMintRedeemer(layout),
             material_carriage: [
-              ...txOrderMaterialCarriageVectorV1({
+              ...txOrderMaterialCarriageVector({
                 plan: order.plan,
                 certificatePolicyId: config.fieldPreimageCertificatePolicyId,
                 referenceInputs: ctx.referenceInputs,
               }),
             ],
-          } satisfies TxOrderMintRedeemerV1,
-          TxOrderMintRedeemerV1,
+          } satisfies TxOrderMintRedeemer,
+          TxOrderMintRedeemer,
         ),
     });
     return {
@@ -1274,40 +1271,40 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
     ),
   );
 
-export const unsignedTxOrderTxV1Program = (
+export const unsignedTxOrderTxProgram = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  config: SubmitTxOrderV1Config,
+  config: SubmitTxOrderConfig,
 ) =>
-  buildUnsignedTxOrderTxV1WithMetadataProgram(lucid, contracts, config).pipe(
+  buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, config).pipe(
     Effect.map(({ tx }) => tx),
   );
 
-export const buildUnsignedTxOrderTxV1Program = unsignedTxOrderTxV1Program;
+export const buildUnsignedTxOrderTxProgram = unsignedTxOrderTxProgram;
 
-export const unsignedTxOrderTxV1 = (
+export const unsignedTxOrderTx = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  txOrderParams: SubmitTxOrderV1Config,
+  txOrderParams: SubmitTxOrderConfig,
 ): Promise<TxSignBuilder> =>
   makeReturn(
-    unsignedTxOrderTxV1Program(lucid, contracts, txOrderParams),
+    unsignedTxOrderTxProgram(lucid, contracts, txOrderParams),
   ).unsafeRun();
 
-export const unsignedCekProgramMaterialV1 = (
+export const unsignedCekProgramMaterial = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  config: PublishCekProgramMaterialV1Config,
+  config: PublishCekProgramMaterialConfig,
 ): Promise<TxSignBuilder> =>
   makeReturn(
-    buildUnsignedCekProgramMaterialV1Program(lucid, contracts, config),
+    buildUnsignedCekProgramMaterialProgram(lucid, contracts, config),
   ).unsafeRun();
 
-export const unsignedCekSinglePublicationV1 = (
+export const unsignedCekSinglePublication = (
   lucid: LucidEvolution,
   contracts: MidgardValidators,
-  config: PublishCekSinglePublicationV1Config,
+  config: PublishCekSinglePublicationConfig,
 ): Promise<TxSignBuilder> =>
   makeReturn(
-    buildUnsignedCekSinglePublicationV1Program(lucid, contracts, config),
+    buildUnsignedCekSinglePublicationProgram(lucid, contracts, config),
   ).unsafeRun();

@@ -111,7 +111,7 @@ const parseLowerHex64 = (value: unknown, label: string): string => {
   return parsed;
 };
 
-const parseEnvFileProvenanceV1 = (
+const parseEnvFileProvenance = (
   value: unknown,
   label: string,
 ): E2EEnvFileProvenance => {
@@ -122,7 +122,7 @@ const parseEnvFileProvenanceV1 = (
   };
 };
 
-export const parseRedactedCommandV1 = (
+export const parseRedactedCommand = (
   value: unknown,
   label = "command",
 ): RedactedCommand => {
@@ -142,7 +142,7 @@ export const parseRedactedCommandV1 = (
     envFiles: arrayOf(
       input.envFiles,
       `${label}.envFiles`,
-      parseEnvFileProvenanceV1,
+      parseEnvFileProvenance,
     ),
     envInheritance: oneOf(input.envInheritance, `${label}.envInheritance`, [
       "process",
@@ -151,7 +151,7 @@ export const parseRedactedCommandV1 = (
   };
 };
 
-const parseHashObservationV1 = (
+const parseHashObservation = (
   value: unknown,
   label: string,
 ): HashObservation => {
@@ -164,7 +164,7 @@ const parseHashObservationV1 = (
   };
 };
 
-export const parseTxObservationV1 = (
+export const parseTxObservation = (
   value: unknown,
   label = "txObservation",
 ): TxObservation => {
@@ -194,7 +194,7 @@ export const parseTxObservationV1 = (
   };
 };
 
-export const parseChildProcessCleanupV1 = (
+export const parseChildProcessCleanup = (
   value: unknown,
   label: string,
 ): ChildProcessCleanupResult => {
@@ -239,7 +239,7 @@ export const parseChildProcessCleanupV1 = (
   };
 };
 
-export const parseE2EStepV1 = (
+export const parseE2EStep = (
   value: unknown,
   label = "E2E step",
 ): StepSummary => {
@@ -282,7 +282,7 @@ export const parseE2EStepV1 = (
       "timeout",
       "runner_error",
     ]),
-    command: parseRedactedCommandV1(input.command, `${label}.command`),
+    command: parseRedactedCommand(input.command, `${label}.command`),
     pid: nullable(input.pid, `${label}.pid`, positiveInteger),
     startedAt: isoTimestamp(input.startedAt, `${label}.startedAt`),
     finishedAt: isoTimestamp(input.finishedAt, `${label}.finishedAt`),
@@ -299,12 +299,12 @@ export const parseE2EStepV1 = (
     hashObservations: arrayOf(
       input.hashObservations,
       `${label}.hashObservations`,
-      parseHashObservationV1,
+      parseHashObservation,
     ),
     txObservations: arrayOf(
       input.txObservations,
       `${label}.txObservations`,
-      parseTxObservationV1,
+      parseTxObservation,
     ),
     parsedJson:
       input.parsedJson === null
@@ -317,7 +317,7 @@ export const parseE2EStepV1 = (
           cleanup:
             input.cleanup === null
               ? null
-              : parseChildProcessCleanupV1(input.cleanup, `${label}.cleanup`),
+              : parseChildProcessCleanup(input.cleanup, `${label}.cleanup`),
         }),
   };
   const elapsedMs =
@@ -683,7 +683,7 @@ export const runCommandStep = async (spec: StepSpec): Promise<StepSummary> => {
             ? "success"
             : "failed";
   const parsedJson = parseLastJsonLine(attempt.stdout);
-  return parseE2EStepV1({
+  return parseE2EStep({
     schemaVersion: E2E_STEP_SCHEMA_VERSION,
     id: spec.id,
     status,

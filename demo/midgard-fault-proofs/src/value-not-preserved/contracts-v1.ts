@@ -29,7 +29,7 @@ import type { Script } from "@lucid-evolution/lucid";
 export const VALUE_NOT_PRESERVED_CATEGORY_LABEL = "value-not-preserved";
 
 /** Blueprint titles of the four parameterized step validators. */
-export const VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1 = {
+export const VALUE_NOT_PRESERVED_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/value_not_preserved/step_01.main.spend",
   step02: "fraud_proofs/value_not_preserved/step_02.main.spend",
   step03: "fraud_proofs/value_not_preserved/step_03.main.spend",
@@ -37,7 +37,7 @@ export const VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1 = {
 } as const;
 
 /** One deployed step of the `value-not-preserved` chain. */
-export type ValueNotPreservedStepContractV1 = {
+export type ValueNotPreservedStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -51,13 +51,13 @@ export type ValueNotPreservedStepContractV1 = {
  * that need one — thread-token asset names, catalogue lookups — take it
  * separately from the deployment they are actually talking to.
  */
-export type ValueNotPreservedContractsV1 = {
+export type ValueNotPreservedContracts = {
   /** Steps 01..04, in order. */
   readonly steps: readonly [
-    ValueNotPreservedStepContractV1,
-    ValueNotPreservedStepContractV1,
-    ValueNotPreservedStepContractV1,
-    ValueNotPreservedStepContractV1,
+    ValueNotPreservedStepContract,
+    ValueNotPreservedStepContract,
+    ValueNotPreservedStepContract,
+    ValueNotPreservedStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

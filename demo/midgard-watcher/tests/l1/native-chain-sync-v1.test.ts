@@ -5,16 +5,16 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  watcherL1TransportAttestationDetailsV1,
+  closeWatcherL1TransportAttestationContext,
+  establishWatcherLocalNodeAuthorityTransport,
+  watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
 import {
-  parseWatcherNativeChainSyncEventV1,
-  startWatcherNativeChainSyncV1,
-  startWatcherNativeChainSyncWithRetryV1,
-  WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
-  watcherNativeChainSyncAuthorityDetailsV1,
+  parseWatcherNativeChainSyncEvent,
+  startWatcherNativeChainSync,
+  startWatcherNativeChainSyncWithRetry,
+  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+  watcherNativeChainSyncAuthorityDetails,
 } from "../../src/l1/native-chain-sync-v1.js";
 import {
   WATCHER_CONFIG_SCHEMA_VERSION,
@@ -120,9 +120,9 @@ const readIdentityFixture = async (path: string): Promise<Uint8Array> => {
 
 const start = async (
   mode: string,
-  onEvent: Parameters<typeof startWatcherNativeChainSyncV1>[0]["onEvent"],
+  onEvent: Parameters<typeof startWatcherNativeChainSync>[0]["onEvent"],
 ) =>
-  await startWatcherNativeChainSyncV1({
+  await startWatcherNativeChainSync({
     binaryPath: "/test/native-chain-sync",
     watcherConfig: config(),
     intersection: INTERSECTION,
@@ -156,27 +156,27 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         },
         { kind: "roll_backward", point: INTERSECTION },
       ]);
-      expect(
-        watcherNativeChainSyncAuthorityDetailsV1(runtime.authority),
-      ).toEqual({
-        network: "Preprod",
-        authorityNodeId: "watcher-node",
-        genesisIdentitySha256: GENESIS,
-        socketPath: "/run/cardano/node.socket",
-        startupDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
-        selectedIntersection: INTERSECTION,
-        currentTip: {
-          blockHash: "44".repeat(32),
-          blockNo: "12",
-          kind: "point",
-          slot: "103",
+      expect(watcherNativeChainSyncAuthorityDetails(runtime.authority)).toEqual(
+        {
+          network: "Preprod",
+          authorityNodeId: "watcher-node",
+          genesisIdentitySha256: GENESIS,
+          socketPath: "/run/cardano/node.socket",
+          startupDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+          selectedIntersection: INTERSECTION,
+          currentTip: {
+            blockHash: "44".repeat(32),
+            blockNo: "12",
+            kind: "point",
+            slot: "103",
+          },
         },
-      });
-      const context = establishWatcherLocalNodeAuthorityTransportV1(
+      );
+      const context = establishWatcherLocalNodeAuthorityTransport(
         runtime.authority,
       );
       try {
-        expect(watcherL1TransportAttestationDetailsV1(context)).toMatchObject({
+        expect(watcherL1TransportAttestationDetails(context)).toMatchObject({
           provider: {
             network: "Preprod",
             providerId: "watcher-node",
@@ -193,7 +193,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
           transportEndpoint: "/run/cardano/node.socket",
         });
       } finally {
-        closeWatcherL1TransportAttestationContextV1(context);
+        closeWatcherL1TransportAttestationContext(context);
       }
     } finally {
       await runtime.close();
@@ -211,7 +211,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     const invoke = async (
       readIdentityFile: (path: string) => Promise<Uint8Array>,
     ) =>
-      await startWatcherNativeChainSyncV1({
+      await startWatcherNativeChainSync({
         binaryPath: "/test/native-chain-sync",
         watcherConfig: config(),
         intersection: INTERSECTION,
@@ -261,7 +261,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
   });
 
   it("retries durable ancestors one process at a time and binds explicit Origin", async () => {
-    const runtime = await startWatcherNativeChainSyncWithRetryV1({
+    const runtime = await startWatcherNativeChainSyncWithRetry({
       binaryPath: "/test/native-chain-sync",
       watcherConfig: config(),
       intersectionCandidates: [INTERSECTION, { kind: "origin" }],
@@ -272,7 +272,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
     });
     try {
       expect(
-        watcherNativeChainSyncAuthorityDetailsV1(runtime.authority)
+        watcherNativeChainSyncAuthorityDetails(runtime.authority)
           ?.selectedIntersection,
       ).toEqual({ kind: "origin" });
     } finally {
@@ -288,7 +288,7 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
       kind: "roll_forward",
       prevHash: "aa".repeat(32),
       rawBlockCbor: "80",
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
       slot: "101",
       tip: {
         blockHash: "cc".repeat(32),
@@ -297,21 +297,21 @@ describe("native Cardano node-to-client chain-sync supervisor", () => {
         slot: "102",
       },
     };
-    expect(parseWatcherNativeChainSyncEventV1(event)).toEqual(event);
+    expect(parseWatcherNativeChainSyncEvent(event)).toEqual(event);
     expect(() =>
-      parseWatcherNativeChainSyncEventV1({ ...event, trusted: true }),
+      parseWatcherNativeChainSyncEvent({ ...event, trusted: true }),
     ).toThrow("unknown or missing");
     expect(() =>
-      parseWatcherNativeChainSyncEventV1({ ...event, slot: "0101" }),
+      parseWatcherNativeChainSyncEvent({ ...event, slot: "0101" }),
     ).toThrow("slot is invalid");
     expect(() =>
-      parseWatcherNativeChainSyncEventV1({ ...event, rawBlockCbor: "0" }),
+      parseWatcherNativeChainSyncEvent({ ...event, rawBlockCbor: "0" }),
     ).toThrow("CBOR is invalid");
     expect(
-      parseWatcherNativeChainSyncEventV1({
+      parseWatcherNativeChainSyncEvent({
         kind: "roll_backward",
         point: { kind: "origin" },
-        schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
         tip: { kind: "origin" },
       }),
     ).toMatchObject({ kind: "roll_backward", point: { kind: "origin" } });

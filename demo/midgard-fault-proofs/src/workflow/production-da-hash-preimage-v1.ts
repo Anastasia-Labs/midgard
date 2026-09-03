@@ -1,13 +1,13 @@
 import {
-  DA_HASH_PREIMAGE_VIOLATION_ID_V1,
+  DA_HASH_PREIMAGE_VIOLATION_ID,
   DaHashPreimageStep02Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  DA_HASH_PREIMAGE_EVIDENCE_V1_SCHEMA_VERSION,
-  prepareDaHashPreimageFromCommittedLeavesV1,
+  DA_HASH_PREIMAGE_EVIDENCE_SCHEMA_VERSION,
+  prepareDaHashPreimageFromCommittedLeaves,
   type PreparedDaHashPreimageOutput,
 } from "../prepare-da-hash-preimage.js";
 import {
@@ -23,58 +23,58 @@ import {
 import { submitDaHashPreimageStep02 } from "../submit-da-hash-preimage-step-02.js";
 import { submitInit } from "../submit-init.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runDaHashPreimageWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runDaHashPreimageWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyCapturedActionV1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyCapturedAction,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_DA_HASH_PREIMAGE_ARTIFACT_V1 =
+export const DA_HASH_PREIMAGE_ARTIFACT =
   "midgard-production-da-hash-preimage-artifact-v1" as const;
 
-type DaHashPreimageArtifactEntryV1 = readonly [string, string];
+type DaHashPreimageArtifactEntry = readonly [string, string];
 
-export type ProductionDaHashPreimageArtifactV1 = JournalJsonObjectV1 & {
-  readonly schemaVersion: typeof PRODUCTION_DA_HASH_PREIMAGE_ARTIFACT_V1;
+export type DaHashPreimageArtifact = JournalJsonObject & {
+  readonly schemaVersion: typeof DA_HASH_PREIMAGE_ARTIFACT;
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;
   readonly l2TransactionCount: number;
   readonly committedTxId: string;
-  readonly entries: readonly DaHashPreimageArtifactEntryV1[];
+  readonly entries: readonly DaHashPreimageArtifactEntry[];
 };
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -132,11 +132,11 @@ const artifactInput = (
   readonly committedTransactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly committedTxId: string;
-  readonly entries: readonly DaHashPreimageArtifactEntryV1[];
+  readonly entries: readonly DaHashPreimageArtifactEntry[];
 } => {
   const candidate = record(value, "da-hash-preimage workflow artifact");
   exactKeys(candidate, artifactFields, "da-hash-preimage workflow artifact");
-  if (candidate.schemaVersion !== PRODUCTION_DA_HASH_PREIMAGE_ARTIFACT_V1) {
+  if (candidate.schemaVersion !== DA_HASH_PREIMAGE_ARTIFACT) {
     throw new Error("da-hash-preimage workflow artifact version changed");
   }
   if (
@@ -193,11 +193,11 @@ const artifactInput = (
  * leaves. No verdict, proof, or decoded transaction claim is trusted from the
  * durable artifact.
  */
-export const admitProductionDaHashPreimageArtifactV1 = async (
+export const admitDaHashPreimageArtifact = async (
   value: unknown,
 ): Promise<PreparedDaHashPreimageOutput> => {
   const admitted = artifactInput(value);
-  return await prepareDaHashPreimageFromCommittedLeavesV1({
+  return await prepareDaHashPreimageFromCommittedLeaves({
     headerHash: admitted.headerHash,
     committedTransactionsRoot: admitted.committedTransactionsRoot,
     l2TransactionCount: admitted.l2TransactionCount,
@@ -210,20 +210,20 @@ const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
 /** Creates the minimal raw-leaf artifact from the independently routed plan. */
-export const productionDaHashPreimageArtifactV1 = async (
+export const daHashPreimageArtifact = async (
   plan: PreparedDaHashPreimageOutput,
-): Promise<ProductionDaHashPreimageArtifactV1> => {
+): Promise<DaHashPreimageArtifact> => {
   if (
-    plan.schemaVersion !== DA_HASH_PREIMAGE_EVIDENCE_V1_SCHEMA_VERSION ||
-    plan.violationId !== DA_HASH_PREIMAGE_VIOLATION_ID_V1 ||
+    plan.schemaVersion !== DA_HASH_PREIMAGE_EVIDENCE_SCHEMA_VERSION ||
+    plan.violationId !== DA_HASH_PREIMAGE_VIOLATION_ID ||
     plan.files !== undefined
   ) {
     throw new Error(
       "da-hash-preimage production plan is not an in-memory authenticated raw-leaf plan",
     );
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_DA_HASH_PREIMAGE_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: DA_HASH_PREIMAGE_ARTIFACT,
     headerHash: plan.headerHash,
     committedTransactionsRoot: plan.committedTransactionsRoot,
     l2TransactionCount: plan.l2TransactionCount,
@@ -231,8 +231,8 @@ export const productionDaHashPreimageArtifactV1 = async (
     entries: plan.leaves.map(
       (leaf) => [leaf.committedTxId, leaf.committedLeafValueCbor] as const,
     ),
-  }) as ProductionDaHashPreimageArtifactV1;
-  const rederived = await admitProductionDaHashPreimageArtifactV1(artifact);
+  }) as DaHashPreimageArtifact;
+  const rederived = await admitDaHashPreimageArtifact(artifact);
   if (
     rederived.violationId !== plan.violationId ||
     rederived.headerHash !== plan.headerHash ||
@@ -248,35 +248,35 @@ export const productionDaHashPreimageArtifactV1 = async (
   return Object.freeze(artifact);
 };
 
-export type DaHashPreimageWorkflowReferenceScriptsV1 = Readonly<{
+export type DaHashPreimageWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-type BoundDaHashPreimageTransactionsConfigV1 = Readonly<{
+type BoundDaHashPreimageTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"daHashPreimage">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"daHashPreimage">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  referenceScripts: DaHashPreimageWorkflowReferenceScriptsV1;
+  referenceScripts: DaHashPreimageWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
 
-type DaHashPreimageBuilderSetV1 = Readonly<{
+type DaHashPreimageBuilderSet = Readonly<{
   init: typeof submitInit;
   step01: typeof submitDaHashPreimageStep01;
   step02: typeof submitDaHashPreimageStep02;
   remove: typeof submitRemoveFraudulentBlock;
 }>;
 
-const productionBuilders: DaHashPreimageBuilderSetV1 = Object.freeze({
+const productionBuilders: DaHashPreimageBuilderSet = Object.freeze({
   init: submitInit,
   step01: submitDaHashPreimageStep01,
   step02: submitDaHashPreimageStep02,
@@ -284,7 +284,7 @@ const productionBuilders: DaHashPreimageBuilderSetV1 = Object.freeze({
 });
 
 const requiredAction = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "da-hash-preimage workflow action");
   if (
@@ -308,21 +308,21 @@ const stringField = (
   return value;
 };
 
-const createBoundDaHashPreimageTransactionPortV1 = ({
+const createBoundDaHashPreimageTransactionPort = ({
   config,
   builders,
 }: {
-  readonly config: BoundDaHashPreimageTransactionsConfigV1;
-  readonly builders: DaHashPreimageBuilderSetV1;
-}): ProductionLinearFamilyTransactionPortV1<"daHashPreimage"> => {
+  readonly config: BoundDaHashPreimageTransactionsConfig;
+  readonly builders: DaHashPreimageBuilderSet;
+}): LinearFamilyTransactionPort<"daHashPreimage"> => {
   const capture = async ({
     action,
     artifact,
   }: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-  }): Promise<ProductionLinearFamilyCapturedActionV1> => {
-    const plan = await admitProductionDaHashPreimageArtifactV1(artifact);
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<LinearFamilyCapturedAction> => {
+    const plan = await admitDaHashPreimageArtifact(artifact);
     if (plan.headerHash !== config.headerHash) {
       throw new Error(
         "da-hash-preimage artifact targets a different manifest-bound header",
@@ -330,7 +330,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.init({
             lucid: config.lucid,
@@ -350,7 +350,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step01({
             lucid: config.lucid,
@@ -371,7 +371,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step02({
             lucid: config.lucid,
@@ -401,7 +401,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
       };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           await builders.remove({
             lucid: config.lucid,
@@ -416,7 +416,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
             fraudProverRewardLovelace: config.fraudProverRewardLovelace,
             preSubmitBoundary: async (transaction) => {
               if (
-                !workflowTransactionInputOutRefsV1(transaction.signed).includes(
+                !workflowTransactionInputOutRefs(transaction.signed).includes(
                   nextRemovalOutRef,
                 )
               ) {
@@ -425,7 +425,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
                 );
               }
               if (
-                !workflowTransactionReferenceInputOutRefsV1(
+                !workflowTransactionReferenceInputOutRefs(
                   transaction.signed,
                 ).includes(fraudProofOutRef)
               ) {
@@ -448,7 +448,7 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
     );
   };
   return Object.freeze({
-    portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+    portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
     category: "daHashPreimage",
     prepare: async () => {
       throw new Error(
@@ -459,25 +459,25 @@ const createBoundDaHashPreimageTransactionPortV1 = ({
   });
 };
 
-export type ManifestBoundDaHashPreimageWorkflowConfigV1 = Readonly<{
+export type ManifestBoundDaHashPreimageWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: DaHashPreimageWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: DaHashPreimageWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundDaHashPreimageWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"daHashPreimage">;
-  l1: FraudProofFamilyL1ObservationPortV1<"daHashPreimage">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"daHashPreimage">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundDaHashPreimageWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"daHashPreimage">;
+  l1: FraudProofFamilyL1ObservationPort<"daHashPreimage">;
+  transactions: LinearFamilyTransactionPort<"daHashPreimage">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
 /**
@@ -486,10 +486,10 @@ export type ManifestBoundDaHashPreimageWorkflowV1 = Readonly<{
  * Readiness remains missing until the dedicated evidence route enters the
  * shared durable workflow loop without manufacturing canonical evidence.
  */
-export const createManifestBoundDaHashPreimageWorkflowV1 = async (
-  config: ManifestBoundDaHashPreimageWorkflowConfigV1,
-): Promise<ManifestBoundDaHashPreimageWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundDaHashPreimageWorkflow = async (
+  config: ManifestBoundDaHashPreimageWorkflowConfig,
+): Promise<ManifestBoundDaHashPreimageWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -501,49 +501,49 @@ export const createManifestBoundDaHashPreimageWorkflowV1 = async (
       DaHashPreimageStep02Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
-  const references: DaHashPreimageWorkflowReferenceScriptsV1 = Object.freeze({
+  const references: DaHashPreimageWorkflowReferenceScripts = Object.freeze({
     steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofDaHashPreimage",
         utxo: config.referenceScripts.steps[0],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofDaHashPreimageStep02",
         utxo: config.referenceScripts.steps[1],
       }),
     ] as const),
     witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: config.referenceScripts.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: config.referenceScripts.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
       }),
     }),
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const transactions = createBoundDaHashPreimageTransactionPortV1({
+  const transactions = createBoundDaHashPreimageTransactionPort({
     config: {
       lucid: config.lucid,
       blueprint: binding.blueprint,
@@ -564,38 +564,37 @@ export const createManifestBoundDaHashPreimageWorkflowV1 = async (
     binding,
     l1,
     transactions,
-    adapter: createProductionLinearFamilyWorkflowAdapterV1({
+    adapter: createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1,
       transactions,
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
     }),
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
 /** Exact public-DA Q44 route into the shared durable lifecycle. */
-export const runOrResumeManifestBoundDaHashPreimageWorkflowV1 = async ({
+export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundDaHashPreimageWorkflowV1;
+  readonly workflow: ManifestBoundDaHashPreimageWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runDaHashPreimageWorkflowFromRetainedDaV1({
+  return await runDaHashPreimageWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    registry: createFraudProofWorkflowRegistryV1({
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["daHashPreimage"],
     }),
@@ -607,7 +606,7 @@ export const runOrResumeManifestBoundDaHashPreimageWorkflowV1 = async ({
 
 /** Narrow builder-injection seam for focused tests; never admit this as ready. */
 export const unsafeCreateDaHashPreimageTransactionPortForTest = (input: {
-  readonly config: BoundDaHashPreimageTransactionsConfigV1;
-  readonly builders: DaHashPreimageBuilderSetV1;
-}): ProductionLinearFamilyTransactionPortV1<"daHashPreimage"> =>
-  createBoundDaHashPreimageTransactionPortV1(input);
+  readonly config: BoundDaHashPreimageTransactionsConfig;
+  readonly builders: DaHashPreimageBuilderSet;
+}): LinearFamilyTransactionPort<"daHashPreimage"> =>
+  createBoundDaHashPreimageTransactionPort(input);

@@ -1,12 +1,12 @@
 import { submitNativeScriptDecodingInit } from "../native-script-decoding/submit-native-script-decoding-init.js";
-import type { ExecutionSourceScriptDecodingContractsV1 } from "./contracts-v1.js";
+import type { ExecutionSourceScriptDecodingContracts } from "./contracts-v1.js";
 
-export const submitExecutionSourceScriptDecodingInitV1 = async (
+export const submitExecutionSourceScriptDecodingInit = async (
   args: Omit<
     Parameters<typeof submitNativeScriptDecodingInit>[0],
     "contracts"
   > & {
-    readonly contracts: ExecutionSourceScriptDecodingContractsV1;
+    readonly contracts: ExecutionSourceScriptDecodingContracts;
   },
 ) =>
   await submitNativeScriptDecodingInit(

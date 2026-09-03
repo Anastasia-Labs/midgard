@@ -18,8 +18,8 @@ vi.mock("@al-ft/midgard-sdk", async () => {
   return {
     ...actual,
     fetchSortedStateQueueUTxOsProgram: vi.fn(),
-    getStateQueueNodeV1FromStateQueueDatum: vi.fn(),
-    hashBlockHeaderV1: vi.fn(),
+    getStateQueueNodeFromStateQueueDatum: vi.fn(),
+    hashBlockHeader: vi.fn(),
   };
 });
 
@@ -32,7 +32,7 @@ const DA_ATTESTATION_POLICY_ID = "22".repeat(28);
 const AVAILABILITY_CHALLENGE_POLICY_ID = "33".repeat(28);
 const ATTESTED = {
   Attested: { da_bond_asset_name: "44".repeat(32) },
-} satisfies SDK.DaAvailabilityStateQueueStatusV1;
+} satisfies SDK.DaAvailabilityStateQueueStatus;
 
 const observation = (
   override: Partial<CanonicalDaAttestationObservation> = {},
@@ -160,8 +160,8 @@ describe("DA-attested reconciliation", () => {
 
   it("uses configured Cardano state-queue evidence even when a watcher URL is supplied", async () => {
     const fetchSorted = vi.mocked(SDK.fetchSortedStateQueueUTxOsProgram);
-    const getNode = vi.mocked(SDK.getStateQueueNodeV1FromStateQueueDatum);
-    const hashHeader = vi.mocked(SDK.hashBlockHeaderV1);
+    const getNode = vi.mocked(SDK.getStateQueueNodeFromStateQueueDatum);
+    const hashHeader = vi.mocked(SDK.hashBlockHeader);
     const watcherFetch = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(

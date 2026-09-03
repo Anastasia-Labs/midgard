@@ -7,13 +7,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   E2E_MANAGED_SERVICE_SCHEMA_VERSION,
-  parseManagedServiceSummaryV1,
+  parseManagedServiceSummary,
 } from "../src/commands/e2e-service.js";
 import {
   classifyServiceError,
   E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
   inspectPidFile,
-  parseServiceSupervisorSummaryV1,
+  parseServiceSupervisorSummary,
   probeHttpEndpoint,
   superviseHostProcess,
 } from "../src/e2e/service-supervisor.js";
@@ -108,33 +108,33 @@ describe("e2e host process supervisor", () => {
     });
 
     expect(summary.status).toBe("exited_success");
-    expect(parseServiceSupervisorSummaryV1(summary)).toEqual(summary);
+    expect(parseServiceSupervisorSummary(summary)).toEqual(summary);
     expect(summary.restartCount).toBe(1);
     expect(summary.attempts).toHaveLength(2);
     expect(summary.attempts[0]?.classification.class).toBe(
       "transient_provider",
     );
     const { service: _service, ...missingService } = summary;
-    expect(() => parseServiceSupervisorSummaryV1(missingService)).toThrow(
+    expect(() => parseServiceSupervisorSummary(missingService)).toThrow(
       "missing required field",
     );
     expect(() =>
-      parseServiceSupervisorSummaryV1({ ...summary, unexpected: true }),
+      parseServiceSupervisorSummary({ ...summary, unexpected: true }),
     ).toThrow("unknown field");
     expect(() =>
-      parseServiceSupervisorSummaryV1({
+      parseServiceSupervisorSummary({
         ...summary,
         schemaVersion: "midgard-e2e-service-supervisor-v0",
       }),
     ).toThrow(E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION);
     expect(() =>
-      parseServiceSupervisorSummaryV1({
+      parseServiceSupervisorSummary({
         ...summary,
         restartCount: 0,
       }),
     ).toThrow("terminal verdict or attempt history is inconsistent");
     expect(() =>
-      parseServiceSupervisorSummaryV1({
+      parseServiceSupervisorSummary({
         ...summary,
         status: "failed",
       }),
@@ -350,34 +350,34 @@ describe("e2e service probes", () => {
         envInheritance: "none",
       },
     } as const;
-    expect(parseManagedServiceSummaryV1(summary)).toEqual(summary);
+    expect(parseManagedServiceSummary(summary)).toEqual(summary);
     const { pid: _pid, ...missingPid } = summary;
-    expect(() => parseManagedServiceSummaryV1(missingPid)).toThrow(
+    expect(() => parseManagedServiceSummary(missingPid)).toThrow(
       "missing required field",
     );
     expect(() =>
-      parseManagedServiceSummaryV1({ ...summary, unexpected: true }),
+      parseManagedServiceSummary({ ...summary, unexpected: true }),
     ).toThrow("unknown field");
     expect(() =>
-      parseManagedServiceSummaryV1({
+      parseManagedServiceSummary({
         ...summary,
         schemaVersion: "midgard-e2e-managed-service-v0",
       }),
     ).toThrow(E2E_MANAGED_SERVICE_SCHEMA_VERSION);
     expect(() =>
-      parseManagedServiceSummaryV1({
+      parseManagedServiceSummary({
         ...summary,
         ready: { ...probe, unexpected: true },
       }),
     ).toThrow("unknown field");
     expect(() =>
-      parseManagedServiceSummaryV1({
+      parseManagedServiceSummary({
         ...summary,
         pidFile: { ...summary.pidFile, pid: 124 },
       }),
     ).toThrow("pid ownership or readiness evidence is inconsistent");
     expect(() =>
-      parseManagedServiceSummaryV1({
+      parseManagedServiceSummary({
         ...summary,
         ready: {
           ...probe,

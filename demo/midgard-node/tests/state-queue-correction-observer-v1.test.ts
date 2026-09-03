@@ -3,24 +3,24 @@ import { createHash } from "node:crypto";
 import {
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
-  deriveStateQueueAuthenticatedReplayCheckpointV1,
-  deriveStateQueueAuthenticatedTransitionV1,
+  deriveStateQueueAuthenticatedReplayCheckpoint,
+  deriveStateQueueAuthenticatedTransition,
   LinkedListDatum,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  type StateQueueAuthenticatedTransitionV1,
+  type StateQueueAuthenticatedTransition,
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
-  type StateQueueTransitionNodeV1,
+  type StateQueueTransitionNode,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  makeLocalKupmiosStateQueueCorrectionSourceV1,
-  parseStateQueueCorrectionObserverStateV1,
-  reconcileStateQueueCorrectionObserverV1,
-  type StateQueueCorrectionObserverSourceV1,
-  type StateQueueCorrectionObserverStoreV1,
+  makeLocalKupmiosStateQueueCorrectionSource,
+  parseStateQueueCorrectionObserverState,
+  reconcileStateQueueCorrectionObserver,
+  type StateQueueCorrectionObserverSource,
+  type StateQueueCorrectionObserverStore,
 } from "../src/services/state-queue-correction-observer-v1.js";
 
 const h28 = (byte: string): string => byte.repeat(56);
@@ -49,18 +49,18 @@ const canonicalJson = (value: unknown): string => {
 const sha256 = (value: unknown): string =>
   createHash("sha256").update(canonicalJson(value)).digest("hex");
 
-const before: readonly StateQueueTransitionNodeV1[] = [
+const before: readonly StateQueueTransitionNode[] = [
   { headerHash: null, outRef: outRef("0") },
   { headerHash: target, outRef: outRef("1") },
   { headerHash: descendant, outRef: outRef("2") },
 ];
-const after: readonly StateQueueTransitionNodeV1[] = [
+const after: readonly StateQueueTransitionNode[] = [
   { headerHash: null, outRef: outRef("0") },
   { headerHash: target, outRef: `${transactionHash}#0` },
 ];
 
 const authenticatedTransition = (txHash = transactionHash) =>
-  deriveStateQueueAuthenticatedTransitionV1({
+  deriveStateQueueAuthenticatedTransition({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     transactionHash: txHash,
@@ -121,7 +121,7 @@ const authenticatedTransition = (txHash = transactionHash) =>
 
 const authenticatedFraudTransition = () => {
   const txHash = h32("d");
-  return deriveStateQueueAuthenticatedTransitionV1({
+  return deriveStateQueueAuthenticatedTransition({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     transactionHash: txHash,
@@ -186,7 +186,7 @@ const authenticatedFraudTransition = () => {
 };
 
 const checkpointFromTerminal = (transition = authenticatedTransition()) =>
-  deriveStateQueueAuthenticatedReplayCheckpointV1({
+  deriveStateQueueAuthenticatedReplayCheckpoint({
     deploymentIdentityDigest: transition.deploymentIdentityDigest,
     stateQueuePolicyId: transition.stateQueuePolicyId,
     transactionHash: transition.transactionHash,
@@ -219,7 +219,7 @@ const appendCheckpoint = ({
 }: {
   transactionByte: string;
   headerHash: string;
-  previousQueue: readonly StateQueueTransitionNodeV1[];
+  previousQueue: readonly StateQueueTransitionNode[];
   blockNo: number;
 }) => {
   const transaction = h32(transactionByte);
@@ -229,7 +229,7 @@ const appendCheckpoint = ({
     { headerHash: priorTail.headerHash, outRef: `${transaction}#0` },
     { headerHash, outRef: `${transaction}#1` },
   ];
-  return deriveStateQueueAuthenticatedReplayCheckpointV1({
+  return deriveStateQueueAuthenticatedReplayCheckpoint({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     transactionHash: transaction,
@@ -274,7 +274,7 @@ const appendCheckpoint = ({
   })!;
 };
 
-const memoryStore = (): StateQueueCorrectionObserverStoreV1 & {
+const memoryStore = (): StateQueueCorrectionObserverStore & {
   current: () => unknown | null;
 } => {
   let value: unknown | null = null;
@@ -290,7 +290,7 @@ const memoryStore = (): StateQueueCorrectionObserverStoreV1 & {
 const harness = () => {
   let queue = before;
   type Observation = Awaited<
-    ReturnType<StateQueueCorrectionObserverSourceV1["observeTransitions"]>
+    ReturnType<StateQueueCorrectionObserverSource["observeTransitions"]>
   >[number];
   let observations: readonly Observation[] | "gap" = [checkpointFromTerminal()];
   let depth: bigint | null = 1n;
@@ -301,7 +301,7 @@ const harness = () => {
     }
     return observations;
   });
-  const source: StateQueueCorrectionObserverSourceV1 = {
+  const source: StateQueueCorrectionObserverSource = {
     readQueue: async () => queue,
     observeTransitions,
     canonicalDepth: async (transition) =>
@@ -311,7 +311,7 @@ const harness = () => {
   };
   return {
     source,
-    setQueue: (next: readonly StateQueueTransitionNodeV1[]) => {
+    setQueue: (next: readonly StateQueueTransitionNode[]) => {
       queue = next;
     },
     setDepth: (next: bigint | null) => {
@@ -338,18 +338,18 @@ const run = async ({
   persistTerminal,
   revokeTerminal,
 }: {
-  source: StateQueueCorrectionObserverSourceV1;
-  store: StateQueueCorrectionObserverStoreV1;
-  reinclude: (transition: StateQueueAuthenticatedTransitionV1) => Promise<void>;
-  restore: (transition: StateQueueAuthenticatedTransitionV1) => Promise<void>;
+  source: StateQueueCorrectionObserverSource;
+  store: StateQueueCorrectionObserverStore;
+  reinclude: (transition: StateQueueAuthenticatedTransition) => Promise<void>;
+  restore: (transition: StateQueueAuthenticatedTransition) => Promise<void>;
   persistTerminal?: Parameters<
-    typeof reconcileStateQueueCorrectionObserverV1
+    typeof reconcileStateQueueCorrectionObserver
   >[0]["persistTerminal"];
   revokeTerminal?: Parameters<
-    typeof reconcileStateQueueCorrectionObserverV1
+    typeof reconcileStateQueueCorrectionObserver
   >[0]["revokeTerminal"];
 }) =>
-  await reconcileStateQueueCorrectionObserverV1({
+  await reconcileStateQueueCorrectionObserver({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     requiredFinalityDepth: 30n,
@@ -375,7 +375,7 @@ describe("node-owned state-queue correction observer", () => {
     await run({ source: h.source, store, reinclude, restore });
     expect(reinclude).not.toHaveBeenCalled();
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())?.pending,
+      parseStateQueueCorrectionObserverState(store.current())?.pending,
     ).toHaveLength(1);
 
     h.setDepth(30n);
@@ -443,7 +443,7 @@ describe("node-owned state-queue correction observer", () => {
     await run({ source: h.source, store, reinclude, restore });
     expect(reinclude).toHaveBeenCalledTimes(1);
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())
+      parseStateQueueCorrectionObserverState(store.current())
         ?.retractedTransactionHashes,
     ).not.toContain(transactionHash);
   });
@@ -551,12 +551,12 @@ describe("node-owned state-queue correction observer", () => {
       expect.objectContaining({ transactionHash: replacementHash }),
     );
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())?.admitted.map(
+      parseStateQueueCorrectionObserverState(store.current())?.admitted.map(
         ({ transactionHash: hash }) => hash,
       ),
     ).toEqual([replacementHash]);
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())?.cursorQueue,
+      parseStateQueueCorrectionObserverState(store.current())?.cursorQueue,
     ).toEqual(replacementQueue);
   });
 
@@ -591,7 +591,7 @@ describe("node-owned state-queue correction observer", () => {
     expect(restore).toHaveBeenCalledTimes(1);
     expect(h.observeTransitions).toHaveBeenLastCalledWith(before, replacement);
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())?.cursorQueue,
+      parseStateQueueCorrectionObserverState(store.current())?.cursorQueue,
     ).toEqual(replacement);
   });
 
@@ -606,13 +606,13 @@ describe("node-owned state-queue correction observer", () => {
       ...checkpointFromTerminal(),
       checkpointKind: "merge",
     } as unknown as Awaited<
-      ReturnType<StateQueueCorrectionObserverSourceV1["observeTransitions"]>
+      ReturnType<StateQueueCorrectionObserverSource["observeTransitions"]>
     >[number]);
     await expect(
       run({ source: h.source, store, reinclude, restore }),
     ).rejects.toThrow(/checkpoint replay/u);
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())?.cursorQueue,
+      parseStateQueueCorrectionObserverState(store.current())?.cursorQueue,
     ).toEqual(before);
     expect(reinclude).not.toHaveBeenCalled();
 
@@ -621,7 +621,7 @@ describe("node-owned state-queue correction observer", () => {
       run({ source: h.source, store, reinclude, restore }),
     ).rejects.toThrow(/cursor retained/);
     expect(
-      parseStateQueueCorrectionObserverStateV1(store.current())?.cursorQueue,
+      parseStateQueueCorrectionObserverState(store.current())?.cursorQueue,
     ).toEqual(before);
   });
 
@@ -635,13 +635,13 @@ describe("node-owned state-queue correction observer", () => {
       restore: async () => undefined,
     });
     expect(
-      parseStateQueueCorrectionObserverStateV1({
+      parseStateQueueCorrectionObserverState({
         ...(store.current() as object),
         completedAuthority: true,
       }),
     ).toBeNull();
     expect(
-      parseStateQueueCorrectionObserverStateV1({
+      parseStateQueueCorrectionObserverState({
         ...(store.current() as object),
         stateDigest: h32("f"),
       }),
@@ -679,7 +679,7 @@ describe("node-owned state-queue correction observer", () => {
     const { stateDigest: _stateDigest, ...forgedWithoutStateDigest } =
       forgedState;
     expect(
-      parseStateQueueCorrectionObserverStateV1({
+      parseStateQueueCorrectionObserverState({
         ...forgedWithoutStateDigest,
         stateDigest: sha256(forgedWithoutStateDigest),
       }),
@@ -870,7 +870,7 @@ describe("node-owned state-queue correction observer", () => {
       };
       return socket;
     };
-    const source = makeLocalKupmiosStateQueueCorrectionSourceV1({
+    const source = makeLocalKupmiosStateQueueCorrectionSource({
       deploymentIdentityDigest: deployment,
       stateQueuePolicyId: policy,
       stateQueueAddress: "addr_test_state_queue",
@@ -909,7 +909,7 @@ describe("node-owned state-queue correction observer", () => {
       }[] = [];
       const spendByOutRef = new Map<string, (typeof transactions)[number]>();
       const offlineLockInput = outRef("f", 0);
-      let current: readonly StateQueueTransitionNodeV1[] = before;
+      let current: readonly StateQueueTransitionNode[] = before;
       for (let index = 0; index < 3; index += 1) {
         const isTimeout = index === timeoutIndex;
         const txHash = h32(["c", "d", "e"][index]!);
@@ -1157,7 +1157,7 @@ describe("node-owned state-queue correction observer", () => {
           },
         };
       };
-      const source = makeLocalKupmiosStateQueueCorrectionSourceV1({
+      const source = makeLocalKupmiosStateQueueCorrectionSource({
         deploymentIdentityDigest: deployment,
         stateQueuePolicyId: policy,
         stateQueueAddress,

@@ -377,11 +377,11 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   });
   let seededBoundaryMs = latestEndTimeMs;
   if (latestBlock.datum.key !== "Empty") {
-    const latestHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
+    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
       latestBlock.datum,
     );
     const latestHeaderHash = Buffer.from(
-      yield* SDK.hashBlockHeaderV1(latestHeader),
+      yield* SDK.hashBlockHeader(latestHeader),
       "hex",
     );
     const finalizedJournal =

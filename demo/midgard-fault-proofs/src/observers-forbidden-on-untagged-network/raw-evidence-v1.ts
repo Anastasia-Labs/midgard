@@ -1,28 +1,28 @@
 import {
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  type MidgardNativeTxFaultEvidenceMaterialV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  type MidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { daHashPreimageBlockEvidenceFromVerifiedPayloadV1 } from "../prepare-da-hash-preimage.js";
+import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatchV1,
+  requireTransactionsRootMatch,
 } from "../prepare-double-spend.js";
 
-export type AuthenticatedObserversForbiddenRawTransactionV1 = Readonly<{
+export type AuthenticatedObserversForbiddenRawTransaction = Readonly<{
   index: number;
   nodeTxId: string;
   l2TransactionSourceCbor: string;
   fullTransactionCbor: string;
-  material: MidgardNativeTxFaultEvidenceMaterialV1;
+  material: MidgardNativeTxFaultEvidenceMaterial;
 }>;
 
-export type ObserversForbiddenRawBlockEvidenceV1 = Readonly<{
+export type ObserversForbiddenRawBlockEvidence = Readonly<{
   schemaVersion: "midgard-observers-forbidden-raw-evidence-v1";
   headerHash: string;
   committedTransactionsRoot: string;
@@ -30,22 +30,22 @@ export type ObserversForbiddenRawBlockEvidenceV1 = Readonly<{
   transactionsPhasRoot: string;
   payloadEnvelopeSha256: string;
   payloadSha256: string;
-  transactions: readonly AuthenticatedObserversForbiddenRawTransactionV1[];
+  transactions: readonly AuthenticatedObserversForbiddenRawTransaction[];
 }>;
 
 /** Authenticated retained-DA seam that intentionally precedes block parsing. */
-export const observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1 = async ({
+export const observersForbiddenRawBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenanceV1;
+  readonly daProvenance: SDK.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<ObserversForbiddenRawBlockEvidenceV1> => {
-  const raw = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+}): Promise<ObserversForbiddenRawBlockEvidence> => {
+  const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
     observation,
     payloadEnvelopeCbor,
     daProvenance,
@@ -55,20 +55,20 @@ export const observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1 = async ({
   });
   const payloadCbor = Buffer.from(
     (
-      await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      await unwrapDaPayload(payloadEnvelopeCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
       })
     ).innerBytes,
   );
-  const payload = SDK.decodeDaPayloadV1(payloadCbor);
-  if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor))
+  const payload = SDK.decodeDaPayload(payloadCbor);
+  if (!SDK.encodeDaPayload(payload).equals(payloadCbor))
     throw new Error("observersForbidden DA payload is not canonical");
   const entries = raw.entries.map(([key, value]) => ({
     key: Buffer.from(key, "hex"),
     value: Buffer.from(value, "hex"),
   }));
   const trie = await buildTrieView(entries);
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: trie.root,
     expectedTransactionsRoot: raw.committedTransactionsRoot,
     count: raw.l2TransactionCount,
@@ -80,10 +80,10 @@ export const observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1 = async ({
     const fullTransactionCbor = preimages.get(key);
     if (fullTransactionCbor === undefined)
       throw new Error(`observersForbidden transaction preimage omitted ${key}`);
-    const source = Data.from(sourceCbor, SDK.L2TransactionSourceV1);
-    if (Data.to(source, SDK.L2TransactionSourceV1) !== sourceCbor)
+    const source = Data.from(sourceCbor, SDK.L2TransactionSource);
+    if (Data.to(source, SDK.L2TransactionSource) !== sourceCbor)
       throw new Error("observersForbidden transaction source is not canonical");
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(fullTransactionCbor, "hex"),
     );
     if (
@@ -121,11 +121,11 @@ export const observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1 = async ({
   });
 };
 
-export const observersForbiddenAcceptedMembershipV1 = async ({
+export const observersForbiddenAcceptedMembership = async ({
   block,
   transactionId,
 }: {
-  readonly block: ObserversForbiddenRawBlockEvidenceV1;
+  readonly block: ObserversForbiddenRawBlockEvidence;
   readonly transactionId: string;
 }) =>
   requireProof(

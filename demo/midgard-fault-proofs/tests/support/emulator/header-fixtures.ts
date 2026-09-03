@@ -1,10 +1,10 @@
-import { MIDGARD_PROTOCOL_V1_VERSION } from "@al-ft/midgard-core";
-import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
-  HeaderV1,
+  Header,
   OutputReference,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -29,8 +29,7 @@ export const deploymentManifest = (
   referenceScriptAuthPolicy: Record<string, unknown> = {},
 ) => ({
   referenceScriptAuthPolicy,
-  economics:
-    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+  economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   contracts,
 });
 
@@ -41,7 +40,7 @@ export const makeHeader = (
   l2TransactionCount = 0n,
   withdrawalsRoot = EMPTY_MERKLE_TREE_ROOT,
   withdrawalCount = 0n,
-): HeaderV1 => {
+): Header => {
   const totalEventCount = l2TransactionCount + withdrawalCount;
   const hasEvents = totalEventCount > 0n;
   const eventCommitmentRoot = hasEvents
@@ -51,7 +50,7 @@ export const makeHeader = (
     prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot,
-    ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+    ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
     l2TransactionCount,
     withdrawalCount,
     totalEventCount,
@@ -70,7 +69,7 @@ export const makeHeader = (
     minFeeB: 0n,
     prevHeaderHash: GENESIS_HEADER_HASH,
     operatorVkey,
-    protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
+    protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
   };
 };
 

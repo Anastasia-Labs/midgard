@@ -13,7 +13,7 @@ import { Effect, Metric } from "effect";
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
 import {
   applyTraceLedgerOpsToMpf,
-  buildNativeProductionRootProbe,
+  buildNativeRootProbe,
   buildTransitionTraceResult,
   configureMpfPathHydration,
   deleteMpfStore,
@@ -28,9 +28,9 @@ import {
   decodeCanonicalProbeRow,
 } from "./mpf-engine-probe-corpus.js";
 import {
-  decodeArchitectureGCorpusFundingV1,
-  decodeArchitectureGFixtureCreationV1,
-  validateArchitectureGRootProbeResultV1,
+  decodeArchitectureGCorpusFunding,
+  decodeArchitectureGFixtureCreation,
+  validateArchitectureGRootProbeResult,
 } from "./utils/mpf-commit-candidate-artifacts.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "./utils/mpf-flat-multiproof.js";
 import {
@@ -299,7 +299,7 @@ const loadCanonicalFundingMap = async (
       `Canonical corpus funding map SHA-256 mismatch: expected=${expectedSha256},actual=${actualSha256}`,
     );
   }
-  const parsed = decodeArchitectureGCorpusFundingV1({
+  const parsed = decodeArchitectureGCorpusFunding({
     value: JSON.parse(bytes.toString("utf8")) as unknown,
     expectedCorpusSha256: canonicalSlice.corpusSha256,
     expectedSliceSha256: canonicalSlice.sha256,
@@ -483,7 +483,7 @@ void Effect.runPromise(
           0,
         ),
       };
-      return decodeArchitectureGFixtureCreationV1({
+      return decodeArchitectureGFixtureCreation({
         value: {
           fixtureCreated: true,
           fixturePath: levelFixturePath,
@@ -570,7 +570,7 @@ void Effect.runPromise(
       const confirmedLedgerScansBefore = yield* Metric.value(
         confirmedLedgerFullScanCounter,
       );
-      const result = yield* buildNativeProductionRootProbe({
+      const result = yield* buildNativeRootProbe({
         nativeMpf,
         sourceEvents: architectureSourceEvents,
         transactionOps: architectureTransactionOps,
@@ -636,7 +636,7 @@ void Effect.runPromise(
         probePath,
         probeSha256,
       };
-      return validateArchitectureGRootProbeResultV1({
+      return validateArchitectureGRootProbeResult({
         value: artifact,
         expectedTransactionCount: transactionCount,
         expectedInitialUtxoCount: initialUtxoCount,

@@ -18,8 +18,8 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
 
 export type InvalidRangeViolationReason = NonNullable<
@@ -172,14 +172,14 @@ export const prepareInvalidRangeFromTransactions = async ({
   }
 
   const nativeTrie = await buildTrieView(
-    decoded.map(transactionSourceTrieItemV1),
+    decoded.map(transactionSourceTrieItem),
   );
   const proofCbor = requireProof(
     nativeTrie,
-    transactionSourceTrieItemV1(selected.tx).key,
+    transactionSourceTrieItem(selected.tx).key,
     "invalid-range tx",
   );
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
     count: BigInt(decoded.length),

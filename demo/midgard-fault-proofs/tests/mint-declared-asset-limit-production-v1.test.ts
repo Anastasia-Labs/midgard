@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  type ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1,
-  mintDeclaredAssetLimitActionIdV1,
-  mintDeclaredAssetLimitSubmissionPreludeV1,
-  reconcileMintDeclaredAssetLimitSubmissionIntentV1,
+  type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+  mintDeclaredAssetLimitActionId,
+  mintDeclaredAssetLimitSubmissionPrelude,
+  reconcileMintDeclaredAssetLimitSubmissionIntent,
 } from "../src/mint-declared-asset-limit/production-v1.js";
 
 describe("mintDeclaredAssetLimit package-owned production V1", () => {
@@ -20,7 +20,7 @@ describe("mintDeclaredAssetLimit package-owned production V1", () => {
       "decisionDigest",
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
-    ] as const satisfies readonly (keyof ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1)[];
+    ] as const satisfies readonly (keyof ManifestBoundMintDeclaredAssetLimitWorkflowConfig)[];
     expect(exactKeys).not.toContain("evidence" as never);
     expect(exactKeys).not.toContain("loadJournal" as never);
     expect(exactKeys).not.toContain("appendJournal" as never);
@@ -30,7 +30,7 @@ describe("mintDeclaredAssetLimit package-owned production V1", () => {
 
   it("journals the exact locally evaluated transaction intent before submission", () => {
     const txHash = "ab".repeat(32);
-    const events = mintDeclaredAssetLimitSubmissionPreludeV1({
+    const events = mintDeclaredAssetLimitSubmissionPrelude({
       actionId: "mintDeclaredAssetLimit:grammar:1",
       actionInput: {
         schemaVersion: "midgard-production-cursor-family-action-v1",
@@ -68,9 +68,9 @@ describe("mintDeclaredAssetLimit package-owned production V1", () => {
       threadOutRef: `${"11".repeat(32)}#0`,
       action: { kind: "grammar_resume" as const, nextOrdinal: 1 },
     };
-    const intendedActionId = mintDeclaredAssetLimitActionIdV1(intended);
+    const intendedActionId = mintDeclaredAssetLimitActionId(intended);
     expect(
-      reconcileMintDeclaredAssetLimitSubmissionIntentV1({
+      reconcileMintDeclaredAssetLimitSubmissionIntent({
         intendedActionId,
         txHash: "aa".repeat(32),
         transactionConfirmed: false,
@@ -78,7 +78,7 @@ describe("mintDeclaredAssetLimit package-owned production V1", () => {
       }),
     ).toEqual({ kind: "pending", txHash: "aa".repeat(32) });
     expect(
-      reconcileMintDeclaredAssetLimitSubmissionIntentV1({
+      reconcileMintDeclaredAssetLimitSubmissionIntent({
         intendedActionId,
         txHash: "aa".repeat(32),
         transactionConfirmed: false,

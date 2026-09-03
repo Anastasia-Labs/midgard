@@ -1,13 +1,13 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   DaPayloadContentEncoding,
-  decodeDaPayloadEnvelopeV1,
-  unwrapDaPayloadV1,
+  decodeDaPayloadEnvelope,
+  unwrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import {
-  makeDeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  makeDeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -21,7 +21,7 @@ import {
 import { DatabaseError } from "../src/database/utils/common.js";
 import {
   keyValuePhasRoot,
-  ledgerOutputToInsertBatchOpV1,
+  ledgerOutputToInsertBatchOp,
 } from "../src/mpf/index.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
@@ -34,7 +34,7 @@ const fixture = (label: string, length: number): Buffer =>
 
 const ledgerRoot = (entries: readonly [Buffer, Buffer][]) => {
   const operations = entries.map(([outRef, outputCbor]) =>
-    ledgerOutputToInsertBatchOpV1({ outRef, outputCbor }),
+    ledgerOutputToInsertBatchOp({ outRef, outputCbor }),
   );
   return keyValuePhasRoot(
     operations.map((operation) => operation.key),
@@ -97,7 +97,7 @@ const countsFromLengths = ({
   };
 };
 
-const headerFor = (roots: TestRoots, counts: TestCounts): SDK.HeaderV1 => ({
+const headerFor = (roots: TestRoots, counts: TestCounts): SDK.Header => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: roots.utxosRoot,
   withdrawalsRoot: roots.withdrawalsRoot,
@@ -125,8 +125,8 @@ const headerFor = (roots: TestRoots, counts: TestCounts): SDK.HeaderV1 => ({
   protocolVersion: 1n,
 });
 
-const headerCbor = (header: SDK.HeaderV1): Buffer =>
-  Buffer.from(LucidData.to(header as never, SDK.HeaderV1 as never), "hex");
+const headerCbor = (header: SDK.Header): Buffer =>
+  Buffer.from(LucidData.to(header as never, SDK.Header as never), "hex");
 
 const retainedPairs = (
   label: string,
@@ -184,7 +184,7 @@ const record = ({
   roots,
   counts,
   header,
-  consensusProfileId = MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  consensusProfileId = MIDGARD_CONSENSUS_PROFILE_ID,
 }: {
   readonly headerHash: Buffer;
   readonly utxoEntries?: readonly [Buffer, Buffer][];
@@ -196,8 +196,8 @@ const record = ({
   readonly eventToStepMembers: readonly PendingBlockFinalizationsDB.MemberRecord[];
   readonly roots: TestRoots;
   readonly counts: TestCounts;
-  readonly header: SDK.HeaderV1;
-  readonly consensusProfileId?: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  readonly header: SDK.Header;
+  readonly consensusProfileId?: typeof MIDGARD_CONSENSUS_PROFILE_ID;
 }): PendingBlockFinalizationsDB.Record => {
   const blockStart = new Date("2026-06-12T00:00:00.000Z");
   const blockEnd = new Date("2026-06-12T00:00:10.000Z");
@@ -205,14 +205,14 @@ const record = ({
     [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
     [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: headerCbor(header),
     [PendingBlockFinalizationsDB.Columns.FORMAT_VERSION]:
-      PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+      PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
     [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
-      PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
+      PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
         .LedgerDelta,
     [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
-      MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+      MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
     [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
-      makeDeploymentMarkerV1("de".repeat(32)).manifestId,
+      makeDeploymentMarker("de".repeat(32)).manifestId,
     [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
       consensusProfileId,
     [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: null,
@@ -338,7 +338,7 @@ const buildJournalFixture = async ({
   recordRootOverrides = {},
 }: JournalFixtureOptions): Promise<{
   readonly roots: TestRoots;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly headerHash: Buffer;
   readonly pending: PendingBlockFinalizationsDB.Record;
 }> => {
@@ -386,7 +386,7 @@ const buildJournalFixture = async ({
   };
   const header = headerFor(roots, counts);
   const headerHash = Buffer.from(
-    await Effect.runPromise(SDK.hashBlockHeaderV1(header)),
+    await Effect.runPromise(SDK.hashBlockHeader(header)),
     "hex",
   );
   const memberRecords = (entries: readonly [Buffer, Buffer][]) =>
@@ -430,7 +430,7 @@ describe("DaPayloadV1 builder", () => {
     };
     const header = headerFor(roots, counts);
     const headerHash = Buffer.from(
-      await Effect.runPromise(SDK.hashBlockHeaderV1(header)),
+      await Effect.runPromise(SDK.hashBlockHeader(header)),
       "hex",
     );
     const pending = record({
@@ -442,7 +442,7 @@ describe("DaPayloadV1 builder", () => {
       roots,
       counts,
       header,
-      consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+      consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     });
 
     const insert = await Effect.runPromise(
@@ -452,16 +452,16 @@ describe("DaPayloadV1 builder", () => {
         envelope: { mode: "identity", zstdLevel: 3 },
       }),
     );
-    const unwrapped = await unwrapDaPayloadV1(insert.payload_cbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    const unwrapped = await unwrapDaPayload(insert.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
-    expect(decodeDaPayloadEnvelopeV1(insert.payload_cbor).contentEncoding).toBe(
+    expect(decodeDaPayloadEnvelope(insert.payload_cbor).contentEncoding).toBe(
       DaPayloadContentEncoding.identity,
     );
-    const payload = SDK.decodeDaPayloadV1(unwrapped.innerBytes);
+    const payload = SDK.decodeDaPayload(unwrapped.innerBytes);
 
     expect(insert.version).toBe(1);
-    expect(payload.version).toBe(SDK.DA_PAYLOAD_V1_VERSION);
+    expect(payload.version).toBe(SDK.DA_PAYLOAD_VERSION);
     expect(payload.block_body.transaction_preimages).toEqual([]);
     expect(payload.block_body.forced_transaction_preimages).toEqual([]);
     expect(payload.block_body.header).toEqual(header);
@@ -491,10 +491,10 @@ describe("DaPayloadV1 builder", () => {
         utxos: utxoEntries.map(([outref, output]) => ({ outref, output })),
       }),
     );
-    const identityUnwrapped = await unwrapDaPayloadV1(insert.payload_cbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    const identityUnwrapped = await unwrapDaPayload(insert.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
-    const payload = SDK.decodeDaPayloadV1(identityUnwrapped.innerBytes);
+    const payload = SDK.decodeDaPayload(identityUnwrapped.innerBytes);
 
     expect(payload.block_body.header_hash).toBe(headerHash.toString("hex"));
     expect(payload.block_body.header).toEqual(header);
@@ -522,11 +522,11 @@ describe("DaPayloadV1 builder", () => {
         envelope: { mode: "zstd", zstdLevel: 3 },
       }),
     );
-    const unwrapped = await unwrapDaPayloadV1(zstdInsert.payload_cbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    const unwrapped = await unwrapDaPayload(zstdInsert.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
     expect(
-      decodeDaPayloadEnvelopeV1(zstdInsert.payload_cbor).contentEncoding,
+      decodeDaPayloadEnvelope(zstdInsert.payload_cbor).contentEncoding,
     ).toBe(DaPayloadContentEncoding.zstd);
     expect(zstdInsert.version).toBe(1);
     expect(unwrapped.innerBytes).toEqual(identityUnwrapped.innerBytes);
@@ -572,11 +572,11 @@ describe("DaPayloadV1 builder", () => {
       skipped: [],
     });
     expect(inserts).toHaveLength(1);
-    const backfilled = await unwrapDaPayloadV1(inserts[0]!.payload_cbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    const backfilled = await unwrapDaPayload(inserts[0]!.payload_cbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
     expect(
-      SDK.decodeDaPayloadV1(backfilled.innerBytes).block_body.header_hash,
+      SDK.decodeDaPayload(backfilled.innerBytes).block_body.header_hash,
     ).toBe(headerHash.toString("hex"));
   });
 

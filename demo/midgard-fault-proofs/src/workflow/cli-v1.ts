@@ -4,32 +4,31 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-import { DirectoryFraudProofWorkflowJournalStoreV1 } from "./journal-v1.js";
-import type { ProductionWorkflowActuationPermitV1 } from "./production-actuation-permit-v1.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "./journal-v1.js";
+import type { WorkflowActuationPermit } from "./production-actuation-permit-v1.js";
 import {
-  assertProductionWorkflowAdaptersReadyV1,
-  missingProductionWorkflowAdaptersV1,
-  PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1,
-  PRODUCTION_WORKFLOW_ADAPTER_REGISTRY_V1_SCHEMA_VERSION,
-  productionWorkflowAdapterRunnerV1,
-  type ProductionWorkflowApplicationRegistryV1,
-  validateProductionWorkflowAdapterCoverageV1,
+  assertWorkflowAdaptersReady,
+  missingWorkflowAdapters,
+  validateWorkflowAdapterCoverage,
+  WORKFLOW_ADAPTER_REGISTRATIONS,
+  WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION,
+  workflowAdapterRunner,
+  type WorkflowApplicationRegistry,
 } from "./production-adapters-v1.js";
-import type { ProductionWorkflowFundingReservationPermitV1 } from "./production-funding-reservation-permit-v1.js";
+import type { WorkflowFundingReservationPermit } from "./production-funding-reservation-permit-v1.js";
 
-export const productionWorkflowReadinessReportV1 = (
+export const workflowReadinessReport = (
   launchScope: readonly FraudProofCatalogueCategoryName[] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  applicationRegistry?: ProductionWorkflowApplicationRegistryV1,
+  applicationRegistry?: WorkflowApplicationRegistry,
 ) => {
   const registryRegistrations =
-    applicationRegistry?.registrations ??
-    PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1;
-  validateProductionWorkflowAdapterCoverageV1(registryRegistrations);
+    applicationRegistry?.registrations ?? WORKFLOW_ADAPTER_REGISTRATIONS;
+  validateWorkflowAdapterCoverage(registryRegistrations);
   const registrations = registryRegistrations.filter((registration) =>
     launchScope.includes(registration.category),
   );
   return {
-    schemaVersion: PRODUCTION_WORKFLOW_ADAPTER_REGISTRY_V1_SCHEMA_VERSION,
+    schemaVersion: WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION,
     deploymentFingerprint: applicationRegistry?.deploymentFingerprint ?? null,
     installedCategoryCount:
       applicationRegistry?.installedCategories.length ?? 0,
@@ -38,7 +37,7 @@ export const productionWorkflowReadinessReportV1 = (
     readyCategoryCount: registrations.filter(
       (registration) => registration.status === "ready",
     ).length,
-    missingCategoryCount: missingProductionWorkflowAdaptersV1(
+    missingCategoryCount: missingWorkflowAdapters(
       launchScope,
       applicationRegistry,
     ).length,
@@ -52,7 +51,7 @@ export const productionWorkflowReadinessReportV1 = (
  * Runtime config names infrastructure and credentials only; production proof
  * evidence still comes exclusively from authenticated L1 and public DA.
  */
-export const runProductionFraudProofWorkflowCliV1 = async ({
+export const runFraudProofWorkflowCli = async ({
   mode,
   category,
   deploymentFingerprint,
@@ -72,10 +71,10 @@ export const runProductionFraudProofWorkflowCliV1 = async ({
   readonly runtimeConfigPath: string;
   /** Opaque authority minted from the admitted classifier decision. */
   readonly decisionDigest?: string;
-  readonly actuationPermit?: ProductionWorkflowActuationPermitV1;
-  readonly fundingReservationPermit?: ProductionWorkflowFundingReservationPermitV1;
+  readonly actuationPermit?: WorkflowActuationPermit;
+  readonly fundingReservationPermit?: WorkflowFundingReservationPermit;
   /** Application-installed only after signed deployment identity admission. */
-  readonly applicationRegistry?: ProductionWorkflowApplicationRegistryV1;
+  readonly applicationRegistry?: WorkflowApplicationRegistry;
 }): Promise<unknown> => {
   normalizeDaDeploymentFingerprintHex(deploymentFingerprint);
   if (
@@ -106,20 +105,19 @@ export const runProductionFraudProofWorkflowCliV1 = async ({
   }
   // Construction is side-effect free. The directory is created only by an
   // actual append after a complete adapter has admitted canonical evidence.
-  void new DirectoryFraudProofWorkflowJournalStoreV1(journalDirectory);
-  assertProductionWorkflowAdaptersReadyV1([category], applicationRegistry);
-  return await productionWorkflowAdapterRunnerV1(
-    category,
-    applicationRegistry,
-  ).runOrResume({
-    mode,
-    category,
-    deploymentFingerprint,
-    headerHash,
-    decisionDigest,
-    actuationPermit,
-    fundingReservationPermit,
-    journalDirectory,
-    runtimeConfigPath,
-  });
+  void new DirectoryFraudProofWorkflowJournalStore(journalDirectory);
+  assertWorkflowAdaptersReady([category], applicationRegistry);
+  return await workflowAdapterRunner(category, applicationRegistry).runOrResume(
+    {
+      mode,
+      category,
+      deploymentFingerprint,
+      headerHash,
+      decisionDigest,
+      actuationPermit,
+      fundingReservationPermit,
+      journalDirectory,
+      runtimeConfigPath,
+    },
+  );
 };

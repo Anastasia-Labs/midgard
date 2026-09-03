@@ -112,7 +112,7 @@ const depositInfo: SDK.DepositInfo = {
   l2_datum: null,
 };
 
-const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
+const forcedInclusionTx: SDK.ForcedInclusionTx = {
   tx_id: H32_A,
   source: {
     compact_cbor: "80",

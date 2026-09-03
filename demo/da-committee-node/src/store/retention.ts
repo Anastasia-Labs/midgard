@@ -1,12 +1,12 @@
 import {
-  daRetentionPruneDecisionV1,
-  MIDGARD_RETENTION_WINDOW_V1,
-  retentionDeadlineAlertV1,
-  type RetentionPruneDecisionV1,
+  daRetentionPruneDecision,
+  MIDGARD_RETENTION_WINDOW,
+  retentionDeadlineAlert,
+  type RetentionPruneDecision,
 } from "@al-ft/midgard-core";
 
 import type {
-  DaStoredPayloadRecordV1,
+  DaStoredPayloadRecord,
   StateQueueHeaderRecord,
 } from "../domain.js";
 import type { WatcherStore } from "../store.js";
@@ -21,7 +21,7 @@ import type { WatcherStore } from "../store.js";
  * fingerprint - retains.
  */
 
-export type RetentionCandidateV1 = {
+export type RetentionCandidate = {
   readonly headerHash: string;
   readonly deploymentFingerprint: string;
   readonly blockEndTimeMs: number | null;
@@ -31,10 +31,10 @@ export type RetentionCandidateV1 = {
   readonly terminalHistoryAuthorityMismatch: boolean;
   readonly availabilityChallengeAuthorityMismatch: boolean;
   readonly activeAvailabilityChallenge: boolean;
-  readonly decision: RetentionPruneDecisionV1;
+  readonly decision: RetentionPruneDecision;
 };
 
-export type RetentionScanOptionsV1 = {
+export type RetentionScanOptions = {
   readonly nowMs: number;
   readonly retentionDays?: number;
   /**
@@ -108,17 +108,17 @@ const hasAuthenticatedTerminalHistory = (
  * Joins retained DA payloads to their state-queue headers and applies the core
  * retention decision to each pair.
  */
-export const retentionCandidatesV1 = async (
+export const retentionCandidates = async (
   store: WatcherStore,
-  options: RetentionScanOptionsV1,
-): Promise<readonly RetentionCandidateV1[]> => {
+  options: RetentionScanOptions,
+): Promise<readonly RetentionCandidate[]> => {
   const payloads = await store.listDaPayloads();
   const headers = await store.listStateQueueHeaders();
   const headerByHash = new Map<string, StateQueueHeaderRecord>(
     headers.map((header) => [header.headerHash, header]),
   );
 
-  return payloads.map((payload: DaStoredPayloadRecordV1) => {
+  return payloads.map((payload: DaStoredPayloadRecord) => {
     const header = headerByHash.get(payload.headerHash);
     const blockEndTimeMs = blockEndTimeMsOf(header);
     const fingerprintMismatch =
@@ -147,7 +147,7 @@ export const retentionCandidatesV1 = async (
       : activeAvailabilityChallenge
         ? "active"
         : "inactive";
-    const decision = daRetentionPruneDecisionV1(
+    const decision = daRetentionPruneDecision(
       { headerHash: payload.headerHash, blockEndTimeMs },
       {
         nowMs: options.nowMs,
@@ -177,16 +177,16 @@ export const retentionCandidatesV1 = async (
   });
 };
 
-export type RetentionPruneResultV1 = {
+export type RetentionPruneResult = {
   readonly scanned: number;
   readonly prunedHeaderHashes: readonly string[];
   readonly retained: number;
 };
 
-const pruneRetentionCandidatesV1 = async (
+const pruneRetentionCandidates = async (
   store: WatcherStore,
-  candidates: readonly RetentionCandidateV1[],
-): Promise<RetentionPruneResultV1> => {
+  candidates: readonly RetentionCandidate[],
+): Promise<RetentionPruneResult> => {
   const prunedHeaderHashes: string[] = [];
   for (const candidate of candidates) {
     if (
@@ -216,24 +216,24 @@ const pruneRetentionCandidatesV1 = async (
  * Terminal status must come from authenticated ordered L1 transition history;
  * neither local disappearance nor a latest-root snapshot is sufficient.
  */
-export const pruneExpiredDaPayloadsV1 = async (
+export const pruneExpiredDaPayloads = async (
   store: WatcherStore,
-  options: RetentionScanOptionsV1,
-): Promise<RetentionPruneResultV1> => {
-  const candidates = await retentionCandidatesV1(store, options);
-  return pruneRetentionCandidatesV1(store, candidates);
+  options: RetentionScanOptions,
+): Promise<RetentionPruneResult> => {
+  const candidates = await retentionCandidates(store, options);
+  return pruneRetentionCandidates(store, candidates);
 };
 
-export type RetentionDeadlineEntryV1 = {
+export type RetentionDeadlineEntry = {
   readonly headerHash: string;
-  readonly reasonCode: RetentionPruneDecisionV1["reasonCode"];
+  readonly reasonCode: RetentionPruneDecision["reasonCode"];
   readonly challengeableUntilMs: number | null;
   readonly remainingMs: number | null;
   readonly headroomMs: number | null;
   readonly alerting: boolean;
 };
 
-export type RetentionDeadlineReportV1 = {
+export type RetentionDeadlineReport = {
   readonly nowMs: number;
   readonly requiredRetentionMs: number;
   readonly deployedRetentionMs: number;
@@ -243,19 +243,19 @@ export type RetentionDeadlineReportV1 = {
   readonly retained: number;
   readonly prunable: number;
   readonly alerting: number;
-  readonly entries: readonly RetentionDeadlineEntryV1[];
+  readonly entries: readonly RetentionDeadlineEntry[];
 };
 
-const retentionDeadlineReportFromCandidatesV1 = (
-  candidates: readonly RetentionCandidateV1[],
-  options: RetentionScanOptionsV1 & { readonly alertThresholdMs?: number },
-): RetentionDeadlineReportV1 => {
+const retentionDeadlineReportFromCandidates = (
+  candidates: readonly RetentionCandidate[],
+  options: RetentionScanOptions & { readonly alertThresholdMs?: number },
+): RetentionDeadlineReport => {
   const alertThresholdMs =
-    options.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW_V1.marginMs;
+    options.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW.marginMs;
   if (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
-  const entries = candidates.map<RetentionDeadlineEntryV1>((candidate) => {
+  const entries = candidates.map<RetentionDeadlineEntry>((candidate) => {
     if (
       candidate.blockEndTimeMs === null ||
       candidate.fingerprintMismatch ||
@@ -273,7 +273,7 @@ const retentionDeadlineReportFromCandidatesV1 = (
         alerting: true,
       };
     }
-    const alert = retentionDeadlineAlertV1({
+    const alert = retentionDeadlineAlert({
       nowMs: options.nowMs,
       blockEndTimeMs: candidate.blockEndTimeMs,
       retentionDays: options.retentionDays,
@@ -294,9 +294,9 @@ const retentionDeadlineReportFromCandidatesV1 = (
   ).length;
   return {
     nowMs: options.nowMs,
-    requiredRetentionMs: MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
-    deployedRetentionMs: MIDGARD_RETENTION_WINDOW_V1.deployedRetentionMs,
-    marginMs: MIDGARD_RETENTION_WINDOW_V1.marginMs,
+    requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
+    deployedRetentionMs: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
+    marginMs: MIDGARD_RETENTION_WINDOW.marginMs,
     alertThresholdMs,
     scanned: candidates.length,
     retained: candidates.length - prunable,
@@ -307,32 +307,29 @@ const retentionDeadlineReportFromCandidatesV1 = (
 };
 
 /** Executable deadline report over the retained DA payload set. */
-export const retentionDeadlineReportV1 = async (
+export const retentionDeadlineReport = async (
   store: WatcherStore,
-  options: RetentionScanOptionsV1 & { readonly alertThresholdMs?: number },
-): Promise<RetentionDeadlineReportV1> => {
-  const candidates = await retentionCandidatesV1(store, options);
-  return retentionDeadlineReportFromCandidatesV1(candidates, options);
+  options: RetentionScanOptions & { readonly alertThresholdMs?: number },
+): Promise<RetentionDeadlineReport> => {
+  const candidates = await retentionCandidates(store, options);
+  return retentionDeadlineReportFromCandidates(candidates, options);
 };
 
-export type RetentionCycleResultV1 = {
-  readonly deadlines: RetentionDeadlineReportV1;
-  readonly prune: RetentionPruneResultV1;
+export type RetentionCycleResult = {
+  readonly deadlines: RetentionDeadlineReport;
+  readonly prune: RetentionPruneResult;
 };
 
 /** One non-overlapping production retention cycle: report before deletion. */
-export const runRetentionCycleV1 = async (
+export const runRetentionCycle = async (
   store: WatcherStore,
-  options: RetentionScanOptionsV1 & { readonly alertThresholdMs?: number },
-): Promise<RetentionCycleResultV1> => {
+  options: RetentionScanOptions & { readonly alertThresholdMs?: number },
+): Promise<RetentionCycleResult> => {
   // Use one joined snapshot for both reporting and deletion. Incoming DA writes
   // may run concurrently with the watcher tick; a second scan could otherwise
   // delete a record that was never present in the preceding report.
-  const candidates = await retentionCandidatesV1(store, options);
-  const deadlines = retentionDeadlineReportFromCandidatesV1(
-    candidates,
-    options,
-  );
-  const prune = await pruneRetentionCandidatesV1(store, candidates);
+  const candidates = await retentionCandidates(store, options);
+  const deadlines = retentionDeadlineReportFromCandidates(candidates, options);
+  const prune = await pruneRetentionCandidates(store, candidates);
   return { deadlines, prune };
 };

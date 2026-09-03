@@ -1,37 +1,37 @@
 /** Authenticated retained-DA preparation for the Q35 network-id family. */
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardLedgerOutputCommitment,
+  decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
-  type NetworkIdFaultV1,
-  type NetworkIdPostUtxoPredecessorV1,
+  type NetworkIdFault,
+  type NetworkIdPostUtxoPredecessor,
   type OutputReference,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  blockTransactionsFromCanonicalEvidenceV1,
-  type CanonicalBlockEvidenceV1,
+  blockTransactionsFromCanonicalEvidence,
+  type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalEvidenceBuilderInputV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence-v1.js";
-import type { FaultProofFieldOpeningPlanV1 } from "../field-opening-v1.js";
-import { planFaultProofFieldOpeningV1 } from "../field-opening-v1.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../field-opening-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
   keyValuePhasNonMembershipProof,
@@ -39,25 +39,25 @@ import {
   keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
 import {
-  findNetworkIdFaultsV1,
-  type NetworkIdFaultClaimV1,
-  type RetainedDaNetworkIdEvidenceV1,
+  findNetworkIdFaults,
+  type NetworkIdFaultClaim,
+  type RetainedDaNetworkIdEvidence,
 } from "./evidence-v1.js";
-import type { PreparedNetworkIdWrongfulRejectionV1 } from "./wrongful-rejection-v1.js";
+import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection-v1.js";
 
-export type PreparedNetworkIdProofV1 = {
+export type PreparedNetworkIdProof = {
   readonly headerHash: string;
   readonly expectedNetworkId: 0n | 1n;
   readonly badTxId: string;
   readonly nativeTxCanonicalCbor: string;
   readonly nativeTxCompactCbor: string;
   readonly outputsItemCbors: readonly string[];
-  readonly faultClaim: NetworkIdFaultClaimV1;
-  readonly fault: NetworkIdFaultV1;
+  readonly faultClaim: NetworkIdFaultClaim;
+  readonly fault: NetworkIdFault;
   readonly txInclusion: PreparedTxInclusionJson;
 };
 
-export type NetworkIdPostUtxoFaultClaimV1 = {
+export type NetworkIdPostUtxoFaultClaim = {
   readonly kind: "post-utxo-network";
   readonly outRef: OutputReference;
   readonly observedNetworkId: bigint;
@@ -68,7 +68,7 @@ export type NetworkIdPostUtxoFaultClaimV1 = {
  * `header.utxos_root`; it never carries or reconstructs the full output in the
  * proof transaction.
  */
-export type PreparedNetworkIdPostUtxoProofV1 = {
+export type PreparedNetworkIdPostUtxoProof = {
   readonly headerHash: string;
   readonly expectedNetworkId: 0n | 1n;
   readonly outRef: OutputReference;
@@ -78,34 +78,34 @@ export type PreparedNetworkIdPostUtxoProofV1 = {
   readonly prevUtxosRoot: string;
   readonly membershipProofCbor: string;
   readonly membershipProof: Proof;
-  readonly predecessor: NetworkIdPostUtxoPredecessorV1;
+  readonly predecessor: NetworkIdPostUtxoPredecessor;
   readonly predecessorProof: Proof;
   readonly predecessorProofCbor: string;
-  readonly faultClaim: NetworkIdPostUtxoFaultClaimV1;
-  readonly fault: NetworkIdFaultV1;
+  readonly faultClaim: NetworkIdPostUtxoFaultClaim;
+  readonly fault: NetworkIdFault;
 };
 
-const wireFault = (claim: NetworkIdFaultClaimV1): NetworkIdFaultV1 =>
+const wireFault = (claim: NetworkIdFaultClaim): NetworkIdFault =>
   claim.kind === "transaction-network"
-    ? ("TransactionNetwork" as NetworkIdFaultV1)
+    ? ("TransactionNetwork" as NetworkIdFault)
     : ({
         OutputNetwork: { output_index: claim.outputIndex },
-      } as NetworkIdFaultV1);
+      } as NetworkIdFault);
 
 /**
  * Selects the first deterministic Q35 violation from authenticated public
  * block evidence and emits the exact native inclusion proof consumed by step
  * 01. A requested transaction must both exist and convict.
  */
-export const prepareNetworkIdFromCanonicalEvidenceV1 = async ({
+export const prepareNetworkIdFromCanonicalEvidence = async ({
   evidence,
   expectedNetworkId,
   badTxId,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly expectedNetworkId: 0n | 1n;
   readonly badTxId?: string;
-}): Promise<PreparedNetworkIdProofV1> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+}): Promise<PreparedNetworkIdProof> => {
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   const decoded = await Promise.all(
     admitted.transactions.map(decodeTransactionMaterial),
   );
@@ -115,12 +115,12 @@ export const prepareNetworkIdFromCanonicalEvidenceV1 = async ({
   }
   const candidates = decoded.flatMap((tx) => {
     if (requested !== undefined && tx.nodeTxId !== requested) return [];
-    const retained: RetainedDaNetworkIdEvidenceV1 = {
+    const retained: RetainedDaNetworkIdEvidence = {
       source: "retained-da",
       evidenceSourceId: evidence.provenance.da.sourceId,
       nativeTxCanonicalCbor: tx.txCbor,
     };
-    return findNetworkIdFaultsV1({
+    return findNetworkIdFaults({
       evidence: retained,
       expectedNetworkId,
     }).map((faultClaim) => ({ tx, faultClaim }));
@@ -134,16 +134,16 @@ export const prepareNetworkIdFromCanonicalEvidenceV1 = async ({
     );
   }
   const nativeTrie = await buildTrieView(
-    decoded.map(transactionSourceTrieItemV1),
+    decoded.map(transactionSourceTrieItem),
   );
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: nativeTrie.root,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     count: BigInt(decoded.length),
   });
   const proofCbor = requireProof(
     nativeTrie,
-    transactionSourceTrieItemV1(selected.tx).key,
+    transactionSourceTrieItem(selected.tx).key,
     "network-id transaction",
   );
   return {
@@ -152,7 +152,7 @@ export const prepareNetworkIdFromCanonicalEvidenceV1 = async ({
     badTxId: selected.tx.nodeTxId,
     nativeTxCanonicalCbor: selected.tx.txCbor,
     nativeTxCompactCbor: selected.tx.nativeCompactCbor,
-    outputsItemCbors: decodeMidgardFieldPreimageV1(
+    outputsItemCbors: decodeMidgardFieldPreimage(
       selected.tx.nativeTx.body.outputsPreimageCbor,
     ).map((item) => Buffer.from(item).toString("hex")),
     faultClaim: selected.faultClaim,
@@ -179,21 +179,21 @@ const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
  * deliberately excluded: descendants are corrected with their fraudulent
  * ancestor, but are not blamed for introducing its fault.
  */
-export const prepareNetworkIdPostUtxoFromCanonicalEvidenceV1 = async ({
+export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
   evidence,
   previousBlockEvidence,
   expectedNetworkId,
   outRef,
-}: CanonicalEvidenceBuilderInputV1 & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+}: CanonicalEvidenceBuilderInput & {
+  readonly previousBlockEvidence?: CanonicalBlockEvidence;
   readonly expectedNetworkId: 0n | 1n;
   readonly outRef?: OutputReference;
-}): Promise<PreparedNetworkIdPostUtxoProofV1> => {
+}): Promise<PreparedNetworkIdPostUtxoProof> => {
   // Reuses the canonical evidence admission without imposing the transaction
   // inclusion convention, which this independent post-state route does not use.
-  blockTransactionsFromCanonicalEvidenceV1(evidence);
+  blockTransactionsFromCanonicalEvidence(evidence);
   if (previousBlockEvidence !== undefined) {
-    blockTransactionsFromCanonicalEvidenceV1(previousBlockEvidence);
+    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
     if (previousBlockEvidence.headerHash !== evidence.header.prevHeaderHash) {
       throw new Error(
         "network-id previous block evidence is not the predecessor named by the challenged header",
@@ -212,15 +212,15 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidenceV1 = async ({
     );
   }
   const descriptorMembers = (
-    entries: CanonicalBlockEvidenceV1["reconstruction"]["utxos"],
+    entries: CanonicalBlockEvidence["reconstruction"]["utxos"],
   ) =>
     entries.map((entry) => {
-      const decodedOutRef = decodeMidgardSpendInputItemV1(entry.key);
-      const material = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      const decodedOutRef = decodeMidgardSpendInputItem(entry.key);
+      const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: entry.key,
         outputCbor: entry.value,
       });
-      const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+      const descriptor = decodeMidgardLedgerOutputCommitment(
         material.descriptorCbor,
       );
       if (descriptor.outputIndex !== decodedOutRef.outputIndex) {
@@ -285,7 +285,7 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidenceV1 = async ({
     selected.post.key,
     selected.post.value,
   );
-  let predecessor: NetworkIdPostUtxoPredecessorV1;
+  let predecessor: NetworkIdPostUtxoPredecessor;
   let predecessorProof: Proof;
   let predecessorProofCbor: string;
   if (selected.previous === undefined) {
@@ -310,7 +310,7 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidenceV1 = async ({
     predecessorProof = proof;
     predecessorProofCbor = Data.to(proof, Proof);
   }
-  const faultClaim: NetworkIdPostUtxoFaultClaimV1 = {
+  const faultClaim: NetworkIdPostUtxoFaultClaim = {
     kind: "post-utxo-network",
     outRef: selected.post.outRef,
     observedNetworkId: selected.post.observedNetworkId,
@@ -319,7 +319,7 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidenceV1 = async ({
     OutputNetworkUtxo: {
       observed_network_id: selected.post.observedNetworkId,
     },
-  } as NetworkIdFaultV1;
+  } as NetworkIdFault;
   return {
     headerHash: evidence.headerHash,
     expectedNetworkId,
@@ -339,17 +339,17 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidenceV1 = async ({
 };
 
 /** Plans field-2's canonical tier for an output-network claim. */
-export const planNetworkIdOutputsOpeningV1 = ({
+export const planNetworkIdOutputsOpening = ({
   prepared,
   owner,
   publish = false,
 }: {
   readonly prepared:
-    | PreparedNetworkIdProofV1
-    | PreparedNetworkIdWrongfulRejectionV1;
+    | PreparedNetworkIdProof
+    | PreparedNetworkIdWrongfulRejection;
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 => {
+}): FaultProofFieldOpeningPlan => {
   if (
     prepared.faultClaim.kind !== "output-network" &&
     prepared.faultClaim.kind !== "forced-network-mismatch"
@@ -358,7 +358,7 @@ export const planNetworkIdOutputsOpeningV1 = ({
       "transaction-network claims do not carry an outputs field opening",
     );
   }
-  return planFaultProofFieldOpeningV1({
+  return planFaultProofFieldOpening({
     fieldIndex: 2,
     anchorTxId: prepared.badTxId,
     nativeTxCompactCbor: prepared.nativeTxCompactCbor,

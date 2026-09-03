@@ -32,7 +32,7 @@ import type { Script } from "@lucid-evolution/lucid";
 export const NATIVE_SCRIPT_DECODING_CATEGORY_LABEL = "native-script-decoding";
 
 /** Blueprint titles of the six parameterized step validators. */
-export const NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 = {
+export const NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/native_script_decoding/step_01.main.spend",
   step02: "fraud_proofs/native_script_decoding/step_02.main.spend",
   step03OpenSubject:
@@ -45,7 +45,7 @@ export const NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 = {
 } as const;
 
 /** One deployed step of the `native-script-decoding` chain. */
-export type NativeScriptDecodingStepContractV1 = {
+export type NativeScriptDecodingStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -59,15 +59,15 @@ export type NativeScriptDecodingStepContractV1 = {
  * so callers that need one — thread-token asset names, catalogue lookups — take
  * it separately from the deployment they are actually talking to.
  */
-export type NativeScriptDecodingContractsV1 = {
+export type NativeScriptDecodingContracts = {
   /** Steps 01, 02, the three step-03 validators, and 04, in order. */
   readonly steps: readonly [
-    NativeScriptDecodingStepContractV1,
-    NativeScriptDecodingStepContractV1,
-    NativeScriptDecodingStepContractV1,
-    NativeScriptDecodingStepContractV1,
-    NativeScriptDecodingStepContractV1,
-    NativeScriptDecodingStepContractV1,
+    NativeScriptDecodingStepContract,
+    NativeScriptDecodingStepContract,
+    NativeScriptDecodingStepContract,
+    NativeScriptDecodingStepContract,
+    NativeScriptDecodingStepContract,
+    NativeScriptDecodingStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

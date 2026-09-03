@@ -4,8 +4,8 @@ import { type FileHandle, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
 import {
-  type DeploymentMarkerV1,
-  parseDeploymentMarkerV1,
+  type DeploymentMarker,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import { exactRecord } from "../artifact-schema.js";
@@ -35,7 +35,7 @@ export type DeploymentRunIdentity = {
   };
   readonly manifestPath?: string;
   readonly manifestSha256?: string;
-  readonly deploymentMarker?: DeploymentMarkerV1;
+  readonly deploymentMarker?: DeploymentMarker;
 };
 
 export type DeploymentStepStatus =
@@ -201,7 +201,7 @@ const parseStepStatus = (value: unknown): DeploymentStepStatus => {
   throw new RunStateError("step.status is invalid.");
 };
 
-export const parseDeploymentRunIdentityV1 = (
+export const parseDeploymentRunIdentity = (
   value: unknown,
 ): DeploymentRunIdentity => {
   const input = exactRunStateRecord(
@@ -376,7 +376,7 @@ export const parseDeploymentRunIdentityV1 = (
       : {
           deploymentMarker: (() => {
             try {
-              return parseDeploymentMarkerV1(input.deploymentMarker);
+              return parseDeploymentMarker(input.deploymentMarker);
             } catch (cause) {
               throw new RunStateError(
                 `identity.deploymentMarker is invalid: ${
@@ -401,7 +401,7 @@ export const parseDeploymentRunIdentityV1 = (
   return parsed;
 };
 
-export const bindDeploymentRunStateToMarkerV1 = (
+export const bindDeploymentRunStateToMarker = (
   state: DeploymentRunState,
   {
     marker,
@@ -409,7 +409,7 @@ export const bindDeploymentRunStateToMarkerV1 = (
     manifestSha256,
     now = new Date(),
   }: {
-    readonly marker: DeploymentMarkerV1;
+    readonly marker: DeploymentMarker;
     readonly manifestPath: string;
     readonly manifestSha256: string;
     readonly now?: Date;
@@ -417,7 +417,7 @@ export const bindDeploymentRunStateToMarkerV1 = (
 ): DeploymentRunState => {
   const canonicalMarker = (() => {
     try {
-      return parseDeploymentMarkerV1(marker);
+      return parseDeploymentMarker(marker);
     } catch (cause) {
       throw new RunStateError(
         `Cannot bind invalid deployment marker: ${
@@ -477,7 +477,7 @@ export const bindDeploymentRunStateToMarkerV1 = (
   });
 };
 
-export const parseDeploymentStepStateV1 = (
+export const parseDeploymentStepState = (
   value: unknown,
   label = "step",
 ): DeploymentStepState => {
@@ -523,7 +523,7 @@ export const parseDeploymentStepStateV1 = (
   return parsed;
 };
 
-export const parseDeploymentRunEventV1 = (
+export const parseDeploymentRunEvent = (
   value: unknown,
   label = "event",
 ): DeploymentRunEvent => {
@@ -557,7 +557,7 @@ const parseEvents = (value: unknown): readonly DeploymentRunEvent[] => {
     throw new RunStateError("events must be an array.");
   }
   return value.map((entry, index) =>
-    parseDeploymentRunEventV1(entry, `events[${index.toString()}]`),
+    parseDeploymentRunEvent(entry, `events[${index.toString()}]`),
   );
 };
 
@@ -581,7 +581,7 @@ export const parseDeploymentRunState = (value: unknown): DeploymentRunState => {
   const steps = Object.fromEntries(
     Object.entries(stepsInput).map(([stepId, step]) => [
       stepId,
-      parseDeploymentStepStateV1(step, `steps.${stepId}`),
+      parseDeploymentStepState(step, `steps.${stepId}`),
     ]),
   );
   const parsed: DeploymentRunState = {
@@ -590,7 +590,7 @@ export const parseDeploymentRunState = (value: unknown): DeploymentRunState => {
     createdAt: assertIsoString(input.createdAt, "createdAt"),
     updatedAt: assertIsoString(input.updatedAt, "updatedAt"),
     mode: parseMode(input.mode),
-    identity: parseDeploymentRunIdentityV1(input.identity),
+    identity: parseDeploymentRunIdentity(input.identity),
     steps,
     events: parseEvents(input.events),
   };

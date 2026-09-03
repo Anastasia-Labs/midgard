@@ -3,11 +3,11 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxCanonicalV1,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import {
   PhaseAValidatedTx,
@@ -187,8 +187,8 @@ const buildQueuedBlock = (
     `Tx fixture has ${txFixture.transactions.length} txs, but benchmark size ${size} was requested.`,
   );
   return txFixture.transactions.slice(0, size).map((tx, index) => {
-    const converted = decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    const converted = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(tx.cborHex, "hex"),
       ),
     );
@@ -208,14 +208,14 @@ const buildQueuedBlock = (
     };
     const txForQueue = {
       ...normalized,
-      compact: deriveMidgardNativeTxCompactV1(
+      compact: deriveMidgardNativeTxCompact(
         normalized.body,
         normalized.witnessSet,
         "TxIsValid",
       ),
     };
-    const nativeTxBytes = encodeMidgardNativeTxCanonicalV1(txForQueue);
-    const nativeTxId = computeMidgardNativeTxIdV1(txForQueue);
+    const nativeTxBytes = encodeMidgardNativeTxCanonical(txForQueue);
+    const nativeTxId = computeMidgardNativeTxId(txForQueue);
     return {
       txId: nativeTxId,
       txCbor: nativeTxBytes,

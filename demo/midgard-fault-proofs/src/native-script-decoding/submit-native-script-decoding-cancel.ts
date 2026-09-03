@@ -40,17 +40,17 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
-  type NativeScriptDecodingContractsV1,
+  type NativeScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  nativeScriptDecodingStepLabelV1,
+  nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
-  requireNativeScriptDecodingReferenceScriptV1,
+  requireNativeScriptDecodingReferenceScript,
 } from "./submit-common-v1.js";
 
 /**
@@ -85,7 +85,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
 }): 0 | 1 | 2 | 3 | 4 | 5 => {
   for (const stepIndex of [0, 1, 2, 3, 4, 5] as const) {
     if (
@@ -110,14 +110,14 @@ export const submitNativeScriptDecodingCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Q3: the located step's mandatory published reference script. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -126,7 +126,7 @@ export const submitNativeScriptDecodingCancel = async ({
     label: `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = nativeScriptDecodingStepLabelV1(stepIndex);
+  const stepLabel = nativeScriptDecodingStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -197,13 +197,13 @@ export const submitNativeScriptDecodingCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread burn`,
   });
   const referenceInputs = [
-    requireNativeScriptDecodingReferenceScriptV1({
+    requireNativeScriptDecodingReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,

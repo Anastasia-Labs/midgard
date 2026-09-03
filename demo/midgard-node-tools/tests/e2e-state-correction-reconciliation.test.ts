@@ -3,31 +3,31 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { computeDeploymentManifestV1JsonDigest } from "@al-ft/midgard-core";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
 import {
-  computeFraudProofWorkflowIdV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowTerminalV1,
-  journalJsonDigestV1,
-  normalizeJournalJsonV1,
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
+  journalJsonDigest,
+  normalizeJournalJson,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("midgard-node/deployment-manifest-v1", () => ({
-  parseDeploymentManifestV1Value: (value: unknown) => value,
+  parseDeploymentManifestValue: (value: unknown) => value,
 }));
 
-import type { E2EStateCorrectionAcceptanceV1 } from "../src/commands/e2e-state-correction-acceptance.js";
+import type { E2EStateCorrectionAcceptance } from "../src/commands/e2e-state-correction-acceptance.js";
 import {
   E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION,
   E2E_STATE_CORRECTION_FINAL_SNAPSHOT_SCHEMA_VERSION,
   E2E_STATE_CORRECTION_RECOVERY_OBSERVATION_SCHEMA_VERSION,
-  reconcileStateCorrectionIndependentEvidenceV1,
-  type StateCorrectionIndependentAuthorityV1,
-  type StateCorrectionIndependentSourcePathsV1,
+  reconcileStateCorrectionIndependentEvidence,
+  type StateCorrectionIndependentAuthority,
+  type StateCorrectionIndependentSourcePaths,
 } from "../src/commands/e2e-state-correction-reconciliation.js";
 
 const sha256 = (value: string | Uint8Array): string =>
@@ -72,16 +72,16 @@ const makeWorkflowEntries = ({
   readonly removalTxHash: string;
   readonly chainPoint: { readonly slot: string; readonly blockHash: string };
   readonly omitActionHistory: boolean;
-}): readonly FraudProofWorkflowJournalEntryV1[] => {
+}): readonly FraudProofWorkflowJournalEntry[] => {
   const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: manifestId,
     category: "doubleSpend" as const,
     target: { kind: "state_queue_header" as const, headerHash },
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
-  const terminal: FraudProofWorkflowTerminalV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
+  const workflowId = computeFraudProofWorkflowId(identity);
+  const terminal: FraudProofWorkflowTerminal = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
     category: "doubleSpend",
     headerHash,
     proofToken: {
@@ -109,12 +109,12 @@ const makeWorkflowEntries = ({
     },
     observedAt: { ...chainPoint, confirmationDepth: 2 },
   };
-  const events: FraudProofWorkflowJournalEntryV1["event"][] = [
+  const events: FraudProofWorkflowJournalEntry["event"][] = [
     { kind: "started" },
     {
       kind: "prepared",
       artifact: {},
-      artifactDigest: journalJsonDigestV1({}),
+      artifactDigest: journalJsonDigest({}),
     },
   ];
   txHashes.forEach((txHash, index) => {
@@ -155,10 +155,10 @@ const makeWorkflowEntries = ({
   events.push({
     kind: "completed",
     terminal,
-    terminalDigest: journalJsonDigestV1(normalizeJournalJsonV1(terminal)),
+    terminalDigest: journalJsonDigest(normalizeJournalJson(terminal)),
   });
   return events.map((event, sequence) => ({
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
     workflowId,
     identity,
     sequence,
@@ -177,9 +177,9 @@ const makeFixture = async ({
   readonly rejectAtIndependentAuthority?: boolean;
 } = {}): Promise<{
   readonly expectedRunId: string;
-  readonly claim: E2EStateCorrectionAcceptanceV1;
-  readonly paths: StateCorrectionIndependentSourcePathsV1;
-  readonly authority: StateCorrectionIndependentAuthorityV1;
+  readonly claim: E2EStateCorrectionAcceptance;
+  readonly paths: StateCorrectionIndependentSourcePaths;
+  readonly authority: StateCorrectionIndependentAuthority;
 }> => {
   const root = await mkdtemp(join(tmpdir(), "midgard-q57-independent-"));
   const runId = "q57-independent-rehearsal";
@@ -189,7 +189,7 @@ const makeFixture = async ({
   const blueprintBytes = Buffer.from("independent-blueprint");
   const releaseEvidenceBytes = Buffer.from("independent-release-evidence");
   const blueprintSha256 = sha256(blueprintBytes);
-  const parametersSha256 = computeDeploymentManifestV1JsonDigest(parameters);
+  const parametersSha256 = computeDeploymentManifestJsonDigest(parameters);
   const releaseEvidenceSha256 = sha256(releaseEvidenceBytes);
   const headerHash = "ab".repeat(28);
   const initTxHash = hash(10);
@@ -400,7 +400,7 @@ const makeFixture = async ({
     watcherState: "ready_after_reconciliation",
   };
   const recoveryDigest = await writeJson(recoveryPath, recovery);
-  const claim: E2EStateCorrectionAcceptanceV1 = {
+  const claim: E2EStateCorrectionAcceptance = {
     schemaVersion: "midgard-e2e-state-correction-acceptance-v1",
     runId,
     network: "Preprod",
@@ -598,7 +598,7 @@ const makeFixture = async ({
         throw new Error("independent live authority rejected final state");
       }
     }),
-  } satisfies StateCorrectionIndependentAuthorityV1;
+  } satisfies StateCorrectionIndependentAuthority;
 
   return {
     expectedRunId: runId,
@@ -621,8 +621,7 @@ const makeFixture = async ({
 describe("Q57 independent state-correction reconciliation", () => {
   it("derives all gates and confirmations from independent sources", async () => {
     const fixture = await makeFixture();
-    const evidence =
-      await reconcileStateCorrectionIndependentEvidenceV1(fixture);
+    const evidence = await reconcileStateCorrectionIndependentEvidence(fixture);
     expect(evidence.db).toHaveLength(6);
     expect(evidence.db.every((gate) => gate.status === "satisfied")).toBe(true);
     expect(
@@ -641,14 +640,14 @@ describe("Q57 independent state-correction reconciliation", () => {
   it("rejects a required transaction without an authenticated L1 observation", async () => {
     const fixture = await makeFixture({ omitL1Observation: true });
     await expect(
-      reconcileStateCorrectionIndependentEvidenceV1(fixture),
+      reconcileStateCorrectionIndependentEvidence(fixture),
     ).rejects.toThrow(/has no authenticated L1 observation/u);
   });
 
   it("rejects independently consistent sources bound to another run", async () => {
     const fixture = await makeFixture();
     await expect(
-      reconcileStateCorrectionIndependentEvidenceV1({
+      reconcileStateCorrectionIndependentEvidence({
         ...fixture,
         expectedRunId: "different-finalizer-run",
       }),
@@ -658,7 +657,7 @@ describe("Q57 independent state-correction reconciliation", () => {
   it("rejects a terminal journal assembled without authenticated action history", async () => {
     const fixture = await makeFixture({ omitActionHistory: true });
     await expect(
-      reconcileStateCorrectionIndependentEvidenceV1(fixture),
+      reconcileStateCorrectionIndependentEvidence(fixture),
     ).rejects.toThrow(
       /(?:lacks matching authenticated reconciliation|confirmation must follow matching confirmed reconciliation)/u,
     );
@@ -667,7 +666,7 @@ describe("Q57 independent state-correction reconciliation", () => {
   it("rejects fully self-consistent forged files when the independent live authority disagrees", async () => {
     const fixture = await makeFixture({ rejectAtIndependentAuthority: true });
     await expect(
-      reconcileStateCorrectionIndependentEvidenceV1(fixture),
+      reconcileStateCorrectionIndependentEvidence(fixture),
     ).rejects.toThrow(/independent live authority rejected transaction/u);
   });
 
@@ -697,7 +696,7 @@ describe("Q57 independent state-correction reconciliation", () => {
     );
     await writeJson(observationPath, observation);
     await expect(
-      reconcileStateCorrectionIndependentEvidenceV1(fixture),
+      reconcileStateCorrectionIndependentEvidence(fixture),
     ).rejects.toThrow(/Kupo\/Ogmios inclusion point mismatch/u);
   });
 });

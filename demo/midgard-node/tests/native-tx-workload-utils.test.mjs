@@ -3,16 +3,16 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardNativeTxWitnessSetCompactV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  deriveMidgardV1TxFieldPreimages,
-  encodeMidgardNativeTxCanonicalV1,
-  verifyMidgardNativeTxProofSourceV1,
-  verifyMidgardV1TxFieldPreimage,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxWitnessSetCompact,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  deriveMidgardNativeTxWitnessSetCompact,
+  deriveMidgardTxFieldPreimages,
+  encodeMidgardNativeTxCanonical,
+  verifyMidgardNativeTxProofSource,
+  verifyMidgardTxFieldPreimage,
 } from "@al-ft/midgard-core";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -28,19 +28,19 @@ test("workload producer emits strict canonical V1 fields with scripts at 6 and v
   });
   const canonicalCbor = Buffer.from(produced.txHex, "hex");
   const transaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+    decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const fields = deriveMidgardV1TxFieldPreimages(canonicalCbor);
-  const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const fields = deriveMidgardTxFieldPreimages(canonicalCbor);
+  const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
 
   assert.deepEqual(
-    encodeMidgardNativeTxCanonicalV1(transaction),
+    encodeMidgardNativeTxCanonical(transaction),
     canonicalCbor,
   );
-  assert.deepEqual(computeMidgardNativeTxIdV1(transaction), produced.txId);
+  assert.deepEqual(computeMidgardNativeTxId(transaction), produced.txId);
   assert.deepEqual(
-    verifyMidgardNativeTxProofSourceV1({
+    verifyMidgardNativeTxProofSource({
       transactionId: produced.txId,
       source,
     }),
@@ -57,8 +57,8 @@ test("workload producer emits strict canonical V1 fields with scripts at 6 and v
     transaction.witnessSet.addrTxWitsPreimageCbor,
   );
   assert.deepEqual(
-    decodeMidgardNativeTxWitnessSetCompactV1(source.witnessSetCompactCbor),
-    deriveMidgardNativeTxWitnessSetCompactV1(transaction.witnessSet),
+    decodeMidgardNativeTxWitnessSetCompact(source.witnessSetCompactCbor),
+    deriveMidgardNativeTxWitnessSetCompact(transaction.witnessSet),
   );
 
   for (const [fieldIndex, substitutedPreimage] of [
@@ -66,7 +66,7 @@ test("workload producer emits strict canonical V1 fields with scripts at 6 and v
     [7, fields[6].preimageCbor],
   ]) {
     assert.throws(() =>
-      verifyMidgardV1TxFieldPreimage({
+      verifyMidgardTxFieldPreimage({
         transactionId: produced.txId,
         transactionCommitment,
         source,

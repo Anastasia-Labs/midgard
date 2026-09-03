@@ -1,6 +1,6 @@
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -15,14 +15,14 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -33,22 +33,22 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { witnessWithdrawalValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
-import { planSpendInputSignerInputOpeningV1 } from "./field-plans-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
+import { planSpendInputSignerInputOpening } from "./field-plans-v1.js";
 import {
-  SpendInputSignerStep02DatumV1Schema,
-  SpendInputSignerStep02RedeemerV1Schema,
-  SpendInputSignerStep03DatumV1Schema,
+  SpendInputSignerStep02DatumSchema,
+  SpendInputSignerStep02RedeemerSchema,
+  SpendInputSignerStep03DatumSchema,
 } from "./schemas-v1.js";
-import type { SpendInputSignerMissingEvidenceV1 } from "./spend-input-signer-missing-v1.js";
+import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing-v1.js";
 
-export const submitSpendInputSignerMissingStep02V1 = async ({
+export const submitSpendInputSignerMissingStep02 = async ({
   lucid,
   network,
   contracts,
@@ -70,25 +70,25 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly contracts: SpendInputSignerMissingContractsV1;
+  readonly contracts: SpendInputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly membershipReferenceScriptUtxo: UTxO;
   readonly publishCarriage?: boolean;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -96,7 +96,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     input_index: bigint;
     prior_root: string;
@@ -104,7 +104,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: SpendInputSignerStep02DatumV1Schema as never,
+    schema: SpendInputSignerStep02DatumSchema as never,
     family: "spend-input-signer-missing",
     stepIndex,
   });
@@ -120,14 +120,14 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
     throw new Error(
       "spend-input-signer-missing: production predecessor membership object is absent",
     );
-  const planned = planSpendInputSignerInputOpeningV1({
+  const planned = planSpendInputSignerInputOpening({
     evidence,
     nativeTxCompactCbor,
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
   });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+  const carriageUtxos = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
@@ -138,7 +138,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network,
             signer,
@@ -161,7 +161,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
         ).certificateUtxo
       : undefined;
   await onCarriageReady?.();
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "spend-input-signer-missing",
@@ -176,7 +176,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
     network,
     membershipScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: membershipScript,
     referenceUtxo: membershipReferenceScriptUtxo,
     label: "spend-input-signer-missing predecessor membership",
@@ -187,7 +187,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
     stepReference,
     ...membershipCarriage.referenceInputs,
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -203,7 +203,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
         payment_credential: evidence.paymentCredentialHex,
       },
     } as never,
-    SpendInputSignerStep03DatumV1Schema as never,
+    SpendInputSignerStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
@@ -249,7 +249,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
           },
         ],
       } as never,
-      SpendInputSignerStep02RedeemerV1Schema as never,
+      SpendInputSignerStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   const feeInput = selectFeeInput(
@@ -270,7 +270,7 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
           0n,
           encodeRawPhasMembershipProofRedeemer({
             root: evidence.resolved.priorRoot,
-            keyBytes: encodeMidgardSpendInputItemV1({
+            keyBytes: encodeMidgardSpendInputItem({
               txId: Buffer.from(evidence.resolved.transactionId, "hex"),
               outputIndex: evidence.resolved.outputIndex,
             }).toString("hex"),
@@ -292,15 +292,15 @@ export const submitSpendInputSignerMissingStep02V1 = async ({
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: step-02 layout unresolved");
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "spend-input-signer-missing-step-02",
         utxo: stepReference,
         expectedScript: contracts.steps[1].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "spend-input-signer-missing-membership",
         utxo: membershipReferenceScriptUtxo,
         expectedScript: membershipScript,

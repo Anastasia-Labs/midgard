@@ -3,16 +3,16 @@ import { describe, expect, it } from "vitest";
 
 const PUBLISHED = {
   Published: { terminal_commitment: "22".repeat(32) },
-} satisfies SDK.DaAvailabilityStateQueueStatusV1;
+} satisfies SDK.DaAvailabilityStateQueueStatus;
 const ATTESTED = {
   Attested: { da_bond_asset_name: "33".repeat(32) },
-} satisfies SDK.DaAvailabilityStateQueueStatusV1;
+} satisfies SDK.DaAvailabilityStateQueueStatus;
 const CHALLENGED = {
   Challenged: {
     da_bond_asset_name: "33".repeat(32),
     challenge_asset_name: "44".repeat(32),
   },
-} satisfies SDK.DaAvailabilityStateQueueStatusV1;
+} satisfies SDK.DaAvailabilityStateQueueStatus;
 
 import {
   classifyOldestQueuedBlockCandidateReadiness,
@@ -164,7 +164,7 @@ describe("merge readiness planner", () => {
       [
         baseIdentityInput.firstBlockOutRef,
         baseIdentityInput.headerHash,
-        SDK.daAvailabilityStateQueueStatusIdentityV1(
+        SDK.daAvailabilityStateQueueStatusIdentity(
           baseIdentityInput.currentDaAvailability,
         ),
         baseIdentityInput.readyAfterUnixTime.toString(),
@@ -208,7 +208,7 @@ describe("merge readiness planner", () => {
       candidateIdentity: [
         `${"aa".repeat(32)}#0`,
         "11".repeat(28),
-        SDK.daAvailabilityStateQueueStatusIdentityV1(PUBLISHED),
+        SDK.daAvailabilityStateQueueStatusIdentity(PUBLISHED),
         "300",
       ].join("|"),
       validFromUnixTime: 280,

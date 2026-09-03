@@ -7,7 +7,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { stringifyJson } from "./json-file.js";
 import {
   detectTransitionTraceFaults,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   type TransitionTraceDetection,
   transitionTraceFinalIndex,
 } from "./transition-trace/index.js";
@@ -16,13 +16,13 @@ import { readValidationDisputeCborFile } from "./validation-dispute/from-files.j
 export const TRANSITION_TRACE_PREPARE_SCHEMA_VERSION =
   "midgard-transition-trace-prepare-v1" as const;
 
-export type PrepareTransitionTraceFromDaEnvelopeV1Config = {
+export type PrepareTransitionTraceFromDaEnvelopeConfig = {
   readonly daPayloadEnvelopePath: string;
   readonly headerHash: string;
   readonly outputDir?: string;
 };
 
-export type PreparedTransitionTraceDetectionV1 = {
+export type PreparedTransitionTraceDetection = {
   readonly kind: TransitionTraceDetection["kind"];
   readonly invariant: string;
   readonly diagnostic: string;
@@ -32,7 +32,7 @@ export type PreparedTransitionTraceDetectionV1 = {
   readonly proofPath?: string;
 };
 
-export type PreparedTransitionTraceGuidanceV1 = {
+export type PreparedTransitionTraceGuidance = {
   readonly evidence:
     | "omittedDueL1Events"
     | "outOfWindowSourceEvents"
@@ -47,14 +47,14 @@ export type PreparedTransitionTraceGuidanceV1 = {
   readonly reason: string;
 };
 
-export type PreparedTransitionTraceOutputV1 = {
+export type PreparedTransitionTraceOutput = {
   readonly schemaVersion: typeof TRANSITION_TRACE_PREPARE_SCHEMA_VERSION;
   readonly headerHash: string;
   readonly outputDir: string;
   readonly planPath: string;
   readonly proofPaths: readonly string[];
-  readonly detections: readonly PreparedTransitionTraceDetectionV1[];
-  readonly guidance: readonly PreparedTransitionTraceGuidanceV1[];
+  readonly detections: readonly PreparedTransitionTraceDetection[];
+  readonly guidance: readonly PreparedTransitionTraceGuidance[];
 };
 
 const RETAINED_DA_ONLY_GUIDANCE = [
@@ -86,7 +86,7 @@ const RETAINED_DA_ONLY_GUIDANCE = [
     reason:
       "Requires authenticated predecessor-ledger mutation witnesses that retained DA alone does not supply.",
   },
-] as const satisfies readonly PreparedTransitionTraceGuidanceV1[];
+] as const satisfies readonly PreparedTransitionTraceGuidance[];
 
 const proofFileName = (
   index: number,
@@ -101,16 +101,16 @@ const proofFileName = (
  * header hash, detects every header-derivable transition-trace fault, and
  * writes canonical Data CBOR proofs plus an auditable plan.
  */
-export const prepareTransitionTraceFromDaEnvelopeV1 = async ({
+export const prepareTransitionTraceFromDaEnvelope = async ({
   daPayloadEnvelopePath,
   headerHash,
   outputDir,
-}: PrepareTransitionTraceFromDaEnvelopeV1Config): Promise<PreparedTransitionTraceOutputV1> => {
+}: PrepareTransitionTraceFromDaEnvelopeConfig): Promise<PreparedTransitionTraceOutput> => {
   const payloadEnvelopeHex = await readValidationDisputeCborFile(
     daPayloadEnvelopePath,
     "--da-payload-envelope",
   );
-  const reconstruction = await reconstructDaPayloadV1({
+  const reconstruction = await reconstructDaPayload({
     payloadEnvelopeCbor: Buffer.from(payloadEnvelopeHex, "hex"),
     expectedHeaderHash: headerHash,
   });
@@ -119,7 +119,7 @@ export const prepareTransitionTraceFromDaEnvelopeV1 = async ({
   await mkdir(resolvedOutputDir, { recursive: true });
 
   const detections = await detectTransitionTraceFaults(reconstruction);
-  const preparedDetections: PreparedTransitionTraceDetectionV1[] = [];
+  const preparedDetections: PreparedTransitionTraceDetection[] = [];
   const proofWrites: Promise<void>[] = [];
   const proofPaths: string[] = [];
 

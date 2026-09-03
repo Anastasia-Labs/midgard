@@ -163,8 +163,8 @@ const canonicalAbsenceScans = [
     // L09/L10's claim is that the retired publication-receipt identities are not
     // *live surface*. Live surface means declared, so this scans for declarations
     // rather than for the names: #587's own prose — the Aiken gravestones on
-    // `verify_order_material`, `reconstructTxOrderMaterialV1`'s note, the SDK's
-    // `TxOrderMaterialV1` docstring — names every one of them on purpose, and a
+    // `verify_order_material`, `reconstructTxOrderMaterial`'s note, the SDK's
+    // `TxOrderMaterial` docstring — names every one of them on purpose, and a
     // bare-name scan would either forbid documenting the retirement or pass only
     // because the corpus was pruned to files that never mention it. Declaration
     // anchors are the discriminating form: they cannot appear in a comment, and
@@ -1156,7 +1156,7 @@ const verifyCrossLanguageNotApplicable = (row, label) => {
 
 const exactFieldPinDeficits = new Map([
   [
-    "D16/DaAttestationsByHeaderRequestV1 / DaAttestationsByHeaderResponseV1",
+    "D16/DaAttestationsByHeaderRequest / DaAttestationsByHeaderResponse",
     "one form carries the request and response layouts together, so its eight labels cannot index a single four-member arity",
   ],
   [
@@ -1563,12 +1563,12 @@ if (registry !== undefined) {
     const l01Contract = registry.formats.find((row) => row?.id === "L01")
       ?.canonicalForms?.[0];
     if (l01Contract === undefined) {
-      fail("L01 requires the machine-readable HeaderV1 ABI contract");
+      fail("L01 requires the machine-readable Header ABI contract");
     } else {
       try {
         assertHeaderV1AbiContract(l01Contract);
       } catch (error) {
-        fail(`L01 HeaderV1 ABI contract is invalid: ${error.message}`);
+        fail(`L01 Header ABI contract is invalid: ${error.message}`);
       }
     }
 

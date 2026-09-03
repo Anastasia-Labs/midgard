@@ -1,20 +1,20 @@
-import type { WatcherProductionFaultDecisionBridgeV1 } from "../fault-proofs/production-fault-decision-bridge-v1.js";
+import type { WatcherFaultDecisionBridge } from "../fault-proofs/production-fault-decision-bridge-v1.js";
 import type {
-  WatcherProductionStateQueueObservationSourceV1,
-  WatcherProductionStateQueueObservationV1,
-  WatcherProductionStateQueueRecoveryV1,
+  WatcherAuthenticatedStateQueueObservation,
+  WatcherStateQueueObservationSource,
+  WatcherStateQueueRecovery,
 } from "../indexers/production-state-queue-observation-v1.js";
-import type { WatcherLocalKupmiosNativeObservationV1 } from "../l1/local-kupmios-native-observation-v1.js";
-import type { WatcherNativeBlockAdmissionV1 } from "../l1/native-block-admission-v1.js";
-import type { WatcherNativeChainSyncPointV1 } from "../l1/native-chain-sync-v1.js";
-import type { WatcherSqliteStateQueueObservationStoreV1 } from "../storage/sqlite-durable-backend-v1.js";
-import type { WatcherProductionChainCoordinatorHooksV1 } from "./production-chain-coordinator-v1.js";
+import type { WatcherLocalKupmiosNativeObservation } from "../l1/local-kupmios-native-observation-v1.js";
+import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission-v1.js";
+import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync-v1.js";
+import type { WatcherSqliteStateQueueObservationStore } from "../storage/sqlite-durable-backend-v1.js";
+import type { WatcherChainCoordinatorHooks } from "./production-chain-coordinator-v1.js";
 
-export const WATCHER_PRODUCTION_STATE_QUEUE_RUNTIME_V1_SCHEMA_VERSION =
+export const WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION =
   "midgard-watcher-production-state-queue-runtime-v1" as const;
 
-export type WatcherProductionStateQueueRuntimeV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_STATE_QUEUE_RUNTIME_V1_SCHEMA_VERSION;
+export type WatcherStateQueueRuntime = Readonly<{
+  schemaVersion: typeof WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION;
   replayIntersection: Readonly<{
     blockHash: string;
     blockNo: string;
@@ -30,15 +30,15 @@ export type WatcherProductionStateQueueRuntimeV1 = Readonly<{
     ogmiosTipBlockNo: string;
   }>;
   caughtUp: Promise<void>;
-  current(): WatcherProductionStateQueueObservationV1;
+  current(): WatcherAuthenticatedStateQueueObservation;
   bindFaultDecisionBridge(
-    bridge: WatcherProductionFaultDecisionBridgeV1,
-  ): WatcherProductionChainCoordinatorHooksV1;
+    bridge: WatcherFaultDecisionBridge,
+  ): WatcherChainCoordinatorHooks;
 }>;
 
 const sameRecoveryPoint = (
-  left: WatcherProductionStateQueueRecoveryV1["replayIntersection"],
-  right: WatcherProductionStateQueueRecoveryV1["catchupBoundary"],
+  left: WatcherStateQueueRecovery["replayIntersection"],
+  right: WatcherStateQueueRecovery["catchupBoundary"],
 ): boolean =>
   left.blockHash === right.blockHash &&
   left.blockNo === right.blockNo &&
@@ -46,13 +46,13 @@ const sameRecoveryPoint = (
   left.chainPointId === right.chainPointId;
 
 const createRuntime = async (input: {
-  readonly store: WatcherSqliteStateQueueObservationStoreV1;
-  readonly source: WatcherProductionStateQueueObservationSourceV1;
-}): Promise<WatcherProductionStateQueueRuntimeV1> => {
+  readonly store: WatcherSqliteStateQueueObservationStore;
+  readonly source: WatcherStateQueueObservationSource;
+}): Promise<WatcherStateQueueRuntime> => {
   const persisted = await input.store.readAll();
   const restoreAndRevokeDiscarded = async (
     candidates: readonly unknown[],
-  ): Promise<WatcherProductionStateQueueRecoveryV1> => {
+  ): Promise<WatcherStateQueueRecovery> => {
     const restored = await input.source.restore({
       persistedObservations: candidates,
     });
@@ -138,7 +138,7 @@ const createRuntime = async (input: {
   if (caughtUp) resolveCaughtUp();
   let bound = false;
 
-  const admitCatchupProgress = (block: WatcherNativeBlockAdmissionV1): void => {
+  const admitCatchupProgress = (block: WatcherNativeBlockAdmission): void => {
     if (caughtUp) return;
     const currentBlockNo = BigInt(block.blockNo);
     const boundaryBlockNo = BigInt(catchupBoundary.blockNo);
@@ -165,7 +165,7 @@ const createRuntime = async (input: {
   };
 
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_STATE_QUEUE_RUNTIME_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION,
     replayIntersection: recovery.replayIntersection,
     get catchupBoundary() {
       return catchupBoundary;
@@ -178,7 +178,7 @@ const createRuntime = async (input: {
       }
       bound = true;
       return Object.freeze({
-        onRollback: async (point: WatcherNativeChainSyncPointV1) => {
+        onRollback: async (point: WatcherNativeChainSyncPoint) => {
           // This must remain before the first await: already-running proof
           // workflows lose their exact generation authority immediately.
           bridge.invalidateForRollback();
@@ -209,8 +209,8 @@ const createRuntime = async (input: {
           nativeBlock,
           localObservation,
         }: Readonly<{
-          nativeBlock: WatcherNativeBlockAdmissionV1;
-          localObservation: WatcherLocalKupmiosNativeObservationV1;
+          nativeBlock: WatcherNativeBlockAdmission;
+          localObservation: WatcherLocalKupmiosNativeObservation;
         }>) => {
           const next = await input.source.observe({
             nativeBlock,
@@ -235,4 +235,4 @@ const createRuntime = async (input: {
   });
 };
 
-export const createWatcherProductionStateQueueRuntimeV1 = createRuntime;
+export const createWatcherStateQueueRuntime = createRuntime;

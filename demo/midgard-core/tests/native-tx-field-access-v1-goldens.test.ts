@@ -4,35 +4,35 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardWholeFieldViewV1,
-  decodeMidgardFieldArrayHeaderV1,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardFieldPreimageCertificateV1,
-  encodeMidgardDefiniteBytesV1,
-  encodeMidgardFieldArrayHeaderV1,
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
-  MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1,
-  MIDGARD_FIELD_COUNT_V1,
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
-  MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1,
-  MIDGARD_HASH28_ITEM_BYTES_V1,
-  MIDGARD_MAX_FIELD_ITEM_COUNT_V1,
-  MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
-  MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
-  midgardExpectedChunkCountV1,
-  midgardFieldCommitmentFromItemsV1,
-  midgardFieldCommitmentV1,
-  midgardFieldItemAtV1,
-  midgardFieldItemExtentV1,
-  midgardFieldStrideV1,
-  splitMidgardFieldPreimageIntoChunksV1,
+  buildMidgardWholeFieldView,
+  decodeMidgardFieldArrayHeader,
+  decodeMidgardFieldPreimage,
+  deriveMidgardFieldPreimageCertificate,
+  encodeMidgardDefiniteBytes,
+  encodeMidgardFieldArrayHeader,
+  encodeMidgardFieldPreimage,
+  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_EMPTY_FIELD_COMMITMENT,
+  MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS,
+  MIDGARD_FIELD_COUNT,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
+  MIDGARD_FIELD_VIEW_CONSTRUCTORS,
+  MIDGARD_HASH28_ITEM_BYTES,
+  MIDGARD_MAX_FIELD_ITEM_COUNT,
+  MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  MIDGARD_MAX_TIER3_CHUNK_COUNT,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
+  MIDGARD_SPEND_INPUT_ITEM_BYTES,
+  midgardExpectedChunkCount,
+  midgardFieldCommitment,
+  midgardFieldCommitmentFromItems,
+  midgardFieldItemAt,
+  midgardFieldItemExtent,
+  midgardFieldStride,
+  splitMidgardFieldPreimageIntoChunks,
 } from "../src/codec/native-tx-field-access-v1.js";
 
 /**
@@ -157,48 +157,47 @@ describe("native-tx field-access V1 cross-language goldens", () => {
     // twinned constant added to the module but forgotten here fail loudly
     // instead of silently sitting outside the channel.
     expect(golden.constants).toEqual({
-      fieldCount: MIDGARD_FIELD_COUNT_V1,
-      maxFieldItemCount: MIDGARD_MAX_FIELD_ITEM_COUNT_V1,
+      fieldCount: MIDGARD_FIELD_COUNT,
+      maxFieldItemCount: MIDGARD_MAX_FIELD_ITEM_COUNT,
       maxTransactionAggregateFieldBytes:
-        MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-      maxSpendInputsPreimageBytes: MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES_V1,
+        MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+      maxSpendInputsPreimageBytes: MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES,
       maximumCardanoSpendRedeemerCount:
-        MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
-      chunkBytesK: MIDGARD_CHUNK_BYTES_K_V1,
-      maxTier1RedeemerPreimageBytes:
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-      maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
-      spendInputItemBytes: MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
-      hash28ItemBytes: MIDGARD_HASH28_ITEM_BYTES_V1,
-      addressWitnessItemBytes: MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-      carriageConstructors: [...MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1],
-      viewConstructors: [...MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1],
+        MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
+      chunkBytesK: MIDGARD_CHUNK_BYTES_K,
+      maxTier1RedeemerPreimageBytes: MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+      maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT,
+      spendInputItemBytes: MIDGARD_SPEND_INPUT_ITEM_BYTES,
+      hash28ItemBytes: MIDGARD_HASH28_ITEM_BYTES,
+      addressWitnessItemBytes: MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+      carriageConstructors: [...MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS],
+      viewConstructors: [...MIDGARD_FIELD_VIEW_CONSTRUCTORS],
     });
   });
 
   it("reproduces the §4 empty-field commitment", () => {
     expect(golden.emptyFieldCommitmentHex).toBe(
-      hex(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
+      hex(MIDGARD_EMPTY_FIELD_COMMITMENT),
     );
     expect(golden.emptyFieldCommitmentHex).toBe(
-      hex(midgardFieldCommitmentV1(bytes("80"))),
+      hex(midgardFieldCommitment(bytes("80"))),
     );
   });
 
   it("reproduces the §5.3 stride table", () => {
     expect(golden.strides).toEqual(
-      Array.from({ length: MIDGARD_FIELD_COUNT_V1 }, (_, fieldIndex) =>
-        midgardFieldStrideV1(fieldIndex),
+      Array.from({ length: MIDGARD_FIELD_COUNT }, (_, fieldIndex) =>
+        midgardFieldStride(fieldIndex),
       ),
     );
   });
 
   it("reproduces every §5.1 array header, in both directions", () => {
     for (const entry of golden.arrayHeaders) {
-      expect(hex(encodeMidgardFieldArrayHeaderV1(entry.count))).toBe(
+      expect(hex(encodeMidgardFieldArrayHeader(entry.count))).toBe(
         entry.headerHex,
       );
-      expect(decodeMidgardFieldArrayHeaderV1(bytes(entry.headerHex))).toEqual({
+      expect(decodeMidgardFieldArrayHeader(bytes(entry.headerHex))).toEqual({
         nextOffset: entry.headerLength,
         count: entry.count,
       });
@@ -214,7 +213,7 @@ describe("native-tx field-access V1 cross-language goldens", () => {
       expect(vector).toBeDefined();
       const payload = bytes(vector!.itemsHex[0]);
       expect(payload).toHaveLength(entry.payloadLength);
-      expect(hex(encodeMidgardDefiniteBytesV1(payload))).toBe(
+      expect(hex(encodeMidgardDefiniteBytes(payload))).toBe(
         `${entry.wrapperHex}${vector!.itemsHex[0]}`,
       );
     }
@@ -224,26 +223,26 @@ describe("native-tx field-access V1 cross-language goldens", () => {
     for (const vector of golden.preimages) {
       const items = vector.itemsHex.map(bytes);
       expect(items).toHaveLength(vector.itemCount);
-      expect(hex(encodeMidgardFieldPreimageV1(items))).toBe(vector.preimageHex);
-      expect(hex(midgardFieldCommitmentFromItemsV1(items))).toBe(
+      expect(hex(encodeMidgardFieldPreimage(items))).toBe(vector.preimageHex);
+      expect(hex(midgardFieldCommitmentFromItems(items))).toBe(
         vector.commitmentHex,
       );
-      expect(hex(midgardFieldCommitmentV1(bytes(vector.preimageHex)))).toBe(
+      expect(hex(midgardFieldCommitment(bytes(vector.preimageHex)))).toBe(
         vector.commitmentHex,
       );
-      expect(midgardFieldStrideV1(vector.fieldIndex)).toBe(vector.stride);
+      expect(midgardFieldStride(vector.fieldIndex)).toBe(vector.stride);
       expect(
-        decodeMidgardFieldPreimageV1(bytes(vector.preimageHex)).map(hex),
+        decodeMidgardFieldPreimage(bytes(vector.preimageHex)).map(hex),
       ).toEqual([...vector.itemsHex]);
 
-      const view = buildMidgardWholeFieldViewV1({
+      const view = buildMidgardWholeFieldView({
         fieldIndex: vector.fieldIndex,
         preimage: bytes(vector.preimageHex),
         expectedCommitment: bytes(vector.commitmentHex),
       });
       for (const [index, extent] of vector.itemExtents.entries()) {
-        expect(midgardFieldItemExtentV1(view, index)).toEqual(extent);
-        expect(hex(midgardFieldItemAtV1(view, index))).toBe(
+        expect(midgardFieldItemExtent(view, index)).toEqual(extent);
+        expect(hex(midgardFieldItemAt(view, index))).toBe(
           vector.itemsHex[index],
         );
       }
@@ -252,7 +251,7 @@ describe("native-tx field-access V1 cross-language goldens", () => {
 
   it("reproduces the §8.4 chunk counts", () => {
     for (const entry of golden.chunkCounts) {
-      expect(midgardExpectedChunkCountV1(entry.totalLength)).toBe(
+      expect(midgardExpectedChunkCount(entry.totalLength)).toBe(
         entry.chunkCount,
       );
     }
@@ -260,13 +259,13 @@ describe("native-tx field-access V1 cross-language goldens", () => {
 
   it("reproduces the §8.6 constant certificate asset name (#606)", () => {
     expect(golden.certificateAssetName.assetNameHex).toBe(
-      hex(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1),
+      hex(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME),
     );
     expect(golden.certificateAssetName.byteLength).toBe(
-      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.length,
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.length,
     );
     expect(golden.certificateAssetName.ascii).toBe(
-      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii"),
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("ascii"),
     );
   });
 
@@ -276,18 +275,18 @@ describe("native-tx field-access V1 cross-language goldens", () => {
       certificate.totalLength,
     );
     expect(certificate.chunkLengths).toHaveLength(
-      midgardExpectedChunkCountV1(certificate.totalLength),
+      midgardExpectedChunkCount(certificate.totalLength),
     );
     expect(certificate.chunkDigestsHex).toHaveLength(
       certificate.chunkLengths.length,
     );
-    expect(certificate.totalLength).toBeGreaterThan(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(certificate.totalLength).toBeGreaterThan(MIDGARD_CHUNK_BYTES_K);
     // The datum-shape identity that replaced the retired asset-name class
     // (#606): the welded `field_hash` is §4's commitment over the rebuilt
     // payload.
     expect(certificate.fieldHashHex).toBe(
       hex(
-        midgardFieldCommitmentV1(
+        midgardFieldCommitment(
           repeatToLength(
             bytes(certificate.preimageBlockHex),
             certificate.totalLength,
@@ -306,17 +305,17 @@ describe("native-tx field-access V1 cross-language goldens", () => {
     expect(preimage).toHaveLength(certificate.totalLength);
 
     // The §8.4 split, run by the twin rather than read out of the fixture.
-    const chunks = splitMidgardFieldPreimageIntoChunksV1(preimage);
+    const chunks = splitMidgardFieldPreimageIntoChunks(preimage);
     expect(chunks.map((chunk) => chunk.length)).toEqual([
       ...certificate.chunkLengths,
     ]);
-    expect(chunks.map((chunk) => hex(midgardFieldCommitmentV1(chunk)))).toEqual(
-      [...certificate.chunkDigestsHex],
-    );
+    expect(chunks.map((chunk) => hex(midgardFieldCommitment(chunk)))).toEqual([
+      ...certificate.chunkDigestsHex,
+    ]);
 
     // …and the same digests out of the publisher-facing derivation, so the
     // pinned manifest is what a real tier-3 publisher would mint.
-    const derived = deriveMidgardFieldPreimageCertificateV1({
+    const derived = deriveMidgardFieldPreimageCertificate({
       owner: bytes(certificate.ownerHex),
       txId: bytes(certificate.txIdHex),
       fieldIndex: certificate.fieldIndex,

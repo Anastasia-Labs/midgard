@@ -24,7 +24,7 @@ import {
 import {
   createE2ERunSummary,
   E2E_SUMMARY_SCHEMA_VERSION,
-  parseE2ERunSummaryV1,
+  parseE2ERunSummary,
   renderSummaryMarkdown,
   type TransactionEvidence,
   transactionEvidenceFromStepSummaries,
@@ -270,35 +270,35 @@ describe("e2e run summary", () => {
       mode: "fresh",
       now: new Date("2026-01-01T00:00:00.000Z"),
     });
-    expect(parseE2ERunSummaryV1(summary)).toEqual(summary);
+    expect(parseE2ERunSummary(summary)).toEqual(summary);
     const { runId: _runId, ...missingRunId } = summary;
-    expect(() => parseE2ERunSummaryV1(missingRunId)).toThrow(
+    expect(() => parseE2ERunSummary(missingRunId)).toThrow(
       "missing required field",
     );
+    expect(() => parseE2ERunSummary({ ...summary, unexpected: true })).toThrow(
+      "unknown field",
+    );
     expect(() =>
-      parseE2ERunSummaryV1({ ...summary, unexpected: true }),
-    ).toThrow("unknown field");
-    expect(() =>
-      parseE2ERunSummaryV1({
+      parseE2ERunSummary({
         ...summary,
         schemaVersion: "midgard-e2e-summary-v0",
       }),
     ).toThrow(E2E_SUMMARY_SCHEMA_VERSION);
     expect(() =>
-      parseE2ERunSummaryV1({
+      parseE2ERunSummary({
         ...summary,
         rawEvidence: [{ label: "logs", path: "logs/run", unexpected: true }],
       }),
     ).toThrow("unknown field");
     expect(() =>
-      parseE2ERunSummaryV1({
+      parseE2ERunSummary({
         ...summary,
         verdict: "success",
         nextSafeAction: "none_run_complete",
       }),
     ).toThrow("derived evidence or verdict is inconsistent");
     expect(() =>
-      parseE2ERunSummaryV1({
+      parseE2ERunSummary({
         ...summary,
         updatedAt: "2025-12-31T23:59:59.999Z",
       }),

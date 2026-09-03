@@ -12,19 +12,19 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
-  selectMidgardFieldCarriageTierV1,
+  encodeMidgardFieldPreimage,
+  midgardFieldCommitment,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -32,28 +32,28 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  authenticateTransactionsInclusionRootsV1,
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
-  type CanonicalBlockEvidenceV1,
+  authenticateTransactionsInclusionRoots,
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
 import * as FaultProofs from "../src/index.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   type NodeTransactionPayload,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../src/prepare-double-spend.js";
 import {
-  InputNoIdxRejectionV1,
-  midgardTxOutputFromCanonicalCborV1,
-  prepareInputNoIdxFromCanonicalEvidenceV1,
+  InputNoIdxRejection,
+  midgardTxOutputFromCanonicalCbor,
+  prepareInputNoIdxFromCanonicalEvidence,
   prepareInputNoIdxFromTransactions,
 } from "../src/prepare-input-no-idx.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
-  type CanonicalBlockFixtureV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  type CanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
@@ -62,7 +62,7 @@ const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_NULL_ROOT = computeHash32(encodeCbor(null));
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -89,9 +89,9 @@ const makeNativeTx = ({
   readonly spendInputCbors: readonly Buffer[];
   readonly outputCbors: readonly Buffer[];
   readonly fee: bigint;
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([...spendInputCbors]),
@@ -114,9 +114,9 @@ const makeNativeTx = ({
     },
   });
 
-const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 /** A producer committing `outputCount` canonical outputs. */
@@ -156,7 +156,7 @@ const committedTransactionsRoot = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   return await Effect.runPromise(
     SDK.commitCountedRootProgram({
       domain: SDK.ROOT_DOMAINS.transactionsV1,
@@ -191,8 +191,8 @@ const rejectionCode = async (run: () => Promise<unknown>): Promise<string> => {
     await run();
   } catch (error) {
     if (
-      error instanceof InputNoIdxRejectionV1 ||
-      error instanceof SDK.CanonicalEvidenceRejectionV1
+      error instanceof InputNoIdxRejection ||
+      error instanceof SDK.CanonicalEvidenceRejection
     ) {
       return error.code;
     }
@@ -220,7 +220,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     });
 
     expect(output.schemaVersion).toBe("midgard-input-no-idx-evidence-v1");
-    expect(output.violationId).toBe(SDK.INPUT_NO_IDX_VIOLATION_ID_V1);
+    expect(output.violationId).toBe(SDK.INPUT_NO_IDX_VIOLATION_ID);
     expect(output.txCount).toBe(2);
     expect(output.evidence.isViolation).toBe(true);
     expect(output.evidence.badTxId).toBe(block.spender.nodeTxId);
@@ -334,7 +334,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
       script,
     ]);
 
-    const projected = midgardTxOutputFromCanonicalCborV1(bytes);
+    const projected = midgardTxOutputFromCanonicalCbor(bytes);
     expect(projected.address.payment_credential).toEqual({
       PubKeyCredential: ["21".repeat(28)],
     });
@@ -367,17 +367,17 @@ describe("Q13 input-no-idx canonical evidence", () => {
 
     expect(output.evidence.producingTxOutputCount).toBe(3);
     expect(output.outputsPreimage).toHaveLength(3);
-    expect(SDK.inputNoIdxOutputsCommitmentV1(output.outputsPreimage)).toBe(
+    expect(SDK.inputNoIdxOutputsCommitment(output.outputsPreimage)).toBe(
       output.producingTxInclusion.nativeTx.body.outputs_hash,
     );
     expect(
-      SDK.inputNoIdxSpendInputsCommitmentV1(output.step02.inputsPreimage),
+      SDK.inputNoIdxSpendInputsCommitment(output.step02.inputsPreimage),
     ).toBe(output.badTxInclusion.nativeTx.body.spend_inputs_hash);
     // The artifact carries the canonical bytes the validator re-encodes.
     expect(
       output.step04.outputsPreimageCbor.map((item) =>
-        SDK.encodeMidgardTxOutputCanonicalV1(
-          midgardTxOutputFromCanonicalCborV1(Buffer.from(item, "hex")),
+        SDK.encodeMidgardTxOutputCanonical(
+          midgardTxOutputFromCanonicalCbor(Buffer.from(item, "hex")),
         ).toString("hex"),
       ),
     ).toEqual([...output.step04.outputsPreimageCbor]);
@@ -395,17 +395,17 @@ describe("Q13 input-no-idx canonical evidence", () => {
       transactions: block.transactions,
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
-    const preimage = encodeMidgardFieldPreimageV1(
-      output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonicalV1),
+    const preimage = encodeMidgardFieldPreimage(
+      output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonical),
     );
     expect(output.proofFit.step02SpendInputsPreimageBytes).toBe(
       preimage.length,
     );
     expect(output.proofFit.step02CarriageTier).toBe(
-      selectMidgardFieldCarriageTierV1(preimage.length),
+      selectMidgardFieldCarriageTier(preimage.length),
     );
     // §4: the preimage the artifact describes is the one the door will hash.
-    expect(midgardFieldCommitmentV1(preimage).toString("hex")).toBe(
+    expect(midgardFieldCommitment(preimage).toString("hex")).toBe(
       output.badTxInclusion.nativeTx.body.spend_inputs_hash,
     );
   });
@@ -425,8 +425,8 @@ describe("Q13 input-no-idx canonical evidence", () => {
       // #604: there is no direct/fold boundary any more. Both sizes are one
       // route; both fit tier 1, because §8.4's bound is 14,336 bytes and 296
       // spend inputs are 40 bytes apiece.
-      const preimage = encodeMidgardFieldPreimageV1(
-        output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonicalV1),
+      const preimage = encodeMidgardFieldPreimage(
+        output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonical),
       );
       expect(output.proofFit.step02SpendInputsPreimageBytes).toBe(
         preimage.length,
@@ -440,13 +440,13 @@ describe("Q13 input-no-idx canonical evidence", () => {
   );
 
   it("reports the §8.4 tier at the retired 19-input release boundary", async () => {
-    // The boundary itself is retired: `INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1`
+    // The boundary itself is retired: `INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT`
     // bounded the direct redeemer arm against the folding one, and step-02 has
     // one arm now. The size is kept as a case because it is a real preimage the
     // family produced; what is asserted is the §8.4 tier, which is a function of
     // bytes rather than of item count.
     const block = await violatingBlock(
-      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
+      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT,
     );
     const output = await prepareInputNoIdxFromTransactions({
       headerHash: h28("aa"),
@@ -455,7 +455,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
     });
 
     expect(output.step02.inputsPreimage).toHaveLength(
-      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
+      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT,
     );
     expect(output.proofFit.step02CarriageTier).toBe("Inline");
   });
@@ -474,13 +474,13 @@ describe("Q13 input-no-idx canonical evidence", () => {
       Buffer.from("defg", "ascii"),
       Buffer.from([0x09]),
     ]);
-    const projected = midgardTxOutputFromCanonicalCborV1(bytes);
+    const projected = midgardTxOutputFromCanonicalCbor(bytes);
     expect(projected.address.payment_credential).toEqual({
       ScriptCredential: ["44".repeat(28)],
     });
     expect(projected.address.network_id).toBe(1n);
     expect([...projected.value.assets.values()]).toEqual([7n, 9n]);
-    expect(SDK.encodeMidgardTxOutputCanonicalV1(projected)).toEqual(bytes);
+    expect(SDK.encodeMidgardTxOutputCanonical(projected)).toEqual(bytes);
   });
 
   it("measures the complete proof item carried by each step (§3.2 tier 1)", async () => {
@@ -584,7 +584,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
     );
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
@@ -653,20 +653,18 @@ describe("Q13 input-no-idx resumable artifacts", () => {
     expect(FaultProofs.prepareInputNoIdxFromTransactions).toBeTypeOf(
       "function",
     );
-    expect(FaultProofs.prepareInputNoIdxFromCanonicalEvidenceV1).toBeTypeOf(
+    expect(FaultProofs.prepareInputNoIdxFromCanonicalEvidence).toBeTypeOf(
       "function",
     );
     expect(FaultProofs.prepareInputNoIdxFromNode).toBeTypeOf("function");
     expect(FaultProofs.prepareInputNoIdxFromFile).toBeTypeOf("function");
-    expect(SDK.INPUT_NO_IDX_VIOLATION_ID_V1).toBe("input-no-idx");
-    expect(SDK.INPUT_NO_IDX_CATALOGUE_CATEGORY_V1).toBe(
-      "nonExistentInputNoIndex",
-    );
+    expect(SDK.INPUT_NO_IDX_VIOLATION_ID).toBe("input-no-idx");
+    expect(SDK.INPUT_NO_IDX_CATALOGUE_CATEGORY).toBe("nonExistentInputNoIndex");
   });
 });
 
 describe("Q13 input-no-idx Q03 evidence gates", () => {
-  const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+  const DA_PROVENANCE: SDK.EvidenceProvenance = {
     trustClass: "public_or_permissionless_da",
     sourceId: "libp2p/peer-a",
     grade: "security",
@@ -679,34 +677,34 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
    */
   const canonicalViolatingFixture = async (
     transactionsRootMode: "payloadSource" | "nativeCompact",
-  ): Promise<CanonicalBlockFixtureV1> => {
-    const producer = buildFixtureTransactionV1({
+  ): Promise<CanonicalBlockFixture> => {
+    const producer = buildFixtureTransaction({
       spendInputs: [inputCbor(h32("99"), 0n)],
       fee: 1n,
     });
-    const spender = buildFixtureTransactionV1({
+    const spender = buildFixtureTransaction({
       spendInputs: [inputCbor(producer.txId, 0n)],
       fee: 2n,
     });
-    return await buildCanonicalBlockFixtureV1({
+    return await buildCanonicalBlockFixture({
       transactionsRootMode,
       transactions: [producer, spender],
     });
   };
 
   const evidenceFor = async (
-    fixture: CanonicalBlockFixtureV1,
-  ): Promise<CanonicalBlockEvidenceV1> => {
+    fixture: CanonicalBlockFixture,
+  ): Promise<CanonicalBlockEvidence> => {
     const payloadFixture =
       fixture.transactionsRootMode === "nativeCompact"
-        ? await buildCanonicalBlockFixtureV1({
+        ? await buildCanonicalBlockFixture({
             transactions: fixture.transactions,
             startTime: fixture.header.startTime,
             endTime: fixture.header.endTime,
           })
         : fixture;
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(payloadFixture),
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(payloadFixture),
       payloadEnvelopeCbor: payloadFixture.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
     });
@@ -715,15 +713,16 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
     }
     return {
       ...evidence,
-      observation: authenticatedHeaderObservationV1(fixture),
+      observation: authenticatedHeaderObservation(fixture),
       headerHash: fixture.headerHash,
       header: fixture.header,
-      inclusionRootAuthentication:
-        await authenticateTransactionsInclusionRootsV1({
+      inclusionRootAuthentication: await authenticateTransactionsInclusionRoots(
+        {
           header: fixture.header,
           reconstruction: evidence.reconstruction,
           transactions: evidence.transactions,
-        }),
+        },
+      ),
     };
   };
 
@@ -733,7 +732,7 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
     // DA payload's `transactions` map carries, so `payloadSource` is the
     // authenticating combination and `nativeCompact` is its refusal twin below.
     const fixture = await canonicalViolatingFixture("payloadSource");
-    const output = await prepareInputNoIdxFromCanonicalEvidenceV1({
+    const output = await prepareInputNoIdxFromCanonicalEvidence({
       evidence: await evidenceFor(fixture),
     });
 
@@ -756,7 +755,7 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
     );
     expect(
       await rejectionCode(async () =>
-        prepareInputNoIdxFromCanonicalEvidenceV1({ evidence }),
+        prepareInputNoIdxFromCanonicalEvidence({ evidence }),
       ),
     ).toBe("transaction_source_inclusion_root_unauthenticated");
   });
@@ -765,7 +764,7 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
     const evidence = await evidenceFor(
       await canonicalViolatingFixture("nativeCompact"),
     );
-    const downgraded: CanonicalBlockEvidenceV1 = {
+    const downgraded: CanonicalBlockEvidence = {
       ...evidence,
       provenance: {
         ...evidence.provenance,
@@ -779,7 +778,7 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
     };
     expect(
       await rejectionCode(async () =>
-        prepareInputNoIdxFromCanonicalEvidenceV1({ evidence: downgraded }),
+        prepareInputNoIdxFromCanonicalEvidence({ evidence: downgraded }),
       ),
     ).toBe("prohibited_trust_class");
   });

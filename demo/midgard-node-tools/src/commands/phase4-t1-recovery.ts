@@ -1,4 +1,4 @@
-import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { positiveSafeInteger } from "midgard-node/artifact-schema";
@@ -13,8 +13,8 @@ import { commitExplicitBlockHeaderProgram } from "midgard-node/workers/commit-bl
 import {
   fetchLatestCommittedBlockLocal,
   getConfirmedStateFromStateQueueDatumLocal,
-  getHeaderV1FromStateQueueDatumLocal,
-  hashBlockHeaderV1Local,
+  getHeaderFromStateQueueDatumLocal,
+  hashBlockHeaderLocal,
   localizeSdkEffect,
   stateQueueBaseHeaderHash,
   stateQueueOutRef,
@@ -209,7 +209,7 @@ export type Phase4T1ProbeEvidence = {
   readonly canonicalTip: Phase4T1CanonicalTip;
 };
 
-export const decodePhase4T1CanonicalTipV1 = (
+export const decodePhase4T1CanonicalTip = (
   value: unknown,
 ): Phase4T1CanonicalTip => {
   if (
@@ -307,7 +307,7 @@ export const decodePhase4T1CanonicalTipV1 = (
   return value as Phase4T1CanonicalTip;
 };
 
-export const decodePhase4T1ProbeEvidenceV1 = (
+export const decodePhase4T1ProbeEvidence = (
   value: unknown,
 ): Phase4T1ProbeEvidence => {
   if (
@@ -337,7 +337,7 @@ export const decodePhase4T1ProbeEvidenceV1 = (
   ) {
     throw new Error("Phase 4 T1 probe contains a noncanonical V1 value");
   }
-  const canonicalTip = decodePhase4T1CanonicalTipV1(value.canonicalTip);
+  const canonicalTip = decodePhase4T1CanonicalTip(value.canonicalTip);
   if (!value.canonicalHeaderHashes.includes(canonicalTip.headerHash)) {
     throw new Error("Phase 4 T1 probe canonical tip is absent from its chain");
   }
@@ -357,7 +357,7 @@ const safeTimeMs = (value: bigint, label: string): number => {
 const fetchPhase4T1CanonicalState = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  if (!isMidgardConsensusProfileV1(contracts.consensusProfile)) {
+  if (!isMidgardConsensusProfile(contracts.consensusProfile)) {
     return yield* Effect.fail(
       new Error(
         "The phase4-t1-v1 recovery probe is launch-profile-specific and refuses V1 state-queue data",
@@ -385,10 +385,10 @@ const fetchPhase4T1CanonicalState = Effect.gen(function* () {
       );
       continue;
     }
-    const header = yield* getHeaderV1FromStateQueueDatumLocal(block.datum);
+    const header = yield* getHeaderFromStateQueueDatumLocal(block.datum);
     canonicalHeaderHashes.push(
       requireL2HeaderHash(
-        yield* hashBlockHeaderV1Local(header),
+        yield* hashBlockHeaderLocal(header),
         "canonical header hash",
       ),
     );
@@ -431,7 +431,7 @@ const fetchPhase4T1CanonicalState = Effect.gen(function* () {
       endTimeMs: safeTimeMs(data.endTime, "confirmed end time"),
     };
   } else {
-    const header = yield* getHeaderV1FromStateQueueDatumLocal(latest.datum);
+    const header = yield* getHeaderFromStateQueueDatumLocal(latest.datum);
     canonicalTip = {
       headerHash: requireL2HeaderHash(latestHeaderHash, "canonical tip hash"),
       outRef: stateQueueOutRef(latest),
@@ -522,7 +522,7 @@ export const phase4T1ProbeProgram = (
         `Forbidden canonical L2 header is still present: ${expectedAbsent}`,
       );
     }
-    return decodePhase4T1ProbeEvidenceV1({
+    return decodePhase4T1ProbeEvidence({
       schemaVersion: PHASE4_T1_PROBE_SCHEMA,
       snapshotIdentitySha256: options.snapshotIdentitySha256,
       attemptId: options.attemptId,
@@ -541,7 +541,7 @@ export type Phase4T1NoopAdvanceAssertion = {
   readonly transitionIsEmpty: true;
 };
 
-const decodePhase4T1NoopAdvanceAssertionV1 = (
+const decodePhase4T1NoopAdvanceAssertion = (
   value: unknown,
 ): Phase4T1NoopAdvanceAssertion => {
   if (
@@ -682,7 +682,7 @@ export const assertPhase4T1NoopAdvance = ({
   if (after.canonicalHeaderHashes.includes(abandoned)) {
     throw new Error("Abandoned header N reappeared after the no-op advance");
   }
-  return decodePhase4T1NoopAdvanceAssertionV1({
+  return decodePhase4T1NoopAdvanceAssertion({
     baseHeaderHash: expectedBase,
     recoveredTipHeaderHash: recovered.headerHash,
     abandonedHeaderHash: abandoned,
@@ -715,7 +715,7 @@ export type Phase4T1AdvanceEvidence = {
   readonly invariants: Phase4T1NoopAdvanceAssertion;
 };
 
-export const decodePhase4T1AdvanceEvidenceV1 = (
+export const decodePhase4T1AdvanceEvidence = (
   value: unknown,
 ): Phase4T1AdvanceEvidence => {
   if (
@@ -761,9 +761,9 @@ export const decodePhase4T1AdvanceEvidenceV1 = (
       "Phase 4 T1 canonical advance contains a noncanonical V1 value",
     );
   }
-  const before = decodePhase4T1ProbeEvidenceV1(value.before);
-  const after = decodePhase4T1ProbeEvidenceV1(value.after);
-  const invariants = decodePhase4T1NoopAdvanceAssertionV1(value.invariants);
+  const before = decodePhase4T1ProbeEvidence(value.before);
+  const after = decodePhase4T1ProbeEvidence(value.after);
+  const invariants = decodePhase4T1NoopAdvanceAssertion(value.invariants);
   if (
     before.snapshotIdentitySha256 !== value.snapshotIdentitySha256 ||
     after.snapshotIdentitySha256 !== value.snapshotIdentitySha256 ||
@@ -840,7 +840,7 @@ export const phase4T1AdvanceProgram = (
       abandonedHeaderHash,
       minimumEndTimeMs: options.minimumEndTimeMs,
     });
-    return decodePhase4T1AdvanceEvidenceV1({
+    return decodePhase4T1AdvanceEvidence({
       schemaVersion: PHASE4_T1_ADVANCE_SCHEMA,
       snapshotIdentitySha256: options.snapshotIdentitySha256,
       attemptId: options.attemptId,
@@ -875,7 +875,7 @@ export type Phase4T1RecoveryAttestation = {
   readonly kupoCheckpoint: number;
 };
 
-export const decodePhase4T1RecoveryAttestationV1 = (
+export const decodePhase4T1RecoveryAttestation = (
   value: unknown,
 ): Phase4T1RecoveryAttestation => {
   if (
@@ -968,7 +968,7 @@ export const parseAndValidatePhase4T1RecoveryAttestation = ({
       `T1 recovery command must emit exactly one JSON object: ${String(cause)}`,
     );
   }
-  const attestation = decodePhase4T1RecoveryAttestationV1(value);
+  const attestation = decodePhase4T1RecoveryAttestation(value);
   const exact = {
     schemaVersion: PHASE4_T1_RECOVERY_SCHEMA,
     scenarioLabel: expected.scenarioLabel,
@@ -1010,8 +1010,8 @@ export const writePhase4T1Evidence = async (
   }
   const decoded =
     evidence.schemaVersion === PHASE4_T1_PROBE_SCHEMA
-      ? decodePhase4T1ProbeEvidenceV1(evidence)
-      : decodePhase4T1AdvanceEvidenceV1(evidence);
+      ? decodePhase4T1ProbeEvidence(evidence)
+      : decodePhase4T1AdvanceEvidence(evidence);
   await writeTextFileAtomicNoReplace(
     path,
     `${JSON.stringify(decoded, null, 2)}\n`,

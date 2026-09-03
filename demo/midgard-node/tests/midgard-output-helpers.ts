@@ -1,7 +1,7 @@
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import {
   decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   hashMidgardVersionedScript,
   type MidgardTxOutput,
@@ -30,7 +30,7 @@ export const makeOutRefCbor = (
   txId: Uint8Array | string | number,
   outputIndex: number | bigint = 0,
 ): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId:
       typeof txId === "number"
         ? Buffer.alloc(32, txId)
@@ -99,7 +99,7 @@ export const hashPlutusV3Script = (scriptBytes: Uint8Array): string =>
     scriptBytes: Buffer.from(scriptBytes),
   });
 
-export const hashMidgardV1Script = (scriptBytes: Uint8Array): string =>
+export const hashMidgardScript = (scriptBytes: Uint8Array): string =>
   hashMidgardVersionedScript({
     language: "MidgardV1",
     scriptBytes: Buffer.from(scriptBytes),

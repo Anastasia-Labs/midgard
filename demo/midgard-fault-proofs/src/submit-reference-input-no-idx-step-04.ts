@@ -6,7 +6,7 @@
  *
  * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
  * producing transaction's whole `outputs_preimage: List<MidgardTxOutput>`; it
- * now carries a `FieldOpeningV1` over §2.5 field **2**, and the door's
+ * now carries a `FieldOpening` over §2.5 field **2**, and the door's
  * authenticated item count is the output count the out-of-range verdict rests
  * on (§5.2). Thread state carries that transaction's `producing_tx_id` rather
  * than its `outputs_hash`, which is why this builder takes the producing
@@ -20,13 +20,13 @@
  * transaction cannot be finalized off-chain either.
  */
 import {
-  encodeMidgardTxOutputCanonicalV1,
-  type FieldOpeningV1,
+  encodeMidgardTxOutputCanonical,
+  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  isReferenceInputNoIdxViolationV1,
-  MIDGARD_FIELD_INDEX_V1,
+  isReferenceInputNoIdxViolation,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxOutput,
   ReferenceInputNoIdxStep04Datum,
   ReferenceInputNoIdxStep04SpendRedeemer,
@@ -47,13 +47,13 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
 import { parseHex, requireRecord } from "./json-file.js";
-import { midgardTxOutputFromCanonicalCborV1 } from "./prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "./prepare-input-no-idx.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -72,14 +72,14 @@ import {
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared outputs preimage produced by `prepare-reference-input-no-idx`. */
@@ -111,8 +111,8 @@ export const parseSubmitReferenceInputNoIdxOutputsPreimage = (
   const outputsPreimage = rawOutputs.map((item, index) => {
     const label = `--outputs-preimage.outputsPreimageCbor[${index.toString()}]`;
     const canonicalCbor = Buffer.from(parseHex(item, label), "hex");
-    const projected = midgardTxOutputFromCanonicalCborV1(canonicalCbor);
-    if (!encodeMidgardTxOutputCanonicalV1(projected).equals(canonicalCbor)) {
+    const projected = midgardTxOutputFromCanonicalCbor(canonicalCbor);
+    if (!encodeMidgardTxOutputCanonical(projected).equals(canonicalCbor)) {
       throw new Error(`${label} is not a canonical Midgard output encoding.`);
     }
     return projected;
@@ -237,7 +237,7 @@ const makeReferenceInputNoIdxStep04SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly outputsOpening: FieldOpeningV1;
+  readonly outputsOpening: FieldOpening;
   readonly onLayout: (layout: ReferenceInputNoIdxStep04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -364,9 +364,9 @@ export const submitReferenceInputNoIdxStep04 = async ({
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep04Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -399,12 +399,12 @@ export const submitReferenceInputNoIdxStep04 = async ({
   const badReferenceInputOutputIndex =
     inputDatum.data.bad_reference_input_output_index;
 
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producingTxId,
     nativeTxCompactCbor,
     itemCbors: outputsPreimage.outputsPreimage.map(
-      encodeMidgardTxOutputCanonicalV1,
+      encodeMidgardTxOutputCanonical,
     ),
     owner: signer.paymentKeyHash,
     label: "Reference-input-no-idx step 04 outputs",
@@ -416,7 +416,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
   // resolving indices into the complete reference-input set.
   const published =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -424,17 +424,17 @@ export const submitReferenceInputNoIdxStep04 = async ({
       label: "Reference-input-no-idx step 04 outputs field",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "reference-input-no-idx step 04 validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "reference-input-no-idx step 04 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "reference-input-no-idx step 04 fraud-proof mint",
@@ -448,7 +448,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const outputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
@@ -458,7 +458,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
   // for tiers 1–2 is derived by walking the same preimage the door hashes.
   const producingTxOutputCount = planned.itemCount;
   if (
-    !isReferenceInputNoIdxViolationV1({
+    !isReferenceInputNoIdxViolation({
       badReferenceInputOutputIndex,
       producingTxOutputCount,
     })
@@ -558,9 +558,9 @@ export const submitReferenceInputNoIdxStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -650,7 +650,7 @@ export const submitReferenceInputNoIdxStep04FromFiles = async (
     threadOutRef: config.threadOutRef,
     outputsPreimage:
       parseSubmitReferenceInputNoIdxOutputsPreimage(outputsPreimageJson),
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

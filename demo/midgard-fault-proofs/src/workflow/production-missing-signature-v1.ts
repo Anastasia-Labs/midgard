@@ -1,25 +1,25 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
   decodeAddressWitnessPreimage,
   FraudProofComputationThreadStepDatum,
   type MidgardAddressWitness,
-  MISSING_SIGNATURE_VIOLATION_ID_V1,
+  MISSING_SIGNATURE_VIOLATION_ID,
   MissingSignatureStep02Datum,
   MissingSignatureStep03Datum,
   MissingSignatureStep04Datum,
-  missingSignatureVkeyHashV1,
+  missingSignatureVkeyHash,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalEvidenceBuilderInputV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence-v1.js";
-import type { MissingSignatureContractsV1 } from "../missing-signature/contracts-v1.js";
+import type { MissingSignatureContracts } from "../missing-signature/contracts-v1.js";
 import { submitMissingSignatureInit } from "../missing-signature/submit-missing-signature-init.js";
 import { submitMissingSignatureStep01 } from "../missing-signature/submit-missing-signature-step-01.js";
 import { submitMissingSignatureStep02 } from "../missing-signature/submit-missing-signature-step-02.js";
@@ -30,8 +30,8 @@ import {
   decodeTransactionMaterial,
   type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
   type StateQueueMutationLease,
@@ -44,70 +44,70 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createProductionMissingSignatureWorkflowAdapterV1,
-  PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1,
-  type ProductionMissingSignatureCapturedActionV1,
-  type ProductionMissingSignatureTransactionPortV1,
+  createMissingSignatureWorkflowAdapter,
+  MISSING_SIGNATURE_TRANSACTION_PORT,
+  type MissingSignatureCapturedAction,
+  type MissingSignatureTransactionPort,
 } from "./production-missing-signature-adapter-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_MISSING_SIGNATURE_ARTIFACT_V1 =
+export const MISSING_SIGNATURE_ARTIFACT =
   "midgard-production-missing-signature-artifact-v1" as const;
 
-type MissingSignatureArtifactTransactionV1 = Readonly<{
+type MissingSignatureArtifactTransaction = Readonly<{
   nodeTxId: string;
   txCbor: string;
   l2TransactionSourceCbor: string;
 }>;
 
-export type ProductionMissingSignatureArtifactV1 = JournalJsonObjectV1 & {
-  readonly schemaVersion: typeof PRODUCTION_MISSING_SIGNATURE_ARTIFACT_V1;
+export type MissingSignatureArtifact = JournalJsonObject & {
+  readonly schemaVersion: typeof MISSING_SIGNATURE_ARTIFACT;
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;
   readonly selectedTransactionIndex: number;
   readonly accusedRequiredSignerIndex: number;
   readonly accusedRequiredSignerHash: string;
   readonly resolvedVkey: string;
-  readonly transactions: readonly MissingSignatureArtifactTransactionV1[];
+  readonly transactions: readonly MissingSignatureArtifactTransaction[];
 };
 
-export type AdmittedProductionMissingSignatureArtifactV1 = Readonly<{
-  artifact: ProductionMissingSignatureArtifactV1;
+export type AdmittedMissingSignatureArtifact = Readonly<{
+  artifact: MissingSignatureArtifact;
   txInclusion: SubmitStep01TxInclusion;
   nativeTxCompactCbor: string;
   requiredSignerHashes: readonly string[];
@@ -169,9 +169,7 @@ const natural = (value: unknown, label: string): number => {
   return value as number;
 };
 
-const parseArtifact = (
-  value: unknown,
-): ProductionMissingSignatureArtifactV1 => {
+const parseArtifact = (value: unknown): MissingSignatureArtifact => {
   const artifact = record(value, "missing-signature artifact");
   exactKeys(
     artifact,
@@ -187,7 +185,7 @@ const parseArtifact = (
     ],
     "missing-signature artifact",
   );
-  if (artifact.schemaVersion !== PRODUCTION_MISSING_SIGNATURE_ARTIFACT_V1) {
+  if (artifact.schemaVersion !== MISSING_SIGNATURE_ARTIFACT) {
     throw new Error("missing-signature artifact version changed");
   }
   if (
@@ -227,7 +225,7 @@ const parseArtifact = (
     }),
   );
   return Object.freeze({
-    schemaVersion: PRODUCTION_MISSING_SIGNATURE_ARTIFACT_V1,
+    schemaVersion: MISSING_SIGNATURE_ARTIFACT,
     headerHash: canonicalHex(
       artifact.headerHash,
       HEX_28,
@@ -276,9 +274,9 @@ const signerHashes = (
   );
 
 const witnessSetCompact = (
-  witnessSet: Parameters<typeof deriveMidgardNativeTxWitnessSetCompactV1>[0],
+  witnessSet: Parameters<typeof deriveMidgardNativeTxWitnessSetCompact>[0],
 ): NativeTxWitnessSetCompact => {
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(witnessSet);
+  const compact = deriveMidgardNativeTxWitnessSetCompact(witnessSet);
   return {
     addr_tx_wits_hash: compact.addrTxWitsHash.toString("hex"),
     script_tx_wits_hash: compact.scriptTxWitsHash.toString("hex"),
@@ -296,7 +294,7 @@ const publicCommittedVkeyFor = ({
   for (const list of witnesses) {
     for (const witness of list) {
       const verificationKey = witness.verification_key.toLowerCase();
-      if (missingSignatureVkeyHashV1(verificationKey) === hash) {
+      if (missingSignatureVkeyHash(verificationKey) === hash) {
         return verificationKey;
       }
     }
@@ -308,9 +306,9 @@ const publicCommittedVkeyFor = ({
  * Re-authenticates every durable byte, rebuilds the counted transaction root
  * and MPF proof, and recovers the vkey only from committed public L2 evidence.
  */
-export const admitProductionMissingSignatureArtifactV1 = async (
+export const admitMissingSignatureArtifact = async (
   value: unknown,
-): Promise<AdmittedProductionMissingSignatureArtifactV1> => {
+): Promise<AdmittedMissingSignatureArtifact> => {
   const artifact = parseArtifact(value);
   const decoded = await Promise.all(
     artifact.transactions.map(decodeTransactionMaterial),
@@ -338,7 +336,7 @@ export const admitProductionMissingSignatureArtifactV1 = async (
   if (
     addrTxWits.some(
       (witness) =>
-        missingSignatureVkeyHashV1(witness.verification_key) === accused,
+        missingSignatureVkeyHash(witness.verification_key) === accused,
     )
   ) {
     throw new Error(
@@ -359,8 +357,8 @@ export const admitProductionMissingSignatureArtifactV1 = async (
       "missing-signature durable vkey is not the deterministic committed public preimage",
     );
   }
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
-  await requireTransactionsRootMatchV1({
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
+  await requireTransactionsRootMatch({
     sourceRoot: trie.root,
     expectedTransactionsRoot: artifact.committedTransactionsRoot,
     count: BigInt(decoded.length),
@@ -373,7 +371,7 @@ export const admitProductionMissingSignatureArtifactV1 = async (
     transactionsPhasRoot: trie.root,
     txMembershipProofCbor: requireProof(
       trie,
-      transactionSourceTrieItemV1(selected).key,
+      transactionSourceTrieItem(selected).key,
       "missing-signature transaction",
     ),
   });
@@ -393,7 +391,7 @@ export const admitProductionMissingSignatureArtifactV1 = async (
 
 const selectedDetection = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "missingSignature" },
 ): Readonly<{
@@ -405,7 +403,7 @@ const selectedDetection = (
   const [violationId, transaction, signer, txId, signerHash, ...surplus] =
     classification.selected.detectionId.split(":");
   if (
-    violationId !== MISSING_SIGNATURE_VIOLATION_ID_V1 ||
+    violationId !== MISSING_SIGNATURE_VIOLATION_ID ||
     surplus.length !== 0 ||
     !/^(?:0|[1-9][0-9]*)$/u.test(transaction ?? "") ||
     !/^(?:0|[1-9][0-9]*)$/u.test(signer ?? "") ||
@@ -433,19 +431,19 @@ const selectedDetection = (
   };
 };
 
-export const prepareProductionMissingSignatureArtifactV1 = async ({
+export const prepareMissingSignatureArtifact = async ({
   evidence,
   classification,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "missingSignature" };
-}): Promise<ProductionMissingSignatureArtifactV1> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+}): Promise<MissingSignatureArtifact> => {
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   if (
     classification.headerHash !== admitted.headerHash ||
-    classification.selected.violationId !== MISSING_SIGNATURE_VIOLATION_ID_V1
+    classification.selected.violationId !== MISSING_SIGNATURE_VIOLATION_ID
   ) {
     throw new Error(
       "missing-signature classification differs from canonical evidence",
@@ -479,8 +477,8 @@ export const prepareProductionMissingSignatureArtifactV1 = async ({
       "missing-signature public evidence has no vkey preimage; the direct family must not accept operator input and this case requires validationTraceDispute",
     );
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_MISSING_SIGNATURE_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: MISSING_SIGNATURE_ARTIFACT,
     headerHash: admitted.headerHash,
     committedTransactionsRoot: admitted.expectedTransactionsRoot,
     selectedTransactionIndex: selected.transactionIndex,
@@ -488,14 +486,14 @@ export const prepareProductionMissingSignatureArtifactV1 = async ({
     accusedRequiredSignerHash: selected.signerHash,
     resolvedVkey,
     transactions,
-  }) as ProductionMissingSignatureArtifactV1;
-  await admitProductionMissingSignatureArtifactV1(artifact);
+  }) as MissingSignatureArtifact;
+  await admitMissingSignatureArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type MissingSignatureWorkflowReferenceScriptsV1 = Readonly<{
+export type MissingSignatureWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -506,22 +504,22 @@ export type MissingSignatureWorkflowReferenceScriptsV1 = Readonly<{
   }>;
 }>;
 
-type BoundMissingSignatureTransactionsConfigV1 = Readonly<{
+type BoundMissingSignatureTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"missingSignature">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"missingSignature">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  contracts: MissingSignatureContractsV1;
-  category: FraudProofWorkflowDeploymentBindingV1<"missingSignature">["resolvedContracts"]["category"];
-  catalogue: FraudProofWorkflowDeploymentBindingV1<"missingSignature">["catalogue"];
-  referenceScripts: MissingSignatureWorkflowReferenceScriptsV1;
+  contracts: MissingSignatureContracts;
+  category: FraudProofWorkflowDeploymentBinding<"missingSignature">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"missingSignature">["catalogue"];
+  referenceScripts: MissingSignatureWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
   deploymentInfo: unknown;
 }>;
 
-type MissingSignatureBuilderSetV1 = Readonly<{
+type MissingSignatureBuilderSet = Readonly<{
   init: typeof submitMissingSignatureInit;
   step01: typeof submitMissingSignatureStep01;
   step02: typeof submitMissingSignatureStep02;
@@ -530,7 +528,7 @@ type MissingSignatureBuilderSetV1 = Readonly<{
   remove: typeof submitRemoveFraudulentBlock;
 }>;
 
-const productionBuilders: MissingSignatureBuilderSetV1 = Object.freeze({
+const productionBuilders: MissingSignatureBuilderSet = Object.freeze({
   init: submitMissingSignatureInit,
   step01: submitMissingSignatureStep01,
   step02: submitMissingSignatureStep02,
@@ -540,7 +538,7 @@ const productionBuilders: MissingSignatureBuilderSetV1 = Object.freeze({
 });
 
 const requiredAction = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "missing-signature workflow action");
   if (
@@ -564,22 +562,22 @@ const stringField = (
   return value;
 };
 
-const createBoundTransactionPortV1 = ({
+const createBoundTransactionPort = ({
   config,
   builders,
 }: {
-  readonly config: BoundMissingSignatureTransactionsConfigV1;
-  readonly builders: MissingSignatureBuilderSetV1;
-}): ProductionMissingSignatureTransactionPortV1 => ({
-  portVersion: PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1,
+  readonly config: BoundMissingSignatureTransactionsConfig;
+  readonly builders: MissingSignatureBuilderSet;
+}): MissingSignatureTransactionPort => ({
+  portVersion: MISSING_SIGNATURE_TRANSACTION_PORT,
   category: "missingSignature",
   prepare: async ({ evidence, classification }) =>
-    await prepareProductionMissingSignatureArtifactV1({
+    await prepareMissingSignatureArtifact({
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = await admitProductionMissingSignatureArtifactV1(artifact);
+    const admitted = await admitMissingSignatureArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
         "missing-signature artifact targets a different manifest-bound header",
@@ -587,7 +585,7 @@ const createBoundTransactionPortV1 = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.init({
             lucid: config.lucid,
@@ -608,7 +606,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step01({
             lucid: config.lucid,
@@ -630,7 +628,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step02({
             lucid: config.lucid,
@@ -651,7 +649,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_03") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step03({
             lucid: config.lucid,
@@ -669,7 +667,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_04") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step04({
             lucid: config.lucid,
@@ -702,7 +700,7 @@ const createBoundTransactionPortV1 = ({
       };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           await builders.remove({
             lucid: config.lucid,
@@ -717,7 +715,7 @@ const createBoundTransactionPortV1 = ({
             fraudProverRewardLovelace: config.fraudProverRewardLovelace,
             preSubmitBoundary: async (built) => {
               if (
-                !workflowTransactionInputOutRefsV1(built.signed).includes(
+                !workflowTransactionInputOutRefs(built.signed).includes(
                   nextRemovalOutRef,
                 )
               ) {
@@ -726,7 +724,7 @@ const createBoundTransactionPortV1 = ({
                 );
               }
               if (
-                !workflowTransactionReferenceInputOutRefsV1(
+                !workflowTransactionReferenceInputOutRefs(
                   built.signed,
                 ).includes(fraudProofOutRef)
               ) {
@@ -742,7 +740,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({
         transaction,
         ...(mutationLease === undefined ? {} : { mutationLease }),
-      }) satisfies ProductionMissingSignatureCapturedActionV1;
+      }) satisfies MissingSignatureCapturedAction;
     }
     throw new Error(
       `missing-signature workflow action has unsupported stage ${String(input.stage)}`,
@@ -750,31 +748,31 @@ const createBoundTransactionPortV1 = ({
   },
 });
 
-export type ManifestBoundMissingSignatureWorkflowConfigV1 = Readonly<{
+export type ManifestBoundMissingSignatureWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: MissingSignatureWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: MissingSignatureWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundMissingSignatureWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"missingSignature">;
-  l1: FraudProofFamilyL1ObservationPortV1<"missingSignature">;
-  transactions: ProductionMissingSignatureTransactionPortV1;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundMissingSignatureWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"missingSignature">;
+  l1: FraudProofFamilyL1ObservationPort<"missingSignature">;
+  transactions: MissingSignatureTransactionPort;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundMissingSignatureWorkflowV1 = async (
-  config: ManifestBoundMissingSignatureWorkflowConfigV1,
-): Promise<ManifestBoundMissingSignatureWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundMissingSignatureWorkflow = async (
+  config: ManifestBoundMissingSignatureWorkflowConfig,
+): Promise<ManifestBoundMissingSignatureWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -788,7 +786,7 @@ export const createManifestBoundMissingSignatureWorkflowV1 = async (
       MissingSignatureStep04Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -804,41 +802,41 @@ export const createManifestBoundMissingSignatureWorkflowV1 = async (
       "missing-signature manifest binding omitted required contracts",
     );
   }
-  const references: MissingSignatureWorkflowReferenceScriptsV1 = Object.freeze({
+  const references: MissingSignatureWorkflowReferenceScripts = Object.freeze({
     steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMissingSignature",
         utxo: config.referenceScripts.steps[0],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMissingSignatureStep02",
         utxo: config.referenceScripts.steps[1],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMissingSignatureStep03",
         utxo: config.referenceScripts.steps[2],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMissingSignatureStep04",
         utxo: config.referenceScripts.steps[3],
       }),
     ] as const),
     witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: config.referenceScripts.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: config.referenceScripts.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
@@ -848,7 +846,7 @@ export const createManifestBoundMissingSignatureWorkflowV1 = async (
       ? {}
       : { fieldCertificates: config.referenceScripts.fieldCertificates }),
   });
-  const contracts: MissingSignatureContractsV1 = Object.freeze({
+  const contracts: MissingSignatureContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -862,13 +860,13 @@ export const createManifestBoundMissingSignatureWorkflowV1 = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: binding.fieldPreimageCertificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const transactions = createBoundTransactionPortV1({
+  const transactions = createBoundTransactionPort({
     config: {
       lucid: config.lucid,
       blueprint: binding.blueprint,
@@ -892,37 +890,36 @@ export const createManifestBoundMissingSignatureWorkflowV1 = async (
     binding,
     l1,
     transactions,
-    adapter: createProductionMissingSignatureWorkflowAdapterV1({
+    adapter: createMissingSignatureWorkflowAdapter({
       l1,
       transactions,
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
     }),
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundMissingSignatureWorkflowV1 = async ({
+export const runOrResumeManifestBoundMissingSignatureWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundMissingSignatureWorkflowV1;
+  readonly workflow: ManifestBoundMissingSignatureWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["missingSignature"],
     }),
@@ -933,7 +930,6 @@ export const runOrResumeManifestBoundMissingSignatureWorkflowV1 = async ({
 };
 
 export const unsafeCreateMissingSignatureTransactionPortForTest = (input: {
-  readonly config: BoundMissingSignatureTransactionsConfigV1;
-  readonly builders: MissingSignatureBuilderSetV1;
-}): ProductionMissingSignatureTransactionPortV1 =>
-  createBoundTransactionPortV1(input);
+  readonly config: BoundMissingSignatureTransactionsConfig;
+  readonly builders: MissingSignatureBuilderSet;
+}): MissingSignatureTransactionPort => createBoundTransactionPort(input);

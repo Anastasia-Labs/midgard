@@ -11,7 +11,7 @@
  * - **identity** — the thread token's asset name must be this family's category id
  *   followed by the challenged header hash the carried state names, so a
  *   conviction cannot be filed against the wrong block; and
- * - **establishment** — `isFabricatedWithdrawalFaultV1`, the twin of
+ * - **establishment** — `isFabricatedWithdrawalFault`, the twin of
  *   `fabricated_withdrawal_fault_is_established_v1`, must hold for the carried
  *   state, so a stale or content-identical "fault" is never made permanent. For the
  *   mismatch shape that means the two `WithdrawalInfo` commitments really differ —
@@ -25,7 +25,7 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  isFabricatedWithdrawalFaultV1,
+  isFabricatedWithdrawalFault,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -40,7 +40,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -53,7 +53,7 @@ import {
 } from "./runtime.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
-  type FabricatedWithdrawalContractsV1,
+  type FabricatedWithdrawalContracts,
 } from "./submit-fabricated-withdrawal-step-01.js";
 import {
   requireComputationThreadToken,
@@ -61,13 +61,13 @@ import {
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export const requireFabricatedWithdrawalStep04Datum = ({
@@ -102,7 +102,7 @@ export const requireFabricatedWithdrawalStep04Datum = ({
  * token names, or when the carried fault is not an established
  * fabricated-withdrawal fault.
  */
-export const assertFabricatedWithdrawalStep04FinalizableV1 = ({
+export const assertFabricatedWithdrawalStep04Finalizable = ({
   state,
   fraudulentHeaderHash,
 }: {
@@ -114,7 +114,7 @@ export const assertFabricatedWithdrawalStep04FinalizableV1 = ({
       `Fabricated-withdrawal step 04 refuses to finalize: thread state names challenged header ${state.challenged_header_hash}, but the thread token names ${fraudulentHeaderHash}.`,
     );
   }
-  if (!isFabricatedWithdrawalFaultV1(state)) {
+  if (!isFabricatedWithdrawalFault(state)) {
     throw new Error(
       "Fabricated-withdrawal step 04 refuses to finalize: the carried fault is not an established fabricated-withdrawal fault (identical content commitments, or an event outside the challenged block's window).",
     );
@@ -171,13 +171,13 @@ export const submitFabricatedWithdrawalStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedWithdrawalContractsV1;
+  readonly contracts: FabricatedWithdrawalContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep04Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -197,7 +197,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
     categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   });
   const state = requireFabricatedWithdrawalStep04Datum({ threadUtxo, signer });
-  assertFabricatedWithdrawalStep04FinalizableV1({
+  assertFabricatedWithdrawalStep04Finalizable({
     state,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
   });
@@ -287,12 +287,12 @@ export const submitFabricatedWithdrawalStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "fabricated-withdrawal step 04 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "fabricated-withdrawal step 04 fraud-proof mint",
@@ -302,7 +302,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
     .readFrom([
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[3].spendingScriptHash,
         categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
@@ -336,9 +336,9 @@ export const submitFabricatedWithdrawalStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -401,7 +401,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
 
 export const submitFabricatedWithdrawalStep04FromFiles = async (
   config: SubmitFabricatedWithdrawalStep04CliConfig & {
-    readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly contracts: FabricatedWithdrawalContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep04Result> => {

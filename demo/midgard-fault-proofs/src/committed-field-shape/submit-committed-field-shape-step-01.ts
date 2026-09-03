@@ -1,18 +1,18 @@
 import {
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardNativeTxWitnessSetCompact,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
-  type CommittedFieldClaimV1,
-  committedFieldShapeEvidenceFromCommittedFieldV1,
-  type CommittedFieldShapeEvidenceV1,
+  type CommittedFieldClaim,
+  type CommittedFieldShapeEvidence,
+  committedFieldShapeEvidenceFromCommittedField,
   CommittedFieldShapeStep01SpendRedeemer,
   CommittedFieldShapeStep02Datum,
   type CommittedFieldShapeStep02State,
   HUB_ORACLE_ASSET_NAME,
-  isCommittedFieldShapeViolationV1,
-  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1,
+  isCommittedFieldShapeViolation,
+  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
   type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -36,7 +36,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -60,24 +60,24 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { CommittedFieldShapeContractsV1 } from "./contracts-v1.js";
-import type { PreparedCommittedFieldShapeV1 } from "./prepare-committed-field-shape-v1.js";
+import type { CommittedFieldShapeContracts } from "./contracts-v1.js";
+import type { PreparedCommittedFieldShape } from "./prepare-committed-field-shape-v1.js";
 import {
-  committedFieldShapeStepLabelV1,
+  committedFieldShapeStepLabel,
   committedFieldShapeSubmitError,
-  requireCommittedFieldShapeReferenceScriptV1,
-  requireCommittedFieldShapeThreadUtxoV1,
+  requireCommittedFieldShapeReferenceScript,
+  requireCommittedFieldShapeThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = committedFieldShapeStepLabelV1(0);
+const STEP_LABEL = committedFieldShapeStepLabel(0);
 
 export type SubmitCommittedFieldShapeStep01Result = {
   readonly txHash: string;
@@ -89,7 +89,7 @@ export type SubmitCommittedFieldShapeStep01Result = {
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
   readonly secondStepAddress: string;
-  readonly evidence: CommittedFieldShapeEvidenceV1;
+  readonly evidence: CommittedFieldShapeEvidence;
   readonly step02State: CommittedFieldShapeStep02State;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -97,8 +97,8 @@ export type SubmitCommittedFieldShapeStep01Result = {
   readonly awaitedConfirmation: boolean;
 };
 
-export const committedFieldShapeInlineClaimDetailsV1 = (
-  claim: CommittedFieldClaimV1,
+export const committedFieldShapeInlineClaimDetails = (
+  claim: CommittedFieldClaim,
 ): {
   readonly fieldIndex: number;
   readonly preimage: Buffer;
@@ -118,7 +118,7 @@ export const committedFieldShapeInlineClaimDetailsV1 = (
     };
     return Buffer.from(
       computeHash32(
-        encodeMidgardNativeTxWitnessSetCompactV1({
+        encodeMidgardNativeTxWitnessSetCompact({
           addrTxWitsHash: h32(
             claim.WitnessFieldClaim.witness_set.addr_tx_wits_hash,
             "witness claim addr_tx_wits_hash",
@@ -157,7 +157,7 @@ export const committedFieldShapeInlineClaimDetailsV1 = (
     );
   }
   const expectedKind =
-    selected.fieldIndex < MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1
+    selected.fieldIndex < MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX
       ? "body"
       : "witness";
   if (selected.kind !== expectedKind) {
@@ -177,9 +177,9 @@ export const committedFieldShapeInlineClaimDetailsV1 = (
     );
   }
   const preimage = Buffer.from(preimageHex, "hex");
-  if (preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1) {
+  if (preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES) {
     throw committedFieldShapeSubmitError(
-      `inline preimage is ${preimage.length.toString()} bytes, above the tier-1 frontier ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()}; tier-2/3 TypeScript carriage is deferred.`,
+      `inline preimage is ${preimage.length.toString()} bytes, above the tier-1 frontier ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES.toString()}; tier-2/3 TypeScript carriage is deferred.`,
     );
   }
   return {
@@ -213,7 +213,7 @@ export const submitCommittedFieldShapeStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: CommittedFieldShapeContractsV1;
+  readonly contracts: CommittedFieldShapeContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -221,17 +221,17 @@ export const submitCommittedFieldShapeStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly prepared: Pick<
-    PreparedCommittedFieldShapeV1,
+    PreparedCommittedFieldShape,
     "claim" | "evidence" | "step02State"
   >;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCommittedFieldShapeStep01Result> => {
   const { threadUtxo, threadToken } =
-    await requireCommittedFieldShapeThreadUtxoV1({
+    await requireCommittedFieldShapeThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -266,7 +266,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   }
   requireNativeTxMatchesCompactCbor(txInclusion);
   const { fieldIndex, preimage, witnessSetHash } =
-    committedFieldShapeInlineClaimDetailsV1(prepared.claim);
+    committedFieldShapeInlineClaimDetails(prepared.claim);
   if (
     witnessSetHash !== undefined &&
     witnessSetHash !== txInclusion.nativeTx.witness_set_hash
@@ -275,7 +275,7 @@ export const submitCommittedFieldShapeStep01 = async ({
       `witness claim hashes to compact witness set ${witnessSetHash}, not the committed ${txInclusion.nativeTx.witness_set_hash}.`,
     );
   }
-  const evidence = committedFieldShapeEvidenceFromCommittedFieldV1({
+  const evidence = committedFieldShapeEvidenceFromCommittedField({
     badTxId: txInclusion.nativeTxId,
     fieldIndex,
     committedPreimage: preimage,
@@ -303,7 +303,7 @@ export const submitCommittedFieldShapeStep01 = async ({
     derivedState.bad_tx_id !== prepared.step02State.bad_tx_id ||
     derivedState.field_index !== prepared.step02State.field_index ||
     derivedState.verdict !== prepared.step02State.verdict ||
-    !isCommittedFieldShapeViolationV1({
+    !isCommittedFieldShapeViolation({
       fieldIndex: Number(derivedState.field_index),
       verdict: Number(derivedState.verdict),
     })
@@ -320,7 +320,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   const feeInput = selectFeeInput(
     walletInputsExcludingChunks({ walletUtxos, chunks }),
   );
-  const validatedStepReference = requireCommittedFieldShapeReferenceScriptV1({
+  const validatedStepReference = requireCommittedFieldShapeReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -338,7 +338,7 @@ export const submitCommittedFieldShapeStep01 = async ({
     network,
     chunkedVerifyScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: carriedByChunks ? chunkedVerifyScript : phasMembershipScript,
     referenceUtxo: carriedByChunks
       ? witnessReferenceScripts?.chunkedVerifyWithdraw
@@ -473,9 +473,9 @@ export const submitCommittedFieldShapeStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

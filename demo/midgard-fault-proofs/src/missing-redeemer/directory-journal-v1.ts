@@ -3,32 +3,32 @@ import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type {
-  MissingRedeemerDurableStateV1,
-  MissingRedeemerJournalV1,
+  MissingRedeemerDurableState,
+  MissingRedeemerJournal,
 } from "./workflow-v1.js";
 
 const fileName = (identity: string): string =>
   `${createHash("sha256").update(identity).digest("hex")}.jsonl`;
 
-const parse = (contents: string): readonly MissingRedeemerDurableStateV1[] =>
+const parse = (contents: string): readonly MissingRedeemerDurableState[] =>
   contents
     .split("\n")
     .filter((line) => line !== "")
-    .map((line) => JSON.parse(line) as MissingRedeemerDurableStateV1);
+    .map((line) => JSON.parse(line) as MissingRedeemerDurableState);
 
 /**
  * Family-owned append-only journal. The exclusive sidecar lock makes the
  * expected-length compare-and-append atomic across process restarts and
  * concurrent workers; every append is fsynced before the lock is released.
  */
-export const createMissingRedeemerDirectoryJournalV1 = async (
+export const createMissingRedeemerDirectoryJournal = async (
   directory: string,
-): Promise<MissingRedeemerJournalV1> => {
+): Promise<MissingRedeemerJournal> => {
   const root = resolve(directory);
   await mkdir(root, { recursive: true });
   const load = async (
     identity: string,
-  ): Promise<readonly MissingRedeemerDurableStateV1[]> => {
+  ): Promise<readonly MissingRedeemerDurableState[]> => {
     try {
       return parse(await readFile(join(root, fileName(identity)), "utf8"));
     } catch (cause) {

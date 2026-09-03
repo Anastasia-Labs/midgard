@@ -1,13 +1,13 @@
 import { availableParallelism } from "node:os";
 
 import {
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  type DeploymentManifestV1EconomicsProfile,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  type DeploymentManifestEconomicsProfile,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -29,7 +29,7 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import {
-  assertRetentionDaysMatchesDeploymentV1,
+  assertRetentionDaysMatchesDeployment,
   validateRetentionDays,
 } from "../database/retention-policy.js";
 
@@ -94,8 +94,8 @@ type Provider = "Kupmios";
  * one protocol-valid maximum envelope fits even at the configured minimum.
  */
 export const CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES = Number(
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1 +
-    MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 * 199n,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES +
+    MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT * 199n,
 );
 
 export const resolveValidationWorkerPoolSize = (
@@ -152,7 +152,7 @@ export type NodeConfigDep = {
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: number;
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: number;
   NETWORK: Network;
-  MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestV1EconomicsProfile;
+  MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestEconomicsProfile;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
@@ -308,7 +308,7 @@ const makeConfig = Effect.gen(function* () {
   const deploymentEconomicsProfile = yield* Config.string(
     "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE",
   ).pipe(
-    Config.mapAttempt((value): DeploymentManifestV1EconomicsProfile => {
+    Config.mapAttempt((value): DeploymentManifestEconomicsProfile => {
       if (
         value !== "public-preprod-launch-v1" &&
         value !== "bounded-acceptance-v1"
@@ -321,7 +321,7 @@ const makeConfig = Effect.gen(function* () {
     }),
   );
   const deploymentEconomics =
-    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[deploymentEconomicsProfile];
+    DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[deploymentEconomicsProfile];
   const l1ProviderPreflightTimeoutMs = yield* Config.integer(
     "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS",
   ).pipe(
@@ -585,7 +585,7 @@ const makeConfig = Effect.gen(function* () {
   const maxDurableAdmissionBacklogBytes = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG_BYTES",
   ).pipe(
-    Config.withDefault(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes),
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes),
     Config.mapAttempt((value) => {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(
@@ -602,14 +602,14 @@ const makeConfig = Effect.gen(function* () {
   const submitIngressMaxInFlightBytes = yield* Config.integer(
     "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
   ).pipe(
-    Config.withDefault(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes),
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes),
     Config.mapAttempt((value) => {
       if (
         !Number.isSafeInteger(value) ||
-        value < MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes
+        value < MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes
       ) {
         throw new Error(
-          `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes.toString()}`,
+          `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes.toString()}`,
         );
       }
       return value;
@@ -634,15 +634,15 @@ const makeConfig = Effect.gen(function* () {
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
   ).pipe(
-    Config.withDefault(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes),
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes),
     Config.mapAttempt((value) => {
       if (
         !Number.isSafeInteger(value) ||
         value <= 0 ||
-        value > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+        value > MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes
       ) {
         throw new Error(
-          `MAX_SUBMIT_TX_CBOR_BYTES must be between 1 and ${MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString()}`,
+          `MAX_SUBMIT_TX_CBOR_BYTES must be between 1 and ${MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes.toString()}`,
         );
       }
       return value;
@@ -754,7 +754,7 @@ const makeConfig = Effect.gen(function* () {
     // Q54: enabled pruning must cover the deployment manifest's
     // da.transportProfile.retentionDays window; a shorter env value fails the
     // config load rather than silently pruning challengeable evidence.
-    Config.mapAttempt((value) => assertRetentionDaysMatchesDeploymentV1(value)),
+    Config.mapAttempt((value) => assertRetentionDaysMatchesDeployment(value)),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
@@ -1086,12 +1086,12 @@ const makeConfig = Effect.gen(function* () {
   );
   const commitMaxL2TxCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_L2_TX_COUNT",
-    MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+    MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
   ).pipe(
     Config.mapAttempt((value) => {
-      if (value > MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount) {
+      if (value > MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount) {
         throw new Error(
-          `COMMIT_MAX_L2_TX_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount.toString()}`,
+          `COMMIT_MAX_L2_TX_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount.toString()}`,
         );
       }
       return value;
@@ -1099,12 +1099,12 @@ const makeConfig = Effect.gen(function* () {
   );
   const commitMaxLedgerOpCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_LEDGER_OP_COUNT",
-    MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount,
+    MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount,
   ).pipe(
     Config.mapAttempt((value) => {
-      if (value > MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount) {
+      if (value > MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount) {
         throw new Error(
-          `COMMIT_MAX_LEDGER_OP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount.toString()}`,
+          `COMMIT_MAX_LEDGER_OP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount.toString()}`,
         );
       }
       return value;
@@ -1112,12 +1112,12 @@ const makeConfig = Effect.gen(function* () {
   );
   const commitMaxTransitionStepCount = yield* positiveSafeIntegerConfig(
     "COMMIT_MAX_TRANSITION_STEP_COUNT",
-    MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount,
+    MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
   ).pipe(
     Config.mapAttempt((value) => {
-      if (value > MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount) {
+      if (value > MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount) {
         throw new Error(
-          `COMMIT_MAX_TRANSITION_STEP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount.toString()}`,
+          `COMMIT_MAX_TRANSITION_STEP_COUNT must be <= ${MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount.toString()}`,
         );
       }
       return value;

@@ -2,14 +2,14 @@ import { spawn } from "node:child_process";
 
 import {
   computeHash32,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScript,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
@@ -17,65 +17,65 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { extractForcedLeafEvidenceV1 } from "../src/evidence/forced-leaf-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
+import { extractForcedLeafEvidence } from "../src/evidence/forced-leaf-evidence-v1.js";
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  advanceMissingNativeScriptTxGrammarCheckpointV1,
-  advanceMissingNativeScriptTxSemanticCheckpointV1,
-  decodeMissingNativeScriptTxGrammarCheckpointV1,
-  decodeMissingNativeScriptTxSemanticCheckpointV1,
-  encodeMissingNativeScriptTxGrammarCheckpointV1,
-  encodeMissingNativeScriptTxSemanticCheckpointV1,
-  hashMissingNativeScriptTxGrammarCheckpointV1,
-  hashMissingNativeScriptTxSemanticCheckpointV1,
-  initialMissingNativeScriptTxGrammarCheckpointV1,
-  initialMissingNativeScriptTxSemanticCheckpointV1,
+  advanceMissingNativeScriptTxGrammarCheckpoint,
+  advanceMissingNativeScriptTxSemanticCheckpoint,
+  decodeMissingNativeScriptTxGrammarCheckpoint,
+  decodeMissingNativeScriptTxSemanticCheckpoint,
+  encodeMissingNativeScriptTxGrammarCheckpoint,
+  encodeMissingNativeScriptTxSemanticCheckpoint,
+  hashMissingNativeScriptTxGrammarCheckpoint,
+  hashMissingNativeScriptTxSemanticCheckpoint,
+  initialMissingNativeScriptTxGrammarCheckpoint,
+  initialMissingNativeScriptTxSemanticCheckpoint,
 } from "../src/missing-native-script-tx/staged-walk-v1.js";
 import {
-  buildVanRossemFitLedgerV1,
-  type VanRossemFitMeasurementV1,
+  buildVanRossemFitLedger,
+  type VanRossemFitMeasurement,
 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
-import type { ScriptIntegrityHashMissingContractsV1 } from "../src/script-integrity-hash-missing/contracts-v1.js";
-import { prepareScriptIntegrityHashMissingEvidenceV1 } from "../src/script-integrity-hash-missing/family-v1.js";
-import { createScriptIntegrityHashMissingTransactionPortV1 } from "../src/script-integrity-hash-missing/production-actuator-v1.js";
-import { testingOnlyScriptIntegrityHashMissingArtifactV1 } from "../src/script-integrity-hash-missing/production-artifact-v1.js";
+import type { ScriptIntegrityHashMissingContracts } from "../src/script-integrity-hash-missing/contracts-v1.js";
+import { prepareScriptIntegrityHashMissingEvidence } from "../src/script-integrity-hash-missing/family-v1.js";
+import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/production-actuator-v1.js";
+import { testingOnlyScriptIntegrityHashMissingArtifact } from "../src/script-integrity-hash-missing/production-artifact-v1.js";
 import {
-  detectScriptIntegrityHashMissingFromReconstructionV1,
-  reconstructScriptIntegrityHashMissingEvidenceV1,
+  detectScriptIntegrityHashMissingFromReconstruction,
+  reconstructScriptIntegrityHashMissingEvidence,
 } from "../src/script-integrity-hash-missing/replay-v1.js";
-import { ScriptIntegrityStepDatumsV1 } from "../src/script-integrity-hash-missing/schemas-v1.js";
+import { ScriptIntegrityStepDatums } from "../src/script-integrity-hash-missing/schemas-v1.js";
 import {
-  submitScriptIntegrityHashMissingStep01AcceptedV1,
-  submitScriptIntegrityHashMissingStep02AcceptedV1,
-  submitScriptIntegrityHashMissingStep03DirectV1,
+  submitScriptIntegrityHashMissingStep01Accepted,
+  submitScriptIntegrityHashMissingStep02Accepted,
+  submitScriptIntegrityHashMissingStep03Direct,
 } from "../src/script-integrity-hash-missing/submit-direct-v1.js";
-import { submitScriptIntegrityHashMissingInitV1 } from "../src/script-integrity-hash-missing/submit-init-v1.js";
+import { submitScriptIntegrityHashMissingInit } from "../src/script-integrity-hash-missing/submit-init-v1.js";
 import {
-  submitScriptIntegrityHashMissingCancelV1,
-  submitScriptIntegrityHashMissingRedeemerGrammarV1,
-  submitScriptIntegrityHashMissingScriptGrammarV1,
-  submitScriptIntegrityHashMissingScriptScanV1,
-  submitScriptIntegrityHashMissingStep04V1,
+  submitScriptIntegrityHashMissingCancel,
+  submitScriptIntegrityHashMissingRedeemerGrammar,
+  submitScriptIntegrityHashMissingScriptGrammar,
+  submitScriptIntegrityHashMissingScriptScan,
+  submitScriptIntegrityHashMissingStep04,
 } from "../src/script-integrity-hash-missing/submitters-v1.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "../src/workflow/deployment-manifest-binding-v1.js";
-import type { FraudProofWorkflowActionV1 } from "../src/workflow/orchestrator-v1.js";
-import { PRODUCTION_CURSOR_FAMILY_ACTION_V1 } from "../src/workflow/production-cursor-family-state-v1.js";
-import { submitCapturedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding-v1.js";
+import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator-v1.js";
+import { CURSOR_FAMILY_ACTION } from "../src/workflow/production-cursor-family-state-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -94,7 +94,7 @@ const redeemerTags = [
   "vote",
   "propose",
 ] as const;
-const runIsolatedUplcWorkerV1 = async (input: string): Promise<string> =>
+const runIsolatedUplcWorker = async (input: string): Promise<string> =>
   await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [isolatedUplcWorker.pathname], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -126,7 +126,7 @@ const runIsolatedUplcWorkerV1 = async (input: string): Promise<string> =>
     });
     child.stdin.end(input);
   });
-const makeIsolatedUplcEvaluatorV1 = () => ({
+const makeIsolatedUplcEvaluator = () => ({
   name: "aiken-isolated-process-v1",
   evaluate: async ({
     tx,
@@ -136,12 +136,12 @@ const makeIsolatedUplcEvaluatorV1 = () => ({
     NonNullable<
       NonNullable<
         NonNullable<
-          Parameters<typeof makeFaultProofEmulatorHarnessV1>[0]
+          Parameters<typeof makeFaultProofEmulatorHarness>[0]
         >["lucidOptions"]
       >["evaluator"]
     >["evaluate"]
   >[0]) => {
-    const stdout = await runIsolatedUplcWorkerV1(
+    const stdout = await runIsolatedUplcWorker(
       JSON.stringify(
         {
           tx,
@@ -176,9 +176,7 @@ const makeIsolatedUplcEvaluatorV1 = () => ({
 });
 
 const field8Checkpoint = (
-  checkpoint: ReturnType<
-    typeof initialMissingNativeScriptTxGrammarCheckpointV1
-  >,
+  checkpoint: ReturnType<typeof initialMissingNativeScriptTxGrammarCheckpoint>,
 ) => ({ ...checkpoint, fieldIndex: 8 });
 const advanceField8 = (
   checkpoint: ReturnType<typeof field8Checkpoint>,
@@ -186,7 +184,7 @@ const advanceField8 = (
   budget = 32,
 ) =>
   field8Checkpoint(
-    advanceMissingNativeScriptTxGrammarCheckpointV1({
+    advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: { ...checkpoint, fieldIndex: 6 },
       items,
       budget,
@@ -195,7 +193,7 @@ const advanceField8 = (
 const encodeField8 = (
   checkpoint: ReturnType<typeof field8Checkpoint>,
 ): Buffer => {
-  const bytes = encodeMissingNativeScriptTxGrammarCheckpointV1({
+  const bytes = encodeMissingNativeScriptTxGrammarCheckpoint({
     ...checkpoint,
     fieldIndex: 6,
   });
@@ -208,7 +206,7 @@ const decodeField8 = (
   const canonicalField6Bytes = Buffer.from(bytes);
   canonicalField6Bytes[36] = 6;
   return field8Checkpoint(
-    decodeMissingNativeScriptTxGrammarCheckpointV1(canonicalField6Bytes),
+    decodeMissingNativeScriptTxGrammarCheckpoint(canonicalField6Bytes),
   );
 };
 const hashField8 = (checkpoint: ReturnType<typeof field8Checkpoint>): string =>
@@ -221,12 +219,12 @@ const hashField8 = (checkpoint: ReturnType<typeof field8Checkpoint>): string =>
 
 describe("script-integrity-hash-missing real lifecycle", () => {
   it("publishes, proves accepted zero integrity hash, mints, and removes", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
     const chain =
       harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-    const family: ScriptIntegrityHashMissingContractsV1 = {
+    const family: ScriptIntegrityHashMissingContracts = {
       steps: chain.steps,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -243,8 +241,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       scriptBytes: Buffer.from([1]),
     });
     const scriptPreimage = encodeCbor([item]);
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -266,7 +264,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     });
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -278,7 +276,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       subject: { kind: "normal", nativeTx },
     });
     const acceptedDetections =
-      detectScriptIntegrityHashMissingFromReconstructionV1({
+      detectScriptIntegrityHashMissingFromReconstruction({
         headerHash: block.reconstruction.headerHash,
         reconstruction: block.reconstruction,
       });
@@ -295,15 +293,14 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         transactionId: block.nativeTxId,
       },
     ]);
-    const replayEvidence =
-      await reconstructScriptIntegrityHashMissingEvidenceV1({
-        evidence: {
-          headerHash: block.reconstruction.headerHash,
-          reconstruction: block.reconstruction,
-        } as CanonicalBlockEvidenceV1,
-        transactionId: block.nativeTxId,
-        direction: "wrongfulAcceptance",
-      });
+    const replayEvidence = await reconstructScriptIntegrityHashMissingEvidence({
+      evidence: {
+        headerHash: block.reconstruction.headerHash,
+        reconstruction: block.reconstruction,
+      } as CanonicalBlockEvidence,
+      transactionId: block.nativeTxId,
+      direction: "wrongfulAcceptance",
+    });
     expect(replayEvidence.scriptIntegrityHash).toBe("00".repeat(32));
     const setup = await submitSetupTx({
       lucid: harness.funderLucid,
@@ -325,9 +322,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       refs.push(captured.result.utxo);
       publication.push(captured.measurement.completeSignedBytes);
     }
-    const compact = deriveMidgardNativeTxWitnessSetCompactV1(
-      nativeTx.witnessSet,
-    );
+    const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
     const witnessSet: SDK.NativeTxWitnessSetCompact = {
       addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
       script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString(
@@ -337,8 +332,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         "hex",
       ),
     };
-    const subject = SDK.acceptedVerdictSubjectV1(block.nativeTxId);
-    const evidence = prepareScriptIntegrityHashMissingEvidenceV1({
+    const subject = SDK.acceptedVerdictSubject(block.nativeTxId);
+    const evidence = prepareScriptIntegrityHashMissingEvidence({
       finding: {
         category: "scriptIntegrityHashMissing",
         headerHash: setup.headerHash,
@@ -348,10 +343,10 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         rejectionReason: null,
       },
       subject,
-      nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
         nativeTx.compact,
       ).toString("hex"),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1({
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact({
         addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
         scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
         redeemerTxWitsHash: Buffer.from(
@@ -392,7 +387,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       return captured.result;
     };
     const initialize = () =>
-      submitScriptIntegrityHashMissingInitV1({
+      submitScriptIntegrityHashMissingInit({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -409,7 +404,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const cancel = (threadOutRef: string, referenceScriptUtxo: UTxO) =>
-      submitScriptIntegrityHashMissingCancelV1({
+      submitScriptIntegrityHashMissingCancel({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -420,7 +415,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       });
     if (block.txInclusion === null) throw new Error("normal inclusion missing");
     const accepted01 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMissingStep01AcceptedV1({
+      submitScriptIntegrityHashMissingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -434,7 +429,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const accepted02 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMissingStep02AcceptedV1({
+      submitScriptIntegrityHashMissingStep02Accepted({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -447,7 +442,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         referenceScriptUtxo: refs[1]!,
       });
     const direct03 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMissingStep03DirectV1({
+      submitScriptIntegrityHashMissingStep03Direct({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -489,7 +484,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       harness.catalogue,
       { removalReferenceScripts: removalRefs.published },
     );
-    const artifact = testingOnlyScriptIntegrityHashMissingArtifactV1({
+    const artifact = testingOnlyScriptIntegrityHashMissingArtifact({
       detectionId: `script-integrity-hash-missing:accepted:0:${block.nativeTxId}`,
       evidence,
       source: {
@@ -499,7 +494,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         acceptedInclusion: block.txInclusion!,
       },
     });
-    const port = createScriptIntegrityHashMissingTransactionPortV1({
+    const port = createScriptIntegrityHashMissingTransactionPort({
       binding: {
         blueprint: harness.realBlueprint,
         deploymentInfo,
@@ -509,7 +504,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         releaseEconomics: {
           policy: { fraudProverRewardLovelace: "400000000" },
         },
-      } as unknown as FraudProofWorkflowDeploymentBindingV1<"scriptIntegrityHashMissing">,
+      } as unknown as FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMissing">,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       contracts: family,
@@ -541,12 +536,12 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const actorAction = (
       stage: "init" | `step_0${1 | 2 | 3 | 7}`,
       threadOutRef?: string,
-    ): FraudProofWorkflowActionV1 => {
+    ): FraudProofWorkflowAction => {
       if (stage === "init")
         return {
           actionId: `init:${setup.fraudulentBlockOutRef}`,
           input: {
-            schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+            schemaVersion: CURSOR_FAMILY_ACTION,
             category: "scriptIntegrityHashMissing" as const,
             stage,
             stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
@@ -555,7 +550,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       return {
         actionId: `${stage}:${threadOutRef!}:${setup.fraudulentBlockOutRef}`,
         input: {
-          schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+          schemaVersion: CURSOR_FAMILY_ACTION,
           category: "scriptIntegrityHashMissing" as const,
           stage,
           ordinal: Number(stage.slice(-1)),
@@ -573,7 +568,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         action: actorAction(stage, threadOutRef),
         artifact,
       });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
       if (nextOrdinal === null) return { txHash };
       const next = (
@@ -622,7 +617,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         action: {
           actionId: `remove:${setup.fraudulentBlockOutRef}:${proof.txHash}#${proof.outputIndex.toString()}:${setup.fraudulentBlockOutRef}`,
           input: {
-            schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+            schemaVersion: CURSOR_FAMILY_ACTION,
             category: "scriptIntegrityHashMissing",
             stage: "remove",
             fraudProofOutRef: `${proof.txHash}#${proof.outputIndex.toString()}`,
@@ -633,7 +628,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         },
         artifact,
       });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
       return { txHash };
     });
@@ -653,12 +648,12 @@ describe("script-integrity-hash-missing real lifecycle", () => {
   }, 600_000);
 
   it("proves an exact forced ScriptIntegrityHashMissing rejection", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
     const chain =
       harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-    const family: ScriptIntegrityHashMissingContractsV1 = {
+    const family: ScriptIntegrityHashMissingContracts = {
       steps: chain.steps,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -675,8 +670,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       scriptBytes: Buffer.from([2]),
     });
     const scriptPreimage = encodeCbor([item]);
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -699,7 +694,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       },
     });
     const orderKey = { transactionId: "ab".repeat(32), outputIndex: 0n };
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -715,11 +710,12 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         verdict: { ForcedTxInvalid: { reason: "ScriptIntegrityHashMissing" } },
       },
     });
-    const forcedDetections =
-      detectScriptIntegrityHashMissingFromReconstructionV1({
+    const forcedDetections = detectScriptIntegrityHashMissingFromReconstruction(
+      {
         headerHash: block.reconstruction.headerHash,
         reconstruction: block.reconstruction,
-      });
+      },
+    );
     expect(
       forcedDetections.map(({ direction, source, transactionId }) => ({
         direction,
@@ -758,18 +754,16 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       reconstruction: block.reconstruction,
       eventKey,
     });
-    const forcedLeaf = await extractForcedLeafEvidenceV1({
+    const forcedLeaf = await extractForcedLeafEvidence({
       reconstruction: block.reconstruction,
       eventKey,
     });
-    const subject = SDK.forcedVerdictSubjectV1({
+    const subject = SDK.forcedVerdictSubject({
       transactionId: block.nativeTxId,
       sourceKey: orderKey,
       rejectionReason: "ScriptIntegrityHashMissing",
     });
-    const compact = deriveMidgardNativeTxWitnessSetCompactV1(
-      nativeTx.witnessSet,
-    );
+    const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
     const witnessSet: SDK.NativeTxWitnessSetCompact = {
       addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
       script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString(
@@ -779,7 +773,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         "hex",
       ),
     };
-    const evidence = prepareScriptIntegrityHashMissingEvidenceV1({
+    const evidence = prepareScriptIntegrityHashMissingEvidence({
       finding: {
         category: "scriptIntegrityHashMissing",
         headerHash: setup.headerHash,
@@ -789,10 +783,10 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         rejectionReason: "ScriptIntegrityHashMissing",
       },
       subject,
-      nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
         nativeTx.compact,
       ).toString("hex"),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1({
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact({
         addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
         scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
         redeemerTxWitsHash: Buffer.from(
@@ -808,7 +802,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       redeemerCount: 0,
       forcedLeaf,
     });
-    const forcedArtifact = testingOnlyScriptIntegrityHashMissingArtifactV1({
+    const forcedArtifact = testingOnlyScriptIntegrityHashMissingArtifact({
       detectionId: `script-integrity-hash-missing:forced:0:${block.nativeTxId}:wrongfulRejection`,
       evidence,
       source: {
@@ -820,7 +814,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         forcedDirection: 1n,
       },
     });
-    const forcedPort = createScriptIntegrityHashMissingTransactionPortV1({
+    const forcedPort = createScriptIntegrityHashMissingTransactionPort({
       binding: {
         blueprint: harness.realBlueprint,
         deploymentInfo: {},
@@ -830,7 +824,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         releaseEconomics: {
           policy: { fraudProverRewardLovelace: "400000000" },
         },
-      } as unknown as FraudProofWorkflowDeploymentBindingV1<"scriptIntegrityHashMissing">,
+      } as unknown as FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMissing">,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       contracts: family,
@@ -865,7 +859,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         action: {
           actionId: `${stage}:${threadOutRef}:${setup.fraudulentBlockOutRef}`,
           input: {
-            schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+            schemaVersion: CURSOR_FAMILY_ACTION,
             category: "scriptIntegrityHashMissing",
             stage,
             ordinal,
@@ -875,7 +869,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         },
         artifact: forcedArtifact,
       });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
       const next = (
         await harness.proverLucid.utxosAt(
@@ -889,7 +883,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         nextThreadOutRef: `${next.txHash}#${next.outputIndex.toString()}`,
       };
     };
-    const init = await submitScriptIntegrityHashMissingInitV1({
+    const init = await submitScriptIntegrityHashMissingInit({
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -907,7 +901,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     });
     const step01 = await forcedActorStep(1, init.nextThreadOutRef);
     const step02 = await forcedActorStep(2, step01.nextThreadOutRef);
-    const step03 = await submitScriptIntegrityHashMissingStep03DirectV1({
+    const step03 = await submitScriptIntegrityHashMissingStep03Direct({
       lucid: harness.proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -918,7 +912,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       witnessSet,
       referenceScriptUtxo: refs[2]!,
     });
-    const final = await submitScriptIntegrityHashMissingStep04V1({
+    const final = await submitScriptIntegrityHashMissingStep04({
       lucid: harness.proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -931,9 +925,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
   }, 600_000);
 
   it("splits 224+224 certified items across resumable ledger transactions", async () => {
-    const isolatedEvaluator = makeIsolatedUplcEvaluatorV1();
+    const isolatedEvaluator = makeIsolatedUplcEvaluator();
     expect(isolatedEvaluator.name).toBe("aiken-isolated-process-v1");
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
       // Resource isolation only: the worker executes the same pinned local
       // Aiken UPLC evaluator with the unchanged harness protocol parameters.
@@ -941,7 +935,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     });
     const chain =
       harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
-    const family: ScriptIntegrityHashMissingContractsV1 = {
+    const family: ScriptIntegrityHashMissingContracts = {
       steps: chain.steps,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -953,7 +947,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       stateQueuePolicyId: harness.contracts.stateQueue.policyId,
     };
     const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
-    const measurements: VanRossemFitMeasurementV1[] = [];
+    const measurements: VanRossemFitMeasurement[] = [];
     const maximumShape =
       "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints";
     const measured = async <T>(
@@ -996,8 +990,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     );
     const scriptPreimage = encodeCbor(scriptItems);
     const redeemerPreimage = encodeCbor(redeemerItems);
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -1019,7 +1013,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         redeemerTxWitsPreimageCbor: redeemerPreimage,
       },
     });
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -1062,12 +1056,10 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         }),
       )
     ).utxo;
-    const compactCbor = encodeMidgardNativeTxCompactV1(
-      nativeTx.compact,
-    ).toString("hex");
-    const compact = deriveMidgardNativeTxWitnessSetCompactV1(
-      nativeTx.witnessSet,
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact).toString(
+      "hex",
     );
+    const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
     const witnessSet: SDK.NativeTxWitnessSetCompact = {
       addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
       script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString(
@@ -1077,14 +1069,14 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         "hex",
       ),
     };
-    const witnessSetCbor = encodeMidgardNativeTxWitnessSetCompactV1({
+    const witnessSetCbor = encodeMidgardNativeTxWitnessSetCompact({
       addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
       scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
       redeemerTxWitsHash: Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
     }).toString("hex");
     const owner = harness.proverSigner.paymentKeyHash;
     const plan = (fieldIndex: 6 | 8, items: readonly Buffer[]) =>
-      planFaultProofFieldOpeningV1({
+      planFaultProofFieldOpening({
         fieldIndex,
         anchorTxId: block.nativeTxId,
         nativeTxCompactCbor: compactCbor,
@@ -1108,7 +1100,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         `field-${planned.plan.fieldIndex.toString()}-chunks`,
         "publication",
         () =>
-          publishFaultProofFieldCarriageV1({
+          publishFaultProofFieldCarriage({
             lucid: harness.proverLucid,
             signer: harness.proverSigner,
             planned,
@@ -1123,7 +1115,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         `field-${planned.plan.fieldIndex.toString()}-certificate`,
         "lifecycle",
         () =>
-          certifyFaultProofFieldCarriageV1({
+          certifyFaultProofFieldCarriage({
             lucid: harness.proverLucid,
             network,
             signer: harness.proverSigner,
@@ -1153,16 +1145,16 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       published: typeof scriptPublished,
       ref: UTxO,
     ) =>
-      faultProofFieldOpeningV1({
+      faultProofFieldOpening({
         planned,
         referenceInputs: [...carriage(published), ref],
         certificatePolicyId: family.fieldPreimageCertificatePolicyId,
         label: "integrity max opening",
       });
-    const subject = SDK.acceptedVerdictSubjectV1(block.nativeTxId);
+    const subject = SDK.acceptedVerdictSubject(block.nativeTxId);
     if (block.txInclusion === null)
       throw new Error("max normal inclusion missing");
-    const productionEvidence = prepareScriptIntegrityHashMissingEvidenceV1({
+    const productionEvidence = prepareScriptIntegrityHashMissingEvidence({
       finding: {
         category: "scriptIntegrityHashMissing",
         headerHash: setup.headerHash,
@@ -1181,7 +1173,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       scriptLanguages: Array.from({ length: 224 }, () => 3 as const),
       redeemerCount: 224,
     });
-    const productionArtifact = testingOnlyScriptIntegrityHashMissingArtifactV1({
+    const productionArtifact = testingOnlyScriptIntegrityHashMissingArtifact({
       detectionId: `script-integrity-hash-missing:accepted:0:${block.nativeTxId}`,
       evidence: productionEvidence,
       source: {
@@ -1191,7 +1183,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         acceptedInclusion: block.txInclusion,
       },
     });
-    const productionPort = createScriptIntegrityHashMissingTransactionPortV1({
+    const productionPort = createScriptIntegrityHashMissingTransactionPort({
       binding: {
         blueprint: harness.realBlueprint,
         deploymentInfo: {},
@@ -1201,7 +1193,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         releaseEconomics: {
           policy: { fraudProverRewardLovelace: "400000000" },
         },
-      } as unknown as FraudProofWorkflowDeploymentBindingV1<"scriptIntegrityHashMissing">,
+      } as unknown as FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMissing">,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       contracts: family,
@@ -1240,7 +1232,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         action: {
           actionId: `${stage}:${threadOutRef}:${setup.fraudulentBlockOutRef}`,
           input: {
-            schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+            schemaVersion: CURSOR_FAMILY_ACTION,
             category: "scriptIntegrityHashMissing",
             stage,
             ordinal,
@@ -1250,7 +1242,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         },
         artifact: productionArtifact,
       });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       await harness.proverLucid.awaitTx(txHash);
       const next = (
         await harness.proverLucid.utxosAt(
@@ -1268,10 +1260,10 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const datum = (index: number, data: unknown) =>
       Data.to(
         { fraud_prover: owner, data } as never,
-        ScriptIntegrityStepDatumsV1[index] as never,
+        ScriptIntegrityStepDatums[index] as never,
       );
     const init = await measured("init", "lifecycle", () =>
-      submitScriptIntegrityHashMissingInitV1({
+      submitScriptIntegrityHashMissingInit({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -1290,7 +1282,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     );
     console.info("[script-integrity-max] initialized");
     const bound = await measured("step01", "lifecycle", () =>
-      submitScriptIntegrityHashMissingStep01AcceptedV1({
+      submitScriptIntegrityHashMissingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -1305,7 +1297,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       }),
     );
     const subjectState = await measured("step02", "lifecycle", () =>
-      submitScriptIntegrityHashMissingStep02AcceptedV1({
+      submitScriptIntegrityHashMissingStep02Accepted({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1321,8 +1313,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     console.info(
       "[script-integrity-max] source bound; submitting first staged transition",
     );
-    let grammar = advanceMissingNativeScriptTxGrammarCheckpointV1({
-      checkpoint: initialMissingNativeScriptTxGrammarCheckpointV1({
+    let grammar = advanceMissingNativeScriptTxGrammarCheckpoint({
+      checkpoint: initialMissingNativeScriptTxGrammarCheckpoint({
         txId: block.nativeTxId,
         items: scriptItems,
       }),
@@ -1336,8 +1328,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       script_integrity_hash: "00".repeat(32),
       phase: {
         ScriptGrammar: {
-          checkpoint_hash:
-            hashMissingNativeScriptTxGrammarCheckpointV1(grammar),
+          checkpoint_hash: hashMissingNativeScriptTxGrammarCheckpoint(grammar),
         },
       },
     };
@@ -1351,7 +1342,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       if (grammarResumeIndex === 0)
         console.info("[script-integrity-max] submitting first grammar resume");
       const prior = grammar;
-      grammar = advanceMissingNativeScriptTxGrammarCheckpointV1({
+      grammar = advanceMissingNativeScriptTxGrammarCheckpoint({
         checkpoint: grammar,
         items: scriptItems,
         budget: itemBudget,
@@ -1361,7 +1352,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         phase: {
           ScriptGrammar: {
             checkpoint_hash:
-              hashMissingNativeScriptTxGrammarCheckpointV1(grammar),
+              hashMissingNativeScriptTxGrammarCheckpoint(grammar),
           },
         },
       };
@@ -1371,7 +1362,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         () =>
           grammarResumeIndex === 0
             ? productionTransition("step_04", 4, outRef, 4)
-            : submitScriptIntegrityHashMissingScriptGrammarV1({
+            : submitScriptIntegrityHashMissingScriptGrammar({
                 lucid: harness.proverLucid,
                 contracts: family,
                 categoryId: category.categoryId,
@@ -1387,7 +1378,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
                     output_index,
                     opening: opening(scriptPlan, scriptPublished, refs[3]!),
                     checkpoint_bytes:
-                      encodeMissingNativeScriptTxGrammarCheckpointV1(
+                      encodeMissingNativeScriptTxGrammarCheckpoint(
                         prior,
                       ).toString("hex"),
                     item_budget: BigInt(itemBudget),
@@ -1398,14 +1389,14 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       grammarResumeIndex += 1;
       if (grammarResumeIndex === 1) {
         console.info("[script-integrity-max] first grammar resume confirmed");
-        grammar = decodeMissingNativeScriptTxGrammarCheckpointV1(
-          encodeMissingNativeScriptTxGrammarCheckpointV1(grammar),
+        grammar = decodeMissingNativeScriptTxGrammarCheckpoint(
+          encodeMissingNativeScriptTxGrammarCheckpoint(grammar),
         );
       }
       outRef = transition.nextThreadOutRef;
     }
-    let semantic = advanceMissingNativeScriptTxSemanticCheckpointV1({
-      checkpoint: initialMissingNativeScriptTxSemanticCheckpointV1({
+    let semantic = advanceMissingNativeScriptTxSemanticCheckpoint({
+      checkpoint: initialMissingNativeScriptTxSemanticCheckpoint({
         grammar,
         items: scriptItems,
       }),
@@ -1418,7 +1409,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       phase: {
         ScriptScan: {
           checkpoint_hash:
-            hashMissingNativeScriptTxSemanticCheckpointV1(semantic),
+            hashMissingNativeScriptTxSemanticCheckpoint(semantic),
           contains_non_native_script: true,
         },
       },
@@ -1427,7 +1418,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       "script-grammar-close-start-scan",
       "lifecycle",
       () =>
-        submitScriptIntegrityHashMissingScriptGrammarV1({
+        submitScriptIntegrityHashMissingScriptGrammar({
           lucid: harness.proverLucid,
           contracts: family,
           categoryId: category.categoryId,
@@ -1443,9 +1434,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
               output_index,
               opening: opening(scriptPlan, scriptPublished, refs[3]!),
               checkpoint_bytes:
-                encodeMissingNativeScriptTxGrammarCheckpointV1(
-                  grammar,
-                ).toString("hex"),
+                encodeMissingNativeScriptTxGrammarCheckpoint(grammar).toString(
+                  "hex",
+                ),
               item_budget: BigInt(itemBudget),
             },
           }),
@@ -1455,7 +1446,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     let scanResumeIndex = 0;
     while (semantic.nextItemIndex < scriptItems.length) {
       const prior = semantic;
-      semantic = advanceMissingNativeScriptTxSemanticCheckpointV1({
+      semantic = advanceMissingNativeScriptTxSemanticCheckpoint({
         checkpoint: semantic,
         txId: block.nativeTxId,
         items: scriptItems,
@@ -1469,7 +1460,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           : {
               ScriptScan: {
                 checkpoint_hash:
-                  hashMissingNativeScriptTxSemanticCheckpointV1(semantic),
+                  hashMissingNativeScriptTxSemanticCheckpoint(semantic),
                 contains_non_native_script: true,
               },
             },
@@ -1478,7 +1469,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         `script-scan-${scanResumeIndex.toString().padStart(2, "0")}`,
         "lifecycle",
         () =>
-          submitScriptIntegrityHashMissingScriptScanV1({
+          submitScriptIntegrityHashMissingScriptScan({
             lucid: harness.proverLucid,
             contracts: family,
             categoryId: category.categoryId,
@@ -1493,7 +1484,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
               output_index,
               opening: opening(scriptPlan, scriptPublished, refs[4]!),
               checkpoint_bytes:
-                encodeMissingNativeScriptTxSemanticCheckpointV1(prior).toString(
+                encodeMissingNativeScriptTxSemanticCheckpoint(prior).toString(
                   "hex",
                 ),
               item_budget: BigInt(itemBudget),
@@ -1502,15 +1493,15 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       );
       scanResumeIndex += 1;
       if (scanResumeIndex === 1) {
-        semantic = decodeMissingNativeScriptTxSemanticCheckpointV1(
-          encodeMissingNativeScriptTxSemanticCheckpointV1(semantic),
+        semantic = decodeMissingNativeScriptTxSemanticCheckpoint(
+          encodeMissingNativeScriptTxSemanticCheckpoint(semantic),
         );
       }
       outRef = transition.nextThreadOutRef;
     }
     let redeemerGrammar = advanceField8(
       field8Checkpoint(
-        initialMissingNativeScriptTxGrammarCheckpointV1({
+        initialMissingNativeScriptTxGrammarCheckpoint({
           txId: block.nativeTxId,
           items: redeemerItems,
         }),
@@ -1528,7 +1519,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       },
     };
     transition = await measured("redeemer-grammar-start", "lifecycle", () =>
-      submitScriptIntegrityHashMissingRedeemerGrammarV1({
+      submitScriptIntegrityHashMissingRedeemerGrammar({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1570,7 +1561,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         `redeemer-grammar-resume-${redeemerResumeIndex.toString().padStart(2, "0")}`,
         "lifecycle",
         () =>
-          submitScriptIntegrityHashMissingRedeemerGrammarV1({
+          submitScriptIntegrityHashMissingRedeemerGrammar({
             lucid: harness.proverLucid,
             contracts: family,
             categoryId: category.categoryId,
@@ -1596,7 +1587,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         const durableCheckpoint = encodeField8(redeemerGrammar);
         const durableHash = hashField8(redeemerGrammar);
         expect(() =>
-          decodeMissingNativeScriptTxGrammarCheckpointV1(durableCheckpoint),
+          decodeMissingNativeScriptTxGrammarCheckpoint(durableCheckpoint),
         ).toThrow("must name field 6");
         redeemerGrammar = decodeField8(durableCheckpoint);
         expect(encodeField8(redeemerGrammar)).toEqual(durableCheckpoint);
@@ -1611,7 +1602,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       has_redeemers: true,
     };
     transition = await measured("redeemer-grammar-finish", "lifecycle", () =>
-      submitScriptIntegrityHashMissingRedeemerGrammarV1({
+      submitScriptIntegrityHashMissingRedeemerGrammar({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1632,7 +1623,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       }),
     );
     const final = await measured("step04-mint", "lifecycle", () =>
-      submitScriptIntegrityHashMissingStep04V1({
+      submitScriptIntegrityHashMissingStep04({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -1678,7 +1669,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const blueprint = JSON.parse(blueprintBytes.toString("utf8")) as {
       readonly preamble?: { readonly compiler?: { readonly version?: string } };
     };
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "scriptIntegrityHashMissing",
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)

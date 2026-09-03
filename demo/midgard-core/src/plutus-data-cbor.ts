@@ -557,21 +557,21 @@ export const aikenSerialisedPlutusConstrFieldCbor = (
 export const canonicalPlutusDataCbor = (cbor: string): string =>
   CML.PlutusData.from_cbor_hex(cbor).to_canonical_cbor_hex();
 
-const MIDGARD_PLUTUS_DATA_MAX_BYTES_CHUNK_V1 = 64;
+const MIDGARD_PLUTUS_DATA_MAX_BYTES_CHUNK = 64;
 
-const isMidgardPlutusDataConstrTagV1 = (tag: bigint): boolean =>
+const isMidgardPlutusDataConstrTag = (tag: bigint): boolean =>
   (tag >= 121n && tag <= 127n) || (tag >= 1_280n && tag <= 1_400n);
 
-type MidgardPlutusDataHeadV1 = {
+type MidgardPlutusDataHead = {
   readonly major: number;
   readonly value: bigint | null;
   readonly offset: number;
 };
 
-const readMidgardPlutusDataHeadV1 = (
+const readMidgardPlutusDataHead = (
   bytes: Uint8Array,
   offset: number,
-): MidgardPlutusDataHeadV1 => {
+): MidgardPlutusDataHead => {
   const initial = bytes[offset];
   if (initial === undefined) {
     throw new Error("Unexpected end of PlutusData CBOR");
@@ -609,9 +609,9 @@ const readMidgardPlutusDataHeadV1 = (
   return { major, value, offset: offset + 1 + width };
 };
 
-const consumeMidgardPlutusDataByteStringV1 = (
+const consumeMidgardPlutusDataByteString = (
   bytes: Uint8Array,
-  head: MidgardPlutusDataHeadV1,
+  head: MidgardPlutusDataHead,
 ): number => {
   if (head.value === null) {
     let cursor = head.offset;
@@ -623,13 +623,13 @@ const consumeMidgardPlutusDataByteStringV1 = (
       if (marker === 0xff) {
         return cursor + 1;
       }
-      const chunk = readMidgardPlutusDataHeadV1(bytes, cursor);
+      const chunk = readMidgardPlutusDataHead(bytes, cursor);
       if (chunk.major !== 2 || chunk.value === null) {
         throw new Error(
           "Indefinite PlutusData bytes must contain only definite byte chunks",
         );
       }
-      if (chunk.value > BigInt(MIDGARD_PLUTUS_DATA_MAX_BYTES_CHUNK_V1)) {
+      if (chunk.value > BigInt(MIDGARD_PLUTUS_DATA_MAX_BYTES_CHUNK)) {
         throw new Error("PlutusData byte chunk exceeds 64 bytes");
       }
       const end = chunk.offset + Number(chunk.value);
@@ -639,7 +639,7 @@ const consumeMidgardPlutusDataByteStringV1 = (
       cursor = end;
     }
   }
-  if (head.value > BigInt(MIDGARD_PLUTUS_DATA_MAX_BYTES_CHUNK_V1)) {
+  if (head.value > BigInt(MIDGARD_PLUTUS_DATA_MAX_BYTES_CHUNK)) {
     throw new Error(
       "Definite PlutusData bytes exceed 64 bytes and must be chunked",
     );
@@ -651,7 +651,7 @@ const consumeMidgardPlutusDataByteStringV1 = (
   return end;
 };
 
-type MidgardPlutusDataFrameV1 =
+type MidgardPlutusDataFrame =
   | { readonly kind: "items"; remaining: bigint }
   | { readonly kind: "itemsIndefinite" }
   | { readonly kind: "pairs"; remaining: bigint; awaitingValue: boolean }
@@ -682,10 +682,8 @@ type MidgardPlutusDataFrameV1 =
  * that callers apply next independently rejects the same encodings, so the
  * composite accept/reject verdict is unchanged.
  */
-export const assertMidgardPlutusDataWellFormedV1 = (
-  bytes: Uint8Array,
-): void => {
-  const stack: MidgardPlutusDataFrameV1[] = [];
+export const assertMidgardPlutusDataWellFormed = (bytes: Uint8Array): void => {
+  const stack: MidgardPlutusDataFrame[] = [];
   let cursor = 0;
   let valueComplete = false;
 
@@ -757,7 +755,7 @@ export const assertMidgardPlutusDataWellFormedV1 = (
       throw new Error("Unexpected PlutusData break marker");
     }
 
-    const head = readMidgardPlutusDataHeadV1(bytes, cursor);
+    const head = readMidgardPlutusDataHead(bytes, cursor);
     cursor = head.offset;
 
     if (head.major === 0 || head.major === 1) {
@@ -769,7 +767,7 @@ export const assertMidgardPlutusDataWellFormedV1 = (
     }
 
     if (head.major === 2) {
-      cursor = consumeMidgardPlutusDataByteStringV1(bytes, head);
+      cursor = consumeMidgardPlutusDataByteString(bytes, head);
       completeValue();
       continue;
     }
@@ -799,8 +797,8 @@ export const assertMidgardPlutusDataWellFormedV1 = (
         throw new Error("PlutusData tag must use a definite head");
       }
       const tag = head.value;
-      if (isMidgardPlutusDataConstrTagV1(tag)) {
-        const fields = readMidgardPlutusDataHeadV1(bytes, cursor);
+      if (isMidgardPlutusDataConstrTag(tag)) {
+        const fields = readMidgardPlutusDataHead(bytes, cursor);
         if (fields.major !== 4) {
           throw new Error("PlutusData constructor fields must be an array");
         }
@@ -809,19 +807,19 @@ export const assertMidgardPlutusDataWellFormedV1 = (
         continue;
       }
       if (tag === 102n) {
-        const outer = readMidgardPlutusDataHeadV1(bytes, cursor);
+        const outer = readMidgardPlutusDataHead(bytes, cursor);
         if (outer.major !== 4 || outer.value !== 2n) {
           throw new Error(
             "General PlutusData constructor must be a definite two-item array",
           );
         }
-        const alternative = readMidgardPlutusDataHeadV1(bytes, outer.offset);
+        const alternative = readMidgardPlutusDataHead(bytes, outer.offset);
         if (alternative.major !== 0 || alternative.value === null) {
           throw new Error(
             "General PlutusData constructor alternative must be an unsigned integer",
           );
         }
-        const fields = readMidgardPlutusDataHeadV1(bytes, alternative.offset);
+        const fields = readMidgardPlutusDataHead(bytes, alternative.offset);
         if (fields.major !== 4) {
           throw new Error("PlutusData constructor fields must be an array");
         }
@@ -830,11 +828,11 @@ export const assertMidgardPlutusDataWellFormedV1 = (
         continue;
       }
       if (tag === 2n || tag === 3n) {
-        const payload = readMidgardPlutusDataHeadV1(bytes, cursor);
+        const payload = readMidgardPlutusDataHead(bytes, cursor);
         if (payload.major !== 2) {
           throw new Error("PlutusData bignum must wrap a byte string");
         }
-        cursor = consumeMidgardPlutusDataByteStringV1(bytes, payload);
+        cursor = consumeMidgardPlutusDataByteString(bytes, payload);
         completeValue();
         continue;
       }

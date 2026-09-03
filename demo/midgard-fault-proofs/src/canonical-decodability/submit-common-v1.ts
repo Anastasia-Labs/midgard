@@ -11,11 +11,11 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
-  type CanonicalDecodabilityContractsV1,
+  type CanonicalDecodabilityContracts,
 } from "./contracts-v1.js";
 
 /** Explicit pre-registration catalogue record. */
-export type CanonicalDecodabilityCatalogueCategoryV1 = {
+export type CanonicalDecodabilityCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -24,10 +24,10 @@ export type CanonicalDecodabilityCatalogueCategoryV1 = {
 export const canonicalDecodabilitySubmitError = (message: string): Error =>
   new Error(`${CANONICAL_DECODABILITY_CATEGORY_LABEL}: ${message}`);
 
-export const canonicalDecodabilityStepLabelV1 = (stepIndex: 0 | 1): string =>
+export const canonicalDecodabilityStepLabel = (stepIndex: 0 | 1): string =>
   `${CANONICAL_DECODABILITY_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
-export const requireCanonicalDecodabilityThreadUtxoV1 = async ({
+export const requireCanonicalDecodabilityThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -35,7 +35,7 @@ export const requireCanonicalDecodabilityThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1;
   readonly threadOutRef: string;
@@ -43,7 +43,7 @@ export const requireCanonicalDecodabilityThreadUtxoV1 = async ({
   readonly threadUtxo: UTxO;
   readonly threadToken: ReturnType<typeof requireComputationThreadToken>;
 }> => {
-  const label = canonicalDecodabilityStepLabelV1(stepIndex);
+  const label = canonicalDecodabilityStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -65,7 +65,7 @@ export const requireCanonicalDecodabilityThreadUtxoV1 = async ({
 };
 
 /** Requires a published UTxO to carry the exact step validator. */
-export const requireCanonicalDecodabilityReferenceScriptV1 = ({
+export const requireCanonicalDecodabilityReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
@@ -76,20 +76,20 @@ export const requireCanonicalDecodabilityReferenceScriptV1 = ({
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw canonicalDecodabilitySubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${canonicalDecodabilityStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${canonicalDecodabilityStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
   if (actual !== expectedScriptHash) {
     throw canonicalDecodabilitySubmitError(
-      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not the ${canonicalDecodabilityStepLabelV1(stepIndex)} validator ${expectedScriptHash}.`,
+      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not the ${canonicalDecodabilityStepLabel(stepIndex)} validator ${expectedScriptHash}.`,
     );
   }
   return utxo;
 };
 
 /** Parses a populated mid-chain datum and authenticates the named prover. */
-export const requireCanonicalDecodabilityStepStateV1 = <State>({
+export const requireCanonicalDecodabilityStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -100,7 +100,7 @@ export const requireCanonicalDecodabilityStepStateV1 = <State>({
   readonly schema: { fraud_prover: string; data: State | null };
   readonly stepIndex: 0 | 1;
 }): State => {
-  const label = canonicalDecodabilityStepLabelV1(stepIndex);
+  const label = canonicalDecodabilityStepLabel(stepIndex);
   if (threadUtxo.datum == null) {
     throw canonicalDecodabilitySubmitError(
       `thread UTxO ${outRefLabel(threadUtxo)} at ${label} has no inline datum.`,

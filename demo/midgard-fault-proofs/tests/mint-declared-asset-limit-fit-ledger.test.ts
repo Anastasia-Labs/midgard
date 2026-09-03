@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
-export const mintDeclaredAssetLimitFitMeasurementsV1 = [
+export const mintDeclaredAssetLimitFitMeasurements = [
   [
     "reference-step-01",
     "publication",
@@ -231,13 +231,13 @@ export const mintDeclaredAssetLimitFitMeasurementsV1 = [
   ],
 ] as const;
 
-export const buildMintDeclaredAssetLimitFitLedgerV1 = () =>
-  buildVanRossemFitLedgerV1({
+export const buildMintDeclaredAssetLimitFitLedger = () =>
+  buildVanRossemFitLedger({
     category: "mintDeclaredAssetLimit",
     blueprintSha256:
       "179c65539806f39a85008527e3572eb31bcd792d0a701aaa6bc04c60938c021f",
     compilerVersion: "v1.1.23+5adf783",
-    measurements: mintDeclaredAssetLimitFitMeasurementsV1.map(
+    measurements: mintDeclaredAssetLimitFitMeasurements.map(
       ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
         name,
         kind,
@@ -251,9 +251,9 @@ export const buildMintDeclaredAssetLimitFitLedgerV1 = () =>
 
 describe("mintDeclaredAssetLimit signed Van Rossem fit ledger", () => {
   it("reproduces every publication and maximum lifecycle row", async () => {
-    const ledger = buildMintDeclaredAssetLimitFitLedgerV1();
+    const ledger = buildMintDeclaredAssetLimitFitLedger();
     expect(ledger.entries).toHaveLength(
-      mintDeclaredAssetLimitFitMeasurementsV1.length,
+      mintDeclaredAssetLimitFitMeasurements.length,
     );
     expect(
       ledger.entries.every(

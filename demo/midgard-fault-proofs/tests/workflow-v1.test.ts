@@ -12,78 +12,78 @@ import { describe, expect, it, vi } from "vitest";
 
 import { parseArgs } from "../src/bin.js";
 import {
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
-  type CanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { sealManifestBoundNetworkIdRuntimeV1 } from "../src/network-id/workflow-adapter-v1.js";
+import { sealManifestBoundNetworkIdRuntime } from "../src/network-id/workflow-adapter-v1.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
-  type CanonicalViolationDetectionV1,
-  classifyCanonicalBlockViolationsV1,
-  FRAUD_PROOF_CLASSIFICATION_RULES_V1,
+  type CanonicalViolationDetection,
+  classifyCanonicalBlockViolations,
+  FRAUD_PROOF_CLASSIFICATION_RULES,
 } from "../src/workflow/classification-v1.js";
 import {
-  productionWorkflowReadinessReportV1,
-  runProductionFraudProofWorkflowCliV1,
+  runFraudProofWorkflowCli,
+  workflowReadinessReport,
 } from "../src/workflow/cli-v1.js";
 import {
-  COMPLETE_CANONICAL_REPLAY_V1,
-  type CompleteCanonicalReplayV1,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-  DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplay,
+  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+  DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../src/workflow/deployment-manifest-binding-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  ConcurrentFraudProofWorkflowWriteErrorV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalStoreV1,
-  type FraudProofWorkflowTerminalV1,
-  journalJsonDigestV1,
-  MemoryFraudProofWorkflowJournalStoreV1,
-  normalizeJournalJsonV1,
-  validateFraudProofWorkflowJournalV1,
+  computeFraudProofWorkflowId,
+  ConcurrentFraudProofWorkflowWriteError,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalStore,
+  type FraudProofWorkflowTerminal,
+  journalJsonDigest,
+  MemoryFraudProofWorkflowJournalStore,
+  normalizeJournalJson,
+  validateFraudProofWorkflowJournal,
 } from "../src/workflow/journal-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
-  runFraudProofWorkflowV1,
+  createFraudProofWorkflowRegistry,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflow,
+  runFraudProofWorkflowFromRetainedDa,
 } from "../src/workflow/orchestrator-v1.js";
-import { PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1 } from "../src/workflow/production-actuation-permit-v1.js";
+import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/production-actuation-permit-v1.js";
 import {
-  MissingProductionWorkflowAdaptersErrorV1,
-  PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1,
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  validateProductionWorkflowAdapterCoverageV1,
+  MissingWorkflowAdaptersError,
+  validateWorkflowAdapterCoverage,
+  WORKFLOW_ADAPTER_REGISTRATIONS,
+  WORKFLOW_ADAPTER_RUNNER,
 } from "../src/workflow/production-adapters-v1.js";
-import { PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1 } from "../src/workflow/production-funding-reservation-permit-v1.js";
-import { createDoubleSpendProductionWorkflowRunnerV1 } from "../src/workflow/production-runtime-v1.js";
+import { WORKFLOW_FUNDING_RESERVATION_PERMIT } from "../src/workflow/production-funding-reservation-permit-v1.js";
+import { createDoubleSpendWorkflowRunner } from "../src/workflow/production-runtime-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofReleaseFinalityAuthorityV1,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h32,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
@@ -103,24 +103,24 @@ const releaseFinalityAuthority = (
     readonly deploymentIdentityDigest: string;
     readonly releaseIdentityDigest: string;
   }> = {},
-): FraudProofReleaseFinalityAuthorityV1 => ({
-  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+): FraudProofReleaseFinalityAuthority => ({
+  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest:
       overrides.deploymentIdentityDigest ?? DEPLOYMENT_FINGERPRINT,
     releaseIdentityDigest: overrides.releaseIdentityDigest ?? "e1".repeat(32),
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
     ),
     policy: RELEASE_FINALITY_POLICY,
   }),
 });
 
-const canonicalEvidence = async (): Promise<CanonicalBlockEvidenceV1> => {
-  const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+const canonicalEvidence = async (): Promise<CanonicalBlockEvidence> => {
+  const fixture = await buildCanonicalBlockFixture({ transactions: [] });
+  return await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -149,10 +149,10 @@ const retainedDaSource = (
 });
 
 const detection = (
-  evidence: CanonicalBlockEvidenceV1,
+  evidence: CanonicalBlockEvidence,
   violationId = "double-spend",
-  overrides: Partial<CanonicalViolationDetectionV1> = {},
-): CanonicalViolationDetectionV1 => ({
+  overrides: Partial<CanonicalViolationDetection> = {},
+): CanonicalViolationDetection => ({
   detectionId: `${violationId}-0`,
   headerHash: evidence.headerHash,
   violationId,
@@ -161,14 +161,14 @@ const detection = (
 });
 
 type AdapterControls = {
-  readonly submit?: FraudProofFamilyWorkflowAdapterV1["submit"];
-  readonly reconcile?: FraudProofFamilyWorkflowAdapterV1["reconcile"];
+  readonly submit?: FraudProofFamilyWorkflowAdapter["submit"];
+  readonly reconcile?: FraudProofFamilyWorkflowAdapter["reconcile"];
   readonly referenceScripts?: boolean;
   readonly durableRecovery?: Readonly<Record<string, string>>;
 };
 
-const terminal = (headerHash: string): FraudProofWorkflowTerminalV1 => ({
-  schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
+const terminal = (headerHash: string): FraudProofWorkflowTerminal => ({
+  schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   category: "doubleSpend",
   headerHash,
   proofToken: {
@@ -201,21 +201,21 @@ const terminal = (headerHash: string): FraudProofWorkflowTerminalV1 => ({
   },
 });
 
-const terminalVerifier: FraudProofWorkflowTerminalVerifierV1 = {
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+const terminalVerifier: FraudProofWorkflowTerminalVerifier = {
+  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   verify: async ({ candidate }) => candidate,
 };
 
 const makeAdapter = (
   controls: AdapterControls = {},
-): FraudProofFamilyWorkflowAdapterV1 => ({
-  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+): FraudProofFamilyWorkflowAdapter => ({
+  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
   category: "doubleSpend",
-  safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+  safety: FRAUD_PROOF_WORKFLOW_SAFETY,
   prepare: vi.fn(
     async ({
       evidence,
-    }: Parameters<FraudProofFamilyWorkflowAdapterV1["prepare"]>[0]) => ({
+    }: Parameters<FraudProofFamilyWorkflowAdapter["prepare"]>[0]) => ({
       headerHash: evidence.headerHash,
       txIds: [],
     }),
@@ -224,7 +224,7 @@ const makeAdapter = (
     async ({
       artifact,
       entries,
-    }: Parameters<FraudProofFamilyWorkflowAdapterV1["observe"]>[0]) =>
+    }: Parameters<FraudProofFamilyWorkflowAdapter["observe"]>[0]) =>
       entries.some(
         (entry) =>
           entry.event.kind === "confirmed" &&
@@ -251,7 +251,7 @@ const makeAdapter = (
   preflight: vi.fn(
     async ({
       action,
-    }: Parameters<FraudProofFamilyWorkflowAdapterV1["preflight"]>[0]) => ({
+    }: Parameters<FraudProofFamilyWorkflowAdapter["preflight"]>[0]) => ({
       actionId: action.actionId,
       txHash: action.actionId === "prove" ? PROOF_TX_HASH : REMOVAL_TX_HASH,
       scriptExecution: "reference_scripts" as const,
@@ -300,17 +300,17 @@ const run = async ({
   verifier = terminalVerifier,
   finalityAuthority = releaseFinalityAuthority(),
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly adapter: FraudProofFamilyWorkflowAdapterV1;
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-  readonly verifier?: FraudProofWorkflowTerminalVerifierV1;
-  readonly finalityAuthority?: FraudProofReleaseFinalityAuthorityV1;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly adapter: FraudProofFamilyWorkflowAdapter;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly verifier?: FraudProofWorkflowTerminalVerifier;
+  readonly finalityAuthority?: FraudProofReleaseFinalityAuthority;
 }) =>
-  await runFraudProofWorkflowV1({
+  await runFraudProofWorkflow({
     deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
     evidence,
     detections: [detection(evidence)],
-    registry: createFraudProofWorkflowRegistryV1({
+    registry: createFraudProofWorkflowRegistry({
       adapters: [adapter],
       launchScope: ["doubleSpend"],
     }),
@@ -323,9 +323,9 @@ const run = async ({
 describe("Q55/W-O6 deterministic violation classification", () => {
   it("covers every registered family exactly once in catalogue order", () => {
     expect(
-      FRAUD_PROOF_CLASSIFICATION_RULES_V1.map((rule) => rule.category),
+      FRAUD_PROOF_CLASSIFICATION_RULES.map((rule) => rule.category),
     ).toEqual(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER);
-    const identifiers = FRAUD_PROOF_CLASSIFICATION_RULES_V1.flatMap((rule) => [
+    const identifiers = FRAUD_PROOF_CLASSIFICATION_RULES.flatMap((rule) => [
       ...rule.violationIds,
     ]);
     expect(new Set(identifiers).size).toBe(identifiers.length);
@@ -333,7 +333,7 @@ describe("Q55/W-O6 deterministic violation classification", () => {
 
   it("selects the earliest position, then stable family order", async () => {
     const evidence = await canonicalEvidence();
-    const classification = await classifyCanonicalBlockViolationsV1({
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: [
         detection(evidence, "mint-authorization", {
@@ -359,7 +359,7 @@ describe("Q55/W-O6 deterministic violation classification", () => {
 
   it("maps unknown earliest violations to unprovable_gap, never verified", async () => {
     const evidence = await canonicalEvidence();
-    const classification = await classifyCanonicalBlockViolationsV1({
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: [
         detection(evidence, "unknown-launch-fault", {
@@ -384,7 +384,7 @@ describe("Q55/W-O6 deterministic violation classification", () => {
   it("does not promote an empty partial detector result to verified", async () => {
     const evidence = await canonicalEvidence();
     await expect(
-      classifyCanonicalBlockViolationsV1({ evidence, detections: [] }),
+      classifyCanonicalBlockViolations({ evidence, detections: [] }),
     ).resolves.toMatchObject({ decision: "no_fault_detected" });
   });
 
@@ -392,13 +392,13 @@ describe("Q55/W-O6 deterministic violation classification", () => {
     const evidence = await canonicalEvidence();
     const duplicate = detection(evidence);
     await expect(
-      classifyCanonicalBlockViolationsV1({
+      classifyCanonicalBlockViolations({
         evidence,
         detections: [duplicate, duplicate],
       }),
     ).rejects.toThrow("duplicate canonical violation detectionId");
     await expect(
-      classifyCanonicalBlockViolationsV1({
+      classifyCanonicalBlockViolations({
         evidence,
         detections: [
           detection(evidence, "double-spend", { headerHash: h32(9) }),
@@ -411,23 +411,23 @@ describe("Q55/W-O6 deterministic violation classification", () => {
 describe("Q51/W-O4 resumable workflow", () => {
   it("runs from authenticated L1 plus public retained DA with no private evidence input", async () => {
     const sharedInput = outRefCbor(61, 0n);
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [
-        buildFixtureTransactionV1({ spendInputs: [sharedInput], fee: 1n }),
-        buildFixtureTransactionV1({ spendInputs: [sharedInput], fee: 2n }),
+        buildFixtureTransaction({ spendInputs: [sharedInput], fee: 1n }),
+        buildFixtureTransaction({ spendInputs: [sharedInput], fee: 2n }),
       ],
     });
     const adapter = makeAdapter();
-    const result = await runFraudProofWorkflowFromRetainedDaV1({
+    const result = await runFraudProofWorkflowFromRetainedDa({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      observation: authenticatedHeaderObservationV1(fixture),
+      observation: authenticatedHeaderObservation(fixture),
       sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
-      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-      registry: createFraudProofWorkflowRegistryV1({
+      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+      registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["doubleSpend"],
       }),
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       terminalVerifier,
       releaseFinalityAuthority: releaseFinalityAuthority(),
       now: () => new Date("2026-08-29T00:00:00.000Z"),
@@ -436,12 +436,12 @@ describe("Q51/W-O4 resumable workflow", () => {
   });
 
   it("rejects a caller-authored partial detector disguised as complete replay", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
+    const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const forgedReplayer = {
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       launchScope: ["doubleSpend"] as const,
       replay: async () => ({
-        replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+        replayVersion: COMPLETE_CANONICAL_REPLAY,
         launchScope: ["doubleSpend"] as const,
         headerHash: fixture.headerHash,
         payloadEnvelopeSha256: "00".repeat(32),
@@ -449,18 +449,18 @@ describe("Q51/W-O4 resumable workflow", () => {
         context: null,
         detections: [],
       }),
-    } satisfies CompleteCanonicalReplayV1;
+    } satisfies CompleteCanonicalReplay;
     await expect(
-      runFraudProofWorkflowFromRetainedDaV1({
+      runFraudProofWorkflowFromRetainedDa({
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        observation: authenticatedHeaderObservationV1(fixture),
+        observation: authenticatedHeaderObservation(fixture),
         sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
         replayer: forgedReplayer,
-        registry: createFraudProofWorkflowRegistryV1({
+        registry: createFraudProofWorkflowRegistry({
           adapters: [makeAdapter()],
           launchScope: ["doubleSpend"],
         }),
-        journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         terminalVerifier,
         releaseFinalityAuthority: releaseFinalityAuthority(),
       }),
@@ -468,17 +468,17 @@ describe("Q51/W-O4 resumable workflow", () => {
   });
 
   it("completely replays network-id faults from canonical retained DA", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [],
           fee: 1n,
           networkId: 1n,
         }),
       ],
     });
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(fixture),
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(fixture),
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: {
         trustClass: "public_or_permissionless_da",
@@ -487,7 +487,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       },
     });
     const decision =
-      await NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+      await NETWORK_ID_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     expect(decision.detections).toEqual([
       expect.objectContaining({
         headerHash: evidence.headerHash,
@@ -496,7 +496,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       }),
     ]);
     await expect(
-      classifyCanonicalBlockViolationsV1({
+      classifyCanonicalBlockViolations({
         evidence,
         detections: decision.detections,
       }),
@@ -507,24 +507,24 @@ describe("Q51/W-O4 resumable workflow", () => {
   });
 
   it("completely replays invalid-range and zero-input faults from canonical retained DA", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [
         // The invalid-range violation is now stated against the committed
         // block slot — the transaction's normalized range must contain it —
         // rather than against the header's time window. The fixture header
         // commits slot 0, so a range opening at 10 is the exact
         // `starts-after-block-slot` fault.
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [outRefCbor(23, 0n)],
           fee: 1n,
           validityIntervalStart: 10n,
           validityIntervalEnd: 30n,
         }),
-        buildFixtureTransactionV1({ spendInputs: [], fee: 1n }),
+        buildFixtureTransaction({ spendInputs: [], fee: 1n }),
       ],
     });
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(fixture),
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(fixture),
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: {
         trustClass: "public_or_permissionless_da",
@@ -533,13 +533,13 @@ describe("Q51/W-O4 resumable workflow", () => {
       },
     });
     await expect(
-      INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence),
+      INVALID_RANGE_COMPLETE_CANONICAL_REPLAY.replay(evidence),
     ).resolves.toMatchObject({
       launchScope: ["invalidRange"],
       detections: [{ violationId: "invalid-range", position: 0n }],
     });
     await expect(
-      ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence),
+      ZERO_INPUT_COMPLETE_CANONICAL_REPLAY.replay(evidence),
     ).resolves.toMatchObject({
       launchScope: ["zeroInput"],
       detections: [{ violationId: "zero-input", position: 1n }],
@@ -547,17 +547,17 @@ describe("Q51/W-O4 resumable workflow", () => {
   });
 
   it("reports no_fault_detected, never verified, after a complete empty family replay", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
-    const result = await runFraudProofWorkflowFromRetainedDaV1({
+    const fixture = await buildCanonicalBlockFixture({ transactions: [] });
+    const result = await runFraudProofWorkflowFromRetainedDa({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      observation: authenticatedHeaderObservationV1(fixture),
+      observation: authenticatedHeaderObservation(fixture),
       sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
-      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-      registry: createFraudProofWorkflowRegistryV1({
+      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+      registry: createFraudProofWorkflowRegistry({
         adapters: [makeAdapter()],
         launchScope: ["doubleSpend"],
       }),
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       terminalVerifier,
       releaseFinalityAuthority: releaseFinalityAuthority(),
     });
@@ -565,52 +565,52 @@ describe("Q51/W-O4 resumable workflow", () => {
   });
 
   it("rejects narrow, broader, or reordered replay/adapter compositions before retained-DA I/O", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
+    const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const doubleSpend = makeAdapter();
     const networkId = {
       ...makeAdapter(),
       category: "networkId" as const,
     };
     const invoke = (
-      replayer: CompleteCanonicalReplayV1,
-      registry: ReturnType<typeof createFraudProofWorkflowRegistryV1>,
+      replayer: CompleteCanonicalReplay,
+      registry: ReturnType<typeof createFraudProofWorkflowRegistry>,
     ) =>
-      runFraudProofWorkflowFromRetainedDaV1({
+      runFraudProofWorkflowFromRetainedDa({
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        observation: authenticatedHeaderObservationV1(fixture),
+        observation: authenticatedHeaderObservation(fixture),
         sources: [],
         replayer,
         registry,
-        journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         terminalVerifier,
         releaseFinalityAuthority: releaseFinalityAuthority(),
       });
 
-    const both = createFraudProofWorkflowRegistryV1({
+    const both = createFraudProofWorkflowRegistry({
       adapters: [doubleSpend, networkId],
       launchScope: ["doubleSpend", "networkId"],
     });
     await expect(
-      invoke(DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1, both),
+      invoke(DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY, both),
     ).rejects.toThrow("differs from exact workflow registry order");
 
-    const onlyDoubleSpend = createFraudProofWorkflowRegistryV1({
+    const onlyDoubleSpend = createFraudProofWorkflowRegistry({
       adapters: [doubleSpend],
       launchScope: ["doubleSpend"],
     });
     await expect(
       invoke(
-        DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
+        DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
         onlyDoubleSpend,
       ),
     ).rejects.toThrow("differs from exact workflow registry order");
 
-    const reordered = createFraudProofWorkflowRegistryV1({
+    const reordered = createFraudProofWorkflowRegistry({
       adapters: [networkId, doubleSpend],
       launchScope: ["doubleSpend", "networkId"],
     });
     await expect(
-      invoke(DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1, reordered),
+      invoke(DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY, reordered),
     ).rejects.toThrow("differs from exact workflow registry order");
   });
 
@@ -620,7 +620,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const result = await run({
       evidence,
       adapter,
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
     });
     expect(result.kind).toBe("completed");
     if (result.kind !== "completed") return;
@@ -648,8 +648,8 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("refuses a terminal whose removal references a substituted proof token", async () => {
     const evidence = await canonicalEvidence();
-    const verifier: FraudProofWorkflowTerminalVerifierV1 = {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+    const verifier: FraudProofWorkflowTerminalVerifier = {
+      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
       verify: async ({ candidate }) => ({
         ...candidate,
         correction: {
@@ -661,7 +661,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const result = await run({
       evidence,
       adapter: makeAdapter(),
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       verifier,
     });
     expect(result).toMatchObject({
@@ -674,8 +674,8 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("refuses a terminal that claims the permanent proof token was consumed", async () => {
     const evidence = await canonicalEvidence();
-    const verifier: FraudProofWorkflowTerminalVerifierV1 = {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+    const verifier: FraudProofWorkflowTerminalVerifier = {
+      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
       verify: async ({ candidate }) =>
         ({
           ...candidate,
@@ -687,12 +687,12 @@ describe("Q51/W-O4 resumable workflow", () => {
             ...candidate.correction,
             proofTokenSpent: true,
           },
-        }) as unknown as FraudProofWorkflowTerminalV1,
+        }) as unknown as FraudProofWorkflowTerminal,
     };
     const result = await run({
       evidence,
       adapter: makeAdapter(),
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       verifier,
     });
     expect(result).toMatchObject({
@@ -704,8 +704,8 @@ describe("Q51/W-O4 resumable workflow", () => {
   it("binds terminal verification to the configured release confirmation depth", async () => {
     const evidence = await canonicalEvidence();
     const observedPolicies: string[] = [];
-    const verifier: FraudProofWorkflowTerminalVerifierV1 = {
-      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+    const verifier: FraudProofWorkflowTerminalVerifier = {
+      verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
       verify: async ({ candidate, releaseFinality }) => {
         observedPolicies.push(releaseFinality.policyDigest);
         return {
@@ -717,11 +717,11 @@ describe("Q51/W-O4 resumable workflow", () => {
     const result = await run({
       evidence,
       adapter: makeAdapter(),
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       verifier,
     });
     expect(observedPolicies).toEqual([
-      computeFraudProofReleaseFinalityPolicyDigestV1(RELEASE_FINALITY_POLICY),
+      computeFraudProofReleaseFinalityPolicyDigest(RELEASE_FINALITY_POLICY),
     ]);
     expect(result).toMatchObject({
       kind: "stalled",
@@ -737,7 +737,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       run({
         evidence,
         adapter: makeAdapter(),
-        journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         finalityAuthority: releaseFinalityAuthority({
           deploymentIdentityDigest: "f1".repeat(32),
         }),
@@ -747,7 +747,7 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("rejects a release-finality identity change across journal resume", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStoreV1();
+    const journal = new MemoryFraudProofWorkflowJournalStore();
     await expect(
       run({ evidence, adapter: makeAdapter(), journal }),
     ).resolves.toMatchObject({ kind: "completed" });
@@ -786,7 +786,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const result = await run({
       evidence,
       adapter,
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
     });
     expect(result.kind).toBe("completed");
     if (result.kind !== "completed") return;
@@ -817,7 +817,7 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("resumes unresolved intent through an intervening stalled diagnostic", async () => {
     const evidence = await canonicalEvidence();
-    const journal = new MemoryFraudProofWorkflowJournalStoreV1();
+    const journal = new MemoryFraudProofWorkflowJournalStore();
     const firstAdapter = makeAdapter({
       submit: async () => ({
         kind: "ambiguous",
@@ -833,7 +833,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       reason: expect.stringContaining("temporary L1 provider outage"),
     });
     if (first.kind !== "stalled") return;
-    const forgedRetry: FraudProofWorkflowJournalEntryV1 = {
+    const forgedRetry: FraudProofWorkflowJournalEntry = {
       ...first.entries[0]!,
       sequence: first.entries.length,
       event: {
@@ -851,7 +851,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       },
     };
     expect(() =>
-      validateFraudProofWorkflowJournalV1({
+      validateFraudProofWorkflowJournal({
         workflowId: first.workflowId,
         entries: [...first.entries, forgedRetry],
       }),
@@ -900,7 +900,7 @@ describe("Q51/W-O4 resumable workflow", () => {
       firstReconciliation: "confirmed" as const,
       submit: async ({
         preflight,
-      }: Parameters<FraudProofFamilyWorkflowAdapterV1["submit"]>[0]) => ({
+      }: Parameters<FraudProofFamilyWorkflowAdapter["submit"]>[0]) => ({
         kind: "submitted" as const,
         txHash: preflight.txHash,
       }),
@@ -909,9 +909,9 @@ describe("Q51/W-O4 resumable workflow", () => {
     "recovers journal-safe coordinator state with a fresh adapter $boundary",
     async ({ crashEvent, firstReconciliation, submit }) => {
       const evidence = await canonicalEvidence();
-      const backing = new MemoryFraudProofWorkflowJournalStoreV1();
+      const backing = new MemoryFraudProofWorkflowJournalStore();
       let armed = true;
-      const journal: FraudProofWorkflowJournalStoreV1 = {
+      const journal: FraudProofWorkflowJournalStore = {
         load: async (workflowId) => await backing.load(workflowId),
         append: async (entry, expectedSequence) => {
           if (armed && entry.event.kind === crashEvent) {
@@ -971,7 +971,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const result = await run({
       evidence,
       adapter,
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
     });
     expect(result).toMatchObject({
       kind: "stalled",
@@ -993,13 +993,13 @@ describe("Q51/W-O4 resumable workflow", () => {
             : { kind: "confirmed", txHash };
       },
     });
-    const journal = new MemoryFraudProofWorkflowJournalStoreV1();
+    const journal = new MemoryFraudProofWorkflowJournalStore();
     const first = await run({ evidence, adapter, journal });
     expect(first.kind).toBe("pending");
     if (first.kind !== "pending") return;
     await journal.append(
       {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
         workflowId: first.workflowId,
         identity: first.identity,
         sequence: first.entries.length,
@@ -1024,7 +1024,7 @@ describe("Q51/W-O4 resumable workflow", () => {
     const result = await run({
       evidence,
       adapter,
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+      journal: new MemoryFraudProofWorkflowJournalStore(),
     });
     expect(result).toMatchObject({
       kind: "stalled",
@@ -1035,26 +1035,26 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("rejects a journal whose deployment/category/target identity changed", async () => {
     const evidence = await canonicalEvidence();
-    const expectedIdentity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const expectedIdentity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       target: { kind: "state_queue_header", headerHash: evidence.headerHash },
     };
-    const workflowId = computeFraudProofWorkflowIdV1(expectedIdentity);
-    const foreignIdentity: FraudProofWorkflowIdentityV1 = {
+    const workflowId = computeFraudProofWorkflowId(expectedIdentity);
+    const foreignIdentity: FraudProofWorkflowIdentity = {
       ...expectedIdentity,
       deploymentFingerprint: "e2".repeat(32),
     };
-    const poisoned: FraudProofWorkflowJournalEntryV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+    const poisoned: FraudProofWorkflowJournalEntry = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity: foreignIdentity,
       sequence: 0,
       recordedAt: "2026-08-29T00:00:00.000Z",
       event: { kind: "started" },
     };
-    const journal: FraudProofWorkflowJournalStoreV1 = {
+    const journal: FraudProofWorkflowJournalStore = {
       load: async () => [poisoned],
       append: async () => undefined,
     };
@@ -1065,8 +1065,8 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("rejects a journal intent that changes the locally evaluated body hash", () => {
     const headerHash = "f4".repeat(28);
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       target: {
@@ -1074,15 +1074,15 @@ describe("Q51/W-O4 resumable workflow", () => {
         headerHash,
       },
     };
-    const workflowId = computeFraudProofWorkflowIdV1(identity);
+    const workflowId = computeFraudProofWorkflowId(identity);
     const artifact = { headerHash };
     const base = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       recordedAt: "2026-08-29T00:00:00.000Z",
     } as const;
-    const entries: readonly FraudProofWorkflowJournalEntryV1[] = [
+    const entries: readonly FraudProofWorkflowJournalEntry[] = [
       { ...base, sequence: 0, event: { kind: "started" } },
       {
         ...base,
@@ -1090,7 +1090,7 @@ describe("Q51/W-O4 resumable workflow", () => {
         event: {
           kind: "prepared",
           artifact,
-          artifactDigest: journalJsonDigestV1(artifact),
+          artifactDigest: journalJsonDigest(artifact),
         },
       },
       {
@@ -1123,14 +1123,14 @@ describe("Q51/W-O4 resumable workflow", () => {
       },
     ];
     expect(() =>
-      validateFraudProofWorkflowJournalV1({ workflowId, entries }),
+      validateFraudProofWorkflowJournal({ workflowId, entries }),
     ).toThrow("lacks a matching exact-body preflight");
   });
 
   it("rejects unknown events and duplicate lifecycle roots from loaded JSON", () => {
     const headerHash = "f4".repeat(28);
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       target: {
@@ -1138,30 +1138,30 @@ describe("Q51/W-O4 resumable workflow", () => {
         headerHash,
       },
     };
-    const workflowId = computeFraudProofWorkflowIdV1(identity);
+    const workflowId = computeFraudProofWorkflowId(identity);
     const artifact = { headerHash };
     const base = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       recordedAt: "2026-08-29T00:00:00.000Z",
     } as const;
-    const started: FraudProofWorkflowJournalEntryV1 = {
+    const started: FraudProofWorkflowJournalEntry = {
       ...base,
       sequence: 0,
       event: { kind: "started" },
     };
-    const prepared: FraudProofWorkflowJournalEntryV1 = {
+    const prepared: FraudProofWorkflowJournalEntry = {
       ...base,
       sequence: 1,
       event: {
         kind: "prepared",
         artifact,
-        artifactDigest: journalJsonDigestV1(artifact),
+        artifactDigest: journalJsonDigest(artifact),
       },
     };
     expect(() =>
-      validateFraudProofWorkflowJournalV1({
+      validateFraudProofWorkflowJournal({
         workflowId,
         entries: [
           started,
@@ -1170,18 +1170,18 @@ describe("Q51/W-O4 resumable workflow", () => {
             ...base,
             sequence: 2,
             event: { kind: "forged-success" },
-          } as unknown as FraudProofWorkflowJournalEntryV1,
+          } as unknown as FraudProofWorkflowJournalEntry,
         ],
       }),
     ).toThrow("unknown event kind");
     expect(() =>
-      validateFraudProofWorkflowJournalV1({
+      validateFraudProofWorkflowJournal({
         workflowId,
         entries: [started, { ...started, sequence: 1 }],
       }),
     ).toThrow("duplicate started event");
     expect(() =>
-      validateFraudProofWorkflowJournalV1({
+      validateFraudProofWorkflowJournal({
         workflowId,
         entries: [started, prepared, { ...prepared, sequence: 2 }],
       }),
@@ -1190,8 +1190,8 @@ describe("Q51/W-O4 resumable workflow", () => {
 
   it("rejects a malformed terminal even when its digest matches", () => {
     const headerHash = "f4".repeat(28);
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       target: {
@@ -1199,7 +1199,7 @@ describe("Q51/W-O4 resumable workflow", () => {
         headerHash,
       },
     };
-    const workflowId = computeFraudProofWorkflowIdV1(identity);
+    const workflowId = computeFraudProofWorkflowId(identity);
     const artifact = { headerHash };
     const malformed = {
       ...terminal(headerHash),
@@ -1208,15 +1208,15 @@ describe("Q51/W-O4 resumable workflow", () => {
         unit: "not-hex",
       },
     };
-    const normalized = normalizeJournalJsonV1(malformed);
+    const normalized = normalizeJournalJson(malformed);
     const base = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       recordedAt: "2026-08-29T00:00:00.000Z",
     } as const;
     expect(() =>
-      validateFraudProofWorkflowJournalV1({
+      validateFraudProofWorkflowJournal({
         workflowId,
         entries: [
           { ...base, sequence: 0, event: { kind: "started" } },
@@ -1226,7 +1226,7 @@ describe("Q51/W-O4 resumable workflow", () => {
             event: {
               kind: "prepared",
               artifact,
-              artifactDigest: journalJsonDigestV1(artifact),
+              artifactDigest: journalJsonDigest(artifact),
             },
           },
           {
@@ -1235,22 +1235,22 @@ describe("Q51/W-O4 resumable workflow", () => {
             event: {
               kind: "completed",
               terminal: malformed,
-              terminalDigest: journalJsonDigestV1(normalized),
+              terminalDigest: journalJsonDigest(normalized),
             },
           },
-        ] as readonly FraudProofWorkflowJournalEntryV1[],
+        ] as readonly FraudProofWorkflowJournalEntry[],
       }),
     ).toThrow("malformed proof-token unit");
   });
 
   it("binds workflow identity independently to deployment, category, target, and decision", () => {
-    const base: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const base: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       target: { kind: "state_queue_header", headerHash: "f4".repeat(28) },
     };
-    const identities: FraudProofWorkflowIdentityV1[] = [
+    const identities: FraudProofWorkflowIdentity[] = [
       base,
       { ...base, deploymentFingerprint: "e5".repeat(32) },
       { ...base, category: "invalidRange" },
@@ -1262,22 +1262,22 @@ describe("Q51/W-O4 resumable workflow", () => {
       { ...base, decisionDigest: "a7".repeat(32) },
       { ...base, decisionDigest: "a8".repeat(32) },
     ];
-    expect(new Set(identities.map(computeFraudProofWorkflowIdV1)).size).toBe(
+    expect(new Set(identities.map(computeFraudProofWorkflowId)).size).toBe(
       identities.length,
     );
   });
 
   it("fails competing journal writers at the same expected sequence", async () => {
-    const store = new MemoryFraudProofWorkflowJournalStoreV1();
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const store = new MemoryFraudProofWorkflowJournalStore();
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       target: { kind: "state_queue_header", headerHash: "f4".repeat(28) },
     };
-    const workflowId = computeFraudProofWorkflowIdV1(identity);
-    const entry: FraudProofWorkflowJournalEntryV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+    const workflowId = computeFraudProofWorkflowId(identity);
+    const entry: FraudProofWorkflowJournalEntry = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence: 0,
@@ -1286,36 +1286,34 @@ describe("Q51/W-O4 resumable workflow", () => {
     };
     await store.append(entry, 0);
     await expect(store.append(entry, 0)).rejects.toBeInstanceOf(
-      ConcurrentFraudProofWorkflowWriteErrorV1,
+      ConcurrentFraudProofWorkflowWriteError,
     );
   });
 
   it("recovers fsynced immutable journal entries through a fresh store", async () => {
     const directory = await mkdtemp(join(tmpdir(), "midgard-fp-journal-"));
     try {
-      const identity: FraudProofWorkflowIdentityV1 = {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+      const identity: FraudProofWorkflowIdentity = {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         category: "doubleSpend",
         target: { kind: "state_queue_header", headerHash: "f7".repeat(28) },
       };
-      const workflowId = computeFraudProofWorkflowIdV1(identity);
-      const entry: FraudProofWorkflowJournalEntryV1 = {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      const workflowId = computeFraudProofWorkflowId(identity);
+      const entry: FraudProofWorkflowJournalEntry = {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
         workflowId,
         identity,
         sequence: 0,
         recordedAt: "2026-08-29T00:00:00.000Z",
         event: { kind: "started" },
       };
-      await new DirectoryFraudProofWorkflowJournalStoreV1(directory).append(
+      await new DirectoryFraudProofWorkflowJournalStore(directory).append(
         entry,
         0,
       );
       await expect(
-        new DirectoryFraudProofWorkflowJournalStoreV1(directory).load(
-          workflowId,
-        ),
+        new DirectoryFraudProofWorkflowJournalStore(directory).load(workflowId),
       ).resolves.toEqual([entry]);
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -1325,7 +1323,7 @@ describe("Q51/W-O4 resumable workflow", () => {
   it("rejects incomplete or downgraded adapter registration", () => {
     const adapter = makeAdapter();
     expect(
-      createFraudProofWorkflowRegistryV1({
+      createFraudProofWorkflowRegistry({
         adapters: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => ({
           ...makeAdapter(),
           category,
@@ -1333,18 +1331,18 @@ describe("Q51/W-O4 resumable workflow", () => {
       }).size,
     ).toBe(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length);
     expect(() =>
-      createFraudProofWorkflowRegistryV1({
+      createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["doubleSpend", "invalidRange"],
       }),
     ).toThrow("missing launch-scope workflow adapters: invalidRange");
     expect(() =>
-      createFraudProofWorkflowRegistryV1({
+      createFraudProofWorkflowRegistry({
         adapters: [
           {
             ...adapter,
             safety: {
-              ...FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+              ...FRAUD_PROOF_WORKFLOW_SAFETY,
               scriptCarriage: "inline" as "reference-script-only",
             },
           },
@@ -1363,14 +1361,14 @@ describe("compiled production workflow boundary", () => {
       hash: paymentKeyHash,
     });
     expect(() =>
-      assertManifestBoundWorkflowSignerV1({
+      assertManifestBoundWorkflowSigner({
         network: "Preview",
         address,
         paymentKeyHash,
       }),
     ).not.toThrow();
     expect(() =>
-      assertManifestBoundWorkflowSignerV1({
+      assertManifestBoundWorkflowSigner({
         network: "Mainnet",
         address,
         paymentKeyHash,
@@ -1397,21 +1395,21 @@ describe("compiled production workflow boundary", () => {
       },
     };
     expect(() =>
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofNetworkId",
         utxo: exact,
       }),
     ).not.toThrow();
     expect(() =>
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofNetworkId",
         utxo: { ...exact, outputIndex: 3 },
       }),
     ).toThrow("differs from finalized manifest identity");
     expect(() =>
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "unpublishedSharedWitness",
         utxo: exact,
@@ -1496,7 +1494,7 @@ describe("compiled production workflow boundary", () => {
       ...base.removal,
       requireReferenceScripts: false,
     } as typeof base.removal;
-    const sealed = sealManifestBoundNetworkIdRuntimeV1({
+    const sealed = sealManifestBoundNetworkIdRuntime({
       ...base,
       removal: hostileRemoval,
     });
@@ -1568,7 +1566,7 @@ describe("compiled production workflow boundary", () => {
       },
     ] as const;
     for (const hostile of hostileInputs) {
-      expect(() => sealManifestBoundNetworkIdRuntimeV1(hostile)).toThrow(
+      expect(() => sealManifestBoundNetworkIdRuntime(hostile)).toThrow(
         "differs from finalized manifest identity",
       );
     }
@@ -1576,36 +1574,36 @@ describe("compiled production workflow boundary", () => {
 
   it("rejects omitted, duplicate, and unknown production registrations", () => {
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1(
-        PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.slice(0, -1),
+      validateWorkflowAdapterCoverage(
+        WORKFLOW_ADAPTER_REGISTRATIONS.slice(0, -1),
       ),
     ).toThrow("cardinality mismatch");
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1([
-        ...PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.slice(0, -1),
-        PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1[0]!,
+      validateWorkflowAdapterCoverage([
+        ...WORKFLOW_ADAPTER_REGISTRATIONS.slice(0, -1),
+        WORKFLOW_ADAPTER_REGISTRATIONS[0]!,
       ]),
     ).toThrow("duplicates doubleSpend");
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1([
-        ...PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.slice(0, -1),
+      validateWorkflowAdapterCoverage([
+        ...WORKFLOW_ADAPTER_REGISTRATIONS.slice(0, -1),
         { category: "forgedFamily" },
       ]),
     ).toThrow("actual=forgedFamily");
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1([
+      validateWorkflowAdapterCoverage([
         {
-          ...PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1[0]!,
+          ...WORKFLOW_ADAPTER_REGISTRATIONS[0]!,
           status: "ready",
         },
-        ...PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.slice(1),
+        ...WORKFLOW_ADAPTER_REGISTRATIONS.slice(1),
       ]),
     ).toThrow("has no compiled executable runner");
   });
 
   it("seals registry keys and adapter methods against post-construction mutation", () => {
     const original = makeAdapter();
-    const registry = createFraudProofWorkflowRegistryV1({
+    const registry = createFraudProofWorkflowRegistry({
       adapters: [original],
       launchScope: ["doubleSpend"],
     });
@@ -1629,9 +1627,9 @@ describe("compiled production workflow boundary", () => {
   });
 
   it("cannot mutate the workflow registry during awaited retained-DA fetch", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
+    const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const original = makeAdapter();
-    const registry = createFraudProofWorkflowRegistryV1({
+    const registry = createFraudProofWorkflowRegistry({
       adapters: [original],
       launchScope: ["doubleSpend"],
     });
@@ -1645,7 +1643,7 @@ describe("compiled production workflow boundary", () => {
           (
             registry as unknown as Map<
               SDK.FraudProofCatalogueCategoryName,
-              FraudProofFamilyWorkflowAdapterV1
+              FraudProofFamilyWorkflowAdapter
             >
           ).set("networkId", {
             ...makeAdapter(),
@@ -1671,13 +1669,13 @@ describe("compiled production workflow boundary", () => {
       },
     };
     await expect(
-      runFraudProofWorkflowFromRetainedDaV1({
+      runFraudProofWorkflowFromRetainedDa({
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        observation: authenticatedHeaderObservationV1(fixture),
+        observation: authenticatedHeaderObservation(fixture),
         sources: [source],
-        replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+        replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
         registry,
-        journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+        journal: new MemoryFraudProofWorkflowJournalStore(),
         terminalVerifier,
         releaseFinalityAuthority: releaseFinalityAuthority(),
       }),
@@ -1687,7 +1685,7 @@ describe("compiled production workflow boundary", () => {
   });
 
   it("deep-freezes registry rows and rejects forged or cross-category runners", () => {
-    const first = PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1[0]!;
+    const first = WORKFLOW_ADAPTER_REGISTRATIONS[0]!;
     expect(Object.isFrozen(first)).toBe(true);
     expect(Reflect.set(first, "status", "ready")).toBe(false);
     expect(first.status).toBe("missing");
@@ -1695,12 +1693,12 @@ describe("compiled production workflow boundary", () => {
     expect(Reflect.set(first.existingSurface, 0, "forged-surface")).toBe(false);
 
     const forgedRunner = {
-      runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+      runnerVersion: WORKFLOW_ADAPTER_RUNNER,
       runOrResume: async () => "forged",
     };
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1(
-        PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.map((registration) =>
+      validateWorkflowAdapterCoverage(
+        WORKFLOW_ADAPTER_REGISTRATIONS.map((registration) =>
           registration.category === "doubleSpend"
             ? { ...registration, status: "ready", runner: forgedRunner }
             : registration,
@@ -1708,14 +1706,12 @@ describe("compiled production workflow boundary", () => {
       ),
     ).toThrow("no compiled executable runner admitted for its exact category");
 
-    const admittedDoubleSpend = createDoubleSpendProductionWorkflowRunnerV1(
-      async () => {
-        throw new Error("runner loader is not invoked during admission");
-      },
-    );
+    const admittedDoubleSpend = createDoubleSpendWorkflowRunner(async () => {
+      throw new Error("runner loader is not invoked during admission");
+    });
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1(
-        PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.map((registration) =>
+      validateWorkflowAdapterCoverage(
+        WORKFLOW_ADAPTER_REGISTRATIONS.map((registration) =>
           registration.category === "networkId"
             ? {
                 ...registration,
@@ -1730,18 +1726,18 @@ describe("compiled production workflow boundary", () => {
 
   it("enumerates every registered category with an exact missing-adapter reason", () => {
     expect(
-      PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.map(
+      WORKFLOW_ADAPTER_REGISTRATIONS.map(
         (registration) => registration.category,
       ),
     ).toEqual(SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER);
-    expect(productionWorkflowReadinessReportV1()).toMatchObject({
+    expect(workflowReadinessReport()).toMatchObject({
       registeredCategoryCount: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       requestedCategoryCount: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
       readyCategoryCount: 0,
       missingCategoryCount: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
     });
     expect(
-      PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.find(
+      WORKFLOW_ADAPTER_REGISTRATIONS.find(
         ({ category }) => category === "doubleSpend",
       ),
     ).toMatchObject({
@@ -1749,14 +1745,14 @@ describe("compiled production workflow boundary", () => {
       reason: "constrained_adapter_is_not_launch_scope_complete",
     });
     expect(
-      PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.find(
+      WORKFLOW_ADAPTER_REGISTRATIONS.find(
         ({ category }) => category === "nativeScriptDecoding",
       ),
     ).toMatchObject({
       reason: "one_shot_prover_has_no_pre_submit_journal_hook",
     });
     expect(
-      PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.find(
+      WORKFLOW_ADAPTER_REGISTRATIONS.find(
         ({ category }) => category === "networkId",
       ),
     ).toMatchObject({
@@ -1796,26 +1792,26 @@ describe("compiled production workflow boundary", () => {
     const journalDirectory = join(root, "must-not-be-created");
     try {
       await expect(
-        runProductionFraudProofWorkflowCliV1({
+        runFraudProofWorkflowCli({
           mode: "run",
           category: "invalidRange",
           deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
           headerHash: "f8".repeat(28),
           decisionDigest: "f9".repeat(32),
           actuationPermit: {
-            permitVersion: PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1,
+            permitVersion: WORKFLOW_ACTUATION_PERMIT,
           },
           // The CLI now demands the funding-reservation permit alongside the
           // actuation permit before it looks at adapters, so both are present
           // here: this test is about the missing-adapter refusal, not about
           // the permit refusal that precedes it.
           fundingReservationPermit: {
-            permitVersion: PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1,
+            permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
           },
           journalDirectory,
           runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
         }),
-      ).rejects.toBeInstanceOf(MissingProductionWorkflowAdaptersErrorV1);
+      ).rejects.toBeInstanceOf(MissingWorkflowAdaptersError);
       await expect(
         import("node:fs/promises").then(({ stat }) => stat(journalDirectory)),
       ).rejects.toMatchObject({ code: "ENOENT" });

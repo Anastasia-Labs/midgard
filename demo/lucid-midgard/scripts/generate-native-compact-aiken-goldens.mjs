@@ -45,15 +45,15 @@ import {
   rebindAikenConstants,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardMintFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardRedeemerWitnessFieldPreimageV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxBodyCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  midgardFieldCommitmentV1,
+  computeMidgardNativeTxId,
+  decodeMidgardMintFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardRedeemerWitnessFieldPreimage,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxCompact,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -78,14 +78,14 @@ const readUtf8 = (filePath) => fs.readFileSync(filePath, "utf8");
  * different builds of the codec and must agree.
  */
 const mintPolicyIds = (mintPreimageCbor) =>
-  decodeMidgardMintFieldPreimageV1(mintPreimageCbor).map((item) =>
+  decodeMidgardMintFieldPreimage(mintPreimageCbor).map((item) =>
     hex(item.policyId),
   );
 
 const redeemerPointers = (redeemerPreimageCbor) =>
-  decodeMidgardRedeemerWitnessFieldPreimageV1(redeemerPreimageCbor).map(
+  decodeMidgardRedeemerWitnessFieldPreimage(redeemerPreimageCbor).map(
     (witness) =>
-      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose])}:${witness.index.toString(10)}`,
+      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose])}:${witness.index.toString(10)}`,
   );
 
 /**
@@ -105,14 +105,14 @@ const redeemerPointers = (redeemerPreimageCbor) =>
  */
 const deriveGolden = (fullTxCborHex) => {
   const fullTxCbor = bytes(fullTxCborHex);
-  const transaction = decodeMidgardNativeTxFullV1FromCanonicalCbor(fullTxCbor);
+  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(fullTxCbor);
   const compact = transaction.compact;
   const body = compact.transactionBody;
-  const witnessSet = deriveMidgardNativeTxWitnessSetCompactV1(
+  const witnessSet = deriveMidgardNativeTxWitnessSetCompact(
     transaction.witnessSet,
   );
-  const compactTxCbor = encodeMidgardNativeTxCompactV1(compact);
-  const compactBodyCbor = encodeMidgardNativeTxBodyCompactV1(body);
+  const compactTxCbor = encodeMidgardNativeTxCompact(compact);
+  const compactBodyCbor = encodeMidgardNativeTxBodyCompact(body);
   // Keyed by field name so the preimage bytes, their lengths and the hex facets
   // below cannot disagree about which field is which.
   const preimageCbor = {
@@ -133,7 +133,7 @@ const deriveGolden = (fullTxCborHex) => {
       ),
     );
   return {
-    txIdHex: hex(computeMidgardNativeTxIdV1(transaction)),
+    txIdHex: hex(computeMidgardNativeTxId(transaction)),
     compactTxCborHex: hex(compactTxCbor),
     compactBodyCborHex: hex(compactBodyCbor),
     sizes: {
@@ -405,7 +405,7 @@ for (const family of FIXTURE_FAMILIES) {
   for (const [name, dottedPath] of Object.entries(
     family.preimageCommitmentConstants ?? {},
   )) {
-    const commitment = midgardFieldCommitmentV1(
+    const commitment = midgardFieldCommitment(
       bytes(fixtureValueAt(fixture, dottedPath, family.label)),
     );
     // §4: a field's committed hash *is* the flat commitment of its preimage.

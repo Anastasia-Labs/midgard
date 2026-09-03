@@ -7,26 +7,26 @@ import {
   validatorToAddress,
 } from "@lucid-evolution/lucid";
 import {
-  type DeploymentManifestV1Value,
-  parseDeploymentManifestV1Value,
+  type DeploymentManifestValue,
+  parseDeploymentManifestValue,
 } from "midgard-node/deployment-manifest-v1";
 import {
-  fetchKupoAncestorPointV1,
-  fetchKupoCreationPointV1,
+  fetchKupoAncestorPoint,
+  fetchKupoCreationPoint,
   normalizeKupoHttpUrl,
   normalizeOgmiosWebSocketUrl,
-  readOgmiosBlockTransactionV1,
+  readOgmiosBlockTransaction,
   type WebSocketFactory,
   type WebSocketLike,
 } from "midgard-node/l1-tx-order-carriage-v1";
 import { normalizeOgmiosHttpUrl } from "midgard-node/local-ledger-slot";
 
 import {
-  parseReleaseL1FinalityPolicyV1,
-  type ReleaseL1FinalityPolicyV1,
+  parseReleaseL1FinalityPolicy,
+  type ReleaseL1FinalityPolicy,
 } from "./e2e-release-finality-policy-v1.js";
-import type { StateCorrectionAvailabilityChallengeCapabilityV1 } from "./e2e-state-correction-acceptance.js";
-import type { StateCorrectionIndependentAuthorityV1 } from "./e2e-state-correction-reconciliation.js";
+import type { StateCorrectionAvailabilityChallengeCapability } from "./e2e-state-correction-acceptance.js";
+import type { StateCorrectionIndependentAuthority } from "./e2e-state-correction-reconciliation.js";
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -58,7 +58,7 @@ type LiveEconomicTransaction = {
   readonly outputs: readonly LiveTransactionOutput[];
 };
 
-export interface LocalKupmiosStateCorrectionSourceV1 {
+export interface LocalKupmiosStateCorrectionSource {
   observeTransaction(input: {
     readonly txHash: string;
     readonly outputIndex: number;
@@ -92,7 +92,7 @@ export interface LocalKupmiosStateCorrectionSourceV1 {
   }>;
 }
 
-export type LocalKupmiosStateCorrectionAuthorityConfigV1 = {
+export type LocalKupmiosStateCorrectionAuthorityConfig = {
   readonly provider: string | undefined;
   readonly providerFailover: string | undefined;
   readonly kupoUrl: string;
@@ -101,26 +101,26 @@ export type LocalKupmiosStateCorrectionAuthorityConfigV1 = {
   readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
   readonly reserveAddress: string;
-  readonly finalityPolicy: ReleaseL1FinalityPolicyV1;
-  readonly economicsPolicy: ReleaseEconomicsPolicyV1;
-  readonly observeDatabase: LocalKupmiosStateCorrectionSourceV1["observeDatabase"];
+  readonly finalityPolicy: ReleaseL1FinalityPolicy;
+  readonly economicsPolicy: ReleaseEconomicsPolicy;
+  readonly observeDatabase: LocalKupmiosStateCorrectionSource["observeDatabase"];
   readonly fetchImpl?: FetchLike;
   readonly webSocketFactory?: WebSocketFactory;
   readonly timeoutMs?: number;
-  readonly source?: LocalKupmiosStateCorrectionSourceV1;
+  readonly source?: LocalKupmiosStateCorrectionSource;
 };
 
-export type LocalAuthorityDeploymentV1 = {
+export type LocalAuthorityDeployment = {
   readonly manifestId: string;
   readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
   readonly reserveAddress: string;
-  readonly finalityPolicy: ReleaseL1FinalityPolicyV1;
-  readonly economicsPolicy: ReleaseEconomicsPolicyV1;
-  readonly availabilityChallengeCapability: StateCorrectionAvailabilityChallengeCapabilityV1;
+  readonly finalityPolicy: ReleaseL1FinalityPolicy;
+  readonly economicsPolicy: ReleaseEconomicsPolicy;
+  readonly availabilityChallengeCapability: StateCorrectionAvailabilityChallengeCapability;
 };
 
-type ReleaseEconomicsPolicyV1 = {
+type ReleaseEconomicsPolicy = {
   readonly requiredBondLovelace: string;
   readonly slashingPenaltyLovelace: string;
   readonly fraudProverRewardLovelace: string;
@@ -128,9 +128,9 @@ type ReleaseEconomicsPolicyV1 = {
   readonly proverCollateralFloorLovelace: string;
 };
 
-export const releaseEconomicsPolicyFromDeploymentManifestV1 = (
-  manifest: DeploymentManifestV1Value,
-): ReleaseEconomicsPolicyV1 => ({
+export const releaseEconomicsPolicyFromDeploymentManifest = (
+  manifest: DeploymentManifestValue,
+): ReleaseEconomicsPolicy => ({
   requiredBondLovelace: manifest.economics.requiredBondLovelace.toString(),
   slashingPenaltyLovelace:
     manifest.economics.slashingPenaltyLovelace.toString(),
@@ -195,7 +195,7 @@ const stableJson = (value: unknown): string => {
     .join(",")}}`;
 };
 
-export const stateCorrectionValueDigestV1 = (
+export const stateCorrectionValueDigest = (
   value: Readonly<Record<string, string>>,
 ): string => {
   for (const [unit, quantity] of Object.entries(value)) {
@@ -689,16 +689,16 @@ const queryTip = async ({
     "live Ogmios tip",
   );
 
-export const createLocalKupmiosStateCorrectionSourceV1 = (
-  config: Omit<LocalKupmiosStateCorrectionAuthorityConfigV1, "source">,
-): LocalKupmiosStateCorrectionSourceV1 => {
+export const createLocalKupmiosStateCorrectionSource = (
+  config: Omit<LocalKupmiosStateCorrectionAuthorityConfig, "source">,
+): LocalKupmiosStateCorrectionSource => {
   const fetchImpl = config.fetchImpl ?? fetch;
   const timeoutMs = config.timeoutMs ?? 20_000;
   const kupoUrl = normalizeKupoHttpUrl(config.kupoUrl);
   const ogmiosUrl = config.ogmiosUrl;
   return {
     observeTransaction: async ({ txHash, outputIndex }) => {
-      const kupoPoint = await fetchKupoCreationPointV1({
+      const kupoPoint = await fetchKupoCreationPoint({
         kupoUrl,
         outRef: { txHash, outputIndex },
         fetchImpl,
@@ -708,13 +708,13 @@ export const createLocalKupmiosStateCorrectionSourceV1 = (
         slot: kupoPoint.slot.toString(),
         blockHash: kupoPoint.headerHash,
       };
-      const ancestor = await fetchKupoAncestorPointV1({
+      const ancestor = await fetchKupoAncestorPoint({
         kupoUrl,
         slot: kupoPoint.slot,
         fetchImpl,
         timeoutMs,
       });
-      const observed = await readOgmiosBlockTransactionV1({
+      const observed = await readOgmiosBlockTransaction({
         ogmiosUrl,
         intersection: ancestor,
         blockPoint: kupoPoint,
@@ -760,7 +760,7 @@ export const createLocalKupmiosStateCorrectionSourceV1 = (
         }).then((value) =>
           parseKupoOutputs(value, `Q57 Kupo transaction outputs ${txHash}`),
         ),
-        fetchKupoAncestorPointV1({
+        fetchKupoAncestorPoint({
           kupoUrl,
           slot: Number(includedAt.slot),
           fetchImpl,
@@ -854,9 +854,9 @@ const assertAtOrAfter = (
   }
 };
 
-export const createLocalKupmiosStateCorrectionAuthorityV1 = (
-  config: LocalKupmiosStateCorrectionAuthorityConfigV1,
-): StateCorrectionIndependentAuthorityV1 => {
+export const createLocalKupmiosStateCorrectionAuthority = (
+  config: LocalKupmiosStateCorrectionAuthorityConfig,
+): StateCorrectionIndependentAuthority => {
   if (config.provider !== "Kupmios") {
     throw new Error("Q57 authority requires L1_PROVIDER=Kupmios");
   }
@@ -872,12 +872,12 @@ export const createLocalKupmiosStateCorrectionAuthorityV1 = (
   if (!HEX_28.test(config.stateQueuePolicyId)) {
     throw new Error("Q57 authority state-queue policy id is invalid");
   }
-  const finalityPolicy = parseReleaseL1FinalityPolicyV1(
+  const finalityPolicy = parseReleaseL1FinalityPolicy(
     config.finalityPolicy,
     "Q57 deployment manifest l1Finality",
   );
   const source =
-    config.source ?? createLocalKupmiosStateCorrectionSourceV1(config);
+    config.source ?? createLocalKupmiosStateCorrectionSource(config);
   return {
     authenticateTransaction: async (input) => {
       const live = await source.observeTransaction({
@@ -1123,7 +1123,7 @@ export const createLocalKupmiosStateCorrectionAuthorityV1 = (
       const payoutOutputs = payoutTransaction.outputs.filter(
         (output) =>
           output.address === payout.destination &&
-          stateCorrectionValueDigestV1(outputValue(output)) ===
+          stateCorrectionValueDigest(outputValue(output)) ===
             payout.payoutValueSha256,
       );
       if (payoutOutputs.length !== 1) {
@@ -1131,7 +1131,7 @@ export const createLocalKupmiosStateCorrectionAuthorityV1 = (
           "live payout conclusion does not contain one exact destination/value output",
         );
       }
-      const reserveDigest = stateCorrectionValueDigestV1(
+      const reserveDigest = stateCorrectionValueDigest(
         aggregateOutputValues(reserveOutputs),
       );
       if (reserveDigest !== payout.reserveValueSha256) {
@@ -1142,9 +1142,9 @@ export const createLocalKupmiosStateCorrectionAuthorityV1 = (
 };
 
 const requireManifestContract = (
-  manifest: DeploymentManifestV1Value,
+  manifest: DeploymentManifestValue,
   name: string,
-): DeploymentManifestV1Value["contracts"][string] => {
+): DeploymentManifestValue["contracts"][string] => {
   const contract = manifest.contracts[name];
   if (contract === undefined) {
     throw new Error(`deployment manifest has no ${name} contract`);
@@ -1152,10 +1152,10 @@ const requireManifestContract = (
   return contract;
 };
 
-export const loadLocalAuthorityDeploymentV1 = async (
+export const loadLocalAuthorityDeployment = async (
   manifestPath: string,
-): Promise<LocalAuthorityDeploymentV1> => {
-  const manifest = parseDeploymentManifestV1Value(
+): Promise<LocalAuthorityDeployment> => {
+  const manifest = parseDeploymentManifestValue(
     JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
   );
   if (manifest.network !== "Preprod") {
@@ -1176,8 +1176,8 @@ export const loadLocalAuthorityDeploymentV1 = async (
       type: reserveSpend.contract.type,
       script: reserveSpend.contract.cborHex,
     } as SpendingValidator),
-    finalityPolicy: parseReleaseL1FinalityPolicyV1(manifest.l1Finality),
-    economicsPolicy: releaseEconomicsPolicyFromDeploymentManifestV1(manifest),
+    finalityPolicy: parseReleaseL1FinalityPolicy(manifest.l1Finality),
+    economicsPolicy: releaseEconomicsPolicyFromDeploymentManifest(manifest),
     // Q58 is deliberately absent from the strict V1 manifest schema. This
     // loader cannot promote a caller/config assertion into release authority.
     availabilityChallengeCapability: "missing",

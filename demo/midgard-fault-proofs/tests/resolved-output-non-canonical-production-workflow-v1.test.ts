@@ -6,13 +6,13 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  bindResolvedOutputNonCanonicalReferenceScriptsV1,
-  createResolvedOutputNonCanonicalProductionWorkflowRunnerSurfaceV1,
-  createResolvedOutputNonCanonicalRawL1StageResolverV1,
-  RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1,
-  type ResolvedOutputNonCanonicalProductionReferenceScriptsV1,
+  bindResolvedOutputNonCanonicalReferenceScripts,
+  createResolvedOutputNonCanonicalRawL1StageResolver,
+  createResolvedOutputNonCanonicalWorkflowRunnerSurface,
+  RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
+  type ResolvedOutputNonCanonicalReferenceScripts,
 } from "../src/resolved-output-non-canonical/index.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "../src/workflow/deployment-manifest-binding-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding-v1.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",
@@ -25,35 +25,33 @@ const utxo = (byte: string, outputIndex: number): UTxO => ({
   assets: { lovelace: 2_000_000n },
   scriptRef: script(byte),
 });
-const references =
-  (): ResolvedOutputNonCanonicalProductionReferenceScriptsV1 => ({
-    step01: utxo("1", 0),
-    step02: utxo("2", 1),
-    step03: utxo("3", 2),
-    step04: utxo("4", 3),
-    step05: utxo("5", 4),
-    fieldPreimageCertificateMint: utxo("6", 5),
-    witnesses: {
-      computationThreadMint: utxo("7", 6),
-      fraudProofMint: utxo("8", 7),
-      phasMembershipWithdraw: utxo("9", 8),
-    },
-  });
+const references = (): ResolvedOutputNonCanonicalReferenceScripts => ({
+  step01: utxo("1", 0),
+  step02: utxo("2", 1),
+  step03: utxo("3", 2),
+  step04: utxo("4", 3),
+  step05: utxo("5", 4),
+  fieldPreimageCertificateMint: utxo("6", 5),
+  witnesses: {
+    computationThreadMint: utxo("7", 6),
+    fraudProofMint: utxo("8", 7),
+    phasMembershipWithdraw: utxo("9", 8),
+  },
+});
 
 describe("resolvedOutputNonCanonical production workflow", () => {
   it("exposes the standard callback-free runner and complete manifest roles", () => {
-    const runner =
-      createResolvedOutputNonCanonicalProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig: async () => {
-          throw new Error("not reached");
-        },
-      });
+    const runner = createResolvedOutputNonCanonicalWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        throw new Error("not reached");
+      },
+    });
     expect(Object.keys(runner).sort()).toEqual([
       "runOrResume",
       "runnerVersion",
     ]);
     expect(
-      Object.values(RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1),
+      Object.values(RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS),
     ).toEqual([
       "fraudProofResolvedOutputNonCanonical",
       "fraudProofResolvedOutputNonCanonicalStep02",
@@ -70,7 +68,7 @@ describe("resolvedOutputNonCanonical production workflow", () => {
   it("authenticates every reference out-ref and refuses substitution", () => {
     const supplied = references();
     const names = Object.values(
-      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1,
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
     );
     const values = [
       supplied.step01,
@@ -93,15 +91,15 @@ describe("resolvedOutputNonCanonical production workflow", () => {
           },
         ]),
       ),
-    } as unknown as FraudProofWorkflowDeploymentBindingV1<never>;
+    } as unknown as FraudProofWorkflowDeploymentBinding<never>;
     expect(
-      bindResolvedOutputNonCanonicalReferenceScriptsV1({
+      bindResolvedOutputNonCanonicalReferenceScripts({
         binding,
         referenceScripts: supplied,
       }),
     ).toStrictEqual(supplied);
     expect(() =>
-      bindResolvedOutputNonCanonicalReferenceScriptsV1({
+      bindResolvedOutputNonCanonicalReferenceScripts({
         binding,
         referenceScripts: {
           ...supplied,
@@ -118,7 +116,7 @@ describe("resolvedOutputNonCanonical production workflow", () => {
       threadOutRef: `${"a".repeat(64)}#0`,
       stateQueueBlockOutRef: `${"b".repeat(64)}#0`,
     };
-    const resolver = createResolvedOutputNonCanonicalRawL1StageResolverV1({
+    const resolver = createResolvedOutputNonCanonicalRawL1StageResolver({
       config: {
         binding: { definition: { headerHash: "c".repeat(56) } },
       } as never,

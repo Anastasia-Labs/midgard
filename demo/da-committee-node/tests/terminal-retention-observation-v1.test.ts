@@ -3,10 +3,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import type {
-  ObservedStateQueueSnapshotV1,
+  ObservedStateQueueSnapshot,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
-import { terminalRetentionOutcomesV1 } from "../src/l1/terminal-retention-observation-v1.js";
+import { terminalRetentionOutcomes } from "../src/l1/terminal-retention-observation-v1.js";
 import { fixtureHeaderBase } from "./helpers.js";
 
 const deployment = "aa".repeat(32);
@@ -50,7 +50,7 @@ const record = (
 const snapshot = (
   confirmedHeaderHash: string,
   confirmedStateOutRef: string,
-): ObservedStateQueueSnapshotV1 => ({
+): ObservedStateQueueSnapshot => ({
   nodes: [],
   confirmedHeaderHash,
   confirmedStateOutRef,
@@ -65,10 +65,10 @@ const redeemers = (value: SDK.StateQueueRedeemer) => [
 ];
 const derive = (
   sequence: number,
-  previousQueue: SDK.StateQueueTransitionNodeV1[],
-  nextQueue: SDK.StateQueueTransitionNodeV1[],
+  previousQueue: SDK.StateQueueTransitionNode[],
+  nextQueue: SDK.StateQueueTransitionNode[],
   value: SDK.StateQueueRedeemer,
-): SDK.StateQueueAuthenticatedReplayCheckpointV1 => {
+): SDK.StateQueueAuthenticatedReplayCheckpoint => {
   const transactionHash = h32(sequence.toString(16));
   const lockOutRef = outRef("f", sequence);
   const timeout =
@@ -77,7 +77,7 @@ const derive = (
     "RemoveUnattestedBlockAfterTimeout" in value
       ? value.RemoveUnattestedBlockAfterTimeout
       : null;
-  const lockWitness: SDK.StateQueueCorrectionLockWitnessV1 =
+  const lockWitness: SDK.StateQueueCorrectionLockWitness =
     timeout === null
       ? {
           kind: "idle_reference",
@@ -101,7 +101,7 @@ const derive = (
                   },
                 },
         };
-  const transition = SDK.deriveStateQueueAuthenticatedReplayCheckpointV1({
+  const transition = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     transactionHash,
@@ -135,8 +135,8 @@ const derive = (
 };
 const merge = (
   sequence: number,
-  previousQueue: SDK.StateQueueTransitionNodeV1[],
-): SDK.StateQueueAuthenticatedReplayCheckpointV1 => {
+  previousQueue: SDK.StateQueueTransitionNode[],
+): SDK.StateQueueAuthenticatedReplayCheckpoint => {
   const header = previousQueue[1]!;
   const txHash = h32(sequence.toString(16));
   return derive(
@@ -172,8 +172,8 @@ const merge = (
 };
 const timeout = (
   sequence: number,
-  previousQueue: SDK.StateQueueTransitionNodeV1[],
-): SDK.StateQueueAuthenticatedReplayCheckpointV1 => {
+  previousQueue: SDK.StateQueueTransitionNode[],
+): SDK.StateQueueAuthenticatedReplayCheckpoint => {
   const timedOut = previousQueue[1]!;
   const txHash = h32(sequence.toString(16));
   const descendant = previousQueue[2];
@@ -216,7 +216,7 @@ const timeout = (
     },
   );
 };
-const config = (queue: SDK.StateQueueTransitionNodeV1[]) => ({
+const config = (queue: SDK.StateQueueTransitionNode[]) => ({
   deploymentFingerprint: deployment,
   deploymentIdentityDigest: deployment,
   stateQueuePolicyId: policy,
@@ -238,7 +238,7 @@ describe("terminalRetentionOutcomesV1", () => {
       { headerHash: prior.headerHash, outRef: prior.stateQueueOutRef },
     ];
     expect(
-      terminalRetentionOutcomesV1(
+      terminalRetentionOutcomes(
         [prior],
         [],
         [],
@@ -256,7 +256,7 @@ describe("terminalRetentionOutcomesV1", () => {
     ];
     const transition = merge(1, initial);
     expect(() =>
-      terminalRetentionOutcomesV1(
+      terminalRetentionOutcomes(
         [first],
         [],
         [transition],
@@ -265,7 +265,7 @@ describe("terminalRetentionOutcomesV1", () => {
       ),
     ).toThrow(/durable prior/u);
     expect(() =>
-      terminalRetentionOutcomesV1(
+      terminalRetentionOutcomes(
         [first],
         [],
         [transition],
@@ -285,7 +285,7 @@ describe("terminalRetentionOutcomesV1", () => {
     ];
     const one = merge(1, initial);
     const two = merge(2, [...one.nextQueue]);
-    const result = terminalRetentionOutcomesV1(
+    const result = terminalRetentionOutcomes(
       [first, second],
       [],
       [one, two],
@@ -334,7 +334,7 @@ describe("terminalRetentionOutcomesV1", () => {
         order === "merge_first"
           ? timeout(2, [...one.nextQueue])
           : merge(2, [...one.nextQueue]);
-      const result = terminalRetentionOutcomesV1(
+      const result = terminalRetentionOutcomes(
         [first, second],
         [],
         [one, two],

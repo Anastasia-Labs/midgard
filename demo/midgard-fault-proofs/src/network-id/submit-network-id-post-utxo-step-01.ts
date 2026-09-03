@@ -1,11 +1,11 @@
 /** Authenticate a culpable post-block UTxO network violation and bind Q35. */
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardLedgerOutputCommitmentV1,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardLedgerOutputCommitment,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   NetworkIdStep01SpendRedeemerSchema,
@@ -34,7 +34,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -56,31 +56,31 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
-import type { PreparedNetworkIdPostUtxoProofV1 } from "./prepare-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
+import type { PreparedNetworkIdPostUtxoProof } from "./prepare-v1.js";
 import {
-  networkIdStepLabelV1,
+  networkIdStepLabel,
   networkIdSubmitError,
-  requireNetworkIdReferenceScriptV1,
-  requireNetworkIdThreadUtxoV1,
+  requireNetworkIdReferenceScript,
+  requireNetworkIdThreadUtxo,
 } from "./submit-common-v1.js";
 import type { SubmitNetworkIdStep01Result } from "./submit-network-id-step-01.js";
 
-const STEP_LABEL = `${networkIdStepLabelV1(0)} post-UTxO`;
+const STEP_LABEL = `${networkIdStepLabel(0)} post-UTxO`;
 
 const inspectPrepared = ({
   prepared,
   expectedNetworkId,
 }: {
-  readonly prepared: PreparedNetworkIdPostUtxoProofV1;
+  readonly prepared: PreparedNetworkIdPostUtxoProof;
   readonly expectedNetworkId: bigint;
 }): void => {
   if (prepared.expectedNetworkId !== expectedNetworkId) {
@@ -88,7 +88,7 @@ const inspectPrepared = ({
       "prepared post-UTxO evidence targets a different deployed network id",
     );
   }
-  const key = encodeMidgardSpendInputItemV1({
+  const key = encodeMidgardSpendInputItem({
     txId: Buffer.from(prepared.outRef.transactionId, "hex"),
     outputIndex: Number(prepared.outRef.outputIndex),
   }).toString("hex");
@@ -97,7 +97,7 @@ const inspectPrepared = ({
       "prepared post-UTxO key does not canonically encode its out-ref",
     );
   }
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+  const descriptor = decodeMidgardLedgerOutputCommitment(
     Buffer.from(prepared.descriptorCbor, "hex"),
   );
   if (BigInt(descriptor.outputIndex) !== prepared.outRef.outputIndex) {
@@ -128,7 +128,7 @@ const inspectPrepared = ({
         "post-UTxO network-change evidence must change the descriptor",
       );
     }
-    const previous = decodeMidgardLedgerOutputCommitmentV1(
+    const previous = decodeMidgardLedgerOutputCommitment(
       Buffer.from(previousCbor, "hex"),
     );
     if (
@@ -161,25 +161,25 @@ export const submitNetworkIdPostUtxoStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly prepared: PreparedNetworkIdPostUtxoProofV1;
+  readonly prepared: PreparedNetworkIdPostUtxoProof;
   /** Mandatory published Q35 step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNetworkIdStep01Result> => {
   inspectPrepared({
     prepared,
     expectedNetworkId: contracts.expectedNetworkId,
   });
-  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -187,7 +187,7 @@ export const submitNetworkIdPostUtxoStep01 = async ({
     threadOutRef,
   });
   requireInitialStepDatum({ threadUtxo, signer });
-  const stepReference = requireNetworkIdReferenceScriptV1({
+  const stepReference = requireNetworkIdReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -223,7 +223,7 @@ export const submitNetworkIdPostUtxoStep01 = async ({
   const node = await Effect.runPromise(
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
-  const header = await Effect.runPromise(getHeaderV1FromStateQueueDatum(node));
+  const header = await Effect.runPromise(getHeaderFromStateQueueDatum(node));
   if (header.utxosRoot !== prepared.postUtxosRoot) {
     throw networkIdSubmitError(
       `prepared post-UTxO root ${prepared.postUtxosRoot} does not match header.utxos_root ${header.utxosRoot}`,
@@ -258,12 +258,12 @@ export const submitNetworkIdPostUtxoStep01 = async ({
     chunkedVerifyScript,
   );
   const membershipCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: `${STEP_LABEL} chunked post membership`,
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS post membership`,
@@ -411,15 +411,15 @@ export const submitNetworkIdPostUtxoStep01 = async ({
     throw networkIdSubmitError("post-UTxO step-01 layout was not resolved");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "network-id-step-01",
         utxo: stepReference,
         expectedScript: contracts.steps[0].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: carriedByChunks
           ? "network-id-post-membership-chunked-verify"
           : "network-id-post-membership-phas",

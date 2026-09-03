@@ -1,34 +1,34 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
-  type ForcedInclusionTxV1,
+  type ForcedInclusionTx,
   type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadStepDatum,
-  type HeaderV1,
+  type Header,
   type OutputReference,
   OutputReferenceSchema,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
-  RejectionReasonV1Schema,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
+  RejectionReasonSchema,
   type RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  type CanonicalBlockEvidenceV1,
-  fetchCanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
@@ -42,113 +42,112 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  type FraudProofWorkflowJournalStoreV1,
+  DirectoryFraudProofWorkflowJournalStore,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  type ProductionHistoricalNativeScriptCheckpointStoreV1,
-  type ProductionHistoricalNativeScriptHistorySourceV1,
-  resolveProductionHistoricalNativeScriptCorpusV1,
+  type HistoricalNativeScriptCheckpointStore,
+  type HistoricalNativeScriptHistorySource,
+  resolveHistoricalNativeScriptCorpus,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
-import { createResolvedOutputNonCanonicalCentralJournalAdapterV1 } from "./central-journal-v1.js";
-import type { ResolvedOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import { createResolvedOutputNonCanonicalCentralJournalAdapter } from "./central-journal-v1.js";
+import type { ResolvedOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1,
-  detectResolvedOutputNonCanonicalCompleteReplayV1,
-  resolvedOutputEvidenceIdentityV1,
-  type ResolvedOutputEvidenceV1,
+  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus,
+  detectResolvedOutputNonCanonicalCompleteReplay,
+  type ResolvedOutputEvidence,
+  resolvedOutputEvidenceIdentity,
 } from "./resolved-output-non-canonical-v1.js";
 import {
-  ResolvedOutputStep02DatumV1Schema,
-  ResolvedOutputStep03DatumV1Schema,
-  ResolvedOutputStep04DatumV1Schema,
-  ResolvedOutputStep05DatumV1Schema,
+  ResolvedOutputStep02DatumSchema,
+  ResolvedOutputStep03DatumSchema,
+  ResolvedOutputStep04DatumSchema,
+  ResolvedOutputStep05DatumSchema,
 } from "./schemas-v1.js";
-import { submitResolvedOutputNonCanonicalCancelV1 } from "./submit-cancel-v1.js";
-import { submitResolvedOutputNonCanonicalStep01AcceptedV1 } from "./submit-step-01-accepted-v1.js";
-import { submitResolvedOutputNonCanonicalStep01ForcedV1 } from "./submit-step-01-forced-v1.js";
-import { submitResolvedOutputNonCanonicalStep02V1 } from "./submit-step-02-v1.js";
-import { submitResolvedOutputNonCanonicalStep03V1 } from "./submit-step-03-v1.js";
-import { submitResolvedOutputNonCanonicalStep04V1 } from "./submit-step-04-v1.js";
-import { submitResolvedOutputNonCanonicalStep05V1 } from "./submit-step-05-v1.js";
+import { submitResolvedOutputNonCanonicalCancel } from "./submit-cancel-v1.js";
+import { submitResolvedOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted-v1.js";
+import { submitResolvedOutputNonCanonicalStep01Forced } from "./submit-step-01-forced-v1.js";
+import { submitResolvedOutputNonCanonicalStep02 } from "./submit-step-02-v1.js";
+import { submitResolvedOutputNonCanonicalStep03 } from "./submit-step-03-v1.js";
+import { submitResolvedOutputNonCanonicalStep04 } from "./submit-step-04-v1.js";
+import { submitResolvedOutputNonCanonicalStep05 } from "./submit-step-05-v1.js";
 import {
-  nextResolvedOutputActionV1,
-  type ResolvedOutputJournalV1,
-  type ResolvedOutputStageV1,
+  nextResolvedOutputAction,
+  type ResolvedOutputJournal,
+  type ResolvedOutputStage,
 } from "./workflow-v1.js";
 
-export const RESOLVED_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1 =
+export const RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW =
   "midgard-resolved-output-non-canonical-production-workflow-v1" as const;
-export const RESOLVED_OUTPUT_NON_CANONICAL_VIOLATION_ID_V1 =
+export const RESOLVED_OUTPUT_NON_CANONICAL_VIOLATION_ID =
   "resolved-output-non-canonical" as const;
 
-export const RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1 =
-  Object.freeze({
-    step01: "fraudProofResolvedOutputNonCanonical",
-    step02: "fraudProofResolvedOutputNonCanonicalStep02",
-    step03: "fraudProofResolvedOutputNonCanonicalStep03",
-    step04: "fraudProofResolvedOutputNonCanonicalStep04",
-    step05: "fraudProofResolvedOutputNonCanonicalStep05",
-    computationThreadMint: "computationThreadMint",
-    fraudProofMint: "fraudProofMint",
-    phasMembershipWithdraw: "phasMembershipWithdraw",
-    fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
-  } as const);
+export const RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS = Object.freeze({
+  step01: "fraudProofResolvedOutputNonCanonical",
+  step02: "fraudProofResolvedOutputNonCanonicalStep02",
+  step03: "fraudProofResolvedOutputNonCanonicalStep03",
+  step04: "fraudProofResolvedOutputNonCanonicalStep04",
+  step05: "fraudProofResolvedOutputNonCanonicalStep05",
+  computationThreadMint: "computationThreadMint",
+  fraudProofMint: "fraudProofMint",
+  phasMembershipWithdraw: "phasMembershipWithdraw",
+  fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+} as const);
 
-export type ResolvedOutputNonCanonicalProductionReferenceScriptsV1 = Readonly<{
+export type ResolvedOutputNonCanonicalReferenceScripts = Readonly<{
   step01: UTxO;
   step02: UTxO;
   step03: UTxO;
   step04: UTxO;
   step05: UTxO;
   fieldPreimageCertificateMint: UTxO;
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-export type ManifestBoundResolvedOutputNonCanonicalConfigV1 = Readonly<{
-  schemaVersion: typeof RESOLVED_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1;
+export type ManifestBoundResolvedOutputNonCanonicalConfig = Readonly<{
+  schemaVersion: typeof RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  binding: FraudProofWorkflowDeploymentBindingV1<"resolvedOutputNonCanonical">;
-  contracts: ResolvedOutputNonCanonicalContractsV1;
-  referenceScripts: ResolvedOutputNonCanonicalProductionReferenceScriptsV1;
+  binding: FraudProofWorkflowDeploymentBinding<"resolvedOutputNonCanonical">;
+  contracts: ResolvedOutputNonCanonicalContracts;
+  referenceScripts: ResolvedOutputNonCanonicalReferenceScripts;
 }>;
 
-export type LoadManifestBoundResolvedOutputNonCanonicalConfigV1 = Readonly<{
+export type LoadManifestBoundResolvedOutputNonCanonicalConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
-  referenceScripts: ResolvedOutputNonCanonicalProductionReferenceScriptsV1;
+  referenceScripts: ResolvedOutputNonCanonicalReferenceScripts;
 }>;
 
 const bindReference = ({
@@ -156,20 +155,20 @@ const bindReference = ({
   contractName,
   utxo,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"resolvedOutputNonCanonical">;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"resolvedOutputNonCanonical">;
   readonly contractName: string;
   readonly utxo: UTxO;
 }): UTxO =>
-  requireManifestBoundReferenceScriptUtxoV1({ binding, contractName, utxo });
+  requireManifestBoundReferenceScriptUtxo({ binding, contractName, utxo });
 
-export const bindResolvedOutputNonCanonicalReferenceScriptsV1 = ({
+export const bindResolvedOutputNonCanonicalReferenceScripts = ({
   binding,
   referenceScripts,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"resolvedOutputNonCanonical">;
-  readonly referenceScripts: ResolvedOutputNonCanonicalProductionReferenceScriptsV1;
-}): ResolvedOutputNonCanonicalProductionReferenceScriptsV1 => {
-  const names = RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"resolvedOutputNonCanonical">;
+  readonly referenceScripts: ResolvedOutputNonCanonicalReferenceScripts;
+}): ResolvedOutputNonCanonicalReferenceScripts => {
+  const names = RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS;
   return Object.freeze({
     step01: bindReference({
       binding,
@@ -222,10 +221,10 @@ export const bindResolvedOutputNonCanonicalReferenceScriptsV1 = ({
   });
 };
 
-export const loadManifestBoundResolvedOutputNonCanonicalConfigV1 = async (
-  input: LoadManifestBoundResolvedOutputNonCanonicalConfigV1,
-): Promise<ManifestBoundResolvedOutputNonCanonicalConfigV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const loadManifestBoundResolvedOutputNonCanonicalConfig = async (
+  input: LoadManifestBoundResolvedOutputNonCanonicalConfig,
+): Promise<ManifestBoundResolvedOutputNonCanonicalConfig> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
@@ -234,19 +233,19 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfigV1 = async (
     proverCredential: input.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      ResolvedOutputStep02DatumV1Schema,
-      ResolvedOutputStep03DatumV1Schema,
-      ResolvedOutputStep04DatumV1Schema,
-      ResolvedOutputStep05DatumV1Schema,
+      ResolvedOutputStep02DatumSchema,
+      ResolvedOutputStep03DatumSchema,
+      ResolvedOutputStep04DatumSchema,
+      ResolvedOutputStep05DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
   const localContracts = binding.resolvedContracts.contracts as unknown as {
-    readonly resolvedOutputNonCanonical?: ResolvedOutputNonCanonicalContractsV1;
+    readonly resolvedOutputNonCanonical?: ResolvedOutputNonCanonicalContracts;
   };
   const chain = localContracts.resolvedOutputNonCanonical;
   const certificate = binding.fieldPreimageCertificate;
@@ -260,12 +259,12 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfigV1 = async (
       "resolvedOutputNonCanonical deployment omitted field-preimage certificate",
     );
   }
-  const referenceScripts = bindResolvedOutputNonCanonicalReferenceScriptsV1({
+  const referenceScripts = bindResolvedOutputNonCanonicalReferenceScripts({
     binding,
     referenceScripts: input.referenceScripts,
   });
   return Object.freeze({
-    schemaVersion: RESOLVED_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1,
+    schemaVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
     lucid: input.lucid,
     signer: input.signer,
     binding,
@@ -295,7 +294,7 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfigV1 = async (
             referenceScripts.step05,
           ][index]!.outputIndex.toString(),
         ),
-      })) as unknown as ResolvedOutputNonCanonicalContractsV1["steps"],
+      })) as unknown as ResolvedOutputNonCanonicalContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
       hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
@@ -307,15 +306,15 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfigV1 = async (
   });
 };
 
-export type ResolvedOutputNonCanonicalProductionStageV1 = Readonly<{
+export type ResolvedOutputNonCanonicalStage = Readonly<{
   fraudulentBlockOutRef: string;
   threadOutRef?: string;
   threadUtxo?: UTxO;
   threadToken?: Readonly<{ unit: string; fraudulentHeaderHash: string }>;
   stateQueueBlockOutRef?: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
   nativeTxCompactCbor?: string;
   witnessSetCompactCbor?: string;
@@ -326,24 +325,24 @@ export type ResolvedOutputNonCanonicalProductionStageV1 = Readonly<{
 }>;
 
 /** Derives the only admissible family evidence from L1-bound public retained DA. */
-export type ResolvedOutputNonCanonicalAuthenticatedSourceV1 = Readonly<{
+export type ResolvedOutputNonCanonicalAuthenticatedSource = Readonly<{
   nativeTxCompactCbor: string;
   witnessSetCompactCbor: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
 }>;
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
-export const deriveResolvedOutputNonCanonicalAuthenticatedSourceV1 = async ({
+export const deriveResolvedOutputNonCanonicalAuthenticatedSource = async ({
   block,
   evidence,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
-  readonly evidence: ResolvedOutputEvidenceV1;
-}): Promise<ResolvedOutputNonCanonicalAuthenticatedSourceV1> => {
-  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1) {
+  readonly block: CanonicalBlockEvidence;
+  readonly evidence: ResolvedOutputEvidence;
+}): Promise<ResolvedOutputNonCanonicalAuthenticatedSource> => {
+  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
     );
@@ -355,7 +354,7 @@ export const deriveResolvedOutputNonCanonicalAuthenticatedSourceV1 = async ({
         "resolvedOutputNonCanonical accepted subject disappeared from retained DA",
       );
     }
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
     if (
       trie.root !== block.reconstruction.rootData.transactions.phasRoot ||
       trie.root !== block.inclusionRootAuthentication.sourceValuePhasRoot
@@ -364,7 +363,7 @@ export const deriveResolvedOutputNonCanonicalAuthenticatedSourceV1 = async ({
         "resolvedOutputNonCanonical accepted source trie differs from authenticated reconstruction",
       );
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(selected.txCbor, "hex"),
     );
     return Object.freeze({
@@ -402,22 +401,20 @@ export const deriveResolvedOutputNonCanonicalAuthenticatedSourceV1 = async ({
   const reason = forced.value.verdict.ForcedTxInvalid.reason;
   if (
     evidence.subject.rejection_reason === null ||
-    Data.to(reason as never, RejectionReasonV1Schema as never) !==
+    Data.to(reason as never, RejectionReasonSchema as never) !==
       Data.to(
         evidence.subject.rejection_reason as never,
-        RejectionReasonV1Schema as never,
+        RejectionReasonSchema as never,
       )
   ) {
     throw new Error(
       "resolvedOutputNonCanonical forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-    encodeMidgardNativeTxCanonicalV1(
-      adjudicateMidgardNativeTxFullV1Validity(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(
-          forced.fullTransactionCbor,
-        ),
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(
+        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
         "TxIsInvalid",
       ),
     ),
@@ -451,10 +448,10 @@ export const deriveResolvedOutputNonCanonicalAuthenticatedSourceV1 = async ({
 };
 
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
-type ResolvedOutputNonCanonicalProductionRuntimeLoaderV1 = Readonly<{
-  config: LoadManifestBoundResolvedOutputNonCanonicalConfigV1;
-  journal: ResolvedOutputJournalV1;
-  observe: (identity: string) => Promise<ResolvedOutputStageV1>;
+type ResolvedOutputNonCanonicalRuntimeLoader = Readonly<{
+  config: LoadManifestBoundResolvedOutputNonCanonicalConfig;
+  journal: ResolvedOutputJournal;
+  observe: (identity: string) => Promise<ResolvedOutputStage>;
   resolveStage: (input: {
     readonly action:
       | "submitInit"
@@ -465,20 +462,20 @@ type ResolvedOutputNonCanonicalProductionRuntimeLoaderV1 = Readonly<{
       | "submitStep05"
       | "removeDescendants"
       | "cancel";
-    readonly evidence: ResolvedOutputEvidenceV1;
-  }) => Promise<ResolvedOutputNonCanonicalProductionStageV1>;
+    readonly evidence: ResolvedOutputEvidence;
+  }) => Promise<ResolvedOutputNonCanonicalStage>;
 }>;
 
-export const createResolvedOutputNonCanonicalRawL1StageResolverV1 =
+export const createResolvedOutputNonCanonicalRawL1StageResolver =
   ({
     config,
     l1,
     source,
   }: {
-    readonly config: ManifestBoundResolvedOutputNonCanonicalConfigV1;
-    readonly l1: FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>;
-    readonly source: ResolvedOutputNonCanonicalAuthenticatedSourceV1;
-  }): ResolvedOutputNonCanonicalProductionRuntimeLoaderV1["resolveStage"] =>
+    readonly config: ManifestBoundResolvedOutputNonCanonicalConfig;
+    readonly l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
+    readonly source: ResolvedOutputNonCanonicalAuthenticatedSource;
+  }): ResolvedOutputNonCanonicalRuntimeLoader["resolveStage"] =>
   async ({ action, evidence }) => {
     const observed = await l1.observe({
       headerHash: config.binding.definition.headerHash,
@@ -522,7 +519,7 @@ export const createResolvedOutputNonCanonicalRawL1StageResolverV1 =
       witnessSetCompactCbor: source.witnessSetCompactCbor,
     };
     if (action !== "submitStep01") return common;
-    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED_V1) {
+    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED) {
       return {
         ...common,
         forcedHeader: required(
@@ -539,7 +536,7 @@ export const createResolvedOutputNonCanonicalRawL1StageResolverV1 =
         ),
       };
     }
-    const thread = await requireLinearFaultThreadUtxoV1({
+    const thread = await requireLinearFaultThreadUtxo({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -565,18 +562,18 @@ const required = <T>(value: T | undefined, label: string): T => {
   return value;
 };
 
-const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
+const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
   config,
   observe,
   resolveStage,
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundResolvedOutputNonCanonicalConfigV1;
-  readonly observe: (identity: string) => Promise<ResolvedOutputStageV1>;
-  readonly resolveStage: ResolvedOutputNonCanonicalProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundResolvedOutputNonCanonicalConfig;
+  readonly observe: (identity: string) => Promise<ResolvedOutputStage>;
+  readonly resolveStage: ResolvedOutputNonCanonicalRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createResolvedOutputNonCanonicalCentralJournalAdapterV1
+    typeof createResolvedOutputNonCanonicalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => ({
@@ -590,13 +587,13 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
       | "submitReconstruction"
       | "submitStep05"
       | "removeDescendants",
-    evidence: ResolvedOutputEvidenceV1,
+    evidence: ResolvedOutputEvidence,
   ) => {
     if (evidence.subject.transaction_id.length !== 64)
       throw new Error(
         "resolvedOutputNonCanonical evidence transaction id is not canonical",
       );
-    const familyIdentity = resolvedOutputEvidenceIdentityV1(evidence);
+    const familyIdentity = resolvedOutputEvidenceIdentity(evidence);
     const transition =
       action === "submitInit"
         ? (["none", "step01"] as const)
@@ -644,10 +641,8 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
       };
     }
     if (action === "submitStep01") {
-      if (
-        evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1
-      ) {
-        const result = await submitResolvedOutputNonCanonicalStep01AcceptedV1({
+      if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
+        const result = await submitResolvedOutputNonCanonicalStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -676,11 +671,11 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
           outputReference: result.nextThreadOutRef,
         };
       }
-      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED_V1)
+      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED)
         throw new Error(
           "resolvedOutputNonCanonical evidence source kind is invalid",
         );
-      const result = await submitResolvedOutputNonCanonicalStep01ForcedV1({
+      const result = await submitResolvedOutputNonCanonicalStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -708,7 +703,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
     }
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitResolvedOutputNonCanonicalStep02V1({
+      const result = await submitResolvedOutputNonCanonicalStep02({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -763,7 +758,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
       };
     }
     if (action === "submitStep03") {
-      const result = await submitResolvedOutputNonCanonicalStep03V1({
+      const result = await submitResolvedOutputNonCanonicalStep03({
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -787,7 +782,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
       };
     }
     if (action === "submitReconstruction") {
-      const result = await submitResolvedOutputNonCanonicalStep04V1({
+      const result = await submitResolvedOutputNonCanonicalStep04({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -814,7 +809,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
       };
     }
     if (action === "submitStep05") {
-      const result = await submitResolvedOutputNonCanonicalStep05V1({
+      const result = await submitResolvedOutputNonCanonicalStep05({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -871,7 +866,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
   },
   cancel: async (
     current: "step01" | "step02" | "step03" | "reconstructing",
-    evidence: ResolvedOutputEvidenceV1,
+    evidence: ResolvedOutputEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index =
@@ -882,7 +877,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
           : current === "step03"
             ? 2
             : 3;
-    const result = await submitResolvedOutputNonCanonicalCancelV1({
+    const result = await submitResolvedOutputNonCanonicalCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -904,7 +899,7 @@ const createManifestBoundResolvedOutputNonCanonicalSubmissionV1 = ({
   },
 });
 
-const createManifestBoundResolvedOutputNonCanonicalProductionRuntimeV1 = ({
+const createManifestBoundResolvedOutputNonCanonicalRuntime = ({
   config,
   journal,
   observe,
@@ -912,16 +907,16 @@ const createManifestBoundResolvedOutputNonCanonicalProductionRuntimeV1 = ({
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundResolvedOutputNonCanonicalConfigV1;
-  readonly journal: ResolvedOutputJournalV1;
-  readonly observe: ResolvedOutputNonCanonicalProductionRuntimeLoaderV1["observe"];
-  readonly resolveStage: ResolvedOutputNonCanonicalProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundResolvedOutputNonCanonicalConfig;
+  readonly journal: ResolvedOutputJournal;
+  readonly observe: ResolvedOutputNonCanonicalRuntimeLoader["observe"];
+  readonly resolveStage: ResolvedOutputNonCanonicalRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createResolvedOutputNonCanonicalCentralJournalAdapterV1
+    typeof createResolvedOutputNonCanonicalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
-  const submission = createManifestBoundResolvedOutputNonCanonicalSubmissionV1({
+  const submission = createManifestBoundResolvedOutputNonCanonicalSubmission({
     config,
     observe: async (identity) => {
       const observed = await observe(identity);
@@ -933,13 +928,13 @@ const createManifestBoundResolvedOutputNonCanonicalProductionRuntimeV1 = ({
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({
-    runtimeVersion: RESOLVED_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1,
+    runtimeVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
     config,
-    runOrResume: async (evidence: ResolvedOutputEvidenceV1) => {
-      const identity = resolvedOutputEvidenceIdentityV1(evidence);
+    runOrResume: async (evidence: ResolvedOutputEvidence) => {
+      const identity = resolvedOutputEvidenceIdentity(evidence);
       for (;;) {
         const stage = await submission.observe(identity);
-        const action = nextResolvedOutputActionV1(stage);
+        const action = nextResolvedOutputAction(stage);
         if (action === "done") return stage;
         const result = await submission.submit(action, evidence);
         await journal.append({
@@ -956,41 +951,40 @@ const createManifestBoundResolvedOutputNonCanonicalProductionRuntimeV1 = ({
   });
 };
 
-export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1 =
-  LoadManifestBoundResolvedOutputNonCanonicalConfigV1 &
+export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
+  LoadManifestBoundResolvedOutputNonCanonicalConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-      historicalCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-      historicalSource: ProductionHistoricalNativeScriptHistorySourceV1;
+      historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
+      historicalSource: HistoricalNativeScriptHistorySource;
     }>;
 
-export type ManifestBoundResolvedOutputNonCanonicalWorkflowV1 = Readonly<{
-  workflowVersion: typeof RESOLVED_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1;
-  config: ManifestBoundResolvedOutputNonCanonicalConfigV1;
-  binding: FraudProofWorkflowDeploymentBindingV1<"resolvedOutputNonCanonical">;
-  l1: FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>;
+export type ManifestBoundResolvedOutputNonCanonicalWorkflow = Readonly<{
+  workflowVersion: typeof RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW;
+  config: ManifestBoundResolvedOutputNonCanonicalConfig;
+  binding: FraudProofWorkflowDeploymentBinding<"resolvedOutputNonCanonical">;
+  l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
-  historicalCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  historicalSource: ProductionHistoricalNativeScriptHistorySourceV1;
+  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalSource: HistoricalNativeScriptHistorySource;
 }>;
 
 /** Production installation factory; no evidence object is accepted here. */
-export const createManifestBoundResolvedOutputNonCanonicalWorkflowV1 = async (
-  input: ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1,
-): Promise<ManifestBoundResolvedOutputNonCanonicalWorkflowV1> => {
-  const config =
-    await loadManifestBoundResolvedOutputNonCanonicalConfigV1(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+export const createManifestBoundResolvedOutputNonCanonicalWorkflow = async (
+  input: ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
+): Promise<ManifestBoundResolvedOutputNonCanonicalWorkflow> => {
+  const config = await loadManifestBoundResolvedOutputNonCanonicalConfig(input);
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: input.source,
     releaseFinality: config.binding.releaseFinality,
     releaseEconomics: config.binding.releaseEconomics,
     definition: config.binding.definition,
   });
   return Object.freeze({
-    workflowVersion: RESOLVED_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1,
+    workflowVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
     config,
     binding: config.binding,
     l1,
@@ -1005,10 +999,10 @@ export const createManifestBoundResolvedOutputNonCanonicalWorkflowV1 = async (
 const resolvedOutputStageFromL1 = (
   stage: Awaited<
     ReturnType<
-      FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>["observe"]
+      FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>["observe"]
     >
   >["stage"],
-): ResolvedOutputStageV1 => {
+): ResolvedOutputStage => {
   switch (stage.kind) {
     case "not_started":
       return "none";
@@ -1032,12 +1026,12 @@ const resolvedOutputStageFromL1 = (
  * Watcher-facing runner. Evidence is always reconstructed from authenticated
  * L1 plus public retained DA; unknown/caller-authored evidence fields fail.
  */
-export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflowV1 =
+export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflow =
   async (input: {
-    readonly workflow: ManifestBoundResolvedOutputNonCanonicalWorkflowV1;
+    readonly workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: ResolvedOutputJournalV1;
-  }): Promise<ResolvedOutputStageV1> => {
+    readonly journal: ResolvedOutputJournal;
+  }): Promise<ResolvedOutputStage> => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
       throw new Error(
         "resolvedOutputNonCanonical runner rejects caller-authored evidence inputs",
@@ -1045,11 +1039,11 @@ export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflowV1 =
     }
     const headerHash = input.workflow.binding.definition.headerHash;
     const observation = await input.workflow.l1.observeHeader({ headerHash });
-    const canonical = await fetchCanonicalBlockEvidenceV1({
+    const canonical = await fetchCanonicalBlockEvidence({
       observation,
       sources: input.sources,
     });
-    const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+    const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: input.workflow.binding.deploymentFingerprint,
       checkpointStore: input.workflow.historicalCheckpointStore,
       historySource: input.workflow.historicalSource,
@@ -1057,11 +1051,11 @@ export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflowV1 =
       sources: input.sources,
     });
     const priorLedger =
-      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1({
+      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
         block: canonical,
         corpus,
       });
-    const findings = detectResolvedOutputNonCanonicalCompleteReplayV1({
+    const findings = detectResolvedOutputNonCanonicalCompleteReplay({
       block: canonical,
       priorLedger,
     });
@@ -1070,42 +1064,41 @@ export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflowV1 =
         `resolvedOutputNonCanonical public replay yielded ${findings.length.toString()} exact findings`,
       );
     const evidence = findings[0]!;
-    const source = await deriveResolvedOutputNonCanonicalAuthenticatedSourceV1({
+    const source = await deriveResolvedOutputNonCanonicalAuthenticatedSource({
       block: canonical,
       evidence,
     });
-    const runtime =
-      createManifestBoundResolvedOutputNonCanonicalProductionRuntimeV1({
+    const runtime = createManifestBoundResolvedOutputNonCanonicalRuntime({
+      config: input.workflow.config,
+      journal: input.journal,
+      observe: async () =>
+        resolvedOutputStageFromL1(
+          (await input.workflow.l1.observe({ headerHash })).stage,
+        ),
+      resolveStage: createResolvedOutputNonCanonicalRawL1StageResolver({
         config: input.workflow.config,
-        journal: input.journal,
-        observe: async () =>
-          resolvedOutputStageFromL1(
-            (await input.workflow.l1.observe({ headerHash })).stage,
-          ),
-        resolveStage: createResolvedOutputNonCanonicalRawL1StageResolverV1({
-          config: input.workflow.config,
-          l1: input.workflow.l1,
-          source,
-        }),
-      });
+        l1: input.workflow.l1,
+        source,
+      }),
+    });
     return await runtime.runOrResume(evidence);
   };
 
-export const executeManifestBoundResolvedOutputNonCanonicalWorkflowV1 = async ({
+export const executeManifestBoundResolvedOutputNonCanonicalWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundResolvedOutputNonCanonicalWorkflowV1;
+  readonly workflow: ManifestBoundResolvedOutputNonCanonicalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<ResolvedOutputStageV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<ResolvedOutputStage> => {
   const headerHash = workflow.binding.definition.headerHash;
-  const canonical = await fetchCanonicalBlockEvidenceV1({
+  const canonical = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
-  const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+  const corpus = await resolveHistoricalNativeScriptCorpus({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     checkpointStore: workflow.historicalCheckpointStore,
     historySource: workflow.historicalSource,
@@ -1113,11 +1106,11 @@ export const executeManifestBoundResolvedOutputNonCanonicalWorkflowV1 = async ({
     sources,
   });
   const priorLedger =
-    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1({
+    await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpus({
       block: canonical,
       corpus,
     });
-  const findings = detectResolvedOutputNonCanonicalCompleteReplayV1({
+  const findings = detectResolvedOutputNonCanonicalCompleteReplay({
     block: canonical,
     priorLedger,
   });
@@ -1126,145 +1119,140 @@ export const executeManifestBoundResolvedOutputNonCanonicalWorkflowV1 = async ({
       `resolvedOutputNonCanonical public replay yielded ${findings.length.toString()} exact findings`,
     );
   const evidence = findings[0]!;
-  const source = await deriveResolvedOutputNonCanonicalAuthenticatedSourceV1({
+  const source = await deriveResolvedOutputNonCanonicalAuthenticatedSource({
     block: canonical,
     evidence,
   });
-  const centralJournal =
-    createResolvedOutputNonCanonicalCentralJournalAdapterV1({
-      store: journal,
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      headerHash,
-      decisionDigest: workflow.decisionDigest,
-      transactionConfirmed: async (txHash) =>
-        await workflow.l1.transactionConfirmed({ headerHash, txHash }),
-    });
-  const runtime =
-    createManifestBoundResolvedOutputNonCanonicalProductionRuntimeV1({
+  const centralJournal = createResolvedOutputNonCanonicalCentralJournalAdapter({
+    store: journal,
+    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    headerHash,
+    decisionDigest: workflow.decisionDigest,
+    transactionConfirmed: async (txHash) =>
+      await workflow.l1.transactionConfirmed({ headerHash, txHash }),
+  });
+  const runtime = createManifestBoundResolvedOutputNonCanonicalRuntime({
+    config: workflow.config,
+    journal: centralJournal.familyJournal,
+    observe: async () =>
+      resolvedOutputStageFromL1(
+        (await workflow.l1.observe({ headerHash })).stage,
+      ),
+    resolveStage: createResolvedOutputNonCanonicalRawL1StageResolver({
       config: workflow.config,
-      journal: centralJournal.familyJournal,
-      observe: async () =>
-        resolvedOutputStageFromL1(
-          (await workflow.l1.observe({ headerHash })).stage,
-        ),
-      resolveStage: createResolvedOutputNonCanonicalRawL1StageResolverV1({
-        config: workflow.config,
-        l1: workflow.l1,
-        source,
-      }),
-      centralJournal,
-      stateQueueMutationLeaseCoordinator:
-        workflow.stateQueueMutationLeaseCoordinator,
-    });
+      l1: workflow.l1,
+      source,
+    }),
+    centralJournal,
+    stateQueueMutationLeaseCoordinator:
+      workflow.stateQueueMutationLeaseCoordinator,
+  });
   return await runtime.runOrResume(evidence);
 };
 
-export type LoadedResolvedOutputNonCanonicalProductionWorkflowV1 = Readonly<{
+export type LoadedResolvedOutputNonCanonicalWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1;
+  config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadResolvedOutputNonCanonicalProductionWorkflowV1 = (input: {
+export type LoadResolvedOutputNonCanonicalWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedResolvedOutputNonCanonicalProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedResolvedOutputNonCanonicalWorkflow>;
 
 /**
  * Family-local runner surface for central admission. It consumes only a
  * manifest/runtime path and concrete public-DA transports; neither evidence
  * nor a watcher-owned journal implementation can enter this boundary.
  */
-export const createResolvedOutputNonCanonicalProductionWorkflowRunnerSurfaceV1 =
-  ({
-    loadRuntimeConfig,
-  }: {
-    readonly loadRuntimeConfig: LoadResolvedOutputNonCanonicalProductionWorkflowV1;
-  }): ProductionWorkflowAdapterRunnerV1 =>
-    Object.freeze({
-      runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-      runOrResume: async (invocation) => {
-        if (String(invocation.category) !== "resolvedOutputNonCanonical") {
-          throw new Error(
-            `resolvedOutputNonCanonical production runner category mismatch: ${invocation.category}`,
-          );
-        }
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
-          permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category:
-              "resolvedOutputNonCanonical" as FraudProofCatalogueCategoryName,
-            headerHash: invocation.headerHash,
-          }),
-        });
-        assertProductionWorkflowJournalActuationV1({
-          journal,
+export const createResolvedOutputNonCanonicalWorkflowRunnerSurface = ({
+  loadRuntimeConfig,
+}: {
+  readonly loadRuntimeConfig: LoadResolvedOutputNonCanonicalWorkflow;
+}): WorkflowAdapterRunner =>
+  Object.freeze({
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
+    runOrResume: async (invocation) => {
+      if (String(invocation.category) !== "resolvedOutputNonCanonical") {
+        throw new Error(
+          `resolvedOutputNonCanonical production runner category mismatch: ${invocation.category}`,
+        );
+      }
+      const journal = bindWorkflowFundingReservationJournal({
+        permit: invocation.fundingReservationPermit,
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
+            invocation.journalDirectory,
+          ),
+          permit: invocation.actuationPermit,
+          decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
           category:
             "resolvedOutputNonCanonical" as FraudProofCatalogueCategoryName,
           headerHash: invocation.headerHash,
-          checkpoint: "runner_start",
-        });
-        const loaded = await loadRuntimeConfig({
-          runtimeConfigPath: invocation.runtimeConfigPath,
-          invocation,
-        });
-        if (typeof loaded.close !== "function") {
+        }),
+      });
+      assertWorkflowJournalActuation({
+        journal,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        category:
+          "resolvedOutputNonCanonical" as FraudProofCatalogueCategoryName,
+        headerHash: invocation.headerHash,
+        checkpoint: "runner_start",
+      });
+      const loaded = await loadRuntimeConfig({
+        runtimeConfigPath: invocation.runtimeConfigPath,
+        invocation,
+      });
+      if (typeof loaded.close !== "function") {
+        throw new Error(
+          "resolvedOutputNonCanonical runtime omitted its transport disposer",
+        );
+      }
+      try {
+        if (
+          loaded.schemaVersion !==
+          "midgard-production-fraud-proof-runtime-config-v1"
+        ) {
           throw new Error(
-            "resolvedOutputNonCanonical runtime omitted its transport disposer",
+            "resolvedOutputNonCanonical runtime config has an unsupported schema",
           );
         }
-        try {
-          if (
-            loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1"
-          ) {
-            throw new Error(
-              "resolvedOutputNonCanonical runtime config has an unsupported schema",
-            );
-          }
-          if (
-            loaded.retainedDaSources.length === 0 ||
-            loaded.retainedDaSources.some(
-              (source) => !(source instanceof DaLibp2pRetainedDaSource),
-            )
-          ) {
-            throw new Error(
-              "resolvedOutputNonCanonical production runner requires concrete public retained-DA sources",
-            );
-          }
-          const workflow =
-            await createManifestBoundResolvedOutputNonCanonicalWorkflowV1(
-              loaded.config,
-            );
-          if (
-            workflow.binding.deploymentFingerprint !==
-              invocation.deploymentFingerprint ||
-            String(workflow.binding.definition.category) !==
-              "resolvedOutputNonCanonical" ||
-            workflow.binding.definition.headerHash !== invocation.headerHash ||
-            workflow.decisionDigest !== invocation.decisionDigest
-          ) {
-            throw new Error(
-              "resolvedOutputNonCanonical manifest-bound workflow identity differs from invocation",
-            );
-          }
-          return await executeManifestBoundResolvedOutputNonCanonicalWorkflowV1(
-            {
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            },
+        if (
+          loaded.retainedDaSources.length === 0 ||
+          loaded.retainedDaSources.some(
+            (source) => !(source instanceof DaLibp2pRetainedDaSource),
+          )
+        ) {
+          throw new Error(
+            "resolvedOutputNonCanonical production runner requires concrete public retained-DA sources",
           );
-        } finally {
-          await loaded.close();
         }
-      },
-    });
+        const workflow =
+          await createManifestBoundResolvedOutputNonCanonicalWorkflow(
+            loaded.config,
+          );
+        if (
+          workflow.binding.deploymentFingerprint !==
+            invocation.deploymentFingerprint ||
+          String(workflow.binding.definition.category) !==
+            "resolvedOutputNonCanonical" ||
+          workflow.binding.definition.headerHash !== invocation.headerHash ||
+          workflow.decisionDigest !== invocation.decisionDigest
+        ) {
+          throw new Error(
+            "resolvedOutputNonCanonical manifest-bound workflow identity differs from invocation",
+          );
+        }
+        return await executeManifestBoundResolvedOutputNonCanonicalWorkflow({
+          workflow,
+          sources: loaded.retainedDaSources,
+          journal,
+        });
+      } finally {
+        await loaded.close();
+      }
+    },
+  });

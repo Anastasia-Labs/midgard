@@ -1,29 +1,29 @@
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { prepareL2TxMistagFromTransactionsV1 } from "../src/index.js";
+import { prepareL2TxMistagFromTransactions } from "../src/index.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   type NodeTransactionPayload,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../src/prepare-double-spend.js";
 
 const payload = (
   validity: "TxIsValid" | "TxIsInvalid",
 ): NodeTransactionPayload => {
-  const tx = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const tx = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity,
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -46,8 +46,8 @@ const payload = (
     },
   });
   return {
-    nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-    txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+    nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+    txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
   };
 };
 
@@ -57,7 +57,7 @@ const expectedRoot = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   return Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,
@@ -70,7 +70,7 @@ const expectedRoot = async (
 describe("prepare l2-tx-mistag", () => {
   it("selects a committed code-1 normal leaf and refuses code 0", async () => {
     const mistagged = payload("TxIsInvalid");
-    const prepared = await prepareL2TxMistagFromTransactionsV1({
+    const prepared = await prepareL2TxMistagFromTransactions({
       headerHash: "aa".repeat(28),
       transactions: [mistagged],
       expectedTransactionsRoot: await expectedRoot([mistagged]),
@@ -81,7 +81,7 @@ describe("prepare l2-tx-mistag", () => {
 
     const honest = payload("TxIsValid");
     await expect(
-      prepareL2TxMistagFromTransactionsV1({
+      prepareL2TxMistagFromTransactions({
         headerHash: "bb".repeat(28),
         transactions: [honest],
         expectedTransactionsRoot: await expectedRoot([honest]),

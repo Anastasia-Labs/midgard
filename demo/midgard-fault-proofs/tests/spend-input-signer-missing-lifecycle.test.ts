@@ -2,29 +2,29 @@ import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   EMPTY_MERKLE_TREE_ROOT,
-  forcedVerdictSubjectV1,
-  hashBlockHeaderV1,
-  missingSignatureVkeyHashV1,
+  forcedVerdictSubject,
+  hashBlockHeader,
+  missingSignatureVkeyHash,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
@@ -33,34 +33,34 @@ import { describe, expect, it } from "vitest";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
-  prepareSpendInputSignerMissingEvidenceV1,
-  SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1,
-  SPEND_INPUT_SIGNER_MISSING_ID_V1,
-  type SpendInputSignerMissingContractsV1,
-  submitSpendInputSignerMissingCancelV1,
-  submitSpendInputSignerMissingStep01AcceptedV1,
-  submitSpendInputSignerMissingStep01ForcedV1,
-  submitSpendInputSignerMissingStep02V1,
-  submitSpendInputSignerMissingStep03V1,
-  submitSpendInputSignerMissingStep04V1,
-  submitSpendInputSignerMissingStep05V1,
+  prepareSpendInputSignerMissingEvidence,
+  SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+  SPEND_INPUT_SIGNER_MISSING_ID,
+  type SpendInputSignerMissingContracts,
+  submitSpendInputSignerMissingCancel,
+  submitSpendInputSignerMissingStep01Accepted,
+  submitSpendInputSignerMissingStep01Forced,
+  submitSpendInputSignerMissingStep02,
+  submitSpendInputSignerMissingStep03,
+  submitSpendInputSignerMissingStep04,
+  submitSpendInputSignerMissingStep05,
 } from "../src/spend-input-signer-missing/index.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { applyCompiledScript } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
-  setupFraudulentBlockV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -75,7 +75,7 @@ const firstStepDeploymentEntry = "fraudProofSpendInputSignerMissing";
 
 describe("spendInputSignerMissing local-catalogue lifecycle", () => {
   it("runs the accepted 318-witness maximum from Init through proof mint", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
       lucidOptions: { evaluator: createScalusEvaluator() },
     });
@@ -84,7 +84,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1;
+    const titles = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES;
     const step05 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles[4], [
         harness.contracts.fraudProof.policyId,
@@ -121,12 +121,12 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       ]),
     );
     const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: SpendInputSignerMissingContractsV1 = {
+    const contracts: SpendInputSignerMissingContracts = {
       steps: steps.map((step, index) => ({
         ...step,
         blueprintTitle: titles[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as SpendInputSignerMissingContractsV1["steps"],
+      })) as unknown as SpendInputSignerMissingContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -140,7 +140,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         spendInputSignerMissing: {
-          categoryId: SPEND_INPUT_SIGNER_MISSING_ID_V1,
+          categoryId: SPEND_INPUT_SIGNER_MISSING_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -153,11 +153,11 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
     const priorTxId = "ab".repeat(32);
-    const outRefBytes = encodeMidgardSpendInputItemV1({
+    const outRefBytes = encodeMidgardSpendInputItem({
       txId: Buffer.from(priorTxId, "hex"),
       outputIndex: 0,
     });
-    const outputMaterial = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const outputMaterial = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 0,
       outputCbor: priorOutput,
     });
@@ -171,7 +171,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       Array.from({ length: 318 }, (_unused, index) => {
         const verificationKey = Buffer.alloc(32);
         verificationKey.writeUInt32BE(index + 1, 28);
-        return encodeMidgardAddressWitnessItemV1({
+        return encodeMidgardAddressWitnessItem({
           verificationKey,
           signature: Buffer.alloc(64, 0xff),
         });
@@ -182,10 +182,10 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       fee: 7n,
       addrTxWitsPreimageCbor: witnessPreimage,
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
-    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompactV1(
-      deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
+    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompact(
+      deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
     ).toString("hex");
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const txStore = new Store(undefined);
@@ -206,7 +206,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       txMembershipProof: Data.from(txProof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: txProof.toCBOR().toString("hex"),
     };
-    const predecessor = await setupFraudulentBlockV1({
+    const predecessor = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -215,13 +215,13 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         transactionsRoot,
         l2TransactionCount: 1n,
         utxosRoot: priorRoot,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
       },
     });
     const targetHeader = {
       ...makeHeader(
         predecessor.header.operatorVkey,
-        emulatorSuccessorHeaderStartV1({
+        emulatorSuccessorHeaderStart({
           predecessorEndTime: predecessor.header.endTime,
           emulator: harness.emulator,
         }),
@@ -242,10 +242,10 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       activeOperatorNode: predecessor.activeOperatorNode,
       activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
     });
-    const evidence = prepareSpendInputSignerMissingEvidenceV1({
-      subject: acceptedVerdictSubjectV1(nativeTxId),
+    const evidence = prepareSpendInputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(nativeTxId),
       inputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(nativeTx),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: {
         priorRoot,
         transactionId: priorTxId,
@@ -313,7 +313,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         if (cancelThreadUtxo === undefined)
           throw new Error("cancel step01 thread absent");
         cancelThreadOutRef = (
-          await submitSpendInputSignerMissingStep01AcceptedV1({
+          await submitSpendInputSignerMissingStep01Accepted({
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -334,7 +334,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }
       if (cancelTarget !== "step01" && cancelTarget !== "step02") {
         cancelThreadOutRef = (
-          await submitSpendInputSignerMissingStep02V1({
+          await submitSpendInputSignerMissingStep02({
             lucid: harness.proverLucid,
             network,
             contracts,
@@ -356,7 +356,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         cancelTarget === "step05"
       ) {
         cancelThreadOutRef = (
-          await submitSpendInputSignerMissingStep03V1({
+          await submitSpendInputSignerMissingStep03({
             lucid: harness.proverLucid,
             network,
             contracts,
@@ -373,7 +373,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }
       if (cancelTarget === "step04-resumed" || cancelTarget === "step05") {
         for (;;) {
-          const scan = await submitSpendInputSignerMissingStep04V1({
+          const scan = await submitSpendInputSignerMissingStep04({
             lucid: harness.proverLucid,
             network,
             contracts,
@@ -404,7 +404,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       const cancellation = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitSpendInputSignerMissingCancelV1({
+          submitSpendInputSignerMissingCancel({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -447,7 +447,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep01AcceptedV1({
+      submitSpendInputSignerMissingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -466,7 +466,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep02V1({
+      submitSpendInputSignerMissingStep02({
         lucid: harness.proverLucid,
         network,
         contracts,
@@ -482,7 +482,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     const step03Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep03V1({
+      submitSpendInputSignerMissingStep03({
         lucid: harness.proverLucid,
         network,
         contracts,
@@ -500,7 +500,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     let threadOutRef = step03Result.result.nextThreadOutRef;
     for (;;) {
       const scan = await captureEmulatorSubmission(harness.emulator, () =>
-        submitSpendInputSignerMissingStep04V1({
+        submitSpendInputSignerMissingStep04({
           lucid: harness.proverLucid,
           network,
           contracts,
@@ -520,7 +520,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     }
     expect(scans).toHaveLength(20);
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep05V1({
+      submitSpendInputSignerMissingStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -581,9 +581,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         validTo: removalNow + 300_000n,
       }),
     );
-    expect(removal.result.fraudCategoryId).toBe(
-      SPEND_INPUT_SIGNER_MISSING_ID_V1,
-    );
+    expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
     for (const capture of [
       init,
       step01Result,
@@ -627,7 +625,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
   }, 600_000);
 
   it("runs a forced wrongful rejection with a valid matching signature through removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
       lucidOptions: { evaluator: createScalusEvaluator() },
     });
@@ -636,7 +634,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1;
+    const titles = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES;
     const step05 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles[4], [
         harness.contracts.fraudProof.policyId,
@@ -673,12 +671,12 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       ]),
     );
     const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: SpendInputSignerMissingContractsV1 = {
+    const contracts: SpendInputSignerMissingContracts = {
       steps: steps.map((step, index) => ({
         ...step,
         blueprintTitle: titles[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as SpendInputSignerMissingContractsV1["steps"],
+      })) as unknown as SpendInputSignerMissingContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -692,7 +690,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         spendInputSignerMissing: {
-          categoryId: SPEND_INPUT_SIGNER_MISSING_ID_V1,
+          categoryId: SPEND_INPUT_SIGNER_MISSING_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -711,7 +709,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     const verificationKey = createPublicKey(privateKey)
       .export({ format: "der", type: "spki" })
       .subarray(-32);
-    const paymentCredential = missingSignatureVkeyHashV1(
+    const paymentCredential = missingSignatureVkeyHash(
       verificationKey.toString("hex"),
     );
     const priorTxId = "cd".repeat(32);
@@ -722,11 +720,11 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       ]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
-    const outRefBytes = encodeMidgardSpendInputItemV1({
+    const outRefBytes = encodeMidgardSpendInputItem({
       txId: Buffer.from(priorTxId, "hex"),
       outputIndex: 0,
     });
-    const outputMaterial = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const outputMaterial = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 0,
       outputCbor: priorOutput,
     });
@@ -740,28 +738,26 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     const unsigned = makeNativeTx({ spendInputCbors: [outRefBytes], fee: 7n });
     const signature = sign(
       null,
-      computeMidgardNativeTxIdV1(unsigned),
+      computeMidgardNativeTxId(unsigned),
       privateKey,
     );
     const nativeTx = makeNativeTx({
       spendInputCbors: [outRefBytes],
       fee: 7n,
       addrTxWitsPreimageCbor: encodeCbor([
-        encodeMidgardAddressWitnessItemV1({ verificationKey, signature }),
+        encodeMidgardAddressWitnessItem({ verificationKey, signature }),
       ]),
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    expect(nativeTxId).toBe(
-      computeMidgardNativeTxIdV1(unsigned).toString("hex"),
-    );
-    const proofSource = deriveMidgardNativeTxProofSourceV1(
-      adjudicateMidgardNativeTxFullV1Validity(nativeTx, "TxIsInvalid"),
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    expect(nativeTxId).toBe(computeMidgardNativeTxId(unsigned).toString("hex"));
+    const proofSource = deriveMidgardNativeTxProofSource(
+      adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
     );
     const reason = {
       SpendInputSignerMissing: { input_index: 0n },
     } as const;
     const sourceKey = transitionTraceOutRef("f7");
-    const predecessor = await setupFraudulentBlockV1({
+    const predecessor = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -770,13 +766,13 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
         l2TransactionCount: 0n,
         utxosRoot: priorRoot,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
       },
     });
-    const forcedBlock = await buildDecodingBlockFixtureV1({
+    const forcedBlock = await buildDecodingBlockFixture({
       operatorVkey: predecessor.header.operatorVkey,
       startTime: BigInt(
-        emulatorSuccessorHeaderStartV1({
+        emulatorSuccessorHeaderStart({
           predecessorEndTime: predecessor.header.endTime,
           emulator: harness.emulator,
         }),
@@ -811,16 +807,16 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
     });
     expect(forcedSetup.successorHeaderHash).toBe(
-      await Effect.runPromise(hashBlockHeaderV1(forcedHeader)),
+      await Effect.runPromise(hashBlockHeader(forcedHeader)),
     );
-    const evidence = prepareSpendInputSignerMissingEvidenceV1({
-      subject: forcedVerdictSubjectV1({
+    const evidence = prepareSpendInputSignerMissingEvidence({
+      subject: forcedVerdictSubject({
         transactionId: nativeTxId,
         sourceKey,
         rejectionReason: reason,
       }),
       inputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(nativeTx),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: {
         priorRoot,
         transactionId: priorTxId,
@@ -872,7 +868,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     const forced01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep01ForcedV1({
+      submitSpendInputSignerMissingStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -887,7 +883,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     const witnessSetCompactCbor =
       proofSource.witnessSetCompactCbor.toString("hex");
     const forced02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep02V1({
+      submitSpendInputSignerMissingStep02({
         lucid: harness.proverLucid,
         network,
         contracts,
@@ -903,7 +899,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     const forced03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep03V1({
+      submitSpendInputSignerMissingStep03({
         lucid: harness.proverLucid,
         network,
         contracts,
@@ -918,7 +914,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
       }),
     );
     const forced04 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep04V1({
+      submitSpendInputSignerMissingStep04({
         lucid: harness.proverLucid,
         network,
         contracts,
@@ -934,7 +930,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
     );
     expect(forced04.result.stage).toBe("step05");
     const forced05 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitSpendInputSignerMissingStep05V1({
+      submitSpendInputSignerMissingStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -999,7 +995,7 @@ describe("spendInputSignerMissing local-catalogue lifecycle", () => {
         }),
     );
     expect(forcedRemoval.result.fraudCategoryId).toBe(
-      SPEND_INPUT_SIGNER_MISSING_ID_V1,
+      SPEND_INPUT_SIGNER_MISSING_ID,
     );
     for (const capture of [
       forcedInit,

@@ -1,28 +1,28 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  appendMidgardCekBlobFrontierChunkRootV1,
-  appendMidgardCekBlobFrontierChunkV1,
-  commitMidgardCekBlobV1,
-  emptyMidgardCekBlobFrontierV1,
-  encodeMidgardCekBlobFrontierV1,
-  finalizeMidgardCekBlobFrontierV1,
-  hashMidgardCekBlobChunkV1,
+  appendMidgardCekBlobFrontierChunk,
+  appendMidgardCekBlobFrontierChunkRoot,
+  commitMidgardCekBlob,
+  emptyMidgardCekBlobFrontier,
+  encodeMidgardCekBlobFrontier,
+  finalizeMidgardCekBlobFrontier,
+  hashMidgardCekBlobChunk,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
-  validateMidgardCekBlobFrontierV1,
+  validateMidgardCekBlobFrontier,
 } from "../src/index.js";
 
 const buildFrontier = (bytes: Buffer) => {
-  let frontier = emptyMidgardCekBlobFrontierV1();
+  let frontier = emptyMidgardCekBlobFrontier();
   if (bytes.length === 0) {
-    return appendMidgardCekBlobFrontierChunkV1(frontier, Buffer.alloc(0));
+    return appendMidgardCekBlobFrontierChunk(frontier, Buffer.alloc(0));
   }
   for (
     let offset = 0;
     offset < bytes.length;
     offset += MIDGARD_CEK_BLOB_CHUNK_BYTES
   ) {
-    frontier = appendMidgardCekBlobFrontierChunkV1(
+    frontier = appendMidgardCekBlobFrontierChunk(
       frontier,
       bytes.subarray(
         offset,
@@ -39,8 +39,8 @@ describe("streaming CEK blob frontier V1", () => {
     (length) => {
       const bytes = Buffer.alloc(length, 0x6a);
       const frontier = buildFrontier(bytes);
-      expect(finalizeMidgardCekBlobFrontierV1(frontier)).toStrictEqual(
-        commitMidgardCekBlobV1(bytes).root,
+      expect(finalizeMidgardCekBlobFrontier(frontier)).toStrictEqual(
+        commitMidgardCekBlob(bytes).root,
       );
       expect(frontier.byteLength).toBe(BigInt(length));
     },
@@ -48,28 +48,28 @@ describe("streaming CEK blob frontier V1", () => {
 
   it("encodes a compact cross-language frontier deterministically", () => {
     const frontier = buildFrontier(Buffer.alloc(8_191, 0x6a));
-    expect(encodeMidgardCekBlobFrontierV1(frontier).toString("hex")).toBe(
+    expect(encodeMidgardCekBlobFrontier(frontier).toString("hex")).toBe(
       "840103191fff8283005820344b2b0f0e31517cd429e9ed6bc07028defbc437648e4988fbd3f20c64f87d7b01830158203160ec563e32826cc3fc245286437e12ab09796f078e4780a8596b2a09995d8b191ffe",
     );
   });
 
   it("appends an authenticated chunk root without retaining its bytes", () => {
     const chunk = Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES, 0x6a);
-    const fromBytes = appendMidgardCekBlobFrontierChunkV1(
-      emptyMidgardCekBlobFrontierV1(),
+    const fromBytes = appendMidgardCekBlobFrontierChunk(
+      emptyMidgardCekBlobFrontier(),
       chunk,
     );
-    const fromRoot = appendMidgardCekBlobFrontierChunkRootV1(
-      emptyMidgardCekBlobFrontierV1(),
+    const fromRoot = appendMidgardCekBlobFrontierChunkRoot(
+      emptyMidgardCekBlobFrontier(),
       {
-        root: hashMidgardCekBlobChunkV1(chunk),
+        root: hashMidgardCekBlobChunk(chunk),
         byteLength: chunk.length,
       },
     );
 
     expect(fromRoot).toStrictEqual(fromBytes);
     expect(() =>
-      appendMidgardCekBlobFrontierChunkRootV1(emptyMidgardCekBlobFrontierV1(), {
+      appendMidgardCekBlobFrontierChunkRoot(emptyMidgardCekBlobFrontier(), {
         root: Buffer.alloc(31),
         byteLength: chunk.length,
       }),
@@ -79,10 +79,10 @@ describe("streaming CEK blob frontier V1", () => {
   it("fails closed for malformed occupancy and append after a partial leaf", () => {
     const partial = buildFrontier(Buffer.alloc(4_096, 0x6a));
     expect(() =>
-      appendMidgardCekBlobFrontierChunkV1(partial, Buffer.from([0x01])),
+      appendMidgardCekBlobFrontierChunk(partial, Buffer.from([0x01])),
     ).toThrow(/final leaf/u);
     expect(() =>
-      validateMidgardCekBlobFrontierV1({
+      validateMidgardCekBlobFrontier({
         ...partial,
         count: 4,
       }),

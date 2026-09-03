@@ -1,26 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  bindMidgardNativeScriptDecodingMachineV1,
-  budgetedMidgardNativeScriptDecodingScanV1,
-  buildMidgardNativeScriptDecodingTraceV1,
+  bindMidgardNativeScriptDecodingMachine,
+  budgetedMidgardNativeScriptDecodingScan,
+  buildMidgardNativeScriptDecodingTrace,
   encodeMidgardNativeScript,
-  encodeMidgardNativeScriptStructureControlV1,
-  hashMidgardNativeScriptDecodingControlV1,
-  hashMidgardNativeScriptScanFrameV1,
-  isExactMidgardNativeScriptStructureTerminalV1,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1,
-  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1,
-  MidgardNativeScriptDecodingBindKindsV1,
-  MidgardNativeScriptDecodingRefusalClassesV1,
-  MidgardNativeScriptDecodingScanOutcomeKindsV1,
-  midgardNativeScriptDecodingScanWindowForCursorV1,
-  MidgardNativeScriptDecodingTraceOutcomeKindsV1,
-  MidgardNativeScriptKindsV1,
-  type MidgardNativeScriptScanFrameV1,
-  type MidgardNativeScriptStructureControlV1,
-  MidgardNativeScriptStructureStagesV1,
+  encodeMidgardNativeScriptStructureControl,
+  hashMidgardNativeScriptDecodingControl,
+  hashMidgardNativeScriptScanFrame,
+  isExactMidgardNativeScriptStructureTerminal,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
+  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
+  MidgardNativeScriptDecodingBindKinds,
+  MidgardNativeScriptDecodingRefusalClasses,
+  MidgardNativeScriptDecodingScanOutcomeKinds,
+  midgardNativeScriptDecodingScanWindowForCursor,
+  MidgardNativeScriptDecodingTraceOutcomeKinds,
+  MidgardNativeScriptKinds,
+  type MidgardNativeScriptScanFrame,
+  type MidgardNativeScriptStructureControl,
+  MidgardNativeScriptStructureStages,
 } from "../src/index.js";
 
 // Fixtures mirror `thread_fixture_v1.ak`; every asserted outcome below is
@@ -47,14 +47,12 @@ const malformedWrapperItem = Buffer.from("8201410a", "hex");
 const emptyPayloadItem = Buffer.from("820040", "hex");
 const plutusScriptItem = Buffer.from("82034401020304", "hex");
 
-const boundControlOf = (
-  item: Buffer,
-): MidgardNativeScriptStructureControlV1 => {
-  const bind = bindMidgardNativeScriptDecodingMachineV1({
+const boundControlOf = (item: Buffer): MidgardNativeScriptStructureControl => {
+  const bind = bindMidgardNativeScriptDecodingMachine({
     firstChunk: item,
     totalLength: item.length,
   });
-  if (bind.kind !== MidgardNativeScriptDecodingBindKindsV1.Bound) {
+  if (bind.kind !== MidgardNativeScriptDecodingBindKinds.Bound) {
     throw new Error(`fixture did not bind: ${bind.kind}`);
   }
   return bind.control;
@@ -64,12 +62,12 @@ const fullWindow = (item: Buffer) => ({ bytes: item, startOffset: 0 });
 
 const allOfTwoFirstFrame = {
   tail: Buffer.alloc(0),
-  kind: MidgardNativeScriptKindsV1.All,
+  kind: MidgardNativeScriptKinds.All,
   childCount: 2,
   remaining: 2,
   validCount: 0,
   required: 0n,
-} satisfies MidgardNativeScriptScanFrameV1;
+} satisfies MidgardNativeScriptScanFrame;
 
 describe("native script decoding engine V1", () => {
   it("dispatches the machine bind on the wrapper", () => {
@@ -79,73 +77,71 @@ describe("native script decoding engine V1", () => {
     expect(control.endOffset).toBe(signatureItem.length);
 
     expect(
-      bindMidgardNativeScriptDecodingMachineV1({
+      bindMidgardNativeScriptDecodingMachine({
         firstChunk: malformedWrapperItem,
         totalLength: malformedWrapperItem.length,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.Malformed,
+      kind: MidgardNativeScriptDecodingBindKinds.Malformed,
     });
     expect(
-      bindMidgardNativeScriptDecodingMachineV1({
+      bindMidgardNativeScriptDecodingMachine({
         firstChunk: emptyPayloadItem,
         totalLength: emptyPayloadItem.length,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.Malformed,
+      kind: MidgardNativeScriptDecodingBindKinds.Malformed,
     });
     expect(
-      bindMidgardNativeScriptDecodingMachineV1({
+      bindMidgardNativeScriptDecodingMachine({
         firstChunk: plutusScriptItem,
         totalLength: plutusScriptItem.length,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.NonNative,
+      kind: MidgardNativeScriptDecodingBindKinds.NonNative,
       languageTag: 3,
     });
     // Language 128 is in the wrapper domain but is not the native machine's.
     expect(
-      bindMidgardNativeScriptDecodingMachineV1({
+      bindMidgardNativeScriptDecodingMachine({
         firstChunk: Buffer.from("821880410a", "hex"),
         totalLength: 5,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.NonNative,
+      kind: MidgardNativeScriptDecodingBindKinds.NonNative,
       languageTag: 128,
     });
     // A non-minimal language head (`18 00` for 0) fails `canonical_head`.
     expect(
-      bindMidgardNativeScriptDecodingMachineV1({
+      bindMidgardNativeScriptDecodingMachine({
         firstChunk: Buffer.from("821800410a", "hex"),
         totalLength: 5,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.Malformed,
+      kind: MidgardNativeScriptDecodingBindKinds.Malformed,
     });
     // A payload head that does not end exactly at the item length.
     expect(
-      bindMidgardNativeScriptDecodingMachineV1({
+      bindMidgardNativeScriptDecodingMachine({
         firstChunk: signatureItem,
         totalLength: signatureItem.length + 1,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.Malformed,
+      kind: MidgardNativeScriptDecodingBindKinds.Malformed,
     });
   });
 
   it("scans a signature script to the exact terminal", () => {
-    const outcome = budgetedMidgardNativeScriptDecodingScanV1({
+    const outcome = budgetedMidgardNativeScriptDecodingScan({
       control: boundControlOf(signatureItem),
       window: fullWindow(signatureItem),
       frames: [],
       maxSteps: 3,
     });
-    if (
-      outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
-    ) {
+    if (outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("expected an advanced outcome");
     }
-    expect(isExactMidgardNativeScriptStructureTerminalV1(outcome.control)).toBe(
+    expect(isExactMidgardNativeScriptStructureTerminal(outcome.control)).toBe(
       true,
     );
     expect(outcome.control.nodeCount).toBe(1);
@@ -153,18 +149,16 @@ describe("native script decoding engine V1", () => {
   });
 
   it("scans a container through its frame witnesses", () => {
-    const outcome = budgetedMidgardNativeScriptDecodingScanV1({
+    const outcome = budgetedMidgardNativeScriptDecodingScan({
       control: boundControlOf(allOfTwoItem),
       window: fullWindow(allOfTwoItem),
       frames: [allOfTwoFirstFrame, { ...allOfTwoFirstFrame, remaining: 1 }],
       maxSteps: 6,
     });
-    if (
-      outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
-    ) {
+    if (outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("expected an advanced outcome");
     }
-    expect(isExactMidgardNativeScriptStructureTerminalV1(outcome.control)).toBe(
+    expect(isExactMidgardNativeScriptStructureTerminal(outcome.control)).toBe(
       true,
     );
     expect(outcome.control.nodeCount).toBe(3);
@@ -172,28 +166,26 @@ describe("native script decoding engine V1", () => {
   });
 
   it("resumes from a budget stop to the same terminal", () => {
-    const mid = budgetedMidgardNativeScriptDecodingScanV1({
+    const mid = budgetedMidgardNativeScriptDecodingScan({
       control: boundControlOf(allOfTwoItem),
       window: fullWindow(allOfTwoItem),
       frames: [],
       maxSteps: 2,
     });
-    if (mid.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced) {
+    if (mid.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("expected an advanced outcome");
     }
-    expect(mid.control.stage).toBe(MidgardNativeScriptStructureStagesV1.Frame);
-    const outcome = budgetedMidgardNativeScriptDecodingScanV1({
+    expect(mid.control.stage).toBe(MidgardNativeScriptStructureStages.Frame);
+    const outcome = budgetedMidgardNativeScriptDecodingScan({
       control: mid.control,
       window: fullWindow(allOfTwoItem),
       frames: [allOfTwoFirstFrame, { ...allOfTwoFirstFrame, remaining: 1 }],
       maxSteps: 10,
     });
-    if (
-      outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
-    ) {
+    if (outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("expected an advanced outcome");
     }
-    expect(isExactMidgardNativeScriptStructureTerminalV1(outcome.control)).toBe(
+    expect(isExactMidgardNativeScriptStructureTerminal(outcome.control)).toBe(
       true,
     );
     expect(outcome.control.nodeCount).toBe(3);
@@ -201,15 +193,15 @@ describe("native script decoding engine V1", () => {
 
   it("refuses a malformed payload with class 0", () => {
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control: boundControlOf(malformedPayloadItem),
         window: fullWindow(malformedPayloadItem),
         frames: [],
         maxSteps: 1,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Refused,
-      refusalClass: MidgardNativeScriptDecodingRefusalClassesV1.Malformed,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Refused,
+      refusalClass: MidgardNativeScriptDecodingRefusalClasses.Malformed,
       framesConsumed: 0,
     });
   });
@@ -219,24 +211,24 @@ describe("native script decoding engine V1", () => {
     // reach 16,384 nodes authentically.
     const control = {
       version: 1,
-      stage: MidgardNativeScriptStructureStagesV1.Token,
+      stage: MidgardNativeScriptStructureStages.Token,
       startOffset: 0,
       cursor: 0,
       endOffset: signatureNode.length,
       stackRoot: Buffer.alloc(0),
       stackDepth: 0,
-      nodeCount: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1,
-    } satisfies MidgardNativeScriptStructureControlV1;
+      nodeCount: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
+    } satisfies MidgardNativeScriptStructureControl;
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control,
         window: { bytes: signatureNode, startOffset: 0 },
         frames: [],
         maxSteps: 1,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Refused,
-      refusalClass: MidgardNativeScriptDecodingRefusalClassesV1.NodeLimit,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Refused,
+      refusalClass: MidgardNativeScriptDecodingRefusalClasses.NodeLimit,
       framesConsumed: 0,
     });
   });
@@ -245,24 +237,24 @@ describe("native script decoding engine V1", () => {
     const payload = allOfTwoItem.subarray(4);
     const control = {
       version: 1,
-      stage: MidgardNativeScriptStructureStagesV1.Token,
+      stage: MidgardNativeScriptStructureStages.Token,
       startOffset: 0,
       cursor: 0,
       endOffset: payload.length,
-      stackRoot: hashMidgardNativeScriptScanFrameV1(allOfTwoFirstFrame),
-      stackDepth: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1,
+      stackRoot: hashMidgardNativeScriptScanFrame(allOfTwoFirstFrame),
+      stackDepth: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
       nodeCount: 1,
-    } satisfies MidgardNativeScriptStructureControlV1;
+    } satisfies MidgardNativeScriptStructureControl;
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control,
         window: { bytes: Buffer.from(payload), startOffset: 0 },
         frames: [],
         maxSteps: 1,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Refused,
-      refusalClass: MidgardNativeScriptDecodingRefusalClassesV1.DepthLimit,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Refused,
+      refusalClass: MidgardNativeScriptDecodingRefusalClasses.DepthLimit,
       framesConsumed: 0,
     });
   });
@@ -270,14 +262,14 @@ describe("native script decoding engine V1", () => {
   it("stops on a truncated window instead of refusing", () => {
     const control = boundControlOf(signatureItem);
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control,
         window: { bytes: signatureItem.subarray(0, 14), startOffset: 0 },
         frames: [],
         maxSteps: 5,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Advanced,
       control,
       framesConsumed: 0,
     });
@@ -286,31 +278,31 @@ describe("native script decoding engine V1", () => {
   it("stops without a window", () => {
     const control = boundControlOf(signatureItem);
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control,
         window: null,
         frames: [],
         maxSteps: 5,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Advanced,
       control,
       framesConsumed: 0,
     });
   });
 
   it("aborts on a frame witness that does not hash-chain", () => {
-    const mid = budgetedMidgardNativeScriptDecodingScanV1({
+    const mid = budgetedMidgardNativeScriptDecodingScan({
       control: boundControlOf(allOfTwoItem),
       window: fullWindow(allOfTwoItem),
       frames: [],
       maxSteps: 2,
     });
-    if (mid.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced) {
+    if (mid.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("expected an advanced outcome");
     }
     expect(() =>
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control: mid.control,
         window: fullWindow(allOfTwoItem),
         frames: [{ ...allOfTwoFirstFrame, childCount: 3, remaining: 3 }],
@@ -320,51 +312,51 @@ describe("native script decoding engine V1", () => {
   });
 
   it("commits the machine control under the Aiken domain vector", () => {
-    const controlCbor = encodeMidgardNativeScriptStructureControlV1(
+    const controlCbor = encodeMidgardNativeScriptStructureControl(
       boundControlOf(signatureItem),
     );
     expect(controlCbor.toString("hex")).toBe("88010004041824400000");
     // Cross-engine golden: `engine.hash_machine_control_v1` over the same
     // control bytes, extracted from the pinned Aiken engine.
     expect(
-      hashMidgardNativeScriptDecodingControlV1(controlCbor).toString("hex"),
+      hashMidgardNativeScriptDecodingControl(controlCbor).toString("hex"),
     ).toBe("3c5b5c4d4bef20c0edad15ac4d77ab313982b5f0e8955b54372ebfe8fd085356");
   });
 
   it("traces a wrongful-acceptance item to its refusal", () => {
-    const trace = buildMidgardNativeScriptDecodingTraceV1(malformedPayloadItem);
-    expect(trace.bind.kind).toBe(MidgardNativeScriptDecodingBindKindsV1.Bound);
+    const trace = buildMidgardNativeScriptDecodingTrace(malformedPayloadItem);
+    expect(trace.bind.kind).toBe(MidgardNativeScriptDecodingBindKinds.Bound);
     expect(trace.steps).toHaveLength(0);
     if (
       trace.outcome?.kind !==
-      MidgardNativeScriptDecodingTraceOutcomeKindsV1.Refused
+      MidgardNativeScriptDecodingTraceOutcomeKinds.Refused
     ) {
       throw new Error("expected a refused outcome");
     }
     expect(trace.outcome.refusalClass).toBe(
-      MidgardNativeScriptDecodingRefusalClassesV1.Malformed,
+      MidgardNativeScriptDecodingRefusalClasses.Malformed,
     );
     // The Verdict-step property: a single-step fold from the traced control
     // exhibits exactly the traced refusal.
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control: trace.outcome.control,
         window: fullWindow(malformedPayloadItem),
         frames: [],
         maxSteps: 1,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Refused,
-      refusalClass: MidgardNativeScriptDecodingRefusalClassesV1.Malformed,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Refused,
+      refusalClass: MidgardNativeScriptDecodingRefusalClasses.Malformed,
       framesConsumed: 0,
     });
   });
 
   it("traces a canonical item to the exact terminal with its frames", () => {
-    const trace = buildMidgardNativeScriptDecodingTraceV1(allOfTwoItem);
+    const trace = buildMidgardNativeScriptDecodingTrace(allOfTwoItem);
     if (
       trace.outcome?.kind !==
-      MidgardNativeScriptDecodingTraceOutcomeKindsV1.Terminal
+      MidgardNativeScriptDecodingTraceOutcomeKinds.Terminal
     ) {
       throw new Error("expected a terminal outcome");
     }
@@ -378,15 +370,13 @@ describe("native script decoding engine V1", () => {
       { ...allOfTwoFirstFrame, remaining: 1 },
     ]);
     // The traced frames drive the budgeted fold to the same terminal.
-    const outcome = budgetedMidgardNativeScriptDecodingScanV1({
+    const outcome = budgetedMidgardNativeScriptDecodingScan({
       control: boundControlOf(allOfTwoItem),
       window: fullWindow(allOfTwoItem),
       frames,
       maxSteps: trace.steps.length,
     });
-    if (
-      outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
-    ) {
+    if (outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("expected an advanced outcome");
     }
     expect(outcome.control).toStrictEqual(trace.outcome.control);
@@ -394,16 +384,15 @@ describe("native script decoding engine V1", () => {
 
   it("returns non-bound traces without a scan outcome", () => {
     expect(
-      buildMidgardNativeScriptDecodingTraceV1(malformedWrapperItem),
+      buildMidgardNativeScriptDecodingTrace(malformedWrapperItem),
     ).toStrictEqual({
-      bind: { kind: MidgardNativeScriptDecodingBindKindsV1.Malformed },
+      bind: { kind: MidgardNativeScriptDecodingBindKinds.Malformed },
       steps: [],
       outcome: null,
     });
-    const plutusTrace =
-      buildMidgardNativeScriptDecodingTraceV1(plutusScriptItem);
+    const plutusTrace = buildMidgardNativeScriptDecodingTrace(plutusScriptItem);
     expect(plutusTrace.bind).toStrictEqual({
-      kind: MidgardNativeScriptDecodingBindKindsV1.NonNative,
+      kind: MidgardNativeScriptDecodingBindKinds.NonNative,
       languageTag: 3,
     });
     expect(plutusTrace.outcome).toBeNull();
@@ -420,7 +409,7 @@ describe("native script decoding engine V1", () => {
       })),
     });
     expect(payload.length).toBeGreaterThan(
-      2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+      2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
     );
     const payloadHead = Buffer.from([
       0x59,
@@ -433,10 +422,10 @@ describe("native script decoding engine V1", () => {
       payload,
     ]);
 
-    const trace = buildMidgardNativeScriptDecodingTraceV1(item);
+    const trace = buildMidgardNativeScriptDecodingTrace(item);
     if (
       trace.outcome?.kind !==
-      MidgardNativeScriptDecodingTraceOutcomeKindsV1.Terminal
+      MidgardNativeScriptDecodingTraceOutcomeKinds.Terminal
     ) {
       throw new Error("expected a terminal outcome");
     }
@@ -448,24 +437,24 @@ describe("native script decoding engine V1", () => {
     let control = boundControlOf(item);
     let frameIndex = 0;
     let folds = 0;
-    while (!isExactMidgardNativeScriptStructureTerminalV1(control)) {
+    while (!isExactMidgardNativeScriptStructureTerminal(control)) {
       folds += 1;
       expect(folds).toBeLessThan(200);
       const window =
         control.cursor < item.length
-          ? midgardNativeScriptDecodingScanWindowForCursorV1({
+          ? midgardNativeScriptDecodingScanWindowForCursor({
               itemBytes: item,
               cursor: control.cursor,
             })
           : null;
-      const outcome = budgetedMidgardNativeScriptDecodingScanV1({
+      const outcome = budgetedMidgardNativeScriptDecodingScan({
         control,
         window,
         frames: frames.slice(frameIndex),
         maxSteps: 16,
       });
       if (
-        outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
+        outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced
       ) {
         throw new Error("expected an advanced outcome");
       }
@@ -478,27 +467,27 @@ describe("native script decoding engine V1", () => {
   });
 
   it("derives the authenticated window geometry for a cursor", () => {
-    const item = Buffer.alloc(3 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 + 100);
-    const first = midgardNativeScriptDecodingScanWindowForCursorV1({
+    const item = Buffer.alloc(3 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES + 100);
+    const first = midgardNativeScriptDecodingScanWindowForCursor({
       itemBytes: item,
       cursor: 0,
     });
     expect(first.startOffset).toBe(0);
-    expect(first.bytes.length).toBe(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
-    const second = midgardNativeScriptDecodingScanWindowForCursorV1({
+    expect(first.bytes.length).toBe(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    const second = midgardNativeScriptDecodingScanWindowForCursor({
       itemBytes: item,
-      cursor: MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+      cursor: MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
     });
-    expect(second.startOffset).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
-    expect(second.bytes.length).toBe(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
-    const last = midgardNativeScriptDecodingScanWindowForCursorV1({
+    expect(second.startOffset).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    expect(second.bytes.length).toBe(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    const last = midgardNativeScriptDecodingScanWindowForCursor({
       itemBytes: item,
-      cursor: 3 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 + 1,
+      cursor: 3 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES + 1,
     });
-    expect(last.startOffset).toBe(3 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
+    expect(last.startOffset).toBe(3 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
     expect(last.bytes.length).toBe(100);
     expect(() =>
-      midgardNativeScriptDecodingScanWindowForCursorV1({
+      midgardNativeScriptDecodingScanWindowForCursor({
         itemBytes: item,
         cursor: item.length,
       }),

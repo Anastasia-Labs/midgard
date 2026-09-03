@@ -1,22 +1,22 @@
 import {
   computeHash32,
   decodeMidgardVersionedScript,
-  encodeMidgardDefiniteBytesV1,
-  encodeMidgardFieldArrayHeaderV1,
-  encodeMidgardFieldPreimageV1,
+  encodeMidgardDefiniteBytes,
+  encodeMidgardFieldArrayHeader,
+  encodeMidgardFieldPreimage,
   hashMidgardVersionedScript,
-  midgardFieldCommitmentV1,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 
-export const MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1 = 32;
-export const MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX_V1 = 6;
+export const MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT = 32;
+export const MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX = 6;
 
 const U24_MAX = 0xff_ff_ff;
 const HASH_32 = /^[0-9a-f]{64}$/u;
 const GRAMMAR_DOMAIN = Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii");
 const SEMANTIC_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
 
-export type MissingNativeScriptTxGrammarCheckpointV1 = Readonly<{
+export type MissingNativeScriptTxGrammarCheckpoint = Readonly<{
   txId: string;
   fieldIndex: number;
   fieldCommitment: string;
@@ -26,7 +26,7 @@ export type MissingNativeScriptTxGrammarCheckpointV1 = Readonly<{
   nextOffset: number;
 }>;
 
-export type MissingNativeScriptTxSemanticCheckpointV1 = Readonly<{
+export type MissingNativeScriptTxSemanticCheckpoint = Readonly<{
   txId: string;
   fieldIndex: number;
   totalLength: number;
@@ -61,17 +61,17 @@ const assertBudget = (budget: number): number => {
   if (
     !Number.isSafeInteger(budget) ||
     budget <= 0 ||
-    budget > MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1
+    budget > MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT
   ) {
     throw new Error(
-      `missing-native-script staged item budget must be in 1..${MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1.toString()}`,
+      `missing-native-script staged item budget must be in 1..${MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT.toString()}`,
     );
   }
   return budget;
 };
 
 const canonicalPreimage = (items: readonly Uint8Array[]): Buffer =>
-  encodeMidgardFieldPreimageV1(items);
+  encodeMidgardFieldPreimage(items);
 
 const offsetAt = (items: readonly Uint8Array[], itemIndex: number): number => {
   if (
@@ -81,9 +81,9 @@ const offsetAt = (items: readonly Uint8Array[], itemIndex: number): number => {
   ) {
     throw new Error("missing-native-script checkpoint item index is invalid");
   }
-  let offset = encodeMidgardFieldArrayHeaderV1(items.length).length;
+  let offset = encodeMidgardFieldArrayHeader(items.length).length;
   for (let index = 0; index < itemIndex; index += 1) {
-    offset += encodeMidgardDefiniteBytesV1(items[index]!).length;
+    offset += encodeMidgardDefiniteBytes(items[index]!).length;
   }
   return offset;
 };
@@ -91,8 +91,8 @@ const offsetAt = (items: readonly Uint8Array[], itemIndex: number): number => {
 const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
-export const encodeMissingNativeScriptTxGrammarCheckpointV1 = (
-  checkpoint: MissingNativeScriptTxGrammarCheckpointV1,
+export const encodeMissingNativeScriptTxGrammarCheckpoint = (
+  checkpoint: MissingNativeScriptTxGrammarCheckpoint,
 ): Buffer => {
   const txId = Buffer.from(
     assertHash32(checkpoint.txId, "grammar tx id"),
@@ -104,7 +104,7 @@ export const encodeMissingNativeScriptTxGrammarCheckpointV1 = (
   );
   if (
     checkpoint.fieldIndex !==
-    MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX_V1
+    MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX
   ) {
     throw new Error(
       "missing-native-script grammar checkpoint must name field 6",
@@ -130,19 +130,19 @@ export const encodeMissingNativeScriptTxGrammarCheckpointV1 = (
   return encoded;
 };
 
-export const hashMissingNativeScriptTxGrammarCheckpointV1 = (
-  checkpoint: MissingNativeScriptTxGrammarCheckpointV1,
+export const hashMissingNativeScriptTxGrammarCheckpoint = (
+  checkpoint: MissingNativeScriptTxGrammarCheckpoint,
 ): string =>
   computeHash32(
     Buffer.concat([
       GRAMMAR_DOMAIN,
-      encodeMissingNativeScriptTxGrammarCheckpointV1(checkpoint),
+      encodeMissingNativeScriptTxGrammarCheckpoint(checkpoint),
     ]),
   ).toString("hex");
 
-export const decodeMissingNativeScriptTxGrammarCheckpointV1 = (
+export const decodeMissingNativeScriptTxGrammarCheckpoint = (
   bytes: Uint8Array,
-): MissingNativeScriptTxGrammarCheckpointV1 => {
+): MissingNativeScriptTxGrammarCheckpoint => {
   const source = Buffer.from(bytes);
   if (
     source.length !== 87 ||
@@ -161,7 +161,7 @@ export const decodeMissingNativeScriptTxGrammarCheckpointV1 = (
       "missing-native-script grammar checkpoint is not canonical",
     );
   }
-  const decoded: MissingNativeScriptTxGrammarCheckpointV1 = {
+  const decoded: MissingNativeScriptTxGrammarCheckpoint = {
     txId: source.subarray(3, 35).toString("hex"),
     fieldIndex: source[36]!,
     fieldCommitment: source.subarray(39, 71).toString("hex"),
@@ -171,7 +171,7 @@ export const decodeMissingNativeScriptTxGrammarCheckpointV1 = (
     nextOffset: source.readUIntBE(84, 3),
   };
   if (
-    !sameBytes(encodeMissingNativeScriptTxGrammarCheckpointV1(decoded), source)
+    !sameBytes(encodeMissingNativeScriptTxGrammarCheckpoint(decoded), source)
   ) {
     throw new Error(
       "missing-native-script grammar checkpoint is not canonical",
@@ -180,18 +180,18 @@ export const decodeMissingNativeScriptTxGrammarCheckpointV1 = (
   return decoded;
 };
 
-export const initialMissingNativeScriptTxGrammarCheckpointV1 = ({
+export const initialMissingNativeScriptTxGrammarCheckpoint = ({
   txId,
   items,
 }: {
   readonly txId: string;
   readonly items: readonly Uint8Array[];
-}): MissingNativeScriptTxGrammarCheckpointV1 => {
+}): MissingNativeScriptTxGrammarCheckpoint => {
   const preimage = canonicalPreimage(items);
   return {
     txId: assertHash32(txId, "grammar tx id"),
-    fieldIndex: MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX_V1,
-    fieldCommitment: midgardFieldCommitmentV1(preimage).toString("hex"),
+    fieldIndex: MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX,
+    fieldCommitment: midgardFieldCommitment(preimage).toString("hex"),
     totalLength: preimage.length,
     declaredCount: items.length,
     nextItemIndex: 0,
@@ -203,10 +203,10 @@ const assertGrammarBound = ({
   checkpoint,
   items,
 }: {
-  readonly checkpoint: MissingNativeScriptTxGrammarCheckpointV1;
+  readonly checkpoint: MissingNativeScriptTxGrammarCheckpoint;
   readonly items: readonly Uint8Array[];
 }): void => {
-  const initial = initialMissingNativeScriptTxGrammarCheckpointV1({
+  const initial = initialMissingNativeScriptTxGrammarCheckpoint({
     txId: checkpoint.txId,
     items,
   });
@@ -224,15 +224,15 @@ const assertGrammarBound = ({
   }
 };
 
-export const advanceMissingNativeScriptTxGrammarCheckpointV1 = ({
+export const advanceMissingNativeScriptTxGrammarCheckpoint = ({
   checkpoint,
   items,
   budget,
 }: {
-  readonly checkpoint: MissingNativeScriptTxGrammarCheckpointV1;
+  readonly checkpoint: MissingNativeScriptTxGrammarCheckpoint;
   readonly items: readonly Uint8Array[];
   readonly budget: number;
-}): MissingNativeScriptTxGrammarCheckpointV1 => {
+}): MissingNativeScriptTxGrammarCheckpoint => {
   assertGrammarBound({ checkpoint, items });
   const nextItemIndex = Math.min(
     checkpoint.declaredCount,
@@ -245,14 +245,14 @@ export const advanceMissingNativeScriptTxGrammarCheckpointV1 = ({
   };
 };
 
-export const missingNativeScriptTxGrammarCheckpointIsCompleteV1 = (
-  checkpoint: MissingNativeScriptTxGrammarCheckpointV1,
+export const missingNativeScriptTxGrammarCheckpointIsComplete = (
+  checkpoint: MissingNativeScriptTxGrammarCheckpoint,
 ): boolean =>
   checkpoint.nextItemIndex === checkpoint.declaredCount &&
   checkpoint.nextOffset === checkpoint.totalLength;
 
-export const encodeMissingNativeScriptTxSemanticCheckpointV1 = (
-  checkpoint: MissingNativeScriptTxSemanticCheckpointV1,
+export const encodeMissingNativeScriptTxSemanticCheckpoint = (
+  checkpoint: MissingNativeScriptTxSemanticCheckpoint,
 ): Buffer => {
   const txId = Buffer.from(
     assertHash32(checkpoint.txId, "semantic tx id"),
@@ -260,7 +260,7 @@ export const encodeMissingNativeScriptTxSemanticCheckpointV1 = (
   );
   if (
     checkpoint.fieldIndex !==
-    MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX_V1
+    MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX
   ) {
     throw new Error(
       "missing-native-script semantic checkpoint must name field 6",
@@ -284,19 +284,19 @@ export const encodeMissingNativeScriptTxSemanticCheckpointV1 = (
   return encoded;
 };
 
-export const hashMissingNativeScriptTxSemanticCheckpointV1 = (
-  checkpoint: MissingNativeScriptTxSemanticCheckpointV1,
+export const hashMissingNativeScriptTxSemanticCheckpoint = (
+  checkpoint: MissingNativeScriptTxSemanticCheckpoint,
 ): string =>
   computeHash32(
     Buffer.concat([
       SEMANTIC_DOMAIN,
-      encodeMissingNativeScriptTxSemanticCheckpointV1(checkpoint),
+      encodeMissingNativeScriptTxSemanticCheckpoint(checkpoint),
     ]),
   ).toString("hex");
 
-export const decodeMissingNativeScriptTxSemanticCheckpointV1 = (
+export const decodeMissingNativeScriptTxSemanticCheckpoint = (
   bytes: Uint8Array,
-): MissingNativeScriptTxSemanticCheckpointV1 => {
+): MissingNativeScriptTxSemanticCheckpoint => {
   const source = Buffer.from(bytes);
   if (
     source.length !== 53 ||
@@ -313,7 +313,7 @@ export const decodeMissingNativeScriptTxSemanticCheckpointV1 = (
       "missing-native-script semantic checkpoint is not canonical",
     );
   }
-  const decoded: MissingNativeScriptTxSemanticCheckpointV1 = {
+  const decoded: MissingNativeScriptTxSemanticCheckpoint = {
     txId: source.subarray(3, 35).toString("hex"),
     fieldIndex: source[36]!,
     totalLength: source.readUIntBE(38, 3),
@@ -322,7 +322,7 @@ export const decodeMissingNativeScriptTxSemanticCheckpointV1 = (
     nextOffset: source.readUIntBE(50, 3),
   };
   if (
-    !sameBytes(encodeMissingNativeScriptTxSemanticCheckpointV1(decoded), source)
+    !sameBytes(encodeMissingNativeScriptTxSemanticCheckpoint(decoded), source)
   ) {
     throw new Error(
       "missing-native-script semantic checkpoint is not canonical",
@@ -331,15 +331,15 @@ export const decodeMissingNativeScriptTxSemanticCheckpointV1 = (
   return decoded;
 };
 
-export const initialMissingNativeScriptTxSemanticCheckpointV1 = ({
+export const initialMissingNativeScriptTxSemanticCheckpoint = ({
   grammar,
   items,
 }: {
-  readonly grammar: MissingNativeScriptTxGrammarCheckpointV1;
+  readonly grammar: MissingNativeScriptTxGrammarCheckpoint;
   readonly items: readonly Uint8Array[];
-}): MissingNativeScriptTxSemanticCheckpointV1 => {
+}): MissingNativeScriptTxSemanticCheckpoint => {
   assertGrammarBound({ checkpoint: grammar, items });
-  if (!missingNativeScriptTxGrammarCheckpointIsCompleteV1(grammar)) {
+  if (!missingNativeScriptTxGrammarCheckpointIsComplete(grammar)) {
     throw new Error(
       "missing-native-script semantic scan requires terminal grammar certification",
     );
@@ -359,7 +359,7 @@ const assertSemanticBound = ({
   txId,
   items,
 }: {
-  readonly checkpoint: MissingNativeScriptTxSemanticCheckpointV1;
+  readonly checkpoint: MissingNativeScriptTxSemanticCheckpoint;
   readonly txId: string;
   readonly items: readonly Uint8Array[];
 }): void => {
@@ -367,7 +367,7 @@ const assertSemanticBound = ({
   if (
     checkpoint.txId !== assertHash32(txId, "semantic tx id") ||
     checkpoint.fieldIndex !==
-      MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX_V1 ||
+      MISSING_NATIVE_SCRIPT_TX_SCRIPT_WITNESS_FIELD_INDEX ||
     checkpoint.totalLength !== preimage.length ||
     checkpoint.itemCount !== items.length ||
     checkpoint.nextItemIndex > checkpoint.itemCount ||
@@ -379,17 +379,17 @@ const assertSemanticBound = ({
   }
 };
 
-export const advanceMissingNativeScriptTxSemanticCheckpointV1 = ({
+export const advanceMissingNativeScriptTxSemanticCheckpoint = ({
   checkpoint,
   txId,
   items,
   budget,
 }: {
-  readonly checkpoint: MissingNativeScriptTxSemanticCheckpointV1;
+  readonly checkpoint: MissingNativeScriptTxSemanticCheckpoint;
   readonly txId: string;
   readonly items: readonly Uint8Array[];
   readonly budget: number;
-}): MissingNativeScriptTxSemanticCheckpointV1 => {
+}): MissingNativeScriptTxSemanticCheckpoint => {
   assertSemanticBound({ checkpoint, txId, items });
   const nextItemIndex = Math.min(
     checkpoint.itemCount,
@@ -402,11 +402,11 @@ export const advanceMissingNativeScriptTxSemanticCheckpointV1 = ({
   };
 };
 
-export const missingNativeScriptTxSemanticCheckpointIsCompleteV1 = (
-  checkpoint: MissingNativeScriptTxSemanticCheckpointV1,
+export const missingNativeScriptTxSemanticCheckpointIsComplete = (
+  checkpoint: MissingNativeScriptTxSemanticCheckpoint,
 ): boolean => checkpoint.nextItemIndex === checkpoint.itemCount;
 
-export const missingNativeScriptTxRequiredScriptPresentThroughV1 = ({
+export const missingNativeScriptTxRequiredScriptPresentThrough = ({
   expectedScriptHash,
   items,
   nextItemIndex,
@@ -436,29 +436,29 @@ export const missingNativeScriptTxRequiredScriptPresentThroughV1 = ({
 };
 
 /** Restart-safe inverse of the fixed grammar batch schedule. */
-export const resolveMissingNativeScriptTxGrammarCheckpointV1 = ({
+export const resolveMissingNativeScriptTxGrammarCheckpoint = ({
   txId,
   items,
   committedHash,
-  budget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1,
+  budget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
 }: {
   readonly txId: string;
   readonly items: readonly Uint8Array[];
   readonly committedHash: string;
   readonly budget?: number;
-}): MissingNativeScriptTxGrammarCheckpointV1 => {
-  let checkpoint = initialMissingNativeScriptTxGrammarCheckpointV1({
+}): MissingNativeScriptTxGrammarCheckpoint => {
+  let checkpoint = initialMissingNativeScriptTxGrammarCheckpoint({
     txId,
     items,
   });
   for (let batches = 0; batches <= items.length + 1; batches += 1) {
     if (
-      hashMissingNativeScriptTxGrammarCheckpointV1(checkpoint) === committedHash
+      hashMissingNativeScriptTxGrammarCheckpoint(checkpoint) === committedHash
     ) {
       return checkpoint;
     }
-    if (missingNativeScriptTxGrammarCheckpointIsCompleteV1(checkpoint)) break;
-    checkpoint = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    if (missingNativeScriptTxGrammarCheckpointIsComplete(checkpoint)) break;
+    checkpoint = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint,
       items,
       budget,
@@ -470,41 +470,40 @@ export const resolveMissingNativeScriptTxGrammarCheckpointV1 = ({
 };
 
 /** Restart-safe inverse of the fixed semantic batch schedule. */
-export const resolveMissingNativeScriptTxSemanticCheckpointV1 = ({
+export const resolveMissingNativeScriptTxSemanticCheckpoint = ({
   txId,
   items,
   committedHash,
-  budget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1,
+  budget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
 }: {
   readonly txId: string;
   readonly items: readonly Uint8Array[];
   readonly committedHash: string;
   readonly budget?: number;
-}): MissingNativeScriptTxSemanticCheckpointV1 => {
-  let grammar = initialMissingNativeScriptTxGrammarCheckpointV1({
+}): MissingNativeScriptTxSemanticCheckpoint => {
+  let grammar = initialMissingNativeScriptTxGrammarCheckpoint({
     txId,
     items,
   });
-  while (!missingNativeScriptTxGrammarCheckpointIsCompleteV1(grammar)) {
-    grammar = advanceMissingNativeScriptTxGrammarCheckpointV1({
+  while (!missingNativeScriptTxGrammarCheckpointIsComplete(grammar)) {
+    grammar = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: grammar,
       items,
       budget,
     });
   }
-  let checkpoint = initialMissingNativeScriptTxSemanticCheckpointV1({
+  let checkpoint = initialMissingNativeScriptTxSemanticCheckpoint({
     grammar,
     items,
   });
   for (let batches = 0; batches <= items.length + 1; batches += 1) {
     if (
-      hashMissingNativeScriptTxSemanticCheckpointV1(checkpoint) ===
-      committedHash
+      hashMissingNativeScriptTxSemanticCheckpoint(checkpoint) === committedHash
     ) {
       return checkpoint;
     }
-    if (missingNativeScriptTxSemanticCheckpointIsCompleteV1(checkpoint)) break;
-    checkpoint = advanceMissingNativeScriptTxSemanticCheckpointV1({
+    if (missingNativeScriptTxSemanticCheckpointIsComplete(checkpoint)) break;
+    checkpoint = advanceMissingNativeScriptTxSemanticCheckpoint({
       checkpoint,
       txId,
       items,

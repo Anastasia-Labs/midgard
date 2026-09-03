@@ -1,25 +1,25 @@
 import {
-  decodeMidgardAddressWitnessFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardAddressWitnessFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardVersionedScript,
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHashV1 } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  type ProductionHistoricalNativeScriptCorpusV1,
-  requireProductionHistoricalNativeScriptCorpusV1,
+  type HistoricalNativeScriptCorpus,
+  requireHistoricalNativeScriptCorpus,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
-import { reconstructExecutionNativeScriptPurposesV1 } from "./canonical-reconstruction-v1.js";
+import { reconstructExecutionNativeScriptPurposes } from "./canonical-reconstruction-v1.js";
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1 =
+export const EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID =
   "execution-native-script-invalid" as const;
 
-export type ExecutionNativeScriptInvalidReplayDetectionV1 =
-  CanonicalViolationDetectionV1 &
+export type ExecutionNativeScriptInvalidReplayDetection =
+  CanonicalViolationDetection &
     Readonly<{
       transactionId: string;
       executionIndex: number;
@@ -32,10 +32,10 @@ const priorOutputs = ({
   block,
   corpus,
 }: {
-  block: CanonicalBlockEvidenceV1;
-  corpus: ProductionHistoricalNativeScriptCorpusV1;
+  block: CanonicalBlockEvidence;
+  corpus: HistoricalNativeScriptCorpus;
 }): ReadonlyMap<string, Uint8Array> => {
-  const history = requireProductionHistoricalNativeScriptCorpusV1(corpus);
+  const history = requireHistoricalNativeScriptCorpus(corpus);
   if (
     history.currentEvidence !== block ||
     corpus.throughHeaderHash !== block.headerHash
@@ -69,8 +69,8 @@ const nativeResult = ({
   executionIndex: number;
   resolvedOutputs: ReadonlyMap<string, Uint8Array>;
 }): boolean | null => {
-  const transaction = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
-  const purpose = reconstructExecutionNativeScriptPurposesV1({
+  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
+  const purpose = reconstructExecutionNativeScriptPurposes({
     canonicalTransactionCbor: txCbor,
     resolvedOutputsByOutRef: resolvedOutputs,
   }).purposes[executionIndex];
@@ -80,10 +80,10 @@ const nativeResult = ({
   );
   if (script.language !== "NativeCardano") return null;
   const signers = new Set(
-    decodeMidgardAddressWitnessFieldPreimageV1(
+    decodeMidgardAddressWitnessFieldPreimage(
       transaction.witnessSet.addrTxWitsPreimageCbor,
     ).map(({ verificationKey }) =>
-      missingSignatureVkeyHashV1(Buffer.from(verificationKey).toString("hex")),
+      missingSignatureVkeyHash(Buffer.from(verificationKey).toString("hex")),
     ),
   );
   const start = transaction.body.validityIntervalStart;
@@ -101,22 +101,22 @@ const nativeResult = ({
  * contiguous predecessor ledger. Every execution coordinate is reconstructed
  * from canonical purposes; witness position is never treated as authority.
  */
-export const detectExecutionNativeScriptInvalidCanonicalViolationsV1 = ({
+export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
   block,
   corpus,
 }: {
-  block: CanonicalBlockEvidenceV1;
-  corpus: ProductionHistoricalNativeScriptCorpusV1;
-}): readonly ExecutionNativeScriptInvalidReplayDetectionV1[] => {
+  block: CanonicalBlockEvidence;
+  corpus: HistoricalNativeScriptCorpus;
+}): readonly ExecutionNativeScriptInvalidReplayDetection[] => {
   const resolvedOutputs = priorOutputs({ block, corpus });
-  const detections: ExecutionNativeScriptInvalidReplayDetectionV1[] = [];
+  const detections: ExecutionNativeScriptInvalidReplayDetection[] = [];
   block.transactions.forEach((transaction, position) => {
     const txCbor = Buffer.from(transaction.txCbor, "hex");
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
     if (decoded.validity !== "TxIsValid") return;
     let reconstruction;
     try {
-      reconstruction = reconstructExecutionNativeScriptPurposesV1({
+      reconstruction = reconstructExecutionNativeScriptPurposes({
         canonicalTransactionCbor: txCbor,
         resolvedOutputsByOutRef: resolvedOutputs,
       });
@@ -134,9 +134,9 @@ export const detectExecutionNativeScriptInvalidCanonicalViolationsV1 = ({
       }
       if (result !== false) return;
       detections.push({
-        detectionId: `${EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1}:accepted:${position.toString()}:${transaction.nodeTxId}:${executionIndex.toString()}`,
+        detectionId: `${EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${executionIndex.toString()}`,
         headerHash: block.headerHash,
-        violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1,
+        violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID,
         position: BigInt(position),
         diagnostic: `accepted transaction ${transaction.nodeTxId} has false native execution ${executionIndex.toString()}`,
         transactionId: transaction.nodeTxId,
@@ -171,9 +171,9 @@ export const detectExecutionNativeScriptInvalidCanonicalViolationsV1 = ({
       }
       if (result !== true) return;
       detections.push({
-        detectionId: `${EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
+        detectionId: `${EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
         headerHash: block.headerHash,
-        violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1,
+        violationId: EXECUTION_NATIVE_SCRIPT_INVALID_VIOLATION_ID,
         position: BigInt(forcedIndex),
         diagnostic: `forced transaction ${transaction.value.tx_id} was rejected for a native execution that evaluates true at ${executionIndex.toString()}`,
         transactionId: transaction.value.tx_id,

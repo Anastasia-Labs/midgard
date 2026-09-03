@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 
 /**
  * C52 "Proof-transaction count cap" (GOAL_SPEC.md §8.3, line 901):
@@ -17,7 +17,7 @@ import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profi
  *
  * The per-transaction reserve arithmetic is unchanged from the retired
  * framing. The target snapshot's per-transaction execution ceiling is
- * `MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits` /
+ * `MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits` /
  * `...CpuUnits` (16,500,000 memory / 10,000,000,000 CPU — the §3.1.10
  * merged Cardano-mainnet-vs-target-network capability floor; see
  * capability-parity-v1.ts's `maxTxExecutionMemoryUnits`, pinned to
@@ -33,7 +33,7 @@ import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profi
  * proof, the number of §3.3-reserved proof transactions it requires —
  * the ceiling of its measured execution cost over the per-transaction
  * usable budget, taken per axis, worst axis governing — must stay at or
- * below `PROOF_TRANSACTION_COUNT_CAP_V1`. This asserts no shipped proof is
+ * below `PROOF_TRANSACTION_COUNT_CAP`. This asserts no shipped proof is
  * pathologically large, while deliberately NOT imposing any minimum:
  * `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`
  * ("Accepted proof decomposition tradeoff") makes reducing the
@@ -42,18 +42,18 @@ import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profi
  */
 
 const targetSnapshotMemoryUnits = BigInt(
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits,
+  MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits,
 );
 const targetSnapshotCpuUnits = BigInt(
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits,
+  MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits,
 );
 
 // §3.3 execution fit: at or below the deployment's measured protocol limits
 // with at least a 20% reserve, i.e. at most 80% of the limit is usable by any
 // one proof transaction. Expressed as an exact integer ratio (4/5) so the
 // derivation below never depends on floating-point rounding.
-const EXECUTION_RESERVE_USABLE_NUMERATOR_V1 = 4n;
-const EXECUTION_RESERVE_USABLE_DENOMINATOR_V1 = 5n;
+const EXECUTION_RESERVE_USABLE_NUMERATOR = 4n;
+const EXECUTION_RESERVE_USABLE_DENOMINATOR = 5n;
 
 /** Integer ceiling division for non-negative bigints. */
 const ceilDiv = (numerator: bigint, denominator: bigint): bigint =>
@@ -62,19 +62,19 @@ const ceilDiv = (numerator: bigint, denominator: bigint): bigint =>
 /**
  * The target snapshot's per-transaction execution ceilings, restated as
  * bigints. Not an independently configurable constant: re-derives whenever
- * `MIDGARD_CONSENSUS_LIMITS_V1` changes, so the per-transaction usable
+ * `MIDGARD_CONSENSUS_LIMITS` changes, so the per-transaction usable
  * budget below moves automatically with any C70 snapshot change.
  */
-export const TARGET_SNAPSHOT_MEMORY_UNITS_V1 = targetSnapshotMemoryUnits;
-export const TARGET_SNAPSHOT_CPU_UNITS_V1 = targetSnapshotCpuUnits;
+export const TARGET_SNAPSHOT_MEMORY_UNITS = targetSnapshotMemoryUnits;
+export const TARGET_SNAPSHOT_CPU_UNITS = targetSnapshotCpuUnits;
 
 /** The most execution units one §3.3-reserved proof transaction may use. */
-export const PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS_V1 =
-  (targetSnapshotMemoryUnits * EXECUTION_RESERVE_USABLE_NUMERATOR_V1) /
-  EXECUTION_RESERVE_USABLE_DENOMINATOR_V1;
-export const PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1 =
-  (targetSnapshotCpuUnits * EXECUTION_RESERVE_USABLE_NUMERATOR_V1) /
-  EXECUTION_RESERVE_USABLE_DENOMINATOR_V1;
+export const PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS =
+  (targetSnapshotMemoryUnits * EXECUTION_RESERVE_USABLE_NUMERATOR) /
+  EXECUTION_RESERVE_USABLE_DENOMINATOR;
+export const PER_PROOF_TRANSACTION_USABLE_CPU_UNITS =
+  (targetSnapshotCpuUnits * EXECUTION_RESERVE_USABLE_NUMERATOR) /
+  EXECUTION_RESERVE_USABLE_DENOMINATOR;
 
 /**
  * The proof-transaction count sanity cap: no fault proof may require more
@@ -90,16 +90,16 @@ export const PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1 =
  * is a sanity ceiling well above any acceptable proof, not a capacity
  * target.
  */
-export const PROOF_TRANSACTION_COUNT_CAP_V1 = 5_000n;
+export const PROOF_TRANSACTION_COUNT_CAP = 5_000n;
 
 /** One fault proof's complete measured execution cost across all its work. */
-export type FaultProofExecutionCostV1 = Readonly<{
+export type FaultProofExecutionCost = Readonly<{
   memoryUnits: bigint;
   cpuUnits: bigint;
 }>;
 
 /** The result of checking one fault proof against the count cap. */
-export type ProofTransactionCountCapCheckV1 = Readonly<{
+export type ProofTransactionCountCapCheck = Readonly<{
   requiredByMemory: bigint;
   requiredByCpu: bigint;
   requiredProofTransactionCount: bigint;
@@ -116,18 +116,18 @@ export type ProofTransactionCountCapCheckV1 = Readonly<{
  * any per-proof fixed transaction overhead.
  */
 export const requiredProofTransactionCountV1 = (
-  cost: FaultProofExecutionCostV1,
+  cost: FaultProofExecutionCost,
 ): bigint => {
   if (cost.memoryUnits < 0n || cost.cpuUnits < 0n) {
     throw new Error("fault-proof execution cost must be non-negative");
   }
   const requiredByMemory = ceilDiv(
     cost.memoryUnits,
-    PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS_V1,
+    PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS,
   );
   const requiredByCpu = ceilDiv(
     cost.cpuUnits,
-    PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1,
+    PER_PROOF_TRANSACTION_USABLE_CPU_UNITS,
   );
   return requiredByMemory > requiredByCpu ? requiredByMemory : requiredByCpu;
 };
@@ -137,23 +137,23 @@ export const requiredProofTransactionCountV1 = (
  * proof-transaction count cap.
  *
  * `accepted` is true exactly when the required proof-transaction count is
- * at or below `PROOF_TRANSACTION_COUNT_CAP_V1`. A proof whose cost pushes
+ * at or below `PROOF_TRANSACTION_COUNT_CAP`. A proof whose cost pushes
  * the required count one transaction past the cap on either axis is
  * rejected — an adjacent-boundary rejection, not a special case.
  */
-export const checkProofTransactionCountCapV1 = (
-  cost: FaultProofExecutionCostV1,
-): ProofTransactionCountCapCheckV1 => {
+export const checkProofTransactionCountCap = (
+  cost: FaultProofExecutionCost,
+): ProofTransactionCountCapCheck => {
   if (cost.memoryUnits < 0n || cost.cpuUnits < 0n) {
     throw new Error("fault-proof execution cost must be non-negative");
   }
   const requiredByMemory = ceilDiv(
     cost.memoryUnits,
-    PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS_V1,
+    PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS,
   );
   const requiredByCpu = ceilDiv(
     cost.cpuUnits,
-    PER_PROOF_TRANSACTION_USABLE_CPU_UNITS_V1,
+    PER_PROOF_TRANSACTION_USABLE_CPU_UNITS,
   );
   const requiredProofTransactionCount =
     requiredByMemory > requiredByCpu ? requiredByMemory : requiredByCpu;
@@ -161,7 +161,7 @@ export const checkProofTransactionCountCapV1 = (
     requiredByMemory,
     requiredByCpu,
     requiredProofTransactionCount,
-    proofTransactionCountCap: PROOF_TRANSACTION_COUNT_CAP_V1,
-    accepted: requiredProofTransactionCount <= PROOF_TRANSACTION_COUNT_CAP_V1,
+    proofTransactionCountCap: PROOF_TRANSACTION_COUNT_CAP,
+    accepted: requiredProofTransactionCount <= PROOF_TRANSACTION_COUNT_CAP,
   };
 };

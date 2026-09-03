@@ -1,4 +1,4 @@
-import { MidgardNativeScriptDecodingDirectionsV1 } from "@al-ft/midgard-core";
+import { MidgardNativeScriptDecodingDirections } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -12,40 +12,40 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import {
-  nativeScriptDecodingScanArgsEvidenceV1,
-  nativeScriptDecodingWindowProofsV1,
+  nativeScriptDecodingScanArgsEvidence,
+  nativeScriptDecodingWindowProofs,
 } from "../native-script-decoding/evidence-v1.js";
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NativeScriptDecodingPlanRoutesV1,
+  buildNativeScriptDecodingScanPlan,
+  NativeScriptDecodingPlanRoutes,
 } from "../native-script-decoding/scan-plan-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type OutputReferenceScriptDecodingContractsV1,
+  type OutputReferenceScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  outputReferenceScriptCheckpointV1,
-  type OutputReferenceScriptDecodingEvidenceV1,
-  OutputReferenceScriptResultClassesV1,
+  outputReferenceScriptCheckpoint,
+  type OutputReferenceScriptDecodingEvidence,
+  OutputReferenceScriptResultClasses,
 } from "./output-reference-script-decoding-v1.js";
 import {
-  OutputReferenceStep05DatumV1Schema,
-  OutputReferenceStep05RedeemerV1Schema,
-  OutputReferenceStep06DatumV1Schema,
+  OutputReferenceStep05DatumSchema,
+  OutputReferenceStep05RedeemerSchema,
+  OutputReferenceStep06DatumSchema,
 } from "./schemas-v1.js";
 
 type ScanState = {
   bound: {
-    subject: OutputReferenceScriptDecodingEvidenceV1["subject"];
+    subject: OutputReferenceScriptDecodingEvidence["subject"];
     output_index: bigint;
     accused_class: bigint;
   };
@@ -57,7 +57,7 @@ type ScanState = {
   result_class: bigint;
 };
 
-export const submitOutputReferenceScriptDecodingStep05V1 = async ({
+export const submitOutputReferenceScriptDecodingStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -69,17 +69,17 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: OutputReferenceScriptDecodingContractsV1;
+  readonly contracts: OutputReferenceScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: OutputReferenceScriptDecodingEvidenceV1;
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -87,10 +87,10 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<ScanState>({
+  const state = requireLinearFaultStepState<ScanState>({
     threadUtxo,
     signer,
-    schema: OutputReferenceStep05DatumV1Schema as never,
+    schema: OutputReferenceStep05DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -99,7 +99,7 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
     state.total_length !==
       BigInt(Buffer.from(evidence.referenceScriptItemHex, "hex").length) ||
     state.checkpoint_hash !==
-      outputReferenceScriptCheckpointV1({
+      outputReferenceScriptCheckpoint({
         evidence,
         controlCbor: state.control_cbor,
         nextExpectedScriptHash: state.next_expected_script_hash,
@@ -112,20 +112,20 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
   let nextControl = state.control_cbor;
   let nextClass = state.result_class;
   let closes =
-    state.result_class !== BigInt(OutputReferenceScriptResultClassesV1.Pending);
+    state.result_class !== BigInt(OutputReferenceScriptResultClasses.Pending);
   if (!closes) {
     const item = Buffer.from(evidence.referenceScriptItemHex, "hex");
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: Number(evidence.subject.direction) as 0 | 1,
     });
-    if (plan.route !== NativeScriptDecodingPlanRoutesV1.Machine)
+    if (plan.route !== NativeScriptDecodingPlanRoutes.Machine)
       throw new Error(`${FAMILY}: pending state has non-machine plan`);
     const segment = plan.segments.find(
       ({ controlBefore }) => controlBefore.cborHex === state.control_cbor,
     );
     if (segment !== undefined) {
-      args = nativeScriptDecodingScanArgsEvidenceV1({
+      args = nativeScriptDecodingScanArgsEvidence({
         segment,
         fieldIndex: 2,
         itemIndex: evidence.outputIndex,
@@ -135,18 +135,18 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
       closes =
         isLast &&
         plan.direction ===
-          MidgardNativeScriptDecodingDirectionsV1.WrongfulRejection;
+          MidgardNativeScriptDecodingDirections.WrongfulRejection;
       nextControl = closes ? state.control_cbor : segment.controlAfter.cborHex;
       nextClass = closes
-        ? BigInt(OutputReferenceScriptResultClassesV1.NoFault)
-        : BigInt(OutputReferenceScriptResultClassesV1.Pending);
+        ? BigInt(OutputReferenceScriptResultClasses.NoFault)
+        : BigInt(OutputReferenceScriptResultClasses.Pending);
     } else if (
       plan.verdict.control?.cborHex === state.control_cbor &&
       plan.verdict.refusalClass !== null
     ) {
       args = {
         control_cbor: state.control_cbor,
-        ...nativeScriptDecodingWindowProofsV1({
+        ...nativeScriptDecodingWindowProofs({
           window: plan.verdict.window,
           fieldIndex: 2,
           itemIndex: evidence.outputIndex,
@@ -172,7 +172,7 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
     ...state,
     control_cbor: nextControl,
     next_expected_script_hash: nextHash,
-    checkpoint_hash: outputReferenceScriptCheckpointV1({
+    checkpoint_hash: outputReferenceScriptCheckpoint({
       evidence,
       controlCbor: nextControl,
       nextExpectedScriptHash: nextHash,
@@ -182,15 +182,15 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
     (closes
-      ? OutputReferenceStep06DatumV1Schema
-      : OutputReferenceStep05DatumV1Schema) as never,
+      ? OutputReferenceStep06DatumSchema
+      : OutputReferenceStep05DatumSchema) as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[4].spendingScriptHash,
     family: FAMILY,
@@ -211,11 +211,11 @@ export const submitOutputReferenceScriptDecodingStep05V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, ...args },
         ],
       } as never,
-      OutputReferenceStep05RedeemerV1Schema as never,
+      OutputReferenceStep05RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

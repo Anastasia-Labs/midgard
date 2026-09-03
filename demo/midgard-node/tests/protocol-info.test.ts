@@ -1,5 +1,5 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
 import { encodeProtocolInfo } from "../src/commands/protocol-info.js";
@@ -9,10 +9,10 @@ const nodeConfig = {
   MIN_FEE_A: 44n,
   MIN_FEE_B: 155381n,
   MAX_SUBMIT_TX_CBOR_BYTES:
-    MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
 } as const;
-const deploymentMarker = makeDeploymentMarkerV1("ab".repeat(32));
+const deploymentMarker = makeDeploymentMarker("ab".repeat(32));
 
 describe("encodeProtocolInfo", () => {
   it("fails closed while the compiled V1 release-evidence gate is incomplete", () => {
@@ -31,7 +31,7 @@ describe("encodeProtocolInfo", () => {
         nodeConfig,
         currentSlot: 123456,
         deploymentMarker,
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).toThrow(/not activated/u);
   });
@@ -78,7 +78,7 @@ describe("encodeProtocolInfo", () => {
         nodeConfig: {
           ...nodeConfig,
           MAX_SUBMIT_TX_CBOR_BYTES:
-            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1,
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes - 1,
         },
         currentSlot: 1,
         deploymentMarker,
@@ -92,7 +92,7 @@ describe("encodeProtocolInfo", () => {
         nodeConfig: {
           ...nodeConfig,
           MAX_SUBMIT_TX_CBOR_BYTES:
-            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes + 1,
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes + 1,
         },
         currentSlot: 1,
         deploymentMarker,

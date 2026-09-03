@@ -8,11 +8,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY_V1,
-  RESOLVED_OUTPUT_NON_CANONICAL_ID_V1,
+  RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY,
+  RESOLVED_OUTPUT_NON_CANONICAL_ID,
 } from "./resolved-output-non-canonical-v1.js";
 
-export const RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1 = [
+export const RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES = [
   "fraud_proofs/resolved_output_non_canonical/step_01.main.spend",
   "fraud_proofs/resolved_output_non_canonical/step_02.main.spend",
   "fraud_proofs/resolved_output_non_canonical/step_03.main.spend",
@@ -20,7 +20,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1 = [
   "fraud_proofs/resolved_output_non_canonical/step_05.main.spend",
 ] as const;
 
-export type ResolvedOutputNonCanonicalAppliedStepV1 = Readonly<{
+export type ResolvedOutputNonCanonicalAppliedStep = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -28,13 +28,13 @@ export type ResolvedOutputNonCanonicalAppliedStepV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type ResolvedOutputNonCanonicalContractsV1 = Readonly<{
+export type ResolvedOutputNonCanonicalContracts = Readonly<{
   steps: readonly [
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
   ];
   computationThread: {
     readonly policyId: string;
@@ -51,17 +51,17 @@ export type ResolvedOutputNonCanonicalContractsV1 = Readonly<{
   fieldPreimageCertificateMintingScript: Script;
 }>;
 
-export type ResolvedOutputNonCanonicalProductionManifestV1 = Readonly<{
+export type ResolvedOutputNonCanonicalManifest = Readonly<{
   schemaVersion: "resolved-output-non-canonical-production-manifest-v1";
-  category: typeof RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY_V1;
-  categoryId: typeof RESOLVED_OUTPUT_NON_CANONICAL_ID_V1;
+  category: typeof RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY;
+  categoryId: typeof RESOLVED_OUTPUT_NON_CANONICAL_ID;
   network: Network;
   steps: readonly [
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
-    ResolvedOutputNonCanonicalAppliedStepV1,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
+    ResolvedOutputNonCanonicalAppliedStep,
   ];
   firstStepHash: string;
   computationThreadPolicyId: string;
@@ -72,7 +72,7 @@ export type ResolvedOutputNonCanonicalProductionManifestV1 = Readonly<{
   stateQueuePolicyId: string;
 }>;
 
-export type ResolvedOutputNonCanonicalBlueprintV1 = Readonly<{
+export type ResolvedOutputNonCanonicalBlueprint = Readonly<{
   validators: readonly Readonly<{
     title: string;
     compiledCode: string;
@@ -81,7 +81,7 @@ export type ResolvedOutputNonCanonicalBlueprintV1 = Readonly<{
 }>;
 
 /** Applies the hash-linked chain from its terminal validator back to step 01. */
-export const applyResolvedOutputNonCanonicalScriptsV1 = ({
+export const applyResolvedOutputNonCanonicalScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -90,20 +90,20 @@ export const applyResolvedOutputNonCanonicalScriptsV1 = ({
   fieldPreimageCertificatePolicyId,
   hubOracleScriptHash,
 }: {
-  readonly blueprint: ResolvedOutputNonCanonicalBlueprintV1;
+  readonly blueprint: ResolvedOutputNonCanonicalBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): ResolvedOutputNonCanonicalProductionManifestV1["steps"] => {
+}): ResolvedOutputNonCanonicalManifest["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): ResolvedOutputNonCanonicalAppliedStepV1 => {
+  ): ResolvedOutputNonCanonicalAppliedStep => {
     const blueprintTitle =
-      RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1[index]!;
+      RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       (entry) => entry.title === blueprintTitle,
     );
@@ -158,20 +158,19 @@ const h = (value: string, bytes: number, label: string): void => {
     throw new Error(`resolvedOutputNonCanonical: invalid ${label}`);
 };
 
-export const loadResolvedOutputNonCanonicalProductionManifestV1 = (
-  manifest: ResolvedOutputNonCanonicalProductionManifestV1,
-): ResolvedOutputNonCanonicalProductionManifestV1 => {
+export const loadResolvedOutputNonCanonicalManifest = (
+  manifest: ResolvedOutputNonCanonicalManifest,
+): ResolvedOutputNonCanonicalManifest => {
   if (
     manifest.schemaVersion !==
       "resolved-output-non-canonical-production-manifest-v1" ||
-    manifest.category !== RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY_V1 ||
-    manifest.categoryId !== RESOLVED_OUTPUT_NON_CANONICAL_ID_V1
+    manifest.category !== RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY ||
+    manifest.categoryId !== RESOLVED_OUTPUT_NON_CANONICAL_ID
   )
     throw new Error("resolvedOutputNonCanonical: wrong manifest identity");
   manifest.steps.forEach((step, i) => {
     if (
-      step.blueprintTitle !==
-      RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1[i]
+      step.blueprintTitle !== RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES[i]
     )
       throw new Error(
         `resolvedOutputNonCanonical: step ${(i + 1).toString()} title mismatch`,

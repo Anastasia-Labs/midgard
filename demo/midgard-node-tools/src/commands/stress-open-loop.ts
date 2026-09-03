@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 
-import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import type {
   OpenLoopCorpusRow,
   OpenLoopCorpusShape,
@@ -287,7 +287,7 @@ export const runOpenLoopSubmitter = async ({
     const promise = (async () => {
       const submittedPerfMs = performanceNow();
       const submittedAtMs = Date.now();
-      const body = encodeMidgardProofSubmissionV1({
+      const body = encodeMidgardProofSubmission({
         transactionCbor: Buffer.from(row.canonicalCborHex, "hex"),
         programMaterial: [],
       });

@@ -18,7 +18,7 @@ import {
   decodeNodeUtxo,
   DepositsDB,
   Effect,
-  EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+  EMPTY_PROGRAM_MATERIAL_SIDECAR,
   EMULATOR_DEPLOYMENT_IDENTITY,
   expectHeaderRootsToMatchCandidate,
   fetchLatestCommittedBlock,
@@ -39,7 +39,7 @@ import {
   MempoolDB,
   MempoolLedgerDB,
   Metric,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_CONSENSUS_PROFILE,
   type NodeConfigDep,
   type NodeUtxo,
   Option,
@@ -243,7 +243,7 @@ describe.sequential("deposit flow emulator", () => {
       const queuedNormal = {
         txId: normalTransfer.txId,
         txCbor: normalTransfer.txCbor,
-        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
         arrivalSeq: 0n,
         createdAt: eventTime,
       } satisfies QueuedTx;
@@ -284,7 +284,7 @@ describe.sequential("deposit flow emulator", () => {
           yield* TxAdmissionsDB.tryInsert({
             txId: normalTransfer.txId,
             txCanonicalCbor: normalTransfer.txCbor,
-            programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+            programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
             submitSource: "native",
           });
           yield* sql.withTransaction(
@@ -297,10 +297,10 @@ describe.sequential("deposit flow emulator", () => {
       );
 
       const forcedEncoding = await Effect.runPromise(
-        ForcedTransactionsDB.encodeForcedInclusionValueV1({
+        ForcedTransactionsDB.encodeForcedInclusionValue({
           nativeTxCbor: forcedTransfer.txCbor,
           verdict: "ForcedTxValid",
-          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         }),
       );
       const forcedEventId = Buffer.from(
@@ -313,7 +313,7 @@ describe.sequential("deposit flow emulator", () => {
         ),
         "hex",
       );
-      const forcedSidecar = EMPTY_PROGRAM_MATERIAL_SIDECAR_V1;
+      const forcedSidecar = EMPTY_PROGRAM_MATERIAL_SIDECAR;
       await runNodeDatabaseEffect(
         ForcedTransactionsDB.insertEntries([
           {
@@ -331,7 +331,7 @@ describe.sequential("deposit flow emulator", () => {
               forcedEncoding.value,
             [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsValid",
             [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
-              MIDGARD_CONSENSUS_PROFILE_V1.profileId,
+              MIDGARD_CONSENSUS_PROFILE.profileId,
             [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]:
               forcedTransfer.txCbor,
             [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
@@ -443,14 +443,14 @@ describe.sequential("deposit flow emulator", () => {
       ).toBe(1n);
       expect(active.value.forcedTransactionMembers).toHaveLength(1);
       const forcedJournalMember =
-        ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
+        ForcedTransactionsDB.decodeForcedTransactionJournalMember(
           active.value.forcedTransactionMembers[0]![
             PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR
           ],
         );
       const forcedSource = Data.from(
         forcedJournalMember.sourceValueCbor.toString("hex"),
-        SDK.ForcedInclusionTxV1,
+        SDK.ForcedInclusionTx,
       );
       expect(forcedSource.verdict).toBe("ForcedTxValid");
 
@@ -547,7 +547,7 @@ describe.sequential("deposit flow emulator", () => {
       const queued: QueuedTx[] = built.map((tx, index) => ({
         txId: tx.txId,
         txCbor: tx.txCbor,
-        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR,
         arrivalSeq: BigInt(index),
         createdAt: new Date(Date.now() - 10_000 + index),
       }));
@@ -605,8 +605,7 @@ describe.sequential("deposit flow emulator", () => {
               txId: tx.txId,
               txCanonicalCbor: tx.txCbor,
               programMaterialSidecarCbor:
-                tx.programMaterialSidecarCbor ??
-                EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+                tx.programMaterialSidecarCbor ?? EMPTY_PROGRAM_MATERIAL_SIDECAR,
               submitSource: "native",
             }),
           { concurrency: 1 },
@@ -828,8 +827,8 @@ describe.sequential("deposit flow emulator", () => {
         activeJournal.value[
           PendingBlockFinalizationsDB.Columns.HEADER_CBOR
         ].toString("hex"),
-        SDK.HeaderV1 as never,
-      ) as SDK.HeaderV1;
+        SDK.Header as never,
+      ) as SDK.Header;
       expectHeaderRootsToMatchCandidate(
         durableSubmittedHeader,
         speculative.candidate,
@@ -847,7 +846,7 @@ describe.sequential("deposit flow emulator", () => {
         fixture.contracts,
       );
       const latestHeader = await Effect.runPromise(
-        SDK.getHeaderV1FromStateQueueDatum(latestBlock.datum),
+        SDK.getHeaderFromStateQueueDatum(latestBlock.datum),
       );
       expectHeaderRootsToMatchCandidate(latestHeader, speculative.candidate);
 

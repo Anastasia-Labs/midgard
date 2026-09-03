@@ -35,21 +35,21 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
-  type CanonicalDecodabilityContractsV1,
+  type CanonicalDecodabilityContracts,
 } from "./contracts-v1.js";
 import {
-  type CanonicalDecodabilityCatalogueCategoryV1,
+  type CanonicalDecodabilityCatalogueCategory,
   canonicalDecodabilitySubmitError,
 } from "./submit-common-v1.js";
 
@@ -89,8 +89,8 @@ export const submitCanonicalDecodabilityInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: CanonicalDecodabilityContractsV1;
-  readonly category: CanonicalDecodabilityCatalogueCategoryV1;
+  readonly contracts: CanonicalDecodabilityContracts;
+  readonly category: CanonicalDecodabilityCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -100,9 +100,9 @@ export const submitCanonicalDecodabilityInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Runs after local evaluation/signing and before provider submission. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -157,12 +157,12 @@ export const submitCanonicalDecodabilityInit = async ({
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${CANONICAL_DECODABILITY_CATEGORY_LABEL} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${CANONICAL_DECODABILITY_CATEGORY_LABEL} init PHAS membership`,
@@ -278,15 +278,15 @@ export const submitCanonicalDecodabilityInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "canonical-decodability-init-computation-thread-mint",
         utxo: witnessReferenceScripts?.computationThreadMint,
         expectedScript: contracts.computationThread.mintingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "canonical-decodability-init-phas-membership",
         utxo: witnessReferenceScripts?.phasMembershipWithdraw,
         expectedScript: phasMembershipScript,

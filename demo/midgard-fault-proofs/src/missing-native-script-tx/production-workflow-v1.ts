@@ -1,8 +1,8 @@
 import {
-  encodeMidgardTxInputCanonicalV1,
+  encodeMidgardTxInputCanonical,
   FraudProofComputationThreadStepDatum,
-  MIDGARD_FIELD_INDEX_V1,
-  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1,
+  MIDGARD_FIELD_INDEX,
+  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT,
   MissingNativeScriptTxStep02Datum,
   MissingNativeScriptTxStep03Datum,
   MissingNativeScriptTxStep04Datum,
@@ -13,80 +13,80 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1,
-  requireCompleteCanonicalReplayDecisionV1,
+  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
+  requireCompleteCanonicalReplayDecision,
 } from "../workflow/complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
-import type { FraudProofWorkflowJournalStoreV1 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofWorkflowJournalStore } from "../workflow/journal-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflow,
 } from "../workflow/orchestrator-v1.js";
 import {
-  createProductionCursorFamilyWorkflowAdapterV1,
-  PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionCursorFamilyTransactionPortV1,
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/production-cursor-family-adapter-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  productionCursorFamilyActionInputV1,
-  productionCursorStringFieldV1,
+  captureCursorRemoval,
+  cursorFamilyActionInput,
+  cursorStringField,
 } from "../workflow/production-cursor-family-runtime-v1.js";
-import { MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1 } from "../workflow/production-cursor-family-spec-v1.js";
+import { MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC } from "../workflow/production-cursor-family-spec-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriageRequirementV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriageRequirement,
+  withFieldCarriagePrerequisite,
 } from "../workflow/production-field-carriage-prerequisite-v1.js";
 import {
-  type ProductionHistoricalNativeScriptCheckpointStoreV1,
-  type ProductionHistoricalNativeScriptCorpusV1,
-  type ProductionHistoricalNativeScriptHistorySourceV1,
-  productionHistoricalNativeScriptPreimageFromCorpusV1,
-  requireProductionHistoricalNativeScriptCorpusPreimageV1,
-  requireProductionHistoricalNativeScriptHistoryAuthorityV1,
-  resolveProductionHistoricalNativeScriptCorpusV1,
+  type HistoricalNativeScriptCheckpointStore,
+  type HistoricalNativeScriptCorpus,
+  type HistoricalNativeScriptHistorySource,
+  historicalNativeScriptPreimageFromCorpus,
+  requireHistoricalNativeScriptCorpusPreimage,
+  requireHistoricalNativeScriptHistoryAuthority,
+  resolveHistoricalNativeScriptCorpus,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
-import type { FraudProofRawL1PointV1 } from "../workflow/raw-l1-snapshot-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "../workflow/release-finality-policy-v1.js";
-import { captureLocallyEvaluatedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
+import type { FraudProofRawL1Point } from "../workflow/raw-l1-snapshot-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy-v1.js";
+import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
 import {
-  type HistoricalNativeScriptSourceRosterV1,
-  requireProductionHistoricalNativeScriptSourceRosterV1,
-  resolveHistoricalNativeScriptEvidenceV1,
+  type HistoricalNativeScriptSourceRoster,
+  requireHistoricalNativeScriptSourceRoster,
+  resolveHistoricalNativeScriptEvidence,
 } from "./historical-script-v1.js";
 import {
-  admitProductionMissingNativeScriptTxArtifactV1,
-  type AdmittedProductionMissingNativeScriptTxArtifactV1,
-  prepareProductionMissingNativeScriptTxArtifactV1,
+  admitMissingNativeScriptTxArtifact,
+  type AdmittedMissingNativeScriptTxArtifact,
+  prepareMissingNativeScriptTxArtifact,
 } from "./production-artifact-v1.js";
 import { submitMissingNativeScriptTxStep01 } from "./submit-missing-native-script-tx-step-01.js";
 import { submitMissingNativeScriptTxStep02 } from "./submit-missing-native-script-tx-step-02.js";
@@ -94,44 +94,42 @@ import { submitMissingNativeScriptTxStep03 } from "./submit-missing-native-scrip
 import { submitMissingNativeScriptTxStep04 } from "./submit-missing-native-script-tx-step-04.js";
 import { submitMissingNativeScriptTxStep05 } from "./submit-missing-native-script-tx-step-05.js";
 import { submitMissingNativeScriptTxStep06 } from "./submit-missing-native-script-tx-step-06.js";
-import { submitMissingNativeScriptTxStep06StartGrammarV1 } from "./submit-missing-native-script-tx-step-06-staged.js";
-import { submitMissingNativeScriptTxStep07V1 } from "./submit-missing-native-script-tx-step-07.js";
-import { submitMissingNativeScriptTxStep08V1 } from "./submit-missing-native-script-tx-step-08.js";
+import { submitMissingNativeScriptTxStep06StartGrammar } from "./submit-missing-native-script-tx-step-06-staged.js";
+import { submitMissingNativeScriptTxStep07 } from "./submit-missing-native-script-tx-step-07.js";
+import { submitMissingNativeScriptTxStep08 } from "./submit-missing-native-script-tx-step-08.js";
 
-export type MissingNativeScriptTxWorkflowReferenceScriptsV1 = Readonly<{
+export type MissingNativeScriptTxWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-type BoundConfigV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"missingNativeScriptTx">;
+type BoundConfig = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"missingNativeScriptTx">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: MissingNativeScriptTxContractsV1;
-  references: MissingNativeScriptTxWorkflowReferenceScriptsV1;
-  historicalCorpus: () => ProductionHistoricalNativeScriptCorpusV1;
-  historicalSourceRoster: HistoricalNativeScriptSourceRosterV1;
-  historicalThroughPoint: () => FraudProofRawL1PointV1;
+  contracts: MissingNativeScriptTxContracts;
+  references: MissingNativeScriptTxWorkflowReferenceScripts;
+  historicalCorpus: () => HistoricalNativeScriptCorpus;
+  historicalSourceRoster: HistoricalNativeScriptSourceRoster;
+  historicalThroughPoint: () => FraudProofRawL1Point;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-const direct = (
-  admitted: AdmittedProductionMissingNativeScriptTxArtifactV1,
-): boolean =>
+const direct = (admitted: AdmittedMissingNativeScriptTxArtifact): boolean =>
   admitted.evidence.badTxScriptWitnessItemCbors.length <=
-  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1;
+  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT;
 
 const spendFieldPlan = (
-  admitted: AdmittedProductionMissingNativeScriptTxArtifactV1,
+  admitted: AdmittedMissingNativeScriptTxArtifact,
   owner: string,
 ) =>
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: admitted.evidence.badTxInclusion.nativeTxId,
     nativeTxCompactCbor: admitted.evidence.badTxInclusion.nativeTxCompactCbor,
     itemCbors: admitted.evidence.badTxSpendInputs.map(
-      encodeMidgardTxInputCanonicalV1,
+      encodeMidgardTxInputCanonical,
     ),
     owner,
     publish: true,
@@ -139,11 +137,11 @@ const spendFieldPlan = (
   });
 
 const outputFieldPlan = (
-  admitted: AdmittedProductionMissingNativeScriptTxArtifactV1,
+  admitted: AdmittedMissingNativeScriptTxArtifact,
   owner: string,
 ) =>
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: admitted.evidence.producingTxInclusion.nativeTxId,
     nativeTxCompactCbor:
       admitted.evidence.producingTxInclusion.nativeTxCompactCbor,
@@ -154,11 +152,11 @@ const outputFieldPlan = (
   });
 
 const scriptFieldPlan = (
-  admitted: AdmittedProductionMissingNativeScriptTxArtifactV1,
+  admitted: AdmittedMissingNativeScriptTxArtifact,
   owner: string,
 ) =>
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: admitted.evidence.badTxInclusion.nativeTxId,
     nativeTxCompactCbor: admitted.evidence.badTxInclusion.nativeTxCompactCbor,
     itemCbors: admitted.evidence.badTxScriptWitnessItemCbors,
@@ -174,10 +172,10 @@ const resolveField = async ({
   config,
   planned,
 }: {
-  readonly config: BoundConfigV1;
+  readonly config: BoundConfig;
   readonly planned: ReturnType<typeof spendFieldPlan>;
 }) => {
-  const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -185,7 +183,7 @@ const resolveField = async ({
   if (publications === undefined) {
     throw new Error("missing-native-script-tx field publications disappeared");
   }
-  const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: config.lucid,
     network: config.binding.network,
     planned,
@@ -209,16 +207,16 @@ const expectedScriptHashFromDetection = (detectionId: string): string => {
 };
 
 const transactionPort = (
-  config: BoundConfigV1,
-): ProductionCursorFamilyTransactionPortV1<"missingNativeScriptTx"> => ({
-  portVersion: PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): CursorFamilyTransactionPort<"missingNativeScriptTx"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "missingNativeScriptTx",
   prepare: async ({ evidence, classification }) => {
     const corpus = config.historicalCorpus();
     const expectedScriptHash = expectedScriptHashFromDetection(
       classification.selected.detectionId,
     );
-    const preimage = productionHistoricalNativeScriptPreimageFromCorpusV1({
+    const preimage = historicalNativeScriptPreimageFromCorpus({
       corpus,
       scriptHash: expectedScriptHash,
     });
@@ -228,7 +226,7 @@ const transactionPort = (
       );
     }
     const admittedPreimage =
-      requireProductionHistoricalNativeScriptCorpusPreimageV1(preimage);
+      requireHistoricalNativeScriptCorpusPreimage(preimage);
     if (
       admittedPreimage.providerRosterDigest !==
       config.historicalSourceRoster.applicationOverlayDigest
@@ -237,7 +235,7 @@ const transactionPort = (
         "missing-native-script-tx L1 and retained-history authorities came from different application overlays",
       );
     }
-    const corroboration = await resolveHistoricalNativeScriptEvidenceV1({
+    const corroboration = await resolveHistoricalNativeScriptEvidence({
       roster: config.historicalSourceRoster,
       expectedScriptHash,
       throughPoint: config.historicalThroughPoint(),
@@ -247,7 +245,7 @@ const transactionPort = (
         "hex",
       ),
     });
-    return await prepareProductionMissingNativeScriptTxArtifactV1({
+    return await prepareMissingNativeScriptTxArtifact({
       evidence,
       classification,
       historicalNativeScriptCorpus: corpus,
@@ -255,7 +253,7 @@ const transactionPort = (
     });
   },
   capture: async ({ action, artifact }) => {
-    const admitted = await admitProductionMissingNativeScriptTxArtifactV1({
+    const admitted = await admitMissingNativeScriptTxArtifact({
       value: artifact,
       historicalNativeScriptCorpus: config.historicalCorpus(),
       historicalSourceRoster: config.historicalSourceRoster,
@@ -267,17 +265,16 @@ const transactionPort = (
         "missing-native-script-tx artifact changed the bound header",
       );
     }
-    const input = productionCursorFamilyActionInputV1({
+    const input = cursorFamilyActionInput({
       category: "missingNativeScriptTx",
       action,
     });
     const categoryId = config.binding.resolvedContracts.category.categoryId;
-    const threadOutRef = () =>
-      productionCursorStringFieldV1(input, "threadOutRef");
+    const threadOutRef = () => cursorStringField(input, "threadOutRef");
     const evidence = admitted.evidence;
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInit({
               lucid: config.lucid,
@@ -286,7 +283,7 @@ const transactionPort = (
               network: config.binding.network,
               signer: config.signer,
               fraudCategory: "missingNativeScriptTx",
-              fraudulentBlockOutRef: productionCursorStringFieldV1(
+              fraudulentBlockOutRef: cursorStringField(
                 input,
                 "stateQueueBlockOutRef",
               ),
@@ -301,7 +298,7 @@ const transactionPort = (
     }
     if (input.stage === "step_01") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMissingNativeScriptTxStep01({
               lucid: config.lucid,
@@ -311,7 +308,7 @@ const transactionPort = (
               categoryId,
               signer: config.signer,
               threadOutRef: threadOutRef(),
-              stateQueueBlockOutRef: productionCursorStringFieldV1(
+              stateQueueBlockOutRef: cursorStringField(
                 input,
                 "stateQueueBlockOutRef",
               ),
@@ -331,7 +328,7 @@ const transactionPort = (
         planned: spendFieldPlan(admitted, config.signer.paymentKeyHash),
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMissingNativeScriptTxStep02({
               lucid: config.lucid,
@@ -356,7 +353,7 @@ const transactionPort = (
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMissingNativeScriptTxStep03({
               lucid: config.lucid,
@@ -366,7 +363,7 @@ const transactionPort = (
               categoryId,
               signer: config.signer,
               threadOutRef: threadOutRef(),
-              stateQueueBlockOutRef: productionCursorStringFieldV1(
+              stateQueueBlockOutRef: cursorStringField(
                 input,
                 "stateQueueBlockOutRef",
               ),
@@ -386,7 +383,7 @@ const transactionPort = (
         planned: outputFieldPlan(admitted, config.signer.paymentKeyHash),
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMissingNativeScriptTxStep04({
               lucid: config.lucid,
@@ -411,7 +408,7 @@ const transactionPort = (
     }
     if (input.stage === "step_05") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitMissingNativeScriptTxStep05({
               lucid: config.lucid,
@@ -450,7 +447,7 @@ const transactionPort = (
         awaitConfirmation: false,
       } as const;
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             if (direct(admitted)) {
               await submitMissingNativeScriptTxStep06({
@@ -459,7 +456,7 @@ const transactionPort = (
                 preSubmitBoundary,
               });
             } else {
-              await submitMissingNativeScriptTxStep06StartGrammarV1({
+              await submitMissingNativeScriptTxStep06StartGrammar({
                 ...shared,
                 preSubmitBoundary,
               });
@@ -493,15 +490,15 @@ const transactionPort = (
         awaitConfirmation: false,
       } as const;
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             if (input.stage === "step_07") {
-              await submitMissingNativeScriptTxStep07V1({
+              await submitMissingNativeScriptTxStep07({
                 ...shared,
                 preSubmitBoundary,
               });
             } else {
-              await submitMissingNativeScriptTxStep08V1({
+              await submitMissingNativeScriptTxStep08({
                 ...shared,
                 witnessReferenceScripts: config.references.witnesses,
                 preSubmitBoundary,
@@ -512,7 +509,7 @@ const transactionPort = (
       });
     }
     if (input.stage === "remove") {
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: "missingNativeScriptTx",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
@@ -534,42 +531,42 @@ const transactionPort = (
   },
 });
 
-export type ManifestBoundMissingNativeScriptTxWorkflowConfigV1 = Readonly<{
+export type ManifestBoundMissingNativeScriptTxWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: MissingNativeScriptTxWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
-  historicalNativeScriptCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  historicalNativeScriptHistorySource: ProductionHistoricalNativeScriptHistorySourceV1;
-  historicalNativeScriptL1Roster: HistoricalNativeScriptSourceRosterV1;
+  referenceScripts: MissingNativeScriptTxWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
+  historicalNativeScriptL1Roster: HistoricalNativeScriptSourceRoster;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundMissingNativeScriptTxWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"missingNativeScriptTx">;
-  l1: FraudProofFamilyL1ObservationPortV1<"missingNativeScriptTx">;
-  transactions: ProductionCursorFamilyTransactionPortV1<"missingNativeScriptTx">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
-  historicalNativeScriptCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  historicalNativeScriptHistorySource: ProductionHistoricalNativeScriptHistorySourceV1;
+export type ManifestBoundMissingNativeScriptTxWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"missingNativeScriptTx">;
+  l1: FraudProofFamilyL1ObservationPort<"missingNativeScriptTx">;
+  transactions: CursorFamilyTransactionPort<"missingNativeScriptTx">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalNativeScriptHistorySource: HistoricalNativeScriptHistorySource;
 }>;
 
-type HistoricalCorpusCellV1 = {
-  value?: ProductionHistoricalNativeScriptCorpusV1;
-  throughPoint?: FraudProofRawL1PointV1;
+type HistoricalCorpusCell = {
+  value?: HistoricalNativeScriptCorpus;
+  throughPoint?: FraudProofRawL1Point;
 };
-const historicalCorpusCells = new WeakMap<object, HistoricalCorpusCellV1>();
+const historicalCorpusCells = new WeakMap<object, HistoricalCorpusCell>();
 
-export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
-  config: ManifestBoundMissingNativeScriptTxWorkflowConfigV1,
-): Promise<ManifestBoundMissingNativeScriptTxWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundMissingNativeScriptTxWorkflow = async (
+  config: ManifestBoundMissingNativeScriptTxWorkflowConfig,
+): Promise<ManifestBoundMissingNativeScriptTxWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -587,12 +584,12 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
       MissingNativeScriptTxStep08Datum,
     ],
   });
-  requireProductionHistoricalNativeScriptHistoryAuthorityV1({
+  requireHistoricalNativeScriptHistoryAuthority({
     deploymentFingerprint: binding.deploymentFingerprint,
     checkpointStore: config.historicalNativeScriptCheckpointStore,
     historySource: config.historicalNativeScriptHistorySource,
   });
-  requireProductionHistoricalNativeScriptSourceRosterV1(
+  requireHistoricalNativeScriptSourceRoster(
     config.historicalNativeScriptL1Roster,
     binding.releaseFinality,
   );
@@ -604,7 +601,7 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
       "missing-native-script-tx history sources do not share one application overlay",
     );
   }
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -633,22 +630,22 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
     "fraudProofMissingNativeScriptTxStep08",
   ] as const;
   const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.steps[index]!,
     }),
-  ) as unknown as MissingNativeScriptTxWorkflowReferenceScriptsV1["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScriptsV1>(
+  ) as unknown as MissingNativeScriptTxWorkflowReferenceScripts["steps"];
+  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
     name: Name,
     contractName: string,
   ) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.witnesses[name],
     });
-  const references: MissingNativeScriptTxWorkflowReferenceScriptsV1 =
+  const references: MissingNativeScriptTxWorkflowReferenceScripts =
     Object.freeze({
       steps: Object.freeze(steps),
       witnesses: Object.freeze({
@@ -667,13 +664,13 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
         ),
         pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
       }),
-      fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxoV1({
+      fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fieldPreimageCertificateMint",
         utxo: config.referenceScripts.fieldPreimageCertificateMint,
       }),
     });
-  const contracts: MissingNativeScriptTxContractsV1 = Object.freeze({
+  const contracts: MissingNativeScriptTxContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -687,7 +684,7 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -701,8 +698,8 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
       "missing-native-script-tx raw L1 boundary authority is unavailable",
     );
   }
-  const corpusCell: HistoricalCorpusCellV1 = {};
-  const bound: BoundConfigV1 = {
+  const corpusCell: HistoricalCorpusCell = {};
+  const bound: BoundConfig = {
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -731,24 +728,24 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
       config.stateQueueMutationLeaseCoordinator,
   };
   const transactions = transactionPort(bound);
-  let adapter = createProductionCursorFamilyWorkflowAdapterV1({
-    spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+  let adapter = createCursorFamilyWorkflowAdapter({
+    spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
     l1,
     transactions,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  adapter = withProductionFieldCarriagePrerequisiteV1({
+  adapter = withFieldCarriagePrerequisite({
     category: "missingNativeScriptTx",
     base: adapter,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePortV1({
+    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
       category: "missingNativeScriptTx",
       lucid: config.lucid,
       network: binding.network,
       signer: config.signer,
       publications: l1.publications,
       requirementForAction: async ({ action, artifact }) => {
-        const admitted = await admitProductionMissingNativeScriptTxArtifactV1({
+        const admitted = await admitMissingNativeScriptTxArtifact({
           value: artifact,
           historicalNativeScriptCorpus: bound.historicalCorpus(),
           historicalSourceRoster: bound.historicalSourceRoster,
@@ -776,7 +773,7 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
             mintingScript: certificate.mintingScript,
             referenceScriptUtxo: references.fieldPreimageCertificateMint,
           },
-        } satisfies ProductionFieldCarriageRequirementV1;
+        } satisfies FieldCarriageRequirement;
       },
       transactionConfirmed: async ({ headerHash, txHash }) =>
         await l1.transactionConfirmed({ headerHash, txHash }),
@@ -787,10 +784,9 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
     historicalNativeScriptCheckpointStore:
       config.historicalNativeScriptCheckpointStore,
     historicalNativeScriptHistorySource:
@@ -800,15 +796,15 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
   return workflow;
 };
 
-export const runOrResumeManifestBoundMissingNativeScriptTxWorkflowV1 = async ({
+export const runOrResumeManifestBoundMissingNativeScriptTxWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundMissingNativeScriptTxWorkflowV1;
+  readonly workflow: ManifestBoundMissingNativeScriptTxWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -820,13 +816,13 @@ export const runOrResumeManifestBoundMissingNativeScriptTxWorkflowV1 = async ({
       "missing-native-script-tx raw L1 boundary authority disappeared",
     );
   }
-  const evidence = await fetchCanonicalBlockEvidenceV1({
+  const evidence = await fetchCanonicalBlockEvidence({
     observation,
     sources,
     minimumConfirmationDepth:
       workflow.binding.releaseFinality.policy.confirmationDepth,
   });
-  const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+  const corpus = await resolveHistoricalNativeScriptCorpus({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     checkpointStore: workflow.historicalNativeScriptCheckpointStore,
     historySource: workflow.historicalNativeScriptHistorySource,
@@ -861,19 +857,17 @@ export const runOrResumeManifestBoundMissingNativeScriptTxWorkflowV1 = async ({
   }
   cell.value = corpus;
   const decision =
-    await MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1.replay(
-      evidence,
-    );
-  const detections = requireCompleteCanonicalReplayDecisionV1({
+    await MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+  const detections = requireCompleteCanonicalReplayDecision({
     evidence,
-    replayer: MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1,
+    replayer: MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
     decision,
   });
-  return await runFraudProofWorkflowV1({
+  return await runFraudProofWorkflow({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     evidence,
     detections,
-    registry: createFraudProofWorkflowRegistryV1({
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["missingNativeScriptTx"],
     }),

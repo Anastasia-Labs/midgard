@@ -8,41 +8,41 @@ import { promisify } from "node:util";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  materializeMidgardNativeTxFromCanonicalV1,
-  type MidgardNativeTxCanonicalV1,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  materializeMidgardNativeTxFromCanonical,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec/native";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec/native-constants";
-import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import { deriveMidgardV1TxFieldPreimages } from "@al-ft/midgard-core/consensus-validation-v1";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { deriveMidgardTxFieldPreimages } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
   type AddressData,
   DepositDatum,
-  ForcedInclusionTxV1,
+  ForcedInclusionTx,
   HubOracleDatum,
   MerkleRoot,
-  type OperatorVerdictV1,
+  type OperatorVerdict,
   outputReferenceToPlutusDataCbor,
   PayoutDatum,
   PayoutMintRedeemer,
   Proof,
-  type RejectionReasonV1,
+  type RejectionReason,
   resolveEventInclusionTime,
   RootDomain,
   SettlementDatum,
-  TxOrderDatumV1,
-  TxOrderMintRedeemerV1,
-  TxOrderSpendRedeemerV1,
+  TxOrderDatum,
+  TxOrderMintRedeemer,
+  TxOrderSpendRedeemer,
   UserEventMintRedeemer,
   UserEventWitnessPublishRedeemer,
   userEventWitnessScriptHash,
@@ -54,45 +54,45 @@ import { expect } from "vitest";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import {
-  deriveWatcherUserEventObservationV1 as deriveWatcherUserEventObservationV1Raw,
-  evaluateWatcherUserEventIndexerV1 as evaluateWatcherUserEventIndexerV1Raw,
-  makeWatcherUserEventIndexerPolicyV1,
-  parseWatcherUserEventIndexerResultV1 as parseWatcherUserEventIndexerResultV1Raw,
-  WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-  type WatcherIndexedUserEventV1,
-  type WatcherTerminalUserEventV1,
-  type WatcherUserEventIndexerPolicyV1,
-  type WatcherUserEventIndexerStateV1,
-  type WatcherUserEventKindV1,
-  type WatcherUserEventPublicContextV1,
+  deriveWatcherUserEventObservation as deriveWatcherUserEventObservationRaw,
+  evaluateWatcherUserEventIndexer as evaluateWatcherUserEventIndexerRaw,
+  makeWatcherUserEventIndexerPolicy,
+  parseWatcherUserEventIndexerResult as parseWatcherUserEventIndexerResultRaw,
+  WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
+  type WatcherIndexedUserEvent,
+  type WatcherTerminalUserEvent,
+  type WatcherUserEventIndexerPolicy,
+  type WatcherUserEventIndexerState,
+  type WatcherUserEventKind,
+  type WatcherUserEventPublicContext,
 } from "../../src/indexers/user-event-indexer.js";
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block as normalizeWatcherL1BlockRaw,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1Provider,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw } from "../../src/l1/multi-provider-consistency.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherProtocolUtxoV1,
+  type WatcherProtocolUtxo,
 } from "../../src/storage/durable-store.js";
 import { asWireValue, h28, h32 } from "./deployment-authority-fixture.js";
-import { makeWatcherAuthorityDeploymentFixtureV1 } from "./watcher-opaque-authority-harness.js";
+import { makeWatcherAuthorityDeploymentFixture } from "./watcher-opaque-authority-harness.js";
 
 const encodeData = Data.to as unknown as (
   value: unknown,
@@ -113,14 +113,14 @@ const encodeData = Data.to as unknown as (
  * walk consumes one entry per *non-empty* slot and there are none.
  */
 const encodeUserEventMintRedeemerFor = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
   event: unknown,
   materialCarriage: readonly unknown[] = [],
 ): string =>
   kind === "forced_order"
     ? encodeData(
         { event, material_carriage: materialCarriage },
-        TxOrderMintRedeemerV1,
+        TxOrderMintRedeemer,
       )
     : encodeData(event, UserEventMintRedeemer);
 
@@ -130,7 +130,7 @@ type MutableRecord = Record<string, unknown>;
 const transportEndpointByProviderId = new Map<string, string>();
 const RELEASE_DIGEST = h32("22");
 
-const deploymentAuthorityFixture = makeWatcherAuthorityDeploymentFixtureV1();
+const deploymentAuthorityFixture = makeWatcherAuthorityDeploymentFixture();
 const applied = deploymentAuthorityFixture.policy.appliedScriptHashes;
 
 const eventFields = {
@@ -245,7 +245,7 @@ const settlementOutput = CML.TransactionOutput.new(
   ),
 );
 const BOOTSTRAP_CHAIN_POINT_ID = h32("a1");
-const bootstrapStore = makeWatcherDurableStoreV1({
+const bootstrapStore = makeWatcherDurableStore({
   deploymentMarker: deploymentAuthorityFixture.marker,
   revision: "0",
   records: {
@@ -265,13 +265,13 @@ const bootstrapStore = makeWatcherDurableStoreV1({
         outRef: HUB_OUT_REF,
         role: "hub_oracle",
         chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
-        output: makeWatcherDurablePayloadV1(hubOutput.to_cbor_hex()),
+        output: makeWatcherDurablePayload(hubOutput.to_cbor_hex()),
       },
       {
         outRef: SETTLEMENT_OUT_REF,
         role: "settlement",
         chainPointId: BOOTSTRAP_CHAIN_POINT_ID,
-        output: makeWatcherDurablePayloadV1(settlementOutput.to_cbor_hex()),
+        output: makeWatcherDurablePayload(settlementOutput.to_cbor_hex()),
       },
     ],
     daProofInputs: [],
@@ -292,8 +292,8 @@ let deploymentAuthority = {
   result: deploymentAuthorityFixture.result,
 };
 
-const emptyNativeTxCanonical: MidgardNativeTxCanonicalV1 = {
-  version: MIDGARD_NATIVE_TX_V1_VERSION,
+const emptyNativeTxCanonical: MidgardNativeTxCanonical = {
+  version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -315,14 +315,14 @@ const emptyNativeTxCanonical: MidgardNativeTxCanonicalV1 = {
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   },
 };
-const emptyNativeTx = materializeMidgardNativeTxFromCanonicalV1(
+const emptyNativeTx = materializeMidgardNativeTxFromCanonical(
   emptyNativeTxCanonical,
 );
-const emptyNativeSource = deriveMidgardNativeTxProofSourceV1(emptyNativeTx);
+const emptyNativeSource = deriveMidgardNativeTxProofSource(emptyNativeTx);
 const emptyNativePayload = {
-  tx_id: computeMidgardNativeTxIdV1(emptyNativeTx).toString("hex"),
+  tx_id: computeMidgardNativeTxId(emptyNativeTx).toString("hex"),
   transaction_commitment:
-    computeMidgardNativeTxProofCommitmentV1(emptyNativeSource).toString("hex"),
+    computeMidgardNativeTxProofCommitment(emptyNativeSource).toString("hex"),
   source: {
     compact_cbor: emptyNativeSource.compactCbor.toString("hex"),
     witness_set_compact_cbor:
@@ -333,7 +333,7 @@ const emptyNativePayload = {
   // Nine empty slots consume no carriage entry, so §8.11's vector is empty.
   carriage: [],
 };
-const policy = makeWatcherUserEventIndexerPolicyV1({
+const policy = makeWatcherUserEventIndexerPolicy({
   network: "Preprod",
   releaseEvidenceDigest: RELEASE_DIGEST,
   deploymentMarker: deploymentAuthorityFixture.marker,
@@ -341,16 +341,16 @@ const policy = makeWatcherUserEventIndexerPolicyV1({
   withdrawal: eventFields.withdrawal,
   forcedOrder: eventFields.forcedOrder,
   bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-    encodeWatcherDurableStoreV1(bootstrapStore),
+    encodeWatcherDurableStore(bootstrapStore),
   ),
   deploymentTrustRootId: deploymentAuthorityFixture.result.trustRootId,
   requiredFinalityDepth: "2",
   maximumActiveHistoryEntries: "32",
   maximumAuditHistoryEntries: "128",
-}) as WatcherUserEventIndexerPolicyV1;
+}) as WatcherUserEventIndexerPolicy;
 
 const makeExternalFinalityPolicy = () =>
-  makeWatcherFinalityPolicyV1(
+  makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "development",
@@ -428,10 +428,10 @@ const makeExternalFinalityPolicy = () =>
       durableMarker: policy.deploymentMarker,
     },
   )!;
-let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicy>>;
 
-let provider: WatcherAuthenticatedL1ProviderV1;
-let providerB: WatcherAuthenticatedL1ProviderV1;
+let provider: WatcherAuthenticatedL1Provider;
+let providerB: WatcherAuthenticatedL1Provider;
 const externalSource: {
   sourceMode: "external_providers";
   network: "Preprod";
@@ -457,10 +457,10 @@ const externalSource: {
   ],
 };
 const execFileAsync = promisify(execFile);
-const watcherTransportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const watcherTransportContexts: WatcherL1TransportAttestationContext[] = [];
 let normalizedTransportContexts = new WeakMap<
   object,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 const watcherTransportServers: Server[] = [];
 let watcherTransportFixtureDirectory = "";
@@ -544,7 +544,7 @@ const initializeOpaqueAuthorityTransports = async (
     ) {
       throw new Error("W15 opaque authority fixture state is not clean");
     }
-    const freshDeployment = makeWatcherAuthorityDeploymentFixtureV1();
+    const freshDeployment = makeWatcherAuthorityDeploymentFixture();
     deploymentAuthority = {
       signedIdentity: freshDeployment.signedIdentity,
       policy: freshDeployment.policy,
@@ -554,7 +554,7 @@ const initializeOpaqueAuthorityTransports = async (
     watcherTransportFixtureDirectory = await mkdtemp(
       join(fixtureRoot, "midgard-w17-transports-"),
     );
-    const externalTransports: WatcherL1TransportAttestationContextV1[] = [];
+    const externalTransports: WatcherL1TransportAttestationContext[] = [];
     for (const [providerId, operatorIdentitySha256] of [
       ["provider-a", h32("97")],
       ["provider-b", h32("98")],
@@ -570,7 +570,7 @@ const initializeOpaqueAuthorityTransports = async (
         throw new Error("missing external-provider fixture policy");
       }
       configuredProvider.endpoint = endpoint;
-      const transport = await establishWatcherExternalProviderTransportV1({
+      const transport = await establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId,
         operatorIdentitySha256,
@@ -583,10 +583,10 @@ const initializeOpaqueAuthorityTransports = async (
       watcherTransportContexts.push(transport);
     }
     finalityPolicy = makeExternalFinalityPolicy();
-    provider = watcherL1TransportAttestationDetailsV1(
+    provider = watcherL1TransportAttestationDetails(
       externalTransports[0],
     )!.provider;
-    providerB = watcherL1TransportAttestationDetailsV1(
+    providerB = watcherL1TransportAttestationDetails(
       externalTransports[1],
     )!.provider;
     opaqueAuthorityTransportLease = "active";
@@ -612,7 +612,7 @@ const disposeOpaqueAuthorityTransports = (
   const cleanupPromise = Promise.resolve().then(async () => {
     try {
       for (const context of watcherTransportContexts) {
-        closeWatcherL1TransportAttestationContextV1(context);
+        closeWatcherL1TransportAttestationContext(context);
       }
       await Promise.all(
         watcherTransportServers.map(
@@ -653,9 +653,9 @@ const disposeOpaqueAuthorityTransports = (
 
 const transportForProvider = (
   authenticatedProvider: unknown,
-): WatcherL1TransportAttestationContextV1 => {
+): WatcherL1TransportAttestationContext => {
   const matches = watcherTransportContexts.filter((context) => {
-    const details = watcherL1TransportAttestationDetailsV1(context);
+    const details = watcherL1TransportAttestationDetails(context);
     return (
       details !== null &&
       JSON.stringify(details.provider) === JSON.stringify(authenticatedProvider)
@@ -667,21 +667,21 @@ const transportForProvider = (
   return matches[0]!;
 };
 
-const normalizeWatcherL1BlockV1 = (
+const normalizeWatcherL1Block = (
   authenticatedProvider: unknown,
   observation: unknown,
 ) => {
   const transport = transportForProvider(authenticatedProvider);
-  const normalized = normalizeWatcherL1BlockV1Raw(transport, observation);
+  const normalized = normalizeWatcherL1BlockRaw(transport, observation);
   normalizedTransportContexts.set(normalized, transport);
   return normalized;
 };
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: readonly unknown[],
 ) =>
-  evaluateWatcherMultiProviderConsistencyV1Raw(
+  evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     observations.map((observation) => {
@@ -696,13 +696,13 @@ const evaluateWatcherMultiProviderConsistencyV1 = (
     }),
   );
 
-const deriveWatcherUserEventObservationV1 = (
+const deriveWatcherUserEventObservation = (
   policyInput: unknown,
   previousStateInput: unknown,
   publicContextInput: unknown,
   rollbackTargetEntryDigest: string | null = null,
 ) =>
-  deriveWatcherUserEventObservationV1Raw(
+  deriveWatcherUserEventObservationRaw(
     policyInput,
     previousStateInput,
     publicContextInput,
@@ -710,13 +710,13 @@ const deriveWatcherUserEventObservationV1 = (
     rollbackTargetEntryDigest,
   );
 
-const evaluateWatcherUserEventIndexerV1 = (
+const evaluateWatcherUserEventIndexer = (
   policyInput: unknown,
   previousStateInput: unknown,
   observationInput: unknown,
   publicContextInput: unknown,
 ) =>
-  evaluateWatcherUserEventIndexerV1Raw(
+  evaluateWatcherUserEventIndexerRaw(
     policyInput,
     previousStateInput,
     observationInput,
@@ -724,14 +724,14 @@ const evaluateWatcherUserEventIndexerV1 = (
     watcherTransportContexts,
   );
 
-const parseWatcherUserEventIndexerResultV1 = (
+const parseWatcherUserEventIndexerResult = (
   value: unknown,
   context: Omit<
-    Parameters<typeof parseWatcherUserEventIndexerResultV1Raw>[1],
+    Parameters<typeof parseWatcherUserEventIndexerResultRaw>[1],
     "transportAttestations"
   >,
 ) =>
-  parseWatcherUserEventIndexerResultV1Raw(value, {
+  parseWatcherUserEventIndexerResultRaw(value, {
     ...context,
     transportAttestations: watcherTransportContexts,
   });
@@ -751,7 +751,7 @@ const nonceAssetName = (txHash: string, outputIndex: number): string => {
 };
 
 type EventFixture = Readonly<{
-  kind: WatcherUserEventKindV1;
+  kind: WatcherUserEventKind;
   output: CML.TransactionOutput;
   outputCborHex: string;
   datumCborHex: string;
@@ -760,7 +760,7 @@ type EventFixture = Readonly<{
   mintRedeemerHex: string;
   certificateRedeemerHex: string;
   certificate: CML.Certificate;
-  fields: WatcherUserEventIndexerPolicyV1[
+  fields: WatcherUserEventIndexerPolicy[
     | "deposit"
     | "withdrawal"
     | "forcedOrder"];
@@ -780,7 +780,7 @@ type EventFixture = Readonly<{
  * projects the three fields that are, and this type is the pair the builders pass
  * around.
  */
-export type GenuineW15ForcedPayloadV1 = Readonly<{
+export type GenuineUserEventForcedPayload = Readonly<{
   tx_id: string;
   transaction_commitment: string;
   source: Readonly<{
@@ -792,7 +792,7 @@ export type GenuineW15ForcedPayloadV1 = Readonly<{
 }>;
 
 /** The three fields `TxOrderPayloadV1` actually has, with `carriage` dropped. */
-const forcedDatumPayload = (payload: GenuineW15ForcedPayloadV1) => ({
+const forcedDatumPayload = (payload: GenuineUserEventForcedPayload) => ({
   tx_id: payload.tx_id,
   transaction_commitment: payload.transaction_commitment,
   source: payload.source,
@@ -807,17 +807,17 @@ const forcedDatumPayload = (payload: GenuineW15ForcedPayloadV1) => ({
  * indexer's exhaustion re-derivation counts. Shared rather than hand-rolled per
  * test file so the two cannot drift apart from each other or from the rule.
  */
-export const genuineW15ForcedPayloadForCanonicalTxV1 = (
+export const genuineUserEventForcedPayloadForCanonicalTx = (
   canonicalTxCbor: Uint8Array,
-): GenuineW15ForcedPayloadV1 => {
+): GenuineUserEventForcedPayload => {
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalTxCbor);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalTxCbor);
   return Object.freeze({
-    tx_id: computeMidgardNativeTxIdV1(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTxCbor),
+    tx_id: computeMidgardNativeTxId(
+      decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor),
     ).toString("hex"),
     transaction_commitment:
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+      computeMidgardNativeTxProofCommitment(source).toString("hex"),
     source: Object.freeze({
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
@@ -825,10 +825,9 @@ export const genuineW15ForcedPayloadForCanonicalTxV1 = (
         source.fieldPreimageLengthsCbor.toString("hex"),
     }),
     carriage: Object.freeze(
-      deriveMidgardV1TxFieldPreimages(canonicalTxCbor)
+      deriveMidgardTxFieldPreimages(canonicalTxCbor)
         .filter(
-          (field) =>
-            !field.expectedHash.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
+          (field) => !field.expectedHash.equals(MIDGARD_EMPTY_FIELD_COMMITMENT),
         )
         .map((field) =>
           Object.freeze({
@@ -842,14 +841,14 @@ export const genuineW15ForcedPayloadForCanonicalTxV1 = (
 };
 
 const makeEventFixture = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
   nonceByte: string,
   nonceIndex: number,
   ttl: bigint,
   inclusionTimeDelta = 0n,
   addressOverride?: string,
   witnessOverride?: string,
-  forcedPayloadOverride?: GenuineW15ForcedPayloadV1,
+  forcedPayloadOverride?: GenuineUserEventForcedPayload,
   extraReferenceOutRefs: readonly string[] = [],
   eventOverrides?: Readonly<{
     depositL2Address?: AddressData;
@@ -939,7 +938,7 @@ const makeEventFixture = (
       ? DepositDatum
       : kind === "withdrawal"
         ? WithdrawalOrderDatum
-        : TxOrderDatumV1;
+        : TxOrderDatum;
   const datumCborHex = CML.PlutusData.from_cbor_hex(
     Data.to(datum as never, schema as never),
   ).to_canonical_cbor_hex();
@@ -989,14 +988,14 @@ const makeEventFixture = (
 };
 
 type BlockBundle = Readonly<{
-  context: WatcherUserEventPublicContextV1;
-  store: ReturnType<typeof makeWatcherDurableStoreV1>;
+  context: WatcherUserEventPublicContext;
+  store: ReturnType<typeof makeWatcherDurableStore>;
   transactionHash: string | null;
   finalityState: unknown;
 }>;
 
 type UserEventFinalityLineage = NonNullable<
-  WatcherUserEventPublicContextV1["finalityAuthority"]
+  WatcherUserEventPublicContext["finalityAuthority"]
 >["lineage"];
 
 const userEventFinalityLineageByStateDigest = new Map<
@@ -1026,14 +1025,14 @@ const userEventRedeemerTag = (purpose: string): CML.RedeemerTag => {
 const contextFromTransaction = (
   transaction: {
     readonly txHash: string;
-    readonly body: ReturnType<typeof makeWatcherL1PublicBytesV1>;
+    readonly body: ReturnType<typeof makeWatcherL1PublicBytes>;
     readonly utxos: readonly unknown[];
     readonly scripts: readonly never[];
     readonly datums: readonly never[];
     readonly redeemers: readonly unknown[];
   } | null,
-  priorStore: ReturnType<typeof makeWatcherDurableStoreV1> | null,
-  nextProtocolUtxos: readonly WatcherProtocolUtxoV1[],
+  priorStore: ReturnType<typeof makeWatcherDurableStore> | null,
+  nextProtocolUtxos: readonly WatcherProtocolUtxo[],
   blockNo: number,
   depth: number,
   previousFinalityState: unknown = null,
@@ -1070,11 +1069,11 @@ const contextFromTransaction = (
           const canonicalRedeemers = transaction.redeemers.map((candidate) => {
             const redeemer = candidate as MutableRecord;
             const bytes = redeemer.bytes as ReturnType<
-              typeof makeWatcherL1PublicBytesV1
+              typeof makeWatcherL1PublicBytes
             >;
             return {
               ...redeemer,
-              bytes: makeWatcherL1PublicBytesV1(
+              bytes: makeWatcherL1PublicBytes(
                 CML.PlutusData.from_cbor_hex(
                   bytes.bytesHex,
                 ).to_canonical_cbor_hex(),
@@ -1087,7 +1086,7 @@ const contextFromTransaction = (
             for (const candidate of canonicalRedeemers) {
               const redeemer = candidate as MutableRecord;
               const bytes = redeemer.bytes as ReturnType<
-                typeof makeWatcherL1PublicBytesV1
+                typeof makeWatcherL1PublicBytes
               >;
               redeemers.add(
                 CML.LegacyRedeemer.new(
@@ -1116,7 +1115,7 @@ const contextFromTransaction = (
               return {
                 outRef: `${transaction.txHash}#${index.toString()}`,
                 outputIndex: index.toString(),
-                output: makeWatcherL1PublicBytesV1(
+                output: makeWatcherL1PublicBytes(
                   output.to_canonical_cbor_hex(),
                 ),
                 datum:
@@ -1124,7 +1123,7 @@ const contextFromTransaction = (
                     ? null
                     : {
                         datumHash: CML.hash_plutus_data(datum).to_hex(),
-                        bytes: makeWatcherL1PublicBytesV1(
+                        bytes: makeWatcherL1PublicBytes(
                           datum.to_canonical_cbor_hex(),
                         ),
                       },
@@ -1142,10 +1141,10 @@ const contextFromTransaction = (
           return {
             ...transaction,
             transactionIndex: "0",
-            fullTransaction: makeWatcherL1PublicBytesV1(
+            fullTransaction: makeWatcherL1PublicBytes(
               fullTransaction.to_canonical_cbor_hex(),
             ),
-            witnessSet: makeWatcherL1PublicBytesV1(
+            witnessSet: makeWatcherL1PublicBytes(
               witnessSet.to_canonical_cbor_hex(),
             ),
             utxos: transactionIsValid ? appliedUtxos : [],
@@ -1153,7 +1152,7 @@ const contextFromTransaction = (
           };
         })();
   const l1Observation = {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId: authenticatedProvider.providerId,
     chainPoint:
@@ -1167,7 +1166,7 @@ const contextFromTransaction = (
       } as const),
     transactions: canonicalTransaction === null ? [] : [canonicalTransaction],
   };
-  const normalized = normalizeWatcherL1BlockV1(
+  const normalized = normalizeWatcherL1Block(
     authenticatedProvider,
     l1Observation,
   );
@@ -1185,9 +1184,9 @@ const contextFromTransaction = (
     ({
       authenticatedProvider: authorityProvider,
       l1Observation: observation,
-    }) => normalizeWatcherL1BlockV1(authorityProvider, observation),
+    }) => normalizeWatcherL1Block(authorityProvider, observation),
   );
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     externalSource,
     normalizedEvidence,
   );
@@ -1202,7 +1201,7 @@ const contextFromTransaction = (
     previousStateDigest === null
       ? []
       : (userEventFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
-  const finalityResult = evaluateWatcherFinalityV1(
+  const finalityResult = evaluateWatcherFinality(
     selectedFinalityPolicy,
     previousFinalityState,
     consistency,
@@ -1257,13 +1256,13 @@ const contextFromTransaction = (
       ].map((utxo) => [utxo.outRef, utxo]),
     ).values(),
   ];
-  const protocolJournal = journalWatcherProtocolUtxoTransitionV1({
+  const protocolJournal = journalWatcherProtocolUtxoTransition({
     sourceStore,
     nextChainPoints: chainPoints,
     nextProtocolUtxos: protocolUtxos,
     spentAtChainPointId: normalized.chainPoint.chainPointId,
   });
-  const store = makeWatcherDurableStoreV1({
+  const store = makeWatcherDurableStore({
     deploymentMarker: policy.deploymentMarker,
     revision: (BigInt(sourceStore.revision) + 1n).toString(),
     records: {
@@ -1275,8 +1274,8 @@ const contextFromTransaction = (
           observationId: normalized.observationDigest,
           providerId: normalized.provider.providerId,
           chainPointId: normalized.chainPoint.chainPointId,
-          payload: makeWatcherDurablePayloadV1(
-            encodeWatcherNormalizedL1BlockV1(normalized).toString("hex"),
+          payload: makeWatcherDurablePayload(
+            encodeWatcherNormalizedL1Block(normalized).toString("hex"),
           ),
         },
       ],
@@ -1295,7 +1294,7 @@ const contextFromTransaction = (
   });
   return {
     context: asWireValue({
-      schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
       authenticatedProvider,
       l1Observation,
       sourceDurableStore: sourceStore,
@@ -1321,7 +1320,7 @@ const contextFromTransaction = (
 let serial = 0;
 const blockBundle = (
   eventFixtures: readonly EventFixture[],
-  priorStore: ReturnType<typeof makeWatcherDurableStoreV1> | null = null,
+  priorStore: ReturnType<typeof makeWatcherDurableStore> | null = null,
   blockNo = 100,
   depth = 1,
   mintPurpose: "mint" | "spend" = "mint",
@@ -1331,7 +1330,7 @@ const blockBundle = (
   let transaction:
     | {
         txHash: string;
-        body: ReturnType<typeof makeWatcherL1PublicBytesV1>;
+        body: ReturnType<typeof makeWatcherL1PublicBytes>;
         utxos: readonly unknown[];
         scripts: readonly never[];
         datums: readonly never[];
@@ -1358,7 +1357,7 @@ const blockBundle = (
       mintRedeemers.push({
         purpose: mintPurpose,
         index: index.toString(),
-        bytes: makeWatcherL1PublicBytesV1(
+        bytes: makeWatcherL1PublicBytes(
           encodeUserEventMintRedeemerFor(
             fixture.kind,
             {
@@ -1378,7 +1377,7 @@ const blockBundle = (
       certificateRedeemers.push({
         purpose: "certificate",
         index: index.toString(),
-        bytes: makeWatcherL1PublicBytesV1(fixture.certificateRedeemerHex),
+        bytes: makeWatcherL1PublicBytes(fixture.certificateRedeemerHex),
       });
     });
     const redeemers = [...mintRedeemers, ...certificateRedeemers];
@@ -1442,17 +1441,17 @@ const blockBundle = (
       utxos.push({
         outRef: `${txHash}#${index.toString()}`,
         outputIndex: index.toString(),
-        output: makeWatcherL1PublicBytesV1(fixture.outputCborHex),
+        output: makeWatcherL1PublicBytes(fixture.outputCborHex),
         datum: {
           datumHash: CML.hash_plutus_data(datum).to_hex(),
-          bytes: makeWatcherL1PublicBytesV1(fixture.datumCborHex),
+          bytes: makeWatcherL1PublicBytes(fixture.datumCborHex),
         },
         referenceScript: null,
       });
     });
     transaction = {
       txHash,
-      body: makeWatcherL1PublicBytesV1(bodyHex),
+      body: makeWatcherL1PublicBytes(bodyHex),
       utxos,
       scripts: [],
       datums: [],
@@ -1470,13 +1469,13 @@ const blockBundle = (
       undefined,
     );
   }
-  const createdProtocolUtxos: WatcherProtocolUtxoV1[] = eventFixtures.map(
+  const createdProtocolUtxos: WatcherProtocolUtxo[] = eventFixtures.map(
     (fixture, index) => ({
       outRef: `${transaction.txHash}#${index.toString()}`,
       role:
         fixture.kind === "forced_order" ? "forced_transaction" : fixture.kind,
       chainPointId: "",
-      output: makeWatcherDurablePayloadV1(fixture.outputCborHex),
+      output: makeWatcherDurablePayload(fixture.outputCborHex),
     }),
   );
   return contextFromTransaction(
@@ -1495,19 +1494,19 @@ const blockBundle = (
 
 /**
  * Test-side inverse of the watcher's verdict projection
- * (`watcherForcedOperatorVerdictV1`): rebuilds the on-chain `OperatorVerdictV1`
+ * (`watcherForcedOperatorVerdictV1`): rebuilds the on-chain `OperatorVerdict`
  * a forced leaf carries from the classification tag the indexer projected it
  * onto. Every reason a fixture uses carries the zero subject coordinate, which
  * is what the #640 forced-leaf mapping prescribes, so the round trip through
  * the indexer is exact.
  */
-export const w15ForcedOperatorVerdictForClassificationV1 = (
+export const userEventForcedOperatorVerdictForClassification = (
   classification: string,
-): OperatorVerdictV1 => {
+): OperatorVerdict => {
   if (classification === "ForcedTxValid") {
     return "ForcedTxValid";
   }
-  const reason: RejectionReasonV1 | null =
+  const reason: RejectionReason | null =
     classification === "InputNotFound"
       ? { InputNotFound: { source_kind: 0n, input_index: 0n } }
       : classification === "AddressWitnessSignatureInvalid"
@@ -1531,23 +1530,23 @@ export const w15ForcedOperatorVerdictForClassificationV1 = (
   return { ForcedTxInvalid: { reason } };
 };
 
-export type GenuineW15AuthorityFixtureSetV1 = Readonly<{
-  deposit: W15AcceptedAuthorityScenarioV1;
-  withdrawal: W15AcceptedAuthorityScenarioV1;
-  forced: W15AcceptedAuthorityScenarioV1;
-  forcedVariants: Readonly<Record<string, W15AcceptedAuthorityScenarioV1>>;
+export type GenuineUserEventAuthorityFixtureSet = Readonly<{
+  deposit: UserEventAcceptedAuthorityScenario;
+  withdrawal: UserEventAcceptedAuthorityScenario;
+  forced: UserEventAcceptedAuthorityScenario;
+  forcedVariants: Readonly<Record<string, UserEventAcceptedAuthorityScenario>>;
   dispose: () => Promise<void>;
 }>;
 
-export type GenuineW15AuthorityFixtureInputV1 = Readonly<{
+export type GenuineUserEventAuthorityFixtureInput = Readonly<{
   /** Test-only root override used to prove setup-failure lease cleanup. */
   transportFixtureRoot?: string;
-  forcedPayloadOverride?: GenuineW15ForcedPayloadV1;
-  forcedOperatorValidity?: OperatorVerdictV1;
+  forcedPayloadOverride?: GenuineUserEventForcedPayload;
+  forcedOperatorValidity?: OperatorVerdict;
   forcedVariants?: readonly Readonly<{
     key: string;
-    payload: GenuineW15ForcedPayloadV1;
-    operatorValidity: OperatorVerdictV1;
+    payload: GenuineUserEventForcedPayload;
+    operatorValidity: OperatorVerdict;
     nonceByte?: string;
   }>[];
   depositL2Address?: AddressData;
@@ -1558,19 +1557,19 @@ export type GenuineW15AuthorityFixtureInputV1 = Readonly<{
 }>;
 
 const acceptedAuthority = (
-  previousState: WatcherUserEventIndexerStateV1 | null,
+  previousState: WatcherUserEventIndexerState | null,
   bundle: BlockBundle,
-  expectedKind: WatcherUserEventKindV1,
-  authorityPolicy: WatcherUserEventIndexerPolicyV1 = policy,
+  expectedKind: WatcherUserEventKind,
+  authorityPolicy: WatcherUserEventIndexerPolicy = policy,
 ) => {
-  const observation = deriveWatcherUserEventObservationV1(
+  const observation = deriveWatcherUserEventObservation(
     authorityPolicy,
     previousState,
     bundle.context,
   );
   if (observation === null)
     throw new Error("genuine W15 authority did not derive an observation");
-  const result = evaluateWatcherUserEventIndexerV1(
+  const result = evaluateWatcherUserEventIndexer(
     authorityPolicy,
     previousState,
     observation,
@@ -1583,7 +1582,7 @@ const acceptedAuthority = (
     publicContext: bundle.context,
     transportAttestations: Object.freeze([...watcherTransportContexts]),
   });
-  const parsed = parseWatcherUserEventIndexerResultV1(result, context);
+  const parsed = parseWatcherUserEventIndexerResult(result, context);
   if (
     parsed === null ||
     parsed.action !== "accept" ||
@@ -1620,9 +1619,9 @@ const acceptedAuthority = (
 };
 
 /** Creates accepted W15 authorities from real L1 blocks and live opaque contexts. */
-export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
-  input: GenuineW15AuthorityFixtureInputV1 = {},
-): Promise<GenuineW15AuthorityFixtureSetV1> => {
+export const createGenuineUserEventDepositWithdrawalAuthorities = async (
+  input: GenuineUserEventAuthorityFixtureInput = {},
+): Promise<GenuineUserEventAuthorityFixtureSet> => {
   const leaseOwner = await initializeOpaqueAuthorityTransports(
     input.transportFixtureRoot,
   );
@@ -1674,10 +1673,10 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
       "withdrawal",
     );
     const buildForcedAuthority = (forcedInput: {
-      readonly payload?: GenuineW15ForcedPayloadV1;
-      readonly operatorValidity?: OperatorVerdictV1;
+      readonly payload?: GenuineUserEventForcedPayload;
+      readonly operatorValidity?: OperatorVerdict;
       readonly nonceByte?: string;
-    }): W15AcceptedAuthorityScenarioV1 => {
+    }): UserEventAcceptedAuthorityScenario => {
       // The forced order needs no seeded store of its own since #587 retired the
       // publication receipt chain: its payload is self-binding under §4, so the
       // shared bootstrap `policy` authenticates it.
@@ -1711,7 +1710,7 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
         undefined,
         forcedInput.operatorValidity,
       );
-      return replayGenuineForcedTerminalAuthorityScenarioV1({
+      return replayGenuineForcedTerminalAuthorityScenario({
         policy,
         previousState: forcedActive.parsed.state!,
         publicContext: forcedTerminalBundle.context,
@@ -1747,38 +1746,38 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
   }
 };
 
-export type W15AuthorityScenarioInputV1 = Readonly<{
-  policy: WatcherUserEventIndexerPolicyV1;
-  previousState: WatcherUserEventIndexerStateV1 | null;
-  publicContext: WatcherUserEventPublicContextV1;
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+export type UserEventAuthorityScenarioInput = Readonly<{
+  policy: WatcherUserEventIndexerPolicy;
+  previousState: WatcherUserEventIndexerState | null;
+  publicContext: WatcherUserEventPublicContext;
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
 }>;
 
-export type W15AcceptedAuthorityScenarioV1 = Readonly<{
-  result: ReturnType<typeof evaluateWatcherUserEventIndexerV1Raw>;
+export type UserEventAcceptedAuthorityScenario = Readonly<{
+  result: ReturnType<typeof evaluateWatcherUserEventIndexerRaw>;
   context: Readonly<{
-    policy: WatcherUserEventIndexerPolicyV1;
-    previousState: WatcherUserEventIndexerStateV1 | null;
+    policy: WatcherUserEventIndexerPolicy;
+    previousState: WatcherUserEventIndexerState | null;
     observation: NonNullable<
-      ReturnType<typeof deriveWatcherUserEventObservationV1Raw>
+      ReturnType<typeof deriveWatcherUserEventObservationRaw>
     >;
-    publicContext: WatcherUserEventPublicContextV1;
-    transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+    publicContext: WatcherUserEventPublicContext;
+    transportAttestations: readonly WatcherL1TransportAttestationContext[];
   }>;
-  parsed: ReturnType<typeof evaluateWatcherUserEventIndexerV1Raw>;
+  parsed: ReturnType<typeof evaluateWatcherUserEventIndexerRaw>;
   observation: NonNullable<
-    ReturnType<typeof deriveWatcherUserEventObservationV1Raw>
+    ReturnType<typeof deriveWatcherUserEventObservationRaw>
   >;
-  event: WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1;
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
   historyEntryDigests: readonly string[];
 }>;
 
-export const replayAcceptedW15AuthorityScenarioV1 = (
-  input: W15AuthorityScenarioInputV1,
-  expectedKind: WatcherUserEventKindV1,
+export const replayAcceptedUserEventAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+  expectedKind: WatcherUserEventKind,
   expectedLocation: "active" | "processed",
-): W15AcceptedAuthorityScenarioV1 => {
-  const observation = deriveWatcherUserEventObservationV1Raw(
+): UserEventAcceptedAuthorityScenario => {
+  const observation = deriveWatcherUserEventObservationRaw(
     input.policy,
     input.previousState,
     input.publicContext,
@@ -1786,7 +1785,7 @@ export const replayAcceptedW15AuthorityScenarioV1 = (
   );
   if (observation === null)
     throw new Error("W15 authority scenario did not derive an observation");
-  const result = evaluateWatcherUserEventIndexerV1Raw(
+  const result = evaluateWatcherUserEventIndexerRaw(
     input.policy,
     input.previousState,
     observation,
@@ -1794,7 +1793,7 @@ export const replayAcceptedW15AuthorityScenarioV1 = (
     input.transportAttestations,
   );
   const context = Object.freeze({ ...input, observation });
-  const parsed = parseWatcherUserEventIndexerResultV1Raw(result, context);
+  const parsed = parseWatcherUserEventIndexerResultRaw(result, context);
   if (
     parsed === null ||
     parsed.action !== "accept" ||
@@ -1834,24 +1833,24 @@ export const replayAcceptedW15AuthorityScenarioV1 = (
   });
 };
 
-export const replayGenuineDepositAuthorityScenarioV1 = (
-  input: W15AuthorityScenarioInputV1,
-): W15AcceptedAuthorityScenarioV1 =>
-  replayAcceptedW15AuthorityScenarioV1(input, "deposit", "active");
-export const replayGenuineWithdrawalAuthorityScenarioV1 = (
-  input: W15AuthorityScenarioInputV1,
-): W15AcceptedAuthorityScenarioV1 =>
-  replayAcceptedW15AuthorityScenarioV1(input, "withdrawal", "active");
-export const replayGenuineForcedTerminalAuthorityScenarioV1 = (
-  input: W15AuthorityScenarioInputV1,
-): W15AcceptedAuthorityScenarioV1 =>
-  replayAcceptedW15AuthorityScenarioV1(input, "forced_order", "processed");
+export const replayGenuineDepositAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+): UserEventAcceptedAuthorityScenario =>
+  replayAcceptedUserEventAuthorityScenario(input, "deposit", "active");
+export const replayGenuineWithdrawalAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+): UserEventAcceptedAuthorityScenario =>
+  replayAcceptedUserEventAuthorityScenario(input, "withdrawal", "active");
+export const replayGenuineForcedTerminalAuthorityScenario = (
+  input: UserEventAuthorityScenarioInput,
+): UserEventAcceptedAuthorityScenario =>
+  replayAcceptedUserEventAuthorityScenario(input, "forced_order", "processed");
 
 const nonDepositSpendBundle = (
-  state: WatcherUserEventIndexerStateV1,
-  priorStore: ReturnType<typeof makeWatcherDurableStoreV1>,
+  state: WatcherUserEventIndexerState,
+  priorStore: ReturnType<typeof makeWatcherDurableStore>,
   mutateRedeemers?: (redeemers: MutableRecord[]) => void,
-  forcedOperatorValidity: OperatorVerdictV1 = "ForcedTxValid",
+  forcedOperatorValidity: OperatorVerdict = "ForcedTxValid",
 ): BlockBundle => {
   const event = state.snapshot.activeEvents[0]!;
   if (event.kind === "deposit") {
@@ -1957,7 +1956,7 @@ const nonDepositSpendBundle = (
     .fields();
   const datum = Data.from(
     event.datumCborHex,
-    event.kind === "withdrawal" ? WithdrawalOrderDatum : TxOrderDatumV1,
+    event.kind === "withdrawal" ? WithdrawalOrderDatum : TxOrderDatum,
   ) as {
     event: {
       tx?: {
@@ -1977,7 +1976,7 @@ const nonDepositSpendBundle = (
             source: datum.event.tx!.source,
             verdict: validity,
           },
-          ForcedInclusionTxV1,
+          ForcedInclusionTx,
         );
   const domain =
     event.kind === "withdrawal"
@@ -2049,7 +2048,7 @@ const nonDepositSpendBundle = (
             ),
             validity_override: validity,
           },
-          TxOrderSpendRedeemerV1,
+          TxOrderSpendRedeemer,
         );
   // A burn reads no material, so §8.11 requires the tx-order policy's vector to
   // be empty — which `encodeUserEventMintRedeemerFor`'s default supplies.
@@ -2082,19 +2081,19 @@ const nonDepositSpendBundle = (
     {
       purpose: "spend",
       index: "0",
-      bytes: makeWatcherL1PublicBytesV1(spendRedeemer),
+      bytes: makeWatcherL1PublicBytes(spendRedeemer),
     },
     {
       purpose: "mint",
       index: eventMintPolicyIndex.toString(),
-      bytes: makeWatcherL1PublicBytesV1(burnRedeemer),
+      bytes: makeWatcherL1PublicBytes(burnRedeemer),
     },
   ];
   if (event.kind === "withdrawal") {
     redeemers.push({
       purpose: "mint",
       index: payoutMintPolicyIndex.toString(),
-      bytes: makeWatcherL1PublicBytesV1(
+      bytes: makeWatcherL1PublicBytes(
         encodeData(
           {
             MintPayout: {
@@ -2116,12 +2115,12 @@ const nonDepositSpendBundle = (
     {
       purpose: "certificate",
       index: "0",
-      bytes: makeWatcherL1PublicBytesV1(certificateRedeemer),
+      bytes: makeWatcherL1PublicBytes(certificateRedeemer),
     },
     {
       purpose: "withdrawal",
       index: "0",
-      bytes: makeWatcherL1PublicBytesV1(
+      bytes: makeWatcherL1PublicBytes(
         CML.PlutusData.new_list(membershipItems).to_cbor_hex(),
       ),
     },
@@ -2130,7 +2129,7 @@ const nonDepositSpendBundle = (
   return contextFromTransaction(
     {
       txHash,
-      body: makeWatcherL1PublicBytesV1(bodyHex),
+      body: makeWatcherL1PublicBytes(bodyHex),
       utxos: [],
       scripts: [],
       datums: [],

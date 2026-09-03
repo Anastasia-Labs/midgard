@@ -40,17 +40,17 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
-  type MissingSignatureContractsV1,
+  type MissingSignatureContracts,
 } from "./contracts-v1.js";
 import {
-  missingSignatureStepLabelV1,
+  missingSignatureStepLabel,
   missingSignatureSubmitError,
-  requireMissingSignatureReferenceScriptV1,
+  requireMissingSignatureReferenceScript,
 } from "./submit-common-v1.js";
 
 /**
@@ -85,7 +85,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
 }): 0 | 1 | 2 | 3 => {
   for (const stepIndex of [0, 1, 2, 3] as const) {
     if (
@@ -110,14 +110,14 @@ export const submitMissingSignatureCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** §2.3: the located step's published reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -126,7 +126,7 @@ export const submitMissingSignatureCancel = async ({
     label: `${MISSING_SIGNATURE_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = missingSignatureStepLabelV1(stepIndex);
+  const stepLabel = missingSignatureStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -197,13 +197,13 @@ export const submitMissingSignatureCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread burn`,
   });
   const referenceInputs = [
-    requireMissingSignatureReferenceScriptV1({
+    requireMissingSignatureReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,

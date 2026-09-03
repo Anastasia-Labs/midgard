@@ -4,11 +4,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyUnusedRedeemerScriptsV1,
-  UNUSED_REDEEMER_BLUEPRINT_TITLES_V1,
+  applyUnusedRedeemerScripts,
+  UNUSED_REDEEMER_BLUEPRINT_TITLES,
 } from "../src/unused-redeemer/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -19,17 +19,17 @@ const publicationReserveBytes = 15_872;
 describe("unusedRedeemer signed publication fit", () => {
   it("publishes all nine fully applied validators within ordinary L1 limits", async () => {
     expect(
-      UNUSED_REDEEMER_BLUEPRINT_TITLES_V1.every((title) =>
+      UNUSED_REDEEMER_BLUEPRINT_TITLES.every((title) =>
         blueprint.validators.some((v) => v.title === title),
       ),
     ).toBe(true);
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
     const addressData = await Effect.runPromise(
       addressDataFromBech32(
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = applyUnusedRedeemerScriptsV1({
+    const steps = applyUnusedRedeemerScripts({
       blueprint,
       network: "Preprod",
       computationThreadPolicyId: harness.contracts.computationThread.policyId,

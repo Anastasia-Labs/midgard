@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1 } from "../src/transaction-output-non-canonical/contracts-v1.js";
+import { TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES } from "../src/transaction-output-non-canonical/contracts-v1.js";
 import {
   applyCompiledScript,
   readBlueprint,
   realBlueprintPath,
 } from "./support/emulator/blueprints.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
@@ -16,7 +16,7 @@ describe("transactionOutputNonCanonical real publication fit", () => {
     const blueprint = readBlueprint(realBlueprintPath);
     const h28 = "11".repeat(28);
     const scripts = Object.values(
-      TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1,
+      TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
     ).map(
       (title, index) =>
         makeSpendingValidator(
@@ -27,7 +27,7 @@ describe("transactionOutputNonCanonical real publication fit", () => {
           ),
         ).spendingScript,
     );
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     for (const [index, script] of scripts.entries()) {

@@ -2,36 +2,36 @@ import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  collectMidgardAttachedProgramEnvelopes,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardCekProgramMaterialDaEntry,
+  decodeMidgardCekProgramMaterialSidecar,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  deriveMidgardV1TxFieldPreimages,
-  encodeMidgardCekProgramMaterialDaValueV1,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  deriveMidgardTxFieldPreimages,
+  encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardTxOutput,
   hashMidgardVersionedScript,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  reconstructMidgardTransactionV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  reconstructMidgardTransaction,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { countedMachineTransactionChunkStepsV1 } from "@al-ft/midgard-validation";
+import { countedMachineTransactionChunkSteps } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   eventKeyFingerprint,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
 } from "../src/transition-trace/index.js";
-import { buildStrictRetainedDaPairFixtureV1 } from "./helpers/cardano-capability-retained-da-v1.js";
+import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da-v1.js";
 
-type BoundaryCorpusEntryV1 = {
+type BoundaryCorpusEntry = {
   readonly label: string;
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
@@ -60,7 +60,7 @@ const boundaryCorpusInput = (): string | URL => {
 
 const corpus = JSON.parse(readFileSync(boundaryCorpusInput(), "utf8")) as {
   readonly schema: string;
-  readonly entries: readonly BoundaryCorpusEntryV1[];
+  readonly entries: readonly BoundaryCorpusEntry[];
 };
 
 const expectedLabels = [
@@ -84,7 +84,7 @@ const expectedLabels = [
   "mixed-size-balanced",
 ] as const;
 
-const recomputeCorpusIdentityV1 = (
+const recomputeCorpusIdentity = (
   canonicalCbor: Uint8Array,
 ): {
   readonly transactionIdHex: string;
@@ -92,37 +92,36 @@ const recomputeCorpusIdentityV1 = (
 } => {
   const exactCanonicalCbor = Buffer.from(canonicalCbor);
   const transaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(exactCanonicalCbor);
+    decodeMidgardNativeTxFullFromCanonicalCbor(exactCanonicalCbor);
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(exactCanonicalCbor);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(exactCanonicalCbor);
   return {
-    transactionIdHex: computeMidgardNativeTxIdV1(transaction).toString("hex"),
+    transactionIdHex: computeMidgardNativeTxId(transaction).toString("hex"),
     transactionCommitmentHex:
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+      computeMidgardNativeTxProofCommitment(source).toString("hex"),
   };
 };
 
-const verifyFixtureProgramMaterialV1 = ({
+const verifyFixtureProgramMaterial = ({
   canonicalCbor,
   payload,
 }: {
   readonly canonicalCbor: Uint8Array;
-  readonly payload: SDK.DaPayloadV1;
+  readonly payload: SDK.DaPayload;
 }) => {
-  const transaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
-  const envelopes = collectMidgardV1AttachedProgramEnvelopes(transaction);
+  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
+  const envelopes = collectMidgardAttachedProgramEnvelopes(transaction);
   const material = payload.block_body.cek_program_material.map(
     ([rootHex, valueHex]) =>
-      decodeMidgardCekProgramMaterialDaEntryV1(
+      decodeMidgardCekProgramMaterialDaEntry(
         Buffer.from(rootHex, "hex"),
         Buffer.from(valueHex, "hex"),
       ),
   );
-  return verifyMidgardCekProgramMaterialBundleV1(envelopes, material);
+  return verifyMidgardCekProgramMaterialBundle(envelopes, material);
 };
 
-const reconstructAuthenticatedCanonicalTransactionFromFieldChunksV1 = (
+const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (
   canonicalCbor: Uint8Array,
 ): {
   readonly transactionIdHex: string;
@@ -133,20 +132,20 @@ const reconstructAuthenticatedCanonicalTransactionFromFieldChunksV1 = (
 } => {
   const exactCanonicalCbor = Buffer.from(canonicalCbor);
   const transaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(exactCanonicalCbor);
-  const transactionId = computeMidgardNativeTxIdV1(transaction);
+    decodeMidgardNativeTxFullFromCanonicalCbor(exactCanonicalCbor);
+  const transactionId = computeMidgardNativeTxId(transaction);
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(exactCanonicalCbor);
-  const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(exactCanonicalCbor);
+  const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
   // §4 authenticates a field once, over its whole preimage, against the hash the
-  // compact structure carries — which is what `reconstructMidgardTransactionV1`
+  // compact structure carries — which is what `reconstructMidgardTransaction`
   // does for all nine. The retired counted chain verified per-item chunk openings
   // here instead; §4 leaves nothing for such an opening to be checked against.
-  const fields = deriveMidgardV1TxFieldPreimages(exactCanonicalCbor);
+  const fields = deriveMidgardTxFieldPreimages(exactCanonicalCbor);
   // The machine's own counted trace is still what a dispute step walks, so its
   // step count and widest chunk stay measured here. They are trace measurements,
-  // not publication claims (see `countedMachineFieldChunkStepsV1`).
-  const chunks = countedMachineTransactionChunkStepsV1(exactCanonicalCbor);
+  // not publication claims (see `countedMachineFieldChunkSteps`).
+  const chunks = countedMachineTransactionChunkSteps(exactCanonicalCbor);
   return {
     transactionIdHex: transactionId.toString("hex"),
     transactionCommitmentHex: transactionCommitment.toString("hex"),
@@ -154,7 +153,7 @@ const reconstructAuthenticatedCanonicalTransactionFromFieldChunksV1 = (
     maximumChunkBytes: Math.max(
       ...chunks.map(({ chunkProof }) => chunkProof.chunk.length),
     ),
-    reconstructed: reconstructMidgardTransactionV1({
+    reconstructed: reconstructMidgardTransaction({
       transactionId,
       transactionCommitment,
       source,
@@ -172,7 +171,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
 
     for (const boundary of corpus.entries) {
       const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
-      expect(recomputeCorpusIdentityV1(canonicalCbor)).toEqual({
+      expect(recomputeCorpusIdentity(canonicalCbor)).toEqual({
         transactionIdHex: boundary.transactionIdHex,
         transactionCommitmentHex: boundary.transactionCommitmentHex,
       });
@@ -181,7 +180,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         boundary.canonicalMaterialSidecarCborHex === undefined
           ? undefined
           : Buffer.from(boundary.canonicalMaterialSidecarCborHex, "hex");
-      const fixture = await buildStrictRetainedDaPairFixtureV1({
+      const fixture = await buildStrictRetainedDaPairFixture({
         canonicalTransactionCbor: canonicalCbor,
         canonicalMaterialSidecarCbor: materialSidecar,
         resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
@@ -194,7 +193,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         transactionCommitmentHex: boundary.transactionCommitmentHex,
       });
       const transaction =
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+        decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
       expect(fixture.payload.block_body.utxos).toEqual(
         boundary.resolvedReferenceUtxos ?? [],
       );
@@ -210,29 +209,29 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         expect(fixture.payload.block_body.cek_program_material).toEqual([]);
       } else if (materialSidecar === undefined) {
         const attachedPrograms =
-          collectMidgardV1AttachedProgramEnvelopes(transaction);
+          collectMidgardAttachedProgramEnvelopes(transaction);
         expect(boundary.sourceRawScriptAuditHash).toBeUndefined();
         expect(attachedPrograms).toHaveLength(0);
         expect(fixture.payload.block_body.cek_program_material).toEqual([]);
       } else {
         const attachedPrograms =
-          collectMidgardV1AttachedProgramEnvelopes(transaction);
+          collectMidgardAttachedProgramEnvelopes(transaction);
         const sidecarEntries =
-          decodeMidgardCekProgramMaterialSidecarV1(materialSidecar);
+          decodeMidgardCekProgramMaterialSidecar(materialSidecar);
         expect(sidecarEntries.length).toBeGreaterThan(0);
         expect(fixture.payload.block_body.cek_program_material).toEqual(
           sidecarEntries
             .map(
               (entry): SDK.DaPayloadEntry => [
                 Buffer.from(entry.root).toString("hex"),
-                encodeMidgardCekProgramMaterialDaValueV1(entry).toString("hex"),
+                encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
               ],
             )
             .sort(([left], [right]) => left.localeCompare(right)),
         );
         expect(attachedPrograms).toHaveLength(1);
         expect(
-          verifyFixtureProgramMaterialV1({
+          verifyFixtureProgramMaterial({
             canonicalCbor,
             payload: fixture.payload,
           }),
@@ -247,7 +246,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         );
       }
 
-      const reconstruction = await reconstructDaPayloadV1({
+      const reconstruction = await reconstructDaPayload({
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         expectedHeaderHash: fixture.headerHash,
         committedHeader: fixture.header,
@@ -319,7 +318,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       ];
       for (const sourceCanonicalCbor of authenticated) {
         const folded =
-          reconstructAuthenticatedCanonicalTransactionFromFieldChunksV1(
+          reconstructAuthenticatedCanonicalTransactionFromFieldChunks(
             sourceCanonicalCbor,
           );
         expect({
@@ -331,7 +330,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         });
         expect(folded.revealStepCount).toBeGreaterThan(0);
         expect(folded.maximumChunkBytes).toBeLessThanOrEqual(
-          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
         );
         expect(folded.reconstructed).toEqual(canonicalCbor);
       }
@@ -351,11 +350,11 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       )!.canonicalMaterialSidecarCborHex!,
       "hex",
     );
-    const fixture = await buildStrictRetainedDaPairFixtureV1({
+    const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
       canonicalMaterialSidecarCbor: materialSidecar,
     });
-    const missingMaterialPayload: SDK.DaPayloadV1 = {
+    const missingMaterialPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -363,7 +362,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     expect(() =>
-      verifyFixtureProgramMaterialV1({
+      verifyFixtureProgramMaterial({
         canonicalCbor,
         payload: missingMaterialPayload,
       }),
@@ -372,17 +371,17 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     const [materialRootHex, materialValueHex] =
       fixture.payload.block_body.cek_program_material[0]!;
     const [materialEntry] =
-      decodeMidgardCekProgramMaterialSidecarV1(materialSidecar);
+      decodeMidgardCekProgramMaterialSidecar(materialSidecar);
     const mutatedPreimage = Buffer.from(materialEntry!.preimage);
     mutatedPreimage[mutatedPreimage.length - 1] ^= 0x01;
-    const mutatedMaterialPayload: SDK.DaPayloadV1 = {
+    const mutatedMaterialPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
         cek_program_material: [
           [
             materialRootHex,
-            encodeMidgardCekProgramMaterialDaValueV1({
+            encodeMidgardCekProgramMaterialDaValue({
               kind: materialEntry!.kind,
               preimage: mutatedPreimage,
             }).toString("hex"),
@@ -392,13 +391,13 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     expect(() =>
-      verifyFixtureProgramMaterialV1({
+      verifyFixtureProgramMaterial({
         canonicalCbor,
         payload: mutatedMaterialPayload,
       }),
     ).toThrow();
 
-    const wrongMaterialRootPayload: SDK.DaPayloadV1 = {
+    const wrongMaterialRootPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -409,20 +408,20 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     expect(() =>
-      verifyFixtureProgramMaterialV1({
+      verifyFixtureProgramMaterial({
         canonicalCbor,
         payload: wrongMaterialRootPayload,
       }),
     ).toThrow();
 
-    const badRootHeader: SDK.HeaderV1 = {
+    const badRootHeader: SDK.Header = {
       ...fixture.header,
       transactionsRoot: "ff".repeat(32),
     };
     const badRootHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeaderV1(badRootHeader),
+      SDK.hashBlockHeader(badRootHeader),
     );
-    const badRootPayload: SDK.DaPayloadV1 = {
+    const badRootPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -431,9 +430,9 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     await expect(
-      reconstructDaPayloadV1({
-        payloadEnvelopeCbor: await wrapDaPayloadV1(
-          SDK.encodeDaPayloadV1(badRootPayload),
+      reconstructDaPayload({
+        payloadEnvelopeCbor: await wrapDaPayload(
+          SDK.encodeDaPayload(badRootPayload),
           { mode: "identity" },
         ),
         expectedHeaderHash: badRootHeaderHash,
@@ -441,7 +440,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       }),
     ).rejects.toMatchObject({ code: "rootMismatch" });
 
-    const badTraceCountsPayload: SDK.DaPayloadV1 = {
+    const badTraceCountsPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -452,9 +451,9 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     await expect(
-      reconstructDaPayloadV1({
-        payloadEnvelopeCbor: await wrapDaPayloadV1(
-          SDK.encodeDaPayloadV1(badTraceCountsPayload),
+      reconstructDaPayload({
+        payloadEnvelopeCbor: await wrapDaPayload(
+          SDK.encodeDaPayload(badTraceCountsPayload),
           { mode: "identity" },
         ),
       }),
@@ -464,7 +463,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       ({ label }) => label === "mixed-size-balanced",
     )!.canonicalCborHex;
     expect(alternateCanonicalCborHex).not.toBe(canonicalCbor.toString("hex"));
-    const tamperedForcedPreimagePayload: SDK.DaPayloadV1 = {
+    const tamperedForcedPreimagePayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -475,9 +474,9 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     await expect(
-      reconstructDaPayloadV1({
-        payloadEnvelopeCbor: await wrapDaPayloadV1(
-          SDK.encodeDaPayloadV1(tamperedForcedPreimagePayload),
+      reconstructDaPayload({
+        payloadEnvelopeCbor: await wrapDaPayload(
+          SDK.encodeDaPayload(tamperedForcedPreimagePayload),
           { mode: "identity" },
         ),
         expectedHeaderHash: fixture.headerHash,
@@ -491,13 +490,13 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       ({ label }) => label === "maximum-reference-inputs",
     )!;
     const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
-    const fixture = await buildStrictRetainedDaPairFixtureV1({
+    const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
       resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
     });
     expect(fixture.payload.block_body.utxos.length).toBeGreaterThan(0);
 
-    const missing: SDK.DaPayloadV1 = {
+    const missing: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -505,11 +504,10 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     await expect(
-      reconstructDaPayloadV1({
-        payloadEnvelopeCbor: await wrapDaPayloadV1(
-          SDK.encodeDaPayloadV1(missing),
-          { mode: "identity" },
-        ),
+      reconstructDaPayload({
+        payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(missing), {
+          mode: "identity",
+        }),
         expectedHeaderHash: fixture.headerHash,
         committedHeader: fixture.header,
       }),
@@ -524,7 +522,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         lovelace: decodedOutput.value.lovelace + 1n,
       },
     });
-    const substituted: SDK.DaPayloadV1 = {
+    const substituted: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -532,9 +530,9 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       },
     };
     await expect(
-      reconstructDaPayloadV1({
-        payloadEnvelopeCbor: await wrapDaPayloadV1(
-          SDK.encodeDaPayloadV1(substituted),
+      reconstructDaPayload({
+        payloadEnvelopeCbor: await wrapDaPayload(
+          SDK.encodeDaPayload(substituted),
           { mode: "identity" },
         ),
         expectedHeaderHash: fixture.headerHash,

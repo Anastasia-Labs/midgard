@@ -8,11 +8,11 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import {
   DaLibp2pRetainedDaSource,
-  PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowRuntimeConfigLoaderV1,
   type RetainedDaLibp2pRequest,
   type RetainedDaLibp2pTransport,
+  WORKFLOW_RUNTIME_CONFIG,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowRuntimeConfigLoader,
 } from "@al-ft/midgard-fault-proofs";
 
 import {
@@ -21,25 +21,25 @@ import {
   type WatcherConfig,
 } from "../runtime/config.js";
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
-import type { WatcherProductionOperationsSinkV1 } from "../runtime/production-operations-observability-v1.js";
+import type { WatcherOperationsSink } from "../runtime/production-operations-observability-v1.js";
 import {
-  createWatcherPublicDaLibp2pTransportV1,
+  createWatcherPublicDaLibp2pTransport,
   WatcherPublicDaLibp2pTransport,
-  type WatcherPublicDaLibp2pTransportOptionsV1,
+  type WatcherPublicDaLibp2pTransportOptions,
 } from "./public-da-libp2p-transport.js";
 
-export const WATCHER_PRODUCTION_RETAINED_DA_RUNTIME_V1 =
+export const WATCHER_RETAINED_DA_RUNTIME =
   "midgard-watcher-production-retained-da-runtime-v1" as const;
 
 const operationsSinkByDeploymentIdentity = new WeakMap<
-  VerifiedWatcherDeploymentIdentityV1,
-  WatcherProductionOperationsSinkV1
+  VerifiedWatcherDeploymentIdentity,
+  WatcherOperationsSink
 >();
 
-export type WatcherProductionRetainedDaOperationsBindingV1 = Readonly<{
+export type WatcherRetainedDaOperationsBinding = Readonly<{
   close(): void;
 }>;
 
@@ -49,11 +49,11 @@ export type WatcherProductionRetainedDaOperationsBindingV1 = Readonly<{
  * same opaque identity; neither application configuration nor callers can
  * select a different diagnostics authority.
  */
-export const bindWatcherProductionRetainedDaOperationsV1 = (input: {
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  readonly sink: WatcherProductionOperationsSinkV1;
-}): WatcherProductionRetainedDaOperationsBindingV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(input.deploymentIdentity);
+export const bindWatcherRetainedDaOperations = (input: {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly sink: WatcherOperationsSink;
+}): WatcherRetainedDaOperationsBinding => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   if (operationsSinkByDeploymentIdentity.has(input.deploymentIdentity)) {
     throw new Error("production retained-DA operations sink is already bound");
   }
@@ -73,30 +73,30 @@ export const bindWatcherProductionRetainedDaOperationsV1 = (input: {
   });
 };
 
-export type WatcherProductionRetainedDaRuntimeV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_RETAINED_DA_RUNTIME_V1;
+export type WatcherRetainedDaRuntime = Readonly<{
+  schemaVersion: typeof WATCHER_RETAINED_DA_RUNTIME;
   deploymentFingerprint: string;
   sources: readonly DaLibp2pRetainedDaSource[];
   close(): Promise<void>;
 }>;
 
-export type WatcherProductionRetainedDaRuntimeOptionsV1 = Readonly<{
+export type WatcherRetainedDaRuntimeOptions = Readonly<{
   /** Parsed again at this boundary so a caller cannot cast around config admission. */
   watcherConfig: unknown;
   /** Must already have passed the signed deployment-identity verifier. */
-  deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   /** Unsafe test-only transport construction seam. Production omits it. */
-  unsafeTransportOptionsForTest?: WatcherPublicDaLibp2pTransportOptionsV1;
+  unsafeTransportOptionsForTest?: WatcherPublicDaLibp2pTransportOptions;
   unsafeTransportFactoryForTest?: (
-    options?: WatcherPublicDaLibp2pTransportOptionsV1,
+    options?: WatcherPublicDaLibp2pTransportOptions,
   ) => Promise<WatcherPublicDaLibp2pTransport>;
 }>;
 
-type AdmittedRuntimeOptionsV1 = Readonly<{
-  deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  unsafeTransportOptionsForTest?: WatcherPublicDaLibp2pTransportOptionsV1;
+type AdmittedRuntimeOptions = Readonly<{
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  unsafeTransportOptionsForTest?: WatcherPublicDaLibp2pTransportOptions;
   unsafeTransportFactoryForTest?: (
-    options?: WatcherPublicDaLibp2pTransportOptionsV1,
+    options?: WatcherPublicDaLibp2pTransportOptions,
   ) => Promise<WatcherPublicDaLibp2pTransport>;
 }>;
 
@@ -106,15 +106,15 @@ type AdmittedRuntimeOptionsV1 = Readonly<{
  * the test-only transport options are copied so later property replacement
  * cannot cross-bind a workflow invocation to another runtime authority.
  */
-const admitRuntimeOptionsV1 = (
-  options: Omit<WatcherProductionRetainedDaRuntimeOptionsV1, "watcherConfig">,
-): AdmittedRuntimeOptionsV1 => {
+const admitRuntimeOptions = (
+  options: Omit<WatcherRetainedDaRuntimeOptions, "watcherConfig">,
+): AdmittedRuntimeOptions => {
   const {
     deploymentIdentity,
     unsafeTransportFactoryForTest,
     unsafeTransportOptionsForTest,
   } = options;
-  assertVerifiedWatcherDeploymentIdentityV1(deploymentIdentity);
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   const transportOptions =
     unsafeTransportOptionsForTest === undefined
       ? undefined
@@ -139,24 +139,22 @@ const admitRuntimeOptionsV1 = (
   });
 };
 
-export type WatcherProductionWorkflowInfrastructureBuilderV1<Config> = (input: {
+export type WatcherWorkflowInfrastructureBuilder<Config> = (input: {
   readonly watcherConfig: WatcherConfig;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
+  readonly invocation: WorkflowAdapterReadinessInput;
 }) => Promise<Config>;
 
-type AdmittedPeerV1 = WatcherConfig["da"]["peers"][number];
+type AdmittedPeer = WatcherConfig["da"]["peers"][number];
 
-class WatcherRetainedDaLibp2pTransportV1 implements RetainedDaLibp2pTransport {
-  private readonly peerById: ReadonlyMap<string, AdmittedPeerV1>;
+class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
+  private readonly peerById: ReadonlyMap<string, AdmittedPeer>;
 
   constructor(
     private readonly deploymentFingerprint: string,
-    peers: readonly AdmittedPeerV1[],
+    peers: readonly AdmittedPeer[],
     private readonly transport: WatcherPublicDaLibp2pTransport,
     private readonly configuredTimeoutMs: number,
-    private readonly operationsSink:
-      | WatcherProductionOperationsSinkV1
-      | undefined,
+    private readonly operationsSink: WatcherOperationsSink | undefined,
   ) {
     this.peerById = new Map(peers.map((peer) => [peer.peerId, peer]));
   }
@@ -240,11 +238,11 @@ class WatcherRetainedDaLibp2pTransportV1 implements RetainedDaLibp2pTransport {
  * layer can preserve independent attempts instead of silently treating an
  * operator-private endpoint or local file as public evidence.
  */
-const createRuntimeFromAdmittedConfigV1 = async (
-  options: AdmittedRuntimeOptionsV1,
+const createRuntimeFromAdmittedConfig = async (
+  options: AdmittedRuntimeOptions,
   config: WatcherConfig,
-): Promise<WatcherProductionRetainedDaRuntimeV1> => {
-  assertVerifiedWatcherDeploymentIdentityV1(options.deploymentIdentity);
+): Promise<WatcherRetainedDaRuntime> => {
+  assertVerifiedWatcherDeploymentIdentity(options.deploymentIdentity);
   if (config.mode !== "acceptance") {
     throw new Error(
       "production retained-DA runtime requires an admitted acceptance-mode watcher configuration",
@@ -268,10 +266,10 @@ const createRuntimeFromAdmittedConfigV1 = async (
   }
   const transport = await (
     options.unsafeTransportFactoryForTest ??
-    createWatcherPublicDaLibp2pTransportV1
+    createWatcherPublicDaLibp2pTransport
   )(options.unsafeTransportOptionsForTest);
   try {
-    const adapter = new WatcherRetainedDaLibp2pTransportV1(
+    const adapter = new WatcherRetainedDaLibp2pTransport(
       deploymentFingerprint,
       config.da.peers,
       transport,
@@ -292,7 +290,7 @@ const createRuntimeFromAdmittedConfigV1 = async (
     );
     let closed = false;
     return Object.freeze({
-      schemaVersion: WATCHER_PRODUCTION_RETAINED_DA_RUNTIME_V1,
+      schemaVersion: WATCHER_RETAINED_DA_RUNTIME,
       deploymentFingerprint,
       sources,
       close: async (): Promise<void> => {
@@ -307,12 +305,12 @@ const createRuntimeFromAdmittedConfigV1 = async (
   }
 };
 
-export const createWatcherProductionRetainedDaRuntimeV1 = async (
-  options: WatcherProductionRetainedDaRuntimeOptionsV1,
-): Promise<WatcherProductionRetainedDaRuntimeV1> => {
+export const createWatcherRetainedDaRuntime = async (
+  options: WatcherRetainedDaRuntimeOptions,
+): Promise<WatcherRetainedDaRuntime> => {
   const { watcherConfig, ...runtimeOptions } = options;
-  return await createRuntimeFromAdmittedConfigV1(
-    admitRuntimeOptionsV1(runtimeOptions),
+  return await createRuntimeFromAdmittedConfig(
+    admitRuntimeOptions(runtimeOptions),
     parseWatcherConfig(watcherConfig),
   );
 };
@@ -327,14 +325,11 @@ export const createWatcherProductionRetainedDaRuntimeV1 = async (
  * application callback after this loader has independently bound public DA to
  * the verified deployment. The shared runner owns and always invokes `close`.
  */
-export const createWatcherProductionWorkflowRuntimeLoaderV1 = <Config>(
-  options: Omit<
-    WatcherProductionRetainedDaRuntimeOptionsV1,
-    "watcherConfig"
-  > & {
-    readonly buildInfrastructureConfig: WatcherProductionWorkflowInfrastructureBuilderV1<Config>;
+export const createWatcherWorkflowRuntimeLoader = <Config>(
+  options: Omit<WatcherRetainedDaRuntimeOptions, "watcherConfig"> & {
+    readonly buildInfrastructureConfig: WatcherWorkflowInfrastructureBuilder<Config>;
   },
-): ProductionWorkflowRuntimeConfigLoaderV1<Config> => {
+): WorkflowRuntimeConfigLoader<Config> => {
   const {
     buildInfrastructureConfig,
     deploymentIdentity,
@@ -346,7 +341,7 @@ export const createWatcherProductionWorkflowRuntimeLoaderV1 = <Config>(
       "production workflow runtime omitted its infrastructure builder",
     );
   }
-  const admittedRuntimeOptions = admitRuntimeOptionsV1({
+  const admittedRuntimeOptions = admitRuntimeOptions({
     deploymentIdentity,
     ...(unsafeTransportOptionsForTest === undefined
       ? {}
@@ -381,13 +376,13 @@ export const createWatcherProductionWorkflowRuntimeLoaderV1 = <Config>(
     const watcherConfig = parseWatcherConfigJson(
       await readFile(canonicalRuntimeConfigPath, "utf8"),
     );
-    const retainedDa = await createRuntimeFromAdmittedConfigV1(
+    const retainedDa = await createRuntimeFromAdmittedConfig(
       admittedRuntimeOptions,
       watcherConfig,
     );
     try {
       return {
-        schemaVersion: PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
+        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
         config: await buildInfrastructureConfig({
           watcherConfig,
           invocation,

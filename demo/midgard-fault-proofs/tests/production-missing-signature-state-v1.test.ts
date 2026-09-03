@@ -1,16 +1,16 @@
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import type { FraudProofWorkflowTerminalV1 } from "../src/workflow/journal-v1.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/journal-v1.js";
 import {
-  productionMissingSignatureObservationV1,
-  reconcileProductionMissingSignatureActionV1,
+  missingSignatureObservation,
+  reconcileMissingSignatureAction,
 } from "../src/workflow/production-missing-signature-state-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
@@ -19,7 +19,7 @@ const provenance: EvidenceProvenanceV1 = {
 const terminal = (
   removalTxHash = hash("77"),
   proofOutRef = outRef("66"),
-): FraudProofWorkflowTerminalV1 => ({
+): FraudProofWorkflowTerminal => ({
   schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
   category: "missingSignature",
   headerHash,
@@ -62,12 +62,12 @@ const step04 = (threadOutRef: string) => ({
 
 describe("production missing-signature authenticated cursor V1", () => {
   it("content-addresses every step-04 scan batch by its current thread outref", () => {
-    const first = productionMissingSignatureObservationV1({
+    const first = missingSignatureObservation({
       headerHash,
       provenance,
       stage: step04(outRef("41")),
     });
-    const second = productionMissingSignatureObservationV1({
+    const second = missingSignatureObservation({
       headerHash,
       provenance,
       stage: step04(outRef("42")),
@@ -87,7 +87,7 @@ describe("production missing-signature authenticated cursor V1", () => {
   });
 
   it("accepts multiple transaction-created step-04 successors before finalization", async () => {
-    const first = productionMissingSignatureObservationV1({
+    const first = missingSignatureObservation({
       headerHash,
       provenance,
       stage: step04(outRef("41")),
@@ -95,7 +95,7 @@ describe("production missing-signature authenticated cursor V1", () => {
     if (first.kind !== "action_required") throw new Error("missing action");
     const firstTx = hash("42");
     await expect(
-      reconcileProductionMissingSignatureActionV1({
+      reconcileMissingSignatureAction({
         headerHash,
         action: first.action,
         txHash: firstTx,
@@ -105,7 +105,7 @@ describe("production missing-signature authenticated cursor V1", () => {
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash: firstTx });
 
-    const second = productionMissingSignatureObservationV1({
+    const second = missingSignatureObservation({
       headerHash,
       provenance,
       stage: step04(`${firstTx}#0`),
@@ -113,7 +113,7 @@ describe("production missing-signature authenticated cursor V1", () => {
     if (second.kind !== "action_required") throw new Error("missing action");
     const secondTx = hash("43");
     await expect(
-      reconcileProductionMissingSignatureActionV1({
+      reconcileMissingSignatureAction({
         headerHash,
         action: second.action,
         txHash: secondTx,
@@ -123,7 +123,7 @@ describe("production missing-signature authenticated cursor V1", () => {
       }),
     ).resolves.toEqual({ kind: "confirmed", txHash: secondTx });
 
-    const final = productionMissingSignatureObservationV1({
+    const final = missingSignatureObservation({
       headerHash,
       provenance,
       stage: step04(`${secondTx}#1`),
@@ -131,7 +131,7 @@ describe("production missing-signature authenticated cursor V1", () => {
     if (final.kind !== "action_required") throw new Error("missing action");
     const finalTx = hash("66");
     await expect(
-      reconcileProductionMissingSignatureActionV1({
+      reconcileMissingSignatureAction({
         headerHash,
         action: final.action,
         txHash: finalTx,
@@ -149,7 +149,7 @@ describe("production missing-signature authenticated cursor V1", () => {
 
   it("rejects skipped/reordered steps and substituted step-04 successors", async () => {
     expect(() =>
-      productionMissingSignatureObservationV1({
+      missingSignatureObservation({
         headerHash,
         provenance,
         stage: {
@@ -161,14 +161,14 @@ describe("production missing-signature authenticated cursor V1", () => {
       }),
     ).toThrow("outside its exact production chain");
 
-    const required = productionMissingSignatureObservationV1({
+    const required = missingSignatureObservation({
       headerHash,
       provenance,
       stage: step04(outRef("41")),
     });
     if (required.kind !== "action_required") throw new Error("missing action");
     await expect(
-      reconcileProductionMissingSignatureActionV1({
+      reconcileMissingSignatureAction({
         headerHash,
         action: required.action,
         txHash: hash("42"),
@@ -181,14 +181,14 @@ describe("production missing-signature authenticated cursor V1", () => {
 
   it("fails closed on private provenance and terminal substitution", () => {
     expect(() =>
-      productionMissingSignatureObservationV1({
+      missingSignatureObservation({
         headerHash,
         provenance: { ...provenance, trustClass: "operator_private_file" },
         stage: step04(outRef("41")),
       }),
     ).toThrow("prohibited_trust_class");
     expect(() =>
-      productionMissingSignatureObservationV1({
+      missingSignatureObservation({
         headerHash,
         provenance,
         stage: {
@@ -201,7 +201,7 @@ describe("production missing-signature authenticated cursor V1", () => {
 
   it("binds correction to the exact removal transaction and proof outref", async () => {
     const proofOutRef = outRef("66");
-    const required = productionMissingSignatureObservationV1({
+    const required = missingSignatureObservation({
       headerHash,
       provenance,
       stage: {
@@ -214,7 +214,7 @@ describe("production missing-signature authenticated cursor V1", () => {
     if (required.kind !== "action_required") throw new Error("missing action");
     const removalTx = hash("77");
     await expect(
-      reconcileProductionMissingSignatureActionV1({
+      reconcileMissingSignatureAction({
         headerHash,
         action: required.action,
         txHash: removalTx,
@@ -225,7 +225,7 @@ describe("production missing-signature authenticated cursor V1", () => {
     ).resolves.toEqual({ kind: "confirmed", txHash: removalTx });
 
     await expect(
-      reconcileProductionMissingSignatureActionV1({
+      reconcileMissingSignatureAction({
         headerHash,
         action: required.action,
         txHash: removalTx,

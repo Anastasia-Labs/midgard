@@ -1,31 +1,31 @@
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import type { FraudProofWorkflowTerminalV1 } from "../src/workflow/journal-v1.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/journal-v1.js";
 import {
-  PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1,
-  PRODUCTION_LINEAR_FAMILY_SPECS_V1,
-  productionLinearFamilySpecV1,
+  LINEAR_FAMILY_CATEGORIES,
+  LINEAR_FAMILY_SPECS,
+  linearFamilySpec,
 } from "../src/workflow/production-linear-family-spec-v1.js";
 import {
-  productionLinearFamilyObservationV1,
-  reconcileProductionLinearFamilyActionV1,
+  linearFamilyObservation,
+  reconcileLinearFamilyAction,
 } from "../src/workflow/production-linear-family-state-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
 };
 
 const terminal = (
-  category: (typeof PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1)[number],
+  category: (typeof LINEAR_FAMILY_CATEGORIES)[number],
   removalTxHash = hash("55"),
   proofOutRef = outRef("44"),
-): FraudProofWorkflowTerminalV1 => ({
+): FraudProofWorkflowTerminal => ({
   schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
   category,
   headerHash,
@@ -61,10 +61,10 @@ const terminal = (
 
 describe("production linear family authenticated state machine V1", () => {
   it("defines only fixed-terminal categories in exact closed order", () => {
-    expect(
-      PRODUCTION_LINEAR_FAMILY_SPECS_V1.map((row) => row.category),
-    ).toEqual(PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1);
-    for (const row of PRODUCTION_LINEAR_FAMILY_SPECS_V1) {
+    expect(LINEAR_FAMILY_SPECS.map((row) => row.category)).toEqual(
+      LINEAR_FAMILY_CATEGORIES,
+    );
+    for (const row of LINEAR_FAMILY_SPECS) {
       expect(row.steps.length).toBeGreaterThanOrEqual(1);
       expect(row.steps.length).toBeLessThanOrEqual(4);
       expect(row.steps.map((step) => step.ordinal)).toEqual(
@@ -77,16 +77,14 @@ describe("production linear family authenticated state machine V1", () => {
   });
 
   it("refuses missing-signature because step-04 is a cursor-driven self-loop", () => {
-    expect(PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1).not.toContain(
-      "missingSignature",
-    );
+    expect(LINEAR_FAMILY_CATEGORIES).not.toContain("missingSignature");
     expect(() =>
-      productionLinearFamilySpecV1("missingSignature" as "daHashPreimage"),
+      linearFamilySpec("missingSignature" as "daHashPreimage"),
     ).toThrow("no production linear family spec");
   });
 
   it("content-addresses init, every exact step, and removal", () => {
-    const init = productionLinearFamilyObservationV1({
+    const init = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -96,7 +94,7 @@ describe("production linear family authenticated state machine V1", () => {
       kind: "action_required",
       action: { actionId: `init:${outRef("11")}` },
     });
-    const step = productionLinearFamilyObservationV1({
+    const step = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -113,7 +111,7 @@ describe("production linear family authenticated state machine V1", () => {
         actionId: `step_02:${outRef("22")}:${outRef("11")}`,
       },
     });
-    const removal = productionLinearFamilyObservationV1({
+    const removal = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -133,7 +131,7 @@ describe("production linear family authenticated state machine V1", () => {
   });
 
   it("accepts only the immediate transaction-created successor", async () => {
-    const current = productionLinearFamilyObservationV1({
+    const current = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -147,7 +145,7 @@ describe("production linear family authenticated state machine V1", () => {
     if (current.kind !== "action_required") throw new Error("missing action");
     const txHash = hash("22");
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: current.action,
@@ -164,7 +162,7 @@ describe("production linear family authenticated state machine V1", () => {
     ).resolves.toEqual({ kind: "confirmed", txHash });
 
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: current.action,
@@ -183,7 +181,7 @@ describe("production linear family authenticated state machine V1", () => {
 
   it("rejects hostile category, step-order, provenance, and terminal substitution", () => {
     expect(() =>
-      productionLinearFamilyObservationV1({
+      linearFamilyObservation({
         category: "daHashPreimage",
         headerHash,
         provenance,
@@ -196,7 +194,7 @@ describe("production linear family authenticated state machine V1", () => {
       }),
     ).toThrow("outside its exact production chain");
     expect(() =>
-      productionLinearFamilyObservationV1({
+      linearFamilyObservation({
         category: "daHashPreimage",
         headerHash,
         provenance: { ...provenance, trustClass: "operator_private_file" },
@@ -204,7 +202,7 @@ describe("production linear family authenticated state machine V1", () => {
       }),
     ).toThrow("prohibited_trust_class");
     expect(() =>
-      productionLinearFamilyObservationV1({
+      linearFamilyObservation({
         category: "daHashPreimage",
         headerHash,
         provenance,
@@ -217,7 +215,7 @@ describe("production linear family authenticated state machine V1", () => {
   });
 
   it("fails closed on stale/reordered states but permits an unincluded stale removal to rebuild", async () => {
-    const proof = productionLinearFamilyObservationV1({
+    const proof = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -230,7 +228,7 @@ describe("production linear family authenticated state machine V1", () => {
     });
     if (proof.kind !== "action_required") throw new Error("missing action");
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: proof.action,
@@ -247,7 +245,7 @@ describe("production linear family authenticated state machine V1", () => {
     ).resolves.toEqual({ kind: "not_found" });
 
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: proof.action,
@@ -261,7 +259,7 @@ describe("production linear family authenticated state machine V1", () => {
 
   it("binds terminal removal to the intended transaction and retained proof outref", async () => {
     const proofOutRef = outRef("44");
-    const proof = productionLinearFamilyObservationV1({
+    const proof = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -275,7 +273,7 @@ describe("production linear family authenticated state machine V1", () => {
     if (proof.kind !== "action_required") throw new Error("missing action");
     const txHash = hash("55");
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: proof.action,
@@ -290,7 +288,7 @@ describe("production linear family authenticated state machine V1", () => {
     ).resolves.toEqual({ kind: "confirmed", txHash });
 
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: proof.action,
@@ -305,7 +303,7 @@ describe("production linear family authenticated state machine V1", () => {
     ).resolves.toMatchObject({ kind: "conflict" });
 
     await expect(
-      reconcileProductionLinearFamilyActionV1({
+      reconcileLinearFamilyAction({
         category: "daHashPreimage",
         headerHash,
         action: proof.action,
@@ -327,11 +325,11 @@ describe("production linear family authenticated state machine V1", () => {
   });
 
   it("keeps every family lookup exact and category-bound", () => {
-    for (const category of PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1) {
-      expect(productionLinearFamilySpecV1(category).category).toBe(category);
+    for (const category of LINEAR_FAMILY_CATEGORIES) {
+      expect(linearFamilySpec(category).category).toBe(category);
     }
-    expect(() =>
-      productionLinearFamilySpecV1("networkId" as "daHashPreimage"),
-    ).toThrow("no production linear family spec");
+    expect(() => linearFamilySpec("networkId" as "daHashPreimage")).toThrow(
+      "no production linear family spec",
+    );
   });
 });

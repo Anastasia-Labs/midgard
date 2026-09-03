@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertPhase4GenesisLedgerGate,
   classifyPhase4GenesisLedgerState,
-  decodePhase4GenesisLedgerReportV1,
+  decodePhase4GenesisLedgerReport,
   makePhase4GenesisLedgerPlan,
   PHASE4_GENESIS_BOOTSTRAP_ENV,
   PHASE4_GENESIS_BOOTSTRAP_TOKEN,
@@ -138,7 +138,7 @@ describe("Phase 4 genesis ledger V1 report decoder", () => {
   });
 
   it("accepts only the exact canonical report", () => {
-    expect(decodePhase4GenesisLedgerReportV1(report())).toEqual(report());
+    expect(decodePhase4GenesisLedgerReport(report())).toEqual(report());
   });
 
   it.each([
@@ -166,13 +166,13 @@ describe("Phase 4 genesis ledger V1 report decoder", () => {
     ],
   ])("rejects adversarial report mutation %#", (override, message) => {
     expect(() =>
-      decodePhase4GenesisLedgerReportV1({ ...report(), ...override }),
+      decodePhase4GenesisLedgerReport({ ...report(), ...override }),
     ).toThrow(message);
   });
 
   it("rejects a missing required key", () => {
     const { rowCount: _rowCount, ...missing } = report();
-    expect(() => decodePhase4GenesisLedgerReportV1(missing)).toThrow("fields");
+    expect(() => decodePhase4GenesisLedgerReport(missing)).toThrow("fields");
   });
 });
 

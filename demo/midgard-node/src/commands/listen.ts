@@ -68,7 +68,7 @@ import {
   userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
-import { MidgardMpf, utxoToLedgerInsertMaterialV1 } from "../mpf/index.js";
+import { MidgardMpf, utxoToLedgerInsertMaterial } from "../mpf/index.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -229,7 +229,7 @@ const initializeArchitectureGOwner = (
           const genesisEntries = yield* Effect.forEach(
             nodeConfig.GENESIS_UTXOS,
             (utxo) =>
-              utxoToLedgerInsertMaterialV1(utxo).pipe(
+              utxoToLedgerInsertMaterial(utxo).pipe(
                 Effect.map(({ ledgerOp, outputCbor }) => ({
                   op: ledgerOp,
                   ledgerEntry: {

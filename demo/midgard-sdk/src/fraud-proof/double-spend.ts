@@ -9,7 +9,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -140,7 +140,7 @@ export const DoubleSpendStep03Datum =
 export const DoubleSpendStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  tx1_spend_inputs_opening: FieldOpeningV1Schema,
+  tx1_spend_inputs_opening: FieldOpeningSchema,
   double_spent_input_index: Data.Integer(),
 });
 export type DoubleSpendStep03Args = Data.Static<
@@ -182,7 +182,7 @@ export const DoubleSpendStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  tx2_spend_inputs_opening: FieldOpeningV1Schema,
+  tx2_spend_inputs_opening: FieldOpeningSchema,
   double_spent_input_index: Data.Integer(),
 });
 export type DoubleSpendStep04Args = Data.Static<

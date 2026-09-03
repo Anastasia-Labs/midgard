@@ -1,6 +1,6 @@
 import {
   commitCountedRootProgram,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
@@ -23,9 +23,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareNativeTxInclusionCarriageV1 } from "../native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "../native-inclusion-carriage-v1.js";
 import {
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -43,19 +43,19 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
-  type WithdrawnInputContractsV1,
+  type WithdrawnInputContracts,
 } from "./contracts-v1.js";
 import {
-  requireWithdrawnInputReferenceScriptV1,
-  requireWithdrawnInputThreadUtxoV1,
+  requireWithdrawnInputReferenceScript,
+  requireWithdrawnInputThreadUtxo,
   withdrawnInputSubmitError,
 } from "./submit-common-v1.js";
 
@@ -88,20 +88,20 @@ export const submitWithdrawnInputStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: WithdrawnInputContractsV1;
+  readonly contracts: WithdrawnInputContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputStep01Result> => {
-  const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -109,7 +109,7 @@ export const submitWithdrawnInputStep01 = async ({
     threadOutRef,
   });
   requireInitialStepDatum({ threadUtxo, signer });
-  const stepReference = requireWithdrawnInputReferenceScriptV1({
+  const stepReference = requireWithdrawnInputReferenceScript({
     utxo: referenceScriptUtxo,
     contracts,
     stepIndex: 0,
@@ -142,7 +142,7 @@ export const submitWithdrawnInputStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(nodeView),
+    getHeaderFromStateQueueDatum(nodeView),
   );
   const derivedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
@@ -174,7 +174,7 @@ export const submitWithdrawnInputStep01 = async ({
     unit: threadToken.unit,
   });
   const chunks = publishedProofChunks ?? [];
-  const inclusionCarriage = prepareNativeTxInclusionCarriageV1({
+  const inclusionCarriage = prepareNativeTxInclusionCarriage({
     blueprint,
     network,
     txInclusion,
@@ -254,9 +254,9 @@ export const submitWithdrawnInputStep01 = async ({
     throw withdrawnInputSubmitError("step-01 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

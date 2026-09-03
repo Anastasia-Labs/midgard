@@ -11,7 +11,7 @@ import { Effect } from "effect";
 import { Level } from "level";
 
 import {
-  buildNativeProductionRootProbe,
+  buildNativeRootProbe,
   buildTransactionsSourceRoot,
   buildTransitionTraceResult,
   configureMpfPathHydration,
@@ -400,7 +400,7 @@ const replayArchitectureGOne = (
         };
         const sourceEvents = decodeSourceEvents(block);
         const productionRoots = await Effect.runPromise(
-          buildNativeProductionRootProbe({
+          buildNativeRootProbe({
             nativeMpf,
             sourceEvents,
             transactionOps: block.transactionOps

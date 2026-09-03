@@ -8,18 +8,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  OBSERVER_ORDER_INVALID_CATEGORY_ID_V1,
-  OBSERVER_ORDER_INVALID_CATEGORY_V1,
+  OBSERVER_ORDER_INVALID_CATEGORY,
+  OBSERVER_ORDER_INVALID_CATEGORY_ID,
 } from "./family-v1.js";
 
-export const OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/observer_order_invalid/step_01.main.spend",
   "fraud_proofs/observer_order_invalid/step_02.main.spend",
   "fraud_proofs/observer_order_invalid/step_03.main.spend",
   "fraud_proofs/observer_order_invalid/step_04.main.spend",
 ] as const);
 
-export type ObserverOrderInvalidStepContractV1 = Readonly<{
+export type ObserverOrderInvalidStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -27,12 +27,12 @@ export type ObserverOrderInvalidStepContractV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type ObserverOrderInvalidContractsV1 = Readonly<{
+export type ObserverOrderInvalidContracts = Readonly<{
   steps: readonly [
-    ObserverOrderInvalidStepContractV1,
-    ObserverOrderInvalidStepContractV1,
-    ObserverOrderInvalidStepContractV1,
-    ObserverOrderInvalidStepContractV1,
+    ObserverOrderInvalidStepContract,
+    ObserverOrderInvalidStepContract,
+    ObserverOrderInvalidStepContract,
+    ObserverOrderInvalidStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -49,7 +49,7 @@ export type ObserverOrderInvalidContractsV1 = Readonly<{
   fieldPreimageCertificateMintingScript: Script;
 }>;
 
-export type ObserverOrderInvalidBlueprintV1 = Readonly<{
+export type ObserverOrderInvalidBlueprint = Readonly<{
   validators: readonly Readonly<{
     title: string;
     compiledCode: string;
@@ -58,7 +58,7 @@ export type ObserverOrderInvalidBlueprintV1 = Readonly<{
 }>;
 
 const applyExact = (
-  blueprint: ObserverOrderInvalidBlueprintV1,
+  blueprint: ObserverOrderInvalidBlueprint,
   title: string,
   parameters: readonly Data[],
 ): Script => {
@@ -74,7 +74,7 @@ const applyExact = (
 };
 
 /** Applies the four scripts backwards, in their blueprint-declared order. */
-export const applyObserverOrderInvalidScriptsV1 = ({
+export const applyObserverOrderInvalidScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -83,19 +83,19 @@ export const applyObserverOrderInvalidScriptsV1 = ({
   fieldPreimageCertificatePolicyId,
   hubOracleScriptHash,
 }: {
-  readonly blueprint: ObserverOrderInvalidBlueprintV1;
+  readonly blueprint: ObserverOrderInvalidBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): ObserverOrderInvalidContractsV1["steps"] => {
+}): ObserverOrderInvalidContracts["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): ObserverOrderInvalidStepContractV1 => {
-    const blueprintTitle = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1[index]!;
+  ): ObserverOrderInvalidStepContract => {
+    const blueprintTitle = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES[index]!;
     const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
     return Object.freeze({
       blueprintTitle,
@@ -128,12 +128,12 @@ export const applyObserverOrderInvalidScriptsV1 = ({
   return [step01, step02, step03, step04];
 };
 
-export type ObserverOrderInvalidProductionManifestV1 = Readonly<{
+export type ObserverOrderInvalidManifest = Readonly<{
   schemaVersion: "observer-order-invalid-production-manifest-v1";
-  category: typeof OBSERVER_ORDER_INVALID_CATEGORY_V1;
-  categoryId: typeof OBSERVER_ORDER_INVALID_CATEGORY_ID_V1;
+  category: typeof OBSERVER_ORDER_INVALID_CATEGORY;
+  categoryId: typeof OBSERVER_ORDER_INVALID_CATEGORY_ID;
   network: Network;
-  contracts: ObserverOrderInvalidContractsV1;
+  contracts: ObserverOrderInvalidContracts;
 }>;
 
 const hex = (value: string, bytes: number, label: string): void => {
@@ -141,20 +141,18 @@ const hex = (value: string, bytes: number, label: string): void => {
     throw new Error(`observerOrderInvalid: ${label} is not canonical hex`);
 };
 
-export const loadObserverOrderInvalidProductionManifestV1 = (
-  manifest: ObserverOrderInvalidProductionManifestV1,
-): ObserverOrderInvalidProductionManifestV1 => {
+export const loadObserverOrderInvalidManifest = (
+  manifest: ObserverOrderInvalidManifest,
+): ObserverOrderInvalidManifest => {
   if (
     manifest.schemaVersion !==
       "observer-order-invalid-production-manifest-v1" ||
-    manifest.category !== OBSERVER_ORDER_INVALID_CATEGORY_V1 ||
-    manifest.categoryId !== OBSERVER_ORDER_INVALID_CATEGORY_ID_V1
+    manifest.category !== OBSERVER_ORDER_INVALID_CATEGORY ||
+    manifest.categoryId !== OBSERVER_ORDER_INVALID_CATEGORY_ID
   )
     throw new Error("observerOrderInvalid: manifest identity changed");
   manifest.contracts.steps.forEach((step, index) => {
-    if (
-      step.blueprintTitle !== OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1[index]
-    )
+    if (step.blueprintTitle !== OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES[index])
       throw new Error("observerOrderInvalid: ordered blueprint title changed");
     if (validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash)
       throw new Error("observerOrderInvalid: applied script hash changed");

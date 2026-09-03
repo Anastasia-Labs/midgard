@@ -27,18 +27,18 @@
  * wasm32 ceiling; see tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  midgardFieldCarriageBoundsV1,
+  encodeMidgardFieldPreimage,
+  midgardFieldCarriageBounds,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
-  encodeMidgardTxOutputCanonicalV1,
-  fieldPreimagePublicationDatumCborV1,
+  encodeMidgardTxInputCanonical,
+  encodeMidgardTxOutputCanonical,
+  fieldPreimagePublicationDatumCbor,
   FraudProofTokenDatum,
-  MIDGARD_FIELD_INDEX_V1,
-  referenceInputNoIdxOutputsCommitmentV1,
-  referenceInputNoIdxReferenceInputsCommitmentV1,
+  MIDGARD_FIELD_INDEX,
+  referenceInputNoIdxOutputsCommitment,
+  referenceInputNoIdxReferenceInputsCommitment,
   ReferenceInputNoIdxStep02Datum,
   ReferenceInputNoIdxStep03Datum,
   ReferenceInputNoIdxStep04Datum,
@@ -46,7 +46,7 @@ import {
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpeningV1 } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
 import {
   submitReferenceInputNoIdxStep01,
   submitReferenceInputNoIdxStep02,
@@ -56,18 +56,18 @@ import {
 } from "../src/index.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
-  buildReferenceInputNoIdxBlockFixtureV1,
-  expectOnchainRefusalV1,
-  makeReferenceInputNoIdxEmulatorHarnessV1,
-  publishReferenceInputNoIdxReferenceScriptsV1,
-  REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT_V1,
-  REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT_V1,
-  submitRawReferenceInputNoIdxStep02V1,
-  submitRawReferenceInputNoIdxStep04V1,
+  buildReferenceInputNoIdxBlockFixture,
+  expectOnchainRefusal,
+  makeReferenceInputNoIdxEmulatorHarness,
+  publishReferenceInputNoIdxReferenceScripts,
+  REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT,
+  REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT,
+  submitRawReferenceInputNoIdxStep02,
+  submitRawReferenceInputNoIdxStep04,
 } from "./support/reference-input-no-idx-emulator-v1.js";
 import {
   expectStateQueueHeaderOrder,
-  setupFraudulentBlockV1 as setupFraudulentBlock,
+  setupFraudulentBlock as setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -82,7 +82,7 @@ const CHALLENGED_OUTPUT_INDEX = 7n;
 
 describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
   it("proves and removes an out-of-range reference-input block end to end", async () => {
-    const harness = await makeReferenceInputNoIdxEmulatorHarnessV1();
+    const harness = await makeReferenceInputNoIdxEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -102,21 +102,21 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
         contracts,
       });
     const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishReferenceInputNoIdxReferenceScriptsV1({
+      await publishReferenceInputNoIdxReferenceScripts({
         lucid: proverLucid,
         contracts: contracts.fraudProofContracts.referenceInputNoIdx,
       });
 
     // The normal producer commits one output, so index 7 cannot exist.
-    const fixture = await buildReferenceInputNoIdxBlockFixtureV1({
+    const fixture = await buildReferenceInputNoIdxBlockFixture({
       producingOutputCount: 1,
     });
     expect(fixture.producingOutputsCbor).toHaveLength(1);
+    expect(referenceInputNoIdxOutputsCommitment(fixture.producingOutputs)).toBe(
+      fixture.producingTxOutputsHash,
+    );
     expect(
-      referenceInputNoIdxOutputsCommitmentV1(fixture.producingOutputs),
-    ).toBe(fixture.producingTxOutputsHash);
-    expect(
-      referenceInputNoIdxReferenceInputsCommitmentV1(fixture.referenceInputs),
+      referenceInputNoIdxReferenceInputsCommitment(fixture.referenceInputs),
     ).toBe(fixture.badTxReferenceInputsHash);
     expect(fixture.challengedReferenceInput.tx_id).toBe(fixture.producingTxId);
 
@@ -388,7 +388,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // single-publication window — so the ladder routes to `RawUtxo`. Nothing
     // forces it; the committed data's size does. Field 2 stays tiny, so the
     // same journey pins tier-2 and tier-1 selection side by side.
-    const harness = await makeReferenceInputNoIdxEmulatorHarnessV1();
+    const harness = await makeReferenceInputNoIdxEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -399,32 +399,31 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       catalogue,
     } = harness;
     const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishReferenceInputNoIdxReferenceScriptsV1({
+      await publishReferenceInputNoIdxReferenceScripts({
         lucid: proverLucid,
         contracts: contracts.fraudProofContracts.referenceInputNoIdx,
       });
 
-    const fixture = await buildReferenceInputNoIdxBlockFixtureV1({
+    const fixture = await buildReferenceInputNoIdxBlockFixture({
       producingOutputCount: 1,
-      referenceInputCount:
-        REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT_V1,
+      referenceInputCount: REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT,
     });
     expect(fixture.referenceInputs).toHaveLength(
-      REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT_V1,
+      REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT,
     );
     const referenceInputItems = fixture.referenceInputs.map(
-      encodeMidgardTxInputCanonicalV1,
+      encodeMidgardTxInputCanonical,
     );
-    const preimage = encodeMidgardFieldPreimageV1(referenceInputItems);
+    const preimage = encodeMidgardFieldPreimage(referenceInputItems);
     expect(preimage.length).toBeGreaterThan(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
     expect(preimage.length).toBeLessThanOrEqual(
-      midgardFieldCarriageBoundsV1.maxPublishableCarriageBytes,
+      midgardFieldCarriageBounds.maxPublishableCarriageBytes,
     );
     // The plan the submitter itself will make, from exactly its own inputs.
-    const plannedField01 = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+    const plannedField01 = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
       anchorTxId: fixture.badTxId,
       nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
       itemCbors: referenceInputItems,
@@ -505,13 +504,13 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // adds the carriage and resolves its canonical index across both UTxOs.
     // Omitting either reference would make the real validator reject.
     expect(step02Result.referenceInputsPreimageItemCount).toBe(
-      REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT_V1,
+      REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT,
     );
     expect(step02Result.badReferenceInputTxId).toBe(fixture.producingTxId);
 
     // The whole §5.1 preimage sits at the prover's address as a bytes-only
     // inline datum (§8.5), referenced rather than spent (§8.7).
-    const expectedDatum = fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await proverLucid.utxosAt(proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);
@@ -571,7 +570,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // FIRST output count past §8.4's tier-1 redeemer bound. Field 1 stays a
     // one-item preimage, so tier-1 and tier-2 selection are pinned side by
     // side in one journey, each decided by size alone.
-    const harness = await makeReferenceInputNoIdxEmulatorHarnessV1();
+    const harness = await makeReferenceInputNoIdxEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -582,33 +581,32 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       catalogue,
     } = harness;
     const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishReferenceInputNoIdxReferenceScriptsV1({
+      await publishReferenceInputNoIdxReferenceScripts({
         lucid: proverLucid,
         contracts: contracts.fraudProofContracts.referenceInputNoIdx,
       });
 
-    const fixture = await buildReferenceInputNoIdxBlockFixtureV1({
-      producingOutputCount:
-        REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT_V1,
+    const fixture = await buildReferenceInputNoIdxBlockFixture({
+      producingOutputCount: REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT,
       challengedOutputIndex: BigInt(
-        REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT_V1,
+        REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT,
       ),
     });
     const outputItems = fixture.producingOutputs.map(
-      encodeMidgardTxOutputCanonicalV1,
+      encodeMidgardTxOutputCanonical,
     );
-    const preimage = encodeMidgardFieldPreimageV1(outputItems);
+    const preimage = encodeMidgardFieldPreimage(outputItems);
     expect(preimage.length).toBeGreaterThan(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
     expect(preimage.length).toBeLessThanOrEqual(
-      midgardFieldCarriageBoundsV1.maxPublishableCarriageBytes,
+      midgardFieldCarriageBounds.maxPublishableCarriageBytes,
     );
-    expect(
-      referenceInputNoIdxOutputsCommitmentV1(fixture.producingOutputs),
-    ).toBe(fixture.producingTxOutputsHash);
-    const plannedField02 = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+    expect(referenceInputNoIdxOutputsCommitment(fixture.producingOutputs)).toBe(
+      fixture.producingTxOutputsHash,
+    );
+    const plannedField02 = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.outputs,
       anchorTxId: fixture.producingTxId,
       nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
       itemCbors: outputItems,
@@ -721,13 +719,13 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // resolves the carriage index across the carriage plus the step-04
     // reference script supplied above, and the real validator accepts it.
     expect(step04Result.producingTxOutputCount).toBe(
-      REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT_V1,
+      REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT,
     );
     expect(step04Result.badReferenceInputOutputIndex).toBe(
-      REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT_V1,
+      REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT,
     );
 
-    const expectedDatum = fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await proverLucid.utxosAt(proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);
@@ -748,7 +746,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // reference input names index 0 of a producer that really has an output at
     // index 0. Steps 01-03 carry no verdict — an honest block advances just as
     // far, which is why the family's adjudication lives in step 04.
-    const harness = await makeReferenceInputNoIdxEmulatorHarnessV1();
+    const harness = await makeReferenceInputNoIdxEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -759,20 +757,20 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       catalogue,
     } = harness;
     const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishReferenceInputNoIdxReferenceScriptsV1({
+      await publishReferenceInputNoIdxReferenceScripts({
         lucid: proverLucid,
         contracts: contracts.fraudProofContracts.referenceInputNoIdx,
       });
 
-    const fixture = await buildReferenceInputNoIdxBlockFixtureV1({
+    const fixture = await buildReferenceInputNoIdxBlockFixture({
       producingOutputCount: 1,
       challengedOutputIndex: 0n,
       referenceInputCount: 2,
     });
     expect(fixture.referenceInputs).toHaveLength(2);
-    expect(
-      referenceInputNoIdxOutputsCommitmentV1(fixture.producingOutputs),
-    ).toBe(fixture.producingTxOutputsHash);
+    expect(referenceInputNoIdxOutputsCommitment(fixture.producingOutputs)).toBe(
+      fixture.producingTxOutputsHash,
+    );
 
     const setup = await setupFraudulentBlock({
       funderLucid,
@@ -819,7 +817,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
 
     // ## Attack 1 — a field-1 preimage the transaction never committed.
     // Refused off-chain by the door's own twin before a transaction is built:
-    // `planFaultProofFieldOpeningV1`'s `field_commitment_at` check, which names
+    // `planFaultProofFieldOpening`'s `field_commitment_at` check, which names
     // the SLOT because under §4 identical items commit identically in fields 0
     // and 1.
     await expect(
@@ -852,9 +850,9 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // index — so a raw driver builds it.
     const lastReferenceInput =
       fixture.referenceInputs[fixture.referenceInputs.length - 1]!;
-    await expectOnchainRefusalV1(
+    await expectOnchainRefusal(
       async () =>
-        await submitRawReferenceInputNoIdxStep02V1({
+        await submitRawReferenceInputNoIdxStep02({
           lucid: proverLucid,
           blueprint: realBlueprint,
           deploymentInfo,
@@ -935,9 +933,9 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // `bad_reference_input_output_index >= field_item_count(outputs_view)`,
     // which is `0 >= 1` here. This is the primary adversarial leg: an adversary
     // who rewrites the builder still cannot convict an honest commitment.
-    await expectOnchainRefusalV1(
+    await expectOnchainRefusal(
       async () =>
-        await submitRawReferenceInputNoIdxStep04V1({
+        await submitRawReferenceInputNoIdxStep04({
           lucid: proverLucid,
           witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,

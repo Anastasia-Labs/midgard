@@ -1,33 +1,33 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { UnusedRedeemerAuthenticationV1 } from "./authentication-v1.js";
-import type { UnusedRedeemerContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { UnusedRedeemerAuthentication } from "./authentication-v1.js";
+import type { UnusedRedeemerContracts } from "./contracts-v1.js";
 import {
-  UnusedRedeemerStep02bDatumV1Schema,
-  UnusedRedeemerStep02bRedeemerV1Schema,
-  UnusedRedeemerStep02cDatumV1Schema,
+  UnusedRedeemerStep02bDatumSchema,
+  UnusedRedeemerStep02bRedeemerSchema,
+  UnusedRedeemerStep02cDatumSchema,
 } from "./schemas-v1.js";
-import { submitUnusedRedeemerLinearSplitV1 } from "./submit-linear-split-v1.js";
-export const submitUnusedRedeemerStep02bV1 = async (input: {
+import { submitUnusedRedeemerLinearSplit } from "./submit-linear-split-v1.js";
+export const submitUnusedRedeemerStep02b = async (input: {
   lucid: LucidEvolution;
-  contracts: UnusedRedeemerContractsV1;
+  contracts: UnusedRedeemerContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  authentication: UnusedRedeemerAuthenticationV1;
+  authentication: UnusedRedeemerAuthentication;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) =>
-  submitUnusedRedeemerLinearSplitV1({
+  submitUnusedRedeemerLinearSplit({
     ...input,
     stepIndex: 3,
     nextState: input.authentication.headerState,
-    sourceDatumSchema: UnusedRedeemerStep02bDatumV1Schema,
-    nextDatumSchema: UnusedRedeemerStep02cDatumV1Schema,
-    redeemerSchema: UnusedRedeemerStep02bRedeemerV1Schema,
+    sourceDatumSchema: UnusedRedeemerStep02bDatumSchema,
+    nextDatumSchema: UnusedRedeemerStep02cDatumSchema,
+    redeemerSchema: UnusedRedeemerStep02bRedeemerSchema,
     redeemerFields: {
       item_control: input.authentication.itemControl,
       chunk_proof: input.authentication.headerChunkProof,

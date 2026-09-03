@@ -1,64 +1,64 @@
 import {
-  advanceMidgardBlake2b256TraceV1,
-  digestMidgardBlake2b256TraceV1,
-  encodeMidgardBlake2b256TraceControlV1,
-  initialMidgardBlake2b256TraceControlV1,
-  isWellFormedMidgardBlake2b256TraceControlV1,
+  advanceMidgardBlake2b256Trace,
+  digestMidgardBlake2b256Trace,
+  encodeMidgardBlake2b256TraceControl,
+  initialMidgardBlake2b256TraceControl,
+  isWellFormedMidgardBlake2b256TraceControl,
   MIDGARD_BLAKE2B_256_BLOCK_BYTES,
-  type MidgardBlake2b256TraceControlV1,
-  MidgardBlake2b256TraceStagesV1,
+  type MidgardBlake2b256TraceControl,
+  MidgardBlake2b256TraceStages,
 } from "./blake2b-256-trace-v1.js";
 import {
-  appendMidgardCekBlobFrontierChunkRootV1,
-  emptyMidgardCekBlobFrontierV1,
-  encodeMidgardCekBlobFrontierV1,
-  finalizeMidgardCekBlobFrontierV1,
-  type MidgardCekBlobFrontierV1,
-  validateMidgardCekBlobFrontierV1,
+  appendMidgardCekBlobFrontierChunkRoot,
+  emptyMidgardCekBlobFrontier,
+  encodeMidgardCekBlobFrontier,
+  finalizeMidgardCekBlobFrontier,
+  type MidgardCekBlobFrontier,
+  validateMidgardCekBlobFrontier,
 } from "./cek-blob-frontier-v1.js";
 import { MIDGARD_CEK_BLOB_CHUNK_BYTES } from "./cek-proof.js";
 import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT } from "./validation-merkle.js";
 
-export const MIDGARD_CEK_SOURCE_BLOB_V1_VERSION = 1 as const;
+export const MIDGARD_CEK_SOURCE_BLOB_VERSION = 1 as const;
 
-export const MidgardCekSourceBlobStagesV1 = Object.freeze({
+export const MidgardCekSourceBlobStages = Object.freeze({
   Active: 0,
   Terminal: 1,
 } as const);
 
-export type MidgardCekSourceBlobStageV1 =
-  (typeof MidgardCekSourceBlobStagesV1)[keyof typeof MidgardCekSourceBlobStagesV1];
+export type MidgardCekSourceBlobStage =
+  (typeof MidgardCekSourceBlobStages)[keyof typeof MidgardCekSourceBlobStages];
 
 /**
  * Hashes one contiguous span supplied by a parent authenticated-source
  * machine into the canonical CEK blob tree. Source bytes are accepted only
  * while the nested BLAKE2b trace is ready for its next block.
  */
-export type MidgardCekSourceBlobControlV1 = {
-  readonly version: typeof MIDGARD_CEK_SOURCE_BLOB_V1_VERSION;
-  readonly stage: MidgardCekSourceBlobStageV1;
+export type MidgardCekSourceBlobControl = {
+  readonly version: typeof MIDGARD_CEK_SOURCE_BLOB_VERSION;
+  readonly stage: MidgardCekSourceBlobStage;
   readonly sourceStart: number;
   readonly sourceLength: number;
-  readonly frontier: MidgardCekBlobFrontierV1;
-  readonly activeHash: MidgardBlake2b256TraceControlV1 | null;
+  readonly frontier: MidgardCekBlobFrontier;
+  readonly activeHash: MidgardBlake2b256TraceControl | null;
 };
 
-export type MidgardCekSourceBlobSpanV1 = {
+export type MidgardCekSourceBlobSpan = {
   readonly absoluteStart: number;
   readonly length: number;
 };
 
-export type MidgardCekSourceBlobTraceStepV1 = {
-  readonly control: MidgardCekSourceBlobControlV1;
+export type MidgardCekSourceBlobTraceStep = {
+  readonly control: MidgardCekSourceBlobControl;
   readonly sourceBytes: Buffer | null;
-  readonly next: MidgardCekSourceBlobControlV1;
+  readonly next: MidgardCekSourceBlobControl;
 };
 
-export type MidgardCekSourceBlobTraceV1 = {
-  readonly initial: MidgardCekSourceBlobControlV1;
-  readonly steps: readonly MidgardCekSourceBlobTraceStepV1[];
-  readonly terminal: MidgardCekSourceBlobControlV1;
+export type MidgardCekSourceBlobTrace = {
+  readonly initial: MidgardCekSourceBlobControl;
+  readonly steps: readonly MidgardCekSourceBlobTraceStep[];
+  readonly terminal: MidgardCekSourceBlobControl;
 };
 
 const BLOB_CHUNK_DOMAIN = Buffer.from("MidgardCekBlobChunkV1", "ascii");
@@ -101,7 +101,7 @@ const expectedFrontierByteLength = ({
 }): bigint =>
   BigInt(Math.min(sourceLength, count * MIDGARD_CEK_BLOB_CHUNK_BYTES));
 
-const activeChunkLength = (control: MidgardCekSourceBlobControlV1): number =>
+const activeChunkLength = (control: MidgardCekSourceBlobControl): number =>
   control.sourceLength === 0
     ? 0
     : Math.min(
@@ -111,20 +111,20 @@ const activeChunkLength = (control: MidgardCekSourceBlobControlV1): number =>
 
 const initialActiveHash = (
   chunkLength: number,
-): MidgardBlake2b256TraceControlV1 =>
-  initialMidgardBlake2b256TraceControlV1(
+): MidgardBlake2b256TraceControl =>
+  initialMidgardBlake2b256TraceControl(
     chunkPrefix(chunkLength).length + chunkLength,
   );
 
-export const isWellFormedMidgardCekSourceBlobControlV1 = (
-  control: MidgardCekSourceBlobControlV1,
+export const isWellFormedMidgardCekSourceBlobControl = (
+  control: MidgardCekSourceBlobControl,
 ): boolean => {
   try {
     if (
-      control.version !== MIDGARD_CEK_SOURCE_BLOB_V1_VERSION ||
+      control.version !== MIDGARD_CEK_SOURCE_BLOB_VERSION ||
       !Number.isSafeInteger(control.stage) ||
-      control.stage < MidgardCekSourceBlobStagesV1.Active ||
-      control.stage > MidgardCekSourceBlobStagesV1.Terminal ||
+      control.stage < MidgardCekSourceBlobStages.Active ||
+      control.stage > MidgardCekSourceBlobStages.Terminal ||
       exactNonNegativeSafeInteger(control.sourceStart, "source start") !==
         control.sourceStart ||
       exactNonNegativeSafeInteger(control.sourceLength, "source length") !==
@@ -133,7 +133,7 @@ export const isWellFormedMidgardCekSourceBlobControlV1 = (
     ) {
       return false;
     }
-    validateMidgardCekBlobFrontierV1(control.frontier);
+    validateMidgardCekBlobFrontier(control.frontier);
     const chunkCount = expectedChunkCount(control.sourceLength);
     if (
       chunkCount > MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
@@ -146,7 +146,7 @@ export const isWellFormedMidgardCekSourceBlobControlV1 = (
     ) {
       return false;
     }
-    if (control.stage === MidgardCekSourceBlobStagesV1.Terminal) {
+    if (control.stage === MidgardCekSourceBlobStages.Terminal) {
       return (
         control.frontier.count === chunkCount && control.activeHash === null
       );
@@ -154,7 +154,7 @@ export const isWellFormedMidgardCekSourceBlobControlV1 = (
     if (
       control.frontier.count >= chunkCount ||
       control.activeHash === null ||
-      !isWellFormedMidgardBlake2b256TraceControlV1(control.activeHash)
+      !isWellFormedMidgardBlake2b256TraceControl(control.activeHash)
     ) {
       return false;
     }
@@ -169,65 +169,65 @@ export const isWellFormedMidgardCekSourceBlobControlV1 = (
   }
 };
 
-export const initialMidgardCekSourceBlobControlV1 = ({
+export const initialMidgardCekSourceBlobControl = ({
   sourceStart,
   sourceLength,
 }: {
   readonly sourceStart: number;
   readonly sourceLength: number;
-}): MidgardCekSourceBlobControlV1 => {
+}): MidgardCekSourceBlobControl => {
   exactNonNegativeSafeInteger(sourceStart, "source start");
   exactNonNegativeSafeInteger(sourceLength, "source length");
   const control = {
-    version: MIDGARD_CEK_SOURCE_BLOB_V1_VERSION,
-    stage: MidgardCekSourceBlobStagesV1.Active,
+    version: MIDGARD_CEK_SOURCE_BLOB_VERSION,
+    stage: MidgardCekSourceBlobStages.Active,
     sourceStart,
     sourceLength,
-    frontier: emptyMidgardCekBlobFrontierV1(),
+    frontier: emptyMidgardCekBlobFrontier(),
     activeHash: initialActiveHash(
       Math.min(sourceLength, MIDGARD_CEK_BLOB_CHUNK_BYTES),
     ),
-  } satisfies MidgardCekSourceBlobControlV1;
-  if (!isWellFormedMidgardCekSourceBlobControlV1(control)) {
+  } satisfies MidgardCekSourceBlobControl;
+  if (!isWellFormedMidgardCekSourceBlobControl(control)) {
     throw new Error("Invalid V1 CEK source blob range");
   }
   return control;
 };
 
 const optionalActiveHashDataCbor = (
-  control: MidgardBlake2b256TraceControlV1 | null,
+  control: MidgardBlake2b256TraceControl | null,
 ): Buffer =>
   control === null
     ? Buffer.from("d87a80", "hex")
     : Buffer.concat([
         Buffer.from("d8799f", "hex"),
-        encodeMidgardBlake2b256TraceControlV1(control),
+        encodeMidgardBlake2b256TraceControl(control),
         Buffer.from([0xff]),
       ]);
 
-export const encodeMidgardCekSourceBlobControlV1 = (
-  control: MidgardCekSourceBlobControlV1,
+export const encodeMidgardCekSourceBlobControl = (
+  control: MidgardCekSourceBlobControl,
 ): Buffer => {
-  if (!isWellFormedMidgardCekSourceBlobControlV1(control)) {
+  if (!isWellFormedMidgardCekSourceBlobControl(control)) {
     throw new Error("Invalid V1 CEK source blob control");
   }
   return encodeCborArrayRaw([
-    encodeCbor(BigInt(MIDGARD_CEK_SOURCE_BLOB_V1_VERSION)),
+    encodeCbor(BigInt(MIDGARD_CEK_SOURCE_BLOB_VERSION)),
     encodeCbor(BigInt(control.stage)),
     encodeCbor(BigInt(control.sourceStart)),
     encodeCbor(BigInt(control.sourceLength)),
-    encodeMidgardCekBlobFrontierV1(control.frontier),
+    encodeMidgardCekBlobFrontier(control.frontier),
     optionalActiveHashDataCbor(control.activeHash),
   ]);
 };
 
-export const nextMidgardCekSourceBlobSpanV1 = (
-  control: MidgardCekSourceBlobControlV1,
-): MidgardCekSourceBlobSpanV1 | null => {
+export const nextMidgardCekSourceBlobSpan = (
+  control: MidgardCekSourceBlobControl,
+): MidgardCekSourceBlobSpan | null => {
   if (
-    !isWellFormedMidgardCekSourceBlobControlV1(control) ||
-    control.stage !== MidgardCekSourceBlobStagesV1.Active ||
-    control.activeHash!.stage !== MidgardBlake2b256TraceStagesV1.Ready
+    !isWellFormedMidgardCekSourceBlobControl(control) ||
+    control.stage !== MidgardCekSourceBlobStages.Active ||
+    control.activeHash!.stage !== MidgardBlake2b256TraceStages.Ready
   ) {
     return null;
   }
@@ -253,10 +253,10 @@ const activeMessageBlock = ({
   control,
   sourceBytes,
 }: {
-  readonly control: MidgardCekSourceBlobControlV1;
+  readonly control: MidgardCekSourceBlobControl;
   readonly sourceBytes: Uint8Array;
 }): Buffer | null => {
-  const span = nextMidgardCekSourceBlobSpanV1(control);
+  const span = nextMidgardCekSourceBlobSpan(control);
   if (span === null || sourceBytes.length !== span.length) return null;
   const hashControl = control.activeHash!;
   const prefix = chunkPrefix(activeChunkLength(control));
@@ -273,39 +273,36 @@ const activeMessageBlock = ({
   ]);
 };
 
-export const advanceMidgardCekSourceBlobV1 = ({
+export const advanceMidgardCekSourceBlob = ({
   control,
   sourceBytes,
 }: {
-  readonly control: MidgardCekSourceBlobControlV1;
+  readonly control: MidgardCekSourceBlobControl;
   readonly sourceBytes?: Uint8Array | null;
-}): MidgardCekSourceBlobControlV1 | null => {
+}): MidgardCekSourceBlobControl | null => {
   try {
     if (
-      !isWellFormedMidgardCekSourceBlobControlV1(control) ||
-      control.stage !== MidgardCekSourceBlobStagesV1.Active
+      !isWellFormedMidgardCekSourceBlobControl(control) ||
+      control.stage !== MidgardCekSourceBlobStages.Active
     ) {
       return null;
     }
     const hashControl = control.activeHash!;
-    if (hashControl.stage === MidgardBlake2b256TraceStagesV1.Terminal) {
+    if (hashControl.stage === MidgardBlake2b256TraceStages.Terminal) {
       if (sourceBytes !== null && sourceBytes !== undefined) return null;
-      const root = digestMidgardBlake2b256TraceV1(hashControl);
+      const root = digestMidgardBlake2b256Trace(hashControl);
       if (root === null) return null;
-      const frontier = appendMidgardCekBlobFrontierChunkRootV1(
-        control.frontier,
-        {
-          root,
-          byteLength: activeChunkLength(control),
-        },
-      );
+      const frontier = appendMidgardCekBlobFrontierChunkRoot(control.frontier, {
+        root,
+        byteLength: activeChunkLength(control),
+      });
       const terminal =
         frontier.count === expectedChunkCount(control.sourceLength);
       const next = {
         ...control,
         stage: terminal
-          ? MidgardCekSourceBlobStagesV1.Terminal
-          : MidgardCekSourceBlobStagesV1.Active,
+          ? MidgardCekSourceBlobStages.Terminal
+          : MidgardCekSourceBlobStages.Active,
         frontier,
         activeHash: terminal
           ? null
@@ -315,10 +312,10 @@ export const advanceMidgardCekSourceBlobV1 = ({
                 control.sourceLength - Number(frontier.byteLength),
               ),
             ),
-      } satisfies MidgardCekSourceBlobControlV1;
-      return isWellFormedMidgardCekSourceBlobControlV1(next) ? next : null;
+      } satisfies MidgardCekSourceBlobControl;
+      return isWellFormedMidgardCekSourceBlobControl(next) ? next : null;
     }
-    const ready = hashControl.stage === MidgardBlake2b256TraceStagesV1.Ready;
+    const ready = hashControl.stage === MidgardBlake2b256TraceStages.Ready;
     if (ready !== (sourceBytes !== null && sourceBytes !== undefined)) {
       return null;
     }
@@ -329,42 +326,42 @@ export const advanceMidgardCekSourceBlobV1 = ({
         })
       : null;
     if (ready && block === null) return null;
-    const activeHash = advanceMidgardBlake2b256TraceV1({
+    const activeHash = advanceMidgardBlake2b256Trace({
       control: hashControl,
       block,
     });
     if (activeHash === null) return null;
     const next = { ...control, activeHash };
-    return isWellFormedMidgardCekSourceBlobControlV1(next) ? next : null;
+    return isWellFormedMidgardCekSourceBlobControl(next) ? next : null;
   } catch {
     return null;
   }
 };
 
-export const finalizeMidgardCekSourceBlobV1 = (
-  control: MidgardCekSourceBlobControlV1,
+export const finalizeMidgardCekSourceBlob = (
+  control: MidgardCekSourceBlobControl,
 ): Buffer | null =>
-  isWellFormedMidgardCekSourceBlobControlV1(control) &&
-  control.stage === MidgardCekSourceBlobStagesV1.Terminal
-    ? finalizeMidgardCekBlobFrontierV1(control.frontier)
+  isWellFormedMidgardCekSourceBlobControl(control) &&
+  control.stage === MidgardCekSourceBlobStages.Terminal
+    ? finalizeMidgardCekBlobFrontier(control.frontier)
     : null;
 
-export const buildMidgardCekSourceBlobTraceV1 = ({
+export const buildMidgardCekSourceBlobTrace = ({
   sourceStart,
   source,
 }: {
   readonly sourceStart: number;
   readonly source: Uint8Array;
-}): MidgardCekSourceBlobTraceV1 => {
+}): MidgardCekSourceBlobTrace => {
   const bytes = Buffer.from(source);
-  const initial = initialMidgardCekSourceBlobControlV1({
+  const initial = initialMidgardCekSourceBlobControl({
     sourceStart,
     sourceLength: bytes.length,
   });
-  const steps: MidgardCekSourceBlobTraceStepV1[] = [];
+  const steps: MidgardCekSourceBlobTraceStep[] = [];
   let control = initial;
-  while (control.stage !== MidgardCekSourceBlobStagesV1.Terminal) {
-    const span = nextMidgardCekSourceBlobSpanV1(control);
+  while (control.stage !== MidgardCekSourceBlobStages.Terminal) {
+    const span = nextMidgardCekSourceBlobSpan(control);
     const sourceBytes =
       span === null
         ? null
@@ -372,11 +369,11 @@ export const buildMidgardCekSourceBlobTraceV1 = ({
             span.absoluteStart - sourceStart,
             span.absoluteStart - sourceStart + span.length,
           );
-    const next = advanceMidgardCekSourceBlobV1({
+    const next = advanceMidgardCekSourceBlob({
       control,
       sourceBytes,
     });
-    if (next === null || !isWellFormedMidgardCekSourceBlobControlV1(next)) {
+    if (next === null || !isWellFormedMidgardCekSourceBlobControl(next)) {
       throw new Error("V1 CEK source blob trace failed closed");
     }
     steps.push({ control, sourceBytes, next });

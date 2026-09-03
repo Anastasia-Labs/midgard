@@ -1,6 +1,6 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -8,77 +8,77 @@ import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
-  type JournalJsonObjectV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  type JournalJsonObject,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import type { FraudProofWorkflowActionV1 } from "../workflow/orchestrator-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriagePrerequisitePortV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriagePrerequisitePort,
 } from "../workflow/production-field-carriage-prerequisite-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  submitCapturedTransactionV1,
-  workflowTransactionInputOutRefsV1,
+  submitCapturedTransaction,
+  workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary-v1.js";
 import {
-  OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES_V1,
-  type ObserversForbiddenContractsV1,
+  OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
+  type ObserversForbiddenContracts,
 } from "./contracts-v1.js";
-import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1 } from "./family-v1.js";
+import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY } from "./family-v1.js";
 import {
-  createObserversForbiddenActuatorV1,
-  type ObserversForbiddenActuatorActionV1,
-  observersForbiddenFieldRequirementV1,
-  type ObserversForbiddenWorkflowReferenceScriptsV1,
+  createObserversForbiddenActuator,
+  type ObserversForbiddenActuatorAction,
+  observersForbiddenFieldRequirement,
+  type ObserversForbiddenWorkflowReferenceScripts,
 } from "./production-actuator-v1.js";
 import {
-  productionObserversForbiddenArtifactDigestV1,
-  type ProductionObserversForbiddenArtifactV1,
+  type ObserversForbiddenArtifact,
+  observersForbiddenArtifactDigest,
 } from "./production-artifact-v1.js";
 import {
-  detectObserversForbiddenAcceptedRawReplayV1,
-  observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1,
-  prepareProductionObserversForbiddenAcceptedArtifactV1,
-  prepareProductionObserversForbiddenForcedArtifactV1,
+  detectObserversForbiddenAcceptedRawReplay,
+  observersForbiddenRawBlockEvidenceFromVerifiedPayload,
+  prepareObserversForbiddenAcceptedArtifact,
+  prepareObserversForbiddenForcedArtifact,
 } from "./replay-v1.js";
-import { ObserversForbiddenStep02DatumV1Schema } from "./schemas-v1.js";
+import { ObserversForbiddenStep02DatumSchema } from "./schemas-v1.js";
 
-const CATEGORY = OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1;
-export const OBSERVERS_FORBIDDEN_PRODUCTION_WORKFLOW_V1 =
+const CATEGORY = OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY;
+export const OBSERVERS_FORBIDDEN_WORKFLOW =
   "midgard-observers-forbidden-on-untagged-network-production-workflow-v1" as const;
 
-export type ObserversForbiddenRemovalReferenceScriptsV1 = Readonly<{
+export type ObserversForbiddenRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -90,40 +90,40 @@ export type ObserversForbiddenRemovalReferenceScriptsV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type ManifestBoundObserversForbiddenWorkflowConfigV1 = Readonly<{
+export type ManifestBoundObserversForbiddenWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: ObserversForbiddenWorkflowReferenceScriptsV1 &
-    Readonly<{ removal: ObserversForbiddenRemovalReferenceScriptsV1 }>;
+  referenceScripts: ObserversForbiddenWorkflowReferenceScripts &
+    Readonly<{ removal: ObserversForbiddenRemovalReferenceScripts }>;
 }>;
 
-type SerialBindingV1 =
-  FraudProofWorkflowDeploymentBindingV1<"observersForbiddenOnUntaggedNetwork">;
+type SerialBinding =
+  FraudProofWorkflowDeploymentBinding<"observersForbiddenOnUntaggedNetwork">;
 
-export type ManifestBoundObserversForbiddenWorkflowV1 = Readonly<{
-  binding: SerialBindingV1;
-  l1: FraudProofFamilyL1ObservationPortV1<"observersForbiddenOnUntaggedNetwork">;
-  actuator: ReturnType<typeof createObserversForbiddenActuatorV1>;
-  prerequisite: ProductionFieldCarriagePrerequisitePortV1<"observersForbiddenOnUntaggedNetwork">;
+export type ManifestBoundObserversForbiddenWorkflow = Readonly<{
+  binding: SerialBinding;
+  l1: FraudProofFamilyL1ObservationPort<"observersForbiddenOnUntaggedNetwork">;
+  actuator: ReturnType<typeof createObserversForbiddenActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"observersForbiddenOnUntaggedNetwork">;
   lucid: LucidEvolution;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
 /** Config contains infrastructure and authenticated references only. */
-export const createManifestBoundObserversForbiddenWorkflowV1 = async (
-  config: ManifestBoundObserversForbiddenWorkflowConfigV1,
-): Promise<ManifestBoundObserversForbiddenWorkflowV1> => {
+export const createManifestBoundObserversForbiddenWorkflow = async (
+  config: ManifestBoundObserversForbiddenWorkflowConfig,
+): Promise<ManifestBoundObserversForbiddenWorkflow> => {
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("observersForbidden decision digest is malformed");
-  const binding = (await bindFraudProofWorkflowDeploymentV1({
+  const binding = (await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -131,11 +131,11 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
-      ObserversForbiddenStep02DatumV1Schema,
-      ObserversForbiddenStep02DatumV1Schema,
+      ObserversForbiddenStep02DatumSchema,
+      ObserversForbiddenStep02DatumSchema,
     ],
-  })) as SerialBindingV1;
-  assertManifestBoundWorkflowSignerV1({
+  })) as SerialBinding;
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -145,12 +145,12 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
     hubOraclePolicyId: string;
     stateQueuePolicyId?: string;
     contracts: Record<string, unknown> & {
-      computationThread: ObserversForbiddenContractsV1["computationThread"];
-      fraudProof: ObserversForbiddenContractsV1["fraudProof"] & {
+      computationThread: ObserversForbiddenContracts["computationThread"];
+      fraudProof: ObserversForbiddenContracts["fraudProof"] & {
         spendingScriptHash: string;
       };
       observersForbiddenOnUntaggedNetwork?: {
-        steps: ObserversForbiddenContractsV1["steps"];
+        steps: ObserversForbiddenContracts["steps"];
       };
     };
   };
@@ -164,7 +164,7 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
   )
     throw new Error("observersForbidden manifest omitted required contracts");
   const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
@@ -192,11 +192,11 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
       bindReference(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   const references = Object.freeze({
     steps,
     witnesses: Object.freeze(witnesses),
@@ -205,14 +205,14 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
       config.referenceScripts.fieldPreimageCertificateMint,
     ),
   });
-  const contracts: ObserversForbiddenContractsV1 = Object.freeze({
+  const contracts: ObserversForbiddenContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
-      blueprintTitle: OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES[index]!,
       spendingScript: step.spendingScript,
       spendingScriptHash: step.spendingScriptHash,
       spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as ObserversForbiddenContractsV1["steps"],
+    })) as unknown as ObserversForbiddenContracts["steps"],
     computationThread: resolved.contracts.computationThread,
     fraudProof: resolved.contracts.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
@@ -220,13 +220,13 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const actuator = createObserversForbiddenActuatorV1({
+  const actuator = createObserversForbiddenActuator({
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -235,15 +235,15 @@ export const createManifestBoundObserversForbiddenWorkflowV1 = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePortV1({
+  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: CATEGORY as never,
     lucid: config.lucid,
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
     requirementForAction: ({ action, artifact }) =>
-      observersForbiddenFieldRequirementV1({
-        action: action.input as unknown as ObserversForbiddenActuatorActionV1,
+      observersForbiddenFieldRequirement({
+        action: action.input as unknown as ObserversForbiddenActuatorAction,
         artifact,
         owner: config.signer.paymentKeyHash,
         certificate: {
@@ -273,14 +273,14 @@ const appendEvent = async ({
   identity,
   event,
 }: {
-  readonly journal: FraudProofWorkflowJournalStoreV1;
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly workflowId: string;
-  readonly identity: FraudProofWorkflowIdentityV1;
-  readonly event: FraudProofWorkflowJournalEventV1;
+  readonly identity: FraudProofWorkflowIdentity;
+  readonly event: FraudProofWorkflowJournalEvent;
 }) => {
   const sequence = (await journal.load(workflowId)).length;
-  const entry: FraudProofWorkflowJournalEntryV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+  const entry: FraudProofWorkflowJournalEntry = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
     workflowId,
     identity,
     sequence,
@@ -290,15 +290,15 @@ const appendEvent = async ({
   await journal.append(entry, sequence);
 };
 
-export const observersForbiddenActionIdV1 = (
-  action: ObserversForbiddenActuatorActionV1,
+export const observersForbiddenActionId = (
+  action: ObserversForbiddenActuatorAction,
 ) =>
   `observersForbidden:${Buffer.from(JSON.stringify(action)).toString("hex")}`;
 
 const workflowAction = (
-  action: ObserversForbiddenActuatorActionV1,
-): FraudProofWorkflowActionV1 => ({
-  actionId: observersForbiddenActionIdV1(action),
+  action: ObserversForbiddenActuatorAction,
+): FraudProofWorkflowAction => ({
+  actionId: observersForbiddenActionId(action),
   input: {
     schemaVersion: "midgard-production-cursor-family-action-v1",
     category: CATEGORY,
@@ -310,9 +310,9 @@ const currentAction = async ({
   workflow,
   artifact,
 }: {
-  readonly workflow: ManifestBoundObserversForbiddenWorkflowV1;
-  readonly artifact: ProductionObserversForbiddenArtifactV1;
-}): Promise<ObserversForbiddenActuatorActionV1 | "removed"> => {
+  readonly workflow: ManifestBoundObserversForbiddenWorkflow;
+  readonly artifact: ObserversForbiddenArtifact;
+}): Promise<ObserversForbiddenActuatorAction | "removed"> => {
   const stage = (await workflow.l1.observe({ headerHash: artifact.headerHash }))
     .stage;
   if (stage.kind === "not_started")
@@ -342,7 +342,7 @@ const currentAction = async ({
       throw new Error("observersForbidden step-02 datum disappeared");
     const state = Data.from(
       utxo.datum,
-      ObserversForbiddenStep02DatumV1Schema as never,
+      ObserversForbiddenStep02DatumSchema as never,
     ) as { data: { subject: { transaction_id: string }; network_id: bigint } };
     if (
       state.data.subject.transaction_id !== artifact.transactionId ||
@@ -354,7 +354,7 @@ const currentAction = async ({
   throw new Error("observersForbidden observed an impossible step");
 };
 
-export const reconcileObserversForbiddenSubmissionIntentV1 = ({
+export const reconcileObserversForbiddenSubmissionIntent = ({
   intendedActionId,
   txHash,
   transactionConfirmed,
@@ -363,16 +363,16 @@ export const reconcileObserversForbiddenSubmissionIntentV1 = ({
   readonly intendedActionId: string;
   readonly txHash: string;
   readonly transactionConfirmed: boolean;
-  readonly observedAction: ObserversForbiddenActuatorActionV1 | "removed";
+  readonly observedAction: ObserversForbiddenActuatorAction | "removed";
 }): Readonly<{ kind: "confirmed" | "pending" | "conflict"; txHash: string }> =>
   transactionConfirmed
     ? { kind: "confirmed", txHash }
     : observedAction === "removed" ||
-        observersForbiddenActionIdV1(observedAction) !== intendedActionId
+        observersForbiddenActionId(observedAction) !== intendedActionId
       ? { kind: "conflict", txHash }
       : { kind: "pending", txHash };
 
-export const observersForbiddenSubmissionPreludeV1 = ({
+export const observersForbiddenSubmissionPrelude = ({
   actionId,
   actionInput,
   txHash,
@@ -380,13 +380,13 @@ export const observersForbiddenSubmissionPreludeV1 = ({
   durableRecovery,
 }: {
   readonly actionId: string;
-  readonly actionInput: JournalJsonObjectV1;
+  readonly actionInput: JournalJsonObject;
   readonly txHash: string;
   readonly referenceScripts: Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "preflight_passed" }
   >["referenceScripts"];
-  readonly durableRecovery?: JournalJsonObjectV1;
+  readonly durableRecovery?: JournalJsonObject;
 }) =>
   Object.freeze([
     Object.freeze({
@@ -406,22 +406,22 @@ export const observersForbiddenSubmissionPreludeV1 = ({
     }),
   ]);
 
-export type ObserversForbiddenWorkflowRunResultV1 = Readonly<{
+export type ObserversForbiddenWorkflowRunResult = Readonly<{
   kind: "pending" | "completed";
   workflowId: string;
   txHash?: string;
 }>;
 
 /** One locally evaluated, intent-journaled action per invocation. */
-export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
+export const executeManifestBoundObserversForbiddenWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundObserversForbiddenWorkflowV1;
+  readonly workflow: ManifestBoundObserversForbiddenWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<ObserversForbiddenWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<ObserversForbiddenWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -429,25 +429,25 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
     headerHash: observation.headerHash,
     sources,
   });
-  const raw = await observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1({
+  const raw = await observersForbiddenRawBlockEvidenceFromVerifiedPayload({
     observation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
     daProvenance: fetched.provenance,
   });
   const artifact =
-    detectObserversForbiddenAcceptedRawReplayV1(raw).length > 0
-      ? await prepareProductionObserversForbiddenAcceptedArtifactV1(raw)
-      : await prepareProductionObserversForbiddenForcedArtifactV1(
-          await fetchCanonicalBlockEvidenceV1({ observation, sources }),
+    detectObserversForbiddenAcceptedRawReplay(raw).length > 0
+      ? await prepareObserversForbiddenAcceptedArtifact(raw)
+      : await prepareObserversForbiddenForcedArtifact(
+          await fetchCanonicalBlockEvidence({ observation, sources }),
         );
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     category: CATEGORY as never,
     target: { kind: "state_queue_header", headerHash: artifact.headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await appendEvent({
@@ -463,7 +463,7 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
       event: {
         kind: "prepared",
         artifact,
-        artifactDigest: productionObserversForbiddenArtifactDigestV1(artifact),
+        artifactDigest: observersForbiddenArtifactDigest(artifact),
       },
     });
     entries = await journal.load(workflowId);
@@ -472,7 +472,7 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
     if (
       prepared?.event.kind !== "prepared" ||
       prepared.event.artifactDigest !==
-        productionObserversForbiddenArtifactDigestV1(artifact)
+        observersForbiddenArtifactDigest(artifact)
     )
       throw new Error("observersForbidden durable artifact substitution");
   }
@@ -492,7 +492,7 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
         txHash: intent.txHash,
       });
       if (!onChain) {
-        const reconciliation = reconcileObserversForbiddenSubmissionIntentV1({
+        const reconciliation = reconcileObserversForbiddenSubmissionIntent({
           intendedActionId: intent.actionId,
           txHash: intent.txHash,
           transactionConfirmed: false,
@@ -541,8 +541,8 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
       event: {
         kind: "completed",
         terminal: terminalStage.terminal,
-        terminalDigest: journalJsonDigestV1(
-          terminalStage.terminal as unknown as JournalJsonObjectV1,
+        terminalDigest: journalJsonDigest(
+          terminalStage.terminal as unknown as JournalJsonObject,
         ),
       },
     });
@@ -585,7 +585,7 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
       : "durableRecovery" in captured
         ? captured.durableRecovery
         : undefined;
-  for (const event of observersForbiddenSubmissionPreludeV1({
+  for (const event of observersForbiddenSubmissionPrelude({
     actionId,
     actionInput,
     txHash: captured.transaction.txHash,
@@ -593,7 +593,7 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
     ...(durableRecovery === undefined ? {} : { durableRecovery }),
   }))
     await appendEvent({ journal, workflowId, identity, event });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error("observersForbidden provider substituted transaction");
   await appendEvent({
@@ -604,7 +604,7 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
   });
   if (
     action.stage === "remove" &&
-    !workflowTransactionInputOutRefsV1(captured.transaction.signed).includes(
+    !workflowTransactionInputOutRefs(captured.transaction.signed).includes(
       action.nextRemovalOutRef,
     )
   )
@@ -612,33 +612,33 @@ export const executeManifestBoundObserversForbiddenWorkflowV1 = async ({
   return { kind: "pending", workflowId, txHash: submitted };
 };
 
-export type LoadedObserversForbiddenProductionWorkflowV1 = Readonly<{
+export type LoadedObserversForbiddenWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundObserversForbiddenWorkflowConfigV1;
+  config: ManifestBoundObserversForbiddenWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadObserversForbiddenProductionWorkflowV1 = (input: {
+export type LoadObserversForbiddenWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedObserversForbiddenProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedObserversForbiddenWorkflow>;
 
 /** Standard runtime loader surface; no evidence, stage, submit, or journal callbacks. */
-export const createObserversForbiddenProductionWorkflowRunnerSurfaceV1 = ({
+export const createObserversForbiddenWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  readonly loadRuntimeConfig: LoadObserversForbiddenProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  readonly loadRuntimeConfig: LoadObserversForbiddenWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (String(invocation.category) !== CATEGORY)
         throw new Error("observersForbidden runner category changed");
-      const journal = bindProductionWorkflowFundingReservationJournalV1({
+      const journal = bindWorkflowFundingReservationJournal({
         permit: invocation.fundingReservationPermit,
-        journal: bindProductionWorkflowActuationJournalV1({
-          journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
             invocation.journalDirectory,
           ),
           permit: invocation.actuationPermit,
@@ -648,7 +648,7 @@ export const createObserversForbiddenProductionWorkflowRunnerSurfaceV1 = ({
           headerHash: invocation.headerHash,
         }),
       });
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
         category: CATEGORY as never,
@@ -671,7 +671,7 @@ export const createObserversForbiddenProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "observersForbidden runtime requires concrete public retained DA",
           );
-        const workflow = await createManifestBoundObserversForbiddenWorkflowV1(
+        const workflow = await createManifestBoundObserversForbiddenWorkflow(
           loaded.config,
         );
         if (
@@ -683,7 +683,7 @@ export const createObserversForbiddenProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "observersForbidden runtime binding changed invocation",
           );
-        return (await executeManifestBoundObserversForbiddenWorkflowV1({
+        return (await executeManifestBoundObserversForbiddenWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

@@ -15,7 +15,7 @@
  *   recovers the position (including mid-loop via the `machine_state_hash`
  *   boundary search against the re-derived plan), and continues.
  * - **Policy as data.** The core enforces whatever
- *   `NativeScriptDecodingProverPolicyV1` it is handed and hard-codes none
+ *   `NativeScriptDecodingProverPolicy` it is handed and hard-codes none
  *   of it. Only the §3.2/3.3 provability classification is non-negotiable:
  *   unprovable corners are refused at the API boundary regardless of
  *   policy.
@@ -25,18 +25,18 @@
  *   `submitNativeScriptDecodingCancel`).
  */
 import {
-  MidgardNativeScriptDecodingDirectionsV1,
-  type MidgardNativeScriptDecodingDirectionV1,
+  type MidgardNativeScriptDecodingDirection,
+  MidgardNativeScriptDecodingDirections,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
+  encodeMidgardTxInputCanonical,
   FraudProofComputationThreadStepDatum,
   type MidgardTxInput,
-  NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
-  type NativeScriptDecodingScanThreadStateV1,
+  NATIVE_SCRIPT_DECODING_CLASS_PENDING,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
+  type NativeScriptDecodingScanThreadState,
   NativeScriptDecodingStep03OpenSubjectDatum,
   OutputReference,
 } from "@al-ft/midgard-sdk";
@@ -49,25 +49,25 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { PublishedProofChunkV1 } from "../proof-chunk-carriage.js";
+import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
-import type { NativeScriptDecodingLedgerTrieHandleV1 } from "./evidence-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
+import type { NativeScriptDecodingLedgerTrieHandle } from "./evidence-v1.js";
 import {
-  assertNativeScriptDecodingFindingProvableV1,
-  type NativeScriptDecodingFindingV1,
-  NativeScriptDecodingProvabilityV1,
+  assertNativeScriptDecodingFindingProvable,
+  type NativeScriptDecodingFinding,
+  NativeScriptDecodingProvability,
 } from "./finding-v1.js";
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NativeScriptDecodingPlanRoutesV1,
-  type NativeScriptDecodingScanPlanV1,
+  buildNativeScriptDecodingScanPlan,
+  NativeScriptDecodingPlanRoutes,
+  type NativeScriptDecodingScanPlan,
 } from "./scan-plan-v1.js";
 import {
-  type NativeScriptDecodingCatalogueCategoryV1,
+  type NativeScriptDecodingCatalogueCategory,
   nativeScriptDecodingSubmitError,
 } from "./submit-common-v1.js";
 import { submitNativeScriptDecodingInit } from "./submit-native-script-decoding-init.js";
@@ -86,7 +86,7 @@ import { submitNativeScriptDecodingStep04 } from "./submit-native-script-decodin
 
 // ## Policy (§4.3, defaults per §10 Q5)
 
-export type NativeScriptDecodingProverPolicyV1 = {
+export type NativeScriptDecodingProverPolicy = {
   /**
    * Minimum L1 depth of the faulted header's state-queue UTxO before the
    * core spends anything. Default mirrors the watcher's finality policy
@@ -113,7 +113,7 @@ export type NativeScriptDecodingProverPolicyV1 = {
   readonly assumedMillisPerTx: number;
 };
 
-export const NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1: NativeScriptDecodingProverPolicyV1 =
+export const NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS: NativeScriptDecodingProverPolicy =
   Object.freeze({
     minSettlementDepth: 2_160n,
     maxThreadBudgetLovelace: 650_000_000n,
@@ -131,40 +131,40 @@ export const NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1: NativeScriptDecod
  * for a direction-A normal thread), so a consumer may throw from routes it
  * cannot serve without ever being asked to.
  */
-export type NativeScriptDecodingProverEvidenceV1 = {
+export type NativeScriptDecodingProverEvidence = {
   /** Direction-A normal threads: the §2.4 committed-transaction inclusion. */
   readonly txInclusion: (
-    finding: NativeScriptDecodingFindingV1,
+    finding: NativeScriptDecodingFinding,
   ) => Promise<SubmitStep01TxInclusion>;
   /** Optional #545 published-chunk carriage for the step-01 opening. */
   readonly publishedProofChunks?: (
-    finding: NativeScriptDecodingFindingV1,
-  ) => Promise<readonly PublishedProofChunkV1[] | null>;
+    finding: NativeScriptDecodingFinding,
+  ) => Promise<readonly PublishedProofChunk[] | null>;
   /** The disputed block's transition-trace reconstruction (step-02). */
   readonly reconstruction: (
-    finding: NativeScriptDecodingFindingV1,
+    finding: NativeScriptDecodingFinding,
   ) => Promise<TransitionTraceReconstruction>;
   /** The committed transaction's compact bytes and accused field's items. */
-  readonly subjectTx: (finding: NativeScriptDecodingFindingV1) => Promise<{
+  readonly subjectTx: (finding: NativeScriptDecodingFinding) => Promise<{
     readonly nativeTxCompactCbor: string;
     readonly subjectFieldInputs: readonly MidgardTxInput[];
   }>;
   /** The ledger's resolution of the accused outpoint, plus the item bytes. */
-  readonly descriptor: (finding: NativeScriptDecodingFindingV1) => Promise<{
+  readonly descriptor: (finding: NativeScriptDecodingFinding) => Promise<{
     readonly descriptorCbor: string;
     readonly referenceScriptItemBytes: Uint8Array | null;
   }>;
   /** Pre-state ledger trie whose root is the thread's `prior_ledger_root`. */
   readonly ledgerTrie: (
-    finding: NativeScriptDecodingFindingV1,
-  ) => Promise<NativeScriptDecodingLedgerTrieHandleV1>;
+    finding: NativeScriptDecodingFinding,
+  ) => Promise<NativeScriptDecodingLedgerTrieHandle>;
 };
 
 /**
  * Chain observations behind the policy gates. Each is required exactly
  * when the corresponding gate is active in the policy handed alongside.
  */
-export type NativeScriptDecodingProverObservationsV1 = {
+export type NativeScriptDecodingProverObservations = {
   readonly settlementDepthOf?: (
     fraudulentBlockOutRef: string,
   ) => Promise<bigint>;
@@ -173,7 +173,7 @@ export type NativeScriptDecodingProverObservationsV1 = {
   ) => Promise<number>;
 };
 
-export type NativeScriptDecodingProverEventV1 = {
+export type NativeScriptDecodingProverEvent = {
   readonly phase:
     | "boundary"
     | "policy"
@@ -192,24 +192,24 @@ export type NativeScriptDecodingProverEventV1 = {
   readonly threadOutRef?: string;
 };
 
-export type NativeScriptDecodingProverDepsV1 = {
+export type NativeScriptDecodingProverDeps = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: NativeScriptDecodingContractsV1;
-  readonly category: NativeScriptDecodingCatalogueCategoryV1;
+  readonly contracts: NativeScriptDecodingContracts;
+  readonly category: NativeScriptDecodingCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
     readonly root: string;
   };
   readonly signer: ResolvedProverSigner;
-  readonly evidence: NativeScriptDecodingProverEvidenceV1;
-  readonly observations: NativeScriptDecodingProverObservationsV1;
+  readonly evidence: NativeScriptDecodingProverEvidence;
+  readonly observations: NativeScriptDecodingProverObservations;
   readonly journal: (
-    event: NativeScriptDecodingProverEventV1,
+    event: NativeScriptDecodingProverEvent,
   ) => void | Promise<void>;
-  readonly policy: NativeScriptDecodingProverPolicyV1;
+  readonly policy: NativeScriptDecodingProverPolicy;
   /** Q3: mandatory authenticated published step reference scripts. */
   readonly referenceScriptUtxos?: {
     readonly step01?: UTxO;
@@ -220,14 +220,14 @@ export type NativeScriptDecodingProverDepsV1 = {
     readonly step04?: UTxO;
   };
   /** Mandatory published shared witnesses used by init, step-01, and step-04. */
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   /** Force §8 tier-2 carriage publication on the bind transaction. */
   readonly publishCarriage?: boolean;
 };
 
 // ## Outcome (§4.3: data, not exceptions)
 
-export type NativeScriptDecodingProofOutcomeV1 =
+export type NativeScriptDecodingProofOutcome =
   | {
       readonly kind: "proven";
       readonly fraudProofUnit: string;
@@ -254,7 +254,7 @@ export type NativeScriptDecodingProofOutcomeV1 =
 
 // ## §7.1 position recovery
 
-export type NativeScriptDecodingThreadPositionV1 =
+export type NativeScriptDecodingThreadPosition =
   | { readonly step: "none" }
   | {
       readonly step: "step01" | "step02" | "step04";
@@ -266,19 +266,19 @@ export type NativeScriptDecodingThreadPositionV1 =
         | "step03BindDescriptor"
         | "step03AdvanceOrClose";
       readonly threadUtxo: UTxO;
-      readonly state: NativeScriptDecodingScanThreadStateV1;
+      readonly state: NativeScriptDecodingScanThreadState;
     };
 
 /** Locates the live thread by its NFT across all six custody addresses. */
-export const locateNativeScriptDecodingThreadV1 = async ({
+export const locateNativeScriptDecodingThread = async ({
   lucid,
   contracts,
   threadUnit,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly threadUnit: string;
-}): Promise<NativeScriptDecodingThreadPositionV1> => {
+}): Promise<NativeScriptDecodingThreadPosition> => {
   for (const stepIndex of [0, 1, 2, 3, 4, 5] as const) {
     const utxos = await lucid.utxosAtWithUnit(
       contracts.steps[stepIndex].spendingScriptAddress,
@@ -338,21 +338,20 @@ type DriveState =
   | { readonly at: "step04"; readonly threadOutRef: string };
 
 const step03TxCount = (
-  finding: NativeScriptDecodingFindingV1,
-  plan: NativeScriptDecodingScanPlanV1 | null,
+  finding: NativeScriptDecodingFinding,
+  plan: NativeScriptDecodingScanPlan | null,
 ): number => {
   if (
     finding.provability ===
-    NativeScriptDecodingProvabilityV1.OutOfDomainAccusation
+    NativeScriptDecodingProvability.OutOfDomainAccusation
   ) {
     return 1;
   }
-  if (plan?.route !== NativeScriptDecodingPlanRoutesV1.Machine) {
+  if (plan?.route !== NativeScriptDecodingPlanRoutes.Machine) {
     return 2;
   }
   const explicitClose =
-    finding.direction ===
-    NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    finding.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
       ? 1
       : 0;
   return 2 + plan.segments.length + explicitClose;
@@ -360,8 +359,8 @@ const step03TxCount = (
 
 const remainingTxCount = (
   cursor: DriveState,
-  finding: NativeScriptDecodingFindingV1,
-  plan: NativeScriptDecodingScanPlanV1 | null,
+  finding: NativeScriptDecodingFinding,
+  plan: NativeScriptDecodingScanPlan | null,
 ): number => {
   const step03 = step03TxCount(finding, plan);
   switch (cursor.at) {
@@ -378,7 +377,7 @@ const remainingTxCount = (
     case "advanceOrClose": {
       const explicitClose =
         finding.direction ===
-        NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+        NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
           ? 1
           : 0;
       return (
@@ -393,21 +392,21 @@ const remainingTxCount = (
 };
 
 const coreDirectionOf = (
-  finding: NativeScriptDecodingFindingV1,
-): MidgardNativeScriptDecodingDirectionV1 =>
-  finding.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
-    ? MidgardNativeScriptDecodingDirectionsV1.WrongfulRejection
-    : MidgardNativeScriptDecodingDirectionsV1.WrongfulAcceptance;
+  finding: NativeScriptDecodingFinding,
+): MidgardNativeScriptDecodingDirection =>
+  finding.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION
+    ? MidgardNativeScriptDecodingDirections.WrongfulRejection
+    : MidgardNativeScriptDecodingDirections.WrongfulAcceptance;
 
 const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
 // ## The core
 
-export const runNativeScriptDecodingProverV1 = async (
-  finding: NativeScriptDecodingFindingV1,
-  deps: NativeScriptDecodingProverDepsV1,
-): Promise<NativeScriptDecodingProofOutcomeV1> => {
+export const runNativeScriptDecodingProver = async (
+  finding: NativeScriptDecodingFinding,
+  deps: NativeScriptDecodingProverDeps,
+): Promise<NativeScriptDecodingProofOutcome> => {
   const { lucid, contracts, policy, signer } = deps;
   const referenceScriptUtxos = deps.referenceScriptUtxos;
   if (
@@ -424,14 +423,14 @@ export const runNativeScriptDecodingProverV1 = async (
   }
   const headerHash = finding.headerHash;
   const journal = async (
-    event: Omit<NativeScriptDecodingProverEventV1, "headerHash">,
+    event: Omit<NativeScriptDecodingProverEvent, "headerHash">,
   ) => {
     await deps.journal({ ...event, headerHash });
   };
   const refused = async (
     refusal: "classification" | "policy" | "duplicate" | "alreadyProven",
     reason: string,
-  ): Promise<NativeScriptDecodingProofOutcomeV1> => {
+  ): Promise<NativeScriptDecodingProofOutcome> => {
     await journal({
       phase: "outcome",
       message: `refused (${refusal}): ${reason}`,
@@ -442,7 +441,7 @@ export const runNativeScriptDecodingProverV1 = async (
     reason: string,
     threadOutRef: string | null,
     cause: unknown,
-  ): Promise<NativeScriptDecodingProofOutcomeV1> => {
+  ): Promise<NativeScriptDecodingProofOutcome> => {
     await journal({
       phase: "outcome",
       message: `STALLED: ${reason}`,
@@ -454,7 +453,7 @@ export const runNativeScriptDecodingProverV1 = async (
   // 1. The non-negotiable §3.2/3.3 boundary: classification gates proving
   //    regardless of policy.
   try {
-    assertNativeScriptDecodingFindingProvableV1(finding);
+    assertNativeScriptDecodingFindingProvable(finding);
   } catch (cause) {
     return refused("classification", toError(cause).message);
   }
@@ -477,7 +476,7 @@ export const runNativeScriptDecodingProverV1 = async (
   }
 
   // 3. §7.1: locate any live thread for this asset name.
-  const position = await locateNativeScriptDecodingThreadV1({
+  const position = await locateNativeScriptDecodingThread({
     lucid,
     contracts,
     threadUnit,
@@ -500,32 +499,31 @@ export const runNativeScriptDecodingProverV1 = async (
   // 4. Route preparation. For the machine route, the plan is re-derived up
   //    front: the budget arithmetic and the §7.1 mid-loop boundary search
   //    both need it.
-  let plan: NativeScriptDecodingScanPlanV1 | null = null;
+  let plan: NativeScriptDecodingScanPlan | null = null;
   let descriptorCbor: string | null = null;
   let referenceScriptItemBytes: Uint8Array | null = null;
   const needsDescriptorBinding =
     finding.provability !==
-    NativeScriptDecodingProvabilityV1.OutOfDomainAccusation;
+    NativeScriptDecodingProvability.OutOfDomainAccusation;
   try {
     if (needsDescriptorBinding) {
       const resolved = await deps.evidence.descriptor(finding);
       descriptorCbor = resolved.descriptorCbor;
       referenceScriptItemBytes = resolved.referenceScriptItemBytes;
       if (
-        finding.provability === NativeScriptDecodingProvabilityV1.MachineRoute
+        finding.provability === NativeScriptDecodingProvability.MachineRoute
       ) {
         if (referenceScriptItemBytes === null) {
           throw nativeScriptDecodingSubmitError(
             "the machine route scans the reference-script item; the descriptor evidence carries no item bytes.",
           );
         }
-        plan = buildNativeScriptDecodingScanPlanV1({
+        plan = buildNativeScriptDecodingScanPlan({
           itemBytes: referenceScriptItemBytes,
           direction: coreDirectionOf(finding),
         });
         if (
-          plan.route ===
-          NativeScriptDecodingPlanRoutesV1.DescriptorContradiction
+          plan.route === NativeScriptDecodingPlanRoutes.DescriptorContradiction
         ) {
           throw nativeScriptDecodingSubmitError(
             "the re-derived plan routes to a descriptor contradiction — the finding's machine-route classification does not match the evidence.",
@@ -577,7 +575,7 @@ export const runNativeScriptDecodingProverV1 = async (
     }
     const threadOutRef = outRefLabel(position.threadUtxo);
     const state = position.state;
-    if (state.refusal_class !== NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1) {
+    if (state.refusal_class !== NATIVE_SCRIPT_DECODING_CLASS_PENDING) {
       return stalled(
         `thread at AdvanceOrClose carries closed class ${state.refusal_class.toString()} instead of paying step-04.`,
         threadOutRef,
@@ -586,7 +584,7 @@ export const runNativeScriptDecodingProverV1 = async (
     }
     if (
       plan === null ||
-      plan.route !== NativeScriptDecodingPlanRoutesV1.Machine
+      plan.route !== NativeScriptDecodingPlanRoutes.Machine
     ) {
       return stalled(
         "the thread is at AdvanceOrClose but local evidence derives no machine plan.",
@@ -729,7 +727,7 @@ export const runNativeScriptDecodingProverV1 = async (
             witnessReferenceScripts: deps.witnessReferenceScripts,
           };
           const result =
-            finding.sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1
+            finding.sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL
               ? await submitNativeScriptDecodingStep01BindNormal({
                   ...shared,
                   blueprint: deps.blueprint,
@@ -758,7 +756,7 @@ export const runNativeScriptDecodingProverV1 = async (
         case "step02": {
           const isDirectionA =
             finding.direction ===
-            NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1;
+            NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE;
           const result = await submitNativeScriptDecodingStep02({
             lucid,
             contracts,
@@ -840,7 +838,7 @@ export const runNativeScriptDecodingProverV1 = async (
             );
           }
           const outpointKeyCbor = Buffer.from(
-            encodeMidgardTxInputCanonicalV1(accused),
+            encodeMidgardTxInputCanonical(accused),
           ).toString("hex");
           const result = await submitNativeScriptDecodingStep03BindDescriptor({
             lucid,
@@ -859,7 +857,7 @@ export const runNativeScriptDecodingProverV1 = async (
           const nextOutRef = result.nextThreadOutRef;
           currentOutRef = nextOutRef;
           const machinePlan =
-            plan?.route === NativeScriptDecodingPlanRoutesV1.Machine
+            plan?.route === NativeScriptDecodingPlanRoutes.Machine
               ? plan
               : null;
           await journal({
@@ -1000,11 +998,11 @@ export const runNativeScriptDecodingProverV1 = async (
 };
 
 /** The §4.3 core as an Effect, for consumers composing in that idiom. */
-export const proveNativeScriptDecodingFaultV1 = (
-  finding: NativeScriptDecodingFindingV1,
-  deps: NativeScriptDecodingProverDepsV1,
-): Effect.Effect<NativeScriptDecodingProofOutcomeV1, Error> =>
+export const proveNativeScriptDecodingFault = (
+  finding: NativeScriptDecodingFinding,
+  deps: NativeScriptDecodingProverDeps,
+): Effect.Effect<NativeScriptDecodingProofOutcome, Error> =>
   Effect.tryPromise({
-    try: () => runNativeScriptDecodingProverV1(finding, deps),
+    try: () => runNativeScriptDecodingProver(finding, deps),
     catch: toError,
   });

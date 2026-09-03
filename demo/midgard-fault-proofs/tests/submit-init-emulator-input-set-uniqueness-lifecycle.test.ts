@@ -27,26 +27,26 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  requireInputSetUniquenessClaimV1,
-  scanInputSetUniquenessV1,
-  submitInputSetUniquenessCancelV1,
+  requireInputSetUniquenessClaim,
+  scanInputSetUniqueness,
+  submitInputSetUniquenessCancel,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
 import {
-  buildInputSetUniquenessFixtureV1,
-  isuOutRefV1,
-  makeInputSetUniquenessEmulatorHarnessV1,
-  publishInputSetUniquenessReferenceScriptsV1,
-  setupInputSetUniquenessScenarioV1,
+  buildInputSetUniquenessFixture,
+  isuOutRef,
+  makeInputSetUniquenessEmulatorHarness,
+  publishInputSetUniquenessReferenceScripts,
+  setupInputSetUniquenessScenario,
 } from "./support/input-set-uniqueness-emulator-v1.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   network,
   publishRemovalReferenceScripts,
@@ -54,7 +54,7 @@ import {
 
 describe("input-set-uniqueness emulator lifecycle", () => {
   it("proves a duplicate spend input end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
-    const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+    const harness = await makeInputSetUniquenessEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -67,25 +67,25 @@ describe("input-set-uniqueness emulator lifecycle", () => {
     } = harness;
     // One out-ref named twice in field 0, NON-adjacent: a committed
     // accepted-but-invalid transaction owes no ordering.
-    const duplicated = isuOutRefV1("11", 7);
-    const fixture = await buildInputSetUniquenessFixtureV1({
-      spendInputs: [duplicated, isuOutRefV1("22", 3), duplicated],
-      referenceInputs: [isuOutRefV1("33", 1)],
+    const duplicated = isuOutRef("11", 7);
+    const fixture = await buildInputSetUniquenessFixture({
+      spendInputs: [duplicated, isuOutRef("22", 3), duplicated],
+      referenceInputs: [isuOutRef("33", 1)],
     });
     // The prover-side scan constructs the exact claim the validator convicts.
-    const claims = scanInputSetUniquenessV1({
+    const claims = scanInputSetUniqueness({
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
     });
     expect(claims).toStrictEqual([
       { kind: "duplicateSpendInputs", firstIndex: 0n, secondIndex: 2n },
     ]);
-    const claim = requireInputSetUniquenessClaimV1({
+    const claim = requireInputSetUniquenessClaim({
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
     });
 
-    const { setup } = await setupInputSetUniquenessScenarioV1({
+    const { setup } = await setupInputSetUniquenessScenario({
       harness,
       fixture,
     });
@@ -106,7 +106,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
         contracts: harness.contracts,
       });
     const [step01Ref, step02Ref] =
-      await publishInputSetUniquenessReferenceScriptsV1({
+      await publishInputSetUniquenessReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -157,7 +157,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       bad_tx_id: fixture.nativeTxId,
     });
     const cancelCapture = await captureEmulatorSubmission(emulator, async () =>
-      submitInputSetUniquenessCancelV1({
+      submitInputSetUniquenessCancel({
         lucid: proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -227,7 +227,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       initResult.computationThreadAssetName,
     );
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({ stage, measurement, maxTxExMem, maxTxExSteps });
+      expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
     console.info(
       `[input-set-uniqueness-accepted] ${JSON.stringify({
@@ -380,7 +380,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
   }, 600_000);
 
   it("convicts a duplicate reference input through the decisive step-02 conviction", async () => {
-    const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+    const harness = await makeInputSetUniquenessEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -391,12 +391,12 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       category,
     } = harness;
     // Unique spends; one out-ref named twice in field 1, non-adjacent.
-    const duplicated = isuOutRefV1("66", 9);
-    const fixture = await buildInputSetUniquenessFixtureV1({
-      spendInputs: [isuOutRefV1("44", 0), isuOutRefV1("55", 1)],
-      referenceInputs: [duplicated, isuOutRefV1("77", 2), duplicated],
+    const duplicated = isuOutRef("66", 9);
+    const fixture = await buildInputSetUniquenessFixture({
+      spendInputs: [isuOutRef("44", 0), isuOutRef("55", 1)],
+      referenceInputs: [duplicated, isuOutRef("77", 2), duplicated],
     });
-    const claim = requireInputSetUniquenessClaimV1({
+    const claim = requireInputSetUniquenessClaim({
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
     });
@@ -406,12 +406,12 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       secondIndex: 2n,
     });
 
-    const { setup } = await setupInputSetUniquenessScenarioV1({
+    const { setup } = await setupInputSetUniquenessScenario({
       harness,
       fixture,
     });
     const [step01Ref, step02Ref] =
-      await publishInputSetUniquenessReferenceScriptsV1({
+      await publishInputSetUniquenessReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -474,7 +474,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
   }, 600_000);
 
   it("convicts a spend/reference overlap through the decisive step-02 conviction", async () => {
-    const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+    const harness = await makeInputSetUniquenessEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -487,12 +487,12 @@ describe("input-set-uniqueness emulator lifecycle", () => {
     // Each list is unique on its own; one out-ref appears in both. The same
     // index in the two lists naming DIFFERENT out-refs is not a fault — the
     // claim points at the matching pair, wherever it sits.
-    const shared = isuOutRefV1("99", 6);
-    const fixture = await buildInputSetUniquenessFixtureV1({
-      spendInputs: [isuOutRefV1("88", 4), shared],
-      referenceInputs: [isuOutRefV1("aa", 8), shared],
+    const shared = isuOutRef("99", 6);
+    const fixture = await buildInputSetUniquenessFixture({
+      spendInputs: [isuOutRef("88", 4), shared],
+      referenceInputs: [isuOutRef("aa", 8), shared],
     });
-    const claim = requireInputSetUniquenessClaimV1({
+    const claim = requireInputSetUniquenessClaim({
       spendInputItemCbors: fixture.spendInputItemCbors,
       referenceInputItemCbors: fixture.referenceInputItemCbors,
     });
@@ -502,12 +502,12 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       referenceIndex: 1n,
     });
 
-    const { setup } = await setupInputSetUniquenessScenarioV1({
+    const { setup } = await setupInputSetUniquenessScenario({
       harness,
       fixture,
     });
     const [step01Ref, step02Ref] =
-      await publishInputSetUniquenessReferenceScriptsV1({
+      await publishInputSetUniquenessReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });

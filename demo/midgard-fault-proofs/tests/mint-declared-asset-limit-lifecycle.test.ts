@@ -1,23 +1,23 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardMintPolicyItemV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardFieldPreimage,
+  encodeMidgardMintPolicyItem,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  materializeMidgardNativeTxFromCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
-  hashBlockHeaderV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
+  hashBlockHeader,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -28,44 +28,44 @@ import { describe, expect, it, vi } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  certifyFaultProofFieldCarriageV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
 import {
-  applyMintDeclaredAssetLimitScriptsV1,
-  type MintDeclaredAssetLimitContractsV1,
+  applyMintDeclaredAssetLimitScripts,
+  type MintDeclaredAssetLimitContracts,
 } from "../src/mint-declared-asset-limit/contracts-v1.js";
 import {
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1,
-  prepareMintDeclaredAssetLimitEvidenceV1,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
+  prepareMintDeclaredAssetLimitEvidence,
 } from "../src/mint-declared-asset-limit/family-v1.js";
-import { createMintDeclaredAssetLimitActuatorV1 } from "../src/mint-declared-asset-limit/production-actuator-v1.js";
-import { buildProductionMintDeclaredAssetLimitArtifactV1 } from "../src/mint-declared-asset-limit/production-artifact-v1.js";
-import { planMintDeclaredAssetLimitStagedWalkV1 } from "../src/mint-declared-asset-limit/staged-plan-v1.js";
-import { submitMintDeclaredAssetLimitCancelV1 } from "../src/mint-declared-asset-limit/submit-cancel-v1.js";
+import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/production-actuator-v1.js";
+import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/production-artifact-v1.js";
+import { planMintDeclaredAssetLimitStagedWalk } from "../src/mint-declared-asset-limit/staged-plan-v1.js";
+import { submitMintDeclaredAssetLimitCancel } from "../src/mint-declared-asset-limit/submit-cancel-v1.js";
 import {
-  submitMintDeclaredAssetLimitStep01AcceptedV1,
-  submitMintDeclaredAssetLimitStep01ForcedV1,
+  submitMintDeclaredAssetLimitStep01Accepted,
+  submitMintDeclaredAssetLimitStep01Forced,
 } from "../src/mint-declared-asset-limit/submit-step-01-v1.js";
-import { submitMintDeclaredAssetLimitStep02V1 } from "../src/mint-declared-asset-limit/submit-step-02-v1.js";
-import { submitMintDeclaredAssetLimitStep03V1 } from "../src/mint-declared-asset-limit/submit-step-03-v1.js";
-import { submitMintDeclaredAssetLimitStep04V1 } from "../src/mint-declared-asset-limit/submit-step-04-v1.js";
+import { submitMintDeclaredAssetLimitStep02 } from "../src/mint-declared-asset-limit/submit-step-02-v1.js";
+import { submitMintDeclaredAssetLimitStep03 } from "../src/mint-declared-asset-limit/submit-step-03-v1.js";
+import { submitMintDeclaredAssetLimitStep04 } from "../src/mint-declared-asset-limit/submit-step-04-v1.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { submitCapturedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
-  l2TransactionSourceCborV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { setupFraudulentBlockV1 } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
@@ -73,7 +73,7 @@ const network = "Custom" as const;
 const firstStepDeploymentEntry = "fraudProofMintDeclaredAssetLimit";
 
 const singleton = (policyByte: number) =>
-  encodeMidgardMintPolicyItemV1({
+  encodeMidgardMintPolicyItem({
     policyId: Buffer.alloc(28, policyByte),
     assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
   });
@@ -88,7 +88,7 @@ const crossing = (policyByte: number, padding: number) =>
 
 describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
   it("runs Init, grammar and fold resumes, permanent mint, and removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -96,7 +96,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyMintDeclaredAssetLimitScriptsV1({
+    const applied = applyMintDeclaredAssetLimitScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -116,7 +116,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
       (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
     ];
-    const contracts: MintDeclaredAssetLimitContractsV1 = {
+    const contracts: MintDeclaredAssetLimitContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -131,7 +131,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         mintDeclaredAssetLimit: {
-          categoryId: MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1,
+          categoryId: MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
           scriptHash: applied[0].spendingScriptHash,
         },
       },
@@ -141,25 +141,25 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     const prefix = Array.from({ length: 48 }, (_, index) =>
       singleton(index + 1),
     );
-    let mintField = encodeMidgardFieldPreimageV1([...prefix, crossing(49, 1)]);
+    let mintField = encodeMidgardFieldPreimage([...prefix, crossing(49, 1)]);
     let targetPadding = 1;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       targetPadding += 32_768 - mintField.length;
-      mintField = encodeMidgardFieldPreimageV1([
+      mintField = encodeMidgardFieldPreimage([
         ...prefix,
         crossing(49, targetPadding),
       ]);
     }
     expect(mintField).toHaveLength(32_768);
     const base = makeNativeTx({ spendInputCbors: [], fee: 7n });
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
       version: base.version,
       validity: base.validity,
       body: { ...base.body, mintPreimageCbor: mintField },
       witnessSet: base.witnessSet,
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -179,25 +179,24 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
       catalogue,
       fixture: { transactionsRoot, l2TransactionCount: 1n },
     });
-    const evidence = prepareMintDeclaredAssetLimitEvidenceV1({
+    const evidence = prepareMintDeclaredAssetLimitEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(nativeTxId),
+        subject: acceptedVerdictSubject(nativeTxId),
         policyIndex: 48,
       },
       fieldPreimage: mintField,
-      committedFieldHashHex:
-        midgardFieldCommitmentV1(mintField).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(mintField).toString("hex"),
     });
     expect(evidence.crossing).toBe(true);
     expect(evidence.carriage).toBe("Certified");
-    const staged = planMintDeclaredAssetLimitStagedWalkV1({
+    const staged = planMintDeclaredAssetLimitStagedWalk({
       transactionId: nativeTxId,
       fieldPreimageCbor: mintField.toString("hex"),
       policyIndex: 48,
@@ -223,7 +222,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         label: "mint-declared-lifecycle-certificate",
       })
     ).utxo;
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 5,
       anchorTxId: nativeTxId,
       nativeTxCompactCbor: compactCbor.toString("hex"),
@@ -235,7 +234,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     const carriageCapture = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        publishFaultProofFieldCarriageV1({
+        publishFaultProofFieldCarriage({
           lucid: harness.proverLucid,
           signer: harness.proverSigner,
           planned,
@@ -247,7 +246,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     const certificateCapture = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        certifyFaultProofFieldCarriageV1({
+        certifyFaultProofFieldCarriage({
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,
@@ -259,8 +258,8 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
           certificateReferenceScriptUtxo: certificateReference,
           chunkUtxos: carriageUtxos,
           compactCbor: compactCbor.toString("hex"),
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-            deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+            deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
           ).toString("hex"),
         }),
     );
@@ -299,7 +298,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     if (threadUtxo === undefined)
       throw new Error("mint declared init thread absent");
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitMintDeclaredAssetLimitStep01AcceptedV1({
+      submitMintDeclaredAssetLimitStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -319,20 +318,20 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
     );
     captures.push(["step01", step01]);
     let threadOutRef = step01.result.nextThreadOutRef;
-    const artifact = buildProductionMintDeclaredAssetLimitArtifactV1({
+    const artifact = buildMintDeclaredAssetLimitArtifact({
       headerHash: setup.headerHash,
       detectionId: `${nativeTxId}:accepted:48`,
       position: 0n,
       evidence,
       nativeTxCompactCbor: compactCbor.toString("hex"),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-        deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+        deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
       ).toString("hex"),
       l2TransactionSourceCbor: sourceCbor,
       transactionsPhasRoot: transactionsRoot,
       transactionMembershipCbor: proof.toCBOR().toString("hex"),
     });
-    const actuator = createMintDeclaredAssetLimitActuatorV1({
+    const actuator = createMintDeclaredAssetLimitActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
         resolvedContracts: {
@@ -362,7 +361,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       nextAddress: string,
     ) => {
       const captured = await actuator.capture({ action, artifact });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       expect(txHash).toBe(captured.transaction.txHash);
       await harness.proverLucid.awaitTx(txHash);
       const next = (await harness.proverLucid.utxosAt(nextAddress)).find(
@@ -416,7 +415,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
           action: { stage: "step_04", threadOutRef },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         const proof = (
@@ -459,7 +458,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         },
       },
     };
-    const removalActuator = createMintDeclaredAssetLimitActuatorV1({
+    const removalActuator = createMintDeclaredAssetLimitActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
         resolvedContracts: {
@@ -508,7 +507,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
           },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         return { txHash };
@@ -545,7 +544,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
   }, 600_000);
 
   it("runs the exact forced wrongful-rejection arm through permanent mint", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         alwaysFraudProofCatalogue: true,
         alwaysStateQueue: true,
@@ -556,7 +555,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyMintDeclaredAssetLimitScriptsV1({
+    const applied = applyMintDeclaredAssetLimitScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -566,7 +565,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         harness.contracts.fieldPreimageCertificate.policyId,
       hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
     });
-    const contracts: MintDeclaredAssetLimitContractsV1 = {
+    const contracts: MintDeclaredAssetLimitContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -581,7 +580,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         mintDeclaredAssetLimit: {
-          categoryId: MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1,
+          categoryId: MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
           scriptHash: applied[0].spendingScriptHash,
         },
       },
@@ -600,19 +599,19 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         ) - 1,
     });
     const valid = makeNativeTx({ spendInputCbors: [], fee: 0n });
-    const mintField = encodeMidgardFieldPreimageV1([singleton(1)]);
-    const forcedNativeTx = materializeMidgardNativeTxFromCanonicalV1({
+    const mintField = encodeMidgardFieldPreimage([singleton(1)]);
+    const forcedNativeTx = materializeMidgardNativeTxFromCanonical({
       version: valid.version,
       validity: valid.validity,
       body: { ...valid.body, mintPreimageCbor: mintField },
       witnessSet: valid.witnessSet,
     });
-    const forcedId = computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex");
-    const forcedSource = deriveMidgardNativeTxProofSourceV1(
-      adjudicateMidgardNativeTxFullV1Validity(forcedNativeTx, "TxIsInvalid"),
+    const forcedId = computeMidgardNativeTxId(forcedNativeTx).toString("hex");
+    const forcedSource = deriveMidgardNativeTxProofSource(
+      adjudicateMidgardNativeTxFullValidity(forcedNativeTx, "TxIsInvalid"),
     );
-    const forcedSourceId = computeMidgardNativeTxIdV1(
-      adjudicateMidgardNativeTxFullV1Validity(forcedNativeTx, "TxIsInvalid"),
+    const forcedSourceId = computeMidgardNativeTxId(
+      adjudicateMidgardNativeTxFullValidity(forcedNativeTx, "TxIsInvalid"),
     ).toString("hex");
     expect(forcedSourceId).toBe(forcedId);
     const reason = {
@@ -633,7 +632,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -665,11 +664,11 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       header,
     });
     expect(setup.headerHash).toBe(
-      await Effect.runPromise(hashBlockHeaderV1(header)),
+      await Effect.runPromise(hashBlockHeader(header)),
     );
-    const evidence = prepareMintDeclaredAssetLimitEvidenceV1({
+    const evidence = prepareMintDeclaredAssetLimitEvidence({
       finding: {
-        subject: forcedVerdictSubjectV1({
+        subject: forcedVerdictSubject({
           transactionId: forcedId,
           sourceKey,
           rejectionReason: reason,
@@ -677,11 +676,10 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         policyIndex: 0,
       },
       fieldPreimage: mintField,
-      committedFieldHashHex:
-        midgardFieldCommitmentV1(mintField).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(mintField).toString("hex"),
     });
     expect(evidence.crossing).toBe(false);
-    const staged = planMintDeclaredAssetLimitStagedWalkV1({
+    const staged = planMintDeclaredAssetLimitStagedWalk({
       transactionId: forcedId,
       fieldPreimageCbor: mintField.toString("hex"),
       policyIndex: 0,
@@ -711,7 +709,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       captures.push([label, captured]);
       return captured.result;
     };
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 5,
       anchorTxId: forcedId,
       nativeTxCompactCbor: forcedSource.compactCbor.toString("hex"),
@@ -721,7 +719,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       label: "mint declared forced lifecycle",
     });
     await measured("raw-carriage-publication", () =>
-      publishFaultProofFieldCarriageV1({
+      publishFaultProofFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -750,7 +748,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       return `${initialized.txHash}#${initialized.firstStepOutputIndex.toString()}`;
     };
     const bind = async (threadOutRef: string) =>
-      await submitMintDeclaredAssetLimitStep01ForcedV1({
+      await submitMintDeclaredAssetLimitStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -761,7 +759,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         referenceScriptUtxo: references[0]!,
       });
     const decode = async (threadOutRef: string) =>
-      await submitMintDeclaredAssetLimitStep02V1({
+      await submitMintDeclaredAssetLimitStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -774,7 +772,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         referenceScriptUtxo: references[1]!,
       });
     const fold = async (threadOutRef: string) =>
-      await submitMintDeclaredAssetLimitStep03V1({
+      await submitMintDeclaredAssetLimitStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -787,7 +785,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
         referenceScriptUtxo: references[2]!,
       });
     const cancel = async (threadOutRef: string, referenceScriptUtxo: UTxO) =>
-      await submitMintDeclaredAssetLimitCancelV1({
+      await submitMintDeclaredAssetLimitCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -828,7 +826,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       fold(step02.nextThreadOutRef),
     );
     const final = await measured("forced-permanent-proof-mint", () =>
-      submitMintDeclaredAssetLimitStep04V1({
+      submitMintDeclaredAssetLimitStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

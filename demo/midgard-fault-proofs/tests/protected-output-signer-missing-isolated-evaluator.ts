@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 
 import { CML } from "@lucid-evolution/lucid";
 
-import type { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import type { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 
 const worker = new URL(
   "./support/isolated-uplc-evaluator-v1.cjs",
@@ -48,7 +48,7 @@ const run = async (input: string): Promise<string> =>
   });
 
 /** One fresh wasm32 evaluator process per transaction; avoids UPLC arena leaks. */
-export const makeProtectedOutputSignerIsolatedEvaluatorV1 = () => ({
+export const makeProtectedOutputSignerIsolatedEvaluator = () => ({
   name: "protected-output-signer-isolated-uplc-v1",
   evaluate: async ({
     tx,
@@ -58,7 +58,7 @@ export const makeProtectedOutputSignerIsolatedEvaluatorV1 = () => ({
     NonNullable<
       NonNullable<
         NonNullable<
-          Parameters<typeof makeFaultProofEmulatorHarnessV1>[0]
+          Parameters<typeof makeFaultProofEmulatorHarness>[0]
         >["lucidOptions"]
       >["evaluator"]
     >["evaluate"]

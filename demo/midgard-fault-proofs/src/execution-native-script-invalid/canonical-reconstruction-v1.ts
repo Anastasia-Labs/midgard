@@ -1,8 +1,8 @@
 import {
-  buildMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
   decodeMidgardAddressBytes,
   encodeCbor,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   type MidgardVersionedScript,
@@ -12,13 +12,13 @@ import {
   type MidgardLedgerTx,
 } from "@al-ft/midgard-validation";
 
-export type ExecutionNativeScriptPurposeKindV1 =
+export type ExecutionNativeScriptPurposeKind =
   | "spend"
   | "mint"
   | "observe"
   | "receive";
 
-export type ExecutionNativeScriptCanonicalSourceV1 = Readonly<{
+export type ExecutionNativeScriptCanonicalSource = Readonly<{
   originKind: 0 | 1;
   sourceIndex: number;
   sourceKey: string;
@@ -29,20 +29,20 @@ export type ExecutionNativeScriptCanonicalSourceV1 = Readonly<{
   totalLength: number;
 }>;
 
-export type ExecutionNativeScriptCanonicalPurposeV1 = Readonly<{
+export type ExecutionNativeScriptCanonicalPurpose = Readonly<{
   executionIndex: number;
-  purposeKind: ExecutionNativeScriptPurposeKindV1;
+  purposeKind: ExecutionNativeScriptPurposeKind;
   purposeKindTag: 0 | 1 | 2 | 3;
   purposeIndex: bigint;
   scriptHash: string;
   subject: string;
-  source: ExecutionNativeScriptCanonicalSourceV1;
+  source: ExecutionNativeScriptCanonicalSource;
 }>;
 
-export type ExecutionNativeScriptCanonicalReconstructionV1 = Readonly<{
+export type ExecutionNativeScriptCanonicalReconstruction = Readonly<{
   transactionId: string;
-  purposes: readonly ExecutionNativeScriptCanonicalPurposeV1[];
-  sources: readonly ExecutionNativeScriptCanonicalSourceV1[];
+  purposes: readonly ExecutionNativeScriptCanonicalPurpose[];
+  sources: readonly ExecutionNativeScriptCanonicalSource[];
 }>;
 
 const outRefBytes = ({
@@ -58,7 +58,7 @@ const outRefBytes = ({
     throw new Error(
       "executionNativeScriptInvalid: out-ref index is outside V1",
     );
-  return encodeMidgardSpendInputItemV1({ txId, outputIndex });
+  return encodeMidgardSpendInputItem({ txId, outputIndex });
 };
 
 const outRefKey = (input: MidgardLedgerTx["spendInputs"][number]): string =>
@@ -83,9 +83,9 @@ const canonicalSource = ({
   sourceIndex: number;
   sourceKey: Buffer;
   itemIndex: number;
-}): ExecutionNativeScriptCanonicalSourceV1 => {
+}): ExecutionNativeScriptCanonicalSource => {
   const item = encodeMidgardVersionedScript(script);
-  const bounded = buildMidgardBoundedItemV1({
+  const bounded = buildMidgardBoundedItem({
     fieldIndex: originKind === 0 ? 6 : 2,
     itemIndex,
     bytes: item,
@@ -118,15 +118,15 @@ const uniqueInOrder = (values: readonly string[]): string[] => {
  * member against the header's `prev_utxos_root` before advancing its prefix
  * fold.
  */
-export const reconstructExecutionNativeScriptPurposesV1 = ({
+export const reconstructExecutionNativeScriptPurposes = ({
   canonicalTransactionCbor,
   resolvedOutputsByOutRef,
 }: {
   canonicalTransactionCbor: Uint8Array;
   resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array>;
-}): ExecutionNativeScriptCanonicalReconstructionV1 => {
+}): ExecutionNativeScriptCanonicalReconstruction => {
   const tx = decodeMidgardLedgerTxFromCanonicalCbor(canonicalTransactionCbor);
-  const sources: ExecutionNativeScriptCanonicalSourceV1[] =
+  const sources: ExecutionNativeScriptCanonicalSource[] =
     tx.scriptWitnesses.map((witness) =>
       canonicalSource({
         script: witness.script,
@@ -159,7 +159,7 @@ export const reconstructExecutionNativeScriptPurposesV1 = ({
     );
   }
 
-  const purposes: ExecutionNativeScriptCanonicalPurposeV1[] = [];
+  const purposes: ExecutionNativeScriptCanonicalPurpose[] = [];
   const add = ({
     purposeKind,
     purposeKindTag,
@@ -167,7 +167,7 @@ export const reconstructExecutionNativeScriptPurposesV1 = ({
     scriptHash,
     subject,
   }: Omit<
-    ExecutionNativeScriptCanonicalPurposeV1,
+    ExecutionNativeScriptCanonicalPurpose,
     "executionIndex" | "source"
   >) => {
     const source = sources.find(

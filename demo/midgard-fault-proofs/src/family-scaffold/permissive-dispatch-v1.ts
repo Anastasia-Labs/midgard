@@ -42,33 +42,33 @@
  * codec-hardening question for the owning family, not a scaffold dispatch
  * finding, and is out of this module's scope.
  */
-export type ScaffoldArtifactLanguageV1 = "aiken" | "typescript" | "json";
+export type ScaffoldArtifactLanguage = "aiken" | "typescript" | "json";
 
-export type PermissiveDispatchCategoryV1 =
+export type PermissiveDispatchCategory =
   | "accept_any_dispatch"
   | "silent_fallback"
   | "permissive_schema"
   | "unenforced_test";
 
-export type PermissiveDispatchFindingV1 = {
+export type PermissiveDispatchFinding = {
   readonly ruleId: string;
-  readonly category: PermissiveDispatchCategoryV1;
+  readonly category: PermissiveDispatchCategory;
   readonly path: string;
   readonly line: number;
   readonly excerpt: string;
   readonly explanation: string;
 };
 
-export type ScaffoldArtifactV1 = {
+export type ScaffoldArtifact = {
   readonly path: string;
-  readonly language: ScaffoldArtifactLanguageV1;
+  readonly language: ScaffoldArtifactLanguage;
   readonly contents: string;
 };
 
 type Rule = {
   readonly ruleId: string;
-  readonly category: PermissiveDispatchCategoryV1;
-  readonly languages: readonly ScaffoldArtifactLanguageV1[];
+  readonly category: PermissiveDispatchCategory;
+  readonly languages: readonly ScaffoldArtifactLanguage[];
   readonly explanation: string;
   /** Matches a single logical line (comments already stripped). */
   readonly pattern: RegExp;
@@ -161,7 +161,7 @@ const isNonDispatchingIndexedFallback = (
   isLabelOnlyFallback(before, after) ||
   isConservativeZeroDefault(before, after);
 
-export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
+export const PERMISSIVE_DISPATCH_RULES: readonly Rule[] = [
   {
     ruleId: "ak_catch_all_arm_true",
     category: "accept_any_dispatch",
@@ -285,7 +285,7 @@ export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
 
 const stripComments = (
   line: string,
-  language: ScaffoldArtifactLanguageV1,
+  language: ScaffoldArtifactLanguage,
 ): string => {
   if (language === "aiken") {
     return line.replace(/\/\/.*$/u, "");
@@ -300,13 +300,13 @@ const stripComments = (
  * Scans one emitted artifact. Comments are stripped first so documentation may
  * name a forbidden construct without tripping its own rule.
  */
-export const scanForPermissiveDispatchV1 = (
-  artifact: ScaffoldArtifactV1,
-): readonly PermissiveDispatchFindingV1[] => {
+export const scanForPermissiveDispatch = (
+  artifact: ScaffoldArtifact,
+): readonly PermissiveDispatchFinding[] => {
   if (artifact.language === "json") {
     return [];
   }
-  const findings: PermissiveDispatchFindingV1[] = [];
+  const findings: PermissiveDispatchFinding[] = [];
   const lines = artifact.contents.split("\n");
   // Comment stripping only removes a trailing comment or blanks a whole line,
   // so an index inside a stripped line is still the index inside its raw line.
@@ -318,7 +318,7 @@ export const scanForPermissiveDispatchV1 = (
     if (line.trim().length === 0) {
       continue;
     }
-    for (const rule of PERMISSIVE_DISPATCH_RULES_V1) {
+    for (const rule of PERMISSIVE_DISPATCH_RULES) {
       if (!rule.languages.includes(artifact.language)) {
         continue;
       }
@@ -350,10 +350,10 @@ export const scanForPermissiveDispatchV1 = (
   return findings;
 };
 
-export class PermissiveDispatchRejectionV1 extends Error {
-  readonly findings: readonly PermissiveDispatchFindingV1[];
+export class PermissiveDispatchRejection extends Error {
+  readonly findings: readonly PermissiveDispatchFinding[];
 
-  constructor(findings: readonly PermissiveDispatchFindingV1[]) {
+  constructor(findings: readonly PermissiveDispatchFinding[]) {
     super(
       `Refusing to emit a family scaffold with permissive dispatch:\n${findings
         .map(
@@ -370,13 +370,13 @@ export class PermissiveDispatchRejectionV1 extends Error {
 }
 
 /** Fail-closed gate the generator applies to its own output. */
-export const assertNoPermissiveDispatchV1 = (
-  artifacts: readonly ScaffoldArtifactV1[],
+export const assertNoPermissiveDispatch = (
+  artifacts: readonly ScaffoldArtifact[],
 ): void => {
   const findings = artifacts.flatMap((artifact) =>
-    scanForPermissiveDispatchV1(artifact),
+    scanForPermissiveDispatch(artifact),
   );
   if (findings.length > 0) {
-    throw new PermissiveDispatchRejectionV1(findings);
+    throw new PermissiveDispatchRejection(findings);
   }
 };

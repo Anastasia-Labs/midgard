@@ -2,12 +2,12 @@ import type { StateQueueUTxO } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  parseTimeoutCorrectionJournalV1,
-  planNextTimeoutCorrectionV1,
-  reconcileCompletedTimeoutCorrectionJournalV1,
-  reconcileLastTimeoutCorrectionStepV1,
-  releaseTimeoutCorrectionLeaseBeforeYieldV1,
-  type TimeoutCorrectionJournalV1,
+  parseTimeoutCorrectionJournal,
+  planNextTimeoutCorrection,
+  reconcileCompletedTimeoutCorrectionJournal,
+  reconcileLastTimeoutCorrectionStep,
+  releaseTimeoutCorrectionLeaseBeforeYield,
+  type TimeoutCorrectionJournal,
 } from "../src/remove-unattested-block.js";
 
 const txHash = (byte: string): string => byte.repeat(64);
@@ -49,7 +49,7 @@ const block = (
   } as StateQueueUTxO;
 };
 
-const completedJournal = (): TimeoutCorrectionJournalV1 => ({
+const completedJournal = (): TimeoutCorrectionJournal => ({
   version: 1,
   targetHeaderHash: headerHash("1"),
   targetDeadlineMs: "3600000",
@@ -68,13 +68,13 @@ const completedJournal = (): TimeoutCorrectionJournalV1 => ({
 describe("attestation-timeout correction recovery", () => {
   it("rejects malformed nested journal state instead of trusting the cast", () => {
     expect(() =>
-      parseTimeoutCorrectionJournalV1({
+      parseTimeoutCorrectionJournal({
         ...completedJournal(),
         steps: [{ kind: "remove-head", status: "confirmed" }],
       }),
     ).toThrow(/step 0 is invalid/);
     expect(() =>
-      parseTimeoutCorrectionJournalV1({
+      parseTimeoutCorrectionJournal({
         ...completedJournal(),
         steps: [
           completedJournal().steps[0],
@@ -86,19 +86,19 @@ describe("attestation-timeout correction recovery", () => {
       }),
     ).toThrow(/repeats transaction hash/);
     expect(() =>
-      parseTimeoutCorrectionJournalV1({
+      parseTimeoutCorrectionJournal({
         ...completedJournal(),
         steps: [{ ...completedJournal().steps[0], status: "submitted" }],
       }),
     ).toThrow(/Completed.*non-terminal/);
     expect(() =>
-      parseTimeoutCorrectionJournalV1({
+      parseTimeoutCorrectionJournal({
         ...completedJournal(),
         completedAuthority: true,
       }),
     ).toThrow(/Invalid.*journal/);
     expect(() =>
-      parseTimeoutCorrectionJournalV1({
+      parseTimeoutCorrectionJournal({
         ...completedJournal(),
         steps: [
           {
@@ -109,7 +109,7 @@ describe("attestation-timeout correction recovery", () => {
       }),
     ).toThrow(/step 0 is invalid/);
     expect(() =>
-      parseTimeoutCorrectionJournalV1({
+      parseTimeoutCorrectionJournal({
         ...completedJournal(),
         completed: false,
         steps: [{ ...completedJournal().steps[0], status: "accepted" }],
@@ -118,7 +118,7 @@ describe("attestation-timeout correction recovery", () => {
   });
 
   it("reopens completion when a rollback restores the target head", () => {
-    const reconciled = reconcileCompletedTimeoutCorrectionJournalV1(
+    const reconciled = reconcileCompletedTimeoutCorrectionJournal(
       completedJournal(),
       [root(), block("1")],
     );
@@ -130,13 +130,13 @@ describe("attestation-timeout correction recovery", () => {
 
   it("rotates a completed journal only after proving the old target absent", () => {
     expect(
-      reconcileCompletedTimeoutCorrectionJournalV1(completedJournal(), [
+      reconcileCompletedTimeoutCorrectionJournal(completedJournal(), [
         root(),
         block("2"),
       ]),
     ).toBeUndefined();
     expect(() =>
-      reconcileCompletedTimeoutCorrectionJournalV1(completedJournal(), [
+      reconcileCompletedTimeoutCorrectionJournal(completedJournal(), [
         root(),
         block("2"),
         block("1"),
@@ -146,11 +146,11 @@ describe("attestation-timeout correction recovery", () => {
 
   it("replans from fresh topology after concurrent append or stale UTxOs", () => {
     const target = headerHash("1");
-    const first = planNextTimeoutCorrectionV1(
+    const first = planNextTimeoutCorrection(
       [root(), block("1", "1"), block("2", "2")],
       target,
     );
-    const refreshed = planNextTimeoutCorrectionV1(
+    const refreshed = planNextTimeoutCorrection(
       [root(), block("1", "3", 1), block("4", "4")],
       target,
     );
@@ -162,7 +162,7 @@ describe("attestation-timeout correction recovery", () => {
 
   it("confirms an authenticated prune before deriving the next prune plan", () => {
     const target = headerHash("1");
-    const pending: TimeoutCorrectionJournalV1 = {
+    const pending: TimeoutCorrectionJournal = {
       version: 1,
       targetHeaderHash: target,
       targetDeadlineMs: "3600000",
@@ -178,21 +178,21 @@ describe("attestation-timeout correction recovery", () => {
       ],
     };
     const refreshedQueue = [root("a"), block("1", "9"), block("3", "3")];
-    const reconciled = reconcileLastTimeoutCorrectionStepV1(
+    const reconciled = reconcileLastTimeoutCorrectionStep(
       pending,
       refreshedQueue,
       "confirmed",
     );
     expect(reconciled.disposition).toBe("confirmed");
     expect(reconciled.journal.steps[0]?.status).toBe("confirmed");
-    expect(planNextTimeoutCorrectionV1(refreshedQueue, target)).toMatchObject({
+    expect(planNextTimeoutCorrection(refreshedQueue, target)).toMatchObject({
       kind: "prune-descendant",
       removed: { assetName: `000de140${headerHash("3")}` },
     });
   });
 
   it("confirms terminal head removal before accepting an undefined plan", () => {
-    const pending: TimeoutCorrectionJournalV1 = {
+    const pending: TimeoutCorrectionJournal = {
       ...completedJournal(),
       completed: false,
       steps: [
@@ -203,19 +203,19 @@ describe("attestation-timeout correction recovery", () => {
       ],
     };
     const refreshedQueue = [root("9")];
-    const reconciled = reconcileLastTimeoutCorrectionStepV1(
+    const reconciled = reconcileLastTimeoutCorrectionStep(
       pending,
       refreshedQueue,
       "confirmed",
     );
     expect(reconciled.disposition).toBe("confirmed");
-    expect(planNextTimeoutCorrectionV1(refreshedQueue, headerHash("1"))).toBe(
+    expect(planNextTimeoutCorrection(refreshedQueue, headerHash("1"))).toBe(
       undefined,
     );
   });
 
   it("does not confirm when concurrent topology still carries the recorded header", () => {
-    const pending: TimeoutCorrectionJournalV1 = {
+    const pending: TimeoutCorrectionJournal = {
       version: 1,
       targetHeaderHash: headerHash("1"),
       targetDeadlineMs: "3600000",
@@ -230,7 +230,7 @@ describe("attestation-timeout correction recovery", () => {
         },
       ],
     };
-    const reconciled = reconcileLastTimeoutCorrectionStepV1(
+    const reconciled = reconcileLastTimeoutCorrectionStep(
       pending,
       [root("9"), block("1", "8"), block("2", "7")],
       "confirmed",
@@ -243,7 +243,7 @@ describe("attestation-timeout correction recovery", () => {
     "always supersedes a %s transaction before replanning changed topology",
     (status) => {
       const target = headerHash("1");
-      const pending: TimeoutCorrectionJournalV1 = {
+      const pending: TimeoutCorrectionJournal = {
         version: 1,
         targetHeaderHash: target,
         targetDeadlineMs: "3600000",
@@ -263,7 +263,7 @@ describe("attestation-timeout correction recovery", () => {
         block("1", "8"),
         block("4", "4"),
       ];
-      const reconciled = reconcileLastTimeoutCorrectionStepV1(
+      const reconciled = reconcileLastTimeoutCorrectionStep(
         pending,
         concurrentlyChangedQueue,
         status,
@@ -271,7 +271,7 @@ describe("attestation-timeout correction recovery", () => {
       expect(reconciled.disposition).toBe("superseded");
       expect(reconciled.journal.steps[0]?.status).toBe("superseded");
       expect(
-        planNextTimeoutCorrectionV1(concurrentlyChangedQueue, target)?.removed
+        planNextTimeoutCorrection(concurrentlyChangedQueue, target)?.removed
           .assetName,
       ).toContain(headerHash("4"));
     },
@@ -280,7 +280,7 @@ describe("attestation-timeout correction recovery", () => {
   it("releases an acquired lease before yielding a resumable pending result", async () => {
     const release = vi.fn(async () => undefined);
     await expect(
-      releaseTimeoutCorrectionLeaseBeforeYieldV1({ release }),
+      releaseTimeoutCorrectionLeaseBeforeYield({ release }),
     ).resolves.toBe(true);
     expect(release).toHaveBeenCalledOnce();
   });

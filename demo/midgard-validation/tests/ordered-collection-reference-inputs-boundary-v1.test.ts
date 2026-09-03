@@ -1,34 +1,34 @@
 import {
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 import {
-  buildSignedCardanoReferenceInputsCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  deriveCardanoGenesisInputSupplyV1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  findSignedCardanoCollectionBoundaryV1,
-  measureSignedCardanoReferenceInputsV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildSignedCardanoReferenceInputsCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  deriveCardanoGenesisInputSupply,
+  deterministicCardanoBoundaryPrivateKey,
+  exerciseMidgardOrderedCollectionBoundary,
+  findSignedCardanoCollectionBoundary,
+  measureSignedCardanoReferenceInputs,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundary-v1.js";
 
 // The exact genuine signed-Cardano field-1 boundary. Every value below is also
 // pinned byte-for-byte by
 // `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`
 // (`maximum_reference_input_field_terminal_fixture_v1`), so this object is the
 // TypeScript half of the cross-language agreement for C20-1.
-const MAXIMUM_REFERENCE_INPUT_ACCEPTED_COUNT_V1 = 433;
-const MAXIMUM_REFERENCE_INPUT_ACCEPTED_SIGNED_BYTES_V1 = 16_380;
-const MAXIMUM_REFERENCE_INPUT_ADJACENT_COUNT_V1 = 434;
-const MAXIMUM_REFERENCE_INPUT_ADJACENT_SIGNED_BYTES_V1 = 16_418;
+const MAXIMUM_REFERENCE_INPUT_ACCEPTED_COUNT = 433;
+const MAXIMUM_REFERENCE_INPUT_ACCEPTED_SIGNED_BYTES = 16_380;
+const MAXIMUM_REFERENCE_INPUT_ADJACENT_COUNT = 434;
+const MAXIMUM_REFERENCE_INPUT_ADJACENT_SIGNED_BYTES = 16_418;
 
-const maximumReferenceInputTerminalFoldVectorV1 = {
+const maximumReferenceInputTerminalFoldVector = {
   transactionIdHex:
     "a6bd2cb922f5d1052a1e1efd83bcdd11dd7721160080df149682cf417306b952",
   transactionCommitmentHex:
@@ -101,15 +101,15 @@ const maximumReferenceInputTerminalFoldVectorV1 = {
 
 describe("canonical V1 reference-inputs Cardano boundary", () => {
   it("derives and reveals field 1 using only distinct real emulator UTxOs", async () => {
-    const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const spendingKey = deterministicCardanoBoundaryPrivateKey(0);
     const address = CML.EnterpriseAddress.new(
       0,
       CML.Credential.new_pub_key(spendingKey.to_public().hash()),
     )
       .to_address()
       .to_bech32();
-    const inputSupply = deriveCardanoGenesisInputSupplyV1(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+    const inputSupply = deriveCardanoGenesisInputSupply(
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     const lovelacePerInput = 10_000_000n;
     const emulator = new Emulator(
@@ -119,7 +119,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
         address,
         assets: { lovelace: lovelacePerInput },
       })),
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const availableInputs = (await emulator.getUtxos(address)).sort(
       (left, right) => left.outputIndex - right.outputIndex,
@@ -130,27 +130,27 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
       expect(input.outputIndex).toBe(index);
     }
 
-    const boundary = await findSignedCardanoCollectionBoundaryV1({
+    const boundary = await findSignedCardanoCollectionBoundary({
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: (requestedReferenceInputCount) =>
-        buildSignedCardanoReferenceInputsCandidateV1({
+        buildSignedCardanoReferenceInputsCandidate({
           privateKeyBech32: spendingKey.to_bech32(),
           availableInputs,
           recipientAddress: address,
           requestedReferenceInputCount,
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
         }),
     });
-    const acceptedCardano = measureSignedCardanoReferenceInputsV1(
+    const acceptedCardano = measureSignedCardanoReferenceInputs(
       boundary.accepted.cborHex,
     );
-    const adjacentCardano = measureSignedCardanoReferenceInputsV1(
+    const adjacentCardano = measureSignedCardanoReferenceInputs(
       boundary.adjacent.cborHex,
     );
-    const referenceInputField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const referenceInputField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 1,
     });
@@ -166,7 +166,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
           // not CML's minimal-index `TransactionInput` CBOR. The strict DA
           // decoder matches these keys against the transaction's field-1
           // reference-input items, which carry exactly these bytes.
-          encodeMidgardSpendInputItemV1({
+          encodeMidgardSpendInputItem({
             txId: CML.TransactionHash.from_hex(input.txHash).to_raw_bytes(),
             outputIndex: input.outputIndex,
           }).toString("hex"),
@@ -182,7 +182,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
         ];
       })
       .sort(([left], [right]) => left.localeCompare(right));
-    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+    const retainedDa = await exerciseMidgardRetainedDaBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-reference-inputs",
       resolvedReferenceUtxos,
@@ -232,29 +232,29 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
     );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
       boundary.accepted.requestedItemCount + 1,
     );
     expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.adjacent.requestedItemCount + 1).toBeLessThanOrEqual(
       inputSupply,
     );
     expect(boundary.accepted.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
           boundary.accepted.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       ),
     );
     expect(boundary.adjacent.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
           boundary.adjacent.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       ),
     );
     expect(acceptedCardano.inputCount).toBe(1);
@@ -276,22 +276,22 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
       acceptedCardano.referenceInputCount,
     );
     expect(referenceInputField.maxRevealBytes).toBeLessThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
 
     // The genuine maximum and its immediately adjacent control are exact, not
     // merely "whatever the search returned".
     expect(boundary.accepted.requestedItemCount).toBe(
-      MAXIMUM_REFERENCE_INPUT_ACCEPTED_COUNT_V1,
+      MAXIMUM_REFERENCE_INPUT_ACCEPTED_COUNT,
     );
     expect(boundary.accepted.signedBytes).toBe(
-      MAXIMUM_REFERENCE_INPUT_ACCEPTED_SIGNED_BYTES_V1,
+      MAXIMUM_REFERENCE_INPUT_ACCEPTED_SIGNED_BYTES,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
-      MAXIMUM_REFERENCE_INPUT_ADJACENT_COUNT_V1,
+      MAXIMUM_REFERENCE_INPUT_ADJACENT_COUNT,
     );
     expect(boundary.adjacent.signedBytes).toBe(
-      MAXIMUM_REFERENCE_INPUT_ADJACENT_SIGNED_BYTES_V1,
+      MAXIMUM_REFERENCE_INPUT_ADJACENT_SIGNED_BYTES,
     );
     expect({
       transactionIdHex: referenceInputField.terminalFoldVector.transactionIdHex,
@@ -309,7 +309,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
         referenceInputField.terminalFoldVector.encodedLengthBeforeItem,
       collectionProof: referenceInputField.terminalFoldVector.collectionProof,
       chunkProof: referenceInputField.terminalFoldVector.chunkProof,
-    }).toEqual(maximumReferenceInputTerminalFoldVectorV1);
+    }).toEqual(maximumReferenceInputTerminalFoldVector);
     // #590 scope item 0: the write channel this suite did not have.
     //
     // The `reference-inputs-boundary-v1` fixture in
@@ -323,7 +323,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
     //
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.
-    publishAikenVectorV1("reference-inputs-boundary-v1", {
+    publishAikenVector("reference-inputs-boundary-v1", {
       fieldIndex:
         referenceInputField.terminalFoldVector.collectionProof.fieldIndex,
       itemCount:

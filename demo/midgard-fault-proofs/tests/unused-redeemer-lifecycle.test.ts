@@ -1,17 +1,17 @@
 import {
   buildMidgardValidationTraceTree,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxBodyCompactV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxBodyCompact,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationRejectionCode,
+  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import {
   encodeByteList,
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -30,36 +30,36 @@ import {
   plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
-  applyUnusedRedeemerScriptsV1,
-  type UnusedRedeemerContractsV1,
+  applyUnusedRedeemerScripts,
+  type UnusedRedeemerContracts,
 } from "../src/unused-redeemer/contracts-v1.js";
-import { UNUSED_REDEEMER_CATEGORY_ID_V1 } from "../src/unused-redeemer/family-v1.js";
-import { buildUnusedRedeemerMaterialFromRetainedDaV1 } from "../src/unused-redeemer/production-replay-v1.js";
-import { submitUnusedRedeemerCancelV1 } from "../src/unused-redeemer/submit-cancel-v1.js";
+import { UNUSED_REDEEMER_CATEGORY_ID } from "../src/unused-redeemer/family-v1.js";
+import { buildUnusedRedeemerMaterialFromRetainedDa } from "../src/unused-redeemer/production-replay-v1.js";
+import { submitUnusedRedeemerCancel } from "../src/unused-redeemer/submit-cancel-v1.js";
 import {
-  submitUnusedRedeemerStep01AcceptedV1,
-  submitUnusedRedeemerStep01ForcedV1,
+  submitUnusedRedeemerStep01Accepted,
+  submitUnusedRedeemerStep01Forced,
 } from "../src/unused-redeemer/submit-step-01-v1.js";
-import { submitUnusedRedeemerStep02V1 } from "../src/unused-redeemer/submit-step-02-v1.js";
-import { submitUnusedRedeemerStep02aV1 } from "../src/unused-redeemer/submit-step-02a-v1.js";
-import { submitUnusedRedeemerStep02bV1 } from "../src/unused-redeemer/submit-step-02b-v1.js";
-import { submitUnusedRedeemerStep02cV1 } from "../src/unused-redeemer/submit-step-02c-v1.js";
-import { submitUnusedRedeemerStep03V1 } from "../src/unused-redeemer/submit-step-03-v1.js";
-import { submitUnusedRedeemerStep04V1 } from "../src/unused-redeemer/submit-step-04-v1.js";
-import { submitUnusedRedeemerStep05V1 } from "../src/unused-redeemer/submit-step-05-v1.js";
-import { submitUnusedRedeemerStep06V1 } from "../src/unused-redeemer/submit-step-06-v1.js";
+import { submitUnusedRedeemerStep02 } from "../src/unused-redeemer/submit-step-02-v1.js";
+import { submitUnusedRedeemerStep02a } from "../src/unused-redeemer/submit-step-02a-v1.js";
+import { submitUnusedRedeemerStep02b } from "../src/unused-redeemer/submit-step-02b-v1.js";
+import { submitUnusedRedeemerStep02c } from "../src/unused-redeemer/submit-step-02c-v1.js";
+import { submitUnusedRedeemerStep03 } from "../src/unused-redeemer/submit-step-03-v1.js";
+import { submitUnusedRedeemerStep04 } from "../src/unused-redeemer/submit-step-04-v1.js";
+import { submitUnusedRedeemerStep05 } from "../src/unused-redeemer/submit-step-05-v1.js";
+import { submitUnusedRedeemerStep06 } from "../src/unused-redeemer/submit-step-06-v1.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -84,9 +84,9 @@ const buildMaterial = async (
   );
   const spentOutput = makeProtectedScriptOutput(
     hashScriptWitness(script),
-    FUNDED_OUTPUT_LOVELACE_V1,
+    FUNDED_OUTPUT_LOVELACE,
   );
-  const producedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+  const producedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
   const source = makeNativeTx({
     spendInputs: [spent],
     outputs: [producedOutput],
@@ -98,9 +98,9 @@ const buildMaterial = async (
     scriptLanguages: ["PlutusV3"],
     privateKey,
   });
-  const bodyHash = computeMidgardNativeTxIdV1({
+  const bodyHash = computeMidgardNativeTxId({
     version: source.tx.version,
-    transactionBody: deriveMidgardNativeTxBodyCompactV1(source.tx.body),
+    transactionBody: deriveMidgardNativeTxBodyCompact(source.tx.body),
     transactionWitnessSetHash: Buffer.alloc(32),
     validity: source.tx.validity,
   });
@@ -127,7 +127,7 @@ const buildMaterial = async (
       : ({ ForcedTransactionEventKey: { tx_order_id: sourceKey } } as const);
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(
         Data.to(eventKey as never, SDK.EventKeySchema as never),
         "hex",
@@ -154,13 +154,13 @@ const buildMaterial = async (
     }),
   );
   const claimedTree = buildMidgardValidationTraceTree(
-    trace.states.map(hashMidgardValidationMachineStateV1),
+    trace.states.map(hashMidgardValidationMachineState),
     direction === "accepted" ? "accepted" : "rejected",
     direction === "accepted"
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCodeV1("E_INVALID_FIELD_TYPE"),
+      : hashMidgardValidationRejectionCode("E_INVALID_FIELD_TYPE"),
   );
-  const descriptor: SDK.ValidationTraceDescriptorV1 = {
+  const descriptor: SDK.ValidationTraceDescriptor = {
     schema_version: BigInt(claimedTree.descriptor.schemaVersion),
     machine_version: BigInt(claimedTree.descriptor.machineVersion),
     trace_root: claimedTree.descriptor.traceRoot.toString("hex"),
@@ -177,10 +177,7 @@ const buildMaterial = async (
     "hex",
   );
   const descriptorCbor = Buffer.from(
-    Data.to(
-      descriptor as never,
-      SDK.ValidationTraceDescriptorV1Schema as never,
-    ),
+    Data.to(descriptor as never, SDK.ValidationTraceDescriptorSchema as never),
     "hex",
   );
   const traceRoot = await buildCountedRoot(SDK.ROOT_DOMAINS.validationTraces, [
@@ -192,7 +189,7 @@ const buildMaterial = async (
     const defaultTarget = direction === "accepted" ? 1 : 0;
     const auditHeaderPc = defaultTarget === 1 ? 88 : 85;
     if (omitAuditHeader && witness.programCounter === auditHeaderPc) return [];
-    const retained: SDK.RetainedValidationWitnessV1 = {
+    const retained: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(
         trace.states[index]!,
       ),
@@ -204,17 +201,17 @@ const buildMaterial = async (
       program_counter: BigInt(witness.programCounter),
       witness_cbor: witness.cbor.toString("hex"),
       auxiliary: Data.from(
-        Data.to(validationAuxiliaryWitnessDataV1(witness.auxiliary) as never),
-        SDK.ValidationAuxiliaryWitnessV1Schema,
-      ) as unknown as SDK.ValidationAuxiliaryWitnessV1,
+        Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
+        SDK.ValidationAuxiliaryWitnessSchema,
+      ) as unknown as SDK.ValidationAuxiliaryWitness,
     };
     return [
       [
-        SDK.encodeRetainedValidationWitnessKeyV1({
+        SDK.encodeRetainedValidationWitnessKey({
           event_key: eventKey,
           execution_index: -BigInt(index + 1),
         }),
-        SDK.encodeRetainedValidationWitnessV1(retained),
+        SDK.encodeRetainedValidationWitness(retained),
       ] as const,
     ];
   });
@@ -233,18 +230,18 @@ const buildMaterial = async (
         },
       },
     },
-  } as unknown as CanonicalBlockEvidenceV1;
+  } as unknown as CanonicalBlockEvidence;
   const redeemerIndex =
     redeemerIndexOverride ?? (direction === "accepted" ? 1 : 0);
   const subject =
     direction === "accepted"
-      ? SDK.acceptedVerdictSubjectV1(transaction.txId.toString("hex"))
-      : SDK.forcedVerdictSubjectV1({
+      ? SDK.acceptedVerdictSubject(transaction.txId.toString("hex"))
+      : SDK.forcedVerdictSubject({
           transactionId: transaction.txId.toString("hex"),
           sourceKey,
           rejectionReason: { UnusedRedeemer: { redeemer_index: 0n } },
         });
-  const material = await buildUnusedRedeemerMaterialFromRetainedDaV1({
+  const material = await buildUnusedRedeemerMaterialFromRetainedDa({
     block,
     eventKey,
     subject,
@@ -292,7 +289,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
   it.each(["accepted", "forced"] as const)(
     "runs %s Init through all nine real reference scripts",
     async (direction) => {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
       });
       const addressData = Data.from(
@@ -305,7 +302,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
           SDK.AddressData,
         ),
       );
-      const applied = applyUnusedRedeemerScriptsV1({
+      const applied = applyUnusedRedeemerScripts({
         blueprint: harness.realBlueprint,
         network,
         computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -313,11 +310,11 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         fraudProofTokenAddressData: addressData,
         hubOracleScriptHash: harness.contracts.hubOracle.policyId,
       });
-      const contracts: UnusedRedeemerContractsV1 = {
+      const contracts: UnusedRedeemerContracts = {
         steps: applied.map((step, index) => ({
           ...step,
           referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-        })) as unknown as UnusedRedeemerContractsV1["steps"],
+        })) as unknown as UnusedRedeemerContracts["steps"],
         computationThread: harness.contracts.computationThread,
         fraudProof: harness.contracts.fraudProof,
         hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -331,14 +328,14 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         },
       });
       const category = catalogue.categories.unusedRedeemer!;
-      expect(category.categoryId).toBe(UNUSED_REDEEMER_CATEGORY_ID_V1);
+      expect(category.categoryId).toBe(UNUSED_REDEEMER_CATEGORY_ID);
       const { material, transaction, traceRoot, eventKey } =
         await buildMaterial(direction);
       const forcedEvent = eventKey.ForcedTransactionEventKey;
       const forcedOrderKey = forcedEvent?.tx_order_id ?? null;
       if (direction === "forced" && forcedOrderKey === null)
         throw new Error("forced event key absent");
-      const block = await buildDecodingBlockFixtureV1({
+      const block = await buildDecodingBlockFixture({
         operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
         startTime: BigInt(
           alignUnixTimeToEmulatorSlotBoundary(
@@ -442,7 +439,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
       outRef = (
         await measured(`${direction}-step01`, async () => {
           if (direction === "accepted")
-            return await submitUnusedRedeemerStep01AcceptedV1({
+            return await submitUnusedRedeemerStep01Accepted({
               lucid: harness.proverLucid,
               blueprint: harness.realBlueprint,
               network,
@@ -461,7 +458,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
             reconstruction: block.reconstruction,
             eventKey,
           });
-          return await submitUnusedRedeemerStep01ForcedV1({
+          return await submitUnusedRedeemerStep01Forced({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -476,12 +473,12 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
       ).nextThreadOutRef;
       await restart();
       const linear = [
-        submitUnusedRedeemerStep02V1,
-        submitUnusedRedeemerStep02aV1,
-        submitUnusedRedeemerStep02bV1,
-        submitUnusedRedeemerStep02cV1,
-        submitUnusedRedeemerStep03V1,
-        submitUnusedRedeemerStep04V1,
+        submitUnusedRedeemerStep02,
+        submitUnusedRedeemerStep02a,
+        submitUnusedRedeemerStep02b,
+        submitUnusedRedeemerStep02c,
+        submitUnusedRedeemerStep03,
+        submitUnusedRedeemerStep04,
       ] as const;
       for (const [offset, submit] of linear.entries()) {
         const result = await measured(`${direction}-step-${offset + 2}`, () =>
@@ -500,7 +497,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         await restart();
       }
       const scan = await measured(`${direction}-step05`, () =>
-        submitUnusedRedeemerStep05V1({
+        submitUnusedRedeemerStep05({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -514,7 +511,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
       outRef = scan.nextThreadOutRef;
       await restart();
       const finalized = await measured(`${direction}-step06`, () =>
-        submitUnusedRedeemerStep06V1({
+        submitUnusedRedeemerStep06({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -531,7 +528,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
           let current = (await initialize()).nextThreadOutRef;
           if (target === 0) return current;
           current = (
-            await submitUnusedRedeemerStep01AcceptedV1({
+            await submitUnusedRedeemerStep01Accepted({
               lucid: harness.proverLucid,
               blueprint: harness.realBlueprint,
               network,
@@ -564,7 +561,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
           }
           if (target > 7)
             current = (
-              await submitUnusedRedeemerStep05V1({
+              await submitUnusedRedeemerStep05({
                 lucid: harness.proverLucid,
                 contracts,
                 categoryId: category.categoryId,
@@ -579,7 +576,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         for (let target = 0; target < 9; target += 1) {
           const cancelOutRef = await advanceForCancel(target);
           await measured(`cancel-step-${target.toString()}`, () =>
-            submitUnusedRedeemerCancelV1({
+            submitUnusedRedeemerCancel({
               lucid: harness.proverLucid,
               contracts,
               categoryId: category.categoryId,

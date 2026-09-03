@@ -12,7 +12,7 @@
  * surfaces as a thrown error with the live thread out-ref in hand.
  */
 import type {
-  MidgardMintPolicyItemV1,
+  MidgardMintPolicyItem,
   MidgardTxOutput,
   MidgardValue,
 } from "@al-ft/midgard-core";
@@ -21,17 +21,14 @@ import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
+import type { ValueNotPreservedContracts } from "./contracts-v1.js";
 import {
-  buildSpentInputValueWitnessV1,
-  spendInputsOpeningV1,
-  type ValueNotPreservedLedgerTrieHandleV1,
+  buildSpentInputValueWitness,
+  spendInputsOpening as spendInputsOpeningV1,
+  type ValueNotPreservedLedgerTrieHandle,
 } from "./evidence-v1.js";
-import type {
-  ClaimedAssetV1,
-  ClaimedImbalanceDirectionV1,
-} from "./schemas-v1.js";
-import type { ValueNotPreservedCatalogueCategoryV1 } from "./submit-common-v1.js";
+import type { ClaimedAsset, ClaimedImbalanceDirection } from "./schemas-v1.js";
+import type { ValueNotPreservedCatalogueCategory } from "./submit-common-v1.js";
 import { submitValueNotPreservedInit } from "./submit-value-not-preserved-init-v1.js";
 import { submitValueNotPreservedStep01 } from "./submit-value-not-preserved-step-01-v1.js";
 import {
@@ -45,7 +42,7 @@ import {
 } from "./submit-value-not-preserved-step-04-v1.js";
 
 /** One spend input of the challenged transaction, with its pre-state facts. */
-export type ValueNotPreservedSpentInputV1 = {
+export type ValueNotPreservedSpentInput = {
   /** The out-ref, in the SDK's wire spelling. */
   readonly input: MidgardTxInput;
   /** The committed `LedgerOutputCommitmentV1` bytes, hex. */
@@ -54,13 +51,13 @@ export type ValueNotPreservedSpentInputV1 = {
   readonly spentValue: MidgardValue;
 };
 
-export type ProveValueNotPreservedResultV1 = {
+export type ProveValueNotPreservedResult = {
   readonly initTxHash: string;
   readonly stepTxHashes: readonly string[];
   readonly finalization: SubmitValueNotPreservedStep04Result;
 };
 
-export const proveValueNotPreservedV1 = async ({
+export const proveValueNotPreserved = async ({
   lucid,
   blueprint,
   network,
@@ -83,8 +80,8 @@ export const proveValueNotPreservedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: ValueNotPreservedContractsV1;
-  readonly category: ValueNotPreservedCatalogueCategoryV1;
+  readonly contracts: ValueNotPreservedContracts;
+  readonly category: ValueNotPreservedCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -94,20 +91,20 @@ export const proveValueNotPreservedV1 = async ({
   /** The challenged block's state-queue UTxO. */
   readonly fraudulentBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly claimedAsset: ClaimedAssetV1;
-  readonly claimedDirection: ClaimedImbalanceDirectionV1;
+  readonly claimedAsset: ClaimedAsset;
+  readonly claimedDirection: ClaimedImbalanceDirection;
   /** The challenged header's `prev_utxos_root`, hex. */
   readonly prevUtxosRoot: string;
   /** Field-0 order: entry `k` is the transaction's spend input `k`. */
-  readonly spentInputs: readonly ValueNotPreservedSpentInputV1[];
+  readonly spentInputs: readonly ValueNotPreservedSpentInput[];
   /** The pre-state ledger MPF, rooted at `prevUtxosRoot`. */
-  readonly ledgerTrie: ValueNotPreservedLedgerTrieHandleV1;
+  readonly ledgerTrie: ValueNotPreservedLedgerTrieHandle;
   /** The transaction's committed field-0 preimage bytes. */
   readonly spendInputsPreimageCbor: Buffer;
   /** The transaction's committed outputs (field 2). */
   readonly outputs: readonly MidgardTxOutput[];
   /** The committed mint items (field 5); null exactly for an ADA claim. */
-  readonly mintItems: readonly MidgardMintPolicyItemV1[] | null;
+  readonly mintItems: readonly MidgardMintPolicyItem[] | null;
   /** Published per-step reference scripts (production: always present). */
   readonly referenceScriptUtxos?: {
     readonly step01?: UTxO;
@@ -115,7 +112,7 @@ export const proveValueNotPreservedV1 = async ({
     readonly step03?: UTxO;
     readonly step04?: UTxO;
   };
-}): Promise<ProveValueNotPreservedResultV1> => {
+}): Promise<ProveValueNotPreservedResult> => {
   const stepTxHashes: string[] = [];
   const categoryId = category.categoryId;
 
@@ -154,7 +151,7 @@ export const proveValueNotPreservedV1 = async ({
 
   let threadOutRef = step01.nextThreadOutRef;
   for (const spentInput of spentInputs) {
-    const valueWitness = await buildSpentInputValueWitnessV1({
+    const valueWitness = await buildSpentInputValueWitness({
       claim: claimedAsset,
       descriptorCbor: spentInput.descriptorCbor,
       spentValue: spentInput.spentValue,

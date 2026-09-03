@@ -1,12 +1,12 @@
 import { readFile, realpath } from "node:fs/promises";
 
-import { parseWatcherStrictJsonValueV1 } from "./config.js";
+import { parseWatcherStrictJsonValue } from "./config.js";
 import {
-  type VerifiedWatcherDeploymentIdentityV1,
-  verifyWatcherDeploymentIdentityV1,
+  type VerifiedWatcherDeploymentIdentity,
+  verifyWatcherDeploymentIdentity,
 } from "./deployment-identity.js";
 
-type ReadDeploymentAuthorityFileV1 = (path: string) => Promise<Uint8Array>;
+type ReadDeploymentAuthorityFile = (path: string) => Promise<Uint8Array>;
 
 const exactRecord = (
   value: unknown,
@@ -35,7 +35,7 @@ const exactRecord = (
   return record;
 };
 
-const productionRead: ReadDeploymentAuthorityFileV1 = async (path) => {
+const read: ReadDeploymentAuthorityFile = async (path) => {
   if ((await realpath(path)) !== path) {
     throw new Error("watcher deployment authority path traverses a symlink");
   }
@@ -46,17 +46,15 @@ const productionRead: ReadDeploymentAuthorityFileV1 = async (path) => {
  * Loads the signed W02 authority as a single duplicate-key-rejecting file and
  * returns only the module-admitted opaque identity minted by its verifier.
  */
-export const loadWatcherVerifiedDeploymentAuthorityV1 = async (input: {
+export const loadWatcherVerifiedDeploymentAuthority = async (input: {
   readonly path: string;
-  readonly unsafeReadFileForTest?: ReadDeploymentAuthorityFileV1;
-}): Promise<VerifiedWatcherDeploymentIdentityV1> => {
-  const bytes = await (input.unsafeReadFileForTest ?? productionRead)(
-    input.path,
-  );
+  readonly unsafeReadFileForTest?: ReadDeploymentAuthorityFile;
+}): Promise<VerifiedWatcherDeploymentIdentity> => {
+  const bytes = await (input.unsafeReadFileForTest ?? read)(input.path);
   if (bytes.byteLength === 0 || bytes.byteLength > 16 * 1024 * 1024) {
     throw new Error("watcher deployment authority file size is invalid");
   }
-  const parsed = parseWatcherStrictJsonValueV1(
+  const parsed = parseWatcherStrictJsonValue(
     new TextDecoder("utf-8", { fatal: true }).decode(bytes),
   );
   const authority = exactRecord(parsed, [
@@ -68,13 +66,13 @@ export const loadWatcherVerifiedDeploymentAuthorityV1 = async (input: {
   if (!Array.isArray(authority.trustRoots)) {
     throw new Error("watcher deployment authority trust roots are invalid");
   }
-  return verifyWatcherDeploymentIdentityV1({
+  return verifyWatcherDeploymentIdentity({
     signedIdentity: authority.signedIdentity,
     policy: authority.policy as Parameters<
-      typeof verifyWatcherDeploymentIdentityV1
+      typeof verifyWatcherDeploymentIdentity
     >[0]["policy"],
     trustRoots: authority.trustRoots as Parameters<
-      typeof verifyWatcherDeploymentIdentityV1
+      typeof verifyWatcherDeploymentIdentity
     >[0]["trustRoots"],
     durableMarker: authority.durableMarker,
   });

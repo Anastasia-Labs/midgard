@@ -1,9 +1,9 @@
 import {
-  daRetentionPruneDecisionV1,
-  MIDGARD_RETENTION_WINDOW_V1,
-  RETENTION_KNOWN_HEADER_STATUSES_V1,
-  retentionDeadlineAlertV1,
-  type RetentionPruneReasonCodeV1,
+  daRetentionPruneDecision,
+  MIDGARD_RETENTION_WINDOW,
+  RETENTION_KNOWN_HEADER_STATUSES,
+  retentionDeadlineAlert,
+  type RetentionPruneReasonCode,
 } from "@al-ft/midgard-core";
 
 /**
@@ -42,7 +42,7 @@ export type RetentionCheckInput = {
 export type RetentionCheckFinding = {
   readonly headerHash: string;
   readonly reasonCode:
-    | RetentionPruneReasonCodeV1
+    | RetentionPruneReasonCode
     | "deployment_fingerprint_mismatch";
   readonly remainingMs: number | null;
   readonly headroomMs: number | null;
@@ -72,19 +72,19 @@ export const evaluateRetentionCheck = (
   input: RetentionCheckInput,
 ): RetentionCheckResult => {
   const alertThresholdMs =
-    input.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW_V1.marginMs;
+    input.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW.marginMs;
   if (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const retentionDays =
-    input.retentionDays ?? MIDGARD_RETENTION_WINDOW_V1.retentionDays;
+    input.retentionDays ?? MIDGARD_RETENTION_WINDOW.retentionDays;
 
   const alerts: RetentionCheckFinding[] = [];
   const reasons: string[] = [];
   let stillChallengeable = 0;
 
   for (const record of input.records) {
-    const decision = daRetentionPruneDecisionV1(
+    const decision = daRetentionPruneDecision(
       {
         headerHash: record.headerHash,
         blockEndTimeMs: record.blockEndTimeMs ?? null,
@@ -128,13 +128,13 @@ export const evaluateRetentionCheck = (
     // missing consensus timestamp or an unrecognised queue status from the
     // operator-facing diagnostic.
     const blockEndTimeMs = record.blockEndTimeMs;
-    const structuralReason: RetentionPruneReasonCodeV1 | undefined =
+    const structuralReason: RetentionPruneReasonCode | undefined =
       typeof blockEndTimeMs !== "number" ||
       !Number.isSafeInteger(blockEndTimeMs) ||
       blockEndTimeMs < 0
         ? "missing_block_end_time"
         : typeof record.headerStatus !== "string" ||
-            !(RETENTION_KNOWN_HEADER_STATUSES_V1 as readonly string[]).includes(
+            !(RETENTION_KNOWN_HEADER_STATUSES as readonly string[]).includes(
               record.headerStatus,
             )
           ? "header_status_unknown"
@@ -171,7 +171,7 @@ export const evaluateRetentionCheck = (
       continue;
     }
 
-    const alert = retentionDeadlineAlertV1({
+    const alert = retentionDeadlineAlert({
       nowMs: input.nowMillis,
       blockEndTimeMs,
       retentionDays,
@@ -194,9 +194,9 @@ export const evaluateRetentionCheck = (
   return {
     ok: alerts.length === 0,
     alertThresholdMs,
-    requiredRetentionMs: MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
-    deployedRetentionMs: MIDGARD_RETENTION_WINDOW_V1.deployedRetentionMs,
-    marginMs: MIDGARD_RETENTION_WINDOW_V1.marginMs,
+    requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
+    deployedRetentionMs: MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
+    marginMs: MIDGARD_RETENTION_WINDOW.marginMs,
     checked: input.records.length,
     stillChallengeable,
     alerts,

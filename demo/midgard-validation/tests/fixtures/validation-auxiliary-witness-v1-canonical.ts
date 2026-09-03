@@ -1,6 +1,6 @@
 import type { ValidationMachineWorkWitness } from "../../src/validation-machine/index.js";
 
-type AuxiliaryV1 = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
+type Auxiliary = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
@@ -165,7 +165,7 @@ const operationMembership = {
   siblings: [],
 } as const;
 
-const auxiliary = (value: AuxiliaryV1): AuxiliaryV1 => value;
+const auxiliary = (value: Auxiliary): Auxiliary => value;
 
 export const canonicalValidationAuxiliaryWitnesses = [
   [0, null],

@@ -14,10 +14,10 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardNativeTxCanonicalV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -99,8 +99,8 @@ const enumValue = (value, allowed, label) => {
 };
 
 // The canonical-input verdict vocabulary. Each name selects one
-// `OperatorVerdictV1` value (#640): `ForcedTxValid`, or `ForcedTxInvalid` with
-// the named `RejectionReasonV1` arm at subject ordinal 0. The names are the
+// `OperatorVerdict` value (#640): `ForcedTxValid`, or `ForcedTxInvalid` with
+// the named `RejectionReason` arm at subject ordinal 0. The names are the
 // arm spellings of `midgard/rejection_reason_v1` — the canonical input names
 // the reason, not a coarse validity bucket.
 const VERDICTS = {
@@ -440,7 +440,7 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
     lines.push(
       `test rf031_${entry.constantPrefix}_transaction_source_is_exact() {`,
       `  expect Some(data) = cbor.deserialise(${entry.constantPrefix}_value_cbor)`,
-      `  expect value: ledger_state.L2TransactionSourceV1 = data`,
+      `  expect value: ledger_state.L2TransactionSource = data`,
       "  and {",
       `    cbor.serialise(value) == ${entry.constantPrefix}_value_cbor,`,
       `    value.tx_id == ${entry.constantPrefix}_key,`,
@@ -457,7 +457,7 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
     lines.push(
       `test rf031_${entry.constantPrefix}_forced_source_and_verdict_are_exact() {`,
       `  expect Some(data) = cbor.deserialise(${entry.constantPrefix}_value_cbor)`,
-      `  expect value: ledger_state.ForcedInclusionTxV1 = data`,
+      `  expect value: ledger_state.ForcedInclusionTx = data`,
       `  expect Some(order_data) = cbor.deserialise(${entry.constantPrefix}_key)`,
       "  expect order: OutputReference = order_data",
       "  and {",
@@ -567,17 +567,17 @@ for (const transaction of parsedTransactions) {
 }
 
 const normalEntries = parsedTransactions.map((parsed) => {
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(parsed.transaction);
+  const canonicalCbor = encodeMidgardNativeTxCanonical(parsed.transaction);
   const valueCbor = production.encodeTransactionRootValue(
     canonicalCbor,
-    MIDGARD_CONSENSUS_PROFILE_V1,
+    MIDGARD_CONSENSUS_PROFILE,
   );
   const decoded = Data.from(
     valueCbor.toString("hex"),
-    SDK.L2TransactionSourceV1,
+    SDK.L2TransactionSource,
   );
   const source = decoded;
-  const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+  const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
   return {
     name: parsed.name,
     constantPrefix: `transaction_${parsed.name.replaceAll(/[^A-Za-z0-9_]/gu, "_")}`,
@@ -639,15 +639,15 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
   };
   const keyCbor = Buffer.from(Data.to(orderId, SDK.OutputReference), "hex");
   const forced = await Effect.runPromise(
-    production.encodeForcedInclusionValueV1({
+    production.encodeForcedInclusionValue({
       nativeTxCbor: Buffer.from(transaction.canonicalTransactionCborHex, "hex"),
       verdict: VERDICTS[verdictName].sdk,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     }),
   );
   const decoded = Data.from(
     forced.value.toString("hex"),
-    SDK.ForcedInclusionTxV1,
+    SDK.ForcedInclusionTx,
   );
   if (
     JSON.stringify(decoded.verdict, (_key, item) =>

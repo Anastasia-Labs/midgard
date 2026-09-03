@@ -1,19 +1,19 @@
-import { MissingSignatureProvabilityV1 } from "@al-ft/midgard-fault-proofs";
+import { MissingSignatureProvability } from "@al-ft/midgard-fault-proofs";
 import {
   type MidgardAddressWitness,
-  missingSignatureVkeyHashV1,
+  missingSignatureVkeyHash,
 } from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { describe, expect, it } from "vitest";
 
 import {
-  detectAndJournalMissingSignatureFindingsV1,
-  detectMissingSignatureFindingV1,
-  recoverMissingSignatureVkeyV1,
+  detectAndJournalMissingSignatureFindings,
+  detectMissingSignatureFinding,
+  recoverMissingSignatureVkey,
 } from "../../src/verification/missing-signature-detector-v1.js";
 
 const VKEY = "11".repeat(32);
-const HASH = missingSignatureVkeyHashV1(VKEY);
+const HASH = missingSignatureVkeyHash(VKEY);
 const witness: MidgardAddressWitness = {
   verification_key: VKEY,
   signature: "22".repeat(64),
@@ -38,20 +38,20 @@ const candidate = {
 describe("watcher missing-signature detector v1", () => {
   it("recovers vkeys in L2, L1, operator order and emits a provable finding", () => {
     expect(
-      recoverMissingSignatureVkeyV1({
+      recoverMissingSignatureVkey({
         requiredSignerHash: HASH,
         sources: candidate.vkeySources,
       }),
     ).toBe(VKEY);
-    expect(
-      detectMissingSignatureFindingV1({ candidate })?.finding,
-    ).toMatchObject({
-      provability: MissingSignatureProvabilityV1.MissingWitness,
-      accusedRequiredSignerIndex: 0n,
-      accusedRequiredSignerHash: HASH,
-      resolvedVkey: VKEY,
-      estimatedThreadTxCount: 5,
-    });
+    expect(detectMissingSignatureFinding({ candidate })?.finding).toMatchObject(
+      {
+        provability: MissingSignatureProvability.MissingWitness,
+        accusedRequiredSignerIndex: 0n,
+        accusedRequiredSignerHash: HASH,
+        resolvedVkey: VKEY,
+        estimatedThreadTxCount: 5,
+      },
+    );
   });
 
   it("journals unknown-preimage, present-invalid, and honest classifications", async () => {
@@ -70,16 +70,16 @@ describe("watcher missing-signature detector v1", () => {
       addrTxWits: [witness],
     };
     const journaled: string[] = [];
-    const detections = await detectAndJournalMissingSignatureFindingsV1({
+    const detections = await detectAndJournalMissingSignatureFindings({
       candidates: [unknown, presentInvalid, honest],
       journal: ({ finding }) => {
         journaled.push(finding.provability);
       },
     });
     expect(detections.map(({ finding }) => finding.provability)).toEqual([
-      MissingSignatureProvabilityV1.UnknownVkeyPreimage,
-      MissingSignatureProvabilityV1.PresentButInvalid,
-      MissingSignatureProvabilityV1.NotAFault,
+      MissingSignatureProvability.UnknownVkeyPreimage,
+      MissingSignatureProvability.PresentButInvalid,
+      MissingSignatureProvability.NotAFault,
     ]);
     expect(journaled).toEqual(
       detections.map(({ finding }) => finding.provability),
@@ -88,7 +88,7 @@ describe("watcher missing-signature detector v1", () => {
 
   it("honors the isolated default-on kill switch", () => {
     expect(
-      detectMissingSignatureFindingV1({
+      detectMissingSignatureFinding({
         candidate,
         config: { enabled: false },
       }),

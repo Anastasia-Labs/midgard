@@ -12,36 +12,36 @@ import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
-  makeWatcherL1NormalizationSessionV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockFromTransactionCborsV1,
-  normalizeWatcherL1BlockV1,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  WATCHER_L1_ADAPTER_V1_BOUNDS,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  establishWatcherLocalNodeAuthorityTransport,
+  establishWatcherLocalNodeQueryTransport,
+  makeWatcherL1NormalizationSession,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block,
+  normalizeWatcherL1BlockFromTransactionCbors,
+  WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
+  WATCHER_L1_ADAPTER_BOUNDS,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
   watcherL1AdapterDiagnostic,
   WatcherL1AdapterError,
   type WatcherL1AdapterErrorCode,
-  watcherL1NormalizationSessionStatsV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
+  watcherL1NormalizationSessionStats,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
 
 type MutableRecord = Record<string, any>;
-const normalizeUntrustedL1BlockV1 = normalizeWatcherL1BlockV1 as unknown as (
+const normalizeUntrustedL1Block = normalizeWatcherL1Block as unknown as (
   context: unknown,
   observation: unknown,
-) => ReturnType<typeof normalizeWatcherL1BlockV1>;
+) => ReturnType<typeof normalizeWatcherL1Block>;
 const execFileAsync = promisify(execFile);
 const transportContexts = new Map<
   string,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 const tlsIdentities = new Map<string, string>();
 let transportFixtureDirectory = "";
@@ -113,7 +113,7 @@ beforeAll(async () => {
     tlsIdentities.set(identityByte, fixture.identitySha256);
     transportContexts.set(
       `external:${providerId}:${identityByte}`,
-      await establishWatcherExternalProviderTransportV1({
+      await establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId,
         operatorIdentitySha256: identityByte.repeat(32),
@@ -128,7 +128,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const context of transportContexts.values()) {
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
   }
   for (const server of tlsServers) {
     server.close();
@@ -143,7 +143,7 @@ const providerMetadata = (
   providerId = "provider-a",
   identityByte = "aa",
 ): MutableRecord => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   network: "Preprod",
   providerId,
   source: {
@@ -160,7 +160,7 @@ const provider = (providerId = "provider-a", identityByte = "aa") =>
   transportContexts.get(`external:${providerId}:${identityByte}`)!;
 
 const publicBytes = (bytesHex: string): MutableRecord => ({
-  ...makeWatcherL1PublicBytesV1(bytesHex),
+  ...makeWatcherL1PublicBytes(bytesHex),
 });
 
 const transaction = (
@@ -322,7 +322,7 @@ const transaction = (
 };
 
 const observation = (): MutableRecord => ({
-  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
   network: "Preprod",
   providerId: "provider-a",
   chainPoint: {
@@ -355,11 +355,11 @@ describe("provider-neutral authenticated L1 adapter", () => {
   it("does not let literals or serialized context fields mint transport trust", () => {
     const context = provider();
     const serializedContext = JSON.parse(JSON.stringify(context));
-    const details = watcherL1TransportAttestationDetailsV1(context);
+    const details = watcherL1TransportAttestationDetails(context);
 
     for (const forged of [providerMetadata(), serializedContext]) {
       rejected(
-        () => normalizeUntrustedL1BlockV1(forged, observation()),
+        () => normalizeUntrustedL1Block(forged, observation()),
         "invalid_field",
         "$.transportAttestationContext",
       );
@@ -369,8 +369,8 @@ describe("provider-neutral authenticated L1 adapter", () => {
       /^https:\/\/localhost:[0-9]+\/provider-a$/u,
     );
 
-    expect(normalizeWatcherL1BlockV1(context, observation()).provider).toEqual({
-      schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    expect(normalizeWatcherL1Block(context, observation()).provider).toEqual({
+      schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
       network: "Preprod",
       providerId: "provider-a",
       source: {
@@ -386,7 +386,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
 
   it("revokes normalization authority when the retained transport closes", async () => {
     const fixture = await makeTlsFixture("provider-closed");
-    const context = await establishWatcherExternalProviderTransportV1({
+    const context = await establishWatcherExternalProviderTransport({
       network: "Preprod",
       providerId: "provider-closed",
       operatorIdentitySha256: "ab".repeat(32),
@@ -397,23 +397,23 @@ describe("provider-neutral authenticated L1 adapter", () => {
     });
     const input = observation();
     input.providerId = "provider-closed";
-    expect(normalizeWatcherL1BlockV1(context, input).provider.providerId).toBe(
+    expect(normalizeWatcherL1Block(context, input).provider.providerId).toBe(
       "provider-closed",
     );
 
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
     rejected(
-      () => normalizeWatcherL1BlockV1(context, input),
+      () => normalizeWatcherL1Block(context, input),
       "invalid_field",
       "$.transportAttestationContext",
     );
   });
 
   it("normalizes a complete authenticated Cardano observation", () => {
-    const normalized = normalizeWatcherL1BlockV1(provider(), observation());
+    const normalized = normalizeWatcherL1Block(provider(), observation());
 
     expect(normalized).toMatchObject({
-      schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
       network: "Preprod",
       provider: {
         providerId: "provider-a",
@@ -463,8 +463,8 @@ describe("provider-neutral authenticated L1 adapter", () => {
         transactionIndex: index.toString(),
       }),
     );
-    const expected = normalizeWatcherL1BlockV1(provider(), expectedInput);
-    const actual = normalizeWatcherL1BlockFromTransactionCborsV1(provider(), {
+    const expected = normalizeWatcherL1Block(provider(), expectedInput);
+    const actual = normalizeWatcherL1BlockFromTransactionCbors(provider(), {
       network: "Preprod",
       chainPoint: expectedInput.chainPoint,
       transactionCbors: expectedInput.transactions.map(
@@ -474,7 +474,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(actual).toEqual(expected);
 
     expect(() =>
-      normalizeWatcherL1BlockFromTransactionCborsV1(provider(), {
+      normalizeWatcherL1BlockFromTransactionCbors(provider(), {
         network: "Preprod",
         chainPoint: expectedInput.chainPoint,
         transactionCbors: [
@@ -487,7 +487,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
   it("derives deterministic redeemer pointers from Conway map witnesses", () => {
     const input = observation();
     input.transactions[0] = transaction("a20081825820", "10", "map");
-    const normalized = normalizeWatcherL1BlockV1(provider(), input);
+    const normalized = normalizeWatcherL1Block(provider(), input);
 
     expect(
       normalized.transactions[0]?.redeemers.map(({ purpose, index }) => ({
@@ -501,15 +501,15 @@ describe("provider-neutral authenticated L1 adapter", () => {
   });
 
   it("preserves the authenticated node transaction sequence in the canonical bytes", () => {
-    const first = normalizeWatcherL1BlockV1(provider(), observation());
+    const first = normalizeWatcherL1Block(provider(), observation());
     const reordered = observation();
     reordered.transactions.reverse();
     for (const tx of reordered.transactions) {
       tx.redeemers.reverse();
     }
-    const second = normalizeWatcherL1BlockV1(provider(), reordered);
-    const firstBytes = encodeWatcherNormalizedL1BlockV1(first);
-    const secondBytes = encodeWatcherNormalizedL1BlockV1(second);
+    const second = normalizeWatcherL1Block(provider(), reordered);
+    const firstBytes = encodeWatcherNormalizedL1Block(first);
+    const secondBytes = encodeWatcherNormalizedL1Block(second);
 
     expect(second.transactions.map(({ txHash }) => txHash)).toEqual(
       reordered.transactions.map(({ txHash }: { txHash: string }) => txHash),
@@ -517,8 +517,8 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(secondBytes.equals(firstBytes)).toBe(false);
     expect(second.blockContentDigest).not.toBe(first.blockContentDigest);
     expect(second.observationDigest).not.toBe(first.observationDigest);
-    const replayBytes = encodeWatcherNormalizedL1BlockV1(
-      normalizeWatcherL1BlockV1(provider(), observation()),
+    const replayBytes = encodeWatcherNormalizedL1Block(
+      normalizeWatcherL1Block(provider(), observation()),
     );
     expect(replayBytes.equals(firstBytes)).toBe(true);
     expect(createHash("sha256").update(firstBytes).digest("hex")).toMatch(
@@ -539,7 +539,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       }),
     );
     expect(
-      normalizeWatcherL1BlockV1(provider(), indexed).transactions.map(
+      normalizeWatcherL1Block(provider(), indexed).transactions.map(
         ({ transactionIndex }) => transactionIndex,
       ),
     ).toEqual(["0", "1"]);
@@ -547,7 +547,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const reordered = structuredClone(indexed);
     reordered.transactions.reverse();
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), reordered),
+      () => normalizeWatcherL1Block(provider(), reordered),
       "identity_mismatch",
       "$.transactions[0].transactionIndex",
     );
@@ -555,7 +555,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const transactionParent = structuredClone(indexed);
     transactionParent.transactions[0].blockParentHash = "12".repeat(32);
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), transactionParent),
+      () => normalizeWatcherL1Block(provider(), transactionParent),
       "unknown_field",
       "$.transactions[0].blockParentHash",
     );
@@ -564,12 +564,12 @@ describe("provider-neutral authenticated L1 adapter", () => {
   it("authenticates parent metadata for empty blocks and rejects detached parent claims", () => {
     const empty = observation();
     empty.transactions = [];
-    const normalized = normalizeWatcherL1BlockV1(provider(), empty);
+    const normalized = normalizeWatcherL1Block(provider(), empty);
     expect(normalized.chainPoint.parentBlockHash).toBe("10".repeat(32));
 
     const detached = structuredClone(empty);
     detached.chainPoint.parentBlockHash = "12".repeat(32);
-    const detachedNormalized = normalizeWatcherL1BlockV1(provider(), detached);
+    const detachedNormalized = normalizeWatcherL1Block(provider(), detached);
     expect(detachedNormalized.chainPoint.pointDigest).not.toBe(
       normalized.chainPoint.pointDigest,
     );
@@ -580,7 +580,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const missing = structuredClone(empty);
     delete missing.chainPoint.parentBlockHash;
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), missing),
+      () => normalizeWatcherL1Block(provider(), missing),
       "missing_field",
       "$.chainPoint.parentBlockHash",
     );
@@ -588,15 +588,15 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const genesis = structuredClone(empty);
     genesis.chainPoint.parentBlockHash = null;
     expect(
-      normalizeWatcherL1BlockV1(provider(), genesis).chainPoint.parentBlockHash,
+      normalizeWatcherL1Block(provider(), genesis).chainPoint.parentBlockHash,
     ).toBeNull();
   });
 
   it("keeps provider-neutral content stable while provider evidence stays distinct", () => {
-    const first = normalizeWatcherL1BlockV1(provider(), observation());
+    const first = normalizeWatcherL1Block(provider(), observation());
     const secondInput = observation();
     secondInput.providerId = "provider-b";
-    const second = normalizeWatcherL1BlockV1(
+    const second = normalizeWatcherL1Block(
       provider("provider-b", "bb"),
       secondInput,
     );
@@ -613,15 +613,15 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const publicModule = await import("../../src/index.js");
     const adapterModule = await import("../../src/l1/l1-adapter.js");
 
-    expect(
-      "establishWatcherLocalNodeAuthorityTransportV1" in publicModule,
-    ).toBe(true);
-    expect(
-      "establishWatcherLocalNodeAuthorityTransportV1" in adapterModule,
-    ).toBe(true);
+    expect("establishWatcherLocalNodeAuthorityTransport" in publicModule).toBe(
+      true,
+    );
+    expect("establishWatcherLocalNodeAuthorityTransport" in adapterModule).toBe(
+      true,
+    );
     rejected(
       () =>
-        establishWatcherLocalNodeAuthorityTransportV1({
+        establishWatcherLocalNodeAuthorityTransport({
           schemaVersion: "midgard-watcher-native-chain-sync-authority-v1",
           authorityDigest: "00".repeat(32),
         }),
@@ -647,7 +647,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     };
 
     await expect(
-      establishWatcherLocalNodeQueryTransportV1(forgedContext, {
+      establishWatcherLocalNodeQueryTransport(forgedContext, {
         transportKind: "tcp",
         providerId: "ogmios",
         surface: "ogmios",
@@ -670,7 +670,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const wrongNetwork = observation();
     wrongNetwork.network = "Preview";
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), wrongNetwork),
+      () => normalizeWatcherL1Block(provider(), wrongNetwork),
       "network_mismatch",
       "$.network",
     );
@@ -678,7 +678,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const wrongProvider = observation();
     wrongProvider.providerId = "provider-b";
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), wrongProvider),
+      () => normalizeWatcherL1Block(provider(), wrongProvider),
       "provider_mismatch",
       "$.providerId",
     );
@@ -688,7 +688,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const wrongSchema = observation();
     wrongSchema.schemaVersion = "midgard-watcher-l1-block-observation-v2";
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), wrongSchema),
+      () => normalizeWatcherL1Block(provider(), wrongSchema),
       "unsupported_schema",
       "$.schemaVersion",
     );
@@ -696,7 +696,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const wrongAuthentication = providerMetadata();
     wrongAuthentication.authentication.kind = "bearer_token";
     rejected(
-      () => normalizeUntrustedL1BlockV1(wrongAuthentication, observation()),
+      () => normalizeUntrustedL1Block(wrongAuthentication, observation()),
       "invalid_field",
       "$.transportAttestationContext",
     );
@@ -704,7 +704,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const missingSource = providerMetadata();
     delete missingSource.source;
     rejected(
-      () => normalizeUntrustedL1BlockV1(missingSource, observation()),
+      () => normalizeUntrustedL1Block(missingSource, observation()),
       "invalid_field",
       "$.transportAttestationContext",
     );
@@ -718,13 +718,13 @@ describe("provider-neutral authenticated L1 adapter", () => {
       },
     };
     rejected(
-      () => normalizeUntrustedL1BlockV1(chainSyncOverTls, observation()),
+      () => normalizeUntrustedL1Block(chainSyncOverTls, observation()),
       "invalid_field",
       "$.transportAttestationContext",
     );
 
     await expect(
-      establishWatcherExternalProviderTransportV1({
+      establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId: "provider-a",
         operatorIdentitySha256: "aa".repeat(32),
@@ -742,7 +742,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const malformedPoint = observation();
     malformedPoint.chainPoint.slot = "076543210";
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), malformedPoint),
+      () => normalizeWatcherL1Block(provider(), malformedPoint),
       "invalid_field",
       "$.chainPoint.slot",
     );
@@ -752,7 +752,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const unknown = observation();
     unknown.apiToken = "never-report-this-secret";
     const error = rejected(
-      () => normalizeWatcherL1BlockV1(provider(), unknown),
+      () => normalizeWatcherL1Block(provider(), unknown),
       "unknown_field",
       "$.apiToken",
     );
@@ -764,7 +764,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       get: () => "15",
     });
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), unsafe),
+      () => normalizeWatcherL1Block(provider(), unsafe),
       "unsafe_value",
       "$.chainPoint",
     );
@@ -775,7 +775,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       get: () => transaction("a100", "2"),
     });
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), unsafeArray),
+      () => normalizeWatcherL1Block(provider(), unsafeArray),
       "unsafe_value",
       "$.transactions",
     );
@@ -785,7 +785,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const badDigest = observation();
     badDigest.transactions[0].body.sha256 = "00".repeat(32);
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), badDigest),
+      () => normalizeWatcherL1Block(provider(), badDigest),
       "content_digest_mismatch",
       "$.transactions[0].body.sha256",
     );
@@ -793,7 +793,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const badTransaction = observation();
     badTransaction.transactions[0].txHash = "00".repeat(32);
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), badTransaction),
+      () => normalizeWatcherL1Block(provider(), badTransaction),
       "identity_mismatch",
       "$.transactions[0].txHash",
     );
@@ -801,7 +801,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const badDatum = observation();
     badDatum.transactions[0].datums[0].datumHash = "00".repeat(32);
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), badDatum),
+      () => normalizeWatcherL1Block(provider(), badDatum),
       "identity_mismatch",
       "$.transactions[0].datums[0].datumHash",
     );
@@ -813,7 +813,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     detachedBody.transactions[0].body = otherTransaction.body;
     detachedBody.transactions[0].txHash = otherTransaction.txHash;
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), detachedBody),
+      () => normalizeWatcherL1Block(provider(), detachedBody),
       "identity_mismatch",
       "$.transactions[0].body.bytesHex",
     );
@@ -826,7 +826,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       false,
     );
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), missingScriptDataHash),
+      () => normalizeWatcherL1Block(provider(), missingScriptDataHash),
       "identity_mismatch",
       "$.transactions[0].body.bytesHex",
     );
@@ -839,7 +839,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     alteredScript.providerId = providerId;
     alteredScript.transactions[0].scripts[0].bytes = publicBytes("00");
     rejected(
-      () => normalizeWatcherL1BlockV1(authenticatedProvider(), alteredScript),
+      () => normalizeWatcherL1Block(authenticatedProvider(), alteredScript),
       "identity_mismatch",
       "$.transactions[0].scripts",
     );
@@ -848,7 +848,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     alteredRedeemer.providerId = providerId;
     alteredRedeemer.transactions[0].redeemers[0].bytes = publicBytes("00");
     rejected(
-      () => normalizeWatcherL1BlockV1(authenticatedProvider(), alteredRedeemer),
+      () => normalizeWatcherL1Block(authenticatedProvider(), alteredRedeemer),
       "identity_mismatch",
       "$.transactions[0].redeemers",
     );
@@ -858,31 +858,29 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const alteredWitnessSet = observation();
     alteredWitnessSet.transactions[0].witnessSet = publicBytes("a0");
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), alteredWitnessSet),
+      () => normalizeWatcherL1Block(provider(), alteredWitnessSet),
       "identity_mismatch",
       "$.transactions[0].witnessSet",
     );
   });
 
   it("derives every applied output and rejects missing, extra, or forged views", () => {
-    const session = makeWatcherL1NormalizationSessionV1();
-    const warm = normalizeWatcherL1BlockV1(provider(), observation(), session);
+    const session = makeWatcherL1NormalizationSession();
+    const warm = normalizeWatcherL1Block(provider(), observation(), session);
     expect(warm.transactions).toHaveLength(2);
-    expect(watcherL1NormalizationSessionStatsV1(session)).toMatchObject({
+    expect(watcherL1NormalizationSessionStats(session)).toMatchObject({
       retainedEntries: 2,
-      maximumEntries: WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionEntries,
-      maximumBytes: WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionBytes,
+      maximumEntries: WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionEntries,
+      maximumBytes: WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionBytes,
     });
     expect(
-      watcherL1NormalizationSessionStatsV1(session).retainedBytes,
-    ).toBeLessThanOrEqual(
-      WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionBytes,
-    );
+      watcherL1NormalizationSessionStats(session).retainedBytes,
+    ).toBeLessThanOrEqual(WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionBytes);
 
     const missing = observation();
     missing.transactions[0].utxos = [];
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), missing, session),
+      () => normalizeWatcherL1Block(provider(), missing, session),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -894,7 +892,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       outputIndex: "1",
     });
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), extra, session),
+      () => normalizeWatcherL1Block(provider(), extra, session),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -902,7 +900,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const forgedOutput = observation();
     forgedOutput.transactions[0].utxos[0].output = publicBytes("00");
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), forgedOutput, session),
+      () => normalizeWatcherL1Block(provider(), forgedOutput, session),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -913,7 +911,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       bytes: publicBytes("00"),
     };
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), forgedDatum, session),
+      () => normalizeWatcherL1Block(provider(), forgedDatum, session),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -922,8 +920,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     forgedReferenceScript.transactions[0].utxos[0].referenceScript.bytes =
       publicBytes("00");
     rejected(
-      () =>
-        normalizeWatcherL1BlockV1(provider(), forgedReferenceScript, session),
+      () => normalizeWatcherL1Block(provider(), forgedReferenceScript, session),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -931,16 +928,13 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const digestCollisionClaim = observation();
     digestCollisionClaim.transactions[0].fullTransaction.bytesHex = "00";
     rejected(
-      () =>
-        normalizeWatcherL1BlockV1(provider(), digestCollisionClaim, session),
+      () => normalizeWatcherL1Block(provider(), digestCollisionClaim, session),
       "content_digest_mismatch",
       "$.transactions[0].fullTransaction.sha256",
     );
 
     expect(
-      watcherL1NormalizationSessionStatsV1(
-        makeWatcherL1NormalizationSessionV1(),
-      ),
+      watcherL1NormalizationSessionStats(makeWatcherL1NormalizationSession()),
     ).toMatchObject({
       retainedEntries: 0,
       retainedBytes: 0,
@@ -959,14 +953,14 @@ describe("provider-neutral authenticated L1 adapter", () => {
       true,
     ).utxos;
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), phantom),
+      () => normalizeWatcherL1Block(provider(), phantom),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
 
     const accepted = observation();
     accepted.transactions = [invalidTransaction];
-    const normalized = normalizeWatcherL1BlockV1(provider(), accepted);
+    const normalized = normalizeWatcherL1Block(provider(), accepted);
     expect(normalized.transactions[0]).toMatchObject({
       isValid: false,
       utxos: [],
@@ -977,7 +971,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const spoofed = observation();
     spoofed.transactions[0].isValid = false;
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), spoofed),
+      () => normalizeWatcherL1Block(provider(), spoofed),
       "unknown_field",
       "$.transactions[0].isValid",
     );
@@ -994,7 +988,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     );
     const accepted = observation();
     accepted.transactions = [invalidTransaction];
-    const normalized = normalizeWatcherL1BlockV1(provider(), accepted);
+    const normalized = normalizeWatcherL1Block(provider(), accepted);
     expect(normalized.transactions[0]).toMatchObject({
       isValid: false,
       utxos: [
@@ -1016,7 +1010,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
       outRef: `${invalidTransaction.txHash}#0`,
     };
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), phantomRegularOutput),
+      () => normalizeWatcherL1Block(provider(), phantomRegularOutput),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -1024,7 +1018,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const forgedCollateralReturn = structuredClone(accepted);
     forgedCollateralReturn.transactions[0].utxos[0].output = publicBytes("00");
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), forgedCollateralReturn),
+      () => normalizeWatcherL1Block(provider(), forgedCollateralReturn),
       "identity_mismatch",
       "$.transactions[0].utxos",
     );
@@ -1034,7 +1028,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const badOutRef = observation();
     badOutRef.transactions[0].utxos[0].outRef = `${badOutRef.transactions[0].txHash}#11`;
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), badOutRef),
+      () => normalizeWatcherL1Block(provider(), badOutRef),
       "identity_mismatch",
       "$.transactions[0].utxos[0].outRef",
     );
@@ -1042,7 +1036,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const duplicate = observation();
     duplicate.transactions.push(structuredClone(duplicate.transactions[0]));
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), duplicate),
+      () => normalizeWatcherL1Block(provider(), duplicate),
       "duplicate_identity",
       "$.transactions[2]",
     );
@@ -1052,15 +1046,15 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const hostile = observation();
     const transactionCount =
       Math.floor(
-        WATCHER_L1_ADAPTER_V1_BOUNDS.totalCollectionMembers /
-          WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers,
+        WATCHER_L1_ADAPTER_BOUNDS.totalCollectionMembers /
+          WATCHER_L1_ADAPTER_BOUNDS.arrayMembers,
       ) + 1;
     hostile.transactions = Array.from(
       { length: transactionCount },
       (_, index) => ({
         ...transaction(index.toString(16).padStart(4, "0"), "0"),
         utxos: Array.from(
-          { length: WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers },
+          { length: WATCHER_L1_ADAPTER_BOUNDS.arrayMembers },
           () => null,
         ),
         scripts: [],
@@ -1070,7 +1064,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     );
 
     rejected(
-      () => normalizeWatcherL1BlockV1(provider(), hostile),
+      () => normalizeWatcherL1Block(provider(), hostile),
       "out_of_bounds",
       "$.transactions",
     );
@@ -1080,7 +1074,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const input = observation();
     input.secret = "super-secret-provider-credential";
     const error = rejected(
-      () => normalizeWatcherL1BlockV1(provider(), input),
+      () => normalizeWatcherL1Block(provider(), input),
       "unknown_field",
       "$.secret",
     );

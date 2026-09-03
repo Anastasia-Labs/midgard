@@ -25,7 +25,7 @@
  * Committed withdrawal leaves bind in `serialiseData` (definite-map) form on
  * both planes — see `fabricated-withdrawal-v1.ts`'s module note. This family
  * reuses that module's canonical byte helpers
- * (`committedWithdrawalKeyBytesV1`/`committedWithdrawalValueBytesV1`) rather
+ * (`committedWithdrawalKeyBytes`/`committedWithdrawalValueBytes`) rather
  * than duplicating them.
  */
 import { Data } from "@lucid-evolution/lucid";
@@ -42,12 +42,12 @@ import {
 } from "./native.js";
 
 export {
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
 } from "./fabricated-withdrawal-v1.js";
 
 /** Normative violation identifier. */
-export const DOUBLE_WITHDRAW_VIOLATION_ID_V1 = "double-withdraw" as const;
+export const DOUBLE_WITHDRAW_VIOLATION_ID = "double-withdraw" as const;
 
 /**
  * 28-byte hash of the challenged block header. Family-scoped to keep the
@@ -66,7 +66,7 @@ export type DoubleWithdrawChallengedHeaderHash = Data.Static<
  * (deployment-chosen) category id: the id followed by the challenged header
  * hash. The id is a parameter — this family has no registered production id.
  */
-export const doubleWithdrawThreadTokenAssetNameV1 = (
+export const doubleWithdrawThreadTokenAssetName = (
   categoryId: string,
   challengedHeaderHash: DoubleWithdrawChallengedHeaderHash,
 ): string => `${categoryId}${challengedHeaderHash}`;
@@ -78,9 +78,9 @@ export const doubleWithdrawThreadTokenAssetNameV1 = (
  * `withdrawals_root` — the same canonical counted-root walk the
  * transition-trace and fabricated-withdrawal families use.
  */
-export const DoubleWithdrawSourceProofV1Schema =
+export const DoubleWithdrawSourceProofSchema =
   WithdrawalSourceMembershipProofSchema;
-export type DoubleWithdrawSourceProofV1 = RootMembershipProof<
+export type DoubleWithdrawSourceProof = RootMembershipProof<
   OutputReference,
   WithdrawalInfo
 >;
@@ -106,7 +106,7 @@ export const DoubleWithdrawStep01ArgsSchema = Data.Object({
   /** Reference-input index of the challenged block's state-queue node. */
   state_queue_node_ref_input_index: Data.Integer(),
   /** The first committed payable withdrawal leaf this thread challenges. */
-  committed_withdrawal: DoubleWithdrawSourceProofV1Schema,
+  committed_withdrawal: DoubleWithdrawSourceProofSchema,
 });
 export type DoubleWithdrawStep01Args = Data.Static<
   typeof DoubleWithdrawStep01ArgsSchema
@@ -159,7 +159,7 @@ export const DoubleWithdrawStep02ArgsSchema = Data.Object({
   /** Reference-input index of the challenged block's state-queue node. */
   state_queue_node_ref_input_index: Data.Integer(),
   /** The second committed payable withdrawal leaf. */
-  committed_withdrawal: DoubleWithdrawSourceProofV1Schema,
+  committed_withdrawal: DoubleWithdrawSourceProofSchema,
 });
 export type DoubleWithdrawStep02Args = Data.Static<
   typeof DoubleWithdrawStep02ArgsSchema
@@ -177,17 +177,15 @@ export const DoubleWithdrawStep02SpendRedeemer =
 
 // ## Step resolver
 
-export const DOUBLE_WITHDRAW_STEP_NAMES_V1 = ["step_01", "step_02"] as const;
-export type DoubleWithdrawStepNameV1 =
-  (typeof DOUBLE_WITHDRAW_STEP_NAMES_V1)[number];
+export const DOUBLE_WITHDRAW_STEP_NAMES = ["step_01", "step_02"] as const;
+export type DoubleWithdrawStepName =
+  (typeof DOUBLE_WITHDRAW_STEP_NAMES)[number];
 
 /**
  * Explicit, exhaustive step-datum resolver. There is no fallback branch:
  * adding a step without adding its schema fails to compile.
  */
-export const doubleWithdrawStepDatumSchemaV1 = (
-  step: DoubleWithdrawStepNameV1,
-) => {
+export const doubleWithdrawStepDatumSchema = (step: DoubleWithdrawStepName) => {
   switch (step) {
     case "step_01":
       return DoubleWithdrawStep01DatumSchema;
@@ -203,12 +201,12 @@ export const doubleWithdrawStepDatumSchemaV1 = (
  * and the first committed leaf the membership witness opens. Twin of the
  * step-01 validator's `expected_output_state`.
  */
-export const doubleWithdrawStep02StateV1 = ({
+export const doubleWithdrawStep02State = ({
   challengedHeaderHash,
   committedWithdrawal,
 }: {
   readonly challengedHeaderHash: DoubleWithdrawChallengedHeaderHash;
-  readonly committedWithdrawal: DoubleWithdrawSourceProofV1;
+  readonly committedWithdrawal: DoubleWithdrawSourceProof;
 }): DoubleWithdrawStep02State => ({
   challenged_header_hash: challengedHeaderHash,
   first_withdrawal_id: committedWithdrawal.key,
@@ -225,7 +223,7 @@ const sameOutputReference = (a: OutputReference, b: OutputReference): boolean =>
  * Twin of the step-01 validator's entry condition: a leaf may enter the
  * thread only when its committed verdict is payable.
  */
-export const isPayableWithdrawalLeafV1 = (info: WithdrawalInfo): boolean =>
+export const isPayableWithdrawalLeaf = (info: WithdrawalInfo): boolean =>
   info.validity === "WithdrawalIsValid";
 
 /**
@@ -233,12 +231,12 @@ export const isPayableWithdrawalLeafV1 = (info: WithdrawalInfo): boolean =>
  * committed leaf convicts exactly when its identity differs from the first's,
  * it drains the L2 UTxO the first payable leaf drained, and it is itself
  * payable. (The first leaf's payability is step-01's entry condition —
- * `isPayableWithdrawalLeafV1` — and is not restated in the state.)
+ * `isPayableWithdrawalLeaf` — and is not restated in the state.)
  */
-export const isDoubleWithdrawFaultV1 = (
+export const isDoubleWithdrawFault = (
   state: DoubleWithdrawStep02State,
-  second: DoubleWithdrawSourceProofV1,
+  second: DoubleWithdrawSourceProof,
 ): boolean =>
   !sameOutputReference(second.key, state.first_withdrawal_id) &&
   sameOutputReference(second.value.body.l2_outref, state.first_l2_outref) &&
-  isPayableWithdrawalLeafV1(second.value);
+  isPayableWithdrawalLeaf(second.value);

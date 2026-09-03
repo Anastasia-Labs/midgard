@@ -2,37 +2,37 @@ import {
   decodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1 } from "@al-ft/midgard-sdk";
+import { NATIVE_SCRIPT_INVALID_VIOLATION_ID } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import type { CanonicalBlockClassificationV1 } from "../workflow/classification-v1.js";
-import type { JournalJsonObjectV1 } from "../workflow/journal-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockClassification } from "../workflow/classification-v1.js";
+import type { JournalJsonObject } from "../workflow/journal-v1.js";
 import {
-  admitProductionNativeInclusionArtifactV1,
-  canonicalHexV1,
-  canonicalNaturalStringV1,
-  EVEN_HEX_V1,
-  exactJournalRecordV1,
-  HEX_28_V1,
-  HEX_32_V1,
-  type ProductionNativeInclusionArtifactV1,
-  safeNaturalNumberV1,
+  admitNativeInclusionArtifact,
+  canonicalHex,
+  canonicalNaturalString,
+  EVEN_HEX,
+  exactJournalRecord,
+  HEX_28,
+  HEX_32,
+  type NativeInclusionArtifact,
+  safeNaturalNumber,
 } from "../workflow/production-native-index-artifact-v1.js";
 import {
-  type PreparedNativeScriptInvalidV1,
-  prepareNativeScriptInvalidFromCanonicalEvidenceV1,
+  type PreparedNativeScriptInvalid,
+  prepareNativeScriptInvalidFromCanonicalEvidence,
 } from "./prepare-v1.js";
 
-export const PRODUCTION_NATIVE_SCRIPT_INVALID_ARTIFACT_V1 =
+export const NATIVE_SCRIPT_INVALID_ARTIFACT =
   "midgard-production-native-script-invalid-artifact-v1" as const;
 
-export type ProductionNativeScriptInvalidArtifactV1 = JournalJsonObjectV1 &
+export type NativeScriptInvalidArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_NATIVE_SCRIPT_INVALID_ARTIFACT_V1;
+    schemaVersion: typeof NATIVE_SCRIPT_INVALID_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
-    tx: ProductionNativeInclusionArtifactV1;
+    tx: NativeInclusionArtifact;
     nativeTxCanonicalCbor: string;
     scriptIndex: string;
     scriptItemCbor: string;
@@ -41,50 +41,50 @@ export type ProductionNativeScriptInvalidArtifactV1 = JournalJsonObjectV1 &
     scriptWitnessItemCbors: readonly string[];
   }>;
 
-export type AdmittedProductionNativeScriptInvalidArtifactV1 = Readonly<{
-  artifact: ProductionNativeScriptInvalidArtifactV1;
-  prepared: PreparedNativeScriptInvalidV1;
+export type AdmittedNativeScriptInvalidArtifact = Readonly<{
+  artifact: NativeScriptInvalidArtifact;
+  prepared: PreparedNativeScriptInvalid;
 }>;
 
 const canonicalHexList = (value: unknown, label: string): readonly string[] => {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   return Object.freeze(
     value.map((item, index) =>
-      canonicalHexV1(item, EVEN_HEX_V1, `${label}[${index.toString()}]`),
+      canonicalHex(item, EVEN_HEX, `${label}[${index.toString()}]`),
     ),
   );
 };
 
-export const nativeScriptInvalidDetectionIdV1 = ({
+export const nativeScriptInvalidDetectionId = ({
   txId,
   scriptIndex,
 }: {
   readonly txId: string;
   readonly scriptIndex: bigint;
 }): string =>
-  `${NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1}:${txId}:${scriptIndex.toString()}`;
+  `${NATIVE_SCRIPT_INVALID_VIOLATION_ID}:${txId}:${scriptIndex.toString()}`;
 
-export const prepareProductionNativeScriptInvalidArtifactV1 = async ({
+export const prepareNativeScriptInvalidArtifact = async ({
   evidence,
   classification,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "nativeScriptInvalid" };
-}): Promise<ProductionNativeScriptInvalidArtifactV1> => {
-  const prepared = await prepareNativeScriptInvalidFromCanonicalEvidenceV1({
+}): Promise<NativeScriptInvalidArtifact> => {
+  const prepared = await prepareNativeScriptInvalidFromCanonicalEvidence({
     evidence,
   });
-  const detectionId = nativeScriptInvalidDetectionIdV1({
+  const detectionId = nativeScriptInvalidDetectionId({
     txId: prepared.badTxId,
     scriptIndex: prepared.scriptIndex,
   });
   const selected = classification.selected;
   if (
     classification.headerHash !== prepared.headerHash ||
-    selected.violationId !== NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1 ||
+    selected.violationId !== NATIVE_SCRIPT_INVALID_VIOLATION_ID ||
     selected.detectionId !== detectionId ||
     selected.position < 0n ||
     selected.position > BigInt(Number.MAX_SAFE_INTEGER)
@@ -94,7 +94,7 @@ export const prepareProductionNativeScriptInvalidArtifactV1 = async ({
     );
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_NATIVE_SCRIPT_INVALID_ARTIFACT_V1,
+    schemaVersion: NATIVE_SCRIPT_INVALID_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId,
     position: Number(selected.position),
@@ -114,10 +114,10 @@ export const prepareProductionNativeScriptInvalidArtifactV1 = async ({
   });
 };
 
-export const admitProductionNativeScriptInvalidArtifactV1 = (
+export const admitNativeScriptInvalidArtifact = (
   value: unknown,
-): AdmittedProductionNativeScriptInvalidArtifactV1 => {
-  const parsed = exactJournalRecordV1(
+): AdmittedNativeScriptInvalidArtifact => {
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -134,32 +134,32 @@ export const admitProductionNativeScriptInvalidArtifactV1 = (
     ],
     "native-script-invalid artifact",
   );
-  const tx = admitProductionNativeInclusionArtifactV1(
+  const tx = admitNativeInclusionArtifact(
     parsed.tx,
     "native-script-invalid transaction",
   );
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     parsed.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "native-script-invalid header hash",
   );
-  const position = safeNaturalNumberV1(
+  const position = safeNaturalNumber(
     parsed.position,
     "native-script-invalid position",
   );
-  const scriptIndexString = canonicalNaturalStringV1(
+  const scriptIndexString = canonicalNaturalString(
     parsed.scriptIndex,
     "native-script-invalid script index",
   );
   const scriptIndex = BigInt(scriptIndexString);
-  const scriptItemCbor = canonicalHexV1(
+  const scriptItemCbor = canonicalHex(
     parsed.scriptItemCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "native-script-invalid script item",
   );
-  const scriptHash = canonicalHexV1(
+  const scriptHash = canonicalHex(
     parsed.scriptHash,
-    HEX_28_V1,
+    HEX_28,
     "native-script-invalid script hash",
   );
   const scriptWitnessItemCbors = canonicalHexList(
@@ -193,24 +193,24 @@ export const admitProductionNativeScriptInvalidArtifactV1 = (
       "native-script-invalid script bytes and committed script hash disagree",
     );
   }
-  const nativeTxCanonicalCbor = canonicalHexV1(
+  const nativeTxCanonicalCbor = canonicalHex(
     parsed.nativeTxCanonicalCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "native-script-invalid canonical transaction",
   );
-  const detectionId = nativeScriptInvalidDetectionIdV1({
+  const detectionId = nativeScriptInvalidDetectionId({
     txId: tx.artifact.nativeTxId,
     scriptIndex,
   });
   if (
-    parsed.schemaVersion !== PRODUCTION_NATIVE_SCRIPT_INVALID_ARTIFACT_V1 ||
+    parsed.schemaVersion !== NATIVE_SCRIPT_INVALID_ARTIFACT ||
     parsed.detectionId !== detectionId ||
-    !HEX_32_V1.test(tx.artifact.nativeTxId)
+    !HEX_32.test(tx.artifact.nativeTxId)
   ) {
     throw new Error("native-script-invalid artifact identity changed");
   }
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_NATIVE_SCRIPT_INVALID_ARTIFACT_V1,
+    schemaVersion: NATIVE_SCRIPT_INVALID_ARTIFACT,
     headerHash,
     detectionId,
     position,

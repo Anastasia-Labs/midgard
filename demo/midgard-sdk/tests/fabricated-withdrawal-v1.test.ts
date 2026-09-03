@@ -28,23 +28,23 @@ import { describe, expect, it } from "vitest";
 
 import { OutputReference } from "../src/common.js";
 import {
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
-  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
   type FabricatedWithdrawalStep02State,
   FabricatedWithdrawalStep02State as FabricatedWithdrawalStep02StateType,
   type FabricatedWithdrawalStep03State,
   FabricatedWithdrawalStep03State as FabricatedWithdrawalStep03StateType,
-  fabricatedWithdrawalStep03StateV1,
+  fabricatedWithdrawalStep03State,
   type FabricatedWithdrawalStep04State,
   FabricatedWithdrawalStep04State as FabricatedWithdrawalStep04StateType,
-  fabricatedWithdrawalStep04StateV1,
-  fabricatedWithdrawalThreadTokenAssetNameV1,
-  isFabricatedWithdrawalFaultV1,
-  withdrawalEventDatumBytesV1,
-  withdrawalEventDatumCommitmentV1,
-  withdrawalEventNonceV1,
-  withdrawalInfoCommitmentV1,
+  fabricatedWithdrawalStep04State,
+  fabricatedWithdrawalThreadTokenAssetName,
+  isFabricatedWithdrawalFault,
+  withdrawalEventDatumBytes,
+  withdrawalEventDatumCommitment,
+  withdrawalEventNonce,
+  withdrawalInfoCommitment,
 } from "../src/fraud-proof/fabricated-withdrawal-v1.js";
 import {
   type WithdrawalInfo,
@@ -248,10 +248,10 @@ const mmStep02State: FabricatedWithdrawalStep02State = {
 };
 
 const fiStep03State: FabricatedWithdrawalStep03State =
-  fabricatedWithdrawalStep03StateV1(fiStep02State, "WithdrawalIdentityAbsent");
+  fabricatedWithdrawalStep03State(fiStep02State, "WithdrawalIdentityAbsent");
 
 const mmStep03State: FabricatedWithdrawalStep03State =
-  fabricatedWithdrawalStep03StateV1(mmStep02State, {
+  fabricatedWithdrawalStep03State(mmStep02State, {
     WithdrawalEventObserved: {
       event_datum_hash: HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM,
       event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
@@ -259,13 +259,13 @@ const mmStep03State: FabricatedWithdrawalStep03State =
   });
 
 const fiStep04State: FabricatedWithdrawalStep04State =
-  fabricatedWithdrawalStep04StateV1(
+  fabricatedWithdrawalStep04State(
     fiStep03State,
     "NonexistentWithdrawalIdentity",
   );
 
 const mmStep04State: FabricatedWithdrawalStep04State =
-  fabricatedWithdrawalStep04StateV1(mmStep03State, {
+  fabricatedWithdrawalStep04State(mmStep03State, {
     MismatchedWithdrawalContent: {
       committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
       authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
@@ -275,10 +275,10 @@ const mmStep04State: FabricatedWithdrawalStep04State =
 
 describe("fabricated-withdrawal v1 byte twins", () => {
   it("encodes the committed withdrawal leaf key exactly as Aiken serialises a WithdrawalId", () => {
-    expect(committedWithdrawalKeyBytesV1(AUTHENTIC_WITHDRAWAL_ID)).toBe(
+    expect(committedWithdrawalKeyBytes(AUTHENTIC_WITHDRAWAL_ID)).toBe(
       KEY_AUTHENTIC_WITHDRAWAL_ID,
     );
-    expect(committedWithdrawalKeyBytesV1(FABRICATED_WITHDRAWAL_ID)).toBe(
+    expect(committedWithdrawalKeyBytes(FABRICATED_WITHDRAWAL_ID)).toBe(
       KEY_FABRICATED_WITHDRAWAL_ID,
     );
     // A `WithdrawalId` carries no map, so the key is the one place where the raw
@@ -289,7 +289,7 @@ describe("fabricated-withdrawal v1 byte twins", () => {
   });
 
   it("encodes the committed withdrawal leaf value exactly as Aiken does, and only after normalising Lucid's indefinite maps", () => {
-    expect(committedWithdrawalValueBytesV1(AUTHENTIC_WITHDRAWAL_INFO)).toBe(
+    expect(committedWithdrawalValueBytes(AUTHENTIC_WITHDRAWAL_INFO)).toBe(
       VALUE_AUTHENTIC_WITHDRAWAL_INFO,
     );
     // The reason the helper normalises: Lucid writes the `l2_value` map in
@@ -306,19 +306,19 @@ describe("fabricated-withdrawal v1 byte twins", () => {
 
   it("commits body, signature and validity fidelity in one 32-byte hash, exactly as Aiken does", () => {
     expect(
-      Effect.runSync(withdrawalInfoCommitmentV1(AUTHENTIC_WITHDRAWAL_INFO)),
+      Effect.runSync(withdrawalInfoCommitment(AUTHENTIC_WITHDRAWAL_INFO)),
     ).toBe(HASH_AUTHENTIC_WITHDRAWAL_INFO);
     expect(
-      Effect.runSync(withdrawalInfoCommitmentV1(DIVERTED_WITHDRAWAL_INFO)),
+      Effect.runSync(withdrawalInfoCommitment(DIVERTED_WITHDRAWAL_INFO)),
     ).toBe(HASH_DIVERTED_WITHDRAWAL_INFO);
     expect(
       Effect.runSync(
-        withdrawalInfoCommitmentV1(FORGED_SIGNATURE_WITHDRAWAL_INFO),
+        withdrawalInfoCommitment(FORGED_SIGNATURE_WITHDRAWAL_INFO),
       ),
     ).toBe(HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO);
     expect(
       Effect.runSync(
-        withdrawalInfoCommitmentV1(OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO),
+        withdrawalInfoCommitment(OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO),
       ),
     ).toBe(HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO);
     // Each of the three fabrications is distinguishable from the authentic order
@@ -334,18 +334,18 @@ describe("fabricated-withdrawal v1 byte twins", () => {
   });
 
   it("derives the withdrawal event NFT nonce exactly as Aiken's out_ref_to_nonce does", () => {
-    expect(
-      Effect.runSync(withdrawalEventNonceV1(AUTHENTIC_WITHDRAWAL_ID)),
-    ).toBe(NONCE_AUTHENTIC_WITHDRAWAL_ID);
+    expect(Effect.runSync(withdrawalEventNonce(AUTHENTIC_WITHDRAWAL_ID))).toBe(
+      NONCE_AUTHENTIC_WITHDRAWAL_ID,
+    );
   });
 
   it("encodes the authentic withdrawal event datum and step-02's retained commitment exactly as Aiken does", () => {
-    expect(withdrawalEventDatumBytesV1(AUTHENTIC_WITHDRAWAL_EVENT_DATUM)).toBe(
+    expect(withdrawalEventDatumBytes(AUTHENTIC_WITHDRAWAL_EVENT_DATUM)).toBe(
       DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
     );
     expect(
       Effect.runSync(
-        withdrawalEventDatumCommitmentV1(AUTHENTIC_WITHDRAWAL_EVENT_DATUM),
+        withdrawalEventDatumCommitment(AUTHENTIC_WITHDRAWAL_EVENT_DATUM),
       ),
     ).toBe(HASH_AUTHENTIC_WITHDRAWAL_EVENT_DATUM);
     // The event datum's five fields include the refund path, so the commitment
@@ -383,11 +383,11 @@ describe("fabricated-withdrawal v1 byte twins", () => {
         }),
       ),
     ).toBe(AU_WITHDRAWALS_ROOT);
-    expect(FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1).toBe("0000000c");
-    expect(fabricatedWithdrawalThreadTokenAssetNameV1(FI_HEADER_HASH)).toBe(
+    expect(FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID).toBe("0000000c");
+    expect(fabricatedWithdrawalThreadTokenAssetName(FI_HEADER_HASH)).toBe(
       FI_THREAD_TOKEN_ASSET_NAME,
     );
-    expect(fabricatedWithdrawalThreadTokenAssetNameV1(MM_HEADER_HASH)).toBe(
+    expect(fabricatedWithdrawalThreadTokenAssetName(MM_HEADER_HASH)).toBe(
       MM_THREAD_TOKEN_ASSET_NAME,
     );
   });
@@ -420,13 +420,13 @@ describe("fabricated-withdrawal v1 byte twins", () => {
       MM_STEP_04_STATE_CBOR,
     );
     // The rule twin of `fabricated_withdrawal_fault_is_established_v1`.
-    expect(isFabricatedWithdrawalFaultV1(fiStep04State)).toBe(true);
-    expect(isFabricatedWithdrawalFaultV1(mmStep04State)).toBe(true);
+    expect(isFabricatedWithdrawalFault(fiStep04State)).toBe(true);
+    expect(isFabricatedWithdrawalFault(mmStep04State)).toBe(true);
     // A header committing exactly the authentic order is not a fault, and an
     // authentic event outside the challenged block's window is not this block's
     // fault, whichever side of the window it falls on.
     expect(
-      isFabricatedWithdrawalFaultV1({
+      isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
@@ -438,7 +438,7 @@ describe("fabricated-withdrawal v1 byte twins", () => {
       }),
     ).toBe(false);
     expect(
-      isFabricatedWithdrawalFaultV1({
+      isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
@@ -450,7 +450,7 @@ describe("fabricated-withdrawal v1 byte twins", () => {
       }),
     ).toBe(false);
     expect(
-      isFabricatedWithdrawalFaultV1({
+      isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
@@ -463,7 +463,7 @@ describe("fabricated-withdrawal v1 byte twins", () => {
     ).toBe(false);
     // A forged signature or an overridden validity convicts on the same rule.
     expect(
-      isFabricatedWithdrawalFaultV1({
+      isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {
@@ -476,7 +476,7 @@ describe("fabricated-withdrawal v1 byte twins", () => {
       }),
     ).toBe(true);
     expect(
-      isFabricatedWithdrawalFaultV1({
+      isFabricatedWithdrawalFault({
         ...mmStep04State,
         fault: {
           MismatchedWithdrawalContent: {

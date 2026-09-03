@@ -18,7 +18,7 @@
  * distinct for every distinct descriptor — two descriptors sharing an id are
  * the same proof transaction, not two candidates.
  */
-export type ProofTransactionDescriptorV1 = Readonly<{
+export type ProofTransactionDescriptor = Readonly<{
   proofTransactionId: string;
   memoryUnits: bigint;
   cpuUnits: bigint;
@@ -46,9 +46,9 @@ const compareStringAscending = (left: string, right: string): number =>
  * makes this a genuine total order rather than a partial order with an
  * unresolved tie.
  */
-export const compareProofTransactionPriorityV1 = (
-  left: ProofTransactionDescriptorV1,
-  right: ProofTransactionDescriptorV1,
+export const compareProofTransactionPriority = (
+  left: ProofTransactionDescriptor,
+  right: ProofTransactionDescriptor,
 ): number =>
   compareBigintDescending(left.memoryUnits, right.memoryUnits) ||
   compareBigintDescending(left.cpuUnits, right.cpuUnits) ||
@@ -57,19 +57,19 @@ export const compareProofTransactionPriorityV1 = (
 /**
  * Selects the candidates that fill a bounded proof-transaction sequence:
  * the `boundedProofTransactionCount` highest-priority candidates under
- * `compareProofTransactionPriorityV1`, in priority order.
+ * `compareProofTransactionPriority`, in priority order.
  *
  * `candidates` is not mutated. When `candidates.length` is at or below the
  * bound, every candidate is selected (still canonically ordered).
  */
-export const selectBoundedProofTransactionSequenceV1 = (
-  candidates: readonly ProofTransactionDescriptorV1[],
+export const selectBoundedProofTransactionSequence = (
+  candidates: readonly ProofTransactionDescriptor[],
   boundedProofTransactionCount: bigint,
-): readonly ProofTransactionDescriptorV1[] => {
+): readonly ProofTransactionDescriptor[] => {
   if (boundedProofTransactionCount < 0n) {
     throw new Error("bounded proof-transaction count must be non-negative");
   }
-  const ordered = [...candidates].sort(compareProofTransactionPriorityV1);
+  const ordered = [...candidates].sort(compareProofTransactionPriority);
   const bound =
     boundedProofTransactionCount > BigInt(ordered.length)
       ? ordered.length

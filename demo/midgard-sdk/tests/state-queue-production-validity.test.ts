@@ -9,9 +9,9 @@ import {
 } from "../src/ledger-constants.js";
 import {
   castConfirmedStateToData,
-  EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
-  type HeaderV1,
-  makeGenesisConfirmedStateV1,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS,
+  type Header,
+  makeGenesisConfirmedState,
 } from "../src/ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -22,13 +22,13 @@ import {
   type StateQueueUTxO,
 } from "../src/state-queue.js";
 import {
-  buildProductionCommitBlockHeaderTxProgram,
-  buildProductionMergeToConfirmedStateTxProgram,
-  isProductionCommitValidityInterval,
-  PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS,
-  type ProductionCommitBlockHeaderParams,
-  productionCommitHeaderMatchesValidityUpperBound,
-  type ProductionMergeToConfirmedStateParams,
+  buildCommitBlockHeaderTxProgram,
+  buildMergeToConfirmedStateTxProgram,
+  COMMIT_MAX_VALIDITY_RANGE_MS,
+  type CommitBlockHeaderParams,
+  commitHeaderMatchesValidityUpperBound,
+  isCommitValidityInterval,
+  type MergeToConfirmedStateParams,
 } from "../src/state-queue-production.js";
 
 const DUMMY_ADDRESS =
@@ -51,16 +51,16 @@ const makeUtxo = (
   scriptRef: undefined,
 });
 
-const makeProductionCommitParams = (
+const makeCommitParams = (
   lucid: LucidEvolution,
   validFrom: number,
   validTo: number,
-): ProductionCommitBlockHeaderParams => {
+): CommitBlockHeaderParams => {
   const updatedNodeDatum: LinkedListNodeView = {
     key: "Empty",
     next: { Key: { key: "aa".repeat(28) } },
     data: castConfirmedStateToData(
-      makeGenesisConfirmedStateV1(0n),
+      makeGenesisConfirmedState(0n),
     ) as LinkedListNodeView["data"],
   };
   const activeOperatorInput = {
@@ -83,11 +83,11 @@ const makeProductionCommitParams = (
     datum: updatedNodeDatum,
     assetName: STATE_QUEUE_ROOT_ASSET_NAME,
   };
-  const newHeader: HeaderV1 = {
+  const newHeader: Header = {
     prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
-    ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+    ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
     transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
     depositsRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: 0n,
@@ -126,7 +126,7 @@ const makeProductionCommitParams = (
     contracts: {
       stateQueue: stateQueueValidator,
       activeOperators: activeOperatorsValidator,
-    } as unknown as ProductionCommitBlockHeaderParams["contracts"],
+    } as unknown as CommitBlockHeaderParams["contracts"],
     latestBlock,
     updatedNodeDatum,
     newHeader,
@@ -182,12 +182,12 @@ const makeValidityRecordingLucid = () => {
 describe("production commit validity binding", () => {
   it("passes the exact bounded interval to the Lucid transaction builder", async () => {
     const validFrom = 1_000_000;
-    const validTo = validFrom + PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validTo = validFrom + COMMIT_MAX_VALIDITY_RANGE_MS;
     const recordingLucid = makeValidityRecordingLucid();
 
     const result = await Effect.runPromiseExit(
-      buildProductionCommitBlockHeaderTxProgram(
-        makeProductionCommitParams(recordingLucid.lucid, validFrom, validTo),
+      buildCommitBlockHeaderTxProgram(
+        makeCommitParams(recordingLucid.lucid, validFrom, validTo),
       ),
     );
 
@@ -204,8 +204,8 @@ describe("production commit validity binding", () => {
     });
 
     const result = await Effect.runPromiseExit(
-      buildProductionCommitBlockHeaderTxProgram(
-        makeProductionCommitParams(
+      buildCommitBlockHeaderTxProgram(
+        makeCommitParams(
           { newTx } as unknown as LucidEvolution,
           validTo,
           validTo,
@@ -219,18 +219,18 @@ describe("production commit validity binding", () => {
 
   it("rejects append while the authenticated correction lock is held", async () => {
     const validFrom = 1_000_000;
-    const validTo = validFrom + PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validTo = validFrom + COMMIT_MAX_VALIDITY_RANGE_MS;
     const newTx = vi.fn(() => {
       throw new Error("newTx should not be called while correction is locked");
     });
-    const params = makeProductionCommitParams(
+    const params = makeCommitParams(
       { newTx } as unknown as LucidEvolution,
       validFrom,
       validTo,
     );
 
     const result = await Effect.runPromiseExit(
-      buildProductionCommitBlockHeaderTxProgram({
+      buildCommitBlockHeaderTxProgram({
         ...params,
         witness: {
           ...params.witness,
@@ -268,10 +268,10 @@ describe("production commit validity binding", () => {
         datum: lockedDatum,
         assetName: "MIDGARD_CORRECTION_LOCK",
       },
-    } as unknown as ProductionMergeToConfirmedStateParams;
+    } as unknown as MergeToConfirmedStateParams;
 
     const result = await Effect.runPromiseExit(
-      buildProductionMergeToConfirmedStateTxProgram(params),
+      buildMergeToConfirmedStateTxProgram(params),
     );
 
     expect(result._tag).toBe("Failure");
@@ -280,13 +280,11 @@ describe("production commit validity binding", () => {
 
   it("accepts a bounded interval and binds the header to its inclusive upper bound", () => {
     const validFrom = 1_000_000;
-    const validTo = validFrom + PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validTo = validFrom + COMMIT_MAX_VALIDITY_RANGE_MS;
 
-    expect(isProductionCommitValidityInterval({ validFrom, validTo })).toBe(
-      true,
-    );
+    expect(isCommitValidityInterval({ validFrom, validTo })).toBe(true);
     expect(
-      productionCommitHeaderMatchesValidityUpperBound({
+      commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(validTo - 1),
         validTo,
       }),
@@ -297,21 +295,21 @@ describe("production commit validity binding", () => {
     const validFrom = 1_000_000;
 
     expect(
-      isProductionCommitValidityInterval({
+      isCommitValidityInterval({
         validFrom: Number.NaN,
         validTo: validFrom + 1,
       }),
     ).toBe(false);
     expect(
-      isProductionCommitValidityInterval({
+      isCommitValidityInterval({
         validFrom,
         validTo: validFrom,
       }),
     ).toBe(false);
     expect(
-      isProductionCommitValidityInterval({
+      isCommitValidityInterval({
         validFrom,
-        validTo: validFrom + PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS + 1,
+        validTo: validFrom + COMMIT_MAX_VALIDITY_RANGE_MS + 1,
       }),
     ).toBe(false);
   });
@@ -320,7 +318,7 @@ describe("production commit validity binding", () => {
     const validTo = 1_480_000;
 
     expect(
-      productionCommitHeaderMatchesValidityUpperBound({
+      commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(validTo),
         validTo,
       }),

@@ -1,29 +1,29 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  type MidgardNativeTxCompactV1,
-  type MidgardNativeTxFullV1,
-  midgardNativeTxProofFieldPreimageLengthsV1,
-  type MidgardNativeTxProofSourceV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxWitnessSetCompact,
+  type MidgardNativeTxCompact,
+  type MidgardNativeTxFull,
+  midgardNativeTxProofFieldPreimageLengths,
+  type MidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
   CanonicalDecodabilityStep01SpendRedeemer,
   CanonicalDecodabilityStep02Datum,
   CanonicalDecodabilityStep02SpendRedeemer,
   type CanonicalDecodabilityStep02State,
-  type CommittedFieldClaimV1,
+  type CommittedFieldClaim,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   HUB_ORACLE_ASSET_NAME,
-  miscountedMidgardFieldPreimageV1,
+  miscountedMidgardFieldPreimage,
   type NativeTxWitnessSetCompact,
   Proof,
   requireInputIndex,
@@ -46,12 +46,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type CanonicalDecodabilityContractsV1,
-  prepareCanonicalDecodabilityV1,
-  requireCanonicalDecodabilityReferenceScriptV1,
-  requireCanonicalDecodabilityThreadUtxoV1,
+  type CanonicalDecodabilityContracts,
+  prepareCanonicalDecodability,
+  requireCanonicalDecodabilityReferenceScript,
+  requireCanonicalDecodabilityThreadUtxo,
 } from "../../src/canonical-decodability/index.js";
-import { encodeL2TransactionSourceValueV1 } from "../../src/prepare-double-spend.js";
+import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -74,13 +74,13 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
-import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishPlainReferenceScriptUtxo,
@@ -88,10 +88,10 @@ import {
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export const CANONICAL_DECODABILITY_BODY_FIELD_INDEX_V1 = 2;
-export const CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX_V1 = 6;
+export const CANONICAL_DECODABILITY_BODY_FIELD_INDEX = 2;
+export const CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX = 6;
 
-export type CanonicalDecodabilityCommittedFieldFixtureV1 = {
+export type CanonicalDecodabilityCommittedFieldFixture = {
   readonly transactionsRoot: string;
   readonly l2TransactionCount: 1n;
   readonly badTxId: string;
@@ -100,11 +100,11 @@ export type CanonicalDecodabilityCommittedFieldFixtureV1 = {
   readonly committedPreimage: Buffer;
   readonly witnessSet?: NativeTxWitnessSetCompact;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly prepared: ReturnType<typeof prepareCanonicalDecodabilityV1> | null;
+  readonly prepared: ReturnType<typeof prepareCanonicalDecodability> | null;
 };
 
-const witnessSetDataV1 = (
-  compact: ReturnType<typeof deriveMidgardNativeTxWitnessSetCompactV1>,
+const witnessSetData = (
+  compact: ReturnType<typeof deriveMidgardNativeTxWitnessSetCompact>,
 ): NativeTxWitnessSetCompact => ({
   addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
   script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString("hex"),
@@ -113,7 +113,7 @@ const witnessSetDataV1 = (
   ),
 });
 
-const buildCommittedFixtureV1 = async ({
+const buildCommittedFixture = async ({
   compact,
   fieldIndex,
   committedPreimage,
@@ -121,16 +121,16 @@ const buildCommittedFixtureV1 = async ({
   proofSource,
   allowGrammatical = false,
 }: {
-  readonly compact: MidgardNativeTxCompactV1;
+  readonly compact: MidgardNativeTxCompact;
   readonly fieldIndex: number;
   readonly committedPreimage: Buffer;
   readonly witnessSet?: NativeTxWitnessSetCompact;
-  readonly proofSource: MidgardNativeTxProofSourceV1;
+  readonly proofSource: MidgardNativeTxProofSource;
   readonly allowGrammatical?: boolean;
-}): Promise<CanonicalDecodabilityCommittedFieldFixtureV1> => {
-  const badTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(compact);
-  const l2TransactionSourceCbor = encodeL2TransactionSourceValueV1({
+}): Promise<CanonicalDecodabilityCommittedFieldFixture> => {
+  const badTxId = computeMidgardNativeTxId(compact).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(compact);
+  const l2TransactionSourceCbor = encodeL2TransactionSourceValue({
     txId: badTxId,
     proofSource,
   });
@@ -153,9 +153,9 @@ const buildCommittedFixtureV1 = async ({
     txMembershipProof: Data.from(proofCbor, Proof),
     txMembershipProofCbor: proofCbor,
   };
-  let prepared: ReturnType<typeof prepareCanonicalDecodabilityV1> | null = null;
+  let prepared: ReturnType<typeof prepareCanonicalDecodability> | null = null;
   try {
-    prepared = prepareCanonicalDecodabilityV1({
+    prepared = prepareCanonicalDecodability({
       badTxId,
       nativeTxCompactCbor,
       fieldIndex,
@@ -178,34 +178,34 @@ const buildCommittedFixtureV1 = async ({
   };
 };
 
-const proofSourceForCommittedFieldV1 = ({
+const proofSourceForCommittedField = ({
   honest,
   compact,
   fieldIndex,
   committedPreimage,
   witnessSetCompactCbor,
 }: {
-  readonly honest: MidgardNativeTxFullV1;
-  readonly compact: MidgardNativeTxCompactV1;
+  readonly honest: MidgardNativeTxFull;
+  readonly compact: MidgardNativeTxCompact;
   readonly fieldIndex: number;
   readonly committedPreimage: Buffer;
   readonly witnessSetCompactCbor?: Buffer;
-}): MidgardNativeTxProofSourceV1 => {
-  const base = deriveMidgardNativeTxProofSourceV1(honest);
-  const lengths = [...midgardNativeTxProofFieldPreimageLengthsV1(honest)];
+}): MidgardNativeTxProofSource => {
+  const base = deriveMidgardNativeTxProofSource(honest);
+  const lengths = [...midgardNativeTxProofFieldPreimageLengths(honest)];
   lengths[fieldIndex] = committedPreimage.length;
   return {
-    compactCbor: encodeMidgardNativeTxCompactV1(compact),
+    compactCbor: encodeMidgardNativeTxCompact(compact),
     witnessSetCompactCbor: witnessSetCompactCbor ?? base.witnessSetCompactCbor,
-    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(lengths),
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(lengths),
   };
 };
 
-export const buildCanonicalDecodabilityBodyFixtureV1 = async ({
+export const buildCanonicalDecodabilityBodyFixture = async ({
   grammatical = false,
 }: {
   readonly grammatical?: boolean;
-} = {}): Promise<CanonicalDecodabilityCommittedFieldFixtureV1> => {
+} = {}): Promise<CanonicalDecodabilityCommittedFieldFixture> => {
   const honest = makeNativeTx({
     spendInputCbors: [],
     fee: 7n,
@@ -215,63 +215,63 @@ export const buildCanonicalDecodabilityBodyFixtureV1 = async ({
   });
   const committedPreimage = grammatical
     ? Buffer.from(honest.body.outputsPreimageCbor)
-    : miscountedMidgardFieldPreimageV1(1, [
+    : miscountedMidgardFieldPreimage(1, [
         Buffer.from("aa", "hex"),
         Buffer.from("bb", "hex"),
       ]);
-  const compact: MidgardNativeTxCompactV1 = {
+  const compact: MidgardNativeTxCompact = {
     ...honest.compact,
     transactionBody: {
       ...honest.compact.transactionBody,
       outputsHash: computeHash32(committedPreimage),
     },
   };
-  return await buildCommittedFixtureV1({
+  return await buildCommittedFixture({
     compact,
-    fieldIndex: CANONICAL_DECODABILITY_BODY_FIELD_INDEX_V1,
+    fieldIndex: CANONICAL_DECODABILITY_BODY_FIELD_INDEX,
     committedPreimage,
-    proofSource: proofSourceForCommittedFieldV1({
+    proofSource: proofSourceForCommittedField({
       honest,
       compact,
-      fieldIndex: CANONICAL_DECODABILITY_BODY_FIELD_INDEX_V1,
+      fieldIndex: CANONICAL_DECODABILITY_BODY_FIELD_INDEX,
       committedPreimage,
     }),
     allowGrammatical: grammatical,
   });
 };
 
-export const buildCanonicalDecodabilityWitnessFixtureV1 = async () => {
+export const buildCanonicalDecodabilityWitnessFixture = async () => {
   const honest = makeNativeTx({ spendInputCbors: [], fee: 9n });
   const committedPreimage = Buffer.from([0x81]);
-  const original = deriveMidgardNativeTxWitnessSetCompactV1(honest.witnessSet);
+  const original = deriveMidgardNativeTxWitnessSetCompact(honest.witnessSet);
   const mutated = {
     ...original,
     scriptTxWitsHash: computeHash32(committedPreimage),
   };
-  const witnessSet = witnessSetDataV1(mutated);
-  const compact: MidgardNativeTxCompactV1 = {
+  const witnessSet = witnessSetData(mutated);
+  const compact: MidgardNativeTxCompact = {
     ...honest.compact,
     transactionWitnessSetHash: computeHash32(
-      encodeMidgardNativeTxWitnessSetCompactV1(mutated),
+      encodeMidgardNativeTxWitnessSetCompact(mutated),
     ),
   };
-  return await buildCommittedFixtureV1({
+  return await buildCommittedFixture({
     compact,
-    fieldIndex: CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX_V1,
+    fieldIndex: CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX,
     committedPreimage,
     witnessSet,
-    proofSource: proofSourceForCommittedFieldV1({
+    proofSource: proofSourceForCommittedField({
       honest,
       compact,
-      fieldIndex: CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX_V1,
+      fieldIndex: CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX,
       committedPreimage,
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(mutated),
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(mutated),
     }),
   });
 };
 
-export const makeCanonicalDecodabilityEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeCanonicalDecodabilityEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realCanonicalDecodability: true,
       alwaysFraudProofCatalogue: true,
@@ -294,16 +294,16 @@ export const makeCanonicalDecodabilityEmulatorHarnessV1 = async () => {
   return { ...harness, canonicalDecodability, category };
 };
 
-export const setupCanonicalDecodabilityScenarioV1 = async ({
+export const setupCanonicalDecodabilityScenario = async ({
   harness,
   fixture,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeCanonicalDecodabilityEmulatorHarnessV1>
+    ReturnType<typeof makeCanonicalDecodabilityEmulatorHarness>
   >;
-  readonly fixture: CanonicalDecodabilityCommittedFieldFixtureV1;
+  readonly fixture: CanonicalDecodabilityCommittedFieldFixture;
 }) =>
-  await setupFraudulentBlockV1({
+  await setupFraudulentBlock({
     funderLucid: harness.funderLucid,
     emulator: harness.emulator,
     contracts: harness.contracts,
@@ -311,14 +311,14 @@ export const setupCanonicalDecodabilityScenarioV1 = async ({
     fixture,
   });
 
-export const publishCanonicalDecodabilityReferenceScriptsV1 = async ({
+export const publishCanonicalDecodabilityReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
 }): Promise<readonly [UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -333,7 +333,7 @@ export const publishCanonicalDecodabilityReferenceScriptsV1 = async ({
 };
 
 /** Guard-bypassing step-01 builder used only for validator-negative tests. */
-export const submitCanonicalDecodabilityStep01RawV1 = async ({
+export const submitCanonicalDecodabilityStep01Raw = async ({
   lucid,
   blueprint,
   contracts,
@@ -349,19 +349,19 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly claim: CommittedFieldClaimV1;
+  readonly claim: CommittedFieldClaim;
   readonly step02State: CanonicalDecodabilityStep02State;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<{ readonly txHash: string; readonly nextThreadOutRef: string }> => {
   const { threadUtxo, threadToken } =
-    await requireCanonicalDecodabilityThreadUtxoV1({
+    await requireCanonicalDecodabilityThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -385,7 +385,7 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
       label: "raw canonical-decodability hub oracle",
     }),
   ]);
-  const stepReference = requireCanonicalDecodabilityReferenceScriptV1({
+  const stepReference = requireCanonicalDecodabilityReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -397,7 +397,7 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
-  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasCarriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw canonical step-01 PHAS membership",
@@ -505,7 +505,7 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
 };
 
 /** Guard-bypassing finalizer used to prove verdict-0 is refused on-chain. */
-export const submitCanonicalDecodabilityStep02RawV1 = async ({
+export const submitCanonicalDecodabilityStep02Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -515,22 +515,22 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
   witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireCanonicalDecodabilityThreadUtxoV1({
+    await requireCanonicalDecodabilityThreadUtxo({
       lucid,
       contracts,
       categoryId,
       stepIndex: 1,
       threadOutRef,
     });
-  const stepReference = requireCanonicalDecodabilityReferenceScriptV1({
+  const stepReference = requireCanonicalDecodabilityReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
@@ -606,12 +606,12 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw canonical step-02 computation-thread mint",
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: "raw canonical step-02 fraud-proof mint",

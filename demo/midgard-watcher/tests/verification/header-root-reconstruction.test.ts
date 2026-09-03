@@ -4,17 +4,17 @@
  * PROVENANCE OF EVERY INPUT USED BY THESE TESTS (the non-circularity argument
  * these cases exist to demonstrate):
  *
- * - The expected root/count set: `WatcherStateQueueHeaderV1`, the W14 record
+ * - The expected root/count set: `WatcherStateQueueHeader`, the W14 record
  *   decoded from the L1 state-queue node datum
  *   (demo/midgard-watcher/src/indexers/state-queue-indexer.ts). In these tests
- *   the record is derived from the fixture's `HeaderV1` by re-encoding it the
+ *   the record is derived from the fixture's `Header` by re-encoding it the
  *   way the indexer does, so no test ever feeds a header field that did not
  *   come from a committed header.
  * - The header hash: never taken from the caller. It is re-derived from the
- *   header struct by `admitAuthenticatedStateQueueHeaderObservationV1`.
+ *   header struct by `admitAuthenticatedStateQueueHeaderObservation`.
  * - The payload bytes: an argument, standing in for the exact bytes the W21
  *   canonical block store persisted from a public DA peer.
- * - The reconstruction: `reconstructDaPayloadV1` in
+ * - The reconstruction: `reconstructDaPayload` in
  *   `@al-ft/midgard-fault-proofs`, reached through the Q03 evidence core.
  *   Nothing in the watcher recomputes a root.
  *
@@ -27,31 +27,31 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import {
   buildCountedRoot,
   encodeData,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import type { WatcherStateQueueHeaderV1 } from "../../src/indexers/state-queue-indexer.js";
+import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
 import {
-  evaluateWatcherHeaderRootReconstructionV1,
-  makeWatcherAuthenticatedHeaderObservationV1,
-  makeWatcherHeaderRootReconstructedStateV1,
-  WATCHER_HEADER_COUNT_FIELDS_V1,
-  WATCHER_HEADER_ROOT_FIELDS_V1,
-  WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION,
+  evaluateWatcherHeaderRootReconstruction,
+  makeWatcherAuthenticatedHeaderObservation,
+  makeWatcherHeaderRootReconstructedState,
+  WATCHER_HEADER_COUNT_FIELDS,
+  WATCHER_HEADER_ROOT_FIELDS,
+  WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION,
   WatcherHeaderRootReconstructionError,
 } from "../../src/verification/header-root-reconstruction.js";
 
@@ -66,11 +66,11 @@ const h28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);
 
 /** The canonical header hash: blake2b-224 over the header's CBOR, exactly as
- * `hashBlockHeaderV1` (demo/midgard-sdk/src/ledger-state.ts:467) and the W14
+ * `hashBlockHeader` (demo/midgard-sdk/src/ledger-state.ts:467) and the W14
  * indexer (state-queue-indexer.ts:566) derive it. */
-const headerHashOf = (header: SDK.HeaderV1): string =>
+const headerHashOf = (header: SDK.Header): string =>
   Buffer.from(
-    blake2b(Buffer.from(Data.to(header, SDK.HeaderV1), "hex"), { dkLen: 28 }),
+    blake2b(Buffer.from(Data.to(header, SDK.Header), "hex"), { dkLen: 28 }),
   ).toString("hex");
 
 const outRef = (byte: number): SDK.OutputReference => ({
@@ -128,7 +128,7 @@ const corpus = JSON.parse(readFileSync(CORPUS_PATH, "utf8")) as {
 type FixtureTransaction = {
   readonly txId: string;
   readonly canonicalCbor: Buffer;
-  readonly source: SDK.L2TransactionSourceV1;
+  readonly source: SDK.L2TransactionSource;
   readonly sourceValueBytes: Buffer;
 };
 
@@ -136,11 +136,11 @@ type FixtureTransaction = {
 const fixtureTransactionFromCanonicalCbor = (
   canonicalCbor: Buffer,
 ): FixtureTransaction => {
-  const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+  const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
   const proofSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const source: SDK.L2TransactionSourceV1 = {
-    tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const source: SDK.L2TransactionSource = {
+    tx_id: computeMidgardNativeTxId(full).toString("hex"),
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
@@ -153,7 +153,7 @@ const fixtureTransactionFromCanonicalCbor = (
     txId: source.tx_id,
     canonicalCbor,
     source,
-    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceV1Schema),
+    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceSchema),
   };
 };
 
@@ -181,20 +181,20 @@ const hex = <A>(value: A, schema: Parameters<typeof Data.to>[1]): string =>
   encodeData(value, schema as never).toString("hex");
 
 type Fixture = {
-  readonly payload: SDK.DaPayloadV1;
-  readonly header: SDK.HeaderV1;
+  readonly payload: SDK.DaPayload;
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly envelope: Buffer;
-  readonly record: WatcherStateQueueHeaderV1;
+  readonly record: WatcherStateQueueHeader;
   readonly transactions: readonly FixtureTransaction[];
 };
 
 const watcherHeaderRecord = (
-  header: SDK.HeaderV1,
+  header: SDK.Header,
   headerHash: string,
-): WatcherStateQueueHeaderV1 => ({
+): WatcherStateQueueHeader => ({
   headerHash,
-  headerCborHex: Data.to(header, SDK.HeaderV1),
+  headerCborHex: Data.to(header, SDK.Header),
   nextHeaderHash: null,
   datumSha256: h32(3),
   prevUtxosRoot: header.prevUtxosRoot,
@@ -297,8 +297,8 @@ const buildFixture = async ({
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
           rejection_code_hash: h32(170 + index),
-        } satisfies SDK.ValidationTraceDescriptorV1,
-        SDK.ValidationTraceDescriptorV1Schema,
+        } satisfies SDK.ValidationTraceDescriptor,
+        SDK.ValidationTraceDescriptorSchema,
       ),
     ],
   );
@@ -323,7 +323,7 @@ const buildFixture = async ({
     validationTraceCount: BigInt(transactionEntries.length),
   };
 
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot: await countedRoot(
@@ -363,8 +363,8 @@ const buildFixture = async ({
     protocolVersion: 1n,
   };
   const headerHash = headerHashOf(header);
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -387,7 +387,7 @@ const buildFixture = async ({
     payload,
     header,
     headerHash,
-    envelope: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    envelope: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
     record: watcherHeaderRecord(header, headerHash),
@@ -396,10 +396,10 @@ const buildFixture = async ({
 };
 
 /** Re-encodes a mutated payload into a fresh envelope. */
-const reencode = async (payload: SDK.DaPayloadV1): Promise<Buffer> =>
-  await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), { mode: "identity" });
+const reencode = async (payload: SDK.DaPayload): Promise<Buffer> =>
+  await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
 
-const clonePayload = (payload: SDK.DaPayloadV1): SDK.DaPayloadV1 => ({
+const clonePayload = (payload: SDK.DaPayload): SDK.DaPayload => ({
   version: payload.version,
   block_body: {
     ...payload.block_body,
@@ -421,13 +421,13 @@ const clonePayload = (payload: SDK.DaPayloadV1): SDK.DaPayloadV1 => ({
   },
 });
 
-const L1_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const L1_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "watcher-local-node",
   grade: "security",
 };
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "watcher-da-peer-1",
   grade: "security",
@@ -439,12 +439,12 @@ const observationFor = async (
   fixture: Fixture,
   overrides: {
     readonly confirmationDepth?: number;
-    readonly provenance?: SDK.EvidenceProvenanceV1;
-    readonly record?: WatcherStateQueueHeaderV1;
+    readonly provenance?: SDK.EvidenceProvenance;
+    readonly record?: WatcherStateQueueHeader;
     readonly minimumConfirmationDepth?: number;
   } = {},
-): Promise<SDK.AuthenticatedStateQueueHeaderObservationV1> =>
-  await makeWatcherAuthenticatedHeaderObservationV1({
+): Promise<SDK.AuthenticatedStateQueueHeaderObservation> =>
+  await makeWatcherAuthenticatedHeaderObservation({
     header: overrides.record ?? fixture.record,
     chainPoint: CHAIN_POINT,
     confirmationDepth: overrides.confirmationDepth ?? 12,
@@ -463,12 +463,12 @@ const observationFor = async (
  */
 const commitMutatedHeader = async (
   fixture: Fixture,
-  mutate: (header: SDK.HeaderV1) => SDK.HeaderV1,
+  mutate: (header: SDK.Header) => SDK.Header,
 ): Promise<Fixture> => {
   const header = mutate(fixture.header);
   const headerHash = headerHashOf(header);
   const payload = clonePayload(fixture.payload);
-  const mutated: SDK.DaPayloadV1 = {
+  const mutated: SDK.DaPayload = {
     ...payload,
     block_body: { ...payload.block_body, header, header_hash: headerHash },
   };
@@ -486,12 +486,12 @@ const evaluateFixture = async (
   fixture: Fixture,
   overrides: {
     readonly envelope?: Uint8Array;
-    readonly daProvenance?: SDK.EvidenceProvenanceV1;
-    readonly observation?: SDK.AuthenticatedStateQueueHeaderObservationV1;
+    readonly daProvenance?: SDK.EvidenceProvenance;
+    readonly observation?: SDK.AuthenticatedStateQueueHeaderObservation;
     readonly minimumConfirmationDepth?: number;
   } = {},
 ) =>
-  await evaluateWatcherHeaderRootReconstructionV1({
+  await evaluateWatcherHeaderRootReconstruction({
     observation: overrides.observation ?? (await observationFor(fixture)),
     payloadEnvelopeCbor: overrides.envelope ?? fixture.envelope,
     daProvenance: overrides.daProvenance ?? DA_PROVENANCE,
@@ -583,7 +583,7 @@ describe("W22 positive reconstruction", () => {
     const result = await evaluateFixture(fixture);
     expect(result.action).toBe("accept");
     expect(result.reconstructedRoots).toStrictEqual(result.headerRoots);
-    for (const field of WATCHER_HEADER_ROOT_FIELDS_V1) {
+    for (const field of WATCHER_HEADER_ROOT_FIELDS) {
       expect(result.reconstructedRoots?.[field]).toMatch(/^[0-9a-f]{64}$/u);
     }
   });
@@ -605,7 +605,7 @@ describe("W22 positive reconstruction", () => {
       transition_step_count: "0",
       validation_trace_count: "2",
     });
-    expect(WATCHER_HEADER_COUNT_FIELDS_V1).toHaveLength(7);
+    expect(WATCHER_HEADER_COUNT_FIELDS).toHaveLength(7);
   });
 
   it("accepts with empty mismatch lists, no reason codes, and both payload digests", async () => {
@@ -614,7 +614,7 @@ describe("W22 positive reconstruction", () => {
     });
     const result = await evaluateFixture(fixture);
     expect(result.schemaVersion).toBe(
-      WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION,
+      WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION,
     );
     expect(result.reasonCodes).toStrictEqual([]);
     expect(result.rootMismatches).toStrictEqual([]);
@@ -738,8 +738,8 @@ describe("W22 adjacent boundaries", () => {
 
 describe("W22 per-root mismatch determinism", () => {
   const rootMutations: readonly [
-    (typeof WATCHER_HEADER_ROOT_FIELDS_V1)[number],
-    keyof SDK.HeaderV1,
+    (typeof WATCHER_HEADER_ROOT_FIELDS)[number],
+    keyof SDK.Header,
   ][] = [
     ["utxos_root", "utxosRoot"],
     ["withdrawals_root", "withdrawalsRoot"],
@@ -774,15 +774,15 @@ describe("W22 per-root mismatch determinism", () => {
 
   it("covers every declared root field exactly once", () => {
     expect(rootMutations.map(([field]) => field)).toStrictEqual([
-      ...WATCHER_HEADER_ROOT_FIELDS_V1,
+      ...WATCHER_HEADER_ROOT_FIELDS,
     ]);
   });
 });
 
 describe("W22 per-count mismatch determinism", () => {
   const countMutations: readonly [
-    (typeof WATCHER_HEADER_COUNT_FIELDS_V1)[number],
-    keyof SDK.HeaderV1,
+    (typeof WATCHER_HEADER_COUNT_FIELDS)[number],
+    keyof SDK.Header,
   ][] = [
     ["withdrawal_count", "withdrawalCount"],
     ["forced_transaction_count", "forcedTransactionCount"],
@@ -816,7 +816,7 @@ describe("W22 per-count mismatch determinism", () => {
 
   it("covers every declared count field exactly once", () => {
     expect(countMutations.map(([field]) => field)).toStrictEqual([
-      ...WATCHER_HEADER_COUNT_FIELDS_V1,
+      ...WATCHER_HEADER_COUNT_FIELDS,
     ]);
   });
 
@@ -826,7 +826,7 @@ describe("W22 per-count mismatch determinism", () => {
       depositBytes: [11],
     });
     const payload = clonePayload(fixture.payload);
-    const mutated: SDK.DaPayloadV1 = {
+    const mutated: SDK.DaPayload = {
       ...payload,
       block_body: {
         ...payload.block_body,
@@ -854,7 +854,7 @@ describe("W22 payload-entry mutations", () => {
       transactions: [corpusTransaction(0), corpusTransaction(1)],
     });
     const payload = clonePayload(fixture.payload);
-    const mutated: SDK.DaPayloadV1 = {
+    const mutated: SDK.DaPayload = {
       ...payload,
       block_body: {
         ...payload.block_body,
@@ -872,7 +872,7 @@ describe("W22 payload-entry mutations", () => {
     const fixture = await buildFixture({ depositBytes: [11, 12] });
     const payload = clonePayload(fixture.payload);
     const first = payload.block_body.deposits[0]!;
-    const mutated: SDK.DaPayloadV1 = {
+    const mutated: SDK.DaPayload = {
       ...payload,
       block_body: {
         ...payload.block_body,
@@ -892,7 +892,7 @@ describe("W22 payload-entry mutations", () => {
     });
     const payload = clonePayload(fixture.payload);
     const [a, b] = payload.block_body.transactions;
-    const mutated: SDK.DaPayloadV1 = {
+    const mutated: SDK.DaPayload = {
       ...payload,
       block_body: {
         ...payload.block_body,
@@ -924,7 +924,7 @@ describe("W22 malformed payload bytes", () => {
 
   it("rejects an unknown content encoding", async () => {
     const fixture = await buildFixture();
-    const inner = SDK.encodeDaPayloadV1(fixture.payload);
+    const inner = SDK.encodeDaPayload(fixture.payload);
     // The canonical encoder refuses to emit an unknown encoding, so the wire
     // bytes are assembled directly: [version, content_encoding, inner_bytes,
     // inner_sha256, body] with an encoding the decoder must not accept.
@@ -944,7 +944,7 @@ describe("W22 malformed payload bytes", () => {
   it("rejects an oversize payload", async () => {
     const fixture = await buildFixture();
     const result = await evaluateFixture(fixture, {
-      envelope: Buffer.alloc(DA_TRANSPORT_LIMITS_V1.maxPayloadBytes + 1),
+      envelope: Buffer.alloc(DA_TRANSPORT_LIMITS.maxPayloadBytes + 1),
     });
     expect(result.action).toBe("reject");
     expect(result.reasonCodes).toStrictEqual(["malformed_payload"]);
@@ -963,14 +963,14 @@ describe("W22 malformed payload bytes", () => {
 
   it("rejects a wrong DA payload version", async () => {
     const fixture = await buildFixture();
-    // `encodeDaPayloadV1` refuses to serialise a non-V1 version, so the version
+    // `encodeDaPayload` refuses to serialise a non-V1 version, so the version
     // integer is patched on the wire. Its offset is fixed by the encoding:
     // constructor tag `d8799f` then the version integer.
-    const inner = Buffer.from(SDK.encodeDaPayloadV1(fixture.payload));
+    const inner = Buffer.from(SDK.encodeDaPayload(fixture.payload));
     expect(inner.subarray(0, 4).toString("hex")).toBe("d8799f01");
     inner[3] = 0x02;
     const result = await evaluateFixture(fixture, {
-      envelope: await wrapDaPayloadV1(inner, { mode: "identity" }),
+      envelope: await wrapDaPayload(inner, { mode: "identity" }),
     });
     expect(result.action).toBe("reject");
     expect(result.reasonCodes).toStrictEqual(["malformed_payload"]);
@@ -979,7 +979,7 @@ describe("W22 malformed payload bytes", () => {
   it("rejects an embedded header_hash that is not the embedded header's hash", async () => {
     const fixture = await buildFixture();
     const payload = clonePayload(fixture.payload);
-    const mutated: SDK.DaPayloadV1 = {
+    const mutated: SDK.DaPayload = {
       ...payload,
       block_body: { ...payload.block_body, header_hash: h28(0x4d) },
     };
@@ -1005,7 +1005,7 @@ describe("W22 fail-closed and non-circularity", () => {
       transactions: [corpusTransaction(0), corpusTransaction(1)],
       depositBytes: [11],
     });
-    const standalone = await reconstructDaPayloadV1({
+    const standalone = await reconstructDaPayload({
       payloadEnvelopeCbor: blockB.envelope,
     });
     expect(standalone.headerHash).toBe(blockB.headerHash);
@@ -1032,8 +1032,8 @@ describe("W22 fail-closed and non-circularity", () => {
   it("rejects a caller header that is not the one the W14 index committed", async () => {
     const blockA = await buildFixture({ transactions: [corpusTransaction(0)] });
     const blockB = await buildFixture({ depositBytes: [11] });
-    const forged: SDK.AuthenticatedStateQueueHeaderObservationV1 = {
-      schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+    const forged: SDK.AuthenticatedStateQueueHeaderObservation = {
+      schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
       sourceMode: "local_node",
       provenance: L1_PROVENANCE,
       chainPoint: CHAIN_POINT,
@@ -1079,7 +1079,7 @@ describe("W22 fail-closed and non-circularity", () => {
       });
       const result = await evaluateFixture(fixture, {
         daProvenance: {
-          trustClass: trustClass as SDK.EvidenceProvenanceV1["trustClass"],
+          trustClass: trustClass as SDK.EvidenceProvenance["trustClass"],
           sourceId: "some-source",
           grade: "security",
         },
@@ -1130,7 +1130,7 @@ describe("W22 reconstructed-state durable record", () => {
       transactions: [corpusTransaction(0)],
     });
     const result = await evaluateFixture(fixture);
-    const record = makeWatcherHeaderRootReconstructedStateV1({
+    const record = makeWatcherHeaderRootReconstructedState({
       result,
       chainPointId: "chain-point-1",
       inputIds: ["da-payload-1", "proof-bundle-1"],
@@ -1148,7 +1148,7 @@ describe("W22 reconstructed-state durable record", () => {
       transactions: [corpusTransaction(0)],
     });
     const build = async () =>
-      makeWatcherHeaderRootReconstructedStateV1({
+      makeWatcherHeaderRootReconstructedState({
         result: await evaluateFixture(fixture),
         chainPointId: "chain-point-1",
         inputIds: ["da-payload-1"],
@@ -1166,7 +1166,7 @@ describe("W22 reconstructed-state durable record", () => {
     }));
     const result = await evaluateFixture(mutated);
     expect(() =>
-      makeWatcherHeaderRootReconstructedStateV1({
+      makeWatcherHeaderRootReconstructedState({
         result,
         chainPointId: "chain-point-1",
         inputIds: ["da-payload-1"],
@@ -1184,7 +1184,7 @@ describe("W22 reconstructed-state durable record", () => {
     });
     const result = await evaluateFixture(fixture);
     expect(() =>
-      makeWatcherHeaderRootReconstructedStateV1({
+      makeWatcherHeaderRootReconstructedState({
         result,
         chainPointId: "chain-point-1",
         inputIds: inputIds as readonly string[],
@@ -1200,14 +1200,14 @@ describe("W22 canonical producer agreement", () => {
    * transactions are the exact cross-language corpus entries at
    * demo/midgard-fault-proofs/tests/fixtures/cardano-capability-p2-boundary-corpus-v1.json.
    */
-  it("equals reconstructDaPayloadV1 for a cross-language corpus fixture", async () => {
+  it("equals reconstructDaPayload for a cross-language corpus fixture", async () => {
     expect(corpus.schema).toBe(
       "midgard-cardano-capability-p2-boundary-corpus-v1",
     );
     const transactions = [corpusTransaction(0), corpusTransaction(1)];
     expect(transactions[0]!.txId).toBe(corpus.entries[0]!.transactionIdHex);
     const fixture = await buildFixture({ transactions });
-    const producer = await reconstructDaPayloadV1({
+    const producer = await reconstructDaPayload({
       payloadEnvelopeCbor: fixture.envelope,
       expectedHeaderHash: fixture.headerHash,
       committedHeader: fixture.header,

@@ -4,88 +4,88 @@ import { decodeSingleCbor, encodeCbor } from "../src/codec/cbor.js";
 import {
   computeDaSha256Hash,
   DA_GOSSIP_SIGNATURE_LENGTH,
-  DA_ON_CHAIN_ATTESTATION_V1_DOMAIN,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
-  type DaAttestationGossipV1,
-  type DaAttestationsByHeaderRequestV1,
-  type DaAttestationsByHeaderResponseV1,
-  type DaCapabilitiesRequestV1,
-  type DaCapabilitiesResponseV1,
+  DA_ON_CHAIN_ATTESTATION_DOMAIN,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+  type DaAttestationGossip,
+  type DaAttestationsByHeaderRequest,
+  type DaAttestationsByHeaderResponse,
+  type DaCapabilitiesRequest,
+  type DaCapabilitiesResponse,
+  type DaConflictEvidence,
   DaConflictEvidenceKind,
-  type DaConflictEvidenceV1,
-  type DaConflictingSignatureHeaderEvidenceV1,
-  type DaEventToStepByEventRequestV1,
-  type DaEventToStepByEventResponseV1,
+  type DaConflictingSignatureHeaderEvidence,
+  type DaEventToStepByEventRequest,
+  type DaEventToStepByEventResponse,
   DaGenericFoundStatus,
   DaGossipTopic,
   daGossipTopic,
   DaLocalPayloadStatus,
-  type DaMetadataByHeaderResponseV1,
+  type DaMetadataByHeaderResponse,
   DaMetadataStatus,
-  type DaPayloadAnnouncementV1,
-  type DaPayloadByHeaderRequestV1,
-  type DaPayloadByHeaderResponseV1,
+  type DaPayloadAnnouncement,
+  type DaPayloadByHeaderRequest,
+  type DaPayloadByHeaderResponse,
   DaPayloadByHeaderStatus,
-  type DaPayloadChunkManifestV1,
-  type DaPayloadChunkRequestV1,
-  type DaPayloadChunkResponseV1,
+  type DaPayloadChunkManifest,
+  type DaPayloadChunkRequest,
+  type DaPayloadChunkResponse,
   DaPayloadSubmitMode,
-  type DaPayloadSubmitRequestV1,
-  type DaPayloadSubmitResponseV1,
+  type DaPayloadSubmitRequest,
+  type DaPayloadSubmitResponse,
   DaPayloadSubmitStatus,
-  type DaProofBundleByHeaderRequestV1,
-  type DaProofBundleByHeaderResponseV1,
+  type DaProofBundleByHeaderRequest,
+  type DaProofBundleByHeaderResponse,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  type DaTraceStepByIndexRequestV1,
-  type DaTraceStepByIndexResponseV1,
+  type DaTraceStepByIndexRequest,
+  type DaTraceStepByIndexResponse,
   DaTransportSigningDomain,
-  decodeDaAttestationGossipV1Cbor,
-  decodeDaAttestationsByHeaderRequestV1Cbor,
-  decodeDaAttestationsByHeaderResponseV1Cbor,
-  decodeDaCapabilitiesRequestV1Cbor,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaConflictEvidenceV1Cbor,
-  decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
-  decodeDaEventToStepByEventRequestV1Cbor,
-  decodeDaEventToStepByEventResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadAnnouncementV1Cbor,
-  decodeDaPayloadByHeaderRequestV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
+  decodeDaAttestationGossipCbor,
+  decodeDaAttestationsByHeaderRequestCbor,
+  decodeDaAttestationsByHeaderResponseCbor,
+  decodeDaCapabilitiesRequestCbor,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaConflictEvidenceCbor,
+  decodeDaConflictingSignatureHeaderEvidenceCbor,
+  decodeDaEventToStepByEventRequestCbor,
+  decodeDaEventToStepByEventResponseCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadAnnouncementCbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaPayloadByHeaderResponseCbor,
   decodeDaPayloadChunkManifestCbor,
-  decodeDaPayloadChunkRequestV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  decodeDaPayloadSubmitRequestV1Cbor,
-  decodeDaPayloadSubmitResponseV1Cbor,
-  decodeDaProofBundleByHeaderRequestV1Cbor,
-  decodeDaProofBundleByHeaderResponseV1Cbor,
-  decodeDaTraceStepByIndexRequestV1Cbor,
-  decodeDaTraceStepByIndexResponseV1Cbor,
-  encodeDaAttestationGossipV1Cbor,
-  encodeDaAttestationsByHeaderRequestV1Cbor,
-  encodeDaAttestationsByHeaderResponseV1Cbor,
-  encodeDaAttestationV1Preimage,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaCapabilitiesResponseV1Cbor,
-  encodeDaConflictEvidenceV1Cbor,
-  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
-  encodeDaEventToStepByEventRequestV1Cbor,
-  encodeDaEventToStepByEventResponseV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaPayloadAnnouncementV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
+  decodeDaPayloadChunkRequestCbor,
+  decodeDaPayloadChunkResponseCbor,
+  decodeDaPayloadSubmitRequestCbor,
+  decodeDaPayloadSubmitResponseCbor,
+  decodeDaProofBundleByHeaderRequestCbor,
+  decodeDaProofBundleByHeaderResponseCbor,
+  decodeDaTraceStepByIndexRequestCbor,
+  decodeDaTraceStepByIndexResponseCbor,
+  encodeDaAttestationGossipCbor,
+  encodeDaAttestationPreimage,
+  encodeDaAttestationsByHeaderRequestCbor,
+  encodeDaAttestationsByHeaderResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaCapabilitiesResponseCbor,
+  encodeDaConflictEvidenceCbor,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
+  encodeDaEventToStepByEventRequestCbor,
+  encodeDaEventToStepByEventResponseCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadAnnouncementCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadByHeaderResponseCbor,
   encodeDaPayloadChunkManifestCbor,
-  encodeDaPayloadChunkRequestV1Cbor,
-  encodeDaPayloadChunkResponseV1Cbor,
-  encodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaPayloadSubmitResponseV1Cbor,
-  encodeDaProofBundleByHeaderRequestV1Cbor,
-  encodeDaProofBundleByHeaderResponseV1Cbor,
-  encodeDaTraceStepByIndexRequestV1Cbor,
-  encodeDaTraceStepByIndexResponseV1Cbor,
+  encodeDaPayloadChunkRequestCbor,
+  encodeDaPayloadChunkResponseCbor,
+  encodeDaPayloadSubmitRequestCbor,
+  encodeDaPayloadSubmitResponseCbor,
+  encodeDaProofBundleByHeaderRequestCbor,
+  encodeDaProofBundleByHeaderResponseCbor,
+  encodeDaTraceStepByIndexRequestCbor,
+  encodeDaTraceStepByIndexResponseCbor,
 } from "../src/da-transport.js";
 
 const h = (byte: string, count: number): string => byte.repeat(count);
@@ -103,12 +103,12 @@ const chunkManifest = {
   totalBytes: 5,
   chunkSize: 2,
   chunkHashes: [b(0x08, 32), b(0x09, 32)],
-} satisfies DaPayloadChunkManifestV1;
+} satisfies DaPayloadChunkManifest;
 
 describe("DA transport full message vectors", () => {
   it("pins sole V1 protocol IDs, topics, signing domains, and capabilities", () => {
-    expect(DA_TRANSPORT_V1_PROTOCOL_VERSION).toBe(1);
-    expect(DA_TRANSPORT_LIMITS_V1).toEqual({
+    expect(DA_TRANSPORT_PROTOCOL_VERSION).toBe(1);
+    expect(DA_TRANSPORT_LIMITS).toEqual({
       maxPayloadBytes: 67_108_864,
       maxInlineResponseBytes: 1_048_576,
       maxChunkBytes: 1_048_576,
@@ -168,15 +168,15 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "DaCapabilitiesRequestV1",
-      encodeDaCapabilitiesRequestV1Cbor,
-      decodeDaCapabilitiesRequestV1Cbor,
-      { deploymentFingerprint } satisfies DaCapabilitiesRequestV1,
+      encodeDaCapabilitiesRequestCbor,
+      decodeDaCapabilitiesRequestCbor,
+      { deploymentFingerprint } satisfies DaCapabilitiesRequest,
       `815820${h("01", 32)}`,
     );
     assertVector(
       "DaCapabilitiesResponseV1",
-      encodeDaCapabilitiesResponseV1Cbor,
-      decodeDaCapabilitiesResponseV1Cbor,
+      encodeDaCapabilitiesResponseCbor,
+      decodeDaCapabilitiesResponseCbor,
       {
         deploymentFingerprint,
         transportProtocolVersion: 1,
@@ -187,7 +187,7 @@ describe("DA transport full message vectors", () => {
         maxChunkBytes: 1_048_576,
         maxStreamsPerPeer: 16,
         requestTimeoutMs: 15_000,
-      } satisfies DaCapabilitiesResponseV1,
+      } satisfies DaCapabilitiesResponse,
       [
         "89",
         `5820${h("01", 32)}`,
@@ -239,8 +239,8 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "DaPayloadAnnouncementV1",
-      encodeDaPayloadAnnouncementV1Cbor,
-      decodeDaPayloadAnnouncementV1Cbor,
+      encodeDaPayloadAnnouncementCbor,
+      decodeDaPayloadAnnouncementCbor,
       {
         deploymentFingerprint,
         headerHash,
@@ -253,7 +253,7 @@ describe("DA transport full message vectors", () => {
         announcedByPeerId: "peer-a",
         announcedAtSlot: 42,
         signature,
-      } satisfies DaPayloadAnnouncementV1,
+      } satisfies DaPayloadAnnouncement,
       [
         "8b",
         `5820${h("01", 32)}`,
@@ -288,8 +288,8 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "PayloadSubmitRequestV1",
-      encodeDaPayloadSubmitRequestV1Cbor,
-      decodeDaPayloadSubmitRequestV1Cbor,
+      encodeDaPayloadSubmitRequestCbor,
+      decodeDaPayloadSubmitRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
@@ -298,7 +298,7 @@ describe("DA transport full message vectors", () => {
         mode: "inline",
         payloadBytes: Buffer.from("payload"),
         chunkManifest: null,
-      } satisfies DaPayloadSubmitRequestV1,
+      } satisfies DaPayloadSubmitRequest,
       [
         "87",
         `5820${h("01", 32)}`,
@@ -313,15 +313,15 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "PayloadSubmitResponseV1",
-      encodeDaPayloadSubmitResponseV1Cbor,
-      decodeDaPayloadSubmitResponseV1Cbor,
+      encodeDaPayloadSubmitResponseCbor,
+      decodeDaPayloadSubmitResponseCbor,
       {
         status: "deferred",
         headerHash,
         payloadHash,
         reasonCode: "busy",
         retryAfterMs: 1500,
-      } satisfies DaPayloadSubmitResponseV1,
+      } satisfies DaPayloadSubmitResponse,
       [
         "85",
         "04",
@@ -334,8 +334,8 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "PayloadByHeaderResponseV1",
-      encodeDaPayloadByHeaderResponseV1Cbor,
-      decodeDaPayloadByHeaderResponseV1Cbor,
+      encodeDaPayloadByHeaderResponseCbor,
+      decodeDaPayloadByHeaderResponseCbor,
       {
         status: "found_inline",
         headerHash,
@@ -343,7 +343,7 @@ describe("DA transport full message vectors", () => {
         payloadBytes: Buffer.from("payload"),
         chunkManifest: null,
         reasonCode: null,
-      } satisfies DaPayloadByHeaderResponseV1,
+      } satisfies DaPayloadByHeaderResponse,
       [
         "86",
         "00",
@@ -357,14 +357,14 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "PayloadByHeaderRequestV1",
-      encodeDaPayloadByHeaderRequestV1Cbor,
-      decodeDaPayloadByHeaderRequestV1Cbor,
+      encodeDaPayloadByHeaderRequestCbor,
+      decodeDaPayloadByHeaderRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
         acceptedPayloadHashes: [payloadHash, b(0x0d, 32)],
         maxInlineBytes: 1_048_576,
-      } satisfies DaPayloadByHeaderRequestV1,
+      } satisfies DaPayloadByHeaderRequest,
       [
         "84",
         `5820${h("01", 32)}`,
@@ -378,8 +378,8 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "MetadataByHeaderResponseV1",
-      encodeDaMetadataByHeaderResponseV1Cbor,
-      decodeDaMetadataByHeaderResponseV1Cbor,
+      encodeDaMetadataByHeaderResponseCbor,
+      decodeDaMetadataByHeaderResponseCbor,
       {
         status: "found",
         headerHash,
@@ -392,7 +392,7 @@ describe("DA transport full message vectors", () => {
         eventToStepRoot: b(0x0a, 32),
         retainedUntilSlot: 42,
         localStatus: "verified",
-      } satisfies DaMetadataByHeaderResponseV1,
+      } satisfies DaMetadataByHeaderResponse,
       [
         "8b",
         "00",
@@ -411,14 +411,14 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "PayloadChunkRequestV1",
-      encodeDaPayloadChunkRequestV1Cbor,
-      decodeDaPayloadChunkRequestV1Cbor,
+      encodeDaPayloadChunkRequestCbor,
+      decodeDaPayloadChunkRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
         payloadHash,
         chunkIndex: 2,
-      } satisfies DaPayloadChunkRequestV1,
+      } satisfies DaPayloadChunkRequest,
       [
         "84",
         `5820${h("01", 32)}`,
@@ -430,8 +430,8 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "PayloadChunkResponseV1",
-      encodeDaPayloadChunkResponseV1Cbor,
-      decodeDaPayloadChunkResponseV1Cbor,
+      encodeDaPayloadChunkResponseCbor,
+      decodeDaPayloadChunkResponseCbor,
       {
         status: "found",
         headerHash,
@@ -439,7 +439,7 @@ describe("DA transport full message vectors", () => {
         chunkIndex: 2,
         chunkBytes: Buffer.from("chunk-2"),
         chunkHash,
-      } satisfies DaPayloadChunkResponseV1,
+      } satisfies DaPayloadChunkResponse,
       [
         "86",
         "00",
@@ -453,20 +453,20 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "ProofBundleByHeaderRequestV1",
-      encodeDaProofBundleByHeaderRequestV1Cbor,
-      decodeDaProofBundleByHeaderRequestV1Cbor,
+      encodeDaProofBundleByHeaderRequestCbor,
+      decodeDaProofBundleByHeaderRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
         maxInlineBytes: 1_048_576,
-      } satisfies DaProofBundleByHeaderRequestV1,
+      } satisfies DaProofBundleByHeaderRequest,
       ["83", `5820${h("01", 32)}`, `581c${h("02", 28)}`, "1a00100000"].join(""),
     );
 
     assertVector(
       "ProofBundleByHeaderResponseV1",
-      encodeDaProofBundleByHeaderResponseV1Cbor,
-      decodeDaProofBundleByHeaderResponseV1Cbor,
+      encodeDaProofBundleByHeaderResponseCbor,
+      decodeDaProofBundleByHeaderResponseCbor,
       {
         status: "found_inline",
         headerHash,
@@ -474,7 +474,7 @@ describe("DA transport full message vectors", () => {
         proofBundleBytes: Buffer.from("proof"),
         chunkManifest: null,
         reasonCode: null,
-      } satisfies DaProofBundleByHeaderResponseV1,
+      } satisfies DaProofBundleByHeaderResponse,
       [
         "86",
         "00",
@@ -488,27 +488,27 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "TraceStepByIndexRequestV1",
-      encodeDaTraceStepByIndexRequestV1Cbor,
-      decodeDaTraceStepByIndexRequestV1Cbor,
+      encodeDaTraceStepByIndexRequestCbor,
+      decodeDaTraceStepByIndexRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
         stepIndex: 7,
-      } satisfies DaTraceStepByIndexRequestV1,
+      } satisfies DaTraceStepByIndexRequest,
       ["83", `5820${h("01", 32)}`, `581c${h("02", 28)}`, "07"].join(""),
     );
 
     assertVector(
       "TraceStepByIndexResponseV1",
-      encodeDaTraceStepByIndexResponseV1Cbor,
-      decodeDaTraceStepByIndexResponseV1Cbor,
+      encodeDaTraceStepByIndexResponseCbor,
+      decodeDaTraceStepByIndexResponseCbor,
       {
         status: "found",
         headerHash,
         stepIndex: 7,
         transitionStepBytes: Buffer.from("step"),
         membershipProofBytes: Buffer.from("membership"),
-      } satisfies DaTraceStepByIndexResponseV1,
+      } satisfies DaTraceStepByIndexResponse,
       [
         "85",
         "00",
@@ -521,13 +521,13 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "EventToStepByEventRequestV1",
-      encodeDaEventToStepByEventRequestV1Cbor,
-      decodeDaEventToStepByEventRequestV1Cbor,
+      encodeDaEventToStepByEventRequestCbor,
+      decodeDaEventToStepByEventRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
         eventKey: Buffer.from("event"),
-      } satisfies DaEventToStepByEventRequestV1,
+      } satisfies DaEventToStepByEventRequest,
       ["83", `5820${h("01", 32)}`, `581c${h("02", 28)}`, "456576656e74"].join(
         "",
       ),
@@ -535,15 +535,15 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "EventToStepByEventResponseV1",
-      encodeDaEventToStepByEventResponseV1Cbor,
-      decodeDaEventToStepByEventResponseV1Cbor,
+      encodeDaEventToStepByEventResponseCbor,
+      decodeDaEventToStepByEventResponseCbor,
       {
         status: "found",
         headerHash,
         eventKey: Buffer.from("event"),
         eventToStepEntryBytes: Buffer.from("entry"),
         membershipOrNonmembershipProofBytes: Buffer.from("proof"),
-      } satisfies DaEventToStepByEventResponseV1,
+      } satisfies DaEventToStepByEventResponse,
       [
         "85",
         "00",
@@ -556,14 +556,14 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "AttestationsByHeaderRequestV1",
-      encodeDaAttestationsByHeaderRequestV1Cbor,
-      decodeDaAttestationsByHeaderRequestV1Cbor,
+      encodeDaAttestationsByHeaderRequestCbor,
+      decodeDaAttestationsByHeaderRequestCbor,
       {
         deploymentFingerprint,
         headerHash,
         acceptedSignerIndexes: [0, 4],
         maxAttestations: 10,
-      } satisfies DaAttestationsByHeaderRequestV1,
+      } satisfies DaAttestationsByHeaderRequest,
       [
         "84",
         `5820${h("01", 32)}`,
@@ -577,8 +577,8 @@ describe("DA transport full message vectors", () => {
 
     assertVector(
       "AttestationsByHeaderResponseV1",
-      encodeDaAttestationsByHeaderResponseV1Cbor,
-      decodeDaAttestationsByHeaderResponseV1Cbor,
+      encodeDaAttestationsByHeaderResponseCbor,
+      decodeDaAttestationsByHeaderResponseCbor,
       {
         status: "found",
         headerHash,
@@ -597,7 +597,7 @@ describe("DA transport full message vectors", () => {
           },
         ],
         reasonCode: null,
-      } satisfies DaAttestationsByHeaderResponseV1,
+      } satisfies DaAttestationsByHeaderResponse,
       [
         "84",
         "00",
@@ -620,8 +620,8 @@ describe("DA transport full message vectors", () => {
   });
 
   it("freezes hash lengths and V1 helper preimages", () => {
-    expect(encodeDaAttestationV1Preimage(headerHash).toString("hex")).toBe(
-      `${Buffer.from(DA_ON_CHAIN_ATTESTATION_V1_DOMAIN, "utf8").toString(
+    expect(encodeDaAttestationPreimage(headerHash).toString("hex")).toBe(
+      `${Buffer.from(DA_ON_CHAIN_ATTESTATION_DOMAIN, "utf8").toString(
         "hex",
       )}${h("02", 28)}`,
     );
@@ -631,8 +631,8 @@ describe("DA transport full message vectors", () => {
     const equivocation = conflictingSignatureHeaderEvidence();
     assertVector(
       "DaConflictingSignatureHeaderEvidenceV1",
-      encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
-      decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+      encodeDaConflictingSignatureHeaderEvidenceCbor,
+      decodeDaConflictingSignatureHeaderEvidenceCbor,
       equivocation,
       [
         "88",
@@ -647,10 +647,10 @@ describe("DA transport full message vectors", () => {
       ].join(""),
     );
     const compactEvidence =
-      encodeDaConflictingSignatureHeaderEvidenceV1Cbor(equivocation);
+      encodeDaConflictingSignatureHeaderEvidenceCbor(equivocation);
     expect(
-      decodeDaConflictEvidenceV1Cbor(
-        encodeDaConflictEvidenceV1Cbor({
+      decodeDaConflictEvidenceCbor(
+        encodeDaConflictEvidenceCbor({
           deploymentFingerprint,
           headerHash: equivocation.lowerHeaderHash,
           evidenceKind: "equivocation",
@@ -666,7 +666,7 @@ describe("DA transport full message vectors", () => {
       compactEvidence,
     });
     expect(() =>
-      encodeDaPayloadChunkRequestV1Cbor({
+      encodeDaPayloadChunkRequestCbor({
         deploymentFingerprint: b(0x01, 31),
         headerHash,
         payloadHash,
@@ -674,7 +674,7 @@ describe("DA transport full message vectors", () => {
       }),
     ).toThrow(/deployment_fingerprint must be 32 bytes/);
     expect(() =>
-      encodeDaPayloadChunkRequestV1Cbor({
+      encodeDaPayloadChunkRequestCbor({
         deploymentFingerprint,
         headerHash: b(0x02, 27),
         payloadHash,
@@ -682,7 +682,7 @@ describe("DA transport full message vectors", () => {
       }),
     ).toThrow(/header_hash must be 28 bytes/);
     expect(() =>
-      encodeDaPayloadChunkRequestV1Cbor({
+      encodeDaPayloadChunkRequestCbor({
         deploymentFingerprint,
         headerHash,
         payloadHash: b(0x03, 31),
@@ -690,7 +690,7 @@ describe("DA transport full message vectors", () => {
       }),
     ).toThrow(/payload_hash must be 32 bytes/);
     expect(() =>
-      encodeDaAttestationGossipV1Cbor({
+      encodeDaAttestationGossipCbor({
         deploymentFingerprint,
         headerHash,
         payloadHash,
@@ -725,47 +725,39 @@ describe("DA transport full message vectors", () => {
       announcedByPeerId: "peer-a",
       announcedAtSlot: 42,
       signature,
-    } satisfies DaPayloadAnnouncementV1;
+    } satisfies DaPayloadAnnouncement;
     expect(() =>
-      encodeDaPayloadAnnouncementV1Cbor({
+      encodeDaPayloadAnnouncementCbor({
         ...announcement,
         payloadSchemaVersion: 2,
       } as never),
     ).toThrow(/payload_schema_version must equal 1/u);
     expect(() =>
-      encodeDaPayloadAnnouncementV1Cbor({
+      encodeDaPayloadAnnouncementCbor({
         ...announcement,
         announcedByPeerId: "",
       }),
     ).toThrow(/announced_by_peer_id must be a non-empty string/u);
     expect(() =>
-      encodeDaPayloadAnnouncementV1Cbor({
+      encodeDaPayloadAnnouncementCbor({
         ...announcement,
         signature: b(0x0b, DA_GOSSIP_SIGNATURE_LENGTH - 1),
       }),
     ).toThrow(/signature must be 64 bytes/u);
     expect(() =>
-      decodeDaPayloadAnnouncementV1Cbor(
-        replaceTupleItem(
-          encodeDaPayloadAnnouncementV1Cbor(announcement),
-          3,
-          2n,
-        ),
+      decodeDaPayloadAnnouncementCbor(
+        replaceTupleItem(encodeDaPayloadAnnouncementCbor(announcement), 3, 2n),
       ),
     ).toThrow(/payload_schema_version must equal 1/u);
     expect(() =>
-      decodeDaPayloadAnnouncementV1Cbor(
-        replaceTupleItem(
-          encodeDaPayloadAnnouncementV1Cbor(announcement),
-          8,
-          "",
-        ),
+      decodeDaPayloadAnnouncementCbor(
+        replaceTupleItem(encodeDaPayloadAnnouncementCbor(announcement), 8, ""),
       ),
     ).toThrow(/announced_by_peer_id must be a non-empty string/u);
     expect(() =>
-      decodeDaPayloadAnnouncementV1Cbor(
+      decodeDaPayloadAnnouncementCbor(
         replaceTupleItem(
-          encodeDaPayloadAnnouncementV1Cbor(announcement),
+          encodeDaPayloadAnnouncementCbor(announcement),
           10,
           b(0x0b, DA_GOSSIP_SIGNATURE_LENGTH - 1),
         ),
@@ -780,23 +772,23 @@ describe("DA transport full message vectors", () => {
       mode: "chunked",
       payloadBytes: null,
       chunkManifest,
-    } satisfies DaPayloadSubmitRequestV1;
+    } satisfies DaPayloadSubmitRequest;
     expect(() =>
-      encodeDaPayloadSubmitRequestV1Cbor({
+      encodeDaPayloadSubmitRequestCbor({
         ...submitRequest,
         payloadSchemaVersion: 2,
       } as never),
     ).toThrow(/payload_schema_version must equal 1/u);
     expect(() =>
-      encodeDaPayloadSubmitRequestV1Cbor({
+      encodeDaPayloadSubmitRequestCbor({
         ...submitRequest,
         mode: "unknown",
       } as never),
     ).toThrow(/mode has unsupported enum label/u);
     expect(() =>
-      decodeDaPayloadSubmitRequestV1Cbor(
+      decodeDaPayloadSubmitRequestCbor(
         replaceTupleItem(
-          encodeDaPayloadSubmitRequestV1Cbor(submitRequest),
+          encodeDaPayloadSubmitRequestCbor(submitRequest),
           4,
           2n,
         ),
@@ -808,21 +800,21 @@ describe("DA transport full message vectors", () => {
       transportProtocolVersion: 1,
       payloadSchemaVersions: [1],
       envelopeContentEncodings: [0, 1],
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
-    } satisfies DaCapabilitiesResponseV1;
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+    } satisfies DaCapabilitiesResponse;
     expect(() =>
-      encodeDaCapabilitiesResponseV1Cbor({
+      encodeDaCapabilitiesResponseCbor({
         ...capabilities,
         transportProtocolVersion: 2,
       } as never),
     ).toThrow(/transport_protocol_version must equal 1/u);
     for (const payloadSchemaVersions of [[2], [1, 2]]) {
       expect(() =>
-        encodeDaCapabilitiesResponseV1Cbor({
+        encodeDaCapabilitiesResponseCbor({
           ...capabilities,
           payloadSchemaVersions,
         } as never),
@@ -830,26 +822,25 @@ describe("DA transport full message vectors", () => {
     }
     for (const envelopeContentEncodings of [[], [0, 2], [1, 0]]) {
       expect(() =>
-        encodeDaCapabilitiesResponseV1Cbor({
+        encodeDaCapabilitiesResponseCbor({
           ...capabilities,
           envelopeContentEncodings,
         }),
       ).toThrow(/strictly increasing|only DA envelope V1 content encodings/u);
     }
-    const encodedCapabilities =
-      encodeDaCapabilitiesResponseV1Cbor(capabilities);
+    const encodedCapabilities = encodeDaCapabilitiesResponseCbor(capabilities);
     expect(() =>
-      decodeDaCapabilitiesResponseV1Cbor(
+      decodeDaCapabilitiesResponseCbor(
         replaceTupleItem(encodedCapabilities, 1, 2n),
       ),
     ).toThrow(/transport_protocol_version must equal 1/u);
     expect(() =>
-      decodeDaCapabilitiesResponseV1Cbor(
+      decodeDaCapabilitiesResponseCbor(
         replaceTupleItem(encodedCapabilities, 2, [2n]),
       ),
     ).toThrow(/must contain exactly DA payload schema V1/u);
     expect(() =>
-      decodeDaCapabilitiesResponseV1Cbor(
+      decodeDaCapabilitiesResponseCbor(
         replaceTupleItem(encodedCapabilities, 3, [0n, 2n]),
       ),
     ).toThrow(/only DA envelope V1 content encodings/u);
@@ -861,7 +852,7 @@ describe("DA transport full message vectors", () => {
       }),
     ).toThrow(/chunk_manifest\.chunk_hashes\[0\] must be 32 bytes/u);
     expect(() =>
-      encodeDaPayloadChunkRequestV1Cbor({
+      encodeDaPayloadChunkRequestCbor({
         deploymentFingerprint,
         headerHash,
         payloadHash,
@@ -869,14 +860,14 @@ describe("DA transport full message vectors", () => {
       }),
     ).toThrow(/chunk_index must be an unsigned integer/u);
     expect(() =>
-      encodeDaTraceStepByIndexRequestV1Cbor({
+      encodeDaTraceStepByIndexRequestCbor({
         deploymentFingerprint,
         headerHash,
         stepIndex: -1,
       }),
     ).toThrow(/step_index must be an unsigned integer/u);
     expect(() =>
-      encodeDaProofBundleByHeaderResponseV1Cbor({
+      encodeDaProofBundleByHeaderResponseCbor({
         status: "found_inline",
         headerHash,
         proofBundleHash: b(0x07, 31),
@@ -897,20 +888,20 @@ describe("DA transport full message vectors", () => {
       onChainWitness: b(0x0d, 65),
       retentionUntilSlot: 42,
       announcedByPeerId: "peer-a",
-    } satisfies DaAttestationGossipV1;
+    } satisfies DaAttestationGossip;
     expect(() =>
-      encodeDaAttestationGossipV1Cbor({
+      encodeDaAttestationGossipCbor({
         ...attestation,
         announcedByPeerId: "",
       }),
     ).toThrow(/announced_by_peer_id must be a non-empty string/u);
     expect(() =>
-      decodeDaAttestationGossipV1Cbor(
-        replaceTupleItem(encodeDaAttestationGossipV1Cbor(attestation), 9, ""),
+      decodeDaAttestationGossipCbor(
+        replaceTupleItem(encodeDaAttestationGossipCbor(attestation), 9, ""),
       ),
     ).toThrow(/announced_by_peer_id must be a non-empty string/u);
     expect(() =>
-      encodeDaAttestationGossipV1Cbor({
+      encodeDaAttestationGossipCbor({
         ...attestation,
         onChainWitness: b(0x0d, 64),
       }),
@@ -921,23 +912,23 @@ describe("DA transport full message vectors", () => {
       headerHash,
       acceptedSignerIndexes: [0, 4],
       maxAttestations: 10,
-    } satisfies DaAttestationsByHeaderRequestV1;
+    } satisfies DaAttestationsByHeaderRequest;
     for (const acceptedSignerIndexes of [
       [0, 0],
       [4, 0],
       [0, 256],
     ]) {
       expect(() =>
-        encodeDaAttestationsByHeaderRequestV1Cbor({
+        encodeDaAttestationsByHeaderRequestCbor({
           ...attestationsRequest,
           acceptedSignerIndexes,
         }),
       ).toThrow(/strictly increasing|must be a uint8/u);
     }
     expect(() =>
-      decodeDaAttestationsByHeaderRequestV1Cbor(
+      decodeDaAttestationsByHeaderRequestCbor(
         replaceTupleItem(
-          encodeDaAttestationsByHeaderRequestV1Cbor(attestationsRequest),
+          encodeDaAttestationsByHeaderRequestCbor(attestationsRequest),
           2,
           [4n, 0n],
         ),
@@ -950,30 +941,30 @@ describe("DA transport full message vectors", () => {
       evidenceKind: "equivocation",
       evidenceHash: b(0x0e, 32),
       compactEvidence: Buffer.from("0f10", "hex"),
-    } satisfies DaConflictEvidenceV1;
+    } satisfies DaConflictEvidence;
     expect(() =>
-      encodeDaConflictEvidenceV1Cbor({
+      encodeDaConflictEvidenceCbor({
         ...conflictEvidence,
         evidenceKind: "unknown",
       } as never),
     ).toThrow(/evidence_kind has unsupported enum label/u);
     expect(() =>
-      decodeDaConflictEvidenceV1Cbor(
+      decodeDaConflictEvidenceCbor(
         replaceTupleItem(
-          encodeDaConflictEvidenceV1Cbor(conflictEvidence),
+          encodeDaConflictEvidenceCbor(conflictEvidence),
           2,
           BigInt(Object.keys(DaConflictEvidenceKind).length),
         ),
       ),
     ).toThrow(/evidence_kind has unsupported enum code/u);
     expect(() =>
-      encodeDaConflictEvidenceV1Cbor({
+      encodeDaConflictEvidenceCbor({
         ...conflictEvidence,
         evidenceHash: b(0x0e, 31),
       }),
     ).toThrow(/evidence_hash must be 32 bytes/u);
     expect(() =>
-      encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+      encodeDaConflictingSignatureHeaderEvidenceCbor({
         ...conflictingSignatureHeaderEvidence(),
         upperHeaderHash: headerHash,
         upperCommitmentCbor:
@@ -981,15 +972,15 @@ describe("DA transport full message vectors", () => {
       }),
     ).toThrow(/identities must be strictly ordered/u);
     expect(() =>
-      encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+      encodeDaConflictingSignatureHeaderEvidenceCbor({
         ...conflictingSignatureHeaderEvidence(),
         upperHeaderWitness: Buffer.concat([Buffer.from([3]), b(0xbb, 64)]),
       }),
     ).toThrow(/witnesses must embed signer_index/u);
     expect(() =>
-      decodeDaConflictingSignatureHeaderEvidenceV1Cbor(
+      decodeDaConflictingSignatureHeaderEvidenceCbor(
         withoutLastTupleItem(
-          encodeDaConflictingSignatureHeaderEvidenceV1Cbor(
+          encodeDaConflictingSignatureHeaderEvidenceCbor(
             conflictingSignatureHeaderEvidence(),
           ),
         ),
@@ -1003,7 +994,7 @@ describe("DA transport full message vectors", () => {
       readonly decode: (bytes: Uint8Array) => unknown;
     }[] = [
       {
-        encoded: encodeDaPayloadSubmitResponseV1Cbor({
+        encoded: encodeDaPayloadSubmitResponseCbor({
           status: "accepted",
           headerHash,
           payloadHash,
@@ -1012,10 +1003,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 5n,
-        decode: decodeDaPayloadSubmitResponseV1Cbor,
+        decode: decodeDaPayloadSubmitResponseCbor,
       },
       {
-        encoded: encodeDaPayloadByHeaderResponseV1Cbor({
+        encoded: encodeDaPayloadByHeaderResponseCbor({
           status: "not_found",
           headerHash,
           payloadHash: null,
@@ -1025,10 +1016,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 5n,
-        decode: decodeDaPayloadByHeaderResponseV1Cbor,
+        decode: decodeDaPayloadByHeaderResponseCbor,
       },
       {
-        encoded: encodeDaPayloadChunkResponseV1Cbor({
+        encoded: encodeDaPayloadChunkResponseCbor({
           status: "not_found",
           headerHash,
           payloadHash,
@@ -1038,10 +1029,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 3n,
-        decode: decodeDaPayloadChunkResponseV1Cbor,
+        decode: decodeDaPayloadChunkResponseCbor,
       },
       {
-        encoded: encodeDaMetadataByHeaderResponseV1Cbor({
+        encoded: encodeDaMetadataByHeaderResponseCbor({
           status: "not_found",
           headerHash,
           payloadHash: null,
@@ -1056,10 +1047,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 4n,
-        decode: decodeDaMetadataByHeaderResponseV1Cbor,
+        decode: decodeDaMetadataByHeaderResponseCbor,
       },
       {
-        encoded: encodeDaProofBundleByHeaderResponseV1Cbor({
+        encoded: encodeDaProofBundleByHeaderResponseCbor({
           status: "not_found",
           headerHash,
           proofBundleHash: null,
@@ -1069,10 +1060,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 4n,
-        decode: decodeDaProofBundleByHeaderResponseV1Cbor,
+        decode: decodeDaProofBundleByHeaderResponseCbor,
       },
       {
-        encoded: encodeDaTraceStepByIndexResponseV1Cbor({
+        encoded: encodeDaTraceStepByIndexResponseCbor({
           status: "not_found",
           headerHash,
           stepIndex: 0,
@@ -1081,10 +1072,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 3n,
-        decode: decodeDaTraceStepByIndexResponseV1Cbor,
+        decode: decodeDaTraceStepByIndexResponseCbor,
       },
       {
-        encoded: encodeDaEventToStepByEventResponseV1Cbor({
+        encoded: encodeDaEventToStepByEventResponseCbor({
           status: "not_found",
           headerHash,
           eventKey: Buffer.from("event"),
@@ -1093,10 +1084,10 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 3n,
-        decode: decodeDaEventToStepByEventResponseV1Cbor,
+        decode: decodeDaEventToStepByEventResponseCbor,
       },
       {
-        encoded: encodeDaAttestationsByHeaderResponseV1Cbor({
+        encoded: encodeDaAttestationsByHeaderResponseCbor({
           status: "not_found",
           headerHash,
           attestations: [],
@@ -1104,7 +1095,7 @@ describe("DA transport full message vectors", () => {
         }),
         statusIndex: 0,
         unknownCode: 3n,
-        decode: decodeDaAttestationsByHeaderResponseV1Cbor,
+        decode: decodeDaAttestationsByHeaderResponseCbor,
       },
     ];
     for (const unknownStatusCase of unknownStatusCases) {
@@ -1127,19 +1118,19 @@ describe("DA transport full message vectors", () => {
     }[] = [
       {
         label: "announcement",
-        encoded: encodeDaPayloadAnnouncementV1Cbor(announcement),
+        encoded: encodeDaPayloadAnnouncementCbor(announcement),
         arity: 11,
-        decode: decodeDaPayloadAnnouncementV1Cbor,
+        decode: decodeDaPayloadAnnouncementCbor,
       },
       {
         label: "submit request",
-        encoded: encodeDaPayloadSubmitRequestV1Cbor(submitRequest),
+        encoded: encodeDaPayloadSubmitRequestCbor(submitRequest),
         arity: 7,
-        decode: decodeDaPayloadSubmitRequestV1Cbor,
+        decode: decodeDaPayloadSubmitRequestCbor,
       },
       {
         label: "submit response",
-        encoded: encodeDaPayloadSubmitResponseV1Cbor({
+        encoded: encodeDaPayloadSubmitResponseCbor({
           status: "deferred",
           headerHash,
           payloadHash,
@@ -1147,36 +1138,36 @@ describe("DA transport full message vectors", () => {
           retryAfterMs: 1500,
         }),
         arity: 5,
-        decode: decodeDaPayloadSubmitResponseV1Cbor,
+        decode: decodeDaPayloadSubmitResponseCbor,
       },
       {
         label: "capabilities request",
-        encoded: encodeDaCapabilitiesRequestV1Cbor({
+        encoded: encodeDaCapabilitiesRequestCbor({
           deploymentFingerprint,
         }),
         arity: 1,
-        decode: decodeDaCapabilitiesRequestV1Cbor,
+        decode: decodeDaCapabilitiesRequestCbor,
       },
       {
         label: "capabilities response",
-        encoded: encodeDaCapabilitiesResponseV1Cbor(capabilities),
+        encoded: encodeDaCapabilitiesResponseCbor(capabilities),
         arity: 9,
-        decode: decodeDaCapabilitiesResponseV1Cbor,
+        decode: decodeDaCapabilitiesResponseCbor,
       },
       {
         label: "payload-by-header request",
-        encoded: encodeDaPayloadByHeaderRequestV1Cbor({
+        encoded: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint,
           headerHash,
           acceptedPayloadHashes: [payloadHash],
-          maxInlineBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+          maxInlineBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
         }),
         arity: 4,
-        decode: decodeDaPayloadByHeaderRequestV1Cbor,
+        decode: decodeDaPayloadByHeaderRequestCbor,
       },
       {
         label: "payload-by-header response",
-        encoded: encodeDaPayloadByHeaderResponseV1Cbor({
+        encoded: encodeDaPayloadByHeaderResponseCbor({
           status: "not_found",
           headerHash,
           payloadHash: null,
@@ -1185,7 +1176,7 @@ describe("DA transport full message vectors", () => {
           reasonCode: "missing",
         }),
         arity: 6,
-        decode: decodeDaPayloadByHeaderResponseV1Cbor,
+        decode: decodeDaPayloadByHeaderResponseCbor,
       },
       {
         label: "chunk manifest",
@@ -1195,18 +1186,18 @@ describe("DA transport full message vectors", () => {
       },
       {
         label: "chunk request",
-        encoded: encodeDaPayloadChunkRequestV1Cbor({
+        encoded: encodeDaPayloadChunkRequestCbor({
           deploymentFingerprint,
           headerHash,
           payloadHash,
           chunkIndex: 2,
         }),
         arity: 4,
-        decode: decodeDaPayloadChunkRequestV1Cbor,
+        decode: decodeDaPayloadChunkRequestCbor,
       },
       {
         label: "chunk response",
-        encoded: encodeDaPayloadChunkResponseV1Cbor({
+        encoded: encodeDaPayloadChunkResponseCbor({
           status: "found",
           headerHash,
           payloadHash,
@@ -1215,11 +1206,11 @@ describe("DA transport full message vectors", () => {
           chunkHash,
         }),
         arity: 6,
-        decode: decodeDaPayloadChunkResponseV1Cbor,
+        decode: decodeDaPayloadChunkResponseCbor,
       },
       {
         label: "metadata response",
-        encoded: encodeDaMetadataByHeaderResponseV1Cbor({
+        encoded: encodeDaMetadataByHeaderResponseCbor({
           status: "not_found",
           headerHash,
           payloadHash: null,
@@ -1233,21 +1224,21 @@ describe("DA transport full message vectors", () => {
           localStatus: null,
         }),
         arity: 11,
-        decode: decodeDaMetadataByHeaderResponseV1Cbor,
+        decode: decodeDaMetadataByHeaderResponseCbor,
       },
       {
         label: "proof-bundle request",
-        encoded: encodeDaProofBundleByHeaderRequestV1Cbor({
+        encoded: encodeDaProofBundleByHeaderRequestCbor({
           deploymentFingerprint,
           headerHash,
           maxInlineBytes: 4096,
         }),
         arity: 3,
-        decode: decodeDaProofBundleByHeaderRequestV1Cbor,
+        decode: decodeDaProofBundleByHeaderRequestCbor,
       },
       {
         label: "proof-bundle response",
-        encoded: encodeDaProofBundleByHeaderResponseV1Cbor({
+        encoded: encodeDaProofBundleByHeaderResponseCbor({
           status: "found_inline",
           headerHash,
           proofBundleHash,
@@ -1256,21 +1247,21 @@ describe("DA transport full message vectors", () => {
           reasonCode: null,
         }),
         arity: 6,
-        decode: decodeDaProofBundleByHeaderResponseV1Cbor,
+        decode: decodeDaProofBundleByHeaderResponseCbor,
       },
       {
         label: "trace-step request",
-        encoded: encodeDaTraceStepByIndexRequestV1Cbor({
+        encoded: encodeDaTraceStepByIndexRequestCbor({
           deploymentFingerprint,
           headerHash,
           stepIndex: 7,
         }),
         arity: 3,
-        decode: decodeDaTraceStepByIndexRequestV1Cbor,
+        decode: decodeDaTraceStepByIndexRequestCbor,
       },
       {
         label: "trace-step response",
-        encoded: encodeDaTraceStepByIndexResponseV1Cbor({
+        encoded: encodeDaTraceStepByIndexResponseCbor({
           status: "found",
           headerHash,
           stepIndex: 7,
@@ -1278,21 +1269,21 @@ describe("DA transport full message vectors", () => {
           membershipProofBytes: Buffer.from("proof"),
         }),
         arity: 5,
-        decode: decodeDaTraceStepByIndexResponseV1Cbor,
+        decode: decodeDaTraceStepByIndexResponseCbor,
       },
       {
         label: "event-to-step request",
-        encoded: encodeDaEventToStepByEventRequestV1Cbor({
+        encoded: encodeDaEventToStepByEventRequestCbor({
           deploymentFingerprint,
           headerHash,
           eventKey: Buffer.from("event"),
         }),
         arity: 3,
-        decode: decodeDaEventToStepByEventRequestV1Cbor,
+        decode: decodeDaEventToStepByEventRequestCbor,
       },
       {
         label: "event-to-step response",
-        encoded: encodeDaEventToStepByEventResponseV1Cbor({
+        encoded: encodeDaEventToStepByEventResponseCbor({
           status: "found",
           headerHash,
           eventKey: Buffer.from("event"),
@@ -1300,36 +1291,36 @@ describe("DA transport full message vectors", () => {
           membershipOrNonmembershipProofBytes: Buffer.from("proof"),
         }),
         arity: 5,
-        decode: decodeDaEventToStepByEventResponseV1Cbor,
+        decode: decodeDaEventToStepByEventResponseCbor,
       },
       {
         label: "attestation gossip",
-        encoded: encodeDaAttestationGossipV1Cbor(attestation),
+        encoded: encodeDaAttestationGossipCbor(attestation),
         arity: 10,
-        decode: decodeDaAttestationGossipV1Cbor,
+        decode: decodeDaAttestationGossipCbor,
       },
       {
         label: "attestations request",
-        encoded: encodeDaAttestationsByHeaderRequestV1Cbor(attestationsRequest),
+        encoded: encodeDaAttestationsByHeaderRequestCbor(attestationsRequest),
         arity: 4,
-        decode: decodeDaAttestationsByHeaderRequestV1Cbor,
+        decode: decodeDaAttestationsByHeaderRequestCbor,
       },
       {
         label: "attestations response",
-        encoded: encodeDaAttestationsByHeaderResponseV1Cbor({
+        encoded: encodeDaAttestationsByHeaderResponseCbor({
           status: "found",
           headerHash,
           attestations: [attestation],
           reasonCode: null,
         }),
         arity: 4,
-        decode: decodeDaAttestationsByHeaderResponseV1Cbor,
+        decode: decodeDaAttestationsByHeaderResponseCbor,
       },
       {
         label: "conflict evidence",
-        encoded: encodeDaConflictEvidenceV1Cbor(conflictEvidence),
+        encoded: encodeDaConflictEvidenceCbor(conflictEvidence),
         arity: 5,
-        decode: decodeDaConflictEvidenceV1Cbor,
+        decode: decodeDaConflictEvidenceCbor,
       },
     ];
     for (const tupleCase of tupleCases) {
@@ -1356,7 +1347,7 @@ const assertVector = <T>(
 };
 
 const conflictingSignatureHeaderEvidence =
-  (): DaConflictingSignatureHeaderEvidenceV1 => ({
+  (): DaConflictingSignatureHeaderEvidence => ({
     signerIndex: 4,
     daVkey: b(0x0c, 32),
     lowerHeaderHash: headerHash,

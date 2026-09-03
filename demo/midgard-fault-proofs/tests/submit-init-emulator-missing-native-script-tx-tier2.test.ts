@@ -19,15 +19,15 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  prepareMissingNativeScriptTxV1,
+  prepareMissingNativeScriptTx,
   submitMissingNativeScriptTxInit,
   submitMissingNativeScriptTxStep01,
   submitMissingNativeScriptTxStep02,
@@ -37,9 +37,9 @@ import {
   submitMissingNativeScriptTxStep06,
 } from "../src/index.js";
 import {
-  makeMissingNativeScriptTxEmulatorHarnessV1,
-  publishMissingNativeScriptTxReferenceScriptsV1,
-  setupMissingNativeScriptTxFixtureV1,
+  makeMissingNativeScriptTxEmulatorHarness,
+  publishMissingNativeScriptTxReferenceScripts,
+  setupMissingNativeScriptTxFixture,
 } from "./support/missing-native-script-tx-emulator-v1.js";
 import {
   expectSingleUtxoWithUnit,
@@ -56,22 +56,22 @@ const TIER2_DECOY_SPEND_INPUT_COUNT = 363;
 
 describe("missing-native-script-tx emulator tier-2 carriage", () => {
   it("convicts the absent script on an accused input buried in a 14,603-byte spend-input field through a size-selected RawUtxo publication", async () => {
-    const harness = await makeMissingNativeScriptTxEmulatorHarnessV1();
-    const fixture = await setupMissingNativeScriptTxFixtureV1({
+    const harness = await makeMissingNativeScriptTxEmulatorHarness();
+    const fixture = await setupMissingNativeScriptTxFixture({
       harness,
       decoySpendInputCount: TIER2_DECOY_SPEND_INPUT_COUNT,
     });
     // The size, not any flag, is what selects tier 2: past the tier-1
     // redeemer bound, within one publication.
-    const preimage = encodeMidgardFieldPreimageV1(
-      fixture.badTxSpendInputs.map(SDK.encodeMidgardTxInputCanonicalV1),
+    const preimage = encodeMidgardFieldPreimage(
+      fixture.badTxSpendInputs.map(SDK.encodeMidgardTxInputCanonical),
     );
     expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
 
-    const refs = await publishMissingNativeScriptTxReferenceScriptsV1({
+    const refs = await publishMissingNativeScriptTxReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -82,7 +82,7 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
     if (badInclusion === null || producingInclusion === undefined) {
       throw new Error("two-transaction fixture is missing inclusion evidence");
     }
-    const prepared = prepareMissingNativeScriptTxV1({
+    const prepared = prepareMissingNativeScriptTx({
       badTxInclusion: badInclusion,
       badTxSpendInputs: fixture.badTxSpendInputs,
       badInputIndex: BigInt(fixture.badInputIndex),
@@ -140,7 +140,7 @@ describe("missing-native-script-tx emulator tier-2 carriage", () => {
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
     // the prover's address as a bytes-only inline datum, referenced rather
     // than carried in the step's own redeemer.
-    const expectedDatum = SDK.fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await harness.proverLucid.utxosAt(harness.proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);

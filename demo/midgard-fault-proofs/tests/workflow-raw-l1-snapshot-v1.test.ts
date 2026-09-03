@@ -6,19 +6,19 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  admitFraudProofRawL1SnapshotV1,
-  computeFraudProofRawL1PointIdV1,
-  computeFraudProofRawL1RollbackCursorV1,
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofRawL1PointV1,
-  type FraudProofRawL1SnapshotRequestV1,
-  type FraudProofRawL1SnapshotV1,
-  LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE_V1,
-  type LocalKupmiosFraudProofRawSourceV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  admitFraudProofRawL1Snapshot,
+  computeFraudProofRawL1PointId,
+  computeFraudProofRawL1RollbackCursor,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  createLocalKupmiosFraudProofRawL1SnapshotAuthority,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofRawL1Point,
+  type FraudProofRawL1Snapshot,
+  type FraudProofRawL1SnapshotRequest,
+  LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
+  type LocalKupmiosFraudProofRawSource,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../src/workflow/index.js";
 
 const DEPLOYMENT = "aa".repeat(32);
@@ -34,11 +34,11 @@ const policy = {
   deepRollbackPolicy: "automated_rewind_replay_incident-v1",
 } as const;
 
-const releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1 = {
-  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
+  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
   releaseIdentityDigest: RELEASE,
-  policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(policy),
+  policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
 };
 
@@ -50,11 +50,11 @@ const chainPoint = ({
   readonly slot: string;
   readonly blockNo: string;
   readonly blockHash: string;
-}): FraudProofRawL1PointV1 => ({
+}): FraudProofRawL1Point => ({
   slot,
   blockNo,
   blockHash,
-  pointId: computeFraudProofRawL1PointIdV1({ slot, blockNo, blockHash }),
+  pointId: computeFraudProofRawL1PointId({ slot, blockNo, blockHash }),
 });
 
 const rawOutput = (
@@ -78,8 +78,8 @@ const rawOutput = (
 };
 
 const fixture = (): {
-  readonly request: FraudProofRawL1SnapshotRequestV1;
-  readonly snapshot: FraudProofRawL1SnapshotV1;
+  readonly request: FraudProofRawL1SnapshotRequest;
+  readonly snapshot: FraudProofRawL1Snapshot;
   readonly alternateAddressOutput: string;
 } => {
   const address = credentialToAddress(
@@ -136,9 +136,9 @@ const fixture = (): {
     headerHash: HEADER,
     scopes: [{ role: "state_queue", address }],
     historyUnits: [UNIT],
-  } as const satisfies FraudProofRawL1SnapshotRequestV1;
+  } as const satisfies FraudProofRawL1SnapshotRequest;
   const snapshot = {
-    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT,
     releaseIdentityDigest: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
@@ -155,7 +155,7 @@ const fixture = (): {
       point: cursorPoint,
       tip,
       confirmationDepth: 30,
-      rollbackCursor: computeFraudProofRawL1RollbackCursorV1({
+      rollbackCursor: computeFraudProofRawL1RollbackCursor({
         deploymentIdentityDigest: DEPLOYMENT,
         releaseIdentityDigest: RELEASE,
         finalityPolicyDigest: releaseFinality.policyDigest,
@@ -213,7 +213,7 @@ const fixture = (): {
         ],
       },
     ],
-  } as const satisfies FraudProofRawL1SnapshotV1;
+  } as const satisfies FraudProofRawL1Snapshot;
   return {
     request,
     snapshot,
@@ -226,9 +226,9 @@ const fixture = (): {
 
 const admit = (
   snapshot: unknown,
-  request: FraudProofRawL1SnapshotRequestV1,
-): FraudProofRawL1SnapshotV1 =>
-  admitFraudProofRawL1SnapshotV1({
+  request: FraudProofRawL1SnapshotRequest,
+): FraudProofRawL1Snapshot =>
+  admitFraudProofRawL1Snapshot({
     value: snapshot,
     request,
     releaseFinality,
@@ -335,7 +335,7 @@ describe("raw L1 snapshot V1 admission", () => {
           address: value.request.scopes[0]!.address,
         },
       ],
-    } as unknown as FraudProofRawL1SnapshotRequestV1;
+    } as unknown as FraudProofRawL1SnapshotRequest;
     expect(() => admit(value.snapshot, request)).toThrow(
       /role is unsupported/u,
     );
@@ -344,11 +344,11 @@ describe("raw L1 snapshot V1 admission", () => {
 
 const localSource = (
   value: ReturnType<typeof fixture>,
-  overrides: Partial<LocalKupmiosFraudProofRawSourceV1> = {},
-): LocalKupmiosFraudProofRawSourceV1 => {
+  overrides: Partial<LocalKupmiosFraudProofRawSource> = {},
+): LocalKupmiosFraudProofRawSource => {
   const snapshot = value.snapshot;
-  const source: LocalKupmiosFraudProofRawSourceV1 = {
-    sourceVersion: LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE_V1,
+  const source: LocalKupmiosFraudProofRawSource = {
+    sourceVersion: LOCAL_KUPMIOS_FRAUD_PROOF_RAW_SOURCE,
     sourceId: SOURCE,
     kupoHttpUrl: "http://127.0.0.1:1442",
     ogmiosWebSocketUrl: "ws://127.0.0.1:1337",
@@ -411,7 +411,7 @@ const localSource = (
 describe("local Kupmios raw L1 capture authority V1", () => {
   it("paginates address/unit scans from origin and cross-checks Ogmios bytes", async () => {
     const value = fixture();
-    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: localSource(value),
       releaseFinality,
     });
@@ -430,7 +430,7 @@ describe("local Kupmios raw L1 capture authority V1", () => {
         complete: false,
       }),
     });
-    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source,
       releaseFinality,
     });
@@ -452,7 +452,7 @@ describe("local Kupmios raw L1 capture authority V1", () => {
         point: rolledBackPoint,
       }),
     });
-    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source,
       releaseFinality,
     });
@@ -480,7 +480,7 @@ describe("local Kupmios raw L1 capture authority V1", () => {
         },
       }),
     });
-    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+    const authority = createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source,
       releaseFinality,
     });
@@ -492,7 +492,7 @@ describe("local Kupmios raw L1 capture authority V1", () => {
   it("refuses non-loopback provider endpoints", () => {
     const value = fixture();
     expect(() =>
-      createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+      createLocalKupmiosFraudProofRawL1SnapshotAuthority({
         source: localSource(value, {
           kupoHttpUrl: "https://operator.example.invalid/kupo",
         }),

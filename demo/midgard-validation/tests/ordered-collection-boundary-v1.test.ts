@@ -1,27 +1,27 @@
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 import {
-  buildSignedCardanoOutputsCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  findSignedCardanoCollectionBoundaryV1,
-  measureSignedCardanoOutputsV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildSignedCardanoOutputsCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  exerciseMidgardOrderedCollectionBoundary,
+  findSignedCardanoCollectionBoundary,
+  measureSignedCardanoOutputs,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundary-v1.js";
 
 // The exact genuine signed-Cardano field-2 boundary. The terminal fold vector
 // below is the Aiken-replayed half; these four numbers pin the cardinality and
 // byte count the search must land on, so a silently shrunk outputs collection
 // can no longer satisfy the relative bounds alone.
-const MAXIMUM_OUTPUT_ACCEPTED_COUNT_V1 = 437;
-const MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES_V1 = 16_372;
-const MAXIMUM_OUTPUT_ADJACENT_COUNT_V1 = 438;
-const MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES_V1 = 16_409;
+const MAXIMUM_OUTPUT_ACCEPTED_COUNT = 437;
+const MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES = 16_372;
+const MAXIMUM_OUTPUT_ADJACENT_COUNT = 438;
+const MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES = 16_409;
 
-const maximumOutputTerminalFoldVectorV1 = {
+const maximumOutputTerminalFoldVector = {
   transactionIdHex:
     "1faba3bc592fac6c30165c2789e08a18357deb9b449f5d0ceea1b3e6aa40ee1e",
   transactionCommitmentHex:
@@ -67,13 +67,13 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     };
     const emulator = new Emulator(
       [funder],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
 
-    const boundary = await findSignedCardanoCollectionBoundaryV1({
+    const boundary = await findSignedCardanoCollectionBoundary({
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: (requestedOutputCount) =>
-        buildSignedCardanoOutputsCandidateV1({
+        buildSignedCardanoOutputsCandidate({
           privateKeyBech32: funder.privateKey,
           inputTransactionId: "00".repeat(32),
           inputOutputIndex: 0n,
@@ -81,23 +81,23 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
           recipientAddress: funder.address,
           requestedOutputCount,
           lovelacePerOutput: 2_000_000n,
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
         }),
     });
-    const cardanoMeasurement = measureSignedCardanoOutputsV1(
+    const cardanoMeasurement = measureSignedCardanoOutputs(
       boundary.accepted.cborHex,
     );
-    const adjacentCardanoMeasurement = measureSignedCardanoOutputsV1(
+    const adjacentCardanoMeasurement = measureSignedCardanoOutputs(
       boundary.adjacent.cborHex,
     );
-    const midgardMeasurement = exerciseMidgardOrderedCollectionBoundaryV1({
+    const midgardMeasurement = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 2,
     });
-    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+    const retainedDa = await exerciseMidgardRetainedDaBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-outputs",
     });
@@ -115,26 +115,26 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
       boundary.accepted.requestedItemCount + 1,
     );
     expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.accepted.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
           boundary.accepted.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       ),
     );
     expect(boundary.adjacent.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
           boundary.adjacent.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       ),
     );
     expect(cardanoMeasurement.vkeyWitnessCount).toBe(1);
@@ -147,22 +147,22 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
       cardanoMeasurement.outputCount,
     );
     expect(midgardMeasurement.maxRevealBytes).toBeLessThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
 
     // The genuine maximum and its immediately adjacent control are exact, not
     // merely "whatever the search returned".
     expect(boundary.accepted.requestedItemCount).toBe(
-      MAXIMUM_OUTPUT_ACCEPTED_COUNT_V1,
+      MAXIMUM_OUTPUT_ACCEPTED_COUNT,
     );
     expect(boundary.accepted.signedBytes).toBe(
-      MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES_V1,
+      MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
-      MAXIMUM_OUTPUT_ADJACENT_COUNT_V1,
+      MAXIMUM_OUTPUT_ADJACENT_COUNT,
     );
     expect(boundary.adjacent.signedBytes).toBe(
-      MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES_V1,
+      MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES,
     );
     expect({
       transactionIdHex: midgardMeasurement.terminalFoldVector.transactionIdHex,
@@ -193,7 +193,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
         chunkIndex: midgardMeasurement.terminalFoldVector.chunkProof.chunkIndex,
         chunkHex: midgardMeasurement.terminalFoldVector.chunkProof.chunkHex,
       },
-    }).toEqual(maximumOutputTerminalFoldVectorV1);
+    }).toEqual(maximumOutputTerminalFoldVector);
     // #590 scope item 0: the write channel this suite did not have.
     //
     // The `output-boundary-v1` fixture in
@@ -207,7 +207,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     //
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.
-    publishAikenVectorV1("output-boundary-v1", {
+    publishAikenVector("output-boundary-v1", {
       fieldIndex:
         midgardMeasurement.terminalFoldVector.collectionProof.fieldIndex,
       itemCount:

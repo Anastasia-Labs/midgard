@@ -1,7 +1,7 @@
-import type { ProductionCursorFamilySpecV1 } from "../workflow/production-cursor-family-state-v1.js";
+import type { CursorFamilySpec } from "../workflow/production-cursor-family-state-v1.js";
 
 /** Exact authenticated L1 cursor topology for Q33's direct/staged routes. */
-export const MISSING_NATIVE_SCRIPT_UTXO_CURSOR_SPEC_V1 = Object.freeze({
+export const MISSING_NATIVE_SCRIPT_UTXO_CURSOR_SPEC = Object.freeze({
   category: "missingNativeScriptUtxo",
   stepCount: 7,
   successors: Object.freeze({
@@ -13,4 +13,4 @@ export const MISSING_NATIVE_SCRIPT_UTXO_CURSOR_SPEC_V1 = Object.freeze({
     6: Object.freeze([6, 7] as const),
     7: Object.freeze([7, "proof_token"] as const),
   }),
-}) satisfies ProductionCursorFamilySpecV1<"missingNativeScriptUtxo">;
+}) satisfies CursorFamilySpec<"missingNativeScriptUtxo">;

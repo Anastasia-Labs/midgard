@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   deserializePhaseACandidate,
   type PhaseAResult,
@@ -72,7 +72,7 @@ const phaseAConfig = {
   minFeeB: 0n,
   concurrency: 1,
   strictnessProfile: "phase2_worker_isolation",
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 } as const;
 
 const percentile = (samples: readonly number[], p: number): number => {
@@ -589,7 +589,7 @@ describe("Phase 2 validation-worker isolation benchmark", () => {
                     txId: queuedTx.txId,
                     txCanonicalCbor: queuedTx.txCbor,
                     programMaterialSidecarCbor:
-                      encodeMidgardCekProgramMaterialSidecarV1([]),
+                      encodeMidgardCekProgramMaterialSidecar([]),
                     submitSource: "native",
                   }),
                 { concurrency: 16 },

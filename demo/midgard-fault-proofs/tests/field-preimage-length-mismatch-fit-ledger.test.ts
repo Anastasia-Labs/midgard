@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const maximum = "32,768-byte certified field preimage";
 // Emulator signing keys affect a few byte-comparison execution paths. For a
@@ -161,7 +161,7 @@ const measurements = [
 
 describe("field-preimage-length-mismatch Van Rossem fit ledger", () => {
   it("reproduces the blueprint-bound machine-readable ledger with positive margins", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "fieldPreimageLengthMismatch:00000020:testnet",
       blueprintSha256:
         "99c8108c2fb404035c10aec076ab37493804b967fa347f6b31428c102feb5a7d",

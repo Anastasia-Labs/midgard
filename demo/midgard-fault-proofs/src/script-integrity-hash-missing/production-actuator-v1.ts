@@ -1,88 +1,88 @@
-import { decodeMidgardNativeTxCompactV1 } from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  faultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  type FaultProofFieldOpeningPlan,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "../workflow/deployment-manifest-binding-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionCursorFamilyTransactionPortV1,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../workflow/production-cursor-family-adapter-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  productionCursorFamilyActionInputV1,
-  productionCursorStringFieldV1,
+  captureCursorRemoval,
+  cursorFamilyActionInput,
+  cursorStringField,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type FraudProofPreSubmitBoundaryV1,
+  captureLocallyEvaluatedTransaction,
+  type FraudProofPreSubmitBoundary,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ScriptIntegrityHashMissingContractsV1 } from "./contracts-v1.js";
-import { selectScriptIntegrityHashMissingCarriageV1 } from "./family-v1.js";
+import type { ScriptIntegrityHashMissingContracts } from "./contracts-v1.js";
+import { selectScriptIntegrityHashMissingCarriage } from "./family-v1.js";
 import {
-  admitProductionScriptIntegrityHashMissingArtifactV1,
-  prepareProductionScriptIntegrityHashMissingArtifactV1,
-  scriptIntegrityHashMissingWitnessSetV1,
+  admitScriptIntegrityHashMissingArtifact,
+  prepareScriptIntegrityHashMissingArtifact,
+  scriptIntegrityHashMissingWitnessSet,
 } from "./production-artifact-v1.js";
-import { ScriptIntegrityStepDatumsV1 } from "./schemas-v1.js";
+import { ScriptIntegrityStepDatums } from "./schemas-v1.js";
 import {
-  encodeScriptIntegrityField8CheckpointV1,
-  encodeScriptIntegrityGrammarCheckpointV1,
-  encodeScriptIntegritySemanticCheckpointV1,
-  hashScriptIntegrityField8CheckpointV1,
-  SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1,
-  scriptIntegrityGrammarHashV1,
-  scriptIntegritySemanticHashV1,
+  encodeScriptIntegrityField8Checkpoint,
+  encodeScriptIntegrityGrammarCheckpoint,
+  encodeScriptIntegritySemanticCheckpoint,
+  hashScriptIntegrityField8Checkpoint,
+  SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET,
+  scriptIntegrityGrammarHash,
+  scriptIntegritySemanticHash,
 } from "./staged-plan-v1.js";
 import {
-  submitScriptIntegrityHashMissingStep01AcceptedV1,
-  submitScriptIntegrityHashMissingStep01ForcedV1,
-  submitScriptIntegrityHashMissingStep02AcceptedV1,
-  submitScriptIntegrityHashMissingStep02BindingV1,
-  submitScriptIntegrityHashMissingStep03DirectV1,
+  submitScriptIntegrityHashMissingStep01Accepted,
+  submitScriptIntegrityHashMissingStep01Forced,
+  submitScriptIntegrityHashMissingStep02Accepted,
+  submitScriptIntegrityHashMissingStep02Binding,
+  submitScriptIntegrityHashMissingStep03Direct,
 } from "./submit-direct-v1.js";
 import {
-  submitScriptIntegrityHashMissingRedeemerGrammarV1,
-  submitScriptIntegrityHashMissingScriptGrammarV1,
-  submitScriptIntegrityHashMissingScriptScanV1,
-  submitScriptIntegrityHashMissingStep03V1,
-  submitScriptIntegrityHashMissingStep04V1,
+  submitScriptIntegrityHashMissingRedeemerGrammar,
+  submitScriptIntegrityHashMissingScriptGrammar,
+  submitScriptIntegrityHashMissingScriptScan,
+  submitScriptIntegrityHashMissingStep03,
+  submitScriptIntegrityHashMissingStep04,
 } from "./submitters-v1.js";
 
-export type ScriptIntegrityHashMissingWorkflowReferenceScriptsV1 = Readonly<{
+export type ScriptIntegrityHashMissingWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-export type BoundScriptIntegrityHashMissingActuatorConfigV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"scriptIntegrityHashMissing">;
+export type BoundScriptIntegrityHashMissingActuatorConfig = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"scriptIntegrityHashMissing">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ScriptIntegrityHashMissingContractsV1;
-  references: ScriptIntegrityHashMissingWorkflowReferenceScriptsV1;
+  contracts: ScriptIntegrityHashMissingContracts;
+  references: ScriptIntegrityHashMissingWorkflowReferenceScripts;
   lease: StateQueueMutationLeaseCoordinator;
 }>;
 
 const txWitnessSetHash = (compactCbor: string): string =>
   Buffer.from(
-    decodeMidgardNativeTxCompactV1(Buffer.from(compactCbor, "hex"))
+    decodeMidgardNativeTxCompact(Buffer.from(compactCbor, "hex"))
       .transactionWitnessSetHash,
   ).toString("hex");
 
 const resolveField = async (
-  config: BoundScriptIntegrityHashMissingActuatorConfigV1,
-  planned: FaultProofFieldOpeningPlanV1,
+  config: BoundScriptIntegrityHashMissingActuatorConfig,
+  planned: FaultProofFieldOpeningPlan,
 ) => {
-  const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -91,7 +91,7 @@ const resolveField = async (
     throw new Error(
       "scriptIntegrityHashMissing field publications disappeared",
     );
-  const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: config.lucid,
     network: config.binding.network,
     planned,
@@ -108,7 +108,7 @@ const resolveField = async (
 };
 
 const threadDatum = async (
-  config: BoundScriptIntegrityHashMissingActuatorConfigV1,
+  config: BoundScriptIntegrityHashMissingActuatorConfig,
   outRef: string,
   ordinal: 4 | 5 | 6,
 ) => {
@@ -120,7 +120,7 @@ const threadDatum = async (
     throw new Error("scriptIntegrityHashMissing cursor datum disappeared");
   return Data.from(
     utxo.datum,
-    ScriptIntegrityStepDatumsV1[ordinal - 1] as never,
+    ScriptIntegrityStepDatums[ordinal - 1] as never,
   ) as unknown as {
     fraud_prover: string;
     data: Record<string, unknown>;
@@ -140,14 +140,14 @@ const phaseHash = (
 };
 
 const captured = async (
-  submit: (boundary: FraudProofPreSubmitBoundaryV1) => Promise<void>,
+  submit: (boundary: FraudProofPreSubmitBoundary) => Promise<void>,
 ) =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 const direct = (scriptHex: string, redeemerHex: string): boolean =>
-  selectScriptIntegrityHashMissingCarriageV1({
+  selectScriptIntegrityHashMissingCarriage({
     membershipBytes: 0,
     fieldBytes:
       Buffer.from(scriptHex, "hex").length +
@@ -155,14 +155,14 @@ const direct = (scriptHex: string, redeemerHex: string): boolean =>
     directBudget: 15_148,
   }) === "direct";
 
-export const createScriptIntegrityHashMissingTransactionPortV1 = (
-  config: BoundScriptIntegrityHashMissingActuatorConfigV1,
-): ProductionCursorFamilyTransactionPortV1<"scriptIntegrityHashMissing"> => ({
-  portVersion: PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
+export const createScriptIntegrityHashMissingTransactionPort = (
+  config: BoundScriptIntegrityHashMissingActuatorConfig,
+): CursorFamilyTransactionPort<"scriptIntegrityHashMissing"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "scriptIntegrityHashMissing",
-  prepare: prepareProductionScriptIntegrityHashMissingArtifactV1,
+  prepare: prepareScriptIntegrityHashMissingArtifact,
   capture: async ({ action, artifact }) => {
-    const admitted = admitProductionScriptIntegrityHashMissingArtifactV1(
+    const admitted = admitScriptIntegrityHashMissingArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -170,20 +170,19 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       throw new Error(
         "scriptIntegrityHashMissing artifact changed bound header",
       );
-    const input = productionCursorFamilyActionInputV1({
+    const input = cursorFamilyActionInput({
       category: "scriptIntegrityHashMissing",
       action,
     });
     const categoryId = config.binding.resolvedContracts.category.categoryId;
-    const threadOutRef = () =>
-      productionCursorStringFieldV1(input, "threadOutRef");
+    const threadOutRef = () => cursorStringField(input, "threadOutRef");
     const datum = (index: number, data: unknown) =>
       Data.to(
         { fraud_prover: config.signer.paymentKeyHash, data } as never,
-        ScriptIntegrityStepDatumsV1[index] as never,
+        ScriptIntegrityStepDatums[index] as never,
       );
     const witnessHash = txWitnessSetHash(admitted.evidence.nativeTxCompactCbor);
-    const witnessSet = scriptIntegrityHashMissingWitnessSetV1(
+    const witnessSet = scriptIntegrityHashMissingWitnessSet(
       admitted.evidence.witnessSetCompactCbor,
     );
     const containsNonNative = admitted.evidence.scriptLanguages.some(
@@ -204,7 +203,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
           network: config.binding.network,
           signer: config.signer,
           fraudCategory: "scriptIntegrityHashMissing",
-          fraudulentBlockOutRef: productionCursorStringFieldV1(
+          fraudulentBlockOutRef: cursorStringField(
             input,
             "stateQueueBlockOutRef",
           ),
@@ -228,11 +227,11 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
           awaitConfirmation: false,
         } as const;
         if (admitted.source.acceptedInclusion !== undefined)
-          await submitScriptIntegrityHashMissingStep01AcceptedV1({
+          await submitScriptIntegrityHashMissingStep01Accepted({
             ...common,
             blueprint: config.binding.blueprint,
             network: config.binding.network,
-            stateQueueBlockOutRef: productionCursorStringFieldV1(
+            stateQueueBlockOutRef: cursorStringField(
               input,
               "stateQueueBlockOutRef",
             ),
@@ -240,7 +239,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
             witnessReferenceScripts: config.references.witnesses,
           });
         else
-          await submitScriptIntegrityHashMissingStep01ForcedV1({
+          await submitScriptIntegrityHashMissingStep01Forced({
             ...common,
             direction: admitted.source.forcedDirection!,
           });
@@ -259,14 +258,14 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
           awaitConfirmation: false,
         } as const;
         if (admitted.source.acceptedInclusion !== undefined)
-          await submitScriptIntegrityHashMissingStep02AcceptedV1({
+          await submitScriptIntegrityHashMissingStep02Accepted({
             ...common,
             header: admitted.source.header,
             subject: admitted.evidence.subject as never,
             witnessSetHash: witnessHash,
           });
         else
-          await submitScriptIntegrityHashMissingStep02BindingV1({
+          await submitScriptIntegrityHashMissingStep02Binding({
             ...common,
             header: admitted.source.forcedHeader!,
             forcedMembership: admitted.source.forcedMembership!,
@@ -282,7 +281,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
         )
       )
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMissingStep03DirectV1({
+          await submitScriptIntegrityHashMissingStep03Direct({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -299,7 +298,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       const field = await resolveField(config, admitted.scriptPlan);
       const first = admitted.staged.grammar[0]!;
       return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingStep03V1({
+        await submitScriptIntegrityHashMissingStep03({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -312,7 +311,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
             ...baseState,
             phase: {
               ScriptGrammar: {
-                checkpoint_hash: scriptIntegrityGrammarHashV1(first),
+                checkpoint_hash: scriptIntegrityGrammarHash(first),
               },
             },
           }),
@@ -320,7 +319,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
             StartStaged: {
               input_index,
               output_index,
-              script_witnesses_opening: faultProofFieldOpeningV1({
+              script_witnesses_opening: faultProofFieldOpening({
                 planned: admitted.scriptPlan,
                 referenceInputs: [
                   ...field.carriage,
@@ -330,7 +329,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                   config.contracts.fieldPreimageCertificatePolicyId,
                 label: "scriptIntegrityHashMissing script opening",
               }),
-              item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1),
+              item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
             },
           }),
           preSubmitBoundary,
@@ -346,7 +345,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
         "ScriptGrammar",
       );
       const index = admitted.staged.grammar.findIndex(
-        (value) => scriptIntegrityGrammarHashV1(value) === currentHash,
+        (value) => scriptIntegrityGrammarHash(value) === currentHash,
       );
       if (index < 0)
         throw new Error(
@@ -355,14 +354,14 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       const current = admitted.staged.grammar[index]!;
       const next = admitted.staged.grammar[index + 1];
       const closes = next === undefined;
-      const opening = faultProofFieldOpeningV1({
+      const opening = faultProofFieldOpening({
         planned: admitted.scriptPlan,
         referenceInputs: [...field.carriage, config.references.steps[3]],
         certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
         label: "scriptIntegrityHashMissing script opening",
       });
       return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingScriptGrammarV1({
+        await submitScriptIntegrityHashMissingScriptGrammar({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -376,7 +375,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
             phase: closes
               ? {
                   ScriptScan: {
-                    checkpoint_hash: scriptIntegritySemanticHashV1(
+                    checkpoint_hash: scriptIntegritySemanticHash(
                       admitted.staged.semantic[0]!,
                     ),
                     contains_non_native_script: containsNonNative,
@@ -384,7 +383,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                 }
               : {
                   ScriptGrammar: {
-                    checkpoint_hash: scriptIntegrityGrammarHashV1(next!),
+                    checkpoint_hash: scriptIntegrityGrammarHash(next!),
                   },
                 },
           }),
@@ -396,11 +395,11 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                     output_index,
                     opening,
                     checkpoint_bytes:
-                      encodeScriptIntegrityGrammarCheckpointV1(
-                        current,
-                      ).toString("hex"),
+                      encodeScriptIntegrityGrammarCheckpoint(current).toString(
+                        "hex",
+                      ),
                     item_budget: BigInt(
-                      SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1,
+                      SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET,
                     ),
                   },
                 }
@@ -410,11 +409,11 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                     output_index,
                     opening,
                     checkpoint_bytes:
-                      encodeScriptIntegrityGrammarCheckpointV1(
-                        current,
-                      ).toString("hex"),
+                      encodeScriptIntegrityGrammarCheckpoint(current).toString(
+                        "hex",
+                      ),
                     item_budget: BigInt(
-                      SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1,
+                      SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET,
                     ),
                   },
                 },
@@ -431,7 +430,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
         "ScriptScan",
       );
       const index = admitted.staged.semantic.findIndex(
-        (value) => scriptIntegritySemanticHashV1(value) === currentHash,
+        (value) => scriptIntegritySemanticHash(value) === currentHash,
       );
       const current = admitted.staged.semantic[index]!;
       const next = admitted.staged.semantic[index + 1];
@@ -441,7 +440,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
         );
       const closes = index + 1 === admitted.staged.semantic.length - 1;
       return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingScriptScanV1({
+        await submitScriptIntegrityHashMissingScriptScan({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -460,7 +459,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                 }
               : {
                   ScriptScan: {
-                    checkpoint_hash: scriptIntegritySemanticHashV1(next),
+                    checkpoint_hash: scriptIntegritySemanticHash(next),
                     contains_non_native_script: containsNonNative,
                   },
                 },
@@ -468,7 +467,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
           buildArgs: ({ input_index, output_index }) => ({
             input_index,
             output_index,
-            opening: faultProofFieldOpeningV1({
+            opening: faultProofFieldOpening({
               planned: admitted.scriptPlan,
               referenceInputs: [...field.carriage, config.references.steps[4]],
               certificatePolicyId:
@@ -476,10 +475,8 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
               label: "scriptIntegrityHashMissing script opening",
             }),
             checkpoint_bytes:
-              encodeScriptIntegritySemanticCheckpointV1(current).toString(
-                "hex",
-              ),
-            item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1),
+              encodeScriptIntegritySemanticCheckpoint(current).toString("hex"),
+            item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
           }),
           preSubmitBoundary,
           awaitConfirmation: false,
@@ -491,7 +488,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       const field = await resolveField(config, admitted.redeemerPlan);
       const state = await threadDatum(config, threadOutRef(), 6);
       const phase = state.data.phase as Record<string, unknown>;
-      const opening = faultProofFieldOpeningV1({
+      const opening = faultProofFieldOpening({
         planned: admitted.redeemerPlan,
         referenceInputs: [...field.carriage, config.references.steps[5]],
         certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
@@ -500,7 +497,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       if ("ScriptComplete" in phase) {
         const first = admitted.staged.redeemerGrammar[0]!;
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMissingRedeemerGrammarV1({
+          await submitScriptIntegrityHashMissingRedeemerGrammar({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -513,7 +510,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
               ...baseState,
               phase: {
                 RedeemerGrammar: {
-                  checkpoint_hash: hashScriptIntegrityField8CheckpointV1(first),
+                  checkpoint_hash: hashScriptIntegrityField8Checkpoint(first),
                   contains_non_native_script: containsNonNative,
                 },
               },
@@ -523,9 +520,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                 input_index,
                 output_index,
                 opening,
-                item_budget: BigInt(
-                  SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1,
-                ),
+                item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
               },
             }),
             preSubmitBoundary,
@@ -535,7 +530,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       }
       const currentHash = phaseHash(state, "RedeemerGrammar");
       const index = admitted.staged.redeemerGrammar.findIndex(
-        (value) => hashScriptIntegrityField8CheckpointV1(value) === currentHash,
+        (value) => hashScriptIntegrityField8Checkpoint(value) === currentHash,
       );
       if (index < 0)
         throw new Error(
@@ -545,7 +540,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       const next = admitted.staged.redeemerGrammar[index + 1];
       const closes = next === undefined;
       return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingRedeemerGrammarV1({
+        await submitScriptIntegrityHashMissingRedeemerGrammar({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -567,7 +562,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                   ...baseState,
                   phase: {
                     RedeemerGrammar: {
-                      checkpoint_hash: hashScriptIntegrityField8CheckpointV1(
+                      checkpoint_hash: hashScriptIntegrityField8Checkpoint(
                         next!,
                       ),
                       contains_non_native_script: containsNonNative,
@@ -583,7 +578,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                     output_index,
                     opening,
                     checkpoint_bytes:
-                      encodeScriptIntegrityField8CheckpointV1(current).toString(
+                      encodeScriptIntegrityField8Checkpoint(current).toString(
                         "hex",
                       ),
                   },
@@ -594,11 +589,11 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
                     output_index,
                     opening,
                     checkpoint_bytes:
-                      encodeScriptIntegrityField8CheckpointV1(current).toString(
+                      encodeScriptIntegrityField8Checkpoint(current).toString(
                         "hex",
                       ),
                     item_budget: BigInt(
-                      SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET_V1,
+                      SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET,
                     ),
                   },
                 },
@@ -610,7 +605,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
 
     if (input.stage === "step_07")
       return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingStep04V1({
+        await submitScriptIntegrityHashMissingStep04({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -624,7 +619,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
       });
 
     if (input.stage === "remove")
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: "scriptIntegrityHashMissing",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
@@ -645,7 +640,7 @@ export const createScriptIntegrityHashMissingTransactionPortV1 = (
   },
 });
 
-export const scriptIntegrityHashMissingFieldRequirementV1 = ({
+export const scriptIntegrityHashMissingFieldRequirement = ({
   actionStage,
   artifact,
   owner,
@@ -653,11 +648,8 @@ export const scriptIntegrityHashMissingFieldRequirementV1 = ({
   readonly actionStage: unknown;
   readonly artifact: unknown;
   readonly owner: string;
-}): FaultProofFieldOpeningPlanV1 | null => {
-  const admitted = admitProductionScriptIntegrityHashMissingArtifactV1(
-    artifact,
-    owner,
-  );
+}): FaultProofFieldOpeningPlan | null => {
+  const admitted = admitScriptIntegrityHashMissingArtifact(artifact, owner);
   if (
     actionStage === "step_03" &&
     direct(

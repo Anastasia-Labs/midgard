@@ -3,17 +3,17 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekBlobChunkV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardCekBlobChunk,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  hashMidgardCekProgramMaterialPreimageV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  hashMidgardCekProgramMaterialPreimage,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
-import type { MidgardFieldCarriageV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import type { MidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -23,7 +23,7 @@ import {
   isDeferrablePublishedProgramMaterialError,
   publishedProgramMaterialEntries,
   publishedProgramMaterialSnapshotError,
-  reconstructTxOrderMaterialV1,
+  reconstructTxOrderMaterial,
 } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 
 const transactionCbor = ({
@@ -40,9 +40,9 @@ const transactionCbor = ({
    */
   readonly outputFills?: readonly number[];
 } = {}): Buffer =>
-  encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -86,9 +86,9 @@ const transactionCbor = ({
   );
 
 const emptyTransactionCbor = (): Buffer =>
-  encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -112,8 +112,8 @@ const emptyTransactionCbor = (): Buffer =>
     }),
   );
 
-const payloadFor = (nativeTxCbor: Buffer): SDK.TxOrderPayloadV1 => {
-  const material = SDK.deriveTxOrderMaterialV1({
+const payloadFor = (nativeTxCbor: Buffer): SDK.TxOrderPayload => {
+  const material = SDK.deriveTxOrderMaterial({
     nativeTxCbor,
     owner: Buffer.alloc(28, 0x66),
   });
@@ -133,13 +133,13 @@ const RECONSTRUCTION_FAILURE = {
  * The mint redeemer's carriage vector for an order, read back the way ingestion
  * receives it: positional over the non-empty fields in ascending field index.
  *
- * Built from `deriveTxOrderMaterialV1`'s own per-field plans rather than from a
+ * Built from `deriveTxOrderMaterial`'s own per-field plans rather than from a
  * hand-listed set of field indices, so the vector cannot drift out of the order
  * the on-chain walk reads the nine commitments in.
  */
 const inlineCarriageFor = (
-  material: SDK.TxOrderMaterialV1,
-): readonly MidgardFieldCarriageV1[] =>
+  material: SDK.TxOrderMaterial,
+): readonly MidgardFieldCarriage[] =>
   material.carriage.map((field) => ({
     carriage: "Inline",
     preimage: field.preimage,
@@ -148,7 +148,7 @@ const inlineCarriageFor = (
 describe("V1 tx-order §8 field carriage", () => {
   it("reconstructs a canonically-empty forced order, which consumes no carriage", async () => {
     const nativeTxCbor = emptyTransactionCbor();
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -159,7 +159,7 @@ describe("V1 tx-order §8 field carriage", () => {
     expect(material.carriage).toEqual([]);
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({ payload: payloadFor(nativeTxCbor) }),
+        reconstructTxOrderMaterial({ payload: payloadFor(nativeTxCbor) }),
       ),
     ).resolves.toEqual(nativeTxCbor);
   });
@@ -170,7 +170,7 @@ describe("V1 tx-order §8 field carriage", () => {
     // through their receipts; under §8 it is one field preimage, authenticated
     // once against the flat commitment the payload's compact body carries.
     const nativeTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -178,7 +178,7 @@ describe("V1 tx-order §8 field carriage", () => {
 
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(nativeTxCbor),
           material: { carriage: inlineCarriageFor(material) },
         }),
@@ -192,7 +192,7 @@ describe("V1 tx-order §8 field carriage", () => {
     // what makes the creator's publish-or-inline choice a budget decision and not
     // a protocol one (§8.11).
     const nativeTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -201,7 +201,7 @@ describe("V1 tx-order §8 field carriage", () => {
 
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(nativeTxCbor),
           material: {
             carriage: [{ carriage: "RawUtxo", refInputIndex: 1 }],
@@ -224,14 +224,14 @@ describe("V1 tx-order §8 field carriage", () => {
     // why the plan's own tier is asserted rather than assumed.
     //
     // Every piece of the reference-input set comes off the plan
-    // `deriveTxOrderMaterialV1` produced: the certificate, its content-addressed
+    // `deriveTxOrderMaterial` produced: the certificate, its content-addressed
     // token name, and the chunk bytes in the order the digest vector is written.
     // Rebuilding them here from the preimage would be a second derivation that
     // could agree with the first while both disagreed with the publisher.
     const nativeTxCbor = transactionCbor({
       outputFills: [0x11, 0x22, 0x33, 0x44],
     });
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -250,7 +250,7 @@ describe("V1 tx-order §8 field carriage", () => {
         inlineDatumBytes: publication.bytes,
       })),
     ];
-    const certifiedCarriage: readonly MidgardFieldCarriageV1[] = [
+    const certifiedCarriage: readonly MidgardFieldCarriage[] = [
       {
         carriage: "Certified",
         certRefInputIndex: 0,
@@ -261,7 +261,7 @@ describe("V1 tx-order §8 field carriage", () => {
     ];
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(nativeTxCbor),
           material: { carriage: certifiedCarriage, referenceInputs },
         }),
@@ -283,7 +283,7 @@ describe("V1 tx-order §8 field carriage", () => {
     tampered[lastIndex] = { inlineDatumBytes: lastChunk };
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(nativeTxCbor),
           material: {
             carriage: certifiedCarriage,
@@ -297,7 +297,7 @@ describe("V1 tx-order §8 field carriage", () => {
   it("fails closed on a material-bearing forced order with no carriage supplied", async () => {
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(transactionCbor()),
         }),
       ),
@@ -306,7 +306,7 @@ describe("V1 tx-order §8 field carriage", () => {
 
   it("fails closed on carriage whose bytes are not the committed preimage", async () => {
     const nativeTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -319,7 +319,7 @@ describe("V1 tx-order §8 field carriage", () => {
 
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(nativeTxCbor),
           material: {
             carriage: [{ carriage: "Inline", preimage: corrupted }],
@@ -333,14 +333,14 @@ describe("V1 tx-order §8 field carriage", () => {
     // The mint's exhaustion rule, re-derived: a spare entry means the vector being
     // read is not the one the mint authenticated.
     const nativeTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
 
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: payloadFor(nativeTxCbor),
           material: {
             carriage: [
@@ -369,7 +369,7 @@ describe("V1 tx-order §8 field carriage", () => {
 
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: {
             ...payload,
             source: {
@@ -386,7 +386,7 @@ describe("V1 tx-order §8 field carriage", () => {
     const payload = payloadFor(emptyTransactionCbor());
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: { ...payload, tx_id: "11".repeat(32) },
         }),
       ),
@@ -397,7 +397,7 @@ describe("V1 tx-order §8 field carriage", () => {
     const payload = payloadFor(emptyTransactionCbor());
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: { ...payload, transaction_commitment: "22".repeat(32) },
         }),
       ),
@@ -416,14 +416,14 @@ describe("V1 CEK program-material publication ingestion", () => {
     }) as UTxO;
 
   it("accepts one exact typed hash and rejects wrong roots, kinds, and encodings", () => {
-    const preimage = encodeMidgardCekBlobChunkV1(Buffer.from("material"));
-    const root = hashMidgardCekProgramMaterialPreimageV1("blobChunk", preimage);
-    const datum: SDK.CekProgramMaterialDatumV1 = {
+    const preimage = encodeMidgardCekBlobChunk(Buffer.from("material"));
+    const root = hashMidgardCekProgramMaterialPreimage("blobChunk", preimage);
+    const datum: SDK.CekProgramMaterialDatum = {
       kind: 3n,
       root: Buffer.from(root).toString("hex"),
       preimage: preimage.toString("hex"),
     };
-    const datumCbor = Data.to(datum, SDK.CekProgramMaterialDatumV1);
+    const datumCbor = Data.to(datum, SDK.CekProgramMaterialDatum);
 
     const exact = publishedProgramMaterialEntries([materialUtxo(datumCbor)]);
     expect(exact.malformedCount).toBe(0);
@@ -432,18 +432,18 @@ describe("V1 CEK program-material publication ingestion", () => {
 
     const wrongRoot = Data.to(
       { ...datum, root: "00".repeat(32) },
-      SDK.CekProgramMaterialDatumV1,
+      SDK.CekProgramMaterialDatum,
     );
     const wrongKind = Data.to(
       { ...datum, kind: 4n },
-      SDK.CekProgramMaterialDatumV1,
+      SDK.CekProgramMaterialDatum,
     );
     const unknownKind = Data.to(
       { ...datum, kind: 8n },
-      SDK.CekProgramMaterialDatumV1,
+      SDK.CekProgramMaterialDatum,
     );
     const noncanonicalKind = datumCbor.replace("d8799f03", "d8799f1803");
-    expect(Data.from(noncanonicalKind, SDK.CekProgramMaterialDatumV1)).toEqual(
+    expect(Data.from(noncanonicalKind, SDK.CekProgramMaterialDatum)).toEqual(
       datum,
     );
 

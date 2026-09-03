@@ -1,23 +1,23 @@
 import {
-  computeMidgardNativeTxIdV1,
-  encodeMidgardNativeTxCanonicalV1,
+  computeMidgardNativeTxId,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyOutputReferenceScriptDecodingFindingV1,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1,
-  OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID_V1,
-  OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID_V1,
-  OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID_V1,
-  outputReferenceScriptDecodingViolationIdV1,
-  OutputReferenceScriptResultClassesV1,
-  prepareOutputReferenceScriptDecodingEvidenceV1,
+  classifyOutputReferenceScriptDecodingFinding,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
+  OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID,
+  OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID,
+  OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID,
+  outputReferenceScriptDecodingViolationId,
+  OutputReferenceScriptResultClasses,
+  prepareOutputReferenceScriptDecodingEvidence,
 } from "../src/output-reference-script-decoding/index.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
@@ -52,25 +52,25 @@ const transaction = (kind: "valid" | "malformed") =>
 
 describe("outputReferenceScriptDecoding V1", () => {
   it("freezes ID and binds all exact forced reasons", () => {
-    expect(OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1).toBe("0000002a");
+    expect(OUTPUT_REFERENCE_SCRIPT_DECODING_ID).toBe("0000002a");
     for (const constructor of [
       "OutputReferenceScriptMalformed",
       "OutputReferenceScriptNodeLimit",
       "OutputReferenceScriptDepthLimit",
     ] as const) {
-      const subject = forcedVerdictSubjectV1({
+      const subject = forcedVerdictSubject({
         transactionId: "11".repeat(32),
         sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
         rejectionReason: { [constructor]: { output_index: 3n } } as never,
       });
       expect(() =>
-        classifyOutputReferenceScriptDecodingFindingV1({
+        classifyOutputReferenceScriptDecodingFinding({
           subject,
           outputIndex: 3,
         }),
       ).not.toThrow();
       expect(() =>
-        classifyOutputReferenceScriptDecodingFindingV1({
+        classifyOutputReferenceScriptDecodingFinding({
           subject,
           outputIndex: 2,
         }),
@@ -80,45 +80,45 @@ describe("outputReferenceScriptDecoding V1", () => {
 
   it("routes each terminal arm to its exact detector-owned identity", () => {
     expect(
-      outputReferenceScriptDecodingViolationIdV1(
-        OutputReferenceScriptResultClassesV1.Malformed,
+      outputReferenceScriptDecodingViolationId(
+        OutputReferenceScriptResultClasses.Malformed,
       ),
-    ).toBe(OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID_V1);
+    ).toBe(OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID);
     expect(
-      outputReferenceScriptDecodingViolationIdV1(
-        OutputReferenceScriptResultClassesV1.NodeLimit,
+      outputReferenceScriptDecodingViolationId(
+        OutputReferenceScriptResultClasses.NodeLimit,
       ),
-    ).toBe(OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID_V1);
+    ).toBe(OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID);
     expect(
-      outputReferenceScriptDecodingViolationIdV1(
-        OutputReferenceScriptResultClassesV1.DepthLimit,
+      outputReferenceScriptDecodingViolationId(
+        OutputReferenceScriptResultClasses.DepthLimit,
       ),
-    ).toBe(OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID_V1);
+    ).toBe(OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID);
     expect(() =>
-      outputReferenceScriptDecodingViolationIdV1(
-        OutputReferenceScriptResultClassesV1.NoFault,
+      outputReferenceScriptDecodingViolationId(
+        OutputReferenceScriptResultClasses.NoFault,
       ),
     ).toThrow(/no output-reference violation id/u);
   });
 
   it("detects malformed accepted reference script and refuses subject substitution", () => {
     const tx = transaction("malformed");
-    const bytes = encodeMidgardNativeTxCanonicalV1(tx);
-    const id = computeMidgardNativeTxIdV1(tx).toString("hex");
-    const evidence = prepareOutputReferenceScriptDecodingEvidenceV1({
-      subject: acceptedVerdictSubjectV1(id),
+    const bytes = encodeMidgardNativeTxCanonical(tx);
+    const id = computeMidgardNativeTxId(tx).toString("hex");
+    const evidence = prepareOutputReferenceScriptDecodingEvidence({
+      subject: acceptedVerdictSubject(id),
       outputIndex: 0,
       canonicalTransactionCbor: bytes,
     });
     expect(evidence.resultClass).toBe(
-      OutputReferenceScriptResultClassesV1.Malformed,
+      OutputReferenceScriptResultClasses.Malformed,
     );
     expect(evidence.referenceScriptItemCommitmentHex).toMatch(
       /^[0-9a-f]{64}$/u,
     );
     expect(() =>
-      prepareOutputReferenceScriptDecodingEvidenceV1({
-        subject: acceptedVerdictSubjectV1("ff".repeat(32)),
+      prepareOutputReferenceScriptDecodingEvidence({
+        subject: acceptedVerdictSubject("ff".repeat(32)),
         outputIndex: 0,
         canonicalTransactionCbor: bytes,
       }),
@@ -127,29 +127,29 @@ describe("outputReferenceScriptDecoding V1", () => {
 
   it("proves decodable wrongful rejection and refuses its honest polarity", () => {
     const tx = transaction("valid");
-    const bytes = encodeMidgardNativeTxCanonicalV1(tx);
-    const id = computeMidgardNativeTxIdV1(tx).toString("hex");
+    const bytes = encodeMidgardNativeTxCanonical(tx);
+    const id = computeMidgardNativeTxId(tx).toString("hex");
     const forced = (
       reason:
         | "OutputReferenceScriptMalformed"
         | "OutputReferenceScriptNodeLimit",
     ) =>
-      forcedVerdictSubjectV1({
+      forcedVerdictSubject({
         transactionId: id,
         sourceKey: { transactionId: "33".repeat(32), outputIndex: 0n },
         rejectionReason: { [reason]: { output_index: 0n } } as never,
       });
-    const evidence = prepareOutputReferenceScriptDecodingEvidenceV1({
+    const evidence = prepareOutputReferenceScriptDecodingEvidence({
       subject: forced("OutputReferenceScriptMalformed"),
       outputIndex: 0,
       canonicalTransactionCbor: bytes,
     });
     expect(evidence.resultClass).toBe(
-      OutputReferenceScriptResultClassesV1.NoFault,
+      OutputReferenceScriptResultClasses.NoFault,
     );
     expect(() =>
-      prepareOutputReferenceScriptDecodingEvidenceV1({
-        subject: acceptedVerdictSubjectV1(id),
+      prepareOutputReferenceScriptDecodingEvidence({
+        subject: acceptedVerdictSubject(id),
         outputIndex: 0,
         canonicalTransactionCbor: bytes,
       }),
@@ -158,18 +158,18 @@ describe("outputReferenceScriptDecoding V1", () => {
 
   it("refuses output coordinate and non-family reason substitutions", () => {
     const tx = transaction("malformed");
-    const bytes = encodeMidgardNativeTxCanonicalV1(tx);
-    const id = computeMidgardNativeTxIdV1(tx).toString("hex");
+    const bytes = encodeMidgardNativeTxCanonical(tx);
+    const id = computeMidgardNativeTxId(tx).toString("hex");
     expect(() =>
-      prepareOutputReferenceScriptDecodingEvidenceV1({
-        subject: acceptedVerdictSubjectV1(id),
+      prepareOutputReferenceScriptDecodingEvidence({
+        subject: acceptedVerdictSubject(id),
         outputIndex: 1,
         canonicalTransactionCbor: bytes,
       }),
     ).toThrow(/out of range/u);
     expect(() =>
-      classifyOutputReferenceScriptDecodingFindingV1({
-        subject: forcedVerdictSubjectV1({
+      classifyOutputReferenceScriptDecodingFinding({
+        subject: forcedVerdictSubject({
           transactionId: id,
           sourceKey: { transactionId: "44".repeat(32), outputIndex: 0n },
           rejectionReason: {

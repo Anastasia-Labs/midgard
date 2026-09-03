@@ -20,12 +20,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCompact,
   formatUnknownError,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
@@ -36,8 +36,8 @@ import {
 import { Effect } from "effect";
 
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalBlockEvidenceV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalBlockEvidence,
 } from "./evidence/index.js";
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
@@ -46,7 +46,7 @@ import {
   type TrieEntry,
 } from "./ne-proofs.js";
 import {
-  deriveL2TransactionSourceCborV1,
+  deriveL2TransactionSourceCbor,
   type FetchLike,
   fetchNodeBlockTransactions,
   type NodeTransactionPayload,
@@ -148,7 +148,7 @@ type DecodedTx = {
   readonly outputsPreimageCbor: readonly string[];
 };
 
-export type ReferenceInputNoIdxDetectedViolationV1 = Readonly<{
+export type ReferenceInputNoIdxDetectedViolation = Readonly<{
   badTxIndex: number;
   badTxId: string;
   badReferenceInputIndex: number;
@@ -160,9 +160,9 @@ export type ReferenceInputNoIdxDetectedViolationV1 = Readonly<{
 const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
-  let nativeTx: MidgardNativeTxFullV1;
+  let nativeTx: MidgardNativeTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
       Buffer.from(txCbor, "hex"),
     );
   } catch (cause) {
@@ -170,7 +170,7 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
       `Failed to decode native Midgard tx ${nodeTxId}: ${formatUnknownError(cause)}`,
     );
   }
-  const computed = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+  const computed = computeMidgardNativeTxId(nativeTx).toString("hex");
   if (computed !== nodeTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computed}.`,
@@ -187,10 +187,10 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   return {
     nodeTxId,
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
-    nativeCompactCbor: encodeMidgardNativeTxCompactV1(
-      nativeTx.compact,
-    ).toString("hex"),
-    l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+    nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
+      "hex",
+    ),
+    l2TransactionSourceCbor: deriveL2TransactionSourceCbor(
       Buffer.from(txCbor, "hex"),
     ),
     referenceInputs: spendInputsWitnessFromCbors(
@@ -222,12 +222,12 @@ const parseBadReferenceInputIndex = (
  * an out-of-range index into a producer committed by this same block is
  * emitted here.
  */
-export const detectReferenceInputNoIdxViolationsFromTransactionsV1 = (
+export const detectReferenceInputNoIdxViolationsFromTransactions = (
   transactions: readonly NodeTransactionPayload[],
-): readonly ReferenceInputNoIdxDetectedViolationV1[] => {
+): readonly ReferenceInputNoIdxDetectedViolation[] => {
   const decoded = transactions.map(decodeTx);
   const byId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
-  const detections: ReferenceInputNoIdxDetectedViolationV1[] = [];
+  const detections: ReferenceInputNoIdxDetectedViolation[] = [];
   for (const [badTxIndex, badTx] of decoded.entries()) {
     for (const [
       badReferenceInputIndex,
@@ -539,18 +539,18 @@ export const prepareReferenceInputNoIdxFromTransactions = async ({
 };
 
 /** Security-grade builder over one authenticated header/public-DA block. */
-export const prepareReferenceInputNoIdxFromCanonicalEvidenceV1 = async ({
+export const prepareReferenceInputNoIdxFromCanonicalEvidence = async ({
   evidence,
   badTxId,
   badReferenceInputIndex,
   outputDir,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
   readonly outputDir?: string;
 }): Promise<PreparedReferenceInputNoIdxOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   return await prepareReferenceInputNoIdxFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,

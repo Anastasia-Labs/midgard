@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import type { OutputReferenceScriptDecodingEvidenceV1 } from "./output-reference-script-decoding-v1.js";
+import type { OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding-v1.js";
 
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_STAGES_V1 = [
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_STAGES = [
   "none",
   "step01",
   "step02",
@@ -15,9 +15,9 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type OutputReferenceScriptDecodingStageV1 =
-  (typeof OUTPUT_REFERENCE_SCRIPT_DECODING_STAGES_V1)[number];
-export type OutputReferenceScriptDecodingActionV1 =
+export type OutputReferenceScriptDecodingStage =
+  (typeof OUTPUT_REFERENCE_SCRIPT_DECODING_STAGES)[number];
+export type OutputReferenceScriptDecodingAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -29,38 +29,38 @@ export type OutputReferenceScriptDecodingActionV1 =
   | "removeDescendants"
   | "done";
 
-type SubmitAction = Exclude<OutputReferenceScriptDecodingActionV1, "done">;
-export type OutputReferenceScriptDecodingJournalEntryV1 = Readonly<{
+type SubmitAction = Exclude<OutputReferenceScriptDecodingAction, "done">;
+export type OutputReferenceScriptDecodingJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  sourceStage: OutputReferenceScriptDecodingStageV1;
-  targetStage: OutputReferenceScriptDecodingStageV1;
+  sourceStage: OutputReferenceScriptDecodingStage;
+  targetStage: OutputReferenceScriptDecodingStage;
   action: SubmitAction;
   phase: "intent" | "submitted" | "confirmed";
   txHash: string;
 }>;
-export interface OutputReferenceScriptDecodingJournalV1 {
+export interface OutputReferenceScriptDecodingJournal {
   load(
     identity: string,
-  ): Promise<readonly OutputReferenceScriptDecodingJournalEntryV1[]>;
-  append(entry: OutputReferenceScriptDecodingJournalEntryV1): Promise<void>;
+  ): Promise<readonly OutputReferenceScriptDecodingJournalEntry[]>;
+  append(entry: OutputReferenceScriptDecodingJournalEntry): Promise<void>;
 }
-export interface OutputReferenceScriptDecodingActuatorV1 {
-  observe(identity: string): Promise<OutputReferenceScriptDecodingStageV1>;
+export interface OutputReferenceScriptDecodingActuator {
+  observe(identity: string): Promise<OutputReferenceScriptDecodingStage>;
   build(input: {
     action: SubmitAction;
-    evidence: OutputReferenceScriptDecodingEvidenceV1;
+    evidence: OutputReferenceScriptDecodingEvidence;
     lease?: StateQueueMutationLeaseCoordinator;
   }): Promise<{
     txHash: string;
-    targetStage: OutputReferenceScriptDecodingStageV1;
+    targetStage: OutputReferenceScriptDecodingStage;
     submit(): Promise<string>;
   }>;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
 
-export const outputReferenceScriptDecodingEvidenceIdentityV1 = (
-  evidence: OutputReferenceScriptDecodingEvidenceV1,
+export const outputReferenceScriptDecodingEvidenceIdentity = (
+  evidence: OutputReferenceScriptDecodingEvidence,
 ): string =>
   createHash("sha256")
     .update(
@@ -79,9 +79,9 @@ export const outputReferenceScriptDecodingEvidenceIdentityV1 = (
     )
     .digest("hex");
 
-export const nextOutputReferenceScriptDecodingActionV1 = (
-  stage: OutputReferenceScriptDecodingStageV1,
-): OutputReferenceScriptDecodingActionV1 => {
+export const nextOutputReferenceScriptDecodingAction = (
+  stage: OutputReferenceScriptDecodingStage,
+): OutputReferenceScriptDecodingAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -107,11 +107,11 @@ export const nextOutputReferenceScriptDecodingActionV1 = (
 
 const allowedTarget = (
   action: SubmitAction,
-  target: OutputReferenceScriptDecodingStageV1,
+  target: OutputReferenceScriptDecodingStage,
 ): boolean => {
   const allowed: Record<
     SubmitAction,
-    readonly OutputReferenceScriptDecodingStageV1[]
+    readonly OutputReferenceScriptDecodingStage[]
   > = {
     submitInit: ["step01"],
     submitStep01: ["step02"],
@@ -127,7 +127,7 @@ const allowedTarget = (
 };
 
 const pending = (
-  entries: readonly OutputReferenceScriptDecodingJournalEntryV1[],
+  entries: readonly OutputReferenceScriptDecodingJournalEntry[],
 ) =>
   [...entries]
     .reverse()
@@ -142,18 +142,18 @@ const pending = (
         ),
     );
 
-export const runOutputReferenceScriptDecodingWorkflowV1 = async ({
+export const runOutputReferenceScriptDecodingWorkflow = async ({
   evidence,
   journal,
   actuator,
   removalLease,
 }: {
-  evidence: OutputReferenceScriptDecodingEvidenceV1;
-  journal: OutputReferenceScriptDecodingJournalV1;
-  actuator: OutputReferenceScriptDecodingActuatorV1;
+  evidence: OutputReferenceScriptDecodingEvidence;
+  journal: OutputReferenceScriptDecodingJournal;
+  actuator: OutputReferenceScriptDecodingActuator;
   removalLease?: StateQueueMutationLeaseCoordinator;
-}): Promise<OutputReferenceScriptDecodingStageV1> => {
-  const identity = outputReferenceScriptDecodingEvidenceIdentityV1(evidence);
+}): Promise<OutputReferenceScriptDecodingStage> => {
+  const identity = outputReferenceScriptDecodingEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     if (
@@ -183,7 +183,7 @@ export const runOutputReferenceScriptDecodingWorkflowV1 = async ({
       continue;
     }
     const sourceStage = await actuator.observe(identity);
-    const action = nextOutputReferenceScriptDecodingActionV1(sourceStage);
+    const action = nextOutputReferenceScriptDecodingAction(sourceStage);
     if (action === "done") return sourceStage;
     if (action === "removeDescendants" && removalLease === undefined)
       throw new Error(
@@ -201,7 +201,7 @@ export const runOutputReferenceScriptDecodingWorkflowV1 = async ({
       throw new Error(
         "outputReferenceScriptDecoding built transaction identity/target is invalid",
       );
-    const intent: OutputReferenceScriptDecodingJournalEntryV1 = {
+    const intent: OutputReferenceScriptDecodingJournalEntry = {
       sequence: entries.length,
       identity,
       sourceStage,
@@ -223,16 +223,16 @@ export const runOutputReferenceScriptDecodingWorkflowV1 = async ({
   }
 };
 
-export const cancelOutputReferenceScriptDecodingWorkflowV1 = async ({
+export const cancelOutputReferenceScriptDecodingWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  evidence: OutputReferenceScriptDecodingEvidenceV1;
-  journal: OutputReferenceScriptDecodingJournalV1;
-  actuator: OutputReferenceScriptDecodingActuatorV1;
+  evidence: OutputReferenceScriptDecodingEvidence;
+  journal: OutputReferenceScriptDecodingJournal;
+  actuator: OutputReferenceScriptDecodingActuator;
 }): Promise<"cancelled"> => {
-  const identity = outputReferenceScriptDecodingEvidenceIdentityV1(evidence);
+  const identity = outputReferenceScriptDecodingEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   const sourceStage = await actuator.observe(identity);
   if (["none", "proven", "removed", "cancelled"].includes(sourceStage))
@@ -245,7 +245,7 @@ export const cancelOutputReferenceScriptDecodingWorkflowV1 = async ({
     throw new Error(
       "outputReferenceScriptDecoding cancel identity/target is invalid",
     );
-  const intent: OutputReferenceScriptDecodingJournalEntryV1 = {
+  const intent: OutputReferenceScriptDecodingJournalEntry = {
     sequence: entries.length,
     identity,
     sourceStage,

@@ -1,24 +1,24 @@
 import {
-  DOUBLE_WITHDRAW_VIOLATION_ID_V1,
+  DOUBLE_WITHDRAW_VIOLATION_ID,
   DoubleWithdrawStep02Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import type { DoubleWithdrawContractsV1 } from "../double-withdraw/contracts-v1.js";
+import type { DoubleWithdrawContracts } from "../double-withdraw/contracts-v1.js";
 import { submitDoubleWithdrawInit } from "../double-withdraw/submit-double-withdraw-init.js";
 import {
-  parseSubmitDoubleWithdrawInclusionV1,
+  parseSubmitDoubleWithdrawInclusion,
   submitDoubleWithdrawStep01,
 } from "../double-withdraw/submit-double-withdraw-step-01.js";
 import { submitDoubleWithdrawStep02 } from "../double-withdraw/submit-double-withdraw-step-02.js";
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalEvidenceBuilderInputV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence-v1.js";
 import {
-  type PreparedDoubleWithdrawOutputV1,
-  prepareDoubleWithdrawFromCommittedLeavesV1,
+  type PreparedDoubleWithdrawOutput,
+  prepareDoubleWithdrawFromCommittedLeaves,
 } from "../prepare-double-withdraw.js";
 import {
   type StateQueueMutationLease,
@@ -27,63 +27,63 @@ import {
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_DOUBLE_WITHDRAW_ARTIFACT_V1 =
+export const DOUBLE_WITHDRAW_ARTIFACT =
   "midgard-production-double-withdraw-artifact-v1" as const;
 
-type DoubleWithdrawArtifactEntryV1 = Readonly<{
+type DoubleWithdrawArtifactEntry = Readonly<{
   keyCbor: string;
   valueCbor: string;
 }>;
 
-export type ProductionDoubleWithdrawArtifactV1 = JournalJsonObjectV1 & {
-  readonly schemaVersion: typeof PRODUCTION_DOUBLE_WITHDRAW_ARTIFACT_V1;
+export type DoubleWithdrawArtifact = JournalJsonObject & {
+  readonly schemaVersion: typeof DOUBLE_WITHDRAW_ARTIFACT;
   readonly headerHash: string;
   readonly committedWithdrawalsRoot: string;
   readonly withdrawalCount: number;
   readonly firstLeafIndex: number;
   readonly secondLeafIndex: number;
-  readonly entries: readonly DoubleWithdrawArtifactEntryV1[];
+  readonly entries: readonly DoubleWithdrawArtifactEntry[];
 };
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -138,7 +138,7 @@ const natural = (value: unknown, label: string): number => {
   return value as number;
 };
 
-const parseArtifact = (value: unknown): ProductionDoubleWithdrawArtifactV1 => {
+const parseArtifact = (value: unknown): DoubleWithdrawArtifact => {
   const artifact = record(value, "double-withdraw artifact");
   exactKeys(
     artifact,
@@ -153,7 +153,7 @@ const parseArtifact = (value: unknown): ProductionDoubleWithdrawArtifactV1 => {
     ],
     "double-withdraw artifact",
   );
-  if (artifact.schemaVersion !== PRODUCTION_DOUBLE_WITHDRAW_ARTIFACT_V1) {
+  if (artifact.schemaVersion !== DOUBLE_WITHDRAW_ARTIFACT) {
     throw new Error("double-withdraw artifact version changed");
   }
   if (!Array.isArray(artifact.entries) || artifact.entries.length === 0) {
@@ -191,7 +191,7 @@ const parseArtifact = (value: unknown): ProductionDoubleWithdrawArtifactV1 => {
     );
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_DOUBLE_WITHDRAW_ARTIFACT_V1,
+    schemaVersion: DOUBLE_WITHDRAW_ARTIFACT,
     headerHash: canonicalHex(
       artifact.headerHash,
       HEX_28,
@@ -215,17 +215,17 @@ const parseArtifact = (value: unknown): ProductionDoubleWithdrawArtifactV1 => {
   });
 };
 
-type AdmittedDoubleWithdrawArtifactV1 = Readonly<{
-  artifact: ProductionDoubleWithdrawArtifactV1;
-  prepared: PreparedDoubleWithdrawOutputV1;
-  firstInclusion: ReturnType<typeof parseSubmitDoubleWithdrawInclusionV1>;
-  secondInclusion: ReturnType<typeof parseSubmitDoubleWithdrawInclusionV1>;
+type AdmittedDoubleWithdrawArtifact = Readonly<{
+  artifact: DoubleWithdrawArtifact;
+  prepared: PreparedDoubleWithdrawOutput;
+  firstInclusion: ReturnType<typeof parseSubmitDoubleWithdrawInclusion>;
+  secondInclusion: ReturnType<typeof parseSubmitDoubleWithdrawInclusion>;
 }>;
 
 /** Rebuilds the counted root, deterministic pair, and both MPF proofs. */
-export const admitProductionDoubleWithdrawArtifactV1 = async (
+export const admitDoubleWithdrawArtifact = async (
   value: unknown,
-): Promise<AdmittedDoubleWithdrawArtifactV1> => {
+): Promise<AdmittedDoubleWithdrawArtifact> => {
   const artifact = parseArtifact(value);
   const first = artifact.entries[artifact.firstLeafIndex];
   const second = artifact.entries[artifact.secondLeafIndex];
@@ -236,7 +236,7 @@ export const admitProductionDoubleWithdrawArtifactV1 = async (
   ) {
     throw new Error("double-withdraw artifact selected an invalid leaf pair");
   }
-  const prepared = await prepareDoubleWithdrawFromCommittedLeavesV1({
+  const prepared = await prepareDoubleWithdrawFromCommittedLeaves({
     headerHash: artifact.headerHash,
     committedWithdrawalsRoot: artifact.committedWithdrawalsRoot,
     withdrawalCount: BigInt(artifact.withdrawalCount),
@@ -256,23 +256,21 @@ export const admitProductionDoubleWithdrawArtifactV1 = async (
   return Object.freeze({
     artifact,
     prepared,
-    firstInclusion: parseSubmitDoubleWithdrawInclusionV1(
-      prepared.firstInclusion,
-    ),
-    secondInclusion: parseSubmitDoubleWithdrawInclusionV1(
+    firstInclusion: parseSubmitDoubleWithdrawInclusion(prepared.firstInclusion),
+    secondInclusion: parseSubmitDoubleWithdrawInclusion(
       prepared.secondInclusion,
     ),
   });
 };
 
 const detectionIdForPrepared = (
-  prepared: PreparedDoubleWithdrawOutputV1,
+  prepared: PreparedDoubleWithdrawOutput,
 ): string =>
-  `${DOUBLE_WITHDRAW_VIOLATION_ID_V1}:${prepared.firstLeaf.index.toString()}:${prepared.secondLeaf.index.toString()}:${prepared.firstLeaf.withdrawalIdCbor}:${prepared.secondLeaf.withdrawalIdCbor}`;
+  `${DOUBLE_WITHDRAW_VIOLATION_ID}:${prepared.firstLeaf.index.toString()}:${prepared.secondLeaf.index.toString()}:${prepared.firstLeaf.withdrawalIdCbor}:${prepared.secondLeaf.withdrawalIdCbor}`;
 
 const selectedPairFromClassification = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "doubleWithdraw" },
 ): Readonly<{
@@ -284,7 +282,7 @@ const selectedPairFromClassification = (
   const [violationId, first, second, firstKeyCbor, secondKeyCbor, ...surplus] =
     classification.selected.detectionId.split(":");
   if (
-    violationId !== DOUBLE_WITHDRAW_VIOLATION_ID_V1 ||
+    violationId !== DOUBLE_WITHDRAW_VIOLATION_ID ||
     surplus.length !== 0 ||
     !/^(?:0|[1-9][0-9]*)$/u.test(first ?? "") ||
     !/^(?:0|[1-9][0-9]*)$/u.test(second ?? "") ||
@@ -311,19 +309,19 @@ const selectedPairFromClassification = (
   };
 };
 
-const prepareArtifactFromEvidenceV1 = async ({
+const prepareArtifactFromEvidence = async ({
   evidence,
   classification,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "doubleWithdraw" };
-}): Promise<ProductionDoubleWithdrawArtifactV1> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+}): Promise<DoubleWithdrawArtifact> => {
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   if (
     classification.headerHash !== admitted.headerHash ||
-    classification.selected.violationId !== DOUBLE_WITHDRAW_VIOLATION_ID_V1
+    classification.selected.violationId !== DOUBLE_WITHDRAW_VIOLATION_ID
   ) {
     throw new Error(
       "double-withdraw classification differs from canonical evidence",
@@ -344,7 +342,7 @@ const prepareArtifactFromEvidenceV1 = async ({
       "double-withdraw classification keys differ from the committed leaves",
     );
   }
-  const prepared = await prepareDoubleWithdrawFromCommittedLeavesV1({
+  const prepared = await prepareDoubleWithdrawFromCommittedLeaves({
     headerHash: admitted.headerHash,
     committedWithdrawalsRoot: evidence.header.withdrawalsRoot,
     withdrawalCount: evidence.header.withdrawalCount,
@@ -360,51 +358,51 @@ const prepareArtifactFromEvidenceV1 = async ({
       "double-withdraw classification changed its deterministic committed pair",
     );
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_DOUBLE_WITHDRAW_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: DOUBLE_WITHDRAW_ARTIFACT,
     headerHash: admitted.headerHash,
     committedWithdrawalsRoot: evidence.header.withdrawalsRoot,
     withdrawalCount: entries.length,
     firstLeafIndex: prepared.firstLeaf.index,
     secondLeafIndex: prepared.secondLeaf.index,
     entries,
-  }) as ProductionDoubleWithdrawArtifactV1;
-  await admitProductionDoubleWithdrawArtifactV1(artifact);
+  }) as DoubleWithdrawArtifact;
+  await admitDoubleWithdrawArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type DoubleWithdrawWorkflowReferenceScriptsV1 = Readonly<{
+export type DoubleWithdrawWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-type BoundDoubleWithdrawTransactionsConfigV1 = Readonly<{
+type BoundDoubleWithdrawTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"doubleWithdraw">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"doubleWithdraw">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  contracts: DoubleWithdrawContractsV1;
-  category: FraudProofWorkflowDeploymentBindingV1<"doubleWithdraw">["resolvedContracts"]["category"];
-  catalogue: FraudProofWorkflowDeploymentBindingV1<"doubleWithdraw">["catalogue"];
-  referenceScripts: DoubleWithdrawWorkflowReferenceScriptsV1;
+  contracts: DoubleWithdrawContracts;
+  category: FraudProofWorkflowDeploymentBinding<"doubleWithdraw">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"doubleWithdraw">["catalogue"];
+  referenceScripts: DoubleWithdrawWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
   deploymentInfo: unknown;
 }>;
 
-type DoubleWithdrawBuilderSetV1 = Readonly<{
+type DoubleWithdrawBuilderSet = Readonly<{
   init: typeof submitDoubleWithdrawInit;
   step01: typeof submitDoubleWithdrawStep01;
   step02: typeof submitDoubleWithdrawStep02;
   remove: typeof submitRemoveFraudulentBlock;
 }>;
 
-const productionBuilders: DoubleWithdrawBuilderSetV1 = Object.freeze({
+const productionBuilders: DoubleWithdrawBuilderSet = Object.freeze({
   init: submitDoubleWithdrawInit,
   step01: submitDoubleWithdrawStep01,
   step02: submitDoubleWithdrawStep02,
@@ -412,7 +410,7 @@ const productionBuilders: DoubleWithdrawBuilderSetV1 = Object.freeze({
 });
 
 const requiredAction = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "double-withdraw workflow action");
   if (
@@ -436,19 +434,19 @@ const stringField = (
   return value;
 };
 
-const createBoundTransactionPortV1 = ({
+const createBoundTransactionPort = ({
   config,
   builders,
 }: {
-  readonly config: BoundDoubleWithdrawTransactionsConfigV1;
-  readonly builders: DoubleWithdrawBuilderSetV1;
-}): ProductionLinearFamilyTransactionPortV1<"doubleWithdraw"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  readonly config: BoundDoubleWithdrawTransactionsConfig;
+  readonly builders: DoubleWithdrawBuilderSet;
+}): LinearFamilyTransactionPort<"doubleWithdraw"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "doubleWithdraw",
   prepare: async ({ evidence, classification }) =>
-    await prepareArtifactFromEvidenceV1({ evidence, classification }),
+    await prepareArtifactFromEvidence({ evidence, classification }),
   capture: async ({ action, artifact }) => {
-    const admitted = await admitProductionDoubleWithdrawArtifactV1(artifact);
+    const admitted = await admitDoubleWithdrawArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
         "double-withdraw artifact targets a different manifest-bound header",
@@ -456,7 +454,7 @@ const createBoundTransactionPortV1 = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.init({
             lucid: config.lucid,
@@ -477,7 +475,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step01({
             lucid: config.lucid,
@@ -497,7 +495,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step02({
             lucid: config.lucid,
@@ -529,7 +527,7 @@ const createBoundTransactionPortV1 = ({
       };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           await builders.remove({
             lucid: config.lucid,
@@ -544,7 +542,7 @@ const createBoundTransactionPortV1 = ({
             fraudProverRewardLovelace: config.fraudProverRewardLovelace,
             preSubmitBoundary: async (built) => {
               if (
-                !workflowTransactionInputOutRefsV1(built.signed).includes(
+                !workflowTransactionInputOutRefs(built.signed).includes(
                   nextRemovalOutRef,
                 )
               ) {
@@ -553,7 +551,7 @@ const createBoundTransactionPortV1 = ({
                 );
               }
               if (
-                !workflowTransactionReferenceInputOutRefsV1(
+                !workflowTransactionReferenceInputOutRefs(
                   built.signed,
                 ).includes(fraudProofOutRef)
               ) {
@@ -577,31 +575,31 @@ const createBoundTransactionPortV1 = ({
   },
 });
 
-export type ManifestBoundDoubleWithdrawWorkflowConfigV1 = Readonly<{
+export type ManifestBoundDoubleWithdrawWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: DoubleWithdrawWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: DoubleWithdrawWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundDoubleWithdrawWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"doubleWithdraw">;
-  l1: FraudProofFamilyL1ObservationPortV1<"doubleWithdraw">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"doubleWithdraw">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundDoubleWithdrawWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"doubleWithdraw">;
+  l1: FraudProofFamilyL1ObservationPort<"doubleWithdraw">;
+  transactions: LinearFamilyTransactionPort<"doubleWithdraw">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundDoubleWithdrawWorkflowV1 = async (
-  config: ManifestBoundDoubleWithdrawWorkflowConfigV1,
-): Promise<ManifestBoundDoubleWithdrawWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundDoubleWithdrawWorkflow = async (
+  config: ManifestBoundDoubleWithdrawWorkflowConfig,
+): Promise<ManifestBoundDoubleWithdrawWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -613,7 +611,7 @@ export const createManifestBoundDoubleWithdrawWorkflowV1 = async (
       DoubleWithdrawStep02Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -625,38 +623,38 @@ export const createManifestBoundDoubleWithdrawWorkflowV1 = async (
       "double-withdraw manifest binding omitted required contracts",
     );
   }
-  const references: DoubleWithdrawWorkflowReferenceScriptsV1 = Object.freeze({
+  const references: DoubleWithdrawWorkflowReferenceScripts = Object.freeze({
     steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofDoubleWithdraw",
         utxo: config.referenceScripts.steps[0],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofDoubleWithdrawStep02",
         utxo: config.referenceScripts.steps[1],
       }),
     ] as const),
     witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: config.referenceScripts.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: config.referenceScripts.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
       }),
     }),
   });
-  const contracts: DoubleWithdrawContractsV1 = Object.freeze({
+  const contracts: DoubleWithdrawContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -669,13 +667,13 @@ export const createManifestBoundDoubleWithdrawWorkflowV1 = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     stateQueuePolicyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const transactions = createBoundTransactionPortV1({
+  const transactions = createBoundTransactionPort({
     config: {
       lucid: config.lucid,
       blueprint: binding.blueprint,
@@ -699,38 +697,37 @@ export const createManifestBoundDoubleWithdrawWorkflowV1 = async (
     binding,
     l1,
     transactions,
-    adapter: createProductionLinearFamilyWorkflowAdapterV1({
+    adapter: createLinearFamilyWorkflowAdapter({
       category: "doubleWithdraw",
       l1,
       transactions,
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
     }),
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundDoubleWithdrawWorkflowV1 = async ({
+export const runOrResumeManifestBoundDoubleWithdrawWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundDoubleWithdrawWorkflowV1;
+  readonly workflow: ManifestBoundDoubleWithdrawWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["doubleWithdraw"],
     }),
@@ -741,7 +738,7 @@ export const runOrResumeManifestBoundDoubleWithdrawWorkflowV1 = async ({
 };
 
 export const unsafeCreateDoubleWithdrawTransactionPortForTest = (input: {
-  readonly config: BoundDoubleWithdrawTransactionsConfigV1;
-  readonly builders: DoubleWithdrawBuilderSetV1;
-}): ProductionLinearFamilyTransactionPortV1<"doubleWithdraw"> =>
-  createBoundTransactionPortV1(input);
+  readonly config: BoundDoubleWithdrawTransactionsConfig;
+  readonly builders: DoubleWithdrawBuilderSet;
+}): LinearFamilyTransactionPort<"doubleWithdraw"> =>
+  createBoundTransactionPort(input);

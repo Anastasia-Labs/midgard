@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { WatcherProductionProverFundingReservationPlanV1 } from "../../src/funding/production-prover-funding-reservation-v1.js";
+import type { WatcherProverFundingReservationPlan } from "../../src/funding/production-prover-funding-reservation-v1.js";
 import {
-  isWatcherProductionProverFundingReservationConflictV1,
-  unsafeOpenWatcherSqliteProverFundingReservationStoreForTestV1,
+  isWatcherProverFundingReservationConflict,
+  unsafeOpenWatcherSqliteProverFundingReservationStoreForTest,
 } from "../../src/funding/sqlite-prover-funding-reservation-store-v1.js";
 
 const temporaryDirectories: string[] = [];
@@ -81,11 +81,10 @@ const openStore = async () => {
   const path = join(directory, "watcher.sqlite");
   return {
     path,
-    runtime:
-      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTestV1(
-        { path },
-        () => undefined,
-      ),
+    runtime: await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
+      { path },
+      () => undefined,
+    ),
   };
 };
 
@@ -93,7 +92,7 @@ const plan = (
   reservationByte: string,
   decisionByte: string,
   fundingOutRef = `${"11".repeat(32)}#0`,
-): WatcherProductionProverFundingReservationPlanV1 =>
+): WatcherProverFundingReservationPlan =>
   Object.freeze({
     schemaVersion:
       "midgard-watcher-production-prover-funding-reservation-plan-v1",
@@ -161,7 +160,7 @@ describe("SQLite prover funding reservation store V1", () => {
 
     opened.runtime.close();
     const restarted =
-      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTestV1(
+      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
         { path: opened.path },
         () => undefined,
       );
@@ -235,17 +234,15 @@ describe("SQLite prover funding reservation store V1", () => {
     } catch (error) {
       collision = error;
     }
-    expect(
-      isWatcherProductionProverFundingReservationConflictV1(collision),
-    ).toBe(true);
-    if (isWatcherProductionProverFundingReservationConflictV1(collision)) {
+    expect(isWatcherProverFundingReservationConflict(collision)).toBe(true);
+    if (isWatcherProverFundingReservationConflict(collision)) {
       expect(collision.conflict).toEqual({
         code: "reservation_collision",
         outRef: `${"12".repeat(32)}#0`,
       });
     }
     expect(
-      isWatcherProductionProverFundingReservationConflictV1(
+      isWatcherProverFundingReservationConflict(
         Object.assign(new Error("lookalike"), {
           conflict: {
             code: "reservation_collision",
@@ -268,7 +265,7 @@ describe("SQLite prover funding reservation store V1", () => {
     restarted.close();
 
     const secondRestart =
-      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTestV1(
+      await unsafeOpenWatcherSqliteProverFundingReservationStoreForTest(
         { path: opened.path },
         () => undefined,
       );

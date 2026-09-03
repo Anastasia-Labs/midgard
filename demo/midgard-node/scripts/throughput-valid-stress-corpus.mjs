@@ -6,9 +6,9 @@ import path from "node:path";
 import readline from "node:readline";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 
 const TX_HASH_PATTERN = /^[0-9a-f]{64}$/u;
@@ -639,8 +639,8 @@ export const parseCorpusRowLine = (line, label) => {
   let outputCount;
   let computedTxHash;
   try {
-    const nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(cborBytes);
-    computedTxHash = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(cborBytes);
+    computedTxHash = computeMidgardNativeTxId(nativeTx).toString("hex");
     outputCount = decodeMidgardNativeByteListPreimage(
       nativeTx.body.outputsPreimageCbor,
       `${label}.outputs`,

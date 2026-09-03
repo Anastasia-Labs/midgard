@@ -1,9 +1,9 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -72,7 +72,7 @@ const protocolInfo = (
   network: opts.network ?? "Preview",
   midgardNativeTxVersion: opts.nativeVersion ?? 1,
   currentSlot: opts.currentSlot ?? 0n,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
@@ -81,7 +81,7 @@ const protocolInfo = (
   },
   submissionLimits: {
     maxSubmitTxCborBytes:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -147,7 +147,7 @@ const makeProvider = (opts: {
 
 const inputLabels = (txHex: string): readonly string[] =>
   decodeMidgardNativeByteListPreimage(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(Buffer.from(txHex, "hex")).body
+    decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(txHex, "hex")).body
       .spendInputsPreimageCbor,
   ).map((bytes) => {
     const input = CML.TransactionInput.from_cbor_bytes(bytes);

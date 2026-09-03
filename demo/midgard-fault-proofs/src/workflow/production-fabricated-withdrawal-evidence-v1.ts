@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 
 import {
-  type AuthenticatedStateQueueHeaderObservationV1,
-  FABRICATED_WITHDRAWAL_VIOLATION_ID_V1,
+  type AuthenticatedStateQueueHeaderObservation,
+  FABRICATED_WITHDRAWAL_VIOLATION_ID,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   OutputReference,
-  withdrawalEventNonceV1,
+  withdrawalEventNonce,
 } from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -19,22 +19,22 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  type FabricatedWithdrawalL1WitnessV1,
-  FabricatedWithdrawalRejectionV1,
-  prepareFabricatedWithdrawalFromCommittedLeavesV1,
+  type FabricatedWithdrawalL1Witness,
+  FabricatedWithdrawalRejection,
+  prepareFabricatedWithdrawalFromCommittedLeaves,
 } from "../prepare-fabricated-withdrawal.js";
 import { requireSingletonUtxo } from "../runtime.js";
-import type { CanonicalViolationDetectionV1 } from "./classification-v1.js";
+import type { CanonicalViolationDetection } from "./classification-v1.js";
 
-export const PRODUCTION_FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY_V1 =
+export const FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-withdrawal-evidence-authority-v1" as const;
-export const PRODUCTION_FABRICATED_WITHDRAWAL_ARTIFACT_V1 =
+export const FABRICATED_WITHDRAWAL_ARTIFACT =
   "midgard-production-fabricated-withdrawal-artifact-v1" as const;
 
-export type ProductionFabricatedWithdrawalArtifactV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_FABRICATED_WITHDRAWAL_ARTIFACT_V1;
+export type FabricatedWithdrawalArtifact = Readonly<{
+  schemaVersion: typeof FABRICATED_WITHDRAWAL_ARTIFACT;
   headerHash: string;
   owner: string;
   withdrawalIndex: number;
@@ -51,24 +51,24 @@ export type ProductionFabricatedWithdrawalArtifactV1 = Readonly<{
   artifactDigest: string;
 }>;
 
-export type ProductionFabricatedWithdrawalDetectionV1 = Readonly<{
-  detection: CanonicalViolationDetectionV1;
-  artifact: ProductionFabricatedWithdrawalArtifactV1;
+export type FabricatedWithdrawalDetection = Readonly<{
+  detection: CanonicalViolationDetection;
+  artifact: FabricatedWithdrawalArtifact;
 }>;
 
-export interface ProductionFabricatedWithdrawalEvidenceAuthorityV1 {
-  readonly authorityVersion: typeof PRODUCTION_FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY_V1;
+export interface FabricatedWithdrawalEvidenceAuthority {
+  readonly authorityVersion: typeof FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY;
   detect(
-    evidence: CanonicalBlockEvidenceV1,
+    evidence: CanonicalBlockEvidence,
     owner: string,
-  ): Promise<readonly ProductionFabricatedWithdrawalDetectionV1[]>;
+  ): Promise<readonly FabricatedWithdrawalDetection[]>;
   prepare(
-    evidence: CanonicalBlockEvidenceV1,
+    evidence: CanonicalBlockEvidence,
     owner: string,
     withdrawalIndex: number,
-  ): Promise<ProductionFabricatedWithdrawalArtifactV1>;
+  ): Promise<FabricatedWithdrawalArtifact>;
   /** Re-authenticates a journal-restored artifact against current public L1. */
-  readmit(value: unknown): Promise<ProductionFabricatedWithdrawalArtifactV1>;
+  readmit(value: unknown): Promise<FabricatedWithdrawalArtifact>;
 }
 
 const admittedAuthorities = new WeakSet<object>();
@@ -97,10 +97,10 @@ const plainRecord = (
 };
 
 const artifactDigest = (
-  value: Omit<ProductionFabricatedWithdrawalArtifactV1, "artifactDigest">,
+  value: Omit<FabricatedWithdrawalArtifact, "artifactDigest">,
 ): string =>
   createHash("sha256")
-    .update(PRODUCTION_FABRICATED_WITHDRAWAL_ARTIFACT_V1)
+    .update(FABRICATED_WITHDRAWAL_ARTIFACT)
     .update("\0")
     .update(value.headerHash)
     .update("\0")
@@ -135,14 +135,14 @@ const discoverWitness = async ({
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly withdrawalId: Readonly<{
     transactionId: string;
     outputIndex: bigint;
   }>;
 }): Promise<{
-  readonly witness: FabricatedWithdrawalL1WitnessV1;
-  readonly l1Evidence: ProductionFabricatedWithdrawalArtifactV1["l1Evidence"];
+  readonly witness: FabricatedWithdrawalL1Witness;
+  readonly l1Evidence: FabricatedWithdrawalArtifact["l1Evidence"];
 }> => {
   const candidateOutRef = `${withdrawalId.transactionId}#${withdrawalId.outputIndex.toString()}`;
   const live = await lucid.utxosByOutRef([
@@ -181,7 +181,7 @@ const discoverWitness = async ({
     throw new Error("fabricated-withdrawal hub oracle has no inline datum");
   }
   const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
-  const nonce = await Effect.runPromise(withdrawalEventNonceV1(withdrawalId));
+  const nonce = await Effect.runPromise(withdrawalEventNonce(withdrawalId));
   const eventUnit = toUnit(hub.withdrawal, nonce);
   const withdrawalAddress = credentialToAddress(
     network,
@@ -219,10 +219,10 @@ const prepareAt = async ({
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly owner: string;
   readonly withdrawalIndex: number;
-}): Promise<ProductionFabricatedWithdrawalArtifactV1> => {
+}): Promise<FabricatedWithdrawalArtifact> => {
   if (
     !HEX_28.test(owner) ||
     !Number.isSafeInteger(withdrawalIndex) ||
@@ -243,7 +243,7 @@ const prepareAt = async ({
     observation: evidence.observation,
     withdrawalId: selected.key,
   });
-  const prepared = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+  const prepared = await prepareFabricatedWithdrawalFromCommittedLeaves({
     headerHash: evidence.headerHash,
     committedWithdrawalsRoot: evidence.header.withdrawalsRoot,
     withdrawalCount: evidence.header.withdrawalCount,
@@ -261,7 +261,7 @@ const prepareAt = async ({
     minimumConfirmationDepth,
   });
   const body = {
-    schemaVersion: PRODUCTION_FABRICATED_WITHDRAWAL_ARTIFACT_V1,
+    schemaVersion: FABRICATED_WITHDRAWAL_ARTIFACT,
     headerHash: prepared.headerHash,
     owner,
     withdrawalIndex,
@@ -282,7 +282,7 @@ const prepareAt = async ({
  * re-authenticates the exact live outref or hub-bound event NFT and the family
  * adapter captures a locally evaluated transaction before any submit.
  */
-export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
+export const createFabricatedWithdrawalEvidenceAuthority = ({
   lucid,
   network,
   hubOraclePolicyId,
@@ -292,7 +292,7 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
-}): ProductionFabricatedWithdrawalEvidenceAuthorityV1 => {
+}): FabricatedWithdrawalEvidenceAuthority => {
   if (
     !HEX_28.test(hubOraclePolicyId) ||
     !Number.isSafeInteger(minimumConfirmationDepth) ||
@@ -302,8 +302,8 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
       "fabricated-withdrawal evidence authority config is invalid",
     );
   }
-  const authority: ProductionFabricatedWithdrawalEvidenceAuthorityV1 = {
-    authorityVersion: PRODUCTION_FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY_V1,
+  const authority: FabricatedWithdrawalEvidenceAuthority = {
+    authorityVersion: FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY,
     prepare: async (evidence, owner, withdrawalIndex) =>
       await prepareAt({
         lucid,
@@ -315,7 +315,7 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
         withdrawalIndex,
       }),
     detect: async (evidence, owner) => {
-      const detections: ProductionFabricatedWithdrawalDetectionV1[] = [];
+      const detections: FabricatedWithdrawalDetection[] = [];
       for (
         let index = 0;
         index < evidence.reconstruction.withdrawals.length;
@@ -335,9 +335,9 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
             Object.freeze({
               artifact,
               detection: Object.freeze({
-                detectionId: `${FABRICATED_WITHDRAWAL_VIOLATION_ID_V1}:${index.toString()}:${artifact.withdrawalInclusion.committedWithdrawalIdCbor}`,
+                detectionId: `${FABRICATED_WITHDRAWAL_VIOLATION_ID}:${index.toString()}:${artifact.withdrawalInclusion.committedWithdrawalIdCbor}`,
                 headerHash: evidence.headerHash,
-                violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID_V1,
+                violationId: FABRICATED_WITHDRAWAL_VIOLATION_ID,
                 position: BigInt(index),
                 diagnostic: `committed withdrawal ${index.toString()} is absent from authentic L1 or differs from its authentic event`,
               }),
@@ -345,7 +345,7 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
           );
         } catch (cause) {
           if (
-            cause instanceof FabricatedWithdrawalRejectionV1 &&
+            cause instanceof FabricatedWithdrawalRejection &&
             (cause.code === "authentic_content_matches_commitment" ||
               cause.code === "event_not_due_for_block")
           ) {
@@ -407,7 +407,7 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
         }
         const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
         const nonce = await Effect.runPromise(
-          withdrawalEventNonceV1(withdrawalId),
+          withdrawalEventNonce(withdrawalId),
         );
         const eventUtxos = await lucid.utxosAtWithUnit(
           credentialToAddress(network, scriptHashToCredential(hub.withdrawal)),
@@ -435,13 +435,12 @@ export const createProductionFabricatedWithdrawalEvidenceAuthorityV1 = ({
   return Object.freeze(authority);
 };
 
-export const requireProductionFabricatedWithdrawalEvidenceAuthorityV1 = (
-  authority: ProductionFabricatedWithdrawalEvidenceAuthorityV1,
-): ProductionFabricatedWithdrawalEvidenceAuthorityV1 => {
+export const requireFabricatedWithdrawalEvidenceAuthority = (
+  authority: FabricatedWithdrawalEvidenceAuthority,
+): FabricatedWithdrawalEvidenceAuthority => {
   if (
     !admittedAuthorities.has(authority) ||
-    authority.authorityVersion !==
-      PRODUCTION_FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY_V1
+    authority.authorityVersion !== FABRICATED_WITHDRAWAL_EVIDENCE_AUTHORITY
   ) {
     throw new Error(
       "fabricated-withdrawal production evidence authority is not admitted",
@@ -450,9 +449,7 @@ export const requireProductionFabricatedWithdrawalEvidenceAuthorityV1 = (
   return authority;
 };
 
-const parseArtifact = (
-  value: unknown,
-): ProductionFabricatedWithdrawalArtifactV1 => {
+const parseArtifact = (value: unknown): FabricatedWithdrawalArtifact => {
   const outer = plainRecord(
     value,
     [
@@ -499,9 +496,9 @@ const parseArtifact = (
     authenticContent: authentic,
     l1Evidence: l1,
     artifactDigest: outer.artifactDigest,
-  } as unknown as ProductionFabricatedWithdrawalArtifactV1;
+  } as unknown as FabricatedWithdrawalArtifact;
   if (
-    artifact.schemaVersion !== PRODUCTION_FABRICATED_WITHDRAWAL_ARTIFACT_V1 ||
+    artifact.schemaVersion !== FABRICATED_WITHDRAWAL_ARTIFACT ||
     !HEX_28.test(artifact.owner) ||
     !HEX_28.test(artifact.headerHash) ||
     !HEX_32.test(artifact.artifactDigest) ||
@@ -533,12 +530,12 @@ const parseArtifact = (
   return Object.freeze({ ...artifact });
 };
 
-export const requireProductionFabricatedWithdrawalArtifactV1 = (
+export const requireFabricatedWithdrawalArtifact = (
   value: unknown,
   owner: string,
   headerHash: string,
-): ProductionFabricatedWithdrawalArtifactV1 => {
-  const artifact = value as ProductionFabricatedWithdrawalArtifactV1;
+): FabricatedWithdrawalArtifact => {
+  const artifact = value as FabricatedWithdrawalArtifact;
   if (
     !admittedArtifacts.has(artifact) ||
     artifact.owner !== owner ||

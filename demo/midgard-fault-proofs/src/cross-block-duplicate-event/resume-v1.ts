@@ -1,4 +1,4 @@
-import type { CommittedDuplicateEventProofV1 } from "@al-ft/midgard-sdk";
+import type { CommittedDuplicateEventProof } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -6,9 +6,9 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { CrossBlockDuplicateEventContracts } from "./contracts-v1.js";
 import { crossBlockDuplicateEventSubmitError } from "./submit-common-v1.js";
 import {
   submitCrossBlockDuplicateEventStep01,
@@ -19,7 +19,7 @@ import {
   type SubmitCrossBlockDuplicateEventStep02Result,
 } from "./submit-cross-block-duplicate-event-step-02.js";
 
-export type ResumeCrossBlockDuplicateEventResultV1 =
+export type ResumeCrossBlockDuplicateEventResult =
   | {
       readonly resumedStep: "step-01";
       readonly result: SubmitCrossBlockDuplicateEventStep01Result;
@@ -30,7 +30,7 @@ export type ResumeCrossBlockDuplicateEventResultV1 =
     };
 
 /** Resume exactly the step address that currently owns the live thread NFT. */
-export const resumeCrossBlockDuplicateEventV1 = async ({
+export const resumeCrossBlockDuplicateEvent = async ({
   lucid,
   network,
   contracts,
@@ -48,19 +48,19 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly challengedEvent: CommittedDuplicateEventProofV1;
+  readonly challengedEvent: CommittedDuplicateEventProof;
   readonly settlementOutRef: string;
   readonly settledHeaderHash: string;
-  readonly settledEvent: CommittedDuplicateEventProofV1;
+  readonly settledEvent: CommittedDuplicateEventProof;
   readonly referenceScriptUtxos: readonly [UTxO, UTxO];
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<ResumeCrossBlockDuplicateEventResultV1> => {
+}): Promise<ResumeCrossBlockDuplicateEventResult> => {
   const thread = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),

@@ -15,15 +15,15 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
 
@@ -137,8 +137,8 @@ const runCliSetupFailure = ({ args, env, evidenceDirectory, phase }) => {
 };
 
 const corpusRow = ({ chain, index, input }) => {
-  const transaction = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const transaction = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -173,8 +173,8 @@ const corpusRow = ({ chain, index, input }) => {
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   });
-  const bytes = encodeMidgardNativeTxCanonicalV1(transaction);
-  const txHash = computeMidgardNativeTxIdV1(transaction).toString("hex");
+  const bytes = encodeMidgardNativeTxCanonical(transaction);
+  const txHash = computeMidgardNativeTxId(transaction).toString("hex");
   return {
     txHash,
     canonicalCborHex: bytes.toString("hex"),

@@ -2,36 +2,36 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramMaterialEntryV1,
+  decodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeScript,
-  deriveMidgardNativeTxBodyCompactV1,
-  deriveMidgardNativeTxCompactV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardDefiniteBytesV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCanonicalV1,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxCompact,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardDefiniteBytes,
+  encodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardVersionedScriptListPreimage,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardMintAssetV1,
-  type MidgardMintPolicyItemV1,
-  type MidgardNativeTxBodyCanonicalV1,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxWitnessSetCanonicalV1,
-  midgardRedeemerPurposeFromTagV1,
+  type MidgardMintAsset,
+  type MidgardMintPolicyItem,
+  type MidgardNativeTxBodyCanonical,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxWitnessSetCanonical,
+  midgardRedeemerPurposeFromTag,
   type MidgardVersionedScript,
   type ScriptLanguageName,
   ScriptLanguageTags,
-  sortMidgardMintItemsV1,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
 import {
   plutusDataToCborHex,
@@ -41,7 +41,7 @@ import {
   runPhaseBValidationWithPatch,
   txOutRefData,
 } from "@al-ft/midgard-validation";
-import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { encode } from "cborg";
@@ -50,7 +50,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { breakDownTx, findSpentAndProducedUTxOs } from "../src/utils.js";
 import {
-  hashMidgardV1Script,
+  hashMidgardScript,
   hashPlutusV3Script,
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -113,18 +113,19 @@ const ALWAYS_FAILS_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 const DATUM_EQUALS_REDEEMER_SPEND_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.datum_equals_redeemer_spend.spend",
 );
-const MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
+const MIDGARD_SPEND_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_spend_guard.else",
 );
-const MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX =
-  loadAlwaysSucceedsCompiledCode("midgard.midgard_v1_spend_out_ref_guard.else");
-const MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
+const MIDGARD_SPEND_OUT_REF_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
+  "midgard.midgard_v1_spend_out_ref_guard.else",
+);
+const MIDGARD_RECEIVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_receive_guard.else",
 );
-const MIDGARD_V1_OBSERVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
+const MIDGARD_OBSERVE_GUARD_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_observe_guard.else",
 );
-const MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
+const MIDGARD_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_context_probe.else",
 );
 const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
@@ -133,10 +134,10 @@ const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 
 type ScriptWitnessItem = MidgardVersionedScript | Uint8Array;
 
-const testProgramMaterial = new Map<string, MidgardCekProgramMaterialEntryV1>();
+const testProgramMaterial = new Map<string, MidgardCekProgramMaterialEntry>();
 
 const registerTestProgramMaterial = (
-  entries: Iterable<MidgardCekProgramMaterialEntryV1>,
+  entries: Iterable<MidgardCekProgramMaterialEntry>,
 ): void => {
   for (const entry of entries) {
     const key = Buffer.from(entry.root).toString("hex");
@@ -157,11 +158,11 @@ const canonicalizeTestProofScript = (
 ): MidgardVersionedScript => {
   if (script.language === "NativeCardano") return script;
   try {
-    decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+    decodeMidgardCekProgramEnvelope(script.scriptBytes);
     return script;
   } catch {
     try {
-      const canonical = buildMidgardCanonicalCekProgramV1(script.scriptBytes);
+      const canonical = buildMidgardCanonicalCekProgram(script.scriptBytes);
       registerTestProgramMaterial(canonical.material.values());
       return {
         language: script.language,
@@ -252,7 +253,7 @@ const makeTypedPlutusV3Witness = (scriptHex: string): CML.Script => {
 };
 
 const midgardV1Hash = (scriptHex: string): string =>
-  hashMidgardV1Script(
+  hashMidgardScript(
     canonicalizeTestProofScript({
       language: "MidgardV1",
       scriptBytes: Buffer.from(scriptHex, "hex"),
@@ -461,10 +462,10 @@ const makeRedeemersPreimageCbor = (
     readonly exUnits?: readonly [bigint, bigint];
   }[],
 ): Buffer =>
-  encodeMidgardFieldPreimageForFieldV1({
+  encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items: items.map((item) => ({
-      purpose: midgardRedeemerPurposeFromTagV1(item.tag),
+      purpose: midgardRedeemerPurposeFromTag(item.tag),
       index: item.index,
       redeemerCbor: Buffer.from(item.data ?? EMPTY_REDEEMER_DATA),
       executionUnits: {
@@ -505,7 +506,7 @@ const makePlutusContextProbeRedeemer = (opts: {
     ]),
   );
 
-const makeMidgardV1ContextProbeRedeemer = (opts: {
+const makeMidgardContextProbeRedeemer = (opts: {
   readonly expectedSpendScriptHash: string;
   readonly expectedOwnRef: Buffer;
   readonly expectedFirstInput: Buffer;
@@ -570,14 +571,14 @@ const makeMintPreimage = (
     string,
     {
       readonly policyId: Buffer;
-      readonly assets: Map<string, MidgardMintAssetV1>;
+      readonly assets: Map<string, MidgardMintAsset>;
     }
   >();
   for (const entry of entries) {
     const policyId = Buffer.from(entry.policyId);
     const policy = policies.get(policyId.toString("hex")) ?? {
       policyId,
-      assets: new Map<string, MidgardMintAssetV1>(),
+      assets: new Map<string, MidgardMintAsset>(),
     };
     const assetName = Buffer.from(entry.assetName);
     policy.assets.set(assetName.toString("hex"), {
@@ -587,14 +588,14 @@ const makeMintPreimage = (
     policies.set(policyId.toString("hex"), policy);
   }
 
-  const items: readonly MidgardMintPolicyItemV1[] = sortMidgardMintItemsV1(
+  const items: readonly MidgardMintPolicyItem[] = sortMidgardMintItems(
     [...policies.values()].map((policy) => ({
       policyId: policy.policyId,
       assets: [...policy.assets.values()],
     })),
   );
 
-  return encodeMidgardFieldPreimageForFieldV1({ fieldIndex: 5, items });
+  return encodeMidgardFieldPreimageForField({ fieldIndex: 5, items });
 };
 
 /**
@@ -618,10 +619,10 @@ const makeMalformedMintPolicyItemPreimage = (
   policyId: Uint8Array,
   assets: ReadonlyMap<Uint8Array, bigint>,
 ): Buffer =>
-  encodeMidgardFieldPreimageV1([
+  encodeMidgardFieldPreimage([
     Buffer.concat([
       Buffer.from([0x82]),
-      encodeMidgardDefiniteBytesV1(Buffer.from(policyId)),
+      encodeMidgardDefiniteBytes(Buffer.from(policyId)),
       Buffer.from(
         encode(
           new Map(
@@ -651,7 +652,7 @@ const buildNativeTx = (opts?: {
   readonly spendInputOutRefs?: readonly Buffer[];
   readonly referenceInputOutRefs?: readonly Buffer[];
 }): {
-  tx: MidgardNativeTxFullV1;
+  tx: MidgardNativeTxFull;
   txId: Buffer;
   txCbor: Buffer;
   inputOutRef: Buffer;
@@ -710,7 +711,7 @@ const buildNativeTx = (opts?: {
     opts?.scriptIntegrityHash ??
     (opts?.scriptLanguages !== undefined
       ? computeScriptIntegrityHashForLanguages(
-          deriveMidgardNativeTxWitnessSetCompactV1({
+          deriveMidgardNativeTxWitnessSetCompact({
             addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
             scriptTxWitsPreimageCbor,
             redeemerTxWitsPreimageCbor,
@@ -718,9 +719,9 @@ const buildNativeTx = (opts?: {
           opts.scriptLanguages,
         )
       : computeHash32(EMPTY_CBOR_NULL));
-  const version = opts?.version ?? MIDGARD_NATIVE_TX_V1_VERSION;
+  const version = opts?.version ?? MIDGARD_NATIVE_TX_VERSION;
 
-  const body: MidgardNativeTxBodyCanonicalV1 = {
+  const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor,
     referenceInputsPreimageCbor,
     outputsPreimageCbor,
@@ -738,9 +739,9 @@ const buildNativeTx = (opts?: {
   const signedBodyHash =
     witnessMode === "invalid"
       ? Buffer.alloc(32, 0x7f)
-      : computeMidgardNativeTxIdV1({
+      : computeMidgardNativeTxId({
           version,
-          transactionBody: deriveMidgardNativeTxBodyCompactV1(body),
+          transactionBody: deriveMidgardNativeTxBodyCompact(body),
           transactionWitnessSetHash: Buffer.alloc(32),
           validity: "TxIsValid",
         });
@@ -756,16 +757,16 @@ const buildNativeTx = (opts?: {
           ),
         ]);
 
-  const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
+  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor,
     scriptTxWitsPreimageCbor,
     redeemerTxWitsPreimageCbor,
   };
 
-  const tx: MidgardNativeTxFullV1 = {
+  const tx: MidgardNativeTxFull = {
     version,
     validity: "TxIsValid",
-    compact: deriveMidgardNativeTxCompactV1(
+    compact: deriveMidgardNativeTxCompact(
       body,
       witnessSet,
       "TxIsValid",
@@ -775,8 +776,8 @@ const buildNativeTx = (opts?: {
     witnessSet,
   };
 
-  const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
-  const txId = computeMidgardNativeTxIdV1(tx);
+  const txCbor = encodeMidgardNativeTxCanonical(tx);
+  const txId = computeMidgardNativeTxId(tx);
 
   return {
     tx,
@@ -806,19 +807,19 @@ const attachComputedScriptIntegrityHash = (
   });
 
   const scriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    deriveMidgardNativeTxWitnessSetCompactV1(fixture.tx.witnessSet)
+    deriveMidgardNativeTxWitnessSetCompact(fixture.tx.witnessSet)
       .redeemerTxWitsHash,
     languages,
   );
 
-  const body: MidgardNativeTxBodyCanonicalV1 = {
+  const body: MidgardNativeTxBodyCanonical = {
     ...fixture.tx.body,
     scriptIntegrityHash,
   };
-  const tx: MidgardNativeTxFullV1 = {
+  const tx: MidgardNativeTxFull = {
     ...fixture.tx,
     body,
-    compact: deriveMidgardNativeTxCompactV1(
+    compact: deriveMidgardNativeTxCompact(
       body,
       fixture.tx.witnessSet,
       fixture.tx.validity,
@@ -829,8 +830,8 @@ const attachComputedScriptIntegrityHash = (
   return {
     ...fixture,
     tx,
-    txId: computeMidgardNativeTxIdV1(tx),
-    txCbor: encodeMidgardNativeTxCanonicalV1(tx),
+    txId: computeMidgardNativeTxId(tx),
+    txCbor: encodeMidgardNativeTxCanonical(tx),
   };
 };
 
@@ -845,11 +846,11 @@ const phaseAConfig = {
 const mkQueued = (
   txId: Buffer,
   txCbor: Buffer,
-  programMaterial?: readonly MidgardCekProgramMaterialEntryV1[],
+  programMaterial?: readonly MidgardCekProgramMaterialEntry[],
 ): QueuedTx => ({
   txId,
   txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
     ...(programMaterial ?? testProgramMaterial.values()),
   ]),
   arrivalSeq: 0n,
@@ -863,7 +864,7 @@ const runBothPhases = async (
   phaseBOptions?: {
     readonly enforceScriptBudget?: boolean;
   },
-  programMaterial?: readonly MidgardCekProgramMaterialEntryV1[],
+  programMaterial?: readonly MidgardCekProgramMaterialEntry[],
 ) => {
   const phaseA = await Effect.runPromise(
     runPhaseAValidation(
@@ -973,7 +974,7 @@ const runPlutusV3SpendScenario = async (opts: {
   readonly attachScriptIntegrityHash?: boolean;
   readonly referenceOutput?: Buffer;
   readonly phaseBOptions?: Parameters<typeof runBothPhases>[3];
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
 }) => {
   const base = buildNativeTx(opts.txOptions);
   const tx =
@@ -1000,7 +1001,7 @@ const runPlutusV3SpendScenario = async (opts: {
   };
 };
 
-type MidgardV1ContextProbeRedeemerOverrides = Partial<{
+type MidgardContextProbeRedeemerOverrides = Partial<{
   readonly expectedFirstInput: Buffer;
   readonly expectedSecondInput: Buffer;
   readonly expectedFirstReference: Buffer;
@@ -1014,15 +1015,15 @@ type MidgardV1ContextProbeRedeemerOverrides = Partial<{
   readonly expectedReceiveScriptHash: string;
 }>;
 
-const runMidgardV1ContextProbeScenario = async (opts?: {
+const runMidgardContextProbeScenario = async (opts?: {
   readonly marker?: number;
-  readonly redeemerOverrides?: MidgardV1ContextProbeRedeemerOverrides;
+  readonly redeemerOverrides?: MidgardContextProbeRedeemerOverrides;
 }) => {
   const signerKey = CML.PrivateKey.generate_ed25519();
-  const probeHash = midgardV1Hash(MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX);
+  const probeHash = midgardV1Hash(MIDGARD_CONTEXT_PROBE_SCRIPT_HEX);
   const mintHash = midgardV1Hash(ALWAYS_SUCCEEDS_MINT_SCRIPT_HEX);
-  const observerHash = midgardV1Hash(MIDGARD_V1_OBSERVE_GUARD_SCRIPT_HEX);
-  const receiveHash = midgardV1Hash(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX);
+  const observerHash = midgardV1Hash(MIDGARD_OBSERVE_GUARD_SCRIPT_HEX);
+  const receiveHash = midgardV1Hash(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX);
   const secondOutputHash = midgardV1Hash(ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX);
   const scriptSpendOutRef = makeOutRef(0x10, 0n);
   const pubkeySpendOutRef = makeOutRef(0x30, 0n);
@@ -1040,16 +1041,16 @@ const runMidgardV1ContextProbeScenario = async (opts?: {
       { policyId: mintPolicyId, assetName: assetName, quantity: 1n },
     ]),
     scriptWitnessItems: [
-      makeRawUplcWitness(MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX),
+      makeRawUplcWitness(MIDGARD_CONTEXT_PROBE_SCRIPT_HEX),
       makeRawUplcWitness(ALWAYS_SUCCEEDS_MINT_SCRIPT_HEX),
-      makeRawUplcWitness(MIDGARD_V1_OBSERVE_GUARD_SCRIPT_HEX),
-      makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
+      makeRawUplcWitness(MIDGARD_OBSERVE_GUARD_SCRIPT_HEX),
+      makeRawUplcWitness(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX),
     ],
     redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
       {
         tag: MidgardRedeemerTag.Spend,
         index: 0n,
-        data: makeMidgardV1ContextProbeRedeemer({
+        data: makeMidgardContextProbeRedeemer({
           expectedSpendScriptHash: probeHash,
           expectedOwnRef: scriptSpendOutRef,
           expectedFirstInput:
@@ -1190,24 +1191,24 @@ describe("native transaction integration", () => {
 
   it("rejects non-empty auxiliary data hashes during phase A admission", async () => {
     const base = buildNativeTx();
-    const tx: MidgardNativeTxFullV1 = {
+    const tx: MidgardNativeTxFull = {
       ...base.tx,
       body: {
         ...base.tx.body,
         auxiliaryDataHash: Buffer.from("99".repeat(32), "hex"),
       },
     };
-    const fullTx: MidgardNativeTxFullV1 = {
+    const fullTx: MidgardNativeTxFull = {
       ...tx,
-      compact: deriveMidgardNativeTxCompactV1(
+      compact: deriveMidgardNativeTxCompact(
         tx.body,
         tx.witnessSet,
         tx.validity,
         tx.version,
       ),
     };
-    const txId = computeMidgardNativeTxIdV1(fullTx);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(fullTx);
+    const txId = computeMidgardNativeTxId(fullTx);
+    const txCbor = encodeMidgardNativeTxCanonical(fullTx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
@@ -1318,24 +1319,24 @@ describe("native transaction integration", () => {
       base.referenceInputOutRef,
       base.referenceInputOutRef,
     ]);
-    const tx: MidgardNativeTxFullV1 = {
+    const tx: MidgardNativeTxFull = {
       ...base.tx,
       body: {
         ...base.tx.body,
         referenceInputsPreimageCbor: duplicatedReferenceInputsPreimageCbor,
       },
     };
-    const fullTx: MidgardNativeTxFullV1 = {
+    const fullTx: MidgardNativeTxFull = {
       ...tx,
-      compact: deriveMidgardNativeTxCompactV1(
+      compact: deriveMidgardNativeTxCompact(
         tx.body,
         tx.witnessSet,
         tx.validity,
         tx.version,
       ),
     };
-    const txId = computeMidgardNativeTxIdV1(fullTx);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(fullTx);
+    const txId = computeMidgardNativeTxId(fullTx);
+    const txCbor = encodeMidgardNativeTxCanonical(fullTx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
@@ -2061,28 +2062,28 @@ describe("native transaction integration", () => {
       Buffer.from(
         CML.make_vkey_witness(
           CML.TransactionHash.from_raw_bytes(
-            computeMidgardNativeTxIdV1(withScriptDataHash.tx),
+            computeMidgardNativeTxId(withScriptDataHash.tx),
           ),
           signerKey,
         ).to_cbor_bytes(),
       ),
     ]);
-    const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
+    const witnessSet: MidgardNativeTxWitnessSetCanonical = {
       ...withScriptDataHash.tx.witnessSet,
       addrTxWitsPreimageCbor: resignedWitnesses,
     };
-    const tx: MidgardNativeTxFullV1 = {
+    const tx: MidgardNativeTxFull = {
       ...withScriptDataHash.tx,
       witnessSet,
-      compact: deriveMidgardNativeTxCompactV1(
+      compact: deriveMidgardNativeTxCompact(
         withScriptDataHash.tx.body,
         witnessSet,
         withScriptDataHash.tx.validity,
         withScriptDataHash.tx.version,
       ),
     };
-    const txId = computeMidgardNativeTxIdV1(tx);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const txId = computeMidgardNativeTxId(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
     const preState = makeBaseLedger(
@@ -2403,7 +2404,7 @@ describe("native transaction integration", () => {
       withScriptDataHash.tx.body.scriptIntegrityHash,
     );
     badScriptDataHash[0] ^= 0xff;
-    const tx: MidgardNativeTxFullV1 = {
+    const tx: MidgardNativeTxFull = {
       ...withScriptDataHash.tx,
       body: {
         ...withScriptDataHash.tx.body,
@@ -2411,14 +2412,14 @@ describe("native transaction integration", () => {
       },
     };
     (tx as { compact: typeof tx.compact }).compact =
-      deriveMidgardNativeTxCompactV1(
+      deriveMidgardNativeTxCompact(
         tx.body,
         tx.witnessSet,
         tx.validity,
         tx.version,
       );
-    const txId = computeMidgardNativeTxIdV1(tx);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const txId = computeMidgardNativeTxId(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
     const preState = makeBaseLedger(
@@ -2940,75 +2941,69 @@ describe("native transaction integration", () => {
 
   it("accepts the MidgardV1 context probe with sorted inputs, authored outputs, mint, observer, signer, and redeemers", async () => {
     expectBothPhasesAcceptOne(
-      await runMidgardV1ContextProbeScenario({
+      await runMidgardContextProbeScenario({
         marker: 0xb3,
       }),
     );
   });
 
   it("rejects the MidgardV1 context probe when the expected first sorted spend input is wrong", async () => {
-    const { phaseA, phaseB, probeHash } =
-      await runMidgardV1ContextProbeScenario({
-        marker: 0xb4,
-        redeemerOverrides: {
-          expectedFirstInput: makeOutRef(0x09, 0n),
-        },
-      });
+    const { phaseA, phaseB, probeHash } = await runMidgardContextProbeScenario({
+      marker: 0xb4,
+      redeemerOverrides: {
+        expectedFirstInput: makeOutRef(0x09, 0n),
+      },
+    });
 
     expectPhaseAAcceptsOne(phaseA);
     expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("rejects the MidgardV1 context probe when the expected first sorted reference input is wrong", async () => {
-    const { phaseA, phaseB, probeHash } =
-      await runMidgardV1ContextProbeScenario({
-        marker: 0xb5,
-        redeemerOverrides: {
-          expectedFirstReference: makeOutRef(0x40, 0n),
-        },
-      });
+    const { phaseA, phaseB, probeHash } = await runMidgardContextProbeScenario({
+      marker: 0xb5,
+      redeemerOverrides: {
+        expectedFirstReference: makeOutRef(0x40, 0n),
+      },
+    });
 
     expectPhaseAAcceptsOne(phaseA);
     expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("rejects the MidgardV1 context probe when expected output order is swapped", async () => {
-    const { phaseA, phaseB, probeHash } =
-      await runMidgardV1ContextProbeScenario({
-        marker: 0xb6,
-        redeemerOverrides: {
-          expectedFirstOutputScriptHash: midgardV1Hash(
-            ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
-          ),
-          expectedSecondOutputScriptHash: midgardV1Hash(
-            MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX,
-          ),
-        },
-      });
+    const { phaseA, phaseB, probeHash } = await runMidgardContextProbeScenario({
+      marker: 0xb6,
+      redeemerOverrides: {
+        expectedFirstOutputScriptHash: midgardV1Hash(
+          ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
+        ),
+        expectedSecondOutputScriptHash: midgardV1Hash(
+          MIDGARD_RECEIVE_GUARD_SCRIPT_HEX,
+        ),
+      },
+    });
 
     expectPhaseAAcceptsOne(phaseA);
     expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("rejects the MidgardV1 context probe when an expected receive redeemer-map key is absent", async () => {
-    const { phaseA, phaseB, probeHash } =
-      await runMidgardV1ContextProbeScenario({
-        marker: 0xb7,
-        redeemerOverrides: {
-          expectedReceiveScriptHash: "ee".repeat(28),
-        },
-      });
+    const { phaseA, phaseB, probeHash } = await runMidgardContextProbeScenario({
+      marker: 0xb7,
+      redeemerOverrides: {
+        expectedReceiveScriptHash: "ee".repeat(28),
+      },
+    });
 
     expectPhaseAAcceptsOne(phaseA);
     expectPhaseBRejectsOne(phaseB, RejectCodes.PlutusScriptInvalid, probeHash);
   });
 
   it("accepts MidgardV1 spends with an inline raw UPLC witness", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const base = buildNativeTx({
-      scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
-      ],
+      scriptWitnessItems: [makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX)],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
           tag: MidgardRedeemerTag.Spend,
@@ -3035,19 +3030,15 @@ describe("native transaction integration", () => {
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
     expect(phaseA.accepted[0].ledgerTx.requiresPlutusEvaluation).toBe(true);
-    expect(plutusV3Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX)).not.toBe(
-      scriptHash,
-    );
+    expect(plutusV3Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX)).not.toBe(scriptHash);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
 
   it("rejects MidgardV1 spends when the guard redeemer is wrong", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const base = buildNativeTx({
-      scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
-      ],
+      scriptWitnessItems: [makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX)],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
           tag: MidgardRedeemerTag.Spend,
@@ -3081,10 +3072,10 @@ describe("native transaction integration", () => {
 
   it("accepts MidgardV1 receive scripts through protected outputs", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
-    const scriptHash = midgardV1Hash(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX);
     const base = buildNativeTx({
       scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
@@ -3165,12 +3156,10 @@ describe("native transaction integration", () => {
   });
 
   it("rejects MidgardV1 datum-hash spends at the Midgard output boundary", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const datum = makePlutusIntegerData(5n);
     const base = buildNativeTx({
-      scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
-      ],
+      scriptWitnessItems: [makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX)],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
           tag: MidgardRedeemerTag.Spend,
@@ -3205,9 +3194,9 @@ describe("native transaction integration", () => {
   });
 
   it("rejects MidgardV1 spends when only a typed PlutusV3 reference script is available", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const referenceScript = makeTypedPlutusV3Witness(
-      MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX,
+      MIDGARD_SPEND_GUARD_SCRIPT_HEX,
     );
     const base = buildNativeTx({
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
@@ -3251,11 +3240,9 @@ describe("native transaction integration", () => {
   });
 
   it("enforces MidgardV1 script budgets after Harmonic evaluation", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const base = buildNativeTx({
-      scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
-      ],
+      scriptWitnessItems: [makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX)],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
           tag: MidgardRedeemerTag.Spend,
@@ -3280,9 +3267,7 @@ describe("native transaction integration", () => {
     expect(covered.phaseB.accepted).toHaveLength(1);
 
     const lowBudget = buildNativeTx({
-      scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
-      ],
+      scriptWitnessItems: [makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX)],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
           tag: MidgardRedeemerTag.Spend,
@@ -3322,14 +3307,14 @@ describe("native transaction integration", () => {
   });
 
   it("derives MidgardV1 spend redeemer indexes from sorted out-refs", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX);
+    const scriptHash = midgardV1Hash(MIDGARD_SPEND_OUT_REF_GUARD_SCRIPT_HEX);
     const firstOutRef = makeOutRef(0x10, 0n);
     const secondOutRef = makeOutRef(0x20, 0n);
     const authoredInputOrder = [secondOutRef, firstOutRef];
     const sortedIndexed = buildNativeTx({
       spendInputOutRefs: [secondOutRef, firstOutRef],
       scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_SPEND_OUT_REF_GUARD_SCRIPT_HEX),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
@@ -3374,7 +3359,7 @@ describe("native transaction integration", () => {
     const authoredIndexed = buildNativeTx({
       spendInputOutRefs: authoredInputOrder,
       scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_OUT_REF_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_SPEND_OUT_REF_GUARD_SCRIPT_HEX),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
@@ -3410,7 +3395,7 @@ describe("native transaction integration", () => {
   });
 
   it("accepts mixed MidgardV1 spend plus PlutusV3 mint transactions", async () => {
-    const spendHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const spendHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const mintScript = makeTypedPlutusV3Witness(
       ALWAYS_SUCCEEDS_MINT_SCRIPT_HEX,
     );
@@ -3421,7 +3406,7 @@ describe("native transaction integration", () => {
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX),
         Buffer.from(mintScript.to_cbor_bytes()),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
@@ -3463,11 +3448,11 @@ describe("native transaction integration", () => {
     const spendScript = makeTypedPlutusV3Witness(
       DATUM_EQUALS_REDEEMER_SPEND_SCRIPT_HEX,
     );
-    const receiveHash = midgardV1Hash(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX);
+    const receiveHash = midgardV1Hash(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX);
     const base = buildNativeTx({
       scriptWitnessItems: [
         Buffer.from(spendScript.to_cbor_bytes()),
-        makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
@@ -3512,11 +3497,11 @@ describe("native transaction integration", () => {
     const spendScript = makeTypedPlutusV3Witness(
       DATUM_EQUALS_REDEEMER_SPEND_SCRIPT_HEX,
     );
-    const receiveHash = midgardV1Hash(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX);
+    const receiveHash = midgardV1Hash(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX);
     const base = buildNativeTx({
       scriptWitnessItems: [
         Buffer.from(spendScript.to_cbor_bytes()),
-        makeRawUplcWitness(MIDGARD_V1_RECEIVE_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_RECEIVE_GUARD_SCRIPT_HEX),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
         {
@@ -3565,7 +3550,7 @@ describe("native transaction integration", () => {
   });
 
   it("rejects mixed transactions when a later PlutusV3 mint leg fails", async () => {
-    const spendHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
+    const spendHash = midgardV1Hash(MIDGARD_SPEND_GUARD_SCRIPT_HEX);
     const mintScript = makeTypedPlutusV3Witness(ALWAYS_FAILS_SCRIPT_HEX);
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("0f", "hex");
@@ -3574,7 +3559,7 @@ describe("native transaction integration", () => {
         { policyId: policyId, assetName: assetName, quantity: 1n },
       ]),
       scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
+        makeRawUplcWitness(MIDGARD_SPEND_GUARD_SCRIPT_HEX),
         Buffer.from(mintScript.to_cbor_bytes()),
       ],
       redeemerTxWitsPreimageCbor: makeRedeemersPreimageCbor([
@@ -3727,7 +3712,7 @@ describe("native transaction integration", () => {
     const malformedRequiredObserversPreimageCbor = encodeByteList([
       Buffer.from("01", "hex"),
     ]);
-    const tx: MidgardNativeTxFullV1 = {
+    const tx: MidgardNativeTxFull = {
       ...base.tx,
       body: {
         ...base.tx.body,
@@ -3735,9 +3720,9 @@ describe("native transaction integration", () => {
       },
     };
     (tx as { compact: typeof tx.compact }).compact =
-      deriveMidgardNativeTxCompactV1(tx.body, tx.witnessSet, "TxIsValid");
-    const txId = computeMidgardNativeTxIdV1(tx);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+      deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
+    const txId = computeMidgardNativeTxId(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
@@ -3753,7 +3738,7 @@ describe("native transaction integration", () => {
     const malformedRequiredSignersPreimageCbor = encodeByteList([
       Buffer.alloc(27, 0x11),
     ]);
-    const tx: MidgardNativeTxFullV1 = {
+    const tx: MidgardNativeTxFull = {
       ...base.tx,
       body: {
         ...base.tx.body,
@@ -3761,9 +3746,9 @@ describe("native transaction integration", () => {
       },
     };
     (tx as { compact: typeof tx.compact }).compact =
-      deriveMidgardNativeTxCompactV1(tx.body, tx.witnessSet, "TxIsValid");
-    const txId = computeMidgardNativeTxIdV1(tx);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+      deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
+    const txId = computeMidgardNativeTxId(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
 
     const result = await Effect.runPromise(
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),

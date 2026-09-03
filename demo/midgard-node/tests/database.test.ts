@@ -4,41 +4,41 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  encodeMidgardProofSubmissionV1,
-  hashMidgardCekProgramEnvelopeV1,
-  hashMidgardCekTermNodeV1,
+  decodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  encodeMidgardProofSubmission,
+  hashMidgardCekProgramEnvelope,
+  hashMidgardCekTermNode,
   MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  computeMidgardNativeTxFullHashFromCanonicalCborV1,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxFullHashFromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  type MidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
@@ -69,7 +69,7 @@ import {
 import { buildSubmitRouter } from "../src/commands/listen-router.js";
 import { normalizeSubmitTxCanonicalCborToNative } from "../src/commands/listen-utils.js";
 import {
-  parseReconciliationResultV1,
+  parseReconciliationResult,
   reconcileTxCommittedProgram,
   RECONCILIATION_SCHEMA_VERSION,
 } from "../src/commands/reconcile.js";
@@ -234,7 +234,7 @@ const submitThroughRouter = <R>(
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
   options: {
     readonly contentType?: string;
-    readonly consensusProfile?: MidgardConsensusProfileV1;
+    readonly consensusProfile?: MidgardConsensusProfile;
   } = {},
 ): Effect.Effect<
   SubmitHttpResult,
@@ -245,7 +245,7 @@ const submitThroughRouter = <R>(
     const response = yield* buildSubmitRouter(
       wakeTxQueueProcessor,
       undefined,
-      options.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+      options.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
     ).pipe(
       Effect.provideService(
         HttpServerRequest.HttpServerRequest,
@@ -275,11 +275,11 @@ const makeNativeSubmitTx = (): {
   readonly txIdHex: string;
   readonly txCanonicalCbor: Buffer;
 } => {
-  const txCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+  const txCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
     makeCardanoSignedMapOutputTxBytes(),
   );
-  const txId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
   );
   return { txId, txIdHex: txId.toString("hex"), txCanonicalCbor };
 };
@@ -289,8 +289,8 @@ const makeProofSubmitTx = (): {
   readonly txIdHex: string;
   readonly txCanonicalCbor: Buffer;
 } => {
-  const canonical: MidgardNativeTxCanonicalV1 = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -312,35 +312,35 @@ const makeProofSubmitTx = (): {
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   };
-  const txCanonicalCbor = encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1(canonical),
+  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonical),
   );
-  const txId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
   );
   return { txId, txIdHex: txId.toString("hex"), txCanonicalCbor };
 };
 
 const makeMaterialProofSubmitTx = (nonce: number) => {
   const term = { kind: "variable" as const, index: BigInt(nonce) };
-  const preimage = encodeMidgardCekTermNodeV1(term);
+  const preimage = encodeMidgardCekTermNode(term);
   const material = {
     kind: "term" as const,
-    root: hashMidgardCekTermNodeV1(term),
+    root: hashMidgardCekTermNode(term),
     preimage,
   };
-  const envelope = decodeMidgardCekProgramEnvelopeV1(
-    encodeMidgardCekProgramEnvelopeV1({
+  const envelope = decodeMidgardCekProgramEnvelope(
+    encodeMidgardCekProgramEnvelope({
       uplcVersion: [1n, 1n, 0n],
       termRoot: material.root,
       nodeCount: 1n,
       materialByteLength: BigInt(preimage.length),
     }),
   );
-  const base = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const base = decodeMidgardNativeTxFullFromCanonicalCbor(
     makeNativeSubmitTx().txCanonicalCbor,
   );
-  const canonical: MidgardNativeTxCanonicalV1 = {
+  const canonical: MidgardNativeTxCanonical = {
     version: base.version,
     validity: base.validity,
     body: {
@@ -352,18 +352,18 @@ const makeMaterialProofSubmitTx = (nonce: number) => {
       scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
         {
           language: "MidgardV1",
-          scriptBytes: encodeMidgardCekProgramEnvelopeV1(envelope),
+          scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
         },
       ]),
     },
   };
-  const txCanonicalCbor = encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1(canonical),
+  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonical),
   );
-  const txId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
   );
-  const sidecarCbor = encodeMidgardCekProgramMaterialSidecarV1([material]);
+  const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([material]);
   return {
     txId,
     txIdHex: txId.toString("hex"),
@@ -371,7 +371,7 @@ const makeMaterialProofSubmitTx = (nonce: number) => {
     material,
     envelope,
     sidecarCbor,
-    proofEnvelope: encodeMidgardProofSubmissionV1({
+    proofEnvelope: encodeMidgardProofSubmission({
       transactionCbor: txCanonicalCbor,
       programMaterial: [material],
     }),
@@ -384,10 +384,10 @@ const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
     databaseTxHash(`accepted-reference-material-${nonce.toString()}`),
     0,
   );
-  const attachedCanonical = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const attachedCanonical = decodeMidgardNativeTxFullFromCanonicalCbor(
     attached.txCanonicalCbor,
   );
-  const canonical: MidgardNativeTxCanonicalV1 = {
+  const canonical: MidgardNativeTxCanonical = {
     ...attachedCanonical,
     body: {
       ...attachedCanonical.body,
@@ -398,11 +398,11 @@ const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   };
-  const txCanonicalCbor = encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1(canonical),
+  const txCanonicalCbor = encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonical),
   );
-  const txId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
   );
   return {
     ...attached,
@@ -410,7 +410,7 @@ const makeReferenceMaterialProofSubmitTx = (nonce: number) => {
     txIdHex: txId.toString("hex"),
     txCanonicalCbor,
     referenceOutRef,
-    proofEnvelope: encodeMidgardProofSubmissionV1({
+    proofEnvelope: encodeMidgardProofSubmission({
       transactionCbor: txCanonicalCbor,
       programMaterial: [attached.material],
     }),
@@ -442,11 +442,9 @@ const retrieveAllMempool = MempoolDB.retrievePage({ limit: 100_000 }).pipe(
 const databaseFixtureBytes = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`database:${label}`, length);
 
-const emptyProgramMaterialSidecarV1 = encodeMidgardCekProgramMaterialSidecarV1(
-  [],
-);
-const emptyProgramMaterialSidecarSha256V1 = createHash("sha256")
-  .update(emptyProgramMaterialSidecarV1)
+const emptyProgramMaterialSidecar = encodeMidgardCekProgramMaterialSidecar([]);
+const emptyProgramMaterialSidecarSha256 = createHash("sha256")
+  .update(emptyProgramMaterialSidecar)
   .digest();
 
 const readCekProgramMaterialStoreStats = Effect.gen(function* () {
@@ -492,8 +490,8 @@ const readCekProgramMaterialStoreStats = Effect.gen(function* () {
   return rows[0]!;
 });
 
-const wrapNativeSubmitTxV1 = (txCanonicalCbor: Buffer): Buffer =>
-  encodeMidgardProofSubmissionV1({
+const wrapNativeSubmitTx = (txCanonicalCbor: Buffer): Buffer =>
+  encodeMidgardProofSubmission({
     transactionCbor: txCanonicalCbor,
     programMaterial: [],
   });
@@ -589,8 +587,7 @@ const daPayloadInsertFixture = (label: string): DaPayloadsDB.InsertInput => {
   const payload = databaseFixtureBytes(`${label}-payload`, 96);
   return {
     [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
-    [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-      MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
     [DaPayloadsDB.Columns.VERSION]: 1,
     [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
     [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
@@ -813,20 +810,20 @@ describe("TxAdmissionsDB", () => {
           const admissionSql = yield* AdmissionSql;
           const nodeConfig = yield* NodeConfig;
           const proofTx = makeProofSubmitTx();
-          const proofEnvelope = encodeMidgardProofSubmissionV1({
+          const proofEnvelope = encodeMidgardProofSubmission({
             transactionCbor: proofTx.txCanonicalCbor,
             programMaterial: [],
           });
           const unclaimedNode = { kind: "error" as const };
           const unclaimedMaterial = {
             kind: "term" as const,
-            root: hashMidgardCekTermNodeV1(unclaimedNode),
-            preimage: encodeMidgardCekTermNodeV1(unclaimedNode),
+            root: hashMidgardCekTermNode(unclaimedNode),
+            preimage: encodeMidgardCekTermNode(unclaimedNode),
           };
           const submitProof = (body: Buffer, contentType: string) =>
             submitThroughRouter(body, Effect.void, {
               contentType,
-              consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             }).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(NodeConfig, nodeConfig),
@@ -839,7 +836,7 @@ describe("TxAdmissionsDB", () => {
           expect(rawToProof.status).toBe(415);
 
           const unclaimed = yield* submitProof(
-            encodeMidgardProofSubmissionV1({
+            encodeMidgardProofSubmission({
               transactionCbor: proofTx.txCanonicalCbor,
               programMaterial: [unclaimedMaterial],
             }),
@@ -867,7 +864,7 @@ describe("TxAdmissionsDB", () => {
           const stored = yield* TxAdmissionsDB.getByTxId(proofTx.txId);
           expect(
             stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
-          ).toEqual(encodeMidgardCekProgramMaterialSidecarV1([]));
+          ).toEqual(encodeMidgardCekProgramMaterialSidecar([]));
           expect(
             stored?.[
               TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
@@ -897,7 +894,7 @@ describe("TxAdmissionsDB", () => {
             CekProgramMaterialDB.persistVerifiedAdmissionBundle({
               txId: attempt.txId,
               txCanonicalCbor: attempt.txCanonicalCbor,
-              sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+              sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
             }),
           );
           expect(admission._tag).toBe("Left");
@@ -919,17 +916,17 @@ describe("TxAdmissionsDB", () => {
           const reachableNode = { kind: "error" as const };
           const reachable = {
             kind: "term" as const,
-            root: hashMidgardCekTermNodeV1(reachableNode),
-            preimage: encodeMidgardCekTermNodeV1(reachableNode),
+            root: hashMidgardCekTermNode(reachableNode),
+            preimage: encodeMidgardCekTermNode(reachableNode),
           };
           const extraNode = { kind: "variable" as const, index: 0n };
           const extra = {
             kind: "term" as const,
-            root: hashMidgardCekTermNodeV1(extraNode),
-            preimage: encodeMidgardCekTermNodeV1(extraNode),
+            root: hashMidgardCekTermNode(extraNode),
+            preimage: encodeMidgardCekTermNode(extraNode),
           };
-          const envelope = decodeMidgardCekProgramEnvelopeV1(
-            encodeMidgardCekProgramEnvelopeV1({
+          const envelope = decodeMidgardCekProgramEnvelope(
+            encodeMidgardCekProgramEnvelope({
               uplcVersion: [1n, 1n, 0n],
               termRoot: reachable.root,
               nodeCount: 1n,
@@ -1245,7 +1242,7 @@ describe("TxAdmissionsDB", () => {
             Buffer.from(attempt.material.root),
           );
           const envelopeHashes = attempts.map((attempt) =>
-            Buffer.from(hashMidgardCekProgramEnvelopeV1(attempt.envelope)),
+            Buffer.from(hashMidgardCekProgramEnvelope(attempt.envelope)),
           );
           const retainedBeforeVerdict = yield* sql<{
             readonly count: string;
@@ -1337,7 +1334,7 @@ describe("TxAdmissionsDB", () => {
           expect(stored?.status).toBe(TxAdmissionsDB.Status.Accepted);
           expect(
             stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
-          ).toEqual(emptyProgramMaterialSidecarV1);
+          ).toEqual(emptyProgramMaterialSidecar);
           expect(
             stored?.[
               TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
@@ -1359,7 +1356,7 @@ describe("TxAdmissionsDB", () => {
           }>`SELECT durable_pin
             FROM ${sql(CekProgramMaterialDB.membershipTableName)}
             WHERE program_envelope_hash =
-              ${Buffer.from(hashMidgardCekProgramEnvelopeV1(attempt.envelope))}`;
+              ${Buffer.from(hashMidgardCekProgramEnvelope(attempt.envelope))}`;
           expect(promotedMemberships).toEqual([{ durable_pin: false }]);
 
           const duplicate = yield* submit();
@@ -1433,7 +1430,7 @@ describe("TxAdmissionsDB", () => {
             SELECT COUNT(*)::text AS count
             FROM ${sql(CekProgramMaterialDB.membershipTableName)}
             WHERE program_envelope_hash =
-              ${Buffer.from(hashMidgardCekProgramEnvelopeV1(attempt.envelope))}`;
+              ${Buffer.from(hashMidgardCekProgramEnvelope(attempt.envelope))}`;
           expect(retainedEntries[0]?.count).toBe("0");
           expect(retainedMemberships[0]?.count).toBe("0");
         }).pipe(Effect.provide(Globals.Default)),
@@ -1449,7 +1446,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId: attempt.txId,
             txCanonicalCbor: attempt.txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -1517,7 +1514,7 @@ describe("TxAdmissionsDB", () => {
             ...decodeMidgardTxOutput(baseReferenceOutput),
             script_ref: {
               language: "MidgardV1",
-              scriptBytes: encodeMidgardCekProgramEnvelopeV1(attempt.envelope),
+              scriptBytes: encodeMidgardCekProgramEnvelope(attempt.envelope),
             },
           });
           const referenceProgramEnvelopesByTxId =
@@ -1566,7 +1563,7 @@ describe("TxAdmissionsDB", () => {
           expect(stored?.status).toBe(TxAdmissionsDB.Status.Accepted);
           expect(
             stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
-          ).toEqual(emptyProgramMaterialSidecarV1);
+          ).toEqual(emptyProgramMaterialSidecar);
         }).pipe(Effect.provide(Globals.Default)),
       ),
   );
@@ -1585,7 +1582,7 @@ describe("TxAdmissionsDB", () => {
           };
           const submit = (txCanonicalCbor: Buffer) =>
             submitThroughRouter(
-              wrapNativeSubmitTxV1(txCanonicalCbor),
+              wrapNativeSubmitTx(txCanonicalCbor),
               Effect.void,
             ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
@@ -1616,7 +1613,7 @@ describe("TxAdmissionsDB", () => {
               conflictTx.txCanonicalCbor,
               Buffer.from([0]),
             ]),
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -1697,7 +1694,7 @@ describe("TxAdmissionsDB", () => {
         Effect.gen(function* () {
           const admissionSql = yield* AdmissionSql;
           const baseConfig = yield* NodeConfig;
-          const maxBacklogBytes = emptyProgramMaterialSidecarV1.length * 4;
+          const maxBacklogBytes = emptyProgramMaterialSidecar.length * 4;
           const testConfig = {
             ...baseConfig,
             MAX_DURABLE_ADMISSION_BACKLOG: 100,
@@ -1706,7 +1703,7 @@ describe("TxAdmissionsDB", () => {
           };
           const submit = (txCanonicalCbor: Buffer) =>
             submitThroughRouter(
-              wrapNativeSubmitTxV1(txCanonicalCbor),
+              wrapNativeSubmitTx(txCanonicalCbor),
               Effect.void,
             ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
@@ -1777,7 +1774,7 @@ describe("TxAdmissionsDB", () => {
           };
           const submit = (txCanonicalCbor: Buffer) =>
             submitThroughRouter(
-              wrapNativeSubmitTxV1(txCanonicalCbor),
+              wrapNativeSubmitTx(txCanonicalCbor),
               Effect.void,
             ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
@@ -1791,7 +1788,7 @@ describe("TxAdmissionsDB", () => {
                 `admission.http-frozen-seed-${index}`,
                 64,
               ),
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: BigInt(index),
               maxBacklog,
@@ -1888,7 +1885,7 @@ describe("TxAdmissionsDB", () => {
             ),
           );
           const validationPool: ValidationPoolService = {
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             poolSize: 1,
             ready: Effect.void,
             stats: Effect.succeed({
@@ -1926,10 +1923,7 @@ describe("TxAdmissionsDB", () => {
             txCanonicalCbor: Buffer,
             wake: Effect.Effect<void, never, TxQueueWakeRequirements>,
           ) =>
-            submitThroughRouter(
-              wrapNativeSubmitTxV1(txCanonicalCbor),
-              wake,
-            ).pipe(
+            submitThroughRouter(wrapNativeSubmitTx(txCanonicalCbor), wake).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(NodeConfig, ingressTestConfig),
               Effect.provideService(ValidationPool, validationPool),
@@ -2136,12 +2130,12 @@ describe("TxAdmissionsDB", () => {
               tx_id: txId,
               tx_canonical_cbor: txCanonicalCbor,
               tx_full_hash_v1:
-                computeMidgardNativeTxFullHashFromCanonicalCborV1(
+                computeMidgardNativeTxFullHashFromCanonicalCbor(
                   txCanonicalCbor,
                 ),
-              cek_program_material_sidecar_cbor: emptyProgramMaterialSidecarV1,
+              cek_program_material_sidecar_cbor: emptyProgramMaterialSidecar,
               cek_program_material_sidecar_sha256:
-                emptyProgramMaterialSidecarSha256V1,
+                emptyProgramMaterialSidecarSha256,
             })),
           )}`;
           yield* MempoolLedgerDB.insert(txs.map(({ source }) => source));
@@ -2241,7 +2235,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -2357,7 +2351,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -2450,7 +2444,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -2504,7 +2498,7 @@ describe("TxAdmissionsDB", () => {
           const first = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor: txCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -2515,7 +2509,7 @@ describe("TxAdmissionsDB", () => {
           const duplicate = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor: txCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 10n,
             maxBacklog: 10,
@@ -2533,7 +2527,7 @@ describe("TxAdmissionsDB", () => {
                 "admission.state-machine-conflict",
                 64,
               ),
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,
@@ -2551,7 +2545,7 @@ describe("TxAdmissionsDB", () => {
                 "admission.backlog-full",
                 64,
               ),
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 10n,
               maxBacklog: 10,
@@ -2581,7 +2575,7 @@ describe("TxAdmissionsDB", () => {
             TxAdmissionsDB.admit({
               txId,
               txCanonicalCbor,
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 100,
@@ -2616,7 +2610,7 @@ describe("TxAdmissionsDB", () => {
               "admission.reserved-concurrent",
               64,
             ),
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native" as const,
           };
           const firstFiber = yield* Effect.fork(
@@ -2709,7 +2703,7 @@ describe("TxAdmissionsDB", () => {
               "admission.reserved-order-a",
               64,
             ),
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native" as const,
           };
           const requestB = {
@@ -2718,7 +2712,7 @@ describe("TxAdmissionsDB", () => {
               "admission.reserved-order-b",
               64,
             ),
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native" as const,
           };
           const start = yield* Deferred.make<void>();
@@ -2776,7 +2770,7 @@ describe("TxAdmissionsDB", () => {
                   `admission.stale-gauge-${index.toString()}`,
                   64,
                 ),
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: yield* readAdmissionBacklogGauge,
                 maxBacklog,
@@ -2814,7 +2808,7 @@ describe("TxAdmissionsDB", () => {
                     `admission.parallel-cap-${index.toString()}`,
                     64,
                   ),
-                  programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                  programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                   submitSource: "native",
                   currentBacklog: reservation.currentBacklog,
                   maxBacklog,
@@ -2868,7 +2862,7 @@ describe("TxAdmissionsDB", () => {
           inputs.map((input) =>
             TxAdmissionsDB.admit({
               ...input,
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,
@@ -2925,7 +2919,7 @@ describe("TxAdmissionsDB", () => {
           inputs.map((input) =>
             TxAdmissionsDB.admit({
               ...input,
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 20,
@@ -2977,7 +2971,7 @@ describe("TxAdmissionsDB", () => {
           for (const input of inputs) {
             yield* TxAdmissionsDB.admit({
               ...input,
-              programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+              programMaterialSidecarCbor: emptyProgramMaterialSidecar,
               submitSource: "native",
               currentBacklog: 0n,
               maxBacklog: 10,
@@ -3044,7 +3038,7 @@ describe("TxAdmissionsDB", () => {
             "admission.local-sync-setting",
             64,
           ),
-          programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+          programMaterialSidecarCbor: emptyProgramMaterialSidecar,
           submitSource: "native",
           currentBacklog: 0n,
           maxBacklog: 10,
@@ -3081,7 +3075,7 @@ describe("TxAdmissionsDB", () => {
                   `admission.arrival-tie-${txId.toString("hex")}`,
                   64,
                 ),
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -3130,7 +3124,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -3248,7 +3242,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId: tx.txId,
             txCanonicalCbor: tx.txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -3379,7 +3373,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -3491,7 +3485,7 @@ describe("TxAdmissionsDB", () => {
               TxAdmissionsDB.admit({
                 txId,
                 txCanonicalCbor,
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -3585,7 +3579,7 @@ describe("TxAdmissionsDB", () => {
             inputs.map((input) =>
               TxAdmissionsDB.admit({
                 ...input,
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -3641,7 +3635,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -3694,7 +3688,7 @@ describe("TxAdmissionsDB", () => {
           yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -3760,7 +3754,7 @@ describe("TxAdmissionsDB", () => {
             inputs.map((input) =>
               TxAdmissionsDB.admit({
                 ...input,
-                programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+                programMaterialSidecarCbor: emptyProgramMaterialSidecar,
                 submitSource: "native",
                 currentBacklog: 0n,
                 maxBacklog: 10,
@@ -3838,7 +3832,7 @@ describe("DaPayloadsDB", () => {
           const insert = {
             [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
             [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-              MIDGARD_CONSENSUS_PROFILE_V1_ID,
+              MIDGARD_CONSENSUS_PROFILE_ID,
             [DaPayloadsDB.Columns.VERSION]: 1,
             [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
             [DaPayloadsDB.Columns.PAYLOAD_SHA256]: payloadHash,
@@ -4256,7 +4250,7 @@ describe("DaPayloadsDB", () => {
             28,
           );
           const baseTime = new Date("2026-06-12T00:00:00.000Z");
-          const deploymentMarker = makeDeploymentMarkerV1("de".repeat(32));
+          const deploymentMarker = makeDeploymentMarker("de".repeat(32));
           const row = (
             headerHash: Buffer,
             status: PendingBlockFinalizationsDB.Status,
@@ -4267,9 +4261,9 @@ describe("DaPayloadsDB", () => {
               "hex",
             ),
             [PendingBlockFinalizationsDB.Columns.FORMAT_VERSION]:
-              PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+              PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
             [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
-              PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
+              PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
                 .LedgerDelta,
             [PendingBlockFinalizationsDB.Columns
               .DEPLOYMENT_MARKER_SCHEMA_VERSION]:
@@ -4277,7 +4271,7 @@ describe("DaPayloadsDB", () => {
             [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
               deploymentMarker.manifestId,
             [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
-              MIDGARD_CONSENSUS_PROFILE_V1_ID,
+              MIDGARD_CONSENSUS_PROFILE_ID,
             [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]:
               databaseTxHash(`submitted-${headerHash.toString("hex")}`),
             [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:
@@ -4350,7 +4344,7 @@ describe("DaPayloadsDB", () => {
           yield* DaPayloadsDB.upsertAvailable({
             [DaPayloadsDB.Columns.HEADER_HASH]: coveredHeader,
             [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-              MIDGARD_CONSENSUS_PROFILE_V1_ID,
+              MIDGARD_CONSENSUS_PROFILE_ID,
             [DaPayloadsDB.Columns.VERSION]: 1,
             [DaPayloadsDB.Columns.PAYLOAD_CBOR]: Buffer.from("a100", "hex"),
             [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
@@ -4415,7 +4409,7 @@ describe("ForeignTipReconciliationsDB", () => {
     () =>
       isolatedDb(
         Effect.gen(function* () {
-          const header: SDK.HeaderV1 = {
+          const header: SDK.Header = {
             prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -4442,14 +4436,14 @@ describe("ForeignTipReconciliationsDB", () => {
             operatorVkey: "22".repeat(28),
             protocolVersion: 1n,
           };
-          const foreignHeaderHash = yield* SDK.hashBlockHeaderV1(header);
+          const foreignHeaderHash = yield* SDK.hashBlockHeader(header);
           const replacedBaseHeaderHash = "23".repeat(28);
-          const deploymentMarker = makeDeploymentMarkerV1("de".repeat(32));
+          const deploymentMarker = makeDeploymentMarker("de".repeat(32));
           yield* ForeignTipReconciliationsDB.recordMismatch({
             foreignHeaderHash,
             replacedBaseHeaderHash,
             foreignHeader: header,
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             deploymentMarker,
           });
 
@@ -4475,7 +4469,7 @@ describe("ForeignTipReconciliationsDB", () => {
           const daIdentity = {
             headerHash: Buffer.from(foreignHeaderHash, "hex"),
             schemaVersion: 1 as const,
-            consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+            consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
             payloadCbor: payload,
             payloadSha256: createHash("sha256").update(payload).digest(),
           };
@@ -4533,7 +4527,7 @@ describe("ForeignTipReconciliationsDB", () => {
           const wrongDeployment = yield* Effect.either(
             ForeignTipReconciliationsDB.markResolved({
               foreignHeaderHash,
-              deploymentMarker: makeDeploymentMarkerV1("ff".repeat(32)),
+              deploymentMarker: makeDeploymentMarker("ff".repeat(32)),
               evidence: {
                 kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
                 daIdentity,
@@ -4573,7 +4567,7 @@ describe("PendingBlockFinalizationsDB", () => {
       transitionStepCount: 0n,
       validationTraceCount: 0n,
     };
-    const header: SDK.HeaderV1 = {
+    const header: SDK.Header = {
       prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: emptyExpectedRoots.utxosRoot,
       withdrawalsRoot: emptyExpectedRoots.withdrawalsRoot,
@@ -4603,12 +4597,12 @@ describe("PendingBlockFinalizationsDB", () => {
     return {
       headerHash,
       headerCbor: Buffer.from(
-        LucidData.to(header as never, SDK.HeaderV1 as never),
+        LucidData.to(header as never, SDK.Header as never),
         "hex",
       ),
       metadata: {
-        deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
-        consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+        deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+        consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
         stateQueueLeaseToken: "lease-token",
         baseSnapshotId: "snapshot",
         baseTailOutRef: "base#0",
@@ -5288,7 +5282,7 @@ describe("PendingBlockFinalizationsDB", () => {
           yield* TxAdmissionsDB.tryInsert({
             txId,
             txCanonicalCbor: txCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
           });
           yield* sql`INSERT INTO ${sql(MempoolDB.tableName)} (
@@ -6317,7 +6311,7 @@ describe("WriteBehind", () => {
           const admitted = yield* TxAdmissionsDB.admit({
             txId,
             txCanonicalCbor,
-            programMaterialSidecarCbor: emptyProgramMaterialSidecarV1,
+            programMaterialSidecarCbor: emptyProgramMaterialSidecar,
             submitSource: "native",
             currentBacklog: 0n,
             maxBacklog: 10,
@@ -6962,25 +6956,25 @@ describe("Reconciliation commands", () => {
         expect(
           resolved.evidence.some((entry) => entry.kind === "tx_status"),
         ).toEqual(true);
-        expect(parseReconciliationResultV1(resolved)).toEqual(resolved);
+        expect(parseReconciliationResult(resolved)).toEqual(resolved);
         const missingMilestone = {
           ...resolved,
         } as Record<string, unknown>;
         delete missingMilestone.milestone;
-        expect(() => parseReconciliationResultV1(missingMilestone)).toThrow(
+        expect(() => parseReconciliationResult(missingMilestone)).toThrow(
           "missing required field",
         );
         expect(() =>
-          parseReconciliationResultV1({ ...resolved, unexpected: true }),
+          parseReconciliationResult({ ...resolved, unexpected: true }),
         ).toThrow("unknown field");
         expect(() =>
-          parseReconciliationResultV1({
+          parseReconciliationResult({
             ...resolved,
             schemaVersion: "midgard-e2e-reconciliation-v0",
           }),
         ).toThrow(RECONCILIATION_SCHEMA_VERSION);
         expect(() =>
-          parseReconciliationResultV1({
+          parseReconciliationResult({
             ...resolved,
             evidence: [
               {
@@ -6991,13 +6985,13 @@ describe("Reconciliation commands", () => {
           }),
         ).toThrow("unknown field");
         expect(() =>
-          parseReconciliationResultV1({
+          parseReconciliationResult({
             ...resolved,
             target: { ...resolved.target, milestoneSpecific: { ok: true } },
           }),
         ).toThrow("unknown field");
         expect(
-          parseReconciliationResultV1({
+          parseReconciliationResult({
             ...resolved,
             evidence: resolved.evidence.map((entry) => ({
               ...entry,
@@ -7006,13 +7000,13 @@ describe("Reconciliation commands", () => {
           }).evidence[0]?.detail,
         ).toHaveProperty("diagnosticSpecific");
         expect(() =>
-          parseReconciliationResultV1({
+          parseReconciliationResult({
             ...resolved,
             safeToRetryOriginalStep: true,
           }),
         ).toThrow("status, retry, or repair binding is inconsistent");
         expect(() =>
-          parseReconciliationResultV1({
+          parseReconciliationResult({
             ...resolved,
             evidence: [
               {
@@ -7466,11 +7460,11 @@ const firstFixture = (
 )[0];
 
 const makeValidNativeImmutableEntry = (): TxUtils.Entry => {
-  const nativeTx = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+  const nativeTx = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
     Buffer.from(firstFixture.cborHex, "hex"),
   );
-  const txId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTx),
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(nativeTx),
   );
   return {
     [TxUtils.Columns.TX_ID]: txId,
@@ -7724,10 +7718,10 @@ describe("Phase 3 MPF durable state", () => {
             states,
             computeLedgerMpfRootFromLedgerEntries,
           );
-          const headerValues: SDK.HeaderV1[] = [];
+          const headerValues: SDK.Header[] = [];
           const headers: Buffer[] = [];
           for (let index = 0; index < 3; index += 1) {
-            const header: SDK.HeaderV1 = {
+            const header: SDK.Header = {
               prevUtxosRoot: roots[index]!,
               utxosRoot: roots[index + 1]!,
               withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -7759,7 +7753,7 @@ describe("Phase 3 MPF durable state", () => {
             };
             headerValues.push(header);
             headers.push(
-              Buffer.from(yield* SDK.hashBlockHeaderV1(header), "hex"),
+              Buffer.from(yield* SDK.hashBlockHeader(header), "hex"),
             );
           }
           const prepare = (
@@ -7773,13 +7767,13 @@ describe("Phase 3 MPF durable state", () => {
                 headerCbor: Buffer.from(
                   LucidData.to(
                     headerValues[index]! as never,
-                    SDK.HeaderV1 as never,
+                    SDK.Header as never,
                   ),
                   "hex",
                 ),
                 metadata: {
-                  deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
-                  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+                  deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+                  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
                   stateQueueLeaseToken: `phase3-${index.toString()}`,
                   baseSnapshotId: `phase3-${index.toString()}`,
                   baseTailOutRef: `phase3#${index.toString()}`,
@@ -7922,15 +7916,15 @@ describe("Phase 3 MPF durable state", () => {
           });
           const identityUnwrapped = yield* Effect.tryPromise({
             try: () =>
-              unwrapDaPayloadV1(identityInsert.payload_cbor, {
-                maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+              unwrapDaPayload(identityInsert.payload_cbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
               }),
             catch: (cause) => cause,
           });
           const zstdUnwrapped = yield* Effect.tryPromise({
             try: () =>
-              unwrapDaPayloadV1(zstdInsert.payload_cbor, {
-                maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+              unwrapDaPayload(zstdInsert.payload_cbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
               }),
             catch: (cause) => cause,
           });
@@ -7941,7 +7935,7 @@ describe("Phase 3 MPF durable state", () => {
             identityUnwrapped.innerBytes,
             zstdUnwrapped.innerBytes,
           ]) {
-            const payload = SDK.decodeDaPayloadV1(payloadBytes);
+            const payload = SDK.decodeDaPayload(payloadBytes);
             expect(payload.block_body.utxos.map(([outref]) => outref)).toEqual(
               expectedPayloadOutrefs,
             );
@@ -8187,8 +8181,8 @@ describe("Phase 3 MPF durable state", () => {
             headerHash,
             headerCbor: Buffer.from("d87980", "hex"),
             metadata: {
-              deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
-              consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+              deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+              consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
               stateQueueLeaseToken: "implicit-genesis-test",
               baseSnapshotId: "implicit-genesis-test",
               baseTailOutRef: "genesis#0",

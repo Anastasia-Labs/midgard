@@ -10,7 +10,7 @@
  */
 
 import {
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   type NativeTxInclusionCarriage,
@@ -35,12 +35,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
@@ -72,14 +72,14 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 // The non-existent-input proof commits the bad transaction by the node's native
@@ -169,12 +169,12 @@ export const neSubmitStep01 = async ({
    * the membership proof reaches L1 through them and never enters this
    * transaction (issue #545).
    */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep01Result> => {
   requireNativeTxMatchesCompactCbor(txInclusion);
@@ -236,7 +236,7 @@ export const neSubmitStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
 
   signer.selectWallet(lucid);
@@ -263,18 +263,18 @@ export const neSubmitStep01 = async ({
     network,
     chunkedVerifyScript,
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "non-existent-input step 01 validator",
   });
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: "non-existent-input step 01 chunked verify",
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: "non-existent-input step 01 PHAS membership",
@@ -424,9 +424,9 @@ export const neSubmitStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -492,7 +492,7 @@ export const neSubmitStep01 = async ({
 export const neSubmitStep01FromFiles = async (
   config: NeSubmitStep01CliConfig,
 ): Promise<NeSubmitStep01Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-non-existent-input-step-01",
   });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(

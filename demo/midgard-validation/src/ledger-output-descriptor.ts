@@ -1,37 +1,37 @@
 import {
-  buildMidgardBoundedItemV1,
-  buildMidgardLedgerOutputAssetFrontierV1,
-  buildMidgardLedgerOutputMaterialV1,
+  buildMidgardBoundedItem,
+  buildMidgardLedgerOutputAssetFrontier,
+  buildMidgardLedgerOutputMaterial,
   ensureHash32,
-  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
-  type MidgardLedgerOutputCommitmentV1,
-  type MidgardLedgerOutputDataSummaryV1,
-  type MidgardLedgerOutputMaterialV1,
-  type MidgardLedgerOutputReferenceScriptLanguageV1,
+  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
+  type MidgardLedgerOutputCommitment,
+  type MidgardLedgerOutputDataSummary,
+  type MidgardLedgerOutputMaterial,
+  type MidgardLedgerOutputReferenceScriptLanguage,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
-  MIDGARD_MAX_OUTPUT_INDEX_V1,
+  MIDGARD_MAX_OUTPUT_INDEX,
   type MidgardTxOutput,
   midgardValueToCmlValue,
   MidgardVersionedScriptTags,
 } from "@al-ft/midgard-core/codec";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
-import { summarizeMidgardCekLucidDataV1 } from "./cek-context.js";
+import { summarizeMidgardCekLucidData } from "./cek-context.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
-import { commitMidgardScriptContextTxOutV1 } from "./script-context-proof.js";
+import { commitMidgardScriptContextTxOut } from "./script-context-proof.js";
 
-const MAX_LEDGER_OUTPUT_INDEX_V1 = 65_535n;
+const MAX_LEDGER_OUTPUT_INDEX = 65_535n;
 
 // §5.3's out-ref item spells the output index as a fixed CBOR uint16, and
 // `decodeMidgardOutRefBytes` is the only door onto those bytes, so a decoded
 // index is already inside this descriptor's domain — a per-call range check
 // would be a gate that cannot fail. What can still go wrong is the two domains
 // drifting apart, so that is what is asserted, once, at load time.
-if (MAX_LEDGER_OUTPUT_INDEX_V1 !== BigInt(MIDGARD_MAX_OUTPUT_INDEX_V1)) {
+if (MAX_LEDGER_OUTPUT_INDEX !== BigInt(MIDGARD_MAX_OUTPUT_INDEX)) {
   throw new Error(
     "ledger output-index domain has drifted from the §5.3 out-ref index domain",
   );
@@ -45,7 +45,7 @@ const exactSummary = ({
   readonly root: Uint8Array;
   readonly cborLength: bigint;
   readonly memory: bigint;
-}): MidgardLedgerOutputDataSummaryV1 => ({
+}): MidgardLedgerOutputDataSummary => ({
   root: ensureHash32(root, "ledger_output_descriptor_v1.semantic_root"),
   cborLength,
   memory,
@@ -54,15 +54,15 @@ const exactSummary = ({
 const contextTxOutSummary = (
   output: MidgardTxOutput,
   encoding: "cardano" | "midgard",
-): MidgardLedgerOutputDataSummaryV1 =>
-  exactSummary(commitMidgardScriptContextTxOutV1(output, encoding));
+): MidgardLedgerOutputDataSummary =>
+  exactSummary(commitMidgardScriptContextTxOut(output, encoding));
 
 const cardanoSpendDatumSummary = (
   output: MidgardTxOutput,
-): MidgardLedgerOutputDataSummaryV1 => {
+): MidgardLedgerOutputDataSummary => {
   const datum = output.datum;
   return exactSummary(
-    summarizeMidgardCekLucidDataV1(
+    summarizeMidgardCekLucidData(
       datum === undefined
         ? new Constr(1, [])
         : new Constr(0, [Data.from(datum.cbor.toString("hex")) as never]),
@@ -86,7 +86,7 @@ const referenceScriptFacts = ({
   readonly outputIndex: number;
   readonly output: MidgardTxOutput;
 }): Pick<
-  MidgardLedgerOutputCommitmentV1,
+  MidgardLedgerOutputCommitment,
   | "referenceScriptLanguage"
   | "referenceScriptHash"
   | "referenceScriptTotalLength"
@@ -102,15 +102,15 @@ const referenceScriptFacts = ({
     };
   }
   const scriptCbor = encodeMidgardVersionedScript(script);
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+  const item = buildMidgardBoundedItem({
+    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
     itemIndex: outputIndex,
     bytes: scriptCbor,
   });
   return {
     referenceScriptLanguage: Number(
       MidgardVersionedScriptTags[script.language],
-    ) as Exclude<MidgardLedgerOutputReferenceScriptLanguageV1, -1>,
+    ) as Exclude<MidgardLedgerOutputReferenceScriptLanguage, -1>,
     referenceScriptHash: Buffer.from(hashMidgardVersionedScript(script), "hex"),
     referenceScriptTotalLength: item.bytes.length,
     referenceScriptItemCommitment: item.commitment,
@@ -123,18 +123,16 @@ const referenceScriptFacts = ({
  * scan; admission still fails closed unless that scan authenticates every
  * descriptor fact before the value is inserted into the ledger MPF.
  */
-export const buildCanonicalMidgardLedgerOutputMaterialV1 = ({
+export const buildCanonicalMidgardLedgerOutputMaterial = ({
   outputIndex,
   outputCbor,
 }: {
   readonly outputIndex: number;
   readonly outputCbor: Uint8Array;
-}): MidgardLedgerOutputMaterialV1 => {
+}): MidgardLedgerOutputMaterial => {
   const output = decodeMidgardTxOutput(outputCbor);
-  const assets = buildMidgardLedgerOutputAssetFrontierV1(
-    flattenedAssets(output),
-  );
-  return buildMidgardLedgerOutputMaterialV1({
+  const assets = buildMidgardLedgerOutputAssetFrontier(flattenedAssets(output));
+  return buildMidgardLedgerOutputMaterial({
     outputIndex,
     outputCbor,
     facts: {
@@ -162,15 +160,15 @@ export const buildCanonicalMidgardLedgerOutputMaterialV1 = ({
  * `ledger_outref_key` derives — and the decoded output index is what selects the
  * bounded-item commitment domain below.
  */
-export const buildCanonicalMidgardLedgerEntryOutputMaterialV1 = ({
+export const buildCanonicalMidgardLedgerEntryOutputMaterial = ({
   outRef,
   outputCbor,
 }: {
   readonly outRef: Uint8Array;
   readonly outputCbor: Uint8Array;
-}): MidgardLedgerOutputMaterialV1 => {
+}): MidgardLedgerOutputMaterial => {
   const decoded = decodeMidgardOutRefBytes(outRef);
-  return buildCanonicalMidgardLedgerOutputMaterialV1({
+  return buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: Number(decoded.index),
     outputCbor,
   });

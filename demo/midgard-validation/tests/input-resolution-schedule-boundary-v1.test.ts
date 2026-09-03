@@ -2,26 +2,26 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  appendMidgardValidationMerkleLeafV1,
-  commitMidgardValidationMerkleFrontierV1,
+  appendMidgardValidationMerkleLeaf,
+  commitMidgardValidationMerkleFrontier,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  emptyMidgardValidationMerkleFrontierV1,
-  hashMidgardResolvedContextItemLeafV1,
-  type MidgardValidationMerkleFrontierV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  emptyMidgardValidationMerkleFrontier,
+  hashMidgardResolvedContextItemLeaf,
+  type MidgardValidationMerkleFrontier,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardResolvedInputsAccumulatorV1,
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
-  emptyMidgardInputResolutionScheduleV1,
-  initialMidgardResolvedInputsAccumulatorV1,
-  prependMidgardInputResolutionScheduleV1,
+  advanceMidgardResolvedInputsAccumulator,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  emptyMidgardInputResolutionSchedule,
+  initialMidgardResolvedInputsAccumulator,
+  prependMidgardInputResolutionSchedule,
 } from "../src/index.js";
 import { makeOutput } from "./validation-fixtures.js";
 
-type BoundaryCorpusV1 = {
+type BoundaryCorpus = {
   readonly schema: string;
   readonly entries: readonly {
     readonly label: string;
@@ -29,7 +29,7 @@ type BoundaryCorpusV1 = {
   }[];
 };
 
-type ResolutionNodeV1 = {
+type ResolutionNode = {
   readonly sourceKind: "spend" | "reference";
   readonly key: Buffer;
   readonly value: Buffer;
@@ -37,7 +37,7 @@ type ResolutionNodeV1 = {
   readonly scheduleHash: Buffer;
 };
 
-type ResolutionTerminalVectorV1 = {
+type ResolutionTerminalVector = {
   readonly label: string;
   readonly spendCount: number;
   readonly referenceCount: number;
@@ -243,7 +243,7 @@ const expectedTerminalVectors = {
         "96c1acf52ec7e32c975a3c5343d7417257e0eca08c0fda83d77f2172000d0b36",
     },
   },
-} as const satisfies Record<string, ResolutionTerminalVectorV1>;
+} as const satisfies Record<string, ResolutionTerminalVector>;
 
 const corpus = JSON.parse(
   readFileSync(
@@ -253,7 +253,7 @@ const corpus = JSON.parse(
     ),
     "utf8",
   ),
-) as BoundaryCorpusV1;
+) as BoundaryCorpus;
 
 const boundaryEntry = (label: string): Buffer => {
   expect(corpus.schema).toBe(
@@ -269,10 +269,10 @@ const buildResolutionNodes = (
 ): {
   readonly spendCount: number;
   readonly referenceCount: number;
-  readonly nodes: readonly ResolutionNodeV1[];
+  readonly nodes: readonly ResolutionNode[];
   readonly originalScheduleHash: Buffer;
 } => {
-  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(boundaryEntry(label));
+  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(boundaryEntry(label));
   const spendKeys = decodeMidgardNativeByteListPreimage(
     tx.body.spendInputsPreimageCbor,
     `${label}.spend_inputs`,
@@ -301,19 +301,19 @@ const buildResolutionNodes = (
     10_000_000n,
     Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
   );
-  const nodes: ResolutionNodeV1[] = new Array(ordered.length);
-  let scheduleHash = emptyMidgardInputResolutionScheduleV1();
+  const nodes: ResolutionNode[] = new Array(ordered.length);
+  let scheduleHash = emptyMidgardInputResolutionSchedule();
   for (let index = ordered.length - 1; index >= 0; index -= 1) {
     const item = ordered[index]!;
     const nextScheduleHash = scheduleHash;
-    scheduleHash = prependMidgardInputResolutionScheduleV1({
+    scheduleHash = prependMidgardInputResolutionSchedule({
       sourceKind: item.sourceKind,
       key: item.key,
       nextHash: nextScheduleHash,
     });
     nodes[index] = {
       ...item,
-      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: item.key,
         outputCbor,
       }).descriptorCbor,
@@ -330,22 +330,22 @@ const buildResolutionNodes = (
 };
 
 const toPeakVector = (
-  frontier: MidgardValidationMerkleFrontierV1,
-): ResolutionTerminalVectorV1["terminal"]["resolvedItemPeaks"] =>
+  frontier: MidgardValidationMerkleFrontier,
+): ResolutionTerminalVector["terminal"]["resolvedItemPeaks"] =>
   frontier.peaks.map((peak) => ({
     height: peak.height,
     hashHex: Buffer.from(peak.hash).toString("hex"),
   }));
 
-const deriveTerminalVector = (label: string): ResolutionTerminalVectorV1 => {
+const deriveTerminalVector = (label: string): ResolutionTerminalVector => {
   const { spendCount, referenceCount, nodes, originalScheduleHash } =
     buildResolutionNodes(label);
   expect(nodes.length).toBeGreaterThan(0);
   let remainingScheduleHash = originalScheduleHash;
-  let accumulator = initialMidgardResolvedInputsAccumulatorV1();
-  let resolvedItemFrontier = emptyMidgardValidationMerkleFrontierV1();
+  let accumulator = initialMidgardResolvedInputsAccumulator();
+  let resolvedItemFrontier = emptyMidgardValidationMerkleFrontier();
   let spendIndex = 0;
-  let penultimate: ResolutionTerminalVectorV1["penultimate"] | undefined;
+  let penultimate: ResolutionTerminalVector["penultimate"] | undefined;
 
   for (const [cursor, node] of nodes.entries()) {
     expect(remainingScheduleHash).toEqual(node.scheduleHash);
@@ -358,15 +358,15 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVectorV1 => {
         resolvedItemPeaks: toPeakVector(resolvedItemFrontier),
       };
     }
-    accumulator = advanceMidgardResolvedInputsAccumulatorV1({
+    accumulator = advanceMidgardResolvedInputsAccumulator({
       accumulator,
       sourceKind: node.sourceKind,
       key: node.key,
       value: node.value,
     });
-    resolvedItemFrontier = appendMidgardValidationMerkleLeafV1(
+    resolvedItemFrontier = appendMidgardValidationMerkleLeaf(
       resolvedItemFrontier,
-      hashMidgardResolvedContextItemLeafV1({
+      hashMidgardResolvedContextItemLeaf({
         sourceKind: node.sourceKind,
         itemIndex: cursor,
         key: node.key,
@@ -379,9 +379,7 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVectorV1 => {
 
   const lastNode = nodes.at(-1)!;
   expect(penultimate).toBeDefined();
-  expect(remainingScheduleHash).toEqual(
-    emptyMidgardInputResolutionScheduleV1(),
-  );
+  expect(remainingScheduleHash).toEqual(emptyMidgardInputResolutionSchedule());
   expect(spendIndex).toBe(spendCount);
   return {
     label,
@@ -390,7 +388,7 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVectorV1 => {
     originalScheduleHashHex: originalScheduleHash.toString("hex"),
     terminalAccumulatorHex: accumulator.toString("hex"),
     terminalFrontierCommitmentHex:
-      commitMidgardValidationMerkleFrontierV1(resolvedItemFrontier).toString(
+      commitMidgardValidationMerkleFrontier(resolvedItemFrontier).toString(
         "hex",
       ),
     penultimate: penultimate!,
@@ -409,7 +407,7 @@ const deriveTerminalVector = (label: string): ResolutionTerminalVectorV1 => {
 };
 
 const assertAdjacentMutationsReject = (
-  vector: ResolutionTerminalVectorV1,
+  vector: ResolutionTerminalVector,
 ): void => {
   const last = vector.lastNode;
   const remaining = Buffer.from(
@@ -418,28 +416,28 @@ const assertAdjacentMutationsReject = (
   );
   const next = Buffer.from(last.nextScheduleHashHex, "hex");
   const key = Buffer.from(last.keyHex, "hex");
-  const exact = prependMidgardInputResolutionScheduleV1({
+  const exact = prependMidgardInputResolutionSchedule({
     sourceKind: last.sourceKind,
     key,
     nextHash: next,
   });
   expect(exact).toEqual(remaining);
   expect(
-    prependMidgardInputResolutionScheduleV1({
+    prependMidgardInputResolutionSchedule({
       sourceKind: last.sourceKind === "spend" ? "reference" : "spend",
       key,
       nextHash: next,
     }),
   ).not.toEqual(remaining);
   expect(
-    prependMidgardInputResolutionScheduleV1({
+    prependMidgardInputResolutionSchedule({
       sourceKind: last.sourceKind,
       key: Buffer.concat([key.subarray(0, -1), Buffer.from([0xff])]),
       nextHash: next,
     }),
   ).not.toEqual(remaining);
   expect(
-    prependMidgardInputResolutionScheduleV1({
+    prependMidgardInputResolutionSchedule({
       sourceKind: last.sourceKind,
       key,
       nextHash: Buffer.alloc(32, 0xff),

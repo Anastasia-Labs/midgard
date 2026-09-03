@@ -1,5 +1,5 @@
 import {
-  encodeMidgardCekDataNodeV1,
+  encodeMidgardCekDataNode,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
 } from "@al-ft/midgard-core";
 import {
@@ -15,10 +15,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeMidgardCekPlutusDataV1,
-  midgardCekDataMemorySizeV1,
+  encodeMidgardCekPlutusData,
+  midgardCekDataMemorySize,
 } from "../src/cek-constant.js";
-import { commitMidgardCekDataTreeV1 } from "../src/cek-data-tree.js";
+import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
 
 describe("V1 semantic Data commitment", () => {
   it("encodes the complete signed Cardano integer domain canonically", () => {
@@ -28,34 +28,34 @@ describe("V1 semantic Data commitment", () => {
     const negativeBignum = negativeMajorOneBoundary - 1n;
 
     expect(
-      encodeMidgardCekPlutusDataV1(new DataI(uint64Max)).toString("hex"),
+      encodeMidgardCekPlutusData(new DataI(uint64Max)).toString("hex"),
     ).toBe("1bffffffffffffffff");
     expect(
-      encodeMidgardCekPlutusDataV1(new DataI(positiveBignum)).toString("hex"),
+      encodeMidgardCekPlutusData(new DataI(positiveBignum)).toString("hex"),
     ).toBe("c249010000000000000000");
     expect(
-      encodeMidgardCekPlutusDataV1(
-        new DataI(negativeMajorOneBoundary),
-      ).toString("hex"),
+      encodeMidgardCekPlutusData(new DataI(negativeMajorOneBoundary)).toString(
+        "hex",
+      ),
     ).toBe("3bffffffffffffffff");
     expect(
-      encodeMidgardCekPlutusDataV1(new DataI(negativeBignum)).toString("hex"),
+      encodeMidgardCekPlutusData(new DataI(negativeBignum)).toString("hex"),
     ).toBe("c349010000000000000000");
     const decodedNegative = dataFromCbor(
-      encodeMidgardCekPlutusDataV1(new DataI(negativeBignum)),
+      encodeMidgardCekPlutusData(new DataI(negativeBignum)),
     );
     expect(decodedNegative).toBeInstanceOf(DataI);
     expect((decodedNegative as DataI).int).toBe(negativeBignum);
 
     const hugeMagnitude = (1n << 2_048n) - 1n;
-    const positive = encodeMidgardCekPlutusDataV1(new DataI(hugeMagnitude));
-    const negative = encodeMidgardCekPlutusDataV1(new DataI(-(1n << 2_048n)));
+    const positive = encodeMidgardCekPlutusData(new DataI(hugeMagnitude));
+    const negative = encodeMidgardCekPlutusData(new DataI(-(1n << 2_048n)));
     expect(positive.subarray(0, 4).toString("hex")).toBe("c2590100");
     expect(negative.subarray(0, 4).toString("hex")).toBe("c3590100");
     expect(positive.length).toBe(260);
     expect(negative.length).toBe(260);
-    expect(midgardCekDataMemorySizeV1(new DataI(hugeMagnitude))).toBe(261n);
-    expect(midgardCekDataMemorySizeV1(new DataI(-(1n << 2_048n)))).toBe(261n);
+    expect(midgardCekDataMemorySize(new DataI(hugeMagnitude))).toBe(261n);
+    expect(midgardCekDataMemorySize(new DataI(-(1n << 2_048n)))).toBe(261n);
   });
 
   it("streams large leaves instead of imposing a whole-value cap", () => {
@@ -65,11 +65,11 @@ describe("V1 semantic Data commitment", () => {
       new DataB(largeBytes),
     ]);
 
-    const committed = commitMidgardCekDataTreeV1(value);
+    const committed = commitMidgardCekDataTree(value);
     expect(committed.cborLength).toBe(
-      BigInt(encodeMidgardCekPlutusDataV1(value).length),
+      BigInt(encodeMidgardCekPlutusData(value).length),
     );
-    expect(committed.memory).toBe(midgardCekDataMemorySizeV1(value));
+    expect(committed.memory).toBe(midgardCekDataMemorySize(value));
     expect(committed.blobNodes.size).toBeGreaterThan(3);
     expect(
       [...committed.blobNodes.values()]
@@ -96,7 +96,7 @@ describe("V1 semantic Data commitment", () => {
       value = new DataConstr(0, [value]);
     }
 
-    const committed = commitMidgardCekDataTreeV1(value);
+    const committed = commitMidgardCekDataTree(value);
 
     expect(committed.cborLength).toBe(16_173n);
     expect(committed.memory).toBe(16_177n);
@@ -109,13 +109,13 @@ describe("V1 semantic Data commitment", () => {
       new DataI(-1),
       new DataB(Buffer.alloc(65, 0x2a)),
     ]);
-    const committed = commitMidgardCekDataTreeV1(value);
+    const committed = commitMidgardCekDataTree(value);
     const rootNode = committed.dataNodes.get(
       Buffer.from(committed.root).toString("hex"),
     );
     expect(rootNode).toBeDefined();
     expect(rootNode?.preimage).toEqual(
-      encodeMidgardCekDataNodeV1(rootNode!.node),
+      encodeMidgardCekDataNode(rootNode!.node),
     );
     expect(Buffer.from(committed.root).toString("hex")).toBe(
       "9ce9a6db13fa610a6efad613e5266cefe3740f2de1dd4a014884fa3f717d69de",
@@ -127,8 +127,8 @@ describe("V1 semantic Data commitment", () => {
       new DataPair(new DataB(Buffer.from("11", "hex")), new DataI(1)),
       new DataPair(new DataB(Buffer.alloc(0)), new DataI(2)),
     ]);
-    const committed = commitMidgardCekDataTreeV1(value);
-    expect(encodeMidgardCekPlutusDataV1(value).toString("hex")).toBe(
+    const committed = commitMidgardCekDataTree(value);
+    expect(encodeMidgardCekPlutusData(value).toString("hex")).toBe(
       "a24111014002",
     );
     expect(committed.cborLength).toBe(6n);

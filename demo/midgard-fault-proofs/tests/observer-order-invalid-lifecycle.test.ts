@@ -1,22 +1,22 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  materializeMidgardNativeTxFromCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
-  hashBlockHeaderV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
+  hashBlockHeader,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -27,41 +27,41 @@ import { describe, expect, it, vi } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  certifyFaultProofFieldCarriageV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
 import {
-  applyObserverOrderInvalidScriptsV1,
-  type ObserverOrderInvalidContractsV1,
+  applyObserverOrderInvalidScripts,
+  type ObserverOrderInvalidContracts,
 } from "../src/observer-order-invalid/contracts-v1.js";
-import { prepareObserverOrderInvalidEvidenceV1 } from "../src/observer-order-invalid/family-v1.js";
-import { createObserverOrderInvalidActuatorV1 } from "../src/observer-order-invalid/production-actuator-v1.js";
-import { buildProductionObserverOrderInvalidArtifactV1 } from "../src/observer-order-invalid/production-artifact-v1.js";
-import { planObserverOrderInvalidStagedWalkV1 } from "../src/observer-order-invalid/staged-plan-v1.js";
-import { submitObserverOrderInvalidCancelV1 } from "../src/observer-order-invalid/submit-cancel-v1.js";
+import { prepareObserverOrderInvalidEvidence } from "../src/observer-order-invalid/family-v1.js";
+import { createObserverOrderInvalidActuator } from "../src/observer-order-invalid/production-actuator-v1.js";
+import { buildObserverOrderInvalidArtifact } from "../src/observer-order-invalid/production-artifact-v1.js";
+import { planObserverOrderInvalidStagedWalk } from "../src/observer-order-invalid/staged-plan-v1.js";
+import { submitObserverOrderInvalidCancel } from "../src/observer-order-invalid/submit-cancel-v1.js";
 import {
-  submitObserverOrderInvalidStep01AcceptedV1,
-  submitObserverOrderInvalidStep01ForcedV1,
+  submitObserverOrderInvalidStep01Accepted,
+  submitObserverOrderInvalidStep01Forced,
 } from "../src/observer-order-invalid/submit-step-01-v1.js";
-import { submitObserverOrderInvalidStep02V1 } from "../src/observer-order-invalid/submit-step-02-v1.js";
-import { submitObserverOrderInvalidStep03V1 } from "../src/observer-order-invalid/submit-step-03-v1.js";
-import { submitObserverOrderInvalidStep04V1 } from "../src/observer-order-invalid/submit-step-04-v1.js";
+import { submitObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02-v1.js";
+import { submitObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03-v1.js";
+import { submitObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04-v1.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { submitCapturedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
-  l2TransactionSourceCborV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { setupFraudulentBlockV1 } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
@@ -76,7 +76,7 @@ const observer = (ordinal: number): Buffer => {
 
 describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
   it("runs Init, authentication and observer-scan resumes, permanent mint, and removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -84,7 +84,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyObserverOrderInvalidScriptsV1({
+    const applied = applyObserverOrderInvalidScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -104,7 +104,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
       (typeof harness.contracts.fraudProofContracts.doubleSpend.steps)[number],
     ];
-    const contracts: ObserverOrderInvalidContractsV1 = {
+    const contracts: ObserverOrderInvalidContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -128,17 +128,17 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       observer(index),
     );
     observers[48] = observer(47);
-    const observerField = encodeMidgardFieldPreimageV1(observers);
+    const observerField = encodeMidgardFieldPreimage(observers);
     expect(observerField).toHaveLength(15_153);
     const base = makeNativeTx({ spendInputCbors: [], fee: 7n });
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
       version: base.version,
       validity: base.validity,
       body: { ...base.body, requiredObserversPreimageCbor: observerField },
       witnessSet: base.witnessSet,
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -158,25 +158,25 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
       catalogue,
       fixture: { transactionsRoot, l2TransactionCount: 1n },
     });
-    const evidence = prepareObserverOrderInvalidEvidenceV1({
+    const evidence = prepareObserverOrderInvalidEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(nativeTxId),
+        subject: acceptedVerdictSubject(nativeTxId),
         observerIndex: 48,
       },
       fieldPreimage: observerField,
       committedFieldHashHex:
-        midgardFieldCommitmentV1(observerField).toString("hex"),
+        midgardFieldCommitment(observerField).toString("hex"),
     });
     expect(evidence.violation).toBe(true);
     expect(evidence.carriage).toBe("Certified");
-    const staged = planObserverOrderInvalidStagedWalkV1({
+    const staged = planObserverOrderInvalidStagedWalk({
       transactionId: nativeTxId,
       fieldPreimageCbor: observerField.toString("hex"),
       observerIndex: 48,
@@ -201,7 +201,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         label: "observer-order-lifecycle-certificate",
       })
     ).utxo;
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 3,
       anchorTxId: nativeTxId,
       nativeTxCompactCbor: compactCbor.toString("hex"),
@@ -213,7 +213,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
     const carriageCapture = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        publishFaultProofFieldCarriageV1({
+        publishFaultProofFieldCarriage({
           lucid: harness.proverLucid,
           signer: harness.proverSigner,
           planned,
@@ -225,7 +225,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
     const certificateCapture = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        certifyFaultProofFieldCarriageV1({
+        certifyFaultProofFieldCarriage({
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,
@@ -237,8 +237,8 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
           certificateReferenceScriptUtxo: certificateReference,
           chunkUtxos: carriageUtxos,
           compactCbor: compactCbor.toString("hex"),
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-            deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+            deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
           ).toString("hex"),
         }),
     );
@@ -277,7 +277,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
     if (threadUtxo === undefined)
       throw new Error("observer order invalid init thread absent");
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep01AcceptedV1({
+      submitObserverOrderInvalidStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -297,20 +297,20 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
     );
     captures.push(["step01", step01]);
     let threadOutRef = step01.result.nextThreadOutRef;
-    const artifact = buildProductionObserverOrderInvalidArtifactV1({
+    const artifact = buildObserverOrderInvalidArtifact({
       headerHash: setup.headerHash,
       detectionId: `${nativeTxId}:accepted:48`,
       position: 0n,
       evidence,
       nativeTxCompactCbor: compactCbor.toString("hex"),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-        deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+        deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
       ).toString("hex"),
       l2TransactionSourceCbor: sourceCbor,
       transactionsPhasRoot: transactionsRoot,
       transactionMembershipCbor: proof.toCBOR().toString("hex"),
     });
-    const actuator = createObserverOrderInvalidActuatorV1({
+    const actuator = createObserverOrderInvalidActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
         resolvedContracts: {
@@ -340,7 +340,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       nextAddress: string,
     ) => {
       const captured = await actuator.capture({ action, artifact });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       expect(txHash).toBe(captured.transaction.txHash);
       await harness.proverLucid.awaitTx(txHash);
       const next = (await harness.proverLucid.utxosAt(nextAddress)).find(
@@ -383,7 +383,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
           action: { stage: "step_04", threadOutRef },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         const proof = (
@@ -447,7 +447,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         },
       },
     };
-    const removalActuator = createObserverOrderInvalidActuatorV1({
+    const removalActuator = createObserverOrderInvalidActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
         resolvedContracts: {
@@ -496,7 +496,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
           },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         return { txHash };
@@ -533,7 +533,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
   }, 600_000);
 
   it("runs the exact forced wrongful-rejection arm through permanent mint", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         alwaysFraudProofCatalogue: true,
         alwaysStateQueue: true,
@@ -544,7 +544,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyObserverOrderInvalidScriptsV1({
+    const applied = applyObserverOrderInvalidScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -554,7 +554,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         harness.contracts.fieldPreimageCertificate.policyId,
       hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
     });
-    const contracts: ObserverOrderInvalidContractsV1 = {
+    const contracts: ObserverOrderInvalidContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -586,22 +586,22 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         ) - 1,
     });
     const valid = makeNativeTx({ spendInputCbors: [], fee: 0n });
-    const observerField = encodeMidgardFieldPreimageV1([
+    const observerField = encodeMidgardFieldPreimage([
       observer(1),
       observer(2),
     ]);
-    const forcedNativeTx = materializeMidgardNativeTxFromCanonicalV1({
+    const forcedNativeTx = materializeMidgardNativeTxFromCanonical({
       version: valid.version,
       validity: valid.validity,
       body: { ...valid.body, requiredObserversPreimageCbor: observerField },
       witnessSet: valid.witnessSet,
     });
-    const forcedId = computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex");
-    const forcedSource = deriveMidgardNativeTxProofSourceV1(
-      adjudicateMidgardNativeTxFullV1Validity(forcedNativeTx, "TxIsInvalid"),
+    const forcedId = computeMidgardNativeTxId(forcedNativeTx).toString("hex");
+    const forcedSource = deriveMidgardNativeTxProofSource(
+      adjudicateMidgardNativeTxFullValidity(forcedNativeTx, "TxIsInvalid"),
     );
-    const forcedSourceId = computeMidgardNativeTxIdV1(
-      adjudicateMidgardNativeTxFullV1Validity(forcedNativeTx, "TxIsInvalid"),
+    const forcedSourceId = computeMidgardNativeTxId(
+      adjudicateMidgardNativeTxFullValidity(forcedNativeTx, "TxIsInvalid"),
     ).toString("hex");
     expect(forcedSourceId).toBe(forcedId);
     const reason = {
@@ -622,7 +622,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -654,11 +654,11 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       header,
     });
     expect(setup.headerHash).toBe(
-      await Effect.runPromise(hashBlockHeaderV1(header)),
+      await Effect.runPromise(hashBlockHeader(header)),
     );
-    const evidence = prepareObserverOrderInvalidEvidenceV1({
+    const evidence = prepareObserverOrderInvalidEvidence({
       finding: {
-        subject: forcedVerdictSubjectV1({
+        subject: forcedVerdictSubject({
           transactionId: forcedId,
           sourceKey,
           rejectionReason: reason,
@@ -667,10 +667,10 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       },
       fieldPreimage: observerField,
       committedFieldHashHex:
-        midgardFieldCommitmentV1(observerField).toString("hex"),
+        midgardFieldCommitment(observerField).toString("hex"),
     });
     expect(evidence.violation).toBe(false);
-    const staged = planObserverOrderInvalidStagedWalkV1({
+    const staged = planObserverOrderInvalidStagedWalk({
       transactionId: forcedId,
       fieldPreimageCbor: observerField.toString("hex"),
       observerIndex: 1,
@@ -700,7 +700,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       captures.push([label, captured]);
       return captured.result;
     };
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 3,
       anchorTxId: forcedId,
       nativeTxCompactCbor: forcedSource.compactCbor.toString("hex"),
@@ -710,7 +710,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       label: "observer order invalid forced lifecycle",
     });
     await measured("raw-carriage-publication", () =>
-      publishFaultProofFieldCarriageV1({
+      publishFaultProofFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -739,7 +739,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       return `${initialized.txHash}#${initialized.firstStepOutputIndex.toString()}`;
     };
     const bind = async (threadOutRef: string) =>
-      await submitObserverOrderInvalidStep01ForcedV1({
+      await submitObserverOrderInvalidStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -750,7 +750,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         referenceScriptUtxo: references[0]!,
       });
     const decode = async (threadOutRef: string) =>
-      await submitObserverOrderInvalidStep02V1({
+      await submitObserverOrderInvalidStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -763,7 +763,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         referenceScriptUtxo: references[1]!,
       });
     const scan = async (threadOutRef: string) =>
-      await submitObserverOrderInvalidStep03V1({
+      await submitObserverOrderInvalidStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -776,7 +776,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
         referenceScriptUtxo: references[2]!,
       });
     const cancel = async (threadOutRef: string, referenceScriptUtxo: UTxO) =>
-      await submitObserverOrderInvalidCancelV1({
+      await submitObserverOrderInvalidCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -817,7 +817,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       scan(step02.nextThreadOutRef),
     );
     const final = await measured("forced-permanent-proof-mint", () =>
-      submitObserverOrderInvalidStep04V1({
+      submitObserverOrderInvalidStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildFaultProofContracts,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,
   parseFaultProofBlueprint,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
@@ -58,7 +58,7 @@ describe("validation resolver production-builder parameter application", () => {
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.cekContextStep,
     );
     const materialValidator = currentTreeBlueprint.validators.find(
-      (entry) => entry.title === CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+      (entry) => entry.title === CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     );
     if (
       selectionValidator === undefined ||

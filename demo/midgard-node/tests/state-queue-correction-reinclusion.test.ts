@@ -1,5 +1,5 @@
 import {
-  deriveStateQueueAuthenticatedTransitionV1,
+  deriveStateQueueAuthenticatedTransition,
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
 } from "@al-ft/midgard-sdk";
@@ -7,7 +7,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { classifyStateQueueCorrectionEventReopen } from "../src/database/utils/projected-events.js";
-import { authorizeStateQueueCorrectionReinclusionV1 } from "../src/services/state-queue-correction-recovery.js";
+import { authorizeStateQueueCorrectionReinclusion } from "../src/services/state-queue-correction-recovery.js";
 
 const removedHeader = Buffer.from("11".repeat(28), "hex");
 const h28 = (byte: string): string => byte.repeat(56);
@@ -55,7 +55,7 @@ const externalTimeoutTransition = ({
           },
         },
       };
-  return deriveStateQueueAuthenticatedTransitionV1({
+  return deriveStateQueueAuthenticatedTransition({
     deploymentIdentityDigest: h32("a"),
     stateQueuePolicyId: h28("b"),
     transactionHash,
@@ -139,7 +139,7 @@ const externalFraudTransition = () => {
       },
     },
   };
-  return deriveStateQueueAuthenticatedTransitionV1({
+  return deriveStateQueueAuthenticatedTransition({
     deploymentIdentityDigest: h32("a"),
     stateQueuePolicyId: h28("b"),
     transactionHash,
@@ -211,7 +211,7 @@ const externalMergeTransition = () => {
       merged_block_validation_trace_count: 0n,
     },
   };
-  return deriveStateQueueAuthenticatedTransitionV1({
+  return deriveStateQueueAuthenticatedTransition({
     deploymentIdentityDigest: h32("a"),
     stateQueuePolicyId: h28("b"),
     transactionHash,
@@ -248,19 +248,19 @@ describe("state-queue correction event reinclusion", () => {
   it("accepts external-winner records only after deployment-bound release finality", () => {
     const externalWinner = externalTimeoutTransition({ terminal: true });
     expect(
-      authorizeStateQueueCorrectionReinclusionV1(externalWinner, {
+      authorizeStateQueueCorrectionReinclusion(externalWinner, {
         expectedDeploymentIdentityDigest: h32("a"),
         requiredFinalityDepth: 2_160n,
       }),
     ).toEqual(externalWinner);
     expect(() =>
-      authorizeStateQueueCorrectionReinclusionV1(externalWinner, {
+      authorizeStateQueueCorrectionReinclusion(externalWinner, {
         expectedDeploymentIdentityDigest: h32("9"),
         requiredFinalityDepth: 2_160n,
       }),
     ).toThrow(/does not match configured deployment/);
     expect(() =>
-      authorizeStateQueueCorrectionReinclusionV1(externalWinner, {
+      authorizeStateQueueCorrectionReinclusion(externalWinner, {
         expectedDeploymentIdentityDigest: h32("a"),
         requiredFinalityDepth: 2_161n,
       }),
@@ -275,11 +275,11 @@ describe("state-queue correction event reinclusion", () => {
       requiredFinalityDepth: 2_160n,
     };
     expect(
-      authorizeStateQueueCorrectionReinclusionV1(pruneWinner, authority)
+      authorizeStateQueueCorrectionReinclusion(pruneWinner, authority)
         .removedHeaderHashes,
     ).toEqual([h28("2")]);
     expect(
-      authorizeStateQueueCorrectionReinclusionV1(terminalWinner, authority)
+      authorizeStateQueueCorrectionReinclusion(terminalWinner, authority)
         .removedHeaderHashes,
     ).toEqual([h28("1")]);
   });
@@ -291,13 +291,13 @@ describe("state-queue correction event reinclusion", () => {
     };
     const fraud = externalFraudTransition();
     expect(
-      authorizeStateQueueCorrectionReinclusionV1(fraud, authority),
+      authorizeStateQueueCorrectionReinclusion(fraud, authority),
     ).toMatchObject({
       transitionKind: "fraud_removal",
       removedHeaderHashes: [h28("2")],
     });
     expect(() =>
-      authorizeStateQueueCorrectionReinclusionV1(
+      authorizeStateQueueCorrectionReinclusion(
         externalMergeTransition(),
         authority,
       ),
@@ -311,13 +311,13 @@ describe("state-queue correction event reinclusion", () => {
     };
     const fraud = externalFraudTransition();
     expect(() =>
-      authorizeStateQueueCorrectionReinclusionV1(
+      authorizeStateQueueCorrectionReinclusion(
         { ...fraud, removedHeaderHashes: [h28("2"), h28("2")] },
         authority,
       ),
     ).toThrow(/canonical digest-bound authenticated transition/u);
     expect(() =>
-      authorizeStateQueueCorrectionReinclusionV1(
+      authorizeStateQueueCorrectionReinclusion(
         { ...fraud, transitionDigest: h32("9") },
         authority,
       ),

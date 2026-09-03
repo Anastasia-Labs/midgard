@@ -2,34 +2,34 @@ import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from "../src/consensus-profile-v1.js";
 import {
-  assertDeploymentMarkerV1Matches,
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  type DeploymentManifestV1FraudProofCatalogueIdentity,
-  makeDeploymentMarkerV1,
-  MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-  normalizeDeploymentManifestV1JsonValue,
-  parseDeploymentManifestV1AvailabilityChallenge,
-  parseDeploymentManifestV1Economics,
-  parseDeploymentMarkerV1,
-  verifyDeploymentManifestV1FraudProofCatalogueIdentity,
-  verifyDeploymentManifestV1Identity,
+  assertDeploymentMarkerMatches,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+  type DeploymentManifestFraudProofCatalogueIdentity,
+  makeDeploymentMarker,
+  MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
+  normalizeDeploymentManifestJsonValue,
+  parseDeploymentManifestAvailabilityChallenge,
+  parseDeploymentManifestEconomics,
+  parseDeploymentMarker,
+  verifyDeploymentManifestFraudProofCatalogueIdentity,
+  verifyDeploymentManifestIdentity,
 } from "../src/deployment-manifest-identity-v1.js";
 
-let generatedCatalogueFixture: DeploymentManifestV1FraudProofCatalogueIdentity;
+let generatedCatalogueFixture: DeploymentManifestFraudProofCatalogueIdentity;
 
 const CATALOGUE_FIXTURE_SCRIPT_HASH =
   "bddf4b5c833decbf82201931cffc54f7c7dc51e4e6743a25a95aa2c0";
@@ -40,12 +40,10 @@ const catalogueFixtureKey = (categoryId: string): Buffer =>
 beforeAll(async () => {
   const value = Buffer.from(`581c${CATALOGUE_FIXTURE_SCRIPT_HASH}`, "hex");
   const trie = await Trie.fromList(
-    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
       (categoryName) => ({
         key: catalogueFixtureKey(
-          DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[
-            categoryName
-          ],
+          DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
         ),
         value,
       }),
@@ -53,11 +51,11 @@ beforeAll(async () => {
   );
   const categories: Record<
     string,
-    DeploymentManifestV1FraudProofCatalogueIdentity["categories"][keyof DeploymentManifestV1FraudProofCatalogueIdentity["categories"]]
+    DeploymentManifestFraudProofCatalogueIdentity["categories"][keyof DeploymentManifestFraudProofCatalogueIdentity["categories"]]
   > = {};
-  for (const categoryName of DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const categoryName of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const categoryId =
-      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
     const proof = await trie.prove(catalogueFixtureKey(categoryId));
     categories[categoryName] = {
       categoryId,
@@ -68,17 +66,17 @@ beforeAll(async () => {
   generatedCatalogueFixture = {
     root: Buffer.from(trie.hash).toString("hex"),
     categories:
-      categories as DeploymentManifestV1FraudProofCatalogueIdentity["categories"],
+      categories as DeploymentManifestFraudProofCatalogueIdentity["categories"],
   };
 });
 
-const catalogueFixture = (): DeploymentManifestV1FraudProofCatalogueIdentity =>
+const catalogueFixture = (): DeploymentManifestFraudProofCatalogueIdentity =>
   generatedCatalogueFixture;
 
 const identityInput = () => ({
-  schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-  consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+  consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
   network: "Preprod",
   cardanoProtocolParameters: {},
   genesis: {},
@@ -93,9 +91,8 @@ const identityInput = () => ({
   proofEvidence: {},
   steps: {},
   validationDispute: {},
-  l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  economics:
-    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+  l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
+  economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   availabilityChallenge: {
     responseClasses: {
       smallPayloadMaxBytes: 65_536,
@@ -121,23 +118,21 @@ const identityInput = () => ({
 
 describe("DeploymentManifestV1 shared identity", () => {
   it("includes every registered fraud-proof validator in the canonical registry", () => {
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(
-      "fraudProofZeroInput",
-    );
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain("fraudProofZeroInput");
     // #547 appended the Q18/Q31/Q15 first-step validators. The registry is
     // append-only, so each must be present and the catalogue order must name
     // exactly the same set of categories in the same positions.
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofNoReferenceInput",
     );
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofReferenceInputNoIdx",
     );
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
       "fraudProofInvalidSignature",
     );
     expect(
-      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(-43),
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(-43),
     ).toEqual([
       "fabricatedDeposit",
       "fabricatedWithdrawal",
@@ -183,30 +178,30 @@ describe("DeploymentManifestV1 shared identity", () => {
       "scriptIntegrityHashMismatch",
       "distinctAssetAccumulationLimit",
     ]);
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(287);
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(287);
     expect(
-      Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
     ).toHaveLength(280);
     expect(
-      Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES),
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES),
     ).toHaveLength(281);
     expect(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof min-ada step-02 tx yield"
       ],
     ).toBe("fraudProofMinAdaStep02TxWithdraw");
     expect(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
         "V1 fraud-proof min-ada step-02 UTxO yield"
       ],
     ).toBe("V1FpMinAdaS02UtxoYield");
     expect(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof withdrawn-input step-03"
       ],
     ).toBe("fraudProofWithdrawnInputStep03");
     expect(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof transition-trace final-7"
       ],
     ).toBe("fraudProofTransitionTraceDuplicate");
@@ -241,10 +236,10 @@ describe("DeploymentManifestV1 shared identity", () => {
           step === 1 ? "" : `Step${step.toString().padStart(2, "0")}`;
         const contractName = `fraudProof${contractStem}${stepSuffix}`;
         const role = `V1 fraud-proof ${roleStem} step-${step.toString().padStart(2, "0")}`;
-        expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(contractName);
+        expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(contractName);
         expect(
-          DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-            role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
           ],
         ).toBe(contractName);
       }
@@ -290,10 +285,10 @@ describe("DeploymentManifestV1 shared identity", () => {
       roleSuffix,
       contractName,
     ] of executionNativeScriptInvalidContracts) {
-      expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(contractName);
+      expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(contractName);
       expect(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-          `V1 fraud-proof execution-native-script-invalid ${roleSuffix}` as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+        DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+          `V1 fraud-proof execution-native-script-invalid ${roleSuffix}` as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
         ],
       ).toBe(contractName);
     }
@@ -325,10 +320,10 @@ describe("DeploymentManifestV1 shared identity", () => {
       ],
     ] as const;
     for (const [role, contractName] of nativeScriptDecodingContracts) {
-      expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(contractName);
-      expect(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role],
-      ).toBe(contractName);
+      expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(contractName);
+      expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[role]).toBe(
+        contractName,
+      );
     }
 
     const transitionFinalContracts = [
@@ -342,10 +337,10 @@ describe("DeploymentManifestV1 shared identity", () => {
       "fraudProofTransitionTraceDuplicate",
     ] as const;
     transitionFinalContracts.forEach((contractName, index) => {
-      expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(contractName);
+      expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(contractName);
       expect(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-          `V1 fraud-proof transition-trace final-${index.toString()}` as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+        DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+          `V1 fraud-proof transition-trace final-${index.toString()}` as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
         ],
       ).toBe(contractName);
     });
@@ -357,7 +352,7 @@ describe("DeploymentManifestV1 shared identity", () => {
       "6cbb4f733ce82c426c88652348b4f04c04975251222c10526b46d728f58ee351",
     );
     expect(
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity(catalogue),
+      verifyDeploymentManifestFraudProofCatalogueIdentity(catalogue),
     ).toEqual(catalogue);
   });
 
@@ -365,14 +360,14 @@ describe("DeploymentManifestV1 shared identity", () => {
     const catalogue = catalogueFixture();
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         root: "ff".repeat(32),
       }),
     ).toThrow(/catalogue root mismatch/u);
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
@@ -385,7 +380,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     ).toThrow(/nonExistentInputNoIndex\.categoryId must be 00000002/u);
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
@@ -398,7 +393,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     ).toThrow(/catalogue root mismatch/u);
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
@@ -414,20 +409,20 @@ describe("DeploymentManifestV1 shared identity", () => {
     const { validationTraceDispute: _missing, ...missingCategory } =
       catalogue.categories;
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories:
-          missingCategory as DeploymentManifestV1FraudProofCatalogueIdentity["categories"],
+          missingCategory as DeploymentManifestFraudProofCatalogueIdentity["categories"],
       }),
     ).toThrow(/validationTraceDispute is required/u);
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
           historicalCategory: catalogue.categories.doubleSpend,
-        } as DeploymentManifestV1FraudProofCatalogueIdentity["categories"],
+        } as DeploymentManifestFraudProofCatalogueIdentity["categories"],
       }),
     ).toThrow(/historicalCategory is unexpected/u);
   });
@@ -437,18 +432,18 @@ describe("DeploymentManifestV1 shared identity", () => {
     const { membershipProofCbor: _proof, ...missingProof } =
       catalogue.categories.doubleSpend;
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
           doubleSpend:
-            missingProof as DeploymentManifestV1FraudProofCatalogueIdentity["categories"]["doubleSpend"],
+            missingProof as DeploymentManifestFraudProofCatalogueIdentity["categories"]["doubleSpend"],
         },
       }),
     ).toThrow(/doubleSpend\.membershipProofCbor is required/u);
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
@@ -461,7 +456,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     ).toThrow(/doubleSpend\.scriptHash must be lowercase canonical hex/u);
 
     expect(() =>
-      verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+      verifyDeploymentManifestFraudProofCatalogueIdentity({
         ...catalogue,
         categories: {
           ...catalogue.categories,
@@ -477,7 +472,7 @@ describe("DeploymentManifestV1 shared identity", () => {
   });
 
   it("owns canonical JSON normalization and digest vectors", () => {
-    const normalized = normalizeDeploymentManifestV1JsonValue({
+    const normalized = normalizeDeploymentManifestJsonValue({
       z: [1, 2n],
       a: { y: true, x: null },
     });
@@ -485,17 +480,17 @@ describe("DeploymentManifestV1 shared identity", () => {
       z: [1, "2"],
       a: { y: true, x: null },
     });
-    expect(computeDeploymentManifestV1JsonDigest(normalized)).toBe(
+    expect(computeDeploymentManifestJsonDigest(normalized)).toBe(
       "ccff47a9e0ebd42629b30db95fa7988b032093e903958b916820987a100d7cb4",
     );
     expect(
-      computeDeploymentManifestV1JsonDigest({
+      computeDeploymentManifestJsonDigest({
         a: { x: null, y: true },
         z: [1, "2"],
       }),
     ).toBe("ccff47a9e0ebd42629b30db95fa7988b032093e903958b916820987a100d7cb4");
     expect(
-      computeDeploymentManifestV1JsonDigest({
+      computeDeploymentManifestJsonDigest({
         a: { x: null, y: false },
         z: [1, "2"],
       }),
@@ -506,12 +501,12 @@ describe("DeploymentManifestV1 shared identity", () => {
 
   it("rejects values outside the canonical JSON boundary", () => {
     expect(() =>
-      normalizeDeploymentManifestV1JsonValue({ missing: undefined }),
+      normalizeDeploymentManifestJsonValue({ missing: undefined }),
     ).toThrow(/value\.missing must not be undefined/u);
     expect(() =>
-      normalizeDeploymentManifestV1JsonValue({ invalid: Number.NaN }),
+      normalizeDeploymentManifestJsonValue({ invalid: Number.NaN }),
     ).toThrow(/must contain only finite numbers/u);
-    expect(() => computeDeploymentManifestV1JsonDigest({ raw: 2n })).toThrow(
+    expect(() => computeDeploymentManifestJsonDigest({ raw: 2n })).toThrow(
       /must contain only JSON-safe values/u,
     );
   });
@@ -520,7 +515,7 @@ describe("DeploymentManifestV1 shared identity", () => {
     const identity = identityInput();
     const manifest = {
       ...identity,
-      manifestId: computeDeploymentManifestV1Id(identity),
+      manifestId: computeDeploymentManifestId(identity),
     };
     // Rebound 2026-08-30: Q58's exact response classes and release-selected
     // geometry/bond/all lifecycle fee ceilings became authenticated deployment
@@ -531,46 +526,46 @@ describe("DeploymentManifestV1 shared identity", () => {
     // bounded acceptance profile without consulting `network`. The preceding
     // rebound made the 30/2160 rollback policy release-bound.
     // Previously rebound 2026-08-23: the identity input embeds
-    // MIDGARD_CONSENSUS_PROFILE_V1, whose committed constants changed in
+    // MIDGARD_CONSENSUS_PROFILE, whose committed constants changed in
     // 2c7fd3bb (E_MIN_ADA at the ValueAndMint descriptor step, #618/#627);
     // the old pin predated that commit. Previously rebound 2026-08-01 for
     // 4a4bc660 on the same basis.
     expect(manifest.manifestId).toBe(
       "c5f43f5d6a805779f7f86d79b5186bd50e9435fee14c5ec7b444efc0f349c673",
     );
-    expect(verifyDeploymentManifestV1Identity(manifest)).toEqual(manifest);
+    expect(verifyDeploymentManifestIdentity(manifest)).toEqual(manifest);
   });
 
   it("accepts only exact release-bound economics profiles", () => {
     const bounded =
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"];
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"];
     const publicPreprod =
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["public-preprod-launch-v1"];
-    expect(parseDeploymentManifestV1Economics(bounded)).toEqual(bounded);
-    expect(parseDeploymentManifestV1Economics(publicPreprod)).toEqual(
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["public-preprod-launch-v1"];
+    expect(parseDeploymentManifestEconomics(bounded)).toEqual(bounded);
+    expect(parseDeploymentManifestEconomics(publicPreprod)).toEqual(
       publicPreprod,
     );
     expect(() =>
-      parseDeploymentManifestV1Economics({
+      parseDeploymentManifestEconomics({
         ...bounded,
         slashingPenaltyLovelace: bounded.slashingPenaltyLovelace + 1,
       }),
     ).toThrow(/slashingPenaltyLovelace must equal/u);
     expect(() =>
-      parseDeploymentManifestV1Economics({
+      parseDeploymentManifestEconomics({
         ...bounded,
         profile: "public-preprod-launch-v1",
       }),
     ).toThrow(/requiredBondLovelace must equal/u);
     expect(() =>
-      parseDeploymentManifestV1Economics({ ...bounded, extra: true }),
+      parseDeploymentManifestEconomics({ ...bounded, extra: true }),
     ).toThrow(/must contain exactly/u);
     const { proverCollateralFloorLovelace: _omitted, ...legacy } = bounded;
-    expect(() => parseDeploymentManifestV1Economics(legacy)).toThrow(
+    expect(() => parseDeploymentManifestEconomics(legacy)).toThrow(
       /must contain exactly/u,
     );
     expect(() =>
-      parseDeploymentManifestV1Economics({
+      parseDeploymentManifestEconomics({
         ...bounded,
         proverCollateralFloorLovelace:
           bounded.proverCollateralFloorLovelace + 1,
@@ -581,7 +576,7 @@ describe("DeploymentManifestV1 shared identity", () => {
   it("keeps activated Q58 chunk geometry separate from the 4,095-byte proof-field limit", () => {
     const availability = identityInput().availabilityChallenge;
     expect(
-      parseDeploymentManifestV1AvailabilityChallenge({
+      parseDeploymentManifestAvailabilityChallenge({
         ...availability,
         responseGeometry: {
           ...availability.responseGeometry,
@@ -590,38 +585,38 @@ describe("DeploymentManifestV1 shared identity", () => {
       }).responseGeometry.chunkByteLength,
     ).toBe(8_192);
     expect(() =>
-      parseDeploymentManifestV1AvailabilityChallenge({
+      parseDeploymentManifestAvailabilityChallenge({
         ...availability,
         responseGeometry: {
           ...availability.responseGeometry,
           chunkByteLength:
-            MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1 + 1,
+            MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES + 1,
         },
       }),
     ).toThrow(/safety\/coverage bounds/u);
   });
 
   it("owns the sole exact DeploymentMarkerV1 boundary", () => {
-    const manifestId = computeDeploymentManifestV1Id(identityInput());
-    const marker = makeDeploymentMarkerV1(manifestId);
+    const manifestId = computeDeploymentManifestId(identityInput());
+    const marker = makeDeploymentMarker(manifestId);
     expect(marker).toEqual({
-      schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+      schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
       manifestId,
     });
-    expect(parseDeploymentMarkerV1(marker)).toEqual(marker);
-    expect(assertDeploymentMarkerV1Matches(marker, marker, "Postgres")).toEqual(
+    expect(parseDeploymentMarker(marker)).toEqual(marker);
+    expect(assertDeploymentMarkerMatches(marker, marker, "Postgres")).toEqual(
       marker,
     );
     expect(() =>
-      parseDeploymentMarkerV1({ ...marker, historicalVersion: 9 }),
+      parseDeploymentMarker({ ...marker, historicalVersion: 9 }),
     ).toThrow(/exactly schemaVersion and manifestId/u);
     expect(() =>
-      parseDeploymentMarkerV1({ manifestId: marker.manifestId }),
+      parseDeploymentMarker({ manifestId: marker.manifestId }),
     ).toThrow(/exactly schemaVersion and manifestId/u);
     expect(() =>
-      assertDeploymentMarkerV1Matches(
+      assertDeploymentMarkerMatches(
         marker,
-        makeDeploymentMarkerV1("ff".repeat(32)),
+        makeDeploymentMarker("ff".repeat(32)),
         "DA store",
       ),
     ).toThrow(
@@ -633,21 +628,21 @@ describe("DeploymentManifestV1 shared identity", () => {
     const identity = identityInput();
     const manifest = {
       ...identity,
-      manifestId: computeDeploymentManifestV1Id(identity),
+      manifestId: computeDeploymentManifestId(identity),
     };
     expect(() =>
-      verifyDeploymentManifestV1Identity({
+      verifyDeploymentManifestIdentity({
         ...manifest,
         network: "Preview",
       }),
     ).toThrow(/id mismatch/u);
 
     const { da: _da, ...missingDa } = manifest;
-    expect(() => verifyDeploymentManifestV1Identity(missingDa)).toThrow(
+    expect(() => verifyDeploymentManifestIdentity(missingDa)).toThrow(
       /value\.da is required/u,
     );
     expect(() =>
-      verifyDeploymentManifestV1Identity({
+      verifyDeploymentManifestIdentity({
         ...manifest,
         historicalVersion: 9,
       }),

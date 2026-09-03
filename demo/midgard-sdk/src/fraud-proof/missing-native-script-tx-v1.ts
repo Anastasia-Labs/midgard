@@ -50,7 +50,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -63,20 +63,20 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID_V1 =
+export const MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID =
   "missing-native-script-tx" as const;
 
 /**
  * Canonical script-witness field index of a native V1 transaction witness
  * set. The §8.8 door refuses a preimage built for any other field.
  */
-export const MISSING_NATIVE_SCRIPT_TX_SCRIPT_TX_WITS_FIELD_INDEX_V1 = 6;
+export const MISSING_NATIVE_SCRIPT_TX_SCRIPT_TX_WITS_FIELD_INDEX = 6;
 
 /** Direct step-06 fold limit; larger fields use the staged 06→07→08 route. */
-export const MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1 = 64;
+export const MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT = 64;
 
 /** Authenticated grammar/semantic items processed per staged transaction. */
-export const MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1 = 32;
+export const MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT = 32;
 
 const H28Schema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
@@ -93,7 +93,7 @@ const H28Schema = Data.Bytes({ minLength: 28, maxLength: 28 });
  * non-canonical native-script bytes — the same set of preimages the on-chain
  * decoder accepts.
  */
-export const missingNativeScriptTxVersionedScriptHashV1 = (
+export const missingNativeScriptTxVersionedScriptHash = (
   scriptBytes: Uint8Array,
 ): string => {
   const decoded = decodeMidgardVersionedScript(
@@ -138,7 +138,7 @@ const encodeDefiniteBytes = (bytes: Buffer): Buffer => {
  * whole claim unadjudicable and this function **throws**, exactly as the
  * on-chain fold aborts.
  */
-export const missingNativeScriptIsAbsentV1 = ({
+export const missingNativeScriptIsAbsent = ({
   scriptTxWitsItems,
   expectedMissingScriptHash,
 }: {
@@ -235,7 +235,7 @@ export const MissingNativeScriptTxStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   bad_input_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
 });
 export type MissingNativeScriptTxStep02Args = Data.Static<
   typeof MissingNativeScriptTxStep02ArgsSchema
@@ -316,7 +316,7 @@ export const MissingNativeScriptTxStep04Datum =
 export const MissingNativeScriptTxStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  outputs_opening: FieldOpeningV1Schema,
+  outputs_opening: FieldOpeningSchema,
 });
 export type MissingNativeScriptTxStep04Args = Data.Static<
   typeof MissingNativeScriptTxStep04ArgsSchema
@@ -381,7 +381,7 @@ export const MissingNativeScriptTxStep05SpendRedeemer =
  * Mirrors `midgard/fraud_proofs/missing_native_script_tx/step_06.State` —
  * identical to step-05's state; the classification happened in between.
  */
-export const MissingNativeScriptTxPhaseV1Schema = Data.Enum([
+export const MissingNativeScriptTxPhaseSchema = Data.Enum([
   Data.Literal("Ready"),
   Data.Object({
     GrammarCertification: Data.Object({ checkpoint_hash: H32Schema }),
@@ -393,17 +393,17 @@ export const MissingNativeScriptTxPhaseV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type MissingNativeScriptTxPhaseV1 = Data.Static<
-  typeof MissingNativeScriptTxPhaseV1Schema
+export type MissingNativeScriptTxPhase = Data.Static<
+  typeof MissingNativeScriptTxPhaseSchema
 >;
-export const MissingNativeScriptTxPhaseV1 =
-  MissingNativeScriptTxPhaseV1Schema as unknown as MissingNativeScriptTxPhaseV1;
+export const MissingNativeScriptTxPhase =
+  MissingNativeScriptTxPhaseSchema as unknown as MissingNativeScriptTxPhase;
 
 export const MissingNativeScriptTxStep06StateSchema = Data.Object({
   expected_missing_script_hash: H28Schema,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
-  phase: MissingNativeScriptTxPhaseV1Schema,
+  phase: MissingNativeScriptTxPhaseSchema,
 });
 export type MissingNativeScriptTxStep06State = Data.Static<
   typeof MissingNativeScriptTxStep06StateSchema
@@ -436,14 +436,14 @@ export const MissingNativeScriptTxStep06ArgsSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({
     StartGrammarCertification: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       item_budget: Data.Integer(),
     }),
   }),
@@ -484,7 +484,7 @@ export const MissingNativeScriptTxStep07ArgsSchema = Data.Enum([
     ResumeGrammarCertification: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -493,7 +493,7 @@ export const MissingNativeScriptTxStep07ArgsSchema = Data.Enum([
     StartSemanticScan: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       grammar_checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -535,7 +535,7 @@ export const MissingNativeScriptTxStep08ArgsSchema = Data.Enum([
     ResumeSemanticScan: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -545,7 +545,7 @@ export const MissingNativeScriptTxStep08ArgsSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -568,7 +568,7 @@ export const MissingNativeScriptTxStep08SpendRedeemer =
 // ## Step-state builders (twins of the on-chain forwarding rules)
 
 /** Exactly the state `step-01` writes for `step-02` (`step-01.ak:63-68`). */
-export const missingNativeScriptTxStep02StateFromBadTxV1 = ({
+export const missingNativeScriptTxStep02StateFromBadTx = ({
   badTxId,
   badTxWitnessSetHash,
 }: {
@@ -580,7 +580,7 @@ export const missingNativeScriptTxStep02StateFromBadTxV1 = ({
 });
 
 /** Exactly the state `step-02` writes for `step-03` (`step-02.ak:85-92`). */
-export const missingNativeScriptTxStep03StateV1 = ({
+export const missingNativeScriptTxStep03State = ({
   inputWithMissingScript,
   badTxId,
   badTxWitnessSetHash,
@@ -598,7 +598,7 @@ export const missingNativeScriptTxStep03StateV1 = ({
 });
 
 /** Exactly the state `step-03` writes for `step-04` (`step-03.ak:70-77`). */
-export const missingNativeScriptTxStep04StateV1 = ({
+export const missingNativeScriptTxStep04State = ({
   producingTxId,
   badInputOutputIndex,
   badTxId,
@@ -619,7 +619,7 @@ export const missingNativeScriptTxStep04StateV1 = ({
  * Exactly the state `step-04` writes for `step-05` (`step-04.ak:96-100`),
  * which is also the state `step-05` forwards to `step-06` unchanged.
  */
-export const missingNativeScriptTxStep05StateV1 = ({
+export const missingNativeScriptTxStep05State = ({
   expectedMissingScriptHash,
   badTxId,
   badTxWitnessSetHash,
@@ -634,7 +634,7 @@ export const missingNativeScriptTxStep05StateV1 = ({
 });
 
 /** Exact state step-05 writes at the step-06 direct/staged routing boundary. */
-export const missingNativeScriptTxStep06ReadyStateV1 = (
+export const missingNativeScriptTxStep06ReadyState = (
   state: MissingNativeScriptTxStep05State,
 ): MissingNativeScriptTxStep06State => ({
   ...state,

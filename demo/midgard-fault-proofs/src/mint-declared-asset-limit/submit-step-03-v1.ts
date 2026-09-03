@@ -1,6 +1,6 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,35 +13,35 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MintDeclaredAssetLimitContractsV1 } from "./contracts-v1.js";
-import type { MintDeclaredAssetLimitEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MintDeclaredAssetLimitContracts } from "./contracts-v1.js";
+import type { MintDeclaredAssetLimitEvidence } from "./family-v1.js";
 import {
-  MintDeclaredAssetLimitStep03DatumV1Schema,
-  MintDeclaredAssetLimitStep03RedeemerV1Schema,
-  MintDeclaredAssetLimitStep04DatumV1Schema,
+  MintDeclaredAssetLimitStep03DatumSchema,
+  MintDeclaredAssetLimitStep03RedeemerSchema,
+  MintDeclaredAssetLimitStep04DatumSchema,
 } from "./schemas-v1.js";
 import {
-  encodeMintDeclaredWalkCheckpointV1,
-  hashMintDeclaredWalkCheckpointV1,
-  type MintDeclaredAssetLimitStagedPlanV1,
-  mintDeclaredFoldPrefixV1,
+  encodeMintDeclaredWalkCheckpoint,
+  hashMintDeclaredWalkCheckpoint,
+  type MintDeclaredAssetLimitStagedPlan,
+  mintDeclaredFoldPrefix,
 } from "./staged-plan-v1.js";
 
-export const submitMintDeclaredAssetLimitStep03V1 = async ({
+export const submitMintDeclaredAssetLimitStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -56,16 +56,16 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintDeclaredAssetLimitContractsV1;
+  readonly contracts: MintDeclaredAssetLimitContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: MintDeclaredAssetLimitEvidenceV1;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
   readonly nativeTxCompactCbor: string;
-  readonly staged: MintDeclaredAssetLimitStagedPlanV1;
+  readonly staged: MintDeclaredAssetLimitStagedPlan;
   readonly walkOrdinal: number;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const nextCheckpoint = staged.walk[walkOrdinal];
@@ -74,7 +74,7 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
   const priorCheckpoint =
     walkOrdinal === 0 ? staged.initialWalk : staged.walk[walkOrdinal - 1]!;
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -82,7 +82,7 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     policy_index: bigint;
     target_policy_id: string;
@@ -94,7 +94,7 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: MintDeclaredAssetLimitStep03DatumV1Schema as never,
+    schema: MintDeclaredAssetLimitStep03DatumSchema as never,
     family: "mint-declared-asset-limit",
     stepIndex,
   });
@@ -102,12 +102,11 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
     state.policy_index !== BigInt(evidence.policyIndex) ||
     state.target_policy_id !== evidence.targetPolicyId ||
     state.target_declared_count !== BigInt(evidence.targetDeclaredCount) ||
-    state.checkpoint_hash !==
-      hashMintDeclaredWalkCheckpointV1(priorCheckpoint) ||
+    state.checkpoint_hash !== hashMintDeclaredWalkCheckpoint(priorCheckpoint) ||
     state.outcome !== 0n
   )
     throw new Error("mintDeclaredAssetLimit: fold datum/checkpoint changed");
-  const prefix = mintDeclaredFoldPrefixV1({
+  const prefix = mintDeclaredFoldPrefix({
     items: staged.items,
     nextItemIndex: priorCheckpoint.nextItemIndex,
     policyIndex: evidence.policyIndex,
@@ -117,10 +116,10 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
     state.previous_policy !== prefix.previousPolicy
   )
     throw new Error("mintDeclaredAssetLimit: fold accumulator changed");
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 5,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
@@ -129,14 +128,14 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
     publish: true,
     label: "mintDeclaredAssetLimit fold field 5",
   });
-  const carriageUtxos = await resolveFaultProofFieldCarriagePublicationsV1({
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid,
     publisherAddress: signer.address,
     planned,
   });
   if (carriageUtxos === undefined)
     throw new Error("mintDeclaredAssetLimit: field carriage disappeared");
-  const certificateUtxo = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificateUtxo = await resolveFaultProofFieldPreimageCertificate({
     lucid,
     network: lucid.config().network!,
     planned,
@@ -144,13 +143,13 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
   });
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("mintDeclaredAssetLimit: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "mint-declared-asset-limit",
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -163,7 +162,7 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
   const terminal = walkOrdinal === staged.walk.length - 1;
   const nextPrefix = terminal
     ? null
-    : mintDeclaredFoldPrefixV1({
+    : mintDeclaredFoldPrefix({
         items: staged.items,
         nextItemIndex: nextCheckpoint.nextItemIndex,
         policyIndex: evidence.policyIndex,
@@ -179,7 +178,7 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
         policy_index: BigInt(evidence.policyIndex),
         target_policy_id: evidence.targetPolicyId,
         target_declared_count: BigInt(evidence.targetDeclaredCount),
-        checkpoint_hash: hashMintDeclaredWalkCheckpointV1(nextCheckpoint),
+        checkpoint_hash: hashMintDeclaredWalkCheckpoint(nextCheckpoint),
         accumulated_count: BigInt(nextPrefix!.accumulatedCount),
         previous_policy: nextPrefix!.previousPolicy,
         outcome: 0n,
@@ -187,8 +186,8 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
     (terminal
-      ? MintDeclaredAssetLimitStep04DatumV1Schema
-      : MintDeclaredAssetLimitStep03DatumV1Schema) as never,
+      ? MintDeclaredAssetLimitStep04DatumSchema
+      : MintDeclaredAssetLimitStep03DatumSchema) as never,
   );
   const nextStep = terminal ? contracts.steps[3] : contracts.steps[2];
   const outputMatches = computationThreadOutputPredicate({
@@ -217,19 +216,17 @@ export const submitMintDeclaredAssetLimitStep03V1 = async ({
             output_index: outputIndex,
             opening,
             checkpoint_bytes:
-              encodeMintDeclaredWalkCheckpointV1(priorCheckpoint).toString(
-                "hex",
-              ),
+              encodeMintDeclaredWalkCheckpoint(priorCheckpoint).toString("hex"),
             item_budget: BigInt(
               nextCheckpoint.nextItemIndex - priorCheckpoint.nextItemIndex,
             ),
           },
         ],
       } as never,
-      MintDeclaredAssetLimitStep03RedeemerV1Schema as never,
+      MintDeclaredAssetLimitStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

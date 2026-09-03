@@ -1,22 +1,22 @@
 import {
-  hashMidgardCekDataNodeV1,
-  midgardCekDataBytesCborLengthV1,
-  midgardCekDataBytesMemoryV1,
+  hashMidgardCekDataNode,
+  midgardCekDataBytesCborLength,
+  midgardCekDataBytesMemory,
 } from "./cek-semantic.js";
 import {
-  advanceMidgardCekSourceBlobV1,
-  encodeMidgardCekSourceBlobControlV1,
-  finalizeMidgardCekSourceBlobV1,
-  initialMidgardCekSourceBlobControlV1,
-  isWellFormedMidgardCekSourceBlobControlV1,
-  type MidgardCekSourceBlobControlV1,
-  type MidgardCekSourceBlobSpanV1,
-  MidgardCekSourceBlobStagesV1,
-  nextMidgardCekSourceBlobSpanV1,
+  advanceMidgardCekSourceBlob,
+  encodeMidgardCekSourceBlobControl,
+  finalizeMidgardCekSourceBlob,
+  initialMidgardCekSourceBlobControl,
+  isWellFormedMidgardCekSourceBlobControl,
+  type MidgardCekSourceBlobControl,
+  type MidgardCekSourceBlobSpan,
+  MidgardCekSourceBlobStages,
+  nextMidgardCekSourceBlobSpan,
 } from "./cek-source-blob-v1.js";
 import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 
-export const MIDGARD_CEK_DATA_BYTES_V1_VERSION = 1 as const;
+export const MIDGARD_CEK_DATA_BYTES_VERSION = 1 as const;
 
 export const MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES = 2;
 
@@ -25,47 +25,47 @@ export const MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN = 132;
 const UINT32_MAX = 0xffff_ffff;
 const CARDANO_DATA_BYTES_CHUNK = 64;
 
-export const MidgardCekDataBytesStagesV1 = Object.freeze({
+export const MidgardCekDataBytesStages = Object.freeze({
   Syntax: 0,
   Blob: 1,
   Break: 2,
   Terminal: 3,
 } as const);
 
-export type MidgardCekDataBytesStageV1 =
-  (typeof MidgardCekDataBytesStagesV1)[keyof typeof MidgardCekDataBytesStagesV1];
+export type MidgardCekDataBytesStage =
+  (typeof MidgardCekDataBytesStages)[keyof typeof MidgardCekDataBytesStages];
 
 /**
  * Proves one canonical Cardano Data byte-string encoding and commits only its
  * raw byte content into the CEK blob tree. The parent authenticates every raw
- * CBOR span returned by `nextMidgardCekDataBytesSpanV1`.
+ * CBOR span returned by `nextMidgardCekDataBytesSpan`.
  */
-export type MidgardCekDataBytesControlV1 = {
-  readonly version: typeof MIDGARD_CEK_DATA_BYTES_V1_VERSION;
-  readonly stage: MidgardCekDataBytesStageV1;
+export type MidgardCekDataBytesControl = {
+  readonly version: typeof MIDGARD_CEK_DATA_BYTES_VERSION;
+  readonly stage: MidgardCekDataBytesStage;
   readonly sourceStart: number;
   readonly sourceLength: number;
   readonly bytesLength: number;
   /** Uses virtual source coordinates 0..bytesLength for extracted content. */
-  readonly blob: MidgardCekSourceBlobControlV1 | null;
+  readonly blob: MidgardCekSourceBlobControl | null;
 };
 
-export type MidgardCekDataBytesSummaryV1 = {
+export type MidgardCekDataBytesSummary = {
   readonly root: Buffer;
   readonly cborLength: bigint;
   readonly memory: bigint;
 };
 
-export type MidgardCekDataBytesTraceStepV1 = {
-  readonly control: MidgardCekDataBytesControlV1;
+export type MidgardCekDataBytesTraceStep = {
+  readonly control: MidgardCekDataBytesControl;
   readonly sourceBytes: Buffer | null;
-  readonly next: MidgardCekDataBytesControlV1;
+  readonly next: MidgardCekDataBytesControl;
 };
 
-export type MidgardCekDataBytesTraceV1 = {
-  readonly initial: MidgardCekDataBytesControlV1;
-  readonly steps: readonly MidgardCekDataBytesTraceStepV1[];
-  readonly terminal: MidgardCekDataBytesControlV1;
+export type MidgardCekDataBytesTrace = {
+  readonly initial: MidgardCekDataBytesControl;
+  readonly steps: readonly MidgardCekDataBytesTraceStep[];
+  readonly terminal: MidgardCekDataBytesControl;
 };
 
 type ContentSegment = {
@@ -74,7 +74,7 @@ type ContentSegment = {
 };
 
 type ContentPlan = {
-  readonly span: MidgardCekSourceBlobSpanV1;
+  readonly span: MidgardCekSourceBlobSpan;
   readonly segments: readonly ContentSegment[];
 };
 
@@ -102,7 +102,7 @@ const definiteHeaderLength = (length: number): number =>
   definiteBytesHeader(length).length;
 
 const canonicalCborLength = (bytesLength: number): number => {
-  const length = midgardCekDataBytesCborLengthV1(BigInt(bytesLength));
+  const length = midgardCekDataBytesCborLength(BigInt(bytesLength));
   if (length > BigInt(UINT32_MAX)) {
     throw new Error("V1 CEK Data bytes CBOR length exceeds uint32");
   }
@@ -113,7 +113,7 @@ const canonicalCborLength = (bytesLength: number): number => {
  * Derives the raw content length from the independently committed item length
  * and an authenticated canonical framing prefix.
  */
-export const parseMidgardCekDataBytesSyntaxV1 = ({
+export const parseMidgardCekDataBytesSyntax = ({
   syntaxBytes,
   sourceLength,
 }: {
@@ -171,15 +171,15 @@ export const parseMidgardCekDataBytesSyntaxV1 = ({
   }
 };
 
-export const isWellFormedMidgardCekDataBytesControlV1 = (
-  control: MidgardCekDataBytesControlV1,
+export const isWellFormedMidgardCekDataBytesControl = (
+  control: MidgardCekDataBytesControl,
 ): boolean => {
   try {
     if (
-      control.version !== MIDGARD_CEK_DATA_BYTES_V1_VERSION ||
+      control.version !== MIDGARD_CEK_DATA_BYTES_VERSION ||
       !Number.isInteger(control.stage) ||
-      control.stage < MidgardCekDataBytesStagesV1.Syntax ||
-      control.stage > MidgardCekDataBytesStagesV1.Terminal ||
+      control.stage < MidgardCekDataBytesStages.Syntax ||
+      control.stage > MidgardCekDataBytesStages.Terminal ||
       exactSourceCoordinate(control.sourceStart, "source start") !==
         control.sourceStart ||
       !Number.isInteger(control.sourceLength) ||
@@ -192,73 +192,73 @@ export const isWellFormedMidgardCekDataBytesControlV1 = (
     ) {
       return false;
     }
-    if (control.stage === MidgardCekDataBytesStagesV1.Syntax) {
+    if (control.stage === MidgardCekDataBytesStages.Syntax) {
       return control.bytesLength === 0 && control.blob === null;
     }
     if (
       canonicalCborLength(control.bytesLength) !== control.sourceLength ||
       control.blob === null ||
-      !isWellFormedMidgardCekSourceBlobControlV1(control.blob) ||
+      !isWellFormedMidgardCekSourceBlobControl(control.blob) ||
       control.blob.sourceStart !== 0 ||
       control.blob.sourceLength !== control.bytesLength
     ) {
       return false;
     }
-    if (control.stage === MidgardCekDataBytesStagesV1.Break) {
+    if (control.stage === MidgardCekDataBytesStages.Break) {
       return (
         control.bytesLength > CARDANO_DATA_BYTES_CHUNK &&
-        control.blob.stage === MidgardCekSourceBlobStagesV1.Terminal
+        control.blob.stage === MidgardCekSourceBlobStages.Terminal
       );
     }
     return (
-      control.stage !== MidgardCekDataBytesStagesV1.Terminal ||
-      control.blob.stage === MidgardCekSourceBlobStagesV1.Terminal
+      control.stage !== MidgardCekDataBytesStages.Terminal ||
+      control.blob.stage === MidgardCekSourceBlobStages.Terminal
     );
   } catch {
     return false;
   }
 };
 
-export const initialMidgardCekDataBytesControlV1 = ({
+export const initialMidgardCekDataBytesControl = ({
   sourceStart,
   sourceLength,
 }: {
   readonly sourceStart: number;
   readonly sourceLength: number;
-}): MidgardCekDataBytesControlV1 => {
+}): MidgardCekDataBytesControl => {
   const control = {
-    version: MIDGARD_CEK_DATA_BYTES_V1_VERSION,
-    stage: MidgardCekDataBytesStagesV1.Syntax,
+    version: MIDGARD_CEK_DATA_BYTES_VERSION,
+    stage: MidgardCekDataBytesStages.Syntax,
     sourceStart,
     sourceLength,
     bytesLength: 0,
     blob: null,
-  } satisfies MidgardCekDataBytesControlV1;
-  if (!isWellFormedMidgardCekDataBytesControlV1(control)) {
+  } satisfies MidgardCekDataBytesControl;
+  if (!isWellFormedMidgardCekDataBytesControl(control)) {
     throw new Error("Invalid V1 CEK Data bytes range");
   }
   return control;
 };
 
 const optionalBlobDataCbor = (
-  blob: MidgardCekSourceBlobControlV1 | null,
+  blob: MidgardCekSourceBlobControl | null,
 ): Buffer =>
   blob === null
     ? Buffer.from("d87a80", "hex")
     : Buffer.concat([
         Buffer.from("d8799f", "hex"),
-        encodeMidgardCekSourceBlobControlV1(blob),
+        encodeMidgardCekSourceBlobControl(blob),
         Buffer.from([0xff]),
       ]);
 
-export const encodeMidgardCekDataBytesControlV1 = (
-  control: MidgardCekDataBytesControlV1,
+export const encodeMidgardCekDataBytesControl = (
+  control: MidgardCekDataBytesControl,
 ): Buffer => {
-  if (!isWellFormedMidgardCekDataBytesControlV1(control)) {
+  if (!isWellFormedMidgardCekDataBytesControl(control)) {
     throw new Error("Invalid V1 CEK Data bytes control");
   }
   return encodeCborArrayRaw([
-    encodeCbor(BigInt(MIDGARD_CEK_DATA_BYTES_V1_VERSION)),
+    encodeCbor(BigInt(MIDGARD_CEK_DATA_BYTES_VERSION)),
     encodeCbor(BigInt(control.stage)),
     encodeCbor(BigInt(control.sourceStart)),
     encodeCbor(BigInt(control.sourceLength)),
@@ -271,7 +271,7 @@ const rawContentPosition = ({
   control,
   contentOffset,
 }: {
-  readonly control: MidgardCekDataBytesControlV1;
+  readonly control: MidgardCekDataBytesControl;
   readonly contentOffset: number;
 }): number => {
   if (control.bytesLength <= CARDANO_DATA_BYTES_CHUNK) {
@@ -292,15 +292,15 @@ const rawContentPosition = ({
 };
 
 const contentPlan = (
-  control: MidgardCekDataBytesControlV1,
+  control: MidgardCekDataBytesControl,
 ): ContentPlan | null => {
   if (
-    control.stage !== MidgardCekDataBytesStagesV1.Blob ||
+    control.stage !== MidgardCekDataBytesStages.Blob ||
     control.blob === null
   ) {
     return null;
   }
-  const virtualSpan = nextMidgardCekSourceBlobSpanV1(control.blob);
+  const virtualSpan = nextMidgardCekSourceBlobSpan(control.blob);
   if (virtualSpan === null) return null;
   const contentStart = virtualSpan.absoluteStart;
   const contentEnd = contentStart + virtualSpan.length;
@@ -413,13 +413,13 @@ const extractContent = ({
   return cursor === source.length ? Buffer.concat(content) : null;
 };
 
-export const nextMidgardCekDataBytesSpanV1 = (
-  control: MidgardCekDataBytesControlV1,
-): MidgardCekSourceBlobSpanV1 | null => {
-  if (!isWellFormedMidgardCekDataBytesControlV1(control)) {
+export const nextMidgardCekDataBytesSpan = (
+  control: MidgardCekDataBytesControl,
+): MidgardCekSourceBlobSpan | null => {
+  if (!isWellFormedMidgardCekDataBytesControl(control)) {
     return null;
   }
-  if (control.stage === MidgardCekDataBytesStagesV1.Syntax) {
+  if (control.stage === MidgardCekDataBytesStages.Syntax) {
     return {
       absoluteStart: control.sourceStart,
       length: Math.min(
@@ -428,7 +428,7 @@ export const nextMidgardCekDataBytesSpanV1 = (
       ),
     };
   }
-  if (control.stage === MidgardCekDataBytesStagesV1.Break) {
+  if (control.stage === MidgardCekDataBytesStages.Break) {
     return {
       absoluteStart: control.sourceStart + control.sourceLength - 1,
       length: 1,
@@ -437,19 +437,19 @@ export const nextMidgardCekDataBytesSpanV1 = (
   return contentPlan(control)?.span ?? null;
 };
 
-export const advanceMidgardCekDataBytesV1 = ({
+export const advanceMidgardCekDataBytes = ({
   control,
   sourceBytes,
 }: {
-  readonly control: MidgardCekDataBytesControlV1;
+  readonly control: MidgardCekDataBytesControl;
   readonly sourceBytes?: Uint8Array | null;
-}): MidgardCekDataBytesControlV1 | null => {
+}): MidgardCekDataBytesControl | null => {
   try {
-    if (!isWellFormedMidgardCekDataBytesControlV1(control)) {
+    if (!isWellFormedMidgardCekDataBytesControl(control)) {
       return null;
     }
-    if (control.stage === MidgardCekDataBytesStagesV1.Syntax) {
-      const span = nextMidgardCekDataBytesSpanV1(control)!;
+    if (control.stage === MidgardCekDataBytesStages.Syntax) {
+      const span = nextMidgardCekDataBytesSpan(control)!;
       if (
         sourceBytes === null ||
         sourceBytes === undefined ||
@@ -457,23 +457,23 @@ export const advanceMidgardCekDataBytesV1 = ({
       ) {
         return null;
       }
-      const bytesLength = parseMidgardCekDataBytesSyntaxV1({
+      const bytesLength = parseMidgardCekDataBytesSyntax({
         syntaxBytes: sourceBytes,
         sourceLength: control.sourceLength,
       });
       if (bytesLength === null) return null;
       const next = {
         ...control,
-        stage: MidgardCekDataBytesStagesV1.Blob,
+        stage: MidgardCekDataBytesStages.Blob,
         bytesLength,
-        blob: initialMidgardCekSourceBlobControlV1({
+        blob: initialMidgardCekSourceBlobControl({
           sourceStart: 0,
           sourceLength: bytesLength,
         }),
-      } satisfies MidgardCekDataBytesControlV1;
-      return isWellFormedMidgardCekDataBytesControlV1(next) ? next : null;
+      } satisfies MidgardCekDataBytesControl;
+      return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
     }
-    if (control.stage === MidgardCekDataBytesStagesV1.Break) {
+    if (control.stage === MidgardCekDataBytesStages.Break) {
       if (
         sourceBytes === null ||
         sourceBytes === undefined ||
@@ -484,17 +484,17 @@ export const advanceMidgardCekDataBytesV1 = ({
       }
       const next = {
         ...control,
-        stage: MidgardCekDataBytesStagesV1.Terminal,
-      } satisfies MidgardCekDataBytesControlV1;
-      return isWellFormedMidgardCekDataBytesControlV1(next) ? next : null;
+        stage: MidgardCekDataBytesStages.Terminal,
+      } satisfies MidgardCekDataBytesControl;
+      return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
     }
     if (
-      control.stage !== MidgardCekDataBytesStagesV1.Blob ||
+      control.stage !== MidgardCekDataBytesStages.Blob ||
       control.blob === null
     ) {
       return null;
     }
-    if (control.blob.stage === MidgardCekSourceBlobStagesV1.Terminal) {
+    if (control.blob.stage === MidgardCekSourceBlobStages.Terminal) {
       if (sourceBytes !== null && sourceBytes !== undefined) {
         return null;
       }
@@ -502,10 +502,10 @@ export const advanceMidgardCekDataBytesV1 = ({
         ...control,
         stage:
           control.bytesLength > CARDANO_DATA_BYTES_CHUNK
-            ? MidgardCekDataBytesStagesV1.Break
-            : MidgardCekDataBytesStagesV1.Terminal,
-      } satisfies MidgardCekDataBytesControlV1;
-      return isWellFormedMidgardCekDataBytesControlV1(next) ? next : null;
+            ? MidgardCekDataBytesStages.Break
+            : MidgardCekDataBytesStages.Terminal,
+      } satisfies MidgardCekDataBytesControl;
+      return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
     }
     const plan = contentPlan(control);
     const expectsSource = plan !== null;
@@ -520,33 +520,33 @@ export const advanceMidgardCekDataBytesV1 = ({
             sourceBytes: sourceBytes!,
           });
     if (plan !== null && content === null) return null;
-    const blob = advanceMidgardCekSourceBlobV1({
+    const blob = advanceMidgardCekSourceBlob({
       control: control.blob,
       sourceBytes: content,
     });
     if (blob === null) return null;
     const next = { ...control, blob };
-    return isWellFormedMidgardCekDataBytesControlV1(next) ? next : null;
+    return isWellFormedMidgardCekDataBytesControl(next) ? next : null;
   } catch {
     return null;
   }
 };
 
-export const finalizeMidgardCekDataBytesV1 = (
-  control: MidgardCekDataBytesControlV1,
-): MidgardCekDataBytesSummaryV1 | null => {
+export const finalizeMidgardCekDataBytes = (
+  control: MidgardCekDataBytesControl,
+): MidgardCekDataBytesSummary | null => {
   if (
-    !isWellFormedMidgardCekDataBytesControlV1(control) ||
-    control.stage !== MidgardCekDataBytesStagesV1.Terminal
+    !isWellFormedMidgardCekDataBytesControl(control) ||
+    control.stage !== MidgardCekDataBytesStages.Terminal
   ) {
     return null;
   }
-  const bytesRoot = finalizeMidgardCekSourceBlobV1(control.blob!);
+  const bytesRoot = finalizeMidgardCekSourceBlob(control.blob!);
   if (bytesRoot === null) return null;
-  const memory = midgardCekDataBytesMemoryV1(BigInt(control.bytesLength));
+  const memory = midgardCekDataBytesMemory(BigInt(control.bytesLength));
   return Object.freeze({
     root: Buffer.from(
-      hashMidgardCekDataNodeV1({
+      hashMidgardCekDataNode({
         kind: "bytes",
         bytesRoot,
         bytesLength: BigInt(control.bytesLength),
@@ -559,22 +559,22 @@ export const finalizeMidgardCekDataBytesV1 = (
   });
 };
 
-export const buildMidgardCekDataBytesTraceV1 = ({
+export const buildMidgardCekDataBytesTrace = ({
   sourceStart,
   source,
 }: {
   readonly sourceStart: number;
   readonly source: Uint8Array;
-}): MidgardCekDataBytesTraceV1 => {
+}): MidgardCekDataBytesTrace => {
   const bytes = Buffer.from(source);
-  const initial = initialMidgardCekDataBytesControlV1({
+  const initial = initialMidgardCekDataBytesControl({
     sourceStart,
     sourceLength: bytes.length,
   });
-  const steps: MidgardCekDataBytesTraceStepV1[] = [];
+  const steps: MidgardCekDataBytesTraceStep[] = [];
   let control = initial;
-  while (control.stage !== MidgardCekDataBytesStagesV1.Terminal) {
-    const span = nextMidgardCekDataBytesSpanV1(control);
+  while (control.stage !== MidgardCekDataBytesStages.Terminal) {
+    const span = nextMidgardCekDataBytesSpan(control);
     const sourceBytes =
       span === null
         ? null
@@ -582,11 +582,11 @@ export const buildMidgardCekDataBytesTraceV1 = ({
             span.absoluteStart - sourceStart,
             span.absoluteStart - sourceStart + span.length,
           );
-    const next = advanceMidgardCekDataBytesV1({
+    const next = advanceMidgardCekDataBytes({
       control,
       sourceBytes,
     });
-    if (next === null || !isWellFormedMidgardCekDataBytesControlV1(next)) {
+    if (next === null || !isWellFormedMidgardCekDataBytesControl(next)) {
       throw new Error("V1 CEK Data bytes trace failed closed");
     }
     steps.push({ control, sourceBytes, next });

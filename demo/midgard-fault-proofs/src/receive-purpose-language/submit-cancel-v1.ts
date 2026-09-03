@@ -1,13 +1,13 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
-import type { ReceivePurposeLanguageContractsV1 } from "./contracts-v1.js";
-export const submitReceivePurposeLanguageCancelV1 = async (
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
+import type { ReceivePurposeLanguageContracts } from "./contracts-v1.js";
+export const submitReceivePurposeLanguageCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
-  > & { readonly contracts: ReceivePurposeLanguageContractsV1 },
+  > & { readonly contracts: ReceivePurposeLanguageContracts },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: "receive-purpose-language",
     steps: contracts.steps,

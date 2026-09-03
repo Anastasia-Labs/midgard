@@ -8,12 +8,12 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-export const FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION =
   "midgard-fraud-proof-workflow-identity-v1" as const;
-export const FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION =
   "midgard-fraud-proof-workflow-journal-entry-v1" as const;
 
-export type FraudProofWorkflowTargetV1 =
+export type FraudProofWorkflowTarget =
   | {
       readonly kind: "state_queue_header";
       /** Canonical 28-byte Midgard header hash. */
@@ -25,25 +25,25 @@ export type FraudProofWorkflowTargetV1 =
       readonly claimId: string;
     };
 
-export type FraudProofWorkflowIdentityV1 = {
-  readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION;
+export type FraudProofWorkflowIdentity = {
+  readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
-  readonly target: FraudProofWorkflowTargetV1;
+  readonly target: FraudProofWorkflowTarget;
   /** Present on production runs; omitted only by lower-level diagnostics. */
   readonly decisionDigest?: string;
 };
 
-export type JournalJsonPrimitiveV1 = string | number | boolean | null;
-export type JournalJsonValueV1 =
-  | JournalJsonPrimitiveV1
-  | readonly JournalJsonValueV1[]
-  | { readonly [key: string]: JournalJsonValueV1 };
-export type JournalJsonObjectV1 = {
-  readonly [key: string]: JournalJsonValueV1;
+export type JournalJsonPrimitive = string | number | boolean | null;
+export type JournalJsonValue =
+  | JournalJsonPrimitive
+  | readonly JournalJsonValue[]
+  | { readonly [key: string]: JournalJsonValue };
+export type JournalJsonObject = {
+  readonly [key: string]: JournalJsonValue;
 };
 
-export const FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION =
   "midgard-fraud-proof-workflow-terminal-v1" as const;
 
 /**
@@ -52,8 +52,8 @@ export const FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION =
  * production terminal verifier to authenticate them before appending the
  * terminal journal entry.
  */
-export type FraudProofWorkflowTerminalV1 = {
-  readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION;
+export type FraudProofWorkflowTerminal = {
+  readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
   readonly proofToken: {
@@ -114,14 +114,12 @@ const normalizeDecisionDigest = (value: string): string => {
   return value;
 };
 
-export const normalizeFraudProofWorkflowIdentityV1 = (
-  identity: FraudProofWorkflowIdentityV1,
-): FraudProofWorkflowIdentityV1 => {
-  if (
-    identity.schemaVersion !== FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION
-  ) {
+export const normalizeFraudProofWorkflowIdentity = (
+  identity: FraudProofWorkflowIdentity,
+): FraudProofWorkflowIdentity => {
+  if (identity.schemaVersion !== FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION) {
     throw new Error(
-      `workflow identity schemaVersion must be ${String(FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION)}`,
+      `workflow identity schemaVersion must be ${String(FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION)}`,
     );
   }
   if (
@@ -131,7 +129,7 @@ export const normalizeFraudProofWorkflowIdentityV1 = (
   ) {
     throw new Error(`unknown workflow category: ${String(identity.category)}`);
   }
-  const target: FraudProofWorkflowTargetV1 =
+  const target: FraudProofWorkflowTarget =
     identity.target.kind === "state_queue_header"
       ? {
           kind: "state_queue_header",
@@ -146,7 +144,7 @@ export const normalizeFraudProofWorkflowIdentityV1 = (
             throw new Error("unknown workflow target kind");
           })();
   return Object.freeze({
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: normalizeDaDeploymentFingerprintHex(
       identity.deploymentFingerprint,
     ),
@@ -158,7 +156,7 @@ export const normalizeFraudProofWorkflowIdentityV1 = (
   });
 };
 
-const stableJson = (value: JournalJsonValueV1): string => {
+const stableJson = (value: JournalJsonValue): string => {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
@@ -171,10 +169,10 @@ const stableJson = (value: JournalJsonValueV1): string => {
     .join(",")}}`;
 };
 
-export const normalizeJournalJsonV1 = (
+export const normalizeJournalJson = (
   value: unknown,
   field = "journal value",
-): JournalJsonValueV1 => {
+): JournalJsonValue => {
   if (
     value === null ||
     typeof value === "string" ||
@@ -191,7 +189,7 @@ export const normalizeJournalJsonV1 = (
   if (Array.isArray(value)) {
     return Object.freeze(
       value.map((entry, index) =>
-        normalizeJournalJsonV1(entry, `${field}[${index.toString()}]`),
+        normalizeJournalJson(entry, `${field}[${index.toString()}]`),
       ),
     );
   }
@@ -208,19 +206,19 @@ export const normalizeJournalJsonV1 = (
         .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, child]) => [
           key,
-          normalizeJournalJsonV1(child, `${field}.${key}`),
+          normalizeJournalJson(child, `${field}.${key}`),
         ]),
     ),
   );
 };
 
-export const journalJsonDigestV1 = (value: JournalJsonValueV1): string =>
+export const journalJsonDigest = (value: JournalJsonValue): string =>
   createHash("sha256").update(stableJson(value)).digest("hex");
 
-export const computeFraudProofWorkflowIdV1 = (
-  identity: FraudProofWorkflowIdentityV1,
+export const computeFraudProofWorkflowId = (
+  identity: FraudProofWorkflowIdentity,
 ): string => {
-  const normalized = normalizeFraudProofWorkflowIdentityV1(identity);
+  const normalized = normalizeFraudProofWorkflowIdentity(identity);
   const target =
     normalized.target.kind === "state_queue_header"
       ? `header:${normalized.target.headerHash}`
@@ -228,7 +226,7 @@ export const computeFraudProofWorkflowIdV1 = (
   return createHash("sha256")
     .update(
       [
-        FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+        FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
         normalized.deploymentFingerprint,
         normalized.category,
         target,
@@ -240,11 +238,11 @@ export const computeFraudProofWorkflowIdV1 = (
     .digest("hex");
 };
 
-export type FraudProofWorkflowJournalEventV1 =
+export type FraudProofWorkflowJournalEvent =
   | { readonly kind: "started" }
   | {
       readonly kind: "prepared";
-      readonly artifact: JournalJsonObjectV1;
+      readonly artifact: JournalJsonObject;
       readonly artifactDigest: string;
     }
   | {
@@ -262,9 +260,9 @@ export type FraudProofWorkflowJournalEventV1 =
   | {
       readonly kind: "submission_intent";
       readonly actionId: string;
-      readonly actionInput: JournalJsonObjectV1;
+      readonly actionInput: JournalJsonObject;
       /** Adapter recovery state persisted before any network submission. */
-      readonly durableRecovery?: JournalJsonObjectV1;
+      readonly durableRecovery?: JournalJsonObject;
       readonly attempt: number;
       /** The exact locally evaluated body this intent permits submitting. */
       readonly txHash: string;
@@ -295,7 +293,7 @@ export type FraudProofWorkflowJournalEventV1 =
     }
   | {
       readonly kind: "completed";
-      readonly terminal: FraudProofWorkflowTerminalV1;
+      readonly terminal: FraudProofWorkflowTerminal;
       readonly terminalDigest: string;
     }
   | {
@@ -303,26 +301,24 @@ export type FraudProofWorkflowJournalEventV1 =
       readonly reason: string;
     };
 
-export type FraudProofWorkflowJournalEntryV1 = {
-  readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION;
+export type FraudProofWorkflowJournalEntry = {
+  readonly schemaVersion: typeof FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION;
   readonly workflowId: string;
-  readonly identity: FraudProofWorkflowIdentityV1;
+  readonly identity: FraudProofWorkflowIdentity;
   readonly sequence: number;
   readonly recordedAt: string;
-  readonly event: FraudProofWorkflowJournalEventV1;
+  readonly event: FraudProofWorkflowJournalEvent;
 };
 
-export interface FraudProofWorkflowJournalStoreV1 {
-  load(
-    workflowId: string,
-  ): Promise<readonly FraudProofWorkflowJournalEntryV1[]>;
+export interface FraudProofWorkflowJournalStore {
+  load(workflowId: string): Promise<readonly FraudProofWorkflowJournalEntry[]>;
   append(
-    entry: FraudProofWorkflowJournalEntryV1,
+    entry: FraudProofWorkflowJournalEntry,
     expectedSequence: number,
   ): Promise<void>;
 }
 
-export class ConcurrentFraudProofWorkflowWriteErrorV1 extends Error {
+export class ConcurrentFraudProofWorkflowWriteError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ConcurrentFraudProofWorkflowWriteErrorV1";
@@ -338,10 +334,10 @@ const validateWorkflowId = (workflowId: string): void => {
 };
 
 const sameIdentity = (
-  left: FraudProofWorkflowIdentityV1,
-  right: FraudProofWorkflowIdentityV1,
+  left: FraudProofWorkflowIdentity,
+  right: FraudProofWorkflowIdentity,
 ): boolean =>
-  computeFraudProofWorkflowIdV1(left) === computeFraudProofWorkflowIdV1(right);
+  computeFraudProofWorkflowId(left) === computeFraudProofWorkflowId(right);
 
 const requireRecord = (
   value: unknown,
@@ -397,31 +393,31 @@ const requireOptionalExactKeys = (
   return record;
 };
 
-export const validateFraudProofWorkflowJournalV1 = ({
+export const validateFraudProofWorkflowJournal = ({
   workflowId,
   entries,
   expectedIdentity,
 }: {
   readonly workflowId: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
-  readonly expectedIdentity?: FraudProofWorkflowIdentityV1;
-}): readonly FraudProofWorkflowJournalEntryV1[] => {
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly expectedIdentity?: FraudProofWorkflowIdentity;
+}): readonly FraudProofWorkflowJournalEntry[] => {
   validateWorkflowId(workflowId);
   const normalizedExpected =
     expectedIdentity === undefined
       ? undefined
-      : normalizeFraudProofWorkflowIdentityV1(expectedIdentity);
+      : normalizeFraudProofWorkflowIdentity(expectedIdentity);
   const latestPreflightByAction = new Map<
     string,
     Extract<
-      FraudProofWorkflowJournalEventV1,
+      FraudProofWorkflowJournalEvent,
       { readonly kind: "preflight_passed" }
     >
   >();
   const latestIntentByAction = new Map<
     string,
     Extract<
-      FraudProofWorkflowJournalEventV1,
+      FraudProofWorkflowJournalEvent,
       { readonly kind: "submission_intent" }
     >
   >();
@@ -433,7 +429,7 @@ export const validateFraudProofWorkflowJournalV1 = ({
   const confirmedTransactionHashes = new Set<string>();
   const attemptsByAction = new Map<string, number>();
   let completed = false;
-  let previousEvent: FraudProofWorkflowJournalEventV1 | undefined;
+  let previousEvent: FraudProofWorkflowJournalEvent | undefined;
   const requireTxHash = (value: string, field: string): void => {
     if (!/^[0-9a-f]{64}$/u.test(value)) {
       throw new Error(`${field} must be 32-byte lowercase hex`);
@@ -487,9 +483,7 @@ export const validateFraudProofWorkflowJournalV1 = ({
         `journal entry ${sequence.toString()} has an unknown target kind`,
       );
     }
-    if (
-      entry.schemaVersion !== FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION
-    ) {
+    if (entry.schemaVersion !== FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION) {
       throw new Error(`journal entry ${sequence.toString()} has wrong schema`);
     }
     if (entry.sequence !== sequence) {
@@ -502,7 +496,7 @@ export const validateFraudProofWorkflowJournalV1 = ({
         `journal entry ${sequence.toString()} changed workflowId`,
       );
     }
-    if (computeFraudProofWorkflowIdV1(entry.identity) !== workflowId) {
+    if (computeFraudProofWorkflowId(entry.identity) !== workflowId) {
       throw new Error(
         `journal entry ${sequence.toString()} identity does not derive workflowId`,
       );
@@ -558,11 +552,11 @@ export const validateFraudProofWorkflowJournalV1 = ({
         "journal prepared event",
       );
       requireRecord(event.artifact, "journal prepared artifact");
-      normalizeJournalJsonV1(event.artifact, "journal prepared artifact");
+      normalizeJournalJson(event.artifact, "journal prepared artifact");
       if (!/^[0-9a-f]{64}$/u.test(event.artifactDigest)) {
         throw new Error("journal prepared artifactDigest must be 32-byte hex");
       }
-      if (journalJsonDigestV1(event.artifact) !== event.artifactDigest) {
+      if (journalJsonDigest(event.artifact) !== event.artifactDigest) {
         throw new Error(
           `journal entry ${sequence.toString()} prepared artifact digest mismatch`,
         );
@@ -639,13 +633,10 @@ export const validateFraudProofWorkflowJournalV1 = ({
         "journal submission intent",
       );
       requireRecord(event.actionInput, "journal action input");
-      normalizeJournalJsonV1(event.actionInput, "journal action input");
+      normalizeJournalJson(event.actionInput, "journal action input");
       if (event.durableRecovery !== undefined) {
         requireRecord(event.durableRecovery, "journal durable recovery");
-        normalizeJournalJsonV1(
-          event.durableRecovery,
-          "journal durable recovery",
-        );
+        normalizeJournalJson(event.durableRecovery, "journal durable recovery");
       }
       if (
         event.actionId.trim().length === 0 ||
@@ -866,18 +857,18 @@ export const validateFraudProofWorkflowJournalV1 = ({
       );
       if (
         event.terminal.schemaVersion !==
-        FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION
+        FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION
       ) {
         throw new Error("journal terminal has an unsupported schema");
       }
-      const terminalJson = normalizeJournalJsonV1(
+      const terminalJson = normalizeJournalJson(
         event.terminal,
         "journal terminal",
       );
       if (!/^[0-9a-f]{64}$/u.test(event.terminalDigest)) {
         throw new Error("journal terminalDigest must be 32-byte hex");
       }
-      if (journalJsonDigestV1(terminalJson) !== event.terminalDigest) {
+      if (journalJsonDigest(terminalJson) !== event.terminalDigest) {
         throw new Error(
           `journal entry ${sequence.toString()} terminal digest mismatch`,
         );
@@ -985,23 +976,23 @@ export const validateFraudProofWorkflowJournalV1 = ({
 };
 
 /** In-memory store with optimistic sequence checks, useful for embedded use. */
-export class MemoryFraudProofWorkflowJournalStoreV1
-  implements FraudProofWorkflowJournalStoreV1
+export class MemoryFraudProofWorkflowJournalStore
+  implements FraudProofWorkflowJournalStore
 {
   private readonly entriesByWorkflow = new Map<
     string,
-    FraudProofWorkflowJournalEntryV1[]
+    FraudProofWorkflowJournalEntry[]
   >();
 
   async load(
     workflowId: string,
-  ): Promise<readonly FraudProofWorkflowJournalEntryV1[]> {
+  ): Promise<readonly FraudProofWorkflowJournalEntry[]> {
     validateWorkflowId(workflowId);
     return [...(this.entriesByWorkflow.get(workflowId) ?? [])];
   }
 
   async append(
-    entry: FraudProofWorkflowJournalEntryV1,
+    entry: FraudProofWorkflowJournalEntry,
     expectedSequence: number,
   ): Promise<void> {
     const current = this.entriesByWorkflow.get(entry.workflowId) ?? [];
@@ -1009,11 +1000,11 @@ export class MemoryFraudProofWorkflowJournalStoreV1
       current.length !== expectedSequence ||
       entry.sequence !== expectedSequence
     ) {
-      throw new ConcurrentFraudProofWorkflowWriteErrorV1(
+      throw new ConcurrentFraudProofWorkflowWriteError(
         `journal sequence changed: expected=${expectedSequence.toString()} actual=${current.length.toString()}`,
       );
     }
-    validateFraudProofWorkflowJournalV1({
+    validateFraudProofWorkflowJournal({
       workflowId: entry.workflowId,
       entries: [...current, entry],
       expectedIdentity: entry.identity,
@@ -1028,8 +1019,8 @@ export class MemoryFraudProofWorkflowJournalStoreV1
  * racing for the same sequence cannot both win. Temporary files are ignored on
  * recovery and never treated as submitted/confirmed evidence.
  */
-export class DirectoryFraudProofWorkflowJournalStoreV1
-  implements FraudProofWorkflowJournalStoreV1
+export class DirectoryFraudProofWorkflowJournalStore
+  implements FraudProofWorkflowJournalStore
 {
   constructor(private readonly rootDirectory: string) {}
 
@@ -1040,7 +1031,7 @@ export class DirectoryFraudProofWorkflowJournalStoreV1
 
   async load(
     workflowId: string,
-  ): Promise<readonly FraudProofWorkflowJournalEntryV1[]> {
+  ): Promise<readonly FraudProofWorkflowJournalEntry[]> {
     const directory = this.workflowDirectory(workflowId);
     let names: string[];
     try {
@@ -1065,18 +1056,18 @@ export class DirectoryFraudProofWorkflowJournalStoreV1
           JSON.parse(
             await readFile(join(directory, name), "utf8"),
             (_key, value) => value,
-          ) as FraudProofWorkflowJournalEntryV1,
+          ) as FraudProofWorkflowJournalEntry,
       ),
     );
-    return validateFraudProofWorkflowJournalV1({ workflowId, entries });
+    return validateFraudProofWorkflowJournal({ workflowId, entries });
   }
 
   async append(
-    entry: FraudProofWorkflowJournalEntryV1,
+    entry: FraudProofWorkflowJournalEntry,
     expectedSequence: number,
   ): Promise<void> {
     if (entry.sequence !== expectedSequence) {
-      throw new ConcurrentFraudProofWorkflowWriteErrorV1(
+      throw new ConcurrentFraudProofWorkflowWriteError(
         `entry sequence ${entry.sequence.toString()} does not equal expected ${expectedSequence.toString()}`,
       );
     }
@@ -1084,11 +1075,11 @@ export class DirectoryFraudProofWorkflowJournalStoreV1
     await mkdir(directory, { recursive: true });
     const current = await this.load(entry.workflowId);
     if (current.length !== expectedSequence) {
-      throw new ConcurrentFraudProofWorkflowWriteErrorV1(
+      throw new ConcurrentFraudProofWorkflowWriteError(
         `journal sequence changed: expected=${expectedSequence.toString()} actual=${current.length.toString()}`,
       );
     }
-    validateFraudProofWorkflowJournalV1({
+    validateFraudProofWorkflowJournal({
       workflowId: entry.workflowId,
       entries: [...current, entry],
       expectedIdentity: entry.identity,
@@ -1118,7 +1109,7 @@ export class DirectoryFraudProofWorkflowJournalStoreV1
         "code" in error &&
         error.code === "EEXIST"
       ) {
-        throw new ConcurrentFraudProofWorkflowWriteErrorV1(
+        throw new ConcurrentFraudProofWorkflowWriteError(
           `journal sequence ${expectedSequence.toString()} was written concurrently`,
         );
       }

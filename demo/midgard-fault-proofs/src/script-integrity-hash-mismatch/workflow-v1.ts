@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { ScriptIntegrityHashMismatchEvidenceV1 } from "./family-v1.js";
-import { scriptIntegrityHashMismatchEvidenceIdentityV1 } from "./family-v1.js";
+import type { ScriptIntegrityHashMismatchEvidence } from "./family-v1.js";
+import { scriptIntegrityHashMismatchEvidenceIdentity } from "./family-v1.js";
 
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_WORKFLOW_STAGES_V1 = [
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_WORKFLOW_STAGES = [
   "none",
   "step01",
   "step02",
@@ -15,9 +15,9 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_WORKFLOW_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type ScriptIntegrityHashMismatchWorkflowStageV1 =
-  (typeof SCRIPT_INTEGRITY_HASH_MISMATCH_WORKFLOW_STAGES_V1)[number];
-export type ScriptIntegrityHashMismatchWorkflowActionV1 =
+export type ScriptIntegrityHashMismatchWorkflowStage =
+  (typeof SCRIPT_INTEGRITY_HASH_MISMATCH_WORKFLOW_STAGES)[number];
+export type ScriptIntegrityHashMismatchWorkflowAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -26,35 +26,35 @@ export type ScriptIntegrityHashMismatchWorkflowActionV1 =
   | "submitStep05"
   | "removeDescendants"
   | "cancel";
-export type ScriptIntegrityHashMismatchCursorV1 = Readonly<{
-  stage: ScriptIntegrityHashMismatchWorkflowStageV1;
+export type ScriptIntegrityHashMismatchCursor = Readonly<{
+  stage: ScriptIntegrityHashMismatchWorkflowStage;
   threadOutRef: string;
 }>;
-export type ScriptIntegrityHashMismatchJournalEntryV1 = Readonly<{
+export type ScriptIntegrityHashMismatchJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  action: ScriptIntegrityHashMismatchWorkflowActionV1;
+  action: ScriptIntegrityHashMismatchWorkflowAction;
   phase: "intent" | "submitted" | "confirmed";
-  source: ScriptIntegrityHashMismatchCursorV1;
-  target: ScriptIntegrityHashMismatchCursorV1;
+  source: ScriptIntegrityHashMismatchCursor;
+  target: ScriptIntegrityHashMismatchCursor;
   txHash: string;
 }>;
-export interface ScriptIntegrityHashMismatchJournalV1 {
+export interface ScriptIntegrityHashMismatchJournal {
   load(
     identity: string,
-  ): Promise<readonly ScriptIntegrityHashMismatchJournalEntryV1[]>;
-  append(entry: ScriptIntegrityHashMismatchJournalEntryV1): Promise<void>;
+  ): Promise<readonly ScriptIntegrityHashMismatchJournalEntry[]>;
+  append(entry: ScriptIntegrityHashMismatchJournalEntry): Promise<void>;
 }
-export interface ScriptIntegrityHashMismatchTransactionPortV1 {
-  observe(identity: string): Promise<ScriptIntegrityHashMismatchCursorV1>;
+export interface ScriptIntegrityHashMismatchTransactionPort {
+  observe(identity: string): Promise<ScriptIntegrityHashMismatchCursor>;
   capture(input: {
-    action: ScriptIntegrityHashMismatchWorkflowActionV1;
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
-    source: ScriptIntegrityHashMismatchCursorV1;
+    action: ScriptIntegrityHashMismatchWorkflowAction;
+    evidence: ScriptIntegrityHashMismatchEvidence;
+    source: ScriptIntegrityHashMismatchCursor;
   }): Promise<
     Readonly<{
       txHash: string;
-      target: ScriptIntegrityHashMismatchCursorV1;
+      target: ScriptIntegrityHashMismatchCursor;
       submit: () => Promise<string>;
     }>
   >;
@@ -62,8 +62,8 @@ export interface ScriptIntegrityHashMismatchTransactionPortV1 {
 }
 
 const actionFor = (
-  stage: ScriptIntegrityHashMismatchWorkflowStageV1,
-): ScriptIntegrityHashMismatchWorkflowActionV1 | "done" =>
+  stage: ScriptIntegrityHashMismatchWorkflowStage,
+): ScriptIntegrityHashMismatchWorkflowAction | "done" =>
   ({
     none: "submitInit",
     step01: "submitStep01",
@@ -75,11 +75,11 @@ const actionFor = (
     proven: "removeDescendants",
     removed: "done",
     cancelled: "done",
-  })[stage] as ScriptIntegrityHashMismatchWorkflowActionV1 | "done";
-const cursorDigest = (cursor: ScriptIntegrityHashMismatchCursorV1) =>
+  })[stage] as ScriptIntegrityHashMismatchWorkflowAction | "done";
+const cursorDigest = (cursor: ScriptIntegrityHashMismatchCursor) =>
   createHash("sha256").update(JSON.stringify(cursor)).digest("hex");
 const validate = (
-  entries: readonly ScriptIntegrityHashMismatchJournalEntryV1[],
+  entries: readonly ScriptIntegrityHashMismatchJournalEntry[],
   identity: string,
 ) =>
   entries.forEach((entry, sequence) => {
@@ -93,7 +93,7 @@ const validate = (
       );
   });
 const unresolved = (
-  entries: readonly ScriptIntegrityHashMismatchJournalEntryV1[],
+  entries: readonly ScriptIntegrityHashMismatchJournalEntry[],
 ) =>
   [...entries]
     .reverse()
@@ -108,16 +108,16 @@ const unresolved = (
         ),
     );
 
-export const runScriptIntegrityHashMismatchWorkflowV1 = async ({
+export const runScriptIntegrityHashMismatchWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: ScriptIntegrityHashMismatchEvidenceV1;
-  journal: ScriptIntegrityHashMismatchJournalV1;
-  transactions: ScriptIntegrityHashMismatchTransactionPortV1;
-}): Promise<ScriptIntegrityHashMismatchWorkflowStageV1> => {
-  const identity = scriptIntegrityHashMismatchEvidenceIdentityV1(evidence);
+  evidence: ScriptIntegrityHashMismatchEvidence;
+  journal: ScriptIntegrityHashMismatchJournal;
+  transactions: ScriptIntegrityHashMismatchTransactionPort;
+}): Promise<ScriptIntegrityHashMismatchWorkflowStage> => {
+  const identity = scriptIntegrityHashMismatchEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   const pending = unresolved(entries);
@@ -147,7 +147,7 @@ export const runScriptIntegrityHashMismatchWorkflowV1 = async ({
       "scriptIntegrityHashMismatch captured transaction is malformed",
     );
   const nextSequence = entries.length;
-  const intent: ScriptIntegrityHashMismatchJournalEntryV1 = {
+  const intent: ScriptIntegrityHashMismatchJournalEntry = {
     sequence: nextSequence,
     identity,
     action,
@@ -169,16 +169,16 @@ export const runScriptIntegrityHashMismatchWorkflowV1 = async ({
   return source.stage;
 };
 
-export const cancelScriptIntegrityHashMismatchWorkflowV1 = async ({
+export const cancelScriptIntegrityHashMismatchWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: ScriptIntegrityHashMismatchEvidenceV1;
-  journal: ScriptIntegrityHashMismatchJournalV1;
-  transactions: ScriptIntegrityHashMismatchTransactionPortV1;
+  evidence: ScriptIntegrityHashMismatchEvidence;
+  journal: ScriptIntegrityHashMismatchJournal;
+  transactions: ScriptIntegrityHashMismatchTransactionPort;
 }): Promise<"cancelled"> => {
-  const identity = scriptIntegrityHashMismatchEvidenceIdentityV1(evidence);
+  const identity = scriptIntegrityHashMismatchEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   if (unresolved(entries) !== undefined)
@@ -196,7 +196,7 @@ export const cancelScriptIntegrityHashMismatchWorkflowV1 = async ({
   if (captured.target.stage !== "cancelled")
     throw new Error("scriptIntegrityHashMismatch cancellation target changed");
   const nextSequence = entries.length;
-  const intent: ScriptIntegrityHashMismatchJournalEntryV1 = {
+  const intent: ScriptIntegrityHashMismatchJournalEntry = {
     sequence: nextSequence,
     identity,
     action: "cancel",

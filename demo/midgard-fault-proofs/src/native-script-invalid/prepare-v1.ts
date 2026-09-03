@@ -1,32 +1,32 @@
 /** DA-first Q34 preparation from authenticated L1 + retained block material. */
 import {
-  decodeMidgardAddressWitnessFieldPreimageV1,
-  decodeMidgardFieldPreimageV1,
+  decodeMidgardAddressWitnessFieldPreimage,
+  decodeMidgardFieldPreimage,
   decodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHashV1 } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
 import {
-  blockTransactionsFromCanonicalEvidenceV1,
-  type CanonicalBlockEvidenceV1,
+  blockTransactionsFromCanonicalEvidence,
+  type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalEvidenceBuilderInputV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 
-export type PreparedNativeScriptInvalidV1 = {
+export type PreparedNativeScriptInvalid = {
   readonly headerHash: string;
   readonly badTxId: string;
   readonly nativeTxCanonicalCbor: string;
@@ -41,24 +41,22 @@ export type PreparedNativeScriptInvalidV1 = {
 
 const signerHashes = (preimage: Uint8Array): ReadonlySet<string> =>
   new Set(
-    decodeMidgardAddressWitnessFieldPreimageV1(preimage).map((witness) =>
-      missingSignatureVkeyHashV1(
+    decodeMidgardAddressWitnessFieldPreimage(preimage).map((witness) =>
+      missingSignatureVkeyHash(
         Buffer.from(witness.verificationKey).toString("hex"),
       ),
     ),
   );
 
 /** Selects the first accepted transaction's first well-formed false native witness. */
-export const prepareNativeScriptInvalidFromCanonicalEvidenceV1 = async ({
+export const prepareNativeScriptInvalidFromCanonicalEvidence = async ({
   evidence,
   badTxId,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly badTxId?: string;
-}): Promise<PreparedNativeScriptInvalidV1> => {
-  blockTransactionsFromCanonicalEvidenceV1(
-    evidence as CanonicalBlockEvidenceV1,
-  );
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+}): Promise<PreparedNativeScriptInvalid> => {
+  blockTransactionsFromCanonicalEvidence(evidence as CanonicalBlockEvidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   const decoded = await Promise.all(
     admitted.transactions.map(decodeTransactionMaterial),
   );
@@ -75,7 +73,7 @@ export const prepareNativeScriptInvalidFromCanonicalEvidenceV1 = async ({
     ) {
       return [];
     }
-    const scriptItems = decodeMidgardFieldPreimageV1(
+    const scriptItems = decodeMidgardFieldPreimage(
       tx.nativeTx.witnessSet.scriptTxWitsPreimageCbor,
     );
     const signers = signerHashes(tx.nativeTx.witnessSet.addrTxWitsPreimageCbor);
@@ -105,8 +103,8 @@ export const prepareNativeScriptInvalidFromCanonicalEvidenceV1 = async ({
         : `transaction ${requested} does not contain an accepted false native witness`,
     );
   }
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
-  await requireTransactionsRootMatchV1({
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
+  await requireTransactionsRootMatch({
     sourceRoot: trie.root,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     count: BigInt(decoded.length),
@@ -124,14 +122,14 @@ export const prepareNativeScriptInvalidFromCanonicalEvidenceV1 = async ({
       transactionsPhasRoot: trie.root,
       txMembershipProofCbor: requireProof(
         trie,
-        transactionSourceTrieItemV1(selected.tx).key,
+        transactionSourceTrieItem(selected.tx).key,
         "native-script-invalid transaction",
       ),
     },
     scriptIndex: BigInt(selected.index),
     scriptItemCbor: selected.item.toString("hex"),
     scriptHash: hashMidgardVersionedScript(selected.script),
-    addrWitnessItemCbors: decodeMidgardFieldPreimageV1(
+    addrWitnessItemCbors: decodeMidgardFieldPreimage(
       selected.tx.nativeTx.witnessSet.addrTxWitsPreimageCbor,
     ).map((item) => Buffer.from(item).toString("hex")),
     scriptWitnessItemCbors: selected.scriptItems.map((item) =>

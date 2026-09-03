@@ -9,7 +9,7 @@ import {
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
@@ -646,7 +646,7 @@ describe("fault-proof deployment contract resolution", () => {
       ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({

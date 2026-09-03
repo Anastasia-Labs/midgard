@@ -1,82 +1,80 @@
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
-  buildMidgardLedgerOutputScanTraceV1,
-  buildMidgardNativeScriptDecodingTraceV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
+  buildMidgardLedgerOutputScanTrace,
+  buildMidgardNativeScriptDecodingTrace,
   computeHash32,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeScriptStructureControlV1,
-  type MidgardLedgerOutputScanControlV1,
-  MidgardNativeScriptDecodingBindKindsV1,
-  MidgardNativeScriptDecodingRefusalClassesV1,
-  MidgardNativeScriptDecodingTraceOutcomeKindsV1,
-  selectMidgardFieldCarriageTierV1,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeScriptStructureControl,
+  type MidgardLedgerOutputScanControl,
+  MidgardNativeScriptDecodingBindKinds,
+  MidgardNativeScriptDecodingRefusalClasses,
+  MidgardNativeScriptDecodingTraceOutcomeKinds,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  encodeVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  encodeVerdictSubject,
+  forcedVerdictSubject,
   hashHexWithBlake2b,
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_V1 =
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY =
   "outputReferenceScriptDecoding" as const;
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1 = "0000002a" as const;
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_FIELD_INDEX_V1 = 2 as const;
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_MAX_OUTPUT_BYTES_V1 = 16_384;
-export const OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID_V1 =
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_ID = "0000002a" as const;
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_FIELD_INDEX = 2 as const;
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_MAX_OUTPUT_BYTES = 16_384;
+export const OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID =
   "output-reference-script-malformed" as const;
-export const OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID_V1 =
+export const OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID =
   "output-reference-script-node-limit" as const;
-export const OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID_V1 =
+export const OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID =
   "output-reference-script-depth-limit" as const;
-export type OutputReferenceScriptDecodingViolationIdV1 =
-  | typeof OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID_V1
-  | typeof OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID_V1
-  | typeof OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID_V1;
+export type OutputReferenceScriptDecodingViolationId =
+  | typeof OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID
+  | typeof OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID
+  | typeof OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
 
-export const OutputReferenceScriptResultClassesV1 = Object.freeze({
+export const OutputReferenceScriptResultClasses = Object.freeze({
   Pending: -1,
   NoFault: -2,
   Malformed: 0,
   NodeLimit: 1,
   DepthLimit: 2,
 } as const);
-export type OutputReferenceScriptResultClassV1 =
-  (typeof OutputReferenceScriptResultClassesV1)[keyof typeof OutputReferenceScriptResultClassesV1];
+export type OutputReferenceScriptResultClass =
+  (typeof OutputReferenceScriptResultClasses)[keyof typeof OutputReferenceScriptResultClasses];
 
 const fail = (message: string): never => {
-  throw new Error(
-    `${OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_V1}: ${message}`,
-  );
+  throw new Error(`${OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY}: ${message}`);
 };
 
-const exactOutputIndex = (subject: VerdictSubjectV1): number => {
+const exactOutputIndex = (subject: VerdictSubject): number => {
   const reason = subject.rejection_reason;
   if (reason === null || typeof reason === "string")
     return fail("forced subject has the wrong typed reason");
   const entries = [
     [
       "OutputReferenceScriptMalformed",
-      OutputReferenceScriptResultClassesV1.Malformed,
+      OutputReferenceScriptResultClasses.Malformed,
     ],
     [
       "OutputReferenceScriptNodeLimit",
-      OutputReferenceScriptResultClassesV1.NodeLimit,
+      OutputReferenceScriptResultClasses.NodeLimit,
     ],
     [
       "OutputReferenceScriptDepthLimit",
-      OutputReferenceScriptResultClassesV1.DepthLimit,
+      OutputReferenceScriptResultClasses.DepthLimit,
     ],
   ] as const;
   for (const [kind] of entries) {
@@ -94,71 +92,65 @@ const exactOutputIndex = (subject: VerdictSubjectV1): number => {
 };
 
 const accusedClass = (
-  subject: VerdictSubjectV1,
-): OutputReferenceScriptResultClassV1 => {
+  subject: VerdictSubject,
+): OutputReferenceScriptResultClass => {
   const reason = subject.rejection_reason;
   if (reason === null || typeof reason === "string")
     return fail("typed reason is absent");
   if ("OutputReferenceScriptMalformed" in reason)
-    return OutputReferenceScriptResultClassesV1.Malformed;
+    return OutputReferenceScriptResultClasses.Malformed;
   if ("OutputReferenceScriptNodeLimit" in reason)
-    return OutputReferenceScriptResultClassesV1.NodeLimit;
+    return OutputReferenceScriptResultClasses.NodeLimit;
   if ("OutputReferenceScriptDepthLimit" in reason)
-    return OutputReferenceScriptResultClassesV1.DepthLimit;
+    return OutputReferenceScriptResultClasses.DepthLimit;
   return fail("typed reason is outside family");
 };
 
-export type OutputReferenceScriptDecodingFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type OutputReferenceScriptDecodingFinding = Readonly<{
+  subject: VerdictSubject;
   outputIndex: number;
 }>;
 
-export const classifyOutputReferenceScriptDecodingFindingV1 = (
-  finding: OutputReferenceScriptDecodingFindingV1,
+export const classifyOutputReferenceScriptDecodingFinding = (
+  finding: OutputReferenceScriptDecodingFinding,
 ): void => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("subject is not canonical");
   if (!Number.isSafeInteger(finding.outputIndex) || finding.outputIndex < 0)
     return fail("output coordinate is invalid");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (exactOutputIndex(finding.subject) !== finding.outputIndex)
       return fail("typed reason output coordinate differs");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   )
     return fail("subject polarity is invalid");
 };
 
-const resultClassOf = (
-  item: Uint8Array,
-): OutputReferenceScriptResultClassV1 => {
-  const trace = buildMidgardNativeScriptDecodingTraceV1(item);
-  if (trace.bind.kind === MidgardNativeScriptDecodingBindKindsV1.Malformed)
-    return OutputReferenceScriptResultClassesV1.Malformed;
-  if (trace.bind.kind === MidgardNativeScriptDecodingBindKindsV1.NonNative)
-    return OutputReferenceScriptResultClassesV1.NoFault;
+const resultClassOf = (item: Uint8Array): OutputReferenceScriptResultClass => {
+  const trace = buildMidgardNativeScriptDecodingTrace(item);
+  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.Malformed)
+    return OutputReferenceScriptResultClasses.Malformed;
+  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.NonNative)
+    return OutputReferenceScriptResultClasses.NoFault;
   if (trace.outcome === null)
     return fail("native scan has no terminal outcome");
   if (
-    trace.outcome.kind ===
-    MidgardNativeScriptDecodingTraceOutcomeKindsV1.Terminal
+    trace.outcome.kind === MidgardNativeScriptDecodingTraceOutcomeKinds.Terminal
   )
-    return OutputReferenceScriptResultClassesV1.NoFault;
+    return OutputReferenceScriptResultClasses.NoFault;
   return trace.outcome.refusalClass ===
-    MidgardNativeScriptDecodingRefusalClassesV1.Malformed
-    ? OutputReferenceScriptResultClassesV1.Malformed
+    MidgardNativeScriptDecodingRefusalClasses.Malformed
+    ? OutputReferenceScriptResultClasses.Malformed
     : trace.outcome.refusalClass ===
-        MidgardNativeScriptDecodingRefusalClassesV1.NodeLimit
-      ? OutputReferenceScriptResultClassesV1.NodeLimit
-      : OutputReferenceScriptResultClassesV1.DepthLimit;
+        MidgardNativeScriptDecodingRefusalClasses.NodeLimit
+      ? OutputReferenceScriptResultClasses.NodeLimit
+      : OutputReferenceScriptResultClasses.DepthLimit;
 };
 
-export type OutputReferenceScriptDecodingEvidenceV1 =
-  OutputReferenceScriptDecodingFindingV1 &
+export type OutputReferenceScriptDecodingEvidence =
+  OutputReferenceScriptDecodingFinding &
     Readonly<{
       canonicalTransactionCborHex: string;
       outputFieldPreimageHex: string;
@@ -166,37 +158,37 @@ export type OutputReferenceScriptDecodingEvidenceV1 =
       outputLength: number;
       outputHashHex: string;
       outputChunkHashes: readonly string[];
-      outputScanControls: readonly MidgardLedgerOutputScanControlV1[];
+      outputScanControls: readonly MidgardLedgerOutputScanControl[];
       referenceScriptItemHex: string;
       referenceScriptItemCommitmentHex: string;
-      resultClass: OutputReferenceScriptResultClassV1;
-      accusedClass: OutputReferenceScriptResultClassV1;
+      resultClass: OutputReferenceScriptResultClass;
+      accusedClass: OutputReferenceScriptResultClass;
       carriage: "Inline" | "RawUtxo" | "Certified";
       chunkProofCount: number;
       initialControlCbor: string;
     }>;
 
-export const prepareOutputReferenceScriptDecodingEvidenceV1 = ({
+export const prepareOutputReferenceScriptDecodingEvidence = ({
   subject,
   outputIndex,
   canonicalTransactionCbor,
-}: OutputReferenceScriptDecodingFindingV1 & {
+}: OutputReferenceScriptDecodingFinding & {
   readonly canonicalTransactionCbor: Uint8Array;
-}): OutputReferenceScriptDecodingEvidenceV1 => {
-  classifyOutputReferenceScriptDecodingFindingV1({ subject, outputIndex });
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+}): OutputReferenceScriptDecodingEvidence => {
+  classifyOutputReferenceScriptDecodingFinding({ subject, outputIndex });
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     canonicalTransactionCbor,
   );
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
   const field = material.fieldPreimages[2]!;
-  const output = decodeMidgardFieldPreimageV1(field)[outputIndex];
+  const output = decodeMidgardFieldPreimage(field)[outputIndex];
   if (output === undefined) return fail("output coordinate is out of range");
-  if (output.length > OUTPUT_REFERENCE_SCRIPT_DECODING_MAX_OUTPUT_BYTES_V1)
+  if (output.length > OUTPUT_REFERENCE_SCRIPT_DECODING_MAX_OUTPUT_BYTES)
     return fail("output exceeds canonical size bound");
   let trace;
   try {
-    trace = buildMidgardLedgerOutputScanTraceV1(output);
+    trace = buildMidgardLedgerOutputScanTrace(output);
   } catch {
     return fail("selected output descriptor is not canonical");
   }
@@ -204,15 +196,15 @@ export const prepareOutputReferenceScriptDecodingEvidenceV1 = ({
   if (trace.terminal.referenceScriptLanguage === -1 || offset < 0)
     return fail("selected output carries no reference script");
   const item = output.subarray(offset);
-  const bounded = buildMidgardBoundedItemV1({
+  const bounded = buildMidgardBoundedItem({
     fieldIndex: 2,
     itemIndex: outputIndex,
     bytes: item,
   });
   for (let index = 0; index < bounded.frontier.count; index += 1)
-    buildMidgardBoundedItemChunkProofV1(bounded, index);
+    buildMidgardBoundedItemChunkProof(bounded, index);
   const resultClass = resultClassOf(item);
-  const nativeTrace = buildMidgardNativeScriptDecodingTraceV1(item);
+  const nativeTrace = buildMidgardNativeScriptDecodingTrace(item);
   const evidence = Object.freeze({
     subject,
     outputIndex,
@@ -238,35 +230,32 @@ export const prepareOutputReferenceScriptDecodingEvidenceV1 = ({
     referenceScriptItemCommitmentHex: bounded.commitment.toString("hex"),
     resultClass,
     accusedClass:
-      subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
+      subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
         ? accusedClass(subject)
-        : OutputReferenceScriptResultClassesV1.Pending,
-    carriage: selectMidgardFieldCarriageTierV1(field.length),
+        : OutputReferenceScriptResultClasses.Pending,
+    carriage: selectMidgardFieldCarriageTier(field.length),
     chunkProofCount: bounded.frontier.count,
     initialControlCbor:
-      nativeTrace.bind.kind === MidgardNativeScriptDecodingBindKindsV1.Bound
-        ? encodeMidgardNativeScriptStructureControlV1(
+      nativeTrace.bind.kind === MidgardNativeScriptDecodingBindKinds.Bound
+        ? encodeMidgardNativeScriptStructureControl(
             nativeTrace.bind.control,
           ).toString("hex")
         : "",
   });
-  if (!outputReferenceScriptEvidenceClosesV1(evidence))
+  if (!outputReferenceScriptEvidenceCloses(evidence))
     return fail("authenticated decoder agrees with operator verdict");
   return evidence;
 };
 
-export const outputReferenceScriptEvidenceClosesV1 = (
-  evidence: OutputReferenceScriptDecodingEvidenceV1,
+export const outputReferenceScriptEvidenceCloses = (
+  evidence: OutputReferenceScriptDecodingEvidence,
 ): boolean =>
-  evidence.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
+  evidence.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
     ? evidence.resultClass !== evidence.accusedClass
-    : terminalVerdictContradictionV1(
-        evidence.subject,
-        evidence.resultClass >= 0,
-      );
+    : terminalVerdictContradiction(evidence.subject, evidence.resultClass >= 0);
 
-export const outputReferenceScriptControlDataV1 = (
-  control: MidgardLedgerOutputScanControlV1,
+export const outputReferenceScriptControlData = (
+  control: MidgardLedgerOutputScanControl,
 ) => ({
   version: BigInt(control.version),
   stage: BigInt(control.stage),
@@ -312,12 +301,12 @@ const cborBytes = (value: Buffer): Buffer =>
     : Buffer.concat([Buffer.from([0x58, value.length]), value]);
 
 /** Exact off-chain twin of `rule.checkpoint_v1`. */
-export const outputReferenceScriptCheckpointV1 = ({
+export const outputReferenceScriptCheckpoint = ({
   evidence,
   controlCbor,
   nextExpectedScriptHash,
 }: {
-  readonly evidence: OutputReferenceScriptDecodingEvidenceV1;
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly controlCbor: string;
   readonly nextExpectedScriptHash: string;
 }): string =>
@@ -328,7 +317,7 @@ export const outputReferenceScriptCheckpointV1 = ({
           "midgard/fraud-proofs/output-reference-script-decoding/checkpoint-v1",
           "ascii",
         ),
-        encodeVerdictSubjectV1(evidence.subject),
+        encodeVerdictSubject(evidence.subject),
         cborInteger(evidence.outputIndex),
         cborInteger(evidence.accusedClass),
         cborInteger(Buffer.from(evidence.referenceScriptItemHex, "hex").length),
@@ -343,18 +332,18 @@ export const outputReferenceScriptCheckpointV1 = ({
   );
 
 /** Exhaustive replay over every accepted output and exact forced coordinate. */
-export const detectOutputReferenceScriptDecodingCompleteReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly OutputReferenceScriptDecodingEvidenceV1[] => {
-  const results: OutputReferenceScriptDecodingEvidenceV1[] = [];
+export const detectOutputReferenceScriptDecodingCompleteReplay = (
+  block: CanonicalBlockEvidence,
+): readonly OutputReferenceScriptDecodingEvidence[] => {
+  const results: OutputReferenceScriptDecodingEvidence[] = [];
   const inspect = (
-    subject: VerdictSubjectV1,
+    subject: VerdictSubject,
     bytes: Uint8Array,
     outputIndex: number,
   ): void => {
     try {
       results.push(
-        prepareOutputReferenceScriptDecodingEvidenceV1({
+        prepareOutputReferenceScriptDecodingEvidence({
           subject,
           outputIndex,
           canonicalTransactionCbor: bytes,
@@ -376,11 +365,11 @@ export const detectOutputReferenceScriptDecodingCompleteReplayV1 = (
   };
   block.transactions.forEach((transaction) => {
     const bytes = Buffer.from(transaction.txCbor, "hex");
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(bytes);
-    const subject = acceptedVerdictSubjectV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
+    const subject = acceptedVerdictSubject(
       material.transactionId.toString("hex"),
     );
-    decodeMidgardFieldPreimageV1(material.fieldPreimages[2]!).forEach(
+    decodeMidgardFieldPreimage(material.fieldPreimages[2]!).forEach(
       (_item, outputIndex) => inspect(subject, bytes, outputIndex),
     );
   });
@@ -396,7 +385,7 @@ export const detectOutputReferenceScriptDecodingCompleteReplayV1 = (
       )
     )
       return;
-    const subject = forcedVerdictSubjectV1({
+    const subject = forcedVerdictSubject({
       transactionId: forced.value.tx_id,
       sourceKey: forced.key,
       rejectionReason: reason,
@@ -406,31 +395,30 @@ export const detectOutputReferenceScriptDecodingCompleteReplayV1 = (
   return Object.freeze(results);
 };
 
-export const outputReferenceScriptDecodingViolationIdV1 = (
-  resultClass: OutputReferenceScriptResultClassV1,
-): OutputReferenceScriptDecodingViolationIdV1 => {
+export const outputReferenceScriptDecodingViolationId = (
+  resultClass: OutputReferenceScriptResultClass,
+): OutputReferenceScriptDecodingViolationId => {
   switch (resultClass) {
-    case OutputReferenceScriptResultClassesV1.Malformed:
-      return OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID_V1;
-    case OutputReferenceScriptResultClassesV1.NodeLimit:
-      return OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID_V1;
-    case OutputReferenceScriptResultClassesV1.DepthLimit:
-      return OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID_V1;
-    case OutputReferenceScriptResultClassesV1.Pending:
-    case OutputReferenceScriptResultClassesV1.NoFault:
+    case OutputReferenceScriptResultClasses.Malformed:
+      return OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID;
+    case OutputReferenceScriptResultClasses.NodeLimit:
+      return OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID;
+    case OutputReferenceScriptResultClasses.DepthLimit:
+      return OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
+    case OutputReferenceScriptResultClasses.Pending:
+    case OutputReferenceScriptResultClasses.NoFault:
       return fail("terminal result has no output-reference violation id");
   }
 };
 
 /** Central replay route with one exact stable violation id per rejection arm. */
-export const detectOutputReferenceScriptDecodingCanonicalViolationsV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly CanonicalViolationDetectionV1[] =>
-  detectOutputReferenceScriptDecodingCompleteReplayV1(block).map((evidence) => {
+export const detectOutputReferenceScriptDecodingCanonicalViolations = (
+  block: CanonicalBlockEvidence,
+): readonly CanonicalViolationDetection[] =>
+  detectOutputReferenceScriptDecodingCompleteReplay(block).map((evidence) => {
     const forced =
-      evidence.subject.direction ===
-      PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1;
-    const violationId = outputReferenceScriptDecodingViolationIdV1(
+      evidence.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;
+    const violationId = outputReferenceScriptDecodingViolationId(
       forced ? evidence.accusedClass : evidence.resultClass,
     );
     const position = forced

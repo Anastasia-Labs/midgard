@@ -12,8 +12,8 @@ import {
   EventFlatMutationArena,
   type EventFlatMutationDiagnostics,
   type PackedMpfStoredValue,
-  type ParkedEventFlatOverlayV1,
-  ResumedEventFlatOverlayV1,
+  type ParkedEventFlatOverlay,
+  ResumedEventFlatOverlay,
 } from "../workers/utils/mpf-event-flat.js";
 import {
   eventFlatDigest,
@@ -24,7 +24,7 @@ import {
   type MpfEngine,
   type MpfPathHydrationDiagnostics,
   type MpfStoreDiagnostics,
-  type ParkedMpfOverlayV1,
+  type ParkedMpfOverlay,
 } from "./engine-config.js";
 import { MpfError } from "./errors.js";
 import { estimateMpfStoredValueBytes } from "./payload-size.js";
@@ -1297,7 +1297,7 @@ export class MidgardMpf {
     });
   }
 
-  public parkBlockOverlay(): Effect.Effect<ParkedMpfOverlayV1, MpfError> {
+  public parkBlockOverlay(): Effect.Effect<ParkedMpfOverlay, MpfError> {
     return Effect.gen(this, function* () {
       const root = yield* this.root();
       yield* Effect.try({
@@ -1333,7 +1333,7 @@ export class MidgardMpf {
 
   public parkEventFlatOverlayV1(
     shardCount = 4,
-  ): Effect.Effect<ParkedEventFlatOverlayV1, MpfError> {
+  ): Effect.Effect<ParkedEventFlatOverlay, MpfError> {
     return Effect.gen(this, function* () {
       if (this.engine !== "event_flat" || this.eventFlatArena === undefined) {
         return yield* Effect.fail(
@@ -1402,7 +1402,7 @@ export class MidgardMpf {
   public static resumeParkedEventFlatOverlayV1(
     trieName: string,
     levelDBFilePath: string | undefined,
-    artifact: ParkedEventFlatOverlayV1,
+    artifact: ParkedEventFlatOverlay,
   ): Effect.Effect<MidgardMpf, MpfError> {
     return Effect.gen(function* () {
       yield* Effect.tryPromise({
@@ -1421,7 +1421,7 @@ export class MidgardMpf {
         );
       }
       const resumedView = yield* Effect.try({
-        try: () => new ResumedEventFlatOverlayV1(artifact),
+        try: () => new ResumedEventFlatOverlay(artifact),
         catch: (cause) =>
           MpfError.create(`${trieName}-event-flat-resume`, cause),
       });
@@ -1482,7 +1482,7 @@ export class MidgardMpf {
   public static resumeParkedOverlay(
     trieName: string,
     levelDBFilePath: string | undefined,
-    artifact: ParkedMpfOverlayV1,
+    artifact: ParkedMpfOverlay,
   ): Effect.Effect<MidgardMpf, MpfError> {
     return Effect.gen(function* () {
       if (artifact.trieName !== trieName) {
@@ -1545,7 +1545,7 @@ export class MidgardMpf {
   public static promoteParkedOverlay(
     trieName: string,
     levelDBFilePath: string | undefined,
-    artifact: ParkedMpfOverlayV1,
+    artifact: ParkedMpfOverlay,
   ): Effect.Effect<void, MpfError> {
     return Effect.gen(function* () {
       const mpf = yield* MidgardMpf.resumeParkedOverlay(

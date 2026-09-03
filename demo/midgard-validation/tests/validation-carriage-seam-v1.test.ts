@@ -1,16 +1,16 @@
 import {
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  type MidgardFieldCarriageV1,
-  selectMidgardFieldCarriageTierV1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  type MidgardFieldCarriage,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeValidationAuxiliaryWitnessCborV1,
-  ValidationMachineCarriagePreimageSubstitutedErrorV1,
-  ValidationMachineCarriageResolutionRequiredErrorV1,
-  ValidationMachineCarriageTierMismatchErrorV1,
-  type ValidationMachineFieldCarriageResolverV1,
+  encodeValidationAuxiliaryWitnessCbor,
+  ValidationMachineCarriagePreimageSubstitutedError,
+  ValidationMachineCarriageResolutionRequiredError,
+  ValidationMachineCarriageTierMismatchError,
+  type ValidationMachineFieldCarriageResolver,
   type ValidationMachineWorkWitness,
 } from "../src/index.js";
 
@@ -34,8 +34,7 @@ import {
  * structural if it holds at all of them.
  */
 
-const ABOVE_CAP_PREIMAGE_BYTES =
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 + 1;
+const ABOVE_CAP_PREIMAGE_BYTES = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES + 1;
 const BELOW_CAP_PREIMAGE_BYTES = 1_024;
 
 type CarriageAuxiliary = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
@@ -80,15 +79,13 @@ const carriageAuxiliaries = (
 
 /** A resolver that hands back exactly the carriage it was told to. */
 const fixedResolver =
-  (
-    carriage: MidgardFieldCarriageV1,
-  ): ValidationMachineFieldCarriageResolverV1 =>
+  (carriage: MidgardFieldCarriage): ValidationMachineFieldCarriageResolver =>
   () =>
     carriage;
 
 describe("§8 carriage seam refusals V1", () => {
   it("refuses to commit an above-cap preimage with no carriage resolver", () => {
-    expect(selectMidgardFieldCarriageTierV1(ABOVE_CAP_PREIMAGE_BYTES)).toBe(
+    expect(selectMidgardFieldCarriageTier(ABOVE_CAP_PREIMAGE_BYTES)).toBe(
       "RawUtxo",
     );
     for (const { kind, auxiliary } of carriageAuxiliaries(
@@ -96,15 +93,14 @@ describe("§8 carriage seam refusals V1", () => {
     )) {
       let thrown: unknown = null;
       try {
-        encodeValidationAuxiliaryWitnessCborV1(auxiliary);
+        encodeValidationAuxiliaryWitnessCbor(auxiliary);
       } catch (error) {
         thrown = error;
       }
       expect(thrown, kind).toBeInstanceOf(
-        ValidationMachineCarriageResolutionRequiredErrorV1,
+        ValidationMachineCarriageResolutionRequiredError,
       );
-      const error =
-        thrown as ValidationMachineCarriageResolutionRequiredErrorV1;
+      const error = thrown as ValidationMachineCarriageResolutionRequiredError;
       expect(error.name).toBe(
         "ValidationMachineCarriageResolutionRequiredErrorV1",
       );
@@ -114,7 +110,7 @@ describe("§8 carriage seam refusals V1", () => {
       expect(error.preimageLength).toBe(ABOVE_CAP_PREIMAGE_BYTES);
       expect(error.selectedTier).toBe("RawUtxo");
       expect(error.maxTier1PreimageBytes).toBe(
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       );
     }
   });
@@ -126,7 +122,7 @@ describe("§8 carriage seam refusals V1", () => {
       BELOW_CAP_PREIMAGE_BYTES,
     )) {
       expect(
-        encodeValidationAuxiliaryWitnessCborV1(auxiliary).length,
+        encodeValidationAuxiliaryWitnessCbor(auxiliary).length,
         kind,
       ).toBeGreaterThan(BELOW_CAP_PREIMAGE_BYTES);
     }
@@ -138,7 +134,7 @@ describe("§8 carriage seam refusals V1", () => {
     )) {
       let thrown: unknown = null;
       try {
-        encodeValidationAuxiliaryWitnessCborV1(
+        encodeValidationAuxiliaryWitnessCbor(
           auxiliary,
           fixedResolver({
             carriage: "Inline",
@@ -149,9 +145,9 @@ describe("§8 carriage seam refusals V1", () => {
         thrown = error;
       }
       expect(thrown, kind).toBeInstanceOf(
-        ValidationMachineCarriageTierMismatchErrorV1,
+        ValidationMachineCarriageTierMismatchError,
       );
-      const error = thrown as ValidationMachineCarriageTierMismatchErrorV1;
+      const error = thrown as ValidationMachineCarriageTierMismatchError;
       expect(error.name).toBe("ValidationMachineCarriageTierMismatchErrorV1");
       expect(error.fieldIndex).toBe(
         (auxiliary as { readonly fieldIndex: number }).fieldIndex,
@@ -174,7 +170,7 @@ describe("§8 carriage seam refusals V1", () => {
       substituted[0] = 0x5a;
       let thrown: unknown = null;
       try {
-        encodeValidationAuxiliaryWitnessCborV1(
+        encodeValidationAuxiliaryWitnessCbor(
           auxiliary,
           fixedResolver({ carriage: "Inline", preimage: substituted }),
         );
@@ -182,10 +178,9 @@ describe("§8 carriage seam refusals V1", () => {
         thrown = error;
       }
       expect(thrown, kind).toBeInstanceOf(
-        ValidationMachineCarriagePreimageSubstitutedErrorV1,
+        ValidationMachineCarriagePreimageSubstitutedError,
       );
-      const error =
-        thrown as ValidationMachineCarriagePreimageSubstitutedErrorV1;
+      const error = thrown as ValidationMachineCarriagePreimageSubstitutedError;
       expect(error.name).toBe(
         "ValidationMachineCarriagePreimageSubstitutedErrorV1",
       );
@@ -198,7 +193,7 @@ describe("§8 carriage seam refusals V1", () => {
   });
 
   it("refuses a resolver that returns an indexed tier below §8.3's cap", () => {
-    expect(selectMidgardFieldCarriageTierV1(BELOW_CAP_PREIMAGE_BYTES)).toBe(
+    expect(selectMidgardFieldCarriageTier(BELOW_CAP_PREIMAGE_BYTES)).toBe(
       "Inline",
     );
     for (const returned of [
@@ -208,13 +203,13 @@ describe("§8 carriage seam refusals V1", () => {
         certRefInputIndex: 3,
         chunkRefInputIndices: [1, 2],
       },
-    ] satisfies readonly MidgardFieldCarriageV1[]) {
+    ] satisfies readonly MidgardFieldCarriage[]) {
       for (const { kind, auxiliary } of carriageAuxiliaries(
         BELOW_CAP_PREIMAGE_BYTES,
       )) {
         let thrown: unknown = null;
         try {
-          encodeValidationAuxiliaryWitnessCborV1(
+          encodeValidationAuxiliaryWitnessCbor(
             auxiliary,
             fixedResolver(returned),
           );
@@ -222,9 +217,9 @@ describe("§8 carriage seam refusals V1", () => {
           thrown = error;
         }
         expect(thrown, `${kind}/${returned.carriage}`).toBeInstanceOf(
-          ValidationMachineCarriageTierMismatchErrorV1,
+          ValidationMachineCarriageTierMismatchError,
         );
-        const error = thrown as ValidationMachineCarriageTierMismatchErrorV1;
+        const error = thrown as ValidationMachineCarriageTierMismatchError;
         expect(error.preimageLength).toBe(BELOW_CAP_PREIMAGE_BYTES);
         expect(error.expectedTier).toBe("Inline");
         expect(error.returnedTier).toBe(returned.carriage);
@@ -235,7 +230,7 @@ describe("§8 carriage seam refusals V1", () => {
   it("passes a partition-admissible resolver at every tier", () => {
     // The tier-equality check must not narrow what an honest resolver may
     // return: the representative-index helper the cross-language vectors use
-    // produces exactly `selectMidgardFieldCarriageTierV1`'s tier, so a
+    // produces exactly `selectMidgardFieldCarriageTier`'s tier, so a
     // tier-equality check is transparent to it.
     for (const { preimageBytes, carriage } of [
       {
@@ -259,14 +254,14 @@ describe("§8 carriage seam refusals V1", () => {
       },
     ] satisfies readonly {
       readonly preimageBytes: number;
-      readonly carriage: MidgardFieldCarriageV1;
+      readonly carriage: MidgardFieldCarriage;
     }[]) {
-      expect(selectMidgardFieldCarriageTierV1(preimageBytes)).toBe(
+      expect(selectMidgardFieldCarriageTier(preimageBytes)).toBe(
         carriage.carriage,
       );
       for (const { auxiliary } of carriageAuxiliaries(preimageBytes)) {
         expect(() =>
-          encodeValidationAuxiliaryWitnessCborV1(
+          encodeValidationAuxiliaryWitnessCbor(
             auxiliary,
             fixedResolver(carriage),
           ),

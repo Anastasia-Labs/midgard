@@ -3,9 +3,9 @@ import {
   submitCanonicalDecodabilityInit,
   type SubmitCanonicalDecodabilityInitResult,
 } from "../canonical-decodability/submit-canonical-decodability-init.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
-import type { NetworkIdCatalogueCategoryV1 } from "./submit-common-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
+import type { NetworkIdCatalogueCategory } from "./submit-common-v1.js";
 
 type BaseParams = Parameters<typeof submitCanonicalDecodabilityInit>[0];
 
@@ -13,9 +13,9 @@ export type SubmitNetworkIdInitParams = Omit<
   BaseParams,
   "contracts" | "category" | "witnessReferenceScripts"
 > & {
-  readonly contracts: NetworkIdContractsV1;
-  readonly category: NetworkIdCatalogueCategoryV1;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly contracts: NetworkIdContracts;
+  readonly category: NetworkIdCatalogueCategory;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 };
 
 export type SubmitNetworkIdInitResult = SubmitCanonicalDecodabilityInitResult;

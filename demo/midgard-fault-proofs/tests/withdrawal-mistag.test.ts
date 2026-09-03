@@ -1,10 +1,10 @@
 import { computeHash32 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -13,8 +13,8 @@ import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
-import { prepareWithdrawalMistagV1 } from "../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
-import { withdrawalMistagStatesV1 } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
+import { prepareWithdrawalMistag } from "../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
+import { withdrawalMistagStates } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
 
 const makeEvidence = async ({
   lovelace,
@@ -43,7 +43,7 @@ const makeEvidence = async ({
   const message = computeHash32(
     Buffer.concat([
       Buffer.from("MidgardWithdrawalV1", "utf8"),
-      Buffer.from(SDK.withdrawalBodyBytesV1(body), "hex"),
+      Buffer.from(SDK.withdrawalBodyBytes(body), "hex"),
     ]),
   );
   const info: SDK.WithdrawalInfo = {
@@ -58,11 +58,11 @@ const makeEvidence = async ({
     address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner, "hex")]),
     value: { lovelace, assets: new Map() },
   });
-  const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+  const material = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: 0,
     outputCbor,
   });
-  const ledgerKey = encodeMidgardSpendInputItemV1({
+  const ledgerKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(withdrawalId.transactionId, "hex"),
     outputIndex: 0,
   });
@@ -76,11 +76,11 @@ const makeEvidence = async ({
   );
 
   const sourceKey = Buffer.from(
-    SDK.committedWithdrawalKeyBytesV1(withdrawalId),
+    SDK.committedWithdrawalKeyBytes(withdrawalId),
     "hex",
   );
   const sourceValue = Buffer.from(
-    SDK.committedWithdrawalValueBytesV1(info),
+    SDK.committedWithdrawalValueBytes(info),
     "hex",
   );
   const source = await buildCountedRoot("WithdrawalsRootDomain", [
@@ -114,7 +114,7 @@ const makeEvidence = async ({
   );
 
   const transitionValue: SDK.TransitionStep = {
-    schema_version: SDK.TRANSITION_STEP_V1_SCHEMA_VERSION,
+    schema_version: SDK.TRANSITION_STEP_SCHEMA_VERSION,
     step_index: 0n,
     event_key: eventKey,
     phase: "Withdrawal",
@@ -175,7 +175,7 @@ const makeEvidence = async ({
 
 describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
   it("prepares a valid withdrawal marked invalid through the terminal state", async () => {
-    const prepared = await prepareWithdrawalMistagV1(
+    const prepared = await prepareWithdrawalMistag(
       await makeEvidence({
         lovelace: 1_000_000n,
         validity: "UnpayableWithdrawalValue",
@@ -187,7 +187,7 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
       "PresentLedgerOutput" in prepared.ledgerEvidence &&
         prepared.ledgerEvidence.PresentLedgerOutput.descriptor_cbor.length > 0,
     ).toBe(true);
-    const states = withdrawalMistagStatesV1(prepared);
+    const states = withdrawalMistagStates(prepared);
     expect(states[4]).toMatchObject({
       claimed_valid: false,
       actual_valid: true,
@@ -195,14 +195,14 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
   });
 
   it("prepares UnpayableWithdrawalValue truth marked valid", async () => {
-    const prepared = await prepareWithdrawalMistagV1(
+    const prepared = await prepareWithdrawalMistag(
       await makeEvidence({ lovelace: 1n, validity: "WithdrawalIsValid" }),
     );
     expect(prepared.direction).toBe("invalid-marked-valid");
     expect(prepared.coreValid).toBe(true);
     expect(prepared.payable).toBe(false);
     expect(prepared.actualValid).toBe(false);
-    expect(withdrawalMistagStatesV1(prepared)[4]).toMatchObject({
+    expect(withdrawalMistagStates(prepared)[4]).toMatchObject({
       claimed_valid: true,
       actual_valid: false,
     });
@@ -210,7 +210,7 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
 
   it("refuses an honestly tagged exact-valid withdrawal", async () => {
     await expect(
-      prepareWithdrawalMistagV1(
+      prepareWithdrawalMistag(
         await makeEvidence({
           lovelace: 1_000_000n,
           validity: "WithdrawalIsValid",

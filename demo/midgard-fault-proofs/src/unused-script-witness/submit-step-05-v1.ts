@@ -11,26 +11,26 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import { advanceUnusedScriptWitnessPurposesV1 } from "./checkpoint-v1.js";
-import type { UnusedScriptWitnessContractsV1 } from "./contracts-v1.js";
-import type { UnusedScriptWitnessEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import { advanceUnusedScriptWitnessPurposes } from "./checkpoint-v1.js";
+import type { UnusedScriptWitnessContracts } from "./contracts-v1.js";
+import type { UnusedScriptWitnessEvidence } from "./family-v1.js";
 import {
-  UnusedScriptReverseScanV1Schema,
-  UnusedScriptStep05DatumV1Schema,
-  UnusedScriptStep05RedeemerV1Schema,
-  UnusedScriptStep06DatumV1Schema,
+  UnusedScriptReverseScanSchema,
+  UnusedScriptStep05DatumSchema,
+  UnusedScriptStep05RedeemerSchema,
+  UnusedScriptStep06DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "unused-script-witness";
-export const submitUnusedScriptWitnessStep05V1 = async ({
+export const submitUnusedScriptWitnessStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -43,18 +43,18 @@ export const submitUnusedScriptWitnessStep05V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: UnusedScriptWitnessContractsV1;
+  contracts: UnusedScriptWitnessContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: UnusedScriptWitnessEvidenceV1;
+  evidence: UnusedScriptWitnessEvidence;
   referenceScriptUtxo: UTxO;
   itemBudget?: number;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -62,12 +62,12 @@ export const submitUnusedScriptWitnessStep05V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const source = requireLinearFaultStepStateV1<
-    Data.Static<typeof UnusedScriptReverseScanV1Schema>
+  const source = requireLinearFaultStepState<
+    Data.Static<typeof UnusedScriptReverseScanSchema>
   >({
     threadUtxo,
     signer,
-    schema: UnusedScriptStep05DatumV1Schema as never,
+    schema: UnusedScriptStep05DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -79,7 +79,7 @@ export const submitUnusedScriptWitnessStep05V1 = async ({
     source.purpose_cursor < source.witness.purpose_count
   )
     throw new Error(`${FAMILY}: purpose batch is empty`);
-  const nextState = advanceUnusedScriptWitnessPurposesV1({
+  const nextState = advanceUnusedScriptWitnessPurposes({
     state: source,
     evidence,
     itemBudget,
@@ -100,8 +100,8 @@ export const submitUnusedScriptWitnessStep05V1 = async ({
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
     (complete
-      ? UnusedScriptStep06DatumV1Schema
-      : UnusedScriptStep05DatumV1Schema) as never,
+      ? UnusedScriptStep06DatumSchema
+      : UnusedScriptStep05DatumSchema) as never,
   );
   const openings = selected.map((opening) => ({
     frontier_index: BigInt(opening.frontierIndex),
@@ -118,7 +118,7 @@ export const submitUnusedScriptWitnessStep05V1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -144,11 +144,11 @@ export const submitUnusedScriptWitnessStep05V1 = async ({
           },
         ],
       } as never,
-      UnusedScriptStep05RedeemerV1Schema as never,
+      UnusedScriptStep05RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

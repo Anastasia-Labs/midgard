@@ -6,16 +6,16 @@ import {
   type StateQueueRedeemer as StateQueueRedeemerType,
 } from "./state-queue.js";
 import {
-  deriveStateQueueAuthenticatedTransitionV1,
-  parseStateQueueAuthenticatedTransitionV1,
-  parseStateQueueCorrectionLockWitnessV1,
-  type StateQueueAuthenticatedTransitionV1,
-  type StateQueueCorrectionLockWitnessV1,
-  type StateQueueTransitionNodeV1,
-  type StateQueueTransitionRedeemerV1,
+  deriveStateQueueAuthenticatedTransition,
+  parseStateQueueAuthenticatedTransition,
+  parseStateQueueCorrectionLockWitness,
+  type StateQueueAuthenticatedTransition,
+  type StateQueueCorrectionLockWitness,
+  type StateQueueTransitionNode,
+  type StateQueueTransitionRedeemer,
 } from "./state-queue-correction-transition-v1.js";
 
-export const STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_V1_SCHEMA_VERSION =
+export const STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION =
   "midgard-state-queue-authenticated-replay-checkpoint-v1" as const;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -23,7 +23,7 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
-export type StateQueueAuthenticatedReplayCheckpointKindV1 =
+export type StateQueueAuthenticatedReplayCheckpointKind =
   | "init"
   | "deinit"
   | "append"
@@ -32,8 +32,8 @@ export type StateQueueAuthenticatedReplayCheckpointKindV1 =
   | "fraud_removal"
   | "timeout_correction";
 
-export type StateQueueAuthenticatedReplayCheckpointV1 = Readonly<{
-  schemaVersion: typeof STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_V1_SCHEMA_VERSION;
+export type StateQueueAuthenticatedReplayCheckpoint = Readonly<{
+  schemaVersion: typeof STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION;
   deploymentIdentityDigest: string;
   stateQueuePolicyId: string;
   transactionHash: string;
@@ -43,19 +43,19 @@ export type StateQueueAuthenticatedReplayCheckpointV1 = Readonly<{
   transactionIndex: string;
   chainPointId: string;
   finalityDepth: string;
-  checkpointKind: StateQueueAuthenticatedReplayCheckpointKindV1;
+  checkpointKind: StateQueueAuthenticatedReplayCheckpointKind;
   mintPolicyIds: readonly string[];
-  stateQueueMintRedeemer: StateQueueTransitionRedeemerV1 | null;
+  stateQueueMintRedeemer: StateQueueTransitionRedeemer | null;
   spentInputOutRefs: readonly string[];
   referenceInputOutRefs: readonly string[];
-  correctionLockWitness: StateQueueCorrectionLockWitnessV1;
-  previousQueue: readonly StateQueueTransitionNodeV1[];
-  nextQueue: readonly StateQueueTransitionNodeV1[];
-  terminalTransition: StateQueueAuthenticatedTransitionV1 | null;
+  correctionLockWitness: StateQueueCorrectionLockWitness;
+  previousQueue: readonly StateQueueTransitionNode[];
+  nextQueue: readonly StateQueueTransitionNode[];
+  terminalTransition: StateQueueAuthenticatedTransition | null;
   checkpointDigest: string;
 }>;
 
-export type DeriveStateQueueAuthenticatedReplayCheckpointV1Input = Readonly<{
+export type DeriveStateQueueAuthenticatedReplayCheckpointInput = Readonly<{
   deploymentIdentityDigest: string;
   stateQueuePolicyId: string;
   transactionHash: string;
@@ -66,12 +66,12 @@ export type DeriveStateQueueAuthenticatedReplayCheckpointV1Input = Readonly<{
   chainPointId: string;
   finalityDepth: string;
   mintPolicyIds: readonly string[];
-  redeemers: readonly StateQueueTransitionRedeemerV1[];
+  redeemers: readonly StateQueueTransitionRedeemer[];
   spentInputOutRefs: readonly string[];
   referenceInputOutRefs: readonly string[];
-  correctionLockWitness: StateQueueCorrectionLockWitnessV1;
-  previousQueue: readonly StateQueueTransitionNodeV1[];
-  nextQueue: readonly StateQueueTransitionNodeV1[];
+  correctionLockWitness: StateQueueCorrectionLockWitness;
+  previousQueue: readonly StateQueueTransitionNode[];
+  nextQueue: readonly StateQueueTransitionNode[];
 }>;
 
 type Json =
@@ -110,7 +110,7 @@ const exactRecord = (
 };
 
 const canonicalQueue = (
-  queue: readonly StateQueueTransitionNodeV1[],
+  queue: readonly StateQueueTransitionNode[],
   allowEmpty: boolean,
 ): boolean =>
   (allowEmpty || queue.length > 0) &&
@@ -129,16 +129,16 @@ const canonicalQueue = (
 
 const outputIndex = (outRef: string): bigint => BigInt(outRef.split("#")[1]!);
 const sameIdentities = (
-  left: readonly StateQueueTransitionNodeV1[],
-  right: readonly StateQueueTransitionNodeV1[],
+  left: readonly StateQueueTransitionNode[],
+  right: readonly StateQueueTransitionNode[],
 ): boolean =>
   left.length === right.length &&
   left.every((node, index) => node.headerHash === right[index]?.headerHash);
 
 const canonicalRedeemer = (
-  input: DeriveStateQueueAuthenticatedReplayCheckpointV1Input,
+  input: DeriveStateQueueAuthenticatedReplayCheckpointInput,
 ): {
-  redeemer: StateQueueTransitionRedeemerV1;
+  redeemer: StateQueueTransitionRedeemer;
   decoded: StateQueueRedeemerType;
 } | null => {
   const policyIndex = input.mintPolicyIds.indexOf(input.stateQueuePolicyId);
@@ -166,9 +166,9 @@ const canonicalRedeemer = (
   }
 };
 
-export const deriveStateQueueAuthenticatedReplayCheckpointV1 = (
-  input: DeriveStateQueueAuthenticatedReplayCheckpointV1Input,
-): StateQueueAuthenticatedReplayCheckpointV1 | null => {
+export const deriveStateQueueAuthenticatedReplayCheckpoint = (
+  input: DeriveStateQueueAuthenticatedReplayCheckpointInput,
+): StateQueueAuthenticatedReplayCheckpoint | null => {
   if (
     !HEX_32.test(input.deploymentIdentityDigest) ||
     !HEX_28.test(input.stateQueuePolicyId) ||
@@ -193,13 +193,13 @@ export const deriveStateQueueAuthenticatedReplayCheckpointV1 = (
     input.referenceInputOutRefs.some((reference) => !OUT_REF.test(reference)) ||
     new Set(input.referenceInputOutRefs).size !==
       input.referenceInputOutRefs.length ||
-    parseStateQueueCorrectionLockWitnessV1(input.correctionLockWitness) === null
+    parseStateQueueCorrectionLockWitness(input.correctionLockWitness) === null
   ) {
     return null;
   }
-  const terminal = deriveStateQueueAuthenticatedTransitionV1(input);
-  let checkpointKind: StateQueueAuthenticatedReplayCheckpointKindV1;
-  let stateQueueMintRedeemer: StateQueueTransitionRedeemerV1 | null = null;
+  const terminal = deriveStateQueueAuthenticatedTransition(input);
+  let checkpointKind: StateQueueAuthenticatedReplayCheckpointKind;
+  let stateQueueMintRedeemer: StateQueueTransitionRedeemer | null = null;
   if (terminal !== null) {
     checkpointKind = terminal.transitionKind;
     stateQueueMintRedeemer = terminal.stateQueueMintRedeemer;
@@ -302,7 +302,7 @@ export const deriveStateQueueAuthenticatedReplayCheckpointV1 = (
       }
     }
   }
-  const lock = parseStateQueueCorrectionLockWitnessV1(
+  const lock = parseStateQueueCorrectionLockWitness(
     input.correctionLockWitness,
   )!;
   const lockTopologyIsExact =
@@ -324,8 +324,7 @@ export const deriveStateQueueAuthenticatedReplayCheckpointV1 = (
             : terminal !== null;
   if (!lockTopologyIsExact) return null;
   const canonical = {
-    schemaVersion:
-      STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_V1_SCHEMA_VERSION,
+    schemaVersion: STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION,
     deploymentIdentityDigest: input.deploymentIdentityDigest,
     stateQueuePolicyId: input.stateQueuePolicyId,
     transactionHash: input.transactionHash,
@@ -344,16 +343,13 @@ export const deriveStateQueueAuthenticatedReplayCheckpointV1 = (
     previousQueue: input.previousQueue,
     nextQueue: input.nextQueue,
     terminalTransition: terminal,
-  } satisfies Omit<
-    StateQueueAuthenticatedReplayCheckpointV1,
-    "checkpointDigest"
-  >;
+  } satisfies Omit<StateQueueAuthenticatedReplayCheckpoint, "checkpointDigest">;
   return Object.freeze({ ...canonical, checkpointDigest: digest(canonical) });
 };
 
 const parseNodes = (
   input: unknown,
-): readonly StateQueueTransitionNodeV1[] | null =>
+): readonly StateQueueTransitionNode[] | null =>
   Array.isArray(input)
     ? input.map((value) => {
         const node = exactRecord(value, ["headerHash", "outRef"]);
@@ -366,9 +362,9 @@ const parseNodes = (
       })
     : null;
 
-export const parseStateQueueAuthenticatedReplayCheckpointV1 = (
+export const parseStateQueueAuthenticatedReplayCheckpoint = (
   input: unknown,
-): StateQueueAuthenticatedReplayCheckpointV1 | null => {
+): StateQueueAuthenticatedReplayCheckpoint | null => {
   const record = exactRecord(input, [
     "schemaVersion",
     "deploymentIdentityDigest",
@@ -404,14 +400,14 @@ export const parseStateQueueAuthenticatedReplayCheckpointV1 = (
   const terminal =
     record?.terminalTransition === null
       ? null
-      : parseStateQueueAuthenticatedTransitionV1(record?.terminalTransition);
-  const correctionLockWitness = parseStateQueueCorrectionLockWitnessV1(
+      : parseStateQueueAuthenticatedTransition(record?.terminalTransition);
+  const correctionLockWitness = parseStateQueueCorrectionLockWitness(
     record?.correctionLockWitness,
   );
   if (
     record === null ||
     record.schemaVersion !==
-      STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_V1_SCHEMA_VERSION ||
+      STATE_QUEUE_AUTHENTICATED_REPLAY_CHECKPOINT_SCHEMA_VERSION ||
     typeof record.deploymentIdentityDigest !== "string" ||
     typeof record.stateQueuePolicyId !== "string" ||
     typeof record.transactionHash !== "string" ||
@@ -439,7 +435,7 @@ export const parseStateQueueAuthenticatedReplayCheckpointV1 = (
   ) {
     return null;
   }
-  const derived = deriveStateQueueAuthenticatedReplayCheckpointV1({
+  const derived = deriveStateQueueAuthenticatedReplayCheckpoint({
     deploymentIdentityDigest: record.deploymentIdentityDigest,
     stateQueuePolicyId: record.stateQueuePolicyId,
     transactionHash: record.transactionHash,
@@ -475,7 +471,7 @@ export const parseStateQueueAuthenticatedReplayCheckpointV1 = (
     : null;
 };
 
-export const replayStateQueueAuthenticatedCheckpointsV1 = ({
+export const replayStateQueueAuthenticatedCheckpoints = ({
   deploymentIdentityDigest,
   stateQueuePolicyId,
   minimumFinalityDepth,
@@ -486,16 +482,16 @@ export const replayStateQueueAuthenticatedCheckpointsV1 = ({
   readonly stateQueuePolicyId: string;
   readonly minimumFinalityDepth: bigint;
   readonly anchor: Readonly<{
-    queue: readonly StateQueueTransitionNodeV1[];
+    queue: readonly StateQueueTransitionNode[];
     blockNo: string;
     transactionIndex: string;
   }>;
   readonly checkpoints: readonly unknown[];
 }): Readonly<{
-  queue: readonly StateQueueTransitionNodeV1[];
+  queue: readonly StateQueueTransitionNode[];
   lastBlockNo: string;
   lastTransactionIndex: string;
-  terminals: readonly StateQueueAuthenticatedTransitionV1[];
+  terminals: readonly StateQueueAuthenticatedTransition[];
 }> | null => {
   if (
     !HEX_32.test(deploymentIdentityDigest) ||
@@ -510,9 +506,9 @@ export const replayStateQueueAuthenticatedCheckpointsV1 = ({
   let queue = anchor.queue;
   let blockNo = anchor.blockNo;
   let transactionIndex = anchor.transactionIndex;
-  const terminals: StateQueueAuthenticatedTransitionV1[] = [];
+  const terminals: StateQueueAuthenticatedTransition[] = [];
   for (const input of checkpointInputs) {
-    const checkpoint = parseStateQueueAuthenticatedReplayCheckpointV1(input);
+    const checkpoint = parseStateQueueAuthenticatedReplayCheckpoint(input);
     const ordered =
       checkpoint !== null &&
       (BigInt(checkpoint.blockNo) > BigInt(blockNo) ||

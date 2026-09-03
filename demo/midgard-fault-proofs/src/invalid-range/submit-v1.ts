@@ -14,24 +14,24 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { InvalidRangeContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { InvalidRangeContracts } from "./contracts-v1.js";
 import {
-  invalidRangeEvidenceClosesV1,
-  type InvalidRangeEvidenceV1,
+  type InvalidRangeEvidence,
+  invalidRangeEvidenceCloses,
 } from "./family-v1.js";
 
-export const submitInvalidRangeStep01ForcedV1 = async ({
+export const submitInvalidRangeStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -44,19 +44,19 @@ export const submitInvalidRangeStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: InvalidRangeContractsV1;
+  contracts: InvalidRangeContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: InvalidRangeEvidenceV1;
+  evidence: InvalidRangeEvidence;
   forcedSource: Readonly<Record<string, unknown>>;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   if (evidence.subject.direction !== 1n)
     throw new Error("invalidRange: forced direction changed");
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -66,7 +66,7 @@ export const submitInvalidRangeStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "invalid-range",
@@ -117,7 +117,7 @@ export const submitInvalidRangeStep01ForcedV1 = async ({
       InvalidRangeStep01SpendRedeemer as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -149,19 +149,19 @@ export const submitInvalidRangeStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: InvalidRangeContractsV1;
+  contracts: InvalidRangeContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: InvalidRangeEvidenceV1;
+  evidence: InvalidRangeEvidence;
   referenceScriptUtxo: UTxO;
-  witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
-  if (!invalidRangeEvidenceClosesV1(evidence))
+  if (!invalidRangeEvidenceCloses(evidence))
     throw new Error("invalidRange: terminal evidence is honest");
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -169,7 +169,7 @@ export const submitInvalidRangeStep02V1 = async ({
     stepIndex: 1,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: { transaction_id: string };
   }>({
     threadUtxo,
@@ -180,7 +180,7 @@ export const submitInvalidRangeStep02V1 = async ({
   });
   if (state.subject.transaction_id !== evidence.subject.transaction_id)
     throw new Error("invalidRange: bound transaction changed");
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "invalid-range",
     stepIndex: 1,

@@ -1,26 +1,26 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  type ExecutionSourceDescriptorV1,
-  executionSourceScriptDecodingEvidenceClosesV1,
-  type ExecutionSourceScriptDecodingEvidenceV1,
-  executionSourceScriptDecodingViolationIdV1,
-  prepareExecutionSourceScriptDecodingEvidenceV1,
+  type ExecutionSourceDescriptor,
+  type ExecutionSourceScriptDecodingEvidence,
+  executionSourceScriptDecodingEvidenceCloses,
+  executionSourceScriptDecodingViolationId,
+  prepareExecutionSourceScriptDecodingEvidence,
 } from "./family-v1.js";
 
-export type ExecutionSourceAuthenticatedDescriptorV1 = Readonly<{
+export type ExecutionSourceAuthenticatedDescriptor = Readonly<{
   executionIndex: number;
-  descriptor: ExecutionSourceDescriptorV1;
+  descriptor: ExecutionSourceDescriptor;
 }>;
 
-export type ExecutionSourceScriptDecodingReplayFindingV1 = Readonly<{
-  detection: CanonicalViolationDetectionV1;
-  evidence: ExecutionSourceScriptDecodingEvidenceV1;
+export type ExecutionSourceScriptDecodingReplayFinding = Readonly<{
+  detection: CanonicalViolationDetection;
+  evidence: ExecutionSourceScriptDecodingEvidence;
 }>;
 
 /**
@@ -29,10 +29,10 @@ export type ExecutionSourceScriptDecodingReplayFindingV1 = Readonly<{
  * are the evidence, and must survive until the frozen structural scan.
  *
  * The descriptors are accepted only after their purpose/source/execution
- * memberships verify in `prepareExecutionSourceScriptDecodingEvidenceV1` and
+ * memberships verify in `prepareExecutionSourceScriptDecodingEvidence` and
  * the selected field-6 item is byte-identical to the retained envelope.
  */
-export const detectExecutionSourceScriptDecodingAcceptedRawReplayV1 = ({
+export const detectExecutionSourceScriptDecodingAcceptedRawReplay = ({
   headerHash,
   position,
   canonicalTransactionCbor,
@@ -41,13 +41,13 @@ export const detectExecutionSourceScriptDecodingAcceptedRawReplayV1 = ({
   readonly headerHash: string;
   readonly position: bigint;
   readonly canonicalTransactionCbor: Uint8Array;
-  readonly authenticatedDescriptors: readonly ExecutionSourceAuthenticatedDescriptorV1[];
-}): readonly ExecutionSourceScriptDecodingReplayFindingV1[] => {
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+  readonly authenticatedDescriptors: readonly ExecutionSourceAuthenticatedDescriptor[];
+}): readonly ExecutionSourceScriptDecodingReplayFinding[] => {
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     canonicalTransactionCbor,
   );
   const transactionId = material.transactionId.toString("hex");
-  const items = decodeMidgardFieldPreimageV1(material.fieldPreimages[6]!);
+  const items = decodeMidgardFieldPreimage(material.fieldPreimages[6]!);
   const findings = authenticatedDescriptors.flatMap(
     ({ executionIndex, descriptor }) => {
       if (descriptor.originKind !== 0) return [];
@@ -59,15 +59,15 @@ export const detectExecutionSourceScriptDecodingAcceptedRawReplayV1 = ({
         throw new Error(
           "executionSourceScriptDecoding raw field-6 source item changed",
         );
-      const evidence = prepareExecutionSourceScriptDecodingEvidenceV1({
+      const evidence = prepareExecutionSourceScriptDecodingEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(transactionId),
+          subject: acceptedVerdictSubject(transactionId),
           executionIndex,
         },
         descriptor,
       });
-      if (!executionSourceScriptDecodingEvidenceClosesV1(evidence)) return [];
-      const violationId = executionSourceScriptDecodingViolationIdV1(
+      if (!executionSourceScriptDecodingEvidenceCloses(evidence)) return [];
+      const violationId = executionSourceScriptDecodingViolationId(
         evidence.resultClass as 0 | 1 | 2,
       );
       return [
@@ -94,9 +94,9 @@ export const detectExecutionSourceScriptDecodingAcceptedRawReplayV1 = ({
   );
 };
 
-export const selectExecutionSourceScriptDecodingCanonicalFindingV1 = (
-  findings: readonly ExecutionSourceScriptDecodingReplayFindingV1[],
-): ExecutionSourceScriptDecodingReplayFindingV1 => {
+export const selectExecutionSourceScriptDecodingCanonicalFinding = (
+  findings: readonly ExecutionSourceScriptDecodingReplayFinding[],
+): ExecutionSourceScriptDecodingReplayFinding => {
   const ordered = [...findings].sort((left, right) => {
     const position = Number(left.detection.position - right.detection.position);
     return (

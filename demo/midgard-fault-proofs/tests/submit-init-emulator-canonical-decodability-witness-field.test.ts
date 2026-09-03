@@ -1,6 +1,6 @@
 /** Witness-side reachability through witness_set_hash re-derivation. */
 import { outRefLabel } from "@al-ft/midgard-core";
-import { MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER_V1 } from "@al-ft/midgard-sdk";
+import { MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,19 +9,19 @@ import {
   submitCanonicalDecodabilityStep02,
 } from "../src/index.js";
 import {
-  buildCanonicalDecodabilityWitnessFixtureV1,
-  makeCanonicalDecodabilityEmulatorHarnessV1,
+  buildCanonicalDecodabilityWitnessFixture,
+  makeCanonicalDecodabilityEmulatorHarness,
   network,
-  publishCanonicalDecodabilityReferenceScriptsV1,
-  setupCanonicalDecodabilityScenarioV1,
-  submitCanonicalDecodabilityStep01RawV1,
+  publishCanonicalDecodabilityReferenceScripts,
+  setupCanonicalDecodabilityScenario,
+  submitCanonicalDecodabilityStep01Raw,
 } from "./support/canonical-decodability-emulator-v1.js";
-import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 describe("canonical-decodability witness-field lifecycle", () => {
   it("opens field 6 through its committed witness set and mints", async () => {
-    const harness = await makeCanonicalDecodabilityEmulatorHarnessV1();
+    const harness = await makeCanonicalDecodabilityEmulatorHarness();
     const {
       realBlueprint,
       proverLucid,
@@ -33,19 +33,19 @@ describe("canonical-decodability witness-field lifecycle", () => {
       witnessReferenceScripts,
     } = harness;
     const [step01Ref, step02Ref] =
-      await publishCanonicalDecodabilityReferenceScriptsV1({
+      await publishCanonicalDecodabilityReferenceScripts({
         lucid: proverLucid,
         contracts: canonicalDecodability,
       });
-    const fixture = await buildCanonicalDecodabilityWitnessFixtureV1();
+    const fixture = await buildCanonicalDecodabilityWitnessFixture();
     if (fixture.prepared === null || fixture.witnessSet === undefined) {
       throw new Error("Expected prepared witness fixture");
     }
     const prepared = fixture.prepared;
     expect(prepared.evidence.verdict).toBe(
-      MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER_V1,
+      MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER,
     );
-    const setup = await setupCanonicalDecodabilityScenarioV1({
+    const setup = await setupCanonicalDecodabilityScenario({
       harness,
       fixture,
     });
@@ -70,8 +70,8 @@ describe("canonical-decodability witness-field lifecycle", () => {
       init.firstStepAddress,
       init.computationThreadUnit,
     );
-    await expectOnchainRefusalV1(() =>
-      submitCanonicalDecodabilityStep01RawV1({
+    await expectOnchainRefusal(() =>
+      submitCanonicalDecodabilityStep01Raw({
         lucid: proverLucid,
         blueprint: realBlueprint,
         contracts: canonicalDecodability,

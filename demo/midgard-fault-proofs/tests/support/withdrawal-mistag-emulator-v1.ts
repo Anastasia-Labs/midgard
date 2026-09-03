@@ -1,10 +1,10 @@
 import { computeHash32 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import { fetchUtxoByOutRef, parseOutRef } from "../../src/runtime.js";
@@ -14,7 +14,7 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import {
-  prepareWithdrawalMistagV1,
+  prepareWithdrawalMistag,
   submitRemoveWithdrawalMistagFraudulentBlock,
   submitWithdrawalMistagInit,
   submitWithdrawalMistagStep01,
@@ -22,7 +22,7 @@ import {
   submitWithdrawalMistagStep03,
   submitWithdrawalMistagStep04,
   submitWithdrawalMistagStep05,
-  type WithdrawalMistagCatalogueCategoryV1,
+  type WithdrawalMistagCatalogueCategory,
 } from "../../src/withdrawal-mistag/index.js";
 import {
   captureEmulatorSubmission,
@@ -32,21 +32,21 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
   submitSetupTx,
-  WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1,
+  WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY,
 } from "./submit-init-emulator-shared.js";
 
-export type WithdrawalMistagDirectionFixtureV1 =
+export type WithdrawalMistagDirectionFixture =
   | "valid-marked-invalid"
   | "invalid-marked-valid";
 
-const buildEvidenceMaterialV1 = async (
-  direction: WithdrawalMistagDirectionFixtureV1,
+const buildEvidenceMaterial = async (
+  direction: WithdrawalMistagDirectionFixture,
 ) => {
   const privateKey = CML.PrivateKey.generate_ed25519();
   const publicKey = privateKey.to_public();
@@ -70,7 +70,7 @@ const buildEvidenceMaterialV1 = async (
   const message = computeHash32(
     Buffer.concat([
       Buffer.from("MidgardWithdrawalV1", "utf8"),
-      Buffer.from(SDK.withdrawalBodyBytesV1(body), "hex"),
+      Buffer.from(SDK.withdrawalBodyBytes(body), "hex"),
     ]),
   );
   const info: SDK.WithdrawalInfo = {
@@ -89,11 +89,11 @@ const buildEvidenceMaterialV1 = async (
     address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner, "hex")]),
     value: { lovelace, assets: new Map() },
   });
-  const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+  const material = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: 0,
     outputCbor,
   });
-  const ledgerKey = encodeMidgardSpendInputItemV1({
+  const ledgerKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(withdrawalId.transactionId, "hex"),
     outputIndex: 0,
   });
@@ -107,11 +107,11 @@ const buildEvidenceMaterialV1 = async (
   );
 
   const sourceKey = Buffer.from(
-    SDK.committedWithdrawalKeyBytesV1(withdrawalId),
+    SDK.committedWithdrawalKeyBytes(withdrawalId),
     "hex",
   );
   const sourceValue = Buffer.from(
-    SDK.committedWithdrawalValueBytesV1(info),
+    SDK.committedWithdrawalValueBytes(info),
     "hex",
   );
   const source = await buildCountedRoot(SDK.ROOT_DOMAINS.withdrawals, [
@@ -145,7 +145,7 @@ const buildEvidenceMaterialV1 = async (
   );
 
   const transitionValue: SDK.TransitionStep = {
-    schema_version: SDK.TRANSITION_STEP_V1_SCHEMA_VERSION,
+    schema_version: SDK.TRANSITION_STEP_SCHEMA_VERSION,
     step_index: 0n,
     event_key: eventKey,
     phase: "Withdrawal",
@@ -209,8 +209,8 @@ const buildEvidenceMaterialV1 = async (
   };
 };
 
-export const makeWithdrawalMistagEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeWithdrawalMistagEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realWithdrawalMistag: true,
       alwaysFraudProofCatalogue: true,
@@ -223,33 +223,33 @@ export const makeWithdrawalMistagEmulatorHarnessV1 = async () => {
       "Harness did not build withdrawal-mistag contracts/category",
     );
   }
-  if (rawCategory.categoryId !== SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1) {
+  if (rawCategory.categoryId !== SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID) {
     throw new Error("Unexpected withdrawal-mistag category id");
   }
-  const category: WithdrawalMistagCatalogueCategoryV1 = {
+  const category: WithdrawalMistagCatalogueCategory = {
     ...rawCategory,
-    categoryId: SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
+    categoryId: SDK.WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID,
   };
   return { ...harness, withdrawalMistag, category };
 };
 
-export const setupWithdrawalMistagScenarioV1 = async ({
+export const setupWithdrawalMistagScenario = async ({
   harness,
   direction,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
+    ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
   >;
-  readonly direction: WithdrawalMistagDirectionFixtureV1;
+  readonly direction: WithdrawalMistagDirectionFixture;
 }) => {
-  const material = await buildEvidenceMaterialV1(direction);
+  const material = await buildEvidenceMaterial(direction);
   const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
   const startTime =
     alignUnixTimeToEmulatorSlotBoundary(
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(operatorVkey, startTime),
     withdrawalsRoot: material.source.root,
     withdrawalCount: material.source.count,
@@ -265,18 +265,18 @@ export const setupWithdrawalMistagScenarioV1 = async ({
     catalogue: harness.catalogue,
     header,
   });
-  const prepared = await prepareWithdrawalMistagV1({
+  const prepared = await prepareWithdrawalMistag({
     challengedHeaderHash: setup.headerHash,
     ...material.args,
   });
   return { header, setup, prepared };
 };
 
-export const publishWithdrawalMistagScriptsV1 = async ({
+export const publishWithdrawalMistagScripts = async ({
   harness,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
+    ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
   >;
 }) => {
   const refs: UTxO[] = [];
@@ -302,17 +302,15 @@ export const publishWithdrawalMistagScriptsV1 = async ({
   };
 };
 
-export const driveWithdrawalMistagToFraudV1 = async ({
+export const driveWithdrawalMistagToFraud = async ({
   harness,
   scenario,
   refs,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
+    ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
   >;
-  readonly scenario: Awaited<
-    ReturnType<typeof setupWithdrawalMistagScenarioV1>
-  >;
+  readonly scenario: Awaited<ReturnType<typeof setupWithdrawalMistagScenario>>;
   readonly refs: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
 }) => {
   const transactionMeasurements: Record<
@@ -349,9 +347,9 @@ export const driveWithdrawalMistagToFraudV1 = async ({
     }
   };
   const init = await stage("init", () =>
-    initWithdrawalMistagThreadV1({ harness, scenario }),
+    initWithdrawalMistagThread({ harness, scenario }),
   );
-  const blockUtxo = await withdrawalMistagBlockUtxoV1({ harness, scenario });
+  const blockUtxo = await withdrawalMistagBlockUtxo({ harness, scenario });
   const step01 = await stage("step-01", () =>
     submitWithdrawalMistagStep01({
       lucid: harness.proverLucid,
@@ -416,16 +414,14 @@ export const driveWithdrawalMistagToFraudV1 = async ({
   };
 };
 
-export const initWithdrawalMistagThreadV1 = async ({
+export const initWithdrawalMistagThread = async ({
   harness,
   scenario,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
+    ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
   >;
-  readonly scenario: Awaited<
-    ReturnType<typeof setupWithdrawalMistagScenarioV1>
-  >;
+  readonly scenario: Awaited<ReturnType<typeof setupWithdrawalMistagScenario>>;
 }) =>
   await submitWithdrawalMistagInit({
     lucid: harness.proverLucid,
@@ -444,16 +440,14 @@ export const initWithdrawalMistagThreadV1 = async ({
     witnessReferenceScripts: harness.witnessReferenceScripts,
   });
 
-export const withdrawalMistagBlockUtxoV1 = async ({
+export const withdrawalMistagBlockUtxo = async ({
   harness,
   scenario,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
+    ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
   >;
-  readonly scenario: Awaited<
-    ReturnType<typeof setupWithdrawalMistagScenarioV1>
-  >;
+  readonly scenario: Awaited<ReturnType<typeof setupWithdrawalMistagScenario>>;
 }) =>
   await fetchUtxoByOutRef({
     lucid: harness.proverLucid,
@@ -464,16 +458,14 @@ export const withdrawalMistagBlockUtxoV1 = async ({
     label: "withdrawal-mistag fraudulent block",
   });
 
-export const removeWithdrawalMistagBlockV1 = async ({
+export const removeWithdrawalMistagBlock = async ({
   harness,
   scenario,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
+    ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
   >;
-  readonly scenario: Awaited<
-    ReturnType<typeof setupWithdrawalMistagScenarioV1>
-  >;
+  readonly scenario: Awaited<ReturnType<typeof setupWithdrawalMistagScenario>>;
 }) => {
   const removalReferenceScripts = await publishRemovalReferenceScripts({
     lucid: harness.proverLucid,
@@ -492,7 +484,7 @@ export const removeWithdrawalMistagBlockV1 = async ({
     network,
     signer: harness.proverSigner,
     contracts: harness.withdrawalMistag,
-    firstStepDeploymentEntry: WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1,
+    firstStepDeploymentEntry: WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY,
     fraudulentHeaderHash: scenario.setup.headerHash,
     awaitConfirmation: true,
     requireReferenceScripts: true,

@@ -1,24 +1,24 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MintDeclaredAssetLimitContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MintDeclaredAssetLimitContracts } from "./contracts-v1.js";
 import {
-  mintDeclaredAssetLimitEvidenceClosesV1,
-  type MintDeclaredAssetLimitEvidenceV1,
+  type MintDeclaredAssetLimitEvidence,
+  mintDeclaredAssetLimitEvidenceCloses,
 } from "./family-v1.js";
 import {
-  MintDeclaredAssetLimitStep04DatumV1Schema,
-  MintDeclaredAssetLimitStep04RedeemerV1Schema,
+  MintDeclaredAssetLimitStep04DatumSchema,
+  MintDeclaredAssetLimitStep04RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitMintDeclaredAssetLimitStep04V1 = async ({
+export const submitMintDeclaredAssetLimitStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -31,20 +31,20 @@ export const submitMintDeclaredAssetLimitStep04V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintDeclaredAssetLimitContractsV1;
+  readonly contracts: MintDeclaredAssetLimitContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: MintDeclaredAssetLimitEvidenceV1;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!mintDeclaredAssetLimitEvidenceClosesV1(evidence))
+  if (!mintDeclaredAssetLimitEvidenceCloses(evidence))
     throw new Error("mintDeclaredAssetLimit: terminal evidence is honest");
   const stepIndex = 3;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -52,14 +52,14 @@ export const submitMintDeclaredAssetLimitStep04V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     policy_index: bigint;
     crossing: boolean;
   }>({
     threadUtxo,
     signer,
-    schema: MintDeclaredAssetLimitStep04DatumV1Schema as never,
+    schema: MintDeclaredAssetLimitStep04DatumSchema as never,
     family: "mint-declared-asset-limit",
     stepIndex,
   });
@@ -70,7 +70,7 @@ export const submitMintDeclaredAssetLimitStep04V1 = async ({
     throw new Error(
       "mintDeclaredAssetLimit: terminal datum differs from evidence",
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "mint-declared-asset-limit",
     stepIndex,
@@ -80,7 +80,7 @@ export const submitMintDeclaredAssetLimitStep04V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: MintDeclaredAssetLimitStep04RedeemerV1Schema,
+    spendRedeemerSchema: MintDeclaredAssetLimitStep04RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { makeInputSetUniquenessEmulatorHarnessV1 } from "./support/input-set-uniqueness-emulator-v1.js";
+import { makeInputSetUniquenessEmulatorHarness } from "./support/input-set-uniqueness-emulator-v1.js";
 import { publishPlainReferenceScriptUtxo } from "./support/submit-init-emulator-shared.js";
 
 describe("input-set-uniqueness direction-complete publication fit", () => {
   it("publishes every applied physical validator below the reliability reserve", async () => {
-    const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+    const harness = await makeInputSetUniquenessEmulatorHarness();
     expect(harness.family.steps).toHaveLength(4);
     for (const [index, step] of harness.family.steps.entries()) {
       const published = await publishPlainReferenceScriptUtxo({

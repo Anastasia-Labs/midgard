@@ -80,7 +80,7 @@ import { measureModule } from "./exec-ledger-measure-v1.mjs";
  * memory cap of 16,500,000 — never the 11,200,000 figure earlier benches
  * derived from the stale Conway 14,000,000 cap. The cpu axis is the same 20%
  * reserve off 10,000,000,000. Both are carried in the repo as the supported
- * floor `MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits` /
+ * floor `MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits` /
  * `...CpuUnits` (`docs/consensus-profile-v1.md` §10).
  *
  * It is exported, and it is exported from *here*, because a basis retyped per

@@ -29,12 +29,12 @@ import {
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
 import {
-  addressWitnessItemCborsV1,
-  buildMintAuthorizationSubjectV1,
-  directionBNativeScriptV1,
-  makeMintAuthorizationEmulatorHarnessV1,
-  publishMintAuthorizationReferenceScriptsV1,
-  setupMintAuthorizationScenarioV1,
+  addressWitnessItemCbors,
+  buildMintAuthorizationSubject,
+  directionBNativeScript,
+  makeMintAuthorizationEmulatorHarness,
+  publishMintAuthorizationReferenceScripts,
+  setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -44,11 +44,11 @@ import {
 
 const ACCUSED_POLICY_INDEX = 0n;
 const DIRECTION_SCRIPT_UNSATISFIED =
-  SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1;
+  SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED;
 
 describe("mint-authorization direction-B emulator lifecycle", () => {
   it("proves an unsatisfied native mint policy end to end and removes the fraudulent commitment", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1();
+    const harness = await makeMintAuthorizationEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -61,12 +61,12 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
 
     // A native `sig` timelock whose key hash signs no committed witness: the
     // two decoy address witnesses do not name it, so the machine-twin refutes.
-    const directionB = directionBNativeScriptV1();
-    const subject = buildMintAuthorizationSubjectV1({
+    const directionB = directionBNativeScript();
+    const subject = buildMintAuthorizationSubject({
       mintItemCbors: [directionB.mintItemCbor],
-      addrWitnessItemCbors: addressWitnessItemCborsV1(2),
+      addrWitnessItemCbors: addressWitnessItemCbors(2),
     });
-    const scenario = await setupMintAuthorizationScenarioV1({
+    const scenario = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -81,7 +81,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
         contracts: harness.contracts,
       });
     const [step01Ref, step02Ref, step03Ref, , step05Ref] =
-      await publishMintAuthorizationReferenceScriptsV1({
+      await publishMintAuthorizationReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });

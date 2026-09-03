@@ -3,18 +3,18 @@
  */
 
 import {
-  buildMidgardBoundedCollectionItemProofV1,
-  buildMidgardBoundedCollectionV1,
-  buildMidgardBoundedItemChunkProofV1,
-  deriveMidgardV1TxFieldPreimages,
-  type MidgardBoundedCollectionItemProofV1,
-  type MidgardBoundedCollectionV1,
-  type MidgardBoundedItemChunkProofV1,
+  buildMidgardBoundedCollection,
+  buildMidgardBoundedCollectionItemProof,
+  buildMidgardBoundedItemChunkProof,
+  deriveMidgardTxFieldPreimages,
+  type MidgardBoundedCollection,
+  type MidgardBoundedCollectionItemProof,
+  type MidgardBoundedItemChunkProof,
 } from "@al-ft/midgard-core";
 import {
-  decodeMidgardFieldPreimageV1,
-  encodeMidgardDefiniteBytesV1,
-  midgardFieldHeaderLengthForCountV1,
+  decodeMidgardFieldPreimage,
+  encodeMidgardDefiniteBytes,
+  midgardFieldHeaderLengthForCount,
 } from "@al-ft/midgard-core/codec";
 
 /**
@@ -57,7 +57,7 @@ import {
  * wholesale, so the name is public API of `@al-ft/midgard-validation` and is
  * already imported across the package boundary:
  * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts`
- * takes `countedMachineTransactionChunkStepsV1` that way. So this is not
+ * takes `countedMachineTransactionChunkSteps` that way. So this is not
  * containment; what it buys is that the counted spelling now lives in the package
  * whose on-chain twin still asks for it, one import away from this note, instead
  * of in the dependency every producer already pulls in. The discipline it asks
@@ -65,13 +65,13 @@ import {
  * `counted…` may be compared against a §4 field commitment. Reach for
  * `midgardFieldCommitmentV1` / `verifyMidgardV1TxFieldPreimage` for that.
  */
-export const countedMachineFieldTraceV1 = (
+export const countedMachineFieldTrace = (
   fieldIndex: number,
   preimageCbor: Uint8Array,
-): MidgardBoundedCollectionV1 =>
-  buildMidgardBoundedCollectionV1({
+): MidgardBoundedCollection =>
+  buildMidgardBoundedCollection({
     fieldIndex,
-    items: decodeMidgardFieldPreimageV1(preimageCbor),
+    items: decodeMidgardFieldPreimage(preimageCbor),
   });
 
 /**
@@ -86,10 +86,10 @@ export const countedMachineFieldTraceV1 = (
  * now the header width plus the wrapper-and-payload width of each completed item,
  * with no field in it at all.
  */
-export type MachineFieldChunkStepV1 = {
+export type MachineFieldChunkStep = {
   readonly fieldIndex: number;
-  readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-  readonly chunkProof: MidgardBoundedItemChunkProofV1;
+  readonly collectionProof: MidgardBoundedCollectionItemProof;
+  readonly chunkProof: MidgardBoundedItemChunkProof;
   readonly fieldEncodedSize: number;
 };
 
@@ -103,8 +103,8 @@ export type MachineFieldChunkStepV1 = {
  * exists to catch, which means the duplicate could only ever have turned a real
  * encoding into a spurious failure or, worse, agreed by accident.
  */
-const midgardWrappedItemBytesV1 = (item: Uint8Array): number =>
-  encodeMidgardDefiniteBytesV1(item).length;
+const midgardWrappedItemBytes = (item: Uint8Array): number =>
+  encodeMidgardDefiniteBytes(item).length;
 
 /**
  * The machine's chunk steps for one field, in the order it emits them:
@@ -118,28 +118,28 @@ const midgardWrappedItemBytesV1 = (item: Uint8Array): number =>
  * the field authenticated calls `verifyMidgardV1TxFieldPreimage`, once, over the
  * whole preimage.
  */
-export const countedMachineFieldChunkStepsV1 = (
+export const countedMachineFieldChunkSteps = (
   fieldIndex: number,
   preimageCbor: Uint8Array,
-): readonly MachineFieldChunkStepV1[] => {
-  const collection = countedMachineFieldTraceV1(fieldIndex, preimageCbor);
-  const steps: MachineFieldChunkStepV1[] = [];
-  let fieldEncodedSize = midgardFieldHeaderLengthForCountV1(
+): readonly MachineFieldChunkStep[] => {
+  const collection = countedMachineFieldTrace(fieldIndex, preimageCbor);
+  const steps: MachineFieldChunkStep[] = [];
+  let fieldEncodedSize = midgardFieldHeaderLengthForCount(
     collection.items.length,
   );
   for (const [itemIndex, item] of collection.items.entries()) {
-    const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+    const collectionProof = buildMidgardBoundedCollectionItemProof(
       collection,
       itemIndex,
     );
     for (const [chunkIndex] of item.chunkHashes.entries()) {
       if (chunkIndex + 1 === item.chunkHashes.length) {
-        fieldEncodedSize += midgardWrappedItemBytesV1(item.bytes);
+        fieldEncodedSize += midgardWrappedItemBytes(item.bytes);
       }
       steps.push({
         fieldIndex,
         collectionProof,
-        chunkProof: buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
+        chunkProof: buildMidgardBoundedItemChunkProof(item, chunkIndex),
         fieldEncodedSize,
       });
     }
@@ -199,15 +199,15 @@ export const countedMachineFieldChunkStepsV1 = (
  * transaction, exactly as its callers require, while no carriage §8.4 does not
  * admit ever exists at any instant.
  */
-export type ValidationMachineFieldCarriagePlanInputV1 = {
+export type ValidationMachineFieldCarriagePlanInput = {
   readonly fieldIndex: number;
   readonly fieldPreimage: Buffer;
 };
 
 /** Every field's chunk steps, field-major — the whole-transaction walk order. */
-export const countedMachineTransactionChunkStepsV1 = (
+export const countedMachineTransactionChunkSteps = (
   canonicalTransactionCbor: Uint8Array,
-): readonly MachineFieldChunkStepV1[] =>
-  deriveMidgardV1TxFieldPreimages(canonicalTransactionCbor).flatMap((field) =>
-    countedMachineFieldChunkStepsV1(field.fieldIndex, field.preimageCbor),
+): readonly MachineFieldChunkStep[] =>
+  deriveMidgardTxFieldPreimages(canonicalTransactionCbor).flatMap((field) =>
+    countedMachineFieldChunkSteps(field.fieldIndex, field.preimageCbor),
   );

@@ -2,7 +2,7 @@
  * Assert a negative reaches local UPLC evaluation and fails in a validator,
  * rather than passing because the off-chain builder happened to throw.
  */
-export const expectOnchainRefusalV1 = async (
+export const expectOnchainRefusal = async (
   build: () => Promise<unknown>,
 ): Promise<string> => {
   let failure: unknown;

@@ -20,9 +20,9 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
-  VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1,
-  validationSemanticResolverGlobalIndexV1,
-  validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
+  VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
+  validationSemanticResolverGlobalIndex,
+  validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
 import { submitInit } from "../legacy-submit-emulator.js";
 import {
@@ -51,8 +51,8 @@ import {
   midgardScriptHashNames,
 } from "./measurement.js";
 import {
-  publishFaultProofWitnessReferenceScriptsV1,
-  publishOperatorLifecycleReferenceScriptsV1,
+  publishFaultProofWitnessReferenceScripts,
+  publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./reference-scripts.js";
@@ -129,14 +129,14 @@ export const runForcedValidationDisputeScenario = async (
   const contracts = {
     ...baseContracts,
     operatorLifecycleReferenceScripts:
-      await publishOperatorLifecycleReferenceScriptsV1({
+      await publishOperatorLifecycleReferenceScripts({
         lucid: challengerLucid,
         contracts: baseContracts,
       }),
   };
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: challengerLucid,
       realBlueprint,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
@@ -364,7 +364,7 @@ export const runForcedValidationDisputeScenario = async (
       network,
     })
   ).contracts.validationTraceDispute.semanticResolvers[
-    validationSemanticResolverGlobalIndexV1(
+    validationSemanticResolverGlobalIndex(
       stagedResolverIndex,
       stagedSemanticIndex,
     )
@@ -373,13 +373,13 @@ export const runForcedValidationDisputeScenario = async (
     throw new Error("Selected validation semantic resolver is not deployed");
   }
   const valueAndMintSemanticContract =
-    stagedResolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1
+    stagedResolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX
       ? semanticContract
       : undefined;
   const valueAndMintSemanticEntryName =
     valueAndMintSemanticContract === undefined
       ? undefined
-      : validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+      : validationValueAndMintSemanticReferenceScriptDeploymentEntry(
           stagedSemanticIndex,
         );
   const semanticIsOversized =
@@ -387,7 +387,7 @@ export const runForcedValidationDisputeScenario = async (
     PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
   if (semanticIsOversized) {
     throw new Error(
-      `validation semantic resolver ${validationSemanticResolverGlobalIndexV1(
+      `validation semantic resolver ${validationSemanticResolverGlobalIndex(
         stagedResolverIndex,
         stagedSemanticIndex,
       ).toString()} is unpublishable under the Van Rossem maxTxSize; lifecycle excluded until the resolver is split`,
@@ -396,7 +396,7 @@ export const runForcedValidationDisputeScenario = async (
   const semanticPublication = await runEmulatorLifecycleStage(
     `reference-script.publish.${
       valueAndMintSemanticEntryName ??
-      `validationSemanticResolver${validationSemanticResolverGlobalIndexV1(
+      `validationSemanticResolver${validationSemanticResolverGlobalIndex(
         stagedResolverIndex,
         stagedSemanticIndex,
       ).toString()}`

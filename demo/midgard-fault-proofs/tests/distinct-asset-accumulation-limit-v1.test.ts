@@ -1,50 +1,50 @@
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyDistinctAssetAccumulationFindingV1,
-  createDistinctAssetAccumulationProductionWorkflowRunnerSurfaceV1,
-  distinctAssetAccumulationEvidenceClosesV1,
-  type DistinctAssetAccumulationEvidenceV1,
-  type DistinctAssetAccumulationFindingV1,
-  MIDGARD_MAX_DISTINCT_ASSETS_V1,
-  nextDistinctAssetAccumulationStageV1,
-  prepareDistinctAssetAccumulationEvidenceV1,
+  classifyDistinctAssetAccumulationFinding,
+  createDistinctAssetAccumulationWorkflowRunnerSurface,
+  type DistinctAssetAccumulationEvidence,
+  distinctAssetAccumulationEvidenceCloses,
+  type DistinctAssetAccumulationFinding,
+  MIDGARD_MAX_DISTINCT_ASSETS,
+  nextDistinctAssetAccumulationStage,
+  prepareDistinctAssetAccumulationEvidence,
 } from "../src/distinct-asset-accumulation-limit/index.js";
 
 const h = (byte: string) => byte.repeat(64);
-const accepted = (): VerdictSubjectV1 => ({
+const accepted = (): VerdictSubject => ({
   version: 1n,
-  direction: PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  source_kind: PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
+  direction: PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  source_kind: PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   transaction_id: h("1"),
   source_key: "",
   rejection_reason: null,
 });
 const forced = (
-  reason: VerdictSubjectV1["rejection_reason"],
-): VerdictSubjectV1 => ({
+  reason: VerdictSubject["rejection_reason"],
+): VerdictSubject => ({
   version: 1n,
-  direction: PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  source_kind: PROOF_THREAD_SOURCE_KIND_FORCED_V1,
+  direction: PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  source_kind: PROOF_THREAD_SOURCE_KIND_FORCED,
   transaction_id: h("1"),
   source_key: "01",
   rejection_reason: reason,
 });
-const finding = (subject = accepted()): DistinctAssetAccumulationFindingV1 => ({
+const finding = (subject = accepted()): DistinctAssetAccumulationFinding => ({
   subject,
   coordinate: { kind: "input", inputIndex: 0, assetIndex: 16_384 },
 });
 const evidence = (
   subject = accepted(),
   crossing = true,
-): DistinctAssetAccumulationEvidenceV1 => ({
+): DistinctAssetAccumulationEvidence => ({
   finding: finding(subject),
   traceStateHashHex: h("2"),
   workRootHex: h("3"),
@@ -68,10 +68,10 @@ const evidence = (
 describe("distinctAssetAccumulationLimit V1", () => {
   it("binds every typed coordinate arm", () => {
     expect(
-      classifyDistinctAssetAccumulationFindingV1(finding()).coordinate.kind,
+      classifyDistinctAssetAccumulationFinding(finding()).coordinate.kind,
     ).toBe("input");
     expect(
-      classifyDistinctAssetAccumulationFindingV1({
+      classifyDistinctAssetAccumulationFinding({
         subject: forced({
           OutputAssetAccumulationLimit: { output_index: 2n, asset_index: 3n },
         }),
@@ -79,7 +79,7 @@ describe("distinctAssetAccumulationLimit V1", () => {
       }).coordinate.kind,
     ).toBe("output");
     expect(
-      classifyDistinctAssetAccumulationFindingV1({
+      classifyDistinctAssetAccumulationFinding({
         subject: forced({ MintAssetAccumulationLimit: { mint_index: 4n } }),
         coordinate: { kind: "mint", mintIndex: 4 },
       }).coordinate.kind,
@@ -88,7 +88,7 @@ describe("distinctAssetAccumulationLimit V1", () => {
 
   it("refuses another constructor and coordinate mutation", () => {
     expect(() =>
-      classifyDistinctAssetAccumulationFindingV1({
+      classifyDistinctAssetAccumulationFinding({
         subject: forced({
           OutputAssetAccumulationLimit: { output_index: 2n, asset_index: 4n },
         }),
@@ -96,7 +96,7 @@ describe("distinctAssetAccumulationLimit V1", () => {
       }),
     ).toThrow(/coordinate changed/u);
     expect(() =>
-      classifyDistinctAssetAccumulationFindingV1({
+      classifyDistinctAssetAccumulationFinding({
         subject: forced({ MintAssetAccumulationLimit: { mint_index: 4n } }),
         coordinate: { kind: "output", outputIndex: 2, assetIndex: 3 },
       }),
@@ -105,32 +105,30 @@ describe("distinctAssetAccumulationLimit V1", () => {
 
   it("accepts exactly 16,384 and identifies 16,385 as first crossing", () => {
     expect(
-      prepareDistinctAssetAccumulationEvidenceV1(evidence()).pre.seenAssetCount,
-    ).toBe(MIDGARD_MAX_DISTINCT_ASSETS_V1);
+      prepareDistinctAssetAccumulationEvidence(evidence()).pre.seenAssetCount,
+    ).toBe(MIDGARD_MAX_DISTINCT_ASSETS);
     expect(
-      prepareDistinctAssetAccumulationEvidenceV1(evidence(accepted(), false))
-        .post?.seenAssetCount,
-    ).toBe(MIDGARD_MAX_DISTINCT_ASSETS_V1);
+      prepareDistinctAssetAccumulationEvidence(evidence(accepted(), false)).post
+        ?.seenAssetCount,
+    ).toBe(MIDGARD_MAX_DISTINCT_ASSETS);
   });
 
   it("applies opposite terminal polarity to accepted and forced verdicts", () => {
-    expect(distinctAssetAccumulationEvidenceClosesV1(evidence())).toBe(true);
+    expect(distinctAssetAccumulationEvidenceCloses(evidence())).toBe(true);
     const forcedBoundary = forced({
       InputAssetAccumulationLimit: { input_index: 0n, asset_index: 16_384n },
     });
     expect(
-      distinctAssetAccumulationEvidenceClosesV1(
-        evidence(forcedBoundary, false),
-      ),
+      distinctAssetAccumulationEvidenceCloses(evidence(forcedBoundary, false)),
     ).toBe(true);
     expect(
-      distinctAssetAccumulationEvidenceClosesV1(evidence(forcedBoundary, true)),
+      distinctAssetAccumulationEvidenceCloses(evidence(forcedBoundary, true)),
     ).toBe(false);
   });
 
   it("refuses a forged crossing successor", () => {
     expect(() =>
-      prepareDistinctAssetAccumulationEvidenceV1({
+      prepareDistinctAssetAccumulationEvidence({
         ...evidence(),
         pre: { ...evidence().pre, seenAssetCount: 16_383 },
       }),
@@ -139,19 +137,19 @@ describe("distinctAssetAccumulationLimit V1", () => {
 
   it("replays physical steps in canonical order", () => {
     const txId = h("a");
-    expect(nextDistinctAssetAccumulationStageV1([])).toBe("step01");
+    expect(nextDistinctAssetAccumulationStage([])).toBe("step01");
     expect(
-      nextDistinctAssetAccumulationStageV1([
+      nextDistinctAssetAccumulationStage([
         { sequence: 0, stage: "step01", txId, evidenceIdentity: h("b") },
       ]),
     ).toBe("step02");
     expect(() =>
-      nextDistinctAssetAccumulationStageV1([
+      nextDistinctAssetAccumulationStage([
         { sequence: 1, stage: "step01", txId, evidenceIdentity: h("b") },
       ]),
     ).toThrow(/continuity/u);
     expect(() =>
-      nextDistinctAssetAccumulationStageV1(
+      nextDistinctAssetAccumulationStage(
         [{ sequence: 0, stage: "step01", txId, evidenceIdentity: h("b") }],
         h("c"),
       ),
@@ -159,12 +157,11 @@ describe("distinctAssetAccumulationLimit V1", () => {
   });
 
   it("exposes the strict shared-adapter runOrResume surface", () => {
-    const runner =
-      createDistinctAssetAccumulationProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig: async () => {
-          throw new Error("loader should only run after adapter admission");
-        },
-      });
+    const runner = createDistinctAssetAccumulationWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        throw new Error("loader should only run after adapter admission");
+      },
+    });
     expect(runner.runnerVersion).toBe(
       "midgard-production-fraud-proof-workflow-runner-v1",
     );

@@ -74,12 +74,12 @@ const manifestPath = (override?: string): string =>
 
 const readExistingDeploymentManifest = (
   path: string,
-): ContractDeploymentInfo.DeploymentManifestV1 | null => {
+): ContractDeploymentInfo.DeploymentManifest | null => {
   if (!existsSync(path)) {
     return null;
   }
   try {
-    return ContractDeploymentInfo.readDeploymentManifestV1File(path);
+    return ContractDeploymentInfo.readDeploymentManifestFile(path);
   } catch (cause) {
     throw new RunStateError(
       `Deployment manifest at "${path}" cannot be reused because it is invalid: ${
@@ -437,7 +437,7 @@ const assertPolicyIdsMatch = ({
 };
 
 const manifestIdentityToRunIdentity = (
-  manifest: ContractDeploymentInfo.DeploymentManifestV1,
+  manifest: ContractDeploymentInfo.DeploymentManifest,
   manifestPathValue: string,
 ): DeploymentRunIdentity => ({
   network: manifest.network,

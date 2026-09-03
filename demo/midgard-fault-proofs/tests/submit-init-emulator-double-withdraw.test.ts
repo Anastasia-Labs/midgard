@@ -19,7 +19,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { DoubleWithdrawContractsV1 } from "../src/double-withdraw/contracts-v1.js";
+import type { DoubleWithdrawContracts } from "../src/double-withdraw/contracts-v1.js";
 import {
   submitDoubleWithdrawCancel,
   submitDoubleWithdrawInit,
@@ -27,11 +27,11 @@ import {
   submitDoubleWithdrawStep02,
 } from "../src/double-withdraw/index.js";
 import {
-  deriveDoubleWithdrawMembershipV1,
-  parseSubmitDoubleWithdrawInclusionV1,
-  type SubmitDoubleWithdrawInclusionV1,
+  deriveDoubleWithdrawMembership,
+  parseSubmitDoubleWithdrawInclusion,
+  type SubmitDoubleWithdrawInclusion,
 } from "../src/double-withdraw/submit-double-withdraw-step-01.js";
-import { prepareDoubleWithdrawFromCommittedLeavesV1 } from "../src/prepare-double-withdraw.js";
+import { prepareDoubleWithdrawFromCommittedLeaves } from "../src/prepare-double-withdraw.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
 import {
@@ -43,13 +43,13 @@ import {
   keyValuePhasProof,
 } from "../src/transition-trace/phas.js";
 import { outputWithDatumAndUnitPredicate } from "../src/tx-layout.js";
-import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishPlainReferenceScriptUtxo,
@@ -92,12 +92,12 @@ const entry = (
   id: SDK.OutputReference,
   info: SDK.WithdrawalInfo,
 ): readonly [string, string] => [
-  SDK.committedWithdrawalKeyBytesV1(id),
-  SDK.committedWithdrawalValueBytesV1(info),
+  SDK.committedWithdrawalKeyBytes(id),
+  SDK.committedWithdrawalValueBytes(info),
 ];
 
 const makeHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realDoubleWithdraw: true,
       alwaysFraudProofCatalogue: true,
@@ -136,7 +136,7 @@ const setupBlock = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(operatorVkey, start),
     withdrawalsRoot: counted.root,
     withdrawalCount: counted.count,
@@ -160,7 +160,7 @@ const publishStepReferences = async ({
   contracts,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
 }): Promise<readonly [UTxO, UTxO]> => {
   const first = await publishPlainReferenceScriptUtxo({
     lucid,
@@ -181,13 +181,13 @@ const inclusionFor = async ({
 }: {
   readonly counted: Awaited<ReturnType<typeof buildCountedRoot>>;
   readonly leaf: readonly [string, string];
-}): Promise<SubmitDoubleWithdrawInclusionV1> => {
+}): Promise<SubmitDoubleWithdrawInclusion> => {
   const proof = await keyValuePhasProof(
     { ...counted, root: counted.phasRoot },
     Buffer.from(leaf[0], "hex"),
     Buffer.from(leaf[1], "hex"),
   );
-  return parseSubmitDoubleWithdrawInclusionV1({
+  return parseSubmitDoubleWithdrawInclusion({
     withdrawalIdCbor: leaf[0],
     withdrawalInfoCbor: leaf[1],
     withdrawalsPhasRoot: counted.phasRoot,
@@ -208,7 +208,7 @@ const submitRawTerminal = async ({
   readonly signer: typeof harness.proverSigner;
   readonly threadOutRef: string;
   readonly blockOutRef: string;
-  readonly inclusion: SubmitDoubleWithdrawInclusionV1;
+  readonly inclusion: SubmitDoubleWithdrawInclusion;
   readonly referenceScript: UTxO;
 }): Promise<string> => {
   const { doubleWithdraw: contracts, category, proverLucid: lucid } = harness;
@@ -251,9 +251,9 @@ const submitRawTerminal = async ({
     SDK.getLinkedListNodeViewFromUTxO(blockUtxo),
   );
   const header = await Effect.runPromise(
-    SDK.getHeaderV1FromStateQueueDatum(node),
+    SDK.getHeaderFromStateQueueDatum(node),
   );
-  const { committedWithdrawal } = await deriveDoubleWithdrawMembershipV1({
+  const { committedWithdrawal } = await deriveDoubleWithdrawMembership({
     header,
     inclusion,
   });
@@ -381,7 +381,7 @@ const submitRawCancel = async ({
   computationThreadReference,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
   readonly signer: Awaited<ReturnType<typeof makeHarness>>["proverSigner"];
   readonly threadUtxo: UTxO;
   readonly categoryId: string;
@@ -446,7 +446,7 @@ describe("double-withdraw emulator lifecycle", () => {
       lucid: harness.funderLucid,
       contracts: harness.doubleWithdraw,
     });
-    const plan = await prepareDoubleWithdrawFromCommittedLeavesV1({
+    const plan = await prepareDoubleWithdrawFromCommittedLeaves({
       headerHash: block.setup.headerHash,
       committedWithdrawalsRoot: block.counted.root,
       withdrawalCount: block.counted.count,
@@ -479,7 +479,7 @@ describe("double-withdraw emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: init.nextThreadOutRef,
       stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
-      inclusion: parseSubmitDoubleWithdrawInclusionV1(plan.firstInclusion),
+      inclusion: parseSubmitDoubleWithdrawInclusion(plan.firstInclusion),
       referenceScriptUtxo: refs[0],
     });
     // Crash/resume surface: everything required is re-read from the surviving
@@ -498,7 +498,7 @@ describe("double-withdraw emulator lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: outRefLabel(resumedThread),
       stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
-      inclusion: parseSubmitDoubleWithdrawInclusionV1(plan.secondInclusion),
+      inclusion: parseSubmitDoubleWithdrawInclusion(plan.secondInclusion),
       referenceScriptUtxo: refs[1],
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
@@ -580,7 +580,7 @@ describe("double-withdraw emulator lifecycle", () => {
       contracts: harness.doubleWithdraw,
     });
     await expect(
-      prepareDoubleWithdrawFromCommittedLeavesV1({
+      prepareDoubleWithdrawFromCommittedLeaves({
         headerHash: block.setup.headerHash,
         committedWithdrawalsRoot: block.counted.root,
         withdrawalCount: block.counted.count,
@@ -646,7 +646,7 @@ describe("double-withdraw emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/second leaf is identical.*not payable/su);
     expect(
-      await expectOnchainRefusalV1(() =>
+      await expectOnchainRefusal(() =>
         submitRawTerminal({
           harness,
           signer: harness.proverSigner,
@@ -672,7 +672,7 @@ describe("double-withdraw emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/second leaf is identical/u);
     expect(
-      await expectOnchainRefusalV1(() =>
+      await expectOnchainRefusal(() =>
         submitRawTerminal({
           harness,
           signer: harness.proverSigner,
@@ -739,7 +739,7 @@ describe("double-withdraw emulator lifecycle", () => {
       label: "double-withdraw step-02 thread",
     });
     expect(
-      await expectOnchainRefusalV1(() =>
+      await expectOnchainRefusal(() =>
         submitRawCancel({
           lucid: outsiderLucid,
           contracts: harness.doubleWithdraw,

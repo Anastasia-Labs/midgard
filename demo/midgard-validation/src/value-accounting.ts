@@ -1,5 +1,5 @@
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 
 import type { MidgardLedgerMint } from "./ledger-tx/types.js";
 import type { ScriptMintValue } from "./script-context.js";
@@ -172,20 +172,20 @@ export const mintDeltaToScriptMintValue = (
 // and one-lovelace-below reject legs -- by
 // `tests/min-ada-twin-cross-check-v1.test.ts`. Changing the slope, the
 // intercept, or the comparison on either side fails that suite.
-export const MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1 = 160n;
+export const MIN_ADA_OUTPUT_OVERHEAD_BYTES = 160n;
 
-export const minAdaLovelaceV1 = (
+export const minAdaLovelace = (
   coinsPerUtxoByte: bigint,
   serializedOutputBytes: bigint,
 ): bigint =>
-  coinsPerUtxoByte * (MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1 + serializedOutputBytes);
+  coinsPerUtxoByte * (MIN_ADA_OUTPUT_OVERHEAD_BYTES + serializedOutputBytes);
 
-export const outputMeetsMinAdaV1 = (
+export const outputMeetsMinAda = (
   coinsPerUtxoByte: bigint,
   serializedOutputBytes: bigint,
   lovelace: bigint,
 ): boolean =>
-  lovelace >= minAdaLovelaceV1(coinsPerUtxoByte, serializedOutputBytes);
+  lovelace >= minAdaLovelace(coinsPerUtxoByte, serializedOutputBytes);
 
 /**
  * The deployment rate the two twins above are instantiated at.
@@ -202,8 +202,8 @@ export const outputMeetsMinAdaV1 = (
  * `tests/min-ada-twin-cross-check-v1.test.ts` holds the two production pins
  * equal to each other and to the C70 snapshot.
  */
-export const MIDGARD_COINS_PER_UTXO_BYTE_V1 = BigInt(
-  MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte,
+export const MIDGARD_COINS_PER_UTXO_BYTE = BigInt(
+  MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte,
 );
 
 /**
@@ -216,16 +216,16 @@ export const MIDGARD_COINS_PER_UTXO_BYTE_V1 = BigInt(
  * very bytes (`buildMidgardLedgerOutputMaterialV1` sets it from the canonical
  * output CBOR).
  */
-export const outputCborMeetsMinAdaV1 = (
+export const outputCborMeetsMinAda = (
   outputCbor: Uint8Array,
   lovelace: bigint,
 ): boolean =>
-  outputMeetsMinAdaV1(
-    MIDGARD_COINS_PER_UTXO_BYTE_V1,
+  outputMeetsMinAda(
+    MIDGARD_COINS_PER_UTXO_BYTE,
     BigInt(outputCbor.length),
     lovelace,
   );
 
-/** The absolute floor, in lovelace, that `outputCborMeetsMinAdaV1` compares against. */
-export const outputCborMinAdaLovelaceV1 = (outputCbor: Uint8Array): bigint =>
-  minAdaLovelaceV1(MIDGARD_COINS_PER_UTXO_BYTE_V1, BigInt(outputCbor.length));
+/** The absolute floor, in lovelace, that `outputCborMeetsMinAda` compares against. */
+export const outputCborMinAdaLovelace = (outputCbor: Uint8Array): bigint =>
+  minAdaLovelace(MIDGARD_COINS_PER_UTXO_BYTE, BigInt(outputCbor.length));

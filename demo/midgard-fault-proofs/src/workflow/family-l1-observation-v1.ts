@@ -1,67 +1,67 @@
 import type {
-  AuthenticatedStateQueueHeaderObservationV1,
-  EvidenceProvenanceV1,
+  AuthenticatedStateQueueHeaderObservation,
+  EvidenceProvenance,
   FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
 import {
-  FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowTerminalV1,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
+  type FraudProofWorkflowTerminal,
 } from "./journal-v1.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSourceV1,
-  type LocalKupmiosHttpOgmiosSourceConfigV1,
+  createLocalKupmiosHttpOgmiosRawSource,
+  type LocalKupmiosHttpOgmiosSourceConfig,
 } from "./local-kupmios-http-ogmios-source-v1.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 } from "./local-kupmios-raw-l1-authority-v1.js";
+import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
-  type FraudProofWorkflowTerminalVerifierV1,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator-v1.js";
 import {
-  deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1,
-  deriveFraudProofRawL1FamilyStageV1,
-  type FraudProofRawL1FamilyDefinitionV1,
-  type FraudProofRawL1FamilyStageV1,
-  fraudProofRawL1SnapshotRequestForFamilyV1,
+  deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
+  deriveFraudProofRawL1FamilyStage,
+  type FraudProofRawL1FamilyDefinition,
+  type FraudProofRawL1FamilyStage,
+  fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation-v1.js";
 import {
-  createFraudProofAuthenticatedPublicationObserverV1,
-  type FraudProofAuthenticatedPublicationObserverV1,
+  createFraudProofAuthenticatedPublicationObserver,
+  type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation-v1.js";
 import {
-  admitFraudProofRawL1SnapshotV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1,
-  type FraudProofRawL1PointV1,
-  type FraudProofRawL1SnapshotAuthorityV1,
+  admitFraudProofRawL1Snapshot,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofRawL1Point,
+  type FraudProofRawL1SnapshotAuthority,
 } from "./raw-l1-snapshot-v1.js";
-import type { VerifiedFraudProofReleaseEconomicsPolicyV1 } from "./release-economics-policy-v1.js";
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy-v1.js";
 
-export const FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1 =
+export const FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT =
   "midgard-fraud-proof-family-l1-observation-port-v1" as const;
 
-export interface FraudProofFamilyL1ObservationPortV1<
+export interface FraudProofFamilyL1ObservationPort<
   Category extends FraudProofCatalogueCategoryName,
 > {
-  readonly portVersion: typeof FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1;
+  readonly portVersion: typeof FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT;
   readonly category: Category;
   /** Raw release-final authority retained for live global prerequisites. */
-  readonly rawL1?: FraudProofRawL1SnapshotAuthorityV1;
-  readonly publications: FraudProofAuthenticatedPublicationObserverV1;
+  readonly rawL1?: FraudProofRawL1SnapshotAuthority;
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
   observeHeader(input: {
     readonly headerHash: string;
-  }): Promise<AuthenticatedStateQueueHeaderObservationV1>;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
   /** Latest release-final raw point through which all returned history was reconfirmed. */
   observeBoundary?(input: {
     readonly headerHash: string;
-  }): Promise<FraudProofRawL1PointV1>;
+  }): Promise<FraudProofRawL1Point>;
   transactionConfirmed(input: {
     readonly headerHash: string;
     readonly txHash: string;
   }): Promise<boolean>;
   observe(input: { readonly headerHash: string }): Promise<{
-    readonly provenance: EvidenceProvenanceV1;
-    readonly stage: FraudProofRawL1FamilyStageV1;
+    readonly provenance: EvidenceProvenance;
+    readonly stage: FraudProofRawL1FamilyStage;
   }>;
 }
 
@@ -70,7 +70,7 @@ export interface FraudProofFamilyL1ObservationPortV1<
  * The provider never supplies a trusted stage or terminal: both are derived
  * locally after the snapshot and complete unit histories are admitted.
  */
-export const createFraudProofFamilyRawL1ObservationPortV1 = <
+export const createFraudProofFamilyRawL1ObservationPort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   authority,
@@ -78,15 +78,15 @@ export const createFraudProofFamilyRawL1ObservationPortV1 = <
   releaseEconomics,
   definition,
 }: {
-  readonly authority: FraudProofRawL1SnapshotAuthorityV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly authority: FraudProofRawL1SnapshotAuthority;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: Category;
   };
-}): FraudProofFamilyL1ObservationPortV1<Category> => {
+}): FraudProofFamilyL1ObservationPort<Category> => {
   if (
-    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1 ||
+    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length === 0 ||
     definition.computationThread.steps.length > 9
   ) {
@@ -94,7 +94,7 @@ export const createFraudProofFamilyRawL1ObservationPortV1 = <
       `${definition.category} raw L1 observation authority is incomplete`,
     );
   }
-  const request = fraudProofRawL1SnapshotRequestForFamilyV1({
+  const request = fraudProofRawL1SnapshotRequestForFamily({
     definition,
     releaseFinality,
   });
@@ -104,17 +104,17 @@ export const createFraudProofFamilyRawL1ObservationPortV1 = <
         `${definition.category} raw L1 observation changed the header`,
       );
     }
-    return admitFraudProofRawL1SnapshotV1({
+    return admitFraudProofRawL1Snapshot({
       value: await authority.capture(request),
       request,
       releaseFinality,
     });
   };
-  const port: FraudProofFamilyL1ObservationPortV1<Category> = {
-    portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
+  const port: FraudProofFamilyL1ObservationPort<Category> = {
+    portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
     category: definition.category,
     rawL1: authority,
-    publications: createFraudProofAuthenticatedPublicationObserverV1({
+    publications: createFraudProofAuthenticatedPublicationObserver({
       authority,
       releaseFinality,
     }),
@@ -123,7 +123,7 @@ export const createFraudProofFamilyRawL1ObservationPortV1 = <
         (transaction) => transaction.txHash === txHash,
       ),
     observeHeader: async ({ headerHash }) =>
-      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1({
+      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
         definition,
       }),
@@ -133,7 +133,7 @@ export const createFraudProofFamilyRawL1ObservationPortV1 = <
       const snapshot = await capture(headerHash);
       return {
         provenance: snapshot.provenance,
-        stage: await deriveFraudProofRawL1FamilyStageV1({
+        stage: await deriveFraudProofRawL1FamilyStage({
           snapshot,
           definition,
           releaseEconomics,
@@ -145,7 +145,7 @@ export const createFraudProofFamilyRawL1ObservationPortV1 = <
 };
 
 /** Concrete loopback Kupo HTTP + Ogmios WS construction for any family. */
-export const createFraudProofFamilyLocalKupmiosL1ObservationPortV1 = <
+export const createFraudProofFamilyLocalKupmiosL1ObservationPort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   source,
@@ -153,22 +153,19 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPortV1 = <
   releaseEconomics,
   definition,
 }: {
-  readonly source: Omit<
-    LocalKupmiosHttpOgmiosSourceConfigV1,
-    "releaseFinality"
-  >;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: Category;
   };
-}): FraudProofFamilyL1ObservationPortV1<Category> => {
-  const rawSource = createLocalKupmiosHttpOgmiosRawSourceV1({
+}): FraudProofFamilyL1ObservationPort<Category> => {
+  const rawSource = createLocalKupmiosHttpOgmiosRawSource({
     ...source,
     releaseFinality,
   });
-  return createFraudProofFamilyRawL1ObservationPortV1({
-    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+  return createFraudProofFamilyRawL1ObservationPort({
+    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
     }),
@@ -179,17 +176,17 @@ export const createFraudProofFamilyLocalKupmiosL1ObservationPortV1 = <
 };
 
 const sameTerminal = (
-  left: FraudProofWorkflowTerminalV1,
-  right: FraudProofWorkflowTerminalV1,
+  left: FraudProofWorkflowTerminal,
+  right: FraudProofWorkflowTerminal,
 ): boolean => JSON.stringify(left) === JSON.stringify(right);
 
 /** Independent second raw-L1 observation for terminal acceptance. */
-export const createFraudProofFamilyAuthenticatedL1TerminalVerifierV1 = <
+export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
   Category extends FraudProofCatalogueCategoryName,
 >(
-  l1: FraudProofFamilyL1ObservationPortV1<Category>,
-): FraudProofWorkflowTerminalVerifierV1 => ({
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+  l1: FraudProofFamilyL1ObservationPort<Category>,
+): FraudProofWorkflowTerminalVerifier => ({
+  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   verify: async ({ identity, candidate, releaseFinality }) => {
     if (
       identity.category !== l1.category ||
@@ -210,8 +207,7 @@ export const createFraudProofFamilyAuthenticatedL1TerminalVerifierV1 = <
       );
     }
     if (
-      terminal.schemaVersion !==
-        FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION ||
+      terminal.schemaVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION ||
       terminal.category !== l1.category ||
       !sameTerminal(terminal, candidate)
     ) {

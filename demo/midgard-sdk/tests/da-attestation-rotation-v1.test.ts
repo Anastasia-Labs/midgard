@@ -11,8 +11,8 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  availabilityResponseGeometryV1,
-  buildDaAvailabilityCommitmentV1,
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
   type DaAttestationBuildError,
   DaAttestationDatum,
   daAttestationIsStranded,
@@ -77,12 +77,12 @@ const constructorTagPrefix = (index: number): string =>
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 const availabilityCommitment = (headerHash: string) =>
-  buildDaAvailabilityCommitmentV1({
+  buildDaAvailabilityCommitment({
     deploymentIdentity: h28("71"),
     headerHash,
     payload: Uint8Array.of(1),
     bondOwner: h28("72"),
-    responseGeometry: availabilityResponseGeometryV1({
+    responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4096,
       trancheByteLength: 4 * 1024 * 1024,
       maxTrancheCount: 16,

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { ValidationAuxiliaryWitnessV1Schema } from "../src/fraud-proof/validation-auxiliary-witness-v1.js";
+import { ValidationAuxiliaryWitnessSchema } from "../src/fraud-proof/validation-auxiliary-witness-v1.js";
 
 type GeneratedAuxiliaryFixture = {
   readonly constructors: readonly {
@@ -27,7 +27,7 @@ const auxiliaryFixture = JSON.parse(
   ),
 ) as GeneratedAuxiliaryFixture;
 
-const CorpusSchema = Data.Array(ValidationAuxiliaryWitnessV1Schema);
+const CorpusSchema = Data.Array(ValidationAuxiliaryWitnessSchema);
 
 const canonicalRawWitnesses = (): Constr<unknown>[] => {
   const raw = Data.from(auxiliaryFixture.corpusCbor);
@@ -53,7 +53,7 @@ const constructorBody = (source: string, name: string): string => {
 const fieldNames = (body: string): string[] =>
   [...body.matchAll(/^ {6}([a-z_]+):/gmu)].map((match) => match[1]!);
 
-describe("ValidationAuxiliaryWitnessV1Schema", () => {
+describe("ValidationAuxiliaryWitnessSchema", () => {
   it("round-trips the canonical 40-constructor V1 corpus exactly", () => {
     expect(
       createHash("sha256")
@@ -80,7 +80,7 @@ describe("ValidationAuxiliaryWitnessV1Schema", () => {
       try {
         return Data.from(
           Data.to(witness as never),
-          ValidationAuxiliaryWitnessV1Schema,
+          ValidationAuxiliaryWitnessSchema,
         );
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -91,11 +91,11 @@ describe("ValidationAuxiliaryWitnessV1Schema", () => {
     decoded.forEach((witness, tag) => {
       const encoded = Data.to(
         witness as never,
-        ValidationAuxiliaryWitnessV1Schema,
+        ValidationAuxiliaryWitnessSchema,
       );
       expect(encoded).toBe(Data.to(raw[tag]! as never));
-      const roundTrip = Data.from(encoded, ValidationAuxiliaryWitnessV1Schema);
-      expect(Data.to(roundTrip, ValidationAuxiliaryWitnessV1Schema)).toBe(
+      const roundTrip = Data.from(encoded, ValidationAuxiliaryWitnessSchema);
+      expect(Data.to(roundTrip, ValidationAuxiliaryWitnessSchema)).toBe(
         encoded,
       );
     });
@@ -104,7 +104,7 @@ describe("ValidationAuxiliaryWitnessV1Schema", () => {
   it("rejects adjacent tags, wrong arities, and malformed nested shapes", () => {
     const rejects = (value: Constr<unknown>): void => {
       expect(() =>
-        Data.from(Data.to(value as never), ValidationAuxiliaryWitnessV1Schema),
+        Data.from(Data.to(value as never), ValidationAuxiliaryWitnessSchema),
       ).toThrow();
     };
 

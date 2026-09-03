@@ -1,24 +1,24 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ObserverOrderInvalidContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ObserverOrderInvalidContracts } from "./contracts-v1.js";
 import {
-  observerOrderInvalidEvidenceClosesV1,
-  type ObserverOrderInvalidEvidenceV1,
+  type ObserverOrderInvalidEvidence,
+  observerOrderInvalidEvidenceCloses,
 } from "./family-v1.js";
 import {
-  ObserverOrderInvalidStep04DatumV1Schema,
-  ObserverOrderInvalidStep04RedeemerV1Schema,
+  ObserverOrderInvalidStep04DatumSchema,
+  ObserverOrderInvalidStep04RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitObserverOrderInvalidStep04V1 = async ({
+export const submitObserverOrderInvalidStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -31,20 +31,20 @@ export const submitObserverOrderInvalidStep04V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ObserverOrderInvalidContractsV1;
+  readonly contracts: ObserverOrderInvalidContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ObserverOrderInvalidEvidenceV1;
+  readonly evidence: ObserverOrderInvalidEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!observerOrderInvalidEvidenceClosesV1(evidence))
+  if (!observerOrderInvalidEvidenceCloses(evidence))
     throw new Error("observerOrderInvalid: terminal evidence is honest");
   const stepIndex = 3;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -52,14 +52,14 @@ export const submitObserverOrderInvalidStep04V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     observer_index: bigint;
     violation: boolean;
   }>({
     threadUtxo,
     signer,
-    schema: ObserverOrderInvalidStep04DatumV1Schema as never,
+    schema: ObserverOrderInvalidStep04DatumSchema as never,
     family: "observer-order-invalid",
     stepIndex,
   });
@@ -70,7 +70,7 @@ export const submitObserverOrderInvalidStep04V1 = async ({
     throw new Error(
       "observerOrderInvalid: terminal datum differs from evidence",
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "observer-order-invalid",
     stepIndex,
@@ -80,7 +80,7 @@ export const submitObserverOrderInvalidStep04V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ObserverOrderInvalidStep04RedeemerV1Schema,
+    spendRedeemerSchema: ObserverOrderInvalidStep04RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

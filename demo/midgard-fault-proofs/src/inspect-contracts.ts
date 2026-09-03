@@ -1,5 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   buildFaultProofContracts,
@@ -1144,7 +1144,7 @@ export const inspectContracts = ({
         standaloneScriptBytes,
         withinL1TransactionByteEnvelopeNecessaryCondition:
           standaloneScriptBytes <
-          MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+          MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
       };
     };
     const registeredCategories = completeFraudProofCategoryRecord(
@@ -1444,8 +1444,7 @@ export const inspectContracts = ({
     return {
       network,
       l1SpendingScriptEnvelopeNecessaryCondition: {
-        maxTransactionBytes:
-          MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+        maxTransactionBytes: MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
         appliedSpendingScriptCount: categorizedAppliedSpendingScripts.length,
         allAppliedSpendingScriptsWithinEnvelope:
           oversizedAppliedSpendingScripts.length === 0,

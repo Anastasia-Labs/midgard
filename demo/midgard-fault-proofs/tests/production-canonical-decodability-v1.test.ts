@@ -1,40 +1,40 @@
 import {
-  decodeMidgardNativeTxCanonicalV1,
+  decodeMidgardNativeTxCanonical,
   decodeSingleCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeCbor,
 } from "@al-ft/midgard-core";
 import {
-  type L2TransactionSourceV1,
-  L2TransactionSourceV1 as L2TransactionSourceV1Codec,
+  type L2TransactionSource,
+  L2TransactionSource as L2TransactionSourceCodec,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { canonicalDecodabilityRawBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-decodability-raw-evidence-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
+import { canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-decodability-raw-evidence-v1.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
-import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionCanonicalDecodabilityArtifactV1,
-  prepareProductionCanonicalDecodabilityArtifactV1,
+  admitCanonicalDecodabilityArtifact,
+  prepareCanonicalDecodabilityArtifact,
 } from "../src/workflow/production-canonical-decodability-v1.js";
 import {
-  authenticatedStateQueueObservationDigestV1,
-  classifyProductionHeaderV1,
-  createProductionHeaderClassifierV1,
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
 } from "../src/workflow/production-header-classifier-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofReleaseFinalityAuthorityV1,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
-  type FixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  type FixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
@@ -45,21 +45,21 @@ const RELEASE_FINALITY_POLICY = {
   deepRollbackPolicy: "automated_rewind_replay_incident-v1",
 } as const;
 
-const finalityAuthority = (): FraudProofReleaseFinalityAuthorityV1 => ({
-  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
+  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
     releaseIdentityDigest: "e7".repeat(32),
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
     ),
     policy: RELEASE_FINALITY_POLICY,
   }),
 });
 
-const malformedOutputsTransaction = (): FixtureTransactionV1 => {
-  const valid = buildFixtureTransactionV1({
+const malformedOutputsTransaction = (): FixtureTransaction => {
+  const valid = buildFixtureTransaction({
     spendInputs: [outRefCbor(0x52, 0n)],
     fee: 1n,
   });
@@ -75,12 +75,12 @@ const malformedOutputsTransaction = (): FixtureTransactionV1 => {
     outer[2],
     outer[3],
   ]);
-  expect(() => decodeMidgardNativeTxCanonicalV1(canonicalCbor)).toThrow(
+  expect(() => decodeMidgardNativeTxCanonical(canonicalCbor)).toThrow(
     "outputs is not a canonical §5.1 field preimage",
   );
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(canonicalCbor);
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(canonicalCbor);
   const txId = material.transactionId.toString("hex");
-  const source: L2TransactionSourceV1 = {
+  const source: L2TransactionSource = {
     tx_id: txId,
     source: {
       compact_cbor: material.proofSource.compactCbor.toString("hex"),
@@ -96,37 +96,37 @@ const malformedOutputsTransaction = (): FixtureTransactionV1 => {
     compactCbor: material.proofSource.compactCbor,
     source,
     sourceValueBytes: Buffer.from(
-      Data.to(source, L2TransactionSourceV1Codec),
+      Data.to(source, L2TransactionSourceCodec),
       "hex",
     ),
   };
 };
 
 const preparedArtifact = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x51, 0n)],
         fee: 1n,
       }),
       malformedOutputsTransaction(),
     ],
   });
-  const observation = authenticatedHeaderObservationV1(fixture);
+  const observation = authenticatedHeaderObservation(fixture);
   const daProvenance = {
     trustClass: "public_or_permissionless_da",
     sourceId: "libp2p/production-canonical-decodability-test",
     grade: "security",
   } as const;
   await expect(
-    canonicalBlockEvidenceFromVerifiedPayloadV1({
+    canonicalBlockEvidenceFromVerifiedPayload({
       observation,
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance,
     }),
   ).rejects.toMatchObject({ code: "authenticatedCommittedFieldDefect" });
   const evidence =
-    await canonicalDecodabilityRawBlockEvidenceFromVerifiedPayloadV1({
+    await canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload({
       observation,
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance,
@@ -135,15 +135,14 @@ const preparedArtifact = async () => {
     fixture,
     observation,
     evidence,
-    artifact: await prepareProductionCanonicalDecodabilityArtifactV1(evidence),
+    artifact: await prepareCanonicalDecodabilityArtifact(evidence),
   };
 };
 
 describe("production canonical-decodability public-evidence workflow V1", () => {
   it("selects the exact malformed field and replays its source-root membership", async () => {
     const { artifact, evidence } = await preparedArtifact();
-    const admitted =
-      await admitProductionCanonicalDecodabilityArtifactV1(artifact);
+    const admitted = await admitCanonicalDecodabilityArtifact(artifact);
     expect(artifact).toMatchObject({
       selectedTransactionIndex: evidence.selected.transactionIndex,
       selectedFieldIndex: 2,
@@ -158,25 +157,25 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
   it("rejects substituted roots, proofs, fields, and verdicts", async () => {
     const { artifact } = await preparedArtifact();
     await expect(
-      admitProductionCanonicalDecodabilityArtifactV1({
+      admitCanonicalDecodabilityArtifact({
         ...artifact,
         transactionsPhasRoot: "ff".repeat(32),
       }),
     ).rejects.toThrow("transactions PHAS root changed");
     await expect(
-      admitProductionCanonicalDecodabilityArtifactV1({
+      admitCanonicalDecodabilityArtifact({
         ...artifact,
         txMembershipProofCbor: "d87980",
       }),
     ).rejects.toThrow("transaction proof changed");
     await expect(
-      admitProductionCanonicalDecodabilityArtifactV1({
+      admitCanonicalDecodabilityArtifact({
         ...artifact,
         selectedFieldIndex: 1,
       }),
     ).rejects.toThrow("selected verdict changed");
     await expect(
-      admitProductionCanonicalDecodabilityArtifactV1({
+      admitCanonicalDecodabilityArtifact({
         ...artifact,
         selectedVerdict: artifact.selectedVerdict + 1,
       }),
@@ -185,13 +184,13 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
 
   it("routes the authenticated raw defect through one-DA-fetch header classification", async () => {
     const { evidence, fixture, observation } = await preparedArtifact();
-    const classifier = await createProductionHeaderClassifierV1({
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
@@ -214,7 +213,7 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
         };
       },
     };
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,

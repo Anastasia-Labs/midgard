@@ -1,10 +1,10 @@
 /** Reference deployment and the two independent step-01 carriage frontiers. */
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  encodeMidgardNativeTxCompactV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  computeMidgardNativeTxId,
+  encodeMidgardNativeTxCompact,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import {
   AddressData,
@@ -22,17 +22,17 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1,
-  prepareCanonicalDecodabilityV1,
-  requireCanonicalDecodabilityReferenceScriptV1,
+  CANONICAL_DECODABILITY_BLUEPRINT_TITLES,
+  prepareCanonicalDecodability,
+  requireCanonicalDecodabilityReferenceScript,
 } from "../src/canonical-decodability/index.js";
 import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
-  buildCanonicalDecodabilityBodyFixtureV1,
+  buildCanonicalDecodabilityBodyFixture,
   network,
 } from "./support/canonical-decodability-emulator-v1.js";
 import {
-  buildCanonicalDecodabilityChainV1,
+  buildCanonicalDecodabilityChain,
   EMULATOR_PROTOCOL_PARAMETERS,
   makeNativeTx,
   readBlueprint,
@@ -47,7 +47,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
   it("applies two distinct validators that fit the oversized publication host", async () => {
     const declaredArities = { step01: 4, step02: 3 } as const;
     for (const [step, title] of Object.entries(
-      CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1,
+      CANONICAL_DECODABILITY_BLUEPRINT_TITLES,
     )) {
       expect(
         measureBlueprintValidatorBytes({
@@ -64,7 +64,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
         credentialToAddress(network, scriptHashToCredential("22".repeat(28))),
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = buildCanonicalDecodabilityChainV1({
+    const steps = buildCanonicalDecodabilityChain({
       realBlueprint: blueprint,
       computationThreadPolicyId: "11".repeat(28),
       fraudProofPolicyId: "33".repeat(28),
@@ -81,7 +81,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
   });
 
   it("encodes both inclusion carriages and keeps the shipped inline claim inside the L1 envelope", async () => {
-    const fixture = await buildCanonicalDecodabilityBodyFixtureV1();
+    const fixture = await buildCanonicalDecodabilityBodyFixture();
     if (fixture.prepared === null)
       throw new Error("Expected violating fixture");
     const common = {
@@ -134,15 +134,12 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
     // with one reference-input index is intentionally within one byte here.
     expect(Math.abs(carriedBytes - publishedBytes)).toBeLessThanOrEqual(1);
     expect(carriedBytes + 2_048).toBeLessThanOrEqual(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
   });
 
   it("pins the inline field frontier and refuses to mis-tag larger fields", () => {
-    const preimage = Buffer.alloc(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-      0,
-    );
+    const preimage = Buffer.alloc(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES, 0);
     preimage[0] = 0x80;
     const honest = makeNativeTx({ spendInputCbors: [], fee: 1n });
     const compact = {
@@ -153,13 +150,13 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
       },
     };
     const common = {
-      badTxId: computeMidgardNativeTxIdV1(compact).toString("hex"),
+      badTxId: computeMidgardNativeTxId(compact).toString("hex"),
       nativeTxCompactCbor:
-        encodeMidgardNativeTxCompactV1(compact).toString("hex"),
+        encodeMidgardNativeTxCompact(compact).toString("hex"),
       fieldIndex: 2,
     } as const;
     expect(
-      prepareCanonicalDecodabilityV1({
+      prepareCanonicalDecodability({
         ...common,
         committedPreimage: preimage,
       }).committedPreimage,
@@ -174,10 +171,10 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
       },
     };
     expect(() =>
-      prepareCanonicalDecodabilityV1({
-        badTxId: computeMidgardNativeTxIdV1(tooLargeCompact).toString("hex"),
+      prepareCanonicalDecodability({
+        badTxId: computeMidgardNativeTxId(tooLargeCompact).toString("hex"),
         nativeTxCompactCbor:
-          encodeMidgardNativeTxCompactV1(tooLargeCompact).toString("hex"),
+          encodeMidgardNativeTxCompact(tooLargeCompact).toString("hex"),
         fieldIndex: 2,
         committedPreimage: tooLarge,
       }),
@@ -186,7 +183,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
 
   it("rejects a missing reference script before transaction construction", () => {
     expect(() =>
-      requireCanonicalDecodabilityReferenceScriptV1({
+      requireCanonicalDecodabilityReferenceScript({
         utxo: {
           txHash: "aa".repeat(32),
           outputIndex: 0,

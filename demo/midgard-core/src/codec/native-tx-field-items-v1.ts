@@ -36,12 +36,12 @@
 import { compareBytes, encodeCborInteger, encodeCborUnsigned } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
-  encodeMidgardDefiniteBytesV1,
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-  MIDGARD_HASH28_ITEM_BYTES_V1,
-  MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
-  midgardFieldCommitmentV1,
+  encodeMidgardDefiniteBytes,
+  encodeMidgardFieldPreimage,
+  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+  MIDGARD_HASH28_ITEM_BYTES,
+  MIDGARD_SPEND_INPUT_ITEM_BYTES,
+  midgardFieldCommitment,
 } from "./native-tx-field-access-v1.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import {
@@ -53,7 +53,7 @@ import {
 // (field 6) are deliberately **not** re-exported here. `codec/index.ts` is a
 // `export *` barrel, so a re-export would make each name ambiguous and ESM
 // would drop it silently — the two canonical encoders keep their own modules as
-// their single export site, and {@link encodeMidgardFieldItemsV1} below is the
+// their single export site, and {@link encodeMidgardFieldItems} below is the
 // one place that dispatches all nine.
 
 const fail = (message: string, detail?: string): never => {
@@ -80,7 +80,7 @@ const exactBytes = (
 // ---------------------------------------------------------------------------
 
 /** §5.4/§5.3: the output index is a CBOR uint16, so 0..65,535. */
-export const MIDGARD_MAX_OUTPUT_INDEX_V1 = 65_535;
+export const MIDGARD_MAX_OUTPUT_INDEX = 65_535;
 
 /**
  * §5.3's sole deliberately non-minimal encoding: the output index is **always**
@@ -94,13 +94,11 @@ export const MIDGARD_MAX_OUTPUT_INDEX_V1 = 65_535;
  *
  * Twin of `encode_fixed_output_index`.
  */
-export const encodeMidgardFixedOutputIndexV1 = (
-  outputIndex: number,
-): Buffer => {
+export const encodeMidgardFixedOutputIndex = (outputIndex: number): Buffer => {
   if (
     !Number.isSafeInteger(outputIndex) ||
     outputIndex < 0 ||
-    outputIndex > MIDGARD_MAX_OUTPUT_INDEX_V1
+    outputIndex > MIDGARD_MAX_OUTPUT_INDEX
   ) {
     return fail(
       "output index must be 0..65,535 (§5.3 fixed uint16 form)",
@@ -113,7 +111,7 @@ export const encodeMidgardFixedOutputIndexV1 = (
   return encoded;
 };
 
-export type MidgardTxInputV1 = {
+export type MidgardTxInput = {
   /** The referenced transaction's id (32 bytes). */
   readonly txId: Uint8Array;
   /** 0..65,535. */
@@ -124,17 +122,15 @@ export type MidgardTxInputV1 = {
  * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — fixed 38 bytes.
  * Twin of `encode_midgard_tx_input`.
  */
-export const encodeMidgardSpendInputItemV1 = (
-  input: MidgardTxInputV1,
-): Buffer => {
+export const encodeMidgardSpendInputItem = (input: MidgardTxInput): Buffer => {
   const encoded = Buffer.concat([
     Buffer.from([0x82]),
-    encodeMidgardDefiniteBytesV1(exactBytes(input.txId, 32, "input tx_id")),
-    encodeMidgardFixedOutputIndexV1(input.outputIndex),
+    encodeMidgardDefiniteBytes(exactBytes(input.txId, 32, "input tx_id")),
+    encodeMidgardFixedOutputIndex(input.outputIndex),
   ]);
   // The width is the whole point of the fixed index; asserting it here means a
   // future edit to either half cannot quietly break stride-40 arithmetic.
-  if (encoded.length !== MIDGARD_SPEND_INPUT_ITEM_BYTES_V1) {
+  if (encoded.length !== MIDGARD_SPEND_INPUT_ITEM_BYTES) {
     return fail(
       "spend/reference input item is not the §5.3 fixed width",
       `length=${encoded.length}`,
@@ -152,22 +148,22 @@ export const encodeMidgardSpendInputItemV1 = (
  * width is asserted by both encoder twins, which is what fixes stride 30.
  * Twin of `expect_hash28`.
  */
-export const encodeMidgardHash28ItemV1 = (hash: Uint8Array): Buffer =>
-  exactBytes(hash, MIDGARD_HASH28_ITEM_BYTES_V1, "observer/signer item");
+export const encodeMidgardHash28Item = (hash: Uint8Array): Buffer =>
+  exactBytes(hash, MIDGARD_HASH28_ITEM_BYTES, "observer/signer item");
 
 // ---------------------------------------------------------------------------
 // §5.6 field 5 — mint, enveloped per-policy items
 // ---------------------------------------------------------------------------
 
 /** §5.6 caps asset names at the ledger's 32 bytes. */
-const MIDGARD_MAX_ASSET_NAME_BYTES_V1 = 32;
+const MIDGARD_MAX_ASSET_NAME_BYTES = 32;
 
 /**
  * The definite CBOR map header `map(k)`, minimal width. Twin of
  * `encode_definite_map_header`; kept here rather than in the shared field-access
  * module because §5.1's envelope has no maps in it — only §5.6's mint items do.
  */
-const encodeMidgardDefiniteMapHeaderV1 = (length: number): Buffer => {
+const encodeMidgardDefiniteMapHeader = (length: number): Buffer => {
   if (!Number.isSafeInteger(length) || length < 0) {
     return fail("map length must be a non-negative integer", `${length}`);
   }
@@ -186,18 +182,18 @@ const encodeMidgardDefiniteMapHeaderV1 = (length: number): Buffer => {
   return header;
 };
 
-export type MidgardMintAssetV1 = {
+export type MidgardMintAsset = {
   /** ≤ 32 bytes. */
   readonly assetName: Uint8Array;
   /** Non-zero: positive mints, negative burns. */
   readonly quantity: bigint;
 };
 
-export type MidgardMintPolicyItemV1 = {
+export type MidgardMintPolicyItem = {
   /** 28-byte policy id. */
   readonly policyId: Uint8Array;
   /** Non-empty, in canonical key order (length-first, then byte-lexicographic). */
-  readonly assets: readonly MidgardMintAssetV1[];
+  readonly assets: readonly MidgardMintAsset[];
 };
 
 /**
@@ -207,12 +203,12 @@ export type MidgardMintPolicyItemV1 = {
  * Exported because §5.5's Value maps and §5.6's mint items share this one
  * ordering, so a producer and the decoder that checks it can never disagree about
  * what "canonical" means. Producers of field-5 items do not call it directly —
- * {@link sortMidgardMintItemsV1} is the one spelling of the two-level sort they
- * need, and {@link encodeMidgardFieldItemsV1} then enforces the result rather than
+ * {@link sortMidgardMintItems} is the one spelling of the two-level sort they
+ * need, and {@link encodeMidgardFieldItems} then enforces the result rather than
  * trusting it. This is for the ordering itself, wherever else §5.5/§5.6 keys are
  * compared.
  */
-export const compareMidgardCanonicalKeyBytesV1 = (
+export const compareMidgardCanonicalKeyBytes = (
   left: Uint8Array,
   right: Uint8Array,
 ): number => left.length - right.length || compareBytes(left, right);
@@ -221,7 +217,7 @@ export const compareMidgardCanonicalKeyBytesV1 = (
  * §5.6's canonical order applied to a whole field-5 item list: policy items by
  * policy id, and each policy's assets by asset name.
  *
- * {@link encodeMidgardMintPolicyItemV1} and {@link encodeMidgardFieldItemsV1}
+ * {@link encodeMidgardMintPolicyItem} and {@link encodeMidgardFieldItems}
  * *enforce* this order but deliberately never impose it, because a silent sort
  * would hide a producer that had lost track of its own ordering. That left every
  * producer spelling the two-level sort out for itself — four of them did, one per
@@ -233,35 +229,35 @@ export const compareMidgardCanonicalKeyBytesV1 = (
  * producer bug, and the encoder rejects them by name rather than letting a sort
  * quietly pick a winner.
  */
-export const sortMidgardMintItemsV1 = (
-  items: readonly MidgardMintPolicyItemV1[],
-): readonly MidgardMintPolicyItemV1[] =>
+export const sortMidgardMintItems = (
+  items: readonly MidgardMintPolicyItem[],
+): readonly MidgardMintPolicyItem[] =>
   [...items]
     .map((item) => ({
       ...item,
       assets: [...item.assets].sort((left, right) =>
-        compareMidgardCanonicalKeyBytesV1(left.assetName, right.assetName),
+        compareMidgardCanonicalKeyBytes(left.assetName, right.assetName),
       ),
     }))
     .sort((left, right) =>
-      compareMidgardCanonicalKeyBytesV1(left.policyId, right.policyId),
+      compareMidgardCanonicalKeyBytes(left.policyId, right.policyId),
     );
 
 /**
  * §5.6's ordering rule applied to one run of keys: strictly ascending under
- * {@link compareMidgardCanonicalKeyBytesV1}, so both "out of order" and
+ * {@link compareMidgardCanonicalKeyBytes}, so both "out of order" and
  * "duplicated" reject.
  *
  * It is used at both levels the spec names — asset names within a policy, and
  * policy ids across the field — because the §5.6 decoders check both, and an
  * encoder that let either past would hand a builder bytes that never decode.
  */
-const assertCanonicalKeyOrderV1 = (
+const assertCanonicalKeyOrder = (
   keys: readonly Uint8Array[],
   label: string,
 ): void => {
   for (let index = 1; index < keys.length; index += 1) {
-    const order = compareMidgardCanonicalKeyBytesV1(
+    const order = compareMidgardCanonicalKeyBytes(
       keys[index - 1]!,
       keys[index]!,
     );
@@ -285,8 +281,8 @@ const assertCanonicalKeyOrderV1 = (
  * caller: the decoders check both, so an encoder that let them past would emit
  * bytes that never decode. Twin of `encode_mint_policy_item`.
  */
-export const encodeMidgardMintPolicyItemV1 = (
-  item: MidgardMintPolicyItemV1,
+export const encodeMidgardMintPolicyItem = (
+  item: MidgardMintPolicyItem,
 ): Buffer => {
   const policyId = exactBytes(item.policyId, 28, "mint policy id");
   if (item.assets.length === 0) {
@@ -297,7 +293,7 @@ export const encodeMidgardMintPolicyItemV1 = (
   }
   const entries = item.assets.map((asset, index) => {
     const assetName = Buffer.from(asset.assetName);
-    if (assetName.length > MIDGARD_MAX_ASSET_NAME_BYTES_V1) {
+    if (assetName.length > MIDGARD_MAX_ASSET_NAME_BYTES) {
       return fail(
         "§5.6 mint asset name exceeds 32 bytes",
         `index=${index},length=${assetName.length}`,
@@ -311,17 +307,17 @@ export const encodeMidgardMintPolicyItemV1 = (
     }
     return { assetName, quantity: asset.quantity };
   });
-  assertCanonicalKeyOrderV1(
+  assertCanonicalKeyOrder(
     entries.map((entry) => entry.assetName),
     "mint asset names",
   );
   return Buffer.concat([
     Buffer.from([0x82]),
-    encodeMidgardDefiniteBytesV1(policyId),
-    encodeMidgardDefiniteMapHeaderV1(entries.length),
+    encodeMidgardDefiniteBytes(policyId),
+    encodeMidgardDefiniteMapHeader(entries.length),
     ...entries.map((entry) =>
       Buffer.concat([
-        encodeMidgardDefiniteBytesV1(entry.assetName),
+        encodeMidgardDefiniteBytes(entry.assetName),
         encodeCborInteger(entry.quantity),
       ]),
     ),
@@ -331,7 +327,7 @@ export const encodeMidgardMintPolicyItemV1 = (
 /**
  * §5.6's field-level rule: the *policy items* of field 5 appear in canonical key
  * order and duplicates reject — the same rule
- * {@link encodeMidgardMintPolicyItemV1} applies to asset names one level down.
+ * {@link encodeMidgardMintPolicyItem} applies to asset names one level down.
  *
  * It lives here rather than in the per-item encoder because ordering is a
  * property of the run, not of any one item, and the §5.6 decoder
@@ -340,21 +336,21 @@ export const encodeMidgardMintPolicyItemV1 = (
  * that no decoder on either side accepts — a producer handing back an
  * uncommittable preimage with no error.
  */
-const encodeMidgardMintFieldItemsV1 = (
-  items: readonly MidgardMintPolicyItemV1[],
+const encodeMidgardMintFieldItems = (
+  items: readonly MidgardMintPolicyItem[],
 ): readonly Buffer[] => {
-  assertCanonicalKeyOrderV1(
+  assertCanonicalKeyOrder(
     items.map((item) => exactBytes(item.policyId, 28, "mint policy id")),
     "mint policy ids",
   );
-  return items.map(encodeMidgardMintPolicyItemV1);
+  return items.map(encodeMidgardMintPolicyItem);
 };
 
 // ---------------------------------------------------------------------------
 // §5.3 field 7 — address (vkey) witnesses
 // ---------------------------------------------------------------------------
 
-export type MidgardAddressWitnessV1 = {
+export type MidgardAddressWitness = {
   /** 32-byte Ed25519 verification key. */
   readonly verificationKey: Uint8Array;
   /** 64-byte Ed25519 signature. */
@@ -365,19 +361,19 @@ export type MidgardAddressWitnessV1 = {
  * §5.3 field 7: `82 ‖ 58 20 vkey(32) ‖ 58 40 signature(64)` — fixed 101 bytes,
  * stride 103. Twin of `encode_midgard_address_witness`.
  */
-export const encodeMidgardAddressWitnessItemV1 = (
-  witness: MidgardAddressWitnessV1,
+export const encodeMidgardAddressWitnessItem = (
+  witness: MidgardAddressWitness,
 ): Buffer => {
   const encoded = Buffer.concat([
     Buffer.from([0x82]),
-    encodeMidgardDefiniteBytesV1(
+    encodeMidgardDefiniteBytes(
       exactBytes(witness.verificationKey, 32, "witness verification key"),
     ),
-    encodeMidgardDefiniteBytesV1(
+    encodeMidgardDefiniteBytes(
       exactBytes(witness.signature, 64, "witness signature"),
     ),
   ]);
-  if (encoded.length !== MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1) {
+  if (encoded.length !== MIDGARD_ADDRESS_WITNESS_ITEM_BYTES) {
     return fail(
       "address witness item is not the §5.3 fixed width",
       `length=${encoded.length}`,
@@ -400,7 +396,7 @@ export const encodeMidgardAddressWitnessItemV1 = (
  * `Receive`, and the Cardano conversion bridge admits only `Spend`/`Mint`/
  * `Reward`. Twin of `midgard_redeemer_purpose_to_tag`.
  */
-export const MIDGARD_REDEEMER_PURPOSE_TAGS_V1 = {
+export const MIDGARD_REDEEMER_PURPOSE_TAGS = {
   Spend: 0,
   Mint: 1,
   Cert: 2,
@@ -410,8 +406,7 @@ export const MIDGARD_REDEEMER_PURPOSE_TAGS_V1 = {
   Receive: 6,
 } as const;
 
-export type MidgardRedeemerPurposeV1 =
-  keyof typeof MIDGARD_REDEEMER_PURPOSE_TAGS_V1;
+export type MidgardRedeemerPurpose = keyof typeof MIDGARD_REDEEMER_PURPOSE_TAGS;
 
 // The inverse map (tag → purpose) deliberately has no twin here. This module is
 // a producer; a tag-to-purpose reader belongs on the decoding side, and §5.3
@@ -420,17 +415,17 @@ export type MidgardRedeemerPurposeV1 =
 // out-of-set tag. Spelling a second one here — with no caller — would put a
 // decoder in a producer module and give the value set two homes.
 
-export type MidgardExecutionUnitsV1 = {
+export type MidgardExecutionUnits = {
   readonly memory: bigint;
   readonly steps: bigint;
 };
 
-export type MidgardRedeemerWitnessV1 = {
-  readonly purpose: MidgardRedeemerPurposeV1;
+export type MidgardRedeemerWitness = {
+  readonly purpose: MidgardRedeemerPurpose;
   /** Non-negative, canonical minimal CBOR uint. */
   readonly index: bigint;
   readonly redeemerCbor: Uint8Array;
-  readonly executionUnits: MidgardExecutionUnitsV1;
+  readonly executionUnits: MidgardExecutionUnits;
 };
 
 const exactNonNegative = (value: bigint, label: string): bigint => {
@@ -449,16 +444,14 @@ const exactNonNegative = (value: bigint, label: string): bigint => {
  * Aiken twin emits, and the §5.1 envelope wraps the whole thing. Twin of
  * `encode_midgard_redeemer_witness`.
  */
-export const encodeMidgardRedeemerWitnessItemV1 = (
-  witness: MidgardRedeemerWitnessV1,
+export const encodeMidgardRedeemerWitnessItem = (
+  witness: MidgardRedeemerWitness,
 ): Buffer =>
   Buffer.concat([
     Buffer.from([0x84]),
-    encodeCborUnsigned(
-      BigInt(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose]),
-    ),
+    encodeCborUnsigned(BigInt(MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose])),
     encodeCborUnsigned(exactNonNegative(witness.index, "redeemer index")),
-    encodeMidgardDefiniteBytesV1(witness.redeemerCbor),
+    encodeMidgardDefiniteBytes(witness.redeemerCbor),
     Buffer.from([0x82]),
     encodeCborUnsigned(
       exactNonNegative(witness.executionUnits.memory, "ex_memory"),
@@ -479,13 +472,13 @@ export const encodeMidgardRedeemerWitnessItemV1 = (
  * aliases across those pairs, and the index is the only thing that says which
  * slot a preimage was built for.
  */
-export type MidgardFieldItemsV1 =
-  | { readonly fieldIndex: 0 | 1; readonly items: readonly MidgardTxInputV1[] }
+export type MidgardFieldItems =
+  | { readonly fieldIndex: 0 | 1; readonly items: readonly MidgardTxInput[] }
   | { readonly fieldIndex: 2; readonly items: readonly MidgardTxOutput[] }
   | { readonly fieldIndex: 3 | 4; readonly items: readonly Uint8Array[] }
   | {
       readonly fieldIndex: 5;
-      readonly items: readonly MidgardMintPolicyItemV1[];
+      readonly items: readonly MidgardMintPolicyItem[];
     }
   | {
       readonly fieldIndex: 6;
@@ -493,37 +486,37 @@ export type MidgardFieldItemsV1 =
     }
   | {
       readonly fieldIndex: 7;
-      readonly items: readonly MidgardAddressWitnessV1[];
+      readonly items: readonly MidgardAddressWitness[];
     }
   | {
       readonly fieldIndex: 8;
-      readonly items: readonly MidgardRedeemerWitnessV1[];
+      readonly items: readonly MidgardRedeemerWitness[];
     };
 
 /**
  * The §5.3 `enc_i` bytes of one field's items — the per-item half of the
  * grammar, before the §5.1 envelope goes on.
  */
-export const encodeMidgardFieldItemsV1 = (
-  field: MidgardFieldItemsV1,
+export const encodeMidgardFieldItems = (
+  field: MidgardFieldItems,
 ): readonly Buffer[] => {
   switch (field.fieldIndex) {
     case 0:
     case 1:
-      return field.items.map(encodeMidgardSpendInputItemV1);
+      return field.items.map(encodeMidgardSpendInputItem);
     case 2:
       return field.items.map(encodeMidgardTxOutput);
     case 3:
     case 4:
-      return field.items.map(encodeMidgardHash28ItemV1);
+      return field.items.map(encodeMidgardHash28Item);
     case 5:
-      return encodeMidgardMintFieldItemsV1(field.items);
+      return encodeMidgardMintFieldItems(field.items);
     case 6:
       return field.items.map(encodeMidgardVersionedScript);
     case 7:
-      return field.items.map(encodeMidgardAddressWitnessItemV1);
+      return field.items.map(encodeMidgardAddressWitnessItem);
     case 8:
-      return field.items.map(encodeMidgardRedeemerWitnessItemV1);
+      return field.items.map(encodeMidgardRedeemerWitnessItem);
   }
 };
 
@@ -536,25 +529,24 @@ export const encodeMidgardFieldItemsV1 = (
  * Twin of the six `encode_*_preimage` producers in `preimages.ak`, which differ
  * from each other only in the item encoder they map.
  */
-export const encodeMidgardFieldPreimageForFieldV1 = (
-  field: MidgardFieldItemsV1,
-): Buffer => encodeMidgardFieldPreimageV1(encodeMidgardFieldItemsV1(field));
+export const encodeMidgardFieldPreimageForField = (
+  field: MidgardFieldItems,
+): Buffer => encodeMidgardFieldPreimage(encodeMidgardFieldItems(field));
 
 /**
  * §4 — the flat commitment of one field: `blake2b_256(preimage)`, plain, with
  * no domain tag, version prefix or field index in the hash input.
  */
-export const midgardFieldCommitmentForFieldV1 = (
-  field: MidgardFieldItemsV1,
-): Buffer =>
-  midgardFieldCommitmentV1(encodeMidgardFieldPreimageForFieldV1(field));
+export const midgardFieldCommitmentForField = (
+  field: MidgardFieldItems,
+): Buffer => midgardFieldCommitment(encodeMidgardFieldPreimageForField(field));
 
 /**
  * The §2.5 field names, positionally indexed, for diagnostics and vector
  * labelling. §4 makes field identity positional, so the index — not the name —
  * is what any encoder dispatches on; this array only ever labels one.
  */
-export const MIDGARD_FIELD_NAMES_V1 = [
+export const MIDGARD_FIELD_NAMES = [
   "spend_inputs",
   "reference_inputs",
   "outputs",

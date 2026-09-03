@@ -4,18 +4,18 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyScriptIntegrityHashMismatchScriptsV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES_V1,
+  applyScriptIntegrityHashMismatchScripts,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES,
 } from "../src/script-integrity-hash-mismatch/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES_V1.every(
+const hasFamily = SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES.every(
   (title) =>
     blueprint.validators.some((validator) => validator.title === title),
 );
@@ -24,13 +24,13 @@ describe.runIf(hasFamily)(
   "scriptIntegrityHashMismatch signed publication fit",
   () => {
     it("publishes all five fully applied scripts below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const addressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyScriptIntegrityHashMismatchScriptsV1({
+      const steps = applyScriptIntegrityHashMismatchScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

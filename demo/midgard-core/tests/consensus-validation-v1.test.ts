@@ -1,39 +1,39 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  computeMidgardNativeTxCanonicalSizeFromProofSourceV1,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardV1TxFieldPreimages,
+  computeMidgardNativeTxCanonicalSizeFromProofSource,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardTxFieldPreimages,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   midgardAddressFromText,
-  midgardExpectedChunkCountV1,
-  midgardFieldCommitmentFromItemsV1,
-  midgardFieldCommitmentV1,
+  midgardExpectedChunkCount,
+  midgardFieldCommitment,
+  midgardFieldCommitmentFromItems,
   type MidgardNativeScript,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
   type MidgardTxOutput,
   protectMidgardAddress,
-  reconstructMidgardTransactionV1,
-  splitMidgardFieldPreimageIntoChunksV1,
-  validateMidgardConsensusV1Tx,
-  validateMidgardConsensusV1TxCbor,
-  verifyMidgardNativeTxProofSourceV1,
-  verifyMidgardV1TxFieldPreimage,
+  reconstructMidgardTransaction,
+  splitMidgardFieldPreimageIntoChunks,
+  validateMidgardConsensusTx,
+  validateMidgardConsensusTxCbor,
+  verifyMidgardNativeTxProofSource,
+  verifyMidgardTxFieldPreimage,
 } from "../src/index.js";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "../src/plutus-data-cbor.js";
 
@@ -53,7 +53,7 @@ const cekProgramEnvelope = (
   nodeCount = 3n,
   materialByteLength = 144n,
 ): Buffer =>
-  encodeMidgardCekProgramEnvelopeV1({
+  encodeMidgardCekProgramEnvelope({
     uplcVersion: [1n, 1n, 0n],
     termRoot: Buffer.alloc(32, 0x33),
     nodeCount,
@@ -71,8 +71,8 @@ const output = (overrides: Partial<MidgardTxOutput> = {}): MidgardTxOutput => ({
 });
 
 const canonical = (
-  version = MIDGARD_NATIVE_TX_V1_VERSION,
-): MidgardNativeTxCanonicalV1 => ({
+  version = MIDGARD_NATIVE_TX_VERSION,
+): MidgardNativeTxCanonical => ({
   version,
   validity: "TxIsValid",
   body: {
@@ -85,7 +85,7 @@ const canonical = (
     requiredObserversPreimageCbor: encodeCbor([Buffer.alloc(28, 7)]),
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
     // §5.6: the enveloped per-policy item list, not the retired raw map.
-    mintPreimageCbor: encodeMidgardFieldPreimageForFieldV1({
+    mintPreimageCbor: encodeMidgardFieldPreimageForField({
       fieldIndex: 5,
       items: [
         {
@@ -103,7 +103,7 @@ const canonical = (
     scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage([
       { language: "MidgardV1", scriptBytes: cekProgramEnvelope() },
     ]),
-    redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageForFieldV1({
+    redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageForField({
       fieldIndex: 8,
       items: [
         {
@@ -130,31 +130,31 @@ const nestedNativeScript = (depth: number): MidgardNativeScript => {
 
 describe("canonical V1 consensus transaction bounds", () => {
   it("admits the requested V1 feature surface instead of feature-gating it", () => {
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
-    expect(validateMidgardConsensusV1Tx(tx, txCbor.length)).toBeNull();
-    expect(validateMidgardConsensusV1TxCbor(txCbor)).toBeNull();
+    const tx = materializeMidgardNativeTxFromCanonical(canonical());
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
+    expect(validateMidgardConsensusTx(tx, txCbor.length)).toBeNull();
+    expect(validateMidgardConsensusTxCbor(txCbor)).toBeNull();
   });
 
   it("binds the full nine-field surface through a compact V1 source", () => {
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const transactionId = computeMidgardNativeTxIdV1(tx);
+    const tx = materializeMidgardNativeTxFromCanonical(canonical());
+    const source = deriveMidgardNativeTxProofSource(tx);
+    const transactionId = computeMidgardNativeTxId(tx);
     expect(source.compactCbor.length).toBeLessThan(1024);
     expect(source.witnessSetCompactCbor.length).toBeLessThan(256);
     expect(source.fieldPreimageLengthsCbor.length).toBeLessThan(64);
-    expect(computeMidgardNativeTxCanonicalSizeFromProofSourceV1(source)).toBe(
-      encodeMidgardNativeTxCanonicalV1(tx).length,
+    expect(computeMidgardNativeTxCanonicalSizeFromProofSource(source)).toBe(
+      encodeMidgardNativeTxCanonical(tx).length,
     );
-    expect(
-      verifyMidgardNativeTxProofSourceV1({ transactionId, source }),
-    ).toEqual(tx.compact);
-    expect(computeMidgardNativeTxProofCommitmentV1(source)).toHaveLength(32);
+    expect(verifyMidgardNativeTxProofSource({ transactionId, source })).toEqual(
+      tx.compact,
+    );
+    expect(computeMidgardNativeTxProofCommitment(source)).toHaveLength(32);
 
     const tampered = Buffer.from(source.witnessSetCompactCbor);
     tampered[tampered.length - 1] ^= 1;
     expect(() =>
-      verifyMidgardNativeTxProofSourceV1({
+      verifyMidgardNativeTxProofSource({
         transactionId,
         source: { ...source, witnessSetCompactCbor: tampered },
       }),
@@ -162,20 +162,19 @@ describe("canonical V1 consensus transaction bounds", () => {
   });
 
   it("reveals and verifies exactly one bounded field preimage per L1 instruction", () => {
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
-    const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const transactionId = computeMidgardNativeTxIdV1(tx);
-    const transactionCommitment =
-      computeMidgardNativeTxProofCommitmentV1(source);
-    const fields = deriveMidgardV1TxFieldPreimages(txCbor);
+    const tx = materializeMidgardNativeTxFromCanonical(canonical());
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
+    const source = deriveMidgardNativeTxProofSource(tx);
+    const transactionId = computeMidgardNativeTxId(tx);
+    const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
+    const fields = deriveMidgardTxFieldPreimages(txCbor);
 
     expect(fields.map((field) => field.fieldIndex)).toEqual([
       0, 1, 2, 3, 4, 5, 6, 7, 8,
     ]);
     for (const field of fields) {
       expect(
-        verifyMidgardV1TxFieldPreimage({
+        verifyMidgardTxFieldPreimage({
           transactionId,
           transactionCommitment,
           source,
@@ -188,7 +187,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     const tampered = Buffer.from(fields[2]!.preimageCbor);
     tampered[tampered.length - 1] ^= 1;
     expect(() =>
-      verifyMidgardV1TxFieldPreimage({
+      verifyMidgardTxFieldPreimage({
         transactionId,
         transactionCommitment,
         source,
@@ -197,7 +196,7 @@ describe("canonical V1 consensus transaction bounds", () => {
       }),
     ).toThrow(/hash mismatch/u);
     expect(() =>
-      verifyMidgardV1TxFieldPreimage({
+      verifyMidgardTxFieldPreimage({
         transactionId,
         transactionCommitment,
         source,
@@ -213,19 +212,19 @@ describe("canonical V1 consensus transaction bounds", () => {
     // is one `blake2b_256` per field with no domain tag, version prefix or field
     // index in the input, so the property is stated directly instead of through
     // per-item openings — which §4 leaves nothing to check against.
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const tx = materializeMidgardNativeTxFromCanonical(canonical());
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
 
-    for (const field of deriveMidgardV1TxFieldPreimages(txCbor)) {
+    for (const field of deriveMidgardTxFieldPreimages(txCbor)) {
       expect(field.expectedHash).toEqual(
-        midgardFieldCommitmentV1(field.preimageCbor),
+        midgardFieldCommitment(field.preimageCbor),
       );
       // The commitment is over the bytes alone: re-hashing the items through the
       // §5.1 envelope reproduces it, and no per-field salt exists to make the
       // two disagree.
       expect(field.expectedHash).toEqual(
-        midgardFieldCommitmentFromItemsV1(
-          decodeMidgardFieldPreimageV1(field.preimageCbor),
+        midgardFieldCommitmentFromItems(
+          decodeMidgardFieldPreimage(field.preimageCbor),
         ),
       );
     }
@@ -236,23 +235,22 @@ describe("canonical V1 consensus transaction bounds", () => {
     // tier 1 is split deterministically, the chunks are re-joined, and the field
     // authenticates once against the same compact hash. Nothing per-item is
     // published, and nothing per-item is verified.
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
-    const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const transactionId = computeMidgardNativeTxIdV1(tx);
-    const transactionCommitment =
-      computeMidgardNativeTxProofCommitmentV1(source);
-    const field = deriveMidgardV1TxFieldPreimages(txCbor).find(
+    const tx = materializeMidgardNativeTxFromCanonical(canonical());
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
+    const source = deriveMidgardNativeTxProofSource(tx);
+    const transactionId = computeMidgardNativeTxId(tx);
+    const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
+    const field = deriveMidgardTxFieldPreimages(txCbor).find(
       (candidate) => candidate.fieldIndex === 2,
     )!;
 
-    const chunks = splitMidgardFieldPreimageIntoChunksV1(field.preimageCbor);
+    const chunks = splitMidgardFieldPreimageIntoChunks(field.preimageCbor);
     expect(chunks).toHaveLength(
-      midgardExpectedChunkCountV1(field.preimageCbor.length),
+      midgardExpectedChunkCount(field.preimageCbor.length),
     );
     expect(Buffer.concat(chunks)).toEqual(field.preimageCbor);
     expect(
-      verifyMidgardV1TxFieldPreimage({
+      verifyMidgardTxFieldPreimage({
         transactionId,
         transactionCommitment,
         source,
@@ -264,7 +262,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     // A chunk boundary is not a trust boundary: dropping one changes the bytes,
     // and the single §4 check is what catches it.
     expect(() =>
-      verifyMidgardV1TxFieldPreimage({
+      verifyMidgardTxFieldPreimage({
         transactionId,
         transactionCommitment,
         source,
@@ -277,16 +275,15 @@ describe("canonical V1 consensus transaction bounds", () => {
   });
 
   it("reconstructs the exact canonical forced transaction from nine authenticated fragments", () => {
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
-    const expected = encodeMidgardNativeTxCanonicalV1(tx);
-    const source = deriveMidgardNativeTxProofSourceV1(tx);
-    const transactionId = computeMidgardNativeTxIdV1(tx);
-    const transactionCommitment =
-      computeMidgardNativeTxProofCommitmentV1(source);
-    const fields = deriveMidgardV1TxFieldPreimages(expected);
+    const tx = materializeMidgardNativeTxFromCanonical(canonical());
+    const expected = encodeMidgardNativeTxCanonical(tx);
+    const source = deriveMidgardNativeTxProofSource(tx);
+    const transactionId = computeMidgardNativeTxId(tx);
+    const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
+    const fields = deriveMidgardTxFieldPreimages(expected);
 
     expect(
-      reconstructMidgardTransactionV1({
+      reconstructMidgardTransaction({
         transactionId,
         transactionCommitment,
         source,
@@ -294,7 +291,7 @@ describe("canonical V1 consensus transaction bounds", () => {
       }),
     ).toEqual(expected);
     expect(() =>
-      reconstructMidgardTransactionV1({
+      reconstructMidgardTransaction({
         transactionId,
         transactionCommitment,
         source,
@@ -304,17 +301,17 @@ describe("canonical V1 consensus transaction bounds", () => {
   });
 
   it("rejects every unsupported transaction version", () => {
-    const current = materializeMidgardNativeTxFromCanonicalV1(canonical());
+    const current = materializeMidgardNativeTxFromCanonical(canonical());
     const unsupported = {
       ...current,
       version: 23n,
       compact: { ...current.compact, version: 23n },
     };
-    expect(validateMidgardConsensusV1Tx(unsupported, 1)).toMatchObject({
+    expect(validateMidgardConsensusTx(unsupported, 1)).toMatchObject({
       code: "E_TX_VERSION",
     });
     expect(() =>
-      encodeMidgardNativeTxCanonicalV1({
+      encodeMidgardNativeTxCanonical({
         ...canonical(),
         version: 23n,
       }),
@@ -322,7 +319,7 @@ describe("canonical V1 consensus transaction bounds", () => {
   });
 
   it("supports large output content while retaining the Cardano Value rule", () => {
-    const largeValueAndDatum = materializeMidgardNativeTxFromCanonicalV1({
+    const largeValueAndDatum = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       body: {
         ...canonical().body,
@@ -339,7 +336,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusV1Tx(largeValueAndDatum, 1)).toBeNull();
+    expect(validateMidgardConsensusTx(largeValueAndDatum, 1)).toBeNull();
 
     const oversizedValueAssets = new Map<string, bigint>(
       Array.from({ length: 160 }, (_, index) => [
@@ -347,7 +344,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         1n,
       ]),
     );
-    const valueTooLarge = materializeMidgardNativeTxFromCanonicalV1({
+    const valueTooLarge = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       body: {
         ...canonical().body,
@@ -364,11 +361,11 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusV1Tx(valueTooLarge, 1)).toMatchObject({
+    expect(validateMidgardConsensusTx(valueTooLarge, 1)).toMatchObject({
       code: "E_VALUE_SIZE",
     });
 
-    const outputTooLarge = materializeMidgardNativeTxFromCanonicalV1({
+    const outputTooLarge = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       body: {
         ...canonical().body,
@@ -379,7 +376,7 @@ describe("canonical V1 consensus transaction bounds", () => {
                 kind: "inline",
                 cbor: canonicalDataBytes(
                   Buffer.alloc(
-                    MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes,
+                    MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
                   ),
                 ),
               },
@@ -389,13 +386,13 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusV1Tx(outputTooLarge, 1)).toMatchObject({
+    expect(validateMidgardConsensusTx(outputTooLarge, 1)).toMatchObject({
       code: "E_LEDGER_OUTPUT_SIZE",
     });
   });
 
   it("rejects malformed inline and reference program envelopes fail closed", () => {
-    const malformedInline = materializeMidgardNativeTxFromCanonicalV1({
+    const malformedInline = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       witnessSet: {
         ...canonical().witnessSet,
@@ -407,12 +404,12 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusV1Tx(malformedInline, 1)).toMatchObject({
+    expect(validateMidgardConsensusTx(malformedInline, 1)).toMatchObject({
       code: "E_SCRIPT_PROGRAM_ENCODING",
       featureId: "script_witnesses",
     });
 
-    const malformedReference = materializeMidgardNativeTxFromCanonicalV1({
+    const malformedReference = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       body: {
         ...canonical().body,
@@ -428,28 +425,28 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusV1Tx(malformedReference, 1)).toMatchObject({
+    expect(validateMidgardConsensusTx(malformedReference, 1)).toMatchObject({
       code: "E_SCRIPT_PROGRAM_ENCODING",
       featureId: "reference_scripts",
     });
   });
 
   it("uses the sum of bounded fields as the effective transaction cap", () => {
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes).toBeGreaterThan(
+    expect(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes).toBeGreaterThan(
       8 * 1024,
     );
-    const base = materializeMidgardNativeTxFromCanonicalV1(canonical());
+    const base = materializeMidgardNativeTxFromCanonical(canonical());
     const oversizedField = {
       ...base,
       body: {
         ...base.body,
         mintPreimageCbor: Buffer.alloc(
-          MIDGARD_CONSENSUS_LIMITS_V1.maxMintPreimageBytes + 1,
+          MIDGARD_CONSENSUS_LIMITS.maxMintPreimageBytes + 1,
           0x80,
         ),
       },
     };
-    expect(validateMidgardConsensusV1Tx(oversizedField, 1)).toMatchObject({
+    expect(validateMidgardConsensusTx(oversizedField, 1)).toMatchObject({
       code: "E_FIELD_PREIMAGE_SIZE",
       featureId: "mint_preimage",
     });
@@ -475,19 +472,19 @@ describe("canonical V1 consensus transaction bounds", () => {
     );
     for (const encodedOutput of largeOutputs) {
       expect(encodedOutput.length).toBeLessThanOrEqual(
-        MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes,
+        MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
       );
     }
-    const tx = materializeMidgardNativeTxFromCanonicalV1({
+    const tx = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       body: {
         ...canonical().body,
         outputsPreimageCbor: encodeCbor(largeOutputs),
       },
     });
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     expect(txCbor.length).toBeGreaterThan(8 * 1024);
-    expect(validateMidgardConsensusV1TxCbor(txCbor)).toBeNull();
+    expect(validateMidgardConsensusTxCbor(txCbor)).toBeNull();
   });
 
   it("accepts the exact output envelope and rejects the next byte", () => {
@@ -501,7 +498,7 @@ describe("canonical V1 consensus transaction bounds", () => {
           script_ref: undefined,
         }),
       );
-    const maximum = MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes;
+    const maximum = MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes;
     let lower = 0;
     let upper = maximum;
     while (lower < upper) {
@@ -519,7 +516,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     expect(aboveMaximum.length).toBe(maximum + 1);
 
     const transactionWithOutput = (encodedOutput: Buffer) =>
-      materializeMidgardNativeTxFromCanonicalV1({
+      materializeMidgardNativeTxFromCanonical({
         ...canonical(),
         body: {
           ...canonical().body,
@@ -527,10 +524,10 @@ describe("canonical V1 consensus transaction bounds", () => {
         },
       });
     expect(
-      validateMidgardConsensusV1Tx(transactionWithOutput(atMaximum), 1),
+      validateMidgardConsensusTx(transactionWithOutput(atMaximum), 1),
     ).toBeNull();
     expect(
-      validateMidgardConsensusV1Tx(transactionWithOutput(aboveMaximum), 1),
+      validateMidgardConsensusTx(transactionWithOutput(aboveMaximum), 1),
     ).toMatchObject({ code: "E_LEDGER_OUTPUT_SIZE" });
   });
 
@@ -545,7 +542,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     expect(aboveOldLimit.length).toBeGreaterThan(9_215);
 
     const transactionWithScripts = (scriptTxWitsPreimageCbor: Buffer) =>
-      materializeMidgardNativeTxFromCanonicalV1({
+      materializeMidgardNativeTxFromCanonical({
         ...canonical(),
         witnessSet: {
           ...canonical().witnessSet,
@@ -553,7 +550,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         },
       });
     expect(
-      validateMidgardConsensusV1Tx(transactionWithScripts(aboveOldLimit), 1),
+      validateMidgardConsensusTx(transactionWithScripts(aboveOldLimit), 1),
     ).toBeNull();
     // 40,000 bytes of `0x80` is `80` — a §5.1 empty-field header — followed by
     // 39,999 trailing bytes, so materialisation refuses it at the grammar check
@@ -581,7 +578,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         }),
       );
     });
-    const manyAssets = materializeMidgardNativeTxFromCanonicalV1({
+    const manyAssets = materializeMidgardNativeTxFromCanonical({
       ...canonical(),
       body: {
         ...canonical().body,
@@ -590,17 +587,15 @@ describe("canonical V1 consensus transaction bounds", () => {
       },
     });
 
-    expect(validateMidgardConsensusV1Tx(manyAssets, 1)).toBeNull();
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxDistinctAssetCount).toBeGreaterThan(
-      128,
-    );
+    expect(validateMidgardConsensusTx(manyAssets, 1)).toBeNull();
+    expect(MIDGARD_CONSENSUS_LIMITS.maxDistinctAssetCount).toBeGreaterThan(128);
   });
 
   it("removes the old depth-16 and node-32 native-script caps", () => {
     const withNativeScript = (
       nativeScript: MidgardNativeScript,
-    ): ReturnType<typeof materializeMidgardNativeTxFromCanonicalV1> =>
-      materializeMidgardNativeTxFromCanonicalV1({
+    ): ReturnType<typeof materializeMidgardNativeTxFromCanonical> =>
+      materializeMidgardNativeTxFromCanonical({
         ...canonical(),
         witnessSet: {
           ...canonical().witnessSet,
@@ -615,13 +610,13 @@ describe("canonical V1 consensus transaction bounds", () => {
       });
 
     expect(
-      validateMidgardConsensusV1Tx(withNativeScript(nestedNativeScript(16)), 1),
+      validateMidgardConsensusTx(withNativeScript(nestedNativeScript(16)), 1),
     ).toBeNull();
     expect(
-      validateMidgardConsensusV1Tx(withNativeScript(nestedNativeScript(17)), 1),
+      validateMidgardConsensusTx(withNativeScript(nestedNativeScript(17)), 1),
     ).toBeNull();
     expect(
-      validateMidgardConsensusV1Tx(
+      validateMidgardConsensusTx(
         withNativeScript({
           type: "any",
           scripts: Array.from({ length: 33 }, () => ({
@@ -632,9 +627,9 @@ describe("canonical V1 consensus transaction bounds", () => {
         1,
       ),
     ).toBeNull();
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth).toBe(16_384);
-    expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount,
-    ).toBeGreaterThan(32);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxNativeScriptDepth).toBe(16_384);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxNativeScriptNodeCount).toBeGreaterThan(
+      32,
+    );
   });
 });

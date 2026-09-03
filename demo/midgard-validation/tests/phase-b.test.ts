@@ -1,8 +1,8 @@
 import {
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekTermNodeV1,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
@@ -16,7 +16,7 @@ import { Constr } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardCanonicalCekProgramV1 } from "../src/cek-program.js";
+import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
   applyUTxOStatePatch,
   buildConflictComponents,
@@ -33,11 +33,11 @@ import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
 import type { PhaseBResultWithPatch } from "../src/phase-b.js";
 import type { PhaseBConfig, RejectCode, RejectedTx } from "../src/types.js";
 import {
-  outputCborMeetsMinAdaV1,
-  outputCborMinAdaLovelaceV1,
+  outputCborMeetsMinAda,
+  outputCborMinAdaLovelace,
 } from "../src/value-accounting.js";
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeOutput,
   makePhaseBCandidate,
@@ -149,7 +149,7 @@ describe("phase B validation", () => {
     }
   });
   // #618 ruling 1 / R8 of decision 0005. The fixtures in this file produce
-  // outputs funded at `FUNDED_OUTPUT_LOVELACE_V1` so that the minimum-Ada floor
+  // outputs funded at `FUNDED_OUTPUT_LOVELACE` so that the minimum-Ada floor
   // is never what they measure. That is a claim about a number, so it is
   // measured here rather than assumed: if a rate, intercept or codec change
   // ever lifts the floor above the fixture funding, this one test fails with a
@@ -158,44 +158,44 @@ describe("phase B validation", () => {
   // min-ada-twin-cross-check-v1.test.ts and in the Aiken wiring vectors.
   it("funds every produced fixture output above the minimum-Ada floor", () => {
     const shapes: readonly (readonly [string, Buffer])[] = [
-      ["plain enterprise output", makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      ["plain enterprise output", makeOutput(FUNDED_OUTPUT_LOVELACE)],
       [
         "protected script output",
         makeProtectedScriptOutput(
           Buffer.alloc(28, 0x5c).toString("hex"),
-          FUNDED_OUTPUT_LOVELACE_V1,
+          FUNDED_OUTPUT_LOVELACE,
         ),
       ],
     ];
     for (const [label, outputCbor] of shapes) {
-      const floor = outputCborMinAdaLovelaceV1(outputCbor);
+      const floor = outputCborMinAdaLovelace(outputCbor);
       expect(
-        outputCborMeetsMinAdaV1(outputCbor, FUNDED_OUTPUT_LOVELACE_V1),
-        `${label}: ${FUNDED_OUTPUT_LOVELACE_V1.toString()} lovelace no longer clears the ${floor.toString()}-lovelace floor for ${outputCbor.length.toString()} serialized bytes`,
+        outputCborMeetsMinAda(outputCbor, FUNDED_OUTPUT_LOVELACE),
+        `${label}: ${FUNDED_OUTPUT_LOVELACE.toString()} lovelace no longer clears the ${floor.toString()}-lovelace floor for ${outputCbor.length.toString()} serialized bytes`,
       ).toBe(true);
       // Headroom, not a coincidence: the fixture funding is meant to sit well
       // clear of the floor, so a shape that only just clears it is also a
       // failure of this file's premise.
-      expect(FUNDED_OUTPUT_LOVELACE_V1).toBeGreaterThan(floor * 2n);
+      expect(FUNDED_OUTPUT_LOVELACE).toBeGreaterThan(floor * 2n);
     }
     // The value-preservation fixtures spend one lovelace of the funded amount;
     // that leg must still clear the floor, or those tests would measure
     // min-Ada instead of value preservation.
     expect(
-      outputCborMeetsMinAdaV1(
-        makeOutput(FUNDED_OUTPUT_LOVELACE_V1 - 1n),
-        FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputCborMeetsMinAda(
+        makeOutput(FUNDED_OUTPUT_LOVELACE - 1n),
+        FUNDED_OUTPUT_LOVELACE - 1n,
       ),
     ).toBe(true);
   });
 
   it("accepts a balanced candidate and returns a deterministic UTxO patch", async () => {
     const spent = outRefFromByte(0x21);
-    const inputOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const inputOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const candidate = makePhaseBCandidate({
       arrivalSeq: 0n,
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const state = preState([[spent, inputOutput]]);
 
@@ -213,14 +213,14 @@ describe("phase B validation", () => {
       candidate.graph.produced[0][LedgerColumns.OUTREF].toString("hex");
     expect(state.has(spent.toString("hex"))).toBe(false);
     expect(
-      state.get(producedOutRef)?.equals(makeOutput(FUNDED_OUTPUT_LOVELACE_V1)),
+      state.get(producedOutRef)?.equals(makeOutput(FUNDED_OUTPUT_LOVELACE)),
     ).toBe(true);
   });
 
   it("rejects missing spend inputs before value accounting", async () => {
     const candidate = makePhaseBCandidate({
       spent: [outRefFromByte(0x22)],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
 
     const result = await runPhaseB([candidate], new Map());
@@ -232,13 +232,13 @@ describe("phase B validation", () => {
     const spent = outRefFromByte(0x23);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       omitVkeyWitness: true,
     });
 
     const result = await runPhaseB(
       [candidate],
-      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     expectSinglePhaseBRejection(result, RejectCodes.MissingRequiredWitness);
@@ -248,7 +248,7 @@ describe("phase B validation", () => {
     const spent = outRefFromByte(0x24);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
 
     const result = await runPhaseB(
@@ -280,7 +280,7 @@ describe("phase B validation", () => {
       address[0] = (address[0]! & 0xf0) | rawNibble;
       const candidate = makePhaseBCandidate({
         spent: [spent],
-        outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1, address)],
+        outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE, address)],
       });
       const rebound = {
         ...candidate,
@@ -288,7 +288,7 @@ describe("phase B validation", () => {
       };
       const result = await runPhaseB(
         [rebound],
-        preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+        preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
       );
       const rejection = expectSinglePhaseBRejection(
         result,
@@ -302,12 +302,12 @@ describe("phase B validation", () => {
     const spent = outRefFromByte(0x25);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
     });
 
     const result = await runPhaseB(
       [candidate],
-      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     expectSinglePhaseBRejection(result, RejectCodes.ValueNotPreserved);
@@ -315,11 +315,11 @@ describe("phase B validation", () => {
 
   it("burns the exact L2 fee in production value accounting and rejects fee redirection", async () => {
     const spent = outRefFromByte(0x7c);
-    const state = preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]);
+    const state = preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]);
     const exactBurn = makePhaseBCandidate({
       spent: [spent],
       fee: 1n,
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
     });
 
     const accepted = await runPhaseB([exactBurn], state);
@@ -329,7 +329,7 @@ describe("phase B validation", () => {
     const redirected = makePhaseBCandidate({
       spent: [spent],
       fee: 1n,
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const rejected = await runPhaseB([redirected], state);
     const rejection = expectSinglePhaseBRejection(
@@ -346,14 +346,14 @@ describe("phase B validation", () => {
     const spent = outRefFromByte(0x26);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       validityIntervalStart: 101n,
       validityIntervalEnd: 110n,
     });
 
     const result = await runPhaseB(
       [candidate],
-      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const rejection = expectSinglePhaseBRejection(
@@ -369,19 +369,19 @@ describe("phase B validation", () => {
     const first = makePhaseBCandidate({
       arrivalSeq: 0n,
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const second = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [spent],
       referenceInputs: [reference],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
 
     const result = await runPhaseB(
       [first, second],
       preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
         [reference, makeOutput(1n)],
       ]),
     );
@@ -397,9 +397,9 @@ describe("phase B validation", () => {
   it("requires exact material for a historical reference program", async () => {
     const spent = outRefFromByte(0x7a);
     const reference = outRefFromByte(0x7b);
-    const termPreimage = encodeMidgardCekTermNodeV1({ kind: "error" });
-    const termRoot = hashMidgardCekTermNodeV1({ kind: "error" });
-    const envelope = encodeMidgardCekProgramEnvelopeV1({
+    const termPreimage = encodeMidgardCekTermNode({ kind: "error" });
+    const termRoot = hashMidgardCekTermNode({ kind: "error" });
+    const envelope = encodeMidgardCekProgramEnvelope({
       uplcVersion: [1n, 1n, 0n],
       termRoot,
       nodeCount: 1n,
@@ -424,14 +424,14 @@ describe("phase B validation", () => {
         makePhaseBCandidate({
           spent: [spent],
           referenceInputs: [reference],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+          outputLovelace: FUNDED_OUTPUT_LOVELACE,
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
             [],
           ),
         }),
       ],
       preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
         [reference, referenceOutput],
       ]),
     );
@@ -442,14 +442,14 @@ describe("phase B validation", () => {
         makePhaseBCandidate({
           spent: [spent],
           referenceInputs: [reference],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          outputLovelace: FUNDED_OUTPUT_LOVELACE,
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
             material,
           ]),
         }),
       ],
       preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
         [reference, referenceOutput],
       ]),
     );
@@ -462,19 +462,19 @@ describe("phase B validation", () => {
         makePhaseBCandidate({
           spent: [spent],
           referenceInputs: [reference],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          outputLovelace: FUNDED_OUTPUT_LOVELACE,
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
             material,
             {
               kind: "term",
-              root: hashMidgardCekTermNodeV1(extraNode),
-              preimage: encodeMidgardCekTermNodeV1(extraNode),
+              root: hashMidgardCekTermNode(extraNode),
+              preimage: encodeMidgardCekTermNode(extraNode),
             },
           ]),
         }),
       ],
       preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
         [reference, referenceOutput],
       ]),
     );
@@ -487,19 +487,19 @@ describe("phase B validation", () => {
     const spender = makePhaseBCandidate({
       arrivalSeq: 0n,
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const referencer = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [other],
       referenceInputs: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const result = await runPhaseB(
       [spender, referencer],
       preState([
-        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
-        [other, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+        [spent, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+        [other, makeOutput(FUNDED_OUTPUT_LOVELACE)],
       ]),
     );
     expect(txIds(result.accepted)).toStrictEqual([
@@ -514,18 +514,18 @@ describe("phase B validation", () => {
     const parent = makePhaseBCandidate({
       arrivalSeq: 0n,
       spent: [parentInput],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
     });
     const parentOutputRef = parent.graph.produced[0][LedgerColumns.OUTREF];
     const child = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [parentOutputRef],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
     });
 
     const result = await runPhaseB(
       [parent, child],
-      preState([[parentInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      preState([[parentInput, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     expect(result.rejected.map((rejection) => rejection.code)).toEqual([
@@ -542,12 +542,12 @@ describe("phase B validation", () => {
     const first = makePhaseBCandidate({
       arrivalSeq: 0n,
       spent: [outRefFromByte(0x2c)],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const second = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [first.graph.produced[0][LedgerColumns.OUTREF]],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     const firstDependsOnSecond = {
       ...first,
@@ -572,7 +572,7 @@ describe("phase B validation", () => {
     const spent = outRefFromByte(0x2a);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       scriptLanguages: ["PlutusV3"],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         { tag: MidgardRedeemerTag.Mint, index: 0n },
@@ -581,7 +581,7 @@ describe("phase B validation", () => {
 
     const result = await runPhaseB(
       [candidate],
-      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const rejection = expectSinglePhaseBRejection(
@@ -597,10 +597,8 @@ describe("phase B validation", () => {
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputs: [
-        makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE_V1),
-      ],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputs: [makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE)],
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       scriptWitnesses: [script],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         { tag: MidgardRedeemerTag.Receiving, index: 0n },
@@ -610,7 +608,7 @@ describe("phase B validation", () => {
 
     const result = await runPhaseB(
       [candidate],
-      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const rejection = expectSinglePhaseBRejection(
@@ -628,7 +626,7 @@ describe("phase B validation", () => {
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       scriptWitnesses: [script],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         { tag: MidgardRedeemerTag.Spend, index: 0n },
@@ -639,10 +637,7 @@ describe("phase B validation", () => {
     const result = await runPhaseB(
       [candidate],
       preState([
-        [
-          spent,
-          makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE_V1),
-        ],
+        [spent, makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE)],
       ]),
       {
         ...phaseBConfig,
@@ -661,7 +656,7 @@ describe("phase B validation", () => {
 
   it("executes V1 envelopes through the authenticated CEK graph", async () => {
     const spent = outRefFromByte(0x6d);
-    const program = buildMidgardCanonicalCekProgramV1(
+    const program = buildMidgardCanonicalCekProgram(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
@@ -672,23 +667,20 @@ describe("phase B validation", () => {
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       scriptWitnesses: [script],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         { tag: MidgardRedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
         ...program.material.values(),
       ]),
     });
     const result = await runPhaseB(
       [candidate],
       preState([
-        [
-          spent,
-          makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE_V1),
-        ],
+        [spent, makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE)],
       ]),
     );
     expect(result.rejected).toHaveLength(0);
@@ -700,7 +692,7 @@ describe("phase B validation", () => {
     const selfApplication = new Lambda(
       new Application(new UPLCVar(0), new UPLCVar(0)),
     );
-    const program = buildMidgardCanonicalCekProgramV1(
+    const program = buildMidgardCanonicalCekProgram(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram(
@@ -714,7 +706,7 @@ describe("phase B validation", () => {
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       scriptWitnesses: [script],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         {
@@ -724,7 +716,7 @@ describe("phase B validation", () => {
         },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
         ...program.material.values(),
       ]),
     });
@@ -732,10 +724,7 @@ describe("phase B validation", () => {
     const result = await runPhaseB(
       [candidate],
       preState([
-        [
-          spent,
-          makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE_V1),
-        ],
+        [spent, makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE)],
       ]),
     );
 
@@ -753,7 +742,7 @@ describe("phase B validation", () => {
     const scriptHash = hashScriptWitness(script);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
       scriptWitnesses: [script],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         { tag: MidgardRedeemerTag.Spend, index: 0n },
@@ -766,7 +755,7 @@ describe("phase B validation", () => {
         preState([
           [
             spent,
-            makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE_V1),
+            makeProtectedScriptOutput(scriptHash, FUNDED_OUTPUT_LOVELACE),
           ],
         ]),
         {

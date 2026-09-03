@@ -12,19 +12,19 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
 import {
-  requireNetworkIdReferenceScriptV1,
-  requireNetworkIdThreadUtxoV1,
+  requireNetworkIdReferenceScript,
+  requireNetworkIdThreadUtxo,
 } from "./submit-common-v1.js";
-import type { PreparedNetworkIdWrongfulRejectionV1 } from "./wrongful-rejection-v1.js";
+import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection-v1.js";
 
-export const submitNetworkIdForcedStep01V1 = async ({
+export const submitNetworkIdForcedStep01 = async ({
   lucid,
   contracts,
   categoryId,
@@ -36,18 +36,18 @@ export const submitNetworkIdForcedStep01V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedNetworkIdWrongfulRejectionV1;
+  readonly prepared: PreparedNetworkIdWrongfulRejection;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId)
     throw new Error("networkId: forced evidence targets another deployment");
-  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -56,7 +56,7 @@ export const submitNetworkIdForcedStep01V1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireNetworkIdReferenceScriptV1({
+  const stepReference = requireNetworkIdReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -102,7 +102,7 @@ export const submitNetworkIdForcedStep01V1 = async ({
       NetworkIdStep01SpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

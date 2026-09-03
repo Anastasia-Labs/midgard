@@ -7,7 +7,7 @@ import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
-  WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
+  WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -28,17 +28,17 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   WITHDRAWAL_MISTAG_CATEGORY_LABEL,
-  type WithdrawalMistagContractsV1,
+  type WithdrawalMistagContracts,
 } from "./contracts-v1.js";
 import {
-  requireWithdrawalMistagReferenceScriptV1,
+  requireWithdrawalMistagReferenceScript,
   withdrawalMistagError,
-  withdrawalMistagStepLabelV1,
+  withdrawalMistagStepLabel,
 } from "./submit-common-v1.js";
 
 const CancelSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -46,7 +46,7 @@ type StepIndex = 0 | 1 | 2 | 3 | 4;
 
 const locate = (
   utxo: UTxO,
-  contracts: WithdrawalMistagContractsV1,
+  contracts: WithdrawalMistagContracts,
 ): StepIndex => {
   for (const index of [0, 1, 2, 3, 4] as const) {
     if (utxo.address === contracts.steps[index].spendingScriptAddress)
@@ -67,12 +67,12 @@ export const submitWithdrawalMistagCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawalMistagContractsV1;
+  readonly contracts: WithdrawalMistagContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }) => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -84,7 +84,7 @@ export const submitWithdrawalMistagCancel = async ({
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
+    categoryId: WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID,
     categoryLabel: WITHDRAWAL_MISTAG_CATEGORY_LABEL,
   });
   if (threadUtxo.datum == null)
@@ -103,7 +103,7 @@ export const submitWithdrawalMistagCancel = async ({
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,
-      `${withdrawalMistagStepLabelV1(stepIndex)} cancel`,
+      `${withdrawalMistagStepLabel(stepIndex)} cancel`,
     );
     inputIndex = requireInputIndex(ctx, threadUtxo, "withdrawal-mistag cancel");
     mintIndex = requireMintRedeemerIndex(
@@ -138,13 +138,13 @@ export const submitWithdrawalMistagCancel = async ({
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "withdrawal-mistag cancel computation-thread mint",
   });
   const referenceInputs = [
-    requireWithdrawalMistagReferenceScriptV1({
+    requireWithdrawalMistagReferenceScript({
       utxo: referenceScriptUtxo,
       contracts,
       stepIndex,

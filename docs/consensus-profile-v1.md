@@ -281,7 +281,7 @@ without bisection. Otherwise:
 An invalid move, an unavailable node, or a missed response deadline loses.
 Timeout branches are explicit validator transitions, not watcher policy.
 The stateful `validation-trace/dispute-v1` computation-thread validator binds
-the opening claim to an authentic `HeaderV1`, the challenged header hash, and
+the opening claim to an authentic `Header`, the challenged header hash, and
 the block operator key. Operator midpoint moves require that operator's
 signature; challenger moves require the fraud prover's signature. Every move
 reproduces the same computation-thread NFT and exact dispute datum. The final

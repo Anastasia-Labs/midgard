@@ -64,7 +64,7 @@ import {
 } from "./native.js";
 
 /** Normative violation identifier (§9.1 output 1). */
-export const FABRICATED_WITHDRAWAL_VIOLATION_ID_V1 =
+export const FABRICATED_WITHDRAWAL_VIOLATION_ID =
   "fabricated-withdrawal" as const;
 
 /**
@@ -76,7 +76,7 @@ export const FABRICATED_WITHDRAWAL_VIOLATION_ID_V1 =
  * `fabricatedWithdrawal` is fixed at index 12, after `fabricatedDeposit`, and
  * is the byte twin of `step_01.fabricated_withdrawal_fraud_category_id` in Aiken.
  */
-export const FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1 =
+export const FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fabricatedWithdrawal;
 
 /**
@@ -97,10 +97,10 @@ export type FabricatedWithdrawalChallengedHeaderHash = Data.Static<
  * A fabricated-withdrawal computation-thread token's asset name: this family's
  * category id followed by the challenged header hash.
  */
-export const fabricatedWithdrawalThreadTokenAssetNameV1 = (
+export const fabricatedWithdrawalThreadTokenAssetName = (
   challengedHeaderHash: FabricatedWithdrawalChallengedHeaderHash,
 ): string =>
-  `${FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1}${challengedHeaderHash}`;
+  `${FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID}${challengedHeaderHash}`;
 
 // ## Step 01 — committed withdrawal-source membership
 
@@ -108,9 +108,9 @@ export const fabricatedWithdrawalThreadTokenAssetNameV1 = (
  * Membership witness for one `(WithdrawalId, WithdrawalInfo)` leaf of
  * `withdrawals_root`.
  */
-export const CommittedWithdrawalSourceProofV1Schema =
+export const CommittedWithdrawalSourceProofSchema =
   WithdrawalSourceMembershipProofSchema;
-export type CommittedWithdrawalSourceProofV1 = RootMembershipProof<
+export type CommittedWithdrawalSourceProof = RootMembershipProof<
   OutputReference,
   WithdrawalInfo
 >;
@@ -134,7 +134,7 @@ export const FabricatedWithdrawalStep01ArgsSchema = Data.Object({
   /** Reference-input index of the challenged block's state-queue node. */
   state_queue_node_ref_input_index: Data.Integer(),
   /** The committed withdrawal leaf this thread challenges. */
-  committed_withdrawal: CommittedWithdrawalSourceProofV1Schema,
+  committed_withdrawal: CommittedWithdrawalSourceProofSchema,
 });
 export type FabricatedWithdrawalStep01Args = Data.Static<
   typeof FabricatedWithdrawalStep01ArgsSchema
@@ -180,7 +180,7 @@ export const FabricatedWithdrawalStep02Datum =
   FabricatedWithdrawalStep02DatumSchema as unknown as FabricatedWithdrawalStep02Datum;
 
 /** The prover's chosen L1 witness about the committed withdrawal identity. */
-export const FabricatedWithdrawalEvidenceV1Schema = Data.Enum([
+export const FabricatedWithdrawalEvidenceSchema = Data.Enum([
   Data.Object({
     AbsentWithdrawalIdentity: Data.Object({
       unspent_ref_input_index: Data.Integer(),
@@ -193,14 +193,14 @@ export const FabricatedWithdrawalEvidenceV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedWithdrawalEvidenceV1 = Data.Static<
-  typeof FabricatedWithdrawalEvidenceV1Schema
+export type FabricatedWithdrawalEvidence = Data.Static<
+  typeof FabricatedWithdrawalEvidenceSchema
 >;
-export const FabricatedWithdrawalEvidenceV1 =
-  FabricatedWithdrawalEvidenceV1Schema as unknown as FabricatedWithdrawalEvidenceV1;
+export const FabricatedWithdrawalEvidence =
+  FabricatedWithdrawalEvidenceSchema as unknown as FabricatedWithdrawalEvidence;
 
 /** What L1 says about the committed identity, once authenticated. */
-export const FabricatedWithdrawalEvidenceVerdictV1Schema = Data.Enum([
+export const FabricatedWithdrawalEvidenceVerdictSchema = Data.Enum([
   Data.Literal("WithdrawalIdentityAbsent"),
   Data.Object({
     WithdrawalEventObserved: Data.Object({
@@ -209,11 +209,11 @@ export const FabricatedWithdrawalEvidenceVerdictV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedWithdrawalEvidenceVerdictV1 = Data.Static<
-  typeof FabricatedWithdrawalEvidenceVerdictV1Schema
+export type FabricatedWithdrawalEvidenceVerdict = Data.Static<
+  typeof FabricatedWithdrawalEvidenceVerdictSchema
 >;
-export const FabricatedWithdrawalEvidenceVerdictV1 =
-  FabricatedWithdrawalEvidenceVerdictV1Schema as unknown as FabricatedWithdrawalEvidenceVerdictV1;
+export const FabricatedWithdrawalEvidenceVerdict =
+  FabricatedWithdrawalEvidenceVerdictSchema as unknown as FabricatedWithdrawalEvidenceVerdict;
 
 export const FabricatedWithdrawalStep02ArgsSchema = Data.Object({
   /** Own input index. */
@@ -221,7 +221,7 @@ export const FabricatedWithdrawalStep02ArgsSchema = Data.Object({
   /** Produced output index. */
   output_index: Data.Integer(),
   /** The prover's chosen L1 witness. */
-  evidence: FabricatedWithdrawalEvidenceV1Schema,
+  evidence: FabricatedWithdrawalEvidenceSchema,
 });
 export type FabricatedWithdrawalStep02Args = Data.Static<
   typeof FabricatedWithdrawalStep02ArgsSchema
@@ -251,7 +251,7 @@ export const FabricatedWithdrawalStep03StateSchema = Data.Object({
   /** Blake2b-256 of the committed `WithdrawalInfo`'s canonical bytes. */
   committed_withdrawal_info_hash: H32Schema,
   /** The authenticated verdict about L1. */
-  verdict: FabricatedWithdrawalEvidenceVerdictV1Schema,
+  verdict: FabricatedWithdrawalEvidenceVerdictSchema,
 });
 export type FabricatedWithdrawalStep03State = Data.Static<
   typeof FabricatedWithdrawalStep03StateSchema
@@ -277,7 +277,7 @@ export const FabricatedWithdrawalStep03Datum =
  * means a builder cannot assemble an opening the L1 step would reject at decode
  * time.
  */
-export const FabricatedWithdrawalAuthenticContentOpeningV1Schema = Data.Enum([
+export const FabricatedWithdrawalAuthenticContentOpeningSchema = Data.Enum([
   Data.Literal("NoAuthenticContent"),
   Data.Object({
     RetainedEventDatum: Data.Object({
@@ -285,11 +285,11 @@ export const FabricatedWithdrawalAuthenticContentOpeningV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedWithdrawalAuthenticContentOpeningV1 = Data.Static<
-  typeof FabricatedWithdrawalAuthenticContentOpeningV1Schema
+export type FabricatedWithdrawalAuthenticContentOpening = Data.Static<
+  typeof FabricatedWithdrawalAuthenticContentOpeningSchema
 >;
-export const FabricatedWithdrawalAuthenticContentOpeningV1 =
-  FabricatedWithdrawalAuthenticContentOpeningV1Schema as unknown as FabricatedWithdrawalAuthenticContentOpeningV1;
+export const FabricatedWithdrawalAuthenticContentOpening =
+  FabricatedWithdrawalAuthenticContentOpeningSchema as unknown as FabricatedWithdrawalAuthenticContentOpening;
 
 export const FabricatedWithdrawalStep03ArgsSchema = Data.Object({
   /** Own input index. */
@@ -297,7 +297,7 @@ export const FabricatedWithdrawalStep03ArgsSchema = Data.Object({
   /** Produced output index. */
   output_index: Data.Integer(),
   /** The prover's opening of step-02's retained commitment. */
-  authentic_content: FabricatedWithdrawalAuthenticContentOpeningV1Schema,
+  authentic_content: FabricatedWithdrawalAuthenticContentOpeningSchema,
 });
 export type FabricatedWithdrawalStep03Args = Data.Static<
   typeof FabricatedWithdrawalStep03ArgsSchema
@@ -316,7 +316,7 @@ export const FabricatedWithdrawalStep03SpendRedeemer =
 // ## Step 04 — the established fault
 
 /** The `FabricatedWithdrawal` violation, in its two shapes. */
-export const FabricatedWithdrawalFaultV1Schema = Data.Enum([
+export const FabricatedWithdrawalFaultSchema = Data.Enum([
   Data.Literal("NonexistentWithdrawalIdentity"),
   Data.Object({
     MismatchedWithdrawalContent: Data.Object({
@@ -326,11 +326,11 @@ export const FabricatedWithdrawalFaultV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedWithdrawalFaultV1 = Data.Static<
-  typeof FabricatedWithdrawalFaultV1Schema
+export type FabricatedWithdrawalFault = Data.Static<
+  typeof FabricatedWithdrawalFaultSchema
 >;
-export const FabricatedWithdrawalFaultV1 =
-  FabricatedWithdrawalFaultV1Schema as unknown as FabricatedWithdrawalFaultV1;
+export const FabricatedWithdrawalFault =
+  FabricatedWithdrawalFaultSchema as unknown as FabricatedWithdrawalFault;
 
 export const FabricatedWithdrawalStep04StateSchema = Data.Object({
   /** 28-byte hash of the challenged block header. */
@@ -342,7 +342,7 @@ export const FabricatedWithdrawalStep04StateSchema = Data.Object({
   /** The committed withdrawal identity — an L1 output reference. */
   committed_withdrawal_id: OutputReferenceSchema,
   /** The classified fault. */
-  fault: FabricatedWithdrawalFaultV1Schema,
+  fault: FabricatedWithdrawalFaultSchema,
 });
 export type FabricatedWithdrawalStep04State = Data.Static<
   typeof FabricatedWithdrawalStep04StateSchema
@@ -383,21 +383,21 @@ export const FabricatedWithdrawalStep04SpendRedeemer =
 
 // ## Step resolver
 
-export const FABRICATED_WITHDRAWAL_STEP_NAMES_V1 = [
+export const FABRICATED_WITHDRAWAL_STEP_NAMES = [
   "step_01",
   "step_02",
   "step_03",
   "step_04",
 ] as const;
-export type FabricatedWithdrawalStepNameV1 =
-  (typeof FABRICATED_WITHDRAWAL_STEP_NAMES_V1)[number];
+export type FabricatedWithdrawalStepName =
+  (typeof FABRICATED_WITHDRAWAL_STEP_NAMES)[number];
 
 /**
  * Explicit, exhaustive step-datum resolver. There is no fallback branch: adding a
  * step without adding its schema fails to compile.
  */
-export const fabricatedWithdrawalStepDatumSchemaV1 = (
-  step: FabricatedWithdrawalStepNameV1,
+export const fabricatedWithdrawalStepDatumSchema = (
+  step: FabricatedWithdrawalStepName,
 ) => {
   switch (step) {
     case "step_01":
@@ -418,17 +418,17 @@ export const fabricatedWithdrawalStepDatumSchemaV1 = (
 // versus definite Plutus maps.
 
 /** The canonical bytes of a committed withdrawal leaf's MPF key. */
-export const committedWithdrawalKeyBytesV1 = (
+export const committedWithdrawalKeyBytes = (
   withdrawalId: OutputReference,
 ): string =>
   aikenSerialisedPlutusDataCbor(Data.to(withdrawalId, OutputReference));
 
 /** The canonical bytes of a committed withdrawal leaf's MPF value. */
-export const committedWithdrawalValueBytesV1 = (info: WithdrawalInfo): string =>
+export const committedWithdrawalValueBytes = (info: WithdrawalInfo): string =>
   aikenSerialisedPlutusDataCbor(Data.to(info, WithdrawalInfo));
 
 /** The canonical bytes of a withdrawal event's datum. */
-export const withdrawalEventDatumBytesV1 = (
+export const withdrawalEventDatumBytes = (
   datum: WithdrawalOrderDatum,
 ): string =>
   aikenSerialisedPlutusDataCbor(Data.to(datum, WithdrawalOrderDatum));
@@ -442,19 +442,19 @@ export const withdrawalEventDatumBytesV1 = (
  * `utils.serialise_and_hash_32`. One inequality between two of these settles body,
  * signature and validity fidelity at once.
  */
-export const withdrawalInfoCommitmentV1 = (
+export const withdrawalInfoCommitment = (
   info: WithdrawalInfo,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(committedWithdrawalValueBytesV1(info), 32);
+  hashHexWithBlake2b(committedWithdrawalValueBytes(info), 32);
 
 /**
  * Blake2b-256 of a withdrawal event datum's canonical bytes — step-02's retained
  * commitment, whose preimage step-03 re-opens after the event NFT is burned.
  */
-export const withdrawalEventDatumCommitmentV1 = (
+export const withdrawalEventDatumCommitment = (
   datum: WithdrawalOrderDatum,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(withdrawalEventDatumBytesV1(datum), 32);
+  hashHexWithBlake2b(withdrawalEventDatumBytes(datum), 32);
 
 /**
  * The withdrawal event NFT asset name for a committed identity: Blake2b-256 of
@@ -462,10 +462,10 @@ export const withdrawalEventDatumCommitmentV1 = (
  * and the reason a still-unspent output at that reference proves no such event was
  * ever authenticated.
  */
-export const withdrawalEventNonceV1 = (
+export const withdrawalEventNonce = (
   withdrawalId: OutputReference,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(committedWithdrawalKeyBytesV1(withdrawalId), 32);
+  hashHexWithBlake2b(committedWithdrawalKeyBytes(withdrawalId), 32);
 
 // ## Handoffs
 
@@ -474,7 +474,7 @@ export const withdrawalEventNonceV1 = (
  * the committed leaf the membership witness opens. Twin of the step-01 validator's
  * `expected_output_state`.
  */
-export const fabricatedWithdrawalStep02StateV1 = ({
+export const fabricatedWithdrawalStep02State = ({
   challengedHeaderHash,
   headerStartTime,
   headerEndTime,
@@ -483,10 +483,10 @@ export const fabricatedWithdrawalStep02StateV1 = ({
   readonly challengedHeaderHash: FabricatedWithdrawalChallengedHeaderHash;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
-  readonly committedWithdrawal: CommittedWithdrawalSourceProofV1;
+  readonly committedWithdrawal: CommittedWithdrawalSourceProof;
 }): Effect.Effect<FabricatedWithdrawalStep02State, HashingError> =>
   Effect.map(
-    withdrawalInfoCommitmentV1(committedWithdrawal.value),
+    withdrawalInfoCommitment(committedWithdrawal.value),
     (committed_withdrawal_info_hash) => ({
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
@@ -497,9 +497,9 @@ export const fabricatedWithdrawalStep02StateV1 = ({
   );
 
 /** The step-02 → step-03 handoff: the same facts plus the authenticated verdict. */
-export const fabricatedWithdrawalStep03StateV1 = (
+export const fabricatedWithdrawalStep03State = (
   state: FabricatedWithdrawalStep02State,
-  verdict: FabricatedWithdrawalEvidenceVerdictV1,
+  verdict: FabricatedWithdrawalEvidenceVerdict,
 ): FabricatedWithdrawalStep03State => ({
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
@@ -510,9 +510,9 @@ export const fabricatedWithdrawalStep03StateV1 = (
 });
 
 /** The step-03 → step-04 handoff: the classified fault replaces the verdict. */
-export const fabricatedWithdrawalStep04StateV1 = (
+export const fabricatedWithdrawalStep04State = (
   state: FabricatedWithdrawalStep03State,
-  fault: FabricatedWithdrawalFaultV1,
+  fault: FabricatedWithdrawalFault,
 ): FabricatedWithdrawalStep04State => ({
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
@@ -529,7 +529,7 @@ export const fabricatedWithdrawalStep04StateV1 = (
  * content commitments differ *and* the authentic event was due for the challenged
  * block (`start_time < inclusion_time <= end_time`).
  */
-export const isFabricatedWithdrawalFaultV1 = (
+export const isFabricatedWithdrawalFault = (
   state: FabricatedWithdrawalStep04State,
 ): boolean => {
   const { fault } = state;
@@ -553,7 +553,7 @@ export const isFabricatedWithdrawalFaultV1 = (
  * root and cardinality. Re-exported through the family so a builder never
  * re-derives the counted-root tag itself.
  */
-export type FabricatedWithdrawalCountedRootInputV1 = {
+export type FabricatedWithdrawalCountedRootInput = {
   readonly phasRoot: MerkleRoot;
   readonly count: bigint;
 };

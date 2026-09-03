@@ -1,10 +1,10 @@
 /** Bind a committed field, adjudicate its envelope, and forward the verdict. */
-import { planMidgardFieldCarriageV1 } from "@al-ft/midgard-core";
+import { planMidgardFieldCarriage } from "@al-ft/midgard-core";
 import {
   CanonicalDecodabilityStep01SpendRedeemer,
   CanonicalDecodabilityStep02Datum,
   commitCountedRootProgram,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   type NativeTxInclusionCarriage,
@@ -29,12 +29,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { faultProofRawFieldCarriageV1 } from "../field-opening-v1.js";
+import { faultProofRawFieldCarriage } from "../field-opening-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -58,24 +58,24 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { CanonicalDecodabilityContractsV1 } from "./contracts-v1.js";
-import { prepareCanonicalDecodabilityV1 } from "./prepare-canonical-decodability-v1.js";
+import type { CanonicalDecodabilityContracts } from "./contracts-v1.js";
+import { prepareCanonicalDecodability } from "./prepare-canonical-decodability-v1.js";
 import {
-  canonicalDecodabilityStepLabelV1,
+  canonicalDecodabilityStepLabel,
   canonicalDecodabilitySubmitError,
-  requireCanonicalDecodabilityReferenceScriptV1,
-  requireCanonicalDecodabilityThreadUtxoV1,
+  requireCanonicalDecodabilityReferenceScript,
+  requireCanonicalDecodabilityThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = canonicalDecodabilityStepLabelV1(0);
+const STEP_LABEL = canonicalDecodabilityStepLabel(0);
 
 export type SubmitCanonicalDecodabilityStep01Result = {
   readonly txHash: string;
@@ -120,7 +120,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -130,7 +130,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
   readonly fieldIndex: number;
   readonly committedPreimage: Uint8Array;
   readonly witnessSet?: NativeTxWitnessSetCompact;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** Authenticated §8.7 raw field publications, in deterministic plan order. */
   readonly publishedFieldCarriageUtxos?: readonly UTxO[];
   /** Authenticated §8.6 certificate for a tier-3 malformed field. */
@@ -139,12 +139,12 @@ export const submitCanonicalDecodabilityStep01 = async ({
   /** Published step-01 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep01Result> => {
   const { threadUtxo, threadToken } =
-    await requireCanonicalDecodabilityThreadUtxoV1({
+    await requireCanonicalDecodabilityThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -153,7 +153,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
     });
   requireInitialStepDatum({ threadUtxo, signer });
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const stepReference = requireCanonicalDecodabilityReferenceScriptV1({
+  const stepReference = requireCanonicalDecodabilityReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -187,7 +187,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
   const countedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
@@ -225,17 +225,17 @@ export const submitCanonicalDecodabilityStep01 = async ({
     chunkedVerifyScript,
   );
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: `${STEP_LABEL} chunked verify`,
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS membership`,
       });
-  const fieldPlan = planMidgardFieldCarriageV1({
+  const fieldPlan = planMidgardFieldCarriage({
     owner: Buffer.from(signer.paymentKeyHash, "hex"),
     txId: Buffer.from(txInclusion.nativeTxId, "hex"),
     fieldIndex,
@@ -276,13 +276,13 @@ export const submitCanonicalDecodabilityStep01 = async ({
     chunks,
     label: STEP_LABEL,
   });
-  const prepared = prepareCanonicalDecodabilityV1({
+  const prepared = prepareCanonicalDecodability({
     badTxId: txInclusion.nativeTxId,
     nativeTxCompactCbor: txInclusion.nativeTxCompactCbor,
     fieldIndex,
     committedPreimage,
     ...(witnessSet === undefined ? {} : { witnessSet }),
-    carriage: faultProofRawFieldCarriageV1({
+    carriage: faultProofRawFieldCarriage({
       plan: fieldPlan,
       referenceInputs,
       ...(fieldCertificatePolicyId === undefined
@@ -408,9 +408,9 @@ export const submitCanonicalDecodabilityStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

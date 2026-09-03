@@ -2,7 +2,7 @@ import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Ledger from "../src/database/utils/ledger.js";
-import { resolveWithdrawalLedgerOutputAtSelectedBaseV1 } from "../src/workers/utils/mpf/withdrawal-classification.js";
+import { resolveWithdrawalLedgerOutputAtSelectedBase } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 describe("withdrawal classification selected-base ledger", () => {
   it("uses the speculative base snapshot instead of stale persisted state", async () => {
@@ -11,7 +11,7 @@ describe("withdrawal classification selected-base ledger", () => {
     let persistedRead = false;
 
     const output = await Effect.runPromise(
-      resolveWithdrawalLedgerOutputAtSelectedBaseV1({
+      resolveWithdrawalLedgerOutputAtSelectedBase({
         ledgerOutRef: outRef,
         deferDatabaseWrites: true,
         initialLedgerEntries: [
@@ -35,7 +35,7 @@ describe("withdrawal classification selected-base ledger", () => {
     let persistedRead = false;
     const result = await Effect.runPromise(
       Effect.either(
-        resolveWithdrawalLedgerOutputAtSelectedBaseV1({
+        resolveWithdrawalLedgerOutputAtSelectedBase({
           ledgerOutRef: Buffer.from("aa", "hex"),
           deferDatabaseWrites: true,
           initialLedgerEntries: undefined,
@@ -56,7 +56,7 @@ describe("withdrawal classification selected-base ledger", () => {
     const persistedOutput = Buffer.from("02", "hex");
 
     const output = await Effect.runPromise(
-      resolveWithdrawalLedgerOutputAtSelectedBaseV1({
+      resolveWithdrawalLedgerOutputAtSelectedBase({
         ledgerOutRef: Buffer.from("aa", "hex"),
         deferDatabaseWrites: false,
         initialLedgerEntries: undefined,

@@ -22,26 +22,26 @@
  * Kept in its own file so the leaked `@lucid-evolution/uplc` wasm heap stays far
  * below the ~4 GiB wasm32 ceiling; see tests/support/uplc-heap-guard.ts.
  */
-import { midgardFieldCarriageBoundsV1, outRefLabel } from "@al-ft/midgard-core";
+import { midgardFieldCarriageBounds, outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpeningV1 } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
 import {
   submitInvalidSignatureStep01,
   submitInvalidSignatureStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  buildInvalidSignatureSubjectV1,
-  INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1,
-  INVALID_SIGNATURE_FIRST_RAW_WITNESS_COUNT_V1,
-  makeInvalidSignatureEmulatorHarnessV1,
-  publishInvalidSignatureReferenceScriptsV1,
-  setupInvalidSignatureScenarioV1,
-  submitRawInvalidSignatureStep02V1,
+  buildInvalidSignatureSubject,
+  INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE,
+  INVALID_SIGNATURE_FIRST_RAW_WITNESS_COUNT,
+  makeInvalidSignatureEmulatorHarness,
+  publishInvalidSignatureReferenceScripts,
+  setupInvalidSignatureScenario,
+  submitRawInvalidSignatureStep02,
 } from "./support/invalid-signature-emulator-v1.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
@@ -49,8 +49,8 @@ import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  expectOnchainRefusalV1,
-  expectProofFitV1,
+  expectOnchainRefusal,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   network,
   publishRemovalReferenceScripts,
@@ -58,7 +58,7 @@ import {
 
 describe("invalid-signature emulator lifecycle", () => {
   it("convicts an invalid address witness end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
-    const harness = await makeInvalidSignatureEmulatorHarnessV1();
+    const harness = await makeInvalidSignatureEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -72,7 +72,7 @@ describe("invalid-signature emulator lifecycle", () => {
 
     // One committed transaction, one address witness, and that witness does not
     // sign the transaction id: the minimal violation of the rule.
-    const subject = await buildInvalidSignatureSubjectV1({
+    const subject = await buildInvalidSignatureSubject({
       accused: "invalid",
     });
     expect(subject.addrTxWits).toHaveLength(1);
@@ -89,7 +89,7 @@ describe("invalid-signature emulator lifecycle", () => {
       }),
     ).toBe(0);
 
-    const setup = await setupInvalidSignatureScenarioV1({ harness, subject });
+    const setup = await setupInvalidSignatureScenario({ harness, subject });
     await expectStateQueueHeaderOrder({
       lucid: funderLucid,
       contracts: harness.contracts,
@@ -105,7 +105,7 @@ describe("invalid-signature emulator lifecycle", () => {
         contracts: harness.contracts,
       });
     const [step01Ref, step02Ref] =
-      await publishInvalidSignatureReferenceScriptsV1({
+      await publishInvalidSignatureReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -204,7 +204,7 @@ describe("invalid-signature emulator lifecycle", () => {
     // transactions.
     expect(step02Capture.measurements).toHaveLength(1);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({ stage, measurement, maxTxExMem, maxTxExSteps });
+      expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
 
     // The permanent token is minted and the thread NFT is burned: no step
@@ -323,7 +323,7 @@ describe("invalid-signature emulator lifecycle", () => {
   }, 600_000);
 
   it("selects a tier-2 RawUtxo carriage from the committed witness count alone and still convicts", async () => {
-    const harness = await makeInvalidSignatureEmulatorHarnessV1();
+    const harness = await makeInvalidSignatureEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -337,9 +337,9 @@ describe("invalid-signature emulator lifecycle", () => {
     // 140 committed address witnesses: 139 that genuinely sign the transaction
     // id, then the one that does not. Nothing forces a tier — the §5.1 preimage
     // is 14,422 bytes and §8.4 partitions on that length alone.
-    const witnessCount = INVALID_SIGNATURE_FIRST_RAW_WITNESS_COUNT_V1;
+    const witnessCount = INVALID_SIGNATURE_FIRST_RAW_WITNESS_COUNT;
     expect(witnessCount).toBe(140);
-    const subject = await buildInvalidSignatureSubjectV1({
+    const subject = await buildInvalidSignatureSubject({
       accused: "invalid",
       decoyWitnessCount: witnessCount - 1,
       spendInputByte: "77",
@@ -358,12 +358,12 @@ describe("invalid-signature emulator lifecycle", () => {
 
     // The same plan the submitter will make, from the same inputs: the tier is
     // read off it, never passed to it.
-    const planned = planFaultProofFieldOpeningV1({
-      fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+    const planned = planFaultProofFieldOpening({
+      fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
       anchorTxId: subject.nativeTxId,
       nativeTxCompactCbor: subject.nativeTxCompactCbor,
       itemCbors: subject.addrTxWits.map(
-        SDK.encodeMidgardAddressWitnessCanonicalV1,
+        SDK.encodeMidgardAddressWitnessCanonical,
       ),
       owner: proverSigner.paymentKeyHash,
       witnessSet: subject.witnessSetCompact,
@@ -372,21 +372,21 @@ describe("invalid-signature emulator lifecycle", () => {
     });
     expect(planned.itemCount).toBe(witnessCount);
     expect(planned.preimage.length).toBeGreaterThan(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
     // …and one witness fewer would have fitted tier 1, so this is the first
     // count that crosses the bound.
     expect(
-      planned.preimage.length - INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1,
+      planned.preimage.length - INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE,
     ).toBeLessThanOrEqual(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
     expect(planned.plan.tier).toBe("RawUtxo");
     expect(planned.plan.publications).toHaveLength(1);
 
-    const setup = await setupInvalidSignatureScenarioV1({ harness, subject });
+    const setup = await setupInvalidSignatureScenario({ harness, subject });
     const [step01Ref, step02Ref] =
-      await publishInvalidSignatureReferenceScriptsV1({
+      await publishInvalidSignatureReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -496,7 +496,7 @@ describe("invalid-signature emulator lifecycle", () => {
   }, 600_000);
 
   it("refuses an attack on an honest commitment at step-02's on-chain Ed25519 check", async () => {
-    const harness = await makeInvalidSignatureEmulatorHarnessV1();
+    const harness = await makeInvalidSignatureEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -508,7 +508,7 @@ describe("invalid-signature emulator lifecycle", () => {
 
     // The committed transaction is honest: its sole address witness genuinely
     // signs the transaction id. Nothing about the block violates the rule.
-    const subject = await buildInvalidSignatureSubjectV1({
+    const subject = await buildInvalidSignatureSubject({
       accused: "honest",
       spendInputByte: "99",
       fee: 19n,
@@ -520,9 +520,9 @@ describe("invalid-signature emulator lifecycle", () => {
       }),
     ).toBe(false);
 
-    const setup = await setupInvalidSignatureScenarioV1({ harness, subject });
+    const setup = await setupInvalidSignatureScenario({ harness, subject });
     const [step01Ref, step02Ref] =
-      await publishInvalidSignatureReferenceScriptsV1({
+      await publishInvalidSignatureReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -607,8 +607,8 @@ describe("invalid-signature emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/is out of range for a 1-witness preimage/u);
 
-    const refusal = await expectOnchainRefusalV1(() =>
-      submitRawInvalidSignatureStep02V1({
+    const refusal = await expectOnchainRefusal(() =>
+      submitRawInvalidSignatureStep02({
         harness,
         deploymentInfo,
         threadOutRef,
@@ -638,7 +638,7 @@ describe("invalid-signature emulator lifecycle", () => {
     ).resolves.toHaveLength(0);
   }, 600_000);
   it("convicts through the same raw driver when the accused witness is genuinely invalid, isolating the refusal above to the signature check", async () => {
-    const harness = await makeInvalidSignatureEmulatorHarnessV1();
+    const harness = await makeInvalidSignatureEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -653,14 +653,14 @@ describe("invalid-signature emulator lifecycle", () => {
     // thing that differs, and here it genuinely fails to sign the transaction
     // id. It convicts, so nothing but `verify_ed25519_signature(...) == False`
     // can be what refused the honest commitment.
-    const subject = await buildInvalidSignatureSubjectV1({
+    const subject = await buildInvalidSignatureSubject({
       accused: "invalid",
       spendInputByte: "bb",
       fee: 23n,
     });
-    const setup = await setupInvalidSignatureScenarioV1({ harness, subject });
+    const setup = await setupInvalidSignatureScenario({ harness, subject });
     const [step01Ref, step02Ref] =
-      await publishInvalidSignatureReferenceScriptsV1({
+      await publishInvalidSignatureReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -703,7 +703,7 @@ describe("invalid-signature emulator lifecycle", () => {
       step01.secondStepAddress,
       initResult.computationThreadUnit,
     );
-    const txHash = await submitRawInvalidSignatureStep02V1({
+    const txHash = await submitRawInvalidSignatureStep02({
       harness,
       deploymentInfo,
       threadOutRef: outRefLabel(secondStepUtxo),

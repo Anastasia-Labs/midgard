@@ -30,7 +30,7 @@ import {
   keyValuePhasProof,
   keyValuePhasRoot,
   keyValuePhasRootWithCount,
-  ledgerOutputToInsertBatchOpV1,
+  ledgerOutputToInsertBatchOp,
   type LedgerOverlayHandle,
   MidgardMpf,
   MpfBatchOp,
@@ -49,7 +49,7 @@ import {
 import {
   AuthenticatedPackedMpfArena,
   EventFlatMutationArena,
-  ResumedEventFlatOverlayV1,
+  ResumedEventFlatOverlay,
 } from "../src/workers/utils/mpf-event-flat.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "../src/workers/utils/mpf-flat-multiproof.js";
@@ -606,7 +606,7 @@ describe("Midgard MPF wrapper", () => {
       );
       const removedStaleEntry = yield* mpf.get(key3);
       const hydratedDescriptor = yield* mpf.get(firstOutRef);
-      const expectedDescriptor = ledgerOutputToInsertBatchOpV1({
+      const expectedDescriptor = ledgerOutputToInsertBatchOp({
         outRef: firstOutRef,
         outputCbor,
       }).value;
@@ -2215,19 +2215,19 @@ describe("Midgard MPF wrapper", () => {
         );
         expect(immutableSnapshot.rootHash()).toStrictEqual(immutableRoot);
         expect(immutableSnapshot.get(key1)).toStrictEqual(value1);
-        const parkedV1 = yield* Effect.promise(() =>
+        const parked = yield* Effect.promise(() =>
           arena.freezeParallel({
             trieName: "test-mpf-event-flat-v1",
             baseRoot: Buffer.from(artifact.baseRoot),
             shardCount: 2,
           }),
         );
-        const transferredV1 = structuredClone(parkedV1, {
+        const transferredV1 = structuredClone(parked, {
           transfer: [
-            parkedV1.baseRoot,
-            parkedV1.candidateRoot,
-            parkedV1.closureDigest,
-            ...parkedV1.shards.flatMap((shard) => [
+            parked.baseRoot,
+            parked.candidateRoot,
+            parked.closureDigest,
+            ...parked.shards.flatMap((shard) => [
               shard.nodeHashes,
               shard.nodeValues,
               shard.nodeValueOffsets,
@@ -2235,8 +2235,8 @@ describe("Midgard MPF wrapper", () => {
             ]),
           ],
         });
-        expect(parkedV1.shards[0]!.nodeValues.byteLength).toBe(0);
-        const resumedV1 = new ResumedEventFlatOverlayV1(transferredV1);
+        expect(parked.shards[0]!.nodeValues.byteLength).toBe(0);
+        const resumedV1 = new ResumedEventFlatOverlay(transferredV1);
         expect(resumedV1.rootHash()).toStrictEqual(frozen.rootHash());
         expect(resumedV1.get(key2)).toStrictEqual(value3);
         expect(resumedV1.prove(key1).verify(false)).toStrictEqual(
@@ -2244,7 +2244,7 @@ describe("Midgard MPF wrapper", () => {
         );
         const corruptedV1 = structuredClone(transferredV1);
         new Uint8Array(corruptedV1.shards[0]!.nodeValues)[0] ^= 1;
-        expect(() => new ResumedEventFlatOverlayV1(corruptedV1)).toThrow();
+        expect(() => new ResumedEventFlatOverlay(corruptedV1)).toThrow();
         yield* reference.discardBlockOverlay();
         yield* reference.close();
       }),
@@ -4076,7 +4076,7 @@ describe("Midgard MPF wrapper", () => {
             utxoPayloadAggregateFromEntries(finalEntries),
           );
 
-          const header: SDK.HeaderV1 = {
+          const header: SDK.Header = {
             prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -4103,8 +4103,8 @@ describe("Midgard MPF wrapper", () => {
             operatorVkey: "11".repeat(28),
             protocolVersion: 1n,
           };
-          const payload: SDK.DaPayloadV1 = {
-            version: SDK.DA_PAYLOAD_V1_VERSION,
+          const payload: SDK.DaPayload = {
+            version: SDK.DA_PAYLOAD_VERSION,
             block_body: {
               header_hash: "22".repeat(28),
               header,
@@ -4135,9 +4135,9 @@ describe("Midgard MPF wrapper", () => {
             },
           };
           expect(
-            SDK.daPayloadV1EncodedSizeFromUtxoAggregate(payload, actual),
+            SDK.daPayloadEncodedSizeFromUtxoAggregate(payload, actual),
             testCase.label,
-          ).toBe(SDK.encodeDaPayloadV1(payload).length);
+          ).toBe(SDK.encodeDaPayload(payload).length);
         }
       }),
   );

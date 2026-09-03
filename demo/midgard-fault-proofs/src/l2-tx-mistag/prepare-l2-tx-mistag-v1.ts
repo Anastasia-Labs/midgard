@@ -19,10 +19,10 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 
-export type PreparedL2TxMistagOutputV1 = {
+export type PreparedL2TxMistagOutput = {
   readonly headerHash: string;
   readonly txCount: number;
   readonly transactionsPhasRoot: string;
@@ -40,7 +40,7 @@ export type PreparedL2TxMistagOutputV1 = {
   };
 };
 
-export type PrepareL2TxMistagConfigV1 = {
+export type PrepareL2TxMistagConfig = {
   readonly headerHash: string;
   readonly expectedTransactionsRoot: string;
   readonly txId?: string;
@@ -48,9 +48,9 @@ export type PrepareL2TxMistagConfigV1 = {
 };
 
 const writePreparedFiles = async (
-  output: PreparedL2TxMistagOutputV1,
+  output: PreparedL2TxMistagOutput,
   outputDir: string,
-): Promise<NonNullable<PreparedL2TxMistagOutputV1["files"]>> => {
+): Promise<NonNullable<PreparedL2TxMistagOutput["files"]>> => {
   await mkdir(outputDir, { recursive: true });
   const paths = {
     txInclusionPath: join(outputDir, "tx-inclusion.json"),
@@ -72,15 +72,15 @@ const writePreparedFiles = async (
   return paths;
 };
 
-export const prepareL2TxMistagFromTransactionsV1 = async ({
+export const prepareL2TxMistagFromTransactions = async ({
   headerHash,
   transactions,
   expectedTransactionsRoot,
   txId,
   outputDir,
-}: PrepareL2TxMistagConfigV1 & {
+}: PrepareL2TxMistagConfig & {
   readonly transactions: readonly NodeTransactionPayload[];
-}): Promise<PreparedL2TxMistagOutputV1> => {
+}): Promise<PreparedL2TxMistagOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
   const normalizedExpectedRoot = parseHex(
     expectedTransactionsRoot,
@@ -111,7 +111,7 @@ export const prepareL2TxMistagFromTransactionsV1 = async ({
     );
   }
 
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,
@@ -126,7 +126,7 @@ export const prepareL2TxMistagFromTransactionsV1 = async ({
   }
   const txMembershipProofCbor = requireProof(
     trie,
-    transactionSourceTrieItemV1(selected).key,
+    transactionSourceTrieItem(selected).key,
     "l2-tx-mistag tx",
   );
   const txInclusion: PreparedTxInclusionJson = {
@@ -137,7 +137,7 @@ export const prepareL2TxMistagFromTransactionsV1 = async ({
     transactionsPhasRoot: trie.root,
     txMembershipProofCbor,
   };
-  const output: PreparedL2TxMistagOutputV1 = {
+  const output: PreparedL2TxMistagOutput = {
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     transactionsPhasRoot: trie.root,
@@ -155,25 +155,25 @@ export const prepareL2TxMistagFromTransactionsV1 = async ({
     : { ...output, files: await writePreparedFiles(output, outputDir) };
 };
 
-export const prepareL2TxMistagFromNodeV1 = async (
-  config: PrepareL2TxMistagConfigV1 & {
+export const prepareL2TxMistagFromNode = async (
+  config: PrepareL2TxMistagConfig & {
     readonly midgardNodeUrl: string;
     readonly fetchImpl?: FetchLike;
   },
-): Promise<PreparedL2TxMistagOutputV1> => {
+): Promise<PreparedL2TxMistagOutput> => {
   const headerHash = parseHex(config.headerHash, "--header-hash", 28);
   const transactions = await fetchNodeBlockTransactions({
     midgardNodeUrl: config.midgardNodeUrl,
     headerHash,
     fetchImpl: config.fetchImpl,
   });
-  return prepareL2TxMistagFromTransactionsV1({ ...config, transactions });
+  return prepareL2TxMistagFromTransactions({ ...config, transactions });
 };
 
-export const prepareL2TxMistagFromFileV1 = async (
-  config: PrepareL2TxMistagConfigV1 & { readonly transactionsPath: string },
-): Promise<PreparedL2TxMistagOutputV1> =>
-  prepareL2TxMistagFromTransactionsV1({
+export const prepareL2TxMistagFromFile = async (
+  config: PrepareL2TxMistagConfig & { readonly transactionsPath: string },
+): Promise<PreparedL2TxMistagOutput> =>
+  prepareL2TxMistagFromTransactions({
     ...config,
     transactions: await readNodeTransactionPayloadsFile(
       config.transactionsPath,

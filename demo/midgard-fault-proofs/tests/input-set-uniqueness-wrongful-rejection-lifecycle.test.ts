@@ -1,6 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  ForcedInclusionTxV1Schema,
+  ForcedInclusionTxSchema,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -10,17 +10,17 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
 import {
-  submitInputSetUniquenessCancelV1,
-  submitInputSetUniquenessForcedStep01V1,
+  submitInputSetUniquenessCancel,
+  submitInputSetUniquenessForcedStep01,
   submitInputSetUniquenessInit,
-  submitInputSetUniquenessStep03V1,
-  submitInputSetUniquenessStep04AdvanceV1,
-  submitInputSetUniquenessStep04FinalizeV1,
+  submitInputSetUniquenessStep03,
+  submitInputSetUniquenessStep04Advance,
+  submitInputSetUniquenessStep04Finalize,
 } from "../src/input-set-uniqueness/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
@@ -33,13 +33,13 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
-  buildInputSetUniquenessFixtureV1,
-  makeInputSetUniquenessEmulatorHarnessV1,
-  publishInputSetUniquenessReferenceScriptsV1,
+  buildInputSetUniquenessFixture,
+  makeInputSetUniquenessEmulatorHarness,
+  publishInputSetUniquenessReferenceScripts,
 } from "./support/input-set-uniqueness-emulator-v1.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
-  expectProofFitV1,
+  expectProofFit,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
@@ -51,7 +51,7 @@ const exerciseForcedLifecycle = async ({
   readonly referenceCount: 400 | 819;
   readonly complete: boolean;
 }) => {
-  const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+  const harness = await makeInputSetUniquenessEmulatorHarness();
   // Field 1 reaches the 32,768-byte aggregate-field bound at 819 items
   // (32,763 bytes, all three certified chunk positions). The one spend item
   // is the minimum needed to bind the cross-field accused coordinates, so
@@ -61,7 +61,7 @@ const exerciseForcedLifecycle = async ({
     tx_id: index.toString(16).padStart(64, "0"),
     output_index: 0n,
   }));
-  const fixture = await buildInputSetUniquenessFixtureV1({
+  const fixture = await buildInputSetUniquenessFixture({
     spendInputs: frontier.slice(0, 1),
     referenceInputs: frontier.slice(1),
     validity: "TxIsInvalid",
@@ -97,7 +97,7 @@ const exerciseForcedLifecycle = async ({
   } as const;
   const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
   const valueBytes = Buffer.from(
-    Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
+    Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
     "hex",
   );
   const forcedRoot = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -129,14 +129,14 @@ const exerciseForcedLifecycle = async ({
     header,
   });
   console.info("[isu-frontier] setup");
-  const references = await publishInputSetUniquenessReferenceScriptsV1({
+  const references = await publishInputSetUniquenessReferenceScripts({
     lucid: harness.funderLucid,
     contracts: harness.family,
   });
   expect(references).toHaveLength(4);
   console.info("[isu-frontier] references");
   const plan = (fieldIndex: number, itemCbors: readonly string[]) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: fixture.nativeTxId,
       nativeTxCompactCbor: fixture.nativeTxCompactCbor,
@@ -149,13 +149,13 @@ const exerciseForcedLifecycle = async ({
   expect(spendPlan.plan.tier).toBe("Inline");
   expect(referencePlan.plan.tier).toBe("Certified");
   const spendPublication = {
-    result: [] as Awaited<ReturnType<typeof publishFaultProofFieldCarriageV1>>,
+    result: [] as Awaited<ReturnType<typeof publishFaultProofFieldCarriage>>,
     measurements: [] as CompleteSignedTransactionMeasurement[],
   };
   const referencePublication = await captureEmulatorSubmission(
     harness.emulator,
     () =>
-      publishFaultProofFieldCarriageV1({
+      publishFaultProofFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: referencePlan,
@@ -183,7 +183,7 @@ const exerciseForcedLifecycle = async ({
     chunks: typeof spendPublication.result,
   ) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriageV1({
+      certifyFaultProofFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -229,7 +229,7 @@ const exerciseForcedLifecycle = async ({
   };
   const bind = async (threadOutRef: string) => {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInputSetUniquenessForcedStep01V1({
+      submitInputSetUniquenessForcedStep01({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -245,7 +245,7 @@ const exerciseForcedLifecycle = async ({
   };
   const seed = async (threadOutRef: string) => {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInputSetUniquenessStep03V1({
+      submitInputSetUniquenessStep03({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -266,7 +266,7 @@ const exerciseForcedLifecycle = async ({
   const advance = async (threadOutRef: string, cursor: number) => {
     const readingSpend = cursor < fixture.spendInputItemCbors.length;
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInputSetUniquenessStep04AdvanceV1({
+      submitInputSetUniquenessStep04Advance({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -290,7 +290,7 @@ const exerciseForcedLifecycle = async ({
   };
   const cancel = async (threadOutRef: string, stepIndex: 0 | 2 | 3) => {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInputSetUniquenessCancelV1({
+      submitInputSetUniquenessCancel({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -308,7 +308,7 @@ const exerciseForcedLifecycle = async ({
     await cancel(await bind(await initialize()), 2);
     const substitutionThread = await bind(await initialize());
     await expect(
-      submitInputSetUniquenessStep03V1({
+      submitInputSetUniquenessStep03({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -353,7 +353,7 @@ const exerciseForcedLifecycle = async ({
   if (!complete) {
     await cancel(threadOutRef, 3);
     for (const [index, measurement] of measurements.entries()) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `input-set-uniqueness-maximum-${index.toString()}`,
         measurement,
         maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,
@@ -363,7 +363,7 @@ const exerciseForcedLifecycle = async ({
     return;
   }
   const finalized = await captureEmulatorSubmission(harness.emulator, () =>
-    submitInputSetUniquenessStep04FinalizeV1({
+    submitInputSetUniquenessStep04Finalize({
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -413,7 +413,7 @@ const exerciseForcedLifecycle = async ({
   );
   measurements.push(removal.measurement);
   for (const [index, measurement] of measurements.entries()) {
-    expectProofFitV1({
+    expectProofFit({
       stage: `input-set-uniqueness-${index.toString()}`,
       measurement,
       maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,
@@ -427,7 +427,7 @@ const exerciseForcedLifecycle = async ({
     certificateReferencePublication.measurement,
   ];
   for (const [index, measurement] of supportMeasurements.entries()) {
-    expectProofFitV1({
+    expectProofFit({
       stage: `input-set-uniqueness-carriage-${index.toString()}`,
       measurement,
       maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,

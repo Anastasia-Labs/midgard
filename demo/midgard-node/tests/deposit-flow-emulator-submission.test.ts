@@ -5,7 +5,7 @@ import {
   buildUnsignedDepositTxFromFundingContextProgram,
   CML,
   configureEmulatorDaRuntimeManifest,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   DaPayloadsDB,
   Data,
   Database,
@@ -42,7 +42,7 @@ import {
   submitDepositWithDiagnostics,
   submitSignedDepositTxWithHarnessWorkaround,
   toUnit,
-  unwrapDaPayloadV1,
+  unwrapDaPayload,
   UserEventsUtils,
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
@@ -328,10 +328,10 @@ describe.sequential("deposit flow emulator", () => {
       fixture.contracts,
     );
     const latestHeader = await Effect.runPromise(
-      SDK.getHeaderV1FromStateQueueDatum(latestBlockAfterCommit.datum),
+      SDK.getHeaderFromStateQueueDatum(latestBlockAfterCommit.datum),
     );
     const latestHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeaderV1(latestHeader),
+      SDK.hashBlockHeader(latestHeader),
     );
     const daPayloadAfterRecovery = await runNodeDatabaseEffect(
       DaPayloadsDB.retrieveByHeaderHash(Buffer.from(latestHeaderHash, "hex")),
@@ -341,11 +341,11 @@ describe.sequential("deposit flow emulator", () => {
       throw new Error("Expected a DA payload row for the finalized block");
     }
     const daPayloadRow = daPayloadAfterRecovery.value;
-    const daPayloadEnvelope = await unwrapDaPayloadV1(
+    const daPayloadEnvelope = await unwrapDaPayload(
       daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR],
-      { maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes },
+      { maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
     );
-    const daPayload = SDK.decodeDaPayloadV1(daPayloadEnvelope.innerBytes);
+    const daPayload = SDK.decodeDaPayload(daPayloadEnvelope.innerBytes);
     expect(daPayload.block_body.header_hash).toEqual(latestHeaderHash);
     expect(
       daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex"),

@@ -1,14 +1,14 @@
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { unsafeCreateMeasuredProductionWorkflowRunnerForTestV1 } from "../src/workflow/production-funding-requirements-test-support-v1.js";
+import { unsafeCreateMeasuredWorkflowRunnerForTest } from "../src/workflow/production-funding-requirements-test-support-v1.js";
 import {
-  admitProductionWorkflowFundingRequirementsV1,
-  assertAdmittedProductionWorkflowFundingRequirementsV1,
-  createProductionWorkflowFundingRequirementsV1,
-  productionWorkflowFundingRequirementsForRunnerV1,
+  admitWorkflowFundingRequirements,
+  assertAdmittedWorkflowFundingRequirements,
+  createWorkflowFundingRequirements,
+  workflowFundingRequirementsForRunner,
 } from "../src/workflow/production-funding-requirements-v1.js";
-import { createAdmittedProductionWorkflowRunnerV1 } from "../src/workflow/production-runner-admission-v1.js";
+import { createAdmittedWorkflowRunner } from "../src/workflow/production-runner-admission-v1.js";
 
 const digest = "11".repeat(32);
 const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x44));
@@ -183,7 +183,7 @@ const input = () => ({
 
 describe("production workflow funding requirements V1", () => {
   it("derives exact canonical transaction/output measurements and re-admits the profile", () => {
-    const profile = createProductionWorkflowFundingRequirementsV1(input());
+    const profile = createWorkflowFundingRequirements(input());
     const transaction = CML.Transaction.from_cbor_hex(
       profile.actions[0]!.signedTransactionCborHex,
     );
@@ -198,14 +198,12 @@ describe("production workflow funding requirements V1", () => {
         transaction.body().outputs().get(outputIndex).to_canonical_cbor_hex(),
       ),
     });
-    expect(admitProductionWorkflowFundingRequirementsV1(profile)).toEqual(
-      profile,
-    );
+    expect(admitWorkflowFundingRequirements(profile)).toEqual(profile);
     expect(Object.isFrozen(profile.actions[0]!.outputCborHex)).toBe(true);
   });
 
   it("rejects digest, deployment, derived measurement, and transaction substitution", () => {
-    const profile = createProductionWorkflowFundingRequirementsV1(input());
+    const profile = createWorkflowFundingRequirements(input());
     for (const substituted of [
       { ...profile, profileDigest: "ff".repeat(32) },
       { ...profile, deploymentFingerprint: "ff".repeat(32) },
@@ -219,16 +217,14 @@ describe("production workflow funding requirements V1", () => {
         actions: [{ ...profile.actions[0]!, outputCborHex: ["80"] }],
       },
     ]) {
-      expect(() =>
-        admitProductionWorkflowFundingRequirementsV1(substituted),
-      ).toThrow();
+      expect(() => admitWorkflowFundingRequirements(substituted)).toThrow();
     }
   });
 
   it("rejects noncanonical amounts, dynamic action identities, and duplicate assets/actions", () => {
     const valid = input();
     const invoke = (actions: unknown[]) =>
-      createProductionWorkflowFundingRequirementsV1({
+      createWorkflowFundingRequirements({
         ...valid,
         actions: actions as typeof valid.actions,
       });
@@ -290,14 +286,14 @@ describe("production workflow funding requirements V1", () => {
   it("rejects malformed transaction CBOR and unknown fields", () => {
     const valid = input();
     expect(() =>
-      createProductionWorkflowFundingRequirementsV1({
+      createWorkflowFundingRequirements({
         ...valid,
         actions: [{ ...valid.actions[0]!, signedTransactionCborHex: "80" }],
       }),
     ).toThrow("not a Cardano transaction");
     expect(() =>
-      admitProductionWorkflowFundingRequirementsV1({
-        ...createProductionWorkflowFundingRequirementsV1(valid),
+      admitWorkflowFundingRequirements({
+        ...createWorkflowFundingRequirements(valid),
         callerOverride: true,
       }),
     ).toThrow("unknown or missing fields");
@@ -306,13 +302,13 @@ describe("production workflow funding requirements V1", () => {
   it("rejects omitted wallet inputs, forged custody semantics, and unbalanced funding flow", () => {
     const valid = input();
     expect(() =>
-      createProductionWorkflowFundingRequirementsV1({
+      createWorkflowFundingRequirements({
         ...valid,
         actions: [{ ...valid.actions[0]!, fundingControlledInputs: [] }],
       }),
     ).toThrow("classify every exact transaction input");
     expect(() =>
-      createProductionWorkflowFundingRequirementsV1({
+      createWorkflowFundingRequirements({
         ...valid,
         actions: [
           {
@@ -328,7 +324,7 @@ describe("production workflow funding requirements V1", () => {
       }),
     ).toThrow("semantic authority is invalid");
     expect(() =>
-      createProductionWorkflowFundingRequirementsV1({
+      createWorkflowFundingRequirements({
         ...valid,
         actions: [
           {
@@ -347,7 +343,7 @@ describe("production workflow funding requirements V1", () => {
   });
 
   it("admits the distinct authenticated Q58 availability lifecycle scope", () => {
-    const profile = createProductionWorkflowFundingRequirementsV1({
+    const profile = createWorkflowFundingRequirements({
       ...input(),
       scope: {
         kind: "da_availability_lifecycle",
@@ -358,31 +354,29 @@ describe("production workflow funding requirements V1", () => {
       kind: "da_availability_lifecycle",
       lifecycle: "challenge_response_timeout_correction",
     });
-    expect(admitProductionWorkflowFundingRequirementsV1(profile)).toEqual(
-      profile,
-    );
+    expect(admitWorkflowFundingRequirements(profile)).toEqual(profile);
   });
 
   it("returns only the exact profile bound by a fixed admitted runner factory", () => {
-    const profile = createProductionWorkflowFundingRequirementsV1(input());
-    const runner = unsafeCreateMeasuredProductionWorkflowRunnerForTestV1({
+    const profile = createWorkflowFundingRequirements(input());
+    const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
       category: "doubleSpend",
       fundingRequirements: profile,
     });
     expect(
-      productionWorkflowFundingRequirementsForRunnerV1({
+      workflowFundingRequirementsForRunner({
         category: "doubleSpend",
         runner,
       }),
     ).toBe(profile);
     expect(() =>
-      assertAdmittedProductionWorkflowFundingRequirementsV1(profile),
+      assertAdmittedWorkflowFundingRequirements(profile),
     ).not.toThrow();
     expect(() =>
-      assertAdmittedProductionWorkflowFundingRequirementsV1({ ...profile }),
+      assertAdmittedWorkflowFundingRequirements({ ...profile }),
     ).toThrow("not factory-admitted");
     expect(() =>
-      productionWorkflowFundingRequirementsForRunnerV1({
+      workflowFundingRequirementsForRunner({
         category: "minFee",
         runner,
       }),
@@ -390,12 +384,12 @@ describe("production workflow funding requirements V1", () => {
   });
 
   it("keeps unmeasured admitted runners explicitly not ready for W31", () => {
-    const runner = createAdmittedProductionWorkflowRunnerV1({
+    const runner = createAdmittedWorkflowRunner({
       category: "doubleSpend",
       runOrResume: async () => undefined,
     });
     expect(() =>
-      productionWorkflowFundingRequirementsForRunnerV1({
+      workflowFundingRequirementsForRunner({
         category: "doubleSpend",
         runner,
       }),

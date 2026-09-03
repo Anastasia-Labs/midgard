@@ -9,51 +9,51 @@
  * proof-fit test cannot be generated at all — those are `GOAL_SPEC.md` §9.1
  * outputs 4 and 5 and §3 invariant 9.
  */
-export const FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_SCHEMA_VERSION =
   "midgard-fraud-proof-family-scaffold-v1" as const;
 
-export type ScaffoldFieldTypeV1 =
+export type ScaffoldFieldType =
   | "hash32"
   | "midgard_tx_id"
   | "field_opening_v1"
   | "int"
   | "bytes";
 
-export type ScaffoldFieldV1 = {
+export type ScaffoldField = {
   readonly name: string;
-  readonly type: ScaffoldFieldTypeV1;
+  readonly type: ScaffoldFieldType;
   readonly doc: string;
 };
 
-export type ScaffoldStepV1 = {
+export type ScaffoldStep = {
   readonly index: number;
   /** Normative rule statement this step advances (§9.1 output 1). */
   readonly rule: string;
   /** `null` only for step 1, which carries no input state. */
-  readonly inputState: readonly ScaffoldFieldV1[] | null;
+  readonly inputState: readonly ScaffoldField[] | null;
   /** `null` only for the terminal step, which produces the proof token. */
-  readonly outputState: readonly ScaffoldFieldV1[] | null;
+  readonly outputState: readonly ScaffoldField[] | null;
   /**
    * Extra redeemer arguments beyond the positional indices every step carries.
    * `null` only for step 1, whose args are `NativeTxInclusionArgs`.
    */
-  readonly argsFields: readonly ScaffoldFieldV1[] | null;
+  readonly argsFields: readonly ScaffoldField[] | null;
 };
 
-export const SCAFFOLD_TEST_CLASSES_V1 = [
+export const SCAFFOLD_TEST_CLASSES = [
   "positive",
   "validBlockNegative",
   "mutation",
   "maximumFit",
 ] as const;
-export type ScaffoldTestClassV1 = (typeof SCAFFOLD_TEST_CLASSES_V1)[number];
+export type ScaffoldTestClass = (typeof SCAFFOLD_TEST_CLASSES)[number];
 
-export type ScaffoldTestsV1 = Readonly<
-  Record<ScaffoldTestClassV1, readonly string[]>
+export type ScaffoldTests = Readonly<
+  Record<ScaffoldTestClass, readonly string[]>
 >;
 
-export type FraudProofFamilyScaffoldSpecV1 = {
-  readonly schemaVersion: typeof FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_V1_SCHEMA_VERSION;
+export type FraudProofFamilyScaffoldSpec = {
+  readonly schemaVersion: typeof FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_SCHEMA_VERSION;
   /** kebab-case family identifier, e.g. `zero-input`. */
   readonly family: string;
   /** Goal task identifier that owns the closure, e.g. `Q14`. */
@@ -63,11 +63,11 @@ export type FraudProofFamilyScaffoldSpecV1 = {
   /** Catalogue category name, e.g. `zeroInput` (§9.1 output 6). */
   readonly catalogueCategory: string;
   readonly summary: string;
-  readonly steps: readonly ScaffoldStepV1[];
-  readonly tests: ScaffoldTestsV1;
+  readonly steps: readonly ScaffoldStep[];
+  readonly tests: ScaffoldTests;
 };
 
-export type FamilyScaffoldRejectionCodeV1 =
+export type FamilyScaffoldRejectionCode =
   | "not_an_object"
   | "unknown_key"
   | "missing_key"
@@ -84,11 +84,11 @@ export type FamilyScaffoldRejectionCodeV1 =
   | "empty_test_class"
   | "duplicate_test_name";
 
-export class FamilyScaffoldRejectionV1 extends Error {
-  readonly code: FamilyScaffoldRejectionCodeV1;
+export class FamilyScaffoldRejection extends Error {
+  readonly code: FamilyScaffoldRejectionCode;
   readonly path: string;
 
-  constructor(code: FamilyScaffoldRejectionCodeV1, path: string) {
+  constructor(code: FamilyScaffoldRejectionCode, path: string) {
     super(`${code}: ${path}`);
     this.name = "FamilyScaffoldRejectionV1";
     this.code = code;
@@ -96,8 +96,8 @@ export class FamilyScaffoldRejectionV1 extends Error {
   }
 }
 
-const reject = (code: FamilyScaffoldRejectionCodeV1, path: string): never => {
-  throw new FamilyScaffoldRejectionV1(code, path);
+const reject = (code: FamilyScaffoldRejectionCode, path: string): never => {
+  throw new FamilyScaffoldRejection(code, path);
 };
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/u;
@@ -105,7 +105,7 @@ const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/u;
 const CAMEL = /^[a-z][A-Za-z0-9]*$/u;
 const TASK_ID = /^Q\d{2}$/u;
 
-const FIELD_TYPES: readonly ScaffoldFieldTypeV1[] = [
+const FIELD_TYPES: readonly ScaffoldFieldType[] = [
   "hash32",
   "midgard_tx_id",
   "field_opening_v1",
@@ -162,7 +162,7 @@ const requireText = (value: unknown, path: string): string => {
   return text;
 };
 
-const parseField = (value: unknown, path: string): ScaffoldFieldV1 => {
+const parseField = (value: unknown, path: string): ScaffoldField => {
   const record = asObject(value, path);
   requireExactKeys(record, ["name", "type", "doc"], path);
   const name = requireText(record.name, `${path}.name`);
@@ -172,13 +172,13 @@ const parseField = (value: unknown, path: string): ScaffoldFieldV1 => {
   const type = record.type;
   if (
     typeof type !== "string" ||
-    !FIELD_TYPES.includes(type as ScaffoldFieldTypeV1)
+    !FIELD_TYPES.includes(type as ScaffoldFieldType)
   ) {
     reject("unknown_field_type", `${path}.type`);
   }
   return {
     name,
-    type: type as ScaffoldFieldTypeV1,
+    type: type as ScaffoldFieldType,
     doc: requireText(record.doc, `${path}.doc`),
   };
 };
@@ -186,7 +186,7 @@ const parseField = (value: unknown, path: string): ScaffoldFieldV1 => {
 const parseFields = (
   value: unknown,
   path: string,
-): readonly ScaffoldFieldV1[] | null => {
+): readonly ScaffoldField[] | null => {
   if (value === null) {
     return null;
   }
@@ -212,8 +212,8 @@ const parseFields = (
  * encoding, but do not make harmless documentation wording changes invalid.
  */
 const hasSameStateShape = (
-  left: readonly ScaffoldFieldV1[],
-  right: readonly ScaffoldFieldV1[],
+  left: readonly ScaffoldField[],
+  right: readonly ScaffoldField[],
 ): boolean =>
   left.length === right.length &&
   left.every((field, index) => {
@@ -229,7 +229,7 @@ const parseStep = (
   value: unknown,
   position: number,
   stepCount: number,
-): ScaffoldStepV1 => {
+): ScaffoldStep => {
   const path = `steps[${position.toString()}]`;
   const record = asObject(value, path);
   requireExactKeys(
@@ -279,7 +279,7 @@ const parseStep = (
 
 const parseTestClass = (
   record: Record<string, unknown>,
-  testClass: ScaffoldTestClassV1,
+  testClass: ScaffoldTestClass,
   seen: Set<string>,
 ): readonly string[] => {
   const raw = record[testClass];
@@ -299,9 +299,9 @@ const parseTestClass = (
   });
 };
 
-const parseTests = (value: unknown): ScaffoldTestsV1 => {
+const parseTests = (value: unknown): ScaffoldTests => {
   const record = asObject(value, "tests");
-  requireExactKeys(record, [...SCAFFOLD_TEST_CLASSES_V1], "tests");
+  requireExactKeys(record, [...SCAFFOLD_TEST_CLASSES], "tests");
   const seen = new Set<string>();
   // Written out one class at a time so the four mandatory §9.1/§3-invariant-9
   // test classes stay a compile-time record rather than a widened index type.
@@ -317,9 +317,9 @@ const parseTests = (value: unknown): ScaffoldTestsV1 => {
  * Strict spec parser. Every rejection is a typed code, so a family task can
  * distinguish "spec is wrong" from "generation failed".
  */
-export const parseFraudProofFamilyScaffoldSpecV1 = (
+export const parseFraudProofFamilyScaffoldSpec = (
   value: unknown,
-): FraudProofFamilyScaffoldSpecV1 => {
+): FraudProofFamilyScaffoldSpec => {
   const record = asObject(value, "spec");
   requireExactKeys(
     record,
@@ -336,7 +336,7 @@ export const parseFraudProofFamilyScaffoldSpecV1 = (
     "spec",
   );
   if (
-    record.schemaVersion !== FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_V1_SCHEMA_VERSION
+    record.schemaVersion !== FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_SCHEMA_VERSION
   ) {
     reject("invalid_schema_version", "spec.schemaVersion");
   }
@@ -379,7 +379,7 @@ export const parseFraudProofFamilyScaffoldSpecV1 = (
     }
   }
   return {
-    schemaVersion: FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_SCHEMA_VERSION,
     family,
     taskId,
     violationId: requireText(record.violationId, "spec.violationId"),
@@ -390,7 +390,7 @@ export const parseFraudProofFamilyScaffoldSpecV1 = (
   };
 };
 
-export type FamilyScaffoldNamesV1 = {
+export type FamilyScaffoldNames = {
   readonly family: string;
   /** `zero-input` -> `zero_input` */
   readonly aikenModule: string;
@@ -402,9 +402,7 @@ export type FamilyScaffoldNamesV1 = {
   readonly screamingSnake: string;
 };
 
-export const familyScaffoldNamesV1 = (
-  family: string,
-): FamilyScaffoldNamesV1 => {
+export const familyScaffoldNames = (family: string): FamilyScaffoldNames => {
   const parts = family.split("-");
   const pascal = parts
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
@@ -418,11 +416,11 @@ export const familyScaffoldNamesV1 = (
   };
 };
 
-export const stepModuleNameV1 = (index: number): string =>
+export const stepModuleName = (index: number): string =>
   `step_${index.toString().padStart(2, "0")}`;
 
-export const stepFileNameV1 = (index: number): string =>
+export const stepFileName = (index: number): string =>
   `step-${index.toString().padStart(2, "0")}`;
 
-export const stepPascalNameV1 = (index: number): string =>
+export const stepPascalName = (index: number): string =>
   `Step${index.toString().padStart(2, "0")}`;

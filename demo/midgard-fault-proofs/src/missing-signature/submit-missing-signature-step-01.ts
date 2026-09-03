@@ -24,7 +24,7 @@ import {
   MissingSignatureStep01SpendRedeemer,
   MissingSignatureStep02Datum,
   type MissingSignatureStep02State,
-  missingSignatureStep02StateFromVerifiedTxV1,
+  missingSignatureStep02StateFromVerifiedTx,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -63,26 +63,26 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
-  type MissingSignatureContractsV1,
+  type MissingSignatureContracts,
 } from "./contracts-v1.js";
 import {
-  missingSignatureStepLabelV1,
+  missingSignatureStepLabel,
   missingSignatureSubmitError,
-  requireMissingSignatureReferenceScriptV1,
-  requireMissingSignatureThreadUtxoV1,
+  requireMissingSignatureReferenceScript,
+  requireMissingSignatureThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = missingSignatureStepLabelV1(0);
+const STEP_LABEL = missingSignatureStepLabel(0);
 
 export type SubmitMissingSignatureStep01Result = {
   readonly txHash: string;
@@ -132,7 +132,7 @@ export const submitMissingSignatureStep01 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -141,19 +141,17 @@ export const submitMissingSignatureStep01 = async ({
   /** §2.3: the published step-01 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep01Result> => {
-  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
-    {
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 0,
-      threadOutRef,
-    },
-  );
+  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 0,
+    threadOutRef,
+  });
   requireInitialStepDatum({ threadUtxo, signer });
 
   const [hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
@@ -188,7 +186,7 @@ export const submitMissingSignatureStep01 = async ({
   requireNativeTxMatchesCompactCbor(txInclusion);
   const verifiedWitnessSetHash = txInclusion.nativeTx.witness_set_hash;
   const step02State: MissingSignatureStep02State =
-    missingSignatureStep02StateFromVerifiedTxV1({
+    missingSignatureStep02StateFromVerifiedTx({
       verifiedTxId: txInclusion.nativeTxId,
       verifiedWitnessSetHash,
     });
@@ -203,7 +201,7 @@ export const submitMissingSignatureStep01 = async ({
     network,
     phasMembershipScript,
   );
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${STEP_LABEL} PHAS membership`,
@@ -211,7 +209,7 @@ export const submitMissingSignatureStep01 = async ({
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
-    requireMissingSignatureReferenceScriptV1({
+    requireMissingSignatureReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[0].spendingScriptHash,
       stepIndex: 0,
@@ -308,9 +306,9 @@ export const submitMissingSignatureStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -1,26 +1,26 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { UnusedScriptWitnessContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { UnusedScriptWitnessContracts } from "./contracts-v1.js";
 import {
-  unusedScriptWitnessEvidenceClosesV1,
-  type UnusedScriptWitnessEvidenceV1,
+  type UnusedScriptWitnessEvidence,
+  unusedScriptWitnessEvidenceCloses,
 } from "./family-v1.js";
 import {
-  UnusedScriptDecisionV1Schema,
-  UnusedScriptStep06DatumV1Schema,
-  UnusedScriptStep06RedeemerV1Schema,
+  UnusedScriptDecisionSchema,
+  UnusedScriptStep06DatumSchema,
+  UnusedScriptStep06RedeemerSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "unused-script-witness";
-export const submitUnusedScriptWitnessStep06V1 = async ({
+export const submitUnusedScriptWitnessStep06 = async ({
   lucid,
   contracts,
   categoryId,
@@ -33,18 +33,18 @@ export const submitUnusedScriptWitnessStep06V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: UnusedScriptWitnessContractsV1;
+  contracts: UnusedScriptWitnessContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: UnusedScriptWitnessEvidenceV1;
+  evidence: UnusedScriptWitnessEvidence;
   referenceScriptUtxo: UTxO;
-  witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 5;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -52,17 +52,17 @@ export const submitUnusedScriptWitnessStep06V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof UnusedScriptDecisionV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof UnusedScriptDecisionSchema>
   >({
     threadUtxo,
     signer,
-    schema: UnusedScriptStep06DatumV1Schema as never,
+    schema: UnusedScriptStep06DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
   if (
-    !unusedScriptWitnessEvidenceClosesV1(evidence) ||
+    !unusedScriptWitnessEvidenceCloses(evidence) ||
     state.subject.transaction_id !== evidence.finding.subject.transaction_id ||
     state.script_index !== BigInt(evidence.finding.scriptIndex) ||
     state.unused !== evidence.unused
@@ -70,7 +70,7 @@ export const submitUnusedScriptWitnessStep06V1 = async ({
     throw new Error(
       `${FAMILY}: terminal state differs from retained contradiction`,
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,
@@ -80,7 +80,7 @@ export const submitUnusedScriptWitnessStep06V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: UnusedScriptStep06RedeemerV1Schema,
+    spendRedeemerSchema: UnusedScriptStep06RedeemerSchema,
     buildFamilyArgs: (layout) => ({
       input_index: layout.inputIndex,
       output_index: layout.outputIndex,

@@ -1,7 +1,7 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import {
-  assertDeploymentMarkerV1Matches,
-  makeDeploymentMarkerV1,
+  assertDeploymentMarkerMatches,
+  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { Effect } from "effect";
 
@@ -48,9 +48,9 @@ export const assertDaDeploymentIdentityCompatible = (
     });
   }
   try {
-    assertDeploymentMarkerV1Matches(
+    assertDeploymentMarkerMatches(
       contractIdentity.deploymentMarker,
-      makeDeploymentMarkerV1(daManifestId),
+      makeDeploymentMarker(daManifestId),
       "DA runtime manifest",
     );
   } catch {

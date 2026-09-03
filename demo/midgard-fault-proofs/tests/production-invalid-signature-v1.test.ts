@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { prepareInvalidSignatureFromCanonicalEvidenceV1 } from "../src/evidence/prepare-from-evidence-v1.js";
-import { classifyCanonicalBlockViolationsV1 } from "../src/workflow/classification-v1.js";
-import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
+import { prepareInvalidSignatureFromCanonicalEvidence } from "../src/evidence/prepare-from-evidence-v1.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification-v1.js";
+import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionInvalidSignatureArtifactV1,
-  prepareProductionInvalidSignatureArtifactV1,
+  admitInvalidSignatureArtifact,
+  prepareInvalidSignatureArtifact,
 } from "../src/workflow/production-invalid-signature-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const fixtureEvidence = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(61, 0n)],
         fee: 2n,
         addressWitnesses: [
@@ -30,8 +30,8 @@ const fixtureEvidence = async () => {
       }),
     ],
   });
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  return await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -45,13 +45,13 @@ describe("production invalid-signature public evidence V1", () => {
   it("replays every address witness and prepares the exact selected proof", async () => {
     const evidence = await fixtureEvidence();
     const replay =
-      await INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+      await INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     expect(replay.detections).toHaveLength(1);
     expect(replay.detections[0]).toMatchObject({
       violationId: "invalid-signature",
       position: 0n,
     });
-    const classification = await classifyCanonicalBlockViolationsV1({
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
@@ -59,7 +59,7 @@ describe("production invalid-signature public evidence V1", () => {
       decision: "fault_detected",
       category: "invalidSignature",
     });
-    const prepared = await prepareInvalidSignatureFromCanonicalEvidenceV1({
+    const prepared = await prepareInvalidSignatureFromCanonicalEvidence({
       evidence,
       txId: evidence.transactions[0]!.nodeTxId,
     });
@@ -75,21 +75,21 @@ describe("production invalid-signature public evidence V1", () => {
     ) {
       throw new Error("fixture did not select invalidSignature");
     }
-    const artifact = await prepareProductionInvalidSignatureArtifactV1({
+    const artifact = await prepareInvalidSignatureArtifact({
       evidence,
       classification,
     });
-    expect(admitProductionInvalidSignatureArtifactV1(artifact)).toMatchObject({
+    expect(admitInvalidSignatureArtifact(artifact)).toMatchObject({
       artifact,
     });
     expect(() =>
-      admitProductionInvalidSignatureArtifactV1({
+      admitInvalidSignatureArtifact({
         ...artifact,
         badWitnessIndex: 1,
       }),
     ).toThrow("does not re-derive its selected violation");
     expect(() =>
-      admitProductionInvalidSignatureArtifactV1({
+      admitInvalidSignatureArtifact({
         ...artifact,
         transactionsPhasRoot: "ff".repeat(32),
       }),
@@ -97,16 +97,16 @@ describe("production invalid-signature public evidence V1", () => {
   });
 
   it("does not report an empty address-witness set as a fault", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [outRefCbor(62, 0n)],
           fee: 2n,
         }),
       ],
     });
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(fixture),
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(fixture),
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: {
         trustClass: "public_or_permissionless_da",
@@ -115,7 +115,7 @@ describe("production invalid-signature public evidence V1", () => {
       },
     });
     expect(
-      (await INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence))
+      (await INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence))
         .detections,
     ).toEqual([]);
   });

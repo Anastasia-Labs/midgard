@@ -1,23 +1,23 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 
-export type CrossBlockDuplicateEventKindInputV1 =
+export type CrossBlockDuplicateEventKindInput =
   | "deposit"
   | "withdrawal"
   | "forced-transaction";
 
-export type PreparedCrossBlockDuplicateEventV1 = {
+export type PreparedCrossBlockDuplicateEvent = {
   readonly challengedHeaderHash: string;
   readonly settledHeaderHash: string;
-  readonly challengedEvent: SDK.CommittedDuplicateEventProofV1;
-  readonly settledEvent: SDK.CommittedDuplicateEventProofV1;
+  readonly challengedEvent: SDK.CommittedDuplicateEventProof;
+  readonly settledEvent: SDK.CommittedDuplicateEventProof;
   readonly step02State: SDK.CrossBlockDuplicateEventStep02State;
 };
 
-export type AuthenticatedSettlementEvidenceV1 = {
-  readonly observation: SDK.AuthenticatedL1ObservationV1;
+export type AuthenticatedSettlementEvidence = {
+  readonly observation: SDK.AuthenticatedL1Observation;
   /** Hub-registered settlement policy observed on the authentic hub datum. */
   readonly policyId: string;
   /** The one settlement NFT asset name. */
@@ -32,9 +32,9 @@ const keyEquals = (a: SDK.OutputReference, b: SDK.OutputReference): boolean =>
 
 const proofFor = async <K, V>(
   root:
-    | CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["deposits"]
-    | CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["withdrawals"]
-    | CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["forcedTransactions"],
+    | CanonicalBlockEvidence["reconstruction"]["rootData"]["deposits"]
+    | CanonicalBlockEvidence["reconstruction"]["rootData"]["withdrawals"]
+    | CanonicalBlockEvidence["reconstruction"]["rootData"]["forcedTransactions"],
   entry: {
     readonly key: K;
     readonly value: V;
@@ -61,22 +61,22 @@ const proofFor = async <K, V>(
  * authentication remains an L1 submission concern; this pure stage never
  * upgrades retained DA into settlement evidence.
  */
-export const prepareCrossBlockDuplicateEventV1 = async ({
+export const prepareCrossBlockDuplicateEvent = async ({
   challenged,
   settled,
   settlement,
   kind,
   eventKey,
 }: {
-  readonly challenged: CanonicalBlockEvidenceV1;
-  readonly settled: CanonicalBlockEvidenceV1;
-  readonly settlement: AuthenticatedSettlementEvidenceV1;
-  readonly kind: CrossBlockDuplicateEventKindInputV1;
+  readonly challenged: CanonicalBlockEvidence;
+  readonly settled: CanonicalBlockEvidence;
+  readonly settlement: AuthenticatedSettlementEvidence;
+  readonly kind: CrossBlockDuplicateEventKindInput;
   readonly eventKey: SDK.OutputReference;
-}): Promise<PreparedCrossBlockDuplicateEventV1> => {
-  SDK.assertSecurityGradeEvidenceV1(challenged.provenance.l1);
-  SDK.assertSecurityGradeEvidenceV1(settled.provenance.l1);
-  SDK.admitAuthenticatedL1ObservationV1({
+}): Promise<PreparedCrossBlockDuplicateEvent> => {
+  SDK.assertSecurityGradeEvidence(challenged.provenance.l1);
+  SDK.assertSecurityGradeEvidence(settled.provenance.l1);
+  SDK.admitAuthenticatedL1Observation({
     observation: settlement.observation,
   });
   if (challenged.headerHash === settled.headerHash) {
@@ -116,8 +116,8 @@ export const prepareCrossBlockDuplicateEventV1 = async ({
       "cross-block-duplicate-event settlement datum does not preserve the historical counted root",
     );
   }
-  let challengedEvent: SDK.CommittedDuplicateEventProofV1;
-  let settledEvent: SDK.CommittedDuplicateEventProofV1;
+  let challengedEvent: SDK.CommittedDuplicateEventProof;
+  let settledEvent: SDK.CommittedDuplicateEventProof;
   if (kind === "deposit") {
     const first = challenged.reconstruction.deposits.find((entry) =>
       keyEquals(entry.key, eventKey),
@@ -203,12 +203,12 @@ export const prepareCrossBlockDuplicateEventV1 = async ({
       },
     };
   }
-  const step02State = SDK.crossBlockDuplicateEventStep02StateV1({
+  const step02State = SDK.crossBlockDuplicateEventStep02State({
     challengedHeaderHash: challenged.headerHash,
     settlementPolicyId: settlement.policyId,
     committedEvent: challengedEvent,
   });
-  SDK.assertConfirmedDuplicateEventV1({
+  SDK.assertConfirmedDuplicateEvent({
     state: step02State,
     settledHeaderHash: settled.headerHash,
     settledEvent,

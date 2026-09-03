@@ -1,28 +1,28 @@
 import {
-  encodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardFieldPreimage,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyFieldItemWidthFindingV1,
-  encodeFieldItemWidthAuthenticatedWidthV1,
-  encodeFieldItemWidthBoundCoordinateV1,
-  FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES_V1,
-  fieldItemWidthEvidenceClosesV1,
-  fieldItemWidthEvidenceIdentityV1,
-  fieldItemWidthIsIllegalV1,
-  type FieldItemWidthJournalEntryV1,
-  type FieldItemWidthStageV1,
-  type FieldItemWidthSubmissionAdapterV1,
-  nextFieldItemWidthActionV1,
-  prepareFieldItemWidthEvidenceV1,
-  reconcileFieldItemWidthJournalV1,
-  runFieldItemWidthProofV1,
+  classifyFieldItemWidthFinding,
+  encodeFieldItemWidthAuthenticatedWidth,
+  encodeFieldItemWidthBoundCoordinate,
+  FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES,
+  fieldItemWidthEvidenceCloses,
+  fieldItemWidthEvidenceIdentity,
+  fieldItemWidthIsIllegal,
+  type FieldItemWidthJournalEntry,
+  type FieldItemWidthStage,
+  type FieldItemWidthSubmissionAdapter,
+  nextFieldItemWidthAction,
+  prepareFieldItemWidthEvidence,
+  reconcileFieldItemWidthJournal,
+  runFieldItemWidthProof,
 } from "../src/field-item-width-illegal/field-item-width-illegal-v1.js";
 
 const txId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
@@ -31,9 +31,9 @@ const forcedSource = {
   outputIndex: 4n,
 };
 
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const rejected = (fieldIndex: number, itemIndex: number) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: forcedSource,
     rejectionReason: {
@@ -47,33 +47,33 @@ const rejected = (fieldIndex: number, itemIndex: number) =>
 const evidence = ({
   subject = accepted,
   fieldIndex = 2,
-  item = Buffer.alloc(FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES_V1 + 1, 7),
+  item = Buffer.alloc(FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES + 1, 7),
 }: {
   readonly subject?: typeof accepted;
   readonly fieldIndex?: number;
   readonly item?: Buffer;
 } = {}) => {
-  const preimage = encodeMidgardFieldPreimageV1([item]);
-  return prepareFieldItemWidthEvidenceV1({
+  const preimage = encodeMidgardFieldPreimage([item]);
+  return prepareFieldItemWidthEvidence({
     finding: { subject, fieldIndex, itemIndex: 0 },
     fieldPreimage: preimage,
-    committedFieldHashHex: midgardFieldCommitmentV1(preimage).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
   });
 };
 
 describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
   it("matches both decisive arms and their adjacent boundaries", () => {
-    expect(fieldItemWidthIsIllegalV1(2, 16_384)).toBe(false);
-    expect(fieldItemWidthIsIllegalV1(2, 16_385)).toBe(true);
-    expect(fieldItemWidthIsIllegalV1(5, 0)).toBe(true);
-    expect(fieldItemWidthIsIllegalV1(5, 1)).toBe(false);
-    expect(() => fieldItemWidthIsIllegalV1(4, 28)).toThrow(/outside/u);
+    expect(fieldItemWidthIsIllegal(2, 16_384)).toBe(false);
+    expect(fieldItemWidthIsIllegal(2, 16_385)).toBe(true);
+    expect(fieldItemWidthIsIllegal(5, 0)).toBe(true);
+    expect(fieldItemWidthIsIllegal(5, 1)).toBe(false);
+    expect(() => fieldItemWidthIsIllegal(4, 28)).toThrow(/outside/u);
   });
 
   it("proves wrongful acceptance and wrongful forced rejection", () => {
-    expect(fieldItemWidthEvidenceClosesV1(evidence())).toBe(true);
+    expect(fieldItemWidthEvidenceCloses(evidence())).toBe(true);
     expect(
-      fieldItemWidthEvidenceClosesV1(
+      fieldItemWidthEvidenceCloses(
         evidence({
           subject: rejected(2, 0),
           item: Buffer.alloc(16_384),
@@ -81,12 +81,12 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
       ),
     ).toBe(true);
     expect(
-      fieldItemWidthEvidenceClosesV1(
+      fieldItemWidthEvidenceCloses(
         evidence({ fieldIndex: 5, item: Buffer.alloc(0) }),
       ),
     ).toBe(true);
     expect(
-      fieldItemWidthEvidenceClosesV1(
+      fieldItemWidthEvidenceCloses(
         evidence({
           subject: rejected(5, 0),
           fieldIndex: 5,
@@ -98,10 +98,10 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
 
   it("refuses honest verdicts in both directions", () => {
     expect(
-      fieldItemWidthEvidenceClosesV1(evidence({ item: Buffer.alloc(16_384) })),
+      fieldItemWidthEvidenceCloses(evidence({ item: Buffer.alloc(16_384) })),
     ).toBe(false);
     expect(
-      fieldItemWidthEvidenceClosesV1(
+      fieldItemWidthEvidenceCloses(
         evidence({ subject: rejected(2, 0), item: Buffer.alloc(16_385) }),
       ),
     ).toBe(false);
@@ -109,19 +109,19 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
 
   it("binds reason constructor and coordinate exactly", () => {
     expect(() =>
-      classifyFieldItemWidthFindingV1({
+      classifyFieldItemWidthFinding({
         subject: rejected(2, 1),
         fieldIndex: 2,
         itemIndex: 0,
       }),
     ).toThrow(/coordinate differs/u);
-    const wrongReason = forcedVerdictSubjectV1({
+    const wrongReason = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: forcedSource,
       rejectionReason: { FieldPreimageLengthMismatch: { field_index: 2n } },
     });
     expect(() =>
-      classifyFieldItemWidthFindingV1({
+      classifyFieldItemWidthFinding({
         subject: wrongReason,
         fieldIndex: 2,
         itemIndex: 0,
@@ -130,20 +130,19 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
   });
 
   it("refuses substituted field bytes, commitment, and item coordinate", () => {
-    const preimage = encodeMidgardFieldPreimageV1([Buffer.alloc(1)]);
+    const preimage = encodeMidgardFieldPreimage([Buffer.alloc(1)]);
     expect(() =>
-      prepareFieldItemWidthEvidenceV1({
+      prepareFieldItemWidthEvidence({
         finding: { subject: accepted, fieldIndex: 5, itemIndex: 0 },
         fieldPreimage: preimage,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/does not match/u);
     expect(() =>
-      prepareFieldItemWidthEvidenceV1({
+      prepareFieldItemWidthEvidence({
         finding: { subject: accepted, fieldIndex: 5, itemIndex: 1 },
         fieldPreimage: preimage,
-        committedFieldHashHex:
-          midgardFieldCommitmentV1(preimage).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
       }),
     ).toThrow(/outside the field/u);
   });
@@ -164,7 +163,7 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
       item: Buffer.from("000102", "hex"),
     });
     expect(
-      encodeFieldItemWidthBoundCoordinateV1({
+      encodeFieldItemWidthBoundCoordinate({
         subject: accepted,
         fieldIndex: 5,
         itemIndex: 0,
@@ -172,7 +171,7 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
     ).toBe(
       "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500ff",
     );
-    expect(encodeFieldItemWidthAuthenticatedWidthV1(tiny)).toBe(
+    expect(encodeFieldItemWidthAuthenticatedWidth(tiny)).toBe(
       "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff050003ff",
     );
   });
@@ -183,7 +182,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
     expect(
       (
         ["none", "step01", "step02", "step03", "proven", "removed"] as const
-      ).map(nextFieldItemWidthActionV1),
+      ).map(nextFieldItemWidthAction),
     ).toEqual([
       "submitInit",
       "submitStep01",
@@ -196,17 +195,17 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
 
   it("reconstructs after each interruption and reaches permanent removal", async () => {
     const prepared = evidence();
-    const identity = fieldItemWidthEvidenceIdentityV1(prepared);
-    const entries: FieldItemWidthJournalEntryV1[] = [];
-    let chainStage: FieldItemWidthStageV1 = "none";
-    const transition: Record<string, FieldItemWidthStageV1> = {
+    const identity = fieldItemWidthEvidenceIdentity(prepared);
+    const entries: FieldItemWidthJournalEntry[] = [];
+    let chainStage: FieldItemWidthStage = "none";
+    const transition: Record<string, FieldItemWidthStage> = {
       submitInit: "step01",
       submitStep01: "step02",
       submitStep02: "step03",
       submitStep03: "proven",
       removeDescendants: "removed",
     };
-    const submission: FieldItemWidthSubmissionAdapterV1 = {
+    const submission: FieldItemWidthSubmissionAdapter = {
       observe: async (seenIdentity) => {
         expect(seenIdentity).toBe(identity);
         return chainStage;
@@ -228,7 +227,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
     };
     const journal = {
       load: async () => entries,
-      append: async (entry: FieldItemWidthJournalEntryV1) => {
+      append: async (entry: FieldItemWidthJournalEntry) => {
         entries.push(entry);
       },
     };
@@ -236,7 +235,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
     // Each call may be a fresh process. The durable journal and observed chain
     // state are the only authority; the runner remains idempotent.
     expect(
-      await runFieldItemWidthProofV1({
+      await runFieldItemWidthProof({
         evidence: prepared,
         journal,
         submission,
@@ -250,7 +249,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
       "removed",
     ]);
     expect(
-      await runFieldItemWidthProofV1({
+      await runFieldItemWidthProof({
         evidence: prepared,
         journal,
         submission,
@@ -260,7 +259,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
 
   it("supports cancel from every nonterminal family step", async () => {
     const prepared = evidence();
-    const adapter: FieldItemWidthSubmissionAdapterV1 = {
+    const adapter: FieldItemWidthSubmissionAdapter = {
       observe: async () => "none",
       submit: async () => {
         throw new Error("unused");
@@ -280,7 +279,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
 
   it("refuses journal identity, order, and chain-regression mutations", () => {
     expect(() =>
-      reconcileFieldItemWidthJournalV1(
+      reconcileFieldItemWidthJournal(
         "expected",
         [
           {
@@ -295,7 +294,7 @@ describe("fieldItemWidthIllegal V1 durable runner", () => {
       ),
     ).toThrow(/identity/u);
     expect(() =>
-      reconcileFieldItemWidthJournalV1(
+      reconcileFieldItemWidthJournal(
         "expected",
         [
           {

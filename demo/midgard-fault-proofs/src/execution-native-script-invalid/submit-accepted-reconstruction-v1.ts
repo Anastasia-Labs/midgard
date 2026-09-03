@@ -1,17 +1,17 @@
 import {
-  buildMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
   decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  decodeMidgardMintPolicyItemV1,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardLedgerOutputCommitment,
+  decodeMidgardMintPolicyItem,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScript,
   encodeCbor,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
-  fieldOpeningV1ForField,
+  fieldOpeningForField,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -25,11 +25,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -38,43 +38,43 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { witnessWithdrawalValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
 import {
-  acceptedAdvanceNonScriptV1,
-  acceptedAdvanceReferenceWithoutSourceV1,
-  acceptedAppendPurposeV1,
-  acceptedAppendSourceV1,
-  acceptedFinishInlineSourcesV1,
-  acceptedFinishPurposePhaseV1,
-  acceptedFinishReceivePassV1,
-  type AcceptedReconstructionBoundV1,
-  type AcceptedReconstructionStateV1,
-  acceptedScanReceiveOutputV1,
-  initialAcceptedReconstructionStateV1,
+  acceptedAdvanceNonScript,
+  acceptedAdvanceReferenceWithoutSource,
+  acceptedAppendPurpose,
+  acceptedAppendSource,
+  acceptedFinishInlineSources,
+  acceptedFinishPurposePhase,
+  acceptedFinishReceivePass,
+  type AcceptedReconstructionBound,
+  type AcceptedReconstructionState,
+  acceptedScanReceiveOutput,
+  initialAcceptedReconstructionState,
 } from "./accepted-reconstruction-machine-v1.js";
-import type { ExecutionNativeScriptInvalidContractsV1 } from "./contracts-v1.js";
+import type { ExecutionNativeScriptInvalidContracts } from "./contracts-v1.js";
 import {
-  ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-  ExecutionNativeScriptInvalidAcceptedInitRedeemerV1Schema,
-  ExecutionNativeScriptInvalidAcceptedInlineRedeemerV1Schema,
-  ExecutionNativeScriptInvalidAcceptedMintRedeemerV1Schema,
-  ExecutionNativeScriptInvalidAcceptedObserverRedeemerV1Schema,
-  ExecutionNativeScriptInvalidAcceptedReceiveRedeemerV1Schema,
-  ExecutionNativeScriptInvalidAcceptedReferenceRedeemerV1Schema,
-  ExecutionNativeScriptInvalidAcceptedSpendRedeemerV1Schema,
-  ExecutionNativeScriptInvalidStep02DatumV1Schema,
-  ExecutionNativeScriptInvalidStep03DatumV1Schema,
+  ExecutionNativeScriptInvalidAcceptedDatumSchema,
+  ExecutionNativeScriptInvalidAcceptedInitRedeemerSchema,
+  ExecutionNativeScriptInvalidAcceptedInlineRedeemerSchema,
+  ExecutionNativeScriptInvalidAcceptedMintRedeemerSchema,
+  ExecutionNativeScriptInvalidAcceptedObserverRedeemerSchema,
+  ExecutionNativeScriptInvalidAcceptedReceiveRedeemerSchema,
+  ExecutionNativeScriptInvalidAcceptedReferenceRedeemerSchema,
+  ExecutionNativeScriptInvalidAcceptedSpendRedeemerSchema,
+  ExecutionNativeScriptInvalidStep02DatumSchema,
+  ExecutionNativeScriptInvalidStep03DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "execution-native-script-invalid";
 
 const requireAcceptedPrelude = (
-  contracts: ExecutionNativeScriptInvalidContractsV1,
+  contracts: ExecutionNativeScriptInvalidContracts,
 ) => {
   if (contracts.acceptedPrelude?.length !== 7)
     throw new Error(
@@ -88,7 +88,7 @@ const requireAcceptedPrelude = (
  * transaction and prior-ledger root come solely from applied step 1; this API
  * accepts no verdict, coordinate, source descriptor, or callback actuator.
  */
-export const submitExecutionNativeScriptInvalidAcceptedInitV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedInit = async ({
   lucid,
   contracts,
   categoryId,
@@ -99,17 +99,17 @@ export const submitExecutionNativeScriptInvalidAcceptedInitV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -117,10 +117,10 @@ export const submitExecutionNativeScriptInvalidAcceptedInitV1 = async ({
     stepIndex: 0,
     threadOutRef,
   });
-  const bound = requireLinearFaultStepStateV1<AcceptedReconstructionBoundV1>({
+  const bound = requireLinearFaultStepState<AcceptedReconstructionBound>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidStep02DatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidStep02DatumSchema as never,
     family: FAMILY,
     stepIndex: 0,
   });
@@ -128,20 +128,20 @@ export const submitExecutionNativeScriptInvalidAcceptedInitV1 = async ({
     throw new Error(
       `${FAMILY}: accepted reconstruction requires accepted source`,
     );
-  const state = initialAcceptedReconstructionStateV1({
+  const state = initialAcceptedReconstructionState({
     bound,
     nextScriptHash: accepted[1]!.spendingScriptHash,
   });
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: state } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: accepted[1]!.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[0]!.spendingScriptHash,
     family: FAMILY,
@@ -164,11 +164,11 @@ export const submitExecutionNativeScriptInvalidAcceptedInitV1 = async ({
       {
         Continue: [{ input_index: inputIndex, output_index: outputIndex }],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedInitRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedInitRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -188,7 +188,7 @@ export const submitExecutionNativeScriptInvalidAcceptedInitV1 = async ({
 };
 
 /** Authenticate and consume exactly one canonical spend-input descriptor. */
-export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedSpend = async ({
   lucid,
   network,
   contracts,
@@ -207,7 +207,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
 }: {
   lucid: LucidEvolution;
   network: Parameters<typeof phasMembershipRewardAddress>[0];
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
@@ -218,12 +218,12 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
   membershipProofCbor: string;
   membershipReferenceScriptUtxo: UTxO;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -231,22 +231,22 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
     stepIndex: 1,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 1,
   });
   if (state.phase !== 0n)
     throw new Error(`${FAMILY}: spend scanner received another phase`);
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(spendInputsPreimageCbor, "hex"),
   );
   const item = items[Number(state.field_cursor)];
   if (item === undefined)
     throw new Error(`${FAMILY}: spend cursor is outside retained field`);
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+  const descriptor = decodeMidgardLedgerOutputCommitment(
     Buffer.from(descriptorCbor, "hex"),
   );
   const credential = decodeMidgardAddressBytes(
@@ -257,7 +257,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
     state.execution_cursor === state.bound.execution_index;
   const nextState =
     credential.kind === "Script"
-      ? acceptedAppendPurposeV1({
+      ? acceptedAppendPurpose({
           state,
           purposeKind: 0n,
           purposeIndex: state.field_cursor,
@@ -268,7 +268,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
             ? accepted[5]!.spendingScriptHash
             : accepted[1]!.spendingScriptHash,
         })
-      : acceptedAdvanceNonScriptV1({
+      : acceptedAdvanceNonScript({
           state,
           canonicalKey: item.toString("hex"),
           nextScriptHash: accepted[1]!.spendingScriptHash,
@@ -276,14 +276,14 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
   const nextContract = selects ? accepted[5]! : accepted[1]!;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: nextContract.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[1]!.spendingScriptHash,
     family: FAMILY,
@@ -296,7 +296,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
     network,
     membershipScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: membershipScript,
     referenceUtxo: membershipReferenceScriptUtxo,
     label: `${FAMILY} accepted spend membership`,
@@ -305,7 +305,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
     stepReference,
     ...membershipCarriage.referenceInputs,
   ];
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 0,
     nativeTxCompactCbor,
     carriage: { Inline: { preimage: spendInputsPreimageCbor } },
@@ -347,7 +347,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedSpendRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedSpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
@@ -383,15 +383,15 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${FAMILY}-accepted-spend`,
         utxo: stepReference,
         expectedScript: accepted[1]!.spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${FAMILY}-accepted-spend-membership`,
         utxo: membershipReferenceScriptUtxo,
         expectedScript: membershipScript,
@@ -412,7 +412,7 @@ export const submitExecutionNativeScriptInvalidAcceptedSpendV1 = async ({
 };
 
 /** Scan one authenticated inline source and enter the bounded evaluator. */
-export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedInlineSource = async ({
   lucid,
   contracts,
   categoryId,
@@ -426,7 +426,7 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
@@ -438,12 +438,12 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
   }>;
   scriptsPreimageCbor: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -451,17 +451,17 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
     stepIndex: 5,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 5,
   });
   if (state.phase !== 4n || state.selected_purpose === null)
     throw new Error(`${FAMILY}: inline scanner lacks selected purpose`);
   const itemIndex = Number(state.field_cursor);
-  const item = decodeMidgardFieldPreimageV1(
+  const item = decodeMidgardFieldPreimage(
     Buffer.from(scriptsPreimageCbor, "hex"),
   )[itemIndex];
   if (item === undefined)
@@ -476,7 +476,7 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
       : script.language === "PlutusV3"
         ? 3n
         : 128n;
-  const bounded = buildMidgardBoundedItemV1({
+  const bounded = buildMidgardBoundedItem({
     fieldIndex: 6,
     itemIndex,
     bytes: item,
@@ -491,7 +491,7 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
     item_commitment: bounded.commitment.toString("hex"),
   } as const;
   const selected = scriptHash === state.selected_purpose.script_hash;
-  const advanced = acceptedAppendSourceV1({
+  const advanced = acceptedAppendSource({
     state,
     source,
     nextScriptHash: selected
@@ -508,8 +508,8 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
       }
     : advanced;
   const nextSchema = selected
-    ? ExecutionNativeScriptInvalidStep03DatumV1Schema
-    : ExecutionNativeScriptInvalidAcceptedDatumV1Schema;
+    ? ExecutionNativeScriptInvalidStep03DatumSchema
+    : ExecutionNativeScriptInvalidAcceptedDatumSchema;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
     nextSchema as never,
@@ -519,13 +519,13 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[5]!.spendingScriptHash,
     family: FAMILY,
     stepIndex: 11,
   });
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 6,
     nativeTxCompactCbor,
     witnessSet,
@@ -556,11 +556,11 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedInlineRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedInlineRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -584,7 +584,7 @@ export const submitExecutionNativeScriptInvalidAcceptedInlineSourceV1 = async ({
 };
 
 /** Exhaust inline witnesses before authenticated reference-source discovery. */
-export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedFinishInline = async ({
   lucid,
   contracts,
   categoryId,
@@ -598,7 +598,7 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
@@ -610,12 +610,12 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
   }>;
   scriptsPreimageCbor: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -623,14 +623,14 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
     stepIndex: 5,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 5,
   });
-  const count = decodeMidgardFieldPreimageV1(
+  const count = decodeMidgardFieldPreimage(
     Buffer.from(scriptsPreimageCbor, "hex"),
   ).length;
   if (
@@ -639,26 +639,26 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
     state.selected_source !== null
   )
     throw new Error(`${FAMILY}: inline source prefix is incomplete`);
-  const nextState = acceptedFinishInlineSourcesV1({
+  const nextState = acceptedFinishInlineSources({
     state,
     nextScriptHash: accepted[6]!.spendingScriptHash,
   });
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: accepted[6]!.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[5]!.spendingScriptHash,
     family: FAMILY,
     stepIndex: 11,
   });
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 6,
     nativeTxCompactCbor,
     witnessSet,
@@ -688,11 +688,11 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedInlineRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedInlineRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -712,7 +712,7 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishInlineV1 = async ({
 };
 
 /** Close the authenticated spend prefix after proving the complete empty field. */
-export const submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedFinishSpends = async ({
   lucid,
   contracts,
   categoryId,
@@ -725,19 +725,19 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   nativeTxCompactCbor: string;
   spendInputsPreimageCbor: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -745,38 +745,38 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1 = async ({
     stepIndex: 1,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 1,
   });
-  const count = decodeMidgardFieldPreimageV1(
+  const count = decodeMidgardFieldPreimage(
     Buffer.from(spendInputsPreimageCbor, "hex"),
   ).length;
   if (state.phase !== 0n || state.field_cursor !== BigInt(count))
     throw new Error(`${FAMILY}: spend prefix is incomplete`);
-  const nextState = acceptedFinishPurposePhaseV1({
+  const nextState = acceptedFinishPurposePhase({
     state,
     nextScriptHash: accepted[2]!.spendingScriptHash,
   });
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: accepted[2]!.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[1]!.spendingScriptHash,
     family: FAMILY,
     stepIndex: 7,
   });
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 0,
     nativeTxCompactCbor,
     carriage: { Inline: { preimage: spendInputsPreimageCbor } },
@@ -806,11 +806,11 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedSpendRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedSpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -830,7 +830,7 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1 = async ({
 };
 
 /** Authenticate one canonical mint-policy purpose. */
-export const submitExecutionNativeScriptInvalidAcceptedMintV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedMint = async ({
   lucid,
   contracts,
   categoryId,
@@ -843,19 +843,19 @@ export const submitExecutionNativeScriptInvalidAcceptedMintV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   nativeTxCompactCbor: string;
   mintPreimageCbor: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -863,26 +863,26 @@ export const submitExecutionNativeScriptInvalidAcceptedMintV1 = async ({
     stepIndex: 2,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 2,
   });
   if (state.phase !== 1n)
     throw new Error(`${FAMILY}: mint scanner received another phase`);
   const itemIndex = Number(state.field_cursor);
-  const item = decodeMidgardFieldPreimageV1(
-    Buffer.from(mintPreimageCbor, "hex"),
-  )[itemIndex];
+  const item = decodeMidgardFieldPreimage(Buffer.from(mintPreimageCbor, "hex"))[
+    itemIndex
+  ];
   if (item === undefined)
     throw new Error(`${FAMILY}: mint cursor is outside retained field`);
   const policyId = Buffer.from(
-    decodeMidgardMintPolicyItemV1(item).policyId,
+    decodeMidgardMintPolicyItem(item).policyId,
   ).toString("hex");
   const selected = state.execution_cursor === state.bound.execution_index;
-  const nextState = acceptedAppendPurposeV1({
+  const nextState = acceptedAppendPurpose({
     state,
     purposeKind: 1n,
     purposeIndex: state.field_cursor,
@@ -896,20 +896,20 @@ export const submitExecutionNativeScriptInvalidAcceptedMintV1 = async ({
   const nextContract = selected ? accepted[5]! : accepted[2]!;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: nextContract.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[2]!.spendingScriptHash,
     family: FAMILY,
     stepIndex: 8,
   });
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 5,
     nativeTxCompactCbor,
     carriage: { Inline: { preimage: mintPreimageCbor } },
@@ -939,11 +939,11 @@ export const submitExecutionNativeScriptInvalidAcceptedMintV1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedMintRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedMintRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -967,140 +967,139 @@ export const submitExecutionNativeScriptInvalidAcceptedMintV1 = async ({
 };
 
 /** Advance from a completely authenticated mint or observer prefix. */
-export const submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1 =
-  async ({
+export const submitExecutionNativeScriptInvalidAcceptedFinishPurpose = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  phase,
+  nativeTxCompactCbor,
+  fieldPreimageCbor,
+  referenceScriptUtxo,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  lucid: LucidEvolution;
+  contracts: ExecutionNativeScriptInvalidContracts;
+  categoryId: string;
+  signer: ResolvedProverSigner;
+  threadOutRef: string;
+  phase: "mint" | "observer";
+  nativeTxCompactCbor: string;
+  fieldPreimageCbor: string;
+  referenceScriptUtxo: UTxO;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  awaitConfirmation?: boolean;
+}) => {
+  const accepted = requireAcceptedPrelude(contracts);
+  const stepIndex = phase === "mint" ? 2 : 3;
+  const fieldIndex = phase === "mint" ? 5 : 3;
+  const nextIndex = stepIndex + 1;
+  const schema =
+    phase === "mint"
+      ? ExecutionNativeScriptInvalidAcceptedMintRedeemerSchema
+      : ExecutionNativeScriptInvalidAcceptedObserverRedeemerSchema;
+  const physicalContracts = { ...contracts, steps: accepted };
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
-    contracts,
+    contracts: physicalContracts,
     categoryId,
-    signer,
+    family: FAMILY,
+    stepIndex,
     threadOutRef,
-    phase,
+  });
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
+    threadUtxo,
+    signer,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
+    family: FAMILY,
+    stepIndex,
+  });
+  const count = decodeMidgardFieldPreimage(
+    Buffer.from(fieldPreimageCbor, "hex"),
+  ).length;
+  if (
+    state.phase !== BigInt(stepIndex - 1) ||
+    state.field_cursor !== BigInt(count)
+  )
+    throw new Error(`${FAMILY}: ${phase} prefix is incomplete`);
+  const nextState = acceptedFinishPurposePhase({
+    state,
+    nextScriptHash: accepted[nextIndex]!.spendingScriptHash,
+  });
+  const nextDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: accepted[nextIndex]!.spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: accepted[stepIndex]!.spendingScriptHash,
+    family: FAMILY,
+    stepIndex: stepIndex + 6,
+  });
+  const opening = fieldOpeningForField({
+    fieldIndex,
     nativeTxCompactCbor,
-    fieldPreimageCbor,
-    referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation = true,
-  }: {
-    lucid: LucidEvolution;
-    contracts: ExecutionNativeScriptInvalidContractsV1;
-    categoryId: string;
-    signer: ResolvedProverSigner;
-    threadOutRef: string;
-    phase: "mint" | "observer";
-    nativeTxCompactCbor: string;
-    fieldPreimageCbor: string;
-    referenceScriptUtxo: UTxO;
-    preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-    awaitConfirmation?: boolean;
-  }) => {
-    const accepted = requireAcceptedPrelude(contracts);
-    const stepIndex = phase === "mint" ? 2 : 3;
-    const fieldIndex = phase === "mint" ? 5 : 3;
-    const nextIndex = stepIndex + 1;
-    const schema =
-      phase === "mint"
-        ? ExecutionNativeScriptInvalidAcceptedMintRedeemerV1Schema
-        : ExecutionNativeScriptInvalidAcceptedObserverRedeemerV1Schema;
-    const physicalContracts = { ...contracts, steps: accepted };
-    const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
-      lucid,
-      contracts: physicalContracts,
-      categoryId,
-      family: FAMILY,
-      stepIndex,
-      threadOutRef,
-    });
-    const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+    carriage: { Inline: { preimage: fieldPreimageCbor } },
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    const inputIndex = requireInputIndex(
+      ctx,
       threadUtxo,
-      signer,
-      schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
-      family: FAMILY,
-      stepIndex,
-    });
-    const count = decodeMidgardFieldPreimageV1(
-      Buffer.from(fieldPreimageCbor, "hex"),
-    ).length;
-    if (
-      state.phase !== BigInt(stepIndex - 1) ||
-      state.field_cursor !== BigInt(count)
-    )
-      throw new Error(`${FAMILY}: ${phase} prefix is incomplete`);
-    const nextState = acceptedFinishPurposePhaseV1({
-      state,
-      nextScriptHash: accepted[nextIndex]!.spendingScriptHash,
-    });
-    const nextDatum = Data.to(
-      { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-      ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+      `${FAMILY} finish ${phase}`,
     );
-    const outputMatches = computationThreadOutputPredicate({
-      address: accepted[nextIndex]!.spendingScriptAddress,
-      datum: nextDatum,
-      unit: threadToken.unit,
-    });
-    const stepReference = requireLinearFaultReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash: accepted[stepIndex]!.spendingScriptHash,
-      family: FAMILY,
-      stepIndex: stepIndex + 6,
-    });
-    const opening = fieldOpeningV1ForField({
-      fieldIndex,
-      nativeTxCompactCbor,
-      carriage: { Inline: { preimage: fieldPreimageCbor } },
-    });
-    let outputIndex: bigint | undefined;
-    const redeemer = ((ctx) => {
-      const inputIndex = requireInputIndex(
-        ctx,
-        threadUtxo,
-        `${FAMILY} finish ${phase}`,
-      );
-      outputIndex = requireUniqueOutputIndex(
-        ctx.outputs,
-        outputMatches,
-        `${FAMILY} finish ${phase} output`,
-      );
-      const action =
-        phase === "mint"
-          ? {
-              FinishMint: {
-                input_index: inputIndex,
-                output_index: outputIndex,
-                mint_opening: opening,
-              },
-            }
-          : {
-              FinishObservers: {
-                input_index: inputIndex,
-                output_index: outputIndex,
-                observer_opening: opening,
-              },
-            };
-      return Data.to({ Continue: [action] } as never, schema as never);
-    }) satisfies BuildTxWithRedeemer;
-    signer.selectWallet(lucid);
-    const txHash = await submitLinearFaultContinueV1({
-      lucid,
-      signerPaymentKeyHash: signer.paymentKeyHash,
-      threadUtxo,
-      threadUnit: threadToken.unit,
-      stepReference,
-      stepScript: accepted[stepIndex]!.spendingScript,
-      stepRole: `${FAMILY} finish ${phase}`,
-      nextAddress: accepted[nextIndex]!.spendingScriptAddress,
-      nextDatum,
-      redeemer,
-      preSubmitBoundary,
-      awaitConfirmation,
-    });
-    if (outputIndex === undefined)
-      throw new Error(`${FAMILY}: unresolved layout`);
-    return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
-  };
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      `${FAMILY} finish ${phase} output`,
+    );
+    const action =
+      phase === "mint"
+        ? {
+            FinishMint: {
+              input_index: inputIndex,
+              output_index: outputIndex,
+              mint_opening: opening,
+            },
+          }
+        : {
+            FinishObservers: {
+              input_index: inputIndex,
+              output_index: outputIndex,
+              observer_opening: opening,
+            },
+          };
+    return Data.to({ Continue: [action] } as never, schema as never);
+  }) satisfies BuildTxWithRedeemer;
+  signer.selectWallet(lucid);
+  const txHash = await submitLinearFaultContinue({
+    lucid,
+    signerPaymentKeyHash: signer.paymentKeyHash,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: accepted[stepIndex]!.spendingScript,
+    stepRole: `${FAMILY} finish ${phase}`,
+    nextAddress: accepted[nextIndex]!.spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
+  if (outputIndex === undefined)
+    throw new Error(`${FAMILY}: unresolved layout`);
+  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+};
 
 /** Authenticate one canonical observer purpose. */
-export const submitExecutionNativeScriptInvalidAcceptedObserverV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedObserver = async ({
   lucid,
   contracts,
   categoryId,
@@ -1113,19 +1112,19 @@ export const submitExecutionNativeScriptInvalidAcceptedObserverV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   nativeTxCompactCbor: string;
   observersPreimageCbor: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -1133,23 +1132,23 @@ export const submitExecutionNativeScriptInvalidAcceptedObserverV1 = async ({
     stepIndex: 3,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 3,
   });
   if (state.phase !== 2n)
     throw new Error(`${FAMILY}: observer scanner received another phase`);
-  const item = decodeMidgardFieldPreimageV1(
+  const item = decodeMidgardFieldPreimage(
     Buffer.from(observersPreimageCbor, "hex"),
   )[Number(state.field_cursor)];
   if (item === undefined || item.length !== 28)
     throw new Error(`${FAMILY}: observer cursor is outside canonical field`);
   const scriptHash = item.toString("hex");
   const selected = state.execution_cursor === state.bound.execution_index;
-  const nextState = acceptedAppendPurposeV1({
+  const nextState = acceptedAppendPurpose({
     state,
     purposeKind: 2n,
     purposeIndex: state.field_cursor,
@@ -1163,20 +1162,20 @@ export const submitExecutionNativeScriptInvalidAcceptedObserverV1 = async ({
   const nextContract = selected ? accepted[5]! : accepted[3]!;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: nextContract.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[3]!.spendingScriptHash,
     family: FAMILY,
     stepIndex: 9,
   });
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 3,
     nativeTxCompactCbor,
     carriage: { Inline: { preimage: observersPreimageCbor } },
@@ -1201,11 +1200,11 @@ export const submitExecutionNativeScriptInvalidAcceptedObserverV1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidAcceptedObserverRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedObserverRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -1229,7 +1228,7 @@ export const submitExecutionNativeScriptInvalidAcceptedObserverV1 = async ({
 };
 
 /** Scan one canonical output during receive-purpose set reconstruction. */
-export const submitExecutionNativeScriptInvalidAcceptedReceiveV1 = async ({
+export const submitExecutionNativeScriptInvalidAcceptedReceive = async ({
   lucid,
   contracts,
   categoryId,
@@ -1242,19 +1241,19 @@ export const submitExecutionNativeScriptInvalidAcceptedReceiveV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   nativeTxCompactCbor: string;
   outputsPreimageCbor: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const accepted = requireAcceptedPrelude(contracts);
   const physicalContracts = { ...contracts, steps: accepted };
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts: physicalContracts,
     categoryId,
@@ -1262,16 +1261,16 @@ export const submitExecutionNativeScriptInvalidAcceptedReceiveV1 = async ({
     stepIndex: 4,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+  const state = requireLinearFaultStepState<AcceptedReconstructionState>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
     family: FAMILY,
     stepIndex: 4,
   });
   if (state.phase !== 3n)
     throw new Error(`${FAMILY}: receive scanner received another phase`);
-  const item = decodeMidgardFieldPreimageV1(
+  const item = decodeMidgardFieldPreimage(
     Buffer.from(outputsPreimageCbor, "hex"),
   )[Number(state.field_cursor)];
   if (item === undefined)
@@ -1283,7 +1282,7 @@ export const submitExecutionNativeScriptInvalidAcceptedReceiveV1 = async ({
     address.protected && address.paymentCredential.kind === "Script"
       ? address.paymentCredential.hash.toString("hex")
       : null;
-  const nextState = acceptedScanReceiveOutputV1({
+  const nextState = acceptedScanReceiveOutput({
     state,
     candidate,
     nextScriptHash: accepted[4]!.spendingScriptHash,
@@ -1306,7 +1305,7 @@ export const submitExecutionNativeScriptInvalidAcceptedReceiveV1 = async ({
 };
 
 /** Finish one output pass and emit the next unique receive purpose. */
-export const submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1 =
+export const submitExecutionNativeScriptInvalidAcceptedFinishReceivePass =
   async ({
     lucid,
     contracts,
@@ -1320,19 +1319,19 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1 =
     awaitConfirmation = true,
   }: {
     lucid: LucidEvolution;
-    contracts: ExecutionNativeScriptInvalidContractsV1;
+    contracts: ExecutionNativeScriptInvalidContracts;
     categoryId: string;
     signer: ResolvedProverSigner;
     threadOutRef: string;
     nativeTxCompactCbor: string;
     outputsPreimageCbor: string;
     referenceScriptUtxo: UTxO;
-    preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+    preSubmitBoundary?: FraudProofPreSubmitBoundary;
     awaitConfirmation?: boolean;
   }) => {
     const accepted = requireAcceptedPrelude(contracts);
     const physicalContracts = { ...contracts, steps: accepted };
-    const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+    const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
       lucid,
       contracts: physicalContracts,
       categoryId,
@@ -1340,20 +1339,20 @@ export const submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1 =
       stepIndex: 4,
       threadOutRef,
     });
-    const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+    const state = requireLinearFaultStepState<AcceptedReconstructionState>({
       threadUtxo,
       signer,
-      schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+      schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
       family: FAMILY,
       stepIndex: 4,
     });
-    const count = decodeMidgardFieldPreimageV1(
+    const count = decodeMidgardFieldPreimage(
       Buffer.from(outputsPreimageCbor, "hex"),
     ).length;
     if (state.phase !== 3n || state.field_cursor !== BigInt(count))
       throw new Error(`${FAMILY}: receive pass is incomplete`);
     const selected = state.execution_cursor === state.bound.execution_index;
-    const nextState = acceptedFinishReceivePassV1({
+    const nextState = acceptedFinishReceivePass({
       state,
       nextScanScriptHash: accepted[4]!.spendingScriptHash,
       nextSourceScriptHash: accepted[5]!.spendingScriptHash,
@@ -1392,17 +1391,17 @@ const submitReceiveTransition = async ({
   selected = false,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadUtxo: UTxO;
   threadToken: { unit: string };
-  state: AcceptedReconstructionStateV1;
+  state: AcceptedReconstructionState;
   nativeTxCompactCbor: string;
   outputsPreimageCbor: string;
   referenceScriptUtxo: UTxO;
   action: "ScanOutput" | "FinishOutputPass";
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation: boolean;
   selected?: boolean;
 }) => {
@@ -1410,20 +1409,20 @@ const submitReceiveTransition = async ({
   const nextContract = selected ? accepted[5]! : accepted[4]!;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: state } as never,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: nextContract.spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: accepted[4]!.spendingScriptHash,
     family: FAMILY,
     stepIndex: 10,
   });
-  const opening = fieldOpeningV1ForField({
+  const opening = fieldOpeningForField({
     fieldIndex: 1,
     nativeTxCompactCbor,
     carriage: { Inline: { preimage: outputsPreimageCbor } },
@@ -1443,11 +1442,11 @@ const submitReceiveTransition = async ({
     };
     return Data.to(
       { Continue: [{ [action]: body }] } as never,
-      ExecutionNativeScriptInvalidAcceptedReceiveRedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidAcceptedReceiveRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
@@ -1471,7 +1470,7 @@ const submitReceiveTransition = async ({
 };
 
 /** Authenticate one resolved-reference source against the predecessor ledger. */
-export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
+export const submitExecutionNativeScriptInvalidAcceptedReferenceSource =
   async ({
     lucid,
     network,
@@ -1491,7 +1490,7 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
   }: {
     lucid: LucidEvolution;
     network: Parameters<typeof phasMembershipRewardAddress>[0];
-    contracts: ExecutionNativeScriptInvalidContractsV1;
+    contracts: ExecutionNativeScriptInvalidContracts;
     categoryId: string;
     signer: ResolvedProverSigner;
     threadOutRef: string;
@@ -1502,12 +1501,12 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
     membershipProofCbor: string;
     membershipReferenceScriptUtxo: UTxO;
     referenceScriptUtxo: UTxO;
-    preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+    preSubmitBoundary?: FraudProofPreSubmitBoundary;
     awaitConfirmation?: boolean;
   }) => {
     const accepted = requireAcceptedPrelude(contracts);
     const physicalContracts = { ...contracts, steps: accepted };
-    const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+    const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
       lucid,
       contracts: physicalContracts,
       categoryId,
@@ -1515,22 +1514,22 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
       stepIndex: 6,
       threadOutRef,
     });
-    const state = requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
+    const state = requireLinearFaultStepState<AcceptedReconstructionState>({
       threadUtxo,
       signer,
-      schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
+      schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
       family: FAMILY,
       stepIndex: 6,
     });
     if (state.phase !== 5n || state.selected_purpose === null)
       throw new Error(`${FAMILY}: reference scanner lacks selected purpose`);
-    const item = decodeMidgardFieldPreimageV1(
+    const item = decodeMidgardFieldPreimage(
       Buffer.from(referenceInputsPreimageCbor, "hex"),
     )[Number(state.field_cursor)];
     if (item === undefined)
       throw new Error(`${FAMILY}: reference cursor is outside canonical field`);
-    const outRef = decodeMidgardSpendInputItemV1(item);
-    const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+    const outRef = decodeMidgardSpendInputItem(item);
+    const descriptor = decodeMidgardLedgerOutputCommitment(
       Buffer.from(descriptorCbor, "hex"),
     );
     if (descriptor.outputIndex !== outRef.outputIndex)
@@ -1551,11 +1550,11 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
     const selected = source?.script_hash === state.selected_purpose.script_hash;
     const advanced =
       source === null
-        ? acceptedAdvanceReferenceWithoutSourceV1({
+        ? acceptedAdvanceReferenceWithoutSource({
             state,
             nextScriptHash: accepted[6]!.spendingScriptHash,
           })
-        : acceptedAppendSourceV1({
+        : acceptedAppendSource({
             state,
             source,
             nextScriptHash: selected
@@ -1574,15 +1573,15 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
     const nextDatum = Data.to(
       { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
       (selected
-        ? ExecutionNativeScriptInvalidStep03DatumV1Schema
-        : ExecutionNativeScriptInvalidAcceptedDatumV1Schema) as never,
+        ? ExecutionNativeScriptInvalidStep03DatumSchema
+        : ExecutionNativeScriptInvalidAcceptedDatumSchema) as never,
     );
     const outputMatches = computationThreadOutputPredicate({
       address: nextContract.spendingScriptAddress,
       datum: nextDatum,
       unit: threadToken.unit,
     });
-    const stepReference = requireLinearFaultReferenceScriptV1({
+    const stepReference = requireLinearFaultReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: accepted[6]!.spendingScriptHash,
       family: FAMILY,
@@ -1595,12 +1594,12 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
       network,
       membershipScript,
     );
-    const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+    const membershipCarriage = witnessWithdrawalValidatorCarriage({
       script: membershipScript,
       referenceUtxo: membershipReferenceScriptUtxo,
       label: `${FAMILY} accepted reference membership`,
     });
-    const opening = fieldOpeningV1ForField({
+    const opening = fieldOpeningForField({
       fieldIndex: 2,
       nativeTxCompactCbor,
       carriage: { Inline: { preimage: referenceInputsPreimageCbor } },
@@ -1639,7 +1638,7 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
             },
           ],
         } as never,
-        ExecutionNativeScriptInvalidAcceptedReferenceRedeemerV1Schema as never,
+        ExecutionNativeScriptInvalidAcceptedReferenceRedeemerSchema as never,
       );
     }) satisfies BuildTxWithRedeemer;
     signer.selectWallet(lucid);
@@ -1675,15 +1674,15 @@ export const submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1 =
     if (outputIndex === undefined)
       throw new Error(`${FAMILY}: unresolved layout`);
     const signed = await unsigned.sign.withWallet().complete();
-    const expectedHash = await reachFraudProofPreSubmitBoundaryV1({
+    const expectedHash = await reachFraudProofPreSubmitBoundary({
       signed,
       referenceScripts: [
-        workflowReferenceScriptV1({
+        workflowReferenceScript({
           role: `${FAMILY}-accepted-reference`,
           utxo: stepReference,
           expectedScript: accepted[6]!.spendingScript,
         }),
-        workflowReferenceScriptV1({
+        workflowReferenceScript({
           role: `${FAMILY}-accepted-reference-membership`,
           utxo: membershipReferenceScriptUtxo,
           expectedScript: membershipScript,

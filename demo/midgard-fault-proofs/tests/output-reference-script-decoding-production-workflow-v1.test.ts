@@ -1,9 +1,9 @@
 import {
-  computeMidgardNativeTxIdV1,
-  encodeMidgardNativeTxCanonicalV1,
+  computeMidgardNativeTxId,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { forcedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import {
   Data,
   type Script,
@@ -13,23 +13,23 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NativeScriptDecodingPlanRoutesV1,
+  buildNativeScriptDecodingScanPlan,
+  NativeScriptDecodingPlanRoutes,
 } from "../src/native-script-decoding/scan-plan-v1.js";
 import {
-  bindOutputReferenceScriptDecodingReferenceScriptsV1,
-  createOutputReferenceScriptDecodingProductionWorkflowRunnerSurfaceV1,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS_V1,
-  OutputReferenceOutputControlV1Schema,
-  outputReferenceScriptControlDataV1,
-  type OutputReferenceScriptDecodingDeploymentBindingV1,
-  outputReferenceScriptDecodingNextOutputScanStageV1,
-  outputReferenceScriptDecodingNextStructuralStageV1,
-  type OutputReferenceScriptDecodingProductionReferenceScriptsV1,
+  bindOutputReferenceScriptDecodingReferenceScripts,
+  createOutputReferenceScriptDecodingWorkflowRunnerSurface,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
+  OutputReferenceOutputControlSchema,
+  outputReferenceScriptControlData,
+  type OutputReferenceScriptDecodingDeploymentBinding,
+  outputReferenceScriptDecodingNextOutputScanStage,
+  outputReferenceScriptDecodingNextStructuralStage,
+  type OutputReferenceScriptDecodingReferenceScripts,
   outputReferenceScriptDecodingStageFromL1,
-  OutputReferenceScriptResultClassesV1,
-  prepareOutputReferenceScriptDecodingEvidenceV1,
-  runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflowV1,
+  OutputReferenceScriptResultClasses,
+  prepareOutputReferenceScriptDecodingEvidence,
+  runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow,
 } from "../src/output-reference-script-decoding/index.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
@@ -44,36 +44,34 @@ const utxo = (byte: string, outputIndex: number): UTxO => ({
   assets: { lovelace: 2_000_000n },
   scriptRef: script(byte),
 });
-const references =
-  (): OutputReferenceScriptDecodingProductionReferenceScriptsV1 => ({
-    step01: utxo("1", 0),
-    step02: utxo("2", 1),
-    step03: utxo("3", 2),
-    step04: utxo("4", 3),
-    step05: utxo("5", 4),
-    step06: utxo("6", 5),
-    fieldPreimageCertificateMint: utxo("7", 6),
-    witnesses: {
-      computationThreadMint: utxo("8", 7),
-      fraudProofMint: utxo("9", 8),
-      phasMembershipWithdraw: utxo("a", 9),
-    },
-  });
+const references = (): OutputReferenceScriptDecodingReferenceScripts => ({
+  step01: utxo("1", 0),
+  step02: utxo("2", 1),
+  step03: utxo("3", 2),
+  step04: utxo("4", 3),
+  step05: utxo("5", 4),
+  step06: utxo("6", 5),
+  fieldPreimageCertificateMint: utxo("7", 6),
+  witnesses: {
+    computationThreadMint: utxo("8", 7),
+    fraudProofMint: utxo("9", 8),
+    phasMembershipWithdraw: utxo("a", 9),
+  },
+});
 
 describe("outputReferenceScriptDecoding production workflow", () => {
   it("exposes the standard callback-free runner and complete manifest roles", () => {
-    const runner =
-      createOutputReferenceScriptDecodingProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig: async () => {
-          throw new Error("not reached");
-        },
-      });
+    const runner = createOutputReferenceScriptDecodingWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        throw new Error("not reached");
+      },
+    });
     expect(Object.keys(runner).sort()).toEqual([
       "runOrResume",
       "runnerVersion",
     ]);
     expect(
-      Object.values(OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS_V1),
+      Object.values(OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS),
     ).toEqual([
       "fraudProofOutputReferenceScriptDecoding",
       "fraudProofOutputReferenceScriptDecodingStep02",
@@ -91,7 +89,7 @@ describe("outputReferenceScriptDecoding production workflow", () => {
   it("authenticates every reference out-ref and refuses substitution", () => {
     const supplied = references();
     const names = Object.values(
-      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS_V1,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
     );
     const values = [
       supplied.step01,
@@ -115,15 +113,15 @@ describe("outputReferenceScriptDecoding production workflow", () => {
           },
         ]),
       ),
-    } as unknown as OutputReferenceScriptDecodingDeploymentBindingV1;
+    } as unknown as OutputReferenceScriptDecodingDeploymentBinding;
     expect(
-      bindOutputReferenceScriptDecodingReferenceScriptsV1({
+      bindOutputReferenceScriptDecodingReferenceScripts({
         binding,
         referenceScripts: supplied,
       }),
     ).toStrictEqual(supplied);
     expect(() =>
-      bindOutputReferenceScriptDecodingReferenceScriptsV1({
+      bindOutputReferenceScriptDecodingReferenceScripts({
         binding,
         referenceScripts: {
           ...supplied,
@@ -178,10 +176,9 @@ describe("outputReferenceScriptDecoding production workflow", () => {
         },
       }),
     });
-    const transactionId =
-      computeMidgardNativeTxIdV1(transaction).toString("hex");
-    const evidence = prepareOutputReferenceScriptDecodingEvidenceV1({
-      subject: forcedVerdictSubjectV1({
+    const transactionId = computeMidgardNativeTxId(transaction).toString("hex");
+    const evidence = prepareOutputReferenceScriptDecodingEvidence({
+      subject: forcedVerdictSubject({
         transactionId,
         sourceKey: { transactionId: "bb".repeat(32), outputIndex: 0n },
         rejectionReason: {
@@ -189,55 +186,55 @@ describe("outputReferenceScriptDecoding production workflow", () => {
         },
       }),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(transaction),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
     });
     const controlCbor = (index: number) =>
       Data.to(
-        outputReferenceScriptControlDataV1(
+        outputReferenceScriptControlData(
           evidence.outputScanControls[index]!,
         ) as never,
-        OutputReferenceOutputControlV1Schema as never,
+        OutputReferenceOutputControlSchema as never,
       );
     expect(evidence.outputScanControls.length).toBeGreaterThan(2);
     expect(
-      outputReferenceScriptDecodingNextOutputScanStageV1({
+      outputReferenceScriptDecodingNextOutputScanStage({
         evidence,
         controlCbor: controlCbor(0),
       }),
     ).toBe("outputScan");
     expect(
-      outputReferenceScriptDecodingNextOutputScanStageV1({
+      outputReferenceScriptDecodingNextOutputScanStage({
         evidence,
         controlCbor: controlCbor(evidence.outputScanControls.length - 2),
       }),
     ).toBe("referenceBind");
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: Buffer.from(evidence.referenceScriptItemHex, "hex"),
       direction: 1,
     });
-    expect(plan.route).toBe(NativeScriptDecodingPlanRoutesV1.Machine);
-    if (plan.route !== NativeScriptDecodingPlanRoutesV1.Machine)
+    expect(plan.route).toBe(NativeScriptDecodingPlanRoutes.Machine);
+    if (plan.route !== NativeScriptDecodingPlanRoutes.Machine)
       throw new Error("native fixture did not enter structural machine");
     expect(plan.segments.length).toBeGreaterThan(1);
     expect(
-      outputReferenceScriptDecodingNextStructuralStageV1({
+      outputReferenceScriptDecodingNextStructuralStage({
         evidence,
         controlCbor: plan.segments[0]!.controlBefore.cborHex,
-        resultClass: BigInt(OutputReferenceScriptResultClassesV1.Pending),
+        resultClass: BigInt(OutputReferenceScriptResultClasses.Pending),
       }),
     ).toBe("scan");
     expect(
-      outputReferenceScriptDecodingNextStructuralStageV1({
+      outputReferenceScriptDecodingNextStructuralStage({
         evidence,
         controlCbor: plan.segments.at(-1)!.controlBefore.cborHex,
-        resultClass: BigInt(OutputReferenceScriptResultClassesV1.Pending),
+        resultClass: BigInt(OutputReferenceScriptResultClasses.Pending),
       }),
     ).toBe("step06");
   });
 
   it("rejects a caller-authored evidence surface before any transport access", async () => {
     await expect(
-      runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflowV1({
+      runOrResumeManifestBoundOutputReferenceScriptDecodingWorkflow({
         workflow: {},
         sources: [],
         journal: {},

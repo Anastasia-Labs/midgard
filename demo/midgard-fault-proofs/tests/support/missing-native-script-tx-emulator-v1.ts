@@ -1,24 +1,24 @@
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  computeMidgardNativeTxId,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
-  encodeMidgardFieldPreimageV1,
+  encodeMidgardFieldPreimage,
   encodeMidgardNativeScript,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
+  encodeMidgardTxInputCanonical,
   faultProofStepRedeemerSchema,
-  fieldOpeningV1ForField,
+  fieldOpeningForField,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   MissingNativeScriptTxStep03Datum,
   MissingNativeScriptTxStep03SpendRedeemer,
@@ -30,7 +30,7 @@ import {
   MissingNativeScriptTxStep05SpendRedeemer,
   type MissingNativeScriptTxStep05State,
   MissingNativeScriptTxStep06Datum,
-  missingNativeScriptTxStep06ReadyStateV1,
+  missingNativeScriptTxStep06ReadyState,
   MissingNativeScriptTxStep06SpendRedeemer,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
@@ -50,12 +50,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { MissingNativeScriptTxContractsV1 } from "../../src/missing-native-script-tx/contracts-v1.js";
+import type { MissingNativeScriptTxContracts } from "../../src/missing-native-script-tx/contracts-v1.js";
 import {
-  requireMissingNativeScriptTxStepStateV1,
-  requireMissingNativeScriptTxThreadUtxoV1,
+  requireMissingNativeScriptTxStepState,
+  requireMissingNativeScriptTxThreadUtxo,
 } from "../../src/missing-native-script-tx/submit-common-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../../src/missing-native-script-tx/submit-native-binding-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../../src/missing-native-script-tx/submit-native-binding-v1.js";
 import { resolveProverSigner } from "../../src/runtime.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
@@ -63,14 +63,14 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
-import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
+import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts-v1.js";
 import {
-  buildDecodingBlockFixtureV1,
-  type DecodingBlockFixtureV1,
+  buildDecodingBlockFixture,
+  type DecodingBlockFixture,
 } from "./native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishPlainReferenceScriptUtxo,
@@ -88,7 +88,7 @@ export const missingNativeScriptBytesV1 = (): Buffer =>
     ],
   });
 
-export const missingVersionedScriptV1 = () => {
+export const missingVersionedScript = () => {
   const scriptBytes = missingNativeScriptBytesV1();
   return {
     language: "NativeCardano" as const,
@@ -105,7 +105,7 @@ export const missingVersionedScriptV1 = () => {
   };
 };
 
-const scriptLockedOutputCborV1 = ({
+const scriptLockedOutputCbor = ({
   credentialHash,
   keyLocked,
 }: {
@@ -121,10 +121,8 @@ const scriptLockedOutputCborV1 = ({
     value: { lovelace: 2_000_000n, assets: new Map() },
   });
 
-const sdkWitnessSet = (
-  tx: MidgardNativeTxFullV1,
-): NativeTxWitnessSetCompact => {
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet);
+const sdkWitnessSet = (tx: MidgardNativeTxFull): NativeTxWitnessSetCompact => {
+  const compact = deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet);
   return {
     addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
     script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString("hex"),
@@ -134,8 +132,8 @@ const sdkWitnessSet = (
   };
 };
 
-export const makeMissingNativeScriptTxEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeMissingNativeScriptTxEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realMissingNativeScriptTx: true,
       alwaysFraudProofCatalogue: true,
@@ -162,11 +160,11 @@ export const makeMissingNativeScriptTxEmulatorHarnessV1 = async () => {
   return { ...harness, family, category, outsiderLucid, outsiderSigner };
 };
 
-export type MissingNativeScriptTxFixtureV1 = {
-  readonly block: DecodingBlockFixtureV1;
+export type MissingNativeScriptTxFixture = {
+  readonly block: DecodingBlockFixture;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
-  readonly producingTx: MidgardNativeTxFullV1;
-  readonly badTx: MidgardNativeTxFullV1;
+  readonly producingTx: MidgardNativeTxFull;
+  readonly badTx: MidgardNativeTxFull;
   readonly producingTxId: string;
   readonly badTxId: string;
   readonly producingOutputItemCbors: readonly Buffer[];
@@ -180,14 +178,14 @@ export type MissingNativeScriptTxFixtureV1 = {
   readonly expectedScriptHash: string;
 };
 
-export const setupMissingNativeScriptTxFixtureV1 = async ({
+export const setupMissingNativeScriptTxFixture = async ({
   harness,
   scriptPresent = false,
   keyLockedProducingOutput = false,
   decoySpendInputCount = 0,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
   readonly scriptPresent?: boolean;
   readonly keyLockedProducingOutput?: boolean;
@@ -197,16 +195,16 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
    * tier-1 bound and let size alone select tier-2 carriage.
    */
   readonly decoySpendInputCount?: number;
-}): Promise<MissingNativeScriptTxFixtureV1> => {
-  const versionedScript = missingVersionedScriptV1();
+}): Promise<MissingNativeScriptTxFixture> => {
+  const versionedScript = missingVersionedScript();
   const nativeScriptBytes = Buffer.from(versionedScript.scriptBytes);
   const versionedScriptItem = encodeMidgardVersionedScript(versionedScript);
   const expectedScriptHash = hashMidgardVersionedScript(versionedScript);
-  const producingOutput = scriptLockedOutputCborV1({
+  const producingOutput = scriptLockedOutputCbor({
     credentialHash: expectedScriptHash,
     keyLocked: keyLockedProducingOutput,
   });
-  const keyLockedControlOutput = scriptLockedOutputCborV1({
+  const keyLockedControlOutput = scriptLockedOutputCbor({
     credentialHash: "99".repeat(28),
     keyLocked: true,
   });
@@ -215,7 +213,7 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
     fee: 1_000n,
     outputCbors: [producingOutput, keyLockedControlOutput],
   });
-  const producingTxId = computeMidgardNativeTxIdV1(producingTx).toString("hex");
+  const producingTxId = computeMidgardNativeTxId(producingTx).toString("hex");
   const accusedInput: MidgardTxInput = {
     tx_id: producingTxId,
     output_index: 0n,
@@ -237,8 +235,8 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
     ...decoySpendInputs,
   ].sort((left, right) =>
     Buffer.compare(
-      encodeMidgardTxInputCanonicalV1(left),
-      encodeMidgardTxInputCanonicalV1(right),
+      encodeMidgardTxInputCanonical(left),
+      encodeMidgardTxInputCanonical(right),
     ),
   );
   const badInputIndex = badTxSpendInputs.findIndex(
@@ -247,13 +245,13 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
       input.output_index === accusedInput.output_index,
   );
   const badTx = makeNativeTx({
-    spendInputCbors: badTxSpendInputs.map(encodeMidgardTxInputCanonicalV1),
+    spendInputCbors: badTxSpendInputs.map(encodeMidgardTxInputCanonical),
     fee: 2_000n,
     scriptTxWitsPreimageCbor: scriptPresent
       ? encodeCbor([versionedScriptItem])
       : encodeCbor([]),
   });
-  const badTxId = computeMidgardNativeTxIdV1(badTx).toString("hex");
+  const badTxId = computeMidgardNativeTxId(badTx).toString("hex");
   const paymentCredential = getAddressDetails(
     await harness.funderLucid.wallet().address(),
   ).paymentCredential;
@@ -266,7 +264,7 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
       harness.emulator.now() + 120_000,
     ) - 1,
   );
-  const block = await buildDecodingBlockFixtureV1({
+  const block = await buildDecodingBlockFixture({
     operatorVkey: paymentCredential.hash,
     startTime,
     priorLedgerRoot: "00".repeat(32),
@@ -291,7 +289,7 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
     badTxSpendInputs,
     badInputIndex,
     badTxWitnessSet: sdkWitnessSet(badTx),
-    badTxScriptWitnessItemCbors: decodeMidgardFieldPreimageV1(
+    badTxScriptWitnessItemCbors: decodeMidgardFieldPreimage(
       badTx.witnessSet.scriptTxWitsPreimageCbor,
     ),
     nativeScriptBytes,
@@ -300,14 +298,14 @@ export const setupMissingNativeScriptTxFixtureV1 = async ({
   };
 };
 
-export const publishMissingNativeScriptTxReferenceScriptsV1 = async ({
+export const publishMissingNativeScriptTxReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -330,10 +328,8 @@ export const publishMissingNativeScriptTxReferenceScriptsV1 = async ({
   ];
 };
 
-export const fundMissingNativeScriptTxOutsiderV1 = async (
-  harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
-  >,
+export const fundMissingNativeScriptTxOutsider = async (
+  harness: Awaited<ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>>,
 ): Promise<void> => {
   // Both of the outsider's addresses are funded. `selectWallet.fromSeed`
   // derives the seed's base address while `resolveProverSigner` derives its
@@ -352,9 +348,9 @@ export const fundMissingNativeScriptTxOutsiderV1 = async (
   await harness.funderLucid.awaitTx(await signed.submit());
 };
 
-type RawAdvanceStepV1 = 3 | 4;
+type RawAdvanceStep = 3 | 4;
 
-const submitRawAdvanceV1 = async ({
+const submitRawAdvance = async ({
   harness,
   stepIndex,
   threadOutRef,
@@ -364,9 +360,9 @@ const submitRawAdvanceV1 = async ({
   referenceScriptUtxo,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
-  readonly stepIndex: RawAdvanceStepV1;
+  readonly stepIndex: RawAdvanceStep;
   readonly threadOutRef: string;
   readonly nextDatum: string;
   readonly redeemerSchema: Parameters<typeof Data.to>[1];
@@ -377,7 +373,7 @@ const submitRawAdvanceV1 = async ({
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -430,7 +426,7 @@ const submitRawAdvanceV1 = async ({
   return txHash;
 };
 
-export const submitRawMissingNativeScriptTxStep03V1 = async ({
+export const submitRawMissingNativeScriptTxStep03 = async ({
   harness,
   threadOutRef,
   stateQueueBlockOutRef,
@@ -438,7 +434,7 @@ export const submitRawMissingNativeScriptTxStep03V1 = async ({
   referenceScriptUtxo,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
@@ -446,7 +442,7 @@ export const submitRawMissingNativeScriptTxStep03V1 = async ({
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -454,7 +450,7 @@ export const submitRawMissingNativeScriptTxStep03V1 = async ({
       threadOutRef,
     });
   const state: MissingNativeScriptTxStep03State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer: harness.proverSigner,
       schema: MissingNativeScriptTxStep03Datum,
@@ -472,7 +468,7 @@ export const submitRawMissingNativeScriptTxStep03V1 = async ({
     },
     MissingNativeScriptTxStep04Datum,
   );
-  const result = await submitMissingNativeScriptTxBindingV1({
+  const result = await submitMissingNativeScriptTxBinding({
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -492,7 +488,7 @@ export const submitRawMissingNativeScriptTxStep03V1 = async ({
   return result.txHash;
 };
 
-export const submitRawMissingNativeScriptTxStep04V1 = async ({
+export const submitRawMissingNativeScriptTxStep04 = async ({
   harness,
   threadOutRef,
   nativeTxCompactCbor,
@@ -500,14 +496,14 @@ export const submitRawMissingNativeScriptTxStep04V1 = async ({
   referenceScriptUtxo,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
   readonly threadOutRef: string;
   readonly nativeTxCompactCbor: string;
   readonly outputItemCbors: readonly Uint8Array[];
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
-  const { threadUtxo } = await requireMissingNativeScriptTxThreadUtxoV1({
+  const { threadUtxo } = await requireMissingNativeScriptTxThreadUtxo({
     lucid: harness.proverLucid,
     contracts: harness.family,
     categoryId: harness.category.categoryId,
@@ -515,7 +511,7 @@ export const submitRawMissingNativeScriptTxStep04V1 = async ({
     threadOutRef,
   });
   const state: MissingNativeScriptTxStep04State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer: harness.proverSigner,
       schema: MissingNativeScriptTxStep04Datum,
@@ -532,18 +528,18 @@ export const submitRawMissingNativeScriptTxStep04V1 = async ({
     },
     MissingNativeScriptTxStep05Datum,
   );
-  const opening = fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  const opening = fieldOpeningForField({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     nativeTxCompactCbor,
     carriage: {
       Inline: {
-        preimage: encodeMidgardFieldPreimageV1(
+        preimage: encodeMidgardFieldPreimage(
           outputItemCbors.map((item) => Buffer.from(item)),
         ).toString("hex"),
       },
     },
   });
-  return await submitRawAdvanceV1({
+  return await submitRawAdvance({
     harness,
     stepIndex: 3,
     threadOutRef,
@@ -558,20 +554,20 @@ export const submitRawMissingNativeScriptTxStep04V1 = async ({
   });
 };
 
-export const submitRawMissingNativeScriptTxStep05V1 = async ({
+export const submitRawMissingNativeScriptTxStep05 = async ({
   harness,
   threadOutRef,
   missingNativeScriptBytes,
   referenceScriptUtxo,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
   readonly threadOutRef: string;
   readonly missingNativeScriptBytes: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
-  const { threadUtxo } = await requireMissingNativeScriptTxThreadUtxoV1({
+  const { threadUtxo } = await requireMissingNativeScriptTxThreadUtxo({
     lucid: harness.proverLucid,
     contracts: harness.family,
     categoryId: harness.category.categoryId,
@@ -579,7 +575,7 @@ export const submitRawMissingNativeScriptTxStep05V1 = async ({
     threadOutRef,
   });
   const state: MissingNativeScriptTxStep05State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer: harness.proverSigner,
       schema: MissingNativeScriptTxStep05Datum,
@@ -588,11 +584,11 @@ export const submitRawMissingNativeScriptTxStep05V1 = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: harness.proverSigner.paymentKeyHash,
-      data: missingNativeScriptTxStep06ReadyStateV1(state),
+      data: missingNativeScriptTxStep06ReadyState(state),
     },
     MissingNativeScriptTxStep06Datum,
   );
-  return await submitRawAdvanceV1({
+  return await submitRawAdvance({
     harness,
     stepIndex: 4,
     threadOutRef,
@@ -609,7 +605,7 @@ export const submitRawMissingNativeScriptTxStep05V1 = async ({
   });
 };
 
-export const submitRawMissingNativeScriptTxStep06V1 = async ({
+export const submitRawMissingNativeScriptTxStep06 = async ({
   harness,
   threadOutRef,
   nativeTxCompactCbor,
@@ -618,7 +614,7 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
   referenceScriptUtxo,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
   readonly threadOutRef: string;
   readonly nativeTxCompactCbor: string;
@@ -627,20 +623,20 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
       stepIndex: 5,
       threadOutRef,
     });
-  const opening = fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+  const opening = fieldOpeningForField({
+    fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     nativeTxCompactCbor,
     witnessSet,
     carriage: {
       Inline: {
-        preimage: encodeMidgardFieldPreimageV1(
+        preimage: encodeMidgardFieldPreimage(
           scriptTxWitsItems.map((item) => Buffer.from(item)),
         ).toString("hex"),
       },
@@ -726,12 +722,12 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: harness.family.computationThread.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
     label: "raw missing-native-script-tx step-06 computation-thread mint",
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: harness.family.fraudProof.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
     label: "raw missing-native-script-tx step-06 fraud-proof mint",
@@ -770,21 +766,21 @@ type RawCancelSpendRedeemer = Data.Static<typeof RawCancelSpendRedeemerSchema>;
 const RawCancelSpendRedeemer =
   RawCancelSpendRedeemerSchema as unknown as RawCancelSpendRedeemer;
 
-export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
+export const submitRawMissingNativeScriptTxOutsiderCancel = async ({
   harness,
   threadOutRef,
   stepIndex,
   referenceScriptUtxo,
 }: {
   readonly harness: Awaited<
-    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
+    ReturnType<typeof makeMissingNativeScriptTxEmulatorHarness>
   >;
   readonly threadOutRef: string;
   readonly stepIndex: 0 | 1 | 2 | 3 | 4 | 5;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid: harness.outsiderLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -830,7 +826,7 @@ export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: harness.family.computationThread.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
     label: "raw missing-native-script-tx cancel computation-thread mint",

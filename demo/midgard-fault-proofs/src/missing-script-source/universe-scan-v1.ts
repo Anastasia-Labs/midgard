@@ -1,10 +1,10 @@
-import { FrontierPeakV1Schema, hashHexWithBlake2b } from "@al-ft/midgard-sdk";
+import { FrontierPeakSchema, hashHexWithBlake2b } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-export const MISSING_SCRIPT_SOURCE_SCAN_BUDGET_V1 = 24 as const;
+export const MISSING_SCRIPT_SOURCE_SCAN_BUDGET = 24 as const;
 
-export type MissingScriptSourceUniverseSourceV1 = Readonly<{
+export type MissingScriptSourceUniverseSource = Readonly<{
   sourceIndex: number;
   locationKind: 0 | 1;
   scriptHashHex: string;
@@ -13,18 +13,17 @@ export type MissingScriptSourceUniverseSourceV1 = Readonly<{
 }>;
 
 /** Output shape consumed from the frozen transaction-derived script universe. */
-export type MissingScriptSourceUniverseResultV1 = Readonly<{
+export type MissingScriptSourceUniverseResult = Readonly<{
   purposeKind: 0 | 1 | 2 | 3;
   purposeIndex: number;
   requiredScriptHashHex: string;
-  sources: readonly MissingScriptSourceUniverseSourceV1[];
+  sources: readonly MissingScriptSourceUniverseSource[];
 }>;
 
-export type BoundMissingScriptSourceUniverseV1 =
-  MissingScriptSourceUniverseResultV1 &
-    Readonly<{ universeIdentityHex: string }>;
+export type BoundMissingScriptSourceUniverse =
+  MissingScriptSourceUniverseResult & Readonly<{ universeIdentityHex: string }>;
 
-export type MissingScriptSourceScanCheckpointV1 = Readonly<{
+export type MissingScriptSourceScanCheckpoint = Readonly<{
   universeIdentityHex: string;
   cursor: number;
   totalCount: number;
@@ -70,7 +69,7 @@ const ONCHAIN_CHECKPOINT_DOMAIN = Buffer.from(
 );
 
 /** Byte-for-byte mirror of `source_identity_hash_v1` in the validator. */
-export const missingScriptSourceOnchainSourceIdentityV1 = ({
+export const missingScriptSourceOnchainSourceIdentity = ({
   priorLedgerRootHex,
   sourceCount,
   scanLimit,
@@ -91,14 +90,14 @@ export const missingScriptSourceOnchainSourceIdentityV1 = ({
       Buffer.from(hex(priorLedgerRootHex, 32, "prior ledger root"), "hex"),
       aikenSerialise(sourceCount, Data.Integer()),
       aikenSerialise(scanLimit, Data.Integer()),
-      aikenSerialise(sourcePeaks, Data.Array(FrontierPeakV1Schema)),
+      aikenSerialise(sourcePeaks, Data.Array(FrontierPeakSchema)),
       aikenSerialise(transactionSourceCount, Data.Integer()),
       aikenSerialise(resolvedReferenceSourceCount, Data.Integer()),
     ]),
   );
 
 /** Byte-for-byte mirror of `checkpoint_v1` in the validator. */
-export const missingScriptSourceOnchainCheckpointV1 = ({
+export const missingScriptSourceOnchainCheckpoint = ({
   sourceIdentityHex,
   cursor,
   found,
@@ -122,9 +121,9 @@ export const missingScriptSourceOnchainCheckpointV1 = ({
     ]),
   );
 
-export const bindMissingScriptSourceUniverseV1 = (
-  result: MissingScriptSourceUniverseResultV1,
-): BoundMissingScriptSourceUniverseV1 => {
+export const bindMissingScriptSourceUniverse = (
+  result: MissingScriptSourceUniverseResult,
+): BoundMissingScriptSourceUniverse => {
   if (![0, 1, 2, 3].includes(result.purposeKind))
     return fail("purpose kind is outside consensus order");
   natural(result.purposeIndex, "purpose index");
@@ -161,13 +160,13 @@ export const bindMissingScriptSourceUniverseV1 = (
   });
 };
 
-export const missingScriptSourceScanCheckpointHashV1 = ({
+export const missingScriptSourceScanCheckpointHash = ({
   universeIdentityHex,
   cursor,
   totalCount,
   found,
   nextExpectedScriptHashHex,
-}: Omit<MissingScriptSourceScanCheckpointV1, "checkpointHashHex">): string =>
+}: Omit<MissingScriptSourceScanCheckpoint, "checkpointHashHex">): string =>
   digest(
     Buffer.concat([
       Buffer.from("midgard/missing-script-source/scan-checkpoint-v1", "ascii"),
@@ -183,17 +182,17 @@ export const missingScriptSourceScanCheckpointHashV1 = ({
   );
 
 const checkpoint = (
-  value: Omit<MissingScriptSourceScanCheckpointV1, "checkpointHashHex">,
-): MissingScriptSourceScanCheckpointV1 =>
+  value: Omit<MissingScriptSourceScanCheckpoint, "checkpointHashHex">,
+): MissingScriptSourceScanCheckpoint =>
   Object.freeze({
     ...value,
-    checkpointHashHex: missingScriptSourceScanCheckpointHashV1(value),
+    checkpointHashHex: missingScriptSourceScanCheckpointHash(value),
   });
 
-export const initialMissingScriptSourceScanV1 = (
-  universe: BoundMissingScriptSourceUniverseV1,
+export const initialMissingScriptSourceScan = (
+  universe: BoundMissingScriptSourceUniverse,
   nextExpectedScriptHashHex: string,
-): MissingScriptSourceScanCheckpointV1 =>
+): MissingScriptSourceScanCheckpoint =>
   checkpoint({
     universeIdentityHex: universe.universeIdentityHex,
     cursor: 0,
@@ -202,26 +201,26 @@ export const initialMissingScriptSourceScanV1 = (
     nextExpectedScriptHashHex,
   });
 
-export const advanceMissingScriptSourceScanV1 = ({
+export const advanceMissingScriptSourceScan = ({
   universe,
   prior,
-  itemBudget = MISSING_SCRIPT_SOURCE_SCAN_BUDGET_V1,
+  itemBudget = MISSING_SCRIPT_SOURCE_SCAN_BUDGET,
   scanScriptHashHex,
   finalScriptHashHex,
 }: {
-  universe: BoundMissingScriptSourceUniverseV1;
-  prior: MissingScriptSourceScanCheckpointV1;
+  universe: BoundMissingScriptSourceUniverse;
+  prior: MissingScriptSourceScanCheckpoint;
   itemBudget?: number;
   scanScriptHashHex: string;
   finalScriptHashHex: string;
-}): MissingScriptSourceScanCheckpointV1 => {
+}): MissingScriptSourceScanCheckpoint => {
   natural(itemBudget, "item budget");
-  if (itemBudget === 0 || itemBudget > MISSING_SCRIPT_SOURCE_SCAN_BUDGET_V1)
+  if (itemBudget === 0 || itemBudget > MISSING_SCRIPT_SOURCE_SCAN_BUDGET)
     return fail("item budget is outside the frozen scan bound");
   if (
     prior.universeIdentityHex !== universe.universeIdentityHex ||
     prior.totalCount !== universe.sources.length ||
-    prior.checkpointHashHex !== missingScriptSourceScanCheckpointHashV1(prior)
+    prior.checkpointHashHex !== missingScriptSourceScanCheckpointHash(prior)
   )
     return fail("source scan checkpoint or universe identity was substituted");
   let cursor = prior.cursor;
@@ -246,6 +245,6 @@ export const advanceMissingScriptSourceScanV1 = ({
   });
 };
 
-export const missingScriptSourceScanIsCompleteV1 = (
-  state: MissingScriptSourceScanCheckpointV1,
+export const missingScriptSourceScanIsComplete = (
+  state: MissingScriptSourceScanCheckpoint,
 ): boolean => state.cursor === state.totalCount;

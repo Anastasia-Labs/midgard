@@ -1,65 +1,65 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  decodeMidgardLedgerOutputCommitmentV1,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardLedgerOutputCommitment,
+  decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
-  MIN_ADA_VIOLATION_ID_V1,
+  MIN_ADA_VIOLATION_ID,
   Proof,
   type Proof as ProofV1,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerOutputMaterialV1,
-  MIDGARD_COINS_PER_UTXO_BYTE_V1,
-  outputMeetsMinAdaV1,
+  buildCanonicalMidgardLedgerOutputMaterial,
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import type { CanonicalBlockClassificationV1 } from "../workflow/classification-v1.js";
-import type { JournalJsonObjectV1 } from "../workflow/journal-v1.js";
-import type { ProductionHistoricalNativeScriptCorpusV1 } from "../workflow/production-historical-native-script-corpus-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockClassification } from "../workflow/classification-v1.js";
+import type { JournalJsonObject } from "../workflow/journal-v1.js";
+import type { HistoricalNativeScriptCorpus } from "../workflow/production-historical-native-script-corpus-v1.js";
 import {
-  admitProductionNativeInclusionArtifactV1,
-  canonicalHexV1,
-  canonicalNaturalStringV1,
-  EVEN_HEX_V1,
-  exactJournalRecordV1,
-  HEX_28_V1,
-  HEX_32_V1,
-  type ProductionNativeInclusionArtifactV1,
-  safeNaturalNumberV1,
+  admitNativeInclusionArtifact,
+  canonicalHex,
+  canonicalNaturalString,
+  EVEN_HEX,
+  exactJournalRecord,
+  HEX_28,
+  HEX_32,
+  type NativeInclusionArtifact,
+  safeNaturalNumber,
 } from "../workflow/production-native-index-artifact-v1.js";
 import {
-  type PreparedMinAdaTxV1,
-  type PreparedMinAdaUtxoV1,
-  prepareMinAdaTxFromCanonicalEvidenceV1,
-  prepareMinAdaUtxoFromCanonicalEvidenceV1,
+  type PreparedMinAdaTx,
+  type PreparedMinAdaUtxo,
+  prepareMinAdaTxFromCanonicalEvidence,
+  prepareMinAdaUtxoFromCanonicalEvidence,
 } from "./prepare-v1.js";
 
-export const PRODUCTION_MIN_ADA_ARTIFACT_V1 =
+export const MIN_ADA_ARTIFACT =
   "midgard-production-min-ada-artifact-v1" as const;
 
-type CommonArtifactV1 = JournalJsonObjectV1 &
+type CommonArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_MIN_ADA_ARTIFACT_V1;
+    schemaVersion: typeof MIN_ADA_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
   }>;
 
-export type ProductionMinAdaTxArtifactV1 = CommonArtifactV1 &
+export type MinAdaTxArtifact = CommonArtifact &
   Readonly<{
     kind: "min-ada-tx";
-    tx: ProductionNativeInclusionArtifactV1;
+    tx: NativeInclusionArtifact;
     nativeTxCanonicalCbor: string;
     badOutputIndex: string;
     outputItemCbors: readonly string[];
     descriptorCbor: string;
   }>;
 
-export type ProductionMinAdaUtxoArtifactV1 = CommonArtifactV1 &
+export type MinAdaUtxoArtifact = CommonArtifact &
   Readonly<{
     kind: "min-ada-utxo";
     outRef: Readonly<{ transactionId: string; outputIndex: string }>;
@@ -71,18 +71,16 @@ export type ProductionMinAdaUtxoArtifactV1 = CommonArtifactV1 &
     predecessorNonMembershipProofCbor: string;
   }>;
 
-export type ProductionMinAdaArtifactV1 =
-  | ProductionMinAdaTxArtifactV1
-  | ProductionMinAdaUtxoArtifactV1;
+export type MinAdaArtifact = MinAdaTxArtifact | MinAdaUtxoArtifact;
 
-export type AdmittedProductionMinAdaArtifactV1 =
+export type AdmittedMinAdaArtifact =
   | Readonly<{
-      artifact: ProductionMinAdaTxArtifactV1;
-      prepared: PreparedMinAdaTxV1;
+      artifact: MinAdaTxArtifact;
+      prepared: PreparedMinAdaTx;
     }>
   | Readonly<{
-      artifact: ProductionMinAdaUtxoArtifactV1;
-      prepared: PreparedMinAdaUtxoV1;
+      artifact: MinAdaUtxoArtifact;
+      prepared: PreparedMinAdaUtxo;
     }>;
 
 const proofSteps = (proof: ProofV1) =>
@@ -116,7 +114,7 @@ const canonicalHexList = (value: unknown, label: string): readonly string[] => {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   return Object.freeze(
     value.map((item, index) =>
-      canonicalHexV1(item, EVEN_HEX_V1, `${label}[${index.toString()}]`),
+      canonicalHex(item, EVEN_HEX, `${label}[${index.toString()}]`),
     ),
   );
 };
@@ -153,25 +151,25 @@ const decodeProof = (cbor: string, label: string): ProofV1 => {
   }
 };
 
-export const minAdaTxDetectionIdV1 = ({
+export const minAdaTxDetectionId = ({
   txId,
   outputIndex,
 }: {
   readonly txId: string;
   readonly outputIndex: bigint;
-}): string => `${MIN_ADA_VIOLATION_ID_V1}:tx:${txId}:${outputIndex.toString()}`;
+}): string => `${MIN_ADA_VIOLATION_ID}:tx:${txId}:${outputIndex.toString()}`;
 
-export const minAdaUtxoDetectionIdV1 = ({
+export const minAdaUtxoDetectionId = ({
   transactionId,
   outputIndex,
 }: {
   readonly transactionId: string;
   readonly outputIndex: bigint;
 }): string =>
-  `${MIN_ADA_VIOLATION_ID_V1}:utxo:${transactionId}:${outputIndex.toString()}`;
+  `${MIN_ADA_VIOLATION_ID}:utxo:${transactionId}:${outputIndex.toString()}`;
 
 type Classification = Extract<
-  CanonicalBlockClassificationV1,
+  CanonicalBlockClassification,
   { readonly decision: "fault_detected" }
 > & { readonly category: "minAda" };
 
@@ -187,7 +185,7 @@ const requireClassification = ({
   const selected = classification.selected;
   if (
     classification.headerHash !== headerHash ||
-    selected.violationId !== MIN_ADA_VIOLATION_ID_V1 ||
+    selected.violationId !== MIN_ADA_VIOLATION_ID ||
     selected.detectionId !== detectionId ||
     selected.position < 0n ||
     selected.position > BigInt(Number.MAX_SAFE_INTEGER)
@@ -199,27 +197,27 @@ const requireClassification = ({
   return Number(selected.position);
 };
 
-export const prepareProductionMinAdaArtifactV1 = async ({
+export const prepareMinAdaArtifact = async ({
   evidence,
   historicalNativeScriptCorpus,
   classification,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly historicalNativeScriptCorpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly historicalNativeScriptCorpus: HistoricalNativeScriptCorpus;
   readonly classification: Classification;
-}): Promise<ProductionMinAdaArtifactV1> => {
+}): Promise<MinAdaArtifact> => {
   if (
     classification.selected.detectionId.startsWith(
-      `${MIN_ADA_VIOLATION_ID_V1}:utxo:`,
+      `${MIN_ADA_VIOLATION_ID}:utxo:`,
     )
   ) {
-    const prepared = await prepareMinAdaUtxoFromCanonicalEvidenceV1({
+    const prepared = await prepareMinAdaUtxoFromCanonicalEvidence({
       evidence,
       historicalNativeScriptCorpus,
     });
-    const detectionId = minAdaUtxoDetectionIdV1(prepared.outRef);
+    const detectionId = minAdaUtxoDetectionId(prepared.outRef);
     return Object.freeze({
-      schemaVersion: PRODUCTION_MIN_ADA_ARTIFACT_V1,
+      schemaVersion: MIN_ADA_ARTIFACT,
       kind: "min-ada-utxo",
       headerHash: prepared.headerHash,
       detectionId,
@@ -241,13 +239,13 @@ export const prepareProductionMinAdaArtifactV1 = async ({
         prepared.predecessorNonMembershipProofCbor,
     });
   }
-  const prepared = await prepareMinAdaTxFromCanonicalEvidenceV1({ evidence });
-  const detectionId = minAdaTxDetectionIdV1({
+  const prepared = await prepareMinAdaTxFromCanonicalEvidence({ evidence });
+  const detectionId = minAdaTxDetectionId({
     txId: prepared.badTxId,
     outputIndex: prepared.badOutputIndex,
   });
   return Object.freeze({
-    schemaVersion: PRODUCTION_MIN_ADA_ARTIFACT_V1,
+    schemaVersion: MIN_ADA_ARTIFACT,
     kind: "min-ada-tx",
     headerHash: prepared.headerHash,
     detectionId,
@@ -272,14 +270,14 @@ export const prepareProductionMinAdaArtifactV1 = async ({
 
 const common = (value: unknown) => {
   const record = value as Readonly<Record<string, unknown>>;
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     record.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "min-ada header hash",
   );
-  const position = safeNaturalNumberV1(record.position, "min-ada position");
+  const position = safeNaturalNumber(record.position, "min-ada position");
   if (
-    record.schemaVersion !== PRODUCTION_MIN_ADA_ARTIFACT_V1 ||
+    record.schemaVersion !== MIN_ADA_ARTIFACT ||
     typeof record.detectionId !== "string"
   ) {
     throw new Error("min-ada artifact identity changed");
@@ -287,12 +285,10 @@ const common = (value: unknown) => {
   return { headerHash, position, detectionId: record.detectionId };
 };
 
-export const admitProductionMinAdaArtifactV1 = (
-  value: unknown,
-): AdmittedProductionMinAdaArtifactV1 => {
+export const admitMinAdaArtifact = (value: unknown): AdmittedMinAdaArtifact => {
   const candidate = value as Readonly<Record<string, unknown>>;
   if (candidate.kind === "min-ada-tx") {
-    const parsed = exactJournalRecordV1(
+    const parsed = exactJournalRecord(
       value,
       [
         "schemaVersion",
@@ -309,11 +305,8 @@ export const admitProductionMinAdaArtifactV1 = (
       "min-ada transaction artifact",
     );
     const identity = common(parsed);
-    const tx = admitProductionNativeInclusionArtifactV1(
-      parsed.tx,
-      "min-ada transaction",
-    );
-    const badOutputIndexString = canonicalNaturalStringV1(
+    const tx = admitNativeInclusionArtifact(parsed.tx, "min-ada transaction");
+    const badOutputIndexString = canonicalNaturalString(
       parsed.badOutputIndex,
       "min-ada output index",
     );
@@ -325,19 +318,19 @@ export const admitProductionMinAdaArtifactV1 = (
     const item = outputItemCbors[Number(badOutputIndex)];
     if (item === undefined)
       throw new Error("min-ada output index is out of bounds");
-    const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const material = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: Number(badOutputIndex),
       outputCbor: Buffer.from(item, "hex"),
     });
-    const descriptorCbor = canonicalHexV1(
+    const descriptorCbor = canonicalHex(
       parsed.descriptorCbor,
-      EVEN_HEX_V1,
+      EVEN_HEX,
       "min-ada descriptor",
     );
     if (
       material.descriptorCbor.toString("hex") !== descriptorCbor ||
-      outputMeetsMinAdaV1(
-        MIDGARD_COINS_PER_UTXO_BYTE_V1,
+      outputMeetsMinAda(
+        MIDGARD_COINS_PER_UTXO_BYTE,
         BigInt(material.descriptor.totalLength),
         material.descriptor.lovelace,
       )
@@ -346,20 +339,20 @@ export const admitProductionMinAdaArtifactV1 = (
         "min-ada transaction descriptor does not violate the floor",
       );
     }
-    const detectionId = minAdaTxDetectionIdV1({
+    const detectionId = minAdaTxDetectionId({
       txId: tx.artifact.nativeTxId,
       outputIndex: badOutputIndex,
     });
     if (identity.detectionId !== detectionId) {
       throw new Error("min-ada transaction detection identity changed");
     }
-    const nativeTxCanonicalCbor = canonicalHexV1(
+    const nativeTxCanonicalCbor = canonicalHex(
       parsed.nativeTxCanonicalCbor,
-      EVEN_HEX_V1,
+      EVEN_HEX,
       "min-ada canonical transaction",
     );
     const artifact = Object.freeze({
-      schemaVersion: PRODUCTION_MIN_ADA_ARTIFACT_V1,
+      schemaVersion: MIN_ADA_ARTIFACT,
       kind: "min-ada-tx" as const,
       ...identity,
       tx: tx.artifact,
@@ -391,7 +384,7 @@ export const admitProductionMinAdaArtifactV1 = (
       },
     });
   }
-  const parsed = exactJournalRecordV1(
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -413,27 +406,27 @@ export const admitProductionMinAdaArtifactV1 = (
     throw new Error("min-ada artifact has an unknown shape");
   }
   const identity = common(parsed);
-  const outRefRecord = exactJournalRecordV1(
+  const outRefRecord = exactJournalRecord(
     parsed.outRef,
     ["transactionId", "outputIndex"],
     "min-ada UTxO outRef",
   );
-  const transactionId = canonicalHexV1(
+  const transactionId = canonicalHex(
     outRefRecord.transactionId,
-    HEX_32_V1,
+    HEX_32,
     "min-ada UTxO transaction id",
   );
-  const outputIndexString = canonicalNaturalStringV1(
+  const outputIndexString = canonicalNaturalString(
     outRefRecord.outputIndex,
     "min-ada UTxO output index",
   );
   const outputIndex = BigInt(outputIndexString);
-  const outRefKeyCbor = canonicalHexV1(
+  const outRefKeyCbor = canonicalHex(
     parsed.outRefKeyCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "min-ada UTxO key",
   );
-  const decodedKey = decodeMidgardSpendInputItemV1(
+  const decodedKey = decodeMidgardSpendInputItem(
     Buffer.from(outRefKeyCbor, "hex"),
   );
   if (
@@ -442,41 +435,41 @@ export const admitProductionMinAdaArtifactV1 = (
   ) {
     throw new Error("min-ada UTxO key and outRef disagree");
   }
-  const descriptorCbor = canonicalHexV1(
+  const descriptorCbor = canonicalHex(
     parsed.descriptorCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "min-ada UTxO descriptor",
   );
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+  const descriptor = decodeMidgardLedgerOutputCommitment(
     Buffer.from(descriptorCbor, "hex"),
   );
   if (
-    outputMeetsMinAdaV1(
-      MIDGARD_COINS_PER_UTXO_BYTE_V1,
+    outputMeetsMinAda(
+      MIDGARD_COINS_PER_UTXO_BYTE,
       BigInt(descriptor.totalLength),
       descriptor.lovelace,
     )
   ) {
     throw new Error("min-ada UTxO descriptor meets the floor");
   }
-  const postUtxosRoot = canonicalHexV1(
+  const postUtxosRoot = canonicalHex(
     parsed.postUtxosRoot,
-    HEX_32_V1,
+    HEX_32,
     "min-ada post UTxO root",
   );
-  const prevUtxosRoot = canonicalHexV1(
+  const prevUtxosRoot = canonicalHex(
     parsed.prevUtxosRoot,
-    HEX_32_V1,
+    HEX_32,
     "min-ada predecessor UTxO root",
   );
-  const postMembershipProofCbor = canonicalHexV1(
+  const postMembershipProofCbor = canonicalHex(
     parsed.postMembershipProofCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "min-ada post membership proof",
   );
-  const predecessorNonMembershipProofCbor = canonicalHexV1(
+  const predecessorNonMembershipProofCbor = canonicalHex(
     parsed.predecessorNonMembershipProofCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "min-ada predecessor nonmembership proof",
   );
   const postMembershipProof = decodeProof(
@@ -507,7 +500,7 @@ export const admitProductionMinAdaArtifactV1 = (
       "min-ada UTxO proofs do not open their authenticated roots",
     );
   }
-  const detectionId = minAdaUtxoDetectionIdV1({
+  const detectionId = minAdaUtxoDetectionId({
     transactionId,
     outputIndex,
   });
@@ -519,7 +512,7 @@ export const admitProductionMinAdaArtifactV1 = (
     outputIndex: outputIndexString,
   });
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_MIN_ADA_ARTIFACT_V1,
+    schemaVersion: MIN_ADA_ARTIFACT,
     kind: "min-ada-utxo" as const,
     ...identity,
     outRef,

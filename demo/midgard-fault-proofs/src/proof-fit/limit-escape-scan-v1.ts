@@ -1,9 +1,9 @@
-export const UNPUBLISHABLE_DIAGNOSTIC_BEGIN_V1 =
+export const UNPUBLISHABLE_DIAGNOSTIC_BEGIN =
   "MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN";
-export const UNPUBLISHABLE_DIAGNOSTIC_END_V1 =
+export const UNPUBLISHABLE_DIAGNOSTIC_END =
   "MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_END";
 
-export type FaultProofLimitEscapeV1 = {
+export type FaultProofLimitEscape = {
   readonly path: string;
   readonly line: number;
   readonly kind:
@@ -31,7 +31,7 @@ const numericEscape = (
 
 const escapeKinds = (
   text: string,
-): readonly FaultProofLimitEscapeV1["kind"][] => [
+): readonly FaultProofLimitEscape["kind"][] => [
   ...(/\boversized\s*:\s*true\b/u.test(text)
     ? (["oversized_publication"] as const)
     : []),
@@ -54,24 +54,24 @@ const escapeKinds = (
  * negative diagnostic must be enclosed by explicit begin/end markers; merely
  * naming a test "diagnostic" does not exempt it.
  */
-export const scanFaultProofLimitEscapesV1 = ({
+export const scanFaultProofLimitEscapes = ({
   path,
   source,
 }: {
   readonly path: string;
   readonly source: string;
-}): readonly FaultProofLimitEscapeV1[] => {
-  const findings: FaultProofLimitEscapeV1[] = [];
+}): readonly FaultProofLimitEscape[] => {
+  const findings: FaultProofLimitEscape[] = [];
   let diagnosticDepth = 0;
   source.split(/\r?\n/u).forEach((text, index) => {
     const line = index + 1;
-    if (text.includes(UNPUBLISHABLE_DIAGNOSTIC_BEGIN_V1)) {
+    if (text.includes(UNPUBLISHABLE_DIAGNOSTIC_BEGIN)) {
       diagnosticDepth += 1;
     }
     for (const kind of escapeKinds(text)) {
       findings.push({ path, line, kind, diagnosticOnly: diagnosticDepth > 0 });
     }
-    if (text.includes(UNPUBLISHABLE_DIAGNOSTIC_END_V1)) {
+    if (text.includes(UNPUBLISHABLE_DIAGNOSTIC_END)) {
       if (diagnosticDepth === 0) {
         findings.push({
           path,
@@ -95,8 +95,8 @@ export const scanFaultProofLimitEscapesV1 = ({
   return Object.freeze(findings);
 };
 
-export const assertNoPositiveFaultProofLimitEscapesV1 = (
-  findings: readonly FaultProofLimitEscapeV1[],
+export const assertNoPositiveFaultProofLimitEscapes = (
+  findings: readonly FaultProofLimitEscape[],
 ): void => {
   const positive = findings.filter((finding) => !finding.diagnosticOnly);
   if (positive.length > 0) {

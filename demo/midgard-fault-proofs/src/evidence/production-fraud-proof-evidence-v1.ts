@@ -1,31 +1,31 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
-  admitAuthenticatedStateQueueHeaderObservationV1,
-  admitEvidenceProvenanceV1,
-  assertSecurityGradeEvidenceV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CanonicalEvidenceRejectionV1,
+  admitAuthenticatedStateQueueHeaderObservation,
+  admitEvidenceProvenance,
+  assertSecurityGradeEvidence,
+  type AuthenticatedStateQueueHeaderObservation,
+  CanonicalEvidenceRejection,
 } from "@al-ft/midgard-sdk";
 
 import {
-  fieldPreimageLengthProductionEvidenceFromVerifiedPayloadV1,
-  type RoutedFieldPreimageLengthProductionEvidenceV1,
+  fieldPreimageLengthEvidenceFromVerifiedPayload,
+  type RoutedFieldPreimageLengthEvidence,
 } from "../field-preimage-length-mismatch/production-evidence-v1.js";
 import {
-  detectMintDeclaredAssetLimitAcceptedRawReplayV1,
-  mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1,
-  type MintDeclaredAssetLimitRawBlockEvidenceV1,
-  type MintDeclaredAssetLimitReplayDetectionV1,
+  detectMintDeclaredAssetLimitAcceptedRawReplay,
+  type MintDeclaredAssetLimitRawBlockEvidence,
+  mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload,
+  type MintDeclaredAssetLimitReplayDetection,
 } from "../mint-declared-asset-limit/replay-v1.js";
 import {
-  detectObserversForbiddenAcceptedRawReplayV1,
-  observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1,
-  type ObserversForbiddenRawBlockEvidenceV1,
-  type ObserversForbiddenReplayDetectionV1,
+  detectObserversForbiddenAcceptedRawReplay,
+  type ObserversForbiddenRawBlockEvidence,
+  observersForbiddenRawBlockEvidenceFromVerifiedPayload,
+  type ObserversForbiddenReplayDetection,
 } from "../observers-forbidden-on-untagged-network/replay-v1.js";
 import {
-  daHashPreimageBlockEvidenceFromVerifiedPayloadV1,
-  prepareDaHashPreimageFromCommittedLeavesV1,
+  daHashPreimageBlockEvidenceFromVerifiedPayload,
+  prepareDaHashPreimageFromCommittedLeaves,
   type PreparedDaHashPreimageOutput,
 } from "../prepare-da-hash-preimage.js";
 import { TransitionTraceChallengerError } from "../transition-trace/errors.js";
@@ -34,52 +34,52 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import {
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
-  type CanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
 } from "./canonical-block-evidence-v1.js";
 import {
-  canonicalDecodabilityRawBlockEvidenceFromVerifiedPayloadV1,
-  type CanonicalDecodabilityRawBlockEvidenceV1,
+  type CanonicalDecodabilityRawBlockEvidence,
+  canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload,
 } from "./canonical-decodability-raw-evidence-v1.js";
 
-export const PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1 =
+export const FRAUD_PROOF_EVIDENCE_ROUTE =
   "midgard-production-fraud-proof-evidence-route-v1" as const;
 
-export type ProductionFraudProofEvidenceV1 =
+export type FraudProofEvidence =
   | Readonly<{
-      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "canonical_block";
-      evidence: CanonicalBlockEvidenceV1;
+      evidence: CanonicalBlockEvidence;
     }>
   | Readonly<{
-      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "da_hash_preimage";
       evidence: Awaited<
-        ReturnType<typeof daHashPreimageBlockEvidenceFromVerifiedPayloadV1>
+        ReturnType<typeof daHashPreimageBlockEvidenceFromVerifiedPayload>
       >;
       plan: PreparedDaHashPreimageOutput;
     }>
   | Readonly<{
-      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "canonical_decodability";
-      evidence: CanonicalDecodabilityRawBlockEvidenceV1;
+      evidence: CanonicalDecodabilityRawBlockEvidence;
     }>
   | Readonly<{
-      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "field_preimage_length_mismatch";
-      evidence: RoutedFieldPreimageLengthProductionEvidenceV1;
+      evidence: RoutedFieldPreimageLengthEvidence;
     }>
   | Readonly<{
-      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "mint_declared_asset_limit";
-      evidence: MintDeclaredAssetLimitRawBlockEvidenceV1;
-      selected: MintDeclaredAssetLimitReplayDetectionV1;
+      evidence: MintDeclaredAssetLimitRawBlockEvidence;
+      selected: MintDeclaredAssetLimitReplayDetection;
     }>
   | Readonly<{
-      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "observers_forbidden_on_untagged_network";
-      evidence: ObserversForbiddenRawBlockEvidenceV1;
-      selected: ObserversForbiddenReplayDetectionV1;
+      evidence: ObserversForbiddenRawBlockEvidence;
+      selected: ObserversForbiddenReplayDetection;
     }>;
 
 const isAuthenticatedSourceLeafDefect = (
@@ -111,25 +111,25 @@ const isAuthenticatedFieldPreimageLengthDefect = (
  * against L1, may enter a raw-fault preparation route. Transport, provenance,
  * finality, envelope, header, root, and count errors propagate unchanged.
  */
-export const fetchProductionFraudProofEvidenceV1 = async ({
+export const fetchFraudProofEvidence = async ({
   observation,
   sources,
   retries,
   minimumConfirmationDepth,
 }: {
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
   readonly minimumConfirmationDepth?: number;
-}): Promise<ProductionFraudProofEvidenceV1> => {
+}): Promise<FraudProofEvidence> => {
   if (sources.length === 0) {
-    throw new CanonicalEvidenceRejectionV1(
+    throw new CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
   const admittedObservation =
-    await admitAuthenticatedStateQueueHeaderObservationV1({
+    await admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
@@ -140,24 +140,23 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const daProvenance = assertSecurityGradeEvidenceV1(
-    admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
+  const daProvenance = assertSecurityGradeEvidence(
+    admitEvidenceProvenance({ provenance: fetched.provenance }),
   );
   const acceptedMintLimitRoute = async (): Promise<
     | Extract<
-        ProductionFraudProofEvidenceV1,
+        FraudProofEvidence,
         { readonly kind: "mint_declared_asset_limit" }
       >
     | undefined
   > => {
     const evidence =
-      await mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1({
+      await mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload({
         observation: admittedObservation,
         payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
         daProvenance,
       });
-    const detections =
-      detectMintDeclaredAssetLimitAcceptedRawReplayV1(evidence);
+    const detections = detectMintDeclaredAssetLimitAcceptedRawReplay(evidence);
     if (detections.length === 0) return undefined;
     const selected = [...detections].sort((left, right) =>
       left.position < right.position
@@ -171,7 +170,7 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
               : 0,
     )[0]!;
     return Object.freeze({
-      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
       kind: "mint_declared_asset_limit",
       evidence,
       selected,
@@ -179,13 +178,13 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
   };
   const acceptedObserversRoute = async (): Promise<
     | Extract<
-        ProductionFraudProofEvidenceV1,
+        FraudProofEvidence,
         { readonly kind: "observers_forbidden_on_untagged_network" }
       >
     | undefined
   > => {
     const evidence =
-      await observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1({
+      await observersForbiddenRawBlockEvidenceFromVerifiedPayload({
         observation: admittedObservation,
         payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
         daProvenance,
@@ -194,7 +193,7 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
           : { minimumConfirmationDepth }),
       });
     const selected = [
-      ...detectObserversForbiddenAcceptedRawReplayV1(evidence),
+      ...detectObserversForbiddenAcceptedRawReplay(evidence),
     ].sort((left, right) =>
       left.position < right.position
         ? -1
@@ -204,7 +203,7 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
     )[0];
     if (selected === undefined) return undefined;
     return Object.freeze({
-      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
       kind: "observers_forbidden_on_untagged_network",
       evidence,
       selected,
@@ -229,7 +228,7 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
     | "canonical_decodability"
     | "field_preimage_length_mismatch";
   try {
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
       observation: admittedObservation,
       payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
       daProvenance,
@@ -248,7 +247,7 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
       );
     }
     return Object.freeze({
-      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
       kind: "canonical_block",
       evidence,
     });
@@ -266,29 +265,27 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
 
   if (defectRoute === "canonical_decodability") {
     return Object.freeze({
-      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
       kind: "canonical_decodability",
-      evidence:
-        await canonicalDecodabilityRawBlockEvidenceFromVerifiedPayloadV1({
-          observation: admittedObservation,
-          payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-          daProvenance,
-          ...(minimumConfirmationDepth === undefined
-            ? {}
-            : { minimumConfirmationDepth }),
-        }),
+      evidence: await canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload({
+        observation: admittedObservation,
+        payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+        daProvenance,
+        ...(minimumConfirmationDepth === undefined
+          ? {}
+          : { minimumConfirmationDepth }),
+      }),
     });
   }
 
   if (defectRoute === "field_preimage_length_mismatch") {
     return Object.freeze({
-      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
       kind: "field_preimage_length_mismatch",
-      evidence:
-        await fieldPreimageLengthProductionEvidenceFromVerifiedPayloadV1({
-          observation: admittedObservation,
-          payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-        }),
+      evidence: await fieldPreimageLengthEvidenceFromVerifiedPayload({
+        observation: admittedObservation,
+        payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+      }),
     });
   }
 
@@ -296,7 +293,7 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
   // exception. It reopens the counted raw transactions root and emits an MPF
   // membership proof for the first total Q44 violation. A forged exception or
   // a root/key/value substitution therefore cannot manufacture a plan.
-  const raw = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+  const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
     observation: admittedObservation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
     daProvenance,
@@ -304,14 +301,14 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
       ? {}
       : { minimumConfirmationDepth }),
   });
-  const plan = await prepareDaHashPreimageFromCommittedLeavesV1({
+  const plan = await prepareDaHashPreimageFromCommittedLeaves({
     headerHash: raw.headerHash,
     committedTransactionsRoot: raw.committedTransactionsRoot,
     l2TransactionCount: raw.l2TransactionCount,
     entries: raw.entries,
   });
   return Object.freeze({
-    schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+    schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
     kind: "da_hash_preimage",
     evidence: raw,
     plan,

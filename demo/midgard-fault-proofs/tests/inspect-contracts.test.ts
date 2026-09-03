@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
@@ -544,7 +544,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       expect(step.standaloneScriptBytes).toBe(standaloneScriptBytes);
       expect(step.withinL1TransactionByteEnvelopeNecessaryCondition).toBe(
         standaloneScriptBytes <
-          MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+          MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
       );
     });
     const expectedOversized = appliedSpendingScripts.flatMap(
@@ -561,7 +561,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
             ],
     );
     expect(output.l1SpendingScriptEnvelopeNecessaryCondition).toEqual({
-      maxTransactionBytes: MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      maxTransactionBytes: MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
       appliedSpendingScriptCount: appliedSpendingScripts.length,
       allAppliedSpendingScriptsWithinEnvelope: expectedOversized.length === 0,
       oversizedAppliedSpendingScripts: expectedOversized,

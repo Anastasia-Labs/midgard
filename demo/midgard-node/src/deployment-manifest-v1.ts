@@ -1,32 +1,32 @@
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  type DeploymentManifestV1AvailabilityChallenge,
-  type DeploymentManifestV1CardanoProtocolParameters,
-  type DeploymentManifestV1Economics,
-  type DeploymentManifestV1FraudProofCatalogueCategory,
-  type DeploymentManifestV1FraudProofCatalogueCategoryIdentity,
-  type DeploymentManifestV1JsonValue,
-  type DeploymentManifestV1L1Finality,
-  normalizeDeploymentManifestV1JsonValue,
-  parseDeploymentManifestV1Economics,
-  verifyDeploymentManifestV1FraudProofCatalogueIdentity,
-  verifyDeploymentManifestV1Identity,
-  verifyFinalizedDeploymentManifestV1,
+  computeDeploymentManifestId as computeDeploymentManifestV1Id,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  type DeploymentManifestAvailabilityChallenge,
+  type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestEconomics,
+  type DeploymentManifestFraudProofCatalogueCategory,
+  type DeploymentManifestFraudProofCatalogueCategoryIdentity,
+  type DeploymentManifestJsonValue,
+  type DeploymentManifestL1Finality,
+  normalizeDeploymentManifestJsonValue,
+  parseDeploymentManifestEconomics,
+  verifyDeploymentManifestFraudProofCatalogueIdentity,
+  verifyDeploymentManifestIdentity,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -38,13 +38,13 @@ import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 export {
-  computeDeploymentManifestV1JsonDigest,
-  normalizeDeploymentManifestV1JsonValue,
+  computeDeploymentManifestJsonDigest,
+  normalizeDeploymentManifestJsonValue,
 };
-export type { DeploymentManifestV1JsonValue };
+export type { DeploymentManifestJsonValue };
 
-export const DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION =
-  MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION;
+export const DEPLOYMENT_MANIFEST_SCHEMA_VERSION =
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
 
 export const REQUIRED_TRANSACTION_ORDER_CONTRACTS = Object.freeze([
   "txOrderSpend",
@@ -62,7 +62,7 @@ export const REQUIRED_TRANSACTION_ORDER_CONTRACTS = Object.freeze([
   "validationTraceDisputeAward",
 ] as const);
 
-export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
+export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "referenceScriptAuthMint",
   "hubOracleMint",
   "daParamsGovernorSpend",
@@ -357,7 +357,7 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "stateQueueMergeWithdraw",
 ] as const);
 
-export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
   Object.freeze({
     "reference-script-auth minting": "referenceScriptAuthMint",
     "hub-oracle minting": "hubOracleMint",
@@ -835,11 +835,11 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "availability-challenge minting": "availabilityChallengeMint",
   } as const);
 
-export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES = Object.freeze(
-  Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES = Object.freeze(
+  Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
 );
 
-export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([
+export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "prepareHubOracleNonce",
   "deployNodeRuntimeReferenceScripts",
   "initProtocol",
@@ -848,7 +848,7 @@ export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([
   "operatorActivation",
 ] as const);
 
-const DEPLOYMENT_MANIFEST_V1_STEP_STATUSES = Object.freeze([
+const DEPLOYMENT_MANIFEST_STEP_STATUSES = Object.freeze([
   "pending",
   "in_progress",
   "submitted",
@@ -858,7 +858,7 @@ const DEPLOYMENT_MANIFEST_V1_STEP_STATUSES = Object.freeze([
   "blocked_requires_fresh_redeploy",
 ] as const);
 
-const DEPLOYMENT_MANIFEST_V1_SCRIPT_TYPES = Object.freeze([
+const DEPLOYMENT_MANIFEST_SCRIPT_TYPES = Object.freeze([
   "Native",
   "PlutusV1",
   "PlutusV2",
@@ -872,15 +872,15 @@ const DEPLOYMENT_MANIFEST_NETWORKS = new Set([
   "Custom",
 ]);
 
-type DeploymentManifestV1OutRef = {
+type DeploymentManifestOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
 };
 
-type DeploymentManifestV1ContractEntry = {
-  readonly refScriptUTxO: DeploymentManifestV1OutRef | null;
+type DeploymentManifestContractEntry = {
+  readonly refScriptUTxO: DeploymentManifestOutRef | null;
   readonly contract: {
-    readonly type: (typeof DEPLOYMENT_MANIFEST_V1_SCRIPT_TYPES)[number];
+    readonly type: (typeof DEPLOYMENT_MANIFEST_SCRIPT_TYPES)[number];
     readonly cborHex: string;
   };
   readonly scriptHash: string;
@@ -899,14 +899,14 @@ type DeploymentManifestV1ContractEntry = {
   };
 };
 
-export type DeploymentManifestV1Value = {
-  readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION;
+export type DeploymentManifestValue = {
+  readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
   readonly manifestId: string;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly consensusProfileDigest: string;
   readonly network: string;
   readonly cardanoProtocolParameters: {
-    readonly snapshot: DeploymentManifestV1CardanoProtocolParameters;
+    readonly snapshot: DeploymentManifestCardanoProtocolParameters;
     readonly digest: string;
   };
   readonly genesis: {
@@ -939,9 +939,7 @@ export type DeploymentManifestV1Value = {
       readonly rule: string;
     };
   };
-  readonly contracts: Readonly<
-    Record<string, DeploymentManifestV1ContractEntry>
-  >;
+  readonly contracts: Readonly<Record<string, DeploymentManifestContractEntry>>;
   readonly referenceScripts: Readonly<
     Record<
       string,
@@ -958,11 +956,11 @@ export type DeploymentManifestV1Value = {
     readonly committeeSignersHash: string;
     readonly threshold: number;
     readonly transportProfile: {
-      readonly protocolVersion: typeof DA_TRANSPORT_V1_PROTOCOL_VERSION;
-      readonly runtimeManifestSchemaVersion: typeof DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION;
+      readonly protocolVersion: typeof DA_TRANSPORT_PROTOCOL_VERSION;
+      readonly runtimeManifestSchemaVersion: typeof DA_RUNTIME_MANIFEST_SCHEMA_VERSION;
       readonly envelopeEncoding: "identity" | "zstd";
       readonly zstdLevel: number;
-      readonly limits: typeof DA_TRANSPORT_LIMITS_V1;
+      readonly limits: typeof DA_TRANSPORT_LIMITS;
       readonly retentionDays: number;
     };
   };
@@ -974,7 +972,7 @@ export type DeploymentManifestV1Value = {
     Record<
       string,
       {
-        readonly status: (typeof DEPLOYMENT_MANIFEST_V1_STEP_STATUSES)[number];
+        readonly status: (typeof DEPLOYMENT_MANIFEST_STEP_STATUSES)[number];
         readonly txHash?: string;
       }
     >
@@ -985,21 +983,21 @@ export type DeploymentManifestV1Value = {
     readonly maxBisectionRounds: number;
     readonly maturityMs: number;
   };
-  readonly l1Finality: DeploymentManifestV1L1Finality;
-  readonly economics: DeploymentManifestV1Economics;
-  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
+  readonly l1Finality: DeploymentManifestL1Finality;
+  readonly economics: DeploymentManifestEconomics;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
 };
 
-export const computeDeploymentManifestV1DaCommitteeSignersHash = (
+export const computeDeploymentManifestDaCommitteeSignersHash = (
   committeeVkeys: readonly string[],
 ): string => Effect.runSync(hashHexWithBlake2b(committeeVkeys.join(""), 32));
 
 const deploymentManifestIdentityInput = (
-  manifest: Omit<DeploymentManifestV1Value, "manifestId">,
+  manifest: Omit<DeploymentManifestValue, "manifestId">,
 ): unknown => manifest;
 
 export const computeDeploymentManifestId = (
-  manifest: Omit<DeploymentManifestV1Value, "manifestId">,
+  manifest: Omit<DeploymentManifestValue, "manifestId">,
 ): string =>
   computeDeploymentManifestV1Id(
     deploymentManifestIdentityInput(manifest) as Record<string, unknown>,
@@ -1119,7 +1117,7 @@ const requirePositiveSafeInteger = (value: unknown, field: string): number => {
 const requireOutRefString = (
   value: unknown,
   field: string,
-): DeploymentManifestV1OutRef => {
+): DeploymentManifestOutRef => {
   const parsed = requireNonEmptyString(value, field);
   const match = /^([0-9a-f]{64})#([0-9]+)$/u.exec(parsed);
   if (match === null) {
@@ -1143,12 +1141,12 @@ const requireOutRefString = (
 const requireScriptType = (
   value: unknown,
   field: string,
-): (typeof DEPLOYMENT_MANIFEST_V1_SCRIPT_TYPES)[number] => {
+): (typeof DEPLOYMENT_MANIFEST_SCRIPT_TYPES)[number] => {
   if (
     typeof value === "string" &&
-    DEPLOYMENT_MANIFEST_V1_SCRIPT_TYPES.some((entry) => entry === value)
+    DEPLOYMENT_MANIFEST_SCRIPT_TYPES.some((entry) => entry === value)
   ) {
-    return value as (typeof DEPLOYMENT_MANIFEST_V1_SCRIPT_TYPES)[number];
+    return value as (typeof DEPLOYMENT_MANIFEST_SCRIPT_TYPES)[number];
   }
   throw new Error(
     `Deployment manifest ${field} must be Native, PlutusV1, PlutusV2, or PlutusV3`,
@@ -1348,8 +1346,8 @@ const validateFraudProofCatalogue = (
     distinctAssetAccumulationLimit: "fraudProofDistinctAssetAccumulationLimit",
   } as const;
   const parsedCategories = {} as Record<
-    DeploymentManifestV1FraudProofCatalogueCategory,
-    DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+    DeploymentManifestFraudProofCatalogueCategory,
+    DeploymentManifestFraudProofCatalogueCategoryIdentity
   >;
   for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
@@ -1389,7 +1387,7 @@ const validateFraudProofCatalogue = (
       );
     }
   }
-  verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+  verifyDeploymentManifestFraudProofCatalogueIdentity({
     root,
     categories: parsedCategories,
   });
@@ -1398,11 +1396,11 @@ const validateFraudProofCatalogue = (
 const validateContracts = (contracts: Record<string, unknown>): void => {
   requireExactKeys(
     contracts,
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
     [],
     "contracts",
   );
-  for (const contractName of DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES) {
+  for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
     const field = `contracts.${contractName}`;
     const entry = requireObject(contracts[contractName], field);
     requireExactKeys(
@@ -1478,7 +1476,7 @@ const validateReferenceScripts = (
 ): void => {
   requireExactKeys(
     referenceScripts,
-    DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES,
+    DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES,
     [],
     "referenceScripts",
   );
@@ -1486,7 +1484,7 @@ const validateReferenceScripts = (
     referenceScriptAuthPolicy.policyId,
     "referenceScriptAuthPolicy.policyId",
   );
-  for (const role of DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES) {
+  for (const role of DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES) {
     const field = `referenceScripts.${role}`;
     const record = requireObject(referenceScripts[role], field);
     requireExactKeys(
@@ -1508,8 +1506,8 @@ const validateReferenceScripts = (
       );
     }
     const contractName =
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-        role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+        role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
       ];
     const contract = requireObject(
       contracts[contractName],
@@ -1537,14 +1535,14 @@ const validateReferenceScripts = (
 };
 
 const validateSteps = (steps: Record<string, unknown>): void => {
-  requireExactKeys(steps, DEPLOYMENT_MANIFEST_V1_STEP_NAMES, [], "steps");
-  for (const stepName of DEPLOYMENT_MANIFEST_V1_STEP_NAMES) {
+  requireExactKeys(steps, DEPLOYMENT_MANIFEST_STEP_NAMES, [], "steps");
+  for (const stepName of DEPLOYMENT_MANIFEST_STEP_NAMES) {
     const field = `steps.${stepName}`;
     const step = requireObject(steps[stepName], field);
     requireExactKeys(step, ["status"], ["txHash"], field);
     if (
       typeof step.status !== "string" ||
-      !DEPLOYMENT_MANIFEST_V1_STEP_STATUSES.some(
+      !DEPLOYMENT_MANIFEST_STEP_STATUSES.some(
         (status) => status === step.status,
       )
     ) {
@@ -1585,7 +1583,7 @@ const validateDaIdentity = (candidate: Record<string, unknown>): void => {
     "da.committeeSignersHash",
   );
   const expectedCommitteeSignersHash =
-    computeDeploymentManifestV1DaCommitteeSignersHash(committeeVkeys);
+    computeDeploymentManifestDaCommitteeSignersHash(committeeVkeys);
   if (committeeSignersHash !== expectedCommitteeSignersHash) {
     throw new Error(
       `Deployment manifest da.committeeSignersHash mismatch: expected ${expectedCommitteeSignersHash}`,
@@ -1617,17 +1615,17 @@ const validateDaIdentity = (candidate: Record<string, unknown>): void => {
     [],
     "da.transportProfile",
   );
-  if (transportProfile.protocolVersion !== DA_TRANSPORT_V1_PROTOCOL_VERSION) {
+  if (transportProfile.protocolVersion !== DA_TRANSPORT_PROTOCOL_VERSION) {
     throw new Error(
-      `Deployment manifest da.transportProfile.protocolVersion must equal ${DA_TRANSPORT_V1_PROTOCOL_VERSION.toString()}`,
+      `Deployment manifest da.transportProfile.protocolVersion must equal ${DA_TRANSPORT_PROTOCOL_VERSION.toString()}`,
     );
   }
   if (
     transportProfile.runtimeManifestSchemaVersion !==
-    DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION
+    DA_RUNTIME_MANIFEST_SCHEMA_VERSION
   ) {
     throw new Error(
-      `Deployment manifest da.transportProfile.runtimeManifestSchemaVersion must equal ${DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION}`,
+      `Deployment manifest da.transportProfile.runtimeManifestSchemaVersion must equal ${DA_RUNTIME_MANIFEST_SCHEMA_VERSION}`,
     );
   }
   if (
@@ -1653,11 +1651,11 @@ const validateDaIdentity = (candidate: Record<string, unknown>): void => {
   );
   requireExactKeys(
     limits,
-    Object.keys(DA_TRANSPORT_LIMITS_V1),
+    Object.keys(DA_TRANSPORT_LIMITS),
     [],
     "da.transportProfile.limits",
   );
-  for (const [key, expected] of Object.entries(DA_TRANSPORT_LIMITS_V1)) {
+  for (const [key, expected] of Object.entries(DA_TRANSPORT_LIMITS)) {
     if (limits[key] !== expected) {
       throw new Error(
         "Deployment manifest da.transportProfile.limits must exactly match canonical V1",
@@ -1668,9 +1666,9 @@ const validateDaIdentity = (candidate: Record<string, unknown>): void => {
     transportProfile.retentionDays,
     "da.transportProfile.retentionDays",
   );
-  if (retentionDays < DA_TRANSPORT_LIMITS_V1.minimumRetentionDays) {
+  if (retentionDays < DA_TRANSPORT_LIMITS.minimumRetentionDays) {
     throw new Error(
-      `Deployment manifest da.transportProfile.retentionDays must be at least ${DA_TRANSPORT_LIMITS_V1.minimumRetentionDays.toString()}`,
+      `Deployment manifest da.transportProfile.retentionDays must be at least ${DA_TRANSPORT_LIMITS.minimumRetentionDays.toString()}`,
     );
   }
 };
@@ -1685,22 +1683,20 @@ const validateValidationDispute = (
     "validationDispute",
   );
   if (
-    candidate.version !==
-      MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion ||
+    candidate.version !== MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion ||
     candidate.responseWindowMs !==
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs ||
+      MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs ||
     candidate.maxBisectionRounds !==
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds
+      MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds
   ) {
     throw new Error(
       "Deployment manifest validationDispute must exactly match canonical V1",
     );
   }
   if (
-    candidate.maturityMs !==
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs ||
+    candidate.maturityMs !== MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs ||
     (candidate.maturityMs as number) <
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.minValidationDisputeMaturityMs
+      MIDGARD_CONSENSUS_PROFILE.limits.minValidationDisputeMaturityMs
   ) {
     throw new Error(
       "Deployment manifest validationDispute.maturityMs must equal the canonical V1 maturity and cover the dispute schedule",
@@ -1710,7 +1706,7 @@ const validateValidationDispute = (
 
 const parseDeploymentManifestCommon = (
   candidate: Record<string, unknown>,
-): DeploymentManifestV1Value => {
+): DeploymentManifestValue => {
   const network = requireNonEmptyString(candidate.network, "network");
   if (!DEPLOYMENT_MANIFEST_NETWORKS.has(network)) {
     throw new Error(
@@ -1771,7 +1767,7 @@ const parseDeploymentManifestCommon = (
     [],
     "cardanoProtocolParameters",
   );
-  const cardanoSnapshot = normalizeDeploymentManifestV1JsonValue(
+  const cardanoSnapshot = normalizeDeploymentManifestJsonValue(
     cardanoProtocolParameters.snapshot,
     "cardanoProtocolParameters.snapshot",
   );
@@ -1781,7 +1777,7 @@ const parseDeploymentManifestCommon = (
     "cardanoProtocolParameters.digest",
   );
   const expectedCardanoDigest =
-    computeDeploymentManifestV1JsonDigest(cardanoSnapshot);
+    computeDeploymentManifestJsonDigest(cardanoSnapshot);
   if (cardanoDigest !== expectedCardanoDigest) {
     throw new Error(
       `Deployment manifest cardanoProtocolParameters.digest mismatch: expected ${expectedCardanoDigest}`,
@@ -1829,7 +1825,7 @@ const parseDeploymentManifestCommon = (
       "Deployment manifest proofEvidence.digest must be null or lowercase SHA-256 hex",
     );
   }
-  if (proofEvidence.digest !== MIDGARD_V1_RELEASE_EVIDENCE_DIGEST) {
+  if (proofEvidence.digest !== MIDGARD_RELEASE_EVIDENCE_DIGEST) {
     throw new Error(
       "Deployment manifest proofEvidence.digest must exactly match the compiled V1 release evidence",
     );
@@ -1851,7 +1847,7 @@ const parseDeploymentManifestCommon = (
     "l1Finality",
   );
   for (const [key, expected] of Object.entries(
-    DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    DEPLOYMENT_MANIFEST_L1_FINALITY,
   )) {
     if (l1Finality[key] !== expected) {
       throw new Error(
@@ -1859,14 +1855,14 @@ const parseDeploymentManifestCommon = (
       );
     }
   }
-  parseDeploymentManifestV1Economics(candidate.economics);
+  parseDeploymentManifestEconomics(candidate.economics);
   const manifestId = requireNonEmptyString(candidate.manifestId, "manifestId");
   if (!/^[0-9a-f]{64}$/.test(manifestId)) {
     throw new Error(
       "Deployment manifest manifestId must be lowercase SHA-256 hex",
     );
   }
-  const parsed = candidate as unknown as DeploymentManifestV1Value;
+  const parsed = candidate as unknown as DeploymentManifestValue;
   const { manifestId: _manifestId, ...identityInput } = parsed;
   const expectedManifestId = computeDeploymentManifestId(identityInput);
   if (manifestId !== expectedManifestId) {
@@ -1877,10 +1873,10 @@ const parseDeploymentManifestCommon = (
   return parsed;
 };
 
-export const parseDeploymentManifestV1Value = (
+export const parseDeploymentManifestValue = (
   value: unknown,
-): DeploymentManifestV1Value => {
-  const candidate = verifyDeploymentManifestV1Identity(value);
+): DeploymentManifestValue => {
+  const candidate = verifyDeploymentManifestIdentity(value);
   requireExactKeys(
     candidate,
     [
@@ -1909,19 +1905,17 @@ export const parseDeploymentManifestV1Value = (
     [],
     "value",
   );
-  if (!isMidgardConsensusProfileV1(candidate.consensusProfile)) {
+  if (!isMidgardConsensusProfile(candidate.consensusProfile)) {
     throw new Error(
       "Deployment manifest consensusProfile must exactly match canonical V1",
     );
   }
-  if (
-    candidate.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_V1_DIGEST
-  ) {
+  if (candidate.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST) {
     throw new Error(
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
   const parsed = parseDeploymentManifestCommon(candidate);
-  verifyFinalizedDeploymentManifestV1(parsed);
+  verifyFinalizedDeploymentManifest(parsed);
   return parsed;
 };

@@ -7,12 +7,12 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const ZERO_INPUT_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const ZERO_INPUT_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/zero_input/step_01.main.spend",
   "fraud_proofs/zero_input/step_02.main.spend",
 ] as const);
 
-export type ZeroInputStepContractV1 = Readonly<{
+export type ZeroInputStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -20,8 +20,8 @@ export type ZeroInputStepContractV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type ZeroInputContractsV1 = Readonly<{
-  steps: readonly [ZeroInputStepContractV1, ZeroInputStepContractV1];
+export type ZeroInputContracts = Readonly<{
+  steps: readonly [ZeroInputStepContract, ZeroInputStepContract];
   computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;
@@ -62,7 +62,7 @@ const applyExact = (
   };
 };
 
-export const applyZeroInputScriptsV1 = ({
+export const applyZeroInputScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -78,9 +78,9 @@ export const applyZeroInputScriptsV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): ZeroInputContractsV1["steps"] => {
+}): ZeroInputContracts["steps"] => {
   const applied = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = ZERO_INPUT_BLUEPRINT_TITLES_V1[index]!;
+    const blueprintTitle = ZERO_INPUT_BLUEPRINT_TITLES[index]!;
     const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
     return Object.freeze({
       blueprintTitle,

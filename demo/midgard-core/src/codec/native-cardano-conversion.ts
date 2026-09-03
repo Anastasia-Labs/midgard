@@ -2,15 +2,15 @@ import { CML } from "@lucid-evolution/lucid";
 
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32 } from "./hash.js";
-import { type MidgardNativeTxCanonicalV1 } from "./native.js";
+import { type MidgardNativeTxCanonical } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
 import { cardanoRedeemersToMidgardPreimageCbor } from "./native-redeemer.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
-import { encodeMidgardFieldPreimageV1 } from "./native-tx-field-access-v1.js";
+import { encodeMidgardFieldPreimage } from "./native-tx-field-access-v1.js";
 import {
-  encodeMidgardFieldPreimageForFieldV1,
-  type MidgardTxInputV1,
-  sortMidgardMintItemsV1,
+  encodeMidgardFieldPreimageForField,
+  type MidgardTxInput,
+  sortMidgardMintItems,
 } from "./native-tx-field-items-v1.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import { type MidgardValue } from "./value.js";
@@ -113,13 +113,13 @@ const cmlCollectionToPreimageCbor = (
   fieldName: string,
 ): Buffer => {
   if (collection === undefined) {
-    return encodeMidgardFieldPreimageV1([]);
+    return encodeMidgardFieldPreimage([]);
   }
   const entries: Buffer[] = [];
   for (let i = 0; i < collection.len(); i++) {
     entries.push(cmlObjectToBytes(collection.get(i), `${fieldName}[${i}]`));
   }
-  return encodeMidgardFieldPreimageV1(entries);
+  return encodeMidgardFieldPreimage(entries);
 };
 
 /**
@@ -133,7 +133,7 @@ const cmlInputsToSpendInputPreimageCbor = (
   collection: CmlCollectionLike | undefined,
   fieldName: string,
 ): Buffer => {
-  const items: MidgardTxInputV1[] = [];
+  const items: MidgardTxInput[] = [];
   for (let i = 0; collection !== undefined && i < collection.len(); i++) {
     const input = collection.get(i);
     if (!(input instanceof CML.TransactionInput)) {
@@ -147,7 +147,7 @@ const cmlInputsToSpendInputPreimageCbor = (
       outputIndex: Number(input.index()),
     });
   }
-  return encodeMidgardFieldPreimageForFieldV1({ fieldIndex: 0, items });
+  return encodeMidgardFieldPreimageForField({ fieldIndex: 0, items });
 };
 
 const cmlValueToMidgardValue = (value: CML.Value): MidgardValue => {
@@ -268,7 +268,7 @@ const cmlOutputsToNativePreimageCbor = (
   collection: CmlCollectionLike | undefined,
 ): Buffer => {
   if (collection === undefined) {
-    return encodeMidgardFieldPreimageV1([]);
+    return encodeMidgardFieldPreimage([]);
   }
   const entries: Buffer[] = [];
   for (let i = 0; i < collection.len(); i += 1) {
@@ -283,7 +283,7 @@ const cmlOutputsToNativePreimageCbor = (
       cmlOutputToMidgardOutputBytes(output, `transaction_body.outputs[${i}]`),
     );
   }
-  return encodeMidgardFieldPreimageV1(entries);
+  return encodeMidgardFieldPreimage(entries);
 };
 
 const cmlMintToPreimageCbor = (
@@ -291,7 +291,7 @@ const cmlMintToPreimageCbor = (
   fieldName: string,
 ): Buffer => {
   if (mint.policy_count() === 0) {
-    return encodeMidgardFieldPreimageV1([]);
+    return encodeMidgardFieldPreimage([]);
   }
 
   const policies = new Map<Buffer, Map<Buffer, bigint>>();
@@ -339,12 +339,12 @@ const cmlMintToPreimageCbor = (
   }
 
   // §5.6: field 5 is the enveloped list of per-policy items, not the retired
-  // raw map. `sortMidgardMintItemsV1` imposes §5.6's canonical key order at both
+  // raw map. `sortMidgardMintItems` imposes §5.6's canonical key order at both
   // levels and `encodeMidgardFieldItemsV1` then enforces it, so CML's iteration
   // order cannot leak into committed bytes.
-  return encodeMidgardFieldPreimageForFieldV1({
+  return encodeMidgardFieldPreimageForField({
     fieldIndex: 5,
-    items: sortMidgardMintItemsV1(
+    items: sortMidgardMintItems(
       [...policies.entries()].map(([policyId, assets]) => ({
         policyId,
         assets: [...assets.entries()].map(([assetName, quantity]) => ({
@@ -358,7 +358,7 @@ const cmlMintToPreimageCbor = (
 
 const cmlAnyToPreimageCbor = (value: unknown, fieldName: string): Buffer => {
   if (value === undefined) {
-    return encodeMidgardFieldPreimageV1([]);
+    return encodeMidgardFieldPreimage([]);
   }
   const mint = asMintLike(value);
   if (mint !== undefined) {
@@ -395,7 +395,7 @@ const withdrawalsToRequiredObserversPreimageCbor = (
   withdrawals: CML.MapRewardAccountToCoin | undefined,
 ): Buffer => {
   if (withdrawals === undefined) {
-    return encodeMidgardFieldPreimageV1([]);
+    return encodeMidgardFieldPreimage([]);
   }
   const keys = withdrawals.keys();
   const observers: Buffer[] = [];
@@ -418,7 +418,7 @@ const withdrawalsToRequiredObserversPreimageCbor = (
     }
     observers.push(Buffer.from(scriptHash!.to_raw_bytes()));
   }
-  return encodeMidgardFieldPreimageV1(observers);
+  return encodeMidgardFieldPreimage(observers);
 };
 
 const scriptWitnessesToPreimageCbor = (
@@ -440,8 +440,8 @@ const scriptWitnessesToPreimageCbor = (
     }
   }
 
-  const plutusV1Scripts = txWitnessSet.plutus_v1_scripts();
-  if (plutusV1Scripts !== undefined && plutusV1Scripts.len() > 0) {
+  const plutusScripts = txWitnessSet.plutus_v1_scripts();
+  if (plutusScripts !== undefined && plutusScripts.len() > 0) {
     failLossyConversion("transaction_witness_set.plutus_v1_scripts");
   }
 
@@ -509,10 +509,10 @@ const assertCardanoTxConvertibleToNative = (tx: CML.Transaction): void => {
   }
 };
 
-export const cardanoTxBytesToMidgardNativeTxCanonicalV1 = (
+export const cardanoTxBytesToMidgardNativeTxCanonical = (
   cardanoTxBytes: Uint8Array,
   constants: CardanoToMidgardNativeConstants,
-): MidgardNativeTxCanonicalV1 => {
+): MidgardNativeTxCanonical => {
   const tx = parseCardanoTx(cardanoTxBytes);
   assertCardanoTxConvertibleToNative(tx);
   const txBody = tx.body();

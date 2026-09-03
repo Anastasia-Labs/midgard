@@ -14,11 +14,11 @@ import {
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  buildCanonicalDecodabilityBodyFixtureV1,
-  makeCanonicalDecodabilityEmulatorHarnessV1,
+  buildCanonicalDecodabilityBodyFixture,
+  makeCanonicalDecodabilityEmulatorHarness,
   network,
-  publishCanonicalDecodabilityReferenceScriptsV1,
-  setupCanonicalDecodabilityScenarioV1,
+  publishCanonicalDecodabilityReferenceScripts,
+  setupCanonicalDecodabilityScenario,
 } from "./support/canonical-decodability-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -28,7 +28,7 @@ import {
 
 describe("canonical-decodability real-fault lifecycle", () => {
   it("mints permanent evidence and removes the fraudulent commitment", async () => {
-    const harness = await makeCanonicalDecodabilityEmulatorHarnessV1();
+    const harness = await makeCanonicalDecodabilityEmulatorHarness();
     const {
       realBlueprint,
       emulator,
@@ -40,7 +40,7 @@ describe("canonical-decodability real-fault lifecycle", () => {
       category,
     } = harness;
     const [step01Ref, step02Ref] =
-      await publishCanonicalDecodabilityReferenceScriptsV1({
+      await publishCanonicalDecodabilityReferenceScripts({
         lucid: proverLucid,
         contracts: canonicalDecodability,
       });
@@ -48,10 +48,10 @@ describe("canonical-decodability real-fault lifecycle", () => {
       lucid: proverLucid,
       contracts,
     });
-    const fixture = await buildCanonicalDecodabilityBodyFixtureV1();
+    const fixture = await buildCanonicalDecodabilityBodyFixture();
     if (fixture.prepared === null)
       throw new Error("Expected violating fixture");
-    const setup = await setupCanonicalDecodabilityScenarioV1({
+    const setup = await setupCanonicalDecodabilityScenario({
       harness,
       fixture,
     });

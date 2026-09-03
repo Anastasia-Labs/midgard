@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
-  type CanonicalBlockClassificationV1,
-  classifyCanonicalBlockViolationsV1,
+  type CanonicalBlockClassification,
+  classifyCanonicalBlockViolations,
 } from "../src/workflow/classification-v1.js";
 import {
-  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
-  requireCompleteCanonicalReplayDecisionV1,
+  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
+  requireCompleteCanonicalReplayDecision,
 } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionInputSetUniquenessArtifactV1,
-  prepareProductionInputSetUniquenessArtifactV1,
+  admitInputSetUniquenessArtifact,
+  prepareInputSetUniquenessArtifact,
 } from "../src/workflow/production-input-set-uniqueness-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
@@ -27,17 +27,17 @@ const evidenceWithInputs = async ({
   readonly spendInputs: readonly Buffer[];
   readonly referenceInputs?: readonly Buffer[];
 }) => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs,
         referenceInputs,
         fee: 1n,
       }),
     ],
   });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -46,13 +46,13 @@ const evidenceWithInputs = async ({
     },
   });
   const replay =
-    await INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
-  const detections = requireCompleteCanonicalReplayDecisionV1({
+    await INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+  const detections = requireCompleteCanonicalReplayDecision({
     evidence,
-    replayer: INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
+    replayer: INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
     decision: replay,
   });
-  const classification = await classifyCanonicalBlockViolationsV1({
+  const classification = await classifyCanonicalBlockViolations({
     evidence,
     detections,
   });
@@ -60,9 +60,9 @@ const evidenceWithInputs = async ({
 };
 
 const fault = (
-  classification: CanonicalBlockClassificationV1,
+  classification: CanonicalBlockClassification,
 ): Extract<
-  CanonicalBlockClassificationV1,
+  CanonicalBlockClassification,
   { readonly decision: "fault_detected" }
 > => {
   if (classification.decision !== "fault_detected") {
@@ -86,11 +86,11 @@ describe("production input-set-uniqueness workflow V1", () => {
     expect(fixture.replay.detections[0]?.detectionId).toContain(
       ":duplicateSpendInputs:0:1",
     );
-    const artifact = await prepareProductionInputSetUniquenessArtifactV1({
+    const artifact = await prepareInputSetUniquenessArtifact({
       evidence: fixture.evidence,
       classification: fault(fixture.classification),
     });
-    const admitted = admitProductionInputSetUniquenessArtifactV1(artifact);
+    const admitted = admitInputSetUniquenessArtifact(artifact);
     expect(admitted.claim).toEqual({
       kind: "duplicateSpendInputs",
       firstIndex: 0n,
@@ -105,12 +105,12 @@ describe("production input-set-uniqueness workflow V1", () => {
       spendInputs: [repeated, repeated],
     });
     const classification = fault(fixture.classification);
-    const artifact = await prepareProductionInputSetUniquenessArtifactV1({
+    const artifact = await prepareInputSetUniquenessArtifact({
       evidence: fixture.evidence,
       classification,
     });
     expect(() =>
-      admitProductionInputSetUniquenessArtifactV1({
+      admitInputSetUniquenessArtifact({
         ...artifact,
         claim: {
           kind: "duplicateSpendInputs",
@@ -122,7 +122,7 @@ describe("production input-set-uniqueness workflow V1", () => {
 
     const huge = "9007199254740993";
     await expect(
-      prepareProductionInputSetUniquenessArtifactV1({
+      prepareInputSetUniquenessArtifact({
         evidence: fixture.evidence,
         classification: {
           ...classification,

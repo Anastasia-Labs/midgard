@@ -34,21 +34,21 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   DOUBLE_WITHDRAW_CATEGORY_LABEL,
-  type DoubleWithdrawContractsV1,
+  type DoubleWithdrawContracts,
 } from "./contracts-v1.js";
 import {
-  type DoubleWithdrawCatalogueCategoryV1,
+  type DoubleWithdrawCatalogueCategory,
   doubleWithdrawSubmitError,
 } from "./submit-common-v1.js";
 
@@ -88,8 +88,8 @@ export const submitDoubleWithdrawInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: DoubleWithdrawContractsV1;
-  readonly category: DoubleWithdrawCatalogueCategoryV1;
+  readonly contracts: DoubleWithdrawContracts;
+  readonly category: DoubleWithdrawCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -99,8 +99,8 @@ export const submitDoubleWithdrawInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -153,12 +153,12 @@ export const submitDoubleWithdrawInit = async ({
     network,
     phasMembershipScript,
   );
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${DOUBLE_WITHDRAW_CATEGORY_LABEL} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${DOUBLE_WITHDRAW_CATEGORY_LABEL} init PHAS membership`,
@@ -268,9 +268,9 @@ export const submitDoubleWithdrawInit = async ({
     throw doubleWithdrawSubmitError("init output layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

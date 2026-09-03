@@ -5,12 +5,12 @@ import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, normalize, resolve } from "node:path";
 
 import {
-  parseWatcherStrictJsonValueV1,
+  parseWatcherStrictJsonValue,
   type WatcherConfig,
 } from "../runtime/config.js";
-import { watcherCanonicalJsonV1 } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
 
-export const WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION =
+export const WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION =
   "midgard-watcher-native-chain-sync-v1" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -35,10 +35,10 @@ class NativeChainSyncStartupFailure extends Error {
   }
 }
 
-export type WatcherNativeChainSyncPointV1 =
+export type WatcherNativeChainSyncPoint =
   | Readonly<{ kind: "origin" }>
   | Readonly<{ kind: "point"; blockHash: string; slot: string }>;
-type NativeTipV1 =
+type NativeTip =
   | Readonly<{ kind: "origin" }>
   | Readonly<{
       kind: "point";
@@ -47,8 +47,8 @@ type NativeTipV1 =
       slot: string;
     }>;
 
-export type WatcherNativeChainSyncRollForwardV1 = Readonly<{
-  schemaVersion: typeof WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION;
+export type WatcherNativeChainSyncRollForward = Readonly<{
+  schemaVersion: typeof WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION;
   kind: "roll_forward";
   blockHash: string;
   blockType: string;
@@ -56,53 +56,53 @@ export type WatcherNativeChainSyncRollForwardV1 = Readonly<{
   slot: string;
   blockNo: string;
   rawBlockCbor: string;
-  tip: NativeTipV1;
+  tip: NativeTip;
 }>;
 
-export type WatcherNativeChainSyncRollBackwardV1 = Readonly<{
-  schemaVersion: typeof WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION;
+export type WatcherNativeChainSyncRollBackward = Readonly<{
+  schemaVersion: typeof WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION;
   kind: "roll_backward";
-  point: WatcherNativeChainSyncPointV1;
-  tip: NativeTipV1;
+  point: WatcherNativeChainSyncPoint;
+  tip: NativeTip;
 }>;
 
-export type WatcherNativeChainSyncEventV1 =
-  | WatcherNativeChainSyncRollForwardV1
-  | WatcherNativeChainSyncRollBackwardV1;
+export type WatcherNativeChainSyncEvent =
+  | WatcherNativeChainSyncRollForward
+  | WatcherNativeChainSyncRollBackward;
 
-export type WatcherNativeChainSyncAuthorityV1 = Readonly<{
+export type WatcherNativeChainSyncAuthority = Readonly<{
   schemaVersion: "midgard-watcher-native-chain-sync-authority-v1";
   authorityDigest: string;
 }>;
 
-export type WatcherNativeChainSyncAuthorityDetailsV1 = Readonly<{
+export type WatcherNativeChainSyncAuthorityDetails = Readonly<{
   network: WatcherConfig["targetNetwork"];
   authorityNodeId: string;
   genesisIdentitySha256: string;
   socketPath: string;
   startupDigest: string;
-  selectedIntersection: WatcherNativeChainSyncPointV1;
-  currentTip: NativeTipV1;
+  selectedIntersection: WatcherNativeChainSyncPoint;
+  currentTip: NativeTip;
 }>;
 
-export type WatcherNativeChainSyncRuntimeV1 = Readonly<{
-  authority: WatcherNativeChainSyncAuthorityV1;
+export type WatcherNativeChainSyncRuntime = Readonly<{
+  authority: WatcherNativeChainSyncAuthority;
   done: Promise<void>;
   close(): Promise<void>;
 }>;
 
 const authorityDetails = new WeakMap<
-  WatcherNativeChainSyncAuthorityV1,
-  WatcherNativeChainSyncAuthorityDetailsV1
+  WatcherNativeChainSyncAuthority,
+  WatcherNativeChainSyncAuthorityDetails
 >();
 const authorityLiveness = new WeakMap<
-  WatcherNativeChainSyncAuthorityV1,
+  WatcherNativeChainSyncAuthority,
   { active: boolean }
 >();
 
-export const watcherNativeChainSyncAuthorityDetailsV1 = (
-  authority: WatcherNativeChainSyncAuthorityV1,
-): WatcherNativeChainSyncAuthorityDetailsV1 | null =>
+export const watcherNativeChainSyncAuthorityDetails = (
+  authority: WatcherNativeChainSyncAuthority,
+): WatcherNativeChainSyncAuthorityDetails | null =>
   authorityLiveness.get(authority)?.active === true
     ? (authorityDetails.get(authority) ?? null)
     : null;
@@ -140,7 +140,7 @@ const string = (value: unknown, pattern: RegExp, label: string): string => {
   return value;
 };
 
-const parseTip = (value: unknown): NativeTipV1 => {
+const parseTip = (value: unknown): NativeTip => {
   if (
     typeof value === "object" &&
     value !== null &&
@@ -166,7 +166,7 @@ const parseTip = (value: unknown): NativeTipV1 => {
 const parsePoint = (
   value: unknown,
   label: string,
-): WatcherNativeChainSyncPointV1 => {
+): WatcherNativeChainSyncPoint => {
   if (
     typeof value === "object" &&
     value !== null &&
@@ -184,9 +184,9 @@ const parsePoint = (
   });
 };
 
-export const parseWatcherNativeChainSyncEventV1 = (
+export const parseWatcherNativeChainSyncEvent = (
   value: unknown,
-): WatcherNativeChainSyncEventV1 => {
+): WatcherNativeChainSyncEvent => {
   const base = exactRecord(
     value,
     typeof value === "object" &&
@@ -206,7 +206,7 @@ export const parseWatcherNativeChainSyncEventV1 = (
       : ["kind", "point", "schemaVersion", "tip"],
     "native chain-sync event",
   );
-  if (base.schemaVersion !== WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION) {
+  if (base.schemaVersion !== WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION) {
     throw new Error("native chain-sync event schema changed");
   }
   const tip = parseTip(base.tip);
@@ -220,7 +220,7 @@ export const parseWatcherNativeChainSyncEventV1 = (
       throw new Error("native raw block CBOR exceeds the supervisor bound");
     }
     return Object.freeze({
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
       kind: "roll_forward",
       blockHash: string(base.blockHash, HEX_32, "native block hash"),
       blockType: string(base.blockType, NATURAL, "native block type"),
@@ -235,7 +235,7 @@ export const parseWatcherNativeChainSyncEventV1 = (
     throw new Error("native chain-sync event kind is unsupported");
   }
   return Object.freeze({
-    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     kind: "roll_backward",
     point: parsePoint(base.point, "native rollback point"),
     tip,
@@ -245,7 +245,7 @@ export const parseWatcherNativeChainSyncEventV1 = (
 const parseJsonLine = (line: string): unknown => {
   try {
     const value = JSON.parse(line) as unknown;
-    if (watcherCanonicalJsonV1(value) !== line) {
+    if (watcherCanonicalJson(value) !== line) {
       throw new Error("non-canonical JSON");
     }
     return value;
@@ -285,25 +285,24 @@ const lines = async function* (
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-type ReadIdentityFileV1 = (path: string) => Promise<Uint8Array>;
+type ReadIdentityFile = (path: string) => Promise<Uint8Array>;
 
-const productionReadIdentityFile: ReadIdentityFileV1 = async (path) => {
+const readIdentityFile: ReadIdentityFile = async (path) => {
   if ((await realpath(path)) !== path) {
     throw new Error("native chain-sync identity path traverses a symlink");
   }
   return await readFile(path);
 };
 
-const deriveGenesisIdentityV1 = async (input: {
+const deriveGenesisIdentity = async (input: {
   readonly watcherConfig: WatcherConfig;
-  readonly unsafeReadIdentityFileForTest?: ReadIdentityFileV1;
+  readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
 }): Promise<string> => {
   if (input.watcherConfig.l1.source.sourceMode !== "local_node") {
     throw new Error("native genesis identity requires local-node source");
   }
   const source = input.watcherConfig.l1.source;
-  const read =
-    input.unsafeReadIdentityFileForTest ?? productionReadIdentityFile;
+  const read = input.unsafeReadIdentityFileForTest ?? readIdentityFile;
   const [nodeConfigBytes, genesisBytes] = await Promise.all([
     read(source.chainSync.nodeConfigPath),
     read(source.chainSync.genesisConfigPath),
@@ -317,10 +316,10 @@ const deriveGenesisIdentityV1 = async (input: {
     throw new Error("native chain-sync identity file size is invalid");
   }
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  const nodeConfig = parseWatcherStrictJsonValueV1(
+  const nodeConfig = parseWatcherStrictJsonValue(
     decoder.decode(nodeConfigBytes),
   );
-  const genesis = parseWatcherStrictJsonValueV1(decoder.decode(genesisBytes));
+  const genesis = parseWatcherStrictJsonValue(decoder.decode(genesisBytes));
   if (
     typeof nodeConfig !== "object" ||
     nodeConfig === null ||
@@ -355,23 +354,23 @@ const deriveGenesisIdentityV1 = async (input: {
   return derived;
 };
 
-type SpawnProcessV1 = (binaryPath: string) => ChildProcessWithoutNullStreams;
+type SpawnProcess = (binaryPath: string) => ChildProcessWithoutNullStreams;
 
-const productionSpawn: SpawnProcessV1 = (binaryPath) =>
+const productionSpawn: SpawnProcess = (binaryPath) =>
   spawn(binaryPath, [], {
     stdio: ["pipe", "pipe", "pipe"],
     env: Object.freeze({ PATH: process.env.PATH ?? "/usr/bin:/bin" }),
   });
 
-export const startWatcherNativeChainSyncV1 = async (input: {
+export const startWatcherNativeChainSync = async (input: {
   readonly binaryPath: string;
   readonly watcherConfig: WatcherConfig;
-  readonly intersection: WatcherNativeChainSyncPointV1;
+  readonly intersection: WatcherNativeChainSyncPoint;
   readonly startupTimeoutMs: number;
-  readonly onEvent: (event: WatcherNativeChainSyncEventV1) => Promise<void>;
-  readonly unsafeSpawnForTest?: SpawnProcessV1;
-  readonly unsafeReadIdentityFileForTest?: ReadIdentityFileV1;
-}): Promise<WatcherNativeChainSyncRuntimeV1> => {
+  readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
+  readonly unsafeSpawnForTest?: SpawnProcess;
+  readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
+}): Promise<WatcherNativeChainSyncRuntime> => {
   if (input.watcherConfig.l1.source.sourceMode !== "local_node") {
     throw new Error(
       "native chain-sync requires the admitted local-node source",
@@ -399,7 +398,7 @@ export const startWatcherNativeChainSyncV1 = async (input: {
     "native startup intersection",
   );
   const source = input.watcherConfig.l1.source;
-  const genesisIdentitySha256 = await deriveGenesisIdentityV1({
+  const genesisIdentitySha256 = await deriveGenesisIdentity({
     watcherConfig: input.watcherConfig,
     ...(input.unsafeReadIdentityFileForTest === undefined
       ? {}
@@ -413,18 +412,18 @@ export const startWatcherNativeChainSyncV1 = async (input: {
     intersection,
     network: input.watcherConfig.targetNetwork,
     networkMagic: NETWORK_MAGIC[input.watcherConfig.targetNetwork],
-    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     socketPath: source.chainSync.socketPath,
   });
-  const startupJson = watcherCanonicalJsonV1(startup);
+  const startupJson = watcherCanonicalJson(startup);
   const startupDigest = sha256(startupJson);
   const child = (input.unsafeSpawnForTest ?? productionSpawn)(binaryPath);
   child.stdin.end(`${startupJson}\n`, "utf8");
 
   let closing = false;
-  let resolveReady!: (authority: WatcherNativeChainSyncAuthorityV1) => void;
+  let resolveReady!: (authority: WatcherNativeChainSyncAuthority) => void;
   let rejectReady!: (error: Error) => void;
-  const ready = new Promise<WatcherNativeChainSyncAuthorityV1>(
+  const ready = new Promise<WatcherNativeChainSyncAuthority>(
     (resolve, reject) => {
       resolveReady = resolve;
       rejectReady = reject;
@@ -454,7 +453,7 @@ export const startWatcherNativeChainSyncV1 = async (input: {
         })
       : null;
   let sawReady = false;
-  let mintedAuthority: WatcherNativeChainSyncAuthorityV1 | undefined;
+  let mintedAuthority: WatcherNativeChainSyncAuthority | undefined;
 
   const stderrDrain = (async () => {
     let total = 0;
@@ -484,7 +483,7 @@ export const startWatcherNativeChainSyncV1 = async (input: {
             );
             if (
               failure.schemaVersion !==
-                WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION ||
+                WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
               typeof failure.code !== "string" ||
               !/^[a-z][a-z0-9_]{0,62}$/u.test(failure.code)
             ) {
@@ -514,14 +513,13 @@ export const startWatcherNativeChainSyncV1 = async (input: {
           );
           if (
             record.kind !== "ready" ||
-            record.schemaVersion !==
-              WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION ||
+            record.schemaVersion !== WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION ||
             record.authorityNodeId !== startup.authorityNodeId ||
             record.genesisIdentitySha256 !== startup.genesisIdentitySha256 ||
             record.network !== startup.network ||
             record.networkMagic !== startup.networkMagic ||
-            watcherCanonicalJsonV1(selectedIntersection) !==
-              watcherCanonicalJsonV1(intersection) ||
+            watcherCanonicalJson(selectedIntersection) !==
+              watcherCanonicalJson(intersection) ||
             record.socketPath !== startup.socketPath ||
             record.startupDigest !== startupDigest
           ) {
@@ -542,7 +540,7 @@ export const startWatcherNativeChainSyncV1 = async (input: {
           const authority = Object.freeze({
             schemaVersion:
               "midgard-watcher-native-chain-sync-authority-v1" as const,
-            authorityDigest: sha256(watcherCanonicalJsonV1(details)),
+            authorityDigest: sha256(watcherCanonicalJson(details)),
           });
           authorityDetails.set(authority, details);
           authorityLiveness.set(authority, { active: true });
@@ -551,7 +549,7 @@ export const startWatcherNativeChainSyncV1 = async (input: {
           resolveReady(authority);
           continue;
         }
-        const event = parseWatcherNativeChainSyncEventV1(value);
+        const event = parseWatcherNativeChainSyncEvent(value);
         if (event.kind === "roll_forward") {
           const slot = BigInt(event.slot);
           const blockNo = BigInt(event.blockNo);
@@ -650,15 +648,15 @@ export const startWatcherNativeChainSyncV1 = async (input: {
   });
 };
 
-export const startWatcherNativeChainSyncWithRetryV1 = async (input: {
+export const startWatcherNativeChainSyncWithRetry = async (input: {
   readonly binaryPath: string;
   readonly watcherConfig: WatcherConfig;
-  readonly intersectionCandidates: readonly WatcherNativeChainSyncPointV1[];
+  readonly intersectionCandidates: readonly WatcherNativeChainSyncPoint[];
   readonly startupTimeoutMs: number;
-  readonly onEvent: (event: WatcherNativeChainSyncEventV1) => Promise<void>;
-  readonly unsafeSpawnForTest?: SpawnProcessV1;
-  readonly unsafeReadIdentityFileForTest?: ReadIdentityFileV1;
-}): Promise<WatcherNativeChainSyncRuntimeV1> => {
+  readonly onEvent: (event: WatcherNativeChainSyncEvent) => Promise<void>;
+  readonly unsafeSpawnForTest?: SpawnProcess;
+  readonly unsafeReadIdentityFileForTest?: ReadIdentityFile;
+}): Promise<WatcherNativeChainSyncRuntime> => {
   if (
     input.intersectionCandidates.length === 0 ||
     input.intersectionCandidates.length > MAX_INTERSECTIONS
@@ -670,7 +668,7 @@ export const startWatcherNativeChainSyncWithRetryV1 = async (input: {
   const seen = new Set<string>();
   const candidates = input.intersectionCandidates.map((candidate, index) => {
     const parsed = parsePoint(candidate, "native intersection candidate");
-    const key = watcherCanonicalJsonV1(parsed);
+    const key = watcherCanonicalJson(parsed);
     if (seen.has(key))
       throw new Error("native intersection candidate is duplicated");
     if (
@@ -685,7 +683,7 @@ export const startWatcherNativeChainSyncWithRetryV1 = async (input: {
   let lastIntersectionFailure: NativeChainSyncStartupFailure | undefined;
   for (const intersection of candidates) {
     try {
-      return await startWatcherNativeChainSyncV1({
+      return await startWatcherNativeChainSync({
         binaryPath: input.binaryPath,
         watcherConfig: input.watcherConfig,
         intersection,

@@ -5,15 +5,15 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import type { FieldItemWidthSubmissionAdapterV1 } from "./field-item-width-illegal-v1.js";
+import type { FieldItemWidthSubmissionAdapter } from "./field-item-width-illegal-v1.js";
 
-export const FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES_V1 = {
+export const FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/field_item_width_illegal/step_01.main.spend",
   step02: "fraud_proofs/field_item_width_illegal/step_02.main.spend",
   step03: "fraud_proofs/field_item_width_illegal/step_03.main.spend",
 } as const;
 
-export type FieldItemWidthIllegalStepContractV1 = {
+export type FieldItemWidthIllegalStepContract = {
   readonly blueprintTitle: string;
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
@@ -21,11 +21,11 @@ export type FieldItemWidthIllegalStepContractV1 = {
   readonly referenceOutRef: string;
 };
 
-export type FieldItemWidthIllegalContractsV1 = {
+export type FieldItemWidthIllegalContracts = {
   readonly steps: readonly [
-    FieldItemWidthIllegalStepContractV1,
-    FieldItemWidthIllegalStepContractV1,
-    FieldItemWidthIllegalStepContractV1,
+    FieldItemWidthIllegalStepContract,
+    FieldItemWidthIllegalStepContract,
+    FieldItemWidthIllegalStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;
@@ -42,12 +42,12 @@ export type FieldItemWidthIllegalContractsV1 = {
   readonly fieldPreimageCertificateMintingScript: Script;
 };
 
-export type FieldItemWidthIllegalProductionManifestV1 = {
+export type FieldItemWidthIllegalManifest = {
   readonly schemaVersion: "field-item-width-illegal-production-manifest-v1";
   readonly category: "fieldItemWidthIllegal";
   readonly categoryId: string;
   readonly network: Network;
-  readonly contracts: FieldItemWidthIllegalContractsV1;
+  readonly contracts: FieldItemWidthIllegalContracts;
 };
 
 const requireHex = (value: string, bytes: number, label: string): void => {
@@ -63,9 +63,9 @@ const requireHex = (value: string, bytes: number, label: string): void => {
  * intentionally independent of the central catalogue: registration supplies
  * the manifest, while this loader proves title/hash/address/reference binding.
  */
-export const loadFieldItemWidthIllegalProductionV1 = (
-  manifest: FieldItemWidthIllegalProductionManifestV1,
-): FieldItemWidthIllegalProductionManifestV1 => {
+export const loadFieldItemWidthIllegal = (
+  manifest: FieldItemWidthIllegalManifest,
+): FieldItemWidthIllegalManifest => {
   if (
     manifest.schemaVersion !==
       "field-item-width-illegal-production-manifest-v1" ||
@@ -77,7 +77,7 @@ export const loadFieldItemWidthIllegalProductionV1 = (
   }
   requireHex(manifest.categoryId, 4, "category id");
   const expectedTitles = Object.values(
-    FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES_V1,
+    FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES,
   );
   manifest.contracts.steps.forEach((step, index) => {
     if (step.blueprintTitle !== expectedTitles[index]) {
@@ -129,22 +129,22 @@ export const loadFieldItemWidthIllegalProductionV1 = (
   return Object.freeze(manifest);
 };
 
-export type FieldItemWidthIllegalProductionSubmittersV1 =
-  FieldItemWidthSubmissionAdapterV1 & {
+export type FieldItemWidthIllegalSubmitters =
+  FieldItemWidthSubmissionAdapter & {
     /** Init must be the registered-category computation-thread mint. */
     readonly submitInitIsRegisteredCategoryMint: true;
     /** Removal must consume the minted proof through canonical removal. */
     readonly removalIsCanonicalFraudProofSpend: true;
   };
 
-export const bindFieldItemWidthIllegalProductionSubmittersV1 = ({
+export const bindFieldItemWidthIllegalSubmitters = ({
   manifest,
   submitters,
 }: {
-  readonly manifest: FieldItemWidthIllegalProductionManifestV1;
-  readonly submitters: FieldItemWidthIllegalProductionSubmittersV1;
-}): FieldItemWidthIllegalProductionSubmittersV1 => {
-  loadFieldItemWidthIllegalProductionV1(manifest);
+  readonly manifest: FieldItemWidthIllegalManifest;
+  readonly submitters: FieldItemWidthIllegalSubmitters;
+}): FieldItemWidthIllegalSubmitters => {
+  loadFieldItemWidthIllegal(manifest);
   if (
     submitters.submitInitIsRegisteredCategoryMint !== true ||
     submitters.removalIsCanonicalFraudProofSpend !== true

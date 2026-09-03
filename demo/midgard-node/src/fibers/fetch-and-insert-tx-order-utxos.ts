@@ -1,30 +1,30 @@
 import { createHash } from "node:crypto";
 
 import {
-  decodeMidgardCekProgramMaterialEntryV1,
-  encodeMidgardCekProgramMaterialEntryV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramMaterialEntryV1,
-  midgardCekProgramMaterialKindFromTagV1,
+  decodeMidgardCekProgramMaterialEntry,
+  encodeMidgardCekProgramMaterialEntry,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialEntry,
+  midgardCekProgramMaterialKindFromTag,
   MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import {
-  authenticatedMidgardFieldViewV1,
-  encodeMidgardFieldArrayHeaderV1,
-  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
-  midgardFieldReadRangeV1,
-  midgardFieldTotalLengthV1,
+  authenticatedMidgardFieldView,
+  encodeMidgardFieldArrayHeader,
+  MIDGARD_EMPTY_FIELD_COMMITMENT,
+  midgardFieldReadRange,
+  midgardFieldTotalLength,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  isMidgardConsensusProfileV1,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  midgardV1TxFieldCommitmentsFromSourceV1,
-  reconstructMidgardTransactionV1,
+  midgardTxFieldCommitmentsFromSource,
+  reconstructMidgardTransaction,
 } from "@al-ft/midgard-core/consensus-validation-v1";
-import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
@@ -36,8 +36,8 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import {
   observeTxOrderMaterialCarriageProgram,
-  type TxOrderCarriageReadOptionsV1,
-  type TxOrderMaterialCarriageV1,
+  type TxOrderCarriageReadOptions,
+  type TxOrderMaterialCarriage,
 } from "../l1-tx-order-carriage-v1.js";
 import {
   ContractDeploymentIdentity,
@@ -94,7 +94,7 @@ const fetchTxOrderUTxOs = (
       eventPolicyId: txOrder.policyId,
       ...config,
     };
-    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    if (!isMidgardConsensusProfile(consensusProfile)) {
       return yield* Effect.fail(
         new SDK.LucidError({
           message: "Unsupported consensus profile",
@@ -102,13 +102,13 @@ const fetchTxOrderUTxOs = (
         }),
       );
     }
-    return yield* SDK.fetchTxOrderUTxOsV1Program(lucid, fetchConfig);
+    return yield* SDK.fetchTxOrderUTxOsProgram(lucid, fetchConfig);
   });
 
-type TxOrderPayloadV1 = SDK.TxOrderUTxOV1["datum"]["event"]["tx"];
+type TxOrderPayload = SDK.TxOrderUTxOV1["datum"]["event"]["tx"];
 
 export type PublishedProgramMaterialSnapshot = {
-  readonly entries: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly entries: readonly MidgardCekProgramMaterialEntry[];
   readonly malformedCount: number;
   readonly sourceStatus: "clean" | "malformed";
 };
@@ -144,7 +144,7 @@ export const publishedProgramMaterialSnapshotError = (
  * hash is `field_commitment(#"80")` consumes no carriage entry (§8.11), so an
  * order with none of them commits nothing and is reconstructible from its own
  * payload. The count comes out of the payload's compact structures positionally,
- * which is the same extraction {@link reconstructTxOrderMaterialV1} makes and the
+ * which is the same extraction {@link reconstructTxOrderMaterial} makes and the
  * same one the mint's walk makes.
  *
  * `midgard-watcher`'s `forcedOrderMaterialFieldCount` computes this number for
@@ -152,8 +152,8 @@ export const publishedProgramMaterialSnapshotError = (
  * vector — and the duplication is deliberate under #599's ruling that the node
  * may not depend on the watcher package.
  */
-const forcedOrderMaterialFieldCountV1 = (payload: TxOrderPayloadV1): number =>
-  midgardV1TxFieldCommitmentsFromSourceV1({
+const forcedOrderMaterialFieldCount = (payload: TxOrderPayload): number =>
+  midgardTxFieldCommitmentsFromSource({
     compactCbor: Buffer.from(payload.source.compact_cbor, "hex"),
     witnessSetCompactCbor: Buffer.from(
       payload.source.witness_set_compact_cbor,
@@ -163,9 +163,8 @@ const forcedOrderMaterialFieldCountV1 = (payload: TxOrderPayloadV1): number =>
       payload.source.field_preimage_lengths_cbor,
       "hex",
     ),
-  }).filter(
-    (commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
-  ).length;
+  }).filter((commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT))
+    .length;
 
 /**
  * Reconstructs the canonical native-V1 transaction an L1 forced order committed
@@ -190,7 +189,7 @@ const forcedOrderMaterialFieldCountV1 = (payload: TxOrderPayloadV1): number =>
  * The nine committed hashes are extracted positionally from the payload's own
  * compact structures (§4), and for each slot whose hash is not the empty-field
  * constant one carriage entry is consumed and opened through
- * `authenticatedMidgardFieldViewV1`. The vector must be exhausted exactly, which
+ * `authenticatedMidgardFieldView`. The vector must be exhausted exactly, which
  * is the mint's own exhaustion rule and is what makes this a re-derivation of the
  * mint's verdict rather than a lenient re-read of it.
  *
@@ -201,11 +200,11 @@ const forcedOrderMaterialFieldCountV1 = (payload: TxOrderPayloadV1): number =>
  * field's chunk bytes unhashed until an accessor touches one; naming it here would
  * claim a check it does not make. The two TypeScript/Aiken acceptance sets are not
  * identical at tier 3 either, in both directions — see
- * `authenticatedMidgardFieldViewV1`'s own note in
+ * `authenticatedMidgardFieldView`'s own note in
  * `@al-ft/midgard-core/codec/native-tx-field-access-v1` for the two divergences
  * and why the certificate's digest pin makes both unreachable.
  *
- * `reconstructMidgardTransactionV1` then re-checks all nine preimages against the
+ * `reconstructMidgardTransaction` then re-checks all nine preimages against the
  * compact structures and re-derives the tx-id and the proof commitment from the
  * same bytes. That is a second, independent pass over the same claim and it is
  * kept: it is what refuses a payload whose lengths, hashes and id do not agree,
@@ -227,12 +226,12 @@ const forcedOrderMaterialFieldCountV1 = (payload: TxOrderPayloadV1): number =>
  * one. It is also why the parameter is optional — an order committing no material
  * needs no read, and its nine empty-field commitments reconstruct it alone.
  */
-export const reconstructTxOrderMaterialV1 = ({
+export const reconstructTxOrderMaterial = ({
   payload,
   material,
 }: {
-  readonly payload: TxOrderPayloadV1;
-  readonly material?: TxOrderMaterialCarriageV1;
+  readonly payload: TxOrderPayload;
+  readonly material?: TxOrderMaterialCarriage;
 }): Effect.Effect<Buffer, SDK.LucidError> =>
   Effect.try({
     try: () => {
@@ -248,12 +247,12 @@ export const reconstructTxOrderMaterialV1 = ({
           "hex",
         ),
       };
-      const emptyFieldPreimage = encodeMidgardFieldArrayHeaderV1(0);
-      const commitments = midgardV1TxFieldCommitmentsFromSourceV1(source);
+      const emptyFieldPreimage = encodeMidgardFieldArrayHeader(0);
+      const commitments = midgardTxFieldCommitmentsFromSource(source);
       const referenceInputs = material?.referenceInputs ?? [];
       const unconsumed = [...(material?.carriage ?? [])];
       const fieldPreimages = commitments.map((commitment, fieldIndex) => {
-        if (commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1)) {
+        if (commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT)) {
           return emptyFieldPreimage;
         }
         const carriage = unconsumed.shift();
@@ -271,18 +270,14 @@ export const reconstructTxOrderMaterialV1 = ({
               } supplied)`,
           );
         }
-        const view = authenticatedMidgardFieldViewV1({
+        const view = authenticatedMidgardFieldView({
           fieldIndex,
           txId: transactionId,
           expectedCommitment: commitment,
           carriage,
           referenceInputs,
         });
-        return midgardFieldReadRangeV1(
-          view,
-          0,
-          midgardFieldTotalLengthV1(view),
-        );
+        return midgardFieldReadRange(view, 0, midgardFieldTotalLength(view));
       });
       if (unconsumed.length > 0) {
         // The mint's exhaustion rule, re-derived. A spare entry means the vector
@@ -292,7 +287,7 @@ export const reconstructTxOrderMaterialV1 = ({
             "entries more than its nine commitments name",
         );
       }
-      return reconstructMidgardTransactionV1({
+      return reconstructMidgardTransaction({
         transactionId,
         transactionCommitment: Buffer.from(
           payload.transaction_commitment,
@@ -333,19 +328,19 @@ export const reconstructTxOrderMaterialV1 = ({
  * withdrawals share), and adding process-lifetime state to an authentication path
  * is not something to do as a side effect of giving it a source.
  */
-export const observeVisibleTxOrderCarriageV1 = (
+export const observeVisibleTxOrderCarriage = (
   txOrderUTxO: SDK.TxOrderUTxOV1,
   txOrderPolicyId: string,
-  read: TxOrderCarriageReadOptionsV1 | undefined,
+  read: TxOrderCarriageReadOptions | undefined,
 ): Effect.Effect<
-  TxOrderMaterialCarriageV1 | undefined,
+  TxOrderMaterialCarriage | undefined,
   SDK.LucidError,
   NodeConfig
 > =>
   Effect.gen(function* () {
     const payload = txOrderUTxO.datum.event.tx;
     const materialFieldCount = yield* Effect.try({
-      try: () => forcedOrderMaterialFieldCountV1(payload),
+      try: () => forcedOrderMaterialFieldCount(payload),
       catch: (cause) =>
         new SDK.LucidError({
           message:
@@ -374,7 +369,7 @@ const txOrderUTxOToEntry = (
   consensusProfile: ContractDeploymentIdentity["consensusProfile"],
   publishedProgramMaterial: PublishedProgramMaterialSnapshot,
   txOrderPolicyId: string,
-  read: TxOrderCarriageReadOptionsV1 | undefined,
+  read: TxOrderCarriageReadOptions | undefined,
 ): Effect.Effect<
   ForcedTransactionsDB.Entry,
   SDK.LucidError | DatabaseError,
@@ -383,7 +378,7 @@ const txOrderUTxOToEntry = (
   Effect.gen(function* () {
     const inclusionTime = txOrderUTxO.inclusionTime;
     const datum = yield* rawDatum(txOrderUTxO);
-    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    if (!isMidgardConsensusProfile(consensusProfile)) {
       return yield* Effect.fail(
         new SDK.LucidError({
           message: "Unsupported consensus profile",
@@ -393,18 +388,18 @@ const txOrderUTxOToEntry = (
     }
     const txOrderUTxOV1 = txOrderUTxO;
     const payload = txOrderUTxOV1.datum.event.tx;
-    const material = yield* observeVisibleTxOrderCarriageV1(
+    const material = yield* observeVisibleTxOrderCarriage(
       txOrderUTxOV1,
       txOrderPolicyId,
       read,
     );
-    const nativeTxCbor = yield* reconstructTxOrderMaterialV1({
+    const nativeTxCbor = yield* reconstructTxOrderMaterial({
       payload,
       material,
     });
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor);
     const attachedProgramEnvelopes = yield* Effect.try({
-      try: () => collectMidgardV1AttachedProgramEnvelopes(decoded),
+      try: () => collectMidgardAttachedProgramEnvelopes(decoded),
       catch: (cause) =>
         new SDK.LucidError({
           message: "Failed to collect V1 attached CEK program envelopes",
@@ -442,22 +437,22 @@ const txOrderUTxOToEntry = (
     // The verdict recorded at ingest is provisional: the operator has not run
     // Phase A/B yet. Admission requires the submitted bytes to claim
     // TxIsValid (`E_IS_VALID_FALSE_FORBIDDEN`, enforced inside
-    // `encodeForcedInclusionValueV1`), so the only verdict an unadjudicated
+    // `encodeForcedInclusionValue`), so the only verdict an unadjudicated
     // admitted preimage can carry is `ForcedTxValid`; block commitment
     // recomputes and overwrites both this row's verdict and its
     // `forced_inclusion_value`, and the encoder stamps the committed leaf's
     // validity scalar from whatever verdict it is given (`ForcedTxValid` ⇔
     // code 0, `ForcedTxInvalid { _ }` ⇔ code 1).
-    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
+    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
       nativeTxCbor,
       verdict: "ForcedTxValid",
-      consensusProfile: consensusProfile satisfies MidgardConsensusProfileV1,
+      consensusProfile: consensusProfile satisfies MidgardConsensusProfile,
     });
     // The two identity columns this row carries are **recomputed** from the
     // reconstructed canonical bytes, not copied out of the datum:
-    // `encodeForcedInclusionValueV1` re-derives the proof source from
+    // `encodeForcedInclusionValue` re-derives the proof source from
     // `nativeTxCbor` and hashes it. The datum's own values are already bound —
-    // `reconstructTxOrderMaterialV1` fed both to `reconstructMidgardTransactionV1`,
+    // `reconstructTxOrderMaterial` fed both to `reconstructMidgardTransaction`,
     // whose per-field `verifyMidgardV1TxFieldPreimage` refuses a source that does
     // not hash to the datum's `transaction_commitment` — but that binding is
     // transitive, through a round-trip. These two checks make it direct, so a
@@ -484,7 +479,7 @@ const txOrderUTxOToEntry = (
         }),
       );
     }
-    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecarV1(
+    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar(
       [],
     );
     return {
@@ -506,7 +501,7 @@ const txOrderUTxOToEntry = (
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
       [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
-        ForcedTransactionsDB.midgardTxValidityOfVerdictV1("ForcedTxValid"),
+        ForcedTransactionsDB.midgardTxValidityOfVerdict("ForcedTxValid"),
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
         consensusProfile.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
@@ -526,24 +521,24 @@ const txOrderUTxOToEntry = (
 export const publishedProgramMaterialEntries = (
   utxos: readonly UTxO[],
 ): PublishedProgramMaterialSnapshot => {
-  const entries: MidgardCekProgramMaterialEntryV1[] = [];
+  const entries: MidgardCekProgramMaterialEntry[] = [];
   let malformedCount = 0;
   for (const utxo of utxos) {
     try {
       if (utxo.datum == null) {
         throw new Error("material UTxO has no inline datum");
       }
-      const datum = SDK.decodeCekProgramMaterialDatumV1Cbor(
+      const datum = SDK.decodeCekProgramMaterialDatumCbor(
         Buffer.from(utxo.datum, "hex"),
       );
       entries.push(
-        decodeMidgardCekProgramMaterialEntryV1(
-          encodeMidgardCekProgramMaterialEntryV1({
-            kind: midgardCekProgramMaterialKindFromTagV1(datum.kind),
+        decodeMidgardCekProgramMaterialEntry(
+          encodeMidgardCekProgramMaterialEntry({
+            kind: midgardCekProgramMaterialKindFromTag(datum.kind),
             root: Buffer.from(
               datum.root,
               "hex",
-            ) as MidgardCekProgramMaterialEntryV1["root"],
+            ) as MidgardCekProgramMaterialEntry["root"],
             preimage: Buffer.from(datum.preimage, "hex"),
           }),
         ),
@@ -567,7 +562,7 @@ export const reconcileVisibleTxOrderUTxOs = (
    * `fetch` and `WebSocket`; the seam exists so a test can point the same read at
    * a local L1 rather than stub out the read itself.
    */
-  read?: TxOrderCarriageReadOptionsV1,
+  read?: TxOrderCarriageReadOptions,
 ): Effect.Effect<
   UserEventReconcileResult,
   SDK.LucidError | DatabaseError,
@@ -576,7 +571,7 @@ export const reconcileVisibleTxOrderUTxOs = (
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
     const { consensusProfile } = yield* ContractDeploymentIdentity;
-    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    if (!isMidgardConsensusProfile(consensusProfile)) {
       return yield* Effect.fail(
         new SDK.LucidError({
           message: "Unsupported consensus profile",

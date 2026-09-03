@@ -1,5 +1,5 @@
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -12,34 +12,34 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingScriptSourceContractsV1 } from "./contracts-v1.js";
-import type { MissingScriptSourceEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingScriptSourceContracts } from "./contracts-v1.js";
+import type { MissingScriptSourceEvidence } from "./family-v1.js";
 import {
-  AuthenticatedExecutionSourceTraceV1Schema,
-  ExecutionSourceBoundV1Schema,
-  ExecutionSourceStep02DatumV1Schema,
-  ExecutionSourceStep02RedeemerV1Schema,
-  ExecutionSourceStep03DatumV1Schema,
+  AuthenticatedExecutionSourceTraceSchema,
+  ExecutionSourceBoundSchema,
+  ExecutionSourceStep02DatumSchema,
+  ExecutionSourceStep02RedeemerSchema,
+  ExecutionSourceStep03DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "missing-script-source";
-type ExecutionSourceStep02AuthenticationV1 = Omit<
+type ExecutionSourceStep02Authentication = Omit<
   Extract<
-    Data.Static<typeof ExecutionSourceStep02RedeemerV1Schema>,
+    Data.Static<typeof ExecutionSourceStep02RedeemerSchema>,
     { Continue: unknown }
   >["Continue"][0],
   "input_index" | "output_index" | "control"
 >;
-export type ExecutionSourceAuthenticationDataV1 =
-  ExecutionSourceStep02AuthenticationV1 &
+export type ExecutionSourceAuthenticationData =
+  ExecutionSourceStep02Authentication &
     Readonly<{
       absolute_purpose_index: bigint;
       required_script_hash: string;
@@ -58,12 +58,12 @@ export type ExecutionSourceAuthenticationDataV1 =
       redeemer_leaf: string;
       execution_siblings: readonly string[];
       control: Data.Static<
-        typeof import("./schemas-v1.js").ScriptSourcesControlV1Schema
+        typeof import("./schemas-v1.js").ScriptSourcesControlSchema
       >;
       control_data: Data;
     }>;
 
-export const submitMissingScriptSourceStep02V1 = async ({
+export const submitMissingScriptSourceStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -76,18 +76,18 @@ export const submitMissingScriptSourceStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: MissingScriptSourceContractsV1;
+  contracts: MissingScriptSourceContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: MissingScriptSourceEvidenceV1;
-  authentication: ExecutionSourceAuthenticationDataV1;
+  evidence: MissingScriptSourceEvidence;
+  authentication: ExecutionSourceAuthenticationData;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -95,12 +95,12 @@ export const submitMissingScriptSourceStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const bound = requireLinearFaultStepStateV1<
-    Data.Static<typeof ExecutionSourceBoundV1Schema>
+  const bound = requireLinearFaultStepState<
+    Data.Static<typeof ExecutionSourceBoundSchema>
   >({
     threadUtxo,
     signer,
-    schema: ExecutionSourceStep02DatumV1Schema as never,
+    schema: ExecutionSourceStep02DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -115,7 +115,7 @@ export const submitMissingScriptSourceStep02V1 = async ({
       `${FAMILY}: retained execution authentication differs from bound subject`,
     );
   const authenticatedTrace: Data.Static<
-    typeof AuthenticatedExecutionSourceTraceV1Schema
+    typeof AuthenticatedExecutionSourceTraceSchema
   > = {
     bound,
     machine_state: authentication.machine_state,
@@ -124,7 +124,7 @@ export const submitMissingScriptSourceStep02V1 = async ({
     authentication.script_hash !== evidence.descriptor.scriptHashHex ||
     authentication.control.source_count < BigInt(evidence.sourceCount) ||
     (evidence.finding.subject.direction ===
-    PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
       ? authentication.control.source_count !== BigInt(evidence.sourceCount)
       : authentication.control.discovery.source_cursor + 1n !==
         BigInt(evidence.sourceCount)) ||
@@ -136,14 +136,14 @@ export const submitMissingScriptSourceStep02V1 = async ({
     );
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: authenticatedTrace } as never,
-    ExecutionSourceStep03DatumV1Schema as never,
+    ExecutionSourceStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -170,11 +170,11 @@ export const submitMissingScriptSourceStep02V1 = async ({
           },
         ],
       } as never,
-      ExecutionSourceStep02RedeemerV1Schema as never,
+      ExecutionSourceStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

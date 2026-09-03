@@ -1,38 +1,38 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
-  buildMidgardBoundedItemV1,
-  type MidgardBoundedItemChunkProofV1,
-  type MidgardBoundedItemV1,
-  verifyMidgardBoundedItemChunkProofV1,
+  buildMidgardBoundedItem,
+  type MidgardBoundedItem,
+  type MidgardBoundedItemChunkProof,
+  verifyMidgardBoundedItemChunkProof,
 } from "./bounded-item-v1.js";
 import { encodeMidgardAddressBytes } from "./codec/address.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  commitMidgardValidationMerkleFrontierV1,
+  buildMidgardValidationMerkleFrontier,
+  commitMidgardValidationMerkleFrontier,
   MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT,
-  type MidgardValidationMerkleFrontierV1,
+  type MidgardValidationMerkleFrontier,
 } from "./validation-merkle.js";
 
-export const MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION = 1 as const;
-export const MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1 = 2 as const;
-export const MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES_V1 = 5_000 as const;
-export const MIDGARD_TX_SIZE_DERIVED_ASSET_COUNT_V1 = 16_384 as const;
+export const MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION = 1 as const;
+export const MIDGARD_LEDGER_OUTPUT_FIELD_INDEX = 2 as const;
+export const MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES = 5_000 as const;
+export const MIDGARD_TX_SIZE_DERIVED_ASSET_COUNT = 16_384 as const;
 
 const LEDGER_OUTPUT_ASSET_LEAF_DOMAIN = Buffer.from(
   "MidgardLedgerOutputAssetLeafV1",
   "ascii",
 );
 
-export type MidgardLedgerOutputDataSummaryV1 = {
+export type MidgardLedgerOutputDataSummary = {
   readonly root: Hash32;
   readonly cborLength: bigint;
   readonly memory: bigint;
 };
 
-export type MidgardLedgerOutputReferenceScriptLanguageV1 = -1 | 0 | 3 | 128;
+export type MidgardLedgerOutputReferenceScriptLanguage = -1 | 0 | 3 | 128;
 
 /**
  * The compact value stored in a ledger MPF leaf.
@@ -42,8 +42,8 @@ export type MidgardLedgerOutputReferenceScriptLanguageV1 = -1 | 0 | 3 | 128;
  * proof phases, so no membership proof has to reveal a complete output,
  * Value, datum, or reference script.
  */
-export type MidgardLedgerOutputCommitmentV1 = {
-  readonly version: typeof MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION;
+export type MidgardLedgerOutputCommitment = {
+  readonly version: typeof MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION;
   readonly outputIndex: number;
   readonly totalLength: number;
   readonly itemCommitment: Hash32;
@@ -52,36 +52,36 @@ export type MidgardLedgerOutputCommitmentV1 = {
   readonly assetCount: number;
   readonly assetFrontierCommitment: Hash32;
   readonly cardanoValueSize: number;
-  readonly referenceScriptLanguage: MidgardLedgerOutputReferenceScriptLanguageV1;
+  readonly referenceScriptLanguage: MidgardLedgerOutputReferenceScriptLanguage;
   readonly referenceScriptHash: Buffer;
   readonly referenceScriptTotalLength: number;
   readonly referenceScriptItemCommitment: Buffer;
-  readonly cardanoTxOut: MidgardLedgerOutputDataSummaryV1;
-  readonly midgardTxOut: MidgardLedgerOutputDataSummaryV1;
-  readonly cardanoSpendDatum: MidgardLedgerOutputDataSummaryV1;
+  readonly cardanoTxOut: MidgardLedgerOutputDataSummary;
+  readonly midgardTxOut: MidgardLedgerOutputDataSummary;
+  readonly cardanoSpendDatum: MidgardLedgerOutputDataSummary;
 };
 
-export type MidgardLedgerOutputCommitmentFactsV1 = Omit<
-  MidgardLedgerOutputCommitmentV1,
+export type MidgardLedgerOutputCommitmentFacts = Omit<
+  MidgardLedgerOutputCommitment,
   "version" | "outputIndex" | "totalLength" | "itemCommitment"
 >;
 
-export type MidgardLedgerOutputMaterialV1 = {
-  readonly descriptor: MidgardLedgerOutputCommitmentV1;
+export type MidgardLedgerOutputMaterial = {
+  readonly descriptor: MidgardLedgerOutputCommitment;
   readonly descriptorCbor: Buffer;
-  readonly item: MidgardBoundedItemV1;
+  readonly item: MidgardBoundedItem;
 };
 
-export type MidgardLedgerOutputAssetV1 = {
+export type MidgardLedgerOutputAsset = {
   readonly policyId: Buffer;
   readonly assetName: Buffer;
   readonly quantity: bigint;
 };
 
-export type MidgardLedgerOutputAssetFrontierV1 = {
+export type MidgardLedgerOutputAssetFrontier = {
   readonly count: number;
   readonly leaves: readonly Hash32[];
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly commitment: Hash32;
 };
 
@@ -106,7 +106,7 @@ const exactLength = (value: number, field = "length"): number => {
 const exactAssetCount = (value: number): number => {
   const exact = exactLength(value, "asset count");
   if (
-    exact > MIDGARD_TX_SIZE_DERIVED_ASSET_COUNT_V1 ||
+    exact > MIDGARD_TX_SIZE_DERIVED_ASSET_COUNT ||
     exact > MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT
   ) {
     throw new Error(
@@ -118,7 +118,7 @@ const exactAssetCount = (value: number): number => {
 
 const exactCardanoValueSize = (value: number): number => {
   const exact = exactLength(value, "Cardano Value size");
-  if (exact > MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES_V1) {
+  if (exact > MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES) {
     throw new Error(
       "V1 ledger output Cardano Value exceeds the 5,000-byte mainnet bound",
     );
@@ -182,16 +182,16 @@ const exactOptionalBytes = (
 };
 
 const exactSummary = (
-  summary: MidgardLedgerOutputDataSummaryV1,
+  summary: MidgardLedgerOutputDataSummary,
   field: string,
-): MidgardLedgerOutputDataSummaryV1 => ({
+): MidgardLedgerOutputDataSummary => ({
   root: ensureHash32(summary.root, `${field}.root`),
   cborLength: exactUint64(summary.cborLength, `${field}.cbor_length`),
   memory: exactUint64(summary.memory, `${field}.memory`),
 });
 
 const encodeSummary = (
-  summary: MidgardLedgerOutputDataSummaryV1,
+  summary: MidgardLedgerOutputDataSummary,
   field: string,
 ): readonly [Hash32, bigint, bigint] => {
   const exact = exactSummary(summary, field);
@@ -201,7 +201,7 @@ const encodeSummary = (
 const decodeSummary = (
   value: unknown,
   field: string,
-): MidgardLedgerOutputDataSummaryV1 => {
+): MidgardLedgerOutputDataSummary => {
   if (!Array.isArray(value) || value.length !== 3) {
     throw new Error(`${field} must be a three-field summary`);
   }
@@ -220,7 +220,7 @@ const decodeSummary = (
 
 const exactReferenceScriptLanguage = (
   value: number,
-): MidgardLedgerOutputReferenceScriptLanguageV1 => {
+): MidgardLedgerOutputReferenceScriptLanguage => {
   if (value !== -1 && value !== 0 && value !== 3 && value !== 128) {
     throw new Error("Invalid V1 ledger output reference-script language");
   }
@@ -238,7 +238,7 @@ const exactReferenceScript = ({
   readonly totalLength: number;
   readonly itemCommitment: unknown;
 }): {
-  readonly language: MidgardLedgerOutputReferenceScriptLanguageV1;
+  readonly language: MidgardLedgerOutputReferenceScriptLanguage;
   readonly hash: Buffer;
   readonly totalLength: number;
   readonly itemCommitment: Buffer;
@@ -284,10 +284,10 @@ const exactReferenceScript = ({
   };
 };
 
-export const encodeMidgardLedgerOutputCommitmentV1 = (
-  descriptor: MidgardLedgerOutputCommitmentV1,
+export const encodeMidgardLedgerOutputCommitment = (
+  descriptor: MidgardLedgerOutputCommitment,
 ): Buffer => {
-  if (descriptor.version !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION) {
+  if (descriptor.version !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION) {
     throw new Error("Invalid V1 ledger output commitment version");
   }
   const address = encodeMidgardAddressBytes(descriptor.address);
@@ -298,7 +298,7 @@ export const encodeMidgardLedgerOutputCommitmentV1 = (
     itemCommitment: descriptor.referenceScriptItemCommitment,
   });
   return encodeCbor([
-    BigInt(MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION),
+    BigInt(MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION),
     BigInt(exactOutputIndex(descriptor.outputIndex)),
     BigInt(exactLength(descriptor.totalLength)),
     ensureHash32(
@@ -323,9 +323,9 @@ export const encodeMidgardLedgerOutputCommitmentV1 = (
   ]);
 };
 
-export const decodeMidgardLedgerOutputCommitmentV1 = (
+export const decodeMidgardLedgerOutputCommitment = (
   bytes: Uint8Array,
-): MidgardLedgerOutputCommitmentV1 => {
+): MidgardLedgerOutputCommitment => {
   const value = decodeSingleCbor(bytes);
   if (
     !Array.isArray(value) ||
@@ -336,7 +336,7 @@ export const decodeMidgardLedgerOutputCommitmentV1 = (
     throw new Error("Invalid V1 ledger output commitment descriptor");
   }
   const decodedVersion = decodedSafeInteger(value[0]);
-  if (decodedVersion !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION) {
+  if (decodedVersion !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION) {
     throw new Error("Invalid V1 ledger output commitment version");
   }
   const referenceScript = exactReferenceScript({
@@ -345,8 +345,8 @@ export const decodeMidgardLedgerOutputCommitmentV1 = (
     totalLength: decodedSafeInteger(value[11]),
     itemCommitment: value[12],
   });
-  const descriptor: MidgardLedgerOutputCommitmentV1 = {
-    version: MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION,
+  const descriptor: MidgardLedgerOutputCommitment = {
+    version: MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION,
     outputIndex: exactOutputIndex(decodedSafeInteger(value[1])),
     totalLength: exactLength(decodedSafeInteger(value[2])),
     itemCommitment: ensureHash32(
@@ -376,7 +376,7 @@ export const decodeMidgardLedgerOutputCommitmentV1 = (
     midgardTxOut: decodeSummary(value[14], "midgard_tx_out"),
     cardanoSpendDatum: decodeSummary(value[15], "cardano_spend_datum"),
   };
-  const canonical = encodeMidgardLedgerOutputCommitmentV1(descriptor);
+  const canonical = encodeMidgardLedgerOutputCommitment(descriptor);
   if (!canonical.equals(Buffer.from(bytes))) {
     throw new Error(
       "V1 ledger output commitment descriptor is not canonical CBOR",
@@ -385,22 +385,22 @@ export const decodeMidgardLedgerOutputCommitmentV1 = (
   return descriptor;
 };
 
-export const buildMidgardLedgerOutputMaterialV1 = ({
+export const buildMidgardLedgerOutputMaterial = ({
   outputIndex,
   outputCbor,
   facts,
 }: {
   readonly outputIndex: number;
   readonly outputCbor: Uint8Array;
-  readonly facts: MidgardLedgerOutputCommitmentFactsV1;
-}): MidgardLedgerOutputMaterialV1 => {
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+  readonly facts: MidgardLedgerOutputCommitmentFacts;
+}): MidgardLedgerOutputMaterial => {
+  const item = buildMidgardBoundedItem({
+    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
     itemIndex: exactOutputIndex(outputIndex),
     bytes: outputCbor,
   });
-  const descriptor: MidgardLedgerOutputCommitmentV1 = {
-    version: MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION,
+  const descriptor: MidgardLedgerOutputCommitment = {
+    version: MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION,
     outputIndex: item.itemIndex,
     totalLength: item.bytes.length,
     itemCommitment: item.commitment,
@@ -408,16 +408,16 @@ export const buildMidgardLedgerOutputMaterialV1 = ({
   };
   return {
     descriptor,
-    descriptorCbor: encodeMidgardLedgerOutputCommitmentV1(descriptor),
+    descriptorCbor: encodeMidgardLedgerOutputCommitment(descriptor),
     item,
   };
 };
 
-export const hashMidgardLedgerOutputAssetLeafV1 = ({
+export const hashMidgardLedgerOutputAssetLeaf = ({
   policyId,
   assetName,
   quantity,
-}: MidgardLedgerOutputAssetV1): Hash32 => {
+}: MidgardLedgerOutputAsset): Hash32 => {
   if (policyId.length !== 28) {
     throw new Error("V1 ledger output asset policy id must be 28 bytes");
   }
@@ -441,9 +441,9 @@ export const hashMidgardLedgerOutputAssetLeafV1 = ({
   );
 };
 
-export const buildMidgardLedgerOutputAssetFrontierV1 = (
-  assets: readonly MidgardLedgerOutputAssetV1[],
-): MidgardLedgerOutputAssetFrontierV1 => {
+export const buildMidgardLedgerOutputAssetFrontier = (
+  assets: readonly MidgardLedgerOutputAsset[],
+): MidgardLedgerOutputAssetFrontier => {
   for (let index = 1; index < assets.length; index += 1) {
     const previous = assets[index - 1]!;
     const current = assets[index]!;
@@ -457,46 +457,46 @@ export const buildMidgardLedgerOutputAssetFrontierV1 = (
       );
     }
   }
-  const leaves = assets.map(hashMidgardLedgerOutputAssetLeafV1);
-  const frontier = buildMidgardValidationMerkleFrontierV1(leaves);
+  const leaves = assets.map(hashMidgardLedgerOutputAssetLeaf);
+  const frontier = buildMidgardValidationMerkleFrontier(leaves);
   return {
     count: leaves.length,
     leaves,
     frontier,
-    commitment: commitMidgardValidationMerkleFrontierV1(frontier),
+    commitment: commitMidgardValidationMerkleFrontier(frontier),
   };
 };
 
-export const verifyMidgardLedgerOutputChunkV1 = ({
+export const verifyMidgardLedgerOutputChunk = ({
   descriptor,
   proof,
 }: {
-  readonly descriptor: MidgardLedgerOutputCommitmentV1;
-  readonly proof: MidgardBoundedItemChunkProofV1;
+  readonly descriptor: MidgardLedgerOutputCommitment;
+  readonly proof: MidgardBoundedItemChunkProof;
 }): boolean =>
-  descriptor.version === MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION &&
-  proof.fieldIndex === MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1 &&
+  descriptor.version === MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION &&
+  proof.fieldIndex === MIDGARD_LEDGER_OUTPUT_FIELD_INDEX &&
   proof.itemIndex === descriptor.outputIndex &&
   proof.totalLength === descriptor.totalLength &&
-  verifyMidgardBoundedItemChunkProofV1({
+  verifyMidgardBoundedItemChunkProof({
     expectedCommitment: descriptor.itemCommitment,
     proof,
   });
 
-export const verifyMidgardLedgerOutputReferenceScriptChunkV1 = ({
+export const verifyMidgardLedgerOutputReferenceScriptChunk = ({
   descriptor,
   proof,
 }: {
-  readonly descriptor: MidgardLedgerOutputCommitmentV1;
-  readonly proof: MidgardBoundedItemChunkProofV1;
+  readonly descriptor: MidgardLedgerOutputCommitment;
+  readonly proof: MidgardBoundedItemChunkProof;
 }): boolean =>
-  descriptor.version === MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION &&
+  descriptor.version === MIDGARD_LEDGER_OUTPUT_COMMITMENT_VERSION &&
   descriptor.referenceScriptLanguage !== -1 &&
   descriptor.referenceScriptItemCommitment.length === 32 &&
-  proof.fieldIndex === MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1 &&
+  proof.fieldIndex === MIDGARD_LEDGER_OUTPUT_FIELD_INDEX &&
   proof.itemIndex === descriptor.outputIndex &&
   proof.totalLength === descriptor.referenceScriptTotalLength &&
-  verifyMidgardBoundedItemChunkProofV1({
+  verifyMidgardBoundedItemChunkProof({
     expectedCommitment: descriptor.referenceScriptItemCommitment,
     proof,
   });

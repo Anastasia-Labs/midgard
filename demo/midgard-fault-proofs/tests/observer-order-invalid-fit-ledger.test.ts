@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildVanRossemFitLedgerV1,
-  writeVanRossemFitLedgerV1,
+  buildVanRossemFitLedger,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
-export const observerOrderInvalidFitMeasurementsV1 = [
+export const observerOrderInvalidFitMeasurements = [
   [
     "reference-step-01",
     "publication",
@@ -202,13 +202,13 @@ export const observerOrderInvalidFitMeasurementsV1 = [
   ],
 ] as const;
 
-export const buildObserverOrderInvalidFitLedgerV1 = () =>
-  buildVanRossemFitLedgerV1({
+export const buildObserverOrderInvalidFitLedger = () =>
+  buildVanRossemFitLedger({
     category: "observerOrderInvalid",
     blueprintSha256:
       "dd9cde6da423a5082a743e21020912fabc74848c32f52b496d9251d3dfa33b2a",
     compilerVersion: "v1.1.23+5adf783",
-    measurements: observerOrderInvalidFitMeasurementsV1.map(
+    measurements: observerOrderInvalidFitMeasurements.map(
       ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
         name,
         kind,
@@ -222,15 +222,15 @@ export const buildObserverOrderInvalidFitLedgerV1 = () =>
 
 describe("observerOrderInvalid signed Van Rossem fit ledger", () => {
   it("reproduces every publication and maximum lifecycle row", async () => {
-    const ledger = buildObserverOrderInvalidFitLedgerV1();
+    const ledger = buildObserverOrderInvalidFitLedger();
     const url = new URL(
       "../../../docs/fault-proofs/size-plans/observer-order-invalid-v1-fit-ledger.json",
       import.meta.url,
     );
     if (process.env.MIDGARD_UPDATE_OBSERVER_ORDER_LEDGER === "1")
-      await writeVanRossemFitLedgerV1(url.pathname, ledger);
+      await writeVanRossemFitLedger(url.pathname, ledger);
     expect(ledger.entries).toHaveLength(
-      observerOrderInvalidFitMeasurementsV1.length,
+      observerOrderInvalidFitMeasurements.length,
     );
     expect(
       ledger.entries.every(

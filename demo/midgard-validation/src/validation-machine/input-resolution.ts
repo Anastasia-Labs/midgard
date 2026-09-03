@@ -20,13 +20,13 @@ const INPUT_RESOLUTION_SCHEDULE_DOMAIN = Buffer.from(
 export const hash32 = (bytes: Uint8Array): Buffer =>
   Buffer.from(blake2b(Buffer.from(bytes), { dkLen: 32 }));
 
-export const initialMidgardResolvedInputsAccumulatorV1 = (): Buffer =>
+export const initialMidgardResolvedInputsAccumulator = (): Buffer =>
   hash32(RESOLVED_INPUTS_ACCUMULATOR_DOMAIN);
 
-export const emptyMidgardInputResolutionScheduleV1 = (): Buffer =>
+export const emptyMidgardInputResolutionSchedule = (): Buffer =>
   hash32(INPUT_RESOLUTION_SCHEDULE_DOMAIN);
 
-export const prependMidgardInputResolutionScheduleV1 = (input: {
+export const prependMidgardInputResolutionSchedule = (input: {
   readonly sourceKind: "spend" | "reference";
   readonly key: Uint8Array;
   readonly nextHash: Uint8Array;
@@ -44,7 +44,7 @@ export const prependMidgardInputResolutionScheduleV1 = (input: {
   );
 };
 
-export const advanceMidgardResolvedInputsAccumulatorV1 = (input: {
+export const advanceMidgardResolvedInputsAccumulator = (input: {
   readonly accumulator: Uint8Array;
   readonly sourceKind: "spend" | "reference";
   readonly key: Uint8Array;

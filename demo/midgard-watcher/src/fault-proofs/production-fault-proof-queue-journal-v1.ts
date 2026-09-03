@@ -2,11 +2,11 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize } from "node:path";
 
-import { watcherCanonicalJsonV1 } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
 
-export const WATCHER_PRODUCTION_FAULT_PROOF_QUEUE_JOURNAL_V1 =
+export const WATCHER_FAULT_PROOF_QUEUE_JOURNAL =
   "midgard-watcher-production-fault-proof-queue-journal-v1" as const;
-export const WATCHER_PRODUCTION_FAULT_PROOF_QUEUE_RECORD_V1 =
+export const WATCHER_FAULT_PROOF_QUEUE_RECORD =
   "midgard-watcher-production-fault-proof-queue-record-v1" as const;
 
 const RECORD_FILE = /^([0-9]{20})\.json$/u;
@@ -17,17 +17,17 @@ const MAXIMUM_RECORDS = 65_536;
 const MAXIMUM_RECORD_BYTES = 64 * 1024;
 const MAC_DOMAIN = "midgard-watcher-fault-proof-edf-queue-v1";
 
-export type WatcherProductionFaultProofQueueIdentityV1 = Readonly<{
+export type WatcherFaultProofQueueIdentity = Readonly<{
   category: string;
   headerHash: string;
   decisionDigest: string;
   rollbackGeneration: string;
 }>;
 
-type QueueEventV1 =
+type QueueEvent =
   | Readonly<{
       kind: "enqueued";
-      identity: WatcherProductionFaultProofQueueIdentityV1;
+      identity: WatcherFaultProofQueueIdentity;
       queuedAtMs: string;
     }>
   | Readonly<{
@@ -36,24 +36,24 @@ type QueueEventV1 =
       observedAtMs: string;
     }>;
 
-type QueueRecordV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_FAULT_PROOF_QUEUE_RECORD_V1;
+type QueueRecord = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_PROOF_QUEUE_RECORD;
   revision: string;
   priorRecordSha256: string | null;
   deploymentFingerprint: string;
-  event: QueueEventV1;
+  event: QueueEvent;
   authenticationKeyId: string;
   authenticationMac: string;
 }>;
 
-type QueueStateV1 = Readonly<{
+type QueueState = Readonly<{
   queuedAtMs: string;
   state: "queued" | "active" | "finished";
 }>;
 
-export type WatcherProductionFaultProofQueueJournalV1 = Readonly<{
+export type WatcherFaultProofQueueJournal = Readonly<{
   register(
-    identity: WatcherProductionFaultProofQueueIdentityV1,
+    identity: WatcherFaultProofQueueIdentity,
     observedAtMs: string,
   ): Promise<Readonly<{ queuedAtMs: string; finished: boolean }>>;
   markStarted(jobIdentityDigest: string, observedAtMs: string): Promise<void>;
@@ -86,7 +86,7 @@ const exactDirectory = async (path: string): Promise<string> => {
 
 const identityDigest = (
   deploymentFingerprint: string,
-  identity: WatcherProductionFaultProofQueueIdentityV1,
+  identity: WatcherFaultProofQueueIdentity,
 ): string => {
   if (
     identity.category.length === 0 ||
@@ -97,10 +97,10 @@ const identityDigest = (
   ) {
     throw new Error("fault-proof queue identity is invalid");
   }
-  return sha256(watcherCanonicalJsonV1({ deploymentFingerprint, ...identity }));
+  return sha256(watcherCanonicalJson({ deploymentFingerprint, ...identity }));
 };
 
-const recordBody = (record: QueueRecordV1) => ({
+const recordBody = (record: QueueRecord) => ({
   schemaVersion: record.schemaVersion,
   revision: record.revision,
   priorRecordSha256: record.priorRecordSha256,
@@ -109,11 +109,11 @@ const recordBody = (record: QueueRecordV1) => ({
   authenticationKeyId: record.authenticationKeyId,
 });
 
-export const openWatcherProductionFaultProofQueueJournalV1 = async (input: {
+export const openWatcherFaultProofQueueJournal = async (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;
   readonly authenticationKey: Uint8Array;
-}): Promise<WatcherProductionFaultProofQueueJournalV1> => {
+}): Promise<WatcherFaultProofQueueJournal> => {
   if (
     !HEX_32.test(input.deploymentFingerprint) ||
     input.authenticationKey.byteLength !== 32
@@ -128,10 +128,8 @@ export const openWatcherProductionFaultProofQueueJournalV1 = async (input: {
     .digest();
   const authenticationKeyId = sha256(key);
   const mac = (body: unknown): string =>
-    createHmac("sha256", key)
-      .update(watcherCanonicalJsonV1(body))
-      .digest("hex");
-  const states = new Map<string, QueueStateV1>();
+    createHmac("sha256", key).update(watcherCanonicalJson(body)).digest("hex");
+  const states = new Map<string, QueueState>();
   let lastRecordSha256: string | null = null;
   let nextRevision = 0n;
   const entries = await readdir(directory, { withFileTypes: true });
@@ -153,12 +151,12 @@ export const openWatcherProductionFaultProofQueueJournalV1 = async (input: {
     if (bytes.byteLength === 0 || bytes.byteLength > MAXIMUM_RECORD_BYTES) {
       throw new Error("fault-proof queue journal record size is invalid");
     }
-    const parsed = JSON.parse(bytes.toString("utf8")) as QueueRecordV1;
+    const parsed = JSON.parse(bytes.toString("utf8")) as QueueRecord;
     const body = recordBody(parsed);
     const expectedMac = Buffer.from(mac(body), "hex");
     const claimedMac = Buffer.from(parsed.authenticationMac ?? "", "hex");
     if (
-      parsed.schemaVersion !== WATCHER_PRODUCTION_FAULT_PROOF_QUEUE_RECORD_V1 ||
+      parsed.schemaVersion !== WATCHER_FAULT_PROOF_QUEUE_RECORD ||
       parsed.revision !== index.toString() ||
       parsed.deploymentFingerprint !== input.deploymentFingerprint ||
       parsed.priorRecordSha256 !== lastRecordSha256 ||
@@ -216,13 +214,13 @@ export const openWatcherProductionFaultProofQueueJournalV1 = async (input: {
   }
 
   let serial = Promise.resolve();
-  const append = async (event: QueueEventV1): Promise<void> => {
+  const append = async (event: QueueEvent): Promise<void> => {
     const operation = serial.then(async () => {
       if (nextRevision >= BigInt(MAXIMUM_RECORDS)) {
         throw new Error("fault-proof queue journal exceeds its append bound");
       }
       const body = {
-        schemaVersion: WATCHER_PRODUCTION_FAULT_PROOF_QUEUE_RECORD_V1,
+        schemaVersion: WATCHER_FAULT_PROOF_QUEUE_RECORD,
         revision: nextRevision.toString(),
         priorRecordSha256: lastRecordSha256,
         deploymentFingerprint: input.deploymentFingerprint,
@@ -230,7 +228,7 @@ export const openWatcherProductionFaultProofQueueJournalV1 = async (input: {
         authenticationKeyId,
       } as const;
       const record = Object.freeze({ ...body, authenticationMac: mac(body) });
-      const bytes = Buffer.from(`${watcherCanonicalJsonV1(record)}\n`, "utf8");
+      const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
       const name = `${nextRevision.toString().padStart(20, "0")}.json`;
       const handle = await open(join(directory, name), "wx", 0o600);
       try {
@@ -337,7 +335,7 @@ export const openWatcherProductionFaultProofQueueJournalV1 = async (input: {
   });
 };
 
-export const watcherProductionFaultProofQueueIdentityDigestV1 = (input: {
+export const watcherFaultProofQueueIdentityDigest = (input: {
   readonly deploymentFingerprint: string;
-  readonly identity: WatcherProductionFaultProofQueueIdentityV1;
+  readonly identity: WatcherFaultProofQueueIdentity;
 }): string => identityDigest(input.deploymentFingerprint, input.identity);

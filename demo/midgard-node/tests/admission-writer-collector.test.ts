@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber, Ref, TestClock } from "effect";
 import { describe, expect } from "vitest";
@@ -16,7 +16,7 @@ import {
 const request = (label: string): TxAdmissionsDB.ReservedAdmissionRequest => ({
   txId: createHash("sha256").update(`collector:${label}`).digest(),
   txCanonicalCbor: Buffer.from(label),
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   submitSource: "native",
 });
 

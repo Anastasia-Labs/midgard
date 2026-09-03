@@ -52,7 +52,7 @@ import {
   rebindAikenConstants,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import {
-  decodeMidgardFieldPreimageV1,
+  decodeMidgardFieldPreimage,
   decodeSingleCbor,
 } from "@al-ft/midgard-core";
 
@@ -113,7 +113,7 @@ const runProducingSuites = (vectorDirectory) => {
  * §5.1 deletes that distinction.
  */
 const fieldItems = (preimageHex) =>
-  decodeMidgardFieldPreimageV1(bytes(preimageHex));
+  decodeMidgardFieldPreimage(bytes(preimageHex));
 
 /**
  * The single item of a one-item field preimage.

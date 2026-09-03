@@ -7,13 +7,13 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const REDEEMER_CANONICITY_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const REDEEMER_CANONICITY_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/redeemer_canonicity/step_01.main.spend",
   "fraud_proofs/redeemer_canonicity/step_02.main.spend",
   "fraud_proofs/redeemer_canonicity/step_03.main.spend",
 ] as const);
 
-export type RedeemerCanonicityStepContractV1 = Readonly<{
+export type RedeemerCanonicityStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -21,11 +21,11 @@ export type RedeemerCanonicityStepContractV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type RedeemerCanonicityContractsV1 = Readonly<{
+export type RedeemerCanonicityContracts = Readonly<{
   steps: readonly [
-    RedeemerCanonicityStepContractV1,
-    RedeemerCanonicityStepContractV1,
-    RedeemerCanonicityStepContractV1,
+    RedeemerCanonicityStepContract,
+    RedeemerCanonicityStepContract,
+    RedeemerCanonicityStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -66,7 +66,7 @@ const applyExact = (
   };
 };
 
-export const applyRedeemerCanonicityScriptsV1 = ({
+export const applyRedeemerCanonicityScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -82,12 +82,12 @@ export const applyRedeemerCanonicityScriptsV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): RedeemerCanonicityContractsV1["steps"] => {
+}): RedeemerCanonicityContracts["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): RedeemerCanonicityStepContractV1 => {
-    const blueprintTitle = REDEEMER_CANONICITY_BLUEPRINT_TITLES_V1[index]!;
+  ): RedeemerCanonicityStepContract => {
+    const blueprintTitle = REDEEMER_CANONICITY_BLUEPRINT_TITLES[index]!;
     const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
     return Object.freeze({
       blueprintTitle,

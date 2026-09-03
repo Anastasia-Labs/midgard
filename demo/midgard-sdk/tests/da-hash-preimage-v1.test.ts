@@ -3,18 +3,18 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  adjudicateCommittedSourceLeafV1,
-  DA_HASH_PREIMAGE_VIOLATION_ID_V1,
-  daHashPreimageEvidenceFromCommittedLeafV1,
+  adjudicateCommittedSourceLeaf,
+  DA_HASH_PREIMAGE_VIOLATION_ID,
+  daHashPreimageEvidenceFromCommittedLeaf,
   DaHashPreimageStep02Datum,
   DaHashPreimageStep02SpendRedeemer,
   DaHashPreimageStep02State,
-  daHashPreimageStep02StateFromEvidenceV1,
-  isDaHashPreimageViolationV1,
+  daHashPreimageStep02StateFromEvidence,
+  isDaHashPreimageViolation,
 } from "../src/fraud-proof/da-hash-preimage.js";
 import {
-  L2TransactionSourceV1,
-  L2TransactionSourceV1Schema,
+  L2TransactionSource,
+  L2TransactionSourceSchema,
 } from "../src/ledger-state.js";
 
 const VALID_TX_ID =
@@ -29,8 +29,8 @@ const WITNESS_SET_CBOR =
 const FIELD_LENGTHS_CBOR = "89182901183001190e8a01011931e601";
 
 const source = (
-  overrides: Partial<L2TransactionSourceV1> = {},
-): L2TransactionSourceV1 => ({
+  overrides: Partial<L2TransactionSource> = {},
+): L2TransactionSource => ({
   tx_id: VALID_TX_ID,
   source: {
     compact_cbor: COMPACT_CBOR,
@@ -40,13 +40,13 @@ const source = (
   ...overrides,
 });
 
-const sourceBytes = (value: L2TransactionSourceV1): Buffer =>
-  Buffer.from(Data.to(value, L2TransactionSourceV1), "hex");
+const sourceBytes = (value: L2TransactionSource): Buffer =>
+  Buffer.from(Data.to(value, L2TransactionSource), "hex");
 
 describe("Q44 da-hash-preimage total source verdict", () => {
   it("accepts the exact maximum valid source as the valid-block negative", () => {
     const value = sourceBytes(source());
-    const adjudication = adjudicateCommittedSourceLeafV1({
+    const adjudication = adjudicateCommittedSourceLeaf({
       committedTxId: VALID_TX_ID,
       committedLeafValue: value,
     });
@@ -56,17 +56,17 @@ describe("Q44 da-hash-preimage total source verdict", () => {
       derivedTxId: VALID_TX_ID,
     });
 
-    const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
+    const evidence = daHashPreimageEvidenceFromCommittedLeaf({
       committedTxId: VALID_TX_ID,
       committedLeafValue: value,
     });
-    expect(evidence.violationId).toBe(DA_HASH_PREIMAGE_VIOLATION_ID_V1);
+    expect(evidence.violationId).toBe(DA_HASH_PREIMAGE_VIOLATION_ID);
     expect(evidence.isViolation).toBe(false);
   });
 
   it("convicts a valid source committed under a different MPF key", () => {
     expect(
-      adjudicateCommittedSourceLeafV1({
+      adjudicateCommittedSourceLeaf({
         committedTxId: FOREIGN_TX_ID,
         committedLeafValue: sourceBytes(source()),
       }),
@@ -85,7 +85,7 @@ describe("Q44 da-hash-preimage total source verdict", () => {
     ],
   ])("convicts malformed source: %s", (_label, committedLeafValue) => {
     expect(
-      adjudicateCommittedSourceLeafV1({
+      adjudicateCommittedSourceLeaf({
         committedTxId: VALID_TX_ID,
         committedLeafValue,
       }).verdict,
@@ -122,7 +122,7 @@ describe("Q44 da-hash-preimage total source verdict", () => {
     ],
   ])("convicts malformed proof source: %s", (_label, value) => {
     expect(
-      adjudicateCommittedSourceLeafV1({
+      adjudicateCommittedSourceLeaf({
         committedTxId: VALID_TX_ID,
         committedLeafValue: sourceBytes(value),
       }).verdict,
@@ -132,7 +132,7 @@ describe("Q44 da-hash-preimage total source verdict", () => {
   it("convicts an internally valid source whose embedded id is not its body id", () => {
     const value = source({ tx_id: FOREIGN_TX_ID });
     expect(
-      adjudicateCommittedSourceLeafV1({
+      adjudicateCommittedSourceLeaf({
         committedTxId: FOREIGN_TX_ID,
         committedLeafValue: sourceBytes(value),
       }),
@@ -144,22 +144,22 @@ describe("Q44 da-hash-preimage total source verdict", () => {
   });
 
   it("marks exactly the four accusation verdicts as violations", () => {
-    expect(isDaHashPreimageViolationV1("MalformedSource")).toBe(true);
-    expect(isDaHashPreimageViolationV1("KeyMismatch")).toBe(true);
-    expect(isDaHashPreimageViolationV1("MalformedProofSource")).toBe(true);
-    expect(isDaHashPreimageViolationV1("DerivedIdMismatch")).toBe(true);
-    expect(isDaHashPreimageViolationV1("NoViolation")).toBe(false);
+    expect(isDaHashPreimageViolation("MalformedSource")).toBe(true);
+    expect(isDaHashPreimageViolation("KeyMismatch")).toBe(true);
+    expect(isDaHashPreimageViolation("MalformedProofSource")).toBe(true);
+    expect(isDaHashPreimageViolation("DerivedIdMismatch")).toBe(true);
+    expect(isDaHashPreimageViolation("NoViolation")).toBe(false);
   });
 });
 
 describe("Q44 da-hash-preimage on-chain schemas", () => {
-  const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
+  const evidence = daHashPreimageEvidenceFromCommittedLeaf({
     committedTxId: FOREIGN_TX_ID,
     committedLeafValue: sourceBytes(source()),
   });
 
   it("round-trips the exact verdict-only step-02 state", () => {
-    const state = daHashPreimageStep02StateFromEvidenceV1(evidence);
+    const state = daHashPreimageStep02StateFromEvidence(evidence);
     expect(state).toEqual({ verdict: "KeyMismatch" });
     const cbor = Data.to(state, DaHashPreimageStep02State);
     expect(Data.from(cbor, DaHashPreimageStep02State)).toEqual(state);
@@ -168,7 +168,7 @@ describe("Q44 da-hash-preimage on-chain schemas", () => {
   it("round-trips the step-02 datum and redeemer", () => {
     const datum: DaHashPreimageStep02Datum = {
       fraud_prover: "44".repeat(28),
-      data: daHashPreimageStep02StateFromEvidenceV1(evidence),
+      data: daHashPreimageStep02StateFromEvidence(evidence),
     };
     const datumCbor = Data.to(datum, DaHashPreimageStep02Datum);
     expect(Data.from(datumCbor, DaHashPreimageStep02Datum)).toEqual(datum);
@@ -203,6 +203,6 @@ describe("Q44 da-hash-preimage on-chain schemas", () => {
   });
 
   it("keeps the schema alias available to source builders", () => {
-    expect(L2TransactionSourceV1Schema).toBeDefined();
+    expect(L2TransactionSourceSchema).toBeDefined();
   });
 });

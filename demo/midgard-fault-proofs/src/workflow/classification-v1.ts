@@ -1,41 +1,41 @@
 import {
-  admitAuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_DECODABILITY_VIOLATION_ID_V1,
-  COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1,
-  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID_V1,
-  DA_HASH_PREIMAGE_VIOLATION_ID_V1,
-  DOUBLE_WITHDRAW_VIOLATION_ID_V1,
-  FABRICATED_DEPOSIT_VIOLATION_ID_V1,
-  FABRICATED_WITHDRAWAL_VIOLATION_ID_V1,
+  admitAuthenticatedStateQueueHeaderObservation,
+  CANONICAL_DECODABILITY_VIOLATION_ID,
+  COMMITTED_FIELD_SHAPE_VIOLATION_ID,
+  CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID,
+  DA_HASH_PREIMAGE_VIOLATION_ID,
+  DOUBLE_WITHDRAW_VIOLATION_ID,
+  FABRICATED_DEPOSIT_VIOLATION_ID,
+  FABRICATED_WITHDRAWAL_VIOLATION_ID,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-  INPUT_NO_IDX_VIOLATION_ID_V1,
-  INVALID_SIGNATURE_VIOLATION_ID_V1,
-  MIN_ADA_VIOLATION_ID_V1,
-  MIN_FEE_VIOLATION_ID_V1,
-  MINT_AUTHORIZATION_VIOLATION_ID_V1,
-  MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID_V1,
-  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1,
-  MISSING_SIGNATURE_VIOLATION_ID_V1,
-  NATIVE_SCRIPT_DECODING_VIOLATION_ID_V1,
-  NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1,
-  REFERENCE_INPUT_NO_IDX_VIOLATION_ID_V1,
-  WITHDRAWAL_MISTAG_VIOLATION_ID_V1,
-  WITHDRAWN_INPUT_VIOLATION_ID_V1,
-  WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1,
+  INPUT_NO_IDX_VIOLATION_ID,
+  INVALID_SIGNATURE_VIOLATION_ID,
+  MIN_ADA_VIOLATION_ID,
+  MIN_FEE_VIOLATION_ID,
+  MINT_AUTHORIZATION_VIOLATION_ID,
+  MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID,
+  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
+  MISSING_SIGNATURE_VIOLATION_ID,
+  NATIVE_SCRIPT_DECODING_VIOLATION_ID,
+  NATIVE_SCRIPT_INVALID_VIOLATION_ID,
+  REFERENCE_INPUT_NO_IDX_VIOLATION_ID,
+  WITHDRAWAL_MISTAG_VIOLATION_ID,
+  WITHDRAWN_INPUT_VIOLATION_ID,
+  WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
 } from "@al-ft/midgard-sdk";
 
 import {
-  blockTransactionsFromCanonicalEvidenceV1,
-  type CanonicalBlockEvidenceV1,
+  blockTransactionsFromCanonicalEvidence,
+  type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
 
-export const FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION =
   "midgard-fraud-proof-classification-v1" as const;
-export const DOUBLE_SPEND_VIOLATION_ID_V1 = "double-spend" as const;
-export const NETWORK_ID_VIOLATION_ID_V1 = "network-id" as const;
+export const DOUBLE_SPEND_VIOLATION_ID = "double-spend" as const;
+export const NETWORK_ID_VIOLATION_ID = "network-id" as const;
 
-export type FraudProofClassificationRuleV1 = {
+export type FraudProofClassificationRule = {
   readonly category: FraudProofCatalogueCategoryName;
   /** Stable, ordered violation identifiers routed to this family. */
   readonly violationIds: readonly [string, ...string[]];
@@ -52,15 +52,15 @@ export type FraudProofClassificationRuleV1 = {
  * the exact sealed replay/adapter registry. Unknown identifiers classify as
  * `unprovable_gap`.
  */
-export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
-  { category: "doubleSpend", violationIds: [DOUBLE_SPEND_VIOLATION_ID_V1] },
+export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
+  { category: "doubleSpend", violationIds: [DOUBLE_SPEND_VIOLATION_ID] },
   {
     category: "nonExistentInput",
     violationIds: ["no-input", "non-existent-input"],
   },
   {
     category: "nonExistentInputNoIndex",
-    violationIds: [INPUT_NO_IDX_VIOLATION_ID_V1],
+    violationIds: [INPUT_NO_IDX_VIOLATION_ID],
   },
   { category: "invalidRange", violationIds: ["invalid-range"] },
   {
@@ -86,7 +86,7 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
   },
   {
     category: "daHashPreimage",
-    violationIds: [DA_HASH_PREIMAGE_VIOLATION_ID_V1],
+    violationIds: [DA_HASH_PREIMAGE_VIOLATION_ID],
   },
   {
     category: "noReferenceInput",
@@ -94,60 +94,60 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
   },
   {
     category: "referenceInputNoIdx",
-    violationIds: [REFERENCE_INPUT_NO_IDX_VIOLATION_ID_V1],
+    violationIds: [REFERENCE_INPUT_NO_IDX_VIOLATION_ID],
   },
   {
     category: "invalidSignature",
-    violationIds: [INVALID_SIGNATURE_VIOLATION_ID_V1],
+    violationIds: [INVALID_SIGNATURE_VIOLATION_ID],
   },
   {
     category: "fabricatedDeposit",
-    violationIds: [FABRICATED_DEPOSIT_VIOLATION_ID_V1],
+    violationIds: [FABRICATED_DEPOSIT_VIOLATION_ID],
   },
   {
     category: "fabricatedWithdrawal",
-    violationIds: [FABRICATED_WITHDRAWAL_VIOLATION_ID_V1],
+    violationIds: [FABRICATED_WITHDRAWAL_VIOLATION_ID],
   },
   {
     category: "nativeScriptDecoding",
-    violationIds: [NATIVE_SCRIPT_DECODING_VIOLATION_ID_V1],
+    violationIds: [NATIVE_SCRIPT_DECODING_VIOLATION_ID],
   },
   {
     category: "missingSignature",
-    violationIds: [MISSING_SIGNATURE_VIOLATION_ID_V1],
+    violationIds: [MISSING_SIGNATURE_VIOLATION_ID],
   },
   {
     category: "missingNativeScriptTx",
-    violationIds: [MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID_V1],
+    violationIds: [MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID],
   },
   {
     category: "withdrawnReferenceInput",
-    violationIds: [WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1],
+    violationIds: [WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID],
   },
   {
     category: "canonicalDecodability",
-    violationIds: [CANONICAL_DECODABILITY_VIOLATION_ID_V1],
+    violationIds: [CANONICAL_DECODABILITY_VIOLATION_ID],
   },
   {
     category: "committedFieldShape",
-    violationIds: [COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1],
+    violationIds: [COMMITTED_FIELD_SHAPE_VIOLATION_ID],
   },
-  { category: "minFee", violationIds: [MIN_FEE_VIOLATION_ID_V1] },
+  { category: "minFee", violationIds: [MIN_FEE_VIOLATION_ID] },
   {
     category: "withdrawalMistag",
     violationIds: [
-      WITHDRAWAL_MISTAG_VIOLATION_ID_V1,
+      WITHDRAWAL_MISTAG_VIOLATION_ID,
       "withdrawal-valid-marked-invalid",
       "withdrawal-invalid-marked-valid",
     ],
   },
   {
     category: "doubleWithdraw",
-    violationIds: [DOUBLE_WITHDRAW_VIOLATION_ID_V1],
+    violationIds: [DOUBLE_WITHDRAW_VIOLATION_ID],
   },
   {
     category: "crossBlockDuplicateEvent",
-    violationIds: [CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID_V1],
+    violationIds: [CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID],
   },
   {
     category: "l2TxMistag",
@@ -155,7 +155,7 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
   },
   {
     category: "withdrawnInput",
-    violationIds: [WITHDRAWN_INPUT_VIOLATION_ID_V1],
+    violationIds: [WITHDRAWN_INPUT_VIOLATION_ID],
   },
   {
     category: "valueNotPreserved",
@@ -173,18 +173,18 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
   },
   {
     category: "mintAuthorization",
-    violationIds: [MINT_AUTHORIZATION_VIOLATION_ID_V1],
+    violationIds: [MINT_AUTHORIZATION_VIOLATION_ID],
   },
-  { category: "networkId", violationIds: [NETWORK_ID_VIOLATION_ID_V1] },
+  { category: "networkId", violationIds: [NETWORK_ID_VIOLATION_ID] },
   {
     category: "missingNativeScriptUtxo",
-    violationIds: [MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1],
+    violationIds: [MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID],
   },
   {
     category: "nativeScriptInvalid",
-    violationIds: [NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1],
+    violationIds: [NATIVE_SCRIPT_INVALID_VIOLATION_ID],
   },
-  { category: "minAda", violationIds: [MIN_ADA_VIOLATION_ID_V1] },
+  { category: "minAda", violationIds: [MIN_ADA_VIOLATION_ID] },
   {
     category: "fieldPreimageLengthMismatch",
     violationIds: ["field-preimage-length-mismatch"],
@@ -290,15 +290,15 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
       "mint-asset-accumulation-limit",
     ],
   },
-] as const satisfies readonly FraudProofClassificationRuleV1[]);
+] as const satisfies readonly FraudProofClassificationRule[]);
 
-type RegisteredClassificationRuleV1 =
-  (typeof FRAUD_PROOF_CLASSIFICATION_RULES_V1)[number];
+type RegisteredClassificationRule =
+  (typeof FRAUD_PROOF_CLASSIFICATION_RULES)[number];
 
-export type RegisteredFraudProofViolationIdV1 =
-  RegisteredClassificationRuleV1["violationIds"][number];
+export type RegisteredFraudProofViolationId =
+  RegisteredClassificationRule["violationIds"][number];
 
-type ResolvedClassificationRuleV1 = {
+type ResolvedClassificationRule = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly familyPriority: number;
   readonly violationPriority: number;
@@ -306,13 +306,13 @@ type ResolvedClassificationRuleV1 = {
 
 const classificationByViolationId = new Map<
   string,
-  ResolvedClassificationRuleV1
+  ResolvedClassificationRule
 >();
 
 for (const [
   familyPriority,
   rule,
-] of FRAUD_PROOF_CLASSIFICATION_RULES_V1.entries()) {
+] of FRAUD_PROOF_CLASSIFICATION_RULES.entries()) {
   if (rule.category !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[familyPriority]) {
     throw new Error(
       `classification rule ${familyPriority.toString()} must be ${String(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER[familyPriority])}, got ${rule.category}`,
@@ -330,7 +330,7 @@ for (const [
   }
 }
 
-export type CanonicalViolationDetectionV1 = {
+export type CanonicalViolationDetection = {
   /** Stable detector-owned identity, used only as a deterministic tie-break. */
   readonly detectionId: string;
   readonly headerHash: string;
@@ -341,13 +341,13 @@ export type CanonicalViolationDetectionV1 = {
   readonly diagnostic?: string;
 };
 
-export type UnprovableGapV1 = CanonicalViolationDetectionV1 & {
+export type UnprovableGap = CanonicalViolationDetection & {
   readonly reason: "unregistered_violation";
 };
 
-export type CanonicalBlockClassificationV1 =
+export type CanonicalBlockClassification =
   | {
-      readonly schemaVersion: typeof FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION;
+      readonly schemaVersion: typeof FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION;
       /** Empty detector output is not a complete canonical replay verdict. */
       readonly decision: "no_fault_detected";
       readonly headerHash: string;
@@ -355,27 +355,27 @@ export type CanonicalBlockClassificationV1 =
       readonly unprovableGaps: readonly [];
     }
   | {
-      readonly schemaVersion: typeof FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION;
+      readonly schemaVersion: typeof FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION;
       readonly decision: "unprovable_gap";
       readonly headerHash: string;
-      readonly selected: UnprovableGapV1;
-      readonly detections: readonly CanonicalViolationDetectionV1[];
-      readonly unprovableGaps: readonly UnprovableGapV1[];
+      readonly selected: UnprovableGap;
+      readonly detections: readonly CanonicalViolationDetection[];
+      readonly unprovableGaps: readonly UnprovableGap[];
     }
   | {
-      readonly schemaVersion: typeof FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION;
+      readonly schemaVersion: typeof FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION;
       readonly decision: "fault_detected";
       readonly headerHash: string;
       readonly category: FraudProofCatalogueCategoryName;
-      readonly selected: CanonicalViolationDetectionV1;
-      readonly detections: readonly CanonicalViolationDetectionV1[];
-      readonly unprovableGaps: readonly UnprovableGapV1[];
+      readonly selected: CanonicalViolationDetection;
+      readonly detections: readonly CanonicalViolationDetection[];
+      readonly unprovableGaps: readonly UnprovableGap[];
     };
 
 const validateDetection = (
-  detection: CanonicalViolationDetectionV1,
+  detection: CanonicalViolationDetection,
   headerHash: string,
-): CanonicalViolationDetectionV1 => {
+): CanonicalViolationDetection => {
   if (detection.detectionId.length === 0) {
     throw new Error("canonical violation detectionId must not be empty");
   }
@@ -394,8 +394,8 @@ const validateDetection = (
 };
 
 const compareDetections = (
-  left: CanonicalViolationDetectionV1,
-  right: CanonicalViolationDetectionV1,
+  left: CanonicalViolationDetection,
+  right: CanonicalViolationDetection,
 ): number => {
   if (left.position !== right.position) {
     return left.position < right.position ? -1 : 1;
@@ -434,17 +434,17 @@ const compareDetections = (
  * surfaced as `unprovable_gap`; it is never coerced to a generic family and
  * never dropped as if the block were healthy.
  */
-export const classifyCanonicalBlockViolationsV1 = async ({
+export const classifyCanonicalBlockViolations = async ({
   evidence,
   detections,
   minimumConfirmationDepth,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly detections: readonly CanonicalViolationDetectionV1[];
+  readonly evidence: CanonicalBlockEvidence;
+  readonly detections: readonly CanonicalViolationDetection[];
   readonly minimumConfirmationDepth?: number;
-}): Promise<CanonicalBlockClassificationV1> => {
-  blockTransactionsFromCanonicalEvidenceV1(evidence);
-  const observation = await admitAuthenticatedStateQueueHeaderObservationV1({
+}): Promise<CanonicalBlockClassification> => {
+  blockTransactionsFromCanonicalEvidence(evidence);
+  const observation = await admitAuthenticatedStateQueueHeaderObservation({
     observation: evidence.observation,
     ...(minimumConfirmationDepth === undefined
       ? {}
@@ -470,7 +470,7 @@ export const classifyCanonicalBlockViolationsV1 = async ({
     .sort(compareDetections);
   if (ordered.length === 0) {
     return {
-      schemaVersion: FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION,
       decision: "no_fault_detected",
       headerHash: evidence.headerHash,
       detections: [],
@@ -483,7 +483,7 @@ export const classifyCanonicalBlockViolationsV1 = async ({
       (detection) => !classificationByViolationId.has(detection.violationId),
     )
     .map(
-      (detection): UnprovableGapV1 => ({
+      (detection): UnprovableGap => ({
         ...detection,
         reason: "unregistered_violation",
       }),
@@ -503,7 +503,7 @@ export const classifyCanonicalBlockViolationsV1 = async ({
       throw new Error("classification invariant: earliest gap disappeared");
     }
     return {
-      schemaVersion: FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION,
       decision: "unprovable_gap",
       headerHash: evidence.headerHash,
       selected,
@@ -516,7 +516,7 @@ export const classifyCanonicalBlockViolationsV1 = async ({
     throw new Error("classification invariant: selected rule disappeared");
   }
   return {
-    schemaVersion: FRAUD_PROOF_CLASSIFICATION_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION,
     decision: "fault_detected",
     headerHash: evidence.headerHash,
     category: rule.category,

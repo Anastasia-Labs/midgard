@@ -3,7 +3,7 @@ export * from "./canonical-decodability/index.js";
 export * from "./committed-field-shape/index.js";
 export * from "./cross-block-duplicate-event/index.js";
 export * from "./evidence/index.js";
-export * as executionNativeScriptInvalidV1 from "./execution-native-script-invalid/index.js";
+export * as executionNativeScriptInvalid from "./execution-native-script-invalid/index.js";
 export * from "./execution-source-script-decoding/index.js";
 export * from "./family-scaffold/index.js";
 export * from "./field-item-width-illegal/index.js";
@@ -33,10 +33,10 @@ export * from "./mint-declared-asset-limit/index.js";
 export * from "./missing-redeemer/index.js";
 export * as missingScriptSourceV1 from "./missing-script-source/index.js";
 export {
-  createManifestBoundMissingScriptSourceWorkflowV1,
-  type LoadMissingScriptSourceProductionWorkflowV1,
-  type ManifestBoundMissingScriptSourceWorkflowConfigV1,
-  type ManifestBoundMissingScriptSourceWorkflowV1,
+  createManifestBoundMissingScriptSourceWorkflow,
+  type LoadMissingScriptSourceWorkflow,
+  type ManifestBoundMissingScriptSourceWorkflow,
+  type ManifestBoundMissingScriptSourceWorkflowConfig,
 } from "./missing-script-source/production-v1.js";
 export * from "./prepare-da-hash-preimage.js";
 export * from "./prepare-double-spend.js";

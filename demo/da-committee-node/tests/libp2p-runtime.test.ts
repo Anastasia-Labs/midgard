@@ -1,12 +1,12 @@
 import {
-  DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_PUBLIC_RETAINED_DA_PROTOCOLS,
+  DA_TRANSPORT_LIMITS,
   DaGossipTopic,
   daGossipTopic,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaCapabilitiesResponseV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
+  decodeDaCapabilitiesResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { multiaddr } from "@multiformats/multiaddr";
 import { WatcherPublicDaLibp2pTransport } from "midgard-watcher";
@@ -329,10 +329,10 @@ describe("public retained-DA listener", () => {
       },
       privateKey: identity.privateKey,
       dataLimits: {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
         requestTimeoutMs: 2_000,
       },
     });
@@ -362,13 +362,13 @@ describe("public retained-DA listener", () => {
         multiaddr: watcherMultiaddr,
         protocol: DaRequestResponseProtocol.capabilities,
         protocolId: capabilitiesProtocolId,
-        requestCbor: encodeDaCapabilitiesRequestV1Cbor({
+        requestCbor: encodeDaCapabilitiesRequestCbor({
           deploymentFingerprint: Buffer.from(DEPLOYMENT_FINGERPRINT, "hex"),
         }),
         timeoutMs: 2_000,
         signal: AbortSignal.timeout(2_000),
       });
-      expect(decodeDaCapabilitiesResponseV1Cbor(response)).toMatchObject({
+      expect(decodeDaCapabilitiesResponseCbor(response)).toMatchObject({
         transportProtocolVersion: 1,
       });
 
@@ -410,10 +410,10 @@ describe("public retained-DA listener", () => {
       },
       privateKey: identity.privateKey,
       dataLimits: {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
         requestTimeoutMs: 100,
       },
       libp2pFactory: async (capturedOptions) => {
@@ -432,7 +432,7 @@ describe("public retained-DA listener", () => {
 
     await listener.start();
     expect(handled).toEqual(
-      DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1.map((protocol) =>
+      DA_PUBLIC_RETAINED_DA_PROTOCOLS.map((protocol) =>
         daRequestResponseProtocolId(DEPLOYMENT_FINGERPRINT, protocol),
       ),
     );
@@ -472,7 +472,7 @@ describe("public retained-DA listener", () => {
         {
           async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
             yield encodeDaStreamFrame(
-              encodeDaCapabilitiesRequestV1Cbor({
+              encodeDaCapabilitiesRequestCbor({
                 deploymentFingerprint: Buffer.from(
                   DEPLOYMENT_FINGERPRINT,
                   "hex",
@@ -519,10 +519,10 @@ describe("public retained-DA listener", () => {
       },
       privateKey: identity.privateKey,
       dataLimits: {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
         requestTimeoutMs: 25,
       },
       libp2pFactory: async () => ({
@@ -589,10 +589,10 @@ describe("public retained-DA listener", () => {
       },
       privateKey: identity.privateKey,
       dataLimits: {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
         requestTimeoutMs: 100,
       },
       libp2pFactory: async () => ({
@@ -745,8 +745,8 @@ describe("DA libp2p runtime service lifecycle", () => {
     ).toEqual(["identify", "pubsub"]);
     expect(handled[0]!.protocol).toBe(protocolId);
     expect(handled[0]!.options).toMatchObject({
-      maxInboundStreams: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      maxOutboundStreams: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+      maxInboundStreams: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      maxOutboundStreams: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
       runOnLimitedConnection: false,
     });
     expect(handler).toHaveBeenCalledWith(
@@ -891,16 +891,16 @@ const libp2pConfig = (): Libp2pDaTransportConfig => ({
     strictSign: true,
     emitSelf: false,
     allowedTopicsOnly: true,
-    maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+    maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
   },
   limits: {
-    maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-    maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-    maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-    maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-    requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+    maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+    maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+    requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
   },
-  retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+  retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
   peers: [
     {
       signerIndex: 0,
@@ -917,7 +917,7 @@ const publicRetainedDaConfig = (peerId: string): PublicRetainedDaConfig => ({
   privateKeySource: `seed:${"5a".repeat(32)}`,
   listenMultiaddrs: ["/ip4/127.0.0.1/tcp/0"],
   announceMultiaddrs: [],
-  protocols: DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1,
+  protocols: DA_PUBLIC_RETAINED_DA_PROTOCOLS,
   limits: {
     maxStreamsPerPeer: 4,
     maxInflightRequests: 8,

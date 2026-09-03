@@ -19,9 +19,9 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -30,19 +30,19 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
-  type NativeScriptDecodingFindingV1,
-  NativeScriptDecodingPlanRoutesV1,
-  NativeScriptDecodingProvabilityV1,
-  type NativeScriptDecodingProverDepsV1,
-  proveNativeScriptDecodingFaultV1,
+  buildNativeScriptDecodingScanPlan,
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingFinding,
+  NativeScriptDecodingPlanRoutes,
+  NativeScriptDecodingProvability,
+  type NativeScriptDecodingProverDeps,
+  proveNativeScriptDecodingFault,
 } from "../src/native-script-decoding/index.js";
 import {
-  decodingMalformedMultiChunkItemV1,
-  makeDecodingEmulatorHarnessV1,
-  publishDecodingReferenceScriptsV1,
-  setupDecodingScenarioV1,
+  decodingMalformedMultiChunkItem,
+  makeDecodingEmulatorHarness,
+  publishDecodingReferenceScripts,
+  setupDecodingScenario,
 } from "./support/native-script-decoding-emulator-v1.js";
 import {
   expectSingleUtxoWithUnit,
@@ -50,8 +50,8 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
-const EMULATOR_PROVER_POLICY_V1 = {
-  ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
+const EMULATOR_PROVER_POLICY = {
+  ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
   minSettlementDepth: 0n,
   maturityGuardFactor: 0,
   maxThreadBudgetLovelace: null,
@@ -67,7 +67,7 @@ const TIER2_DECOY_SUBJECT_INPUT_COUNT = 364;
 
 describe("native-script-decoding emulator tier-2 carriage", () => {
   it("convicts the accused outpoint buried in a 14,603-byte subject field through a size-selected RawUtxo publication", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -77,8 +77,8 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
       decoding,
       category,
     } = harness;
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const item = decodingMalformedMultiChunkItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "normal" },
@@ -87,19 +87,19 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     const { block, ledger, setup } = scenario;
     // The size, not any flag, is what selects tier 2: past the tier-1
     // redeemer bound, within one publication.
-    const preimage = encodeMidgardFieldPreimageV1(
-      scenario.subjectFieldInputs.map(SDK.encodeMidgardTxInputCanonicalV1),
+    const preimage = encodeMidgardFieldPreimage(
+      scenario.subjectFieldInputs.map(SDK.encodeMidgardTxInputCanonical),
     );
     expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
 
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
-    expect(plan.route).toBe(NativeScriptDecodingPlanRoutesV1.Machine);
+    expect(plan.route).toBe(NativeScriptDecodingPlanRoutes.Machine);
 
     const [
       step01Ref,
@@ -108,12 +108,12 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
       step03BindDescriptorRef,
       step03AdvanceOrCloseRef,
       step04Ref,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: funderLucid,
       contracts: decoding,
     });
 
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 0n,
       sourceKind: 0n,
       event: { kind: "l2Transaction", txId: block.nativeTxId },
@@ -122,7 +122,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
       accusedOutpointSourceKind: scenario.accusedSourceKind,
       accusedOutpointCursor: BigInt(scenario.accusedOrdinal),
       scanReasonClass: null,
-      provability: NativeScriptDecodingProvabilityV1.MachineRoute,
+      provability: NativeScriptDecodingProvability.MachineRoute,
       descriptor: {
         referenceScriptLanguage: 0,
         outputIndex: 0,
@@ -131,7 +131,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
       estimatedThreadTxCount: 7,
     };
     const journal: string[] = [];
-    const deps: NativeScriptDecodingProverDepsV1 = {
+    const deps: NativeScriptDecodingProverDeps = {
       lucid: proverLucid,
       blueprint: realBlueprint,
       network,
@@ -166,7 +166,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
       journal: (event) => {
         journal.push(`${event.phase}:${event.message}`);
       },
-      policy: EMULATOR_PROVER_POLICY_V1,
+      policy: EMULATOR_PROVER_POLICY,
       referenceScriptUtxos: {
         step01: step01Ref,
         step02: step02Ref,
@@ -179,7 +179,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     };
 
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(finding, deps),
+      proveNativeScriptDecodingFault(finding, deps),
     );
     if (outcome.kind !== "proven") {
       throw new Error(
@@ -191,7 +191,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
     // the prover's address as a bytes-only inline datum, referenced rather
     // than carried in the bind's own redeemer.
-    const expectedDatum = SDK.fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await proverLucid.utxosAt(proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);

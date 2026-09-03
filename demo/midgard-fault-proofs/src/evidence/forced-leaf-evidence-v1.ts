@@ -5,14 +5,14 @@ import type { TransitionTraceReconstruction } from "../transition-trace/reconstr
 import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 
-export type ForcedLeafEvidenceV1 = {
+export type ForcedLeafEvidence = {
   readonly eventKey: SDK.EventKey;
   readonly eventKeyFingerprint: string;
-  readonly leaf: SDK.ForcedInclusionTxV1;
+  readonly leaf: SDK.ForcedInclusionTx;
   readonly fullTransactionCbor: Buffer;
   readonly membership: SDK.RootMembershipProof<
     SDK.OutputReference,
-    SDK.ForcedInclusionTxV1
+    SDK.ForcedInclusionTx
   >;
 };
 
@@ -20,24 +20,23 @@ const forcedLeafError = (message: string): Error =>
   new Error(`forced-leaf evidence: ${message}`);
 
 const sameReason = (
-  left: SDK.RejectionReasonV1,
-  right: SDK.RejectionReasonV1,
+  left: SDK.RejectionReason,
+  right: SDK.RejectionReason,
 ): boolean =>
-  Data.to(left, SDK.RejectionReasonV1) ===
-  Data.to(right, SDK.RejectionReasonV1);
+  Data.to(left, SDK.RejectionReason) === Data.to(right, SDK.RejectionReason);
 
 /**
  * Extracts the authenticated forced leaf and its exact membership proof from
  * the retained-DA reconstruction. Callers never supply a leaf or verdict:
  * both are selected by the committed event key.
  */
-export const extractForcedLeafEvidenceV1 = async ({
+export const extractForcedLeafEvidence = async ({
   reconstruction,
   eventKey,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
-}): Promise<ForcedLeafEvidenceV1> => {
+}): Promise<ForcedLeafEvidence> => {
   if (!("ForcedTransactionEventKey" in eventKey)) {
     throw forcedLeafError("event key is not a forced-transaction key");
   }
@@ -53,8 +52,8 @@ export const extractForcedLeafEvidenceV1 = async ({
     eventKey,
   });
   if (
-    Data.to(membership.value, SDK.ForcedInclusionTxV1) !==
-    Data.to(source.entry.value, SDK.ForcedInclusionTxV1)
+    Data.to(membership.value, SDK.ForcedInclusionTx) !==
+    Data.to(source.entry.value, SDK.ForcedInclusionTx)
   ) {
     throw forcedLeafError("membership proof selected a different forced leaf");
   }
@@ -67,9 +66,9 @@ export const extractForcedLeafEvidenceV1 = async ({
   });
 };
 
-export const requireForcedLeafAcceptedV1 = (
-  evidence: ForcedLeafEvidenceV1,
-): ForcedLeafEvidenceV1 => {
+export const requireForcedLeafAccepted = (
+  evidence: ForcedLeafEvidence,
+): ForcedLeafEvidence => {
   if (evidence.leaf.verdict !== "ForcedTxValid") {
     throw forcedLeafError("expected an explicit acceptance verdict");
   }
@@ -80,10 +79,10 @@ export const requireForcedLeafAcceptedV1 = (
  * Binds direction-B evidence to the complete typed reason, including all
  * subject coordinates. Comparing only the constructor arm is insufficient.
  */
-export const requireForcedLeafRejectedForV1 = (
-  evidence: ForcedLeafEvidenceV1,
-  expectedReason: SDK.RejectionReasonV1,
-): ForcedLeafEvidenceV1 => {
+export const requireForcedLeafRejectedFor = (
+  evidence: ForcedLeafEvidence,
+  expectedReason: SDK.RejectionReason,
+): ForcedLeafEvidence => {
   const { verdict } = evidence.leaf;
   if (verdict === "ForcedTxValid") {
     throw forcedLeafError("expected an explicit rejection verdict");
@@ -96,13 +95,13 @@ export const requireForcedLeafRejectedForV1 = (
   return evidence;
 };
 
-export type ForcedLeafVerdictSubjectV1 = {
+export type ForcedLeafVerdictSubject = {
   readonly version: bigint;
   readonly direction: bigint;
   readonly source_kind: bigint;
   readonly transaction_id: string;
   readonly source_key: string;
-  readonly rejection_reason: SDK.RejectionReasonV1 | null;
+  readonly rejection_reason: SDK.RejectionReason | null;
 };
 
 /**
@@ -110,9 +109,9 @@ export type ForcedLeafVerdictSubjectV1 = {
  * subject. The source key is encoded by the SDK twin of Aiken
  * `cbor.serialise(membership.key)`; raw native out-ref CBOR is never accepted.
  */
-export const forcedLeafVerdictSubjectV1 = (
-  evidence: ForcedLeafEvidenceV1,
-): ForcedLeafVerdictSubjectV1 => {
+export const forcedLeafVerdictSubject = (
+  evidence: ForcedLeafEvidence,
+): ForcedLeafVerdictSubject => {
   const rejectionReason =
     evidence.leaf.verdict === "ForcedTxValid"
       ? null

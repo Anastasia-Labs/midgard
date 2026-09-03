@@ -1,13 +1,13 @@
-import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
+import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import {
-  decodeMidgardMintFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardMintFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeSingleCbor,
   hashMidgardVersionedScript,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
@@ -22,7 +22,7 @@ import {
   walletFromSeedPhrase,
 } from "../../src/index.js";
 import {
-  deriveNativeTxFixtureFacetsV1,
+  deriveNativeTxFixtureFacets,
   type NativeTxFixtureEnvelope,
 } from "./native-tx-fixture-shape.js";
 
@@ -60,13 +60,13 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -154,14 +154,14 @@ type CanonicalScript = {
   readonly rawBytes: Buffer;
   readonly bytes: Buffer;
   readonly hash: string;
-  readonly material: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly material: readonly MidgardCekProgramMaterialEntry[];
 };
 
 const canonicalScript = (
   language: "PlutusV3" | "MidgardV1",
   raw: Uint8Array,
 ): CanonicalScript => {
-  const canonical = buildMidgardCanonicalCekProgramV1(raw);
+  const canonical = buildMidgardCanonicalCekProgram(raw);
   const bytes = Buffer.from(canonical.envelopeCbor);
   return {
     rawBytes: Buffer.from(raw),
@@ -173,8 +173,8 @@ const canonicalScript = (
 
 const mergeProgramMaterial = (
   scripts: readonly CanonicalScript[],
-): readonly MidgardCekProgramMaterialEntryV1[] => {
-  const material = new Map<string, MidgardCekProgramMaterialEntryV1>();
+): readonly MidgardCekProgramMaterialEntry[] => {
+  const material = new Map<string, MidgardCekProgramMaterialEntry>();
   for (const script of scripts) {
     for (const entry of script.material) {
       const root = Buffer.from(entry.root).toString("hex");
@@ -383,14 +383,14 @@ export const buildHighCardinalityNativeTxFixture =
 
     const completed = await builder.complete({ programMaterial });
     const signed = await completed.sign(wallet);
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(signed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
     // Every field the fixture advertises past this point is derived from the
     // signed canonical bytes by the one shared derivation, so the three fixtures
     // in this directory cannot disagree about what a compact form or a field
     // commitment is. The witness-set fields in particular commit per
     // `deriveMidgardNativeTxWitnessSetCompactV1`, not to a raw blake2b of the
     // preimage CBOR.
-    const facets = deriveNativeTxFixtureFacetsV1(signed.txCbor);
+    const facets = deriveNativeTxFixtureFacets(signed.txCbor);
 
     const spendInputs = asArray(
       decodeSingleCbor(tx.body.spendInputsPreimageCbor),
@@ -406,7 +406,7 @@ export const buildHighCardinalityNativeTxFixture =
     );
     // §5.6: field 5 is the enveloped per-policy item list, so the policy count is
     // the item count rather than a map size.
-    const mintPolicies = decodeMidgardMintFieldPreimageV1(
+    const mintPolicies = decodeMidgardMintFieldPreimage(
       tx.body.mintPreimageCbor,
     );
 

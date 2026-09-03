@@ -23,9 +23,9 @@ import {
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   type MidgardAddressWitness,
-  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
-  missingSignatureFieldWalkCheckpointV1,
-  missingSignatureRequiredSignerIsPresentV1,
+  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
+  missingSignatureFieldWalkCheckpoint,
+  missingSignatureRequiredSignerIsPresent,
   MissingSignatureStep04Datum,
   MissingSignatureStep04SpendRedeemer,
   type MissingSignatureStep04State,
@@ -35,7 +35,7 @@ import {
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  resolveMissingSignatureFieldWalkCheckpointV1,
+  resolveMissingSignatureFieldWalkCheckpoint,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -46,8 +46,8 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -60,25 +60,25 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
-import { planMissingSignatureAddressWitnessesOpeningV1 } from "./evidence-v1.js";
+import type { MissingSignatureContracts } from "./contracts-v1.js";
+import { planMissingSignatureAddressWitnessesOpening } from "./evidence-v1.js";
 import {
-  missingSignatureStepLabelV1,
+  missingSignatureStepLabel,
   missingSignatureSubmitError,
-  requireMissingSignatureReferenceScriptV1,
-  requireMissingSignatureStepStateV1,
-  requireMissingSignatureThreadUtxoV1,
+  requireMissingSignatureReferenceScript,
+  requireMissingSignatureStepState,
+  requireMissingSignatureThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = missingSignatureStepLabelV1(3);
+const STEP_LABEL = missingSignatureStepLabel(3);
 
 type SubmitMissingSignatureStep04CommonResult = {
   readonly txHash: string;
@@ -134,7 +134,7 @@ export const submitMissingSignatureStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -151,32 +151,28 @@ export const submitMissingSignatureStep04 = async ({
   /** §2.3: the published step-04 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep04Result> => {
-  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
-    {
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 3,
-      threadOutRef,
-    },
-  );
-  const state: MissingSignatureStep04State = requireMissingSignatureStepStateV1(
-    {
-      threadUtxo,
-      signer,
-      schema: MissingSignatureStep04Datum,
-      stepIndex: 3,
-    },
-  );
+  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 3,
+    threadOutRef,
+  });
+  const state: MissingSignatureStep04State = requireMissingSignatureStepState({
+    threadUtxo,
+    signer,
+    schema: MissingSignatureStep04Datum,
+    stepIndex: 3,
+  });
 
   // The absence fold, locally first (§7.3, D6): a present key — valid or
   // not — is not this family's fault, and the validator would refuse it.
   if (
-    missingSignatureRequiredSignerIsPresentV1({
+    missingSignatureRequiredSignerIsPresent({
       verificationKey: state.missing_required_signer_vkey,
       addrTxWits,
     })
@@ -188,7 +184,7 @@ export const submitMissingSignatureStep04 = async ({
 
   // The §8.8 door: plan against the thread-anchored witness-set hash,
   // publish whatever the tier demands, open.
-  const planned = planMissingSignatureAddressWitnessesOpeningV1({
+  const planned = planMissingSignatureAddressWitnessesOpening({
     anchorTxId: state.verified_tx_id,
     nativeTxCompactCbor,
     addrTxWits,
@@ -197,7 +193,7 @@ export const submitMissingSignatureStep04 = async ({
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
   });
-  const checkpoint = resolveMissingSignatureFieldWalkCheckpointV1({
+  const checkpoint = resolveMissingSignatureFieldWalkCheckpoint({
     txId: state.verified_tx_id,
     itemCount: planned.itemCount,
     totalLength: planned.preimage.length,
@@ -205,19 +201,18 @@ export const submitMissingSignatureStep04 = async ({
   });
   const nextItemIndex = checkpoint?.nextItemIndex ?? 0;
   const remaining = planned.itemCount - nextItemIndex;
-  const willFinalize =
-    remaining <= MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1;
+  const willFinalize = remaining <= MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE;
   const nextCheckpoint = willFinalize
     ? null
-    : missingSignatureFieldWalkCheckpointV1({
+    : missingSignatureFieldWalkCheckpoint({
         txId: state.verified_tx_id,
         itemCount: planned.itemCount,
         totalLength: planned.preimage.length,
         nextItemIndex:
-          nextItemIndex + MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
+          nextItemIndex + MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
       });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+  const carriageUtxos = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
@@ -228,19 +223,19 @@ export const submitMissingSignatureStep04 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...carriageUtxos,
   ];
-  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread burn`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
   const referenceInputs = [
     ...fieldReferenceInputs,
-    requireMissingSignatureReferenceScriptV1({
+    requireMissingSignatureReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[3].spendingScriptHash,
       stepIndex: 3,
@@ -252,7 +247,7 @@ export const submitMissingSignatureStep04 = async ({
         ]
       : []),
   ];
-  const addrTxWitsOpening = faultProofFieldOpeningV1({
+  const addrTxWitsOpening = faultProofFieldOpening({
     planned,
     // §8.7 indices are into the complete reference-input set, including the
     // step's own reference script.
@@ -445,9 +440,9 @@ export const submitMissingSignatureStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

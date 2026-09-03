@@ -1,57 +1,57 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
-  HeaderV1Schema,
+  HeaderSchema,
   InputSetUniquenessStep02Datum,
   InputSetUniquenessStep03DatumSchema,
   InputSetUniquenessStep04DatumSchema,
   InputSetUniquenessVerdictSubjectSchema,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   OutputReferenceSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
-import type { InputSetUniquenessContractsV1 } from "../input-set-uniqueness/contracts-v1.js";
+import type { InputSetUniquenessContracts } from "../input-set-uniqueness/contracts-v1.js";
 import {
-  detectInputSetUniquenessForcedReplayV1,
-  INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1,
+  detectInputSetUniquenessForcedReplay,
+  INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID,
 } from "../input-set-uniqueness/replay-v1.js";
 import {
-  INPUT_SET_UNIQUENESS_VIOLATION_ID_V1,
-  type InputSetUniquenessClaimV1,
-  scanInputSetUniquenessV1,
+  INPUT_SET_UNIQUENESS_VIOLATION_ID,
+  type InputSetUniquenessClaim,
+  scanInputSetUniqueness,
 } from "../input-set-uniqueness/scan-v1.js";
-import { submitInputSetUniquenessForcedStep01V1 } from "../input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
+import { submitInputSetUniquenessForcedStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
 import { submitInputSetUniquenessInit } from "../input-set-uniqueness/submit-input-set-uniqueness-init.js";
 import { submitInputSetUniquenessStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-01.js";
 import { submitInputSetUniquenessStep02 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-02.js";
-import { submitInputSetUniquenessStep03V1 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-03.js";
+import { submitInputSetUniquenessStep03 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-03.js";
 import {
-  submitInputSetUniquenessStep04AdvanceV1,
-  submitInputSetUniquenessStep04FinalizeV1,
+  submitInputSetUniquenessStep04Advance,
+  submitInputSetUniquenessStep04Finalize,
 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-04.js";
 import {
-  bindForcedDuplicateInputV1,
-  inputSetUnionIsStrictlyIncreasingV1,
+  bindForcedDuplicateInput,
+  inputSetUnionIsStrictlyIncreasing,
 } from "../input-set-uniqueness/wrongful-rejection-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
   type StateQueueMutationLease,
@@ -65,82 +65,82 @@ import {
 } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriageRequirementV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriageRequirement,
+  withFieldCarriagePrerequisite,
 } from "./production-field-carriage-prerequisite-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
 import {
-  admitProductionNativeInclusionArtifactV1,
-  canonicalHexV1,
-  EVEN_HEX_V1,
-  exactJournalRecordV1,
-  HEX_28_V1,
-  HEX_32_V1,
-  NATURAL_DECIMAL_V1,
-  type ProductionNativeInclusionArtifactV1,
-  safeNaturalNumberV1,
+  admitNativeInclusionArtifact,
+  canonicalHex,
+  EVEN_HEX,
+  exactJournalRecord,
+  HEX_28,
+  HEX_32,
+  type NativeInclusionArtifact,
+  NATURAL_DECIMAL,
+  safeNaturalNumber,
 } from "./production-native-index-artifact-v1.js";
 import {
-  createAuthenticatedProofChunkPrerequisitePortV1,
-  resolveDirectFirstProofChunksV1,
-  withProductionProofChunkPrerequisiteV1,
+  createAuthenticatedProofChunkPrerequisitePort,
+  resolveDirectFirstProofChunks,
+  withProofChunkPrerequisite,
 } from "./production-proof-chunk-prerequisite-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_INPUT_SET_UNIQUENESS_ARTIFACT_V1 =
+export const INPUT_SET_UNIQUENESS_ARTIFACT =
   "midgard-production-input-set-uniqueness-artifact-v1" as const;
-export const PRODUCTION_INPUT_SET_UNIQUENESS_FORCED_ARTIFACT_V1 =
+export const INPUT_SET_UNIQUENESS_FORCED_ARTIFACT =
   "midgard-production-input-set-uniqueness-forced-artifact-v1" as const;
 
-export const InputSetUniquenessForcedSourceV1Schema = Data.Object({
-  header: HeaderV1Schema,
+export const InputSetUniquenessForcedSourceSchema = Data.Object({
+  header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
+    ForcedInclusionTxSchema,
   ),
 });
 
-type ClaimJsonV1 =
+type ClaimJson =
   | Readonly<{
       kind: "duplicateSpendInputs" | "duplicateReferenceInputs";
       firstIndex: string;
@@ -152,21 +152,21 @@ type ClaimJsonV1 =
       referenceIndex: string;
     }>;
 
-export type ProductionInputSetUniquenessArtifactV1 = JournalJsonObjectV1 &
+export type InputSetUniquenessArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_INPUT_SET_UNIQUENESS_ARTIFACT_V1;
+    schemaVersion: typeof INPUT_SET_UNIQUENESS_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
-    tx: ProductionNativeInclusionArtifactV1;
+    tx: NativeInclusionArtifact;
     spendInputItemCbors: readonly string[];
     referenceInputItemCbors: readonly string[];
-    claim: ClaimJsonV1;
+    claim: ClaimJson;
   }>;
 
-export type ProductionInputSetUniquenessForcedArtifactV1 = JournalJsonObjectV1 &
+export type InputSetUniquenessForcedArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_INPUT_SET_UNIQUENESS_FORCED_ARTIFACT_V1;
+    schemaVersion: typeof INPUT_SET_UNIQUENESS_FORCED_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
@@ -179,29 +179,27 @@ export type ProductionInputSetUniquenessForcedArtifactV1 = JournalJsonObjectV1 &
     forcedSourceCbor: string;
   }>;
 
-type AdmittedAcceptedArtifactV1 = Readonly<{
+type AdmittedAcceptedArtifact = Readonly<{
   sourceKind: "accepted";
-  artifact: ProductionInputSetUniquenessArtifactV1;
-  inclusion: ReturnType<
-    typeof admitProductionNativeInclusionArtifactV1
-  >["inclusion"];
-  claim: InputSetUniquenessClaimV1;
-  spendPlan: FaultProofFieldOpeningPlanV1 | null;
-  referencePlan: FaultProofFieldOpeningPlanV1 | null;
+  artifact: InputSetUniquenessArtifact;
+  inclusion: ReturnType<typeof admitNativeInclusionArtifact>["inclusion"];
+  claim: InputSetUniquenessClaim;
+  spendPlan: FaultProofFieldOpeningPlan | null;
+  referencePlan: FaultProofFieldOpeningPlan | null;
 }>;
 
-type AdmittedForcedArtifactV1 = Readonly<{
+type AdmittedForcedArtifact = Readonly<{
   sourceKind: "forced";
-  artifact: ProductionInputSetUniquenessForcedArtifactV1;
-  forcedSource: Data.Static<typeof InputSetUniquenessForcedSourceV1Schema>;
-  spendPlan: FaultProofFieldOpeningPlanV1;
-  referencePlan: FaultProofFieldOpeningPlanV1;
+  artifact: InputSetUniquenessForcedArtifact;
+  forcedSource: Data.Static<typeof InputSetUniquenessForcedSourceSchema>;
+  spendPlan: FaultProofFieldOpeningPlan;
+  referencePlan: FaultProofFieldOpeningPlan;
 }>;
 
-type AdmittedArtifactV1 = AdmittedAcceptedArtifactV1 | AdmittedForcedArtifactV1;
+type AdmittedArtifact = AdmittedAcceptedArtifact | AdmittedForcedArtifact;
 
 const inputItems = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   field: "spend" | "reference",
 ): readonly string[] =>
   decodeMidgardNativeByteListPreimage(
@@ -211,7 +209,7 @@ const inputItems = (
     `${field} inputs`,
   ).map((item) => Buffer.from(item).toString("hex"));
 
-const claimJson = (claim: InputSetUniquenessClaimV1): ClaimJsonV1 =>
+const claimJson = (claim: InputSetUniquenessClaim): ClaimJson =>
   claim.kind === "spendReferenceOverlap"
     ? Object.freeze({
         kind: claim.kind,
@@ -224,13 +222,13 @@ const claimJson = (claim: InputSetUniquenessClaimV1): ClaimJsonV1 =>
         secondIndex: claim.secondIndex.toString(),
       });
 
-const claimIdentity = (claim: InputSetUniquenessClaimV1): string =>
+const claimIdentity = (claim: InputSetUniquenessClaim): string =>
   claim.kind === "spendReferenceOverlap"
     ? `${claim.kind}:${claim.spendIndex.toString()}:${claim.referenceIndex.toString()}`
     : `${claim.kind}:${claim.firstIndex.toString()}:${claim.secondIndex.toString()}`;
 
-const parseClaim = (value: unknown): InputSetUniquenessClaimV1 => {
-  const record = exactJournalRecordV1(
+const parseClaim = (value: unknown): InputSetUniquenessClaim => {
+  const record = exactJournalRecord(
     value,
     typeof value === "object" && value !== null && "kind" in value
       ? (value as { readonly kind?: unknown }).kind === "spendReferenceOverlap"
@@ -241,7 +239,7 @@ const parseClaim = (value: unknown): InputSetUniquenessClaimV1 => {
   );
   const natural = (field: string): bigint => {
     const item = record[field];
-    if (typeof item !== "string" || !NATURAL_DECIMAL_V1.test(item)) {
+    if (typeof item !== "string" || !NATURAL_DECIMAL.test(item)) {
       throw new Error(`input-set-uniqueness claim ${field} is malformed`);
     }
     return BigInt(item);
@@ -274,9 +272,9 @@ const parseItemList = (value: unknown, label: string): readonly string[] => {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   return Object.freeze(
     value.map((item, index) => {
-      const parsed = canonicalHexV1(
+      const parsed = canonicalHex(
         item,
-        EVEN_HEX_V1,
+        EVEN_HEX,
         `${label}[${index.toString()}]`,
       );
       if (!/^825820[0-9a-f]{64}19[0-9a-f]{4}$/u.test(parsed)) {
@@ -287,14 +285,14 @@ const parseItemList = (value: unknown, label: string): readonly string[] => {
   );
 };
 
-const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
+const admitAcceptedInputSetUniquenessArtifact = (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): AdmittedAcceptedArtifactV1 => {
-  if (!HEX_28_V1.test(carriageOwner)) {
+): AdmittedAcceptedArtifact => {
+  if (!HEX_28.test(carriageOwner)) {
     throw new Error("input-set-uniqueness carriage owner is malformed");
   }
-  const parsed = exactJournalRecordV1(
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -309,21 +307,21 @@ const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
     "input-set-uniqueness artifact",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_INPUT_SET_UNIQUENESS_ARTIFACT_V1 ||
+    parsed.schemaVersion !== INPUT_SET_UNIQUENESS_ARTIFACT ||
     typeof parsed.detectionId !== "string"
   ) {
     throw new Error("input-set-uniqueness artifact identity changed");
   }
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     parsed.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "input-set-uniqueness header hash",
   );
-  const position = safeNaturalNumberV1(
+  const position = safeNaturalNumber(
     parsed.position,
     "input-set-uniqueness position",
   );
-  const tx = admitProductionNativeInclusionArtifactV1(
+  const tx = admitNativeInclusionArtifact(
     parsed.tx,
     "input-set-uniqueness transaction",
   );
@@ -339,7 +337,7 @@ const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
     "input-set-uniqueness reference inputs",
   );
   const claim = parseClaim(parsed.claim);
-  const rederived = scanInputSetUniquenessV1({
+  const rederived = scanInputSetUniqueness({
     spendInputItemCbors: spends,
     referenceInputItemCbors: references,
   });
@@ -352,15 +350,15 @@ const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
       "input-set-uniqueness artifact does not re-derive its claim",
     );
   }
-  const expectedDetection = `${INPUT_SET_UNIQUENESS_VIOLATION_ID_V1}:${position.toString()}:${tx.artifact.nativeTxId}:${claimIdentity(claim)}`;
+  const expectedDetection = `${INPUT_SET_UNIQUENESS_VIOLATION_ID}:${position.toString()}:${tx.artifact.nativeTxId}:${claimIdentity(claim)}`;
   if (parsed.detectionId !== expectedDetection) {
     throw new Error("input-set-uniqueness detection identity changed");
   }
   const plan = (
     fieldIndex: number,
     items: readonly string[],
-  ): FaultProofFieldOpeningPlanV1 =>
-    planFaultProofFieldOpeningV1({
+  ): FaultProofFieldOpeningPlan =>
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: tx.artifact.nativeTxId,
       nativeTxCompactCbor: tx.artifact.nativeTxCompactCbor,
@@ -371,13 +369,13 @@ const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
   const spendPlan =
     claim.kind === "duplicateReferenceInputs"
       ? null
-      : plan(MIDGARD_FIELD_INDEX_V1.spendInputs, spends);
+      : plan(MIDGARD_FIELD_INDEX.spendInputs, spends);
   const referencePlan =
     claim.kind === "duplicateSpendInputs"
       ? null
-      : plan(MIDGARD_FIELD_INDEX_V1.referenceInputs, references);
+      : plan(MIDGARD_FIELD_INDEX.referenceInputs, references);
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_INPUT_SET_UNIQUENESS_ARTIFACT_V1,
+    schemaVersion: INPUT_SET_UNIQUENESS_ARTIFACT,
     headerHash,
     detectionId: parsed.detectionId,
     position,
@@ -385,7 +383,7 @@ const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
     spendInputItemCbors: spends,
     referenceInputItemCbors: references,
     claim: claimJson(claim),
-  }) satisfies ProductionInputSetUniquenessArtifactV1;
+  }) satisfies InputSetUniquenessArtifact;
   return Object.freeze({
     sourceKind: "accepted" as const,
     artifact,
@@ -396,14 +394,14 @@ const admitAcceptedProductionInputSetUniquenessArtifactV1 = (
   });
 };
 
-export const admitProductionInputSetUniquenessForcedArtifactV1 = (
+export const admitInputSetUniquenessForcedArtifact = (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): AdmittedForcedArtifactV1 => {
-  if (!HEX_28_V1.test(carriageOwner)) {
+): AdmittedForcedArtifact => {
+  if (!HEX_28.test(carriageOwner)) {
     throw new Error("input-set-uniqueness carriage owner is malformed");
   }
-  const parsed = exactJournalRecordV1(
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -421,64 +419,63 @@ export const admitProductionInputSetUniquenessForcedArtifactV1 = (
     "input-set-uniqueness forced artifact",
   );
   if (
-    parsed.schemaVersion !==
-      PRODUCTION_INPUT_SET_UNIQUENESS_FORCED_ARTIFACT_V1 ||
+    parsed.schemaVersion !== INPUT_SET_UNIQUENESS_FORCED_ARTIFACT ||
     typeof parsed.detectionId !== "string"
   ) {
     throw new Error("input-set-uniqueness forced artifact identity changed");
   }
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     parsed.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "input-set-uniqueness forced header hash",
   );
-  const transactionId = canonicalHexV1(
+  const transactionId = canonicalHex(
     parsed.transactionId,
-    HEX_32_V1,
+    HEX_32,
     "input-set-uniqueness forced transaction id",
   );
-  const position = safeNaturalNumberV1(
+  const position = safeNaturalNumber(
     parsed.position,
     "input-set-uniqueness forced position",
   );
-  const forcedIndex = safeNaturalNumberV1(
+  const forcedIndex = safeNaturalNumber(
     parsed.forcedIndex,
     "input-set-uniqueness forced index",
   );
   if (position !== forcedIndex) {
     throw new Error("input-set-uniqueness forced position changed");
   }
-  const subjectCbor = canonicalHexV1(
+  const subjectCbor = canonicalHex(
     parsed.subjectCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "input-set-uniqueness forced subject",
   );
-  const nativeTxCompactCbor = canonicalHexV1(
+  const nativeTxCompactCbor = canonicalHex(
     parsed.nativeTxCompactCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "input-set-uniqueness forced compact transaction",
   );
-  const forcedSourceCbor = canonicalHexV1(
+  const forcedSourceCbor = canonicalHex(
     parsed.forcedSourceCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "input-set-uniqueness forced source",
   );
   const subject = Data.from(
     subjectCbor,
     InputSetUniquenessVerdictSubjectSchema as never,
   );
-  const bound = bindForcedDuplicateInputV1(subject as never);
+  const bound = bindForcedDuplicateInput(subject as never);
   const forcedSource = Data.from(
     forcedSourceCbor,
-    InputSetUniquenessForcedSourceV1Schema as never,
-  ) as Data.Static<typeof InputSetUniquenessForcedSourceV1Schema>;
+    InputSetUniquenessForcedSourceSchema as never,
+  ) as Data.Static<typeof InputSetUniquenessForcedSourceSchema>;
   const leaf = forcedSource.membership.value;
   if (
     leaf.tx_id !== transactionId ||
     leaf.source.compact_cbor !== nativeTxCompactCbor ||
     leaf.verdict === "ForcedTxValid" ||
     Data.to(
-      forcedVerdictSubjectV1({
+      forcedVerdictSubject({
         transactionId: leaf.tx_id,
         sourceKey: forcedSource.membership.key,
         rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
@@ -497,7 +494,7 @@ export const admitProductionInputSetUniquenessForcedArtifactV1 = (
     "input-set-uniqueness forced reference inputs",
   );
   if (
-    !inputSetUnionIsStrictlyIncreasingV1({
+    !inputSetUnionIsStrictlyIncreasing({
       spendInputItemCbors: spends,
       referenceInputItemCbors: references,
     })
@@ -521,12 +518,12 @@ export const admitProductionInputSetUniquenessForcedArtifactV1 = (
   ) {
     throw new Error("input-set-uniqueness forced coordinates changed");
   }
-  const expectedDetection = `${INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transactionId}`;
+  const expectedDetection = `${INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transactionId}`;
   if (parsed.detectionId !== expectedDetection) {
     throw new Error("input-set-uniqueness forced detection identity changed");
   }
   const makePlan = (fieldIndex: number, items: readonly string[]) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: transactionId,
       nativeTxCompactCbor,
@@ -535,7 +532,7 @@ export const admitProductionInputSetUniquenessForcedArtifactV1 = (
       label: "input-set-uniqueness forced artifact",
     });
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_INPUT_SET_UNIQUENESS_FORCED_ARTIFACT_V1,
+    schemaVersion: INPUT_SET_UNIQUENESS_FORCED_ARTIFACT,
     headerHash,
     detectionId: parsed.detectionId,
     position,
@@ -546,39 +543,39 @@ export const admitProductionInputSetUniquenessForcedArtifactV1 = (
     spendInputItemCbors: spends,
     referenceInputItemCbors: references,
     forcedSourceCbor,
-  }) satisfies ProductionInputSetUniquenessForcedArtifactV1;
+  }) satisfies InputSetUniquenessForcedArtifact;
   return Object.freeze({
     sourceKind: "forced" as const,
     artifact,
     forcedSource,
-    spendPlan: makePlan(MIDGARD_FIELD_INDEX_V1.spendInputs, spends),
-    referencePlan: makePlan(MIDGARD_FIELD_INDEX_V1.referenceInputs, references),
+    spendPlan: makePlan(MIDGARD_FIELD_INDEX.spendInputs, spends),
+    referencePlan: makePlan(MIDGARD_FIELD_INDEX.referenceInputs, references),
   });
 };
 
-const admitAnyProductionInputSetUniquenessArtifactV1 = (
+const admitAnyInputSetUniquenessArtifact = (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): AdmittedArtifactV1 => {
+): AdmittedArtifact => {
   const schemaVersion =
     typeof value === "object" && value !== null && "schemaVersion" in value
       ? (value as { readonly schemaVersion?: unknown }).schemaVersion
       : undefined;
-  return schemaVersion === PRODUCTION_INPUT_SET_UNIQUENESS_FORCED_ARTIFACT_V1
-    ? admitProductionInputSetUniquenessForcedArtifactV1(value, carriageOwner)
-    : admitAcceptedProductionInputSetUniquenessArtifactV1(value, carriageOwner);
+  return schemaVersion === INPUT_SET_UNIQUENESS_FORCED_ARTIFACT
+    ? admitInputSetUniquenessForcedArtifact(value, carriageOwner)
+    : admitAcceptedInputSetUniquenessArtifact(value, carriageOwner);
 };
 
 /** Backwards-compatible accepted-invalid artifact admission. */
-export const admitProductionInputSetUniquenessArtifactV1 = (
+export const admitInputSetUniquenessArtifact = (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): AdmittedAcceptedArtifactV1 =>
-  admitAcceptedProductionInputSetUniquenessArtifactV1(value, carriageOwner);
+): AdmittedAcceptedArtifact =>
+  admitAcceptedInputSetUniquenessArtifact(value, carriageOwner);
 
 const selectedIdentity = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >,
 ) => {
@@ -586,19 +583,18 @@ const selectedIdentity = (
   const position = Number(fields[1]);
   if (
     classification.category !== "inputSetUniqueness" ||
-    classification.selected.violationId !==
-      INPUT_SET_UNIQUENESS_VIOLATION_ID_V1 ||
+    classification.selected.violationId !== INPUT_SET_UNIQUENESS_VIOLATION_ID ||
     fields.length !== 6 ||
-    fields[0] !== INPUT_SET_UNIQUENESS_VIOLATION_ID_V1 ||
-    !NATURAL_DECIMAL_V1.test(fields[1] ?? "") ||
-    !HEX_32_V1.test(fields[2] ?? "") ||
+    fields[0] !== INPUT_SET_UNIQUENESS_VIOLATION_ID ||
+    !NATURAL_DECIMAL.test(fields[1] ?? "") ||
+    !HEX_32.test(fields[2] ?? "") ||
     ![
       "duplicateSpendInputs",
       "duplicateReferenceInputs",
       "spendReferenceOverlap",
     ].includes(fields[3] ?? "") ||
-    !NATURAL_DECIMAL_V1.test(fields[4] ?? "") ||
-    !NATURAL_DECIMAL_V1.test(fields[5] ?? "") ||
+    !NATURAL_DECIMAL.test(fields[4] ?? "") ||
+    !NATURAL_DECIMAL.test(fields[5] ?? "") ||
     !Number.isSafeInteger(position) ||
     classification.selected.position !== BigInt(fields[1]!)
   ) {
@@ -607,28 +603,25 @@ const selectedIdentity = (
   return Object.freeze({ position, txId: fields[2]! });
 };
 
-export const prepareProductionInputSetUniquenessArtifactV1 = async ({
+export const prepareInputSetUniquenessArtifact = async ({
   evidence,
   classification,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
-}): Promise<
-  | ProductionInputSetUniquenessArtifactV1
-  | ProductionInputSetUniquenessForcedArtifactV1
-> => {
+}): Promise<InputSetUniquenessArtifact | InputSetUniquenessForcedArtifact> => {
   if (classification.headerHash !== evidence.headerHash) {
     throw new Error("input-set-uniqueness classification changed header");
   }
   if (
     classification.category === "inputSetUniqueness" &&
     classification.selected.violationId ===
-      INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1
+      INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID
   ) {
-    const detection = detectInputSetUniquenessForcedReplayV1(evidence).find(
+    const detection = detectInputSetUniquenessForcedReplay(evidence).find(
       (candidate) =>
         candidate.detectionId === classification.selected.detectionId &&
         candidate.position === classification.selected.position,
@@ -649,8 +642,8 @@ export const prepareProductionInputSetUniquenessArtifactV1 = async ({
         ForcedTransactionEventKey: { tx_order_id: transaction.key },
       },
     });
-    const artifact = normalizeJournalJsonV1({
-      schemaVersion: PRODUCTION_INPUT_SET_UNIQUENESS_FORCED_ARTIFACT_V1,
+    const artifact = normalizeJournalJson({
+      schemaVersion: INPUT_SET_UNIQUENESS_FORCED_ARTIFACT,
       headerHash: evidence.headerHash,
       detectionId: detection.detectionId,
       position: detection.forcedIndex,
@@ -665,10 +658,10 @@ export const prepareProductionInputSetUniquenessArtifactV1 = async ({
       referenceInputItemCbors: detection.referenceInputItemCbors,
       forcedSourceCbor: Data.to(
         { header: evidence.header, membership } as never,
-        InputSetUniquenessForcedSourceV1Schema as never,
+        InputSetUniquenessForcedSourceSchema as never,
       ),
-    }) as ProductionInputSetUniquenessForcedArtifactV1;
-    admitProductionInputSetUniquenessForcedArtifactV1(artifact);
+    }) as InputSetUniquenessForcedArtifact;
+    admitInputSetUniquenessForcedArtifact(artifact);
     return Object.freeze(artifact);
   }
   const selected = selectedIdentity(classification);
@@ -681,7 +674,7 @@ export const prepareProductionInputSetUniquenessArtifactV1 = async ({
   }
   const spends = inputItems(tx.nativeTx, "spend");
   const references = inputItems(tx.nativeTx, "reference");
-  const claim = scanInputSetUniquenessV1({
+  const claim = scanInputSetUniqueness({
     spendInputItemCbors: spends,
     referenceInputItemCbors: references,
   }).find((candidate) =>
@@ -690,9 +683,9 @@ export const prepareProductionInputSetUniquenessArtifactV1 = async ({
   if (claim === undefined) {
     throw new Error("input-set-uniqueness selected claim disappeared");
   }
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_INPUT_SET_UNIQUENESS_ARTIFACT_V1,
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
+  const artifact = normalizeJournalJson({
+    schemaVersion: INPUT_SET_UNIQUENESS_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: classification.selected.detectionId,
     position: selected.position,
@@ -703,21 +696,21 @@ export const prepareProductionInputSetUniquenessArtifactV1 = async ({
       transactionsPhasRoot: trie.root,
       txMembershipProofCbor: requireProof(
         trie,
-        transactionSourceTrieItemV1(tx).key,
+        transactionSourceTrieItem(tx).key,
         "input-set-uniqueness transaction",
       ),
     },
     spendInputItemCbors: spends,
     referenceInputItemCbors: references,
     claim: claimJson(claim),
-  }) as ProductionInputSetUniquenessArtifactV1;
-  admitProductionInputSetUniquenessArtifactV1(artifact);
+  }) as InputSetUniquenessArtifact;
+  admitInputSetUniquenessArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type InputSetUniquenessWorkflowReferenceScriptsV1 = Readonly<{
+export type InputSetUniquenessWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -726,32 +719,32 @@ export type InputSetUniquenessWorkflowReferenceScriptsV1 = Readonly<{
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-type BoundConfigV1 = Readonly<{
+type BoundConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"inputSetUniqueness">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"inputSetUniqueness">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  contracts: InputSetUniquenessContractsV1;
-  category: FraudProofWorkflowDeploymentBindingV1<"inputSetUniqueness">["resolvedContracts"]["category"];
-  catalogue: FraudProofWorkflowDeploymentBindingV1<"inputSetUniqueness">["catalogue"];
-  referenceScripts: InputSetUniquenessWorkflowReferenceScriptsV1;
+  contracts: InputSetUniquenessContracts;
+  category: FraudProofWorkflowDeploymentBinding<"inputSetUniqueness">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"inputSetUniqueness">["catalogue"];
+  referenceScripts: InputSetUniquenessWorkflowReferenceScripts;
   certificate: NonNullable<
-    FraudProofWorkflowDeploymentBindingV1<"inputSetUniqueness">["fieldPreimageCertificate"]
+    FraudProofWorkflowDeploymentBinding<"inputSetUniqueness">["fieldPreimageCertificate"]
   >;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
 
 const record = (value: unknown, label: string) =>
-  exactJournalRecordV1(
+  exactJournalRecord(
     value,
     typeof value === "object" && value !== null ? Object.keys(value) : [],
     label,
   );
 
-const actionInput = (action: FraudProofWorkflowActionV1) => {
+const actionInput = (action: FraudProofWorkflowAction) => {
   const input = record(action.input, "input-set-uniqueness action");
   if (
     input.schemaVersion !== "midgard-production-linear-family-action-v1" ||
@@ -775,12 +768,12 @@ const stringField = (
 };
 
 const resolveField = async (
-  config: BoundConfigV1,
-  plan: FaultProofFieldOpeningPlanV1 | null,
+  config: BoundConfig,
+  plan: FaultProofFieldOpeningPlan | null,
 ) => {
   if (plan === null)
     return Object.freeze({ publications: [], certificate: undefined });
-  const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: plan,
@@ -788,7 +781,7 @@ const resolveField = async (
   if (publications === undefined) {
     throw new Error("input-set-uniqueness field publications disappeared");
   }
-  const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: config.lucid,
     network: config.network,
     planned: plan,
@@ -801,7 +794,7 @@ const resolveField = async (
 };
 
 const captureRemoval = async (
-  config: BoundConfigV1,
+  config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -815,7 +808,7 @@ const captureRemoval = async (
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -830,10 +823,10 @@ const captureRemoval = async (
         fraudProverRewardLovelace: config.fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -853,17 +846,17 @@ const captureRemoval = async (
 };
 
 const createTransactionPort = (
-  config: BoundConfigV1,
-): ProductionLinearFamilyTransactionPortV1<"inputSetUniqueness"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"inputSetUniqueness"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "inputSetUniqueness",
   prepare: async ({ evidence, classification }) =>
-    await prepareProductionInputSetUniquenessArtifactV1({
+    await prepareInputSetUniquenessArtifact({
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitAnyProductionInputSetUniquenessArtifactV1(
+    const admitted = admitAnyInputSetUniquenessArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -873,7 +866,7 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInputSetUniquenessInit({
               lucid: config.lucid,
@@ -899,9 +892,9 @@ const createTransactionPort = (
     if (input.stage === "step_01") {
       if (admitted.sourceKind === "forced") {
         return Object.freeze({
-          transaction: await captureLocallyEvaluatedTransactionV1(
+          transaction: await captureLocallyEvaluatedTransaction(
             async (preSubmitBoundary) => {
-              await submitInputSetUniquenessForcedStep01V1({
+              await submitInputSetUniquenessForcedStep01({
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,
@@ -917,14 +910,14 @@ const createTransactionPort = (
           ),
         });
       }
-      const chunks = await resolveDirectFirstProofChunksV1({
+      const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
         address: config.signer.address,
         proofCbor: admitted.artifact.tx.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInputSetUniquenessStep01({
               lucid: config.lucid,
@@ -958,7 +951,7 @@ const createTransactionPort = (
       const spend = await resolveField(config, admitted.spendPlan);
       const reference = await resolveField(config, admitted.referencePlan);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInputSetUniquenessStep02({
               lucid: config.lucid,
@@ -998,9 +991,9 @@ const createTransactionPort = (
       const spend = await resolveField(config, admitted.spendPlan);
       const reference = await resolveField(config, admitted.referencePlan);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
-            await submitInputSetUniquenessStep03V1({
+            await submitInputSetUniquenessStep03({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -1050,9 +1043,9 @@ const createTransactionPort = (
       const total = state.data.spend_count + state.data.reference_count;
       if (state.data.cursor === total) {
         return Object.freeze({
-          transaction: await captureLocallyEvaluatedTransactionV1(
+          transaction: await captureLocallyEvaluatedTransaction(
             async (preSubmitBoundary) => {
-              await submitInputSetUniquenessStep04FinalizeV1({
+              await submitInputSetUniquenessStep04Finalize({
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,
@@ -1076,9 +1069,9 @@ const createTransactionPort = (
         readingSpend ? admitted.spendPlan : admitted.referencePlan,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
-            await submitInputSetUniquenessStep04AdvanceV1({
+            await submitInputSetUniquenessStep04Advance({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -1107,31 +1100,31 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundInputSetUniquenessWorkflowConfigV1 = Readonly<{
+export type ManifestBoundInputSetUniquenessWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: InputSetUniquenessWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: InputSetUniquenessWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundInputSetUniquenessWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"inputSetUniqueness">;
-  l1: FraudProofFamilyL1ObservationPortV1<"inputSetUniqueness">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"inputSetUniqueness">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundInputSetUniquenessWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"inputSetUniqueness">;
+  l1: FraudProofFamilyL1ObservationPort<"inputSetUniqueness">;
+  transactions: LinearFamilyTransactionPort<"inputSetUniqueness">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
-  config: ManifestBoundInputSetUniquenessWorkflowConfigV1,
-): Promise<ManifestBoundInputSetUniquenessWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundInputSetUniquenessWorkflow = async (
+  config: ManifestBoundInputSetUniquenessWorkflowConfig,
+): Promise<ManifestBoundInputSetUniquenessWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -1145,7 +1138,7 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
       InputSetUniquenessStep04DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -1163,7 +1156,7 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
   ) {
     throw new Error("input-set-uniqueness deployment chain is incomplete");
   }
-  const contracts: InputSetUniquenessContractsV1 = {
+  const contracts: InputSetUniquenessContracts = {
     steps: [chain.steps[0]!, chain.steps[1]!, chain.steps[2]!, chain.steps[3]!],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -1178,52 +1171,51 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
   };
   const ref = (contractName: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo,
     });
-  const references: InputSetUniquenessWorkflowReferenceScriptsV1 =
-    Object.freeze({
-      steps: Object.freeze([
-        ref("fraudProofInputSetUniqueness", config.referenceScripts.steps[0]),
-        ref(
-          "fraudProofInputSetUniquenessStep02",
-          config.referenceScripts.steps[1],
-        ),
-        ref(
-          "fraudProofInputSetUniquenessStep03",
-          config.referenceScripts.steps[2],
-        ),
-        ref(
-          "fraudProofInputSetUniquenessStep04",
-          config.referenceScripts.steps[3],
-        ),
-      ] as const),
-      witnesses: Object.freeze({
-        computationThreadMint: ref(
-          "computationThreadMint",
-          config.referenceScripts.witnesses.computationThreadMint,
-        ),
-        fraudProofMint: ref(
-          "fraudProofMint",
-          config.referenceScripts.witnesses.fraudProofMint,
-        ),
-        phasMembershipWithdraw: ref(
-          "phasMembershipWithdraw",
-          config.referenceScripts.witnesses.phasMembershipWithdraw,
-        ),
-        chunkedVerifyWithdraw: ref(
-          "chunkedVerifyWithdraw",
-          config.referenceScripts.witnesses.chunkedVerifyWithdraw,
-        ),
-      }),
-      fieldPreimageCertificateMint: ref(
-        "fieldPreimageCertificateMint",
-        config.referenceScripts.fieldPreimageCertificateMint,
+  const references: InputSetUniquenessWorkflowReferenceScripts = Object.freeze({
+    steps: Object.freeze([
+      ref("fraudProofInputSetUniqueness", config.referenceScripts.steps[0]),
+      ref(
+        "fraudProofInputSetUniquenessStep02",
+        config.referenceScripts.steps[1],
       ),
-    });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+      ref(
+        "fraudProofInputSetUniquenessStep03",
+        config.referenceScripts.steps[2],
+      ),
+      ref(
+        "fraudProofInputSetUniquenessStep04",
+        config.referenceScripts.steps[3],
+      ),
+    ] as const),
+    witnesses: Object.freeze({
+      computationThreadMint: ref(
+        "computationThreadMint",
+        config.referenceScripts.witnesses.computationThreadMint,
+      ),
+      fraudProofMint: ref(
+        "fraudProofMint",
+        config.referenceScripts.witnesses.fraudProofMint,
+      ),
+      phasMembershipWithdraw: ref(
+        "phasMembershipWithdraw",
+        config.referenceScripts.witnesses.phasMembershipWithdraw,
+      ),
+      chunkedVerifyWithdraw: ref(
+        "chunkedVerifyWithdraw",
+        config.referenceScripts.witnesses.chunkedVerifyWithdraw,
+      ),
+    }),
+    fieldPreimageCertificateMint: ref(
+      "fieldPreimageCertificateMint",
+      config.referenceScripts.fieldPreimageCertificateMint,
+    ),
+  });
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -1251,7 +1243,7 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
       binding.releaseEconomics.policy.fraudProverRewardLovelace,
     ),
   });
-  let adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  let adapter = createLinearFamilyWorkflowAdapter({
     category: "inputSetUniqueness",
     l1,
     transactions,
@@ -1259,11 +1251,9 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
       config.stateQueueMutationLeaseCoordinator,
   });
   const fieldPrerequisite = (
-    selector: (
-      artifact: AdmittedArtifactV1,
-    ) => FaultProofFieldOpeningPlanV1 | null,
+    selector: (artifact: AdmittedArtifact) => FaultProofFieldOpeningPlan | null,
   ) =>
-    createAuthenticatedFieldCarriagePrerequisitePortV1({
+    createAuthenticatedFieldCarriagePrerequisitePort({
       category: "inputSetUniqueness",
       lucid: config.lucid,
       network: binding.network,
@@ -1271,7 +1261,7 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
       publications,
       requirementForAction: ({ action, artifact }) => {
         const input = actionInput(action);
-        const admitted = admitAnyProductionInputSetUniquenessArtifactV1(
+        const admitted = admitAnyInputSetUniquenessArtifact(
           artifact,
           config.signer.paymentKeyHash,
         );
@@ -1294,25 +1284,25 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
                 mintingScript: certificate.mintingScript,
                 referenceScriptUtxo: references.fieldPreimageCertificateMint,
               },
-            } satisfies ProductionFieldCarriageRequirementV1);
+            } satisfies FieldCarriageRequirement);
       },
       transactionConfirmed: async ({ headerHash, txHash }) =>
         await l1.transactionConfirmed({ headerHash, txHash }),
     });
-  adapter = withProductionFieldCarriagePrerequisiteV1({
+  adapter = withFieldCarriagePrerequisite({
     category: "inputSetUniqueness",
     base: adapter,
     prerequisite: fieldPrerequisite((artifact) => artifact.spendPlan),
   });
-  adapter = withProductionFieldCarriagePrerequisiteV1({
+  adapter = withFieldCarriagePrerequisite({
     category: "inputSetUniqueness",
     base: adapter,
     prerequisite: fieldPrerequisite((artifact) => artifact.referencePlan),
   });
-  adapter = withProductionProofChunkPrerequisiteV1({
+  adapter = withProofChunkPrerequisite({
     category: "inputSetUniqueness",
     base: adapter,
-    prerequisite: createAuthenticatedProofChunkPrerequisitePortV1({
+    prerequisite: createAuthenticatedProofChunkPrerequisitePort({
       category: "inputSetUniqueness",
       lucid: config.lucid,
       network: binding.network,
@@ -1321,7 +1311,7 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
       proofCborForAction: ({ action, artifact }) =>
         (() => {
           if (actionInput(action).stage !== "step_01") return null;
-          const admitted = admitAnyProductionInputSetUniquenessArtifactV1(
+          const admitted = admitAnyInputSetUniquenessArtifact(
             artifact,
             config.signer.paymentKeyHash,
           );
@@ -1338,31 +1328,30 @@ export const createManifestBoundInputSetUniquenessWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundInputSetUniquenessWorkflowV1 = async ({
+export const runOrResumeManifestBoundInputSetUniquenessWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundInputSetUniquenessWorkflowV1;
+  readonly workflow: ManifestBoundInputSetUniquenessWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["inputSetUniqueness"],
     }),

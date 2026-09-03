@@ -14,27 +14,27 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
-  type MidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  type DeploymentManifestV1AvailabilityChallenge,
-  type DeploymentManifestV1CanonicalRational,
-  type DeploymentManifestV1CardanoProtocolParameters,
-  type DeploymentManifestV1Economics,
-  type DeploymentManifestV1EconomicsProfile,
-  deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios,
-  makeDeploymentMarkerV1,
-  parseDeploymentManifestV1AvailabilityChallenge,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  type DeploymentManifestAvailabilityChallenge,
+  type DeploymentManifestCanonicalRational,
+  type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestEconomics,
+  type DeploymentManifestEconomicsProfile,
+  deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
+  makeDeploymentMarker,
+  parseDeploymentManifestAvailabilityChallenge,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -52,17 +52,17 @@ import {
 import { Effect } from "effect";
 
 import {
+  computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
-  computeDeploymentManifestV1DaCommitteeSignersHash,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  type DeploymentManifestV1Value,
-  normalizeDeploymentManifestV1JsonValue,
-  parseDeploymentManifestV1Value,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  type DeploymentManifestValue,
+  normalizeDeploymentManifestJsonValue,
+  parseDeploymentManifestValue,
 } from "../deployment-manifest-v1.js";
 import {
-  bindDeploymentRunStateToMarkerV1,
+  bindDeploymentRunStateToMarker,
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
   mutateDeploymentRunState,
@@ -106,7 +106,7 @@ export type ContractDeploymentInfo = {
   readonly contracts: Readonly<Record<string, ContractDeploymentInfoEntry>>;
 };
 
-export { computeDeploymentManifestId, DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION };
+export { computeDeploymentManifestId, DEPLOYMENT_MANIFEST_SCHEMA_VERSION };
 
 export type DeploymentManifestStepStatus =
   | "pending"
@@ -117,14 +117,14 @@ export type DeploymentManifestStepStatus =
   | "failed"
   | "blocked_requires_fresh_redeploy";
 
-export type DeploymentManifestV1 = ContractDeploymentInfo & {
-  readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION;
+export type DeploymentManifest = ContractDeploymentInfo & {
+  readonly schemaVersion: typeof DEPLOYMENT_MANIFEST_SCHEMA_VERSION;
   readonly manifestId: string;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly consensusProfileDigest: string;
   readonly network: string;
-  readonly cardanoProtocolParameters: DeploymentManifestV1Value["cardanoProtocolParameters"];
-  readonly genesis: DeploymentManifestV1Value["genesis"];
+  readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
+  readonly genesis: DeploymentManifestValue["genesis"];
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly referenceScriptDeployAddress: string;
@@ -145,8 +145,8 @@ export type DeploymentManifestV1 = ContractDeploymentInfo & {
       }
     >
   >;
-  readonly da: DeploymentManifestV1Value["da"];
-  readonly proofEvidence: DeploymentManifestV1Value["proofEvidence"];
+  readonly da: DeploymentManifestValue["da"];
+  readonly proofEvidence: DeploymentManifestValue["proofEvidence"];
   readonly steps: Readonly<
     Record<
       | "prepareHubOracleNonce"
@@ -167,9 +167,9 @@ export type DeploymentManifestV1 = ContractDeploymentInfo & {
     readonly maxBisectionRounds: number;
     readonly maturityMs: number;
   };
-  readonly l1Finality: DeploymentManifestV1Value["l1Finality"];
-  readonly economics: DeploymentManifestV1Value["economics"];
-  readonly availabilityChallenge: DeploymentManifestV1Value["availabilityChallenge"];
+  readonly l1Finality: DeploymentManifestValue["l1Finality"];
+  readonly economics: DeploymentManifestValue["economics"];
+  readonly availabilityChallenge: DeploymentManifestValue["availabilityChallenge"];
 };
 
 export type DeploymentManifestVerificationReport = {
@@ -187,7 +187,7 @@ export type FinalizedDeploymentIdentity = {
   readonly path: string;
   readonly manifestId: string;
   readonly contractDeploymentInfoSha256: string;
-  readonly manifest: DeploymentManifestV1;
+  readonly manifest: DeploymentManifest;
 };
 
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME =
@@ -218,16 +218,16 @@ type ScriptDescriptor = {
 
 const REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME = Object.freeze(
   Object.fromEntries(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([targetName, contractName]) => {
-      if (!(targetName in SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)) {
-        throw new Error(
-          `Deployment manifest reference-script role is not registered by the SDK: ${targetName}`,
-        );
-      }
-      return [contractName, targetName as ReferenceScriptAuthTokenTarget];
-    }),
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([targetName, contractName]) => {
+        if (!(targetName in SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)) {
+          throw new Error(
+            `Deployment manifest reference-script role is not registered by the SDK: ${targetName}`,
+          );
+        }
+        return [contractName, targetName as ReferenceScriptAuthTokenTarget];
+      },
+    ),
   ) as Readonly<Record<string, ReferenceScriptAuthTokenTarget>>,
 );
 
@@ -967,7 +967,7 @@ const collectScriptDescriptors = (
   ),
 ];
 
-const defaultSteps = (): DeploymentManifestV1["steps"] => ({
+const defaultSteps = (): DeploymentManifest["steps"] => ({
   prepareHubOracleNonce: { status: "pending" },
   deployNodeRuntimeReferenceScripts: { status: "pending" },
   initProtocol: { status: "pending" },
@@ -978,8 +978,8 @@ const defaultSteps = (): DeploymentManifestV1["steps"] => ({
 
 const buildReferenceScriptRecords = (
   deploymentInfo: ContractDeploymentInfo,
-): DeploymentManifestV1["referenceScripts"] => {
-  const entries: [string, DeploymentManifestV1["referenceScripts"][string]][] =
+): DeploymentManifest["referenceScripts"] => {
+  const entries: [string, DeploymentManifest["referenceScripts"][string]][] =
     [];
   for (const [contractName, entry] of Object.entries(
     deploymentInfo.contracts,
@@ -1014,22 +1014,22 @@ const buildReferenceScriptRecords = (
 
 export type DeploymentManifestBuildContext = {
   readonly network: string;
-  readonly cardanoProtocolParameters: DeploymentManifestV1Value["cardanoProtocolParameters"];
-  readonly genesis: DeploymentManifestV1Value["genesis"];
-  readonly da: DeploymentManifestV1Value["da"];
-  readonly proofEvidence: DeploymentManifestV1Value["proofEvidence"];
-  readonly economics: DeploymentManifestV1Economics;
-  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
+  readonly cardanoProtocolParameters: DeploymentManifestValue["cardanoProtocolParameters"];
+  readonly genesis: DeploymentManifestValue["genesis"];
+  readonly da: DeploymentManifestValue["da"];
+  readonly proofEvidence: DeploymentManifestValue["proofEvidence"];
+  readonly economics: DeploymentManifestEconomics;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
   readonly referenceScriptDeployAddress: string;
   readonly hubOracleOneShotTxHash: string;
   readonly hubOracleOneShotOutputIndex: number;
-  readonly hubOracleOneShotStatus?: DeploymentManifestV1["hubOracleOneShot"]["status"];
+  readonly hubOracleOneShotStatus?: DeploymentManifest["hubOracleOneShot"]["status"];
   readonly now?: Date;
-  readonly existingManifest?: DeploymentManifestV1;
-  readonly steps?: Partial<DeploymentManifestV1["steps"]>;
+  readonly existingManifest?: DeploymentManifest;
+  readonly steps?: Partial<DeploymentManifest["steps"]>;
 };
 
-export type DeploymentManifestV1IdentityContext = Pick<
+export type DeploymentManifestIdentityContext = Pick<
   DeploymentManifestBuildContext,
   | "cardanoProtocolParameters"
   | "genesis"
@@ -1039,7 +1039,7 @@ export type DeploymentManifestV1IdentityContext = Pick<
   | "availabilityChallenge"
 >;
 
-const configuredDeploymentEconomics = (): DeploymentManifestV1Economics => {
+const configuredDeploymentEconomics = (): DeploymentManifestEconomics => {
   const profile = process.env.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE?.trim();
   if (
     profile !== "public-preprod-launch-v1" &&
@@ -1049,13 +1049,13 @@ const configuredDeploymentEconomics = (): DeploymentManifestV1Economics => {
       "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE must explicitly equal public-preprod-launch-v1 or bounded-acceptance-v1",
     );
   }
-  return DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[
-    profile as DeploymentManifestV1EconomicsProfile
+  return DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
+    profile as DeploymentManifestEconomicsProfile
   ];
 };
 
 const configuredAvailabilityChallenge =
-  (): DeploymentManifestV1AvailabilityChallenge => {
+  (): DeploymentManifestAvailabilityChallenge => {
     const requiredInteger = (name: string): number => {
       const raw = process.env[name]?.trim();
       if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) {
@@ -1067,7 +1067,7 @@ const configuredAvailabilityChallenge =
       }
       return value;
     };
-    return parseDeploymentManifestV1AvailabilityChallenge({
+    return parseDeploymentManifestAvailabilityChallenge({
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
         smallResponseWindowMs: 3_600_000,
@@ -1152,7 +1152,7 @@ const protocolGcd = (left: bigint, right: bigint): bigint => {
 const protocolRational = (
   value: unknown,
   field: string,
-): DeploymentManifestV1CanonicalRational => {
+): DeploymentManifestCanonicalRational => {
   let numerator: bigint;
   let denominator: bigint;
   if (typeof value === "string" && /^[0-9]+\/[1-9][0-9]*$/u.test(value)) {
@@ -1184,20 +1184,18 @@ const protocolRational = (
 };
 
 const sameRational = (
-  left: DeploymentManifestV1CanonicalRational,
-  right: DeploymentManifestV1CanonicalRational,
+  left: DeploymentManifestCanonicalRational,
+  right: DeploymentManifestCanonicalRational,
 ): boolean =>
   left.numerator === right.numerator && left.denominator === right.denominator;
 
-const exactProtocolParameterSnapshotV1 = (
+const exactProtocolParameterSnapshot = (
   providerValue: unknown,
   rawOgmiosValue: unknown,
-): DeploymentManifestV1CardanoProtocolParameters => {
+): DeploymentManifestCardanoProtocolParameters => {
   const provider = protocolRecord(providerValue, "Lucid protocol parameters");
   const snapshot =
-    deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios(
-      rawOgmiosValue,
-    );
+    deriveDeploymentManifestCardanoProtocolParametersFromOgmios(rawOgmiosValue);
   const providerChecks: readonly [string, string][] = Object.freeze([
     [protocolNatural(provider.minFeeA, "provider.minFeeA"), snapshot.minFeeA],
     [protocolNatural(provider.minFeeB, "provider.minFeeB"), snapshot.minFeeB],
@@ -1263,23 +1261,23 @@ const exactProtocolParameterSnapshotV1 = (
   return snapshot;
 };
 
-export const cardanoProtocolParametersIdentityV1FromProvider = async (
+export const cardanoProtocolParametersIdentityFromProvider = async (
   provider: {
     readonly getProtocolParameters: () => Promise<unknown>;
   },
   rawOgmiosProtocolParameters: unknown,
-): Promise<DeploymentManifestV1Value["cardanoProtocolParameters"]> => {
-  const snapshot = exactProtocolParameterSnapshotV1(
+): Promise<DeploymentManifestValue["cardanoProtocolParameters"]> => {
+  const snapshot = exactProtocolParameterSnapshot(
     await provider.getProtocolParameters(),
     rawOgmiosProtocolParameters,
   );
   return {
     snapshot,
-    digest: computeDeploymentManifestV1JsonDigest(snapshot),
+    digest: computeDeploymentManifestJsonDigest(snapshot),
   };
 };
 
-export const queryLocalOgmiosProtocolParametersV1 = async (
+export const queryLocalOgmiosProtocolParameters = async (
   ogmiosUrl: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<unknown> => {
@@ -1324,8 +1322,8 @@ export const queryLocalOgmiosProtocolParametersV1 = async (
 
 const genesisUtxoIdentitySnapshot = (
   utxos: readonly UTxO[],
-): ReturnType<typeof normalizeDeploymentManifestV1JsonValue> =>
-  normalizeDeploymentManifestV1JsonValue(
+): ReturnType<typeof normalizeDeploymentManifestJsonValue> =>
+  normalizeDeploymentManifestJsonValue(
     [...utxos].sort(compareOutRefs).map((utxo) => ({
       txHash: utxo.txHash,
       outputIndex: utxo.outputIndex,
@@ -1348,8 +1346,8 @@ const genesisUtxoIdentitySnapshot = (
     "genesisUtxos",
   );
 
-export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
-  DeploymentManifestV1IdentityContext,
+export const buildDeploymentManifestIdentityContextProgram: Effect.Effect<
+  DeploymentManifestIdentityContext,
   Error,
   Lucid | NodeConfig
 > = Effect.gen(function* () {
@@ -1362,8 +1360,8 @@ export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
         throw new Error("Lucid has no configured Cardano provider");
       }
       const rawOgmiosProtocolParameters =
-        await queryLocalOgmiosProtocolParametersV1(nodeConfig.L1_OGMIOS_KEY);
-      return cardanoProtocolParametersIdentityV1FromProvider(
+        await queryLocalOgmiosProtocolParameters(nodeConfig.L1_OGMIOS_KEY);
+      return cardanoProtocolParametersIdentityFromProvider(
         provider,
         rawOgmiosProtocolParameters,
       );
@@ -1403,24 +1401,24 @@ export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
     cardanoProtocolParameters,
     genesis: {
       headerHash: GENESIS_HEADER_HASH,
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest(genesisSnapshot),
+      utxoSetDigest: computeDeploymentManifestJsonDigest(genesisSnapshot),
     },
     da: {
       committeeVkeys,
       committeeSignersHash:
-        computeDeploymentManifestV1DaCommitteeSignersHash(committeeVkeys),
+        computeDeploymentManifestDaCommitteeSignersHash(committeeVkeys),
       threshold,
       transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         envelopeEncoding: nodeConfig.MIDGARD_DA_PAYLOAD_ENVELOPE,
         zstdLevel: nodeConfig.MIDGARD_DA_ZSTD_LEVEL,
-        limits: DA_TRANSPORT_LIMITS_V1,
+        limits: DA_TRANSPORT_LIMITS,
         retentionDays: nodeConfig.RETENTION_DAYS,
       },
     },
     proofEvidence: {
-      digest: MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
       blueprintHash,
     },
   };
@@ -1438,8 +1436,8 @@ const assertOutRefFields = (txHash: string, outputIndex: number): void => {
 };
 
 const withManifestId = (
-  manifest: Omit<DeploymentManifestV1, "manifestId">,
-): DeploymentManifestV1 => ({
+  manifest: Omit<DeploymentManifest, "manifestId">,
+): DeploymentManifest => ({
   ...manifest,
   manifestId: computeDeploymentManifestId(manifest),
 });
@@ -1448,10 +1446,10 @@ const withManifestId = (
  * Builds the sole canonical V1 manifest and re-parses it before return so
  * missing contracts, tuple drift, and dispute-schedule drift fail closed.
  */
-export const buildDeploymentManifestV1 = (
+export const buildDeploymentManifest = (
   deploymentInfo: ContractDeploymentInfo,
   context: DeploymentManifestBuildContext,
-): DeploymentManifestV1 => {
+): DeploymentManifest => {
   assertOutRefFields(
     context.hubOracleOneShotTxHash,
     context.hubOracleOneShotOutputIndex,
@@ -1476,9 +1474,9 @@ export const buildDeploymentManifestV1 = (
     ...(context.steps ?? {}),
   };
   const manifest = withManifestId({
-    schemaVersion: DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: context.network,
     cardanoProtocolParameters: context.cardanoProtocolParameters,
     genesis: context.genesis,
@@ -1498,31 +1496,29 @@ export const buildDeploymentManifestV1 = (
     proofEvidence: context.proofEvidence,
     steps: baseSteps,
     validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
-    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     economics: context.economics,
     availabilityChallenge: context.availabilityChallenge,
-  }) as DeploymentManifestV1;
-  return parseDeploymentManifestV1Value(manifest) as DeploymentManifestV1;
+  }) as DeploymentManifest;
+  return parseDeploymentManifestValue(manifest) as DeploymentManifest;
 };
 
-export const parseDeploymentManifestV1 = (
-  value: unknown,
-): DeploymentManifestV1 =>
-  parseDeploymentManifestV1Value(value) as DeploymentManifestV1;
+export const parseDeploymentManifest = (value: unknown): DeploymentManifest =>
+  parseDeploymentManifestValue(value) as DeploymentManifest;
 
-export const readDeploymentManifestV1File = (
+export const readDeploymentManifestFile = (
   outputPath: string,
-): DeploymentManifestV1 => {
+): DeploymentManifest => {
   const resolvedOutputPath = normalizeOutputPath(outputPath);
   const parsed = JSON.parse(readFileSync(resolvedOutputPath, "utf8"));
-  return parseDeploymentManifestV1(parsed);
+  return parseDeploymentManifest(parsed);
 };
 
 export const readFinalizedDeploymentIdentity = (
@@ -1531,7 +1527,7 @@ export const readFinalizedDeploymentIdentity = (
   const resolvedOutputPath = normalizeOutputPath(outputPath);
   const raw = readFileSync(resolvedOutputPath);
   const parsed = JSON.parse(raw.toString("utf8"));
-  const manifest = parseDeploymentManifestV1(parsed);
+  const manifest = parseDeploymentManifest(parsed);
   return {
     path: resolvedOutputPath,
     manifestId: manifest.manifestId,
@@ -1543,13 +1539,13 @@ export const readFinalizedDeploymentIdentity = (
 };
 
 export const verifyDeploymentManifestAgainstConfig = (
-  manifest: DeploymentManifestV1,
+  manifest: DeploymentManifest,
   context: {
     readonly network: string;
     readonly referenceScriptDeployAddress: string;
     readonly hubOracleOneShotTxHash: string;
     readonly hubOracleOneShotOutputIndex: number;
-    readonly economicsProfile: DeploymentManifestV1EconomicsProfile;
+    readonly economicsProfile: DeploymentManifestEconomicsProfile;
     readonly path?: string;
   },
 ): DeploymentManifestVerificationReport => {
@@ -1614,7 +1610,7 @@ export const verifyConfiguredDeploymentManifestProgram: Effect.Effect<
   const nodeConfig = yield* NodeConfig;
   const path = configuredContractDeploymentInfoPath();
   const manifest = yield* Effect.try({
-    try: () => readDeploymentManifestV1File(path),
+    try: () => readDeploymentManifestFile(path),
     catch: (cause) =>
       new Error(
         `Failed to read V1 deployment manifest at ${path}: ${String(cause)}`,
@@ -1743,7 +1739,7 @@ const readReferenceScriptAuthPolicyForLiveWrite = async (
 ): Promise<ReferenceScriptAuthPolicyDeploymentInfo> => {
   const resolvedOutputPath = normalizeOutputPath(outputPath);
   if (existsSync(resolvedOutputPath)) {
-    return readDeploymentManifestV1File(resolvedOutputPath)
+    return readDeploymentManifestFile(resolvedOutputPath)
       .referenceScriptAuthPolicy;
   }
   const runStatePath = defaultDeploymentRunStatePath();
@@ -1782,8 +1778,8 @@ export const writeContractDeploymentInfoFileProgram = (
   });
 
 export type LiveContractDeploymentInfoWriteOptions = {
-  readonly steps?: Partial<DeploymentManifestV1["steps"]>;
-  readonly hubOracleOneShotStatus?: DeploymentManifestV1["hubOracleOneShot"]["status"];
+  readonly steps?: Partial<DeploymentManifest["steps"]>;
+  readonly hubOracleOneShotStatus?: DeploymentManifest["hubOracleOneShot"]["status"];
 };
 
 const formatDeploymentManifestVerificationReport = (
@@ -1797,14 +1793,14 @@ const buildLiveDeploymentManifestProgram = (
   outputPath: string,
   options: LiveContractDeploymentInfoWriteOptions = {},
 ): Effect.Effect<
-  DeploymentManifestV1,
+  DeploymentManifest,
   Error,
   Lucid | MidgardContracts | NodeConfig
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const identityContext =
-      yield* buildDeploymentManifestV1IdentityContextProgram;
+      yield* buildDeploymentManifestIdentityContextProgram;
     const referenceScriptAuthPolicy = yield* Effect.tryPromise({
       try: () => readReferenceScriptAuthPolicyForLiveWrite(outputPath),
       catch: (cause) =>
@@ -1817,7 +1813,7 @@ const buildLiveDeploymentManifestProgram = (
     );
     const existingManifest = yield* Effect.sync(() => {
       try {
-        return readDeploymentManifestV1File(outputPath);
+        return readDeploymentManifestFile(outputPath);
       } catch {
         return undefined;
       }
@@ -1844,7 +1840,7 @@ const buildLiveDeploymentManifestProgram = (
           ...options.steps,
         }
       : options.steps;
-    const deploymentManifest = buildDeploymentManifestV1(deploymentInfo, {
+    const deploymentManifest = buildDeploymentManifest(deploymentInfo, {
       network: nodeConfig.NETWORK,
       ...identityContext,
       referenceScriptDeployAddress:
@@ -1889,7 +1885,7 @@ export const writeLiveContractDeploymentInfoProgram = (
       outputPath,
       options,
     );
-    const marker = makeDeploymentMarkerV1(deploymentManifest.manifestId);
+    const marker = makeDeploymentMarker(deploymentManifest.manifestId);
     const runStatePath = defaultDeploymentRunStatePath();
     const runState = yield* Effect.tryPromise({
       try: () => loadDeploymentRunState(runStatePath),
@@ -1928,7 +1924,7 @@ export const writeLiveContractDeploymentInfoProgram = (
               );
             },
             (current) =>
-              bindDeploymentRunStateToMarkerV1(current, {
+              bindDeploymentRunStateToMarker(current, {
                 marker,
                 manifestPath,
                 manifestSha256,
@@ -2016,7 +2012,7 @@ export const reconcileInitializedDeploymentManifestProgram = ({
       },
     });
     const manifest = yield* Effect.try({
-      try: () => readDeploymentManifestV1File(path),
+      try: () => readDeploymentManifestFile(path),
       catch: (cause) =>
         new Error(
           `Failed to read reconciled deployment manifest: ${String(cause)}`,

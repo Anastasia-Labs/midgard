@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -13,9 +13,7 @@ const policyId = "aa".repeat(28);
 const stateQueueAddress =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
 
-const headerFixture = (
-  overrides: Partial<SDK.HeaderV1> = {},
-): SDK.HeaderV1 => ({
+const headerFixture = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: "11".repeat(32),
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -52,15 +50,15 @@ const makeTail = async ({
 }: {
   readonly txHash?: string;
   readonly outputIndex?: number;
-  readonly header?: SDK.HeaderV1;
+  readonly header?: SDK.Header;
   readonly next?: SDK.LinkedListNodeView["next"];
 } = {}): Promise<SDK.StateQueueUTxO> => {
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const assetName = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
   const datum: SDK.LinkedListNodeView = {
     key: { Key: { key: headerHash } },
     next,
-    data: SDK.castStateQueueNodeV1ToData({
+    data: SDK.castStateQueueNodeToData({
       header,
       da_attestation: SDK.NO_DA_ATTESTATION,
     }) as SDK.LinkedListNodeView["data"],
@@ -131,7 +129,7 @@ describe("commit-block expected state-queue tail lookup", () => {
       resolveLiveTailCommitBase(
         contracts,
         expected,
-        MIDGARD_CONSENSUS_PROFILE_V1,
+        MIDGARD_CONSENSUS_PROFILE,
       ).pipe(
         Effect.provideService(RuntimeLucid, lucid as unknown as RuntimeLucid),
       ),
@@ -155,7 +153,7 @@ describe("commit-block expected state-queue tail lookup", () => {
         resolveLiveTailCommitBase(
           contracts,
           expected,
-          MIDGARD_CONSENSUS_PROFILE_V1,
+          MIDGARD_CONSENSUS_PROFILE,
         ).pipe(
           Effect.provideService(RuntimeLucid, lucid as unknown as RuntimeLucid),
         ),
@@ -182,7 +180,7 @@ describe("commit-block expected state-queue tail lookup", () => {
         resolveLiveTailCommitBase(
           contracts,
           expected,
-          MIDGARD_CONSENSUS_PROFILE_V1,
+          MIDGARD_CONSENSUS_PROFILE,
         ).pipe(
           Effect.provideService(
             RuntimeLucid,
@@ -288,7 +286,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     // This inclusive upper bound is the value the builder hands to the header,
     // so it satisfies the guard gating every production commit.
     expect(
-      SDK.productionCommitHeaderMatchesValidityUpperBound({
+      SDK.commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(interval.inclusiveUpperBoundMs),
         validTo: interval.validToMs,
       }),
@@ -296,17 +294,16 @@ describe("commit-block header end_time is anchored to the commit validity bound"
   });
 
   it("accepts the maximum end_time the production validity guard allows", () => {
-    const validFrom =
-      COMMIT_VALID_TO_MS - SDK.PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validFrom = COMMIT_VALID_TO_MS - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
     expect(validFrom).toBe(1_700_000_000_001);
     expect(
-      SDK.isProductionCommitValidityInterval({
+      SDK.isCommitValidityInterval({
         validFrom,
         validTo: COMMIT_VALID_TO_MS,
       }),
     ).toBe(true);
     expect(
-      SDK.productionCommitHeaderMatchesValidityUpperBound({
+      SDK.commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(ACCEPTED_HEADER_END_TIME_MS),
         validTo: COMMIT_VALID_TO_MS,
       }),
@@ -329,13 +326,13 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     // header end_time.
     for (const validFrom of [1_700_000_000_001, 1_700_000_479_001]) {
       expect(
-        SDK.isProductionCommitValidityInterval({
+        SDK.isCommitValidityInterval({
           validFrom,
           validTo: COMMIT_VALID_TO_MS,
         }),
       ).toBe(true);
       expect(
-        SDK.productionCommitHeaderMatchesValidityUpperBound({
+        SDK.commitHeaderMatchesValidityUpperBound({
           headerEndTime: BigInt(ACCEPTED_HEADER_END_TIME_MS),
           validTo: COMMIT_VALID_TO_MS,
         }),
@@ -345,7 +342,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
 
   it("rejects a header end_time one millisecond above the bound", () => {
     expect(
-      SDK.productionCommitHeaderMatchesValidityUpperBound({
+      SDK.commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(ACCEPTED_HEADER_END_TIME_MS + 1),
         validTo: COMMIT_VALID_TO_MS,
       }),
@@ -354,7 +351,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
 
   it("rejects a far-future header end_time", () => {
     expect(
-      SDK.productionCommitHeaderMatchesValidityUpperBound({
+      SDK.commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(FAR_FUTURE_HEADER_END_TIME_MS),
         validTo: COMMIT_VALID_TO_MS,
       }),
@@ -365,14 +362,13 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     // The case that separates `=== validTo - 1` from `<= validTo - 1`. It is
     // inside the interval the commit is actually built with, so a membership
     // guard would accept it.
-    const validFrom =
-      COMMIT_VALID_TO_MS - SDK.PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validFrom = COMMIT_VALID_TO_MS - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
     expect(validFrom).toBe(WIDEST_COMMIT_VALID_FROM_MS);
 
     // The interval itself is admissible, so the rejection below is attributable
     // to the header guard rather than to the interval guard.
     expect(
-      SDK.isProductionCommitValidityInterval({
+      SDK.isCommitValidityInterval({
         validFrom,
         validTo: COMMIT_VALID_TO_MS,
       }),
@@ -383,7 +379,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     );
 
     expect(
-      SDK.productionCommitHeaderMatchesValidityUpperBound({
+      SDK.commitHeaderMatchesValidityUpperBound({
         headerEndTime: BigInt(STRICTLY_INSIDE_HEADER_END_TIME_MS),
         validTo: COMMIT_VALID_TO_MS,
       }),
@@ -405,7 +401,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
       );
       expect(headerEndTimeMs).toBeLessThan(ACCEPTED_HEADER_END_TIME_MS);
       expect(
-        SDK.productionCommitHeaderMatchesValidityUpperBound({
+        SDK.commitHeaderMatchesValidityUpperBound({
           headerEndTime: BigInt(headerEndTimeMs),
           validTo: COMMIT_VALID_TO_MS,
         }),

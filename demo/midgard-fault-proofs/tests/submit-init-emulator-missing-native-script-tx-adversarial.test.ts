@@ -2,7 +2,7 @@ import { encodeMidgardNativeScript } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  prepareMissingNativeScriptTxV1,
+  prepareMissingNativeScriptTx,
   submitMissingNativeScriptTxCancel,
   submitMissingNativeScriptTxInit,
   submitMissingNativeScriptTxStep01,
@@ -13,28 +13,28 @@ import {
   submitMissingNativeScriptTxStep06,
 } from "../src/index.js";
 import {
-  fundMissingNativeScriptTxOutsiderV1,
-  makeMissingNativeScriptTxEmulatorHarnessV1,
-  publishMissingNativeScriptTxReferenceScriptsV1,
-  setupMissingNativeScriptTxFixtureV1,
-  submitRawMissingNativeScriptTxOutsiderCancelV1,
-  submitRawMissingNativeScriptTxStep03V1,
-  submitRawMissingNativeScriptTxStep04V1,
-  submitRawMissingNativeScriptTxStep05V1,
-  submitRawMissingNativeScriptTxStep06V1,
+  fundMissingNativeScriptTxOutsider,
+  makeMissingNativeScriptTxEmulatorHarness,
+  publishMissingNativeScriptTxReferenceScripts,
+  setupMissingNativeScriptTxFixture,
+  submitRawMissingNativeScriptTxOutsiderCancel,
+  submitRawMissingNativeScriptTxStep03,
+  submitRawMissingNativeScriptTxStep04,
+  submitRawMissingNativeScriptTxStep05,
+  submitRawMissingNativeScriptTxStep06,
 } from "./support/missing-native-script-tx-emulator-v1.js";
-import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 describe("missing-native-script-tx adversarial emulator", () => {
   it("refuses an honest present script on-chain and pins every earlier negative/cancel gate", async () => {
-    const harness = await makeMissingNativeScriptTxEmulatorHarnessV1();
-    const fixture = await setupMissingNativeScriptTxFixtureV1({
+    const harness = await makeMissingNativeScriptTxEmulatorHarness();
+    const fixture = await setupMissingNativeScriptTxFixture({
       harness,
       scriptPresent: true,
     });
-    await fundMissingNativeScriptTxOutsiderV1(harness);
-    const refs = await publishMissingNativeScriptTxReferenceScriptsV1({
+    await fundMissingNativeScriptTxOutsider(harness);
+    const refs = await publishMissingNativeScriptTxReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -60,13 +60,13 @@ describe("missing-native-script-tx adversarial emulator", () => {
       owner: harness.proverSigner.paymentKeyHash,
     } as const;
     expect(() =>
-      prepareMissingNativeScriptTxV1({
+      prepareMissingNativeScriptTx({
         ...evidenceArgs,
         missingNativeScriptBytes: fixture.nativeScriptBytes,
       }),
     ).toThrow(/present|honest/u);
     expect(() =>
-      prepareMissingNativeScriptTxV1({
+      prepareMissingNativeScriptTx({
         ...evidenceArgs,
         missingNativeScriptBytes: mismatchedScriptBytes,
       }),
@@ -169,8 +169,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/present/u);
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxStep06V1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxStep06({
         harness,
         threadOutRef: classified.nextThreadOutRef,
         nativeTxCompactCbor: badInclusion.nativeTxCompactCbor,
@@ -182,8 +182,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
 
     // The door refuses a truncated field-6 preimage and a one-sided forged
     // witness set before the absence fold can manufacture a conviction.
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxStep06V1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxStep06({
         harness,
         threadOutRef: classified.nextThreadOutRef,
         nativeTxCompactCbor: badInclusion.nativeTxCompactCbor,
@@ -192,8 +192,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[5],
       }),
     );
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxStep06V1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxStep06({
         harness,
         threadOutRef: classified.nextThreadOutRef,
         nativeTxCompactCbor: badInclusion.nativeTxCompactCbor,
@@ -218,8 +218,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/cannot cancel|names prover/u);
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxOutsiderCancelV1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxOutsiderCancel({
         harness,
         threadOutRef: classified.nextThreadOutRef,
         stepIndex: 5,
@@ -252,8 +252,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[2],
       }),
     ).rejects.toThrow(/does not match accused input/u);
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxStep03V1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxStep03({
         harness,
         threadOutRef: wrongProducing.nextThreadOutRef,
         stateQueueBlockOutRef: fixture.setup.fraudulentBlockOutRef,
@@ -278,8 +278,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
     await expect(
       openScriptOutput(keyProduced.nextThreadOutRef),
     ).rejects.toThrow(/key-locked/u);
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxStep04V1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxStep04({
         harness,
         threadOutRef: keyProduced.nextThreadOutRef,
         nativeTxCompactCbor: producingInclusion.nativeTxCompactCbor,
@@ -317,8 +317,8 @@ describe("missing-native-script-tx adversarial emulator", () => {
         referenceScriptUtxo: refs[4],
       }),
     ).rejects.toThrow(/not the accused credential/u);
-    await expectOnchainRefusalV1(() =>
-      submitRawMissingNativeScriptTxStep05V1({
+    await expectOnchainRefusal(() =>
+      submitRawMissingNativeScriptTxStep05({
         harness,
         threadOutRef: mismatchOpened.nextThreadOutRef,
         missingNativeScriptBytes: mismatchedScriptBytes,

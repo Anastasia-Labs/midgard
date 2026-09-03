@@ -2,15 +2,15 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type {
-  OutputReferenceScriptDecodingJournalEntryV1,
-  OutputReferenceScriptDecodingJournalV1,
+  OutputReferenceScriptDecodingJournal,
+  OutputReferenceScriptDecodingJournalEntry,
 } from "./workflow-v1.js";
 
 const identityPattern = /^[0-9a-f]{64}$/u;
 
 /** Family-owned, append-only crash journal with atomic file replacement. */
-export class DirectoryOutputReferenceScriptDecodingJournalV1
-  implements OutputReferenceScriptDecodingJournalV1
+export class DirectoryOutputReferenceScriptDecodingJournal
+  implements OutputReferenceScriptDecodingJournal
 {
   readonly #directory: string;
 
@@ -20,7 +20,7 @@ export class DirectoryOutputReferenceScriptDecodingJournalV1
 
   async load(
     identity: string,
-  ): Promise<readonly OutputReferenceScriptDecodingJournalEntryV1[]> {
+  ): Promise<readonly OutputReferenceScriptDecodingJournalEntry[]> {
     if (!identityPattern.test(identity))
       throw new Error(
         "outputReferenceScriptDecoding journal identity is invalid",
@@ -34,13 +34,13 @@ export class DirectoryOutputReferenceScriptDecodingJournalV1
       return Object.freeze(
         parsed.map((value, sequence) => {
           const entry =
-            value as Partial<OutputReferenceScriptDecodingJournalEntryV1>;
+            value as Partial<OutputReferenceScriptDecodingJournalEntry>;
           if (entry.identity !== identity || entry.sequence !== sequence)
             throw new Error(
               "outputReferenceScriptDecoding durable journal identity/sequence changed",
             );
           return Object.freeze(
-            entry as OutputReferenceScriptDecodingJournalEntryV1,
+            entry as OutputReferenceScriptDecodingJournalEntry,
           );
         }),
       );
@@ -52,7 +52,7 @@ export class DirectoryOutputReferenceScriptDecodingJournalV1
   }
 
   async append(
-    entry: OutputReferenceScriptDecodingJournalEntryV1,
+    entry: OutputReferenceScriptDecodingJournalEntry,
   ): Promise<void> {
     const entries = await this.load(entry.identity);
     if (entry.sequence !== entries.length)

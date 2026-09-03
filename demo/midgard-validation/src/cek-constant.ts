@@ -1,7 +1,7 @@
 import {
-  hashMidgardCekBlobChunkV1,
-  hashMidgardCekValueNodeV1,
-  MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1,
+  hashMidgardCekBlobChunk,
+  hashMidgardCekValueNode,
+  MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES,
 } from "@al-ft/midgard-core";
 import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import {
@@ -21,9 +21,9 @@ import {
   UPLCConst,
 } from "@harmoniclabs/uplc";
 
-import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 
-export type MidgardCekConstantTypeV1 =
+export type MidgardCekConstantType =
   | { readonly kind: "integer" }
   | { readonly kind: "bytes" }
   | { readonly kind: "string" }
@@ -31,12 +31,12 @@ export type MidgardCekConstantTypeV1 =
   | { readonly kind: "boolean" }
   | {
       readonly kind: "list";
-      readonly element: MidgardCekConstantTypeV1;
+      readonly element: MidgardCekConstantType;
     }
   | {
       readonly kind: "pair";
-      readonly first: MidgardCekConstantTypeV1;
-      readonly second: MidgardCekConstantTypeV1;
+      readonly first: MidgardCekConstantType;
+      readonly second: MidgardCekConstantType;
     }
   | { readonly kind: "data" }
   | { readonly kind: "blsG1" }
@@ -44,7 +44,7 @@ export type MidgardCekConstantTypeV1 =
   | { readonly kind: "blsMillerLoopResult" };
 
 type ParsedType = {
-  readonly type: MidgardCekConstantTypeV1;
+  readonly type: MidgardCekConstantType;
   readonly nextOffset: number;
 };
 
@@ -99,9 +99,9 @@ const parseTypeAt = (
   }
 };
 
-export const parseMidgardCekConstantTypeV1 = (
+export const parseMidgardCekConstantType = (
   tags: ConstType,
-): MidgardCekConstantTypeV1 => {
+): MidgardCekConstantType => {
   const parsed = parseTypeAt(tags, 0);
   if (parsed.nextOffset !== tags.length) {
     throw new Error("V1 constant type has trailing tags");
@@ -126,7 +126,7 @@ const asByteArray = (value: unknown): Uint8Array => {
 };
 
 const semanticData = (
-  type: MidgardCekConstantTypeV1,
+  type: MidgardCekConstantType,
   value: ConstValue,
 ): Data => {
   switch (type.kind) {
@@ -189,18 +189,18 @@ const semanticData = (
   }
 };
 
-export type MidgardCekCanonicalConstantV1 = {
-  readonly type: MidgardCekConstantTypeV1;
+export type MidgardCekCanonicalConstant = {
+  readonly type: MidgardCekConstantType;
   readonly typeCbor: Buffer;
   readonly payloadCbor: Buffer;
 };
 
-export type MidgardCekConstantWitnessV1 = {
+export type MidgardCekConstantWitness = {
   readonly typeCbor: Uint8Array;
   readonly payloadCbor: Uint8Array;
 };
 
-export type MidgardCekSemanticConstantWitnessV1 = {
+export type MidgardCekSemanticConstantWitness = {
   readonly typeCbor: Uint8Array;
   readonly payload: {
     readonly root: Uint8Array;
@@ -213,23 +213,23 @@ export type MidgardCekSemanticConstantWitnessV1 = {
 // A direct constant is one independently revealed L1 proof preimage. The
 // profile reserves 7 KiB for the one-step evidence and transaction framing,
 // so the payload must remain strictly below the 16 KiB proof floor.
-export const MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1 =
-  MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1;
+export const MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES =
+  MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES;
 
-export const decodeMidgardCekConstantTypeCborV1 = (
+export const decodeMidgardCekConstantTypeCbor = (
   typeCbor: Uint8Array,
-): MidgardCekConstantTypeV1 => {
+): MidgardCekConstantType => {
   if (typeCbor.length > 64) {
     throw new Error("V1 constant type exceeds its direct bound");
   }
   const typeData = dataFromCbor(typeCbor);
   if (
-    !sameBytes(encodeMidgardCekPlutusDataV1(typeData), typeCbor) ||
+    !sameBytes(encodeMidgardCekPlutusData(typeData), typeCbor) ||
     !(typeData instanceof DataList)
   ) {
     throw new Error("V1 constant type is not canonical");
   }
-  return parseMidgardCekConstantTypeV1(
+  return parseMidgardCekConstantType(
     typeData.list.map((tag): ConstTyTag => {
       if (
         !(tag instanceof DataI) ||
@@ -329,7 +329,7 @@ const encodeCardanoInteger = (value: bigint): Buffer => {
  * dynamic byte strings and rejects negative bignums below the uint64 major-1
  * domain. Consensus code therefore encodes both scalar classes directly.
  */
-export const encodeMidgardCekPlutusDataV1 = (data: Data): Buffer => {
+export const encodeMidgardCekPlutusData = (data: Data): Buffer => {
   if (data instanceof DataI) {
     return encodeCardanoInteger(data.int);
   }
@@ -338,21 +338,21 @@ export const encodeMidgardCekPlutusDataV1 = (data: Data): Buffer => {
   }
   if (data instanceof DataList) {
     return encodeCardanoList(
-      data.list.map((item) => encodeMidgardCekPlutusDataV1(item)),
+      data.list.map((item) => encodeMidgardCekPlutusData(item)),
     );
   }
   if (data instanceof DataMap) {
     return Buffer.concat([
       encodeSmallCborArgument(5, BigInt(data.map.length)),
       ...data.map.flatMap((entry) => [
-        encodeMidgardCekPlutusDataV1(entry.fst),
-        encodeMidgardCekPlutusDataV1(entry.snd),
+        encodeMidgardCekPlutusData(entry.fst),
+        encodeMidgardCekPlutusData(entry.snd),
       ]),
     ]);
   }
   if (data instanceof DataConstr) {
     const fields = encodeCardanoList(
-      data.fields.map((field) => encodeMidgardCekPlutusDataV1(field)),
+      data.fields.map((field) => encodeMidgardCekPlutusData(field)),
     );
     if (data.constr <= 6n) {
       return Buffer.concat([
@@ -377,7 +377,7 @@ export const encodeMidgardCekPlutusDataV1 = (data: Data): Buffer => {
 };
 
 const payloadMatchesType = (
-  type: MidgardCekConstantTypeV1,
+  type: MidgardCekConstantType,
   payload: Data,
 ): boolean => {
   switch (type.kind) {
@@ -444,26 +444,25 @@ const payloadMatchesType = (
  * values must round-trip to the supplied canonical CBOR, and the semantic
  * payload must match the recursively decoded constant type.
  */
-export const decodeMidgardCekConstantWitnessV1 = (
-  witness: MidgardCekConstantWitnessV1,
+export const decodeMidgardCekConstantWitness = (
+  witness: MidgardCekConstantWitness,
 ): {
-  readonly type: MidgardCekConstantTypeV1;
+  readonly type: MidgardCekConstantType;
   readonly payload: Data;
 } => {
   if (witness.typeCbor.length > 64) {
     throw new Error("V1 constant type exceeds its direct bound");
   }
   if (
-    witness.payloadCbor.length >
-    MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1
+    witness.payloadCbor.length > MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
   ) {
     throw new Error("V1 constant payload exceeds its direct bound");
   }
   const typeData = dataFromCbor(witness.typeCbor);
   const payload = dataFromCbor(witness.payloadCbor);
   if (
-    !sameBytes(encodeMidgardCekPlutusDataV1(typeData), witness.typeCbor) ||
-    !sameBytes(encodeMidgardCekPlutusDataV1(payload), witness.payloadCbor)
+    !sameBytes(encodeMidgardCekPlutusData(typeData), witness.typeCbor) ||
+    !sameBytes(encodeMidgardCekPlutusData(payload), witness.payloadCbor)
   ) {
     throw new Error("V1 constant witness is not canonical Data CBOR");
   }
@@ -481,16 +480,14 @@ export const decodeMidgardCekConstantWitnessV1 = (
     }
     return Number(tag.int) as ConstTyTag;
   }) as ConstType;
-  const type = parseMidgardCekConstantTypeV1(tags);
+  const type = parseMidgardCekConstantType(tags);
   if (!payloadMatchesType(type, payload)) {
     throw new Error("V1 constant payload does not match its type");
   }
   return Object.freeze({ type, payload });
 };
 
-const midgardConstantTypeToTagsV1 = (
-  type: MidgardCekConstantTypeV1,
-): ConstType => {
+const midgardConstantTypeToTags = (type: MidgardCekConstantType): ConstType => {
   switch (type.kind) {
     case "integer":
       return [ConstTyTag.int];
@@ -503,12 +500,12 @@ const midgardConstantTypeToTagsV1 = (
     case "boolean":
       return [ConstTyTag.bool];
     case "list":
-      return [ConstTyTag.list, ...midgardConstantTypeToTagsV1(type.element)];
+      return [ConstTyTag.list, ...midgardConstantTypeToTags(type.element)];
     case "pair":
       return [
         ConstTyTag.pair,
-        ...midgardConstantTypeToTagsV1(type.first),
-        ...midgardConstantTypeToTagsV1(type.second),
+        ...midgardConstantTypeToTags(type.first),
+        ...midgardConstantTypeToTags(type.second),
       ];
     case "data":
       return [ConstTyTag.data];
@@ -521,17 +518,17 @@ const midgardConstantTypeToTagsV1 = (
   }
 };
 
-export const encodeMidgardCekConstantTypeCborV1 = (
-  type: MidgardCekConstantTypeV1,
+export const encodeMidgardCekConstantTypeCbor = (
+  type: MidgardCekConstantType,
 ): Buffer =>
-  encodeMidgardCekPlutusDataV1(
+  encodeMidgardCekPlutusData(
     new DataList(
-      midgardConstantTypeToTagsV1(type).map((tag) => new DataI(BigInt(tag))),
+      midgardConstantTypeToTags(type).map((tag) => new DataI(BigInt(tag))),
     ),
   );
 
-const semanticUplcConstantV1 = (
-  type: MidgardCekConstantTypeV1,
+const semanticUplcConstant = (
+  type: MidgardCekConstantType,
   payload: Data,
 ): UPLCConst => {
   switch (type.kind) {
@@ -569,10 +566,10 @@ const semanticUplcConstantV1 = (
       if (!(payload instanceof DataList)) {
         throw new Error("V1 list payload is not DataList");
       }
-      const elementType = midgardConstantTypeToTagsV1(type.element);
+      const elementType = midgardConstantTypeToTags(type.element);
       return UPLCConst.listOf(elementType)(
         payload.list.map(
-          (item) => semanticUplcConstantV1(type.element, item).value,
+          (item) => semanticUplcConstant(type.element, item).value,
         ) as never,
       );
     }
@@ -585,11 +582,11 @@ const semanticUplcConstantV1 = (
         throw new Error("V1 pair payload is malformed");
       }
       return UPLCConst.pairOf(
-        midgardConstantTypeToTagsV1(type.first),
-        midgardConstantTypeToTagsV1(type.second),
+        midgardConstantTypeToTags(type.first),
+        midgardConstantTypeToTags(type.second),
       )(
-        semanticUplcConstantV1(type.first, payload.fields[0]).value,
-        semanticUplcConstantV1(type.second, payload.fields[1]).value,
+        semanticUplcConstant(type.first, payload.fields[0]).value,
+        semanticUplcConstant(type.second, payload.fields[1]).value,
       );
     }
     case "data":
@@ -607,11 +604,11 @@ const semanticUplcConstantV1 = (
  * Reconstructs the exact Harmonic UPLC constant consumed by the pinned
  * reference evaluator from the canonical semantic witness checked on L1.
  */
-export const midgardCekConstantWitnessToUplcV1 = (
-  witness: MidgardCekConstantWitnessV1,
+export const midgardCekConstantWitnessToUplc = (
+  witness: MidgardCekConstantWitness,
 ): UPLCConst => {
-  const decoded = decodeMidgardCekConstantWitnessV1(witness);
-  return semanticUplcConstantV1(decoded.type, decoded.payload);
+  const decoded = decodeMidgardCekConstantWitness(witness);
+  return semanticUplcConstant(decoded.type, decoded.payload);
 };
 
 /**
@@ -619,43 +616,43 @@ export const midgardCekConstantWitnessToUplcV1 = (
  * witness. The ordinary witness decoder remains authoritative for the direct
  * one-step payload bound.
  */
-export const midgardCekConstantWitnessFromUplcV1 = (constant: {
+export const midgardCekConstantWitnessFromUplc = (constant: {
   readonly type: ConstType;
   readonly value: ConstValue;
-}): MidgardCekConstantWitnessV1 => {
-  const canonical = encodeMidgardCekCanonicalConstantV1(
+}): MidgardCekConstantWitness => {
+  const canonical = encodeMidgardCekCanonicalConstant(
     new UPLCConst(constant.type, constant.value as never),
   );
   const witness = Object.freeze({
     typeCbor: canonical.typeCbor,
     payloadCbor: canonical.payloadCbor,
   });
-  decodeMidgardCekConstantWitnessV1(witness);
+  decodeMidgardCekConstantWitness(witness);
   return witness;
 };
 
-export const hashMidgardCekConstantWitnessV1 = (
-  witness: MidgardCekConstantWitnessV1,
+export const hashMidgardCekConstantWitness = (
+  witness: MidgardCekConstantWitness,
 ): Uint8Array => {
-  const decoded = decodeMidgardCekConstantWitnessV1(witness);
-  const semantic = commitMidgardCekDataTreeV1(decoded.payload);
-  return hashMidgardCekValueNodeV1({
+  const decoded = decodeMidgardCekConstantWitness(witness);
+  const semantic = commitMidgardCekDataTree(decoded.payload);
+  return hashMidgardCekValueNode({
     kind: "constant",
-    typeRoot: hashMidgardCekBlobChunkV1(witness.typeCbor),
+    typeRoot: hashMidgardCekBlobChunk(witness.typeCbor),
     payloadRoot: semantic.root,
-    payloadLength: BigInt(encodeMidgardCekPlutusDataV1(decoded.payload).length),
+    payloadLength: BigInt(encodeMidgardCekPlutusData(decoded.payload).length),
     semanticRoot: semantic.root,
-    memory: midgardCekConstantMemorySizeV1(decoded.type, decoded.payload),
+    memory: midgardCekConstantMemorySize(decoded.type, decoded.payload),
   });
 };
 
-export const hashMidgardCekSemanticConstantWitnessV1 = (
-  witness: MidgardCekSemanticConstantWitnessV1,
+export const hashMidgardCekSemanticConstantWitness = (
+  witness: MidgardCekSemanticConstantWitness,
 ): Uint8Array => {
   if (witness.typeCbor.length > 64) {
     throw new Error("V1 semantic constant type exceeds its bound");
   }
-  decodeMidgardCekConstantTypeCborV1(witness.typeCbor);
+  decodeMidgardCekConstantTypeCbor(witness.typeCbor);
   if (
     witness.payload.root.length !== 32 ||
     witness.payload.cborLength < 0n ||
@@ -664,9 +661,9 @@ export const hashMidgardCekSemanticConstantWitnessV1 = (
   ) {
     throw new Error("V1 semantic constant summary is invalid");
   }
-  return hashMidgardCekValueNodeV1({
+  return hashMidgardCekValueNode({
     kind: "constant",
-    typeRoot: hashMidgardCekBlobChunkV1(witness.typeCbor),
+    typeRoot: hashMidgardCekBlobChunk(witness.typeCbor),
     payloadRoot: witness.payload.root,
     payloadLength: witness.payload.cborLength,
     semanticRoot: witness.payload.root,
@@ -682,7 +679,7 @@ const byteLengthOrOne = (bytes: Uint8Array): bigint =>
  * magnitude used by cardano-node's CEK cost model, not the encoded payload
  * length.
  */
-export const midgardCekIntegerMemorySizeV1 = (value: bigint): bigint => {
+export const midgardCekIntegerMemorySize = (value: bigint): bigint => {
   const doubledMagnitude = value < 0n ? (-value - 1n) << 1n : value << 1n;
   if (doubledMagnitude === 0n) {
     return 1n;
@@ -690,19 +687,19 @@ export const midgardCekIntegerMemorySizeV1 = (value: bigint): bigint => {
   return BigInt(Math.floor((doubledMagnitude.toString(2).length - 1) / 8) + 1);
 };
 
-export const midgardCekByteStringMemorySizeV1 = (value: Uint8Array): bigint =>
+export const midgardCekByteStringMemorySize = (value: Uint8Array): bigint =>
   byteLengthOrOne(value);
 
 /**
  * Plutus Data charges four memory words for every node, then the signed
  * integer or byte-string size for leaf payloads.
  */
-export const midgardCekDataMemorySizeV1 = (value: Data): bigint => {
+export const midgardCekDataMemorySize = (value: Data): bigint => {
   if (value instanceof DataConstr) {
     return (
       4n +
       value.fields.reduce(
-        (total, field) => total + midgardCekDataMemorySizeV1(field),
+        (total, field) => total + midgardCekDataMemorySize(field),
         0n,
       )
     );
@@ -713,8 +710,8 @@ export const midgardCekDataMemorySizeV1 = (value: Data): bigint => {
       value.map.reduce(
         (total, entry) =>
           total +
-          midgardCekDataMemorySizeV1(entry.fst) +
-          midgardCekDataMemorySizeV1(entry.snd),
+          midgardCekDataMemorySize(entry.fst) +
+          midgardCekDataMemorySize(entry.snd),
         0n,
       )
     );
@@ -723,13 +720,13 @@ export const midgardCekDataMemorySizeV1 = (value: Data): bigint => {
     return (
       4n +
       value.list.reduce(
-        (total, item) => total + midgardCekDataMemorySizeV1(item),
+        (total, item) => total + midgardCekDataMemorySize(item),
         0n,
       )
     );
   }
   if (value instanceof DataI) {
-    return 4n + midgardCekIntegerMemorySizeV1(value.int);
+    return 4n + midgardCekIntegerMemorySize(value.int);
   }
   if (value instanceof DataB) {
     return 4n + byteLengthOrOne(asByteArray(value.bytes));
@@ -741,8 +738,8 @@ export const midgardCekDataMemorySizeV1 = (value: Data): bigint => {
  * ExMemory size of the semantic payload committed by a constant witness.
  * Lists and pairs sum element sizes without an extra container charge.
  */
-export const midgardCekConstantMemorySizeV1 = (
-  type: MidgardCekConstantTypeV1,
+export const midgardCekConstantMemorySize = (
+  type: MidgardCekConstantType,
   payload: Data,
 ): bigint => {
   switch (type.kind) {
@@ -750,7 +747,7 @@ export const midgardCekConstantMemorySizeV1 = (
       if (!(payload instanceof DataI)) {
         throw new Error("V1 integer payload is not DataI");
       }
-      return midgardCekIntegerMemorySizeV1(payload.int);
+      return midgardCekIntegerMemorySize(payload.int);
     case "bytes":
     case "string":
       if (!(payload instanceof DataB)) {
@@ -769,7 +766,7 @@ export const midgardCekConstantMemorySizeV1 = (
       }
       return payload.list.reduce(
         (total, item) =>
-          total + midgardCekConstantMemorySizeV1(type.element, item),
+          total + midgardCekConstantMemorySize(type.element, item),
         0n,
       );
     case "pair":
@@ -781,11 +778,11 @@ export const midgardCekConstantMemorySizeV1 = (
         throw new Error("V1 pair payload is malformed");
       }
       return (
-        midgardCekConstantMemorySizeV1(type.first, payload.fields[0]) +
-        midgardCekConstantMemorySizeV1(type.second, payload.fields[1])
+        midgardCekConstantMemorySize(type.first, payload.fields[0]) +
+        midgardCekConstantMemorySize(type.second, payload.fields[1])
       );
     case "data":
-      return midgardCekDataMemorySizeV1(payload);
+      return midgardCekDataMemorySize(payload);
     case "blsG1":
       return 48n;
     case "blsG2":
@@ -800,26 +797,24 @@ export const midgardCekConstantMemorySizeV1 = (
  * the L1 builtin verifier. Raw Flat is intentionally not the runtime payload:
  * script identity commits the canonical program envelope instead.
  */
-export const encodeMidgardCekCanonicalConstantV1 = (
+export const encodeMidgardCekCanonicalConstant = (
   constant: UPLCConst,
-): MidgardCekCanonicalConstantV1 => {
-  const type = parseMidgardCekConstantTypeV1(constant.type);
+): MidgardCekCanonicalConstant => {
+  const type = parseMidgardCekConstantType(constant.type);
   return Object.freeze({
     type,
-    typeCbor: encodeMidgardCekPlutusDataV1(
+    typeCbor: encodeMidgardCekPlutusData(
       new DataList(constant.type.map((tag) => new DataI(BigInt(tag)))),
     ),
-    payloadCbor: encodeMidgardCekPlutusDataV1(
-      semanticData(type, constant.value),
-    ),
+    payloadCbor: encodeMidgardCekPlutusData(semanticData(type, constant.value)),
   });
 };
 
-export const midgardCekUplcConstantMemorySizeV1 = (
+export const midgardCekUplcConstantMemorySize = (
   constant: UPLCConst,
 ): bigint => {
-  const canonical = encodeMidgardCekCanonicalConstantV1(constant);
-  return midgardCekConstantMemorySizeV1(
+  const canonical = encodeMidgardCekCanonicalConstant(constant);
+  return midgardCekConstantMemorySize(
     canonical.type,
     dataFromCbor(canonical.payloadCbor),
   );

@@ -19,7 +19,7 @@
  *    mutator that the deployed resolver chain consumes). Every set-level root
  *    comes from `keyValuePhasRootWithCount` (`@al-ft/midgard-fault-proofs`),
  *    and every ledger descriptor from
- *    `buildCanonicalMidgardLedgerEntryOutputMaterialV1`. There is not one
+ *    `buildCanonicalMidgardLedgerEntryOutputMaterial`. There is not one
  *    watcher-authored validation predicate in this file: no spend check, no
  *    value equation, no script rule, no interval comparison, no dependency
  *    algorithm. The watcher owns (a) the derivation of the canonical inputs
@@ -35,10 +35,10 @@
  *
  * 2. PUBLISHED REJECTION VOCABULARY. The canonical 50-member `RejectCodes`
  *    vocabulary is partitioned below into the 13 codes the canonical Phase B
- *    pipeline can emit (`WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1`), the
+ *    pipeline can emit (`WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES`), the
  *    27 codes W24's Phase A verifier owns
- *    (`WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1`), and the 10 codes
- *    neither lane claims (`WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1`),
+ *    (`WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES`), and the 10 codes
+ *    neither lane claims (`WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES`),
  *    each of the latter carrying a one-line justification. The three groups are
  *    a partition of the 50, so the W24 + W25 union is provably total: every
  *    canonical code is claimed by exactly one lane or explicitly and
@@ -53,7 +53,7 @@
  *    code recording that the published table needs updating.
  *
  * WHAT `verified` REQUIRES. W29 may map this block to `verified` only on
- * `action: "accept"`, and `WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1` is
+ * `action: "accept"`, and `WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT` is
  * carried inside every result so the contract travels with the record. A
  * non-L2 step is applied from its complete W15/W16 authority-derived effect in
  * the exact W22-authenticated transition order, and every resulting root is
@@ -63,7 +63,7 @@
  *
  * NON-CIRCULAR INPUT BINDING. The transaction bytes are never taken from a
  * caller-supplied list: they come from
- * `canonicalBlockEvidenceFromVerifiedPayloadV1` (the Q03 evidence core), which
+ * `canonicalBlockEvidenceFromVerifiedPayload` (the Q03 evidence core), which
  * re-admits the L1-authenticated header observation, re-derives every root, and
  * authenticates each `transaction_preimages` entry before this module sees it.
  * The W22 record and the W24 record supplied by the caller are both re-checked
@@ -75,7 +75,7 @@
  * FAIL-CLOSED. Every binding failure, decode failure, canonical throw, or
  * bookkeeping inconsistency produces `action: "error"` with a deterministic
  * reason code. Like W22 and W24, the result is frozen, versioned, and
- * digest-bound with `watcherSha256CanonicalJsonV1`, so two runs over the same
+ * digest-bound with `watcherSha256CanonicalJson`, so two runs over the same
  * bytes produce the same `resultDigest`.
  *
  * An *unrun* binding is fail-closed too, which is a separate statement from
@@ -86,7 +86,7 @@
  * gates `accept` on a receipt from each binding rather than on the absence of
  * reason codes, and reports `committed_trace_binding_unrun` /
  * `post_state_binding_unrun` for whichever did not run. The candidate-level
- * entry point (`evaluateWatcherBlockReplayCandidatesV1`), which has no
+ * entry point (`evaluateWatcherBlockReplayCandidates`), which has no
  * committed trace by construction, consequently can never return `accept`: it
  * is an evaluation surface, not an acceptance authority.
  */
@@ -94,29 +94,29 @@
 import { createHash } from "node:crypto";
 
 import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  encodeMidgardSpendInputItemV1,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
   encodeCborArrayRaw,
   encodeCborBytes,
 } from "@al-ft/midgard-core/codec/cbor";
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import {
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
+  canonicalBlockEvidenceFromVerifiedPayload,
   keyValuePhasRootWithCount,
 } from "@al-ft/midgard-fault-proofs";
 import type {
-  AuthenticatedStateQueueHeaderObservationV1,
+  AuthenticatedStateQueueHeaderObservation,
   EventKey,
   EventToStepValue,
-  EvidenceProvenanceV1,
-  HeaderV1,
+  EvidenceProvenance,
+  Header,
   TransitionStep,
 } from "@al-ft/midgard-sdk";
 import {
@@ -124,18 +124,18 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   makeReturn,
   OutputReference,
-  TxOrderEventV1,
+  TxOrderEvent,
   WithdrawalEvent,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
-  buildCanonicalTransitionEffectV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  buildCanonicalTransitionEffect,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  canonicalCommittedWithdrawalTransitionEffectV1,
-  canonicalTransitionEffectFromStatePatchV1,
-  type CanonicalTransitionEffectV1,
-  deriveCanonicalDepositTransitionEffectV1,
+  canonicalCommittedWithdrawalTransitionEffect,
+  type CanonicalTransitionEffect,
+  canonicalTransitionEffectFromStatePatch,
+  deriveCanonicalDepositTransitionEffect,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
@@ -154,50 +154,50 @@ import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 
 import {
-  parseWatcherSettlementIndexerResultV1,
-  type WatcherSettlementIndexerResultV1,
-  type WatcherSettlementResultVerificationContextV1,
+  parseWatcherSettlementIndexerResult,
+  type WatcherSettlementIndexerResult,
+  type WatcherSettlementResultVerificationContext,
 } from "../indexers/settlement-indexer.js";
 import {
-  parseWatcherUserEventIndexerResultV1,
-  WATCHER_FORCED_TX_VALID_V1,
-  type WatcherForcedOperatorVerdictV1,
-  type WatcherForcedTerminalClassificationV1,
-  type WatcherIndexedUserEventV1,
-  type WatcherTerminalUserEventV1,
-  type WatcherUserEventIndexerResultV1,
+  parseWatcherUserEventIndexerResult,
+  WATCHER_FORCED_TX_VALID,
+  type WatcherForcedOperatorVerdict,
+  type WatcherForcedTerminalClassification,
+  type WatcherIndexedUserEvent,
+  type WatcherTerminalUserEvent,
+  type WatcherUserEventIndexerResult,
 } from "../indexers/user-event-indexer.js";
-import type { WatcherL1TransportAttestationContextV1 } from "../l1/l1-adapter.js";
+import type { WatcherL1TransportAttestationContext } from "../l1/l1-adapter.js";
 import {
-  makeWatcherDurablePayloadV1,
-  type WatcherReconstructedStateV1,
-  watcherSha256CanonicalJsonV1,
+  makeWatcherDurablePayload,
+  type WatcherReconstructedState,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
-import type { WatcherHeaderRootReconstructionResultV1 } from "./header-root-reconstruction.js";
-import { WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION } from "./header-root-reconstruction.js";
+import type { WatcherHeaderRootReconstructionResult } from "./header-root-reconstruction.js";
+import { WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION } from "./header-root-reconstruction.js";
 import {
-  makeWatcherPhaseAConfigV1,
-  WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
-  watcherPhaseAQueuedTxsV1,
-  type WatcherPhaseAVerificationResultV1,
+  makeWatcherPhaseAConfig,
+  WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
+  watcherPhaseAQueuedTxs,
+  type WatcherPhaseAVerificationResult,
 } from "./phase-a-verifier.js";
 import {
-  WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-  WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
-  type WatcherRuleBundleV1,
+  WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+  WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+  type WatcherRuleBundle,
 } from "./rule-bundle-v1.js";
 
-export const WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION =
+export const WATCHER_BLOCK_REPLAY_SCHEMA_VERSION =
   "midgard-watcher-block-replay-v1" as const;
 
-export const WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION =
+export const WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION =
   "midgard-watcher-block-replay-downstream-prerequisite-v1" as const;
 
 /**
  * The W29 contract, carried inside every result so a decision cannot be made
  * from the action alone without the qualification that produced it.
  */
-export const WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1 =
+export const WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT =
   'complete_replay_only_v1: action "accept" proves root-exact W25 replay but can never by itself imply W29 "verified". W29 additionally requires an accepting W26 result over downstreamPrerequisite.inputDigest; downstreamPrerequisite.w29Eligibility therefore remains "requires_w26_accept" for every W25 action.' as const;
 
 // ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ export const WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1 =
  * mismatch and every canonical rejection is attributed to exactly one of them,
  * so a diverging block always names the stage that diverged.
  */
-export const WATCHER_BLOCK_REPLAY_STAGES_V1 = [
+export const WATCHER_BLOCK_REPLAY_STAGES = [
   "prior_state",
   "dependencies",
   "spends",
@@ -220,11 +220,11 @@ export const WATCHER_BLOCK_REPLAY_STAGES_V1 = [
   "post_state",
 ] as const;
 
-export type WatcherBlockReplayStageV1 =
-  (typeof WATCHER_BLOCK_REPLAY_STAGES_V1)[number];
+export type WatcherBlockReplayStage =
+  (typeof WATCHER_BLOCK_REPLAY_STAGES)[number];
 
-const STAGE_ORDER: ReadonlyMap<WatcherBlockReplayStageV1, number> = new Map(
-  WATCHER_BLOCK_REPLAY_STAGES_V1.map((stage, index) => [stage, index]),
+const STAGE_ORDER: ReadonlyMap<WatcherBlockReplayStage, number> = new Map(
+  WATCHER_BLOCK_REPLAY_STAGES.map((stage, index) => [stage, index]),
 );
 
 /**
@@ -237,7 +237,7 @@ const STAGE_ORDER: ReadonlyMap<WatcherBlockReplayStageV1, number> = new Map(
  * canonical-layer surprise, and an unmapped phase fails closed with
  * `missing_rejection_stage` rather than being silently bucketed.
  */
-export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE_V1 = Object.freeze({
+export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE = Object.freeze({
   resolveInputs: "spends",
   scriptSources: "scripts",
   nativeScripts: "scripts",
@@ -247,7 +247,7 @@ export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE_V1 = Object.freeze({
   ledgerDelta: "post_state",
   terminal: "post_state",
 } as const) satisfies Partial<
-  Record<MidgardValidationPhaseName, WatcherBlockReplayStageV1>
+  Record<MidgardValidationPhaseName, WatcherBlockReplayStage>
 >;
 
 /**
@@ -258,7 +258,7 @@ export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE_V1 = Object.freeze({
  * stage; the canonical detail text can, and the suite pins both prefixes
  * against the canonical function so a producer-side rewording is caught.
  */
-export const WATCHER_BLOCK_REPLAY_REFERENCE_DETAIL_PREFIXES_V1 = Object.freeze([
+export const WATCHER_BLOCK_REPLAY_REFERENCE_DETAIL_PREFIXES = Object.freeze([
   "reference input not found: ",
   "failed to decode reference input output ",
 ] as const);
@@ -270,7 +270,7 @@ export const WATCHER_BLOCK_REPLAY_REFERENCE_DETAIL_PREFIXES_V1 = Object.freeze([
  * :1196-1221). Both carry the default `consensusPhase: "resolveInputs"`, so
  * they are attributed by code, not by phase.
  */
-export const WATCHER_BLOCK_REPLAY_DEPENDENCY_REJECT_CODES_V1 = Object.freeze([
+export const WATCHER_BLOCK_REPLAY_DEPENDENCY_REJECT_CODES = Object.freeze([
   RejectCodes.DependencyCycle,
   RejectCodes.DependsOnRejectedTx,
 ] as const);
@@ -280,7 +280,7 @@ export const WATCHER_BLOCK_REPLAY_DEPENDENCY_REJECT_CODES_V1 = Object.freeze([
 // ---------------------------------------------------------------------------
 
 /** The full canonical vocabulary, in `RejectCodes` declaration order. */
-export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1 = Object.freeze(
+export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES = Object.freeze(
   Object.values(RejectCodes),
 );
 
@@ -299,7 +299,7 @@ export const WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1 = Object.freeze(
  * `E_PLUTUS_SCRIPT_INVALID` (:629, :717, :729), `E_CEK_PROGRAM_MATERIAL`
  * (:247, :551).
  */
-export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1 = Object.freeze([
+export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES = Object.freeze([
   RejectCodes.InvalidOutput,
   RejectCodes.InvalidFieldType,
   RejectCodes.MissingRequiredWitness,
@@ -316,7 +316,7 @@ export const WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1 = Object.freeze([
 ] as const);
 
 const REACHABLE_SET: ReadonlySet<string> = new Set<string>(
-  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1,
+  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
 );
 
 /**
@@ -327,7 +327,7 @@ const REACHABLE_SET: ReadonlySet<string> = new Set<string>(
  * The suite asserts this list equals the set of codes its evidence corpus
  * actually produced, so it cannot drift into an unbacked claim.
  */
-export const WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1 = Object.freeze([
+export const WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.InvalidFieldType,
   RejectCodes.MissingRequiredWitness,
   RejectCodes.NativeScriptInvalid,
@@ -342,21 +342,21 @@ export const WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1 = Object.freeze([
 ] as const);
 
 const EVIDENCED_SET: ReadonlySet<string> = new Set<string>(
-  WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1,
+  WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES,
 );
 
 /**
  * Reachable in the canonical Phase B control flow but not producible from an
  * authenticated canonical block: an earlier canonical rule always fires first.
  */
-export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODES_V1 = Object.freeze(
-  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1.filter(
+export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODES = Object.freeze(
+  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES.filter(
     (code) => !EVIDENCED_SET.has(code),
   ),
 );
 
 /** One line per dominated code, naming the canonical rule that fires first. */
-export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1 =
+export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
   Object.freeze({
     [RejectCodes.InvalidOutput]:
       "dominated: prior-state entries must produce an exact canonical V1 ledger descriptor (buildCanonicalMidgardLedgerEntryOutputMaterialV1) before the replay starts, so an output byte string that decodeMidgardTxOutput would reject never reaches Phase B - it is reported as malformed_prior_state instead.",
@@ -373,39 +373,37 @@ export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1 =
  * and phase-b.ts has no `reject(...)` call site for any of these codes. W24
  * publishes each one's reachability and per-code evidence.
  */
-export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1 = Object.freeze(
-  [
-    RejectCodes.CborDeserialization,
-    RejectCodes.TxHashMismatch,
-    RejectCodes.EmptyInputs,
-    RejectCodes.DuplicateInputInTx,
-    RejectCodes.InvalidValidityIntervalFormat,
-    RejectCodes.MinFee,
-    RejectCodes.InvalidSignature,
-    RejectCodes.IsValidFalseForbidden,
-    RejectCodes.AuxDataForbidden,
-    RejectCodes.NetworkIdMismatch,
-    RejectCodes.TxVersion,
-    RejectCodes.TxSize,
-    RejectCodes.ValueSize,
-    RejectCodes.InputCount,
-    RejectCodes.ReferenceInputCount,
-    RejectCodes.OutputCount,
-    RejectCodes.AddressWitnessCount,
-    RejectCodes.RequiredSignerCount,
-    RejectCodes.ScriptExecutionCount,
-    RejectCodes.ObserverCount,
-    RejectCodes.FieldPreimageSize,
-    RejectCodes.LedgerOutputSize,
-    RejectCodes.ScriptProgramSize,
-    RejectCodes.ScriptProgramEncoding,
-    RejectCodes.NativeScriptDepth,
-    RejectCodes.NativeScriptNodeCount,
-    RejectCodes.AssetCount,
-  ] as const,
-);
+export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES = Object.freeze([
+  RejectCodes.CborDeserialization,
+  RejectCodes.TxHashMismatch,
+  RejectCodes.EmptyInputs,
+  RejectCodes.DuplicateInputInTx,
+  RejectCodes.InvalidValidityIntervalFormat,
+  RejectCodes.MinFee,
+  RejectCodes.InvalidSignature,
+  RejectCodes.IsValidFalseForbidden,
+  RejectCodes.AuxDataForbidden,
+  RejectCodes.NetworkIdMismatch,
+  RejectCodes.TxVersion,
+  RejectCodes.TxSize,
+  RejectCodes.ValueSize,
+  RejectCodes.InputCount,
+  RejectCodes.ReferenceInputCount,
+  RejectCodes.OutputCount,
+  RejectCodes.AddressWitnessCount,
+  RejectCodes.RequiredSignerCount,
+  RejectCodes.ScriptExecutionCount,
+  RejectCodes.ObserverCount,
+  RejectCodes.FieldPreimageSize,
+  RejectCodes.LedgerOutputSize,
+  RejectCodes.ScriptProgramSize,
+  RejectCodes.ScriptProgramEncoding,
+  RejectCodes.NativeScriptDepth,
+  RejectCodes.NativeScriptNodeCount,
+  RejectCodes.AssetCount,
+] as const);
 
-export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION_V1 =
+export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION =
   "owned by W24: a transaction only reaches the canonical Phase B pipeline after validatePhaseASingle accepted it, and phase-b.ts carries no reject(...) call site for this code. W24 publishes its reachability and per-code evidence." as const;
 
 /**
@@ -414,7 +412,7 @@ export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION_V1 =
  * reachable sets and the Phase-A-owned set these exhaust the 50-member
  * vocabulary, which is what makes the W24 + W25 union total.
  */
-export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS_V1 =
+export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS =
   Object.freeze({
     [RejectCodes.UnsupportedFieldNonEmpty]:
       "no call site in either pipeline: V1 canonical decoding rejects unsupported fields structurally, so the code is never constructed.",
@@ -439,10 +437,9 @@ export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS_V1 =
   } as const);
 
 /** The 10 unclaimed codes, in `RejectCodes` declaration order. */
-export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1 = Object.freeze(
-  WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1.filter(
-    (code) =>
-      code in WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS_V1,
+export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES = Object.freeze(
+  WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES.filter(
+    (code) => code in WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS,
   ),
 );
 
@@ -451,7 +448,7 @@ export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1 = Object.freeze(
 // ---------------------------------------------------------------------------
 
 /** Every reason this evaluation can report, in a fixed total order. */
-export const WATCHER_BLOCK_REPLAY_REASON_CODES_V1 = [
+export const WATCHER_BLOCK_REPLAY_REASON_CODES = [
   "reconstruction_unsupported_schema",
   "reconstruction_digest_mismatch",
   "reconstruction_not_accepted",
@@ -491,14 +488,14 @@ export const WATCHER_BLOCK_REPLAY_REASON_CODES_V1 = [
   "post_state_root_mismatch",
 ] as const;
 
-export type WatcherBlockReplayReasonCodeV1 =
-  (typeof WATCHER_BLOCK_REPLAY_REASON_CODES_V1)[number];
+export type WatcherBlockReplayReasonCode =
+  (typeof WATCHER_BLOCK_REPLAY_REASON_CODES)[number];
 
 export class WatcherBlockReplayError extends Error {
-  readonly code: WatcherBlockReplayReasonCodeV1;
+  readonly code: WatcherBlockReplayReasonCode;
   readonly path: string;
 
-  constructor(code: WatcherBlockReplayReasonCodeV1, path: string) {
+  constructor(code: WatcherBlockReplayReasonCode, path: string) {
     super(`${code}: ${path}`);
     this.name = "WatcherBlockReplayError";
     this.code = code;
@@ -506,21 +503,21 @@ export class WatcherBlockReplayError extends Error {
   }
 }
 
-const fail = (code: WatcherBlockReplayReasonCodeV1, path: string): never => {
+const fail = (code: WatcherBlockReplayReasonCode, path: string): never => {
   throw new WatcherBlockReplayError(code, path);
 };
 
-const reasonCodeOf = (error: unknown): WatcherBlockReplayReasonCodeV1 =>
+const reasonCodeOf = (error: unknown): WatcherBlockReplayReasonCode =>
   error instanceof WatcherBlockReplayError
     ? error.code
     : "canonical_replay_threw";
 
 const orderReasonCodes = (
-  codes: Iterable<WatcherBlockReplayReasonCodeV1>,
-): readonly WatcherBlockReplayReasonCodeV1[] => {
+  codes: Iterable<WatcherBlockReplayReasonCode>,
+): readonly WatcherBlockReplayReasonCode[] => {
   const present = new Set<string>(codes);
   return Object.freeze(
-    WATCHER_BLOCK_REPLAY_REASON_CODES_V1.filter((code) => present.has(code)),
+    WATCHER_BLOCK_REPLAY_REASON_CODES.filter((code) => present.has(code)),
   );
 };
 
@@ -528,7 +525,7 @@ const orderReasonCodes = (
 // Result shape
 // ---------------------------------------------------------------------------
 
-export type WatcherBlockReplayRejectionV1 = Readonly<{
+export type WatcherBlockReplayRejection = Readonly<{
   /** Position in the canonical block transaction order. */
   index: number;
   /** 32-byte canonical transaction id, lowercase hex. */
@@ -540,13 +537,13 @@ export type WatcherBlockReplayRejectionV1 = Readonly<{
   /** Index of `consensusPhase` in the W23 validation phase priority. */
   consensusPhasePriority: number;
   /** Replay stage this rejection is attributed to. */
-  stage: WatcherBlockReplayStageV1;
+  stage: WatcherBlockReplayStage;
   /** Exact canonical `detail`, copied unchanged. */
   detail: string | null;
 }>;
 
 /** One canonical ledger mutation and the roots it moved between. */
-export type WatcherBlockReplayIntermediateRootV1 = Readonly<{
+export type WatcherBlockReplayIntermediateRoot = Readonly<{
   /** Position in the replay's total mutation order, from zero. */
   sequence: number;
   /** Index of the accepted transaction, or null for a non-L2 event. */
@@ -554,7 +551,7 @@ export type WatcherBlockReplayIntermediateRootV1 = Readonly<{
   txId: string | null;
   /** Authenticated transition step, null for candidate-only replay. */
   stepIndex: number | null;
-  phase: WatcherBlockReplayCommittedStepV1["phase"] | null;
+  phase: WatcherBlockReplayCommittedStep["phase"] | null;
   operation: "delete" | "insert";
   outRef: string;
   preRoot: string;
@@ -562,7 +559,7 @@ export type WatcherBlockReplayIntermediateRootV1 = Readonly<{
 }>;
 
 /** The state boundary around one accepted transaction. */
-export type WatcherBlockReplayTransactionRootV1 = Readonly<{
+export type WatcherBlockReplayTransactionRoot = Readonly<{
   /** Position in the canonical accepted order. */
   txIndex: number;
   txId: string;
@@ -579,11 +576,11 @@ export type WatcherBlockReplayTransactionRootV1 = Readonly<{
   committedPostRoot: string | null;
 }>;
 
-export type WatcherBlockReplayForcedValidationFactV1 = Readonly<{
+export type WatcherBlockReplayForcedValidationFact = Readonly<{
   eventKeyFingerprint: string;
   stepIndex: number;
-  authenticatedOperatorValidity: WatcherForcedOperatorVerdictV1;
-  canonicalOperatorValidity: WatcherForcedOperatorVerdictV1;
+  authenticatedOperatorValidity: WatcherForcedOperatorVerdict;
+  canonicalOperatorValidity: WatcherForcedOperatorVerdict;
   phaseAStatus: "accepted" | "rejected";
   phaseARejectCode: RejectCode | null;
   phaseBStatus: "not_run" | "accepted" | "rejected";
@@ -592,34 +589,34 @@ export type WatcherBlockReplayForcedValidationFactV1 = Readonly<{
   canonicalEffectMutationCount: number;
 }>;
 
-export type WatcherBlockReplayStageMismatchV1 = Readonly<{
-  stage: WatcherBlockReplayStageV1;
-  reasonCode: WatcherBlockReplayReasonCodeV1;
+export type WatcherBlockReplayStageMismatch = Readonly<{
+  stage: WatcherBlockReplayStage;
+  reasonCode: WatcherBlockReplayReasonCode;
   /** Stable JSON-path-like locator for the diverging value. */
   field: string;
   expected: string;
   actual: string;
 }>;
 
-export type WatcherBlockReplayActionV1 = "accept" | "reject" | "error";
+export type WatcherBlockReplayAction = "accept" | "reject" | "error";
 
-export type WatcherBlockReplayDownstreamPrerequisiteV1 = Readonly<{
-  schemaVersion: typeof WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION;
+export type WatcherBlockReplayDownstreamPrerequisite = Readonly<{
+  schemaVersion: typeof WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION;
   requiredVerifier: "W26";
   inputDigest: string;
   w29Eligibility: "requires_w26_accept";
 }>;
 
-export type WatcherBlockReplayResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION;
-  action: WatcherBlockReplayActionV1;
-  reasonCodes: readonly WatcherBlockReplayReasonCodeV1[];
+export type WatcherBlockReplayResult = Readonly<{
+  schemaVersion: typeof WATCHER_BLOCK_REPLAY_SCHEMA_VERSION;
+  action: WatcherBlockReplayAction;
+  reasonCodes: readonly WatcherBlockReplayReasonCode[];
   /** The W29 contract, carried with the record. */
-  verifiedRequires: typeof WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1;
-  downstreamPrerequisite: WatcherBlockReplayDownstreamPrerequisiteV1;
+  verifiedRequires: typeof WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT;
+  downstreamPrerequisite: WatcherBlockReplayDownstreamPrerequisite;
   /** W23 rejection-selection rule that produced `selectedRejection`. */
-  rejectionSelection: typeof WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION;
-  consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  rejectionSelection: typeof WATCHER_RULE_BUNDLE_REJECTION_SELECTION;
+  consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   headerHash: string | null;
   payloadEnvelopeSha256: string | null;
   payloadSha256: string | null;
@@ -641,52 +638,52 @@ export type WatcherBlockReplayResultV1 = Readonly<{
   acceptedCount: number;
   /** Accepted transaction ids in canonical accepted order. */
   acceptedTxIds: readonly string[];
-  intermediateRoots: readonly WatcherBlockReplayIntermediateRootV1[];
-  transactionRoots: readonly WatcherBlockReplayTransactionRootV1[];
+  intermediateRoots: readonly WatcherBlockReplayIntermediateRoot[];
+  transactionRoots: readonly WatcherBlockReplayTransactionRoot[];
   /** Exact canonical root boundary around every authenticated non-L2 event. */
-  eventRoots: readonly WatcherBlockReplayEventRootV1[];
+  eventRoots: readonly WatcherBlockReplayEventRoot[];
   /** Canonical validity/effect evidence for forced steps, in step order. */
-  forcedValidationFacts: readonly WatcherBlockReplayForcedValidationFactV1[];
+  forcedValidationFacts: readonly WatcherBlockReplayForcedValidationFact[];
   /** Ordered by replay stage, then by `field`. */
-  stageMismatches: readonly WatcherBlockReplayStageMismatchV1[];
+  stageMismatches: readonly WatcherBlockReplayStageMismatch[];
   /** Rejections in canonical block order (ascending `index`). */
-  rejections: readonly WatcherBlockReplayRejectionV1[];
+  rejections: readonly WatcherBlockReplayRejection[];
   /** The W23-priority first fault: lowest phase priority, then `index`. */
-  selectedRejection: WatcherBlockReplayRejectionV1 | null;
+  selectedRejection: WatcherBlockReplayRejection | null;
   resultDigest: string;
 }>;
 
-const admittedFullBlockReplayResultsV1 = new WeakSet<object>();
+const admittedFullBlockReplayResults = new WeakSet<object>();
 
 /**
  * Production replay artifacts may consume only a result minted by the full
  * W21/W22/W23/W24-bound entry point below. A digest-correct structural clone
  * is durable evidence, not live replay authority.
  */
-export const assertWatcherFullBlockReplayResultV1 = (
-  result: WatcherBlockReplayResultV1,
+export const assertWatcherFullBlockReplayResult = (
+  result: WatcherBlockReplayResult,
 ): void => {
-  if (!admittedFullBlockReplayResultsV1.has(result)) {
+  if (!admittedFullBlockReplayResults.has(result)) {
     throw new Error("watcher full block-replay result is not admitted");
   }
 };
 
-const admitFullBlockReplayResultV1 = (
-  result: WatcherBlockReplayResultV1,
-): WatcherBlockReplayResultV1 => {
-  admittedFullBlockReplayResultsV1.add(result);
+const admitFullBlockReplayResult = (
+  result: WatcherBlockReplayResult,
+): WatcherBlockReplayResult => {
+  admittedFullBlockReplayResults.add(result);
   return result;
 };
 
 const digestResult = (
   result: Omit<
-    WatcherBlockReplayResultV1,
+    WatcherBlockReplayResult,
     "resultDigest" | "downstreamPrerequisite"
   >,
-): WatcherBlockReplayResultV1 =>
+): WatcherBlockReplayResult =>
   Object.freeze(
     (() => {
-      const inputDigest = watcherSha256CanonicalJsonV1({
+      const inputDigest = watcherSha256CanonicalJson({
         headerHash: result.headerHash,
         payloadEnvelopeSha256: result.payloadEnvelopeSha256,
         reconstructionDigest: result.reconstructionDigest,
@@ -701,7 +698,7 @@ const digestResult = (
       });
       const downstreamPrerequisite = Object.freeze({
         schemaVersion:
-          WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION,
+          WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
         requiredVerifier: "W26" as const,
         inputDigest,
         w29Eligibility: "requires_w26_accept" as const,
@@ -709,12 +706,12 @@ const digestResult = (
       const withPrerequisite = { ...result, downstreamPrerequisite };
       return {
         ...withPrerequisite,
-        resultDigest: watcherSha256CanonicalJsonV1(withPrerequisite),
+        resultDigest: watcherSha256CanonicalJson(withPrerequisite),
       };
     })(),
   );
 
-export type WatcherBlockReplayContextV1 = Readonly<{
+export type WatcherBlockReplayContext = Readonly<{
   headerHash: string;
   payloadEnvelopeSha256: string;
   payloadSha256: string;
@@ -752,17 +749,17 @@ const EMPTY_CORE = {
 } as const;
 
 const errorResult = (
-  reasonCodes: Iterable<WatcherBlockReplayReasonCodeV1>,
-  context: WatcherBlockReplayContextV1 | null,
+  reasonCodes: Iterable<WatcherBlockReplayReasonCode>,
+  context: WatcherBlockReplayContext | null,
   transactionCount: number,
-): WatcherBlockReplayResultV1 =>
+): WatcherBlockReplayResult =>
   digestResult({
-    schemaVersion: WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_BLOCK_REPLAY_SCHEMA_VERSION,
     action: "error",
     reasonCodes: orderReasonCodes(reasonCodes),
-    verifiedRequires: WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1,
-    rejectionSelection: WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    verifiedRequires: WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT,
+    rejectionSelection: WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     ...(context ?? NULL_CONTEXT),
     authorityManifestDigest: null,
     sourceManifestDigest: null,
@@ -803,10 +800,10 @@ const normalizeRootHex = (root: string): string =>
  * rejection code, so nothing on-chain distinguishes them; the phase only
  * picks which tag the leaf carries.
  */
-export const watcherBlockReplayForcedValidityForRejectCodeV1 = (
+export const watcherBlockReplayForcedValidityForRejectCode = (
   code: RejectCode,
   phase: "phaseA" | "phaseB",
-): WatcherForcedOperatorVerdictV1 => {
+): WatcherForcedOperatorVerdict => {
   if (code === RejectCodes.InputNotFound) {
     return "InputNotFound";
   }
@@ -842,14 +839,14 @@ export const watcherBlockReplayForcedValidityForRejectCodeV1 = (
  * block-graph properties; the reference-input detail prefixes win next for the
  * same reason; everything else follows the canonical phase.
  */
-export const watcherBlockReplayStageForRejectionV1 = (input: {
+export const watcherBlockReplayStageForRejection = (input: {
   readonly code: RejectCode;
   readonly consensusPhase: MidgardValidationPhaseName;
   readonly detail: string | null;
-}): WatcherBlockReplayStageV1 | null => {
+}): WatcherBlockReplayStage | null => {
   if (
     (
-      WATCHER_BLOCK_REPLAY_DEPENDENCY_REJECT_CODES_V1 as readonly string[]
+      WATCHER_BLOCK_REPLAY_DEPENDENCY_REJECT_CODES as readonly string[]
     ).includes(input.code)
   ) {
     return "dependencies";
@@ -857,15 +854,15 @@ export const watcherBlockReplayStageForRejectionV1 = (input: {
   const detail = input.detail;
   if (
     detail !== null &&
-    WATCHER_BLOCK_REPLAY_REFERENCE_DETAIL_PREFIXES_V1.some((prefix) =>
+    WATCHER_BLOCK_REPLAY_REFERENCE_DETAIL_PREFIXES.some((prefix) =>
       detail.startsWith(prefix),
     )
   ) {
     return "references";
   }
-  const stage: WatcherBlockReplayStageV1 | undefined = (
-    WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE_V1 as Partial<
-      Record<string, WatcherBlockReplayStageV1>
+  const stage: WatcherBlockReplayStage | undefined = (
+    WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE as Partial<
+      Record<string, WatcherBlockReplayStage>
     >
   )[input.consensusPhase];
   return stage ?? null;
@@ -879,10 +876,10 @@ export const watcherBlockReplayStageForRejectionV1 = (input: {
  * path throws, and the caller turns a throw into an error result, so an
  * unrecognisable canonical rejection can never become an acceptance.
  */
-export const watcherBlockReplayRejectionProjectionV1 = (input: {
+export const watcherBlockReplayRejectionProjection = (input: {
   readonly rejected: RejectedTx;
   readonly indexByTxId: ReadonlyMap<string, number>;
-}): WatcherBlockReplayRejectionV1 => {
+}): WatcherBlockReplayRejection => {
   const { rejected, indexByTxId } = input;
   const txId = rejected.txId.toString("hex");
   const index = indexByTxId.get(txId);
@@ -891,19 +888,19 @@ export const watcherBlockReplayRejectionProjectionV1 = (input: {
   }
   const code: string = rejected.code;
   if (
-    !WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1.includes(code as RejectCode)
+    !WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES.includes(code as RejectCode)
   ) {
     fail("unknown_reject_code", `$.rejections[${txId}].code`);
   }
   const consensusPhasePriority =
-    WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY.indexOf(
+    WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY.indexOf(
       rejected.consensusPhase as MidgardValidationPhaseName,
     );
   if (consensusPhasePriority < 0) {
     fail("missing_rejection_stage", `$.rejections[${txId}].consensusPhase`);
   }
   const consensusPhase = rejected.consensusPhase as MidgardValidationPhaseName;
-  const stage = watcherBlockReplayStageForRejectionV1({
+  const stage = watcherBlockReplayStageForRejection({
     code: rejected.code,
     consensusPhase,
     detail: rejected.detail,
@@ -917,7 +914,7 @@ export const watcherBlockReplayRejectionProjectionV1 = (input: {
     code: rejected.code,
     consensusPhase,
     consensusPhasePriority,
-    stage: stage as WatcherBlockReplayStageV1,
+    stage: stage as WatcherBlockReplayStage,
     detail: rejected.detail,
   });
 };
@@ -929,9 +926,9 @@ export const watcherBlockReplayRejectionProjectionV1 = (input: {
  * implements the tie-break - an explicit clause would be unreachable.
  */
 const selectRejection = (
-  rejections: readonly WatcherBlockReplayRejectionV1[],
-): WatcherBlockReplayRejectionV1 | null => {
-  let selected: WatcherBlockReplayRejectionV1 | null = null;
+  rejections: readonly WatcherBlockReplayRejection[],
+): WatcherBlockReplayRejection | null => {
+  let selected: WatcherBlockReplayRejection | null = null;
   for (const rejection of rejections) {
     if (
       selected === null ||
@@ -944,8 +941,8 @@ const selectRejection = (
 };
 
 const orderStageMismatches = (
-  mismatches: readonly WatcherBlockReplayStageMismatchV1[],
-): readonly WatcherBlockReplayStageMismatchV1[] =>
+  mismatches: readonly WatcherBlockReplayStageMismatch[],
+): readonly WatcherBlockReplayStageMismatch[] =>
   Object.freeze(
     [...mismatches].sort((left, right) => {
       const stageDelta =
@@ -963,7 +960,7 @@ const orderStageMismatches = (
 // ---------------------------------------------------------------------------
 
 /** A prior-state ledger entry as the W21 store holds it: hex out-ref and output. */
-export type WatcherBlockReplayPriorUtxoV1 = Readonly<{
+export type WatcherBlockReplayPriorUtxo = Readonly<{
   outRef: string;
   outputCbor: string;
 }>;
@@ -974,14 +971,14 @@ const HEX_BYTES = /^(?:[0-9a-f]{2})+$/u;
  * Turns the supplied prior-state entries into canonical ledger entries and
  * recomputes their PHAS root with the canonical helper.
  *
- * Every value is canonicalised by `buildCanonicalMidgardLedgerEntryOutputMaterialV1`,
+ * Every value is canonicalised by `buildCanonicalMidgardLedgerEntryOutputMaterial`,
  * the exact descriptor builder the canonical reconstruction uses for
  * `block_body.utxos` (reconstruct.ts:816-826), so the root computed here is
  * comparable to the header's committed roots by construction rather than by
  * agreement.
  */
-export const watcherBlockReplayPriorStateV1 = async (
-  entries: readonly WatcherBlockReplayPriorUtxoV1[],
+export const watcherBlockReplayPriorState = async (
+  entries: readonly WatcherBlockReplayPriorUtxo[],
 ): Promise<{
   readonly ledgerEntries: readonly ValidationMachineLedgerEntry[];
   readonly root: string;
@@ -1002,7 +999,7 @@ export const watcherBlockReplayPriorStateV1 = async (
     const output = Buffer.from(entry.outputCbor, "hex");
     let descriptorCbor: Buffer;
     try {
-      descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef,
         outputCbor: output,
       }).descriptorCbor;
@@ -1034,7 +1031,7 @@ export const watcherBlockReplayPriorStateV1 = async (
  * the script budget is enforced because the canonical default for a validating
  * node is enforcement.
  */
-export const WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY_V1 = 1 as const;
+export const WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY = 1 as const;
 
 /**
  * Builds the canonical `PhaseBConfig` from the L1-committed header. Nothing
@@ -1042,15 +1039,15 @@ export const WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY_V1 = 1 as const;
  * other two values are pinned constants that cannot change a verdict's
  * direction.
  */
-export const makeWatcherPhaseBConfigV1 = (header: HeaderV1): PhaseBConfig =>
+export const makeWatcherPhaseBConfig = (header: Header): PhaseBConfig =>
   Object.freeze({
     nowCardanoSlotNo: header.blockSlot,
-    bucketConcurrency: WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY_V1,
+    bucketConcurrency: WATCHER_BLOCK_REPLAY_BUCKET_CONCURRENCY,
     enforceScriptBudget: true,
   });
 
 /** The committed transition-trace step material the events stage binds. */
-export type WatcherBlockReplayCommittedStepV1 = Readonly<{
+export type WatcherBlockReplayCommittedStep = Readonly<{
   stepIndex: number;
   phase: "Withdrawal" | "ForcedTransaction" | "L2Transaction" | "Deposit";
   /** L2 transaction id when `phase` is `L2Transaction`, else null. */
@@ -1065,22 +1062,22 @@ export type WatcherBlockReplayCommittedStepV1 = Readonly<{
   eventToStepPhase: string | null;
 }>;
 
-export type WatcherBlockReplayUserEventVerificationContextV1 = Readonly<{
+export type WatcherBlockReplayUserEventVerificationContext = Readonly<{
   policy: unknown;
   previousState: unknown;
   observation: unknown;
   publicContext: unknown;
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
 }>;
 
-export type WatcherBlockReplayUserEventAuthorityV1 = Readonly<{
+export type WatcherBlockReplayUserEventAuthority = Readonly<{
   result: unknown;
-  context: WatcherBlockReplayUserEventVerificationContextV1;
+  context: WatcherBlockReplayUserEventVerificationContext;
 }>;
 
-export type WatcherBlockReplaySettlementAuthorityV1 = Readonly<{
+export type WatcherBlockReplaySettlementAuthority = Readonly<{
   result: unknown;
-  context: WatcherSettlementResultVerificationContextV1;
+  context: WatcherSettlementResultVerificationContext;
   /** Selects the exact accepted observation whose transition is authoritative. */
   observationDigest: string;
 }>;
@@ -1090,21 +1087,21 @@ export type WatcherBlockReplaySettlementAuthorityV1 = Readonly<{
  * withdrawals additionally require the exact parser-recomputed W16 terminal
  * transition that commits whether the L2 out-ref was consumed or refunded.
  */
-export type WatcherBlockReplayEventAuthorityV1 = Readonly<{
+export type WatcherBlockReplayEventAuthority = Readonly<{
   eventKey: EventKey;
-  phase: Exclude<WatcherBlockReplayCommittedStepV1["phase"], "L2Transaction">;
-  userEvent: WatcherBlockReplayUserEventAuthorityV1;
-  settlement?: WatcherBlockReplaySettlementAuthorityV1 | null;
-  transitionEffect: CanonicalTransitionEffectV1;
+  phase: Exclude<WatcherBlockReplayCommittedStep["phase"], "L2Transaction">;
+  userEvent: WatcherBlockReplayUserEventAuthority;
+  settlement?: WatcherBlockReplaySettlementAuthority | null;
+  transitionEffect: CanonicalTransitionEffect;
   /** Required only for a forced order; exact bytes are compact/commitment-bound to W15. */
   canonicalNativeTxCbor?: Uint8Array | null;
   /** Canonical Phase-A program material for the forced native transaction. */
   programMaterialSidecarCbor?: Uint8Array | null;
 }>;
 
-export type WatcherBlockReplayEventRootV1 = Readonly<{
+export type WatcherBlockReplayEventRoot = Readonly<{
   stepIndex: number;
-  phase: WatcherBlockReplayEventAuthorityV1["phase"];
+  phase: WatcherBlockReplayEventAuthority["phase"];
   eventKeyFingerprint: string;
   preRoot: string;
   postRoot: string;
@@ -1118,7 +1115,7 @@ const eventKeyTxId = (eventKey: EventKey): string | null =>
 
 const phaseForEventKey = (
   eventKey: EventKey,
-): WatcherBlockReplayCommittedStepV1["phase"] =>
+): WatcherBlockReplayCommittedStep["phase"] =>
   "DepositEventKey" in eventKey
     ? "Deposit"
     : "WithdrawalEventKey" in eventKey
@@ -1143,14 +1140,14 @@ const eventKeyFingerprint = (eventKey: EventKey): string => {
   return `ForcedTransaction:${id.transactionId}:${id.outputIndex.toString()}`;
 };
 
-type ValidatedEventAuthorityV1 = Readonly<{
-  phase: WatcherBlockReplayEventAuthorityV1["phase"];
+type ValidatedEventAuthority = Readonly<{
+  phase: WatcherBlockReplayEventAuthority["phase"];
   eventKeyFingerprint: string;
-  effect: CanonicalTransitionEffectV1;
+  effect: CanonicalTransitionEffect;
   canonicalNativeTxCbor: Buffer | null;
   programMaterialSidecarCbor: Buffer | null;
-  terminalClassification: WatcherForcedTerminalClassificationV1 | null;
-  userEvent: WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1;
+  terminalClassification: WatcherForcedTerminalClassification | null;
+  userEvent: WatcherIndexedUserEvent | WatcherTerminalUserEvent;
   authorityManifest: Readonly<Record<string, unknown>>;
   effectManifest: Readonly<Record<string, unknown>>;
 }>;
@@ -1159,8 +1156,8 @@ const sha256Hex = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
 const userEventKindForPhase = (
-  phase: WatcherBlockReplayEventAuthorityV1["phase"],
-): WatcherIndexedUserEventV1["kind"] =>
+  phase: WatcherBlockReplayEventAuthority["phase"],
+): WatcherIndexedUserEvent["kind"] =>
   phase === "Deposit"
     ? "deposit"
     : phase === "Withdrawal"
@@ -1192,12 +1189,12 @@ const ledgerOutRefCborHex = (value: {
   readonly transactionId: string;
   readonly outputIndex: bigint;
 }): string =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(value.transactionId, "hex"),
     outputIndex: Number(value.outputIndex),
   }).toString("hex");
 
-const l1AssetsFromOutputCborV1 = (
+const l1AssetsFromOutputCbor = (
   outputCborHex: string,
 ): Readonly<Record<string, bigint>> => {
   const output = CML.TransactionOutput.from_cbor_hex(outputCborHex);
@@ -1226,7 +1223,7 @@ const l1AssetsFromOutputCborV1 = (
 };
 
 const decodeUserEventIdCborHex = (
-  event: WatcherIndexedUserEventV1,
+  event: WatcherIndexedUserEvent,
 ): string | null => {
   try {
     const schema =
@@ -1234,7 +1231,7 @@ const decodeUserEventIdCborHex = (
         ? DepositEvent
         : event.kind === "withdrawal"
           ? WithdrawalEvent
-          : TxOrderEventV1;
+          : TxOrderEvent;
     const decoded = LucidData.from(event.eventCborHex, schema as never) as {
       readonly id: unknown;
     };
@@ -1245,8 +1242,8 @@ const decodeUserEventIdCborHex = (
 };
 
 const allUserEvents = (
-  result: WatcherUserEventIndexerResultV1,
-): readonly (WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1)[] =>
+  result: WatcherUserEventIndexerResult,
+): readonly (WatcherIndexedUserEvent | WatcherTerminalUserEvent)[] =>
   result.state === null
     ? []
     : [
@@ -1255,8 +1252,8 @@ const allUserEvents = (
       ];
 
 const authoritativeHistoryDigests = (
-  result: WatcherUserEventIndexerResultV1,
-  event: WatcherIndexedUserEventV1,
+  result: WatcherUserEventIndexerResult,
+  event: WatcherIndexedUserEvent,
 ): readonly string[] =>
   result.state === null
     ? []
@@ -1278,15 +1275,15 @@ const authoritativeHistoryDigests = (
           .map(({ entryDigest }) => entryDigest),
       );
 
-const parseSettlementAuthorityV1 = (
-  authority: WatcherBlockReplaySettlementAuthorityV1,
+const parseSettlementAuthority = (
+  authority: WatcherBlockReplaySettlementAuthority,
 ): Readonly<{
-  result: WatcherSettlementIndexerResultV1;
+  result: WatcherSettlementIndexerResult;
   observation: NonNullable<
-    WatcherSettlementIndexerResultV1["state"]
+    WatcherSettlementIndexerResult["state"]
   >["activeHistory"][number]["observation"];
 }> => {
-  const parsed = parseWatcherSettlementIndexerResultV1(
+  const parsed = parseWatcherSettlementIndexerResult(
     authority.result,
     authority.context,
   );
@@ -1311,12 +1308,12 @@ const parseSettlementAuthorityV1 = (
   return Object.freeze({ result: parsed, observation });
 };
 
-const validateSettlementEventBindingV1 = (input: {
-  readonly phase: WatcherBlockReplayEventAuthorityV1["phase"];
-  readonly event: WatcherIndexedUserEventV1;
-  readonly authority: WatcherBlockReplaySettlementAuthorityV1;
+const validateSettlementEventBinding = (input: {
+  readonly phase: WatcherBlockReplayEventAuthority["phase"];
+  readonly event: WatcherIndexedUserEvent;
+  readonly authority: WatcherBlockReplaySettlementAuthority;
 }): Readonly<Record<string, unknown>> => {
-  const { result, observation } = parseSettlementAuthorityV1(input.authority);
+  const { result, observation } = parseSettlementAuthority(input.authority);
   const transition = observation.transition;
   const subjects = result.state!.snapshot.subjects;
   const hasExactConsumedEvent =
@@ -1395,10 +1392,10 @@ const validateSettlementEventBindingV1 = (input: {
   });
 };
 
-const canonicalEffectFromAuthorityV1 = (
-  authority: WatcherBlockReplayEventAuthorityV1,
-): CanonicalTransitionEffectV1 => {
-  const rebuilt = buildCanonicalTransitionEffectV1(
+const canonicalEffectFromAuthority = (
+  authority: WatcherBlockReplayEventAuthority,
+): CanonicalTransitionEffect => {
+  const rebuilt = buildCanonicalTransitionEffect(
     authority.transitionEffect.operations,
   );
   if (
@@ -1414,10 +1411,10 @@ const canonicalEffectFromAuthorityV1 = (
   return rebuilt;
 };
 
-const validateEventAuthorityV1 = (
-  authority: WatcherBlockReplayEventAuthorityV1,
-): ValidatedEventAuthorityV1 => {
-  const parsed = parseWatcherUserEventIndexerResultV1(
+const validateEventAuthority = (
+  authority: WatcherBlockReplayEventAuthority,
+): ValidatedEventAuthority => {
+  const parsed = parseWatcherUserEventIndexerResult(
     authority.userEvent.result,
     authority.userEvent.context,
   );
@@ -1500,7 +1497,7 @@ const validateEventAuthorityV1 = (
       "$.userEvent.result.state.history",
     );
   }
-  const effect = canonicalEffectFromAuthorityV1(authority);
+  const effect = canonicalEffectFromAuthority(authority);
   let canonicalNativeTxCbor: Buffer | null = null;
   let programMaterialSidecarCbor: Buffer | null = null;
   let settlementManifest: Readonly<Record<string, unknown>> | null = null;
@@ -1508,7 +1505,7 @@ const validateEventAuthorityV1 = (
     if (authority.settlement === undefined || authority.settlement === null) {
       return fail("settlement_authority_invalid", "$.settlement");
     }
-    settlementManifest = validateSettlementEventBindingV1({
+    settlementManifest = validateSettlementEventBinding({
       phase: authority.phase,
       event,
       authority: authority.settlement,
@@ -1529,7 +1526,7 @@ const validateEventAuthorityV1 = (
       };
     };
     const expectedOutRef = ledgerOutRefCborHex(decoded.info.body.l2_outref);
-    const derivedEffect = canonicalCommittedWithdrawalTransitionEffectV1({
+    const derivedEffect = canonicalCommittedWithdrawalTransitionEffect({
       committedValid: isCommittedValid,
       outRefCbor: Buffer.from(expectedOutRef, "hex"),
     });
@@ -1546,7 +1543,7 @@ const validateEventAuthorityV1 = (
     if (authority.settlement === undefined || authority.settlement === null) {
       return fail("settlement_authority_invalid", "$.settlement");
     }
-    settlementManifest = validateSettlementEventBindingV1({
+    settlementManifest = validateSettlementEventBinding({
       phase: authority.phase,
       event,
       authority: authority.settlement,
@@ -1562,12 +1559,12 @@ const validateEventAuthorityV1 = (
       readonly info: {
         readonly l2_network_id: bigint;
         readonly l2_address: Parameters<
-          typeof deriveCanonicalDepositTransitionEffectV1
+          typeof deriveCanonicalDepositTransitionEffect
         >[0]["l2Address"];
         readonly l2_datum: unknown | null;
       };
     };
-    const derivedEffect = deriveCanonicalDepositTransitionEffectV1({
+    const derivedEffect = deriveCanonicalDepositTransitionEffect({
       configuredNetwork: parsed.state.network,
       eventId: decoded.id,
       l2NetworkId: decoded.info.l2_network_id,
@@ -1576,7 +1573,7 @@ const validateEventAuthorityV1 = (
         decoded.info.l2_datum === null
           ? null
           : Buffer.from(LucidData.to(decoded.info.l2_datum as never), "hex"),
-      l1Assets: l1AssetsFromOutputCborV1(event.outputCborHex),
+      l1Assets: l1AssetsFromOutputCbor(event.outputCborHex),
       depositPolicyId: event.policyId,
       depositAssetNameHex: event.assetNameHex,
     });
@@ -1612,7 +1609,7 @@ const validateEventAuthorityV1 = (
     try {
       const decodedEvent = LucidData.from(
         event.eventCborHex,
-        TxOrderEventV1 as never,
+        TxOrderEvent as never,
       ) as {
         readonly tx: {
           readonly tx_id: string;
@@ -1624,16 +1621,16 @@ const validateEventAuthorityV1 = (
           };
         };
       };
-      const nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
         canonicalNativeTxCbor,
       );
-      const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+      const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
         canonicalNativeTxCbor,
       );
       if (
-        computeMidgardNativeTxIdV1(nativeTx).toString("hex") !==
+        computeMidgardNativeTxId(nativeTx).toString("hex") !==
           decodedEvent.tx.tx_id ||
-        computeMidgardNativeTxProofCommitmentV1(source).toString("hex") !==
+        computeMidgardNativeTxProofCommitment(source).toString("hex") !==
           decodedEvent.tx.transaction_commitment ||
         source.compactCbor.toString("hex") !==
           decodedEvent.tx.source.compact_cbor ||
@@ -1718,28 +1715,28 @@ const validateEventAuthorityV1 = (
   });
 };
 
-export type EvaluateWatcherBlockReplayCandidatesInputV1 = {
+export type EvaluateWatcherBlockReplayCandidatesInput = {
   /** Canonical Phase A candidates, in canonical block order. */
   readonly candidates: readonly PhaseAValidatedTx[];
   /** Prior-state ledger entries, from the W21 records. */
-  readonly priorState: readonly WatcherBlockReplayPriorUtxoV1[];
+  readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   /** The L1-committed `prevUtxosRoot` the prior state must reproduce. */
   readonly expectedPriorStateRoot: string;
   /** The L1-committed `utxosRoot`, or null to leave the post state unbound. */
   readonly expectedPostStateRoot?: string | null;
   readonly config: PhaseBConfig;
-  readonly context?: WatcherBlockReplayContextV1;
+  readonly context?: WatcherBlockReplayContext;
 };
 
 type ReplayCore = {
-  readonly reasonCodes: Set<WatcherBlockReplayReasonCodeV1>;
-  readonly stageMismatches: WatcherBlockReplayStageMismatchV1[];
-  readonly rejections: WatcherBlockReplayRejectionV1[];
+  readonly reasonCodes: Set<WatcherBlockReplayReasonCode>;
+  readonly stageMismatches: WatcherBlockReplayStageMismatch[];
+  readonly rejections: WatcherBlockReplayRejection[];
   readonly acceptedTxIds: string[];
-  readonly intermediateRoots: WatcherBlockReplayIntermediateRootV1[];
-  readonly transactionRoots: WatcherBlockReplayTransactionRootV1[];
-  readonly eventRoots: WatcherBlockReplayEventRootV1[];
-  readonly forcedValidationFacts: WatcherBlockReplayForcedValidationFactV1[];
+  readonly intermediateRoots: WatcherBlockReplayIntermediateRoot[];
+  readonly transactionRoots: WatcherBlockReplayTransactionRoot[];
+  readonly eventRoots: WatcherBlockReplayEventRoot[];
+  readonly forcedValidationFacts: WatcherBlockReplayForcedValidationFact[];
   readonly priorStateRoot: string;
   readonly postStateRoot: string;
   readonly authorityManifestDigest: string | null;
@@ -1764,7 +1761,7 @@ const buildLedgerOperations = (
           }) satisfies ValidationMachineLedgerOp,
       ),
       ...candidate.graph.produced.map((produced) =>
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: produced[LedgerColumns.OUTREF],
           outputCbor: produced[LedgerColumns.OUTPUT],
         }),
@@ -1780,9 +1777,9 @@ const buildLedgerOperations = (
  * This is the only place a verdict is produced, and it produces none of its
  * own. Everything after the canonical calls is bookkeeping.
  */
-export const evaluateWatcherBlockReplayCandidatesV1 = async (
-  input: EvaluateWatcherBlockReplayCandidatesInputV1,
-): Promise<WatcherBlockReplayResultV1> => {
+export const evaluateWatcherBlockReplayCandidates = async (
+  input: EvaluateWatcherBlockReplayCandidatesInput,
+): Promise<WatcherBlockReplayResult> => {
   const context = input.context ?? null;
   const transactionCount = input.candidates.length;
   try {
@@ -1801,12 +1798,12 @@ export const evaluateWatcherBlockReplayCandidatesV1 = async (
 };
 
 const replayCandidates = async (
-  input: EvaluateWatcherBlockReplayCandidatesInputV1,
+  input: EvaluateWatcherBlockReplayCandidatesInput,
 ): Promise<ReplayCore> => {
-  const reasonCodes = new Set<WatcherBlockReplayReasonCodeV1>();
-  const stageMismatches: WatcherBlockReplayStageMismatchV1[] = [];
+  const reasonCodes = new Set<WatcherBlockReplayReasonCode>();
+  const stageMismatches: WatcherBlockReplayStageMismatch[] = [];
 
-  const prior = await watcherBlockReplayPriorStateV1(input.priorState);
+  const prior = await watcherBlockReplayPriorState(input.priorState);
   if (prior.root !== input.expectedPriorStateRoot) {
     // Fail before the replay: a prior state that is not the committed one
     // cannot produce meaningful intermediate roots, and continuing would
@@ -1860,7 +1857,7 @@ const replayCandidates = async (
 
   const rejections = phaseB.rejected
     .map((rejected) =>
-      watcherBlockReplayRejectionProjectionV1({ rejected, indexByTxId }),
+      watcherBlockReplayRejectionProjection({ rejected, indexByTxId }),
     )
     .sort((left, right) => left.index - right.index);
   for (const rejection of rejections) {
@@ -1881,8 +1878,8 @@ const replayCandidates = async (
     return fail("canonical_replay_threw", "$.intermediateRoots");
   }
 
-  const intermediateRoots: WatcherBlockReplayIntermediateRootV1[] = [];
-  const transactionRoots: WatcherBlockReplayTransactionRootV1[] = [];
+  const intermediateRoots: WatcherBlockReplayIntermediateRoot[] = [];
+  const transactionRoots: WatcherBlockReplayTransactionRoot[] = [];
   let cursor = 0;
   let postStateRoot = prior.root;
   for (const [txIndex, entry] of perTx.entries()) {
@@ -1951,16 +1948,16 @@ const replayCandidates = async (
 };
 
 type CommittedReplayGroup = Readonly<{
-  step: WatcherBlockReplayCommittedStepV1;
+  step: WatcherBlockReplayCommittedStep;
   txIndex: number | null;
   txId: string | null;
-  phase: WatcherBlockReplayCommittedStepV1["phase"];
+  phase: WatcherBlockReplayCommittedStep["phase"];
   eventKeyFingerprint: string;
   operations: readonly ValidationMachineLedgerOp[];
 }>;
 
-const eventLedgerOperationsV1 = (
-  authority: ValidatedEventAuthorityV1,
+const eventLedgerOperations = (
+  authority: ValidatedEventAuthority,
 ): readonly ValidationMachineLedgerOp[] =>
   authority.effect.operations.map((operation) =>
     operation.type === "delete"
@@ -1968,15 +1965,15 @@ const eventLedgerOperationsV1 = (
           type: "delete",
           key: Buffer.from(operation.outRefCbor),
         }
-      : buildValidationMachineLedgerInsertOpV1({
+      : buildValidationMachineLedgerInsertOp({
           key: operation.outRefCbor,
           outputCbor: operation.outputCbor,
         }),
   );
 
-const applyRawEventOperationsV1 = (
+const applyRawEventOperations = (
   state: Map<string, Buffer>,
-  authority: ValidatedEventAuthorityV1,
+  authority: ValidatedEventAuthority,
 ): void => {
   for (const operation of authority.effect.operations) {
     if (operation.type === "delete") {
@@ -1990,7 +1987,7 @@ const applyRawEventOperationsV1 = (
   }
 };
 
-const applyAcceptedCandidateV1 = (
+const applyAcceptedCandidate = (
   state: Map<string, Buffer>,
   candidate: PhaseAValidatedTx,
 ): void => {
@@ -2005,13 +2002,13 @@ const applyAcceptedCandidateV1 = (
   }
 };
 
-const bindForcedTransitionEffectV1 = async (input: {
-  readonly authority: ValidatedEventAuthorityV1;
+const bindForcedTransitionEffect = async (input: {
+  readonly authority: ValidatedEventAuthority;
   readonly state: ReadonlyMap<string, Buffer>;
   readonly phaseAConfig: PhaseAConfig;
   readonly phaseBConfig: PhaseBConfig;
-  readonly step: WatcherBlockReplayCommittedStepV1;
-}): Promise<WatcherBlockReplayForcedValidationFactV1 | null> => {
+  readonly step: WatcherBlockReplayCommittedStep;
+}): Promise<WatcherBlockReplayForcedValidationFact | null> => {
   if (input.authority.phase !== "ForcedTransaction") {
     return null;
   }
@@ -2020,7 +2017,7 @@ const bindForcedTransitionEffectV1 = async (input: {
   // native transaction was missing skipped the canonical Phase A/B rerun and
   // the terminal-validity comparison entirely, and the caller applied the
   // authority's effect as if the terminality binding had passed.
-  // `validateEventAuthorityV1` already refuses such an authority, so this is
+  // `validateEventAuthority` already refuses such an authority, so this is
   // unreachable today - which is exactly why it must fail closed rather than
   // silently skip if that invariant is ever relaxed.
   if (input.authority.canonicalNativeTxCbor === null) {
@@ -2035,29 +2032,29 @@ const bindForcedTransitionEffectV1 = async (input: {
       "$.userEvent.result.state.snapshot.terminalClassification",
     );
   }
-  const nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
     input.authority.canonicalNativeTxCbor,
   );
   const queued: QueuedTx = {
-    txId: Buffer.from(computeMidgardNativeTxIdV1(nativeTx)),
+    txId: Buffer.from(computeMidgardNativeTxId(nativeTx)),
     txCbor: Buffer.from(input.authority.canonicalNativeTxCbor),
     programMaterialSidecarCbor: input.authority.programMaterialSidecarCbor,
     arrivalSeq: 0n,
     createdAt: new Date(0),
   };
   const phaseA = validatePhaseASingle(queued, input.phaseAConfig);
-  let derived = buildCanonicalTransitionEffectV1([]);
-  let phaseAStatus: WatcherBlockReplayForcedValidationFactV1["phaseAStatus"] =
+  let derived = buildCanonicalTransitionEffect([]);
+  let phaseAStatus: WatcherBlockReplayForcedValidationFact["phaseAStatus"] =
     "accepted";
   let phaseARejectCode: RejectCode | null = null;
-  let phaseBStatus: WatcherBlockReplayForcedValidationFactV1["phaseBStatus"] =
+  let phaseBStatus: WatcherBlockReplayForcedValidationFact["phaseBStatus"] =
     "not_run";
   let phaseBRejectCode: RejectCode | null = null;
-  let canonicalOperatorValidity: WatcherForcedOperatorVerdictV1;
+  let canonicalOperatorValidity: WatcherForcedOperatorVerdict;
   if ("code" in phaseA) {
     phaseAStatus = "rejected";
     phaseARejectCode = phaseA.code;
-    canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCodeV1(
+    canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
       phaseA.code,
       "phaseA",
     );
@@ -2080,18 +2077,17 @@ const bindForcedTransitionEffectV1 = async (input: {
       }
       phaseBStatus = "rejected";
       phaseBRejectCode = phaseB.rejected[0]!.code;
-      canonicalOperatorValidity =
-        watcherBlockReplayForcedValidityForRejectCodeV1(
-          phaseBRejectCode,
-          "phaseB",
-        );
+      canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCode(
+        phaseBRejectCode,
+        "phaseB",
+      );
     } else {
       if (phaseB.accepted.length !== 1) {
         return fail("canonical_validation_threw", "$.phaseB.forced");
       }
       phaseBStatus = "accepted";
-      canonicalOperatorValidity = WATCHER_FORCED_TX_VALID_V1;
-      derived = canonicalTransitionEffectFromStatePatchV1(phaseB.statePatch);
+      canonicalOperatorValidity = WATCHER_FORCED_TX_VALID;
+      derived = canonicalTransitionEffectFromStatePatch(phaseB.statePatch);
     }
   }
   if (
@@ -2133,18 +2129,18 @@ const bindForcedTransitionEffectV1 = async (input: {
  * L2 runs are evaluated by canonical Phase B against the state produced by all
  * preceding events, so event/L2 interleavings cannot observe a stale ledger.
  */
-const replayCommittedBlockV1 = async (input: {
+const replayCommittedBlock = async (input: {
   readonly candidates: readonly PhaseAValidatedTx[];
-  readonly priorState: readonly WatcherBlockReplayPriorUtxoV1[];
+  readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   readonly expectedPriorStateRoot: string;
   readonly config: PhaseBConfig;
   readonly phaseAConfig: PhaseAConfig;
-  readonly committedSteps: readonly WatcherBlockReplayCommittedStepV1[];
-  readonly eventAuthorities: readonly WatcherBlockReplayEventAuthorityV1[];
+  readonly committedSteps: readonly WatcherBlockReplayCommittedStep[];
+  readonly eventAuthorities: readonly WatcherBlockReplayEventAuthority[];
 }): Promise<ReplayCore> => {
-  const prior = await watcherBlockReplayPriorStateV1(input.priorState);
-  const reasonCodes = new Set<WatcherBlockReplayReasonCodeV1>();
-  const stageMismatches: WatcherBlockReplayStageMismatchV1[] = [];
+  const prior = await watcherBlockReplayPriorState(input.priorState);
+  const reasonCodes = new Set<WatcherBlockReplayReasonCode>();
+  const stageMismatches: WatcherBlockReplayStageMismatch[] = [];
   if (prior.root !== input.expectedPriorStateRoot) {
     reasonCodes.add("prior_state_root_mismatch");
     stageMismatches.push({
@@ -2186,7 +2182,7 @@ const replayCommittedBlockV1 = async (input: {
       index,
     ]),
   );
-  const authorityByFingerprint = new Map<string, ValidatedEventAuthorityV1>();
+  const authorityByFingerprint = new Map<string, ValidatedEventAuthority>();
   for (const [index, authority] of input.eventAuthorities.entries()) {
     const fingerprint = eventKeyFingerprint(authority.eventKey);
     if (authorityByFingerprint.has(fingerprint)) {
@@ -2195,10 +2191,7 @@ const replayCommittedBlockV1 = async (input: {
         `$.eventAuthorities[${index.toString()}].eventKey`,
       );
     }
-    authorityByFingerprint.set(
-      fingerprint,
-      validateEventAuthorityV1(authority),
-    );
+    authorityByFingerprint.set(fingerprint, validateEventAuthority(authority));
   }
 
   const state = new Map(
@@ -2208,13 +2201,13 @@ const replayCommittedBlockV1 = async (input: {
     ]),
   );
   const groups: CommittedReplayGroup[] = [];
-  const rejections: WatcherBlockReplayRejectionV1[] = [];
+  const rejections: WatcherBlockReplayRejection[] = [];
   const acceptedTxIds: string[] = [];
   const seenCandidateIds = new Set<string>();
   const seenEventFingerprints = new Set<string>();
-  const forcedValidationFacts: WatcherBlockReplayForcedValidationFactV1[] = [];
+  const forcedValidationFacts: WatcherBlockReplayForcedValidationFact[] = [];
 
-  let pendingL2: WatcherBlockReplayCommittedStepV1[] = [];
+  let pendingL2: WatcherBlockReplayCommittedStep[] = [];
   const flushL2 = async (): Promise<void> => {
     if (pendingL2.length === 0) {
       return;
@@ -2253,7 +2246,7 @@ const replayCommittedBlockV1 = async (input: {
     }
     const projected = phaseB.rejected
       .map((rejected) =>
-        watcherBlockReplayRejectionProjectionV1({ rejected, indexByTxId }),
+        watcherBlockReplayRejectionProjection({ rejected, indexByTxId }),
       )
       .sort((left, right) => left.index - right.index);
     rejections.push(...projected);
@@ -2279,7 +2272,7 @@ const replayCommittedBlockV1 = async (input: {
         operations,
       });
       acceptedTxIds.push(txId);
-      applyAcceptedCandidateV1(state, candidate);
+      applyAcceptedCandidate(state, candidate);
     }
   };
 
@@ -2302,7 +2295,7 @@ const replayCommittedBlockV1 = async (input: {
         `$.eventAuthorities[${step.eventKeyFingerprint}].phase`,
       );
     }
-    const forcedValidationFact = await bindForcedTransitionEffectV1({
+    const forcedValidationFact = await bindForcedTransitionEffect({
       authority,
       state,
       phaseAConfig: input.phaseAConfig,
@@ -2332,9 +2325,9 @@ const replayCommittedBlockV1 = async (input: {
       txId: null,
       phase: step.phase,
       eventKeyFingerprint: step.eventKeyFingerprint,
-      operations: eventLedgerOperationsV1(authority),
+      operations: eventLedgerOperations(authority),
     });
-    applyRawEventOperationsV1(state, authority);
+    applyRawEventOperations(state, authority);
   }
   await flushL2();
 
@@ -2369,9 +2362,9 @@ const replayCommittedBlockV1 = async (input: {
     return fail("canonical_replay_threw", "$.intermediateRoots");
   }
 
-  const intermediateRoots: WatcherBlockReplayIntermediateRootV1[] = [];
-  const transactionRoots: WatcherBlockReplayTransactionRootV1[] = [];
-  const eventRoots: WatcherBlockReplayEventRootV1[] = [];
+  const intermediateRoots: WatcherBlockReplayIntermediateRoot[] = [];
+  const transactionRoots: WatcherBlockReplayTransactionRoot[] = [];
+  const eventRoots: WatcherBlockReplayEventRoot[] = [];
   let cursor = 0;
   let postStateRoot = prior.root;
   for (const group of groups) {
@@ -2427,7 +2420,7 @@ const replayCommittedBlockV1 = async (input: {
           preRoot,
           postRoot: postStateRoot,
           mutationCount: cursor - first,
-        }) as WatcherBlockReplayEventRootV1,
+        }) as WatcherBlockReplayEventRoot,
       );
     }
   }
@@ -2450,10 +2443,10 @@ const replayCommittedBlockV1 = async (input: {
     forcedValidationFacts,
     priorStateRoot: prior.root,
     postStateRoot,
-    authorityManifestDigest: watcherSha256CanonicalJsonV1(
+    authorityManifestDigest: watcherSha256CanonicalJson(
       orderedAuthorities.map((authority) => authority.authorityManifest),
     ),
-    sourceManifestDigest: watcherSha256CanonicalJsonV1(
+    sourceManifestDigest: watcherSha256CanonicalJson(
       steps.map((step) => ({
         stepIndex: step.stepIndex,
         phase: step.phase,
@@ -2464,7 +2457,7 @@ const replayCommittedBlockV1 = async (input: {
         eventToStepPhase: step.eventToStepPhase,
       })),
     ),
-    effectManifestDigest: watcherSha256CanonicalJsonV1(
+    effectManifestDigest: watcherSha256CanonicalJson(
       orderedAuthorities.map((authority) => authority.effectManifest),
     ),
   };
@@ -2492,16 +2485,16 @@ const replayCommittedBlockV1 = async (input: {
  */
 const bindCommittedSteps = (input: {
   readonly core: ReplayCore;
-  readonly committedSteps: readonly WatcherBlockReplayCommittedStepV1[];
+  readonly committedSteps: readonly WatcherBlockReplayCommittedStep[];
   readonly expectedPriorStateRoot: string;
 }): {
-  readonly transactionRoots: readonly WatcherBlockReplayTransactionRootV1[];
-  readonly stageMismatches: readonly WatcherBlockReplayStageMismatchV1[];
-  readonly reasonCodes: readonly WatcherBlockReplayReasonCodeV1[];
+  readonly transactionRoots: readonly WatcherBlockReplayTransactionRoot[];
+  readonly stageMismatches: readonly WatcherBlockReplayStageMismatch[];
+  readonly reasonCodes: readonly WatcherBlockReplayReasonCode[];
 } => {
   const { core, committedSteps } = input;
-  const stageMismatches: WatcherBlockReplayStageMismatchV1[] = [];
-  const reasonCodes: WatcherBlockReplayReasonCodeV1[] = [];
+  const stageMismatches: WatcherBlockReplayStageMismatch[] = [];
+  const reasonCodes: WatcherBlockReplayReasonCode[] = [];
   const steps = [...committedSteps].sort(
     (left, right) => left.stepIndex - right.stepIndex,
   );
@@ -2598,16 +2591,16 @@ const bindCommittedSteps = (input: {
 
 const finalizeResult = (input: {
   readonly core: ReplayCore;
-  readonly context: WatcherBlockReplayContextV1 | null;
+  readonly context: WatcherBlockReplayContext | null;
   readonly transactionCount: number;
   readonly expectedPriorStateRoot: string;
   readonly expectedPostStateRoot: string | null;
-  readonly committedSteps: readonly WatcherBlockReplayCommittedStepV1[] | null;
-}): WatcherBlockReplayResultV1 => {
+  readonly committedSteps: readonly WatcherBlockReplayCommittedStep[] | null;
+}): WatcherBlockReplayResult => {
   const { core } = input;
   const reasonCodes = new Set(core.reasonCodes);
   const stageMismatches = [...core.stageMismatches];
-  let transactionRoots: readonly WatcherBlockReplayTransactionRootV1[] =
+  let transactionRoots: readonly WatcherBlockReplayTransactionRoot[] =
     core.transactionRoots;
 
   const priorStateFailed = reasonCodes.has("prior_state_root_mismatch");
@@ -2663,18 +2656,18 @@ const finalizeResult = (input: {
   // `accept` means root-exact replay only. W26 remains mandatory downstream
   // before classification/decision readiness; W25 does not adjudicate whether
   // an authenticated event was due, omitted, fabricated, or duplicated.
-  const action: WatcherBlockReplayActionV1 =
+  const action: WatcherBlockReplayAction =
     committedTraceBound && postStateRootBound && reasonCodes.size === 0
       ? "accept"
       : "reject";
 
   return digestResult({
-    schemaVersion: WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_BLOCK_REPLAY_SCHEMA_VERSION,
     action,
     reasonCodes: orderReasonCodes(reasonCodes),
-    verifiedRequires: WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1,
-    rejectionSelection: WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    verifiedRequires: WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT,
+    rejectionSelection: WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     ...(input.context ?? NULL_CONTEXT),
     authorityManifestDigest: core.authorityManifestDigest,
     sourceManifestDigest: core.sourceManifestDigest,
@@ -2700,42 +2693,42 @@ const finalizeResult = (input: {
 // Block evaluation
 // ---------------------------------------------------------------------------
 
-export type EvaluateWatcherBlockReplayInputV1 = {
+export type EvaluateWatcherBlockReplayInput = {
   /** L1-authenticated header observation, as W22 and W24 consumed it. */
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   /** The accepted W22 record for this block. */
-  readonly reconstruction: WatcherHeaderRootReconstructionResultV1;
+  readonly reconstruction: WatcherHeaderRootReconstructionResult;
   /** The accepted W24 record for this block. */
-  readonly phaseA: WatcherPhaseAVerificationResultV1;
+  readonly phaseA: WatcherPhaseAVerificationResult;
   /** Exact public `DaPayloadEnvelopeV1` bytes, from the W21 store. */
   readonly payloadEnvelopeCbor: Uint8Array;
   /** Provenance of those bytes; must be public/permissionless DA. */
-  readonly daProvenance: EvidenceProvenanceV1;
+  readonly daProvenance: EvidenceProvenance;
   /** Prior-state ledger entries, from the W21 records for the parent block. */
-  readonly priorState: readonly WatcherBlockReplayPriorUtxoV1[];
+  readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
   /** The W23 rule bundle, with its commitment. */
-  readonly ruleBundle: WatcherRuleBundleV1;
+  readonly ruleBundle: WatcherRuleBundle;
   readonly ruleBundleCommitment: string;
   /** Parser-recomputed W15/W16 authorities and shared canonical effects. */
-  readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthorityV1[];
+  readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
   readonly minimumConfirmationDepth?: number;
 };
 
 /** Re-checks the caller's W22 record against a fresh canonical recomputation. */
-const bindReconstructionV1 = (input: {
-  readonly reconstruction: WatcherHeaderRootReconstructionResultV1;
+const bindReconstruction = (input: {
+  readonly reconstruction: WatcherHeaderRootReconstructionResult;
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
 }): void => {
   const { reconstruction } = input;
   if (
     reconstruction.schemaVersion !==
-    WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION
+    WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION
   ) {
     fail("reconstruction_unsupported_schema", "$.reconstruction.schemaVersion");
   }
   const { resultDigest, ...withoutDigest } = reconstruction;
-  if (watcherSha256CanonicalJsonV1(withoutDigest) !== resultDigest) {
+  if (watcherSha256CanonicalJson(withoutDigest) !== resultDigest) {
     fail("reconstruction_digest_mismatch", "$.reconstruction.resultDigest");
   }
   if (
@@ -2762,18 +2755,18 @@ const bindReconstructionV1 = (input: {
  * faults to a block that never had a valid candidate set.
  */
 const bindPhaseAV1 = (input: {
-  readonly phaseA: WatcherPhaseAVerificationResultV1;
+  readonly phaseA: WatcherPhaseAVerificationResult;
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
   readonly reconstructionDigest: string;
   readonly ruleBundleCommitment: string;
 }): void => {
   const { phaseA } = input;
-  if (phaseA.schemaVersion !== WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION) {
+  if (phaseA.schemaVersion !== WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION) {
     fail("phase_a_unsupported_schema", "$.phaseA.schemaVersion");
   }
   const { resultDigest, ...withoutDigest } = phaseA;
-  if (watcherSha256CanonicalJsonV1(withoutDigest) !== resultDigest) {
+  if (watcherSha256CanonicalJson(withoutDigest) !== resultDigest) {
     fail("phase_a_digest_mismatch", "$.phaseA.resultDigest");
   }
   if (
@@ -2798,7 +2791,7 @@ const bindPhaseAV1 = (input: {
  * map into the committed-step shape the events stage binds. Every field is
  * copied from the canonical decode; nothing is re-derived.
  */
-export const watcherBlockReplayCommittedStepsV1 = (input: {
+export const watcherBlockReplayCommittedSteps = (input: {
   readonly transitionTrace: readonly {
     readonly key: bigint;
     readonly value: TransitionStep;
@@ -2807,7 +2800,7 @@ export const watcherBlockReplayCommittedStepsV1 = (input: {
     readonly key: EventKey;
     readonly value: EventToStepValue;
   }[];
-}): readonly WatcherBlockReplayCommittedStepV1[] => {
+}): readonly WatcherBlockReplayCommittedStep[] => {
   const eventToStepByFingerprint = new Map<string, EventToStepValue>();
   for (const [index, entry] of input.eventToStep.entries()) {
     const fingerprint = eventKeyFingerprint(entry.key);
@@ -2870,12 +2863,12 @@ export const watcherBlockReplayCommittedStepsV1 = (input: {
  * replay of the block - prior state, dependencies, spends, references, scripts,
  * value, events, every intermediate root, and the exact post state.
  */
-export const evaluateWatcherBlockReplayV1 = async (
-  input: EvaluateWatcherBlockReplayInputV1,
-): Promise<WatcherBlockReplayResultV1> => {
+export const evaluateWatcherBlockReplay = async (
+  input: EvaluateWatcherBlockReplayInput,
+): Promise<WatcherBlockReplayResult> => {
   let evidence;
   try {
-    evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
+    evidence = await canonicalBlockEvidenceFromVerifiedPayload({
       observation: input.observation,
       payloadEnvelopeCbor: input.payloadEnvelopeCbor,
       daProvenance: input.daProvenance,
@@ -2884,12 +2877,12 @@ export const evaluateWatcherBlockReplayV1 = async (
         : { minimumConfirmationDepth: input.minimumConfirmationDepth }),
     });
   } catch {
-    return admitFullBlockReplayResultV1(
+    return admitFullBlockReplayResult(
       errorResult(["canonical_reconstruction_failed"], null, 0),
     );
   }
 
-  const context: WatcherBlockReplayContextV1 = Object.freeze({
+  const context: WatcherBlockReplayContext = Object.freeze({
     headerHash: evidence.headerHash,
     payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
     payloadSha256: evidence.payloadSha256,
@@ -2900,11 +2893,11 @@ export const evaluateWatcherBlockReplayV1 = async (
   const transactionCount = evidence.reconstruction.transactions.length;
 
   let candidates: readonly PhaseAValidatedTx[];
-  let committedSteps: readonly WatcherBlockReplayCommittedStepV1[];
+  let committedSteps: readonly WatcherBlockReplayCommittedStep[];
   let phaseAConfig: PhaseAConfig;
   let config: PhaseBConfig;
   try {
-    bindReconstructionV1({
+    bindReconstruction({
       reconstruction: input.reconstruction,
       headerHash: evidence.headerHash,
       payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
@@ -2918,31 +2911,31 @@ export const evaluateWatcherBlockReplayV1 = async (
     });
     // The Phase A configuration binding (rule bundle profile, header protocol
     // version) is W24's, reused unchanged rather than restated.
-    phaseAConfig = makeWatcherPhaseAConfigV1({
+    phaseAConfig = makeWatcherPhaseAConfig({
       header: evidence.header,
       ruleBundle: input.ruleBundle,
     });
-    const queuedTxs: readonly QueuedTx[] = watcherPhaseAQueuedTxsV1({
+    const queuedTxs: readonly QueuedTx[] = watcherPhaseAQueuedTxs({
       transactions: evidence.reconstruction.transactions.map((entry) =>
         Object.freeze({ txId: entry.txId, txCbor: entry.fullTransactionCbor }),
       ),
       programMaterial: evidence.reconstruction.payload.block_body
         .cek_program_material as readonly (readonly [string, string])[],
     });
-    candidates = deriveCandidatesV1(queuedTxs, phaseAConfig, input.phaseA);
-    committedSteps = watcherBlockReplayCommittedStepsV1({
+    candidates = deriveCandidates(queuedTxs, phaseAConfig, input.phaseA);
+    committedSteps = watcherBlockReplayCommittedSteps({
       transitionTrace: evidence.reconstruction.transitionTrace,
       eventToStep: evidence.reconstruction.eventToStep,
     });
-    config = makeWatcherPhaseBConfigV1(evidence.header);
+    config = makeWatcherPhaseBConfig(evidence.header);
   } catch (error) {
-    return admitFullBlockReplayResultV1(
+    return admitFullBlockReplayResult(
       errorResult([reasonCodeOf(error)], context, transactionCount),
     );
   }
 
   try {
-    const core = await replayCommittedBlockV1({
+    const core = await replayCommittedBlock({
       candidates,
       priorState: input.priorState,
       expectedPriorStateRoot: evidence.header.prevUtxosRoot,
@@ -2951,7 +2944,7 @@ export const evaluateWatcherBlockReplayV1 = async (
       committedSteps,
       eventAuthorities: input.eventAuthorities ?? [],
     });
-    return admitFullBlockReplayResultV1(
+    return admitFullBlockReplayResult(
       finalizeResult({
         core,
         context,
@@ -2962,7 +2955,7 @@ export const evaluateWatcherBlockReplayV1 = async (
       }),
     );
   } catch (error) {
-    return admitFullBlockReplayResultV1(
+    return admitFullBlockReplayResult(
       errorResult([reasonCodeOf(error)], context, transactionCount),
     );
   }
@@ -2974,15 +2967,15 @@ export const evaluateWatcherBlockReplayV1 = async (
  * W24's record carries verdicts, not the `PhaseAValidatedTx` values Phase B
  * consumes, so the candidates are produced by the same canonical function W24
  * used (`validatePhaseASingle`) over the same canonical inputs (W24's own
- * `watcherPhaseAQueuedTxsV1` derivation and `makeWatcherPhaseAConfigV1`
+ * `watcherPhaseAQueuedTxs` derivation and `makeWatcherPhaseAConfig`
  * configuration). The result is then required to agree with W24's accepted list
  * exactly, so the two lanes cannot silently disagree about what the block
  * contains.
  */
-const deriveCandidatesV1 = (
+const deriveCandidates = (
   queuedTxs: readonly QueuedTx[],
   config: Parameters<typeof validatePhaseASingle>[1],
-  phaseA: WatcherPhaseAVerificationResultV1,
+  phaseA: WatcherPhaseAVerificationResult,
 ): readonly PhaseAValidatedTx[] => {
   const candidates: PhaseAValidatedTx[] = [];
   for (const [index, queuedTx] of queuedTxs.entries()) {
@@ -3020,7 +3013,7 @@ const deriveCandidatesV1 = (
  * the roots the header *claims*, this commits the roots the replay
  * *recomputed*, which is what makes the two records worth holding separately.
  */
-const replayedStateBytes = (result: WatcherBlockReplayResultV1): Buffer =>
+const replayedStateBytes = (result: WatcherBlockReplayResult): Buffer =>
   encodeCborArrayRaw([
     encodeCborBytes(Buffer.from(result.headerHash as string, "hex")),
     encodeCborBytes(Buffer.from(result.priorStateRoot as string, "hex")),
@@ -3057,7 +3050,7 @@ const failRecord = (
 };
 
 /**
- * Builds the W03-reserved `WatcherReconstructedStateV1` record for a completed
+ * Builds the W03-reserved `WatcherReconstructedState` record for a completed
  * replay.
  *
  * This is the sibling of `makeWatcherHeaderRootReconstructedStateV1`, not a
@@ -3065,13 +3058,13 @@ const failRecord = (
  * binds the post state the replay actually produced. Both are needed, because
  * the whole point of W25 is that the two can disagree.
  */
-export const makeWatcherBlockReplayReconstructedStateV1 = (input: {
-  readonly result: WatcherBlockReplayResultV1;
+export const makeWatcherBlockReplayReconstructedState = (input: {
+  readonly result: WatcherBlockReplayResult;
   readonly chainPointId: string;
   readonly inputIds: readonly string[];
-}): WatcherReconstructedStateV1 => {
+}): WatcherReconstructedState => {
   const result = input.result;
-  if (result.schemaVersion !== WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION) {
+  if (result.schemaVersion !== WATCHER_BLOCK_REPLAY_SCHEMA_VERSION) {
     failRecord("unsupported_schema", "$.result.schemaVersion");
   }
   if (
@@ -3102,7 +3095,7 @@ export const makeWatcherBlockReplayReconstructedStateV1 = (input: {
     priorStateRoot: result.priorStateRoot as string,
     postStateRoot: result.postStateRoot as string,
     inputIds: Object.freeze([...input.inputIds]),
-    state: makeWatcherDurablePayloadV1(
+    state: makeWatcherDurablePayload(
       replayedStateBytes(result).toString("hex"),
     ),
   });
@@ -3114,22 +3107,22 @@ export const makeWatcherBlockReplayReconstructedStateV1 = (input: {
  * others. Declared here rather than imported at the use site so the assertion
  * and the map cannot drift apart.
  */
-export const WATCHER_BLOCK_REPLAY_CANONICAL_PHASES_V1 = Object.freeze(
+export const WATCHER_BLOCK_REPLAY_CANONICAL_PHASES = Object.freeze(
   Object.keys(MidgardValidationPhase) as readonly MidgardValidationPhaseName[],
 );
 
 /** Codes this lane claims, published as the CG3 waiver requires. */
-export const WATCHER_BLOCK_REPLAY_CLAIMED_REJECT_CODES_V1 =
-  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1;
+export const WATCHER_BLOCK_REPLAY_CLAIMED_REJECT_CODES =
+  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES;
 
 /**
  * The union of the codes W24 and W25 claim plus the codes both disclaim must be
  * the whole canonical vocabulary. Exposed as data so the suite can assert
  * totality rather than restate the arithmetic.
  */
-export const WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1 = Object.freeze(
-  WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1.filter(
+export const WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED = Object.freeze(
+  WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES.filter(
     (code) =>
-      !(code in WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS_V1),
+      !(code in WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS),
   ),
 );

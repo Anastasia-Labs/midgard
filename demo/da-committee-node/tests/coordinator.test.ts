@@ -693,13 +693,13 @@ const candidateRecord = ({
   status,
 });
 
-const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitmentV1(
-  SDK.buildDaAvailabilityCommitmentV1({
+const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
+  SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash: "01".repeat(28),
     payload: Buffer.from("public retained DA"),
     bondOwner: "76".repeat(28),
-    responseGeometry: SDK.availabilityResponseGeometryV1({
+    responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 14_020,
       trancheByteLength: 4 * 1_024 * 1_024,
       maxTrancheCount: 16,
@@ -723,7 +723,7 @@ const signatureRecord = (): DaSignatureRecord => ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "state#0",
     headerHash: "01".repeat(28),

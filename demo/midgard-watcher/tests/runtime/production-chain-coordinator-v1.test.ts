@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { WatcherFinalityPolicyV1 } from "../../src/l1/finality-engine.js";
-import type { WatcherLocalKupmiosNativeObservationRuntimeV1 } from "../../src/l1/local-kupmios-native-observation-v1.js";
-import type { WatcherNativeBlockAdmissionV1 } from "../../src/l1/native-block-admission-v1.js";
-import type { WatcherNativeChainSyncEventV1 } from "../../src/l1/native-chain-sync-v1.js";
-import { unsafeCreateWatcherProductionChainCoordinatorForTestV1 } from "../../src/runtime/production-chain-coordinator-v1.js";
-import type { WatcherProductionDurableRuntimeV1 } from "../../src/storage/production-durable-runtime-v1.js";
+import type { WatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
+import type { WatcherLocalKupmiosNativeObservationRuntime } from "../../src/l1/local-kupmios-native-observation-v1.js";
+import type { WatcherNativeBlockAdmission } from "../../src/l1/native-block-admission-v1.js";
+import type { WatcherNativeChainSyncEvent } from "../../src/l1/native-chain-sync-v1.js";
+import { unsafeCreateWatcherChainCoordinatorForTest } from "../../src/runtime/production-chain-coordinator-v1.js";
+import type { WatcherDurableRuntime } from "../../src/storage/production-durable-runtime-v1.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
 
@@ -14,7 +14,7 @@ const block = (
   parentByte: string,
   slot: string,
   blockNo: string,
-): WatcherNativeBlockAdmissionV1 =>
+): WatcherNativeBlockAdmission =>
   Object.freeze({
     schemaVersion: "midgard-watcher-native-block-admission-v1",
     blockType: "7",
@@ -30,9 +30,9 @@ const block = (
   });
 
 const forward = (
-  admitted: WatcherNativeBlockAdmissionV1,
+  admitted: WatcherNativeBlockAdmission,
   tipBlockNo = admitted.blockNo,
-): WatcherNativeChainSyncEventV1 =>
+): WatcherNativeChainSyncEvent =>
   Object.freeze({
     schemaVersion: "midgard-watcher-native-chain-sync-v1",
     kind: "roll_forward",
@@ -52,7 +52,7 @@ const forward = (
 
 const finalityState = (
   phase: "unobserved" | "pending" | "finalized" | "quarantined",
-  admitted?: WatcherNativeBlockAdmissionV1,
+  admitted?: WatcherNativeBlockAdmission,
 ) => ({
   phase,
   pending:
@@ -75,7 +75,7 @@ const finalityState = (
 
 const policy = Object.freeze({
   confirmationDepth: "30",
-}) as WatcherFinalityPolicyV1;
+}) as WatcherFinalityPolicy;
 
 describe("production native-chain coordinator", () => {
   it("replays a release-final queue hook when the durable snapshot is already ahead", async () => {
@@ -87,7 +87,7 @@ describe("production native-chain coordinator", () => {
       observe: async ({
         block: candidate,
       }: {
-        readonly block: WatcherNativeBlockAdmissionV1;
+        readonly block: WatcherNativeBlockAdmission;
       }) => {
         observed.push(candidate.blockHash);
         return {
@@ -97,7 +97,7 @@ describe("production native-chain coordinator", () => {
         };
       },
       close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntimeV1;
+    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
       read: () => ({
         currentFinalityState: finalityState("finalized", durableHead),
@@ -106,8 +106,8 @@ describe("production native-chain coordinator", () => {
       persistCanonicalProgress: async () => {
         throw new Error("durable finality must not rewind to replayed history");
       },
-    } as unknown as WatcherProductionDurableRuntimeV1;
-    const coordinator = unsafeCreateWatcherProductionChainCoordinatorForTestV1(
+    } as unknown as WatcherDurableRuntime;
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
       {
         policy,
         durable,
@@ -139,7 +139,7 @@ describe("production native-chain coordinator", () => {
         block: candidate,
         depth,
       }: {
-        readonly block: WatcherNativeBlockAdmissionV1;
+        readonly block: WatcherNativeBlockAdmission;
         readonly depth: string;
       }) => {
         observed.push(`${candidate.blockNo}:${depth}`);
@@ -150,7 +150,7 @@ describe("production native-chain coordinator", () => {
         };
       },
       close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntimeV1;
+    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
       read: () => ({ currentFinalityState: state, currentStore: {} }),
       persistCanonicalProgress: async (input: {
@@ -176,8 +176,8 @@ describe("production native-chain coordinator", () => {
           finalityResult: { action: "observe_pending" },
         };
       },
-    } as unknown as WatcherProductionDurableRuntimeV1;
-    const coordinator = unsafeCreateWatcherProductionChainCoordinatorForTestV1(
+    } as unknown as WatcherDurableRuntime;
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
       { policy, durable, observation },
       {
         admitRollForward: (event) =>
@@ -208,7 +208,7 @@ describe("production native-chain coordinator", () => {
         transportAttestations: [],
       }),
       close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntimeV1;
+    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
       read: () => ({ currentFinalityState: state, currentStore: {} }),
       persistObservation: async () => {
@@ -230,8 +230,8 @@ describe("production native-chain coordinator", () => {
         persistence: "unchanged",
         finalityResult: { action: "duplicate" },
       }),
-    } as unknown as WatcherProductionDurableRuntimeV1;
-    const coordinator = unsafeCreateWatcherProductionChainCoordinatorForTestV1(
+    } as unknown as WatcherDurableRuntime;
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
       { policy, durable, observation },
       { admitRollForward: () => replacement },
     );
@@ -255,14 +255,14 @@ describe("production native-chain coordinator", () => {
         throw new Error("must not observe");
       },
       close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntimeV1;
+    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
       read: () => ({
         currentFinalityState: finalityState("pending", replacement),
         currentStore: {},
       }),
-    } as unknown as WatcherProductionDurableRuntimeV1;
-    const coordinator = unsafeCreateWatcherProductionChainCoordinatorForTestV1(
+    } as unknown as WatcherDurableRuntime;
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
       { policy, durable, observation },
       { admitRollForward: () => replacement },
     );
@@ -283,7 +283,7 @@ describe("production native-chain coordinator", () => {
     const replacement = block("7", "5", "202", "21");
     const consistency = (
       digestByte: string,
-      candidate: WatcherNativeBlockAdmissionV1,
+      candidate: WatcherNativeBlockAdmission,
     ) =>
       ({
         schemaVersion: "midgard-watcher-multi-provider-consistency-v1",
@@ -324,7 +324,7 @@ describe("production native-chain coordinator", () => {
         transportAttestations: [],
       }),
       close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntimeV1;
+    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
       read: () => ({
         currentFinalityState: state,
@@ -374,8 +374,8 @@ describe("production native-chain coordinator", () => {
         persistence: "committed",
         finalityResult: { action: "observe_pending" },
       }),
-    } as unknown as WatcherProductionDurableRuntimeV1;
-    const coordinator = unsafeCreateWatcherProductionChainCoordinatorForTestV1(
+    } as unknown as WatcherDurableRuntime;
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
       { policy, durable, observation },
       { admitRollForward: () => replacement },
     );
@@ -406,7 +406,7 @@ describe("production native-chain coordinator", () => {
     const replacement = block("a", "8", "302", "31");
     const consistency = (
       digestByte: string,
-      candidate: WatcherNativeBlockAdmissionV1,
+      candidate: WatcherNativeBlockAdmission,
     ) =>
       ({
         schemaVersion: "midgard-watcher-multi-provider-consistency-v1",
@@ -455,7 +455,7 @@ describe("production native-chain coordinator", () => {
         };
       },
       close: () => undefined,
-    } as unknown as WatcherLocalKupmiosNativeObservationRuntimeV1;
+    } as unknown as WatcherLocalKupmiosNativeObservationRuntime;
     const durable = {
       read: () => ({
         currentFinalityState: state,
@@ -488,8 +488,8 @@ describe("production native-chain coordinator", () => {
           finalityResult: { action: "observe_pending" },
         };
       },
-    } as unknown as WatcherProductionDurableRuntimeV1;
-    const coordinator = unsafeCreateWatcherProductionChainCoordinatorForTestV1(
+    } as unknown as WatcherDurableRuntime;
+    const coordinator = unsafeCreateWatcherChainCoordinatorForTest(
       {
         policy,
         durable,

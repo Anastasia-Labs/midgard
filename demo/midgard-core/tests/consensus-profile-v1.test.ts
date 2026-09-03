@@ -2,18 +2,18 @@ import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertMidgardConsensusV1ReleaseReady,
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
-  MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+  assertMidgardConsensusReleaseReady,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "../src/index.js";
 
 describe("canonical V1 consensus profile", () => {
   it("pins the indivisible V1 version tuple", () => {
-    expect(MIDGARD_CONSENSUS_PROFILE_V1).toMatchObject({
+    expect(MIDGARD_CONSENSUS_PROFILE).toMatchObject({
       profileId: "midgard-consensus-v1",
       protocolVersion: 1,
       nativeTransactionVersion: 1,
@@ -42,92 +42,86 @@ describe("canonical V1 consensus profile", () => {
       deploymentManifestSchemaVersion: "midgard-deployment-manifest-v1",
       protocolInfoApiVersion: 1,
     });
-    expect(MIDGARD_CONSENSUS_PROFILE_V1_DIGEST).toMatch(/^[0-9a-f]{64}$/u);
+    expect(MIDGARD_CONSENSUS_PROFILE_DIGEST).toMatch(/^[0-9a-f]{64}$/u);
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxCekBlobChunkBytes +
-        MIDGARD_CONSENSUS_LIMITS_V1.maxTransactionFieldProofOverheadBytes,
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+      MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes +
+        MIDGARD_CONSENSUS_LIMITS.maxTransactionFieldProofOverheadBytes,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxCekBlobChunkBytes +
-        MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerMembershipProofOverheadBytes,
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+      MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes +
+        MIDGARD_CONSENSUS_LIMITS.maxLedgerMembershipProofOverheadBytes,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTransactionAggregateFieldBytes,
-    ).toBeGreaterThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes).toBeGreaterThan(
+      MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes,
+    ).toBeGreaterThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes).toBeGreaterThan(
       51_110,
     );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxOutputValueCborBytes).toBe(5_000);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramNodeCount).toBe(1_597_819);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramEnvelopeBytes).toBe(50);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxOutputValueCborBytes).toBe(5_000);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramNodeCount).toBe(1_597_819);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramEnvelopeBytes).toBe(50);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxScriptEnvelopeResolverArgumentsBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxScriptEnvelopeResolverArgumentsBytes,
     ).toBe(7_546);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramMaterialBytes).toBe(
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes).toBe(
       67_108_418,
     );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekBlobChunkBytes).toBe(4_095);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekBuiltinTag).toBe(86);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxCekDirectBlsMillerLoopLeaves).toBe(
-      10,
-    );
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekBlobChunkBytes).toBe(4_095);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekBuiltinTag).toBe(86);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxCekDirectBlsMillerLoopLeaves).toBe(10);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxBlsFinalBuiltinTransitionCpuUnits,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxBlsFinalBuiltinTransitionCpuUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8);
+    expect(
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxBlsFinalBuiltinTransitionMemoryUnits,
     ).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits * 0.8,
     );
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxBlsFinalBuiltinTransitionMemoryUnits,
+      MIDGARD_ENVELOPE_MEASUREMENTS.secpNonResidueFailureTransitionCpuUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8);
+    expect(
+      MIDGARD_ENVELOPE_MEASUREMENTS.secpNonResidueFailureTransitionMemoryUnits,
     ).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits * 0.8,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits * 0.8,
     );
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.secpNonResidueFailureTransitionCpuUnits,
-    ).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8,
-    );
-    expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.secpNonResidueFailureTransitionMemoryUnits,
-    ).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits * 0.8,
-    );
-    expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.firstRejectedBlsFinalVerificationCpuUnits,
+      MIDGARD_ENVELOPE_MEASUREMENTS.firstRejectedBlsFinalVerificationCpuUnits,
     ).toBeGreaterThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8,
     );
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedTransactionExecutionMemoryUnits,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
     ).toBe(16_500_000);
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedTransactionExecutionCpuUnits,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionCpuUnits,
     ).toBe(10_000_000_000);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes).toBeGreaterThan(
+    expect(MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes).toBeGreaterThan(
       8 * 1024,
     );
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes,
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldChunkReceiptPublicationMemoryUnits,
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits);
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxFieldChunkReceiptPublicationMemoryUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldChunkReceiptPublicationCpuUnits,
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits);
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxFieldChunkReceiptPublicationCpuUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits);
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.canonicalReceiptOrderVerificationMemoryUnits,
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationBisectionRounds).toBe(32);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount).toBe(
+      MIDGARD_ENVELOPE_MEASUREMENTS.canonicalReceiptOrderVerificationMemoryUnits,
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds).toBe(32);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount).toBe(
       0xffff_ffff,
     );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.validationDisputeResponseWindowMs).toBe(
+    expect(MIDGARD_CONSENSUS_LIMITS.validationDisputeResponseWindowMs).toBe(
       300_000,
     );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.minValidationDisputeMaturityMs).toBe(
+    expect(MIDGARD_CONSENSUS_LIMITS.minValidationDisputeMaturityMs).toBe(
       39_600_000,
     );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs).toBe(604_800_000);
+    expect(MIDGARD_CONSENSUS_LIMITS.blockMaturityMs).toBe(604_800_000);
   });
 
   // Regression pin for C21-CORE-ENVELOPE.
@@ -159,11 +153,10 @@ describe("canonical V1 consensus profile", () => {
   // an end-to-end measurement with a single-transaction model.
   it("pins the direct complete-item carriage frontier in both directions", () => {
     const reserve =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
-    const budget =
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes - reserve;
+      MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
+    const budget = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes - reserve;
     const frontier =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 
     // Anchored to the deployed five-stage measurement, OBSERVE limiting.
     // Lane-level re-pin 2026-08-23 at the #617 wave sign-off (owner ruling
@@ -174,9 +167,9 @@ describe("canonical V1 consensus profile", () => {
     expect(reserve).toBe(512);
     expect(budget).toBe(15_872);
     expect(frontier).toBe(13_522);
-    expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes,
-    ).toBe(14_058);
+    expect(MIDGARD_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes).toBe(
+      14_058,
+    );
 
     // Mirrors `selectValidationCompleteItemCarriageV1`. The production selector
     // lives in `@al-ft/midgard-fault-proofs` (importing it here would invert the
@@ -209,15 +202,15 @@ describe("canonical V1 consensus profile", () => {
     // The owner-signed cost steer intentionally retained the 56 bytes freed by
     // claim-registry removal instead of widening the direct route.
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     ).toBe(budget - 56);
     expect(
       Math.max(
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
+        MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
+        MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
       ),
     ).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     );
     // Observation, not authentication, is the stage that governs the bound
     // since Option B (#620) made the canonical-decode item semantic
@@ -227,16 +220,15 @@ describe("canonical V1 consensus profile", () => {
     // the item. Re-pinned at the #617 wave sign-off from the #622 measured
     // table, under the owner's 2026-08-22 ruling (b).
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
     ).toBeGreaterThan(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
     );
 
     // The zero-reserve frontier may exceed the reliable one by the reserve
     // plus the deliberately retained 56-byte claim-registry headroom.
     const slack =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes -
-      frontier;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes - frontier;
     expect(slack).toBeGreaterThan(0);
     expect(slack).toBeLessThanOrEqual(reserve + 56);
 
@@ -245,21 +237,21 @@ describe("canonical V1 consensus profile", () => {
     // a published proof-item UTxO costs a fraction of the transaction, which
     // is why the reference route exists at all.
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.referenceCompleteItemProofTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.referenceCompleteItemProofTransactionBytes,
     ).toBeLessThan(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     );
 
     // Reference carriage must stay reachable: a non-empty band of items sits
     // above the direct frontier and still publishes in one transaction, and
     // the selector's hard cap stays at or below every publication measurement.
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
     ).toBeGreaterThan(frontier);
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
     ).toBeLessThanOrEqual(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
     );
   });
 
@@ -330,19 +322,19 @@ describe("canonical V1 consensus profile", () => {
     const argumentBytes = oversizedArgument.to_cbor_bytes().length;
     const transactionBytes = transaction.to_cbor_bytes().length;
     expect(argumentBytes).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.concreteConwayProofArgumentBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.concreteConwayProofArgumentBytes,
     );
     expect(transactionBytes - argumentBytes).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.concreteConwayProofTransactionFramingBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.concreteConwayProofTransactionFramingBytes,
     );
     expect(transactionBytes).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.concreteConwayProofTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.concreteConwayProofTransactionBytes,
     );
     expect(transactionBytes).toBeLessThan(16 * 1024);
   });
 
   it("retains the requested mint, script, observer, protected-output, and forced surfaces", () => {
-    expect(MIDGARD_CONSENSUS_PROFILE_V1.features).toEqual(
+    expect(MIDGARD_CONSENSUS_PROFILE.features).toEqual(
       expect.arrayContaining([
         "mint_burn",
         "reference_inputs",
@@ -357,7 +349,7 @@ describe("canonical V1 consensus profile", () => {
         "invalid_forced_transactions",
       ]),
     );
-    expect(MIDGARD_CONSENSUS_PROFILE_V1.requiredProofFamilies).toEqual(
+    expect(MIDGARD_CONSENSUS_PROFILE.requiredProofFamilies).toEqual(
       expect.arrayContaining([
         "validation-machine-one-step",
         "validation-dispute-timeout",
@@ -367,40 +359,40 @@ describe("canonical V1 consensus profile", () => {
   });
 
   it("accepts only the exact compiled V1 profile", () => {
-    const roundTrip = JSON.parse(JSON.stringify(MIDGARD_CONSENSUS_PROFILE_V1));
-    expect(isMidgardConsensusProfileV1(roundTrip)).toBe(true);
+    const roundTrip = JSON.parse(JSON.stringify(MIDGARD_CONSENSUS_PROFILE));
+    expect(isMidgardConsensusProfile(roundTrip)).toBe(true);
     expect(
-      isMidgardConsensusProfileV1({
+      isMidgardConsensusProfile({
         ...roundTrip,
         nativeTransactionVersion: 2,
       }),
     ).toBe(false);
     expect(
-      isMidgardConsensusProfileV1({
+      isMidgardConsensusProfile({
         ...roundTrip,
         ignoredByJson: undefined,
       }),
     ).toBe(false);
 
     expect(
-      isMidgardConsensusProfileV1({
-        ...MIDGARD_CONSENSUS_PROFILE_V1,
+      isMidgardConsensusProfile({
+        ...MIDGARD_CONSENSUS_PROFILE,
         validationMachineVersion: 9,
       }),
     ).toBe(false);
   });
 
   it("deep-freezes consensus arrays and bounds", () => {
-    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1)).toBe(true);
-    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1.features)).toBe(true);
+    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE)).toBe(true);
+    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE.features)).toBe(true);
     expect(
-      Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1.requiredProofFamilies),
+      Object.isFrozen(MIDGARD_CONSENSUS_PROFILE.requiredProofFamilies),
     ).toBe(true);
-    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE_V1.limits)).toBe(true);
+    expect(Object.isFrozen(MIDGARD_CONSENSUS_PROFILE.limits)).toBe(true);
   });
 
   it("fails closed until validator-hash-bound L1 release evidence is compiled in", () => {
-    expect(MIDGARD_V1_RELEASE_EVIDENCE_DIGEST).toBeNull();
-    expect(assertMidgardConsensusV1ReleaseReady).toThrow(/not activated/u);
+    expect(MIDGARD_RELEASE_EVIDENCE_DIGEST).toBeNull();
+    expect(assertMidgardConsensusReleaseReady).toThrow(/not activated/u);
   });
 });

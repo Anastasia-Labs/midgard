@@ -1,27 +1,27 @@
-import { deriveMidgardNativeTxFaultEvidenceMaterialV1 } from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
 import {
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
-  forcedVerdictSubjectV1,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  prepareReceivePurposeLanguageEvidenceV1,
-  RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1,
-  receivePurposeLanguageEvidenceClosesV1,
+  prepareReceivePurposeLanguageEvidence,
+  RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
+  receivePurposeLanguageEvidenceCloses,
 } from "./family-v1.js";
-import type { ReceivePurposeLanguageProductionArtifactV1 } from "./production-actuator-v1.js";
+import type { ReceivePurposeLanguageArtifact } from "./production-actuator-v1.js";
 import {
-  buildReceivePurposeLanguageAuthenticationFromRetainedDaV1,
-  receivePurposeLanguageDescriptorFromAuthenticationV1,
+  buildReceivePurposeLanguageAuthenticationFromRetainedDa,
+  receivePurposeLanguageDescriptorFromAuthentication,
 } from "./retained-witness-v1.js";
 
 const exact = (value: bigint, label: string): number => {
@@ -30,7 +30,7 @@ const exact = (value: bigint, label: string): number => {
     throw new Error(`receivePurposeLanguage ${label} changed`);
   return result;
 };
-const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
+const candidates = async (block: CanonicalBlockEvidence) => {
   const traces = block.reconstruction.payload.block_body.validation_traces.map(
     ([key, value]) => ({
       key: Buffer.from(key, "hex"),
@@ -47,8 +47,8 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
   const coordinates = witnesses
     .map((entry) => ({
       entry,
-      key: decodeRetainedValidationWitnessKeyV1(entry.key),
-      value: decodeRetainedValidationWitnessV1(entry.value),
+      key: decodeRetainedValidationWitnessKey(entry.key),
+      value: decodeRetainedValidationWitness(entry.value),
     }))
     .filter(
       ({ value }) =>
@@ -91,7 +91,7 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
               "execution coordinate",
             );
             const rebuilt =
-              await buildReceivePurposeLanguageAuthenticationFromRetainedDaV1({
+              await buildReceivePurposeLanguageAuthenticationFromRetainedDa({
                 eventKey: acceptedEventKey,
                 executionIndex,
                 authenticatedValidationTraceEntries: traces,
@@ -99,7 +99,7 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
                 expectedValidationTracesRoot: block.header.validationTracesRoot,
                 expectedLanguageTag: 3,
               });
-            const evidence = prepareReceivePurposeLanguageEvidenceV1({
+            const evidence = prepareReceivePurposeLanguageEvidence({
               finding: {
                 subject: {
                   version: 1n,
@@ -111,13 +111,13 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
                 },
                 executionIndex,
               },
-              descriptor: receivePurposeLanguageDescriptorFromAuthenticationV1(
+              descriptor: receivePurposeLanguageDescriptorFromAuthentication(
                 rebuilt.authentication,
                 executionIndex,
               ),
             });
-            if (!receivePurposeLanguageEvidenceClosesV1(evidence)) return null;
-            const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+            if (!receivePurposeLanguageEvidenceCloses(evidence)) return null;
+            const material = deriveMidgardNativeTxFaultEvidenceMaterial(
               Buffer.from(transaction.txCbor, "hex"),
             );
             const acceptedInclusion = parseSubmitStep01TxInclusion({
@@ -133,10 +133,10 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
                 "receive-purpose transaction",
               ),
             });
-            const detection: CanonicalViolationDetectionV1 = {
-              detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1}:accepted:${position.toString()}:${transactionId}:${executionIndex.toString()}`,
+            const detection: CanonicalViolationDetection = {
+              detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID}:accepted:${position.toString()}:${transactionId}:${executionIndex.toString()}`,
               headerHash: block.headerHash,
-              violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1,
+              violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
               position: BigInt(position),
               diagnostic: `accepted receive execution ${executionIndex.toString()} selected forbidden PlutusV3`,
             };
@@ -148,7 +148,7 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
                 evidence,
                 authentication: rebuilt.authentication,
                 acceptedInclusion,
-              }) satisfies ReceivePurposeLanguageProductionArtifactV1,
+              }) satisfies ReceivePurposeLanguageArtifact,
             };
           },
         ];
@@ -197,7 +197,7 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
         );
         if (language !== 0 && language !== 128) return null;
         const rebuilt =
-          await buildReceivePurposeLanguageAuthenticationFromRetainedDaV1({
+          await buildReceivePurposeLanguageAuthenticationFromRetainedDa({
             eventKey,
             executionIndex,
             authenticatedValidationTraceEntries: traces,
@@ -205,25 +205,25 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
             expectedValidationTracesRoot: block.header.validationTracesRoot,
             expectedLanguageTag: language,
           });
-        const evidence = prepareReceivePurposeLanguageEvidenceV1({
+        const evidence = prepareReceivePurposeLanguageEvidence({
           finding: {
-            subject: forcedVerdictSubjectV1({
+            subject: forcedVerdictSubject({
               transactionId: transaction.value.tx_id,
               sourceKey: transaction.key,
               rejectionReason: verdict.ForcedTxInvalid.reason,
             }),
             executionIndex,
           },
-          descriptor: receivePurposeLanguageDescriptorFromAuthenticationV1(
+          descriptor: receivePurposeLanguageDescriptorFromAuthentication(
             rebuilt.authentication,
             executionIndex,
           ),
         });
-        if (!receivePurposeLanguageEvidenceClosesV1(evidence)) return null;
-        const detection: CanonicalViolationDetectionV1 = {
-          detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1}:forced:${position.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
+        if (!receivePurposeLanguageEvidenceCloses(evidence)) return null;
+        const detection: CanonicalViolationDetection = {
+          detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${executionIndex.toString()}`,
           headerHash: block.headerHash,
-          violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1,
+          violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
           position: BigInt(position),
           diagnostic: `forced receive execution ${executionIndex.toString()} used allowed language`,
         };
@@ -238,7 +238,7 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
               reconstruction: block.reconstruction,
               eventKey,
             }),
-          }) satisfies ReceivePurposeLanguageProductionArtifactV1,
+          }) satisfies ReceivePurposeLanguageArtifact,
         };
       },
     ),
@@ -256,14 +256,14 @@ const candidatesV1 = async (block: CanonicalBlockEvidenceV1) => {
 };
 
 /** All exact accepted/forced ID34 detections in canonical selection order. */
-export const detectReceivePurposeLanguageCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly CanonicalViolationDetectionV1[]> =>
-  Object.freeze((await candidatesV1(block)).map(({ detection }) => detection));
-export const prepareProductionReceivePurposeLanguageArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<ReceivePurposeLanguageProductionArtifactV1> => {
-  const selected = (await candidatesV1(block))[0];
+export const detectReceivePurposeLanguageCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly CanonicalViolationDetection[]> =>
+  Object.freeze((await candidates(block)).map(({ detection }) => detection));
+export const prepareReceivePurposeLanguageArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<ReceivePurposeLanguageArtifact> => {
+  const selected = (await candidates(block))[0];
   if (selected === undefined)
     throw new Error(
       "receivePurposeLanguage canonical replay yielded no contradiction",

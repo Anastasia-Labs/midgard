@@ -1,9 +1,9 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
   rootMembershipProofSchema,
@@ -11,12 +11,12 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  MintDeclaredAssetLimitAuthenticationStateV1Schema,
-  MintDeclaredAssetLimitDecisionStateV1Schema,
-  MintDeclaredAssetLimitFoldStateV1Schema,
+  MintDeclaredAssetLimitAuthenticationStateSchema,
+  MintDeclaredAssetLimitDecisionStateSchema,
+  MintDeclaredAssetLimitFoldStateSchema,
 } from "./family-v1.js";
 
-export const MintDeclaredAssetLimitStep01SourceV1Schema = Data.Enum([
+export const MintDeclaredAssetLimitStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -24,38 +24,38 @@ export const MintDeclaredAssetLimitStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
 
-export const MintDeclaredAssetLimitStep01ArgsV1Schema = Data.Object({
-  source: MintDeclaredAssetLimitStep01SourceV1Schema,
+export const MintDeclaredAssetLimitStep01ArgsSchema = Data.Object({
+  source: MintDeclaredAssetLimitStep01SourceSchema,
   policy_index: Data.Integer(),
 });
-export const MintDeclaredAssetLimitStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep01ArgsV1Schema);
+export const MintDeclaredAssetLimitStep01RedeemerSchema =
+  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep01ArgsSchema);
 
-export const MintDeclaredAssetLimitStep02DatumV1Schema =
-  faultProofStepDatumSchema(MintDeclaredAssetLimitAuthenticationStateV1Schema);
-export const MintDeclaredAssetLimitStep02ActionV1Schema = Data.Enum([
+export const MintDeclaredAssetLimitStep02DatumSchema =
+  faultProofStepDatumSchema(MintDeclaredAssetLimitAuthenticationStateSchema);
+export const MintDeclaredAssetLimitStep02ActionSchema = Data.Enum([
   Data.Object({
     AuthenticateDirect: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({
     StartGrammar: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
       item_budget: Data.Integer(),
     }),
   }),
@@ -63,7 +63,7 @@ export const MintDeclaredAssetLimitStep02ActionV1Schema = Data.Enum([
     ResumeGrammar: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
       item_budget: Data.Integer(),
     }),
@@ -72,32 +72,32 @@ export const MintDeclaredAssetLimitStep02ActionV1Schema = Data.Enum([
     FinishGrammar: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
       checkpoint_bytes: Data.Bytes(),
     }),
   }),
 ]);
-export const MintDeclaredAssetLimitStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep02ActionV1Schema);
+export const MintDeclaredAssetLimitStep02RedeemerSchema =
+  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep02ActionSchema);
 
-export const MintDeclaredAssetLimitStep03DatumV1Schema =
-  faultProofStepDatumSchema(MintDeclaredAssetLimitFoldStateV1Schema);
-export const MintDeclaredAssetLimitStep03ArgsV1Schema = Data.Object({
+export const MintDeclaredAssetLimitStep03DatumSchema =
+  faultProofStepDatumSchema(MintDeclaredAssetLimitFoldStateSchema);
+export const MintDeclaredAssetLimitStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningV1Schema,
+  opening: FieldOpeningSchema,
   checkpoint_bytes: Data.Bytes(),
   item_budget: Data.Integer(),
 });
-export const MintDeclaredAssetLimitStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep03ArgsV1Schema);
+export const MintDeclaredAssetLimitStep03RedeemerSchema =
+  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep03ArgsSchema);
 
-export const MintDeclaredAssetLimitStep04DatumV1Schema =
-  faultProofStepDatumSchema(MintDeclaredAssetLimitDecisionStateV1Schema);
-export const MintDeclaredAssetLimitStep04ArgsV1Schema = Data.Object({
+export const MintDeclaredAssetLimitStep04DatumSchema =
+  faultProofStepDatumSchema(MintDeclaredAssetLimitDecisionStateSchema);
+export const MintDeclaredAssetLimitStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
-export const MintDeclaredAssetLimitStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep04ArgsV1Schema);
+export const MintDeclaredAssetLimitStep04RedeemerSchema =
+  faultProofStepRedeemerSchema(MintDeclaredAssetLimitStep04ArgsSchema);

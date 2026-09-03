@@ -9,55 +9,55 @@ import { type Server } from "node:net";
 import { createServer as createTlsServer } from "node:tls";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
-  makeDeploymentMarkerV1,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+  DEPLOYMENT_MANIFEST_STEP_NAMES,
+  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
-import { makeWatcherFinalityPolicyV1 } from "../../src/l1/finality-engine.js";
+import { makeWatcherFinalityPolicy } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  establishWatcherExternalProviderTransportV1,
-  normalizeWatcherL1BlockV1 as normalizeRaw,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
+  closeWatcherL1TransportAttestationContext,
+  establishWatcherExternalProviderTransport,
+  normalizeWatcherL1Block as normalizeRaw,
+  type WatcherAuthenticatedL1Provider,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as consistencyRaw } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as consistencyRaw } from "../../src/l1/multi-provider-consistency.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  makeWatcherDeploymentIdentitySignaturePayloadV1,
-  verifyWatcherDeploymentIdentityV1,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
-  type WatcherDeploymentIdentityPolicyV1,
+  makeWatcherDeploymentIdentitySignaturePayload,
+  verifyWatcherDeploymentIdentity,
+  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+  type WatcherDeploymentIdentityPolicy,
 } from "../../src/runtime/deployment-identity.js";
 import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
 
-type AuthorityContractFixtureV1 = Readonly<{
+type AuthorityContractFixture = Readonly<{
   refScriptUTxO: Readonly<{ txHash: string; outputIndex: number }> | null;
   contract: Readonly<{ type: string; cborHex: string }>;
   scriptHash: string;
 }> & {
   fraudProofCatalogue?: ReturnType<typeof canonicalFraudProofCatalogueFixture>;
 };
-type AuthorityReferenceScriptFixtureV1 = Readonly<{
+type AuthorityReferenceScriptFixture = Readonly<{
   status: string;
   roleUnit: string;
   scriptHash: string;
@@ -158,12 +158,12 @@ const fixedEd25519Key = () =>
     type: "pkcs8",
   });
 
-const createWatcherAuthorityDeploymentFixtureV1 = () => {
+const createWatcherAuthorityDeploymentFixture = () => {
   const referenceOutRefByContract = new Map<
     string,
     { txHash: string; outputIndex: number }
   >(
-    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+    Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
       (contractName, outputIndex) => [
         contractName,
         { txHash: h32("12"), outputIndex },
@@ -171,7 +171,7 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     ),
   );
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName, index) => {
       const native = contractName === "referenceScriptAuthMint";
       const script = native
         ? NATIVE_SCRIPT_CBOR
@@ -187,7 +187,7 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
         },
       ];
     }),
-  ) as Record<string, AuthorityContractFixtureV1>;
+  ) as Record<string, AuthorityContractFixture>;
   const fraudProofCatalogue = canonicalFraudProofCatalogueFixture(contracts);
   const catalogueContract = contracts.fraudProofCatalogueMint;
   if (catalogueContract === undefined) {
@@ -195,26 +195,27 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
   }
   catalogueContract.fraudProofCatalogue = fraudProofCatalogue;
   const referenceScripts = Object.fromEntries(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([role, contractName]) => {
-      const outRef = referenceOutRefByContract.get(contractName)!;
-      const tokenName =
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => {
+        const outRef = referenceOutRefByContract.get(contractName)!;
+        const tokenName =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
+          ];
+        return [
+          role,
+          {
+            status: "confirmed",
+            roleUnit:
+              NATIVE_SCRIPT_HASH +
+              Buffer.from(tokenName, "utf8").toString("hex"),
+            scriptHash: contracts[contractName].scriptHash,
+            outRef: `${outRef.txHash}#${outRef.outputIndex}`,
+          },
         ];
-      return [
-        role,
-        {
-          status: "confirmed",
-          roleUnit:
-            NATIVE_SCRIPT_HASH + Buffer.from(tokenName, "utf8").toString("hex"),
-          scriptHash: contracts[contractName].scriptHash,
-          outRef: `${outRef.txHash}#${outRef.outputIndex}`,
-        },
-      ];
-    }),
-  ) as Record<string, AuthorityReferenceScriptFixtureV1>;
+      },
+    ),
+  ) as Record<string, AuthorityReferenceScriptFixture>;
   const parameters = {
     minFeeA: "44",
     minFeeB: "155381",
@@ -244,26 +245,26 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     committeeSignersHash: DA_SIGNERS_HASH,
     threshold: 1,
     transportProfile: {
-      protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+      protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
       envelopeEncoding: "identity",
       zstdLevel: 3,
-      limits: DA_TRANSPORT_LIMITS_V1,
-      retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      limits: DA_TRANSPORT_LIMITS,
+      retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   };
   const identity = {
     schemaVersion: "midgard-deployment-manifest-v1",
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preprod",
     cardanoProtocolParameters: {
       snapshot: parameters,
-      digest: computeDeploymentManifestV1JsonDigest(parameters),
+      digest: computeDeploymentManifestJsonDigest(parameters),
     },
     genesis: {
       headerHash: h28("00"),
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest([]),
+      utxoSetDigest: computeDeploymentManifestJsonDigest([]),
     },
     createdAt: "2026-07-28T00:00:00.000Z",
     updatedAt: "2026-07-28T00:00:00.000Z",
@@ -278,7 +279,7 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
         expiresAtUnixTime: 1,
         timelockDurationMs: 1,
       },
-      tokenNames: DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
+      tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
       postTimelockAudit: {
         required: true,
         rule: "No authenticated reference-script output may change.",
@@ -289,7 +290,7 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     da: daIdentity,
     proofEvidence: { digest: RELEASE_DIGEST, blueprintHash: BLUEPRINT_HASH },
     steps: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_STEP_NAMES.map((name) => [
+      DEPLOYMENT_MANIFEST_STEP_NAMES.map((name) => [
         name,
         {
           status:
@@ -302,16 +303,16 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
       ]),
     ),
     validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
     economics:
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
-    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
@@ -334,7 +335,7 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
       bondOwnerCredential: h28("77"),
     },
   };
-  const manifestId = computeDeploymentManifestV1Id(identity);
+  const manifestId = computeDeploymentManifestId(identity);
   const manifest = {
     ...identity,
     manifestId,
@@ -344,12 +345,12 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     "transition-order-v1": h32("99"),
   };
   const releaseBindings = {
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
-      identityDigest: computeDeploymentManifestV1JsonDigest(daIdentity),
+      identityDigest: computeDeploymentManifestJsonDigest(daIdentity),
     },
     releaseEvidence: { digest: RELEASE_DIGEST, blueprintHash: BLUEPRINT_HASH },
   };
@@ -361,30 +362,27 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     .update(Buffer.from(publicKeySpkiDerHex, "hex"))
     .digest("hex");
   const signedIdentity = {
-    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
     manifest,
     releaseBindings,
     attestation: { algorithm: "ed25519", trustRootId, signature: "" },
   };
   signedIdentity.attestation.signature = sign(
     null,
-    makeWatcherDeploymentIdentitySignaturePayloadV1(
-      manifestId,
-      releaseBindings,
-    ),
+    makeWatcherDeploymentIdentitySignaturePayload(manifestId, releaseBindings),
     privateKey,
   ).toString("hex");
-  const policy: WatcherDeploymentIdentityPolicyV1 = {
+  const policy: WatcherDeploymentIdentityPolicy = {
     network: "Preprod",
     hubOracleOneShotOutRef: hubOracleOneShot.outRef,
     appliedScriptHashes: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((name) => [
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((name) => [
         name,
         contracts[name].scriptHash,
       ]),
     ),
     referenceScripts: Object.fromEntries(
-      Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
         (role) => [
           role,
           {
@@ -417,7 +415,7 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
           ];
         }),
       ),
-    } as WatcherDeploymentIdentityPolicyV1["fraudProofCatalogue"],
+    } as WatcherDeploymentIdentityPolicy["fraudProofCatalogue"],
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
     programCommitments,
     daMode: "authenticated_committee_v1",
@@ -426,8 +424,8 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     blueprintHash: BLUEPRINT_HASH,
   };
   const trustRoots = [{ trustRootId, publicKeySpkiDerHex }];
-  const marker = makeDeploymentMarkerV1(manifestId);
-  const result = verifyWatcherDeploymentIdentityV1({
+  const marker = makeDeploymentMarker(manifestId);
+  const result = verifyWatcherDeploymentIdentity({
     signedIdentity,
     policy,
     trustRoots,
@@ -447,13 +445,13 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
   });
 };
 
-export const makeWatcherAuthorityDeploymentFixtureV1 =
-  createWatcherAuthorityDeploymentFixtureV1;
+export const makeWatcherAuthorityDeploymentFixture =
+  createWatcherAuthorityDeploymentFixture;
 
-export type WatcherOpaqueAuthorityHarnessV1 = Readonly<{
-  deploymentFixture: ReturnType<typeof makeWatcherAuthorityDeploymentFixtureV1>;
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-  providers: readonly WatcherAuthenticatedL1ProviderV1[];
+export type WatcherOpaqueAuthorityHarness = Readonly<{
+  deploymentFixture: ReturnType<typeof makeWatcherAuthorityDeploymentFixture>;
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  providers: readonly WatcherAuthenticatedL1Provider[];
   externalSource: Readonly<{
     sourceMode: "external_providers";
     network: "Preprod";
@@ -463,9 +461,9 @@ export type WatcherOpaqueAuthorityHarnessV1 = Readonly<{
       endpoint: string;
     }[];
   }>;
-  finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+  finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicy>>;
   normalize: (
-    provider: WatcherAuthenticatedL1ProviderV1,
+    provider: WatcherAuthenticatedL1Provider,
     observation: unknown,
     session?: Parameters<typeof normalizeRaw>[2],
   ) => ReturnType<typeof normalizeRaw>;
@@ -475,9 +473,9 @@ export type WatcherOpaqueAuthorityHarnessV1 = Readonly<{
   dispose: () => Promise<void>;
 }>;
 
-export const createWatcherOpaqueAuthorityHarnessV1 =
-  async (): Promise<WatcherOpaqueAuthorityHarnessV1> => {
-    const deploymentFixture = makeWatcherAuthorityDeploymentFixtureV1();
+export const createWatcherOpaqueAuthorityHarness =
+  async (): Promise<WatcherOpaqueAuthorityHarness> => {
+    const deploymentFixture = makeWatcherAuthorityDeploymentFixture();
     const servers = [
       createTlsServer(TLS_IDENTITY),
       createTlsServer(TLS_IDENTITY),
@@ -500,13 +498,13 @@ export const createWatcherOpaqueAuthorityHarnessV1 =
         endpoint: `https://localhost:${ports[index]!}`,
       }),
     );
-    const transportAttestations: WatcherL1TransportAttestationContextV1[] = [];
+    const transportAttestations: WatcherL1TransportAttestationContext[] = [];
     let disposed = false;
     const disposeHarness = async (): Promise<void> => {
       if (disposed) return;
       disposed = true;
       for (const context of transportAttestations) {
-        closeWatcherL1TransportAttestationContextV1(context);
+        closeWatcherL1TransportAttestationContext(context);
       }
       await Promise.allSettled(
         servers.map(async (server) => await closeServer(server)),
@@ -515,7 +513,7 @@ export const createWatcherOpaqueAuthorityHarnessV1 =
     try {
       for (const provider of configured) {
         transportAttestations.push(
-          await establishWatcherExternalProviderTransportV1({
+          await establishWatcherExternalProviderTransport({
             network: "Preprod",
             providerId: provider.providerId,
             operatorIdentitySha256: provider.operatorIdentitySha256,
@@ -533,11 +531,9 @@ export const createWatcherOpaqueAuthorityHarnessV1 =
       throw error;
     }
     const providers = transportAttestations
-      .map(
-        (context) => watcherL1TransportAttestationDetailsV1(context)?.provider,
-      )
+      .map((context) => watcherL1TransportAttestationDetails(context)?.provider)
       .filter(
-        (provider): provider is WatcherAuthenticatedL1ProviderV1 =>
+        (provider): provider is WatcherAuthenticatedL1Provider =>
           provider !== null,
       );
     if (providers.length !== 2) {
@@ -549,7 +545,7 @@ export const createWatcherOpaqueAuthorityHarnessV1 =
       network: "Preprod" as const,
       providers: Object.freeze(configured),
     });
-    const finalityPolicy = makeWatcherFinalityPolicyV1(
+    const finalityPolicy = makeWatcherFinalityPolicy(
       {
         schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
         mode: "development",
@@ -622,11 +618,11 @@ export const createWatcherOpaqueAuthorityHarnessV1 =
       await disposeHarness();
       throw new Error("opaque authority harness finality policy was rejected");
     }
-    const transportFor = (provider: WatcherAuthenticatedL1ProviderV1) => {
+    const transportFor = (provider: WatcherAuthenticatedL1Provider) => {
       const matches = transportAttestations.filter(
         (context) =>
-          watcherL1TransportAttestationDetailsV1(context)?.provider
-            .providerId === provider.providerId,
+          watcherL1TransportAttestationDetails(context)?.provider.providerId ===
+          provider.providerId,
       );
       if (matches.length !== 1)
         throw new Error(
@@ -636,7 +632,7 @@ export const createWatcherOpaqueAuthorityHarnessV1 =
     };
     const provenance = new WeakMap<
       object,
-      WatcherL1TransportAttestationContextV1
+      WatcherL1TransportAttestationContext
     >();
     return Object.freeze({
       deploymentFixture,

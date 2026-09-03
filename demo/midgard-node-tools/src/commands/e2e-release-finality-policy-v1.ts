@@ -1,10 +1,10 @@
-export const RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY =
+export const RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY =
   "automated_rewind_replay_incident-v1" as const;
 
-export type ReleaseL1FinalityPolicyV1 = Readonly<{
+export type ReleaseL1FinalityPolicy = Readonly<{
   confirmationDepth: 30;
   automaticRecoveryMaxDepth: 2160;
-  deepRollbackPolicy: typeof RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY;
+  deepRollbackPolicy: typeof RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY;
 }>;
 
 const exactRecord = (
@@ -36,10 +36,10 @@ const exactRecord = (
 };
 
 /** Parse the source-neutral finality policy carried by release identity. */
-export const parseReleaseL1FinalityPolicyV1 = (
+export const parseReleaseL1FinalityPolicy = (
   value: unknown,
   field = "deployment manifest l1Finality",
-): ReleaseL1FinalityPolicyV1 => {
+): ReleaseL1FinalityPolicy => {
   const candidate = exactRecord(value, field);
   if (candidate.confirmationDepth !== 30) {
     throw new Error(`${field}.confirmationDepth must be exactly 30`);
@@ -49,13 +49,13 @@ export const parseReleaseL1FinalityPolicyV1 = (
   }
   if (
     candidate.deepRollbackPolicy !==
-    RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY
+    RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY
   ) {
     throw new Error(`${field}.deepRollbackPolicy is not canonical V1`);
   }
   return Object.freeze({
     confirmationDepth: 30,
     automaticRecoveryMaxDepth: 2160,
-    deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY,
+    deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
   });
 };

@@ -35,7 +35,7 @@ const transitionStep = ({
   pre,
   post,
   phase = "Withdrawal",
-  schemaVersion = SDK.TRANSITION_STEP_V1_SCHEMA_VERSION,
+  schemaVersion = SDK.TRANSITION_STEP_SCHEMA_VERSION,
 }: {
   readonly stepIndex: bigint;
   readonly eventKey: SDK.EventKey;
@@ -228,7 +228,7 @@ describe("transition root primitives", () => {
           expect(result._tag).toBe("Left");
           if (result._tag === "Left") {
             expect(String(result.left.cause)).toContain(
-              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_V1_SCHEMA_VERSION.toString()}`,
+              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_SCHEMA_VERSION.toString()}`,
             );
             expect(String(result.left.cause)).toContain(
               `got=${schemaVersion.toString()}`,
@@ -273,7 +273,7 @@ describe("transition root primitives", () => {
           expect(result._tag).toBe("Left");
           if (result._tag === "Left") {
             expect(String(result.left.cause)).toContain(
-              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_V1_SCHEMA_VERSION.toString()}`,
+              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_SCHEMA_VERSION.toString()}`,
             );
             expect(String(result.left.cause)).toContain(
               `got=${schemaVersion.toString()}`,

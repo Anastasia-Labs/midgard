@@ -1,8 +1,8 @@
 /** Authenticate one accepted native-V1 transaction and bind a Q35 claim. */
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardNativeTxCompactV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
 import {
   HUB_ORACLE_ASSET_NAME,
@@ -48,28 +48,28 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
 import {
-  findNetworkIdFaultsV1,
-  type RetainedDaNetworkIdEvidenceV1,
+  findNetworkIdFaults,
+  type RetainedDaNetworkIdEvidence,
 } from "./evidence-v1.js";
-import type { PreparedNetworkIdProofV1 } from "./prepare-v1.js";
+import type { PreparedNetworkIdProof } from "./prepare-v1.js";
 import {
-  networkIdStepLabelV1,
+  networkIdStepLabel,
   networkIdSubmitError,
-  requireNetworkIdReferenceScriptV1,
-  requireNetworkIdThreadUtxoV1,
+  requireNetworkIdReferenceScript,
+  requireNetworkIdThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = networkIdStepLabelV1(0);
+const STEP_LABEL = networkIdStepLabel(0);
 
 export type SubmitNetworkIdStep01Result = {
   readonly txHash: string;
@@ -104,17 +104,17 @@ export const submitNetworkIdStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly prepared: PreparedNetworkIdProofV1;
+  readonly prepared: PreparedNetworkIdProof;
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNetworkIdStep01Result> => {
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId) {
@@ -122,13 +122,13 @@ export const submitNetworkIdStep01 = async ({
       "prepared evidence targets a different deployed network id",
     );
   }
-  const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
     Buffer.from(prepared.nativeTxCanonicalCbor, "hex"),
   );
-  const canonicalCompactCbor = encodeMidgardNativeTxCompactV1(
+  const canonicalCompactCbor = encodeMidgardNativeTxCompact(
     canonicalTx.compact,
   ).toString("hex");
-  const canonicalTxId = computeMidgardNativeTxIdV1(canonicalTx).toString("hex");
+  const canonicalTxId = computeMidgardNativeTxId(canonicalTx).toString("hex");
   if (
     canonicalCompactCbor !== prepared.nativeTxCompactCbor ||
     canonicalTxId !== prepared.badTxId
@@ -137,12 +137,12 @@ export const submitNetworkIdStep01 = async ({
       "prepared canonical transaction, compact transaction, and transaction id are not one item",
     );
   }
-  const retained: RetainedDaNetworkIdEvidenceV1 = {
+  const retained: RetainedDaNetworkIdEvidence = {
     source: "retained-da",
     evidenceSourceId: "prepared-canonical-block-evidence",
     nativeTxCanonicalCbor: prepared.nativeTxCanonicalCbor,
   };
-  const detected = findNetworkIdFaultsV1({
+  const detected = findNetworkIdFaults({
     evidence: retained,
     expectedNetworkId: contracts.expectedNetworkId,
   });
@@ -175,7 +175,7 @@ export const submitNetworkIdStep01 = async ({
     );
   }
 
-  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -183,7 +183,7 @@ export const submitNetworkIdStep01 = async ({
     threadOutRef,
   });
   requireInitialStepDatum({ threadUtxo, signer });
-  const stepReference = requireNetworkIdReferenceScriptV1({
+  const stepReference = requireNetworkIdReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -224,7 +224,7 @@ export const submitNetworkIdStep01 = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: `${STEP_LABEL} PHAS membership`,
@@ -339,15 +339,15 @@ export const submitNetworkIdStep01 = async ({
     throw networkIdSubmitError("step-01 layout was not resolved");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof network-id step-01",
         utxo: stepReference,
         expectedScript: contracts.steps[0].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "membership proof withdrawal",
         utxo: witnessReferenceScripts.phasMembershipWithdraw,
         expectedScript: phasScript,

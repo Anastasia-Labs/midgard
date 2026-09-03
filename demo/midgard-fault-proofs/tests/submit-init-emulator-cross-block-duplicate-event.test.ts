@@ -4,7 +4,7 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  resumeCrossBlockDuplicateEventV1,
+  resumeCrossBlockDuplicateEvent,
   submitCrossBlockDuplicateEventCancel,
   submitCrossBlockDuplicateEventInit,
   submitCrossBlockDuplicateEventStep01,
@@ -19,10 +19,10 @@ import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
-  publishCrossBlockDuplicateEventReferenceScriptsV1,
+  publishCrossBlockDuplicateEventReferenceScripts,
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
@@ -46,7 +46,7 @@ const FORCED_VALUE_CBOR = Data.to(
     },
     verdict: "ForcedTxValid",
   },
-  SDK.ForcedInclusionTxV1,
+  SDK.ForcedInclusionTx,
 );
 
 type Variant = "deposit" | "withdrawal" | "forced-transaction";
@@ -82,7 +82,7 @@ const makeProof = async (variant: Variant) => {
     Buffer.from(valueCbor, "hex"),
   );
   const key = Data.from(keyCbor, SDK.OutputReference);
-  const committedEvent: SDK.CommittedDuplicateEventProofV1 =
+  const committedEvent: SDK.CommittedDuplicateEventProof =
     variant === "deposit"
       ? {
           CommittedDuplicateDepositV1: {
@@ -119,7 +119,7 @@ const makeProof = async (variant: Variant) => {
                 phas_root: counted.phasRoot,
                 count: counted.count,
                 key,
-                value: Data.from(valueCbor, SDK.ForcedInclusionTxV1),
+                value: Data.from(valueCbor, SDK.ForcedInclusionTx),
                 proof,
               },
             },
@@ -128,7 +128,7 @@ const makeProof = async (variant: Variant) => {
 };
 
 const setupLifecycle = async (variant: Variant) => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realCrossBlockDuplicateEvent: true,
       alwaysFraudProofCatalogue: true,
@@ -149,7 +149,7 @@ const setupLifecycle = async (variant: Variant) => {
       harness.emulator.now() + 120_000,
     ) - 1;
   const base = makeHeader(operator, start);
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...base,
     ...(variant === "deposit"
       ? { depositsRoot: counted.root, depositCount: counted.count }
@@ -216,7 +216,7 @@ const setupLifecycle = async (variant: Variant) => {
     harness.contracts.settlement.spendingScriptAddress,
     settlementUnit,
   );
-  const references = await publishCrossBlockDuplicateEventReferenceScriptsV1({
+  const references = await publishCrossBlockDuplicateEventReferenceScripts({
     lucid: harness.funderLucid,
     contracts: family,
   });
@@ -225,7 +225,7 @@ const setupLifecycle = async (variant: Variant) => {
     family,
     category: {
       ...category,
-      categoryId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+      categoryId: SDK.CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
     },
     committedEvent,
     setup,
@@ -259,7 +259,7 @@ describe.each(["deposit", "withdrawal", "forced-transaction"] as const)(
     it("mints permanent evidence and removes the fraudulent block", async () => {
       const scenario = await setupLifecycle(variant);
       const initialized = await init(scenario);
-      const resumedStep01 = await resumeCrossBlockDuplicateEventV1({
+      const resumedStep01 = await resumeCrossBlockDuplicateEvent({
         lucid: scenario.proverLucid,
         network,
         contracts: scenario.family,
@@ -277,7 +277,7 @@ describe.each(["deposit", "withdrawal", "forced-transaction"] as const)(
       if (resumedStep01.resumedStep !== "step-01") {
         throw new Error("expected step-01 resume");
       }
-      const resumedStep02 = await resumeCrossBlockDuplicateEventV1({
+      const resumedStep02 = await resumeCrossBlockDuplicateEvent({
         lucid: scenario.proverLucid,
         network,
         contracts: scenario.family,

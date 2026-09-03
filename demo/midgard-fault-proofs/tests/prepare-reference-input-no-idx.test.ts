@@ -4,14 +4,14 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -31,7 +31,7 @@ const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -46,9 +46,9 @@ const makeNativeTx = ({
   readonly referenceInputs: readonly Buffer[];
   readonly outputs: readonly Buffer[];
   readonly fee: bigint;
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputs),
@@ -71,9 +71,9 @@ const makeNativeTx = ({
     },
   });
 
-const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 // A producing transaction with a single output (`h32("c4")`).
@@ -173,7 +173,7 @@ describe("prepare-reference-input-no-idx", () => {
     // canonical per-input CBOR; the prepared preimage must reproduce exactly the
     // hash step-01 forwards.
     expect(
-      SDK.referenceInputNoIdxReferenceInputsCommitmentV1(
+      SDK.referenceInputNoIdxReferenceInputsCommitment(
         output.referenceInputsPreimage.map((entry) => ({
           tx_id: entry.txId,
           output_index: BigInt(entry.index),
@@ -181,7 +181,7 @@ describe("prepare-reference-input-no-idx", () => {
       ),
     ).toBe(output.badTxInclusion.nativeTx.body.reference_inputs_hash);
     expect(
-      SDK.isReferenceInputNoIdxViolationV1({
+      SDK.isReferenceInputNoIdxViolation({
         badReferenceInputOutputIndex: output.badReferenceInput.output_index,
         producingTxOutputCount: output.producingTxOutputCount,
       }),

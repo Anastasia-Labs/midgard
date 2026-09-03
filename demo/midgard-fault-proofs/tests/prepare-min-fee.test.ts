@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { deriveMidgardNativeTxProofSourceV1FromCanonicalCbor } from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxProofSourceFromCanonicalCbor } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -12,8 +12,8 @@ import {
   prepareMinFeeFromTransactions,
 } from "../src/index.js";
 import {
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h28,
   h32,
   outRefCbor,
@@ -23,7 +23,7 @@ const CATEGORY_ID = "00000013";
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const fixture = async (fee: bigint) => {
-  const tx = buildFixtureTransactionV1({
+  const tx = buildFixtureTransaction({
     spendInputs: [outRefCbor(0x21, 0n)],
     fee,
   });
@@ -31,7 +31,7 @@ const fixture = async (fee: bigint) => {
   // `Data(L2TransactionSourceV1)` per transaction id, which is the value
   // `prepareMinFeeFromTransactions` recounts, so the authenticated root this
   // fixture hands it is the payload-source one.
-  const block = await buildCanonicalBlockFixtureV1({
+  const block = await buildCanonicalBlockFixture({
     transactions: [tx],
   });
   const transactions: readonly NodeTransactionPayload[] = [
@@ -51,10 +51,10 @@ describe("prepare-min-fee", () => {
       minFeeB: 7n,
       categoryId: CATEGORY_ID,
     });
-    const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+    const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
       tx.canonicalCbor,
     );
-    const boundary = SDK.minimumFeeFromProofSourceV1({
+    const boundary = SDK.minimumFeeFromProofSource({
       source,
       minFeeA: 2n,
       minFeeB: 7n,
@@ -76,7 +76,7 @@ describe("prepare-min-fee", () => {
 
   it("refuses a fee exactly at the canonical minimum and one above it", async () => {
     const seed = await fixture(0n);
-    const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+    const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
       seed.tx.canonicalCbor,
     );
     // CBOR integer width can change with the fee itself. Use a flat schedule
@@ -96,7 +96,7 @@ describe("prepare-min-fee", () => {
       ).rejects.toThrow(/satisfying exact minimum 1000/u);
     }
     expect(
-      SDK.minimumFeeFromProofSourceV1({
+      SDK.minimumFeeFromProofSource({
         source,
         minFeeA: 0n,
         minFeeB: boundary,
@@ -125,7 +125,7 @@ describe("prepare-min-fee", () => {
       }),
     ).rejects.toThrow(/--min-fee-a must be non-negative/u);
     expect(() =>
-      SDK.hasMinFeeViolationV1({
+      SDK.hasMinFeeViolation({
         fee: -1n,
         minFeeA: 1n,
         minFeeB: 0n,
@@ -189,15 +189,15 @@ describe("prepare-min-fee", () => {
         native_tx_compact_cbor: Data.Bytes(),
         witness_set: SDK.NativeTxWitnessSetCompactSchema,
         field_carriages: Data.Tuple([
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
-          SDK.FieldCarriageV1Schema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
+          SDK.FieldCarriageSchema,
         ]),
       });
       expect(Data.to(args, SDK.MinFeeStep02Args)).toBe(

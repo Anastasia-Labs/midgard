@@ -4,62 +4,62 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
-  authenticateTransactionsInclusionRootsV1,
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
+  authenticateTransactionsInclusionRoots,
+  canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
-import { prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 } from "../src/missing-native-script-utxo/prepare-v1.js";
+import { prepareMissingNativeScriptUtxoFromCanonicalEvidence } from "../src/missing-native-script-utxo/prepare-v1.js";
 import {
-  admitProductionMissingNativeScriptUtxoArtifactV1,
-  missingNativeScriptUtxoDetectionIdV1,
-  prepareProductionMissingNativeScriptUtxoArtifactV1,
+  admitMissingNativeScriptUtxoArtifact,
+  missingNativeScriptUtxoDetectionId,
+  prepareMissingNativeScriptUtxoArtifact,
 } from "../src/missing-native-script-utxo/production-artifact-v1.js";
-import { prepareNativeScriptInvalidFromCanonicalEvidenceV1 } from "../src/native-script-invalid/prepare-v1.js";
+import { prepareNativeScriptInvalidFromCanonicalEvidence } from "../src/native-script-invalid/prepare-v1.js";
 import {
-  admitProductionNativeScriptInvalidArtifactV1,
-  nativeScriptInvalidDetectionIdV1,
-  prepareProductionNativeScriptInvalidArtifactV1,
+  admitNativeScriptInvalidArtifact,
+  nativeScriptInvalidDetectionId,
+  prepareNativeScriptInvalidArtifact,
 } from "../src/native-script-invalid/production-artifact-v1.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
-  createProductionHistoricalNativeScriptHistorySourceV1,
-  createProductionHistoricalNativeScriptProviderRosterV1,
-  createSqliteProductionHistoricalNativeScriptCheckpointStoreV1,
-  PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD_V1,
-  type ProductionHistoricalNativeScriptCheckpointV1,
-  productionHistoricalNativeScriptPreimageFromCorpusV1,
-  requireProductionHistoricalNativeScriptCorpusPreimageV1,
-  requireProductionHistoricalNativeScriptHistoryAuthorityV1,
-  resolveProductionHistoricalNativeScriptCorpusV1,
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1,
+  createHistoricalNativeScriptHistorySource,
+  createHistoricalNativeScriptProviderRoster,
+  createSqliteHistoricalNativeScriptCheckpointStore,
+  HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD,
+  type HistoricalNativeScriptCheckpoint,
+  historicalNativeScriptPreimageFromCorpus,
+  requireHistoricalNativeScriptCorpusPreimage,
+  requireHistoricalNativeScriptHistoryAuthority,
+  resolveHistoricalNativeScriptCorpus,
+  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
 } from "../src/workflow/production-historical-native-script-corpus-v1.js";
-import { computeFraudProofRawL1PointIdV1 } from "../src/workflow/raw-l1-snapshot-v1.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  type CanonicalBlockFixtureV1,
-  type FixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  type CanonicalBlockFixture,
+  type FixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const absentKeyHash = Buffer.alloc(28, 0x44);
@@ -76,8 +76,8 @@ const nativeTx = ({
   readonly spendInputs?: readonly Buffer[];
   readonly scripts?: readonly MidgardVersionedScript[];
 }) =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([...spendInputs]),
@@ -104,12 +104,12 @@ const nativeTx = ({
 
 const fixtureTransaction = (
   tx: ReturnType<typeof nativeTx>,
-): FixtureTransactionV1 => {
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(tx);
+): FixtureTransaction => {
+  const canonicalCbor = encodeMidgardNativeTxCanonical(tx);
   const proof =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const txId = computeMidgardNativeTxIdV1(tx).toString("hex");
-  const source: SDK.L2TransactionSourceV1 = {
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const txId = computeMidgardNativeTxId(tx).toString("hex");
+  const source: SDK.L2TransactionSource = {
     tx_id: txId,
     source: {
       compact_cbor: proof.compactCbor.toString("hex"),
@@ -123,20 +123,20 @@ const fixtureTransaction = (
     canonicalCbor,
     compactCbor: proof.compactCbor,
     source,
-    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceV1Schema),
+    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceSchema),
   };
 };
 
 const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
   const transaction = fixtureTransaction(tx);
-  const nativeFixture = await buildCanonicalBlockFixtureV1({
+  const nativeFixture = await buildCanonicalBlockFixture({
     transactions: [transaction],
   });
-  const payloadFixture = await buildCanonicalBlockFixtureV1({
+  const payloadFixture = await buildCanonicalBlockFixture({
     transactions: [transaction],
   });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(payloadFixture),
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(payloadFixture),
     payloadEnvelopeCbor: payloadFixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -146,24 +146,22 @@ const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
   });
   return {
     ...evidence,
-    observation: authenticatedHeaderObservationV1(nativeFixture),
+    observation: authenticatedHeaderObservation(nativeFixture),
     headerHash: nativeFixture.headerHash,
     header: nativeFixture.header,
-    inclusionRootAuthentication: await authenticateTransactionsInclusionRootsV1(
-      {
-        header: nativeFixture.header,
-        reconstruction: evidence.reconstruction,
-        transactions: evidence.transactions,
-      },
-    ),
+    inclusionRootAuthentication: await authenticateTransactionsInclusionRoots({
+      header: nativeFixture.header,
+      reconstruction: evidence.reconstruction,
+      transactions: evidence.transactions,
+    }),
   };
 };
 
 const evidenceFromFixture = async (
-  fixture: Awaited<ReturnType<typeof buildCanonicalBlockFixtureV1>>,
+  fixture: Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
 ) =>
-  await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -173,7 +171,7 @@ const evidenceFromFixture = async (
   });
 
 const retainedSource = (
-  fixtures: readonly Awaited<ReturnType<typeof buildCanonicalBlockFixtureV1>>[],
+  fixtures: readonly Awaited<ReturnType<typeof buildCanonicalBlockFixture>>[],
 ): RetainedDaPayloadSource => ({
   sourceId: "native-script-family-retained-da",
   fetchPayloadByHeaderHash: async (headerHash) => {
@@ -209,9 +207,9 @@ const retainedSource = (
   },
 });
 
-const archivedFixtures = new Map<string, CanonicalBlockFixtureV1>();
+const archivedFixtures = new Map<string, CanonicalBlockFixture>();
 let admittedHistorySource: ReturnType<
-  typeof createProductionHistoricalNativeScriptHistorySourceV1
+  typeof createHistoricalNativeScriptHistorySource
 >;
 const checkpointDirectories: string[] = [];
 
@@ -220,7 +218,7 @@ const authenticatedCheckpointStore = () => {
     "/var/tmp/midgard-native-history-checkpoint-fixture-",
   );
   checkpointDirectories.push(directory);
-  return createSqliteProductionHistoricalNativeScriptCheckpointStoreV1({
+  return createSqliteHistoricalNativeScriptCheckpointStore({
     path: join(directory, "checkpoint.sqlite"),
     rollbackAuthenticationKey: Buffer.alloc(32, 0x90),
   });
@@ -247,37 +245,35 @@ beforeAll(() => {
     };
     return new Response(
       JSON.stringify({
-        schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD_V1,
+        schemaVersion: HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD,
         deploymentFingerprint: "11".repeat(32),
         headerHash,
         payloadEnvelopeCborHex: fixture.payloadEnvelopeCbor.toString("hex"),
         inclusionPoint: {
           ...pointBase,
-          pointId: computeFraudProofRawL1PointIdV1(pointBase),
+          pointId: computeFraudProofRawL1PointId(pointBase),
         },
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
   });
-  admittedHistorySource = createProductionHistoricalNativeScriptHistorySourceV1(
-    {
-      providerRoster: createProductionHistoricalNativeScriptProviderRosterV1({
-        deploymentFingerprint: "11".repeat(32),
-        providers: [
-          {
-            sourceId: "archive-a",
-            authorityEndpoint: "https://archive-a.example.test",
-            operatorIdentitySha256: "aa".repeat(32),
-          },
-          {
-            sourceId: "archive-b",
-            authorityEndpoint: "https://archive-b.example.test",
-            operatorIdentitySha256: "bb".repeat(32),
-          },
-        ],
-      }),
-    },
-  );
+  admittedHistorySource = createHistoricalNativeScriptHistorySource({
+    providerRoster: createHistoricalNativeScriptProviderRoster({
+      deploymentFingerprint: "11".repeat(32),
+      providers: [
+        {
+          sourceId: "archive-a",
+          authorityEndpoint: "https://archive-a.example.test",
+          operatorIdentitySha256: "aa".repeat(32),
+        },
+        {
+          sourceId: "archive-b",
+          authorityEndpoint: "https://archive-b.example.test",
+          operatorIdentitySha256: "bb".repeat(32),
+        },
+      ],
+    }),
+  });
 });
 
 afterAll(() => {
@@ -288,7 +284,7 @@ afterAll(() => {
 });
 
 const historySource = (
-  fixtures: readonly Awaited<ReturnType<typeof buildCanonicalBlockFixtureV1>>[],
+  fixtures: readonly Awaited<ReturnType<typeof buildCanonicalBlockFixture>>[],
 ) => {
   archivedFixtures.clear();
   fixtures.forEach((fixture) =>
@@ -300,14 +296,14 @@ const historySource = (
 describe("Q33/Q34 retained-DA evidence", () => {
   it("rejects forged history providers and duplicated authority backends", () => {
     expect(() =>
-      requireProductionHistoricalNativeScriptHistoryAuthorityV1({
+      requireHistoricalNativeScriptHistoryAuthority({
         deploymentFingerprint: "11".repeat(32),
         checkpointStore:
-          unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1(),
+          unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest(),
         historySource: admittedHistorySource,
       }),
     ).toThrow(/admitted deployment overlay/u);
-    const admitted = createProductionHistoricalNativeScriptProviderRosterV1({
+    const admitted = createHistoricalNativeScriptProviderRoster({
       deploymentFingerprint: "11".repeat(32),
       providers: [
         {
@@ -323,12 +319,12 @@ describe("Q33/Q34 retained-DA evidence", () => {
       ],
     });
     expect(() =>
-      createProductionHistoricalNativeScriptHistorySourceV1({
+      createHistoricalNativeScriptHistorySource({
         providerRoster: { ...admitted },
       }),
     ).toThrow(/admitted immutable provider roster/u);
     expect(() =>
-      createProductionHistoricalNativeScriptProviderRosterV1({
+      createHistoricalNativeScriptProviderRoster({
         deploymentFingerprint: "11".repeat(32),
         providers: [
           {
@@ -345,7 +341,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       }),
     ).toThrow(/not independent/u);
     expect(() =>
-      createProductionHistoricalNativeScriptProviderRosterV1({
+      createHistoricalNativeScriptProviderRoster({
         deploymentFingerprint: "11".repeat(32),
         providers: [
           {
@@ -362,7 +358,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       }),
     ).toThrow(/not independent/u);
     expect(() =>
-      createProductionHistoricalNativeScriptProviderRosterV1({
+      createHistoricalNativeScriptProviderRoster({
         deploymentFingerprint: "11".repeat(32),
         providers: [
           {
@@ -384,24 +380,24 @@ describe("Q33/Q34 retained-DA evidence", () => {
     const evidence = await canonicalEvidence(
       nativeTx({ scripts: [nativeScript] }),
     );
-    const prepared = await prepareNativeScriptInvalidFromCanonicalEvidenceV1({
+    const prepared = await prepareNativeScriptInvalidFromCanonicalEvidence({
       evidence,
     });
     expect(prepared.scriptIndex).toBe(0n);
     expect(prepared.scriptHash).toBe(hashMidgardVersionedScript(nativeScript));
     expect(prepared.addrWitnessItemCbors).toEqual([]);
 
-    const detectionId = nativeScriptInvalidDetectionIdV1({
+    const detectionId = nativeScriptInvalidDetectionId({
       txId: prepared.badTxId,
       scriptIndex: prepared.scriptIndex,
     });
     const detection = {
       detectionId,
       headerHash: evidence.headerHash,
-      violationId: SDK.NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1,
+      violationId: SDK.NATIVE_SCRIPT_INVALID_VIOLATION_ID,
       position: 0n,
     };
-    const artifact = await prepareProductionNativeScriptInvalidArtifactV1({
+    const artifact = await prepareNativeScriptInvalidArtifact({
       evidence,
       classification: {
         schemaVersion: "midgard-fraud-proof-classification-v1",
@@ -413,12 +409,11 @@ describe("Q33/Q34 retained-DA evidence", () => {
         unprovableGaps: [],
       },
     });
-    expect(
-      admitProductionNativeScriptInvalidArtifactV1(artifact).prepared
-        .scriptHash,
-    ).toBe(prepared.scriptHash);
+    expect(admitNativeScriptInvalidArtifact(artifact).prepared.scriptHash).toBe(
+      prepared.scriptHash,
+    );
     expect(() =>
-      admitProductionNativeScriptInvalidArtifactV1({
+      admitNativeScriptInvalidArtifact({
         ...artifact,
         scriptHash: "ee".repeat(28),
       }),
@@ -427,7 +422,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
 
   it("rejects a transaction without an invalid native witness", async () => {
     await expect(
-      prepareNativeScriptInvalidFromCanonicalEvidenceV1({
+      prepareNativeScriptInvalidFromCanonicalEvidence({
         evidence: await canonicalEvidence(nativeTx({})),
       }),
     ).rejects.toThrow(/no accepted false native witness/u);
@@ -435,7 +430,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
 
   it("binds a missing UTxO script to predecessor membership and an authenticated preimage", async () => {
     const predecessorTxId = Buffer.alloc(32, 0x55);
-    const outRefKey = encodeMidgardSpendInputItemV1({
+    const outRefKey = encodeMidgardSpendInputItem({
       txId: predecessorTxId,
       outputIndex: 0,
     });
@@ -446,20 +441,20 @@ describe("Q33/Q34 retained-DA evidence", () => {
       ]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
-    const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
       outRef: outRefKey,
       outputCbor,
     }).descriptorCbor;
     const previousRoot = await keyValuePhasRootWithCount([
       { key: outRefKey, value: descriptorCbor },
     ]);
-    const previousFixture = await buildCanonicalBlockFixtureV1({
+    const previousFixture = await buildCanonicalBlockFixture({
       transactions: [fixtureTransaction(nativeTx({ scripts: [nativeScript] }))],
       utxos: [{ key: outRefKey, value: outputCbor }],
       prevHeaderHash: SDK.GENESIS_HEADER_HASH,
     });
     expect(previousFixture.header.utxosRoot).toBe(previousRoot.root);
-    const challengedFixture = await buildCanonicalBlockFixtureV1({
+    const challengedFixture = await buildCanonicalBlockFixture({
       transactions: [
         fixtureTransaction(nativeTx({ spendInputs: [outRefKey] })),
       ],
@@ -469,33 +464,32 @@ describe("Q33/Q34 retained-DA evidence", () => {
     const challenged = await evidenceFromFixture(challengedFixture);
     const checkpointStore = authenticatedCheckpointStore();
     const historicalNativeScriptCorpus =
-      await resolveProductionHistoricalNativeScriptCorpusV1({
+      await resolveHistoricalNativeScriptCorpus({
         deploymentFingerprint: "11".repeat(32),
         checkpointStore,
         historySource: historySource([previousFixture, challengedFixture]),
         currentEvidence: challenged,
         sources: [retainedSource([previousFixture, challengedFixture])],
       });
-    const changedRosterSource =
-      createProductionHistoricalNativeScriptHistorySourceV1({
-        providerRoster: createProductionHistoricalNativeScriptProviderRosterV1({
-          deploymentFingerprint: "11".repeat(32),
-          providers: [
-            {
-              sourceId: "archive-c",
-              authorityEndpoint: "https://archive-c.example.test",
-              operatorIdentitySha256: "cc".repeat(32),
-            },
-            {
-              sourceId: "archive-d",
-              authorityEndpoint: "https://archive-d.example.test",
-              operatorIdentitySha256: "dd".repeat(32),
-            },
-          ],
-        }),
-      });
+    const changedRosterSource = createHistoricalNativeScriptHistorySource({
+      providerRoster: createHistoricalNativeScriptProviderRoster({
+        deploymentFingerprint: "11".repeat(32),
+        providers: [
+          {
+            sourceId: "archive-c",
+            authorityEndpoint: "https://archive-c.example.test",
+            operatorIdentitySha256: "cc".repeat(32),
+          },
+          {
+            sourceId: "archive-d",
+            authorityEndpoint: "https://archive-d.example.test",
+            operatorIdentitySha256: "dd".repeat(32),
+          },
+        ],
+      }),
+    });
     await expect(
-      resolveProductionHistoricalNativeScriptCorpusV1({
+      resolveHistoricalNativeScriptCorpus({
         deploymentFingerprint: "11".repeat(32),
         checkpointStore,
         historySource: changedRosterSource,
@@ -503,24 +497,21 @@ describe("Q33/Q34 retained-DA evidence", () => {
         sources: [retainedSource([challengedFixture])],
       }),
     ).rejects.toThrow(/different provider roster/u);
-    const corpusPreimage = productionHistoricalNativeScriptPreimageFromCorpusV1(
-      {
-        corpus: historicalNativeScriptCorpus,
-        scriptHash: hashMidgardVersionedScript(nativeScript),
-      },
-    );
+    const corpusPreimage = historicalNativeScriptPreimageFromCorpus({
+      corpus: historicalNativeScriptCorpus,
+      scriptHash: hashMidgardVersionedScript(nativeScript),
+    });
     expect(corpusPreimage).not.toBeNull();
     expect(
-      requireProductionHistoricalNativeScriptCorpusPreimageV1(corpusPreimage!),
+      requireHistoricalNativeScriptCorpusPreimage(corpusPreimage!),
     ).toMatchObject({
       providerRosterDigest: historicalNativeScriptCorpus.providerRosterDigest,
       checkpointDigest: historicalNativeScriptCorpus.checkpointDigest,
     });
-    const prepared =
-      await prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1({
-        evidence: challenged,
-        historicalNativeScriptCorpus,
-      });
+    const prepared = await prepareMissingNativeScriptUtxoFromCanonicalEvidence({
+      evidence: challenged,
+      historicalNativeScriptCorpus,
+    });
     expect(prepared.expectedMissingScriptHash).toBe(
       hashMidgardVersionedScript(nativeScript),
     );
@@ -529,17 +520,17 @@ describe("Q33/Q34 retained-DA evidence", () => {
       outputIndex: 0n,
     });
 
-    const detectionId = missingNativeScriptUtxoDetectionIdV1({
+    const detectionId = missingNativeScriptUtxoDetectionId({
       txId: prepared.badTxId,
       inputIndex: prepared.badInputIndex,
     });
     const detection = {
       detectionId,
       headerHash: challenged.headerHash,
-      violationId: SDK.MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1,
+      violationId: SDK.MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
       position: 0n,
     };
-    const artifact = await prepareProductionMissingNativeScriptUtxoArtifactV1({
+    const artifact = await prepareMissingNativeScriptUtxoArtifact({
       evidence: challenged,
       historicalNativeScriptCorpus,
       classification: {
@@ -553,27 +544,27 @@ describe("Q33/Q34 retained-DA evidence", () => {
       },
     });
     expect(
-      admitProductionMissingNativeScriptUtxoArtifactV1(artifact).prepared
+      admitMissingNativeScriptUtxoArtifact(artifact).prepared
         .expectedMissingScriptHash,
     ).toBe(prepared.expectedMissingScriptHash);
     expect(() =>
-      admitProductionMissingNativeScriptUtxoArtifactV1({
+      admitMissingNativeScriptUtxoArtifact({
         ...artifact,
         descriptorCbor: `${artifact.descriptorCbor.slice(0, -2)}00`,
       }),
     ).toThrow(/membership proof/u);
 
-    const successorOne = await buildCanonicalBlockFixtureV1({
+    const successorOne = await buildCanonicalBlockFixture({
       transactions: [fixtureTransaction(nativeTx({}))],
       prevHeaderHash: challengedFixture.headerHash,
       prevUtxosRoot: challengedFixture.header.utxosRoot,
     });
-    const successorTwo = await buildCanonicalBlockFixtureV1({
+    const successorTwo = await buildCanonicalBlockFixture({
       transactions: [fixtureTransaction(nativeTx({}))],
       prevHeaderHash: successorOne.headerHash,
       prevUtxosRoot: successorOne.header.utxosRoot,
     });
-    const recovered = await resolveProductionHistoricalNativeScriptCorpusV1({
+    const recovered = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: "11".repeat(32),
       checkpointStore,
       historySource: historySource([
@@ -597,13 +588,13 @@ describe("Q33/Q34 retained-DA evidence", () => {
       hashMidgardVersionedScript(nativeScript),
     );
 
-    const noPreimageFixture = await buildCanonicalBlockFixtureV1({
+    const noPreimageFixture = await buildCanonicalBlockFixture({
       transactions: [fixtureTransaction(nativeTx({}))],
       utxos: [{ key: outRefKey, value: outputCbor }],
       prevHeaderHash: SDK.GENESIS_HEADER_HASH,
     });
     await expect(
-      resolveProductionHistoricalNativeScriptCorpusV1({
+      resolveHistoricalNativeScriptCorpus({
         deploymentFingerprint: "11".repeat(32),
         checkpointStore: authenticatedCheckpointStore(),
         historySource: historySource([noPreimageFixture, challengedFixture]),
@@ -616,7 +607,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
   it("rejects predecessor evidence not named by the challenged header", async () => {
     const evidence = await canonicalEvidence(nativeTx({}));
     await expect(
-      resolveProductionHistoricalNativeScriptCorpusV1({
+      resolveHistoricalNativeScriptCorpus({
         deploymentFingerprint: "11".repeat(32),
         checkpointStore: authenticatedCheckpointStore(),
         historySource: historySource([]),
@@ -627,11 +618,11 @@ describe("Q33/Q34 retained-DA evidence", () => {
   });
 
   it("does not hide retained-DA corruption behind the archival quorum", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [fixtureTransaction(nativeTx({}))],
     });
     await expect(
-      resolveProductionHistoricalNativeScriptCorpusV1({
+      resolveHistoricalNativeScriptCorpus({
         deploymentFingerprint: "11".repeat(32),
         checkpointStore: authenticatedCheckpointStore(),
         historySource: historySource([fixture]),
@@ -666,18 +657,17 @@ describe("Q33/Q34 retained-DA evidence", () => {
     const deploymentFingerprint = "11".repeat(32);
     const rollbackAuthenticationKey = Buffer.alloc(32, 0x91);
     try {
-      const fixture = await buildCanonicalBlockFixtureV1({
+      const fixture = await buildCanonicalBlockFixture({
         transactions: [
           fixtureTransaction(nativeTx({ scripts: [nativeScript] })),
         ],
         prevHeaderHash: SDK.GENESIS_HEADER_HASH,
       });
-      const store =
-        createSqliteProductionHistoricalNativeScriptCheckpointStoreV1({
-          path,
-          rollbackAuthenticationKey,
-        });
-      await resolveProductionHistoricalNativeScriptCorpusV1({
+      const store = createSqliteHistoricalNativeScriptCheckpointStore({
+        path,
+        rollbackAuthenticationKey,
+      });
+      await resolveHistoricalNativeScriptCorpus({
         deploymentFingerprint,
         checkpointStore: store,
         historySource: historySource([fixture]),
@@ -686,7 +676,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       });
       const originalCheckpoint = (await store.load({
         deploymentFingerprint,
-      })) as ProductionHistoricalNativeScriptCheckpointV1;
+      })) as HistoricalNativeScriptCheckpoint;
 
       const database = new DatabaseSync(path);
       let rewrittenCheckpointDigest = "";
@@ -761,7 +751,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
         }),
       ).rejects.toThrow(/checkpoint authentication failed/u);
       await expect(
-        createSqliteProductionHistoricalNativeScriptCheckpointStoreV1({
+        createSqliteHistoricalNativeScriptCheckpointStore({
           path,
           rollbackAuthenticationKey: Buffer.alloc(32, 0x92),
         }).load({ deploymentFingerprint }),

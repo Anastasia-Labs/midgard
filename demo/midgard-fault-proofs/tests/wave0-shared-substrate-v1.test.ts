@@ -4,25 +4,25 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertNoPositiveFaultProofLimitEscapesV1,
-  scanFaultProofLimitEscapesV1,
+  assertNoPositiveFaultProofLimitEscapes,
+  scanFaultProofLimitEscapes,
 } from "../src/proof-fit/limit-escape-scan-v1.js";
 import {
-  buildVanRossemFitLedgerV1,
-  writeVanRossemFitLedgerV1,
+  buildVanRossemFitLedger,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 import {
-  assertCompleteLifecycleCoverageV1,
-  COMPLETE_LIFECYCLE_BASE_SCENARIOS_V1,
-  type CompleteLifecycleCoverageV1,
+  assertCompleteLifecycleCoverage,
+  COMPLETE_LIFECYCLE_BASE_SCENARIOS,
+  type CompleteLifecycleCoverage,
 } from "../src/testing/complete-lifecycle-v1.js";
 
-const completeCoverage = (): CompleteLifecycleCoverageV1 => ({
+const completeCoverage = (): CompleteLifecycleCoverage => ({
   reasonArms: ["InputNotFound"],
   successfulDirectionByReason: {
     InputNotFound: ["accepted_invalid", "forced_rejection_wrong"],
   },
-  scenarios: COMPLETE_LIFECYCLE_BASE_SCENARIOS_V1,
+  scenarios: COMPLETE_LIFECYCLE_BASE_SCENARIOS,
   authenticatedSeamsMutated: ["forced_leaf", "descriptor"],
   cancelledPhysicalSteps: ["bind", "scan"],
   resumedAfterCheckpoint: true,
@@ -46,14 +46,14 @@ const typescriptFilesBelow = async (directory: string): Promise<string[]> => {
 
 describe("Wave 0 shared off-chain substrate", () => {
   it("fails closed on positive limit escapes and permits only marked negative diagnostics", () => {
-    const positive = scanFaultProofLimitEscapesV1({
+    const positive = scanFaultProofLimitEscapes({
       path: "positive.test.ts",
       source: `const parameters = { ${"maxTx" + "Size"}: 262_144 };\npublish({ ${"over" + "sized"}: true });`,
     });
-    expect(() => assertNoPositiveFaultProofLimitEscapesV1(positive)).toThrow(
+    expect(() => assertNoPositiveFaultProofLimitEscapes(positive)).toThrow(
       /positive\.test\.ts:1 raised_tx_bytes.*positive\.test\.ts:2 oversized_publication/su,
     );
-    const diagnostic = scanFaultProofLimitEscapesV1({
+    const diagnostic = scanFaultProofLimitEscapes({
       path: "unpublishable.test.ts",
       source: [
         "// MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN",
@@ -62,11 +62,11 @@ describe("Wave 0 shared off-chain substrate", () => {
       ].join("\n"),
     });
     expect(() =>
-      assertNoPositiveFaultProofLimitEscapesV1(diagnostic),
+      assertNoPositiveFaultProofLimitEscapes(diagnostic),
     ).not.toThrow();
     expect(() =>
-      assertNoPositiveFaultProofLimitEscapesV1(
-        scanFaultProofLimitEscapesV1({
+      assertNoPositiveFaultProofLimitEscapes(
+        scanFaultProofLimitEscapes({
           path: "broken.test.ts",
           source: `// ${"MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_" + "END"}`,
         }),
@@ -80,7 +80,7 @@ describe("Wave 0 shared off-chain substrate", () => {
     const findings = (
       await Promise.all(
         files.map(async (path) =>
-          scanFaultProofLimitEscapesV1({
+          scanFaultProofLimitEscapes({
             path,
             source: await readFile(path, "utf8"),
           }),
@@ -88,13 +88,13 @@ describe("Wave 0 shared off-chain substrate", () => {
       )
     ).flat();
     expect(() =>
-      assertNoPositiveFaultProofLimitEscapesV1(findings),
+      assertNoPositiveFaultProofLimitEscapes(findings),
     ).not.toThrow();
   });
 
   it("fails lifecycle coverage with one actionable list of every omission", () => {
     expect(() =>
-      assertCompleteLifecycleCoverageV1({
+      assertCompleteLifecycleCoverage({
         coverage: { ...completeCoverage(), scenarios: [] },
         expectedReasonArms: ["InputNotFound"],
         authenticationSeams: ["forced_leaf", "descriptor", "item"],
@@ -106,7 +106,7 @@ describe("Wave 0 shared off-chain substrate", () => {
       /scenarios:.*authentication seams: item.*cancel steps: finalize/u,
     );
     expect(() =>
-      assertCompleteLifecycleCoverageV1({
+      assertCompleteLifecycleCoverage({
         coverage: completeCoverage(),
         expectedReasonArms: ["InputNotFound"],
         authenticationSeams: ["forced_leaf", "descriptor"],
@@ -141,8 +141,8 @@ describe("Wave 0 shared off-chain substrate", () => {
         },
       ],
     };
-    const ledger = buildVanRossemFitLedgerV1(input);
-    expect(buildVanRossemFitLedgerV1(input)).toStrictEqual(ledger);
+    const ledger = buildVanRossemFitLedger(input);
+    expect(buildVanRossemFitLedger(input)).toStrictEqual(ledger);
     expect(ledger.entries.map((entry) => entry.name)).toStrictEqual([
       "step-01",
       "publish-bind",
@@ -151,7 +151,7 @@ describe("Wave 0 shared off-chain substrate", () => {
       process.env.TMPDIR ?? "/tmp",
       `midgard-fit-${ledger.ledgerSha256}.json`,
     );
-    await writeVanRossemFitLedgerV1(path, ledger);
+    await writeVanRossemFitLedger(path, ledger);
     expect(JSON.parse(await readFile(path, "utf8"))).toStrictEqual(ledger);
   });
 
@@ -162,7 +162,7 @@ describe("Wave 0 shared off-chain substrate", () => {
       compilerVersion: "aiken v1.1.23+5adf783",
     };
     expect(() =>
-      buildVanRossemFitLedgerV1({
+      buildVanRossemFitLedger({
         ...base,
         measurements: [
           {
@@ -177,7 +177,7 @@ describe("Wave 0 shared off-chain substrate", () => {
       }),
     ).toThrow(/no positive Van Rossem margin/);
     expect(() =>
-      buildVanRossemFitLedgerV1({
+      buildVanRossemFitLedger({
         ...base,
         measurements: [
           {

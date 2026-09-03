@@ -3,7 +3,7 @@ import {
   InputSetUniquenessStep03SpendRedeemerSchema,
   type InputSetUniquenessStep03State,
   InputSetUniquenessStep04DatumSchema,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -16,23 +16,23 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldCarriageV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { InputSetUniquenessContracts } from "./contracts-v1.js";
 import {
-  requireInputSetUniquenessReferenceScriptV1,
-  requireInputSetUniquenessStepStateV1,
-  requireInputSetUniquenessThreadUtxoV1,
+  requireInputSetUniquenessReferenceScript,
+  requireInputSetUniquenessStepState,
+  requireInputSetUniquenessThreadUtxo,
 } from "./submit-common-v1.js";
 import {
-  inputSetUniquenessCheckpointV1,
-  type InputSetUniqueScanStateV1,
+  inputSetUniquenessCheckpoint,
+  type InputSetUniqueScanState,
 } from "./wrongful-rejection-v1.js";
 
 const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
@@ -45,7 +45,7 @@ const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
   });
 };
 
-export const submitInputSetUniquenessStep03V1 = async ({
+export const submitInputSetUniquenessStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -63,7 +63,7 @@ export const submitInputSetUniquenessStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -75,27 +75,28 @@ export const submitInputSetUniquenessStep03V1 = async ({
   readonly spendCertificateUtxo?: UTxO;
   readonly referenceCertificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2 as const;
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId,
       stepIndex,
       threadOutRef,
-    });
+    },
+  );
   const { bound } =
-    requireInputSetUniquenessStepStateV1<InputSetUniquenessStep03State>({
+    requireInputSetUniquenessStepState<InputSetUniquenessStep03State>({
       threadUtxo,
       signer,
       schema: InputSetUniquenessStep03DatumSchema as never,
       stepIndex,
     });
   const plan = (fieldIndex: number, items: readonly string[]) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: bound.subject.transaction_id,
       nativeTxCompactCbor,
@@ -103,12 +104,9 @@ export const submitInputSetUniquenessStep03V1 = async ({
       owner: signer.paymentKeyHash,
       label: "input-set-uniqueness step-03",
     });
-  const spendPlan = plan(
-    MIDGARD_FIELD_INDEX_V1.spendInputs,
-    spendInputItemCbors,
-  );
+  const spendPlan = plan(MIDGARD_FIELD_INDEX.spendInputs, spendInputItemCbors);
   const referencePlan = plan(
-    MIDGARD_FIELD_INDEX_V1.referenceInputs,
+    MIDGARD_FIELD_INDEX.referenceInputs,
     referenceInputItemCbors,
   );
   const resolve = async (
@@ -117,7 +115,7 @@ export const submitInputSetUniquenessStep03V1 = async ({
     certificate: UTxO | undefined,
   ) => [
     ...(supplied ??
-      (await publishFaultProofFieldCarriageV1({
+      (await publishFaultProofFieldCarriage({
         lucid,
         signer,
         planned,
@@ -166,9 +164,9 @@ export const submitInputSetUniquenessStep03V1 = async ({
     previous_item: "",
     next_expected_script_hash: contracts.steps[3].spendingScriptHash,
   };
-  const scanState: InputSetUniqueScanStateV1 = {
+  const scanState: InputSetUniqueScanState = {
     ...partial,
-    checkpoint_hash: inputSetUniquenessCheckpointV1({
+    checkpoint_hash: inputSetUniquenessCheckpoint({
       bound,
       spendCount,
       referenceCount,
@@ -186,7 +184,7 @@ export const submitInputSetUniquenessStep03V1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireInputSetUniquenessReferenceScriptV1({
+  const stepReference = requireInputSetUniquenessReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
@@ -211,13 +209,13 @@ export const submitInputSetUniquenessStep03V1 = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             native_tx_compact_cbor: nativeTxCompactCbor,
-            spend_inputs_carriage: faultProofFieldCarriageV1({
+            spend_inputs_carriage: faultProofFieldCarriage({
               planned: spendPlan,
               referenceInputs: [...carriageUtxos, stepReference],
               certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
               label: "input-set-uniqueness step-03 spend",
             }),
-            reference_inputs_carriage: faultProofFieldCarriageV1({
+            reference_inputs_carriage: faultProofFieldCarriage({
               planned: referencePlan,
               referenceInputs: [...carriageUtxos, stepReference],
               certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -230,7 +228,7 @@ export const submitInputSetUniquenessStep03V1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

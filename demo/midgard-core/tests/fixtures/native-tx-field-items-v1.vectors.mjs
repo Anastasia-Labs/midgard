@@ -116,7 +116,7 @@ export const DATUM_CANONICITY_BOUNDARIES = [
 export const CARRIAGE_BOUNDARY_LENGTHS = [
   // 15,148 / 15,149 are `K` and `K + 1` at §8.3 erratum E1's repaired `K`. This
   // module imports nothing from the package (see the header), so they are
-  // literals; the generator asserts them against `MIDGARD_CHUNK_BYTES_K_V1` so a
+  // literals; the generator asserts them against `MIDGARD_CHUNK_BYTES_K` so a
   // future re-pin cannot leave them behind.
   1, 14_336, 14_337, 15_148, 15_149, 32_768,
 ];
@@ -133,7 +133,7 @@ export const FIELD_PREIMAGE_LENGTHS = [11, 22, 33, 44, 55, 66, 77, 88, 99];
  * A canonical body/witness-set pair whose nine field preimages have the nine
  * distinct lengths above, used to drive the §2.4 vector through the function
  * that actually performs the transposition
- * (`midgardNativeTxProofFieldPreimageLengthsV1`).
+ * (`midgardNativeTxProofFieldPreimageLengths`).
  *
  * Driving that function rather than handing a pre-ordered array to the encoder
  * is the whole point: an array of nine numbers re-serialised in array order
@@ -206,7 +206,7 @@ export const straddleInputs = () =>
 
 /**
  * Pairs a group's field index with one of its vectors' items — the exact shape
- * both drivers hand to `encodeMidgardFieldItemsV1`.
+ * both drivers hand to `encodeMidgardFieldItems`.
  *
  * It exists so the correlation between `fieldIndex` and the item type is stated
  * once, in this module's declaration file, instead of at every call site: the

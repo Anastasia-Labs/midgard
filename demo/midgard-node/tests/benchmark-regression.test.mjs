@@ -4,13 +4,13 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
@@ -284,8 +284,8 @@ describe("corpus artifact report binding", () => {
 
 describe("bounded corpus uniqueness validation", () => {
   const corpusRow = (index) => {
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -307,9 +307,9 @@ describe("bounded corpus uniqueness validation", () => {
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     });
-    const cbor = encodeMidgardNativeTxCanonicalV1(nativeTx);
+    const cbor = encodeMidgardNativeTxCanonical(nativeTx);
     return {
-      txHash: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
+      txHash: computeMidgardNativeTxId(nativeTx).toString("hex"),
       canonicalCborHex: cbor.toString("hex"),
       canonicalCborSha256: createHash("sha256").update(cbor).digest("hex"),
       canonicalCborByteLength: cbor.length,

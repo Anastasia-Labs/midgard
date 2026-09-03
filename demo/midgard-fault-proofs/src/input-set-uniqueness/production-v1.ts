@@ -1,20 +1,20 @@
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
-  detectInputSetUniquenessForcedReplayV1,
-  selectCanonicalInputSetUniquenessForcedDetectionV1,
+  detectInputSetUniquenessForcedReplay,
+  selectCanonicalInputSetUniquenessForcedDetection,
 } from "./replay-v1.js";
 
 /** Callback-free production boundary: authenticated block evidence is the input. */
-export type InputSetUniquenessForcedProductionInputV1 = Readonly<{
-  block: CanonicalBlockEvidenceV1;
+export type InputSetUniquenessForcedInput = Readonly<{
+  block: CanonicalBlockEvidence;
 }>;
 
-export const prepareInputSetUniquenessForcedProductionPlanV1 = async ({
+export const prepareInputSetUniquenessForcedPlan = async ({
   block,
-}: InputSetUniquenessForcedProductionInputV1) => {
-  const detection = selectCanonicalInputSetUniquenessForcedDetectionV1(
-    detectInputSetUniquenessForcedReplayV1(block),
+}: InputSetUniquenessForcedInput) => {
+  const detection = selectCanonicalInputSetUniquenessForcedDetection(
+    detectInputSetUniquenessForcedReplay(block),
   );
   const transaction =
     block.reconstruction.forcedTransactions[detection.forcedIndex];

@@ -1,34 +1,34 @@
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
   decodeMidgardTxOutput,
-  deriveMidgardNativeTxBodyCompactV1,
-  deriveMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxCompact,
   EMPTY_NULL_ROOT,
   encodeMidgardAddressText,
-  encodeMidgardFieldPreimageForFieldV1,
+  encodeMidgardFieldPreimageForField,
   encodeMidgardNativeScript,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  midgardFieldCommitmentV1,
+  midgardFieldCommitment,
   type MidgardNativeScript,
-  type MidgardNativeTxBodyCanonicalV1,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxWitnessSetCanonicalV1,
-  midgardRedeemerPurposeFromTagV1,
+  type MidgardNativeTxBodyCanonical,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxWitnessSetCanonical,
+  midgardRedeemerPurposeFromTag,
   type MidgardTxOutput,
   type MidgardTxValidity,
   type MidgardVersionedScript,
   protectMidgardAddress,
   type ScriptLanguageName,
-  sortMidgardMintItemsV1,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
@@ -38,8 +38,8 @@ import { decodeMidgardSubmittedTxFromCanonicalCbor } from "../src/ledger-tx/code
 import type { PhaseAValidatedTx, QueuedTx } from "../src/types.js";
 import { buildPhaseAValidatedTx } from "../src/validation-candidate.js";
 import {
-  MIDGARD_COINS_PER_UTXO_BYTE_V1,
-  minAdaLovelaceV1,
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  minAdaLovelace,
 } from "../src/value-accounting.js";
 
 export const EMPTY_CBOR_LIST = Buffer.from([0x80]);
@@ -83,7 +83,7 @@ type NativeTxOptions = {
 };
 
 export type NativeTxFixture = {
-  readonly tx: MidgardNativeTxFullV1;
+  readonly tx: MidgardNativeTxFull;
   readonly txId: Buffer;
   readonly txCbor: Buffer;
 };
@@ -97,13 +97,13 @@ export const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
 // minimal-index TransactionInput CBOR would make every fixture transaction
 // re-encode to a different tx id than the one it was built with.
 export const outRefFromByte = (byte: number, index = 0n): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.alloc(32, byte),
     outputIndex: Number(index),
   });
 
 export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
-  encodeMidgardSpendInputItemV1({ txId, outputIndex: Number(index) });
+  encodeMidgardSpendInputItem({ txId, outputIndex: Number(index) });
 
 /**
  * The lovelace every fixture output that a fixture transaction PRODUCES is
@@ -132,7 +132,7 @@ export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
  * resolves from prior state, whose under-funding is the separate
  * MIN-ADA-UTXO shape Q27 owns.
  */
-export const FUNDED_OUTPUT_LOVELACE_V1 = 10_000_000n;
+export const FUNDED_OUTPUT_LOVELACE = 10_000_000n;
 
 export const makeOutput = (
   lovelace: bigint,
@@ -149,7 +149,7 @@ export const makeOutput = (
   return encodeMidgardTxOutput(output);
 };
 
-const encodeBoundedDatumChunkV1 = (payload: Buffer): Buffer => {
+const encodeBoundedDatumChunk = (payload: Buffer): Buffer => {
   if (payload.length < 24) {
     return Buffer.concat([Buffer.from([0x40 + payload.length]), payload]);
   }
@@ -172,7 +172,7 @@ const encodeBoundedDatumChunkV1 = (payload: Buffer): Buffer => {
  * one full chunk back and closing the gap with a pair of chunks reaches both
  * skipped residues, so every length from 67 up is constructible.
  */
-export const canonicalDatumOfExactLengthV1 = (datumBytes: number): Buffer => {
+export const canonicalDatumOfExactLength = (datumBytes: number): Buffer => {
   const unreachable = (): never => {
     throw new Error(
       `no canonical datum encodes to exactly ${datumBytes.toString()} bytes`,
@@ -184,7 +184,7 @@ export const canonicalDatumOfExactLengthV1 = (datumBytes: number): Buffer => {
     if (take < 0 || chunkBytes(take) !== datumBytes) {
       return unreachable();
     }
-    return encodeBoundedDatumChunkV1(Buffer.alloc(take, 0xa5));
+    return encodeBoundedDatumChunk(Buffer.alloc(take, 0xa5));
   }
   const takes: number[] = [];
   let remaining = datumBytes - 2;
@@ -205,7 +205,7 @@ export const canonicalDatumOfExactLengthV1 = (datumBytes: number): Buffer => {
   }
   return Buffer.concat([
     Buffer.from([0x9f]),
-    ...takes.map((take) => encodeBoundedDatumChunkV1(Buffer.alloc(take, 0xa5))),
+    ...takes.map((take) => encodeBoundedDatumChunk(Buffer.alloc(take, 0xa5))),
     Buffer.from([0xff]),
   ]);
 };
@@ -222,7 +222,7 @@ export const canonicalDatumOfExactLengthV1 = (datumBytes: number): Buffer => {
  * frontiers. The four copies are now this one, so the exact-length algorithm
  * and the funding rule cannot drift apart between them.
  *
- * Funding is at the floor rather than at `FUNDED_OUTPUT_LOVELACE_V1` on
+ * Funding is at the floor rather than at `FUNDED_OUTPUT_LOVELACE` on
  * purpose: these items are sized in bytes, and a fixed lovelace amount would
  * make the item's own length depend on how wide that amount happens to encode.
  * The floor, `coins_per_utxo_byte * (160 + targetItemBytes)`, is computable up
@@ -230,11 +230,11 @@ export const canonicalDatumOfExactLengthV1 = (datumBytes: number): Buffer => {
  * funding changes no measured length -- every carriage measurement over these
  * items measures the same number of bytes it did before the wiring.
  */
-export const makeMinAdaFundedExactSizeOutputItemV1 = (
+export const makeMinAdaFundedExactSizeOutputItem = (
   targetItemBytes: number,
 ): Buffer => {
-  const lovelace = minAdaLovelaceV1(
-    MIDGARD_COINS_PER_UTXO_BYTE_V1,
+  const lovelace = minAdaLovelace(
+    MIDGARD_COINS_PER_UTXO_BYTE,
     BigInt(targetItemBytes),
   );
   const encodeWithDatum = (datumBytes: number): Buffer =>
@@ -243,7 +243,7 @@ export const makeMinAdaFundedExactSizeOutputItemV1 = (
       value: { lovelace, assets: new Map() },
       datum: {
         kind: "inline",
-        cbor: canonicalDatumOfExactLengthV1(datumBytes),
+        cbor: canonicalDatumOfExactLength(datumBytes),
       },
     });
   // The output framing around the datum is a fixed prefix plus one CBOR byte
@@ -273,9 +273,7 @@ export const makeMinAdaFundedExactSizeOutputItemV1 = (
  * zero at stage five instead of being convicted with `E_VALUE_NOT_PRESERVED`.
  * Fixture transactions here pay no fee, so the sum is exact.
  */
-export const fundingLovelaceForOutputsV1 = (
-  outputs: readonly Buffer[],
-): bigint =>
+export const fundingLovelaceForOutputs = (outputs: readonly Buffer[]): bigint =>
   outputs.reduce(
     (total, output) => total + decodeMidgardTxOutput(output).value.lovelace,
     0n,
@@ -323,10 +321,10 @@ export const makeRedeemersCbor = (
   const emptyData = Buffer.from(Data.to(new Constr(0, [])), "hex");
   // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The retired counted
   // scheme spelled this as a bare CBOR array of four-element arrays.
-  return encodeMidgardFieldPreimageForFieldV1({
+  return encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items: items.map((item) => ({
-      purpose: midgardRedeemerPurposeFromTagV1(item.tag),
+      purpose: midgardRedeemerPurposeFromTag(item.tag),
       index: item.index,
       redeemerCbor: Buffer.from(item.data ?? emptyData),
       executionUnits: {
@@ -345,9 +343,9 @@ export const makeRedeemersCbor = (
 export const makeMintPreimageCbor = (
   policies: ReadonlyMap<Uint8Array, ReadonlyMap<Uint8Array, bigint>>,
 ): Buffer =>
-  encodeMidgardFieldPreimageForFieldV1({
+  encodeMidgardFieldPreimageForField({
     fieldIndex: 5,
-    items: sortMidgardMintItemsV1(
+    items: sortMidgardMintItems(
       [...policies.entries()].map(([policyId, assets]) => ({
         policyId,
         assets: [...assets.entries()].map(([assetName, quantity]) => ({
@@ -373,11 +371,11 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     opts.scriptLanguages === undefined
       ? EMPTY_NULL_ROOT
       : computeScriptIntegrityHashForLanguages(
-          midgardFieldCommitmentV1(redeemerTxWitsPreimageCbor),
+          midgardFieldCommitment(redeemerTxWitsPreimageCbor),
           opts.scriptLanguages,
         );
 
-  const body: MidgardNativeTxBodyCanonicalV1 = {
+  const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor: encodeByteList(spendInputs),
     referenceInputsPreimageCbor: encodeByteList(referenceInputs),
     outputsPreimageCbor: encodeByteList(outputs),
@@ -395,9 +393,9 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
     networkId: opts.networkId ?? MIDGARD_NATIVE_NETWORK_ID_NONE,
   };
 
-  const version = opts.version ?? MIDGARD_NATIVE_TX_V1_VERSION;
-  const bodyCompact = deriveMidgardNativeTxBodyCompactV1(body);
-  const bodyHash = computeMidgardNativeTxIdV1({
+  const version = opts.version ?? MIDGARD_NATIVE_TX_VERSION;
+  const bodyCompact = deriveMidgardNativeTxBodyCompact(body);
+  const bodyHash = computeMidgardNativeTxId({
     version,
     transactionBody: bodyCompact,
     transactionWitnessSetHash: Buffer.alloc(32),
@@ -417,26 +415,21 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
           ),
         ]);
 
-  const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
+  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor,
     scriptTxWitsPreimageCbor,
     redeemerTxWitsPreimageCbor,
   };
   const validity = opts.validity ?? "TxIsValid";
-  const tx: MidgardNativeTxFullV1 = {
+  const tx: MidgardNativeTxFull = {
     version,
     validity,
-    compact: deriveMidgardNativeTxCompactV1(
-      body,
-      witnessSet,
-      validity,
-      version,
-    ),
+    compact: deriveMidgardNativeTxCompact(body, witnessSet, validity, version),
     body,
     witnessSet,
   };
-  const txId = computeMidgardNativeTxIdV1(tx);
-  const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+  const txId = computeMidgardNativeTxId(tx);
+  const txCbor = encodeMidgardNativeTxCanonical(tx);
 
   return {
     tx,
@@ -446,18 +439,14 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
 };
 
 export const encodeRecomputedNativeTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): NativeTxFixture => {
-  const updated: MidgardNativeTxFullV1 = {
+  const updated: MidgardNativeTxFull = {
     ...tx,
-    compact: deriveMidgardNativeTxCompactV1(
-      tx.body,
-      tx.witnessSet,
-      tx.validity,
-    ),
+    compact: deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, tx.validity),
   };
-  const txId = computeMidgardNativeTxIdV1(updated);
-  const txCbor = encodeMidgardNativeTxCanonicalV1(updated);
+  const txId = computeMidgardNativeTxId(updated);
+  const txCbor = encodeMidgardNativeTxCanonical(updated);
   return {
     tx: updated,
     txId,
@@ -474,7 +463,7 @@ export const makeQueued = (
   txCbor,
   arrivalSeq,
   createdAt: new Date(0),
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
 });
 
 export const ledgerEntry = (outRef: Buffer, output: Buffer): LedgerEntry => ({
@@ -501,7 +490,7 @@ export const makePhaseBCandidate = (
 ): PhaseAValidatedTx => {
   const spent = opts.spent ?? [outRefFromByte(0x11)];
   const referenceInputs = opts.referenceInputs ?? [];
-  const outputLovelace = opts.outputLovelace ?? FUNDED_OUTPUT_LOVELACE_V1;
+  const outputLovelace = opts.outputLovelace ?? FUNDED_OUTPUT_LOVELACE;
   const outputs = opts.outputs ?? [makeOutput(outputLovelace)];
   const fixture = makeNativeTx({
     ...opts,

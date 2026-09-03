@@ -20,22 +20,22 @@ import { createHash } from "node:crypto";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
-  fieldPreimagePublicationDatumCborV1,
+  fieldPreimagePublicationDatumCbor,
   FraudProofTokenDatum,
-  inputNoIdxOutputsCommitmentV1,
-  inputNoIdxSpendInputsCommitmentV1,
+  inputNoIdxOutputsCommitment,
+  inputNoIdxSpendInputsCommitment,
   InputNoIdxStep02Datum,
   InputNoIdxStep03Datum,
   InputNoIdxStep04Datum,
@@ -55,7 +55,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  midgardTxOutputFromCanonicalCborV1,
+  midgardTxOutputFromCanonicalCbor,
   resolveProverSigner,
   submitInputNoIdxStep01,
   submitInputNoIdxStep02,
@@ -70,14 +70,14 @@ import {
 } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,
-  setupFraudulentBlockV1 as setupFraudulentBlock,
+  setupFraudulentBlock as setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   expectSingleUtxoWithUnit,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishRemovalReferenceScripts,
@@ -143,7 +143,7 @@ const fixedProverEmulatorAccount = (
 });
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -201,7 +201,7 @@ const buildInputNoIdxBlockFixture = async ({
     fee: 7n,
     ...(producingOutputs.length === 0 ? {} : { outputCbors: producingOutputs }),
   });
-  const producingTxId = computeMidgardNativeTxIdV1(producingTx).toString("hex");
+  const producingTxId = computeMidgardNativeTxId(producingTx).toString("hex");
   const challengedInput: MidgardTxInput = {
     tx_id: producingTxId,
     output_index: challengedOutputIndex,
@@ -232,12 +232,12 @@ const buildInputNoIdxBlockFixture = async ({
     ),
     fee: 9n,
   });
-  const badTxId = computeMidgardNativeTxIdV1(badTx).toString("hex");
+  const badTxId = computeMidgardNativeTxId(badTx).toString("hex");
 
-  const producingCompactCbor = encodeMidgardNativeTxCompactV1(
+  const producingCompactCbor = encodeMidgardNativeTxCompact(
     producingTx.compact,
   );
-  const badCompactCbor = encodeMidgardNativeTxCompactV1(badTx.compact);
+  const badCompactCbor = encodeMidgardNativeTxCompact(badTx.compact);
   const producingSourceCbor = l2TransactionSourceCborV1(producingTx);
   const badSourceCbor = l2TransactionSourceCborV1(badTx);
 
@@ -303,7 +303,7 @@ const buildInputNoIdxBlockFixture = async ({
 };
 
 const makeEmulatorHarness = async () =>
-  await makeFaultProofEmulatorHarnessV1({
+  await makeFaultProofEmulatorHarness({
     contractOptions: { realInputNoIdx: true, alwaysFraudProofCatalogue: true },
     accounts: {
       funder: fixedBaseEmulatorAccount(TEST_ONLY_FUNDER_SEED, 40_000_000_000n),
@@ -497,10 +497,10 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       producingOutputCount: 0,
     });
     expect(fixture.producingOutputsCbor).toHaveLength(0);
-    expect(inputNoIdxOutputsCommitmentV1([])).toBe(
+    expect(inputNoIdxOutputsCommitment([])).toBe(
       fixture.producingTxOutputsHash,
     );
-    expect(inputNoIdxSpendInputsCommitmentV1([fixture.badInput])).toBe(
+    expect(inputNoIdxSpendInputsCommitment([fixture.badInput])).toBe(
       fixture.verifiedTxInputsHash,
     );
 
@@ -769,15 +769,15 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       producingOutputCount: 0,
       badSpendInputCount: TIER2_SPEND_INPUT_COUNT,
     });
-    const preimageBytes = encodeMidgardFieldPreimageV1(
+    const preimageBytes = encodeMidgardFieldPreimage(
       fixture.badInputs.map((input) =>
         inputCbor(input.tx_id, input.output_index),
       ),
     ).length;
     expect(preimageBytes).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
     const { deploymentInfo, secondStepUtxo } =
       await startInputNoIdxStep02Thread({ harness, fixture });
 
@@ -878,15 +878,15 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     const producingOutputItems = fixture.producingOutputsCbor.map((item) =>
       Buffer.from(item, "hex"),
     );
-    const preimage = encodeMidgardFieldPreimageV1(producingOutputItems);
+    const preimage = encodeMidgardFieldPreimage(producingOutputItems);
     expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
     const producingOutputs = producingOutputItems.map(
-      midgardTxOutputFromCanonicalCborV1,
+      midgardTxOutputFromCanonicalCbor,
     );
-    expect(inputNoIdxOutputsCommitmentV1(producingOutputs)).toBe(
+    expect(inputNoIdxOutputsCommitment(producingOutputs)).toBe(
       fixture.producingTxOutputsHash,
     );
 
@@ -958,7 +958,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // The tier-2 publication really exists and survives its consumer: the
     // whole §5.1 preimage sits at the prover's address as a bytes-only inline
     // datum (§8.5), referenced rather than spent (§8.7).
-    const expectedDatum = fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await harness.proverLucid.utxosAt(harness.proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);
@@ -1073,9 +1073,9 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       challengedOutputIndex: 0n,
     });
     const producingOutputs = fixture.producingOutputsCbor.map((item) =>
-      midgardTxOutputFromCanonicalCborV1(Buffer.from(item, "hex")),
+      midgardTxOutputFromCanonicalCbor(Buffer.from(item, "hex")),
     );
-    expect(inputNoIdxOutputsCommitmentV1(producingOutputs)).toBe(
+    expect(inputNoIdxOutputsCommitment(producingOutputs)).toBe(
       fixture.producingTxOutputsHash,
     );
 

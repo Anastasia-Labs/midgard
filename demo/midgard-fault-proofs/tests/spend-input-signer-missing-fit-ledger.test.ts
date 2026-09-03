@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const lifecycle = [
   ["accepted-init", 1497, 666796n, 229214076n],
@@ -62,7 +62,7 @@ describe("spendInputSignerMissing signed Van Rossem fit ledger", () => {
   it("reproduces maximum-frontier lifecycle and publication margins", async () => {
     const maximumShape =
       "318 address witnesses; 32,757-byte Certified field; 16-witness scan batches";
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "spendInputSignerMissing:00000027:testnet",
       blueprintSha256:
         "61ec67157434a1904ddac0a355337a1656d1ef62448744fa2856d0a1aa1602cb",

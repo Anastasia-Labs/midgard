@@ -3,22 +3,22 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { decodeMidgardFieldPreimageV1 } from "../src/codec/native-tx-field-access-v1.js";
+import { decodeMidgardFieldPreimage } from "../src/codec/native-tx-field-access-v1.js";
 import {
-  decodeMidgardAddressWitnessItemV1,
-  decodeMidgardFieldItemsV1,
-  decodeMidgardHash28ItemV1,
-  decodeMidgardMintPolicyItemV1,
-  decodeMidgardRedeemerWitnessItemV1,
-  decodeMidgardSpendInputItemV1,
-  midgardRedeemerPurposeFromTagV1,
+  decodeMidgardAddressWitnessItem,
+  decodeMidgardFieldItems,
+  decodeMidgardHash28Item,
+  decodeMidgardMintPolicyItem,
+  decodeMidgardRedeemerWitnessItem,
+  decodeMidgardSpendInputItem,
+  midgardRedeemerPurposeFromTag,
 } from "../src/codec/native-tx-field-item-decoders-v1.js";
 import {
-  encodeMidgardFieldItemsV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  MIDGARD_FIELD_NAMES_V1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  type MidgardFieldItemsV1,
+  encodeMidgardFieldItems,
+  encodeMidgardFieldPreimageForField,
+  MIDGARD_FIELD_NAMES,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  type MidgardFieldItems,
 } from "../src/codec/native-tx-field-items-v1.js";
 
 /**
@@ -69,10 +69,10 @@ const fixture = JSON.parse(
 ) as { readonly fields: readonly FieldEntry[] };
 
 /**
- * The decoded items, re-tagged for {@link encodeMidgardFieldItemsV1}.
+ * The decoded items, re-tagged for {@link encodeMidgardFieldItems}.
  *
- * The producer's `MidgardFieldItemsV1` and the decoder's
- * `MidgardDecodedFieldItemsV1` are separate types on purpose — fields 3/4 decode
+ * The producer's `MidgardFieldItems` and the decoder's
+ * `MidgardDecodedFieldItems` are separate types on purpose — fields 3/4 decode
  * to `Buffer` where the producer accepts any `Uint8Array`, and field 2 decodes
  * to a fully materialised output — so the re-encode step names the pairing
  * explicitly rather than relying on the two unions happening to be assignable.
@@ -81,58 +81,58 @@ const reencode = (fieldIndex: number, preimage: Uint8Array): Buffer => {
   switch (fieldIndex) {
     case 0:
     case 1:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex,
-        items: decodeMidgardFieldItemsV1(fieldIndex, preimage).items,
+        items: decodeMidgardFieldItems(fieldIndex, preimage).items,
       });
     case 2:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex: 2,
-        items: decodeMidgardFieldItemsV1(2, preimage).items,
+        items: decodeMidgardFieldItems(2, preimage).items,
       });
     case 3:
     case 4:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex,
-        items: decodeMidgardFieldItemsV1(fieldIndex, preimage).items,
+        items: decodeMidgardFieldItems(fieldIndex, preimage).items,
       });
     case 5:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex: 5,
-        items: decodeMidgardFieldItemsV1(5, preimage).items,
+        items: decodeMidgardFieldItems(5, preimage).items,
       });
     case 6:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex: 6,
-        items: decodeMidgardFieldItemsV1(6, preimage).items,
+        items: decodeMidgardFieldItems(6, preimage).items,
       });
     case 7:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex: 7,
-        items: decodeMidgardFieldItemsV1(7, preimage).items,
+        items: decodeMidgardFieldItems(7, preimage).items,
       });
     default:
-      return encodeMidgardFieldPreimageForFieldV1({
+      return encodeMidgardFieldPreimageForField({
         fieldIndex: 8,
-        items: decodeMidgardFieldItemsV1(8, preimage).items,
+        items: decodeMidgardFieldItems(8, preimage).items,
       });
   }
 };
 
 const itemEncoderFor = (
   fieldIndex: number,
-  items: MidgardFieldItemsV1["items"],
+  items: MidgardFieldItems["items"],
 ): readonly Buffer[] =>
-  encodeMidgardFieldItemsV1({ fieldIndex, items } as MidgardFieldItemsV1);
+  encodeMidgardFieldItems({ fieldIndex, items } as MidgardFieldItems);
 
 describe("§5.3 field item decoders are the inverse of the #569 producers", () => {
   it("covers all nine fields, in the fixture's positional order", () => {
-    expect(fixture.fields).toHaveLength(MIDGARD_FIELD_NAMES_V1.length);
+    expect(fixture.fields).toHaveLength(MIDGARD_FIELD_NAMES.length);
     expect(fixture.fields.map((field) => field.fieldIndex)).toStrictEqual([
       0, 1, 2, 3, 4, 5, 6, 7, 8,
     ]);
     expect(fixture.fields.map((field) => field.fieldName)).toStrictEqual([
-      ...MIDGARD_FIELD_NAMES_V1,
+      ...MIDGARD_FIELD_NAMES,
     ]);
   });
 
@@ -143,14 +143,14 @@ describe("§5.3 field item decoders are the inverse of the #569 producers", () =
           const preimage = Buffer.from(vector.preimageHex, "hex");
 
           // §5.1: the uniform split, and §5.2's "N lives only in the header".
-          const rawItems = decodeMidgardFieldPreimageV1(preimage);
+          const rawItems = decodeMidgardFieldPreimage(preimage);
           expect(rawItems).toHaveLength(vector.itemCount);
           expect(rawItems.map((item) => item.toString("hex"))).toStrictEqual([
             ...vector.itemsHex,
           ]);
 
           // §5.3: each item's reader, then the producer again.
-          const decoded = decodeMidgardFieldItemsV1(field.fieldIndex, preimage);
+          const decoded = decodeMidgardFieldItems(field.fieldIndex, preimage);
           expect(decoded.fieldIndex).toBe(field.fieldIndex);
           expect(decoded.items).toHaveLength(vector.itemCount);
           expect(
@@ -183,7 +183,7 @@ describe("§5.3 item readers fail closed", () => {
       Buffer.of(0x00),
     ]);
     expect(minimal.length).toBe(36);
-    expect(() => decodeMidgardSpendInputItemV1(minimal)).toThrow();
+    expect(() => decodeMidgardSpendInputItem(minimal)).toThrow();
   });
 
   it("rejects the `18 XX` one-byte-argument output index", () => {
@@ -191,12 +191,12 @@ describe("§5.3 item readers fail closed", () => {
       spendInput.subarray(0, 35),
       Buffer.of(0x18, 0x2a),
     ]);
-    expect(() => decodeMidgardSpendInputItemV1(wideHead)).toThrow();
+    expect(() => decodeMidgardSpendInputItem(wideHead)).toThrow();
   });
 
   it("rejects an input item that is not the §5.3 fixed width", () => {
     expect(() =>
-      decodeMidgardSpendInputItemV1(spendInput.subarray(0, 37)),
+      decodeMidgardSpendInputItem(spendInput.subarray(0, 37)),
     ).toThrow();
   });
 
@@ -214,18 +214,16 @@ describe("§5.3 item readers fail closed", () => {
     expect(wideHeader.length).toBe(39);
     // Same out-ref underneath: only the tx_id's length header differs.
     expect(wideHeader.subarray(4, 36)).toEqual(spendInput.subarray(3, 35));
-    expect(() => decodeMidgardSpendInputItemV1(wideHeader)).toThrow();
+    expect(() => decodeMidgardSpendInputItem(wideHeader)).toThrow();
   });
 
   it("rejects observer/signer items that are not 28 bytes", () => {
-    expect(() => decodeMidgardHash28ItemV1(Buffer.alloc(27))).toThrow();
-    expect(() => decodeMidgardHash28ItemV1(Buffer.alloc(29))).toThrow();
+    expect(() => decodeMidgardHash28Item(Buffer.alloc(27))).toThrow();
+    expect(() => decodeMidgardHash28Item(Buffer.alloc(29))).toThrow();
   });
 
   it("rejects address witness items that are not 101 bytes", () => {
-    expect(() =>
-      decodeMidgardAddressWitnessItemV1(Buffer.alloc(100)),
-    ).toThrow();
+    expect(() => decodeMidgardAddressWitnessItem(Buffer.alloc(100))).toThrow();
   });
 
   it("rejects a mint policy item with no assets", () => {
@@ -235,7 +233,7 @@ describe("§5.3 item readers fail closed", () => {
       Buffer.alloc(28, 0x11),
       Buffer.of(0xa0),
     ]);
-    expect(() => decodeMidgardMintPolicyItemV1(emptyPolicy)).toThrow();
+    expect(() => decodeMidgardMintPolicyItem(emptyPolicy)).toThrow();
   });
 
   it("rejects a mint policy item whose asset names are out of canonical order", () => {
@@ -244,7 +242,7 @@ describe("§5.3 item readers fail closed", () => {
       Buffer.alloc(28, 0x11),
       Buffer.of(0xa2, 0x41, 0x02, 0x01, 0x41, 0x01, 0x01),
     ]);
-    expect(() => decodeMidgardMintPolicyItemV1(descending)).toThrow();
+    expect(() => decodeMidgardMintPolicyItem(descending)).toThrow();
   });
 
   it("rejects a mint quantity of zero", () => {
@@ -253,17 +251,17 @@ describe("§5.3 item readers fail closed", () => {
       Buffer.alloc(28, 0x11),
       Buffer.of(0xa1, 0x41, 0x01, 0x00),
     ]);
-    expect(() => decodeMidgardMintPolicyItemV1(zeroQuantity)).toThrow();
+    expect(() => decodeMidgardMintPolicyItem(zeroQuantity)).toThrow();
   });
 
   it("accepts exactly the seven §5.3 redeemer purpose tags and rejects the rest", () => {
     for (const [purpose, tag] of Object.entries(
-      MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+      MIDGARD_REDEEMER_PURPOSE_TAGS,
     )) {
-      expect(midgardRedeemerPurposeFromTagV1(tag)).toBe(purpose);
+      expect(midgardRedeemerPurposeFromTag(tag)).toBe(purpose);
     }
     for (const tag of [7, 8, 23, 24, 255]) {
-      expect(() => midgardRedeemerPurposeFromTagV1(tag)).toThrow();
+      expect(() => midgardRedeemerPurposeFromTag(tag)).toThrow();
     }
   });
 
@@ -274,7 +272,7 @@ describe("§5.3 item readers fail closed", () => {
       "hex",
     );
     expect(() =>
-      decodeMidgardRedeemerWitnessItemV1(
+      decodeMidgardRedeemerWitnessItem(
         Buffer.concat([redeemerItem, Buffer.of(0x00)]),
       ),
     ).toThrow();

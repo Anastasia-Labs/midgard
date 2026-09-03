@@ -10,9 +10,9 @@ import {
   type StateQueueRedeemer as StateQueueRedeemerType,
 } from "./state-queue.js";
 
-export const STATE_QUEUE_CORRECTION_TRANSITION_V1_SCHEMA_VERSION =
+export const STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION =
   "midgard-state-queue-correction-transition-v1" as const;
-export const STATE_QUEUE_AUTHENTICATED_TRANSITION_V1_SCHEMA_VERSION =
+export const STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION =
   "midgard-state-queue-authenticated-transition-v1" as const;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -21,12 +21,12 @@ const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const NON_EMPTY_BYTES = /^(?:[0-9a-f]{2})+$/u;
 
-export type StateQueueTransitionNodeV1 = Readonly<{
+export type StateQueueTransitionNode = Readonly<{
   headerHash: string | null;
   outRef: string;
 }>;
 
-export type StateQueueTransitionRedeemerV1 = Readonly<{
+export type StateQueueTransitionRedeemer = Readonly<{
   purpose: string;
   index: string;
   cborHex: string;
@@ -38,7 +38,7 @@ export type StateQueueTransitionRedeemerV1 = Readonly<{
  * singleton: genesis creates it, deinit burns it, append/merge reference Idle,
  * and a correction consumes and continues it.
  */
-export type StateQueueCorrectionLockWitnessV1 =
+export type StateQueueCorrectionLockWitness =
   | Readonly<{
       kind: "none";
     }>
@@ -67,8 +67,8 @@ export type StateQueueCorrectionLockWitnessV1 =
       nextDatum: CorrectionLockDatum;
     }>;
 
-export type StateQueueCorrectionTransitionV1 = Readonly<{
-  schemaVersion: typeof STATE_QUEUE_CORRECTION_TRANSITION_V1_SCHEMA_VERSION;
+export type StateQueueCorrectionTransition = Readonly<{
+  schemaVersion: typeof STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION;
   deploymentIdentityDigest: string;
   stateQueuePolicyId: string;
   transactionHash: string;
@@ -89,7 +89,7 @@ export type StateQueueCorrectionTransitionV1 = Readonly<{
   transitionDigest: string;
 }>;
 
-export type DeriveStateQueueCorrectionTransitionV1Input = Readonly<{
+export type DeriveStateQueueCorrectionTransitionInput = Readonly<{
   deploymentIdentityDigest: string;
   stateQueuePolicyId: string;
   transactionHash: string;
@@ -99,13 +99,13 @@ export type DeriveStateQueueCorrectionTransitionV1Input = Readonly<{
   chainPointId: string;
   finalityDepth: string;
   mintPolicyIds: readonly string[];
-  redeemers: readonly StateQueueTransitionRedeemerV1[];
+  redeemers: readonly StateQueueTransitionRedeemer[];
   spentInputOutRefs: readonly string[];
-  previousQueue: readonly StateQueueTransitionNodeV1[];
-  nextQueue: readonly StateQueueTransitionNodeV1[];
+  previousQueue: readonly StateQueueTransitionNode[];
+  nextQueue: readonly StateQueueTransitionNode[];
 }>;
 
-export type StateQueueAuthenticatedTransitionKindV1 =
+export type StateQueueAuthenticatedTransitionKind =
   | "timeout_correction"
   | "merge"
   | "fraud_removal";
@@ -117,8 +117,8 @@ export type StateQueueAuthenticatedTransitionKindV1 =
  * watcher and committee scanner from giving the same L1 transition different
  * meanings after admission.
  */
-export type StateQueueAuthenticatedTransitionV1 = Readonly<{
-  schemaVersion: typeof STATE_QUEUE_AUTHENTICATED_TRANSITION_V1_SCHEMA_VERSION;
+export type StateQueueAuthenticatedTransition = Readonly<{
+  schemaVersion: typeof STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION;
   deploymentIdentityDigest: string;
   stateQueuePolicyId: string;
   transactionHash: string;
@@ -128,10 +128,10 @@ export type StateQueueAuthenticatedTransitionV1 = Readonly<{
   transactionIndex: string;
   chainPointId: string;
   finalityDepth: string;
-  transitionKind: StateQueueAuthenticatedTransitionKindV1;
-  stateQueueMintRedeemer: StateQueueTransitionRedeemerV1;
-  previousQueue: readonly StateQueueTransitionNodeV1[];
-  nextQueue: readonly StateQueueTransitionNodeV1[];
+  transitionKind: StateQueueAuthenticatedTransitionKind;
+  stateQueueMintRedeemer: StateQueueTransitionRedeemer;
+  previousQueue: readonly StateQueueTransitionNode[];
+  nextQueue: readonly StateQueueTransitionNode[];
   consumedQueueOutRefs: readonly string[];
   continuedQueueOutRefs: readonly Readonly<{
     headerHash: string | null;
@@ -139,17 +139,17 @@ export type StateQueueAuthenticatedTransitionV1 = Readonly<{
     producedOutRef: string;
   }>[];
   removedHeaderHashes: readonly string[];
-  correctionLockWitness: StateQueueCorrectionLockWitnessV1;
-  correctionTransition: StateQueueCorrectionTransitionV1 | null;
+  correctionLockWitness: StateQueueCorrectionLockWitness;
+  correctionTransition: StateQueueCorrectionTransition | null;
   transitionDigest: string;
 }>;
 
-export type DeriveStateQueueAuthenticatedTransitionV1Input =
-  DeriveStateQueueCorrectionTransitionV1Input &
+export type DeriveStateQueueAuthenticatedTransitionInput =
+  DeriveStateQueueCorrectionTransitionInput &
     Readonly<{
       transactionIndex: string;
       referenceInputOutRefs: readonly string[];
-      correctionLockWitness: StateQueueCorrectionLockWitnessV1;
+      correctionLockWitness: StateQueueCorrectionLockWitness;
     }>;
 
 type Json =
@@ -177,7 +177,7 @@ const digest = (value: Json): string =>
   toHex(sha256(new TextEncoder().encode(stableJson(value))));
 
 const withoutDigest = (
-  value: Omit<StateQueueCorrectionTransitionV1, "transitionDigest">,
+  value: Omit<StateQueueCorrectionTransition, "transitionDigest">,
 ): Json => value as Json;
 
 const exactRecord = (
@@ -232,7 +232,7 @@ const parseCorrectionIdentity = (value: unknown): CorrectionIdentity | null => {
   return null;
 };
 
-export const parseStateQueueCorrectionLockDatumV1 = (
+export const parseStateQueueCorrectionLockDatum = (
   value: unknown,
 ): CorrectionLockDatum | null => {
   if (value === "Idle") return value;
@@ -255,9 +255,9 @@ export const parseStateQueueCorrectionLockDatumV1 = (
     : null;
 };
 
-export const parseStateQueueCorrectionLockWitnessV1 = (
+export const parseStateQueueCorrectionLockWitness = (
   value: unknown,
-): StateQueueCorrectionLockWitnessV1 | null => {
+): StateQueueCorrectionLockWitness | null => {
   const kind =
     typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as { kind?: unknown }).kind
@@ -267,7 +267,7 @@ export const parseStateQueueCorrectionLockWitnessV1 = (
   }
   if (kind === "genesis") {
     const record = exactRecord(value, ["kind", "producedOutRef", "nextDatum"]);
-    const nextDatum = parseStateQueueCorrectionLockDatumV1(record?.nextDatum);
+    const nextDatum = parseStateQueueCorrectionLockDatum(record?.nextDatum);
     return record !== null &&
       typeof record.producedOutRef === "string" &&
       OUT_REF.test(record.producedOutRef) &&
@@ -281,7 +281,7 @@ export const parseStateQueueCorrectionLockWitnessV1 = (
       "consumedOutRef",
       "previousDatum",
     ]);
-    const previousDatum = parseStateQueueCorrectionLockDatumV1(
+    const previousDatum = parseStateQueueCorrectionLockDatum(
       record?.previousDatum,
     );
     return record !== null &&
@@ -293,7 +293,7 @@ export const parseStateQueueCorrectionLockWitnessV1 = (
   }
   if (kind === "idle_reference") {
     const record = exactRecord(value, ["kind", "referenceOutRef", "datum"]);
-    const datum = parseStateQueueCorrectionLockDatumV1(record?.datum);
+    const datum = parseStateQueueCorrectionLockDatum(record?.datum);
     return record !== null &&
       typeof record.referenceOutRef === "string" &&
       OUT_REF.test(record.referenceOutRef) &&
@@ -314,10 +314,10 @@ export const parseStateQueueCorrectionLockWitnessV1 = (
     const correctionIdentity = parseCorrectionIdentity(
       record?.correctionIdentity,
     );
-    const previousDatum = parseStateQueueCorrectionLockDatumV1(
+    const previousDatum = parseStateQueueCorrectionLockDatum(
       record?.previousDatum,
     );
-    const nextDatum = parseStateQueueCorrectionLockDatumV1(record?.nextDatum);
+    const nextDatum = parseStateQueueCorrectionLockDatum(record?.nextDatum);
     return record !== null &&
       typeof record.consumedOutRef === "string" &&
       OUT_REF.test(record.consumedOutRef) &&
@@ -343,7 +343,7 @@ export const parseStateQueueCorrectionLockWitnessV1 = (
 };
 
 const canonicalNodes = (
-  nodes: readonly StateQueueTransitionNodeV1[],
+  nodes: readonly StateQueueTransitionNode[],
 ): boolean => {
   const exactNodes = nodes.map((candidate) =>
     exactRecord(candidate, ["headerHash", "outRef"]),
@@ -368,16 +368,16 @@ const canonicalNodes = (
 
 const parseCanonicalNodes = (
   value: unknown,
-): readonly StateQueueTransitionNodeV1[] | null => {
+): readonly StateQueueTransitionNode[] | null => {
   if (!Array.isArray(value) || !canonicalNodes(value)) return null;
   return value.map((node) => ({
-    headerHash: (node as StateQueueTransitionNodeV1).headerHash,
-    outRef: (node as StateQueueTransitionNodeV1).outRef,
+    headerHash: (node as StateQueueTransitionNode).headerHash,
+    outRef: (node as StateQueueTransitionNode).outRef,
   }));
 };
 
 const decodeStateQueueMintRedeemer = (
-  input: DeriveStateQueueCorrectionTransitionV1Input,
+  input: DeriveStateQueueCorrectionTransitionInput,
 ): StateQueueRedeemerType | null => {
   const canonicalPolicies = [...input.mintPolicyIds].sort();
   if (
@@ -416,9 +416,9 @@ const decodeStateQueueMintRedeemer = (
   }
 };
 
-export const deriveStateQueueCorrectionTransitionV1 = (
-  input: DeriveStateQueueCorrectionTransitionV1Input,
-): StateQueueCorrectionTransitionV1 | null => {
+export const deriveStateQueueCorrectionTransition = (
+  input: DeriveStateQueueCorrectionTransitionInput,
+): StateQueueCorrectionTransition | null => {
   if (
     !HEX_32.test(input.deploymentIdentityDigest) ||
     !HEX_28.test(input.stateQueuePolicyId) ||
@@ -536,7 +536,7 @@ export const deriveStateQueueCorrectionTransitionV1 = (
     return null;
   }
   const canonical = {
-    schemaVersion: STATE_QUEUE_CORRECTION_TRANSITION_V1_SCHEMA_VERSION,
+    schemaVersion: STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION,
     deploymentIdentityDigest: input.deploymentIdentityDigest,
     stateQueuePolicyId: input.stateQueuePolicyId,
     transactionHash: input.transactionHash,
@@ -550,7 +550,7 @@ export const deriveStateQueueCorrectionTransitionV1 = (
     consumedQueueOutRefs,
     continuedQueueOutRefs,
     removedHeaderHashes,
-  } satisfies Omit<StateQueueCorrectionTransitionV1, "transitionDigest">;
+  } satisfies Omit<StateQueueCorrectionTransition, "transitionDigest">;
   return Object.freeze({
     ...canonical,
     transitionDigest: digest(withoutDigest(canonical)),
@@ -570,7 +570,7 @@ const correctionLockWitnessMatchesTransition = ({
   transactionHash,
 }: {
   readonly decoded: StateQueueRedeemerType;
-  readonly witness: StateQueueCorrectionLockWitnessV1;
+  readonly witness: StateQueueCorrectionLockWitness;
   readonly spentInputOutRefs: readonly string[];
   readonly referenceInputOutRefs: readonly string[];
   readonly transactionHash: string;
@@ -644,9 +644,9 @@ const correctionLockWitnessMatchesTransition = ({
   );
 };
 
-export const deriveStateQueueAuthenticatedTransitionV1 = (
-  input: DeriveStateQueueAuthenticatedTransitionV1Input,
-): StateQueueAuthenticatedTransitionV1 | null => {
+export const deriveStateQueueAuthenticatedTransition = (
+  input: DeriveStateQueueAuthenticatedTransitionInput,
+): StateQueueAuthenticatedTransition | null => {
   if (
     !HEX_32.test(input.deploymentIdentityDigest) ||
     !HEX_28.test(input.stateQueuePolicyId) ||
@@ -668,7 +668,7 @@ export const deriveStateQueueAuthenticatedTransitionV1 = (
   ) {
     return null;
   }
-  const correctionLockWitness = parseStateQueueCorrectionLockWitnessV1(
+  const correctionLockWitness = parseStateQueueCorrectionLockWitness(
     input.correctionLockWitness,
   );
   const decoded = decodeStateQueueMintRedeemer(input);
@@ -748,10 +748,10 @@ export const deriveStateQueueAuthenticatedTransitionV1 = (
     );
   if (!removalShapeIsExact) return null;
 
-  let transitionKind: StateQueueAuthenticatedTransitionKindV1;
-  let correctionTransition: StateQueueCorrectionTransitionV1 | null = null;
+  let transitionKind: StateQueueAuthenticatedTransitionKind;
+  let correctionTransition: StateQueueCorrectionTransition | null = null;
   if ("RemoveUnattestedBlockAfterTimeout" in decoded) {
-    correctionTransition = deriveStateQueueCorrectionTransitionV1(input);
+    correctionTransition = deriveStateQueueCorrectionTransition(input);
     if (correctionTransition === null) return null;
     transitionKind = "timeout_correction";
   } else if ("MergeToConfirmedStateV1" in decoded) {
@@ -801,7 +801,7 @@ export const deriveStateQueueAuthenticatedTransitionV1 = (
   }
 
   const canonical = {
-    schemaVersion: STATE_QUEUE_AUTHENTICATED_TRANSITION_V1_SCHEMA_VERSION,
+    schemaVersion: STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION,
     deploymentIdentityDigest: input.deploymentIdentityDigest,
     stateQueuePolicyId: input.stateQueuePolicyId,
     transactionHash: input.transactionHash,
@@ -820,16 +820,16 @@ export const deriveStateQueueAuthenticatedTransitionV1 = (
     removedHeaderHashes,
     correctionLockWitness,
     correctionTransition,
-  } satisfies Omit<StateQueueAuthenticatedTransitionV1, "transitionDigest">;
+  } satisfies Omit<StateQueueAuthenticatedTransition, "transitionDigest">;
   return Object.freeze({
     ...canonical,
     transitionDigest: digest(canonical as unknown as Json),
   });
 };
 
-export const parseStateQueueCorrectionTransitionV1 = (
+export const parseStateQueueCorrectionTransition = (
   value: unknown,
-): StateQueueCorrectionTransitionV1 | null => {
+): StateQueueCorrectionTransition | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "deploymentIdentityDigest",
@@ -854,8 +854,7 @@ export const parseStateQueueCorrectionTransitionV1 = (
     : null;
   if (
     record === null ||
-    record.schemaVersion !==
-      STATE_QUEUE_CORRECTION_TRANSITION_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== STATE_QUEUE_CORRECTION_TRANSITION_SCHEMA_VERSION ||
     !HEX_32.test(record.deploymentIdentityDigest as string) ||
     !HEX_28.test(record.stateQueuePolicyId as string) ||
     !HEX_32.test(record.transactionHash as string) ||
@@ -908,7 +907,7 @@ export const parseStateQueueCorrectionTransitionV1 = (
     consumedQueueOutRefs: record.consumedQueueOutRefs as string[],
     continuedQueueOutRefs: canonicalContinued,
     removedHeaderHashes: record.removedHeaderHashes as string[],
-  } satisfies Omit<StateQueueCorrectionTransitionV1, "transitionDigest">;
+  } satisfies Omit<StateQueueCorrectionTransition, "transitionDigest">;
   return digest(withoutDigest(canonical)) === record.transitionDigest
     ? Object.freeze({
         ...canonical,
@@ -917,9 +916,9 @@ export const parseStateQueueCorrectionTransitionV1 = (
     : null;
 };
 
-export const parseStateQueueAuthenticatedTransitionV1 = (
+export const parseStateQueueAuthenticatedTransition = (
   value: unknown,
-): StateQueueAuthenticatedTransitionV1 | null => {
+): StateQueueAuthenticatedTransition | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "deploymentIdentityDigest",
@@ -955,8 +954,8 @@ export const parseStateQueueAuthenticatedTransitionV1 = (
   const correction =
     record?.correctionTransition === null
       ? null
-      : parseStateQueueCorrectionTransitionV1(record?.correctionTransition);
-  const correctionLockWitness = parseStateQueueCorrectionLockWitnessV1(
+      : parseStateQueueCorrectionTransition(record?.correctionTransition);
+  const correctionLockWitness = parseStateQueueCorrectionLockWitness(
     record?.correctionLockWitness,
   );
   const previousQueue = parseCanonicalNodes(record?.previousQueue);
@@ -964,7 +963,7 @@ export const parseStateQueueAuthenticatedTransitionV1 = (
   if (
     record === null ||
     record.schemaVersion !==
-      STATE_QUEUE_AUTHENTICATED_TRANSITION_V1_SCHEMA_VERSION ||
+      STATE_QUEUE_AUTHENTICATED_TRANSITION_SCHEMA_VERSION ||
     !HEX_32.test(record.deploymentIdentityDigest as string) ||
     !HEX_28.test(record.stateQueuePolicyId as string) ||
     !HEX_32.test(record.transactionHash as string) ||
@@ -1037,7 +1036,7 @@ export const parseStateQueueAuthenticatedTransitionV1 = (
     removedHeaderHashes: record.removedHeaderHashes as string[],
     correctionLockWitness,
     correctionTransition: correction,
-  } satisfies Omit<StateQueueAuthenticatedTransitionV1, "transitionDigest">;
+  } satisfies Omit<StateQueueAuthenticatedTransition, "transitionDigest">;
   let decoded: StateQueueRedeemerType;
   try {
     decoded = Data.from(
@@ -1236,11 +1235,11 @@ export const parseStateQueueAuthenticatedTransitionV1 = (
     : null;
 };
 
-export const withStateQueueAuthenticatedTransitionFinalityDepthV1 = (
+export const withStateQueueAuthenticatedTransitionFinalityDepth = (
   transitionInput: unknown,
   finalityDepth: string,
-): StateQueueAuthenticatedTransitionV1 | null => {
-  const transition = parseStateQueueAuthenticatedTransitionV1(transitionInput);
+): StateQueueAuthenticatedTransition | null => {
+  const transition = parseStateQueueAuthenticatedTransition(transitionInput);
   if (
     transition === null ||
     !NATURAL.test(finalityDepth) ||
@@ -1252,7 +1251,7 @@ export const withStateQueueAuthenticatedTransitionFinalityDepthV1 = (
   const correctionTransition =
     transition.correctionTransition === null
       ? null
-      : withStateQueueCorrectionTransitionFinalityDepthV1(
+      : withStateQueueCorrectionTransitionFinalityDepth(
           transition.correctionTransition,
           finalityDepth,
         );
@@ -1272,7 +1271,7 @@ export const withStateQueueAuthenticatedTransitionFinalityDepthV1 = (
     ...canonical,
     transitionDigest: digest(canonical as unknown as Json),
   };
-  return parseStateQueueAuthenticatedTransitionV1(rebound);
+  return parseStateQueueAuthenticatedTransition(rebound);
 };
 
 /**
@@ -1281,11 +1280,11 @@ export const withStateQueueAuthenticatedTransitionFinalityDepthV1 = (
  * selected chain; this helper merely rebinds that newly observed depth into the
  * transition digest without replaying topology from an unauthenticated shape.
  */
-export const withStateQueueCorrectionTransitionFinalityDepthV1 = (
+export const withStateQueueCorrectionTransitionFinalityDepth = (
   transitionInput: unknown,
   finalityDepth: string,
-): StateQueueCorrectionTransitionV1 | null => {
-  const transition = parseStateQueueCorrectionTransitionV1(transitionInput);
+): StateQueueCorrectionTransition | null => {
+  const transition = parseStateQueueCorrectionTransition(transitionInput);
   if (
     transition === null ||
     !NATURAL.test(finalityDepth) ||
@@ -1309,7 +1308,7 @@ export const withStateQueueCorrectionTransitionFinalityDepthV1 = (
     consumedQueueOutRefs: transition.consumedQueueOutRefs,
     continuedQueueOutRefs: transition.continuedQueueOutRefs,
     removedHeaderHashes: transition.removedHeaderHashes,
-  } satisfies Omit<StateQueueCorrectionTransitionV1, "transitionDigest">;
+  } satisfies Omit<StateQueueCorrectionTransition, "transitionDigest">;
   return Object.freeze({
     ...canonical,
     transitionDigest: digest(withoutDigest(canonical)),

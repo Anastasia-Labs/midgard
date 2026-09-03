@@ -7,29 +7,30 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1 =
-  Object.freeze([
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES = Object.freeze(
+  [
     "fraud_proofs/distinct_asset_accumulation_limit/step_01.main.spend",
     "fraud_proofs/distinct_asset_accumulation_limit/step_02.main.spend",
     "fraud_proofs/distinct_asset_accumulation_limit/step_03.main.spend",
     "fraud_proofs/distinct_asset_accumulation_limit/step_04.main.spend",
     "fraud_proofs/distinct_asset_accumulation_limit/step_05.main.spend",
     "fraud_proofs/distinct_asset_accumulation_limit/step_06.main.spend",
-  ] as const);
-export type DistinctAssetAccumulationStepContractV1 = Readonly<{
+  ] as const,
+);
+export type DistinctAssetAccumulationStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
 }>;
-export type DistinctAssetAccumulationContractsV1 = Readonly<{
+export type DistinctAssetAccumulationContracts = Readonly<{
   steps: readonly [
-    DistinctAssetAccumulationStepContractV1,
-    DistinctAssetAccumulationStepContractV1,
-    DistinctAssetAccumulationStepContractV1,
-    DistinctAssetAccumulationStepContractV1,
-    DistinctAssetAccumulationStepContractV1,
-    DistinctAssetAccumulationStepContractV1,
+    DistinctAssetAccumulationStepContract,
+    DistinctAssetAccumulationStepContract,
+    DistinctAssetAccumulationStepContract,
+    DistinctAssetAccumulationStepContract,
+    DistinctAssetAccumulationStepContract,
+    DistinctAssetAccumulationStepContract,
   ];
   computationThread: Readonly<{ policyId: string; mintingScript: Script }>;
   fraudProof: Readonly<{
@@ -47,7 +48,7 @@ type Blueprint = Readonly<{
     parameters?: readonly unknown[];
   }>[];
 }>;
-export const applyDistinctAssetAccumulationLimitScriptsV1 = ({
+export const applyDistinctAssetAccumulationLimitScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -62,16 +63,16 @@ export const applyDistinctAssetAccumulationLimitScriptsV1 = ({
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
 }): readonly [
-  DistinctAssetAccumulationStepContractV1,
-  DistinctAssetAccumulationStepContractV1,
-  DistinctAssetAccumulationStepContractV1,
-  DistinctAssetAccumulationStepContractV1,
-  DistinctAssetAccumulationStepContractV1,
-  DistinctAssetAccumulationStepContractV1,
+  DistinctAssetAccumulationStepContract,
+  DistinctAssetAccumulationStepContract,
+  DistinctAssetAccumulationStepContract,
+  DistinctAssetAccumulationStepContract,
+  DistinctAssetAccumulationStepContract,
+  DistinctAssetAccumulationStepContract,
 ] => {
   const apply = (index: number, parameters: readonly Data[]) => {
     const blueprintTitle =
-      DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1[index]!;
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

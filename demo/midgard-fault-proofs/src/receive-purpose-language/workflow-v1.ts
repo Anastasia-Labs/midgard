@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { ReceivePurposeLanguageEvidenceV1 } from "./family-v1.js";
-import { receivePurposeLanguageEvidenceIdentityV1 } from "./family-v1.js";
+import type { ReceivePurposeLanguageEvidence } from "./family-v1.js";
+import { receivePurposeLanguageEvidenceIdentity } from "./family-v1.js";
 
-export const RECEIVE_PURPOSE_LANGUAGE_WORKFLOW_STAGES_V1 = [
+export const RECEIVE_PURPOSE_LANGUAGE_WORKFLOW_STAGES = [
   "none",
   "step01",
   "step02",
@@ -12,52 +12,52 @@ export const RECEIVE_PURPOSE_LANGUAGE_WORKFLOW_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type ReceivePurposeLanguageWorkflowStageV1 =
-  (typeof RECEIVE_PURPOSE_LANGUAGE_WORKFLOW_STAGES_V1)[number];
-export type ReceivePurposeLanguageWorkflowActionV1 =
+export type ReceivePurposeLanguageWorkflowStage =
+  (typeof RECEIVE_PURPOSE_LANGUAGE_WORKFLOW_STAGES)[number];
+export type ReceivePurposeLanguageWorkflowAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
   | "submitStep03"
   | "removeDescendants"
   | "cancel";
-export type ReceivePurposeLanguageCursorV1 = Readonly<{
-  stage: ReceivePurposeLanguageWorkflowStageV1;
+export type ReceivePurposeLanguageCursor = Readonly<{
+  stage: ReceivePurposeLanguageWorkflowStage;
   threadOutRef: string;
 }>;
-export type ReceivePurposeLanguageJournalEntryV1 = Readonly<{
+export type ReceivePurposeLanguageJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  action: ReceivePurposeLanguageWorkflowActionV1;
+  action: ReceivePurposeLanguageWorkflowAction;
   phase: "intent" | "submitted" | "confirmed";
-  source: ReceivePurposeLanguageCursorV1;
-  target: ReceivePurposeLanguageCursorV1;
+  source: ReceivePurposeLanguageCursor;
+  target: ReceivePurposeLanguageCursor;
   txHash: string;
 }>;
-export interface ReceivePurposeLanguageJournalV1 {
+export interface ReceivePurposeLanguageJournal {
   load(
     identity: string,
-  ): Promise<readonly ReceivePurposeLanguageJournalEntryV1[]>;
-  append(entry: ReceivePurposeLanguageJournalEntryV1): Promise<void>;
+  ): Promise<readonly ReceivePurposeLanguageJournalEntry[]>;
+  append(entry: ReceivePurposeLanguageJournalEntry): Promise<void>;
 }
-export interface ReceivePurposeLanguageTransactionPortV1 {
-  observe(identity: string): Promise<ReceivePurposeLanguageCursorV1>;
+export interface ReceivePurposeLanguageTransactionPort {
+  observe(identity: string): Promise<ReceivePurposeLanguageCursor>;
   capture(input: {
-    action: ReceivePurposeLanguageWorkflowActionV1;
-    evidence: ReceivePurposeLanguageEvidenceV1;
-    source: ReceivePurposeLanguageCursorV1;
+    action: ReceivePurposeLanguageWorkflowAction;
+    evidence: ReceivePurposeLanguageEvidence;
+    source: ReceivePurposeLanguageCursor;
   }): Promise<
     Readonly<{
       txHash: string;
-      target: ReceivePurposeLanguageCursorV1;
+      target: ReceivePurposeLanguageCursor;
       submit: () => Promise<string>;
     }>
   >;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
 const actionFor = (
-  stage: ReceivePurposeLanguageWorkflowStageV1,
-): ReceivePurposeLanguageWorkflowActionV1 | "done" =>
+  stage: ReceivePurposeLanguageWorkflowStage,
+): ReceivePurposeLanguageWorkflowAction | "done" =>
   ({
     none: "submitInit",
     step01: "submitStep01",
@@ -66,11 +66,11 @@ const actionFor = (
     proven: "removeDescendants",
     removed: "done",
     cancelled: "done",
-  })[stage] as ReceivePurposeLanguageWorkflowActionV1 | "done";
-const digest = (cursor: ReceivePurposeLanguageCursorV1) =>
+  })[stage] as ReceivePurposeLanguageWorkflowAction | "done";
+const digest = (cursor: ReceivePurposeLanguageCursor) =>
   createHash("sha256").update(JSON.stringify(cursor)).digest("hex");
 const validate = (
-  entries: readonly ReceivePurposeLanguageJournalEntryV1[],
+  entries: readonly ReceivePurposeLanguageJournalEntry[],
   identity: string,
 ) =>
   entries.forEach((entry, sequence) => {
@@ -83,7 +83,7 @@ const validate = (
         "receivePurposeLanguage journal identity/sequence/transaction changed",
       );
   });
-const unresolved = (entries: readonly ReceivePurposeLanguageJournalEntryV1[]) =>
+const unresolved = (entries: readonly ReceivePurposeLanguageJournalEntry[]) =>
   [...entries]
     .reverse()
     .find(
@@ -96,16 +96,16 @@ const unresolved = (entries: readonly ReceivePurposeLanguageJournalEntryV1[]) =>
             later.phase === "confirmed",
         ),
     );
-export const runReceivePurposeLanguageWorkflowV1 = async ({
+export const runReceivePurposeLanguageWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: ReceivePurposeLanguageEvidenceV1;
-  journal: ReceivePurposeLanguageJournalV1;
-  transactions: ReceivePurposeLanguageTransactionPortV1;
-}): Promise<ReceivePurposeLanguageWorkflowStageV1> => {
-  const identity = receivePurposeLanguageEvidenceIdentityV1(evidence);
+  evidence: ReceivePurposeLanguageEvidence;
+  journal: ReceivePurposeLanguageJournal;
+  transactions: ReceivePurposeLanguageTransactionPort;
+}): Promise<ReceivePurposeLanguageWorkflowStage> => {
+  const identity = receivePurposeLanguageEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     validate(entries, identity);
@@ -134,7 +134,7 @@ export const runReceivePurposeLanguageWorkflowV1 = async ({
         "receivePurposeLanguage captured transaction is malformed",
       );
     const nextSequence = entries.length;
-    const intent: ReceivePurposeLanguageJournalEntryV1 = {
+    const intent: ReceivePurposeLanguageJournalEntry = {
       sequence: nextSequence,
       identity,
       action,
@@ -156,16 +156,16 @@ export const runReceivePurposeLanguageWorkflowV1 = async ({
     return source.stage;
   }
 };
-export const cancelReceivePurposeLanguageWorkflowV1 = async ({
+export const cancelReceivePurposeLanguageWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: ReceivePurposeLanguageEvidenceV1;
-  journal: ReceivePurposeLanguageJournalV1;
-  transactions: ReceivePurposeLanguageTransactionPortV1;
+  evidence: ReceivePurposeLanguageEvidence;
+  journal: ReceivePurposeLanguageJournal;
+  transactions: ReceivePurposeLanguageTransactionPort;
 }): Promise<"cancelled"> => {
-  const identity = receivePurposeLanguageEvidenceIdentityV1(evidence);
+  const identity = receivePurposeLanguageEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   if (unresolved(entries) !== undefined)
@@ -183,7 +183,7 @@ export const cancelReceivePurposeLanguageWorkflowV1 = async ({
   if (captured.target.stage !== "cancelled")
     throw new Error("receivePurposeLanguage cancellation target changed");
   const nextSequence = entries.length;
-  const intent: ReceivePurposeLanguageJournalEntryV1 = {
+  const intent: ReceivePurposeLanguageJournalEntry = {
     sequence: nextSequence,
     identity,
     action: "cancel",

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveWatcherAttestationTimeoutObservationV1 } from "../../src/indexers/attestation-timeout-observation-v1.js";
+import { deriveWatcherAttestationTimeoutObservation } from "../../src/indexers/attestation-timeout-observation-v1.js";
 import {
-  makeWatcherStateQueueHeaderV1,
-  makeWatcherStateQueueSnapshotV1,
+  makeWatcherStateQueueHeader,
+  makeWatcherStateQueueSnapshot,
 } from "../../src/indexers/state-queue-indexer.js";
 
 const h28 = (byte: string): string => byte.repeat(56);
@@ -21,7 +21,7 @@ const snapshot = (daAttestationPolicyId: string | null) => {
     protocolVersion: "1",
     datumSha256: h32("3"),
   } as const;
-  const header = makeWatcherStateQueueHeaderV1({
+  const header = makeWatcherStateQueueHeader({
     nextHeaderHash: null,
     datumSha256: h32("4"),
     prevUtxosRoot: confirmedState.utxosRoot,
@@ -52,7 +52,7 @@ const snapshot = (daAttestationPolicyId: string | null) => {
     daAttestationPolicyId,
   });
   expect(header).not.toBeNull();
-  const value = makeWatcherStateQueueSnapshotV1({
+  const value = makeWatcherStateQueueSnapshot({
     confirmedState,
     queue: [header!],
     scheduler: {
@@ -80,21 +80,21 @@ describe("watcher attestation-timeout observation", () => {
   it("reports waiting, near-timeout, and boundary timed-out states", () => {
     const value = snapshot(null);
     expect(
-      deriveWatcherAttestationTimeoutObservationV1({
+      deriveWatcherAttestationTimeoutObservation({
         snapshot: value,
         nowMs: 3_000_000n,
         alertLeadMs: 120_000n,
       })?.status,
     ).toBe("waiting");
     expect(
-      deriveWatcherAttestationTimeoutObservationV1({
+      deriveWatcherAttestationTimeoutObservation({
         snapshot: value,
         nowMs: 3_550_000n,
         alertLeadMs: 120_000n,
       })?.status,
     ).toBe("near_timeout");
     expect(
-      deriveWatcherAttestationTimeoutObservationV1({
+      deriveWatcherAttestationTimeoutObservation({
         snapshot: value,
         nowMs: 3_602_000n,
         alertLeadMs: 120_000n,
@@ -104,7 +104,7 @@ describe("watcher attestation-timeout observation", () => {
 
   it("uses the applied attestation marker and never emits a timeout for it", () => {
     expect(
-      deriveWatcherAttestationTimeoutObservationV1({
+      deriveWatcherAttestationTimeoutObservation({
         snapshot: snapshot(h28("a")),
         nowMs: 9_000_000n,
         alertLeadMs: 120_000n,
@@ -115,7 +115,7 @@ describe("watcher attestation-timeout observation", () => {
   it("rejects a snapshot whose authenticated digest no longer matches", () => {
     const value = snapshot(null);
     expect(
-      deriveWatcherAttestationTimeoutObservationV1({
+      deriveWatcherAttestationTimeoutObservation({
         snapshot: {
           ...value,
           queue: [{ ...value.queue[0], endTime: "999999999" }],

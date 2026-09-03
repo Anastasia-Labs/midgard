@@ -2,19 +2,19 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import type { UnusedRedeemerEvidenceV1 } from "../src/unused-redeemer/family-v1.js";
+import type { UnusedRedeemerEvidence } from "../src/unused-redeemer/family-v1.js";
 import {
-  cancelUnusedRedeemerWorkflowV1,
-  runUnusedRedeemerWorkflowV1,
-  type UnusedRedeemerActuatorV1,
-  type UnusedRedeemerCursorV1,
-  type UnusedRedeemerJournalEntryV1,
-  type UnusedRedeemerJournalV1,
-  type UnusedRedeemerWorkflowActionV1,
-  type UnusedRedeemerWorkflowStageV1,
+  cancelUnusedRedeemerWorkflow,
+  runUnusedRedeemerWorkflow,
+  type UnusedRedeemerActuator,
+  type UnusedRedeemerCursor,
+  type UnusedRedeemerJournal,
+  type UnusedRedeemerJournalEntry,
+  type UnusedRedeemerWorkflowAction,
+  type UnusedRedeemerWorkflowStage,
 } from "../src/unused-redeemer/workflow-v1.js";
 
-const stages: readonly UnusedRedeemerWorkflowStageV1[] = [
+const stages: readonly UnusedRedeemerWorkflowStage[] = [
   "none",
   "step01",
   "step02",
@@ -29,8 +29,8 @@ const stages: readonly UnusedRedeemerWorkflowStageV1[] = [
   "removed",
 ];
 const nextFor: Record<
-  UnusedRedeemerWorkflowActionV1,
-  UnusedRedeemerWorkflowStageV1
+  UnusedRedeemerWorkflowAction,
+  UnusedRedeemerWorkflowStage
 > = {
   submitInit: "step01",
   submitStep01: "step02",
@@ -53,23 +53,23 @@ const evidence = (forced: boolean) =>
     },
     targetRedeemerLeafHex: "33".repeat(32),
     checkpointDigest: "44".repeat(32),
-  }) as unknown as UnusedRedeemerEvidenceV1;
-const harness = (initial: UnusedRedeemerWorkflowStageV1 = "none") => {
-  const entries: UnusedRedeemerJournalEntryV1[] = [];
-  let cursor: UnusedRedeemerCursorV1 = {
+  }) as unknown as UnusedRedeemerEvidence;
+const harness = (initial: UnusedRedeemerWorkflowStage = "none") => {
+  const entries: UnusedRedeemerJournalEntry[] = [];
+  let cursor: UnusedRedeemerCursor = {
     stage: initial,
     threadOutRef: `${initial}#0`,
     checkpointDigest: "44".repeat(32),
   };
   const confirmed = new Set<string>();
   let nonce = 0;
-  const journal: UnusedRedeemerJournalV1 = {
+  const journal: UnusedRedeemerJournal = {
     load: async () => entries,
     append: async (entry) => {
       entries.push(entry);
     },
   };
-  const actuator: UnusedRedeemerActuatorV1 = {
+  const actuator: UnusedRedeemerActuator = {
     observe: async () => cursor,
     capture: async ({ action }) => {
       const targetStage = nextFor[action];
@@ -102,7 +102,7 @@ describe("unusedRedeemer durable nine-script workflow", () => {
     async (forced) => {
       const h = harness();
       for (let turns = 0; turns < 24 && h.stage() !== "removed"; turns += 1)
-        await runUnusedRedeemerWorkflowV1({
+        await runUnusedRedeemerWorkflow({
           evidence: evidence(forced),
           journal: h.journal,
           actuator: h.actuator,
@@ -130,15 +130,15 @@ describe("unusedRedeemer durable nine-script workflow", () => {
 
   it("reconciles an exact captured checkpoint after restart", async () => {
     const h = harness("step02b");
-    await runUnusedRedeemerWorkflowV1({
+    await runUnusedRedeemerWorkflow({
       evidence: evidence(false),
       journal: h.journal,
       actuator: h.actuator,
     });
     expect(h.stage()).toBe("step02c");
-    const restarted: UnusedRedeemerActuatorV1 = { ...h.actuator };
+    const restarted: UnusedRedeemerActuator = { ...h.actuator };
     expect(
-      await runUnusedRedeemerWorkflowV1({
+      await runUnusedRedeemerWorkflow({
         evidence: evidence(false),
         journal: h.journal,
         actuator: restarted,
@@ -152,7 +152,7 @@ describe("unusedRedeemer durable nine-script workflow", () => {
     async (stage) => {
       const h = harness(stage);
       await expect(
-        cancelUnusedRedeemerWorkflowV1({
+        cancelUnusedRedeemerWorkflow({
           evidence: evidence(false),
           journal: h.journal,
           actuator: h.actuator,

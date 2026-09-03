@@ -1,6 +1,6 @@
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
-import { assertDeploymentMarkerV1Matches } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { assertDeploymentMarkerMatches } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -50,8 +50,8 @@ const normalizedIds = (ids: readonly string[]): readonly string[] =>
   [...new Set(ids.map((id) => id.toLowerCase()))].sort();
 
 const countsMatchHeader = (
-  payload: SDK.DaPayloadV1,
-  header: SDK.HeaderV1,
+  payload: SDK.DaPayload,
+  header: SDK.Header,
 ): boolean => {
   const body = payload.block_body;
   const counts = body.counts;
@@ -78,14 +78,14 @@ const verifyForeignPayload = ({
   payload,
 }: {
   readonly foreignHeaderHash: string;
-  readonly header: SDK.HeaderV1;
-  readonly payload: SDK.DaPayloadV1;
+  readonly header: SDK.Header;
+  readonly payload: SDK.DaPayload;
 }): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const [computedHeaderHash, payloadHeaderHash, roots] = yield* Effect.all(
       [
-        SDK.hashBlockHeaderV1(header),
-        SDK.hashBlockHeaderV1(payload.block_body.header),
+        SDK.hashBlockHeader(header),
+        SDK.hashBlockHeader(payload.block_body.header),
         computeDaPayloadRoots(payload),
       ],
       { concurrency: "unbounded" },
@@ -149,13 +149,13 @@ export const resolveT2ForeignEventEvidence = ({
   payloadError,
 }: {
   readonly foreignHeaderHash: string;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly candidateIds: T2CandidateEventIds;
-  readonly payload?: SDK.DaPayloadV1;
+  readonly payload?: SDK.DaPayload;
   readonly payloadError?: string;
 }): Effect.Effect<T2ForeignEventResolution> =>
   Effect.gen(function* () {
-    const boundHeaderHash = yield* SDK.hashBlockHeaderV1(header).pipe(
+    const boundHeaderHash = yield* SDK.hashBlockHeader(header).pipe(
       Effect.catchAll(() => Effect.succeed("")),
     );
     if (boundHeaderHash !== foreignHeaderHash) {
@@ -287,28 +287,28 @@ const decodeStoredPayload = ({
 }: {
   readonly payloadCbor: Buffer;
   readonly schemaVersion: number;
-}): Promise<SDK.DaPayloadV1> =>
-  schemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)
+}): Promise<SDK.DaPayload> =>
+  schemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)
     ? Promise.reject(
         new Error("Stored DA payload schema version must equal canonical V1"),
       )
-    : unwrapDaPayloadV1(payloadCbor, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      }).then((unwrapped) => SDK.decodeDaPayloadV1(unwrapped.innerBytes));
+    : unwrapDaPayload(payloadCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes));
 
 export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
   foreignHeaderHash,
   header,
 }: {
   readonly foreignHeaderHash: string;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
 }): Effect.Effect<
   T2ForeignEventResolution,
   DatabaseError,
   Database | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
-    const suppliedHash = yield* SDK.hashBlockHeaderV1(header).pipe(
+    const suppliedHash = yield* SDK.hashBlockHeader(header).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -348,7 +348,7 @@ export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
 
 const decodeRetainedHeader = (
   entry: ForeignTipReconciliationsDB.Entry,
-): Effect.Effect<SDK.HeaderV1, DatabaseError> =>
+): Effect.Effect<SDK.Header, DatabaseError> =>
   Effect.gen(function* () {
     const header = yield* Effect.try({
       try: () =>
@@ -356,8 +356,8 @@ const decodeRetainedHeader = (
           entry[
             ForeignTipReconciliationsDB.Columns.FOREIGN_HEADER_CBOR
           ].toString("hex"),
-          SDK.HeaderV1 as never,
-        ) as SDK.HeaderV1,
+          SDK.Header as never,
+        ) as SDK.Header,
       catch: (cause) =>
         new DatabaseError({
           table: ForeignTipReconciliationsDB.tableName,
@@ -369,7 +369,7 @@ const decodeRetainedHeader = (
       entry[ForeignTipReconciliationsDB.Columns.FOREIGN_HEADER_HASH].toString(
         "hex",
       );
-    const recomputedHash = yield* SDK.hashBlockHeaderV1(header).pipe(
+    const recomputedHash = yield* SDK.hashBlockHeader(header).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -436,7 +436,7 @@ const reconcileRetainedForeignTipEntry = (
         }
         const entry = currentEntry.value;
         const reconciliation =
-          ForeignTipReconciliationsDB.decodeForeignTipReconciliationV1(entry);
+          ForeignTipReconciliationsDB.decodeForeignTipReconciliation(entry);
         const deploymentIdentity = yield* ContractDeploymentIdentity;
         if (deploymentIdentity.deploymentMarker === undefined) {
           return yield* Effect.fail(
@@ -450,7 +450,7 @@ const reconcileRetainedForeignTipEntry = (
         }
         yield* Effect.try({
           try: () =>
-            assertDeploymentMarkerV1Matches(
+            assertDeploymentMarkerMatches(
               reconciliation.deploymentMarker,
               deploymentIdentity.deploymentMarker,
               "ForeignTipReconciliationV1 recovery",
@@ -554,15 +554,15 @@ const reconcileRetainedForeignTipEntry = (
                     availablePayload[DaPayloadsDB.Columns.PAYLOAD_SHA256],
                 };
         let authenticatedDa:
-          | ForeignTipReconciliationsDB.ForeignTipDaIdentityV1
+          | ForeignTipReconciliationsDB.ForeignTipDaIdentity
           | undefined;
-        let payload: SDK.DaPayloadV1 | undefined;
+        let payload: SDK.DaPayload | undefined;
         let payloadError: string | undefined;
         if (daIdentityCandidate !== undefined) {
           const authenticated = yield* Effect.either(
             Effect.try({
               try: () =>
-                ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+                ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
                   reconciliation,
                   deploymentMarker: deploymentIdentity.deploymentMarker,
                   evidence: daIdentityCandidate,
@@ -636,7 +636,7 @@ const reconcileRetainedForeignTipEntry = (
           header.depositsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
           header.forcedTransactionsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
           header.withdrawalsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT;
-        const resolvedEvidence: ForeignTipReconciliationsDB.ResolveForeignTipEvidenceV1 =
+        const resolvedEvidence: ForeignTipReconciliationsDB.ResolveForeignTipEvidence =
           !requiresDaEvidence
             ? {
                 kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedEmpty,

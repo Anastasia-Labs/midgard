@@ -37,15 +37,15 @@
  * Nothing in the prepared file is trusted: the anchor is read from the
  * **on-chain** step-01 datum, and the supplied list must be the §5.1 preimage the
  * anchored transaction commits at field 0 — checked by
- * {@link planFaultProofFieldOpeningV1} before a transaction is built.
+ * {@link planFaultProofFieldOpening} before a transaction is built.
  */
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
   InputNoIdxStep02Datum,
   InputNoIdxStep02SpendRedeemer,
   InputNoIdxStep03Datum,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -60,10 +60,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import {
@@ -84,11 +84,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared spend-inputs preimage produced by `prepare-input-no-idx`. */
@@ -270,8 +270,8 @@ export const submitInputNoIdxStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep02Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
@@ -304,13 +304,11 @@ export const submitInputNoIdxStep02 = async ({
   // Re-run the door off-chain, before anything is paid for: the compact bytes
   // must re-derive to the anchor the thread carries, and this list must be the
   // §5.1 preimage that transaction commits at field 0 specifically.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: verifiedTxId,
     nativeTxCompactCbor,
-    itemCbors: inputsPreimage.inputsPreimage.map(
-      encodeMidgardTxInputCanonicalV1,
-    ),
+    itemCbors: inputsPreimage.inputsPreimage.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
     label: "Input-no-idx step 02 spend-inputs",
@@ -329,7 +327,7 @@ export const submitInputNoIdxStep02 = async ({
   // republished.
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -344,7 +342,7 @@ export const submitInputNoIdxStep02 = async ({
       walletUtxos,
     ),
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "input-no-idx step 02 validator",
@@ -354,7 +352,7 @@ export const submitInputNoIdxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const spendInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
@@ -441,9 +439,9 @@ export const submitInputNoIdxStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -518,7 +516,7 @@ export const submitInputNoIdxStep02FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     inputsPreimage: parseSubmitInputNoIdxInputsPreimage(inputsPreimageJson),
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

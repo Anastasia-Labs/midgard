@@ -2,62 +2,62 @@ import {
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
-  ValidationMachineStateV1Schema,
-  ValidationTraceDescriptorV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceDescriptorSchema,
+  ValidationTraceProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const UnusedScriptVerdictSubjectV1Schema = Data.Object({
+export const UnusedScriptVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const UnusedScriptBoundWitnessV1Schema = Data.Object({
-  subject: UnusedScriptVerdictSubjectV1Schema,
+export const UnusedScriptBoundWitnessSchema = Data.Object({
+  subject: UnusedScriptVerdictSubjectSchema,
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
   script_index: Data.Integer(),
 });
-const UnusedScriptFrontierPeakV1Schema = Data.Object({
+const UnusedScriptFrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: Data.Bytes(),
 });
-export const UnusedScriptAuthenticatedWitnessV1Schema = Data.Object({
-  bound: UnusedScriptBoundWitnessV1Schema,
+export const UnusedScriptAuthenticatedWitnessSchema = Data.Object({
+  bound: UnusedScriptBoundWitnessSchema,
   prior_ledger_root: Data.Bytes(),
   language_tag: Data.Integer(),
   script_hash: Data.Bytes(),
   script_total_length: Data.Integer(),
   item_commitment: Data.Bytes(),
   source_count: Data.Integer(),
-  source_peaks: Data.Array(UnusedScriptFrontierPeakV1Schema),
+  source_peaks: Data.Array(UnusedScriptFrontierPeakSchema),
   purpose_count: Data.Integer(),
-  purpose_peaks: Data.Array(UnusedScriptFrontierPeakV1Schema),
+  purpose_peaks: Data.Array(UnusedScriptFrontierPeakSchema),
 });
-export const UnusedScriptReverseScanV1Schema = Data.Object({
-  witness: UnusedScriptAuthenticatedWitnessV1Schema,
+export const UnusedScriptReverseScanSchema = Data.Object({
+  witness: UnusedScriptAuthenticatedWitnessSchema,
   alternate_cursor: Data.Integer(),
   purpose_cursor: Data.Integer(),
   shadowed: Data.Boolean(),
   used: Data.Boolean(),
   checkpoint_hash: Data.Bytes(),
 });
-export const UnusedScriptDecisionV1Schema = Data.Object({
-  subject: UnusedScriptVerdictSubjectV1Schema,
+export const UnusedScriptDecisionSchema = Data.Object({
+  subject: UnusedScriptVerdictSubjectSchema,
   script_index: Data.Integer(),
   unused: Data.Boolean(),
 });
-export const UnusedScriptSourceOpeningV1Schema = Data.Object({
+export const UnusedScriptSourceOpeningSchema = Data.Object({
   source_index: Data.Integer(),
   language_tag: Data.Integer(),
   script_hash: Data.Bytes(),
@@ -65,7 +65,7 @@ export const UnusedScriptSourceOpeningV1Schema = Data.Object({
   item_commitment: Data.Bytes(),
   siblings: Data.Array(Data.Bytes()),
 });
-export const UnusedScriptPurposeOpeningV1Schema = Data.Object({
+export const UnusedScriptPurposeOpeningSchema = Data.Object({
   frontier_index: Data.Integer(),
   purpose_kind: Data.Integer(),
   purpose_index: Data.Integer(),
@@ -73,10 +73,10 @@ export const UnusedScriptPurposeOpeningV1Schema = Data.Object({
   purpose_subject: Data.Bytes(),
   siblings: Data.Array(Data.Bytes()),
 });
-export const UnusedScriptTerminalScriptSourcesWitnessV1Schema = Data.Object({
+export const UnusedScriptTerminalScriptSourcesWitnessSchema = Data.Object({
   witness_cbor: Data.Bytes(),
 });
-export const UnusedScriptStep01SourceV1Schema = Data.Enum([
+export const UnusedScriptStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -84,35 +84,35 @@ export const UnusedScriptStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const UnusedScriptStep01RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const UnusedScriptStep01RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
-    source: UnusedScriptStep01SourceV1Schema,
+    source: UnusedScriptStep01SourceSchema,
     script_index: Data.Integer(),
   }),
 );
-export const UnusedScriptStep02DatumV1Schema = faultProofStepDatumSchema(
-  UnusedScriptBoundWitnessV1Schema,
+export const UnusedScriptStep02DatumSchema = faultProofStepDatumSchema(
+  UnusedScriptBoundWitnessSchema,
 );
-export const UnusedScriptStep02RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const UnusedScriptStep02RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     trace_membership: rootMembershipProofSchema(
       EventKeySchema,
-      ValidationTraceDescriptorV1Schema,
+      ValidationTraceDescriptorSchema,
     ),
-    machine_state: ValidationMachineStateV1Schema,
-    trace_proof: ValidationTraceProofV1Schema,
-    control: UnusedScriptTerminalScriptSourcesWitnessV1Schema,
+    machine_state: ValidationMachineStateSchema,
+    trace_proof: ValidationTraceProofSchema,
+    control: UnusedScriptTerminalScriptSourcesWitnessSchema,
     language_tag: Data.Integer(),
     script_hash: Data.Bytes(),
     total_length: Data.Integer(),
@@ -120,35 +120,35 @@ export const UnusedScriptStep02RedeemerV1Schema = faultProofStepRedeemerSchema(
     source_siblings: Data.Array(Data.Bytes()),
   }),
 );
-export const UnusedScriptStep03DatumV1Schema = faultProofStepDatumSchema(
-  UnusedScriptAuthenticatedWitnessV1Schema,
+export const UnusedScriptStep03DatumSchema = faultProofStepDatumSchema(
+  UnusedScriptAuthenticatedWitnessSchema,
 );
-export const UnusedScriptStep03RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const UnusedScriptStep03RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({ input_index: Data.Integer(), output_index: Data.Integer() }),
 );
-export const UnusedScriptStep04DatumV1Schema = faultProofStepDatumSchema(
-  UnusedScriptReverseScanV1Schema,
+export const UnusedScriptStep04DatumSchema = faultProofStepDatumSchema(
+  UnusedScriptReverseScanSchema,
 );
-export const UnusedScriptStep04RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const UnusedScriptStep04RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),
-    openings: Data.Array(UnusedScriptSourceOpeningV1Schema),
+    openings: Data.Array(UnusedScriptSourceOpeningSchema),
   }),
 );
-export const UnusedScriptStep05DatumV1Schema = UnusedScriptStep04DatumV1Schema;
-export const UnusedScriptStep05RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const UnusedScriptStep05DatumSchema = UnusedScriptStep04DatumSchema;
+export const UnusedScriptStep05RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),
-    openings: Data.Array(UnusedScriptPurposeOpeningV1Schema),
+    openings: Data.Array(UnusedScriptPurposeOpeningSchema),
     item_budget: Data.Integer(),
   }),
 );
-export const UnusedScriptStep06DatumV1Schema = faultProofStepDatumSchema(
-  UnusedScriptDecisionV1Schema,
+export const UnusedScriptStep06DatumSchema = faultProofStepDatumSchema(
+  UnusedScriptDecisionSchema,
 );
-export const UnusedScriptStep06RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const UnusedScriptStep06RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),

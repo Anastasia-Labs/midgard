@@ -28,7 +28,7 @@ import type { Script } from "@lucid-evolution/lucid";
 export const MISSING_SIGNATURE_CATEGORY_LABEL = "missing-signature";
 
 /** Blueprint titles of the four parameterized step validators. */
-export const MISSING_SIGNATURE_BLUEPRINT_TITLES_V1 = {
+export const MISSING_SIGNATURE_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/missing_signature/step_01.main.spend",
   step02: "fraud_proofs/missing_signature/step_02.main.spend",
   step03: "fraud_proofs/missing_signature/step_03.main.spend",
@@ -36,7 +36,7 @@ export const MISSING_SIGNATURE_BLUEPRINT_TITLES_V1 = {
 } as const;
 
 /** One deployed step of the `missing-signature` chain. */
-export type MissingSignatureStepContractV1 = {
+export type MissingSignatureStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -50,13 +50,13 @@ export type MissingSignatureStepContractV1 = {
  * callers that need one — thread-token asset names, catalogue lookups — take
  * it separately from the deployment they are actually talking to.
  */
-export type MissingSignatureContractsV1 = {
+export type MissingSignatureContracts = {
   /** Steps 01..04, in order. */
   readonly steps: readonly [
-    MissingSignatureStepContractV1,
-    MissingSignatureStepContractV1,
-    MissingSignatureStepContractV1,
-    MissingSignatureStepContractV1,
+    MissingSignatureStepContract,
+    MissingSignatureStepContract,
+    MissingSignatureStepContract,
+    MissingSignatureStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

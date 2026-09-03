@@ -4,13 +4,13 @@ import { join } from "node:path";
 
 import {
   decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  minFeeThreadTokenAssetNameV1,
-  minimumFeeFromProofSourceV1,
+  minFeeThreadTokenAssetName,
+  minimumFeeFromProofSource,
   type NativeTxCompact,
   type NativeTxWitnessSetCompact,
   ROOT_DOMAINS,
@@ -28,7 +28,7 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
 
 export type PreparedMinFeeTx = {
@@ -91,7 +91,7 @@ const nonNegative = (
 const witnessSetFromMaterial = (
   material: DecodedTransactionMaterial,
 ): NativeTxWitnessSetCompact => {
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(
+  const compact = deriveMidgardNativeTxWitnessSetCompact(
     material.nativeTx.witnessSet,
   );
   return {
@@ -200,8 +200,8 @@ export const prepareMinFeeFromTransactions = async ({
     transactions.map(decodeTransactionMaterial),
   );
   const priced = decoded.map((material) => {
-    const boundary = minimumFeeFromProofSourceV1({
-      source: deriveMidgardNativeTxProofSourceV1(material.nativeTx),
+    const boundary = minimumFeeFromProofSource({
+      source: deriveMidgardNativeTxProofSource(material.nativeTx),
       minFeeA: feeA,
       minFeeB: feeB,
     });
@@ -229,10 +229,10 @@ export const prepareMinFeeFromTransactions = async ({
     }
     throw new Error("No min-fee violation found in the selected block.");
   }
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   const proofCbor = requireProof(
     trie,
-    transactionSourceTrieItemV1(selected.material).key,
+    transactionSourceTrieItem(selected.material).key,
     "min-fee tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(
@@ -259,7 +259,7 @@ export const prepareMinFeeFromTransactions = async ({
     ...(categoryId === undefined
       ? {}
       : {
-          threadTokenAssetName: minFeeThreadTokenAssetNameV1(
+          threadTokenAssetName: minFeeThreadTokenAssetName(
             categoryId,
             normalizedHeaderHash,
           ),

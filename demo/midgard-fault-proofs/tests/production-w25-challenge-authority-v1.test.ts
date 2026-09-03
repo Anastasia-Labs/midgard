@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
-  admitProductionTransitionTraceChallengeV1,
-  PRODUCTION_W25_CHALLENGE_COORDINATE_V1,
-  productionTransitionTraceProofV1,
-  requireProductionTransitionTraceChallengeV1,
+  admitTransitionTraceChallenge,
+  requireTransitionTraceChallenge,
+  transitionTraceProof,
+  W25_CHALLENGE_COORDINATE,
 } from "../src/workflow/production-w25-challenge-authority-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const evidence = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
-    transactions: [buildFixtureTransactionV1({ spendInputs: [], fee: 2n })],
+  const fixture = await buildCanonicalBlockFixture({
+    transactions: [buildFixtureTransaction({ spendInputs: [], fee: 2n })],
   });
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  return await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -31,9 +31,9 @@ const evidence = async () => {
 describe("production W25 challenge authority", () => {
   it("replays and admits a transition proof bound to the fresh transcript", async () => {
     const block = await evidence();
-    const challenge = await admitProductionTransitionTraceChallengeV1({
+    const challenge = await admitTransitionTraceChallenge({
       coordinate: {
-        schemaVersion: PRODUCTION_W25_CHALLENGE_COORDINATE_V1,
+        schemaVersion: W25_CHALLENGE_COORDINATE,
         deploymentFingerprint: "11".repeat(32),
         stateQueueObservationDigest: "22".repeat(32),
         headerHash: block.headerHash,
@@ -49,10 +49,8 @@ describe("production W25 challenge authority", () => {
       exactL1ReferenceOutRefs: [],
     });
 
-    expect(requireProductionTransitionTraceChallengeV1(challenge)).toBe(
-      challenge,
-    );
-    expect(productionTransitionTraceProofV1(challenge)).toBeDefined();
+    expect(requireTransitionTraceChallenge(challenge)).toBe(challenge);
+    expect(transitionTraceProof(challenge)).toBeDefined();
     expect(challenge.proofCbor).toMatch(/^[0-9a-f]+$/u);
     expect(challenge.challengeDigest).toMatch(/^[0-9a-f]{64}$/u);
   });
@@ -60,7 +58,7 @@ describe("production W25 challenge authority", () => {
   it("rejects structural copies, changed transcripts, and duplicate L1 refs", async () => {
     const block = await evidence();
     const coordinate = {
-      schemaVersion: PRODUCTION_W25_CHALLENGE_COORDINATE_V1,
+      schemaVersion: W25_CHALLENGE_COORDINATE,
       deploymentFingerprint: "11".repeat(32),
       stateQueueObservationDigest: "22".repeat(32),
       headerHash: block.headerHash,
@@ -70,18 +68,18 @@ describe("production W25 challenge authority", () => {
       blockReplayResultDigest: "44".repeat(32),
       coordinate: { domain: "block" as const, index: "0" },
     } as const;
-    const challenge = await admitProductionTransitionTraceChallengeV1({
+    const challenge = await admitTransitionTraceChallenge({
       coordinate,
       evidence: block,
       completeEvidence: {},
       detectionIndex: 0,
       exactL1ReferenceOutRefs: [],
     });
-    expect(() =>
-      requireProductionTransitionTraceChallengeV1({ ...challenge }),
-    ).toThrow(/not admitted/u);
+    expect(() => requireTransitionTraceChallenge({ ...challenge })).toThrow(
+      /not admitted/u,
+    );
     await expect(
-      admitProductionTransitionTraceChallengeV1({
+      admitTransitionTraceChallenge({
         coordinate: { ...coordinate, transcriptDigest: "x".repeat(64) },
         evidence: block,
         completeEvidence: {},
@@ -90,7 +88,7 @@ describe("production W25 challenge authority", () => {
       }),
     ).rejects.toThrow(/differs/u);
     await expect(
-      admitProductionTransitionTraceChallengeV1({
+      admitTransitionTraceChallenge({
         coordinate,
         evidence: block,
         completeEvidence: {},

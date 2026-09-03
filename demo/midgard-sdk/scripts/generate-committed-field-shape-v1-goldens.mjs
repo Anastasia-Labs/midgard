@@ -56,22 +56,22 @@ import {
   parseGoldenChannelArguments,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  midgardFieldCommitmentV1,
-  midgardFieldStrideV1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  midgardFieldCommitment,
+  midgardFieldStride,
 } from "@al-ft/midgard-core";
 import {
   CommittedFieldShapeStep02State,
-  isCommittedFieldShapeViolationV1,
-  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
-  MIDGARD_ENVELOPE_VERDICT_NAMES_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1,
-  MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1,
-  midgardCommittedFieldShapeVerdictV1,
-  midgardEnvelopeVerdictV1,
-  sizedMidgardFieldEnvelopeV1,
+  isCommittedFieldShapeViolation,
+  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
+  MIDGARD_ENVELOPE_VERDICT_NAMES,
+  MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
+  MIDGARD_FIELD_SHAPE_VERDICT_NAMES,
+  MIDGARD_FIXED_STRIDE_FIELD_INDICES,
+  midgardCommittedFieldShapeVerdict,
+  midgardEnvelopeVerdict,
+  sizedMidgardFieldEnvelope,
 } from "../dist/index.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -115,11 +115,11 @@ const buildPreimage = (construction) => {
     return Buffer.from(construction.hex, "hex");
   }
   if (construction.kind === "envelope") {
-    return encodeMidgardFieldPreimageV1(
+    return encodeMidgardFieldPreimage(
       construction.items.map((item) => Buffer.from(item, "hex")),
     );
   }
-  return sizedMidgardFieldEnvelopeV1(construction.totalLength, construction.fill);
+  return sizedMidgardFieldEnvelope(construction.totalLength, construction.fill);
 };
 
 /** The Aiken expression that builds the same bytes. */
@@ -143,9 +143,9 @@ const renderConstruction = (construction) => {
 // ---------------------------------------------------------------------------
 
 /** §5.3's fixed strides, so a vector's expected length is arithmetic in view. */
-const spendInputStride = midgardFieldStrideV1(0);
-const addressWitnessStride = midgardFieldStrideV1(7);
-const hash28Stride = midgardFieldStrideV1(3);
+const spendInputStride = midgardFieldStride(0);
+const addressWitnessStride = midgardFieldStride(7);
+const hash28Stride = midgardFieldStride(3);
 
 /**
  * Each vector is a `(field_index, construction)` pair. The Aiken side rebuilds
@@ -235,14 +235,14 @@ const verdictVectors = [
   {
     label: "at_the_field_byte_bound",
     fieldIndex: 2,
-    construction: sized(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1, 0x00),
+    construction: sized(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES, 0x00),
     note: "exactly §5.4's per-field bound, which the door opens",
   },
   {
     label: "above_the_field_byte_bound",
     fieldIndex: 2,
     construction: sized(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 + 1,
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES + 1,
       0x00,
     ),
     note: "one byte above it, and well-formed in every other respect",
@@ -251,7 +251,7 @@ const verdictVectors = [
     label: "above_the_field_byte_bound_at_a_fixed_stride_slot",
     fieldIndex: 0,
     construction: sized(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 + 1,
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES + 1,
       0x00,
     ),
     note: "the byte bound is checked first, so this is one accusation and not two",
@@ -289,7 +289,7 @@ const verdictVectors = [
 const badTxId = Buffer.alloc(32, 0x22);
 
 /**
- * The one Data-encoded surface this family adds. `CommittedFieldClaimV1` is
+ * The one Data-encoded surface this family adds. `CommittedFieldClaim` is
  * §12.7's type reused unchanged and is pinned by §12.7's own channel; re-pinning
  * it here would be a second copy of one wire form. What is new is the state,
  * whose three members read identically to §12.7's and whose `verdict` means
@@ -344,28 +344,28 @@ const wireVectors = [
 const buildGolden = () => {
   const vectors = verdictVectors.map((vector) => {
     const preimage = buildPreimage(vector.construction);
-    const verdict = midgardCommittedFieldShapeVerdictV1(
+    const verdict = midgardCommittedFieldShapeVerdict(
       vector.fieldIndex,
       preimage,
     );
-    const envelopeVerdict = midgardEnvelopeVerdictV1(preimage);
+    const envelopeVerdict = midgardEnvelopeVerdict(preimage);
     // The partition against §12.7, checked where it is made. A vector convicted
     // by both fault kinds would let one committed field finalize twice, and a
     // channel that merely recorded the pair would regenerate cleanly around it.
-    const convicts = isCommittedFieldShapeViolationV1({
+    const convicts = isCommittedFieldShapeViolation({
       fieldIndex: vector.fieldIndex,
       verdict,
     });
     if (
       convicts &&
-      envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1
+      envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL
     ) {
       throw new Error(
         `vector ${vector.label} is convicted by both §12.7 and §12.8`,
       );
     }
     if (
-      envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1 &&
+      envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL &&
       verdict !== 1
     ) {
       throw new Error(
@@ -376,28 +376,28 @@ const buildGolden = () => {
       label: vector.label,
       note: vector.note,
       fieldIndex: vector.fieldIndex,
-      fieldStride: midgardFieldStrideV1(vector.fieldIndex),
+      fieldStride: midgardFieldStride(vector.fieldIndex),
       construction: vector.construction,
       byteCount: preimage.length,
-      preimageCommitment: hex(midgardFieldCommitmentV1(preimage)),
+      preimageCommitment: hex(midgardFieldCommitment(preimage)),
       envelopeVerdict,
-      envelopeVerdictName: MIDGARD_ENVELOPE_VERDICT_NAMES_V1[envelopeVerdict],
+      envelopeVerdictName: MIDGARD_ENVELOPE_VERDICT_NAMES[envelopeVerdict],
       verdict,
-      verdictName: MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1[verdict],
+      verdictName: MIDGARD_FIELD_SHAPE_VERDICT_NAMES[verdict],
       convicts,
     };
   });
   const reached = new Set(vectors.map((vector) => vector.verdict));
-  if (reached.size !== MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1) {
+  if (reached.size !== MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT) {
     throw new Error(
       `verdict vectors reach ${String(reached.size)} of ` +
-        `${String(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1)} codes`,
+        `${String(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT)} codes`,
     );
   }
   // Every fixed-stride slot has to appear, or a stride table that dropped a row
   // would still regenerate cleanly.
   const slots = new Set(vectors.map((vector) => vector.fieldIndex));
-  for (const fieldIndex of MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1) {
+  for (const fieldIndex of MIDGARD_FIXED_STRIDE_FIELD_INDICES) {
     if (!slots.has(fieldIndex)) {
       throw new Error(`no vector at fixed-stride slot ${String(fieldIndex)}`);
     }
@@ -408,10 +408,10 @@ const buildGolden = () => {
     specDocument: "docs/spec/midgard-tx.md",
     generator:
       "demo/midgard-sdk/scripts/generate-committed-field-shape-v1-goldens.mjs",
-    verdictCodeCount: MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1,
-    verdictNames: [...MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1],
-    fixedStrideFieldIndices: [...MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1],
-    fieldByteBound: MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+    verdictCodeCount: MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
+    verdictNames: [...MIDGARD_FIELD_SHAPE_VERDICT_NAMES],
+    fixedStrideFieldIndices: [...MIDGARD_FIXED_STRIDE_FIELD_INDICES],
+    fieldByteBound: MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
     vectors,
     wireVectors: wireVectors.map((vector) => ({
       label: vector.label,
@@ -478,7 +478,7 @@ const renderAiken = (golden) =>
     "////",
     "//// **The wire set** round-trips the one Data-encoded surface the family adds:",
     "//// each test decodes the TypeScript producer's bytes into the Aiken type and",
-    "//// then re-serialises what came back. `CommittedFieldClaimV1` is §12.7's type",
+    "//// then re-serialises what came back. `CommittedFieldClaim` is §12.7's type",
     "//// reused unchanged and is pinned by §12.7's own channel.",
     "",
     "use aiken/cbor",

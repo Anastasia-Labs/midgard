@@ -1,7 +1,7 @@
 import { asArray, asBigInt, asBytes } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
-import { MIDGARD_NATIVE_TX_V1_VERSION } from "./native-constants.js";
+import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
 
 /**
  * The wire-normative Midgard native-V1 transaction validity language.
@@ -97,10 +97,10 @@ export const asSigned = (value: unknown, fieldName: string): bigint => {
 
 export const decodeVersion = (value: unknown, fieldName: string): bigint => {
   const version = asUnsigned(value, fieldName);
-  if (version !== MIDGARD_NATIVE_TX_V1_VERSION) {
+  if (version !== MIDGARD_NATIVE_TX_VERSION) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
-      `${fieldName} must equal ${MIDGARD_NATIVE_TX_V1_VERSION.toString()}`,
+      `${fieldName} must equal ${MIDGARD_NATIVE_TX_VERSION.toString()}`,
       `actual=${version.toString()}`,
     );
   }

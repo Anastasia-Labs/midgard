@@ -15,10 +15,10 @@
  */
 import { inputSetUniquenessSubmitError } from "./submit-common-v1.js";
 
-export const INPUT_SET_UNIQUENESS_VIOLATION_ID_V1 =
+export const INPUT_SET_UNIQUENESS_VIOLATION_ID =
   "input-set-uniqueness" as const;
 
-export type InputSetUniquenessClaimV1 =
+export type InputSetUniquenessClaim =
   | {
       readonly kind: "duplicateSpendInputs";
       readonly firstIndex: bigint;
@@ -72,16 +72,16 @@ const firstDuplicatePair = (
  * Scans one committed transaction's decoded input lists for every
  * intra-transaction input-set fault, in canonical claim order.
  */
-export const scanInputSetUniquenessV1 = ({
+export const scanInputSetUniqueness = ({
   spendInputItemCbors,
   referenceInputItemCbors,
 }: {
   readonly spendInputItemCbors: readonly string[];
   readonly referenceInputItemCbors: readonly string[];
-}): readonly InputSetUniquenessClaimV1[] => {
+}): readonly InputSetUniquenessClaim[] => {
   const spends = normalizeItems(spendInputItemCbors, "spend-input");
   const references = normalizeItems(referenceInputItemCbors, "reference-input");
-  const claims: InputSetUniquenessClaimV1[] = [];
+  const claims: InputSetUniquenessClaim[] = [];
 
   const spendDuplicate = firstDuplicatePair(spends);
   if (spendDuplicate !== undefined) {
@@ -117,11 +117,11 @@ export const scanInputSetUniquenessV1 = ({
  * sets are honest (no duplicate, no overlap) — a prover must never open a
  * thread it cannot finish.
  */
-export const requireInputSetUniquenessClaimV1 = (args: {
+export const requireInputSetUniquenessClaim = (args: {
   readonly spendInputItemCbors: readonly string[];
   readonly referenceInputItemCbors: readonly string[];
-}): InputSetUniquenessClaimV1 => {
-  const [claim] = scanInputSetUniquenessV1(args);
+}): InputSetUniquenessClaim => {
+  const [claim] = scanInputSetUniqueness(args);
   if (claim === undefined) {
     throw inputSetUniquenessSubmitError(
       "the transaction's input sets are unique and disjoint; there is no input-set fault to prove.",

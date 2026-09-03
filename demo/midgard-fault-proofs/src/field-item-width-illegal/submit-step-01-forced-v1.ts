@@ -11,25 +11,25 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { FieldItemWidthIllegalContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { FieldItemWidthIllegalContracts } from "./contracts-v1.js";
 import {
-  classifyFieldItemWidthFindingV1,
-  type FieldItemWidthFindingV1,
+  classifyFieldItemWidthFinding,
+  type FieldItemWidthFinding,
 } from "./field-item-width-illegal-v1.js";
 import {
-  FieldItemWidthStep01RedeemerV1Schema,
-  FieldItemWidthStep02DatumV1Schema,
+  FieldItemWidthStep01RedeemerSchema,
+  FieldItemWidthStep02DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitFieldItemWidthIllegalStep01ForcedV1 = async ({
+export const submitFieldItemWidthIllegalStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -42,19 +42,19 @@ export const submitFieldItemWidthIllegalStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FieldItemWidthIllegalContractsV1;
+  readonly contracts: FieldItemWidthIllegalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: FieldItemWidthFindingV1;
+  readonly finding: FieldItemWidthFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyFieldItemWidthFindingV1(finding);
+  const exact = classifyFieldItemWidthFinding(finding);
   const stepIndex = 0;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,7 +64,7 @@ export const submitFieldItemWidthIllegalStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "field-item-width-illegal",
@@ -79,7 +79,7 @@ export const submitFieldItemWidthIllegalStep01ForcedV1 = async ({
         item_index: BigInt(exact.itemIndex),
       },
     } as never,
-    FieldItemWidthStep02DatumV1Schema as never,
+    FieldItemWidthStep02DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[1].spendingScriptAddress,
@@ -119,10 +119,10 @@ export const submitFieldItemWidthIllegalStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      FieldItemWidthStep01RedeemerV1Schema as never,
+      FieldItemWidthStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

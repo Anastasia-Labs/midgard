@@ -1,21 +1,21 @@
 import {
-  computeFraudProofWorkflowIdV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
-  type JournalJsonObjectV1,
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  type JournalJsonObject,
 } from "../workflow/journal-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import type {
-  FieldPreimageLengthActionV1,
-  FieldPreimageLengthJournalV1,
-  PreparedFieldPreimageLengthWorkflowV1,
+  FieldPreimageLengthAction,
+  FieldPreimageLengthJournal,
+  PreparedFieldPreimageLengthWorkflow,
 } from "./workflow-v1.js";
 
-type Action = Exclude<FieldPreimageLengthActionV1, "complete">;
+type Action = Exclude<FieldPreimageLengthAction, "complete">;
 const actions: readonly Action[] = [
   "init",
   "dispatch",
@@ -28,8 +28,8 @@ const actionId = (action: Action): string =>
 const now = (): string => new Date().toISOString();
 
 const artifact = (
-  prepared: PreparedFieldPreimageLengthWorkflowV1,
-): JournalJsonObjectV1 => ({
+  prepared: PreparedFieldPreimageLengthWorkflow,
+): JournalJsonObject => ({
   schemaVersion: prepared.schemaVersion,
   headerHash: prepared.headerHash,
   transactionId: prepared.transactionId,
@@ -43,36 +43,36 @@ const artifact = (
 });
 
 /** Durable bridge from the family runner to the shared production journal. */
-export const createFieldPreimageLengthCentralJournalAdapterV1 = ({
+export const createFieldPreimageLengthCentralJournalAdapter = ({
   store,
   deploymentFingerprint,
   decisionDigest,
   prepared,
   observeConfirmed,
 }: {
-  readonly store: FraudProofWorkflowJournalStoreV1;
+  readonly store: FraudProofWorkflowJournalStore;
   readonly deploymentFingerprint: string;
   readonly decisionDigest: string;
-  readonly prepared: PreparedFieldPreimageLengthWorkflowV1;
+  readonly prepared: PreparedFieldPreimageLengthWorkflow;
   readonly observeConfirmed: (
     action: Action,
     txHash: string,
   ) => Promise<boolean>;
 }) => {
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint,
     category: "fieldPreimageLengthMismatch",
     target: { kind: "state_queue_header", headerHash: prepared.headerHash },
     decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   const entries = async () => await store.load(workflowId);
-  const append = async (event: FraudProofWorkflowJournalEntryV1["event"]) => {
+  const append = async (event: FraudProofWorkflowJournalEntry["event"]) => {
     const current = await entries();
     await store.append(
       {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
         workflowId,
         identity,
         sequence: current.length,
@@ -86,7 +86,7 @@ export const createFieldPreimageLengthCentralJournalAdapterV1 = ({
     const current = await entries();
     const existing = current.find((entry) => entry.event.kind === "prepared");
     const value = artifact(prepared);
-    const digest = journalJsonDigestV1(value);
+    const digest = journalJsonDigest(value);
     if (existing?.event.kind === "prepared") {
       if (
         existing.event.artifactDigest !== digest ||
@@ -103,8 +103,8 @@ export const createFieldPreimageLengthCentralJournalAdapterV1 = ({
   const boundary =
     (
       action: Action,
-      candidate: PreparedFieldPreimageLengthWorkflowV1,
-    ): FraudProofPreSubmitBoundaryV1 =>
+      candidate: PreparedFieldPreimageLengthWorkflow,
+    ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       if (candidate.evidenceDigest !== prepared.evidenceDigest) {
         throw new Error(
@@ -142,7 +142,7 @@ export const createFieldPreimageLengthCentralJournalAdapterV1 = ({
       });
     };
   const auxiliaryBoundary =
-    (kind: "publication" | "certificate"): FraudProofPreSubmitBoundaryV1 =>
+    (kind: "publication" | "certificate"): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       await requirePrepared();
       const id = `fieldPreimageLengthMismatch:carriage:${kind}:${transaction.txHash}`;
@@ -222,7 +222,7 @@ export const createFieldPreimageLengthCentralJournalAdapterV1 = ({
       }
     }
   };
-  const load = async (): Promise<FieldPreimageLengthJournalV1 | null> => {
+  const load = async (): Promise<FieldPreimageLengthJournal | null> => {
     await requirePrepared();
     const current = await entries();
     const transactionIds: Partial<Record<Action, string>> = {};
@@ -253,7 +253,7 @@ export const createFieldPreimageLengthCentralJournalAdapterV1 = ({
       transactionIds: Object.freeze(transactionIds),
     });
   };
-  const save = async (journal: FieldPreimageLengthJournalV1) => {
+  const save = async (journal: FieldPreimageLengthJournal) => {
     if (journal.prepared.evidenceDigest !== prepared.evidenceDigest) {
       throw new Error("fieldPreimageLengthMismatch journal evidence changed");
     }

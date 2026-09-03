@@ -1,11 +1,11 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
-  type DeploymentManifestV1FraudProofCatalogueIdentity,
-  verifyDeploymentManifestV1FraudProofCatalogueIdentity,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
+  type DeploymentManifestFraudProofCatalogueIdentity,
+  verifyDeploymentManifestFraudProofCatalogueIdentity,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
@@ -16,34 +16,32 @@ type ContractIdentity = Readonly<{ scriptHash: string }>;
  * fixtures. The even-width normalization is required once the deployment
  * registry grows beyond 255 contracts.
  */
-export const positionalContractScriptCborV1 = (
-  contractName: string,
-): string => {
-  const index = DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.indexOf(
-    contractName as (typeof DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES)[number],
+export const positionalContractScriptCbor = (contractName: string): string => {
+  const index = DEPLOYMENT_MANIFEST_CONTRACT_NAMES.indexOf(
+    contractName as (typeof DEPLOYMENT_MANIFEST_CONTRACT_NAMES)[number],
   );
   if (index < 0) throw new Error(`Unknown positional contract ${contractName}`);
   const ordinal = (index + 1).toString(16);
   return ordinal.length % 2 === 0 ? ordinal : `0${ordinal}`;
 };
 
-export const positionalContractScriptHashV1 = (contractName: string): string =>
+export const positionalContractScriptHash = (contractName: string): string =>
   validatorToScriptHash({
     type: "PlutusV3",
-    script: positionalContractScriptCborV1(contractName),
+    script: positionalContractScriptCbor(contractName),
   });
 
 const catalogueKey = (categoryId: string): Buffer =>
   Buffer.concat([Buffer.from([0x44]), Buffer.from(categoryId, "hex")]);
 
 const positionalCategories =
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
     (categoryName) => {
       const categoryId =
-        DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
+        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
       const contractName =
-        DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
-      const scriptHash = positionalContractScriptHashV1(contractName);
+        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
+      const scriptHash = positionalContractScriptHash(contractName);
       return {
         categoryName,
         categoryId,
@@ -72,34 +70,33 @@ const positionalCategoryProofs = Object.fromEntries(
       ],
     ),
   ),
-) as DeploymentManifestV1FraudProofCatalogueIdentity["categories"];
+) as DeploymentManifestFraudProofCatalogueIdentity["categories"];
 
 /** Exact positional identity for the current canonical deployment registry. */
-export const POSITIONAL_FRAUD_PROOF_CATALOGUE_ROOT_V1 = Buffer.from(
+export const POSITIONAL_FRAUD_PROOF_CATALOGUE_ROOT = Buffer.from(
   positionalTrie.hash,
 ).toString("hex");
 
 const POSITIONAL_SCRIPT_CATALOGUE =
-  verifyDeploymentManifestV1FraudProofCatalogueIdentity({
-    root: POSITIONAL_FRAUD_PROOF_CATALOGUE_ROOT_V1,
+  verifyDeploymentManifestFraudProofCatalogueIdentity({
+    root: POSITIONAL_FRAUD_PROOF_CATALOGUE_ROOT,
     categories: positionalCategoryProofs,
   });
 
 const matchesDeployedScripts = (
-  catalogue: DeploymentManifestV1FraudProofCatalogueIdentity,
+  catalogue: DeploymentManifestFraudProofCatalogueIdentity,
   contracts: Readonly<Record<string, ContractIdentity>>,
 ): boolean =>
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
     (category) =>
       catalogue.categories[category].scriptHash ===
-      contracts[
-        DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY[category]
-      ]?.scriptHash,
+      contracts[DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[category]]
+        ?.scriptHash,
   );
 
 export const canonicalFraudProofCatalogueFixture = (
   contracts: Readonly<Record<string, ContractIdentity>>,
-): DeploymentManifestV1FraudProofCatalogueIdentity => {
+): DeploymentManifestFraudProofCatalogueIdentity => {
   if (!matchesDeployedScripts(POSITIONAL_SCRIPT_CATALOGUE, contracts)) {
     throw new Error(
       "No canonical watcher fraud-proof catalogue fixture matches the deployed scripts",

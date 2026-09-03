@@ -5,21 +5,21 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import type { FraudProofWorkflowReferenceScriptV1 } from "./orchestrator-v1.js";
+import type { FraudProofWorkflowReferenceScript } from "./orchestrator-v1.js";
 
-export const LOCAL_UPLC_EVALUATOR_V1 =
+export const LOCAL_UPLC_EVALUATOR =
   "lucid-evolution.complete(localUPLCEval=true)" as const;
 
-export type LocallyEvaluatedTransactionV1 = {
+export type LocallyEvaluatedTransaction = {
   /** Cardano transaction-body hash, known before network submission. */
   readonly txHash: string;
   readonly signed: TxSigned;
-  readonly referenceScripts: readonly FraudProofWorkflowReferenceScriptV1[];
+  readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
 };
 
 /** Invoked after local UPLC evaluation and signing, immediately before I/O. */
-export type FraudProofPreSubmitBoundaryV1 = (
-  transaction: LocallyEvaluatedTransactionV1,
+export type FraudProofPreSubmitBoundary = (
+  transaction: LocallyEvaluatedTransaction,
 ) => Promise<void> | void;
 
 const outRef = (utxo: UTxO): string =>
@@ -42,19 +42,19 @@ const transactionInputOutRefs = (inputs: {
   return outRefs;
 };
 
-export const workflowTransactionInputOutRefsV1 = (
+export const workflowTransactionInputOutRefs = (
   signed: TxSigned,
 ): readonly string[] =>
   transactionInputOutRefs(signed.toTransaction().body().inputs());
 
-export const workflowTransactionReferenceInputOutRefsV1 = (
+export const workflowTransactionReferenceInputOutRefs = (
   signed: TxSigned,
 ): readonly string[] => {
   const inputs = signed.toTransaction().body().reference_inputs();
   return inputs === undefined ? [] : transactionInputOutRefs(inputs);
 };
 
-export const workflowTransactionCollateralInputOutRefsV1 = (
+export const workflowTransactionCollateralInputOutRefs = (
   signed: TxSigned,
 ): readonly string[] => {
   const inputs = signed.toTransaction().body().collateral_inputs();
@@ -67,9 +67,7 @@ const transactionByPreflight = new WeakMap<object, TxSigned>();
  * Keeps the immutable signed transaction beside its in-memory preflight
  * without copying transaction CBOR into the durable public journal.
  */
-export const bindProductionWorkflowPreflightTransactionV1 = <
-  Preflight extends object,
->(
+export const bindWorkflowPreflightTransaction = <Preflight extends object>(
   preflight: Preflight,
   signed: TxSigned,
 ): Preflight => {
@@ -80,9 +78,7 @@ export const bindProductionWorkflowPreflightTransactionV1 = <
   return preflight;
 };
 
-export const copyProductionWorkflowPreflightTransactionV1 = <
-  Preflight extends object,
->({
+export const copyWorkflowPreflightTransaction = <Preflight extends object>({
   from,
   to,
 }: {
@@ -94,7 +90,7 @@ export const copyProductionWorkflowPreflightTransactionV1 = <
   return to;
 };
 
-export const productionWorkflowPreflightTransactionV1 = (
+export const workflowPreflightTransaction = (
   preflight: object,
 ): TxSigned | undefined => transactionByPreflight.get(preflight);
 
@@ -105,11 +101,11 @@ export const productionWorkflowPreflightTransactionV1 = (
  * inspects the immutable signed body/witnesses rather than trusting builder
  * metadata.
  */
-export const requireReferenceOnlyScriptWitnessesV1 = ({
+export const requireReferenceOnlyScriptWitnesses = ({
   transaction,
   label,
 }: {
-  readonly transaction: LocallyEvaluatedTransactionV1;
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly label: string;
 }): void => {
   const witnessSet = transaction.signed.toTransaction().witness_set();
@@ -129,7 +125,7 @@ export const requireReferenceOnlyScriptWitnessesV1 = ({
   }
 };
 
-export const workflowReferenceScriptV1 = ({
+export const workflowReferenceScript = ({
   role,
   utxo,
   expectedScript,
@@ -137,7 +133,7 @@ export const workflowReferenceScriptV1 = ({
   readonly role: string;
   readonly utxo: UTxO | undefined;
   readonly expectedScript?: Script;
-}): FraudProofWorkflowReferenceScriptV1 => {
+}): FraudProofWorkflowReferenceScript => {
   if (role.trim().length === 0) {
     throw new Error("workflow reference-script role must not be empty");
   }
@@ -157,7 +153,7 @@ export const workflowReferenceScriptV1 = ({
   return { role, outRef: outRef(utxo), scriptHash };
 };
 
-export const workflowReferenceScriptsUsedByTransactionV1 = ({
+export const workflowReferenceScriptsUsedByTransaction = ({
   signed,
   candidates,
 }: {
@@ -167,7 +163,7 @@ export const workflowReferenceScriptsUsedByTransactionV1 = ({
     readonly utxo: UTxO | undefined;
     readonly expectedScript?: Script;
   }[];
-}): readonly FraudProofWorkflowReferenceScriptV1[] => {
+}): readonly FraudProofWorkflowReferenceScript[] => {
   const referenceInputs = signed.toTransaction().body().reference_inputs();
   const used = new Set<string>();
   if (referenceInputs !== undefined) {
@@ -180,7 +176,7 @@ export const workflowReferenceScriptsUsedByTransactionV1 = ({
   }
   return candidates
     .filter(({ utxo }) => utxo !== undefined && used.has(outRef(utxo)))
-    .map((candidate) => workflowReferenceScriptV1(candidate));
+    .map((candidate) => workflowReferenceScript(candidate));
 };
 
 /**
@@ -188,14 +184,14 @@ export const workflowReferenceScriptsUsedByTransactionV1 = ({
  * production submission) or deliberately interrupt control flow (workflow
  * preflight capture), but no provider submission occurs before it returns.
  */
-export const reachFraudProofPreSubmitBoundaryV1 = async ({
+export const reachFraudProofPreSubmitBoundary = async ({
   signed,
   referenceScripts,
   boundary,
 }: {
   readonly signed: TxSigned;
-  readonly referenceScripts: readonly FraudProofWorkflowReferenceScriptV1[];
-  readonly boundary?: FraudProofPreSubmitBoundaryV1;
+  readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
+  readonly boundary?: FraudProofPreSubmitBoundary;
 }): Promise<string> => {
   const txHash = signed.toHash().toLowerCase();
   if (!/^[0-9a-f]{64}$/u.test(txHash)) {
@@ -207,23 +203,23 @@ export const reachFraudProofPreSubmitBoundaryV1 = async ({
   return txHash;
 };
 
-export class CapturedLocallyEvaluatedTransactionV1 extends Error {
-  constructor(readonly transaction: LocallyEvaluatedTransactionV1) {
+export class CapturedLocallyEvaluatedTransaction extends Error {
+  constructor(readonly transaction: LocallyEvaluatedTransaction) {
     super(`captured locally evaluated transaction ${transaction.txHash}`);
     this.name = "CapturedLocallyEvaluatedTransactionV1";
   }
 }
 
 /** Captures a real builder's pre-network boundary without provider I/O. */
-export const captureLocallyEvaluatedTransactionV1 = async (
-  invoke: (boundary: FraudProofPreSubmitBoundaryV1) => Promise<unknown>,
-): Promise<LocallyEvaluatedTransactionV1> => {
+export const captureLocallyEvaluatedTransaction = async (
+  invoke: (boundary: FraudProofPreSubmitBoundary) => Promise<unknown>,
+): Promise<LocallyEvaluatedTransaction> => {
   try {
     await invoke((transaction) => {
-      throw new CapturedLocallyEvaluatedTransactionV1(transaction);
+      throw new CapturedLocallyEvaluatedTransaction(transaction);
     });
   } catch (cause) {
-    if (cause instanceof CapturedLocallyEvaluatedTransactionV1) {
+    if (cause instanceof CapturedLocallyEvaluatedTransaction) {
       return cause.transaction;
     }
     throw cause;
@@ -233,8 +229,8 @@ export const captureLocallyEvaluatedTransactionV1 = async (
   );
 };
 
-export const submitCapturedTransactionV1 = async (
-  transaction: LocallyEvaluatedTransactionV1,
+export const submitCapturedTransaction = async (
+  transaction: LocallyEvaluatedTransaction,
 ): Promise<string> => {
   const submitted = (await transaction.signed.submit()).toLowerCase();
   if (submitted !== transaction.txHash) {

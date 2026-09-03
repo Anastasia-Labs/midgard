@@ -1,40 +1,40 @@
-import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  prepareWithdrawnReferenceInputV1,
+  prepareWithdrawnReferenceInput,
   submitWithdrawnReferenceInputInit,
   submitWithdrawnReferenceInputStep01,
   submitWithdrawnReferenceInputStep02,
   submitWithdrawnReferenceInputStep03,
 } from "../src/withdrawn-reference-input/index.js";
-import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
-  makeWithdrawnReferenceInputEmulatorHarnessV1,
-  publishWithdrawnReferenceInputReferenceScriptsV1,
-  setupWithdrawnReferenceInputScenarioV1,
-  setupWithdrawnReferenceInputUncheckedScenarioV1,
-  submitRawWithdrawnReferenceInputStep02V1,
-  submitRawWithdrawnReferenceInputStep03V1,
-  WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1,
-  withdrawnReferenceInputInfoV1,
+  makeWithdrawnReferenceInputEmulatorHarness,
+  publishWithdrawnReferenceInputReferenceScripts,
+  setupWithdrawnReferenceInputScenario,
+  setupWithdrawnReferenceInputUncheckedScenario,
+  submitRawWithdrawnReferenceInputStep02,
+  submitRawWithdrawnReferenceInputStep03,
+  WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF,
+  withdrawnReferenceInputInfo,
 } from "./support/withdrawn-reference-input-emulator-v1.js";
 
 type Harness = Awaited<
-  ReturnType<typeof makeWithdrawnReferenceInputEmulatorHarnessV1>
+  ReturnType<typeof makeWithdrawnReferenceInputEmulatorHarness>
 >;
 type Refs = Awaited<
-  ReturnType<typeof publishWithdrawnReferenceInputReferenceScriptsV1>
+  ReturnType<typeof publishWithdrawnReferenceInputReferenceScripts>
 >;
 type UncheckedScenario = Awaited<
-  ReturnType<typeof setupWithdrawnReferenceInputUncheckedScenarioV1>
+  ReturnType<typeof setupWithdrawnReferenceInputUncheckedScenario>
 >;
 type BindScenario = {
   readonly setup: UncheckedScenario["setup"];
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly txInclusion: UncheckedScenario["txInclusion"];
   readonly withdrawalMembership: SDK.WithdrawalSourceMembershipProof;
   readonly referenceInputs: readonly SDK.MidgardTxInput[];
@@ -107,19 +107,19 @@ const driveToStep03 = async ({
 
 describe("withdrawn-reference-input adversarial emulator suite", () => {
   it("refuses both different-outref roads at the exact step-03 checks", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
     const different = { tx_id: "99".repeat(32), output_index: 3n };
-    const scenario = await setupWithdrawnReferenceInputUncheckedScenarioV1({
+    const scenario = await setupWithdrawnReferenceInputUncheckedScenario({
       harness,
-      withdrawalInfo: withdrawnReferenceInputInfoV1({ outRef: different }),
+      withdrawalInfo: withdrawnReferenceInputInfo({ outRef: different }),
     });
-    const refs = await publishWithdrawnReferenceInputReferenceScriptsV1({
+    const refs = await publishWithdrawnReferenceInputReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
 
     await expect(
-      prepareWithdrawnReferenceInputV1({
+      prepareWithdrawnReferenceInput({
         header: scenario.header,
         blockTxs: scenario.blockTxs,
         withdrawals: scenario.withdrawals,
@@ -138,8 +138,8 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/l2_outref does not equal/);
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputStep03V1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputStep03({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -158,9 +158,8 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         body: {
           ...scenario.withdrawalMembership.value.body,
           l2_outref: {
-            transactionId: WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1.tx_id,
-            outputIndex:
-              WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1.output_index,
+            transactionId: WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF.tx_id,
+            outputIndex: WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF.output_index,
           },
         },
       },
@@ -177,8 +176,8 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/membership-proof-mismatch/);
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputStep03V1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputStep03({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -192,19 +191,19 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
   }, 600_000);
 
   it("refuses an invalid withdrawal in the classifier, submitter, and validator", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const scenario = await setupWithdrawnReferenceInputUncheckedScenarioV1({
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const scenario = await setupWithdrawnReferenceInputUncheckedScenario({
       harness,
-      withdrawalInfo: withdrawnReferenceInputInfoV1({
+      withdrawalInfo: withdrawnReferenceInputInfo({
         validity: "IncorrectWithdrawalSignature",
       }),
     });
-    const refs = await publishWithdrawnReferenceInputReferenceScriptsV1({
+    const refs = await publishWithdrawnReferenceInputReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
     await expect(
-      prepareWithdrawnReferenceInputV1({
+      prepareWithdrawnReferenceInput({
         header: scenario.header,
         blockTxs: scenario.blockTxs,
         withdrawals: scenario.withdrawals,
@@ -223,8 +222,8 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/withdrawal-not-valid/);
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputStep03V1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputStep03({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -238,15 +237,15 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
   }, 600_000);
 
   it("refuses a substituted reference-input preimage off-chain and at the door", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const positive = await setupWithdrawnReferenceInputScenarioV1({ harness });
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const positive = await setupWithdrawnReferenceInputScenario({ harness });
     const scenario = {
       ...positive,
       referenceInputs: positive.prepared.referenceInputs,
       txInclusion: positive.prepared.txInclusion,
       withdrawalMembership: positive.prepared.withdrawalMembership,
     };
-    const refs = await publishWithdrawnReferenceInputReferenceScriptsV1({
+    const refs = await publishWithdrawnReferenceInputReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -272,13 +271,13 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         referenceScriptUtxo: refs[1],
       }),
     ).rejects.toThrow(/§5\.1 preimage commits/);
-    const opening: SDK.FieldOpeningV1 = {
+    const opening: SDK.FieldOpening = {
       BodyFieldOpening: {
         native_tx_compact_cbor: scenario.txInclusion.nativeTxCompactCbor,
         carriage: {
           Inline: {
-            preimage: encodeMidgardFieldPreimageV1([
-              SDK.encodeMidgardTxInputCanonicalV1(injected),
+            preimage: encodeMidgardFieldPreimage([
+              SDK.encodeMidgardTxInputCanonical(injected),
             ]).toString("hex"),
           },
         },
@@ -295,8 +294,8 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
       },
       SDK.WithdrawnReferenceInputStep03Datum,
     );
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputStep02V1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputStep02({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -323,15 +322,15 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
   }, 600_000);
 
   it("refuses an out-of-range challenged ordinal off-chain and on-chain", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const positive = await setupWithdrawnReferenceInputScenarioV1({ harness });
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const positive = await setupWithdrawnReferenceInputScenario({ harness });
     const scenario = {
       ...positive,
       referenceInputs: positive.prepared.referenceInputs,
       txInclusion: positive.prepared.txInclusion,
       withdrawalMembership: positive.prepared.withdrawalMembership,
     };
-    const refs = await publishWithdrawnReferenceInputReferenceScriptsV1({
+    const refs = await publishWithdrawnReferenceInputReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -349,13 +348,13 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
         referenceScriptUtxo: refs[1],
       }),
     ).rejects.toThrow(/out of bounds/);
-    const opening: SDK.FieldOpeningV1 = {
+    const opening: SDK.FieldOpening = {
       BodyFieldOpening: {
         native_tx_compact_cbor: scenario.txInclusion.nativeTxCompactCbor,
         carriage: {
           Inline: {
-            preimage: encodeMidgardFieldPreimageV1(
-              scenario.referenceInputs.map(SDK.encodeMidgardTxInputCanonicalV1),
+            preimage: encodeMidgardFieldPreimage(
+              scenario.referenceInputs.map(SDK.encodeMidgardTxInputCanonical),
             ).toString("hex"),
           },
         },
@@ -372,8 +371,8 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
       },
       SDK.WithdrawnReferenceInputStep03Datum,
     );
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputStep02V1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputStep02({
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,

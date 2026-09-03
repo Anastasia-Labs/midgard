@@ -1,19 +1,19 @@
-import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import type {
   WebSocketFactory,
   WebSocketLike,
 } from "midgard-node/l1-tx-order-carriage-v1";
-import { makeFinalizedDeploymentManifestV1Fixture } from "midgard-node/tests/helpers/finalized-deployment-manifest-v1";
+import { makeFinalizedDeploymentManifestFixture } from "midgard-node/tests/helpers/finalized-deployment-manifest-v1";
 import { describe, expect, it, vi } from "vitest";
 
-import { RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY } from "../src/commands/e2e-release-finality-policy-v1.js";
+import { RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY } from "../src/commands/e2e-release-finality-policy-v1.js";
 import {
-  createLocalKupmiosStateCorrectionAuthorityV1,
-  createLocalKupmiosStateCorrectionSourceV1,
-  type LocalKupmiosStateCorrectionSourceV1,
-  releaseEconomicsPolicyFromDeploymentManifestV1,
-  stateCorrectionValueDigestV1,
+  createLocalKupmiosStateCorrectionAuthority,
+  createLocalKupmiosStateCorrectionSource,
+  type LocalKupmiosStateCorrectionSource,
+  releaseEconomicsPolicyFromDeploymentManifest,
+  stateCorrectionValueDigest,
 } from "../src/commands/e2e-state-correction-local-authority.js";
 
 const hash = (index: number): string => index.toString(16).padStart(64, "0");
@@ -32,8 +32,8 @@ const proverAddress = credentialToAddress("Preprod", {
   hash: proverCredential,
 });
 const payoutDestination = "addr_test1qindependent";
-const payoutValueSha256 = stateCorrectionValueDigestV1({ lovelace: "3000000" });
-const reserveValueSha256 = stateCorrectionValueDigestV1({
+const payoutValueSha256 = stateCorrectionValueDigest({ lovelace: "3000000" });
+const reserveValueSha256 = stateCorrectionValueDigest({
   lovelace: "9000000",
 });
 const economicsPolicy = {
@@ -51,8 +51,8 @@ const acceptedTip = {
 };
 
 const makeSource = (
-  overrides: Partial<LocalKupmiosStateCorrectionSourceV1> = {},
-): LocalKupmiosStateCorrectionSourceV1 => ({
+  overrides: Partial<LocalKupmiosStateCorrectionSource> = {},
+): LocalKupmiosStateCorrectionSource => ({
   observeTransaction: vi.fn(async () => ({
     kupoIncludedAt: includedAt,
     ogmiosIncludedAt: includedAt,
@@ -128,8 +128,8 @@ const makeSource = (
   ...overrides,
 });
 
-const makeAuthority = (source: LocalKupmiosStateCorrectionSourceV1) =>
-  createLocalKupmiosStateCorrectionAuthorityV1({
+const makeAuthority = (source: LocalKupmiosStateCorrectionSource) =>
+  createLocalKupmiosStateCorrectionAuthority({
     provider: "Kupmios",
     providerFailover: undefined,
     kupoUrl: "http://127.0.0.1:1442",
@@ -141,7 +141,7 @@ const makeAuthority = (source: LocalKupmiosStateCorrectionSourceV1) =>
     finalityPolicy: {
       confirmationDepth: 30,
       automaticRecoveryMaxDepth: 2160,
-      deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY,
+      deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
     },
     economicsPolicy,
     observeDatabase: source.observeDatabase,
@@ -203,19 +203,19 @@ const finalInput = {
 
 describe("Q57 local Kupmios authority", () => {
   it("derives same-network release economics from the authenticated manifest profile", async () => {
-    const boundedManifest = await makeFinalizedDeploymentManifestV1Fixture();
+    const boundedManifest = await makeFinalizedDeploymentManifestFixture();
     expect(
-      releaseEconomicsPolicyFromDeploymentManifestV1(boundedManifest),
+      releaseEconomicsPolicyFromDeploymentManifest(boundedManifest),
     ).toEqual(economicsPolicy);
 
     const publicManifest = {
       ...boundedManifest,
       economics:
-        DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["public-preprod-launch-v1"],
+        DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["public-preprod-launch-v1"],
     };
     expect(publicManifest.network).toBe("Preprod");
     expect(
-      releaseEconomicsPolicyFromDeploymentManifestV1(publicManifest),
+      releaseEconomicsPolicyFromDeploymentManifest(publicManifest),
     ).toEqual({
       requiredBondLovelace: "100000000000",
       slashingPenaltyLovelace: "25000000000",
@@ -457,7 +457,7 @@ describe("Q57 local Kupmios authority", () => {
   it("refuses nonlocal or failover provider configuration", () => {
     const source = makeSource();
     expect(() =>
-      createLocalKupmiosStateCorrectionAuthorityV1({
+      createLocalKupmiosStateCorrectionAuthority({
         provider: "Kupmios",
         providerFailover: "true",
         kupoUrl: "http://127.0.0.1:1442",
@@ -469,8 +469,7 @@ describe("Q57 local Kupmios authority", () => {
         finalityPolicy: {
           confirmationDepth: 30,
           automaticRecoveryMaxDepth: 2160,
-          deepRollbackPolicy:
-            RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY,
+          deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
         },
         economicsPolicy,
         observeDatabase: source.observeDatabase,
@@ -478,7 +477,7 @@ describe("Q57 local Kupmios authority", () => {
       }),
     ).toThrow(/forbids L1 provider failover/u);
     expect(() =>
-      createLocalKupmiosStateCorrectionAuthorityV1({
+      createLocalKupmiosStateCorrectionAuthority({
         provider: "Kupmios",
         providerFailover: undefined,
         kupoUrl: "https://kupo.example.com",
@@ -490,8 +489,7 @@ describe("Q57 local Kupmios authority", () => {
         finalityPolicy: {
           confirmationDepth: 30,
           automaticRecoveryMaxDepth: 2160,
-          deepRollbackPolicy:
-            RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY,
+          deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
         },
         economicsPolicy,
         observeDatabase: source.observeDatabase,
@@ -615,7 +613,7 @@ const economicSource = ({
     return socket;
   };
   return {
-    source: createLocalKupmiosStateCorrectionSourceV1({
+    source: createLocalKupmiosStateCorrectionSource({
       provider: "Kupmios",
       providerFailover: undefined,
       kupoUrl: "http://127.0.0.1:1442",
@@ -627,7 +625,7 @@ const economicSource = ({
       finalityPolicy: {
         confirmationDepth: 30,
         automaticRecoveryMaxDepth: 2160,
-        deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_V1_DEEP_ROLLBACK_POLICY,
+        deepRollbackPolicy: RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY,
       },
       economicsPolicy,
       observeDatabase: async () => ({

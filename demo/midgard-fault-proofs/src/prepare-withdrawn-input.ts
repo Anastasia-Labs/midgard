@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
-  isWithdrawnInputViolationV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+  isWithdrawnInputViolation,
   type MidgardTxInput,
   type OutputReference,
   Proof,
@@ -17,8 +17,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  blockTransactionsFromCanonicalEvidenceV1,
-  type CanonicalBlockEvidenceV1,
+  blockTransactionsFromCanonicalEvidence,
+  type CanonicalBlockEvidence,
 } from "./evidence/canonical-block-evidence-v1.js";
 import { stringifyJson } from "./json-file.js";
 import {
@@ -26,27 +26,27 @@ import {
   decodeTransactionMaterial,
   type NodeTransactionPayload,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
 import { type SubmitStep01TxInclusion } from "./submit-step-01.js";
 import {
-  type PreparedWithdrawnInputEvidenceV1,
-  WITHDRAWN_INPUT_EVIDENCE_V1_SCHEMA_VERSION,
-  WithdrawnInputEvidenceRejectionV1,
-  withdrawnInputEvidenceRejectV1,
+  type PreparedWithdrawnInputEvidence,
+  WITHDRAWN_INPUT_EVIDENCE_SCHEMA_VERSION,
+  withdrawnInputEvidenceReject,
+  WithdrawnInputEvidenceRejection,
 } from "./withdrawn-input/evidence-v1.js";
 
-export type WithdrawnInputWithdrawalEntryV1 = {
+export type WithdrawnInputWithdrawalEntry = {
   readonly key: OutputReference;
   readonly value: WithdrawalInfo;
 };
 
-export type PrepareWithdrawnInputMaterialV1 = {
+export type PrepareWithdrawnInputMaterial = {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
   readonly expectedTransactionsRoot: string;
-  readonly withdrawals: readonly WithdrawnInputWithdrawalEntryV1[];
+  readonly withdrawals: readonly WithdrawnInputWithdrawalEntry[];
   readonly expectedWithdrawalsRoot: string;
   readonly badTxId?: string;
   readonly badInputIndex?: number;
@@ -61,7 +61,7 @@ const toMidgardInput = (input: {
   output_index: input.outputIndex,
 });
 
-export const prepareWithdrawnInputFromMaterialV1 = async ({
+export const prepareWithdrawnInputFromMaterial = async ({
   headerHash,
   transactions,
   expectedTransactionsRoot,
@@ -70,7 +70,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
   badTxId,
   badInputIndex,
   outputDir,
-}: PrepareWithdrawnInputMaterialV1): Promise<PreparedWithdrawnInputEvidenceV1> => {
+}: PrepareWithdrawnInputMaterial): Promise<PreparedWithdrawnInputEvidence> => {
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
@@ -79,7 +79,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
       ? decoded
       : decoded.filter((transaction) => transaction.nodeTxId === badTxId);
   if (badTxId !== undefined && selectedTransactions.length === 0) {
-    withdrawnInputEvidenceRejectV1(
+    withdrawnInputEvidenceReject(
       "bad_tx_not_committed",
       `transaction ${badTxId} is not committed by header ${headerHash}`,
     );
@@ -89,7 +89,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
         readonly transaction: (typeof decoded)[number];
         readonly input: MidgardTxInput;
         readonly inputIndex: number;
-        readonly withdrawal: WithdrawnInputWithdrawalEntryV1;
+        readonly withdrawal: WithdrawnInputWithdrawalEntry;
       }
     | undefined;
   for (const transaction of selectedTransactions) {
@@ -102,7 +102,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
       const input = inputs[inputIndex];
       if (input === undefined) {
         if (badInputIndex !== undefined) {
-          withdrawnInputEvidenceRejectV1(
+          withdrawnInputEvidenceReject(
             "bad_input_index_out_of_range",
             `index ${badInputIndex.toString()} is outside ${inputs.length.toString()} spend inputs`,
           );
@@ -110,7 +110,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
         continue;
       }
       const withdrawal = withdrawals.find((entry) =>
-        isWithdrawnInputViolationV1({ input, withdrawal: entry.value }),
+        isWithdrawnInputViolation({ input, withdrawal: entry.value }),
       );
       if (withdrawal !== undefined) {
         candidate = { transaction, input, inputIndex, withdrawal };
@@ -120,7 +120,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
     if (candidate !== undefined) break;
   }
   if (candidate === undefined) {
-    throw new WithdrawnInputEvidenceRejectionV1(
+    throw new WithdrawnInputEvidenceRejection(
       "no_valid_withdrawn_input",
       `header ${headerHash} has no transaction spend matching a valid withdrawal leaf`,
     );
@@ -128,14 +128,14 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
   const selected = candidate;
 
   const transactionTrie = await buildTrieView(
-    decoded.map(transactionSourceTrieItemV1),
+    decoded.map(transactionSourceTrieItem),
   );
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: transactionTrie.root,
     expectedTransactionsRoot,
     count: BigInt(decoded.length),
   }).catch((cause: unknown) =>
-    withdrawnInputEvidenceRejectV1("transactions_root_mismatch", String(cause)),
+    withdrawnInputEvidenceReject("transactions_root_mismatch", String(cause)),
   );
   const txProofCbor = requireProof(
     transactionTrie,
@@ -144,8 +144,8 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
   );
 
   const withdrawalItems = withdrawals.map((entry) => ({
-    key: Buffer.from(committedWithdrawalKeyBytesV1(entry.key), "hex"),
-    value: Buffer.from(committedWithdrawalValueBytesV1(entry.value), "hex"),
+    key: Buffer.from(committedWithdrawalKeyBytes(entry.key), "hex"),
+    value: Buffer.from(committedWithdrawalValueBytes(entry.value), "hex"),
   }));
   const withdrawalTrie = await buildTrieView(withdrawalItems);
   const derivedWithdrawalsRoot = await Effect.runPromise(
@@ -156,13 +156,13 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
     }),
   );
   if (derivedWithdrawalsRoot !== expectedWithdrawalsRoot) {
-    withdrawnInputEvidenceRejectV1(
+    withdrawnInputEvidenceReject(
       "withdrawals_root_mismatch",
       `derived=${derivedWithdrawalsRoot} expected=${expectedWithdrawalsRoot}`,
     );
   }
   const withdrawalKeyBytes = Buffer.from(
-    committedWithdrawalKeyBytesV1(selected.withdrawal.key),
+    committedWithdrawalKeyBytes(selected.withdrawal.key),
     "hex",
   );
   const withdrawalProofCbor = requireProof(
@@ -179,8 +179,8 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
     txMembershipProof: Data.from(txProofCbor, Proof),
     txMembershipProofCbor: txProofCbor,
   };
-  const output: PreparedWithdrawnInputEvidenceV1 = {
-    schemaVersion: WITHDRAWN_INPUT_EVIDENCE_V1_SCHEMA_VERSION,
+  const output: PreparedWithdrawnInputEvidence = {
+    schemaVersion: WITHDRAWN_INPUT_EVIDENCE_SCHEMA_VERSION,
     headerHash,
     badTxInclusion: txInclusion,
     spendInputs: selected.transaction.inputs.map(toMidgardInput),
@@ -224,25 +224,25 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
 };
 
 /** Canonical L1 + retained-DA entry point. */
-export const prepareWithdrawnInputFromCanonicalEvidenceV1 = async ({
+export const prepareWithdrawnInputFromCanonicalEvidence = async ({
   evidence,
   badTxId,
   badInputIndex,
   outputDir,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly badTxId?: string;
   readonly badInputIndex?: number;
   readonly outputDir?: string;
-}): Promise<PreparedWithdrawnInputEvidenceV1> => {
-  const transactions = blockTransactionsFromCanonicalEvidenceV1(evidence);
+}): Promise<PreparedWithdrawnInputEvidence> => {
+  const transactions = blockTransactionsFromCanonicalEvidence(evidence);
   if (!evidence.inclusionRootAuthentication.sourceInclusionAuthenticated) {
-    withdrawnInputEvidenceRejectV1(
+    withdrawnInputEvidenceReject(
       "transactions_root_mismatch",
       "canonical evidence does not authenticate L2TransactionSourceV1 leaves",
     );
   }
-  return await prepareWithdrawnInputFromMaterialV1({
+  return await prepareWithdrawnInputFromMaterial({
     headerHash: evidence.headerHash,
     transactions,
     expectedTransactionsRoot: evidence.header.transactionsRoot,

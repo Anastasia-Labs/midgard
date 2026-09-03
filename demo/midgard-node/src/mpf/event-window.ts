@@ -4,26 +4,26 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
-import { type MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  collectMidgardV1ReferencedProgramEnvelopes,
+  collectMidgardAttachedProgramEnvelopes,
+  collectMidgardReferencedProgramEnvelopes,
 } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
-  applyValidationMachineLedgerMutationStepV1,
-  buildCanonicalTransitionEffectV1,
-  canonicalTransitionEffectFromStatePatchV1,
-  type CanonicalTransitionEffectV1,
+  applyValidationMachineLedgerMutationStep,
+  buildCanonicalTransitionEffect,
+  type CanonicalTransitionEffect,
+  canonicalTransitionEffectFromStatePatch,
   type RejectCode,
   RejectCodes,
   runPhaseAValidation,
@@ -46,9 +46,9 @@ import * as WithdrawalsDB from "../database/withdrawals.js";
 import { Database } from "../services/index.js";
 import { sha256 } from "../sha256.js";
 import {
-  ledgerOutputToInsertBatchOpV1,
-  transitionEffectToLedgerOpsV1,
-  transitionEffectToRawLedgerOpsV1,
+  ledgerOutputToInsertBatchOp,
+  transitionEffectToLedgerOps,
+  transitionEffectToRawLedgerOps,
 } from "./ledger-delta.js";
 import { type ProcessMpfsConfig } from "./process-config.js";
 import { type MpfBatchOp } from "./types.js";
@@ -339,7 +339,7 @@ export const resolveIncludedForcedTransactionEntriesForWindow = ({
 const forcedVerdictForRejection = (
   code: RejectCode,
   phase: "phaseA" | "phaseB",
-): SDK.OperatorVerdictV1 => {
+): SDK.OperatorVerdict => {
   // Rejection codes are grouped into the protocol reason families below.
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (code) {
@@ -382,10 +382,10 @@ const forcedVerdictForRejection = (
   }
 };
 
-export type ClassifiedForcedTransactionV1 = {
+export type ClassifiedForcedTransaction = {
   readonly entry: ForcedTransactionsDB.Entry;
   /** Byte-exact source effect shared with independent replay consumers. */
-  readonly transitionEffect: CanonicalTransitionEffectV1;
+  readonly transitionEffect: CanonicalTransitionEffect;
   /** Consensus MPF operations; insert values are canonical descriptors. */
   readonly ledgerOps: readonly MpfBatchOp[];
   /** Full-output operations used only for Phase B state and DA material. */
@@ -396,8 +396,8 @@ export type ClassifiedForcedTransactionV1 = {
   readonly programMaterialSidecarCbor: Buffer;
 };
 
-export type ForcedProgramMaterialSidecarResolverV1<R> = (
-  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+export type ForcedProgramMaterialSidecarResolver<R> = (
+  envelopes: readonly MidgardCekProgramEnvelope[],
 ) => Effect.Effect<Buffer, DatabaseError, R>;
 
 export const applyValidationLedgerMutations = async (
@@ -406,9 +406,7 @@ export const applyValidationLedgerMutations = async (
 ): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
   const steps: ValidationMachineLedgerMutationStep[] = [];
   for (const operation of operations) {
-    steps.push(
-      await applyValidationMachineLedgerMutationStepV1(trie, operation),
-    );
+    steps.push(await applyValidationMachineLedgerMutationStep(trie, operation));
   }
   return steps;
 };
@@ -430,13 +428,13 @@ export const validationLedgerWitnesses = (
   });
 
 export const programMaterialSidecarForEnvelopes = (
-  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+  envelopes: readonly MidgardCekProgramEnvelope[],
 ): Effect.Effect<Buffer, DatabaseError, Database> =>
   CekProgramMaterialDB.retrieveVerifiedBundles(envelopes).pipe(
-    Effect.map((entries) => encodeMidgardCekProgramMaterialSidecarV1(entries)),
+    Effect.map((entries) => encodeMidgardCekProgramMaterialSidecar(entries)),
   );
 
-export const classifyForcedTransactionsV1 = <R>({
+export const classifyForcedTransactions = <R>({
   entries,
   initialState,
   effectiveEndTime,
@@ -447,10 +445,10 @@ export const classifyForcedTransactionsV1 = <R>({
   readonly entries: readonly ForcedTransactionsDB.Entry[];
   readonly initialState: Map<string, Buffer>;
   readonly effectiveEndTime: Date;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly validation: NonNullable<ProcessMpfsConfig["forcedValidation"]>;
-  readonly resolveProgramMaterialSidecar: ForcedProgramMaterialSidecarResolverV1<R>;
-}): Effect.Effect<readonly ClassifiedForcedTransactionV1[], DatabaseError, R> =>
+  readonly resolveProgramMaterialSidecar: ForcedProgramMaterialSidecarResolver<R>;
+}): Effect.Effect<readonly ClassifiedForcedTransaction[], DatabaseError, R> =>
   Effect.gen(function* () {
     const state = new Map(
       [...initialState.entries()].map(([key, value]) => [
@@ -462,7 +460,7 @@ export const classifyForcedTransactionsV1 = <R>({
       try: () =>
         Trie.fromList(
           [...state.entries()].map(([key, value]) =>
-            ledgerOutputToInsertBatchOpV1({
+            ledgerOutputToInsertBatchOp({
               outRef: Buffer.from(key, "hex"),
               outputCbor: value,
             }),
@@ -477,7 +475,7 @@ export const classifyForcedTransactionsV1 = <R>({
           cause,
         }),
     });
-    const classified: ClassifiedForcedTransactionV1[] = [];
+    const classified: ClassifiedForcedTransaction[] = [];
     let arrivalSeq = 0n;
     for (const entry of entries) {
       const nativeTxCbor = entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
@@ -503,7 +501,7 @@ export const classifyForcedTransactionsV1 = <R>({
       }
       const txId = entry[ForcedTransactionsDB.Columns.TX_ID];
       const canonicalTx = yield* Effect.try({
-        try: () => decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor),
+        try: () => decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor),
         catch: (cause) =>
           new DatabaseError({
             table: ForcedTransactionsDB.tableName,
@@ -516,9 +514,9 @@ export const classifyForcedTransactionsV1 = <R>({
       // rejection. No material can be authenticated for a non-envelope.
       const attachedEnvelopes = (() => {
         try {
-          return collectMidgardV1AttachedProgramEnvelopes(canonicalTx);
+          return collectMidgardAttachedProgramEnvelopes(canonicalTx);
         } catch {
-          return Object.freeze([]) as readonly MidgardCekProgramEnvelopeV1[];
+          return Object.freeze([]) as readonly MidgardCekProgramEnvelope[];
         }
       })();
       let programMaterialSidecarCbor =
@@ -553,10 +551,10 @@ export const classifyForcedTransactionsV1 = <R>({
       );
       arrivalSeq += 1n;
 
-      let verdict: SDK.OperatorVerdictV1;
+      let verdict: SDK.OperatorVerdict;
       let ledgerOps: readonly MpfBatchOp[] = [];
       let rawLedgerOps: readonly MpfBatchOp[] = [];
-      let transitionEffect = buildCanonicalTransitionEffectV1([]);
+      let transitionEffect = buildCanonicalTransitionEffect([]);
       let ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[] = [];
       let ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[] =
         [];
@@ -574,14 +572,12 @@ export const classifyForcedTransactionsV1 = <R>({
           // A malformed referenced ledger output is classified by Phase B.
           const referencedEnvelopes = (() => {
             try {
-              return collectMidgardV1ReferencedProgramEnvelopes(
+              return collectMidgardReferencedProgramEnvelopes(
                 canonicalTx,
                 state,
               );
             } catch {
-              return Object.freeze(
-                [],
-              ) as readonly MidgardCekProgramEnvelopeV1[];
+              return Object.freeze([]) as readonly MidgardCekProgramEnvelope[];
             }
           })();
           if (referencedEnvelopes.length > 0) {
@@ -627,11 +623,11 @@ export const classifyForcedTransactionsV1 = <R>({
           verdict = forcedVerdictForRejection(rejectionCode, "phaseB");
         } else {
           verdict = "ForcedTxValid";
-          transitionEffect = canonicalTransitionEffectFromStatePatchV1(
+          transitionEffect = canonicalTransitionEffectFromStatePatch(
             phaseB.statePatch,
           );
-          rawLedgerOps = transitionEffectToRawLedgerOpsV1(transitionEffect);
-          ledgerOps = transitionEffectToLedgerOpsV1(transitionEffect);
+          rawLedgerOps = transitionEffectToRawLedgerOps(transitionEffect);
+          ledgerOps = transitionEffectToLedgerOps(transitionEffect);
           ledgerMutationSteps = yield* Effect.tryPromise({
             try: () => applyValidationLedgerMutations(mutationTrie, ledgerOps),
             catch: (cause) =>
@@ -645,7 +641,7 @@ export const classifyForcedTransactionsV1 = <R>({
           applyUTxOStatePatch(state, phaseB.statePatch);
         }
       }
-      const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
+      const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
         nativeTxCbor,
         verdict,
         consensusProfile,
@@ -657,7 +653,7 @@ export const classifyForcedTransactionsV1 = <R>({
       // against a fresh derivation from the canonical bytes; `tx_id` hashes
       // the body only and is invariant under adjudication.
       const submittedSource = yield* Effect.try({
-        try: () => deriveMidgardNativeTxProofSourceV1(canonicalTx),
+        try: () => deriveMidgardNativeTxProofSource(canonicalTx),
         catch: (cause) =>
           new DatabaseError({
             table: ForcedTransactionsDB.tableName,
@@ -668,7 +664,7 @@ export const classifyForcedTransactionsV1 = <R>({
       });
       if (
         !encoded.txId.equals(txId) ||
-        !computeMidgardNativeTxProofCommitmentV1(submittedSource).equals(
+        !computeMidgardNativeTxProofCommitment(submittedSource).equals(
           transactionCommitment,
         ) ||
         !submittedSource.compactCbor.equals(
@@ -690,7 +686,7 @@ export const classifyForcedTransactionsV1 = <R>({
         entry: {
           ...entry,
           [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
-            ForcedTransactionsDB.midgardTxValidityOfVerdictV1(verdict),
+            ForcedTransactionsDB.midgardTxValidityOfVerdict(verdict),
           [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
           [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
             programMaterialSidecarCbor,

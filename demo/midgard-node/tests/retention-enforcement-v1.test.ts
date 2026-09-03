@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
-  MIDGARD_RETENTION_WINDOW_V1,
-  RETENTION_MS_PER_DAY_V1,
+  MIDGARD_RETENTION_WINDOW,
+  RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
@@ -25,17 +25,17 @@ import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
-import { makeFinalizedDeploymentManifestV1Fixture } from "./helpers/finalized-deployment-manifest-v1.js";
+import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest-v1.js";
 import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
 
-const REQUIRED_RETENTION_MS = MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs;
+const REQUIRED_RETENTION_MS = MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
 const NOW = new Date("2026-08-03T00:00:00.000Z");
 let deploymentManifest: Awaited<
-  ReturnType<typeof makeFinalizedDeploymentManifestV1Fixture>
+  ReturnType<typeof makeFinalizedDeploymentManifestFixture>
 >;
 
 beforeAll(async () => {
-  deploymentManifest = await makeFinalizedDeploymentManifestV1Fixture();
+  deploymentManifest = await makeFinalizedDeploymentManifestFixture();
 });
 
 const readinessBase = {
@@ -156,7 +156,7 @@ describe("Q54 executable retention deadline alert", () => {
 describe("Q54 authenticated release retention authority", () => {
   it("treats missing Q58 capability as a fail-closed retention hold", () => {
     expect(
-      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthorityV1(
+      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
         deploymentManifest,
       ),
     ).toMatchObject({
@@ -169,7 +169,7 @@ describe("Q54 authenticated release retention authority", () => {
     "rejects caller-authored Q58 %s state",
     (state) => {
       expect(
-        DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthorityV1({
+        DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority({
           ...deploymentManifest,
           availabilityChallenges: { state },
         }),
@@ -188,8 +188,7 @@ const daPayloadFixture = (
   const payload = deterministicFixtureBytes(`retention-payload-${label}`, 64);
   return {
     [DaPayloadsDB.Columns.HEADER_HASH]: headerHash,
-    [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-      MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
     [DaPayloadsDB.Columns.VERSION]: 1,
     [DaPayloadsDB.Columns.PAYLOAD_CBOR]: payload,
     [DaPayloadsDB.Columns.PAYLOAD_SHA256]: createHash("sha256")
@@ -236,7 +235,7 @@ const h32 = (byte: string): string => byte.repeat(64);
 const terminalMerge = (
   headerHash: Buffer,
   sequence: number,
-): SDK.StateQueueAuthenticatedTransitionV1 => {
+): SDK.StateQueueAuthenticatedTransition => {
   const policyId = deploymentManifest.contracts.stateQueueMint.scriptHash;
   const transactionHash = h32(sequence.toString(16));
   const rootOutRef = `${h32("0")}#0`;
@@ -267,7 +266,7 @@ const terminalMerge = (
       merged_block_validation_trace_count: 0n,
     },
   } as const;
-  const transition = SDK.deriveStateQueueAuthenticatedTransitionV1({
+  const transition = SDK.deriveStateQueueAuthenticatedTransition({
     deploymentIdentityDigest: deploymentManifest.manifestId,
     stateQueuePolicyId: policyId,
     transactionHash,
@@ -306,7 +305,7 @@ const seedTerminal = (
   headerHash: Buffer,
   sequence: number,
 ): Effect.Effect<void, unknown, SqlClient.SqlClient> =>
-  DaPayloadTerminalOutcomesDB.recordAuthenticatedTransitionV1(
+  DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
     terminalMerge(headerHash, sequence),
     deploymentManifest,
   );
@@ -352,7 +351,7 @@ describe.skipIf(!dbEnabled)(
       );
 
     it("retains a 16-day-old terminal record while Q58 authority is missing", async () => {
-      const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY_V1);
+      const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
       const deleted = await run(
         Effect.gen(function* () {
           const headerHash = yield* seedPayload("expired", days16, days16);
@@ -369,7 +368,7 @@ describe.skipIf(!dbEnabled)(
 
     it("retains a block_end_time exactly at the cutoff and prunes 1ms past it", async () => {
       const cutoff = computeChallengeableCutoff(NOW);
-      const createdAt = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY_V1);
+      const createdAt = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
       const atCutoff = await run(
         Effect.gen(function* () {
           const headerHash = yield* seedPayload("at-cutoff", cutoff, createdAt);
@@ -406,9 +405,7 @@ describe.skipIf(!dbEnabled)(
     it("never prunes on the created_at predicate alone (regression guard)", async () => {
       // A row inserted long ago but whose block is still challengeable must
       // survive. A created_at-only predicate would delete it.
-      const oldCreatedAt = new Date(
-        NOW.getTime() - 40 * RETENTION_MS_PER_DAY_V1,
-      );
+      const oldCreatedAt = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const recentBlockEnd = new Date(NOW.getTime() - 1_000);
       const outcome = await run(
         Effect.gen(function* () {
@@ -430,7 +427,7 @@ describe.skipIf(!dbEnabled)(
     });
 
     it("never prunes a NULL block_end_time", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY_V1);
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
@@ -458,7 +455,7 @@ describe.skipIf(!dbEnabled)(
     });
 
     it("prunes nothing when the wall-clock retention cutoff has not passed", async () => {
-      const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY_V1);
+      const days16 = new Date(NOW.getTime() - 16 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
           const headerHash = yield* seedPayload("fresh-insert", days16, NOW);
@@ -475,7 +472,7 @@ describe.skipIf(!dbEnabled)(
     });
 
     it("retains expired payloads without exact terminal or release authority", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY_V1);
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcomes = await run(
         Effect.gen(function* () {
           const noTerminal = yield* seedPayload("nonterminal", old, old);
@@ -514,7 +511,7 @@ describe.skipIf(!dbEnabled)(
     });
 
     it("rejects forged/foreign transitions and cannot use a foreign deployment row", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY_V1);
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
@@ -525,7 +522,7 @@ describe.skipIf(!dbEnabled)(
             deploymentIdentityDigest: "ff".repeat(32),
           };
           const rejected = yield* Effect.either(
-            DaPayloadTerminalOutcomesDB.recordAuthenticatedTransitionV1(
+            DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
               forged,
               deploymentManifest,
             ),
@@ -564,22 +561,22 @@ describe.skipIf(!dbEnabled)(
     });
 
     it("prunes multiple independently authenticated terminal outcomes and revokes on rollback", async () => {
-      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY_V1);
+      const old = new Date(NOW.getTime() - 40 * RETENTION_MS_PER_DAY);
       const outcome = await run(
         Effect.gen(function* () {
           const first = yield* seedPayload("multi-first", old, old);
           const second = yield* seedPayload("multi-second", old, old);
           const firstTransition = terminalMerge(first, 1);
           const secondTransition = terminalMerge(second, 2);
-          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransitionV1(
+          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
             firstTransition,
             deploymentManifest,
           );
-          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransitionV1(
+          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
             secondTransition,
             deploymentManifest,
           );
-          yield* DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransitionV1(
+          yield* DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
             secondTransition,
             deploymentManifest,
           );

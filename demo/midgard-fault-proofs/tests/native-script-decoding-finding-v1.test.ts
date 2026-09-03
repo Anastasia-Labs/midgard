@@ -7,15 +7,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assertNativeScriptDecodingFindingProvableV1,
-  type NativeScriptDecodingFindingV1,
-  NativeScriptDecodingProvabilityV1,
+  assertNativeScriptDecodingFindingProvable,
+  type NativeScriptDecodingFinding,
+  NativeScriptDecodingProvability,
 } from "../src/native-script-decoding/index.js";
 
 const TX_ID_HEX = "ab".repeat(32);
 const HEADER_HASH = "cd".repeat(28);
 
-const directionANormal: NativeScriptDecodingFindingV1 = {
+const directionANormal: NativeScriptDecodingFinding = {
   direction: 0n,
   sourceKind: 0n,
   event: { kind: "l2Transaction", txId: TX_ID_HEX },
@@ -24,7 +24,7 @@ const directionANormal: NativeScriptDecodingFindingV1 = {
   accusedOutpointSourceKind: 0n,
   accusedOutpointCursor: 0n,
   scanReasonClass: null,
-  provability: NativeScriptDecodingProvabilityV1.MachineRoute,
+  provability: NativeScriptDecodingProvability.MachineRoute,
   descriptor: {
     referenceScriptLanguage: 0,
     outputIndex: 0,
@@ -33,7 +33,7 @@ const directionANormal: NativeScriptDecodingFindingV1 = {
   estimatedThreadTxCount: 7,
 };
 
-const directionBForced: NativeScriptDecodingFindingV1 = {
+const directionBForced: NativeScriptDecodingFinding = {
   ...directionANormal,
   direction: 1n,
   sourceKind: 1n,
@@ -44,15 +44,15 @@ const directionBForced: NativeScriptDecodingFindingV1 = {
 describe("native-script-decoding finding v1", () => {
   it("accepts each provable route in its coherent shape", () => {
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1(directionANormal),
+      assertNativeScriptDecodingFindingProvable(directionANormal),
     ).not.toThrow();
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1(directionBForced),
+      assertNativeScriptDecodingFindingProvable(directionBForced),
     ).not.toThrow();
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionBForced,
-        provability: NativeScriptDecodingProvabilityV1.DescriptorContradiction,
+        provability: NativeScriptDecodingProvability.DescriptorContradiction,
         descriptor: {
           referenceScriptLanguage: 3,
           outputIndex: 0,
@@ -61,9 +61,9 @@ describe("native-script-decoding finding v1", () => {
       }),
     ).not.toThrow();
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionBForced,
-        provability: NativeScriptDecodingProvabilityV1.OutOfDomainAccusation,
+        provability: NativeScriptDecodingProvability.OutOfDomainAccusation,
         accusedOutpointCursor: -1n,
         descriptor: null,
       }),
@@ -72,11 +72,11 @@ describe("native-script-decoding finding v1", () => {
 
   it("refuses the unprovable classes regardless of shape", () => {
     for (const provability of [
-      NativeScriptDecodingProvabilityV1.WrapperContradiction,
-      NativeScriptDecodingProvabilityV1.NotAFault,
+      NativeScriptDecodingProvability.WrapperContradiction,
+      NativeScriptDecodingProvability.NotAFault,
     ]) {
       expect(() =>
-        assertNativeScriptDecodingFindingProvableV1({
+        assertNativeScriptDecodingFindingProvable({
           ...directionBForced,
           provability,
         }),
@@ -86,33 +86,33 @@ describe("native-script-decoding finding v1", () => {
 
   it("refuses structurally incoherent records", () => {
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionBForced,
         sourceKind: 0n,
         event: { kind: "l2Transaction", txId: TX_ID_HEX },
       }),
     ).toThrow(/forced source/);
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionBForced,
         scanReasonClass: null,
       }),
     ).toThrow(/scan-reason class/);
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionANormal,
-        provability: NativeScriptDecodingProvabilityV1.OutOfDomainAccusation,
+        provability: NativeScriptDecodingProvability.OutOfDomainAccusation,
         descriptor: null,
       }),
     ).toThrow(/direction B's alone/);
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionANormal,
         event: { kind: "forcedEvent", orderKeyCbor: "d8799f00ff" },
       }),
     ).toThrow(/committed transaction id/);
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionANormal,
         descriptor: null,
       }),
@@ -121,13 +121,13 @@ describe("native-script-decoding finding v1", () => {
 
   it("refuses language tags that contradict the claimed route", () => {
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionBForced,
-        provability: NativeScriptDecodingProvabilityV1.DescriptorContradiction,
+        provability: NativeScriptDecodingProvability.DescriptorContradiction,
       }),
     ).toThrow(/cannot name a tag-0 descriptor/);
     expect(() =>
-      assertNativeScriptDecodingFindingProvableV1({
+      assertNativeScriptDecodingFindingProvable({
         ...directionANormal,
         descriptor: {
           referenceScriptLanguage: 3,

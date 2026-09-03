@@ -1,26 +1,25 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
 } from "../src/bounded-item-v1.js";
 import {
-  buildMidgardLedgerOutputAssetFrontierV1,
-  buildMidgardLedgerOutputMaterialV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  encodeMidgardLedgerOutputCommitmentV1,
-  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
-  type MidgardLedgerOutputCommitmentFactsV1,
-  verifyMidgardLedgerOutputChunkV1,
-  verifyMidgardLedgerOutputReferenceScriptChunkV1,
+  buildMidgardLedgerOutputAssetFrontier,
+  buildMidgardLedgerOutputMaterial,
+  decodeMidgardLedgerOutputCommitment,
+  encodeMidgardLedgerOutputCommitment,
+  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
+  type MidgardLedgerOutputCommitmentFacts,
+  verifyMidgardLedgerOutputChunk,
+  verifyMidgardLedgerOutputReferenceScriptChunk,
 } from "../src/ledger-output-commitment-v1.js";
 
-const facts = (): MidgardLedgerOutputCommitmentFactsV1 => ({
+const facts = (): MidgardLedgerOutputCommitmentFacts => ({
   address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
   lovelace: 5_000_000n,
   assetCount: 0,
-  assetFrontierCommitment: buildMidgardLedgerOutputAssetFrontierV1([])
-    .commitment,
+  assetFrontierCommitment: buildMidgardLedgerOutputAssetFrontier([]).commitment,
   cardanoValueSize: 5,
   referenceScriptLanguage: -1,
   referenceScriptHash: Buffer.alloc(0),
@@ -45,7 +44,7 @@ const facts = (): MidgardLedgerOutputCommitmentFactsV1 => ({
 
 describe("ledger output commitment V1", () => {
   it("commits ordered assets without imposing a separate count cap", () => {
-    const assets = buildMidgardLedgerOutputAssetFrontierV1([
+    const assets = buildMidgardLedgerOutputAssetFrontier([
       {
         policyId: Buffer.alloc(28, 0x55),
         assetName: Buffer.from("03", "hex"),
@@ -67,7 +66,7 @@ describe("ledger output commitment V1", () => {
   });
 
   it("keeps the ledger leaf bounded while authenticating a multi-chunk output", () => {
-    const material = buildMidgardLedgerOutputMaterialV1({
+    const material = buildMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: Buffer.alloc(5_000, 0x5a),
       facts: facts(),
@@ -77,22 +76,22 @@ describe("ledger output commitment V1", () => {
     );
     expect(material.descriptorCbor.length).toBeLessThan(512);
     expect(
-      encodeMidgardLedgerOutputCommitmentV1(
-        decodeMidgardLedgerOutputCommitmentV1(material.descriptorCbor),
+      encodeMidgardLedgerOutputCommitment(
+        decodeMidgardLedgerOutputCommitment(material.descriptorCbor),
       ),
     ).toStrictEqual(material.descriptorCbor);
     for (let chunkIndex = 0; chunkIndex < 2; chunkIndex += 1) {
       expect(
-        verifyMidgardLedgerOutputChunkV1({
+        verifyMidgardLedgerOutputChunk({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(material.item, chunkIndex),
+          proof: buildMidgardBoundedItemChunkProof(material.item, chunkIndex),
         }),
       ).toBe(true);
     }
   });
 
   it("admits the exact Cardano Value byte bound and fails closed above it", () => {
-    const atBound = buildMidgardLedgerOutputMaterialV1({
+    const atBound = buildMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: Buffer.alloc(16_384, 0x5a),
       facts: {
@@ -101,11 +100,11 @@ describe("ledger output commitment V1", () => {
       },
     });
     expect(
-      decodeMidgardLedgerOutputCommitmentV1(atBound.descriptorCbor)
+      decodeMidgardLedgerOutputCommitment(atBound.descriptorCbor)
         .cardanoValueSize,
     ).toBe(5_000);
     expect(() =>
-      buildMidgardLedgerOutputMaterialV1({
+      buildMidgardLedgerOutputMaterial({
         outputIndex: 7,
         outputCbor: Buffer.alloc(16_384, 0x5a),
         facts: {
@@ -118,7 +117,7 @@ describe("ledger output commitment V1", () => {
 
   it("uses a transaction-size-derived asset guardrail rather than 128", () => {
     expect(() =>
-      buildMidgardLedgerOutputMaterialV1({
+      buildMidgardLedgerOutputMaterial({
         outputIndex: 7,
         outputCbor: Buffer.alloc(16_384, 0x5a),
         facts: {
@@ -130,12 +129,12 @@ describe("ledger output commitment V1", () => {
   });
 
   it("authenticates every chunk of a reference script independently", () => {
-    const referenceScript = buildMidgardBoundedItemV1({
-      fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+    const referenceScript = buildMidgardBoundedItem({
+      fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
       itemIndex: 7,
       bytes: Buffer.alloc(5_000, 0x6b),
     });
-    const material = buildMidgardLedgerOutputMaterialV1({
+    const material = buildMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: Buffer.alloc(8_500, 0x5a),
       facts: {
@@ -152,24 +151,21 @@ describe("ledger output commitment V1", () => {
       chunkIndex += 1
     ) {
       expect(
-        verifyMidgardLedgerOutputReferenceScriptChunkV1({
+        verifyMidgardLedgerOutputReferenceScriptChunk({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(
-            referenceScript,
-            chunkIndex,
-          ),
+          proof: buildMidgardBoundedItemChunkProof(referenceScript, chunkIndex),
         }),
       ).toBe(true);
     }
   });
 
   it("fails closed for output-index, length, and item substitution", () => {
-    const material = buildMidgardLedgerOutputMaterialV1({
+    const material = buildMidgardLedgerOutputMaterial({
       outputIndex: 1,
       outputCbor: Buffer.alloc(5_000, 0x42),
       facts: facts(),
     });
-    const proof = buildMidgardBoundedItemChunkProofV1(material.item, 0);
+    const proof = buildMidgardBoundedItemChunkProof(material.item, 0);
     for (const descriptor of [
       { ...material.descriptor, outputIndex: 2 },
       { ...material.descriptor, totalLength: 4_999 },
@@ -178,9 +174,7 @@ describe("ledger output commitment V1", () => {
         itemCommitment: Buffer.alloc(32, 0xff),
       },
     ]) {
-      expect(verifyMidgardLedgerOutputChunkV1({ descriptor, proof })).toBe(
-        false,
-      );
+      expect(verifyMidgardLedgerOutputChunk({ descriptor, proof })).toBe(false);
     }
   });
 });

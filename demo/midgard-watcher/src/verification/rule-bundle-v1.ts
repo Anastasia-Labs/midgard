@@ -1,13 +1,13 @@
 import {
-  MIDGARD_CONSENSUS_FEATURES_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  MIDGARD_PROTOCOL_V1_VERSION,
+  MIDGARD_CONSENSUS_FEATURES,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+  MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  computeDeploymentManifestV1JsonDigest,
-  type DeploymentManifestV1JsonValue,
+  computeDeploymentManifestJsonDigest,
+  type DeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   MidgardValidationPhase,
@@ -15,28 +15,28 @@ import {
 } from "@al-ft/midgard-core/validation-trace";
 
 import {
-  verifyWatcherDeploymentIdentityV1,
-  type WatcherDeploymentIdentityPolicyV1,
-  type WatcherDeploymentTrustRootV1,
+  verifyWatcherDeploymentIdentity,
+  type WatcherDeploymentIdentityPolicy,
+  type WatcherDeploymentTrustRoot,
 } from "../runtime/deployment-identity.js";
 
-export const WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION =
+export const WATCHER_RULE_BUNDLE_SCHEMA_VERSION =
   "midgard-watcher-rule-bundle-v1" as const;
-export const WATCHER_RULE_BUNDLE_V1_VERSION = 1 as const;
-export const WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION =
+export const WATCHER_RULE_BUNDLE_VERSION = 1 as const;
+export const WATCHER_RULE_BUNDLE_REJECTION_SELECTION =
   "first_rejection_by_phase_then_program_counter_v1" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const COMMITMENT_NAME = /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$/u;
 
-export const WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY = Object.freeze([
+export const WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY = Object.freeze([
   "withdrawal",
   "forced_transaction",
   "l2_transaction",
   "deposit",
 ] as const);
 
-export const WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY = Object.freeze(
+export const WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY = Object.freeze(
   Object.entries(MidgardValidationPhase)
     .sort((left, right) => left[1] - right[1])
     .map(([name], index) => {
@@ -51,7 +51,7 @@ export const WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY = Object.freeze(
     }),
 );
 
-export type WatcherRuleBundleV1ErrorCode =
+export type WatcherRuleBundleErrorCode =
   | "consensus_profile_mismatch"
   | "deployment_identity_mismatch"
   | "disabled_feature"
@@ -67,11 +67,11 @@ export type WatcherRuleBundleV1ErrorCode =
   | "unsupported_version"
   | "validation_priority_mismatch";
 
-export class WatcherRuleBundleV1Error extends Error {
-  readonly code: WatcherRuleBundleV1ErrorCode;
+export class WatcherRuleBundleError extends Error {
+  readonly code: WatcherRuleBundleErrorCode;
   readonly path: string;
 
-  constructor(code: WatcherRuleBundleV1ErrorCode, path: string) {
+  constructor(code: WatcherRuleBundleErrorCode, path: string) {
     super(`Watcher canonical V1 rule bundle rejected: ${code} at ${path}`);
     this.name = "WatcherRuleBundleV1Error";
     this.code = code;
@@ -79,8 +79,8 @@ export class WatcherRuleBundleV1Error extends Error {
   }
 }
 
-const fail = (code: WatcherRuleBundleV1ErrorCode, path: string): never => {
-  throw new WatcherRuleBundleV1Error(code, path);
+const fail = (code: WatcherRuleBundleErrorCode, path: string): never => {
+  throw new WatcherRuleBundleError(code, path);
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -160,7 +160,7 @@ const exactNetwork = (
 const canonicalJsonValue = (
   value: unknown,
   path: string,
-): DeploymentManifestV1JsonValue => {
+): DeploymentManifestJsonValue => {
   if (
     value === null ||
     typeof value === "string" ||
@@ -227,42 +227,42 @@ const parseProgramCommitments = (
   );
 };
 
-export type WatcherRuleBundleV1Feature = Readonly<{
-  featureId: (typeof MIDGARD_CONSENSUS_FEATURES_V1)[number];
+export type WatcherRuleBundleFeature = Readonly<{
+  featureId: (typeof MIDGARD_CONSENSUS_FEATURES)[number];
   enabled: true;
 }>;
 
-export type WatcherRuleBundleV1TargetParameters = Readonly<{
-  snapshot: Readonly<Record<string, DeploymentManifestV1JsonValue>>;
+export type WatcherRuleBundleTargetParameters = Readonly<{
+  snapshot: Readonly<Record<string, DeploymentManifestJsonValue>>;
   digest: string;
 }>;
 
-export type WatcherRuleBundleV1 = Readonly<{
-  schemaVersion: typeof WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION;
-  ruleBundleVersion: typeof WATCHER_RULE_BUNDLE_V1_VERSION;
+export type WatcherRuleBundle = Readonly<{
+  schemaVersion: typeof WATCHER_RULE_BUNDLE_SCHEMA_VERSION;
+  ruleBundleVersion: typeof WATCHER_RULE_BUNDLE_VERSION;
   deploymentManifestId: string;
   network: "Mainnet" | "Preprod" | "Preview";
   releaseEvidenceDigest: string;
-  consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   consensusProfileDigest: string;
-  protocolVersion: typeof MIDGARD_PROTOCOL_V1_VERSION;
-  features: readonly WatcherRuleBundleV1Feature[];
-  limits: typeof MIDGARD_CONSENSUS_LIMITS_V1;
-  targetParameters: WatcherRuleBundleV1TargetParameters;
-  transitionPriority: typeof WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY;
+  protocolVersion: typeof MIDGARD_PROTOCOL_VERSION;
+  features: readonly WatcherRuleBundleFeature[];
+  limits: typeof MIDGARD_CONSENSUS_LIMITS;
+  targetParameters: WatcherRuleBundleTargetParameters;
+  transitionPriority: typeof WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY;
   validation: Readonly<{
     phasePriority: readonly MidgardValidationPhaseName[];
-    rejectionSelection: typeof WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION;
+    rejectionSelection: typeof WATCHER_RULE_BUNDLE_REJECTION_SELECTION;
   }>;
   programCommitments: Readonly<Record<string, string>>;
 }>;
 
-export type LoadedWatcherRuleBundleV1 = Readonly<{
+export type LoadedWatcherRuleBundle = Readonly<{
   ruleBundleCommitment: string;
-  ruleBundle: WatcherRuleBundleV1;
+  ruleBundle: WatcherRuleBundle;
 }>;
 
-export type WatcherRuleBundleV1ConstructionIdentity = Readonly<{
+export type WatcherRuleBundleConstructionIdentity = Readonly<{
   manifestId: string;
   network: "Mainnet" | "Preprod" | "Preview";
   releaseEvidenceDigest: string;
@@ -272,9 +272,9 @@ export type WatcherRuleBundleV1ConstructionIdentity = Readonly<{
 const parseFeatures = (
   value: unknown,
   path: string,
-): readonly WatcherRuleBundleV1Feature[] => {
+): readonly WatcherRuleBundleFeature[] => {
   const entries = denseArray(value, path);
-  const known = new Set<string>(MIDGARD_CONSENSUS_FEATURES_V1);
+  const known = new Set<string>(MIDGARD_CONSENSUS_FEATURES);
   const parsed = entries.map((value, index) => {
     const entryPath = `${path}[${index.toString()}]`;
     const entry = exactRecord(value, entryPath, ["featureId", "enabled"]);
@@ -285,15 +285,14 @@ const parseFeatures = (
       fail("disabled_feature", `${entryPath}.enabled`);
     }
     return Object.freeze({
-      featureId: entry.featureId as WatcherRuleBundleV1Feature["featureId"],
+      featureId: entry.featureId as WatcherRuleBundleFeature["featureId"],
       enabled: true as const,
     });
   });
   if (
-    parsed.length !== MIDGARD_CONSENSUS_FEATURES_V1.length ||
+    parsed.length !== MIDGARD_CONSENSUS_FEATURES.length ||
     parsed.some(
-      (entry, index) =>
-        entry.featureId !== MIDGARD_CONSENSUS_FEATURES_V1[index],
+      (entry, index) => entry.featureId !== MIDGARD_CONSENSUS_FEATURES[index],
     )
   ) {
     fail("feature_set_mismatch", path);
@@ -304,25 +303,23 @@ const parseFeatures = (
 const parseLimits = (
   value: unknown,
   path: string,
-): typeof MIDGARD_CONSENSUS_LIMITS_V1 => {
-  const expectedKeys = Object.keys(MIDGARD_CONSENSUS_LIMITS_V1);
+): typeof MIDGARD_CONSENSUS_LIMITS => {
+  const expectedKeys = Object.keys(MIDGARD_CONSENSUS_LIMITS);
   const limits = exactRecord(value, path, expectedKeys);
   for (const key of expectedKeys) {
     const expected =
-      MIDGARD_CONSENSUS_LIMITS_V1[
-        key as keyof typeof MIDGARD_CONSENSUS_LIMITS_V1
-      ];
+      MIDGARD_CONSENSUS_LIMITS[key as keyof typeof MIDGARD_CONSENSUS_LIMITS];
     if (limits[key] !== expected) {
       fail("consensus_profile_mismatch", `${path}.${key}`);
     }
   }
-  return MIDGARD_CONSENSUS_LIMITS_V1;
+  return MIDGARD_CONSENSUS_LIMITS;
 };
 
 const parseTargetParameters = (
   value: unknown,
   path: string,
-): WatcherRuleBundleV1TargetParameters => {
+): WatcherRuleBundleTargetParameters => {
   const target = exactRecord(value, path, ["snapshot", "digest"]);
   const snapshotInput = plainRecord(target.snapshot, `${path}.snapshot`);
   if (Object.keys(snapshotInput).length === 0) {
@@ -331,9 +328,9 @@ const parseTargetParameters = (
   const snapshot = canonicalJsonValue(
     snapshotInput,
     `${path}.snapshot`,
-  ) as Readonly<Record<string, DeploymentManifestV1JsonValue>>;
+  ) as Readonly<Record<string, DeploymentManifestJsonValue>>;
   const digest = exactHex32(target.digest, `${path}.digest`);
-  if (digest !== computeDeploymentManifestV1JsonDigest(snapshot)) {
+  if (digest !== computeDeploymentManifestJsonDigest(snapshot)) {
     fail("target_parameters_mismatch", `${path}.digest`);
   }
   return Object.freeze({ snapshot, digest });
@@ -355,9 +352,7 @@ const parseExactPriority = <T extends string>(
   return expected;
 };
 
-export const parseWatcherRuleBundleV1 = (
-  value: unknown,
-): WatcherRuleBundleV1 => {
+export const parseWatcherRuleBundle = (value: unknown): WatcherRuleBundle => {
   const bundle = exactRecord(value, "$", [
     "schemaVersion",
     "ruleBundleVersion",
@@ -375,26 +370,26 @@ export const parseWatcherRuleBundleV1 = (
     "programCommitments",
   ]);
   if (
-    bundle.schemaVersion !== WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION ||
-    bundle.ruleBundleVersion !== WATCHER_RULE_BUNDLE_V1_VERSION
+    bundle.schemaVersion !== WATCHER_RULE_BUNDLE_SCHEMA_VERSION ||
+    bundle.ruleBundleVersion !== WATCHER_RULE_BUNDLE_VERSION
   ) {
     fail(
       "unsupported_version",
-      bundle.schemaVersion !== WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION
+      bundle.schemaVersion !== WATCHER_RULE_BUNDLE_SCHEMA_VERSION
         ? "$.schemaVersion"
         : "$.ruleBundleVersion",
     );
   }
   if (
-    bundle.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID ||
-    bundle.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_V1_DIGEST ||
-    bundle.protocolVersion !== MIDGARD_PROTOCOL_V1_VERSION
+    bundle.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID ||
+    bundle.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST ||
+    bundle.protocolVersion !== MIDGARD_PROTOCOL_VERSION
   ) {
     fail(
       "consensus_profile_mismatch",
-      bundle.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID
+      bundle.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID
         ? "$.consensusProfileId"
-        : bundle.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_V1_DIGEST
+        : bundle.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST
           ? "$.consensusProfileDigest"
           : "$.protocolVersion",
     );
@@ -404,13 +399,13 @@ export const parseWatcherRuleBundleV1 = (
     "rejectionSelection",
   ]);
   if (
-    validation.rejectionSelection !== WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION
+    validation.rejectionSelection !== WATCHER_RULE_BUNDLE_REJECTION_SELECTION
   ) {
     fail("validation_priority_mismatch", "$.validation.rejectionSelection");
   }
   return Object.freeze({
-    schemaVersion: WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION,
-    ruleBundleVersion: WATCHER_RULE_BUNDLE_V1_VERSION,
+    schemaVersion: WATCHER_RULE_BUNDLE_SCHEMA_VERSION,
+    ruleBundleVersion: WATCHER_RULE_BUNDLE_VERSION,
     deploymentManifestId: exactHex32(
       bundle.deploymentManifestId,
       "$.deploymentManifestId",
@@ -420,9 +415,9 @@ export const parseWatcherRuleBundleV1 = (
       bundle.releaseEvidenceDigest,
       "$.releaseEvidenceDigest",
     ),
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-    protocolVersion: MIDGARD_PROTOCOL_V1_VERSION,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
+    protocolVersion: MIDGARD_PROTOCOL_VERSION,
     features: parseFeatures(bundle.features, "$.features"),
     limits: parseLimits(bundle.limits, "$.limits"),
     targetParameters: parseTargetParameters(
@@ -432,17 +427,17 @@ export const parseWatcherRuleBundleV1 = (
     transitionPriority: parseExactPriority(
       bundle.transitionPriority,
       "$.transitionPriority",
-      WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY,
+      WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
       "transition_priority_mismatch",
-    ) as typeof WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY,
+    ) as typeof WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
     validation: Object.freeze({
       phasePriority: parseExactPriority(
         validation.phasePriority,
         "$.validation.phasePriority",
-        WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
+        WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
         "validation_priority_mismatch",
       ),
-      rejectionSelection: WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
+      rejectionSelection: WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
     }),
     programCommitments: parseProgramCommitments(
       bundle.programCommitments,
@@ -452,8 +447,8 @@ export const parseWatcherRuleBundleV1 = (
 };
 
 const parseConstructionIdentity = (
-  value: WatcherRuleBundleV1ConstructionIdentity,
-): WatcherRuleBundleV1ConstructionIdentity => {
+  value: WatcherRuleBundleConstructionIdentity,
+): WatcherRuleBundleConstructionIdentity => {
   const identity = exactRecord(value, "$.constructionIdentity", [
     "manifestId",
     "network",
@@ -478,69 +473,69 @@ const parseConstructionIdentity = (
   });
 };
 
-export const encodeWatcherRuleBundleV1 = (value: unknown): Buffer =>
-  Buffer.from(JSON.stringify(parseWatcherRuleBundleV1(value)), "utf8");
+export const encodeWatcherRuleBundle = (value: unknown): Buffer =>
+  Buffer.from(JSON.stringify(parseWatcherRuleBundle(value)), "utf8");
 
-export const computeWatcherRuleBundleV1Commitment = (value: unknown): string =>
-  computeDeploymentManifestV1JsonDigest(parseWatcherRuleBundleV1(value));
+export const computeWatcherRuleBundleCommitment = (value: unknown): string =>
+  computeDeploymentManifestJsonDigest(parseWatcherRuleBundle(value));
 
 /**
  * Constructs release material before the W02 envelope is signed.
  *
  * This helper does not authenticate or authorize a deployment. Security
- * consumers must use {@link loadWatcherRuleBundleV1}, which verifies the raw
+ * consumers must use {@link loadWatcherRuleBundle}, which verifies the raw
  * signed W02 authority on every load.
  */
-export const makeWatcherCanonicalRuleBundleV1 = (input: {
-  readonly constructionIdentity: WatcherRuleBundleV1ConstructionIdentity;
+export const makeWatcherCanonicalRuleBundle = (input: {
+  readonly constructionIdentity: WatcherRuleBundleConstructionIdentity;
   readonly targetParameterSnapshot: unknown;
-}): WatcherRuleBundleV1 => {
+}): WatcherRuleBundle => {
   const identity = parseConstructionIdentity(input.constructionIdentity);
   const snapshot = canonicalJsonValue(
     plainRecord(input.targetParameterSnapshot, "$.targetParameterSnapshot"),
     "$.targetParameterSnapshot",
   );
-  return parseWatcherRuleBundleV1({
-    schemaVersion: WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION,
-    ruleBundleVersion: WATCHER_RULE_BUNDLE_V1_VERSION,
+  return parseWatcherRuleBundle({
+    schemaVersion: WATCHER_RULE_BUNDLE_SCHEMA_VERSION,
+    ruleBundleVersion: WATCHER_RULE_BUNDLE_VERSION,
     deploymentManifestId: identity.manifestId,
     network: identity.network,
     releaseEvidenceDigest: identity.releaseEvidenceDigest,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-    protocolVersion: MIDGARD_PROTOCOL_V1_VERSION,
-    features: MIDGARD_CONSENSUS_FEATURES_V1.map((featureId) => ({
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
+    protocolVersion: MIDGARD_PROTOCOL_VERSION,
+    features: MIDGARD_CONSENSUS_FEATURES.map((featureId) => ({
       featureId,
       enabled: true,
     })),
-    limits: MIDGARD_CONSENSUS_LIMITS_V1,
+    limits: MIDGARD_CONSENSUS_LIMITS,
     targetParameters: {
       snapshot,
-      digest: computeDeploymentManifestV1JsonDigest(snapshot),
+      digest: computeDeploymentManifestJsonDigest(snapshot),
     },
-    transitionPriority: WATCHER_RULE_BUNDLE_V1_TRANSITION_PRIORITY,
+    transitionPriority: WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
     validation: {
-      phasePriority: WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
-      rejectionSelection: WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
+      phasePriority: WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+      rejectionSelection: WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
     },
     programCommitments: identity.programCommitments,
   });
 };
 
-export const loadWatcherRuleBundleV1 = (input: {
+export const loadWatcherRuleBundle = (input: {
   readonly signedIdentity: unknown;
-  readonly policy: WatcherDeploymentIdentityPolicyV1;
-  readonly trustRoots: readonly WatcherDeploymentTrustRootV1[];
+  readonly policy: WatcherDeploymentIdentityPolicy;
+  readonly trustRoots: readonly WatcherDeploymentTrustRoot[];
   readonly durableMarker: unknown;
   readonly ruleBundle: unknown;
-}): LoadedWatcherRuleBundleV1 => {
-  const identity = verifyWatcherDeploymentIdentityV1({
+}): LoadedWatcherRuleBundle => {
+  const identity = verifyWatcherDeploymentIdentity({
     signedIdentity: input.signedIdentity,
     policy: input.policy,
     trustRoots: input.trustRoots,
     durableMarker: input.durableMarker,
   });
-  const ruleBundle = parseWatcherRuleBundleV1(input.ruleBundle);
+  const ruleBundle = parseWatcherRuleBundle(input.ruleBundle);
   if (
     ruleBundle.deploymentManifestId !== identity.manifestId ||
     ruleBundle.network !== identity.network ||
@@ -553,7 +548,7 @@ export const loadWatcherRuleBundleV1 = (input: {
   ) {
     fail("program_commitment_mismatch", "$.ruleBundle.programCommitments");
   }
-  const ruleBundleCommitment = computeWatcherRuleBundleV1Commitment(ruleBundle);
+  const ruleBundleCommitment = computeWatcherRuleBundleCommitment(ruleBundle);
   if (ruleBundleCommitment !== identity.ruleBundleCommitment) {
     fail("rule_bundle_commitment_mismatch", "$.ruleBundle");
   }

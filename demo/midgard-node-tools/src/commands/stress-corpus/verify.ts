@@ -34,7 +34,7 @@ export const STRESS_CORPUS_VERIFICATION_SCHEMA_VERSION =
 export const STRESS_CORPUS_MANIFEST_SCHEMA_VERSION =
   "midgard-stress-corpus-manifest-v1";
 
-export type StressCorpusManifestV1 = {
+export type StressCorpusManifest = {
   readonly schemaVersion: typeof STRESS_CORPUS_MANIFEST_SCHEMA_VERSION;
   readonly targetRateTps: number;
   readonly durationMs: number;
@@ -140,7 +140,7 @@ export type VerifyStressCorpusResult = {
   };
 };
 
-export type StressCorpusVerificationArtifactV1 = {
+export type StressCorpusVerificationArtifact = {
   readonly schemaVersion: typeof STRESS_CORPUS_VERIFICATION_SCHEMA_VERSION;
   readonly verifiedAtIso: string;
   readonly corpus: {
@@ -259,7 +259,7 @@ const artifactIsoTimestamp = (value: unknown, label: string): string => {
   return timestamp;
 };
 
-export const parseStressCorpusWalletSetIdentityV1 = (
+export const parseStressCorpusWalletSetIdentity = (
   value: unknown,
   label = "stress corpus walletSetIdentity",
 ): StressCorpusWalletSetIdentity => {
@@ -316,7 +316,7 @@ export const parseStressCorpusWalletSetIdentityV1 = (
   return parsed;
 };
 
-export const parseStressCorpusRebuildSampleResultV1 = (
+export const parseStressCorpusRebuildSampleResult = (
   value: unknown,
   label = "stress corpus rebuildSample",
 ): VerifyStressCorpusRebuildSampleResult => {
@@ -404,9 +404,9 @@ export const parseStressCorpusRebuildSampleResultV1 = (
   };
 };
 
-export const parseStressCorpusVerificationArtifactV1 = (
+export const parseStressCorpusVerificationArtifact = (
   value: unknown,
-): StressCorpusVerificationArtifactV1 => {
+): StressCorpusVerificationArtifact => {
   const root = exactObject(
     value,
     "stress corpus verification artifact",
@@ -443,14 +443,14 @@ export const parseStressCorpusVerificationArtifactV1 = (
   const walletSetIdentity =
     root.walletSetIdentity === undefined
       ? undefined
-      : parseStressCorpusWalletSetIdentityV1(
+      : parseStressCorpusWalletSetIdentity(
           root.walletSetIdentity,
           "stress corpus verification artifact walletSetIdentity",
         );
   const rebuildSample =
     root.rebuildSample === undefined
       ? undefined
-      : parseStressCorpusRebuildSampleResultV1(
+      : parseStressCorpusRebuildSampleResult(
           root.rebuildSample,
           "stress corpus verification artifact rebuildSample",
         );
@@ -510,7 +510,7 @@ export const parseStressCorpusVerificationArtifactV1 = (
 
 export const parseStressCorpusManifest = (
   value: unknown,
-): StressCorpusManifestV1 => {
+): StressCorpusManifest => {
   const root = exactObject(value, "stress corpus manifest", [
     "schemaVersion",
     "targetRateTps",
@@ -675,7 +675,7 @@ export const parseStressCorpusManifest = (
   ) {
     throw new Error("manifest files.shards must be a non-empty string array.");
   }
-  const parsed: StressCorpusManifestV1 = {
+  const parsed: StressCorpusManifest = {
     schemaVersion: STRESS_CORPUS_MANIFEST_SCHEMA_VERSION,
     targetRateTps: manifestNumber(root.targetRateTps, "manifest targetRateTps"),
     durationMs: manifestInteger(root.durationMs, "manifest durationMs", 1),
@@ -1146,7 +1146,7 @@ const writeVerificationArtifact = async (
   result: Omit<VerifyStressCorpusResult, "verificationArtifact">,
 ): Promise<{ readonly path: string; readonly sha256: string }> => {
   const absolutePath = resolve(path);
-  const document = parseStressCorpusVerificationArtifactV1({
+  const document = parseStressCorpusVerificationArtifact({
     schemaVersion: STRESS_CORPUS_VERIFICATION_SCHEMA_VERSION,
     verifiedAtIso: new Date().toISOString(),
     corpus: {

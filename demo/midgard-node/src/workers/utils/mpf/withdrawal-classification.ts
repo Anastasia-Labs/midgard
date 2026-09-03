@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressText,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardValueToCmlValue,
@@ -32,7 +32,7 @@ export type ClassifiedWithdrawal = {
 
 export { LOVELACE_UNIT, normalizeAssets };
 
-export const resolveWithdrawalLedgerOutputAtSelectedBaseV1 = <E, R>({
+export const resolveWithdrawalLedgerOutputAtSelectedBase = <E, R>({
   ledgerOutRef,
   deferDatabaseWrites,
   initialLedgerEntries,
@@ -184,7 +184,7 @@ export const decodeLedgerUtxo = ({
       // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
       // The decoder bounds the index to a CBOR uint16, so no safe-integer
       // check is needed on the way out.
-      const input = decodeMidgardSpendInputItemV1(outRef);
+      const input = decodeMidgardSpendInputItem(outRef);
       const decodedOutput = decodeMidgardTxOutput(output);
       return {
         txHash: Buffer.from(input.txId).toString("hex"),

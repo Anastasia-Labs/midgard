@@ -67,7 +67,7 @@ against this blueprint.
 
 Measured on the reproducible working-tree blueprint (283 distinct compiled
 scripts). Production publication refuses any raw body at or above 16,384
-bytes (`assertReferenceScriptRawBodiesFitL1EnvelopeV1`), and the signed
+bytes (`assertReferenceScriptRawBodiesFitL1Envelope`), and the signed
 publication transaction adds roughly 280 bytes plus 72–73 bytes of applied
 parameters, so the practical raw ceiling is about 16,000 bytes.
 
@@ -102,7 +102,7 @@ All categories have catalogue, deployment, classifier, and proof-thread
 topology representation. That is broader than executable application
 installation:
 
-- `PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1` exposes 25 categories.
+- `WORKFLOW_RUNNER_FACTORIES` exposes 25 categories.
 - The watcher application installs 25 categories.
 - Watcher-installed categories are `doubleSpend`, `nonExistentInput`,
   `nonExistentInputNoIndex`, `invalidRange`, `zeroInput`, `daHashPreimage`,

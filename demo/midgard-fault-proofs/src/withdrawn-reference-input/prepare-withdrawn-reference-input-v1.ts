@@ -1,19 +1,19 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCompact,
   formatUnknownError,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeMidgardTxInputCanonicalV1,
-  type HeaderV1,
+  encodeMidgardTxInputCanonical,
+  type Header,
   type MidgardTxInput,
   Proof,
   ROOT_DOMAINS,
@@ -24,7 +24,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
-import { deriveL2TransactionSourceCborV1 } from "../prepare-double-spend.js";
+import { deriveL2TransactionSourceCbor } from "../prepare-double-spend.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
@@ -36,18 +36,18 @@ import {
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
 
-export type WithdrawnReferenceInputPreparationRefusalV1 =
+export type WithdrawnReferenceInputPreparationRefusal =
   | "withdrawal-not-valid"
   | "no-matching-reference-input"
   | "transactions-root-mismatch"
   | "withdrawals-root-mismatch"
   | "membership-proof-mismatch";
 
-export class WithdrawnReferenceInputPreparationErrorV1 extends Error {
-  readonly reason: WithdrawnReferenceInputPreparationRefusalV1;
+export class WithdrawnReferenceInputPreparationError extends Error {
+  readonly reason: WithdrawnReferenceInputPreparationRefusal;
 
   constructor(
-    reason: WithdrawnReferenceInputPreparationRefusalV1,
+    reason: WithdrawnReferenceInputPreparationRefusal,
     message: string,
   ) {
     super(`withdrawn-reference-input prepare: ${reason}: ${message}`);
@@ -56,7 +56,7 @@ export class WithdrawnReferenceInputPreparationErrorV1 extends Error {
   }
 }
 
-type DecodedBlockTxV1 = {
+type DecodedBlockTx = {
   readonly txId: string;
   readonly nativeTx: ReturnType<typeof nativeTxFromCoreCompact>;
   readonly nativeTxCompactCbor: string;
@@ -64,8 +64,8 @@ type DecodedBlockTxV1 = {
   readonly referenceInputs: readonly MidgardTxInput[];
 };
 
-export type PreparedWithdrawnReferenceInputV1 = {
-  readonly header: HeaderV1;
+export type PreparedWithdrawnReferenceInput = {
+  readonly header: Header;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceInputs: readonly MidgardTxInput[];
   readonly referenceInputItemCbors: readonly string[];
@@ -108,11 +108,11 @@ const exactProofInteger = (
   return Number(value);
 };
 
-const decodeBlockTxV1 = (payload: NodeTransactionPayload): DecodedBlockTxV1 => {
+const decodeBlockTx = (payload: NodeTransactionPayload): DecodedBlockTx => {
   const listedTxId = exactHex(payload.nodeTxId, 32, "nodeTxId");
-  let full: MidgardNativeTxFullV1;
+  let full: MidgardNativeTxFull;
   try {
-    full = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    full = decodeMidgardNativeTxFullFromCanonicalCbor(
       exactHexBytes(payload.txCbor, `tx ${listedTxId} txCbor`),
     );
   } catch (cause) {
@@ -120,7 +120,7 @@ const decodeBlockTxV1 = (payload: NodeTransactionPayload): DecodedBlockTxV1 => {
       `Failed to decode native Midgard tx ${listedTxId}: ${formatUnknownError(cause)}`,
     );
   }
-  const txId = computeMidgardNativeTxIdV1(full).toString("hex");
+  const txId = computeMidgardNativeTxId(full).toString("hex");
   if (txId !== listedTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${listedTxId}, computed=${txId}.`,
@@ -133,10 +133,10 @@ const decodeBlockTxV1 = (payload: NodeTransactionPayload): DecodedBlockTxV1 => {
   return {
     txId,
     nativeTx: nativeTxFromCoreCompact(full.compact),
-    nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(full.compact).toString(
+    nativeTxCompactCbor: encodeMidgardNativeTxCompact(full.compact).toString(
       "hex",
     ),
-    l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+    l2TransactionSourceCbor: deriveL2TransactionSourceCbor(
       exactHexBytes(payload.txCbor, `tx ${listedTxId} txCbor`),
     ),
     referenceInputs: spendInputsWitnessFromCbors(
@@ -213,12 +213,12 @@ const proofStepJson = (step: Proof[number], index: number): object => {
 };
 
 /** Replays the exact canonical key/value proof that step 03 will verify. */
-export const verifyWithdrawnReferenceInputMembershipV1 = (
+export const verifyWithdrawnReferenceInputMembership = (
   membership: WithdrawalSourceMembershipProof,
 ): void => {
-  const key = Buffer.from(committedWithdrawalKeyBytesV1(membership.key), "hex");
+  const key = Buffer.from(committedWithdrawalKeyBytes(membership.key), "hex");
   const value = Buffer.from(
-    committedWithdrawalValueBytesV1(membership.value),
+    committedWithdrawalValueBytes(membership.value),
     "hex",
   );
   let actualRoot: Buffer | null;
@@ -229,7 +229,7 @@ export const verifyWithdrawnReferenceInputMembershipV1 = (
       membership.proof.map(proofStepJson),
     ).verify(true);
   } catch (cause) {
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "membership-proof-mismatch",
       `withdrawal proof cannot be replayed: ${formatUnknownError(cause)}`,
     );
@@ -237,7 +237,7 @@ export const verifyWithdrawnReferenceInputMembershipV1 = (
   const actual =
     actualRoot === null ? EMPTY_MERKLE_TREE_ROOT : actualRoot.toString("hex");
   if (actual !== membership.phas_root) {
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "membership-proof-mismatch",
       `withdrawal proof opens ${actual}, not ${membership.phas_root}.`,
     );
@@ -250,18 +250,18 @@ export const verifyWithdrawnReferenceInputMembershipV1 = (
  * `header`; any incomplete or substituted set is refused by counted-root
  * reconstruction.
  */
-export const prepareWithdrawnReferenceInputV1 = async ({
+export const prepareWithdrawnReferenceInput = async ({
   header,
   blockTxs,
   withdrawals,
   accusedTxId,
 }: {
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly blockTxs: readonly NodeTransactionPayload[];
   readonly withdrawals: readonly WithdrawalEvent[];
   readonly accusedTxId?: string;
-}): Promise<PreparedWithdrawnReferenceInputV1> => {
-  const decoded = blockTxs.map(decodeBlockTxV1);
+}): Promise<PreparedWithdrawnReferenceInput> => {
+  const decoded = blockTxs.map(decodeBlockTx);
   const transactionEntries: KeyValuePhasEntry[] = decoded.map((tx) => ({
     key: Buffer.from(tx.txId, "hex"),
     value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
@@ -274,15 +274,15 @@ export const prepareWithdrawnReferenceInputV1 = async ({
     transactionsRoot.root !== header.transactionsRoot ||
     transactionsRoot.count !== header.l2TransactionCount
   ) {
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "transactions-root-mismatch",
       `reconstructed root/count ${transactionsRoot.root}/${transactionsRoot.count.toString()} do not match header ${header.transactionsRoot}/${header.l2TransactionCount.toString()}.`,
     );
   }
 
   const withdrawalEntries: KeyValuePhasEntry[] = withdrawals.map((event) => ({
-    key: Buffer.from(committedWithdrawalKeyBytesV1(event.id), "hex"),
-    value: Buffer.from(committedWithdrawalValueBytesV1(event.info), "hex"),
+    key: Buffer.from(committedWithdrawalKeyBytes(event.id), "hex"),
+    value: Buffer.from(committedWithdrawalValueBytes(event.info), "hex"),
   }));
   const withdrawalsRoot = await buildCountedRoot(
     ROOT_DOMAINS.withdrawals,
@@ -292,7 +292,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
     withdrawalsRoot.root !== header.withdrawalsRoot ||
     withdrawalsRoot.count !== header.withdrawalCount
   ) {
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "withdrawals-root-mismatch",
       `reconstructed root/count ${withdrawalsRoot.root}/${withdrawalsRoot.count.toString()} do not match header ${header.withdrawalsRoot}/${header.withdrawalCount.toString()}.`,
     );
@@ -307,7 +307,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
       ? decoded
       : decoded.filter((tx) => tx.txId === selectedTxId);
   if (candidates.length === 0) {
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "no-matching-reference-input",
       "the accused transaction is not committed by this block.",
     );
@@ -316,7 +316,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
   let invalidMatch = false;
   let selected:
     | {
-        readonly tx: DecodedBlockTxV1;
+        readonly tx: DecodedBlockTx;
         readonly inputIndex: number;
         readonly withdrawal: WithdrawalEvent;
       }
@@ -340,12 +340,12 @@ export const prepareWithdrawnReferenceInputV1 = async ({
   }
   if (selected === undefined) {
     if (invalidMatch) {
-      throw new WithdrawnReferenceInputPreparationErrorV1(
+      throw new WithdrawnReferenceInputPreparationError(
         "withdrawal-not-valid",
         "the matching withdrawal is invalid and consumed no L2 input.",
       );
     }
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "no-matching-reference-input",
       "no valid same-block withdrawal spends any committed reference input.",
     );
@@ -357,11 +357,11 @@ export const prepareWithdrawnReferenceInputV1 = async ({
     Buffer.from(selected.tx.l2TransactionSourceCbor, "hex"),
   );
   const withdrawalKey = Buffer.from(
-    committedWithdrawalKeyBytesV1(selected.withdrawal.id),
+    committedWithdrawalKeyBytes(selected.withdrawal.id),
     "hex",
   );
   const withdrawalValue = Buffer.from(
-    committedWithdrawalValueBytesV1(selected.withdrawal.info),
+    committedWithdrawalValueBytes(selected.withdrawal.info),
     "hex",
   );
   const withdrawalProof = await keyValuePhasProof(
@@ -378,7 +378,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
     value: selected.withdrawal.info,
     proof: withdrawalProof,
   };
-  verifyWithdrawnReferenceInputMembershipV1(withdrawalMembership);
+  verifyWithdrawnReferenceInputMembership(withdrawalMembership);
 
   const countedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
@@ -388,7 +388,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
     }),
   );
   if (countedTransactionsRoot !== header.transactionsRoot) {
-    throw new WithdrawnReferenceInputPreparationErrorV1(
+    throw new WithdrawnReferenceInputPreparationError(
       "transactions-root-mismatch",
       "transactions counted-root cross-check failed after proof construction.",
     );
@@ -407,7 +407,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
     },
     referenceInputs: selected.tx.referenceInputs,
     referenceInputItemCbors: selected.tx.referenceInputs.map((input) =>
-      Buffer.from(encodeMidgardTxInputCanonicalV1(input)).toString("hex"),
+      Buffer.from(encodeMidgardTxInputCanonical(input)).toString("hex"),
     ),
     badReferenceInputIndex: selected.inputIndex,
     missingReferenceInput: selected.tx.referenceInputs[selected.inputIndex]!,

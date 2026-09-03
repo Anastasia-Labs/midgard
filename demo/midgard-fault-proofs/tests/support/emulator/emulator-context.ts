@@ -176,7 +176,7 @@ export const fundedProverEmulatorAccount = (
  * journey mixes both selections, so funding only one of them strands whichever
  * half the next transaction happens to build from.
  */
-export const seedDualAddressPartyAccountsV1 = ({
+export const seedDualAddressPartyAccounts = ({
   account,
   feeUtxoCount,
   feeUtxoLovelace,

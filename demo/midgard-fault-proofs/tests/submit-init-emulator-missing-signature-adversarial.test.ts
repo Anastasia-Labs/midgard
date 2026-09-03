@@ -9,30 +9,30 @@ import {
   submitMissingSignatureStep04,
 } from "../src/missing-signature/index.js";
 import {
-  makeMissingSignatureEmulatorHarnessV1,
-  MISSING_SIGNATURE_TARGET_VKEY_V1,
-  publishMissingSignatureReferenceScriptsV1,
-  setupMissingSignatureScenarioV1,
-  submitRawMissingSignatureStep04V1,
+  makeMissingSignatureEmulatorHarness,
+  MISSING_SIGNATURE_TARGET_VKEY,
+  publishMissingSignatureReferenceScripts,
+  setupMissingSignatureScenario,
+  submitRawMissingSignatureStep04,
 } from "./support/missing-signature-emulator-v1.js";
 import {
-  expectOnchainRefusalV1,
+  expectOnchainRefusal,
   network,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("missing-signature adversarial emulator polarity", () => {
   it("refuses every honest-path local forgery and rejects the guard-bypassing conviction at step-04 on-chain", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1({
+    const harness = await makeMissingSignatureEmulatorHarness({
       useScalusEvaluator: false,
     });
-    const scenario = await setupMissingSignatureScenarioV1({
+    const scenario = await setupMissingSignatureScenario({
       harness,
       honest: true,
     });
     if (scenario.block.txInclusion === null)
       throw new Error("missing inclusion");
     const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishMissingSignatureReferenceScriptsV1({
+      await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
@@ -121,7 +121,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: two.nextThreadOutRef,
-      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY_V1,
+      missingRequiredSignerVkey: MISSING_SIGNATURE_TARGET_VKEY,
       referenceScriptUtxo: step03Ref,
     });
 
@@ -144,8 +144,8 @@ describe("missing-signature adversarial emulator polarity", () => {
     // Plane two: a patched prover that bypasses that guard reaches the exact
     // `required_signature_is_present == False` fold and dies in step-04.
     await expect(
-      expectOnchainRefusalV1(() =>
-        submitRawMissingSignatureStep04V1({
+      expectOnchainRefusal(() =>
+        submitRawMissingSignatureStep04({
           harness,
           threadOutRef: three.nextThreadOutRef,
           scenario,

@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
@@ -16,7 +16,7 @@ export const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING = 8;
 // Keep these values in one place so diagnostics and transaction construction
 // agree on the exact maturity boundary.
 export const STATE_QUEUE_MATURITY_DURATION_MS =
-  MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs;
+  MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs;
 export const MERGE_MATURITY_DELAY_BUFFER_MS = 20_000;
 
 export type MergeReadinessStatus =
@@ -334,7 +334,7 @@ export const mergeSubmitValidityEvidence = ({
 
 export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
-  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly readyAfterUnixTime: number;
   readonly nowUnixTime: number;
 };
@@ -360,7 +360,7 @@ export type OldestQueuedBlockReadiness =
 export type MergeCandidateIdentityInput = {
   readonly firstBlockOutRef: string;
   readonly headerHash: string;
-  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly readyAfterUnixTime: number;
 };
 
@@ -370,7 +370,7 @@ export const mergeCandidateIdentity = (
   [
     input.firstBlockOutRef,
     input.headerHash,
-    SDK.daAvailabilityStateQueueStatusIdentityV1(input.currentDaAvailability),
+    SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability),
     input.readyAfterUnixTime.toString(),
   ].join("|");
 
@@ -383,7 +383,7 @@ export type OldestQueuedBlockCandidateReadinessInput =
 export type OldestQueuedBlockCandidateReadiness = OldestQueuedBlockReadiness & {
   readonly firstBlockOutRef: string;
   readonly candidateIdentity: string;
-  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly validFromUnixTime: number;
 };
 
@@ -391,14 +391,12 @@ export const classifyOldestQueuedBlockReadiness = (
   input: OldestQueuedBlockReadinessInput,
 ): OldestQueuedBlockReadiness => {
   if (
-    !SDK.daAvailabilityStateQueueStatusPermitsMergeV1(
-      input.currentDaAvailability,
-    )
+    !SDK.daAvailabilityStateQueueStatusPermitsMerge(input.currentDaAvailability)
   ) {
     return {
       status: "skipped_oldest_block_unattested",
       headerHash: input.headerHash,
-      reason: `header=${input.headerHash},current_da_availability=${SDK.daAvailabilityStateQueueStatusIdentityV1(input.currentDaAvailability)},required_da_availability=Attested|Published`,
+      reason: `header=${input.headerHash},current_da_availability=${SDK.daAvailabilityStateQueueStatusIdentity(input.currentDaAvailability)},required_da_availability=Attested|Published`,
       readyAfterUnixTime: input.readyAfterUnixTime,
       nowUnixTime: input.nowUnixTime,
     };

@@ -1,34 +1,34 @@
 import {
-  buildMidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleMembership,
   computeHash28,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeCbor,
   encodeMidgardVersionedScript,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  encodeRetainedValidationWitnessKeyV1,
-  encodeRetainedValidationWitnessV1,
+  encodeRetainedValidationWitness,
+  encodeRetainedValidationWitnessKey,
   EventKeySchema,
-  forcedVerdictSubjectV1,
-  type RetainedValidationWitnessKeyV1,
-  type RetainedValidationWitnessV1,
-  ValidationAuxiliaryWitnessV1Schema,
+  forcedVerdictSubject,
+  type RetainedValidationWitness,
+  type RetainedValidationWitnessKey,
+  ValidationAuxiliaryWitnessSchema,
   validationMachineStateDataFromCore,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -36,7 +36,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeMintPreimageCbor,
   makeNativeTx,
@@ -45,21 +45,21 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { applyExecutionSourceScriptDecodingScriptsV1 } from "../src/execution-source-script-decoding/contracts-v1.js";
-import { prepareExecutionSourceScriptDecodingEvidenceV1 } from "../src/execution-source-script-decoding/family-v1.js";
-import { buildExecutionSourceMachineAuthenticationV1 } from "../src/execution-source-script-decoding/machine-authentication-v1.js";
-import { prepareProductionExecutionSourceScriptDecodingArtifactV1 } from "../src/execution-source-script-decoding/production-replay-v1.js";
-import { submitExecutionSourceScriptDecodingCancelV1 } from "../src/execution-source-script-decoding/submit-cancel-v1.js";
-import { submitExecutionSourceScriptDecodingInitV1 } from "../src/execution-source-script-decoding/submit-init-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
+import { applyExecutionSourceScriptDecodingScripts } from "../src/execution-source-script-decoding/contracts-v1.js";
+import { prepareExecutionSourceScriptDecodingEvidence } from "../src/execution-source-script-decoding/family-v1.js";
+import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication-v1.js";
+import { prepareExecutionSourceScriptDecodingArtifact } from "../src/execution-source-script-decoding/production-replay-v1.js";
+import { submitExecutionSourceScriptDecodingCancel } from "../src/execution-source-script-decoding/submit-cancel-v1.js";
+import { submitExecutionSourceScriptDecodingInit } from "../src/execution-source-script-decoding/submit-init-v1.js";
 import {
-  submitExecutionSourceScriptDecodingStep01AcceptedV1,
-  submitExecutionSourceScriptDecodingStep01ForcedV1,
+  submitExecutionSourceScriptDecodingStep01Accepted,
+  submitExecutionSourceScriptDecodingStep01Forced,
 } from "../src/execution-source-script-decoding/submit-step-01-v1.js";
-import { submitExecutionSourceScriptDecodingStep02V1 } from "../src/execution-source-script-decoding/submit-step-02-v1.js";
-import { submitExecutionSourceScriptDecodingStep03V1 } from "../src/execution-source-script-decoding/submit-step-03-v1.js";
-import { submitExecutionSourceScriptDecodingStep04V1 } from "../src/execution-source-script-decoding/submit-step-04-v1.js";
-import { submitExecutionSourceScriptDecodingStep05V1 } from "../src/execution-source-script-decoding/submit-step-05-v1.js";
+import { submitExecutionSourceScriptDecodingStep02 } from "../src/execution-source-script-decoding/submit-step-02-v1.js";
+import { submitExecutionSourceScriptDecodingStep03 } from "../src/execution-source-script-decoding/submit-step-03-v1.js";
+import { submitExecutionSourceScriptDecodingStep04 } from "../src/execution-source-script-decoding/submit-step-04-v1.js";
+import { submitExecutionSourceScriptDecodingStep05 } from "../src/execution-source-script-decoding/submit-step-05-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
@@ -67,12 +67,12 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -82,12 +82,12 @@ import {
 describe("executionSourceScriptDecoding genuine machine fixture", () => {
   it("reconstructs the authenticated nativeExecutionScan state and proof", async () => {
     const spent = outRefFromByte(0x71);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const script = nativeScriptWitness({ type: "all", scripts: [] });
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("31", "hex");
     const output = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
@@ -104,7 +104,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -117,7 +117,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: encodeCbor([2n, transaction.txId]),
         sourceKind: "normal",
         blockEndTimeMs: 1_750_000_000_000,
@@ -150,7 +150,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
     expect(trace.tree.proofs[stateIndex]?.stateHash).toEqual(
       trace.tree.proofs[stateIndex]?.stateHash,
     );
-    const authenticated = await buildExecutionSourceMachineAuthenticationV1({
+    const authenticated = await buildExecutionSourceMachineAuthentication({
       trace,
       eventKey: {
         L2TransactionEventKey: { tx_id: transaction.txId.toString("hex") },
@@ -176,7 +176,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
   ])(
     "runs $direction lifecycle (cancel=$cancelAt)",
     async ({ direction, cancelAt }) => {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
       });
       const addressData = await Effect.runPromise(
@@ -186,7 +186,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           Effect.map((address) => Data.from(Data.to(address, AddressData))),
         ),
       );
-      const applied = applyExecutionSourceScriptDecodingScriptsV1({
+      const applied = applyExecutionSourceScriptDecodingScripts({
         blueprint: harness.realBlueprint,
         network,
         computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -216,7 +216,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       expect(category.categoryId).toBe("00000031");
       expect(category.scriptHash).toBe(applied[0].spendingScriptHash);
       const spent = outRefFromByte(0x72);
-      const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+      const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
       const script = nativeScriptWitness({ type: "all", scripts: [] });
       const canonicalScriptItem = encodeMidgardVersionedScript(script);
       const malformedScriptItem = Buffer.from("820043820700", "hex");
@@ -230,7 +230,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           : Buffer.from(hashScriptWitness(script), "hex");
       const assetName = Buffer.from("31", "hex");
       const output = makeOutput(
-        FUNDED_OUTPUT_LOVELACE_V1,
+        FUNDED_OUTPUT_LOVELACE,
         undefined,
         new Map([
           [
@@ -262,11 +262,11 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       }
       const nativeTx =
         direction === "forced"
-          ? decodeMidgardNativeTxFullV1FromCanonicalCbor(transaction.txCbor)
+          ? decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor)
           : transaction.tx;
       const allOperations = [
         { type: "delete" as const, key: spent },
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(transaction.txId),
           outputCbor: output,
         }),
@@ -287,7 +287,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
             } as const);
       const trace = await Effect.runPromise(
         buildDeterministicValidationMachineTrace({
-          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           eventKeyCbor: Buffer.from(
             Data.to(eventKey as never, EventKeySchema),
             "hex",
@@ -315,7 +315,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
             direction === "forced" ? null : "E_INVALID_FIELD_TYPE",
         }),
       );
-      const authentication = await buildExecutionSourceMachineAuthenticationV1({
+      const authentication = await buildExecutionSourceMachineAuthentication({
         trace,
         eventKey,
         claimedVerdict: direction === "forced" ? "rejected" : "accepted",
@@ -332,7 +332,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       const reason = {
         ExecutionNativeScriptMalformed: { execution_index: 0n },
       } as const;
-      const block = await buildDecodingBlockFixtureV1({
+      const block = await buildDecodingBlockFixture({
         operatorVkey,
         startTime,
         priorLedgerRoot: mutations[0]!.preRoot.toString("hex"),
@@ -372,14 +372,14 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           eventKeyCbor,
           Data.to(
             authentication.authentication.trace_membership.value as never,
-            ValidationTraceDescriptorV1Schema,
+            ValidationTraceDescriptorSchema,
           ),
         ] as const;
-        const retainedKey: RetainedValidationWitnessKeyV1 = {
+        const retainedKey: RetainedValidationWitnessKey = {
           event_key: eventKey,
           execution_index: 0n,
         };
-        const retainedValue: RetainedValidationWitnessV1 = {
+        const retainedValue: RetainedValidationWitness = {
           machine_state: validationMachineStateDataFromCore(
             trace.states[stateIndex]!,
           ),
@@ -391,39 +391,38 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           witness_cbor: retained.cbor.toString("hex"),
           auxiliary: Data.from(
             Data.to(
-              validationAuxiliaryWitnessDataV1(retained.auxiliary) as never,
+              validationAuxiliaryWitnessData(retained.auxiliary) as never,
             ),
-            ValidationAuxiliaryWitnessV1Schema,
-          ) as unknown as RetainedValidationWitnessV1["auxiliary"],
+            ValidationAuxiliaryWitnessSchema,
+          ) as unknown as RetainedValidationWitness["auxiliary"],
         };
-        const productionArtifact =
-          await prepareProductionExecutionSourceScriptDecodingArtifactV1({
-            headerHash: block.headerHash,
-            header,
-            reconstruction: {
-              ...block.reconstruction,
-              payload: {
-                ...block.reconstruction.payload,
-                block_body: {
-                  ...block.reconstruction.payload.block_body,
-                  validation_traces: [validationTraceEntry],
-                  validation_trace_witnesses: [
-                    [
-                      encodeRetainedValidationWitnessKeyV1(
-                        retainedKey,
-                      ).toString("hex"),
-                      encodeRetainedValidationWitnessV1(retainedValue).toString(
-                        "hex",
-                      ),
-                    ],
+        const artifact = await prepareExecutionSourceScriptDecodingArtifact({
+          headerHash: block.headerHash,
+          header,
+          reconstruction: {
+            ...block.reconstruction,
+            payload: {
+              ...block.reconstruction.payload,
+              block_body: {
+                ...block.reconstruction.payload.block_body,
+                validation_traces: [validationTraceEntry],
+                validation_trace_witnesses: [
+                  [
+                    encodeRetainedValidationWitnessKey(retainedKey).toString(
+                      "hex",
+                    ),
+                    encodeRetainedValidationWitness(retainedValue).toString(
+                      "hex",
+                    ),
                   ],
-                },
+                ],
               },
             },
-            transactions: [],
-          } as unknown as CanonicalBlockEvidenceV1);
-        expect(productionArtifact.forcedMembership).toBeDefined();
-        expect(productionArtifact.acceptedInclusion).toBeUndefined();
+          },
+          transactions: [],
+        } as unknown as CanonicalBlockEvidence);
+        expect(artifact.forcedMembership).toBeDefined();
+        expect(artifact.acceptedInclusion).toBeUndefined();
       }
       const setup = await submitSetupTx({
         lucid: harness.funderLucid,
@@ -460,12 +459,12 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       };
       const subject =
         direction === "forced"
-          ? forcedVerdictSubjectV1({
+          ? forcedVerdictSubject({
               transactionId: block.nativeTxId,
               sourceKey: orderKey,
               rejectionReason: reason,
             })
-          : acceptedVerdictSubjectV1(block.nativeTxId);
+          : acceptedVerdictSubject(block.nativeTxId);
       const auxiliary = trace.witnesses.find(
         ({ phase, auxiliary }) =>
           phase === "nativeScripts" &&
@@ -473,26 +472,26 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       )?.auxiliary;
       if (auxiliary?.kind !== "nativeExecutionDescriptor")
         throw new Error("missing native descriptor");
-      const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+      const purposeLeaf = hashMidgardScriptPurposeLeaf({
         purposeKind: auxiliary.purpose.purposeKind,
         purposeIndex: auxiliary.purpose.purposeIndex,
         scriptHash: auxiliary.purpose.scriptHash,
         subject: auxiliary.purpose.subject,
       });
-      const sourceLeaf = hashMidgardInlineScriptSourceLeafV1({
+      const sourceLeaf = hashMidgardInlineScriptSourceLeaf({
         sourceIndex: BigInt(auxiliary.source.sourceIndex),
         scriptLanguageTag: 0,
         scriptHash: auxiliary.purpose.scriptHash,
         scriptTotalLength: auxiliary.source.scriptTotalLength,
         itemCommitment: auxiliary.source.scriptItemCommitment,
       });
-      const executionLeaf = hashMidgardScriptExecutionLeafV1({
+      const executionLeaf = hashMidgardScriptExecutionLeaf({
         languageTag: 0,
         purposeLeaf,
         sourceLeaf,
         redeemerLeaf: auxiliary.redeemerLeaf,
       });
-      const evidence = prepareExecutionSourceScriptDecodingEvidenceV1({
+      const evidence = prepareExecutionSourceScriptDecodingEvidence({
         finding: { subject, executionIndex: 0 },
         descriptor: {
           sourceIndex: auxiliary.source.sourceIndex,
@@ -505,15 +504,15 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           purposeIndex: Number(auxiliary.purpose.purposeIndex),
           purposeSubjectHex: auxiliary.purpose.subject.toString("hex"),
           redeemerLeafHex: "",
-          purposeMembership: buildMidgardValidationMerkleMembershipV1(
+          purposeMembership: buildMidgardValidationMerkleMembership(
             [purposeLeaf],
             0,
           ),
-          sourceMembership: buildMidgardValidationMerkleMembershipV1(
+          sourceMembership: buildMidgardValidationMerkleMembership(
             [sourceLeaf],
             0,
           ),
-          executionMembership: buildMidgardValidationMerkleMembershipV1(
+          executionMembership: buildMidgardValidationMerkleMembership(
             [executionLeaf],
             0,
           ),
@@ -522,7 +521,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       const init = await measured(
         "init",
         async () =>
-          await submitExecutionSourceScriptDecodingInitV1({
+          await submitExecutionSourceScriptDecodingInit({
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -541,7 +540,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           }),
       );
       const cancel = async (threadOutRef: string, stepIndex: number) => {
-        const result = await submitExecutionSourceScriptDecodingCancelV1({
+        const result = await submitExecutionSourceScriptDecodingCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -560,7 +559,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
         if (direction === "accepted") {
           if (block.txInclusion === null)
             throw new Error("accepted malformed fixture omitted inclusion");
-          return await submitExecutionSourceScriptDecodingStep01AcceptedV1({
+          return await submitExecutionSourceScriptDecodingStep01Accepted({
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -580,7 +579,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
           reconstruction: block.reconstruction,
           eventKey,
         });
-        return await submitExecutionSourceScriptDecodingStep01ForcedV1({
+        return await submitExecutionSourceScriptDecodingStep01Forced({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -597,7 +596,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
         return;
       }
       await expect(
-        submitExecutionSourceScriptDecodingStep02V1({
+        submitExecutionSourceScriptDecodingStep02({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -614,7 +613,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       const step02 = await measured(
         "step02-authenticate",
         async () =>
-          await submitExecutionSourceScriptDecodingStep02V1({
+          await submitExecutionSourceScriptDecodingStep02({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -633,7 +632,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       const step03 = await measured(
         "step03-open-item",
         async () =>
-          await submitExecutionSourceScriptDecodingStep03V1({
+          await submitExecutionSourceScriptDecodingStep03({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -653,7 +652,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
         const scan = await measured(
           `step04-scan-${scanCount.toString()}`,
           async () =>
-            await submitExecutionSourceScriptDecodingStep04V1({
+            await submitExecutionSourceScriptDecodingStep04({
               lucid: harness.proverLucid,
               contracts,
               categoryId: category.categoryId,
@@ -673,7 +672,7 @@ describe("executionSourceScriptDecoding genuine machine fixture", () => {
       const final = await measured(
         "step05-mint",
         async () =>
-          await submitExecutionSourceScriptDecodingStep05V1({
+          await submitExecutionSourceScriptDecodingStep05({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,

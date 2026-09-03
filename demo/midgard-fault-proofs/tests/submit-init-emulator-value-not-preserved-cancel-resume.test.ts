@@ -8,35 +8,35 @@ import {
 } from "../src/value-not-preserved/index.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
-  buildValueNotPreservedFixtureV1,
-  makeValueNotPreservedEmulatorHarnessV1,
-  publishValueNotPreservedReferenceScriptsV1,
-  runValueNotPreservedThreadV1,
-  setupValueNotPreservedScenarioV1,
-  vnpOutputV1,
-  vnpOutRefV1,
-  vnpValueV1,
+  buildValueNotPreservedFixture,
+  makeValueNotPreservedEmulatorHarness,
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+  vnpOutput,
+  vnpOutRef,
+  vnpValue,
 } from "./support/value-not-preserved-emulator-v1.js";
 
 describe("value-not-preserved cancellation and restart", () => {
   it("cancels through the public submitter after the full input fold and starts a fresh thread", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const harness = await makeValueNotPreservedEmulatorHarness();
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
-        { input: vnpOutRefV1("31", 0), spentValue: vnpValueV1(10_000_000n) },
+        { input: vnpOutRef("31", 0), spentValue: vnpValue(10_000_000n) },
       ],
-      outputs: [vnpOutputV1({ value: vnpValueV1(20_000_000n) })],
+      outputs: [vnpOutput({ value: vnpValue(20_000_000n) })],
       fee: 1_000_000n,
     });
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
-    const run = await runValueNotPreservedThreadV1({
+    const run = await runValueNotPreservedThread({
       harness,
       fixture,
       setup,

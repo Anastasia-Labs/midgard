@@ -23,14 +23,14 @@
  * burning a submission on-chain.
  */
 import {
-  encodeMidgardAddressWitnessCanonicalV1,
-  type FieldOpeningV1,
+  encodeMidgardAddressWitnessCanonical,
+  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   InvalidSignatureStep02Datum,
   InvalidSignatureStep02SpendRedeemer,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   type MidgardAddressWitness,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
@@ -51,10 +51,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
 import {
   parseHex,
@@ -80,14 +80,14 @@ import {
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /**
@@ -241,7 +241,7 @@ const makeInvalidSignatureStep02SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly addrTxWitsOpening: FieldOpeningV1;
+  readonly addrTxWitsOpening: FieldOpening;
   readonly badAddrTxWitIndex: bigint;
   readonly onLayout: (layout: InvalidSignatureStep02SpendLayout) => void;
 }): BuildTxWithRedeemer =>
@@ -375,7 +375,7 @@ export const submitInvalidSignatureStep02 = async ({
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Manifest-bound certificate policy for a tier-3 field opening. */
   readonly certificatePolicyId?: string;
   /** Existing authenticated tier-3 certificate output. */
@@ -387,7 +387,7 @@ export const submitInvalidSignatureStep02 = async ({
    * false and journal every publication/certificate before this proof step.
    */
   readonly publishMissingCarriage?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep02Result> => {
   const { invalidSignatureCategory, contracts } =
@@ -426,11 +426,11 @@ export const submitInvalidSignatureStep02 = async ({
   // re-derive to the anchored id, the supplied witness set hashes to the
   // anchored `witness_set_hash`, and the supplied witness list is the §5.1
   // preimage that witness set commits at field 7.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: badTxId,
     nativeTxCompactCbor,
-    itemCbors: addrTxWitsPreimage.map(encodeMidgardAddressWitnessCanonicalV1),
+    itemCbors: addrTxWitsPreimage.map(encodeMidgardAddressWitnessCanonical),
     owner: signer.paymentKeyHash,
     witnessSet: witnessSetCompact,
     anchorWitnessSetHash: badTxWitnessSetHash,
@@ -444,7 +444,7 @@ export const submitInvalidSignatureStep02 = async ({
   const published = [
     ...existingPublicationUtxos,
     ...(publishMissingCarriage
-      ? await publishFaultProofFieldCarriageV1({
+      ? await publishFaultProofFieldCarriage({
           lucid,
           signer,
           planned,
@@ -453,17 +453,17 @@ export const submitInvalidSignatureStep02 = async ({
         })
       : []),
   ];
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.invalidSignature.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "invalid-signature step 02 validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "invalid-signature step 02 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "invalid-signature step 02 fraud-proof mint",
@@ -477,7 +477,7 @@ export const submitInvalidSignatureStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const addrTxWitsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const addrTxWitsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -584,9 +584,9 @@ export const submitInvalidSignatureStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -682,7 +682,7 @@ export const submitInvalidSignatureStep02FromFiles = async (
     addrTxWitsPreimage: parseSubmitInvalidSignatureAddrTxWitsPreimage(
       addrTxWitsPreimageJson,
     ),
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

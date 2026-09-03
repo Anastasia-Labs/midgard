@@ -7,7 +7,7 @@ import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import * as Ledger from "../src/database/utils/ledger.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/index.js";
 import {
-  materializeConfirmedLedgerDeltaChainV1,
+  materializeConfirmedLedgerDeltaChain,
   pendingUtxoMemberToConfirmedLedgerEntry,
 } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import {
@@ -73,10 +73,9 @@ const record = ({
     "hex",
   ),
   [PendingBlockFinalizationsDB.Columns.FORMAT_VERSION]:
-    PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+    PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
   [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
-    PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
-      .LedgerDelta,
+    PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind.LedgerDelta,
   [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
     "midgard-deployment-marker-v1",
   [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]: "de".repeat(32),
@@ -182,7 +181,7 @@ describe("confirmed ledger finalized-journal delta-chain recovery", () => {
     });
 
     const snapshot = await Effect.runPromise(
-      materializeConfirmedLedgerDeltaChainV1({
+      materializeConfirmedLedgerDeltaChain({
         record: child,
         confirmedEntries: [aEntry],
         retrieveParent: (headerHash) =>
@@ -218,7 +217,7 @@ describe("confirmed ledger finalized-journal delta-chain recovery", () => {
 
     await expect(
       Effect.runPromise(
-        materializeConfirmedLedgerDeltaChainV1({
+        materializeConfirmedLedgerDeltaChain({
           record: candidate,
           confirmedEntries: [current],
           retrieveParent: () => Effect.succeed(Option.none()),
@@ -240,7 +239,7 @@ describe("confirmed ledger finalized-journal delta-chain recovery", () => {
 
     await expect(
       Effect.runPromise(
-        materializeConfirmedLedgerDeltaChainV1({
+        materializeConfirmedLedgerDeltaChain({
           record: candidate,
           confirmedEntries: [current],
           retrieveParent: () => Effect.succeed(Option.some(candidate)),
@@ -276,7 +275,7 @@ describe("confirmed ledger finalized-journal delta-chain recovery", () => {
 
     await expect(
       Effect.runPromise(
-        materializeConfirmedLedgerDeltaChainV1({
+        materializeConfirmedLedgerDeltaChain({
           record: child,
           confirmedEntries: [current],
           retrieveParent: () => Effect.succeed(Option.some(substituted)),
@@ -304,7 +303,7 @@ describe("confirmed ledger finalized-journal delta-chain recovery", () => {
 
     await expect(
       Effect.runPromise(
-        materializeConfirmedLedgerDeltaChainV1({
+        materializeConfirmedLedgerDeltaChain({
           record: candidate,
           confirmedEntries: [current],
           retrieveParent: () => Effect.succeed(Option.none()),

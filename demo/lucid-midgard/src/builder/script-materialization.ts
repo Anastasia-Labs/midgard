@@ -1,10 +1,10 @@
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramMaterialEntryV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  decodeMidgardCekProgramEnvelope,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramEnvelope,
+  type MidgardCekProgramMaterialEntry,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeHash32,
@@ -12,25 +12,25 @@ import {
   decodeMidgardNativeByteListPreimage,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardHash28ItemV1,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardHash28Item,
   encodeMidgardVersionedScript,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  midgardFieldCommitmentV1,
-  type MidgardNativeTxFullV1,
-  midgardRedeemerPurposeFromTagV1,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  midgardFieldCommitment,
+  type MidgardNativeTxFull,
+  midgardRedeemerPurposeFromTag,
   type MidgardVersionedScript,
   type ScriptLanguageName,
-  sortMidgardMintItemsV1,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  collectMidgardV1ReferencedProgramEnvelopes,
+  collectMidgardAttachedProgramEnvelopes,
+  collectMidgardReferencedProgramEnvelopes,
 } from "@al-ft/midgard-core/script-proof";
-import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 
 import { type Assets, normalizeAssets } from "../core/assets.js";
@@ -97,10 +97,10 @@ type DerivedRedeemer = {
  * narrower builder subset (§5.3 names both).
  */
 const RedeemerTags = {
-  Spend: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Spend,
-  Mint: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Mint,
-  Reward: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Reward,
-  Receive: MIDGARD_REDEEMER_PURPOSE_TAGS_V1.Receive,
+  Spend: MIDGARD_REDEEMER_PURPOSE_TAGS.Spend,
+  Mint: MIDGARD_REDEEMER_PURPOSE_TAGS.Mint,
+  Reward: MIDGARD_REDEEMER_PURPOSE_TAGS.Reward,
+  Receive: MIDGARD_REDEEMER_PURPOSE_TAGS.Receive,
 } as const;
 
 const compareCanonicalStrings = (left: string, right: string): number =>
@@ -315,13 +315,13 @@ const knownScriptSource = (
 
 export type PreparedProofBuilderState = {
   readonly state: BuilderState;
-  readonly programMaterial: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly programMaterial: readonly MidgardCekProgramMaterialEntry[];
 };
 
 export const assertCompleteTxProgramMaterial = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array> | undefined,
-  programMaterial: readonly MidgardCekProgramMaterialEntryV1[],
+  programMaterial: readonly MidgardCekProgramMaterialEntry[],
 ): void => {
   try {
     const resolved = resolvedOutputsByOutRef ?? new Map<string, Uint8Array>();
@@ -340,10 +340,10 @@ export const assertCompleteTxProgramMaterial = (
       }
     }
     const envelopes = [
-      ...collectMidgardV1AttachedProgramEnvelopes(tx),
-      ...collectMidgardV1ReferencedProgramEnvelopes(tx, resolved),
+      ...collectMidgardAttachedProgramEnvelopes(tx),
+      ...collectMidgardReferencedProgramEnvelopes(tx, resolved),
     ];
-    verifyMidgardCekProgramMaterialBundleV1(envelopes, programMaterial);
+    verifyMidgardCekProgramMaterialBundle(envelopes, programMaterial);
   } catch (cause) {
     throw new BuilderInvariantError(
       "Incomplete or mismatched CEK program material",
@@ -353,8 +353,8 @@ export const assertCompleteTxProgramMaterial = (
 };
 
 const insertProgramMaterial = (
-  material: Map<string, MidgardCekProgramMaterialEntryV1>,
-  entry: MidgardCekProgramMaterialEntryV1,
+  material: Map<string, MidgardCekProgramMaterialEntry>,
+  entry: MidgardCekProgramMaterialEntry,
 ): void => {
   const root = Buffer.from(entry.root).toString("hex");
   const prior = material.get(root);
@@ -376,13 +376,13 @@ const insertProgramMaterial = (
  * Equal roots deduplicate only when their typed preimages are byte-identical.
  */
 export const mergeCanonicalProofProgramMaterial = (
-  ...collections: readonly (readonly MidgardCekProgramMaterialEntryV1[])[]
-): readonly MidgardCekProgramMaterialEntryV1[] => {
-  const material = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  ...collections: readonly (readonly MidgardCekProgramMaterialEntry[])[]
+): readonly MidgardCekProgramMaterialEntry[] => {
+  const material = new Map<string, MidgardCekProgramMaterialEntry>();
   try {
     for (const entries of collections) {
-      const canonical = decodeMidgardCekProgramMaterialSidecarV1(
-        encodeMidgardCekProgramMaterialSidecarV1(entries),
+      const canonical = decodeMidgardCekProgramMaterialSidecar(
+        encodeMidgardCekProgramMaterialSidecar(entries),
       );
       for (const entry of canonical) {
         insertProgramMaterial(material, entry);
@@ -404,14 +404,14 @@ export const mergeCanonicalProofProgramMaterial = (
 
 const canonicalProofProgram = (
   script: MidgardVersionedScript,
-  material: Map<string, MidgardCekProgramMaterialEntryV1>,
+  material: Map<string, MidgardCekProgramMaterialEntry>,
 ): MidgardVersionedScript => {
   if (script.language === "NativeCardano") return script;
   try {
-    decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+    decodeMidgardCekProgramEnvelope(script.scriptBytes);
     return script;
   } catch {
-    const canonical = buildMidgardCanonicalCekProgramV1(script.scriptBytes);
+    const canonical = buildMidgardCanonicalCekProgram(script.scriptBytes);
     for (const entry of canonical.material.values()) {
       insertProgramMaterial(material, entry);
     }
@@ -425,10 +425,10 @@ const canonicalProofProgram = (
 const proofProgramEnvelope = (
   script: MidgardVersionedScript,
   sourceId: string,
-): MidgardCekProgramEnvelopeV1 | undefined => {
+): MidgardCekProgramEnvelope | undefined => {
   if (script.language === "NativeCardano") return undefined;
   try {
-    return decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+    return decodeMidgardCekProgramEnvelope(script.scriptBytes);
   } catch (cause) {
     throw new BuilderInvariantError(
       "V1 reference script must contain a canonical CEK program envelope",
@@ -458,7 +458,7 @@ const assertMetadataOnlyReferenceScriptMaterial = (
  */
 export const prepareProofBuilderState = (
   state: BuilderState,
-  explicitProgramMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+  explicitProgramMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
 ): PreparedProofBuilderState => {
   const material = new Map(
     mergeCanonicalProofProgramMaterial(explicitProgramMaterial).map(
@@ -507,7 +507,7 @@ export const prepareProofBuilderState = (
       } as const,
     };
   });
-  const envelopes: MidgardCekProgramEnvelopeV1[] = [];
+  const envelopes: MidgardCekProgramEnvelope[] = [];
   for (const [index, source] of scripts.entries()) {
     if (source.kind === "native") continue;
     if (source.kind === "dual-plutus-v3-midgard-v1") {
@@ -559,7 +559,7 @@ export const prepareProofBuilderState = (
     ...material.values(),
   ]);
   try {
-    verifyMidgardCekProgramMaterialBundleV1(envelopes, programMaterial);
+    verifyMidgardCekProgramMaterialBundle(envelopes, programMaterial);
   } catch (cause) {
     throw new BuilderInvariantError(
       "Incomplete or mismatched CEK program material",
@@ -770,14 +770,14 @@ const effectiveMints = (
  * empty mint is exactly `80` like every other field. The retired raw-map
  * `encode_mint_preimage` form (`a0` when empty) is prohibited.
  *
- * `sortMidgardMintItemsV1` puts the items into §5.6's canonical key order at both
- * levels; `encodeMidgardFieldPreimageForFieldV1` then *enforces* that order rather
+ * `sortMidgardMintItems` puts the items into §5.6's canonical key order at both
+ * levels; `encodeMidgardFieldPreimageForField` then *enforces* that order rather
  * than trusting it, so a builder cannot emit a preimage no decoder accepts.
  */
 const mintPreimageCbor = (mints: readonly EffectiveMint[]): Buffer =>
-  encodeMidgardFieldPreimageForFieldV1({
+  encodeMidgardFieldPreimageForField({
     fieldIndex: 5,
-    items: sortMidgardMintItemsV1(
+    items: sortMidgardMintItems(
       mints.map(({ policyId, assets }) => ({
         policyId: Buffer.from(policyId, "hex"),
         assets: Object.entries(assets).map(([assetName, quantity]) => ({
@@ -802,7 +802,7 @@ const requiredObserversPreimageCbor = (
     : encodeByteListPreimage(
         [...new Set(observers.map(({ scriptHash }) => scriptHash))]
           .sort()
-          .map((hash) => encodeMidgardHash28ItemV1(Buffer.from(hash, "hex"))),
+          .map((hash) => encodeMidgardHash28Item(Buffer.from(hash, "hex"))),
       );
 
 const pointerKey = (pointer: RedeemerPointer): string =>
@@ -968,7 +968,7 @@ const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
         ? 1
         : 0;
   });
-  return encodeMidgardFieldPreimageForFieldV1({
+  return encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items: entries.map((entry) => {
       const key = pointerKey(entry.pointer);
@@ -978,7 +978,7 @@ const encodeRedeemers = (redeemers: readonly DerivedRedeemer[]): Buffer => {
       seen.add(key);
       const exUnits = normalizeExUnits(entry.redeemer);
       return {
-        purpose: midgardRedeemerPurposeFromTagV1(entry.pointer.tag),
+        purpose: midgardRedeemerPurposeFromTag(entry.pointer.tag),
         index: entry.pointer.index,
         redeemerCbor: redeemerDataBytes(entry.redeemer),
         executionUnits: { memory: exUnits.mem, steps: exUnits.steps },
@@ -1118,9 +1118,7 @@ export const deriveScriptMaterialization = (
   }
 
   const redeemerTxWitsPreimageCbor = encodeRedeemers(redeemers);
-  const redeemerTxWitsHash = midgardFieldCommitmentV1(
-    redeemerTxWitsPreimageCbor,
-  );
+  const redeemerTxWitsHash = midgardFieldCommitment(redeemerTxWitsPreimageCbor);
   const requiredLanguages = [...languages].sort();
   return {
     requiredObserversPreimageCbor: requiredObserversPreimageCbor(

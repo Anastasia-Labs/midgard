@@ -1,6 +1,6 @@
 import { encodeCbor } from "@al-ft/midgard-core";
 import {
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   midgardAddressFromText,
   type MidgardValue,
@@ -12,13 +12,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "./ledger-output-descriptor.js";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "./ledger-output-descriptor.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
 
-export const MIDGARD_CANONICAL_TRANSITION_EFFECT_V1_SCHEMA_VERSION =
+export const MIDGARD_CANONICAL_TRANSITION_EFFECT_SCHEMA_VERSION =
   "midgard-canonical-transition-effect-v1" as const;
 
-export type CanonicalTransitionEffectRawOperationV1 =
+export type CanonicalTransitionEffectRawOperation =
   | Readonly<{ type: "delete"; outRefCbor: Buffer }>
   | Readonly<{
       type: "insert";
@@ -26,22 +26,22 @@ export type CanonicalTransitionEffectRawOperationV1 =
       outputCbor: Buffer;
     }>;
 
-export type CanonicalTransitionEffectV1 = Readonly<{
-  schemaVersion: typeof MIDGARD_CANONICAL_TRANSITION_EFFECT_V1_SCHEMA_VERSION;
-  operations: readonly CanonicalTransitionEffectRawOperationV1[];
+export type CanonicalTransitionEffect = Readonly<{
+  schemaVersion: typeof MIDGARD_CANONICAL_TRANSITION_EFFECT_SCHEMA_VERSION;
+  operations: readonly CanonicalTransitionEffectRawOperation[];
   canonicalCbor: Buffer;
   digest: string;
 }>;
 
-export type CanonicalDepositAddressCredentialV1 =
+export type CanonicalDepositAddressCredential =
   | Readonly<{ PublicKeyCredential: readonly [string] }>
   | Readonly<{ ScriptCredential: readonly [string] }>;
 
-export type CanonicalDepositAddressDataV1 = Readonly<{
-  paymentCredential: CanonicalDepositAddressCredentialV1;
+export type CanonicalDepositAddressData = Readonly<{
+  paymentCredential: CanonicalDepositAddressCredential;
   stakeCredential:
     | Readonly<{
-        Inline: readonly [CanonicalDepositAddressCredentialV1];
+        Inline: readonly [CanonicalDepositAddressCredential];
       }>
     | Readonly<{
         Pointer: readonly [
@@ -56,7 +56,7 @@ export type CanonicalDepositAddressDataV1 = Readonly<{
 }>;
 
 const lucidCredential = (
-  value: CanonicalDepositAddressCredentialV1,
+  value: CanonicalDepositAddressCredential,
 ): Credential =>
   "PublicKeyCredential" in value
     ? { type: "Key", hash: value.PublicKeyCredential[0] }
@@ -119,7 +119,7 @@ const projectedDepositValue = (input: {
 const canonicalOutRefCbor = (value: Uint8Array): Buffer => {
   const source = Buffer.from(value);
   const decoded = decodeMidgardOutRefBytes(source);
-  const canonical = encodeMidgardSpendInputItemV1({
+  const canonical = encodeMidgardSpendInputItem({
     txId: decoded.txId,
     outputIndex: Number(decoded.index),
   });
@@ -132,7 +132,7 @@ const canonicalOutRefCbor = (value: Uint8Array): Buffer => {
 };
 
 const canonicalOperationCbor = (
-  operation: CanonicalTransitionEffectRawOperationV1,
+  operation: CanonicalTransitionEffectRawOperation,
 ): readonly unknown[] =>
   operation.type === "delete"
     ? [0n, operation.outRefCbor]
@@ -143,9 +143,9 @@ const canonicalOperationCbor = (
  * independent replay consumers. The operation order is significant: it is the
  * producer's state-transition order and is committed by both CBOR and digest.
  */
-export const buildCanonicalTransitionEffectV1 = (
-  operations: readonly CanonicalTransitionEffectRawOperationV1[],
-): CanonicalTransitionEffectV1 => {
+export const buildCanonicalTransitionEffect = (
+  operations: readonly CanonicalTransitionEffectRawOperation[],
+): CanonicalTransitionEffect => {
   const seenOutRefs = new Set<string>();
   const canonicalOperations = operations.map((operation) => {
     const outRefCbor = canonicalOutRefCbor(operation.outRefCbor);
@@ -161,7 +161,7 @@ export const buildCanonicalTransitionEffectV1 = (
       });
     }
     const outputCbor = Buffer.from(operation.outputCbor);
-    buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    buildCanonicalMidgardLedgerEntryOutputMaterial({
       outRef: outRefCbor,
       outputCbor,
     });
@@ -176,18 +176,18 @@ export const buildCanonicalTransitionEffectV1 = (
     canonicalOperations.map(canonicalOperationCbor),
   ]);
   return Object.freeze({
-    schemaVersion: MIDGARD_CANONICAL_TRANSITION_EFFECT_V1_SCHEMA_VERSION,
+    schemaVersion: MIDGARD_CANONICAL_TRANSITION_EFFECT_SCHEMA_VERSION,
     operations: Object.freeze(canonicalOperations),
     canonicalCbor,
     digest: Buffer.from(sha256(canonicalCbor)).toString("hex"),
   });
 };
 
-export const canonicalTransitionEffectFromStatePatchV1 = (patch: {
+export const canonicalTransitionEffectFromStatePatch = (patch: {
   readonly deletedOutRefs: readonly string[];
   readonly upsertedOutRefs: readonly (readonly [string, Buffer])[];
-}): CanonicalTransitionEffectV1 =>
-  buildCanonicalTransitionEffectV1([
+}): CanonicalTransitionEffect =>
+  buildCanonicalTransitionEffect([
     ...patch.deletedOutRefs.map((outRefHex) => ({
       type: "delete" as const,
       outRefCbor: Buffer.from(outRefHex, "hex"),
@@ -199,11 +199,11 @@ export const canonicalTransitionEffectFromStatePatchV1 = (patch: {
     })),
   ]);
 
-export const canonicalDepositTransitionEffectV1 = (entry: {
+export const canonicalDepositTransitionEffect = (entry: {
   readonly outRefCbor: Uint8Array;
   readonly outputCbor: Uint8Array;
-}): CanonicalTransitionEffectV1 =>
-  buildCanonicalTransitionEffectV1([
+}): CanonicalTransitionEffect =>
+  buildCanonicalTransitionEffect([
     {
       type: "insert",
       outRefCbor: Buffer.from(entry.outRefCbor),
@@ -212,19 +212,19 @@ export const canonicalDepositTransitionEffectV1 = (entry: {
   ]);
 
 /** Exact deposit producer projection used by both ingestion and replay. */
-export const deriveCanonicalDepositTransitionEffectV1 = (input: {
+export const deriveCanonicalDepositTransitionEffect = (input: {
   readonly configuredNetwork: Network;
   readonly eventId: Readonly<{
     transactionId: string;
     outputIndex: bigint;
   }>;
   readonly l2NetworkId: bigint;
-  readonly l2Address: CanonicalDepositAddressDataV1;
+  readonly l2Address: CanonicalDepositAddressData;
   readonly l2DatumCbor: Uint8Array | null;
   readonly l1Assets: Readonly<Record<string, bigint>>;
   readonly depositPolicyId: string;
   readonly depositAssetNameHex: string;
-}): CanonicalTransitionEffectV1 => {
+}): CanonicalTransitionEffect => {
   const network = depositNetwork(input.configuredNetwork, input.l2NetworkId);
   const stakeCredential =
     input.l2Address.stakeCredential === null
@@ -249,18 +249,18 @@ export const deriveCanonicalDepositTransitionEffectV1 = (input: {
           },
         }),
   });
-  const outRefCbor = encodeMidgardSpendInputItemV1({
+  const outRefCbor = encodeMidgardSpendInputItem({
     txId: Buffer.from(input.eventId.transactionId, "hex"),
     outputIndex: Number(input.eventId.outputIndex),
   });
-  return canonicalDepositTransitionEffectV1({ outRefCbor, outputCbor });
+  return canonicalDepositTransitionEffect({ outRefCbor, outputCbor });
 };
 
-export const canonicalCommittedWithdrawalTransitionEffectV1 = (input: {
+export const canonicalCommittedWithdrawalTransitionEffect = (input: {
   readonly committedValid: boolean;
   readonly outRefCbor: Uint8Array;
-}): CanonicalTransitionEffectV1 =>
-  buildCanonicalTransitionEffectV1(
+}): CanonicalTransitionEffect =>
+  buildCanonicalTransitionEffect(
     input.committedValid
       ? [
           {

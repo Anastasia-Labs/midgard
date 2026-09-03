@@ -1,7 +1,7 @@
 import {
   buildMidgardValidationTraceTree,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationRejectionCode,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
@@ -12,7 +12,7 @@ import {
   ROOT_DOMAINS,
   validationMachineStateDataFromCore,
   validationTraceDescriptorDataFromCore,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import type {
@@ -25,18 +25,18 @@ import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
-import { NativeScriptsControlV1Schema } from "./schemas-v1.js";
-import type { ExecutionSourceAuthenticationDataV1 } from "./submit-step-02-v1.js";
+import { NativeScriptsControlSchema } from "./schemas-v1.js";
+import type { ExecutionSourceAuthenticationData } from "./submit-step-02-v1.js";
 
-export type ExecutionSourceMachineAuthenticationV1 = Readonly<{
+export type ExecutionSourceMachineAuthentication = Readonly<{
   validationTracesRoot: string;
   validationTraceCount: bigint;
-  authentication: ExecutionSourceAuthenticationDataV1;
+  authentication: ExecutionSourceAuthenticationData;
 }>;
 
-export const executionSourceNativeControlFromCborV1 = (
+export const executionSourceNativeControlFromCbor = (
   bytes: Buffer,
-): Data.Static<typeof NativeScriptsControlV1Schema> => {
+): Data.Static<typeof NativeScriptsControlSchema> => {
   const decoded = decodeSingleCbor(bytes);
   if (!Array.isArray(decoded) || decoded.length !== 26)
     throw new Error("missingScriptSource native control shape changed");
@@ -78,7 +78,7 @@ export const executionSourceNativeControlFromCborV1 = (
 };
 
 /** Reconstructs step-02 solely from deterministic public replay output. */
-export const buildExecutionSourceMachineAuthenticationV1 = async ({
+export const buildExecutionSourceMachineAuthentication = async ({
   trace,
   eventKey,
   claimedVerdict,
@@ -95,7 +95,7 @@ export const buildExecutionSourceMachineAuthenticationV1 = async ({
     value: Uint8Array;
   }>[];
   expectedValidationTracesRoot?: string;
-}): Promise<ExecutionSourceMachineAuthenticationV1> => {
+}): Promise<ExecutionSourceMachineAuthentication> => {
   const stateIndex = trace.witnesses.findIndex(
     ({ phase, auxiliary }) =>
       phase === "nativeScripts" &&
@@ -115,9 +115,9 @@ export const buildExecutionSourceMachineAuthenticationV1 = async ({
   const rejectionCodeHash =
     claimedRejectionCode === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCodeV1(claimedRejectionCode);
+      : hashMidgardValidationRejectionCode(claimedRejectionCode);
   const tree = buildMidgardValidationTraceTree(
-    trace.states.map(hashMidgardValidationMachineStateV1),
+    trace.states.map(hashMidgardValidationMachineState),
     claimedVerdict,
     rejectionCodeHash,
   );
@@ -127,7 +127,7 @@ export const buildExecutionSourceMachineAuthenticationV1 = async ({
   );
   const descriptor = validationTraceDescriptorDataFromCore(tree.descriptor);
   const valueCbor = Buffer.from(
-    Data.to(descriptor as never, ValidationTraceDescriptorV1Schema),
+    Data.to(descriptor as never, ValidationTraceDescriptorSchema),
     "hex",
   );
   const entries =
@@ -153,8 +153,8 @@ export const buildExecutionSourceMachineAuthenticationV1 = async ({
     keyCbor,
     valueCbor,
   );
-  const control = executionSourceNativeControlFromCborV1(witness.cbor);
-  const authentication: ExecutionSourceAuthenticationDataV1 = {
+  const control = executionSourceNativeControlFromCbor(witness.cbor);
+  const authentication: ExecutionSourceAuthenticationData = {
     trace_membership: {
       domain: root.domain,
       root: root.root,
@@ -170,7 +170,7 @@ export const buildExecutionSourceMachineAuthenticationV1 = async ({
     trace_proof: validationTraceProofDataFromCore(tree.proofs[stateIndex]!),
     control: control as never,
     control_data: Data.from(
-      Data.to(control as never, NativeScriptsControlV1Schema as never),
+      Data.to(control as never, NativeScriptsControlSchema as never),
     ),
     absolute_purpose_index: auxiliary.purpose.purposeIndex,
     required_script_hash: auxiliary.purpose.scriptHash.toString("hex"),

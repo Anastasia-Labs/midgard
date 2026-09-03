@@ -16,10 +16,10 @@
  */
 import {
   commitCountedRootProgram,
-  daHashPreimageEvidenceFromCommittedLeafV1,
+  daHashPreimageEvidenceFromCommittedLeaf,
   DaHashPreimageStep01SpendRedeemer,
   DaHashPreimageStep02Datum,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   Proof,
@@ -69,14 +69,14 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared committed-leaf inclusion produced by `prepare-da-hash-preimage`. */
@@ -148,7 +148,7 @@ export type SubmitDaHashPreimageStep01Result = {
   readonly secondStepAddress: string;
   readonly committedTxId: string;
   readonly verdict: ReturnType<
-    typeof daHashPreimageEvidenceFromCommittedLeafV1
+    typeof daHashPreimageEvidenceFromCommittedLeaf
   >["verdict"];
   readonly embeddedTxId: string | null;
   readonly derivedTxId: string | null;
@@ -192,8 +192,8 @@ export const submitDaHashPreimageStep01 = async ({
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDaHashPreimageStep01Result> => {
   const resolvedDeployment = await resolveDaHashPreimageDeploymentContracts({
@@ -261,7 +261,7 @@ export const submitDaHashPreimageStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
 
   // Re-derive the counted commitment the L1 verifier will check, from the
@@ -280,7 +280,7 @@ export const submitDaHashPreimageStep01 = async ({
   }
 
   // Re-run the rule over the committed leaf bytes.
-  const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
+  const evidence = daHashPreimageEvidenceFromCommittedLeaf({
     committedTxId: txInclusion.committedTxId,
     committedLeafValue: Buffer.from(txInclusion.committedLeafValueCbor, "hex"),
   });
@@ -300,12 +300,12 @@ export const submitDaHashPreimageStep01 = async ({
     network,
     phasMembershipScript,
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.daHashPreimage.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "da-hash-preimage step 01 validator",
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: "da-hash-preimage step 01 PHAS membership",
@@ -421,9 +421,9 @@ export const submitDaHashPreimageStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -1,40 +1,40 @@
 import {
   buildMidgardValidationTraceTree,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  hashMidgardValidationLedgerDeltaV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
-  hashMidgardValidationWorkWitnessV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationLedgerDelta,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationRejectionCode,
+  hashMidgardValidationWorkWitness,
+  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1,
+  ForcedInclusionTxSchema,
+  Header,
   OutputReference,
   ROOT_DOMAINS,
   TransitionStepSchema,
-  type ValidationClaimWitnessV1,
+  type ValidationClaimWitness,
   validationMachineStateDataFromCore,
   validationTraceDescriptorDataFromCore,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationDisputeEvidenceBundleV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationDisputeEvidenceBundle,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
-  outputCborMeetsMinAdaV1,
+  outputCborMeetsMinAda,
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -53,8 +53,8 @@ import {
 } from "./header-fixtures.js";
 import { makeNativeTx } from "./native-tx.js";
 
-export type ForcedValidationSourceEntryV1 = NonNullable<
-  ValidationClaimWitnessV1["source_membership"] extends infer Source
+export type ForcedValidationSourceEntry = NonNullable<
+  ValidationClaimWitness["source_membership"] extends infer Source
     ? Source extends {
         ForcedValidationSource: { membership: { value: infer V } };
       }
@@ -88,13 +88,13 @@ export const buildForcedValidationDisputeCommitments = async ({
       readonly tx_order_id: OutputReference;
     };
   };
-  readonly forcedTransaction: ForcedValidationSourceEntryV1;
+  readonly forcedTransaction: ForcedValidationSourceEntry;
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly preUtxosRoot: string;
   readonly postUtxosRoot: string;
 }): Promise<{
-  readonly header: HeaderV1;
-  readonly claim: ValidationClaimWitnessV1;
+  readonly header: Header;
+  readonly claim: ValidationClaimWitness;
 }> => {
   const step = {
     schema_version: 1n,
@@ -115,7 +115,7 @@ export const buildForcedValidationDisputeCommitments = async ({
     key: txOrderId,
     keySchema: OutputReference as never,
     value: forcedTransaction,
-    valueSchema: ForcedInclusionTxV1Schema,
+    valueSchema: ForcedInclusionTxSchema,
   });
   const transitionEntry = transitionTraceDaEntry({
     key: step.step_index,
@@ -133,7 +133,7 @@ export const buildForcedValidationDisputeCommitments = async ({
     key: eventKey,
     keySchema: EventKeySchema,
     value: operatorDescriptor,
-    valueSchema: ValidationTraceDescriptorV1Schema,
+    valueSchema: ValidationTraceDescriptorSchema,
   });
   const forcedRoot = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
     {
@@ -177,7 +177,7 @@ export const buildForcedValidationDisputeCommitments = async ({
       Buffer.from(entry[1], "hex"),
     ),
   });
-  const claim: ValidationClaimWitnessV1 = {
+  const claim: ValidationClaimWitness = {
     version: 1n,
     descriptor_membership: {
       ...(await membership(descriptorRoot, descriptorEntry)),
@@ -216,7 +216,7 @@ export const buildForcedValidationDisputeCommitments = async ({
       operatorTrace.tree.proofs.at(-1)!,
     ),
   };
-  const header: HeaderV1 = {
+  const header: Header = {
     ...makeHeader(operatorVkey, now),
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: transitionRoot.root,
@@ -237,11 +237,12 @@ export const buildForcedValidationDisputeCommitments = async ({
  * pre-state in which the deleted `rejected_successor_is_exact` clause was
  * satisfiable.
  */
-export const EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1 =
-  hashMidgardValidationLedgerDeltaV1([]);
+export const EMPTY_CLAIMED_LEDGER_DELTA_ROOT = hashMidgardValidationLedgerDelta(
+  [],
+);
 
 export const outRefCbor = (byte: number, index = 0n): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.alloc(32, byte),
     outputIndex: Number(index),
   });
@@ -255,12 +256,12 @@ export const plainOutputCbor = (lovelace: bigint): Buffer =>
 /**
  * Produces a genuine non-empty claimed ledger-delta commitment through exactly
  * the reference-builder pipeline an accepted transaction uses
- * (`hashMidgardValidationLedgerDeltaV1` over authenticated delete/insert
+ * (`hashMidgardValidationLedgerDelta` over authenticated delete/insert
  * operations carrying real MPF proof descriptors). The value is deliberately
  * *not* synthesised: it is the commitment a real one-input/one-output L2
  * transaction claims.
  */
-export const buildNonEmptyClaimedLedgerDeltaRootV1 =
+export const buildNonEmptyClaimedLedgerDeltaRoot =
   async (): Promise<Buffer> => {
     const spent = outRefCbor(0x9c);
     const produced = outRefCbor(0x9d);
@@ -270,13 +271,13 @@ export const buildNonEmptyClaimedLedgerDeltaRootV1 =
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: [
         { type: "delete", key: spent },
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: produced,
           outputCbor: producedOutput,
         }),
       ],
     });
-    return hashMidgardValidationLedgerDeltaV1(
+    return hashMidgardValidationLedgerDelta(
       mutationSteps.map(({ operation, proofFoldTrace }) => ({
         ...operation,
         proofDescriptor: proofFoldTrace.descriptor,
@@ -293,7 +294,7 @@ export const restampTraceLedgerDeltaRoot = (
     ...trace,
     states,
     tree: buildMidgardValidationTraceTree(
-      states.map(hashMidgardValidationMachineStateV1),
+      states.map(hashMidgardValidationMachineState),
       trace.verdict,
       states.at(-1)!.rejectionCodeHash,
     ),
@@ -321,7 +322,7 @@ export const replaceTerminalState = (
     ...trace,
     states,
     tree: buildMidgardValidationTraceTree(
-      states.map(hashMidgardValidationMachineStateV1),
+      states.map(hashMidgardValidationMachineState),
       verdict,
       rejectionCodeHash,
     ),
@@ -336,7 +337,7 @@ export const replaceTerminalState = (
  * `hash_work_witness(Terminal, pre.program_counter + 1,
  * encode_terminal_rejection_witness(rejection_code, pre.prior_ledger_root))`.
  */
-export const rejectingTerminalWorkRootV1 = ({
+export const rejectingTerminalWorkRoot = ({
   programCounter,
   rejectionCode,
   priorLedgerRoot,
@@ -346,7 +347,7 @@ export const rejectingTerminalWorkRootV1 = ({
   readonly priorLedgerRoot: Buffer;
 }): Buffer =>
   Buffer.from(
-    hashMidgardValidationWorkWitnessV1({
+    hashMidgardValidationWorkWitness({
       phase: "terminal",
       programCounter,
       witnessCbor: encodeCbor([
@@ -359,14 +360,14 @@ export const rejectingTerminalWorkRootV1 = ({
   );
 
 export type ForcedValidationDisputeFixture = {
-  readonly header: HeaderV1;
-  readonly claim: ValidationClaimWitnessV1;
+  readonly header: Header;
+  readonly claim: ValidationClaimWitness;
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
   readonly challengerDescriptor: ReturnType<
     typeof validationTraceDescriptorDataFromCore
   >;
-  readonly evidence: ReturnType<typeof buildValidationDisputeEvidenceBundleV1>;
+  readonly evidence: ReturnType<typeof buildValidationDisputeEvidenceBundle>;
   readonly claimedLedgerDeltaRoot: Buffer;
 };
 
@@ -408,10 +409,10 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
     fee: 0n,
     outputCbor: plainOutputCbor(100_000_000n),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
-  const transactionId = computeMidgardNativeTxIdV1(forcedNativeTx);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
+  const transactionId = computeMidgardNativeTxId(forcedNativeTx);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
     source: {
@@ -425,7 +426,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
   };
   const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
       sourceKind: "forced",
       blockEndTimeMs: now + 1_000,
@@ -457,7 +458,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
     ? replaceTerminalState(restamped, {
         terminal: {
           ...restamped.states.at(-1)!,
-          ledgerDeltaRoot: EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1,
+          ledgerDeltaRoot: EMPTY_CLAIMED_LEDGER_DELTA_ROOT,
         },
         verdict: "rejected",
         rejectionCode: restamped.rejectionCode,
@@ -475,7 +476,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
     rejectionCode: null,
     rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   });
-  const evidence = buildValidationDisputeEvidenceBundleV1({
+  const evidence = buildValidationDisputeEvidenceBundle({
     operatorTrace,
     challengerTrace,
     currentTime: now + 2_000,
@@ -509,7 +510,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
  * shape is on the order of a million lovelace, so this is a decisive miss,
  * and the fixture asserts the miss rather than trusting the arithmetic.
  */
-const MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1 = 100_000n;
+const MIN_ADA_JOURNEY_OUTPUT_LOVELACE = 100_000n;
 
 /**
  * R8 of decision 0005 (#618) / the #627 ruling: the end-to-end journey for the
@@ -559,23 +560,23 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
   const spentOutRef = outRefCbor(0x8b);
   const spentOutput = encodeMidgardTxOutput({
     address: spendingAddress,
-    value: { lovelace: MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1, assets: new Map() },
+    value: { lovelace: MIN_ADA_JOURNEY_OUTPUT_LOVELACE, assets: new Map() },
   });
   const producedOutput = encodeMidgardTxOutput({
     address: spendingAddress,
-    value: { lovelace: MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1, assets: new Map() },
+    value: { lovelace: MIN_ADA_JOURNEY_OUTPUT_LOVELACE, assets: new Map() },
   });
   // Measured, not assumed: this fixture only means anything if the produced
   // output really is below the floor the wiring convicts on.
   expect(
-    outputCborMeetsMinAdaV1(producedOutput, MIN_ADA_JOURNEY_OUTPUT_LOVELACE_V1),
+    outputCborMeetsMinAda(producedOutput, MIN_ADA_JOURNEY_OUTPUT_LOVELACE),
   ).toBe(false);
   const unsignedTx = makeNativeTx({
     spendInputCbors: [spentOutRef],
     fee: 0n,
     outputCbor: producedOutput,
   });
-  const transactionId = computeMidgardNativeTxIdV1(unsignedTx);
+  const transactionId = computeMidgardNativeTxId(unsignedTx);
   const forcedNativeTx = makeNativeTx({
     spendInputCbors: [spentOutRef],
     fee: 0n,
@@ -589,9 +590,9 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
       ),
     ]),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
     source: {
@@ -613,7 +614,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
   const utxosRoot = ledgerRootProbe[0]!.preRoot.toString("hex");
   const challengerTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
       sourceKind: "forced",
       blockEndTimeMs: now + 1_000,
@@ -646,7 +647,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
     rejectionCode: null,
     rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   });
-  const evidence = buildValidationDisputeEvidenceBundleV1({
+  const evidence = buildValidationDisputeEvidenceBundle({
     operatorTrace,
     challengerTrace,
     currentTime: now + 2_000,
@@ -698,7 +699,7 @@ export const buildAcceptedClaimOverMinAdaRejectingTransactionFixture = async ({
  * of its steps. `txOrderSeed` keeps the forced-event keys of the fixtures
  * distinct.
  */
-const buildHonestAcceptedNativeTransactionTraceV1 = async ({
+const buildHonestAcceptedNativeTransactionTrace = async ({
   now,
   txOrderSeed,
 }: {
@@ -730,7 +731,7 @@ const buildHonestAcceptedNativeTransactionTraceV1 = async ({
     fee: 0n,
     outputCbor: producedOutput,
   });
-  const transactionId = computeMidgardNativeTxIdV1(unsignedTx);
+  const transactionId = computeMidgardNativeTxId(unsignedTx);
   const forcedNativeTx = makeNativeTx({
     spendInputCbors: [spentOutRef],
     fee: 0n,
@@ -744,9 +745,9 @@ const buildHonestAcceptedNativeTransactionTraceV1 = async ({
       ),
     ]),
   });
-  const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardNativeTxCanonical(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
     source: {
@@ -758,13 +759,13 @@ const buildHonestAcceptedNativeTransactionTraceV1 = async ({
     },
     verdict: "ForcedTxValid" as const,
   };
-  const producedOutRef = encodeMidgardSpendInputItemV1({
+  const producedOutRef = encodeMidgardSpendInputItem({
     txId: transactionId,
     outputIndex: 0,
   });
   const expectedLedgerOps = [
     { type: "delete" as const, key: spentOutRef },
-    buildValidationMachineLedgerInsertOpV1({
+    buildValidationMachineLedgerInsertOp({
       key: producedOutRef,
       outputCbor: producedOutput,
     }),
@@ -777,7 +778,7 @@ const buildHonestAcceptedNativeTransactionTraceV1 = async ({
   const postUtxosRoot = ledgerMutationSteps.at(-1)!.postRoot.toString("hex");
   const honestTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeData(eventKey, EventKeySchema),
       sourceKind: "forced",
       blockEndTimeMs: now + 1_000,
@@ -838,7 +839,7 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     honestTrace: operatorTrace,
     preUtxosRoot,
     postUtxosRoot,
-  } = await buildHonestAcceptedNativeTransactionTraceV1({
+  } = await buildHonestAcceptedNativeTransactionTrace({
     now,
     txOrderSeed: "e3",
   });
@@ -856,14 +857,14 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     ...preState,
     phase: "terminal" as const,
     programCounter: preState.programCounter + 1,
-    workRoot: rejectingTerminalWorkRootV1({
+    workRoot: rejectingTerminalWorkRoot({
       programCounter: preState.programCounter + 1,
       rejectionCode: forgedRejectionCode,
       priorLedgerRoot: preState.priorLedgerRoot,
     }),
     verdict: "rejected" as const,
     rejectionCodeHash: Buffer.from(
-      hashMidgardValidationRejectionCodeV1(forgedRejectionCode),
+      hashMidgardValidationRejectionCode(forgedRejectionCode),
     ),
   };
   const challengerStates = operatorTrace.states.map((state, index) =>
@@ -873,14 +874,14 @@ export const buildHonestAcceptedValidationDisputeFixture = async ({
     ...operatorTrace,
     states: challengerStates,
     tree: buildMidgardValidationTraceTree(
-      challengerStates.map(hashMidgardValidationMachineStateV1),
+      challengerStates.map(hashMidgardValidationMachineState),
       "rejected",
       forgedTerminal.rejectionCodeHash,
     ),
     verdict: "rejected",
     rejectionCode: forgedRejectionCode,
   };
-  const evidence = buildValidationDisputeEvidenceBundleV1({
+  const evidence = buildValidationDisputeEvidenceBundle({
     operatorTrace,
     challengerTrace,
     currentTime: now + 2_000,
@@ -948,7 +949,7 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     honestTrace: challengerTrace,
     preUtxosRoot,
     postUtxosRoot,
-  } = await buildHonestAcceptedNativeTransactionTraceV1({
+  } = await buildHonestAcceptedNativeTransactionTrace({
     now,
     txOrderSeed: disputedPhase === "cek" ? "e4" : "e5",
   });
@@ -982,12 +983,12 @@ export const buildForgedOperatorSuccessorValidationDisputeFixture = async ({
     ...challengerTrace,
     states: operatorStates,
     tree: buildMidgardValidationTraceTree(
-      operatorStates.map(hashMidgardValidationMachineStateV1),
+      operatorStates.map(hashMidgardValidationMachineState),
       "accepted",
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     ),
   };
-  const evidence = buildValidationDisputeEvidenceBundleV1({
+  const evidence = buildValidationDisputeEvidenceBundle({
     operatorTrace,
     challengerTrace,
     currentTime: now + 2_000,

@@ -50,13 +50,13 @@ const repoRoot = path.resolve(testDir, "../../..");
  * #584 retired `transaction_commitment` from the committed source leaves without
  * regenerating `plutus.json`, so four rows compare a two- or three-field SDK
  * schema against a stale three- or four-field blueprint definition and fail on
- * the field count: `ForcedInclusionTxV1Schema`, `L2TransactionSourceV1Schema`,
- * `ValidationSourceMembershipV1Schema` and `ValidationClaimWitnessV1Schema`.
+ * the field count: `ForcedInclusionTxSchema`, `L2TransactionSourceSchema`,
+ * `ValidationSourceMembershipSchema` and `ValidationClaimWitnessSchema`.
  *
  * #587 then retired the counted publication receipt chain, which took
  * `terminal_receipt_reference` out of `TxOrderPayloadV1`. That is the same kind of
- * staleness and it moves three more rows red — `TxOrderPayloadV1Schema` on its own
- * field count, and `TxOrderEventV1Schema` and `TxOrderDatumV1Schema` because both
+ * staleness and it moves three more rows red — `TxOrderPayloadSchema` on its own
+ * field count, and `TxOrderEventSchema` and `TxOrderDatumSchema` because both
  * embed the payload — for a total of **seven** rows against this blueprint. The
  * two mappings for the retired receipt datums, and the one for the retired receipt
  * mint redeemer, were removed rather than left to fail: a red row measures a stale
@@ -66,7 +66,7 @@ const repoRoot = path.resolve(testDir, "../../..");
  * #594 then re-expressed `verify_order_material` on the §8.8 field-access door and
  * gave the tx-order minting policy its own redeemer — `user_events.MintRedeemer`
  * wrapped beside the §8 carriage vector. That adds an **eighth** red row,
- * `TxOrderMintRedeemerV1Schema`, and it is red for a different reason from the
+ * `TxOrderMintRedeemerSchema`, and it is red for a different reason from the
  * other seven: they compare a moved SDK schema against a stale blueprint
  * definition and fail on field count, while this one has **no blueprint definition
  * at all** (`missing Aiken blueprint definition
@@ -190,59 +190,56 @@ const normalizeSchema = (
 const ABI_MAPPINGS = [
   ["ProofStepSchema", "aiken/merkle_patricia_forestry/ProofStep"],
   ["NeighborSchema", "aiken/merkle_patricia_forestry/Neighbor"],
-  ["HeaderV1Schema", "midgard/ledger_state/HeaderV1"],
+  ["HeaderSchema", "midgard/ledger_state/HeaderV1"],
   ["TransitionStepSchema", "midgard/ledger_state/TransitionStep"],
   ["EventKeySchema", "midgard/ledger_state/EventKey"],
   ["EventToStepValueSchema", "midgard/ledger_state/EventToStepValue"],
-  ["ForcedInclusionTxV1Schema", "midgard/ledger_state/ForcedInclusionTxV1"],
-  ["L2TransactionSourceV1Schema", "midgard/ledger_state/L2TransactionSourceV1"],
-  ["NativeTxProofSourceV1Schema", "midgard/ledger_state/NativeTxProofSourceV1"],
-  ["TxOrderPayloadV1Schema", "midgard/ledger_state/TxOrderPayloadV1"],
-  ["TxOrderEventV1Schema", "midgard/ledger_state/TxOrderEventV1"],
+  ["ForcedInclusionTxSchema", "midgard/ledger_state/ForcedInclusionTxV1"],
+  ["L2TransactionSourceSchema", "midgard/ledger_state/L2TransactionSourceV1"],
+  ["NativeTxProofSourceSchema", "midgard/ledger_state/NativeTxProofSourceV1"],
+  ["TxOrderPayloadSchema", "midgard/ledger_state/TxOrderPayloadV1"],
+  ["TxOrderEventSchema", "midgard/ledger_state/TxOrderEventV1"],
   // `TxFieldPreimageV1Schema` and `TxFieldReceiptV1Schema` were mapped here until
   // #587 retired both twins with the counted publication receipt chain. Their
   // Aiken definitions are still in the frozen blueprint and go with it when #579
   // regenerates; a mapping kept for them would assert a retired surface rather
   // than measure a stale one.
   [
-    "CekProgramMaterialDatumV1Schema",
+    "CekProgramMaterialDatumSchema",
     "midgard/ledger_state/CekProgramMaterialDatumV1",
   ],
-  ["TxOrderDatumV1Schema", "midgard/user_events/tx_order_v1/Datum"],
+  ["TxOrderDatumSchema", "midgard/user_events/tx_order_v1/Datum"],
   [
-    "TxOrderSpendRedeemerV1Schema",
+    "TxOrderSpendRedeemerSchema",
     "midgard/user_events/tx_order_v1/SpendRedeemer",
   ],
+  ["TxOrderMintRedeemerSchema", "midgard/user_events/tx_order_v1/MintRedeemer"],
   [
-    "TxOrderMintRedeemerV1Schema",
-    "midgard/user_events/tx_order_v1/MintRedeemer",
-  ],
-  [
-    "ValidationMachineStateV1Schema",
+    "ValidationMachineStateSchema",
     "midgard/validation_trace_v1/ValidationMachineStateV1",
   ],
   [
-    "ValidationTraceDescriptorV1Schema",
+    "ValidationTraceDescriptorSchema",
     "midgard/validation_trace_v1/ValidationTraceDescriptorV1",
   ],
   [
-    "ValidationTraceProofV1Schema",
+    "ValidationTraceProofSchema",
     "midgard/validation_trace_v1/ValidationTraceProof",
   ],
   [
-    "ValidationDisputeV1Schema",
+    "ValidationDisputeSchema",
     "midgard/validation_dispute_v1/ValidationDisputeV1",
   ],
   [
-    "ValidationSourceMembershipV1Schema",
+    "ValidationSourceMembershipSchema",
     "midgard/validation_claim_v1/ValidationSourceMembershipV1",
   ],
   [
-    "ValidationClaimWitnessV1Schema",
+    "ValidationClaimWitnessSchema",
     "midgard/validation_claim_v1/ValidationClaimWitnessV1",
   ],
-  ["OperatorVerdictV1Schema", "midgard/rejection_reason_v1/OperatorVerdictV1"],
-  ["RejectionReasonV1Schema", "midgard/rejection_reason_v1/RejectionReasonV1"],
+  ["OperatorVerdictSchema", "midgard/rejection_reason_v1/OperatorVerdictV1"],
+  ["RejectionReasonSchema", "midgard/rejection_reason_v1/RejectionReasonV1"],
   // `MidgardTxValiditySchema` has no row: after the #640 format wave no
   // validator ABI mentions `midgard/ledger_state/MidgardTxValidity` — the
   // forced leaf carries `OperatorVerdictV1` and the compact wire carries the
@@ -256,7 +253,7 @@ const ABI_MAPPINGS = [
   // (`MIDGARD_REAL_BLUEPRINT_PATH`), so what these rows measure at #579 is the
   // publication and not a shape disagreement.
   [
-    "CommittedFieldClaimV1Schema",
+    "CommittedFieldClaimSchema",
     "midgard/fraud_proofs/canonical_decodability/rule/CommittedFieldClaimV1",
   ],
   [
@@ -330,13 +327,13 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
       [],
     );
 
-    const productionSources = [
+    const sources = [
       "demo/midgard-sdk/src/user-events/tx-order.ts",
       "demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts",
       "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
       "onchain/aiken/validators/user-events/tx-order-v1.ak",
     ];
-    for (const relativePath of productionSources) {
+    for (const relativePath of sources) {
       expect(
         readFileSync(path.join(repoRoot, relativePath), "utf8"),
         relativePath,

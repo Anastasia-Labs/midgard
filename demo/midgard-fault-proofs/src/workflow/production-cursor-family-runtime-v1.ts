@@ -7,41 +7,39 @@ import {
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "./deployment-manifest-binding-v1.js";
-import type { FraudProofWorkflowActionV1 } from "./orchestrator-v1.js";
-import { PRODUCTION_CURSOR_FAMILY_ACTION_V1 } from "./production-cursor-family-state-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding-v1.js";
+import type { FraudProofWorkflowAction } from "./orchestrator-v1.js";
+import { CURSOR_FAMILY_ACTION } from "./production-cursor-family-state-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export type ProductionCursorFamilyActionInputV1 = Readonly<
-  Record<string, unknown>
-> &
+export type CursorFamilyActionInput = Readonly<Record<string, unknown>> &
   Readonly<{ stage: string }>;
 
-export const productionCursorFamilyActionInputV1 = <
+export const cursorFamilyActionInput = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
   action,
 }: {
   readonly category: Category;
-  readonly action: FraudProofWorkflowActionV1;
-}): ProductionCursorFamilyActionInputV1 => {
+  readonly action: FraudProofWorkflowAction;
+}): CursorFamilyActionInput => {
   const input = action.input;
   if (
-    input.schemaVersion !== PRODUCTION_CURSOR_FAMILY_ACTION_V1 ||
+    input.schemaVersion !== CURSOR_FAMILY_ACTION ||
     input.category !== category ||
     typeof input.stage !== "string"
   ) {
     throw new Error(`${category} cursor action changed identity`);
   }
-  return input as ProductionCursorFamilyActionInputV1;
+  return input as CursorFamilyActionInput;
 };
 
-export const productionCursorStringFieldV1 = (
+export const cursorStringField = (
   input: Readonly<Record<string, unknown>>,
   field: string,
 ): string => {
@@ -52,7 +50,7 @@ export const productionCursorStringFieldV1 = (
   return value;
 };
 
-export const captureProductionCursorRemovalV1 = async <
+export const captureCursorRemoval = async <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
@@ -73,14 +71,12 @@ export const captureProductionCursorRemovalV1 = async <
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly headerHash: string;
-  readonly input: ProductionCursorFamilyActionInputV1;
+  readonly input: CursorFamilyActionInput;
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   readonly fraudProverRewardLovelace: bigint;
 }): Promise<
   Readonly<{
-    transaction: Awaited<
-      ReturnType<typeof captureLocallyEvaluatedTransactionV1>
-    >;
+    transaction: Awaited<ReturnType<typeof captureLocallyEvaluatedTransaction>>;
     mutationLease?: StateQueueMutationLease;
   }>
 > => {
@@ -92,15 +88,9 @@ export const captureProductionCursorRemovalV1 = async <
       return acquired;
     },
   };
-  const nextRemovalOutRef = productionCursorStringFieldV1(
-    input,
-    "nextRemovalOutRef",
-  );
-  const fraudProofOutRef = productionCursorStringFieldV1(
-    input,
-    "fraudProofOutRef",
-  );
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const nextRemovalOutRef = cursorStringField(input, "nextRemovalOutRef");
+  const fraudProofOutRef = cursorStringField(input, "fraudProofOutRef");
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid,
@@ -115,10 +105,10 @@ export const captureProductionCursorRemovalV1 = async <
         fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -137,10 +127,10 @@ export const captureProductionCursorRemovalV1 = async <
   });
 };
 
-export type CursorFamilyBoundBaseV1<
+export type CursorFamilyBoundBase<
   Category extends FraudProofCatalogueCategoryName,
 > = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<Category>;
+  binding: FraudProofWorkflowDeploymentBinding<Category>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;

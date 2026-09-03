@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { parseWatcherArguments } from "../../src/cli.js";
-import { unsafeRunWatcherCommandForTestV1 } from "../../src/runtime/scaffold.js";
+import { unsafeRunWatcherCommandForTest } from "../../src/runtime/scaffold.js";
 
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -113,7 +113,7 @@ describe("production watcher commands", () => {
       waitForShutdown: async () => "SIGTERM" as const,
     };
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "replay",
         "/etc/watcher.json",
         io,
@@ -121,7 +121,7 @@ describe("production watcher commands", () => {
       ),
     ).resolves.toBe(0);
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "start",
         "/etc/watcher.json",
         io,
@@ -136,7 +136,7 @@ describe("production watcher commands", () => {
   it("refuses to advertise readiness when journal recovery supervision is blocked", async () => {
     let closed = false;
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "start",
         "/etc/watcher.json",
         { writeOutput: () => undefined, writeError: () => undefined },
@@ -170,7 +170,7 @@ describe("production watcher commands", () => {
   it("keeps liveness separate from readiness when a proof deadline is at risk", async () => {
     let closed = false;
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "start",
         "/etc/watcher.json",
         { writeOutput: () => undefined, writeError: () => undefined },
@@ -204,7 +204,7 @@ describe("production watcher commands", () => {
   it("treats an unexpected clean runtime exit as a liveness failure and closes", async () => {
     let closed = false;
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "start",
         "/etc/watcher.json",
         { writeOutput: () => undefined, writeError: () => undefined },
@@ -239,7 +239,7 @@ describe("production watcher commands", () => {
   it("fails replay instead of hanging when runtime liveness ends before catch-up", async () => {
     let closed = false;
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "replay",
         "/etc/watcher.json",
         { writeOutput: () => undefined, writeError: () => undefined },
@@ -273,7 +273,7 @@ describe("production watcher commands", () => {
   it("keeps the trusted-head authority process separate and closes it on signal", async () => {
     const events: string[] = [];
     await expect(
-      unsafeRunWatcherCommandForTestV1(
+      unsafeRunWatcherCommandForTest(
         "authority",
         "/etc/authority.json",
         {

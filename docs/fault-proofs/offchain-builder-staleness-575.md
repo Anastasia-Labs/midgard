@@ -23,7 +23,7 @@ commitment carried by the anchored transaction.
 ## 2. Builder invariants
 
 Thread state carries the transaction anchor required by the next step, not a
-caller-asserted field hash. Redeemers carry `FieldOpeningV1`, not a reproduced
+caller-asserted field hash. Redeemers carry `FieldOpening`, not a reproduced
 legacy list. Field ordinals, positional reference-input indices, commitment
 hashes, witness-set identity, and carriage tier are checked before submission
 and again on-chain.

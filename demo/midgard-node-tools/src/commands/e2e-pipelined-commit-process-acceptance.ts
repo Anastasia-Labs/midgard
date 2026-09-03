@@ -52,7 +52,7 @@ import {
   superviseHostProcess,
 } from "../e2e/service-supervisor.js";
 import {
-  decodePhase4GenesisLedgerReportV1,
+  decodePhase4GenesisLedgerReport,
   PHASE4_GENESIS_BOOTSTRAP_ENV,
   PHASE4_GENESIS_BOOTSTRAP_TOKEN,
   PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE,
@@ -155,7 +155,7 @@ export type Phase4ResetAttestation = {
   readonly kupoCheckpoint: number;
 };
 
-export type Phase4MatchedSnapshotIdentityV1 = {
+export type Phase4MatchedSnapshotIdentity = {
   readonly schemaVersion: "midgard-phase4-matched-snapshot-identity-v1";
   readonly composeProject: string;
   readonly networkMagic: number;
@@ -371,7 +371,7 @@ const journalHeaderEndTimeMs = (
   if (state.activeJournal === null) {
     throw new Error("T1 recovery cannot decode a missing active journal");
   }
-  const header = Data.from(state.activeJournal.headerCbor, SDK.HeaderV1);
+  const header = Data.from(state.activeJournal.headerCbor, SDK.Header);
   const endTimeMs = Number(header.endTime);
   if (!Number.isSafeInteger(endTimeMs) || endTimeMs <= 0) {
     throw new Error("T1 pending journal header has an invalid end time");
@@ -725,9 +725,9 @@ export const validatePhase4PhasRegistrationProof = (
   return proof as Phase4PhasRegistrationProof;
 };
 
-export const decodePhase4MatchedSnapshotIdentityV1 = (
+export const decodePhase4MatchedSnapshotIdentity = (
   value: unknown,
-): Phase4MatchedSnapshotIdentityV1 => {
+): Phase4MatchedSnapshotIdentity => {
   if (
     !exactObjectKeys(value, [
       "schemaVersion",
@@ -840,7 +840,7 @@ export const decodePhase4MatchedSnapshotIdentityV1 = (
       "Phase 4 matched snapshot PHAS proof is not bound to the snapshot identity",
     );
   }
-  return value as Phase4MatchedSnapshotIdentityV1;
+  return value as Phase4MatchedSnapshotIdentity;
 };
 
 export const validatePhase4PhasRegistrationTransactionBody = (
@@ -901,7 +901,7 @@ export const validatePhase4PhasRegistrationTransactionBody = (
   return envelope as Phase4ProcessIsolationIdentity["snapshotPhasRegistrationTransactionBody"];
 };
 
-export const decodePhase4ResetAttestationV1 = (
+export const decodePhase4ResetAttestation = (
   value: unknown,
 ): Phase4ResetAttestation => {
   if (
@@ -990,7 +990,7 @@ const parseResetAttestation = (output: string): Phase4ResetAttestation => {
       `Phase 4 reset command must emit exactly one JSON attestation: ${String(cause)}`,
     );
   }
-  return decodePhase4ResetAttestationV1(parsed);
+  return decodePhase4ResetAttestation(parsed);
 };
 
 export const validatePhase4ResetAttestation = ({
@@ -1153,7 +1153,7 @@ const loadPhase4ProcessIsolation = async (
   const validated = validatePhase4ProcessIsolationValues(values);
   const deploymentManifestSha256 = await sha256File(deploymentManifestPath);
   const snapshotIdentitySha256 = await sha256File(snapshotIdentityPath);
-  const snapshotIdentity = decodePhase4MatchedSnapshotIdentityV1(
+  const snapshotIdentity = decodePhase4MatchedSnapshotIdentity(
     JSON.parse(await readFile(snapshotIdentityPath, "utf8")) as unknown,
   );
   if (
@@ -1388,7 +1388,7 @@ const assertExactGenesisPreflightOutput = (
   } catch (cause) {
     throw new Error(`${label} must emit exactly one JSON V1 report`, { cause });
   }
-  const report = decodePhase4GenesisLedgerReportV1(parsed);
+  const report = decodePhase4GenesisLedgerReport(parsed);
   if (report.mode !== "verify" || report.status !== "already_present") {
     throw new Error(`${label} did not verify the exact existing genesis state`);
   }

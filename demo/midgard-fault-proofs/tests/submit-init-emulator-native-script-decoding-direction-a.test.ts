@@ -30,17 +30,17 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  publishProofChunksV1,
+  publishProofChunks,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
-  type NativeScriptDecodingFindingV1,
-  NativeScriptDecodingPlanRoutesV1,
-  NativeScriptDecodingProvabilityV1,
-  type NativeScriptDecodingProverDepsV1,
-  proveNativeScriptDecodingFaultV1,
+  buildNativeScriptDecodingScanPlan,
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingFinding,
+  NativeScriptDecodingPlanRoutes,
+  NativeScriptDecodingProvability,
+  type NativeScriptDecodingProverDeps,
+  proveNativeScriptDecodingFault,
   submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
   submitNativeScriptDecodingStep02,
@@ -51,10 +51,10 @@ import {
   submitNativeScriptDecodingStep04,
 } from "../src/native-script-decoding/index.js";
 import {
-  decodingMalformedMultiChunkItemV1,
-  makeDecodingEmulatorHarnessV1,
-  publishDecodingReferenceScriptsV1,
-  setupDecodingScenarioV1,
+  decodingMalformedMultiChunkItem,
+  makeDecodingEmulatorHarness,
+  publishDecodingReferenceScripts,
+  setupDecodingScenario,
 } from "./support/native-script-decoding-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -64,8 +64,8 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
-const EMULATOR_PROVER_POLICY_V1 = {
-  ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
+const EMULATOR_PROVER_POLICY = {
+  ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
   minSettlementDepth: 0n,
   maturityGuardFactor: 0,
   maxThreadBudgetLovelace: null,
@@ -73,7 +73,7 @@ const EMULATOR_PROVER_POLICY_V1 = {
 
 describe("native-script-decoding direction-A emulator lifecycle", () => {
   it("proves a wrongful acceptance through the proving core, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -83,8 +83,8 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       decoding,
       category,
     } = harness;
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const item = decodingMalformedMultiChunkItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "normal" },
@@ -93,11 +93,11 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
 
     // The plan the fixture pins: two chunks, one Scan segment, and a windowed
     // verdict — the direction-A machine route in its smallest honest shape.
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
-    expect(plan.route).toBe(NativeScriptDecodingPlanRoutesV1.Machine);
+    expect(plan.route).toBe(NativeScriptDecodingPlanRoutes.Machine);
     expect(plan.segments).toHaveLength(1);
     expect(plan.verdict.window).toStrictEqual({
       chunkIndex: 0,
@@ -112,12 +112,12 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       step03BindDescriptorRef,
       step03AdvanceOrCloseRef,
       step04Ref,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: funderLucid,
       contracts: decoding,
     });
 
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 0n,
       sourceKind: 0n,
       event: { kind: "l2Transaction", txId: block.nativeTxId },
@@ -126,7 +126,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       accusedOutpointSourceKind: scenario.accusedSourceKind,
       accusedOutpointCursor: 0n,
       scanReasonClass: null,
-      provability: NativeScriptDecodingProvabilityV1.MachineRoute,
+      provability: NativeScriptDecodingProvability.MachineRoute,
       descriptor: {
         referenceScriptLanguage: 0,
         outputIndex: 0,
@@ -135,7 +135,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       estimatedThreadTxCount: 6,
     };
     const journal: string[] = [];
-    const deps: NativeScriptDecodingProverDepsV1 = {
+    const deps: NativeScriptDecodingProverDeps = {
       lucid: proverLucid,
       blueprint: realBlueprint,
       network,
@@ -170,7 +170,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       journal: (event) => {
         journal.push(`${event.phase}:${event.message}`);
       },
-      policy: EMULATOR_PROVER_POLICY_V1,
+      policy: EMULATOR_PROVER_POLICY,
       referenceScriptUtxos: {
         step01: step01Ref,
         step02: step02Ref,
@@ -183,7 +183,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
     };
 
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(finding, deps),
+      proveNativeScriptDecodingFault(finding, deps),
     );
     if (outcome.kind !== "proven") {
       throw new Error(
@@ -218,7 +218,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
 
     // A second invocation is idempotent, not a second thread.
     const again = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(finding, deps),
+      proveNativeScriptDecodingFault(finding, deps),
     );
     expect(again).toMatchObject({ kind: "refused", refusal: "alreadyProven" });
 
@@ -336,7 +336,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
   }, 600_000);
 
   it("binds the same acceptance through the published-chunk step-01 carriage", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -346,8 +346,8 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       decoding,
       category,
     } = harness;
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const item = decodingMalformedMultiChunkItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "normal" },
@@ -366,11 +366,11 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       step03BindDescriptorRef,
       step03AdvanceOrCloseRef,
       step04Ref,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: funderLucid,
       contracts: decoding,
     });
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
@@ -396,7 +396,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
     );
 
     // #545 carriage: the membership proof is published once, then referenced.
-    const publication = await publishProofChunksV1({
+    const publication = await publishProofChunks({
       lucid: proverLucid,
       network,
       signer: proverSigner,
@@ -461,7 +461,7 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: open.nextThreadOutRef,
       outpointKeyCbor: Buffer.from(
-        SDK.encodeMidgardTxInputCanonicalV1(accused),
+        SDK.encodeMidgardTxInputCanonical(accused),
       ).toString("hex"),
       descriptorCbor: ledger.descriptorCbor,
       ledgerTrie: ledger.trie,

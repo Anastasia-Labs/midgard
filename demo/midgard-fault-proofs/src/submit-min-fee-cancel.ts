@@ -17,12 +17,12 @@ import {
 
 import {
   MIN_FEE_CATEGORY_LABEL,
-  type MinFeeContractsV1,
+  type MinFeeContracts,
 } from "./min-fee-contracts-v1.js";
 import {
-  minFeeStepLabelV1,
+  minFeeStepLabel,
   minFeeSubmitError,
-  requireMinFeeReferenceScriptV1,
+  requireMinFeeReferenceScript,
 } from "./min-fee-submit-common-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -36,8 +36,8 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts-v1.js";
 
 const CancelRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -49,7 +49,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: MinFeeContractsV1;
+  readonly contracts: MinFeeContracts;
 }): 0 | 1 => {
   if (threadUtxo.address === contracts.steps[0].spendingScriptAddress) return 0;
   if (threadUtxo.address === contracts.steps[1].spendingScriptAddress) return 1;
@@ -78,14 +78,14 @@ export const submitMinFeeCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MinFeeContractsV1;
+  readonly contracts: MinFeeContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -94,8 +94,8 @@ export const submitMinFeeCancel = async ({
     label: `${MIN_FEE_CATEGORY_LABEL} computation thread`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = minFeeStepLabelV1(stepIndex);
-  const reference = requireMinFeeReferenceScriptV1({
+  const stepLabel = minFeeStepLabel(stepIndex);
+  const reference = requireMinFeeReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
@@ -156,7 +156,7 @@ export const submitMinFeeCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancellation computation-thread mint`,

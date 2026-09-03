@@ -1,6 +1,6 @@
 import {
-  isMidgardConsensusProfileV1,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   credentialToAddress,
@@ -45,7 +45,7 @@ import {
 } from "./hub-oracle.js";
 import {
   castConfirmedStateToData,
-  makeGenesisConfirmedStateV1,
+  makeGenesisConfirmedState,
 } from "./ledger-state.js";
 import { encodeLinkedListNodeView, LinkedListNodeView } from "./linked-list.js";
 import {
@@ -80,7 +80,7 @@ export type AtomicProtocolInitReferenceScripts = {
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
-  consensusProfile: MidgardConsensusProfileV1;
+  consensusProfile: MidgardConsensusProfile;
   fraudProofCatalogueMerkleRoot: string;
   daParams: DaParamsDatumType;
   oneShotNonceUTxO: UTxO;
@@ -131,7 +131,7 @@ export const incompleteInitializationTxProgram = (
     }
 
     const { midgardValidators } = params;
-    if (!isMidgardConsensusProfileV1(params.consensusProfile)) {
+    if (!isMidgardConsensusProfile(params.consensusProfile)) {
       throw new Error(
         "Protocol initialization requires an exact compiled consensus profile",
       );
@@ -139,7 +139,7 @@ export const incompleteInitializationTxProgram = (
     const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
     const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
     const stateQueueGenesisTime = params.validityRange.validTo - 1n;
-    const genesisConfirmedState = makeGenesisConfirmedStateV1(
+    const genesisConfirmedState = makeGenesisConfirmedState(
       stateQueueGenesisTime,
     );
 

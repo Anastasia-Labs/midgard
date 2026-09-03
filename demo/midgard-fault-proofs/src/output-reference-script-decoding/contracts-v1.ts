@@ -8,13 +8,13 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_V1,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
 } from "./output-reference-script-decoding-v1.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL =
   "output-reference-script-decoding";
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 = [
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES = [
   "fraud_proofs/output_reference_script_decoding/step_01.main.spend",
   "fraud_proofs/output_reference_script_decoding/step_02.main.spend",
   "fraud_proofs/output_reference_script_decoding/step_03.main.spend",
@@ -23,21 +23,21 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 = [
   "fraud_proofs/output_reference_script_decoding/step_06.main.spend",
 ] as const;
 
-export type OutputReferenceScriptAppliedStepV1 = Readonly<{
+export type OutputReferenceScriptAppliedStep = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type OutputReferenceScriptDecodingContractsV1 = Readonly<{
+export type OutputReferenceScriptDecodingContracts = Readonly<{
   steps: readonly [
-    OutputReferenceScriptAppliedStepV1,
-    OutputReferenceScriptAppliedStepV1,
-    OutputReferenceScriptAppliedStepV1,
-    OutputReferenceScriptAppliedStepV1,
-    OutputReferenceScriptAppliedStepV1,
-    OutputReferenceScriptAppliedStepV1,
+    OutputReferenceScriptAppliedStep,
+    OutputReferenceScriptAppliedStep,
+    OutputReferenceScriptAppliedStep,
+    OutputReferenceScriptAppliedStep,
+    OutputReferenceScriptAppliedStep,
+    OutputReferenceScriptAppliedStep,
   ];
   computationThread: { policyId: string; mintingScript: Script };
   fraudProof: {
@@ -50,7 +50,7 @@ export type OutputReferenceScriptDecodingContractsV1 = Readonly<{
   fieldPreimageCertificatePolicyId: string;
   fieldPreimageCertificateMintingScript: Script;
 }>;
-export type OutputReferenceScriptBlueprintV1 = Readonly<{
+export type OutputReferenceScriptBlueprint = Readonly<{
   validators: readonly Readonly<{
     title: string;
     compiledCode: string;
@@ -58,7 +58,7 @@ export type OutputReferenceScriptBlueprintV1 = Readonly<{
   }>[];
 }>;
 
-export const applyOutputReferenceScriptDecodingScriptsV1 = ({
+export const applyOutputReferenceScriptDecodingScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -67,20 +67,20 @@ export const applyOutputReferenceScriptDecodingScriptsV1 = ({
   fieldPreimageCertificatePolicyId,
   hubOracleScriptHash,
 }: {
-  blueprint: OutputReferenceScriptBlueprintV1;
+  blueprint: OutputReferenceScriptBlueprint;
   network: Network;
   computationThreadPolicyId: string;
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   fieldPreimageCertificatePolicyId: string;
   hubOracleScriptHash: string;
-}): OutputReferenceScriptDecodingContractsV1["steps"] => {
+}): OutputReferenceScriptDecodingContracts["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): OutputReferenceScriptAppliedStepV1 => {
+  ): OutputReferenceScriptAppliedStep => {
     const blueprintTitle =
-      OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1[index]!;
+      OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       (entry) => entry.title === blueprintTitle,
     );
@@ -135,30 +135,30 @@ export const applyOutputReferenceScriptDecodingScriptsV1 = ({
   return [step01, step02, step03, step04, step05, step06];
 };
 
-export type OutputReferenceScriptDecodingManifestV1 = Readonly<{
+export type OutputReferenceScriptDecodingManifest = Readonly<{
   schemaVersion: "output-reference-script-decoding-production-manifest-v1";
-  category: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_V1;
-  categoryId: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1;
+  category: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY;
+  categoryId: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_ID;
   network: Network;
-  steps: OutputReferenceScriptDecodingContractsV1["steps"];
+  steps: OutputReferenceScriptDecodingContracts["steps"];
   firstStepHash: string;
 }>;
 
-export const loadOutputReferenceScriptDecodingManifestV1 = (
-  manifest: OutputReferenceScriptDecodingManifestV1,
-): OutputReferenceScriptDecodingManifestV1 => {
+export const loadOutputReferenceScriptDecodingManifest = (
+  manifest: OutputReferenceScriptDecodingManifest,
+): OutputReferenceScriptDecodingManifest => {
   if (
     manifest.schemaVersion !==
       "output-reference-script-decoding-production-manifest-v1" ||
-    manifest.category !== OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_V1 ||
-    manifest.categoryId !== OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1 ||
+    manifest.category !== OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY ||
+    manifest.categoryId !== OUTPUT_REFERENCE_SCRIPT_DECODING_ID ||
     manifest.firstStepHash !== manifest.steps[0].spendingScriptHash
   )
     throw new Error("outputReferenceScriptDecoding manifest identity changed");
   manifest.steps.forEach((step, index) => {
     if (
       step.blueprintTitle !==
-        OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1[index] ||
+        OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES[index] ||
       validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash ||
       validatorToAddress(manifest.network, step.spendingScript) !==
         step.spendingScriptAddress ||

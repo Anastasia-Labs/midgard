@@ -1,22 +1,22 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
+  adjudicateMidgardNativeTxFullValidity,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardVersionedScript,
-  deriveMidgardNativeTxProofSourceV1,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  extractForcedLeafEvidenceV1,
-  forcedLeafVerdictSubjectV1,
+  extractForcedLeafEvidence,
+  forcedLeafVerdictSubject,
 } from "../evidence/forced-leaf-evidence-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
   parseSubmitStep01TxInclusion,
@@ -28,18 +28,18 @@ import {
 } from "../transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
-  prepareScriptIntegrityHashMissingEvidenceV1,
-  type ScriptIntegrityHashMissingEvidenceV1,
-  scriptIntegrityHashMissingFaultHoldsV1,
+  prepareScriptIntegrityHashMissingEvidence,
+  type ScriptIntegrityHashMissingEvidence,
+  scriptIntegrityHashMissingFaultHolds,
 } from "./family-v1.js";
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID =
   "script-integrity-hash-missing" as const;
 
-export type ScriptIntegrityHashMissingReplayDetectionV1 = Readonly<{
+export type ScriptIntegrityHashMissingReplayDetection = Readonly<{
   detectionId: string;
   headerHash: string;
-  violationId: typeof SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID_V1;
+  violationId: typeof SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID;
   position: bigint;
   transactionId: string;
   source: "accepted" | "forced";
@@ -48,12 +48,12 @@ export type ScriptIntegrityHashMissingReplayDetectionV1 = Readonly<{
   diagnostic: string;
 }>;
 
-export type ScriptIntegrityHashMissingAuthenticatedSourceV1 = Readonly<{
-  header: SDK.HeaderV1;
+export type ScriptIntegrityHashMissingAuthenticatedSource = Readonly<{
+  header: SDK.Header;
   nativeTxCompactCbor: string;
   witnessSetCompactCbor: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: SDK.HeaderV1;
+  forcedHeader?: SDK.Header;
   forcedMembership?: Awaited<
     ReturnType<typeof buildForcedTransactionLeafMembershipProof>
   >;
@@ -61,14 +61,14 @@ export type ScriptIntegrityHashMissingAuthenticatedSourceV1 = Readonly<{
 }>;
 
 type Semantics = Readonly<{
-  full: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>;
+  full: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>;
   scriptLanguages: readonly (0 | 3 | 128)[];
   redeemerCount: number;
   faultHolds: boolean;
 }>;
 
 const decodeSemantics = (canonicalTxCbor: Uint8Array): Semantics | null => {
-  const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTxCbor);
+  const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor);
   try {
     const scriptLanguages = decodeMidgardNativeByteListPreimage(
       full.witnessSet.scriptTxWitsPreimageCbor,
@@ -90,7 +90,7 @@ const decodeSemantics = (canonicalTxCbor: Uint8Array): Semantics | null => {
       full,
       scriptLanguages,
       redeemerCount,
-      faultHolds: scriptIntegrityHashMissingFaultHoldsV1({
+      faultHolds: scriptIntegrityHashMissingFaultHolds({
         scriptIntegrityHash,
         scriptLanguages,
         redeemerCount,
@@ -120,14 +120,14 @@ const eventPosition = (
 };
 
 /** Complete package-owned scan of every authenticated accepted and forced tx. */
-export const detectScriptIntegrityHashMissingFromReconstructionV1 = ({
+export const detectScriptIntegrityHashMissingFromReconstruction = ({
   headerHash,
   reconstruction,
 }: {
   readonly headerHash: string;
   readonly reconstruction: TransitionTraceReconstruction;
-}): readonly ScriptIntegrityHashMissingReplayDetectionV1[] => {
-  const detections: ScriptIntegrityHashMissingReplayDetectionV1[] = [];
+}): readonly ScriptIntegrityHashMissingReplayDetection[] => {
+  const detections: ScriptIntegrityHashMissingReplayDetection[] = [];
   reconstruction.transactions.forEach((transaction, transactionIndex) => {
     const semantics = decodeSemantics(transaction.fullTransactionCbor);
     if (
@@ -137,9 +137,9 @@ export const detectScriptIntegrityHashMissingFromReconstructionV1 = ({
     ) {
       detections.push(
         Object.freeze({
-          detectionId: `${SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID_V1}:accepted:${transactionIndex.toString()}:${transaction.txId}`,
+          detectionId: `${SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID}:accepted:${transactionIndex.toString()}:${transaction.txId}`,
           headerHash,
-          violationId: SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID_V1,
+          violationId: SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID,
           position: eventPosition(reconstruction, {
             L2TransactionEventKey: { tx_id: transaction.txId },
           }),
@@ -168,9 +168,9 @@ export const detectScriptIntegrityHashMissingFromReconstructionV1 = ({
     if (direction === null) return;
     detections.push(
       Object.freeze({
-        detectionId: `${SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${direction}`,
+        detectionId: `${SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${direction}`,
         headerHash,
-        violationId: SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID_V1,
+        violationId: SCRIPT_INTEGRITY_HASH_MISSING_VIOLATION_ID,
         position: eventPosition(reconstruction, {
           ForcedTransactionEventKey: { tx_order_id: transaction.key },
         }),
@@ -188,10 +188,10 @@ export const detectScriptIntegrityHashMissingFromReconstructionV1 = ({
   return Object.freeze(detections);
 };
 
-export const detectScriptIntegrityHashMissingFromCanonicalEvidenceV1 = (
-  evidence: CanonicalBlockEvidenceV1,
-): readonly ScriptIntegrityHashMissingReplayDetectionV1[] =>
-  detectScriptIntegrityHashMissingFromReconstructionV1({
+export const detectScriptIntegrityHashMissingFromCanonicalEvidence = (
+  evidence: CanonicalBlockEvidence,
+): readonly ScriptIntegrityHashMissingReplayDetection[] =>
+  detectScriptIntegrityHashMissingFromReconstruction({
     headerHash: evidence.headerHash,
     reconstruction: evidence.reconstruction,
   });
@@ -201,16 +201,16 @@ export const detectScriptIntegrityHashMissingFromCanonicalEvidenceV1 = (
  * DA. The caller supplies only dispatch identity; prepared semantic evidence
  * and verdict callbacks are deliberately absent.
  */
-export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
+export const reconstructScriptIntegrityHashMissingEvidence = async ({
   evidence,
   transactionId,
   direction,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly transactionId: string;
   readonly direction: "wrongfulAcceptance" | "wrongfulRejection";
-}): Promise<ScriptIntegrityHashMissingEvidenceV1> => {
-  const candidates = detectScriptIntegrityHashMissingFromCanonicalEvidenceV1(
+}): Promise<ScriptIntegrityHashMissingEvidence> => {
+  const candidates = detectScriptIntegrityHashMissingFromCanonicalEvidence(
     evidence,
   ).filter(
     (detection) =>
@@ -232,7 +232,7 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
     const semantics = decodeSemantics(transaction.fullTransactionCbor);
     if (semantics === null)
       throw new Error("authenticated accepted semantics became undecodable");
-    return prepareScriptIntegrityHashMissingEvidenceV1({
+    return prepareScriptIntegrityHashMissingEvidence({
       finding: {
         category: "scriptIntegrityHashMissing",
         headerHash: evidence.headerHash,
@@ -241,7 +241,7 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
         source: "accepted",
         rejectionReason: null,
       },
-      subject: SDK.acceptedVerdictSubjectV1(transactionId),
+      subject: SDK.acceptedVerdictSubject(transactionId),
       nativeTxCompactCbor: transaction.value.source.compact_cbor,
       witnessSetCompactCbor: transaction.value.source.witness_set_compact_cbor,
       fieldPreimageLengthsCbor:
@@ -261,14 +261,14 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
   if (forced === undefined || forced.value.tx_id !== transactionId) {
     throw new Error("authenticated forced transaction disappeared");
   }
-  const forcedLeaf = await extractForcedLeafEvidenceV1({
+  const forcedLeaf = await extractForcedLeafEvidence({
     reconstruction: evidence.reconstruction,
     eventKey: {
       ForcedTransactionEventKey: { tx_order_id: forced.key },
     },
   });
-  const adjudicated = adjudicateMidgardNativeTxFullV1Validity(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(forced.fullTransactionCbor),
+  const adjudicated = adjudicateMidgardNativeTxFullValidity(
+    decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
     forced.value.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
   );
   const semantics = decodeSemantics(forced.fullTransactionCbor);
@@ -276,7 +276,7 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
     throw new Error("authenticated forced semantics became undecodable");
   // Re-derive once more here so package-owned reconstruction checks the exact
   // retained leaf source rather than copying it without verification.
-  const source = deriveMidgardNativeTxProofSourceV1(adjudicated);
+  const source = deriveMidgardNativeTxProofSource(adjudicated);
   if (
     source.compactCbor.toString("hex") !== forced.value.source.compact_cbor ||
     source.witnessSetCompactCbor.toString("hex") !==
@@ -288,7 +288,7 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
       "authenticated forced proof source changed during reconstruction",
     );
   }
-  return prepareScriptIntegrityHashMissingEvidenceV1({
+  return prepareScriptIntegrityHashMissingEvidence({
     finding: {
       category: "scriptIntegrityHashMissing",
       headerHash: evidence.headerHash,
@@ -300,7 +300,7 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
           ? null
           : "ScriptIntegrityHashMissing",
     },
-    subject: forcedLeafVerdictSubjectV1(forcedLeaf),
+    subject: forcedLeafVerdictSubject(forcedLeaf),
     nativeTxCompactCbor: source.compactCbor.toString("hex"),
     witnessSetCompactCbor: source.witnessSetCompactCbor.toString("hex"),
     fieldPreimageLengthsCbor: source.fieldPreimageLengthsCbor.toString("hex"),
@@ -317,13 +317,13 @@ export const reconstructScriptIntegrityHashMissingEvidenceV1 = async ({
 };
 
 /** Rebuilds every submitter source coordinate from authenticated replay. */
-export const deriveScriptIntegrityHashMissingAuthenticatedSourceV1 = async ({
+export const deriveScriptIntegrityHashMissingAuthenticatedSource = async ({
   block,
   evidence,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
-  readonly evidence: ScriptIntegrityHashMissingEvidenceV1;
-}): Promise<ScriptIntegrityHashMissingAuthenticatedSourceV1> => {
+  readonly block: CanonicalBlockEvidence;
+  readonly evidence: ScriptIntegrityHashMissingEvidence;
+}): Promise<ScriptIntegrityHashMissingAuthenticatedSource> => {
   if (evidence.finding.source === "accepted") {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
@@ -336,7 +336,7 @@ export const deriveScriptIntegrityHashMissingAuthenticatedSourceV1 = async ({
         "scriptIntegrityHashMissing: accepted subject disappeared from retained DA",
       );
     }
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
     if (
       trie.root !== block.reconstruction.rootData.transactions.phasRoot ||
       trie.root !== block.inclusionRootAuthentication.sourceValuePhasRoot

@@ -1,33 +1,33 @@
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
 import {
-  compareAndSwapWatcherDurableAtomicSnapshotV1,
-  decodeWatcherDurableStoreV1,
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeEmptyWatcherDurableStoreV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  migrateWatcherDurableStoreV1,
-  parseWatcherDurableStoreV1,
-  readWatcherDurableAtomicSnapshotV1,
-  rebuildWatcherDurableCachesV1,
+  compareAndSwapWatcherDurableAtomicSnapshot,
+  decodeWatcherDurableStore,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeEmptyWatcherDurableStore,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  migrateWatcherDurableStore,
+  parseWatcherDurableStore,
+  readWatcherDurableAtomicSnapshot,
+  rebuildWatcherDurableCaches,
   WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256,
-  WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION,
+  WATCHER_DURABLE_STORE_SCHEMA_VERSION,
   type WatcherDurableAtomicBackend,
-  type WatcherDurableRecordsV1,
+  type WatcherDurableRecords,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
   WatcherDurableStoreError,
   type WatcherDurableStoreErrorCode,
-  type WatcherDurableStoreV1,
 } from "../../src/storage/durable-store.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
-const marker = makeDeploymentMarkerV1(hex32("aa"));
-const payload = (cborHex = "80") => makeWatcherDurablePayloadV1(cborHex);
+const marker = makeDeploymentMarker(hex32("aa"));
+const payload = (cborHex = "80") => makeWatcherDurablePayload(cborHex);
 
-const recordsFixture = (): WatcherDurableRecordsV1 => ({
+const recordsFixture = (): WatcherDurableRecords => ({
   l1Observations: [
     {
       observationId: hex32("02"),
@@ -145,8 +145,8 @@ const recordsFixture = (): WatcherDurableRecordsV1 => ({
   ],
 });
 
-const populatedStore = (): WatcherDurableStoreV1 =>
-  makeWatcherDurableStoreV1({
+const populatedStore = (): WatcherDurableStore =>
+  makeWatcherDurableStore({
     deploymentMarker: marker,
     revision: "1",
     records: recordsFixture(),
@@ -155,7 +155,7 @@ const populatedStore = (): WatcherDurableStoreV1 =>
 type MutableRecord = Record<string, any>;
 
 const mutateStore = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
   mutation: (mutable: MutableRecord) => void,
 ): MutableRecord => {
   const mutable = JSON.parse(JSON.stringify(store)) as MutableRecord;
@@ -220,8 +220,8 @@ class MemoryAtomicBackend implements WatcherDurableAtomicBackend {
 describe("watcher durable store V1", () => {
   it("round-trips every W03 durable state class with exact content integrity", () => {
     const store = populatedStore();
-    const encoded = encodeWatcherDurableStoreV1(store);
-    const decoded = decodeWatcherDurableStoreV1(encoded);
+    const encoded = encodeWatcherDurableStore(store);
+    const decoded = decodeWatcherDurableStore(encoded);
 
     expect(decoded).toEqual(store);
     expect(decoded.deploymentMarker).toEqual(marker);
@@ -250,7 +250,7 @@ describe("watcher durable store V1", () => {
 
   it("reproduces byte-identical caches and persisted bytes from reordered inputs", () => {
     const records = recordsFixture();
-    const reversed: WatcherDurableRecordsV1 = {
+    const reversed: WatcherDurableRecords = {
       l1Observations: [...records.l1Observations].reverse(),
       chainPoints: [...records.chainPoints].reverse(),
       protocolUtxos: [...records.protocolUtxos].reverse(),
@@ -266,18 +266,18 @@ describe("watcher durable store V1", () => {
       correctionResults: [...records.correctionResults].reverse(),
     };
     const first = populatedStore();
-    const second = makeWatcherDurableStoreV1({
+    const second = makeWatcherDurableStore({
       deploymentMarker: marker,
       revision: "1",
       records: reversed,
     });
 
     expect(second.caches).toEqual(first.caches);
-    expect(encodeWatcherDurableStoreV1(second)).toEqual(
-      encodeWatcherDurableStoreV1(first),
+    expect(encodeWatcherDurableStore(second)).toEqual(
+      encodeWatcherDurableStore(first),
     );
     expect(
-      rebuildWatcherDurableCachesV1({
+      rebuildWatcherDurableCaches({
         deploymentMarker: first.deploymentMarker,
         l1Observations: first.l1Observations,
         chainPoints: first.chainPoints,
@@ -299,7 +299,7 @@ describe("watcher durable store V1", () => {
   it("rejects unknown schemas, unknown fields, and noncanonical persisted bytes", () => {
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(populatedStore(), (value) => {
             value.schemaVersion = "midgard-watcher-durable-store-v0";
           }),
@@ -308,7 +308,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(populatedStore(), (value) => {
             value.legacyRecords = [];
           }),
@@ -317,7 +317,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        decodeWatcherDurableStoreV1(
+        decodeWatcherDurableStore(
           new TextEncoder().encode(JSON.stringify(populatedStore(), null, 2)),
         ),
       "noncanonical_encoding",
@@ -327,7 +327,7 @@ describe("watcher durable store V1", () => {
   it("rejects payload tampering, cache tampering, and broken references", () => {
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(populatedStore(), (value) => {
             value.daProofInputs[0].payload.cborHex = "81";
           }),
@@ -336,7 +336,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(populatedStore(), (value) => {
             value.caches.sourceSha256 = hex32("ff");
           }),
@@ -345,7 +345,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(populatedStore(), (value) => {
             value.confirmations[0].submissionId = hex32("fe");
           }),
@@ -357,7 +357,7 @@ describe("watcher durable store V1", () => {
   it("rejects duplicate keys and unsafe correction confirmation topology", () => {
     expectStoreError(
       () =>
-        makeWatcherDurableStoreV1({
+        makeWatcherDurableStore({
           deploymentMarker: marker,
           revision: "1",
           records: {
@@ -369,7 +369,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(populatedStore(), (value) => {
             value.confirmations[0].status = "rolled_back";
           }),
@@ -378,7 +378,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        makeWatcherDurableStoreV1({
+        makeWatcherDurableStore({
           deploymentMarker: marker,
           revision: "1",
           records: {
@@ -399,7 +399,7 @@ describe("watcher durable store V1", () => {
   it("journals consumed protocol UTxOs exactly and rejects mutation or resurrection", () => {
     const source = populatedStore();
     const spentAtChainPointId = source.chainPoints[0]!.chainPointId;
-    const journal = journalWatcherProtocolUtxoTransitionV1({
+    const journal = journalWatcherProtocolUtxoTransition({
       sourceStore: source,
       nextChainPoints: source.chainPoints,
       nextProtocolUtxos: [],
@@ -416,7 +416,7 @@ describe("watcher durable store V1", () => {
 
     expectStoreError(
       () =>
-        journalWatcherProtocolUtxoTransitionV1({
+        journalWatcherProtocolUtxoTransition({
           sourceStore: source,
           nextChainPoints: source.chainPoints,
           nextProtocolUtxos: [
@@ -431,7 +431,7 @@ describe("watcher durable store V1", () => {
     );
     expectStoreError(
       () =>
-        journalWatcherProtocolUtxoTransitionV1({
+        journalWatcherProtocolUtxoTransition({
           sourceStore: source,
           nextChainPoints: source.chainPoints,
           nextProtocolUtxos: [
@@ -455,7 +455,7 @@ describe("watcher durable store V1", () => {
       blockNo: "51",
       depth: "8",
     };
-    const forwardSource = makeWatcherDurableStoreV1({
+    const forwardSource = makeWatcherDurableStore({
       deploymentMarker: source.deploymentMarker,
       revision: source.revision,
       records: {
@@ -469,7 +469,7 @@ describe("watcher durable store V1", () => {
         ],
       },
     });
-    const forwardJournal = journalWatcherProtocolUtxoTransitionV1({
+    const forwardJournal = journalWatcherProtocolUtxoTransition({
       sourceStore: forwardSource,
       nextChainPoints: forwardSource.chainPoints,
       nextProtocolUtxos: [],
@@ -482,7 +482,7 @@ describe("watcher durable store V1", () => {
 
     expectStoreError(
       () =>
-        parseWatcherDurableStoreV1(
+        parseWatcherDurableStore(
           mutateStore(forwardSource, (value) => {
             value.spentProtocolUtxos[0].chainPointId = laterPoint.chainPointId;
             value.spentProtocolUtxos[0].spentAtChainPointId =
@@ -492,7 +492,7 @@ describe("watcher durable store V1", () => {
       "broken_reference",
     );
 
-    const backwardJournalSource = makeWatcherDurableStoreV1({
+    const backwardJournalSource = makeWatcherDurableStore({
       deploymentMarker: source.deploymentMarker,
       revision: source.revision,
       records: {
@@ -508,7 +508,7 @@ describe("watcher durable store V1", () => {
     });
     expectStoreError(
       () =>
-        journalWatcherProtocolUtxoTransitionV1({
+        journalWatcherProtocolUtxoTransition({
           sourceStore: backwardJournalSource,
           nextChainPoints: backwardJournalSource.chainPoints,
           nextProtocolUtxos: [],
@@ -520,11 +520,11 @@ describe("watcher durable store V1", () => {
 
   it("initializes once and makes repeat migration byte-idempotent", async () => {
     const backend = new MemoryAtomicBackend();
-    const first = await migrateWatcherDurableStoreV1({
+    const first = await migrateWatcherDurableStore({
       backend,
       deploymentMarker: marker,
     });
-    const second = await migrateWatcherDurableStoreV1({
+    const second = await migrateWatcherDurableStore({
       backend,
       deploymentMarker: marker,
     });
@@ -534,7 +534,7 @@ describe("watcher durable store V1", () => {
     expect(second.encodedSha256).toBe(first.encodedSha256);
     expect(second.snapshot).toEqual(first.snapshot);
     expect(backend.writes).toBe(1);
-    expect(second.snapshot).toEqual(makeEmptyWatcherDurableStoreV1(marker));
+    expect(second.snapshot).toEqual(makeEmptyWatcherDurableStore(marker));
   });
 
   it("recovers idempotently from a crash before atomic migration commit", async () => {
@@ -542,11 +542,11 @@ describe("watcher durable store V1", () => {
     backend.failBeforeCommit = true;
 
     await expect(
-      migrateWatcherDurableStoreV1({ backend, deploymentMarker: marker }),
+      migrateWatcherDurableStore({ backend, deploymentMarker: marker }),
     ).rejects.toMatchObject({ code: "persistence_failure" });
     expect(backend.bytes).toBeNull();
 
-    const recovered = await migrateWatcherDurableStoreV1({
+    const recovered = await migrateWatcherDurableStore({
       backend,
       deploymentMarker: marker,
     });
@@ -559,26 +559,26 @@ describe("watcher durable store V1", () => {
     backend.failAfterCommit = true;
 
     await expect(
-      migrateWatcherDurableStoreV1({ backend, deploymentMarker: marker }),
+      migrateWatcherDurableStore({ backend, deploymentMarker: marker }),
     ).rejects.toMatchObject({ code: "persistence_failure" });
     expect(backend.bytes).not.toBeNull();
 
-    const recovered = await migrateWatcherDurableStoreV1({
+    const recovered = await migrateWatcherDurableStore({
       backend,
       deploymentMarker: marker,
     });
     expect(recovered.initialized).toBe(false);
     expect(backend.writes).toBe(1);
     expect(recovered.snapshot.schemaVersion).toBe(
-      WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION,
+      WATCHER_DURABLE_STORE_SCHEMA_VERSION,
     );
   });
 
   it("converges concurrent migrations through atomic compare-and-swap", async () => {
     const backend = new MemoryAtomicBackend();
     const results = await Promise.all([
-      migrateWatcherDurableStoreV1({ backend, deploymentMarker: marker }),
-      migrateWatcherDurableStoreV1({ backend, deploymentMarker: marker }),
+      migrateWatcherDurableStore({ backend, deploymentMarker: marker }),
+      migrateWatcherDurableStore({ backend, deploymentMarker: marker }),
     ]);
 
     expect(results.filter((result) => result.initialized)).toHaveLength(1);
@@ -588,12 +588,12 @@ describe("watcher durable store V1", () => {
 
   it("fails closed on marker drift, partial bytes, and exhausted migration conflicts", async () => {
     const initialized = new MemoryAtomicBackend(
-      encodeWatcherDurableStoreV1(makeEmptyWatcherDurableStoreV1(marker)),
+      encodeWatcherDurableStore(makeEmptyWatcherDurableStore(marker)),
     );
     await expect(
-      migrateWatcherDurableStoreV1({
+      migrateWatcherDurableStore({
         backend: initialized,
-        deploymentMarker: makeDeploymentMarkerV1(hex32("bb")),
+        deploymentMarker: makeDeploymentMarker(hex32("bb")),
       }),
     ).rejects.toMatchObject({ code: "deployment_marker_mismatch" });
 
@@ -601,7 +601,7 @@ describe("watcher durable store V1", () => {
       new TextEncoder().encode('{"schemaVersion":'),
     );
     await expect(
-      migrateWatcherDurableStoreV1({
+      migrateWatcherDurableStore({
         backend: partial,
         deploymentMarker: marker,
       }),
@@ -610,7 +610,7 @@ describe("watcher durable store V1", () => {
     const contended = new MemoryAtomicBackend();
     contended.alwaysConflict = true;
     await expect(
-      migrateWatcherDurableStoreV1({
+      migrateWatcherDurableStore({
         backend: contended,
         deploymentMarker: marker,
         maxConflicts: 2,
@@ -621,7 +621,7 @@ describe("watcher durable store V1", () => {
   it("exposes exact expected-prior atomic snapshots to higher-level journals", async () => {
     const backend = new MemoryAtomicBackend();
     const firstBytes = new TextEncoder().encode('{"revision":"0"}');
-    const initialized = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+    const initialized = await compareAndSwapWatcherDurableAtomicSnapshot({
       backend,
       expectedSha256: null,
       next: firstBytes,
@@ -631,13 +631,13 @@ describe("watcher durable store V1", () => {
       throw new Error("expected initial atomic commit");
     }
 
-    const snapshot = await readWatcherDurableAtomicSnapshotV1(backend);
+    const snapshot = await readWatcherDurableAtomicSnapshot(backend);
     expect(snapshot).not.toBeNull();
     expect(snapshot?.sha256).toBe(initialized.sha256);
     firstBytes.fill(0);
     expect(new TextDecoder().decode(snapshot?.bytes)).toBe('{"revision":"0"}');
 
-    const stale = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+    const stale = await compareAndSwapWatcherDurableAtomicSnapshot({
       backend,
       expectedSha256: hex32("ff"),
       next: new TextEncoder().encode('{"revision":"1"}'),
@@ -646,12 +646,12 @@ describe("watcher durable store V1", () => {
     expect(stale).not.toHaveProperty("sha256");
 
     const contenders = await Promise.all([
-      compareAndSwapWatcherDurableAtomicSnapshotV1({
+      compareAndSwapWatcherDurableAtomicSnapshot({
         backend,
         expectedSha256: snapshot!.sha256,
         next: new TextEncoder().encode('{"writer":"a"}'),
       }),
-      compareAndSwapWatcherDurableAtomicSnapshotV1({
+      compareAndSwapWatcherDurableAtomicSnapshot({
         backend,
         expectedSha256: snapshot!.sha256,
         next: new TextEncoder().encode('{"writer":"b"}'),

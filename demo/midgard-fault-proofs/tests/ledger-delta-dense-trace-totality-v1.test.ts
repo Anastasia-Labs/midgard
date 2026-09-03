@@ -1,28 +1,28 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import {
   encodeCborArrayRaw,
   encodeCborBytes,
   encodeCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -33,7 +33,7 @@ import {
   detectTransitionTraceFaults,
   encodeData,
   keyValuePhasRootWithCount,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   TRANSITION_TRACE_FAULT_KINDS,
   type TransitionTraceDetection,
   type TransitionTraceFaultKind,
@@ -91,8 +91,8 @@ const withdrawalInfo = (
  */
 const canonicalPreimageByCommitment = new Map<string, Buffer>();
 
-const proofSourceCommitment = (source: SDK.NativeTxProofSourceV1): string =>
-  computeMidgardNativeTxProofCommitmentV1({
+const proofSourceCommitment = (source: SDK.NativeTxProofSource): string =>
+  computeMidgardNativeTxProofCommitment({
     compactCbor: Buffer.from(source.compact_cbor, "hex"),
     witnessSetCompactCbor: Buffer.from(source.witness_set_compact_cbor, "hex"),
     fieldPreimageLengthsCbor: Buffer.from(
@@ -102,8 +102,8 @@ const proofSourceCommitment = (source: SDK.NativeTxProofSourceV1): string =>
   }).toString("hex");
 
 const nativeMaterial = (byte: number) => {
-  const canonical: MidgardNativeTxCanonicalV1 = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -125,13 +125,13 @@ const nativeMaterial = (byte: number) => {
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   };
-  const full = materializeMidgardNativeTxFromCanonicalV1(canonical);
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+  const full = materializeMidgardNativeTxFromCanonical(canonical);
+  const canonicalCbor = encodeMidgardNativeTxCanonical(full);
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const txId = computeMidgardNativeTxIdV1(full).toString("hex");
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const txId = computeMidgardNativeTxId(full).toString("hex");
   canonicalPreimageByCommitment.set(
-    computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+    computeMidgardNativeTxProofCommitment(source).toString("hex"),
     canonicalCbor,
   );
   return {
@@ -151,7 +151,7 @@ const nativeMaterial = (byte: number) => {
  * forced transaction the operator rejected for a failed Plutus execution at
  * execution index 0.
  */
-const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
+const forcedTxInvalidPlutus: SDK.OperatorVerdict = {
   ForcedTxInvalid: {
     reason: { PlutusExecutionFailed: { execution_index: 0n } },
   },
@@ -159,8 +159,8 @@ const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
 
 const forcedTx = (
   byte: number,
-  verdict: SDK.OperatorVerdictV1,
-): SDK.ForcedInclusionTxV1 => {
+  verdict: SDK.OperatorVerdict,
+): SDK.ForcedInclusionTx => {
   const material = nativeMaterial(byte);
   if (verdict === "ForcedTxValid") {
     return {
@@ -173,14 +173,14 @@ const forcedTx = (
   // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
   // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
   // registered for the leaf remains the submitted canonical bytes.
-  const adjudicated = deriveMidgardNativeTxProofSourceV1(
-    adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(material.canonicalCbor),
+  const adjudicated = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(material.canonicalCbor),
       "TxIsInvalid",
     ),
   );
   canonicalPreimageByCommitment.set(
-    computeMidgardNativeTxProofCommitmentV1(adjudicated).toString("hex"),
+    computeMidgardNativeTxProofCommitment(adjudicated).toString("hex"),
     material.canonicalCbor,
   );
   return {
@@ -210,7 +210,7 @@ const LEDGER_OUTPUT_CBOR =
   "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0";
 
 const spendInputItem = (txIdHex: string, outputIndex: number): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txIdHex, "hex"),
     outputIndex,
   });
@@ -226,7 +226,7 @@ const utxoRootWithDescriptors = (
   keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
-      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: Buffer.from(key, "hex"),
         outputCbor: Buffer.from(value, "hex"),
       }).descriptorCbor,
@@ -296,17 +296,17 @@ const buildPayloadFixture = async ({
   transitionTraceEntries = steps.map(traceEntry),
   eventToStep = [],
 }: PayloadFixtureInput): Promise<{
-  readonly payload: SDK.DaPayloadV1;
+  readonly payload: SDK.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly headerHash: string;
 }> => {
   const forcedTransactionPreimages = forcedTransactions.map(
     ([key, value], index): SDK.DaPayloadEntry => {
       const forced = Data.from(
         value,
-        SDK.ForcedInclusionTxV1,
-      ) as SDK.ForcedInclusionTxV1;
+        SDK.ForcedInclusionTx,
+      ) as SDK.ForcedInclusionTx;
       const preimage = canonicalPreimageByCommitment.get(
         proofSourceCommitment(forced.source),
       );
@@ -342,8 +342,8 @@ const buildPayloadFixture = async ({
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
           rejection_code_hash: h32(170 + index),
-        } satisfies SDK.ValidationTraceDescriptorV1,
-        valueSchema: SDK.ValidationTraceDescriptorV1Schema,
+        } satisfies SDK.ValidationTraceDescriptor,
+        valueSchema: SDK.ValidationTraceDescriptorSchema,
       }),
   );
   const utxoRoot = await utxoRootWithDescriptors(utxos);
@@ -411,7 +411,7 @@ const buildPayloadFixture = async ({
     transitionStepCount: BigInt(transitionTraceEntries.length),
     validationTraceCount: BigInt(validationTraces.length),
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
@@ -432,9 +432,9 @@ const buildPayloadFixture = async ({
     operatorVkey: h28(91),
     protocolVersion: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -455,7 +455,7 @@ const buildPayloadFixture = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,
@@ -466,7 +466,7 @@ const buildPayloadFixture = async ({
 const reconstruct = async (
   fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
 ): Promise<TransitionTraceReconstruction> =>
-  await reconstructDaPayloadV1({
+  await reconstructDaPayload({
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     expectedHeaderHash: fixture.headerHash,
     committedHeader: fixture.header,
@@ -511,7 +511,7 @@ const dummyMembershipFields = (domain: SDK.RootDomain) => ({
   proof: [] as SDK.Proof,
 });
 
-const dummyValidationMachineState = (): SDK.ValidationMachineStateV1 => ({
+const dummyValidationMachineState = (): SDK.ValidationMachineState => ({
   machine_version: 1n,
   event_key_hash: h32(980),
   transaction_id: h32(981),
@@ -538,7 +538,7 @@ const buildAcceptedTransactionTransitionMismatchEvidence = (): {
   };
   const committedPostRoot = h32(695);
   const validatedPostRoot = h32(696);
-  const descriptor: SDK.ValidationTraceDescriptorV1 = {
+  const descriptor: SDK.ValidationTraceDescriptor = {
     schema_version: 1n,
     machine_version: 1n,
     trace_root: h32(691),
@@ -560,7 +560,7 @@ const buildAcceptedTransactionTransitionMismatchEvidence = (): {
     step_index: 0n,
     phase: "ForcedTransaction",
   };
-  const dummyForcedInclusionTx: SDK.ForcedInclusionTxV1 = {
+  const dummyForcedInclusionTx: SDK.ForcedInclusionTx = {
     tx_id: h32(689),
     source: {
       compact_cbor: "",
@@ -569,7 +569,7 @@ const buildAcceptedTransactionTransitionMismatchEvidence = (): {
     },
     verdict: "ForcedTxValid",
   };
-  const claim: SDK.ValidationClaimWitnessV1 = {
+  const claim: SDK.ValidationClaimWitness = {
     version: 1n,
     descriptor_membership: {
       ...dummyMembershipFields(SDK.ROOT_DOMAINS.validationTraces),
@@ -759,7 +759,7 @@ const sourceMembershipMismatchProbe = async (): Promise<
   readonly TransitionTraceDetection[]
 > => {
   const material = nativeMaterial(630);
-  const source: SDK.L2TransactionSourceV1 = {
+  const source: SDK.L2TransactionSource = {
     tx_id: material.txId,
     source: material.source,
   };
@@ -768,7 +768,7 @@ const sourceMembershipMismatchProbe = async (): Promise<
     transactions: [
       entry(
         Buffer.from(material.txId, "hex"),
-        Buffer.from(Data.to(source, SDK.L2TransactionSourceV1), "hex"),
+        Buffer.from(Data.to(source, SDK.L2TransactionSource), "hex"),
       ),
     ],
     transactionPreimages: [
@@ -804,7 +804,7 @@ const invalidOneStepTransitionProbe = async (): Promise<
         key: txOrderId,
         keySchema: SDK.OutputReference as never,
         value: forcedTx(641, forcedTxInvalidPlutus),
-        valueSchema: SDK.ForcedInclusionTxV1Schema,
+        valueSchema: SDK.ForcedInclusionTxSchema,
       }),
     ],
     steps: [
@@ -851,7 +851,7 @@ const duplicateTraceEventProbe = async (): Promise<
         key: txOrderId,
         keySchema: SDK.OutputReference as never,
         value: forcedTx(661, forcedTxInvalidPlutus),
-        valueSchema: SDK.ForcedInclusionTxV1Schema,
+        valueSchema: SDK.ForcedInclusionTxSchema,
       }),
     ],
     steps: [
@@ -995,7 +995,7 @@ describe("ledger-delta dense trace totality v1", () => {
       L2TransactionEventKey: { tx_id: material.txId },
     };
     const finalDepositKey = depositEventKey(finalDepositId);
-    const l2Source: SDK.L2TransactionSourceV1 = {
+    const l2Source: SDK.L2TransactionSource = {
       tx_id: material.txId,
       source: material.source,
     };
@@ -1069,7 +1069,7 @@ describe("ledger-delta dense trace totality v1", () => {
       transactions: [
         entry(
           Buffer.from(material.txId, "hex"),
-          Buffer.from(Data.to(l2Source, SDK.L2TransactionSourceV1), "hex"),
+          Buffer.from(Data.to(l2Source, SDK.L2TransactionSource), "hex"),
         ),
       ],
       transactionPreimages: [
@@ -1218,7 +1218,7 @@ describe("ledger-delta dense trace totality v1", () => {
           // so the default no-op check (which only fires for invalid forced
           // transactions) stays quiet here.
           value: forcedTx(737, "ForcedTxValid"),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps,
@@ -1293,7 +1293,7 @@ describe("ledger-delta dense trace totality v1", () => {
     const l2Key: SDK.EventKey = {
       L2TransactionEventKey: { tx_id: material.txId },
     };
-    const l2Source: SDK.L2TransactionSourceV1 = {
+    const l2Source: SDK.L2TransactionSource = {
       tx_id: material.txId,
       source: material.source,
     };
@@ -1320,13 +1320,13 @@ describe("ledger-delta dense trace totality v1", () => {
           key: forcedId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(806, "ForcedTxValid"),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       transactions: [
         entry(
           Buffer.from(material.txId, "hex"),
-          Buffer.from(Data.to(l2Source, SDK.L2TransactionSourceV1), "hex"),
+          Buffer.from(Data.to(l2Source, SDK.L2TransactionSource), "hex"),
         ),
       ],
       transactionPreimages: [

@@ -1,35 +1,35 @@
 import {
-  decodeMidgardMintFieldPreimageV1,
-  encodeMidgardMintPolicyItemV1,
+  decodeMidgardMintFieldPreimage,
+  encodeMidgardMintPolicyItem,
 } from "@al-ft/midgard-core";
 import { CML, Emulator, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 import {
-  buildSignedCardanoMintNativePoliciesCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  CARDANO_BOUNDARY_MINT_ASSET_NAME_V1,
-  CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1,
-  CARDANO_BOUNDARY_OBSERVER_TTL_V1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  findSignedCardanoCollectionBoundaryV1,
-  measureSignedCardanoMintNativePoliciesV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildSignedCardanoMintNativePoliciesCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  CARDANO_BOUNDARY_MINT_ASSET_NAME,
+  CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE,
+  CARDANO_BOUNDARY_OBSERVER_TTL,
+  deterministicCardanoBoundaryPrivateKey,
+  exerciseMidgardOrderedCollectionBoundary,
+  findSignedCardanoCollectionBoundary,
+  measureSignedCardanoMintNativePolicies,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundary-v1.js";
 
 // The exact genuine signed-Cardano field-5/field-6 boundary. The terminal fold
 // vector below is the Aiken-replayed half; these four numbers pin the policy
 // cardinality and byte count the search must land on, so a silently shrunk mint
 // collection can no longer satisfy the relative bounds alone.
-const MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1 = 130;
-const MAXIMUM_MINT_POLICY_ACCEPTED_SIGNED_BYTES_V1 = 16_376;
-const MAXIMUM_MINT_POLICY_ADJACENT_COUNT_V1 = 131;
-const MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES_V1 = 16_500;
+const MAXIMUM_MINT_POLICY_ACCEPTED_COUNT = 130;
+const MAXIMUM_MINT_POLICY_ACCEPTED_SIGNED_BYTES = 16_376;
+const MAXIMUM_MINT_POLICY_ADJACENT_COUNT = 131;
+const MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES = 16_500;
 
-const maximumMintTerminalFoldVectorV1 = {
+const maximumMintTerminalFoldVector = {
   fieldCommitmentHex:
     "7ba153c420ecc2fc34570ff76ea54d8b892b9b2f21baff8ae9bbaf95b7e1eab7",
   transactionIdHex:
@@ -84,7 +84,7 @@ const maximumMintTerminalFoldVectorV1 = {
 
 describe("canonical V1 mint Cardano boundary", () => {
   it("packs field-5 assets under maxValueSize and authorizes every policy with a field-6 native script", async () => {
-    const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const spendingKey = deterministicCardanoBoundaryPrivateKey(0);
     const spendingKeyHash = spendingKey.to_public().hash();
     const address = CML.EnterpriseAddress.new(
       0,
@@ -101,7 +101,7 @@ describe("canonical V1 mint Cardano boundary", () => {
           assets: { lovelace: 1_000_000_000_000n },
         },
       ],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const [fundingInput] = await emulator.getUtxos(address);
     expect(fundingInput).toBeDefined();
@@ -109,32 +109,32 @@ describe("canonical V1 mint Cardano boundary", () => {
     expect(fundingInput!.outputIndex).toBe(0);
 
     const buildCandidate = (requestedPolicyCount: number) =>
-      buildSignedCardanoMintNativePoliciesCandidateV1({
+      buildSignedCardanoMintNativePoliciesCandidate({
         privateKeyBech32: spendingKey.to_bech32(),
         fundingInput: fundingInput!,
         recipientAddress: address,
         requestedPolicyCount,
         maxValueSize: emulator.protocolParameters.maxValSize,
-        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
         minFeeRefScriptCostPerByte:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
       });
 
     const firstCandidate = await buildCandidate(1);
-    const firstMeasurement = measureSignedCardanoMintNativePoliciesV1(
+    const firstMeasurement = measureSignedCardanoMintNativePolicies(
       firstCandidate.cborHex,
     );
-    const firstMintField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const firstMintField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: firstCandidate.cborHex,
       fieldIndex: 5,
     });
-    const firstScriptField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const firstScriptField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: firstCandidate.cborHex,
       fieldIndex: 6,
     });
     expect(firstCandidate.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(firstMeasurement.mintPolicyCount).toBe(1);
     expect(firstMeasurement.mintAssetCount).toBe(1);
@@ -142,25 +142,25 @@ describe("canonical V1 mint Cardano boundary", () => {
     expect(firstMintField.itemCount).toBe(1);
     expect(firstScriptField.itemCount).toBe(1);
 
-    const boundary = await findSignedCardanoCollectionBoundaryV1({
+    const boundary = await findSignedCardanoCollectionBoundary({
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: buildCandidate,
     });
-    const acceptedCardano = measureSignedCardanoMintNativePoliciesV1(
+    const acceptedCardano = measureSignedCardanoMintNativePolicies(
       boundary.accepted.cborHex,
     );
-    const adjacentCardano = measureSignedCardanoMintNativePoliciesV1(
+    const adjacentCardano = measureSignedCardanoMintNativePolicies(
       boundary.adjacent.cborHex,
     );
-    const mintField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const mintField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 5,
     });
-    const scriptField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const scriptField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 6,
     });
-    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+    const retainedDa = await exerciseMidgardRetainedDaBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-mint-and-native-policies",
     });
@@ -178,31 +178,31 @@ describe("canonical V1 mint Cardano boundary", () => {
     );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
       boundary.accepted.requestedItemCount + 1,
     );
     expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.accepted.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
           boundary.accepted.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       ),
     );
     expect(boundary.adjacent.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
           boundary.adjacent.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       ),
     );
 
     const assertExactPolicyCoupling = (
-      measurement: ReturnType<typeof measureSignedCardanoMintNativePoliciesV1>,
+      measurement: ReturnType<typeof measureSignedCardanoMintNativePolicies>,
       expectedPolicyCount: number,
     ): void => {
       expect(measurement.inputCount).toBe(1);
@@ -212,7 +212,7 @@ describe("canonical V1 mint Cardano boundary", () => {
       expect(measurement.vkeyWitnessCount).toBe(1);
       expect(measurement.outputCount).toBeGreaterThan(0);
       expect(measurement.validityStart).toBeUndefined();
-      expect(measurement.ttl).toBe(CARDANO_BOUNDARY_OBSERVER_TTL_V1);
+      expect(measurement.ttl).toBe(CARDANO_BOUNDARY_OBSERVER_TTL);
       expect(measurement.policyAssetCounts).toEqual(
         Array.from({ length: expectedPolicyCount }, () => 1),
       );
@@ -222,7 +222,7 @@ describe("canonical V1 mint Cardano boundary", () => {
       expect(measurement.outputAssetCount).toBe(expectedPolicyCount);
       expect(measurement.outputAssetNameHexes).toEqual(
         Array.from({ length: expectedPolicyCount }, () =>
-          CARDANO_BOUNDARY_MINT_ASSET_NAME_V1.toString("hex"),
+          CARDANO_BOUNDARY_MINT_ASSET_NAME.toString("hex"),
         ),
       );
       expect(measurement.outputAssetQuantities).toEqual(
@@ -268,31 +268,29 @@ describe("canonical V1 mint Cardano boundary", () => {
     expect(mintField.completeFoldStepCount).toBe(
       scriptField.completeFoldStepCount,
     );
-    expect(mintField.maxRevealBytes).toBeLessThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-    );
+    expect(mintField.maxRevealBytes).toBeLessThan(CARDANO_BOUNDARY_MAX_TX_SIZE);
 
     // The genuine maximum and its immediately adjacent control are exact, not
     // merely "whatever the search returned".
     expect(boundary.accepted.requestedItemCount).toBe(
-      MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1,
+      MAXIMUM_MINT_POLICY_ACCEPTED_COUNT,
     );
     expect(boundary.accepted.signedBytes).toBe(
-      MAXIMUM_MINT_POLICY_ACCEPTED_SIGNED_BYTES_V1,
+      MAXIMUM_MINT_POLICY_ACCEPTED_SIGNED_BYTES,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
-      MAXIMUM_MINT_POLICY_ADJACENT_COUNT_V1,
+      MAXIMUM_MINT_POLICY_ADJACENT_COUNT,
     );
     expect(boundary.adjacent.signedBytes).toBe(
-      MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES_V1,
+      MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES,
     );
-    expect(mintField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1);
-    expect(scriptField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1);
+    expect(mintField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT);
+    expect(scriptField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT);
     // §5.6: field 5 is the enveloped per-policy item list, and its decoder is
     // where the one-policy/one-asset shape, the 28-byte policy id, canonical key
     // order and non-zero quantities are enforced. The hand-rolled CBOR walk this
     // replaced re-stated those rules against the retired raw-map form.
-    const nativeMintPolicyItems = decodeMidgardMintFieldPreimageV1(
+    const nativeMintPolicyItems = decodeMidgardMintFieldPreimage(
       Buffer.from(mintField.fieldPreimageCborHex, "hex"),
     );
     const nativeMintEntries = nativeMintPolicyItems.map((item, itemIndex) => {
@@ -313,7 +311,7 @@ describe("canonical V1 mint Cardano boundary", () => {
     );
     expect(nativeMintEntries.map(({ assetNameHex }) => assetNameHex)).toEqual(
       Array.from({ length: acceptedCardano.mintPolicyCount }, () =>
-        CARDANO_BOUNDARY_MINT_ASSET_NAME_V1.toString("hex"),
+        CARDANO_BOUNDARY_MINT_ASSET_NAME.toString("hex"),
       ),
     );
     expect(nativeMintEntries.map(({ quantity }) => quantity)).toEqual(
@@ -330,7 +328,7 @@ describe("canonical V1 mint Cardano boundary", () => {
         mintField.terminalFoldVector.encodedLengthBeforeItem,
       collectionProof: mintField.terminalFoldVector.collectionProof,
       chunkProof: mintField.terminalFoldVector.chunkProof,
-    }).toEqual(maximumMintTerminalFoldVectorV1);
+    }).toEqual(maximumMintTerminalFoldVector);
     // #590 scope item 0: the write channel this suite did not have.
     //
     // The `mint-boundary-v1` fixture in
@@ -344,7 +342,7 @@ describe("canonical V1 mint Cardano boundary", () => {
     //
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.
-    publishAikenVectorV1("mint-boundary-v1", {
+    publishAikenVector("mint-boundary-v1", {
       fieldIndex: mintField.terminalFoldVector.collectionProof.fieldIndex,
       itemCount: mintField.terminalFoldVector.collectionProof.itemCount,
       itemIndex: mintField.terminalFoldVector.collectionProof.itemIndex,
@@ -383,7 +381,7 @@ describe("canonical V1 mint Cardano boundary", () => {
               maxValueSize: emulator.protocolParameters.maxValSize,
               fixtureGenerationBasis:
                 "on-demand until exact signed bytes exceed maxTxSize",
-              assetNameHex: CARDANO_BOUNDARY_MINT_ASSET_NAME_V1.toString("hex"),
+              assetNameHex: CARDANO_BOUNDARY_MINT_ASSET_NAME.toString("hex"),
               actualSpendInputCount: acceptedCardano.inputCount,
               actualMintPolicyCount: acceptedCardano.mintPolicyCount,
               actualMintAssetCount: acceptedCardano.mintAssetCount,
@@ -392,11 +390,11 @@ describe("canonical V1 mint Cardano boundary", () => {
               actualOutputCount: acceptedCardano.outputCount,
               actualVkeyWitnessCount: acceptedCardano.vkeyWitnessCount,
               validityStart: "unset",
-              validityEnd: CARDANO_BOUNDARY_OBSERVER_TTL_V1.toString(),
+              validityEnd: CARDANO_BOUNDARY_OBSERVER_TTL.toString(),
               distinctExpiryStart:
-                CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1.toString(),
+                CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE.toString(),
               distinctExpiryEnd: (
-                CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 +
+                CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE +
                 BigInt(boundary.accepted.requestedItemCount - 1)
               ).toString(),
               signedCardanoBytes: boundary.accepted.signedBytes,
@@ -421,7 +419,7 @@ describe("canonical V1 mint Cardano boundary", () => {
               // The §5.6 `enc_5` bytes of the penultimate policy item, re-encoded
               // from the decoded item so the artifact records the canonical form
               // rather than a slice of the preimage.
-              penultimateMintItemHex: encodeMidgardMintPolicyItemV1(
+              penultimateMintItemHex: encodeMidgardMintPolicyItem(
                 nativeMintPolicyItems.at(-2) ?? {
                   policyId: Buffer.alloc(28),
                   assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
@@ -478,7 +476,7 @@ describe("canonical V1 mint Cardano boundary", () => {
 // the policy's real authorization, stripped out.
 describe("mint and burn authorization through the Cardano native-script mint frontier", () => {
   it("authorizes mint and burn for a native-script-backed policy, and rejects both once the same policy's witnessing native script is withheld", async () => {
-    const signingKey = deterministicCardanoBoundaryPrivateKeyV1(7);
+    const signingKey = deterministicCardanoBoundaryPrivateKey(7);
     const signerHash = signingKey.to_public().hash();
     const address = CML.EnterpriseAddress.new(
       0,
@@ -491,7 +489,7 @@ describe("mint and burn authorization through the Cardano native-script mint fro
     const backedPolicyId = backedScript.hash();
     const unit = toUnit(
       backedPolicyId.to_hex(),
-      CARDANO_BOUNDARY_MINT_ASSET_NAME_V1.toString("hex"),
+      CARDANO_BOUNDARY_MINT_ASSET_NAME.toString("hex"),
     );
 
     const genesisLovelace = 1_000_000_000_000n;
@@ -526,7 +524,7 @@ describe("mint and burn authorization through the Cardano native-script mint fro
           assets: { lovelace: genesisLovelace, [unit]: 3n },
         },
       ],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const utxos = await emulator.getUtxos(address);
     expect(utxos).toHaveLength(4);
@@ -554,7 +552,7 @@ describe("mint and burn authorization through the Cardano native-script mint fro
       if (remainingAssetQuantity > 0n) {
         const perAsset = CML.MapAssetNameToCoin.new();
         perAsset.insert(
-          CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME_V1),
+          CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME),
           remainingAssetQuantity,
         );
         outputAssets.insert_assets(backedPolicyId, perAsset);
@@ -576,7 +574,7 @@ describe("mint and burn authorization through the Cardano native-script mint fro
       const mint = CML.Mint.new();
       const mintAssets = CML.MapAssetNameToNonZeroInt64.new();
       mintAssets.insert(
-        CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME_V1),
+        CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME),
         mintQuantity,
       );
       mint.insert_assets(backedPolicyId, mintAssets);

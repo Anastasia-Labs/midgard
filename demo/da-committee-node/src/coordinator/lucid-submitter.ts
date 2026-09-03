@@ -30,7 +30,7 @@ export type LucidDaAttestationSubmitterDeps = {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
   readonly referenceScripts: DaAttestationReferenceScripts;
-  readonly availabilityParameters: SDK.DaAvailabilityParametersV1;
+  readonly availabilityParameters: SDK.DaAvailabilityParameters;
   readonly signSubmit?: (tx: TxSignBuilder) => Promise<string>;
   readonly refreshFundingUtxos?: () => Promise<void>;
   readonly postSubmitVerificationRetryCount?: number;
@@ -81,7 +81,7 @@ export class LucidDaAttestationSubmitter
       target,
       referenceScripts: this.deps.referenceScripts,
       rescueBeneficiary,
-      availabilityCommitment: SDK.parseDaAvailabilityCommitmentV1Cbor(
+      availabilityCommitment: SDK.parseDaAvailabilityCommitmentCbor(
         record.availabilityCommitmentCbor,
       ),
       attestationOutputLovelace:
@@ -208,10 +208,10 @@ export class LucidDaAttestationSubmitter
         continue;
       }
       const stateQueueNode = await Effect.runPromise(
-        SDK.getStateQueueNodeV1FromStateQueueDatum(stateQueueUtxo.datum),
+        SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
       );
       const computedHeaderHash = await Effect.runPromise(
-        SDK.hashBlockHeaderV1(stateQueueNode.header),
+        SDK.hashBlockHeader(stateQueueNode.header),
       );
       if (computedHeaderHash !== headerHash) {
         continue;

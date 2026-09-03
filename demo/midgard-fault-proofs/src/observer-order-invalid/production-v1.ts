@@ -1,6 +1,6 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -8,81 +8,81 @@ import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
-  type JournalJsonObjectV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  type JournalJsonObject,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import type { FraudProofWorkflowActionV1 } from "../workflow/orchestrator-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriagePrerequisitePortV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriagePrerequisitePort,
 } from "../workflow/production-field-carriage-prerequisite-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  submitCapturedTransactionV1,
-  workflowTransactionInputOutRefsV1,
+  submitCapturedTransaction,
+  workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary-v1.js";
 import {
-  OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1,
-  type ObserverOrderInvalidContractsV1,
+  OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES,
+  type ObserverOrderInvalidContracts,
 } from "./contracts-v1.js";
 import {
-  createObserverOrderInvalidActuatorV1,
-  type ObserverOrderInvalidActuatorActionV1,
-  observerOrderInvalidFieldRequirementV1,
-  type ObserverOrderInvalidWorkflowReferenceScriptsV1,
+  createObserverOrderInvalidActuator,
+  type ObserverOrderInvalidActuatorAction,
+  observerOrderInvalidFieldRequirement,
+  type ObserverOrderInvalidWorkflowReferenceScripts,
 } from "./production-actuator-v1.js";
 import {
-  admitProductionObserverOrderInvalidArtifactV1,
-  productionObserverOrderInvalidArtifactDigestV1,
-  type ProductionObserverOrderInvalidArtifactV1,
+  admitObserverOrderInvalidArtifact,
+  type ObserverOrderInvalidArtifact,
+  observerOrderInvalidArtifactDigest,
 } from "./production-artifact-v1.js";
 import {
-  detectObserverOrderInvalidAcceptedRawReplayV1,
-  observerOrderInvalidRawBlockEvidenceFromVerifiedPayloadV1,
-  prepareProductionObserverOrderInvalidAcceptedArtifactV1,
-  prepareProductionObserverOrderInvalidForcedArtifactV1,
+  detectObserverOrderInvalidAcceptedRawReplay,
+  observerOrderInvalidRawBlockEvidenceFromVerifiedPayload,
+  prepareObserverOrderInvalidAcceptedArtifact,
+  prepareObserverOrderInvalidForcedArtifact,
 } from "./replay-v1.js";
 import {
-  ObserverOrderInvalidStep02DatumV1Schema,
-  ObserverOrderInvalidStep03DatumV1Schema,
-  ObserverOrderInvalidStep04DatumV1Schema,
+  ObserverOrderInvalidStep02DatumSchema,
+  ObserverOrderInvalidStep03DatumSchema,
+  ObserverOrderInvalidStep04DatumSchema,
 } from "./schemas-v1.js";
-import { hashObserverOrderWalkCheckpointV1 } from "./staged-plan-v1.js";
+import { hashObserverOrderWalkCheckpoint } from "./staged-plan-v1.js";
 
-export const OBSERVER_ORDER_INVALID_PRODUCTION_WORKFLOW_V1 =
+export const OBSERVER_ORDER_INVALID_WORKFLOW =
   "midgard-observer-order-invalid-production-workflow-v1" as const;
 
-export type ObserverOrderInvalidRemovalReferenceScriptsV1 = Readonly<{
+export type ObserverOrderInvalidRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -94,25 +94,25 @@ export type ObserverOrderInvalidRemovalReferenceScriptsV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type ManifestBoundObserverOrderInvalidWorkflowConfigV1 = Readonly<{
+export type ManifestBoundObserverOrderInvalidWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: ObserverOrderInvalidWorkflowReferenceScriptsV1 &
-    Readonly<{ removal: ObserverOrderInvalidRemovalReferenceScriptsV1 }>;
+  referenceScripts: ObserverOrderInvalidWorkflowReferenceScripts &
+    Readonly<{ removal: ObserverOrderInvalidRemovalReferenceScripts }>;
 }>;
 
-export type ManifestBoundObserverOrderInvalidWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"observerOrderInvalid">;
-  l1: FraudProofFamilyL1ObservationPortV1<"observerOrderInvalid">;
-  actuator: ReturnType<typeof createObserverOrderInvalidActuatorV1>;
-  prerequisite: ProductionFieldCarriagePrerequisitePortV1<"observerOrderInvalid">;
+export type ManifestBoundObserverOrderInvalidWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"observerOrderInvalid">;
+  l1: FraudProofFamilyL1ObservationPort<"observerOrderInvalid">;
+  actuator: ReturnType<typeof createObserverOrderInvalidActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"observerOrderInvalid">;
   lucid: LucidEvolution;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -120,12 +120,12 @@ export type ManifestBoundObserverOrderInvalidWorkflowV1 = Readonly<{
 
 const CATEGORY = "observerOrderInvalid" as const;
 
-export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
-  config: ManifestBoundObserverOrderInvalidWorkflowConfigV1,
-): Promise<ManifestBoundObserverOrderInvalidWorkflowV1> => {
+export const createManifestBoundObserverOrderInvalidWorkflow = async (
+  config: ManifestBoundObserverOrderInvalidWorkflowConfig,
+): Promise<ManifestBoundObserverOrderInvalidWorkflow> => {
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("observerOrderInvalid decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -133,13 +133,13 @@ export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
-      ObserverOrderInvalidStep02DatumV1Schema,
-      ObserverOrderInvalidStep02DatumV1Schema,
-      ObserverOrderInvalidStep03DatumV1Schema,
-      ObserverOrderInvalidStep04DatumV1Schema,
+      ObserverOrderInvalidStep02DatumSchema,
+      ObserverOrderInvalidStep02DatumSchema,
+      ObserverOrderInvalidStep03DatumSchema,
+      ObserverOrderInvalidStep04DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -155,23 +155,22 @@ export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
   )
     throw new Error("observerOrderInvalid manifest omitted required contracts");
   const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
     });
-  const steps = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1.map(
-    (_title, index) =>
-      bindReference(
-        [
-          "fraudProofObserverOrderInvalid",
-          "fraudProofObserverOrderInvalidStep02",
-          "fraudProofObserverOrderInvalidStep03",
-          "fraudProofObserverOrderInvalidStep04",
-        ][index]!,
-        config.referenceScripts.steps[index]!,
-      ),
-  ) as unknown as ObserverOrderInvalidWorkflowReferenceScriptsV1["steps"];
+  const steps = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES.map((_title, index) =>
+    bindReference(
+      [
+        "fraudProofObserverOrderInvalid",
+        "fraudProofObserverOrderInvalidStep02",
+        "fraudProofObserverOrderInvalidStep03",
+        "fraudProofObserverOrderInvalidStep04",
+      ][index]!,
+      config.referenceScripts.steps[index]!,
+    ),
+  ) as unknown as ObserverOrderInvalidWorkflowReferenceScripts["steps"];
   const witnessNames = {
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
@@ -185,11 +184,11 @@ export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
       bindReference(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   const references = Object.freeze({
     steps: Object.freeze(steps),
     witnesses: Object.freeze(witnesses),
@@ -198,14 +197,14 @@ export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
       config.referenceScripts.fieldPreimageCertificateMint,
     ),
   });
-  const contracts: ObserverOrderInvalidContractsV1 = Object.freeze({
+  const contracts: ObserverOrderInvalidContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
-      blueprintTitle: OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES[index]!,
       spendingScript: step.spendingScript,
       spendingScriptHash: step.spendingScriptHash,
       spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as ObserverOrderInvalidContractsV1["steps"],
+    })) as unknown as ObserverOrderInvalidContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
       policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
@@ -219,13 +218,13 @@ export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const actuator = createObserverOrderInvalidActuatorV1({
+  const actuator = createObserverOrderInvalidActuator({
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -234,15 +233,15 @@ export const createManifestBoundObserverOrderInvalidWorkflowV1 = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePortV1({
+  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: CATEGORY,
     lucid: config.lucid,
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
     requirementForAction: ({ action, artifact }) =>
-      observerOrderInvalidFieldRequirementV1({
-        action: action.input as unknown as ObserverOrderInvalidActuatorActionV1,
+      observerOrderInvalidFieldRequirement({
+        action: action.input as unknown as ObserverOrderInvalidActuatorAction,
         artifact,
         owner: config.signer.paymentKeyHash,
         certificate: {
@@ -272,14 +271,14 @@ const appendEvent = async ({
   identity,
   event,
 }: {
-  readonly journal: FraudProofWorkflowJournalStoreV1;
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly workflowId: string;
-  readonly identity: FraudProofWorkflowIdentityV1;
-  readonly event: FraudProofWorkflowJournalEventV1;
+  readonly identity: FraudProofWorkflowIdentity;
+  readonly event: FraudProofWorkflowJournalEvent;
 }) => {
   const sequence = (await journal.load(workflowId)).length;
-  const entry: FraudProofWorkflowJournalEntryV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+  const entry: FraudProofWorkflowJournalEntry = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
     workflowId,
     identity,
     sequence,
@@ -289,15 +288,15 @@ const appendEvent = async ({
   await journal.append(entry, sequence);
 };
 
-export const observerOrderInvalidActionIdV1 = (
-  action: ObserverOrderInvalidActuatorActionV1,
+export const observerOrderInvalidActionId = (
+  action: ObserverOrderInvalidActuatorAction,
 ): string =>
   `observerOrderInvalid:${Buffer.from(JSON.stringify(action)).toString("hex")}`;
 
 const workflowAction = (
-  action: ObserverOrderInvalidActuatorActionV1,
-): FraudProofWorkflowActionV1 => ({
-  actionId: observerOrderInvalidActionIdV1(action),
+  action: ObserverOrderInvalidActuatorAction,
+): FraudProofWorkflowAction => ({
+  actionId: observerOrderInvalidActionId(action),
   input: {
     schemaVersion: "midgard-production-cursor-family-action-v1",
     category: "observerOrderInvalid",
@@ -309,12 +308,12 @@ const currentAction = async ({
   workflow,
   artifact,
 }: {
-  readonly workflow: ManifestBoundObserverOrderInvalidWorkflowV1;
-  readonly artifact: ProductionObserverOrderInvalidArtifactV1;
-}): Promise<ObserverOrderInvalidActuatorActionV1 | "removed"> => {
+  readonly workflow: ManifestBoundObserverOrderInvalidWorkflow;
+  readonly artifact: ObserverOrderInvalidArtifact;
+}): Promise<ObserverOrderInvalidActuatorAction | "removed"> => {
   const stage = (await workflow.l1.observe({ headerHash: artifact.headerHash }))
     .stage;
-  const admitted = admitProductionObserverOrderInvalidArtifactV1(artifact);
+  const admitted = admitObserverOrderInvalidArtifact(artifact);
   if (stage.kind === "not_started")
     return {
       stage: "init",
@@ -349,14 +348,14 @@ const currentAction = async ({
       throw new Error("observerOrderInvalid step-03 datum disappeared");
     const state = Data.from(
       utxo.datum,
-      ObserverOrderInvalidStep03DatumV1Schema as never,
+      ObserverOrderInvalidStep03DatumSchema as never,
     ) as { data: { checkpoint_hash: string } };
     const hash = state.data.checkpoint_hash;
     const ordinal = [
       admitted.staged.initialWalk,
       ...admitted.staged.walk,
     ].findIndex(
-      (checkpoint) => hashObserverOrderWalkCheckpointV1(checkpoint) === hash,
+      (checkpoint) => hashObserverOrderWalkCheckpoint(checkpoint) === hash,
     );
     if (ordinal < 0 || ordinal >= admitted.staged.walk.length)
       throw new Error("observerOrderInvalid scan checkpoint substitution");
@@ -371,13 +370,13 @@ const currentAction = async ({
   throw new Error("observerOrderInvalid observed an impossible step");
 };
 
-export type ObserverOrderInvalidWorkflowRunResultV1 = Readonly<{
+export type ObserverOrderInvalidWorkflowRunResult = Readonly<{
   kind: "pending" | "completed";
   workflowId: string;
   txHash?: string;
 }>;
 
-export const reconcileObserverOrderInvalidSubmissionIntentV1 = ({
+export const reconcileObserverOrderInvalidSubmissionIntent = ({
   intendedActionId,
   txHash,
   transactionConfirmed,
@@ -386,7 +385,7 @@ export const reconcileObserverOrderInvalidSubmissionIntentV1 = ({
   readonly intendedActionId: string;
   readonly txHash: string;
   readonly transactionConfirmed: boolean;
-  readonly observedAction: ObserverOrderInvalidActuatorActionV1 | "removed";
+  readonly observedAction: ObserverOrderInvalidActuatorAction | "removed";
 }):
   | Readonly<{ kind: "confirmed"; txHash: string }>
   | Readonly<{ kind: "pending"; txHash: string }>
@@ -394,14 +393,14 @@ export const reconcileObserverOrderInvalidSubmissionIntentV1 = ({
   if (transactionConfirmed) return { kind: "confirmed", txHash };
   if (
     observedAction === "removed" ||
-    observerOrderInvalidActionIdV1(observedAction) !== intendedActionId
+    observerOrderInvalidActionId(observedAction) !== intendedActionId
   )
     return { kind: "conflict", txHash };
   return { kind: "pending", txHash };
 };
 
 /** Deterministic durability prelude shared by prerequisite and proof actions. */
-export const observerOrderInvalidSubmissionPreludeV1 = ({
+export const observerOrderInvalidSubmissionPrelude = ({
   actionId,
   actionInput,
   txHash,
@@ -409,20 +408,20 @@ export const observerOrderInvalidSubmissionPreludeV1 = ({
   durableRecovery,
 }: {
   readonly actionId: string;
-  readonly actionInput: JournalJsonObjectV1;
+  readonly actionInput: JournalJsonObject;
   readonly txHash: string;
   readonly referenceScripts: Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "preflight_passed" }
   >["referenceScripts"];
-  readonly durableRecovery?: JournalJsonObjectV1;
+  readonly durableRecovery?: JournalJsonObject;
 }): readonly [
   Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "preflight_passed" }
   >,
   Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "submission_intent" }
   >,
 ] =>
@@ -445,15 +444,15 @@ export const observerOrderInvalidSubmissionPreludeV1 = ({
   ]);
 
 /** One crash-safe action per call; callers resume by invoking the same runner. */
-export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
+export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundObserverOrderInvalidWorkflowV1;
+  readonly workflow: ManifestBoundObserverOrderInvalidWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<ObserverOrderInvalidWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<ObserverOrderInvalidWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -461,25 +460,25 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
     headerHash: observation.headerHash,
     sources,
   });
-  const raw = await observerOrderInvalidRawBlockEvidenceFromVerifiedPayloadV1({
+  const raw = await observerOrderInvalidRawBlockEvidenceFromVerifiedPayload({
     observation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
     daProvenance: fetched.provenance,
   });
   const artifact =
-    detectObserverOrderInvalidAcceptedRawReplayV1(raw).length > 0
-      ? await prepareProductionObserverOrderInvalidAcceptedArtifactV1(raw)
-      : await prepareProductionObserverOrderInvalidForcedArtifactV1(
-          await fetchCanonicalBlockEvidenceV1({ observation, sources }),
+    detectObserverOrderInvalidAcceptedRawReplay(raw).length > 0
+      ? await prepareObserverOrderInvalidAcceptedArtifact(raw)
+      : await prepareObserverOrderInvalidForcedArtifact(
+          await fetchCanonicalBlockEvidence({ observation, sources }),
         );
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     category: CATEGORY,
     target: { kind: "state_queue_header", headerHash: artifact.headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await appendEvent({
@@ -495,8 +494,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
       event: {
         kind: "prepared",
         artifact,
-        artifactDigest:
-          productionObserverOrderInvalidArtifactDigestV1(artifact),
+        artifactDigest: observerOrderInvalidArtifactDigest(artifact),
       },
     });
     entries = await journal.load(workflowId);
@@ -505,7 +503,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
     if (
       prepared?.event.kind !== "prepared" ||
       prepared.event.artifactDigest !==
-        productionObserverOrderInvalidArtifactDigestV1(artifact)
+        observerOrderInvalidArtifactDigest(artifact)
     )
       throw new Error("observerOrderInvalid durable artifact substitution");
   }
@@ -536,7 +534,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
           : undefined;
       if (!onChain) {
         const observedAction = await currentAction({ workflow, artifact });
-        const reconciliation = reconcileObserverOrderInvalidSubmissionIntentV1({
+        const reconciliation = reconcileObserverOrderInvalidSubmissionIntent({
           intendedActionId: intent.actionId,
           txHash: intent.txHash,
           transactionConfirmed: false,
@@ -595,8 +593,8 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
         event: {
           kind: "completed",
           terminal: terminalStage.terminal,
-          terminalDigest: journalJsonDigestV1(
-            terminalStage.terminal as unknown as JournalJsonObjectV1,
+          terminalDigest: journalJsonDigest(
+            terminalStage.terminal as unknown as JournalJsonObject,
           ),
         },
       });
@@ -616,7 +614,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
       action: prerequisite.action,
       artifact,
     });
-    const prelude = observerOrderInvalidSubmissionPreludeV1({
+    const prelude = observerOrderInvalidSubmissionPrelude({
       actionId: prerequisite.action.actionId,
       actionInput: prerequisite.action.input,
       txHash: captured.transaction.txHash,
@@ -625,7 +623,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
     });
     for (const event of prelude)
       await appendEvent({ journal, workflowId, identity, event });
-    const submitted = await submitCapturedTransactionV1(captured.transaction);
+    const submitted = await submitCapturedTransaction(captured.transaction);
     await appendEvent({
       journal,
       workflowId,
@@ -641,7 +639,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
   }
   const id = baseAction.actionId;
   const captured = await workflow.actuator.capture({ action, artifact });
-  const prelude = observerOrderInvalidSubmissionPreludeV1({
+  const prelude = observerOrderInvalidSubmissionPrelude({
     actionId: id,
     actionInput: baseAction.input,
     txHash: captured.transaction.txHash,
@@ -659,7 +657,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
   });
   for (const event of prelude)
     await appendEvent({ journal, workflowId, identity, event });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error("observerOrderInvalid provider substituted transaction");
   await appendEvent({
@@ -670,7 +668,7 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
   });
   if (
     action.stage === "remove" &&
-    !workflowTransactionInputOutRefsV1(captured.transaction.signed).includes(
+    !workflowTransactionInputOutRefs(captured.transaction.signed).includes(
       action.nextRemovalOutRef,
     )
   )
@@ -678,33 +676,33 @@ export const executeManifestBoundObserverOrderInvalidWorkflowV1 = async ({
   return { kind: "pending", workflowId, txHash: submitted };
 };
 
-export type LoadedObserverOrderInvalidProductionWorkflowV1 = Readonly<{
+export type LoadedObserverOrderInvalidWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundObserverOrderInvalidWorkflowConfigV1;
+  config: ManifestBoundObserverOrderInvalidWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadObserverOrderInvalidProductionWorkflowV1 = (input: {
+export type LoadObserverOrderInvalidWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedObserverOrderInvalidProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedObserverOrderInvalidWorkflow>;
 
 /** Standard runtime-loader-compatible package runner; core config has no callbacks. */
-export const createObserverOrderInvalidProductionWorkflowRunnerSurfaceV1 = ({
+export const createObserverOrderInvalidWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  readonly loadRuntimeConfig: LoadObserverOrderInvalidProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  readonly loadRuntimeConfig: LoadObserverOrderInvalidWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (invocation.category !== (CATEGORY as string))
         throw new Error("observerOrderInvalid runner category changed");
-      const journal = bindProductionWorkflowFundingReservationJournalV1({
+      const journal = bindWorkflowFundingReservationJournal({
         permit: invocation.fundingReservationPermit,
-        journal: bindProductionWorkflowActuationJournalV1({
-          journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
             invocation.journalDirectory,
           ),
           permit: invocation.actuationPermit,
@@ -714,7 +712,7 @@ export const createObserverOrderInvalidProductionWorkflowRunnerSurfaceV1 = ({
           headerHash: invocation.headerHash,
         }),
       });
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
         category: CATEGORY,
@@ -737,10 +735,9 @@ export const createObserverOrderInvalidProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "observerOrderInvalid runtime requires concrete public retained DA",
           );
-        const workflow =
-          await createManifestBoundObserverOrderInvalidWorkflowV1(
-            loaded.config,
-          );
+        const workflow = await createManifestBoundObserverOrderInvalidWorkflow(
+          loaded.config,
+        );
         if (
           workflow.binding.deploymentFingerprint !==
             invocation.deploymentFingerprint ||
@@ -750,7 +747,7 @@ export const createObserverOrderInvalidProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "observerOrderInvalid runtime binding changed invocation",
           );
-        return (await executeManifestBoundObserverOrderInvalidWorkflowV1({
+        return (await executeManifestBoundObserverOrderInvalidWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

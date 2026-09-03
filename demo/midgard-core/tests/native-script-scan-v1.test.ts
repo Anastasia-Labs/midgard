@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardNativeScriptStructureTokenV1,
-  buildMidgardNativeScriptStructureTraceV1,
-  decodeMidgardNativeScriptStructureControlV1,
+  advanceMidgardNativeScriptStructureToken,
+  buildMidgardNativeScriptStructureTrace,
+  decodeMidgardNativeScriptStructureControl,
   encodeMidgardNativeScript,
-  encodeMidgardNativeScriptStructureControlV1,
-  initialMidgardNativeScriptStructureControlV1,
-  isExactMidgardNativeScriptStructureTerminalV1,
+  encodeMidgardNativeScriptStructureControl,
+  initialMidgardNativeScriptStructureControl,
+  isExactMidgardNativeScriptStructureTerminal,
   type MidgardNativeScript,
-  MidgardNativeScriptStructureResultKindsV1,
-  MidgardNativeScriptStructureStagesV1,
+  MidgardNativeScriptStructureResultKinds,
+  MidgardNativeScriptStructureStages,
 } from "../src/index.js";
 
 const signature = (fill: number): MidgardNativeScript => ({
@@ -25,12 +25,12 @@ describe("native script syntax scan V1", () => {
       scripts: Array.from({ length: 40 }, (_, index) => signature(index)),
     };
     const bytes = encodeMidgardNativeScript(script);
-    const trace = buildMidgardNativeScriptStructureTraceV1(bytes);
+    const trace = buildMidgardNativeScriptStructureTrace(bytes);
     const terminal = trace.at(-1)!.next;
 
     expect(terminal.nodeCount).toBe(41);
     expect(terminal.stackDepth).toBe(0);
-    expect(isExactMidgardNativeScriptStructureTerminalV1(terminal)).toBe(true);
+    expect(isExactMidgardNativeScriptStructureTerminal(terminal)).toBe(true);
   });
 
   it("iteratively scans canonical trees beyond the retired depth cap", () => {
@@ -38,7 +38,7 @@ describe("native script syntax scan V1", () => {
     for (let depth = 0; depth < 20; depth += 1) {
       script = { type: "all", scripts: [script] };
     }
-    const trace = buildMidgardNativeScriptStructureTraceV1(
+    const trace = buildMidgardNativeScriptStructureTrace(
       encodeMidgardNativeScript(script),
     );
     const terminal = trace.at(-1)!.next;
@@ -47,7 +47,7 @@ describe("native script syntax scan V1", () => {
     expect(Math.max(...trace.map(({ control }) => control.stackDepth))).toBe(
       20,
     );
-    expect(isExactMidgardNativeScriptStructureTerminalV1(terminal)).toBe(true);
+    expect(isExactMidgardNativeScriptStructureTerminal(terminal)).toBe(true);
   });
 
   it("round-trips canonical controls and emits the Aiken vector", () => {
@@ -56,30 +56,29 @@ describe("native script syntax scan V1", () => {
       required: 1n,
       scripts: [signature(0x44), { type: "before", slot: 42n }],
     });
-    const terminal =
-      buildMidgardNativeScriptStructureTraceV1(bytes).at(-1)!.next;
-    const controlCbor = encodeMidgardNativeScriptStructureControlV1(terminal);
+    const terminal = buildMidgardNativeScriptStructureTrace(bytes).at(-1)!.next;
+    const controlCbor = encodeMidgardNativeScriptStructureControl(terminal);
 
     expect(
-      decodeMidgardNativeScriptStructureControlV1(controlCbor),
+      decodeMidgardNativeScriptStructureControl(controlCbor),
     ).toStrictEqual(terminal);
     expect(controlCbor.toString("hex")).toBe("8801030018281828400003");
   });
 
   it("reports authenticated malformed syntax and trailing bytes", () => {
     const malformed = Buffer.from([0x82, 0x00, 0x41, 0x44]);
-    const initial = initialMidgardNativeScriptStructureControlV1({
+    const initial = initialMidgardNativeScriptStructureControl({
       startOffset: 0,
       totalLength: malformed.length,
     });
     expect(
-      advanceMidgardNativeScriptStructureTokenV1({
+      advanceMidgardNativeScriptStructureToken({
         control: initial,
         window: malformed,
         windowOffset: 0,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptStructureResultKindsV1.Invalid,
+      kind: MidgardNativeScriptStructureResultKinds.Invalid,
     });
 
     const validWithTrailing = Buffer.concat([
@@ -87,43 +86,43 @@ describe("native script syntax scan V1", () => {
       Buffer.from([0]),
     ]);
     expect(() =>
-      buildMidgardNativeScriptStructureTraceV1(validWithTrailing),
+      buildMidgardNativeScriptStructureTrace(validWithTrailing),
     ).toThrow(/invalid/u);
   });
 
   it("fails closed for the wrong phase, span, and window", () => {
     const bytes = encodeMidgardNativeScript(signature(0x44));
-    const initial = initialMidgardNativeScriptStructureControlV1({
+    const initial = initialMidgardNativeScriptStructureControl({
       startOffset: 0,
       totalLength: bytes.length,
     });
     expect(
-      advanceMidgardNativeScriptStructureTokenV1({
+      advanceMidgardNativeScriptStructureToken({
         control: {
           ...initial,
-          stage: MidgardNativeScriptStructureStagesV1.Frame,
+          stage: MidgardNativeScriptStructureStages.Frame,
         },
         window: bytes,
         windowOffset: 0,
       }),
     ).toBeNull();
     expect(
-      advanceMidgardNativeScriptStructureTokenV1({
+      advanceMidgardNativeScriptStructureToken({
         control: initial,
         window: bytes.subarray(0, bytes.length - 1),
         windowOffset: 0,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptStructureResultKindsV1.Invalid,
+      kind: MidgardNativeScriptStructureResultKinds.Invalid,
     });
     expect(
-      advanceMidgardNativeScriptStructureTokenV1({
+      advanceMidgardNativeScriptStructureToken({
         control: { ...initial, endOffset: initial.endOffset - 1 },
         window: bytes,
         windowOffset: 0,
       }),
     ).toStrictEqual({
-      kind: MidgardNativeScriptStructureResultKindsV1.Invalid,
+      kind: MidgardNativeScriptStructureResultKinds.Invalid,
     });
   });
 });

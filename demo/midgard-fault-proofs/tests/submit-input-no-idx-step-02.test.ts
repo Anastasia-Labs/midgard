@@ -13,21 +13,21 @@
  * anything from the refusal.
  */
 import {
-  computeMidgardNativeTxIdV1,
-  encodeMidgardNativeTxCompactV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  computeMidgardNativeTxId,
+  encodeMidgardNativeTxCompact,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
-  fieldPreimagePublicationDatumCborV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  fieldPreimagePublicationDatumCbor,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
 } from "../src/field-opening-v1.js";
 import { h32, makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
@@ -41,16 +41,14 @@ const inputItem = (txIdByte: string, outputIndex: bigint): MidgardTxInput => ({
 const fixture = () => {
   const inputs = [inputItem("31", 0n), inputItem("32", 1n)];
   const nativeTx = makeNativeTx({
-    spendInputCbors: inputs.map(encodeMidgardTxInputCanonicalV1),
+    spendInputCbors: inputs.map(encodeMidgardTxInputCanonical),
     fee: 11n,
     outputByte: "33",
   });
   return {
     inputs,
-    anchorTxId: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
-    compactCbor: encodeMidgardNativeTxCompactV1(nativeTx.compact).toString(
-      "hex",
-    ),
+    anchorTxId: computeMidgardNativeTxId(nativeTx).toString("hex"),
+    compactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString("hex"),
     spendInputsHash: Buffer.from(
       nativeTx.compact.transactionBody.spendInputsHash,
     ).toString("hex"),
@@ -58,14 +56,14 @@ const fixture = () => {
 };
 
 const plan = (
-  overrides: Partial<Parameters<typeof planFaultProofFieldOpeningV1>[0]> = {},
+  overrides: Partial<Parameters<typeof planFaultProofFieldOpening>[0]> = {},
 ) => {
   const { inputs, anchorTxId, compactCbor } = fixture();
-  return planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  return planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId,
     nativeTxCompactCbor: compactCbor,
-    itemCbors: inputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: inputs.map(encodeMidgardTxInputCanonical),
     owner: OWNER,
     label: "Input-no-idx step 02 spend-inputs",
     ...overrides,
@@ -83,11 +81,11 @@ describe("input-no-idx step-02 §8 carriage", () => {
     expect(planned.commitment).toBe(spendInputsHash);
     // Two 38-byte items and a one-byte §5.1 header — far inside tier 1.
     expect(planned.preimage.length).toBeLessThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
     expect(planned.plan.publications).toHaveLength(0);
 
-    expect(faultProofFieldOpeningV1({ planned, label: "t" })).toStrictEqual({
+    expect(faultProofFieldOpening({ planned, label: "t" })).toStrictEqual({
       BodyFieldOpening: {
         native_tx_compact_cbor: compactCbor,
         carriage: { Inline: { preimage: planned.preimage.toString("hex") } },
@@ -111,13 +109,13 @@ describe("input-no-idx step-02 §8 carriage", () => {
     expect(published.plan.publications).toHaveLength(1);
     const publication = published.plan.publications[0]!;
     expect(publication.bytes).toStrictEqual(published.preimage);
-    expect(fieldPreimagePublicationDatumCborV1(publication.bytes)).toBe(
-      fieldPreimagePublicationDatumCborV1(inline.preimage),
+    expect(fieldPreimagePublicationDatumCbor(publication.bytes)).toBe(
+      fieldPreimagePublicationDatumCbor(inline.preimage),
     );
 
     // Tier 2 names a reference input, so it cannot be built without one.
     expect(() =>
-      faultProofFieldOpeningV1({ planned: published, label: "t" }),
+      faultProofFieldOpening({ planned: published, label: "t" }),
     ).toThrow(/is not among the transaction's reference inputs/u);
   });
 
@@ -128,25 +126,25 @@ describe("input-no-idx step-02 §8 carriage", () => {
     expect(tampered).not.toStrictEqual(inputs);
 
     expect(() =>
-      plan({ itemCbors: tampered.map(encodeMidgardTxInputCanonicalV1) }),
+      plan({ itemCbors: tampered.map(encodeMidgardTxInputCanonical) }),
     ).toThrow(/the disputed transaction commits at §2\.5 field 0/u);
   });
 
   it("refuses compact bytes for a transaction the thread did not anchor", () => {
     const { inputs, anchorTxId } = fixture();
     const otherTx = makeNativeTx({
-      spendInputCbors: inputs.map(encodeMidgardTxInputCanonicalV1),
+      spendInputCbors: inputs.map(encodeMidgardTxInputCanonical),
       fee: 12n,
       outputByte: "33",
     });
     // The mutation landed: same field 0, different transaction.
-    expect(computeMidgardNativeTxIdV1(otherTx).toString("hex")).not.toBe(
+    expect(computeMidgardNativeTxId(otherTx).toString("hex")).not.toBe(
       anchorTxId,
     );
 
     expect(() =>
       plan({
-        nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+        nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           otherTx.compact,
         ).toString("hex"),
       }),

@@ -1,56 +1,56 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec/native";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  type CanonicalTransitionEffectV1,
+  type CanonicalTransitionEffect,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import { makeQueued } from "../../../midgard-validation/tests/validation-fixtures.js";
-import type { WatcherStateQueueHeaderV1 } from "../../src/indexers/state-queue-indexer.js";
+import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
 import {
-  type EvaluateWatcherBlockReplayInputV1,
-  type WatcherBlockReplayEventAuthorityV1,
-  watcherBlockReplayPriorStateV1,
-  type WatcherBlockReplayPriorUtxoV1,
+  type EvaluateWatcherBlockReplayInput,
+  type WatcherBlockReplayEventAuthority,
+  watcherBlockReplayPriorState,
+  type WatcherBlockReplayPriorUtxo,
 } from "../../src/verification/block-replay.js";
 import {
-  evaluateWatcherHeaderRootReconstructionV1,
-  makeWatcherAuthenticatedHeaderObservationV1,
+  evaluateWatcherHeaderRootReconstruction,
+  makeWatcherAuthenticatedHeaderObservation,
 } from "../../src/verification/header-root-reconstruction.js";
 import {
-  evaluateWatcherPhaseABlockV1,
-  type WatcherPhaseAVerificationResultV1,
+  evaluateWatcherPhaseABlock,
+  type WatcherPhaseAVerificationResult,
 } from "../../src/verification/phase-a-verifier.js";
 import {
-  computeWatcherRuleBundleV1Commitment,
-  makeWatcherCanonicalRuleBundleV1,
+  computeWatcherRuleBundleCommitment,
+  makeWatcherCanonicalRuleBundle,
 } from "../../src/verification/rule-bundle-v1.js";
 import {
-  replayGenuineDepositAuthorityScenarioV1,
-  replayGenuineForcedTerminalAuthorityScenarioV1,
-  replayGenuineWithdrawalAuthorityScenarioV1,
-  type W15AcceptedAuthorityScenarioV1,
-  type W15AuthorityScenarioInputV1,
-  w15ForcedOperatorVerdictForClassificationV1,
+  replayGenuineDepositAuthorityScenario,
+  replayGenuineForcedTerminalAuthorityScenario,
+  replayGenuineWithdrawalAuthorityScenario,
+  type UserEventAcceptedAuthorityScenario,
+  type UserEventAuthorityScenarioInput,
+  userEventForcedOperatorVerdictForClassification,
 } from "./w15-authority-scenarios.js";
 import {
-  type GenuineW16SettlementAuthorityV1,
-  replayAcceptedW16AuthorityScenarioV1,
-  replayGenuineAbsorbToReserveAuthorityScenarioV1,
-  replayGenuineRefundWithdrawalAuthorityScenarioV1,
-  replayGenuineSpawnSettlementAuthorityScenarioV1,
-  type W16AcceptedAuthorityScenarioV1,
-  type W16AuthorityScenarioInputV1,
+  type GenuineSettlementAuthority,
+  replayAcceptedSettlementAuthorityScenario,
+  replayGenuineAbsorbToReserveAuthorityScenario,
+  replayGenuineRefundWithdrawalAuthorityScenario,
+  replayGenuineSpawnSettlementAuthorityScenario,
+  type SettlementAcceptedAuthorityScenario,
+  type SettlementAuthorityScenarioInput,
 } from "./w16-authority-scenarios.js";
 
 /**
@@ -58,80 +58,81 @@ import {
  * caller's authenticated W15/W16 context through the production parser and
  * returns the original opaque context plus digest evidence.
  */
-export type W25UserEventAuthorityFixtureInputV1 = W15AuthorityScenarioInputV1;
-export type W25SettlementAuthorityFixtureInputV1 = W16AuthorityScenarioInputV1;
+export type ReplayUserEventAuthorityFixtureInput =
+  UserEventAuthorityScenarioInput;
+export type ReplaySettlementAuthorityFixtureInput =
+  SettlementAuthorityScenarioInput;
 
-export type AcceptedW25UserEventAuthorityFixtureV1 =
-  W15AcceptedAuthorityScenarioV1 & Readonly<{ rawResultDigest: string }>;
+export type AcceptedReplayUserEventAuthorityFixture =
+  UserEventAcceptedAuthorityScenario & Readonly<{ rawResultDigest: string }>;
 
-export type AcceptedW25SettlementAuthorityFixtureV1 =
-  W16AcceptedAuthorityScenarioV1 & Readonly<{ rawResultDigest: string }>;
+export type AcceptedReplaySettlementAuthorityFixture =
+  SettlementAcceptedAuthorityScenario & Readonly<{ rawResultDigest: string }>;
 
 const userEventFacade = (
-  scenario: W15AcceptedAuthorityScenarioV1,
-): AcceptedW25UserEventAuthorityFixtureV1 =>
+  scenario: UserEventAcceptedAuthorityScenario,
+): AcceptedReplayUserEventAuthorityFixture =>
   Object.freeze({ ...scenario, rawResultDigest: scenario.result.resultDigest });
 
 const settlementFacade = (
-  scenario: W16AcceptedAuthorityScenarioV1,
-): AcceptedW25SettlementAuthorityFixtureV1 =>
+  scenario: SettlementAcceptedAuthorityScenario,
+): AcceptedReplaySettlementAuthorityFixture =>
   Object.freeze({ ...scenario, rawResultDigest: scenario.result.resultDigest });
 
-export const makeAcceptedW25DepositAuthorityFixtureV1 = (
-  input: W25UserEventAuthorityFixtureInputV1,
-): AcceptedW25UserEventAuthorityFixtureV1 =>
-  userEventFacade(replayGenuineDepositAuthorityScenarioV1(input));
+export const makeAcceptedReplayDepositAuthorityFixture = (
+  input: ReplayUserEventAuthorityFixtureInput,
+): AcceptedReplayUserEventAuthorityFixture =>
+  userEventFacade(replayGenuineDepositAuthorityScenario(input));
 
-export const makeAcceptedW25WithdrawalAuthorityFixtureV1 = (
-  input: W25UserEventAuthorityFixtureInputV1,
-): AcceptedW25UserEventAuthorityFixtureV1 =>
-  userEventFacade(replayGenuineWithdrawalAuthorityScenarioV1(input));
+export const makeAcceptedReplayWithdrawalAuthorityFixture = (
+  input: ReplayUserEventAuthorityFixtureInput,
+): AcceptedReplayUserEventAuthorityFixture =>
+  userEventFacade(replayGenuineWithdrawalAuthorityScenario(input));
 
-export const makeAcceptedW25ForcedAuthorityFixtureV1 = (
-  input: W25UserEventAuthorityFixtureInputV1,
-): AcceptedW25UserEventAuthorityFixtureV1 =>
-  userEventFacade(replayGenuineForcedTerminalAuthorityScenarioV1(input));
+export const makeAcceptedReplayForcedAuthorityFixture = (
+  input: ReplayUserEventAuthorityFixtureInput,
+): AcceptedReplayUserEventAuthorityFixture =>
+  userEventFacade(replayGenuineForcedTerminalAuthorityScenario(input));
 
-export const makeAcceptedW25SpawnSettlementAuthorityFixtureV1 = (
-  input: W25SettlementAuthorityFixtureInputV1,
-): AcceptedW25SettlementAuthorityFixtureV1 =>
-  settlementFacade(replayGenuineSpawnSettlementAuthorityScenarioV1(input));
+export const makeAcceptedReplaySpawnSettlementAuthorityFixture = (
+  input: ReplaySettlementAuthorityFixtureInput,
+): AcceptedReplaySettlementAuthorityFixture =>
+  settlementFacade(replayGenuineSpawnSettlementAuthorityScenario(input));
 
-export const makeAcceptedW25AbsorbToReserveAuthorityFixtureV1 = (
-  input: W25SettlementAuthorityFixtureInputV1,
-): AcceptedW25SettlementAuthorityFixtureV1 =>
-  settlementFacade(replayGenuineAbsorbToReserveAuthorityScenarioV1(input));
+export const makeAcceptedReplayAbsorbToReserveAuthorityFixture = (
+  input: ReplaySettlementAuthorityFixtureInput,
+): AcceptedReplaySettlementAuthorityFixture =>
+  settlementFacade(replayGenuineAbsorbToReserveAuthorityScenario(input));
 
-export const makeAcceptedW25InitializePayoutAuthorityFixtureV1 = (
-  input: W25SettlementAuthorityFixtureInputV1,
-): AcceptedW25SettlementAuthorityFixtureV1 =>
+export const makeAcceptedReplayInitializePayoutAuthorityFixture = (
+  input: ReplaySettlementAuthorityFixtureInput,
+): AcceptedReplaySettlementAuthorityFixture =>
   settlementFacade(
-    replayAcceptedW16AuthorityScenarioV1(input, "initialize_payout"),
+    replayAcceptedSettlementAuthorityScenario(input, "initialize_payout"),
   );
 
-export const makeAcceptedW25RefundWithdrawalAuthorityFixtureV1 = (
-  input: W25SettlementAuthorityFixtureInputV1,
-): AcceptedW25SettlementAuthorityFixtureV1 =>
-  settlementFacade(replayGenuineRefundWithdrawalAuthorityScenarioV1(input));
+export const makeAcceptedReplayRefundWithdrawalAuthorityFixture = (
+  input: ReplaySettlementAuthorityFixtureInput,
+): AcceptedReplaySettlementAuthorityFixture =>
+  settlementFacade(replayGenuineRefundWithdrawalAuthorityScenario(input));
 
 const h32 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(32);
 const h28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);
 
-const L1_PROVENANCE: SDK.EvidenceProvenanceV1 = Object.freeze({
+const L1_PROVENANCE: SDK.EvidenceProvenance = Object.freeze({
   trustClass: "authenticated_cardano_l1",
   sourceId: "watcher-local-node",
   grade: "security",
 });
-export const GENUINE_W25_DA_PROVENANCE_V1: SDK.EvidenceProvenanceV1 =
-  Object.freeze({
-    trustClass: "public_or_permissionless_da",
-    sourceId: "watcher-da-peer-1",
-    grade: "security",
-  });
+export const GENUINE_W25_DA_PROVENANCE: SDK.EvidenceProvenance = Object.freeze({
+  trustClass: "public_or_permissionless_da",
+  sourceId: "watcher-da-peer-1",
+  grade: "security",
+});
 const CHAIN_POINT = Object.freeze({ slot: 4242n, blockHash: h32(7) });
-const RULE_BUNDLE = makeWatcherCanonicalRuleBundleV1({
+const RULE_BUNDLE = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
     manifestId: h32(0x21),
     network: "Preprod",
@@ -143,8 +144,7 @@ const RULE_BUNDLE = makeWatcherCanonicalRuleBundleV1({
   },
   targetParameterSnapshot: { finalityDepth: 12 },
 });
-const RULE_BUNDLE_COMMITMENT =
-  computeWatcherRuleBundleV1Commitment(RULE_BUNDLE);
+const RULE_BUNDLE_COMMITMENT = computeWatcherRuleBundleCommitment(RULE_BUNDLE);
 
 const dataHex = <A>(value: A, schema: Parameters<typeof Data.to>[1]): string =>
   encodeData(value, schema as never).toString("hex");
@@ -159,12 +159,12 @@ const bufferEntries = (values: readonly SDK.DaPayloadEntry[]) =>
     key: Buffer.from(key, "hex"),
     value: Buffer.from(value, "hex"),
   }));
-const headerHashOf = (value: SDK.HeaderV1): string =>
+const headerHashOf = (value: SDK.Header): string =>
   Buffer.from(
-    blake2b(Buffer.from(Data.to(value, SDK.HeaderV1), "hex"), { dkLen: 28 }),
+    blake2b(Buffer.from(Data.to(value, SDK.Header), "hex"), { dkLen: 28 }),
   ).toString("hex");
 
-type GenuineW25PublicEventV1 = Readonly<{
+type GenuineReplayPublicEvent = Readonly<{
   eventKey: SDK.EventKey;
   phase: "Withdrawal" | "ForcedTransaction";
   domain: "withdrawals" | "forced_transactions";
@@ -173,9 +173,9 @@ type GenuineW25PublicEventV1 = Readonly<{
 }>;
 
 const publicEventFromAuthority = (
-  authority: W15AcceptedAuthorityScenarioV1,
+  authority: UserEventAcceptedAuthorityScenario,
   canonicalNativeTxCbor: Buffer | null,
-): GenuineW25PublicEventV1 => {
+): GenuineReplayPublicEvent => {
   const event = authority.event;
   if (event.kind === "withdrawal") {
     const decoded = Data.from(event.eventCborHex, SDK.WithdrawalEvent) as {
@@ -206,14 +206,14 @@ const publicEventFromAuthority = (
   ) {
     throw new Error("genuine W25 fixture requires an authenticated event");
   }
-  const decoded = Data.from(event.eventCborHex, SDK.TxOrderEventV1) as {
+  const decoded = Data.from(event.eventCborHex, SDK.TxOrderEvent) as {
     readonly tx: {
       readonly tx_id: string;
       readonly transaction_commitment: string;
-      readonly source: SDK.L2TransactionSourceV1["source"];
+      readonly source: SDK.L2TransactionSource["source"];
     };
   };
-  const verdict = w15ForcedOperatorVerdictForClassificationV1(
+  const verdict = userEventForcedOperatorVerdictForClassification(
     event.terminalClassification.operatorValidity,
   );
   // The ORDER event binds the SUBMITTED source, but the committed DA leaf
@@ -221,9 +221,9 @@ const publicEventFromAuthority = (
   // reconstruction authenticates exactly that. Re-derive through the single
   // stamping helper by the leaf's verdict rather than copying the event's
   // submitted triple.
-  const adjudicatedSource = deriveMidgardNativeTxProofSourceV1(
-    adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalNativeTxCbor),
+  const adjudicatedSource = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(canonicalNativeTxCbor),
       verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
     ),
   );
@@ -252,7 +252,7 @@ const publicEventFromAuthority = (
           },
           verdict,
         },
-        SDK.ForcedInclusionTxV1Schema,
+        SDK.ForcedInclusionTxSchema,
       ),
     ] as SDK.DaPayloadEntry,
     forcedPreimage: [
@@ -263,11 +263,11 @@ const publicEventFromAuthority = (
 };
 
 const watcherHeaderRecord = (
-  value: SDK.HeaderV1,
+  value: SDK.Header,
   headerHash: string,
-): WatcherStateQueueHeaderV1 => ({
+): WatcherStateQueueHeader => ({
   headerHash,
-  headerCborHex: Data.to(value, SDK.HeaderV1),
+  headerCborHex: Data.to(value, SDK.Header),
   nextHeaderHash: null,
   datumSha256: h32(3),
   prevUtxosRoot: value.prevUtxosRoot,
@@ -299,20 +299,20 @@ const watcherHeaderRecord = (
 });
 
 const settlementAuthority = (
-  authority: GenuineW16SettlementAuthorityV1,
-): NonNullable<WatcherBlockReplayEventAuthorityV1["settlement"]> => ({
+  authority: GenuineSettlementAuthority,
+): NonNullable<WatcherBlockReplayEventAuthority["settlement"]> => ({
   result: authority.result,
   context: authority.context,
   observationDigest: authority.observation.observationDigest,
 });
 
 const eventAuthority = (input: {
-  readonly publicEvent: GenuineW25PublicEventV1;
-  readonly userEvent: W15AcceptedAuthorityScenarioV1;
-  readonly settlement: GenuineW16SettlementAuthorityV1 | null;
-  readonly effect: CanonicalTransitionEffectV1;
+  readonly publicEvent: GenuineReplayPublicEvent;
+  readonly userEvent: UserEventAcceptedAuthorityScenario;
+  readonly settlement: GenuineSettlementAuthority | null;
+  readonly effect: CanonicalTransitionEffect;
   readonly canonicalNativeTxCbor: Buffer | null;
-}): WatcherBlockReplayEventAuthorityV1 => ({
+}): WatcherBlockReplayEventAuthority => ({
   eventKey: input.publicEvent.eventKey,
   phase: input.publicEvent.phase,
   userEvent: {
@@ -334,10 +334,10 @@ const eventAuthority = (input: {
       }),
 });
 
-export type GenuineW25PublicReplayFixtureV1 = Readonly<{
-  replayInput: EvaluateWatcherBlockReplayInputV1;
-  header: WatcherStateQueueHeaderV1;
-  phaseA: WatcherPhaseAVerificationResultV1;
+export type GenuineReplayPublicReplayFixture = Readonly<{
+  replayInput: EvaluateWatcherBlockReplayInput;
+  header: WatcherStateQueueHeader;
+  phaseA: WatcherPhaseAVerificationResult;
 }>;
 
 /**
@@ -345,26 +345,26 @@ export type GenuineW25PublicReplayFixtureV1 = Readonly<{
  * It intentionally does not fabricate or evaluate a W25 receipt; the caller
  * must invoke the public `evaluateWatcherBlockReplayV1` entry point.
  */
-export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
-  readonly userEvent: W15AcceptedAuthorityScenarioV1;
-  readonly settlement?: GenuineW16SettlementAuthorityV1 | null;
+export const makeGenuineReplayPublicReplayFixture = async (input: {
+  readonly userEvent: UserEventAcceptedAuthorityScenario;
+  readonly settlement?: GenuineSettlementAuthority | null;
   readonly canonicalNativeTxCbor?: Buffer | null;
-  readonly transitionEffect: CanonicalTransitionEffectV1;
-  readonly priorState: readonly WatcherBlockReplayPriorUtxoV1[];
-  readonly postState: readonly WatcherBlockReplayPriorUtxoV1[];
+  readonly transitionEffect: CanonicalTransitionEffect;
+  readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
+  readonly postState: readonly WatcherBlockReplayPriorUtxo[];
   readonly minFeeB?: bigint;
-}): Promise<GenuineW25PublicReplayFixtureV1> => {
+}): Promise<GenuineReplayPublicReplayFixture> => {
   const canonicalNativeTxCbor = input.canonicalNativeTxCbor ?? null;
   const publicEvent = publicEventFromAuthority(
     input.userEvent,
     canonicalNativeTxCbor,
   );
-  const prior = await watcherBlockReplayPriorStateV1(input.priorState);
+  const prior = await watcherBlockReplayPriorState(input.priorState);
   const operations: ValidationMachineLedgerOp[] =
     input.transitionEffect.operations.map((operation) =>
       operation.type === "delete"
         ? { type: "delete", key: operation.outRefCbor }
-        : buildValidationMachineLedgerInsertOpV1({
+        : buildValidationMachineLedgerInsertOp({
             key: operation.outRefCbor,
             outputCbor: operation.outputCbor,
           }),
@@ -429,8 +429,8 @@ export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
                 terminal_state_hash: h32(160),
                 verdict: "Accepted",
                 rejection_code_hash: h32(170),
-              } satisfies SDK.ValidationTraceDescriptorV1,
-              SDK.ValidationTraceDescriptorV1Schema,
+              } satisfies SDK.ValidationTraceDescriptor,
+              SDK.ValidationTraceDescriptorSchema,
             ),
           ],
         ]
@@ -444,7 +444,7 @@ export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
     values: readonly SDK.DaPayloadEntry[],
   ): Promise<string> =>
     (await buildCountedRoot(domain, bufferEntries(values))).root;
-  const committedPost = await watcherBlockReplayPriorStateV1(input.postState);
+  const committedPost = await watcherBlockReplayPriorState(input.postState);
   const inclusionTime = BigInt(input.userEvent.event.inclusionTime);
   if (inclusionTime === 0n)
     throw new Error("genuine event inclusion time is not classifiable");
@@ -457,7 +457,7 @@ export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
     transitionStepCount: 1n,
     validationTraceCount: BigInt(validationTraceEntries.length),
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: prior.root,
     utxosRoot: committedPost.root,
     withdrawalsRoot: await countedRoot(
@@ -494,8 +494,8 @@ export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
     protocolVersion: BigInt(RULE_BUNDLE.protocolVersion),
   };
   const headerHash = headerHashOf(header);
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -514,27 +514,27 @@ export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
       counts,
     },
   };
-  const envelope = await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+  const envelope = await wrapDaPayload(SDK.encodeDaPayload(payload), {
     mode: "identity",
   });
   const stateQueueHeader = watcherHeaderRecord(header, headerHash);
-  const observation = await makeWatcherAuthenticatedHeaderObservationV1({
+  const observation = await makeWatcherAuthenticatedHeaderObservation({
     header: stateQueueHeader,
     chainPoint: CHAIN_POINT,
     confirmationDepth: 12,
     sourceMode: "local_node",
     provenance: L1_PROVENANCE,
   });
-  const reconstruction = await evaluateWatcherHeaderRootReconstructionV1({
+  const reconstruction = await evaluateWatcherHeaderRootReconstruction({
     observation,
     payloadEnvelopeCbor: envelope,
-    daProvenance: GENUINE_W25_DA_PROVENANCE_V1,
+    daProvenance: GENUINE_W25_DA_PROVENANCE,
   });
-  const phaseA = await evaluateWatcherPhaseABlockV1({
+  const phaseA = await evaluateWatcherPhaseABlock({
     observation,
     reconstruction,
     payloadEnvelopeCbor: envelope,
-    daProvenance: GENUINE_W25_DA_PROVENANCE_V1,
+    daProvenance: GENUINE_W25_DA_PROVENANCE,
     ruleBundle: RULE_BUNDLE,
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
   });
@@ -547,7 +547,7 @@ export const makeGenuineW25PublicReplayFixtureV1 = async (input: {
       reconstruction,
       phaseA,
       payloadEnvelopeCbor: envelope,
-      daProvenance: GENUINE_W25_DA_PROVENANCE_V1,
+      daProvenance: GENUINE_W25_DA_PROVENANCE,
       priorState: input.priorState,
       ruleBundle: RULE_BUNDLE,
       ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,

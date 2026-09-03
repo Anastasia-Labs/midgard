@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardCekDataTraverseTraceV1,
-  finalizeMidgardCekDataTraverseV1,
-  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-  nextMidgardCekDataTraverseSpanV1,
+  buildMidgardCekDataTraverseTrace,
+  finalizeMidgardCekDataTraverse,
+  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
+  nextMidgardCekDataTraverseSpan,
 } from "../src/cek-data-traverse-v1.js";
 import {
   aikenSerialisedPlutusDataCbor,
@@ -50,11 +50,11 @@ describe("Aiken PlutusData serialization", () => {
     expect(aikenSerialisedPlutusDataCborPreservingMapOrder(unary)).toBe(unary);
     expect(aikenSerialisedPlutusDataCbor(unary)).toBe(unary);
 
-    const trace = buildMidgardCekDataTraverseTraceV1({
+    const trace = buildMidgardCekDataTraverseTrace({
       sourceStart: 0,
       source: Buffer.from(unary, "hex"),
     });
-    const terminal = finalizeMidgardCekDataTraverseV1(trace.terminal);
+    const terminal = finalizeMidgardCekDataTraverse(trace.terminal);
     expect(terminal).not.toBeNull();
     expect(terminal!.cborLength).toBe(BigInt(unary.length / 2));
     expect(
@@ -62,11 +62,11 @@ describe("Aiken PlutusData serialization", () => {
         (maximum, { control }) =>
           Math.max(
             maximum,
-            nextMidgardCekDataTraverseSpanV1(control)?.length ?? 0,
+            nextMidgardCekDataTraverseSpan(control)?.length ?? 0,
           ),
         0,
       ),
-    ).toBeLessThanOrEqual(MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1);
+    ).toBeLessThanOrEqual(MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN);
   });
 
   it("still rejects trailing, broken, and truncated CBOR", () => {

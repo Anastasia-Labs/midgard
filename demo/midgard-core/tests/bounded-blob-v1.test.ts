@@ -1,46 +1,43 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardBoundedBlobChunkProofV1,
-  buildMidgardBoundedBlobV1,
-  MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1,
-  verifyMidgardBoundedBlobChunkProofV1,
+  buildMidgardBoundedBlob,
+  buildMidgardBoundedBlobChunkProof,
+  MIDGARD_BOUNDED_BLOB_CHUNK_BYTES,
+  verifyMidgardBoundedBlobChunkProof,
 } from "../src/bounded-blob-v1.js";
 
 describe("bounded blob V1", () => {
   it("authenticates every fixed-size chunk and the exact final remainder", () => {
-    const bytes = Buffer.alloc(
-      3 * MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1 + 17,
-      0x5a,
-    );
-    const blob = buildMidgardBoundedBlobV1({ fieldIndex: 2, bytes });
+    const bytes = Buffer.alloc(3 * MIDGARD_BOUNDED_BLOB_CHUNK_BYTES + 17, 0x5a);
+    const blob = buildMidgardBoundedBlob({ fieldIndex: 2, bytes });
     expect(blob.chunks.map((chunk) => chunk.length)).toEqual([
-      MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1,
-      MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1,
-      MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1,
+      MIDGARD_BOUNDED_BLOB_CHUNK_BYTES,
+      MIDGARD_BOUNDED_BLOB_CHUNK_BYTES,
+      MIDGARD_BOUNDED_BLOB_CHUNK_BYTES,
       17,
     ]);
     for (let chunkIndex = 0; chunkIndex < blob.chunks.length; chunkIndex += 1) {
       expect(
-        verifyMidgardBoundedBlobChunkProofV1({
+        verifyMidgardBoundedBlobChunkProof({
           expectedCommitment: blob.commitment,
-          proof: buildMidgardBoundedBlobChunkProofV1(blob, chunkIndex),
+          proof: buildMidgardBoundedBlobChunkProof(blob, chunkIndex),
         }),
       ).toBe(true);
     }
   });
 
   it("binds field, index, length, bytes, frontier, and commitment", () => {
-    const blob = buildMidgardBoundedBlobV1({
+    const blob = buildMidgardBoundedBlob({
       fieldIndex: 7,
-      bytes: Buffer.alloc(MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1 + 3, 0x44),
+      bytes: Buffer.alloc(MIDGARD_BOUNDED_BLOB_CHUNK_BYTES + 3, 0x44),
     });
-    const proof = buildMidgardBoundedBlobChunkProofV1(blob, 1);
+    const proof = buildMidgardBoundedBlobChunkProof(blob, 1);
     const verify = (
       candidate: typeof proof,
       commitment: Uint8Array = blob.commitment,
     ): boolean =>
-      verifyMidgardBoundedBlobChunkProofV1({
+      verifyMidgardBoundedBlobChunkProof({
         expectedCommitment: commitment,
         proof: candidate,
       });
@@ -61,10 +58,10 @@ describe("bounded blob V1", () => {
   });
 
   it("matches the canonical cross-language commitment vector", () => {
-    const blob = buildMidgardBoundedBlobV1({
+    const blob = buildMidgardBoundedBlob({
       fieldIndex: 2,
       bytes: Buffer.concat([
-        Buffer.alloc(MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1, 0x5a),
+        Buffer.alloc(MIDGARD_BOUNDED_BLOB_CHUNK_BYTES, 0x5a),
         Buffer.from([1, 2, 3]),
       ]),
     });
@@ -78,12 +75,12 @@ describe("bounded blob V1", () => {
   });
 
   it("commits an empty blob without admitting a fake chunk", () => {
-    const blob = buildMidgardBoundedBlobV1({
+    const blob = buildMidgardBoundedBlob({
       fieldIndex: 0,
       bytes: Buffer.alloc(0),
     });
     expect(blob.chunks).toEqual([]);
     expect(blob.frontier).toEqual({ count: 0, peaks: [] });
-    expect(() => buildMidgardBoundedBlobChunkProofV1(blob, 0)).toThrow();
+    expect(() => buildMidgardBoundedBlobChunkProof(blob, 0)).toThrow();
   });
 });

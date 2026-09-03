@@ -1,21 +1,21 @@
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { planFaultProofFieldOpeningV1 } from "../src/field-opening-v1.js";
-import type { InputSetUniquenessForcedProductionInputV1 } from "../src/input-set-uniqueness/production-v1.js";
-import { detectInputSetUniquenessForcedReplayV1 } from "../src/input-set-uniqueness/replay-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
+import type { InputSetUniquenessForcedInput } from "../src/input-set-uniqueness/production-v1.js";
+import { detectInputSetUniquenessForcedReplay } from "../src/input-set-uniqueness/replay-v1.js";
 import {
-  bindForcedDuplicateInputV1,
-  inputSetUnionIsStrictlyIncreasingV1,
-  inputSetUniquenessCheckpointV1,
+  bindForcedDuplicateInput,
+  inputSetUnionIsStrictlyIncreasing,
+  inputSetUniquenessCheckpoint,
 } from "../src/input-set-uniqueness/wrongful-rejection-v1.js";
 import {
-  buildInputSetUniquenessFixtureV1,
-  isuItemCborV1,
-  isuOutRefV1,
+  buildInputSetUniquenessFixture,
+  isuItemCbor,
+  isuOutRef,
 } from "./support/input-set-uniqueness-emulator-v1.js";
 
 const reason = {
@@ -26,7 +26,7 @@ const reason = {
     second_item_index: 0n,
   },
 } as const;
-const subject = forcedVerdictSubjectV1({
+const subject = forcedVerdictSubject({
   transactionId: "aa".repeat(32),
   sourceKey: { transactionId: "bb".repeat(32), outputIndex: 0n },
   rejectionReason: reason,
@@ -35,33 +35,33 @@ const subject = forcedVerdictSubjectV1({
 describe("input-set-uniqueness wrongful-rejection rules", () => {
   it("accepts only a globally strict spend/reference union", () => {
     expect(
-      inputSetUnionIsStrictlyIncreasingV1({
+      inputSetUnionIsStrictlyIncreasing({
         spendInputItemCbors: [
-          isuItemCborV1(isuOutRefV1("11", 0)),
-          isuItemCborV1(isuOutRefV1("22", 0)),
+          isuItemCbor(isuOutRef("11", 0)),
+          isuItemCbor(isuOutRef("22", 0)),
         ],
-        referenceInputItemCbors: [isuItemCborV1(isuOutRefV1("33", 0))],
+        referenceInputItemCbors: [isuItemCbor(isuOutRef("33", 0))],
       }),
     ).toBe(true);
   });
 
   it("rejects adjacent equality, boundary equality, and descending order", () => {
-    const low = isuItemCborV1(isuOutRefV1("11", 0));
-    const high = isuItemCborV1(isuOutRefV1("22", 0));
+    const low = isuItemCbor(isuOutRef("11", 0));
+    const high = isuItemCbor(isuOutRef("22", 0));
     expect(
-      inputSetUnionIsStrictlyIncreasingV1({
+      inputSetUnionIsStrictlyIncreasing({
         spendInputItemCbors: [low, low],
         referenceInputItemCbors: [],
       }),
     ).toBe(false);
     expect(
-      inputSetUnionIsStrictlyIncreasingV1({
+      inputSetUnionIsStrictlyIncreasing({
         spendInputItemCbors: [low],
         referenceInputItemCbors: [low],
       }),
     ).toBe(false);
     expect(
-      inputSetUnionIsStrictlyIncreasingV1({
+      inputSetUnionIsStrictlyIncreasing({
         spendInputItemCbors: [high],
         referenceInputItemCbors: [low],
       }),
@@ -70,7 +70,7 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
 
   it("rejects malformed items instead of accepting an incomplete universe", () => {
     expect(() =>
-      inputSetUnionIsStrictlyIncreasingV1({
+      inputSetUnionIsStrictlyIncreasing({
         spendInputItemCbors: ["80"],
         referenceInputItemCbors: [],
       }),
@@ -78,32 +78,32 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
   });
 
   it("binds the complete authenticated forced reason and all positions", () => {
-    expect(bindForcedDuplicateInputV1(subject)).toStrictEqual({
+    expect(bindForcedDuplicateInput(subject)).toStrictEqual({
       subject,
       ...reason.DuplicateInput,
     });
     expect(() =>
-      bindForcedDuplicateInputV1(acceptedVerdictSubjectV1("aa".repeat(32))),
+      bindForcedDuplicateInput(acceptedVerdictSubject("aa".repeat(32))),
     ).toThrow(/forced subject/);
   });
 
   it("checkpoints every resume coordinate and successor script", () => {
-    const bound = bindForcedDuplicateInputV1(subject);
+    const bound = bindForcedDuplicateInput(subject);
     const base = {
       bound,
       spendCount: 1n,
       referenceCount: 1n,
       cursor: 1n,
-      previousItem: isuItemCborV1(isuOutRefV1("11", 0)),
+      previousItem: isuItemCbor(isuOutRef("11", 0)),
       nextExpectedScriptHash: "cc".repeat(28),
     };
-    const checkpoint = inputSetUniquenessCheckpointV1(base);
+    const checkpoint = inputSetUniquenessCheckpoint(base);
     expect(checkpoint).toMatch(/^[0-9a-f]{64}$/u);
-    expect(inputSetUniquenessCheckpointV1({ ...base, cursor: 2n })).not.toBe(
+    expect(inputSetUniquenessCheckpoint({ ...base, cursor: 2n })).not.toBe(
       checkpoint,
     );
     expect(
-      inputSetUniquenessCheckpointV1({
+      inputSetUniquenessCheckpoint({
         ...base,
         nextExpectedScriptHash: "dd".repeat(28),
       }),
@@ -111,12 +111,12 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
   });
 
   it("derives the contradiction only from an authenticated forced leaf", async () => {
-    const fixture = await buildInputSetUniquenessFixtureV1({
-      spendInputs: [isuOutRefV1("11", 0)],
-      referenceInputs: [isuOutRefV1("22", 0)],
+    const fixture = await buildInputSetUniquenessFixture({
+      spendInputs: [isuOutRef("11", 0)],
+      referenceInputs: [isuOutRef("22", 0)],
       validity: "TxIsInvalid",
     });
-    const detections = detectInputSetUniquenessForcedReplayV1({
+    const detections = detectInputSetUniquenessForcedReplay({
       headerHash: "ee".repeat(28),
       reconstruction: {
         forcedTransactions: [
@@ -143,15 +143,15 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
 
   it("refuses the first reference-input field above the consensus byte bound", async () => {
     const references = Array.from({ length: 820 }, (_, index) =>
-      isuOutRefV1("aa", index),
+      isuOutRef("aa", index),
     );
-    const fixture = await buildInputSetUniquenessFixtureV1({
-      spendInputs: [isuOutRefV1("00", 0)],
+    const fixture = await buildInputSetUniquenessFixture({
+      spendInputs: [isuOutRef("00", 0)],
       referenceInputs: references,
       validity: "TxIsInvalid",
     });
     expect(() =>
-      planFaultProofFieldOpeningV1({
+      planFaultProofFieldOpening({
         fieldIndex: 1,
         anchorTxId: fixture.nativeTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
@@ -166,7 +166,7 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
 
   it("keeps the production authority boundary callback-free", () => {
     expectTypeOf<
-      keyof InputSetUniquenessForcedProductionInputV1
+      keyof InputSetUniquenessForcedInput
     >().toEqualTypeOf<"block">();
     expect(Object.keys({ block: null })).toStrictEqual(["block"]);
   });

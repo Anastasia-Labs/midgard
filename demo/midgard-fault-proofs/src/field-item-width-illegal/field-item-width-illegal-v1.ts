@@ -1,28 +1,28 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
-  selectMidgardFieldCarriageTierV1,
+  decodeMidgardFieldPreimage,
+  midgardFieldCommitment,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  type RejectionReasonV1,
-  RejectionReasonV1Schema,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type RejectionReason,
+  RejectionReasonSchema,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const FIELD_ITEM_WIDTH_ILLEGAL_CATEGORY_V1 =
+export const FIELD_ITEM_WIDTH_ILLEGAL_CATEGORY =
   "fieldItemWidthIllegal" as const;
-export const FIELD_ITEM_WIDTH_ILLEGAL_PROPOSED_ID_V1 = "00000021" as const;
-export const FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD_V1 = 2;
-export const FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD_V1 = 5;
-export const FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES_V1 = 16_384;
+export const FIELD_ITEM_WIDTH_ILLEGAL_PROPOSED_ID = "00000021" as const;
+export const FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD = 2;
+export const FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD = 5;
+export const FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES = 16_384;
 
 const fail = (message: string): never => {
-  throw new Error(`${FIELD_ITEM_WIDTH_ILLEGAL_CATEGORY_V1}: ${message}`);
+  throw new Error(`${FIELD_ITEM_WIDTH_ILLEGAL_CATEGORY}: ${message}`);
 };
 
 const exactIndex = (value: number, name: string): number => {
@@ -32,31 +32,31 @@ const exactIndex = (value: number, name: string): number => {
   return value;
 };
 
-export const fieldItemWidthCoordinateIsSupportedV1 = (
+export const fieldItemWidthCoordinateIsSupported = (
   fieldIndex: number,
   itemIndex: number,
 ): boolean =>
   Number.isSafeInteger(itemIndex) &&
   itemIndex >= 0 &&
-  (fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD_V1 ||
-    fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD_V1);
+  (fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD ||
+    fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD);
 
-export const fieldItemWidthIsIllegalV1 = (
+export const fieldItemWidthIsIllegal = (
   fieldIndex: number,
   itemWidth: number,
 ): boolean => {
   exactIndex(itemWidth, "item width");
-  if (fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD_V1) {
-    return itemWidth > FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES_V1;
+  if (fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD) {
+    return itemWidth > FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES;
   }
-  if (fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD_V1) {
+  if (fieldIndex === FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD) {
     return itemWidth === 0;
   }
   return fail(`field ${fieldIndex.toString()} is outside the width family`);
 };
 
-const fieldItemWidthReasonCoordinateV1 = (
-  reason: RejectionReasonV1,
+const fieldItemWidthReasonCoordinate = (
+  reason: RejectionReason,
 ): { readonly fieldIndex: number; readonly itemIndex: number } => {
   if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason)) {
     return fail("typed rejection reason is not FieldItemWidthIllegal");
@@ -69,34 +69,34 @@ const fieldItemWidthReasonCoordinateV1 = (
   return { fieldIndex, itemIndex };
 };
 
-export type FieldItemWidthFindingV1 = {
-  readonly subject: VerdictSubjectV1;
+export type FieldItemWidthFinding = {
+  readonly subject: VerdictSubject;
   readonly fieldIndex: number;
   readonly itemIndex: number;
 };
 
 /** Strict classifier: this reason never falls back to validation dispute. */
-export const classifyFieldItemWidthFindingV1 = ({
+export const classifyFieldItemWidthFinding = ({
   subject,
   fieldIndex,
   itemIndex,
-}: FieldItemWidthFindingV1): FieldItemWidthFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(subject)) {
+}: FieldItemWidthFinding): FieldItemWidthFinding => {
+  if (!verdictSubjectIsCanonical(subject)) {
     return fail("verdict subject is not canonical");
   }
-  if (!fieldItemWidthCoordinateIsSupportedV1(fieldIndex, itemIndex)) {
+  if (!fieldItemWidthCoordinateIsSupported(fieldIndex, itemIndex)) {
     return fail("unsupported field/item coordinate");
   }
-  if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1) {
+  if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (subject.rejection_reason === null) {
       return fail("wrongful-rejection subject carries no typed reason");
     }
-    const exact = fieldItemWidthReasonCoordinateV1(subject.rejection_reason);
+    const exact = fieldItemWidthReasonCoordinate(subject.rejection_reason);
     if (exact.fieldIndex !== fieldIndex || exact.itemIndex !== itemIndex) {
       return fail("typed reason coordinate differs from finding coordinate");
     }
   } else if (
-    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity is invalid");
@@ -104,7 +104,7 @@ export const classifyFieldItemWidthFindingV1 = ({
   return Object.freeze({ subject, fieldIndex, itemIndex });
 };
 
-export type FieldItemWidthEvidenceV1 = FieldItemWidthFindingV1 & {
+export type FieldItemWidthEvidence = FieldItemWidthFinding & {
   readonly fieldPreimageHex: string;
   readonly fieldCommitmentHex: string;
   readonly itemHex: string;
@@ -118,28 +118,28 @@ export type FieldItemWidthEvidenceV1 = FieldItemWidthFindingV1 & {
  * supply the commitment extracted from the authenticated compact transaction;
  * mismatches and out-of-range coordinates fail before submission.
  */
-export const prepareFieldItemWidthEvidenceV1 = ({
+export const prepareFieldItemWidthEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: FieldItemWidthFindingV1;
+  readonly finding: FieldItemWidthFinding;
   readonly fieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): FieldItemWidthEvidenceV1 => {
-  const finding = classifyFieldItemWidthFindingV1(rawFinding);
+}): FieldItemWidthEvidence => {
+  const finding = classifyFieldItemWidthFinding(rawFinding);
   if (!/^[0-9a-f]{64}$/u.test(committedFieldHashHex)) {
     return fail("committed field hash must be 32 bytes of lowercase hex");
   }
   const actualCommitment =
-    midgardFieldCommitmentV1(fieldPreimage).toString("hex");
+    midgardFieldCommitment(fieldPreimage).toString("hex");
   if (actualCommitment !== committedFieldHashHex) {
     return fail("retained field preimage does not match committed field hash");
   }
-  const items = decodeMidgardFieldPreimageV1(fieldPreimage);
+  const items = decodeMidgardFieldPreimage(fieldPreimage);
   const item = items[finding.itemIndex];
   if (item === undefined) return fail("item coordinate is outside the field");
-  const decisiveFaultHolds = fieldItemWidthIsIllegalV1(
+  const decisiveFaultHolds = fieldItemWidthIsIllegal(
     finding.fieldIndex,
     item.length,
   );
@@ -149,57 +149,57 @@ export const prepareFieldItemWidthEvidenceV1 = ({
     fieldCommitmentHex: actualCommitment,
     itemHex: item.toString("hex"),
     itemWidth: item.length,
-    carriage: selectMidgardFieldCarriageTierV1(fieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
     decisiveFaultHolds,
   });
 };
 
-export const fieldItemWidthEvidenceClosesV1 = (
-  evidence: FieldItemWidthEvidenceV1,
+export const fieldItemWidthEvidenceCloses = (
+  evidence: FieldItemWidthEvidence,
 ): boolean =>
-  terminalVerdictContradictionV1(
+  terminalVerdictContradiction(
     evidence.subject,
-    fieldItemWidthIsIllegalV1(evidence.fieldIndex, evidence.itemWidth),
+    fieldItemWidthIsIllegal(evidence.fieldIndex, evidence.itemWidth),
   );
 
-const VerdictSubjectV1Schema = Data.Object({
+const VerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
 
-export const FieldItemWidthBoundCoordinateV1Schema = Data.Object({
-  subject: VerdictSubjectV1Schema,
+export const FieldItemWidthBoundCoordinateSchema = Data.Object({
+  subject: VerdictSubjectSchema,
   field_index: Data.Integer(),
   item_index: Data.Integer(),
 });
 
-export const FieldItemWidthAuthenticatedWidthV1Schema = Data.Object({
-  subject: VerdictSubjectV1Schema,
+export const FieldItemWidthAuthenticatedWidthSchema = Data.Object({
+  subject: VerdictSubjectSchema,
   field_index: Data.Integer(),
   item_index: Data.Integer(),
   item_width: Data.Integer(),
 });
 
-export const encodeFieldItemWidthBoundCoordinateV1 = (
-  finding: FieldItemWidthFindingV1,
+export const encodeFieldItemWidthBoundCoordinate = (
+  finding: FieldItemWidthFinding,
 ): string => {
-  const exact = classifyFieldItemWidthFindingV1(finding);
+  const exact = classifyFieldItemWidthFinding(finding);
   return Data.to(
     {
       subject: exact.subject,
       field_index: BigInt(exact.fieldIndex),
       item_index: BigInt(exact.itemIndex),
     } as never,
-    FieldItemWidthBoundCoordinateV1Schema as never,
+    FieldItemWidthBoundCoordinateSchema as never,
   );
 };
 
-export const encodeFieldItemWidthAuthenticatedWidthV1 = (
-  evidence: FieldItemWidthEvidenceV1,
+export const encodeFieldItemWidthAuthenticatedWidth = (
+  evidence: FieldItemWidthEvidence,
 ): string =>
   Data.to(
     {
@@ -208,10 +208,10 @@ export const encodeFieldItemWidthAuthenticatedWidthV1 = (
       item_index: BigInt(evidence.itemIndex),
       item_width: BigInt(evidence.itemWidth),
     } as never,
-    FieldItemWidthAuthenticatedWidthV1Schema as never,
+    FieldItemWidthAuthenticatedWidthSchema as never,
   );
 
-export const FIELD_ITEM_WIDTH_STAGES_V1 = [
+export const FIELD_ITEM_WIDTH_STAGES = [
   "none",
   "step01",
   "step02",
@@ -220,25 +220,25 @@ export const FIELD_ITEM_WIDTH_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type FieldItemWidthStageV1 = (typeof FIELD_ITEM_WIDTH_STAGES_V1)[number];
+export type FieldItemWidthStage = (typeof FIELD_ITEM_WIDTH_STAGES)[number];
 
-export type FieldItemWidthJournalEntryV1 = {
+export type FieldItemWidthJournalEntry = {
   readonly sequence: number;
   readonly identity: string;
-  readonly stage: FieldItemWidthStageV1;
+  readonly stage: FieldItemWidthStage;
   readonly txHash: string;
   readonly outputReference: string | null;
 };
 
-export type FieldItemWidthJournalV1 = {
+export type FieldItemWidthJournal = {
   readonly load: (
     identity: string,
-  ) => Promise<readonly FieldItemWidthJournalEntryV1[]>;
-  readonly append: (entry: FieldItemWidthJournalEntryV1) => Promise<void>;
+  ) => Promise<readonly FieldItemWidthJournalEntry[]>;
+  readonly append: (entry: FieldItemWidthJournalEntry) => Promise<void>;
 };
 
-export const fieldItemWidthEvidenceIdentityV1 = (
-  evidence: FieldItemWidthEvidenceV1,
+export const fieldItemWidthEvidenceIdentity = (
+  evidence: FieldItemWidthEvidence,
 ): string =>
   [
     evidence.subject.transaction_id,
@@ -248,16 +248,16 @@ export const fieldItemWidthEvidenceIdentityV1 = (
     evidence.fieldCommitmentHex,
   ].join(":");
 
-const stageRank = (stage: FieldItemWidthStageV1): number =>
-  FIELD_ITEM_WIDTH_STAGES_V1.indexOf(stage);
+const stageRank = (stage: FieldItemWidthStage): number =>
+  FIELD_ITEM_WIDTH_STAGES.indexOf(stage);
 
-export const reconcileFieldItemWidthJournalV1 = (
+export const reconcileFieldItemWidthJournal = (
   identity: string,
-  entries: readonly FieldItemWidthJournalEntryV1[],
-  observedStage: FieldItemWidthStageV1,
-): FieldItemWidthStageV1 => {
+  entries: readonly FieldItemWidthJournalEntry[],
+  observedStage: FieldItemWidthStage,
+): FieldItemWidthStage => {
   let lastSequence = -1;
-  let lastStage: FieldItemWidthStageV1 = "none";
+  let lastStage: FieldItemWidthStage = "none";
   for (const entry of entries) {
     if (entry.identity !== identity) return fail("journal identity mismatch");
     if (entry.sequence !== lastSequence + 1)
@@ -280,7 +280,7 @@ export const reconcileFieldItemWidthJournalV1 = (
   return observedStage;
 };
 
-export type FieldItemWidthActionV1 =
+export type FieldItemWidthAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -288,9 +288,9 @@ export type FieldItemWidthActionV1 =
   | "removeDescendants"
   | "done";
 
-export const nextFieldItemWidthActionV1 = (
-  stage: FieldItemWidthStageV1,
-): FieldItemWidthActionV1 => {
+export const nextFieldItemWidthAction = (
+  stage: FieldItemWidthStage,
+): FieldItemWidthAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -308,43 +308,43 @@ export const nextFieldItemWidthActionV1 = (
   }
 };
 
-export type FieldItemWidthSubmissionResultV1 = {
-  readonly stage: FieldItemWidthStageV1;
+export type FieldItemWidthSubmissionResult = {
+  readonly stage: FieldItemWidthStage;
   readonly txHash: string;
   readonly outputReference: string | null;
 };
 
-export type FieldItemWidthSubmissionAdapterV1 = {
-  readonly observe: (identity: string) => Promise<FieldItemWidthStageV1>;
+export type FieldItemWidthSubmissionAdapter = {
+  readonly observe: (identity: string) => Promise<FieldItemWidthStage>;
   readonly submit: (
-    action: Exclude<FieldItemWidthActionV1, "done">,
-    evidence: FieldItemWidthEvidenceV1,
-  ) => Promise<FieldItemWidthSubmissionResultV1>;
+    action: Exclude<FieldItemWidthAction, "done">,
+    evidence: FieldItemWidthEvidence,
+  ) => Promise<FieldItemWidthSubmissionResult>;
   readonly cancel: (
     stage: "step01" | "step02" | "step03",
-    evidence: FieldItemWidthEvidenceV1,
-  ) => Promise<FieldItemWidthSubmissionResultV1>;
+    evidence: FieldItemWidthEvidence,
+  ) => Promise<FieldItemWidthSubmissionResult>;
 };
 
 /** Durable, restart-safe runner; every decision is reconstructed from journal + chain. */
-export const runFieldItemWidthProofV1 = async ({
+export const runFieldItemWidthProof = async ({
   evidence,
   journal,
   submission,
 }: {
-  readonly evidence: FieldItemWidthEvidenceV1;
-  readonly journal: FieldItemWidthJournalV1;
-  readonly submission: FieldItemWidthSubmissionAdapterV1;
-}): Promise<FieldItemWidthStageV1> => {
-  if (!fieldItemWidthEvidenceClosesV1(evidence)) {
+  readonly evidence: FieldItemWidthEvidence;
+  readonly journal: FieldItemWidthJournal;
+  readonly submission: FieldItemWidthSubmissionAdapter;
+}): Promise<FieldItemWidthStage> => {
+  if (!fieldItemWidthEvidenceCloses(evidence)) {
     return fail("honest verdict cannot start a proof thread");
   }
-  const identity = fieldItemWidthEvidenceIdentityV1(evidence);
+  const identity = fieldItemWidthEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     const observed = await submission.observe(identity);
-    const stage = reconcileFieldItemWidthJournalV1(identity, entries, observed);
-    const action = nextFieldItemWidthActionV1(stage);
+    const stage = reconcileFieldItemWidthJournal(identity, entries, observed);
+    const action = nextFieldItemWidthAction(stage);
     if (action === "done") return stage;
     const result = await submission.submit(action, evidence);
     await journal.append({

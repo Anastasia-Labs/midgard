@@ -25,7 +25,7 @@
  *                `MIDGARD_SCAN_BENCH_CHILD_CONCURRENCY` at a time (default 2).
  *   3. check   — one child reads the merged readings and runs the full ledger
  *                judgement. The user's own narrowing env (if any) is restored
- *                for this child ONLY, so `checkScanBenchLedgerV1`'s
+ *                for this child ONLY, so `checkScanBenchLedger`'s
  *                truncated-bootstrap refusal still sees it; the orchestrator's
  *                internal narrowing of measure children is invisible to it.
  *

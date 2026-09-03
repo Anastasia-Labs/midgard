@@ -23,10 +23,10 @@ import {
 
 import {
   MIN_FEE_CATEGORY_LABEL,
-  type MinFeeContractsV1,
+  type MinFeeContracts,
 } from "./min-fee-contracts-v1.js";
 import {
-  type MinFeeCatalogueCategoryV1,
+  type MinFeeCatalogueCategory,
   minFeeSubmitError,
 } from "./min-fee-submit-common-v1.js";
 import {
@@ -43,14 +43,14 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
@@ -82,8 +82,8 @@ export const submitMinFeeInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MinFeeContractsV1;
-  readonly category: MinFeeCatalogueCategoryV1;
+  readonly contracts: MinFeeContracts;
+  readonly category: MinFeeCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -93,8 +93,8 @@ export const submitMinFeeInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -141,12 +141,12 @@ export const submitMinFeeInit = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${MIN_FEE_CATEGORY_LABEL} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${MIN_FEE_CATEGORY_LABEL} init PHAS membership`,
@@ -257,9 +257,9 @@ export const submitMinFeeInit = async ({
     throw minFeeSubmitError("init output index was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

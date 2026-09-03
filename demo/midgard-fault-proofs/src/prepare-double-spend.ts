@@ -16,31 +16,31 @@ import { join } from "node:path";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
   formatUnknownError,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxProofSourceV1,
-  type MidgardTxInputV1,
-  verifyMidgardNativeTxProofSourceV1,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxProofSource,
+  type MidgardTxInput,
+  verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
-  type L2TransactionSourceV1,
-  L2TransactionSourceV1Schema,
+  type L2TransactionSource,
+  L2TransactionSourceSchema,
   type NativeTxCompact as NativeTxCompactData,
   type OutputReference as OutputReferenceData,
   ROOT_DOMAINS,
@@ -77,30 +77,30 @@ export type NodeTransactionPayload = {
   readonly l2TransactionSourceCbor?: string;
 };
 
-export const deriveL2TransactionSourceCborV1 = (
+export const deriveL2TransactionSourceCbor = (
   canonicalTxCbor: Uint8Array,
 ): string => {
   const proofSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalTxCbor);
-  const txId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTxCbor),
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalTxCbor);
+  const txId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(canonicalTxCbor),
   ).toString("hex");
-  return encodeL2TransactionSourceValueV1({ txId, proofSource });
+  return encodeL2TransactionSourceValue({ txId, proofSource });
 };
 
-export const encodeL2TransactionSourceValueV1 = ({
+export const encodeL2TransactionSourceValue = ({
   txId,
   proofSource,
 }: {
   readonly txId: string;
-  readonly proofSource: MidgardNativeTxProofSourceV1;
+  readonly proofSource: MidgardNativeTxProofSource;
 }): string => {
   const normalizedTxId = parseHex(txId, "transaction source tx id", 32);
-  verifyMidgardNativeTxProofSourceV1({
+  verifyMidgardNativeTxProofSource({
     transactionId: Buffer.from(normalizedTxId, "hex"),
     source: proofSource,
   });
-  const sourceValue: L2TransactionSourceV1 = {
+  const sourceValue: L2TransactionSource = {
     tx_id: normalizedTxId,
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
@@ -110,14 +110,14 @@ export const encodeL2TransactionSourceValueV1 = ({
         proofSource.fieldPreimageLengthsCbor.toString("hex"),
     },
   };
-  return Data.to(sourceValue as never, L2TransactionSourceV1Schema as never);
+  return Data.to(sourceValue as never, L2TransactionSourceSchema as never);
 };
 
 export type PreparedTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
-  /** Canonical Data(L2TransactionSourceV1) bytes opened by membership. */
+  /** Canonical Data(L2TransactionSource) bytes opened by membership. */
   readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens; authenticated on-chain
   // against the header's counted `transactions_root`.
@@ -177,7 +177,7 @@ export type PrepareSampleDoubleSpendConfig = {
 export type DecodedTransactionMaterial = {
   readonly nodeTxId: string;
   readonly txCbor: string;
-  readonly nativeTx: MidgardNativeTxFullV1;
+  readonly nativeTx: MidgardNativeTxFull;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly inputs: readonly OutputReferenceData[];
   readonly referenceInputs: readonly OutputReferenceData[];
@@ -333,7 +333,7 @@ const bytesHex = (bytes: Uint8Array): string =>
  * `encode_midgard_tx_input`, not CML's minimal-index `TransactionInput` CBOR.
  */
 const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -341,7 +341,7 @@ const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
 const sampleNativeTx = (
   inputs: readonly Buffer[],
   fee: bigint,
-): MidgardNativeTxFullV1 => {
+): MidgardNativeTxFull => {
   const body = {
     spendInputsPreimageCbor: encodeCbor(inputs),
     referenceInputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
@@ -361,8 +361,8 @@ const sampleNativeTx = (
     scriptTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
     redeemerTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
   };
-  return materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  return materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body,
     witnessSet,
@@ -370,10 +370,10 @@ const sampleNativeTx = (
 };
 
 const payloadFromNativeTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 export const makeSampleDoubleSpendTransactions =
@@ -405,9 +405,9 @@ const outputReferenceFromNativeInput = (
   bytes: Uint8Array,
   label: string,
 ): OutputReferenceData => {
-  let input: MidgardTxInputV1;
+  let input: MidgardTxInput;
   try {
-    input = decodeMidgardSpendInputItemV1(bytes);
+    input = decodeMidgardSpendInputItem(bytes);
   } catch (cause) {
     throw new Error(
       `${label} is not a valid Midgard §5.3 TxOutRef CBOR: ${formatUnknownError(cause)}`,
@@ -439,9 +439,9 @@ export const decodeTransactionMaterial = async (
 ): Promise<DecodedTransactionMaterial> => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
-  let nativeTx: MidgardNativeTxFullV1;
+  let nativeTx: MidgardNativeTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
       Buffer.from(txCbor, "hex"),
     );
   } catch (cause) {
@@ -449,7 +449,7 @@ export const decodeTransactionMaterial = async (
       `Failed to decode native Midgard tx ${nodeTxId}: ${formatUnknownError(cause)}`,
     );
   }
-  const computedNodeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+  const computedNodeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
   if (computedNodeTxId !== nodeTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computedNodeTxId}.`,
@@ -467,7 +467,7 @@ export const decodeTransactionMaterial = async (
     nativeTx.body.spendInputsPreimageCbor,
     `tx ${nodeTxId} spend_inputs`,
   );
-  const l2TransactionSourceCbor = deriveL2TransactionSourceCborV1(
+  const l2TransactionSourceCbor = deriveL2TransactionSourceCbor(
     Buffer.from(txCbor, "hex"),
   );
   if (
@@ -489,9 +489,9 @@ export const decodeTransactionMaterial = async (
     inputs,
     referenceInputs,
     spendInputCbors,
-    nativeCompactCbor: encodeMidgardNativeTxCompactV1(
-      nativeTx.compact,
-    ).toString("hex"),
+    nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
+      "hex",
+    ),
     l2TransactionSourceCbor,
   };
 };
@@ -612,9 +612,7 @@ export const buildTrieView = async (
   };
 };
 
-export const transactionSourceTrieItemV1 = (
-  tx: DecodedTransactionMaterial,
-) => ({
+export const transactionSourceTrieItem = (tx: DecodedTransactionMaterial) => ({
   key: Buffer.from(tx.nodeTxId, "hex"),
   value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
 });
@@ -658,7 +656,7 @@ const prepareTx = ({
   doubleSpentInputIndex,
 });
 
-export const requireTransactionsRootMatchV1 = async ({
+export const requireTransactionsRootMatch = async ({
   sourceRoot,
   expectedTransactionsRoot,
   count,
@@ -758,19 +756,19 @@ export const prepareDoubleSpendFromTransactions = async ({
   );
   const pair = resolveDoubleSpendPair({ transactions: decoded, tx1Id, tx2Id });
   const sourceTrie = await buildTrieView(
-    decoded.map(transactionSourceTrieItemV1),
+    decoded.map(transactionSourceTrieItem),
   );
   const tx1Proof = requireProof(
     sourceTrie,
-    transactionSourceTrieItemV1(pair.tx1).key,
+    transactionSourceTrieItem(pair.tx1).key,
     "tx1",
   );
   const tx2Proof = requireProof(
     sourceTrie,
-    transactionSourceTrieItemV1(pair.tx2).key,
+    transactionSourceTrieItem(pair.tx2).key,
     "tx2",
   );
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: sourceTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
     count: BigInt(decoded.length),

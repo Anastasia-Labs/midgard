@@ -1,33 +1,33 @@
 import {
-  BoundedItemChunkProofV1Schema,
+  BoundedItemChunkProofSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
-  NativeScriptFrameV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
+  NativeScriptFrameSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const OutputReferenceVerdictSubjectV1Schema = Data.Object({
+export const OutputReferenceVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const OutputReferenceBoundOutputV1Schema = Data.Object({
-  subject: OutputReferenceVerdictSubjectV1Schema,
+export const OutputReferenceBoundOutputSchema = Data.Object({
+  subject: OutputReferenceVerdictSubjectSchema,
   output_index: Data.Integer(),
   accused_class: Data.Integer(),
 });
 const PeakSchema = Data.Object({ height: Data.Integer(), hash: Data.Bytes() });
-export const OutputReferenceOutputControlV1Schema = Data.Object({
+export const OutputReferenceOutputControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   cursor: Data.Integer(),
@@ -52,16 +52,16 @@ export const OutputReferenceOutputControlV1Schema = Data.Object({
   reference_script_offset: Data.Integer(),
   reference_script_length: Data.Integer(),
 });
-export const OutputReferenceDescriptorStateV1Schema = Data.Object({
-  bound: OutputReferenceBoundOutputV1Schema,
+export const OutputReferenceDescriptorStateSchema = Data.Object({
+  bound: OutputReferenceBoundOutputSchema,
   item_length: Data.Integer(),
   item_hash: Data.Bytes(),
   chunk_hashes: Data.Array(Data.Bytes()),
-  control: OutputReferenceOutputControlV1Schema,
+  control: OutputReferenceOutputControlSchema,
   outcome: Data.Integer(),
 });
-export const OutputReferenceScanStateV1Schema = Data.Object({
-  bound: OutputReferenceBoundOutputV1Schema,
+export const OutputReferenceScanStateSchema = Data.Object({
+  bound: OutputReferenceBoundOutputSchema,
   total_length: Data.Integer(),
   item_commitment: Data.Bytes(),
   control_cbor: Data.Bytes(),
@@ -69,7 +69,7 @@ export const OutputReferenceScanStateV1Schema = Data.Object({
   checkpoint_hash: Data.Bytes(),
   result_class: Data.Integer(),
 });
-export const OutputReferenceStep01SourceV1Schema = Data.Enum([
+export const OutputReferenceStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -77,78 +77,72 @@ export const OutputReferenceStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const OutputReferenceStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      source: OutputReferenceStep01SourceV1Schema,
-      output_index: Data.Integer(),
-    }),
-  );
-export const OutputReferenceStep02DatumV1Schema = faultProofStepDatumSchema(
-  OutputReferenceBoundOutputV1Schema,
+export const OutputReferenceStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    source: OutputReferenceStep01SourceSchema,
+    output_index: Data.Integer(),
+  }),
 );
-export const OutputReferenceStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
-    }),
-  );
-export const OutputReferenceStep03DatumV1Schema = faultProofStepDatumSchema(
-  OutputReferenceDescriptorStateV1Schema,
+export const OutputReferenceStep02DatumSchema = faultProofStepDatumSchema(
+  OutputReferenceBoundOutputSchema,
 );
-export const OutputReferenceStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      window: Data.Bytes(),
-    }),
-  );
-export const OutputReferenceStep04DatumV1Schema = faultProofStepDatumSchema(
-  OutputReferenceDescriptorStateV1Schema,
+export const OutputReferenceStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    opening: FieldOpeningSchema,
+  }),
 );
-export const OutputReferenceStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
-    }),
-  );
-export const OutputReferenceStep05DatumV1Schema = faultProofStepDatumSchema(
-  OutputReferenceScanStateV1Schema,
+export const OutputReferenceStep03DatumSchema = faultProofStepDatumSchema(
+  OutputReferenceDescriptorStateSchema,
 );
-export const OutputReferenceStep05RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      control_cbor: Data.Bytes(),
-      chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      frames: Data.Array(NativeScriptFrameV1Schema),
-      step_budget: Data.Integer(),
-    }),
-  );
-export const OutputReferenceStep06DatumV1Schema = faultProofStepDatumSchema(
-  OutputReferenceScanStateV1Schema,
+export const OutputReferenceStep03RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    window: Data.Bytes(),
+  }),
 );
-export const OutputReferenceStep06RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      fraud_proof_mint_redeemer_index: Data.Integer(),
-    }),
-  );
+export const OutputReferenceStep04DatumSchema = faultProofStepDatumSchema(
+  OutputReferenceDescriptorStateSchema,
+);
+export const OutputReferenceStep04RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    opening: FieldOpeningSchema,
+  }),
+);
+export const OutputReferenceStep05DatumSchema = faultProofStepDatumSchema(
+  OutputReferenceScanStateSchema,
+);
+export const OutputReferenceStep05RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    control_cbor: Data.Bytes(),
+    chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+    next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+    frames: Data.Array(NativeScriptFrameSchema),
+    step_budget: Data.Integer(),
+  }),
+);
+export const OutputReferenceStep06DatumSchema = faultProofStepDatumSchema(
+  OutputReferenceScanStateSchema,
+);
+export const OutputReferenceStep06RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    fraud_proof_mint_redeemer_index: Data.Integer(),
+  }),
+);

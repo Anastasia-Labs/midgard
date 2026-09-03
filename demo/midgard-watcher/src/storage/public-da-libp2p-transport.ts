@@ -1,4 +1,4 @@
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { peerIdFromString } from "@libp2p/peer-id";
@@ -8,7 +8,7 @@ import { createLibp2p, type Libp2pOptions } from "libp2p";
 
 import type {
   WatcherPublicDaLibp2pTransportV1,
-  WatcherPublicDaRequestV1,
+  WatcherPublicDaRequest,
 } from "./public-da-client.js";
 
 type PublicDaStreamChunk =
@@ -38,12 +38,12 @@ type PublicDaRuntimeNode = {
   }[];
 };
 
-export type WatcherPublicDaLibp2pFactoryV1 = (
+export type WatcherPublicDaLibp2pFactory = (
   options: Libp2pOptions,
 ) => Promise<PublicDaRuntimeNode>;
 
-export type WatcherPublicDaLibp2pTransportOptionsV1 = Readonly<{
-  libp2pFactory?: WatcherPublicDaLibp2pFactoryV1;
+export type WatcherPublicDaLibp2pTransportOptions = Readonly<{
+  libp2pFactory?: WatcherPublicDaLibp2pFactory;
   maxFrameBytes?: number;
 }>;
 
@@ -52,12 +52,12 @@ export class WatcherPublicDaLibp2pTransport
   implements WatcherPublicDaLibp2pTransportV1
 {
   private readonly maxFrameBytes: number;
-  private readonly factory: WatcherPublicDaLibp2pFactoryV1;
+  private readonly factory: WatcherPublicDaLibp2pFactory;
   private node?: PublicDaRuntimeNode;
 
-  constructor(options: WatcherPublicDaLibp2pTransportOptionsV1 = {}) {
+  constructor(options: WatcherPublicDaLibp2pTransportOptions = {}) {
     this.maxFrameBytes =
-      options.maxFrameBytes ?? DA_TRANSPORT_LIMITS_V1.maxPayloadBytes;
+      options.maxFrameBytes ?? DA_TRANSPORT_LIMITS.maxPayloadBytes;
     if (!Number.isSafeInteger(this.maxFrameBytes) || this.maxFrameBytes <= 0) {
       throw new RangeError(
         "public DA maxFrameBytes must be a positive safe integer",
@@ -97,7 +97,7 @@ export class WatcherPublicDaLibp2pTransport
     await node?.stop();
   }
 
-  async request(request: WatcherPublicDaRequestV1): Promise<Uint8Array> {
+  async request(request: WatcherPublicDaRequest): Promise<Uint8Array> {
     const node = this.node;
     if (node === undefined) {
       throw new Error("watcher public DA libp2p transport is not started");
@@ -138,8 +138,8 @@ export class WatcherPublicDaLibp2pTransport
   }
 }
 
-export const createWatcherPublicDaLibp2pTransportV1 = async (
-  options: WatcherPublicDaLibp2pTransportOptionsV1 = {},
+export const createWatcherPublicDaLibp2pTransport = async (
+  options: WatcherPublicDaLibp2pTransportOptions = {},
 ): Promise<WatcherPublicDaLibp2pTransport> => {
   const transport = new WatcherPublicDaLibp2pTransport(options);
   await transport.start();
@@ -147,9 +147,9 @@ export const createWatcherPublicDaLibp2pTransportV1 = async (
 };
 
 /** Exact unsigned 32-bit big-endian, one nonempty bounded frame. */
-export const encodeWatcherPublicDaFrameV1 = (
+export const encodeWatcherPublicDaFrame = (
   payload: Uint8Array,
-  maxFrameBytes = DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+  maxFrameBytes = DA_TRANSPORT_LIMITS.maxPayloadBytes,
 ): Buffer => {
   if (!Number.isSafeInteger(payload.length) || payload.length <= 0) {
     throw new Error("public DA frame must not be empty");
@@ -168,14 +168,14 @@ const writeSingleFrame = async (
   payload: Uint8Array,
   maxFrameBytes: number,
 ): Promise<void> => {
-  if (!stream.send(encodeWatcherPublicDaFrameV1(payload, maxFrameBytes))) {
+  if (!stream.send(encodeWatcherPublicDaFrame(payload, maxFrameBytes))) {
     await stream.onDrain?.();
   }
 };
 
-export const readWatcherPublicDaFramesV1 = async function* (
+export const readWatcherPublicDaFrames = async function* (
   chunks: AsyncIterable<PublicDaStreamChunk>,
-  maxFrameBytes = DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+  maxFrameBytes = DA_TRANSPORT_LIMITS.maxPayloadBytes,
 ): AsyncGenerator<Buffer> {
   let buffer = Buffer.alloc(0);
   for await (const chunk of chunks) {
@@ -203,7 +203,7 @@ const readSingleFrame = async (
   maxFrameBytes: number,
 ): Promise<Buffer> => {
   let frame: Buffer | undefined;
-  for await (const candidate of readWatcherPublicDaFramesV1(
+  for await (const candidate of readWatcherPublicDaFrames(
     stream,
     maxFrameBytes,
   )) {
@@ -216,7 +216,7 @@ const readSingleFrame = async (
 };
 
 const parseExpectedPeer = (
-  request: WatcherPublicDaRequestV1,
+  request: WatcherPublicDaRequest,
 ): {
   readonly address: ReturnType<typeof multiaddr>;
   readonly peerId: ReturnType<typeof peerIdFromString>;
@@ -255,7 +255,7 @@ const assertAuthenticatedPeer = (
   }
 };
 
-const defaultLibp2pFactory: WatcherPublicDaLibp2pFactoryV1 = async (
+const defaultLibp2pFactory: WatcherPublicDaLibp2pFactory = async (
   options,
 ): Promise<PublicDaRuntimeNode> =>
   createLibp2p(options) as Promise<PublicDaRuntimeNode>;

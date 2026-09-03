@@ -32,8 +32,8 @@ import {
   DEFAULT_STRESS_CORPUS_REBUILD_SAMPLE_RATE,
   parseStressCorpusIndexLine,
   parseStressCorpusManifest,
-  parseStressCorpusRebuildSampleResultV1,
-  parseStressCorpusWalletSetIdentityV1,
+  parseStressCorpusRebuildSampleResult,
+  parseStressCorpusWalletSetIdentity,
   STRESS_CORPUS_MANIFEST_SCHEMA_VERSION,
   STRESS_CORPUS_REBUILD_SAMPLE_ALGORITHM,
   verifyStressCorpus,
@@ -103,7 +103,7 @@ export type StressCorpusGenerateResult = {
   };
 };
 
-type SerializedStressCorpusPlanV1 = Omit<
+type SerializedStressCorpusPlan = Omit<
   StressCorpusPlan,
   | "amountLovelace"
   | "estimatedFeePerTxLovelace"
@@ -118,11 +118,11 @@ type SerializedStressCorpusPlanV1 = Omit<
   readonly estimatedCorpusBytes: string;
 };
 
-export type StressCorpusGenerationArtifactV1 = Omit<
+export type StressCorpusGenerationArtifact = Omit<
   StressCorpusGenerateResult,
   "plan"
 > & {
-  readonly plan: SerializedStressCorpusPlanV1;
+  readonly plan: SerializedStressCorpusPlan;
 };
 
 const exactGenerationObject = (
@@ -202,9 +202,9 @@ const generationDigest = (value: unknown, label: string): string => {
   return digest;
 };
 
-export const parseStressCorpusGenerationArtifactV1 = (
+export const parseStressCorpusGenerationArtifact = (
   value: unknown,
-): StressCorpusGenerationArtifactV1 => {
+): StressCorpusGenerationArtifact => {
   const root = exactGenerationObject(
     value,
     "stress corpus generation artifact",
@@ -261,7 +261,7 @@ export const parseStressCorpusGenerationArtifactV1 = (
       "stress corpus generation artifact plan.interleavingPlan is unsupported.",
     );
   }
-  const plan: SerializedStressCorpusPlanV1 = {
+  const plan: SerializedStressCorpusPlan = {
     targetRateTps: generationNumber(
       planDocument.targetRateTps,
       "stress corpus generation artifact plan.targetRateTps",
@@ -430,15 +430,15 @@ export const parseStressCorpusGenerationArtifactV1 = (
     "stress corpus generation artifact verified.verificationArtifact",
     ["path", "sha256"],
   );
-  const walletSetIdentity = parseStressCorpusWalletSetIdentityV1(
+  const walletSetIdentity = parseStressCorpusWalletSetIdentity(
     root.walletSetIdentity,
     "stress corpus generation artifact walletSetIdentity",
   );
-  const verifiedWalletSetIdentity = parseStressCorpusWalletSetIdentityV1(
+  const verifiedWalletSetIdentity = parseStressCorpusWalletSetIdentity(
     verifiedDocument.walletSetIdentity,
     "stress corpus generation artifact verified.walletSetIdentity",
   );
-  const rebuildSample = parseStressCorpusRebuildSampleResultV1(
+  const rebuildSample = parseStressCorpusRebuildSampleResult(
     verifiedDocument.rebuildSample,
     "stress corpus generation artifact verified.rebuildSample",
   );
@@ -1100,7 +1100,7 @@ export const generateStressCorpus = async (
       verificationArtifact: verified.verificationArtifact!,
     },
   };
-  parseStressCorpusGenerationArtifactV1(
+  parseStressCorpusGenerationArtifact(
     JSON.parse(formatJson(result)) as unknown,
   );
   return result;

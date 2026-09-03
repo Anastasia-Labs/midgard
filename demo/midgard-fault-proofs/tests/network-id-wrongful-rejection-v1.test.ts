@@ -1,18 +1,18 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  encodeMidgardNativeTxCanonicalV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { forcedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
-  createNetworkIdWrongfulRejectionPlannerV1,
-  detectNetworkIdWrongfulRejectionsV1,
-  networkIdWrongfulRejectionClosesV1,
-  type NetworkIdWrongfulRejectionEvidenceV1,
+  createNetworkIdWrongfulRejectionPlanner,
+  detectNetworkIdWrongfulRejections,
+  networkIdWrongfulRejectionCloses,
+  type NetworkIdWrongfulRejectionEvidence,
 } from "../src/network-id/wrongful-rejection-v1.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
@@ -34,12 +34,12 @@ const forcedBlock = (
     fee: 0n,
     outputCbors: outputNetworkIds.map(output),
   });
-  const invalid = adjudicateMidgardNativeTxFullV1Validity(
+  const invalid = adjudicateMidgardNativeTxFullValidity(
     submitted,
     "TxIsInvalid",
   );
-  const txId = computeMidgardNativeTxIdV1(invalid).toString("hex");
-  const source = deriveMidgardNativeTxProofSourceV1(invalid);
+  const txId = computeMidgardNativeTxId(invalid).toString("hex");
+  const source = deriveMidgardNativeTxProofSource(invalid);
   return {
     headerHash: "04".repeat(28),
     header: { expectedNetworkId: 0n },
@@ -58,7 +58,7 @@ const forcedBlock = (
             },
             verdict: { ForcedTxInvalid: { reason } },
           },
-          fullTransactionCbor: encodeMidgardNativeTxCanonicalV1(invalid),
+          fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
         },
       ],
     },
@@ -67,20 +67,20 @@ const forcedBlock = (
 
 describe("networkId wrongful-rejection V1", () => {
   it("derives complete equality evidence from the authenticated forced leaf", () => {
-    const detections = detectNetworkIdWrongfulRejectionsV1({
+    const detections = detectNetworkIdWrongfulRejections({
       block: forcedBlock([0, 0]),
       expectedNetworkId: 0n,
     });
     expect(detections).toHaveLength(1);
     expect(detections[0]!.evidence.outputNetworkIds).toEqual([0n, 0n]);
-    expect(networkIdWrongfulRejectionClosesV1(detections[0]!.evidence)).toBe(
+    expect(networkIdWrongfulRejectionCloses(detections[0]!.evidence)).toBe(
       true,
     );
   });
 
   it("refuses an honest rejection when one authenticated output mismatches", () => {
     expect(
-      detectNetworkIdWrongfulRejectionsV1({
+      detectNetworkIdWrongfulRejections({
         block: forcedBlock([0, 1]),
         expectedNetworkId: 0n,
       }),
@@ -89,7 +89,7 @@ describe("networkId wrongful-rejection V1", () => {
 
   it("refuses another typed reason", () => {
     expect(
-      detectNetworkIdWrongfulRejectionsV1({
+      detectNetworkIdWrongfulRejections({
         block: forcedBlock([0], "EmptyInputs"),
         expectedNetworkId: 0n,
       }),
@@ -100,12 +100,12 @@ describe("networkId wrongful-rejection V1", () => {
     const block = forcedBlock([0]) as any;
     block.reconstruction.forcedTransactions[0].value.tx_id = "ff".repeat(32);
     expect(() =>
-      detectNetworkIdWrongfulRejectionsV1({ block, expectedNetworkId: 0n }),
+      detectNetworkIdWrongfulRejections({ block, expectedNetworkId: 0n }),
     ).toThrow(/preimage differs/u);
   });
 
   it("uses a callback-free production authority surface", () => {
-    const planner = createNetworkIdWrongfulRejectionPlannerV1(0n);
+    const planner = createNetworkIdWrongfulRejectionPlanner(0n);
     expect(planner).toHaveLength(1);
     expectTypeOf<
       keyof Parameters<typeof planner>[0]
@@ -114,8 +114,8 @@ describe("networkId wrongful-rejection V1", () => {
   });
 
   it("the pure terminal predicate refuses a forged mismatch", () => {
-    const evidence: NetworkIdWrongfulRejectionEvidenceV1 = {
-      subject: forcedVerdictSubjectV1({
+    const evidence: NetworkIdWrongfulRejectionEvidence = {
+      subject: forcedVerdictSubject({
         transactionId: "01".repeat(32),
         sourceKey: { transactionId: "02".repeat(32), outputIndex: 0n },
         rejectionReason: "NetworkIdMismatch",
@@ -126,6 +126,6 @@ describe("networkId wrongful-rejection V1", () => {
       outputsItemCbors: [],
       outputsPreimageCbor: "80",
     };
-    expect(networkIdWrongfulRejectionClosesV1(evidence)).toBe(false);
+    expect(networkIdWrongfulRejectionCloses(evidence)).toBe(false);
   });
 });

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
-  unusedRedeemerEvidenceIdentityV1,
-  type UnusedRedeemerEvidenceV1,
+  type UnusedRedeemerEvidence,
+  unusedRedeemerEvidenceIdentity,
 } from "./family-v1.js";
 
-export const UNUSED_REDEEMER_WORKFLOW_STAGES_V1 = [
+export const UNUSED_REDEEMER_WORKFLOW_STAGES = [
   "none",
   "step01",
   "step02",
@@ -20,9 +20,9 @@ export const UNUSED_REDEEMER_WORKFLOW_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type UnusedRedeemerWorkflowStageV1 =
-  (typeof UNUSED_REDEEMER_WORKFLOW_STAGES_V1)[number];
-export type UnusedRedeemerWorkflowActionV1 =
+export type UnusedRedeemerWorkflowStage =
+  (typeof UNUSED_REDEEMER_WORKFLOW_STAGES)[number];
+export type UnusedRedeemerWorkflowAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -35,42 +35,42 @@ export type UnusedRedeemerWorkflowActionV1 =
   | "submitStep06"
   | "removeDescendants"
   | "cancel";
-export type UnusedRedeemerCursorV1 = Readonly<{
-  stage: UnusedRedeemerWorkflowStageV1;
+export type UnusedRedeemerCursor = Readonly<{
+  stage: UnusedRedeemerWorkflowStage;
   threadOutRef: string;
   checkpointDigest: string;
 }>;
-export type UnusedRedeemerJournalEntryV1 = Readonly<{
+export type UnusedRedeemerJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  action: UnusedRedeemerWorkflowActionV1;
+  action: UnusedRedeemerWorkflowAction;
   phase: "intent" | "submitted" | "confirmed";
-  source: UnusedRedeemerCursorV1;
-  target: UnusedRedeemerCursorV1;
+  source: UnusedRedeemerCursor;
+  target: UnusedRedeemerCursor;
   txHash: string;
 }>;
-export interface UnusedRedeemerJournalV1 {
-  load(identity: string): Promise<readonly UnusedRedeemerJournalEntryV1[]>;
-  append(entry: UnusedRedeemerJournalEntryV1): Promise<void>;
+export interface UnusedRedeemerJournal {
+  load(identity: string): Promise<readonly UnusedRedeemerJournalEntry[]>;
+  append(entry: UnusedRedeemerJournalEntry): Promise<void>;
 }
-export interface UnusedRedeemerActuatorV1 {
-  observe(identity: string): Promise<UnusedRedeemerCursorV1>;
+export interface UnusedRedeemerActuator {
+  observe(identity: string): Promise<UnusedRedeemerCursor>;
   capture(input: {
-    action: UnusedRedeemerWorkflowActionV1;
-    evidence: UnusedRedeemerEvidenceV1;
-    source: UnusedRedeemerCursorV1;
+    action: UnusedRedeemerWorkflowAction;
+    evidence: UnusedRedeemerEvidence;
+    source: UnusedRedeemerCursor;
   }): Promise<
     Readonly<{
       txHash: string;
-      target: UnusedRedeemerCursorV1;
+      target: UnusedRedeemerCursor;
       submit: () => Promise<string>;
     }>
   >;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
 const actions: Record<
-  UnusedRedeemerWorkflowStageV1,
-  UnusedRedeemerWorkflowActionV1 | "done"
+  UnusedRedeemerWorkflowStage,
+  UnusedRedeemerWorkflowAction | "done"
 > = {
   none: "submitInit",
   step01: "submitStep01",
@@ -89,7 +89,7 @@ const actions: Record<
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const validate = (
-  entries: readonly UnusedRedeemerJournalEntryV1[],
+  entries: readonly UnusedRedeemerJournalEntry[],
   identity: string,
 ) =>
   entries.forEach((entry, sequence) => {
@@ -100,16 +100,16 @@ const validate = (
     )
       throw new Error("unusedRedeemer journal identity changed");
   });
-export const runUnusedRedeemerWorkflowV1 = async ({
+export const runUnusedRedeemerWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  evidence: UnusedRedeemerEvidenceV1;
-  journal: UnusedRedeemerJournalV1;
-  actuator: UnusedRedeemerActuatorV1;
-}): Promise<UnusedRedeemerWorkflowStageV1> => {
-  const identity = unusedRedeemerEvidenceIdentityV1(evidence);
+  evidence: UnusedRedeemerEvidence;
+  journal: UnusedRedeemerJournal;
+  actuator: UnusedRedeemerActuator;
+}): Promise<UnusedRedeemerWorkflowStage> => {
+  const identity = unusedRedeemerEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   const intent = [...entries]
@@ -144,7 +144,7 @@ export const runUnusedRedeemerWorkflowV1 = async ({
   if (!/^[0-9a-f]{64}$/u.test(captured.txHash))
     throw new Error("unusedRedeemer captured transaction is malformed");
   const nextSequence = entries.length;
-  const next: UnusedRedeemerJournalEntryV1 = {
+  const next: UnusedRedeemerJournalEntry = {
     sequence: nextSequence,
     identity,
     action,
@@ -164,16 +164,16 @@ export const runUnusedRedeemerWorkflowV1 = async ({
   return source.stage;
 };
 
-export const cancelUnusedRedeemerWorkflowV1 = async ({
+export const cancelUnusedRedeemerWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  evidence: UnusedRedeemerEvidenceV1;
-  journal: UnusedRedeemerJournalV1;
-  actuator: UnusedRedeemerActuatorV1;
+  evidence: UnusedRedeemerEvidence;
+  journal: UnusedRedeemerJournal;
+  actuator: UnusedRedeemerActuator;
 }): Promise<"cancelled"> => {
-  const identity = unusedRedeemerEvidenceIdentityV1(evidence);
+  const identity = unusedRedeemerEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   const unresolved = [...entries]
@@ -206,7 +206,7 @@ export const cancelUnusedRedeemerWorkflowV1 = async ({
   if (captured.target.stage !== "cancelled")
     throw new Error("unusedRedeemer cancellation target changed");
   const sequence = entries.length;
-  const intent: UnusedRedeemerJournalEntryV1 = {
+  const intent: UnusedRedeemerJournalEntry = {
     sequence,
     identity,
     action: "cancel",

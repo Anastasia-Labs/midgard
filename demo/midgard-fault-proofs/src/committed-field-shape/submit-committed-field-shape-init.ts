@@ -34,21 +34,21 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
-  type CommittedFieldShapeContractsV1,
+  type CommittedFieldShapeContracts,
 } from "./contracts-v1.js";
 import {
-  type CommittedFieldShapeCatalogueCategoryV1,
+  type CommittedFieldShapeCatalogueCategory,
   committedFieldShapeSubmitError,
 } from "./submit-common-v1.js";
 
@@ -89,8 +89,8 @@ export const submitCommittedFieldShapeInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: CommittedFieldShapeContractsV1;
-  readonly category: CommittedFieldShapeCatalogueCategoryV1;
+  readonly contracts: CommittedFieldShapeContracts;
+  readonly category: CommittedFieldShapeCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -100,8 +100,8 @@ export const submitCommittedFieldShapeInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCommittedFieldShapeInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -150,12 +150,12 @@ export const submitCommittedFieldShapeInit = async ({
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${COMMITTED_FIELD_SHAPE_CATEGORY_LABEL} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${COMMITTED_FIELD_SHAPE_CATEGORY_LABEL} init PHAS membership`,
@@ -271,9 +271,9 @@ export const submitCommittedFieldShapeInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

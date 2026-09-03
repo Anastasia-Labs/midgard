@@ -4,19 +4,19 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  invalidSignatureAddressWitnessesCommitmentV1,
-  invalidSignatureWitnessSetCommitmentV1,
+  invalidSignatureAddressWitnessesCommitment,
+  invalidSignatureWitnessSetCommitment,
   type MidgardAddressWitness,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
@@ -29,7 +29,7 @@ import {
   decodeTransactionMaterial,
   type NodeTransactionPayload,
   prepareInvalidSignatureFromTransactions,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../src/index.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
@@ -39,7 +39,7 @@ const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -56,9 +56,9 @@ const makeNativeTx = ({
 }: {
   readonly fee: bigint;
   readonly addrTxWits: readonly MidgardAddressWitness[];
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([inputCbor(h32("11"), fee)]),
@@ -81,9 +81,9 @@ const makeNativeTx = ({
     },
   });
 
-const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 const corrupt = (signature: string): string =>
@@ -114,7 +114,7 @@ const signedTx = ({
     verification_key: h32("aa"),
     signature: "bb".repeat(64),
   };
-  const nodeTxId = computeMidgardNativeTxIdV1(
+  const nodeTxId = computeMidgardNativeTxId(
     makeNativeTx({
       fee,
       addrTxWits: Array.from({ length: witnessCount }, () => placeholder),
@@ -152,7 +152,7 @@ const transactionRoots = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,
@@ -212,15 +212,13 @@ describe("prepare-invalid-signature", () => {
     // compact opens `witness_set_hash`, then the address-witness list opens the
     // `addr_tx_wits_hash` that compact exposes.
     expect(
-      invalidSignatureWitnessSetCommitmentV1(output.tx.badTxWitnessSetCompact),
+      invalidSignatureWitnessSetCommitment(output.tx.badTxWitnessSetCompact),
     ).toBe(output.tx.badTxWitnessSetHash);
     expect(output.tx.badTxWitnessSetHash).toBe(
       output.tx.nativeTx.witness_set_hash,
     );
     expect(
-      invalidSignatureAddressWitnessesCommitmentV1(
-        output.tx.addrTxWitsPreimage,
-      ),
+      invalidSignatureAddressWitnessesCommitment(output.tx.addrTxWitsPreimage),
     ).toBe(output.tx.badAddrTxWitsHash);
     expect(output.tx.badAddrTxWitsHash).toBe(
       output.tx.badTxWitnessSetCompact.addr_tx_wits_hash,

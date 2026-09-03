@@ -2,18 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxBodyCompactV1,
-  decodeMidgardNativeTxCompactV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardNativeTxWitnessSetCompactV1,
-  deriveMidgardNativeTxBodyCompactV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxBodyCompactV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxBodyCompact,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxWitnessSetCompact,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
@@ -77,26 +77,26 @@ describe("midgard native tx codec benchmark", () => {
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
     const nativeCanonicalCbors = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(bytes),
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),
     );
     const nativeDecoded = nativeCanonicalCbors.map((bytes) =>
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(bytes),
+      decodeMidgardNativeTxFullFromCanonicalCbor(bytes),
     );
     const nativeBodyCompactDecoded = nativeDecoded.map((tx) =>
-      deriveMidgardNativeTxBodyCompactV1(tx.body),
+      deriveMidgardNativeTxBodyCompact(tx.body),
     );
     const nativeWitnessCompactDecoded = nativeDecoded.map((tx) =>
-      deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet),
+      deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet),
     );
     const nativeCompactDecoded = nativeDecoded.map((tx) => tx.compact);
     const nativeBodyCompactBytes = nativeBodyCompactDecoded.map((body) =>
-      encodeMidgardNativeTxBodyCompactV1(body),
+      encodeMidgardNativeTxBodyCompact(body),
     );
     const nativeWitnessCompactBytes = nativeWitnessCompactDecoded.map((wits) =>
-      encodeMidgardNativeTxWitnessSetCompactV1(wits),
+      encodeMidgardNativeTxWitnessSetCompact(wits),
     );
     const nativeCompactBytes = nativeCompactDecoded.map((compact) =>
-      encodeMidgardNativeTxCompactV1(compact),
+      encodeMidgardNativeTxCompact(compact),
     );
 
     const operations: OperationStats[] = [
@@ -104,7 +104,7 @@ describe("midgard native tx codec benchmark", () => {
         "serialize_native_full",
         () => {
           for (const tx of nativeDecoded) {
-            encodeMidgardNativeTxCanonicalV1(tx);
+            encodeMidgardNativeTxCanonical(tx);
           }
         },
         txBytes.length,
@@ -114,7 +114,7 @@ describe("midgard native tx codec benchmark", () => {
         "deserialize_native_full",
         () => {
           for (const bytes of nativeCanonicalCbors) {
-            decodeMidgardNativeTxFullV1FromCanonicalCbor(bytes);
+            decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
           }
         },
         txBytes.length,
@@ -124,7 +124,7 @@ describe("midgard native tx codec benchmark", () => {
         "serialize_native_compact",
         () => {
           for (const tx of nativeCompactDecoded) {
-            encodeMidgardNativeTxCompactV1(tx);
+            encodeMidgardNativeTxCompact(tx);
           }
         },
         txBytes.length,
@@ -134,7 +134,7 @@ describe("midgard native tx codec benchmark", () => {
         "deserialize_native_compact",
         () => {
           for (const bytes of nativeCompactBytes) {
-            decodeMidgardNativeTxCompactV1(bytes);
+            decodeMidgardNativeTxCompact(bytes);
           }
         },
         txBytes.length,
@@ -144,7 +144,7 @@ describe("midgard native tx codec benchmark", () => {
         "serialize_native_body_compact",
         () => {
           for (const body of nativeBodyCompactDecoded) {
-            encodeMidgardNativeTxBodyCompactV1(body);
+            encodeMidgardNativeTxBodyCompact(body);
           }
         },
         txBytes.length,
@@ -154,7 +154,7 @@ describe("midgard native tx codec benchmark", () => {
         "deserialize_native_body_compact",
         () => {
           for (const bytes of nativeBodyCompactBytes) {
-            decodeMidgardNativeTxBodyCompactV1(bytes);
+            decodeMidgardNativeTxBodyCompact(bytes);
           }
         },
         txBytes.length,
@@ -164,7 +164,7 @@ describe("midgard native tx codec benchmark", () => {
         "serialize_native_witness_compact",
         () => {
           for (const wits of nativeWitnessCompactDecoded) {
-            encodeMidgardNativeTxWitnessSetCompactV1(wits);
+            encodeMidgardNativeTxWitnessSetCompact(wits);
           }
         },
         txBytes.length,
@@ -174,7 +174,7 @@ describe("midgard native tx codec benchmark", () => {
         "deserialize_native_witness_compact",
         () => {
           for (const bytes of nativeWitnessCompactBytes) {
-            decodeMidgardNativeTxWitnessSetCompactV1(bytes);
+            decodeMidgardNativeTxWitnessSetCompact(bytes);
           }
         },
         txBytes.length,
@@ -184,7 +184,7 @@ describe("midgard native tx codec benchmark", () => {
         "convert_cardano_to_midgard_native_full",
         () => {
           for (const bytes of txBytes) {
-            cardanoTxBytesToMidgardNativeTxCanonicalCborV1(bytes);
+            cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes);
           }
         },
         txBytes.length,
@@ -194,7 +194,7 @@ describe("midgard native tx codec benchmark", () => {
         "hash_midgard_native_tx_id",
         () => {
           for (const tx of nativeDecoded) {
-            computeMidgardNativeTxIdV1(tx);
+            computeMidgardNativeTxId(tx);
           }
         },
         txBytes.length,

@@ -1,7 +1,7 @@
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_PROTOCOL_V1_VERSION,
-  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_PROTOCOL_VERSION,
+  MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Data } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
@@ -20,13 +20,13 @@ import {
   PubKeyHashSchema,
   ValueSchema,
 } from "./common.js";
-import { DaAvailabilityStateQueueStatusV1Schema } from "./da-availability-state-v1.js";
+import { DaAvailabilityStateQueueStatusSchema } from "./da-availability-state-v1.js";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
 } from "./ledger-constants.js";
-import { OperatorVerdictV1Schema } from "./rejection-reason-v1.js";
+import { OperatorVerdictSchema } from "./rejection-reason-v1.js";
 
 export { NO_DA_ATTESTATION } from "./da-availability-state-v1.js";
 
@@ -35,7 +35,7 @@ export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
 export const HeaderHash = HeaderHashSchema as unknown as HeaderHash;
 
 /** Canonical proof-complete Midgard V1 block header. */
-export const HeaderV1Schema = Data.Object({
+export const HeaderSchema = Data.Object({
   prevUtxosRoot: MerkleRootSchema,
   utxosRoot: MerkleRootSchema,
   withdrawalsRoot: MerkleRootSchema,
@@ -62,10 +62,10 @@ export const HeaderV1Schema = Data.Object({
   operatorVkey: PubKeyHashSchema,
   protocolVersion: Data.Integer(),
 });
-export type HeaderV1 = Data.Static<typeof HeaderV1Schema>;
-export const HeaderV1 = HeaderV1Schema as unknown as HeaderV1;
+export type Header = Data.Static<typeof HeaderSchema>;
+export const Header = HeaderSchema as unknown as Header;
 
-export const HeaderTransitionCommitmentsV1Schema = Data.Object({
+export const HeaderTransitionCommitmentsSchema = Data.Object({
   forcedTransactionsRoot: MerkleRootSchema,
   transitionTraceRoot: MerkleRootSchema,
   eventToStepRoot: MerkleRootSchema,
@@ -78,13 +78,13 @@ export const HeaderTransitionCommitmentsV1Schema = Data.Object({
   transitionStepCount: Data.Integer(),
   validationTraceCount: Data.Integer(),
 });
-export type HeaderTransitionCommitmentsV1 = Data.Static<
-  typeof HeaderTransitionCommitmentsV1Schema
+export type HeaderTransitionCommitments = Data.Static<
+  typeof HeaderTransitionCommitmentsSchema
 >;
-export const HeaderTransitionCommitmentsV1 =
-  HeaderTransitionCommitmentsV1Schema as unknown as HeaderTransitionCommitmentsV1;
+export const HeaderTransitionCommitments =
+  HeaderTransitionCommitmentsSchema as unknown as HeaderTransitionCommitments;
 
-export const EMPTY_HEADER_TRANSITION_COMMITMENTS_V1: HeaderTransitionCommitmentsV1 =
+export const EMPTY_HEADER_TRANSITION_COMMITMENTS: HeaderTransitionCommitments =
   {
     forcedTransactionsRoot: EMPTY_MERKLE_TREE_ROOT,
     transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -99,28 +99,28 @@ export const EMPTY_HEADER_TRANSITION_COMMITMENTS_V1: HeaderTransitionCommitments
     validationTraceCount: 0n,
   };
 
-export type HeaderTransitionCommitmentSourceRootsV1 = Pick<
-  HeaderV1,
+export type HeaderTransitionCommitmentSourceRoots = Pick<
+  Header,
   | "withdrawalsRoot"
   | "forcedTransactionsRoot"
   | "transactionsRoot"
   | "depositsRoot"
 >;
 
-export type HeaderTransitionCommitmentCountsV1 = Pick<
-  HeaderTransitionCommitmentsV1,
+export type HeaderTransitionCommitmentCounts = Pick<
+  HeaderTransitionCommitments,
   | "withdrawalCount"
   | "forcedTransactionCount"
   | "l2TransactionCount"
   | "depositCount"
 >;
 
-export type MakeHeaderTransitionCommitmentsV1Input =
-  HeaderTransitionCommitmentSourceRootsV1 &
-    HeaderTransitionCommitmentCountsV1 &
+export type MakeHeaderTransitionCommitmentsInput =
+  HeaderTransitionCommitmentSourceRoots &
+    HeaderTransitionCommitmentCounts &
     Partial<
       Pick<
-        HeaderTransitionCommitmentsV1,
+        HeaderTransitionCommitments,
         "transitionTraceRoot" | "eventToStepRoot" | "transitionStepCount"
       >
     > & {
@@ -128,9 +128,9 @@ export type MakeHeaderTransitionCommitmentsV1Input =
       readonly validationTraceCount: bigint;
     };
 
-export type ValidateHeaderTransitionCommitmentsV1Input =
-  HeaderTransitionCommitmentsV1 &
-    Pick<HeaderV1, "withdrawalsRoot" | "transactionsRoot" | "depositsRoot">;
+export type ValidateHeaderTransitionCommitmentsInput =
+  HeaderTransitionCommitments &
+    Pick<Header, "withdrawalsRoot" | "transactionsRoot" | "depositsRoot">;
 
 export class HeaderTransitionCommitmentsError extends EffectData.TaggedError(
   "HeaderTransitionCommitmentsError",
@@ -142,14 +142,14 @@ const headerTransitionCommitmentsError = (
 ): HeaderTransitionCommitmentsError =>
   new HeaderTransitionCommitmentsError({ message, cause });
 
-export const validateHeaderTransitionCommitmentsV1Program = (
-  input: ValidateHeaderTransitionCommitmentsV1Input,
+export const validateHeaderTransitionCommitmentsProgram = (
+  input: ValidateHeaderTransitionCommitmentsInput,
 ): Effect.Effect<
-  HeaderTransitionCommitmentsV1,
+  HeaderTransitionCommitments,
   HeaderTransitionCommitmentsError
 > =>
   Effect.gen(function* () {
-    const commitments: HeaderTransitionCommitmentsV1 = {
+    const commitments: HeaderTransitionCommitments = {
       forcedTransactionsRoot: input.forcedTransactionsRoot,
       transitionTraceRoot: input.transitionTraceRoot,
       eventToStepRoot: input.eventToStepRoot,
@@ -166,37 +166,37 @@ export const validateHeaderTransitionCommitmentsV1Program = (
       [
         "withdrawalCount",
         commitments.withdrawalCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount,
+        MIDGARD_CONSENSUS_LIMITS.maxWithdrawalCount,
       ],
       [
         "forcedTransactionCount",
         commitments.forcedTransactionCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxForcedTransactionCount,
+        MIDGARD_CONSENSUS_LIMITS.maxForcedTransactionCount,
       ],
       [
         "l2TransactionCount",
         commitments.l2TransactionCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+        MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
       ],
       [
         "depositCount",
         commitments.depositCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxDepositCount,
+        MIDGARD_CONSENSUS_LIMITS.maxDepositCount,
       ],
       [
         "totalEventCount",
         commitments.totalEventCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxTotalEventCount,
+        MIDGARD_CONSENSUS_LIMITS.maxTotalEventCount,
       ],
       [
         "transitionStepCount",
         commitments.transitionStepCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount,
+        MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
       ],
       [
         "validationTraceCount",
         commitments.validationTraceCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxValidationTraceCount,
+        MIDGARD_CONSENSUS_LIMITS.maxValidationTraceCount,
       ],
     ] as const;
     for (const [field, count, maximum] of countEntries) {
@@ -217,22 +217,22 @@ export const validateHeaderTransitionCommitmentsV1Program = (
         );
       }
     }
-    yield* validateSourceRootCountV1(
+    yield* validateSourceRootCount(
       "withdrawals",
       input.withdrawalsRoot,
       commitments.withdrawalCount,
     );
-    yield* validateSourceRootCountV1(
+    yield* validateSourceRootCount(
       "forced_transactions",
       commitments.forcedTransactionsRoot,
       commitments.forcedTransactionCount,
     );
-    yield* validateSourceRootCountV1(
+    yield* validateSourceRootCount(
       "transactions",
       input.transactionsRoot,
       commitments.l2TransactionCount,
     );
-    yield* validateSourceRootCountV1(
+    yield* validateSourceRootCount(
       "deposits",
       input.depositsRoot,
       commitments.depositCount,
@@ -300,7 +300,7 @@ export const validateHeaderTransitionCommitmentsV1Program = (
         ),
       );
     }
-    yield* validateSourceRootCountV1(
+    yield* validateSourceRootCount(
       "validation_traces",
       commitments.validationTracesRoot,
       commitments.validationTraceCount,
@@ -308,7 +308,7 @@ export const validateHeaderTransitionCommitmentsV1Program = (
     return commitments;
   });
 
-const validateSourceRootCountV1 = (
+const validateSourceRootCount = (
   label: string,
   root: MerkleRoot,
   count: bigint,
@@ -332,10 +332,10 @@ const validateSourceRootCountV1 = (
   return Effect.void;
 };
 
-export const makeHeaderTransitionCommitmentsV1Program = (
-  input: MakeHeaderTransitionCommitmentsV1Input,
+export const makeHeaderTransitionCommitmentsProgram = (
+  input: MakeHeaderTransitionCommitmentsInput,
 ): Effect.Effect<
-  HeaderTransitionCommitmentsV1,
+  HeaderTransitionCommitments,
   HeaderTransitionCommitmentsError
 > =>
   Effect.gen(function* () {
@@ -344,7 +344,7 @@ export const makeHeaderTransitionCommitmentsV1Program = (
       input.forcedTransactionCount +
       input.l2TransactionCount +
       input.depositCount;
-    return yield* validateHeaderTransitionCommitmentsV1Program({
+    return yield* validateHeaderTransitionCommitmentsProgram({
       withdrawalsRoot: input.withdrawalsRoot,
       forcedTransactionsRoot: input.forcedTransactionsRoot,
       transactionsRoot: input.transactionsRoot,
@@ -362,15 +362,14 @@ export const makeHeaderTransitionCommitmentsV1Program = (
     });
   });
 
-export const StateQueueNodeV1Schema = Data.Object({
-  header: HeaderV1Schema,
-  da_attestation: DaAvailabilityStateQueueStatusV1Schema,
+export const StateQueueNodeSchema = Data.Object({
+  header: HeaderSchema,
+  da_attestation: DaAvailabilityStateQueueStatusSchema,
 });
-export type StateQueueNodeV1 = Data.Static<typeof StateQueueNodeV1Schema>;
-export const StateQueueNodeV1 =
-  StateQueueNodeV1Schema as unknown as StateQueueNodeV1;
-export const castStateQueueNodeV1ToData = (node: StateQueueNodeV1): unknown =>
-  Data.castTo(node, StateQueueNodeV1);
+export type StateQueueNode = Data.Static<typeof StateQueueNodeSchema>;
+export const StateQueueNode = StateQueueNodeSchema as unknown as StateQueueNode;
+export const castStateQueueNodeToData = (node: StateQueueNode): unknown =>
+  Data.castTo(node, StateQueueNode);
 
 const assertCanonicalCbor = (
   bytes: Uint8Array,
@@ -382,59 +381,57 @@ const assertCanonicalCbor = (
   }
 };
 
-export const encodeHeaderV1Cbor = (header: HeaderV1): Buffer => {
-  if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+export const encodeHeaderCbor = (header: Header): Buffer => {
+  if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
     throw new Error(
-      `HeaderV1 protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+      `HeaderV1 protocol version must equal ${MIDGARD_PROTOCOL_VERSION.toString()}`,
     );
   }
-  return Buffer.from(Data.to(header, HeaderV1), "hex");
+  return Buffer.from(Data.to(header, Header), "hex");
 };
 
-export const decodeHeaderV1Cbor = (bytes: Uint8Array): HeaderV1 => {
-  const header = Data.from(Buffer.from(bytes).toString("hex"), HeaderV1);
-  const canonicalHex = Data.to(header, HeaderV1);
+export const decodeHeaderCbor = (bytes: Uint8Array): Header => {
+  const header = Data.from(Buffer.from(bytes).toString("hex"), Header);
+  const canonicalHex = Data.to(header, Header);
   assertCanonicalCbor(bytes, canonicalHex, "HeaderV1");
-  if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+  if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
     throw new Error(
-      `HeaderV1 protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+      `HeaderV1 protocol version must equal ${MIDGARD_PROTOCOL_VERSION.toString()}`,
     );
   }
   return header;
 };
 
-export const encodeStateQueueNodeV1Cbor = (node: StateQueueNodeV1): Buffer => {
-  if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+export const encodeStateQueueNodeCbor = (node: StateQueueNode): Buffer => {
+  if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
     throw new Error(
-      `StateQueueNodeV1 header protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+      `StateQueueNodeV1 header protocol version must equal ${MIDGARD_PROTOCOL_VERSION.toString()}`,
     );
   }
-  return Buffer.from(Data.to(node, StateQueueNodeV1), "hex");
+  return Buffer.from(Data.to(node, StateQueueNode), "hex");
 };
 
-export const decodeStateQueueNodeV1Cbor = (
-  bytes: Uint8Array,
-): StateQueueNodeV1 => {
-  const node = Data.from(Buffer.from(bytes).toString("hex"), StateQueueNodeV1);
-  const canonicalHex = Data.to(node, StateQueueNodeV1);
+export const decodeStateQueueNodeCbor = (bytes: Uint8Array): StateQueueNode => {
+  const node = Data.from(Buffer.from(bytes).toString("hex"), StateQueueNode);
+  const canonicalHex = Data.to(node, StateQueueNode);
   assertCanonicalCbor(bytes, canonicalHex, "StateQueueNodeV1");
-  if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+  if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
     throw new Error(
-      `StateQueueNodeV1 header protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+      `StateQueueNodeV1 header protocol version must equal ${MIDGARD_PROTOCOL_VERSION.toString()}`,
     );
   }
   return node;
 };
 
-export const getHeaderV1FromStateQueueDatum = (nodeDatum: {
+export const getHeaderFromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
-}): Effect.Effect<HeaderV1, DataCoercionError> =>
+}): Effect.Effect<Header, DataCoercionError> =>
   Effect.try({
     try: () => {
-      const header = Data.castFrom(nodeDatum.data, StateQueueNodeV1).header;
-      if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+      const header = Data.castFrom(nodeDatum.data, StateQueueNode).header;
+      if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
         throw new Error(
-          `Expected proof protocol version ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${header.protocolVersion.toString()}`,
+          `Expected proof protocol version ${MIDGARD_PROTOCOL_VERSION.toString()}, got ${header.protocolVersion.toString()}`,
         );
       }
       return header;
@@ -446,15 +443,15 @@ export const getHeaderV1FromStateQueueDatum = (nodeDatum: {
       }),
   });
 
-export const getStateQueueNodeV1FromStateQueueDatum = (nodeDatum: {
+export const getStateQueueNodeFromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
-}): Effect.Effect<StateQueueNodeV1, DataCoercionError> =>
+}): Effect.Effect<StateQueueNode, DataCoercionError> =>
   Effect.try({
     try: () => {
-      const node = Data.castFrom(nodeDatum.data, StateQueueNodeV1);
-      if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+      const node = Data.castFrom(nodeDatum.data, StateQueueNode);
+      if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
         throw new Error(
-          `Expected protocol version ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${node.header.protocolVersion.toString()}`,
+          `Expected protocol version ${MIDGARD_PROTOCOL_VERSION.toString()}, got ${node.header.protocolVersion.toString()}`,
         );
       }
       return node;
@@ -466,10 +463,10 @@ export const getStateQueueNodeV1FromStateQueueDatum = (nodeDatum: {
       }),
   });
 
-export const hashBlockHeaderV1 = (
-  header: HeaderV1,
+export const hashBlockHeader = (
+  header: Header,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(encodeHeaderV1Cbor(header).toString("hex"), 28);
+  hashHexWithBlake2b(encodeHeaderCbor(header).toString("hex"), 28);
 
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
@@ -485,7 +482,7 @@ export const castConfirmedStateToData = (
   confirmedState: ConfirmedState,
 ): unknown => Data.castTo(confirmedState, ConfirmedState);
 
-export const makeGenesisConfirmedStateV1 = (
+export const makeGenesisConfirmedState = (
   genesisTime: bigint,
 ): ConfirmedState => {
   if (genesisTime < 0n) {
@@ -506,10 +503,10 @@ export const makeGenesisConfirmedStateV1 = (
  * carry. Genesis is a distinct sentinel state; every committed state is V1
  * and must have left the all-zero genesis header identity.
  */
-export const confirmedStateNextHeaderProtocolVersionV1 = (
+export const confirmedStateNextHeaderProtocolVersion = (
   confirmedState: ConfirmedState,
 ): bigint | null => {
-  const protocolV1 = BigInt(MIDGARD_PROTOCOL_V1_VERSION);
+  const protocol = BigInt(MIDGARD_PROTOCOL_VERSION);
   const isGenesis =
     confirmedState.protocolVersion === GENESIS_PROTOCOL_VERSION &&
     confirmedState.headerHash === GENESIS_HEADER_HASH &&
@@ -518,15 +515,15 @@ export const confirmedStateNextHeaderProtocolVersionV1 = (
     confirmedState.startTime >= 0n &&
     confirmedState.startTime === confirmedState.endTime;
   if (isGenesis) {
-    return protocolV1;
+    return protocol;
   }
 
-  const isOrdinaryV1 =
-    confirmedState.protocolVersion === protocolV1 &&
+  const isOrdinary =
+    confirmedState.protocolVersion === protocol &&
     confirmedState.headerHash !== GENESIS_HEADER_HASH &&
     confirmedState.startTime >= 0n &&
     confirmedState.startTime <= confirmedState.endTime;
-  return isOrdinaryV1 ? protocolV1 : null;
+  return isOrdinary ? protocol : null;
 };
 
 export const CardanoDatumSchema = Data.Enum([
@@ -573,73 +570,71 @@ export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
 export const MidgardTxValidity =
   MidgardTxValiditySchema as unknown as MidgardTxValidity;
 
-export const NativeTxProofSourceV1Schema = Data.Object({
+export const NativeTxProofSourceSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   field_preimage_lengths_cbor: Data.Bytes(),
 });
-export type NativeTxProofSourceV1 = Data.Static<
-  typeof NativeTxProofSourceV1Schema
->;
-export const NativeTxProofSourceV1 =
-  NativeTxProofSourceV1Schema as unknown as NativeTxProofSourceV1;
+export type NativeTxProofSource = Data.Static<typeof NativeTxProofSourceSchema>;
+export const NativeTxProofSource =
+  NativeTxProofSourceSchema as unknown as NativeTxProofSource;
 
-export const BoundedBlobFrontierPeakV1Schema = Data.Object({
+export const BoundedBlobFrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: H32Schema,
 });
-export type BoundedBlobFrontierPeakV1 = Data.Static<
-  typeof BoundedBlobFrontierPeakV1Schema
+export type BoundedBlobFrontierPeak = Data.Static<
+  typeof BoundedBlobFrontierPeakSchema
 >;
-export const BoundedBlobFrontierPeakV1 =
-  BoundedBlobFrontierPeakV1Schema as unknown as BoundedBlobFrontierPeakV1;
+export const BoundedBlobFrontierPeak =
+  BoundedBlobFrontierPeakSchema as unknown as BoundedBlobFrontierPeak;
 
-export const BoundedBlobChunkProofV1Schema = Data.Object({
+export const BoundedBlobChunkProofSchema = Data.Object({
   version: Data.Integer(),
   field_index: Data.Integer(),
   total_length: Data.Integer(),
   chunk_index: Data.Integer(),
   chunk: Data.Bytes(),
-  frontier: Data.Array(BoundedBlobFrontierPeakV1Schema),
+  frontier: Data.Array(BoundedBlobFrontierPeakSchema),
   siblings: Data.Array(H32Schema),
 });
-export type BoundedBlobChunkProofV1 = Data.Static<
-  typeof BoundedBlobChunkProofV1Schema
+export type BoundedBlobChunkProof = Data.Static<
+  typeof BoundedBlobChunkProofSchema
 >;
-export const BoundedBlobChunkProofV1 =
-  BoundedBlobChunkProofV1Schema as unknown as BoundedBlobChunkProofV1;
+export const BoundedBlobChunkProof =
+  BoundedBlobChunkProofSchema as unknown as BoundedBlobChunkProof;
 
-export const BoundedCollectionItemProofV1Schema = Data.Object({
+export const BoundedCollectionItemProofSchema = Data.Object({
   version: Data.Integer(),
   field_index: Data.Integer(),
   item_count: Data.Integer(),
   item_index: Data.Integer(),
   item_length: Data.Integer(),
   item_commitment: H32Schema,
-  frontier: Data.Array(BoundedBlobFrontierPeakV1Schema),
+  frontier: Data.Array(BoundedBlobFrontierPeakSchema),
   siblings: Data.Array(H32Schema),
 });
-export type BoundedCollectionItemProofV1 = Data.Static<
-  typeof BoundedCollectionItemProofV1Schema
+export type BoundedCollectionItemProof = Data.Static<
+  typeof BoundedCollectionItemProofSchema
 >;
-export const BoundedCollectionItemProofV1 =
-  BoundedCollectionItemProofV1Schema as unknown as BoundedCollectionItemProofV1;
+export const BoundedCollectionItemProof =
+  BoundedCollectionItemProofSchema as unknown as BoundedCollectionItemProof;
 
-export const BoundedItemChunkProofV1Schema = Data.Object({
+export const BoundedItemChunkProofSchema = Data.Object({
   version: Data.Integer(),
   field_index: Data.Integer(),
   item_index: Data.Integer(),
   total_length: Data.Integer(),
   chunk_index: Data.Integer(),
   chunk: Data.Bytes(),
-  frontier: Data.Array(BoundedBlobFrontierPeakV1Schema),
+  frontier: Data.Array(BoundedBlobFrontierPeakSchema),
   siblings: Data.Array(H32Schema),
 });
-export type BoundedItemChunkProofV1 = Data.Static<
-  typeof BoundedItemChunkProofV1Schema
+export type BoundedItemChunkProof = Data.Static<
+  typeof BoundedItemChunkProofSchema
 >;
-export const BoundedItemChunkProofV1 =
-  BoundedItemChunkProofV1Schema as unknown as BoundedItemChunkProofV1;
+export const BoundedItemChunkProof =
+  BoundedItemChunkProofSchema as unknown as BoundedItemChunkProof;
 
 // `TxFieldPreimageV1Schema` and `TxFieldReceiptV1Schema` used to sit here as the
 // twins of `midgard/ledger_state`'s two counted publication datums. Both retired
@@ -655,45 +650,44 @@ export const BoundedItemChunkProofV1 =
 // collection — so it is a different artifact, not a renamed one, and nothing here
 // forwards to it.
 
-export const CekProgramMaterialDatumV1Schema = Data.Object({
+export const CekProgramMaterialDatumSchema = Data.Object({
   kind: Data.Integer(),
   root: H32Schema,
   preimage: Data.Bytes(),
 });
-export type CekProgramMaterialDatumV1 = Data.Static<
-  typeof CekProgramMaterialDatumV1Schema
+export type CekProgramMaterialDatum = Data.Static<
+  typeof CekProgramMaterialDatumSchema
 >;
-export const CekProgramMaterialDatumV1 =
-  CekProgramMaterialDatumV1Schema as unknown as CekProgramMaterialDatumV1;
+export const CekProgramMaterialDatum =
+  CekProgramMaterialDatumSchema as unknown as CekProgramMaterialDatum;
 
 /**
- * Twin of `midgard/ledger_state.TxOrderPayloadV1`.
+ * Twin of `midgard/ledger_state.TxOrderPayload`.
  *
  * **No `terminal_receipt_reference`.** It named the last link of the counted
  * publication receipt chain, which retired in #587 — see the note above
- * `CekProgramMaterialDatumV1Schema`. The §8 re-expression of the availability
+ * `CekProgramMaterialDatumSchema`. The §8 re-expression of the availability
  * role it served is not in this datum; `verify_order_material` on the Aiken side
  * carries the `field_carriage_availability` note that says what the mint checks
  * today and which issue owns the rest.
  */
-export const TxOrderPayloadV1Schema = Data.Object({
+export const TxOrderPayloadSchema = Data.Object({
   tx_id: H32Schema,
   transaction_commitment: H32Schema,
-  source: NativeTxProofSourceV1Schema,
+  source: NativeTxProofSourceSchema,
 });
-export type TxOrderPayloadV1 = Data.Static<typeof TxOrderPayloadV1Schema>;
-export const TxOrderPayloadV1 =
-  TxOrderPayloadV1Schema as unknown as TxOrderPayloadV1;
+export type TxOrderPayload = Data.Static<typeof TxOrderPayloadSchema>;
+export const TxOrderPayload = TxOrderPayloadSchema as unknown as TxOrderPayload;
 
-export const TxOrderEventV1Schema = Data.Object({
+export const TxOrderEventSchema = Data.Object({
   id: OutputReferenceSchema,
-  tx: TxOrderPayloadV1Schema,
+  tx: TxOrderPayloadSchema,
 });
-export type TxOrderEventV1 = Data.Static<typeof TxOrderEventV1Schema>;
-export const TxOrderEventV1 = TxOrderEventV1Schema as unknown as TxOrderEventV1;
+export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
+export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
 
 /**
- * Twin of `midgard/ledger_state.L2TransactionSourceV1`.
+ * Twin of `midgard/ledger_state.L2TransactionSource`.
  *
  * **No `transaction_commitment`.** It used to sit between `tx_id` and `source`.
  * Under `docs/spec/midgard-tx.md` §4's flat reversion the transition-trace
@@ -705,29 +699,27 @@ export const TxOrderEventV1 = TxOrderEventV1Schema as unknown as TxOrderEventV1;
  * derivation; this schema moves with it, because a committed leaf that encodes
  * three fields where the validator expects two does not decode.
  */
-export const L2TransactionSourceV1Schema = Data.Object({
+export const L2TransactionSourceSchema = Data.Object({
   tx_id: H32Schema,
-  source: NativeTxProofSourceV1Schema,
+  source: NativeTxProofSourceSchema,
 });
-export type L2TransactionSourceV1 = Data.Static<
-  typeof L2TransactionSourceV1Schema
->;
-export const L2TransactionSourceV1 =
-  L2TransactionSourceV1Schema as unknown as L2TransactionSourceV1;
+export type L2TransactionSource = Data.Static<typeof L2TransactionSourceSchema>;
+export const L2TransactionSource =
+  L2TransactionSourceSchema as unknown as L2TransactionSource;
 
 /**
- * Twin of `midgard/ledger_state.ForcedInclusionTxV1`. It shed
+ * Twin of `midgard/ledger_state.ForcedInclusionTx`. It shed
  * `transaction_commitment` for the same reason and in the same change — see
- * {@link L2TransactionSourceV1Schema}.
+ * {@link L2TransactionSourceSchema}.
  */
-export const ForcedInclusionTxV1Schema = Data.Object({
+export const ForcedInclusionTxSchema = Data.Object({
   tx_id: H32Schema,
-  source: NativeTxProofSourceV1Schema,
-  verdict: OperatorVerdictV1Schema,
+  source: NativeTxProofSourceSchema,
+  verdict: OperatorVerdictSchema,
 });
-export type ForcedInclusionTxV1 = Data.Static<typeof ForcedInclusionTxV1Schema>;
-export const ForcedInclusionTxV1 =
-  ForcedInclusionTxV1Schema as unknown as ForcedInclusionTxV1;
+export type ForcedInclusionTx = Data.Static<typeof ForcedInclusionTxSchema>;
+export const ForcedInclusionTx =
+  ForcedInclusionTxSchema as unknown as ForcedInclusionTx;
 
 export const TransitionPhaseSchema = Data.Enum([
   Data.Literal("Withdrawal"),
@@ -772,8 +764,8 @@ export type EventToStepValue = Data.Static<typeof EventToStepValueSchema>;
 export const EventToStepValue =
   EventToStepValueSchema as unknown as EventToStepValue;
 
-export const TRANSITION_STEP_V1_SCHEMA_VERSION = BigInt(
-  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+export const TRANSITION_STEP_SCHEMA_VERSION = BigInt(
+  MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
 );
 
 export const TransitionStepV1Schema = Data.Object({
@@ -794,7 +786,7 @@ export type TransitionStep = TransitionStepV1;
 export const TransitionStepSchema = TransitionStepV1Schema;
 export const TransitionStep = TransitionStepV1;
 
-export const ValidationVerdictV1Schema = Data.Enum([
+export const ValidationVerdictSchema = Data.Enum([
   // Preserve the exact Aiken constructor indexes. Pending is not a valid
   // terminal descriptor verdict and is rejected by semantic conversion, but
   // omitting it here would encode Accepted/Rejected as constructors 0/1
@@ -803,25 +795,25 @@ export const ValidationVerdictV1Schema = Data.Enum([
   Data.Literal("Accepted"),
   Data.Literal("Rejected"),
 ]);
-export type ValidationVerdictV1 = Data.Static<typeof ValidationVerdictV1Schema>;
-export const ValidationVerdictV1 =
-  ValidationVerdictV1Schema as unknown as ValidationVerdictV1;
+export type ValidationVerdict = Data.Static<typeof ValidationVerdictSchema>;
+export const ValidationVerdict =
+  ValidationVerdictSchema as unknown as ValidationVerdict;
 
-export const ValidationTraceDescriptorV1Schema = Data.Object({
+export const ValidationTraceDescriptorSchema = Data.Object({
   schema_version: Data.Integer(),
   machine_version: Data.Integer(),
   trace_root: H32Schema,
   step_count: Data.Integer(),
   initial_state_hash: H32Schema,
   terminal_state_hash: H32Schema,
-  verdict: ValidationVerdictV1Schema,
+  verdict: ValidationVerdictSchema,
   rejection_code_hash: H32Schema,
 });
-export type ValidationTraceDescriptorV1 = Data.Static<
-  typeof ValidationTraceDescriptorV1Schema
+export type ValidationTraceDescriptor = Data.Static<
+  typeof ValidationTraceDescriptorSchema
 >;
-export const ValidationTraceDescriptorV1 =
-  ValidationTraceDescriptorV1Schema as unknown as ValidationTraceDescriptorV1;
+export const ValidationTraceDescriptor =
+  ValidationTraceDescriptorSchema as unknown as ValidationTraceDescriptor;
 
 export const WithdrawalBodySchema = Data.Object({
   l2_outref: OutputReferenceSchema,

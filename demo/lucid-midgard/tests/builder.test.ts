@@ -4,7 +4,7 @@ import {
   midgardAddressFromText,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -32,13 +32,13 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -126,7 +126,7 @@ describe("LucidMidgard builder fluent API", () => {
   it("accepts a bounded lower submit cap from a direct provider", async () => {
     const canonicalInfo = await fakeProvider.getProtocolInfo();
     const maxSubmitTxCborBytes =
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1;
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes - 1;
     const directProvider: MidgardProvider = {
       ...fakeProvider,
       getProtocolInfo: async () => ({
@@ -178,7 +178,7 @@ describe("LucidMidgard builder fluent API", () => {
     });
     expect(tx.config()).toMatchObject({ network: "Preview", networkId: 0 });
     expect(tx.rawConfig()).toMatchObject({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
       codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     });

@@ -3,13 +3,13 @@ import {
   decodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   MissingNativeScriptTxStep04Datum,
   MissingNativeScriptTxStep04SpendRedeemer,
   type MissingNativeScriptTxStep04State,
   MissingNativeScriptTxStep05Datum,
-  missingNativeScriptTxStep05StateV1,
+  missingNativeScriptTxStep05State,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -22,9 +22,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -34,20 +34,20 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
 import {
-  missingNativeScriptTxStepLabelV1,
+  missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxReferenceScriptV1,
-  requireMissingNativeScriptTxStepStateV1,
-  requireMissingNativeScriptTxThreadUtxoV1,
+  requireMissingNativeScriptTxReferenceScript,
+  requireMissingNativeScriptTxStepState,
+  requireMissingNativeScriptTxThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = missingNativeScriptTxStepLabelV1(3);
+const STEP_LABEL = missingNativeScriptTxStepLabel(3);
 
 export type SubmitMissingNativeScriptTxStep04Result = {
   readonly txHash: string;
@@ -75,7 +75,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -89,12 +89,12 @@ export const submitMissingNativeScriptTxStep04 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   /** Durable boundary for each prerequisite carriage publication. */
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep04Result> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -102,7 +102,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
       threadOutRef,
     });
   const state: MissingNativeScriptTxStep04State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer,
       schema: MissingNativeScriptTxStep04Datum,
@@ -123,8 +123,8 @@ export const submitMissingNativeScriptTxStep04 = async ({
     );
   }
   const expectedMissingScriptHash = credential.hash.toString("hex");
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.producing_tx_id,
     nativeTxCompactCbor,
     itemCbors: outputItemCbors,
@@ -135,7 +135,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -143,7 +143,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
       label: `${STEP_LABEL} outputs`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepReference = requireMissingNativeScriptTxReferenceScriptV1({
+  const stepReference = requireMissingNativeScriptTxReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,
     stepIndex: 3,
@@ -153,7 +153,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -168,7 +168,7 @@ export const submitMissingNativeScriptTxStep04 = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: missingNativeScriptTxStep05StateV1({
+      data: missingNativeScriptTxStep05State({
         expectedMissingScriptHash,
         badTxId: state.bad_tx_id,
         badTxWitnessSetHash: state.bad_tx_witness_set_hash,
@@ -233,9 +233,9 @@ export const submitMissingNativeScriptTxStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

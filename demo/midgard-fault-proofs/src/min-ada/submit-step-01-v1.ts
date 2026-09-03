@@ -1,6 +1,6 @@
 /** Bind Q27's accepted transaction or challenged post-block UTxO roots. */
 import {
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   MinAdaStep01SpendRedeemerSchema,
@@ -23,14 +23,14 @@ import {
 import { Effect } from "effect";
 
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultInitialDatumV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultInitialDatum,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { prepareNativeTxInclusionCarriageV1 } from "../native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "../native-inclusion-carriage-v1.js";
 import {
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
 import {
@@ -46,18 +46,18 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
-  type MinAdaContractsV1,
+  type MinAdaContracts,
 } from "./contracts-v1.js";
-import type { PreparedMinAdaTxV1, PreparedMinAdaUtxoV1 } from "./prepare-v1.js";
+import type { PreparedMinAdaTx, PreparedMinAdaUtxo } from "./prepare-v1.js";
 
 type Step02Datum = Data.Static<typeof MinAdaStep02DatumSchema>;
 const Step02Datum = MinAdaStep02DatumSchema as unknown as Step02Datum;
@@ -65,7 +65,7 @@ type Step01Redeemer = Data.Static<typeof MinAdaStep01SpendRedeemerSchema>;
 const Step01Redeemer =
   MinAdaStep01SpendRedeemerSchema as unknown as Step01Redeemer;
 
-const stepState = (prepared: PreparedMinAdaTxV1 | PreparedMinAdaUtxoV1) => ({
+const stepState = (prepared: PreparedMinAdaTx | PreparedMinAdaUtxo) => ({
   bad_tx_id:
     prepared.kind === "min-ada-tx"
       ? prepared.badTxId
@@ -90,7 +90,7 @@ const resolveAnchors = async ({
   expectedHeaderHash,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MinAdaContractsV1;
+  readonly contracts: MinAdaContracts;
   readonly network: Network;
   readonly stateQueueBlockOutRef: string;
   readonly expectedHeaderHash: string;
@@ -121,7 +121,7 @@ const resolveAnchors = async ({
     );
   }
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(
+    getHeaderFromStateQueueDatum(
       await Effect.runPromise(
         getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
       ),
@@ -133,15 +133,15 @@ const resolveAnchors = async ({
 type Common = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: MinAdaContractsV1;
+  readonly contracts: MinAdaContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -161,12 +161,12 @@ export const submitMinAdaTxStep01 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: Common & {
-  readonly prepared: PreparedMinAdaTxV1;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly prepared: PreparedMinAdaTx;
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
 }) => {
   const stepIndex = 0;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -174,7 +174,7 @@ export const submitMinAdaTxStep01 = async ({
     stepIndex,
     threadOutRef,
   });
-  requireLinearFaultInitialDatumV1({ threadUtxo, signer, family: FAMILY });
+  requireLinearFaultInitialDatum({ threadUtxo, signer, family: FAMILY });
   if (threadToken.fraudulentHeaderHash !== prepared.headerHash) {
     throw new Error(`${label}: prepared header does not match thread token`);
   }
@@ -185,14 +185,14 @@ export const submitMinAdaTxStep01 = async ({
     stateQueueBlockOutRef,
     expectedHeaderHash: prepared.headerHash,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
   const txInclusion = parseSubmitStep01TxInclusion(prepared.txInclusion);
-  const inclusion = prepareNativeTxInclusionCarriageV1({
+  const inclusion = prepareNativeTxInclusionCarriage({
     blueprint,
     network,
     txInclusion,
@@ -271,9 +271,9 @@ export const submitMinAdaTxStep01 = async ({
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -314,11 +314,11 @@ export const submitMinAdaUtxoStep01 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: Omit<Common, "blueprint" | "witnessReferenceScripts"> & {
-  readonly prepared: PreparedMinAdaUtxoV1;
+  readonly prepared: PreparedMinAdaUtxo;
 }) => {
   const stepIndex = 0;
-  const label = `${linearFaultStepLabelV1(FAMILY, stepIndex)} post-UTxO`;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = `${linearFaultStepLabel(FAMILY, stepIndex)} post-UTxO`;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -326,7 +326,7 @@ export const submitMinAdaUtxoStep01 = async ({
     stepIndex,
     threadOutRef,
   });
-  requireLinearFaultInitialDatumV1({ threadUtxo, signer, family: FAMILY });
+  requireLinearFaultInitialDatum({ threadUtxo, signer, family: FAMILY });
   if (threadToken.fraudulentHeaderHash !== prepared.headerHash) {
     throw new Error(`${label}: prepared header does not match thread token`);
   }
@@ -343,7 +343,7 @@ export const submitMinAdaUtxoStep01 = async ({
   ) {
     throw new Error(`${label}: prepared roots do not match challenged header`);
   }
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -413,10 +413,10 @@ export const submitMinAdaUtxoStep01 = async ({
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: label,
         utxo: stepReference,
         expectedScript: contracts.steps[stepIndex].spendingScript,

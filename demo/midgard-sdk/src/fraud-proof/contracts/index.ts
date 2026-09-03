@@ -1,5 +1,5 @@
 export {
-  deriveValidationTraceDeploymentIdV1,
+  deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
   type FaultProofBlueprintParameter,
   type FaultProofBlueprintValidator,
@@ -334,9 +334,9 @@ export {
   type ZeroInputFaultProofContracts,
 } from "./families/zero-input.js";
 export {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   FAULT_PROOF_SHARED_TITLES,
-  VALIDATION_TRACE_RESOLVER_COUNT_V1,
+  VALIDATION_TRACE_RESOLVER_COUNT,
 } from "./titles.js";
 export {
   type BuildFaultProofContractsParams,

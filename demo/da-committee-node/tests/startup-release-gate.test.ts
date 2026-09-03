@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-import { DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION } from "@al-ft/midgard-core/da-transport";
+import { DA_RUNTIME_MANIFEST_SCHEMA_VERSION } from "@al-ft/midgard-core/da-transport";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -30,7 +30,7 @@ describe("canonical V1 startup release gate", () => {
     await writeFile(
       manifestPath,
       JSON.stringify({
-        schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        schemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         network: "Preview",
         deployment: {
           fingerprint: deploymentManifestId,

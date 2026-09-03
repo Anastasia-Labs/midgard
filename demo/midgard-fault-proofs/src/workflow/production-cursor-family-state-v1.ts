@@ -1,20 +1,20 @@
 import {
-  assertSecurityGradeEvidenceV1,
-  type EvidenceProvenanceV1,
+  assertSecurityGradeEvidence,
+  type EvidenceProvenance,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
 import type {
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowObservationV1,
-  FraudProofWorkflowReconcileResultV1,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowObservation,
+  FraudProofWorkflowReconcileResult,
 } from "./orchestrator-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "./raw-l1-family-derivation-v1.js";
+import type { FraudProofRawL1FamilyStage } from "./raw-l1-family-derivation-v1.js";
 
-export const PRODUCTION_CURSOR_FAMILY_ACTION_V1 =
+export const CURSOR_FAMILY_ACTION =
   "midgard-production-cursor-family-action-v1" as const;
 
-export type ProductionCursorFamilyStepV1 =
+export type CursorFamilyStep =
   | 1
   | 2
   | 3
@@ -28,24 +28,17 @@ export type ProductionCursorFamilyStepV1 =
   | 11
   | 12
   | 13;
-export type ProductionCursorFamilySuccessorV1 =
-  | ProductionCursorFamilyStepV1
-  | "proof_token";
+export type CursorFamilySuccessor = CursorFamilyStep | "proof_token";
 
-export type ProductionCursorFamilySpecV1<
+export type CursorFamilySpec<
   Category extends
     FraudProofCatalogueCategoryName = FraudProofCatalogueCategoryName,
 > = Readonly<{
   category: Category;
-  stepCount: ProductionCursorFamilyStepV1;
+  stepCount: CursorFamilyStep;
   /** Exact legal immediate successors for each step, including self-loops. */
   successors: Readonly<
-    Partial<
-      Record<
-        ProductionCursorFamilyStepV1,
-        readonly ProductionCursorFamilySuccessorV1[]
-      >
-    >
+    Partial<Record<CursorFamilyStep, readonly CursorFamilySuccessor[]>>
   >;
 }>;
 
@@ -64,12 +57,12 @@ const outputBelongsToTransaction = (outRef: string, txHash: string): boolean =>
 
 const action = (
   actionId: string,
-  input: FraudProofWorkflowActionV1["input"],
-): FraudProofWorkflowActionV1 => Object.freeze({ actionId, input });
+  input: FraudProofWorkflowAction["input"],
+): FraudProofWorkflowAction => Object.freeze({ actionId, input });
 
 const validateSpec = <Category extends FraudProofCatalogueCategoryName>(
-  spec: ProductionCursorFamilySpecV1<Category>,
-): ProductionCursorFamilySpecV1<Category> => {
+  spec: CursorFamilySpec<Category>,
+): CursorFamilySpec<Category> => {
   if (
     !Number.isSafeInteger(spec.stepCount) ||
     spec.stepCount < 1 ||
@@ -78,7 +71,7 @@ const validateSpec = <Category extends FraudProofCatalogueCategoryName>(
     throw new Error(`${spec.category} cursor spec has an invalid step count`);
   }
   for (let ordinal = 1; ordinal <= spec.stepCount; ordinal += 1) {
-    const step = ordinal as ProductionCursorFamilyStepV1;
+    const step = ordinal as CursorFamilyStep;
     const successors = spec.successors[step];
     if (
       successors === undefined ||
@@ -113,13 +106,13 @@ const admitStage = <Category extends FraudProofCatalogueCategoryName>({
   provenance,
   stage,
 }: {
-  readonly spec: ProductionCursorFamilySpecV1<Category>;
+  readonly spec: CursorFamilySpec<Category>;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
-}): FraudProofRawL1FamilyStageV1 => {
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
+}): FraudProofRawL1FamilyStage => {
   const spec = validateSpec(inputSpec);
-  const admitted = assertSecurityGradeEvidenceV1(provenance);
+  const admitted = assertSecurityGradeEvidence(provenance);
   if (admitted.trustClass !== "authenticated_cardano_l1") {
     throw new Error(
       `${spec.category} cursor observation is not authenticated Cardano L1`,
@@ -152,7 +145,7 @@ const admitStage = <Category extends FraudProofCatalogueCategoryName>({
   return stage;
 };
 
-export const productionCursorFamilyObservationV1 = <
+export const cursorFamilyObservation = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   spec,
@@ -160,11 +153,11 @@ export const productionCursorFamilyObservationV1 = <
   provenance,
   stage,
 }: {
-  readonly spec: ProductionCursorFamilySpecV1<Category>;
+  readonly spec: CursorFamilySpec<Category>;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
-}): FraudProofWorkflowObservationV1 => {
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
+}): FraudProofWorkflowObservation => {
   const admitted = admitStage({ spec, headerHash, provenance, stage });
   if (admitted.kind === "removed") {
     return { kind: "completed", terminal: admitted.terminal };
@@ -173,7 +166,7 @@ export const productionCursorFamilyObservationV1 = <
     return {
       kind: "action_required",
       action: action(`init:${admitted.stateQueueBlockOutRef}`, {
-        schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+        schemaVersion: CURSOR_FAMILY_ACTION,
         category: spec.category,
         stage: "init",
         stateQueueBlockOutRef: admitted.stateQueueBlockOutRef,
@@ -187,7 +180,7 @@ export const productionCursorFamilyObservationV1 = <
       action: action(
         `${stageName}:${admitted.threadOutRef}:${admitted.stateQueueBlockOutRef}`,
         {
-          schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+          schemaVersion: CURSOR_FAMILY_ACTION,
           category: spec.category,
           stage: stageName,
           ordinal: admitted.step,
@@ -202,7 +195,7 @@ export const productionCursorFamilyObservationV1 = <
     action: action(
       `remove:${admitted.nextRemovalOutRef}:${admitted.fraudProofOutRef}:${admitted.stateQueueBlockOutRef}`,
       {
-        schemaVersion: PRODUCTION_CURSOR_FAMILY_ACTION_V1,
+        schemaVersion: CURSOR_FAMILY_ACTION,
         category: spec.category,
         stage: "remove",
         fraudProofOutRef: admitted.fraudProofOutRef,
@@ -215,20 +208,20 @@ export const productionCursorFamilyObservationV1 = <
   };
 };
 
-type ParsedActionV1 = Readonly<{
+type ParsedAction = Readonly<{
   stage: "init" | "remove" | "step";
-  ordinal?: ProductionCursorFamilyStepV1;
+  ordinal?: CursorFamilyStep;
   inputOutRef: string;
   proofOutRef?: string;
 }>;
 
 const parsedAction = <Category extends FraudProofCatalogueCategoryName>(
-  spec: ProductionCursorFamilySpecV1<Category>,
-  workflowAction: FraudProofWorkflowActionV1,
-): ParsedActionV1 => {
+  spec: CursorFamilySpec<Category>,
+  workflowAction: FraudProofWorkflowAction,
+): ParsedAction => {
   const input = workflowAction.input;
   if (
-    input.schemaVersion !== PRODUCTION_CURSOR_FAMILY_ACTION_V1 ||
+    input.schemaVersion !== CURSOR_FAMILY_ACTION ||
     input.category !== spec.category ||
     typeof input.stage !== "string"
   ) {
@@ -277,9 +270,7 @@ const parsedAction = <Category extends FraudProofCatalogueCategoryName>(
   if (!/^step_(?:0[1-9]|1[0-3])$/u.test(input.stage)) {
     throw new Error(`${spec.category} cursor action names an unknown stage`);
   }
-  const ordinal = Number(
-    input.stage.slice("step_".length),
-  ) as ProductionCursorFamilyStepV1;
+  const ordinal = Number(input.stage.slice("step_".length)) as CursorFamilyStep;
   if (
     ordinal > spec.stepCount ||
     input.ordinal !== ordinal ||
@@ -306,9 +297,9 @@ const exactSuccessor = <Category extends FraudProofCatalogueCategoryName>({
   stage,
   txHash,
 }: {
-  readonly spec: ProductionCursorFamilySpecV1<Category>;
-  readonly parsed: ParsedActionV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly spec: CursorFamilySpec<Category>;
+  readonly parsed: ParsedAction;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly txHash: string;
 }): boolean => {
   if (parsed.stage === "init") {
@@ -346,13 +337,13 @@ const sameRequiredAction = <Category extends FraudProofCatalogueCategoryName>({
   stage,
   actionId,
 }: {
-  readonly spec: ProductionCursorFamilySpecV1<Category>;
+  readonly spec: CursorFamilySpec<Category>;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly actionId: string;
 }): boolean => {
-  const observed = productionCursorFamilyObservationV1({
+  const observed = cursorFamilyObservation({
     spec,
     headerHash,
     provenance,
@@ -363,7 +354,7 @@ const sameRequiredAction = <Category extends FraudProofCatalogueCategoryName>({
   );
 };
 
-export const reconcileProductionCursorFamilyActionV1 = async <
+export const reconcileCursorFamilyAction = async <
   Category extends FraudProofCatalogueCategoryName,
 >({
   spec: inputSpec,
@@ -374,14 +365,14 @@ export const reconcileProductionCursorFamilyActionV1 = async <
   stage,
   transactionConfirmed,
 }: {
-  readonly spec: ProductionCursorFamilySpecV1<Category>;
+  readonly spec: CursorFamilySpec<Category>;
   readonly headerHash: string;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly action: FraudProofWorkflowAction;
   readonly txHash?: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
-}): Promise<FraudProofWorkflowReconcileResultV1> => {
+}): Promise<FraudProofWorkflowReconcileResult> => {
   const spec = validateSpec(inputSpec);
   const admittedStage = admitStage({ spec, headerHash, provenance, stage });
   const parsed = parsedAction(spec, workflowAction);

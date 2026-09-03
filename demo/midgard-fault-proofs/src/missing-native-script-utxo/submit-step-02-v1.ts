@@ -1,7 +1,7 @@
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   MissingNativeScriptUtxoStep02DatumSchema,
   MissingNativeScriptUtxoStep02SpendRedeemerSchema,
@@ -18,23 +18,23 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_UTXO_CATEGORY_LABEL as FAMILY,
-  type MissingNativeScriptUtxoContractsV1,
+  type MissingNativeScriptUtxoContracts,
 } from "./contracts-v1.js";
 
 type Step02State = NonNullable<
@@ -70,7 +70,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptUtxoContractsV1;
+  readonly contracts: MissingNativeScriptUtxoContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -81,13 +81,13 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -95,7 +95,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<Step02State>({
+  const state = requireLinearFaultStepState<Step02State>({
     threadUtxo,
     signer,
     schema: Step02Datum,
@@ -106,11 +106,11 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
   if (badInputIndex < 0n || selected === undefined) {
     throw new Error(`${label}: bad input index is outside the field`);
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
-    itemCbors: spendInputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: spendInputs.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
     label: `${label} field 0`,
@@ -118,7 +118,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -126,7 +126,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
       label: `${label} field 0`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -137,7 +137,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
     stepReference,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -179,7 +179,7 @@ export const submitMissingNativeScriptUtxoStep02 = async ({
       Step02Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

@@ -1,15 +1,15 @@
 import {
   asArray,
   asBytes,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeSingleCbor,
-  deriveMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxCompact,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
-  type MidgardNativeTxFullV1,
-  verifyMidgardNativeTxFullConsistencyV1,
+  encodeMidgardNativeTxCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
+  type MidgardNativeTxFull,
+  verifyMidgardNativeTxFullConsistency,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { CML } from "@lucid-evolution/lucid";
@@ -25,7 +25,7 @@ import {
 
 export type VKeyWitnessInput = VKeyWitness | Uint8Array | string;
 
-export type MidgardPartialWitnessBundleV1 = {
+export type MidgardPartialWitnessBundle = {
   readonly kind: "MidgardPartialWitnessBundleV1";
   readonly version: 1;
   readonly midgardNativeTxVersion: 1;
@@ -36,7 +36,7 @@ export type MidgardPartialWitnessBundleV1 = {
 };
 
 export type PartialWitnessBundleInput =
-  | MidgardPartialWitnessBundleV1
+  | MidgardPartialWitnessBundle
   | Uint8Array
   | string
   | { readonly cbor: Uint8Array | string }
@@ -204,13 +204,13 @@ const encodeAddrWitnesses = (witnesses: readonly VKeyWitness[]): Buffer =>
   encodeCbor(uniqueAddrWitnesses(witnesses).map(witnessCborBytes));
 
 export const applyAddrWitnessesToTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   witnesses: readonly VKeyWitness[],
 ): {
-  readonly tx: MidgardNativeTxFullV1;
+  readonly tx: MidgardNativeTxFull;
   readonly witnesses: readonly VKeyWitness[];
 } => {
-  const bodyHash = computeMidgardNativeTxIdV1(tx);
+  const bodyHash = computeMidgardNativeTxId(tx);
   const merged = canonicalizeAddrWitnesses(bodyHash, [
     ...decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor),
     ...witnesses,
@@ -219,22 +219,22 @@ export const applyAddrWitnessesToTx = (
     ...tx.witnessSet,
     addrTxWitsPreimageCbor: encodeAddrWitnesses(merged),
   };
-  const signedTx: MidgardNativeTxFullV1 = {
+  const signedTx: MidgardNativeTxFull = {
     ...tx,
     witnessSet,
-    compact: deriveMidgardNativeTxCompactV1(
+    compact: deriveMidgardNativeTxCompact(
       tx.body,
       witnessSet,
       tx.validity,
       tx.version,
     ),
   };
-  verifyMidgardNativeTxFullConsistencyV1(signedTx);
+  verifyMidgardNativeTxFullConsistency(signedTx);
   return { tx: signedTx, witnesses: merged };
 };
 
 export const decodeImportAddrWitnesses = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): readonly VKeyWitness[] => {
   let witnesses: readonly VKeyWitness[];
   try {
@@ -245,7 +245,7 @@ export const decodeImportAddrWitnesses = (
       cause instanceof Error ? cause.message : String(cause),
     );
   }
-  const bodyHash = computeMidgardNativeTxIdV1(tx);
+  const bodyHash = computeMidgardNativeTxId(tx);
   const byKeyHash = new Map<string, Buffer>();
   for (const witness of witnesses) {
     assertVKeyWitness(bodyHash, witness);
@@ -266,10 +266,10 @@ export const decodeImportAddrWitnesses = (
 };
 
 export const signMidgardNativeTx = async (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   wallet: MidgardWallet,
-): Promise<MidgardNativeTxFullV1> => {
-  const bodyHash = computeMidgardNativeTxIdV1(tx);
+): Promise<MidgardNativeTxFull> => {
+  const bodyHash = computeMidgardNativeTxId(tx);
   const witness = assertVKeyWitness(
     bodyHash,
     await wallet.signBodyHash(bodyHash),
@@ -278,8 +278,8 @@ export const signMidgardNativeTx = async (
 };
 
 const normalizePartialWitnessBundle = (
-  bundle: MidgardPartialWitnessBundleV1,
-): MidgardPartialWitnessBundleV1 => {
+  bundle: MidgardPartialWitnessBundle,
+): MidgardPartialWitnessBundle => {
   if (typeof bundle !== "object" || bundle === null) {
     throw new SigningError("Partial witness bundle must be an object");
   }
@@ -294,7 +294,7 @@ const normalizePartialWitnessBundle = (
   if (bundle.version !== PARTIAL_WITNESS_BUNDLE_VERSION) {
     throw new SigningError("Unsupported partial witness bundle version");
   }
-  if (bundle.midgardNativeTxVersion !== Number(MIDGARD_NATIVE_TX_V1_VERSION)) {
+  if (bundle.midgardNativeTxVersion !== Number(MIDGARD_NATIVE_TX_VERSION)) {
     throw new SigningError(
       "Unsupported partial witness bundle native transaction version",
     );
@@ -381,15 +381,15 @@ const normalizePartialWitnessBundle = (
 };
 
 export const partialWitnessBundleFromWitnesses = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   witnesses: readonly VKeyWitness[],
-): MidgardPartialWitnessBundleV1 => {
-  const bodyHash = computeMidgardNativeTxIdV1(tx);
+): MidgardPartialWitnessBundle => {
+  const bodyHash = computeMidgardNativeTxId(tx);
   const canonical = canonicalizeAddrWitnesses(bodyHash, witnesses);
   if (canonical.length === 0) {
     throw new SigningError("Partial witness bundle must contain witnesses");
   }
-  if (tx.version !== MIDGARD_NATIVE_TX_V1_VERSION) {
+  if (tx.version !== MIDGARD_NATIVE_TX_VERSION) {
     throw new SigningError(
       "Unsupported partial witness bundle native transaction version",
     );
@@ -409,7 +409,7 @@ export const partialWitnessBundleFromWitnesses = (
 };
 
 const encodeNormalizedPartialWitnessBundle = (
-  normalized: MidgardPartialWitnessBundleV1,
+  normalized: MidgardPartialWitnessBundle,
 ): Buffer =>
   encodeCbor([
     normalized.kind,
@@ -422,7 +422,7 @@ const encodeNormalizedPartialWitnessBundle = (
   ]);
 
 export const encodePartialWitnessBundle = (
-  bundle: MidgardPartialWitnessBundleV1,
+  bundle: MidgardPartialWitnessBundle,
 ): Buffer =>
   encodeNormalizedPartialWitnessBundle(normalizePartialWitnessBundle(bundle));
 
@@ -479,7 +479,7 @@ const canonicalPartialBundleHexString = (
 
 export const decodePartialWitnessBundle = (
   input: Uint8Array | string,
-): MidgardPartialWitnessBundleV1 => {
+): MidgardPartialWitnessBundle => {
   const bytes =
     typeof input === "string"
       ? nonEmptyBytesFromHex(input, "partial witness bundle CBOR")
@@ -536,7 +536,7 @@ export const decodePartialWitnessBundle = (
 
 export const parsePartialWitnessBundle = (
   input: PartialWitnessBundleInput,
-): MidgardPartialWitnessBundleV1 => {
+): MidgardPartialWitnessBundle => {
   if (input instanceof Uint8Array || typeof input === "string") {
     return decodePartialWitnessBundle(input);
   }
@@ -572,14 +572,14 @@ export const parsePartialWitnessBundle = (
     }
     return decodePartialWitnessBundle(record.cborHex);
   }
-  return normalizePartialWitnessBundle(input as MidgardPartialWitnessBundleV1);
+  return normalizePartialWitnessBundle(input as MidgardPartialWitnessBundle);
 };
 
 export const assertPartialBundleMatchesTx = (
-  tx: MidgardNativeTxFullV1,
-  bundle: MidgardPartialWitnessBundleV1,
+  tx: MidgardNativeTxFull,
+  bundle: MidgardPartialWitnessBundle,
 ): void => {
-  const txId = computeMidgardNativeTxIdV1(tx).toString("hex");
+  const txId = computeMidgardNativeTxId(tx).toString("hex");
   if (bundle.txId !== txId || bundle.bodyHash !== txId) {
     throw new SigningError(
       "Partial witness bundle belongs to a different transaction",
@@ -605,9 +605,9 @@ const dummyWitnessPrivateKey = (index: number): PrivateKey => {
 };
 
 export const withEstimatedAddrWitnesses = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   expectedWitnessCount: number,
-): MidgardNativeTxFullV1 => {
+): MidgardNativeTxFull => {
   if (expectedWitnessCount === 0) {
     return tx;
   }
@@ -619,7 +619,7 @@ export const withEstimatedAddrWitnesses = (
   for (let index = witnesses.length; index < expectedWitnessCount; index += 1) {
     estimatedWitnesses.push(
       makeVKeyWitness(
-        computeMidgardNativeTxIdV1(tx),
+        computeMidgardNativeTxId(tx),
         dummyWitnessPrivateKey(index),
       ),
     );
@@ -628,24 +628,24 @@ export const withEstimatedAddrWitnesses = (
     ...tx.witnessSet,
     addrTxWitsPreimageCbor: encodeAddrWitnesses(estimatedWitnesses),
   };
-  const estimatedTx: MidgardNativeTxFullV1 = {
+  const estimatedTx: MidgardNativeTxFull = {
     ...tx,
     witnessSet,
-    compact: deriveMidgardNativeTxCompactV1(
+    compact: deriveMidgardNativeTxCompact(
       tx.body,
       witnessSet,
       tx.validity,
       tx.version,
     ),
   };
-  verifyMidgardNativeTxFullConsistencyV1(estimatedTx);
+  verifyMidgardNativeTxFullConsistency(estimatedTx);
   return estimatedTx;
 };
 
 export const estimatedSignedTxByteLength = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   expectedWitnessCount: number,
 ): number =>
-  encodeMidgardNativeTxCanonicalV1(
+  encodeMidgardNativeTxCanonical(
     withEstimatedAddrWitnesses(tx, expectedWitnessCount),
   ).length;

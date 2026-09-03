@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -18,12 +18,12 @@ import {
   outRefToCbor,
 } from "../src/index.js";
 
-const productionSources = (directory: string): readonly string[] =>
+const sources = (directory: string): readonly string[] =>
   readdirSync(directory).flatMap((entry) => {
     const path = join(directory, entry);
     const stats = statSync(path);
     if (stats.isDirectory()) {
-      return productionSources(path);
+      return sources(path);
     }
     return path.endsWith(".ts") ? [path] : [];
   });
@@ -63,13 +63,13 @@ const makeProvider = (
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -206,7 +206,7 @@ describe("safe and Effect builder APIs", () => {
     const srcDir = resolve(import.meta.dirname, "../src");
     const forbidden =
       /Effect\.orDie|unsafeRun|catchAllDefect|catchAllCause|catchCause/;
-    const offenders = productionSources(srcDir).filter((path) =>
+    const offenders = sources(srcDir).filter((path) =>
       forbidden.test(readFileSync(path, "utf8")),
     );
     expect(offenders).toEqual([]);

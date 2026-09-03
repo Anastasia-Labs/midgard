@@ -9,7 +9,7 @@
  *
  * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
  * whole `reference_inputs_preimage: List<MidgardTxInput>`; it now carries a
- * `FieldOpeningV1`, and the validator reads item `bad_reference_input_index`
+ * `FieldOpening`, and the validator reads item `bad_reference_input_index`
  * off the authenticated view.
  *
  * **What distinguishes field 1 from field 0 is position, not encoding.** The
@@ -17,7 +17,7 @@
  * items were committed "under `bounded_collection_v1.from_items(1, ...)`"; §4
  * removed field-index domain separation, so identical items in fields 0 and 1
  * commit to identical hashes and only the slot the door reads tells them apart.
- * {@link planFaultProofFieldOpeningV1} names the slot explicitly and checks the
+ * {@link planFaultProofFieldOpening} names the slot explicitly and checks the
  * preimage against the commitment the compact body carries *there*, which is the
  * off-chain twin of `field_commitment_at`.
  *
@@ -26,9 +26,9 @@
  * step-01 output datum, never from the file.
  */
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   NoReferenceInputStep02Datum,
   NoReferenceInputStep02SpendRedeemer,
@@ -46,10 +46,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
 import { type NoReferenceInputPreimageEntry } from "./prepare-no-reference-input.js";
 import {
@@ -70,11 +70,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 const toMidgardTxInput = (
@@ -187,7 +187,7 @@ export const submitNoReferenceInputStep02 = async ({
   readonly certificatePolicyId?: string;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep02Result> => {
   const { noReferenceInputCategory, contracts } =
@@ -231,11 +231,11 @@ export const submitNoReferenceInputStep02 = async ({
   // removed domain separation, the resulting commitment, so it is the field
   // index named here — never the encoding — that stops a spend-inputs preimage
   // from opening this slot.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: inputDatum.data.bad_tx_id,
     nativeTxCompactCbor,
-    itemCbors: midgardReferenceInputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: midgardReferenceInputs.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     label: "No-reference-input step 02 reference-inputs",
   });
@@ -246,7 +246,7 @@ export const submitNoReferenceInputStep02 = async ({
   // resolving indices into the complete reference-input set.
   const published =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -258,7 +258,7 @@ export const submitNoReferenceInputStep02 = async ({
       "No-reference-input tier-3 certificate UTxO and policy identity must be supplied together.",
     );
   }
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "no-reference-input step 02 validator",
@@ -270,7 +270,7 @@ export const submitNoReferenceInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -362,9 +362,9 @@ export const submitNoReferenceInputStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -433,7 +433,7 @@ export const submitNoReferenceInputStep02FromFiles = async (
     threadOutRef: config.threadOutRef,
     referenceInputsPreimage:
       referenceInputsJson as readonly NoReferenceInputPreimageEntry[],
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

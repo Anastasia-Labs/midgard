@@ -1,51 +1,51 @@
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  prepareReceivePurposeLanguageEvidenceV1,
-  RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1,
-  type ReceivePurposeLanguageDescriptorV1,
-  receivePurposeLanguageEvidenceClosesV1,
-  type ReceivePurposeLanguageEvidenceV1,
+  prepareReceivePurposeLanguageEvidence,
+  RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
+  type ReceivePurposeLanguageDescriptor,
+  type ReceivePurposeLanguageEvidence,
+  receivePurposeLanguageEvidenceCloses,
 } from "./family-v1.js";
 
-export type ReceivePurposeLanguageAuthenticatedDescriptorV1 = Readonly<{
+export type ReceivePurposeLanguageAuthenticatedDescriptor = Readonly<{
   transactionId: string;
   position: bigint;
   executionIndex: number;
-  descriptor: ReceivePurposeLanguageDescriptorV1;
+  descriptor: ReceivePurposeLanguageDescriptor;
 }>;
-export type ReceivePurposeLanguageReplayFindingV1 = Readonly<{
-  detection: CanonicalViolationDetectionV1;
-  evidence: ReceivePurposeLanguageEvidenceV1;
+export type ReceivePurposeLanguageReplayFinding = Readonly<{
+  detection: CanonicalViolationDetection;
+  evidence: ReceivePurposeLanguageEvidence;
 }>;
 
 /** Detects only from descriptors already reconstructed from authenticated retained DA. */
-export const detectReceivePurposeLanguageAcceptedReplayV1 = ({
+export const detectReceivePurposeLanguageAcceptedReplay = ({
   headerHash,
   descriptors,
 }: {
   readonly headerHash: string;
-  readonly descriptors: readonly ReceivePurposeLanguageAuthenticatedDescriptorV1[];
-}): readonly ReceivePurposeLanguageReplayFindingV1[] =>
+  readonly descriptors: readonly ReceivePurposeLanguageAuthenticatedDescriptor[];
+}): readonly ReceivePurposeLanguageReplayFinding[] =>
   Object.freeze(
     descriptors
       .flatMap((entry) => {
-        const evidence = prepareReceivePurposeLanguageEvidenceV1({
+        const evidence = prepareReceivePurposeLanguageEvidence({
           finding: {
-            subject: acceptedVerdictSubjectV1(entry.transactionId),
+            subject: acceptedVerdictSubject(entry.transactionId),
             executionIndex: entry.executionIndex,
           },
           descriptor: entry.descriptor,
         });
-        if (!receivePurposeLanguageEvidenceClosesV1(evidence)) return [];
+        if (!receivePurposeLanguageEvidenceCloses(evidence)) return [];
         return [
           Object.freeze({
             evidence,
             detection: Object.freeze({
-              detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1}:${entry.position.toString()}:${entry.transactionId}:${entry.executionIndex.toString()}`,
+              detectionId: `${RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID}:${entry.position.toString()}:${entry.transactionId}:${entry.executionIndex.toString()}`,
               headerHash,
-              violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1,
+              violationId: RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID,
               position: entry.position,
               diagnostic: `accepted receive execution ${entry.executionIndex.toString()} selected forbidden PlutusV3`,
             }),
@@ -63,9 +63,9 @@ export const detectReceivePurposeLanguageAcceptedReplayV1 = ({
       ),
   );
 
-export const selectReceivePurposeLanguageCanonicalFindingV1 = (
-  findings: readonly ReceivePurposeLanguageReplayFindingV1[],
-): ReceivePurposeLanguageReplayFindingV1 => {
+export const selectReceivePurposeLanguageCanonicalFinding = (
+  findings: readonly ReceivePurposeLanguageReplayFinding[],
+): ReceivePurposeLanguageReplayFinding => {
   if (findings.length === 0)
     throw new Error(
       "receivePurposeLanguage retained replay yielded no contradiction",

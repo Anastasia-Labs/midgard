@@ -1,6 +1,6 @@
 import {
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
+  decodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxProofFieldLengths,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -9,36 +9,36 @@ import { describe, expect, it } from "vitest";
 
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
-  COMPLETE_CANONICAL_REPLAY_V1,
-  type CompleteCanonicalReplayV1,
-  createCompleteCanonicalReplayUnionV1,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
-  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
-  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+  COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplay,
+  createCompleteCanonicalReplayUnion,
+  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
+  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay-v1.js";
 import {
-  authenticatedStateQueueObservationDigestV1,
-  classifyProductionHeaderV1,
-  createProductionHeaderClassifierV1,
-  productionHeaderDecisionReplayContextV1,
-  type ProductionHeaderDecisionV1,
-  requireRunnableProductionHeaderFaultV1,
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
+  type HeaderDecision,
+  headerDecisionReplayContext,
+  requireRunnableHeaderFault,
 } from "../src/workflow/production-header-classifier-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofReleaseFinalityAuthorityV1,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseFinalityAuthority,
 } from "../src/workflow/release-finality-policy-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
@@ -49,13 +49,13 @@ const RELEASE_FINALITY_POLICY = {
   deepRollbackPolicy: "automated_rewind_replay_incident-v1",
 } as const;
 
-const finalityAuthority = (): FraudProofReleaseFinalityAuthorityV1 => ({
-  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
+  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async () => ({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT_FINGERPRINT,
     releaseIdentityDigest: "e1".repeat(32),
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       RELEASE_FINALITY_POLICY,
     ),
     policy: RELEASE_FINALITY_POLICY,
@@ -90,21 +90,21 @@ const retainedDaSource = ({
 describe("production authenticated-header classifier V1", () => {
   it("admits only closed replay unions in canonical catalogue order", async () => {
     expect(() =>
-      createCompleteCanonicalReplayUnionV1([
-        NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-        DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+      createCompleteCanonicalReplayUnion([
+        NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+        DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       ]),
     ).toThrow("canonical catalogue order");
 
-    const forged: CompleteCanonicalReplayV1 = {
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+    const forged: CompleteCanonicalReplay = {
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       launchScope: ["doubleSpend"],
       replay: async () => {
         throw new Error("must not run");
       },
     };
     await expect(
-      createProductionHeaderClassifierV1({
+      createHeaderClassifier({
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         replayer: forged,
         releaseFinalityAuthority: finalityAuthority(),
@@ -112,9 +112,9 @@ describe("production authenticated-header classifier V1", () => {
     ).rejects.toThrow("closed canonical replay bundle");
 
     await expect(
-      createProductionHeaderClassifierV1({
+      createHeaderClassifier({
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        replayer: RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+        replayer: RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
         releaseFinalityAuthority: finalityAuthority(),
       }),
     ).rejects.toThrow(
@@ -124,25 +124,25 @@ describe("production authenticated-header classifier V1", () => {
 
   it("fetches public DA once and mints an opaque exact fault selection", async () => {
     const sharedInput = outRefCbor(71, 0n);
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [
-        buildFixtureTransactionV1({ spendInputs: [sharedInput], fee: 1n }),
-        buildFixtureTransactionV1({ spendInputs: [sharedInput], fee: 2n }),
+        buildFixtureTransaction({ spendInputs: [sharedInput], fee: 1n }),
+        buildFixtureTransaction({ spendInputs: [sharedInput], fee: 2n }),
       ],
     });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
     const fetched = { count: 0 };
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -164,53 +164,53 @@ describe("production authenticated-header classifier V1", () => {
       authenticatedObservationDigest,
     });
     expect(decision.decisionDigest).toMatch(/^[0-9a-f]{64}$/u);
-    expect(requireRunnableProductionHeaderFaultV1(decision)).toBe(decision);
+    expect(requireRunnableHeaderFault(decision)).toBe(decision);
   });
 
   it("routes an authenticated raw field-length defect with one DA fetch", async () => {
-    const canonical = buildFixtureTransactionV1({
+    const canonical = buildFixtureTransaction({
       spendInputs: [],
       fee: 1n,
     });
     const lengths = [
-      ...decodeMidgardNativeTxProofFieldLengthsV1(
+      ...decodeMidgardNativeTxProofFieldLengths(
         Buffer.from(canonical.source.source.field_preimage_lengths_cbor, "hex"),
       ),
     ];
     lengths[0] = lengths[0]! + 1;
-    const source: SDK.L2TransactionSourceV1 = {
+    const source: SDK.L2TransactionSource = {
       ...canonical.source,
       source: {
         ...canonical.source.source,
         field_preimage_lengths_cbor:
-          encodeMidgardNativeTxProofFieldLengthsV1(lengths).toString("hex"),
+          encodeMidgardNativeTxProofFieldLengths(lengths).toString("hex"),
       },
     };
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [
         {
           ...canonical,
           source,
           sourceValueBytes: Buffer.from(
-            Data.to(source as never, SDK.L2TransactionSourceV1Schema as never),
+            Data.to(source as never, SDK.L2TransactionSourceSchema as never),
             "hex",
           ),
         },
       ],
     });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
     const fetched = { count: 0 };
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -231,29 +231,29 @@ describe("production authenticated-header classifier V1", () => {
   });
 
   it("routes an accepted untagged transaction with observers before canonical parsing", async () => {
-    const transaction = buildFixtureTransactionV1({
+    const transaction = buildFixtureTransaction({
       spendInputs: [],
       fee: 1n,
       networkId: 255n,
       requiredObservers: [Buffer.alloc(28, 0x42)],
     });
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [transaction],
     });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer:
-        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
     const fetched = { count: 0 };
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -279,31 +279,31 @@ describe("production authenticated-header classifier V1", () => {
       Buffer.alloc(28, 0x31),
       Buffer.from([0xb9, 0x40, 0x01, 0x00]),
     ]);
-    const transaction = buildFixtureTransactionV1({
+    const transaction = buildFixtureTransaction({
       spendInputs: [],
       fee: 1n,
       networkId: 255n,
       requiredObservers: [Buffer.alloc(28, 0x42)],
       mintPolicyItems: [declaredAssetLimitCrossing],
     });
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [transaction],
     });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: createCompleteCanonicalReplayUnionV1([
-        MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
-        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: createCompleteCanonicalReplayUnion([
+        MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
       ]),
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -326,33 +326,33 @@ describe("production authenticated-header classifier V1", () => {
       address: Buffer.concat([Buffer.from([0x68]), Buffer.alloc(28, 0x42)]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
-    const faulty = buildFixtureTransactionV1({
+    const faulty = buildFixtureTransaction({
       spendInputs: [],
       outputs: [protectedOutput],
       fee: 2n,
     });
     const earlierHealthy = Array.from({ length: 256 }, (_, index) =>
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [],
         fee: BigInt(index + 10),
       }),
     ).find((transaction) => transaction.txId < faulty.txId);
     expect(earlierHealthy).toBeDefined();
-    const fixture = await buildCanonicalBlockFixtureV1({
+    const fixture = await buildCanonicalBlockFixture({
       transactions: [earlierHealthy!, faulty],
     });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -372,19 +372,19 @@ describe("production authenticated-header classifier V1", () => {
   });
 
   it("keeps healthy decisions non-runnable and rejects structural forgeries", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const fixture = await buildCanonicalBlockFixture({ transactions: [] });
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
-    const decision = await classifyProductionHeaderV1({
+    const decision = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -396,32 +396,32 @@ describe("production authenticated-header classifier V1", () => {
       ],
     });
     expect(decision.decision).toBe("healthy");
-    expect(() => requireRunnableProductionHeaderFaultV1(decision)).toThrow(
+    expect(() => requireRunnableHeaderFault(decision)).toThrow(
       "only fault_detected",
     );
     expect(() =>
-      requireRunnableProductionHeaderFaultV1({
+      requireRunnableHeaderFault({
         ...decision,
         decision: "fault_detected",
         category: "doubleSpend",
         violationId: "double-spend",
         detectionId: "forged",
         position: "0",
-      } as ProductionHeaderDecisionV1),
+      } as HeaderDecision),
     ).toThrow("not module-admitted");
   });
 
   it("rejects an L1 source digest substitution before retained-DA I/O", async () => {
-    const fixture = await buildCanonicalBlockFixtureV1({ transactions: [] });
-    const observation = authenticatedHeaderObservationV1(fixture);
-    const classifier = await createProductionHeaderClassifierV1({
+    const fixture = await buildCanonicalBlockFixture({ transactions: [] });
+    const observation = authenticatedHeaderObservation(fixture);
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const fetched = { count: 0 };
     await expect(
-      classifyProductionHeaderV1({
+      classifyHeader({
         classifier,
         observation,
         authenticatedObservationDigest: "00".repeat(32),
@@ -437,7 +437,7 @@ describe("production authenticated-header classifier V1", () => {
   });
 
   it("returns unprovable without predecessor authority and admits a freshly fetched predecessor", async () => {
-    const predecessor = await buildCanonicalBlockFixtureV1({
+    const predecessor = await buildCanonicalBlockFixture({
       transactions: [],
       utxos: [
         {
@@ -452,25 +452,22 @@ describe("production authenticated-header classifier V1", () => {
         },
       ],
     });
-    const current = await buildCanonicalBlockFixtureV1({
+    const current = await buildCanonicalBlockFixture({
       transactions: [],
       prevHeaderHash: predecessor.headerHash,
       prevUtxosRoot: predecessor.header.utxosRoot,
     });
-    const observation = authenticatedHeaderObservationV1(current);
-    const predecessorObservation = authenticatedHeaderObservationV1(
-      predecessor,
-      {
-        chainPoint: { slot: 4241n, blockHash: "06".repeat(32) },
-      },
-    );
-    const classifier = await createProductionHeaderClassifierV1({
+    const observation = authenticatedHeaderObservation(current);
+    const predecessorObservation = authenticatedHeaderObservation(predecessor, {
+      chainPoint: { slot: 4241n, blockHash: "06".repeat(32) },
+    });
+    const classifier = await createHeaderClassifier({
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      replayer: NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),
     });
     const authenticatedObservationDigest =
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       });
@@ -502,7 +499,7 @@ describe("production authenticated-header classifier V1", () => {
       },
     };
 
-    const unavailable = await classifyProductionHeaderV1({
+    const unavailable = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -512,12 +509,10 @@ describe("production authenticated-header classifier V1", () => {
       decision: "unprovable",
       reason: "predecessor_context_unavailable",
     });
-    expect(
-      productionHeaderDecisionReplayContextV1(unavailable),
-    ).toBeUndefined();
+    expect(headerDecisionReplayContext(unavailable)).toBeUndefined();
     expect(fetched.count).toBe(1);
 
-    const admitted = await classifyProductionHeaderV1({
+    const admitted = await classifyHeader({
       classifier,
       observation,
       authenticatedObservationDigest,
@@ -525,9 +520,7 @@ describe("production authenticated-header classifier V1", () => {
       predecessorObservation,
     });
     expect(admitted.decision).toBe("healthy");
-    expect(
-      productionHeaderDecisionReplayContextV1(admitted)?.predecessor,
-    ).toBeDefined();
+    expect(headerDecisionReplayContext(admitted)?.predecessor).toBeDefined();
     expect(fetched.count).toBe(3);
   });
 });

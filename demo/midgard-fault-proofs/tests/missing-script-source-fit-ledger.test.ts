@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildVanRossemFitLedgerV1,
-  writeVanRossemFitLedgerV1,
+  buildVanRossemFitLedger,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
-export const missingScriptSourceFitMeasurementsV1 = [
+export const missingScriptSourceFitMeasurements = [
   [
     "reference-step-01",
     "publication",
@@ -194,13 +194,13 @@ export const missingScriptSourceFitMeasurementsV1 = [
   ],
 ] as const;
 
-export const buildMissingScriptSourceFitLedgerV1 = () =>
-  buildVanRossemFitLedgerV1({
+export const buildMissingScriptSourceFitLedger = () =>
+  buildVanRossemFitLedger({
     category: "missingScriptSource",
     blueprintSha256:
       "ea6087b6e039af06feefde55d945addab8c804d4dfc0da0e9d20e96602ce10e4",
     compilerVersion: "v1.1.23+5adf783",
-    measurements: missingScriptSourceFitMeasurementsV1.map(
+    measurements: missingScriptSourceFitMeasurements.map(
       ([name, kind, maximumShape, signedBytes, memoryUnits, cpuUnits]) => ({
         name,
         kind,
@@ -214,15 +214,15 @@ export const buildMissingScriptSourceFitLedgerV1 = () =>
 
 describe("missingScriptSource signed Van Rossem fit ledger", () => {
   it("reproduces publication and real accepted/forced lifecycle margins", async () => {
-    const ledger = buildMissingScriptSourceFitLedgerV1();
+    const ledger = buildMissingScriptSourceFitLedger();
     const url = new URL(
       "../../../docs/fault-proofs/size-plans/missing-script-source-v1-fit-ledger.json",
       import.meta.url,
     );
     if (process.env.MIDGARD_UPDATE_MISSING_SCRIPT_SOURCE_LEDGER === "1")
-      await writeVanRossemFitLedgerV1(url.pathname, ledger);
+      await writeVanRossemFitLedger(url.pathname, ledger);
     expect(ledger.entries).toHaveLength(
-      missingScriptSourceFitMeasurementsV1.length,
+      missingScriptSourceFitMeasurements.length,
     );
     expect(
       ledger.entries.every(

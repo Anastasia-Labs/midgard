@@ -1,23 +1,23 @@
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DaRequestTimeoutError } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaAttestationsByHeaderResponseV1Cbor,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  decodeDaPayloadSubmitResponseV1Cbor,
-  encodeDaAttestationsByHeaderRequestV1Cbor,
-  encodeDaAttestationsByHeaderResponseV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadChunkRequestV1Cbor,
-  encodeDaPayloadSubmitRequestV1Cbor,
+  decodeDaAttestationsByHeaderResponseCbor,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
+  decodeDaPayloadSubmitResponseCbor,
+  encodeDaAttestationsByHeaderRequestCbor,
+  encodeDaAttestationsByHeaderResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
+  encodeDaPayloadSubmitRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { describe, expect, it } from "vitest";
 
@@ -45,8 +45,8 @@ import {
 } from "../src/da/libp2p/payload-source.js";
 import type {
   DaSignatureRecord,
-  DaStoredPayloadRootSetV1,
-  HeaderV1,
+  DaStoredPayloadRootSet,
+  Header,
 } from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
@@ -74,9 +74,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       maxStreamsPerPeer: 7,
       requestTimeoutMs: 4_321,
     });
-    const capabilities = decodeDaCapabilitiesResponseV1Cbor(
+    const capabilities = decodeDaCapabilitiesResponseCbor(
       await handlers.handleCapabilities(
-        encodeDaCapabilitiesRequestV1Cbor({
+        encodeDaCapabilitiesRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
         }),
       ),
@@ -117,16 +117,16 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     const fixture = await makePayloadFixture();
     const frame = encodeDaStreamFrame(
       encodeSubmit(fixture.headerHash, fixture.payloadCbor),
-      { maxFrameBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes },
+      { maxFrameBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
     );
     const firstStore = await JsonFileWatcherStore.open(await tempDir());
     const secondStore = await JsonFileWatcherStore.open(await tempDir());
     const firstLimits = {
-      ...DA_TRANSPORT_LIMITS_V1,
+      ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 1_000,
     };
     const queuedLimits = {
-      ...DA_TRANSPORT_LIMITS_V1,
+      ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 200,
     };
     const firstHandler = createDaLibp2pPayloadRequestHandlers({
@@ -189,7 +189,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
 
     expect(firstMock.state.aborted).toBeUndefined();
     expect(firstMock.state.closed).toBe(true);
-    const response = decodeDaPayloadSubmitResponseV1Cbor(
+    const response = decodeDaPayloadSubmitResponseCbor(
       await readSingleDaStreamFrame(firstMock.state.sent, {
         maxFrameBytes: firstLimits.maxPayloadBytes,
       }),
@@ -208,7 +208,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     const store = await JsonFileWatcherStore.open(await tempDir());
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
-      ...DA_TRANSPORT_LIMITS_V1,
+      ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 200,
     };
     const handler = createDaLibp2pPayloadRequestHandlers({
@@ -241,7 +241,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     expect(admission.active).toBe(0);
 
     const recoveryLimits = {
-      ...DA_TRANSPORT_LIMITS_V1,
+      ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 1_000,
     };
     const recoveryHandler = createDaLibp2pPayloadRequestHandlers({
@@ -262,7 +262,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     await invokePayloadSubmitHandler(recoveryHandler, healthyMock.stream);
     expect(healthyMock.state.aborted).toBeUndefined();
     expect(healthyMock.state.closed).toBe(true);
-    const response = decodeDaPayloadSubmitResponseV1Cbor(
+    const response = decodeDaPayloadSubmitResponseCbor(
       await readSingleDaStreamFrame(healthyMock.state.sent, {
         maxFrameBytes: recoveryLimits.maxPayloadBytes,
       }),
@@ -282,7 +282,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     const store = await JsonFileWatcherStore.open(await tempDir());
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
-      ...DA_TRANSPORT_LIMITS_V1,
+      ...DA_TRANSPORT_LIMITS,
       requestTimeoutMs: 1_000,
     };
     const handler = createDaLibp2pPayloadRequestHandlers({
@@ -326,7 +326,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     await invokePayloadSubmitHandler(handler, healthyMock.stream);
     expect(healthyMock.state.aborted).toBeUndefined();
     expect(healthyMock.state.closed).toBe(true);
-    const response = decodeDaPayloadSubmitResponseV1Cbor(
+    const response = decodeDaPayloadSubmitResponseCbor(
       await readSingleDaStreamFrame(healthyMock.state.sent, {
         maxFrameBytes: limits.maxPayloadBytes,
       }),
@@ -346,7 +346,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     const fixture = await makePayloadFixture();
     const payloadHash = computeDaSha256Hash(fixture.payloadCbor);
 
-    const submit = decodeDaPayloadSubmitResponseV1Cbor(
+    const submit = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
         encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       ),
@@ -361,9 +361,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       },
     );
 
-    const byHeader = decodeDaPayloadByHeaderResponseV1Cbor(
+    const byHeader = decodeDaPayloadByHeaderResponseCbor(
       await handlers.handlePayloadByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: [payloadHash],
@@ -374,9 +374,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     expect(byHeader.status).toBe("found_inline");
     expect(byHeader.payloadBytes?.equals(fixture.payloadCbor)).toBe(true);
 
-    const metadata = decodeDaMetadataByHeaderResponseV1Cbor(
+    const metadata = decodeDaMetadataByHeaderResponseCbor(
       await handlers.handleMetadataByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: [payloadHash],
@@ -395,13 +395,13 @@ describe("canonical V1 DA libp2p payload protocols", () => {
   it("retains malformed and header-mismatched inner payloads as unverified envelopes", async () => {
     const { handlers, store } = await makeHandlers();
     const fixture = await makePayloadFixture();
-    const malformedInnerEnvelope = await wrapDaPayloadV1(
+    const malformedInnerEnvelope = await wrapDaPayload(
       Buffer.from("deadbeef", "hex"),
       { mode: "identity" },
     );
     const mismatchedHeaderHash = "fe".repeat(28);
 
-    const malformed = decodeDaPayloadSubmitResponseV1Cbor(
+    const malformed = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
         encodeSubmit(fixture.headerHash, malformedInnerEnvelope),
       ),
@@ -415,7 +415,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     expect(retainedMalformed?.rootSummary).toBeUndefined();
     expect(retainedMalformed?.verifiedAt).toBeUndefined();
 
-    const headerMismatched = decodeDaPayloadSubmitResponseV1Cbor(
+    const headerMismatched = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
         encodeSubmit(mismatchedHeaderHash, fixture.payloadCbor),
       ),
@@ -431,9 +431,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       validationStatus: "fetched",
     });
 
-    const metadata = decodeDaMetadataByHeaderResponseV1Cbor(
+    const metadata = decodeDaMetadataByHeaderResponseCbor(
       await handlers.handleMetadataByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: [computeDaSha256Hash(malformedInnerEnvelope)],
@@ -476,9 +476,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       encodeSubmit(fixture.headerHash, fixture.payloadCbor),
     );
 
-    const byHeader = decodeDaPayloadByHeaderResponseV1Cbor(
+    const byHeader = decodeDaPayloadByHeaderResponseCbor(
       await handlers.handlePayloadByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: null,
@@ -489,9 +489,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     expect(byHeader.status).toBe("found_chunked");
     expect(byHeader.chunkManifest?.chunkSize).toBe(128);
 
-    const chunk = decodeDaPayloadChunkResponseV1Cbor(
+    const chunk = decodeDaPayloadChunkResponseCbor(
       await handlers.handlePayloadChunk(
-        encodeDaPayloadChunkRequestV1Cbor({
+        encodeDaPayloadChunkRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           payloadHash: computeDaSha256Hash(fixture.payloadCbor),
@@ -513,17 +513,17 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     await handlers.handlePayloadSubmit(
       encodeSubmit(fixture.headerHash, fixture.payloadCbor),
     );
-    const duplicate = decodeDaPayloadSubmitResponseV1Cbor(
+    const duplicate = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
         encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       ),
     );
     expect(duplicate.status).toBe("duplicate");
 
-    const zstdEnvelope = await wrapDaPayloadV1(fixture.innerPayloadCbor, {
+    const zstdEnvelope = await wrapDaPayload(fixture.innerPayloadCbor, {
       mode: "zstd",
     });
-    const conflict = decodeDaPayloadSubmitResponseV1Cbor(
+    const conflict = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
         encodeSubmit(fixture.headerHash, zstdEnvelope),
       ),
@@ -548,9 +548,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       validationStatus: "verified",
     });
 
-    const metadata = decodeDaMetadataByHeaderResponseV1Cbor(
+    const metadata = decodeDaMetadataByHeaderResponseCbor(
       await handlers.handleMetadataByHeader(
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           acceptedPayloadHashes: [payloadHash],
@@ -575,7 +575,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     await expect(
       handlers.handlePayloadSubmit(Buffer.from([0xff])),
     ).rejects.toBeInstanceOf(DaLibp2pPayloadProtocolError);
-    const oversized = decodeDaPayloadSubmitResponseV1Cbor(
+    const oversized = decodeDaPayloadSubmitResponseCbor(
       await handlers.handlePayloadSubmit(
         encodeSubmit(fixture.headerHash, fixture.payloadCbor),
       ),
@@ -592,7 +592,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       await makeHandlers();
     const malformedEnvelope = Buffer.from(fixture.payloadCbor);
     malformedEnvelope[0] = (malformedEnvelope[0] ?? 0) ^ 0x01;
-    const malformed = decodeDaPayloadSubmitResponseV1Cbor(
+    const malformed = decodeDaPayloadSubmitResponseCbor(
       await permissive.handlePayloadSubmit(
         encodeSubmit(fixture.headerHash, malformedEnvelope),
       ),
@@ -602,9 +602,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       permissiveStore.getDaPayload(fixture.headerHash),
     ).resolves.toBeUndefined();
 
-    const mismatched = decodeDaPayloadSubmitResponseV1Cbor(
+    const mismatched = decodeDaPayloadSubmitResponseCbor(
       await permissive.handlePayloadSubmit(
-        encodeDaPayloadSubmitRequestV1Cbor({
+        encodeDaPayloadSubmitRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.from(fixture.headerHash, "hex"),
           payloadHash: Buffer.alloc(32, 0xaa),
@@ -654,9 +654,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       },
     });
 
-    const response = decodeDaAttestationsByHeaderResponseV1Cbor(
+    const response = decodeDaAttestationsByHeaderResponseCbor(
       await protocol.handleAttestationsByHeaderRequest(
-        encodeDaAttestationsByHeaderRequestV1Cbor({
+        encodeDaAttestationsByHeaderRequestCbor({
           deploymentFingerprint: deploymentFingerprintBytes,
           headerHash: Buffer.alloc(28, 0x02),
           acceptedSignerIndexes: null,
@@ -698,7 +698,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       localPeerId: "local-peer",
       node: {
         request: async () =>
-          encodeDaAttestationsByHeaderResponseV1Cbor({
+          encodeDaAttestationsByHeaderResponseCbor({
             status: "found",
             headerHash: Buffer.alloc(28, 0x02),
             attestations: [
@@ -760,7 +760,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
 });
 
 const encodeSubmit = (headerHash: string, payloadBytes: Buffer): Buffer =>
-  encodeDaPayloadSubmitRequestV1Cbor({
+  encodeDaPayloadSubmitRequestCbor({
     deploymentFingerprint: deploymentFingerprintBytes,
     headerHash: Buffer.from(headerHash, "hex"),
     payloadHash: computeDaSha256Hash(payloadBytes),
@@ -852,7 +852,7 @@ const waitFor = async (
   }
 };
 
-const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
+const rootSummaryFromHeader = (header: Header): DaStoredPayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,

@@ -52,14 +52,14 @@ const KEY_HASH_LENGTH = 28;
  * complete Cardano transaction-size floor rather than a host stack limit.
  * Every traversal below is iterative so this protocol bound is executable.
  */
-export const MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1 = 16_384;
-export const MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1 = 16_384;
+export const MIDGARD_NATIVE_SCRIPT_MAX_DEPTH = 16_384;
+export const MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT = 16_384;
 
 const assertSupportedNativeScriptDepth = (depth: number): void => {
-  if (depth > MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1) {
+  if (depth > MIDGARD_NATIVE_SCRIPT_MAX_DEPTH) {
     fail(
       "Native script nesting exceeds the V1 maximum",
-      `${depth.toString()} > ${MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1.toString()}`,
+      `${depth.toString()} > ${MIDGARD_NATIVE_SCRIPT_MAX_DEPTH.toString()}`,
     );
   }
 };
@@ -106,10 +106,10 @@ export const encodeMidgardNativeScript = (
     const current = pending.pop()!;
     assertSupportedNativeScriptDepth(current.depth);
     nodeCount += 1;
-    if (nodeCount > MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1) {
+    if (nodeCount > MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT) {
       fail(
         "Native script node count exceeds the V1 maximum",
-        `${nodeCount.toString()} > ${MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1.toString()}`,
+        `${nodeCount.toString()} > ${MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT.toString()}`,
       );
     }
 
@@ -224,10 +224,10 @@ const decodeNativeScript = (
 
     assertSupportedNativeScriptDepth(parents.length + 1);
     nodeCount += 1;
-    if (nodeCount > MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1) {
+    if (nodeCount > MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT) {
       fail(
         "Native script node count exceeds the V1 maximum",
-        `${nodeCount.toString()} > ${MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1.toString()}`,
+        `${nodeCount.toString()} > ${MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT.toString()}`,
       );
     }
     const header = readCborArrayHeader(bytes, cursor, "native_script");
@@ -368,9 +368,9 @@ export const verifyMidgardNativeScript = (
   while (pending.length > 0) {
     const current = pending.pop()!;
     if (
-      current.depth > MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1 ||
+      current.depth > MIDGARD_NATIVE_SCRIPT_MAX_DEPTH ||
       (!current.expanded &&
-        (nodeCount += 1) > MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1)
+        (nodeCount += 1) > MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT)
     ) {
       return false;
     }

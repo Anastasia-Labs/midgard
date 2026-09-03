@@ -1,9 +1,9 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
   rootMembershipProofSchema,
@@ -11,11 +11,11 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  FieldItemWidthAuthenticatedWidthV1Schema,
-  FieldItemWidthBoundCoordinateV1Schema,
+  FieldItemWidthAuthenticatedWidthSchema,
+  FieldItemWidthBoundCoordinateSchema,
 } from "./field-item-width-illegal-v1.js";
 
-export const FieldItemWidthStep01SourceV1Schema = Data.Enum([
+export const FieldItemWidthStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -23,40 +23,43 @@ export const FieldItemWidthStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const FieldItemWidthStep01ArgsV1Schema = Data.Object({
-  source: FieldItemWidthStep01SourceV1Schema,
+export const FieldItemWidthStep01ArgsSchema = Data.Object({
+  source: FieldItemWidthStep01SourceSchema,
   field_index: Data.Integer(),
   item_index: Data.Integer(),
 });
-export const FieldItemWidthStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(FieldItemWidthStep01ArgsV1Schema);
-
-export const FieldItemWidthStep02DatumV1Schema = faultProofStepDatumSchema(
-  FieldItemWidthBoundCoordinateV1Schema,
+export const FieldItemWidthStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  FieldItemWidthStep01ArgsSchema,
 );
-export const FieldItemWidthStep02ArgsV1Schema = Data.Object({
+
+export const FieldItemWidthStep02DatumSchema = faultProofStepDatumSchema(
+  FieldItemWidthBoundCoordinateSchema,
+);
+export const FieldItemWidthStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningV1Schema,
+  opening: FieldOpeningSchema,
 });
-export const FieldItemWidthStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(FieldItemWidthStep02ArgsV1Schema);
-export const FieldItemWidthStep03DatumV1Schema = faultProofStepDatumSchema(
-  FieldItemWidthAuthenticatedWidthV1Schema,
+export const FieldItemWidthStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  FieldItemWidthStep02ArgsSchema,
 );
-export const FieldItemWidthStep03ArgsV1Schema = Data.Object({
+export const FieldItemWidthStep03DatumSchema = faultProofStepDatumSchema(
+  FieldItemWidthAuthenticatedWidthSchema,
+);
+export const FieldItemWidthStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
-export const FieldItemWidthStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(FieldItemWidthStep03ArgsV1Schema);
+export const FieldItemWidthStep03RedeemerSchema = faultProofStepRedeemerSchema(
+  FieldItemWidthStep03ArgsSchema,
+);

@@ -5,86 +5,86 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardLedgerOutputCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
-  assertSecurityGradeEvidenceV1,
+  assertSecurityGradeEvidence,
   GENESIS_HEADER_HASH,
-  MIN_ADA_VIOLATION_ID_V1,
-  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1,
-  missingNativeScriptIsAbsentV1,
-  missingNativeScriptTxVersionedScriptHashV1,
+  MIN_ADA_VIOLATION_ID,
+  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
+  missingNativeScriptIsAbsent,
+  missingNativeScriptTxVersionedScriptHash,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
-  MIDGARD_COINS_PER_UTXO_BYTE_V1,
-  outputMeetsMinAdaV1,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
-import type { CanonicalViolationDetectionV1 } from "./classification-v1.js";
+import type { CanonicalViolationDetection } from "./classification-v1.js";
 import {
-  admitFraudProofRawL1PointV1,
-  type FraudProofRawL1PointV1,
+  admitFraudProofRawL1Point,
+  type FraudProofRawL1Point,
 } from "./raw-l1-snapshot-v1.js";
 
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_CORPUS =
   "midgard-production-historical-native-script-corpus-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_CHECKPOINT =
   "midgard-production-historical-native-script-checkpoint-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE =
   "midgard-production-historical-native-script-checkpoint-store-v1" as const;
-const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_MAC_DOMAIN_V1 =
+const HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_MAC_DOMAIN =
   "midgard-production-historical-native-script-checkpoint-mac-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE =
   "midgard-production-historical-native-script-history-source-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD =
   "midgard-production-historical-native-script-history-record-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PROVIDER_ROSTER_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_PROVIDER_ROSTER =
   "midgard-production-historical-native-script-provider-roster-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PREIMAGE_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_PREIMAGE =
   "midgard-production-historical-native-script-preimage-v1" as const;
-export const PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE =
   "midgard-production-historical-native-script-corpus-preimage-v1" as const;
 
-export type ProductionHistoricalNativeScriptOccurrenceV1 = Readonly<{
+export type HistoricalNativeScriptOccurrence = Readonly<{
   headerHash: string;
   txId: string;
   source: "transaction_witness" | "reference_script";
   itemIndex: number;
 }>;
 
-export type ProductionHistoricalNativeScriptCorpusEntryV1 = Readonly<{
+export type HistoricalNativeScriptCorpusEntry = Readonly<{
   scriptHash: string;
   scriptBytesHex: string;
-  occurrences: readonly ProductionHistoricalNativeScriptOccurrenceV1[];
+  occurrences: readonly HistoricalNativeScriptOccurrence[];
 }>;
 
-export type ProductionHistoricalNativeScriptCorpusV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_V1;
+export type HistoricalNativeScriptCorpus = Readonly<{
+  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_CORPUS;
   throughHeaderHash: string;
   /** Oldest-to-newest exact hash chain, excluding the all-zero sentinel. */
   headerHashes: readonly string[];
   payloadEnvelopeSha256s: readonly string[];
-  entries: readonly ProductionHistoricalNativeScriptCorpusEntryV1[];
+  entries: readonly HistoricalNativeScriptCorpusEntry[];
   providerRosterDigest: string;
   corpusDigest: string;
   checkpointDigest: string;
 }>;
 
-export type ProductionHistoricalNativeScriptCheckpointV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_V1;
+export type HistoricalNativeScriptCheckpoint = Readonly<{
+  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_CHECKPOINT;
   deploymentFingerprint: string;
   throughHeaderHash: string;
   throughUtxosRoot: string;
@@ -92,14 +92,14 @@ export type ProductionHistoricalNativeScriptCheckpointV1 = Readonly<{
   throughPayloadEnvelopeSha256: string;
   headerHashes: readonly string[];
   payloadEnvelopeSha256s: readonly string[];
-  entries: readonly ProductionHistoricalNativeScriptCorpusEntryV1[];
+  entries: readonly HistoricalNativeScriptCorpusEntry[];
   providerRosterDigest: string;
   predecessorCheckpointDigest: string | null;
   checkpointDigest: string;
 }>;
 
-export interface ProductionHistoricalNativeScriptCheckpointStoreV1 {
-  readonly storeVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE_V1;
+export interface HistoricalNativeScriptCheckpointStore {
+  readonly storeVersion: typeof HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE;
   readonly durability:
     | "unsafe_process_memory_test_v1"
     | "authenticated_sqlite_v1";
@@ -109,36 +109,32 @@ export interface ProductionHistoricalNativeScriptCheckpointStoreV1 {
   compareAndSwap(input: {
     readonly deploymentFingerprint: string;
     readonly expectedCheckpointDigest: string | null;
-    readonly next: ProductionHistoricalNativeScriptCheckpointV1;
+    readonly next: HistoricalNativeScriptCheckpoint;
   }): Promise<"stored" | "stale">;
 }
 
 const admittedCheckpointStores = new WeakSet<object>();
 const admittedDurableCheckpointStores = new WeakSet<object>();
 
-export type ProductionHistoricalNativeScriptHistoryProviderIdentityV1 =
-  Readonly<{
-    sourceId: string;
-    operatorIdentitySha256: string;
-    authorityEndpoint: string;
-  }>;
+export type HistoricalNativeScriptHistoryProviderIdentity = Readonly<{
+  sourceId: string;
+  operatorIdentitySha256: string;
+  authorityEndpoint: string;
+}>;
 
-export type ProductionHistoricalNativeScriptProviderRosterV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PROVIDER_ROSTER_V1;
+export type HistoricalNativeScriptProviderRoster = Readonly<{
+  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_PROVIDER_ROSTER;
   deploymentFingerprint: string;
   sourceMode: "external_provider_quorum";
   consistencyPolicy: "exact_bytes_all_providers_v1";
-  providers: readonly ProductionHistoricalNativeScriptHistoryProviderIdentityV1[];
+  providers: readonly HistoricalNativeScriptHistoryProviderIdentity[];
   rosterDigest: string;
 }>;
 
 const admittedProviderRosters = new WeakSet<object>();
 
-const providerRosterWithoutDigestV1 = (
-  roster: Omit<
-    ProductionHistoricalNativeScriptProviderRosterV1,
-    "rosterDigest"
-  >,
+const providerRosterWithoutDigest = (
+  roster: Omit<HistoricalNativeScriptProviderRoster, "rosterDigest">,
 ) => ({
   schemaVersion: roster.schemaVersion,
   deploymentFingerprint: roster.deploymentFingerprint,
@@ -148,13 +144,13 @@ const providerRosterWithoutDigestV1 = (
 });
 
 /** Freezes the exact external quorum in the verified watcher application overlay. */
-export const createProductionHistoricalNativeScriptProviderRosterV1 = ({
+export const createHistoricalNativeScriptProviderRoster = ({
   deploymentFingerprint,
   providers,
 }: {
   readonly deploymentFingerprint: string;
-  readonly providers: readonly ProductionHistoricalNativeScriptHistoryProviderIdentityV1[];
-}): ProductionHistoricalNativeScriptProviderRosterV1 => {
+  readonly providers: readonly HistoricalNativeScriptHistoryProviderIdentity[];
+}): HistoricalNativeScriptProviderRoster => {
   if (!/^[0-9a-f]{64}$/u.test(deploymentFingerprint)) {
     throw new Error(
       "historical provider roster deployment fingerprint is invalid",
@@ -207,7 +203,7 @@ export const createProductionHistoricalNativeScriptProviderRosterV1 = ({
     });
   });
   const withoutDigest = Object.freeze({
-    schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PROVIDER_ROSTER_V1,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_PROVIDER_ROSTER,
     deploymentFingerprint,
     sourceMode: "external_provider_quorum" as const,
     consistencyPolicy: "exact_bytes_all_providers_v1" as const,
@@ -223,14 +219,14 @@ export const createProductionHistoricalNativeScriptProviderRosterV1 = ({
   return roster;
 };
 
-export const requireProductionHistoricalNativeScriptProviderRosterV1 = (
-  providerRoster: ProductionHistoricalNativeScriptProviderRosterV1,
-): ProductionHistoricalNativeScriptProviderRosterV1 => {
+export const requireHistoricalNativeScriptProviderRoster = (
+  providerRoster: HistoricalNativeScriptProviderRoster,
+): HistoricalNativeScriptProviderRoster => {
   if (
     !admittedProviderRosters.has(providerRoster) ||
     providerRoster.rosterDigest !==
       createHash("sha256")
-        .update(JSON.stringify(providerRosterWithoutDigestV1(providerRoster)))
+        .update(JSON.stringify(providerRosterWithoutDigest(providerRoster)))
         .digest("hex")
   ) {
     throw new Error(
@@ -240,7 +236,7 @@ export const requireProductionHistoricalNativeScriptProviderRosterV1 = (
   return providerRoster;
 };
 
-export interface ProductionHistoricalNativeScriptHistoryProviderV1 {
+export interface HistoricalNativeScriptHistoryProvider {
   readonly sourceMode: "local_archival_index" | "external_provider";
   readonly sourceId: string;
   readonly operatorIdentitySha256: string | null;
@@ -254,17 +250,17 @@ export interface ProductionHistoricalNativeScriptHistoryProviderV1 {
 const admittedHistoryProviders = new WeakSet<object>();
 
 /** Concrete immutable transport created only from an admitted application roster. */
-const createProductionHistoricalNativeScriptHttpHistoryProviderV1 = ({
+const createHistoricalNativeScriptHttpHistoryProvider = ({
   sourceMode,
   sourceId,
   authorityEndpoint,
   operatorIdentitySha256,
 }: {
-  readonly sourceMode: ProductionHistoricalNativeScriptHistoryProviderV1["sourceMode"];
+  readonly sourceMode: HistoricalNativeScriptHistoryProvider["sourceMode"];
   readonly sourceId: string;
   readonly authorityEndpoint: string;
   readonly operatorIdentitySha256: string | null;
-}): ProductionHistoricalNativeScriptHistoryProviderV1 => {
+}): HistoricalNativeScriptHistoryProvider => {
   let endpoint: URL;
   try {
     endpoint = new URL(authorityEndpoint);
@@ -295,47 +291,46 @@ const createProductionHistoricalNativeScriptHttpHistoryProviderV1 = ({
     );
   }
   const canonicalEndpoint = endpoint.toString().replace(/\/$/u, "");
-  const provider: ProductionHistoricalNativeScriptHistoryProviderV1 =
-    Object.freeze({
-      sourceMode,
-      sourceId,
-      operatorIdentitySha256,
-      authorityEndpoint: canonicalEndpoint,
-      fetchPayloadByHeaderHash: async ({
-        deploymentFingerprint,
-        headerHash,
-      }: Parameters<
-        ProductionHistoricalNativeScriptHistoryProviderV1["fetchPayloadByHeaderHash"]
-      >[0]) => {
-        const url = new URL(
-          `${canonicalEndpoint}/midgard/v1/historical-payload/${deploymentFingerprint}/${headerHash}`,
+  const provider: HistoricalNativeScriptHistoryProvider = Object.freeze({
+    sourceMode,
+    sourceId,
+    operatorIdentitySha256,
+    authorityEndpoint: canonicalEndpoint,
+    fetchPayloadByHeaderHash: async ({
+      deploymentFingerprint,
+      headerHash,
+    }: Parameters<
+      HistoricalNativeScriptHistoryProvider["fetchPayloadByHeaderHash"]
+    >[0]) => {
+      const url = new URL(
+        `${canonicalEndpoint}/midgard/v1/historical-payload/${deploymentFingerprint}/${headerHash}`,
+      );
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `historical provider ${sourceId} returned HTTP ${response.status.toString()}`,
         );
-        const response = await fetch(url, {
-          method: "GET",
-          headers: { accept: "application/json" },
-          signal: AbortSignal.timeout(30_000),
-        });
-        if (!response.ok) {
-          throw new Error(
-            `historical provider ${sourceId} returned HTTP ${response.status.toString()}`,
-          );
-        }
-        return (await response.json()) as unknown;
-      },
-    });
+      }
+      return (await response.json()) as unknown;
+    },
+  });
   admittedHistoryProviders.add(provider);
   return provider;
 };
 
-export interface ProductionHistoricalNativeScriptHistorySourceV1 {
-  readonly sourceVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE_V1;
+export interface HistoricalNativeScriptHistorySource {
+  readonly sourceVersion: typeof HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE;
   readonly sourceMode: "external_provider_quorum";
   readonly deploymentFingerprint: string;
   readonly providerRosterDigest: string;
   fetchPayloadByHeaderHash(input: { readonly headerHash: string }): Promise<
     Readonly<{
       payloadEnvelopeCbor: Buffer;
-      inclusionPoint: FraudProofRawL1PointV1;
+      inclusionPoint: FraudProofRawL1Point;
       authorityDigest: string;
     }>
   >;
@@ -343,7 +338,7 @@ export interface ProductionHistoricalNativeScriptHistorySourceV1 {
 
 const admittedHistorySources = new WeakSet<object>();
 
-const exactHistoryRecordV1 = ({
+const exactHistoryRecord = ({
   value,
   provider,
   deploymentFingerprint,
@@ -351,7 +346,7 @@ const exactHistoryRecordV1 = ({
   providerRosterDigest,
 }: {
   readonly value: unknown;
-  readonly provider: ProductionHistoricalNativeScriptHistoryProviderV1;
+  readonly provider: HistoricalNativeScriptHistoryProvider;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
   readonly providerRosterDigest: string;
@@ -373,8 +368,7 @@ const exactHistoryRecordV1 = ({
   if (
     Object.keys(parsed).sort().join(",") !==
       "deploymentFingerprint,headerHash,inclusionPoint,payloadEnvelopeCborHex,schemaVersion" ||
-    parsed.schemaVersion !==
-      PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD_V1 ||
+    parsed.schemaVersion !== HISTORICAL_NATIVE_SCRIPT_HISTORY_RECORD ||
     parsed.deploymentFingerprint !== deploymentFingerprint ||
     parsed.headerHash !== headerHash ||
     typeof parsed.payloadEnvelopeCborHex !== "string" ||
@@ -384,7 +378,7 @@ const exactHistoryRecordV1 = ({
       `historical source ${provider.sourceId} changed the deployment/header or raw payload shape`,
     );
   }
-  const inclusionPoint = admitFraudProofRawL1PointV1(
+  const inclusionPoint = admitFraudProofRawL1Point(
     parsed.inclusionPoint,
     `historical source ${provider.sourceId} inclusion point`,
   );
@@ -408,97 +402,92 @@ const exactHistoryRecordV1 = ({
 };
 
 /** Admits the immutable external archive quorum frozen by the application. */
-export const createProductionHistoricalNativeScriptHistorySourceV1 = ({
+export const createHistoricalNativeScriptHistorySource = ({
   providerRoster,
 }: {
-  readonly providerRoster: ProductionHistoricalNativeScriptProviderRosterV1;
-}): ProductionHistoricalNativeScriptHistorySourceV1 => {
-  requireProductionHistoricalNativeScriptProviderRosterV1(providerRoster);
+  readonly providerRoster: HistoricalNativeScriptProviderRoster;
+}): HistoricalNativeScriptHistorySource => {
+  requireHistoricalNativeScriptProviderRoster(providerRoster);
   const deploymentFingerprint = providerRoster.deploymentFingerprint;
   const providers = providerRoster.providers.map((provider) =>
-    createProductionHistoricalNativeScriptHttpHistoryProviderV1({
+    createHistoricalNativeScriptHttpHistoryProvider({
       sourceMode: "external_provider",
       sourceId: provider.sourceId,
       authorityEndpoint: provider.authorityEndpoint,
       operatorIdentitySha256: provider.operatorIdentitySha256,
     }),
   );
-  const source: ProductionHistoricalNativeScriptHistorySourceV1 = Object.freeze(
-    {
-      sourceVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE_V1,
-      sourceMode: "external_provider_quorum",
-      deploymentFingerprint,
-      providerRosterDigest: providerRoster.rosterDigest,
-      fetchPayloadByHeaderHash: async ({
-        headerHash,
-      }: Parameters<
-        ProductionHistoricalNativeScriptHistorySourceV1["fetchPayloadByHeaderHash"]
-      >[0]) => {
-        if (!/^[0-9a-f]{56}$/u.test(headerHash)) {
-          throw new Error("historical source header hash is invalid");
-        }
-        const candidates = await Promise.all(
-          providers.map(async (provider) =>
-            exactHistoryRecordV1({
-              value: await provider.fetchPayloadByHeaderHash({
-                deploymentFingerprint,
-                headerHash,
-              }),
-              provider,
+  const source: HistoricalNativeScriptHistorySource = Object.freeze({
+    sourceVersion: HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE,
+    sourceMode: "external_provider_quorum",
+    deploymentFingerprint,
+    providerRosterDigest: providerRoster.rosterDigest,
+    fetchPayloadByHeaderHash: async ({
+      headerHash,
+    }: Parameters<
+      HistoricalNativeScriptHistorySource["fetchPayloadByHeaderHash"]
+    >[0]) => {
+      if (!/^[0-9a-f]{56}$/u.test(headerHash)) {
+        throw new Error("historical source header hash is invalid");
+      }
+      const candidates = await Promise.all(
+        providers.map(async (provider) =>
+          exactHistoryRecord({
+            value: await provider.fetchPayloadByHeaderHash({
               deploymentFingerprint,
               headerHash,
-              providerRosterDigest: providerRoster.rosterDigest,
             }),
-          ),
+            provider,
+            deploymentFingerprint,
+            headerHash,
+            providerRosterDigest: providerRoster.rosterDigest,
+          }),
+        ),
+      );
+      const first = candidates[0]!;
+      if (
+        candidates.some(
+          (candidate) => candidate.authorityDigest !== first.authorityDigest,
+        )
+      ) {
+        throw new Error(
+          "historical external providers disagree on exact raw history",
         );
-        const first = candidates[0]!;
-        if (
-          candidates.some(
-            (candidate) => candidate.authorityDigest !== first.authorityDigest,
-          )
-        ) {
-          throw new Error(
-            "historical external providers disagree on exact raw history",
-          );
-        }
-        return first;
-      },
+      }
+      return first;
     },
-  );
+  });
   admittedHistorySources.add(source);
   return source;
 };
 
 /** Explicitly volatile test seam; production authority rejects this brand. */
-export const unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1 =
-  (): ProductionHistoricalNativeScriptCheckpointStoreV1 => {
-    let checkpoint: ProductionHistoricalNativeScriptCheckpointV1 | null = null;
-    const store: ProductionHistoricalNativeScriptCheckpointStoreV1 =
-      Object.freeze({
-        storeVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE_V1,
-        durability: "unsafe_process_memory_test_v1",
-        load: async () => checkpoint,
-        compareAndSwap: async ({
-          deploymentFingerprint,
-          expectedCheckpointDigest,
-          next,
-        }: Parameters<
-          ProductionHistoricalNativeScriptCheckpointStoreV1["compareAndSwap"]
-        >[0]) => {
-          if (next.deploymentFingerprint !== deploymentFingerprint) {
-            throw new Error(
-              "historical checkpoint changed deployment identity",
-            );
-          }
-          if (
-            (checkpoint?.checkpointDigest ?? null) !== expectedCheckpointDigest
-          ) {
-            return "stale";
-          }
-          checkpoint = next;
-          return "stored";
-        },
-      });
+export const unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest =
+  (): HistoricalNativeScriptCheckpointStore => {
+    let checkpoint: HistoricalNativeScriptCheckpoint | null = null;
+    const store: HistoricalNativeScriptCheckpointStore = Object.freeze({
+      storeVersion: HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE,
+      durability: "unsafe_process_memory_test_v1",
+      load: async () => checkpoint,
+      compareAndSwap: async ({
+        deploymentFingerprint,
+        expectedCheckpointDigest,
+        next,
+      }: Parameters<
+        HistoricalNativeScriptCheckpointStore["compareAndSwap"]
+      >[0]) => {
+        if (next.deploymentFingerprint !== deploymentFingerprint) {
+          throw new Error("historical checkpoint changed deployment identity");
+        }
+        if (
+          (checkpoint?.checkpointDigest ?? null) !== expectedCheckpointDigest
+        ) {
+          return "stale";
+        }
+        checkpoint = next;
+        return "stored";
+      },
+    });
     admittedCheckpointStores.add(store);
     return store;
   };
@@ -507,14 +496,14 @@ export const unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1 
  * Durable local archival-index checkpoint. SQLite's BEGIN IMMEDIATE gives the
  * deployment row a real compare-and-swap boundary across watcher processes.
  */
-export const createSqliteProductionHistoricalNativeScriptCheckpointStoreV1 = ({
+export const createSqliteHistoricalNativeScriptCheckpointStore = ({
   path,
   rollbackAuthenticationKey,
 }: {
   readonly path: string;
   /** Authenticated key exposed by the watcher trusted-head runtime. */
   readonly rollbackAuthenticationKey: Uint8Array;
-}): ProductionHistoricalNativeScriptCheckpointStoreV1 => {
+}): HistoricalNativeScriptCheckpointStore => {
   if (
     !isAbsolute(path) ||
     normalize(path) !== path ||
@@ -535,7 +524,7 @@ export const createSqliteProductionHistoricalNativeScriptCheckpointStoreV1 = ({
     "sha256",
     Buffer.from(rollbackAuthenticationKey),
   )
-    .update(PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_MAC_DOMAIN_V1)
+    .update(HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_MAC_DOMAIN)
     .digest();
   const checkpointAuthenticationKeyId = createHash("sha256")
     .update(checkpointAuthenticationKey)
@@ -546,18 +535,18 @@ export const createSqliteProductionHistoricalNativeScriptCheckpointStoreV1 = ({
   ): string =>
     createHmac("sha256", checkpointAuthenticationKey)
       .update(
-        `${PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE_V1}\u0000${checkpointAuthenticationKeyId}\u0000${deploymentFingerprint}\u0000${checkpointJson}`,
+        `${HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE}\u0000${checkpointAuthenticationKeyId}\u0000${deploymentFingerprint}\u0000${checkpointJson}`,
       )
       .digest("hex");
-  type StoredCheckpointRowV1 = Readonly<{
+  type StoredCheckpointRow = Readonly<{
     checkpoint_digest: string;
     checkpoint_json: string;
     checkpoint_authentication_key_id: string;
     checkpoint_authentication_mac: string;
   }>;
-  const requireAuthenticatedStoredCheckpointRowV1 = (
+  const requireAuthenticatedStoredCheckpointRow = (
     deploymentFingerprint: string,
-    row: StoredCheckpointRowV1,
+    row: StoredCheckpointRow,
   ): unknown => {
     const expected = Buffer.from(
       checkpointAuthenticationMac(deploymentFingerprint, row.checkpoint_json),
@@ -611,61 +600,55 @@ export const createSqliteProductionHistoricalNativeScriptCheckpointStoreV1 = ({
     `);
     return database;
   };
-  const store: ProductionHistoricalNativeScriptCheckpointStoreV1 =
-    Object.freeze({
-      storeVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE_V1,
-      durability: "authenticated_sqlite_v1",
-      load: async ({
-        deploymentFingerprint,
-      }: Parameters<
-        ProductionHistoricalNativeScriptCheckpointStoreV1["load"]
-      >[0]) => {
-        const database = open();
-        try {
-          const row = database
-            .prepare(
-              "SELECT checkpoint_digest, checkpoint_json, checkpoint_authentication_key_id, checkpoint_authentication_mac FROM fraud_proof_native_script_checkpoint_v1 WHERE deployment_fingerprint = ?",
-            )
-            .get(deploymentFingerprint) as StoredCheckpointRowV1 | undefined;
-          if (row === undefined) return null;
-          return requireAuthenticatedStoredCheckpointRowV1(
-            deploymentFingerprint,
-            row,
-          );
-        } finally {
-          database.close();
+  const store: HistoricalNativeScriptCheckpointStore = Object.freeze({
+    storeVersion: HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE,
+    durability: "authenticated_sqlite_v1",
+    load: async ({
+      deploymentFingerprint,
+    }: Parameters<HistoricalNativeScriptCheckpointStore["load"]>[0]) => {
+      const database = open();
+      try {
+        const row = database
+          .prepare(
+            "SELECT checkpoint_digest, checkpoint_json, checkpoint_authentication_key_id, checkpoint_authentication_mac FROM fraud_proof_native_script_checkpoint_v1 WHERE deployment_fingerprint = ?",
+          )
+          .get(deploymentFingerprint) as StoredCheckpointRow | undefined;
+        if (row === undefined) return null;
+        return requireAuthenticatedStoredCheckpointRow(
+          deploymentFingerprint,
+          row,
+        );
+      } finally {
+        database.close();
+      }
+    },
+    compareAndSwap: async ({
+      deploymentFingerprint,
+      expectedCheckpointDigest,
+      next,
+    }: Parameters<
+      HistoricalNativeScriptCheckpointStore["compareAndSwap"]
+    >[0]) => {
+      await requireCheckpoint({ value: next, deploymentFingerprint });
+      const database = open();
+      try {
+        database.exec("BEGIN IMMEDIATE");
+        const row = database
+          .prepare(
+            "SELECT checkpoint_digest, checkpoint_json, checkpoint_authentication_key_id, checkpoint_authentication_mac FROM fraud_proof_native_script_checkpoint_v1 WHERE deployment_fingerprint = ?",
+          )
+          .get(deploymentFingerprint) as StoredCheckpointRow | undefined;
+        if (row !== undefined) {
+          requireAuthenticatedStoredCheckpointRow(deploymentFingerprint, row);
         }
-      },
-      compareAndSwap: async ({
-        deploymentFingerprint,
-        expectedCheckpointDigest,
-        next,
-      }: Parameters<
-        ProductionHistoricalNativeScriptCheckpointStoreV1["compareAndSwap"]
-      >[0]) => {
-        await requireCheckpointV1({ value: next, deploymentFingerprint });
-        const database = open();
-        try {
-          database.exec("BEGIN IMMEDIATE");
-          const row = database
-            .prepare(
-              "SELECT checkpoint_digest, checkpoint_json, checkpoint_authentication_key_id, checkpoint_authentication_mac FROM fraud_proof_native_script_checkpoint_v1 WHERE deployment_fingerprint = ?",
-            )
-            .get(deploymentFingerprint) as StoredCheckpointRowV1 | undefined;
-          if (row !== undefined) {
-            requireAuthenticatedStoredCheckpointRowV1(
-              deploymentFingerprint,
-              row,
-            );
-          }
-          if ((row?.checkpoint_digest ?? null) !== expectedCheckpointDigest) {
-            database.exec("ROLLBACK");
-            return "stale";
-          }
-          const checkpointJson = JSON.stringify(next);
-          database
-            .prepare(
-              `INSERT INTO fraud_proof_native_script_checkpoint_v1
+        if ((row?.checkpoint_digest ?? null) !== expectedCheckpointDigest) {
+          database.exec("ROLLBACK");
+          return "stale";
+        }
+        const checkpointJson = JSON.stringify(next);
+        database
+          .prepare(
+            `INSERT INTO fraud_proof_native_script_checkpoint_v1
                 (deployment_fingerprint, checkpoint_digest, checkpoint_json, checkpoint_authentication_key_id, checkpoint_authentication_mac)
                VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(deployment_fingerprint) DO UPDATE SET
@@ -673,54 +656,50 @@ export const createSqliteProductionHistoricalNativeScriptCheckpointStoreV1 = ({
                  checkpoint_json = excluded.checkpoint_json,
                  checkpoint_authentication_key_id = excluded.checkpoint_authentication_key_id,
                  checkpoint_authentication_mac = excluded.checkpoint_authentication_mac`,
-            )
-            .run(
-              deploymentFingerprint,
-              next.checkpointDigest,
-              checkpointJson,
-              checkpointAuthenticationKeyId,
-              checkpointAuthenticationMac(
-                deploymentFingerprint,
-                checkpointJson,
-              ),
-            );
-          database.exec("COMMIT");
-          return "stored";
-        } catch (cause) {
-          try {
-            database.exec("ROLLBACK");
-          } catch {
-            // The original SQLite failure is the useful diagnostic.
-          }
-          throw cause;
-        } finally {
-          database.close();
+          )
+          .run(
+            deploymentFingerprint,
+            next.checkpointDigest,
+            checkpointJson,
+            checkpointAuthenticationKeyId,
+            checkpointAuthenticationMac(deploymentFingerprint, checkpointJson),
+          );
+        database.exec("COMMIT");
+        return "stored";
+      } catch (cause) {
+        try {
+          database.exec("ROLLBACK");
+        } catch {
+          // The original SQLite failure is the useful diagnostic.
         }
-      },
-    });
+        throw cause;
+      } finally {
+        database.close();
+      }
+    },
+  });
   admittedCheckpointStores.add(store);
   admittedDurableCheckpointStores.add(store);
   return store;
 };
 
-export const requireProductionHistoricalNativeScriptHistoryAuthorityV1 = ({
+export const requireHistoricalNativeScriptHistoryAuthority = ({
   deploymentFingerprint,
   checkpointStore,
   historySource,
 }: {
   readonly deploymentFingerprint: string;
-  readonly checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  readonly historySource: ProductionHistoricalNativeScriptHistorySourceV1;
+  readonly checkpointStore: HistoricalNativeScriptCheckpointStore;
+  readonly historySource: HistoricalNativeScriptHistorySource;
 }): Readonly<{ providerRosterDigest: string }> => {
   if (
     !/^[0-9a-f]{64}$/u.test(deploymentFingerprint) ||
     checkpointStore.storeVersion !==
-      PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE_V1 ||
+      HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_STORE ||
     checkpointStore.durability !== "authenticated_sqlite_v1" ||
     !admittedCheckpointStores.has(checkpointStore) ||
     !admittedDurableCheckpointStores.has(checkpointStore) ||
-    historySource.sourceVersion !==
-      PRODUCTION_HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE_V1 ||
+    historySource.sourceVersion !== HISTORICAL_NATIVE_SCRIPT_HISTORY_SOURCE ||
     historySource.sourceMode !== "external_provider_quorum" ||
     historySource.deploymentFingerprint !== deploymentFingerprint ||
     !/^[0-9a-f]{64}$/u.test(historySource.providerRosterDigest) ||
@@ -735,23 +714,23 @@ export const requireProductionHistoricalNativeScriptHistoryAuthorityV1 = ({
   });
 };
 
-export type AdmittedProductionHistoricalNativeScriptCorpusV1 = Readonly<{
-  currentEvidence: CanonicalBlockEvidenceV1;
+export type AdmittedHistoricalNativeScriptCorpus = Readonly<{
+  currentEvidence: CanonicalBlockEvidence;
   /** Oldest-to-newest, including the challenged/current block. */
   reconstructions: readonly TransitionTraceReconstruction[];
 }>;
 
 const admittedCorpusInternals = new WeakMap<
   object,
-  AdmittedProductionHistoricalNativeScriptCorpusV1
+  AdmittedHistoricalNativeScriptCorpus
 >();
 
 const sha256 = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
 
 const occurrenceOrder = (
-  left: ProductionHistoricalNativeScriptOccurrenceV1,
-  right: ProductionHistoricalNativeScriptOccurrenceV1,
+  left: HistoricalNativeScriptOccurrence,
+  right: HistoricalNativeScriptOccurrence,
 ): number =>
   left.headerHash.localeCompare(right.headerHash) ||
   left.txId.localeCompare(right.txId) ||
@@ -760,24 +739,24 @@ const occurrenceOrder = (
 
 const buildCorpusEntries = (
   reconstructions: readonly TransitionTraceReconstruction[],
-): readonly ProductionHistoricalNativeScriptCorpusEntryV1[] => {
+): readonly HistoricalNativeScriptCorpusEntry[] => {
   const scripts = new Map<
     string,
     {
       scriptBytesHex: string;
-      occurrences: ProductionHistoricalNativeScriptOccurrenceV1[];
+      occurrences: HistoricalNativeScriptOccurrence[];
     }
   >();
   for (const reconstruction of reconstructions) {
     for (const transaction of reconstruction.transactions) {
-      const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const native = decodeMidgardNativeTxFullFromCanonicalCbor(
         transaction.fullTransactionCbor,
       );
       const record = (
         script: ReturnType<
           typeof decodeMidgardVersionedScriptListPreimage
         >[number],
-        occurrence: ProductionHistoricalNativeScriptOccurrenceV1,
+        occurrence: HistoricalNativeScriptOccurrence,
       ) => {
         if (script.language !== "NativeCardano") return;
         const scriptHash = hashMidgardVersionedScript(script);
@@ -811,7 +790,7 @@ const buildCorpusEntries = (
           itemIndex,
         }),
       );
-      const outputItems = decodeMidgardFieldPreimageV1(
+      const outputItems = decodeMidgardFieldPreimage(
         native.body.outputsPreimageCbor,
       );
       outputItems.forEach((outputBytes, itemIndex) => {
@@ -845,7 +824,7 @@ const buildCorpusEntries = (
 };
 
 const checkpointWithoutDigest = (
-  checkpoint: ProductionHistoricalNativeScriptCheckpointV1,
+  checkpoint: HistoricalNativeScriptCheckpoint,
 ) => ({
   schemaVersion: checkpoint.schemaVersion,
   deploymentFingerprint: checkpoint.deploymentFingerprint,
@@ -861,19 +840,19 @@ const checkpointWithoutDigest = (
 });
 
 const checkpointDigestV1 = (
-  checkpoint: ProductionHistoricalNativeScriptCheckpointV1,
+  checkpoint: HistoricalNativeScriptCheckpoint,
 ): string =>
   createHash("sha256")
     .update(JSON.stringify(checkpointWithoutDigest(checkpoint)))
     .digest("hex");
 
-const requireCheckpointV1 = async ({
+const requireCheckpoint = async ({
   value,
   deploymentFingerprint,
 }: {
   readonly value: unknown;
   readonly deploymentFingerprint: string;
-}): Promise<ProductionHistoricalNativeScriptCheckpointV1 | null> => {
+}): Promise<HistoricalNativeScriptCheckpoint | null> => {
   if (value === null) return null;
   if (
     typeof value !== "object" ||
@@ -888,10 +867,9 @@ const requireCheckpointV1 = async ({
       "historical native-script checkpoint is not an exact record",
     );
   }
-  const checkpoint = value as ProductionHistoricalNativeScriptCheckpointV1;
+  const checkpoint = value as HistoricalNativeScriptCheckpoint;
   if (
-    checkpoint.schemaVersion !==
-      PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_V1 ||
+    checkpoint.schemaVersion !== HISTORICAL_NATIVE_SCRIPT_CHECKPOINT ||
     checkpoint.deploymentFingerprint !== deploymentFingerprint ||
     !/^[0-9a-f]{56}$/u.test(checkpoint.throughHeaderHash) ||
     !/^[0-9a-f]{64}$/u.test(checkpoint.throughUtxosRoot) ||
@@ -931,7 +909,7 @@ const requireCheckpointV1 = async ({
       "historical native-script checkpoint payload digest changed",
     );
   }
-  const reconstruction = await reconstructDaPayloadV1({
+  const reconstruction = await reconstructDaPayload({
     payloadEnvelopeCbor: envelope,
     expectedHeaderHash: checkpoint.throughHeaderHash,
   });
@@ -941,15 +919,15 @@ const requireCheckpointV1 = async ({
   return checkpoint;
 };
 
-const mergeCorpusEntriesV1 = (
-  earlier: readonly ProductionHistoricalNativeScriptCorpusEntryV1[],
-  later: readonly ProductionHistoricalNativeScriptCorpusEntryV1[],
-): readonly ProductionHistoricalNativeScriptCorpusEntryV1[] => {
+const mergeCorpusEntries = (
+  earlier: readonly HistoricalNativeScriptCorpusEntry[],
+  later: readonly HistoricalNativeScriptCorpusEntry[],
+): readonly HistoricalNativeScriptCorpusEntry[] => {
   const merged = new Map<
     string,
     {
       scriptBytesHex: string;
-      occurrences: ProductionHistoricalNativeScriptOccurrenceV1[];
+      occurrences: HistoricalNativeScriptOccurrence[];
     }
   >();
   for (const entry of [...earlier, ...later]) {
@@ -995,10 +973,10 @@ const mergeCorpusEntriesV1 = (
   );
 };
 
-const entriesThroughHeadersV1 = (
-  entries: readonly ProductionHistoricalNativeScriptCorpusEntryV1[],
+const entriesThroughHeaders = (
+  entries: readonly HistoricalNativeScriptCorpusEntry[],
   headers: ReadonlySet<string>,
-): readonly ProductionHistoricalNativeScriptCorpusEntryV1[] =>
+): readonly HistoricalNativeScriptCorpusEntry[] =>
   Object.freeze(
     entries.flatMap((entry) => {
       const occurrences = entry.occurrences.filter((occurrence) =>
@@ -1015,7 +993,7 @@ const entriesThroughHeadersV1 = (
     }),
   );
 
-const fetchHistoricalPayloadV1 = async ({
+const fetchHistoricalPayload = async ({
   headerHash,
   sources,
   historySource,
@@ -1023,7 +1001,7 @@ const fetchHistoricalPayloadV1 = async ({
 }: {
   readonly headerHash: string;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly historySource: ProductionHistoricalNativeScriptHistorySourceV1;
+  readonly historySource: HistoricalNativeScriptHistorySource;
   readonly retries?: number;
 }): Promise<Buffer> => {
   void retries;
@@ -1039,7 +1017,7 @@ const fetchHistoricalPayloadV1 = async ({
     );
     if (successes.length > 0) {
       successes.forEach((success) =>
-        assertSecurityGradeEvidenceV1(success.provenance),
+        assertSecurityGradeEvidence(success.provenance),
       );
       const first = successes[0]!.payloadEnvelopeCbor;
       if (
@@ -1070,7 +1048,7 @@ const fetchHistoricalPayloadV1 = async ({
  * retained-DA segment that is still available. Bootstrap may walk to genesis,
  * but ordinary derivation never depends on permanent retained DA.
  */
-export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
+export const resolveHistoricalNativeScriptCorpus = async ({
   deploymentFingerprint,
   checkpointStore,
   historySource,
@@ -1079,20 +1057,20 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
   retries,
 }: {
   readonly deploymentFingerprint: string;
-  readonly checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  readonly historySource: ProductionHistoricalNativeScriptHistorySourceV1;
-  readonly currentEvidence: CanonicalBlockEvidenceV1;
+  readonly checkpointStore: HistoricalNativeScriptCheckpointStore;
+  readonly historySource: HistoricalNativeScriptHistorySource;
+  readonly currentEvidence: CanonicalBlockEvidence;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
-}): Promise<ProductionHistoricalNativeScriptCorpusV1> => {
-  assertSecurityGradeEvidenceV1(currentEvidence.provenance.l1);
-  assertSecurityGradeEvidenceV1(currentEvidence.provenance.da);
-  requireProductionHistoricalNativeScriptHistoryAuthorityV1({
+}): Promise<HistoricalNativeScriptCorpus> => {
+  assertSecurityGradeEvidence(currentEvidence.provenance.l1);
+  assertSecurityGradeEvidence(currentEvidence.provenance.da);
+  requireHistoricalNativeScriptHistoryAuthority({
     deploymentFingerprint,
     checkpointStore,
     historySource,
   });
-  const checkpoint = await requireCheckpointV1({
+  const checkpoint = await requireCheckpoint({
     value: await checkpointStore.load({ deploymentFingerprint }),
     deploymentFingerprint,
   });
@@ -1104,7 +1082,7 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
       "historical native-script checkpoint belongs to a different provider roster",
     );
   }
-  const currentPayloadEnvelopeCbor = await fetchHistoricalPayloadV1({
+  const currentPayloadEnvelopeCbor = await fetchHistoricalPayload({
     headerHash: currentEvidence.headerHash,
     sources,
     historySource,
@@ -1130,19 +1108,19 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
     const payloadEnvelopeSha256s = Object.freeze(
       checkpoint!.payloadEnvelopeSha256s.slice(0, storedCurrentIndex + 1),
     );
-    const entries = entriesThroughHeadersV1(
+    const entries = entriesThroughHeaders(
       checkpoint!.entries,
       new Set(headers),
     );
     const newestFirst = [currentEvidence.reconstruction];
     if (currentEvidence.header.prevHeaderHash !== GENESIS_HEADER_HASH) {
-      const payloadEnvelopeCbor = await fetchHistoricalPayloadV1({
+      const payloadEnvelopeCbor = await fetchHistoricalPayload({
         headerHash: currentEvidence.header.prevHeaderHash,
         sources,
         historySource,
         ...(retries === undefined ? {} : { retries }),
       });
-      const predecessor = await reconstructDaPayloadV1({
+      const predecessor = await reconstructDaPayload({
         payloadEnvelopeCbor,
         expectedHeaderHash: currentEvidence.header.prevHeaderHash,
       });
@@ -1155,7 +1133,7 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
     }
     const reconstructions = Object.freeze([...newestFirst].reverse());
     const withoutDigest = {
-      schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_V1,
+      schemaVersion: HISTORICAL_NATIVE_SCRIPT_CORPUS,
       throughHeaderHash: currentEvidence.headerHash,
       headerHashes: headers,
       payloadEnvelopeSha256s,
@@ -1191,13 +1169,13 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
       throw new Error("historical retained-DA header chain contains a cycle");
     }
     seen.add(expectedHeaderHash);
-    const payloadEnvelopeCbor = await fetchHistoricalPayloadV1({
+    const payloadEnvelopeCbor = await fetchHistoricalPayload({
       headerHash: expectedHeaderHash,
       sources,
       historySource,
       ...(retries === undefined ? {} : { retries }),
     });
-    const reconstruction = await reconstructDaPayloadV1({
+    const reconstruction = await reconstructDaPayload({
       payloadEnvelopeCbor,
       expectedHeaderHash,
     });
@@ -1218,7 +1196,7 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
     expectedHeaderHash = reconstruction.header.prevHeaderHash;
   }
   if (checkpoint !== null) {
-    const checkpointReconstruction = await reconstructDaPayloadV1({
+    const checkpointReconstruction = await reconstructDaPayload({
       payloadEnvelopeCbor: Buffer.from(
         checkpoint.throughPayloadEnvelopeCborHex,
         "hex",
@@ -1256,12 +1234,12 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
       (reconstruction) => envelopeShaByHeader.get(reconstruction.headerHash)!,
     ),
   ]);
-  const entries = mergeCorpusEntriesV1(
+  const entries = mergeCorpusEntries(
     checkpoint?.entries ?? [],
     buildCorpusEntries(appended),
   );
   const nextWithoutDigest = {
-    schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CHECKPOINT_V1,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_CHECKPOINT,
     deploymentFingerprint,
     throughHeaderHash: currentEvidence.headerHash,
     throughUtxosRoot: currentEvidence.header.utxosRoot,
@@ -1291,7 +1269,7 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
     );
   }
   const withoutDigest = {
-    schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_V1,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_CORPUS,
     throughHeaderHash: currentEvidence.headerHash,
     headerHashes,
     payloadEnvelopeSha256s,
@@ -1312,9 +1290,9 @@ export const resolveProductionHistoricalNativeScriptCorpusV1 = async ({
   return corpus;
 };
 
-export const requireProductionHistoricalNativeScriptCorpusV1 = (
-  corpus: ProductionHistoricalNativeScriptCorpusV1,
-): AdmittedProductionHistoricalNativeScriptCorpusV1 => {
+export const requireHistoricalNativeScriptCorpus = (
+  corpus: HistoricalNativeScriptCorpus,
+): AdmittedHistoricalNativeScriptCorpus => {
   const internals = admittedCorpusInternals.get(corpus);
   if (internals === undefined) {
     throw new Error(
@@ -1324,12 +1302,12 @@ export const requireProductionHistoricalNativeScriptCorpusV1 = (
   return internals;
 };
 
-export type ProductionHistoricalNativeScriptCorpusPreimageV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE_V1;
+export type HistoricalNativeScriptCorpusPreimage = Readonly<{
+  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE;
   throughHeaderHash: string;
   scriptHash: string;
   scriptBytesHex: string;
-  occurrences: readonly ProductionHistoricalNativeScriptOccurrenceV1[];
+  occurrences: readonly HistoricalNativeScriptOccurrence[];
   providerRosterDigest: string;
   corpusDigest: string;
   checkpointDigest: string;
@@ -1338,11 +1316,8 @@ export type ProductionHistoricalNativeScriptCorpusPreimageV1 = Readonly<{
 
 const admittedCorpusPreimages = new WeakSet<object>();
 
-const corpusPreimageWithoutDigestV1 = (
-  preimage: Omit<
-    ProductionHistoricalNativeScriptCorpusPreimageV1,
-    "preimageDigest"
-  >,
+const corpusPreimageWithoutDigest = (
+  preimage: Omit<HistoricalNativeScriptCorpusPreimage, "preimageDigest">,
 ) => ({
   schemaVersion: preimage.schemaVersion,
   throughHeaderHash: preimage.throughHeaderHash,
@@ -1355,14 +1330,14 @@ const corpusPreimageWithoutDigestV1 = (
 });
 
 /** Opaque occurrence-bearing preimage derived only from an admitted corpus. */
-export const productionHistoricalNativeScriptPreimageFromCorpusV1 = ({
+export const historicalNativeScriptPreimageFromCorpus = ({
   corpus,
   scriptHash,
 }: {
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly corpus: HistoricalNativeScriptCorpus;
   readonly scriptHash: string;
-}): ProductionHistoricalNativeScriptCorpusPreimageV1 | null => {
-  requireProductionHistoricalNativeScriptCorpusV1(corpus);
+}): HistoricalNativeScriptCorpusPreimage | null => {
+  requireHistoricalNativeScriptCorpus(corpus);
   if (!/^[0-9a-f]{56}$/u.test(scriptHash)) {
     throw new Error("historical native-script preimage hash is invalid");
   }
@@ -1378,7 +1353,7 @@ export const productionHistoricalNativeScriptPreimageFromCorpusV1 = ({
   const entry = matches[0]!;
   if (
     entry.occurrences.length === 0 ||
-    missingNativeScriptTxVersionedScriptHashV1(
+    missingNativeScriptTxVersionedScriptHash(
       Buffer.from(entry.scriptBytesHex, "hex"),
     ) !== scriptHash
   ) {
@@ -1387,7 +1362,7 @@ export const productionHistoricalNativeScriptPreimageFromCorpusV1 = ({
     );
   }
   const withoutDigest = Object.freeze({
-    schemaVersion: PRODUCTION_HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE_V1,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_CORPUS_PREIMAGE,
     throughHeaderHash: corpus.throughHeaderHash,
     scriptHash,
     scriptBytesHex: entry.scriptBytesHex,
@@ -1408,14 +1383,14 @@ export const productionHistoricalNativeScriptPreimageFromCorpusV1 = ({
   return preimage;
 };
 
-export const requireProductionHistoricalNativeScriptCorpusPreimageV1 = (
-  preimage: ProductionHistoricalNativeScriptCorpusPreimageV1,
-): ProductionHistoricalNativeScriptCorpusPreimageV1 => {
+export const requireHistoricalNativeScriptCorpusPreimage = (
+  preimage: HistoricalNativeScriptCorpusPreimage,
+): HistoricalNativeScriptCorpusPreimage => {
   if (
     !admittedCorpusPreimages.has(preimage) ||
     preimage.preimageDigest !==
       createHash("sha256")
-        .update(JSON.stringify(corpusPreimageWithoutDigestV1(preimage)))
+        .update(JSON.stringify(corpusPreimageWithoutDigest(preimage)))
         .digest("hex")
   ) {
     throw new Error(
@@ -1425,22 +1400,22 @@ export const requireProductionHistoricalNativeScriptCorpusPreimageV1 = (
   return preimage;
 };
 
-export const historicalNativeScriptBytesFromCorpusV1 = ({
+export const historicalNativeScriptBytesFromCorpus = ({
   corpus,
   scriptHash,
 }: {
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly corpus: HistoricalNativeScriptCorpus;
   readonly scriptHash: string;
 }): Uint8Array | null => {
-  requireProductionHistoricalNativeScriptCorpusV1(corpus);
+  requireHistoricalNativeScriptCorpus(corpus);
   const entry = corpus.entries.find(
     (candidate) => candidate.scriptHash === scriptHash,
   );
   return entry === undefined ? null : Buffer.from(entry.scriptBytesHex, "hex");
 };
 
-const ledgerOutRefKeyV1 = (bytes: Uint8Array): string => {
-  const outRef = decodeMidgardSpendInputItemV1(bytes);
+const ledgerOutRefKey = (bytes: Uint8Array): string => {
+  const outRef = decodeMidgardSpendInputItem(bytes);
   return `${Buffer.from(outRef.txId).toString("hex")}#${outRef.outputIndex.toString()}`;
 };
 
@@ -1449,14 +1424,14 @@ const ledgerOutRefKeyV1 = (bytes: Uint8Array): string => {
  * The predecessor ledger and the native-script hash-to-preimage authority are
  * both retained behind the admitted, contiguous history capability.
  */
-export const detectMissingNativeScriptUtxoFromHistoricalCorpusV1 = async ({
+export const detectMissingNativeScriptUtxoFromHistoricalCorpus = async ({
   evidence,
   corpus,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
-}): Promise<readonly CanonicalViolationDetectionV1[]> => {
-  const history = requireProductionHistoricalNativeScriptCorpusV1(corpus);
+  readonly evidence: CanonicalBlockEvidence;
+  readonly corpus: HistoricalNativeScriptCorpus;
+}): Promise<readonly CanonicalViolationDetection[]> => {
+  const history = requireHistoricalNativeScriptCorpus(corpus);
   if (
     history.currentEvidence !== evidence ||
     corpus.throughHeaderHash !== evidence.headerHash
@@ -1477,33 +1452,31 @@ export const detectMissingNativeScriptUtxoFromHistoricalCorpusV1 = async ({
   }
   const predecessorOutputs = new Map(
     predecessor.utxos.map((entry) => {
-      const material = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: entry.key,
         outputCbor: entry.value,
       });
       return [
-        ledgerOutRefKeyV1(entry.key),
-        decodeMidgardLedgerOutputCommitmentV1(material.descriptorCbor),
+        ledgerOutRefKey(entry.key),
+        decodeMidgardLedgerOutputCommitment(material.descriptorCbor),
       ] as const;
     }),
   );
   const knownNativeScripts = new Set(
     corpus.entries.map((entry) => entry.scriptHash),
   );
-  const detections: CanonicalViolationDetectionV1[] = [];
+  const detections: CanonicalViolationDetection[] = [];
   evidence.transactions.forEach((transaction, transactionIndex) => {
-    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    const native = decodeMidgardNativeTxFullFromCanonicalCbor(
       Buffer.from(transaction.txCbor, "hex"),
     );
     if (native.validity !== "TxIsValid") return;
-    const scriptWitnessItems = decodeMidgardFieldPreimageV1(
+    const scriptWitnessItems = decodeMidgardFieldPreimage(
       native.witnessSet.scriptTxWitsPreimageCbor,
     );
-    decodeMidgardFieldPreimageV1(native.body.spendInputsPreimageCbor).forEach(
+    decodeMidgardFieldPreimage(native.body.spendInputsPreimageCbor).forEach(
       (inputBytes, inputIndex) => {
-        const descriptor = predecessorOutputs.get(
-          ledgerOutRefKeyV1(inputBytes),
-        );
+        const descriptor = predecessorOutputs.get(ledgerOutRefKey(inputBytes));
         if (descriptor === undefined) return;
         const credential = decodeMidgardAddressBytes(
           descriptor.address,
@@ -1512,7 +1485,7 @@ export const detectMissingNativeScriptUtxoFromHistoricalCorpusV1 = async ({
         const scriptHash = credential.hash.toString("hex");
         if (
           !knownNativeScripts.has(scriptHash) ||
-          !missingNativeScriptIsAbsentV1({
+          !missingNativeScriptIsAbsent({
             scriptTxWitsItems: scriptWitnessItems,
             expectedMissingScriptHash: scriptHash,
           })
@@ -1521,11 +1494,11 @@ export const detectMissingNativeScriptUtxoFromHistoricalCorpusV1 = async ({
         }
         detections.push(
           Object.freeze({
-            detectionId: `${MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1}:${transaction.nodeTxId}:${inputIndex.toString()}`,
+            detectionId: `${MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID}:${transaction.nodeTxId}:${inputIndex.toString()}`,
             headerHash: evidence.headerHash,
-            violationId: MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1,
+            violationId: MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
             position: BigInt(transactionIndex),
-            diagnostic: `accepted transaction ${transaction.nodeTxId} spends predecessor native-script output ${ledgerOutRefKeyV1(inputBytes)} without witness ${scriptHash}`,
+            diagnostic: `accepted transaction ${transaction.nodeTxId} spends predecessor native-script output ${ledgerOutRefKey(inputBytes)} without witness ${scriptHash}`,
           }),
         );
       },
@@ -1535,14 +1508,14 @@ export const detectMissingNativeScriptUtxoFromHistoricalCorpusV1 = async ({
 };
 
 /** Complete MIN-ADA-UTXO introduction scan against the authenticated predecessor. */
-export const detectMinAdaUtxoFromHistoricalCorpusV1 = ({
+export const detectMinAdaUtxoFromHistoricalCorpus = ({
   evidence,
   corpus,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
-}): readonly CanonicalViolationDetectionV1[] => {
-  const history = requireProductionHistoricalNativeScriptCorpusV1(corpus);
+  readonly evidence: CanonicalBlockEvidence;
+  readonly corpus: HistoricalNativeScriptCorpus;
+}): readonly CanonicalViolationDetection[] => {
+  const history = requireHistoricalNativeScriptCorpus(corpus);
   if (history.currentEvidence !== evidence) {
     throw new Error(
       "min-ada detector requires the exact admitted current history",
@@ -1565,27 +1538,27 @@ export const detectMinAdaUtxoFromHistoricalCorpusV1 = ({
     evidence.reconstruction.utxos.flatMap((entry, position) => {
       const keyHex = Buffer.from(entry.key).toString("hex");
       if (predecessorKeys.has(keyHex)) return [];
-      const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: entry.key,
         outputCbor: entry.value,
       }).descriptorCbor;
-      const decoded = decodeMidgardLedgerOutputCommitmentV1(descriptor);
+      const decoded = decodeMidgardLedgerOutputCommitment(descriptor);
       if (
-        outputMeetsMinAdaV1(
-          MIDGARD_COINS_PER_UTXO_BYTE_V1,
+        outputMeetsMinAda(
+          MIDGARD_COINS_PER_UTXO_BYTE,
           BigInt(decoded.totalLength),
           decoded.lovelace,
         )
       ) {
         return [];
       }
-      const outRef = decodeMidgardSpendInputItemV1(entry.key);
+      const outRef = decodeMidgardSpendInputItem(entry.key);
       const transactionId = Buffer.from(outRef.txId).toString("hex");
       return [
         Object.freeze({
-          detectionId: `${MIN_ADA_VIOLATION_ID_V1}:utxo:${transactionId}:${outRef.outputIndex.toString()}`,
+          detectionId: `${MIN_ADA_VIOLATION_ID}:utxo:${transactionId}:${outRef.outputIndex.toString()}`,
           headerHash: evidence.headerHash,
-          violationId: MIN_ADA_VIOLATION_ID_V1,
+          violationId: MIN_ADA_VIOLATION_ID,
           position: BigInt(position),
           diagnostic: `post-state UTxO ${transactionId}#${outRef.outputIndex.toString()} was introduced below the exact min-Ada floor`,
         }),

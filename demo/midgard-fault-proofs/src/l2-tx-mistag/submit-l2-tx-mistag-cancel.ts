@@ -26,17 +26,17 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   L2_TX_MISTAG_CATEGORY_LABEL,
-  type L2TxMistagContractsV1,
+  type L2TxMistagContracts,
 } from "./contracts-v1.js";
 import {
-  l2TxMistagStepLabelV1,
+  l2TxMistagStepLabel,
   l2TxMistagSubmitError,
-  requireL2TxMistagReferenceScriptV1,
+  requireL2TxMistagReferenceScript,
 } from "./submit-common-v1.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -61,7 +61,7 @@ export type SubmitL2TxMistagCancelResult = {
 
 const locateStepIndex = (
   threadUtxo: UTxO,
-  contracts: L2TxMistagContractsV1,
+  contracts: L2TxMistagContracts,
 ): 0 | 1 => {
   for (const stepIndex of [0, 1] as const) {
     if (
@@ -86,13 +86,13 @@ export const submitL2TxMistagCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: L2TxMistagContractsV1;
+  readonly contracts: L2TxMistagContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Mandatory reference script for the located step. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -101,8 +101,8 @@ export const submitL2TxMistagCancel = async ({
     label: `${L2_TX_MISTAG_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex(threadUtxo, contracts);
-  const stepLabel = l2TxMistagStepLabelV1(stepIndex);
-  const reference = requireL2TxMistagReferenceScriptV1({
+  const stepLabel = l2TxMistagStepLabel(stepIndex);
+  const reference = requireL2TxMistagReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
@@ -164,7 +164,7 @@ export const submitL2TxMistagCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,

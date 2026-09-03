@@ -1,7 +1,7 @@
 import {
-  type MidgardFieldCarriageV1,
-  type MidgardFieldPreimageCertificateV1,
-  type ResolvedCarriageReferenceInputV1,
+  type MidgardFieldCarriage,
+  type MidgardFieldPreimageCertificate,
+  type ResolvedCarriageReferenceInput,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { compareOutRefs, type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -49,10 +49,10 @@ import { normalizeOgmiosHttpUrl } from "./local-ledger-slot.js";
  * the package boundary above is the point, and the ruling makes the duplication
  * the correct outcome rather than a shortcut. The mirrored pieces are named at
  * their sites so a future consolidation is findable — `decodeMintRedeemer`
- * (watcher) ↔ {@link txOrderMintCarriageVectorV1} here, and the watcher's
+ * (watcher) ↔ {@link txOrderMintCarriageVector} here, and the watcher's
  * `forcedOrderMaterialFieldCount` ↔ the fiber's own
  * `forcedOrderMaterialFieldCountV1`. The redeemer's *schema* is not duplicated: it
- * is `@al-ft/midgard-sdk`'s `TxOrderMintRedeemerV1`, the shared source of truth
+ * is `@al-ft/midgard-sdk`'s `TxOrderMintRedeemer`, the shared source of truth
  * both packages decode against.
  *
  * **This module supplies bytes; it authenticates nothing.** Everything it
@@ -78,14 +78,14 @@ import { normalizeOgmiosHttpUrl } from "./local-ledger-slot.js";
  * and takes the datum bytes off the match itself, in one request per output. The
  * floor is a hard one *because* an older Kupo does not reject an unknown query
  * flag — it silently ignores it and answers with a match that has no `datum`
- * field at all. {@link fetchKupoMatchV1} refuses that answer by name rather than
+ * field at all. {@link fetchKupoMatch} refuses that answer by name rather than
  * reading it as "this output carries no datum", so a mis-deployed index fails the
  * read loudly on its first request instead of quietly emptying carriage indices.
  * `l1-services/docker-compose.yml` pins v2.11.0.
  */
 
 /** A point on the chain, spelled the way both Ogmios and Kupo spell it. */
-export type L1ChainPointV1 = {
+export type L1ChainPoint = {
   readonly slot: number;
   readonly headerHash: string;
 };
@@ -99,13 +99,13 @@ export type L1ChainPointV1 = {
  * carriage UTxOs the `RawUtxo`/`Certified` entries index into, in the order the
  * ledger presented them to the mint.
  */
-export type TxOrderMaterialCarriageV1 = {
-  readonly carriage: readonly MidgardFieldCarriageV1[];
-  readonly referenceInputs?: readonly ResolvedCarriageReferenceInputV1[];
+export type TxOrderMaterialCarriage = {
+  readonly carriage: readonly MidgardFieldCarriage[];
+  readonly referenceInputs?: readonly ResolvedCarriageReferenceInput[];
 };
 
 /** One transaction, as much of it as sourcing a §8 carriage needs. */
-export type ObservedL1TransactionV1 = {
+export type ObservedL1Transaction = {
   readonly txHash: string;
   /** Spending inputs in the ledger order presented by Ogmios. */
   readonly spentInputs?: readonly OutRefLike[];
@@ -114,16 +114,16 @@ export type ObservedL1TransactionV1 = {
   /** Minting policy ids, ascending — the domain of a mint redeemer's index. */
   readonly mintPolicyIds: readonly string[];
   /** Redeemer payloads by `(purpose, index)`, base16 Plutus data. */
-  readonly redeemers: readonly ObservedL1RedeemerV1[];
+  readonly redeemers: readonly ObservedL1Redeemer[];
 };
 
 /** The canonical block which carried an observed transaction. */
-export type ObservedL1TransactionAtPointV1 = ObservedL1TransactionV1 & {
-  readonly blockPoint: L1ChainPointV1 & { readonly blockNo: number };
+export type ObservedL1TransactionAtPoint = ObservedL1Transaction & {
+  readonly blockPoint: L1ChainPoint & { readonly blockNo: number };
   readonly transactionIndex: number;
 };
 
-export type ObservedL1RedeemerV1 = {
+export type ObservedL1Redeemer = {
   readonly purpose: string;
   readonly index: number;
   readonly redeemer: string;
@@ -152,7 +152,7 @@ export type WebSocketFactory = (url: string) => WebSocketLike;
  * order, which policy, which endpoints — comes from the node's configuration and
  * the visible UTxO, never from here.
  */
-export type TxOrderCarriageReadOptionsV1 = {
+export type TxOrderCarriageReadOptions = {
   readonly fetchImpl?: FetchLike;
   readonly webSocketFactory?: WebSocketFactory;
   readonly timeoutMs?: number;
@@ -168,10 +168,10 @@ export type TxOrderCarriageReadOptionsV1 = {
  * blocks back. The bound exists so that a deep or pruned checkpoint turns into a
  * named refusal instead of an unbounded scan.
  */
-export const DEFAULT_TX_ORDER_CARRIAGE_BLOCK_SCAN_LIMIT_V1 = 1_000;
+export const DEFAULT_TX_ORDER_CARRIAGE_BLOCK_SCAN_LIMIT = 1_000;
 
 /** Per-request timeout for both surfaces. */
-export const DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1 = 20_000;
+export const DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS = 20_000;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -238,7 +238,7 @@ const exactHeaderHash = (value: unknown, label: string): string => {
   return value;
 };
 
-const exactPoint = (value: unknown, label: string): L1ChainPointV1 => {
+const exactPoint = (value: unknown, label: string): L1ChainPoint => {
   const record = value as { slot_no?: unknown; header_hash?: unknown };
   return {
     slot: exactSlot(record.slot_no, `${label}.slot_no`),
@@ -255,18 +255,18 @@ const exactPoint = (value: unknown, label: string): L1ChainPointV1 => {
  * that §8.7 lets its creator reclaim at any time, and history is what §8.11 says
  * the material is.
  */
-export const fetchKupoCreationPointV1 = async ({
+export const fetchKupoCreationPoint = async ({
   kupoUrl,
   outRef,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly outRef: OutRefLike;
   readonly fetchImpl?: FetchLike;
   readonly timeoutMs?: number;
-}): Promise<L1ChainPointV1> => {
-  const match = await fetchKupoMatchV1({
+}): Promise<L1ChainPoint> => {
+  const match = await fetchKupoMatch({
     kupoUrl,
     outRef,
     fetchImpl,
@@ -295,7 +295,7 @@ export const fetchKupoCreationPointV1 = async ({
  * the ledger put in the output, `hash` for one it only referenced — and is "only
  * present when `datum_hash` is not `null`".
  */
-type KupoMatchV1 = {
+type KupoMatch = {
   readonly transaction_id?: unknown;
   readonly output_index?: unknown;
   readonly created_at?: unknown;
@@ -305,8 +305,8 @@ type KupoMatchV1 = {
   readonly datum?: unknown;
 };
 
-export type KupoSpendV1 = Readonly<{
-  point: L1ChainPointV1;
+export type KupoSpend = Readonly<{
+  point: L1ChainPoint;
   transactionId: string;
   inputIndex: number;
   redeemer: string | null;
@@ -317,18 +317,18 @@ export type KupoSpendV1 = Readonly<{
  * result means the output is currently unspent on Kupo's selected chain; a
  * malformed partial spend is refused rather than treated as absence.
  */
-export const fetchKupoSpendV1 = async ({
+export const fetchKupoSpend = async ({
   kupoUrl,
   outRef,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly outRef: OutRefLike;
   readonly fetchImpl?: FetchLike;
   readonly timeoutMs?: number;
-}): Promise<KupoSpendV1 | null> => {
-  const match = await fetchKupoMatchV1({
+}): Promise<KupoSpend | null> => {
+  const match = await fetchKupoMatch({
     kupoUrl,
     outRef,
     fetchImpl,
@@ -369,7 +369,7 @@ export const fetchKupoSpendV1 = async ({
   });
 };
 
-const fetchKupoMatchV1 = async ({
+const fetchKupoMatch = async ({
   kupoUrl,
   outRef,
   fetchImpl,
@@ -379,7 +379,7 @@ const fetchKupoMatchV1 = async ({
   readonly outRef: OutRefLike;
   readonly fetchImpl: FetchLike;
   readonly timeoutMs: number;
-}): Promise<KupoMatchV1> => {
+}): Promise<KupoMatch> => {
   const url = joinUrl(
     normalizeKupoHttpUrl(kupoUrl),
     `/matches/${outRef.outputIndex.toString()}@${outRef.txHash}?resolve_hashes`,
@@ -388,7 +388,7 @@ const fetchKupoMatchV1 = async ({
   if (!Array.isArray(body)) {
     throw new Error(`Kupo returned no match array for ${url}`);
   }
-  const matches = (body as readonly KupoMatchV1[]).filter(
+  const matches = (body as readonly KupoMatch[]).filter(
     (match) =>
       match.transaction_id === outRef.txHash &&
       match.output_index === outRef.outputIndex,
@@ -425,17 +425,17 @@ const fetchKupoMatchV1 = async ({
  * answers with the most recent checkpoint before a slot, which is exactly the
  * ancestor this needs.
  */
-export const fetchKupoAncestorPointV1 = async ({
+export const fetchKupoAncestorPoint = async ({
   kupoUrl,
   slot,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly slot: number;
   readonly fetchImpl?: FetchLike;
   readonly timeoutMs?: number;
-}): Promise<L1ChainPointV1> => {
+}): Promise<L1ChainPoint> => {
   const exact = exactSlot(slot, "ancestor lookup slot");
   if (exact === 0) {
     throw new Error("the genesis slot has no ancestor checkpoint");
@@ -454,7 +454,7 @@ export const fetchKupoAncestorPointV1 = async ({
   return exactPoint(body, `kupo.checkpoint(${(exact - 1).toString()})`);
 };
 
-type OgmiosSessionV1 = {
+type OgmiosSession = {
   readonly request: (
     method: string,
     params: Record<string, unknown>,
@@ -465,7 +465,7 @@ type OgmiosSessionV1 = {
 const defaultWebSocketFactory: WebSocketFactory = (url) =>
   new WebSocket(url) as unknown as WebSocketLike;
 
-const openOgmiosSessionV1 = async ({
+const openOgmiosSession = async ({
   url,
   timeoutMs,
   webSocketFactory,
@@ -473,7 +473,7 @@ const openOgmiosSessionV1 = async ({
   readonly url: string;
   readonly timeoutMs: number;
   readonly webSocketFactory: WebSocketFactory;
-}): Promise<OgmiosSessionV1> => {
+}): Promise<OgmiosSession> => {
   const socket = webSocketFactory(url);
   const pending = new Map<
     number,
@@ -621,10 +621,10 @@ const exactOutRef = (value: unknown, label: string): OutRefLike => {
  * there. (`midgard-watcher` takes the other route — its `l1-adapter.ts`
  * re-derives everything from raw bytes — because it is given the bytes.)
  */
-const parseObservedTransactionV1 = (
+const parseObservedTransaction = (
   value: unknown,
   label: string,
-): ObservedL1TransactionV1 => {
+): ObservedL1Transaction => {
   const record = value as {
     id?: unknown;
     inputs?: unknown;
@@ -725,24 +725,24 @@ const parseObservedTransactionV1 = (
  * this read only supplies bytes that must hash to that order's own committed
  * field hashes.
  */
-export const readOgmiosBlockTransactionV1 = async ({
+export const readOgmiosBlockTransaction = async ({
   ogmiosUrl,
   intersection,
   blockPoint,
   txHash,
   webSocketFactory = defaultWebSocketFactory,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
-  blockScanLimit = DEFAULT_TX_ORDER_CARRIAGE_BLOCK_SCAN_LIMIT_V1,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  blockScanLimit = DEFAULT_TX_ORDER_CARRIAGE_BLOCK_SCAN_LIMIT,
 }: {
   readonly ogmiosUrl: string;
-  readonly intersection: L1ChainPointV1;
-  readonly blockPoint: L1ChainPointV1;
+  readonly intersection: L1ChainPoint;
+  readonly blockPoint: L1ChainPoint;
   readonly txHash: string;
   readonly webSocketFactory?: WebSocketFactory;
   readonly timeoutMs?: number;
   readonly blockScanLimit?: number;
-}): Promise<ObservedL1TransactionAtPointV1> => {
-  const session = await openOgmiosSessionV1({
+}): Promise<ObservedL1TransactionAtPoint> => {
+  const session = await openOgmiosSession({
     url: normalizeOgmiosWebSocketUrl(ogmiosUrl),
     timeoutMs,
     webSocketFactory,
@@ -808,7 +808,7 @@ export const readOgmiosBlockTransactionV1 = async ({
       }
       const blockNo = exactSlot(block.height, "ogmios.block.height");
       return {
-        ...parseObservedTransactionV1(
+        ...parseObservedTransaction(
           transactions[index],
           `ogmios.block(${blockPoint.headerHash}).transactions[${index.toString()}]`,
         ),
@@ -845,8 +845,8 @@ export const readOgmiosBlockTransactionV1 = async ({
  * transaction, and a mint under the policy with no redeemer for it could not have
  * run the tx-order validator at all.
  */
-export const txOrderMintRedeemerV1 = (
-  transaction: ObservedL1TransactionV1,
+export const txOrderMintRedeemer = (
+  transaction: ObservedL1Transaction,
   txOrderPolicyId: string,
 ): string => {
   const policyIndex = transaction.mintPolicyIds.indexOf(txOrderPolicyId);
@@ -874,18 +874,18 @@ export const txOrderMintRedeemerV1 = (
  * Mirrors `midgard-watcher`'s `decodeMintRedeemer` for the `forced_order` case:
  * the tx-order policy does not take `user_events.MintRedeemer` bare — #594 gave
  * it its own `MintRedeemer`, wrapping that enum beside the §8 vector — so the
- * decode is against `TxOrderMintRedeemerV1` and a bare-enum redeemer at this
+ * decode is against `TxOrderMintRedeemer` and a bare-enum redeemer at this
  * policy is a failure rather than an empty carriage. The schema itself is the
  * SDK's, so the two packages cannot drift apart on the wire format.
  */
-export const txOrderMintCarriageVectorV1 = (
+export const txOrderMintCarriageVector = (
   redeemerCbor: string,
-): readonly MidgardFieldCarriageV1[] => {
+): readonly MidgardFieldCarriage[] => {
   const decoded = Data.from(
     redeemerCbor,
-    SDK.TxOrderMintRedeemerV1,
-  ) as SDK.TxOrderMintRedeemerV1;
-  return decoded.material_carriage.map((entry): MidgardFieldCarriageV1 => {
+    SDK.TxOrderMintRedeemer,
+  ) as SDK.TxOrderMintRedeemer;
+  return decoded.material_carriage.map((entry): MidgardFieldCarriage => {
     if ("Inline" in entry) {
       return {
         carriage: "Inline",
@@ -928,14 +928,14 @@ const exactRefInputIndex = (value: bigint): number => {
  * empty entry, which keeps every index in the vector pointing at the same input
  * the mint saw while giving the door nothing to open there.
  */
-export const resolveCarriageReferenceInputV1 = (
+export const resolveCarriageReferenceInput = (
   datumCbor: string | null,
-): ResolvedCarriageReferenceInputV1 => {
+): ResolvedCarriageReferenceInput => {
   if (datumCbor === null) {
     return {};
   }
   try {
-    return { inlineDatumBytes: SDK.fieldPreimagePublicationBytesV1(datumCbor) };
+    return { inlineDatumBytes: SDK.fieldPreimagePublicationBytes(datumCbor) };
   } catch {
     // Not raw carriage. The one other thing a carriage index can name is a
     // manifest, so that is what is tried next.
@@ -943,8 +943,8 @@ export const resolveCarriageReferenceInputV1 = (
   try {
     const certificate = Data.from(
       datumCbor,
-      SDK.FieldPreimageCertificateV1,
-    ) as SDK.FieldPreimageCertificateV1;
+      SDK.FieldPreimageCertificate,
+    ) as SDK.FieldPreimageCertificate;
     return {
       certificate: {
         owner: Buffer.from(certificate.owner, "hex"),
@@ -955,7 +955,7 @@ export const resolveCarriageReferenceInputV1 = (
         chunkDigests: certificate.chunk_digests.map((digest) =>
           Buffer.from(digest, "hex"),
         ),
-      } satisfies MidgardFieldPreimageCertificateV1,
+      } satisfies MidgardFieldPreimageCertificate,
     };
   } catch {
     return {};
@@ -973,21 +973,21 @@ export const resolveCarriageReferenceInputV1 = (
  * this reason). Sorting here rather than taking the observation's order means a
  * provider that enumerates a set differently cannot shift an index.
  */
-export const resolveCarriageReferenceInputsV1 = async ({
+export const resolveCarriageReferenceInputs = async ({
   kupoUrl,
   referenceInputs,
   fetchImpl = fetch,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
 }: {
   readonly kupoUrl: string;
   readonly referenceInputs: readonly OutRefLike[];
   readonly fetchImpl?: FetchLike;
   readonly timeoutMs?: number;
-}): Promise<readonly ResolvedCarriageReferenceInputV1[]> => {
+}): Promise<readonly ResolvedCarriageReferenceInput[]> => {
   const ordered = [...referenceInputs].sort(compareOutRefs);
-  const resolved: ResolvedCarriageReferenceInputV1[] = [];
+  const resolved: ResolvedCarriageReferenceInput[] = [];
   for (const outRef of ordered) {
-    const match = await fetchKupoMatchV1({
+    const match = await fetchKupoMatch({
       kupoUrl,
       outRef,
       fetchImpl,
@@ -999,7 +999,7 @@ export const resolveCarriageReferenceInputsV1 = async ({
     // nothing rather than to bytes the ledger never put in the output. An output
     // with no datum at all omits the field entirely, which lands here too.
     if (match.datum_type !== "inline" || typeof match.datum_hash !== "string") {
-      resolved.push(resolveCarriageReferenceInputV1(null));
+      resolved.push(resolveCarriageReferenceInput(null));
       continue;
     }
     // The output has told us it carries an inline datum, so anything other than
@@ -1014,7 +1014,7 @@ export const resolveCarriageReferenceInputsV1 = async ({
           `${outRef.txHash}#${outRef.outputIndex.toString()}`,
       );
     }
-    resolved.push(resolveCarriageReferenceInputV1(match.datum));
+    resolved.push(resolveCarriageReferenceInput(match.datum));
   }
   return Object.freeze(resolved);
 };
@@ -1023,15 +1023,15 @@ export const resolveCarriageReferenceInputsV1 = async ({
  * The whole read: from the order's own UTxO to the §8 carriage its mint
  * authenticated.
  */
-export const observeTxOrderMaterialCarriageV1 = async ({
+export const observeTxOrderMaterialCarriage = async ({
   ogmiosUrl,
   kupoUrl,
   txOrderOutRef,
   txOrderPolicyId,
   fetchImpl = fetch,
   webSocketFactory = defaultWebSocketFactory,
-  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
-  blockScanLimit = DEFAULT_TX_ORDER_CARRIAGE_BLOCK_SCAN_LIMIT_V1,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS,
+  blockScanLimit = DEFAULT_TX_ORDER_CARRIAGE_BLOCK_SCAN_LIMIT,
 }: {
   readonly ogmiosUrl: string;
   readonly kupoUrl: string;
@@ -1041,20 +1041,20 @@ export const observeTxOrderMaterialCarriageV1 = async ({
   readonly webSocketFactory?: WebSocketFactory;
   readonly timeoutMs?: number;
   readonly blockScanLimit?: number;
-}): Promise<TxOrderMaterialCarriageV1> => {
-  const createdAt = await fetchKupoCreationPointV1({
+}): Promise<TxOrderMaterialCarriage> => {
+  const createdAt = await fetchKupoCreationPoint({
     kupoUrl,
     outRef: txOrderOutRef,
     fetchImpl,
     timeoutMs,
   });
-  const ancestor = await fetchKupoAncestorPointV1({
+  const ancestor = await fetchKupoAncestorPoint({
     kupoUrl,
     slot: createdAt.slot,
     fetchImpl,
     timeoutMs,
   });
-  const transaction = await readOgmiosBlockTransactionV1({
+  const transaction = await readOgmiosBlockTransaction({
     ogmiosUrl,
     intersection: ancestor,
     blockPoint: createdAt,
@@ -1063,14 +1063,14 @@ export const observeTxOrderMaterialCarriageV1 = async ({
     timeoutMs,
     blockScanLimit,
   });
-  const carriage = txOrderMintCarriageVectorV1(
-    txOrderMintRedeemerV1(transaction, txOrderPolicyId),
+  const carriage = txOrderMintCarriageVector(
+    txOrderMintRedeemer(transaction, txOrderPolicyId),
   );
   // Tier 1 names no reference input, so an all-inline order needs no Kupo
   // resolution at all and does not pay for one.
   const referenceInputs = carriage.every((entry) => entry.carriage === "Inline")
     ? []
-    : await resolveCarriageReferenceInputsV1({
+    : await resolveCarriageReferenceInputs({
         kupoUrl,
         referenceInputs: transaction.referenceInputs,
         fetchImpl,
@@ -1095,9 +1095,9 @@ export const observeTxOrderMaterialCarriageProgram = (options: {
   readonly webSocketFactory?: WebSocketFactory;
   readonly timeoutMs?: number;
   readonly blockScanLimit?: number;
-}): Effect.Effect<TxOrderMaterialCarriageV1, SDK.LucidError> =>
+}): Effect.Effect<TxOrderMaterialCarriage, SDK.LucidError> =>
   Effect.tryPromise({
-    try: () => observeTxOrderMaterialCarriageV1(options),
+    try: () => observeTxOrderMaterialCarriage(options),
     catch: (cause) =>
       new SDK.LucidError({
         message:

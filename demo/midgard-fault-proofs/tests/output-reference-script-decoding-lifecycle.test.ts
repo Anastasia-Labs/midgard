@@ -1,53 +1,53 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  DA_PAYLOAD_V1_VERSION,
+  DA_PAYLOAD_VERSION,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
+  encodeDaPayload,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
-  hashBlockHeaderV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
+  hashBlockHeader,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
   TransitionStepSchema,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1,
-  type OutputReferenceScriptDecodingContractsV1,
-  OutputReferenceScriptResultClassesV1,
-  prepareOutputReferenceScriptDecodingEvidenceV1,
-  submitOutputReferenceScriptDecodingCancelV1,
-  submitOutputReferenceScriptDecodingStep01AcceptedV1,
-  submitOutputReferenceScriptDecodingStep01ForcedV1,
-  submitOutputReferenceScriptDecodingStep02V1,
-  submitOutputReferenceScriptDecodingStep03V1,
-  submitOutputReferenceScriptDecodingStep04V1,
-  submitOutputReferenceScriptDecodingStep05V1,
-  submitOutputReferenceScriptDecodingStep06V1,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
+  type OutputReferenceScriptDecodingContracts,
+  OutputReferenceScriptResultClasses,
+  prepareOutputReferenceScriptDecodingEvidence,
+  submitOutputReferenceScriptDecodingCancel,
+  submitOutputReferenceScriptDecodingStep01Accepted,
+  submitOutputReferenceScriptDecodingStep01Forced,
+  submitOutputReferenceScriptDecodingStep02,
+  submitOutputReferenceScriptDecodingStep03,
+  submitOutputReferenceScriptDecodingStep04,
+  submitOutputReferenceScriptDecodingStep05,
+  submitOutputReferenceScriptDecodingStep06,
 } from "../src/output-reference-script-decoding/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
@@ -55,19 +55,19 @@ import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
-import { reconstructDaPayloadV1 } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { applyCompiledScript } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
 import {
   outputReferenceCbor,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
   sortedDaEntries,
   transitionTraceRawEntry,
 } from "./support/submit-init-emulator-fixtures.js";
@@ -94,7 +94,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
     ),
     "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
   );
-  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: Buffer.from(finalUtxo[0], "hex"),
     outputCbor: Buffer.from(finalUtxo[1], "hex"),
   }).descriptorCbor;
@@ -114,14 +114,14 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
       },
     }),
   });
-  const source = deriveMidgardNativeTxProofSourceV1(
-    adjudicateMidgardNativeTxFullV1Validity(nativeTx, "TxIsInvalid"),
+  const source = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
   );
   const rejectionReason = {
     OutputReferenceScriptMalformed: { output_index: 0n },
   } as const;
   const transaction = {
-    tx_id: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
+    tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
@@ -135,7 +135,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
       key: txOrderId,
       keySchema: OutputReference as never,
       value: transaction,
-      valueSchema: ForcedInclusionTxV1Schema,
+      valueSchema: ForcedInclusionTxSchema,
     }),
   ];
   const transitionEntries = [
@@ -175,7 +175,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
         verdict: "Rejected",
         rejection_code_hash: h32("c4"),
       },
-      valueSchema: ValidationTraceDescriptorV1Schema,
+      valueSchema: ValidationTraceDescriptorSchema,
     }),
   ];
   const counted = async (
@@ -214,10 +214,10 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
     validationTracesRoot: validationRoot.root,
     ...counts,
   };
-  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
-  const payloadEnvelopeCbor = await wrapDaPayloadV1(
-    encodeDaPayloadV1({
-      version: DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const payloadEnvelopeCbor = await wrapDaPayload(
+    encodeDaPayload({
+      version: DA_PAYLOAD_VERSION,
       block_body: {
         header_hash: headerHash,
         header,
@@ -232,7 +232,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
         forced_transaction_preimages: sortedDaEntries([
           transitionTraceRawEntry(
             forcedEntries[0]![0],
-            encodeMidgardNativeTxCanonicalV1(nativeTx).toString("hex"),
+            encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
           ),
         ]),
         cek_program_material: [],
@@ -245,7 +245,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
   );
   return {
     header,
-    reconstruction: await reconstructDaPayloadV1({
+    reconstruction: await reconstructDaPayload({
       payloadEnvelopeCbor,
       expectedHeaderHash: headerHash,
       committedHeader: header,
@@ -259,7 +259,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
 
 describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
   it("runs maximum accepted output through resume and permanent proof mint", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -267,7 +267,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1;
+    const titles = OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES;
     const step06 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles[5], [
         harness.contracts.fraudProof.policyId,
@@ -316,12 +316,12 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       step05,
       step06,
     ] as const;
-    const contracts: OutputReferenceScriptDecodingContractsV1 = {
+    const contracts: OutputReferenceScriptDecodingContracts = {
       steps: validators.map((step, index) => ({
         ...step,
         blueprintTitle: titles[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as OutputReferenceScriptDecodingContractsV1["steps"],
+      })) as unknown as OutputReferenceScriptDecodingContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -335,7 +335,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         outputReferenceScriptDecoding: {
-          categoryId: OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1,
+          categoryId: OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -366,8 +366,8 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       fee: 7n,
       outputCbors: [output],
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -387,17 +387,17 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
       catalogue,
       fixture: { transactionsRoot, l2TransactionCount: 1n },
     });
-    const evidence = prepareOutputReferenceScriptDecodingEvidenceV1({
-      subject: acceptedVerdictSubjectV1(nativeTxId),
+    const evidence = prepareOutputReferenceScriptDecodingEvidence({
+      subject: acceptedVerdictSubject(nativeTxId),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(nativeTx),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
     });
     const references: UTxO[] = [];
     for (const [index, step] of validators.entries())
@@ -443,7 +443,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const s1 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep01AcceptedV1({
+      submitOutputReferenceScriptDecodingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -461,11 +461,11 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
-    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompactV1(
-      deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompact(
+      deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
     ).toString("hex");
     const s2 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep02V1({
+      submitOutputReferenceScriptDecodingStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -483,7 +483,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const scans = [];
     for (;;) {
       const scan = await captureEmulatorSubmission(harness.emulator, () =>
-        submitOutputReferenceScriptDecodingStep03V1({
+        submitOutputReferenceScriptDecodingStep03({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -498,7 +498,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       if (scan.result.terminal) break;
     }
     const s4 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep04V1({
+      submitOutputReferenceScriptDecodingStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -512,7 +512,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     const s5 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep05V1({
+      submitOutputReferenceScriptDecodingStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -524,7 +524,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     );
     expect(s5.result.closed).toBe(true);
     const s6 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep06V1({
+      submitOutputReferenceScriptDecodingStep06({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -570,28 +570,27 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         },
       ]);
       if (branchThread === undefined) throw new Error("branch thread absent");
-      const branch01 =
-        await submitOutputReferenceScriptDecodingStep01AcceptedV1({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts,
-          signer: harness.proverSigner,
-          finding: evidence,
-          threadUtxo: branchThread,
-          threadToken: {
-            unit: branchInit.computationThreadUnit,
-            fraudulentHeaderHash: branchInit.fraudulentHeaderHash,
-          },
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion,
-          referenceScriptUtxo: references[0]!,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        });
+      const branch01 = await submitOutputReferenceScriptDecodingStep01Accepted({
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network,
+        contracts,
+        signer: harness.proverSigner,
+        finding: evidence,
+        threadUtxo: branchThread,
+        threadToken: {
+          unit: branchInit.computationThreadUnit,
+          fraudulentHeaderHash: branchInit.fraudulentHeaderHash,
+        },
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion,
+        referenceScriptUtxo: references[0]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      });
       return branch01.nextThreadOutRef;
     };
     const startThreadAtOutputScan = async () => {
-      const branch02 = await submitOutputReferenceScriptDecodingStep02V1({
+      const branch02 = await submitOutputReferenceScriptDecodingStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -609,7 +608,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
 
     const cancelStep01Init = await startThreadAtStep01();
     const cancelStep01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingCancelV1({
+      submitOutputReferenceScriptDecodingCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -624,7 +623,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const cancelStep02 = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        await submitOutputReferenceScriptDecodingCancelV1({
+        await submitOutputReferenceScriptDecodingCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -639,7 +638,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const cancelOutputScan = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        await submitOutputReferenceScriptDecodingCancelV1({
+        await submitOutputReferenceScriptDecodingCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -654,7 +653,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const referenceBindStart = await startThreadAtOutputScan();
     let referenceBindThread = referenceBindStart.nextThreadOutRef;
     for (;;) {
-      const scan = await submitOutputReferenceScriptDecodingStep03V1({
+      const scan = await submitOutputReferenceScriptDecodingStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -669,7 +668,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const cancelReferenceBind = await captureEmulatorSubmission(
       harness.emulator,
       () =>
-        submitOutputReferenceScriptDecodingCancelV1({
+        submitOutputReferenceScriptDecodingCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -684,7 +683,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const step05Start = await startThreadAtOutputScan();
     let step05Thread = step05Start.nextThreadOutRef;
     for (;;) {
-      const scan = await submitOutputReferenceScriptDecodingStep03V1({
+      const scan = await submitOutputReferenceScriptDecodingStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -697,7 +696,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       if (scan.terminal) break;
     }
     step05Thread = (
-      await submitOutputReferenceScriptDecodingStep04V1({
+      await submitOutputReferenceScriptDecodingStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -711,7 +710,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       })
     ).nextThreadOutRef;
     const cancelStep05 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingCancelV1({
+      submitOutputReferenceScriptDecodingCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -813,7 +812,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
   }, 600_000);
 
   it("runs a decodable forced wrongful rejection through the real chain", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -821,7 +820,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1;
+    const titles = OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES;
     const step06 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles[5], [
         harness.contracts.fraudProof.policyId,
@@ -870,12 +869,12 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       step05,
       step06,
     ] as const;
-    const contracts: OutputReferenceScriptDecodingContractsV1 = {
+    const contracts: OutputReferenceScriptDecodingContracts = {
       steps: validators.map((step, index) => ({
         ...step,
         blueprintTitle: titles[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as OutputReferenceScriptDecodingContractsV1["steps"],
+      })) as unknown as OutputReferenceScriptDecodingContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -889,7 +888,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         outputReferenceScriptDecoding: {
-          categoryId: OUTPUT_REFERENCE_SCRIPT_DECODING_ID_V1,
+          categoryId: OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -939,17 +938,17 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       eventKey: forced.eventKey,
     });
     expect(() =>
-      prepareOutputReferenceScriptDecodingEvidenceV1({
-        subject: acceptedVerdictSubjectV1(forced.transaction.tx_id),
+      prepareOutputReferenceScriptDecodingEvidence({
+        subject: acceptedVerdictSubject(forced.transaction.tx_id),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(
           forced.nativeTx,
         ),
       }),
     ).toThrow(/agrees with operator verdict/u);
     expect(() =>
-      prepareOutputReferenceScriptDecodingEvidenceV1({
-        subject: forcedVerdictSubjectV1({
+      prepareOutputReferenceScriptDecodingEvidence({
+        subject: forcedVerdictSubject({
           transactionId: forced.transaction.tx_id,
           sourceKey: membership.key,
           rejectionReason: {
@@ -957,37 +956,35 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
           },
         }),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(
           forced.nativeTx,
         ),
       }),
     ).toThrow(/coordinate differs/u);
     expect(() =>
-      prepareOutputReferenceScriptDecodingEvidenceV1({
-        subject: forcedVerdictSubjectV1({
+      prepareOutputReferenceScriptDecodingEvidence({
+        subject: forcedVerdictSubject({
           transactionId: "ff".repeat(32),
           sourceKey: membership.key,
           rejectionReason: forced.rejectionReason,
         }),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(
           forced.nativeTx,
         ),
       }),
     ).toThrow(/identity was substituted/u);
-    const evidence = prepareOutputReferenceScriptDecodingEvidenceV1({
-      subject: forcedVerdictSubjectV1({
+    const evidence = prepareOutputReferenceScriptDecodingEvidence({
+      subject: forcedVerdictSubject({
         transactionId: forced.transaction.tx_id,
         sourceKey: membership.key,
         rejectionReason: forced.rejectionReason,
       }),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(
-        forced.nativeTx,
-      ),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(forced.nativeTx),
     });
     expect(evidence.resultClass).toBe(
-      OutputReferenceScriptResultClassesV1.NoFault,
+      OutputReferenceScriptResultClasses.NoFault,
     );
     const init = await captureEmulatorSubmission(harness.emulator, () =>
       submitCommittedFieldShapeInit({
@@ -1008,7 +1005,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep01ForcedV1({
+      submitOutputReferenceScriptDecodingStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -1020,7 +1017,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       }),
     );
     const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep02V1({
+      submitOutputReferenceScriptDecodingStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -1038,7 +1035,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     const scans = [];
     for (;;) {
       const scan = await captureEmulatorSubmission(harness.emulator, () =>
-        submitOutputReferenceScriptDecodingStep03V1({
+        submitOutputReferenceScriptDecodingStep03({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -1053,7 +1050,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
       if (scan.result.terminal) break;
     }
     const step04Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep04V1({
+      submitOutputReferenceScriptDecodingStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -1068,7 +1065,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     );
     threadOutRef = step04Result.result.nextThreadOutRef;
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep05V1({
+      submitOutputReferenceScriptDecodingStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -1080,7 +1077,7 @@ describe("outputReferenceScriptDecoding local-catalogue lifecycle", () => {
     );
     expect(step05Result.result.closed).toBe(true);
     const result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitOutputReferenceScriptDecodingStep06V1({
+      submitOutputReferenceScriptDecodingStep06({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

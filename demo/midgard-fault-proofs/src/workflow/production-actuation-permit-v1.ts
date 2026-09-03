@@ -1,15 +1,15 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import type { FraudProofWorkflowJournalStoreV1 } from "./journal-v1.js";
+import type { FraudProofWorkflowJournalStore } from "./journal-v1.js";
 import {
-  type ProductionHeaderFaultDecisionV1,
-  requireRunnableProductionHeaderFaultV1,
+  type HeaderFaultDecision,
+  requireRunnableHeaderFault,
 } from "./production-header-classifier-v1.js";
 
-export const PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1 =
+export const WORKFLOW_ACTUATION_PERMIT =
   "midgard-production-workflow-actuation-permit-v1" as const;
 
-export type ProductionWorkflowActuationCheckpointV1 =
+export type WorkflowActuationCheckpoint =
   | "runner_start"
   | "workflow_resume"
   | "before_observe"
@@ -22,16 +22,16 @@ export type ProductionWorkflowActuationCheckpointV1 =
  * Opaque, live authority to actuate one classified fault under one rollback
  * generation. Structural lookalikes are rejected by module-private admission.
  */
-export interface ProductionWorkflowActuationPermitV1 {
-  readonly permitVersion: typeof PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1;
+export interface WorkflowActuationPermit {
+  readonly permitVersion: typeof WORKFLOW_ACTUATION_PERMIT;
 }
 
-export type ProductionWorkflowActuationPermitControllerV1 = Readonly<{
-  permit: ProductionWorkflowActuationPermitV1;
+export type WorkflowActuationPermitController = Readonly<{
+  permit: WorkflowActuationPermit;
   revoke(reason: string): void;
 }>;
 
-type PermitStateV1 = {
+type PermitState = {
   readonly decisionDigest: string;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
@@ -40,16 +40,16 @@ type PermitStateV1 = {
   revokedReason: string | undefined;
 };
 
-export class ProductionWorkflowActuationRevokedErrorV1 extends Error {
+export class WorkflowActuationRevokedError extends Error {
   readonly decisionDigest: string;
   readonly rollbackGeneration: string;
-  readonly checkpoint: ProductionWorkflowActuationCheckpointV1;
+  readonly checkpoint: WorkflowActuationCheckpoint;
   readonly revocationReason: string;
 
   constructor(input: {
     readonly decisionDigest: string;
     readonly rollbackGeneration: string;
-    readonly checkpoint: ProductionWorkflowActuationCheckpointV1;
+    readonly checkpoint: WorkflowActuationCheckpoint;
     readonly revocationReason: string;
   }) {
     super(
@@ -64,12 +64,12 @@ export class ProductionWorkflowActuationRevokedErrorV1 extends Error {
 }
 
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const admittedPermits = new WeakMap<object, PermitStateV1>();
+const admittedPermits = new WeakMap<object, PermitState>();
 const admittedRevocationErrors = new WeakSet<object>();
 const journalPermits = new WeakMap<
   object,
   Readonly<{
-    permit: ProductionWorkflowActuationPermitV1;
+    permit: WorkflowActuationPermit;
     decisionDigest: string;
     deploymentFingerprint: string;
     category: FraudProofCatalogueCategoryName;
@@ -84,23 +84,23 @@ const canonicalReason = (reason: string): string => {
   return reason;
 };
 
-export const createProductionWorkflowActuationPermitControllerV1 = ({
+export const createWorkflowActuationPermitController = ({
   decision,
   rollbackGeneration,
 }: {
-  readonly decision: ProductionHeaderFaultDecisionV1;
+  readonly decision: HeaderFaultDecision;
   readonly rollbackGeneration: string;
-}): ProductionWorkflowActuationPermitControllerV1 => {
-  const admitted = requireRunnableProductionHeaderFaultV1(decision);
+}): WorkflowActuationPermitController => {
+  const admitted = requireRunnableHeaderFault(decision);
   if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
     throw new Error(
       "actuation permit rollback generation must be a canonical natural",
     );
   }
-  const permit: ProductionWorkflowActuationPermitV1 = Object.freeze({
-    permitVersion: PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1,
+  const permit: WorkflowActuationPermit = Object.freeze({
+    permitVersion: WORKFLOW_ACTUATION_PERMIT,
   });
-  const state: PermitStateV1 = {
+  const state: PermitState = {
     decisionDigest: admitted.decisionDigest,
     deploymentFingerprint: admitted.deploymentFingerprint,
     category: admitted.category,
@@ -128,16 +128,16 @@ const assertPermit = ({
   headerHash,
   checkpoint,
 }: {
-  readonly permit: ProductionWorkflowActuationPermitV1;
+  readonly permit: WorkflowActuationPermit;
   readonly decisionDigest: string;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
-  readonly checkpoint: ProductionWorkflowActuationCheckpointV1;
-}): PermitStateV1 => {
+  readonly checkpoint: WorkflowActuationCheckpoint;
+}): PermitState => {
   const state = admittedPermits.get(permit);
   if (
-    permit.permitVersion !== PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1 ||
+    permit.permitVersion !== WORKFLOW_ACTUATION_PERMIT ||
     state === undefined
   ) {
     throw new Error("production workflow actuation permit was not admitted");
@@ -153,7 +153,7 @@ const assertPermit = ({
     );
   }
   if (state.revokedReason !== undefined) {
-    const error = new ProductionWorkflowActuationRevokedErrorV1({
+    const error = new WorkflowActuationRevokedError({
       decisionDigest: state.decisionDigest,
       rollbackGeneration: state.rollbackGeneration,
       checkpoint,
@@ -166,9 +166,9 @@ const assertPermit = ({
   return state;
 };
 
-export const isProductionWorkflowActuationRevokedErrorV1 = (
+export const isWorkflowActuationRevokedError = (
   error: unknown,
-): error is ProductionWorkflowActuationRevokedErrorV1 =>
+): error is WorkflowActuationRevokedError =>
   typeof error === "object" &&
   error !== null &&
   admittedRevocationErrors.has(error);
@@ -178,12 +178,12 @@ export const isProductionWorkflowActuationRevokedErrorV1 = (
  * already-public workflow identity, never a permit minter or revocation state
  * mutation, and structural permit lookalikes remain rejected by the WeakMap.
  */
-export const assertProductionWorkflowActuationPermitIdentityV1 = ({
+export const assertWorkflowActuationPermitIdentity = ({
   permit,
   category,
   rollbackGeneration,
 }: {
-  readonly permit: ProductionWorkflowActuationPermitV1;
+  readonly permit: WorkflowActuationPermit;
   readonly category: FraudProofCatalogueCategoryName;
   readonly rollbackGeneration: string;
 }): Readonly<{
@@ -193,7 +193,7 @@ export const assertProductionWorkflowActuationPermitIdentityV1 = ({
 }> => {
   const state = admittedPermits.get(permit);
   if (
-    permit.permitVersion !== PRODUCTION_WORKFLOW_ACTUATION_PERMIT_V1 ||
+    permit.permitVersion !== WORKFLOW_ACTUATION_PERMIT ||
     state === undefined
   ) {
     throw new Error("production workflow actuation permit was not admitted");
@@ -205,7 +205,7 @@ export const assertProductionWorkflowActuationPermitIdentityV1 = ({
     throw new Error("production workflow actuation permit identity mismatch");
   }
   if (state.revokedReason !== undefined) {
-    const error = new ProductionWorkflowActuationRevokedErrorV1({
+    const error = new WorkflowActuationRevokedError({
       decisionDigest: state.decisionDigest,
       rollbackGeneration: state.rollbackGeneration,
       checkpoint: "runner_start",
@@ -223,8 +223,8 @@ export const assertProductionWorkflowActuationPermitIdentityV1 = ({
 };
 
 /** Bind an opaque live permit to the exact journal object passed downstream. */
-export const bindProductionWorkflowActuationJournalV1 = <
-  Journal extends FraudProofWorkflowJournalStoreV1,
+export const bindWorkflowActuationJournal = <
+  Journal extends FraudProofWorkflowJournalStore,
 >({
   journal,
   permit,
@@ -234,7 +234,7 @@ export const bindProductionWorkflowActuationJournalV1 = <
   headerHash,
 }: {
   readonly journal: Journal;
-  readonly permit: ProductionWorkflowActuationPermitV1;
+  readonly permit: WorkflowActuationPermit;
   readonly decisionDigest: string;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
@@ -266,8 +266,8 @@ export const bindProductionWorkflowActuationJournalV1 = <
   return journal;
 };
 
-export const productionWorkflowActuationDecisionDigestV1 = (
-  journal: FraudProofWorkflowJournalStoreV1,
+export const workflowActuationDecisionDigest = (
+  journal: FraudProofWorkflowJournalStore,
 ): string | undefined => journalPermits.get(journal)?.decisionDigest;
 
 /**
@@ -275,18 +275,18 @@ export const productionWorkflowActuationDecisionDigestV1 = (
  * only for lower-level tests/diagnostics; admitted production runners always
  * bind before loading runtime infrastructure.
  */
-export const assertProductionWorkflowJournalActuationV1 = ({
+export const assertWorkflowJournalActuation = ({
   journal,
   deploymentFingerprint,
   category,
   headerHash,
   checkpoint,
 }: {
-  readonly journal: FraudProofWorkflowJournalStoreV1;
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
-  readonly checkpoint: ProductionWorkflowActuationCheckpointV1;
+  readonly checkpoint: WorkflowActuationCheckpoint;
 }): void => {
   const binding = journalPermits.get(journal);
   if (binding === undefined) {

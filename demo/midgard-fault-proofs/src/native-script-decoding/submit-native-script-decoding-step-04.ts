@@ -9,17 +9,17 @@
  * forced source, the class-0 contradiction marker, and an accused class in
  * the family's domain.
  */
-import type { NativeScriptDecodingScanThreadStateV1 } from "@al-ft/midgard-sdk";
+import type { NativeScriptDecodingScanThreadState } from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
   NativeScriptDecodingStep04Datum,
   NativeScriptDecodingStep04SpendRedeemer,
   requireInputIndex,
@@ -43,45 +43,43 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
+import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
 import {
-  nativeScriptDecodingStepLabelV1,
+  nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
-  requireNativeScriptDecodingReferenceScriptV1,
-  requireNativeScriptDecodingStepStateV1,
-  requireNativeScriptDecodingThreadUtxoV1,
+  requireNativeScriptDecodingReferenceScript,
+  requireNativeScriptDecodingStepState,
+  requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = nativeScriptDecodingStepLabelV1(5);
+const STEP_LABEL = nativeScriptDecodingStepLabel(5);
 
 const IN_DOMAIN_CLASSES: readonly bigint[] = [
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT,
 ];
 
 /** Twin of the validator's per-direction closed-verdict shape gate. */
-export const assertNativeScriptDecodingStep04FinalizableV1 = (
-  state: NativeScriptDecodingScanThreadStateV1,
+export const assertNativeScriptDecodingStep04Finalizable = (
+  state: NativeScriptDecodingScanThreadState,
 ): void => {
-  if (
-    state.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
-    if (state.source_kind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1) {
+  if (state.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION) {
+    if (state.source_kind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED) {
       throw nativeScriptDecodingSubmitError(
         "direction B finalizes forced threads only: nothing but a forced leaf carries an explicit rejection to dispute.",
       );
     }
     if (
-      state.refusal_class !== NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1
+      state.refusal_class !== NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED
     ) {
       throw nativeScriptDecodingSubmitError(
         `direction B closes with the class-0 contradiction marker; the thread carries class ${state.refusal_class.toString()}.`,
@@ -95,7 +93,7 @@ export const assertNativeScriptDecodingStep04FinalizableV1 = (
     return;
   }
   if (
-    state.direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    state.direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
   ) {
     throw nativeScriptDecodingSubmitError(
       `thread state carries direction ${state.direction.toString()}, outside {0, 1}.`,
@@ -122,7 +120,7 @@ export type SubmitNativeScriptDecodingStep04Result = {
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   /** The closed verdict the token finalized. */
-  readonly scanState: NativeScriptDecodingScanThreadStateV1;
+  readonly scanState: NativeScriptDecodingScanThreadState;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -148,33 +146,33 @@ export const submitNativeScriptDecodingStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Q3: the mandatory published step-04 reference script. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep04Result> => {
   const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
+    await requireNativeScriptDecodingThreadUtxo({
       lucid,
       contracts,
       categoryId,
       stepIndex: 5,
       threadOutRef,
     });
-  const state: NativeScriptDecodingScanThreadStateV1 =
-    requireNativeScriptDecodingStepStateV1({
+  const state: NativeScriptDecodingScanThreadState =
+    requireNativeScriptDecodingStepState({
       threadUtxo,
       signer,
       schema: NativeScriptDecodingStep04Datum,
       stepIndex: 5,
     });
-  assertNativeScriptDecodingStep04FinalizableV1(state);
+  assertNativeScriptDecodingStep04Finalizable(state);
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -257,18 +255,18 @@ export const submitNativeScriptDecodingStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread burn`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
   const referenceInputs = [
-    requireNativeScriptDecodingReferenceScriptV1({
+    requireNativeScriptDecodingReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[5].spendingScriptHash,
       stepIndex: 5,
@@ -306,9 +304,9 @@ export const submitNativeScriptDecodingStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

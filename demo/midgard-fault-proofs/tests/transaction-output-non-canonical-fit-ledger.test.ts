@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const measurements = [
   ["accepted-cancel-step01", "lifecycle", 611, 124408n, 42388566n],
@@ -33,7 +33,7 @@ const measurements = [
 
 describe("transactionOutputNonCanonical signed Van Rossem fit ledger", () => {
   it("reproduces positive byte, memory, CPU, and publication-reserve margins", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "transactionOutputNonCanonical:00000029:testnet",
       blueprintSha256:
         "179c65539806f39a85008527e3572eb31bcd792d0a701aaa6bc04c60938c021f",

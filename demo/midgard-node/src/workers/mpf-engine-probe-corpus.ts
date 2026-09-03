@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -23,7 +23,7 @@ export const canonicalOutrefCborFromLabel = (label: string): Buffer => {
   // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
   // fixed 38 bytes — matching on-chain `ledger_outref_key`, not CML's
   // minimal-index `TransactionInput` CBOR.
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: hexToBytes(match[1]!, { fieldName: "corpus outref txHash" }),
     outputIndex: Number(match[2]!),
   });
@@ -57,7 +57,7 @@ export const decodeCanonicalProbeRow = (
   }
   const selectedInputOutref = exact.selectedInputOutref;
   const selectedInput = canonicalOutrefCborFromLabel(selectedInputOutref);
-  const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor);
+  const native = decodeMidgardNativeTxFullFromCanonicalCbor(cbor);
   const spendInputs = decodeMidgardNativeByteListPreimage(
     native.body.spendInputsPreimageCbor,
     "native.spend_inputs",

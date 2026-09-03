@@ -10,17 +10,17 @@ import {
 } from "../src/index.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
-  buildL2TxMistagBlockFixtureV1,
-  l2TxMistagCategoryV1,
-  publishL2TxMistagReferenceScriptsV1,
+  buildL2TxMistagBlockFixture,
+  l2TxMistagCategory,
+  publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator-v1.js";
-import { setupFraudulentBlockV1 } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 
 describe("l2-tx-mistag cancellation and resume controls", () => {
   it("cancels at either step, then re-inits and completes the proof", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realL2TxMistag: true,
         alwaysFraudProofCatalogue: true,
@@ -28,12 +28,12 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
     });
     const contracts = harness.contracts.l2TxMistag;
     if (contracts === undefined) throw new Error("l2-tx-mistag missing");
-    const category = l2TxMistagCategoryV1(harness);
-    const [step01Ref, step02Ref] = await publishL2TxMistagReferenceScriptsV1({
+    const category = l2TxMistagCategory(harness);
+    const [step01Ref, step02Ref] = await publishL2TxMistagReferenceScripts({
       harness,
     });
-    const fixture = await buildL2TxMistagBlockFixtureV1("TxIsInvalid");
-    const setup = await setupFraudulentBlockV1({
+    const fixture = await buildL2TxMistagBlockFixture("TxIsInvalid");
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,

@@ -10,25 +10,25 @@ import {
   submitWithdrawalMistagStep05,
 } from "../src/withdrawal-mistag/index.js";
 import {
-  initWithdrawalMistagThreadV1,
-  makeWithdrawalMistagEmulatorHarnessV1,
-  publishWithdrawalMistagScriptsV1,
-  setupWithdrawalMistagScenarioV1,
-  withdrawalMistagBlockUtxoV1,
+  initWithdrawalMistagThread,
+  makeWithdrawalMistagEmulatorHarness,
+  publishWithdrawalMistagScripts,
+  setupWithdrawalMistagScenario,
+  withdrawalMistagBlockUtxo,
 } from "./support/withdrawal-mistag-emulator-v1.js";
 
 describe("withdrawal-mistag cancel and resume", () => {
   it("burns a cancelled thread, re-initialises, and resumes from only its committed out-ref", async () => {
-    const harness = await makeWithdrawalMistagEmulatorHarnessV1();
-    const scenario = await setupWithdrawalMistagScenarioV1({
+    const harness = await makeWithdrawalMistagEmulatorHarness();
+    const scenario = await setupWithdrawalMistagScenario({
       harness,
       direction: "valid-marked-invalid",
     });
-    const published = await publishWithdrawalMistagScriptsV1({ harness });
+    const published = await publishWithdrawalMistagScripts({ harness });
     const refs = published.refs;
-    const blockUtxo = await withdrawalMistagBlockUtxoV1({ harness, scenario });
+    const blockUtxo = await withdrawalMistagBlockUtxo({ harness, scenario });
     const advanceTo = async (targetStep: 0 | 2 | 3) => {
-      const init = await initWithdrawalMistagThreadV1({ harness, scenario });
+      const init = await initWithdrawalMistagThread({ harness, scenario });
       let threadOutRef = init.nextThreadOutRef;
       if (targetStep >= 2) {
         threadOutRef = (
@@ -89,7 +89,7 @@ describe("withdrawal-mistag cancel and resume", () => {
       }
     }
 
-    const resumedInit = await initWithdrawalMistagThreadV1({
+    const resumedInit = await initWithdrawalMistagThread({
       harness,
       scenario,
     });

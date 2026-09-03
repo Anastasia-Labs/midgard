@@ -1,15 +1,15 @@
 import {
-  type MidgardFieldCarriagePlanV1,
-  planMidgardFieldCarriageV1,
+  type MidgardFieldCarriagePlan,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertMidgardFieldCarriageResolvesAtDoorV1,
-  deriveFieldPreimageCertificationV1,
-  fieldPreimagePublicationDatumCborV1,
-  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
+  assertMidgardFieldCarriageResolvesAtDoor,
+  deriveFieldPreimageCertification,
+  fieldPreimagePublicationDatumCbor,
+  resolveMidgardFieldCarriageAgainstReferenceInputs,
 } from "@/fraud-proof/field-preimage-carriage-v1.js";
 
 /**
@@ -72,8 +72,8 @@ const lateReferenceInput = carriageUtxo({
   datum: "d87980",
 });
 
-const planFor = (preimageBytes: number): MidgardFieldCarriagePlanV1 =>
-  planMidgardFieldCarriageV1({
+const planFor = (preimageBytes: number): MidgardFieldCarriagePlan =>
+  planMidgardFieldCarriage({
     owner: CARRIAGE_OWNER,
     txId: CARRIAGE_TX_ID,
     fieldIndex: FIELD_INDEX,
@@ -81,21 +81,19 @@ const planFor = (preimageBytes: number): MidgardFieldCarriagePlanV1 =>
   });
 
 /** The carriage UTxOs a plan requires, in no particular order. */
-const carriageInputsFor = (
-  plan: MidgardFieldCarriagePlanV1,
-): readonly UTxO[] => [
+const carriageInputsFor = (plan: MidgardFieldCarriagePlan): readonly UTxO[] => [
   ...plan.publications.map((publication, offset) =>
     carriageUtxo({
       txHash: (offset + 3).toString(16).padStart(2, "0").repeat(32),
       outputIndex: offset,
       address: PROVER_KEY_ADDRESS,
-      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }),
   ),
   ...(plan.tier === "Certified"
     ? [
         ((): UTxO => {
-          const certification = deriveFieldPreimageCertificationV1(plan);
+          const certification = deriveFieldPreimageCertification(plan);
           return carriageUtxo({
             txHash: "f1".repeat(32),
             outputIndex: 0,
@@ -111,21 +109,21 @@ const carriageInputsFor = (
 ];
 
 const resolveAgainst = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
   referenceInputs: readonly UTxO[],
 ) =>
-  resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+  resolveMidgardFieldCarriageAgainstReferenceInputs({
     plan,
     referenceInputs,
     certificatePolicyId: CERTIFICATE_POLICY_ID,
   });
 
 const assertAtDoor = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
   committedAgainst: readonly UTxO[],
   doorReferenceInputs: readonly UTxO[],
 ): void =>
-  assertMidgardFieldCarriageResolvesAtDoorV1({
+  assertMidgardFieldCarriageResolvesAtDoor({
     carriage: resolveAgainst(plan, committedAgainst),
     plan,
     doorReferenceInputs,
@@ -229,7 +227,7 @@ describe("§8 carriage door-resolution guard V1", () => {
         : null,
     ).toStrictEqual([1, 2]);
     expect(() =>
-      assertMidgardFieldCarriageResolvesAtDoorV1({
+      assertMidgardFieldCarriageResolvesAtDoor({
         carriage: committedCarriage,
         plan,
         doorReferenceInputs: [
@@ -249,8 +247,8 @@ describe("§8 carriage door-resolution guard V1", () => {
     const plan = planFor(1_024);
     expect(plan.tier).toBe("Inline");
     expect(() =>
-      assertMidgardFieldCarriageResolvesAtDoorV1({
-        carriage: resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+      assertMidgardFieldCarriageResolvesAtDoor({
+        carriage: resolveMidgardFieldCarriageAgainstReferenceInputs({
           plan,
           referenceInputs: [],
         }),

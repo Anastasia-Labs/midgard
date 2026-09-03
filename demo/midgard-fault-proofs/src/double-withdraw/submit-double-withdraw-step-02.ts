@@ -5,10 +5,10 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
-  isDoubleWithdrawFaultV1,
+  isDoubleWithdrawFault,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -39,41 +39,41 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { DoubleWithdrawContractsV1 } from "./contracts-v1.js";
+import type { DoubleWithdrawContracts } from "./contracts-v1.js";
 import {
   doubleWithdrawSubmitError,
-  requireDoubleWithdrawReferenceScriptV1,
-  requireDoubleWithdrawStepStateV1,
-  requireDoubleWithdrawThreadUtxoV1,
+  requireDoubleWithdrawReferenceScript,
+  requireDoubleWithdrawStepState,
+  requireDoubleWithdrawThreadUtxo,
 } from "./submit-common-v1.js";
 import {
-  deriveDoubleWithdrawMembershipV1,
-  type SubmitDoubleWithdrawInclusionV1,
+  deriveDoubleWithdrawMembership,
+  type SubmitDoubleWithdrawInclusion,
 } from "./submit-double-withdraw-step-01.js";
 
-export const assertDoubleWithdrawFinalizableV1 = ({
+export const assertDoubleWithdrawFinalizable = ({
   state,
   fraudulentHeaderHash,
   second,
 }: {
   readonly state: DoubleWithdrawStep02State;
   readonly fraudulentHeaderHash: string;
-  readonly second: Parameters<typeof isDoubleWithdrawFaultV1>[1];
+  readonly second: Parameters<typeof isDoubleWithdrawFault>[1];
 }): void => {
   if (state.challenged_header_hash !== fraudulentHeaderHash) {
     throw doubleWithdrawSubmitError(
       `step-02 state names ${state.challenged_header_hash}, but the thread names ${fraudulentHeaderHash}.`,
     );
   }
-  if (!isDoubleWithdrawFaultV1(state, second)) {
+  if (!isDoubleWithdrawFault(state, second)) {
     throw doubleWithdrawSubmitError(
       "step-02 refuses to finalize: the second leaf is identical, drains a different L2 outref, or is not payable.",
     );
@@ -110,22 +110,22 @@ export const submitDoubleWithdrawStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly inclusion: SubmitDoubleWithdrawInclusionV1;
+  readonly inclusion: SubmitDoubleWithdrawInclusion;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawStep02Result> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
     await Promise.all([
-      requireDoubleWithdrawThreadUtxoV1({
+      requireDoubleWithdrawThreadUtxo({
         lucid,
         contracts,
         categoryId,
@@ -150,7 +150,7 @@ export const submitDoubleWithdrawStep02 = async ({
         label: "double-withdraw step-02 state-queue block",
       }),
     ]);
-  const state = requireDoubleWithdrawStepStateV1({
+  const state = requireDoubleWithdrawStepState({
     threadUtxo,
     signer,
     schema: DoubleWithdrawStep02Datum,
@@ -168,12 +168,12 @@ export const submitDoubleWithdrawStep02 = async ({
   const node = await Effect.runPromise(
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
-  const header = await Effect.runPromise(getHeaderV1FromStateQueueDatum(node));
-  const { committedWithdrawal } = await deriveDoubleWithdrawMembershipV1({
+  const header = await Effect.runPromise(getHeaderFromStateQueueDatum(node));
+  const { committedWithdrawal } = await deriveDoubleWithdrawMembership({
     header,
     inclusion,
   });
-  assertDoubleWithdrawFinalizableV1({
+  assertDoubleWithdrawFinalizable({
     state,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     second: committedWithdrawal,
@@ -278,12 +278,12 @@ export const submitDoubleWithdrawStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "double-withdraw step-02 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "double-withdraw step-02 fraud-proof mint",
@@ -291,7 +291,7 @@ export const submitDoubleWithdrawStep02 = async ({
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
-    requireDoubleWithdrawReferenceScriptV1({
+    requireDoubleWithdrawReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[1].spendingScriptHash,
       stepIndex: 1,
@@ -326,9 +326,9 @@ export const submitDoubleWithdrawStep02 = async ({
     throw doubleWithdrawSubmitError("step-02 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

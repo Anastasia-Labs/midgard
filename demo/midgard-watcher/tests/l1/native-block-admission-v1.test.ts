@@ -2,10 +2,10 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { admitWatcherNativeRollForwardBlockV1 } from "../../src/l1/native-block-admission-v1.js";
+import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission-v1.js";
 import {
-  WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
-  type WatcherNativeChainSyncRollForwardV1,
+  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+  type WatcherNativeChainSyncRollForward,
 } from "../../src/l1/native-chain-sync-v1.js";
 
 const FIXTURE_METADATA = Object.freeze({
@@ -16,7 +16,7 @@ const FIXTURE_METADATA = Object.freeze({
   slot: "159835207",
 });
 
-const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForwardV1> => {
+const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForward> => {
   const rawBlockCbor = (
     await readFile(
       new URL("../support/conway-block.hex", import.meta.url),
@@ -27,7 +27,7 @@ const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForwardV1> => {
     ...FIXTURE_METADATA,
     kind: "roll_forward",
     rawBlockCbor,
-    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     tip: Object.freeze({
       blockHash: FIXTURE_METADATA.blockHash,
       blockNo: FIXTURE_METADATA.blockNo,
@@ -39,7 +39,7 @@ const fixtureEvent = async (): Promise<WatcherNativeChainSyncRollForwardV1> => {
 
 describe("native block admission", () => {
   it("independently derives the era, header identity, ancestry, height and ordered transaction ids", async () => {
-    const admitted = admitWatcherNativeRollForwardBlockV1(await fixtureEvent());
+    const admitted = admitWatcherNativeRollForwardBlock(await fixtureEvent());
     expect(admitted).toMatchObject({
       ...FIXTURE_METADATA,
       protocolMajor: "10",
@@ -63,14 +63,14 @@ describe("native block admission", () => {
   ] as const)("rejects forged helper %s metadata", async (field, value) => {
     const event = await fixtureEvent();
     expect(() =>
-      admitWatcherNativeRollForwardBlockV1({ ...event, [field]: value }),
+      admitWatcherNativeRollForwardBlock({ ...event, [field]: value }),
     ).toThrow("native chain-sync block admission failed");
   });
 
   it("rejects substituted raw block bytes even when all metadata claims are retained", async () => {
     const event = await fixtureEvent();
     expect(() =>
-      admitWatcherNativeRollForwardBlockV1({
+      admitWatcherNativeRollForwardBlock({
         ...event,
         rawBlockCbor: `${event.rawBlockCbor.slice(0, -2)}00`,
       }),

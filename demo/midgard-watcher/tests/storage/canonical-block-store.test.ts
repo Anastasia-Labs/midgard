@@ -1,33 +1,33 @@
 import { createHash } from "node:crypto";
 
 import {
-  DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
+  DA_PAYLOAD_INNER_SCHEMA_VERSION,
   DaPayloadContentEncoding,
-  wrapDaPayloadV1,
+  wrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
-  type DaCapabilitiesResponseV1,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+  type DaCapabilitiesResponse,
   daDeploymentFingerprintFromHex,
-  type DaPayloadByHeaderResponseV1,
-  encodeDaCapabilitiesResponseV1Cbor,
-  encodeDaEventToStepByEventResponseV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaProofBundleByHeaderResponseV1Cbor,
-  encodeDaTraceStepByIndexResponseV1Cbor,
+  type DaPayloadByHeaderResponse,
+  encodeDaCapabilitiesResponseCbor,
+  encodeDaEventToStepByEventResponseCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaProofBundleByHeaderResponseCbor,
+  encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  MIDGARD_RETENTION_WINDOW_V1,
-  RETENTION_MS_PER_DAY_V1,
+  MIDGARD_RETENTION_WINDOW,
+  RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core/retention-window-v1";
 import {
-  DA_PAYLOAD_V1_VERSION,
-  type DaPayloadV1,
+  DA_PAYLOAD_VERSION,
+  type DaPayload,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
+  encodeDaPayload,
 } from "@al-ft/midgard-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -35,38 +35,38 @@ import {
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
 } from "../../src/runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentityV1 } from "../../src/runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import {
-  decodeWatcherCanonicalBlockStoreSnapshotV1,
-  encodeWatcherCanonicalBlockStoreSnapshotV1,
-  loadWatcherCanonicalBlockStoreV1,
-  makeWatcherCanonicalDaPayloadRecordV1,
-  makeWatcherCanonicalEventToStepRecordV1,
-  makeWatcherCanonicalProofBundleRecordV1,
-  makeWatcherCanonicalTraceStepRecordV1,
-  parseWatcherCanonicalBlockRecordV1,
-  persistWatcherCanonicalPublicBytesV1,
-  pruneWatcherCanonicalBlockStoreV1,
-  resolveWatcherCanonicalRetentionWindowV1,
-  WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
-  WATCHER_CANONICAL_SLOT_LENGTH_MS_V1,
-  type WatcherCanonicalBlockRecordV1,
+  decodeWatcherCanonicalBlockStoreSnapshot,
+  encodeWatcherCanonicalBlockStoreSnapshot,
+  loadWatcherCanonicalBlockStore,
+  makeWatcherCanonicalDaPayloadRecord,
+  makeWatcherCanonicalEventToStepRecord,
+  makeWatcherCanonicalProofBundleRecord,
+  makeWatcherCanonicalTraceStepRecord,
+  parseWatcherCanonicalBlockRecord,
+  persistWatcherCanonicalPublicBytes,
+  pruneWatcherCanonicalBlockStore,
+  resolveWatcherCanonicalRetentionWindow,
+  WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
+  WATCHER_CANONICAL_SLOT_LENGTH_MS,
+  type WatcherCanonicalBlockRecord,
   WatcherCanonicalBlockStoreError,
   type WatcherCanonicalBlockStoreErrorCode,
-  type WatcherCanonicalRecordContextV1,
-  watcherCanonicalRetainUntilSlotV1,
-  watcherCanonicalRetentionWindowFromVerifiedManifestV1,
-  type WatcherCanonicalRetentionWindowV1,
+  type WatcherCanonicalRecordContext,
+  watcherCanonicalRetainUntilSlot,
+  type WatcherCanonicalRetentionWindow,
+  watcherCanonicalRetentionWindowFromVerifiedManifest,
 } from "../../src/storage/canonical-block-store.js";
 import {
-  watcherCanonicalJsonV1,
+  watcherCanonicalJson,
   type WatcherDurableAtomicBackend,
   watcherDurableStoreBytesSha256,
 } from "../../src/storage/durable-store.js";
 import {
-  WatcherPublicDaClientV1,
+  WatcherPublicDaClient,
   type WatcherPublicDaLibp2pTransportV1,
-  type WatcherPublicDaRequestV1,
+  type WatcherPublicDaRequest,
 } from "../../src/storage/public-da-client.js";
 
 // ---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ const MULTIADDR =
   "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz1234A";
 const EVENT_KEY = "0a1b2c3d";
 
-const MARKER = makeDeploymentMarkerV1(FINGERPRINT);
+const MARKER = makeDeploymentMarker(FINGERPRINT);
 
 const sha256Hex = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
@@ -150,17 +150,17 @@ const configOf = (): WatcherConfig =>
 
 const identityOf = (
   manifestId: string = FINGERPRINT,
-): VerifiedWatcherDeploymentIdentityV1 => ({
+): VerifiedWatcherDeploymentIdentity => ({
   manifestId,
   network: "Preprod",
   trustRootId: "trust-root-a",
   releaseEvidenceDigest: repeatHex(0x33, 32),
   ruleBundleCommitment: repeatHex(0x44, 32),
   programCommitments: {},
-  durableMarker: makeDeploymentMarkerV1(manifestId),
+  durableMarker: makeDeploymentMarker(manifestId),
 });
 
-const daPayload = (headerHash: string): DaPayloadV1 => {
+const daPayload = (headerHash: string): DaPayload => {
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
@@ -171,7 +171,7 @@ const daPayload = (headerHash: string): DaPayloadV1 => {
     validationTraceCount: 1n,
   };
   return {
-    version: DA_PAYLOAD_V1_VERSION,
+    version: DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header: {
@@ -213,13 +213,13 @@ const daPayload = (headerHash: string): DaPayloadV1 => {
 };
 
 type ProtocolHandler = (
-  request: WatcherPublicDaRequestV1,
+  request: WatcherPublicDaRequest,
 ) => Promise<Uint8Array> | Uint8Array;
 
 class ScriptedTransport implements WatcherPublicDaLibp2pTransportV1 {
   constructor(private readonly script: Record<string, ProtocolHandler>) {}
 
-  async request(request: WatcherPublicDaRequestV1): Promise<Uint8Array> {
+  async request(request: WatcherPublicDaRequest): Promise<Uint8Array> {
     const handler = this.script[request.protocol];
     if (handler === undefined) {
       throw new Error(`unscripted protocol ${request.protocol}`);
@@ -229,12 +229,12 @@ class ScriptedTransport implements WatcherPublicDaLibp2pTransportV1 {
 }
 
 const capabilitiesBytes = (
-  overrides: Partial<DaCapabilitiesResponseV1> = {},
+  overrides: Partial<DaCapabilitiesResponse> = {},
 ): Buffer =>
-  encodeDaCapabilitiesResponseV1Cbor({
+  encodeDaCapabilitiesResponseCbor({
     deploymentFingerprint: daDeploymentFingerprintFromHex(FINGERPRINT),
-    transportProtocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-    payloadSchemaVersions: [DA_PAYLOAD_INNER_V1_SCHEMA_VERSION],
+    transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+    payloadSchemaVersions: [DA_PAYLOAD_INNER_SCHEMA_VERSION],
     envelopeContentEncodings: [
       DaPayloadContentEncoding.identity,
       DaPayloadContentEncoding.zstd,
@@ -248,9 +248,9 @@ const capabilitiesBytes = (
   });
 
 const payloadByHeaderBytes = (
-  overrides: Partial<DaPayloadByHeaderResponseV1>,
+  overrides: Partial<DaPayloadByHeaderResponse>,
 ): Buffer =>
-  encodeDaPayloadByHeaderResponseV1Cbor({
+  encodeDaPayloadByHeaderResponseCbor({
     status: "found_inline",
     headerHash: Buffer.from(HEADER_HASH, "hex"),
     payloadHash: null,
@@ -266,8 +266,8 @@ const TRACE_PROOF_BYTES = Buffer.alloc(48, 0x7c);
 const EVENT_ENTRY_BYTES = Buffer.alloc(32, 0x8d);
 const EVENT_PROOF_BYTES = Buffer.alloc(24, 0x9e);
 
-const clientFor = (envelope: Buffer): WatcherPublicDaClientV1 =>
-  new WatcherPublicDaClientV1({
+const clientFor = (envelope: Buffer): WatcherPublicDaClient =>
+  new WatcherPublicDaClient({
     config: configOf(),
     deploymentIdentity: identityOf(),
     transport: new ScriptedTransport({
@@ -278,7 +278,7 @@ const clientFor = (envelope: Buffer): WatcherPublicDaClientV1 =>
           payloadBytes: envelope,
         }),
       "proof-bundle-by-header": () =>
-        encodeDaProofBundleByHeaderResponseV1Cbor({
+        encodeDaProofBundleByHeaderResponseCbor({
           status: "found_inline",
           headerHash: Buffer.from(HEADER_HASH, "hex"),
           proofBundleHash: computeDaSha256Hash(PROOF_BUNDLE_BYTES),
@@ -287,7 +287,7 @@ const clientFor = (envelope: Buffer): WatcherPublicDaClientV1 =>
           reasonCode: null,
         }),
       "trace-step-by-index": () =>
-        encodeDaTraceStepByIndexResponseV1Cbor({
+        encodeDaTraceStepByIndexResponseCbor({
           status: "found",
           headerHash: Buffer.from(HEADER_HASH, "hex"),
           stepIndex: 3,
@@ -295,7 +295,7 @@ const clientFor = (envelope: Buffer): WatcherPublicDaClientV1 =>
           membershipProofBytes: TRACE_PROOF_BYTES,
         }),
       "event-to-step-by-event": () =>
-        encodeDaEventToStepByEventResponseV1Cbor({
+        encodeDaEventToStepByEventResponseCbor({
           status: "found",
           headerHash: Buffer.from(HEADER_HASH, "hex"),
           eventKey: Buffer.from(EVENT_KEY, "hex"),
@@ -305,14 +305,14 @@ const clientFor = (envelope: Buffer): WatcherPublicDaClientV1 =>
     }),
   });
 
-const nonmembershipClient = (): WatcherPublicDaClientV1 =>
-  new WatcherPublicDaClientV1({
+const nonmembershipClient = (): WatcherPublicDaClient =>
+  new WatcherPublicDaClient({
     config: configOf(),
     deploymentIdentity: identityOf(),
     transport: new ScriptedTransport({
       capabilities: () => capabilitiesBytes(),
       "event-to-step-by-event": () =>
-        encodeDaEventToStepByEventResponseV1Cbor({
+        encodeDaEventToStepByEventResponseCbor({
           status: "found",
           headerHash: Buffer.from(HEADER_HASH, "hex"),
           eventKey: Buffer.from(EVENT_KEY, "hex"),
@@ -380,9 +380,9 @@ const manifestWith = (retentionDays: unknown): unknown => ({
 });
 
 const windowFor = (
-  retentionDays: unknown = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
-): WatcherCanonicalRetentionWindowV1 =>
-  watcherCanonicalRetentionWindowFromVerifiedManifestV1({
+  retentionDays: unknown = DA_TRANSPORT_LIMITS.minimumRetentionDays,
+): WatcherCanonicalRetentionWindow =>
+  watcherCanonicalRetentionWindowFromVerifiedManifest({
     manifest: manifestWith(retentionDays),
     manifestId: FINGERPRINT,
     deploymentMarker: MARKER,
@@ -391,8 +391,8 @@ const windowFor = (
 const OBSERVED_AT_SLOT = 1_000;
 
 const contextOf = (
-  overrides: Partial<WatcherCanonicalRecordContextV1> = {},
-): WatcherCanonicalRecordContextV1 => ({
+  overrides: Partial<WatcherCanonicalRecordContext> = {},
+): WatcherCanonicalRecordContext => ({
   window: windowFor(),
   deploymentMarker: MARKER,
   observedAtSlot: OBSERVED_AT_SLOT,
@@ -415,20 +415,20 @@ const expectStoreError = async (
 
 type MutableRecord = Record<string, any>;
 
-const cloned = (record: WatcherCanonicalBlockRecordV1): MutableRecord =>
+const cloned = (record: WatcherCanonicalBlockRecord): MutableRecord =>
   JSON.parse(JSON.stringify(record)) as MutableRecord;
 
 let envelope: Buffer;
 let innerCbor: Buffer;
-let payloadRecord: WatcherCanonicalBlockRecordV1;
+let payloadRecord: WatcherCanonicalBlockRecord;
 
 beforeEach(async () => {
-  innerCbor = encodeDaPayloadV1(daPayload(HEADER_HASH));
-  envelope = await wrapDaPayloadV1(innerCbor, { mode: "identity" });
+  innerCbor = encodeDaPayload(daPayload(HEADER_HASH));
+  envelope = await wrapDaPayload(innerCbor, { mode: "identity" });
   const payload = await clientFor(envelope).fetchPayloadByHeader({
     headerHash: HEADER_HASH,
   });
-  payloadRecord = makeWatcherCanonicalDaPayloadRecordV1({
+  payloadRecord = makeWatcherCanonicalDaPayloadRecord({
     payload,
     context: contextOf(),
   });
@@ -441,7 +441,7 @@ beforeEach(async () => {
 describe("W21 canonical block store: hash-addressed persistence", () => {
   it("persists the exact envelope bytes returned by the public DA client", async () => {
     const backend = new MemoryAtomicBackend();
-    const result = await persistWatcherCanonicalPublicBytesV1({
+    const result = await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
@@ -477,13 +477,13 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
 
   it("reloads byte-identical bytes under the same inputId after a restart", async () => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
     });
 
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identityOf(),
       retentionWindow: windowFor(),
@@ -492,8 +492,8 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
     const stored = loaded!.snapshot.records[0]!;
     expect(stored.input.inputId).toBe(payloadRecord.input.inputId);
     expect(Buffer.from(stored.input.payload.cborHex, "hex")).toEqual(envelope);
-    expect(watcherCanonicalJsonV1(stored)).toBe(
-      watcherCanonicalJsonV1(payloadRecord),
+    expect(watcherCanonicalJson(stored)).toBe(
+      watcherCanonicalJson(payloadRecord),
     );
   });
 
@@ -502,27 +502,27 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
     const backend = new MemoryAtomicBackend();
     const identity = identityOf();
 
-    const bundle = makeWatcherCanonicalProofBundleRecordV1({
+    const bundle = makeWatcherCanonicalProofBundleRecord({
       proofBundle: await client.fetchProofBundleByHeader({
         headerHash: HEADER_HASH,
       }),
       context: contextOf(),
     });
-    const traceStep = makeWatcherCanonicalTraceStepRecordV1({
+    const traceStep = makeWatcherCanonicalTraceStepRecord({
       traceStep: await client.fetchTraceStepByIndex({
         headerHash: HEADER_HASH,
         stepIndex: 3,
       }),
       context: contextOf(),
     });
-    const entry = makeWatcherCanonicalEventToStepRecordV1({
+    const entry = makeWatcherCanonicalEventToStepRecord({
       eventToStep: await client.fetchEventToStepByEvent({
         headerHash: HEADER_HASH,
         eventKey: EVENT_KEY,
       }),
       context: contextOf(),
     });
-    const nonmembership = makeWatcherCanonicalEventToStepRecordV1({
+    const nonmembership = makeWatcherCanonicalEventToStepRecord({
       eventToStep: await nonmembershipClient().fetchEventToStepByEvent({
         headerHash: HEADER_HASH,
         eventKey: EVENT_KEY,
@@ -537,7 +537,7 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
       entry,
       nonmembership,
     ]) {
-      await persistWatcherCanonicalPublicBytesV1({
+      await persistWatcherCanonicalPublicBytes({
         backend,
         deploymentIdentity: identity,
         record,
@@ -565,7 +565,7 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
     );
     expect(nonmembership.metadata.innerSha256).toBeNull();
 
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identity,
     });
@@ -579,14 +579,14 @@ describe("W21 canonical block store: hash-addressed persistence", () => {
   it("is an idempotent no-op when the identical bytes are persisted twice", async () => {
     const backend = new MemoryAtomicBackend();
     const identity = identityOf();
-    const first = await persistWatcherCanonicalPublicBytesV1({
+    const first = await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identity,
       record: payloadRecord,
     });
     const before = Uint8Array.from(backend.bytes!);
 
-    const second = await persistWatcherCanonicalPublicBytesV1({
+    const second = await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identity,
       record: payloadRecord,
@@ -609,7 +609,7 @@ describe("W21 canonical block store: immutability", () => {
   it("refuses a different record under an existing inputId and keeps the original", async () => {
     const backend = new MemoryAtomicBackend();
     const identity = identityOf();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identity,
       record: payloadRecord,
@@ -618,17 +618,17 @@ describe("W21 canonical block store: immutability", () => {
 
     const restated = cloned(payloadRecord);
     restated.metadata.observedAtSlot = OBSERVED_AT_SLOT + 1;
-    restated.metadata.retainUntilSlot = watcherCanonicalRetainUntilSlotV1({
+    restated.metadata.retainUntilSlot = watcherCanonicalRetainUntilSlot({
       window: windowFor(),
       observedAtSlot: OBSERVED_AT_SLOT + 1,
     });
 
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identity,
-          record: restated as unknown as WatcherCanonicalBlockRecordV1,
+          record: restated as unknown as WatcherCanonicalBlockRecord,
         }),
       "content_conflict",
     );
@@ -639,7 +639,7 @@ describe("W21 canonical block store: immutability", () => {
   it("refuses different bytes claiming an existing inputId and keeps the original", async () => {
     const backend = new MemoryAtomicBackend();
     const identity = identityOf();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identity,
       record: payloadRecord,
@@ -651,10 +651,10 @@ describe("W21 canonical block store: immutability", () => {
 
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identity,
-          record: forged as unknown as WatcherCanonicalBlockRecordV1,
+          record: forged as unknown as WatcherCanonicalBlockRecord,
         }),
       "integrity_mismatch",
     );
@@ -664,14 +664,14 @@ describe("W21 canonical block store: immutability", () => {
 
   it("refuses a snapshot that carries the same inputId twice", () => {
     const duplicated = {
-      schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
       revision: "2",
       deploymentMarker: { ...MARKER },
       records: [cloned(payloadRecord), cloned(payloadRecord)],
     };
     expect(() =>
-      decodeWatcherCanonicalBlockStoreSnapshotV1(
-        new TextEncoder().encode(watcherCanonicalJsonV1(duplicated)),
+      decodeWatcherCanonicalBlockStoreSnapshot(
+        new TextEncoder().encode(watcherCanonicalJson(duplicated)),
       ),
     ).toThrowError(WatcherCanonicalBlockStoreError);
   });
@@ -684,27 +684,25 @@ describe("W21 canonical block store: immutability", () => {
 describe("W21 canonical block store: retention window", () => {
   it("derives the window from the manifest with the Q54 arithmetic", () => {
     const window = windowFor();
-    expect(window.retentionDays).toBe(
-      DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
-    );
+    expect(window.retentionDays).toBe(DA_TRANSPORT_LIMITS.minimumRetentionDays);
     expect(window.deployedRetentionMs).toBe(
-      window.retentionDays * RETENTION_MS_PER_DAY_V1,
+      window.retentionDays * RETENTION_MS_PER_DAY,
     );
     expect(window.requiredRetentionMs).toBe(
-      MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     );
-    expect(window.maturityMs).toBe(MIDGARD_RETENTION_WINDOW_V1.maturityMs);
+    expect(window.maturityMs).toBe(MIDGARD_RETENTION_WINDOW.maturityMs);
     expect(window.worstCaseProofTimeBoundMs).toBe(
-      MIDGARD_RETENTION_WINDOW_V1.maturityMs / 2,
+      MIDGARD_RETENTION_WINDOW.maturityMs / 2,
     );
     expect(window.retentionSlots).toBe(
-      window.deployedRetentionMs / WATCHER_CANONICAL_SLOT_LENGTH_MS_V1,
+      window.deployedRetentionMs / WATCHER_CANONICAL_SLOT_LENGTH_MS,
     );
     expect(window.marginMs).toBeGreaterThan(0);
   });
 
   it("accepts the manifest floor and one day above it, and rejects one day below", () => {
-    const floor = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
+    const floor = DA_TRANSPORT_LIMITS.minimumRetentionDays;
     expect(windowFor(floor).retentionDays).toBe(floor);
     expect(windowFor(floor + 1).retentionDays).toBe(floor + 1);
     expect(() => windowFor(floor - 1)).toThrowError(
@@ -714,7 +712,7 @@ describe("W21 canonical block store: retention window", () => {
 
   it("fails closed on a window that cannot cover maturity plus the proof-time bound", () => {
     const shortDays = Math.floor(
-      MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs / RETENTION_MS_PER_DAY_V1,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs / RETENTION_MS_PER_DAY,
     );
     expect(() => windowFor(shortDays)).toThrowError(
       WatcherCanonicalBlockStoreError,
@@ -726,7 +724,7 @@ describe("W21 canonical block store: retention window", () => {
     for (const value of [undefined, null, "15", 15.5, -15, Number.NaN]) {
       await expectStoreError(
         () =>
-          watcherCanonicalRetentionWindowFromVerifiedManifestV1({
+          watcherCanonicalRetentionWindowFromVerifiedManifest({
             manifest: manifestWith(value),
             manifestId: FINGERPRINT,
             deploymentMarker: MARKER,
@@ -736,7 +734,7 @@ describe("W21 canonical block store: retention window", () => {
     }
     await expectStoreError(
       () =>
-        watcherCanonicalRetentionWindowFromVerifiedManifestV1({
+        watcherCanonicalRetentionWindowFromVerifiedManifest({
           manifest: { da: {} },
           manifestId: FINGERPRINT,
           deploymentMarker: MARKER,
@@ -748,7 +746,7 @@ describe("W21 canonical block store: retention window", () => {
   it("never accepts a caller-supplied window: the resolver verifies the identity first", async () => {
     await expect(
       Promise.resolve().then(() =>
-        resolveWatcherCanonicalRetentionWindowV1({
+        resolveWatcherCanonicalRetentionWindow({
           signedIdentity: {
             schemaVersion: "midgard-watcher-signed-deployment-identity-v1",
             manifest: manifestWith(9_000),
@@ -765,7 +763,7 @@ describe("W21 canonical block store: retention window", () => {
 
   it("refuses to load a store under a doctored retention window", async () => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
@@ -773,10 +771,10 @@ describe("W21 canonical block store: retention window", () => {
     const doctored = {
       ...windowFor(),
       retentionDays: 1,
-    } as WatcherCanonicalRetentionWindowV1;
+    } as WatcherCanonicalRetentionWindow;
     await expectStoreError(
       async () =>
-        loadWatcherCanonicalBlockStoreV1({
+        loadWatcherCanonicalBlockStore({
           backend,
           deploymentIdentity: identityOf(),
           retentionWindow: doctored,
@@ -789,10 +787,10 @@ describe("W21 canonical block store: retention window", () => {
     const doctored = {
       ...windowFor(),
       retentionSlots: 1,
-    } as WatcherCanonicalRetentionWindowV1;
+    } as WatcherCanonicalRetentionWindow;
     await expectStoreError(
       () =>
-        watcherCanonicalRetainUntilSlotV1({
+        watcherCanonicalRetainUntilSlot({
           window: doctored,
           observedAtSlot: OBSERVED_AT_SLOT,
         }),
@@ -804,7 +802,7 @@ describe("W21 canonical block store: retention window", () => {
 describe("W21 canonical block store: prune boundaries", () => {
   const persisted = async (): Promise<MemoryAtomicBackend> => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
@@ -817,7 +815,7 @@ describe("W21 canonical block store: prune boundaries", () => {
     atSlot: number,
     stillChallengeableInputIds: readonly string[] = [],
   ) =>
-    pruneWatcherCanonicalBlockStoreV1({
+    pruneWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identityOf(),
       atSlot,
@@ -843,7 +841,7 @@ describe("W21 canonical block store: prune boundaries", () => {
     expect(late.committed).toBe(true);
     expect(late.prunedInputIds).toEqual([payloadRecord.input.inputId]);
     expect(late.decisions[0]!.reasonCode).toBe("expired_and_not_challengeable");
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identityOf(),
     });
@@ -862,7 +860,7 @@ describe("W21 canonical block store: prune boundaries", () => {
     expect(result.prunedInputIds).toEqual([]);
     expect(result.decisions[0]!.reasonCode).toBe("still_challengeable");
     expect(backend.writes).toBe(1);
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identityOf(),
     });
@@ -890,7 +888,7 @@ describe("W21 canonical block store: prune boundaries", () => {
   });
 
   it("reports an unknown inputId instead of silently succeeding", async () => {
-    const result = await pruneWatcherCanonicalBlockStoreV1({
+    const result = await pruneWatcherCanonicalBlockStore({
       backend: await persisted(),
       deploymentIdentity: identityOf(),
       atSlot: payloadRecord.metadata.retainUntilSlot + 1,
@@ -911,7 +909,7 @@ describe("W21 canonical block store: prune boundaries", () => {
 describe("W21 canonical block store: mutation rejection", () => {
   const storedBytes = async (): Promise<MemoryAtomicBackend> => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
@@ -921,13 +919,13 @@ describe("W21 canonical block store: mutation rejection", () => {
 
   it("rejects a proof_input record whose stored bytes were flipped underneath the digest", async () => {
     const backend = new MemoryAtomicBackend();
-    const bundle = makeWatcherCanonicalProofBundleRecordV1({
+    const bundle = makeWatcherCanonicalProofBundleRecord({
       proofBundle: await clientFor(envelope).fetchProofBundleByHeader({
         headerHash: HEADER_HASH,
       }),
       context: contextOf(),
     });
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: bundle,
@@ -940,7 +938,7 @@ describe("W21 canonical block store: mutation rejection", () => {
 
     await expectStoreError(
       async () =>
-        loadWatcherCanonicalBlockStoreV1({
+        loadWatcherCanonicalBlockStore({
           backend,
           deploymentIdentity: identityOf(),
         }),
@@ -957,7 +955,7 @@ describe("W21 canonical block store: mutation rejection", () => {
 
     await expectStoreError(
       async () =>
-        loadWatcherCanonicalBlockStoreV1({
+        loadWatcherCanonicalBlockStore({
           backend,
           deploymentIdentity: identityOf(),
         }),
@@ -969,7 +967,7 @@ describe("W21 canonical block store: mutation rejection", () => {
     const forged = cloned(payloadRecord);
     forged.input.payload.sha256 = repeatHex(0xaa, 32);
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "integrity_mismatch",
     );
   });
@@ -979,7 +977,7 @@ describe("W21 canonical block store: mutation rejection", () => {
     forged.metadata.envelopeSha256 = repeatHex(0xbb, 32);
     expect(forged.metadata.innerSha256).toBe(sha256Hex(innerCbor));
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "integrity_mismatch",
     );
   });
@@ -991,10 +989,10 @@ describe("W21 canonical block store: mutation rejection", () => {
     expect(forged.metadata.envelopeSha256).toBe(sha256Hex(envelope));
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
-          record: forged as unknown as WatcherCanonicalBlockRecordV1,
+          record: forged as unknown as WatcherCanonicalBlockRecord,
         }),
       "integrity_mismatch",
     );
@@ -1006,7 +1004,7 @@ describe("W21 canonical block store: mutation rejection", () => {
     forged.input.inputId = repeatHex(0xdd, 32);
     forged.metadata.inputId = repeatHex(0xdd, 32);
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "integrity_mismatch",
     );
   });
@@ -1015,7 +1013,7 @@ describe("W21 canonical block store: mutation rejection", () => {
     const forged = cloned(payloadRecord);
     forged.metadata.byteLength = envelope.length + 1;
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "integrity_mismatch",
     );
   });
@@ -1031,19 +1029,19 @@ describe("W21 canonical block store: malformed inputs", () => {
       const forged = cloned(payloadRecord);
       forged.input.payload.cborHex = cborHex;
       await expectStoreError(
-        () => parseWatcherCanonicalBlockRecordV1(forged),
+        () => parseWatcherCanonicalBlockRecord(forged),
         "invalid_field",
       );
     }
   });
 
   it("rejects a payload above the DA transport payload ceiling", async () => {
-    const oversize = Buffer.alloc(DA_TRANSPORT_LIMITS_V1.maxPayloadBytes + 1);
+    const oversize = Buffer.alloc(DA_TRANSPORT_LIMITS.maxPayloadBytes + 1);
     const forged = cloned(payloadRecord);
     forged.input.payload.cborHex = oversize.toString("hex");
     forged.input.payload.sha256 = sha256Hex(oversize);
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "invalid_field",
     );
   });
@@ -1053,14 +1051,14 @@ describe("W21 canonical block store: malformed inputs", () => {
     badKind.input.kind = "surprise";
     badKind.metadata.kind = "surprise";
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(badKind),
+      () => parseWatcherCanonicalBlockRecord(badKind),
       "invalid_field",
     );
 
     const badContentKind = cloned(payloadRecord);
     badContentKind.metadata.contentKind = "surprise";
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(badContentKind),
+      () => parseWatcherCanonicalBlockRecord(badContentKind),
       "invalid_field",
     );
   });
@@ -1069,7 +1067,7 @@ describe("W21 canonical block store: malformed inputs", () => {
     const forged = cloned(payloadRecord);
     forged.metadata.contentKind = "proof_bundle";
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "invalid_field",
     );
   });
@@ -1078,21 +1076,21 @@ describe("W21 canonical block store: malformed inputs", () => {
     const missing = cloned(payloadRecord);
     delete missing.metadata.headerHash;
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(missing),
+      () => parseWatcherCanonicalBlockRecord(missing),
       "missing_field",
     );
 
     const extra = cloned(payloadRecord);
     extra.metadata.surprise = 1;
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(extra),
+      () => parseWatcherCanonicalBlockRecord(extra),
       "unknown_field",
     );
   });
 
   it("rejects a non-canonical, a truncated, and a non-UTF8 snapshot encoding", async () => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
@@ -1101,21 +1099,21 @@ describe("W21 canonical block store: malformed inputs", () => {
 
     await expectStoreError(
       () =>
-        decodeWatcherCanonicalBlockStoreSnapshotV1(
+        decodeWatcherCanonicalBlockStoreSnapshot(
           new TextEncoder().encode(` ${canonical}`),
         ),
       "noncanonical_encoding",
     );
     await expectStoreError(
       () =>
-        decodeWatcherCanonicalBlockStoreSnapshotV1(
+        decodeWatcherCanonicalBlockStoreSnapshot(
           backend.bytes!.slice(0, backend.bytes!.length - 5),
         ),
       "invalid_encoding",
     );
     await expectStoreError(
       () =>
-        decodeWatcherCanonicalBlockStoreSnapshotV1(
+        decodeWatcherCanonicalBlockStoreSnapshot(
           Uint8Array.from([0xff, 0xfe, 0xfd]),
         ),
       "invalid_encoding",
@@ -1125,9 +1123,9 @@ describe("W21 canonical block store: malformed inputs", () => {
   it("rejects a snapshot with the wrong schema version and an unsorted record set", async () => {
     await expectStoreError(
       () =>
-        decodeWatcherCanonicalBlockStoreSnapshotV1(
+        decodeWatcherCanonicalBlockStoreSnapshot(
           new TextEncoder().encode(
-            watcherCanonicalJsonV1({
+            watcherCanonicalJson({
               schemaVersion: "midgard-watcher-canonical-block-store-v0",
               revision: "0",
               deploymentMarker: { ...MARKER },
@@ -1155,10 +1153,10 @@ describe("W21 canonical block store: malformed inputs", () => {
     );
     await expectStoreError(
       () =>
-        decodeWatcherCanonicalBlockStoreSnapshotV1(
+        decodeWatcherCanonicalBlockStoreSnapshot(
           new TextEncoder().encode(
-            watcherCanonicalJsonV1({
-              schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+            watcherCanonicalJson({
+              schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
               revision: "2",
               deploymentMarker: { ...MARKER },
               records: pair,
@@ -1171,13 +1169,13 @@ describe("W21 canonical block store: malformed inputs", () => {
 
   it("round-trips a snapshot through its canonical encoding", async () => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
     });
-    const snapshot = decodeWatcherCanonicalBlockStoreSnapshotV1(backend.bytes!);
-    expect(encodeWatcherCanonicalBlockStoreSnapshotV1(snapshot)).toEqual(
+    const snapshot = decodeWatcherCanonicalBlockStoreSnapshot(backend.bytes!);
+    expect(encodeWatcherCanonicalBlockStoreSnapshot(snapshot)).toEqual(
       backend.bytes,
     );
     expect(watcherDurableStoreBytesSha256(backend.bytes!)).toHaveLength(64);
@@ -1195,10 +1193,10 @@ describe("W21 canonical block store: fail-closed", () => {
     forged.metadata.provenance.trustClass = "operator_private_file";
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
-          record: forged as unknown as WatcherCanonicalBlockRecordV1,
+          record: forged as unknown as WatcherCanonicalBlockRecord,
         }),
       "provenance_not_public_da",
     );
@@ -1217,10 +1215,10 @@ describe("W21 canonical block store: fail-closed", () => {
       forged.metadata.provenance.trustClass = trustClass;
       await expectStoreError(
         async () =>
-          persistWatcherCanonicalPublicBytesV1({
+          persistWatcherCanonicalPublicBytes({
             backend,
             deploymentIdentity: identityOf(),
-            record: forged as unknown as WatcherCanonicalBlockRecordV1,
+            record: forged as unknown as WatcherCanonicalBlockRecord,
           }),
         "provenance_not_public_da",
       );
@@ -1232,7 +1230,7 @@ describe("W21 canonical block store: fail-closed", () => {
     const forged = cloned(payloadRecord);
     forged.metadata.provenance.grade = "diagnostic";
     await expectStoreError(
-      () => parseWatcherCanonicalBlockRecordV1(forged),
+      () => parseWatcherCanonicalBlockRecord(forged),
       "invalid_field",
     );
   });
@@ -1241,7 +1239,7 @@ describe("W21 canonical block store: fail-closed", () => {
     const backend = new MemoryAtomicBackend();
     const error = await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(OTHER_MANIFEST_ID),
           record: payloadRecord,
@@ -1257,14 +1255,14 @@ describe("W21 canonical block store: fail-closed", () => {
 
   it("refuses to load a snapshot written under another deployment", async () => {
     const backend = new MemoryAtomicBackend();
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
     });
     await expectStoreError(
       async () =>
-        loadWatcherCanonicalBlockStoreV1({
+        loadWatcherCanonicalBlockStore({
           backend,
           deploymentIdentity: identityOf(OTHER_MANIFEST_ID),
         }),
@@ -1277,7 +1275,7 @@ describe("W21 canonical block store: fail-closed", () => {
     backend.failRead = true;
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
           record: payloadRecord,
@@ -1286,7 +1284,7 @@ describe("W21 canonical block store: fail-closed", () => {
     );
     await expectStoreError(
       async () =>
-        loadWatcherCanonicalBlockStoreV1({
+        loadWatcherCanonicalBlockStore({
           backend,
           deploymentIdentity: identityOf(),
         }),
@@ -1300,7 +1298,7 @@ describe("W21 canonical block store: fail-closed", () => {
     backend.failBeforeCommit = true;
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
           record: payloadRecord,
@@ -1316,7 +1314,7 @@ describe("W21 canonical block store: fail-closed", () => {
     backend.alwaysConflict = true;
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
           record: payloadRecord,
@@ -1338,7 +1336,7 @@ describe("W21 canonical block store: restart safety", () => {
     backend.failAfterCommit = true;
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
           record: payloadRecord,
@@ -1348,7 +1346,7 @@ describe("W21 canonical block store: restart safety", () => {
 
     // The process is gone; a fresh reader sees the committed snapshot.
     const restarted = new MemoryAtomicBackend(backend.bytes);
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend: restarted,
       deploymentIdentity: identityOf(),
       retentionWindow: windowFor(),
@@ -1359,7 +1357,7 @@ describe("W21 canonical block store: restart safety", () => {
     ).toEqual(envelope);
 
     // Re-driving the same persist is the idempotent no-op, not a duplicate.
-    const replay = await persistWatcherCanonicalPublicBytesV1({
+    const replay = await persistWatcherCanonicalPublicBytes({
       backend: restarted,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
@@ -1373,7 +1371,7 @@ describe("W21 canonical block store: restart safety", () => {
     backend.failBeforeCommit = true;
     await expectStoreError(
       async () =>
-        persistWatcherCanonicalPublicBytesV1({
+        persistWatcherCanonicalPublicBytes({
           backend,
           deploymentIdentity: identityOf(),
           record: payloadRecord,
@@ -1381,7 +1379,7 @@ describe("W21 canonical block store: restart safety", () => {
       "persistence_failure",
     );
     expect(
-      await loadWatcherCanonicalBlockStoreV1({
+      await loadWatcherCanonicalBlockStore({
         backend,
         deploymentIdentity: identityOf(),
       }),
@@ -1391,14 +1389,14 @@ describe("W21 canonical block store: restart safety", () => {
   it("retries a lost compare-and-swap race without a partial write", async () => {
     const backend = new MemoryAtomicBackend();
     backend.conflictOnce = true;
-    const result = await persistWatcherCanonicalPublicBytesV1({
+    const result = await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identityOf(),
       record: payloadRecord,
     });
     expect(result.committed).toBe(true);
     expect(backend.writes).toBe(1);
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identityOf(),
     });
@@ -1411,7 +1409,7 @@ describe("W21 canonical block store: restart safety", () => {
     const backend = new MemoryAtomicBackend();
     const identity = identityOf();
     const otherBytes = Buffer.alloc(8, 0x2f);
-    const other = parseWatcherCanonicalBlockRecordV1({
+    const other = parseWatcherCanonicalBlockRecord({
       input: {
         inputId: sha256Hex(otherBytes),
         kind: "proof_input",
@@ -1436,19 +1434,19 @@ describe("W21 canonical block store: restart safety", () => {
         retainUntilSlot: payloadRecord.metadata.retainUntilSlot,
       },
     });
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identity,
       record: other,
     });
     backend.conflictOnce = true;
-    await persistWatcherCanonicalPublicBytesV1({
+    await persistWatcherCanonicalPublicBytes({
       backend,
       deploymentIdentity: identity,
       record: payloadRecord,
     });
 
-    const loaded = await loadWatcherCanonicalBlockStoreV1({
+    const loaded = await loadWatcherCanonicalBlockStore({
       backend,
       deploymentIdentity: identity,
     });

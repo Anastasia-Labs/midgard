@@ -8,8 +8,8 @@ import {
   type WithdrawnReferenceInputStep03Args,
   WithdrawnReferenceInputStep03State as Step03StateSchema,
   type WithdrawnReferenceInputStep03State,
-  withdrawnReferenceInputStepDatumSchemaV1,
-  withdrawnReferenceInputThreadTokenAssetNameV1,
+  withdrawnReferenceInputStepDatumSchema,
+  withdrawnReferenceInputThreadTokenAssetName,
 } from "../src/index.js";
 
 const txId = "aa".repeat(32);
@@ -73,14 +73,14 @@ describe("withdrawn-reference-input v1 codecs", () => {
   });
 
   it("resolves all three datum schemas and validates the thread asset name", () => {
-    expect(withdrawnReferenceInputStepDatumSchemaV1("step_01")).toBeDefined();
-    expect(withdrawnReferenceInputStepDatumSchemaV1("step_02")).toBeDefined();
-    expect(withdrawnReferenceInputStepDatumSchemaV1("step_03")).toBeDefined();
+    expect(withdrawnReferenceInputStepDatumSchema("step_01")).toBeDefined();
+    expect(withdrawnReferenceInputStepDatumSchema("step_02")).toBeDefined();
+    expect(withdrawnReferenceInputStepDatumSchema("step_03")).toBeDefined();
     expect(
-      withdrawnReferenceInputThreadTokenAssetNameV1("00000010", prover),
+      withdrawnReferenceInputThreadTokenAssetName("00000010", prover),
     ).toBe(`00000010${prover}`);
     expect(() =>
-      withdrawnReferenceInputThreadTokenAssetNameV1("0000001G", prover),
+      withdrawnReferenceInputThreadTokenAssetName("0000001G", prover),
     ).toThrow(/category id/);
   });
 });

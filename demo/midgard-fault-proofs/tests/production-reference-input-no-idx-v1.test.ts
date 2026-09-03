@@ -1,41 +1,41 @@
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { prepareReferenceInputNoIdxFromCanonicalEvidenceV1 } from "../src/prepare-reference-input-no-idx.js";
-import { classifyCanonicalBlockViolationsV1 } from "../src/workflow/classification-v1.js";
-import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
+import { prepareReferenceInputNoIdxFromCanonicalEvidence } from "../src/prepare-reference-input-no-idx.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification-v1.js";
+import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionReferenceInputNoIdxArtifactV1,
-  prepareProductionReferenceInputNoIdxArtifactV1,
+  admitReferenceInputNoIdxArtifact,
+  prepareReferenceInputNoIdxArtifact,
 } from "../src/workflow/production-reference-input-no-idx-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const evidenceFor = async ({ violating }: { readonly violating: boolean }) => {
-  const producer = buildFixtureTransactionV1({
+  const producer = buildFixtureTransaction({
     spendInputs: [],
     outputs: violating ? [] : [Buffer.from("80", "hex")],
     fee: 1n,
   });
-  const consumer = buildFixtureTransactionV1({
+  const consumer = buildFixtureTransaction({
     spendInputs: [],
     referenceInputs: [
-      encodeMidgardSpendInputItemV1({
+      encodeMidgardSpendInputItem({
         txId: Buffer.from(producer.txId, "hex"),
         outputIndex: 0,
       }),
     ],
     fee: 2n,
   });
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [producer, consumer],
   });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -52,14 +52,12 @@ describe("production reference-input-no-idx V1", () => {
       violating: true,
     });
     const replay =
-      await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1.replay(
-        evidence,
-      );
+      await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     expect(replay.detections).toHaveLength(1);
     expect(replay.detections[0]).toMatchObject({
       violationId: "reference-input-no-idx",
     });
-    const classification = await classifyCanonicalBlockViolationsV1({
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
@@ -67,7 +65,7 @@ describe("production reference-input-no-idx V1", () => {
       decision: "fault_detected",
       category: "referenceInputNoIdx",
     });
-    const prepared = await prepareReferenceInputNoIdxFromCanonicalEvidenceV1({
+    const prepared = await prepareReferenceInputNoIdxFromCanonicalEvidence({
       evidence,
       badTxId: consumerId,
       badReferenceInputIndex: 0,
@@ -83,15 +81,15 @@ describe("production reference-input-no-idx V1", () => {
     ) {
       throw new Error("fixture did not select referenceInputNoIdx");
     }
-    const artifact = await prepareProductionReferenceInputNoIdxArtifactV1({
+    const artifact = await prepareReferenceInputNoIdxArtifact({
       evidence,
       classification,
     });
-    expect(
-      admitProductionReferenceInputNoIdxArtifactV1(artifact),
-    ).toMatchObject({ artifact });
+    expect(admitReferenceInputNoIdxArtifact(artifact)).toMatchObject({
+      artifact,
+    });
     expect(() =>
-      admitProductionReferenceInputNoIdxArtifactV1({
+      admitReferenceInputNoIdxArtifact({
         ...artifact,
         badReferenceInputOutputIndex: "1",
       }),
@@ -111,7 +109,7 @@ describe("production reference-input-no-idx V1", () => {
       },
     };
     await expect(
-      prepareProductionReferenceInputNoIdxArtifactV1({
+      prepareReferenceInputNoIdxArtifact({
         evidence,
         classification: unsafeIndexClassification,
       }),
@@ -121,11 +119,8 @@ describe("production reference-input-no-idx V1", () => {
   it("does not classify an in-range producer output", async () => {
     const { evidence } = await evidenceFor({ violating: false });
     expect(
-      (
-        await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1.replay(
-          evidence,
-        )
-      ).detections,
+      (await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY.replay(evidence))
+        .detections,
     ).toEqual([]);
   });
 });

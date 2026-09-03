@@ -1,15 +1,15 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  deriveMidgardNativeTxProofSourceV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -56,7 +56,7 @@ export type DecodedRootEntry<K, V> = {
 export type DecodedTransactionEntry = {
   readonly txId: string;
   readonly keyBytes: Buffer;
-  readonly value: SDK.L2TransactionSourceV1;
+  readonly value: SDK.L2TransactionSource;
   readonly valueBytes: Buffer;
   readonly fullTransactionCbor: Buffer;
   readonly validity: SDK.MidgardTxValidity;
@@ -66,7 +66,7 @@ export type DecodedTransactionEntry = {
 
 export type DecodedForcedTransactionEntry = DecodedRootEntry<
   SDK.OutputReference,
-  SDK.ForcedInclusionTxV1
+  SDK.ForcedInclusionTx
 > & {
   readonly fullTransactionCbor: Buffer;
 };
@@ -98,10 +98,10 @@ export type SourceEventRecord =
     };
 
 export type TransitionTraceReconstruction = {
-  readonly payload: SDK.DaPayloadV1;
+  readonly payload: SDK.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
   readonly payloadCbor: Buffer;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly roots: PayloadRootSet;
   readonly counts: PayloadCountSet;
@@ -149,7 +149,7 @@ export type TransitionTraceReconstruction = {
 export type ReconstructDaPayloadOptions = {
   readonly payloadEnvelopeCbor: Uint8Array;
   readonly expectedHeaderHash?: string;
-  readonly committedHeader?: SDK.HeaderV1;
+  readonly committedHeader?: SDK.Header;
 };
 
 const normalizeHeaderHash = (value: string, fieldName: string): string =>
@@ -205,11 +205,11 @@ export const eventKeyPhase = (eventKey: SDK.EventKey): SDK.TransitionPhase => {
 export const sourceEventKey = (source: SourceEventRecord): SDK.EventKey =>
   source.eventKey;
 
-const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayloadV1 => {
+const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayload => {
   const buffer = Buffer.from(payloadCbor);
-  let payload: SDK.DaPayloadV1;
+  let payload: SDK.DaPayload;
   try {
-    payload = SDK.decodeDaPayloadV1(buffer);
+    payload = SDK.decodeDaPayload(buffer);
   } catch (cause) {
     throw transitionTraceError(
       "malformedPayload",
@@ -217,16 +217,16 @@ const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayloadV1 => {
       cause,
     );
   }
-  if (!SDK.encodeDaPayloadV1(payload).equals(buffer)) {
+  if (!SDK.encodeDaPayload(payload).equals(buffer)) {
     throw transitionTraceError(
       "nonCanonicalPayload",
       "DA payload CBOR is not canonical for DaPayloadV1.",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
+  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
     throw transitionTraceError(
       "wrongPayloadVersion",
-      `Expected DA payload version ${SDK.DA_PAYLOAD_V1_VERSION.toString()}, got ${payload.version.toString()}.`,
+      `Expected DA payload version ${SDK.DA_PAYLOAD_VERSION.toString()}, got ${payload.version.toString()}.`,
     );
   }
   normalizeHeaderHash(payload.block_body.header_hash, "payload header_hash");
@@ -290,7 +290,7 @@ const validatePayloadEntryArray = (
   }
 };
 
-const validateDeclaredCounts = (payload: SDK.DaPayloadV1): void => {
+const validateDeclaredCounts = (payload: SDK.DaPayload): void => {
   const { block_body: body } = payload;
   const counts = body.counts;
   const fields = [
@@ -442,9 +442,9 @@ const decodeTransactions = async ({
       valueHex,
       `transactions[${index.toString()}].value`,
     );
-    const value = decodeData<SDK.L2TransactionSourceV1>(
+    const value = decodeData<SDK.L2TransactionSource>(
       valueHex,
-      SDK.L2TransactionSourceV1Schema,
+      SDK.L2TransactionSourceSchema,
       `transactions[${index.toString()}].value`,
     );
     const fullTransactionCbor = preimagesByTxId.get(txId);
@@ -454,11 +454,11 @@ const decodeTransactions = async ({
         `transaction_preimages is missing tx_id ${txId}.`,
       );
     }
-    let raw: ReturnType<typeof deriveMidgardNativeTxFaultEvidenceMaterialV1>;
+    let raw: ReturnType<typeof deriveMidgardNativeTxFaultEvidenceMaterial>;
     try {
-      raw = deriveMidgardNativeTxFaultEvidenceMaterialV1(fullTransactionCbor);
+      raw = deriveMidgardNativeTxFaultEvidenceMaterial(fullTransactionCbor);
       const expectedTxId = raw.transactionId.toString("hex");
-      const expected: SDK.L2TransactionSourceV1 = {
+      const expected: SDK.L2TransactionSource = {
         tx_id: expectedTxId,
         source: {
           compact_cbor: raw.proofSource.compactCbor.toString("hex"),
@@ -470,8 +470,8 @@ const decodeTransactions = async ({
       };
       if (
         expectedTxId !== txId ||
-        Data.to(value, SDK.L2TransactionSourceV1) !==
-          Data.to(expected, SDK.L2TransactionSourceV1)
+        Data.to(value, SDK.L2TransactionSource) !==
+          Data.to(expected, SDK.L2TransactionSource)
       ) {
         throw new Error(
           "source or commitment does not match canonical preimage",
@@ -486,7 +486,7 @@ const decodeTransactions = async ({
     }
     const committedFieldDefect = raw.fieldPreimages
       .map((preimage, fieldIndex) =>
-        SDK.canonicalDecodabilityEvidenceFromCommittedFieldV1({
+        SDK.canonicalDecodabilityEvidenceFromCommittedField({
           badTxId: txId,
           fieldIndex,
           committedPreimage: preimage,
@@ -499,9 +499,9 @@ const decodeTransactions = async ({
         `L1-authenticated transaction ${txId} commits Q17 field ${committedFieldDefect.fieldIndex.toString()} verdict ${committedFieldDefect.verdict.toString()}.`,
       );
     }
-    let full: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>;
+    let full: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>;
     try {
-      full = decodeMidgardNativeTxFullV1FromCanonicalCbor(fullTransactionCbor);
+      full = decodeMidgardNativeTxFullFromCanonicalCbor(fullTransactionCbor);
     } catch (cause) {
       throw transitionTraceError(
         "malformedPayload",
@@ -532,7 +532,7 @@ const decodeTransactions = async ({
 const authenticateForcedTransactionPreimages = (
   entries: readonly DecodedRootEntry<
     SDK.OutputReference,
-    SDK.ForcedInclusionTxV1
+    SDK.ForcedInclusionTx
   >[],
   preimages: readonly SDK.DaPayloadEntry[],
 ): readonly DecodedForcedTransactionEntry[] => {
@@ -565,21 +565,21 @@ const authenticateForcedTransactionPreimages = (
       );
     }
     try {
-      const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const full = decodeMidgardNativeTxFullFromCanonicalCbor(
         canonicalTransactionCbor,
       );
       // The committed forced leaf carries the operator-adjudicated validity
       // scalar (§2.4.3(e)), not the submitted admission claim, so the
       // expected source is adjudicated by the leaf's own verdict before
       // derivation. `tx_id` hashes the body only and is invariant.
-      const source = deriveMidgardNativeTxProofSourceV1(
-        adjudicateMidgardNativeTxFullV1Validity(
+      const source = deriveMidgardNativeTxProofSource(
+        adjudicateMidgardNativeTxFullValidity(
           full,
           entry.value.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
         ),
       );
-      const expected: SDK.ForcedInclusionTxV1 = {
-        tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
+      const expected: SDK.ForcedInclusionTx = {
+        tx_id: computeMidgardNativeTxId(full).toString("hex"),
         source: {
           compact_cbor: source.compactCbor.toString("hex"),
           witness_set_compact_cbor:
@@ -590,8 +590,8 @@ const authenticateForcedTransactionPreimages = (
         verdict: entry.value.verdict,
       };
       if (
-        Data.to(entry.value, SDK.ForcedInclusionTxV1) !==
-        Data.to(expected, SDK.ForcedInclusionTxV1)
+        Data.to(entry.value, SDK.ForcedInclusionTx) !==
+        Data.to(expected, SDK.ForcedInclusionTx)
       ) {
         throw new Error(
           "source or commitment does not match canonical preimage",
@@ -677,7 +677,7 @@ const buildSourceEvents = ({
   return records;
 };
 
-const payloadMemberCounts = (payload: SDK.DaPayloadV1): PayloadCountSet => ({
+const payloadMemberCounts = (payload: SDK.DaPayload): PayloadCountSet => ({
   withdrawalCount: BigInt(payload.block_body.withdrawals.length),
   forcedTransactionCount: BigInt(payload.block_body.forced_transactions.length),
   l2TransactionCount: BigInt(payload.block_body.transactions.length),
@@ -691,7 +691,7 @@ const payloadMemberCounts = (payload: SDK.DaPayloadV1): PayloadCountSet => ({
   validationTraceCount: BigInt(payload.block_body.validation_traces.length),
 });
 
-const headerCounts = (header: SDK.HeaderV1): PayloadCountSet => ({
+const headerCounts = (header: SDK.Header): PayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -701,7 +701,7 @@ const headerCounts = (header: SDK.HeaderV1): PayloadCountSet => ({
   validationTraceCount: header.validationTraceCount,
 });
 
-const headerRoots = (header: SDK.HeaderV1): PayloadRootSet => ({
+const headerRoots = (header: SDK.Header): PayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -782,7 +782,7 @@ const ensureUniqueSourceFingerprints = (
   return map;
 };
 
-export const reconstructDaPayloadV1 = async ({
+export const reconstructDaPayload = async ({
   payloadEnvelopeCbor,
   expectedHeaderHash,
   committedHeader,
@@ -790,8 +790,8 @@ export const reconstructDaPayloadV1 = async ({
   let payloadCbor: Buffer;
   try {
     payloadCbor = (
-      await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      await unwrapDaPayload(payloadEnvelopeCbor, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
       })
     ).innerBytes;
   } catch (cause) {
@@ -806,7 +806,7 @@ export const reconstructDaPayloadV1 = async ({
   const payloadBuffer = Buffer.from(payloadCbor);
   const payloadEnvelopeBuffer = Buffer.from(payloadEnvelopeCbor);
   const header = body.header;
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   if (headerHash !== body.header_hash) {
     throw transitionTraceError(
       "headerMismatch",
@@ -825,8 +825,8 @@ export const reconstructDaPayloadV1 = async ({
   }
   if (
     committedHeader !== undefined &&
-    Data.to(committedHeader as never, SDK.HeaderV1 as never) !==
-      Data.to(header as never, SDK.HeaderV1 as never)
+    Data.to(committedHeader as never, SDK.Header as never) !==
+      Data.to(header as never, SDK.Header as never)
   ) {
     throw transitionTraceError(
       "headerMismatch",
@@ -840,7 +840,7 @@ export const reconstructDaPayloadV1 = async ({
     try {
       return {
         key: Buffer.from(entry.key),
-        value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        value: buildCanonicalMidgardLedgerEntryOutputMaterial({
           outRef: entry.key,
           outputCbor: entry.value,
         }).descriptorCbor,
@@ -921,7 +921,7 @@ export const reconstructDaPayloadV1 = async ({
   // committed source leaf is itself a total Q44 violation.
   const authenticatedSourceLeafDefect = rawTransactions.find(
     ({ key, value }) =>
-      SDK.daHashPreimageEvidenceFromCommittedLeafV1({
+      SDK.daHashPreimageEvidenceFromCommittedLeaf({
         committedTxId: key.toString("hex"),
         committedLeafValue: value,
       }).isViolation,
@@ -949,12 +949,12 @@ export const reconstructDaPayloadV1 = async ({
   });
   const decodedForcedTransactions = decodeTypedEntries<
     SDK.OutputReference,
-    SDK.ForcedInclusionTxV1
+    SDK.ForcedInclusionTx
   >({
     fieldName: "forced_transactions",
     entries: body.forced_transactions,
     keySchema: SDK.OutputReference as never,
-    valueSchema: SDK.ForcedInclusionTxV1Schema,
+    valueSchema: SDK.ForcedInclusionTxSchema,
   });
   const forcedTransactions = authenticateForcedTransactionPreimages(
     decodedForcedTransactions,

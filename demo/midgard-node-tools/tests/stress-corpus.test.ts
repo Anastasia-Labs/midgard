@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   assetsToValue,
   CML,
@@ -19,14 +19,14 @@ import { planStressCorpus } from "../src/commands/stress-corpus/plan.js";
 import {
   parseStressCorpusIndexLine,
   parseStressCorpusManifest,
-  parseStressCorpusVerificationArtifactV1,
+  parseStressCorpusVerificationArtifact,
   verifyStressCorpus,
 } from "../src/commands/stress-corpus/verify.js";
 import { computeStressCorpusWalletSetIdentity } from "../src/commands/stress-corpus/wallet-set-identity.js";
 import {
   generateStressCorpus,
   parseStressCorpusGenerateConfig,
-  parseStressCorpusGenerationArtifactV1,
+  parseStressCorpusGenerationArtifact,
   parseStressCorpusVerifyConfig,
 } from "../src/commands/stress-corpus-generate.js";
 import { parseOpenLoopCorpusLine } from "../src/commands/stress-open-loop.js";
@@ -37,7 +37,7 @@ const TEST_SEEDS = [
   "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
 ] as const;
 const MAX_SUBMIT_TX_CBOR_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes;
+  MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes;
 const MAX_SUBMIT_TX_CBOR_BYTES_TEXT = MAX_SUBMIT_TX_CBOR_BYTES.toString();
 
 const walletLabel = (index: number): string =>
@@ -234,18 +234,18 @@ describe("stress corpus generation", () => {
       unknown
     >;
     const parsedGeneration =
-      parseStressCorpusGenerationArtifactV1(generationArtifact);
+      parseStressCorpusGenerationArtifact(generationArtifact);
 
     expect(result.plan.chainDepth).toBe(2);
     expect(parsedGeneration.plan.amountLovelace).toBe("1000000");
     expect(() =>
-      parseStressCorpusGenerationArtifactV1({
+      parseStressCorpusGenerationArtifact({
         ...generationArtifact,
         manifestPath: join(outDir, "other-manifest.json"),
       }),
     ).toThrow("result binding is inconsistent");
     expect(() =>
-      parseStressCorpusGenerationArtifactV1({
+      parseStressCorpusGenerationArtifact({
         ...generationArtifact,
         verified: {
           ...(generationArtifact.verified as Record<string, unknown>),
@@ -409,7 +409,7 @@ describe("stress corpus generation", () => {
       unknown
     >;
     expect(
-      parseStressCorpusVerificationArtifactV1(verificationArtifact),
+      parseStressCorpusVerificationArtifact(verificationArtifact),
     ).toMatchObject({
       schemaVersion: "midgard-stress-corpus-verification-v1",
       rowCount: 4,
@@ -430,7 +430,7 @@ describe("stress corpus generation", () => {
     );
 
     expect(() =>
-      parseStressCorpusGenerationArtifactV1({
+      parseStressCorpusGenerationArtifact({
         ...generationArtifact,
         schemaVersion: "midgard-stress-corpus-generation-v0",
       }),
@@ -438,7 +438,7 @@ describe("stress corpus generation", () => {
     const { verified: _generationVerified, ...generationWithoutVerified } =
       generationArtifact;
     expect(() =>
-      parseStressCorpusGenerationArtifactV1(generationWithoutVerified),
+      parseStressCorpusGenerationArtifact(generationWithoutVerified),
     ).toThrow("missing=[verified]");
     const generationPlan = generationArtifact.plan as Record<string, unknown>;
     const {
@@ -446,20 +446,20 @@ describe("stress corpus generation", () => {
       ...generationPlanWithoutAmount
     } = generationPlan;
     expect(() =>
-      parseStressCorpusGenerationArtifactV1({
+      parseStressCorpusGenerationArtifact({
         ...generationArtifact,
         plan: generationPlanWithoutAmount,
       }),
     ).toThrow("missing=[amountLovelace]");
     expect(() =>
-      parseStressCorpusGenerationArtifactV1({
+      parseStressCorpusGenerationArtifact({
         ...generationArtifact,
         plan: { ...generationPlan, extension: "historical" },
       }),
     ).toThrow("extra=[extension]");
 
     expect(() =>
-      parseStressCorpusVerificationArtifactV1({
+      parseStressCorpusVerificationArtifact({
         ...verificationArtifact,
         schemaVersion: "midgard-stress-corpus-verification-v0",
       }),
@@ -473,13 +473,13 @@ describe("stress corpus generation", () => {
       ...verificationCorpusWithoutManifestSha256
     } = verificationCorpus;
     expect(() =>
-      parseStressCorpusVerificationArtifactV1({
+      parseStressCorpusVerificationArtifact({
         ...verificationArtifact,
         corpus: verificationCorpusWithoutManifestSha256,
       }),
     ).toThrow("missing=[manifestSha256]");
     expect(() =>
-      parseStressCorpusVerificationArtifactV1({
+      parseStressCorpusVerificationArtifact({
         ...verificationArtifact,
         rebuildSample: {
           ...(verificationArtifact.rebuildSample as Record<string, unknown>),

@@ -26,16 +26,16 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
-  type WithdrawnInputContractsV1,
+  type WithdrawnInputContracts,
 } from "./contracts-v1.js";
 import {
-  requireWithdrawnInputReferenceScriptV1,
-  withdrawnInputStepLabelV1,
+  requireWithdrawnInputReferenceScript,
+  withdrawnInputStepLabel,
   withdrawnInputSubmitError,
 } from "./submit-common-v1.js";
 
@@ -62,12 +62,12 @@ export const submitWithdrawnInputCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnInputContractsV1;
+  readonly contracts: WithdrawnInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -84,7 +84,7 @@ export const submitWithdrawnInputCancel = async ({
       `thread UTxO ${outRefLabel(threadUtxo)} is not at a family step.`,
     );
   }
-  const stepReference = requireWithdrawnInputReferenceScriptV1({
+  const stepReference = requireWithdrawnInputReferenceScript({
     utxo: referenceScriptUtxo,
     contracts,
     stepIndex,
@@ -104,7 +104,7 @@ export const submitWithdrawnInputCancel = async ({
   );
   if (datum.fraud_prover !== signer.paymentKeyHash) {
     throw withdrawnInputSubmitError(
-      `${withdrawnInputStepLabelV1(stepIndex)} belongs to ${datum.fraud_prover}, not ${signer.paymentKeyHash}.`,
+      `${withdrawnInputStepLabel(stepIndex)} belongs to ${datum.fraud_prover}, not ${signer.paymentKeyHash}.`,
     );
   }
   signer.selectWallet(lucid);
@@ -152,7 +152,7 @@ export const submitWithdrawnInputCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "withdrawn-input cancel computation-thread mint",

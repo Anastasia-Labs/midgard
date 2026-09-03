@@ -2,14 +2,14 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertConfirmedDuplicateEventV1,
-  type CommittedDuplicateEventProofV1,
-  CommittedDuplicateEventProofV1 as CommittedDuplicateEventProofV1Type,
-  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+  assertConfirmedDuplicateEvent,
+  type CommittedDuplicateEventProof,
+  CommittedDuplicateEventProof as CommittedDuplicateEventProofType,
+  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
   type CrossBlockDuplicateEventStep02State,
   CrossBlockDuplicateEventStep02State as CrossBlockDuplicateEventStep02StateType,
-  crossBlockDuplicateEventStep02StateV1,
-  crossBlockDuplicateEventThreadTokenAssetNameV1,
+  crossBlockDuplicateEventStep02State,
+  crossBlockDuplicateEventThreadTokenAssetName,
 } from "../src/fraud-proof/cross-block-duplicate-event-v1.js";
 
 const HEADER_HASH = "31".repeat(28);
@@ -27,7 +27,7 @@ const DEPOSIT_INFO = {
   l2_datum: null,
 };
 
-const depositProof = (key = EVENT_KEY): CommittedDuplicateEventProofV1 => ({
+const depositProof = (key = EVENT_KEY): CommittedDuplicateEventProof => ({
   CommittedDuplicateDepositV1: {
     membership: {
       domain: "DepositsRootDomain",
@@ -41,7 +41,7 @@ const depositProof = (key = EVENT_KEY): CommittedDuplicateEventProofV1 => ({
   },
 });
 
-const withdrawalProof = (): CommittedDuplicateEventProofV1 => ({
+const withdrawalProof = (): CommittedDuplicateEventProof => ({
   CommittedDuplicateWithdrawalV1: {
     membership: {
       domain: "WithdrawalsRootDomain",
@@ -72,7 +72,7 @@ const withdrawalProof = (): CommittedDuplicateEventProofV1 => ({
 
 const forcedTransactionProof = (
   key = EVENT_KEY,
-): CommittedDuplicateEventProofV1 => ({
+): CommittedDuplicateEventProof => ({
   CommittedDuplicateForcedTransactionV1: {
     membership: {
       domain: "ForcedTransactionsV1RootDomain",
@@ -96,11 +96,11 @@ const forcedTransactionProof = (
 
 describe("cross-block-duplicate-event V1 wire types", () => {
   it("reserves 00000016 and binds the challenged header in the thread name", () => {
-    expect(CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1).toBe("00000016");
-    expect(crossBlockDuplicateEventThreadTokenAssetNameV1(HEADER_HASH)).toBe(
+    expect(CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID).toBe("00000016");
+    expect(crossBlockDuplicateEventThreadTokenAssetName(HEADER_HASH)).toBe(
       `00000016${HEADER_HASH}`,
     );
-    expect(() => crossBlockDuplicateEventThreadTokenAssetNameV1("31")).toThrow(
+    expect(() => crossBlockDuplicateEventThreadTokenAssetName("31")).toThrow(
       /28 bytes/u,
     );
   });
@@ -111,24 +111,22 @@ describe("cross-block-duplicate-event V1 wire types", () => {
       withdrawalProof(),
       forcedTransactionProof(),
     ]) {
-      const cbor = Data.to(proof, CommittedDuplicateEventProofV1Type);
-      expect(Data.from(cbor, CommittedDuplicateEventProofV1Type)).toEqual(
-        proof,
-      );
+      const cbor = Data.to(proof, CommittedDuplicateEventProofType);
+      expect(Data.from(cbor, CommittedDuplicateEventProofType)).toEqual(proof);
     }
-    expect(Data.to(depositProof(), CommittedDuplicateEventProofV1Type)).toMatch(
+    expect(Data.to(depositProof(), CommittedDuplicateEventProofType)).toMatch(
       /^d879/u,
     );
     expect(
-      Data.to(withdrawalProof(), CommittedDuplicateEventProofV1Type),
+      Data.to(withdrawalProof(), CommittedDuplicateEventProofType),
     ).toMatch(/^d87a/u);
     expect(
-      Data.to(forcedTransactionProof(), CommittedDuplicateEventProofV1Type),
+      Data.to(forcedTransactionProof(), CommittedDuplicateEventProofType),
     ).toMatch(/^d87b/u);
   });
 
   it("derives and round-trips the exact step-01 handoff", () => {
-    const state = crossBlockDuplicateEventStep02StateV1({
+    const state = crossBlockDuplicateEventStep02State({
       challengedHeaderHash: HEADER_HASH,
       settlementPolicyId: SETTLEMENT_POLICY_ID,
       committedEvent: depositProof(),
@@ -147,55 +145,55 @@ describe("cross-block-duplicate-event V1 wire types", () => {
 
   it("fails closed for same-header, cross-domain, and different-event claims", () => {
     const state: CrossBlockDuplicateEventStep02State =
-      crossBlockDuplicateEventStep02StateV1({
+      crossBlockDuplicateEventStep02State({
         challengedHeaderHash: HEADER_HASH,
         settlementPolicyId: SETTLEMENT_POLICY_ID,
         committedEvent: depositProof(),
       });
     expect(() =>
-      assertConfirmedDuplicateEventV1({
+      assertConfirmedDuplicateEvent({
         state,
         settledHeaderHash: SETTLED_HEADER_HASH,
         settledEvent: depositProof(),
       }),
     ).not.toThrow();
     expect(() =>
-      assertConfirmedDuplicateEventV1({
+      assertConfirmedDuplicateEvent({
         state,
         settledHeaderHash: HEADER_HASH,
         settledEvent: depositProof(),
       }),
     ).toThrow(/must differ/u);
     expect(() =>
-      assertConfirmedDuplicateEventV1({
+      assertConfirmedDuplicateEvent({
         state,
         settledHeaderHash: SETTLED_HEADER_HASH,
         settledEvent: withdrawalProof(),
       }),
     ).toThrow(/root domains differ/u);
     expect(() =>
-      assertConfirmedDuplicateEventV1({
+      assertConfirmedDuplicateEvent({
         state,
         settledHeaderHash: SETTLED_HEADER_HASH,
         settledEvent: depositProof(FOREIGN_EVENT_KEY),
       }),
     ).toThrow(/event identities differ/u);
 
-    const forcedState = crossBlockDuplicateEventStep02StateV1({
+    const forcedState = crossBlockDuplicateEventStep02State({
       challengedHeaderHash: HEADER_HASH,
       settlementPolicyId: SETTLEMENT_POLICY_ID,
       committedEvent: forcedTransactionProof(),
     });
     expect(forcedState.event_kind).toBe("DuplicateForcedTransactionV1");
     expect(() =>
-      assertConfirmedDuplicateEventV1({
+      assertConfirmedDuplicateEvent({
         state: forcedState,
         settledHeaderHash: SETTLED_HEADER_HASH,
         settledEvent: forcedTransactionProof(),
       }),
     ).not.toThrow();
     expect(() =>
-      assertConfirmedDuplicateEventV1({
+      assertConfirmedDuplicateEvent({
         state: forcedState,
         settledHeaderHash: SETTLED_HEADER_HASH,
         settledEvent: forcedTransactionProof(FOREIGN_EVENT_KEY),

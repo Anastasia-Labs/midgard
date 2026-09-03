@@ -20,7 +20,7 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -32,20 +32,20 @@ import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  buildValueNotPreservedFixtureV1,
-  makeValueNotPreservedEmulatorHarnessV1,
-  publishValueNotPreservedReferenceScriptsV1,
-  runValueNotPreservedThreadV1,
-  setupValueNotPreservedScenarioV1,
-  vnpOutputV1,
-  vnpOutRefV1,
-  vnpValueV1,
+  buildValueNotPreservedFixture,
+  makeValueNotPreservedEmulatorHarness,
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+  vnpOutput,
+  vnpOutRef,
+  vnpValue,
 } from "./support/value-not-preserved-emulator-v1.js";
 
 const POLICY_ID_HEX = "ab".repeat(28);
@@ -53,7 +53,7 @@ const ASSET_NAME_HEX = "746f6b"; // "tok"
 
 describe("value-not-preserved emulator lifecycle (tier-1 token claim)", () => {
   it("proves an inflated token end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
+    const harness = await makeValueNotPreservedEmulatorHarness();
     const { emulator, funderLucid, proverLucid, proverSigner, family } =
       harness;
 
@@ -62,30 +62,30 @@ describe("value-not-preserved emulator lifecycle (tier-1 token claim)", () => {
     const token = (quantity: bigint) => [
       { policyIdHex: POLICY_ID_HEX, assetNameHex: ASSET_NAME_HEX, quantity },
     ];
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
         {
-          input: vnpOutRefV1("11", 0),
-          spentValue: vnpValueV1(10_000_000n, token(25n)),
+          input: vnpOutRef("11", 0),
+          spentValue: vnpValue(10_000_000n, token(25n)),
         },
         {
-          input: vnpOutRefV1("22", 1),
-          spentValue: vnpValueV1(8_000_000n, token(15n)),
+          input: vnpOutRef("22", 1),
+          spentValue: vnpValue(8_000_000n, token(15n)),
         },
       ],
       outputs: [
-        vnpOutputV1({ value: vnpValueV1(2_000_000n, token(30n)) }),
-        vnpOutputV1({ value: vnpValueV1(2_000_000n, token(20n)) }),
+        vnpOutput({ value: vnpValue(2_000_000n, token(30n)) }),
+        vnpOutput({ value: vnpValue(2_000_000n, token(20n)) }),
       ],
       mintItems: [],
     });
     // Genuinely small tier-1 data: nowhere near the 14,336-byte cap.
     expect(fixture.outputsPreimageCbor.length).toBeLessThan(512);
     expect(fixture.outputsPreimageCbor.length).toBeLessThanOrEqual(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
 
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
@@ -103,12 +103,12 @@ describe("value-not-preserved emulator lifecycle (tier-1 token claim)", () => {
         lucid: proverLucid,
         contracts: harness.contracts,
       });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: funderLucid,
       contracts: family,
     });
 
-    const run = await runValueNotPreservedThreadV1({
+    const run = await runValueNotPreservedThread({
       harness,
       fixture,
       setup,
@@ -142,7 +142,7 @@ describe("value-not-preserved emulator lifecycle (tier-1 token claim)", () => {
     );
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
     for (const [stage, measurement] of Object.entries(run.measurements)) {
-      expectProofFitV1({ stage, measurement, maxTxExMem, maxTxExSteps });
+      expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
 
     // The permanent token is minted and the thread NFT is burned: no step

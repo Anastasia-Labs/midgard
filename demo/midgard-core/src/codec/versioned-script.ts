@@ -16,8 +16,8 @@ import {
   type MidgardNativeScript,
 } from "./native-script.js";
 import {
-  decodeMidgardFieldPreimageV1,
-  encodeMidgardFieldPreimageV1,
+  decodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimage,
 } from "./native-tx-field-access-v1.js";
 
 export const MidgardVersionedScriptTags = {
@@ -146,7 +146,7 @@ export const hashMidgardVersionedScript = (
 export const encodeMidgardVersionedScriptListPreimage = (
   scripts: readonly MidgardVersionedScript[],
 ): Buffer =>
-  encodeMidgardFieldPreimageV1(scripts.map(encodeMidgardVersionedScript));
+  encodeMidgardFieldPreimage(scripts.map(encodeMidgardVersionedScript));
 
 export const decodeMidgardVersionedScriptListPreimage = (
   bytes: Uint8Array,
@@ -155,7 +155,7 @@ export const decodeMidgardVersionedScriptListPreimage = (
   // §5.1's one uniform byte-list decode; it already fails closed on a
   // non-minimal header, a count that disagrees with the walked content, and
   // trailing bytes, so this function only has to read each item back.
-  const scripts = decodeMidgardFieldPreimageV1(bytes).map((item, index) => {
+  const scripts = decodeMidgardFieldPreimage(bytes).map((item, index) => {
     try {
       return decodeMidgardVersionedScript(item);
     } catch (error) {

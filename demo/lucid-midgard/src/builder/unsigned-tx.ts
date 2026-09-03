@@ -1,11 +1,11 @@
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardHash28ItemV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardFieldPreimage,
+  encodeMidgardHash28Item,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
@@ -40,21 +40,21 @@ export type ScriptMaterialization = {
  * the field-access door, so the producer and the reader cannot drift.
  */
 export const encodeByteListPreimage = (items: readonly Uint8Array[]): Buffer =>
-  encodeMidgardFieldPreimageV1(items);
+  encodeMidgardFieldPreimage(items);
 
 const sortedInputCbors = (inputs: readonly MidgardUtxo[]): Buffer[] =>
   [...inputs].sort(compareOutRefs).map((input) => utxoOutRefCbor(input));
 
 /**
  * §5.3 field 4 items: the raw 28-byte signer hash, no interior CBOR.
- * `encodeMidgardHash28ItemV1` is the §5.3 encoder that says so and asserts the
+ * `encodeMidgardHash28Item` is the §5.3 encoder that says so and asserts the
  * width — the stride-30 arithmetic on the on-chain side depends on it, and
  * `hexToBytes` alone accepts any length.
  */
 const sortedRequiredSignerCbors = (signers: readonly string[]): Buffer[] =>
   signers
     .map((signer) =>
-      encodeMidgardHash28ItemV1(
+      encodeMidgardHash28Item(
         hexToBytes(signer, { fieldName: "requiredSigner" }),
       ),
     )
@@ -73,8 +73,8 @@ export const buildCanonicalUnsignedTx = (
   state: BuilderState,
   fee: bigint,
   scriptMaterialization: ScriptMaterialization,
-  nativeTxVersion: bigint = MIDGARD_NATIVE_TX_V1_VERSION,
-): MidgardNativeTxCanonicalV1 => ({
+  nativeTxVersion: bigint = MIDGARD_NATIVE_TX_VERSION,
+): MidgardNativeTxCanonical => ({
   version: nativeTxVersion,
   validity: "TxIsValid",
   body: {

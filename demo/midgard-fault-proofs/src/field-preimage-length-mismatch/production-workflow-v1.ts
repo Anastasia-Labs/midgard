@@ -1,16 +1,16 @@
 import {
-  decodeMidgardNativeTxCompactV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import { isMidgardWitnessSetFieldV1 } from "@al-ft/midgard-sdk";
+import { isMidgardWitnessSetField } from "@al-ft/midgard-sdk";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldCarriageV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
   type StateQueueMutationLeaseCoordinator,
@@ -18,31 +18,31 @@ import {
 } from "../remove-fraudulent-block.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
-import type { FraudProofWorkflowJournalStoreV1 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import { createFieldPreimageLengthCentralJournalAdapterV1 } from "./central-journal-v1.js";
-import { fieldPreimageLengthCommittedClaimV1 } from "./prepare-accepted-v1.js";
+import type { FraudProofWorkflowJournalStore } from "../workflow/journal-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import { createFieldPreimageLengthCentralJournalAdapter } from "./central-journal-v1.js";
+import { fieldPreimageLengthCommittedClaim } from "./prepare-accepted-v1.js";
 import {
-  createConcreteFieldPreimageLengthLucidBuildersV1,
-  type LoadManifestBoundFieldPreimageLengthConfigV1,
-  loadManifestBoundFieldPreimageLengthConfigV1,
-  type ManifestBoundFieldPreimageLengthConfigV1,
-  runManifestBoundFieldPreimageLengthWorkflowV1,
+  createConcreteFieldPreimageLengthLucidBuilders,
+  type LoadManifestBoundFieldPreimageLengthConfig,
+  loadManifestBoundFieldPreimageLengthConfig,
+  type ManifestBoundFieldPreimageLengthConfig,
+  runManifestBoundFieldPreimageLengthWorkflow,
 } from "./production-config-v1.js";
 import {
-  type AuthenticatedFieldPreimageLengthProductionEvidenceV1,
-  detectAuthenticatedFieldPreimageLengthProductionEvidenceV1,
+  type AuthenticatedFieldPreimageLengthEvidence,
+  detectAuthenticatedFieldPreimageLengthEvidence,
 } from "./production-evidence-v1.js";
 import type {
-  FieldPreimageLengthJournalV1,
-  PreparedFieldPreimageLengthWorkflowV1,
+  FieldPreimageLengthJournal,
+  PreparedFieldPreimageLengthWorkflow,
 } from "./workflow-v1.js";
 
-export const FIELD_PREIMAGE_LENGTH_PRODUCTION_WORKFLOW_V1 =
+export const FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW =
   "midgard-field-preimage-length-mismatch-production-workflow-v1" as const;
 
 /**
@@ -50,36 +50,36 @@ export const FIELD_PREIMAGE_LENGTH_PRODUCTION_WORKFLOW_V1 =
  * caller verdict: direction, claim, source inclusion, forced reason and
  * membership are all authenticated outputs consumed by the real builders.
  */
-export type ManifestBoundFieldPreimageLengthWorkflowConfigV1 =
-  LoadManifestBoundFieldPreimageLengthConfigV1 &
+export type ManifestBoundFieldPreimageLengthWorkflowConfig =
+  LoadManifestBoundFieldPreimageLengthConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundFieldPreimageLengthWorkflowV1 = Readonly<{
-  workflowVersion: typeof FIELD_PREIMAGE_LENGTH_PRODUCTION_WORKFLOW_V1;
-  config: ManifestBoundFieldPreimageLengthConfigV1;
-  binding: ManifestBoundFieldPreimageLengthConfigV1["binding"];
-  l1: FraudProofFamilyL1ObservationPortV1<"fieldPreimageLengthMismatch">;
+export type ManifestBoundFieldPreimageLengthWorkflow = Readonly<{
+  workflowVersion: typeof FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW;
+  config: ManifestBoundFieldPreimageLengthConfig;
+  binding: ManifestBoundFieldPreimageLengthConfig["binding"];
+  l1: FraudProofFamilyL1ObservationPort<"fieldPreimageLengthMismatch">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;
 
 /** Installation factory: binds deployment/L1 authority and accepts no proof. */
-export const createManifestBoundFieldPreimageLengthWorkflowV1 = async (
-  input: ManifestBoundFieldPreimageLengthWorkflowConfigV1,
-): Promise<ManifestBoundFieldPreimageLengthWorkflowV1> => {
-  const config = await loadManifestBoundFieldPreimageLengthConfigV1(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+export const createManifestBoundFieldPreimageLengthWorkflow = async (
+  input: ManifestBoundFieldPreimageLengthWorkflowConfig,
+): Promise<ManifestBoundFieldPreimageLengthWorkflow> => {
+  const config = await loadManifestBoundFieldPreimageLengthConfig(input);
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: input.source,
     releaseFinality: config.binding.releaseFinality,
     releaseEconomics: config.binding.releaseEconomics,
     definition: config.binding.definition,
   });
   return Object.freeze({
-    workflowVersion: FIELD_PREIMAGE_LENGTH_PRODUCTION_WORKFLOW_V1,
+    workflowVersion: FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW,
     config,
     binding: config.binding,
     l1,
@@ -89,43 +89,43 @@ export const createManifestBoundFieldPreimageLengthWorkflowV1 = async (
   });
 };
 
-export type FieldPreimageLengthProductionJournalPortV1 = Readonly<{
-  load: () => Promise<FieldPreimageLengthJournalV1 | null>;
-  save: (journal: FieldPreimageLengthJournalV1) => Promise<void>;
+export type FieldPreimageLengthJournalPort = Readonly<{
+  load: () => Promise<FieldPreimageLengthJournal | null>;
+  save: (journal: FieldPreimageLengthJournal) => Promise<void>;
   observeConfirmed: (
     action: "init" | "dispatch" | "authenticate" | "finalize" | "remove",
     transactionId: string,
   ) => Promise<boolean>;
   boundary?: (
     action: "init" | "dispatch" | "authenticate" | "finalize" | "remove",
-    prepared: PreparedFieldPreimageLengthWorkflowV1,
-  ) => FraudProofPreSubmitBoundaryV1;
+    prepared: PreparedFieldPreimageLengthWorkflow,
+  ) => FraudProofPreSubmitBoundary;
   auxiliaryBoundary?: (
     kind: "publication" | "certificate",
-  ) => FraudProofPreSubmitBoundaryV1;
+  ) => FraudProofPreSubmitBoundary;
   auxiliaryConfirmed?: (
     kind: "publication" | "certificate",
     txHashes: readonly string[],
   ) => Promise<void>;
 }>;
 
-export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
+export const resolveFieldPreimageLengthCarriage = async ({
   workflow,
   evidence,
   journal,
 }: {
-  readonly workflow: ManifestBoundFieldPreimageLengthWorkflowV1;
-  readonly evidence: AuthenticatedFieldPreimageLengthProductionEvidenceV1;
-  readonly journal: FieldPreimageLengthProductionJournalPortV1;
+  readonly workflow: ManifestBoundFieldPreimageLengthWorkflow;
+  readonly evidence: AuthenticatedFieldPreimageLengthEvidence;
+  readonly journal: FieldPreimageLengthJournalPort;
 }) => {
-  const compact = decodeMidgardNativeTxCompactV1(
+  const compact = decodeMidgardNativeTxCompact(
     Buffer.from(evidence.fieldMaterial.nativeTxCompactCbor, "hex"),
   );
-  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(evidence.fieldMaterial.witnessSetCompactCbor, "hex"),
   );
-  const witnessField = isMidgardWitnessSetFieldV1(evidence.prepared.fieldIndex);
-  const planned = planFaultProofFieldOpeningV1({
+  const witnessField = isMidgardWitnessSetField(evidence.prepared.fieldIndex);
+  const planned = planFaultProofFieldOpening({
     fieldIndex: evidence.prepared.fieldIndex,
     anchorTxId: evidence.prepared.transactionId,
     nativeTxCompactCbor: evidence.fieldMaterial.nativeTxCompactCbor,
@@ -147,7 +147,7 @@ export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
       : {}),
     label: "fieldPreimageLengthMismatch authenticated field",
   });
-  let publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  let publications = await resolveFaultProofFieldCarriagePublications({
     lucid: workflow.config.lucid,
     publisherAddress: workflow.config.signer.address,
     planned,
@@ -158,7 +158,7 @@ export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
         "fieldPreimageLengthMismatch non-inline carriage requires a durable production journal",
       );
     }
-    publications = await publishFaultProofFieldCarriageV1({
+    publications = await publishFaultProofFieldCarriage({
       lucid: workflow.config.lucid,
       signer: workflow.config.signer,
       planned,
@@ -171,7 +171,7 @@ export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
     "publication",
     publications.map(({ txHash }) => txHash),
   );
-  let certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  let certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: workflow.config.lucid,
     network: workflow.config.binding.network,
     planned,
@@ -184,7 +184,7 @@ export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
         "fieldPreimageLengthMismatch certification requires a durable production journal",
       );
     }
-    const certified = await certifyFaultProofFieldCarriageV1({
+    const certified = await certifyFaultProofFieldCarriage({
       lucid: workflow.config.lucid,
       network: workflow.config.binding.network,
       signer: workflow.config.signer,
@@ -217,13 +217,13 @@ export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
   const claimResolver = (
     completeReferenceInputs: readonly (typeof carriageReferences)[number][],
   ) =>
-    fieldPreimageLengthCommittedClaimV1({
+    fieldPreimageLengthCommittedClaim({
       fieldIndex: evidence.prepared.fieldIndex,
       witnessSetCompactCbor: Buffer.from(
         evidence.fieldMaterial.witnessSetCompactCbor,
         "hex",
       ),
-      carriage: faultProofFieldCarriageV1({
+      carriage: faultProofFieldCarriage({
         planned,
         referenceInputs: completeReferenceInputs,
         certificatePolicyId:
@@ -234,15 +234,15 @@ export const resolveFieldPreimageLengthProductionCarriageV1 = async ({
   return Object.freeze({ carriageReferences, claimResolver });
 };
 
-const runAuthenticatedFieldPreimageLengthWorkflowV1 = async ({
+const runAuthenticatedFieldPreimageLengthWorkflow = async ({
   workflow,
   evidence,
   journal,
 }: {
-  readonly workflow: ManifestBoundFieldPreimageLengthWorkflowV1;
-  readonly evidence: AuthenticatedFieldPreimageLengthProductionEvidenceV1;
-  readonly journal: FieldPreimageLengthProductionJournalPortV1;
-}): Promise<FieldPreimageLengthJournalV1> => {
+  readonly workflow: ManifestBoundFieldPreimageLengthWorkflow;
+  readonly evidence: AuthenticatedFieldPreimageLengthEvidence;
+  readonly journal: FieldPreimageLengthJournalPort;
+}): Promise<FieldPreimageLengthJournal> => {
   const headerHash = workflow.config.binding.definition.headerHash;
   if (evidence.prepared.headerHash !== headerHash) {
     throw new Error("authenticated evidence targets a different bound header");
@@ -256,14 +256,14 @@ const runAuthenticatedFieldPreimageLengthWorkflowV1 = async ({
       "persisted field-preimage-length evidence digest differs from authenticated retained DA",
     );
   }
-  let current: FieldPreimageLengthJournalV1 =
+  let current: FieldPreimageLengthJournal =
     persisted ??
     Object.freeze({
       prepared: evidence.prepared,
       confirmed: Object.freeze([]),
       transactionIds: Object.freeze({}),
     });
-  const builders = createConcreteFieldPreimageLengthLucidBuildersV1({
+  const builders = createConcreteFieldPreimageLengthLucidBuilders({
     resolveStage: async ({ action, prepared }) => {
       const observed = await workflow.l1.observe({
         headerHash: workflow.binding.definition.headerHash,
@@ -279,7 +279,7 @@ const runAuthenticatedFieldPreimageLengthWorkflowV1 = async ({
         (prepared.direction === "wrongfulRejection" &&
           action === "authenticate");
       const carriage = needsCarriage
-        ? await resolveFieldPreimageLengthProductionCarriageV1({
+        ? await resolveFieldPreimageLengthCarriage({
             workflow,
             evidence,
             journal,
@@ -326,7 +326,7 @@ const runAuthenticatedFieldPreimageLengthWorkflowV1 = async ({
       ).txHash,
     boundary: journal.boundary,
   });
-  current = await runManifestBoundFieldPreimageLengthWorkflowV1({
+  current = await runManifestBoundFieldPreimageLengthWorkflow({
     config: workflow.config,
     builders,
     load: async () => current,
@@ -344,12 +344,12 @@ const runAuthenticatedFieldPreimageLengthWorkflowV1 = async ({
  * evidence. On first run it derives it from authenticated L1 plus public DA;
  * on resume the newly derived digest must equal the persisted journal digest.
  */
-export const runOrResumeManifestBoundFieldPreimageLengthWorkflowV1 =
+export const runOrResumeManifestBoundFieldPreimageLengthWorkflow =
   async (input: {
-    readonly workflow: ManifestBoundFieldPreimageLengthWorkflowV1;
+    readonly workflow: ManifestBoundFieldPreimageLengthWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FieldPreimageLengthProductionJournalPortV1;
-  }): Promise<FieldPreimageLengthJournalV1> => {
+    readonly journal: FieldPreimageLengthJournalPort;
+  }): Promise<FieldPreimageLengthJournal> => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
       throw new Error(
         "fieldPreimageLengthMismatch runner rejects caller-authored evidence inputs",
@@ -362,12 +362,11 @@ export const runOrResumeManifestBoundFieldPreimageLengthWorkflowV1 =
     }
     const headerHash = input.workflow.config.binding.definition.headerHash;
     const observation = await input.workflow.l1.observeHeader({ headerHash });
-    const evidence =
-      await detectAuthenticatedFieldPreimageLengthProductionEvidenceV1({
-        observation,
-        sources: input.sources,
-      });
-    return await runAuthenticatedFieldPreimageLengthWorkflowV1({
+    const evidence = await detectAuthenticatedFieldPreimageLengthEvidence({
+      observation,
+      sources: input.sources,
+    });
+    return await runAuthenticatedFieldPreimageLengthWorkflow({
       workflow: input.workflow,
       evidence,
       journal: input.journal,
@@ -375,22 +374,21 @@ export const runOrResumeManifestBoundFieldPreimageLengthWorkflowV1 =
   };
 
 /** Central-journal execute surface used by a ProductionWorkflowAdapterRunnerV1. */
-export const executeManifestBoundFieldPreimageLengthWorkflowV1 = async ({
+export const executeManifestBoundFieldPreimageLengthWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundFieldPreimageLengthWorkflowV1;
+  readonly workflow: ManifestBoundFieldPreimageLengthWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FieldPreimageLengthJournalV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FieldPreimageLengthJournal> => {
   const headerHash = workflow.config.binding.definition.headerHash;
-  const evidence =
-    await detectAuthenticatedFieldPreimageLengthProductionEvidenceV1({
-      observation: await workflow.l1.observeHeader({ headerHash }),
-      sources,
-    });
-  const central = createFieldPreimageLengthCentralJournalAdapterV1({
+  const evidence = await detectAuthenticatedFieldPreimageLengthEvidence({
+    observation: await workflow.l1.observeHeader({ headerHash }),
+    sources,
+  });
+  const central = createFieldPreimageLengthCentralJournalAdapter({
     store: journal,
     deploymentFingerprint: workflow.config.binding.deploymentFingerprint,
     decisionDigest: workflow.decisionDigest,
@@ -398,7 +396,7 @@ export const executeManifestBoundFieldPreimageLengthWorkflowV1 = async ({
     observeConfirmed: async (_action, txHash) =>
       await workflow.l1.transactionConfirmed({ headerHash, txHash }),
   });
-  return await runAuthenticatedFieldPreimageLengthWorkflowV1({
+  return await runAuthenticatedFieldPreimageLengthWorkflow({
     workflow,
     evidence,
     journal: {
@@ -411,11 +409,10 @@ export const executeManifestBoundFieldPreimageLengthWorkflowV1 = async ({
 };
 
 /** Stable construct/execute pair consumed by the compiled production runtime. */
-export const FIELD_PREIMAGE_LENGTH_PRODUCTION_WORKFLOW_SURFACE_V1 =
-  Object.freeze({
-    workflowVersion: FIELD_PREIMAGE_LENGTH_PRODUCTION_WORKFLOW_V1,
-    constructWorkflow: createManifestBoundFieldPreimageLengthWorkflowV1,
-    execute: executeManifestBoundFieldPreimageLengthWorkflowV1,
-  });
+export const FIELD_PREIMAGE_LENGTH_WORKFLOW_SURFACE = Object.freeze({
+  workflowVersion: FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW,
+  constructWorkflow: createManifestBoundFieldPreimageLengthWorkflow,
+  execute: executeManifestBoundFieldPreimageLengthWorkflow,
+});
 
-export type { AuthenticatedFieldPreimageLengthProductionEvidenceV1 } from "./production-evidence-v1.js";
+export type { AuthenticatedFieldPreimageLengthEvidence } from "./production-evidence-v1.js";

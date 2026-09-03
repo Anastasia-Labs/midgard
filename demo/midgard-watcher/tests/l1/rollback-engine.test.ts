@@ -5,59 +5,59 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
-  type WatcherFinalityResultV1,
-  type WatcherFinalityStateV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
+  type WatcherFinalityResult,
+  type WatcherFinalityState,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherL1TransportAttestationContextV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherL1TransportAttestationContext,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyBoundaryV1 } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyBoundary } from "../../src/l1/multi-provider-consistency.js";
 import {
-  evaluateAndPersistWatcherPostFinalityRecoveryV1 as evaluateAndPersistWatcherPostFinalityRecoveryBoundaryV1,
-  evaluateAndPersistWatcherRollbackV1 as evaluateAndPersistWatcherRollbackBoundaryV1,
-  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryBoundaryV1,
-  evaluateWatcherRollbackV1 as evaluateWatcherRollbackBoundaryV1,
-  initializeWatcherRollbackDurableAuthorityV1,
-  loadWatcherRollbackDurableAuthorityV1,
-  makeWatcherRollbackBootstrapStateV1,
-  parseWatcherPostFinalityRecoveryResultV1 as parseWatcherPostFinalityRecoveryResultBoundaryV1,
-  parseWatcherRollbackResultV1 as parseWatcherRollbackResultBoundaryV1,
-  parseWatcherRollbackStateV1 as parseWatcherRollbackStateBoundaryV1,
-  prepareWatcherRollbackDurableTrustedHeadReconciliationV1,
-  WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
-  WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION,
-  WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION,
-  WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
-  type WatcherPostFinalityRecoveryInputV1,
-  watcherRollbackDurableAuthorityStatusV1,
-  type WatcherRollbackStateVerificationContextV1,
-  type WatcherRollbackVerificationContextV1,
+  evaluateAndPersistWatcherPostFinalityRecovery as evaluateAndPersistWatcherPostFinalityRecoveryBoundary,
+  evaluateAndPersistWatcherRollback as evaluateAndPersistWatcherRollbackBoundary,
+  evaluateWatcherPostFinalityRecovery as evaluateWatcherPostFinalityRecoveryBoundary,
+  evaluateWatcherRollback as evaluateWatcherRollbackBoundary,
+  initializeWatcherRollbackDurableAuthority,
+  loadWatcherRollbackDurableAuthority,
+  makeWatcherRollbackBootstrapState,
+  parseWatcherPostFinalityRecoveryResult as parseWatcherPostFinalityRecoveryResultBoundary,
+  parseWatcherRollbackResult as parseWatcherRollbackResultBoundary,
+  parseWatcherRollbackState as parseWatcherRollbackStateBoundary,
+  prepareWatcherRollbackDurableTrustedHeadReconciliation,
+  WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION,
+  WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION,
+  WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION,
+  WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
+  type WatcherPostFinalityRecoveryInput,
+  watcherRollbackDurableAuthorityStatus,
+  type WatcherRollbackStateVerificationContext,
+  type WatcherRollbackVerificationContext,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
   type WatcherDurableAtomicBackend,
-  type WatcherDurableRecordsV1,
+  type WatcherDurableRecords,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
 } from "../../src/storage/durable-store.js";
 import { reorderWireKeys, sha256Canonical } from "../support/canonical-json.js";
 
@@ -179,7 +179,7 @@ const externalSource = () =>
       },
     ],
   }) as const;
-const payload = (cborHex = "80") => makeWatcherDurablePayloadV1(cborHex);
+const payload = (cborHex = "80") => makeWatcherDurablePayload(cborHex);
 const rollbackAuthorityKey = Uint8Array.from(
   { length: 32 },
   (_, index) => index + 1,
@@ -220,13 +220,13 @@ class MemoryRollbackAuthorityBackend implements WatcherDurableAtomicBackend {
 
 let watcherTransportFixtureDirectory: string | null = null;
 const watcherTransportFixtureServers: Server[] = [];
-let externalProviderATransport: WatcherL1TransportAttestationContextV1;
-let externalProviderBTransport: WatcherL1TransportAttestationContextV1;
+let externalProviderATransport: WatcherL1TransportAttestationContext;
+let externalProviderBTransport: WatcherL1TransportAttestationContext;
 let externalProviderEndpoints: readonly [string, string] = [
   "https://localhost:1/provider-a",
   "https://localhost:1/provider-b",
 ];
-let watcherTransportAttestations: readonly WatcherL1TransportAttestationContextV1[] =
+let watcherTransportAttestations: readonly WatcherL1TransportAttestationContext[] =
   [];
 
 const listen = (
@@ -262,18 +262,18 @@ const closeServer = (server: Server): Promise<void> =>
     });
   });
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[] = watcherTransportAttestations,
+  transportAttestations: readonly WatcherL1TransportAttestationContext[] = watcherTransportAttestations,
 ) =>
-  evaluateWatcherMultiProviderConsistencyBoundaryV1(
+  evaluateWatcherMultiProviderConsistencyBoundary(
     configuredSource,
     observations,
     transportAttestations,
   );
 
-const evaluateWatcherRollbackV1 = (
+const evaluateWatcherRollback = (
   policy: unknown,
   store: unknown,
   previousFinalityState: unknown,
@@ -283,7 +283,7 @@ const evaluateWatcherRollbackV1 = (
   rollbackBootstrapState: unknown,
   trustedCheckpointAuthority: unknown = undefined,
 ) =>
-  evaluateWatcherRollbackBoundaryV1(
+  evaluateWatcherRollbackBoundary(
     policy,
     store,
     previousFinalityState,
@@ -295,71 +295,69 @@ const evaluateWatcherRollbackV1 = (
     watcherTransportAttestations,
   );
 
-const parseWatcherRollbackStateV1 = (
+const parseWatcherRollbackState = (
   value: unknown,
-  context: WatcherRollbackStateVerificationContextV1,
+  context: WatcherRollbackStateVerificationContext,
 ) =>
-  parseWatcherRollbackStateBoundaryV1(value, {
+  parseWatcherRollbackStateBoundary(value, {
     ...context,
     transportAttestations: watcherTransportAttestations,
   });
 
-const parseWatcherRollbackResultV1 = (
+const parseWatcherRollbackResult = (
   value: unknown,
-  context: WatcherRollbackVerificationContextV1,
+  context: WatcherRollbackVerificationContext,
 ) =>
-  parseWatcherRollbackResultBoundaryV1(value, {
+  parseWatcherRollbackResultBoundary(value, {
     ...context,
     transportAttestations: watcherTransportAttestations,
   });
 
-const evaluateWatcherPostFinalityRecoveryV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
+const evaluateWatcherPostFinalityRecovery = (
+  input: WatcherPostFinalityRecoveryInput,
 ) =>
-  evaluateWatcherPostFinalityRecoveryBoundaryV1({
+  evaluateWatcherPostFinalityRecoveryBoundary({
     ...input,
     transportAttestations: watcherTransportAttestations,
   });
 
-const parseWatcherPostFinalityRecoveryResultV1 = (
+const parseWatcherPostFinalityRecoveryResult = (
   value: unknown,
-  input: WatcherPostFinalityRecoveryInputV1,
+  input: WatcherPostFinalityRecoveryInput,
 ) =>
-  parseWatcherPostFinalityRecoveryResultBoundaryV1(value, {
+  parseWatcherPostFinalityRecoveryResultBoundary(value, {
     ...input,
     transportAttestations: watcherTransportAttestations,
   });
 
-const evaluateAndPersistWatcherRollbackV1 = (
+const evaluateAndPersistWatcherRollback = (
   input: Omit<
-    Parameters<typeof evaluateAndPersistWatcherRollbackBoundaryV1>[0],
+    Parameters<typeof evaluateAndPersistWatcherRollbackBoundary>[0],
     "transportAttestations"
   >,
 ) =>
-  evaluateAndPersistWatcherRollbackBoundaryV1({
+  evaluateAndPersistWatcherRollbackBoundary({
     ...input,
     transportAttestations: watcherTransportAttestations,
   });
 
-const evaluateAndPersistWatcherPostFinalityRecoveryV1 = (
+const evaluateAndPersistWatcherPostFinalityRecovery = (
   input: Omit<
-    Parameters<
-      typeof evaluateAndPersistWatcherPostFinalityRecoveryBoundaryV1
-    >[0],
+    Parameters<typeof evaluateAndPersistWatcherPostFinalityRecoveryBoundary>[0],
     "transportAttestations"
   >,
 ) =>
-  evaluateAndPersistWatcherPostFinalityRecoveryBoundaryV1({
+  evaluateAndPersistWatcherPostFinalityRecoveryBoundary({
     ...input,
     transportAttestations: watcherTransportAttestations,
   });
 
 const bootstrap = (
-  finalityPolicy: WatcherFinalityPolicyV1,
-  store: WatcherDurableStoreV1,
-  initialFinalityState: WatcherFinalityStateV1,
+  finalityPolicy: WatcherFinalityPolicy,
+  store: WatcherDurableStore,
+  initialFinalityState: WatcherFinalityState,
 ) => {
-  const state = makeWatcherRollbackBootstrapStateV1(
+  const state = makeWatcherRollbackBootstrapState(
     finalityPolicy,
     store,
     initialFinalityState,
@@ -439,19 +437,19 @@ const deploymentIdentity = (manifestByte = "11", releaseByte = "22") => ({
   releaseEvidenceDigest: hex32(releaseByte),
   ruleBundleCommitment: hex32("44"),
   programCommitments: { validation: hex32("55") },
-  durableMarker: makeDeploymentMarkerV1(hex32(manifestByte)),
+  durableMarker: makeDeploymentMarker(hex32(manifestByte)),
 });
 
 const policy = (
   manifestByte = "11",
   releaseByte = "22",
-): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(
+): WatcherFinalityPolicy => {
+  const value = makeWatcherFinalityPolicy(
     config(),
     deploymentIdentity(manifestByte, releaseByte),
   );
   expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
+  return value as WatcherFinalityPolicy;
 };
 
 type Point = Readonly<{
@@ -479,11 +477,11 @@ const transaction = (seedHex: string) => {
   const bodyBytes = body.to_canonical_cbor_hex();
   return {
     txHash: computeHash32(Buffer.from(bodyBytes, "hex")).toString("hex"),
-    fullTransaction: makeWatcherL1PublicBytesV1(
+    fullTransaction: makeWatcherL1PublicBytes(
       fullTransaction.to_canonical_cbor_hex(),
     ),
-    body: makeWatcherL1PublicBytesV1(bodyBytes),
-    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    body: makeWatcherL1PublicBytes(bodyBytes),
+    witnessSet: makeWatcherL1PublicBytes(witnessSet.to_canonical_cbor_hex()),
     utxos: [],
     scripts: [],
     datums: [],
@@ -495,13 +493,13 @@ const observation = (
   providerId: string,
   identityByte: string,
   point: Point,
-): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(
+): WatcherNormalizedL1Block =>
+  normalizeWatcherL1Block(
     providerId === "provider-a" && identityByte === "a1"
       ? externalProviderATransport
       : externalProviderBTransport,
     {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
       network: "Preprod",
       providerId,
       chainPoint: {
@@ -517,7 +515,7 @@ const observation = (
   );
 
 const agreement = (point: Point) =>
-  evaluateWatcherMultiProviderConsistencyV1(
+  evaluateWatcherMultiProviderConsistency(
     externalSource(),
     agreementObservations(point),
     watcherTransportAttestations,
@@ -525,46 +523,46 @@ const agreement = (point: Point) =>
 
 const agreementObservations = (
   point: Point,
-): readonly WatcherNormalizedL1BlockV1[] => [
+): readonly WatcherNormalizedL1Block[] => [
   observation("provider-a", "a1", point),
   observation("provider-b", "b2", point),
 ];
 
 const pending = (
-  finalityPolicy: WatcherFinalityPolicyV1,
+  finalityPolicy: WatcherFinalityPolicy,
   point: Point,
-): WatcherFinalityStateV1 => {
-  const result = evaluateWatcherFinalityV1(
+): WatcherFinalityState => {
+  const result = evaluateWatcherFinality(
     finalityPolicy,
     null,
     agreement(point),
   );
   expect(result.action).toBe("observe_pending");
-  return result.state as WatcherFinalityStateV1;
+  return result.state as WatcherFinalityState;
 };
 
 const transition = (
-  finalityPolicy: WatcherFinalityPolicyV1,
-  prior: WatcherFinalityStateV1,
+  finalityPolicy: WatcherFinalityPolicy,
+  prior: WatcherFinalityState,
   point: Point,
 ): Readonly<{
   consistency: ReturnType<typeof agreement>;
-  observations: readonly WatcherNormalizedL1BlockV1[];
-  result: WatcherFinalityResultV1;
+  observations: readonly WatcherNormalizedL1Block[];
+  result: WatcherFinalityResult;
 }> => {
   const observations = agreementObservations(point);
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     externalSource(),
     observations,
     watcherTransportAttestations,
   );
-  const result = evaluateWatcherFinalityV1(finalityPolicy, prior, consistency);
+  const result = evaluateWatcherFinality(finalityPolicy, prior, consistency);
   expect(result.action).toBe("rewind_pending");
   return { consistency, observations, result };
 };
 
 type Graph = Readonly<{
-  records: WatcherDurableRecordsV1;
+  records: WatcherDurableRecords;
   ids: Readonly<{
     observation: string;
     chainPoint: string;
@@ -713,12 +711,12 @@ const graph = (idByte: string, point: Point, sharedInputId?: string): Graph => {
 };
 
 const combine = (
-  deploymentMarker: ReturnType<typeof makeDeploymentMarkerV1>,
+  deploymentMarker: ReturnType<typeof makeDeploymentMarker>,
   revision: string,
   graphs: readonly Graph[],
   sharedInputId?: string,
-  persistedObservations: readonly WatcherNormalizedL1BlockV1[] = [],
-): WatcherDurableStoreV1 => {
+  persistedObservations: readonly WatcherNormalizedL1Block[] = [],
+): WatcherDurableStore => {
   const persistedChainPoints = [
     ...new Map(
       persistedObservations.map((value) => [
@@ -734,7 +732,7 @@ const combine = (
       ]),
     ).values(),
   ];
-  const records: WatcherDurableRecordsV1 = {
+  const records: WatcherDurableRecords = {
     l1Observations: graphs
       .flatMap(({ records: value }) => value.l1Observations)
       .concat(
@@ -742,8 +740,8 @@ const combine = (
           observationId: value.observationDigest,
           providerId: value.provider.providerId,
           chainPointId: value.chainPoint.chainPointId,
-          payload: makeWatcherDurablePayloadV1(
-            encodeWatcherNormalizedL1BlockV1(value).toString("hex"),
+          payload: makeWatcherDurablePayload(
+            encodeWatcherNormalizedL1Block(value).toString("hex"),
           ),
         })),
       ),
@@ -779,7 +777,7 @@ const combine = (
       ({ records: value }) => value.correctionResults,
     ),
   };
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker,
     revision,
     records,
@@ -817,7 +815,7 @@ const recoveryAgreement = (_sourceMode: RecoverySourceMode, point: Point) => {
   const observations = agreementObservations(point);
   return {
     observations,
-    consistency: evaluateWatcherMultiProviderConsistencyV1(
+    consistency: evaluateWatcherMultiProviderConsistency(
       externalSource(),
       observations,
       watcherTransportAttestations,
@@ -885,18 +883,18 @@ const postFinalityRecoveryFixture = (
     ...orphanedTip.observations[0]!.chainPoint,
     depth: "2",
   });
-  const pendingState = evaluateWatcherFinalityV1(
+  const pendingState = evaluateWatcherFinality(
     finalityPolicy,
     null,
     pendingTip.consistency,
-  ).state as WatcherFinalityStateV1;
-  const finalizedState = evaluateWatcherFinalityV1(
+  ).state as WatcherFinalityState;
+  const finalizedState = evaluateWatcherFinality(
     finalityPolicy,
     pendingState,
     orphanedTip.consistency,
-  ).state as WatcherFinalityStateV1;
+  ).state as WatcherFinalityState;
   expect(finalizedState.phase).toBe("finalized");
-  const contradiction = evaluateWatcherFinalityV1(
+  const contradiction = evaluateWatcherFinality(
     finalityPolicy,
     finalizedState,
     replacementTip.consistency,
@@ -934,7 +932,7 @@ const postFinalityRecoveryFixture = (
       : previousBundles[options.omitPreviousEvidenceAt]?.observations[0]
           ?.observationDigest;
   if (malformedDigest !== null || omittedDigest !== null) {
-    store = makeWatcherDurableStoreV1({
+    store = makeWatcherDurableStore({
       deploymentMarker: store.deploymentMarker,
       revision: store.revision,
       records: {
@@ -954,7 +952,7 @@ const postFinalityRecoveryFixture = (
     store,
     finalizedState,
   );
-  const incident = evaluateWatcherRollbackV1(
+  const incident = evaluateWatcherRollback(
     finalityPolicy,
     store,
     finalizedState,
@@ -999,7 +997,7 @@ describe("canonical watcher rollback engine", () => {
           throw new Error("missing W13 TLS fixture address");
         }
         const endpoint = `https://localhost:${address.port.toString()}/provider-${index === 0 ? "a" : "b"}`;
-        const established = establishWatcherExternalProviderTransportV1({
+        const established = establishWatcherExternalProviderTransport({
           network: "Preprod",
           providerId: index === 0 ? "provider-a" : "provider-b",
           operatorIdentitySha256: index === 0 ? hex32("a1") : hex32("b2"),
@@ -1027,7 +1025,7 @@ describe("canonical watcher rollback engine", () => {
 
   afterAll(async () => {
     for (const context of watcherTransportAttestations) {
-      closeWatcherL1TransportAttestationContextV1(context);
+      closeWatcherL1TransportAttestationContext(context);
     }
     await Promise.all(
       watcherTransportFixtureServers.splice(0).map(closeServer),
@@ -1044,13 +1042,13 @@ describe("canonical watcher rollback engine", () => {
 
   it("recovers authority initialization crashes and rejects stale concurrent rollback writers", async () => {
     const finalityPolicy = policy();
-    const prior = evaluateWatcherFinalityV1(
+    const prior = evaluateWatcherFinality(
       finalityPolicy,
       null,
       agreement(oldPoint),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const consistency = agreement(replacementPoint);
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       prior,
       consistency,
@@ -1066,7 +1064,7 @@ describe("canonical watcher rollback engine", () => {
     const beforeCommit = new MemoryRollbackAuthorityBackend();
     beforeCommit.failBeforeCommit = true;
     await expect(
-      initializeWatcherRollbackDurableAuthorityV1({
+      initializeWatcherRollbackDurableAuthority({
         backend: beforeCommit,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1078,7 +1076,7 @@ describe("canonical watcher rollback engine", () => {
     expect(beforeCommit.bytes).toBeNull();
     expect(
       (
-        await initializeWatcherRollbackDurableAuthorityV1({
+        await initializeWatcherRollbackDurableAuthority({
           backend: beforeCommit,
           policy: finalityPolicy,
           authenticationKey: rollbackAuthorityKey,
@@ -1092,7 +1090,7 @@ describe("canonical watcher rollback engine", () => {
     const afterCommit = new MemoryRollbackAuthorityBackend();
     afterCommit.failAfterCommit = true;
     await expect(
-      initializeWatcherRollbackDurableAuthorityV1({
+      initializeWatcherRollbackDurableAuthority({
         backend: afterCommit,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1102,7 +1100,7 @@ describe("canonical watcher rollback engine", () => {
       }),
     ).rejects.toMatchObject({ code: "persistence_failure" });
     await expect(
-      loadWatcherRollbackDurableAuthorityV1({
+      loadWatcherRollbackDurableAuthority({
         backend: afterCommit,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1110,7 +1108,7 @@ describe("canonical watcher rollback engine", () => {
       }),
     ).rejects.toThrow("invalid watcher rollback durable trusted head");
     const initializationReconciliation =
-      await prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
+      await prepareWatcherRollbackDurableTrustedHeadReconciliation({
         backend: afterCommit,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1124,19 +1122,19 @@ describe("canonical watcher rollback engine", () => {
     if (initializationReconciliation.action !== "publish_direct_successor") {
       throw new Error("expected initialization head reconciliation");
     }
-    const recovered = await loadWatcherRollbackDurableAuthorityV1({
+    const recovered = await loadWatcherRollbackDurableAuthority({
       backend: afterCommit,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
       trustedHead: initializationReconciliation.nextTrustedHead,
     });
-    expect(watcherRollbackDurableAuthorityStatusV1(recovered)).toMatchObject({
+    expect(watcherRollbackDurableAuthorityStatus(recovered)).toMatchObject({
       revision: "0",
       epoch: "0",
       transitionCount: "0",
     });
     expect(
-      await prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
+      await prepareWatcherRollbackDurableTrustedHeadReconciliation({
         backend: afterCommit,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1147,7 +1145,7 @@ describe("canonical watcher rollback engine", () => {
       trustedHead: initializationReconciliation.nextTrustedHead,
     });
     await expect(
-      loadWatcherRollbackDurableAuthorityV1({
+      loadWatcherRollbackDurableAuthority({
         backend: afterCommit,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1159,7 +1157,7 @@ describe("canonical watcher rollback engine", () => {
     ).rejects.toThrow("invalid watcher rollback durable trusted head");
 
     const concurrentBackend = new MemoryRollbackAuthorityBackend();
-    const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+    const initialized = await initializeWatcherRollbackDurableAuthority({
       backend: concurrentBackend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
@@ -1167,26 +1165,26 @@ describe("canonical watcher rollback engine", () => {
       bootstrapStore: store,
       bootstrapFinalityState: prior,
     });
-    const contenderA = await loadWatcherRollbackDurableAuthorityV1({
+    const contenderA = await loadWatcherRollbackDurableAuthority({
       backend: concurrentBackend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
       trustedHead: initialized.trustedHead,
     });
-    const contenderB = await loadWatcherRollbackDurableAuthorityV1({
+    const contenderB = await loadWatcherRollbackDurableAuthority({
       backend: concurrentBackend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
       trustedHead: initialized.trustedHead,
     });
     const results = await Promise.all([
-      evaluateAndPersistWatcherRollbackV1({
+      evaluateAndPersistWatcherRollback({
         authority: contenderA!,
         previousFinalityState: prior,
         consistency,
         finalityResult,
       }),
-      evaluateAndPersistWatcherRollbackV1({
+      evaluateAndPersistWatcherRollback({
         authority: contenderB!,
         previousFinalityState: prior,
         consistency,
@@ -1211,8 +1209,8 @@ describe("canonical watcher rollback engine", () => {
       throw new Error("expected one committed rollback writer");
     }
     expect(
-      watcherRollbackDurableAuthorityStatusV1(
-        await loadWatcherRollbackDurableAuthorityV1({
+      watcherRollbackDurableAuthorityStatus(
+        await loadWatcherRollbackDurableAuthority({
           backend: concurrentBackend,
           policy: finalityPolicy,
           authenticationKey: rollbackAuthorityKey,
@@ -1242,7 +1240,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    const result = evaluateWatcherRollbackV1(
+    const result = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1251,7 +1249,7 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
-    const context: WatcherRollbackVerificationContextV1 = {
+    const context: WatcherRollbackVerificationContext = {
       policy: finalityPolicy,
       sourceStore: store,
       previousFinalityState: prior,
@@ -1262,7 +1260,7 @@ describe("canonical watcher rollback engine", () => {
     };
 
     const reordered = reorderWireKeys(JSON.parse(JSON.stringify(result)));
-    expect(parseWatcherRollbackResultV1(reordered, context)).toEqual(result);
+    expect(parseWatcherRollbackResult(reordered, context)).toEqual(result);
 
     const arrayTampered = JSON.parse(JSON.stringify(result)) as Record<
       string,
@@ -1272,28 +1270,28 @@ describe("canonical watcher rollback engine", () => {
       "post_finality_incident",
       ...(arrayTampered.reasonCodes as readonly string[]),
     ];
-    expect(parseWatcherRollbackResultV1(arrayTampered, context)).toBe(null);
+    expect(parseWatcherRollbackResult(arrayTampered, context)).toBe(null);
 
     const mutated = JSON.parse(JSON.stringify(result)) as Record<
       string,
       unknown
     >;
     mutated.resultDigest = hex32("ff");
-    expect(parseWatcherRollbackResultV1(mutated, context)).toBe(null);
+    expect(parseWatcherRollbackResult(mutated, context)).toBe(null);
 
     const unknown = JSON.parse(JSON.stringify(result)) as Record<
       string,
       unknown
     >;
     unknown.unexpected = true;
-    expect(parseWatcherRollbackResultV1(unknown, context)).toBe(null);
+    expect(parseWatcherRollbackResult(unknown, context)).toBe(null);
 
     const unsupported = JSON.parse(JSON.stringify(result)) as Record<
       string,
       unknown
     >;
     (unsupported.rollbackState as Record<string, unknown>).transitionCount = 1n;
-    expect(parseWatcherRollbackResultV1(unsupported, context)).toBe(null);
+    expect(parseWatcherRollbackResult(unsupported, context)).toBe(null);
   });
 
   it("rejects nested proxied rollback values before structural reconstruction", () => {
@@ -1313,7 +1311,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    const result = evaluateWatcherRollbackV1(
+    const result = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1322,7 +1320,7 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
-    const context: WatcherRollbackVerificationContextV1 = {
+    const context: WatcherRollbackVerificationContext = {
       policy: finalityPolicy,
       sourceStore: store,
       previousFinalityState: prior,
@@ -1337,7 +1335,7 @@ describe("canonical watcher rollback engine", () => {
       unknown
     >;
     proxied.rollbackState = new Proxy(proxied.rollbackState as object, {});
-    expect(parseWatcherRollbackResultV1(proxied, context)).toBe(null);
+    expect(parseWatcherRollbackResult(proxied, context)).toBe(null);
   });
 
   it("deterministically rewinds every dependent W03 record class and preserves finalized/unrelated records", () => {
@@ -1358,7 +1356,7 @@ describe("canonical watcher rollback engine", () => {
     );
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
 
-    const result = evaluateWatcherRollbackV1(
+    const result = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1369,19 +1367,19 @@ describe("canonical watcher rollback engine", () => {
     );
 
     expect(result).toMatchObject({
-      schemaVersion: WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION,
       action: "apply_rewind",
       protocolDecision: "resume_pending",
       reasonCodes: ["rewind_applied"],
       sourceRevision: "7",
       nextRevision: "8",
       rollbackState: {
-        schemaVersion: WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
         incident: null,
       },
     });
     expect(
-      parseWatcherRollbackResultV1(JSON.parse(JSON.stringify(result)), {
+      parseWatcherRollbackResult(JSON.parse(JSON.stringify(result)), {
         policy: finalityPolicy,
         sourceStore: store,
         previousFinalityState: prior,
@@ -1452,7 +1450,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const consumed = retainedGraph.records.protocolUtxos[0]!;
-    const journal = journalWatcherProtocolUtxoTransitionV1({
+    const journal = journalWatcherProtocolUtxoTransition({
       sourceStore: beforeSpend,
       nextChainPoints: beforeSpend.chainPoints,
       nextProtocolUtxos: beforeSpend.protocolUtxos.filter(
@@ -1460,7 +1458,7 @@ describe("canonical watcher rollback engine", () => {
       ),
       spentAtChainPointId: oldGraph.ids.chainPoint,
     });
-    const store = makeWatcherDurableStoreV1({
+    const store = makeWatcherDurableStore({
       deploymentMarker: beforeSpend.deploymentMarker,
       revision: "7",
       records: {
@@ -1469,7 +1467,7 @@ describe("canonical watcher rollback engine", () => {
       },
     });
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    const result = evaluateWatcherRollbackV1(
+    const result = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1487,7 +1485,7 @@ describe("canonical watcher rollback engine", () => {
       ),
     ).toBe(false);
     expect(
-      parseWatcherRollbackStateV1(
+      parseWatcherRollbackState(
         JSON.parse(JSON.stringify(result.rollbackState)),
         {
           policy: finalityPolicy,
@@ -1510,7 +1508,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    const applied = evaluateWatcherRollbackV1(
+    const applied = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1527,13 +1525,13 @@ describe("canonical watcher rollback engine", () => {
     ) as unknown;
 
     expect(
-      parseWatcherRollbackStateV1(restartedState, {
+      parseWatcherRollbackState(restartedState, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: restartedStore,
       }),
     ).toEqual(applied.rollbackState);
-    const duplicate = evaluateWatcherRollbackV1(
+    const duplicate = evaluateWatcherRollback(
       finalityPolicy,
       restartedStore,
       prior,
@@ -1570,7 +1568,7 @@ describe("canonical watcher rollback engine", () => {
       contentChanged.observations,
     );
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    const result = evaluateWatcherRollbackV1(
+    const result = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1612,7 +1610,7 @@ describe("canonical watcher rollback engine", () => {
       undefined,
       regressed.observations,
     );
-    const store = makeWatcherDurableStoreV1({
+    const store = makeWatcherDurableStore({
       deploymentMarker: base.deploymentMarker,
       revision: base.revision,
       records: {
@@ -1640,7 +1638,7 @@ describe("canonical watcher rollback engine", () => {
       },
     });
     const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    const result = evaluateWatcherRollbackV1(
+    const result = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1669,16 +1667,16 @@ describe("canonical watcher rollback engine", () => {
       ...oldPoint,
       depth: "2",
     });
-    const finalizedResult = evaluateWatcherFinalityV1(
+    const finalizedResult = evaluateWatcherFinality(
       finalityPolicy,
       first,
       agreement({ ...oldPoint, depth: "5" }),
     );
     expect(finalizedResult.action).toBe("finalize");
-    const finalizedState = finalizedResult.state as WatcherFinalityStateV1;
+    const finalizedState = finalizedResult.state as WatcherFinalityState;
     const contradictionPoint = { ...replacementPoint, depth: "0" };
     const contradictionConsistency = agreement(contradictionPoint);
-    const contradiction = evaluateWatcherFinalityV1(
+    const contradiction = evaluateWatcherFinality(
       finalityPolicy,
       finalizedState,
       contradictionConsistency,
@@ -1691,7 +1689,7 @@ describe("canonical watcher rollback engine", () => {
       agreementObservations(contradictionPoint),
     );
     const bootstrapState = bootstrap(finalityPolicy, store, finalizedState);
-    const quarantined = evaluateWatcherRollbackV1(
+    const quarantined = evaluateWatcherRollback(
       finalityPolicy,
       store,
       finalizedState,
@@ -1709,7 +1707,7 @@ describe("canonical watcher rollback engine", () => {
       nextRevision: "10",
       rollbackState: {
         incident: {
-          schemaVersion: WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION,
+          schemaVersion: WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION,
           reasonCode: "post_finality_point_changed",
           finalizedBinding: finalizedState.finalized,
         },
@@ -1745,7 +1743,7 @@ describe("canonical watcher rollback engine", () => {
       correctionResultIds: [],
     });
     expect(
-      parseWatcherRollbackResultV1(JSON.parse(JSON.stringify(quarantined)), {
+      parseWatcherRollbackResult(JSON.parse(JSON.stringify(quarantined)), {
         policy: finalityPolicy,
         sourceStore: store,
         previousFinalityState: finalizedState,
@@ -1756,7 +1754,7 @@ describe("canonical watcher rollback engine", () => {
       }),
     ).toEqual(quarantined);
     expect(
-      parseWatcherRollbackStateV1(
+      parseWatcherRollbackState(
         JSON.parse(JSON.stringify(quarantined.rollbackState)),
         {
           policy: finalityPolicy,
@@ -1766,7 +1764,7 @@ describe("canonical watcher rollback engine", () => {
       ),
     ).toEqual(quarantined.rollbackState);
 
-    const held = evaluateWatcherRollbackV1(
+    const held = evaluateWatcherRollback(
       finalityPolicy,
       quarantined.nextStore,
       finalizedState,
@@ -1783,7 +1781,7 @@ describe("canonical watcher rollback engine", () => {
     });
     expect(held.nextStore).toEqual(quarantined.nextStore);
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         quarantined.nextStore,
         finalizedState,
@@ -1809,10 +1807,10 @@ describe("canonical watcher rollback engine", () => {
         replacementCanonicalPath: fixture.replacementPath,
         previousRecoveryState: null,
       };
-      const applied = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+      const applied = evaluateWatcherPostFinalityRecovery(recoveryInput);
 
       const backend = new MemoryRollbackAuthorityBackend();
-      const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+      const initialized = await initializeWatcherRollbackDurableAuthority({
         backend,
         policy: fixture.finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -1820,7 +1818,7 @@ describe("canonical watcher rollback engine", () => {
         bootstrapStore: fixture.initialStore,
         bootstrapFinalityState: fixture.finalizedState,
       });
-      const incident = await evaluateAndPersistWatcherRollbackV1({
+      const incident = await evaluateAndPersistWatcherRollback({
         authority: initialized.authority,
         previousFinalityState: fixture.finalizedState,
         consistency: fixture.contradictionConsistency,
@@ -1834,19 +1832,19 @@ describe("canonical watcher rollback engine", () => {
         throw new Error("expected committed rollback incident");
       }
       const incidentSnapshot = Uint8Array.from(backend.bytes!);
-      const recoveryContender = await loadWatcherRollbackDurableAuthorityV1({
+      const recoveryContender = await loadWatcherRollbackDurableAuthority({
         backend,
         policy: fixture.finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
         trustedHead: incident.trustedHead,
       });
       const recoveryResults = await Promise.all([
-        evaluateAndPersistWatcherPostFinalityRecoveryV1({
+        evaluateAndPersistWatcherPostFinalityRecovery({
           authority: incident.authority,
           previousCanonicalPath: fixture.previousPath,
           replacementCanonicalPath: fixture.replacementPath,
         }),
-        evaluateAndPersistWatcherPostFinalityRecoveryV1({
+        evaluateAndPersistWatcherPostFinalityRecovery({
           authority: recoveryContender,
           previousCanonicalPath: fixture.previousPath,
           replacementCanonicalPath: fixture.replacementPath,
@@ -1875,7 +1873,7 @@ describe("canonical watcher rollback engine", () => {
       });
       expect(persistedRecovery.result).toEqual(applied);
       expect(
-        watcherRollbackDurableAuthorityStatusV1(persistedRecovery.authority),
+        watcherRollbackDurableAuthorityStatus(persistedRecovery.authority),
       ).toMatchObject({
         revision: "2",
         epoch: "1",
@@ -1884,7 +1882,7 @@ describe("canonical watcher rollback engine", () => {
       const latestSnapshot = Uint8Array.from(backend.bytes!);
       backend.bytes = incidentSnapshot;
       await expect(
-        loadWatcherRollbackDurableAuthorityV1({
+        loadWatcherRollbackDurableAuthority({
           backend,
           policy: fixture.finalityPolicy,
           authenticationKey: rollbackAuthorityKey,
@@ -1892,7 +1890,7 @@ describe("canonical watcher rollback engine", () => {
         }),
       ).rejects.toThrow("watcher rollback durable trusted head mismatch");
       await expect(
-        prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
+        prepareWatcherRollbackDurableTrustedHeadReconciliation({
           backend,
           policy: fixture.finalityPolicy,
           authenticationKey: rollbackAuthorityKey,
@@ -1904,7 +1902,7 @@ describe("canonical watcher rollback engine", () => {
       backend.bytes = latestSnapshot;
 
       expect(applied).toMatchObject({
-        schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION,
         action: "rewind_and_replay",
         protocolDecision: "resume_replay",
         reasonCodes: ["recovery_applied"],
@@ -1960,7 +1958,7 @@ describe("canonical watcher rollback engine", () => {
         fixture.commonGraph.records.reconstructedStates[0],
       );
       expect(
-        parseWatcherPostFinalityRecoveryResultV1(
+        parseWatcherPostFinalityRecoveryResult(
           JSON.parse(JSON.stringify(applied)),
           recoveryInput,
         ),
@@ -1990,7 +1988,7 @@ describe("canonical watcher rollback engine", () => {
         applied.resumableRollbackState?.stateDigest,
       );
       expect(
-        parseWatcherRollbackStateV1(
+        parseWatcherRollbackState(
           JSON.parse(JSON.stringify(applied.resumableRollbackState)),
           {
             policy: fixture.finalityPolicy,
@@ -2033,13 +2031,13 @@ describe("canonical watcher rollback engine", () => {
         recoveryResultCanonical,
       );
       expect(
-        parseWatcherPostFinalityRecoveryResultV1(
+        parseWatcherPostFinalityRecoveryResult(
           forgedRecoveryCheckpoint,
           recoveryInput,
         ),
       ).toBeNull();
 
-      const restarted = evaluateWatcherPostFinalityRecoveryV1({
+      const restarted = evaluateWatcherPostFinalityRecovery({
         policy: JSON.parse(JSON.stringify(fixture.finalityPolicy)),
         sourceStore: JSON.parse(JSON.stringify(fixture.sourceStore)),
         currentStore: JSON.parse(JSON.stringify(applied.nextStore)),
@@ -2072,7 +2070,7 @@ describe("canonical watcher rollback engine", () => {
 
   it("accepts the exact k=2160 recovery boundary and rejects 2161 without mutation", () => {
     const atBoundary = postFinalityRecoveryFixture(2_160, "external_providers");
-    const accepted = evaluateWatcherPostFinalityRecoveryV1({
+    const accepted = evaluateWatcherPostFinalityRecovery({
       policy: atBoundary.finalityPolicy,
       sourceStore: atBoundary.sourceStore,
       currentStore: atBoundary.sourceStore,
@@ -2091,7 +2089,7 @@ describe("canonical watcher rollback engine", () => {
       ...atBoundary.previousPath,
       atBoundary.previousPath.at(-1)!,
     ];
-    const rejected = evaluateWatcherPostFinalityRecoveryV1({
+    const rejected = evaluateWatcherPostFinalityRecovery({
       policy: atBoundary.finalityPolicy,
       sourceStore: atBoundary.sourceStore,
       currentStore: atBoundary.sourceStore,
@@ -2121,7 +2119,7 @@ describe("canonical watcher rollback engine", () => {
     wrongPreviousEndpoint[wrongPreviousEndpoint.length - 1] =
       fixture.alternatePreviousTip;
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2141,7 +2139,7 @@ describe("canonical watcher rollback engine", () => {
     wrongReplacementEndpoint[wrongReplacementEndpoint.length - 1] =
       fixture.alternateReplacementTip;
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2159,7 +2157,7 @@ describe("canonical watcher rollback engine", () => {
 
     const malformedMemberPath = [fixture.previousPath[0], null];
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2187,7 +2185,7 @@ describe("canonical watcher rollback engine", () => {
     const accessorPath = [...fixture.replacementPath];
     accessorPath[1] = accessorMember as (typeof accessorPath)[number];
     expect(() =>
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2199,7 +2197,7 @@ describe("canonical watcher rollback engine", () => {
       }),
     ).not.toThrow();
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2222,7 +2220,7 @@ describe("canonical watcher rollback engine", () => {
     const cyclicPath = [...fixture.replacementPath];
     cyclicPath[1] = cyclicMember as (typeof cyclicPath)[number];
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2241,12 +2239,12 @@ describe("canonical watcher rollback engine", () => {
     const pendingReplacement = JSON.parse(
       JSON.stringify(fixture.replacementPath),
     ) as Array<Record<string, unknown>>;
-    pendingReplacement[1] = evaluateWatcherMultiProviderConsistencyV1(
+    pendingReplacement[1] = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [],
     ) as unknown as Record<string, unknown>;
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2267,7 +2265,7 @@ describe("canonical watcher rollback engine", () => {
     >;
     gap.splice(1, 1);
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2283,7 +2281,7 @@ describe("canonical watcher rollback engine", () => {
       nextStore: null,
     });
 
-    const applied = evaluateWatcherPostFinalityRecoveryV1({
+    const applied = evaluateWatcherPostFinalityRecovery({
       policy: fixture.finalityPolicy,
       sourceStore: fixture.sourceStore,
       currentStore: fixture.sourceStore,
@@ -2299,7 +2297,7 @@ describe("canonical watcher rollback engine", () => {
     >;
     forged.nextStoreDigest = hex32("ff");
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: applied.nextStore,
@@ -2327,7 +2325,7 @@ describe("canonical watcher rollback engine", () => {
       selfRehashed;
     selfRehashed.stateDigest = sha256Canonical(canonicalRecoveryState);
     expect(
-      evaluateWatcherPostFinalityRecoveryV1({
+      evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: applied.nextStore,
@@ -2362,10 +2360,7 @@ describe("canonical watcher rollback engine", () => {
       selfRehashedResult;
     selfRehashedResult.resultDigest = sha256Canonical(canonicalResult);
     expect(
-      parseWatcherPostFinalityRecoveryResultV1(
-        selfRehashedResult,
-        recoveryInput,
-      ),
+      parseWatcherPostFinalityRecoveryResult(selfRehashedResult, recoveryInput),
     ).toBeNull();
 
     const unknownResult = {
@@ -2373,7 +2368,7 @@ describe("canonical watcher rollback engine", () => {
       attacker: true,
     };
     expect(
-      parseWatcherPostFinalityRecoveryResultV1(unknownResult, recoveryInput),
+      parseWatcherPostFinalityRecoveryResult(unknownResult, recoveryInput),
     ).toBeNull();
     const accessorResult = JSON.parse(JSON.stringify(applied)) as Record<
       string,
@@ -2384,7 +2379,7 @@ describe("canonical watcher rollback engine", () => {
       get: () => "rewind_and_replay",
     });
     expect(
-      parseWatcherPostFinalityRecoveryResultV1(accessorResult, recoveryInput),
+      parseWatcherPostFinalityRecoveryResult(accessorResult, recoveryInput),
     ).toBeNull();
   });
 
@@ -2394,7 +2389,7 @@ describe("canonical watcher rollback engine", () => {
       ...config(),
       targetNetwork: "Preview" as const,
     };
-    const previewPolicy = makeWatcherFinalityPolicyV1(previewConfig, {
+    const previewPolicy = makeWatcherFinalityPolicy(previewConfig, {
       ...deploymentIdentity(),
       network: "Preview" as const,
     });
@@ -2403,7 +2398,7 @@ describe("canonical watcher rollback engine", () => {
       {
         ...external.finalityPolicy,
         sourceMode: "local_node",
-      } as WatcherFinalityPolicyV1,
+      } as WatcherFinalityPolicy,
       previewPolicy,
       {
         ...external.finalityPolicy,
@@ -2411,7 +2406,7 @@ describe("canonical watcher rollback engine", () => {
       },
     ];
     for (const wrongPolicy of wrongPolicies) {
-      const result = evaluateWatcherPostFinalityRecoveryV1({
+      const result = evaluateWatcherPostFinalityRecovery({
         policy: wrongPolicy,
         sourceStore: external.sourceStore,
         currentStore: external.sourceStore,
@@ -2434,7 +2429,7 @@ describe("canonical watcher rollback engine", () => {
         malformedPreviousEvidenceAt: 2,
       }),
     ]) {
-      const result = evaluateWatcherPostFinalityRecoveryV1({
+      const result = evaluateWatcherPostFinalityRecovery({
         policy: fixture.finalityPolicy,
         sourceStore: fixture.sourceStore,
         currentStore: fixture.sourceStore,
@@ -2462,20 +2457,20 @@ describe("canonical watcher rollback engine", () => {
   it("opens W13 only for an agreed contradiction and never journals transient W11 disagreement", () => {
     const finalityPolicy = policy();
     const first = pending(finalityPolicy, { ...oldPoint, depth: "2" });
-    const finalizedState = evaluateWatcherFinalityV1(
+    const finalizedState = evaluateWatcherFinality(
       finalityPolicy,
       first,
       agreement({ ...oldPoint, depth: "5" }),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const agreedObservations = agreementObservations({
       ...replacementPoint,
       depth: "0",
     });
-    const agreedConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const agreedConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       agreedObservations,
     );
-    const agreedFinalityResult = evaluateWatcherFinalityV1(
+    const agreedFinalityResult = evaluateWatcherFinality(
       finalityPolicy,
       finalizedState,
       agreedConsistency,
@@ -2494,7 +2489,7 @@ describe("canonical watcher rollback engine", () => {
       finalizedState,
     );
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         agreedStore,
         finalizedState,
@@ -2534,12 +2529,12 @@ describe("canonical watcher rollback engine", () => {
     ] as const;
 
     for (const value of transientCases) {
-      const consistency = evaluateWatcherMultiProviderConsistencyV1(
+      const consistency = evaluateWatcherMultiProviderConsistency(
         externalSource(),
         value.observations,
       );
       expect(consistency.status).toBe(value.status);
-      const finalityResult = evaluateWatcherFinalityV1(
+      const finalityResult = evaluateWatcherFinality(
         finalityPolicy,
         finalizedState,
         consistency,
@@ -2558,7 +2553,7 @@ describe("canonical watcher rollback engine", () => {
         value.observations,
       );
       const bootstrapState = bootstrap(finalityPolicy, store, finalizedState);
-      const result = evaluateWatcherRollbackV1(
+      const result = evaluateWatcherRollback(
         finalityPolicy,
         store,
         finalizedState,
@@ -2573,7 +2568,7 @@ describe("canonical watcher rollback engine", () => {
         rollbackState: null,
       });
       expect(
-        evaluateWatcherFinalityV1(
+        evaluateWatcherFinality(
           finalityPolicy,
           finalityResult.state,
           agreement({ ...oldPoint, depth: "6" }),
@@ -2589,13 +2584,13 @@ describe("canonical watcher rollback engine", () => {
   it("fails closed on a post-finality incident without durable W10 evidence", () => {
     const finalityPolicy = policy();
     const first = pending(finalityPolicy, { ...oldPoint, depth: "2" });
-    const finalizedState = evaluateWatcherFinalityV1(
+    const finalizedState = evaluateWatcherFinality(
       finalityPolicy,
       first,
       agreement({ ...oldPoint, depth: "5" }),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const consistency = agreement({ ...replacementPoint, depth: "0" });
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       finalizedState,
       consistency,
@@ -2607,7 +2602,7 @@ describe("canonical watcher rollback engine", () => {
     const bootstrapState = bootstrap(finalityPolicy, store, finalizedState);
 
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         store,
         finalizedState,
@@ -2636,7 +2631,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const bootstrapState = bootstrap(originalPolicy, store, prior);
-    const foreignDeployment = evaluateWatcherRollbackV1(
+    const foreignDeployment = evaluateWatcherRollback(
       policy("99"),
       store,
       prior,
@@ -2645,7 +2640,7 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
-    const foreignRelease = evaluateWatcherRollbackV1(
+    const foreignRelease = evaluateWatcherRollback(
       policy("11", "99"),
       store,
       prior,
@@ -2654,7 +2649,7 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
-    const malformed = evaluateWatcherRollbackV1(
+    const malformed = evaluateWatcherRollback(
       { ...originalPolicy, credential: "operator-secret" },
       store,
       prior,
@@ -2711,7 +2706,7 @@ describe("canonical watcher rollback engine", () => {
     );
 
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         wrongOrder,
         prior,
@@ -2722,7 +2717,7 @@ describe("canonical watcher rollback engine", () => {
       ).reasonCodes,
     ).toEqual(["malformed_store"]);
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         duplicate,
         prior,
@@ -2733,7 +2728,7 @@ describe("canonical watcher rollback engine", () => {
       ).reasonCodes,
     ).toEqual(["malformed_store"]);
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         store,
         prior,
@@ -2744,7 +2739,7 @@ describe("canonical watcher rollback engine", () => {
       ).reasonCodes,
     ).toEqual(["finality_provenance_mismatch"]);
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         replacementOnly,
         prior,
@@ -2765,7 +2760,7 @@ describe("canonical watcher rollback engine", () => {
     ]);
     const missingBootstrap = bootstrap(finalityPolicy, store, prior);
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         store,
         prior,
@@ -2784,7 +2779,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const bootstrapState = bootstrap(finalityPolicy, completeStore, prior);
-    const applied = evaluateWatcherRollbackV1(
+    const applied = evaluateWatcherRollback(
       finalityPolicy,
       completeStore,
       prior,
@@ -2793,13 +2788,13 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
-    const staleStore = makeWatcherDurableStoreV1({
+    const staleStore = makeWatcherDurableStore({
       deploymentMarker: applied.nextStore!.deploymentMarker,
       revision: "2",
       records: applied.nextStore!,
     });
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         staleStore,
         prior,
@@ -2815,7 +2810,7 @@ describe("canonical watcher rollback engine", () => {
     ) as Record<string, any>;
     tampered.storeDigest = hex32("ff");
     expect(
-      parseWatcherRollbackStateV1(tampered, {
+      parseWatcherRollbackState(tampered, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: applied.nextStore,
@@ -2827,7 +2822,7 @@ describe("canonical watcher rollback engine", () => {
     >;
     unknown.operatorTarget = "private";
     expect(
-      parseWatcherRollbackStateV1(unknown, {
+      parseWatcherRollbackState(unknown, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: applied.nextStore,
@@ -2839,7 +2834,7 @@ describe("canonical watcher rollback engine", () => {
     >;
     tamperedResult.nextRevision = "9";
     expect(
-      parseWatcherRollbackResultV1(tamperedResult, {
+      parseWatcherRollbackResult(tamperedResult, {
         policy: finalityPolicy,
         sourceStore: completeStore,
         previousFinalityState: prior,
@@ -2855,7 +2850,7 @@ describe("canonical watcher rollback engine", () => {
     >;
     unknownResult.privateTarget = oldPoint.blockHash;
     expect(
-      parseWatcherRollbackResultV1(unknownResult, {
+      parseWatcherRollbackResult(unknownResult, {
         policy: finalityPolicy,
         sourceStore: completeStore,
         previousFinalityState: prior,
@@ -2912,7 +2907,7 @@ describe("canonical watcher rollback engine", () => {
       forged.resultDigest = sha256Canonical(resultCanonical);
 
       expect(
-        evaluateWatcherRollbackV1(
+        evaluateWatcherRollback(
           finalityPolicy,
           store,
           prior,
@@ -2941,7 +2936,7 @@ describe("canonical watcher rollback engine", () => {
       rewound.observations,
     );
     const bootstrapState = bootstrap(finalityPolicy, sourceStore, prior);
-    const applied = evaluateWatcherRollbackV1(
+    const applied = evaluateWatcherRollback(
       finalityPolicy,
       sourceStore,
       prior,
@@ -2963,7 +2958,7 @@ describe("canonical watcher rollback engine", () => {
       ],
     );
     const attackerStoreDigest = watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(attackerStore),
+      encodeWatcherDurableStore(attackerStore),
     );
     const forged = JSON.parse(JSON.stringify(applied)) as Record<string, any>;
     forged.nextStore = attackerStore;
@@ -2977,7 +2972,7 @@ describe("canonical watcher rollback engine", () => {
     forged.resultDigest = sha256Canonical(resultCanonical);
 
     expect(
-      parseWatcherRollbackResultV1(forged, {
+      parseWatcherRollbackResult(forged, {
         policy: finalityPolicy,
         sourceStore,
         previousFinalityState: prior,
@@ -3003,7 +2998,7 @@ describe("canonical watcher rollback engine", () => {
     const bootstrapState = bootstrap(finalityPolicy, sourceStore, prior);
 
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         sourceStore,
         prior,
@@ -3014,7 +3009,7 @@ describe("canonical watcher rollback engine", () => {
       ).reasonCodes,
     ).toEqual(["malformed_rollback_state"]);
 
-    const applied = evaluateWatcherRollbackV1(
+    const applied = evaluateWatcherRollback(
       finalityPolicy,
       sourceStore,
       prior,
@@ -3031,14 +3026,14 @@ describe("canonical watcher rollback engine", () => {
     const { stateDigest: _discardedStateDigest, ...canonical } = forged;
     forged.stateDigest = sha256Canonical(canonical);
     expect(
-      parseWatcherRollbackStateV1(forged, {
+      parseWatcherRollbackState(forged, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: applied.nextStore,
       }),
     ).toBeNull();
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         applied.nextStore,
         prior,
@@ -3071,7 +3066,7 @@ describe("canonical watcher rollback engine", () => {
     } = forgedTransition;
     forgedTransition.stateDigest = sha256Canonical(transitionStateCanonical);
     expect(
-      parseWatcherRollbackStateV1(forgedTransition, {
+      parseWatcherRollbackState(forgedTransition, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: applied.nextStore,
@@ -3093,7 +3088,7 @@ describe("canonical watcher rollback engine", () => {
       duplicatedStateCanonical,
     );
     expect(
-      parseWatcherRollbackStateV1(duplicatedTransition, {
+      parseWatcherRollbackState(duplicatedTransition, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: applied.nextStore,
@@ -3101,7 +3096,7 @@ describe("canonical watcher rollback engine", () => {
     ).toBeNull();
 
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         applied.nextStore,
         prior,
@@ -3114,18 +3109,18 @@ describe("canonical watcher rollback engine", () => {
 
     const resetState = bootstrap(
       finalityPolicy,
-      applied.nextStore as WatcherDurableStoreV1,
-      rewound.result.state as WatcherFinalityStateV1,
+      applied.nextStore as WatcherDurableStore,
+      rewound.result.state as WatcherFinalityState,
     );
     expect(
-      parseWatcherRollbackStateV1(resetState, {
+      parseWatcherRollbackState(resetState, {
         policy: finalityPolicy,
         rollbackBootstrapState: bootstrapState,
         currentStore: applied.nextStore,
       }),
     ).toBeNull();
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         applied.nextStore,
         prior,
@@ -3138,12 +3133,9 @@ describe("canonical watcher rollback engine", () => {
   });
 
   it("rotates an atomically authenticated checkpoint at transition 129 and rejects a forged matching anchor", async () => {
-    const value = makeWatcherFinalityPolicyV1(
-      config(256),
-      deploymentIdentity(),
-    );
+    const value = makeWatcherFinalityPolicy(config(256), deploymentIdentity());
     expect(value).not.toBeNull();
-    const finalityPolicy = value as WatcherFinalityPolicyV1;
+    const finalityPolicy = value as WatcherFinalityPolicy;
     const points = Array.from({ length: 130 }, (_, depth) => ({
       ...oldPoint,
       depth: depth.toString(),
@@ -3158,18 +3150,18 @@ describe("canonical watcher rollback engine", () => {
       undefined,
       observations,
     );
-    let previousFinalityState = evaluateWatcherFinalityV1(
+    let previousFinalityState = evaluateWatcherFinality(
       finalityPolicy,
       null,
       agreement(points[129]!),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const rootBootstrapState = bootstrap(
       finalityPolicy,
       currentStore,
       previousFinalityState,
     );
     const backend = new MemoryRollbackAuthorityBackend();
-    const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+    const initialized = await initializeWatcherRollbackDurableAuthority({
       backend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
@@ -3184,13 +3176,13 @@ describe("canonical watcher rollback engine", () => {
 
     for (let depth = 128; depth >= 1; depth -= 1) {
       const consistency = agreement(points[depth]!);
-      const finalityResult = evaluateWatcherFinalityV1(
+      const finalityResult = evaluateWatcherFinality(
         finalityPolicy,
         previousFinalityState,
         consistency,
       );
       expect(finalityResult.action).toBe("rewind_pending");
-      const persisted = await evaluateAndPersistWatcherRollbackV1({
+      const persisted = await evaluateAndPersistWatcherRollback({
         authority,
         previousFinalityState,
         consistency,
@@ -3222,12 +3214,12 @@ describe("canonical watcher rollback engine", () => {
     const priorRollbackBootstrapState = currentRollbackBootstrapState;
     const priorFinalityState = previousFinalityState;
     const consistency = agreement(points[0]!);
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       priorFinalityState,
       consistency,
     );
-    const rotatedCommit = await evaluateAndPersistWatcherRollbackV1({
+    const rotatedCommit = await evaluateAndPersistWatcherRollback({
       authority,
       previousFinalityState: priorFinalityState,
       consistency,
@@ -3240,25 +3232,25 @@ describe("canonical watcher rollback engine", () => {
     authority = rotatedCommit.authority;
     trustedHead = rotatedCommit.trustedHead;
     const rotated = rotatedCommit.result;
-    expect(watcherRollbackDurableAuthorityStatusV1(authority)).toMatchObject({
+    expect(watcherRollbackDurableAuthorityStatus(authority)).toMatchObject({
       revision: "129",
       epoch: "1",
       transitionCount: "129",
       trustedCheckpointStateDigest: rotated.rollbackBootstrapState?.stateDigest,
     });
 
-    const restartedAuthority = await loadWatcherRollbackDurableAuthorityV1({
+    const restartedAuthority = await loadWatcherRollbackDurableAuthority({
       backend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
       trustedHead,
     });
-    expect(watcherRollbackDurableAuthorityStatusV1(restartedAuthority)).toEqual(
-      watcherRollbackDurableAuthorityStatusV1(authority),
+    expect(watcherRollbackDurableAuthorityStatus(restartedAuthority)).toEqual(
+      watcherRollbackDurableAuthorityStatus(authority),
     );
 
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         sourceStore,
         priorFinalityState,
@@ -3270,7 +3262,7 @@ describe("canonical watcher rollback engine", () => {
     ).toBe("apply_rewind");
 
     expect(
-      parseWatcherRollbackResultV1(JSON.parse(JSON.stringify(rotated)), {
+      parseWatcherRollbackResult(JSON.parse(JSON.stringify(rotated)), {
         policy: finalityPolicy,
         sourceStore,
         previousFinalityState: priorFinalityState,
@@ -3281,7 +3273,7 @@ describe("canonical watcher rollback engine", () => {
       }),
     ).toEqual(rotated);
 
-    const duplicateCommit = await evaluateAndPersistWatcherRollbackV1({
+    const duplicateCommit = await evaluateAndPersistWatcherRollback({
       authority: restartedAuthority,
       previousFinalityState: priorFinalityState,
       consistency,
@@ -3326,7 +3318,7 @@ describe("canonical watcher rollback engine", () => {
       rotated.rollbackBootstrapState?.stateDigest,
     );
     expect(
-      parseWatcherRollbackStateV1(
+      parseWatcherRollbackState(
         JSON.parse(JSON.stringify(rotated.rollbackState)),
         {
           policy: finalityPolicy,
@@ -3353,7 +3345,7 @@ describe("canonical watcher rollback engine", () => {
     const { stateDigest: _discardedStateDigest, ...stateCanonical } = forged;
     forged.stateDigest = sha256Canonical(stateCanonical);
     expect(
-      parseWatcherRollbackStateV1(forged, {
+      parseWatcherRollbackState(forged, {
         policy: finalityPolicy,
         rollbackBootstrapState: rotated.rollbackBootstrapState,
         trustedCheckpointAuthority: restartedAuthority,
@@ -3367,7 +3359,7 @@ describe("canonical watcher rollback engine", () => {
       finalityResult.state!,
     );
     expect(
-      parseWatcherRollbackStateV1(resetState, {
+      parseWatcherRollbackState(resetState, {
         policy: finalityPolicy,
         rollbackBootstrapState: rotated.rollbackBootstrapState,
         trustedCheckpointAuthority: restartedAuthority,
@@ -3394,14 +3386,14 @@ describe("canonical watcher rollback engine", () => {
     } = forgedBootstrap;
     forgedBootstrap.stateDigest = sha256Canonical(bootstrapStateCanonical);
     expect(
-      parseWatcherRollbackStateV1(forgedBootstrap, {
+      parseWatcherRollbackState(forgedBootstrap, {
         policy: finalityPolicy,
         rollbackBootstrapState: forgedBootstrap,
         currentStore: sourceStore,
       }),
     ).toBeNull();
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         sourceStore,
         priorFinalityState,
@@ -3417,7 +3409,7 @@ describe("canonical watcher rollback engine", () => {
     });
 
     await expect(
-      loadWatcherRollbackDurableAuthorityV1({
+      loadWatcherRollbackDurableAuthority({
         backend,
         policy: finalityPolicy,
         authenticationKey: Uint8Array.from({ length: 32 }, () => 0xff),
@@ -3443,7 +3435,7 @@ describe("canonical watcher rollback engine", () => {
       JSON.stringify(forgedPersistedSnapshot),
     );
     await expect(
-      loadWatcherRollbackDurableAuthorityV1({
+      loadWatcherRollbackDurableAuthority({
         backend,
         policy: finalityPolicy,
         authenticationKey: rollbackAuthorityKey,
@@ -3455,13 +3447,13 @@ describe("canonical watcher rollback engine", () => {
   it("rejects a convergent alternate first-transition origin against the persisted W12 bootstrap", () => {
     const finalityPolicy = policy();
     const genuinePrior = pending(finalityPolicy, oldPoint);
-    const advancedPriorResult = evaluateWatcherFinalityV1(
+    const advancedPriorResult = evaluateWatcherFinality(
       finalityPolicy,
       genuinePrior,
       agreement({ ...oldPoint, depth: "2" }),
     );
     expect(advancedPriorResult.action).toBe("advance_pending");
-    const alternatePrior = advancedPriorResult.state as WatcherFinalityStateV1;
+    const alternatePrior = advancedPriorResult.state as WatcherFinalityState;
     expect(alternatePrior.stateDigest).not.toBe(genuinePrior.stateDigest);
 
     const genuineTransition = transition(
@@ -3494,7 +3486,7 @@ describe("canonical watcher rollback engine", () => {
       sourceStore,
       alternatePrior,
     );
-    const genuine = evaluateWatcherRollbackV1(
+    const genuine = evaluateWatcherRollback(
       finalityPolicy,
       sourceStore,
       genuinePrior,
@@ -3503,7 +3495,7 @@ describe("canonical watcher rollback engine", () => {
       genuineBootstrap,
       genuineBootstrap,
     );
-    const alternate = evaluateWatcherRollbackV1(
+    const alternate = evaluateWatcherRollback(
       finalityPolicy,
       sourceStore,
       alternatePrior,
@@ -3520,14 +3512,14 @@ describe("canonical watcher rollback engine", () => {
       genuine.rollbackState?.transitions,
     );
     expect(
-      parseWatcherRollbackStateV1(alternate.rollbackState, {
+      parseWatcherRollbackState(alternate.rollbackState, {
         policy: finalityPolicy,
         rollbackBootstrapState: genuineBootstrap,
         currentStore: genuine.nextStore,
       }),
     ).toBeNull();
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         sourceStore,
         alternatePrior,
@@ -3542,14 +3534,14 @@ describe("canonical watcher rollback engine", () => {
   it("rejects self-hashed nested incident policy, release, deployment, store, and finality-lineage divergence", () => {
     const finalityPolicy = policy();
     const first = pending(finalityPolicy, { ...oldPoint, depth: "2" });
-    const finalized = evaluateWatcherFinalityV1(
+    const finalized = evaluateWatcherFinality(
       finalityPolicy,
       first,
       agreement({ ...oldPoint, depth: "5" }),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const contradictionPoint = { ...replacementPoint, depth: "0" };
     const contradictionConsistency = agreement(contradictionPoint);
-    const contradiction = evaluateWatcherFinalityV1(
+    const contradiction = evaluateWatcherFinality(
       finalityPolicy,
       finalized,
       contradictionConsistency,
@@ -3562,7 +3554,7 @@ describe("canonical watcher rollback engine", () => {
       agreementObservations(contradictionPoint),
     );
     const bootstrapState = bootstrap(finalityPolicy, store, finalized);
-    const quarantined = evaluateWatcherRollbackV1(
+    const quarantined = evaluateWatcherRollback(
       finalityPolicy,
       store,
       finalized,
@@ -3579,7 +3571,7 @@ describe("canonical watcher rollback engine", () => {
         incident.releaseEvidenceDigest = hex32("82");
       },
       (incident) => {
-        incident.deploymentMarker = makeDeploymentMarkerV1(hex32("83"));
+        incident.deploymentMarker = makeDeploymentMarker(hex32("83"));
       },
       (incident) => {
         incident.sourceStoreDigest = hex32("84");
@@ -3612,7 +3604,7 @@ describe("canonical watcher rollback engine", () => {
       const { stateDigest: _discardedStateDigest, ...stateCanonical } = state;
       state.stateDigest = sha256Canonical(stateCanonical);
       expect(
-        parseWatcherRollbackStateV1(state, {
+        parseWatcherRollbackState(state, {
           policy: finalityPolicy,
           rollbackBootstrapState: bootstrapState,
           currentStore: quarantined.nextStore,
@@ -3621,13 +3613,13 @@ describe("canonical watcher rollback engine", () => {
     }
 
     const malformedConsistency = { status: "quarantined" };
-    const malformedIncident = evaluateWatcherFinalityV1(
+    const malformedIncident = evaluateWatcherFinality(
       finalityPolicy,
       finalized,
       malformedConsistency,
     );
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         store,
         finalized,
@@ -3643,7 +3635,7 @@ describe("canonical watcher rollback engine", () => {
     const finalityPolicy = policy();
     const prior = pending(finalityPolicy, oldPoint);
     const firstTransition = transition(finalityPolicy, prior, replacementPoint);
-    const secondPrior = firstTransition.result.state as WatcherFinalityStateV1;
+    const secondPrior = firstTransition.result.state as WatcherFinalityState;
     const secondTransition = transition(finalityPolicy, secondPrior, {
       ...replacementPoint,
       bodyHex: "a100",
@@ -3656,7 +3648,7 @@ describe("canonical watcher rollback engine", () => {
       [...firstTransition.observations, ...secondTransition.observations],
     );
     const bootstrapState = bootstrap(finalityPolicy, sourceStore, prior);
-    const firstApplied = evaluateWatcherRollbackV1(
+    const firstApplied = evaluateWatcherRollback(
       finalityPolicy,
       sourceStore,
       prior,
@@ -3665,7 +3657,7 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
-    const adjacent = evaluateWatcherRollbackV1(
+    const adjacent = evaluateWatcherRollback(
       finalityPolicy,
       firstApplied.nextStore,
       prior,
@@ -3676,7 +3668,7 @@ describe("canonical watcher rollback engine", () => {
     );
     expect(adjacent.action).toBe("duplicate_rewind");
 
-    const secondApplied = evaluateWatcherRollbackV1(
+    const secondApplied = evaluateWatcherRollback(
       finalityPolicy,
       firstApplied.nextStore,
       secondPrior,
@@ -3689,7 +3681,7 @@ describe("canonical watcher rollback engine", () => {
       action: "apply_rewind",
       rollbackState: { transitionCount: "2" },
     });
-    const olderReplay = evaluateWatcherRollbackV1(
+    const olderReplay = evaluateWatcherRollback(
       finalityPolicy,
       secondApplied.nextStore,
       prior,
@@ -3724,7 +3716,7 @@ describe("canonical watcher rollback engine", () => {
       prior,
     );
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         oneProviderStore,
         prior,
@@ -3742,8 +3734,8 @@ describe("canonical watcher rollback engine", () => {
       undefined,
       rewound.observations,
     );
-    const providerA = rewound.observations[0] as WatcherNormalizedL1BlockV1;
-    const misassociatedStore = makeWatcherDurableStoreV1({
+    const providerA = rewound.observations[0] as WatcherNormalizedL1Block;
+    const misassociatedStore = makeWatcherDurableStore({
       deploymentMarker: completeStore.deploymentMarker,
       revision: completeStore.revision,
       records: {
@@ -3764,7 +3756,7 @@ describe("canonical watcher rollback engine", () => {
       prior,
     );
     expect(
-      evaluateWatcherRollbackV1(
+      evaluateWatcherRollback(
         finalityPolicy,
         misassociatedStore,
         prior,

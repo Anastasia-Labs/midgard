@@ -534,18 +534,18 @@ describe("L1 submitter helpers", () => {
 type SubmitterProbe = {
   findStateQueueHeader(headerHash: string): Promise<{
     readonly stateQueueNode: {
-      readonly da_attestation: SDK.DaAvailabilityStateQueueStatusV1;
+      readonly da_attestation: SDK.DaAvailabilityStateQueueStatus;
     };
   }>;
   waitForApplied(headerHash: string): Promise<void>;
 };
 
-const attestedStatus = (): SDK.DaAvailabilityStateQueueStatusV1 => ({
+const attestedStatus = (): SDK.DaAvailabilityStateQueueStatus => ({
   Attested: { da_bond_asset_name: "aa".repeat(32) },
 });
 
-const availabilityParameters = SDK.daAvailabilityParametersV1({
-  responseGeometry: SDK.availabilityResponseGeometryV1({
+const availabilityParameters = SDK.daAvailabilityParameters({
+  responseGeometry: SDK.availabilityResponseGeometry({
     chunkByteLength: 14_020,
     trancheByteLength: 4 * 1_024 * 1_024,
     maxTrancheCount: 16,

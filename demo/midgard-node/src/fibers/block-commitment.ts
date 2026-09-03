@@ -54,7 +54,7 @@ import type {
   CommitSchedulerStateQueueEvidence,
   EarliestCommitSchedulerPlan,
 } from "../workers/utils/commit-block-planner.js";
-import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "../workers/utils/commit-end-time.js";
+import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../workers/utils/commit-end-time.js";
 import { WorkerError } from "../workers/utils/common.js";
 import {
   fetchRealStateQueueWitnessContext,
@@ -497,7 +497,7 @@ const shouldSkipIdleCommitPipelineBeforeSchedulerAlignment = Effect.gen(
     );
     const mempoolTxCount = yield* MempoolDB.retrieveTxCount;
     const pendingUserEventCount = yield* pendingUserEventCountUpTo(
-      new Date(Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS),
+      new Date(Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS),
     );
     if (
       shouldAttemptCommitPipeline({
@@ -528,8 +528,7 @@ const isDetailedSchedulerAlignmentDueWork = (
 const resolveFreshDetailedSchedulerDueWork = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const alignedEndTime =
-    Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+  const alignedEndTime = Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
   const alignment = yield* fetchRealStateQueueWitnessContext(
     lucid.api,
     contracts,
@@ -726,8 +725,7 @@ const alignCommitSchedulerBeforeMutationWorker = Effect.gen(function* () {
   }
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const alignedEndTime =
-    Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
+  const alignedEndTime = Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS;
   const alignment = yield* Effect.either(
     fetchRealStateQueueWitnessContext(
       lucid.api,

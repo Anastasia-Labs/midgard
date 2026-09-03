@@ -10,43 +10,43 @@
  */
 
 import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { OutputReference, TxOrderEventV1 } from "@al-ft/midgard-sdk";
+import { OutputReference, TxOrderEvent } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  parseWatcherSettlementIndexerResultV1,
-  type WatcherSettlementResultVerificationContextV1,
+  parseWatcherSettlementIndexerResult,
+  type WatcherSettlementResultVerificationContext,
 } from "../indexers/settlement-indexer.js";
-import { parseWatcherStateQueueHeaderV1 } from "../indexers/state-queue-indexer.js";
+import { parseWatcherStateQueueHeader } from "../indexers/state-queue-indexer.js";
 import {
-  isWatcherForcedOperatorVerdictV1,
-  parseWatcherUserEventIndexerResultV1,
-  WATCHER_FORCED_TX_VALID_V1,
-  type WatcherForcedOperatorVerdictV1,
-  type WatcherIndexedUserEventV1,
-  type WatcherTerminalUserEventV1,
+  isWatcherForcedOperatorVerdict,
+  parseWatcherUserEventIndexerResult,
+  WATCHER_FORCED_TX_VALID,
+  type WatcherForcedOperatorVerdict,
+  type WatcherIndexedUserEvent,
+  type WatcherTerminalUserEvent,
 } from "../indexers/user-event-indexer.js";
-import type { WatcherL1TransportAttestationContextV1 } from "../l1/l1-adapter.js";
-import { watcherSha256CanonicalJsonV1 } from "../storage/durable-store.js";
+import type { WatcherL1TransportAttestationContext } from "../l1/l1-adapter.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
-  WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION,
-  WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION,
-  type WatcherBlockReplayResultV1,
+  WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
+  WATCHER_BLOCK_REPLAY_SCHEMA_VERSION,
+  type WatcherBlockReplayResult,
 } from "./block-replay.js";
 import {
-  WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
-  type WatcherPhaseAVerificationResultV1,
+  WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
+  type WatcherPhaseAVerificationResult,
 } from "./phase-a-verifier.js";
 
-export const WATCHER_EVENT_CLASSIFICATION_VERIFIER_V1_SCHEMA_VERSION =
+export const WATCHER_EVENT_CLASSIFICATION_VERIFIER_SCHEMA_VERSION =
   "midgard-watcher-event-classification-verifier-v1" as const;
 
-export const WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1 = Object.freeze([
+export const WATCHER_EVENT_CLASSIFICATION_REASON_CODES = Object.freeze([
   "malformed_input",
   "unknown_schema",
   "w25_not_accepted",
@@ -67,49 +67,49 @@ export const WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1 = Object.freeze([
   "forced_source_mismatch",
 ] as const);
 
-export type WatcherEventClassificationReasonCodeV1 =
-  (typeof WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1)[number];
-export type WatcherEventClassificationActionV1 = "accept" | "reject" | "error";
-export type WatcherEventClassificationPhaseV1 =
+export type WatcherEventClassificationReasonCode =
+  (typeof WATCHER_EVENT_CLASSIFICATION_REASON_CODES)[number];
+export type WatcherEventClassificationAction = "accept" | "reject" | "error";
+export type WatcherEventClassificationPhase =
   | "Deposit"
   | "Withdrawal"
   | "ForcedTransaction";
 
-export type WatcherEventClassificationUserAuthorityV1 = Readonly<{
+export type WatcherEventClassificationUserAuthority = Readonly<{
   result: unknown;
   context: Readonly<{
     policy: unknown;
     previousState: unknown;
     observation: unknown;
     publicContext: unknown;
-    transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+    transportAttestations: readonly WatcherL1TransportAttestationContext[];
   }>;
 }>;
 
-export type WatcherEventClassificationSettlementAuthorityV1 = Readonly<{
+export type WatcherEventClassificationSettlementAuthority = Readonly<{
   result: unknown;
-  context: WatcherSettlementResultVerificationContextV1;
+  context: WatcherSettlementResultVerificationContext;
 }>;
 
-export type WatcherForcedEventNativeTransactionV1 = Readonly<{
+export type WatcherForcedEventNativeTransaction = Readonly<{
   /** W15's canonical `outRef` (`transaction-hash#output-index`). */
   eventOutRef: string;
   canonicalNativeTxCbor: Uint8Array;
 }>;
 
-export type EvaluateWatcherEventClassificationInputV1 = Readonly<{
+export type EvaluateWatcherEventClassificationInput = Readonly<{
   header: unknown;
   blockReplay: unknown;
   /** A digest-bound W24 record; W26 rechecks it against W25's phase-A digest. */
   phaseA: unknown;
-  userEventAuthorities: readonly WatcherEventClassificationUserAuthorityV1[];
-  settlementAuthorities: readonly WatcherEventClassificationSettlementAuthorityV1[];
-  forcedNativeTransactions: readonly WatcherForcedEventNativeTransactionV1[];
+  userEventAuthorities: readonly WatcherEventClassificationUserAuthority[];
+  settlementAuthorities: readonly WatcherEventClassificationSettlementAuthority[];
+  forcedNativeTransactions: readonly WatcherForcedEventNativeTransaction[];
 }>;
 
-export type WatcherEventClassificationFactV1 = Readonly<{
+export type WatcherEventClassificationFact = Readonly<{
   fingerprint: string;
-  phase: WatcherEventClassificationPhaseV1;
+  phase: WatcherEventClassificationPhase;
   inclusionTime: string;
   withdrawalValidity: "valid" | "invalid" | null;
   forcedInterval: Readonly<{ start: string; end: string }> | null;
@@ -117,7 +117,7 @@ export type WatcherEventClassificationFactV1 = Readonly<{
   settlementKind: "initialize_payout" | "refund_withdrawal" | null;
 }>;
 
-export type WatcherEventClassificationTraceFactV1 = Readonly<{
+export type WatcherEventClassificationTraceFact = Readonly<{
   fingerprint: string;
   phase: "Deposit" | "Withdrawal" | "ForcedTransaction" | "L2Transaction";
   stepIndex: number;
@@ -126,8 +126,8 @@ export type WatcherEventClassificationTraceFactV1 = Readonly<{
   mutationCount: number;
 }>;
 
-export type WatcherEventClassificationFindingV1 = Readonly<{
-  code: WatcherEventClassificationReasonCodeV1;
+export type WatcherEventClassificationFinding = Readonly<{
+  code: WatcherEventClassificationReasonCode;
   fingerprint: string | null;
   field: string;
 }>;
@@ -135,8 +135,8 @@ export type WatcherEventClassificationFindingV1 = Readonly<{
 type ForcedValidationFact = Readonly<{
   eventKeyFingerprint: string;
   stepIndex: number;
-  authenticatedOperatorValidity: WatcherForcedOperatorVerdictV1;
-  canonicalOperatorValidity: WatcherForcedOperatorVerdictV1;
+  authenticatedOperatorValidity: WatcherForcedOperatorVerdict;
+  canonicalOperatorValidity: WatcherForcedOperatorVerdict;
   phaseAStatus: "accepted" | "rejected";
   phaseARejectCode: string | null;
   phaseBStatus: "not_run" | "accepted" | "rejected";
@@ -145,11 +145,11 @@ type ForcedValidationFact = Readonly<{
   canonicalEffectMutationCount: number;
 }>;
 
-export type WatcherEventClassificationResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_EVENT_CLASSIFICATION_VERIFIER_V1_SCHEMA_VERSION;
-  action: WatcherEventClassificationActionV1;
-  reasonCodes: readonly WatcherEventClassificationReasonCodeV1[];
-  findings: readonly WatcherEventClassificationFindingV1[];
+export type WatcherEventClassificationResult = Readonly<{
+  schemaVersion: typeof WATCHER_EVENT_CLASSIFICATION_VERIFIER_SCHEMA_VERSION;
+  action: WatcherEventClassificationAction;
+  reasonCodes: readonly WatcherEventClassificationReasonCode[];
+  findings: readonly WatcherEventClassificationFinding[];
   classificationPrerequisite: Readonly<{
     requiredVerifier: "W26";
     inputDigest: string;
@@ -173,10 +173,7 @@ const PHASES = new Set([
 ]);
 const EVENT_PHASES = new Set(["Deposit", "Withdrawal", "ForcedTransaction"]);
 const REASON_ORDER = new Map(
-  WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1.map((code, index) => [
-    code,
-    index,
-  ]),
+  WATCHER_EVENT_CLASSIFICATION_REASON_CODES.map((code, index) => [code, index]),
 );
 
 const isPlain = (value: unknown): value is Record<string, unknown> =>
@@ -209,7 +206,7 @@ const exact = (
 };
 
 const fingerprint = (
-  phase: WatcherEventClassificationPhaseV1,
+  phase: WatcherEventClassificationPhase,
   outRef: string,
 ): string | null => {
   const match = OUT_REF.exec(outRef);
@@ -224,8 +221,8 @@ const fingerprint = (
 };
 
 const authenticatedEventFingerprint = (
-  phase: WatcherEventClassificationPhaseV1,
-  event: WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1,
+  phase: WatcherEventClassificationPhase,
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent,
 ): string | null => {
   try {
     const eventId = Data.from(event.eventId, OutputReference) as {
@@ -255,13 +252,13 @@ const traceFingerprintPhase = (
     : null;
 };
 
-export const watcherTimedL1EventIsDueV1 = (
+export const watcherTimedL1EventIsDue = (
   start: bigint,
   end: bigint,
   inclusion: bigint,
 ): boolean => start < inclusion && inclusion <= end;
 
-export const watcherForcedIntervalIsDueV1 = (
+export const watcherForcedIntervalIsDue = (
   start: bigint,
   end: bigint,
   intervalStart: bigint,
@@ -275,7 +272,7 @@ export const watcherForcedIntervalIsDueV1 = (
 };
 
 const orderFindings = (
-  findings: readonly WatcherEventClassificationFindingV1[],
+  findings: readonly WatcherEventClassificationFinding[],
 ) =>
   Object.freeze(
     [...findings].sort(
@@ -287,14 +284,14 @@ const orderFindings = (
   );
 
 /** Pure canonical rule port. Its facts may only be produced by the authority parser below. */
-export const evaluateWatcherEventClassificationRulesV1 = (
+export const evaluateWatcherEventClassificationRules = (
   input: Readonly<{
     startTime: string;
     endTime: string;
-    sources: readonly WatcherEventClassificationFactV1[];
-    trace: readonly WatcherEventClassificationTraceFactV1[];
+    sources: readonly WatcherEventClassificationFact[];
+    trace: readonly WatcherEventClassificationTraceFact[];
   }>,
-): readonly WatcherEventClassificationFindingV1[] => {
+): readonly WatcherEventClassificationFinding[] => {
   if (
     !NATURAL.test(input.startTime) ||
     !NATURAL.test(input.endTime) ||
@@ -306,8 +303,8 @@ export const evaluateWatcherEventClassificationRulesV1 = (
   }
   const start = BigInt(input.startTime);
   const end = BigInt(input.endTime);
-  const findings: WatcherEventClassificationFindingV1[] = [];
-  const sources = new Map<string, WatcherEventClassificationFactV1>();
+  const findings: WatcherEventClassificationFinding[] = [];
+  const sources = new Map<string, WatcherEventClassificationFact>();
   for (const source of input.sources) {
     if (sources.has(source.fingerprint))
       findings.push({
@@ -317,7 +314,7 @@ export const evaluateWatcherEventClassificationRulesV1 = (
       });
     else sources.set(source.fingerprint, source);
   }
-  const trace = new Map<string, WatcherEventClassificationTraceFactV1>();
+  const trace = new Map<string, WatcherEventClassificationTraceFact>();
   for (const entry of [...input.trace].sort(
     (a, b) => a.stepIndex - b.stepIndex,
   )) {
@@ -369,10 +366,10 @@ export const evaluateWatcherEventClassificationRulesV1 = (
       continue;
     }
     const due =
-      watcherTimedL1EventIsDueV1(start, end, inclusion) &&
+      watcherTimedL1EventIsDue(start, end, inclusion) &&
       (source.phase !== "ForcedTransaction" ||
         (source.forcedInterval !== null &&
-          watcherForcedIntervalIsDueV1(
+          watcherForcedIntervalIsDue(
             start,
             end,
             BigInt(source.forcedInterval.start),
@@ -436,8 +433,8 @@ export const evaluateWatcherEventClassificationRulesV1 = (
 };
 
 const allEvents = (
-  result: NonNullable<ReturnType<typeof parseWatcherUserEventIndexerResultV1>>,
-): readonly (WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1)[] =>
+  result: NonNullable<ReturnType<typeof parseWatcherUserEventIndexerResult>>,
+): readonly (WatcherIndexedUserEvent | WatcherTerminalUserEvent)[] =>
   result.state === null
     ? []
     : [
@@ -448,8 +445,8 @@ const allEvents = (
 const parseW25 = (
   value: unknown,
 ): {
-  receipt: WatcherBlockReplayResultV1;
-  trace: readonly WatcherEventClassificationTraceFactV1[];
+  receipt: WatcherBlockReplayResult;
+  trace: readonly WatcherEventClassificationTraceFact[];
   inputDigest: string;
   forcedValidationFacts: readonly ForcedValidationFact[];
 } | null => {
@@ -489,7 +486,7 @@ const parseW25 = (
   const record = exact(value, keys);
   if (
     record === null ||
-    record.schemaVersion !== WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_BLOCK_REPLAY_SCHEMA_VERSION ||
     record.action !== "accept" ||
     !Array.isArray(record.reasonCodes) ||
     record.reasonCodes.length !== 0 ||
@@ -506,7 +503,7 @@ const parseW25 = (
   if (
     prerequisite === null ||
     prerequisite.schemaVersion !==
-      WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION ||
+      WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION ||
     prerequisite.requiredVerifier !== "W26" ||
     prerequisite.w29Eligibility !== "requires_w26_accept" ||
     !HEX_32.test(String(prerequisite.inputDigest))
@@ -515,9 +512,9 @@ const parseW25 = (
   const withoutDigest = Object.fromEntries(
     Object.entries(record).filter(([key]) => key !== "resultDigest"),
   );
-  if (watcherSha256CanonicalJsonV1(withoutDigest) !== record.resultDigest)
+  if (watcherSha256CanonicalJson(withoutDigest) !== record.resultDigest)
     return null;
-  const expectedInputDigest = watcherSha256CanonicalJsonV1({
+  const expectedInputDigest = watcherSha256CanonicalJson({
     headerHash: record.headerHash,
     payloadEnvelopeSha256: record.payloadEnvelopeSha256,
     reconstructionDigest: record.reconstructionDigest,
@@ -536,7 +533,7 @@ const parseW25 = (
   )
     return null;
   if (!Array.isArray(record.eventRoots)) return null;
-  const trace: WatcherEventClassificationTraceFactV1[] = [];
+  const trace: WatcherEventClassificationTraceFact[] = [];
   for (const event of record.eventRoots) {
     const parsed = exact(event, [
       "stepIndex",
@@ -565,7 +562,7 @@ const parseW25 = (
       return null;
     trace.push({
       fingerprint: parsed.eventKeyFingerprint,
-      phase: parsed.phase as WatcherEventClassificationTraceFactV1["phase"],
+      phase: parsed.phase as WatcherEventClassificationTraceFact["phase"],
       stepIndex,
       preRoot: parsed.preRoot as string,
       postRoot: parsed.postRoot as string,
@@ -632,8 +629,8 @@ const parseW25 = (
       typeof parsed.stepIndex !== "number" ||
       !Number.isSafeInteger(parsed.stepIndex) ||
       parsed.stepIndex < 0 ||
-      !isWatcherForcedOperatorVerdictV1(parsed.authenticatedOperatorValidity) ||
-      !isWatcherForcedOperatorVerdictV1(parsed.canonicalOperatorValidity) ||
+      !isWatcherForcedOperatorVerdict(parsed.authenticatedOperatorValidity) ||
+      !isWatcherForcedOperatorVerdict(parsed.canonicalOperatorValidity) ||
       (parsed.phaseAStatus !== "accepted" &&
         parsed.phaseAStatus !== "rejected") ||
       (parsed.phaseBStatus !== "not_run" &&
@@ -666,7 +663,7 @@ const parseW25 = (
     forcedValidationFacts.push(parsed as ForcedValidationFact);
   }
   return {
-    receipt: value as WatcherBlockReplayResultV1,
+    receipt: value as WatcherBlockReplayResult,
     trace: Object.freeze(ordered),
     inputDigest: prerequisite.inputDigest as string,
     forcedValidationFacts: Object.freeze(forcedValidationFacts),
@@ -674,12 +671,12 @@ const parseW25 = (
 };
 
 const settlementKindFor = (
-  event: WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1,
-  authorities: readonly WatcherEventClassificationSettlementAuthorityV1[],
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent,
+  authorities: readonly WatcherEventClassificationSettlementAuthority[],
 ): "initialize_payout" | "refund_withdrawal" | null | "invalid" => {
   const matches: ("initialize_payout" | "refund_withdrawal")[] = [];
   for (const authority of authorities) {
-    const parsed = parseWatcherSettlementIndexerResultV1(
+    const parsed = parseWatcherSettlementIndexerResult(
       authority.result,
       authority.context,
     );
@@ -716,8 +713,8 @@ const settlementKindFor = (
 };
 
 const forcedIntervalFor = (
-  event: WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1,
-  nativeTransactions: readonly WatcherForcedEventNativeTransactionV1[],
+  event: WatcherIndexedUserEvent | WatcherTerminalUserEvent,
+  nativeTransactions: readonly WatcherForcedEventNativeTransaction[],
 ): Readonly<{
   start: string;
   end: string;
@@ -731,26 +728,26 @@ const forcedIntervalFor = (
     const bytes = Buffer.from(matches[0]!.canonicalNativeTxCbor);
     const decodedEvent = Data.from(
       event.eventCborHex,
-      TxOrderEventV1 as never,
+      TxOrderEvent as never,
     ) as {
       readonly tx: {
         readonly tx_id: string;
         readonly transaction_commitment: string;
       };
     };
-    const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(bytes);
-    const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(bytes);
+    const full = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
+    const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(bytes);
     if (
-      computeMidgardNativeTxIdV1(full).toString("hex") !==
+      computeMidgardNativeTxId(full).toString("hex") !==
         decodedEvent.tx.tx_id ||
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex") !==
+      computeMidgardNativeTxProofCommitment(source).toString("hex") !==
         decodedEvent.tx.transaction_commitment
     )
       return null;
     return Object.freeze({
       start: full.compact.transactionBody.validityIntervalStart.toString(),
       end: full.compact.transactionBody.validityIntervalEnd.toString(),
-      txId: computeMidgardNativeTxIdV1(full).toString("hex"),
+      txId: computeMidgardNativeTxId(full).toString("hex"),
     });
   } catch {
     return null;
@@ -758,19 +755,19 @@ const forcedIntervalFor = (
 };
 
 const result = (
-  action: WatcherEventClassificationActionV1,
+  action: WatcherEventClassificationAction,
   inputDigest: string,
-  findings: readonly WatcherEventClassificationFindingV1[],
+  findings: readonly WatcherEventClassificationFinding[],
   sourceAuthorityDigest: string | null,
   traceDigest: string | null,
-): WatcherEventClassificationResultV1 => {
+): WatcherEventClassificationResult => {
   const reasonCodes = Object.freeze(
     [...new Set(findings.map(({ code }) => code))].sort(
       (left, right) => REASON_ORDER.get(left)! - REASON_ORDER.get(right)!,
     ),
   );
   const core = {
-    schemaVersion: WATCHER_EVENT_CLASSIFICATION_VERIFIER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_EVENT_CLASSIFICATION_VERIFIER_SCHEMA_VERSION,
     action,
     reasonCodes,
     findings,
@@ -784,17 +781,17 @@ const result = (
   };
   return Object.freeze({
     ...core,
-    resultDigest: watcherSha256CanonicalJsonV1(core),
+    resultDigest: watcherSha256CanonicalJson(core),
   });
 };
 
 /** Recomputes W15/W16 authorities before applying the pure canonical rules. */
-export const evaluateWatcherEventClassificationV1 = (
-  input: EvaluateWatcherEventClassificationInputV1,
-): WatcherEventClassificationResultV1 => {
+export const evaluateWatcherEventClassification = (
+  input: EvaluateWatcherEventClassificationInput,
+): WatcherEventClassificationResult => {
   if (
     !isPlain(input.blockReplay) ||
-    input.blockReplay.schemaVersion !== WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION
+    input.blockReplay.schemaVersion !== WATCHER_BLOCK_REPLAY_SCHEMA_VERSION
   )
     return result(
       "error",
@@ -828,7 +825,7 @@ export const evaluateWatcherEventClassificationV1 = (
     !isPlain(rawPrerequisite) ||
     rawPrerequisite.requiredVerifier !== "W26" ||
     rawPrerequisite.schemaVersion !==
-      WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION ||
+      WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION ||
     rawPrerequisite.w29Eligibility !== "requires_w26_accept"
   )
     return result(
@@ -846,7 +843,7 @@ export const evaluateWatcherEventClassificationV1 = (
     );
   if (
     typeof input.blockReplay.resultDigest !== "string" ||
-    watcherSha256CanonicalJsonV1(
+    watcherSha256CanonicalJson(
       Object.fromEntries(
         Object.entries(input.blockReplay).filter(
           ([key]) => key !== "resultDigest",
@@ -884,7 +881,7 @@ export const evaluateWatcherEventClassificationV1 = (
       null,
       null,
     );
-  const header = parseWatcherStateQueueHeaderV1(input.header);
+  const header = parseWatcherStateQueueHeader(input.header);
   if (header === null || header.headerHash !== w25.receipt.headerHash)
     return result(
       "error",
@@ -913,10 +910,10 @@ export const evaluateWatcherEventClassificationV1 = (
       null,
       null,
     );
-  const phaseA = input.phaseA as WatcherPhaseAVerificationResultV1;
+  const phaseA = input.phaseA as WatcherPhaseAVerificationResult;
   if (
     !isPlain(phaseA) ||
-    phaseA.schemaVersion !== WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION ||
+    phaseA.schemaVersion !== WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION ||
     phaseA.action !== "accept" ||
     !Array.isArray(phaseA.reasonCodes) ||
     phaseA.reasonCodes.length !== 0 ||
@@ -924,7 +921,7 @@ export const evaluateWatcherEventClassificationV1 = (
     phaseA.rejections.length !== 0 ||
     !Array.isArray(phaseA.acceptedTxIds) ||
     phaseA.resultDigest !== w25.receipt.phaseAResultDigest ||
-    watcherSha256CanonicalJsonV1(
+    watcherSha256CanonicalJson(
       Object.fromEntries(
         Object.entries(phaseA).filter(([key]) => key !== "resultDigest"),
       ),
@@ -965,10 +962,10 @@ export const evaluateWatcherEventClassificationV1 = (
       null,
       null,
     );
-  const sources: WatcherEventClassificationFactV1[] = [];
+  const sources: WatcherEventClassificationFact[] = [];
   const sourceEvidence: unknown[] = [];
   for (const authority of input.userEventAuthorities) {
-    const parsed = parseWatcherUserEventIndexerResultV1(
+    const parsed = parseWatcherUserEventIndexerResult(
       authority.result,
       authority.context,
     );
@@ -1018,13 +1015,13 @@ export const evaluateWatcherEventClassificationV1 = (
           null,
           null,
         );
-      let withdrawalValidity: WatcherEventClassificationFactV1["withdrawalValidity"] =
+      let withdrawalValidity: WatcherEventClassificationFact["withdrawalValidity"] =
         null;
-      let settlementKind: WatcherEventClassificationFactV1["settlementKind"] =
+      let settlementKind: WatcherEventClassificationFact["settlementKind"] =
         null;
-      let forcedInterval: WatcherEventClassificationFactV1["forcedInterval"] =
+      let forcedInterval: WatcherEventClassificationFact["forcedInterval"] =
         null;
-      let forcedValidity: WatcherEventClassificationFactV1["forcedValidity"] =
+      let forcedValidity: WatcherEventClassificationFact["forcedValidity"] =
         null;
       if (phase === "Withdrawal") {
         try {
@@ -1137,10 +1134,10 @@ export const evaluateWatcherEventClassificationV1 = (
               fact.canonicalOperatorValidity ||
             fact.canonicalEffectMutationCount !== replayed.mutationCount ||
             (canonicalAccepted
-              ? fact.canonicalOperatorValidity !== WATCHER_FORCED_TX_VALID_V1 ||
+              ? fact.canonicalOperatorValidity !== WATCHER_FORCED_TX_VALID ||
                 replayed.mutationCount === 0 ||
                 replayed.preRoot === replayed.postRoot
-              : fact.canonicalOperatorValidity === WATCHER_FORCED_TX_VALID_V1 ||
+              : fact.canonicalOperatorValidity === WATCHER_FORCED_TX_VALID ||
                 replayed.mutationCount !== 0 ||
                 replayed.preRoot !== replayed.postRoot)
           )
@@ -1171,14 +1168,14 @@ export const evaluateWatcherEventClassificationV1 = (
       });
     }
   }
-  const findings = evaluateWatcherEventClassificationRulesV1({
+  const findings = evaluateWatcherEventClassificationRules({
     startTime: header.startTime,
     endTime: header.endTime,
     sources,
     trace: w25.trace,
   });
-  const sourceAuthorityDigest = watcherSha256CanonicalJsonV1(sourceEvidence);
-  const traceDigest = watcherSha256CanonicalJsonV1(w25.trace);
+  const sourceAuthorityDigest = watcherSha256CanonicalJson(sourceEvidence);
+  const traceDigest = watcherSha256CanonicalJson(w25.trace);
   return result(
     findings.length === 0 ? "accept" : "reject",
     w25.inputDigest,

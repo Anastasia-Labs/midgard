@@ -1,33 +1,33 @@
 import { createHash } from "node:crypto";
 
 import {
-  decodeMidgardNativeTxCompactV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
 } from "../field-opening-v1.js";
-import type { CanonicalBlockClassificationV1 } from "../workflow/classification-v1.js";
+import type { CanonicalBlockClassification } from "../workflow/classification-v1.js";
 import {
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "../workflow/journal-v1.js";
 import {
-  prepareScriptIntegrityHashMissingEvidenceV1,
-  type ScriptIntegrityHashMissingEvidenceV1,
+  prepareScriptIntegrityHashMissingEvidence,
+  type ScriptIntegrityHashMissingEvidence,
 } from "./family-v1.js";
 import {
-  deriveScriptIntegrityHashMissingAuthenticatedSourceV1,
-  detectScriptIntegrityHashMissingFromCanonicalEvidenceV1,
-  reconstructScriptIntegrityHashMissingEvidenceV1,
-  type ScriptIntegrityHashMissingAuthenticatedSourceV1,
+  deriveScriptIntegrityHashMissingAuthenticatedSource,
+  detectScriptIntegrityHashMissingFromCanonicalEvidence,
+  reconstructScriptIntegrityHashMissingEvidence,
+  type ScriptIntegrityHashMissingAuthenticatedSource,
 } from "./replay-v1.js";
-import { planScriptIntegrityHashMissingStagedWalkV1 } from "./staged-plan-v1.js";
+import { planScriptIntegrityHashMissingStagedWalk } from "./staged-plan-v1.js";
 
-export const PRODUCTION_SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT =
   "midgard-production-script-integrity-hash-missing-artifact-v1" as const;
 
 type Portable =
@@ -85,52 +85,51 @@ const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
 /** Test harness seam only; production constructs artifacts from complete replay. */
-export const testingOnlyScriptIntegrityHashMissingArtifactV1 = ({
+export const testingOnlyScriptIntegrityHashMissingArtifact = ({
   detectionId,
   evidence: rawEvidence,
   source,
 }: {
   readonly detectionId: string;
-  readonly evidence: ScriptIntegrityHashMissingEvidenceV1;
-  readonly source: ScriptIntegrityHashMissingAuthenticatedSourceV1;
-}): ProductionScriptIntegrityHashMissingArtifactV1 => {
-  const evidence = prepareScriptIntegrityHashMissingEvidenceV1(rawEvidence);
+  readonly evidence: ScriptIntegrityHashMissingEvidence;
+  readonly source: ScriptIntegrityHashMissingAuthenticatedSource;
+}): ScriptIntegrityHashMissingArtifact => {
+  const evidence = prepareScriptIntegrityHashMissingEvidence(rawEvidence);
   const evidenceJson = encodePortable(evidence);
   const sourceJson = encodePortable(source);
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT,
     headerHash: evidence.finding.headerHash,
     detectionId,
     evidenceJson,
     sourceJson,
     payloadSha256: sha256(`${evidenceJson}\u0000${sourceJson}`),
-  }) as ProductionScriptIntegrityHashMissingArtifactV1;
-  admitProductionScriptIntegrityHashMissingArtifactV1(artifact);
+  }) as ScriptIntegrityHashMissingArtifact;
+  admitScriptIntegrityHashMissingArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type ProductionScriptIntegrityHashMissingArtifactV1 =
-  JournalJsonObjectV1 &
-    Readonly<{
-      schemaVersion: typeof PRODUCTION_SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT_V1;
-      headerHash: string;
-      detectionId: string;
-      evidenceJson: string;
-      sourceJson: string;
-      payloadSha256: string;
-    }>;
+export type ScriptIntegrityHashMissingArtifact = JournalJsonObject &
+  Readonly<{
+    schemaVersion: typeof SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT;
+    headerHash: string;
+    detectionId: string;
+    evidenceJson: string;
+    sourceJson: string;
+    payloadSha256: string;
+  }>;
 
-export type AdmittedProductionScriptIntegrityHashMissingArtifactV1 = Readonly<{
-  artifact: ProductionScriptIntegrityHashMissingArtifactV1;
-  evidence: ScriptIntegrityHashMissingEvidenceV1;
-  source: ScriptIntegrityHashMissingAuthenticatedSourceV1;
-  scriptPlan: FaultProofFieldOpeningPlanV1;
-  redeemerPlan: FaultProofFieldOpeningPlanV1;
-  staged: ReturnType<typeof planScriptIntegrityHashMissingStagedWalkV1>;
+export type AdmittedScriptIntegrityHashMissingArtifact = Readonly<{
+  artifact: ScriptIntegrityHashMissingArtifact;
+  evidence: ScriptIntegrityHashMissingEvidence;
+  source: ScriptIntegrityHashMissingAuthenticatedSource;
+  scriptPlan: FaultProofFieldOpeningPlan;
+  redeemerPlan: FaultProofFieldOpeningPlan;
+  staged: ReturnType<typeof planScriptIntegrityHashMissingStagedWalk>;
 }>;
 
-export const scriptIntegrityHashMissingWitnessSetV1 = (compactCbor: string) => {
-  const decoded = decodeMidgardNativeTxWitnessSetCompactV1(
+export const scriptIntegrityHashMissingWitnessSet = (compactCbor: string) => {
+  const decoded = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(compactCbor, "hex"),
   );
   return Object.freeze({
@@ -142,10 +141,10 @@ export const scriptIntegrityHashMissingWitnessSetV1 = (compactCbor: string) => {
   });
 };
 
-export const admitProductionScriptIntegrityHashMissingArtifactV1 = (
+export const admitScriptIntegrityHashMissingArtifact = (
   value: unknown,
   owner = "00".repeat(28),
-): AdmittedProductionScriptIntegrityHashMissingArtifactV1 => {
+): AdmittedScriptIntegrityHashMissingArtifact => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("scriptIntegrityHashMissing artifact must be an object");
   const record = value as Record<string, unknown>;
@@ -159,8 +158,7 @@ export const admitProductionScriptIntegrityHashMissingArtifactV1 = (
   ];
   if (
     Object.keys(record).sort().join(",") !== expected.join(",") ||
-    record.schemaVersion !==
-      PRODUCTION_SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT_V1 ||
+    record.schemaVersion !== SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT ||
     typeof record.headerHash !== "string" ||
     !/^[0-9a-f]{56}$/u.test(record.headerHash) ||
     typeof record.detectionId !== "string" ||
@@ -173,12 +171,12 @@ export const admitProductionScriptIntegrityHashMissingArtifactV1 = (
     throw new Error(
       "scriptIntegrityHashMissing artifact identity or digest changed",
     );
-  const evidence = prepareScriptIntegrityHashMissingEvidenceV1(
-    decodePortable(record.evidenceJson) as ScriptIntegrityHashMissingEvidenceV1,
+  const evidence = prepareScriptIntegrityHashMissingEvidence(
+    decodePortable(record.evidenceJson) as ScriptIntegrityHashMissingEvidence,
   );
   const source = decodePortable(
     record.sourceJson,
-  ) as ScriptIntegrityHashMissingAuthenticatedSourceV1;
+  ) as ScriptIntegrityHashMissingAuthenticatedSource;
   if (
     evidence.finding.headerHash !== record.headerHash ||
     !/^[0-9a-f]{56}$/u.test(owner)
@@ -186,16 +184,16 @@ export const admitProductionScriptIntegrityHashMissingArtifactV1 = (
     throw new Error(
       "scriptIntegrityHashMissing artifact changed header or owner",
     );
-  const staged = planScriptIntegrityHashMissingStagedWalkV1({
+  const staged = planScriptIntegrityHashMissingStagedWalk({
     transactionId: evidence.finding.transactionId,
     scriptWitnessesPreimageCbor: evidence.scriptWitnessesPreimageCbor,
     redeemersPreimageCbor: evidence.redeemersPreimageCbor,
   });
-  const witnessSet = scriptIntegrityHashMissingWitnessSetV1(
+  const witnessSet = scriptIntegrityHashMissingWitnessSet(
     evidence.witnessSetCompactCbor,
   );
   const plan = (fieldIndex: 6 | 8, items: readonly Buffer[]) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: evidence.finding.transactionId,
       nativeTxCompactCbor: evidence.nativeTxCompactCbor,
@@ -207,9 +205,7 @@ export const admitProductionScriptIntegrityHashMissingArtifactV1 = (
       label: `scriptIntegrityHashMissing field ${fieldIndex.toString()}`,
     });
   return Object.freeze({
-    artifact: Object.freeze(
-      record,
-    ) as ProductionScriptIntegrityHashMissingArtifactV1,
+    artifact: Object.freeze(record) as ScriptIntegrityHashMissingArtifact,
     evidence,
     source,
     staged,
@@ -220,21 +216,21 @@ export const admitProductionScriptIntegrityHashMissingArtifactV1 = (
 
 const txWitnessSetHash = (compactCbor: string): string =>
   Buffer.from(
-    decodeMidgardNativeTxCompactV1(Buffer.from(compactCbor, "hex"))
+    decodeMidgardNativeTxCompact(Buffer.from(compactCbor, "hex"))
       .transactionWitnessSetHash,
   ).toString("hex");
 
-export const prepareProductionScriptIntegrityHashMissingArtifactV1 = async ({
+export const prepareScriptIntegrityHashMissingArtifact = async ({
   evidence,
   classification,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
-}): Promise<ProductionScriptIntegrityHashMissingArtifactV1> => {
-  const selected = detectScriptIntegrityHashMissingFromCanonicalEvidenceV1(
+}): Promise<ScriptIntegrityHashMissingArtifact> => {
+  const selected = detectScriptIntegrityHashMissingFromCanonicalEvidence(
     evidence,
   ).filter(
     ({ detectionId }) => detectionId === classification.selected.detectionId,
@@ -248,25 +244,25 @@ export const prepareProductionScriptIntegrityHashMissingArtifactV1 = async ({
       "scriptIntegrityHashMissing selected replay detection changed",
     );
   const detection = selected[0]!;
-  const reconstructed = await reconstructScriptIntegrityHashMissingEvidenceV1({
+  const reconstructed = await reconstructScriptIntegrityHashMissingEvidence({
     evidence,
     transactionId: detection.transactionId,
     direction: detection.direction,
   });
-  const source = await deriveScriptIntegrityHashMissingAuthenticatedSourceV1({
+  const source = await deriveScriptIntegrityHashMissingAuthenticatedSource({
     block: evidence,
     evidence: reconstructed,
   });
   const evidenceJson = encodePortable(reconstructed);
   const sourceJson = encodePortable(source);
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: SCRIPT_INTEGRITY_HASH_MISSING_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: detection.detectionId,
     evidenceJson,
     sourceJson,
     payloadSha256: sha256(`${evidenceJson}\u0000${sourceJson}`),
-  }) as ProductionScriptIntegrityHashMissingArtifactV1;
-  admitProductionScriptIntegrityHashMissingArtifactV1(artifact);
+  }) as ScriptIntegrityHashMissingArtifact;
+  admitScriptIntegrityHashMissingArtifact(artifact);
   return Object.freeze(artifact);
 };

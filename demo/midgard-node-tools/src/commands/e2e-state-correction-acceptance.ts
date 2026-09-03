@@ -1,4 +1,4 @@
-import { productionWorkflowReadinessReportV1 } from "@al-ft/midgard-fault-proofs";
+import { workflowReadinessReport } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 
 import type {
@@ -46,11 +46,11 @@ export const REQUIRED_STATE_CORRECTION_GATE_LABELS = [
   "availability_challenge_readiness",
 ] as const;
 
-export type StateCorrectionAvailabilityChallengeCapabilityV1 =
+export type StateCorrectionAvailabilityChallengeCapability =
   | "missing"
   | "authenticated_deployed";
 
-type DeploymentBindingV1 = {
+type DeploymentBinding = {
   readonly manifestId: string;
   readonly blueprintSha256: string;
   readonly catalogueRoot: string;
@@ -58,12 +58,12 @@ type DeploymentBindingV1 = {
   readonly releaseEvidenceSha256: string;
 };
 
-type ChainPointV1 = {
+type ChainPoint = {
   readonly slot: string;
   readonly blockHash: string;
 };
 
-type StateCorrectionFamilyDrillV1 = {
+type StateCorrectionFamilyDrill = {
   readonly familyId: string;
   readonly violationId: string;
   readonly headerHash: string;
@@ -82,11 +82,11 @@ type StateCorrectionFamilyDrillV1 = {
   readonly observedSlashLovelace: string;
   readonly expectedProverRewardLovelace: string;
   readonly observedProverRewardLovelace: string;
-  readonly chainPoint: ChainPointV1;
+  readonly chainPoint: ChainPoint;
   readonly finalStateRoot: string;
 };
 
-type WithdrawalReservePayoutV1 = {
+type WithdrawalReservePayout = {
   readonly withdrawalOrderTxHash: string;
   readonly reserveTxHash: string;
   readonly payoutInitTxHash: string;
@@ -100,10 +100,10 @@ type WithdrawalReservePayoutV1 = {
   readonly observedReserveValueSha256: string;
   readonly reserveAccountingExact: true;
   readonly finalStatus: "paid";
-  readonly chainPoint: ChainPointV1;
+  readonly chainPoint: ChainPoint;
 };
 
-type ForcedClassificationDrillV1 = {
+type ForcedClassificationDrill = {
   readonly direction: "valid-marked-invalid" | "invalid-marked-valid";
   readonly operatorClassification: "valid" | "invalid";
   readonly canonicalClassification: "valid" | "invalid";
@@ -114,10 +114,10 @@ type ForcedClassificationDrillV1 = {
   readonly evidenceTxHash: string;
   readonly correctionTxHash: string;
   readonly corrected: true;
-  readonly chainPoint: ChainPointV1;
+  readonly chainPoint: ChainPoint;
 };
 
-type RecoveryDrillV1 = {
+type RecoveryDrill = {
   readonly id: string;
   readonly status: "recovered";
   readonly failClosed: true;
@@ -130,15 +130,15 @@ type RecoveryDrillV1 = {
   readonly evidenceSha256: string;
 };
 
-export type E2EStateCorrectionAcceptanceV1 = {
+export type E2EStateCorrectionAcceptance = {
   readonly schemaVersion: typeof E2E_STATE_CORRECTION_ACCEPTANCE_SCHEMA_VERSION;
   readonly runId: string;
   readonly network: "Preprod";
-  readonly deployment: DeploymentBindingV1;
-  readonly families: readonly StateCorrectionFamilyDrillV1[];
-  readonly withdrawalReservePayout: WithdrawalReservePayoutV1;
-  readonly forcedClassifications: readonly ForcedClassificationDrillV1[];
-  readonly recoveryDrills: readonly RecoveryDrillV1[];
+  readonly deployment: DeploymentBinding;
+  readonly families: readonly StateCorrectionFamilyDrill[];
+  readonly withdrawalReservePayout: WithdrawalReservePayout;
+  readonly forcedClassifications: readonly ForcedClassificationDrill[];
+  readonly recoveryDrills: readonly RecoveryDrill[];
   readonly finalState: {
     readonly stateQueueDepth: 0;
     readonly unfinishedMutationJobs: 0;
@@ -155,12 +155,12 @@ export type E2EStateCorrectionAcceptanceV1 = {
  * runtime capability and the independently parsed release manifest, never
  * from the aggregate acceptance bundle.
  */
-export const stateCorrectionLocalReadinessEvidenceV1 = ({
+export const stateCorrectionLocalReadinessEvidence = ({
   availabilityChallengeCapability,
 }: {
-  readonly availabilityChallengeCapability: StateCorrectionAvailabilityChallengeCapabilityV1;
+  readonly availabilityChallengeCapability: StateCorrectionAvailabilityChallengeCapability;
 }): readonly DbEvidence[] => {
-  const workflow = productionWorkflowReadinessReportV1();
+  const workflow = workflowReadinessReport();
   const missing = workflow.registrations.filter(
     (registration) => registration.status === "missing",
   );
@@ -306,7 +306,7 @@ const stringArray = (
   return parsed;
 };
 
-const parseChainPoint = (value: unknown, field: string): ChainPointV1 => {
+const parseChainPoint = (value: unknown, field: string): ChainPoint => {
   const candidate = record(value, field);
   exactKeys(candidate, ["slot", "blockHash"], field);
   const slot = string(candidate.slot, `${field}.slot`);
@@ -319,7 +319,7 @@ const parseChainPoint = (value: unknown, field: string): ChainPointV1 => {
   };
 };
 
-const parseDeployment = (value: unknown): DeploymentBindingV1 => {
+const parseDeployment = (value: unknown): DeploymentBinding => {
   const candidate = record(value, "state-correction deployment");
   exactKeys(
     candidate,
@@ -376,7 +376,7 @@ const FAMILY_KEYS = [
 const parseFamily = (
   value: unknown,
   index: number,
-): StateCorrectionFamilyDrillV1 => {
+): StateCorrectionFamilyDrill => {
   const field = `families[${index.toString()}]`;
   const candidate = record(value, field);
   exactKeys(candidate, FAMILY_KEYS, field);
@@ -481,7 +481,7 @@ const WITHDRAWAL_KEYS = [
   "chainPoint",
 ] as const;
 
-const parseWithdrawal = (value: unknown): WithdrawalReservePayoutV1 => {
+const parseWithdrawal = (value: unknown): WithdrawalReservePayout => {
   const field = "withdrawalReservePayout";
   const candidate = record(value, field);
   exactKeys(candidate, WITHDRAWAL_KEYS, field);
@@ -570,7 +570,7 @@ const FORCED_CLASSIFICATION_KEYS = [
 const parseForcedClassification = (
   value: unknown,
   index: number,
-): ForcedClassificationDrillV1 => {
+): ForcedClassificationDrill => {
   const field = `forcedClassifications[${index.toString()}]`;
   const candidate = record(value, field);
   exactKeys(candidate, FORCED_CLASSIFICATION_KEYS, field);
@@ -644,7 +644,7 @@ const RECOVERY_KEYS = [
   "evidenceSha256",
 ] as const;
 
-const parseRecovery = (value: unknown, index: number): RecoveryDrillV1 => {
+const parseRecovery = (value: unknown, index: number): RecoveryDrill => {
   const field = `recoveryDrills[${index.toString()}]`;
   const candidate = record(value, field);
   exactKeys(candidate, RECOVERY_KEYS, field);
@@ -684,7 +684,7 @@ const parseRecovery = (value: unknown, index: number): RecoveryDrillV1 => {
 
 const parseFinalState = (
   value: unknown,
-): E2EStateCorrectionAcceptanceV1["finalState"] => {
+): E2EStateCorrectionAcceptance["finalState"] => {
   const field = "finalState";
   const candidate = record(value, field);
   exactKeys(
@@ -738,9 +738,9 @@ const parseFinalState = (
   };
 };
 
-export const parseE2EStateCorrectionAcceptanceV1 = (
+export const parseE2EStateCorrectionAcceptance = (
   value: unknown,
-): E2EStateCorrectionAcceptanceV1 => {
+): E2EStateCorrectionAcceptance => {
   const candidate = record(value, "state-correction acceptance evidence");
   exactKeys(
     candidate,
@@ -832,7 +832,7 @@ export const stateCorrectionAcceptanceEvidence = ({
   evidencePath,
 }: {
   readonly expectedRunId: string;
-  readonly evidence?: E2EStateCorrectionAcceptanceV1;
+  readonly evidence?: E2EStateCorrectionAcceptance;
   readonly evidencePath?: string;
 }): {
   readonly db: readonly DbEvidence[];

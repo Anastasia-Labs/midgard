@@ -3,9 +3,9 @@ import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
 import {
-  createProductionWorkflowFundingRequirementsV1,
-  type ProductionWorkflowFundingRequirementsInputV1,
-  type ProductionWorkflowFundingRequirementsV1,
+  createWorkflowFundingRequirements,
+  type WorkflowFundingRequirements,
+  type WorkflowFundingRequirementsInput,
 } from "@al-ft/midgard-fault-proofs";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -13,36 +13,33 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
 
-export const WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_BUNDLE_V1 =
+export const WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE =
   "midgard-watcher-production-workflow-funding-profile-bundle-v1" as const;
-export const WATCHER_PRODUCTION_WORKFLOW_FUNDING_RELEASE_EVIDENCE_V1 =
+export const WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE =
   "midgard-watcher-production-workflow-funding-release-evidence-v1" as const;
-export const WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_OVERLAY_V1 =
+export const WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY =
   "midgard-watcher-production-workflow-funding-profile-overlay-v1" as const;
 
-export type WatcherProductionWorkflowFundingProfileOverlayV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_OVERLAY_V1;
+export type WatcherWorkflowFundingProfileOverlay = Readonly<{
+  schemaVersion: typeof WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY;
   deploymentFingerprint: string;
   releaseEvidenceDigest: string;
   bundlePath: string;
   profiles: Readonly<
-    Record<
-      FraudProofCatalogueCategoryName,
-      ProductionWorkflowFundingRequirementsV1
-    >
+    Record<FraudProofCatalogueCategoryName, WorkflowFundingRequirements>
   >;
 }>;
 
-export type WatcherProductionWorkflowFundingProfileBodyV1 = Omit<
-  ProductionWorkflowFundingRequirementsInputV1,
+export type WatcherWorkflowFundingProfileBody = Omit<
+  WorkflowFundingRequirementsInput,
   "deploymentFingerprint"
 >;
 
-export type WatcherProductionWorkflowFundingReleaseEvidenceV1 = Readonly<{
+export type WatcherWorkflowFundingReleaseEvidence = Readonly<{
   releaseEvidenceBytes: Uint8Array;
   releaseEvidenceDigest: string;
   fundingProfileBundleDigest: string;
@@ -106,7 +103,7 @@ const sha256 = (value: Uint8Array): string =>
 const profileBody = (
   value: unknown,
   deploymentFingerprint: string,
-): ProductionWorkflowFundingRequirementsV1 => {
+): WorkflowFundingRequirements => {
   const record = exact(
     value,
     [
@@ -121,8 +118,8 @@ const profileBody = (
     ],
     "production funding profile body",
   );
-  return createProductionWorkflowFundingRequirementsV1({
-    ...(record as unknown as WatcherProductionWorkflowFundingProfileBodyV1),
+  return createWorkflowFundingRequirements({
+    ...(record as unknown as WatcherWorkflowFundingProfileBody),
     deploymentFingerprint,
   });
 };
@@ -132,11 +129,11 @@ const profileBody = (
  * manifest ID, so construction terminates in finite order: funding bundle,
  * release evidence, manifest ID, then hydrated admitted profiles.
  */
-export const createWatcherProductionWorkflowFundingReleaseEvidenceV1 = ({
+export const createWatcherWorkflowFundingReleaseEvidence = ({
   profiles,
 }: {
-  readonly profiles: readonly WatcherProductionWorkflowFundingProfileBodyV1[];
-}): WatcherProductionWorkflowFundingReleaseEvidenceV1 => {
+  readonly profiles: readonly WatcherWorkflowFundingProfileBody[];
+}): WatcherWorkflowFundingReleaseEvidence => {
   if (profiles.length !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length) {
     throw new Error(
       "production funding profile bodies do not cover the exact catalogue",
@@ -163,14 +160,14 @@ export const createWatcherProductionWorkflowFundingReleaseEvidenceV1 = ({
     }),
   );
   const fundingProfileBundle = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_BUNDLE_V1,
+    schemaVersion: WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE,
     profiles: normalizedBodies,
   });
   const fundingProfileBundleDigest = sha256(
     Buffer.from(canonicalJson(fundingProfileBundle), "utf8"),
   );
   const releaseEvidence = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_WORKFLOW_FUNDING_RELEASE_EVIDENCE_V1,
+    schemaVersion: WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE,
     fundingProfileBundle,
     fundingProfileBundleDigest,
   });
@@ -185,8 +182,8 @@ export const createWatcherProductionWorkflowFundingReleaseEvidenceV1 = ({
   });
 };
 
-export const assertWatcherProductionWorkflowFundingProfileOverlayV1 = (
-  overlay: WatcherProductionWorkflowFundingProfileOverlayV1,
+export const assertWatcherWorkflowFundingProfileOverlay = (
+  overlay: WatcherWorkflowFundingProfileOverlay,
 ): void => {
   if (!admittedOverlays.has(overlay)) {
     throw new Error(
@@ -195,14 +192,14 @@ export const assertWatcherProductionWorkflowFundingProfileOverlayV1 = (
   }
 };
 
-export const productionWorkflowFundingProfileFromOverlayV1 = ({
+export const workflowFundingProfileFromOverlay = ({
   overlay,
   category,
 }: {
-  readonly overlay: WatcherProductionWorkflowFundingProfileOverlayV1;
+  readonly overlay: WatcherWorkflowFundingProfileOverlay;
   readonly category: FraudProofCatalogueCategoryName;
-}): ProductionWorkflowFundingRequirementsV1 => {
-  assertWatcherProductionWorkflowFundingProfileOverlayV1(overlay);
+}): WorkflowFundingRequirements => {
+  assertWatcherWorkflowFundingProfileOverlay(overlay);
   const profile = overlay.profiles[category];
   if (
     profile.scope.kind !== "fraud_proof_category" ||
@@ -220,14 +217,14 @@ export const productionWorkflowFundingProfileFromOverlayV1 = ({
  * carried by the already verified signed deployment identity. A runtime path
  * selects bytes to verify; it never supplies a profile or profile digest.
  */
-export const loadWatcherProductionWorkflowFundingProfileOverlayV1 = async ({
+export const loadWatcherWorkflowFundingProfileOverlay = async ({
   bundlePath,
   deploymentIdentity,
 }: {
   readonly bundlePath: string;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-}): Promise<WatcherProductionWorkflowFundingProfileOverlayV1> => {
-  assertVerifiedWatcherDeploymentIdentityV1(deploymentIdentity);
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+}): Promise<WatcherWorkflowFundingProfileOverlay> => {
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   if (!isAbsolute(bundlePath) || bundlePath.trim() !== bundlePath) {
     throw new Error("production funding profile bundle path must be absolute");
   }
@@ -258,8 +255,7 @@ export const loadWatcherProductionWorkflowFundingProfileOverlayV1 = async ({
     "production funding release evidence",
   );
   if (
-    releaseEvidence.schemaVersion !==
-    WATCHER_PRODUCTION_WORKFLOW_FUNDING_RELEASE_EVIDENCE_V1
+    releaseEvidence.schemaVersion !== WATCHER_WORKFLOW_FUNDING_RELEASE_EVIDENCE
   ) {
     throw new Error(
       "production funding release evidence version is unsupported",
@@ -272,7 +268,7 @@ export const loadWatcherProductionWorkflowFundingProfileOverlayV1 = async ({
   );
   if (
     fundingProfileBundle.schemaVersion !==
-    WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_BUNDLE_V1
+    WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE
   ) {
     throw new Error("production funding profile bundle version is unsupported");
   }
@@ -317,13 +313,10 @@ export const loadWatcherProductionWorkflowFundingProfileOverlayV1 = async ({
       }),
     ),
   ) as Readonly<
-    Record<
-      FraudProofCatalogueCategoryName,
-      ProductionWorkflowFundingRequirementsV1
-    >
+    Record<FraudProofCatalogueCategoryName, WorkflowFundingRequirements>
   >;
   const overlay = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_OVERLAY_V1,
+    schemaVersion: WATCHER_WORKFLOW_FUNDING_PROFILE_OVERLAY,
     deploymentFingerprint: deploymentIdentity.manifestId,
     releaseEvidenceDigest,
     bundlePath: canonicalPath,

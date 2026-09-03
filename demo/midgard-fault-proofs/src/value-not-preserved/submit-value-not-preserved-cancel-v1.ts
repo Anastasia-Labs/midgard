@@ -40,17 +40,17 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   VALUE_NOT_PRESERVED_CATEGORY_LABEL,
-  type ValueNotPreservedContractsV1,
+  type ValueNotPreservedContracts,
 } from "./contracts-v1.js";
 import {
-  requireValueNotPreservedReferenceScriptV1,
-  valueNotPreservedStepLabelV1,
+  requireValueNotPreservedReferenceScript,
+  valueNotPreservedStepLabel,
   valueNotPreservedSubmitError,
 } from "./submit-common-v1.js";
 
@@ -86,7 +86,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
 }): 0 | 1 | 2 | 3 => {
   for (const stepIndex of [0, 1, 2, 3] as const) {
     if (
@@ -111,14 +111,14 @@ export const submitValueNotPreservedCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** The located step.s mandatory published reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -127,7 +127,7 @@ export const submitValueNotPreservedCancel = async ({
     label: `${VALUE_NOT_PRESERVED_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = valueNotPreservedStepLabelV1(stepIndex);
+  const stepLabel = valueNotPreservedStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -198,7 +198,7 @@ export const submitValueNotPreservedCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,
@@ -206,12 +206,12 @@ export const submitValueNotPreservedCancel = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireValueNotPreservedReferenceScriptV1({
+      : requireValueNotPreservedReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
           stepIndex,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[stepIndex].spendingScript,
     referenceUtxo: stepReference,
     label: `${stepLabel} cancel spending validator`,

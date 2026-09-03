@@ -4,15 +4,15 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  deriveStateQueueAuthenticatedTransitionV1,
-  deriveStateQueueCorrectionTransitionV1,
-  type DeriveStateQueueCorrectionTransitionV1Input,
-  parseStateQueueAuthenticatedTransitionV1,
-  parseStateQueueCorrectionTransitionV1,
+  deriveStateQueueAuthenticatedTransition,
+  deriveStateQueueCorrectionTransition,
+  type DeriveStateQueueCorrectionTransitionInput,
+  parseStateQueueAuthenticatedTransition,
+  parseStateQueueCorrectionTransition,
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
-  withStateQueueAuthenticatedTransitionFinalityDepthV1,
-  withStateQueueCorrectionTransitionFinalityDepthV1,
+  withStateQueueAuthenticatedTransitionFinalityDepth,
+  withStateQueueCorrectionTransitionFinalityDepth,
 } from "../src/index.js";
 
 const canonicalJson = (value: unknown): string => {
@@ -43,7 +43,7 @@ const outRef = (byte: string, index: number): string =>
 
 const timeoutRedeemer = (
   value: StateQueueRedeemerType,
-): DeriveStateQueueCorrectionTransitionV1Input["redeemers"] => [
+): DeriveStateQueueCorrectionTransitionInput["redeemers"] => [
   {
     purpose: "mint",
     index: "0",
@@ -151,8 +151,8 @@ describe("state-queue correction transition V1", () => {
           },
         },
       }),
-    } satisfies DeriveStateQueueCorrectionTransitionV1Input;
-    const transition = deriveStateQueueCorrectionTransitionV1(input);
+    } satisfies DeriveStateQueueCorrectionTransitionInput;
+    const transition = deriveStateQueueCorrectionTransition(input);
     expect(transition).toMatchObject({
       removalApproach: "PruneTimedOutBlockDescendant",
       timedOutHeaderHash: target,
@@ -166,9 +166,7 @@ describe("state-queue correction transition V1", () => {
         },
       ],
     });
-    expect(parseStateQueueCorrectionTransitionV1(transition)).toEqual(
-      transition,
-    );
+    expect(parseStateQueueCorrectionTransition(transition)).toEqual(transition);
   });
 
   it("derives terminal head removal and refuses fraud, merge, or mismatched topology", () => {
@@ -196,13 +194,13 @@ describe("state-queue correction transition V1", () => {
           },
         },
       }),
-    } satisfies DeriveStateQueueCorrectionTransitionV1Input;
-    expect(deriveStateQueueCorrectionTransitionV1(terminal)).toMatchObject({
+    } satisfies DeriveStateQueueCorrectionTransitionInput;
+    expect(deriveStateQueueCorrectionTransition(terminal)).toMatchObject({
       removalApproach: "RemoveTimedOutHead",
       removedHeaderHashes: [target],
     });
     expect(
-      deriveStateQueueCorrectionTransitionV1({
+      deriveStateQueueCorrectionTransition({
         ...terminal,
         nextQueue: [
           { headerHash: null, outRef: outRef("c", 0) },
@@ -211,7 +209,7 @@ describe("state-queue correction transition V1", () => {
       }),
     ).toBeNull();
     expect(
-      deriveStateQueueCorrectionTransitionV1({
+      deriveStateQueueCorrectionTransition({
         ...terminal,
         redeemers: timeoutRedeemer({
           MergeToConfirmedStateV1: {
@@ -245,7 +243,7 @@ describe("state-queue correction transition V1", () => {
 
   it("rejects tampered or structurally extended durable records", () => {
     const target = h28("1");
-    const transition = deriveStateQueueCorrectionTransitionV1({
+    const transition = deriveStateQueueCorrectionTransition({
       ...common,
       spentInputOutRefs: [outRef("0", 0), outRef("1", 0)],
       previousQueue: [
@@ -271,28 +269,28 @@ describe("state-queue correction transition V1", () => {
     });
     expect(transition).not.toBeNull();
     expect(
-      parseStateQueueCorrectionTransitionV1({
+      parseStateQueueCorrectionTransition({
         ...transition!,
         removedHeaderHashes: [h28("9")],
       }),
     ).toBeNull();
     expect(
-      parseStateQueueCorrectionTransitionV1({
+      parseStateQueueCorrectionTransition({
         ...transition!,
         completedAuthority: true,
       }),
     ).toBeNull();
-    const advanced = withStateQueueCorrectionTransitionFinalityDepthV1(
+    const advanced = withStateQueueCorrectionTransitionFinalityDepth(
       transition,
       "2161",
     );
     expect(advanced?.finalityDepth).toBe("2161");
     expect(advanced?.transitionDigest).not.toBe(transition?.transitionDigest);
     expect(
-      withStateQueueCorrectionTransitionFinalityDepthV1(advanced, "2160"),
+      withStateQueueCorrectionTransitionFinalityDepth(advanced, "2160"),
     ).toBeNull();
     expect(
-      withStateQueueCorrectionTransitionFinalityDepthV1(
+      withStateQueueCorrectionTransitionFinalityDepth(
         { ...advanced, authority: true },
         "2162",
       ),
@@ -316,7 +314,7 @@ describe("state-queue correction transition V1", () => {
         },
       },
     });
-    const observation = deriveStateQueueAuthenticatedTransitionV1({
+    const observation = deriveStateQueueAuthenticatedTransition({
       ...common,
       ...timeoutLock(target, true),
       transactionIndex: "2",
@@ -328,16 +326,16 @@ describe("state-queue correction transition V1", () => {
       nextQueue: [{ headerHash: null, outRef: outRef("c", 0) }],
       redeemers,
     });
-    expect(parseStateQueueAuthenticatedTransitionV1(observation)).toEqual(
+    expect(parseStateQueueAuthenticatedTransition(observation)).toEqual(
       observation,
     );
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({ ...observation!, transitionKind: "fraud_removal" as const }),
       ),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...observation!,
           finalityDepth: "2161",
@@ -345,7 +343,7 @@ describe("state-queue correction transition V1", () => {
       ),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...observation!,
           correctionLockWitness: {
@@ -356,7 +354,7 @@ describe("state-queue correction transition V1", () => {
       ),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...observation!,
           correctionLockWitness: {
@@ -369,7 +367,7 @@ describe("state-queue correction transition V1", () => {
       ),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...observation!,
           consumedQueueOutRefs: [
@@ -378,17 +376,15 @@ describe("state-queue correction transition V1", () => {
         }),
       ),
     ).toBeNull();
-    const advanced = withStateQueueAuthenticatedTransitionFinalityDepthV1(
+    const advanced = withStateQueueAuthenticatedTransitionFinalityDepth(
       observation,
       "2161",
     );
     expect(advanced?.finalityDepth).toBe("2161");
     expect(advanced?.correctionTransition?.finalityDepth).toBe("2161");
-    expect(parseStateQueueAuthenticatedTransitionV1(advanced)).toEqual(
-      advanced,
-    );
+    expect(parseStateQueueAuthenticatedTransition(advanced)).toEqual(advanced);
     expect(
-      withStateQueueAuthenticatedTransitionFinalityDepthV1(advanced, "2160"),
+      withStateQueueAuthenticatedTransitionFinalityDepth(advanced, "2160"),
     ).toBeNull();
 
     const descendant = h28("2");
@@ -401,7 +397,7 @@ describe("state-queue correction transition V1", () => {
       ...threeNodes,
       { headerHash: h28("3"), outRef: outRef("3", 0) },
     ] as const;
-    const mergeObservation = deriveStateQueueAuthenticatedTransitionV1({
+    const mergeObservation = deriveStateQueueAuthenticatedTransition({
       ...common,
       ...idleLockReference,
       transactionIndex: "3",
@@ -440,11 +436,11 @@ describe("state-queue correction transition V1", () => {
       }),
     });
     expect(mergeObservation?.transitionKind).toBe("merge");
-    expect(parseStateQueueAuthenticatedTransitionV1(mergeObservation)).toEqual(
+    expect(parseStateQueueAuthenticatedTransition(mergeObservation)).toEqual(
       mergeObservation,
     );
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...mergeObservation!,
           correctionLockWitness: {
@@ -460,7 +456,7 @@ describe("state-queue correction transition V1", () => {
       ),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...mergeObservation!,
           nextQueue: [
@@ -472,7 +468,7 @@ describe("state-queue correction transition V1", () => {
       ),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...mergeObservation!,
           previousQueue: [
@@ -483,7 +479,7 @@ describe("state-queue correction transition V1", () => {
       ),
     ).toBeNull();
 
-    const fraudObservation = deriveStateQueueAuthenticatedTransitionV1({
+    const fraudObservation = deriveStateQueueAuthenticatedTransition({
       ...common,
       ...fraudLock(descendant, true),
       transactionIndex: "4",
@@ -518,11 +514,11 @@ describe("state-queue correction transition V1", () => {
       }),
     });
     expect(fraudObservation?.transitionKind).toBe("fraud_removal");
-    expect(parseStateQueueAuthenticatedTransitionV1(fraudObservation)).toEqual(
+    expect(parseStateQueueAuthenticatedTransition(fraudObservation)).toEqual(
       fraudObservation,
     );
     expect(
-      parseStateQueueAuthenticatedTransitionV1(
+      parseStateQueueAuthenticatedTransition(
         rehash({
           ...fraudObservation!,
           correctionLockWitness: {

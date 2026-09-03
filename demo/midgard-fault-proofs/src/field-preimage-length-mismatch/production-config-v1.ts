@@ -1,50 +1,50 @@
 import type {
-  CommittedFieldClaimV1,
-  ForcedInclusionTxV1,
-  HeaderV1,
+  CommittedFieldClaim,
+  ForcedInclusionTx,
+  Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import {
   type FieldPreimageLengthMismatchFaultProofContracts,
-  FieldPreimageLengthStep01DatumV1Schema,
-  FieldPreimageLengthStep02DatumV1Schema,
-  FieldPreimageLengthStep03DatumV1Schema,
+  FieldPreimageLengthStep01DatumSchema,
+  FieldPreimageLengthStep02DatumSchema,
+  FieldPreimageLengthStep03DatumSchema,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  type FieldPreimageLengthClaimResolverV1,
-  submitFieldPreimageLengthAcceptedAuthenticationV1,
-  submitFieldPreimageLengthAcceptedDispatchV1,
-  submitFieldPreimageLengthCancelV1,
-  submitFieldPreimageLengthForcedAuthenticationV1,
-  submitFieldPreimageLengthForcedDispatchV1,
-  submitFieldPreimageLengthInitV1,
-  submitFieldPreimageLengthTerminalV1,
+  type FieldPreimageLengthClaimResolver,
+  submitFieldPreimageLengthAcceptedAuthentication,
+  submitFieldPreimageLengthAcceptedDispatch,
+  submitFieldPreimageLengthCancel,
+  submitFieldPreimageLengthForcedAuthentication,
+  submitFieldPreimageLengthForcedDispatch,
+  submitFieldPreimageLengthInit,
+  submitFieldPreimageLengthTerminal,
 } from "./submit-lucid-v1.js";
 import type {
-  FieldPreimageLengthActionV1,
-  FieldPreimageLengthJournalV1,
-  FieldPreimageLengthSubmissionKindV1,
-  PreparedFieldPreimageLengthWorkflowV1,
+  FieldPreimageLengthAction,
+  FieldPreimageLengthJournal,
+  FieldPreimageLengthSubmissionKind,
+  PreparedFieldPreimageLengthWorkflow,
 } from "./workflow-v1.js";
-import { runFieldPreimageLengthWorkflowV1 } from "./workflow-v1.js";
+import { runFieldPreimageLengthWorkflow } from "./workflow-v1.js";
 
-export const FIELD_PREIMAGE_LENGTH_PRODUCTION_CONFIG_V1 =
+export const FIELD_PREIMAGE_LENGTH_CONFIG =
   "midgard-field-preimage-length-mismatch-production-config-v1" as const;
 
-export const FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS_V1 = Object.freeze({
+export const FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS = Object.freeze({
   step01: "fraudProofFieldPreimageLengthMismatch",
   step02Accepted: "fraudProofFieldPreimageLengthMismatchStep02Accepted",
   step02Forced: "fraudProofFieldPreimageLengthMismatchStep02Forced",
@@ -55,76 +55,76 @@ export const FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS_V1 = Object.freeze({
   fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
 } as const);
 
-export type FieldPreimageLengthProductionReferenceScriptsV1 = Readonly<{
+export type FieldPreimageLengthReferenceScripts = Readonly<{
   step01: UTxO;
   step02Accepted: UTxO;
   step02Forced: UTxO;
   step03: UTxO;
   fieldPreimageCertificateMint: UTxO;
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-export type ManifestBoundFieldPreimageLengthConfigV1 = Readonly<{
-  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_PRODUCTION_CONFIG_V1;
+export type ManifestBoundFieldPreimageLengthConfig = Readonly<{
+  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_CONFIG;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  binding: FraudProofWorkflowDeploymentBindingV1<"fieldPreimageLengthMismatch">;
+  binding: FraudProofWorkflowDeploymentBinding<"fieldPreimageLengthMismatch">;
   contracts: FieldPreimageLengthMismatchFaultProofContracts;
-  referenceScripts: FieldPreimageLengthProductionReferenceScriptsV1;
+  referenceScripts: FieldPreimageLengthReferenceScripts;
 }>;
 
-export type LoadManifestBoundFieldPreimageLengthConfigV1 = Readonly<{
+export type LoadManifestBoundFieldPreimageLengthConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
-  referenceScripts: FieldPreimageLengthProductionReferenceScriptsV1;
+  referenceScripts: FieldPreimageLengthReferenceScripts;
 }>;
 
-export type FieldPreimageLengthLucidSubmissionContextV1 = Readonly<{
-  config: ManifestBoundFieldPreimageLengthConfigV1;
-  prepared: PreparedFieldPreimageLengthWorkflowV1;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+export type FieldPreimageLengthLucidSubmissionContext = Readonly<{
+  config: ManifestBoundFieldPreimageLengthConfig;
+  prepared: PreparedFieldPreimageLengthWorkflow;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }>;
 
-export type FieldPreimageLengthLucidSubmitterV1 = (
-  context: FieldPreimageLengthLucidSubmissionContextV1,
+export type FieldPreimageLengthLucidSubmitter = (
+  context: FieldPreimageLengthLucidSubmissionContext,
 ) => Promise<string>;
 
 /** Concrete builder slots required by production wiring; no stage may no-op. */
-export type FieldPreimageLengthLucidBuildersV1 = Readonly<{
-  init: FieldPreimageLengthLucidSubmitterV1;
-  dispatchAccepted: FieldPreimageLengthLucidSubmitterV1;
-  dispatchForced: FieldPreimageLengthLucidSubmitterV1;
-  authenticateAccepted: FieldPreimageLengthLucidSubmitterV1;
-  authenticateForced: FieldPreimageLengthLucidSubmitterV1;
-  finalize: FieldPreimageLengthLucidSubmitterV1;
-  remove: FieldPreimageLengthLucidSubmitterV1;
-  cancelDispatch: FieldPreimageLengthLucidSubmitterV1;
-  cancelAuthentication: FieldPreimageLengthLucidSubmitterV1;
-  cancelTerminal: FieldPreimageLengthLucidSubmitterV1;
+export type FieldPreimageLengthLucidBuilders = Readonly<{
+  init: FieldPreimageLengthLucidSubmitter;
+  dispatchAccepted: FieldPreimageLengthLucidSubmitter;
+  dispatchForced: FieldPreimageLengthLucidSubmitter;
+  authenticateAccepted: FieldPreimageLengthLucidSubmitter;
+  authenticateForced: FieldPreimageLengthLucidSubmitter;
+  finalize: FieldPreimageLengthLucidSubmitter;
+  remove: FieldPreimageLengthLucidSubmitter;
+  cancelDispatch: FieldPreimageLengthLucidSubmitter;
+  cancelAuthentication: FieldPreimageLengthLucidSubmitter;
+  cancelTerminal: FieldPreimageLengthLucidSubmitter;
 }>;
 
 /** Authenticated chain/evidence material resolved afresh before each action. */
-export type FieldPreimageLengthProductionStageV1 = Readonly<{
+export type FieldPreimageLengthStage = Readonly<{
   fraudulentBlockOutRef: string;
   threadOutRef?: string;
   stateQueueBlockOutRef?: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  acceptedClaim?: CommittedFieldClaimV1;
-  acceptedClaimResolver?: FieldPreimageLengthClaimResolverV1;
+  acceptedClaim?: CommittedFieldClaim;
+  acceptedClaimResolver?: FieldPreimageLengthClaimResolver;
   acceptedCarriageReferenceInputs?: readonly UTxO[];
   forcedDirection?: 0n | 1n;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
-  forcedClaim?: CommittedFieldClaimV1;
-  forcedClaimResolver?: FieldPreimageLengthClaimResolverV1;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
+  forcedClaim?: CommittedFieldClaim;
+  forcedClaimResolver?: FieldPreimageLengthClaimResolver;
   forcedCarriageReferenceInputs?: readonly UTxO[];
   cancelStepIndex?: 0 | 1 | 2 | 3;
 }>;
@@ -140,31 +140,31 @@ const required = <T>(value: T | undefined, label: string): T => {
  * deliberately called per action so restart replay uses authenticated current
  * out-refs rather than journal-cached transaction layout.
  */
-export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
+export const createConcreteFieldPreimageLengthLucidBuilders = ({
   resolveStage,
   remove,
   boundary,
 }: {
   readonly resolveStage: (
-    context: FieldPreimageLengthLucidSubmissionContextV1 & {
-      readonly action: Exclude<FieldPreimageLengthActionV1, "complete">;
+    context: FieldPreimageLengthLucidSubmissionContext & {
+      readonly action: Exclude<FieldPreimageLengthAction, "complete">;
     },
-  ) => Promise<FieldPreimageLengthProductionStageV1>;
-  readonly remove: FieldPreimageLengthLucidSubmitterV1;
+  ) => Promise<FieldPreimageLengthStage>;
+  readonly remove: FieldPreimageLengthLucidSubmitter;
   readonly boundary?: (
-    action: Exclude<FieldPreimageLengthActionV1, "complete">,
-    prepared: PreparedFieldPreimageLengthWorkflowV1,
-  ) => FraudProofPreSubmitBoundaryV1;
-}): FieldPreimageLengthLucidBuildersV1 => {
+    action: Exclude<FieldPreimageLengthAction, "complete">,
+    prepared: PreparedFieldPreimageLengthWorkflow,
+  ) => FraudProofPreSubmitBoundary;
+}): FieldPreimageLengthLucidBuilders => {
   const stage = async (
-    context: FieldPreimageLengthLucidSubmissionContextV1,
-    action: Exclude<FieldPreimageLengthActionV1, "complete">,
+    context: FieldPreimageLengthLucidSubmissionContext,
+    action: Exclude<FieldPreimageLengthAction, "complete">,
   ) => await resolveStage({ ...context, action });
   const cancel =
-    (fallback: 0 | 1 | 2 | 3): FieldPreimageLengthLucidSubmitterV1 =>
+    (fallback: 0 | 1 | 2 | 3): FieldPreimageLengthLucidSubmitter =>
     async (context) => {
       const resolved = await stage(context, "dispatch");
-      const result = await submitFieldPreimageLengthCancelV1({
+      const result = await submitFieldPreimageLengthCancel({
         config: context.config,
         threadOutRef: required(resolved.threadOutRef, "cancel thread out-ref"),
         stepIndex: resolved.cancelStepIndex ?? fallback,
@@ -176,7 +176,7 @@ export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
     init: async (context) => {
       const resolved = await stage(context, "init");
       return (
-        await submitFieldPreimageLengthInitV1({
+        await submitFieldPreimageLengthInit({
           config: context.config,
           fraudulentBlockOutRef: resolved.fraudulentBlockOutRef,
           preSubmitBoundary: boundary?.("init", context.prepared),
@@ -186,7 +186,7 @@ export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
     dispatchAccepted: async (context) => {
       const resolved = await stage(context, "dispatch");
       return (
-        await submitFieldPreimageLengthAcceptedDispatchV1({
+        await submitFieldPreimageLengthAcceptedDispatch({
           config: context.config,
           threadOutRef: required(
             resolved.threadOutRef,
@@ -212,7 +212,7 @@ export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
     dispatchForced: async (context) => {
       const resolved = await stage(context, "dispatch");
       return (
-        await submitFieldPreimageLengthForcedDispatchV1({
+        await submitFieldPreimageLengthForcedDispatch({
           config: context.config,
           threadOutRef: required(
             resolved.threadOutRef,
@@ -226,7 +226,7 @@ export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
     authenticateAccepted: async (context) => {
       const resolved = await stage(context, "authenticate");
       return (
-        await submitFieldPreimageLengthAcceptedAuthenticationV1({
+        await submitFieldPreimageLengthAcceptedAuthentication({
           config: context.config,
           threadOutRef: required(
             resolved.threadOutRef,
@@ -248,7 +248,7 @@ export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
     authenticateForced: async (context) => {
       const resolved = await stage(context, "authenticate");
       return (
-        await submitFieldPreimageLengthForcedAuthenticationV1({
+        await submitFieldPreimageLengthForcedAuthentication({
           config: context.config,
           threadOutRef: required(
             resolved.threadOutRef,
@@ -271,7 +271,7 @@ export const createConcreteFieldPreimageLengthLucidBuildersV1 = ({
     finalize: async (context) => {
       const resolved = await stage(context, "finalize");
       return (
-        await submitFieldPreimageLengthTerminalV1({
+        await submitFieldPreimageLengthTerminal({
           config: context.config,
           threadOutRef: required(
             resolved.threadOutRef,
@@ -299,16 +299,16 @@ const TX_ID = /^[0-9a-f]{64}$/u;
  * scripts at both dispatch and authentication; it can never be supplied by a
  * caller independently of the admitted evidence.
  */
-export const createFieldPreimageLengthLucidSubmissionV1 = ({
+export const createFieldPreimageLengthLucidSubmission = ({
   config,
   builders,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
-  readonly builders: FieldPreimageLengthLucidBuildersV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
+  readonly builders: FieldPreimageLengthLucidBuilders;
 }): Readonly<{
   submit: (
-    action: FieldPreimageLengthSubmissionKindV1,
-    prepared: PreparedFieldPreimageLengthWorkflowV1,
+    action: FieldPreimageLengthSubmissionKind,
+    prepared: PreparedFieldPreimageLengthWorkflow,
   ) => Promise<string>;
 }> =>
   Object.freeze({
@@ -351,27 +351,27 @@ export const createFieldPreimageLengthLucidSubmissionV1 = ({
   });
 
 /** Durable manifest-bound runner: captured tx ids are reconciled before retry. */
-export const runManifestBoundFieldPreimageLengthWorkflowV1 = async ({
+export const runManifestBoundFieldPreimageLengthWorkflow = async ({
   config,
   builders,
   load,
   save,
   observeConfirmed,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
-  readonly builders: FieldPreimageLengthLucidBuildersV1;
-  readonly load: () => Promise<FieldPreimageLengthJournalV1>;
-  readonly save: (journal: FieldPreimageLengthJournalV1) => Promise<void>;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
+  readonly builders: FieldPreimageLengthLucidBuilders;
+  readonly load: () => Promise<FieldPreimageLengthJournal>;
+  readonly save: (journal: FieldPreimageLengthJournal) => Promise<void>;
   readonly observeConfirmed: (
     action: "init" | "dispatch" | "authenticate" | "finalize" | "remove",
     transactionId: string,
   ) => Promise<boolean>;
-}): Promise<FieldPreimageLengthJournalV1> => {
-  const routed = createFieldPreimageLengthLucidSubmissionV1({
+}): Promise<FieldPreimageLengthJournal> => {
+  const routed = createFieldPreimageLengthLucidSubmission({
     config,
     builders,
   });
-  return await runFieldPreimageLengthWorkflowV1({
+  return await runFieldPreimageLengthWorkflow({
     load,
     save,
     submit: async (action, prepared) => await routed.submit(action, prepared),
@@ -384,11 +384,11 @@ const bindReference = ({
   contractName,
   utxo,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"fieldPreimageLengthMismatch">;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"fieldPreimageLengthMismatch">;
   readonly contractName: string;
   readonly utxo: UTxO;
 }): UTxO =>
-  requireManifestBoundReferenceScriptUtxoV1({
+  requireManifestBoundReferenceScriptUtxo({
     binding,
     contractName,
     utxo,
@@ -400,10 +400,10 @@ const bindReference = ({
  * out-ref. The accepted/forced split is intentionally represented by two
  * different reference inputs.
  */
-export const loadManifestBoundFieldPreimageLengthConfigV1 = async (
-  input: LoadManifestBoundFieldPreimageLengthConfigV1,
-): Promise<ManifestBoundFieldPreimageLengthConfigV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const loadManifestBoundFieldPreimageLengthConfig = async (
+  input: LoadManifestBoundFieldPreimageLengthConfig,
+): Promise<ManifestBoundFieldPreimageLengthConfig> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
@@ -411,13 +411,13 @@ export const loadManifestBoundFieldPreimageLengthConfigV1 = async (
     headerHash: input.headerHash,
     proverCredential: input.signer.paymentKeyHash,
     stepDatumSchemas: [
-      FieldPreimageLengthStep01DatumV1Schema,
-      FieldPreimageLengthStep02DatumV1Schema,
-      FieldPreimageLengthStep02DatumV1Schema,
-      FieldPreimageLengthStep03DatumV1Schema,
+      FieldPreimageLengthStep01DatumSchema,
+      FieldPreimageLengthStep02DatumSchema,
+      FieldPreimageLengthStep02DatumSchema,
+      FieldPreimageLengthStep03DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
@@ -446,7 +446,7 @@ export const loadManifestBoundFieldPreimageLengthConfigV1 = async (
       "field-preimage-length resolved chain changed its four-script physical topology",
     );
   }
-  const names = FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS_V1;
+  const names = FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS;
   const references = input.referenceScripts;
   const referenceScripts = Object.freeze({
     step01: bindReference({
@@ -494,7 +494,7 @@ export const loadManifestBoundFieldPreimageLengthConfigV1 = async (
     }),
   });
   return Object.freeze({
-    schemaVersion: FIELD_PREIMAGE_LENGTH_PRODUCTION_CONFIG_V1,
+    schemaVersion: FIELD_PREIMAGE_LENGTH_CONFIG,
     lucid: input.lucid,
     signer: input.signer,
     binding,

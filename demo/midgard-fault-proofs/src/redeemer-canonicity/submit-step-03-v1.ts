@@ -1,41 +1,41 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { RedeemerCanonicityContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { RedeemerCanonicityContracts } from "./contracts-v1.js";
 import {
-  redeemerCanonicityEvidenceClosesV1,
-  type RedeemerCanonicityEvidenceV1,
+  type RedeemerCanonicityEvidence,
+  redeemerCanonicityEvidenceCloses,
 } from "./family-v1.js";
 import {
-  RedeemerCanonicityStep03DatumV1Schema,
-  RedeemerCanonicityStep03RedeemerV1Schema,
+  RedeemerCanonicityStep03DatumSchema,
+  RedeemerCanonicityStep03RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitRedeemerCanonicityStep03V1 = async (input: {
+export const submitRedeemerCanonicityStep03 = async (input: {
   readonly lucid: LucidEvolution;
-  readonly contracts: RedeemerCanonicityContractsV1;
+  readonly contracts: RedeemerCanonicityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: RedeemerCanonicityEvidenceV1;
+  readonly evidence: RedeemerCanonicityEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!redeemerCanonicityEvidenceClosesV1(input.evidence))
+  if (!redeemerCanonicityEvidenceCloses(input.evidence))
     throw new Error(
       "redeemer-canonicity: terminal state does not contradict verdict",
     );
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid: input.lucid,
     contracts: input.contracts,
     categoryId: input.categoryId,
@@ -43,13 +43,13 @@ export const submitRedeemerCanonicityStep03V1 = async (input: {
     stepIndex,
     threadOutRef: input.threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     bound: { redeemer_index: bigint };
     canonical: boolean;
   }>({
     threadUtxo,
     signer: input.signer,
-    schema: RedeemerCanonicityStep03DatumV1Schema as never,
+    schema: RedeemerCanonicityStep03DatumSchema as never,
     family: "redeemer-canonicity",
     stepIndex,
   });
@@ -60,7 +60,7 @@ export const submitRedeemerCanonicityStep03V1 = async (input: {
     throw new Error(
       "redeemer-canonicity: terminal state differs from evidence",
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid: input.lucid,
     family: "redeemer-canonicity",
     stepIndex,
@@ -70,7 +70,7 @@ export const submitRedeemerCanonicityStep03V1 = async (input: {
     signer: input.signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: RedeemerCanonicityStep03RedeemerV1Schema,
+    spendRedeemerSchema: RedeemerCanonicityStep03RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

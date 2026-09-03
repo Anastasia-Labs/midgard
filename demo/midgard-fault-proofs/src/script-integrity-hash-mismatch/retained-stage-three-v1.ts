@@ -1,25 +1,25 @@
 import {
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
-  type MidgardValidationMachineStateV1,
-  verifyMidgardValidationTraceProofV1,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+  type MidgardValidationMachineState,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   Proof,
   ROOT_DOMAINS,
   validationTraceDescriptorCoreFromData,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { executionSourceNativeControlFromCborV1 } from "../execution-source-script-decoding/machine-authentication-v1.js";
+import { executionSourceNativeControlFromCbor } from "../execution-source-script-decoding/machine-authentication-v1.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,
@@ -49,8 +49,8 @@ const integer = (value: unknown, label: string): bigint => {
 const eventKeyCbor = (key: EventKey) =>
   Buffer.from(Data.to(key as never, EventKeySchema), "hex");
 const stateFromData = (
-  state: ReturnType<typeof decodeRetainedValidationWitnessV1>["machine_state"],
-): MidgardValidationMachineStateV1 => {
+  state: ReturnType<typeof decodeRetainedValidationWitness>["machine_state"],
+): MidgardValidationMachineState => {
   if (state.phase !== "ScriptIntegrity")
     throw new Error("scriptIntegrityHashMismatch retained phase changed");
   if (state.machine_version !== 1n)
@@ -81,23 +81,21 @@ const stateFromData = (
   };
 };
 
-export type ScriptIntegrityStageThreeAuthenticationV1 = Readonly<{
+export type ScriptIntegrityStageThreeAuthentication = Readonly<{
   validationTracesRoot: string;
   validationTraceCount: bigint;
   traceMembership: Readonly<Record<string, unknown>>;
   machineState: ReturnType<
-    typeof decodeRetainedValidationWitnessV1
+    typeof decodeRetainedValidationWitness
   >["machine_state"];
-  traceProof: ReturnType<
-    typeof decodeRetainedValidationWitnessV1
-  >["trace_proof"];
-  control: ReturnType<typeof executionSourceNativeControlFromCborV1>;
+  traceProof: ReturnType<typeof decodeRetainedValidationWitness>["trace_proof"];
+  control: ReturnType<typeof executionSourceNativeControlFromCbor>;
   scriptIntegrityHash: string;
   redeemerWitnessHash: string;
 }>;
 
 /** Strict reconstruction of the sole canonical ScriptIntegrity stage-3 witness. */
-export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 =
+export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDa =
   async ({
     eventKey,
     authenticatedValidationTraceEntries,
@@ -108,7 +106,7 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 =
     authenticatedValidationTraceEntries: readonly EncodedEntry[];
     retainedValidationWitnessEntries: readonly EncodedEntry[];
     expectedValidationTracesRoot: string;
-  }): Promise<ScriptIntegrityStageThreeAuthenticationV1> => {
+  }): Promise<ScriptIntegrityStageThreeAuthentication> => {
     const keyBytes = eventKeyCbor(eventKey);
     const descriptorEntries = authenticatedValidationTraceEntries.map(
       ({ key, value }) => ({
@@ -125,12 +123,12 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 =
       );
     const descriptorData = Data.from(
       descriptorMatches[0]!.value.toString("hex"),
-      ValidationTraceDescriptorV1Schema,
+      ValidationTraceDescriptorSchema,
     ) as never;
     const descriptor = validationTraceDescriptorCoreFromData(descriptorData);
     const seen = new Set<string>();
     const candidates = retainedValidationWitnessEntries.flatMap((entry) => {
-      const retainedKey = decodeRetainedValidationWitnessKeyV1(entry.key);
+      const retainedKey = decodeRetainedValidationWitnessKey(entry.key);
       const retainedKeyBytes = eventKeyCbor(retainedKey.event_key);
       const coordinate = `${retainedKeyBytes.toString("hex")}:${retainedKey.execution_index.toString()}`;
       if (seen.has(coordinate))
@@ -139,7 +137,7 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 =
         );
       seen.add(coordinate);
       if (!retainedKeyBytes.equals(keyBytes)) return [];
-      const witness = decodeRetainedValidationWitnessV1(entry.value);
+      const witness = decodeRetainedValidationWitness(entry.value);
       return witness.phase === 10n && witness.program_counter === 3n
         ? [witness]
         : [];
@@ -178,7 +176,7 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 =
       throw new Error(
         "scriptIntegrityHashMismatch retained hash width changed",
       );
-    const control = executionSourceNativeControlFromCborV1(nativeControlCbor);
+    const control = executionSourceNativeControlFromCbor(nativeControlCbor);
     if (
       control.execution_cursor !== control.execution_count ||
       control.execution_count !== control.purpose_count ||
@@ -191,11 +189,11 @@ export const buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 =
     const state = stateFromData(retained.machine_state);
     const proof = validationTraceProofCoreFromData(retained.trace_proof);
     if (
-      !hashMidgardValidationMachineStateV1(state).equals(proof.stateHash) ||
-      !verifyMidgardValidationTraceProofV1({ descriptor, proof }) ||
-      !state.eventKeyHash.equals(hashMidgardValidationEventKeyV1(keyBytes)) ||
+      !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
+      !verifyMidgardValidationTraceProof({ descriptor, proof }) ||
+      !state.eventKeyHash.equals(hashMidgardValidationEventKey(keyBytes)) ||
       !state.workRoot.equals(
-        hashMidgardValidationWorkWitnessV1({
+        hashMidgardValidationWorkWitness({
           phase: "scriptIntegrity",
           programCounter: state.programCounter,
           witnessCbor: Buffer.from(retained.witness_cbor, "hex"),

@@ -1,32 +1,32 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxWitnessSetCompact,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
 } from "../field-opening-v1.js";
-import type { ProtectedOutputSignerMissingEvidenceV1 } from "./protected-output-signer-missing-v1.js";
+import type { ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing-v1.js";
 
-export const planProtectedOutputSignerOutputOpeningV1 = ({
+export const planProtectedOutputSignerOutputOpening = ({
   evidence,
   nativeTxCompactCbor,
   owner,
   publish,
 }: {
-  readonly evidence: ProtectedOutputSignerMissingEvidenceV1;
+  readonly evidence: ProtectedOutputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 =>
-  planFaultProofFieldOpeningV1({
+}): FaultProofFieldOpeningPlan =>
+  planFaultProofFieldOpening({
     fieldIndex: 2,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: decodeMidgardFieldPreimageV1(
-      deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    itemCbors: decodeMidgardFieldPreimage(
+      deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(evidence.canonicalTransactionCborHex, "hex"),
       ).fieldPreimages[2]!,
     ),
@@ -35,27 +35,27 @@ export const planProtectedOutputSignerOutputOpeningV1 = ({
     label: "protected-output-signer-missing outputs",
   });
 
-export const planProtectedOutputSignerWitnessOpeningV1 = ({
+export const planProtectedOutputSignerWitnessOpening = ({
   evidence,
   nativeTxCompactCbor,
   witnessSetCompactCbor,
   owner,
   publish,
 }: {
-  readonly evidence: ProtectedOutputSignerMissingEvidenceV1;
+  readonly evidence: ProtectedOutputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 => {
-  const compact = decodeMidgardNativeTxWitnessSetCompactV1(
+}): FaultProofFieldOpeningPlan => {
+  const compact = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(witnessSetCompactCbor, "hex"),
   );
-  return planFaultProofFieldOpeningV1({
+  return planFaultProofFieldOpening({
     fieldIndex: 7,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: decodeMidgardFieldPreimageV1(
+    itemCbors: decodeMidgardFieldPreimage(
       Buffer.from(evidence.addressWitnessFieldPreimageHex, "hex"),
     ),
     owner,

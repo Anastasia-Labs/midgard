@@ -1,9 +1,9 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
   rootMembershipProofSchema,
@@ -11,15 +11,15 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  TransactionOutputBoundOutputV1Schema,
-  TransactionOutputVerdictSubjectV1Schema,
+  TransactionOutputBoundOutputSchema,
+  TransactionOutputVerdictSubjectSchema,
 } from "./transaction-output-non-canonical-v1.js";
 
-const FrontierPeakV1Schema = Data.Object({
+const FrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
 });
-export const TransactionOutputScanControlV1Schema = Data.Object({
+export const TransactionOutputScanControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   cursor: Data.Integer(),
@@ -35,7 +35,7 @@ export const TransactionOutputScanControlV1Schema = Data.Object({
   current_policy: Data.Bytes(),
   previous_asset_name: Data.Bytes(),
   asset_count: Data.Integer(),
-  asset_peaks: Data.Array(FrontierPeakV1Schema),
+  asset_peaks: Data.Array(FrontierPeakSchema),
   datum_offset: Data.Integer(),
   datum_length: Data.Integer(),
   payload_remaining: Data.Integer(),
@@ -45,7 +45,7 @@ export const TransactionOutputScanControlV1Schema = Data.Object({
   reference_script_length: Data.Integer(),
 });
 
-export const TransactionOutputStep01SourceV1Schema = Data.Enum([
+export const TransactionOutputStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -53,58 +53,58 @@ export const TransactionOutputStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const TransactionOutputStep01ArgsV1Schema = Data.Object({
-  source: TransactionOutputStep01SourceV1Schema,
+export const TransactionOutputStep01ArgsSchema = Data.Object({
+  source: TransactionOutputStep01SourceSchema,
   output_index: Data.Integer(),
 });
-export const TransactionOutputStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(TransactionOutputStep01ArgsV1Schema);
+export const TransactionOutputStep01RedeemerSchema =
+  faultProofStepRedeemerSchema(TransactionOutputStep01ArgsSchema);
 
-export const TransactionOutputStep02DatumV1Schema = faultProofStepDatumSchema(
-  TransactionOutputBoundOutputV1Schema,
+export const TransactionOutputStep02DatumSchema = faultProofStepDatumSchema(
+  TransactionOutputBoundOutputSchema,
 );
-export const TransactionOutputStep02ArgsV1Schema = Data.Object({
+export const TransactionOutputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningV1Schema,
+  opening: FieldOpeningSchema,
 });
-export const TransactionOutputStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(TransactionOutputStep02ArgsV1Schema);
-export const TransactionOutputScanStateV1Schema = Data.Object({
-  subject: TransactionOutputVerdictSubjectV1Schema,
+export const TransactionOutputStep02RedeemerSchema =
+  faultProofStepRedeemerSchema(TransactionOutputStep02ArgsSchema);
+export const TransactionOutputScanStateSchema = Data.Object({
+  subject: TransactionOutputVerdictSubjectSchema,
   output_index: Data.Integer(),
   item_length: Data.Integer(),
   item_hash: Data.Bytes(),
   chunk_hashes: Data.Array(Data.Bytes({ minLength: 32, maxLength: 32 })),
-  control: TransactionOutputScanControlV1Schema,
+  control: TransactionOutputScanControlSchema,
   outcome: Data.Integer(),
 });
-export const TransactionOutputStep03DatumV1Schema = faultProofStepDatumSchema(
-  TransactionOutputScanStateV1Schema,
+export const TransactionOutputStep03DatumSchema = faultProofStepDatumSchema(
+  TransactionOutputScanStateSchema,
 );
-export const TransactionOutputStep03ArgsV1Schema = Data.Object({
+export const TransactionOutputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   window: Data.Bytes(),
 });
-export const TransactionOutputStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(TransactionOutputStep03ArgsV1Schema);
-export const TransactionOutputStep04DatumV1Schema = faultProofStepDatumSchema(
-  TransactionOutputScanStateV1Schema,
+export const TransactionOutputStep03RedeemerSchema =
+  faultProofStepRedeemerSchema(TransactionOutputStep03ArgsSchema);
+export const TransactionOutputStep04DatumSchema = faultProofStepDatumSchema(
+  TransactionOutputScanStateSchema,
 );
-export const TransactionOutputStep04ArgsV1Schema = Data.Object({
+export const TransactionOutputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
-export const TransactionOutputStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(TransactionOutputStep04ArgsV1Schema);
+export const TransactionOutputStep04RedeemerSchema =
+  faultProofStepRedeemerSchema(TransactionOutputStep04ArgsSchema);

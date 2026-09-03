@@ -1,40 +1,40 @@
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
-  type CanonicalBlockClassificationV1,
-  classifyCanonicalBlockViolationsV1,
+  type CanonicalBlockClassification,
+  classifyCanonicalBlockViolations,
 } from "../src/workflow/classification-v1.js";
-import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionMissingSignatureArtifactV1,
-  prepareProductionMissingSignatureArtifactV1,
-  type ProductionMissingSignatureArtifactV1,
+  admitMissingSignatureArtifact,
+  type MissingSignatureArtifact,
+  prepareMissingSignatureArtifact,
 } from "../src/workflow/production-missing-signature-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  type FixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  type FixtureTransaction,
   h32,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const TARGET_VKEY = "11".repeat(32);
-const TARGET_HASH = SDK.missingSignatureVkeyHashV1(TARGET_VKEY);
+const TARGET_HASH = SDK.missingSignatureVkeyHash(TARGET_VKEY);
 
 const transaction = ({
   inputByte,
@@ -46,9 +46,9 @@ const transaction = ({
   readonly fee: bigint;
   readonly requiredSignerHashes?: readonly string[];
   readonly witnesses?: readonly SDK.MidgardAddressWitness[];
-}): FixtureTransactionV1 => {
-  const full = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): FixtureTransaction => {
+  const full = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([outRefCbor(inputByte, 0n)]),
@@ -72,11 +72,11 @@ const transaction = ({
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   });
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+  const canonicalCbor = encodeMidgardNativeTxCanonical(full);
   const proofSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const source: SDK.L2TransactionSourceV1 = {
-    tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const source: SDK.L2TransactionSource = {
+    tx_id: computeMidgardNativeTxId(full).toString("hex"),
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
       witness_set_compact_cbor:
@@ -90,16 +90,16 @@ const transaction = ({
     canonicalCbor,
     compactCbor: Buffer.from(proofSource.compactCbor),
     source,
-    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceV1Schema),
+    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceSchema),
   };
 };
 
 const canonicalEvidence = async (
-  transactions: readonly FixtureTransactionV1[],
+  transactions: readonly FixtureTransaction[],
 ) => {
-  const fixture = await buildCanonicalBlockFixtureV1({ transactions });
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  const fixture = await buildCanonicalBlockFixture({ transactions });
+  return await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -128,14 +128,14 @@ const publicVkeySource = () =>
     ],
   });
 
-type MissingSignatureClassificationV1 = Extract<
-  CanonicalBlockClassificationV1,
+type MissingSignatureClassification = Extract<
+  CanonicalBlockClassification,
   { readonly decision: "fault_detected" }
 > & { readonly category: "missingSignature" };
 
 const requireMissingSignatureClassification = (
-  value: CanonicalBlockClassificationV1,
-): MissingSignatureClassificationV1 => {
+  value: CanonicalBlockClassification,
+): MissingSignatureClassification => {
   if (
     value.decision !== "fault_detected" ||
     value.category !== "missingSignature"
@@ -149,13 +149,13 @@ describe("production missing-signature workflow evidence", () => {
   it("replays every accepted transaction and re-derives the exact public proof artifact", async () => {
     const evidence = await canonicalEvidence([missing(), publicVkeySource()]);
     const decision =
-      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     expect(decision.detections).toHaveLength(1);
     expect(decision.detections[0]).toMatchObject({
-      violationId: SDK.MISSING_SIGNATURE_VIOLATION_ID_V1,
+      violationId: SDK.MISSING_SIGNATURE_VIOLATION_ID,
     });
     const classification = requireMissingSignatureClassification(
-      await classifyCanonicalBlockViolationsV1({
+      await classifyCanonicalBlockViolations({
         evidence,
         detections: decision.detections,
       }),
@@ -164,11 +164,11 @@ describe("production missing-signature workflow evidence", () => {
       decision: "fault_detected",
       category: "missingSignature",
     });
-    const artifact = await prepareProductionMissingSignatureArtifactV1({
+    const artifact = await prepareMissingSignatureArtifact({
       evidence,
       classification,
     });
-    const admitted = await admitProductionMissingSignatureArtifactV1(artifact);
+    const admitted = await admitMissingSignatureArtifact(artifact);
     expect(admitted.resolvedVkey).toBe(TARGET_VKEY);
     expect(admitted.requiredSignerHashes).toEqual([TARGET_HASH]);
     expect(admitted.addrTxWits).toEqual([]);
@@ -180,38 +180,38 @@ describe("production missing-signature workflow evidence", () => {
   it("refuses an operator-substituted vkey even when it is well formed", async () => {
     const evidence = await canonicalEvidence([missing(), publicVkeySource()]);
     const decision =
-      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     const classification = requireMissingSignatureClassification(
-      await classifyCanonicalBlockViolationsV1({
+      await classifyCanonicalBlockViolations({
         evidence,
         detections: decision.detections,
       }),
     );
-    const artifact = await prepareProductionMissingSignatureArtifactV1({
+    const artifact = await prepareMissingSignatureArtifact({
       evidence,
       classification,
     });
-    const poisoned: ProductionMissingSignatureArtifactV1 = {
+    const poisoned: MissingSignatureArtifact = {
       ...artifact,
       resolvedVkey: h32(0x22),
     };
-    await expect(
-      admitProductionMissingSignatureArtifactV1(poisoned),
-    ).rejects.toThrow("not the deterministic committed public preimage");
+    await expect(admitMissingSignatureArtifact(poisoned)).rejects.toThrow(
+      "not the deterministic committed public preimage",
+    );
   });
 
   it("routes an unknown public vkey preimage away from the direct family", async () => {
     const evidence = await canonicalEvidence([missing()]);
     const decision =
-      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     const classification = requireMissingSignatureClassification(
-      await classifyCanonicalBlockViolationsV1({
+      await classifyCanonicalBlockViolations({
         evidence,
         detections: decision.detections,
       }),
     );
     await expect(
-      prepareProductionMissingSignatureArtifactV1({
+      prepareMissingSignatureArtifact({
         evidence,
         classification,
       }),
@@ -221,27 +221,25 @@ describe("production missing-signature workflow evidence", () => {
   it("rejects a durable transaction/source substitution before proof construction", async () => {
     const evidence = await canonicalEvidence([missing(), publicVkeySource()]);
     const decision =
-      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+      await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     const classification = requireMissingSignatureClassification(
-      await classifyCanonicalBlockViolationsV1({
+      await classifyCanonicalBlockViolations({
         evidence,
         detections: decision.detections,
       }),
     );
-    const artifact = await prepareProductionMissingSignatureArtifactV1({
+    const artifact = await prepareMissingSignatureArtifact({
       evidence,
       classification,
     });
     const first = artifact.transactions[0]!;
-    const poisoned: ProductionMissingSignatureArtifactV1 = {
+    const poisoned: MissingSignatureArtifact = {
       ...artifact,
       transactions: [
         { ...first, l2TransactionSourceCbor: "80" },
         ...artifact.transactions.slice(1),
       ],
     };
-    await expect(
-      admitProductionMissingSignatureArtifactV1(poisoned),
-    ).rejects.toThrow();
+    await expect(admitMissingSignatureArtifact(poisoned)).rejects.toThrow();
   });
 });

@@ -1,20 +1,20 @@
 import {
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
-  type MidgardValidationMachineStateV1,
-  verifyMidgardValidationTraceProofV1,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+  type MidgardValidationMachineState,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   Proof,
   ROOT_DOMAINS,
   validationTraceDescriptorCoreFromData,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -23,13 +23,13 @@ import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
-import type { DistinctAssetAccumulationFindingV1 } from "./family-v1.js";
-import type { DistinctAssetAccumulationCoordinateV1 } from "./family-v1.js";
-import type { DistinctAssetFoldActionV1 } from "./submit-fold-v1.js";
-import type { DistinctAssetAccumulatorAuthenticationV1 } from "./submit-step-02-v1.js";
+import type { DistinctAssetAccumulationFinding } from "./family-v1.js";
+import type { DistinctAssetAccumulationCoordinate } from "./family-v1.js";
+import type { DistinctAssetFoldAction } from "./submit-fold-v1.js";
+import type { DistinctAssetAccumulatorAuthentication } from "./submit-step-02-v1.js";
 
 type EncodedEntry = Readonly<{ key: Uint8Array; value: Uint8Array }>;
-type Retained = ReturnType<typeof decodeRetainedValidationWitnessV1>;
+type Retained = ReturnType<typeof decodeRetainedValidationWitness>;
 const exactNumber = (value: bigint, label: string): number => {
   const result = Number(value);
   if (!Number.isSafeInteger(result) || result < 0)
@@ -99,9 +99,7 @@ const nativeControl = (value: unknown) => {
     resolution_schedule_hash: bytes(decoded[25], "resolution schedule"),
   };
 };
-export const decodeDistinctAssetValueAndMintControlV1 = (
-  witnessCbor: string,
-) => {
+export const decodeDistinctAssetValueAndMintControl = (witnessCbor: string) => {
   const decoded = decodeSingleCbor(Buffer.from(witnessCbor, "hex"));
   if (!Array.isArray(decoded) || decoded.length !== 12)
     throw new Error(
@@ -139,7 +137,7 @@ const eventKeyCbor = (key: EventKey) =>
   Buffer.from(Data.to(key as never, EventKeySchema), "hex");
 const stateFromData = (
   state: Retained["machine_state"],
-): MidgardValidationMachineStateV1 => {
+): MidgardValidationMachineState => {
   if (state.machine_version !== 1n)
     throw new Error(
       "distinctAssetAccumulationLimit retained machine version changed",
@@ -170,8 +168,8 @@ const stateFromData = (
 
 const selectedAuxiliary = (
   retained: Retained,
-  finding: DistinctAssetAccumulationFindingV1,
-): DistinctAssetFoldActionV1 | null => {
+  finding: DistinctAssetAccumulationFinding,
+): DistinctAssetFoldAction | null => {
   const auxiliary = retained.auxiliary;
   const coordinate = finding.coordinate;
   if (
@@ -205,23 +203,23 @@ const selectedAuxiliary = (
   return null;
 };
 
-export type DistinctAssetRetainedAuthenticationV1 = Readonly<{
-  authentication: DistinctAssetAccumulatorAuthenticationV1;
+export type DistinctAssetRetainedAuthentication = Readonly<{
+  authentication: DistinctAssetAccumulatorAuthentication;
   folds: readonly [
-    DistinctAssetFoldActionV1,
-    DistinctAssetFoldActionV1,
-    DistinctAssetFoldActionV1,
+    DistinctAssetFoldAction,
+    DistinctAssetFoldAction,
+    DistinctAssetFoldAction,
   ];
 }>;
 
-export type DistinctAssetRetainedMutationCandidateV1 = Readonly<{
+export type DistinctAssetRetainedMutationCandidate = Readonly<{
   eventKey: EventKey;
   transactionId: string;
-  coordinate: DistinctAssetAccumulationCoordinateV1;
+  coordinate: DistinctAssetAccumulationCoordinate;
   traceStateHashHex: string;
   workRootHex: string;
-  control: ReturnType<typeof decodeDistinctAssetValueAndMintControlV1>;
-  action: Extract<DistinctAssetFoldActionV1, { kind: "authenticate" }>;
+  control: ReturnType<typeof decodeDistinctAssetValueAndMintControl>;
+  action: Extract<DistinctAssetFoldAction, { kind: "authenticate" }>;
 }>;
 
 /**
@@ -229,26 +227,26 @@ export type DistinctAssetRetainedMutationCandidateV1 = Readonly<{
  * Authentication of the selected candidate remains mandatory below; this
  * discovery function merely derives deterministic candidate coordinates.
  */
-export const discoverDistinctAssetRetainedMutationCandidatesV1 = (
+export const discoverDistinctAssetRetainedMutationCandidates = (
   retainedValidationWitnessEntries: readonly EncodedEntry[],
-): readonly DistinctAssetRetainedMutationCandidateV1[] =>
+): readonly DistinctAssetRetainedMutationCandidate[] =>
   Object.freeze(
     retainedValidationWitnessEntries.flatMap(({ key, value }) => {
-      const retainedKey = decodeRetainedValidationWitnessKeyV1(key);
-      const retained = decodeRetainedValidationWitnessV1(value);
+      const retainedKey = decodeRetainedValidationWitnessKey(key);
+      const retained = decodeRetainedValidationWitness(value);
       if (
         retained.phase !== 12n ||
         retained.machine_state.phase !== "ValueAndMint" ||
         retained.program_counter !== retained.machine_state.program_counter
       )
         return [];
-      const control = decodeDistinctAssetValueAndMintControlV1(
+      const control = decodeDistinctAssetValueAndMintControl(
         retained.witness_cbor,
       );
       const auxiliary = retained.auxiliary;
-      let coordinate: DistinctAssetAccumulationCoordinateV1;
+      let coordinate: DistinctAssetAccumulationCoordinate;
       let evidence: Extract<
-        DistinctAssetFoldActionV1,
+        DistinctAssetFoldAction,
         { kind: "authenticate" }
       >["evidence"];
       if (
@@ -311,7 +309,7 @@ export const discoverDistinctAssetRetainedMutationCandidatesV1 = (
   );
 
 /** Reconstructs the exact selected ValueAndMint asset mutation from public DA. */
-export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
+export const buildDistinctAssetAuthenticationFromRetainedDa = async ({
   eventKey,
   finding,
   authenticatedValidationTraceEntries,
@@ -319,11 +317,11 @@ export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
   expectedValidationTracesRoot,
 }: {
   readonly eventKey: EventKey;
-  readonly finding: DistinctAssetAccumulationFindingV1;
+  readonly finding: DistinctAssetAccumulationFinding;
   readonly authenticatedValidationTraceEntries: readonly EncodedEntry[];
   readonly retainedValidationWitnessEntries: readonly EncodedEntry[];
   readonly expectedValidationTracesRoot: string;
-}): Promise<DistinctAssetRetainedAuthenticationV1> => {
+}): Promise<DistinctAssetRetainedAuthentication> => {
   const keyBytes = eventKeyCbor(eventKey);
   const descriptors = authenticatedValidationTraceEntries.map(
     ({ key, value }) => ({ key: Buffer.from(key), value: Buffer.from(value) }),
@@ -337,7 +335,7 @@ export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
     );
   const descriptorData = Data.from(
     descriptorMatches[0]!.value.toString("hex"),
-    ValidationTraceDescriptorV1Schema,
+    ValidationTraceDescriptorSchema,
   ) as never;
   const descriptor = validationTraceDescriptorCoreFromData(descriptorData);
   const expectedStage =
@@ -347,9 +345,9 @@ export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
         ? 3n
         : 4n;
   const candidates = retainedValidationWitnessEntries.flatMap((entry) => {
-    const retainedKey = decodeRetainedValidationWitnessKeyV1(entry.key);
+    const retainedKey = decodeRetainedValidationWitnessKey(entry.key);
     if (!eventKeyCbor(retainedKey.event_key).equals(keyBytes)) return [];
-    const retained = decodeRetainedValidationWitnessV1(entry.value);
+    const retained = decodeRetainedValidationWitness(entry.value);
     if (
       retained.phase !== 12n ||
       retained.machine_state.phase !== "ValueAndMint" ||
@@ -357,7 +355,7 @@ export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
       retained.machine_state.transaction_id !== finding.subject.transaction_id
     )
       return [];
-    const control = decodeDistinctAssetValueAndMintControlV1(
+    const control = decodeDistinctAssetValueAndMintControl(
       retained.witness_cbor,
     );
     const action = selectedAuxiliary(retained, finding);
@@ -382,11 +380,11 @@ export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
   const state = stateFromData(retained.machine_state);
   const proof = validationTraceProofCoreFromData(retained.trace_proof);
   if (
-    !hashMidgardValidationMachineStateV1(state).equals(proof.stateHash) ||
-    !verifyMidgardValidationTraceProofV1({ descriptor, proof }) ||
-    !state.eventKeyHash.equals(hashMidgardValidationEventKeyV1(keyBytes)) ||
+    !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
+    !verifyMidgardValidationTraceProof({ descriptor, proof }) ||
+    !state.eventKeyHash.equals(hashMidgardValidationEventKey(keyBytes)) ||
     !state.workRoot.equals(
-      hashMidgardValidationWorkWitnessV1({
+      hashMidgardValidationWorkWitness({
         phase: "valueAndMint",
         programCounter: state.programCounter,
         witnessCbor: Buffer.from(retained.witness_cbor, "hex"),
@@ -408,7 +406,7 @@ export const buildDistinctAssetAuthenticationFromRetainedDaV1 = async ({
     descriptorMatches[0]!.value,
   );
   const targetFold = Number(expectedStage - 2n);
-  const folds: DistinctAssetRetainedAuthenticationV1["folds"] = [
+  const folds: DistinctAssetRetainedAuthentication["folds"] = [
     targetFold === 0 ? action : { kind: "skip" },
     targetFold === 1 ? action : { kind: "skip" },
     targetFold === 2 ? action : { kind: "skip" },

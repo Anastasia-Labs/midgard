@@ -1,38 +1,38 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  type ForcedInclusionTxV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  type ForcedInclusionTx,
+  forcedVerdictSubject,
   type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadStepDatum,
-  type HeaderV1,
+  type Header,
   type OutputReference,
   OutputReferenceSchema,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
-  RejectionReasonV1Schema,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
+  RejectionReasonSchema,
   type RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  type CanonicalBlockEvidenceV1,
-  fetchCanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
@@ -46,62 +46,62 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  type FraudProofWorkflowJournalStoreV1,
+  DirectoryFraudProofWorkflowJournalStore,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { createTransactionOutputNonCanonicalCentralJournalAdapterV1 } from "./central-journal-v1.js";
-import type { TransactionOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { createTransactionOutputNonCanonicalCentralJournalAdapter } from "./central-journal-v1.js";
+import type { TransactionOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  TransactionOutputStep02DatumV1Schema,
-  TransactionOutputStep03DatumV1Schema,
-  TransactionOutputStep04DatumV1Schema,
+  TransactionOutputStep02DatumSchema,
+  TransactionOutputStep03DatumSchema,
+  TransactionOutputStep04DatumSchema,
 } from "./schemas-v1.js";
-import { submitTransactionOutputNonCanonicalCancelV1 } from "./submit-cancel-v1.js";
-import { submitTransactionOutputNonCanonicalStep01AcceptedV1 } from "./submit-step-01-accepted-v1.js";
-import { submitTransactionOutputNonCanonicalStep01ForcedV1 } from "./submit-step-01-forced-v1.js";
-import { submitTransactionOutputNonCanonicalStep02V1 } from "./submit-step-02-v1.js";
-import { submitTransactionOutputNonCanonicalStep03V1 } from "./submit-step-03-v1.js";
-import { submitTransactionOutputNonCanonicalStep04V1 } from "./submit-step-04-v1.js";
+import { submitTransactionOutputNonCanonicalCancel } from "./submit-cancel-v1.js";
+import { submitTransactionOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted-v1.js";
+import { submitTransactionOutputNonCanonicalStep01Forced } from "./submit-step-01-forced-v1.js";
+import { submitTransactionOutputNonCanonicalStep02 } from "./submit-step-02-v1.js";
+import { submitTransactionOutputNonCanonicalStep03 } from "./submit-step-03-v1.js";
+import { submitTransactionOutputNonCanonicalStep04 } from "./submit-step-04-v1.js";
 import {
-  prepareTransactionOutputEvidenceV1,
-  runTransactionOutputProofV1,
-  transactionOutputEvidenceClosesV1,
-  transactionOutputEvidenceIdentityV1,
-  type TransactionOutputEvidenceV1,
-  type TransactionOutputJournalV1,
-  type TransactionOutputStageV1,
+  prepareTransactionOutputEvidence,
+  runTransactionOutputProof,
+  type TransactionOutputEvidence,
+  transactionOutputEvidenceCloses,
+  transactionOutputEvidenceIdentity,
+  type TransactionOutputJournal,
+  type TransactionOutputStage,
 } from "./transaction-output-non-canonical-v1.js";
 
-export const TRANSACTION_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1 =
+export const TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW =
   "midgard-transaction-output-non-canonical-production-workflow-v1" as const;
-export const TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID_V1 =
+export const TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID =
   "transaction-output-non-canonical" as const;
 
-export const TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1 =
+export const TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS =
   Object.freeze({
     step01: "fraudProofTransactionOutputNonCanonical",
     step02: "fraudProofTransactionOutputNonCanonicalStep02",
@@ -113,37 +113,36 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1 =
     fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
   } as const);
 
-export type TransactionOutputNonCanonicalProductionReferenceScriptsV1 =
-  Readonly<{
-    step01: UTxO;
-    step02: UTxO;
-    step03: UTxO;
-    step04: UTxO;
-    fieldPreimageCertificateMint: UTxO;
-    witnesses: FaultProofWitnessReferenceScriptsV1 & {
-      readonly computationThreadMint: UTxO;
-      readonly fraudProofMint: UTxO;
-      readonly phasMembershipWithdraw: UTxO;
-    };
-  }>;
-
-export type ManifestBoundTransactionOutputNonCanonicalConfigV1 = Readonly<{
-  schemaVersion: typeof TRANSACTION_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1;
-  lucid: LucidEvolution;
-  signer: ResolvedProverSigner;
-  binding: FraudProofWorkflowDeploymentBindingV1<"transactionOutputNonCanonical">;
-  contracts: TransactionOutputNonCanonicalContractsV1;
-  referenceScripts: TransactionOutputNonCanonicalProductionReferenceScriptsV1;
+export type TransactionOutputNonCanonicalReferenceScripts = Readonly<{
+  step01: UTxO;
+  step02: UTxO;
+  step03: UTxO;
+  step04: UTxO;
+  fieldPreimageCertificateMint: UTxO;
+  witnesses: FaultProofWitnessReferenceScripts & {
+    readonly computationThreadMint: UTxO;
+    readonly fraudProofMint: UTxO;
+    readonly phasMembershipWithdraw: UTxO;
+  };
 }>;
 
-export type LoadManifestBoundTransactionOutputNonCanonicalConfigV1 = Readonly<{
+export type ManifestBoundTransactionOutputNonCanonicalConfig = Readonly<{
+  schemaVersion: typeof TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  binding: FraudProofWorkflowDeploymentBinding<"transactionOutputNonCanonical">;
+  contracts: TransactionOutputNonCanonicalContracts;
+  referenceScripts: TransactionOutputNonCanonicalReferenceScripts;
+}>;
+
+export type LoadManifestBoundTransactionOutputNonCanonicalConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
-  referenceScripts: TransactionOutputNonCanonicalProductionReferenceScriptsV1;
+  referenceScripts: TransactionOutputNonCanonicalReferenceScripts;
 }>;
 
 const bindReference = ({
@@ -151,20 +150,20 @@ const bindReference = ({
   contractName,
   utxo,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"transactionOutputNonCanonical">;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"transactionOutputNonCanonical">;
   readonly contractName: string;
   readonly utxo: UTxO;
 }): UTxO =>
-  requireManifestBoundReferenceScriptUtxoV1({ binding, contractName, utxo });
+  requireManifestBoundReferenceScriptUtxo({ binding, contractName, utxo });
 
-export const bindTransactionOutputNonCanonicalReferenceScriptsV1 = ({
+export const bindTransactionOutputNonCanonicalReferenceScripts = ({
   binding,
   referenceScripts,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"transactionOutputNonCanonical">;
-  readonly referenceScripts: TransactionOutputNonCanonicalProductionReferenceScriptsV1;
-}): TransactionOutputNonCanonicalProductionReferenceScriptsV1 => {
-  const names = TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS_V1;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"transactionOutputNonCanonical">;
+  readonly referenceScripts: TransactionOutputNonCanonicalReferenceScripts;
+}): TransactionOutputNonCanonicalReferenceScripts => {
+  const names = TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS;
   return Object.freeze({
     step01: bindReference({
       binding,
@@ -212,10 +211,10 @@ export const bindTransactionOutputNonCanonicalReferenceScriptsV1 = ({
   });
 };
 
-export const loadManifestBoundTransactionOutputNonCanonicalConfigV1 = async (
-  input: LoadManifestBoundTransactionOutputNonCanonicalConfigV1,
-): Promise<ManifestBoundTransactionOutputNonCanonicalConfigV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const loadManifestBoundTransactionOutputNonCanonicalConfig = async (
+  input: LoadManifestBoundTransactionOutputNonCanonicalConfig,
+): Promise<ManifestBoundTransactionOutputNonCanonicalConfig> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
@@ -224,18 +223,18 @@ export const loadManifestBoundTransactionOutputNonCanonicalConfigV1 = async (
     proverCredential: input.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      TransactionOutputStep02DatumV1Schema,
-      TransactionOutputStep03DatumV1Schema,
-      TransactionOutputStep04DatumV1Schema,
+      TransactionOutputStep02DatumSchema,
+      TransactionOutputStep03DatumSchema,
+      TransactionOutputStep04DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
   const localContracts = binding.resolvedContracts.contracts as unknown as {
-    readonly transactionOutputNonCanonical?: TransactionOutputNonCanonicalContractsV1;
+    readonly transactionOutputNonCanonical?: TransactionOutputNonCanonicalContracts;
   };
   const chain = localContracts.transactionOutputNonCanonical;
   const certificate = binding.fieldPreimageCertificate;
@@ -249,12 +248,12 @@ export const loadManifestBoundTransactionOutputNonCanonicalConfigV1 = async (
       "transactionOutputNonCanonical deployment omitted field-preimage certificate",
     );
   }
-  const referenceScripts = bindTransactionOutputNonCanonicalReferenceScriptsV1({
+  const referenceScripts = bindTransactionOutputNonCanonicalReferenceScripts({
     binding,
     referenceScripts: input.referenceScripts,
   });
   return Object.freeze({
-    schemaVersion: TRANSACTION_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1,
+    schemaVersion: TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
     lucid: input.lucid,
     signer: input.signer,
     binding,
@@ -281,7 +280,7 @@ export const loadManifestBoundTransactionOutputNonCanonicalConfigV1 = async (
             referenceScripts.step04,
           ][index]!.outputIndex.toString(),
         ),
-      })) as unknown as TransactionOutputNonCanonicalContractsV1["steps"],
+      })) as unknown as TransactionOutputNonCanonicalContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
       hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
@@ -293,15 +292,15 @@ export const loadManifestBoundTransactionOutputNonCanonicalConfigV1 = async (
   });
 };
 
-export type TransactionOutputNonCanonicalProductionStageV1 = Readonly<{
+export type TransactionOutputNonCanonicalStage = Readonly<{
   fraudulentBlockOutRef: string;
   threadOutRef?: string;
   threadUtxo?: UTxO;
   threadToken?: Readonly<{ unit: string; fraudulentHeaderHash: string }>;
   stateQueueBlockOutRef?: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
   nativeTxCompactCbor?: string;
   witnessSetCompactCbor?: string;
@@ -312,21 +311,20 @@ export type TransactionOutputNonCanonicalProductionStageV1 = Readonly<{
 }>;
 
 /** Derives the only admissible family evidence from L1-bound public retained DA. */
-export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1 = (
-  block: CanonicalBlockEvidenceV1,
-): TransactionOutputEvidenceV1 => {
-  const findings: TransactionOutputEvidenceV1[] = [];
+export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock = (
+  block: CanonicalBlockEvidence,
+): TransactionOutputEvidence => {
+  const findings: TransactionOutputEvidence[] = [];
   const inspect = ({
     canonicalCbor,
     subject,
     forcedCoordinate,
   }: {
     readonly canonicalCbor: Uint8Array;
-    readonly subject: ReturnType<typeof acceptedVerdictSubjectV1>;
+    readonly subject: ReturnType<typeof acceptedVerdictSubject>;
     readonly forcedCoordinate?: { readonly itemIndex: number };
   }) => {
-    const material =
-      deriveMidgardNativeTxFaultEvidenceMaterialV1(canonicalCbor);
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(canonicalCbor);
     if (material.transactionId.toString("hex") !== subject.transaction_id) {
       throw new Error(
         "transactionOutputNonCanonical retained-DA transaction identity changed",
@@ -334,36 +332,36 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1 = (
     }
     const coordinates =
       forcedCoordinate === undefined
-        ? decodeMidgardFieldPreimageV1(material.fieldPreimages[2]!).map(
+        ? decodeMidgardFieldPreimage(material.fieldPreimages[2]!).map(
             (_, itemIndex) => ({ itemIndex }),
           )
         : [forcedCoordinate];
     for (const coordinate of coordinates) {
       const fieldPreimage = material.fieldPreimages[2]!;
       const item =
-        decodeMidgardFieldPreimageV1(fieldPreimage)[coordinate.itemIndex];
+        decodeMidgardFieldPreimage(fieldPreimage)[coordinate.itemIndex];
       if (item === undefined) {
         throw new Error(
           "transactionOutputNonCanonical retained-DA reason coordinate is absent",
         );
       }
       if (item.length > 16_384) continue;
-      const prepared = prepareTransactionOutputEvidenceV1({
+      const prepared = prepareTransactionOutputEvidence({
         finding: { subject, fieldIndex: 2, itemIndex: coordinate.itemIndex },
         fieldPreimage,
         committedFieldHashHex:
-          midgardFieldCommitmentV1(fieldPreimage).toString("hex"),
+          midgardFieldCommitment(fieldPreimage).toString("hex"),
       });
-      if (transactionOutputEvidenceClosesV1(prepared)) findings.push(prepared);
+      if (transactionOutputEvidenceCloses(prepared)) findings.push(prepared);
     }
   };
   for (const transaction of block.transactions) {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     inspect({
       canonicalCbor: Buffer.from(transaction.txCbor, "hex"),
-      subject: acceptedVerdictSubjectV1(material.transactionId.toString("hex")),
+      subject: acceptedVerdictSubject(material.transactionId.toString("hex")),
     });
   }
   for (const forced of block.reconstruction.forcedTransactions) {
@@ -372,7 +370,7 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1 = (
     if (typeof reason === "string" || !("OutputNonCanonical" in reason))
       continue;
     const coordinate = reason.OutputNonCanonical;
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     );
     if (material.transactionId.toString("hex") !== forced.value.tx_id) {
@@ -382,7 +380,7 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1 = (
     }
     inspect({
       canonicalCbor: forced.fullTransactionCbor,
-      subject: forcedVerdictSubjectV1({
+      subject: forcedVerdictSubject({
         transactionId: forced.value.tx_id,
         sourceKey: forced.key,
         rejectionReason: reason,
@@ -400,24 +398,24 @@ export const deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1 = (
   return findings[0]!;
 };
 
-export type TransactionOutputNonCanonicalAuthenticatedSourceV1 = Readonly<{
+export type TransactionOutputNonCanonicalAuthenticatedSource = Readonly<{
   nativeTxCompactCbor: string;
   witnessSetCompactCbor: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
 }>;
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
-export const deriveTransactionOutputNonCanonicalAuthenticatedSourceV1 = async ({
+export const deriveTransactionOutputNonCanonicalAuthenticatedSource = async ({
   block,
   evidence,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
-  readonly evidence: TransactionOutputEvidenceV1;
-}): Promise<TransactionOutputNonCanonicalAuthenticatedSourceV1> => {
-  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1) {
+  readonly block: CanonicalBlockEvidence;
+  readonly evidence: TransactionOutputEvidence;
+}): Promise<TransactionOutputNonCanonicalAuthenticatedSource> => {
+  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
     );
@@ -429,7 +427,7 @@ export const deriveTransactionOutputNonCanonicalAuthenticatedSourceV1 = async ({
         "transactionOutputNonCanonical accepted subject disappeared from retained DA",
       );
     }
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
     if (
       trie.root !== block.reconstruction.rootData.transactions.phasRoot ||
       trie.root !== block.inclusionRootAuthentication.sourceValuePhasRoot
@@ -438,7 +436,7 @@ export const deriveTransactionOutputNonCanonicalAuthenticatedSourceV1 = async ({
         "transactionOutputNonCanonical accepted source trie differs from authenticated reconstruction",
       );
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(selected.txCbor, "hex"),
     );
     return Object.freeze({
@@ -476,22 +474,20 @@ export const deriveTransactionOutputNonCanonicalAuthenticatedSourceV1 = async ({
   const reason = forced.value.verdict.ForcedTxInvalid.reason;
   if (
     evidence.subject.rejection_reason === null ||
-    Data.to(reason as never, RejectionReasonV1Schema as never) !==
+    Data.to(reason as never, RejectionReasonSchema as never) !==
       Data.to(
         evidence.subject.rejection_reason as never,
-        RejectionReasonV1Schema as never,
+        RejectionReasonSchema as never,
       )
   ) {
     throw new Error(
       "transactionOutputNonCanonical forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-    encodeMidgardNativeTxCanonicalV1(
-      adjudicateMidgardNativeTxFullV1Validity(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(
-          forced.fullTransactionCbor,
-        ),
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(
+        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
         "TxIsInvalid",
       ),
     ),
@@ -525,12 +521,12 @@ export const deriveTransactionOutputNonCanonicalAuthenticatedSourceV1 = async ({
 };
 
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
-export const detectTransactionOutputNonCanonicalCompleteReplayV1 = (
-  evidence: CanonicalBlockEvidenceV1,
-): readonly CanonicalViolationDetectionV1[] => {
+export const detectTransactionOutputNonCanonicalCompleteReplay = (
+  evidence: CanonicalBlockEvidence,
+): readonly CanonicalViolationDetection[] => {
   const accepted = evidence.transactions.flatMap(
     (transaction, transactionIndex) => {
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(transaction.txCbor, "hex"),
       );
       const transactionId = material.transactionId.toString("hex");
@@ -541,25 +537,25 @@ export const detectTransactionOutputNonCanonicalCompleteReplayV1 = (
       }
       const fieldIndex = 2 as const;
       const fieldPreimage = material.fieldPreimages[fieldIndex]!;
-      return decodeMidgardFieldPreimageV1(fieldPreimage).flatMap(
+      return decodeMidgardFieldPreimage(fieldPreimage).flatMap(
         (item, itemIndex) => {
           if (item.length > 16_384) return [];
-          const prepared = prepareTransactionOutputEvidenceV1({
+          const prepared = prepareTransactionOutputEvidence({
             finding: {
-              subject: acceptedVerdictSubjectV1(transactionId),
+              subject: acceptedVerdictSubject(transactionId),
               fieldIndex,
               itemIndex,
             },
             fieldPreimage,
             committedFieldHashHex:
-              midgardFieldCommitmentV1(fieldPreimage).toString("hex"),
+              midgardFieldCommitment(fieldPreimage).toString("hex"),
           });
           return prepared.decisiveFaultHolds
             ? [
                 {
-                  detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID_V1}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
+                  detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
                   headerHash: evidence.headerHash,
-                  violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID_V1,
+                  violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID,
                   position: BigInt(transactionIndex),
                   diagnostic: `transaction ${transactionId} field ${fieldIndex.toString()} item ${itemIndex.toString()} has illegal width ${item.length.toString()}`,
                 },
@@ -576,10 +572,10 @@ export const detectTransactionOutputNonCanonicalCompleteReplayV1 = (
       if (typeof reason === "string" || !("OutputNonCanonical" in reason)) {
         return [];
       }
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-        encodeMidgardNativeTxCanonicalV1(
-          adjudicateMidgardNativeTxFullV1Validity(
-            decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+        encodeMidgardNativeTxCanonical(
+          adjudicateMidgardNativeTxFullValidity(
+            decodeMidgardNativeTxFullFromCanonicalCbor(
               transaction.fullTransactionCbor,
             ),
             "TxIsInvalid",
@@ -606,14 +602,14 @@ export const detectTransactionOutputNonCanonicalCompleteReplayV1 = (
       const item =
         preimage === undefined
           ? undefined
-          : decodeMidgardFieldPreimageV1(preimage)[itemIndex];
+          : decodeMidgardFieldPreimage(preimage)[itemIndex];
       if (item === undefined || item.length > 16_384) {
         return [];
       }
       const fieldPreimage = material.fieldPreimages[fieldIndex]!;
-      const prepared = prepareTransactionOutputEvidenceV1({
+      const prepared = prepareTransactionOutputEvidence({
         finding: {
-          subject: forcedVerdictSubjectV1({
+          subject: forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: reason,
@@ -623,14 +619,14 @@ export const detectTransactionOutputNonCanonicalCompleteReplayV1 = (
         },
         fieldPreimage,
         committedFieldHashHex:
-          midgardFieldCommitmentV1(fieldPreimage).toString("hex"),
+          midgardFieldCommitment(fieldPreimage).toString("hex"),
       });
-      if (!transactionOutputEvidenceClosesV1(prepared)) return [];
+      if (!transactionOutputEvidenceCloses(prepared)) return [];
       return [
         {
-          detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
+          detectionId: `${TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
           headerHash: evidence.headerHash,
-          violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID_V1,
+          violationId: TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID,
           position: BigInt(forcedIndex),
           diagnostic: `forced transaction ${transaction.value.tx_id} was rejected for legal field ${fieldIndex.toString()} item ${itemIndex.toString()} width ${item.length.toString()}`,
         },
@@ -640,10 +636,10 @@ export const detectTransactionOutputNonCanonicalCompleteReplayV1 = (
   return [...accepted, ...forced];
 };
 
-export type TransactionOutputNonCanonicalProductionRuntimeLoaderV1 = Readonly<{
-  config: LoadManifestBoundTransactionOutputNonCanonicalConfigV1;
-  journal: TransactionOutputJournalV1;
-  observe: (identity: string) => Promise<TransactionOutputStageV1>;
+export type TransactionOutputNonCanonicalRuntimeLoader = Readonly<{
+  config: LoadManifestBoundTransactionOutputNonCanonicalConfig;
+  journal: TransactionOutputJournal;
+  observe: (identity: string) => Promise<TransactionOutputStage>;
   resolveStage: (input: {
     readonly action:
       | "submitInit"
@@ -653,20 +649,20 @@ export type TransactionOutputNonCanonicalProductionRuntimeLoaderV1 = Readonly<{
       | "submitStep04"
       | "removeDescendants"
       | "cancel";
-    readonly evidence: TransactionOutputEvidenceV1;
-  }) => Promise<TransactionOutputNonCanonicalProductionStageV1>;
+    readonly evidence: TransactionOutputEvidence;
+  }) => Promise<TransactionOutputNonCanonicalStage>;
 }>;
 
-export const createTransactionOutputNonCanonicalRawL1StageResolverV1 =
+export const createTransactionOutputNonCanonicalRawL1StageResolver =
   ({
     config,
     l1,
     source,
   }: {
-    readonly config: ManifestBoundTransactionOutputNonCanonicalConfigV1;
-    readonly l1: FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>;
-    readonly source: TransactionOutputNonCanonicalAuthenticatedSourceV1;
-  }): TransactionOutputNonCanonicalProductionRuntimeLoaderV1["resolveStage"] =>
+    readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
+    readonly l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
+    readonly source: TransactionOutputNonCanonicalAuthenticatedSource;
+  }): TransactionOutputNonCanonicalRuntimeLoader["resolveStage"] =>
   async ({ action, evidence }) => {
     const observed = await l1.observe({
       headerHash: config.binding.definition.headerHash,
@@ -708,7 +704,7 @@ export const createTransactionOutputNonCanonicalRawL1StageResolverV1 =
       witnessSetCompactCbor: source.witnessSetCompactCbor,
     };
     if (action !== "submitStep01") return common;
-    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED_V1) {
+    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED) {
       return {
         ...common,
         forcedHeader: required(
@@ -725,7 +721,7 @@ export const createTransactionOutputNonCanonicalRawL1StageResolverV1 =
         ),
       };
     }
-    const thread = await requireLinearFaultThreadUtxoV1({
+    const thread = await requireLinearFaultThreadUtxo({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -751,18 +747,18 @@ const required = <T>(value: T | undefined, label: string): T => {
   return value;
 };
 
-export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
+export const createManifestBoundTransactionOutputNonCanonicalSubmission = ({
   config,
   observe,
   resolveStage,
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundTransactionOutputNonCanonicalConfigV1;
-  readonly observe: (identity: string) => Promise<TransactionOutputStageV1>;
-  readonly resolveStage: TransactionOutputNonCanonicalProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
+  readonly observe: (identity: string) => Promise<TransactionOutputStage>;
+  readonly resolveStage: TransactionOutputNonCanonicalRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createTransactionOutputNonCanonicalCentralJournalAdapterV1
+    typeof createTransactionOutputNonCanonicalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => ({
@@ -775,13 +771,13 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
       | "submitStep03"
       | "submitStep04"
       | "removeDescendants",
-    evidence: TransactionOutputEvidenceV1,
+    evidence: TransactionOutputEvidence,
   ) => {
     if (evidence.subject.transaction_id.length !== 64)
       throw new Error(
         "transactionOutputNonCanonical evidence transaction id is not canonical",
       );
-    const familyIdentity = transactionOutputEvidenceIdentityV1(evidence);
+    const familyIdentity = transactionOutputEvidenceIdentity(evidence);
     const transition =
       action === "submitInit"
         ? (["none", "step01"] as const)
@@ -827,47 +823,41 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
       };
     }
     if (action === "submitStep01") {
-      if (
-        evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1
-      ) {
-        const result =
-          await submitTransactionOutputNonCanonicalStep01AcceptedV1({
-            lucid: config.lucid,
-            blueprint: config.binding.blueprint,
-            network: config.binding.network,
-            contracts: config.contracts,
-            signer: config.signer,
-            finding: evidence,
-            threadUtxo: required(stage.threadUtxo, "step01 thread UTxO"),
-            threadToken: required(stage.threadToken, "step01 thread token"),
-            stateQueueBlockOutRef: required(
-              stage.stateQueueBlockOutRef,
-              "state-queue block out-ref",
-            ),
-            txInclusion: required(
-              stage.acceptedInclusion,
-              "accepted inclusion",
-            ),
-            referenceScriptUtxo: config.referenceScripts.step01,
-            witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary: centralJournal?.boundary(
-              action,
-              familyIdentity,
-              transition[0],
-              transition[1],
-            ),
-          });
+      if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
+        const result = await submitTransactionOutputNonCanonicalStep01Accepted({
+          lucid: config.lucid,
+          blueprint: config.binding.blueprint,
+          network: config.binding.network,
+          contracts: config.contracts,
+          signer: config.signer,
+          finding: evidence,
+          threadUtxo: required(stage.threadUtxo, "step01 thread UTxO"),
+          threadToken: required(stage.threadToken, "step01 thread token"),
+          stateQueueBlockOutRef: required(
+            stage.stateQueueBlockOutRef,
+            "state-queue block out-ref",
+          ),
+          txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
+          referenceScriptUtxo: config.referenceScripts.step01,
+          witnessReferenceScripts: config.referenceScripts.witnesses,
+          preSubmitBoundary: centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
+        });
         return {
           stage: "step02" as const,
           txHash: result.txHash,
           outputReference: result.nextThreadOutRef,
         };
       }
-      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED_V1)
+      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED)
         throw new Error(
           "transactionOutputNonCanonical evidence source kind is invalid",
         );
-      const result = await submitTransactionOutputNonCanonicalStep01ForcedV1({
+      const result = await submitTransactionOutputNonCanonicalStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -895,7 +885,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
     }
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitTransactionOutputNonCanonicalStep02V1({
+      const result = await submitTransactionOutputNonCanonicalStep02({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -951,7 +941,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
     }
     if (action === "submitStep03") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitTransactionOutputNonCanonicalStep03V1({
+      const result = await submitTransactionOutputNonCanonicalStep03({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -1005,7 +995,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
       };
     }
     if (action === "submitStep04") {
-      const result = await submitTransactionOutputNonCanonicalStep04V1({
+      const result = await submitTransactionOutputNonCanonicalStep04({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -1062,7 +1052,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
   },
   cancel: async (
     current: "step01" | "step02" | "step03" | "step04",
-    evidence: TransactionOutputEvidenceV1,
+    evidence: TransactionOutputEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index =
@@ -1073,7 +1063,7 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
           : current === "step03"
             ? 2
             : 3;
-    const result = await submitTransactionOutputNonCanonicalCancelV1({
+    const result = await submitTransactionOutputNonCanonicalCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -1095,13 +1085,13 @@ export const createManifestBoundTransactionOutputNonCanonicalSubmissionV1 = ({
   },
 });
 
-export const loadTransactionOutputNonCanonicalProductionRuntimeV1 = async (
-  input: TransactionOutputNonCanonicalProductionRuntimeLoaderV1,
+export const loadTransactionOutputNonCanonicalRuntime = async (
+  input: TransactionOutputNonCanonicalRuntimeLoader,
 ) => {
-  const config = await loadManifestBoundTransactionOutputNonCanonicalConfigV1(
+  const config = await loadManifestBoundTransactionOutputNonCanonicalConfig(
     input.config,
   );
-  return createManifestBoundTransactionOutputNonCanonicalProductionRuntimeV1({
+  return createManifestBoundTransactionOutputNonCanonicalRuntime({
     config,
     journal: input.journal,
     observe: input.observe,
@@ -1109,96 +1099,95 @@ export const loadTransactionOutputNonCanonicalProductionRuntimeV1 = async (
   });
 };
 
-export const createManifestBoundTransactionOutputNonCanonicalProductionRuntimeV1 =
-  ({
-    config,
-    journal,
-    observe,
-    resolveStage,
-    centralJournal,
-    stateQueueMutationLeaseCoordinator,
-  }: {
-    readonly config: ManifestBoundTransactionOutputNonCanonicalConfigV1;
-    readonly journal: TransactionOutputJournalV1;
-    readonly observe: TransactionOutputNonCanonicalProductionRuntimeLoaderV1["observe"];
-    readonly resolveStage: TransactionOutputNonCanonicalProductionRuntimeLoaderV1["resolveStage"];
-    readonly centralJournal?: ReturnType<
-      typeof createTransactionOutputNonCanonicalCentralJournalAdapterV1
-    >;
-    readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-  }) => {
-    const submission =
-      createManifestBoundTransactionOutputNonCanonicalSubmissionV1({
-        config,
-        observe: async (identity) => {
-          const observed = await observe(identity);
-          await centralJournal?.reconcile(observed);
-          return observed;
-        },
-        resolveStage,
-        centralJournal,
-        stateQueueMutationLeaseCoordinator,
-      });
-    return Object.freeze({
-      runtimeVersion: TRANSACTION_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1,
+export const createManifestBoundTransactionOutputNonCanonicalRuntime = ({
+  config,
+  journal,
+  observe,
+  resolveStage,
+  centralJournal,
+  stateQueueMutationLeaseCoordinator,
+}: {
+  readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
+  readonly journal: TransactionOutputJournal;
+  readonly observe: TransactionOutputNonCanonicalRuntimeLoader["observe"];
+  readonly resolveStage: TransactionOutputNonCanonicalRuntimeLoader["resolveStage"];
+  readonly centralJournal?: ReturnType<
+    typeof createTransactionOutputNonCanonicalCentralJournalAdapter
+  >;
+  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+}) => {
+  const submission = createManifestBoundTransactionOutputNonCanonicalSubmission(
+    {
       config,
-      runOrResume: async (evidence: TransactionOutputEvidenceV1) =>
-        await runTransactionOutputProofV1({
-          evidence,
-          journal,
-          submission,
-        }),
-    });
-  };
+      observe: async (identity) => {
+        const observed = await observe(identity);
+        await centralJournal?.reconcile(observed);
+        return observed;
+      },
+      resolveStage,
+      centralJournal,
+      stateQueueMutationLeaseCoordinator,
+    },
+  );
+  return Object.freeze({
+    runtimeVersion: TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
+    config,
+    runOrResume: async (evidence: TransactionOutputEvidence) =>
+      await runTransactionOutputProof({
+        evidence,
+        journal,
+        submission,
+      }),
+  });
+};
 
-export type ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1 =
-  LoadManifestBoundTransactionOutputNonCanonicalConfigV1 &
+export type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig =
+  LoadManifestBoundTransactionOutputNonCanonicalConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundTransactionOutputNonCanonicalWorkflowV1 = Readonly<{
-  workflowVersion: typeof TRANSACTION_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1;
-  config: ManifestBoundTransactionOutputNonCanonicalConfigV1;
-  binding: FraudProofWorkflowDeploymentBindingV1<"transactionOutputNonCanonical">;
-  l1: FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>;
+export type ManifestBoundTransactionOutputNonCanonicalWorkflow = Readonly<{
+  workflowVersion: typeof TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW;
+  config: ManifestBoundTransactionOutputNonCanonicalConfig;
+  binding: FraudProofWorkflowDeploymentBinding<"transactionOutputNonCanonical">;
+  l1: FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;
 
 /** Production installation factory; no evidence object is accepted here. */
-export const createManifestBoundTransactionOutputNonCanonicalWorkflowV1 =
-  async (
-    input: ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1,
-  ): Promise<ManifestBoundTransactionOutputNonCanonicalWorkflowV1> => {
-    const config =
-      await loadManifestBoundTransactionOutputNonCanonicalConfigV1(input);
-    const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
-      source: input.source,
-      releaseFinality: config.binding.releaseFinality,
-      releaseEconomics: config.binding.releaseEconomics,
-      definition: config.binding.definition,
-    });
-    return Object.freeze({
-      workflowVersion: TRANSACTION_OUTPUT_NON_CANONICAL_PRODUCTION_WORKFLOW_V1,
-      config,
-      binding: config.binding,
-      l1,
-      stateQueueMutationLeaseCoordinator:
-        input.stateQueueMutationLeaseCoordinator,
-      decisionDigest: input.decisionDigest,
-    });
-  };
+export const createManifestBoundTransactionOutputNonCanonicalWorkflow = async (
+  input: ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
+): Promise<ManifestBoundTransactionOutputNonCanonicalWorkflow> => {
+  const config =
+    await loadManifestBoundTransactionOutputNonCanonicalConfig(input);
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
+    source: input.source,
+    releaseFinality: config.binding.releaseFinality,
+    releaseEconomics: config.binding.releaseEconomics,
+    definition: config.binding.definition,
+  });
+  return Object.freeze({
+    workflowVersion: TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
+    config,
+    binding: config.binding,
+    l1,
+    stateQueueMutationLeaseCoordinator:
+      input.stateQueueMutationLeaseCoordinator,
+    decisionDigest: input.decisionDigest,
+  });
+};
 
 const transactionOutputStageFromL1 = (
   stage: Awaited<
     ReturnType<
-      FraudProofFamilyL1ObservationPortV1<FraudProofCatalogueCategoryName>["observe"]
+      FraudProofFamilyL1ObservationPort<FraudProofCatalogueCategoryName>["observe"]
     >
   >["stage"],
-): TransactionOutputStageV1 => {
+): TransactionOutputStage => {
   switch (stage.kind) {
     case "not_started":
       return "none";
@@ -1221,12 +1210,12 @@ const transactionOutputStageFromL1 = (
  * Watcher-facing runner. Evidence is always reconstructed from authenticated
  * L1 plus public retained DA; unknown/caller-authored evidence fields fail.
  */
-export const runOrResumeManifestBoundTransactionOutputNonCanonicalWorkflowV1 =
+export const runOrResumeManifestBoundTransactionOutputNonCanonicalWorkflow =
   async (input: {
-    readonly workflow: ManifestBoundTransactionOutputNonCanonicalWorkflowV1;
+    readonly workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: TransactionOutputJournalV1;
-  }): Promise<TransactionOutputStageV1> => {
+    readonly journal: TransactionOutputJournal;
+  }): Promise<TransactionOutputStage> => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
       throw new Error(
         "transactionOutputNonCanonical runner rejects caller-authored evidence inputs",
@@ -1234,62 +1223,59 @@ export const runOrResumeManifestBoundTransactionOutputNonCanonicalWorkflowV1 =
     }
     const headerHash = input.workflow.binding.definition.headerHash;
     const observation = await input.workflow.l1.observeHeader({ headerHash });
-    const canonical = await fetchCanonicalBlockEvidenceV1({
+    const canonical = await fetchCanonicalBlockEvidence({
       observation,
       sources: input.sources,
     });
     const evidence =
-      deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1(
-        canonical,
-      );
-    const source =
-      await deriveTransactionOutputNonCanonicalAuthenticatedSourceV1({
+      deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock(canonical);
+    const source = await deriveTransactionOutputNonCanonicalAuthenticatedSource(
+      {
         block: canonical,
         evidence,
-      });
-    const runtime =
-      createManifestBoundTransactionOutputNonCanonicalProductionRuntimeV1({
+      },
+    );
+    const runtime = createManifestBoundTransactionOutputNonCanonicalRuntime({
+      config: input.workflow.config,
+      journal: input.journal,
+      observe: async () =>
+        transactionOutputStageFromL1(
+          (await input.workflow.l1.observe({ headerHash })).stage,
+        ),
+      resolveStage: createTransactionOutputNonCanonicalRawL1StageResolver({
         config: input.workflow.config,
-        journal: input.journal,
-        observe: async () =>
-          transactionOutputStageFromL1(
-            (await input.workflow.l1.observe({ headerHash })).stage,
-          ),
-        resolveStage: createTransactionOutputNonCanonicalRawL1StageResolverV1({
-          config: input.workflow.config,
-          l1: input.workflow.l1,
-          source,
-        }),
-      });
+        l1: input.workflow.l1,
+        source,
+      }),
+    });
     return await runtime.runOrResume(evidence);
   };
 
-export const executeManifestBoundTransactionOutputNonCanonicalWorkflowV1 =
+export const executeManifestBoundTransactionOutputNonCanonicalWorkflow =
   async ({
     workflow,
     sources,
     journal,
   }: {
-    readonly workflow: ManifestBoundTransactionOutputNonCanonicalWorkflowV1;
+    readonly workflow: ManifestBoundTransactionOutputNonCanonicalWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FraudProofWorkflowJournalStoreV1;
-  }): Promise<TransactionOutputStageV1> => {
+    readonly journal: FraudProofWorkflowJournalStore;
+  }): Promise<TransactionOutputStage> => {
     const headerHash = workflow.binding.definition.headerHash;
-    const canonical = await fetchCanonicalBlockEvidenceV1({
+    const canonical = await fetchCanonicalBlockEvidence({
       observation: await workflow.l1.observeHeader({ headerHash }),
       sources,
     });
     const evidence =
-      deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlockV1(
-        canonical,
-      );
-    const source =
-      await deriveTransactionOutputNonCanonicalAuthenticatedSourceV1({
+      deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock(canonical);
+    const source = await deriveTransactionOutputNonCanonicalAuthenticatedSource(
+      {
         block: canonical,
         evidence,
-      });
+      },
+    );
     const centralJournal =
-      createTransactionOutputNonCanonicalCentralJournalAdapterV1({
+      createTransactionOutputNonCanonicalCentralJournalAdapter({
         store: journal,
         deploymentFingerprint: workflow.binding.deploymentFingerprint,
         headerHash,
@@ -1297,132 +1283,128 @@ export const executeManifestBoundTransactionOutputNonCanonicalWorkflowV1 =
         transactionConfirmed: async (txHash) =>
           await workflow.l1.transactionConfirmed({ headerHash, txHash }),
       });
-    const runtime =
-      createManifestBoundTransactionOutputNonCanonicalProductionRuntimeV1({
+    const runtime = createManifestBoundTransactionOutputNonCanonicalRuntime({
+      config: workflow.config,
+      journal: centralJournal.familyJournal,
+      observe: async () =>
+        transactionOutputStageFromL1(
+          (await workflow.l1.observe({ headerHash })).stage,
+        ),
+      resolveStage: createTransactionOutputNonCanonicalRawL1StageResolver({
         config: workflow.config,
-        journal: centralJournal.familyJournal,
-        observe: async () =>
-          transactionOutputStageFromL1(
-            (await workflow.l1.observe({ headerHash })).stage,
-          ),
-        resolveStage: createTransactionOutputNonCanonicalRawL1StageResolverV1({
-          config: workflow.config,
-          l1: workflow.l1,
-          source,
-        }),
-        centralJournal,
-        stateQueueMutationLeaseCoordinator:
-          workflow.stateQueueMutationLeaseCoordinator,
-      });
+        l1: workflow.l1,
+        source,
+      }),
+      centralJournal,
+      stateQueueMutationLeaseCoordinator:
+        workflow.stateQueueMutationLeaseCoordinator,
+    });
     return await runtime.runOrResume(evidence);
   };
 
-export type LoadedTransactionOutputNonCanonicalProductionWorkflowV1 = Readonly<{
+export type LoadedTransactionOutputNonCanonicalWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1;
+  config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadTransactionOutputNonCanonicalProductionWorkflowV1 = (input: {
+export type LoadTransactionOutputNonCanonicalWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedTransactionOutputNonCanonicalProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedTransactionOutputNonCanonicalWorkflow>;
 
 /**
  * Family-local runner surface for central admission. It consumes only a
  * manifest/runtime path and concrete public-DA transports; neither evidence
  * nor a watcher-owned journal implementation can enter this boundary.
  */
-export const createTransactionOutputNonCanonicalProductionWorkflowRunnerSurfaceV1 =
-  ({
-    loadRuntimeConfig,
-  }: {
-    readonly loadRuntimeConfig: LoadTransactionOutputNonCanonicalProductionWorkflowV1;
-  }): ProductionWorkflowAdapterRunnerV1 =>
-    Object.freeze({
-      runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-      runOrResume: async (invocation) => {
-        if (String(invocation.category) !== "transactionOutputNonCanonical") {
-          throw new Error(
-            `transactionOutputNonCanonical production runner category mismatch: ${invocation.category}`,
-          );
-        }
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
-          permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category:
-              "transactionOutputNonCanonical" as FraudProofCatalogueCategoryName,
-            headerHash: invocation.headerHash,
-          }),
-        });
-        assertProductionWorkflowJournalActuationV1({
-          journal,
+export const createTransactionOutputNonCanonicalWorkflowRunnerSurface = ({
+  loadRuntimeConfig,
+}: {
+  readonly loadRuntimeConfig: LoadTransactionOutputNonCanonicalWorkflow;
+}): WorkflowAdapterRunner =>
+  Object.freeze({
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
+    runOrResume: async (invocation) => {
+      if (String(invocation.category) !== "transactionOutputNonCanonical") {
+        throw new Error(
+          `transactionOutputNonCanonical production runner category mismatch: ${invocation.category}`,
+        );
+      }
+      const journal = bindWorkflowFundingReservationJournal({
+        permit: invocation.fundingReservationPermit,
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
+            invocation.journalDirectory,
+          ),
+          permit: invocation.actuationPermit,
+          decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
           category:
             "transactionOutputNonCanonical" as FraudProofCatalogueCategoryName,
           headerHash: invocation.headerHash,
-          checkpoint: "runner_start",
-        });
-        const loaded = await loadRuntimeConfig({
-          runtimeConfigPath: invocation.runtimeConfigPath,
-          invocation,
-        });
-        if (typeof loaded.close !== "function") {
+        }),
+      });
+      assertWorkflowJournalActuation({
+        journal,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        category:
+          "transactionOutputNonCanonical" as FraudProofCatalogueCategoryName,
+        headerHash: invocation.headerHash,
+        checkpoint: "runner_start",
+      });
+      const loaded = await loadRuntimeConfig({
+        runtimeConfigPath: invocation.runtimeConfigPath,
+        invocation,
+      });
+      if (typeof loaded.close !== "function") {
+        throw new Error(
+          "transactionOutputNonCanonical runtime omitted its transport disposer",
+        );
+      }
+      try {
+        if (
+          loaded.schemaVersion !==
+          "midgard-production-fraud-proof-runtime-config-v1"
+        ) {
           throw new Error(
-            "transactionOutputNonCanonical runtime omitted its transport disposer",
+            "transactionOutputNonCanonical runtime config has an unsupported schema",
           );
         }
-        try {
-          if (
-            loaded.schemaVersion !==
-            "midgard-production-fraud-proof-runtime-config-v1"
-          ) {
-            throw new Error(
-              "transactionOutputNonCanonical runtime config has an unsupported schema",
-            );
-          }
-          if (
-            loaded.retainedDaSources.length === 0 ||
-            loaded.retainedDaSources.some(
-              (source) => !(source instanceof DaLibp2pRetainedDaSource),
-            )
-          ) {
-            throw new Error(
-              "transactionOutputNonCanonical production runner requires concrete public retained-DA sources",
-            );
-          }
-          const workflow =
-            await createManifestBoundTransactionOutputNonCanonicalWorkflowV1(
-              loaded.config,
-            );
-          if (
-            workflow.binding.deploymentFingerprint !==
-              invocation.deploymentFingerprint ||
-            String(workflow.binding.definition.category) !==
-              "transactionOutputNonCanonical" ||
-            workflow.binding.definition.headerHash !== invocation.headerHash ||
-            workflow.decisionDigest !== invocation.decisionDigest
-          ) {
-            throw new Error(
-              "transactionOutputNonCanonical manifest-bound workflow identity differs from invocation",
-            );
-          }
-          return await executeManifestBoundTransactionOutputNonCanonicalWorkflowV1(
-            {
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            },
+        if (
+          loaded.retainedDaSources.length === 0 ||
+          loaded.retainedDaSources.some(
+            (source) => !(source instanceof DaLibp2pRetainedDaSource),
+          )
+        ) {
+          throw new Error(
+            "transactionOutputNonCanonical production runner requires concrete public retained-DA sources",
           );
-        } finally {
-          await loaded.close();
         }
-      },
-    });
+        const workflow =
+          await createManifestBoundTransactionOutputNonCanonicalWorkflow(
+            loaded.config,
+          );
+        if (
+          workflow.binding.deploymentFingerprint !==
+            invocation.deploymentFingerprint ||
+          String(workflow.binding.definition.category) !==
+            "transactionOutputNonCanonical" ||
+          workflow.binding.definition.headerHash !== invocation.headerHash ||
+          workflow.decisionDigest !== invocation.decisionDigest
+        ) {
+          throw new Error(
+            "transactionOutputNonCanonical manifest-bound workflow identity differs from invocation",
+          );
+        }
+        return await executeManifestBoundTransactionOutputNonCanonicalWorkflow({
+          workflow,
+          sources: loaded.retainedDaSources,
+          journal,
+        });
+      } finally {
+        await loaded.close();
+      }
+    },
+  });

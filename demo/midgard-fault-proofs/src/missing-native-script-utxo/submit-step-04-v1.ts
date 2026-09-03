@@ -1,6 +1,6 @@
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardLedgerOutputCommitmentV1,
+  decodeMidgardLedgerOutputCommitment,
   decodeMidgardNativeScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
@@ -20,18 +20,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_UTXO_CATEGORY_LABEL as FAMILY,
-  type MissingNativeScriptUtxoContractsV1,
+  type MissingNativeScriptUtxoContracts,
 } from "./contracts-v1.js";
 
 type State = NonNullable<
@@ -61,18 +61,18 @@ export const submitMissingNativeScriptUtxoStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptUtxoContractsV1;
+  readonly contracts: MissingNativeScriptUtxoContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly missingNativeScriptBytes: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -80,7 +80,7 @@ export const submitMissingNativeScriptUtxoStep04 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
     schema: Step04Datum,
@@ -93,7 +93,7 @@ export const submitMissingNativeScriptUtxoStep04 = async ({
     scriptBytes,
     nativeScript: decodeMidgardNativeScript(scriptBytes).script,
   });
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+  const descriptor = decodeMidgardLedgerOutputCommitment(
     Buffer.from(state.descriptor_cbor, "hex"),
   );
   const credential = decodeMidgardAddressBytes(
@@ -107,7 +107,7 @@ export const submitMissingNativeScriptUtxoStep04 = async ({
     throw new Error(`${label}: native preimage does not hash to credential`);
   }
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -148,7 +148,7 @@ export const submitMissingNativeScriptUtxoStep04 = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

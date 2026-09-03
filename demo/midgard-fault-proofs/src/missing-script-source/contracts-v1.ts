@@ -7,7 +7,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/missing_script_source/step_01.main.spend",
   "fraud_proofs/missing_script_source/step_02.main.spend",
   "fraud_proofs/missing_script_source/step_03.main.spend",
@@ -16,21 +16,21 @@ export const MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES_V1 = Object.freeze([
   "fraud_proofs/missing_script_source/step_06.main.spend",
 ] as const);
 
-export type MissingScriptSourceStepContractV1 = Readonly<{
+export type MissingScriptSourceStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type MissingScriptSourceContractsV1 = Readonly<{
+export type MissingScriptSourceContracts = Readonly<{
   steps: readonly [
-    MissingScriptSourceStepContractV1,
-    MissingScriptSourceStepContractV1,
-    MissingScriptSourceStepContractV1,
-    MissingScriptSourceStepContractV1,
-    MissingScriptSourceStepContractV1,
-    MissingScriptSourceStepContractV1,
+    MissingScriptSourceStepContract,
+    MissingScriptSourceStepContract,
+    MissingScriptSourceStepContract,
+    MissingScriptSourceStepContract,
+    MissingScriptSourceStepContract,
+    MissingScriptSourceStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -51,7 +51,7 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-export const applyMissingScriptSourceScriptsV1 = ({
+export const applyMissingScriptSourceScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -65,9 +65,9 @@ export const applyMissingScriptSourceScriptsV1 = ({
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
-}): MissingScriptSourceContractsV1["steps"] => {
+}): MissingScriptSourceContracts["steps"] => {
   const apply = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES_V1[index]!;
+    const blueprintTitle = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

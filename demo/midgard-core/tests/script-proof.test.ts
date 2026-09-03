@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardBoundedItemV1 } from "../src/bounded-item-v1.js";
-import { encodeMidgardCekProgramEnvelopeV1 } from "../src/cek-proof.js";
+import { buildMidgardBoundedItem } from "../src/bounded-item-v1.js";
+import { encodeMidgardCekProgramEnvelope } from "../src/cek-proof.js";
 import { encodeCbor } from "../src/codec/cbor.js";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   midgardAddressFromText,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "../src/codec/index.js";
 import {
   decodeMidgardVersionedScript,
@@ -22,25 +22,25 @@ import {
   type MidgardVersionedScript,
 } from "../src/codec/versioned-script.js";
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  collectMidgardV1ReferencedProgramEnvelopes,
-  decodeMidgardV1ScriptProgramEnvelope,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardMintAssetLeafV1,
-  hashMidgardOutputDescriptorLeafV1,
-  hashMidgardOutputLeafV1,
-  hashMidgardRedeemerLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptContextItemLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  hashMidgardScriptSourceLeafV1,
-  hashMidgardSignerLeafV1,
+  collectMidgardAttachedProgramEnvelopes,
+  collectMidgardReferencedProgramEnvelopes,
+  decodeMidgardScriptProgramEnvelope,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardMintAssetLeaf,
+  hashMidgardOutputDescriptorLeaf,
+  hashMidgardOutputLeaf,
+  hashMidgardRedeemerLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptContextItemLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  hashMidgardScriptSourceLeaf,
+  hashMidgardSignerLeaf,
   hashMidgardV1VersionedScript,
 } from "../src/script-proof.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  commitMidgardValidationMerkleFrontierV1,
+  buildMidgardValidationMerkleFrontier,
+  commitMidgardValidationMerkleFrontier,
 } from "../src/validation-merkle.js";
 
 describe("script proof primitives", () => {
@@ -60,14 +60,14 @@ describe("script proof primitives", () => {
     expect(scriptHash.toString("hex")).toBe(
       "8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a",
     );
-    const midgardV1Script = {
+    const midgardScript = {
       language: "MidgardV1",
       scriptBytes: Buffer.from("010203", "hex"),
     } satisfies MidgardVersionedScript;
-    expect(hashMidgardVersionedScript(midgardV1Script)).toBe(
+    expect(hashMidgardVersionedScript(midgardScript)).toBe(
       "760b621a49505853e1f4562d126e185f78483932825e0fb077a1ed80",
     );
-    const sourceLeaf = hashMidgardScriptSourceLeafV1({
+    const sourceLeaf = hashMidgardScriptSourceLeaf({
       originKind: "inline",
       sourceKey: Buffer.from("00", "hex"),
       script,
@@ -75,14 +75,14 @@ describe("script proof primitives", () => {
     expect(sourceLeaf.toString("hex")).toBe(
       "6b4984caceb70e0446b5d02a9b01068b7f409c76a54cf4e3b2b78f965b9eecc6",
     );
-    const redeemerLeaf = hashMidgardRedeemerLeafV1({
+    const redeemerLeaf = hashMidgardRedeemerLeaf({
       redeemerIndex: 0,
       canonicalRedeemerWitnessCbor: redeemerCbor,
     });
     expect(redeemerLeaf.toString("hex")).toBe(
       "e42aed2342a26c9334ac80aea22c66b8f649cf6be5a5a4a70c6f33cbd8bda8ab",
     );
-    const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+    const purposeLeaf = hashMidgardScriptPurposeLeaf({
       purposeKind: 0,
       purposeIndex: 2n,
       scriptHash,
@@ -92,7 +92,7 @@ describe("script proof primitives", () => {
       "24c90c22834ab9ec656bee1db27d5421515010ec4c6b8928a63f65aecb5e367b",
     );
     expect(
-      hashMidgardScriptExecutionLeafV1({
+      hashMidgardScriptExecutionLeaf({
         languageTag: 3,
         purposeLeaf,
         sourceLeaf,
@@ -100,26 +100,26 @@ describe("script proof primitives", () => {
       }).toString("hex"),
     ).toBe("b5f8846e6888a5ebab1619bd6738ce3591323a63eb41fc06954729c5f4418d21");
     expect(
-      hashMidgardOutputLeafV1({
+      hashMidgardOutputLeaf({
         outputIndex: 2,
         outputCbor: Buffer.from("0102", "hex"),
       }).toString("hex"),
     ).toBe("f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727");
     expect(
-      hashMidgardOutputDescriptorLeafV1({
+      hashMidgardOutputDescriptorLeaf({
         outputIndex: 2,
         descriptorCbor: Buffer.from("820102", "hex"),
       }).toString("hex"),
     ).toBe("7d1979d9a1af11ab5b13ceeb3ae750046f31ea6ed7776f99cb2d41b253e87fd4");
     expect(
-      hashMidgardMintAssetLeafV1({
+      hashMidgardMintAssetLeaf({
         policyId: Buffer.alloc(28, 0x11),
         assetName: Buffer.from("abcd", "hex"),
         quantity: -7n,
       }).toString("hex"),
     ).toBe("4813bd9aad26eea82fa41280aefd50c848041a2a6cf27be416e1873c2876a479");
     expect(
-      hashMidgardScriptContextItemLeafV1({
+      hashMidgardScriptContextItemLeaf({
         collectionKind: 0,
         itemIndex: 2,
         semanticRoot: Buffer.from(
@@ -132,7 +132,7 @@ describe("script proof primitives", () => {
     ).toBe("2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3");
 
     expect(
-      hashMidgardScriptPurposeLeafV1({
+      hashMidgardScriptPurposeLeaf({
         purposeKind: 1,
         purposeIndex: 2n,
         scriptHash,
@@ -140,7 +140,7 @@ describe("script proof primitives", () => {
       }),
     ).not.toEqual(purposeLeaf);
     expect(
-      hashMidgardRedeemerLeafV1({
+      hashMidgardRedeemerLeaf({
         redeemerIndex: 0,
         canonicalRedeemerWitnessCbor: Buffer.from(redeemerCbor).subarray(0, -1),
       }),
@@ -154,18 +154,18 @@ describe("script proof primitives", () => {
     } satisfies MidgardVersionedScript;
     const scriptCbor = encodeMidgardVersionedScript(script);
     const scriptHash = Buffer.from(hashMidgardVersionedScript(script), "hex");
-    const sourceLeaf = hashMidgardScriptSourceLeafV1({
+    const sourceLeaf = hashMidgardScriptSourceLeaf({
       originKind: "inline",
       sourceKey: Buffer.from("00", "hex"),
       script,
     });
     const sourceLeafForField = (fieldIndex: 6 | 7) =>
-      hashMidgardInlineScriptSourceLeafV1({
+      hashMidgardInlineScriptSourceLeaf({
         sourceIndex: 0n,
         scriptLanguageTag: 3,
         scriptHash,
         scriptTotalLength: scriptCbor.length,
-        itemCommitment: buildMidgardBoundedItemV1({
+        itemCommitment: buildMidgardBoundedItem({
           fieldIndex,
           itemIndex: 0,
           bytes: scriptCbor,
@@ -177,12 +177,12 @@ describe("script proof primitives", () => {
   });
 
   it("matches the Aiken signer leaf and seven-leaf frontier root vector", () => {
-    const signerLeaf = hashMidgardSignerLeafV1(Buffer.alloc(28, 0x11));
+    const signerLeaf = hashMidgardSignerLeaf(Buffer.alloc(28, 0x11));
     expect(signerLeaf.toString("hex")).toBe(
       "9e4bab3a1b4ca49640fe5c54486aac6a1183fb7da45eec6b30d46382d8f3418b",
     );
 
-    const frontier = buildMidgardValidationMerkleFrontierV1([
+    const frontier = buildMidgardValidationMerkleFrontier([
       Buffer.from(
         "6b4984caceb70e0446b5d02a9b01068b7f409c76a54cf4e3b2b78f965b9eecc6",
         "hex",
@@ -218,7 +218,7 @@ describe("script proof primitives", () => {
       [2, "6782c5608a8972e206c68c1693c7ce08730b0140df296974013184b4874aa813"],
     ]);
     expect(
-      commitMidgardValidationMerkleFrontierV1(frontier).toString("hex"),
+      commitMidgardValidationMerkleFrontier(frontier).toString("hex"),
     ).toBe("3f81171ae98f8745f125cbe28461e23204fe4f39e609e9ac4be7537b9dac126f");
   });
 
@@ -234,7 +234,7 @@ describe("script proof primitives", () => {
 
     const envelopeBackedScript = {
       language: "PlutusV3",
-      scriptBytes: encodeMidgardCekProgramEnvelopeV1({
+      scriptBytes: encodeMidgardCekProgramEnvelope({
         uplcVersion: [1n, 1n, 0n],
         termRoot: Buffer.alloc(32, 0x22),
         nodeCount: 3n,
@@ -253,11 +253,11 @@ describe("script proof primitives", () => {
         keyHash: Buffer.alloc(28, 0x33),
       },
     } satisfies MidgardVersionedScript;
-    expect(decodeMidgardV1ScriptProgramEnvelope(rawNativeScript)).toBeNull();
+    expect(decodeMidgardScriptProgramEnvelope(rawNativeScript)).toBeNull();
     expect(() => hashMidgardV1VersionedScript(rawNativeScript)).toThrow(
       /not canonical Midgard V1 program envelopes/u,
     );
-    expect(() => decodeMidgardV1ScriptProgramEnvelope(rawScript)).toThrow(
+    expect(() => decodeMidgardScriptProgramEnvelope(rawScript)).toThrow(
       /program[_ -]envelope/u,
     );
     expect(() =>
@@ -271,18 +271,18 @@ describe("script proof primitives", () => {
   it("resolves historical reference programs from exact ledger outrefs", () => {
     // The ledger out-ref, in its one Midgard spelling: §5.3's fixed-index
     // field-0/1 item, so index 2 is `19 0002` and the key is 38 bytes.
-    const outRef = encodeMidgardSpendInputItemV1({
+    const outRef = encodeMidgardSpendInputItem({
       txId: Buffer.alloc(32, 0x44),
       outputIndex: 2,
     });
-    const envelope = encodeMidgardCekProgramEnvelopeV1({
+    const envelope = encodeMidgardCekProgramEnvelope({
       uplcVersion: [1n, 1n, 0n],
       termRoot: Buffer.alloc(32, 0x55),
       nodeCount: 3n,
       materialByteLength: 144n,
     });
-    const tx: MidgardNativeTxCanonicalV1 = {
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const tx: MidgardNativeTxCanonical = {
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -315,7 +315,7 @@ describe("script proof primitives", () => {
       },
     });
 
-    const attachedTx: MidgardNativeTxCanonicalV1 = {
+    const attachedTx: MidgardNativeTxCanonical = {
       ...tx,
       body: {
         ...tx.body,
@@ -338,7 +338,7 @@ describe("script proof primitives", () => {
       materialByteLength: 144n,
     };
     const referenceLeafInput = (sourceKey: Uint8Array) =>
-      hashMidgardReferenceScriptSourceLeafV1({
+      hashMidgardReferenceScriptSourceLeaf({
         sourceKey,
         scriptLanguageTag: 3,
         scriptHash: Buffer.from(
@@ -352,7 +352,7 @@ describe("script proof primitives", () => {
           language: "PlutusV3",
           scriptBytes: envelope,
         }).length,
-        itemCommitment: buildMidgardBoundedItemV1({
+        itemCommitment: buildMidgardBoundedItem({
           fieldIndex: 2,
           itemIndex: 2,
           bytes: encodeMidgardVersionedScript({
@@ -361,12 +361,12 @@ describe("script proof primitives", () => {
           }),
         }).commitment,
       });
-    expect(collectMidgardV1AttachedProgramEnvelopes(attachedTx)).toEqual([
+    expect(collectMidgardAttachedProgramEnvelopes(attachedTx)).toEqual([
       expectedEnvelope,
       expectedEnvelope,
     ]);
     expect(referenceLeafInput(outRef)).toEqual(
-      hashMidgardScriptSourceLeafV1({
+      hashMidgardScriptSourceLeaf({
         originKind: "reference",
         sourceKey: outRef,
         script: { language: "PlutusV3", scriptBytes: envelope },
@@ -374,13 +374,13 @@ describe("script proof primitives", () => {
     );
 
     expect(
-      collectMidgardV1ReferencedProgramEnvelopes(
+      collectMidgardReferencedProgramEnvelopes(
         tx,
         new Map([[outRef.toString("hex"), output]]),
       ),
     ).toEqual([expectedEnvelope]);
     expect(() =>
-      collectMidgardV1ReferencedProgramEnvelopes(tx, new Map()),
+      collectMidgardReferencedProgramEnvelopes(tx, new Map()),
     ).toThrow(/no resolved ledger output/u);
     // A 31-byte tx_id: the wrapper lies about a 38-byte key's contents, so the
     // §5.3 decoder rejects it.
@@ -434,7 +434,7 @@ describe("script proof primitives", () => {
     // Index 65,536 is outside the ledger's uint16 index domain, so it has no
     // §5.3 encoding at all — the encoder cannot even build the bytes.
     expect(() =>
-      encodeMidgardSpendInputItemV1({
+      encodeMidgardSpendInputItem({
         txId: Buffer.alloc(32, 0x44),
         outputIndex: 65_536,
       }),

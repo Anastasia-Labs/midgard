@@ -3,16 +3,16 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  buildMidgardValidationMerkleMembershipV1,
-  commitMidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleFrontierV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleFrontier,
+  buildMidgardValidationMerkleMembership,
+  commitMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
+  verifyMidgardValidationMerkleMembership,
 } from "./validation-merkle.js";
 
-export const MIDGARD_BOUNDED_ITEM_V1_VERSION = 1 as const;
-export const MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 = 4_095 as const;
-export const MIDGARD_BOUNDED_ITEM_FIELD_COUNT_V1 = 9 as const;
+export const MIDGARD_BOUNDED_ITEM_VERSION = 1 as const;
+export const MIDGARD_BOUNDED_ITEM_CHUNK_BYTES = 4_095 as const;
+export const MIDGARD_BOUNDED_ITEM_FIELD_COUNT = 9 as const;
 
 const CHUNK_DOMAIN = Buffer.from("MidgardBoundedItemChunkV1", "ascii");
 const COMMITMENT_DOMAIN = Buffer.from(
@@ -20,23 +20,23 @@ const COMMITMENT_DOMAIN = Buffer.from(
   "ascii",
 );
 
-export type MidgardBoundedItemV1 = {
+export type MidgardBoundedItem = {
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly bytes: Buffer;
   readonly chunkHashes: readonly Hash32[];
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly commitment: Hash32;
 };
 
-export type MidgardBoundedItemChunkProofV1 = {
-  readonly version: typeof MIDGARD_BOUNDED_ITEM_V1_VERSION;
+export type MidgardBoundedItemChunkProof = {
+  readonly version: typeof MIDGARD_BOUNDED_ITEM_VERSION;
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly totalLength: number;
   readonly chunkIndex: number;
   readonly chunk: Buffer;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly siblings: readonly Hash32[];
 };
 
@@ -52,38 +52,35 @@ const exactNonNegative = (value: number, name: string): number => {
 
 const exactFieldIndex = (fieldIndex: number): number => {
   const exact = exactNonNegative(fieldIndex, "fieldIndex");
-  if (exact >= MIDGARD_BOUNDED_ITEM_FIELD_COUNT_V1) {
+  if (exact >= MIDGARD_BOUNDED_ITEM_FIELD_COUNT) {
     throw new Error(`unknown V1 bounded-item field index ${fieldIndex}`);
   }
   return exact;
 };
 
-export const midgardBoundedItemChunkCountV1 = (totalLength: number): number => {
+export const midgardBoundedItemChunkCount = (totalLength: number): number => {
   const exactLength = exactNonNegative(totalLength, "totalLength");
-  return Math.max(
-    1,
-    Math.ceil(exactLength / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1),
-  );
+  return Math.max(1, Math.ceil(exactLength / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES));
 };
 
-export const midgardBoundedItemExpectedChunkLengthV1 = ({
+export const midgardBoundedItemExpectedChunkLength = ({
   totalLength,
   chunkIndex,
 }: {
   readonly totalLength: number;
   readonly chunkIndex: number;
 }): number => {
-  const count = midgardBoundedItemChunkCountV1(totalLength);
+  const count = midgardBoundedItemChunkCount(totalLength);
   const exactChunkIndex = exactNonNegative(chunkIndex, "chunkIndex");
   if (exactChunkIndex >= count) {
     throw new Error("V1 bounded-item chunk index is out of range");
   }
   return exactChunkIndex + 1 < count
-    ? MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1
-    : totalLength - exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+    ? MIDGARD_BOUNDED_ITEM_CHUNK_BYTES
+    : totalLength - exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
 };
 
-export const hashMidgardBoundedItemChunkV1 = ({
+export const hashMidgardBoundedItemChunk = ({
   fieldIndex,
   itemIndex,
   chunkIndex,
@@ -94,14 +91,14 @@ export const hashMidgardBoundedItemChunkV1 = ({
   readonly chunkIndex: number;
   readonly chunk: Uint8Array;
 }): Hash32 => {
-  if (chunk.length > MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1) {
+  if (chunk.length > MIDGARD_BOUNDED_ITEM_CHUNK_BYTES) {
     throw new Error("V1 bounded-item chunk exceeds its proof envelope");
   }
   return hash32(
     Buffer.concat([
       CHUNK_DOMAIN,
       encodeCbor([
-        BigInt(MIDGARD_BOUNDED_ITEM_V1_VERSION),
+        BigInt(MIDGARD_BOUNDED_ITEM_VERSION),
         BigInt(exactFieldIndex(fieldIndex)),
         BigInt(exactNonNegative(itemIndex, "itemIndex")),
         BigInt(exactNonNegative(chunkIndex, "chunkIndex")),
@@ -111,7 +108,7 @@ export const hashMidgardBoundedItemChunkV1 = ({
   );
 };
 
-export const commitMidgardBoundedItemV1 = ({
+export const commitMidgardBoundedItem = ({
   fieldIndex,
   itemIndex,
   totalLength,
@@ -120,9 +117,9 @@ export const commitMidgardBoundedItemV1 = ({
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly totalLength: number;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
 }): Hash32 => {
-  const count = midgardBoundedItemChunkCountV1(totalLength);
+  const count = midgardBoundedItemChunkCount(totalLength);
   if (frontier.count !== count) {
     throw new Error("V1 bounded-item frontier count does not match its length");
   }
@@ -130,17 +127,17 @@ export const commitMidgardBoundedItemV1 = ({
     Buffer.concat([
       COMMITMENT_DOMAIN,
       encodeCbor([
-        BigInt(MIDGARD_BOUNDED_ITEM_V1_VERSION),
+        BigInt(MIDGARD_BOUNDED_ITEM_VERSION),
         BigInt(exactFieldIndex(fieldIndex)),
         BigInt(exactNonNegative(itemIndex, "itemIndex")),
         BigInt(exactNonNegative(totalLength, "totalLength")),
-        commitMidgardValidationMerkleFrontierV1(frontier),
+        commitMidgardValidationMerkleFrontier(frontier),
       ]),
     ]),
   );
 };
 
-export const buildMidgardBoundedItemV1 = ({
+export const buildMidgardBoundedItem = ({
   fieldIndex,
   itemIndex,
   bytes,
@@ -148,37 +145,37 @@ export const buildMidgardBoundedItemV1 = ({
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly bytes: Uint8Array;
-}): MidgardBoundedItemV1 => {
+}): MidgardBoundedItem => {
   const exactField = exactFieldIndex(fieldIndex);
   const exactItem = exactNonNegative(itemIndex, "itemIndex");
   const exactBytes = Buffer.from(bytes);
   const chunks = Array.from(
-    { length: midgardBoundedItemChunkCountV1(exactBytes.length) },
+    { length: midgardBoundedItemChunkCount(exactBytes.length) },
     (_, chunkIndex) =>
       exactBytes.subarray(
-        chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+        chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
         Math.min(
           exactBytes.length,
-          (chunkIndex + 1) * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+          (chunkIndex + 1) * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
         ),
       ),
   );
   const chunkHashes = chunks.map((chunk, chunkIndex) =>
-    hashMidgardBoundedItemChunkV1({
+    hashMidgardBoundedItemChunk({
       fieldIndex: exactField,
       itemIndex: exactItem,
       chunkIndex,
       chunk,
     }),
   );
-  const frontier = buildMidgardValidationMerkleFrontierV1(chunkHashes);
+  const frontier = buildMidgardValidationMerkleFrontier(chunkHashes);
   return {
     fieldIndex: exactField,
     itemIndex: exactItem,
     bytes: exactBytes,
     chunkHashes,
     frontier,
-    commitment: commitMidgardBoundedItemV1({
+    commitment: commitMidgardBoundedItem({
       fieldIndex: exactField,
       itemIndex: exactItem,
       totalLength: exactBytes.length,
@@ -187,18 +184,18 @@ export const buildMidgardBoundedItemV1 = ({
   };
 };
 
-export const buildMidgardBoundedItemChunkProofV1 = (
-  item: MidgardBoundedItemV1,
+export const buildMidgardBoundedItemChunkProof = (
+  item: MidgardBoundedItem,
   chunkIndex: number,
-): MidgardBoundedItemChunkProofV1 => {
+): MidgardBoundedItemChunkProof => {
   const exactChunkIndex = exactNonNegative(chunkIndex, "chunkIndex");
-  const membership = buildMidgardValidationMerkleMembershipV1(
+  const membership = buildMidgardValidationMerkleMembership(
     item.chunkHashes,
     exactChunkIndex,
   );
-  const offset = exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+  const offset = exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES;
   return {
-    version: MIDGARD_BOUNDED_ITEM_V1_VERSION,
+    version: MIDGARD_BOUNDED_ITEM_VERSION,
     fieldIndex: item.fieldIndex,
     itemIndex: item.itemIndex,
     totalLength: item.bytes.length,
@@ -207,7 +204,7 @@ export const buildMidgardBoundedItemChunkProofV1 = (
       item.bytes.subarray(
         offset,
         offset +
-          midgardBoundedItemExpectedChunkLengthV1({
+          midgardBoundedItemExpectedChunkLength({
             totalLength: item.bytes.length,
             chunkIndex: exactChunkIndex,
           }),
@@ -218,32 +215,32 @@ export const buildMidgardBoundedItemChunkProofV1 = (
   };
 };
 
-export const verifyMidgardBoundedItemChunkProofV1 = ({
+export const verifyMidgardBoundedItemChunkProof = ({
   expectedCommitment,
   proof,
 }: {
   readonly expectedCommitment: Uint8Array;
-  readonly proof: MidgardBoundedItemChunkProofV1;
+  readonly proof: MidgardBoundedItemChunkProof;
 }): boolean => {
   try {
     if (
-      proof.version !== MIDGARD_BOUNDED_ITEM_V1_VERSION ||
+      proof.version !== MIDGARD_BOUNDED_ITEM_VERSION ||
       proof.totalLength < 0 ||
       proof.chunkIndex < 0 ||
-      proof.chunkIndex >= midgardBoundedItemChunkCountV1(proof.totalLength) ||
-      proof.chunk.length !== midgardBoundedItemExpectedChunkLengthV1(proof)
+      proof.chunkIndex >= midgardBoundedItemChunkCount(proof.totalLength) ||
+      proof.chunk.length !== midgardBoundedItemExpectedChunkLength(proof)
     ) {
       return false;
     }
-    const leafHash = hashMidgardBoundedItemChunkV1(proof);
+    const leafHash = hashMidgardBoundedItemChunk(proof);
     return (
-      verifyMidgardValidationMerkleMembershipV1({
+      verifyMidgardValidationMerkleMembership({
         frontier: proof.frontier,
         leafIndex: proof.chunkIndex,
         leafHash,
         siblings: proof.siblings,
       }) &&
-      commitMidgardBoundedItemV1({
+      commitMidgardBoundedItem({
         fieldIndex: proof.fieldIndex,
         itemIndex: proof.itemIndex,
         totalLength: proof.totalLength,

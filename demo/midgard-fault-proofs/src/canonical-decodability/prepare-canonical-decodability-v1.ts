@@ -6,35 +6,35 @@
  */
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import {
-  canonicalDecodabilityEvidenceFromCommittedFieldV1,
-  type CanonicalDecodabilityEvidenceV1,
+  type CanonicalDecodabilityEvidence,
+  canonicalDecodabilityEvidenceFromCommittedField,
   type CanonicalDecodabilityStep02State,
-  canonicalDecodabilityStep02StateFromEvidenceV1,
-  type CommittedFieldClaimV1,
-  type FieldCarriageV1,
-  isMidgardWitnessSetFieldV1,
-  MIDGARD_COMMITTED_FIELD_COUNT_V1,
-  MIDGARD_FIELD_INDEX_V1,
+  canonicalDecodabilityStep02StateFromEvidence,
+  type CommittedFieldClaim,
+  type FieldCarriage,
+  isMidgardWitnessSetField,
+  MIDGARD_COMMITTED_FIELD_COUNT,
+  MIDGARD_FIELD_INDEX,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 
 import { canonicalDecodabilitySubmitError } from "./submit-common-v1.js";
 
-export type PreparedCanonicalDecodabilityV1 = {
+export type PreparedCanonicalDecodability = {
   readonly badTxId: string;
   readonly nativeTxCompactCbor: string;
   readonly fieldIndex: number;
   readonly committedPreimage: string;
   readonly committedFieldHash: string;
-  readonly evidence: CanonicalDecodabilityEvidenceV1;
-  readonly claim: CommittedFieldClaimV1;
+  readonly evidence: CanonicalDecodabilityEvidence;
+  readonly claim: CommittedFieldClaim;
   readonly step02State: CanonicalDecodabilityStep02State;
 };
 
@@ -58,9 +58,9 @@ const requireHex = (value: string, label: string): string => {
   return normalized;
 };
 
-const witnessSetHashV1 = (witnessSet: NativeTxWitnessSetCompact): string =>
+const witnessSetHash = (witnessSet: NativeTxWitnessSetCompact): string =>
   computeHash32(
-    encodeMidgardNativeTxWitnessSetCompactV1({
+    encodeMidgardNativeTxWitnessSetCompact({
       addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
       scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
       redeemerTxWitsHash: Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
@@ -74,16 +74,16 @@ const committedFieldHashV1 = ({
   witnessSet,
 }: {
   readonly fieldIndex: number;
-  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   readonly witnessSet?: NativeTxWitnessSetCompact;
 }): string => {
-  if (isMidgardWitnessSetFieldV1(fieldIndex)) {
+  if (isMidgardWitnessSetField(fieldIndex)) {
     if (witnessSet === undefined) {
       throw canonicalDecodabilitySubmitError(
         `field ${fieldIndex.toString()} is a witness-set field, but no compact witness set was supplied.`,
       );
     }
-    const computedWitnessSetHash = witnessSetHashV1(witnessSet);
+    const computedWitnessSetHash = witnessSetHash(witnessSet);
     const committedWitnessSetHash = Buffer.from(
       compact.transactionWitnessSetHash,
     ).toString("hex");
@@ -93,9 +93,9 @@ const committedFieldHashV1 = ({
       );
     }
     const byIndex: Readonly<Record<number, string>> = {
-      [MIDGARD_FIELD_INDEX_V1.scriptWitnesses]: witnessSet.script_tx_wits_hash,
-      [MIDGARD_FIELD_INDEX_V1.addressWitnesses]: witnessSet.addr_tx_wits_hash,
-      [MIDGARD_FIELD_INDEX_V1.redeemers]: witnessSet.redeemer_tx_wits_hash,
+      [MIDGARD_FIELD_INDEX.scriptWitnesses]: witnessSet.script_tx_wits_hash,
+      [MIDGARD_FIELD_INDEX.addressWitnesses]: witnessSet.addr_tx_wits_hash,
+      [MIDGARD_FIELD_INDEX.redeemers]: witnessSet.redeemer_tx_wits_hash,
     };
     const commitment = byIndex[fieldIndex];
     if (commitment === undefined) {
@@ -131,7 +131,7 @@ const committedFieldHashV1 = ({
   return Buffer.from(commitment).toString("hex");
 };
 
-export const prepareCanonicalDecodabilityV1 = ({
+export const prepareCanonicalDecodability = ({
   badTxId,
   nativeTxCompactCbor,
   fieldIndex,
@@ -148,25 +148,25 @@ export const prepareCanonicalDecodabilityV1 = ({
    * Exact §8 carriage resolved against the step transaction's complete
    * reference-input set. Omit only for an inline-sized preimage.
    */
-  readonly carriage?: FieldCarriageV1;
-}): PreparedCanonicalDecodabilityV1 => {
+  readonly carriage?: FieldCarriage;
+}): PreparedCanonicalDecodability => {
   const normalizedBadTxId = requireHash32(badTxId, "bad transaction id");
   if (
     !Number.isInteger(fieldIndex) ||
     fieldIndex < 0 ||
-    fieldIndex >= MIDGARD_COMMITTED_FIELD_COUNT_V1
+    fieldIndex >= MIDGARD_COMMITTED_FIELD_COUNT
   ) {
     throw canonicalDecodabilitySubmitError(
-      `field index ${fieldIndex.toString()} is outside 0..${(MIDGARD_COMMITTED_FIELD_COUNT_V1 - 1).toString()}.`,
+      `field index ${fieldIndex.toString()} is outside 0..${(MIDGARD_COMMITTED_FIELD_COUNT - 1).toString()}.`,
     );
   }
   const normalizedCompactCbor = requireHex(
     nativeTxCompactCbor,
     "native compact transaction CBOR",
   );
-  let compact: ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+  let compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   try {
-    compact = decodeMidgardNativeTxCompactV1(
+    compact = decodeMidgardNativeTxCompact(
       Buffer.from(normalizedCompactCbor, "hex"),
     );
   } catch (cause) {
@@ -175,14 +175,14 @@ export const prepareCanonicalDecodabilityV1 = ({
     );
   }
   if (
-    encodeMidgardNativeTxCompactV1(compact).toString("hex") !==
+    encodeMidgardNativeTxCompact(compact).toString("hex") !==
     normalizedCompactCbor
   ) {
     throw canonicalDecodabilitySubmitError(
       "native compact transaction CBOR is not canonical.",
     );
   }
-  const derivedTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
+  const derivedTxId = computeMidgardNativeTxId(compact).toString("hex");
   if (derivedTxId !== normalizedBadTxId) {
     throw canonicalDecodabilitySubmitError(
       `native compact transaction re-derives to ${derivedTxId}, not the committed key ${normalizedBadTxId}.`,
@@ -197,10 +197,10 @@ export const prepareCanonicalDecodabilityV1 = ({
   const preimage = Buffer.from(committedPreimage);
   if (
     carriage === undefined &&
-    preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
+    preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
   ) {
     throw canonicalDecodabilitySubmitError(
-      `committed preimage is ${preimage.length.toString()} bytes, above the ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()}-byte inline frontier; publish a RawUtxo/Certified carriage before submission.`,
+      `committed preimage is ${preimage.length.toString()} bytes, above the ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES.toString()}-byte inline frontier; publish a RawUtxo/Certified carriage before submission.`,
     );
   }
   const carriedHash = computeHash32(preimage).toString("hex");
@@ -210,7 +210,7 @@ export const prepareCanonicalDecodabilityV1 = ({
     );
   }
 
-  const evidence = canonicalDecodabilityEvidenceFromCommittedFieldV1({
+  const evidence = canonicalDecodabilityEvidenceFromCommittedField({
     badTxId: normalizedBadTxId,
     fieldIndex,
     committedPreimage: preimage,
@@ -222,7 +222,7 @@ export const prepareCanonicalDecodabilityV1 = ({
   }
   const resolvedCarriage =
     carriage ?? ({ Inline: { preimage: preimage.toString("hex") } } as const);
-  const claim: CommittedFieldClaimV1 = isMidgardWitnessSetFieldV1(fieldIndex)
+  const claim: CommittedFieldClaim = isMidgardWitnessSetField(fieldIndex)
     ? {
         WitnessFieldClaim: {
           field_index: BigInt(fieldIndex),
@@ -244,6 +244,6 @@ export const prepareCanonicalDecodabilityV1 = ({
     committedFieldHash,
     evidence,
     claim,
-    step02State: canonicalDecodabilityStep02StateFromEvidenceV1(evidence),
+    step02State: canonicalDecodabilityStep02StateFromEvidence(evidence),
   });
 };

@@ -26,10 +26,10 @@ import {
   faultProofStepRedeemerSchema,
 } from "./native.js";
 
-export const CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID_V1 =
+export const CROSS_BLOCK_DUPLICATE_EVENT_VIOLATION_ID =
   "cross-block-duplicate-event" as const;
 
-export const CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1 =
+export const CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.crossBlockDuplicateEvent;
 
 export const CrossBlockDuplicateEventHeaderHashSchema = Data.Bytes({
@@ -40,7 +40,7 @@ export type CrossBlockDuplicateEventHeaderHash = Data.Static<
   typeof CrossBlockDuplicateEventHeaderHashSchema
 >;
 
-export const crossBlockDuplicateEventThreadTokenAssetNameV1 = (
+export const crossBlockDuplicateEventThreadTokenAssetName = (
   challengedHeaderHash: CrossBlockDuplicateEventHeaderHash,
 ): string => {
   if (!/^[0-9a-f]{56}$/u.test(challengedHeaderHash)) {
@@ -48,21 +48,21 @@ export const crossBlockDuplicateEventThreadTokenAssetNameV1 = (
       "cross-block-duplicate-event challenged header hash must be 28 bytes of lowercase hex",
     );
   }
-  return `${CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1}${challengedHeaderHash}`;
+  return `${CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID}${challengedHeaderHash}`;
 };
 
-export const CrossBlockDuplicateEventKindV1Schema = Data.Enum([
+export const CrossBlockDuplicateEventKindSchema = Data.Enum([
   Data.Literal("DuplicateDepositV1"),
   Data.Literal("DuplicateWithdrawalV1"),
   Data.Literal("DuplicateForcedTransactionV1"),
 ]);
-export type CrossBlockDuplicateEventKindV1 = Data.Static<
-  typeof CrossBlockDuplicateEventKindV1Schema
+export type CrossBlockDuplicateEventKind = Data.Static<
+  typeof CrossBlockDuplicateEventKindSchema
 >;
-export const CrossBlockDuplicateEventKindV1 =
-  CrossBlockDuplicateEventKindV1Schema as unknown as CrossBlockDuplicateEventKindV1;
+export const CrossBlockDuplicateEventKind =
+  CrossBlockDuplicateEventKindSchema as unknown as CrossBlockDuplicateEventKind;
 
-export const CommittedDuplicateEventProofV1Schema = Data.Enum([
+export const CommittedDuplicateEventProofSchema = Data.Enum([
   Data.Object({
     CommittedDuplicateDepositV1: Data.Object({
       membership: DepositSourceMembershipProofSchema,
@@ -79,7 +79,7 @@ export const CommittedDuplicateEventProofV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type CommittedDuplicateEventProofV1 =
+export type CommittedDuplicateEventProof =
   | {
       readonly CommittedDuplicateDepositV1: {
         readonly membership: DepositSourceMembershipProof;
@@ -95,8 +95,8 @@ export type CommittedDuplicateEventProofV1 =
         readonly membership: ForcedTransactionSourceMembershipProof;
       };
     };
-export const CommittedDuplicateEventProofV1 =
-  CommittedDuplicateEventProofV1Schema as unknown as CommittedDuplicateEventProofV1;
+export const CommittedDuplicateEventProof =
+  CommittedDuplicateEventProofSchema as unknown as CommittedDuplicateEventProof;
 
 export const CrossBlockDuplicateEventStep01DatumSchema =
   faultProofStepDatumSchema(Data.Any());
@@ -111,7 +111,7 @@ export const CrossBlockDuplicateEventStep01ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
-  committed_event: CommittedDuplicateEventProofV1Schema,
+  committed_event: CommittedDuplicateEventProofSchema,
 });
 export type CrossBlockDuplicateEventStep01Args = Data.Static<
   typeof CrossBlockDuplicateEventStep01ArgsSchema
@@ -130,7 +130,7 @@ export const CrossBlockDuplicateEventStep01SpendRedeemer =
 export const CrossBlockDuplicateEventStep02StateSchema = Data.Object({
   challenged_header_hash: CrossBlockDuplicateEventHeaderHashSchema,
   settlement_policy_id: ScriptHashSchema,
-  event_kind: CrossBlockDuplicateEventKindV1Schema,
+  event_kind: CrossBlockDuplicateEventKindSchema,
   event_key: OutputReferenceSchema,
 });
 export type CrossBlockDuplicateEventStep02State = Data.Static<
@@ -152,7 +152,7 @@ export const CrossBlockDuplicateEventStep02ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
   settlement_ref_input_index: Data.Integer(),
-  settled_event: CommittedDuplicateEventProofV1Schema,
+  settled_event: CommittedDuplicateEventProofSchema,
 });
 export type CrossBlockDuplicateEventStep02Args = Data.Static<
   typeof CrossBlockDuplicateEventStep02ArgsSchema
@@ -168,15 +168,15 @@ export type CrossBlockDuplicateEventStep02SpendRedeemer = Data.Static<
 export const CrossBlockDuplicateEventStep02SpendRedeemer =
   CrossBlockDuplicateEventStep02SpendRedeemerSchema as unknown as CrossBlockDuplicateEventStep02SpendRedeemer;
 
-export const CROSS_BLOCK_DUPLICATE_EVENT_STEP_NAMES_V1 = [
+export const CROSS_BLOCK_DUPLICATE_EVENT_STEP_NAMES = [
   "step_01",
   "step_02",
 ] as const;
-export type CrossBlockDuplicateEventStepNameV1 =
-  (typeof CROSS_BLOCK_DUPLICATE_EVENT_STEP_NAMES_V1)[number];
+export type CrossBlockDuplicateEventStepName =
+  (typeof CROSS_BLOCK_DUPLICATE_EVENT_STEP_NAMES)[number];
 
-export const crossBlockDuplicateEventStepDatumSchemaV1 = (
-  step: CrossBlockDuplicateEventStepNameV1,
+export const crossBlockDuplicateEventStepDatumSchema = (
+  step: CrossBlockDuplicateEventStepName,
 ) => {
   switch (step) {
     case "step_01":
@@ -186,10 +186,10 @@ export const crossBlockDuplicateEventStepDatumSchemaV1 = (
   }
 };
 
-export const duplicateEventKindAndKeyV1 = (
-  proof: CommittedDuplicateEventProofV1,
+export const duplicateEventKindAndKey = (
+  proof: CommittedDuplicateEventProof,
 ): {
-  readonly eventKind: CrossBlockDuplicateEventKindV1;
+  readonly eventKind: CrossBlockDuplicateEventKind;
   readonly eventKey: OutputReference;
 } => {
   if ("CommittedDuplicateDepositV1" in proof) {
@@ -211,16 +211,16 @@ export const duplicateEventKindAndKeyV1 = (
 };
 
 /** Step-01 → step-02 state, derived only after challenged membership passes. */
-export const crossBlockDuplicateEventStep02StateV1 = ({
+export const crossBlockDuplicateEventStep02State = ({
   challengedHeaderHash,
   settlementPolicyId,
   committedEvent,
 }: {
   readonly challengedHeaderHash: CrossBlockDuplicateEventHeaderHash;
   readonly settlementPolicyId: string;
-  readonly committedEvent: CommittedDuplicateEventProofV1;
+  readonly committedEvent: CommittedDuplicateEventProof;
 }): CrossBlockDuplicateEventStep02State => {
-  const { eventKind, eventKey } = duplicateEventKindAndKeyV1(committedEvent);
+  const { eventKind, eventKey } = duplicateEventKindAndKey(committedEvent);
   return {
     challenged_header_hash: challengedHeaderHash,
     settlement_policy_id: settlementPolicyId,
@@ -230,21 +230,21 @@ export const crossBlockDuplicateEventStep02StateV1 = ({
 };
 
 /** Local finalization preflight mirroring the two-header/same-event predicate. */
-export const assertConfirmedDuplicateEventV1 = ({
+export const assertConfirmedDuplicateEvent = ({
   state,
   settledHeaderHash,
   settledEvent,
 }: {
   readonly state: CrossBlockDuplicateEventStep02State;
   readonly settledHeaderHash: string;
-  readonly settledEvent: CommittedDuplicateEventProofV1;
+  readonly settledEvent: CommittedDuplicateEventProof;
 }): void => {
   if (settledHeaderHash === state.challenged_header_hash) {
     throw new Error(
       "cross-block-duplicate-event settlement header must differ from challenged header",
     );
   }
-  const { eventKind, eventKey } = duplicateEventKindAndKeyV1(settledEvent);
+  const { eventKind, eventKey } = duplicateEventKindAndKey(settledEvent);
   if (eventKind !== state.event_kind) {
     throw new Error(
       "cross-block-duplicate-event challenged and settlement root domains differ",

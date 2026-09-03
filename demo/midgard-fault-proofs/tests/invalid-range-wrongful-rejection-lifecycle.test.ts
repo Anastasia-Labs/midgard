@@ -1,12 +1,12 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -15,10 +15,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import type { InvalidRangeContractsV1 } from "../src/invalid-range/contracts-v1.js";
-import { prepareInvalidRangeEvidenceV1 } from "../src/invalid-range/family-v1.js";
+import type { InvalidRangeContracts } from "../src/invalid-range/contracts-v1.js";
+import { prepareInvalidRangeEvidence } from "../src/invalid-range/family-v1.js";
 import {
-  submitInvalidRangeStep01ForcedV1,
+  submitInvalidRangeStep01Forced,
   submitInvalidRangeStep02V1,
 } from "../src/invalid-range/submit-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
@@ -26,13 +26,13 @@ import { submitInit } from "../src/submit-init.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  admitProductionNativeInclusionTwoStepArtifactV1,
-  PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1,
+  admitNativeInclusionTwoStepArtifact,
+  NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
 } from "../src/workflow/production-native-inclusion-two-step-v1.js";
-import { submitZeroInputCancelV1 } from "../src/zero-input/submit-cancel-v1.js";
+import { submitZeroInputCancel } from "../src/zero-input/submit-cancel-v1.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -43,7 +43,7 @@ import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-s
 const network = "Custom" as const;
 describe("invalidRange wrongful-rejection real lifecycle", () => {
   it("runs every cancel/restart boundary, forced contradiction, permanent mint, and leased removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realInvalidRange: true,
         alwaysFraudProofCatalogue: true,
@@ -55,7 +55,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       harness.faultProofReferenceScripts.fraudProofInvalidRange!.utxo,
       harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
     ] as const;
-    const contracts: InvalidRangeContractsV1 = {
+    const contracts: InvalidRangeContracts = {
       steps: chain.steps.map((step, index) => ({
         ...step,
         blueprintTitle:
@@ -63,7 +63,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
             ? "fraud_proofs/invalid_range/step_01.main.spend"
             : "fraud_proofs/invalid_range/step_02.main.spend",
         referenceOutRef: `${references[index].txHash}#${references[index].outputIndex}`,
-      })) as unknown as InvalidRangeContractsV1["steps"],
+      })) as unknown as InvalidRangeContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -85,7 +85,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
           harness.emulator.now() + 120_000,
         ) - 1,
     });
-    const invalid = adjudicateMidgardNativeTxFullV1Validity(
+    const invalid = adjudicateMidgardNativeTxFullValidity(
       makeNativeTx({
         spendInputCbors: [],
         fee: 0n,
@@ -94,8 +94,8 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       }),
       "TxIsInvalid",
     );
-    const transactionId = computeMidgardNativeTxIdV1(invalid).toString("hex");
-    const source = deriveMidgardNativeTxProofSourceV1(invalid);
+    const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
+    const source = deriveMidgardNativeTxProofSource(invalid);
     const leaf = {
       tx_id: transactionId,
       source: {
@@ -111,7 +111,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     const key = base.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(key, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(leaf as never, ForcedInclusionTxV1Schema as never),
+      Data.to(leaf as never, ForcedInclusionTxSchema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -144,8 +144,8 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       catalogue,
       header,
     });
-    const evidence = prepareInvalidRangeEvidenceV1({
-      subject: forcedVerdictSubjectV1({
+    const evidence = prepareInvalidRangeEvidence({
+      subject: forcedVerdictSubject({
         transactionId,
         sourceKey: key,
         rejectionReason: "ValidityIntervalExcludesBlockSlot",
@@ -153,8 +153,8 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       blockSlot: header.blockSlot,
       txBody: nativeTxFromCoreCompact(invalid.compact).body,
     });
-    const admitted = admitProductionNativeInclusionTwoStepArtifactV1({
-      schemaVersion: PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1,
+    const admitted = admitNativeInclusionTwoStepArtifact({
+      schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
       category: "invalidRange",
       headerHash: setup.headerHash,
       detectionId: `invalid-range:forced:0:${transactionId}:ValidityIntervalExcludesBlockSlot`,
@@ -165,20 +165,20 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       nativeTxCompactCbor: leaf.source.compact_cbor,
       l2TransactionSourceCbor: Data.to(
         { tx_id: transactionId, source: leaf.source } as never,
-        SDK.L2TransactionSourceV1 as never,
+        SDK.L2TransactionSource as never,
       ),
       transactionsPhasRoot: "00".repeat(32),
       txMembershipProofCbor: "",
       sourceKind: "forced",
       subjectCbor: Data.to(
         evidence.subject as never,
-        SDK.InvalidRangeVerdictSubjectV1Schema as never,
+        SDK.InvalidRangeVerdictSubjectSchema as never,
       ),
       inputFieldPreimageCbor: "",
       inputFieldCommitment: "00".repeat(32),
       forcedSourceCbor: Data.to(
         { header, membership, direction: 1n } as never,
-        SDK.InvalidRangeForcedSourcePayloadV1Schema as never,
+        SDK.InvalidRangeForcedSourcePayloadSchema as never,
       ),
     });
     expect(admitted.invalidRangeEvidence).toEqual(evidence);
@@ -206,7 +206,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     };
     const bind = async (threadOutRef: string) => {
       const c = await captureEmulatorSubmission(harness.emulator, () =>
-        submitInvalidRangeStep01ForcedV1({
+        submitInvalidRangeStep01Forced({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -223,7 +223,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     const cancel = async (threadOutRef: string, step: 0 | 1) =>
       captures.push(
         await captureEmulatorSubmission(harness.emulator, () =>
-          submitZeroInputCancelV1({
+          submitZeroInputCancel({
             lucid: harness.proverLucid,
             contracts: contracts as never,
             categoryId: category.categoryId,

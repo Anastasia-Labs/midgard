@@ -7,10 +7,10 @@
  * path and an operator's manual CLI invocation alike.
  */
 import {
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
 } from "@al-ft/midgard-sdk";
 
 import { nativeScriptDecodingSubmitError } from "./submit-common-v1.js";
@@ -21,7 +21,7 @@ import { nativeScriptDecodingSubmitError } from "./submit-common-v1.js";
  * boundary regardless of policy — the classification, not the consumer,
  * is the gate (§3.4).
  */
-export const NativeScriptDecodingProvabilityV1 = Object.freeze({
+export const NativeScriptDecodingProvability = Object.freeze({
   /** Direction B, descriptor language ≠ 0: provable at bind (§3.2). */
   DescriptorContradiction: "descriptorContradiction",
   /**
@@ -43,19 +43,19 @@ export const NativeScriptDecodingProvabilityV1 = Object.freeze({
    */
   NotAFault: "notAFault",
 } as const);
-export type NativeScriptDecodingProvabilityV1 =
-  (typeof NativeScriptDecodingProvabilityV1)[keyof typeof NativeScriptDecodingProvabilityV1];
+export type NativeScriptDecodingProvability =
+  (typeof NativeScriptDecodingProvability)[keyof typeof NativeScriptDecodingProvability];
 
 /** The provability classes the proving core accepts. */
-export const NATIVE_SCRIPT_DECODING_PROVABLE_CLASSES_V1: readonly NativeScriptDecodingProvabilityV1[] =
+export const NATIVE_SCRIPT_DECODING_PROVABLE_CLASSES: readonly NativeScriptDecodingProvability[] =
   [
-    NativeScriptDecodingProvabilityV1.DescriptorContradiction,
-    NativeScriptDecodingProvabilityV1.MachineRoute,
-    NativeScriptDecodingProvabilityV1.OutOfDomainAccusation,
+    NativeScriptDecodingProvability.DescriptorContradiction,
+    NativeScriptDecodingProvability.MachineRoute,
+    NativeScriptDecodingProvability.OutOfDomainAccusation,
   ];
 
 /** The faulted event: a committed L2 transaction, or a forced event's order key. */
-export type NativeScriptDecodingFindingEventV1 =
+export type NativeScriptDecodingFindingEvent =
   | {
       readonly kind: "l2Transaction";
       /** 32-byte transaction id, lowercase hex. */
@@ -71,7 +71,7 @@ export type NativeScriptDecodingFindingEventV1 =
  * The descriptor fields the detector already resolved (§3.4). `null` for
  * the out-of-domain route, where no descriptor exists to resolve.
  */
-export type NativeScriptDecodingFindingDescriptorV1 = {
+export type NativeScriptDecodingFindingDescriptor = {
   /** The descriptor's reference-script language tag (0 = native). */
   readonly referenceScriptLanguage: number;
   /** The output index the descriptor commits. */
@@ -80,12 +80,12 @@ export type NativeScriptDecodingFindingDescriptorV1 = {
   readonly totalLength: number;
 };
 
-export type NativeScriptDecodingFindingV1 = {
+export type NativeScriptDecodingFinding = {
   /** 0 = wrongful acceptance (direction A), 1 = wrongful rejection (B). */
   readonly direction: bigint;
   /** 0 = normal L2 transaction, 1 = forced event. */
   readonly sourceKind: bigint;
-  readonly event: NativeScriptDecodingFindingEventV1;
+  readonly event: NativeScriptDecodingFindingEvent;
   /** The faulted block's 28-byte header hash, lowercase hex. */
   readonly headerHash: string;
   /** `txHash#index` of the faulted block's state-queue UTxO. */
@@ -95,8 +95,8 @@ export type NativeScriptDecodingFindingV1 = {
   readonly accusedOutpointCursor: bigint;
   /** Direction B: the accused scan-reason class {0, 1, 2}. Direction A: null. */
   readonly scanReasonClass: bigint | null;
-  readonly provability: NativeScriptDecodingProvabilityV1;
-  readonly descriptor: NativeScriptDecodingFindingDescriptorV1 | null;
+  readonly provability: NativeScriptDecodingProvability;
+  readonly descriptor: NativeScriptDecodingFindingDescriptor | null;
   /** §6 plan-time estimate of the thread's total L1 transaction count. */
   readonly estimatedThreadTxCount: number;
 };
@@ -105,31 +105,27 @@ export type NativeScriptDecodingFindingV1 = {
  * The §3.2/3.3 boundary gate plus the record's own structural coherence.
  * Refusals here are classification refusals — no policy can override them.
  */
-export const assertNativeScriptDecodingFindingProvableV1 = (
-  finding: NativeScriptDecodingFindingV1,
+export const assertNativeScriptDecodingFindingProvable = (
+  finding: NativeScriptDecodingFinding,
 ): void => {
-  if (
-    !NATIVE_SCRIPT_DECODING_PROVABLE_CLASSES_V1.includes(finding.provability)
-  ) {
+  if (!NATIVE_SCRIPT_DECODING_PROVABLE_CLASSES.includes(finding.provability)) {
     throw nativeScriptDecodingSubmitError(
       `finding class "${finding.provability}" is not provable by this family (§3.2/3.3) — it is journaled, never proven.`,
     );
   }
   const isDirectionB =
-    finding.direction ===
-    NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1;
+    finding.direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION;
   if (
     !isDirectionB &&
-    finding.direction !==
-      NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    finding.direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
   ) {
     throw nativeScriptDecodingSubmitError(
       `finding direction ${finding.direction.toString()} is outside {0, 1}.`,
     );
   }
   if (
-    finding.sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1 &&
-    finding.sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1
+    finding.sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL &&
+    finding.sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED
   ) {
     throw nativeScriptDecodingSubmitError(
       `finding source kind ${finding.sourceKind.toString()} is outside {0, 1}.`,
@@ -137,7 +133,7 @@ export const assertNativeScriptDecodingFindingProvableV1 = (
   }
   if (isDirectionB) {
     // Only a forced leaf carries an explicit rejection to dispute.
-    if (finding.sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1) {
+    if (finding.sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED) {
       throw nativeScriptDecodingSubmitError(
         "a wrongful-rejection finding must name a forced source.",
       );
@@ -155,14 +151,14 @@ export const assertNativeScriptDecodingFindingProvableV1 = (
   } else {
     if (
       finding.provability ===
-      NativeScriptDecodingProvabilityV1.OutOfDomainAccusation
+      NativeScriptDecodingProvability.OutOfDomainAccusation
     ) {
       throw nativeScriptDecodingSubmitError(
         "the out-of-domain close is direction B's alone (§7.2).",
       );
     }
     if (
-      finding.sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1 &&
+      finding.sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL &&
       finding.event.kind !== "l2Transaction"
     ) {
       throw nativeScriptDecodingSubmitError(
@@ -172,7 +168,7 @@ export const assertNativeScriptDecodingFindingProvableV1 = (
   }
   if (
     finding.provability !==
-      NativeScriptDecodingProvabilityV1.OutOfDomainAccusation &&
+      NativeScriptDecodingProvability.OutOfDomainAccusation &&
     finding.descriptor === null
   ) {
     throw nativeScriptDecodingSubmitError(
@@ -181,7 +177,7 @@ export const assertNativeScriptDecodingFindingProvableV1 = (
   }
   if (
     finding.provability ===
-      NativeScriptDecodingProvabilityV1.DescriptorContradiction &&
+      NativeScriptDecodingProvability.DescriptorContradiction &&
     finding.descriptor?.referenceScriptLanguage === 0
   ) {
     throw nativeScriptDecodingSubmitError(
@@ -189,7 +185,7 @@ export const assertNativeScriptDecodingFindingProvableV1 = (
     );
   }
   if (
-    finding.provability === NativeScriptDecodingProvabilityV1.MachineRoute &&
+    finding.provability === NativeScriptDecodingProvability.MachineRoute &&
     finding.descriptor !== null &&
     finding.descriptor.referenceScriptLanguage !== 0
   ) {

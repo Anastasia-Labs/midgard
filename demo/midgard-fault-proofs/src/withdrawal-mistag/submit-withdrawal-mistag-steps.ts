@@ -4,8 +4,8 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  withdrawalClaimsValidV1,
-  type WithdrawalMistagPreparedEvidenceV1,
+  withdrawalClaimsValid,
+  type WithdrawalMistagPreparedEvidence,
   WithdrawalMistagStep01Datum,
   WithdrawalMistagStep01SpendRedeemer,
   WithdrawalMistagStep02Datum,
@@ -30,16 +30,16 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawalMistagContractsV1 } from "./contracts-v1.js";
+import type { WithdrawalMistagContracts } from "./contracts-v1.js";
 import {
-  requireWithdrawalMistagReferenceScriptV1,
-  requireWithdrawalMistagThreadUtxoV1,
+  requireWithdrawalMistagReferenceScript,
+  requireWithdrawalMistagThreadUtxo,
   withdrawalMistagError,
-  withdrawalMistagStepLabelV1,
+  withdrawalMistagStepLabel,
 } from "./submit-common-v1.js";
 
 type IntermediateStepIndex = 0 | 1 | 2 | 3;
@@ -66,11 +66,11 @@ const referenceScriptRoles = [
   "V1 fraud-proof withdrawal-mistag step-04",
 ] as const;
 
-export const withdrawalMistagStatesV1 = (
-  prepared: WithdrawalMistagPreparedEvidenceV1,
+export const withdrawalMistagStates = (
+  prepared: WithdrawalMistagPreparedEvidence,
 ) => {
   const info = prepared.committedWithdrawal.value;
-  const claimedValid = withdrawalClaimsValidV1(info);
+  const claimedValid = withdrawalClaimsValid(info);
   const step02 = {
     challenged_header_hash: prepared.challengedHeaderHash,
     withdrawal_id: prepared.committedWithdrawal.key,
@@ -121,7 +121,7 @@ const requireLiveDatum = ({
 }): void => {
   if (threadUtxo.datum == null) {
     throw withdrawalMistagError(
-      `${withdrawalMistagStepLabelV1(stepIndex)} has no datum`,
+      `${withdrawalMistagStepLabel(stepIndex)} has no datum`,
     );
   }
   const decoded = Data.from(
@@ -145,7 +145,7 @@ const requireLiveDatum = ({
     )
   ) {
     throw withdrawalMistagError(
-      `${withdrawalMistagStepLabelV1(stepIndex)} state does not match prepared evidence`,
+      `${withdrawalMistagStepLabel(stepIndex)} state does not match prepared evidence`,
     );
   }
 };
@@ -160,7 +160,7 @@ const stepArgs = ({
   stateQueueBlockUtxo,
 }: {
   readonly stepIndex: IntermediateStepIndex;
-  readonly prepared: WithdrawalMistagPreparedEvidenceV1;
+  readonly prepared: WithdrawalMistagPreparedEvidence;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
   readonly ctx: Parameters<BuildTxWithRedeemer>[0];
@@ -235,27 +235,25 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawalMistagContractsV1;
+  readonly contracts: WithdrawalMistagContracts;
   readonly signer: ResolvedProverSigner;
-  readonly prepared: WithdrawalMistagPreparedEvidenceV1;
+  readonly prepared: WithdrawalMistagPreparedEvidence;
   readonly stepIndex: IntermediateStepIndex;
   readonly threadOutRef: string;
   readonly hubOracleUtxo?: UTxO;
   readonly stateQueueBlockUtxo?: UTxO;
   /** Production reference script used by this proof step. */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawalMistagStepResult> => {
-  const { threadUtxo, threadToken } = await requireWithdrawalMistagThreadUtxoV1(
-    {
-      lucid,
-      contracts,
-      stepIndex,
-      threadOutRef,
-    },
-  );
-  const states = withdrawalMistagStatesV1(prepared);
+  const { threadUtxo, threadToken } = await requireWithdrawalMistagThreadUtxo({
+    lucid,
+    contracts,
+    stepIndex,
+    threadOutRef,
+  });
+  const states = withdrawalMistagStates(prepared);
   requireLiveDatum({
     threadUtxo,
     signer,
@@ -275,7 +273,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   const references = [
     ...(hubOracleUtxo === undefined ? [] : [hubOracleUtxo]),
     ...(stateQueueBlockUtxo === undefined ? [] : [stateQueueBlockUtxo]),
-    requireWithdrawalMistagReferenceScriptV1({
+    requireWithdrawalMistagReferenceScript({
       utxo: referenceScriptUtxo,
       contracts,
       stepIndex,
@@ -288,17 +286,17 @@ export const submitWithdrawalMistagIntermediateStep = async ({
     requireOwnSpendPurpose(
       ctx,
       threadUtxo,
-      withdrawalMistagStepLabelV1(stepIndex),
+      withdrawalMistagStepLabel(stepIndex),
     );
     const inputIndex = requireInputIndex(
       ctx,
       threadUtxo,
-      withdrawalMistagStepLabelV1(stepIndex),
+      withdrawalMistagStepLabel(stepIndex),
     );
     const outputIndex = requireUniqueOutputIndex(
       ctx.outputs,
       outputMatches,
-      `${withdrawalMistagStepLabelV1(stepIndex)} output`,
+      `${withdrawalMistagStepLabel(stepIndex)} output`,
     );
     resolved = { inputIndex, outputIndex };
     return Data.to(
@@ -339,9 +337,9 @@ export const submitWithdrawalMistagIntermediateStep = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -356,7 +354,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   const txHash = await signed.submit();
   if (txHash !== expectedTxHash) {
     throw withdrawalMistagError(
-      `${withdrawalMistagStepLabelV1(stepIndex)} provider returned ${txHash}, expected ${expectedTxHash}`,
+      `${withdrawalMistagStepLabel(stepIndex)} provider returned ${txHash}, expected ${expectedTxHash}`,
     );
   }
   if (awaitConfirmation)

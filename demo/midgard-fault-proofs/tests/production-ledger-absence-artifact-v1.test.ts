@@ -1,37 +1,37 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { classifyCanonicalBlockViolationsV1 } from "../src/workflow/classification-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification-v1.js";
 import {
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionLedgerAbsenceArtifactV1,
-  prepareProductionLedgerAbsenceArtifactV1,
-  type ProductionLedgerAbsenceCategoryV1,
+  admitLedgerAbsenceArtifact,
+  type LedgerAbsenceCategory,
+  prepareLedgerAbsenceArtifact,
 } from "../src/workflow/production-ledger-absence-artifact-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const OWNER = "91".repeat(28);
 
 const context = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(12, 0n)],
         referenceInputs: [outRefCbor(13, 1n)],
         fee: 1n,
       }),
     ],
   });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -42,14 +42,14 @@ const context = async () => {
   return { evidence };
 };
 
-const prepare = async (category: ProductionLedgerAbsenceCategoryV1) => {
+const prepare = async (category: LedgerAbsenceCategory) => {
   const { evidence } = await context();
   const replayer =
     category === "nonExistentInput"
-      ? NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1
-      : NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1;
+      ? NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY
+      : NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY;
   const decision = await replayer.replay(evidence);
-  const classification = await classifyCanonicalBlockViolationsV1({
+  const classification = await classifyCanonicalBlockViolations({
     evidence,
     detections: decision.detections,
     minimumConfirmationDepth: 1,
@@ -57,7 +57,7 @@ const prepare = async (category: ProductionLedgerAbsenceCategoryV1) => {
   if (classification.decision !== "fault_detected") {
     throw new Error("fixture did not classify a ledger-absence fault");
   }
-  return await prepareProductionLedgerAbsenceArtifactV1({
+  return await prepareLedgerAbsenceArtifact({
     category,
     evidence,
     classification,
@@ -70,7 +70,7 @@ describe("production ledger-absence artifacts V1", () => {
     "replays %s inclusion, field opening, and both nonmembership roots",
     async (category) => {
       const artifact = await prepare(category);
-      const admitted = admitProductionLedgerAbsenceArtifactV1(artifact, OWNER);
+      const admitted = admitLedgerAbsenceArtifact(artifact, OWNER);
 
       expect(admitted.artifact.category).toBe(category);
       expect(admitted.selectedInput).toEqual(
@@ -86,7 +86,7 @@ describe("production ledger-absence artifacts V1", () => {
     const artifact = await prepare("nonExistentInput");
 
     expect(() =>
-      admitProductionLedgerAbsenceArtifactV1(
+      admitLedgerAbsenceArtifact(
         {
           ...artifact,
           ledgerNonMembershipProofCbor: artifact.txsNonMembershipProofCbor,
@@ -99,7 +99,7 @@ describe("production ledger-absence artifacts V1", () => {
   it("rejects a detection identity whose selected input differs", async () => {
     const artifact = await prepare("nonExistentInput");
     expect(() =>
-      admitProductionLedgerAbsenceArtifactV1(
+      admitLedgerAbsenceArtifact(
         {
           ...artifact,
           detectionId: artifact.detectionId.replace(":0:", ":1:"),

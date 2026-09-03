@@ -16,7 +16,7 @@
  * 2. the exact `DaPayloadEnvelopeV1` bytes retrieved over the public retained-DA
  *    protocol (`public_or_permissionless_da`),
  *
- * reduced by the Q03 evidence-source API to a `CanonicalBlockEvidenceV1` whose
+ * reduced by the Q03 evidence-source API to a `CanonicalBlockEvidence` whose
  * transaction leaves re-commit to the header's counted `transactions_root`
  * under `TransactionsV1RootDomain`. Two committed transactions of that single
  * block are the whole evidence: the **bad** transaction, which spends
@@ -25,7 +25,7 @@
  * than or equal to `output_index`.
  *
  * No operator REST/DB/file input can reach the security-grade entry point:
- * {@link prepareInputNoIdxFromCanonicalEvidenceV1} routes provenance through
+ * {@link prepareInputNoIdxFromCanonicalEvidence} routes provenance through
  * `assertSecurityGradeEvidenceV1` and the native inclusion root through
  * `assertNativeInclusionRootAuthenticatedV1`
  * (`src/evidence/prepare-from-evidence-v1.ts`). The `--midgard-node-url` and
@@ -33,7 +33,7 @@
  * routes and are labelled as such; they can never mint a security-grade claim.
  *
  * **Valid-block negative.** A transaction input that really exists cannot be
- * prepared: {@link InputNoIdxRejectionV1} `input_exists_in_producing_tx` is
+ * prepared: {@link InputNoIdxRejection} `input_exists_in_producing_tx` is
  * raised whenever the challenged `output_index` is inside the producer's
  * canonical outputs list, and `no_violating_input` whenever the block contains
  * no such input at all.
@@ -43,17 +43,17 @@ import { join } from "node:path";
 
 import {
   decodeMidgardNativeByteListPreimage,
-  encodeMidgardFieldPreimageV1,
+  encodeMidgardFieldPreimage,
   formatUnknownError,
-  selectMidgardFieldCarriageTierV1,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalBlockEvidenceV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalBlockEvidence,
 } from "./evidence/index.js";
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
@@ -66,15 +66,15 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
-export const INPUT_NO_IDX_EVIDENCE_V1_SCHEMA_VERSION =
+export const INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION =
   "midgard-input-no-idx-evidence-v1" as const;
 
-export type InputNoIdxRejectionCodeV1 =
+export type InputNoIdxRejectionCode =
   | "block_has_no_transactions"
   | "transactions_root_mismatch"
   | "bad_tx_not_committed"
@@ -86,11 +86,11 @@ export type InputNoIdxRejectionCodeV1 =
   | "preimage_commitment_mismatch";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
-export class InputNoIdxRejectionV1 extends Error {
-  readonly code: InputNoIdxRejectionCodeV1;
+export class InputNoIdxRejection extends Error {
+  readonly code: InputNoIdxRejectionCode;
   readonly detail: string;
 
-  constructor(code: InputNoIdxRejectionCodeV1, detail: string) {
+  constructor(code: InputNoIdxRejectionCode, detail: string) {
     super(`${code}: ${detail}`);
     this.name = "InputNoIdxRejectionV1";
     this.code = code;
@@ -98,8 +98,8 @@ export class InputNoIdxRejectionV1 extends Error {
   }
 }
 
-const reject = (code: InputNoIdxRejectionCodeV1, detail: string): never => {
-  throw new InputNoIdxRejectionV1(code, detail);
+const reject = (code: InputNoIdxRejectionCode, detail: string): never => {
+  throw new InputNoIdxRejection(code, detail);
 };
 
 // ## Canonical native output projection
@@ -367,7 +367,7 @@ const readVersionedScript = (
  * Projects one canonical native output CBOR item to the exact
  * `MidgardTxOutput` PlutusData the step-04 redeemer carries.
  */
-export const midgardTxOutputFromCanonicalCborV1 = (
+export const midgardTxOutputFromCanonicalCbor = (
   bytes: Buffer,
 ): SDK.MidgardTxOutput => {
   const entryTag = byteAt(bytes, 0, "output");
@@ -453,7 +453,7 @@ export type PreparedInputNoIdxOutputsPreimageJson = {
  * serialized PlutusData each step redeemer carries directly; no chunked or
  * multi-output representation is produced.
  */
-export type PreparedInputNoIdxProofFitV1 = {
+export type PreparedInputNoIdxProofFit = {
   readonly step02InputsPreimageItemCount: number;
   readonly step02InputsPreimageDatumBytes: number;
   readonly step04OutputsPreimageItemCount: number;
@@ -474,8 +474,8 @@ export type PreparedInputNoIdxProofFitV1 = {
 };
 
 export type PreparedInputNoIdxOutput = {
-  readonly schemaVersion: typeof INPUT_NO_IDX_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.INPUT_NO_IDX_VIOLATION_ID_V1;
+  readonly schemaVersion: typeof INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION;
+  readonly violationId: typeof SDK.INPUT_NO_IDX_VIOLATION_ID;
   readonly headerHash: string;
   readonly txCount: number;
   /** Raw MPF root opened by both membership proofs. */
@@ -486,7 +486,7 @@ export type PreparedInputNoIdxOutput = {
     readonly value: string;
     readonly matches: boolean;
   };
-  readonly evidence: SDK.InputNoIdxEvidenceV1;
+  readonly evidence: SDK.InputNoIdxEvidence;
   /** step-01 argument: the bad transaction's inclusion in the block. */
   readonly badTxInclusion: PreparedTxInclusionJson;
   /** step-03 argument: the producing transaction's inclusion in the block. */
@@ -498,7 +498,7 @@ export type PreparedInputNoIdxOutput = {
   /** In-memory projection of `step04.outputsPreimageCbor`. */
   readonly outputsPreimage: readonly SDK.MidgardTxOutput[];
   readonly step04State: SDK.InputNoIdxStep04State;
-  readonly proofFit: PreparedInputNoIdxProofFitV1;
+  readonly proofFit: PreparedInputNoIdxProofFit;
   readonly files?: {
     readonly badTxInclusionPath: string;
     readonly producingTxInclusionPath: string;
@@ -540,7 +540,7 @@ type Candidate = {
   readonly producingOutputs: readonly Buffer[];
 };
 
-export type InputNoIdxDetectedViolationV1 = Readonly<{
+export type InputNoIdxDetectedViolation = Readonly<{
   badTxIndex: number;
   badTxId: string;
   badInputsIndex: number;
@@ -554,21 +554,21 @@ export type InputNoIdxDetectedViolationV1 = Readonly<{
  * input whose producer is absent belongs to `nonExistentInput`; only an
  * out-of-range index into a producer committed by this same block is emitted.
  */
-export const detectInputNoIdxViolationsFromTransactionsV1 = async (
+export const detectInputNoIdxViolationsFromTransactions = async (
   transactions: readonly NodeTransactionPayload[],
-): Promise<readonly InputNoIdxDetectedViolationV1[]> => {
+): Promise<readonly InputNoIdxDetectedViolation[]> => {
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
   const byTxId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
-  const detections: InputNoIdxDetectedViolationV1[] = [];
+  const detections: InputNoIdxDetectedViolation[] = [];
   for (const [badTxIndex, badTx] of decoded.entries()) {
     for (const [badInputsIndex, badInput] of spendInputsOf(badTx).entries()) {
       const producingTx = byTxId.get(badInput.tx_id);
       if (producingTx === undefined) continue;
       const producingTxOutputCount = nativeOutputItems(producingTx).length;
       if (
-        SDK.isInputNoIdxViolationV1({
+        SDK.isInputNoIdxViolation({
           badInputOutputIndex: badInput.output_index,
           producingTxOutputCount,
         })
@@ -626,8 +626,8 @@ const findCandidate = ({
     bad_input_index_out_of_range: 2,
     producing_tx_not_committed: 1,
   };
-  let pinnedFailure: InputNoIdxRejectionV1 | undefined;
-  const pinFailure = (failure: InputNoIdxRejectionV1): void => {
+  let pinnedFailure: InputNoIdxRejection | undefined;
+  const pinFailure = (failure: InputNoIdxRejection): void => {
     if (
       pinnedFailure === undefined ||
       (failureRank[failure.code] ?? 0) > (failureRank[pinnedFailure.code] ?? 0)
@@ -645,7 +645,7 @@ const findCandidate = ({
       const badInput = inputs[index];
       if (badInput === undefined) {
         pinFailure(
-          new InputNoIdxRejectionV1(
+          new InputNoIdxRejection(
             "bad_input_index_out_of_range",
             `bad_tx_id=${badTx.nodeTxId} bad_inputs_index=${index.toString()} input_count=${inputs.length.toString()}`,
           ),
@@ -655,7 +655,7 @@ const findCandidate = ({
       const producingTx = byTxId.get(badInput.tx_id);
       if (producingTx === undefined) {
         pinFailure(
-          new InputNoIdxRejectionV1(
+          new InputNoIdxRejection(
             "producing_tx_not_committed",
             `bad_tx_id=${badTx.nodeTxId} producing_tx_id=${badInput.tx_id}; the preimage of the input's transaction id is not in this block, so this is a non-existent-input claim, not input-no-idx`,
           ),
@@ -664,13 +664,13 @@ const findCandidate = ({
       }
       const producingOutputs = nativeOutputItems(producingTx);
       if (
-        !SDK.isInputNoIdxViolationV1({
+        !SDK.isInputNoIdxViolation({
           badInputOutputIndex: badInput.output_index,
           producingTxOutputCount: producingOutputs.length,
         })
       ) {
         pinFailure(
-          new InputNoIdxRejectionV1(
+          new InputNoIdxRejection(
             "input_exists_in_producing_tx",
             `bad_tx_id=${badTx.nodeTxId} producing_tx_id=${badInput.tx_id} output_index=${badInput.output_index.toString()} producing_output_count=${producingOutputs.length.toString()}; an existing transaction input cannot be proven non-existent`,
           ),
@@ -773,7 +773,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     headerHash: normalizedHeaderHash,
   });
 
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   const committedTransactionsRoot = await Effect.runPromise(
     SDK.commitCountedRootProgram({
       domain: SDK.ROOT_DOMAINS.transactionsV1,
@@ -788,7 +788,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     );
   }
 
-  const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactionsV1({
+  const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactions({
     badTxId: candidate.badTx.nodeTxId,
     badInputsIndex: candidate.badInputsIndex,
     badInput: candidate.badInput,
@@ -797,13 +797,13 @@ export const prepareInputNoIdxFromTransactions = async ({
 
   const inputsPreimage = spendInputsOf(candidate.badTx);
   const outputsPreimage = candidate.producingOutputs.map(
-    midgardTxOutputFromCanonicalCborV1,
+    midgardTxOutputFromCanonicalCbor,
   );
   // Self-check: the preimages this builder emits must re-derive the exact
   // bounded-collection commitments the two opening steps compare against, so a
   // projection bug can never reach a prover.
   const derivedInputsCommitment =
-    SDK.inputNoIdxSpendInputsCommitmentV1(inputsPreimage);
+    SDK.inputNoIdxSpendInputsCommitment(inputsPreimage);
   if (
     derivedInputsCommitment !==
     candidate.badTx.nativeTxCompact.body.spend_inputs_hash
@@ -814,7 +814,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     );
   }
   const derivedOutputsCommitment =
-    SDK.inputNoIdxOutputsCommitmentV1(outputsPreimage);
+    SDK.inputNoIdxOutputsCommitment(outputsPreimage);
   if (
     derivedOutputsCommitment !==
     candidate.producingTx.nativeTxCompact.body.outputs_hash
@@ -827,19 +827,19 @@ export const prepareInputNoIdxFromTransactions = async ({
 
   // #604: thread state carries the §2.5 anchor — the transaction id — not the
   // field-0 commitment. Step-02 re-opens field 0 through the §8.8 door from it.
-  const step02State = SDK.inputNoIdxStep02StateFromBadTxV1(
+  const step02State = SDK.inputNoIdxStep02StateFromBadTx(
     candidate.badTx.nodeTxId,
   );
-  const step03State = SDK.inputNoIdxStep03StateFromEvidenceV1(evidence);
-  const step04State = SDK.inputNoIdxStep04StateFromEvidenceV1({
+  const step03State = SDK.inputNoIdxStep03StateFromEvidence(evidence);
+  const step04State = SDK.inputNoIdxStep04StateFromEvidence({
     evidence,
     producingTxId: candidate.producingTx.nodeTxId,
   });
 
   // §5.1's envelope over field 0's canonical items — the bytes the door hashes
   // and the length §8.4 partitions the carriage tier on.
-  const step02SpendInputsPreimage = encodeMidgardFieldPreimageV1(
-    inputsPreimage.map(SDK.encodeMidgardTxInputCanonicalV1),
+  const step02SpendInputsPreimage = encodeMidgardFieldPreimage(
+    inputsPreimage.map(SDK.encodeMidgardTxInputCanonical),
   );
   const inputsPreimageDatum = Data.to(
     inputsPreimage,
@@ -851,8 +851,8 @@ export const prepareInputNoIdxFromTransactions = async ({
   );
 
   const output: PreparedInputNoIdxOutput = {
-    schemaVersion: INPUT_NO_IDX_EVIDENCE_V1_SCHEMA_VERSION,
-    violationId: SDK.INPUT_NO_IDX_VIOLATION_ID_V1,
+    schemaVersion: INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION,
+    violationId: SDK.INPUT_NO_IDX_VIOLATION_ID,
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     transactionsPhasRoot: trie.root,
@@ -867,7 +867,7 @@ export const prepareInputNoIdxFromTransactions = async ({
       trie.root,
       requireProof(
         trie,
-        transactionSourceTrieItemV1(candidate.badTx).key,
+        transactionSourceTrieItem(candidate.badTx).key,
         "bad tx",
       ),
     ),
@@ -876,7 +876,7 @@ export const prepareInputNoIdxFromTransactions = async ({
       trie.root,
       requireProof(
         trie,
-        transactionSourceTrieItemV1(candidate.producingTx).key,
+        transactionSourceTrieItem(candidate.producingTx).key,
         "producing tx",
       ),
     ),
@@ -909,7 +909,7 @@ export const prepareInputNoIdxFromTransactions = async ({
       producingTxCompactCborBytes:
         candidate.producingTx.nativeCompactCbor.length / 2,
       step02SpendInputsPreimageBytes: step02SpendInputsPreimage.length,
-      step02CarriageTier: selectMidgardFieldCarriageTierV1(
+      step02CarriageTier: selectMidgardFieldCarriageTier(
         step02SpendInputsPreimage.length,
       ),
     },
@@ -1025,25 +1025,25 @@ export const prepareInputNoIdxFromFile = async (
  * The security-grade entry point (§9.2/§9.1 output 7): an authenticated L1
  * header observation plus public retained-DA block evidence, and nothing else.
  *
- * `admitCanonicalEvidenceForProofBuildV1` re-runs both Q03 gates —
+ * `admitCanonicalEvidenceForProofBuild` re-runs both Q03 gates —
  * `assertSecurityGradeEvidenceV1` over every contributing provenance record
  * and `assertNativeInclusionRootAuthenticatedV1` over the raw transactions MPF
  * root the family's two `NativeTxInclusionArgs` will carry — so a diagnostic,
  * operator-private, or unauthenticated-root record can never reach a
  * submittable `input-no-idx` proof.
  */
-export const prepareInputNoIdxFromCanonicalEvidenceV1 = async ({
+export const prepareInputNoIdxFromCanonicalEvidence = async ({
   evidence,
   badTxId,
   badInputsIndex,
   outputDir,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly badTxId?: string;
   readonly badInputsIndex?: string | number;
   readonly outputDir?: string;
 }): Promise<PreparedInputNoIdxOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   return await prepareInputNoIdxFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,

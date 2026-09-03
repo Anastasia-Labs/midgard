@@ -1,7 +1,7 @@
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  type MidgardValidationDisputeV1,
-  type MidgardValidationTraceProofV1,
+  MIDGARD_CONSENSUS_LIMITS,
+  type MidgardValidationDispute,
+  type MidgardValidationTraceProof,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
   revealMidgardValidationOperatorMidpoint,
@@ -9,37 +9,37 @@ import {
 
 import type { DeterministicValidationMachineTrace } from "./validation-machine/index.js";
 import {
-  buildValidationOneStepArgumentV1,
-  type ValidationOneStepArgumentV1,
+  buildValidationOneStepArgument,
+  type ValidationOneStepArgument,
 } from "./validation-machine-data.js";
 import {
-  encodeValidationBoundaryEvidenceCborV1,
-  encodeValidationDisputeDataCborV1,
-  encodeValidationTraceDescriptorDataCborV1,
-  encodeValidationTraceProofDataCborV1,
+  encodeValidationBoundaryEvidenceCbor,
+  encodeValidationDisputeDataCbor,
+  encodeValidationTraceDescriptorDataCbor,
+  encodeValidationTraceProofDataCbor,
 } from "./validation-one-step-data.js";
 
-export const CEK_PROGRAM_MATERIAL_ROUTE_ORDER_V1 = Object.freeze([
+export const CEK_PROGRAM_MATERIAL_ROUTE_ORDER = Object.freeze([
   "directProof",
   "completeSinglePublicationReference",
   "minimumMultiOutputReconstruction",
   "incrementalTraversal",
 ] as const);
 
-export type CekProgramMaterialRouteV1 =
-  (typeof CEK_PROGRAM_MATERIAL_ROUTE_ORDER_V1)[number];
+export type CekProgramMaterialRoute =
+  (typeof CEK_PROGRAM_MATERIAL_ROUTE_ORDER)[number];
 
-export const CEK_PROGRAM_MATERIAL_TRANSACTION_ROLES_V1 = Object.freeze([
+export const CEK_PROGRAM_MATERIAL_TRANSACTION_ROLES = Object.freeze([
   "publication",
   "proof",
   "proofConsumption",
   "proofContinuation",
 ] as const);
 
-export type CekProgramMaterialTransactionRoleV1 =
-  (typeof CEK_PROGRAM_MATERIAL_TRANSACTION_ROLES_V1)[number];
+export type CekProgramMaterialTransactionRole =
+  (typeof CEK_PROGRAM_MATERIAL_TRANSACTION_ROLES)[number];
 
-export const CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS_V1 = Object.freeze([
+export const CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS = Object.freeze([
   "maxTxSize",
   "maxValueSize",
   "maxExecutionMemoryUnits",
@@ -47,12 +47,12 @@ export const CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS_V1 = Object.freeze([
   "maturityWindowMilliseconds",
 ] as const);
 
-export type CekProgramMaterialLimitingConstraintTypeV1 =
-  (typeof CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS_V1)[number];
+export type CekProgramMaterialLimitingConstraintType =
+  (typeof CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS)[number];
 
-export type CekProgramMaterialConcreteTransactionReceiptV1<
+export type CekProgramMaterialConcreteTransactionReceipt<
   Role extends
-    CekProgramMaterialTransactionRoleV1 = CekProgramMaterialTransactionRoleV1,
+    CekProgramMaterialTransactionRole = CekProgramMaterialTransactionRole,
 > = {
   readonly role: Role;
   readonly signedTxSha256: string;
@@ -78,15 +78,14 @@ export type CekProgramMaterialConcreteTransactionReceiptV1<
   readonly confirmationMilliseconds: number;
 };
 
-export type CekProgramMaterialLimitingConstraintV1 = {
-  readonly type: CekProgramMaterialLimitingConstraintTypeV1;
+export type CekProgramMaterialLimitingConstraint = {
+  readonly type: CekProgramMaterialLimitingConstraintType;
   readonly measuredMargin: string;
 };
 
-export type CekProgramMaterialRouteAttemptV1<
-  Route extends CekProgramMaterialRouteV1,
-  Transactions extends
-    readonly CekProgramMaterialConcreteTransactionReceiptV1[],
+export type CekProgramMaterialRouteAttempt<
+  Route extends CekProgramMaterialRoute,
+  Transactions extends readonly CekProgramMaterialConcreteTransactionReceipt[],
   MinimumMultiOutputCount extends number | null,
 > = {
   readonly route: Route;
@@ -99,11 +98,11 @@ export type CekProgramMaterialRouteAttemptV1<
   readonly removalMilliseconds: number;
   readonly maturityWindowMarginMilliseconds: number;
   readonly fit: boolean;
-  readonly limitingConstraint: CekProgramMaterialLimitingConstraintV1 | null;
+  readonly limitingConstraint: CekProgramMaterialLimitingConstraint | null;
   readonly minimumMultiOutputCount: MinimumMultiOutputCount;
 };
 
-export type CekProgramMaterialNecessityReceiptSetV1 = {
+export type CekProgramMaterialNecessityReceiptSet = {
   readonly schemaVersion: 1;
   readonly sourceRevision: string;
   readonly programEnvelopeHash: string;
@@ -122,41 +121,41 @@ export type CekProgramMaterialNecessityReceiptSetV1 = {
     readonly maturityWindowMilliseconds: number;
   };
   readonly routeAttempts: readonly [
-    CekProgramMaterialRouteAttemptV1<
+    CekProgramMaterialRouteAttempt<
       "directProof",
-      readonly [CekProgramMaterialConcreteTransactionReceiptV1<"proof">],
+      readonly [CekProgramMaterialConcreteTransactionReceipt<"proof">],
       null
     >,
-    CekProgramMaterialRouteAttemptV1<
+    CekProgramMaterialRouteAttempt<
       "completeSinglePublicationReference",
       readonly [
-        CekProgramMaterialConcreteTransactionReceiptV1<"publication">,
-        CekProgramMaterialConcreteTransactionReceiptV1<"proofConsumption">,
+        CekProgramMaterialConcreteTransactionReceipt<"publication">,
+        CekProgramMaterialConcreteTransactionReceipt<"proofConsumption">,
       ],
       null
     >,
-    CekProgramMaterialRouteAttemptV1<
+    CekProgramMaterialRouteAttempt<
       "minimumMultiOutputReconstruction",
       readonly [
-        CekProgramMaterialConcreteTransactionReceiptV1<"publication">,
-        ...CekProgramMaterialConcreteTransactionReceiptV1<"publication">[],
-        CekProgramMaterialConcreteTransactionReceiptV1<"proofConsumption">,
+        CekProgramMaterialConcreteTransactionReceipt<"publication">,
+        ...CekProgramMaterialConcreteTransactionReceipt<"publication">[],
+        CekProgramMaterialConcreteTransactionReceipt<"proofConsumption">,
       ],
       number
     >,
-    CekProgramMaterialRouteAttemptV1<
+    CekProgramMaterialRouteAttempt<
       "incrementalTraversal",
       readonly [
-        CekProgramMaterialConcreteTransactionReceiptV1<"publication">,
-        ...CekProgramMaterialConcreteTransactionReceiptV1[],
-        CekProgramMaterialConcreteTransactionReceiptV1<"proofContinuation">,
+        CekProgramMaterialConcreteTransactionReceipt<"publication">,
+        ...CekProgramMaterialConcreteTransactionReceipt[],
+        CekProgramMaterialConcreteTransactionReceipt<"proofContinuation">,
       ],
       null
     >,
   ];
 };
 
-const RECEIPT_SET_KEYS_V1 = Object.freeze([
+const RECEIPT_SET_KEYS = Object.freeze([
   "schemaVersion",
   "sourceRevision",
   "programEnvelopeHash",
@@ -164,12 +163,12 @@ const RECEIPT_SET_KEYS_V1 = Object.freeze([
   "targetProtocolParameters",
   "routeAttempts",
 ] as const);
-const VALIDATOR_IDENTITY_KEYS_V1 = Object.freeze([
+const VALIDATOR_IDENTITY_KEYS = Object.freeze([
   "title",
   "generatedHash",
   "appliedHash",
 ] as const);
-const TARGET_PROTOCOL_PARAMETER_KEYS_V1 = Object.freeze([
+const TARGET_PROTOCOL_PARAMETER_KEYS = Object.freeze([
   "digest",
   "maxTxSize",
   "maxValueSize",
@@ -178,7 +177,7 @@ const TARGET_PROTOCOL_PARAMETER_KEYS_V1 = Object.freeze([
   "coinsPerUtxoByte",
   "maturityWindowMilliseconds",
 ] as const);
-const CONCRETE_TRANSACTION_RECEIPT_KEYS_V1 = Object.freeze([
+const CONCRETE_TRANSACTION_RECEIPT_KEYS = Object.freeze([
   "role",
   "signedTxSha256",
   "txId",
@@ -202,7 +201,7 @@ const CONCRETE_TRANSACTION_RECEIPT_KEYS_V1 = Object.freeze([
   "programMaterialReferenceInputOutRefs",
   "confirmationMilliseconds",
 ] as const);
-const ROUTE_ATTEMPT_KEYS_V1 = Object.freeze([
+const ROUTE_ATTEMPT_KEYS = Object.freeze([
   "route",
   "transactions",
   "dataAvailabilityFetchMilliseconds",
@@ -216,12 +215,12 @@ const ROUTE_ATTEMPT_KEYS_V1 = Object.freeze([
   "limitingConstraint",
   "minimumMultiOutputCount",
 ] as const);
-const LIMITING_CONSTRAINT_KEYS_V1 = Object.freeze([
+const LIMITING_CONSTRAINT_KEYS = Object.freeze([
   "type",
   "measuredMargin",
 ] as const);
 
-const exactObjectV1 = <Keys extends readonly string[]>(
+const exactObject = <Keys extends readonly string[]>(
   value: unknown,
   keys: Keys,
   label: string,
@@ -240,7 +239,7 @@ const exactObjectV1 = <Keys extends readonly string[]>(
   return value as Record<Keys[number], unknown>;
 };
 
-const exactHexV1 = (value: unknown, bytes: number, label: string): string => {
+const exactHex = (value: unknown, bytes: number, label: string): string => {
   if (
     typeof value !== "string" ||
     !new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value)
@@ -250,36 +249,36 @@ const exactHexV1 = (value: unknown, bytes: number, label: string): string => {
   return value;
 };
 
-const decimalV1 = (value: unknown, label: string): string => {
+const decimal = (value: unknown, label: string): string => {
   if (typeof value !== "string" || !/^(?:0|[1-9][0-9]*)$/u.test(value)) {
     throw new Error(`${label} must be a canonical non-negative decimal string`);
   }
   return value;
 };
 
-const signedDecimalV1 = (value: unknown, label: string): string => {
+const signedDecimal = (value: unknown, label: string): string => {
   if (typeof value !== "string" || !/^-?(?:0|[1-9][0-9]*)$/u.test(value)) {
     throw new Error(`${label} must be a canonical signed decimal string`);
   }
   return value;
 };
 
-const safeCountV1 = (value: unknown, label: string): number => {
+const safeCount = (value: unknown, label: string): number => {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
   return value as number;
 };
 
-const positiveCountV1 = (value: unknown, label: string): number => {
-  const count = safeCountV1(value, label);
+const positiveCount = (value: unknown, label: string): number => {
+  const count = safeCount(value, label);
   if (count === 0) {
     throw new Error(`${label} must be positive`);
   }
   return count;
 };
 
-const safeSignedIntegerV1 = (value: unknown, label: string): number => {
+const safeSignedInteger = (value: unknown, label: string): number => {
   if (!Number.isSafeInteger(value)) {
     throw new Error(`${label} must be a safe integer`);
   }
@@ -293,13 +292,13 @@ const confirmationMillisecondsV1 = (value: unknown, label: string): number => {
   return value as number;
 };
 
-type ParsedOutRefV1 = {
+type ParsedOutRef = {
   readonly canonical: string;
   readonly txId: string;
   readonly outputIndex: number;
 };
 
-const outRefV1 = (value: unknown, label: string): ParsedOutRefV1 => {
+const outRefV1 = (value: unknown, label: string): ParsedOutRef => {
   if (typeof value !== "string") {
     throw new Error(`${label} must be a canonical transaction outref`);
   }
@@ -318,10 +317,7 @@ const outRefV1 = (value: unknown, label: string): ParsedOutRefV1 => {
   });
 };
 
-const outRefListV1 = (
-  value: unknown,
-  label: string,
-): readonly ParsedOutRefV1[] => {
+const outRefList = (value: unknown, label: string): readonly ParsedOutRef[] => {
   if (!Array.isArray(value)) {
     throw new Error(`${label} must be an array`);
   }
@@ -340,87 +336,83 @@ const outRefListV1 = (
   return outRefs;
 };
 
-type ParsedTargetProtocolParametersV1 =
-  CekProgramMaterialNecessityReceiptSetV1["targetProtocolParameters"];
+type ParsedTargetProtocolParameters =
+  CekProgramMaterialNecessityReceiptSet["targetProtocolParameters"];
 
-const transactionReceiptV1 = ({
+const transactionReceipt = ({
   value,
   target,
   label,
 }: {
   readonly value: unknown;
-  readonly target: ParsedTargetProtocolParametersV1;
+  readonly target: ParsedTargetProtocolParameters;
   readonly label: string;
-}): CekProgramMaterialConcreteTransactionReceiptV1 => {
-  const receipt = exactObjectV1(
-    value,
-    CONCRETE_TRANSACTION_RECEIPT_KEYS_V1,
-    label,
-  );
+}): CekProgramMaterialConcreteTransactionReceipt => {
+  const receipt = exactObject(value, CONCRETE_TRANSACTION_RECEIPT_KEYS, label);
   if (
     typeof receipt.role !== "string" ||
-    !CEK_PROGRAM_MATERIAL_TRANSACTION_ROLES_V1.includes(
-      receipt.role as CekProgramMaterialTransactionRoleV1,
+    !CEK_PROGRAM_MATERIAL_TRANSACTION_ROLES.includes(
+      receipt.role as CekProgramMaterialTransactionRole,
     )
   ) {
     throw new Error(`${label}.role is invalid`);
   }
-  const transactionBytes = positiveCountV1(
+  const transactionBytes = positiveCount(
     receipt.transactionBytes,
     `${label}.transactionBytes`,
   );
-  const transactionByteMargin = safeSignedIntegerV1(
+  const transactionByteMargin = safeSignedInteger(
     receipt.transactionByteMargin,
     `${label}.transactionByteMargin`,
   );
-  const maximumValueBytes = safeCountV1(
+  const maximumValueBytes = safeCount(
     receipt.maximumValueBytes,
     `${label}.maximumValueBytes`,
   );
-  const maximumValueByteMargin = safeSignedIntegerV1(
+  const maximumValueByteMargin = safeSignedInteger(
     receipt.maximumValueByteMargin,
     `${label}.maximumValueByteMargin`,
   );
-  const executionMemoryUnits = decimalV1(
+  const executionMemoryUnits = decimal(
     receipt.executionMemoryUnits,
     `${label}.executionMemoryUnits`,
   );
-  const executionMemoryMargin = signedDecimalV1(
+  const executionMemoryMargin = signedDecimal(
     receipt.executionMemoryMargin,
     `${label}.executionMemoryMargin`,
   );
-  const executionCpuUnits = decimalV1(
+  const executionCpuUnits = decimal(
     receipt.executionCpuUnits,
     `${label}.executionCpuUnits`,
   );
-  const executionCpuMargin = signedDecimalV1(
+  const executionCpuMargin = signedDecimal(
     receipt.executionCpuMargin,
     `${label}.executionCpuMargin`,
   );
-  const inputCount = safeCountV1(receipt.inputCount, `${label}.inputCount`);
-  const referenceInputCount = safeCountV1(
+  const inputCount = safeCount(receipt.inputCount, `${label}.inputCount`);
+  const referenceInputCount = safeCount(
     receipt.referenceInputCount,
     `${label}.referenceInputCount`,
   );
-  const outputCount = safeCountV1(receipt.outputCount, `${label}.outputCount`);
-  const programMaterialInputCount = safeCountV1(
+  const outputCount = safeCount(receipt.outputCount, `${label}.outputCount`);
+  const programMaterialInputCount = safeCount(
     receipt.programMaterialInputCount,
     `${label}.programMaterialInputCount`,
   );
-  const programMaterialReferenceInputCount = safeCountV1(
+  const programMaterialReferenceInputCount = safeCount(
     receipt.programMaterialReferenceInputCount,
     `${label}.programMaterialReferenceInputCount`,
   );
-  const txId = exactHexV1(receipt.txId, 32, `${label}.txId`);
-  const programMaterialOutputOutRefs = outRefListV1(
+  const txId = exactHex(receipt.txId, 32, `${label}.txId`);
+  const programMaterialOutputOutRefs = outRefList(
     receipt.programMaterialOutputOutRefs,
     `${label}.programMaterialOutputOutRefs`,
   );
-  const programMaterialConsumedInputOutRefs = outRefListV1(
+  const programMaterialConsumedInputOutRefs = outRefList(
     receipt.programMaterialConsumedInputOutRefs,
     `${label}.programMaterialConsumedInputOutRefs`,
   );
-  const programMaterialReferenceInputOutRefs = outRefListV1(
+  const programMaterialReferenceInputOutRefs = outRefList(
     receipt.programMaterialReferenceInputOutRefs,
     `${label}.programMaterialReferenceInputOutRefs`,
   );
@@ -476,8 +468,8 @@ const transactionReceiptV1 = ({
     }
   }
   return Object.freeze({
-    role: receipt.role as CekProgramMaterialTransactionRoleV1,
-    signedTxSha256: exactHexV1(
+    role: receipt.role as CekProgramMaterialTransactionRole,
+    signedTxSha256: exactHex(
       receipt.signedTxSha256,
       32,
       `${label}.signedTxSha256`,
@@ -487,11 +479,8 @@ const transactionReceiptV1 = ({
     transactionByteMargin,
     maximumValueBytes,
     maximumValueByteMargin,
-    feeLovelace: decimalV1(receipt.feeLovelace, `${label}.feeLovelace`),
-    minAdaLovelace: decimalV1(
-      receipt.minAdaLovelace,
-      `${label}.minAdaLovelace`,
-    ),
+    feeLovelace: decimal(receipt.feeLovelace, `${label}.feeLovelace`),
+    minAdaLovelace: decimal(receipt.minAdaLovelace, `${label}.minAdaLovelace`),
     executionMemoryUnits,
     executionMemoryMargin,
     executionCpuUnits,
@@ -522,13 +511,13 @@ const minimumBigInt = (values: readonly string[]): bigint =>
     BigInt(values[0]!),
   );
 
-const measuredConstraintMarginV1 = ({
+const measuredConstraintMargin = ({
   constraint,
   transactions,
   maturityWindowMarginMilliseconds,
 }: {
-  readonly constraint: CekProgramMaterialLimitingConstraintTypeV1;
-  readonly transactions: readonly CekProgramMaterialConcreteTransactionReceiptV1[];
+  readonly constraint: CekProgramMaterialLimitingConstraintType;
+  readonly transactions: readonly CekProgramMaterialConcreteTransactionReceipt[];
   readonly maturityWindowMarginMilliseconds: number;
 }): string => {
   switch (constraint) {
@@ -553,27 +542,27 @@ const measuredConstraintMarginV1 = ({
   }
 };
 
-const exactOutRefSequenceV1 = (
+const exactOutRefSequence = (
   actual: readonly string[],
   expected: readonly string[],
 ): boolean =>
   actual.length === expected.length &&
   actual.every((outRef, index) => outRef === expected[index]);
 
-const materialSourceOutRefsV1 = (
-  receipt: CekProgramMaterialConcreteTransactionReceiptV1,
+const materialSourceOutRefs = (
+  receipt: CekProgramMaterialConcreteTransactionReceipt,
 ): readonly string[] => [
   ...receipt.programMaterialConsumedInputOutRefs,
   ...receipt.programMaterialReferenceInputOutRefs,
 ];
 
-const validateRouteTransactionGrammarV1 = ({
+const validateRouteTransactionGrammar = ({
   route,
   transactions,
   label,
 }: {
-  readonly route: CekProgramMaterialRouteV1;
-  readonly transactions: readonly CekProgramMaterialConcreteTransactionReceiptV1[];
+  readonly route: CekProgramMaterialRoute;
+  readonly transactions: readonly CekProgramMaterialConcreteTransactionReceipt[];
   readonly label: string;
 }): void => {
   const roles = transactions.map((receipt) => receipt.role);
@@ -615,14 +604,14 @@ const validateRouteTransactionGrammarV1 = ({
   }
 };
 
-const validateRouteMaterialLinkageV1 = ({
+const validateRouteMaterialLinkage = ({
   route,
   transactions,
   minimumMultiOutputCount,
   label,
 }: {
-  readonly route: CekProgramMaterialRouteV1;
-  readonly transactions: readonly CekProgramMaterialConcreteTransactionReceiptV1[];
+  readonly route: CekProgramMaterialRoute;
+  readonly transactions: readonly CekProgramMaterialConcreteTransactionReceipt[];
   readonly minimumMultiOutputCount: number | null;
   readonly label: string;
 }): void => {
@@ -631,7 +620,7 @@ const validateRouteMaterialLinkageV1 = ({
   );
   for (const publication of publications) {
     if (
-      materialSourceOutRefsV1(publication).length !== 0 ||
+      materialSourceOutRefs(publication).length !== 0 ||
       publication.programMaterialOutputOutRefs.length === 0
     ) {
       throw new Error(
@@ -654,7 +643,7 @@ const validateRouteMaterialLinkageV1 = ({
     if (
       proof.programMaterialInputCount !== 0 ||
       proof.programMaterialReferenceInputCount !== 0 ||
-      materialSourceOutRefsV1(proof).length !== 0 ||
+      materialSourceOutRefs(proof).length !== 0 ||
       proof.programMaterialOutputOutRefs.length !== 0
     ) {
       throw new Error(`${label} direct proof must not source program material`);
@@ -671,8 +660,8 @@ const validateRouteMaterialLinkageV1 = ({
     const consumption = transactions[1]!;
     if (
       publicationOutRefs.length !== 1 ||
-      !exactOutRefSequenceV1(
-        materialSourceOutRefsV1(consumption),
+      !exactOutRefSequence(
+        materialSourceOutRefs(consumption),
         publicationOutRefs,
       )
     ) {
@@ -687,8 +676,8 @@ const validateRouteMaterialLinkageV1 = ({
     if (
       minimumMultiOutputCount === null ||
       publicationOutRefs.length !== minimumMultiOutputCount ||
-      !exactOutRefSequenceV1(
-        materialSourceOutRefsV1(consumption),
+      !exactOutRefSequence(
+        materialSourceOutRefs(consumption),
         publicationOutRefs,
       )
     ) {
@@ -701,7 +690,7 @@ const validateRouteMaterialLinkageV1 = ({
   const published = new Set(publicationOutRefs);
   const traversed = new Set<string>();
   for (const receipt of transactions.slice(publications.length)) {
-    const sources = materialSourceOutRefsV1(receipt);
+    const sources = materialSourceOutRefs(receipt);
     if (
       sources.length === 0 ||
       sources.some((outRef) => !published.has(outRef))
@@ -722,7 +711,7 @@ const validateRouteMaterialLinkageV1 = ({
   }
 };
 
-const routeAttemptV1 = ({
+const routeAttempt = ({
   value,
   route,
   expectedFit,
@@ -730,16 +719,16 @@ const routeAttemptV1 = ({
   label,
 }: {
   readonly value: unknown;
-  readonly route: CekProgramMaterialRouteV1;
+  readonly route: CekProgramMaterialRoute;
   readonly expectedFit: boolean;
-  readonly target: ParsedTargetProtocolParametersV1;
+  readonly target: ParsedTargetProtocolParameters;
   readonly label: string;
-}): CekProgramMaterialRouteAttemptV1<
-  CekProgramMaterialRouteV1,
-  readonly CekProgramMaterialConcreteTransactionReceiptV1[],
+}): CekProgramMaterialRouteAttempt<
+  CekProgramMaterialRoute,
+  readonly CekProgramMaterialConcreteTransactionReceipt[],
   number | null
 > => {
-  const attempt = exactObjectV1(value, ROUTE_ATTEMPT_KEYS_V1, label);
+  const attempt = exactObject(value, ROUTE_ATTEMPT_KEYS, label);
   if (attempt.route !== route || attempt.fit !== expectedFit) {
     throw new Error(
       `${label} must be the ${route} ${expectedFit ? "fit" : "rejected"} attempt`,
@@ -753,14 +742,14 @@ const routeAttemptV1 = ({
   }
   const transactions = Object.freeze(
     attempt.transactions.map((receipt, index) =>
-      transactionReceiptV1({
+      transactionReceipt({
         value: receipt,
         target,
         label: `${label}.transactions[${index.toString()}]`,
       }),
     ),
   );
-  validateRouteTransactionGrammarV1({ route, transactions, label });
+  validateRouteTransactionGrammar({ route, transactions, label });
   const timing = Object.freeze({
     dataAvailabilityFetchMilliseconds: confirmationMillisecondsV1(
       attempt.dataAvailabilityFetchMilliseconds,
@@ -787,7 +776,7 @@ const routeAttemptV1 = ({
       `${label}.removalMilliseconds`,
     ),
   });
-  const maturityWindowMarginMilliseconds = safeSignedIntegerV1(
+  const maturityWindowMarginMilliseconds = safeSignedInteger(
     attempt.maturityWindowMarginMilliseconds,
     `${label}.maturityWindowMarginMilliseconds`,
   );
@@ -809,7 +798,7 @@ const routeAttemptV1 = ({
   }
   let minimumMultiOutputCount: number | null;
   if (route === "minimumMultiOutputReconstruction") {
-    minimumMultiOutputCount = positiveCountV1(
+    minimumMultiOutputCount = positiveCount(
       attempt.minimumMultiOutputCount,
       `${label}.minimumMultiOutputCount`,
     );
@@ -823,13 +812,13 @@ const routeAttemptV1 = ({
   } else {
     minimumMultiOutputCount = null;
   }
-  validateRouteMaterialLinkageV1({
+  validateRouteMaterialLinkage({
     route,
     transactions,
     minimumMultiOutputCount,
     label,
   });
-  let limitingConstraint: CekProgramMaterialLimitingConstraintV1 | null = null;
+  let limitingConstraint: CekProgramMaterialLimitingConstraint | null = null;
   if (expectedFit) {
     if (
       attempt.limitingConstraint !== null ||
@@ -845,28 +834,28 @@ const routeAttemptV1 = ({
       throw new Error(`${label} fit attempt contains a failed constraint`);
     }
   } else {
-    const constraint = exactObjectV1(
+    const constraint = exactObject(
       attempt.limitingConstraint,
-      LIMITING_CONSTRAINT_KEYS_V1,
+      LIMITING_CONSTRAINT_KEYS,
       `${label}.limitingConstraint`,
     );
     if (
       typeof constraint.type !== "string" ||
-      !CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS_V1.includes(
-        constraint.type as CekProgramMaterialLimitingConstraintTypeV1,
+      !CEK_PROGRAM_MATERIAL_LIMITING_CONSTRAINTS.includes(
+        constraint.type as CekProgramMaterialLimitingConstraintType,
       )
     ) {
       throw new Error(`${label}.limitingConstraint.type is invalid`);
     }
-    const measuredMargin = signedDecimalV1(
+    const measuredMargin = signedDecimal(
       constraint.measuredMargin,
       `${label}.limitingConstraint.measuredMargin`,
     );
     if (
       measuredMargin !==
-        measuredConstraintMarginV1({
+        measuredConstraintMargin({
           constraint:
-            constraint.type as CekProgramMaterialLimitingConstraintTypeV1,
+            constraint.type as CekProgramMaterialLimitingConstraintType,
           transactions,
           maturityWindowMarginMilliseconds,
         }) ||
@@ -875,7 +864,7 @@ const routeAttemptV1 = ({
       throw new Error(`${label} contains an invalid limiting measured margin`);
     }
     limitingConstraint = Object.freeze({
-      type: constraint.type as CekProgramMaterialLimitingConstraintTypeV1,
+      type: constraint.type as CekProgramMaterialLimitingConstraintType,
       measuredMargin,
     });
   }
@@ -896,12 +885,12 @@ const routeAttemptV1 = ({
  * every claimed margin is recomputed against the bound target. Unknown keys
  * and omitted identity or transaction fields are rejected without defaults.
  */
-export const parseCekProgramMaterialNecessityReceiptSetV1 = (
+export const parseCekProgramMaterialNecessityReceiptSet = (
   value: unknown,
-): CekProgramMaterialNecessityReceiptSetV1 => {
-  const receiptSet = exactObjectV1(
+): CekProgramMaterialNecessityReceiptSet => {
+  const receiptSet = exactObject(
     value,
-    RECEIPT_SET_KEYS_V1,
+    RECEIPT_SET_KEYS,
     "CEK program-material necessity receipt set",
   );
   if (receiptSet.schemaVersion !== 1) {
@@ -918,9 +907,9 @@ export const parseCekProgramMaterialNecessityReceiptSetV1 = (
   }
   const validatorIdentities = Object.freeze(
     validatorIdentityValues.map((value, index) => {
-      const identity = exactObjectV1(
+      const identity = exactObject(
         value,
-        VALIDATOR_IDENTITY_KEYS_V1,
+        VALIDATOR_IDENTITY_KEYS,
         `validatorIdentities[${index.toString()}]`,
       );
       if (
@@ -934,12 +923,12 @@ export const parseCekProgramMaterialNecessityReceiptSetV1 = (
       }
       return Object.freeze({
         title: identity.title,
-        generatedHash: exactHexV1(
+        generatedHash: exactHex(
           identity.generatedHash,
           28,
           `validatorIdentities[${index.toString()}].generatedHash`,
         ),
-        appliedHash: exactHexV1(
+        appliedHash: exactHex(
           identity.appliedHash,
           28,
           `validatorIdentities[${index.toString()}].appliedHash`,
@@ -956,38 +945,34 @@ export const parseCekProgramMaterialNecessityReceiptSetV1 = (
       );
     }
   }
-  const targetValue = exactObjectV1(
+  const targetValue = exactObject(
     receiptSet.targetProtocolParameters,
-    TARGET_PROTOCOL_PARAMETER_KEYS_V1,
+    TARGET_PROTOCOL_PARAMETER_KEYS,
     "target protocol parameters",
   );
   const targetProtocolParameters = Object.freeze({
-    digest: exactHexV1(
-      targetValue.digest,
-      32,
-      "targetProtocolParameters.digest",
-    ),
-    maxTxSize: positiveCountV1(
+    digest: exactHex(targetValue.digest, 32, "targetProtocolParameters.digest"),
+    maxTxSize: positiveCount(
       targetValue.maxTxSize,
       "targetProtocolParameters.maxTxSize",
     ),
-    maxValueSize: positiveCountV1(
+    maxValueSize: positiveCount(
       targetValue.maxValueSize,
       "targetProtocolParameters.maxValueSize",
     ),
-    maxExecutionMemoryUnits: decimalV1(
+    maxExecutionMemoryUnits: decimal(
       targetValue.maxExecutionMemoryUnits,
       "targetProtocolParameters.maxExecutionMemoryUnits",
     ),
-    maxExecutionCpuUnits: decimalV1(
+    maxExecutionCpuUnits: decimal(
       targetValue.maxExecutionCpuUnits,
       "targetProtocolParameters.maxExecutionCpuUnits",
     ),
-    coinsPerUtxoByte: decimalV1(
+    coinsPerUtxoByte: decimal(
       targetValue.coinsPerUtxoByte,
       "targetProtocolParameters.coinsPerUtxoByte",
     ),
-    maturityWindowMilliseconds: positiveCountV1(
+    maturityWindowMilliseconds: positiveCount(
       targetValue.maturityWindowMilliseconds,
       "targetProtocolParameters.maturityWindowMilliseconds",
     ),
@@ -1004,22 +989,21 @@ export const parseCekProgramMaterialNecessityReceiptSetV1 = (
   const routeAttemptValues = receiptSet.routeAttempts;
   if (
     !Array.isArray(routeAttemptValues) ||
-    routeAttemptValues.length !== CEK_PROGRAM_MATERIAL_ROUTE_ORDER_V1.length
+    routeAttemptValues.length !== CEK_PROGRAM_MATERIAL_ROUTE_ORDER.length
   ) {
     throw new Error(
       "CEK program-material necessity receipt set requires exactly four ordered route attempts",
     );
   }
-  const routeAttempts = CEK_PROGRAM_MATERIAL_ROUTE_ORDER_V1.map(
-    (route, index) =>
-      routeAttemptV1({
-        value: routeAttemptValues[index],
-        route,
-        expectedFit: route === "incrementalTraversal",
-        target: targetProtocolParameters,
-        label: `routeAttempts[${index.toString()}]`,
-      }),
-  ) as unknown as CekProgramMaterialNecessityReceiptSetV1["routeAttempts"];
+  const routeAttempts = CEK_PROGRAM_MATERIAL_ROUTE_ORDER.map((route, index) =>
+    routeAttempt({
+      value: routeAttemptValues[index],
+      route,
+      expectedFit: route === "incrementalTraversal",
+      target: targetProtocolParameters,
+      label: `routeAttempts[${index.toString()}]`,
+    }),
+  ) as unknown as CekProgramMaterialNecessityReceiptSet["routeAttempts"];
   const signedTransactionHashes = new Set<string>();
   const transactionIds = new Set<string>();
   for (const attempt of routeAttempts) {
@@ -1038,8 +1022,8 @@ export const parseCekProgramMaterialNecessityReceiptSetV1 = (
   }
   return Object.freeze({
     schemaVersion: 1,
-    sourceRevision: exactHexV1(receiptSet.sourceRevision, 20, "sourceRevision"),
-    programEnvelopeHash: exactHexV1(
+    sourceRevision: exactHex(receiptSet.sourceRevision, 20, "sourceRevision"),
+    programEnvelopeHash: exactHex(
       receiptSet.programEnvelopeHash,
       32,
       "programEnvelopeHash",
@@ -1050,33 +1034,33 @@ export const parseCekProgramMaterialNecessityReceiptSetV1 = (
   });
 };
 
-export const CekProgramMaterialNecessityReceiptSetV1Schema = Object.freeze({
-  parse: parseCekProgramMaterialNecessityReceiptSetV1,
+export const CekProgramMaterialNecessityReceiptSetSchema = Object.freeze({
+  parse: parseCekProgramMaterialNecessityReceiptSet,
 });
 
-export type ValidationDisputeEvidenceMoveV1 = {
+export type ValidationDisputeEvidenceMove = {
   readonly role: "operator" | "challenger";
-  readonly disputeBefore: MidgardValidationDisputeV1;
-  readonly proof: MidgardValidationTraceProofV1;
+  readonly disputeBefore: MidgardValidationDispute;
+  readonly proof: MidgardValidationTraceProof;
   readonly proofCbor: Buffer;
-  readonly disputeAfter: MidgardValidationDisputeV1;
+  readonly disputeAfter: MidgardValidationDispute;
   readonly disputeAfterCbor: Buffer;
 };
 
-export type ValidationDisputeEvidenceBundleV1 = {
+export type ValidationDisputeEvidenceBundle = {
   readonly operatorDescriptorCbor: Buffer;
   readonly challengerDescriptorCbor: Buffer;
-  readonly openingDispute: MidgardValidationDisputeV1;
+  readonly openingDispute: MidgardValidationDispute;
   readonly openingDisputeCbor: Buffer;
-  readonly moves: readonly ValidationDisputeEvidenceMoveV1[];
-  readonly finalDispute: MidgardValidationDisputeV1;
+  readonly moves: readonly ValidationDisputeEvidenceMove[];
+  readonly finalDispute: MidgardValidationDispute;
   readonly finalDisputeCbor: Buffer;
   readonly boundaryEvidenceCbor: Buffer;
-  readonly oneStepArgument: ValidationOneStepArgumentV1;
+  readonly oneStepArgument: ValidationOneStepArgument;
 };
 
 const requireProofEnvelope = (bytes: Uint8Array, label: string): void => {
-  if (bytes.length >= MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes) {
+  if (bytes.length >= MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes) {
     throw new Error(
       `${label} exceeds the strict L1 proof envelope: ${bytes.length.toString()} bytes`,
     );
@@ -1090,7 +1074,7 @@ const requireProofEnvelope = (bytes: Uint8Array, label: string): void => {
  * oversized independently submitted preimage fails before transaction
  * construction.
  */
-export const buildValidationDisputeEvidenceBundleV1 = ({
+export const buildValidationDisputeEvidenceBundle = ({
   operatorTrace,
   challengerTrace,
   currentTime,
@@ -1098,16 +1082,16 @@ export const buildValidationDisputeEvidenceBundleV1 = ({
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
   readonly currentTime: number;
-}): ValidationDisputeEvidenceBundleV1 => {
+}): ValidationDisputeEvidenceBundle => {
   const openingDispute = openMidgardValidationDispute({
     operatorDescriptor: operatorTrace.tree.descriptor,
     challengerDescriptor: challengerTrace.tree.descriptor,
     currentTime,
   });
   let dispute = openingDispute;
-  const moves: ValidationDisputeEvidenceMoveV1[] = [];
+  const moves: ValidationDisputeEvidenceMove[] = [];
   const maximumMoves =
-    2 * MIDGARD_CONSENSUS_LIMITS_V1.maxValidationBisectionRounds;
+    2 * MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds;
 
   while (dispute.turn.type !== "readyForOneStep") {
     if (moves.length >= maximumMoves) {
@@ -1139,8 +1123,8 @@ export const buildValidationDisputeEvidenceBundleV1 = ({
             proof,
             currentTime,
           });
-    const proofCbor = encodeValidationTraceProofDataCborV1(proof);
-    const disputeAfterCbor = encodeValidationDisputeDataCborV1(dispute);
+    const proofCbor = encodeValidationTraceProofDataCbor(proof);
+    const disputeAfterCbor = encodeValidationDisputeDataCbor(dispute);
     requireProofEnvelope(proofCbor, `${role} midpoint proof`);
     requireProofEnvelope(disputeAfterCbor, "continued validation dispute");
     moves.push({
@@ -1153,20 +1137,20 @@ export const buildValidationDisputeEvidenceBundleV1 = ({
     });
   }
 
-  const operatorDescriptorCbor = encodeValidationTraceDescriptorDataCborV1(
+  const operatorDescriptorCbor = encodeValidationTraceDescriptorDataCbor(
     operatorTrace.tree.descriptor,
   );
-  const challengerDescriptorCbor = encodeValidationTraceDescriptorDataCborV1(
+  const challengerDescriptorCbor = encodeValidationTraceDescriptorDataCbor(
     challengerTrace.tree.descriptor,
   );
-  const openingDisputeCbor = encodeValidationDisputeDataCborV1(openingDispute);
-  const finalDisputeCbor = encodeValidationDisputeDataCborV1(dispute);
-  const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCborV1({
+  const openingDisputeCbor = encodeValidationDisputeDataCbor(openingDispute);
+  const finalDisputeCbor = encodeValidationDisputeDataCbor(dispute);
+  const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCbor({
     dispute,
     operatorTrace,
     challengerTrace,
   });
-  const oneStepArgument = buildValidationOneStepArgumentV1({
+  const oneStepArgument = buildValidationOneStepArgument({
     trace: challengerTrace,
     stateIndex: dispute.lowIndex,
   });

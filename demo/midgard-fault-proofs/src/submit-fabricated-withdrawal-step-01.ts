@@ -29,15 +29,15 @@
  */
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
   FabricatedWithdrawalStep01SpendRedeemer,
   FabricatedWithdrawalStep02Datum,
   type FabricatedWithdrawalStep02State,
-  fabricatedWithdrawalStep02StateV1,
-  getHeaderV1FromStateQueueDatum,
+  fabricatedWithdrawalStep02State,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  type HeaderV1,
+  type Header,
   HUB_ORACLE_ASSET_NAME,
   OutputReference,
   Proof,
@@ -62,7 +62,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -83,16 +83,16 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Human-readable family label used in every local failure message. */
 export const FABRICATED_WITHDRAWAL_CATEGORY_LABEL = "fabricated-withdrawal";
 
 /** One deployed step of the `fabricated-withdrawal` chain. */
-export type FabricatedWithdrawalStepContractV1 = {
+export type FabricatedWithdrawalStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -105,13 +105,13 @@ export type FabricatedWithdrawalStepContractV1 = {
  * #609 arity guard in `applyBlueprintParams` the single place where scripts are
  * parameterized.
  */
-export type FabricatedWithdrawalContractsV1 = {
+export type FabricatedWithdrawalContracts = {
   /** Steps 01..04, in order. */
   readonly steps: readonly [
-    FabricatedWithdrawalStepContractV1,
-    FabricatedWithdrawalStepContractV1,
-    FabricatedWithdrawalStepContractV1,
-    FabricatedWithdrawalStepContractV1,
+    FabricatedWithdrawalStepContract,
+    FabricatedWithdrawalStepContract,
+    FabricatedWithdrawalStepContract,
+    FabricatedWithdrawalStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;
@@ -171,7 +171,7 @@ export const parseSubmitFabricatedWithdrawalInclusion = (
 };
 
 /** The membership witness the step-01 redeemer carries, plus its handoff state. */
-export type FabricatedWithdrawalStep01HandoffV1 = {
+export type FabricatedWithdrawalStep01Handoff = {
   readonly committedWithdrawal: RootMembershipProof<
     OutputReference,
     WithdrawalInfo
@@ -189,15 +189,15 @@ export type FabricatedWithdrawalStep01HandoffV1 = {
  * supplied leaf bytes are not the `serialiseData` bytes the on-chain re-serialisation
  * will produce.
  */
-export const deriveFabricatedWithdrawalStep01HandoffV1 = async ({
+export const deriveFabricatedWithdrawalStep01Handoff = async ({
   header,
   headerHash,
   inclusion,
 }: {
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly headerHash: string;
   readonly inclusion: SubmitFabricatedWithdrawalInclusion;
-}): Promise<FabricatedWithdrawalStep01HandoffV1> => {
+}): Promise<FabricatedWithdrawalStep01Handoff> => {
   const countedWithdrawalsRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.withdrawals,
@@ -216,18 +216,18 @@ export const deriveFabricatedWithdrawalStep01HandoffV1 = async ({
     WithdrawalInfo,
   );
   if (
-    committedWithdrawalKeyBytesV1(key) !== inclusion.committedWithdrawalIdCbor
+    committedWithdrawalKeyBytes(key) !== inclusion.committedWithdrawalIdCbor
   ) {
     throw new Error(
-      `--withdrawal-inclusion.committedWithdrawalIdCbor is not in serialiseData form: the on-chain membership check will hash ${committedWithdrawalKeyBytesV1(key)}, not ${inclusion.committedWithdrawalIdCbor}.`,
+      `--withdrawal-inclusion.committedWithdrawalIdCbor is not in serialiseData form: the on-chain membership check will hash ${committedWithdrawalKeyBytes(key)}, not ${inclusion.committedWithdrawalIdCbor}.`,
     );
   }
   if (
-    committedWithdrawalValueBytesV1(value) !==
+    committedWithdrawalValueBytes(value) !==
     inclusion.committedWithdrawalInfoCbor
   ) {
     throw new Error(
-      `--withdrawal-inclusion.committedWithdrawalInfoCbor is not in serialiseData form: the on-chain membership check will hash ${committedWithdrawalValueBytesV1(value)}, not ${inclusion.committedWithdrawalInfoCbor}.`,
+      `--withdrawal-inclusion.committedWithdrawalInfoCbor is not in serialiseData form: the on-chain membership check will hash ${committedWithdrawalValueBytes(value)}, not ${inclusion.committedWithdrawalInfoCbor}.`,
     );
   }
   const committedWithdrawal: RootMembershipProof<
@@ -243,7 +243,7 @@ export const deriveFabricatedWithdrawalStep01HandoffV1 = async ({
     proof: inclusion.withdrawalMembershipProof,
   };
   const step02State = await Effect.runPromise(
-    fabricatedWithdrawalStep02StateV1({
+    fabricatedWithdrawalStep02State({
       challengedHeaderHash: headerHash,
       headerStartTime: header.startTime,
       headerEndTime: header.endTime,
@@ -311,14 +311,14 @@ export const submitFabricatedWithdrawalStep01 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedWithdrawalContractsV1;
+  readonly contracts: FabricatedWithdrawalContracts;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly withdrawalInclusion: SubmitFabricatedWithdrawalInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep01Result> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
@@ -373,10 +373,10 @@ export const submitFabricatedWithdrawalStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
   const { committedWithdrawal, step02State } =
-    await deriveFabricatedWithdrawalStep01HandoffV1({
+    await deriveFabricatedWithdrawalStep01Handoff({
       header,
       headerHash: stateQueueHeaderHash,
       inclusion: withdrawalInclusion,
@@ -447,7 +447,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       ...referenceInputs,
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[0].spendingScriptHash,
         categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
@@ -468,10 +468,10 @@ export const submitFabricatedWithdrawalStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-01",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[0].spendingScript,
@@ -519,7 +519,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
 
 export const submitFabricatedWithdrawalStep01FromFiles = async (
   config: SubmitFabricatedWithdrawalStep01CliConfig & {
-    readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly contracts: FabricatedWithdrawalContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep01Result> => {

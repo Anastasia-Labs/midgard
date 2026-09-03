@@ -9,7 +9,7 @@ a decodable native script.
 
 The challenged script bytes and their subject are authenticated by the
 committed transaction, prior ledger state, and—where the operator rejected a
-forced transaction—the typed `RejectionReasonV1` subject. The proof must reach
+forced transaction—the typed `RejectionReason` subject. The proof must reach
 the deterministic native-script decoder's true result without trusting a
 prover-supplied verdict, byte offset, or unbound outpoint.
 

@@ -17,52 +17,52 @@
  */
 import { Effect } from "effect";
 
-import { hashBlockHeaderV1, type HeaderV1 } from "../ledger-state.js";
+import { hashBlockHeader, type Header } from "../ledger-state.js";
 
-export const CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION =
+export const CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION =
   "midgard-canonical-evidence-source-v1" as const;
 
 /** Security inputs a fault-proof builder or watcher may rely on. */
-export const ADMITTED_EVIDENCE_TRUST_CLASSES_V1 = [
+export const ADMITTED_EVIDENCE_TRUST_CLASSES = [
   "authenticated_cardano_l1",
   "public_or_permissionless_da",
   "signed_deployment_identity",
   "deterministic_local_computation",
 ] as const;
 
-export type AdmittedEvidenceTrustClassV1 =
-  (typeof ADMITTED_EVIDENCE_TRUST_CLASSES_V1)[number];
+export type AdmittedEvidenceTrustClass =
+  (typeof ADMITTED_EVIDENCE_TRUST_CLASSES)[number];
 
 /** Operator-private surfaces. Usable only as explicitly labelled diagnostics. */
-export const PROHIBITED_EVIDENCE_TRUST_CLASSES_V1 = [
+export const PROHIBITED_EVIDENCE_TRUST_CLASSES = [
   "operator_private_database",
   "operator_admin_api",
   "operator_private_file",
   "operator_only_diagnostic_endpoint",
 ] as const;
 
-export type ProhibitedEvidenceTrustClassV1 =
-  (typeof PROHIBITED_EVIDENCE_TRUST_CLASSES_V1)[number];
+export type ProhibitedEvidenceTrustClass =
+  (typeof PROHIBITED_EVIDENCE_TRUST_CLASSES)[number];
 
-export type EvidenceTrustClassV1 =
-  | AdmittedEvidenceTrustClassV1
-  | ProhibitedEvidenceTrustClassV1;
+export type EvidenceTrustClass =
+  | AdmittedEvidenceTrustClass
+  | ProhibitedEvidenceTrustClass;
 
-export type EvidenceGradeV1 = "security" | "diagnostic";
+export type EvidenceGrade = "security" | "diagnostic";
 
-export const L1_SOURCE_MODES_V1 = ["local_node", "external_providers"] as const;
-export type L1SourceModeV1 = (typeof L1_SOURCE_MODES_V1)[number];
+export const L1_SOURCE_MODES = ["local_node", "external_providers"] as const;
+export type L1SourceMode = (typeof L1_SOURCE_MODES)[number];
 
-export type EvidenceProvenanceV1 = {
-  readonly trustClass: EvidenceTrustClassV1;
+export type EvidenceProvenance = {
+  readonly trustClass: EvidenceTrustClass;
   /** Stable, non-secret identifier of the concrete source (peer id, mode id). */
   readonly sourceId: string;
-  readonly grade: EvidenceGradeV1;
+  readonly grade: EvidenceGrade;
   /** Mandatory for `grade: "diagnostic"`, forbidden for `grade: "security"`. */
   readonly diagnosticLabel?: string;
 };
 
-export type CanonicalEvidenceRejectionCodeV1 =
+export type CanonicalEvidenceRejectionCode =
   | "unknown_trust_class"
   | "prohibited_trust_class"
   | "diagnostic_grade_not_admitted"
@@ -84,11 +84,11 @@ export type CanonicalEvidenceRejectionCodeV1 =
  * Deterministic, value-free rejection. `detail` carries only codes, field
  * names, and public identifiers so evidence errors stay secret-safe.
  */
-export class CanonicalEvidenceRejectionV1 extends Error {
-  readonly code: CanonicalEvidenceRejectionCodeV1;
+export class CanonicalEvidenceRejection extends Error {
+  readonly code: CanonicalEvidenceRejectionCode;
   readonly detail: string;
 
-  constructor(code: CanonicalEvidenceRejectionCodeV1, detail: string) {
+  constructor(code: CanonicalEvidenceRejectionCode, detail: string) {
     super(`${code}: ${detail}`);
     this.name = "CanonicalEvidenceRejectionV1";
     this.code = code;
@@ -97,24 +97,24 @@ export class CanonicalEvidenceRejectionV1 extends Error {
 }
 
 const reject = (
-  code: CanonicalEvidenceRejectionCodeV1,
+  code: CanonicalEvidenceRejectionCode,
   detail: string,
 ): never => {
-  throw new CanonicalEvidenceRejectionV1(code, detail);
+  throw new CanonicalEvidenceRejection(code, detail);
 };
 
-export const isAdmittedEvidenceTrustClassV1 = (
+export const isAdmittedEvidenceTrustClass = (
   value: string,
-): value is AdmittedEvidenceTrustClassV1 =>
-  (ADMITTED_EVIDENCE_TRUST_CLASSES_V1 as readonly string[]).includes(value);
+): value is AdmittedEvidenceTrustClass =>
+  (ADMITTED_EVIDENCE_TRUST_CLASSES as readonly string[]).includes(value);
 
-export const isProhibitedEvidenceTrustClassV1 = (
+export const isProhibitedEvidenceTrustClass = (
   value: string,
-): value is ProhibitedEvidenceTrustClassV1 =>
-  (PROHIBITED_EVIDENCE_TRUST_CLASSES_V1 as readonly string[]).includes(value);
+): value is ProhibitedEvidenceTrustClass =>
+  (PROHIBITED_EVIDENCE_TRUST_CLASSES as readonly string[]).includes(value);
 
-export type AdmitEvidenceProvenanceOptionsV1 = {
-  readonly provenance: EvidenceProvenanceV1;
+export type AdmitEvidenceProvenanceOptions = {
+  readonly provenance: EvidenceProvenance;
   /**
    * Diagnostic evidence is admitted only when the caller opts in explicitly.
    * Builders that produce submittable proofs must leave this `false`.
@@ -131,17 +131,17 @@ export type AdmitEvidenceProvenanceOptionsV1 = {
  * - diagnostic grade -> rejected unless the caller opted into diagnostics;
  * - security grade with a diagnostic label -> rejected (no laundering).
  */
-export const admitEvidenceProvenanceV1 = ({
+export const admitEvidenceProvenance = ({
   provenance,
   allowDiagnostic = false,
-}: AdmitEvidenceProvenanceOptionsV1): EvidenceProvenanceV1 => {
+}: AdmitEvidenceProvenanceOptions): EvidenceProvenance => {
   const sourceId = provenance.sourceId.trim();
   if (sourceId.length === 0) {
     reject("empty_source_id", "provenance.sourceId");
   }
   const trustClass: string = provenance.trustClass;
-  const admitted = isAdmittedEvidenceTrustClassV1(trustClass);
-  const prohibited = isProhibitedEvidenceTrustClassV1(trustClass);
+  const admitted = isAdmittedEvidenceTrustClass(trustClass);
+  const prohibited = isProhibitedEvidenceTrustClass(trustClass);
   if (!admitted && !prohibited) {
     reject("unknown_trust_class", `provenance.trustClass=${trustClass}`);
   }
@@ -188,29 +188,29 @@ export const admitEvidenceProvenanceV1 = ({
 };
 
 /** Admission for evidence that will back a submittable proof. */
-export const assertSecurityGradeEvidenceV1 = (
-  provenance: EvidenceProvenanceV1,
-): EvidenceProvenanceV1 =>
-  admitEvidenceProvenanceV1({ provenance, allowDiagnostic: false });
+export const assertSecurityGradeEvidence = (
+  provenance: EvidenceProvenance,
+): EvidenceProvenance =>
+  admitEvidenceProvenance({ provenance, allowDiagnostic: false });
 
 /** A bundle is security grade only when every contributing record is. */
-export const combineEvidenceGradeV1 = (
-  provenances: readonly EvidenceProvenanceV1[],
-): EvidenceGradeV1 =>
+export const combineEvidenceGrade = (
+  provenances: readonly EvidenceProvenance[],
+): EvidenceGrade =>
   provenances.some((provenance) => provenance.grade !== "security")
     ? "diagnostic"
     : "security";
 
-export const requireEvidenceTrustClassV1 = ({
+export const requireEvidenceTrustClass = ({
   provenance,
   expected,
   code,
 }: {
-  readonly provenance: EvidenceProvenanceV1;
-  readonly expected: AdmittedEvidenceTrustClassV1;
-  readonly code: CanonicalEvidenceRejectionCodeV1;
-}): EvidenceProvenanceV1 => {
-  const admittedProvenance = assertSecurityGradeEvidenceV1(provenance);
+  readonly provenance: EvidenceProvenance;
+  readonly expected: AdmittedEvidenceTrustClass;
+  readonly code: CanonicalEvidenceRejectionCode;
+}): EvidenceProvenance => {
+  const admittedProvenance = assertSecurityGradeEvidence(provenance);
   if (admittedProvenance.trustClass !== expected) {
     reject(
       code,
@@ -220,17 +220,17 @@ export const requireEvidenceTrustClassV1 = ({
   return admittedProvenance;
 };
 
-export type AuthenticatedL1ChainPointV1 = {
+export type AuthenticatedL1ChainPoint = {
   readonly slot: bigint;
   /** 32-byte lowercase hex Cardano block hash. */
   readonly blockHash: string;
 };
 
-export type AuthenticatedL1ObservationV1 = {
-  readonly schemaVersion: typeof CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION;
-  readonly sourceMode: L1SourceModeV1;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly chainPoint: AuthenticatedL1ChainPointV1;
+export type AuthenticatedL1Observation = {
+  readonly schemaVersion: typeof CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION;
+  readonly sourceMode: L1SourceMode;
+  readonly provenance: EvidenceProvenance;
+  readonly chainPoint: AuthenticatedL1ChainPoint;
   /** Confirmation depth already observed for `chainPoint`. */
   readonly confirmationDepth: number;
 };
@@ -239,11 +239,11 @@ export type AuthenticatedL1ObservationV1 = {
  * An authenticated L1 observation of one state-queue block header. This is the
  * only accepted origin of the committed header a DA payload is checked against.
  */
-export type AuthenticatedStateQueueHeaderObservationV1 =
-  AuthenticatedL1ObservationV1 & {
+export type AuthenticatedStateQueueHeaderObservation =
+  AuthenticatedL1Observation & {
     /** 28-byte lowercase hex header hash, as committed on L1. */
     readonly headerHash: string;
-    readonly header: HeaderV1;
+    readonly header: Header;
   };
 
 const HEX = /^[0-9a-f]*$/u;
@@ -251,7 +251,7 @@ const HEX = /^[0-9a-f]*$/u;
 const requireHex = (
   value: string,
   byteLength: number,
-  code: CanonicalEvidenceRejectionCodeV1,
+  code: CanonicalEvidenceRejectionCode,
   fieldName: string,
 ): string => {
   const normalized = value.trim().toLowerCase();
@@ -261,16 +261,16 @@ const requireHex = (
   return normalized;
 };
 
-export type AdmitAuthenticatedL1ObservationOptionsV1 = {
-  readonly observation: AuthenticatedL1ObservationV1;
+export type AdmitAuthenticatedL1ObservationOptions = {
+  readonly observation: AuthenticatedL1Observation;
   /** Minimum confirmation depth the consumer requires. Default is 1. */
   readonly minimumConfirmationDepth?: number;
 };
 
-export const admitAuthenticatedL1ObservationV1 = ({
+export const admitAuthenticatedL1Observation = ({
   observation,
   minimumConfirmationDepth = 1,
-}: AdmitAuthenticatedL1ObservationOptionsV1): AuthenticatedL1ObservationV1 => {
+}: AdmitAuthenticatedL1ObservationOptions): AuthenticatedL1Observation => {
   if (
     !Number.isSafeInteger(minimumConfirmationDepth) ||
     minimumConfirmationDepth < 1
@@ -280,23 +280,21 @@ export const admitAuthenticatedL1ObservationV1 = ({
       `minimumConfirmationDepth=${String(minimumConfirmationDepth)}`,
     );
   }
-  if (
-    observation.schemaVersion !== CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION
-  ) {
+  if (observation.schemaVersion !== CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION) {
     reject(
       "evidence_grade_mismatch",
       `observation.schemaVersion=${String(observation.schemaVersion)}`,
     );
   }
   if (
-    !(L1_SOURCE_MODES_V1 as readonly string[]).includes(observation.sourceMode)
+    !(L1_SOURCE_MODES as readonly string[]).includes(observation.sourceMode)
   ) {
     reject(
       "unknown_l1_source_mode",
       `observation.sourceMode=${String(observation.sourceMode)}`,
     );
   }
-  const provenance = requireEvidenceTrustClassV1({
+  const provenance = requireEvidenceTrustClass({
     provenance: observation.provenance,
     expected: "authenticated_cardano_l1",
     code: "l1_observation_wrong_trust_class",
@@ -322,7 +320,7 @@ export const admitAuthenticatedL1ObservationV1 = ({
     );
   }
   return Object.freeze({
-    schemaVersion: CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+    schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
     sourceMode: observation.sourceMode,
     provenance,
     chainPoint: Object.freeze({ slot: observation.chainPoint.slot, blockHash }),
@@ -335,14 +333,14 @@ export const admitAuthenticatedL1ObservationV1 = ({
  * SDK hasher, so a caller cannot pair an arbitrary header with a real header
  * hash (or vice versa).
  */
-export const admitAuthenticatedStateQueueHeaderObservationV1 = async ({
+export const admitAuthenticatedStateQueueHeaderObservation = async ({
   observation,
   minimumConfirmationDepth,
 }: {
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly minimumConfirmationDepth?: number;
-}): Promise<AuthenticatedStateQueueHeaderObservationV1> => {
-  const base = admitAuthenticatedL1ObservationV1({
+}): Promise<AuthenticatedStateQueueHeaderObservation> => {
+  const base = admitAuthenticatedL1Observation({
     observation,
     ...(minimumConfirmationDepth === undefined
       ? {}
@@ -354,9 +352,7 @@ export const admitAuthenticatedStateQueueHeaderObservationV1 = async ({
     "malformed_header_hash",
     "observation.headerHash",
   );
-  const derived = await Effect.runPromise(
-    hashBlockHeaderV1(observation.header),
-  );
+  const derived = await Effect.runPromise(hashBlockHeader(observation.header));
   if (derived !== headerHash) {
     reject(
       "header_hash_mismatch",
@@ -371,7 +367,7 @@ export const admitAuthenticatedStateQueueHeaderObservationV1 = async ({
 };
 
 /** Exact authentication of the normative transaction-source MPF root. */
-export type TransactionsInclusionRootAuthenticationV1 = {
+export type TransactionsInclusionRootAuthentication = {
   readonly headerTransactionsRoot: string;
   readonly l2TransactionCount: bigint;
   /** MPF root over `(tx_id -> Data(L2TransactionSourceV1))`. */
@@ -385,9 +381,9 @@ export type TransactionsInclusionRootAuthenticationV1 = {
  * Fail-closed gate for the one normative source-leaf convention. Compact-only
  * leaves are not a compatibility route and cannot satisfy this API.
  */
-export const assertTransactionSourceInclusionRootAuthenticatedV1 = (
-  authentication: TransactionsInclusionRootAuthenticationV1,
-): TransactionsInclusionRootAuthenticationV1 => {
+export const assertTransactionSourceInclusionRootAuthenticated = (
+  authentication: TransactionsInclusionRootAuthentication,
+): TransactionsInclusionRootAuthentication => {
   if (
     !authentication.sourceInclusionAuthenticated ||
     authentication.sourceValueCount !== authentication.l2TransactionCount

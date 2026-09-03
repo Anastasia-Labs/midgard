@@ -1,22 +1,22 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
-  buildMidgardBoundedItemV1,
-  type MidgardBoundedItemV1,
+  buildMidgardBoundedItem,
+  type MidgardBoundedItem,
 } from "./bounded-item-v1.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  buildMidgardValidationMerkleMembershipV1,
-  commitMidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleFrontier,
+  buildMidgardValidationMerkleMembership,
+  commitMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleMembership,
+  verifyMidgardValidationMerkleMembership,
 } from "./validation-merkle.js";
 
-export const MIDGARD_BOUNDED_COLLECTION_V1_VERSION = 1 as const;
-export const MIDGARD_BOUNDED_COLLECTION_FIELD_COUNT_V1 = 9 as const;
+export const MIDGARD_BOUNDED_COLLECTION_VERSION = 1 as const;
+export const MIDGARD_BOUNDED_COLLECTION_FIELD_COUNT = 9 as const;
 
 const ITEM_DOMAIN = Buffer.from("MidgardBoundedCollectionItemV1", "ascii");
 const COMMITMENT_DOMAIN = Buffer.from(
@@ -24,22 +24,22 @@ const COMMITMENT_DOMAIN = Buffer.from(
   "ascii",
 );
 
-export type MidgardBoundedCollectionV1 = {
+export type MidgardBoundedCollection = {
   readonly fieldIndex: number;
-  readonly items: readonly MidgardBoundedItemV1[];
+  readonly items: readonly MidgardBoundedItem[];
   readonly leafHashes: readonly Hash32[];
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly commitment: Hash32;
 };
 
-export type MidgardBoundedCollectionItemProofV1 = {
-  readonly version: typeof MIDGARD_BOUNDED_COLLECTION_V1_VERSION;
+export type MidgardBoundedCollectionItemProof = {
+  readonly version: typeof MIDGARD_BOUNDED_COLLECTION_VERSION;
   readonly fieldIndex: number;
   readonly itemCount: number;
   readonly itemIndex: number;
   readonly itemLength: number;
   readonly itemCommitment: Hash32;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly siblings: readonly Hash32[];
 };
 
@@ -53,7 +53,7 @@ const fieldIndexV1 = (fieldIndex: number): number => {
   if (
     !Number.isSafeInteger(fieldIndex) ||
     fieldIndex < 0 ||
-    fieldIndex >= MIDGARD_BOUNDED_COLLECTION_FIELD_COUNT_V1
+    fieldIndex >= MIDGARD_BOUNDED_COLLECTION_FIELD_COUNT
   ) {
     throw new Error(`unknown V1 bounded-collection field index ${fieldIndex}`);
   }
@@ -67,7 +67,7 @@ const itemIndexV1 = (itemIndex: number): number => {
   return itemIndex;
 };
 
-export const hashMidgardBoundedCollectionItemV1 = ({
+export const hashMidgardBoundedCollectionItem = ({
   fieldIndex,
   itemIndex,
   itemLength,
@@ -82,7 +82,7 @@ export const hashMidgardBoundedCollectionItemV1 = ({
     Buffer.concat([
       ITEM_DOMAIN,
       encodeCbor([
-        BigInt(MIDGARD_BOUNDED_COLLECTION_V1_VERSION),
+        BigInt(MIDGARD_BOUNDED_COLLECTION_VERSION),
         BigInt(fieldIndexV1(fieldIndex)),
         BigInt(itemIndexV1(itemIndex)),
         BigInt(itemIndexV1(itemLength)),
@@ -91,76 +91,76 @@ export const hashMidgardBoundedCollectionItemV1 = ({
     ]),
   );
 
-export const commitMidgardBoundedCollectionV1 = ({
+export const commitMidgardBoundedCollection = ({
   fieldIndex,
   frontier,
 }: {
   readonly fieldIndex: number;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
 }): Hash32 =>
   hash32(
     Buffer.concat([
       COMMITMENT_DOMAIN,
       encodeCbor([
-        BigInt(MIDGARD_BOUNDED_COLLECTION_V1_VERSION),
+        BigInt(MIDGARD_BOUNDED_COLLECTION_VERSION),
         BigInt(fieldIndexV1(fieldIndex)),
         BigInt(frontier.count),
-        commitMidgardValidationMerkleFrontierV1(frontier),
+        commitMidgardValidationMerkleFrontier(frontier),
       ]),
     ]),
   );
 
-export const buildMidgardBoundedCollectionV1 = ({
+export const buildMidgardBoundedCollection = ({
   fieldIndex,
   items,
 }: {
   readonly fieldIndex: number;
   readonly items: readonly Uint8Array[];
-}): MidgardBoundedCollectionV1 => {
+}): MidgardBoundedCollection => {
   const exactFieldIndex = fieldIndexV1(fieldIndex);
   const exactItems = items.map((bytes, itemIndex) =>
-    buildMidgardBoundedItemV1({
+    buildMidgardBoundedItem({
       fieldIndex: exactFieldIndex,
       itemIndex,
       bytes,
     }),
   );
   const leafHashes = exactItems.map((item, itemIndex) =>
-    hashMidgardBoundedCollectionItemV1({
+    hashMidgardBoundedCollectionItem({
       fieldIndex: exactFieldIndex,
       itemIndex,
       itemLength: item.bytes.length,
       itemCommitment: item.commitment,
     }),
   );
-  const frontier = buildMidgardValidationMerkleFrontierV1(leafHashes);
+  const frontier = buildMidgardValidationMerkleFrontier(leafHashes);
   return {
     fieldIndex: exactFieldIndex,
     items: exactItems,
     leafHashes,
     frontier,
-    commitment: commitMidgardBoundedCollectionV1({
+    commitment: commitMidgardBoundedCollection({
       fieldIndex: exactFieldIndex,
       frontier,
     }),
   };
 };
 
-export const buildMidgardBoundedCollectionItemProofV1 = (
-  collection: MidgardBoundedCollectionV1,
+export const buildMidgardBoundedCollectionItemProof = (
+  collection: MidgardBoundedCollection,
   itemIndex: number,
-): MidgardBoundedCollectionItemProofV1 => {
+): MidgardBoundedCollectionItemProof => {
   const exactItemIndex = itemIndexV1(itemIndex);
   if (exactItemIndex >= collection.items.length) {
     throw new Error("V1 bounded-collection item index is out of range");
   }
-  const membership: MidgardValidationMerkleMembershipV1 =
-    buildMidgardValidationMerkleMembershipV1(
+  const membership: MidgardValidationMerkleMembership =
+    buildMidgardValidationMerkleMembership(
       collection.leafHashes,
       exactItemIndex,
     );
   return {
-    version: MIDGARD_BOUNDED_COLLECTION_V1_VERSION,
+    version: MIDGARD_BOUNDED_COLLECTION_VERSION,
     fieldIndex: collection.fieldIndex,
     itemCount: collection.items.length,
     itemIndex: exactItemIndex,
@@ -171,16 +171,16 @@ export const buildMidgardBoundedCollectionItemProofV1 = (
   };
 };
 
-export const verifyMidgardBoundedCollectionItemProofV1 = ({
+export const verifyMidgardBoundedCollectionItemProof = ({
   expectedCommitment,
   proof,
 }: {
   readonly expectedCommitment: Uint8Array;
-  readonly proof: MidgardBoundedCollectionItemProofV1;
+  readonly proof: MidgardBoundedCollectionItemProof;
 }): boolean => {
   try {
     if (
-      proof.version !== MIDGARD_BOUNDED_COLLECTION_V1_VERSION ||
+      proof.version !== MIDGARD_BOUNDED_COLLECTION_VERSION ||
       proof.itemCount <= 0 ||
       proof.itemLength < 0 ||
       proof.itemIndex < 0 ||
@@ -189,20 +189,20 @@ export const verifyMidgardBoundedCollectionItemProofV1 = ({
     ) {
       return false;
     }
-    const leafHash = hashMidgardBoundedCollectionItemV1({
+    const leafHash = hashMidgardBoundedCollectionItem({
       fieldIndex: proof.fieldIndex,
       itemIndex: proof.itemIndex,
       itemLength: proof.itemLength,
       itemCommitment: proof.itemCommitment,
     });
     return (
-      verifyMidgardValidationMerkleMembershipV1({
+      verifyMidgardValidationMerkleMembership({
         frontier: proof.frontier,
         leafIndex: proof.itemIndex,
         leafHash,
         siblings: proof.siblings,
       }) &&
-      commitMidgardBoundedCollectionV1({
+      commitMidgardBoundedCollection({
         fieldIndex: proof.fieldIndex,
         frontier: proof.frontier,
       }).equals(

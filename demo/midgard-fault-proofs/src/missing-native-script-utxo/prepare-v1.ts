@@ -1,40 +1,40 @@
 /** DA-first Q33 preparation against an authenticated predecessor ledger. */
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardLedgerOutputCommitment,
+  decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
-  missingNativeScriptIsAbsentV1,
+  missingNativeScriptIsAbsent,
   type OutputReference,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalEvidenceBuilderInputV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
 import {
-  type ProductionHistoricalNativeScriptCorpusV1,
-  requireProductionHistoricalNativeScriptCorpusV1,
+  type HistoricalNativeScriptCorpus,
+  requireHistoricalNativeScriptCorpus,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
 
-export type PreparedMissingNativeScriptUtxoV1 = {
+export type PreparedMissingNativeScriptUtxo = {
   readonly headerHash: string;
   readonly badTxId: string;
   readonly nativeTxCanonicalCbor: string;
@@ -53,7 +53,7 @@ export type PreparedMissingNativeScriptUtxoV1 = {
 };
 
 const outRefKey = (entry: { readonly key: Uint8Array }) => {
-  const decoded = decodeMidgardSpendInputItemV1(entry.key);
+  const decoded = decodeMidgardSpendInputItem(entry.key);
   return `${Buffer.from(decoded.txId).toString("hex")}#${decoded.outputIndex.toString()}`;
 };
 
@@ -62,18 +62,18 @@ const outRefKey = (entry: { readonly key: Uint8Array }) => {
  * older blocks because a predecessor UTxO's credential does not reveal the
  * language or payload, only the versioned script hash.
  */
-export const prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 = async ({
+export const prepareMissingNativeScriptUtxoFromCanonicalEvidence = async ({
   evidence,
   historicalNativeScriptCorpus,
   badTxId,
-}: CanonicalEvidenceBuilderInputV1 & {
-  readonly historicalNativeScriptCorpus: ProductionHistoricalNativeScriptCorpusV1;
+}: CanonicalEvidenceBuilderInput & {
+  readonly historicalNativeScriptCorpus: HistoricalNativeScriptCorpus;
   readonly badTxId?: string;
-}): Promise<PreparedMissingNativeScriptUtxoV1> => {
-  const history = requireProductionHistoricalNativeScriptCorpusV1(
+}): Promise<PreparedMissingNativeScriptUtxo> => {
+  const history = requireHistoricalNativeScriptCorpus(
     historicalNativeScriptCorpus,
   );
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   if (
     history.currentEvidence.headerHash !== evidence.headerHash ||
     history.currentEvidence.payloadEnvelopeSha256 !==
@@ -99,7 +99,7 @@ export const prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 = async ({
     );
   }
   const previousMembers = previousReconstruction.utxos.map((entry) => {
-    const material = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
       outRef: entry.key,
       outputCbor: entry.value,
     });
@@ -130,20 +130,20 @@ export const prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 = async ({
     ) {
       return [];
     }
-    const inputItems = decodeMidgardFieldPreimageV1(
+    const inputItems = decodeMidgardFieldPreimage(
       tx.nativeTx.body.spendInputsPreimageCbor,
     );
-    const scriptItems = decodeMidgardFieldPreimageV1(
+    const scriptItems = decodeMidgardFieldPreimage(
       tx.nativeTx.witnessSet.scriptTxWitsPreimageCbor,
     );
     return inputItems.flatMap((item, inputIndex) => {
-      const input = decodeMidgardSpendInputItemV1(item);
+      const input = decodeMidgardSpendInputItem(item);
       const key = `${Buffer.from(input.txId).toString("hex")}#${input.outputIndex.toString()}`;
       const member = previousMembers.find(
         (candidate) => candidate.outRefKey === key,
       );
       if (member === undefined) return [];
-      const descriptor = decodeMidgardLedgerOutputCommitmentV1(member.value);
+      const descriptor = decodeMidgardLedgerOutputCommitment(member.value);
       const credential = decodeMidgardAddressBytes(
         descriptor.address,
       ).paymentCredential;
@@ -154,7 +154,7 @@ export const prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 = async ({
       );
       if (
         preimage === undefined ||
-        !missingNativeScriptIsAbsentV1({
+        !missingNativeScriptIsAbsent({
           scriptTxWitsItems: scriptItems,
           expectedMissingScriptHash: expectedHash,
         })
@@ -180,8 +180,8 @@ export const prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 = async ({
       "authenticated retained evidence contains no missing-native-script-utxo violation with a known native preimage",
     );
   }
-  const txTrie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
-  await requireTransactionsRootMatchV1({
+  const txTrie = await buildTrieView(decoded.map(transactionSourceTrieItem));
+  await requireTransactionsRootMatch({
     sourceRoot: txTrie.root,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     count: BigInt(decoded.length),
@@ -208,7 +208,7 @@ export const prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1 = async ({
       transactionsPhasRoot: txTrie.root,
       txMembershipProofCbor: requireProof(
         txTrie,
-        transactionSourceTrieItemV1(selected.tx).key,
+        transactionSourceTrieItem(selected.tx).key,
         "missing-native-script-utxo transaction",
       ),
     },

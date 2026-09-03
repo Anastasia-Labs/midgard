@@ -21,8 +21,8 @@
  * out-ref item encoding, so item byte equality *is* out-ref equality.
  */
 import {
-  type FieldCarriageV1,
-  fieldOpeningV1ForField,
+  type FieldCarriage,
+  fieldOpeningForField,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -30,7 +30,7 @@ import {
   InputSetUniquenessStep02Datum,
   InputSetUniquenessStep02SpendRedeemer,
   type InputSetUniquenessStep02State,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -47,11 +47,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldCarriageV1,
-  type FaultProofFieldOpeningPlanV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldCarriage,
+  faultProofFieldOpening,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -60,26 +60,26 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContractsV1 } from "./contracts-v1.js";
-import type { InputSetUniquenessClaimV1 } from "./scan-v1.js";
+import type { InputSetUniquenessContracts } from "./contracts-v1.js";
+import type { InputSetUniquenessClaim } from "./scan-v1.js";
 import {
-  inputSetUniquenessStepLabelV1,
+  inputSetUniquenessStepLabel,
   inputSetUniquenessSubmitError,
-  requireInputSetUniquenessReferenceScriptV1,
-  requireInputSetUniquenessStepStateV1,
-  requireInputSetUniquenessThreadUtxoV1,
+  requireInputSetUniquenessReferenceScript,
+  requireInputSetUniquenessStepState,
+  requireInputSetUniquenessThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = inputSetUniquenessStepLabelV1(1);
+const STEP_LABEL = inputSetUniquenessStepLabel(1);
 
 export type SubmitInputSetUniquenessStep02Result = {
   readonly txHash: string;
@@ -96,7 +96,7 @@ export type SubmitInputSetUniquenessStep02Result = {
   readonly fraudProofAddress: string;
   /** The anchored transaction the conviction opened. */
   readonly badTxId: string;
-  readonly claim: InputSetUniquenessClaimV1;
+  readonly claim: InputSetUniquenessClaim;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -150,12 +150,12 @@ const requireItemAt = (
 };
 
 /** Twin of the validator's per-arm conviction predicate, fail-closed. */
-export const assertInputSetUniquenessClaimConvictsV1 = ({
+export const assertInputSetUniquenessClaimConvicts = ({
   claim,
   spendInputItemCbors,
   referenceInputItemCbors,
 }: {
-  readonly claim: InputSetUniquenessClaimV1;
+  readonly claim: InputSetUniquenessClaim;
   readonly spendInputItemCbors: readonly string[];
   readonly referenceInputItemCbors: readonly string[];
 }): void => {
@@ -217,11 +217,11 @@ export const submitInputSetUniquenessStep02 = async ({
   unsafeSpendFieldRawUtxoForTest,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly claim: InputSetUniquenessClaimV1;
+  readonly claim: InputSetUniquenessClaim;
   /** The disputed transaction's compact CBOR — the door re-derives the anchored id from these bytes. */
   readonly nativeTxCompactCbor: string;
   /** §2.5 field 0's canonical §5.3 items, hex, in committed order. */
@@ -241,8 +241,8 @@ export const submitInputSetUniquenessStep02 = async ({
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
   /**
    * Test-only adversarial injection for the tier-2 refusal suite: the
@@ -253,16 +253,17 @@ export const submitInputSetUniquenessStep02 = async ({
    */
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
 }): Promise<SubmitInputSetUniquenessStep02Result> => {
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId,
       stepIndex: 1,
       threadOutRef,
-    });
+    },
+  );
   const state: InputSetUniquenessStep02State =
-    requireInputSetUniquenessStepStateV1({
+    requireInputSetUniquenessStepState({
       threadUtxo,
       signer,
       schema: InputSetUniquenessStep02Datum,
@@ -271,7 +272,7 @@ export const submitInputSetUniquenessStep02 = async ({
   const badTxId = state.bad_tx_id;
 
   // Local twin of the validator's conviction predicate, before any planning.
-  assertInputSetUniquenessClaimConvictsV1({
+  assertInputSetUniquenessClaimConvicts({
     claim,
     spendInputItemCbors,
     referenceInputItemCbors,
@@ -286,7 +287,7 @@ export const submitInputSetUniquenessStep02 = async ({
   // 358 forty-byte out-ref items) plans a tier-2 `RawUtxo` publication, which
   // is published below and consumed as a reference input.
   const planField = (fieldIndex: number, items: readonly string[]) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: badTxId,
       nativeTxCompactCbor,
@@ -294,17 +295,17 @@ export const submitInputSetUniquenessStep02 = async ({
       owner: signer.paymentKeyHash,
       label: STEP_LABEL,
     });
-  let plannedSpend: FaultProofFieldOpeningPlanV1 | undefined;
-  let plannedReference: FaultProofFieldOpeningPlanV1 | undefined;
+  let plannedSpend: FaultProofFieldOpeningPlan | undefined;
+  let plannedReference: FaultProofFieldOpeningPlan | undefined;
   if (claim.kind !== "duplicateReferenceInputs") {
     plannedSpend = planField(
-      MIDGARD_FIELD_INDEX_V1.spendInputs,
+      MIDGARD_FIELD_INDEX.spendInputs,
       spendInputItemCbors,
     );
   }
   if (claim.kind !== "duplicateSpendInputs") {
     plannedReference = planField(
-      MIDGARD_FIELD_INDEX_V1.referenceInputs,
+      MIDGARD_FIELD_INDEX.referenceInputs,
       referenceInputItemCbors,
     );
   }
@@ -320,7 +321,7 @@ export const submitInputSetUniquenessStep02 = async ({
     certificate,
   }: {
     readonly fieldLabel: string;
-    readonly planned: FaultProofFieldOpeningPlanV1 | undefined;
+    readonly planned: FaultProofFieldOpeningPlan | undefined;
     readonly supplied: readonly UTxO[] | undefined;
     readonly certificate: UTxO | undefined;
   }): Promise<readonly UTxO[]> => {
@@ -330,7 +331,7 @@ export const submitInputSetUniquenessStep02 = async ({
       (planned.plan.publications.length === 0
         ? []
         : publishMissingCarriage
-          ? await publishFaultProofFieldCarriageV1({
+          ? await publishFaultProofFieldCarriage({
               lucid,
               signer,
               planned,
@@ -368,22 +369,22 @@ export const submitInputSetUniquenessStep02 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireInputSetUniquenessReferenceScriptV1({
+      : requireInputSetUniquenessReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[1].spendingScriptHash,
           stepIndex: 1,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[1].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -423,15 +424,15 @@ export const submitInputSetUniquenessStep02 = async ({
           second_index: claim.secondIndex,
           spend_inputs_opening:
             unsafeSpendFieldRawUtxoForTest === undefined
-              ? faultProofFieldOpeningV1({
+              ? faultProofFieldOpening({
                   planned: plannedSpend,
                   referenceInputs,
                   certificatePolicyId:
                     contracts.fieldPreimageCertificatePolicyId,
                   label: STEP_LABEL,
                 })
-              : fieldOpeningV1ForField({
-                  fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+              : fieldOpeningForField({
+                  fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
                   nativeTxCompactCbor: plannedSpend.nativeTxCompactCbor,
                   carriage: {
                     RawUtxo: {
@@ -441,7 +442,7 @@ export const submitInputSetUniquenessStep02 = async ({
                         `${STEP_LABEL} substituted publication`,
                       ),
                     },
-                  } satisfies FieldCarriageV1,
+                  } satisfies FieldCarriage,
                 }),
         },
       };
@@ -457,7 +458,7 @@ export const submitInputSetUniquenessStep02 = async ({
           ...common,
           first_index: claim.firstIndex,
           second_index: claim.secondIndex,
-          reference_inputs_opening: faultProofFieldOpeningV1({
+          reference_inputs_opening: faultProofFieldOpening({
             planned: plannedReference,
             referenceInputs,
             certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -477,13 +478,13 @@ export const submitInputSetUniquenessStep02 = async ({
         spend_index: claim.spendIndex,
         reference_index: claim.referenceIndex,
         native_tx_compact_cbor: plannedSpend.nativeTxCompactCbor,
-        spend_inputs_carriage: faultProofFieldCarriageV1({
+        spend_inputs_carriage: faultProofFieldCarriage({
           planned: plannedSpend,
           referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
           label: STEP_LABEL,
         }),
-        reference_inputs_carriage: faultProofFieldCarriageV1({
+        reference_inputs_carriage: faultProofFieldCarriage({
           planned: plannedReference,
           referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -605,9 +606,9 @@ export const submitInputSetUniquenessStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -1,20 +1,20 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import {
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramMaterialEntryV1,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardAddressText,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
   midgardAddressFromText,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import {
   LedgerColumns,
@@ -123,7 +123,7 @@ import {
   decodeImportAddrWitnesses,
   encodePartialWitnessBundle,
   estimatedSignedTxByteLength,
-  type MidgardPartialWitnessBundleV1,
+  type MidgardPartialWitnessBundle,
   normalizeVKeyWitnessInput,
   parsePartialWitnessBundle,
   partialWitnessBundleFromWitnesses,
@@ -209,7 +209,7 @@ export type {
 export type { FromTxOptions } from "./builder/imported-tx.js";
 export type { CompleteTxMetadata } from "./builder/metadata.js";
 export type {
-  MidgardPartialWitnessBundleV1,
+  MidgardPartialWitnessBundle,
   PartialWitnessBundleInput,
   VKeyWitnessInput,
 } from "./builder/witness-bundle.js";
@@ -254,28 +254,28 @@ export type PartialSignApi = {
   readonly withWallet: (wallet?: MidgardWallet) => TxPartialSignBuilder;
   readonly withWalletSafe: (
     wallet?: MidgardWallet,
-  ) => Promise<MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>>;
+  ) => Promise<MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>>;
   readonly withWalletProgram: (
     wallet?: MidgardWallet,
-  ) => MidgardEffect<MidgardPartialWitnessBundleV1>;
+  ) => MidgardEffect<MidgardPartialWitnessBundle>;
   readonly withPrivateKey: (
     privateKey: PrivateKey | string,
   ) => TxPartialSignBuilder;
   readonly withPrivateKeySafe: (
     privateKey: PrivateKey | string,
-  ) => Promise<MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>>;
+  ) => Promise<MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>>;
   readonly withPrivateKeyProgram: (
     privateKey: PrivateKey | string,
-  ) => MidgardEffect<MidgardPartialWitnessBundleV1>;
+  ) => MidgardEffect<MidgardPartialWitnessBundle>;
   readonly withExternalSigner: (
     signer: ExternalBodyHashSigner,
   ) => TxPartialSignBuilder;
   readonly withExternalSignerSafe: (
     signer: ExternalBodyHashSigner,
-  ) => Promise<MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>>;
+  ) => Promise<MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>>;
   readonly withExternalSignerProgram: (
     signer: ExternalBodyHashSigner,
-  ) => MidgardEffect<MidgardPartialWitnessBundleV1>;
+  ) => MidgardEffect<MidgardPartialWitnessBundle>;
   readonly withWitness: (witness: VKeyWitnessInput) => TxPartialSignBuilder;
   readonly withWitnesses: (
     witnesses: readonly VKeyWitnessInput[],
@@ -330,12 +330,12 @@ const assertConsensusTransaction = (
   txCbor: Uint8Array,
   consensusProfile: LucidMidgardConfigSnapshot["consensusProfile"],
 ): void => {
-  if (!isMidgardConsensusProfileV1(consensusProfile)) {
+  if (!isMidgardConsensusProfile(consensusProfile)) {
     throw new BuilderInvariantError(
       "Transaction uses an unsupported consensus profile",
     );
   }
-  const violation = validateMidgardConsensusV1TxCbor(txCbor);
+  const violation = validateMidgardConsensusTxCbor(txCbor);
   if (violation !== null) {
     throw new BuilderInvariantError(
       `Transaction violates the V1 consensus profile: ${violation.code}`,
@@ -349,7 +349,7 @@ const partiallySignedTxConstructorToken = Symbol(
 );
 
 const assertTxNetworkMatchesExpected = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   expectedNetworkId: bigint | undefined,
   context: string,
 ): void => {
@@ -394,13 +394,13 @@ export type MidgardTxJson = {
 };
 
 const completeTxMetadataWithAddrWitnesses = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
 ): CompleteTxMetadata => {
   const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
   return {
     ...metadata,
-    txByteLength: encodeMidgardNativeTxCanonicalV1(tx).length,
+    txByteLength: encodeMidgardNativeTxCanonical(tx).length,
     ...addrWitnessMetadata(witnesses),
   };
 };
@@ -441,7 +441,7 @@ export class TxPartialSignBuilder {
     this.#expectedNetworkId = expectedNetworkId;
   }
 
-  async partial(): Promise<MidgardPartialWitnessBundleV1> {
+  async partial(): Promise<MidgardPartialWitnessBundle> {
     return partialWitnessBundleFromWitnesses(
       this.#tx.tx,
       await this.collectWitnesses(),
@@ -464,19 +464,19 @@ export class TxPartialSignBuilder {
     return midgardSafe(() => this.complete());
   }
 
-  partialProgram(): MidgardEffect<MidgardPartialWitnessBundleV1> {
+  partialProgram(): MidgardEffect<MidgardPartialWitnessBundle> {
     return midgardProgram(() => this.partial());
   }
 
   partialSafe(): Promise<
-    MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>
+    MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>
   > {
     return midgardSafe(() => this.partial());
   }
 
   private async collectWitnesses(): Promise<readonly VKeyWitness[]> {
     const nativeTx = this.#tx.tx;
-    const bodyHash = computeMidgardNativeTxIdV1(nativeTx);
+    const bodyHash = computeMidgardNativeTxId(nativeTx);
     const witnesses: VKeyWitness[] = this.#witnesses.map((witness, index) =>
       normalizeVKeyWitnessInput(
         witness,
@@ -525,17 +525,17 @@ export class CompleteTx {
   readonly partialSign: PartialSignApi;
 
   constructor(
-    tx: MidgardNativeTxFullV1,
+    tx: MidgardNativeTxFull,
     metadata: CompleteTxMetadata,
     context?: CompleteTxContext,
   ) {
-    this.#txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    this.#txCbor = encodeMidgardNativeTxCanonical(tx);
     assertConsensusTransaction(
       this.#txCbor,
-      context?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+      context?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
     );
     this.txHex = this.#txCbor.toString("hex");
-    this.#txId = computeMidgardNativeTxIdV1(tx);
+    this.#txId = computeMidgardNativeTxId(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
     this.#context = cloneCompleteTxContext(context);
@@ -547,8 +547,8 @@ export class CompleteTx {
     );
   }
 
-  get tx(): MidgardNativeTxFullV1 {
-    return decodeMidgardNativeTxFullV1FromCanonicalCbor(this.#txCbor);
+  get tx(): MidgardNativeTxFull {
+    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -563,10 +563,10 @@ export class CompleteTx {
     return cloneCompleteTxMetadata(this.#metadata);
   }
 
-  get programMaterial(): readonly MidgardCekProgramMaterialEntryV1[] {
+  get programMaterial(): readonly MidgardCekProgramMaterialEntry[] {
     return (this.#context?.programMaterial ?? []).map((entry) => ({
       ...entry,
-      root: Buffer.from(entry.root) as MidgardCekProgramMaterialEntryV1["root"],
+      root: Buffer.from(entry.root) as MidgardCekProgramMaterialEntry["root"],
       preimage: Buffer.from(entry.preimage),
     }));
   }
@@ -621,7 +621,7 @@ export class CompleteTx {
     );
   }
 
-  toPartialWitnessBundle(): MidgardPartialWitnessBundleV1 {
+  toPartialWitnessBundle(): MidgardPartialWitnessBundle {
     assertTrustedCompleteTx(this, "export partial witnesses");
     return partialWitnessBundleFromWitnesses(
       this.tx,
@@ -758,7 +758,7 @@ export class CompleteTx {
       signedTx,
       {
         ...this.#metadata,
-        txByteLength: encodeMidgardNativeTxCanonicalV1(signedTx).length,
+        txByteLength: encodeMidgardNativeTxCanonical(signedTx).length,
         ...addrWitnessMetadata(signedWitnesses),
       },
       this.#context,
@@ -869,7 +869,7 @@ const referenceOutputMapsEqual = (
 };
 
 const makeCompleteTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
   context?: CompleteTxContext,
 ): CompleteTx => {
@@ -904,7 +904,7 @@ const completeWitnessSet = (
 };
 
 const assemblePartialWitnessBundles = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
   context: CompleteTxContext | undefined,
   bundles: PartialWitnessBundleInput | readonly PartialWitnessBundleInput[],
@@ -914,7 +914,7 @@ const assemblePartialWitnessBundles = (
   if (inputs.length === 0) {
     throw new SigningError("At least one partial witness bundle is required");
   }
-  const bodyHash = computeMidgardNativeTxIdV1(tx);
+  const bodyHash = computeMidgardNativeTxId(tx);
   const witnesses = inputs.flatMap((input) => {
     const bundle = parsePartialWitnessBundle(input);
     assertPartialBundleMatchesTx(tx, bundle);
@@ -962,7 +962,7 @@ export class PartiallySignedTx {
   readonly txIdHex: string;
 
   constructor(
-    tx: MidgardNativeTxFullV1,
+    tx: MidgardNativeTxFull,
     metadata: CompleteTxMetadata,
     context?: CompleteTxContext,
     token?: symbol,
@@ -972,20 +972,20 @@ export class PartiallySignedTx {
         "PartiallySignedTx constructor is internal; use CompleteTx.assemble(..., { allowPartial: true })",
       );
     }
-    this.#txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    this.#txCbor = encodeMidgardNativeTxCanonical(tx);
     assertConsensusTransaction(
       this.#txCbor,
-      context?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+      context?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
     );
     this.txHex = this.#txCbor.toString("hex");
-    this.#txId = computeMidgardNativeTxIdV1(tx);
+    this.#txId = computeMidgardNativeTxId(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
     this.#context = cloneCompleteTxContext(context);
   }
 
-  get tx(): MidgardNativeTxFullV1 {
-    return decodeMidgardNativeTxFullV1FromCanonicalCbor(this.#txCbor);
+  get tx(): MidgardNativeTxFull {
+    return decodeMidgardNativeTxFullFromCanonicalCbor(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -1046,7 +1046,7 @@ export class PartiallySignedTx {
     );
   }
 
-  toPartialWitnessBundle(): MidgardPartialWitnessBundleV1 {
+  toPartialWitnessBundle(): MidgardPartialWitnessBundle {
     return partialWitnessBundleFromWitnesses(
       this.tx,
       decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),
@@ -1059,7 +1059,7 @@ export class PartiallySignedTx {
 }
 
 const makePartiallySignedTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   metadata: CompleteTxMetadata,
   context?: CompleteTxContext,
 ): PartiallySignedTx =>
@@ -1865,7 +1865,7 @@ const normalizeLocalPreflightPhase = (
 const queuedTxFromComplete = (tx: CompleteTx): QueuedTx => ({
   txId: tx.txId,
   txCbor: tx.txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
     tx.programMaterial,
   ),
   arrivalSeq: 0n,
@@ -2444,10 +2444,10 @@ export class TxBuilder {
   }
 
   private async finalizeCompleteTx(
-    tx: MidgardNativeTxFullV1,
+    tx: MidgardNativeTxFull,
     metadata: Omit<CompleteTxMetadata, "localValidation">,
     options: CompleteOptions,
-    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
     resolvedReferenceOutputsByOutRef: ReadonlyMap<
       string,
       Uint8Array
@@ -2540,7 +2540,7 @@ export class TxBuilder {
     state: BuilderState,
     options: CompleteOptions,
     resolved?: BalancedCompletionInputs,
-    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
     resolvedReferenceOutputsByOutRef: ReadonlyMap<
       string,
       Uint8Array
@@ -2578,7 +2578,7 @@ export class TxBuilder {
 
   async complete(options: CompleteOptions = {}): Promise<CompleteTx> {
     const clonedState = cloneState(this.state);
-    const prepared = isMidgardConsensusProfileV1(
+    const prepared = isMidgardConsensusProfile(
       this.context.config.consensusProfile,
     )
       ? prepareProofBuilderState(clonedState, options.programMaterial)
@@ -2620,8 +2620,8 @@ export class TxBuilder {
       scriptMaterialization,
       BigInt(this.context.config.midgardNativeTxVersion),
     );
-    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical);
-    const txCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const tx = materializeMidgardNativeTxFromCanonical(canonical);
+    const txCbor = encodeMidgardNativeTxCanonical(tx);
     const expectedWitnessKeyHashes = expectedAddrWitnessKeyHashes(state);
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
 
@@ -2726,7 +2726,7 @@ export class TxBuilder {
 
   async chain(options: CompleteOptions = {}): Promise<ChainResult> {
     const clonedState = cloneState(this.state);
-    const prepared = isMidgardConsensusProfileV1(
+    const prepared = isMidgardConsensusProfile(
       this.context.config.consensusProfile,
     )
       ? prepareProofBuilderState(clonedState, options.programMaterial)
@@ -3135,7 +3135,7 @@ export class LucidMidgard {
   }
 
   private completeTxContext(
-    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
     resolvedReferenceOutputsByOutRef: ReadonlyMap<
       string,
       Uint8Array

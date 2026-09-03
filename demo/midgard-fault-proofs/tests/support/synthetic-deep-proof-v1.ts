@@ -48,7 +48,7 @@ const branchNeighbors = (level: number): string => {
   return Buffer.concat(parts).toString("hex");
 };
 
-export type SyntheticDeepProofV1 = {
+export type SyntheticDeepProof = {
   /** The raw MPF root this proof proves, hex. */
   readonly transactionsPhasRoot: string;
   /** The proof, in the canonical on-chain CBOR the step redeemer would carry. */
@@ -65,7 +65,7 @@ export type SyntheticDeepProofV1 = {
  * sibling-grinding adversary forces — so `branchLevels` is also the proof's
  * step count.
  */
-export const syntheticDeepMembershipProofV1 = ({
+export const syntheticDeepMembershipProof = ({
   key,
   value,
   branchLevels,
@@ -73,7 +73,7 @@ export const syntheticDeepMembershipProofV1 = ({
   readonly key: Buffer;
   readonly value: Buffer;
   readonly branchLevels: number;
-}): SyntheticDeepProofV1 => {
+}): SyntheticDeepProof => {
   if (
     !Number.isInteger(branchLevels) ||
     branchLevels < 1 ||
@@ -248,22 +248,22 @@ const ladderNeighbors = (domain: number, level: number): readonly Buffer[] => {
  * membership claim; its absence makes it an absence claim, whose deepest branch
  * node simply has no child in the key's slot.
  */
-export type SyntheticSharedRootClaimV1 = {
+export type SyntheticSharedRootClaim = {
   readonly key: Buffer;
   readonly value?: Buffer;
 };
 
-export type SyntheticSharedRootOpeningV1 = {
+export type SyntheticSharedRootOpening = {
   readonly key: Buffer;
   readonly isMembership: boolean;
   readonly proofCbor: string;
   readonly proofCborBytes: number;
 };
 
-export type SyntheticDeepSharedRootV1 = {
+export type SyntheticDeepSharedRoot = {
   /** The one raw MPF root every returned opening reconstructs, hex. */
   readonly root: string;
-  readonly openings: readonly SyntheticSharedRootOpeningV1[];
+  readonly openings: readonly SyntheticSharedRootOpening[];
   readonly branchLevels: number;
 };
 
@@ -276,13 +276,13 @@ export type SyntheticDeepSharedRootV1 = {
  * fixture that silently fell back to a shallower shared prefix would be
  * measuring a different depth than the one it reports.
  */
-export const syntheticDeepSharedRootProofsV1 = ({
+export const syntheticDeepSharedRootProofs = ({
   claims,
   branchLevels,
 }: {
-  readonly claims: readonly SyntheticSharedRootClaimV1[];
+  readonly claims: readonly SyntheticSharedRootClaim[];
   readonly branchLevels: number;
-}): SyntheticDeepSharedRootV1 => {
+}): SyntheticDeepSharedRoot => {
   if (
     !Number.isInteger(branchLevels) ||
     branchLevels < 2 ||

@@ -1,8 +1,8 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   EMPTY_MERKLE_TREE_ROOT,
-  encodeMidgardTxInputCanonicalV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   Proof,
   type Proof as ProofV1,
@@ -10,51 +10,46 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  prepareNonExistentInputFromCanonicalEvidenceV1,
-  prepareNoReferenceInputFromCanonicalEvidenceV1,
+  prepareNonExistentInputFromCanonicalEvidence,
+  prepareNoReferenceInputFromCanonicalEvidence,
 } from "../evidence/prepare-from-evidence-v1.js";
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
 } from "../field-opening-v1.js";
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
 import {
-  type CompleteCanonicalReplayContextV1,
-  completeCanonicalReplayPredecessorEvidenceV1,
+  type CompleteCanonicalReplayContext,
+  completeCanonicalReplayPredecessorEvidence,
 } from "./complete-replay-v1.js";
+import { type JournalJsonObject, normalizeJournalJson } from "./journal-v1.js";
 import {
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
-} from "./journal-v1.js";
-import {
-  admitProductionNativeInclusionArtifactV1,
-  admitProductionTxInputListV1,
-  canonicalHexV1,
-  EVEN_HEX_V1,
-  exactJournalRecordV1,
-  HEX_28_V1,
-  HEX_32_V1,
-  NATURAL_DECIMAL_V1,
-  type ProductionNativeInclusionArtifactV1,
-  safeNaturalNumberV1,
+  admitNativeInclusionArtifact,
+  admitTxInputList,
+  canonicalHex,
+  EVEN_HEX,
+  exactJournalRecord,
+  HEX_28,
+  HEX_32,
+  type NativeInclusionArtifact,
+  NATURAL_DECIMAL,
+  safeNaturalNumber,
 } from "./production-native-index-artifact-v1.js";
 
-export const PRODUCTION_LEDGER_ABSENCE_ARTIFACT_V1 =
+export const LEDGER_ABSENCE_ARTIFACT =
   "midgard-production-ledger-absence-artifact-v1" as const;
 
-export type ProductionLedgerAbsenceCategoryV1 =
-  | "nonExistentInput"
-  | "noReferenceInput";
+export type LedgerAbsenceCategory = "nonExistentInput" | "noReferenceInput";
 
-export type ProductionLedgerAbsenceArtifactV1 = JournalJsonObjectV1 &
+export type LedgerAbsenceArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_LEDGER_ABSENCE_ARTIFACT_V1;
-    category: ProductionLedgerAbsenceCategoryV1;
+    schemaVersion: typeof LEDGER_ABSENCE_ARTIFACT;
+    category: LedgerAbsenceCategory;
     headerHash: string;
     detectionId: string;
     position: number;
-    badTx: ProductionNativeInclusionArtifactV1;
+    badTx: NativeInclusionArtifact;
     inputs: readonly Readonly<{ tx_id: string; output_index: string }>[];
     badInputIndex: number;
     prevUtxosRoot: string;
@@ -62,14 +57,12 @@ export type ProductionLedgerAbsenceArtifactV1 = JournalJsonObjectV1 &
     txsNonMembershipProofCbor: string;
   }>;
 
-export type AdmittedProductionLedgerAbsenceArtifactV1 = Readonly<{
-  artifact: ProductionLedgerAbsenceArtifactV1;
-  txInclusion: ReturnType<
-    typeof admitProductionNativeInclusionArtifactV1
-  >["inclusion"];
+export type AdmittedLedgerAbsenceArtifact = Readonly<{
+  artifact: LedgerAbsenceArtifact;
+  txInclusion: ReturnType<typeof admitNativeInclusionArtifact>["inclusion"];
   inputPreimage: readonly MidgardTxInput[];
   selectedInput: MidgardTxInput;
-  fieldPlan: FaultProofFieldOpeningPlanV1;
+  fieldPlan: FaultProofFieldOpeningPlan;
 }>;
 
 const proofSteps = (proof: ProofV1) =>
@@ -106,7 +99,7 @@ const decodeProof = (
   cbor: string;
   proof: ProofV1;
 }> => {
-  const cbor = canonicalHexV1(value, EVEN_HEX_V1, label);
+  const cbor = canonicalHex(value, EVEN_HEX, label);
   try {
     const proof = Data.from(cbor, Proof);
     const canonical = Data.to(proof, Proof);
@@ -163,9 +156,9 @@ const selectedIdentity = ({
   category,
   classification,
 }: {
-  readonly category: ProductionLedgerAbsenceCategoryV1;
+  readonly category: LedgerAbsenceCategory;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
 }): Readonly<{
@@ -184,10 +177,10 @@ const selectedIdentity = ({
     classification.selected.violationId !== expectedViolation ||
     fields.length !== 5 ||
     fields[0] !== expectedViolation ||
-    !NATURAL_DECIMAL_V1.test(fields[1] ?? "") ||
-    !NATURAL_DECIMAL_V1.test(fields[2] ?? "") ||
-    !HEX_32_V1.test(fields[3] ?? "") ||
-    !EVEN_HEX_V1.test(fields[4] ?? "") ||
+    !NATURAL_DECIMAL.test(fields[1] ?? "") ||
+    !NATURAL_DECIMAL.test(fields[2] ?? "") ||
+    !HEX_32.test(fields[3] ?? "") ||
+    !EVEN_HEX.test(fields[4] ?? "") ||
     classification.selected.position !== BigInt(fields[1]!)
   ) {
     throw new Error(`${category} classification identity is malformed`);
@@ -205,11 +198,11 @@ const selectedIdentity = ({
   });
 };
 
-export const admitProductionLedgerAbsenceArtifactV1 = (
+export const admitLedgerAbsenceArtifact = (
   value: unknown,
   owner: string,
-): AdmittedProductionLedgerAbsenceArtifactV1 => {
-  const parsed = exactJournalRecordV1(
+): AdmittedLedgerAbsenceArtifact => {
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -227,7 +220,7 @@ export const admitProductionLedgerAbsenceArtifactV1 = (
     "ledger-absence artifact",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_LEDGER_ABSENCE_ARTIFACT_V1 ||
+    parsed.schemaVersion !== LEDGER_ABSENCE_ARTIFACT ||
     (parsed.category !== "nonExistentInput" &&
       parsed.category !== "noReferenceInput") ||
     typeof parsed.detectionId !== "string"
@@ -235,24 +228,24 @@ export const admitProductionLedgerAbsenceArtifactV1 = (
     throw new Error("ledger-absence artifact identity changed");
   }
   const category = parsed.category;
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     parsed.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "ledger-absence header hash",
   );
-  const position = safeNaturalNumberV1(
+  const position = safeNaturalNumber(
     parsed.position,
     "ledger-absence position",
   );
-  const badInputIndex = safeNaturalNumberV1(
+  const badInputIndex = safeNaturalNumber(
     parsed.badInputIndex,
     "ledger-absence input index",
   );
-  const badTx = admitProductionNativeInclusionArtifactV1(
+  const badTx = admitNativeInclusionArtifact(
     parsed.badTx,
     "ledger-absence transaction",
   );
-  const inputs = admitProductionTxInputListV1(
+  const inputs = admitTxInputList(
     parsed.inputs,
     "ledger-absence input preimage",
   );
@@ -260,9 +253,9 @@ export const admitProductionLedgerAbsenceArtifactV1 = (
   if (selectedInput === undefined) {
     throw new Error("ledger-absence input index is out of bounds");
   }
-  const prevUtxosRoot = canonicalHexV1(
+  const prevUtxosRoot = canonicalHex(
     parsed.prevUtxosRoot,
-    HEX_32_V1,
+    HEX_32,
     "ledger-absence predecessor root",
   );
   const ledgerProof = decodeProof(
@@ -301,19 +294,19 @@ export const admitProductionLedgerAbsenceArtifactV1 = (
   ) {
     throw new Error("ledger-absence artifact changed detection identity");
   }
-  const fieldPlan = planFaultProofFieldOpeningV1({
+  const fieldPlan = planFaultProofFieldOpening({
     fieldIndex:
       category === "nonExistentInput"
-        ? MIDGARD_FIELD_INDEX_V1.spendInputs
-        : MIDGARD_FIELD_INDEX_V1.referenceInputs,
+        ? MIDGARD_FIELD_INDEX.spendInputs
+        : MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: badTx.artifact.nativeTxId,
     nativeTxCompactCbor: badTx.artifact.nativeTxCompactCbor,
-    itemCbors: inputs.inputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: inputs.inputs.map(encodeMidgardTxInputCanonical),
     owner,
     label: `${category} production input field`,
   });
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_LEDGER_ABSENCE_ARTIFACT_V1,
+    schemaVersion: LEDGER_ABSENCE_ARTIFACT,
     category,
     headerHash,
     detectionId: parsed.detectionId,
@@ -324,7 +317,7 @@ export const admitProductionLedgerAbsenceArtifactV1 = (
     prevUtxosRoot,
     ledgerNonMembershipProofCbor: ledgerProof.cbor,
     txsNonMembershipProofCbor: txsProof.cbor,
-  }) satisfies ProductionLedgerAbsenceArtifactV1;
+  }) satisfies LedgerAbsenceArtifact;
   return Object.freeze({
     artifact,
     txInclusion: badTx.inclusion,
@@ -334,35 +327,35 @@ export const admitProductionLedgerAbsenceArtifactV1 = (
   });
 };
 
-export const prepareProductionLedgerAbsenceArtifactV1 = async ({
+export const prepareLedgerAbsenceArtifact = async ({
   category,
   evidence,
   replayContext,
   classification,
   owner,
 }: {
-  readonly category: ProductionLedgerAbsenceCategoryV1;
+  readonly category: LedgerAbsenceCategory;
   readonly evidence: Parameters<
-    typeof prepareNonExistentInputFromCanonicalEvidenceV1
+    typeof prepareNonExistentInputFromCanonicalEvidence
   >[0]["evidence"];
-  readonly replayContext?: CompleteCanonicalReplayContextV1;
+  readonly replayContext?: CompleteCanonicalReplayContext;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
   readonly owner: string;
-}): Promise<ProductionLedgerAbsenceArtifactV1> => {
+}): Promise<LedgerAbsenceArtifact> => {
   if (classification.headerHash !== evidence.headerHash) {
     throw new Error(`${category} classification differs from evidence`);
   }
   const selected = selectedIdentity({ category, classification });
-  const previousBlockEvidence = completeCanonicalReplayPredecessorEvidenceV1({
+  const previousBlockEvidence = completeCanonicalReplayPredecessorEvidence({
     evidence,
     context: replayContext,
   });
   const prepared = await (async () => {
     if (category === "nonExistentInput") {
-      const result = await prepareNonExistentInputFromCanonicalEvidenceV1({
+      const result = await prepareNonExistentInputFromCanonicalEvidence({
         evidence,
         ...(previousBlockEvidence === undefined
           ? {}
@@ -376,7 +369,7 @@ export const prepareProductionLedgerAbsenceArtifactV1 = async ({
         inputPreimage: result.inputsPreimage,
       });
     }
-    const result = await prepareNoReferenceInputFromCanonicalEvidenceV1({
+    const result = await prepareNoReferenceInputFromCanonicalEvidence({
       evidence,
       ...(previousBlockEvidence === undefined ? {} : { previousBlockEvidence }),
       badTxId: selected.badTxId,
@@ -392,8 +385,8 @@ export const prepareProductionLedgerAbsenceArtifactV1 = async ({
     throw new Error(`${category} prepared evidence changed classification`);
   }
   const result = prepared.result;
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_LEDGER_ABSENCE_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: LEDGER_ABSENCE_ARTIFACT,
     category,
     headerHash: result.headerHash,
     detectionId: classification.selected.detectionId,
@@ -419,6 +412,6 @@ export const prepareProductionLedgerAbsenceArtifactV1 = async ({
       result.txsNonMembershipProofCbor,
       `${category} transactions proof`,
     ),
-  }) as ProductionLedgerAbsenceArtifactV1;
-  return admitProductionLedgerAbsenceArtifactV1(artifact, owner).artifact;
+  }) as LedgerAbsenceArtifact;
+  return admitLedgerAbsenceArtifact(artifact, owner).artifact;
 };

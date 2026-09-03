@@ -17,11 +17,11 @@
  */
 import {
   HUB_ORACLE_ASSET_NAME,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
-  type NativeScriptDecodingBindStateV1,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
+  type NativeScriptDecodingBindState,
   NativeScriptDecodingStep01SpendRedeemer,
   NativeScriptDecodingStep02Datum,
   type NativeTxInclusionCarriage,
@@ -47,7 +47,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -71,23 +71,23 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
+import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
 import {
-  nativeScriptDecodingStepLabelV1,
+  nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
-  requireNativeScriptDecodingReferenceScriptV1,
-  requireNativeScriptDecodingThreadUtxoV1,
+  requireNativeScriptDecodingReferenceScript,
+  requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = nativeScriptDecodingStepLabelV1(0);
+const STEP_LABEL = nativeScriptDecodingStepLabel(0);
 
 export type SubmitNativeScriptDecodingStep01Result = {
   readonly txHash: string;
@@ -100,7 +100,7 @@ export type SubmitNativeScriptDecodingStep01Result = {
   readonly computationThreadUnit: string;
   readonly secondStepAddress: string;
   /** The `BindStateV1` the thread now carries. */
-  readonly bindState: NativeScriptDecodingBindStateV1;
+  readonly bindState: NativeScriptDecodingBindState;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -117,11 +117,11 @@ const sourceStepScript = <
   referenceScriptUtxo,
 }: {
   readonly tx: T;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly referenceScriptUtxo: UTxO;
 }): T =>
   tx.readFrom([
-    requireNativeScriptDecodingReferenceScriptV1({
+    requireNativeScriptDecodingReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[0].spendingScriptHash,
       stepIndex: 0,
@@ -146,7 +146,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -154,16 +154,16 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** Q3: the mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
+    await requireNativeScriptDecodingThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -203,9 +203,9 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
       `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is not an acceptance and direction A cannot bind it.`,
     );
   }
-  const bindState: NativeScriptDecodingBindStateV1 = {
-    direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-    source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
+  const bindState: NativeScriptDecodingBindState = {
+    direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+    source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
     verified_tx_id: txInclusion.nativeTxId,
   };
 
@@ -232,12 +232,12 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   // On the chunked route the merkelized published-chunk verifier stands in
   // for the `phas` membership withdrawal.
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: `${STEP_LABEL} chunked verify`,
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS membership`,
@@ -248,7 +248,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     hubOracleUtxo,
     stateQueueBlockUtxo,
     ...chunks.map((chunk) => chunk.utxo),
-    requireNativeScriptDecodingReferenceScriptV1({
+    requireNativeScriptDecodingReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[0].spendingScriptHash,
       stepIndex: 0,
@@ -378,9 +378,9 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -441,26 +441,26 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** 0 (wrongful acceptance) or 1 (wrongful rejection); fixed for the thread's life. */
   readonly direction: bigint;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   if (
-    direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1 &&
-    direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
+    direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE &&
+    direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION
   ) {
     throw nativeScriptDecodingSubmitError(
       `direction ${direction.toString()} is outside {0, 1}.`,
     );
   }
   const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
+    await requireNativeScriptDecodingThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -468,9 +468,9 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
       threadOutRef,
     });
   requireInitialStepDatum({ threadUtxo, signer });
-  const bindState: NativeScriptDecodingBindStateV1 = {
+  const bindState: NativeScriptDecodingBindState = {
     direction,
-    source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
+    source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
     verified_tx_id: "",
   };
 
@@ -541,9 +541,9 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -1,7 +1,7 @@
 import {
   computeDaSha256Hash,
-  decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
-  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  decodeDaConflictingSignatureHeaderEvidenceCbor,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
@@ -15,15 +15,15 @@ export type ChainPoint = {
   readonly providerSource?: string;
 };
 
-export type HeaderV1 = SDK.HeaderV1;
+export type Header = SDK.Header;
 
 export type ObservedStateQueueNode = {
   readonly outRef: string;
   readonly assetName: string;
   readonly linkedListKey: string | "Empty";
   readonly rawDatumCbor?: string;
-  readonly header: HeaderV1;
-  readonly daAttestation: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly header: Header;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;
   readonly chainPoint: ChainPoint;
 };
 
@@ -32,7 +32,7 @@ export type ObservedStateQueueNode = {
  * the observation so disappearance of a block node can only become a terminal
  * outcome when the root observation itself is final.
  */
-export type ObservedStateQueueSnapshotV1 = {
+export type ObservedStateQueueSnapshot = {
   readonly nodes: readonly ObservedStateQueueNode[];
   readonly confirmedHeaderHash: string;
   readonly confirmedStateOutRef: string;
@@ -53,9 +53,9 @@ export type StateQueueHeaderRecord = {
   readonly stateQueueOutRef: string;
   readonly blockAssetName: string;
   readonly rawStateQueueDatumCbor?: string;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly computedHeaderHash: string;
-  readonly daAttestation: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;
   readonly observedChainPoint: ChainPoint;
   readonly finalized: boolean;
   readonly status: StateQueueHeaderStatus;
@@ -89,8 +89,8 @@ export type DaPayloadRecord = {
   readonly validationError?: string;
 };
 
-export type DaStoredPayloadRecordV1 = Omit<DaPayloadRecord, "rootSummary"> & {
-  readonly rootSummary?: DaStoredPayloadRootSetV1;
+export type DaStoredPayloadRecord = Omit<DaPayloadRecord, "rootSummary"> & {
+  readonly rootSummary?: DaStoredPayloadRootSet;
 };
 
 export type PayloadRootSet = {
@@ -128,20 +128,20 @@ export type ValidationSummary = {
   };
 };
 
-export type DaStoredPayloadRootSetV1 = PayloadRootSet & {
+export type DaStoredPayloadRootSet = PayloadRootSet & {
   readonly validationTracesRoot: string;
 };
 
-export type DaStoredPayloadCountSetV1 = PayloadCountSet & {
+export type DaStoredPayloadCountSet = PayloadCountSet & {
   readonly validationTraceCount: bigint;
 };
 
-export type DaStoredValidationSummaryV1 = Omit<
+export type DaStoredValidationSummary = Omit<
   ValidationSummary,
   "rootSummary" | "countSummary"
 > & {
-  readonly rootSummary: DaStoredPayloadRootSetV1;
-  readonly countSummary: DaStoredPayloadCountSetV1;
+  readonly rootSummary: DaStoredPayloadRootSet;
+  readonly countSummary: DaStoredPayloadCountSet;
 };
 
 export type DaSignatureRecord = {
@@ -168,10 +168,10 @@ export type DaSignatureRecordV1 = Omit<
   "source" | "validation"
 > & {
   readonly source: "local" | "peer";
-  readonly validation: DaStoredValidationSummaryV1;
+  readonly validation: DaStoredValidationSummary;
 };
 
-export type DaStoredConflictEvidenceRecordV1 = {
+export type DaStoredConflictEvidenceRecord = {
   readonly conflictSchemaVersion: 1;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
@@ -377,9 +377,9 @@ const signatureBroadcastStatuses = ["local", "posted", "post_failed"] as const;
 
 const signatureSources = ["local", "peer"] as const;
 
-export const parseDaStoredPayloadRecordV1 = (
+export const parseDaStoredPayloadRecord = (
   value: unknown,
-): DaStoredPayloadRecordV1 => {
+): DaStoredPayloadRecord => {
   const record = requireExactObject(
     value,
     payloadRecordRequiredKeys,
@@ -450,9 +450,7 @@ export const parseDaStoredPayloadRecordV1 = (
   };
 };
 
-export const parseDaSignatureRecordV1 = (
-  value: unknown,
-): DaSignatureRecordV1 => {
+export const parseDaSignatureRecord = (value: unknown): DaSignatureRecordV1 => {
   const record = requireExactObject(
     value,
     signatureRecordRequiredKeys,
@@ -473,7 +471,7 @@ export const parseDaSignatureRecordV1 = (
     record.availabilityCommitmentCbor,
     "DA signature record V1.availabilityCommitmentCbor",
   );
-  const availabilityCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const availabilityCommitment = SDK.parseDaAvailabilityCommitmentCbor(
     availabilityCommitmentCbor,
   );
   const availabilityCommitmentDigest = requireLowerHex(
@@ -547,9 +545,9 @@ export const parseDaSignatureRecordV1 = (
   };
 };
 
-export const parseDaStoredConflictEvidenceRecordV1 = (
+export const parseDaStoredConflictEvidenceRecord = (
   value: unknown,
-): DaStoredConflictEvidenceRecordV1 => {
+): DaStoredConflictEvidenceRecord => {
   const record = requireExactObject(
     value,
     conflictEvidenceRecordKeys,
@@ -612,9 +610,9 @@ export const parseDaStoredConflictEvidenceRecordV1 = (
   }
   const compactEvidence = Buffer.from(compactEvidenceCborHex, "hex");
   const decoded =
-    decodeDaConflictingSignatureHeaderEvidenceV1Cbor(compactEvidence);
+    decodeDaConflictingSignatureHeaderEvidenceCbor(compactEvidence);
   if (
-    !encodeDaConflictingSignatureHeaderEvidenceV1Cbor(decoded).equals(
+    !encodeDaConflictingSignatureHeaderEvidenceCbor(decoded).equals(
       compactEvidence,
     )
   ) {
@@ -622,10 +620,10 @@ export const parseDaStoredConflictEvidenceRecordV1 = (
       "DA stored conflict evidence record V1.compactEvidenceCborHex must be canonical CBOR",
     );
   }
-  const lowerCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const lowerCommitment = SDK.parseDaAvailabilityCommitmentCbor(
     decoded.lowerCommitmentCbor.toString("hex"),
   );
-  const upperCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const upperCommitment = SDK.parseDaAvailabilityCommitmentCbor(
     decoded.upperCommitmentCbor.toString("hex"),
   );
   const decodedCommitmentDigest = computeDaSha256Hash(
@@ -683,7 +681,7 @@ export const parseDaStoredConflictEvidenceRecordV1 = (
   };
 };
 
-const parsePayloadRootSet = (value: unknown): DaStoredPayloadRootSetV1 => {
+const parsePayloadRootSet = (value: unknown): DaStoredPayloadRootSet => {
   const record = requireExactObject(
     value,
     payloadRootKeys,
@@ -723,7 +721,7 @@ const parsePayloadRootSet = (value: unknown): DaStoredPayloadRootSetV1 => {
   };
 };
 
-const parsePayloadCountSet = (value: unknown): DaStoredPayloadCountSetV1 => {
+const parsePayloadCountSet = (value: unknown): DaStoredPayloadCountSet => {
   const record = requireExactObject(
     value,
     payloadCountKeys,
@@ -762,9 +760,7 @@ const parsePayloadCountSet = (value: unknown): DaStoredPayloadCountSetV1 => {
   };
 };
 
-const parseValidationSummary = (
-  value: unknown,
-): DaStoredValidationSummaryV1 => {
+const parseValidationSummary = (value: unknown): DaStoredValidationSummary => {
   const record = requireExactObject(
     value,
     validationSummaryKeys,

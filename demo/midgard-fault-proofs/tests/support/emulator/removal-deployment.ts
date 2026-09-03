@@ -7,28 +7,28 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
-import { type CanonicalDecodabilityContractsV1 } from "../../../src/canonical-decodability/index.js";
-import { type CommittedFieldShapeContractsV1 } from "../../../src/committed-field-shape/index.js";
-import { type CrossBlockDuplicateEventContractsV1 } from "../../../src/cross-block-duplicate-event/index.js";
-import type { DoubleWithdrawContractsV1 } from "../../../src/double-withdraw/contracts-v1.js";
+import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/index.js";
+import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/index.js";
+import { type CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
+import type { DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts-v1.js";
 import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
+  validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../../../src/index.js";
-import { type InputSetUniquenessContractsV1 } from "../../../src/input-set-uniqueness/index.js";
-import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/index.js";
-import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
-import { type MintAuthorizationContractsV1 } from "../../../src/mint-authorization/index.js";
-import { type MissingNativeScriptTxContractsV1 } from "../../../src/missing-native-script-tx/index.js";
-import { type MissingSignatureContractsV1 } from "../../../src/missing-signature/index.js";
-import { type NativeScriptDecodingContractsV1 } from "../../../src/native-script-decoding/index.js";
-import { type ValueNotPreservedContractsV1 } from "../../../src/value-not-preserved/index.js";
-import { type WithdrawalMistagContractsV1 } from "../../../src/withdrawal-mistag/index.js";
-import { type WithdrawnInputContractsV1 } from "../../../src/withdrawn-input/index.js";
-import { type WithdrawnReferenceInputContractsV1 } from "../../../src/withdrawn-reference-input/index.js";
+import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/index.js";
+import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/index.js";
+import { type MinFeeContracts } from "../../../src/min-fee-contracts-v1.js";
+import { type MintAuthorizationContracts } from "../../../src/mint-authorization/index.js";
+import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/index.js";
+import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";
+import { type NativeScriptDecodingContracts } from "../../../src/native-script-decoding/index.js";
+import { type ValueNotPreservedContracts } from "../../../src/value-not-preserved/index.js";
+import { type WithdrawalMistagContracts } from "../../../src/withdrawal-mistag/index.js";
+import { type WithdrawnInputContracts } from "../../../src/withdrawn-input/index.js";
+import { type WithdrawnReferenceInputContracts } from "../../../src/withdrawn-reference-input/index.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
   publishValidationDisputeReferenceScript,
@@ -48,52 +48,52 @@ export type RemovalDeploymentReference = {
  * category record's step-01 hash against whatever entry the record names, and
  * this is the name the emulator manifests use.
  */
-export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofNativeScriptDecoding";
-export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofMissingSignature";
 
-export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofMissingNativeScriptTx";
 
-export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofWithdrawnReferenceInput";
 
-export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofCanonicalDecodability";
 
-export const COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofCommittedFieldShape";
-export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofMinFee";
-export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY = "fraudProofMinFee";
+export const DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofDoubleWithdraw";
-export const CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofCrossBlockDuplicateEvent";
-export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 = "fraudProofL2TxMistag";
-export const WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY = "fraudProofL2TxMistag";
+export const WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofWithdrawnInput";
-export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofWithdrawalMistag";
 
 /**
  * Manifest entry pinning the `input-set-uniqueness` step-01 script hash for
  * removal.
  */
-export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofInputSetUniqueness";
 
 /**
  * Manifest entry pinning the `value-not-preserved` step-01 script hash for
  * removal.
  */
-export const VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofValueNotPreserved";
 
 /**
  * Manifest entry pinning the `mint-authorization` step-01 script hash for
  * removal.
  */
-export const MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1 =
+export const MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY =
   "fraudProofMintAuthorization";
 
 const requireReferenceScriptAuthPolicy = (
@@ -115,21 +115,21 @@ const requireReferenceScriptAuthPolicy = (
 
 export const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators & {
-    readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
-    readonly missingSignature?: MissingSignatureContractsV1;
-    readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
-    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
-    readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
-    readonly committedFieldShape?: CommittedFieldShapeContractsV1;
-    readonly minFee?: MinFeeContractsV1;
-    readonly doubleWithdraw?: DoubleWithdrawContractsV1;
-    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
-    readonly l2TxMistag?: L2TxMistagContractsV1;
-    readonly withdrawnInput?: WithdrawnInputContractsV1;
-    readonly withdrawalMistag?: WithdrawalMistagContractsV1;
-    readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
-    readonly valueNotPreserved?: ValueNotPreservedContractsV1;
-    readonly mintAuthorization?: MintAuthorizationContractsV1;
+    readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
+    readonly missingSignature?: MissingSignatureContracts;
+    readonly missingNativeScriptTx?: MissingNativeScriptTxContracts;
+    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContracts;
+    readonly canonicalDecodability?: CanonicalDecodabilityContracts;
+    readonly committedFieldShape?: CommittedFieldShapeContracts;
+    readonly minFee?: MinFeeContracts;
+    readonly doubleWithdraw?: DoubleWithdrawContracts;
+    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContracts;
+    readonly l2TxMistag?: L2TxMistagContracts;
+    readonly withdrawnInput?: WithdrawnInputContracts;
+    readonly withdrawalMistag?: WithdrawalMistagContracts;
+    readonly inputSetUniqueness?: InputSetUniquenessContracts;
+    readonly valueNotPreserved?: ValueNotPreservedContracts;
+    readonly mintAuthorization?: MintAuthorizationContracts;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -226,7 +226,7 @@ export const buildRemovalDeploymentInfo = (
     (validationValueAndMintSemanticReferences ?? []).map(
       ({ semanticResolverIndex, scriptHash, utxo }) => {
         const entryName =
-          validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+          validationValueAndMintSemanticReferenceScriptDeploymentEntry(
             semanticResolverIndex,
           );
         if (entryName === undefined) {
@@ -356,7 +356,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.nativeScriptDecoding === undefined
         ? {}
         : {
-            [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [NATIVE_SCRIPT_DECODING_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.nativeScriptDecoding.steps[0].spendingScriptHash,
             },
@@ -364,7 +364,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.missingSignature === undefined
         ? {}
         : {
-            [MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [MISSING_SIGNATURE_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.missingSignature.steps[0].spendingScriptHash,
             },
@@ -372,7 +372,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.missingNativeScriptTx === undefined
         ? {}
         : {
-            [MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [MISSING_NATIVE_SCRIPT_TX_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.missingNativeScriptTx.steps[0].spendingScriptHash,
             },
@@ -380,7 +380,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.withdrawnReferenceInput === undefined
         ? {}
         : {
-            [WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [WITHDRAWN_REFERENCE_INPUT_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.withdrawnReferenceInput.steps[0].spendingScriptHash,
             },
@@ -388,7 +388,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.canonicalDecodability === undefined
         ? {}
         : {
-            [CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [CANONICAL_DECODABILITY_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.canonicalDecodability.steps[0].spendingScriptHash,
             },
@@ -396,7 +396,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.committedFieldShape === undefined
         ? {}
         : {
-            [COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [COMMITTED_FIELD_SHAPE_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.committedFieldShape.steps[0].spendingScriptHash,
             },
@@ -404,21 +404,21 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.minFee === undefined
         ? {}
         : {
-            [MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [MIN_FEE_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash: contracts.minFee.steps[0].spendingScriptHash,
             },
           }),
       ...(contracts.doubleWithdraw === undefined
         ? {}
         : {
-            [DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [DOUBLE_WITHDRAW_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash: contracts.doubleWithdraw.steps[0].spendingScriptHash,
             },
           }),
       ...(contracts.crossBlockDuplicateEvent === undefined
         ? {}
         : {
-            [CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [CROSS_BLOCK_DUPLICATE_EVENT_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.crossBlockDuplicateEvent.steps[0].spendingScriptHash,
             },
@@ -426,14 +426,14 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.l2TxMistag === undefined
         ? {}
         : {
-            [L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [L2_TX_MISTAG_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash: contracts.l2TxMistag.steps[0].spendingScriptHash,
             },
           }),
       ...(contracts.withdrawnInput === undefined
         ? {}
         : {
-            [WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY_V1]: deploymentEntry(
+            [WITHDRAWN_INPUT_REMOVAL_DEPLOYMENT_ENTRY]: deploymentEntry(
               contracts.withdrawnInput.steps[0].spendingScriptHash,
               contracts.withdrawnInput.steps[0].spendingScript,
             ),
@@ -441,7 +441,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.withdrawalMistag === undefined
         ? {}
         : {
-            [WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.withdrawalMistag.steps[0].spendingScriptHash,
             },
@@ -449,7 +449,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.inputSetUniqueness === undefined
         ? {}
         : {
-            [INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [INPUT_SET_UNIQUENESS_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.inputSetUniqueness.steps[0].spendingScriptHash,
             },
@@ -457,7 +457,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.valueNotPreserved === undefined
         ? {}
         : {
-            [VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [VALUE_NOT_PRESERVED_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.valueNotPreserved.steps[0].spendingScriptHash,
             },
@@ -465,7 +465,7 @@ export const buildRemovalDeploymentInfo = (
       ...(contracts.mintAuthorization === undefined
         ? {}
         : {
-            [MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY_V1]: {
+            [MINT_AUTHORIZATION_REMOVAL_DEPLOYMENT_ENTRY]: {
               scriptHash:
                 contracts.mintAuthorization.steps[0].spendingScriptHash,
             },

@@ -9,22 +9,22 @@ import {
   submitCanonicalDecodabilityStep02,
 } from "../src/index.js";
 import {
-  buildCanonicalDecodabilityBodyFixtureV1,
-  makeCanonicalDecodabilityEmulatorHarnessV1,
+  buildCanonicalDecodabilityBodyFixture,
+  makeCanonicalDecodabilityEmulatorHarness,
   network,
-  publishCanonicalDecodabilityReferenceScriptsV1,
-  setupCanonicalDecodabilityScenarioV1,
+  publishCanonicalDecodabilityReferenceScripts,
+  setupCanonicalDecodabilityScenario,
 } from "./support/canonical-decodability-emulator-v1.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const initializedScenario = async () => {
-  const harness = await makeCanonicalDecodabilityEmulatorHarnessV1();
-  const fixture = await buildCanonicalDecodabilityBodyFixtureV1();
-  const references = await publishCanonicalDecodabilityReferenceScriptsV1({
+  const harness = await makeCanonicalDecodabilityEmulatorHarness();
+  const fixture = await buildCanonicalDecodabilityBodyFixture();
+  const references = await publishCanonicalDecodabilityReferenceScripts({
     lucid: harness.proverLucid,
     contracts: harness.canonicalDecodability,
   });
-  const setup = await setupCanonicalDecodabilityScenarioV1({
+  const setup = await setupCanonicalDecodabilityScenario({
     harness,
     fixture,
   });

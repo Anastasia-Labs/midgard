@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildPhase4IsolatedChildEnv,
-  decodePhase4MatchedSnapshotIdentityV1,
-  decodePhase4ResetAttestationV1,
+  decodePhase4MatchedSnapshotIdentity,
+  decodePhase4ResetAttestation,
   type Phase4ProcessIsolationIdentity,
   validatePhase4PhasRegistrationProof,
   validatePhase4PhasRegistrationTransactionBody,
@@ -236,10 +236,8 @@ describe("Phase 4 process isolation", () => {
   });
 
   it("decodes exact reset, snapshot, and PHAS V1 shapes only", () => {
-    expect(decodePhase4ResetAttestationV1(attestation())).toEqual(
-      attestation(),
-    );
-    expect(decodePhase4MatchedSnapshotIdentityV1(snapshotIdentity())).toEqual(
+    expect(decodePhase4ResetAttestation(attestation())).toEqual(attestation());
+    expect(decodePhase4MatchedSnapshotIdentity(snapshotIdentity())).toEqual(
       snapshotIdentity(),
     );
     expect(
@@ -273,11 +271,11 @@ describe("Phase 4 process isolation", () => {
         schemaVersion: "midgard-phase4-matched-snapshot-identity-v1",
       },
     ]) {
-      expect(() => decodePhase4ResetAttestationV1(mutation)).toThrow();
+      expect(() => decodePhase4ResetAttestation(mutation)).toThrow();
     }
     const { snapshotSetSha256: _snapshotSetSha256, ...missingResetKey } =
       attestation();
-    expect(() => decodePhase4ResetAttestationV1(missingResetKey)).toThrow(
+    expect(() => decodePhase4ResetAttestation(missingResetKey)).toThrow(
       "fields",
     );
 
@@ -302,7 +300,7 @@ describe("Phase 4 process isolation", () => {
         schemaVersion: "midgard-phase4-local-devnet-reset-attestation-v1",
       },
     ]) {
-      expect(() => decodePhase4MatchedSnapshotIdentityV1(mutation)).toThrow();
+      expect(() => decodePhase4MatchedSnapshotIdentity(mutation)).toThrow();
     }
   });
 

@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { makeMidgardTxOutput } from "midgard-node/tests/midgard-output-helpers";
 import {
@@ -35,7 +35,7 @@ describe("Architecture G canonical probe workload", () => {
       feeParams: { minFeeA: 0n, minFeeB: 0n },
       network: "Preprod",
       networkId: 0n,
-      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
       corpusSliceId: "large",
     });
     const first = decodeCanonicalProbeRow(
@@ -97,7 +97,7 @@ describe("Architecture G canonical probe workload", () => {
       feeParams: { minFeeA: 0n, minFeeB: 0n },
       network: "Preprod",
       networkId: 0n,
-      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
       corpusSliceId: "large",
     });
     expect(() =>

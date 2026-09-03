@@ -14,15 +14,15 @@ import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import type {
   DaPayloadRecord,
   DaSignatureRecordV1,
-  DaStoredPayloadRootSetV1,
-  HeaderV1,
+  DaStoredPayloadRootSet,
+  Header,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
 import { PeerSignatureCoordinator } from "../src/peer/coordinator.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
 import {
-  type DaAvailabilityCommitmentAuthorityV1,
-  deriveExpectedDaAvailabilityCommitmentV1,
+  type DaAvailabilityCommitmentAuthority,
+  deriveExpectedDaAvailabilityCommitment,
   validateDaSignatureRecord,
 } from "../src/peer/signatures.js";
 import { resolveRemoteDaAttestationTargets } from "../src/peer/targets.js";
@@ -36,7 +36,7 @@ import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
-const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1 = {
+const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority = {
   deploymentIdentity: "99".repeat(28),
   bondOwnerCredential: "44".repeat(28),
   responseGeometry: {
@@ -47,7 +47,7 @@ const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1 = {
 };
 
 const commitmentFor = (headerHash: string, payloadCborHex = "aabb") =>
-  deriveExpectedDaAvailabilityCommitmentV1({
+  deriveExpectedDaAvailabilityCommitment({
     authority: availabilityCommitmentAuthority,
     headerHash,
     payloadCborHex,
@@ -733,7 +733,7 @@ const signatureRecord = ({
   source: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "tx#0",
     headerHash,
@@ -779,7 +779,7 @@ const saveVerifiedPayload = async (
     readonly headerHash: string;
     readonly payloadHash: string;
     readonly payloadCbor: Buffer;
-    readonly header: HeaderV1;
+    readonly header: Header;
   },
 ): Promise<void> => {
   await store.upsertStateQueueHeader(
@@ -807,7 +807,7 @@ const stateQueueRecord = ({
 }: {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
-  readonly header: HeaderV1;
+  readonly header: Header;
 }): StateQueueHeaderRecord => ({
   deploymentFingerprint,
   headerHash,
@@ -828,7 +828,7 @@ const stateQueueRecord = ({
   updatedAt: new Date().toISOString(),
 });
 
-const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
+const rootSummaryFromHeader = (header: Header): DaStoredPayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   transactionsRoot: header.transactionsRoot,
   depositsRoot: header.depositsRoot,

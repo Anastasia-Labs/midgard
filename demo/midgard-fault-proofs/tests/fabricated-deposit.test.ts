@@ -22,7 +22,7 @@
  * - **MM** (`mismatched_content_block_v1`) commits `(AUTHENTIC_DEPOSIT_ID ->
  *   DIVERTED_DEPOSIT_INFO)`, the authentic identity with diverted content.
  *
- * Both are re-committed into a real `DaPayloadV1` here, because
+ * Both are re-committed into a real `DaPayload` here, because
  * `tests/helpers/canonical-block-evidence-fixture-v1.ts` hard-wires an empty
  * deposit source set.
  */
@@ -41,36 +41,36 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
-  classifyFabricatedDepositFaultV1,
-  fabricatedDepositBlockEvidenceFromVerifiedPayloadV1,
-  type FabricatedDepositL1WitnessV1,
-  FabricatedDepositRejectionV1,
-  prepareFabricatedDepositFromCommittedLeavesV1,
+  classifyFabricatedDepositFault,
+  fabricatedDepositBlockEvidenceFromVerifiedPayload,
+  type FabricatedDepositL1Witness,
+  FabricatedDepositRejection,
+  prepareFabricatedDepositFromCommittedLeaves,
 } from "../src/prepare-fabricated-deposit.js";
 import {
-  deriveFabricatedDepositStep01HandoffV1,
+  deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
 } from "../src/submit-fabricated-deposit-step-01.js";
-import { authenticateFabricatedDepositEventUtxoV1 } from "../src/submit-fabricated-deposit-step-02.js";
-import { deriveFabricatedDepositStep03HandoffV1 } from "../src/submit-fabricated-deposit-step-03.js";
-import { assertFabricatedDepositStep04FinalizableV1 } from "../src/submit-fabricated-deposit-step-04.js";
+import { authenticateFabricatedDepositEventUtxo } from "../src/submit-fabricated-deposit-step-02.js";
+import { deriveFabricatedDepositStep03Handoff } from "../src/submit-fabricated-deposit-step-03.js";
+import { assertFabricatedDepositStep04Finalizable } from "../src/submit-fabricated-deposit-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  createProductionFabricatedDepositEvidenceAuthorityV1,
-  PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1,
-  type ProductionFabricatedDepositArtifactV1,
-  requireProductionFabricatedDepositArtifactV1,
+  createFabricatedDepositEvidenceAuthority,
+  FABRICATED_DEPOSIT_ARTIFACT,
+  type FabricatedDepositArtifact,
+  requireFabricatedDepositArtifact,
 } from "../src/workflow/production-fabricated-deposit-evidence-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h28,
   h32,
   outRefCbor,
-  reencodeFixturePayloadV1,
+  reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 // ## Aiken-measured fixture twins
@@ -138,7 +138,7 @@ const FI_STEP_04_STATE_CBOR =
 const MM_STEP_04_STATE_CBOR =
   "d8799f581c60c9a4c6860d24b6ed3a8f17c4d0718ae0a58cf655bbff24508f77890a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd87a9f58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c68630fffff";
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
@@ -148,26 +148,26 @@ const DEPOSIT_POLICY_ID = h28(0x18);
 
 // ## Challenged-block fixtures
 
-type DepositLeafEntryV1 = { readonly key: string; readonly value: string };
+type DepositLeafEntry = { readonly key: string; readonly value: string };
 
-const FI_LEAF: DepositLeafEntryV1 = {
+const FI_LEAF: DepositLeafEntry = {
   key: KEY_FABRICATED_DEPOSIT_ID,
   value: VALUE_AUTHENTIC_DEPOSIT_INFO,
 };
-const MM_LEAF: DepositLeafEntryV1 = {
+const MM_LEAF: DepositLeafEntry = {
   key: KEY_AUTHENTIC_DEPOSIT_ID,
   value: VALUE_DIVERTED_DEPOSIT_INFO,
 };
 
-type DepositsBlockFixtureV1 = {
-  readonly header: SDK.HeaderV1;
+type DepositsBlockFixture = {
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly depositsRoot: string;
   readonly depositsPhasRoot: string;
   readonly depositCount: bigint;
   readonly entries: readonly SDK.DaPayloadEntry[];
   readonly payloadEnvelopeCbor: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
 };
 
 /**
@@ -176,16 +176,16 @@ type DepositsBlockFixtureV1 = {
  * the shape a faulty operator actually publishes. `depositCountOverride` lies
  * about the cardinality only, leaving the committed root honest.
  */
-const buildDepositsBlockFixtureV1 = async ({
+const buildDepositsBlockFixture = async ({
   leaves,
   depositCountOverride,
 }: {
-  readonly leaves: readonly DepositLeafEntryV1[];
+  readonly leaves: readonly DepositLeafEntry[];
   readonly depositCountOverride?: bigint;
-}): Promise<DepositsBlockFixtureV1> => {
-  const base = await buildCanonicalBlockFixtureV1({
+}): Promise<DepositsBlockFixture> => {
+  const base = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x21, 0n)],
         fee: 1_000_000n,
       }),
@@ -202,16 +202,16 @@ const buildDepositsBlockFixtureV1 = async ({
     })),
   );
   const depositCount = depositCountOverride ?? counted.count;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...base.header,
     depositsRoot: counted.root,
     depositCount,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const entries: SDK.DaPayloadEntry[] = leaves
     .map(({ key, value }): SDK.DaPayloadEntry => [key, value])
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  const payload: SDK.DaPayloadV1 = {
+  const payload: SDK.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -228,8 +228,8 @@ const buildDepositsBlockFixtureV1 = async ({
     depositsPhasRoot: counted.phasRoot,
     depositCount,
     entries,
-    payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
-    observation: authenticatedHeaderObservationV1({
+    payloadEnvelopeCbor: await reencodeFixturePayload(payload),
+    observation: authenticatedHeaderObservation({
       ...base,
       header,
       headerHash,
@@ -238,9 +238,9 @@ const buildDepositsBlockFixtureV1 = async ({
 };
 
 const l1Observation = (
-  overrides: Partial<SDK.AuthenticatedL1ObservationV1> = {},
-): SDK.AuthenticatedL1ObservationV1 => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  overrides: Partial<SDK.AuthenticatedL1Observation> = {},
+): SDK.AuthenticatedL1Observation => ({
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -256,7 +256,7 @@ const absentIdentityWitness = (
   liveOutputReferences: readonly SDK.OutputReference[] = [
     FABRICATED_DEPOSIT_ID,
   ],
-): FabricatedDepositL1WitnessV1 => ({
+): FabricatedDepositL1Witness => ({
   kind: "absent_identity",
   observation: l1Observation(),
   liveOutputReferences,
@@ -268,7 +268,7 @@ const presentEventWitness = ({
 }: {
   readonly observedEventAssetName?: string;
   readonly eventDatumCbor?: string;
-} = {}): FabricatedDepositL1WitnessV1 => ({
+} = {}): FabricatedDepositL1Witness => ({
   kind: "present_event",
   observation: l1Observation(),
   depositEventPolicyId: DEPOSIT_POLICY_ID,
@@ -305,7 +305,7 @@ const depositEventDatum = ({
 
 // ## Step-02 UTxO fixtures
 //
-// `authenticateFabricatedDepositEventUtxoV1` reads the deposit policy out of the
+// `authenticateFabricatedDepositEventUtxo` reads the deposit policy out of the
 // **authentic hub oracle datum**, so the policy is never a caller's claim; these
 // literals exist to exercise exactly that read.
 
@@ -420,8 +420,8 @@ const mmStep03State: SDK.FabricatedDepositStep03State = {
 
 describe("Q39 fabricated-deposit evidence admission", () => {
   it("admits a deposits-bearing block and extracts its committed leaves", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
-    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
+    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
       observation: fixture.observation,
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
@@ -443,9 +443,9 @@ describe("Q39 fabricated-deposit evidence admission", () => {
   });
 
   it("refuses operator-private DA provenance", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
     await expect(
-      fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+      fabricatedDepositBlockEvidenceFromVerifiedPayload({
         observation: fixture.observation,
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         daProvenance: {
@@ -455,15 +455,15 @@ describe("Q39 fabricated-deposit evidence admission", () => {
           diagnosticLabel: "operator diagnostic",
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejectionV1);
+    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
   });
 
   it("refuses a payload whose embedded header is not the observed one", async () => {
-    const observed = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
-    const other = await buildDepositsBlockFixtureV1({ leaves: [FI_LEAF] });
+    const observed = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
+    const other = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
     expect(other.headerHash).not.toBe(observed.headerHash);
     await expect(
-      fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+      fabricatedDepositBlockEvidenceFromVerifiedPayload({
         observation: observed.observation,
         payloadEnvelopeCbor: other.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
@@ -474,18 +474,18 @@ describe("Q39 fabricated-deposit evidence admission", () => {
 
 describe("Q39 fabricated-deposit proof plan", () => {
   it("builds a nonexistent-identity plan from an authenticated absence witness", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [FI_LEAF] });
+    const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
     // The Aiken-measured roots of `fabricated_identity_block_v1`.
     expect(fixture.depositsPhasRoot).toBe(FI_DEPOSITS_PHAS_ROOT);
     expect(fixture.depositsRoot).toBe(FI_DEPOSITS_ROOT);
 
-    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
       observation: fixture.observation,
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
     });
     const outputDir = await mkdtemp(join(tmpdir(), "q39-fabricated-deposit-"));
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedDepositsRoot: evidence.committedDepositsRoot,
       depositCount: evidence.depositCount,
@@ -522,12 +522,12 @@ describe("Q39 fabricated-deposit proof plan", () => {
   });
 
   it("builds a content-mismatch plan from an authenticated present-event witness", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
     // The Aiken-measured roots of `mismatched_content_block_v1`.
     expect(fixture.depositsPhasRoot).toBe(MM_DEPOSITS_PHAS_ROOT);
     expect(fixture.depositsRoot).toBe(MM_DEPOSITS_ROOT);
 
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedDepositsRoot: fixture.depositsRoot,
       depositCount: fixture.depositCount,
@@ -560,10 +560,10 @@ describe("Q39 fabricated-deposit proof plan", () => {
   });
 
   it("refuses leaves that do not open the committed counted deposits_root, in the root or in the cardinality", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
     // Root arm: the supplied leaf is not the one the header committed.
     await expect(
-      prepareFabricatedDepositFromCommittedLeavesV1({
+      prepareFabricatedDepositFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedDepositsRoot: fixture.depositsRoot,
         depositCount: fixture.depositCount,
@@ -577,12 +577,12 @@ describe("Q39 fabricated-deposit proof plan", () => {
     // Cardinality arm: the header's own `deposit_count` disagrees with the
     // rebuilt leaf count, which is the half of the counted-root check a
     // root-only comparison would miss.
-    const lied = await buildDepositsBlockFixtureV1({
+    const lied = await buildDepositsBlockFixture({
       leaves: [MM_LEAF],
       depositCountOverride: 7n,
     });
     await expect(
-      prepareFabricatedDepositFromCommittedLeavesV1({
+      prepareFabricatedDepositFromCommittedLeaves({
         headerHash: lied.headerHash,
         committedDepositsRoot: MM_DEPOSITS_ROOT,
         depositCount: lied.depositCount,
@@ -595,9 +595,9 @@ describe("Q39 fabricated-deposit proof plan", () => {
   });
 
   it("refuses an empty deposit source set and a pinned leaf the header never committed", async () => {
-    const empty = await buildDepositsBlockFixtureV1({ leaves: [] });
+    const empty = await buildDepositsBlockFixture({ leaves: [] });
     await expect(
-      prepareFabricatedDepositFromCommittedLeavesV1({
+      prepareFabricatedDepositFromCommittedLeaves({
         headerHash: empty.headerHash,
         committedDepositsRoot: empty.depositsRoot,
         depositCount: empty.depositCount,
@@ -608,9 +608,9 @@ describe("Q39 fabricated-deposit proof plan", () => {
       }),
     ).rejects.toMatchObject({ code: "no_committed_deposit_leaf" });
 
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
     await expect(
-      prepareFabricatedDepositFromCommittedLeavesV1({
+      prepareFabricatedDepositFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedDepositsRoot: fixture.depositsRoot,
         depositCount: fixture.depositCount,
@@ -626,8 +626,8 @@ describe("Q39 fabricated-deposit proof plan", () => {
 
 describe("Q39 fabricated-deposit L1 witness authentication", () => {
   const fiLeaf = async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [FI_LEAF] });
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedDepositsRoot: fixture.depositsRoot,
       depositCount: fixture.depositCount,
@@ -640,8 +640,8 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
   };
 
   const mmLeaf = async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedDepositsRoot: fixture.depositsRoot,
       depositCount: fixture.depositCount,
@@ -658,7 +658,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
     // The committed identity is absent from the authenticated live set, so its
     // absence cannot be established: no fallback, no downgrade.
     await expect(
-      classifyFabricatedDepositFaultV1({
+      classifyFabricatedDepositFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -666,7 +666,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
       }),
     ).rejects.toMatchObject({ code: "consumed_live_utxo_fallback_refused" });
     await expect(
-      classifyFabricatedDepositFaultV1({
+      classifyFabricatedDepositFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -682,14 +682,14 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
           }),
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejectionV1);
+    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
   });
 
   it("refuses a present-event witness that is not bound to the committed identity", async () => {
     const leaf = await mmLeaf();
     // The observed asset name is not `out_ref_to_nonce(committed_deposit_id)`.
     await expect(
-      classifyFabricatedDepositFaultV1({
+      classifyFabricatedDepositFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -698,7 +698,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
     ).rejects.toMatchObject({ code: "deposit_identity_observation_mismatch" });
     // The retained datum names a different deposit identity.
     await expect(
-      classifyFabricatedDepositFaultV1({
+      classifyFabricatedDepositFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -713,13 +713,13 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
   });
 
   it("refuses to challenge a header that committed exactly the authentic content", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({
+    const fixture = await buildDepositsBlockFixture({
       leaves: [
         { key: KEY_AUTHENTIC_DEPOSIT_ID, value: VALUE_AUTHENTIC_DEPOSIT_INFO },
       ],
     });
     const attempt = async () =>
-      await prepareFabricatedDepositFromCommittedLeavesV1({
+      await prepareFabricatedDepositFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedDepositsRoot: fixture.depositsRoot,
         depositCount: fixture.depositCount,
@@ -728,9 +728,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
         entries: fixture.entries,
         witness: presentEventWitness(),
       });
-    await expect(attempt()).rejects.toBeInstanceOf(
-      FabricatedDepositRejectionV1,
-    );
+    await expect(attempt()).rejects.toBeInstanceOf(FabricatedDepositRejection);
     await expect(attempt()).rejects.toMatchObject({
       code: "authentic_content_matches_commitment",
     });
@@ -741,7 +739,7 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
     for (const inclusionTime of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
       const datum = depositEventDatum({ inclusionTime });
       await expect(
-        classifyFabricatedDepositFaultV1({
+        classifyFabricatedDepositFault({
           leaf,
           headerStartTime: HEADER_START_TIME,
           headerEndTime: HEADER_END_TIME,
@@ -759,10 +757,10 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
 
 describe("Q39 fabricated-deposit production evidence authority", () => {
   const artifactDigestForTest = (
-    value: Omit<ProductionFabricatedDepositArtifactV1, "artifactDigest">,
+    value: Omit<FabricatedDepositArtifact, "artifactDigest">,
   ): string =>
     createHash("sha256")
-      .update(PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1)
+      .update(FABRICATED_DEPOSIT_ARTIFACT)
       .update("\0")
       .update(value.headerHash)
       .update("\0")
@@ -778,9 +776,9 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       .digest("hex");
 
   const canonicalEvidence = async (
-    fixture: DepositsBlockFixtureV1,
-  ): Promise<CanonicalBlockEvidenceV1> => {
-    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+    fixture: DepositsBlockFixture,
+  ): Promise<CanonicalBlockEvidence> => {
+    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
       observation: fixture.observation,
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
@@ -797,12 +795,12 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       observation: fixture.observation,
       header: fixture.header,
       reconstruction: { deposits },
-    } as unknown as CanonicalBlockEvidenceV1;
+    } as unknown as CanonicalBlockEvidence;
   };
 
   it("derives an absence fault from concrete L1 state and rejects artifact tampering", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [FI_LEAF] });
-    const authority = createProductionFabricatedDepositEvidenceAuthorityV1({
+    const fixture = await buildDepositsBlockFixture({ leaves: [FI_LEAF] });
+    const authority = createFabricatedDepositEvidenceAuthority({
       lucid: {
         utxosByOutRef: async () => [
           syntheticUtxo({
@@ -854,7 +852,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       ),
     ).rejects.toThrow(/unknown, missing, or non-string/u);
     expect(() =>
-      requireProductionFabricatedDepositArtifactV1(
+      requireFabricatedDepositArtifact(
         { ...detections[0]!.artifact },
         h28(0x44),
         fixture.headerHash,
@@ -863,7 +861,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
   });
 
   it("returns no detection for an authentic due event whose content matches the block", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({
+    const fixture = await buildDepositsBlockFixture({
       leaves: [
         { key: KEY_AUTHENTIC_DEPOSIT_ID, value: VALUE_AUTHENTIC_DEPOSIT_INFO },
       ],
@@ -874,7 +872,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
     };
     const event = depositEventUtxoFixture();
-    const authority = createProductionFabricatedDepositEvidenceAuthorityV1({
+    const authority = createFabricatedDepositEvidenceAuthority({
       lucid: {
         utxosByOutRef: async () => [],
         utxosAtWithUnit: async (_address: string, unit: string) =>
@@ -895,7 +893,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
       ...hubOracleUtxoFixture(),
       assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
     };
-    const authority = createProductionFabricatedDepositEvidenceAuthorityV1({
+    const authority = createFabricatedDepositEvidenceAuthority({
       lucid: {
         utxosByOutRef: async () => [],
         utxosAtWithUnit: async (_address: string, unit: string) =>
@@ -914,7 +912,7 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
         },
       ],
     ]) {
-      const fixture = await buildDepositsBlockFixtureV1({ leaves });
+      const fixture = await buildDepositsBlockFixture({ leaves });
       await expect(
         authority.detect(await canonicalEvidence(fixture), h28(0x44)),
       ).rejects.toThrow(/requires exactly one current L1 output/u);
@@ -924,8 +922,8 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
 
 describe("Q39 fabricated-deposit submit-side re-derivation", () => {
   it("re-derives the step-01 handoff from the on-chain header and refuses a PHAS root that does not open it", async () => {
-    const fixture = await buildDepositsBlockFixtureV1({ leaves: [MM_LEAF] });
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const fixture = await buildDepositsBlockFixture({ leaves: [MM_LEAF] });
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedDepositsRoot: fixture.depositsRoot,
       depositCount: fixture.depositCount,
@@ -937,7 +935,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     const inclusion = parseSubmitFabricatedDepositInclusion(
       plan.depositInclusion,
     );
-    const handoff = await deriveFabricatedDepositStep01HandoffV1({
+    const handoff = await deriveFabricatedDepositStep01Handoff({
       header: fixture.header,
       headerHash: fixture.headerHash,
       inclusion,
@@ -955,7 +953,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     });
 
     await expect(
-      deriveFabricatedDepositStep01HandoffV1({
+      deriveFabricatedDepositStep01Handoff({
         header: fixture.header,
         headerHash: fixture.headerHash,
         inclusion: { ...inclusion, depositsPhasRoot: FI_DEPOSITS_PHAS_ROOT },
@@ -971,7 +969,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
       committed_deposit_id: AUTHENTIC_DEPOSIT_ID,
       committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
     };
-    const authenticated = await authenticateFabricatedDepositEventUtxoV1({
+    const authenticated = await authenticateFabricatedDepositEventUtxo({
       state,
       hubOracleUtxo: hubOracleUtxoFixture(),
       eventUtxo: depositEventUtxoFixture(),
@@ -987,7 +985,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     // A foreign policy is refused even though the asset name is the authentic
     // nonce: the policy comes from the hub oracle, not from the prover.
     await expect(
-      authenticateFabricatedDepositEventUtxoV1({
+      authenticateFabricatedDepositEventUtxo({
         state,
         hubOracleUtxo: hubOracleUtxoFixture(),
         eventUtxo: depositEventUtxoFixture({ policyId: h28(0x99) }),
@@ -995,7 +993,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     ).rejects.toThrow(/does not carry the authentic deposit event NFT/u);
     // The authentic policy and nonce, but a datum for another identity.
     await expect(
-      authenticateFabricatedDepositEventUtxoV1({
+      authenticateFabricatedDepositEventUtxo({
         state,
         hubOracleUtxo: hubOracleUtxoFixture(),
         eventUtxo: depositEventUtxoFixture({
@@ -1006,7 +1004,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
   });
 
   it("opens step-02's retained commitment into the Aiken scenarios' exact step-04 handoffs", async () => {
-    const absent = await deriveFabricatedDepositStep03HandoffV1({
+    const absent = await deriveFabricatedDepositStep03Handoff({
       state: fiStep03State,
     });
     expect(absent.opening).toBe("NoAuthenticContent");
@@ -1015,7 +1013,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
       FI_STEP_04_STATE_CBOR,
     );
 
-    const present = await deriveFabricatedDepositStep03HandoffV1({
+    const present = await deriveFabricatedDepositStep03Handoff({
       state: mmStep03State,
       eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
     });
@@ -1035,17 +1033,17 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     // A present-event verdict opened as an absence would convert a content
     // dispute into the strictly stronger non-existence conviction.
     await expect(
-      deriveFabricatedDepositStep03HandoffV1({ state: mmStep03State }),
+      deriveFabricatedDepositStep03Handoff({ state: mmStep03State }),
     ).rejects.toThrow(/does not pair|non-existence conviction/u);
     await expect(
-      deriveFabricatedDepositStep03HandoffV1({
+      deriveFabricatedDepositStep03Handoff({
         state: fiStep03State,
         eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
       }),
     ).rejects.toThrow(/does not pair with the L1 verdict/u);
     // Only the hash equality makes supplied bytes authentic.
     await expect(
-      deriveFabricatedDepositStep03HandoffV1({
+      deriveFabricatedDepositStep03Handoff({
         state: mmStep03State,
         eventDatumCbor: Data.to(
           depositEventDatum({ paymentKeyByte: 0x3e }),
@@ -1057,7 +1055,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
 
   it("refuses to finalize a misfiled conviction or an unestablished fault", async () => {
     const established: SDK.FabricatedDepositStep04State =
-      SDK.fabricatedDepositStep04StateV1(mmStep03State, {
+      SDK.fabricatedDepositStep04State(mmStep03State, {
         MismatchedDepositContent: {
           committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
           authentic_deposit_info_hash: HASH_AUTHENTIC_DEPOSIT_INFO,
@@ -1065,14 +1063,14 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
         },
       });
     expect(() =>
-      assertFabricatedDepositStep04FinalizableV1({
+      assertFabricatedDepositStep04Finalizable({
         state: established,
         fraudulentHeaderHash: MM_HEADER_HASH,
       }),
     ).not.toThrow();
     // Filed against a header the thread token does not name.
     expect(() =>
-      assertFabricatedDepositStep04FinalizableV1({
+      assertFabricatedDepositStep04Finalizable({
         state: established,
         fraudulentHeaderHash: FI_HEADER_HASH,
       }),
@@ -1080,7 +1078,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     // An authentic event outside the challenged block's window is not this
     // block's fault, so it can never become a permanent conviction.
     expect(() =>
-      assertFabricatedDepositStep04FinalizableV1({
+      assertFabricatedDepositStep04Finalizable({
         state: {
           ...established,
           fault: {

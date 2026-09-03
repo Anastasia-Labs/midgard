@@ -59,11 +59,11 @@ import {
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import {
   CanonicalDecodabilityStep02State,
-  CommittedFieldClaimV1,
-  MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1,
-  MIDGARD_ENVELOPE_VERDICT_NAMES_V1,
-  midgardEnvelopeVerdictV1,
-  miscountedMidgardFieldPreimageV1,
+  CommittedFieldClaim,
+  MIDGARD_ENVELOPE_VERDICT_CODE_COUNT,
+  MIDGARD_ENVELOPE_VERDICT_NAMES,
+  midgardEnvelopeVerdict,
+  miscountedMidgardFieldPreimage,
 } from "../dist/index.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -93,7 +93,7 @@ const filler = (length) => Buffer.alloc(length, 0x5a);
 
 /** The honest §5.1 producer, spelled here so the two twins share no code. */
 const envelope = (items) =>
-  miscountedMidgardFieldPreimageV1(items.length, items);
+  miscountedMidgardFieldPreimage(items.length, items);
 
 /**
  * Each vector is built from **inputs** — a declared count and a list of items,
@@ -175,12 +175,12 @@ const verdictVectors = [
   },
   {
     label: "declares_more_items_than_it_carries",
-    preimage: miscountedMidgardFieldPreimageV1(2, [bytes(0xde, 0xad)]),
+    preimage: miscountedMidgardFieldPreimage(2, [bytes(0xde, 0xad)]),
     note: "the walk runs out of preimage before it runs out of declared items",
   },
   {
     label: "declares_one_item_and_carries_none",
-    preimage: miscountedMidgardFieldPreimageV1(1, []),
+    preimage: miscountedMidgardFieldPreimage(1, []),
     note: "the same, at the smallest cardinality there is",
   },
   {
@@ -220,7 +220,7 @@ const verdictVectors = [
   },
   {
     label: "declares_fewer_items_than_it_carries",
-    preimage: miscountedMidgardFieldPreimageV1(1, [
+    preimage: miscountedMidgardFieldPreimage(1, [
       bytes(0xde, 0xad),
       bytes(0xbe, 0xef),
     ]),
@@ -250,14 +250,14 @@ const witnessSetHashes = {
  * The two Data-encoded surfaces this family adds. Both are new types rather
  * than moved ones, so what these vectors pin is the shape the two sides agree
  * on from the start — including the one thing a reader cannot check by
- * inspection, which is that `CommittedFieldClaimV1`'s constructor order is
+ * inspection, which is that `CommittedFieldClaim`'s constructor order is
  * `BodyFieldClaim` 0 and `WitnessFieldClaim` 1 on both sides.
  */
 const wireVectors = [
   {
     label: "claim_body_inline",
-    aikenType: "CommittedFieldClaimV1",
-    schema: CommittedFieldClaimV1,
+    aikenType: "CommittedFieldClaim",
+    schema: CommittedFieldClaim,
     value: {
       BodyFieldClaim: {
         field_index: 2n,
@@ -273,8 +273,8 @@ const wireVectors = [
   },
   {
     label: "claim_body_certified",
-    aikenType: "CommittedFieldClaimV1",
-    schema: CommittedFieldClaimV1,
+    aikenType: "CommittedFieldClaim",
+    schema: CommittedFieldClaim,
     value: {
       BodyFieldClaim: {
         field_index: 0n,
@@ -298,8 +298,8 @@ const wireVectors = [
   },
   {
     label: "claim_witness_raw_utxo",
-    aikenType: "CommittedFieldClaimV1",
-    schema: CommittedFieldClaimV1,
+    aikenType: "CommittedFieldClaim",
+    schema: CommittedFieldClaim,
     value: {
       WitnessFieldClaim: {
         field_index: 6n,
@@ -361,14 +361,14 @@ const wireVectors = [
 
 const buildGolden = () => {
   const vectors = verdictVectors.map((vector) => {
-    const verdict = midgardEnvelopeVerdictV1(vector.preimage);
+    const verdict = midgardEnvelopeVerdict(vector.preimage);
     return {
       label: vector.label,
       note: vector.note,
       preimage: hex(vector.preimage),
       byteCount: vector.preimage.length,
       verdict,
-      verdictName: MIDGARD_ENVELOPE_VERDICT_NAMES_V1[verdict],
+      verdictName: MIDGARD_ENVELOPE_VERDICT_NAMES[verdict],
     };
   });
   const reached = new Set(vectors.map((vector) => vector.verdict));
@@ -376,10 +376,10 @@ const buildGolden = () => {
   // prose: a vector set that stopped reaching a code would otherwise still
   // regenerate cleanly, and the code it stopped reaching is exactly the one
   // nothing else pins.
-  if (reached.size !== MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1) {
+  if (reached.size !== MIDGARD_ENVELOPE_VERDICT_CODE_COUNT) {
     throw new Error(
       `verdict vectors reach ${String(reached.size)} of ` +
-        `${String(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1)} codes`,
+        `${String(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT)} codes`,
     );
   }
   return {
@@ -388,8 +388,8 @@ const buildGolden = () => {
     specDocument: "docs/spec/midgard-tx.md",
     generator:
       "demo/midgard-sdk/scripts/generate-canonical-decodability-v1-goldens.mjs",
-    verdictCodeCount: MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1,
-    verdictNames: [...MIDGARD_ENVELOPE_VERDICT_NAMES_V1],
+    verdictCodeCount: MIDGARD_ENVELOPE_VERDICT_CODE_COUNT,
+    verdictNames: [...MIDGARD_ENVELOPE_VERDICT_NAMES],
     vectors,
     wireVectors: wireVectors.map((vector) => ({
       label: vector.label,
@@ -456,12 +456,12 @@ const renderAiken = (golden) =>
     "//// adds: each test decodes the TypeScript producer's bytes into the Aiken",
     "//// type and then re-serialises what came back, so a decoder that accepted a",
     "//// shape the producer never emits fails the second half and an encoder that",
-    "//// emitted a shape the decoder tolerates fails it too. `CommittedFieldClaimV1`",
+    "//// emitted a shape the decoder tolerates fails it too. `CommittedFieldClaim`",
     "//// constructor order is wire format: `BodyFieldClaim` 0, `WitnessFieldClaim` 1.",
     "",
     "use aiken/cbor",
     "use midgard/fraud_proofs/canonical_decodability/rule.{",
-    "  BodyFieldClaim, CommittedFieldClaimV1, WitnessFieldClaim,",
+    "  BodyFieldClaim, CommittedFieldClaim, WitnessFieldClaim,",
     "  envelope_verdict_v1,",
     "}",
     "use midgard/fraud_proofs/canonical_decodability/step_02.{State}",

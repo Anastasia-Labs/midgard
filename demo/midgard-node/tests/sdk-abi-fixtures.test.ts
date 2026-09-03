@@ -134,7 +134,7 @@ const eventKeys: readonly SDK.EventKey[] = [
   { DepositEventKey: { deposit_id: outputReference } },
 ];
 
-const headerFixture: SDK.HeaderV1 = {
+const headerFixture: SDK.Header = {
   prevUtxosRoot: h32,
   utxosRoot: "44".repeat(32),
   withdrawalsRoot: "77".repeat(32),
@@ -162,7 +162,7 @@ const headerFixture: SDK.HeaderV1 = {
   protocolVersion: 1n,
 };
 
-const forcedInclusionTxV1Fixture: SDK.ForcedInclusionTxV1 = {
+const forcedInclusionTxFixture: SDK.ForcedInclusionTx = {
   tx_id: h32,
   source: {
     compact_cbor: "80",
@@ -176,7 +176,7 @@ const forcedInclusionTxV1Fixture: SDK.ForcedInclusionTxV1 = {
   },
 };
 
-const l2TransactionSourceV1Fixture: SDK.L2TransactionSourceV1 = {
+const l2TransactionSourceFixture: SDK.L2TransactionSource = {
   tx_id: h32,
   source: {
     compact_cbor: "80",
@@ -208,7 +208,7 @@ const eventToStepValueFixture: SDK.EventToStepValue = {
   phase: "Withdrawal",
 };
 
-const daPayloadBodyV1Fixture: SDK.DaPayloadBodyV1 = {
+const daPayloadBodyFixture: SDK.DaPayloadBody = {
   header_hash: h28,
   header: headerFixture,
   utxos: [["01", "02"]],
@@ -378,7 +378,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     phas_root: "69".repeat(32),
     count: 1n,
     key: outputReference,
-    value: forcedInclusionTxV1Fixture,
+    value: forcedInclusionTxFixture,
     proof,
   };
   const l2SourceMembership: SDK.L2TransactionSourceMembershipProof = {
@@ -387,7 +387,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     phas_root: "71".repeat(32),
     count: 1n,
     key: h32,
-    value: Data.to(l2TransactionSourceV1Fixture, SDK.L2TransactionSourceV1),
+    value: Data.to(l2TransactionSourceFixture, SDK.L2TransactionSource),
     proof,
   };
   const depositSourceMembership: SDK.DepositSourceMembershipProof = {
@@ -644,7 +644,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     output_index: 1n,
     proof: proofFor(fault),
   });
-  const validationState: SDK.ValidationMachineStateV1 = {
+  const validationState: SDK.ValidationMachineState = {
     machine_version: 1n,
     event_key_hash: "81".repeat(32),
     transaction_id: h32,
@@ -661,7 +661,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     rejection_code_hash: "00".repeat(32),
     ledger_delta_root: "84".repeat(32),
   };
-  const validationDescriptor: SDK.ValidationTraceDescriptorV1 = {
+  const validationDescriptor: SDK.ValidationTraceDescriptor = {
     schema_version: 1n,
     machine_version: 1n,
     trace_root: "85".repeat(32),
@@ -671,12 +671,12 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     verdict: "Accepted",
     rejection_code_hash: "00".repeat(32),
   };
-  const validationProof: SDK.ValidationTraceProofV1 = {
+  const validationProof: SDK.ValidationTraceProof = {
     state_index: 0n,
     state_hash: validationDescriptor.terminal_state_hash,
     siblings: [],
   };
-  const acceptedTransactionClaim: SDK.ValidationClaimWitnessV1 = {
+  const acceptedTransactionClaim: SDK.ValidationClaimWitness = {
     version: 1n,
     descriptor_membership: {
       domain: SDK.ROOT_DOMAINS.validationTraces,
@@ -693,7 +693,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       NormalValidationSource: {
         membership: {
           ...l2SourceMembership,
-          value: l2TransactionSourceV1Fixture,
+          value: l2TransactionSourceFixture,
         },
       },
     },
@@ -712,12 +712,12 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     HeaderV1: {
       schemaName: "HeaderV1",
       value: headerFixture,
-      schema: SDK.HeaderV1,
+      schema: SDK.Header,
     },
     ForcedInclusionTxV1: {
       schemaName: "ForcedInclusionTxV1",
-      value: forcedInclusionTxV1Fixture,
-      schema: SDK.ForcedInclusionTxV1,
+      value: forcedInclusionTxFixture,
+      schema: SDK.ForcedInclusionTx,
     },
     TransitionStep: {
       schemaName: "TransitionStep",
@@ -750,9 +750,9 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
       schema: SDK.EventToStepValue,
     },
     DaPayloadBodyV1: {
-      schemaName: "DaPayloadBodyV1",
-      value: daPayloadBodyV1Fixture,
-      schema: SDK.DaPayloadBodyV1,
+      schemaName: "DaPayloadBody",
+      value: daPayloadBodyFixture,
+      schema: SDK.DaPayloadBody,
     },
     TransitionTraceRouteSpendRedeemerCancel: {
       schemaName: "TransitionTraceRouteSpendRedeemer",
@@ -1336,7 +1336,7 @@ describe("SDK canonical ABI fixtures", () => {
     ).toMatchObject({ resolution_claim: null });
     expectRoundTrip(
       {
-        ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+        ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
         prevUtxosRoot: h32,
         utxosRoot: h32,
         withdrawalsRoot: h32,
@@ -1352,15 +1352,15 @@ describe("SDK canonical ABI fixtures", () => {
         operatorVkey: h28,
         protocolVersion: 1n,
       },
-      SDK.HeaderV1,
+      SDK.Header,
     );
-    const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
-      ...forcedInclusionTxV1Fixture,
+    const forcedInclusionTx: SDK.ForcedInclusionTx = {
+      ...forcedInclusionTxFixture,
       verdict: "ForcedTxValid",
     };
-    expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1);
+    expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTx);
     expect(
-      Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1)),
+      Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTx)),
     ).toEqual(["tx_id", "source", "verdict"]);
     for (const phase of transitionPhases) {
       expectRoundTrip(phase, SDK.TransitionPhase);
@@ -1398,8 +1398,8 @@ describe("SDK canonical ABI fixtures", () => {
       value: transitionStep,
       proof,
     };
-    const transitionHeader: SDK.HeaderV1 = {
-      ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+    const transitionHeader: SDK.Header = {
+      ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
       prevUtxosRoot: h32,
       utxosRoot: "44".repeat(32),
       withdrawalsRoot: "77".repeat(32),
@@ -1464,7 +1464,7 @@ describe("SDK canonical ABI fixtures", () => {
   });
 
   it("commits every transition field into the block header hash", async () => {
-    const header: SDK.HeaderV1 = {
+    const header: SDK.Header = {
       prevUtxosRoot: h32,
       utxosRoot: h32,
       withdrawalsRoot: h32,
@@ -1491,12 +1491,12 @@ describe("SDK canonical ABI fixtures", () => {
       operatorVkey: h28,
       protocolVersion: 1n,
     };
-    const baselineHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+    const baselineHash = await Effect.runPromise(SDK.hashBlockHeader(header));
     expect(baselineHash).toBe(
       "964baf9a89b4c4aa99d8cb6f1b365af9fa951a4d8043a93c5da993c1",
     );
     const differentRoot = "44".repeat(32);
-    const mutations: readonly SDK.HeaderV1[] = [
+    const mutations: readonly SDK.Header[] = [
       { ...header, forcedTransactionsRoot: differentRoot },
       { ...header, transitionTraceRoot: differentRoot },
       { ...header, eventToStepRoot: differentRoot },
@@ -1521,7 +1521,7 @@ describe("SDK canonical ABI fixtures", () => {
     await Promise.all(
       mutations.map(async (mutation) => {
         await expect(
-          Effect.runPromise(SDK.hashBlockHeaderV1(mutation)),
+          Effect.runPromise(SDK.hashBlockHeader(mutation)),
         ).resolves.not.toBe(baselineHash);
       }),
     );
@@ -1530,7 +1530,7 @@ describe("SDK canonical ABI fixtures", () => {
   it("validates transition commitment count and root invariants", async () => {
     await expect(
       Effect.runPromise(
-        SDK.makeHeaderTransitionCommitmentsV1Program({
+        SDK.makeHeaderTransitionCommitmentsProgram({
           withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -1543,11 +1543,11 @@ describe("SDK canonical ABI fixtures", () => {
           validationTraceCount: 0n,
         }),
       ),
-    ).resolves.toEqual(SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS_V1);
+    ).resolves.toEqual(SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS);
 
     const nonEmptyDepositWithoutTrace = await Effect.runPromise(
       Effect.either(
-        SDK.makeHeaderTransitionCommitmentsV1Program({
+        SDK.makeHeaderTransitionCommitmentsProgram({
           withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -1570,7 +1570,7 @@ describe("SDK canonical ABI fixtures", () => {
 
     await expect(
       Effect.runPromise(
-        SDK.makeHeaderTransitionCommitmentsV1Program({
+        SDK.makeHeaderTransitionCommitmentsProgram({
           withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -1593,7 +1593,7 @@ describe("SDK canonical ABI fixtures", () => {
 
     const zeroCountForNonEmptyRoot = await Effect.runPromise(
       Effect.either(
-        SDK.makeHeaderTransitionCommitmentsV1Program({
+        SDK.makeHeaderTransitionCommitmentsProgram({
           withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           transactionsRoot: h32,
@@ -1611,8 +1611,8 @@ describe("SDK canonical ABI fixtures", () => {
 
     const negativeCount = await Effect.runPromise(
       Effect.either(
-        SDK.validateHeaderTransitionCommitmentsV1Program({
-          ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+        SDK.validateHeaderTransitionCommitmentsProgram({
+          ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
           withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,

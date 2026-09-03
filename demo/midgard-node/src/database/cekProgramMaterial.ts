@@ -1,18 +1,18 @@
 import {
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramMaterialDaValueV1,
-  hashMidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramMaterialEntryV1,
+  decodeMidgardCekProgramMaterialDaEntry,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramMaterialDaValue,
+  hashMidgardCekProgramEnvelope,
+  type MidgardCekProgramEnvelope,
+  type MidgardCekProgramMaterialEntry,
   MidgardCekProgramMaterialMissingRootError,
-  verifyMidgardCekProgramMaterialBundleV1,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
@@ -43,12 +43,12 @@ const postgresByteaArray = (values: readonly Buffer[]): readonly string[] =>
 const rootHex = (root: Uint8Array): string => Buffer.from(root).toString("hex");
 
 const canonicalEntries = (
-  entries: readonly MidgardCekProgramMaterialEntryV1[],
-): readonly MidgardCekProgramMaterialEntryV1[] => {
-  const byRoot = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  entries: readonly MidgardCekProgramMaterialEntry[],
+): readonly MidgardCekProgramMaterialEntry[] => {
+  const byRoot = new Map<string, MidgardCekProgramMaterialEntry>();
   for (const entry of entries) {
-    const daValue = encodeMidgardCekProgramMaterialDaValueV1(entry);
-    const canonical = decodeMidgardCekProgramMaterialDaEntryV1(
+    const daValue = encodeMidgardCekProgramMaterialDaValue(entry);
+    const canonical = decodeMidgardCekProgramMaterialDaEntry(
       entry.root,
       daValue,
     );
@@ -56,7 +56,7 @@ const canonicalEntries = (
     const existing = byRoot.get(key);
     if (
       existing !== undefined &&
-      !encodeMidgardCekProgramMaterialDaValueV1(existing).equals(daValue)
+      !encodeMidgardCekProgramMaterialDaValue(existing).equals(daValue)
     ) {
       throw new Error(`conflicting CEK material for root ${key}`);
     }
@@ -73,8 +73,8 @@ const canonicalEntries = (
  * store is only a durable availability/index surface.
  */
 export const persistVerifiedBundles = (
-  envelopes: readonly MidgardCekProgramEnvelopeV1[],
-  entries: readonly MidgardCekProgramMaterialEntryV1[],
+  envelopes: readonly MidgardCekProgramEnvelope[],
+  entries: readonly MidgardCekProgramMaterialEntry[],
   ownership:
     | { readonly kind: "durable" }
     | { readonly kind: "admission"; readonly txId: Buffer } = {
@@ -91,7 +91,7 @@ export const persistVerifiedBundles = (
         throw new Error("CEK admission owner transaction id must be 32 bytes");
       }
       const material = canonicalEntries(entries);
-      const verifications = verifyMidgardCekProgramMaterialBundleV1(
+      const verifications = verifyMidgardCekProgramMaterialBundle(
         envelopes,
         material,
         { allowUnreachable: true },
@@ -107,7 +107,7 @@ export const persistVerifiedBundles = (
       // The availability/index store never persists caller-supplied extras.
       // The permissive pass above identifies each envelope's reachable union;
       // this strict pass proves that the filtered material is exact.
-      verifyMidgardCekProgramMaterialBundleV1(envelopes, verifiedMaterial);
+      verifyMidgardCekProgramMaterialBundle(envelopes, verifiedMaterial);
       const materialByRoot = new Map(
         verifiedMaterial.map((entry) => [rootHex(entry.root), entry]),
       );
@@ -120,7 +120,7 @@ export const persistVerifiedBundles = (
       >();
       for (let index = 0; index < envelopes.length; index += 1) {
         const envelopeHash = Buffer.from(
-          hashMidgardCekProgramEnvelopeV1(envelopes[index]!),
+          hashMidgardCekProgramEnvelope(envelopes[index]!),
         );
         for (const reachableRoot of verifications[index]!.reachableRoots) {
           const materialEntry = materialByRoot.get(reachableRoot);
@@ -167,7 +167,7 @@ export const persistVerifiedBundles = (
             if (material.length > 0) {
               const roots = material.map((entry) => Buffer.from(entry.root));
               const values = material.map((entry) =>
-                encodeMidgardCekProgramMaterialDaValueV1(entry),
+                encodeMidgardCekProgramMaterialDaValue(entry),
               );
               yield* sql`WITH input AS (
                   SELECT *
@@ -338,10 +338,10 @@ export const persistVerifiedAdmissionBundle = ({
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly sidecarCbor: Buffer;
-  readonly referenceProgramEnvelopes?: readonly MidgardCekProgramEnvelopeV1[];
+  readonly referenceProgramEnvelopes?: readonly MidgardCekProgramEnvelope[];
 }): Effect.Effect<void, DatabaseError, Database | NodeConfig> =>
   Effect.try({
-    try: () => decodeMidgardCekProgramMaterialSidecarV1(sidecarCbor),
+    try: () => decodeMidgardCekProgramMaterialSidecar(sidecarCbor),
     catch: (cause) =>
       new DatabaseError({
         table: entryTableName,
@@ -354,7 +354,7 @@ export const persistVerifiedAdmissionBundle = ({
       Effect.try({
         try: () => {
           const tx =
-            decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor);
+            decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor);
           const hasReferenceInputs =
             decodeMidgardNativeByteListPreimage(
               tx.body.referenceInputsPreimageCbor,
@@ -366,7 +366,7 @@ export const persistVerifiedAdmissionBundle = ({
             );
           }
           return [
-            ...collectMidgardV1AttachedProgramEnvelopes(tx),
+            ...collectMidgardAttachedProgramEnvelopes(tx),
             ...(referenceProgramEnvelopes ?? []),
           ] as const;
         },
@@ -454,9 +454,9 @@ export const releaseAdmissionOwnership = (
  * A missing membership, missing node, collision, or stale index fails closed.
  */
 export const retrieveVerifiedBundles = (
-  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+  envelopes: readonly MidgardCekProgramEnvelope[],
 ): Effect.Effect<
-  readonly MidgardCekProgramMaterialEntryV1[],
+  readonly MidgardCekProgramMaterialEntry[],
   DatabaseError,
   Database
 > =>
@@ -465,7 +465,7 @@ export const retrieveVerifiedBundles = (
     const envelopeHashes = [
       ...new Map(
         envelopes.map((envelope) => {
-          const hash = Buffer.from(hashMidgardCekProgramEnvelopeV1(envelope));
+          const hash = Buffer.from(hashMidgardCekProgramEnvelope(envelope));
           return [hash.toString("hex"), hash] as const;
         }),
       ).values(),
@@ -483,13 +483,13 @@ export const retrieveVerifiedBundles = (
       try: () => {
         const entries = canonicalEntries(
           rows.map((row) =>
-            decodeMidgardCekProgramMaterialDaEntryV1(
+            decodeMidgardCekProgramMaterialDaEntry(
               row.material_root,
               row.da_value_cbor,
             ),
           ),
         );
-        verifyMidgardCekProgramMaterialBundleV1(envelopes, entries);
+        verifyMidgardCekProgramMaterialBundle(envelopes, entries);
         return Object.freeze(entries);
       },
       catch: (cause) =>

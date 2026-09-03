@@ -2,12 +2,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildMidgardValidationLedgerDeltaFrontierV1,
-  commitMidgardValidationMerkleFrontierV1,
+  buildMidgardValidationLedgerDeltaFrontier,
+  commitMidgardValidationMerkleFrontier,
   encodeCbor,
-  hashMidgardValidationLedgerDeltaOperationV1,
-  hashMidgardValidationLedgerDeltaV1,
-  hashMidgardValidationWorkWitnessV1,
+  hashMidgardValidationLedgerDelta,
+  hashMidgardValidationLedgerDeltaOperation,
+  hashMidgardValidationWorkWitness,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -16,11 +16,11 @@ import { describe, expect, it } from "vitest";
 
 import type { ValidationMachineWorkWitness } from "../src/validation-machine/index.js";
 import {
-  encodeValidationAuxiliaryWitnessCborV1,
-  validationAuxiliaryWitnessDataV1,
+  encodeValidationAuxiliaryWitnessCbor,
+  validationAuxiliaryWitnessData,
 } from "../src/validation-machine-data.js";
 
-type AuxiliaryV1 = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
+type Auxiliary = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 const h32 = (byte: number): Buffer => Buffer.alloc(32, byte);
@@ -89,7 +89,7 @@ const proofFrame = {
   step: { kind: "branch", skip: 0, neighbors: Buffer.alloc(0) },
 } as const;
 
-const auxiliary = (value: AuxiliaryV1): AuxiliaryV1 => value;
+const auxiliary = (value: Auxiliary): Auxiliary => value;
 
 const tailAuxiliaryVectors = [
   [
@@ -404,13 +404,13 @@ describe("canonical V1 validation tail controls", () => {
     const corpus = Buffer.from(
       Data.to(
         tailAuxiliaryVectors.map(([, , value]) =>
-          validationAuxiliaryWitnessDataV1(value),
+          validationAuxiliaryWitnessData(value),
         ) as never,
       ),
       "hex",
     );
     for (const [tag, arity, value] of tailAuxiliaryVectors) {
-      const cbor = encodeValidationAuxiliaryWitnessCborV1(value);
+      const cbor = encodeValidationAuxiliaryWitnessCbor(value);
       const decoded = decodeExactTailAuxiliary(cbor.toString("hex"));
       expect([decoded.index, decoded.fields.length]).toEqual([tag, arity]);
     }
@@ -470,21 +470,21 @@ describe("canonical V1 validation tail controls", () => {
       value: bytes("060708"),
       proofDescriptor: descriptor,
     };
-    const frontier = buildMidgardValidationLedgerDeltaFrontierV1([
+    const frontier = buildMidgardValidationLedgerDeltaFrontier([
       deletion,
       insertion,
     ]);
     expect(
-      hashMidgardValidationLedgerDeltaOperationV1(deletion).toString("hex"),
+      hashMidgardValidationLedgerDeltaOperation(deletion).toString("hex"),
     ).toBe("d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589");
     expect(
-      hashMidgardValidationLedgerDeltaOperationV1(insertion).toString("hex"),
+      hashMidgardValidationLedgerDeltaOperation(insertion).toString("hex"),
     ).toBe("f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db");
     expect(
-      commitMidgardValidationMerkleFrontierV1(frontier).toString("hex"),
+      commitMidgardValidationMerkleFrontier(frontier).toString("hex"),
     ).toBe("b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2");
-    expect(hashMidgardValidationLedgerDeltaV1([deletion, insertion])).toEqual(
-      commitMidgardValidationMerkleFrontierV1(frontier),
+    expect(hashMidgardValidationLedgerDelta([deletion, insertion])).toEqual(
+      commitMidgardValidationMerkleFrontier(frontier),
     );
   });
 
@@ -499,13 +499,13 @@ describe("canonical V1 validation tail controls", () => {
     });
     expect({
       terminalAcceptanceCbor: terminalAcceptanceCbor.toString("hex"),
-      terminalAcceptanceHash: hashMidgardValidationWorkWitnessV1({
+      terminalAcceptanceHash: hashMidgardValidationWorkWitness({
         phase: "terminal",
         programCounter: 9,
         witnessCbor: terminalAcceptanceCbor,
       }).toString("hex"),
       terminalRejectionCbor: terminalRejectionCbor.toString("hex"),
-      terminalRejectionHash: hashMidgardValidationWorkWitnessV1({
+      terminalRejectionHash: hashMidgardValidationWorkWitness({
         phase: "terminal",
         programCounter: 9,
         witnessCbor: terminalRejectionCbor,

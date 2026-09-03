@@ -21,21 +21,21 @@
  */
 import type {
   EventKey,
-  NativeScriptDecodingBindStateV1,
-  NativeScriptDecodingScanThreadStateV1,
+  NativeScriptDecodingBindState,
+  NativeScriptDecodingScanThreadState,
   OutputReference,
 } from "@al-ft/midgard-sdk";
 import {
   hashHexWithBlake2b,
-  HeaderV1,
-  NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1,
-  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
-  nativeScriptDecodingPreBindScanStateV1,
+  Header,
+  NATIVE_SCRIPT_DECODING_CLASS_PENDING,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE,
+  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
+  nativeScriptDecodingPreBindScanState,
   NativeScriptDecodingStep02Datum,
   NativeScriptDecodingStep02SpendRedeemer,
   NativeScriptDecodingStep03OpenSubjectDatum,
@@ -60,27 +60,27 @@ import { selectFeeInput } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
+import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
 import {
-  buildNativeScriptDecodingStep02EvidenceV1,
-  nativeScriptDecodingScanAccusationOfV1,
+  buildNativeScriptDecodingStep02Evidence,
+  nativeScriptDecodingScanAccusationOf,
 } from "./evidence-v1.js";
 import {
-  nativeScriptDecodingStepLabelV1,
+  nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
-  requireNativeScriptDecodingReferenceScriptV1,
-  requireNativeScriptDecodingStepStateV1,
-  requireNativeScriptDecodingThreadUtxoV1,
+  requireNativeScriptDecodingReferenceScript,
+  requireNativeScriptDecodingStepState,
+  requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = nativeScriptDecodingStepLabelV1(1);
+const STEP_LABEL = nativeScriptDecodingStepLabel(1);
 
 /** Direction A's prover-chosen accused pair. */
-export type NativeScriptDecodingChosenOutpointV1 = {
+export type NativeScriptDecodingChosenOutpoint = {
   readonly sourceKind: bigint;
   readonly cursor: bigint;
 };
@@ -96,7 +96,7 @@ export type SubmitNativeScriptDecodingStep02Result = {
   readonly computationThreadUnit: string;
   readonly thirdStepAddress: string;
   /** The pre-bind `ScanThreadStateV1` the thread now carries. */
-  readonly scanState: NativeScriptDecodingScanThreadStateV1;
+  readonly scanState: NativeScriptDecodingScanThreadState;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -116,7 +116,7 @@ export const submitNativeScriptDecodingStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -128,22 +128,22 @@ export const submitNativeScriptDecodingStep02 = async ({
    * Direction A: the prover-chosen accused `(source_kind, ordinal)` pair.
    * Must be absent for direction B, where the accusation names the pair.
    */
-  readonly chosenOutpoint?: NativeScriptDecodingChosenOutpointV1;
+  readonly chosenOutpoint?: NativeScriptDecodingChosenOutpoint;
   /** Q3: the mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep02Result> => {
   const { threadUtxo, threadToken } =
-    await requireNativeScriptDecodingThreadUtxoV1({
+    await requireNativeScriptDecodingThreadUtxo({
       lucid,
       contracts,
       categoryId,
       stepIndex: 1,
       threadOutRef,
     });
-  const bindState: NativeScriptDecodingBindStateV1 =
-    requireNativeScriptDecodingStepStateV1({
+  const bindState: NativeScriptDecodingBindState =
+    requireNativeScriptDecodingStepState({
       threadUtxo,
       signer,
       schema: NativeScriptDecodingStep02Datum,
@@ -153,7 +153,7 @@ export const submitNativeScriptDecodingStep02 = async ({
 
   // The header must be the thread NFT's: category id ‖ blake2b-224(header).
   const headerHash = await Effect.runPromise(
-    hashHexWithBlake2b(Data.to(reconstruction.header, HeaderV1), 28),
+    hashHexWithBlake2b(Data.to(reconstruction.header, Header), 28),
   );
   if (headerHash !== threadToken.fraudulentHeaderHash) {
     throw nativeScriptDecodingSubmitError(
@@ -161,7 +161,7 @@ export const submitNativeScriptDecodingStep02 = async ({
     );
   }
 
-  const requireChosenPair = (): NativeScriptDecodingChosenOutpointV1 => {
+  const requireChosenPair = (): NativeScriptDecodingChosenOutpoint => {
     if (chosenOutpoint === undefined) {
       throw nativeScriptDecodingSubmitError(
         "direction A needs the prover-chosen accused pair (--chosen-outpoint).",
@@ -169,9 +169,9 @@ export const submitNativeScriptDecodingStep02 = async ({
     }
     if (
       (chosenOutpoint.sourceKind !==
-        NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1 &&
+        NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND &&
         chosenOutpoint.sourceKind !==
-          NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1) ||
+          NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE) ||
       chosenOutpoint.cursor < 0n
     ) {
       throw nativeScriptDecodingSubmitError(
@@ -182,8 +182,8 @@ export const submitNativeScriptDecodingStep02 = async ({
   };
 
   let eventKey: EventKey;
-  if (sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1) {
-    if (direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1) {
+  if (sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL) {
+    if (direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE) {
       throw nativeScriptDecodingSubmitError(
         "a normal-source thread is structurally direction A; the thread state disagrees.",
       );
@@ -195,7 +195,7 @@ export const submitNativeScriptDecodingStep02 = async ({
     }
     eventKey = { L2TransactionEventKey: { tx_id: bindState.verified_tx_id } };
   } else {
-    if (sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1) {
+    if (sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED) {
       throw nativeScriptDecodingSubmitError(
         `thread state carries source kind ${sourceKind.toString()}, outside {normal, forced}.`,
       );
@@ -213,22 +213,22 @@ export const submitNativeScriptDecodingStep02 = async ({
     eventKey = { ForcedTransactionEventKey: { tx_order_id: forcedOrderKey } };
   }
 
-  const evidence = await buildNativeScriptDecodingStep02EvidenceV1({
+  const evidence = await buildNativeScriptDecodingStep02Evidence({
     reconstruction,
     eventKey,
   });
   const priorLedgerRoot =
     evidence.transitionStepMembership.value.pre_utxos_root;
 
-  let scanState: NativeScriptDecodingScanThreadStateV1;
+  let scanState: NativeScriptDecodingScanThreadState;
   if (evidence.forcedMembership === null) {
     const pair = requireChosenPair();
-    scanState = nativeScriptDecodingPreBindScanStateV1({
+    scanState = nativeScriptDecodingPreBindScanState({
       direction,
       sourceKind,
       verifiedTxId: bindState.verified_tx_id,
       txOrderId: "",
-      scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
+      scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING,
       priorLedgerRoot,
       outpointSourceKind: pair.sourceKind,
       outpointCursor: pair.cursor,
@@ -239,27 +239,25 @@ export const submitNativeScriptDecodingStep02 = async ({
       evidence.forcedMembership.key,
       OutputReferenceSchema,
     );
-    if (direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1) {
+    if (direction === NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE) {
       if (leaf.verdict !== "ForcedTxValid") {
         throw nativeScriptDecodingSubmitError(
           "direction A disputes an explicit acceptance, but the forced leaf's verdict is a rejection.",
         );
       }
       const pair = requireChosenPair();
-      scanState = nativeScriptDecodingPreBindScanStateV1({
+      scanState = nativeScriptDecodingPreBindScanState({
         direction,
         sourceKind,
         verifiedTxId: leaf.tx_id,
         txOrderId,
-        scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
+        scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING,
         priorLedgerRoot,
         outpointSourceKind: pair.sourceKind,
         outpointCursor: pair.cursor,
       });
     } else {
-      if (
-        direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1
-      ) {
+      if (direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION) {
         throw nativeScriptDecodingSubmitError(
           `thread state carries direction ${direction.toString()}, outside {0, 1}.`,
         );
@@ -274,10 +272,10 @@ export const submitNativeScriptDecodingStep02 = async ({
           "direction B copies the accused pair verbatim from the leaf's accusation; drop --chosen-outpoint.",
         );
       }
-      const accusation = nativeScriptDecodingScanAccusationOfV1(
+      const accusation = nativeScriptDecodingScanAccusationOf(
         leaf.verdict.ForcedTxInvalid.reason,
       );
-      scanState = nativeScriptDecodingPreBindScanStateV1({
+      scanState = nativeScriptDecodingPreBindScanState({
         direction,
         sourceKind,
         verifiedTxId: leaf.tx_id,
@@ -349,7 +347,7 @@ export const submitNativeScriptDecodingStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = base.readFrom([
-    requireNativeScriptDecodingReferenceScriptV1({
+    requireNativeScriptDecodingReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[1].spendingScriptHash,
       stepIndex: 1,
@@ -363,9 +361,9 @@ export const submitNativeScriptDecodingStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

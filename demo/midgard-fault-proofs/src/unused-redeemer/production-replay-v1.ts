@@ -1,43 +1,43 @@
 import { createHash } from "node:crypto";
 
 import {
-  buildMidgardBoundedItemV1,
-  decodeMidgardRedeemerWitnessFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardRedeemerItemLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  hashMidgardValidationEventKeyV1,
+  buildMidgardBoundedItem,
+  decodeMidgardRedeemerWitnessFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardRedeemerWitnessItem,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardRedeemerItemLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  hashMidgardValidationEventKey,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  decodeRetainedValidationWitnessV1,
+  acceptedVerdictSubject,
+  decodeRetainedValidationWitness,
   type EventKey,
   EventKeySchema,
-  forcedVerdictSubjectV1,
-  type VerdictSubjectV1,
+  forcedVerdictSubject,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { projectMidgardRawEnvelopeForPhaseAV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  prepareUnusedRedeemerEvidenceV1,
-  UNUSED_REDEEMER_VIOLATION_ID_V1,
+  prepareUnusedRedeemerEvidence,
+  UNUSED_REDEEMER_VIOLATION_ID,
 } from "./family-v1.js";
-import type { UnusedRedeemerProductionArtifactV1 } from "./production-actuator-v1.js";
-import { buildUnusedRedeemerDirectionControlFromRetainedDaV1 } from "./retained-stage-twelve-v1.js";
-import type { UnusedRedeemerAuthenticationV1 } from "./submit-step-02-v1.js";
+import type { UnusedRedeemerArtifact } from "./production-actuator-v1.js";
+import { buildUnusedRedeemerDirectionControlFromRetainedDa } from "./retained-stage-twelve-v1.js";
+import type { UnusedRedeemerAuthentication } from "./submit-step-02-v1.js";
 
 const exactIndex = (value: bigint, label: string): number => {
   const result = Number(value);
@@ -54,11 +54,11 @@ type SelectedRedeemer = Readonly<{
 }>;
 
 const selectedRedeemers = (
-  block: CanonicalBlockEvidenceV1,
+  block: CanonicalBlockEvidence,
 ): readonly SelectedRedeemer[] =>
   block.reconstruction.payload.block_body.validation_trace_witnesses.flatMap(
     ([, encoded]) => {
-      const retained = decodeRetainedValidationWitnessV1(
+      const retained = decodeRetainedValidationWitness(
         Buffer.from(encoded, "hex"),
       );
       if (
@@ -88,11 +88,11 @@ const selectedRedeemers = (
  * every other inline field-6 coordinate is unused. A self-consistent forged
  * descriptor remains accountable through the validation-trace-invalid arm.
  */
-export const detectUnusedRedeemerCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly CanonicalViolationDetectionV1[]> => {
+export const detectUnusedRedeemerCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly CanonicalViolationDetection[]> => {
   const selected = selectedRedeemers(block);
-  const detections: CanonicalViolationDetectionV1[] = [];
+  const detections: CanonicalViolationDetection[] = [];
   block.transactions.forEach((transaction, position) => {
     try {
       projectMidgardRawEnvelopeForPhaseAV1(
@@ -101,17 +101,17 @@ export const detectUnusedRedeemerCanonicalViolationsV1 = async (
     } catch {
       return;
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     const field = material.fieldPreimages[8];
     if (field === undefined) return;
-    decodeMidgardRedeemerWitnessFieldPreimageV1(field).forEach(
+    decodeMidgardRedeemerWitnessFieldPreimage(field).forEach(
       (redeemer, redeemerIndex) => {
-        const itemBytes = encodeMidgardRedeemerWitnessItemV1(redeemer);
-        const leaf = hashMidgardRedeemerItemLeafV1({
+        const itemBytes = encodeMidgardRedeemerWitnessItem(redeemer);
+        const leaf = hashMidgardRedeemerItemLeaf({
           redeemerIndex,
-          itemCommitment: buildMidgardBoundedItemV1({
+          itemCommitment: buildMidgardBoundedItem({
             fieldIndex: 8,
             itemIndex: redeemerIndex,
             bytes: itemBytes,
@@ -136,9 +136,9 @@ export const detectUnusedRedeemerCanonicalViolationsV1 = async (
         );
         if (used) return;
         detections.push({
-          detectionId: `${UNUSED_REDEEMER_VIOLATION_ID_V1}:accepted:${position.toString()}:${transaction.nodeTxId}:${redeemerIndex.toString()}`,
+          detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${redeemerIndex.toString()}`,
           headerHash: block.headerHash,
-          violationId: UNUSED_REDEEMER_VIOLATION_ID_V1,
+          violationId: UNUSED_REDEEMER_VIOLATION_ID,
           position: BigInt(position),
           diagnostic: `accepted transaction retained unused script witness ${redeemerIndex.toString()}`,
         });
@@ -157,18 +157,18 @@ export const detectUnusedRedeemerCanonicalViolationsV1 = async (
       verdict.ForcedTxInvalid.reason.UnusedRedeemer.redeemer_index,
       "forced reason coordinate",
     );
-    const forcedMaterial = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const forcedMaterial = deriveMidgardNativeTxFaultEvidenceMaterial(
       transaction.fullTransactionCbor,
     );
     const forcedField = forcedMaterial.fieldPreimages[8];
     if (forcedField === undefined) return;
     const forcedRedeemer =
-      decodeMidgardRedeemerWitnessFieldPreimageV1(forcedField)[redeemerIndex];
+      decodeMidgardRedeemerWitnessFieldPreimage(forcedField)[redeemerIndex];
     if (forcedRedeemer === undefined) return;
-    const forcedItem = encodeMidgardRedeemerWitnessItemV1(forcedRedeemer);
-    const forcedLeaf = hashMidgardRedeemerItemLeafV1({
+    const forcedItem = encodeMidgardRedeemerWitnessItem(forcedRedeemer);
+    const forcedLeaf = hashMidgardRedeemerItemLeaf({
       redeemerIndex,
-      itemCommitment: buildMidgardBoundedItemV1({
+      itemCommitment: buildMidgardBoundedItem({
         fieldIndex: 8,
         itemIndex: redeemerIndex,
         bytes: forcedItem,
@@ -195,9 +195,9 @@ export const detectUnusedRedeemerCanonicalViolationsV1 = async (
     )
       return;
     detections.push({
-      detectionId: `${UNUSED_REDEEMER_VIOLATION_ID_V1}:forced:${position.toString()}:${transaction.value.tx_id}:${redeemerIndex.toString()}`,
+      detectionId: `${UNUSED_REDEEMER_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${redeemerIndex.toString()}`,
       headerHash: block.headerHash,
-      violationId: UNUSED_REDEEMER_VIOLATION_ID_V1,
+      violationId: UNUSED_REDEEMER_VIOLATION_ID,
       position: BigInt(block.transactions.length + position),
       diagnostic: `forced rejection called selected script witness ${redeemerIndex.toString()} unused`,
     });
@@ -211,7 +211,7 @@ export const detectUnusedRedeemerCanonicalViolationsV1 = async (
   );
 };
 
-const retainedEntries = (block: CanonicalBlockEvidenceV1) => ({
+const retainedEntries = (block: CanonicalBlockEvidence) => ({
   traces: block.reconstruction.payload.block_body.validation_traces.map(
     ([key, value]) => ({
       key: Buffer.from(key, "hex"),
@@ -227,23 +227,23 @@ const retainedEntries = (block: CanonicalBlockEvidenceV1) => ({
     ),
 });
 
-export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
+export const buildUnusedRedeemerMaterialFromRetainedDa = async ({
   block,
   eventKey,
   subject,
   redeemerIndex,
   txCbor,
 }: {
-  block: CanonicalBlockEvidenceV1;
+  block: CanonicalBlockEvidence;
   eventKey: EventKey;
-  subject: VerdictSubjectV1;
+  subject: VerdictSubject;
   redeemerIndex: number;
   txCbor: Buffer;
 }) => {
   const { traces, witnesses } = retainedEntries(block);
   if (subject.direction !== 0n && subject.direction !== 1n)
     throw new Error("unusedRedeemer direction changed");
-  const base = await buildUnusedRedeemerDirectionControlFromRetainedDaV1({
+  const base = await buildUnusedRedeemerDirectionControlFromRetainedDa({
     eventKey,
     transactionId: subject.transaction_id,
     direction: subject.direction,
@@ -274,7 +274,7 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
         "source_leaf" in execution
           ? Buffer.from(execution.source_leaf, "hex")
           : execution.origin_kind === 0n
-            ? hashMidgardInlineScriptSourceLeafV1({
+            ? hashMidgardInlineScriptSourceLeaf({
                 sourceIndex: execution.source_index,
                 scriptLanguageTag: languageTag,
                 scriptHash: Buffer.from(execution.script_hash, "hex"),
@@ -287,7 +287,7 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
                   "hex",
                 ),
               })
-            : hashMidgardReferenceScriptSourceLeafV1({
+            : hashMidgardReferenceScriptSourceLeaf({
                 sourceKey: Buffer.from(execution.source_key, "hex"),
                 scriptLanguageTag: languageTag,
                 scriptHash: Buffer.from(execution.script_hash, "hex"),
@@ -300,7 +300,7 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
                   "hex",
                 ),
               });
-      const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+      const purposeLeaf = hashMidgardScriptPurposeLeaf({
         purposeKind,
         purposeIndex: execution.purpose_index,
         scriptHash: Buffer.from(execution.script_hash, "hex"),
@@ -345,7 +345,7 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
         executionMembership: {
           frontier: executionFrontier,
           leafIndex: frontierIndex,
-          leafHash: hashMidgardScriptExecutionLeafV1({
+          leafHash: hashMidgardScriptExecutionLeaf({
             languageTag,
             purposeLeaf,
             sourceLeaf,
@@ -368,11 +368,11 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
       ),
     )
     .digest("hex");
-  const nativeMaterial = deriveMidgardNativeTxFaultEvidenceMaterialV1(txCbor);
+  const nativeMaterial = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
   const fieldPreimage = nativeMaterial.fieldPreimages[8];
   if (fieldPreimage === undefined)
     throw new Error("unusedRedeemer transaction omitted field 8");
-  const evidence = prepareUnusedRedeemerEvidenceV1({
+  const evidence = prepareUnusedRedeemerEvidence({
     finding: { subject, redeemerIndex },
     fieldPreimage,
     universe: {
@@ -403,8 +403,7 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
   };
   const descriptorState = {
     bound,
-    event_key_hash:
-      hashMidgardValidationEventKeyV1(eventKeyCbor).toString("hex"),
+    event_key_hash: hashMidgardValidationEventKey(eventKeyCbor).toString("hex"),
     descriptor: base.traceMembership.value,
   };
   const controlState = {
@@ -461,15 +460,15 @@ export const buildUnusedRedeemerMaterialFromRetainedDaV1 = async ({
     controlState,
     headerState,
     authenticatedState,
-  } satisfies UnusedRedeemerAuthenticationV1;
+  } satisfies UnusedRedeemerAuthentication;
   return { evidence, authentication };
 };
 
 /** Exact retained-DA artifact for the first canonical ID2f detection. */
-export const prepareProductionUnusedRedeemerArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<UnusedRedeemerProductionArtifactV1> => {
-  const detection = (await detectUnusedRedeemerCanonicalViolationsV1(block))[0];
+export const prepareUnusedRedeemerArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<UnusedRedeemerArtifact> => {
+  const detection = (await detectUnusedRedeemerCanonicalViolations(block))[0];
   if (detection === undefined)
     throw new Error("unusedRedeemer canonical replay yielded no contradiction");
   const [, sourceKind, positionText, transactionId, redeemerIndexText] =
@@ -485,10 +484,10 @@ export const prepareProductionUnusedRedeemerArtifactV1 = async (
     const eventKey = {
       L2TransactionEventKey: { tx_id: transactionId! },
     } as const;
-    const material = await buildUnusedRedeemerMaterialFromRetainedDaV1({
+    const material = await buildUnusedRedeemerMaterialFromRetainedDa({
       block,
       eventKey,
-      subject: acceptedVerdictSubjectV1(transactionId!),
+      subject: acceptedVerdictSubject(transactionId!),
       redeemerIndex,
       txCbor: Buffer.from(transaction.txCbor, "hex"),
     });
@@ -498,7 +497,7 @@ export const prepareProductionUnusedRedeemerArtifactV1 = async (
         value: Buffer.from(entry.l2TransactionSourceCbor, "hex"),
       })),
     );
-    const native = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const native = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     return Object.freeze({
@@ -531,10 +530,10 @@ export const prepareProductionUnusedRedeemerArtifactV1 = async (
   const eventKey = {
     ForcedTransactionEventKey: { tx_order_id: transaction.key },
   } as const;
-  const material = await buildUnusedRedeemerMaterialFromRetainedDaV1({
+  const material = await buildUnusedRedeemerMaterialFromRetainedDa({
     block,
     eventKey,
-    subject: forcedVerdictSubjectV1({
+    subject: forcedVerdictSubject({
       transactionId: transaction.value.tx_id,
       sourceKey: transaction.key,
       rejectionReason: verdict.ForcedTxInvalid.reason,

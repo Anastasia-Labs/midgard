@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const publications = [
   ["step01-reference-publication", 14_800],
@@ -48,7 +48,7 @@ const lifecycle = [
 
 describe("outputReferenceScriptDecoding signed Van Rossem fit ledger", () => {
   it("reproduces positive signed-publication margins", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "outputReferenceScriptDecoding:0000002a:testnet",
       blueprintSha256:
         "b954780865e982a00285432059aeabb0ad05f4e48ff1a91a20c2eac041971b78",

@@ -28,25 +28,25 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildSpentInputValueWitnessV1,
-  spendInputsOpeningV1,
+  buildSpentInputValueWitness,
+  spendInputsOpening as spendInputsOpeningV1,
 } from "../src/value-not-preserved/evidence-v1.js";
 import { submitValueNotPreservedInit } from "../src/value-not-preserved/submit-value-not-preserved-init-v1.js";
 import { submitValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01-v1.js";
 import { submitValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02-v1.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../src/witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
-  buildValueNotPreservedFixtureV1,
-  expectOnchainRefusalV1,
-  makeValueNotPreservedEmulatorHarnessV1,
-  publishValueNotPreservedReferenceScriptsV1,
-  setupValueNotPreservedScenarioV1,
-  submitRawValueNotPreservedBindV1,
-  type ValueNotPreservedHarnessV1,
-  vnpOutputV1,
-  vnpOutRefV1,
-  vnpValueV1,
+  buildValueNotPreservedFixture,
+  expectOnchainRefusal,
+  makeValueNotPreservedEmulatorHarness,
+  publishValueNotPreservedReferenceScripts,
+  setupValueNotPreservedScenario,
+  submitRawValueNotPreservedBind,
+  type ValueNotPreservedHarness,
+  vnpOutput,
+  vnpOutRef,
+  vnpValue,
 } from "./support/value-not-preserved-emulator-v1.js";
 
 const POLICY_ID_HEX = "ef".repeat(28);
@@ -54,9 +54,9 @@ const ASSET_NAME_HEX = "746f6b33"; // "tok3"
 
 /** Init the thread against the committed scenario, harness-shaped. */
 const initThread = async (
-  harness: ValueNotPreservedHarnessV1,
+  harness: ValueNotPreservedHarness,
   fraudulentBlockOutRef: string,
-  witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1,
+  witnessReferenceScripts: FaultProofWitnessReferenceScripts,
 ) =>
   submitValueNotPreservedInit({
     lucid: harness.proverLucid,
@@ -77,7 +77,7 @@ const initThread = async (
 
 describe("value-not-preserved negative scenarios", () => {
   it("refuses to bind an honestly-rejected committed leaf: the no-op recording is outside the family's domain", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
+    const harness = await makeValueNotPreservedEmulatorHarness();
     const { proverLucid, proverSigner, family } = harness;
 
     // The leaf LOOKS like an inflation (sourced 6, paid 20) — but the
@@ -86,24 +86,24 @@ describe("value-not-preserved negative scenarios", () => {
     const token = (quantity: bigint) => [
       { policyIdHex: POLICY_ID_HEX, assetNameHex: ASSET_NAME_HEX, quantity },
     ];
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
         {
-          input: vnpOutRefV1("11", 0),
-          spentValue: vnpValueV1(10_000_000n, token(6n)),
+          input: vnpOutRef("11", 0),
+          spentValue: vnpValue(10_000_000n, token(6n)),
         },
       ],
-      outputs: [vnpOutputV1({ value: vnpValueV1(2_000_000n, token(20n)) })],
+      outputs: [vnpOutput({ value: vnpValue(2_000_000n, token(20n)) })],
       mintItems: [],
       validity: "TxIsInvalid",
     });
     expect(fixture.txInclusion.nativeTx.validity_code).not.toBe(0n);
 
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: harness.funderLucid,
       contracts: family,
     });
@@ -138,8 +138,8 @@ describe("value-not-preserved negative scenarios", () => {
 
     // The raw bind (no local twin) reaches step-01's own acceptance gate:
     // `expect bad_tx_view.tx_compact.validity_code == 0`.
-    await expectOnchainRefusalV1(async () =>
-      submitRawValueNotPreservedBindV1({
+    await expectOnchainRefusal(async () =>
+      submitRawValueNotPreservedBind({
         harness,
         threadOutRef: init.nextThreadOutRef,
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
@@ -168,7 +168,7 @@ describe("value-not-preserved negative scenarios", () => {
   }, 600_000);
 
   it("refuses forged step-02 value witnesses at the authentication walk, then folds honestly on the same thread", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
+    const harness = await makeValueNotPreservedEmulatorHarness();
     const { proverLucid, proverSigner, family } = harness;
 
     // A REAL token inflation (sourced 40, paid 50) — the attack is on the
@@ -176,26 +176,26 @@ describe("value-not-preserved negative scenarios", () => {
     const token = (quantity: bigint) => [
       { policyIdHex: POLICY_ID_HEX, assetNameHex: ASSET_NAME_HEX, quantity },
     ];
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
         {
-          input: vnpOutRefV1("11", 0),
-          spentValue: vnpValueV1(10_000_000n, token(25n)),
+          input: vnpOutRef("11", 0),
+          spentValue: vnpValue(10_000_000n, token(25n)),
         },
         {
-          input: vnpOutRefV1("22", 1),
-          spentValue: vnpValueV1(8_000_000n, token(15n)),
+          input: vnpOutRef("22", 1),
+          spentValue: vnpValue(8_000_000n, token(15n)),
         },
       ],
-      outputs: [vnpOutputV1({ value: vnpValueV1(2_000_000n, token(50n)) })],
+      outputs: [vnpOutput({ value: vnpValue(2_000_000n, token(50n)) })],
       mintItems: [],
     });
 
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: harness.funderLucid,
       contracts: family,
     });
@@ -238,7 +238,7 @@ describe("value-not-preserved negative scenarios", () => {
     // while the thread's cursor is at input A. `verify_ledger_membership`
     // refuses: the proof cannot open `prev_utxos_root` at
     // `encode_midgard_tx_input(input_at_cursor)`.
-    const wrongInputWitness = await buildSpentInputValueWitnessV1({
+    const wrongInputWitness = await buildSpentInputValueWitness({
       claim: claimedAsset,
       descriptorCbor: secondSpent.descriptorCbor,
       spentValue: secondSpent.spentValue,
@@ -246,7 +246,7 @@ describe("value-not-preserved negative scenarios", () => {
       input: secondSpent.input,
       prevUtxosRootHex: fixture.ledger.rootHex,
     });
-    await expectOnchainRefusalV1(async () =>
+    await expectOnchainRefusal(async () =>
       submitValueNotPreservedStep02Fold({
         lucid: proverLucid,
         contracts: family,
@@ -263,7 +263,7 @@ describe("value-not-preserved negative scenarios", () => {
     // inflated by 100. The leaf hash changes, so its membership siblings no
     // longer fold to the descriptor's asset frontier commitment:
     // `verify_asset_membership` refuses.
-    const genuineWitness = await buildSpentInputValueWitnessV1({
+    const genuineWitness = await buildSpentInputValueWitness({
       claim: claimedAsset,
       descriptorCbor: firstSpent.descriptorCbor,
       spentValue: firstSpent.spentValue,
@@ -278,7 +278,7 @@ describe("value-not-preserved negative scenarios", () => {
         quantity: opening.quantity + 100n,
       })),
     };
-    await expectOnchainRefusalV1(async () =>
+    await expectOnchainRefusal(async () =>
       submitValueNotPreservedStep02Fold({
         lucid: proverLucid,
         contracts: family,

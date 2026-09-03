@@ -1,24 +1,24 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { FieldItemWidthIllegalContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { FieldItemWidthIllegalContracts } from "./contracts-v1.js";
 import {
-  fieldItemWidthEvidenceClosesV1,
-  type FieldItemWidthEvidenceV1,
+  type FieldItemWidthEvidence,
+  fieldItemWidthEvidenceCloses,
 } from "./field-item-width-illegal-v1.js";
 import {
-  FieldItemWidthStep03DatumV1Schema,
-  FieldItemWidthStep03RedeemerV1Schema,
+  FieldItemWidthStep03DatumSchema,
+  FieldItemWidthStep03RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitFieldItemWidthIllegalStep03V1 = async ({
+export const submitFieldItemWidthIllegalStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -31,23 +31,23 @@ export const submitFieldItemWidthIllegalStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FieldItemWidthIllegalContractsV1;
+  readonly contracts: FieldItemWidthIllegalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: FieldItemWidthEvidenceV1;
+  readonly evidence: FieldItemWidthEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!fieldItemWidthEvidenceClosesV1(evidence)) {
+  if (!fieldItemWidthEvidenceCloses(evidence)) {
     throw new Error(
       "field-item-width-illegal: authenticated width does not contradict verdict",
     );
   }
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -55,7 +55,7 @@ export const submitFieldItemWidthIllegalStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     field_index: bigint;
     item_index: bigint;
@@ -63,7 +63,7 @@ export const submitFieldItemWidthIllegalStep03V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: FieldItemWidthStep03DatumV1Schema as never,
+    schema: FieldItemWidthStep03DatumSchema as never,
     family: "field-item-width-illegal",
     stepIndex,
   });
@@ -76,7 +76,7 @@ export const submitFieldItemWidthIllegalStep03V1 = async ({
       "field-item-width-illegal: terminal state differs from prepared evidence",
     );
   }
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "field-item-width-illegal",
     stepIndex,
@@ -86,7 +86,7 @@ export const submitFieldItemWidthIllegalStep03V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: FieldItemWidthStep03RedeemerV1Schema,
+    spendRedeemerSchema: FieldItemWidthStep03RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

@@ -1,16 +1,16 @@
 import {
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   daDeploymentFingerprintFromHex,
-  type DaEventToStepByEventResponseV1,
-  type DaProofBundleByHeaderResponseV1,
+  type DaEventToStepByEventResponse,
+  type DaProofBundleByHeaderResponse,
   DaRequestResponseProtocol,
-  type DaTraceStepByIndexResponseV1,
-  decodeDaEventToStepByEventRequestV1Cbor,
-  decodeDaProofBundleByHeaderRequestV1Cbor,
-  decodeDaTraceStepByIndexRequestV1Cbor,
-  encodeDaEventToStepByEventResponseV1Cbor,
-  encodeDaProofBundleByHeaderResponseV1Cbor,
-  encodeDaTraceStepByIndexResponseV1Cbor,
+  type DaTraceStepByIndexResponse,
+  decodeDaEventToStepByEventRequestCbor,
+  decodeDaProofBundleByHeaderRequestCbor,
+  decodeDaTraceStepByIndexRequestCbor,
+  encodeDaEventToStepByEventResponseCbor,
+  encodeDaProofBundleByHeaderResponseCbor,
+  encodeDaTraceStepByIndexResponseCbor,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
 
@@ -79,11 +79,10 @@ export class DaLibp2pProofProtocolHandlers {
     this.accessPolicy = options.accessPolicy;
     this.limits = {
       maxPayloadBytes:
-        options.limits?.maxPayloadBytes ??
-        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        options.limits?.maxPayloadBytes ?? DA_TRANSPORT_LIMITS.maxPayloadBytes,
       maxInlineResponseBytes:
         options.limits?.maxInlineResponseBytes ??
-        DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+        DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
     };
     validateLimits(this.limits);
   }
@@ -93,11 +92,11 @@ export class DaLibp2pProofProtocolHandlers {
     context: DaLibp2pProofRequestContext = {},
   ): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaProofBundleByHeaderRequestV1Cbor(requestCbor),
+      () => decodeDaProofBundleByHeaderRequestCbor(requestCbor),
       "proof-bundle-by-header request",
     );
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
-      return encodeDaProofBundleByHeaderResponseV1Cbor({
+      return encodeDaProofBundleByHeaderResponseCbor({
         ...emptyProofBundleResponse(request.headerHash),
         status: "rejected",
         reasonCode: "deployment_fingerprint_mismatch",
@@ -105,7 +104,7 @@ export class DaLibp2pProofProtocolHandlers {
     }
     const authorizationError = this.authorizationError(context);
     if (authorizationError !== undefined) {
-      return encodeDaProofBundleByHeaderResponseV1Cbor({
+      return encodeDaProofBundleByHeaderResponseCbor({
         ...emptyProofBundleResponse(request.headerHash),
         status: "rejected",
         reasonCode: authorizationError,
@@ -119,7 +118,7 @@ export class DaLibp2pProofProtocolHandlers {
       ...request,
       maxInlineBytes,
     });
-    return encodeDaProofBundleByHeaderResponseV1Cbor(response);
+    return encodeDaProofBundleByHeaderResponseCbor(response);
   }
 
   async handleTraceStepByIndex(
@@ -127,11 +126,11 @@ export class DaLibp2pProofProtocolHandlers {
     context: DaLibp2pProofRequestContext = {},
   ): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaTraceStepByIndexRequestV1Cbor(requestCbor),
+      () => decodeDaTraceStepByIndexRequestCbor(requestCbor),
       "trace-step-by-index request",
     );
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
-      return encodeDaTraceStepByIndexResponseV1Cbor(
+      return encodeDaTraceStepByIndexResponseCbor(
         emptyTraceStepResponse(
           request.headerHash,
           request.stepIndex,
@@ -140,7 +139,7 @@ export class DaLibp2pProofProtocolHandlers {
       );
     }
     if (this.authorizationError(context) !== undefined) {
-      return encodeDaTraceStepByIndexResponseV1Cbor(
+      return encodeDaTraceStepByIndexResponseCbor(
         emptyTraceStepResponse(
           request.headerHash,
           request.stepIndex,
@@ -149,7 +148,7 @@ export class DaLibp2pProofProtocolHandlers {
       );
     }
     const { response } = await this.deriver.traceStepByIndex(request);
-    return encodeDaTraceStepByIndexResponseV1Cbor(response);
+    return encodeDaTraceStepByIndexResponseCbor(response);
   }
 
   async handleEventToStepByEvent(
@@ -157,11 +156,11 @@ export class DaLibp2pProofProtocolHandlers {
     context: DaLibp2pProofRequestContext = {},
   ): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaEventToStepByEventRequestV1Cbor(requestCbor),
+      () => decodeDaEventToStepByEventRequestCbor(requestCbor),
       "event-to-step-by-event request",
     );
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
-      return encodeDaEventToStepByEventResponseV1Cbor(
+      return encodeDaEventToStepByEventResponseCbor(
         emptyEventToStepResponse(
           request.headerHash,
           request.eventKey,
@@ -170,7 +169,7 @@ export class DaLibp2pProofProtocolHandlers {
       );
     }
     if (this.authorizationError(context) !== undefined) {
-      return encodeDaEventToStepByEventResponseV1Cbor(
+      return encodeDaEventToStepByEventResponseCbor(
         emptyEventToStepResponse(
           request.headerHash,
           request.eventKey,
@@ -179,7 +178,7 @@ export class DaLibp2pProofProtocolHandlers {
       );
     }
     const { response } = await this.deriver.eventToStepByEvent(request);
-    return encodeDaEventToStepByEventResponseV1Cbor(
+    return encodeDaEventToStepByEventResponseCbor(
       eventToStepTransportResponse(response),
     );
   }
@@ -296,7 +295,7 @@ const validateLimits = (limits: DaLibp2pProofProtocolLimits): void => {
 
 const emptyProofBundleResponse = (
   headerHash: Buffer,
-): Omit<DaProofBundleByHeaderResponseV1, "status" | "reasonCode"> => ({
+): Omit<DaProofBundleByHeaderResponse, "status" | "reasonCode"> => ({
   headerHash,
   proofBundleHash: null,
   proofBundleBytes: null,
@@ -306,8 +305,8 @@ const emptyProofBundleResponse = (
 const emptyTraceStepResponse = (
   headerHash: Buffer,
   stepIndex: number,
-  status: DaTraceStepByIndexResponseV1["status"],
-): DaTraceStepByIndexResponseV1 => ({
+  status: DaTraceStepByIndexResponse["status"],
+): DaTraceStepByIndexResponse => ({
   status,
   headerHash,
   stepIndex,
@@ -318,8 +317,8 @@ const emptyTraceStepResponse = (
 const emptyEventToStepResponse = (
   headerHash: Buffer,
   eventKey: Buffer,
-  status: DaEventToStepByEventResponseV1["status"],
-): DaEventToStepByEventResponseV1 => ({
+  status: DaEventToStepByEventResponse["status"],
+): DaEventToStepByEventResponse => ({
   status,
   headerHash,
   eventKey,
@@ -328,5 +327,5 @@ const emptyEventToStepResponse = (
 });
 
 const eventToStepTransportResponse = (
-  response: DaEventToStepByEventResponseV1,
-): DaEventToStepByEventResponseV1 => response;
+  response: DaEventToStepByEventResponse,
+): DaEventToStepByEventResponse => response;

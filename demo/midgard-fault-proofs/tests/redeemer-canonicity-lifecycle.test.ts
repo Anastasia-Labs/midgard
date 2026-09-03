@@ -1,37 +1,37 @@
 import {
-  decodeMidgardNativeTxCompactV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  midgardFieldCommitmentV1,
+  decodeMidgardNativeTxCompact,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   EMPTY_MERKLE_TREE_ROOT,
-  forcedVerdictSubjectV1,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import type { RedeemerCanonicityContractsV1 } from "../src/redeemer-canonicity/contracts-v1.js";
+import type { RedeemerCanonicityContracts } from "../src/redeemer-canonicity/contracts-v1.js";
 import {
-  prepareRedeemerCanonicityEvidenceV1,
-  submitRedeemerCanonicityCancelV1,
-  submitRedeemerCanonicityStep01AcceptedV1,
-  submitRedeemerCanonicityStep01ForcedV1,
-  submitRedeemerCanonicityStep02V1,
-  submitRedeemerCanonicityStep03V1,
+  prepareRedeemerCanonicityEvidence,
+  submitRedeemerCanonicityCancel,
+  submitRedeemerCanonicityStep01Accepted,
+  submitRedeemerCanonicityStep01Forced,
+  submitRedeemerCanonicityStep02,
+  submitRedeemerCanonicityStep03,
 } from "../src/redeemer-canonicity/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
-  type CommittedFieldShapeEmulatorHarnessV1,
-  setupCommittedFieldShapeScenarioV1,
+  type CommittedFieldShapeEmulatorHarness,
+  setupCommittedFieldShapeScenario,
 } from "./support/committed-field-shape-emulator-v1.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import {
   captureEmulatorSubmission,
@@ -43,7 +43,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
   createRecordingLeaseCoordinator,
-  emulatorSuccessorHeaderStartV1,
+  emulatorSuccessorHeaderStart,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
@@ -67,8 +67,8 @@ const emitFit = (
 };
 
 const familyContracts = (
-  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarnessV1>>,
-): RedeemerCanonicityContractsV1 => {
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
+): RedeemerCanonicityContracts => {
   const chain = harness.contracts.fraudProofContracts.redeemerCanonicity;
   return {
     steps: chain.steps.map((step, index) => ({
@@ -79,7 +79,7 @@ const familyContracts = (
         "fraud_proofs/redeemer_canonicity/step_03.main.spend",
       ][index]!,
       referenceOutRef: `${"0".repeat(64)}#0`,
-    })) as unknown as RedeemerCanonicityContractsV1["steps"],
+    })) as unknown as RedeemerCanonicityContracts["steps"],
     computationThread: harness.contracts.computationThread,
     fraudProof: harness.contracts.fraudProof,
     hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -92,7 +92,7 @@ const familyContracts = (
 };
 
 const publishFamilyReferences = async (
-  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarnessV1>>,
+  harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
 ): Promise<readonly [UTxO, UTxO, UTxO]> => {
   const result: UTxO[] = [];
   for (const [
@@ -117,11 +117,11 @@ const initThread = async ({
   category,
   fraudulentBlockOutRef,
 }: {
-  readonly harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarnessV1>>;
-  readonly contracts: RedeemerCanonicityContractsV1;
+  readonly harness: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
+  readonly contracts: RedeemerCanonicityContracts;
   readonly category: NonNullable<
     Awaited<
-      ReturnType<typeof makeFaultProofEmulatorHarnessV1>
+      ReturnType<typeof makeFaultProofEmulatorHarness>
     >["catalogue"]["categories"]["redeemerCanonicity"]
   >;
   readonly fraudulentBlockOutRef: string;
@@ -145,7 +145,7 @@ const initThread = async ({
 
 describe("redeemer-canonicity accepted lifecycle", () => {
   it("runs maximum retained field 8 through permanent mint and leased queue removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realRedeemerCanonicity: true,
         alwaysFraudProofCatalogue: true,
@@ -155,15 +155,15 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     const contracts = familyContracts(harness);
     const category = harness.catalogue.categories.redeemerCanonicity;
     if (category === undefined) throw new Error("redeemer category absent");
-    const scenario = await setupCommittedFieldShapeScenarioV1({
-      harness: harness as unknown as CommittedFieldShapeEmulatorHarnessV1,
+    const scenario = await setupCommittedFieldShapeScenario({
+      harness: harness as unknown as CommittedFieldShapeEmulatorHarness,
       kind: "redeemer-canonicity",
     });
     const credential = getAddressDetails(
       await harness.funderLucid.wallet().address(),
     ).paymentCredential;
     if (credential?.type !== "Key") throw new Error("missing funder key");
-    const successorStart = emulatorSuccessorHeaderStartV1({
+    const successorStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: scenario.setup.header.endTime,
       emulator: harness.emulator,
     });
@@ -195,13 +195,13 @@ describe("redeemer-canonicity accepted lifecycle", () => {
         label: "redeemer-canonicity-certificate",
       })
     ).utxo;
-    const evidence = prepareRedeemerCanonicityEvidenceV1({
+    const evidence = prepareRedeemerCanonicityEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(scenario.nativeTxId),
+        subject: acceptedVerdictSubject(scenario.nativeTxId),
         redeemerIndex: 0,
       },
       fieldPreimage: scenario.committedPreimage,
-      committedFieldHashHex: midgardFieldCommitmentV1(
+      committedFieldHashHex: midgardFieldCommitment(
         scenario.committedPreimage,
       ).toString("hex"),
     });
@@ -224,7 +224,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep01AcceptedV1({
+      submitRedeemerCanonicityStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -244,7 +244,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     );
     emitFit("accepted-step01", step01.measurement);
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep02V1({
+      submitRedeemerCanonicityStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -252,8 +252,8 @@ describe("redeemer-canonicity accepted lifecycle", () => {
         threadOutRef: step01.result.nextThreadOutRef,
         evidence,
         nativeTxCompactCbor: scenario.compactCbor,
-        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-          deriveMidgardNativeTxWitnessSetCompactV1(scenario.fullTx!.witnessSet),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+          deriveMidgardNativeTxWitnessSetCompact(scenario.fullTx!.witnessSet),
         ).toString("hex"),
         referenceScriptUtxo: references[1],
         certificateReferenceScriptUtxo: certificateReference,
@@ -262,7 +262,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     emitFit("accepted-step02-certified-maximum", step02.measurement);
     expect(step02.result.carriageTier).toBe("Certified");
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep03V1({
+      submitRedeemerCanonicityStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -322,7 +322,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
   it.each([0, 1, 2] as const)(
     "cancels the real thread at physical step %s",
     async (targetStep) => {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: {
           realRedeemerCanonicity: true,
           alwaysFraudProofCatalogue: true,
@@ -331,8 +331,8 @@ describe("redeemer-canonicity accepted lifecycle", () => {
       const contracts = familyContracts(harness);
       const category = harness.catalogue.categories.redeemerCanonicity;
       if (category === undefined) throw new Error("redeemer category absent");
-      const scenario = await setupCommittedFieldShapeScenarioV1({
-        harness: harness as unknown as CommittedFieldShapeEmulatorHarnessV1,
+      const scenario = await setupCommittedFieldShapeScenario({
+        harness: harness as unknown as CommittedFieldShapeEmulatorHarness,
         kind: "redeemer-canonicity",
       });
       const references = await publishFamilyReferences(harness);
@@ -343,13 +343,13 @@ describe("redeemer-canonicity accepted lifecycle", () => {
           label: `redeemer-cancel-certificate-${targetStep.toString()}`,
         })
       ).utxo;
-      const evidence = prepareRedeemerCanonicityEvidenceV1({
+      const evidence = prepareRedeemerCanonicityEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(scenario.nativeTxId),
+          subject: acceptedVerdictSubject(scenario.nativeTxId),
           redeemerIndex: 0,
         },
         fieldPreimage: scenario.committedPreimage,
-        committedFieldHashHex: midgardFieldCommitmentV1(
+        committedFieldHashHex: midgardFieldCommitment(
           scenario.committedPreimage,
         ).toString("hex"),
       });
@@ -365,7 +365,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
           { txHash: init.txHash, outputIndex: init.firstStepOutputIndex },
         ]);
         if (threadUtxo === undefined) throw new Error("init thread absent");
-        const step01 = await submitRedeemerCanonicityStep01AcceptedV1({
+        const step01 = await submitRedeemerCanonicityStep01Accepted({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -385,7 +385,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
         threadOutRef = step01.nextThreadOutRef;
       }
       if (targetStep > 1) {
-        const step02 = await submitRedeemerCanonicityStep02V1({
+        const step02 = await submitRedeemerCanonicityStep02({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -393,10 +393,8 @@ describe("redeemer-canonicity accepted lifecycle", () => {
           threadOutRef,
           evidence,
           nativeTxCompactCbor: scenario.compactCbor,
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-            deriveMidgardNativeTxWitnessSetCompactV1(
-              scenario.fullTx!.witnessSet,
-            ),
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+            deriveMidgardNativeTxWitnessSetCompact(scenario.fullTx!.witnessSet),
           ).toString("hex"),
           referenceScriptUtxo: references[1],
           certificateReferenceScriptUtxo: certificateReference,
@@ -404,7 +402,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
         threadOutRef = step02.nextThreadOutRef;
       }
       const cancel = await captureEmulatorSubmission(harness.emulator, () =>
-        submitRedeemerCanonicityCancelV1({
+        submitRedeemerCanonicityCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -424,7 +422,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
 
 describe("redeemer-canonicity forced lifecycle", () => {
   it("authenticates a canonical redeemer against the exact malformed reason", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realRedeemerCanonicity: true,
         alwaysFraudProofCatalogue: true,
@@ -461,9 +459,9 @@ describe("redeemer-canonicity forced lifecycle", () => {
     const rejectionReason = {
       RedeemerMalformed: { redeemer_index: 0n },
     } as const;
-    const evidence = prepareRedeemerCanonicityEvidenceV1({
+    const evidence = prepareRedeemerCanonicityEvidence({
       finding: {
-        subject: forcedVerdictSubjectV1({
+        subject: forcedVerdictSubject({
           transactionId: forced.forcedTransaction.tx_id,
           sourceKey: membership.key,
           rejectionReason,
@@ -472,7 +470,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
       },
       fieldPreimage:
         forced.forcedNativeTx.witnessSet.redeemerTxWitsPreimageCbor,
-      committedFieldHashHex: midgardFieldCommitmentV1(
+      committedFieldHashHex: midgardFieldCommitment(
         forced.forcedNativeTx.witnessSet.redeemerTxWitsPreimageCbor,
       ).toString("hex"),
     });
@@ -484,7 +482,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
     });
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep01ForcedV1({
+      submitRedeemerCanonicityStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -493,7 +491,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
         finding: evidence,
         forcedSource: { header: forced.header, membership, direction: 1n },
         witnessSetHash: Buffer.from(
-          decodeMidgardNativeTxCompactV1(
+          decodeMidgardNativeTxCompact(
             Buffer.from(forced.forcedTransaction.source.compact_cbor, "hex"),
           ).transactionWitnessSetHash,
         ).toString("hex"),
@@ -502,7 +500,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
     );
     emitFit("forced-step01", step01.measurement);
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep02V1({
+      submitRedeemerCanonicityStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -517,7 +515,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
     );
     emitFit("forced-step02", step02.measurement);
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep03V1({
+      submitRedeemerCanonicityStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

@@ -1,50 +1,47 @@
 import {
-  advanceMidgardLedgerOutputScanV1,
-  decodeMidgardFieldPreimageV1,
-  encodeMidgardLedgerOutputScanControlV1,
-  finishMidgardLedgerOutputScanV1,
-  initialMidgardLedgerOutputScanControlV1,
-  midgardFieldCommitmentV1,
-  type MidgardLedgerOutputScanControlV1,
-  MidgardLedgerOutputScanStagesV1,
-  selectMidgardFieldCarriageTierV1,
+  advanceMidgardLedgerOutputScan,
+  decodeMidgardFieldPreimage,
+  encodeMidgardLedgerOutputScanControl,
+  finishMidgardLedgerOutputScan,
+  initialMidgardLedgerOutputScanControl,
+  midgardFieldCommitment,
+  type MidgardLedgerOutputScanControl,
+  MidgardLedgerOutputScanStages,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  type RejectionReasonV1,
-  RejectionReasonV1Schema,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type RejectionReason,
+  RejectionReasonSchema,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY_V1 =
+export const TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY =
   "transactionOutputNonCanonical" as const;
-export const TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID_V1 =
-  "00000029" as const;
-export const TRANSACTION_OUTPUT_NON_CANONICAL_OUTPUTS_FIELD_V1 = 2 as const;
-export const TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES_V1 = 16_384;
+export const TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID = "00000029" as const;
+export const TRANSACTION_OUTPUT_NON_CANONICAL_OUTPUTS_FIELD = 2 as const;
+export const TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES = 16_384;
 
 const fail = (message: string): never => {
-  throw new Error(
-    `${TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY_V1}: ${message}`,
-  );
+  throw new Error(`${TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY}: ${message}`);
 };
 const exactIndex = (value: number, name: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) fail(`${name} is invalid`);
   return value;
 };
 
-export type TransactionOutputFindingV1 = {
-  readonly subject: VerdictSubjectV1;
+export type TransactionOutputFinding = {
+  readonly subject: VerdictSubject;
   readonly fieldIndex: 2;
   readonly itemIndex: number;
 };
 
-const reasonOutputIndexV1 = (reason: RejectionReasonV1 | null): number => {
+const reasonOutputIndex = (reason: RejectionReason | null): number => {
   if (
     reason === null ||
     typeof reason === "string" ||
@@ -58,22 +55,22 @@ const reasonOutputIndexV1 = (reason: RejectionReasonV1 | null): number => {
   );
 };
 
-export const classifyTransactionOutputFindingV1 = ({
+export const classifyTransactionOutputFinding = ({
   subject,
   fieldIndex,
   itemIndex,
-}: TransactionOutputFindingV1): TransactionOutputFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(subject))
+}: TransactionOutputFinding): TransactionOutputFinding => {
+  if (!verdictSubjectIsCanonical(subject))
     fail("verdict subject is not canonical");
   if (fieldIndex !== 2) fail("only field 2 belongs to this family");
   exactIndex(itemIndex, "output index");
-  if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1) {
+  if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = subject.rejection_reason;
     if (reason === null) fail("forced subject omitted its reason");
-    if (reasonOutputIndexV1(reason) !== itemIndex)
+    if (reasonOutputIndex(reason) !== itemIndex)
       fail("typed reason coordinate differs from output coordinate");
   } else if (
-    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     subject.rejection_reason !== null
   ) {
     fail("direction/reason polarity is invalid");
@@ -81,7 +78,7 @@ export const classifyTransactionOutputFindingV1 = ({
   return Object.freeze({ subject, fieldIndex, itemIndex });
 };
 
-export type TransactionOutputEvidenceV1 = TransactionOutputFindingV1 & {
+export type TransactionOutputEvidence = TransactionOutputFinding & {
   readonly fieldPreimageHex: string;
   readonly fieldCommitmentHex: string;
   readonly itemHex: string;
@@ -90,20 +87,20 @@ export type TransactionOutputEvidenceV1 = TransactionOutputFindingV1 & {
   readonly chunkHashes: readonly string[];
   readonly carriage: "Inline" | "RawUtxo" | "Certified";
   readonly canonical: boolean;
-  readonly scanControls: readonly MidgardLedgerOutputScanControlV1[];
+  readonly scanControls: readonly MidgardLedgerOutputScanControl[];
   readonly decisiveFaultHolds: boolean;
 };
 
-const deriveScanV1 = (
+const deriveScan = (
   item: Buffer,
 ): {
   readonly canonical: boolean;
-  readonly controls: readonly MidgardLedgerOutputScanControlV1[];
+  readonly controls: readonly MidgardLedgerOutputScanControl[];
 } => {
-  let control = initialMidgardLedgerOutputScanControlV1();
-  const controls: MidgardLedgerOutputScanControlV1[] = [control];
+  let control = initialMidgardLedgerOutputScanControl();
+  const controls: MidgardLedgerOutputScanControl[] = [control];
   for (let step = 0; step <= item.length + 32; step += 1) {
-    const finished = finishMidgardLedgerOutputScanV1({
+    const finished = finishMidgardLedgerOutputScan({
       control,
       totalLength: item.length,
     });
@@ -116,7 +113,7 @@ const deriveScanV1 = (
     }
     const chunkStart = Math.floor(control.cursor / 4_095) * 4_095;
     const window = item.subarray(chunkStart, chunkStart + 8_190);
-    const next = advanceMidgardLedgerOutputScanV1({
+    const next = advanceMidgardLedgerOutputScan({
       control,
       totalLength: item.length,
       window,
@@ -130,7 +127,7 @@ const deriveScanV1 = (
     }
     controls.push(next);
     control = next;
-    if (control.stage === MidgardLedgerOutputScanStagesV1.Terminal) {
+    if (control.stage === MidgardLedgerOutputScanStages.Terminal) {
       return Object.freeze({
         canonical: true,
         controls: Object.freeze(controls),
@@ -140,25 +137,25 @@ const deriveScanV1 = (
   return fail("output scan exceeded its strict progress bound");
 };
 
-export const prepareTransactionOutputEvidenceV1 = ({
+export const prepareTransactionOutputEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: TransactionOutputFindingV1;
+  readonly finding: TransactionOutputFinding;
   readonly fieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): TransactionOutputEvidenceV1 => {
-  const finding = classifyTransactionOutputFindingV1(rawFinding);
+}): TransactionOutputEvidence => {
+  const finding = classifyTransactionOutputFinding(rawFinding);
   const actualCommitment =
-    midgardFieldCommitmentV1(fieldPreimage).toString("hex");
+    midgardFieldCommitment(fieldPreimage).toString("hex");
   if (actualCommitment !== committedFieldHashHex)
     fail("field commitment differs");
-  const item = decodeMidgardFieldPreimageV1(fieldPreimage)[finding.itemIndex];
+  const item = decodeMidgardFieldPreimage(fieldPreimage)[finding.itemIndex];
   if (item === undefined) fail("output coordinate is outside field 2");
-  if (item.length > TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES_V1)
+  if (item.length > TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES)
     fail("output item belongs to fieldItemWidthIllegal");
-  const scan = deriveScanV1(item);
+  const scan = deriveScan(item);
   return Object.freeze({
     ...finding,
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
@@ -173,45 +170,45 @@ export const prepareTransactionOutputEvidenceV1 = ({
         ).toString("hex"),
       ),
     ),
-    carriage: selectMidgardFieldCarriageTierV1(fieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
     canonical: scan.canonical,
     scanControls: scan.controls,
     decisiveFaultHolds: !scan.canonical,
   });
 };
 
-export const transactionOutputEvidenceClosesV1 = (
-  evidence: TransactionOutputEvidenceV1,
+export const transactionOutputEvidenceCloses = (
+  evidence: TransactionOutputEvidence,
 ): boolean =>
-  terminalVerdictContradictionV1(evidence.subject, !evidence.canonical);
+  terminalVerdictContradiction(evidence.subject, !evidence.canonical);
 
-export const TransactionOutputVerdictSubjectV1Schema = Data.Object({
+export const TransactionOutputVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const TransactionOutputBoundOutputV1Schema = Data.Object({
-  subject: TransactionOutputVerdictSubjectV1Schema,
+export const TransactionOutputBoundOutputSchema = Data.Object({
+  subject: TransactionOutputVerdictSubjectSchema,
   output_index: Data.Integer(),
 });
-export const encodeTransactionOutputBoundOutputV1 = (
-  finding: TransactionOutputFindingV1,
+export const encodeTransactionOutputBoundOutput = (
+  finding: TransactionOutputFinding,
 ): string => {
-  const exact = classifyTransactionOutputFindingV1(finding);
+  const exact = classifyTransactionOutputFinding(finding);
   return Data.to(
     { subject: exact.subject, output_index: BigInt(exact.itemIndex) } as never,
-    TransactionOutputBoundOutputV1Schema as never,
+    TransactionOutputBoundOutputSchema as never,
   );
 };
-export const encodeTransactionOutputScanControlV1 = (
-  control: MidgardLedgerOutputScanControlV1,
-): string => encodeMidgardLedgerOutputScanControlV1(control).toString("hex");
+export const encodeTransactionOutputScanControl = (
+  control: MidgardLedgerOutputScanControl,
+): string => encodeMidgardLedgerOutputScanControl(control).toString("hex");
 
-export const transactionOutputScanControlDataV1 = (
-  control: MidgardLedgerOutputScanControlV1,
+export const transactionOutputScanControlData = (
+  control: MidgardLedgerOutputScanControl,
 ) => ({
   version: BigInt(control.version),
   stage: BigInt(control.stage),
@@ -241,7 +238,7 @@ export const transactionOutputScanControlDataV1 = (
   reference_script_length: BigInt(control.referenceScriptLength),
 });
 
-export const TRANSACTION_OUTPUT_NON_CANONICAL_STAGES_V1 = [
+export const TRANSACTION_OUTPUT_NON_CANONICAL_STAGES = [
   "none",
   "step01",
   "step02",
@@ -251,23 +248,23 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type TransactionOutputStageV1 =
-  (typeof TRANSACTION_OUTPUT_NON_CANONICAL_STAGES_V1)[number];
-export type TransactionOutputJournalEntryV1 = {
+export type TransactionOutputStage =
+  (typeof TRANSACTION_OUTPUT_NON_CANONICAL_STAGES)[number];
+export type TransactionOutputJournalEntry = {
   readonly sequence: number;
   readonly identity: string;
-  readonly stage: TransactionOutputStageV1;
+  readonly stage: TransactionOutputStage;
   readonly txHash: string;
   readonly outputReference: string | null;
 };
-export type TransactionOutputJournalV1 = {
+export type TransactionOutputJournal = {
   readonly load: (
     identity: string,
-  ) => Promise<readonly TransactionOutputJournalEntryV1[]>;
-  readonly append: (entry: TransactionOutputJournalEntryV1) => Promise<void>;
+  ) => Promise<readonly TransactionOutputJournalEntry[]>;
+  readonly append: (entry: TransactionOutputJournalEntry) => Promise<void>;
 };
-export const transactionOutputEvidenceIdentityV1 = (
-  evidence: TransactionOutputEvidenceV1,
+export const transactionOutputEvidenceIdentity = (
+  evidence: TransactionOutputEvidence,
 ): string =>
   [
     evidence.subject.transaction_id,
@@ -276,15 +273,15 @@ export const transactionOutputEvidenceIdentityV1 = (
     evidence.fieldCommitmentHex,
     evidence.itemHash,
   ].join(":");
-const stageRank = (stage: TransactionOutputStageV1): number =>
-  TRANSACTION_OUTPUT_NON_CANONICAL_STAGES_V1.indexOf(stage);
-export const reconcileTransactionOutputJournalV1 = (
+const stageRank = (stage: TransactionOutputStage): number =>
+  TRANSACTION_OUTPUT_NON_CANONICAL_STAGES.indexOf(stage);
+export const reconcileTransactionOutputJournal = (
   identity: string,
-  entries: readonly TransactionOutputJournalEntryV1[],
-  observedStage: TransactionOutputStageV1,
-): TransactionOutputStageV1 => {
+  entries: readonly TransactionOutputJournalEntry[],
+  observedStage: TransactionOutputStage,
+): TransactionOutputStage => {
   let sequence = -1;
-  let last: TransactionOutputStageV1 = "none";
+  let last: TransactionOutputStage = "none";
   for (const entry of entries) {
     if (entry.identity !== identity) fail("journal identity mismatch");
     if (entry.sequence !== sequence + 1)
@@ -300,7 +297,7 @@ export const reconcileTransactionOutputJournalV1 = (
     fail("chain state is behind durable journal");
   return observedStage;
 };
-export type TransactionOutputActionV1 =
+export type TransactionOutputAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -308,9 +305,9 @@ export type TransactionOutputActionV1 =
   | "submitStep04"
   | "removeDescendants"
   | "done";
-export const nextTransactionOutputActionV1 = (
-  stage: TransactionOutputStageV1,
-): TransactionOutputActionV1 => {
+export const nextTransactionOutputAction = (
+  stage: TransactionOutputStage,
+): TransactionOutputAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -329,42 +326,42 @@ export const nextTransactionOutputActionV1 = (
       return "done";
   }
 };
-export type TransactionOutputSubmissionResultV1 = {
-  readonly stage: TransactionOutputStageV1;
+export type TransactionOutputSubmissionResult = {
+  readonly stage: TransactionOutputStage;
   readonly txHash: string;
   readonly outputReference: string | null;
 };
-export type TransactionOutputSubmissionAdapterV1 = {
-  readonly observe: (identity: string) => Promise<TransactionOutputStageV1>;
+export type TransactionOutputSubmissionAdapter = {
+  readonly observe: (identity: string) => Promise<TransactionOutputStage>;
   readonly submit: (
-    action: Exclude<TransactionOutputActionV1, "done">,
-    evidence: TransactionOutputEvidenceV1,
-  ) => Promise<TransactionOutputSubmissionResultV1>;
+    action: Exclude<TransactionOutputAction, "done">,
+    evidence: TransactionOutputEvidence,
+  ) => Promise<TransactionOutputSubmissionResult>;
   readonly cancel: (
     stage: "step01" | "step02" | "step03" | "step04",
-    evidence: TransactionOutputEvidenceV1,
-  ) => Promise<TransactionOutputSubmissionResultV1>;
+    evidence: TransactionOutputEvidence,
+  ) => Promise<TransactionOutputSubmissionResult>;
 };
-export const runTransactionOutputProofV1 = async ({
+export const runTransactionOutputProof = async ({
   evidence,
   journal,
   submission,
 }: {
-  readonly evidence: TransactionOutputEvidenceV1;
-  readonly journal: TransactionOutputJournalV1;
-  readonly submission: TransactionOutputSubmissionAdapterV1;
-}): Promise<TransactionOutputStageV1> => {
-  if (!transactionOutputEvidenceClosesV1(evidence))
+  readonly evidence: TransactionOutputEvidence;
+  readonly journal: TransactionOutputJournal;
+  readonly submission: TransactionOutputSubmissionAdapter;
+}): Promise<TransactionOutputStage> => {
+  if (!transactionOutputEvidenceCloses(evidence))
     fail("honest verdict cannot start a proof thread");
-  const identity = transactionOutputEvidenceIdentityV1(evidence);
+  const identity = transactionOutputEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
-    const stage = reconcileTransactionOutputJournalV1(
+    const stage = reconcileTransactionOutputJournal(
       identity,
       entries,
       await submission.observe(identity),
     );
-    const action = nextTransactionOutputActionV1(stage);
+    const action = nextTransactionOutputAction(stage);
     if (action === "done") return stage;
     const result = await submission.submit(action, evidence);
     await journal.append({

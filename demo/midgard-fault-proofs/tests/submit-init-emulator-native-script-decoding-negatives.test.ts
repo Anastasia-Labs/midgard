@@ -29,10 +29,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  type NativeScriptDecodingFindingV1,
-  NativeScriptDecodingProvabilityV1,
-  proveNativeScriptDecodingFaultV1,
+  buildNativeScriptDecodingScanPlan,
+  type NativeScriptDecodingFinding,
+  NativeScriptDecodingProvability,
+  proveNativeScriptDecodingFault,
   submitNativeScriptDecodingCancel,
   submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
@@ -44,14 +44,14 @@ import {
   submitNativeScriptDecodingStep03OpenSubject,
 } from "../src/native-script-decoding/index.js";
 import {
-  decodingCanonicalItemV1,
-  decodingMalformedMultiChunkItemV1,
-  decodingProverDepsV1,
-  type DecodingScenarioV1,
-  makeDecodingEmulatorHarnessV1,
-  publishDecodingReferenceScriptsV1,
-  setupDecodingScenarioV1,
-  submitRawDecodingCancelV1,
+  decodingCanonicalItem,
+  decodingMalformedMultiChunkItem,
+  decodingProverDeps,
+  type DecodingScenario,
+  makeDecodingEmulatorHarness,
+  publishDecodingReferenceScripts,
+  setupDecodingScenario,
+  submitRawDecodingCancel,
 } from "./support/native-script-decoding-emulator-v1.js";
 import {
   expectSingleUtxoWithUnit,
@@ -67,7 +67,7 @@ const FORCED_ORDER_KEY: SDK.OutputReference = {
 const rejectionAccusing = (
   sourceKind: bigint,
   ordinal: bigint,
-): SDK.OperatorVerdictV1 => ({
+): SDK.OperatorVerdict => ({
   ForcedTxInvalid: {
     reason: {
       ResolvedReferenceScriptMalformed: {
@@ -78,7 +78,7 @@ const rejectionAccusing = (
   },
 });
 
-type Harness = Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
+type Harness = Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
 
 const catalogueOf = (harness: Harness) => ({
   policyId: harness.contracts.fraudProofCatalogue.policyId,
@@ -87,18 +87,18 @@ const catalogueOf = (harness: Harness) => ({
   root: harness.catalogue.root,
 });
 
-const subjectOutpointKeyCbor = (scenario: DecodingScenarioV1): string =>
+const subjectOutpointKeyCbor = (scenario: DecodingScenario): string =>
   Buffer.from(
-    SDK.encodeMidgardTxInputCanonicalV1(scenario.subjectFieldInputs[0]!),
+    SDK.encodeMidgardTxInputCanonical(scenario.subjectFieldInputs[0]!),
   ).toString("hex");
 
 describe("native-script-decoding aborts, refusals and resume", () => {
   it("cancels a thread at each of the six validators and re-initialises after every abort", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const { proverLucid, proverSigner, decoding, category, realBlueprint } =
       harness;
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const item = decodingMalformedMultiChunkItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "normal" },
@@ -107,7 +107,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     if (block.txInclusion === null) {
       throw new Error("normal-source fixture carries no tx inclusion");
     }
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
@@ -118,7 +118,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       step03BindDescriptorRef,
       step03AdvanceOrCloseRef,
       step04Ref,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: decoding,
     });
@@ -258,7 +258,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     const [rawThreadUtxo] = await proverLucid.utxosByOutRef([
       { txHash: rawTxHash!, outputIndex: Number(rawOutputIndex) },
     ]);
-    await submitRawDecodingCancelV1({
+    await submitRawDecodingCancel({
       lucid: proverLucid,
       contracts: decoding,
       signer: proverSigner,
@@ -289,11 +289,11 @@ describe("native-script-decoding aborts, refusals and resume", () => {
   }, 600_000);
 
   it("refuses a Scan that replays a stale control and item bytes that miss the frozen anchor", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const { proverLucid, proverSigner, decoding, category, realBlueprint } =
       harness;
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const item = decodingMalformedMultiChunkItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "normal" },
@@ -302,7 +302,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     if (block.txInclusion === null) {
       throw new Error("normal-source fixture carries no tx inclusion");
     }
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
@@ -312,7 +312,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       step03OpenSubjectRef,
       step03BindDescriptorRef,
       step03AdvanceOrCloseRef,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: decoding,
     });
@@ -414,9 +414,9 @@ describe("native-script-decoding aborts, refusals and resume", () => {
   }, 600_000);
 
   it("closes a genuinely out-of-domain accusation through the SS7.2 arm", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
-    const item = decodingCanonicalItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const harness = await makeDecodingEmulatorHarness();
+    const item = decodingCanonicalItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       // The committed rejection accuses reference-input ordinal 5, but the
@@ -431,11 +431,11 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       step03BindDescriptor,
       step03AdvanceOrClose,
       step04,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.decoding,
     });
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 1n,
       sourceKind: 1n,
       event: {
@@ -447,14 +447,14 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       accusedOutpointSourceKind: 1n,
       accusedOutpointCursor: 5n,
       scanReasonClass: 0n,
-      provability: NativeScriptDecodingProvabilityV1.OutOfDomainAccusation,
+      provability: NativeScriptDecodingProvability.OutOfDomainAccusation,
       descriptor: null,
       estimatedThreadTxCount: 5,
     };
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(
+      proveNativeScriptDecodingFault(
         finding,
-        decodingProverDepsV1({
+        decodingProverDeps({
           harness,
           scenario,
           referenceScriptItemBytes: null,
@@ -485,11 +485,11 @@ describe("native-script-decoding aborts, refusals and resume", () => {
   }, 600_000);
 
   it("routes an in-domain accusation through OpenSubject and BindDescriptor", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const { proverLucid, proverSigner, decoding, category, realBlueprint } =
       harness;
-    const item = decodingCanonicalItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const item = decodingCanonicalItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       // Ordinal 0 IS in the transaction's reference inputs.
@@ -501,7 +501,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       step02Ref,
       step03OpenSubjectRef,
       step03BindDescriptorRef,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: decoding,
     });
@@ -560,7 +560,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     ).resolves.toHaveLength(0);
 
     // The authenticated subject is then the only key BindDescriptor accepts.
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 1,
     });
@@ -580,11 +580,11 @@ describe("native-script-decoding aborts, refusals and resume", () => {
   }, 600_000);
 
   it("resumes a thread abandoned mid-loop from its committed machine state", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
+    const harness = await makeDecodingEmulatorHarness();
     const { proverLucid, proverSigner, decoding, category, realBlueprint } =
       harness;
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario: DecodingScenarioV1 = await setupDecodingScenarioV1({
+    const item = decodingMalformedMultiChunkItem();
+    const scenario: DecodingScenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "normal" },
@@ -593,7 +593,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     if (block.txInclusion === null) {
       throw new Error("normal-source fixture carries no tx inclusion");
     }
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
@@ -604,7 +604,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       step03BindDescriptorRef,
       step03AdvanceOrCloseRef,
       step04Ref,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: decoding,
     });
@@ -661,7 +661,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     });
     // The prover crashes here. Nothing but the thread NFT and its datum
     // survives; the resume must find both from the finding alone.
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 0n,
       sourceKind: 0n,
       event: { kind: "l2Transaction", txId: block.nativeTxId },
@@ -670,7 +670,7 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       accusedOutpointSourceKind: scenario.accusedSourceKind,
       accusedOutpointCursor: 0n,
       scanReasonClass: null,
-      provability: NativeScriptDecodingProvabilityV1.MachineRoute,
+      provability: NativeScriptDecodingProvability.MachineRoute,
       descriptor: {
         referenceScriptLanguage: 0,
         outputIndex: 0,
@@ -680,9 +680,9 @@ describe("native-script-decoding aborts, refusals and resume", () => {
     };
     const journal: string[] = [];
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(
+      proveNativeScriptDecodingFault(
         finding,
-        decodingProverDepsV1({
+        decodingProverDeps({
           harness,
           scenario,
           referenceScriptItemBytes: item,

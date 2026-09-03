@@ -1,32 +1,32 @@
 import { createHash } from "node:crypto";
 
-import { midgardFieldCommitmentV1 } from "@al-ft/midgard-core";
-import type { VerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { midgardFieldCommitment } from "@al-ft/midgard-core";
+import type { VerdictSubject } from "@al-ft/midgard-sdk";
 import {
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   OutputReferenceSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { JournalJsonObjectV1 } from "../workflow/journal-v1.js";
+import type { JournalJsonObject } from "../workflow/journal-v1.js";
 import {
-  type ObserverOrderInvalidEvidenceV1,
-  ObserverOrderInvalidVerdictSubjectV1Schema,
-  prepareObserverOrderInvalidEvidenceV1,
+  type ObserverOrderInvalidEvidence,
+  ObserverOrderInvalidVerdictSubjectSchema,
+  prepareObserverOrderInvalidEvidence,
 } from "./family-v1.js";
 import {
-  type ObserverOrderInvalidStagedPlanV1,
-  planObserverOrderInvalidStagedWalkV1,
+  type ObserverOrderInvalidStagedPlan,
+  planObserverOrderInvalidStagedWalk,
 } from "./staged-plan-v1.js";
 
-export const PRODUCTION_OBSERVER_ORDER_INVALID_ARTIFACT_V1 =
+export const OBSERVER_ORDER_INVALID_ARTIFACT =
   "midgard-production-observer-order-invalid-artifact-v1" as const;
 
-export type ProductionObserverOrderInvalidArtifactV1 = JournalJsonObjectV1 &
+export type ObserverOrderInvalidArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_OBSERVER_ORDER_INVALID_ARTIFACT_V1;
+    schemaVersion: typeof OBSERVER_ORDER_INVALID_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
@@ -60,7 +60,7 @@ const natural = (value: unknown, label: string): number => {
   return value as number;
 };
 
-export const buildProductionObserverOrderInvalidArtifactV1 = ({
+export const buildObserverOrderInvalidArtifact = ({
   headerHash,
   detectionId,
   position,
@@ -76,7 +76,7 @@ export const buildProductionObserverOrderInvalidArtifactV1 = ({
   readonly headerHash: string;
   readonly detectionId: string;
   readonly position: bigint;
-  readonly evidence: ObserverOrderInvalidEvidenceV1;
+  readonly evidence: ObserverOrderInvalidEvidence;
   readonly sourceKind?: "accepted" | "forced";
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
@@ -84,9 +84,9 @@ export const buildProductionObserverOrderInvalidArtifactV1 = ({
   readonly transactionsPhasRoot: string;
   readonly transactionMembershipCbor: string;
   readonly forcedSourceCbor?: string;
-}): ProductionObserverOrderInvalidArtifactV1 =>
+}): ObserverOrderInvalidArtifact =>
   Object.freeze({
-    schemaVersion: PRODUCTION_OBSERVER_ORDER_INVALID_ARTIFACT_V1,
+    schemaVersion: OBSERVER_ORDER_INVALID_ARTIFACT,
     headerHash: hex(headerHash, 28, "header hash"),
     detectionId,
     position: natural(Number(position), "position"),
@@ -95,7 +95,7 @@ export const buildProductionObserverOrderInvalidArtifactV1 = ({
     observerIndex: evidence.observerIndex,
     subjectCbor: Data.to(
       evidence.subject as never,
-      ObserverOrderInvalidVerdictSubjectV1Schema as never,
+      ObserverOrderInvalidVerdictSubjectSchema as never,
     ),
     nativeTxCompactCbor: hex(nativeTxCompactCbor, null, "compact source"),
     witnessSetCompactCbor: hex(
@@ -123,15 +123,15 @@ export const buildProductionObserverOrderInvalidArtifactV1 = ({
     forcedSourceCbor: hex(forcedSourceCbor, null, "forced source"),
   });
 
-export type AdmittedProductionObserverOrderInvalidArtifactV1 = Readonly<{
-  artifact: ProductionObserverOrderInvalidArtifactV1;
-  evidence: ObserverOrderInvalidEvidenceV1;
-  staged: ObserverOrderInvalidStagedPlanV1;
+export type AdmittedObserverOrderInvalidArtifact = Readonly<{
+  artifact: ObserverOrderInvalidArtifact;
+  evidence: ObserverOrderInvalidEvidence;
+  staged: ObserverOrderInvalidStagedPlan;
 }>;
 
-export const admitProductionObserverOrderInvalidArtifactV1 = (
+export const admitObserverOrderInvalidArtifact = (
   value: unknown,
-): AdmittedProductionObserverOrderInvalidArtifactV1 => {
+): AdmittedObserverOrderInvalidArtifact => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error("observerOrderInvalid artifact must be an object");
   const raw = value as Record<string, unknown>;
@@ -155,13 +155,13 @@ export const admitProductionObserverOrderInvalidArtifactV1 = (
   ].sort();
   if (
     Object.keys(raw).sort().join("\0") !== expected.join("\0") ||
-    raw.schemaVersion !== PRODUCTION_OBSERVER_ORDER_INVALID_ARTIFACT_V1 ||
+    raw.schemaVersion !== OBSERVER_ORDER_INVALID_ARTIFACT ||
     typeof raw.detectionId !== "string" ||
     raw.detectionId.length === 0
   )
     throw new Error("observerOrderInvalid artifact shape/version changed");
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_OBSERVER_ORDER_INVALID_ARTIFACT_V1,
+    schemaVersion: OBSERVER_ORDER_INVALID_ARTIFACT,
     headerHash: hex(raw.headerHash, 28, "header hash"),
     detectionId: raw.detectionId,
     position: natural(raw.position, "position"),
@@ -200,21 +200,21 @@ export const admitProductionObserverOrderInvalidArtifactV1 = (
       "transaction membership",
     ),
     forcedSourceCbor: hex(raw.forcedSourceCbor, null, "forced source"),
-  }) satisfies ProductionObserverOrderInvalidArtifactV1;
+  }) satisfies ObserverOrderInvalidArtifact;
   const subject = Data.from(
     artifact.subjectCbor,
-    ObserverOrderInvalidVerdictSubjectV1Schema as never,
-  ) as VerdictSubjectV1;
+    ObserverOrderInvalidVerdictSubjectSchema as never,
+  ) as VerdictSubject;
   if (subject.transaction_id !== artifact.transactionId)
     throw new Error(
       "observerOrderInvalid artifact subject changed transaction",
     );
   const field = Buffer.from(artifact.fieldPreimageCbor, "hex");
   if (
-    midgardFieldCommitmentV1(field).toString("hex") !== artifact.fieldCommitment
+    midgardFieldCommitment(field).toString("hex") !== artifact.fieldCommitment
   )
     throw new Error("observerOrderInvalid artifact field commitment changed");
-  const evidence = prepareObserverOrderInvalidEvidenceV1({
+  const evidence = prepareObserverOrderInvalidEvidence({
     finding: { subject, observerIndex: artifact.observerIndex },
     fieldPreimage: field,
     committedFieldHashHex: artifact.fieldCommitment,
@@ -227,7 +227,7 @@ export const admitProductionObserverOrderInvalidArtifactV1 = (
   return Object.freeze({
     artifact,
     evidence,
-    staged: planObserverOrderInvalidStagedWalkV1({
+    staged: planObserverOrderInvalidStagedWalk({
       transactionId: artifact.transactionId,
       fieldPreimageCbor: artifact.fieldPreimageCbor,
       observerIndex: artifact.observerIndex,
@@ -235,17 +235,17 @@ export const admitProductionObserverOrderInvalidArtifactV1 = (
   });
 };
 
-export const ObserverOrderInvalidForcedSourcePayloadV1Schema = Data.Object({
-  header: HeaderV1Schema,
+export const ObserverOrderInvalidForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
+    ForcedInclusionTxSchema,
   ),
   direction: Data.Integer(),
 });
 
-export const productionObserverOrderInvalidArtifactDigestV1 = (
-  artifact: ProductionObserverOrderInvalidArtifactV1,
+export const observerOrderInvalidArtifactDigest = (
+  artifact: ObserverOrderInvalidArtifact,
 ): string =>
   createHash("sha256")
     .update(

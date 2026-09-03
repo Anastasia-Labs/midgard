@@ -1,13 +1,13 @@
 import {
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekTermNodeV1,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeHash32,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -71,7 +71,7 @@ describe("outref projection", () => {
       const encoded = midgardOutRefToCbor({ txId, index });
 
       expect(encoded).toStrictEqual(
-        encodeMidgardSpendInputItemV1({ txId, outputIndex: Number(index) }),
+        encodeMidgardSpendInputItem({ txId, outputIndex: Number(index) }),
       );
       // The fixed width is the point of the encoding: it is what makes the
       // stride-40 arithmetic access in the field-access door sound.
@@ -517,7 +517,7 @@ describe("phase A validation", () => {
     const queued = makeQueued(fixture.txId, fixture.txCbor);
     const v1Config = {
       ...phaseAConfig,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     };
     const missing = validatePhaseASingle(
       { ...queued, programMaterialSidecarCbor: undefined },
@@ -527,7 +527,7 @@ describe("phase A validation", () => {
       code: RejectCodes.CekProgramMaterial,
     });
 
-    const sidecar = encodeMidgardCekProgramMaterialSidecarV1([]);
+    const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const accepted = validatePhaseASingle(
       { ...queued, programMaterialSidecarCbor: sidecar },
       v1Config,
@@ -540,9 +540,9 @@ describe("phase A validation", () => {
     const unsupportedProfile = validatePhaseASingle(queued, {
       ...phaseAConfig,
       consensusProfile: {
-        ...MIDGARD_CONSENSUS_PROFILE_V1,
+        ...MIDGARD_CONSENSUS_PROFILE,
         protocolVersion: 2,
-      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE_V1,
+      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE,
     });
     expect(unsupportedProfile).toMatchObject({
       code: RejectCodes.TxVersion,
@@ -551,11 +551,11 @@ describe("phase A validation", () => {
 
   it("rejects unclaimed material unless reference programs remain unresolved", () => {
     const node = { kind: "error" as const };
-    const materialSidecar = encodeMidgardCekProgramMaterialSidecarV1([
+    const materialSidecar = encodeMidgardCekProgramMaterialSidecar([
       {
         kind: "term",
-        root: hashMidgardCekTermNodeV1(node),
-        preimage: encodeMidgardCekTermNodeV1(node),
+        root: hashMidgardCekTermNode(node),
+        preimage: encodeMidgardCekTermNode(node),
       },
     ]);
     const withoutReferences = makeNativeTx();

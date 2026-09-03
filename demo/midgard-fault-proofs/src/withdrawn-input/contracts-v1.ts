@@ -2,24 +2,24 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const WITHDRAWN_INPUT_CATEGORY_LABEL = "withdrawn-input";
 
-export const WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1 = {
+export const WITHDRAWN_INPUT_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/withdrawn_input/step_01.main.spend",
   step02: "fraud_proofs/withdrawn_input/step_02.main.spend",
   step03: "fraud_proofs/withdrawn_input/step_03.main.spend",
 } as const;
 
-export type WithdrawnInputStepContractV1 = {
+export type WithdrawnInputStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
 /** Explicit pre-registration deployment record. */
-export type WithdrawnInputContractsV1 = {
+export type WithdrawnInputContracts = {
   readonly steps: readonly [
-    WithdrawnInputStepContractV1,
-    WithdrawnInputStepContractV1,
-    WithdrawnInputStepContractV1,
+    WithdrawnInputStepContract,
+    WithdrawnInputStepContract,
+    WithdrawnInputStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

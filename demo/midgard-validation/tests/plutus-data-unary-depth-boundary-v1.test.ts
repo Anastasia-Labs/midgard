@@ -1,25 +1,25 @@
 import { readFileSync } from "node:fs";
 
 import {
-  assertMidgardPlutusDataWellFormedV1,
-  buildMidgardCekDataTraverseTraceV1,
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  assertMidgardPlutusDataWellFormed,
+  buildMidgardCekDataTraverseTrace,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeHash32,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
-  deriveMidgardV1TxFieldPreimages,
+  deriveMidgardTxFieldPreimages,
   encodeCbor,
-  encodeMidgardCekDataFrameV1,
-  encodeMidgardCekDataTraverseControlV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardCekDataFrame,
+  encodeMidgardCekDataTraverseControl,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  finalizeMidgardCekDataTraverseV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-  nextMidgardCekDataTraverseSpanV1,
-  validateMidgardConsensusV1Tx,
+  finalizeMidgardCekDataTraverse,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
+  nextMidgardCekDataTraverseSpan,
+  validateMidgardConsensusTx,
 } from "@al-ft/midgard-core";
 import {
   applyDoubleCborEncoding,
@@ -32,46 +32,46 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { countedMachineTransactionChunkStepsV1 } from "../src/validation-machine/index.js";
-import { runMaxDepthCmlOperationV1 } from "./helpers/cml-max-depth-runner-v1.js";
+import { countedMachineTransactionChunkSteps } from "../src/validation-machine/index.js";
+import { runMaxDepthCmlOperation } from "./helpers/cml-max-depth-runner-v1.js";
 import {
-  buildCollateralFreeMidgardSchemaParallelCandidateV1,
-  buildSignedCardanoNestedDatumCandidateV1,
-  buildSignedCardanoSpendRedeemersCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  findSignedCardanoCollectionBoundaryV1,
-  measureCollateralizedPlutusFeasibilityCandidateV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildCollateralFreeMidgardSchemaParallelCandidate,
+  buildSignedCardanoNestedDatumCandidate,
+  buildSignedCardanoSpendRedeemersCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  CARDANO_BOUNDARY_TOTAL_COLLATERAL,
+  deterministicCardanoBoundaryPrivateKey,
+  exerciseMidgardOrderedCollectionBoundary,
+  findSignedCardanoCollectionBoundary,
+  measureCollateralizedPlutusFeasibilityCandidate,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
 import {
-  buildMidgardRetainedDaCanonicalScriptProjectionV1,
-  exerciseMidgardRetainedDaBoundaryV1,
-  exerciseMidgardRetainedDaCanonicalBoundaryV1,
+  buildMidgardRetainedDaCanonicalScriptProjection,
+  exerciseMidgardRetainedDaBoundary,
+  exerciseMidgardRetainedDaCanonicalBoundary,
 } from "./helpers/retained-da-boundary-v1.js";
 import {
-  buildRawSignedCardanoUnaryCandidateV1,
-  buildRawSignedCardanoUnaryRedeemersCandidateV1,
-  cardanoUnaryConstructorDataCborV1,
-  measureExactUnaryConstructorDataV1,
-  type RawSignedCardanoUnaryCandidateV1,
-  type RawSignedCardanoUnaryRedeemerCandidateV1,
+  buildRawSignedCardanoUnaryCandidate,
+  buildRawSignedCardanoUnaryRedeemersCandidate,
+  cardanoUnaryConstructorDataCbor,
+  measureExactUnaryConstructorData,
+  type RawSignedCardanoUnaryCandidate,
+  type RawSignedCardanoUnaryRedeemerCandidate,
 } from "./helpers/unary-depth-candidate-v1.js";
 
-const productionRuntimeUnaryDepthWitnessV1 = 1_024;
+const runtimeUnaryDepthWitness = 1_024;
 
 // The exact genuine signed-Cardano unary-depth boundary. The terminal vector
 // below carries the same numbers inside one large object comparison; these four
 // pins state the cardinality and byte count directly at the search site, so a
 // silently shrunk depth can no longer satisfy the relative bounds alone.
-const MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT_V1 = 4_043;
-const MAXIMUM_UNARY_DEPTH_ACCEPTED_SIGNED_BYTES_V1 = 16_384;
-const MAXIMUM_UNARY_DEPTH_ADJACENT_COUNT_V1 = 4_044;
-const MAXIMUM_UNARY_DEPTH_ADJACENT_SIGNED_BYTES_V1 = 16_388;
+const MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT = 4_043;
+const MAXIMUM_UNARY_DEPTH_ACCEPTED_SIGNED_BYTES = 16_384;
+const MAXIMUM_UNARY_DEPTH_ADJACENT_COUNT = 4_044;
+const MAXIMUM_UNARY_DEPTH_ADJACENT_SIGNED_BYTES = 16_388;
 
-const maximumUnaryDepthTerminalVectorV1 = {
+const maximumUnaryDepthTerminalVector = {
   maxTxSize: 16_384,
   cardanoSignedCapacityCandidate: {
     acceptedDepth: 4_043,
@@ -106,12 +106,12 @@ const maximumUnaryDepthTerminalVectorV1 = {
 // spend-redeemer envelope (script witness, redeemer pointer and execution
 // units, collateral input/return/total, and the script-data hash) is larger
 // than an output's datum option.
-const MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_COUNT_V1 = 3_995;
-const MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_SIGNED_BYTES_V1 = 16_381;
-const MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_COUNT_V1 = 3_996;
-const MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_SIGNED_BYTES_V1 = 16_385;
+const MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_COUNT = 3_995;
+const MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_SIGNED_BYTES = 16_381;
+const MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_COUNT = 3_996;
+const MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_SIGNED_BYTES = 16_385;
 
-const maximumUnaryRedeemerDepthTerminalVectorV1 = {
+const maximumUnaryRedeemerDepthTerminalVector = {
   maxTxSize: 16384,
   cardanoSignedCapacityCandidate: {
     acceptedDepth: 3995,
@@ -146,14 +146,14 @@ const maximumUnaryRedeemerDepthTerminalVectorV1 = {
   },
 } as const;
 
-type AlwaysSucceedsBlueprintV1 = {
+type AlwaysSucceedsBlueprint = {
   readonly validators: readonly {
     readonly title: string;
     readonly compiledCode: string;
   }[];
 };
 
-const alwaysSucceedsCompiledCodeV1 = (
+const alwaysSucceedsCompiledCode = (
   JSON.parse(
     readFileSync(
       new URL(
@@ -162,23 +162,23 @@ const alwaysSucceedsCompiledCodeV1 = (
       ),
       "utf8",
     ),
-  ) as AlwaysSucceedsBlueprintV1
+  ) as AlwaysSucceedsBlueprint
 ).validators.find(
   (validator) => validator.title === "midgard.deposit_spend.else",
 )?.compiledCode;
-if (alwaysSucceedsCompiledCodeV1 === undefined) {
+if (alwaysSucceedsCompiledCode === undefined) {
   throw new Error(
     "Missing always-succeeds blueprint entry midgard.deposit_spend.else",
   );
 }
-const unaryRedeemerSpendingScriptV1: SpendingValidator = {
+const unaryRedeemerSpendingScript: SpendingValidator = {
   type: "PlutusV3",
-  script: applyDoubleCborEncoding(alwaysSucceedsCompiledCodeV1),
+  script: applyDoubleCborEncoding(alwaysSucceedsCompiledCode),
 };
 
 describe("canonical V1 Plutus Data unary-depth boundary", () => {
   it("derives the signed capacity boundary and exhaustively traverses its unary datum", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const funder = {
       seedPhrase: "",
       privateKey: privateKey.to_bech32(),
@@ -192,66 +192,64 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     };
     const emulator = new Emulator(
       [funder],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const buildCandidate = async (requestedDepth: number) =>
-      buildRawSignedCardanoUnaryCandidateV1({
+      buildRawSignedCardanoUnaryCandidate({
         privateKey,
         inputTransactionId: "00".repeat(32),
         inputLovelace: funder.assets.lovelace,
         recipientAddress: funder.address,
         requestedDepth,
-        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       });
 
-    const cmlDepthOne = await buildSignedCardanoNestedDatumCandidateV1({
+    const cmlDepthOne = await buildSignedCardanoNestedDatumCandidate({
       privateKeyBech32: funder.privateKey,
       inputTransactionId: "00".repeat(32),
       inputOutputIndex: 0n,
       inputLovelace: funder.assets.lovelace,
       recipientAddress: funder.address,
       requestedNestedLeafCount: 1,
-      nestedDatumCborHex: cardanoUnaryConstructorDataCborV1(1),
-      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+      nestedDatumCborHex: cardanoUnaryConstructorDataCbor(1),
+      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       minFeeRefScriptCostPerByte:
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
     });
     const rawDepthOne = await buildCandidate(1);
     expect(rawDepthOne.cborHex).toBe(cmlDepthOne.cborHex);
     expect(rawDepthOne.fee).toBe(cmlDepthOne.fee);
 
-    const boundary = await findSignedCardanoCollectionBoundaryV1({
+    const boundary = await findSignedCardanoCollectionBoundary({
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: buildCandidate,
     });
-    const accepted = boundary.accepted as RawSignedCardanoUnaryCandidateV1;
-    const adjacent = boundary.adjacent as RawSignedCardanoUnaryCandidateV1;
-    const acceptedShape = measureExactUnaryConstructorDataV1(
+    const accepted = boundary.accepted as RawSignedCardanoUnaryCandidate;
+    const adjacent = boundary.adjacent as RawSignedCardanoUnaryCandidate;
+    const acceptedShape = measureExactUnaryConstructorData(
       accepted.datumCbor.toString("hex"),
     );
-    const adjacentShape = measureExactUnaryConstructorDataV1(
+    const adjacentShape = measureExactUnaryConstructorData(
       adjacent.datumCbor.toString("hex"),
     );
 
     expect(accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
-    expect(adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-    );
+    expect(adjacent.signedBytes).toBeGreaterThan(CARDANO_BOUNDARY_MAX_TX_SIZE);
     expect(adjacentShape.depth).toBe(acceptedShape.depth + 1);
 
     // The genuine maximum and its immediately adjacent control are exact, not
     // merely "whatever the search returned".
-    expect(acceptedShape.depth).toBe(MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT_V1);
+    expect(acceptedShape.depth).toBe(MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT);
     expect(accepted.signedBytes).toBe(
-      MAXIMUM_UNARY_DEPTH_ACCEPTED_SIGNED_BYTES_V1,
+      MAXIMUM_UNARY_DEPTH_ACCEPTED_SIGNED_BYTES,
     );
-    expect(adjacentShape.depth).toBe(MAXIMUM_UNARY_DEPTH_ADJACENT_COUNT_V1);
+    expect(adjacentShape.depth).toBe(MAXIMUM_UNARY_DEPTH_ADJACENT_COUNT);
     expect(adjacent.signedBytes).toBe(
-      MAXIMUM_UNARY_DEPTH_ADJACENT_SIGNED_BYTES_V1,
+      MAXIMUM_UNARY_DEPTH_ADJACENT_SIGNED_BYTES,
     );
 
     expect(accepted.requestedItemCount).toBe(acceptedShape.depth);
@@ -261,11 +259,11 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(accepted.datumCbor.length).toBe(acceptedShape.depth * 4 + 1);
     expect(adjacent.datumCbor.length).toBe(accepted.datumCbor.length + 4);
 
-    const trace = buildMidgardCekDataTraverseTraceV1({
+    const trace = buildMidgardCekDataTraverseTrace({
       sourceStart: 0,
       source: accepted.datumCbor,
     });
-    const terminalSummary = finalizeMidgardCekDataTraverseV1(trace.terminal);
+    const terminalSummary = finalizeMidgardCekDataTraverse(trace.terminal);
     expect(terminalSummary).not.toBeNull();
     expect(terminalSummary!.cborLength).toBe(BigInt(accepted.datumCbor.length));
     expect(
@@ -285,7 +283,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     ).toHaveLength(1);
     const maximumSourceSpan = trace.steps.reduce(
       (maximum, { control, sourceBytes }) => {
-        const span = nextMidgardCekDataTraverseSpanV1(control);
+        const span = nextMidgardCekDataTraverseSpan(control);
         if (span === null) {
           expect(sourceBytes).toBeNull();
         } else {
@@ -297,7 +295,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       0,
     );
     expect(maximumSourceSpan).toBeLessThanOrEqual(
-      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
     );
     const finalStep = trace.steps.at(-1)!;
     expect(finalStep.action?.kind).toBe("finalizeFrame");
@@ -306,13 +304,13 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     }
     expect(finalStep.action.parent).toBeNull();
     const terminalVector = {
-      maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
       cardanoSignedCapacityCandidate: {
         acceptedDepth: acceptedShape.depth,
         acceptedDatumCborBytes: accepted.datumCbor.length,
         acceptedSignedCardanoBytes: accepted.signedBytes,
         signedCardanoByteMargin:
-          CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - accepted.signedBytes,
+          CARDANO_BOUNDARY_MAX_TX_SIZE - accepted.signedBytes,
         adjacentDepth: adjacentShape.depth,
         adjacentDatumCborBytes: adjacent.datumCbor.length,
         adjacentSignedCardanoBytes: adjacent.signedBytes,
@@ -321,13 +319,13 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         dataNodeCount: acceptedShape.nodeCount,
         traverseSteps: trace.steps.length,
         maximumSourceSpan,
-        terminalPreControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        terminalPreControlCborHex: encodeMidgardCekDataTraverseControl(
           finalStep.control,
         ).toString("hex"),
-        terminalFrameCborHex: encodeMidgardCekDataFrameV1(
+        terminalFrameCborHex: encodeMidgardCekDataFrame(
           finalStep.action.frame,
         ).toString("hex"),
-        terminalPostControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        terminalPostControlCborHex: encodeMidgardCekDataTraverseControl(
           finalStep.next,
         ).toString("hex"),
         terminalSummary: {
@@ -337,7 +335,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         },
       },
     };
-    expect(terminalVector).toEqual(maximumUnaryDepthTerminalVectorV1);
+    expect(terminalVector).toEqual(maximumUnaryDepthTerminalVector);
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(
         JSON.stringify({
@@ -348,7 +346,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
   }, 300_000);
 
   it("retains a 1,024-deep production-runtime witness through normal and forced paths", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const funder = {
       seedPhrase: "",
       privateKey: privateKey.to_bech32(),
@@ -362,30 +360,30 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     };
     const emulator = new Emulator(
       [funder],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
-    const datumCborHex = cardanoUnaryConstructorDataCborV1(
-      productionRuntimeUnaryDepthWitnessV1,
+    const datumCborHex = cardanoUnaryConstructorDataCbor(
+      runtimeUnaryDepthWitness,
     );
-    const candidate = await buildSignedCardanoNestedDatumCandidateV1({
+    const candidate = await buildSignedCardanoNestedDatumCandidate({
       privateKeyBech32: funder.privateKey,
       inputTransactionId: "00".repeat(32),
       inputOutputIndex: 0n,
       inputLovelace: funder.assets.lovelace,
       recipientAddress: funder.address,
-      requestedNestedLeafCount: productionRuntimeUnaryDepthWitnessV1,
+      requestedNestedLeafCount: runtimeUnaryDepthWitness,
       nestedDatumCborHex: datumCborHex,
-      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       minFeeRefScriptCostPerByte:
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
     });
-    expect(candidate.signedBytes).toBeLessThan(CARDANO_BOUNDARY_MAX_TX_SIZE_V1);
-    const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    expect(candidate.signedBytes).toBeLessThan(CARDANO_BOUNDARY_MAX_TX_SIZE);
+    const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(candidate.cborHex, "hex"),
     );
-    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-    expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+    const native = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
+    expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
     const outputs = decodeMidgardNativeByteListPreimage(
       native.body.outputsPreimageCbor,
       "native.outputs",
@@ -395,12 +393,12 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       datumCborHex,
     );
 
-    const outputField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const outputField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: candidate.cborHex,
       fieldIndex: 2,
     });
     expect(outputField.itemCount).toBe(1);
-    const retained = await exerciseMidgardRetainedDaBoundaryV1({
+    const retained = await exerciseMidgardRetainedDaBoundary({
       signedCardanoCborHex: candidate.cborHex,
     });
     expect(retained.normal.sourceKind).toBe("normal");
@@ -433,14 +431,14 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    *     where any earlier test already drove CML through a deep datum — fails
    *     with `RangeError: Maximum call stack size exceeded`. That is the same
    *     property `helpers/cml-max-depth-runner-v1.ts` exists for, so the
-   *     signed-Cardano-hex entry `exerciseMidgardRetainedDaBoundaryV1` cannot
+   *     signed-Cardano-hex entry `exerciseMidgardRetainedDaBoundary` cannot
    *     be used here without making the suite order-dependent.
    *
    * The canonical maximum-shape transaction is therefore projected through the
    * repo's own recursion-free codecs — the shallow candidate goes through the
    * production Cardano bridge and the maximum-depth datum is substituted into
    * its single output — and handed to the canonical retained-DA entry point.
-   * That is the same exercise `exerciseMidgardRetainedDaBoundaryV1` delegates
+   * That is the same exercise `exerciseMidgardRetainedDaBoundary` delegates
    * to (envelope, SDK decode, both DA classifications, every bounded reveal and
    * the terminal reconstruction fold); only the CML-bound conversion in front
    * of it is replaced. It matches the depth-4,043 measurement in
@@ -450,9 +448,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * Emulator admission stays in the child-process test below.
    */
   it("retains the exact maximum-depth witness through normal and forced paths", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const { acceptedDepth, acceptedDatumCborBytes } =
-      maximumUnaryDepthTerminalVectorV1.cardanoSignedCapacityCandidate;
+      maximumUnaryDepthTerminalVector.cardanoSignedCapacityCandidate;
     const address = CML.EnterpriseAddress.new(
       0,
       CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -460,36 +458,35 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       .to_address()
       .to_bech32();
     const buildCandidate = (requestedDepth: number) =>
-      buildRawSignedCardanoUnaryCandidateV1({
+      buildRawSignedCardanoUnaryCandidate({
         privateKey,
         inputTransactionId: "00".repeat(32),
         inputLovelace: 40_000_000_000n,
         recipientAddress: address,
         requestedDepth,
-        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       });
 
     // The genuine signed candidate at the derived maximum: exactly on the
     // signed capacity, unlike the 1,024 witness above which is strictly inside
     // it. Built and measured without asking CML to read the deep datum.
     const maximumCandidate = buildCandidate(acceptedDepth);
-    const maximumDatumCborHex =
-      cardanoUnaryConstructorDataCborV1(acceptedDepth);
+    const maximumDatumCborHex = cardanoUnaryConstructorDataCbor(acceptedDepth);
     expect(maximumCandidate.datumCbor.toString("hex")).toBe(
       maximumDatumCborHex,
     );
     expect(maximumCandidate.datumCbor.length).toBe(acceptedDatumCborBytes);
-    expect(maximumCandidate.signedBytes).toBe(CARDANO_BOUNDARY_MAX_TX_SIZE_V1);
-    expect(measureExactUnaryConstructorDataV1(maximumDatumCborHex).depth).toBe(
+    expect(maximumCandidate.signedBytes).toBe(CARDANO_BOUNDARY_MAX_TX_SIZE);
+    expect(measureExactUnaryConstructorData(maximumDatumCborHex).depth).toBe(
       acceptedDepth,
     );
 
-    const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(buildCandidate(1).cborHex, "hex"),
     );
     const shallowNative =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(shallowCanonical);
+      decodeMidgardNativeTxFullFromCanonicalCbor(shallowCanonical);
     const shallowOutputs = decodeMidgardNativeByteListPreimage(
       shallowNative.body.outputsPreimageCbor,
       "native.outputs",
@@ -497,10 +494,10 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(shallowOutputs).toHaveLength(1);
     const shallowOutput = decodeMidgardTxOutput(shallowOutputs[0]!);
     expect(shallowOutput.datum?.cbor.toString("hex")).toBe(
-      cardanoUnaryConstructorDataCborV1(1),
+      cardanoUnaryConstructorDataCbor(1),
     );
-    const canonical = encodeMidgardNativeTxCanonicalV1(
-      materializeMidgardNativeTxFromCanonicalV1({
+    const canonical = encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical({
         version: shallowNative.version,
         validity: shallowNative.validity,
         body: {
@@ -516,8 +513,8 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       }),
     );
 
-    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-    expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+    const native = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
+    expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
     const outputs = decodeMidgardNativeByteListPreimage(
       native.body.outputsPreimageCbor,
       "native.outputs",
@@ -532,10 +529,10 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // measured against CML's minimal-index out-ref CBOR).
     expect(canonical.length).toBe(16_472);
     const completeFoldStepCount =
-      countedMachineTransactionChunkStepsV1(canonical).length;
+      countedMachineTransactionChunkSteps(canonical).length;
     expect(completeFoldStepCount).toBe(6);
 
-    const retained = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+    const retained = await exerciseMidgardRetainedDaCanonicalBoundary({
       canonicalTransactionCbor: canonical,
     });
     expect(retained.normal.sourceKind).toBe("normal");
@@ -581,15 +578,15 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    */
   it("rejects malformed and noncanonical unary Data at the exact maximum depth", () => {
     const { acceptedDepth, acceptedDatumCborBytes } =
-      maximumUnaryDepthTerminalVectorV1.cardanoSignedCapacityCandidate;
-    const acceptedHex = cardanoUnaryConstructorDataCborV1(acceptedDepth);
+      maximumUnaryDepthTerminalVector.cardanoSignedCapacityCandidate;
+    const acceptedHex = cardanoUnaryConstructorDataCbor(acceptedDepth);
     const accepted = Buffer.from(acceptedHex, "hex");
     expect(accepted.length).toBe(acceptedDatumCborBytes);
     // Control: the accepted maximum passes both gates.
     expect(() => {
-      assertMidgardPlutusDataWellFormedV1(accepted);
+      assertMidgardPlutusDataWellFormed(accepted);
     }).not.toThrow();
-    expect(measureExactUnaryConstructorDataV1(acceptedHex)).toEqual({
+    expect(measureExactUnaryConstructorData(acceptedHex)).toEqual({
       depth: acceptedDepth,
       nodeCount: acceptedDepth + 1,
       scalarCount: 1,
@@ -644,12 +641,12 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       // The exact unary measurement must refuse every one of them: it is the
       // predicate the boundary claim is stated in.
       expect(
-        () => measureExactUnaryConstructorDataV1(control.hex),
+        () => measureExactUnaryConstructorData(control.hex),
         control.label,
       ).toThrow();
       if (!control.wellFormed) {
         expect(() => {
-          assertMidgardPlutusDataWellFormedV1(Buffer.from(control.hex, "hex"));
+          assertMidgardPlutusDataWellFormed(Buffer.from(control.hex, "hex"));
         }, control.label).toThrow();
       }
     }
@@ -657,11 +654,11 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // The adjacent depth is well formed and exactly unary — it is rejected by
     // the signed byte count, never by structure. Recorded so the malformed
     // controls above are not confused with the capacity boundary.
-    const adjacentHex = cardanoUnaryConstructorDataCborV1(acceptedDepth + 1);
+    const adjacentHex = cardanoUnaryConstructorDataCbor(acceptedDepth + 1);
     expect(() => {
-      assertMidgardPlutusDataWellFormedV1(Buffer.from(adjacentHex, "hex"));
+      assertMidgardPlutusDataWellFormed(Buffer.from(adjacentHex, "hex"));
     }).not.toThrow();
-    expect(measureExactUnaryConstructorDataV1(adjacentHex).depth).toBe(
+    expect(measureExactUnaryConstructorData(adjacentHex).depth).toBe(
       acceptedDepth + 1,
     );
   }, 120_000);
@@ -676,7 +673,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * machine-stack limit — see `helpers/cml-max-depth-runner-v1.ts`.
    */
   it("admits the exact maximum-depth candidate through the real emulator", () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const address = CML.EnterpriseAddress.new(
       0,
       CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -685,18 +682,17 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       .to_bech32();
     const inputLovelace = 40_000_000_000n;
     const buildCandidate = (requestedDepth: number) =>
-      buildRawSignedCardanoUnaryCandidateV1({
+      buildRawSignedCardanoUnaryCandidate({
         privateKey,
         inputTransactionId: "00".repeat(32),
         inputLovelace,
         recipientAddress: address,
         requestedDepth,
-        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       });
 
-    const { cardanoSignedCapacityCandidate } =
-      maximumUnaryDepthTerminalVectorV1;
+    const { cardanoSignedCapacityCandidate } = maximumUnaryDepthTerminalVector;
     const accepted = buildCandidate(
       cardanoSignedCapacityCandidate.acceptedDepth,
     );
@@ -706,9 +702,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(accepted.signedBytes).toBe(
       cardanoSignedCapacityCandidate.acceptedSignedCardanoBytes,
     );
-    expect(accepted.signedBytes).toBe(CARDANO_BOUNDARY_MAX_TX_SIZE_V1);
+    expect(accepted.signedBytes).toBe(CARDANO_BOUNDARY_MAX_TX_SIZE);
     expect(
-      measureExactUnaryConstructorDataV1(accepted.datumCbor.toString("hex"))
+      measureExactUnaryConstructorData(accepted.datumCbor.toString("hex"))
         .depth,
     ).toBe(cardanoSignedCapacityCandidate.acceptedDepth);
     // Adjacent rejection keeps deriving from the signed byte count, not from
@@ -718,11 +714,9 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(adjacent.signedBytes).toBe(
       cardanoSignedCapacityCandidate.adjacentSignedCardanoBytes,
     );
-    expect(adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-    );
+    expect(adjacent.signedBytes).toBeGreaterThan(CARDANO_BOUNDARY_MAX_TX_SIZE);
 
-    const admission = runMaxDepthCmlOperationV1({
+    const admission = runMaxDepthCmlOperation({
       operation: "emulatorAdmission",
       signedTxHex: accepted.cborHex,
       expectedDatumHex: accepted.datumCbor.toString("hex"),
@@ -731,14 +725,14 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         address,
         assets: { lovelace: inputLovelace },
       },
-      protocolParameters: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      protocolParameters: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     });
 
     expect(admission).toMatchObject({
       ok: true,
       operation: "emulatorAdmission",
-      signedBytes: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-      maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      signedBytes: CARDANO_BOUNDARY_MAX_TX_SIZE,
+      maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
       withinMaxTxSize: true,
       confirmed: true,
       admittedOutputCount: 1,
@@ -760,10 +754,10 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * execution units, collateral input/return/total, and a script-data hash, so
    * its unary capacity has to be derived separately.
    *
-   * `buildSignedCardanoSpendRedeemersCandidateV1` cannot reach that maximum. It
+   * `buildSignedCardanoSpendRedeemersCandidate` cannot reach that maximum. It
    * materializes the redeemer through `CML.PlutusData.from_cbor_hex` and
    * derives the script-data hash through `CML.calc_script_data_hash`, and both
-   * recurse over the Data tree. `buildRawSignedCardanoUnaryRedeemersCandidateV1`
+   * recurse over the Data tree. `buildRawSignedCardanoUnaryRedeemersCandidate`
    * assembles the identical Conway transaction byte by byte — including the
    * `blake2b-256(redeemers || language_views)` script-data hash — and keeps the
    * redeemer Data opaque. Depth one is pinned byte-for-byte against the CML
@@ -779,7 +773,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
    * to the canonical retained-DA entry point unchanged.
    */
   it("derives the genuine field-8 unary redeemer maximum and retains it through normal and forced paths", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const walletAddress = CML.EnterpriseAddress.new(
       0,
       CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -788,7 +782,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       .to_bech32();
     const scriptAddress = validatorToAddress(
       "Custom",
-      unaryRedeemerSpendingScriptV1,
+      unaryRedeemerSpendingScript,
     );
     const walletLovelace = 1_000_000_000_000n;
     const emulator = new Emulator(
@@ -813,7 +807,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
           outputData: { inline: Data.void() },
         },
       ],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const walletInputs = (await emulator.getUtxos(walletAddress)).sort(
       (left, right) => left.outputIndex - right.outputIndex,
@@ -831,10 +825,10 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       .collectFrom([walletInputs[0]!])
       .collectFrom([scriptInputs[0]!], Data.void())
       .pay.ToAddress(walletAddress, { lovelace: 10_000_000n })
-      .attach.SpendingValidator(unaryRedeemerSpendingScriptV1)
+      .attach.SpendingValidator(unaryRedeemerSpendingScript)
       .complete({ localUPLCEval: true });
     const signedSeed = await completedSeed.sign.withWallet().complete();
-    const seed = measureCollateralizedPlutusFeasibilityCandidateV1(
+    const seed = measureCollateralizedPlutusFeasibilityCandidate(
       signedSeed.toCBOR(),
     );
     const seedScripts = CML.Transaction.from_cbor_hex(signedSeed.toCBOR())
@@ -854,7 +848,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       lovelace: utxo.assets.lovelace!,
     }));
     const buildRawCandidate = (requestedDepth: number) =>
-      buildRawSignedCardanoUnaryRedeemersCandidateV1({
+      buildRawSignedCardanoUnaryRedeemersCandidate({
         privateKey,
         spendInputs,
         scriptInputIndex,
@@ -868,81 +862,79 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         requestedDepth,
         executionMemory: seed.executionMemory,
         executionSteps: seed.executionSteps,
-        totalCollateral: CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
-        priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
-        priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
+        totalCollateral: CARDANO_BOUNDARY_TOTAL_COLLATERAL,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
+        priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.priceMem,
+        priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.priceStep,
         plutusV3CostModel:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels.PlutusV3,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.costModels.PlutusV3,
       });
 
     // Faithfulness of the raw builder, including its raw script-data hash:
     // depth one is byte-identical to the CML-built candidate, fee included.
-    const cmlDepthOne = await buildSignedCardanoSpendRedeemersCandidateV1({
+    const cmlDepthOne = await buildSignedCardanoSpendRedeemersCandidate({
       privateKeyBech32: privateKey.to_bech32(),
       feeFundingInput: walletInputs[0]!,
       collateralInput: walletInputs[1]!,
       availableScriptInputs: scriptInputs,
       recipientAddress: walletAddress,
       plutusV3ScriptCborHex,
-      redeemerDataCborHex: cardanoUnaryConstructorDataCborV1(1),
+      redeemerDataCborHex: cardanoUnaryConstructorDataCbor(1),
       executionMemory: seed.executionMemory,
       executionSteps: seed.executionSteps,
       requestedRedeemerCount: 1,
-      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       minFeeRefScriptCostPerByte:
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
-      priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
-      priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
+      priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.priceMem,
+      priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.priceStep,
       collateralPercentage:
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.collateralPercentage,
-      costModels: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.collateralPercentage,
+      costModels: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.costModels,
     });
     const rawDepthOne = buildRawCandidate(1);
     expect(rawDepthOne.cborHex).toBe(cmlDepthOne.cborHex);
     expect(rawDepthOne.fee).toBe(cmlDepthOne.fee);
 
-    const boundary = await findSignedCardanoCollectionBoundaryV1({
+    const boundary = await findSignedCardanoCollectionBoundary({
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: async (requestedDepth: number) =>
         buildRawCandidate(requestedDepth),
     });
     const accepted =
-      boundary.accepted as RawSignedCardanoUnaryRedeemerCandidateV1;
+      boundary.accepted as RawSignedCardanoUnaryRedeemerCandidate;
     const adjacent =
-      boundary.adjacent as RawSignedCardanoUnaryRedeemerCandidateV1;
-    const acceptedShape = measureExactUnaryConstructorDataV1(
+      boundary.adjacent as RawSignedCardanoUnaryRedeemerCandidate;
+    const acceptedShape = measureExactUnaryConstructorData(
       accepted.redeemerDataCbor.toString("hex"),
     );
-    const adjacentShape = measureExactUnaryConstructorDataV1(
+    const adjacentShape = measureExactUnaryConstructorData(
       adjacent.redeemerDataCbor.toString("hex"),
     );
 
     expect(accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
-    expect(adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-    );
+    expect(adjacent.signedBytes).toBeGreaterThan(CARDANO_BOUNDARY_MAX_TX_SIZE);
     expect(adjacentShape.depth).toBe(acceptedShape.depth + 1);
     expect(acceptedShape.depth).toBe(
-      MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_COUNT_V1,
+      MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_COUNT,
     );
     expect(accepted.signedBytes).toBe(
-      MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_SIGNED_BYTES_V1,
+      MAXIMUM_UNARY_REDEEMER_DEPTH_ACCEPTED_SIGNED_BYTES,
     );
     expect(adjacentShape.depth).toBe(
-      MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_COUNT_V1,
+      MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_COUNT,
     );
     expect(adjacent.signedBytes).toBe(
-      MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_SIGNED_BYTES_V1,
+      MAXIMUM_UNARY_REDEEMER_DEPTH_ADJACENT_SIGNED_BYTES,
     );
     // The redeemer maximum is strictly shallower than the inline-datum maximum,
     // and it is bound by the signed byte count rather than by any recursion cap.
     expect(acceptedShape.depth).toBeLessThan(
-      MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT_V1,
+      MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT,
     );
     expect(accepted.scriptDataHash).toHaveLength(32);
     expect(accepted.redeemerDataCbor.length).toBe(acceptedShape.depth * 4 + 1);
@@ -953,20 +945,19 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // Field-8 Midgard projection. The depth-one collateral-free parallel
     // candidate is produced by the same CML helper the nested-redeemer boundary
     // uses, so nothing about the Midgard schema shape is invented here.
-    const parallelDepthOne =
-      buildCollateralFreeMidgardSchemaParallelCandidateV1({
-        collateralizedCardanoCborHex: rawDepthOne.cborHex,
-        privateKeyBech32: privateKey.to_bech32(),
-      });
-    const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    const parallelDepthOne = buildCollateralFreeMidgardSchemaParallelCandidate({
+      collateralizedCardanoCborHex: rawDepthOne.cborHex,
+      privateKeyBech32: privateKey.to_bech32(),
+    });
+    const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(parallelDepthOne.cborHex, "hex"),
     );
     const shallowNative =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(shallowCanonical);
+      decodeMidgardNativeTxFullFromCanonicalCbor(shallowCanonical);
     // §5.1/§5.3: one enveloped `enc_8` item, the same form the production bridge
     // emits — the retired counted scheme spelled this as a bare array of arrays.
     const redeemerPreimageFor = (redeemerDataCbor: Buffer): Buffer =>
-      encodeMidgardFieldPreimageForFieldV1({
+      encodeMidgardFieldPreimageForField({
         fieldIndex: 8,
         items: [
           {
@@ -984,7 +975,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // preimage at depth one, which is what licenses substituting the maximum.
     expect(
       redeemerPreimageFor(
-        Buffer.from(cardanoUnaryConstructorDataCborV1(1), "hex"),
+        Buffer.from(cardanoUnaryConstructorDataCbor(1), "hex"),
       ).toString("hex"),
     ).toBe(
       Buffer.from(shallowNative.witnessSet.redeemerTxWitsPreimageCbor).toString(
@@ -992,8 +983,8 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       ),
     );
 
-    const canonical = encodeMidgardNativeTxCanonicalV1(
-      materializeMidgardNativeTxFromCanonicalV1({
+    const canonical = encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical({
         version: shallowNative.version,
         validity: shallowNative.validity,
         body: shallowNative.body,
@@ -1010,16 +1001,16 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     // boundary uses supplies the canonical script identity. It rewrites only
     // the script witness and the script-integrity commitment; the field-8
     // redeemer preimage carrying the maximum unary Data is untouched.
-    const projection = buildMidgardRetainedDaCanonicalScriptProjectionV1({
+    const projection = buildMidgardRetainedDaCanonicalScriptProjection({
       canonicalTransactionCbor: canonical,
     });
     const projected = Buffer.from(projection.canonicalTransactionCbor);
-    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(projected);
-    expect(validateMidgardConsensusV1Tx(native, projected.length)).toBeNull();
+    const native = decodeMidgardNativeTxFullFromCanonicalCbor(projected);
+    expect(validateMidgardConsensusTx(native, projected.length)).toBeNull();
     expect(
       Buffer.from(native.witnessSet.redeemerTxWitsPreimageCbor).toString("hex"),
     ).toBe(redeemerPreimageFor(accepted.redeemerDataCbor).toString("hex"));
-    const redeemerField = deriveMidgardV1TxFieldPreimages(projected).find(
+    const redeemerField = deriveMidgardTxFieldPreimages(projected).find(
       (field) => field.fieldIndex === 8,
     );
     expect(redeemerField?.fieldName).toBe("redeemers");
@@ -1028,16 +1019,16 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         .toString("hex")
         .includes(accepted.redeemerDataCbor.toString("hex")),
     ).toBe(true);
-    const completeChunks = countedMachineTransactionChunkStepsV1(projected);
+    const completeChunks = countedMachineTransactionChunkSteps(projected);
     const redeemerChunks = completeChunks.filter(
       (chunk) => chunk.fieldIndex === 8,
     );
 
-    const trace = buildMidgardCekDataTraverseTraceV1({
+    const trace = buildMidgardCekDataTraverseTrace({
       sourceStart: 0,
       source: accepted.redeemerDataCbor,
     });
-    const terminalSummary = finalizeMidgardCekDataTraverseV1(trace.terminal);
+    const terminalSummary = finalizeMidgardCekDataTraverse(trace.terminal);
     expect(terminalSummary).not.toBeNull();
     expect(terminalSummary!.cborLength).toBe(
       BigInt(accepted.redeemerDataCbor.length),
@@ -1050,14 +1041,11 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     ).toHaveLength(1);
     const maximumSourceSpan = trace.steps.reduce(
       (maximum, { control }) =>
-        Math.max(
-          maximum,
-          nextMidgardCekDataTraverseSpanV1(control)?.length ?? 0,
-        ),
+        Math.max(maximum, nextMidgardCekDataTraverseSpan(control)?.length ?? 0),
       0,
     );
     expect(maximumSourceSpan).toBeLessThanOrEqual(
-      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
     );
     const finalStep = trace.steps.at(-1)!;
     expect(finalStep.action?.kind).toBe("finalizeFrame");
@@ -1066,7 +1054,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     }
     expect(finalStep.action.parent).toBeNull();
 
-    const retained = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+    const retained = await exerciseMidgardRetainedDaCanonicalBoundary({
       canonicalTransactionCbor: projected,
       canonicalMaterialSidecarCbor: projection.canonicalMaterialSidecarCbor,
       sourceRawScriptAuditHash: projection.sourceRawScriptAuditHash,
@@ -1100,13 +1088,13 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(retained.normal.transactionIdHex).toBe(retained.transactionIdHex);
 
     const terminalVector = {
-      maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
       cardanoSignedCapacityCandidate: {
         acceptedDepth: acceptedShape.depth,
         acceptedRedeemerDataCborBytes: accepted.redeemerDataCbor.length,
         acceptedSignedCardanoBytes: accepted.signedBytes,
         signedCardanoByteMargin:
-          CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - accepted.signedBytes,
+          CARDANO_BOUNDARY_MAX_TX_SIZE - accepted.signedBytes,
         adjacentDepth: adjacentShape.depth,
         adjacentRedeemerDataCborBytes: adjacent.redeemerDataCbor.length,
         adjacentSignedCardanoBytes: adjacent.signedBytes,
@@ -1120,13 +1108,13 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         redeemerFieldBytes: redeemerField!.preimageCbor.length,
         redeemerFieldChunkCount: redeemerChunks.length,
         completeFoldStepCount: completeChunks.length,
-        terminalPreControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        terminalPreControlCborHex: encodeMidgardCekDataTraverseControl(
           finalStep.control,
         ).toString("hex"),
-        terminalFrameCborHex: encodeMidgardCekDataFrameV1(
+        terminalFrameCborHex: encodeMidgardCekDataFrame(
           finalStep.action.frame,
         ).toString("hex"),
-        terminalPostControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        terminalPostControlCborHex: encodeMidgardCekDataTraverseControl(
           finalStep.next,
         ).toString("hex"),
         terminalSummary: {
@@ -1136,7 +1124,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
         },
       },
     };
-    expect(terminalVector).toEqual(maximumUnaryRedeemerDepthTerminalVectorV1);
+    expect(terminalVector).toEqual(maximumUnaryRedeemerDepthTerminalVector);
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(
         JSON.stringify({ unaryRedeemerDepthBoundaryV1: terminalVector }),

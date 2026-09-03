@@ -211,7 +211,7 @@ export type WithdrawalValidator = {
 
 export type AuthenticatedValidator = SpendingValidator & MintingValidator;
 
-export type StateQueueYieldValidatorsV1 = {
+export type StateQueueYieldValidators = {
   readonly commit: WithdrawalValidator;
   readonly unattestedTimeout: WithdrawalValidator;
   readonly unavailableTimeout: WithdrawalValidator;
@@ -219,8 +219,8 @@ export type StateQueueYieldValidatorsV1 = {
   readonly merge: WithdrawalValidator;
 };
 
-export type StateQueueValidatorV1 = AuthenticatedValidator & {
-  readonly yields: StateQueueYieldValidatorsV1;
+export type StateQueueValidator = AuthenticatedValidator & {
+  readonly yields: StateQueueYieldValidators;
 };
 
 export type ValidationTraceDisputeValidators = SpendingValidator & {
@@ -357,7 +357,7 @@ export type MidgardValidators = {
   availabilityChallenge: AuthenticatedValidator;
   /** Deployment-bound singleton which serializes state correction. */
   correctionLock: SpendingValidator;
-  stateQueue: StateQueueValidatorV1;
+  stateQueue: StateQueueValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;
   activeOperators: AuthenticatedValidator;

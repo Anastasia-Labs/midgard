@@ -5,12 +5,12 @@ const unaryDataCbor = (depth: number): Buffer =>
 
 describe("V1 data scanner admitted-depth boundary", () => {
   it("rejects the first unary depth outside the source envelope", async () => {
-    const { buildMidgardCekDataScanTraceV1 } = await import(
+    const { buildMidgardCekDataScanTrace } = await import(
       "../src/cek-data-scan.js"
     );
     const raw = unaryDataCbor(2_304);
     expect(raw.length).toBe(9_217);
-    expect(() => buildMidgardCekDataScanTraceV1(raw)).toThrow(/1\.\.9215/u);
+    expect(() => buildMidgardCekDataScanTrace(raw)).toThrow(/1\.\.9215/u);
   });
 
   it("does not call the whole-tree commitment for visited nodes", async () => {
@@ -24,14 +24,14 @@ describe("V1 data scanner admitted-depth boundary", () => {
       const actual = await vi.importActual<
         typeof import("../src/cek-data-tree.js")
       >("../src/cek-data-tree.js");
-      return { ...actual, commitMidgardCekDataTreeV1: mockedCommit };
+      return { ...actual, commitMidgardCekDataTree: mockedCommit };
     });
 
     try {
-      const { buildMidgardCekDataScanTraceV1 } = await import(
+      const { buildMidgardCekDataScanTrace } = await import(
         "../src/cek-data-scan.js"
       );
-      const trace = buildMidgardCekDataScanTraceV1(unaryDataCbor(32));
+      const trace = buildMidgardCekDataScanTrace(unaryDataCbor(32));
       expect(trace.terminal.result).not.toBeNull();
       expect(calls).toBe(0);
     } finally {

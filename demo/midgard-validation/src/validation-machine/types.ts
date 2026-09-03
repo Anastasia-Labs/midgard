@@ -3,26 +3,26 @@
  */
 
 import {
-  type MidgardBoundedItemChunkProofV1,
-  type MidgardConsensusProfileV1,
-  type MidgardLedgerOutputProofWitnessV1,
-  type MidgardMpfProofFrameV1,
-  type MidgardRedeemerItemProofControlV1,
-  type MidgardRedeemerItemProofWitnessV1,
-  type MidgardValidationMachineStateV1,
-  type MidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleMembershipV1,
+  type MidgardBoundedItemChunkProof,
+  type MidgardConsensusProfile,
+  type MidgardLedgerOutputProofWitness,
+  type MidgardMpfProofFrame,
+  type MidgardRedeemerItemProofControl,
+  type MidgardRedeemerItemProofWitness,
+  type MidgardValidationMachineState,
+  type MidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
   type MidgardValidationTraceTree,
 } from "@al-ft/midgard-core";
 
 import {
-  type MidgardCekContextPartsControlV1,
-  type MidgardCekFinalContextControlV1,
-  type MidgardCekRedeemerContextControlV1,
-  type MidgardCekTxInfoAssemblyControlV1,
+  type MidgardCekContextPartsControl,
+  type MidgardCekFinalContextControl,
+  type MidgardCekRedeemerContextControl,
+  type MidgardCekTxInfoAssemblyControl,
 } from "../cek-context.js";
-import { type MidgardCekExecutionStepV1 } from "../cek-executor.js";
+import { type MidgardCekExecutionStep } from "../cek-executor.js";
 import type { RejectCode } from "../types.js";
 import {
   type ValidationMachineLedgerEntry,
@@ -30,10 +30,10 @@ import {
   type ValidationMachineLedgerOp,
   type ValidationMachineValueMutationStep,
 } from "./ledger-mutation.js";
-import { type ValidationMachineNativeScriptFrameV1 } from "./native-script-frame.js";
+import { type ValidationMachineNativeScriptFrame } from "./native-script-frame.js";
 
 export type ValidationMachineReplayInput = {
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly eventKeyCbor: Buffer;
   readonly transactionId: Buffer;
   readonly canonicalTransactionCbor: Buffer;
@@ -118,7 +118,7 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "ledgerOutputProofStep";
-        readonly witness: MidgardLedgerOutputProofWitnessV1;
+        readonly witness: MidgardLedgerOutputProofWitness;
       }
     | {
         readonly kind: "ledgerOutputProofFinalize";
@@ -140,23 +140,23 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "nativeScriptToken";
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
-        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
+        readonly chunkProof: MidgardBoundedItemChunkProof;
+        readonly nextChunkProof: MidgardBoundedItemChunkProof | null;
         readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
         readonly kind: "nativeScriptFrame";
-        readonly frame: ValidationMachineNativeScriptFrameV1;
+        readonly frame: ValidationMachineNativeScriptFrame;
       }
     | {
         readonly kind: "scriptSourceHashBlock";
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
-        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
+        readonly chunkProof: MidgardBoundedItemChunkProof;
+        readonly nextChunkProof: MidgardBoundedItemChunkProof | null;
       }
     | {
         readonly kind: "mintFoldAsset";
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
-        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
+        readonly chunkProof: MidgardBoundedItemChunkProof;
+        readonly nextChunkProof: MidgardBoundedItemChunkProof | null;
       }
     | {
         readonly kind: "scheduledLedgerLookup";
@@ -240,7 +240,7 @@ export type ValidationMachineWorkWitness = {
         };
         readonly redeemerLeaf: Buffer;
         readonly executionSiblings: readonly Buffer[];
-        readonly firstChunkProof: MidgardBoundedItemChunkProofV1;
+        readonly firstChunkProof: MidgardBoundedItemChunkProof;
       }
     | {
         readonly kind: "nativeExecutionDescriptor";
@@ -263,12 +263,12 @@ export type ValidationMachineWorkWitness = {
         };
         readonly redeemerLeaf: Buffer;
         readonly executionSiblings: readonly Buffer[];
-        readonly firstChunkProof: MidgardBoundedItemChunkProofV1 | null;
-        readonly signerFrontier: MidgardValidationMerkleFrontierV1;
+        readonly firstChunkProof: MidgardBoundedItemChunkProof | null;
+        readonly signerFrontier: MidgardValidationMerkleFrontier;
       }
     | {
         readonly kind: "cekCoreStep";
-        readonly step: MidgardCekExecutionStepV1;
+        readonly step: MidgardCekExecutionStep;
       }
     | {
         readonly kind: "cekResolvedContextItem";
@@ -286,7 +286,7 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "cekSignerContextItem";
-        readonly frontier: MidgardValidationMerkleFrontierV1;
+        readonly frontier: MidgardValidationMerkleFrontier;
         readonly signerIndex: number;
         readonly signerHash: Buffer;
         readonly siblings: readonly Buffer[];
@@ -301,7 +301,7 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "cekRedeemerContextSelect";
-        readonly control: MidgardCekRedeemerContextControlV1;
+        readonly control: MidgardCekRedeemerContextControl;
         readonly itemIndex: number;
         readonly itemCount: number;
         readonly totalLength: number;
@@ -318,17 +318,17 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "redeemerItemStep";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1 | null;
-        readonly control: MidgardRedeemerItemProofControlV1;
-        readonly witness: MidgardRedeemerItemProofWitnessV1;
+        readonly redeemerControl: MidgardCekRedeemerContextControl | null;
+        readonly control: MidgardRedeemerItemProofControl;
+        readonly witness: MidgardRedeemerItemProofWitness;
       }
     | {
         readonly kind: "cekContextFinalize";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1;
+        readonly redeemerControl: MidgardCekRedeemerContextControl;
       }
     | {
         readonly kind: "cekContextFinalizeSpend";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1;
+        readonly redeemerControl: MidgardCekRedeemerContextControl;
         readonly itemIndex: number;
         readonly key: Buffer;
         readonly descriptorCbor: Buffer;
@@ -336,15 +336,15 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "cekContextAssemble";
-        readonly control: MidgardCekContextPartsControlV1;
+        readonly control: MidgardCekContextPartsControl;
       }
     | {
         readonly kind: "cekTxInfoFinalize";
-        readonly control: MidgardCekTxInfoAssemblyControlV1;
+        readonly control: MidgardCekTxInfoAssemblyControl;
       }
     | {
         readonly kind: "cekContextSeed";
-        readonly control: MidgardCekFinalContextControlV1;
+        readonly control: MidgardCekFinalContextControl;
       }
     | {
         readonly kind: "valueInputAsset";
@@ -356,7 +356,7 @@ export type ValidationMachineWorkWitness = {
         readonly policyId: Buffer;
         readonly assetName: Buffer;
         readonly quantity: bigint;
-        readonly assetFrontier: MidgardValidationMerkleFrontierV1;
+        readonly assetFrontier: MidgardValidationMerkleFrontier;
         readonly assetSiblings: readonly Buffer[];
         readonly mutationStep: ValidationMachineValueMutationStep;
       }
@@ -374,7 +374,7 @@ export type ValidationMachineWorkWitness = {
         readonly policyId: Buffer;
         readonly assetName: Buffer;
         readonly quantity: bigint;
-        readonly assetFrontier: MidgardValidationMerkleFrontierV1;
+        readonly assetFrontier: MidgardValidationMerkleFrontier;
         readonly assetSiblings: readonly Buffer[];
         readonly mutationStep: ValidationMachineValueMutationStep;
       }
@@ -393,7 +393,7 @@ export type ValidationMachineWorkWitness = {
         readonly key: Buffer;
         readonly value: Buffer;
         readonly mutationStep: ValidationMachineLedgerMutationStep;
-        readonly operationMembership: MidgardValidationMerkleMembershipV1;
+        readonly operationMembership: MidgardValidationMerkleMembership;
       }
     | {
         readonly kind: "ledgerDeltaReplay";
@@ -410,7 +410,7 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         readonly kind: "ledgerDeltaProofFrame";
-        readonly frame: MidgardMpfProofFrameV1;
+        readonly frame: MidgardMpfProofFrame;
         readonly siblings: readonly Buffer[];
       }
     | null;
@@ -420,29 +420,29 @@ export type ValidationMachineSignerSetProof =
   | { readonly kind: "none" }
   | {
       readonly kind: "membership";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
+      readonly frontier: MidgardValidationMerkleFrontier;
       readonly signerIndex: number;
       readonly siblings: readonly Buffer[];
     }
   | {
       readonly kind: "empty";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
+      readonly frontier: MidgardValidationMerkleFrontier;
     }
   | {
       readonly kind: "belowFirst";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
+      readonly frontier: MidgardValidationMerkleFrontier;
       readonly firstSignerHash: Buffer;
       readonly siblings: readonly Buffer[];
     }
   | {
       readonly kind: "aboveLast";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
+      readonly frontier: MidgardValidationMerkleFrontier;
       readonly lastSignerHash: Buffer;
       readonly siblings: readonly Buffer[];
     }
   | {
       readonly kind: "between";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
+      readonly frontier: MidgardValidationMerkleFrontier;
       readonly lowerIndex: number;
       readonly lowerSignerHash: Buffer;
       readonly lowerSiblings: readonly Buffer[];
@@ -454,7 +454,7 @@ export type DeterministicValidationMachineTrace = {
   readonly validationContextCbor: Buffer;
   /** Canonical, immutable input material for the CEK selection transition. */
   readonly programMaterialSidecarCbor: Buffer;
-  readonly states: readonly MidgardValidationMachineStateV1[];
+  readonly states: readonly MidgardValidationMachineState[];
   readonly witnesses: readonly ValidationMachineWorkWitness[];
   readonly tree: MidgardValidationTraceTree;
   readonly verdict: "accepted" | "rejected";

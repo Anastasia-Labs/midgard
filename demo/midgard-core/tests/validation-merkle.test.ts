@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  appendMidgardValidationMerkleLeafV1,
-  buildMidgardValidationMerkleFrontierV1,
-  buildMidgardValidationMerkleMembershipIndexV1,
-  buildMidgardValidationMerkleMembershipV1,
-  commitMidgardValidationMerkleFrontierV1,
-  emptyMidgardValidationMerkleFrontierV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  appendMidgardValidationMerkleLeaf,
+  buildMidgardValidationMerkleFrontier,
+  buildMidgardValidationMerkleMembership,
+  buildMidgardValidationMerkleMembershipIndex,
+  commitMidgardValidationMerkleFrontier,
+  emptyMidgardValidationMerkleFrontier,
+  verifyMidgardValidationMerkleMembership,
 } from "../src/index.js";
 
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
@@ -15,33 +15,33 @@ const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
 describe("validation Merkle frontier", () => {
   it("appends compact peaks and proves every leaf", () => {
     const leaves = [hash(0xaa), hash(0xbb), hash(0xcc)];
-    const frontier = buildMidgardValidationMerkleFrontierV1(leaves);
+    const frontier = buildMidgardValidationMerkleFrontier(leaves);
     expect(frontier.count).toBe(3);
     expect(frontier.peaks.map((peak) => peak.height)).toEqual([0, 1]);
     expect(
       leaves.every((_, index) =>
-        verifyMidgardValidationMerkleMembershipV1(
-          buildMidgardValidationMerkleMembershipV1(leaves, index),
+        verifyMidgardValidationMerkleMembership(
+          buildMidgardValidationMerkleMembership(leaves, index),
         ),
       ),
     ).toBe(true);
-    expect(commitMidgardValidationMerkleFrontierV1(frontier)).toHaveLength(32);
+    expect(commitMidgardValidationMerkleFrontier(frontier)).toHaveLength(32);
     expect(
-      commitMidgardValidationMerkleFrontierV1(frontier).toString("hex"),
+      commitMidgardValidationMerkleFrontier(frontier).toString("hex"),
     ).toBe("f257467b03621e7d54b952ac6be9dd6b965bd9f86da60b367ec62b3eb1118ea0");
   });
 
   it("rejects a mutated path and malformed frontier", () => {
     const leaves = [hash(0xaa), hash(0xbb)];
-    const membership = buildMidgardValidationMerkleMembershipV1(leaves, 0);
+    const membership = buildMidgardValidationMerkleMembership(leaves, 0);
     expect(
-      verifyMidgardValidationMerkleMembershipV1({
+      verifyMidgardValidationMerkleMembership({
         ...membership,
         siblings: [hash(0xdd)],
       }),
     ).toBe(false);
     expect(() =>
-      appendMidgardValidationMerkleLeafV1(
+      appendMidgardValidationMerkleLeaf(
         { count: 0, peaks: [{ height: 0, hash: hash(1) }] },
         hash(2),
       ),
@@ -53,9 +53,9 @@ describe("validation Merkle frontier", () => {
       const leaves = Array.from({ length: count }, (_, index) =>
         hash((index * 37 + count) % 256),
       );
-      const indexed = buildMidgardValidationMerkleMembershipIndexV1(leaves);
+      const indexed = buildMidgardValidationMerkleMembershipIndex(leaves);
       expect(indexed.frontier).toStrictEqual(
-        buildMidgardValidationMerkleFrontierV1(leaves),
+        buildMidgardValidationMerkleFrontier(leaves),
       );
 
       if (count === 0) {
@@ -65,20 +65,20 @@ describe("validation Merkle frontier", () => {
         continue;
       }
       for (let leafIndex = 0; leafIndex < count; leafIndex += 1) {
-        const expected = buildMidgardValidationMerkleMembershipV1(
+        const expected = buildMidgardValidationMerkleMembership(
           leaves,
           leafIndex,
         );
         const actual = indexed.membershipAt(leafIndex);
         expect(actual).toStrictEqual(expected);
-        expect(verifyMidgardValidationMerkleMembershipV1(actual)).toBe(true);
+        expect(verifyMidgardValidationMerkleMembership(actual)).toBe(true);
       }
     }
   });
 
   it("isolates cached paths from mutations to returned buffers", () => {
     const leaves = Array.from({ length: 8 }, (_, index) => hash(index + 1));
-    const indexed = buildMidgardValidationMerkleMembershipIndexV1(leaves);
+    const indexed = buildMidgardValidationMerkleMembershipIndex(leaves);
     const corrupted = indexed.membershipAt(3);
     corrupted.leafHash.fill(0xa1);
     for (const sibling of corrupted.siblings) {
@@ -91,19 +91,19 @@ describe("validation Merkle frontier", () => {
       peak.hash.fill(0xd4);
     }
 
-    const expected = buildMidgardValidationMerkleMembershipV1(leaves, 3);
+    const expected = buildMidgardValidationMerkleMembership(leaves, 3);
     const subsequent = indexed.membershipAt(3);
     expect(subsequent).toStrictEqual(expected);
-    expect(verifyMidgardValidationMerkleMembershipV1(subsequent)).toBe(true);
+    expect(verifyMidgardValidationMerkleMembership(subsequent)).toBe(true);
   });
 
   it("keeps sibling order consequential and fails closed for malformed requests", () => {
     const leaves = Array.from({ length: 8 }, (_, index) => hash(index + 1));
-    const indexed = buildMidgardValidationMerkleMembershipIndexV1(leaves);
+    const indexed = buildMidgardValidationMerkleMembershipIndex(leaves);
     const membership = indexed.membershipAt(1);
     expect(membership.siblings).toHaveLength(3);
     expect(
-      verifyMidgardValidationMerkleMembershipV1({
+      verifyMidgardValidationMerkleMembership({
         ...membership,
         siblings: [...membership.siblings].reverse(),
       }),
@@ -114,18 +114,18 @@ describe("validation Merkle frontier", () => {
       );
     }
     expect(() =>
-      buildMidgardValidationMerkleMembershipIndexV1([Buffer.alloc(31)]),
+      buildMidgardValidationMerkleMembershipIndex([Buffer.alloc(31)]),
     ).toThrow(/must be 32 bytes/u);
   });
 
   it("keeps count and peak occupancy inside the uint32 envelope", () => {
-    const one = appendMidgardValidationMerkleLeafV1(
-      emptyMidgardValidationMerkleFrontierV1(),
+    const one = appendMidgardValidationMerkleLeaf(
+      emptyMidgardValidationMerkleFrontier(),
       hash(1),
     );
     expect(one).toMatchObject({ count: 1, peaks: [{ height: 0 }] });
     expect(() =>
-      commitMidgardValidationMerkleFrontierV1({
+      commitMidgardValidationMerkleFrontier({
         count: 0x1_0000_0000,
         peaks: [],
       }),

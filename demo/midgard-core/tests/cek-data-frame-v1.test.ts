@@ -1,58 +1,56 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  appendMidgardCekDataFrameChildV1,
-  buildMidgardValidationMerkleMembershipV1,
-  emptyMidgardCekDataListSummaryV1,
-  emptyMidgardCekDataPairSummaryV1,
-  encodeMidgardCekDataFrameV1,
-  finalizeMidgardCekDataFrameV1,
-  foldMidgardCekDataFrameListChildV1,
-  foldMidgardCekDataFrameMapPairV1,
-  hashMidgardCekDataFrameChildV1,
-  hashMidgardCekDataFrameV1,
-  initialMidgardCekDataLargeConstrFrameV1,
-  initialMidgardCekDataListFrameV1,
-  initialMidgardCekDataMapFrameV1,
-  initialMidgardCekDataSmallConstrFrameV1,
-  type MidgardCekDataFrameV1,
-  type MidgardCekDataSummaryV1,
-  prependMidgardCekDataListSummaryV1,
-  prependMidgardCekDataPairSummaryV1,
-  summarizeMidgardCekLargeConstrDataV1,
-  summarizeMidgardCekListDataV1,
-  summarizeMidgardCekMapDataV1,
-  summarizeMidgardCekSmallConstrDataV1,
+  appendMidgardCekDataFrameChild,
+  buildMidgardValidationMerkleMembership,
+  emptyMidgardCekDataListSummary,
+  emptyMidgardCekDataPairSummary,
+  encodeMidgardCekDataFrame,
+  finalizeMidgardCekDataFrame,
+  foldMidgardCekDataFrameListChild,
+  foldMidgardCekDataFrameMapPair,
+  hashMidgardCekDataFrame,
+  hashMidgardCekDataFrameChild,
+  initialMidgardCekDataLargeConstrFrame,
+  initialMidgardCekDataListFrame,
+  initialMidgardCekDataMapFrame,
+  initialMidgardCekDataSmallConstrFrame,
+  type MidgardCekDataFrame,
+  type MidgardCekDataSummary,
+  prependMidgardCekDataListSummary,
+  prependMidgardCekDataPairSummary,
+  summarizeMidgardCekLargeConstrData,
+  summarizeMidgardCekListData,
+  summarizeMidgardCekMapData,
+  summarizeMidgardCekSmallConstrData,
 } from "../src/index.js";
 
 const summary = (
   fill: number,
   cborLength: bigint,
   memory: bigint,
-): MidgardCekDataSummaryV1 => ({
+): MidgardCekDataSummary => ({
   root: Buffer.alloc(32, fill),
   cborLength,
   memory,
 });
 
 const appendAll = (
-  initial: MidgardCekDataFrameV1,
-  children: readonly MidgardCekDataSummaryV1[],
-): MidgardCekDataFrameV1 =>
+  initial: MidgardCekDataFrame,
+  children: readonly MidgardCekDataSummary[],
+): MidgardCekDataFrame =>
   children.reduce((frame, child) => {
-    const next = appendMidgardCekDataFrameChildV1(frame, child);
+    const next = appendMidgardCekDataFrameChild(frame, child);
     expect(next).not.toBeNull();
     return next!;
   }, initial);
 
 const childMembership = (
-  children: readonly MidgardCekDataSummaryV1[],
+  children: readonly MidgardCekDataSummary[],
   childIndex: number,
 ) =>
-  buildMidgardValidationMerkleMembershipV1(
-    children.map((child, index) =>
-      hashMidgardCekDataFrameChildV1(index, child),
-    ),
+  buildMidgardValidationMerkleMembership(
+    children.map((child, index) => hashMidgardCekDataFrameChild(index, child)),
     childIndex,
   );
 
@@ -60,7 +58,7 @@ describe("authenticated CEK Data frames V1", () => {
   it("folds a large constructor without embedding its integer", () => {
     const constructorCborRoot = Buffer.alloc(32, 0xc7);
     const children = [summary(0x11, 3n, 5n), summary(0x22, 67n, 68n)];
-    const initial = initialMidgardCekDataLargeConstrFrameV1({
+    const initial = initialMidgardCekDataLargeConstrFrame({
       constructorCborRoot,
       constructorCborLength: 16_384n,
       constructorMemory: 16_388n,
@@ -71,7 +69,7 @@ describe("authenticated CEK Data frames V1", () => {
 
     for (const childIndex of [1, 0]) {
       const membership = childMembership(children, childIndex);
-      frame = foldMidgardCekDataFrameListChildV1({
+      frame = foldMidgardCekDataFrameListChild({
         frame,
         childIndex,
         child: children[childIndex]!,
@@ -80,22 +78,22 @@ describe("authenticated CEK Data frames V1", () => {
       expect(frame).not.toBeNull();
     }
 
-    const fields = prependMidgardCekDataListSummaryV1(
+    const fields = prependMidgardCekDataListSummary(
       children[0]!,
-      prependMidgardCekDataListSummaryV1(
+      prependMidgardCekDataListSummary(
         children[1]!,
-        emptyMidgardCekDataListSummaryV1(),
+        emptyMidgardCekDataListSummary(),
       ),
     );
-    expect(finalizeMidgardCekDataFrameV1(frame)).toStrictEqual(
-      summarizeMidgardCekLargeConstrDataV1({
+    expect(finalizeMidgardCekDataFrame(frame)).toStrictEqual(
+      summarizeMidgardCekLargeConstrData({
         constructorCborRoot,
         constructorCborLength: 16_384n,
         constructorMemory: 16_388n,
         fields,
       }),
     );
-    expect(encodeMidgardCekDataFrameV1(frame).length).toBeLessThan(256);
+    expect(encodeMidgardCekDataFrame(frame).length).toBeLessThan(256);
   });
 
   it("folds map pairs in original order through authenticated children", () => {
@@ -106,7 +104,7 @@ describe("authenticated CEK Data frames V1", () => {
       summary(0x21, 4n, 8n),
     ];
     let frame = appendAll(
-      initialMidgardCekDataMapFrameV1({
+      initialMidgardCekDataMapFrame({
         expectedChildren: children.length,
       }),
       children,
@@ -115,7 +113,7 @@ describe("authenticated CEK Data frames V1", () => {
     for (const pairIndex of [1, 0]) {
       const keyIndex = pairIndex * 2;
       const valueIndex = keyIndex + 1;
-      frame = foldMidgardCekDataFrameMapPairV1({
+      frame = foldMidgardCekDataFrameMapPair({
         frame,
         pairIndex,
         key: children[keyIndex]!,
@@ -126,49 +124,49 @@ describe("authenticated CEK Data frames V1", () => {
       expect(frame).not.toBeNull();
     }
 
-    const entries = prependMidgardCekDataPairSummaryV1(
+    const entries = prependMidgardCekDataPairSummary(
       children[0]!,
       children[1]!,
-      prependMidgardCekDataPairSummaryV1(
+      prependMidgardCekDataPairSummary(
         children[2]!,
         children[3]!,
-        emptyMidgardCekDataPairSummaryV1(),
+        emptyMidgardCekDataPairSummary(),
       ),
     );
-    expect(finalizeMidgardCekDataFrameV1(frame)).toStrictEqual(
-      summarizeMidgardCekMapDataV1(entries),
+    expect(finalizeMidgardCekDataFrame(frame)).toStrictEqual(
+      summarizeMidgardCekMapData(entries),
     );
   });
 
   it("finalizes exact empty and small-container summaries", () => {
-    const emptyList = initialMidgardCekDataListFrameV1({
+    const emptyList = initialMidgardCekDataListFrame({
       expectedChildren: 0,
     });
-    const emptyMap = initialMidgardCekDataMapFrameV1({
+    const emptyMap = initialMidgardCekDataMapFrame({
       expectedChildren: 0,
     });
-    const emptyConstr = initialMidgardCekDataSmallConstrFrameV1({
+    const emptyConstr = initialMidgardCekDataSmallConstrFrame({
       constructor: 127n,
       expectedChildren: 0,
     });
 
-    expect(finalizeMidgardCekDataFrameV1(emptyList)).toStrictEqual(
-      summarizeMidgardCekListDataV1(emptyMidgardCekDataListSummaryV1()),
+    expect(finalizeMidgardCekDataFrame(emptyList)).toStrictEqual(
+      summarizeMidgardCekListData(emptyMidgardCekDataListSummary()),
     );
-    expect(finalizeMidgardCekDataFrameV1(emptyMap)).toStrictEqual(
-      summarizeMidgardCekMapDataV1(emptyMidgardCekDataPairSummaryV1()),
+    expect(finalizeMidgardCekDataFrame(emptyMap)).toStrictEqual(
+      summarizeMidgardCekMapData(emptyMidgardCekDataPairSummary()),
     );
-    expect(finalizeMidgardCekDataFrameV1(emptyConstr)).toStrictEqual(
-      summarizeMidgardCekSmallConstrDataV1(
+    expect(finalizeMidgardCekDataFrame(emptyConstr)).toStrictEqual(
+      summarizeMidgardCekSmallConstrData(
         127n,
-        emptyMidgardCekDataListSummaryV1(),
+        emptyMidgardCekDataListSummary(),
       ),
     );
   });
 
   it("fails closed for forged frames and wrong fold order", () => {
     const children = [summary(0x31, 1n, 5n), summary(0x32, 2n, 6n)];
-    const initial = initialMidgardCekDataListFrameV1({
+    const initial = initialMidgardCekDataListFrame({
       expectedChildren: children.length,
     });
     const full = appendAll(initial, children);
@@ -185,14 +183,14 @@ describe("authenticated CEK Data frames V1", () => {
       childCount: 1,
     };
 
-    expect(() => encodeMidgardCekDataFrameV1(forgedEmpty)).toThrow(
+    expect(() => encodeMidgardCekDataFrame(forgedEmpty)).toThrow(
       /exact empty sequence/u,
     );
-    expect(() => encodeMidgardCekDataFrameV1(mismatchedFrontier)).toThrow(
+    expect(() => encodeMidgardCekDataFrame(mismatchedFrontier)).toThrow(
       /frontier count/u,
     );
     expect(
-      foldMidgardCekDataFrameListChildV1({
+      foldMidgardCekDataFrameListChild({
         frame: full,
         childIndex: 0,
         child: children[0]!,
@@ -200,13 +198,13 @@ describe("authenticated CEK Data frames V1", () => {
       }),
     ).toBeNull();
     expect(
-      appendMidgardCekDataFrameChildV1(initial, summary(0x44, 0n, 4n)),
+      appendMidgardCekDataFrameChild(initial, summary(0x44, 0n, 4n)),
     ).toBeNull();
-    expect(finalizeMidgardCekDataFrameV1(full)).toBeNull();
+    expect(finalizeMidgardCekDataFrame(full)).toBeNull();
   });
 
   it("binds the fixed-size large-constructor frame vector", () => {
-    const frame = initialMidgardCekDataLargeConstrFrameV1({
+    const frame = initialMidgardCekDataLargeConstrFrame({
       constructorCborRoot: Buffer.alloc(32, 0xc7),
       constructorCborLength: 16_384n,
       constructorMemory: 16_388n,
@@ -214,10 +212,10 @@ describe("authenticated CEK Data frames V1", () => {
       expectedChildren: 2,
     });
 
-    expect(encodeMidgardCekDataFrameV1(frame).toString("hex")).toBe(
+    expect(encodeMidgardCekDataFrame(frame).toString("hex")).toBe(
       `8b01005820${"c7".repeat(32)}1940001940045820${"42".repeat(32)}020080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000`,
     );
-    expect(hashMidgardCekDataFrameV1(frame).toString("hex")).toBe(
+    expect(hashMidgardCekDataFrame(frame).toString("hex")).toBe(
       "f1f01b15e143b47b513a5be7c071a57709fa88b183a9220a9a81a1307b5334db",
     );
   });

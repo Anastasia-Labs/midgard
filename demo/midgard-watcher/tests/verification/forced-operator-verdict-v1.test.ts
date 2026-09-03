@@ -1,22 +1,22 @@
-import { OperatorVerdictV1Schema } from "@al-ft/midgard-sdk";
+import { OperatorVerdictSchema } from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  isWatcherForcedOperatorVerdictV1,
-  WATCHER_FORCED_TX_VALID_V1,
-  watcherForcedOperatorVerdictV1,
+  isWatcherForcedOperatorVerdict,
+  WATCHER_FORCED_TX_VALID,
+  watcherForcedOperatorVerdict,
 } from "../../src/indexers/user-event-indexer.js";
-import { watcherBlockReplayForcedValidityForRejectCodeV1 } from "../../src/verification/block-replay.js";
-import { w15ForcedOperatorVerdictForClassificationV1 } from "../support/w15-authority-scenarios.js";
+import { watcherBlockReplayForcedValidityForRejectCode } from "../../src/verification/block-replay.js";
+import { userEventForcedOperatorVerdictForClassification } from "../support/w15-authority-scenarios.js";
 
 /**
  * The #640 forced-inclusion verdict vocabulary, at the watcher's boundary.
  *
  * `ForcedInclusionTxV1.verdict` carries an `OperatorVerdictV1`, and the watcher
  * projects it onto a JSON-safe constructor tag
- * (`watcherForcedOperatorVerdictV1`) because its classification records are
+ * (`watcherForcedOperatorVerdict`) because its classification records are
  * canonical-JSON digested and the reason payloads are `bigint` ordinals. That
  * projection is the hinge the forced classification comparison in
  * `bindForcedTransitionEffectV1` turns on, so it is pinned here directly rather
@@ -71,7 +71,7 @@ const FIXTURE_VERDICT_CBOR = Object.freeze({
  * membership to — an arm silently dropped from the twin's code bridge would
  * otherwise narrow what the watcher accepts with nothing to notice.
  */
-const REJECTION_REASON_ARMS_V1 = Object.freeze([
+const REJECTION_REASON_ARMS = Object.freeze([
   "FieldPreimageLengthMismatch",
   "FieldItemWidthIllegal",
   "EmptyInputs",
@@ -122,7 +122,7 @@ const REJECTION_REASON_ARMS_V1 = Object.freeze([
 ] as const);
 
 /** The spellings the retired six-member `MidgardTxValidity` classification used. */
-const RETIRED_VALIDITY_SPELLINGS_V1 = Object.freeze([
+const RETIRED_VALIDITY_SPELLINGS = Object.freeze([
   "TxIsValid",
   "TxIsInvalid",
   "NonExistentInputUtxo",
@@ -134,8 +134,8 @@ const RETIRED_VALIDITY_SPELLINGS_V1 = Object.freeze([
 
 const encodeVerdict = (classification: string): string =>
   Data.to(
-    w15ForcedOperatorVerdictForClassificationV1(classification) as never,
-    OperatorVerdictV1Schema as never,
+    userEventForcedOperatorVerdictForClassification(classification) as never,
+    OperatorVerdictSchema as never,
   );
 
 describe("forced operator verdict vocabulary", () => {
@@ -154,30 +154,28 @@ describe("forced operator verdict vocabulary", () => {
     for (const classification of FIXTURE_CLASSIFICATIONS) {
       const decoded = Data.from(
         FIXTURE_VERDICT_CBOR[classification],
-        OperatorVerdictV1Schema as never,
+        OperatorVerdictSchema as never,
       );
-      expect(watcherForcedOperatorVerdictV1(decoded), classification).toBe(
+      expect(watcherForcedOperatorVerdict(decoded), classification).toBe(
         classification,
       );
     }
   });
 
   it("accepts the whole 47-arm vocabulary plus the accepting literal", () => {
-    expect(REJECTION_REASON_ARMS_V1).toHaveLength(47);
-    expect(new Set(REJECTION_REASON_ARMS_V1).size).toBe(47);
-    expect(WATCHER_FORCED_TX_VALID_V1).toBe("ForcedTxValid");
-    expect(isWatcherForcedOperatorVerdictV1(WATCHER_FORCED_TX_VALID_V1)).toBe(
-      true,
-    );
-    for (const arm of REJECTION_REASON_ARMS_V1) {
-      expect(isWatcherForcedOperatorVerdictV1(arm), arm).toBe(true);
+    expect(REJECTION_REASON_ARMS).toHaveLength(47);
+    expect(new Set(REJECTION_REASON_ARMS).size).toBe(47);
+    expect(WATCHER_FORCED_TX_VALID).toBe("ForcedTxValid");
+    expect(isWatcherForcedOperatorVerdict(WATCHER_FORCED_TX_VALID)).toBe(true);
+    for (const arm of REJECTION_REASON_ARMS) {
+      expect(isWatcherForcedOperatorVerdict(arm), arm).toBe(true);
     }
   });
 
   it("refuses the retired validity spellings and every non-tag value", () => {
-    for (const spelling of RETIRED_VALIDITY_SPELLINGS_V1) {
-      expect(isWatcherForcedOperatorVerdictV1(spelling), spelling).toBe(false);
-      expect(watcherForcedOperatorVerdictV1(spelling), spelling).toBeNull();
+    for (const spelling of RETIRED_VALIDITY_SPELLINGS) {
+      expect(isWatcherForcedOperatorVerdict(spelling), spelling).toBe(false);
+      expect(watcherForcedOperatorVerdict(spelling), spelling).toBeNull();
     }
     for (const value of [
       null,
@@ -191,8 +189,8 @@ describe("forced operator verdict vocabulary", () => {
       { ForcedTxInvalid: { reason: {} } },
       { ForcedTxValid: [] },
     ]) {
-      expect(watcherForcedOperatorVerdictV1(value)).toBeNull();
-      expect(isWatcherForcedOperatorVerdictV1(value)).toBe(false);
+      expect(watcherForcedOperatorVerdict(value)).toBeNull();
+      expect(isWatcherForcedOperatorVerdict(value)).toBe(false);
     }
   });
 
@@ -206,7 +204,7 @@ describe("forced operator verdict vocabulary", () => {
     // honest operators.
     for (const phase of ["phaseA", "phaseB"] as const) {
       expect(
-        watcherBlockReplayForcedValidityForRejectCodeV1(
+        watcherBlockReplayForcedValidityForRejectCode(
           RejectCodes.InputNotFound,
           phase,
         ),
@@ -216,7 +214,7 @@ describe("forced operator verdict vocabulary", () => {
         RejectCodes.MissingRequiredWitness,
       ]) {
         expect(
-          watcherBlockReplayForcedValidityForRejectCodeV1(code, phase),
+          watcherBlockReplayForcedValidityForRejectCode(code, phase),
           code,
         ).toBe("AddressWitnessSignatureInvalid");
       }
@@ -225,12 +223,12 @@ describe("forced operator verdict vocabulary", () => {
         RejectCodes.PlutusEvaluationUnavailable,
       ]) {
         expect(
-          watcherBlockReplayForcedValidityForRejectCodeV1(code, phase),
+          watcherBlockReplayForcedValidityForRejectCode(code, phase),
           code,
         ).toBe("PlutusExecutionFailed");
       }
       expect(
-        watcherBlockReplayForcedValidityForRejectCodeV1(
+        watcherBlockReplayForcedValidityForRejectCode(
           RejectCodes.MinFee,
           phase,
         ),
@@ -238,26 +236,26 @@ describe("forced operator verdict vocabulary", () => {
       // The catch-all: every code outside the named classes, which is what
       // the retired `UnbalancedTx` arm covered.
       expect(
-        watcherBlockReplayForcedValidityForRejectCodeV1(
+        watcherBlockReplayForcedValidityForRejectCode(
           RejectCodes.ValueNotPreserved,
           phase,
         ),
       ).toBe("ValueNotPreserved");
       expect(
-        watcherBlockReplayForcedValidityForRejectCodeV1(
+        watcherBlockReplayForcedValidityForRejectCode(
           RejectCodes.TxSize,
           phase,
         ),
       ).toBe("ValueNotPreserved");
     }
     expect(
-      watcherBlockReplayForcedValidityForRejectCodeV1(
+      watcherBlockReplayForcedValidityForRejectCode(
         RejectCodes.NativeScriptInvalid,
         "phaseA",
       ),
     ).toBe("WitnessNativeScriptFalse");
     expect(
-      watcherBlockReplayForcedValidityForRejectCodeV1(
+      watcherBlockReplayForcedValidityForRejectCode(
         RejectCodes.NativeScriptInvalid,
         "phaseB",
       ),
@@ -267,12 +265,9 @@ describe("forced operator verdict vocabulary", () => {
   it("emits only tags the watcher classification vocabulary admits", () => {
     for (const phase of ["phaseA", "phaseB"] as const) {
       for (const code of Object.values(RejectCodes)) {
-        const tag = watcherBlockReplayForcedValidityForRejectCodeV1(
-          code,
-          phase,
-        );
-        expect(isWatcherForcedOperatorVerdictV1(tag), code).toBe(true);
-        expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID_V1);
+        const tag = watcherBlockReplayForcedValidityForRejectCode(code, phase);
+        expect(isWatcherForcedOperatorVerdict(tag), code).toBe(true);
+        expect(tag, code).not.toBe(WATCHER_FORCED_TX_VALID);
         expect(encodeVerdict(tag), code).toBe(
           FIXTURE_VERDICT_CBOR[tag as keyof typeof FIXTURE_VERDICT_CBOR],
         );

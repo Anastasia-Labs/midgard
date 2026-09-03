@@ -1,26 +1,26 @@
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardOutputFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardOutputFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import {
-  forcedVerdictSubjectV1,
-  isAnyNetworkIdMismatchV1,
-  type NetworkIdFaultV1,
-  type VerdictSubjectV1,
+  forcedVerdictSubject,
+  isAnyNetworkIdMismatch,
+  type NetworkIdFault,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 
-export const NETWORK_ID_MISMATCH_REASON_V1 = "NetworkIdMismatch" as const;
-export const NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID_V1 =
+export const NETWORK_ID_MISMATCH_REASON = "NetworkIdMismatch" as const;
+export const NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID =
   "network-id-wrongful-rejection" as const;
 
-export type NetworkIdWrongfulRejectionEvidenceV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type NetworkIdWrongfulRejectionEvidence = Readonly<{
+  subject: VerdictSubject;
   expectedNetworkId: 0n | 1n;
   committedNetworkId: bigint;
   outputNetworkIds: readonly bigint[];
@@ -28,23 +28,23 @@ export type NetworkIdWrongfulRejectionEvidenceV1 = Readonly<{
   outputsPreimageCbor: string;
 }>;
 
-export type PreparedNetworkIdWrongfulRejectionV1 = Readonly<{
+export type PreparedNetworkIdWrongfulRejection = Readonly<{
   headerHash: string;
   expectedNetworkId: 0n | 1n;
   badTxId: string;
   nativeTxCompactCbor: string;
   outputsItemCbors: readonly string[];
   faultClaim: Readonly<{ kind: "forced-network-mismatch" }>;
-  fault: NetworkIdFaultV1;
-  subject: VerdictSubjectV1;
+  fault: NetworkIdFault;
+  subject: VerdictSubject;
   forcedSource: Readonly<{
-    header: CanonicalBlockEvidenceV1["header"];
+    header: CanonicalBlockEvidence["header"];
     membership: Awaited<
       ReturnType<typeof buildForcedTransactionLeafMembershipProof>
     >;
     direction: 1n;
   }>;
-  evidence: NetworkIdWrongfulRejectionEvidenceV1;
+  evidence: NetworkIdWrongfulRejectionEvidence;
 }>;
 
 const evidenceFor = ({
@@ -52,19 +52,18 @@ const evidenceFor = ({
   forcedIndex,
   expectedNetworkId,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
+  readonly block: CanonicalBlockEvidence;
   readonly forcedIndex: number;
   readonly expectedNetworkId: 0n | 1n;
-}): NetworkIdWrongfulRejectionEvidenceV1 | null => {
+}): NetworkIdWrongfulRejectionEvidence | null => {
   const forced = block.reconstruction.forcedTransactions[forcedIndex];
   if (
     forced === undefined ||
     forced.value.verdict === "ForcedTxValid" ||
-    forced.value.verdict.ForcedTxInvalid.reason !==
-      NETWORK_ID_MISMATCH_REASON_V1
+    forced.value.verdict.ForcedTxInvalid.reason !== NETWORK_ID_MISMATCH_REASON
   )
     return null;
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     forced.fullTransactionCbor,
   );
   if (
@@ -79,19 +78,19 @@ const evidenceFor = ({
     throw new Error(
       "networkId: forced preimage differs from authenticated leaf",
     );
-  const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
     forced.fullTransactionCbor,
   );
-  const outputs = decodeMidgardOutputFieldPreimageV1(
+  const outputs = decodeMidgardOutputFieldPreimage(
     decoded.body.outputsPreimageCbor,
   );
   const outputNetworkIds = outputs.map((output) =>
     BigInt(decodeMidgardAddressBytes(output.address).networkId),
   );
-  const subject = forcedVerdictSubjectV1({
+  const subject = forcedVerdictSubject({
     transactionId: forced.value.tx_id,
     sourceKey: forced.key,
-    rejectionReason: NETWORK_ID_MISMATCH_REASON_V1,
+    rejectionReason: NETWORK_ID_MISMATCH_REASON,
   });
   return Object.freeze({
     subject,
@@ -99,39 +98,39 @@ const evidenceFor = ({
     committedNetworkId: decoded.body.networkId,
     outputNetworkIds: Object.freeze(outputNetworkIds),
     outputsItemCbors: Object.freeze(
-      decodeMidgardFieldPreimageV1(decoded.body.outputsPreimageCbor).map(
-        (item) => Buffer.from(item).toString("hex"),
+      decodeMidgardFieldPreimage(decoded.body.outputsPreimageCbor).map((item) =>
+        Buffer.from(item).toString("hex"),
       ),
     ),
     outputsPreimageCbor: decoded.body.outputsPreimageCbor.toString("hex"),
   });
 };
 
-export const networkIdWrongfulRejectionClosesV1 = (
-  evidence: NetworkIdWrongfulRejectionEvidenceV1,
+export const networkIdWrongfulRejectionCloses = (
+  evidence: NetworkIdWrongfulRejectionEvidence,
 ): boolean =>
-  !isAnyNetworkIdMismatchV1({
+  !isAnyNetworkIdMismatch({
     committedNetworkId: evidence.committedNetworkId,
     outputNetworkIds: evidence.outputNetworkIds,
     expectedNetworkId: evidence.expectedNetworkId,
   });
 
-export const detectNetworkIdWrongfulRejectionsV1 = ({
+export const detectNetworkIdWrongfulRejections = ({
   block,
   expectedNetworkId,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
+  readonly block: CanonicalBlockEvidence;
   readonly expectedNetworkId: 0n | 1n;
 }) =>
   Object.freeze(
     block.reconstruction.forcedTransactions.flatMap((_, forcedIndex) => {
       const evidence = evidenceFor({ block, forcedIndex, expectedNetworkId });
-      return evidence !== null && networkIdWrongfulRejectionClosesV1(evidence)
+      return evidence !== null && networkIdWrongfulRejectionCloses(evidence)
         ? [
             Object.freeze({
-              detectionId: `${NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID_V1}:${forcedIndex.toString()}:${evidence.subject.transaction_id}`,
+              detectionId: `${NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID}:${forcedIndex.toString()}:${evidence.subject.transaction_id}`,
               headerHash: block.headerHash,
-              violationId: NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID_V1,
+              violationId: NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID,
               position: BigInt(forcedIndex),
               forcedIndex,
               transactionId: evidence.subject.transaction_id,
@@ -147,14 +146,14 @@ export const detectNetworkIdWrongfulRejectionsV1 = ({
  * the strict authority surface `{ block }`: verdict, reason, transaction,
  * evidence, membership, and actuator inputs are all derived internally.
  */
-export const createNetworkIdWrongfulRejectionPlannerV1 =
+export const createNetworkIdWrongfulRejectionPlanner =
   (expectedNetworkId: 0n | 1n) =>
   async ({
     block,
   }: Readonly<{
-    block: CanonicalBlockEvidenceV1;
-  }>): Promise<PreparedNetworkIdWrongfulRejectionV1> => {
-    const detection = detectNetworkIdWrongfulRejectionsV1({
+    block: CanonicalBlockEvidence;
+  }>): Promise<PreparedNetworkIdWrongfulRejection> => {
+    const detection = detectNetworkIdWrongfulRejections({
       block,
       expectedNetworkId,
     })[0];
@@ -175,7 +174,7 @@ export const createNetworkIdWrongfulRejectionPlannerV1 =
       nativeTxCompactCbor: forced.value.source.compact_cbor,
       outputsItemCbors: detection.evidence.outputsItemCbors,
       faultClaim: Object.freeze({ kind: "forced-network-mismatch" as const }),
-      fault: "ForcedNetworkIdMismatch" as NetworkIdFaultV1,
+      fault: "ForcedNetworkIdMismatch" as NetworkIdFault,
       subject: detection.evidence.subject,
       forcedSource: Object.freeze({
         header: block.header,

@@ -8,22 +8,22 @@
  * roots, ordering, and exact canonical rejection attribution.
  */
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalTransitionEffectV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildCanonicalTransitionEffect,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  canonicalCommittedWithdrawalTransitionEffectV1,
-  type CanonicalTransitionEffectV1,
-  deriveCanonicalDepositTransitionEffectV1,
+  canonicalCommittedWithdrawalTransitionEffect,
+  type CanonicalTransitionEffect,
+  deriveCanonicalDepositTransitionEffect,
   LedgerColumns,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
@@ -34,7 +34,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -48,67 +48,67 @@ import {
   plutusV3ScriptWitness,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
 import {
-  evaluateWatcherBlockReplayV1,
-  makeWatcherBlockReplayReconstructedStateV1,
+  evaluateWatcherBlockReplay,
+  makeWatcherBlockReplayReconstructedState,
 } from "../../src/index.js";
-import type { WatcherStateQueueHeaderV1 } from "../../src/indexers/state-queue-indexer.js";
-import { watcherL1TransportAttestationDetailsV1 } from "../../src/l1/l1-adapter.js";
-import { watcherSha256CanonicalJsonV1 } from "../../src/storage/durable-store.js";
+import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
+import { watcherL1TransportAttestationDetails } from "../../src/l1/l1-adapter.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
-  assertWatcherFullBlockReplayResultV1,
-  evaluateWatcherBlockReplayCandidatesV1,
-  makeWatcherPhaseBConfigV1,
-  WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION,
-  WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1,
-  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1,
-  watcherBlockReplayCommittedStepsV1,
-  type WatcherBlockReplayEventAuthorityV1,
-  watcherBlockReplayForcedValidityForRejectCodeV1,
-  watcherBlockReplayPriorStateV1,
-  type WatcherBlockReplayPriorUtxoV1,
-  watcherBlockReplayRejectionProjectionV1,
-  watcherBlockReplayStageForRejectionV1,
+  assertWatcherFullBlockReplayResult,
+  evaluateWatcherBlockReplayCandidates,
+  makeWatcherPhaseBConfig,
+  WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
+  WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED,
+  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT,
+  watcherBlockReplayCommittedSteps,
+  type WatcherBlockReplayEventAuthority,
+  watcherBlockReplayForcedValidityForRejectCode,
+  watcherBlockReplayPriorState,
+  type WatcherBlockReplayPriorUtxo,
+  watcherBlockReplayRejectionProjection,
+  watcherBlockReplayStageForRejection,
 } from "../../src/verification/block-replay.js";
 import {
-  evaluateWatcherHeaderRootReconstructionV1,
-  makeWatcherAuthenticatedHeaderObservationV1,
-  type WatcherHeaderRootReconstructionResultV1,
+  evaluateWatcherHeaderRootReconstruction,
+  makeWatcherAuthenticatedHeaderObservation,
+  type WatcherHeaderRootReconstructionResult,
 } from "../../src/verification/header-root-reconstruction.js";
 import {
-  evaluateWatcherPhaseABlockV1,
-  WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1,
-  WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1,
-  WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1,
+  evaluateWatcherPhaseABlock,
+  WATCHER_PHASE_A_CANONICAL_REJECT_CODES,
+  WATCHER_PHASE_A_EXCLUDED_REJECT_CODES,
+  WATCHER_PHASE_A_REACHABLE_REJECT_CODES,
 } from "../../src/verification/phase-a-verifier.js";
 import {
-  computeWatcherRuleBundleV1Commitment,
-  makeWatcherCanonicalRuleBundleV1,
-  type WatcherRuleBundleV1,
+  computeWatcherRuleBundleCommitment,
+  makeWatcherCanonicalRuleBundle,
+  type WatcherRuleBundle,
 } from "../../src/verification/rule-bundle-v1.js";
 import {
-  createGenuineW15DepositWithdrawalAuthoritiesV1,
-  type GenuineW15AuthorityFixtureSetV1,
-  genuineW15ForcedPayloadForCanonicalTxV1,
-  type W15AcceptedAuthorityScenarioV1,
-  w15ForcedOperatorVerdictForClassificationV1,
+  createGenuineUserEventDepositWithdrawalAuthorities,
+  type GenuineUserEventAuthorityFixtureSet,
+  genuineUserEventForcedPayloadForCanonicalTx,
+  type UserEventAcceptedAuthorityScenario,
+  userEventForcedOperatorVerdictForClassification,
 } from "../support/w15-authority-scenarios.js";
 import {
-  createGenuineW16SettlementAuthoritiesV1,
-  type GenuineW16SettlementAuthorityFixtureSetV1,
-  type GenuineW16SettlementAuthorityV1,
+  createGenuineSettlementAuthorities,
+  type GenuineSettlementAuthority,
+  type GenuineSettlementAuthorityFixtureSet,
 } from "../support/w16-authority-scenarios.js";
-import { createWatcherOpaqueAuthorityHarnessV1 } from "../support/watcher-opaque-authority-harness.js";
+import { createWatcherOpaqueAuthorityHarness } from "../support/watcher-opaque-authority-harness.js";
 
 const header = { blockSlot: 0n } as Parameters<
-  typeof makeWatcherPhaseBConfigV1
+  typeof makeWatcherPhaseBConfig
 >[0];
-const config = makeWatcherPhaseBConfigV1(header);
+const config = makeWatcherPhaseBConfig(header);
 
 const FIXED_KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
 const FIXED_ADDRESS = Buffer.from(
@@ -126,7 +126,7 @@ const FIXED_ADDRESS_DATA: SDK.AddressData = {
   stakeCredential: null,
 };
 
-const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
+const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
 const WITHDRAWAL_FLOW_INPUT = outRefFromByte(0x51);
 const WITHDRAWAL_FLOW_NATIVE = makeNativeTx({
   spendInputs: [WITHDRAWAL_FLOW_INPUT],
@@ -188,7 +188,7 @@ const FORCED_INVALID_CASES = Object.freeze({
     input: outRefFromByte(0x76),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x76)],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1 - 1n, FIXED_ADDRESS)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE - 1n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
     }),
     operatorValidity: "ValueNotPreserved" as const,
@@ -200,10 +200,10 @@ const FORCED_INVALID_CASES = Object.freeze({
 // hand-rolled copies of that pairing would be two chances to get the vector wrong
 // in a way the fixture cannot detect.
 const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) =>
-  genuineW15ForcedPayloadForCanonicalTxV1(native.txCbor);
+  genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
 
-let genuineW15: GenuineW15AuthorityFixtureSetV1;
-let genuineW16: GenuineW16SettlementAuthorityFixtureSetV1;
+let genuineW15: GenuineUserEventAuthorityFixtureSet;
+let genuineW16: GenuineSettlementAuthorityFixtureSet;
 let repeatIsolationEvidence: Readonly<{
   harnessDistinctDeploymentFixture: boolean;
   harnessDistinctTransports: boolean;
@@ -231,7 +231,7 @@ let repeatIsolationEvidence: Readonly<{
   w16DeterministicReplay: boolean;
 }>;
 
-const genuineW15Input = () => ({
+const genuineUserEventInput = () => ({
   depositL2Address: FIXED_ADDRESS_DATA,
   withdrawalL2OutRef: {
     transactionId: WITHDRAWAL_FLOW_NATIVE.txId.toString("hex"),
@@ -244,7 +244,7 @@ const genuineW15Input = () => ({
         key,
         nonceByte: ["9d", "9e", "9f", "aa", "ab"][index]!,
         payload: forcedPayloadForNative(invalidCase.native),
-        operatorValidity: w15ForcedOperatorVerdictForClassificationV1(
+        operatorValidity: userEventForcedOperatorVerdictForClassification(
           invalidCase.operatorValidity,
         ),
       }),
@@ -260,7 +260,7 @@ const genuineW15Input = () => ({
   ],
 });
 
-const settlementRecord = (authority: W15AcceptedAuthorityScenarioV1) => ({
+const settlementRecord = (authority: UserEventAcceptedAuthorityScenario) => ({
   outRef: authority.event.outRef,
   outputCborHex: authority.event.outputCborHex,
   datumCborHex: authority.event.datumCborHex,
@@ -330,95 +330,104 @@ const rejectedWithMessage = (
 };
 
 beforeAll(async () => {
-  const firstHarness = await createWatcherOpaqueAuthorityHarnessV1();
+  const firstHarness = await createWatcherOpaqueAuthorityHarness();
   await firstHarness.dispose();
-  const secondHarness = await createWatcherOpaqueAuthorityHarnessV1();
+  const secondHarness = await createWatcherOpaqueAuthorityHarness();
   await secondHarness.dispose();
-  const [w15SetupFailure] = await Promise.allSettled([
-    createGenuineW15DepositWithdrawalAuthoritiesV1({
-      ...genuineW15Input(),
+  const [userEventSetupFailure] = await Promise.allSettled([
+    createGenuineUserEventDepositWithdrawalAuthorities({
+      ...genuineUserEventInput(),
       transportFixtureRoot:
         "/dev/shm/midgard-w25-intentionally-missing-parent/w15",
     }),
   ]);
-  const w15LeasePartition = exactlyOneFactoryLeaseWinner(
+  const userEventLeasePartition = exactlyOneFactoryLeaseWinner(
     await Promise.allSettled([
-      createGenuineW15DepositWithdrawalAuthoritiesV1(genuineW15Input()),
-      createGenuineW15DepositWithdrawalAuthoritiesV1(genuineW15Input()),
+      createGenuineUserEventDepositWithdrawalAuthorities(
+        genuineUserEventInput(),
+      ),
+      createGenuineUserEventDepositWithdrawalAuthorities(
+        genuineUserEventInput(),
+      ),
     ]),
     "W15 opaque authority fixture lease is not idle",
   );
-  const firstW15 = w15LeasePartition.winner;
-  const w15DisposeOne = firstW15.dispose();
-  const w15DisposeTwo = firstW15.dispose();
-  const [w15DisposeOverlap] = await Promise.allSettled([
-    createGenuineW15DepositWithdrawalAuthoritiesV1(genuineW15Input()),
+  const firstW15 = userEventLeasePartition.winner;
+  const userEventDisposeOne = firstW15.dispose();
+  const userEventDisposeTwo = firstW15.dispose();
+  const [userEventDisposeOverlap] = await Promise.allSettled([
+    createGenuineUserEventDepositWithdrawalAuthorities(genuineUserEventInput()),
   ]);
-  await Promise.all([w15DisposeOne, w15DisposeTwo]);
-  genuineW15 =
-    await createGenuineW15DepositWithdrawalAuthoritiesV1(genuineW15Input());
-  const w15FreshTransports = genuineW15.deposit.context.transportAttestations;
-  const w15FreshProvider = authenticatedProviderReference(
+  await Promise.all([userEventDisposeOne, userEventDisposeTwo]);
+  genuineW15 = await createGenuineUserEventDepositWithdrawalAuthorities(
+    genuineUserEventInput(),
+  );
+  const userEventFreshTransports =
+    genuineW15.deposit.context.transportAttestations;
+  const userEventFreshProvider = authenticatedProviderReference(
     genuineW15.deposit.context.publicContext,
   );
-  const w15FreshAuthority = deploymentAuthorityReference(
+  const userEventFreshAuthority = deploymentAuthorityReference(
     genuineW15.deposit.context.publicContext,
   );
   await firstW15.dispose();
-  const w15StaleDisposePreservedFreshState =
-    genuineW15.deposit.context.transportAttestations === w15FreshTransports &&
+  const userEventStaleDisposePreservedFreshState =
+    genuineW15.deposit.context.transportAttestations ===
+      userEventFreshTransports &&
     genuineW15.deposit.context.transportAttestations.length === 2 &&
     genuineW15.deposit.context.transportAttestations.every(
-      (context) => watcherL1TransportAttestationDetailsV1(context) !== null,
+      (context) => watcherL1TransportAttestationDetails(context) !== null,
     ) &&
     authenticatedProviderReference(genuineW15.deposit.context.publicContext) ===
-      w15FreshProvider &&
+      userEventFreshProvider &&
     deploymentAuthorityReference(genuineW15.deposit.context.publicContext) ===
-      w15FreshAuthority;
-  const w16Input = {
+      userEventFreshAuthority;
+  const settlementInput = {
     deposit: settlementRecord(genuineW15.deposit),
     withdrawal: settlementRecord(genuineW15.withdrawal),
   };
-  const [w16SetupFailure] = await Promise.allSettled([
-    createGenuineW16SettlementAuthoritiesV1({
-      ...w16Input,
+  const [settlementSetupFailure] = await Promise.allSettled([
+    createGenuineSettlementAuthorities({
+      ...settlementInput,
       transportFixtureRoot:
         "/dev/shm/midgard-w25-intentionally-missing-parent/w16",
     }),
   ]);
-  const w16LeasePartition = exactlyOneFactoryLeaseWinner(
+  const settlementLeasePartition = exactlyOneFactoryLeaseWinner(
     await Promise.allSettled([
-      createGenuineW16SettlementAuthoritiesV1(w16Input),
-      createGenuineW16SettlementAuthoritiesV1(w16Input),
+      createGenuineSettlementAuthorities(settlementInput),
+      createGenuineSettlementAuthorities(settlementInput),
     ]),
     "W16 opaque authority fixture lease is not idle",
   );
-  const firstW16 = w16LeasePartition.winner;
-  const w16DisposeOne = firstW16.dispose();
-  const w16DisposeTwo = firstW16.dispose();
-  const [w16DisposeOverlap] = await Promise.allSettled([
-    createGenuineW16SettlementAuthoritiesV1(w16Input),
+  const firstW16 = settlementLeasePartition.winner;
+  const settlementDisposeOne = firstW16.dispose();
+  const settlementDisposeTwo = firstW16.dispose();
+  const [settlementDisposeOverlap] = await Promise.allSettled([
+    createGenuineSettlementAuthorities(settlementInput),
   ]);
-  await Promise.all([w16DisposeOne, w16DisposeTwo]);
-  genuineW16 = await createGenuineW16SettlementAuthoritiesV1(w16Input);
-  const w16FreshTransports = genuineW16.spawn.context.transportAttestations;
-  const w16FreshProvider = authenticatedProviderReference(
+  await Promise.all([settlementDisposeOne, settlementDisposeTwo]);
+  genuineW16 = await createGenuineSettlementAuthorities(settlementInput);
+  const settlementFreshTransports =
+    genuineW16.spawn.context.transportAttestations;
+  const settlementFreshProvider = authenticatedProviderReference(
     genuineW16.spawn.context.publicContext,
   );
-  const w16FreshAuthority = deploymentAuthorityReference(
+  const settlementFreshAuthority = deploymentAuthorityReference(
     genuineW16.spawn.context.publicContext,
   );
   await firstW16.dispose();
-  const w16StaleDisposePreservedFreshState =
-    genuineW16.spawn.context.transportAttestations === w16FreshTransports &&
+  const settlementStaleDisposePreservedFreshState =
+    genuineW16.spawn.context.transportAttestations ===
+      settlementFreshTransports &&
     genuineW16.spawn.context.transportAttestations.length === 2 &&
     genuineW16.spawn.context.transportAttestations.every(
-      (context) => watcherL1TransportAttestationDetailsV1(context) !== null,
+      (context) => watcherL1TransportAttestationDetails(context) !== null,
     ) &&
     authenticatedProviderReference(genuineW16.spawn.context.publicContext) ===
-      w16FreshProvider &&
+      settlementFreshProvider &&
     deploymentAuthorityReference(genuineW16.spawn.context.publicContext) ===
-      w16FreshAuthority;
+      settlementFreshAuthority;
   repeatIsolationEvidence = Object.freeze({
     harnessDistinctDeploymentFixture:
       firstHarness.deploymentFixture !== secondHarness.deploymentFixture,
@@ -449,14 +458,16 @@ beforeAll(async () => {
     w15DistinctProvider:
       authenticatedProviderReference(firstW15.deposit.context.publicContext) !==
       authenticatedProviderReference(genuineW15.deposit.context.publicContext),
-    w15ConcurrentLeasePartition: w15LeasePartition.deterministicRejection,
-    w15SetupFailureReleasedLease: w15SetupFailure?.status === "rejected",
-    w15DuplicateDisposeSharedPromise: w15DisposeOne === w15DisposeTwo,
+    w15ConcurrentLeasePartition: userEventLeasePartition.deterministicRejection,
+    w15SetupFailureReleasedLease: userEventSetupFailure?.status === "rejected",
+    w15DuplicateDisposeSharedPromise:
+      userEventDisposeOne === userEventDisposeTwo,
     w15DisposeOverlapRejected: rejectedWithMessage(
-      w15DisposeOverlap,
+      userEventDisposeOverlap,
       "W15 opaque authority fixture lease is not idle",
     ),
-    w15StaleDisposePreservedFreshState,
+    w15StaleDisposePreservedFreshState:
+      userEventStaleDisposePreservedFreshState,
     w15DeterministicReplay:
       firstW15.deposit.event.outRef === genuineW15.deposit.event.outRef &&
       firstW15.deposit.event.eventContentDigest ===
@@ -477,17 +488,20 @@ beforeAll(async () => {
     w16DistinctProvider:
       authenticatedProviderReference(firstW16.spawn.context.publicContext) !==
       authenticatedProviderReference(genuineW16.spawn.context.publicContext),
-    w16ConcurrentLeasePartition: w16LeasePartition.deterministicRejection,
-    w16SetupFailureReleasedLease: w16SetupFailure?.status === "rejected",
-    w16DuplicateDisposeSharedPromise: w16DisposeOne === w16DisposeTwo,
+    w16ConcurrentLeasePartition:
+      settlementLeasePartition.deterministicRejection,
+    w16SetupFailureReleasedLease: settlementSetupFailure?.status === "rejected",
+    w16DuplicateDisposeSharedPromise:
+      settlementDisposeOne === settlementDisposeTwo,
     w16DisposeOverlapRejected: rejectedWithMessage(
-      w16DisposeOverlap,
+      settlementDisposeOverlap,
       "W16 opaque authority fixture lease is not idle",
     ),
-    w16StaleDisposePreservedFreshState,
+    w16StaleDisposePreservedFreshState:
+      settlementStaleDisposePreservedFreshState,
     w16DeterministicReplay:
-      watcherSha256CanonicalJsonV1(firstW16.spawn.observation.transition) ===
-      watcherSha256CanonicalJsonV1(genuineW16.spawn.observation.transition),
+      watcherSha256CanonicalJson(firstW16.spawn.observation.transition) ===
+      watcherSha256CanonicalJson(genuineW16.spawn.observation.transition),
   });
 }, 120_000);
 
@@ -559,7 +573,7 @@ const FIXED_TWO_TX_ROOTS = [
 
 const entries = (
   values: readonly (readonly [Buffer, Buffer])[],
-): readonly WatcherBlockReplayPriorUtxoV1[] =>
+): readonly WatcherBlockReplayPriorUtxo[] =>
   values.map(([outRef, output]) => ({
     outRef: outRef.toString("hex"),
     outputCbor: output.toString("hex"),
@@ -567,13 +581,13 @@ const entries = (
 
 const replay = async (
   candidates: Parameters<
-    typeof evaluateWatcherBlockReplayCandidatesV1
+    typeof evaluateWatcherBlockReplayCandidates
   >[0]["candidates"],
-  priorState: readonly WatcherBlockReplayPriorUtxoV1[],
+  priorState: readonly WatcherBlockReplayPriorUtxo[],
   expectedPostStateRoot?: string,
 ) => {
-  const prior = await watcherBlockReplayPriorStateV1(priorState);
-  return await evaluateWatcherBlockReplayCandidatesV1({
+  const prior = await watcherBlockReplayPriorState(priorState);
+  return await evaluateWatcherBlockReplayCandidates({
     candidates,
     priorState,
     expectedPriorStateRoot: prior.root,
@@ -587,19 +601,19 @@ const h32 = (byte: number): string =>
 const h28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);
 
-const L1_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const L1_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "watcher-local-node",
   grade: "security",
 };
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "watcher-da-peer-1",
   grade: "security",
 };
 const CHAIN_POINT = { slot: 4242n, blockHash: h32(7) } as const;
 
-const RULE_BUNDLE: WatcherRuleBundleV1 = makeWatcherCanonicalRuleBundleV1({
+const RULE_BUNDLE: WatcherRuleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
     manifestId: h32(0x21),
     network: "Preprod",
@@ -611,12 +625,11 @@ const RULE_BUNDLE: WatcherRuleBundleV1 = makeWatcherCanonicalRuleBundleV1({
   },
   targetParameterSnapshot: { finalityDepth: 12 },
 });
-const RULE_BUNDLE_COMMITMENT =
-  computeWatcherRuleBundleV1Commitment(RULE_BUNDLE);
+const RULE_BUNDLE_COMMITMENT = computeWatcherRuleBundleCommitment(RULE_BUNDLE);
 
-const headerHashOf = (value: SDK.HeaderV1): string =>
+const headerHashOf = (value: SDK.Header): string =>
   Buffer.from(
-    blake2b(Buffer.from(Data.to(value, SDK.HeaderV1), "hex"), { dkLen: 28 }),
+    blake2b(Buffer.from(Data.to(value, SDK.Header), "hex"), { dkLen: 28 }),
   ).toString("hex");
 
 const sortEntries = (
@@ -662,7 +675,7 @@ const depositEvent = (byte: number): PublicFixtureEvent => {
 };
 
 const publicEventFromW15 = (
-  authority: W15AcceptedAuthorityScenarioV1,
+  authority: UserEventAcceptedAuthorityScenario,
   forcedNative?: ReturnType<typeof makeNativeTx>,
 ): PublicFixtureEvent => {
   const event = authority.event;
@@ -711,11 +724,11 @@ const publicEventFromW15 = (
   if (forcedNative === undefined) {
     throw new Error("forced W15 public event requires canonical native bytes");
   }
-  const decoded = Data.from(event.eventCborHex, SDK.TxOrderEventV1) as {
+  const decoded = Data.from(event.eventCborHex, SDK.TxOrderEvent) as {
     readonly tx: {
       readonly tx_id: string;
       readonly transaction_commitment: string;
-      readonly source: SDK.L2TransactionSourceV1["source"];
+      readonly source: SDK.L2TransactionSource["source"];
     };
   };
   if (
@@ -724,7 +737,7 @@ const publicEventFromW15 = (
   ) {
     throw new Error("forced W15 event lacks terminal classification");
   }
-  const verdict = w15ForcedOperatorVerdictForClassificationV1(
+  const verdict = userEventForcedOperatorVerdictForClassification(
     event.terminalClassification.operatorValidity,
   );
   // The ORDER event binds the SUBMITTED source, but the committed DA leaf
@@ -732,9 +745,9 @@ const publicEventFromW15 = (
   // reconstruction authenticates exactly that. Re-derive through the single
   // stamping helper by the leaf's verdict rather than copying the event's
   // submitted triple.
-  const adjudicatedSource = deriveMidgardNativeTxProofSourceV1(
-    adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(forcedNative.txCbor),
+  const adjudicatedSource = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(forcedNative.txCbor),
       verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
     ),
   );
@@ -763,7 +776,7 @@ const publicEventFromW15 = (
           },
           verdict,
         },
-        SDK.ForcedInclusionTxV1Schema,
+        SDK.ForcedInclusionTxSchema,
       ),
     ] as SDK.DaPayloadEntry,
     forcedPreimage: [
@@ -799,8 +812,8 @@ const cardanoOutputAssets = (
 };
 
 const depositEffectFromW15 = (
-  authority: W15AcceptedAuthorityScenarioV1,
-): CanonicalTransitionEffectV1 => {
+  authority: UserEventAcceptedAuthorityScenario,
+): CanonicalTransitionEffect => {
   const event = authority.event;
   if (event.kind !== "deposit" || authority.parsed.state === null) {
     throw new Error("deposit authority is not parser-accepted");
@@ -809,7 +822,7 @@ const depositEffectFromW15 = (
     readonly id: SDK.OutputReference;
     readonly info: SDK.DepositInfo;
   };
-  return deriveCanonicalDepositTransitionEffectV1({
+  return deriveCanonicalDepositTransitionEffect({
     configuredNetwork: authority.parsed.state.network,
     eventId: decoded.id,
     l2NetworkId: decoded.info.l2_network_id,
@@ -825,9 +838,9 @@ const depositEffectFromW15 = (
 };
 
 const withdrawalEffectFromW15 = (
-  authority: W15AcceptedAuthorityScenarioV1,
+  authority: UserEventAcceptedAuthorityScenario,
   committedValid: boolean,
-): CanonicalTransitionEffectV1 => {
+): CanonicalTransitionEffect => {
   if (authority.event.kind !== "withdrawal") {
     throw new Error("withdrawal authority has the wrong kind");
   }
@@ -836,7 +849,7 @@ const withdrawalEffectFromW15 = (
     SDK.WithdrawalEvent,
   ) as { readonly info: SDK.WithdrawalInfo };
   const outRef = decoded.info.body.l2_outref;
-  return canonicalCommittedWithdrawalTransitionEffectV1({
+  return canonicalCommittedWithdrawalTransitionEffect({
     committedValid,
     // The Plutus-Data `OutputReference` in the event datum is a *different*
     // encoding from the ledger out-ref; going from one to the other means
@@ -853,8 +866,8 @@ const nativeEffect = (input: {
   readonly spent: readonly Buffer[];
   readonly native: ReturnType<typeof makeNativeTx>;
   readonly outputs: readonly Buffer[];
-}): CanonicalTransitionEffectV1 =>
-  buildCanonicalTransitionEffectV1([
+}): CanonicalTransitionEffect =>
+  buildCanonicalTransitionEffect([
     ...input.spent.map((outRefCbor) => ({
       type: "delete" as const,
       outRefCbor,
@@ -869,19 +882,19 @@ const nativeEffect = (input: {
 type CommittedEffectGroup = Readonly<{
   eventKey: SDK.EventKey;
   phase: SDK.TransitionPhase;
-  effect: CanonicalTransitionEffectV1;
+  effect: CanonicalTransitionEffect;
 }>;
 
 const committedStepsForEffects = async (
-  priorState: readonly WatcherBlockReplayPriorUtxoV1[],
+  priorState: readonly WatcherBlockReplayPriorUtxo[],
   groups: readonly CommittedEffectGroup[],
 ): Promise<readonly SDK.TransitionStep[]> => {
-  const prior = await watcherBlockReplayPriorStateV1(priorState);
+  const prior = await watcherBlockReplayPriorState(priorState);
   const operations: ValidationMachineLedgerOp[] = groups.flatMap(({ effect }) =>
     effect.operations.map((operation) =>
       operation.type === "delete"
         ? { type: "delete" as const, key: operation.outRefCbor }
-        : buildValidationMachineLedgerInsertOpV1({
+        : buildValidationMachineLedgerInsertOp({
             key: operation.outRefCbor,
             outputCbor: operation.outputCbor,
           }),
@@ -920,8 +933,8 @@ const committedStepsForEffects = async (
 };
 
 const settlementAuthority = (
-  fixture: GenuineW16SettlementAuthorityV1,
-): NonNullable<WatcherBlockReplayEventAuthorityV1["settlement"]> => ({
+  fixture: GenuineSettlementAuthority,
+): NonNullable<WatcherBlockReplayEventAuthority["settlement"]> => ({
   result: fixture.result,
   context: fixture.context,
   observationDigest: fixture.observation.observationDigest,
@@ -929,11 +942,11 @@ const settlementAuthority = (
 
 const eventAuthority = (input: {
   readonly event: PublicFixtureEvent;
-  readonly userEvent: W15AcceptedAuthorityScenarioV1;
-  readonly settlement?: GenuineW16SettlementAuthorityV1;
-  readonly effect: CanonicalTransitionEffectV1;
+  readonly userEvent: UserEventAcceptedAuthorityScenario;
+  readonly settlement?: GenuineSettlementAuthority;
+  readonly effect: CanonicalTransitionEffect;
   readonly forcedNative?: ReturnType<typeof makeNativeTx>;
-}): WatcherBlockReplayEventAuthorityV1 => ({
+}): WatcherBlockReplayEventAuthority => ({
   eventKey: input.event.eventKey,
   phase: input.event.phase,
   userEvent: {
@@ -956,11 +969,11 @@ const eventAuthority = (input: {
 });
 
 const watcherHeaderRecord = (
-  value: SDK.HeaderV1,
+  value: SDK.Header,
   headerHash: string,
-): WatcherStateQueueHeaderV1 => ({
+): WatcherStateQueueHeader => ({
   headerHash,
-  headerCborHex: Data.to(value, SDK.HeaderV1),
+  headerCborHex: Data.to(value, SDK.Header),
   nextHeaderHash: null,
   datumSha256: h32(3),
   prevUtxosRoot: value.prevUtxosRoot,
@@ -1000,13 +1013,13 @@ type PublicFixtureEvent = Readonly<{
 }>;
 
 type PublicReplayFixture = Readonly<{
-  observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
-  reconstruction: WatcherHeaderRootReconstructionResultV1;
-  phaseA: Awaited<ReturnType<typeof evaluateWatcherPhaseABlockV1>>;
+  observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  reconstruction: WatcherHeaderRootReconstructionResult;
+  phaseA: Awaited<ReturnType<typeof evaluateWatcherPhaseABlock>>;
   envelope: Buffer;
-  priorState: readonly WatcherBlockReplayPriorUtxoV1[];
-  eventAuthorities: readonly WatcherBlockReplayEventAuthorityV1[];
-  header: SDK.HeaderV1;
+  priorState: readonly WatcherBlockReplayPriorUtxo[];
+  eventAuthorities: readonly WatcherBlockReplayEventAuthority[];
+  header: SDK.Header;
 }>;
 
 const publicInput = (fixture: PublicReplayFixture) => ({
@@ -1025,9 +1038,9 @@ const buildPublicReplayFixture = async (input: {
   readonly txCbors?: readonly Buffer[];
   readonly events?: readonly PublicFixtureEvent[];
   readonly steps: readonly SDK.TransitionStep[];
-  readonly priorState: readonly WatcherBlockReplayPriorUtxoV1[];
-  readonly postState: readonly WatcherBlockReplayPriorUtxoV1[];
-  readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthorityV1[];
+  readonly priorState: readonly WatcherBlockReplayPriorUtxo[];
+  readonly postState: readonly WatcherBlockReplayPriorUtxo[];
+  readonly eventAuthorities?: readonly WatcherBlockReplayEventAuthority[];
   readonly eventToStep?: readonly {
     readonly key: SDK.EventKey;
     readonly value: SDK.EventToStepValue;
@@ -1038,11 +1051,11 @@ const buildPublicReplayFixture = async (input: {
   const txCbors = input.txCbors ?? [];
   const events = input.events ?? [];
   const transactions = txCbors.map((canonicalCbor) => {
-    const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+    const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
     const proof =
-      deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-    const source: SDK.L2TransactionSourceV1 = {
-      tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
+      deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+    const source: SDK.L2TransactionSource = {
+      tx_id: computeMidgardNativeTxId(full).toString("hex"),
       source: {
         compact_cbor: proof.compactCbor.toString("hex"),
         witness_set_compact_cbor: proof.witnessSetCompactCbor.toString("hex"),
@@ -1055,7 +1068,7 @@ const buildPublicReplayFixture = async (input: {
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map(
     ({ source }) => [
       source.tx_id,
-      dataHex(source, SDK.L2TransactionSourceV1Schema),
+      dataHex(source, SDK.L2TransactionSourceSchema),
     ],
   );
   const preimageEntries: SDK.DaPayloadEntry[] = transactions.map(
@@ -1116,8 +1129,8 @@ const buildPublicReplayFixture = async (input: {
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
           rejection_code_hash: h32(170 + index),
-        } satisfies SDK.ValidationTraceDescriptorV1,
-        SDK.ValidationTraceDescriptorV1Schema,
+        } satisfies SDK.ValidationTraceDescriptor,
+        SDK.ValidationTraceDescriptorSchema,
       ),
     ],
   );
@@ -1130,8 +1143,8 @@ const buildPublicReplayFixture = async (input: {
     values: readonly SDK.DaPayloadEntry[],
   ): Promise<string> =>
     (await buildCountedRoot(domain, bufferEntries(values))).root;
-  const priorRoot = await watcherBlockReplayPriorStateV1(input.priorState);
-  const postRoot = await watcherBlockReplayPriorStateV1(input.postState);
+  const priorRoot = await watcherBlockReplayPriorState(input.priorState);
+  const postRoot = await watcherBlockReplayPriorState(input.postState);
   const counts = {
     withdrawalCount: BigInt(withdrawalEntries.length),
     forcedTransactionCount: BigInt(forcedEntries.length),
@@ -1146,7 +1159,7 @@ const buildPublicReplayFixture = async (input: {
     transitionStepCount: BigInt(transitionEntries.length),
     validationTraceCount: BigInt(validationTraceEntries.length),
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: priorRoot.root,
     utxosRoot: postRoot.root,
     withdrawalsRoot: await countedRoot(
@@ -1186,8 +1199,8 @@ const buildPublicReplayFixture = async (input: {
     protocolVersion: BigInt(RULE_BUNDLE.protocolVersion),
   };
   const headerHash = headerHashOf(header);
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -1206,22 +1219,22 @@ const buildPublicReplayFixture = async (input: {
       counts,
     },
   };
-  const envelope = await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+  const envelope = await wrapDaPayload(SDK.encodeDaPayload(payload), {
     mode: "identity",
   });
-  const observation = await makeWatcherAuthenticatedHeaderObservationV1({
+  const observation = await makeWatcherAuthenticatedHeaderObservation({
     header: watcherHeaderRecord(header, headerHash),
     chainPoint: CHAIN_POINT,
     confirmationDepth: 12,
     sourceMode: "local_node",
     provenance: L1_PROVENANCE,
   });
-  const reconstruction = await evaluateWatcherHeaderRootReconstructionV1({
+  const reconstruction = await evaluateWatcherHeaderRootReconstruction({
     observation,
     payloadEnvelopeCbor: envelope,
     daProvenance: DA_PROVENANCE,
   });
-  const phaseA = await evaluateWatcherPhaseABlockV1({
+  const phaseA = await evaluateWatcherPhaseABlock({
     observation,
     reconstruction,
     payloadEnvelopeCbor: envelope,
@@ -1246,23 +1259,23 @@ const buildPublicReplayFixture = async (input: {
 
 describe("W25 published rejection-code partition", () => {
   it("is a disjoint total 13/27/10 partition of the canonical 50-code vocabulary", () => {
-    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1).toStrictEqual(
+    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toStrictEqual(
       Object.values(RejectCodes),
     );
-    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1).toHaveLength(50);
-    expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1).toHaveLength(13);
-    expect(WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1).toHaveLength(27);
-    expect(WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1).toHaveLength(10);
+    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toHaveLength(50);
+    expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES).toHaveLength(13);
+    expect(WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES).toHaveLength(27);
+    expect(WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES).toHaveLength(10);
     const claimed = [
-      ...WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1,
-      ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1,
-      ...WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1,
+      ...WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
+      ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES,
+      ...WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES,
     ];
     expect(new Set(claimed).size).toBe(50);
     expect([...claimed].sort()).toStrictEqual(
-      [...WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1].sort(),
+      [...WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES].sort(),
     );
-    expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1).toHaveLength(40);
+    expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED).toHaveLength(40);
     const expectedForcedValidity = (
       code: (typeof RejectCodes)[keyof typeof RejectCodes],
       phase: "phaseA" | "phaseB",
@@ -1294,10 +1307,7 @@ describe("W25 published rejection-code partition", () => {
       expect(
         Object.values(RejectCodes).map((code) => ({
           code,
-          validity: watcherBlockReplayForcedValidityForRejectCodeV1(
-            code,
-            phase,
-          ),
+          validity: watcherBlockReplayForcedValidityForRejectCode(code, phase),
         })),
       ).toStrictEqual(
         Object.values(RejectCodes).map((code) => ({
@@ -1306,41 +1316,39 @@ describe("W25 published rejection-code partition", () => {
         })),
       );
     }
-    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toStrictEqual(
-      WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1,
+    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).toStrictEqual(
+      WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES,
     );
     expect(
-      WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1.filter(
+      WATCHER_PHASE_A_REACHABLE_REJECT_CODES.filter(
         (code) =>
-          !new Set<string>(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1).has(
+          !new Set<string>(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES).has(
             code,
           ),
       ),
-    ).toStrictEqual(WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1);
+    ).toStrictEqual(WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES);
     expect(
-      WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1.filter(
+      WATCHER_PHASE_A_EXCLUDED_REJECT_CODES.filter(
         (code) =>
-          !new Set<string>(WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1).has(
+          !new Set<string>(WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES).has(
             code,
           ),
       ),
     ).toStrictEqual(
-      WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1.filter(
+      WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES.filter(
         (code) =>
-          !new Set<string>(WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1).has(code),
+          !new Set<string>(WATCHER_PHASE_A_REACHABLE_REJECT_CODES).has(code),
       ),
     );
   });
 
   it("keeps evidence and dominated claims inside Phase B's published set", () => {
-    for (const code of WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1) {
-      expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1).toContain(code);
+    for (const code of WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES) {
+      expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES).toContain(code);
     }
-    for (const code of WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODES_V1) {
-      expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1).toContain(code);
-      expect(WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1).not.toContain(
-        code,
-      );
+    for (const code of WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODES) {
+      expect(WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES).toContain(code);
+      expect(WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES).not.toContain(code);
     }
   });
 });
@@ -1416,7 +1424,7 @@ describe("W25 roots and deterministic replay", () => {
       postState: entries([[produced, inserted.outputCbor]]),
       eventAuthorities: [authority],
     });
-    const result = await evaluateWatcherBlockReplayV1(publicInput(fixture));
+    const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
     expect(genuineW16.spawn.parsed).toMatchObject({
@@ -1475,17 +1483,17 @@ describe("W25 roots and deterministic replay", () => {
     expect(result.sourceManifestDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(result.effectManifestDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(result.verifiedRequires).toBe(
-      WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1,
+      WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT,
     );
     expect(result.downstreamPrerequisite).toStrictEqual({
       schemaVersion:
-        WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION,
+        WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
       requiredVerifier: "W26",
       inputDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
       w29Eligibility: "requires_w26_accept",
     });
 
-    const omittedAuthority = await evaluateWatcherBlockReplayV1({
+    const omittedAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [],
     });
@@ -1493,7 +1501,7 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["missing_event_authority"],
     });
-    const duplicatedAuthority = await evaluateWatcherBlockReplayV1({
+    const duplicatedAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [authority, authority],
     });
@@ -1501,7 +1509,7 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["duplicate_event_authority"],
     });
-    const substitutedAuthority = await evaluateWatcherBlockReplayV1({
+    const substitutedAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [
         { ...authority, eventKey: depositEvent(0x34).eventKey },
@@ -1511,12 +1519,12 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["user_event_authority_identity_mismatch"],
     });
-    const mutatedEffect = await evaluateWatcherBlockReplayV1({
+    const mutatedEffect = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [
         {
           ...authority,
-          transitionEffect: buildCanonicalTransitionEffectV1([]),
+          transitionEffect: buildCanonicalTransitionEffect([]),
         },
       ],
     });
@@ -1563,7 +1571,7 @@ describe("W25 roots and deterministic replay", () => {
       postState: [],
       eventAuthorities: [authority],
     });
-    const result = await evaluateWatcherBlockReplayV1(publicInput(fixture));
+    const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
     expect(result.eventRoots).toMatchObject([
@@ -1637,9 +1645,7 @@ describe("W25 roots and deterministic replay", () => {
         }),
       ],
     });
-    const refund = await evaluateWatcherBlockReplayV1(
-      publicInput(refundFixture),
-    );
+    const refund = await evaluateWatcherBlockReplay(publicInput(refundFixture));
     expect(refund).toMatchObject({ action: "accept", reasonCodes: [] });
     expect(refund.eventRoots).toMatchObject([
       {
@@ -1677,7 +1683,7 @@ describe("W25 roots and deterministic replay", () => {
       result.downstreamPrerequisite.inputDigest,
     );
 
-    const mutatedSettlement = await evaluateWatcherBlockReplayV1({
+    const mutatedSettlement = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [
         {
@@ -1745,7 +1751,7 @@ describe("W25 roots and deterministic replay", () => {
       postState: entries([[laterProduced, FLOW_OUTPUT]]),
       eventAuthorities: [authority],
     });
-    const result = await evaluateWatcherBlockReplayV1(publicInput(fixture));
+    const result = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
     if (!("ForcedTransactionEventKey" in authority.eventKey)) {
@@ -1823,7 +1829,7 @@ describe("W25 roots and deterministic replay", () => {
       },
     ]);
 
-    const mutatedNativeBytes = await evaluateWatcherBlockReplayV1({
+    const mutatedNativeBytes = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       eventAuthorities: [
         {
@@ -1837,7 +1843,7 @@ describe("W25 roots and deterministic replay", () => {
       reasonCodes: ["transition_effect_semantics_mismatch"],
     });
 
-    const noOpEffect = buildCanonicalTransitionEffectV1([]);
+    const noOpEffect = buildCanonicalTransitionEffect([]);
     const expectedOutcomes = {
       InputNotFound: {
         phaseAStatus: "accepted",
@@ -1875,9 +1881,9 @@ describe("W25 roots and deterministic replay", () => {
         keyof typeof FORCED_INVALID_CASES,
         Readonly<{
           fixture: PublicReplayFixture;
-          authority: WatcherBlockReplayEventAuthorityV1;
+          authority: WatcherBlockReplayEventAuthority;
           event: PublicFixtureEvent;
-          result: Awaited<ReturnType<typeof evaluateWatcherBlockReplayV1>>;
+          result: Awaited<ReturnType<typeof evaluateWatcherBlockReplay>>;
         }>
       >
     > = {};
@@ -1888,7 +1894,7 @@ describe("W25 roots and deterministic replay", () => {
       (typeof FORCED_INVALID_CASES)[keyof typeof FORCED_INVALID_CASES],
     ][]) {
       expect(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(invalidCase.native.txCbor)
+        decodeMidgardNativeTxFullFromCanonicalCbor(invalidCase.native.txCbor)
           .validity,
       ).toBe("TxIsValid");
       const invalidUserEvent = genuineW15.forcedVariants[category]!;
@@ -1921,7 +1927,7 @@ describe("W25 roots and deterministic replay", () => {
         eventAuthorities: [invalidAuthority],
         ...(category === "FeeBelowMinimum" ? { minFeeB: 1n } : {}),
       });
-      const invalidResult = await evaluateWatcherBlockReplayV1(
+      const invalidResult = await evaluateWatcherBlockReplay(
         publicInput(invalidFixture),
       );
       expect(invalidResult.action, category).toBe("accept");
@@ -1948,13 +1954,13 @@ describe("W25 roots and deterministic replay", () => {
     }
 
     const restartEvidence = invalidReplayEvidence.ValueNotPreserved!;
-    const restarted = await evaluateWatcherBlockReplayV1(
+    const restarted = await evaluateWatcherBlockReplay(
       publicInput(restartEvidence.fixture),
     );
     expect(restarted).toStrictEqual(restartEvidence.result);
     expect(restarted.resultDigest).toBe(restartEvidence.result.resultDigest);
 
-    const omittedAuthority = await evaluateWatcherBlockReplayV1({
+    const omittedAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(restartEvidence.fixture),
       eventAuthorities: [],
     });
@@ -1962,7 +1968,7 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["missing_event_authority"],
     });
-    const duplicateAuthority = await evaluateWatcherBlockReplayV1({
+    const duplicateAuthority = await evaluateWatcherBlockReplay({
       ...publicInput(restartEvidence.fixture),
       eventAuthorities: [restartEvidence.authority, restartEvidence.authority],
     });
@@ -2000,7 +2006,7 @@ describe("W25 roots and deterministic replay", () => {
       eventAuthorities: [mismatchAuthority],
     });
     expect(
-      await evaluateWatcherBlockReplayV1(publicInput(mismatchFixture)),
+      await evaluateWatcherBlockReplay(publicInput(mismatchFixture)),
     ).toMatchObject({
       action: "error",
       reasonCodes: ["transition_effect_semantics_mismatch"],
@@ -2014,7 +2020,7 @@ describe("W25 roots and deterministic replay", () => {
     };
     const { resultDigest: _tamperedDigest, ...tamperedFactMaterial } =
       tamperedFactResult;
-    expect(watcherSha256CanonicalJsonV1(tamperedFactMaterial)).not.toBe(
+    expect(watcherSha256CanonicalJson(tamperedFactMaterial)).not.toBe(
       restartEvidence.result.resultDigest,
     );
 
@@ -2046,7 +2052,7 @@ describe("W25 roots and deterministic replay", () => {
         inputNotFoundEvidence.authority,
       ],
     });
-    const orderedResult = await evaluateWatcherBlockReplayV1(
+    const orderedResult = await evaluateWatcherBlockReplay(
       publicInput(orderedFixture),
     );
     expect(
@@ -2065,7 +2071,7 @@ describe("W25 roots and deterministic replay", () => {
         invalidSignatureEvidence.authority,
       ],
     });
-    const reversedResult = await evaluateWatcherBlockReplayV1(
+    const reversedResult = await evaluateWatcherBlockReplay(
       publicInput(reversedFixture),
     );
     expect(
@@ -2080,7 +2086,7 @@ describe("W25 roots and deterministic replay", () => {
 
   it("binds accepted W21/W22/W23/W24 evidence through the public replay entry point", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
     const native = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
@@ -2108,9 +2114,9 @@ describe("W25 roots and deterministic replay", () => {
       postState,
     });
 
-    const result = await evaluateWatcherBlockReplayV1(publicInput(fixture));
-    expect(() => assertWatcherFullBlockReplayResultV1(result)).not.toThrow();
-    expect(() => assertWatcherFullBlockReplayResultV1({ ...result })).toThrow(
+    const result = await evaluateWatcherBlockReplay(publicInput(fixture));
+    expect(() => assertWatcherFullBlockReplayResult(result)).not.toThrow();
+    expect(() => assertWatcherFullBlockReplayResult({ ...result })).toThrow(
       "watcher full block-replay result is not admitted",
     );
     expect(result).toMatchObject({
@@ -2172,14 +2178,14 @@ describe("W25 roots and deterministic replay", () => {
       },
     ]);
     expect(result.resultDigest).toBe(
-      watcherSha256CanonicalJsonV1(
+      watcherSha256CanonicalJson(
         Object.fromEntries(
           Object.entries(result).filter(([key]) => key !== "resultDigest"),
         ),
       ),
     );
 
-    const durable = makeWatcherBlockReplayReconstructedStateV1({
+    const durable = makeWatcherBlockReplayReconstructedState({
       result,
       chainPointId: `${CHAIN_POINT.slot.toString()}:${CHAIN_POINT.blockHash}`,
       inputIds: [fixture.reconstruction.payloadEnvelopeSha256!],
@@ -2191,7 +2197,7 @@ describe("W25 roots and deterministic replay", () => {
       inputIds: [fixture.reconstruction.payloadEnvelopeSha256],
     });
 
-    const unsupportedReconstruction = await evaluateWatcherBlockReplayV1({
+    const unsupportedReconstruction = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       reconstruction: {
         ...fixture.reconstruction,
@@ -2202,7 +2208,7 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["reconstruction_unsupported_schema"],
     });
-    const badReconstructionDigest = await evaluateWatcherBlockReplayV1({
+    const badReconstructionDigest = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       reconstruction: {
         ...fixture.reconstruction,
@@ -2213,7 +2219,7 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["reconstruction_digest_mismatch"],
     });
-    const unsupportedPhaseA = await evaluateWatcherBlockReplayV1({
+    const unsupportedPhaseA = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       phaseA: {
         ...fixture.phaseA,
@@ -2224,7 +2230,7 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["phase_a_unsupported_schema"],
     });
-    const badPhaseADigest = await evaluateWatcherBlockReplayV1({
+    const badPhaseADigest = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       phaseA: { ...fixture.phaseA, resultDigest: h32(0xef) },
     });
@@ -2234,7 +2240,7 @@ describe("W25 roots and deterministic replay", () => {
     });
     const corruptedEnvelope = Buffer.from(fixture.envelope);
     corruptedEnvelope[corruptedEnvelope.length - 1] ^= 1;
-    const corruptedBytes = await evaluateWatcherBlockReplayV1({
+    const corruptedBytes = await evaluateWatcherBlockReplay({
       ...publicInput(fixture),
       payloadEnvelopeCbor: corruptedEnvelope,
     });
@@ -2245,7 +2251,7 @@ describe("W25 roots and deterministic replay", () => {
 
     let unknownCode: unknown;
     try {
-      watcherBlockReplayRejectionProjectionV1({
+      watcherBlockReplayRejectionProjection({
         rejected: {
           txId: native.txId,
           code: "E_FUTURE_UNKNOWN" as never,
@@ -2263,7 +2269,7 @@ describe("W25 roots and deterministic replay", () => {
   it("reproduces every canonical intermediate mutation root and its exact post root", async () => {
     const firstInput = outRefFromByte(0x11);
     const secondInput = outRefFromByte(0x12);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
     const first = makePhaseBCandidate({
       spent: [firstInput],
       outputs: [output],
@@ -2329,7 +2335,7 @@ describe("W25 roots and deterministic replay", () => {
     // header `utxosRoot` - were skipped whenever the caller supplied neither.
     // A replayed block was therefore accepted with nothing compared at all.
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
     const native = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
@@ -2360,7 +2366,7 @@ describe("W25 roots and deterministic replay", () => {
       priorState,
       postState,
     });
-    const accepted = await evaluateWatcherBlockReplayV1(publicInput(fixture));
+    const accepted = await evaluateWatcherBlockReplay(publicInput(fixture));
     expect(accepted).toMatchObject({
       action: "accept",
       reasonCodes: [],
@@ -2399,7 +2405,7 @@ describe("W25 roots and deterministic replay", () => {
     // And the durable W03 record cannot be minted from an unbound replay.
     for (const result of [unrun, halfBound]) {
       expect(() =>
-        makeWatcherBlockReplayReconstructedStateV1({
+        makeWatcherBlockReplayReconstructedState({
           result,
           chainPointId: `${CHAIN_POINT.slot.toString()}:${CHAIN_POINT.blockHash}`,
           inputIds: [h32(0x5a)],
@@ -2410,7 +2416,7 @@ describe("W25 roots and deterministic replay", () => {
 
   it("fails closed on trace substitution, omission, duplication/reorder, trailing steps, wrong roots, and event_to_step drift", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
     const native = makeNativeTx({
       spendInputs: [spent],
       outputs: [output],
@@ -2446,7 +2452,7 @@ describe("W25 roots and deterministic replay", () => {
       postState,
     });
     expect(
-      await evaluateWatcherBlockReplayV1(publicInput(wrongRoots)),
+      await evaluateWatcherBlockReplay(publicInput(wrongRoots)),
     ).toMatchObject({
       action: "reject",
       reasonCodes: ["transition_trace_mismatch", "intermediate_root_mismatch"],
@@ -2465,7 +2471,7 @@ describe("W25 roots and deterministic replay", () => {
       postState,
     });
     expect(
-      await evaluateWatcherBlockReplayV1(publicInput(omitted)),
+      await evaluateWatcherBlockReplay(publicInput(omitted)),
     ).toMatchObject({
       action: "error",
       reasonCodes: ["transition_trace_mismatch"],
@@ -2516,7 +2522,7 @@ describe("W25 roots and deterministic replay", () => {
     ]);
     const malformedResults = await Promise.all(
       malformedFixtures.map((fixture) =>
-        evaluateWatcherBlockReplayV1(publicInput(fixture)),
+        evaluateWatcherBlockReplay(publicInput(fixture)),
       ),
     );
     expect(malformedResults.map(({ action }) => action)).toStrictEqual([
@@ -2542,8 +2548,8 @@ describe("W25 roots and deterministic replay", () => {
       arrivalSeq: 1n,
     });
     const priorState = entries([
-      [firstInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
-      [secondInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      [firstInput, makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      [secondInput, makeOutput(FUNDED_OUTPUT_LOVELACE)],
     ]);
     const initial = await replay([first, second], priorState);
     const restarted = await replay([second, first], priorState);
@@ -2557,11 +2563,9 @@ describe("W25 roots and deterministic replay", () => {
   it("fails closed before replay for an uncommitted prior root and after replay for a bad post root", async () => {
     const input = outRefFromByte(0x15);
     const candidate = makePhaseBCandidate({ spent: [input] });
-    const priorState = entries([
-      [input, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
-    ]);
-    const prior = await watcherBlockReplayPriorStateV1(priorState);
-    const priorMismatch = await evaluateWatcherBlockReplayCandidatesV1({
+    const priorState = entries([[input, makeOutput(FUNDED_OUTPUT_LOVELACE)]]);
+    const prior = await watcherBlockReplayPriorState(priorState);
+    const priorMismatch = await evaluateWatcherBlockReplayCandidates({
       candidates: [candidate],
       priorState,
       expectedPriorStateRoot: "ab".repeat(32),
@@ -2595,7 +2599,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
     [RejectCodes.DependsOnRejectedTx, "resolveInputs", null, "dependencies"],
   ] as const)("attributes %s to %s", (code, consensusPhase, detail, stage) => {
     expect(
-      watcherBlockReplayStageForRejectionV1({ code, consensusPhase, detail }),
+      watcherBlockReplayStageForRejection({ code, consensusPhase, detail }),
     ).toBe(stage);
   });
 
@@ -2611,7 +2615,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       ],
       [
         makePhaseBCandidate({ spent: [spend], referenceInputs: [reference] }),
-        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]],
+        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE)]],
         "references",
         RejectCodes.InputNotFound,
       ],
@@ -2620,16 +2624,16 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           spent: [spend],
           scriptWitnesses: [nativeScriptWitness({ type: "after", slot: 1n })],
         }),
-        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]],
+        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE)]],
         "scripts",
         RejectCodes.InvalidFieldType,
       ],
       [
         makePhaseBCandidate({
           spent: [spend],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 + 1n,
+          outputLovelace: FUNDED_OUTPUT_LOVELACE + 1n,
         }),
-        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]],
+        [[spend, makeOutput(FUNDED_OUTPUT_LOVELACE)]],
         "value",
         RejectCodes.ValueNotPreserved,
       ],
@@ -2645,17 +2649,17 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
     const input = outRefFromByte(0x31);
     const parent = makePhaseBCandidate({
       spent: [input],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
       arrivalSeq: 0n,
     });
     const child = makePhaseBCandidate({
       spent: [parent.graph.produced[0]![LedgerColumns.OUTREF]],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
       arrivalSeq: 1n,
     });
     const cascade = await replay(
       [parent, child],
-      entries([[input, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[input, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
     expect(cascade.rejections.map((rejection) => rejection.code)).toStrictEqual(
       [RejectCodes.ValueNotPreserved, RejectCodes.DependsOnRejectedTx],
@@ -2693,7 +2697,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
     const observed = new Set<string>();
     const collect = async (
       candidates: Parameters<typeof replay>[0],
-      state: readonly WatcherBlockReplayPriorUtxoV1[],
+      state: readonly WatcherBlockReplayPriorUtxo[],
     ) => {
       const result = await replay(candidates, state);
       for (const rejection of result.rejections) {
@@ -2713,7 +2717,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           scriptWitnesses: [nativeScriptWitness({ type: "after", slot: 1n })],
         }),
       ],
-      entries([[invalidField, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[invalidField, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const minAda = outRefFromByte(0x8c);
@@ -2724,7 +2728,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           outputs: [makeOutput(1n)],
         }),
       ],
-      entries([[minAda, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[minAda, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const value = outRefFromByte(0x83);
@@ -2732,16 +2736,16 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
       [
         makePhaseBCandidate({
           spent: [value],
-          outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+          outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
         }),
       ],
-      entries([[value, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[value, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const witness = outRefFromByte(0x84);
     await collect(
       [makePhaseBCandidate({ spent: [witness], omitVkeyWitness: true })],
-      entries([[witness, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[witness, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const validity = outRefFromByte(0x85);
@@ -2753,7 +2757,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           validityIntervalEnd: 10n,
         }),
       ],
-      entries([[validity, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[validity, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const doubleSpend = outRefFromByte(0x86);
@@ -2768,7 +2772,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
         }),
       ],
       entries([
-        [doubleSpend, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+        [doubleSpend, makeOutput(FUNDED_OUTPUT_LOVELACE)],
         [reference, makeOutput(1n)],
       ]),
     );
@@ -2776,16 +2780,16 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
     const cascadeInput = outRefFromByte(0x88);
     const cascadeParent = makePhaseBCandidate({
       spent: [cascadeInput],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
     });
     const cascadeChild = makePhaseBCandidate({
       arrivalSeq: 1n,
       spent: [cascadeParent.graph.produced[0]![LedgerColumns.OUTREF]],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1 - 1n,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE - 1n,
     });
     await collect(
       [cascadeParent, cascadeChild],
-      entries([[cascadeInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[cascadeInput, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const cycleFirst = makePhaseBCandidate({
@@ -2822,7 +2826,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           outputs: [
             makeProtectedScriptOutput(
               hashScriptWitness(plutus),
-              FUNDED_OUTPUT_LOVELACE_V1,
+              FUNDED_OUTPUT_LOVELACE,
             ),
           ],
           scriptWitnesses: [plutus],
@@ -2832,7 +2836,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           scriptLanguages: ["PlutusV3"],
         }),
       ],
-      entries([[plutusInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[plutusInput, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     const nativeInput = outRefFromByte(0x8b);
@@ -2844,7 +2848,7 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           outputs: [
             makeProtectedScriptOutput(
               hashScriptWitness(native),
-              FUNDED_OUTPUT_LOVELACE_V1,
+              FUNDED_OUTPUT_LOVELACE,
             ),
           ],
           scriptWitnesses: [native],
@@ -2853,17 +2857,17 @@ describe("W25 canonical rejection attribution and adversarial ordering", () => {
           ]),
         }),
       ],
-      entries([[nativeInput, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      entries([[nativeInput, makeOutput(FUNDED_OUTPUT_LOVELACE)]]),
     );
 
     expect([...observed].sort()).toStrictEqual(
-      [...WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES_V1].sort(),
+      [...WATCHER_BLOCK_REPLAY_EVIDENCED_REJECT_CODES].sort(),
     );
   });
 
   it("binds every transition event to its canonical event-to-step identity", () => {
     const txId = "aa".repeat(32);
-    const steps = watcherBlockReplayCommittedStepsV1({
+    const steps = watcherBlockReplayCommittedSteps({
       transitionTrace: [
         {
           key: 0n,

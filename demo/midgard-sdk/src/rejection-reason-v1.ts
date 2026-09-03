@@ -1,7 +1,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 /**
- * Twin of `midgard/rejection_reason_v1.RejectionReasonV1` (#640).
+ * Twin of `midgard/rejection_reason_v1.RejectionReason` (#640).
  *
  * Normative inventory: `docs/fault-proofs/rejection-reason-catalogue-v1.md`
  * (§5 arm table and coordinate conventions, §6 type). The constructor order
@@ -20,7 +20,7 @@ import { Data } from "@lucid-evolution/lucid";
  * (`docs/spec/midgard-tx.md` §8.11) excludes guardrail-violating preimages
  * (catalogue §4.3 resolution, design note 6).
  */
-export const RejectionReasonV1Schema = Data.Enum([
+export const RejectionReasonSchema = Data.Enum([
   // ── CanonicalDecode ────────────────────────────────────────────────
   Data.Object({
     FieldPreimageLengthMismatch: Data.Object({ field_index: Data.Integer() }),
@@ -214,26 +214,26 @@ export const RejectionReasonV1Schema = Data.Enum([
   }),
   Data.Literal("ValueNotPreserved"),
 ]);
-export type RejectionReasonV1 = Data.Static<typeof RejectionReasonV1Schema>;
-export const RejectionReasonV1 =
-  RejectionReasonV1Schema as unknown as RejectionReasonV1;
+export type RejectionReason = Data.Static<typeof RejectionReasonSchema>;
+export const RejectionReason =
+  RejectionReasonSchema as unknown as RejectionReason;
 
 /**
- * Twin of `midgard/rejection_reason_v1.OperatorVerdictV1` (#640): the
+ * Twin of `midgard/rejection_reason_v1.OperatorVerdict` (#640): the
  * operator's recorded verdict on a forced-inclusion transaction, as the
  * forced leaf (`ForcedInclusionTxV1.verdict`) carries it. The sum's collapse
  * deliberately makes "valid with a reason" and "invalid without one"
  * unrepresentable.
  */
-export const OperatorVerdictV1Schema = Data.Enum([
+export const OperatorVerdictSchema = Data.Enum([
   Data.Literal("ForcedTxValid"),
   Data.Object({
-    ForcedTxInvalid: Data.Object({ reason: RejectionReasonV1Schema }),
+    ForcedTxInvalid: Data.Object({ reason: RejectionReasonSchema }),
   }),
 ]);
-export type OperatorVerdictV1 = Data.Static<typeof OperatorVerdictV1Schema>;
-export const OperatorVerdictV1 =
-  OperatorVerdictV1Schema as unknown as OperatorVerdictV1;
+export type OperatorVerdict = Data.Static<typeof OperatorVerdictSchema>;
+export const OperatorVerdict =
+  OperatorVerdictSchema as unknown as OperatorVerdict;
 
 /**
  * The 19 `E_*` rejection-code byte strings (hex of the ASCII label), twins of
@@ -241,7 +241,7 @@ export const OperatorVerdictV1 =
  * `midgard/rejection_reason_v1`. The frozen descriptor bridge
  * (`hash_rejection_code`) is pinned on these bytes.
  */
-export const RejectionCodesV1 = {
+export const RejectionCodes = {
   E_FIELD_PREIMAGE_SIZE: "455f4649454c445f505245494d4147455f53495a45",
   E_ASSET_COUNT: "455f41535345545f434f554e54",
   E_INVALID_FIELD_TYPE: "455f494e56414c49445f4649454c445f54595045",
@@ -266,10 +266,10 @@ export const RejectionCodesV1 = {
   E_INVALID_OUTPUT: "455f494e56414c49445f4f5554505554",
   E_VALUE_NOT_PRESERVED: "455f56414c55455f4e4f545f505245534552564544",
 } as const;
-export type RejectionCodeLabelV1 = keyof typeof RejectionCodesV1;
+export type RejectionCodeLabel = keyof typeof RejectionCodes;
 
-/** The constructor tag of a {@link RejectionReasonV1} value. */
-export const rejectionReasonArmOf = (reason: RejectionReasonV1): string => {
+/** The constructor tag of a {@link RejectionReason} value. */
+export const rejectionReasonArmOf = (reason: RejectionReason): string => {
   if (typeof reason === "string") return reason;
   const [arm] = Object.keys(reason);
   if (arm === undefined) {
@@ -278,7 +278,7 @@ export const rejectionReasonArmOf = (reason: RejectionReasonV1): string => {
   return arm;
 };
 
-const REJECTION_CODE_BY_ARM: Record<string, RejectionCodeLabelV1> = {
+const REJECTION_CODE_BY_ARM: Record<string, RejectionCodeLabel> = {
   FieldPreimageLengthMismatch: "E_FIELD_PREIMAGE_SIZE",
   FieldItemWidthIllegal: "E_INVALID_FIELD_TYPE",
   EmptyInputs: "E_EMPTY_INPUTS",
@@ -333,12 +333,12 @@ const REJECTION_CODE_BY_ARM: Record<string, RejectionCodeLabelV1> = {
  * non-injective 47 → 19 bridge back to the frozen descriptor codes
  * (catalogue §5.1). Returns the `E_*` code bytes as lowercase hex.
  */
-export const rejectionCodeOf = (reason: RejectionReasonV1): string => {
+export const rejectionCodeOf = (reason: RejectionReason): string => {
   const label = REJECTION_CODE_BY_ARM[rejectionReasonArmOf(reason)];
   if (label === undefined) {
     throw new Error(
       `rejectionCodeOf: unknown RejectionReasonV1 arm ${rejectionReasonArmOf(reason)}`,
     );
   }
-  return RejectionCodesV1[label];
+  return RejectionCodes[label];
 };

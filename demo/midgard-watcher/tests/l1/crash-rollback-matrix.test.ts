@@ -4,53 +4,53 @@ import { createServer as createTlsServer } from "node:tls";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  makeDeploymentMarkerV1,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
-  type WatcherFinalityStateV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
+  type WatcherFinalityState,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherL1TransportAttestationContextV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherL1TransportAttestationContext,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency } from "../../src/l1/multi-provider-consistency.js";
 import {
-  evaluateAndPersistWatcherPostFinalityRecoveryV1,
-  evaluateAndPersistWatcherRollbackV1,
-  evaluateWatcherRollbackV1,
-  initializeWatcherRollbackDurableAuthorityV1,
-  loadWatcherRollbackDurableAuthorityV1,
-  makeWatcherRollbackBootstrapStateV1,
-  WATCHER_ROLLBACK_V1_BOUNDS,
-  watcherRollbackDurableAuthorityStatusV1,
-  type WatcherRollbackRemovedRecordsV1,
+  evaluateAndPersistWatcherPostFinalityRecovery,
+  evaluateAndPersistWatcherRollback,
+  evaluateWatcherRollback,
+  initializeWatcherRollbackDurableAuthority,
+  loadWatcherRollbackDurableAuthority,
+  makeWatcherRollbackBootstrapState,
+  WATCHER_ROLLBACK_BOUNDS,
+  watcherRollbackDurableAuthorityStatus,
+  type WatcherRollbackRemovedRecords,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  compareAndSwapWatcherDurableAtomicSnapshotV1,
-  decodeWatcherDurableStoreV1,
-  encodeWatcherDurableStoreV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  migrateWatcherDurableStoreV1,
-  readWatcherDurableAtomicSnapshotV1,
+  compareAndSwapWatcherDurableAtomicSnapshot,
+  decodeWatcherDurableStore,
+  encodeWatcherDurableStore,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  migrateWatcherDurableStore,
+  readWatcherDurableAtomicSnapshot,
   type WatcherDurableAtomicBackend,
-  type WatcherDurableRecordsV1,
+  type WatcherDurableRecords,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
 } from "../../src/storage/durable-store.js";
 
 /*
@@ -181,8 +181,8 @@ iyHCdKMMt7XpRNcuGUM5kn222xyTbdBZu68qcVABi1U48i2G2pLFQpvUy0rjNu89
 
 const payload = (
   cborHex = "80",
-): ReturnType<typeof makeWatcherDurablePayloadV1> =>
-  makeWatcherDurablePayloadV1(cborHex);
+): ReturnType<typeof makeWatcherDurablePayload> =>
+  makeWatcherDurablePayload(cborHex);
 
 const rollbackAuthorityKey = Uint8Array.from(
   { length: 32 },
@@ -271,22 +271,22 @@ class CrashInjectingAtomicBackend implements WatcherDurableAtomicBackend {
       : watcherDurableStoreBytesSha256(this.bytes);
   }
 
-  snapshotStore(): WatcherDurableStoreV1 {
+  snapshotStore(): WatcherDurableStore {
     if (this.bytes === null) {
       throw new Error("backend has no durable snapshot");
     }
-    return decodeWatcherDurableStoreV1(this.bytes);
+    return decodeWatcherDurableStore(this.bytes);
   }
 }
 
 let watcherTransportFixtureServers: Server[] = [];
-let externalProviderATransport: WatcherL1TransportAttestationContextV1;
-let externalProviderBTransport: WatcherL1TransportAttestationContextV1;
+let externalProviderATransport: WatcherL1TransportAttestationContext;
+let externalProviderBTransport: WatcherL1TransportAttestationContext;
 let externalProviderEndpoints: readonly [string, string] = [
   "https://localhost:1/provider-a",
   "https://localhost:1/provider-b",
 ];
-let watcherTransportAttestations: readonly WatcherL1TransportAttestationContextV1[] =
+let watcherTransportAttestations: readonly WatcherL1TransportAttestationContext[] =
   [];
 
 const listen = (server: Server, port: number, host: string): Promise<void> =>
@@ -346,7 +346,7 @@ const MATURITY_BUDGET_SLOTS = 604_800n;
  * catalogue authority and mapped into the durable `familyId` stable-name form.
  */
 const ENABLED_FAMILY_IDS: ReadonlySet<string> = new Set(
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) =>
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) =>
     category.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`),
   ),
 );
@@ -422,13 +422,13 @@ const deploymentIdentity = (manifestByte = "11", releaseByte = "22") => ({
   releaseEvidenceDigest: hex32(releaseByte),
   ruleBundleCommitment: hex32("44"),
   programCommitments: { validation: hex32("55") },
-  durableMarker: makeDeploymentMarkerV1(hex32(manifestByte)),
+  durableMarker: makeDeploymentMarker(hex32(manifestByte)),
 });
 
-const policy = (): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(config(), deploymentIdentity());
+const policy = (): WatcherFinalityPolicy => {
+  const value = makeWatcherFinalityPolicy(config(), deploymentIdentity());
   expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
+  return value as WatcherFinalityPolicy;
 };
 
 type Point = Readonly<{
@@ -456,11 +456,11 @@ const transaction = (seedHex: string) => {
   const bodyBytes = body.to_canonical_cbor_hex();
   return {
     txHash: computeHash32(Buffer.from(bodyBytes, "hex")).toString("hex"),
-    fullTransaction: makeWatcherL1PublicBytesV1(
+    fullTransaction: makeWatcherL1PublicBytes(
       fullTransaction.to_canonical_cbor_hex(),
     ),
-    body: makeWatcherL1PublicBytesV1(bodyBytes),
-    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    body: makeWatcherL1PublicBytes(bodyBytes),
+    witnessSet: makeWatcherL1PublicBytes(witnessSet.to_canonical_cbor_hex()),
     utxos: [],
     scripts: [],
     datums: [],
@@ -471,13 +471,13 @@ const transaction = (seedHex: string) => {
 const observation = (
   providerId: string,
   point: Point,
-): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(
+): WatcherNormalizedL1Block =>
+  normalizeWatcherL1Block(
     providerId === "provider-a"
       ? externalProviderATransport
       : externalProviderBTransport,
     {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
       network: "Preprod",
       providerId,
       chainPoint: {
@@ -494,13 +494,13 @@ const observation = (
 
 const agreementObservations = (
   point: Point,
-): readonly WatcherNormalizedL1BlockV1[] => [
+): readonly WatcherNormalizedL1Block[] => [
   observation("provider-a", point),
   observation("provider-b", point),
 ];
 
 const agreement = (point: Point) =>
-  evaluateWatcherMultiProviderConsistencyV1(
+  evaluateWatcherMultiProviderConsistency(
     externalSource(),
     agreementObservations(point),
     watcherTransportAttestations,
@@ -510,7 +510,7 @@ const agreement = (point: Point) =>
 /* The seven W32 durable lifecycle transitions                              */
 /* ------------------------------------------------------------------------ */
 
-const W44_LIFECYCLE_TRANSITIONS_V1 = [
+const W44_LIFECYCLE_TRANSITIONS = [
   "detect",
   "persist_evidence",
   "init",
@@ -520,7 +520,7 @@ const W44_LIFECYCLE_TRANSITIONS_V1 = [
   "terminal_verification",
 ] as const;
 
-type W44LifecycleTransitionV1 = (typeof W44_LIFECYCLE_TRANSITIONS_V1)[number];
+type LifecycleTransition = (typeof W44_LIFECYCLE_TRANSITIONS)[number];
 
 const LIFECYCLE_IDS = Object.freeze({
   observation: hex32("01"),
@@ -548,7 +548,7 @@ const LIFECYCLE_FAMILY_ID = "transition-trace";
 const LIFECYCLE_REWARD_LOVELACE = "7000000";
 const LIFECYCLE_SLASH_LOVELACE = "9000000";
 
-const recordsOf = (store: WatcherDurableStoreV1): WatcherDurableRecordsV1 => ({
+const recordsOf = (store: WatcherDurableStore): WatcherDurableRecords => ({
   l1Observations: store.l1Observations,
   chainPoints: store.chainPoints,
   protocolUtxos: store.protocolUtxos,
@@ -569,11 +569,11 @@ const recordsOf = (store: WatcherDurableStoreV1): WatcherDurableRecordsV1 => ({
  * Every transition is a pure function of the prior records, which is what
  * makes crash recovery a replay rather than a repair.
  */
-const applyLifecycleTransitionV1 = (
-  records: WatcherDurableRecordsV1,
-  transition: W44LifecycleTransitionV1,
-  publicObservation: WatcherNormalizedL1BlockV1,
-): WatcherDurableRecordsV1 => {
+const applyLifecycleTransition = (
+  records: WatcherDurableRecords,
+  transition: LifecycleTransition,
+  publicObservation: WatcherNormalizedL1Block,
+): WatcherDurableRecords => {
   const slot = BigInt(LIFECYCLE_POINT.slot);
   switch (transition) {
     case "detect":
@@ -596,10 +596,8 @@ const applyLifecycleTransitionV1 = (
             observationId: LIFECYCLE_IDS.observation,
             providerId: "provider-a",
             chainPointId: LIFECYCLE_IDS.chainPoint,
-            payload: makeWatcherDurablePayloadV1(
-              encodeWatcherNormalizedL1BlockV1(publicObservation).toString(
-                "hex",
-              ),
+            payload: makeWatcherDurablePayload(
+              encodeWatcherNormalizedL1Block(publicObservation).toString("hex"),
             ),
           },
         ],
@@ -770,9 +768,9 @@ const applyLifecycleTransitionV1 = (
  * presence proves the transition already landed. A restart consults only the
  * durable snapshot, never any in-process memory.
  */
-const lifecycleTransitionAppliedV1 = (
-  store: WatcherDurableStoreV1,
-  transition: W44LifecycleTransitionV1,
+const lifecycleTransitionApplied = (
+  store: WatcherDurableStore,
+  transition: LifecycleTransition,
 ): boolean => {
   switch (transition) {
     case "detect":
@@ -810,7 +808,7 @@ const lifecycleTransitionAppliedV1 = (
 };
 
 type LifecycleStepOutcome = Readonly<{
-  transition: W44LifecycleTransitionV1;
+  transition: LifecycleTransition;
   outcome: "applied" | "already_applied";
 }>;
 
@@ -820,35 +818,35 @@ type LifecycleStepOutcome = Readonly<{
  * transition whose durable key is already present, and compare-and-swap the
  * next one. Restarting after a crash is a re-invocation of this function.
  */
-const driveWatcherLifecycleV1 = async (
+const driveWatcherLifecycle = async (
   backend: CrashInjectingAtomicBackend,
-  marker: ReturnType<typeof makeDeploymentMarkerV1>,
-  publicObservation: WatcherNormalizedL1BlockV1,
+  marker: ReturnType<typeof makeDeploymentMarker>,
+  publicObservation: WatcherNormalizedL1Block,
 ): Promise<readonly LifecycleStepOutcome[]> => {
   const outcomes: LifecycleStepOutcome[] = [];
-  for (const transition of W44_LIFECYCLE_TRANSITIONS_V1) {
-    const snapshot = await readWatcherDurableAtomicSnapshotV1(backend);
+  for (const transition of W44_LIFECYCLE_TRANSITIONS) {
+    const snapshot = await readWatcherDurableAtomicSnapshot(backend);
     if (snapshot === null) {
       throw new Error("watcher durable snapshot missing on restart");
     }
-    const store = decodeWatcherDurableStoreV1(snapshot.bytes);
-    if (lifecycleTransitionAppliedV1(store, transition)) {
+    const store = decodeWatcherDurableStore(snapshot.bytes);
+    if (lifecycleTransitionApplied(store, transition)) {
       outcomes.push({ transition, outcome: "already_applied" });
       continue;
     }
-    const next = makeWatcherDurableStoreV1({
+    const next = makeWatcherDurableStore({
       deploymentMarker: marker,
       revision: (BigInt(store.revision) + 1n).toString(),
-      records: applyLifecycleTransitionV1(
+      records: applyLifecycleTransition(
         recordsOf(store),
         transition,
         publicObservation,
       ),
     });
-    const commit = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+    const commit = await compareAndSwapWatcherDurableAtomicSnapshot({
       backend,
       expectedSha256: snapshot.sha256,
-      next: encodeWatcherDurableStoreV1(next),
+      next: encodeWatcherDurableStore(next),
     });
     if (!commit.committed) {
       throw new Error(`watcher lifecycle conflict at ${transition}`);
@@ -862,7 +860,7 @@ const driveWatcherLifecycleV1 = async (
 /* Invariants                                                                */
 /* ------------------------------------------------------------------------ */
 
-type WatcherEvidenceSetV1 = Readonly<{
+type WatcherEvidenceSet = Readonly<{
   faultIds: readonly string[];
   proofInputIds: readonly string[];
   reconstructedBlockHashes: readonly string[];
@@ -870,7 +868,7 @@ type WatcherEvidenceSetV1 = Readonly<{
   correctionIds: readonly string[];
 }>;
 
-const evidenceOf = (store: WatcherDurableStoreV1): WatcherEvidenceSetV1 => ({
+const evidenceOf = (store: WatcherDurableStore): WatcherEvidenceSet => ({
   faultIds: store.faults.map(({ faultId }) => faultId).sort(),
   proofInputIds: store.daProofInputs.map(({ inputId }) => inputId).sort(),
   reconstructedBlockHashes: store.reconstructedStates
@@ -890,10 +888,10 @@ const evidenceOf = (store: WatcherDurableStoreV1): WatcherEvidenceSetV1 => ({
  * "no lost evidence" into an exact accounting rather than a weaker subset
  * claim: anything the engine drops silently is still counted as lost.
  */
-const retainedBaselineV1 = (
-  baseline: WatcherEvidenceSetV1,
-  removed: WatcherRollbackRemovedRecordsV1,
-): WatcherEvidenceSetV1 => {
+const retainedBaseline = (
+  baseline: WatcherEvidenceSet,
+  removed: WatcherRollbackRemovedRecords,
+): WatcherEvidenceSet => {
   const without = (
     values: readonly string[],
     dropped: readonly string[],
@@ -916,7 +914,7 @@ const retainedBaselineV1 = (
 const countDuplicates = (values: readonly string[]): number =>
   values.length - new Set(values).size;
 
-type WatcherWorkflowMeasurementV1 = Readonly<{
+type WatcherWorkflowMeasurement = Readonly<{
   doubleSubmits: number;
   duplicateRewards: number;
   lostEvidence: number;
@@ -937,10 +935,10 @@ const PRIVATE_MATERIAL_MARKERS: readonly string[] = [
   Buffer.from("/var/lib/midgard-watcher", "utf8").toString("hex"),
 ];
 
-const measureWatcherWorkflowV1 = (
-  store: WatcherDurableStoreV1,
-  baseline: WatcherEvidenceSetV1,
-): WatcherWorkflowMeasurementV1 => {
+const measureWatcherWorkflow = (
+  store: WatcherDurableStore,
+  baseline: WatcherEvidenceSet,
+): WatcherWorkflowMeasurement => {
   const current = evidenceOf(store);
   const missing = (
     before: readonly string[],
@@ -990,16 +988,14 @@ const measureWatcherWorkflowV1 = (
 
   // A workflow is unrecoverable when it is neither terminal nor has a defined
   // next lifecycle transition the deterministic driver can take.
-  const nextTransition = W44_LIFECYCLE_TRANSITIONS_V1.find(
-    (transition) => !lifecycleTransitionAppliedV1(store, transition),
+  const nextTransition = W44_LIFECYCLE_TRANSITIONS.find(
+    (transition) => !lifecycleTransitionApplied(store, transition),
   );
-  const terminal = lifecycleTransitionAppliedV1(store, "terminal_verification");
+  const terminal = lifecycleTransitionApplied(store, "terminal_verification");
   const unrecoverableWorkflows =
     !terminal && nextTransition === undefined ? store.faults.length : 0;
 
-  const encoded = Buffer.from(encodeWatcherDurableStoreV1(store)).toString(
-    "hex",
-  );
+  const encoded = Buffer.from(encodeWatcherDurableStore(store)).toString("hex");
   const publicDataViolations = PRIVATE_MATERIAL_MARKERS.filter((marker) =>
     encoded.includes(marker),
   ).length;
@@ -1077,7 +1073,7 @@ const ZERO_DEFECTS = Object.freeze({
 /* Rollback fixtures                                                         */
 /* ------------------------------------------------------------------------ */
 
-type Graph = Readonly<{ records: WatcherDurableRecordsV1 }>;
+type Graph = Readonly<{ records: WatcherDurableRecords }>;
 
 const graph = (idByte: string, point: Point): Graph => {
   const ids = {
@@ -1207,11 +1203,11 @@ const graph = (idByte: string, point: Point): Graph => {
 };
 
 const combine = (
-  deploymentMarker: ReturnType<typeof makeDeploymentMarkerV1>,
+  deploymentMarker: ReturnType<typeof makeDeploymentMarker>,
   revision: string,
   graphs: readonly Graph[],
-  persistedObservations: readonly WatcherNormalizedL1BlockV1[] = [],
-): WatcherDurableStoreV1 => {
+  persistedObservations: readonly WatcherNormalizedL1Block[] = [],
+): WatcherDurableStore => {
   const persistedChainPoints = [
     ...new Map(
       persistedObservations.map((value) => [
@@ -1227,7 +1223,7 @@ const combine = (
       ]),
     ).values(),
   ];
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker,
     revision,
     records: {
@@ -1238,8 +1234,8 @@ const combine = (
             observationId: value.observationDigest,
             providerId: value.provider.providerId,
             chainPointId: value.chainPoint.chainPointId,
-            payload: makeWatcherDurablePayloadV1(
-              encodeWatcherNormalizedL1BlockV1(value).toString("hex"),
+            payload: makeWatcherDurablePayload(
+              encodeWatcherNormalizedL1Block(value).toString("hex"),
             ),
           })),
         ),
@@ -1284,7 +1280,7 @@ const recoveryAgreement = (point: Point) => {
   const observations = agreementObservations(point);
   return {
     observations,
-    consistency: evaluateWatcherMultiProviderConsistencyV1(
+    consistency: evaluateWatcherMultiProviderConsistency(
       externalSource(),
       observations,
       watcherTransportAttestations,
@@ -1342,18 +1338,18 @@ const postFinalityRecoveryFixture = (rollbackDepth: number) => {
     ...orphanedTip.observations[0]!.chainPoint,
     depth: "2",
   });
-  const pendingState = evaluateWatcherFinalityV1(
+  const pendingState = evaluateWatcherFinality(
     finalityPolicy,
     null,
     pendingTip.consistency,
-  ).state as WatcherFinalityStateV1;
-  const finalizedState = evaluateWatcherFinalityV1(
+  ).state as WatcherFinalityState;
+  const finalizedState = evaluateWatcherFinality(
     finalityPolicy,
     pendingState,
     orphanedTip.consistency,
-  ).state as WatcherFinalityStateV1;
+  ).state as WatcherFinalityState;
   expect(finalizedState.phase).toBe("finalized");
-  const contradiction = evaluateWatcherFinalityV1(
+  const contradiction = evaluateWatcherFinality(
     finalityPolicy,
     finalizedState,
     replacementTip.consistency,
@@ -1374,7 +1370,7 @@ const postFinalityRecoveryFixture = (rollbackDepth: number) => {
     [orphanedGraph, commonGraph],
     persistedObservations,
   );
-  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapState(
     finalityPolicy,
     store,
     finalizedState,
@@ -1397,8 +1393,8 @@ const postFinalityRecoveryFixture = (rollbackDepth: number) => {
 /* ------------------------------------------------------------------------ */
 
 describe("W44 watcher crash and rollback matrix", () => {
-  let marker: ReturnType<typeof makeDeploymentMarkerV1>;
-  let lifecycleObservation: WatcherNormalizedL1BlockV1;
+  let marker: ReturnType<typeof makeDeploymentMarker>;
+  let lifecycleObservation: WatcherNormalizedL1Block;
 
   beforeAll(async () => {
     const contexts = await Promise.all(
@@ -1419,7 +1415,7 @@ describe("W44 watcher crash and rollback matrix", () => {
         const endpoint = `https://localhost:${address.port.toString()}/provider-${suffix}`;
         return {
           endpoint,
-          established: await establishWatcherExternalProviderTransportV1({
+          established: await establishWatcherExternalProviderTransport({
             network: "Preprod",
             providerId: index === 0 ? "provider-a" : "provider-b",
             operatorIdentitySha256: index === 0 ? hex32("a1") : hex32("b2"),
@@ -1440,13 +1436,13 @@ describe("W44 watcher crash and rollback matrix", () => {
       externalProviderATransport,
       externalProviderBTransport,
     ]);
-    marker = makeDeploymentMarkerV1(hex32("11"));
+    marker = makeDeploymentMarker(hex32("11"));
     lifecycleObservation = observation("provider-a", LIFECYCLE_POINT);
   }, 30_000);
 
   afterAll(async () => {
     for (const context of watcherTransportAttestations) {
-      closeWatcherL1TransportAttestationContextV1(context);
+      closeWatcherL1TransportAttestationContext(context);
     }
     await Promise.all(
       watcherTransportFixtureServers.splice(0).map(closeServer),
@@ -1457,7 +1453,7 @@ describe("W44 watcher crash and rollback matrix", () => {
 
   const freshBackend = async (): Promise<CrashInjectingAtomicBackend> => {
     const backend = new CrashInjectingAtomicBackend();
-    await migrateWatcherDurableStoreV1({ backend, deploymentMarker: marker });
+    await migrateWatcherDurableStore({ backend, deploymentMarker: marker });
     backend.attempts = 0;
     backend.writes = 0;
     return backend;
@@ -1465,16 +1461,16 @@ describe("W44 watcher crash and rollback matrix", () => {
 
   /** The uncrashed control run every crash case must converge to. */
   const controlRun = async (): Promise<
-    Readonly<{ digest: string; store: WatcherDurableStoreV1; writes: number }>
+    Readonly<{ digest: string; store: WatcherDurableStore; writes: number }>
   > => {
     const backend = await freshBackend();
-    const outcomes = await driveWatcherLifecycleV1(
+    const outcomes = await driveWatcherLifecycle(
       backend,
       marker,
       lifecycleObservation,
     );
     expect(outcomes.map(({ outcome }) => outcome)).toEqual(
-      W44_LIFECYCLE_TRANSITIONS_V1.map(() => "applied"),
+      W44_LIFECYCLE_TRANSITIONS.map(() => "applied"),
     );
     return {
       digest: backend.digest()!,
@@ -1487,9 +1483,9 @@ describe("W44 watcher crash and rollback matrix", () => {
     transitionIndex: number,
     side: "before" | "after",
   ): Promise<void> => {
-    const transition = W44_LIFECYCLE_TRANSITIONS_V1[transitionIndex]!;
+    const transition = W44_LIFECYCLE_TRANSITIONS[transitionIndex]!;
     const control = await controlRun();
-    expect(control.writes).toBe(W44_LIFECYCLE_TRANSITIONS_V1.length);
+    expect(control.writes).toBe(W44_LIFECYCLE_TRANSITIONS.length);
 
     const backend = await freshBackend();
     const attempt = transitionIndex + 1;
@@ -1501,7 +1497,7 @@ describe("W44 watcher crash and rollback matrix", () => {
 
     const preCrashBaseline = evidenceOf(backend.snapshotStore());
     await expect(
-      driveWatcherLifecycleV1(backend, marker, lifecycleObservation),
+      driveWatcherLifecycle(backend, marker, lifecycleObservation),
     ).rejects.toMatchObject({ code: "persistence_failure" });
 
     // The durable snapshot is exactly the boundary the crash landed on: the
@@ -1509,10 +1505,10 @@ describe("W44 watcher crash and rollback matrix", () => {
     const expectedWrites = side === "before" ? attempt - 1 : attempt;
     expect(backend.writes).toBe(expectedWrites);
     const crashedStore = backend.snapshotStore();
-    expect(lifecycleTransitionAppliedV1(crashedStore, transition)).toBe(
+    expect(lifecycleTransitionApplied(crashedStore, transition)).toBe(
       side === "after",
     );
-    expect(measureWatcherWorkflowV1(crashedStore, preCrashBaseline)).toEqual({
+    expect(measureWatcherWorkflow(crashedStore, preCrashBaseline)).toEqual({
       ...ZERO_DEFECTS,
       // Readiness is never true from a partially advanced crash state; it is
       // only true once the terminal transition itself has landed.
@@ -1526,13 +1522,13 @@ describe("W44 watcher crash and rollback matrix", () => {
     // arbitrary bytes left behind by a crash.
     const tampered = Uint8Array.from(backend.bytes!);
     tampered[tampered.length - 1] = (tampered.at(-1)! + 1) % 256;
-    expect(() => decodeWatcherDurableStoreV1(tampered)).toThrowError();
+    expect(() => decodeWatcherDurableStore(tampered)).toThrowError();
     expect(() =>
-      decodeWatcherDurableStoreV1(tampered.slice(0, tampered.length - 1)),
+      decodeWatcherDurableStore(tampered.slice(0, tampered.length - 1)),
     ).toThrowError();
 
     // Restart: the same deterministic driver, no manual surgery.
-    const restart = await driveWatcherLifecycleV1(
+    const restart = await driveWatcherLifecycle(
       backend,
       marker,
       lifecycleObservation,
@@ -1541,16 +1537,16 @@ describe("W44 watcher crash and rollback matrix", () => {
       ({ outcome }) => outcome === "already_applied",
     ).length;
     expect(alreadyApplied).toBe(expectedWrites);
-    expect(restart).toHaveLength(W44_LIFECYCLE_TRANSITIONS_V1.length);
+    expect(restart).toHaveLength(W44_LIFECYCLE_TRANSITIONS.length);
 
     // Exactly seven durable writes across crash and restart: the crashed
     // transition is never applied twice.
-    expect(backend.writes).toBe(W44_LIFECYCLE_TRANSITIONS_V1.length);
+    expect(backend.writes).toBe(W44_LIFECYCLE_TRANSITIONS.length);
     expect(backend.digest()).toBe(control.digest);
 
     const recovered = backend.snapshotStore();
     expect(recovered).toEqual(control.store);
-    expect(measureWatcherWorkflowV1(recovered, crashedEvidence)).toEqual({
+    expect(measureWatcherWorkflow(recovered, crashedEvidence)).toEqual({
       ...ZERO_DEFECTS,
       ready: true,
     });
@@ -1567,12 +1563,12 @@ describe("W44 watcher crash and rollback matrix", () => {
     // observation, so recovery never depends on private operator state.
     expect(recovered.l1Observations).toHaveLength(1);
     expect(recovered.l1Observations[0]!.payload.cborHex).toBe(
-      encodeWatcherNormalizedL1BlockV1(lifecycleObservation).toString("hex"),
+      encodeWatcherNormalizedL1Block(lifecycleObservation).toString("hex"),
     );
 
     // A second restart is a total no-op: recovery converges, it does not
     // oscillate.
-    const idempotent = await driveWatcherLifecycleV1(
+    const idempotent = await driveWatcherLifecycle(
       backend,
       marker,
       lifecycleObservation,
@@ -1580,7 +1576,7 @@ describe("W44 watcher crash and rollback matrix", () => {
     expect(
       idempotent.every(({ outcome }) => outcome === "already_applied"),
     ).toBe(true);
-    expect(backend.writes).toBe(W44_LIFECYCLE_TRANSITIONS_V1.length);
+    expect(backend.writes).toBe(W44_LIFECYCLE_TRANSITIONS.length);
     expect(backend.digest()).toBe(control.digest);
   };
 
@@ -1642,13 +1638,13 @@ describe("W44 watcher crash and rollback matrix", () => {
 
   it("rewinds and replays an ordinary pre-finality L1 rollback without losing evidence", async () => {
     const finalityPolicy = policy();
-    const prior = evaluateWatcherFinalityV1(
+    const prior = evaluateWatcherFinality(
       finalityPolicy,
       null,
       agreement(oldPoint),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const consistency = agreement(replacementPoint);
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       prior,
       consistency,
@@ -1663,7 +1659,7 @@ describe("W44 watcher crash and rollback matrix", () => {
       agreementObservations(replacementPoint),
     );
     const backend = new CrashInjectingAtomicBackend();
-    const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+    const initialized = await initializeWatcherRollbackDurableAuthority({
       backend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
@@ -1673,7 +1669,7 @@ describe("W44 watcher crash and rollback matrix", () => {
     });
     const baseline = evidenceOf(store);
 
-    const applied = await evaluateAndPersistWatcherRollbackV1({
+    const applied = await evaluateAndPersistWatcherRollback({
       authority: initialized.authority,
       previousFinalityState: prior,
       consistency,
@@ -1691,9 +1687,9 @@ describe("W44 watcher crash and rollback matrix", () => {
     const removed = applied.result.removedRecords;
     // The rewind sweeps exactly the orphaned lineage and reports it.
     expect(removed.faultIds.length).toBeGreaterThan(0);
-    const measured = measureWatcherWorkflowV1(
+    const measured = measureWatcherWorkflow(
       rewound,
-      retainedBaselineV1(baseline, removed),
+      retainedBaseline(baseline, removed),
     );
     expect(measured).toMatchObject(ZERO_DEFECTS);
     expect(measured.ready).toBe(false);
@@ -1703,13 +1699,13 @@ describe("W44 watcher crash and rollback matrix", () => {
     ).toHaveLength(0);
 
     const committedDigest = backend.digest();
-    const reloaded = await loadWatcherRollbackDurableAuthorityV1({
+    const reloaded = await loadWatcherRollbackDurableAuthority({
       backend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
       trustedHead: applied.trustedHead,
     });
-    const replayed = await evaluateAndPersistWatcherRollbackV1({
+    const replayed = await evaluateAndPersistWatcherRollback({
       authority: reloaded,
       previousFinalityState: prior,
       consistency,
@@ -1728,11 +1724,11 @@ describe("W44 watcher crash and rollback matrix", () => {
     const fixture = postFinalityRecoveryFixture(FINALITY_DEPTH + 3);
     expect(fixture.rollbackDepth).toBeGreaterThan(FINALITY_DEPTH);
     expect(BigInt(fixture.rollbackDepth)).toBeLessThanOrEqual(
-      WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth,
+      WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth,
     );
 
     const backend = new CrashInjectingAtomicBackend();
-    const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+    const initialized = await initializeWatcherRollbackDurableAuthority({
       backend,
       policy: fixture.finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
@@ -1742,7 +1738,7 @@ describe("W44 watcher crash and rollback matrix", () => {
     });
     const baseline = evidenceOf(fixture.initialStore);
 
-    const incident = await evaluateAndPersistWatcherRollbackV1({
+    const incident = await evaluateAndPersistWatcherRollback({
       authority: initialized.authority,
       previousFinalityState: fixture.finalizedState,
       consistency: fixture.contradictionConsistency,
@@ -1761,14 +1757,14 @@ describe("W44 watcher crash and rollback matrix", () => {
     }
     // Quarantine must never read as ready and must never lose evidence.
     const quarantined = incident.result.nextStore ?? fixture.initialStore;
-    const quarantineMeasurement = measureWatcherWorkflowV1(
+    const quarantineMeasurement = measureWatcherWorkflow(
       quarantined,
-      retainedBaselineV1(baseline, incident.result.removedRecords),
+      retainedBaseline(baseline, incident.result.removedRecords),
     );
     expect(quarantineMeasurement).toMatchObject(ZERO_DEFECTS);
     expect(quarantineMeasurement.ready).toBe(false);
 
-    const recovered = await evaluateAndPersistWatcherPostFinalityRecoveryV1({
+    const recovered = await evaluateAndPersistWatcherPostFinalityRecovery({
       authority: incident.authority,
       previousCanonicalPath: fixture.previousPath,
       replacementCanonicalPath: fixture.replacementPath,
@@ -1785,7 +1781,7 @@ describe("W44 watcher crash and rollback matrix", () => {
       throw new Error("expected a committed post-finality recovery");
     }
     expect(
-      watcherRollbackDurableAuthorityStatusV1(recovered.authority),
+      watcherRollbackDurableAuthorityStatus(recovered.authority),
     ).toMatchObject({ revision: "2" });
     const recoveredStore = recovered.result.nextStore!;
     expect(
@@ -1793,10 +1789,10 @@ describe("W44 watcher crash and rollback matrix", () => {
         ({ decision }) => decision === "verified",
       ),
     ).toHaveLength(0);
-    const recoveredMeasurement = measureWatcherWorkflowV1(
+    const recoveredMeasurement = measureWatcherWorkflow(
       recoveredStore,
-      retainedBaselineV1(
-        retainedBaselineV1(baseline, incident.result.removedRecords),
+      retainedBaseline(
+        retainedBaseline(baseline, incident.result.removedRecords),
         recovered.result.removedRecords,
       ),
     );
@@ -1804,13 +1800,13 @@ describe("W44 watcher crash and rollback matrix", () => {
     expect(recoveredMeasurement.ready).toBe(false);
 
     const recoveredDigest = backend.digest();
-    const replayAuthority = await loadWatcherRollbackDurableAuthorityV1({
+    const replayAuthority = await loadWatcherRollbackDurableAuthority({
       backend,
       policy: fixture.finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
       trustedHead: recovered.trustedHead,
     });
-    const replayed = await evaluateAndPersistWatcherPostFinalityRecoveryV1({
+    const replayed = await evaluateAndPersistWatcherPostFinalityRecovery({
       authority: replayAuthority,
       previousCanonicalPath: fixture.previousPath,
       replacementCanonicalPath: fixture.replacementPath,
@@ -1823,11 +1819,11 @@ describe("W44 watcher crash and rollback matrix", () => {
 
   it("fails closed on a configured-source inconsistency without mutating durable state", async () => {
     const finalityPolicy = policy();
-    const prior = evaluateWatcherFinalityV1(
+    const prior = evaluateWatcherFinality(
       finalityPolicy,
       null,
       agreement(oldPoint),
-    ).state as WatcherFinalityStateV1;
+    ).state as WatcherFinalityState;
     const store = combine(
       finalityPolicy.deploymentMarker,
       "0",
@@ -1837,7 +1833,7 @@ describe("W44 watcher crash and rollback matrix", () => {
 
     // The two configured providers report different chain points at the same
     // height: the configured source is inconsistent.
-    const disagreement = evaluateWatcherMultiProviderConsistencyV1(
+    const disagreement = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-a", replacementPoint),
@@ -1853,20 +1849,20 @@ describe("W44 watcher crash and rollback matrix", () => {
       protocolDecision: "quarantined",
     });
 
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       prior,
       disagreement,
     );
     expect(finalityResult.action).not.toBe("rewind_pending");
 
-    const bootstrapState = makeWatcherRollbackBootstrapStateV1(
+    const bootstrapState = makeWatcherRollbackBootstrapState(
       finalityPolicy,
       store,
       prior,
     );
     expect(bootstrapState).not.toBeNull();
-    const rejected = evaluateWatcherRollbackV1(
+    const rejected = evaluateWatcherRollback(
       finalityPolicy,
       store,
       prior,
@@ -1879,7 +1875,7 @@ describe("W44 watcher crash and rollback matrix", () => {
     expect(rejected.nextStore).toBeNull();
 
     const backend = new CrashInjectingAtomicBackend();
-    const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+    const initialized = await initializeWatcherRollbackDurableAuthority({
       backend,
       policy: finalityPolicy,
       authenticationKey: rollbackAuthorityKey,
@@ -1890,7 +1886,7 @@ describe("W44 watcher crash and rollback matrix", () => {
     const initialDigest = backend.digest();
     const baseline = evidenceOf(store);
 
-    const persisted = await evaluateAndPersistWatcherRollbackV1({
+    const persisted = await evaluateAndPersistWatcherRollback({
       authority: initialized.authority,
       previousFinalityState: prior,
       consistency: disagreement,
@@ -1904,7 +1900,7 @@ describe("W44 watcher crash and rollback matrix", () => {
     expect(backend.digest()).toBe(initialDigest);
     expect(backend.writes).toBe(1);
 
-    const measured = measureWatcherWorkflowV1(store, baseline);
+    const measured = measureWatcherWorkflow(store, baseline);
     expect(measured).toMatchObject(ZERO_DEFECTS);
     expect(measured.ready).toBe(false);
   }, 60_000);

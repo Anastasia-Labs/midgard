@@ -2,58 +2,58 @@ import {
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  ForcedInclusionTxV1Schema,
-  FrontierPeakV1Schema,
-  HeaderV1Schema,
+  ForcedInclusionTxSchema,
+  FrontierPeakSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
-  ValidationMachineStateV1Schema,
-  ValidationTraceDescriptorV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceDescriptorSchema,
+  ValidationTraceProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ExecutionSourceVerdictSubjectV1Schema = Data.Object({
+export const ExecutionSourceVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const ExecutionSourceBoundV1Schema = Data.Object({
-  subject: ExecutionSourceVerdictSubjectV1Schema,
+export const ExecutionSourceBoundSchema = Data.Object({
+  subject: ExecutionSourceVerdictSubjectSchema,
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
   witness_set_hash: Data.Bytes(),
   purpose_kind: Data.Integer(),
   purpose_index: Data.Integer(),
 });
-export const AuthenticatedExecutionSourceV1Schema = Data.Object({
-  bound: ExecutionSourceBoundV1Schema,
+export const AuthenticatedExecutionSourceSchema = Data.Object({
+  bound: ExecutionSourceBoundSchema,
   prior_ledger_root: Data.Bytes(),
   required_script_hash: Data.Bytes(),
   source_count: Data.Integer(),
   scan_limit: Data.Integer(),
-  source_peaks: Data.Array(FrontierPeakV1Schema),
+  source_peaks: Data.Array(FrontierPeakSchema),
 });
-export const AuthenticatedExecutionSourceTraceV1Schema = Data.Object({
-  bound: ExecutionSourceBoundV1Schema,
-  machine_state: ValidationMachineStateV1Schema,
+export const AuthenticatedExecutionSourceTraceSchema = Data.Object({
+  bound: ExecutionSourceBoundSchema,
+  machine_state: ValidationMachineStateSchema,
 });
-export const AuthenticatedTransactionSourcesV1Schema = Data.Object({
-  purpose: AuthenticatedExecutionSourceV1Schema,
+export const AuthenticatedTransactionSourcesSchema = Data.Object({
+  purpose: AuthenticatedExecutionSourceSchema,
   transaction_source_count: Data.Integer(),
 });
-export const AuthenticatedResolvedSourcesV1Schema = Data.Object({
-  purpose: AuthenticatedExecutionSourceV1Schema,
+export const AuthenticatedResolvedSourcesSchema = Data.Object({
+  purpose: AuthenticatedExecutionSourceSchema,
   transaction_source_count: Data.Integer(),
   resolved_reference_source_count: Data.Integer(),
   source_identity_hash: Data.Bytes(),
 });
-export const SourceDescriptorV1Schema = Data.Object({
+export const SourceDescriptorSchema = Data.Object({
   source_index: Data.Integer(),
   location_kind: Data.Integer(),
   source_key: Data.Bytes(),
@@ -63,15 +63,15 @@ export const SourceDescriptorV1Schema = Data.Object({
   item_commitment: Data.Bytes(),
   siblings: Data.Array(Data.Bytes()),
 });
-export const ExecutionSourceScanStateV1Schema = Data.Object({
-  authenticated: AuthenticatedResolvedSourcesV1Schema,
+export const ExecutionSourceScanStateSchema = Data.Object({
+  authenticated: AuthenticatedResolvedSourcesSchema,
   cursor: Data.Integer(),
   found: Data.Boolean(),
   next_expected_script_hash: Data.Bytes(),
   checkpoint_hash: Data.Bytes(),
 });
 
-export const ExecutionSourceStep01SourceV1Schema = Data.Enum([
+export const ExecutionSourceStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -79,29 +79,28 @@ export const ExecutionSourceStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const ExecutionSourceStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      source: ExecutionSourceStep01SourceV1Schema,
-      purpose_kind: Data.Integer(),
-      purpose_index: Data.Integer(),
-    }),
-  );
-export const ExecutionSourceStep02DatumV1Schema = faultProofStepDatumSchema(
-  ExecutionSourceBoundV1Schema,
+export const ExecutionSourceStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    source: ExecutionSourceStep01SourceSchema,
+    purpose_kind: Data.Integer(),
+    purpose_index: Data.Integer(),
+  }),
+);
+export const ExecutionSourceStep02DatumSchema = faultProofStepDatumSchema(
+  ExecutionSourceBoundSchema,
 );
 
-const FrontierSchema = Data.Array(FrontierPeakV1Schema);
-const ScriptSourcesReceiveControlV1Schema = Data.Object({
+const FrontierSchema = Data.Array(FrontierPeakSchema);
+const ScriptSourcesReceiveControlSchema = Data.Object({
   source_count: Data.Integer(),
   source_peaks: FrontierSchema,
   receive_count: Data.Integer(),
@@ -109,12 +108,12 @@ const ScriptSourcesReceiveControlV1Schema = Data.Object({
   candidate_hash: Data.Bytes(),
   descriptor_peaks: FrontierSchema,
 });
-const ScriptSourcesObserverControlV1Schema = Data.Object({
+const ScriptSourcesObserverControlSchema = Data.Object({
   total_count: Data.Integer(),
   seen: Data.Integer(),
   previous_hash: Data.Bytes(),
 });
-const ScriptSourcesDiscoveryControlV1Schema = Data.Object({
+const ScriptSourcesDiscoveryControlSchema = Data.Object({
   purpose_cursor: Data.Integer(),
   source_cursor: Data.Integer(),
   redeemer_cursor: Data.Integer(),
@@ -131,7 +130,7 @@ const ScriptSourcesDiscoveryControlV1Schema = Data.Object({
   execution_count: Data.Integer(),
   execution_peaks: FrontierSchema,
 });
-const ScriptSourcesMintFoldControlV1Schema = Data.Object({
+const ScriptSourcesMintFoldControlSchema = Data.Object({
   policy_count: Data.Integer(),
   policy_cursor: Data.Integer(),
   previous_policy: Data.Bytes(),
@@ -145,7 +144,7 @@ const ScriptSourcesMintFoldControlV1Schema = Data.Object({
   asset_count: Data.Integer(),
   asset_peaks: FrontierSchema,
 });
-export const ScriptSourcesControlV1Schema = Data.Object({
+export const ScriptSourcesControlSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   field_preimage_lengths_cbor: Data.Bytes(),
@@ -170,17 +169,17 @@ export const ScriptSourcesControlV1Schema = Data.Object({
   output_count: Data.Integer(),
   output_peaks: FrontierSchema,
   output_total_count: Data.Integer(),
-  receive_scan: ScriptSourcesReceiveControlV1Schema,
+  receive_scan: ScriptSourcesReceiveControlSchema,
   source_total_count: Data.Integer(),
   redeemer_total_count: Data.Integer(),
-  observer_scan: ScriptSourcesObserverControlV1Schema,
-  discovery: ScriptSourcesDiscoveryControlV1Schema,
+  observer_scan: ScriptSourcesObserverControlSchema,
+  discovery: ScriptSourcesDiscoveryControlSchema,
   output_proof: Data.Nullable(Data.Any()),
   pending_source_cbor: Data.Bytes(),
-  mint_fold: ScriptSourcesMintFoldControlV1Schema,
+  mint_fold: ScriptSourcesMintFoldControlSchema,
   resolution_schedule_hash: Data.Bytes(),
 });
-export const NativeScriptsControlV1Schema = Data.Object({
+export const NativeScriptsControlSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   field_preimage_lengths_cbor: Data.Bytes(),
@@ -208,65 +207,60 @@ export const NativeScriptsControlV1Schema = Data.Object({
   language_bitmap: Data.Integer(),
   resolution_schedule_hash: Data.Bytes(),
 });
-export const ExecutionSourceStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      trace_membership: rootMembershipProofSchema(
-        EventKeySchema,
-        ValidationTraceDescriptorV1Schema,
-      ),
-      machine_state: ValidationMachineStateV1Schema,
-      trace_proof: ValidationTraceProofV1Schema,
-    }),
-  );
-export const ExecutionSourceStep03DatumV1Schema = faultProofStepDatumSchema(
-  AuthenticatedExecutionSourceTraceV1Schema,
+export const ExecutionSourceStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    trace_membership: rootMembershipProofSchema(
+      EventKeySchema,
+      ValidationTraceDescriptorSchema,
+    ),
+    machine_state: ValidationMachineStateSchema,
+    trace_proof: ValidationTraceProofSchema,
+  }),
 );
-export const ExecutionSourceStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      control: Data.Any(),
-      absolute_purpose_index: Data.Integer(),
-      required_script_hash: Data.Bytes(),
-      purpose_subject: Data.Bytes(),
-      purpose_siblings: Data.Array(Data.Bytes()),
-      transaction_source_count: Data.Integer(),
-    }),
-  );
-export const ExecutionSourceStep04DatumV1Schema = faultProofStepDatumSchema(
-  AuthenticatedTransactionSourcesV1Schema,
+export const ExecutionSourceStep03DatumSchema = faultProofStepDatumSchema(
+  AuthenticatedExecutionSourceTraceSchema,
 );
-export const ExecutionSourceStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      resolved_reference_source_count: Data.Integer(),
-    }),
-  );
-export const ExecutionSourceStep05DatumV1Schema = faultProofStepDatumSchema(
-  ExecutionSourceScanStateV1Schema,
+export const ExecutionSourceStep03RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    control: Data.Any(),
+    absolute_purpose_index: Data.Integer(),
+    required_script_hash: Data.Bytes(),
+    purpose_subject: Data.Bytes(),
+    purpose_siblings: Data.Array(Data.Bytes()),
+    transaction_source_count: Data.Integer(),
+  }),
 );
-export const ExecutionSourceStep05RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      sources: Data.Array(SourceDescriptorV1Schema),
-      item_budget: Data.Integer(),
-    }),
-  );
-export const ExecutionSourceStep06DatumV1Schema =
-  ExecutionSourceStep05DatumV1Schema;
-export const ExecutionSourceStep06RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      fraud_proof_mint_redeemer_index: Data.Integer(),
-    }),
-  );
+export const ExecutionSourceStep04DatumSchema = faultProofStepDatumSchema(
+  AuthenticatedTransactionSourcesSchema,
+);
+export const ExecutionSourceStep04RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    resolved_reference_source_count: Data.Integer(),
+  }),
+);
+export const ExecutionSourceStep05DatumSchema = faultProofStepDatumSchema(
+  ExecutionSourceScanStateSchema,
+);
+export const ExecutionSourceStep05RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    sources: Data.Array(SourceDescriptorSchema),
+    item_budget: Data.Integer(),
+  }),
+);
+export const ExecutionSourceStep06DatumSchema =
+  ExecutionSourceStep05DatumSchema;
+export const ExecutionSourceStep06RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    fraud_proof_mint_redeemer_index: Data.Integer(),
+  }),
+);

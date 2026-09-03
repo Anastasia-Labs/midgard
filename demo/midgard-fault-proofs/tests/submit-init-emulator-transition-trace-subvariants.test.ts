@@ -6,7 +6,7 @@
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -23,7 +23,7 @@ import {
   buildOutOfWindowSourceEventFault,
   buildTransitionFaultProof,
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   resolveTransitionTraceDeploymentContracts,
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
@@ -40,7 +40,7 @@ import {
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
   ledgerOrderedIndex,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishFraudProofChainReferenceScripts,
@@ -51,7 +51,7 @@ import {
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
 
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarnessV1>>;
+type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 type Setup = Awaited<ReturnType<typeof submitSetupTx>>;
 type DeploymentInfo = ReturnType<typeof buildRemovalDeploymentInfo>;
 
@@ -88,7 +88,7 @@ const withdrawalDatum = ({
   refund_datum: "NoDatum",
 });
 
-const headerCounts = (header: SDK.HeaderV1) => ({
+const headerCounts = (header: SDK.Header) => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -104,15 +104,15 @@ const reconstruct = async ({
   transitionTrace = [],
   eventToStep = [],
 }: {
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly withdrawals?: readonly SDK.DaPayloadEntry[];
   readonly transitionTrace?: readonly SDK.DaPayloadEntry[];
   readonly eventToStep?: readonly SDK.DaPayloadEntry[];
 }) => {
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payloadEnvelopeCbor = await wrapDaPayloadV1(
-    SDK.encodeDaPayloadV1({
-      version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payloadEnvelopeCbor = await wrapDaPayload(
+    SDK.encodeDaPayload({
+      version: SDK.DA_PAYLOAD_VERSION,
       block_body: {
         header_hash: headerHash,
         header,
@@ -133,7 +133,7 @@ const reconstruct = async ({
     }),
     { mode: "identity" },
   );
-  return await reconstructDaPayloadV1({
+  return await reconstructDaPayload({
     payloadEnvelopeCbor,
     expectedHeaderHash: headerHash,
     committedHeader: header,
@@ -145,7 +145,7 @@ const makeHarness = async ({
 }: {
   readonly alwaysStateQueue?: boolean;
 } = {}) => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realTransitionTrace: true,
       alwaysFraudProofCatalogue: true,
@@ -180,7 +180,7 @@ const setupChallenge = async ({
   readonly transitionTraceReferenceScripts: Awaited<
     ReturnType<typeof publishFraudProofChainReferenceScripts>
   >;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
 }) => {
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,
@@ -223,7 +223,7 @@ const mintWithdrawalEvent = async ({
   readonly datum: SDK.WithdrawalOrderDatum;
 }): Promise<{ readonly utxo: UTxO; readonly assetName: string }> => {
   const assetName = await Effect.runPromise(
-    SDK.withdrawalEventNonceV1(datum.event.id),
+    SDK.withdrawalEventNonce(datum.event.id),
   );
   const unit = toUnit(harness.contracts.withdrawal.policyId, assetName);
   const unsigned = await harness.funderLucid
@@ -231,7 +231,7 @@ const mintWithdrawalEvent = async ({
     .mintAssets({ [unit]: 1n }, Data.void())
     .pay.ToContract(
       harness.contracts.withdrawal.spendingScriptAddress,
-      { kind: "inline", value: SDK.withdrawalEventDatumBytesV1(datum) },
+      { kind: "inline", value: SDK.withdrawalEventDatumBytes(datum) },
       { lovelace: 5_000_000n, [unit]: 1n },
     )
     .attach.MintingPolicy(harness.contracts.withdrawal.mintingScript)
@@ -469,7 +469,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         })),
       ),
     ]);
-    const header: SDK.HeaderV1 = {
+    const header: SDK.Header = {
       ...makeHeader(operator, startTime),
       withdrawalsRoot: withdrawalsRoot.root,
       transitionTraceRoot: traceRoot.root,
@@ -555,7 +555,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         // transition-trace chain and removal transaction remain real.
         alwaysStateQueue: true,
       });
-    const header: SDK.HeaderV1 = {
+    const header: SDK.Header = {
       ...makeHeader(
         await funderPaymentKeyHash(harness.funderLucid),
         await alignedHeaderStart(harness),

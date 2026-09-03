@@ -1,41 +1,41 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { ProofSchema, ProofStepSchema } from "../common.js";
-import { BoundedItemChunkProofV1Schema } from "../ledger-state.js";
-import { FieldCarriageV1Schema } from "../native-tx-field-access-v1.js";
+import { BoundedItemChunkProofSchema } from "../ledger-state.js";
+import { FieldCarriageSchema } from "../native-tx-field-access-v1.js";
 
 type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
 const ByteArrayListSchema = Data.Array(Data.Bytes());
 
-export const FrontierPeakV1Schema = Data.Object({
+export const FrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: Data.Bytes(),
 });
-export type FrontierPeakV1 = Data.Static<typeof FrontierPeakV1Schema>;
-export const FrontierPeakV1 = FrontierPeakV1Schema as unknown as FrontierPeakV1;
+export type FrontierPeak = Data.Static<typeof FrontierPeakSchema>;
+export const FrontierPeak = FrontierPeakSchema as unknown as FrontierPeak;
 
-const FrontierSchema = Data.Array(FrontierPeakV1Schema);
+const FrontierSchema = Data.Array(FrontierPeakSchema);
 
-const DataSummaryV1Schema = Data.Object({
+const DataSummarySchema = Data.Object({
   root: Data.Bytes(),
   cbor_length: Data.Integer(),
   memory: Data.Integer(),
 });
 
-const DataSequenceSummaryV1Schema = Data.Object({
+const DataSequenceSummarySchema = Data.Object({
   root: Data.Bytes(),
   length: Data.Integer(),
   payload_cbor_length: Data.Integer(),
   memory: Data.Integer(),
 });
 
-const ConstantWitnessV1Schema = Data.Object({
+const ConstantWitnessSchema = Data.Object({
   type_cbor: Data.Bytes(),
   payload_cbor: Data.Bytes(),
 });
 
-const DataNodeV1Schema = Data.Enum([
+const DataNodeSchema = Data.Enum([
   Data.Object({
     ConstrSmallData: Data.Object({
       constructor: Data.Integer(),
@@ -89,7 +89,7 @@ const DataNodeV1Schema = Data.Enum([
   }),
 ]);
 
-const DataListNodeV1Schema = Data.Object({
+const DataListNodeSchema = Data.Object({
   head: Data.Bytes(),
   head_cbor_length: Data.Integer(),
   head_memory: Data.Integer(),
@@ -99,7 +99,7 @@ const DataListNodeV1Schema = Data.Object({
   memory: Data.Integer(),
 });
 
-const DataPairNodeV1Schema = Data.Object({
+const DataPairNodeSchema = Data.Object({
   key: Data.Bytes(),
   key_cbor_length: Data.Integer(),
   key_memory: Data.Integer(),
@@ -112,21 +112,21 @@ const DataPairNodeV1Schema = Data.Object({
   memory: Data.Integer(),
 });
 
-const SemanticBuiltinWitnessV1Schema = Data.Object({
-  data_nodes: Data.Array(DataNodeV1Schema),
-  list_nodes: Data.Array(DataListNodeV1Schema),
-  pair_nodes: Data.Array(DataPairNodeV1Schema),
+const SemanticBuiltinWitnessSchema = Data.Object({
+  data_nodes: Data.Array(DataNodeSchema),
+  list_nodes: Data.Array(DataListNodeSchema),
+  pair_nodes: Data.Array(DataPairNodeSchema),
   scalar_preimages: ByteArrayListSchema,
 });
 
-const DirectValueWitnessV1Schema = Data.Enum([
+const DirectValueWitnessSchema = Data.Enum([
   Data.Object({
-    ConstantValue: Data.Tuple([ConstantWitnessV1Schema]),
+    ConstantValue: Data.Tuple([ConstantWitnessSchema]),
   }),
   Data.Object({
     SemanticConstantValue: Data.Object({
       type_cbor: Data.Bytes(),
-      payload: DataSummaryV1Schema,
+      payload: DataSummarySchema,
       memory: Data.Integer(),
     }),
   }),
@@ -138,14 +138,14 @@ const DirectValueWitnessV1Schema = Data.Enum([
   }),
 ]);
 
-const RuntimeValueWitnessV1Schema = Data.Enum([
+const RuntimeValueWitnessSchema = Data.Enum([
   Data.Object({
-    RuntimeConstantValue: Data.Tuple([ConstantWitnessV1Schema]),
+    RuntimeConstantValue: Data.Tuple([ConstantWitnessSchema]),
   }),
   Data.Object({
     RuntimeSemanticConstantValue: Data.Object({
       type_cbor: Data.Bytes(),
-      payload: DataSummaryV1Schema,
+      payload: DataSummarySchema,
       memory: Data.Integer(),
     }),
   }),
@@ -188,17 +188,17 @@ const RuntimeValueWitnessV1Schema = Data.Enum([
  * most ten levels for either side of ExecuteBuiltinBlsFinal, so an exact
  * finite expansion covers every value the on-chain transition can accept.
  */
-const blsExpressionWitnessV1Schema = (depth: number): PlutusDataSchema => {
+const blsExpressionWitnessSchema = (depth: number): PlutusDataSchema => {
   const millerLoop = Data.Object({
     BlsMillerLoopExpression: Data.Object({
-      g1: ConstantWitnessV1Schema,
-      g2: ConstantWitnessV1Schema,
+      g1: ConstantWitnessSchema,
+      g2: ConstantWitnessSchema,
     }),
   });
   if (depth === 1) {
     return Data.Enum([millerLoop]);
   }
-  const child = blsExpressionWitnessV1Schema(depth - 1);
+  const child = blsExpressionWitnessSchema(depth - 1);
   return Data.Enum([
     millerLoop,
     Data.Object({
@@ -210,9 +210,9 @@ const blsExpressionWitnessV1Schema = (depth: number): PlutusDataSchema => {
   ]);
 };
 
-const BlsExpressionWitnessV1Schema = blsExpressionWitnessV1Schema(10);
+const BlsExpressionWitnessSchema = blsExpressionWitnessSchema(10);
 
-const CekMachineStateV1Schema = Data.Object({
+const CekMachineStateSchema = Data.Object({
   mode: Data.Integer(),
   execution_index: Data.Integer(),
   focus_root: Data.Bytes(),
@@ -223,7 +223,7 @@ const CekMachineStateV1Schema = Data.Object({
   memory: Data.Integer(),
 });
 
-const EnvironmentSummaryV1Schema = Data.Enum([
+const EnvironmentSummarySchema = Data.Enum([
   Data.Literal("EmptyEnvironmentSummary"),
   Data.Object({
     NonEmptyEnvironmentSummary: Data.Object({
@@ -234,7 +234,7 @@ const EnvironmentSummaryV1Schema = Data.Enum([
   }),
 ]);
 
-const MachineValueWitnessV1Schema = Data.Enum([
+const MachineValueWitnessSchema = Data.Enum([
   Data.Object({
     ConstantValue: Data.Object({
       type_root: Data.Bytes(),
@@ -278,7 +278,7 @@ const MachineValueWitnessV1Schema = Data.Enum([
   }),
 ]);
 
-const MapConversionControlV1Schema = Data.Object({
+const MapConversionControlSchema = Data.Object({
   tag: Data.Integer(),
   result_root: Data.Bytes(),
   source_root: Data.Bytes(),
@@ -293,21 +293,21 @@ const MapConversionControlV1Schema = Data.Object({
   budget_memory: Data.Integer(),
 });
 
-const MapConversionStartWitnessV1Schema = Data.Object({
-  source_node: DataNodeV1Schema,
-  source_list: Data.Nullable(DataListNodeV1Schema),
-  source_pairs: Data.Nullable(DataPairNodeV1Schema),
-  result_node: DataNodeV1Schema,
-  result_list: Data.Nullable(DataListNodeV1Schema),
-  result_pairs: Data.Nullable(DataPairNodeV1Schema),
+const MapConversionStartWitnessSchema = Data.Object({
+  source_node: DataNodeSchema,
+  source_list: Data.Nullable(DataListNodeSchema),
+  source_pairs: Data.Nullable(DataPairNodeSchema),
+  result_node: DataNodeSchema,
+  result_list: Data.Nullable(DataListNodeSchema),
+  result_pairs: Data.Nullable(DataPairNodeSchema),
 });
 
-const CoreStepWitnessV1Schema = Data.Enum([
+const CoreStepWitnessSchema = Data.Enum([
   Data.Object({
     ComputeVariable: Data.Object({ index: Data.Integer() }),
   }),
   Data.Object({
-    ComputeConstant: Data.Object({ value: ConstantWitnessV1Schema }),
+    ComputeConstant: Data.Object({ value: ConstantWitnessSchema }),
   }),
   Data.Object({
     ComputeLambda: Data.Object({ body: Data.Bytes() }),
@@ -356,7 +356,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
   Data.Literal("LookupEmptyEnvironment"),
   Data.Object({
     ReturnEmptyContinuation: Data.Object({
-      value: MachineValueWitnessV1Schema,
+      value: MachineValueWitnessSchema,
     }),
   }),
   Data.Object({
@@ -370,7 +370,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
     ReturnApplyLambda: Data.Object({
       body: Data.Bytes(),
       closure_environment: Data.Bytes(),
-      closure_summary: EnvironmentSummaryV1Schema,
+      closure_summary: EnvironmentSummarySchema,
       tail: Data.Bytes(),
     }),
   }),
@@ -385,7 +385,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     ReturnApplyInvalid: Data.Object({
-      function: MachineValueWitnessV1Schema,
+      function: MachineValueWitnessSchema,
       tail: Data.Bytes(),
     }),
   }),
@@ -394,7 +394,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
       argument: Data.Bytes(),
       body: Data.Bytes(),
       closure_environment: Data.Bytes(),
-      closure_summary: EnvironmentSummaryV1Schema,
+      closure_summary: EnvironmentSummarySchema,
       tail: Data.Bytes(),
     }),
   }),
@@ -411,7 +411,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
   Data.Object({
     ReturnApplyValueInvalid: Data.Object({
       argument: Data.Bytes(),
-      function: MachineValueWitnessV1Schema,
+      function: MachineValueWitnessSchema,
       tail: Data.Bytes(),
     }),
   }),
@@ -433,7 +433,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     ReturnForceInvalid: Data.Object({
-      value: MachineValueWitnessV1Schema,
+      value: MachineValueWitnessSchema,
       tail: Data.Bytes(),
     }),
   }),
@@ -471,7 +471,7 @@ const CoreStepWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     ReturnCaseInvalid: Data.Object({
-      value: MachineValueWitnessV1Schema,
+      value: MachineValueWitnessSchema,
       branches_count: Data.Integer(),
       branches_root: Data.Bytes(),
       captured_environment: Data.Bytes(),
@@ -500,81 +500,81 @@ const CoreStepWitnessV1Schema = Data.Enum([
   Data.Object({
     ExecuteBuiltinDirect: Data.Object({
       tag: Data.Integer(),
-      arguments: Data.Array(DirectValueWitnessV1Schema),
-      result: DirectValueWitnessV1Schema,
+      arguments: Data.Array(DirectValueWitnessSchema),
+      result: DirectValueWitnessSchema,
     }),
   }),
   Data.Object({
     ExecuteBuiltinSemantic: Data.Object({
       tag: Data.Integer(),
-      arguments: Data.Array(DirectValueWitnessV1Schema),
-      result: DirectValueWitnessV1Schema,
-      material: SemanticBuiltinWitnessV1Schema,
+      arguments: Data.Array(DirectValueWitnessSchema),
+      result: DirectValueWitnessSchema,
+      material: SemanticBuiltinWitnessSchema,
     }),
   }),
   Data.Object({
     StartBuiltinMapConversion: Data.Object({
       tag: Data.Integer(),
-      arguments: Data.Array(DirectValueWitnessV1Schema),
-      result: DirectValueWitnessV1Schema,
-      material: MapConversionStartWitnessV1Schema,
+      arguments: Data.Array(DirectValueWitnessSchema),
+      result: DirectValueWitnessSchema,
+      material: MapConversionStartWitnessSchema,
     }),
   }),
   Data.Object({
     StepBuiltinListToMap: Data.Object({
-      control: MapConversionControlV1Schema,
-      source: DataListNodeV1Schema,
-      pair: DataNodeV1Schema,
-      first: DataListNodeV1Schema,
-      second: DataListNodeV1Schema,
-      key: DataNodeV1Schema,
-      value: DataNodeV1Schema,
-      destination: DataPairNodeV1Schema,
+      control: MapConversionControlSchema,
+      source: DataListNodeSchema,
+      pair: DataNodeSchema,
+      first: DataListNodeSchema,
+      second: DataListNodeSchema,
+      key: DataNodeSchema,
+      value: DataNodeSchema,
+      destination: DataPairNodeSchema,
     }),
   }),
   Data.Object({
     StepBuiltinMapToList: Data.Object({
-      control: MapConversionControlV1Schema,
-      source: DataPairNodeV1Schema,
-      destination: DataListNodeV1Schema,
-      pair: DataNodeV1Schema,
-      first: DataListNodeV1Schema,
-      second: DataListNodeV1Schema,
-      key: DataNodeV1Schema,
-      value: DataNodeV1Schema,
+      control: MapConversionControlSchema,
+      source: DataPairNodeSchema,
+      destination: DataListNodeSchema,
+      pair: DataNodeSchema,
+      first: DataListNodeSchema,
+      second: DataListNodeSchema,
+      key: DataNodeSchema,
+      value: DataNodeSchema,
     }),
   }),
   Data.Object({
     FinishBuiltinMapConversion: Data.Object({
-      control: MapConversionControlV1Schema,
+      control: MapConversionControlSchema,
     }),
   }),
   Data.Object({
     ExecuteBuiltinSemanticFailure: Data.Object({
       tag: Data.Integer(),
-      arguments: Data.Array(DirectValueWitnessV1Schema),
-      material: SemanticBuiltinWitnessV1Schema,
+      arguments: Data.Array(DirectValueWitnessSchema),
+      material: SemanticBuiltinWitnessSchema,
     }),
   }),
   Data.Object({
     ExecuteBuiltinBlsFinal: Data.Object({
       left_root: Data.Bytes(),
       right_root: Data.Bytes(),
-      left: BlsExpressionWitnessV1Schema,
-      right: BlsExpressionWitnessV1Schema,
-      result: DirectValueWitnessV1Schema,
+      left: BlsExpressionWitnessSchema,
+      right: BlsExpressionWitnessSchema,
+      result: DirectValueWitnessSchema,
     }),
   }),
   Data.Object({
     ExecuteBuiltinFailure: Data.Object({
       tag: Data.Integer(),
-      arguments: Data.Array(DirectValueWitnessV1Schema),
+      arguments: Data.Array(DirectValueWitnessSchema),
     }),
   }),
   Data.Object({
     ExecuteBuiltinTypeFailure: Data.Object({
       tag: Data.Integer(),
-      arguments: Data.Array(RuntimeValueWitnessV1Schema),
+      arguments: Data.Array(RuntimeValueWitnessSchema),
     }),
   }),
   Data.Object({
@@ -584,25 +584,25 @@ const CoreStepWitnessV1Schema = Data.Enum([
   }),
 ]);
 
-const CoreStepEvidenceV1Schema = Data.Object({
-  pre: CekMachineStateV1Schema,
-  post: CekMachineStateV1Schema,
-  witness: CoreStepWitnessV1Schema,
+const CoreStepEvidenceSchema = Data.Object({
+  pre: CekMachineStateSchema,
+  post: CekMachineStateSchema,
+  witness: CoreStepWitnessSchema,
 });
 
-const CekBlobFrontierPeakV1Schema = Data.Object({
+const CekBlobFrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   root: Data.Bytes(),
   byte_length: Data.Integer(),
 });
 
-const CekBlobFrontierV1Schema = Data.Object({
+const CekBlobFrontierSchema = Data.Object({
   count: Data.Integer(),
   byte_length: Data.Integer(),
-  peaks: Data.Array(CekBlobFrontierPeakV1Schema),
+  peaks: Data.Array(CekBlobFrontierPeakSchema),
 });
 
-const Blake2b256TraceControlV1Schema = Data.Object({
+const Blake2b256TraceControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   cursor: Data.Integer(),
@@ -614,34 +614,34 @@ const Blake2b256TraceControlV1Schema = Data.Object({
   round: Data.Integer(),
 });
 
-const CekSourceBlobControlV1Schema = Data.Object({
+const CekSourceBlobControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   source_start: Data.Integer(),
   source_length: Data.Integer(),
-  frontier: CekBlobFrontierV1Schema,
-  active_hash: Data.Nullable(Blake2b256TraceControlV1Schema),
+  frontier: CekBlobFrontierSchema,
+  active_hash: Data.Nullable(Blake2b256TraceControlSchema),
 });
 
-const CekDataIntegerControlV1Schema = Data.Object({
+const CekDataIntegerControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   source_start: Data.Integer(),
   source_length: Data.Integer(),
   memory: Data.Integer(),
-  blob: Data.Nullable(CekSourceBlobControlV1Schema),
+  blob: Data.Nullable(CekSourceBlobControlSchema),
 });
 
-const CekDataBytesControlV1Schema = Data.Object({
+const CekDataBytesControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   source_start: Data.Integer(),
   source_length: Data.Integer(),
   bytes_length: Data.Integer(),
-  blob: Data.Nullable(CekSourceBlobControlV1Schema),
+  blob: Data.Nullable(CekSourceBlobControlSchema),
 });
 
-const DataFrameV1Schema = Data.Object({
+const DataFrameSchema = Data.Object({
   kind: Data.Integer(),
   constructor: Data.Integer(),
   constructor_cbor_root: Data.Bytes(),
@@ -652,10 +652,10 @@ const DataFrameV1Schema = Data.Object({
   child_count: Data.Integer(),
   child_peaks: FrontierSchema,
   fold_cursor: Data.Integer(),
-  sequence: DataSequenceSummaryV1Schema,
+  sequence: DataSequenceSummarySchema,
 });
 
-const DataTraverseControlV1Schema = Data.Object({
+const DataTraverseControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   source_start: Data.Integer(),
@@ -663,12 +663,12 @@ const DataTraverseControlV1Schema = Data.Object({
   offset: Data.Integer(),
   frame_root: Data.Bytes(),
   pending_large_expected_children: Data.Nullable(Data.Integer()),
-  integer: Data.Nullable(CekDataIntegerControlV1Schema),
-  bytes: Data.Nullable(CekDataBytesControlV1Schema),
-  result: Data.Nullable(DataSummaryV1Schema),
+  integer: Data.Nullable(CekDataIntegerControlSchema),
+  bytes: Data.Nullable(CekDataBytesControlSchema),
+  result: Data.Nullable(DataSummarySchema),
 });
 
-const DataTraverseActionV1Schema = Data.Enum([
+const DataTraverseActionSchema = Data.Enum([
   Data.Literal("NoAction"),
   Data.Object({
     HeadScalar: Data.Object({ item_length: Data.Integer() }),
@@ -685,36 +685,36 @@ const DataTraverseActionV1Schema = Data.Enum([
   }),
   Data.Object({
     AttachScalar: Data.Object({
-      parent: Data.Nullable(DataFrameV1Schema),
+      parent: Data.Nullable(DataFrameSchema),
     }),
   }),
   Data.Object({
     FoldList: Data.Object({
-      frame: DataFrameV1Schema,
+      frame: DataFrameSchema,
       child_index: Data.Integer(),
-      child: DataSummaryV1Schema,
+      child: DataSummarySchema,
       siblings: ByteArrayListSchema,
     }),
   }),
   Data.Object({
     FoldMap: Data.Object({
-      frame: DataFrameV1Schema,
+      frame: DataFrameSchema,
       pair_index: Data.Integer(),
-      key: DataSummaryV1Schema,
-      value: DataSummaryV1Schema,
+      key: DataSummarySchema,
+      value: DataSummarySchema,
       key_siblings: ByteArrayListSchema,
       value_siblings: ByteArrayListSchema,
     }),
   }),
   Data.Object({
     FinalizeFrame: Data.Object({
-      frame: DataFrameV1Schema,
-      parent: Data.Nullable(DataFrameV1Schema),
+      frame: DataFrameSchema,
+      parent: Data.Nullable(DataFrameSchema),
     }),
   }),
 ]);
 
-const RedeemerItemProofControlV1Schema = Data.Object({
+const RedeemerItemProofControlSchema = Data.Object({
   version: Data.Integer(),
   mode: Data.Integer(),
   stage: Data.Integer(),
@@ -730,32 +730,32 @@ const RedeemerItemProofControlV1Schema = Data.Object({
   data_length: Data.Integer(),
   execution_memory: Data.Integer(),
   execution_steps: Data.Integer(),
-  traversal: Data.Nullable(DataTraverseControlV1Schema),
+  traversal: Data.Nullable(DataTraverseControlSchema),
 });
 
-const RedeemerItemProofActionV1Schema = Data.Enum([
+const RedeemerItemProofActionSchema = Data.Enum([
   Data.Literal("RedeemerItemOpenHeader"),
   Data.Literal("RedeemerItemOpenTail"),
   Data.Object({
     RedeemerItemTraverseData: Data.Object({
-      action: DataTraverseActionV1Schema,
+      action: DataTraverseActionSchema,
     }),
   }),
   Data.Literal("RedeemerItemFinishData"),
 ]);
 
-const RedeemerItemProofWitnessV1Schema = Data.Object({
-  action: RedeemerItemProofActionV1Schema,
-  chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-  next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+const RedeemerItemProofWitnessSchema = Data.Object({
+  action: RedeemerItemProofActionSchema,
+  chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+  next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
 });
 
 /**
- * Twin of `midgard/native_script_scan_v1.NativeScriptFrameV1` — exported so
+ * Twin of `midgard/native_script_scan_v1.NativeScriptFrame` — exported so
  * the native-script-decoding family's `Scan` redeemer carries the same wire
  * identity rather than declaring a second one.
  */
-export const NativeScriptFrameV1Schema = Data.Object({
+export const NativeScriptFrameSchema = Data.Object({
   tail: Data.Bytes(),
   kind: Data.Integer(),
   child_count: Data.Integer(),
@@ -763,28 +763,28 @@ export const NativeScriptFrameV1Schema = Data.Object({
   valid_count: Data.Integer(),
   required: Data.Integer(),
 });
-export type NativeScriptFrameV1 = Data.Static<typeof NativeScriptFrameV1Schema>;
-export const NativeScriptFrameV1 =
-  NativeScriptFrameV1Schema as unknown as NativeScriptFrameV1;
+export type NativeScriptFrame = Data.Static<typeof NativeScriptFrameSchema>;
+export const NativeScriptFrame =
+  NativeScriptFrameSchema as unknown as NativeScriptFrame;
 
 /**
- * Twin of `midgard/native_tx_script_pushdown_v1.NativeScriptFrameV1`.
+ * Twin of `midgard/native_tx_script_pushdown_v1.NativeScriptFrame`.
  * This semantic-evaluation frame is intentionally distinct from the
  * six-field structure-scan frame above.
  */
-export const NativeScriptPushdownFrameV1Schema = Data.Object({
+export const NativeScriptPushdownFrameSchema = Data.Object({
   kind: Data.Integer(),
   remaining: Data.Integer(),
   satisfied: Data.Integer(),
   required: Data.Integer(),
 });
-export type NativeScriptPushdownFrameV1 = Data.Static<
-  typeof NativeScriptPushdownFrameV1Schema
+export type NativeScriptPushdownFrame = Data.Static<
+  typeof NativeScriptPushdownFrameSchema
 >;
-export const NativeScriptPushdownFrameV1 =
-  NativeScriptPushdownFrameV1Schema as unknown as NativeScriptPushdownFrameV1;
+export const NativeScriptPushdownFrame =
+  NativeScriptPushdownFrameSchema as unknown as NativeScriptPushdownFrame;
 
-export const SignerSetProofV1Schema = Data.Enum([
+export const SignerSetProofSchema = Data.Enum([
   Data.Literal("NoSignerSetProof"),
   Data.Object({
     SignerMembershipProof: Data.Object({
@@ -823,16 +823,15 @@ export const SignerSetProofV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type SignerSetProofV1 = Data.Static<typeof SignerSetProofV1Schema>;
-export const SignerSetProofV1 =
-  SignerSetProofV1Schema as unknown as SignerSetProofV1;
+export type SignerSetProof = Data.Static<typeof SignerSetProofSchema>;
+export const SignerSetProof = SignerSetProofSchema as unknown as SignerSetProof;
 
-const LedgerOutputProofWitnessV1Schema = Data.Enum([
+const LedgerOutputProofWitnessSchema = Data.Enum([
   Data.Literal("LedgerOutputProofNoWitness"),
   Data.Object({
     LedgerOutputProofChunks: Data.Object({
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      chunk_proof: BoundedItemChunkProofSchema,
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),
   }),
   Data.Object({
@@ -845,19 +844,19 @@ const LedgerOutputProofWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofDatum: Data.Object({
-      action: DataTraverseActionV1Schema,
-      chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      action: DataTraverseActionSchema,
+      chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),
   }),
   Data.Object({
     LedgerOutputProofNativeFrame: Data.Object({
-      frame: NativeScriptFrameV1Schema,
+      frame: NativeScriptFrameSchema,
     }),
   }),
 ]);
 
-const ProofFrameV1Schema = Data.Object({
+const ProofFrameSchema = Data.Object({
   version: Data.Integer(),
   frame_index: Data.Integer(),
   cursor: Data.Integer(),
@@ -865,55 +864,55 @@ const ProofFrameV1Schema = Data.Object({
   step: ProofStepSchema,
 });
 
-const ProofDescriptorV1Schema = Data.Object({
+const ProofDescriptorSchema = Data.Object({
   version: Data.Integer(),
   frame_count: Data.Integer(),
   terminal_cursor: Data.Integer(),
   peaks: FrontierSchema,
 });
 
-const LedgerDeltaOperationProofV1Schema = Data.Object({
-  descriptor: ProofDescriptorV1Schema,
+const LedgerDeltaOperationProofSchema = Data.Object({
+  descriptor: ProofDescriptorSchema,
   operation_count: Data.Integer(),
   operation_peaks: FrontierSchema,
   operation_index: Data.Integer(),
   operation_siblings: ByteArrayListSchema,
 });
 
-const ValueAssetMutationWitnessV1Schema = Data.Object({
+const ValueAssetMutationWitnessSchema = Data.Object({
   delta_was_present: Data.Boolean(),
   old_delta: Data.Integer(),
   delta_proof: ProofSchema,
 });
 
-const CekRedeemerContextControlV1Schema = Data.Object({
+const CekRedeemerContextControlSchema = Data.Object({
   cursor: Data.Integer(),
-  map_items: DataSequenceSummaryV1Schema,
+  map_items: DataSequenceSummarySchema,
   active_scan_hash: Data.Bytes(),
   active_redeemer_leaf: Data.Bytes(),
-  active_purpose: DataSummaryV1Schema,
-  current_redeemer: DataSummaryV1Schema,
+  active_purpose: DataSummarySchema,
+  current_redeemer: DataSummarySchema,
 });
 
-const CekFinalContextControlV1Schema = Data.Object({
-  tx_info: DataSummaryV1Schema,
-  redeemer: DataSummaryV1Schema,
-  script_info: DataSummaryV1Schema,
+const CekFinalContextControlSchema = Data.Object({
+  tx_info: DataSummarySchema,
+  redeemer: DataSummarySchema,
+  script_info: DataSummarySchema,
 });
 
-const CekContextPartsControlV1Schema = Data.Object({
-  redeemer_items: DataSequenceSummaryV1Schema,
-  redeemer: DataSummaryV1Schema,
-  script_info: DataSummaryV1Schema,
+const CekContextPartsControlSchema = Data.Object({
+  redeemer_items: DataSequenceSummarySchema,
+  redeemer: DataSummarySchema,
+  script_info: DataSummarySchema,
 });
 
-const CekTxInfoAssemblyControlV1Schema = Data.Object({
-  tail_fields: DataSequenceSummaryV1Schema,
-  redeemer: DataSummaryV1Schema,
-  script_info: DataSummaryV1Schema,
+const CekTxInfoAssemblyControlSchema = Data.Object({
+  tail_fields: DataSequenceSummarySchema,
+  redeemer: DataSummarySchema,
+  script_info: DataSummarySchema,
 });
 
-export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
+export const ValidationAuxiliaryWitnessSchema = Data.Enum([
   Data.Literal("NoAuxiliaryWitness"),
   Data.Object({
     /**
@@ -928,7 +927,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
     TransactionFieldChunkWitness: Data.Object({
       field_index: Data.Integer(),
       item_index: Data.Integer(),
-      carriage: FieldCarriageV1Schema,
+      carriage: FieldCarriageSchema,
     }),
   }),
   Data.Object({
@@ -938,20 +937,20 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
      * construction and the item index is `control.required_seen`.
      */
     RequiredSignerItemWitness: Data.Object({
-      carriage: FieldCarriageV1Schema,
-      signer_proof: SignerSetProofV1Schema,
+      carriage: FieldCarriageSchema,
+      signer_proof: SignerSetProofSchema,
     }),
   }),
   Data.Object({
     NativeScriptTokenWitness: Data.Object({
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-      signer_proof: SignerSetProofV1Schema,
+      chunk_proof: BoundedItemChunkProofSchema,
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+      signer_proof: SignerSetProofSchema,
     }),
   }),
   Data.Object({
     NativeScriptFrameWitness: Data.Object({
-      frame: NativeScriptFrameV1Schema,
+      frame: NativeScriptFrameSchema,
     }),
   }),
   Data.Object({
@@ -961,7 +960,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       next_schedule_hash: Data.Bytes(),
       value: Data.Bytes(),
       proof: ProofSchema,
-      signer_proof: SignerSetProofV1Schema,
+      signer_proof: SignerSetProofSchema,
     }),
   }),
   Data.Object({
@@ -1027,12 +1026,12 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       source_siblings: ByteArrayListSchema,
       redeemer_leaf: Data.Bytes(),
       execution_siblings: ByteArrayListSchema,
-      first_chunk_proof: BoundedItemChunkProofV1Schema,
+      first_chunk_proof: BoundedItemChunkProofSchema,
     }),
   }),
   Data.Object({
     CekCoreStepWitness: Data.Object({
-      step: CoreStepEvidenceV1Schema,
+      step: CoreStepEvidenceSchema,
     }),
   }),
   Data.Object({
@@ -1070,7 +1069,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     CekRedeemerContextSelectWitness: Data.Object({
-      control: CekRedeemerContextControlV1Schema,
+      control: CekRedeemerContextControlSchema,
       item_index: Data.Integer(),
       item_count: Data.Integer(),
       total_length: Data.Integer(),
@@ -1086,19 +1085,19 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     RedeemerItemStepWitness: Data.Object({
-      redeemer_control: Data.Nullable(CekRedeemerContextControlV1Schema),
-      control: RedeemerItemProofControlV1Schema,
-      witness: RedeemerItemProofWitnessV1Schema,
+      redeemer_control: Data.Nullable(CekRedeemerContextControlSchema),
+      control: RedeemerItemProofControlSchema,
+      witness: RedeemerItemProofWitnessSchema,
     }),
   }),
   Data.Object({
     CekContextFinalizeWitness: Data.Object({
-      redeemer_control: CekRedeemerContextControlV1Schema,
+      redeemer_control: CekRedeemerContextControlSchema,
     }),
   }),
   Data.Object({
     CekContextFinalizeSpendWitness: Data.Object({
-      redeemer_control: CekRedeemerContextControlV1Schema,
+      redeemer_control: CekRedeemerContextControlSchema,
       item_index: Data.Integer(),
       key: Data.Bytes(),
       descriptor_cbor: Data.Bytes(),
@@ -1107,17 +1106,17 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     CekContextAssembleWitness: Data.Object({
-      control: CekContextPartsControlV1Schema,
+      control: CekContextPartsControlSchema,
     }),
   }),
   Data.Object({
     CekTxInfoFinalizeWitness: Data.Object({
-      control: CekTxInfoAssemblyControlV1Schema,
+      control: CekTxInfoAssemblyControlSchema,
     }),
   }),
   Data.Object({
     CekContextSeedWitness: Data.Object({
-      control: CekFinalContextControlV1Schema,
+      control: CekFinalContextControlSchema,
     }),
   }),
   Data.Object({
@@ -1132,7 +1131,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       quantity: Data.Integer(),
       asset_peaks: FrontierSchema,
       asset_siblings: ByteArrayListSchema,
-      mutation: ValueAssetMutationWitnessV1Schema,
+      mutation: ValueAssetMutationWitnessSchema,
     }),
   }),
   Data.Object({
@@ -1145,7 +1144,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       quantity: Data.Integer(),
       asset_peaks: FrontierSchema,
       asset_siblings: ByteArrayListSchema,
-      mutation: ValueAssetMutationWitnessV1Schema,
+      mutation: ValueAssetMutationWitnessSchema,
     }),
   }),
   Data.Object({
@@ -1155,7 +1154,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       asset_name: Data.Bytes(),
       quantity: Data.Integer(),
       siblings: ByteArrayListSchema,
-      mutation: ValueAssetMutationWitnessV1Schema,
+      mutation: ValueAssetMutationWitnessSchema,
     }),
   }),
   Data.Object({
@@ -1182,7 +1181,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
      * index are fixed by the stage and its cursor.
      */
     TransactionRedeemerItemBeginWitness: Data.Object({
-      carriage: FieldCarriageV1Schema,
+      carriage: FieldCarriageSchema,
     }),
   }),
   Data.Object({
@@ -1193,7 +1192,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
      * ride here as `item_cbor` are read out of the authenticated preimage now.
      */
     TransactionFieldItemWitness: Data.Object({
-      carriage: FieldCarriageV1Schema,
+      carriage: FieldCarriageSchema,
     }),
   }),
   Data.Object({
@@ -1206,18 +1205,18 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     LedgerOutputProofStepWitness: Data.Object({
-      witness: LedgerOutputProofWitnessV1Schema,
+      witness: LedgerOutputProofWitnessSchema,
     }),
   }),
   Data.Object({
     LedgerOutputProofFinalizeWitness: Data.Object({
       descriptor_cbor: Data.Bytes(),
-      signer_proof: SignerSetProofV1Schema,
+      signer_proof: SignerSetProofSchema,
     }),
   }),
   Data.Object({
     LedgerDeltaProofFrameWitness: Data.Object({
-      frame: ProofFrameV1Schema,
+      frame: ProofFrameSchema,
       siblings: ByteArrayListSchema,
     }),
   }),
@@ -1226,13 +1225,13 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       operation_kind: Data.Integer(),
       key: Data.Bytes(),
       value: Data.Bytes(),
-      operation_proof: LedgerDeltaOperationProofV1Schema,
+      operation_proof: LedgerDeltaOperationProofSchema,
     }),
   }),
   Data.Object({
     ScriptSourceHashBlockWitness: Data.Object({
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      chunk_proof: BoundedItemChunkProofSchema,
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),
   }),
   Data.Object({
@@ -1252,7 +1251,7 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
       source_siblings: ByteArrayListSchema,
       redeemer_leaf: Data.Bytes(),
       execution_siblings: ByteArrayListSchema,
-      first_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      first_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
       signer_peaks: FrontierSchema,
     }),
   }),
@@ -1265,17 +1264,17 @@ export const ValidationAuxiliaryWitnessV1Schema = Data.Enum([
   }),
   Data.Object({
     MintFoldAssetWitness: Data.Object({
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      chunk_proof: BoundedItemChunkProofSchema,
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),
   }),
 ]);
 
-export type ValidationAuxiliaryWitnessV1 = Data.Static<
-  typeof ValidationAuxiliaryWitnessV1Schema
+export type ValidationAuxiliaryWitness = Data.Static<
+  typeof ValidationAuxiliaryWitnessSchema
 >;
-export const ValidationAuxiliaryWitnessV1 =
-  ValidationAuxiliaryWitnessV1Schema as unknown as ValidationAuxiliaryWitnessV1;
+export const ValidationAuxiliaryWitness =
+  ValidationAuxiliaryWitnessSchema as unknown as ValidationAuxiliaryWitness;
 
 /**
  * A field preimage published once, at the proof-item script address, for the
@@ -1295,14 +1294,14 @@ export const ValidationAuxiliaryWitnessV1 =
  * Aiken source of truth:
  * `onchain/aiken/lib/midgard/validation-machine-v1.ak:421`.
  */
-export const ValidationProofItemDatumV1Schema = Data.Object({
+export const ValidationProofItemDatumSchema = Data.Object({
   version: Data.Integer(),
   transaction_id: Data.Bytes({ minLength: 32, maxLength: 32 }),
   transaction_commitment: Data.Bytes({ minLength: 32, maxLength: 32 }),
   field_preimage: Data.Bytes(),
 });
-export type ValidationProofItemDatumV1 = Data.Static<
-  typeof ValidationProofItemDatumV1Schema
+export type ValidationProofItemDatum = Data.Static<
+  typeof ValidationProofItemDatumSchema
 >;
-export const ValidationProofItemDatumV1 =
-  ValidationProofItemDatumV1Schema as unknown as ValidationProofItemDatumV1;
+export const ValidationProofItemDatum =
+  ValidationProofItemDatumSchema as unknown as ValidationProofItemDatum;

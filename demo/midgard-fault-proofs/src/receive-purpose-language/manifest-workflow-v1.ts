@@ -1,80 +1,78 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPortV1 } from "../workflow/family-l1-observation-v1.js";
+import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { submitCapturedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { submitCapturedTransaction } from "../workflow/transaction-boundary-v1.js";
 import {
-  RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES_V1,
-  type ReceivePurposeLanguageContractsV1,
+  RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES,
+  type ReceivePurposeLanguageContracts,
 } from "./contracts-v1.js";
 import {
-  type BoundReceivePurposeLanguageActuatorConfigV1,
-  createReceivePurposeLanguageActuatorV1,
-  type ReceivePurposeLanguageActuatorActionV1,
-  type ReceivePurposeLanguageWorkflowReferencesV1,
+  type BoundReceivePurposeLanguageActuatorConfig,
+  createReceivePurposeLanguageActuator,
+  type ReceivePurposeLanguageActuatorAction,
+  type ReceivePurposeLanguageWorkflowReferences,
 } from "./production-actuator-v1.js";
-import { prepareProductionReceivePurposeLanguageArtifactV1 } from "./production-replay-v1.js";
+import { prepareReceivePurposeLanguageArtifact } from "./production-replay-v1.js";
 import {
-  ReceivePurposeStep02DatumV1Schema,
-  ReceivePurposeStep03DatumV1Schema,
+  ReceivePurposeStep02DatumSchema,
+  ReceivePurposeStep03DatumSchema,
 } from "./schemas-v1.js";
 
-export const RECEIVE_PURPOSE_LANGUAGE_PRODUCTION_WORKFLOW_V1 =
+export const RECEIVE_PURPOSE_LANGUAGE_WORKFLOW =
   "midgard-receive-purpose-language-production-workflow-v1" as const;
-export const RECEIVE_PURPOSE_LANGUAGE_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze(
-  [
-    "manifest",
-    "blueprintJson",
-    "deploymentInfo",
-    "headerHash",
-    "lucid",
-    "signer",
-    "source",
-    "decisionDigest",
-    "stateQueueMutationLeaseCoordinator",
-    "referenceScripts",
-  ] as const,
-);
-export const RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS_V1 = Object.freeze([
-  FraudProofComputationThreadStepDatum,
-  ReceivePurposeStep02DatumV1Schema,
-  ReceivePurposeStep03DatumV1Schema,
+export const RECEIVE_PURPOSE_LANGUAGE_CONFIG_KEYS = Object.freeze([
+  "manifest",
+  "blueprintJson",
+  "deploymentInfo",
+  "headerHash",
+  "lucid",
+  "signer",
+  "source",
+  "decisionDigest",
+  "stateQueueMutationLeaseCoordinator",
+  "referenceScripts",
 ] as const);
-export type ReceivePurposeLanguageRemovalReferencesV1 = Readonly<{
+export const RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS = Object.freeze([
+  FraudProofComputationThreadStepDatum,
+  ReceivePurposeStep02DatumSchema,
+  ReceivePurposeStep03DatumSchema,
+] as const);
+export type ReceivePurposeLanguageRemovalReferences = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -85,71 +83,70 @@ export type ReceivePurposeLanguageRemovalReferencesV1 = Readonly<{
   retiredOperatorsMint: UTxO;
   schedulerSpend: UTxO;
 }>;
-export type ManifestBoundReceivePurposeLanguageWorkflowConfigV1 = Readonly<{
+export type ManifestBoundReceivePurposeLanguageWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: ReceivePurposeLanguageWorkflowReferencesV1 &
-    Readonly<{ removal: ReceivePurposeLanguageRemovalReferencesV1 }>;
+  referenceScripts: ReceivePurposeLanguageWorkflowReferences &
+    Readonly<{ removal: ReceivePurposeLanguageRemovalReferences }>;
 }>;
-export type ManifestBoundReceivePurposeLanguageWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<never> &
-    BoundReceivePurposeLanguageActuatorConfigV1["binding"];
-  actuator: ReturnType<typeof createReceivePurposeLanguageActuatorV1>;
+export type ManifestBoundReceivePurposeLanguageWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<never> &
+    BoundReceivePurposeLanguageActuatorConfig["binding"];
+  actuator: ReturnType<typeof createReceivePurposeLanguageActuator>;
   lucid: LucidEvolution;
   decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPortV1>;
+  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
 /** Strict manifest/reference binding; its input admits no callback authority. */
-export const createManifestBoundReceivePurposeLanguageWorkflowV1 = async (
-  config: ManifestBoundReceivePurposeLanguageWorkflowConfigV1,
-): Promise<ManifestBoundReceivePurposeLanguageWorkflowV1> => {
+export const createManifestBoundReceivePurposeLanguageWorkflow = async (
+  config: ManifestBoundReceivePurposeLanguageWorkflowConfig,
+): Promise<ManifestBoundReceivePurposeLanguageWorkflow> => {
   if (
     Object.keys(config).sort().join("\0") !==
-    [...RECEIVE_PURPOSE_LANGUAGE_PRODUCTION_CONFIG_KEYS_V1].sort().join("\0")
+    [...RECEIVE_PURPOSE_LANGUAGE_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
       "receivePurposeLanguage production config contains callback authority",
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("receivePurposeLanguage decision digest is malformed");
-  const raw = await bindFraudProofWorkflowDeploymentV1({
+  const raw = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
     category: "receivePurposeLanguage" as never,
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS_V1,
+    stepDatumSchemas: RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS,
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: raw.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
-  const binding =
-    raw as unknown as FraudProofWorkflowDeploymentBindingV1<never> &
-      BoundReceivePurposeLanguageActuatorConfigV1["binding"] & {
-        resolvedContracts: {
-          contracts: {
-            computationThread: ReceivePurposeLanguageContractsV1["computationThread"];
-            fraudProof: ReceivePurposeLanguageContractsV1["fraudProof"] & {
-              spendingScriptHash: string;
-            };
-            receivePurposeLanguage?: {
-              steps: ReceivePurposeLanguageContractsV1["steps"];
-            };
+  const binding = raw as unknown as FraudProofWorkflowDeploymentBinding<never> &
+    BoundReceivePurposeLanguageActuatorConfig["binding"] & {
+      resolvedContracts: {
+        contracts: {
+          computationThread: ReceivePurposeLanguageContracts["computationThread"];
+          fraudProof: ReceivePurposeLanguageContracts["fraudProof"] & {
+            spendingScriptHash: string;
+          };
+          receivePurposeLanguage?: {
+            steps: ReceivePurposeLanguageContracts["steps"];
           };
         };
       };
+    };
   const chain = binding.resolvedContracts.contracts.receivePurposeLanguage;
   const hubOraclePolicyId = raw.deploymentInfo.hubOracleMint?.scriptHash;
   if (
@@ -159,7 +156,7 @@ export const createManifestBoundReceivePurposeLanguageWorkflowV1 = async (
   )
     throw new Error("receivePurposeLanguage manifest omitted three-step chain");
   const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding: raw,
       contractName: name,
       utxo,
@@ -171,7 +168,7 @@ export const createManifestBoundReceivePurposeLanguageWorkflowV1 = async (
   ] as const;
   const steps = names.map((name, index) =>
     bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as ReceivePurposeLanguageWorkflowReferencesV1["steps"];
+  ) as unknown as ReceivePurposeLanguageWorkflowReferences["steps"];
   const witnessNames = {
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
@@ -185,22 +182,22 @@ export const createManifestBoundReceivePurposeLanguageWorkflowV1 = async (
       bind(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
-  const contracts: ReceivePurposeLanguageContractsV1 = {
+  ) as Required<FaultProofWitnessReferenceScripts>;
+  const contracts: ReceivePurposeLanguageContracts = {
     steps: chain.steps.map((step, index) => ({
       ...step,
-      blueprintTitle: RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES[index]!,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as ReceivePurposeLanguageContractsV1["steps"],
+    })) as unknown as ReceivePurposeLanguageContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: binding.resolvedContracts.contracts.fraudProof,
     hubOraclePolicyId,
   };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -213,7 +210,7 @@ export const createManifestBoundReceivePurposeLanguageWorkflowV1 = async (
     l1,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
-    actuator: createReceivePurposeLanguageActuatorV1({
+    actuator: createReceivePurposeLanguageActuator({
       binding,
       lucid: config.lucid,
       signer: config.signer,
@@ -225,15 +222,15 @@ export const createManifestBoundReceivePurposeLanguageWorkflowV1 = async (
   });
 };
 const append = async (
-  journal: FraudProofWorkflowJournalStoreV1,
+  journal: FraudProofWorkflowJournalStore,
   workflowId: string,
-  identity: FraudProofWorkflowIdentityV1,
-  event: FraudProofWorkflowJournalEventV1,
+  identity: FraudProofWorkflowIdentity,
+  event: FraudProofWorkflowJournalEvent,
 ) => {
   const sequence = (await journal.load(workflowId)).length;
   await journal.append(
     {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence,
@@ -244,8 +241,8 @@ const append = async (
   );
 };
 const actionFor = async (
-  workflow: ManifestBoundReceivePurposeLanguageWorkflowV1,
-): Promise<ReceivePurposeLanguageActuatorActionV1 | "removed"> => {
+  workflow: ManifestBoundReceivePurposeLanguageWorkflow,
+): Promise<ReceivePurposeLanguageActuatorAction | "removed"> => {
   const stage = (
     await workflow.l1.observe({
       headerHash: workflow.binding.definition.headerHash,
@@ -275,35 +272,34 @@ const actionFor = async (
       }
     : { stage: selected, threadOutRef: stage.threadOutRef };
 };
-export type ReceivePurposeLanguageWorkflowRunResultV1 = Readonly<{
+export type ReceivePurposeLanguageWorkflowRunResult = Readonly<{
   kind: "pending" | "completed";
   workflowId: string;
   txHash?: string;
 }>;
-export const executeManifestBoundReceivePurposeLanguageWorkflowV1 = async ({
+export const executeManifestBoundReceivePurposeLanguageWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  workflow: ManifestBoundReceivePurposeLanguageWorkflowV1;
+  workflow: ManifestBoundReceivePurposeLanguageWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<ReceivePurposeLanguageWorkflowRunResultV1> => {
+  journal: FraudProofWorkflowJournalStore;
+}): Promise<ReceivePurposeLanguageWorkflowRunResult> => {
   const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidenceV1({
+  const block = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
-  const artifact =
-    await prepareProductionReceivePurposeLanguageArtifactV1(block);
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const artifact = await prepareReceivePurposeLanguageArtifact(block);
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     category: "receivePurposeLanguage" as never,
     target: { kind: "state_queue_header", headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await append(journal, workflowId, identity, { kind: "started" });
@@ -356,7 +352,7 @@ export const executeManifestBoundReceivePurposeLanguageWorkflowV1 = async ({
     attempt: 1,
     txHash: captured.transaction.txHash,
   });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error("receivePurposeLanguage provider substituted transaction");
   await append(journal, workflowId, identity, {
@@ -367,42 +363,42 @@ export const executeManifestBoundReceivePurposeLanguageWorkflowV1 = async ({
   });
   return { kind: "pending", workflowId, txHash: submitted };
 };
-export const runOrResumeManifestBoundReceivePurposeLanguageWorkflowV1 =
+export const runOrResumeManifestBoundReceivePurposeLanguageWorkflow =
   async (input: {
-    workflow: ManifestBoundReceivePurposeLanguageWorkflowV1;
+    workflow: ManifestBoundReceivePurposeLanguageWorkflow;
     sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStoreV1;
+    journal: FraudProofWorkflowJournalStore;
   }) => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
       throw new Error(
         "receivePurposeLanguage runner rejects caller-authored evidence",
       );
-    return await executeManifestBoundReceivePurposeLanguageWorkflowV1(input);
+    return await executeManifestBoundReceivePurposeLanguageWorkflow(input);
   };
-export type LoadedReceivePurposeLanguageProductionWorkflowV1 = Readonly<{
+export type LoadedReceivePurposeLanguageWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundReceivePurposeLanguageWorkflowConfigV1;
+  config: ManifestBoundReceivePurposeLanguageWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
-export type LoadReceivePurposeLanguageProductionWorkflowV1 = (input: {
+export type LoadReceivePurposeLanguageWorkflow = (input: {
   runtimeConfigPath: string;
-  invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedReceivePurposeLanguageProductionWorkflowV1>;
-export const createReceivePurposeLanguageProductionWorkflowRunnerSurfaceV1 = ({
+  invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedReceivePurposeLanguageWorkflow>;
+export const createReceivePurposeLanguageWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  loadRuntimeConfig: LoadReceivePurposeLanguageProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  loadRuntimeConfig: LoadReceivePurposeLanguageWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (String(invocation.category) !== "receivePurposeLanguage")
         throw new Error("receivePurposeLanguage runner category changed");
-      const journal = bindProductionWorkflowFundingReservationJournalV1({
+      const journal = bindWorkflowFundingReservationJournal({
         permit: invocation.fundingReservationPermit,
-        journal: bindProductionWorkflowActuationJournalV1({
-          journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
             invocation.journalDirectory,
           ),
           permit: invocation.actuationPermit,
@@ -412,7 +408,7 @@ export const createReceivePurposeLanguageProductionWorkflowRunnerSurfaceV1 = ({
           headerHash: invocation.headerHash,
         }),
       });
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
         category: "receivePurposeLanguage" as never,
@@ -434,7 +430,7 @@ export const createReceivePurposeLanguageProductionWorkflowRunnerSurfaceV1 = ({
             "receivePurposeLanguage requires concrete public retained DA",
           );
         const workflow =
-          await createManifestBoundReceivePurposeLanguageWorkflowV1(
+          await createManifestBoundReceivePurposeLanguageWorkflow(
             loaded.config,
           );
         if (
@@ -446,7 +442,7 @@ export const createReceivePurposeLanguageProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "receivePurposeLanguage runtime binding changed invocation",
           );
-        return await runOrResumeManifestBoundReceivePurposeLanguageWorkflowV1({
+        return await runOrResumeManifestBoundReceivePurposeLanguageWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

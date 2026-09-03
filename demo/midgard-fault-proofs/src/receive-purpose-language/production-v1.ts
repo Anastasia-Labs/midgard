@@ -1,6 +1,6 @@
 import type {
-  ForcedInclusionTxV1,
-  HeaderV1,
+  ForcedInclusionTx,
+  Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
@@ -8,20 +8,20 @@ import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { ReceivePurposeLanguageContractsV1 } from "./contracts-v1.js";
-import type { ReceivePurposeLanguageEvidenceV1 } from "./family-v1.js";
-import { submitReceivePurposeLanguageCancelV1 } from "./submit-cancel-v1.js";
-import { submitReceivePurposeLanguageInitV1 } from "./submit-init-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { ReceivePurposeLanguageContracts } from "./contracts-v1.js";
+import type { ReceivePurposeLanguageEvidence } from "./family-v1.js";
+import { submitReceivePurposeLanguageCancel } from "./submit-cancel-v1.js";
+import { submitReceivePurposeLanguageInit } from "./submit-init-v1.js";
 import {
-  submitReceivePurposeLanguageStep01AcceptedV1,
-  submitReceivePurposeLanguageStep01ForcedV1,
+  submitReceivePurposeLanguageStep01Accepted,
+  submitReceivePurposeLanguageStep01Forced,
 } from "./submit-step-01-v1.js";
-import type { ReceivePurposeLanguageAuthenticationV1 } from "./submit-step-02-v1.js";
-import { submitReceivePurposeLanguageStep02V1 } from "./submit-step-02-v1.js";
-import { submitReceivePurposeLanguageStep03V1 } from "./submit-step-03-v1.js";
+import type { ReceivePurposeLanguageAuthentication } from "./submit-step-02-v1.js";
+import { submitReceivePurposeLanguageStep02 } from "./submit-step-02-v1.js";
+import { submitReceivePurposeLanguageStep03 } from "./submit-step-03-v1.js";
 
-export const RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS_V1 = Object.freeze([
+export const RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS = Object.freeze([
   "blueprint",
   "network",
   "lucid",
@@ -32,29 +32,27 @@ export const RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS_V1 = Object.freeze([
   "category",
   "referenceScripts",
 ] as const);
-export type ReceivePurposeLanguageProductionReferencesV1 = Readonly<{
+export type ReceivePurposeLanguageReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
-export type ReceivePurposeLanguageProductionConfigV1 = Readonly<{
+export type ReceivePurposeLanguageConfig = Readonly<{
   blueprint: unknown;
   network: Network;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ReceivePurposeLanguageContractsV1;
+  contracts: ReceivePurposeLanguageContracts;
   categoryId: string;
   catalogue: Parameters<
-    typeof submitReceivePurposeLanguageInitV1
+    typeof submitReceivePurposeLanguageInit
   >[0]["catalogue"];
-  category: Parameters<
-    typeof submitReceivePurposeLanguageInitV1
-  >[0]["category"];
-  referenceScripts: ReceivePurposeLanguageProductionReferencesV1;
+  category: Parameters<typeof submitReceivePurposeLanguageInit>[0]["category"];
+  referenceScripts: ReceivePurposeLanguageReferences;
 }>;
-export type ReceivePurposeLanguageDirectProductionArtifactV1 = Readonly<{
-  evidence: ReceivePurposeLanguageEvidenceV1;
-  authentication: ReceivePurposeLanguageAuthenticationV1;
-  header: HeaderV1;
+export type ReceivePurposeLanguageDirectArtifact = Readonly<{
+  evidence: ReceivePurposeLanguageEvidence;
+  authentication: ReceivePurposeLanguageAuthentication;
+  header: Header;
   source:
     | Readonly<{
         kind: "accepted";
@@ -63,10 +61,10 @@ export type ReceivePurposeLanguageDirectProductionArtifactV1 = Readonly<{
       }>
     | Readonly<{
         kind: "forced";
-        membership: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+        membership: RootMembershipProof<OutputReference, ForcedInclusionTx>;
       }>;
 }>;
-export type ReceivePurposeLanguageProductionActionV1 =
+export type ReceivePurposeLanguageAction =
   | Readonly<{
       stage: "init";
       stateQueueBlockOutRef: string;
@@ -75,17 +73,17 @@ export type ReceivePurposeLanguageProductionActionV1 =
   | Readonly<{
       stage: "step01";
       threadOutRef: string;
-      artifact: ReceivePurposeLanguageDirectProductionArtifactV1;
+      artifact: ReceivePurposeLanguageDirectArtifact;
     }>
   | Readonly<{
       stage: "step02";
       threadOutRef: string;
-      artifact: ReceivePurposeLanguageDirectProductionArtifactV1;
+      artifact: ReceivePurposeLanguageDirectArtifact;
     }>
   | Readonly<{
       stage: "step03";
       threadOutRef: string;
-      artifact: ReceivePurposeLanguageDirectProductionArtifactV1;
+      artifact: ReceivePurposeLanguageDirectArtifact;
     }>
   | Readonly<{ stage: "cancel"; threadOutRef: string }>;
 
@@ -94,11 +92,11 @@ export type ReceivePurposeLanguageProductionActionV1 =
  * verdict callback: every transaction is built, locally evaluated, signed and
  * submitted by the family-owned Lucid lifecycle.
  */
-export const createReceivePurposeLanguageProductionWorkflowV1 = (
-  config: ReceivePurposeLanguageProductionConfigV1,
+export const createReceivePurposeLanguageWorkflow = (
+  config: ReceivePurposeLanguageConfig,
 ) =>
   Object.freeze({
-    run: async (action: ReceivePurposeLanguageProductionActionV1) => {
+    run: async (action: ReceivePurposeLanguageAction) => {
       const common = {
         lucid: config.lucid,
         contracts: config.contracts,
@@ -106,7 +104,7 @@ export const createReceivePurposeLanguageProductionWorkflowV1 = (
         signer: config.signer,
       } as const;
       if (action.stage === "init")
-        return await submitReceivePurposeLanguageInitV1({
+        return await submitReceivePurposeLanguageInit({
           lucid: config.lucid,
           blueprint: config.blueprint,
           network: config.network,
@@ -121,7 +119,7 @@ export const createReceivePurposeLanguageProductionWorkflowV1 = (
       if (action.stage === "step01") {
         const index = BigInt(action.artifact.evidence.finding.executionIndex);
         return action.artifact.source.kind === "accepted"
-          ? await submitReceivePurposeLanguageStep01AcceptedV1({
+          ? await submitReceivePurposeLanguageStep01Accepted({
               ...common,
               blueprint: config.blueprint,
               network: config.network,
@@ -134,7 +132,7 @@ export const createReceivePurposeLanguageProductionWorkflowV1 = (
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
             })
-          : await submitReceivePurposeLanguageStep01ForcedV1({
+          : await submitReceivePurposeLanguageStep01Forced({
               ...common,
               threadOutRef: action.threadOutRef,
               header: action.artifact.header,
@@ -144,7 +142,7 @@ export const createReceivePurposeLanguageProductionWorkflowV1 = (
             });
       }
       if (action.stage === "step02")
-        return await submitReceivePurposeLanguageStep02V1({
+        return await submitReceivePurposeLanguageStep02({
           ...common,
           threadOutRef: action.threadOutRef,
           evidence: action.artifact.evidence,
@@ -152,7 +150,7 @@ export const createReceivePurposeLanguageProductionWorkflowV1 = (
           referenceScriptUtxo: config.referenceScripts.steps[1],
         });
       if (action.stage === "step03")
-        return await submitReceivePurposeLanguageStep03V1({
+        return await submitReceivePurposeLanguageStep03({
           ...common,
           threadOutRef: action.threadOutRef,
           evidence: action.artifact.evidence,
@@ -172,7 +170,7 @@ export const createReceivePurposeLanguageProductionWorkflowV1 = (
         throw new Error(
           "receivePurposeLanguage cancel thread is not at a family step",
         );
-      return await submitReceivePurposeLanguageCancelV1({
+      return await submitReceivePurposeLanguageCancel({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.categoryId,

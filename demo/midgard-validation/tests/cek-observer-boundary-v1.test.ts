@@ -1,25 +1,25 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_LIMITS,
 } from "@al-ft/midgard-core";
 import { CML, Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeMidgardCekContextControlV1,
-  encodeMidgardCekValidationWitnessV1,
-  finalizeMidgardCekObserverItemsV1,
-  initialMidgardCekContextControlV1,
-  prependMidgardCekObserverItemV1,
-  summarizeMidgardCekLucidDataV1,
-  validateMidgardCekObserverCollectionV1,
+  encodeMidgardCekContextControl,
+  encodeMidgardCekValidationWitness,
+  finalizeMidgardCekObserverItems,
+  initialMidgardCekContextControl,
+  prependMidgardCekObserverItem,
+  summarizeMidgardCekLucidData,
+  validateMidgardCekObserverCollection,
 } from "../src/cek-context.js";
 import {
-  buildSignedCardanoObserverNativeScriptsCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildSignedCardanoObserverNativeScriptsCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  deterministicCardanoBoundaryPrivateKey,
+  exerciseMidgardOrderedCollectionBoundary,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
 
 const observerHash = (index: number): Buffer => {
@@ -32,7 +32,7 @@ const observers = (count: number): readonly Buffer[] =>
   Array.from({ length: count }, (_, index) => observerHash(index));
 
 const initialControl = (languageTag: 3 | 128) =>
-  initialMidgardCekContextControlV1({
+  initialMidgardCekContextControl({
     languageTag,
     programTermRoot: Buffer.alloc(32, 0xaa),
     programEnvelopeHash: Buffer.alloc(32, 0xdd),
@@ -44,7 +44,7 @@ const initialControl = (languageTag: 3 | 128) =>
   });
 
 const buildExactObserverBoundary = async () => {
-  const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+  const spendingKey = deterministicCardanoBoundaryPrivateKey(0);
   const address = CML.EnterpriseAddress.new(
     0,
     CML.Credential.new_pub_key(spendingKey.to_public().hash()),
@@ -52,7 +52,7 @@ const buildExactObserverBoundary = async () => {
     .to_address()
     .to_bech32();
   const build = (requestedObserverCount: number) =>
-    buildSignedCardanoObserverNativeScriptsCandidateV1({
+    buildSignedCardanoObserverNativeScriptsCandidate({
       privateKeyBech32: spendingKey.to_bech32(),
       fundingInput: {
         txHash: "00".repeat(32),
@@ -62,14 +62,14 @@ const buildExactObserverBoundary = async () => {
       },
       recipientAddress: address,
       requestedObserverCount,
-      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+      minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+      minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
       minFeeRefScriptCostPerByte:
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
     });
   const accepted = await build(224);
   const adjacent = await build(225);
-  const acceptedField = exerciseMidgardOrderedCollectionBoundaryV1({
+  const acceptedField = exerciseMidgardOrderedCollectionBoundary({
     signedCardanoCborHex: accepted.cborHex,
     fieldIndex: 3,
   });
@@ -95,8 +95,8 @@ const exactObserverBoundary = () => {
 describe("bounded CEK observer context", () => {
   it("encodes the required canonical envelope identity in the exact V1 tuple positions", () => {
     const control = initialControl(3);
-    const contextCbor = encodeMidgardCekContextControlV1(control);
-    const activeWitness = encodeMidgardCekValidationWitnessV1({
+    const contextCbor = encodeMidgardCekContextControl(control);
+    const activeWitness = encodeMidgardCekValidationWitness({
       nativeControlCbor: Buffer.from([0x80]),
       contextControl: control,
       executionCursor: 7,
@@ -107,7 +107,7 @@ describe("bounded CEK observer context", () => {
       executionMemoryLimit: 19n,
       programEnvelopeHash: control.programEnvelopeHash,
     });
-    const inactiveWitness = encodeMidgardCekValidationWitnessV1({
+    const inactiveWitness = encodeMidgardCekValidationWitness({
       nativeControlCbor: Buffer.from([0x80]),
       contextControl: null,
       executionCursor: 0,
@@ -143,7 +143,7 @@ describe("bounded CEK observer context", () => {
 
     expect(boundary.accepted.signedBytes).toBe(16_338);
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.acceptedField.itemCount).toBe(224);
     expect(boundary.acceptedField.revealStepCount).toBe(224);
@@ -158,14 +158,14 @@ describe("bounded CEK observer context", () => {
     // moment tiers 2–3 are emittable (#600).
     expect(boundary.acceptedField.maxRevealBytes).toBe(6_946);
     expect(boundary.acceptedField.maxRevealBytes).toBeLessThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
 
     for (const { languageTag, midgardEncoding } of [
       { languageTag: 3 as const, midgardEncoding: false },
       { languageTag: 128 as const, midgardEncoding: true },
     ]) {
-      validateMidgardCekObserverCollectionV1(hashes);
+      validateMidgardCekObserverCollection(hashes);
       let control = initialControl(languageTag);
 
       for (let itemIndex = hashes.length - 1; itemIndex >= 0; itemIndex -= 1) {
@@ -180,7 +180,7 @@ describe("bounded CEK observer context", () => {
         control = {
           ...control,
           observerCount: hashes.length,
-          observerItems: prependMidgardCekObserverItemV1({
+          observerItems: prependMidgardCekObserverItem({
             observerHash: hashes[itemIndex]!,
             midgardEncoding,
             tail: control.observerItems,
@@ -189,7 +189,7 @@ describe("bounded CEK observer context", () => {
         };
       }
 
-      const summary = finalizeMidgardCekObserverItemsV1({
+      const summary = finalizeMidgardCekObserverItems({
         items: control.observerItems,
         midgardEncoding,
       });
@@ -201,10 +201,10 @@ describe("bounded CEK observer context", () => {
             ),
           );
 
-      expect(summary).toEqual(summarizeMidgardCekLucidDataV1(expected));
+      expect(summary).toEqual(summarizeMidgardCekLucidData(expected));
       expect(control.observerItems.length).toBe(224n);
       expect(
-        encodeMidgardCekContextControlV1({
+        encodeMidgardCekContextControl({
           ...control,
           stage: 5,
         }).subarray(0, 2),
@@ -216,7 +216,7 @@ describe("bounded CEK observer context", () => {
             observerCekBoundaryV1: {
               signedCardanoBytes: boundary.accepted.signedBytes,
               byteMargin:
-                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - boundary.accepted.signedBytes,
+                CARDANO_BOUNDARY_MAX_TX_SIZE - boundary.accepted.signedBytes,
               fieldBytes: boundary.acceptedField.fieldBytes,
               itemCount: boundary.acceptedField.itemCount,
               maxRevealBytes: boundary.acceptedField.maxRevealBytes,
@@ -247,35 +247,29 @@ describe("bounded CEK observer context", () => {
     const boundary = await exactObserverBoundary();
     expect(boundary.adjacent.signedBytes).toBe(16_410);
     expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(() =>
-      validateMidgardCekObserverCollectionV1(observers(225)),
+      validateMidgardCekObserverCollection(observers(225)),
     ).not.toThrow();
     expect(() =>
-      validateMidgardCekObserverCollectionV1(
-        observers(MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount),
+      validateMidgardCekObserverCollection(
+        observers(MIDGARD_CONSENSUS_LIMITS.maxRequiredObserverCount),
       ),
     ).not.toThrow();
     expect(() =>
-      validateMidgardCekObserverCollectionV1(
-        observers(MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount + 1),
+      validateMidgardCekObserverCollection(
+        observers(MIDGARD_CONSENSUS_LIMITS.maxRequiredObserverCount + 1),
       ),
     ).toThrow("transaction-size-derived collection guardrail");
     expect(() =>
-      validateMidgardCekObserverCollectionV1([
-        observerHash(0),
-        observerHash(0),
-      ]),
+      validateMidgardCekObserverCollection([observerHash(0), observerHash(0)]),
     ).toThrow("strictly ordered and unique");
     expect(() =>
-      validateMidgardCekObserverCollectionV1([
-        observerHash(1),
-        observerHash(0),
-      ]),
+      validateMidgardCekObserverCollection([observerHash(1), observerHash(0)]),
     ).toThrow("strictly ordered and unique");
     expect(() =>
-      validateMidgardCekObserverCollectionV1([Buffer.alloc(27)]),
+      validateMidgardCekObserverCollection([Buffer.alloc(27)]),
     ).toThrow("exactly 28 bytes");
   });
 });

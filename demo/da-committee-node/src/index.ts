@@ -31,7 +31,7 @@ import {
   validateDaSignerMembership,
 } from "./signer.js";
 import { openWatcherStore } from "./store/factory.js";
-import { runRetentionCycleV1 } from "./store/retention.js";
+import { runRetentionCycle } from "./store/retention.js";
 import {
   type WatcherRetentionReadinessSnapshot,
   WatcherService,
@@ -257,7 +257,7 @@ const main = async (): Promise<void> => {
       minimumFinalityDepth: config.finalityDepth,
     };
     try {
-      const { deadlines, prune } = await runRetentionCycleV1(store, options);
+      const { deadlines, prune } = await runRetentionCycle(store, options);
       retentionReadiness = {
         status: deadlines.alerting > 0 ? "alerting" : "ok",
         checkedAt: new Date(options.nowMs).toISOString(),

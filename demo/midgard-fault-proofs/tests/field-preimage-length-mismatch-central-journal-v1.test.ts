@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { createFieldPreimageLengthCentralJournalAdapterV1 } from "../src/field-preimage-length-mismatch/central-journal-v1.js";
-import type { PreparedFieldPreimageLengthWorkflowV1 } from "../src/field-preimage-length-mismatch/workflow-v1.js";
+import { createFieldPreimageLengthCentralJournalAdapter } from "../src/field-preimage-length-mismatch/central-journal-v1.js";
+import type { PreparedFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow-v1.js";
 import type {
-  FraudProofWorkflowJournalEntryV1,
-  FraudProofWorkflowJournalStoreV1,
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal-v1.js";
 
 const prepared = (
   evidenceDigest = "4".repeat(64),
-): PreparedFieldPreimageLengthWorkflowV1 => ({
+): PreparedFieldPreimageLengthWorkflow => ({
   schemaVersion: "midgard-field-preimage-length-mismatch-workflow-v1",
   headerHash: "2".repeat(56),
   transactionId: "3".repeat(64),
@@ -23,8 +23,8 @@ const prepared = (
 });
 
 const memoryStore = () => {
-  const entries: FraudProofWorkflowJournalEntryV1[] = [];
-  const store: FraudProofWorkflowJournalStoreV1 = {
+  const entries: FraudProofWorkflowJournalEntry[] = [];
+  const store: FraudProofWorkflowJournalStore = {
     load: async () => entries,
     append: async (entry, expectedSequence) => {
       if (expectedSequence !== entries.length) throw new Error("conflict");
@@ -34,8 +34,8 @@ const memoryStore = () => {
   return { entries, store };
 };
 
-const adapter = (store: FraudProofWorkflowJournalStoreV1, value = prepared()) =>
-  createFieldPreimageLengthCentralJournalAdapterV1({
+const adapter = (store: FraudProofWorkflowJournalStore, value = prepared()) =>
+  createFieldPreimageLengthCentralJournalAdapter({
     store,
     deploymentFingerprint: "1".repeat(64),
     decisionDigest: "5".repeat(64),

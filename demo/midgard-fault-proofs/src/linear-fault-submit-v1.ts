@@ -8,13 +8,13 @@ import type {
 import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
 import { excludeUtxo } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "./workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
-export const submitLinearFaultContinueV1 = async ({
+export const submitLinearFaultContinue = async ({
   lucid,
   signerPaymentKeyHash,
   threadUtxo,
@@ -42,7 +42,7 @@ export const submitLinearFaultContinueV1 = async ({
   readonly redeemer: BuildTxWithRedeemer;
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation: boolean;
 }) => {
   const walletUtxos = await lucid.wallet().getUtxos();
@@ -71,10 +71,10 @@ export const submitLinearFaultContinueV1 = async ({
         : { presetWalletInputs: usableWalletUtxos as UTxO[] }),
     });
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: stepRole,
         utxo: stepReference,
         expectedScript: stepScript,

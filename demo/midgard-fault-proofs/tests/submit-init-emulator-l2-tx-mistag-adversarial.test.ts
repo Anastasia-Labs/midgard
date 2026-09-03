@@ -4,21 +4,21 @@ import { describe, expect, it } from "vitest";
 import { submitL2TxMistagInit, submitL2TxMistagStep01 } from "../src/index.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
-  buildL2TxMistagBlockFixtureV1,
-  forceL2TxMistagStep01ForAdversarialTestV1,
-  l2TxMistagCategoryV1,
-  publishL2TxMistagReferenceScriptsV1,
+  buildL2TxMistagBlockFixture,
+  forceL2TxMistagStep01ForAdversarialTest,
+  l2TxMistagCategory,
+  publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator-v1.js";
 import {
   expectStateQueueHeaderOrder,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 
 describe("l2-tx-mistag adversarial refusal", () => {
   it("refuses an honest code-0 leaf at the exact on-chain check and a scalar flip at membership", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realL2TxMistag: true,
         alwaysFraudProofCatalogue: true,
@@ -26,13 +26,13 @@ describe("l2-tx-mistag adversarial refusal", () => {
     });
     const contracts = harness.contracts.l2TxMistag;
     if (contracts === undefined) throw new Error("l2-tx-mistag missing");
-    const category = l2TxMistagCategoryV1(harness);
-    const [step01Ref] = await publishL2TxMistagReferenceScriptsV1({ harness });
-    const honest = await buildL2TxMistagBlockFixtureV1("TxIsValid");
-    const scalarFlip = await buildL2TxMistagBlockFixtureV1("TxIsInvalid");
+    const category = l2TxMistagCategory(harness);
+    const [step01Ref] = await publishL2TxMistagReferenceScripts({ harness });
+    const honest = await buildL2TxMistagBlockFixture("TxIsValid");
+    const scalarFlip = await buildL2TxMistagBlockFixture("TxIsInvalid");
     expect(honest.nativeTxId).toBe(scalarFlip.nativeTxId);
     expect(honest.compactCbor).not.toBe(scalarFlip.compactCbor);
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -83,7 +83,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
     // Onchain plane: the test-only forced builder omits that one local gate;
     // the real step-01 validator refuses its authenticated code 0.
     await expect(
-      forceL2TxMistagStep01ForAdversarialTestV1({
+      forceL2TxMistagStep01ForAdversarialTest({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts,

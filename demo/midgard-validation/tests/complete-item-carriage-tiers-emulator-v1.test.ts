@@ -5,44 +5,44 @@ import {
   asArray,
   asBytes,
   decodeSingleCbor,
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import {
-  type MidgardFieldCarriagePlanV1,
-  planMidgardFieldCarriageV1,
+  type MidgardFieldCarriagePlan,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  type MidgardFieldCarriageV1,
-  selectMidgardFieldCarriageTierV1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  type MidgardFieldCarriage,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  deriveCanonicalDecodeItemStageDataV1,
-  validationOneStepEvidenceHashV1,
+  deriveCanonicalDecodeItemStageData,
+  validationOneStepEvidenceHash,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  assertMidgardFieldCarriageResolvesAtDoorV1,
-  AuthenticatedCanonicalDecodeItemDatumV1,
-  buildUnsignedFieldPreimageCertificationV1Program,
-  buildUnsignedFieldPreimagePublicationV1Program,
+  assertMidgardFieldCarriageResolvesAtDoor,
+  AuthenticatedCanonicalDecodeItemDatum,
+  buildUnsignedFieldPreimageCertificationProgram,
+  buildUnsignedFieldPreimagePublicationProgram,
   buildValidationTraceDisputeFaultProofContracts,
-  fieldPreimagePublicationOutputsV1,
-  ObservedCanonicalDecodeItemDatumV1,
+  fieldPreimagePublicationOutputs,
+  ObservedCanonicalDecodeItemDatum,
   parseFaultProofBlueprint,
-  PreparedCanonicalDecodeItemDatumV1,
-  PreparedValidationResolutionDatumV1,
-  type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
+  PreparedCanonicalDecodeItemDatum,
+  PreparedValidationResolutionDatum,
+  type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
   requireInputIndex,
   requireUniqueOutputIndex,
-  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
+  resolveMidgardFieldCarriageAgainstReferenceInputs,
   validationMachineStateDataFromCore,
-  ValidationOneStepWitnessV1,
-  type ValidationOneStepWitnessV1 as ValidationOneStepWitnessV1Data,
+  ValidationOneStepWitness,
+  type ValidationOneStepWitness as ValidationOneStepWitnessData,
   type ValidationTraceDisputeFaultProofContracts,
-  VerifiedCanonicalDecodeItemDatumV1,
+  VerifiedCanonicalDecodeItemDatum,
 } from "@al-ft/midgard-sdk";
 import {
   applyDoubleCborEncoding,
@@ -70,16 +70,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgumentV1,
+  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
-  encodeValidationOneStepWitnessCborV1,
-  type ValidationMachineFieldCarriageResolverV1,
+  encodeValidationOneStepWitnessCbor,
+  type ValidationMachineFieldCarriageResolver,
 } from "../src/index.js";
 import {
-  fundingLovelaceForOutputsV1,
-  makeMinAdaFundedExactSizeOutputItemV1,
+  fundingLovelaceForOutputs,
+  makeMinAdaFundedExactSizeOutputItem,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
@@ -108,13 +108,13 @@ import {
  * emulator ledger.
  *
  * **Nothing here is hand-written.** The preimage comes from the machine's own
- * trace, the tier from `selectMidgardFieldCarriageTierV1`, the plan from
- * `planMidgardFieldCarriageV1`, the publications and the §8.6 certification
+ * trace, the tier from `selectMidgardFieldCarriageTier`, the plan from
+ * `planMidgardFieldCarriage`, the publications and the §8.6 certification
  * from the SDK builders, the indices from
- * `resolveMidgardFieldCarriageAgainstReferenceInputsV1` resolving by content
+ * `resolveMidgardFieldCarriageAgainstReferenceInputs` resolving by content
  * against the door transaction's own reference-input set, the committed
- * evidence from `buildValidationOneStepArgumentV1`, and the staged datums from
- * `deriveCanonicalDecodeItemStageDataV1` — the same function the production
+ * evidence from `buildValidationOneStepArgument`, and the staged datums from
+ * `deriveCanonicalDecodeItemStageData` — the same function the production
  * submitter uses. There is no CBOR literal and no copied hash in this file.
  *
  * **The certificate is the compiled one.** Tier 3's door checks the named
@@ -155,7 +155,7 @@ const SIGNER_HASH = Buffer.from(
   SIGNING_KEY.to_public().hash().to_raw_bytes(),
 ).toString("hex");
 
-const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /** §2.5 field 2 — the outputs field, the one these traces read complete items of. */
 const OUTPUT_FIELD_INDEX = 2;
@@ -177,10 +177,10 @@ const NO_AUXILIARY_WITNESS_CBOR = Buffer.from("d87980", "hex");
  * floor without moving its length, so every carriage measurement below
  * measures the same number of bytes it did before the wiring.
  */
-const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
+const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItem;
 
 const traceContext = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: Buffer.from("d8799f4100ff", "hex"),
   sourceKind: "normal" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -196,7 +196,7 @@ const traceContext = {
  * Two rather than one, and that is the whole reason this helper exists. §8.4
  * partitions on the *field*'s preimage while the trace producer routes on the
  * *item*: an output past
- * `MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes` is decoded
+ * `MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes` is decoded
  * by canonicalDecode's chunked route and emits no complete-item witness at all,
  * so a single-output field cannot reach tier 3 through this chain — its
  * complete-item step stops existing several thousand bytes below `chunk_bytes_k`.
@@ -205,7 +205,7 @@ const traceContext = {
  * which is the ordinary shape of a large transaction anyway.
  *
  * The envelope is `82 ‖ 59 LLLL ‖ item0 ‖ 59 LLLL ‖ item1` — seven bytes of
- * framing — and the result is checked against `encodeMidgardFieldPreimageV1`
+ * framing — and the result is checked against `encodeMidgardFieldPreimage`
  * rather than trusted.
  */
 const outputsForFieldTwoPreimageBytes = (
@@ -217,7 +217,7 @@ const outputsForFieldTwoPreimageBytes = (
     makeExactSizeOutputItem(first),
     makeExactSizeOutputItem(payload - first),
   ];
-  const measured = encodeMidgardFieldPreimageV1(outputs).length;
+  const measured = encodeMidgardFieldPreimage(outputs).length;
   if (measured !== targetBytes) {
     throw new Error(
       `two-output field-2 envelope measured ${measured.toString()} bytes, wanted ${targetBytes.toString()}`,
@@ -226,7 +226,7 @@ const outputsForFieldTwoPreimageBytes = (
   for (const output of outputs) {
     if (
       output.length >
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes
     ) {
       throw new Error(
         "output item is past the producer's complete-item threshold and would be chunked",
@@ -247,7 +247,7 @@ const buildTraceWithOutputs = async (
   // funded at its own minimum-Ada floor, or stage five would convict this
   // trace with `E_VALUE_NOT_PRESERVED` instead of accepting it. The fee is
   // zero, so the sum is exact.
-  const spentOutput = makeOutput(fundingLovelaceForOutputsV1(outputs));
+  const spentOutput = makeOutput(fundingLovelaceForOutputs(outputs));
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],
@@ -256,7 +256,7 @@ const buildTraceWithOutputs = async (
   const expectedLedgerOps = [
     { type: "delete" as const, key: spent },
     ...outputs.map((output, index) =>
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId, BigInt(index)),
         outputCbor: output,
       }),
@@ -493,7 +493,7 @@ const publishReferenceScript = async (
 // ## The carriage, published to and resolved back out of the ledger
 
 type PublishedCarriage = {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly chunkUtxos: readonly UTxO[];
   readonly certificateUtxo: UTxO | undefined;
   readonly certificatePolicyId: string;
@@ -508,16 +508,16 @@ const publishCarriage = async ({
   witnessSetCompactCbor,
 }: {
   readonly harness: Harness;
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly compactCbor: string;
   readonly witnessSetCompactCbor: string;
 }): Promise<PublishedCarriage> => {
   const policy = certificatePolicy();
   const chunkUtxos: UTxO[] = [];
   const publicationBytes: number[] = [];
-  for (const publication of fieldPreimagePublicationOutputsV1(plan)) {
+  for (const publication of fieldPreimagePublicationOutputs(plan)) {
     const unsigned = await Effect.runPromise(
-      buildUnsignedFieldPreimagePublicationV1Program(harness.lucid, {
+      buildUnsignedFieldPreimagePublicationProgram(harness.lucid, {
         publication,
         publisherAddress: harness.walletAddress,
       }),
@@ -548,7 +548,7 @@ const publishCarriage = async ({
     };
   }
   const unsigned = await Effect.runPromise(
-    buildUnsignedFieldPreimageCertificationV1Program(harness.lucid, {
+    buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
       plan,
       certificatePolicyId: policy.policyId,
       certificateAddress: policy.address,
@@ -683,13 +683,13 @@ const submitStage = async ({
 // ## One journey per tier
 
 type TierJourney = {
-  readonly tier: MidgardFieldCarriageV1["carriage"];
+  readonly tier: MidgardFieldCarriage["carriage"];
   readonly preimageBytes: number;
-  readonly committedCarriage: MidgardFieldCarriageV1;
+  readonly committedCarriage: MidgardFieldCarriage;
   readonly auxiliaryBytes: number;
   readonly doorReferenceInputs: readonly UTxO[];
   readonly published: PublishedCarriage;
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly observedDatum: string;
   readonly observedOnLedger: string;
   readonly stageBytes: Readonly<Record<string, number>>;
@@ -699,7 +699,7 @@ type TierJourney = {
   };
   readonly reobserve: (
     doorReferenceInputs: readonly UTxO[],
-  ) => MidgardFieldCarriageV1;
+  ) => MidgardFieldCarriage;
 };
 
 const runTierJourney = async (
@@ -742,15 +742,13 @@ const runTierJourney = async (
   const preState = validationMachineStateDataFromCore(
     trace.states[stateIndex]!,
   );
-  const plan = planMidgardFieldCarriageV1({
+  const plan = planMidgardFieldCarriage({
     owner: Buffer.from(SIGNER_HASH, "hex"),
     txId: Buffer.from(preState.transaction_id, "hex"),
     fieldIndex: OUTPUT_FIELD_INDEX,
     preimage: fieldPreimage,
   });
-  expect(plan.tier).toBe(
-    selectMidgardFieldCarriageTierV1(fieldPreimage.length),
-  );
+  expect(plan.tier).toBe(selectMidgardFieldCarriageTier(fieldPreimage.length));
 
   // The §8.6 mint re-derives the field commitment from the disputed
   // transaction's own compact structures, so they come off the step's own work
@@ -758,14 +756,14 @@ const runTierJourney = async (
   // encoded on its own here — it carries no carriage and therefore needs no
   // resolver, which is what lets the certification be built *before* the
   // carriage exists to resolve against.
-  const transitionCbor = encodeValidationOneStepWitnessCborV1({
+  const transitionCbor = encodeValidationOneStepWitnessCbor({
     witness: trace.witnesses[stateIndex]!,
     claimedSuccessor: trace.states[stateIndex + 1]!,
   });
   const transition = Data.from(
     transitionCbor.toString("hex"),
-    ValidationOneStepWitnessV1,
-  ) as ValidationOneStepWitnessV1Data;
+    ValidationOneStepWitness,
+  ) as ValidationOneStepWitnessData;
   const control = asArray(
     decodeSingleCbor(Buffer.from(transition.work_witness_cbor, "hex")),
     "canonical_decode_item.control",
@@ -802,13 +800,13 @@ const runTierJourney = async (
   ];
   const resolveAgainst = (
     referenceInputs: readonly UTxO[],
-  ): MidgardFieldCarriageV1 =>
-    resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+  ): MidgardFieldCarriage =>
+    resolveMidgardFieldCarriageAgainstReferenceInputs({
       plan,
       referenceInputs,
       certificatePolicyId: published.certificatePolicyId,
     });
-  const resolveFieldCarriage: ValidationMachineFieldCarriageResolverV1 = ({
+  const resolveFieldCarriage: ValidationMachineFieldCarriageResolver = ({
     fieldIndex,
     fieldPreimage: preimage,
   }) => {
@@ -820,7 +818,7 @@ const runTierJourney = async (
     return resolveAgainst(doorReferenceInputs);
   };
 
-  const argument = buildValidationOneStepArgumentV1({
+  const argument = buildValidationOneStepArgument({
     trace,
     stateIndex,
     resolveFieldCarriage,
@@ -841,7 +839,7 @@ const runTierJourney = async (
   // The guard, over the material the door is about to be handed. It is the
   // production call site's own check (`submitValidationDisputeSemanticResolution`
   // calls it immediately before this stage), run here against real ledger UTxOs.
-  assertMidgardFieldCarriageResolvesAtDoorV1({
+  assertMidgardFieldCarriageResolvesAtDoor({
     carriage: committedCarriage,
     plan,
     doorReferenceInputs,
@@ -856,11 +854,11 @@ const runTierJourney = async (
   // observe stage's §8.8 door. `submit.ts` computes exactly this for
   // `resolverIndex === 0`; this file states it as the same constant the #621
   // adversarial matrix uses, so the two harnesses cannot drift apart silently.
-  const evidenceHash = validationOneStepEvidenceHashV1({
+  const evidenceHash = validationOneStepEvidenceHash({
     transitionCbor: argument.transitionCbor,
     auxiliaryCbor: NO_AUXILIARY_WITNESS_CBOR,
   });
-  const claimedSuccessorHash = hashMidgardValidationMachineStateV1(
+  const claimedSuccessorHash = hashMidgardValidationMachineState(
     trace.states[stateIndex + 1]!,
   ).toString("hex");
   const preparedThreadDatum = Data.to(
@@ -877,37 +875,37 @@ const runTierJourney = async (
         evidence_hash: evidenceHash,
       },
     },
-    PreparedValidationResolutionDatumV1,
+    PreparedValidationResolutionDatum,
   );
   const preparedResolution = (
     Data.from(
       preparedThreadDatum,
-      PreparedValidationResolutionDatumV1,
-    ) as PreparedValidationResolutionDatumV1Data
+      PreparedValidationResolutionDatum,
+    ) as PreparedValidationResolutionDatumData
   ).data;
   if (preparedResolution === null) {
     throw new Error("prepared thread datum is missing its state");
   }
-  const stageData = deriveCanonicalDecodeItemStageDataV1({
+  const stageData = deriveCanonicalDecodeItemStageData({
     preparedResolution,
     transition,
     fieldPreimage: fieldPreimage.toString("hex"),
   });
   const authenticatedDatum = Data.to(
     { fraud_prover: SIGNER_HASH, data: stageData.authenticated },
-    AuthenticatedCanonicalDecodeItemDatumV1,
+    AuthenticatedCanonicalDecodeItemDatum,
   );
   const preparedDatum = Data.to(
     { fraud_prover: SIGNER_HASH, data: stageData.prepared },
-    PreparedCanonicalDecodeItemDatumV1,
+    PreparedCanonicalDecodeItemDatum,
   );
   const observedDatum = Data.to(
     { fraud_prover: SIGNER_HASH, data: stageData.observed },
-    ObservedCanonicalDecodeItemDatumV1,
+    ObservedCanonicalDecodeItemDatum,
   );
   const verifiedDatum = Data.to(
     { fraud_prover: SIGNER_HASH, data: stageData.verified },
-    VerifiedCanonicalDecodeItemDatumV1,
+    VerifiedCanonicalDecodeItemDatum,
   );
 
   // Hand the seeded computation-thread token to the semantic resolver with the
@@ -1057,7 +1055,7 @@ const TIER3_PREIMAGE_BYTES = 16_388;
  *
  * **#580 NOTE — the 64-byte overhang.** `maxSinglePublicationCompleteItemBytes`
  * is 14,396, but §8.4's tier-1 ceiling of
- * `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` = 14,336 admits an item of at
+ * `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES` = 14,336 admits an item of at
  * most **14,332** bytes once the 4-byte field-2 envelope is counted. The applied
  * publication cap therefore sits **64 bytes above** the largest item whose field
  * can be carried inline, so items in (14,332, 14,396] are publishable but not
@@ -1070,7 +1068,7 @@ const TIER3_PREIMAGE_BYTES = 16_388;
  * Recorded in prose at §8.10 of `docs/spec/midgard-tx.md` too.
  */
 const PUBLICATION_MAXIMUM_ITEM_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
+  MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes;
 const PUBLICATION_MAXIMUM_PREIMAGE_BYTES = 14_400;
 /**
  * The four bytes a single-item field-2 §5.1 envelope costs: `81 ‖ 59 LLLL`.
@@ -1081,8 +1079,7 @@ const PUBLICATION_MAXIMUM_PREIMAGE_BYTES = 14_400;
 const SINGLE_ITEM_FIELD_ENVELOPE_BYTES = 4;
 
 const TIER1_ADMISSIBLE_ITEM_BYTES =
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 -
-  SINGLE_ITEM_FIELD_ENVELOPE_BYTES;
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES - SINGLE_ITEM_FIELD_ENVELOPE_BYTES;
 const PUBLICATION_MAXIMUM_TIER1_OVERHANG_BYTES = 64;
 
 describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators)", () => {
@@ -1123,7 +1120,7 @@ describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators
     const journey = await runTierJourney(TIER2_PREIMAGE_BYTES);
     expect(journey.tier).toBe("RawUtxo");
     expect(journey.preimageBytes).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
     expect(journey.published.chunkUtxos).toHaveLength(1);
     expect(journey.published.certificateUtxo).toBeUndefined();
@@ -1165,7 +1162,7 @@ describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators
     // policy admits for publication.
     const item = makeExactSizeOutputItem(PUBLICATION_MAXIMUM_ITEM_BYTES);
     expect(item.length).toBe(PUBLICATION_MAXIMUM_ITEM_BYTES);
-    expect(encodeMidgardFieldPreimageV1([item]).length).toBe(
+    expect(encodeMidgardFieldPreimage([item]).length).toBe(
       PUBLICATION_MAXIMUM_PREIMAGE_BYTES,
     );
 
@@ -1177,10 +1174,10 @@ describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators
       PUBLICATION_MAXIMUM_TIER1_OVERHANG_BYTES,
     );
     expect(
-      encodeMidgardFieldPreimageV1([
+      encodeMidgardFieldPreimage([
         makeExactSizeOutputItem(TIER1_ADMISSIBLE_ITEM_BYTES),
       ]).length,
-    ).toBe(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1);
+    ).toBe(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES);
 
     const journey = await runTierJourney(PUBLICATION_MAXIMUM_PREIMAGE_BYTES, {
       outputs: [item],
@@ -1190,7 +1187,7 @@ describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators
     // suite rather than the tier-1 proof-fit harness.
     expect(journey.tier).toBe("RawUtxo");
     expect(journey.preimageBytes).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
     expect(journey.observation.itemCount).toBe(1n);
     expect(journey.observation.itemLength).toBe(
@@ -1287,7 +1284,7 @@ describe("complete-item §8 carriage tiers 2 and 3 (emulator, applied validators
     };
     const movedDoor = [acquiredAhead, ...journey.doorReferenceInputs];
     expect(() =>
-      assertMidgardFieldCarriageResolvesAtDoorV1({
+      assertMidgardFieldCarriageResolvesAtDoor({
         carriage: journey.committedCarriage,
         plan: journey.plan,
         doorReferenceInputs: movedDoor,

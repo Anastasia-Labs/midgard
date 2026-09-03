@@ -2,55 +2,55 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceDaAvailabilityTrancheV1,
-  assertCanonicalDaAvailabilityCommitmentV1,
-  assertDaAvailabilityChallengerBondConservationV1,
-  assertDaAvailabilityTerminalReceiptsV1,
-  availabilityResponseGeometryV1,
-  buildDaAvailabilityChallengeDatumPlanV1,
-  buildDaAvailabilityCommitmentV1,
-  DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1,
-  DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1,
-  DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS_V1,
-  DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE_V1,
-  DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS_V1,
-  daAvailabilityAttestationMessageV1,
-  daAvailabilityBondAssetNameV1,
-  DaAvailabilityBondDatumV1,
-  daAvailabilityChallengeAssetNameV1,
-  daAvailabilityChunkLeafHashV1,
-  DaAvailabilityCommitmentV1,
-  DaAvailabilityParametersV1,
-  daAvailabilityParametersV1,
-  DaAvailabilityPublicationDatumV1,
-  daAvailabilityPublicationTierV1,
-  daAvailabilityPublishedTerminalCommitmentV1,
-  daAvailabilityResponseDeadlineV1,
-  daAvailabilityResponseWindowMsV1,
-  DaAvailabilitySpendRedeemerV1,
-  daAvailabilityStateQueueStatusPermitsMergeV1,
-  DaAvailabilityStateQueueStatusV1,
-  daAvailabilityTerminalAccumulatorStartV1,
-  daAvailabilityTrancheAssetNameV1,
-  deriveDaAvailabilityTrancheLayoutV1,
-  encodeDaAvailabilityBondDatumV1,
-  encodeDaAvailabilityCommitmentV1,
-  encodeDaAvailabilityParametersV1,
-  encodeDaAvailabilityPublicationDatumV1,
-  encodeDaAvailabilityTerminalAccumulatorDatumV1,
-  encodeDaAvailabilityTrancheDatumV1,
-  parseDaAvailabilityBondDatumV1Cbor,
-  parseDaAvailabilityCommitmentV1Cbor,
-  parseDaAvailabilityParametersV1Cbor,
-  parseDaAvailabilityPublicationDatumV1Cbor,
-  parseDaAvailabilityTerminalAccumulatorDatumV1Cbor,
-  parseDaAvailabilityTrancheDatumV1Cbor,
-  planDaAvailabilityPublicationsV1,
-  planDaAvailabilityPublicationValueTransitionV1,
-  planDaAvailabilitySettlementV1,
-  planDaAvailabilityTerminalRefundV1,
-  reconstructDaAvailabilityPayloadV1,
-  verifyDaAvailabilityPayloadCommitmentV1,
+  advanceDaAvailabilityTranche,
+  assertCanonicalDaAvailabilityCommitment,
+  assertDaAvailabilityChallengerBondConservation,
+  assertDaAvailabilityTerminalReceipts,
+  availabilityResponseGeometry,
+  buildDaAvailabilityChallengeDatumPlan,
+  buildDaAvailabilityCommitment,
+  DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
+  DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
+  DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS,
+  DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
+  DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS,
+  daAvailabilityAttestationMessage,
+  daAvailabilityBondAssetName,
+  DaAvailabilityBondDatum,
+  daAvailabilityChallengeAssetName,
+  daAvailabilityChunkLeafHash,
+  DaAvailabilityCommitment,
+  DaAvailabilityParameters,
+  daAvailabilityParameters,
+  DaAvailabilityPublicationDatum,
+  daAvailabilityPublicationTier,
+  daAvailabilityPublishedTerminalCommitment,
+  daAvailabilityResponseDeadline,
+  daAvailabilityResponseWindowMs,
+  DaAvailabilitySpendRedeemer,
+  DaAvailabilityStateQueueStatus,
+  daAvailabilityStateQueueStatusPermitsMerge,
+  daAvailabilityTerminalAccumulatorStart,
+  daAvailabilityTrancheAssetName,
+  deriveDaAvailabilityTrancheLayout,
+  encodeDaAvailabilityBondDatum,
+  encodeDaAvailabilityCommitment,
+  encodeDaAvailabilityParameters,
+  encodeDaAvailabilityPublicationDatum,
+  encodeDaAvailabilityTerminalAccumulatorDatum,
+  encodeDaAvailabilityTrancheDatum,
+  parseDaAvailabilityBondDatumCbor,
+  parseDaAvailabilityCommitmentCbor,
+  parseDaAvailabilityParametersCbor,
+  parseDaAvailabilityPublicationDatumCbor,
+  parseDaAvailabilityTerminalAccumulatorDatumCbor,
+  parseDaAvailabilityTrancheDatumCbor,
+  planDaAvailabilityPublications,
+  planDaAvailabilityPublicationValueTransition,
+  planDaAvailabilitySettlement,
+  planDaAvailabilityTerminalRefund,
+  reconstructDaAvailabilityPayload,
+  verifyDaAvailabilityPayloadCommitment,
 } from "../src/availability-challenge-v1.js";
 
 const DEPLOYMENT = "11".repeat(28);
@@ -59,36 +59,36 @@ const OWNER = "33".repeat(28);
 const COMMITTEE_HASH = "44".repeat(32);
 const SIGNERS = "80" + "00".repeat(31);
 const OUT_REF = { transactionId: "99".repeat(32), outputIndex: 7n };
-const BOND_ASSET = daAvailabilityBondAssetNameV1(OUT_REF);
+const BOND_ASSET = daAvailabilityBondAssetName(OUT_REF);
 const MAX_OPEN_FEE = 500_000n;
 const MAX_PUBLICATION_FEE = 500_000n;
 const MAX_SETTLEMENT_FEE = 500_000n;
 const MAX_CLOSE_FEE = 1_000_000n;
 const MAX_TIMEOUT_FEE = 1_200_000n;
 
-const CANDIDATE_GEOMETRY = availabilityResponseGeometryV1(
-  DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE_V1,
+const CANDIDATE_GEOMETRY = availabilityResponseGeometry(
+  DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
 );
 
 const payload = (length: number): Uint8Array =>
   Uint8Array.from({ length }, (_, index) => (index * 17 + 3) % 256);
 
 const publicationTransactionBytes = (chunkByteLength: number): number => {
-  const geometry = availabilityResponseGeometryV1({
+  const geometry = availabilityResponseGeometry({
     chunkByteLength,
     trancheByteLength: 4 * 1024 * 1024,
     maxTrancheCount: 16,
   });
   const bytes = payload(4 * 1024 * 1024);
-  const commitment = buildDaAvailabilityCommitmentV1({
+  const commitment = buildDaAvailabilityCommitment({
     deploymentIdentity: DEPLOYMENT,
     headerHash: HEADER,
     payload: bytes,
     bondOwner: OWNER,
     responseGeometry: geometry,
   });
-  const challengeAssetName = daAvailabilityChallengeAssetNameV1(OUT_REF);
-  const [tranche] = planDaAvailabilityPublicationsV1({
+  const challengeAssetName = daAvailabilityChallengeAssetName(OUT_REF);
+  const [tranche] = planDaAvailabilityPublications({
     commitment,
     payload: bytes,
     challengeAssetName,
@@ -106,11 +106,11 @@ const publicationTransactionBytes = (chunkByteLength: number): number => {
       next_offset: tranche.descriptor.start_offset,
       accumulator: tranche.initialAccumulator,
       latest_carrier_output_index: null,
-      response_deadline: BigInt(DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS_V1),
+      response_deadline: BigInt(DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS),
       challenger: OWNER,
     },
   } as const;
-  const continued = advanceDaAvailabilityTrancheV1({
+  const continued = advanceDaAvailabilityTranche({
     active: initial,
     publication,
     responseGeometry: geometry,
@@ -135,7 +135,7 @@ const publicationTransactionBytes = (chunkByteLength: number): number => {
   trancheAssets.insert(
     CML.AssetName.from_raw_bytes(
       Buffer.from(
-        daAvailabilityTrancheAssetNameV1({
+        daAvailabilityTrancheAssetName({
           challengeAssetName,
           trancheIndex: 0,
         }),
@@ -153,7 +153,7 @@ const publicationTransactionBytes = (chunkByteLength: number): number => {
       CML.Value.new(5_000_000_000n, multiAsset),
       CML.DatumOption.new_datum(
         CML.PlutusData.from_cbor_hex(
-          encodeDaAvailabilityTrancheDatumV1(continued),
+          encodeDaAvailabilityTrancheDatum(continued),
         ),
       ),
       undefined,
@@ -165,7 +165,7 @@ const publicationTransactionBytes = (chunkByteLength: number): number => {
       CML.Value.from_coin(5_000_000n),
       CML.DatumOption.new_datum(
         CML.PlutusData.from_cbor_hex(
-          encodeDaAvailabilityPublicationDatumV1(
+          encodeDaAvailabilityPublicationDatum(
             publication,
             geometry,
             tranche.descriptor,
@@ -213,7 +213,7 @@ const publicationTransactionBytes = (chunkByteLength: number): number => {
         m_previous_carrier_input_index: null,
       },
     },
-    DaAvailabilitySpendRedeemerV1,
+    DaAvailabilitySpendRedeemer,
   );
   const redeemers = CML.LegacyRedeemerList.new();
   redeemers.add(
@@ -235,7 +235,7 @@ const publicationTransactionBytes = (chunkByteLength: number): number => {
 };
 
 const build = (length: number) =>
-  buildDaAvailabilityCommitmentV1({
+  buildDaAvailabilityCommitment({
     deploymentIdentity: DEPLOYMENT,
     headerHash: HEADER,
     payload: payload(length),
@@ -245,20 +245,20 @@ const build = (length: number) =>
 
 describe("Q58 canonical DA availability commitment V1", () => {
   it("fixes the approved deadlines while keeping matching bonds release-bound", () => {
-    expect(daAvailabilityResponseWindowMsV1(64 * 1024)).toBe(
-      DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS_V1,
+    expect(daAvailabilityResponseWindowMs(64 * 1024)).toBe(
+      DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS,
     );
-    expect(daAvailabilityResponseWindowMsV1(64 * 1024 + 1)).toBe(
-      DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS_V1,
+    expect(daAvailabilityResponseWindowMs(64 * 1024 + 1)).toBe(
+      DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS,
     );
-    expect(DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1).toBe(
+    expect(DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE).toBe(
       10_000_000_000n,
     );
+    expect(DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE).toBe(
+      DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
+    );
     expect(
-      DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1,
-    ).toBe(DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1);
-    expect(
-      daAvailabilityParametersV1({
+      daAvailabilityParameters({
         responseGeometry: CANDIDATE_GEOMETRY,
         daBondLovelace: 12_000_000_000n,
         challengerBondLovelace: 12_000_000_000n,
@@ -270,7 +270,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }).da_bond_lovelace,
     ).toBe(12_000_000_000n);
     expect(() =>
-      daAvailabilityParametersV1({
+      daAvailabilityParameters({
         responseGeometry: CANDIDATE_GEOMETRY,
         daBondLovelace: 12_000_000_000n,
         challengerBondLovelace: 11_999_999_999n,
@@ -282,7 +282,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("exactly matching DA and challenger bonds");
     expect(() =>
-      daAvailabilityParametersV1({
+      daAvailabilityParameters({
         responseGeometry: CANDIDATE_GEOMETRY,
         daBondLovelace: 12_000_000_000n,
         challengerBondLovelace: 12_000_000_000n,
@@ -297,10 +297,10 @@ describe("Q58 canonical DA availability commitment V1", () => {
 
   it("uses the authenticated measured geometry without freezing its starting probe", () => {
     expect(
-      deriveDaAvailabilityTrancheLayoutV1(64 * 1024, CANDIDATE_GEOMETRY),
+      deriveDaAvailabilityTrancheLayout(64 * 1024, CANDIDATE_GEOMETRY),
     ).toEqual([{ trancheIndex: 0, startOffset: 0, byteLength: 64 * 1024 }]);
     expect(
-      deriveDaAvailabilityTrancheLayoutV1(
+      deriveDaAvailabilityTrancheLayout(
         4 * 1024 * 1024 + 1,
         CANDIDATE_GEOMETRY,
       ),
@@ -316,7 +316,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
         byteLength: 1,
       },
     ]);
-    const max = deriveDaAvailabilityTrancheLayoutV1(
+    const max = deriveDaAvailabilityTrancheLayout(
       64 * 1024 * 1024,
       CANDIDATE_GEOMETRY,
     );
@@ -327,13 +327,13 @@ describe("Q58 canonical DA availability commitment V1", () => {
       byteLength: 4 * 1024 * 1024,
     });
 
-    const alternateGeometry = availabilityResponseGeometryV1({
+    const alternateGeometry = availabilityResponseGeometry({
       chunkByteLength: 8_000,
       trancheByteLength: 8 * 1024 * 1024,
       maxTrancheCount: 8,
     });
     expect(
-      deriveDaAvailabilityTrancheLayoutV1(64 * 1024 * 1024, alternateGeometry),
+      deriveDaAvailabilityTrancheLayout(64 * 1024 * 1024, alternateGeometry),
     ).toHaveLength(8);
   });
 
@@ -358,23 +358,23 @@ describe("Q58 canonical DA availability commitment V1", () => {
       signedBytes: 15_872,
       adjacentSignedBytes: 15_873,
     });
-    const activatedGeometry = availabilityResponseGeometryV1({
+    const activatedGeometry = availabilityResponseGeometry({
       chunkByteLength: 14_020,
       trancheByteLength: 4 * 1024 * 1024,
       maxTrancheCount: 16,
     });
     const maxPayload = new Uint8Array(4 * 1024 * 1024).fill(42);
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: maxPayload,
       bondOwner: OWNER,
       responseGeometry: activatedGeometry,
     });
-    const [tranche] = planDaAvailabilityPublicationsV1({
+    const [tranche] = planDaAvailabilityPublications({
       commitment,
       payload: maxPayload,
-      challengeAssetName: daAvailabilityChallengeAssetNameV1(OUT_REF),
+      challengeAssetName: daAvailabilityChallengeAssetName(OUT_REF),
     });
     const first = tranche!.publications[0]!;
     expect({
@@ -382,7 +382,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       chunkCommitment: tranche!.descriptor.chunk_commitment,
       frontier: first.chunk_frontier,
       siblings: first.chunk_siblings,
-      leafHash: daAvailabilityChunkLeafHashV1({
+      leafHash: daAvailabilityChunkLeafHash({
         trancheIndex: 0,
         chunkIndex: 0,
         chunkOffset: 0,
@@ -437,22 +437,22 @@ describe("Q58 canonical DA availability commitment V1", () => {
 
   it("binds deployment, header, length, owner, order, bytes, and every terminal accumulator", () => {
     const bytes = payload(80_000);
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: bytes,
       bondOwner: OWNER,
       responseGeometry: CANDIDATE_GEOMETRY,
     });
-    assertCanonicalDaAvailabilityCommitmentV1(commitment);
+    assertCanonicalDaAvailabilityCommitment(commitment);
     expect(
       Data.from(
-        Data.to(commitment, DaAvailabilityCommitmentV1),
-        DaAvailabilityCommitmentV1,
+        Data.to(commitment, DaAvailabilityCommitment),
+        DaAvailabilityCommitment,
       ),
     ).toEqual(commitment);
     expect(
-      verifyDaAvailabilityPayloadCommitmentV1({ commitment, payload: bytes }),
+      verifyDaAvailabilityPayloadCommitment({ commitment, payload: bytes }),
     ).toBe(true);
 
     for (const mutation of [
@@ -461,7 +461,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       Uint8Array.from([...bytes, 0]),
     ]) {
       expect(
-        verifyDaAvailabilityPayloadCommitmentV1({
+        verifyDaAvailabilityPayloadCommitment({
           commitment,
           payload: Uint8Array.from(mutation),
         }),
@@ -474,12 +474,10 @@ describe("Q58 canonical DA availability commitment V1", () => {
     };
     expect(
       Buffer.from(
-        daAvailabilityAttestationMessageV1(differentDeployment),
+        daAvailabilityAttestationMessage(differentDeployment),
       ).toString("hex"),
     ).not.toBe(
-      Buffer.from(daAvailabilityAttestationMessageV1(commitment)).toString(
-        "hex",
-      ),
+      Buffer.from(daAvailabilityAttestationMessage(commitment)).toString("hex"),
     );
   });
 
@@ -515,7 +513,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       },
     ]) {
       expect(() =>
-        assertCanonicalDaAvailabilityCommitmentV1(malformed),
+        assertCanonicalDaAvailabilityCommitment(malformed),
       ).toThrow();
     }
   });
@@ -532,8 +530,8 @@ describe("Q58 canonical DA availability commitment V1", () => {
     } as const;
     expect(
       Data.from(
-        Data.to(available, DaAvailabilityBondDatumV1),
-        DaAvailabilityBondDatumV1,
+        Data.to(available, DaAvailabilityBondDatum),
+        DaAvailabilityBondDatum,
       ),
     ).toEqual(available);
 
@@ -550,24 +548,24 @@ describe("Q58 canonical DA availability commitment V1", () => {
     ] as const) {
       expect(
         Data.from(
-          Data.to(status, DaAvailabilityStateQueueStatusV1),
-          DaAvailabilityStateQueueStatusV1,
+          Data.to(status, DaAvailabilityStateQueueStatus),
+          DaAvailabilityStateQueueStatus,
         ),
       ).toEqual(status);
     }
   });
 
   it("matches the on-chain merge gate for every availability state", () => {
-    expect(daAvailabilityStateQueueStatusPermitsMergeV1("Unattested")).toBe(
+    expect(daAvailabilityStateQueueStatusPermitsMerge("Unattested")).toBe(
       false,
     );
     expect(
-      daAvailabilityStateQueueStatusPermitsMergeV1({
+      daAvailabilityStateQueueStatusPermitsMerge({
         Attested: { da_bond_asset_name: BOND_ASSET },
       }),
     ).toBe(true);
     expect(
-      daAvailabilityStateQueueStatusPermitsMergeV1({
+      daAvailabilityStateQueueStatusPermitsMerge({
         Challenged: {
           da_bond_asset_name: BOND_ASSET,
           challenge_asset_name: "77".repeat(32),
@@ -575,20 +573,20 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toBe(false);
     expect(
-      daAvailabilityStateQueueStatusPermitsMergeV1({
+      daAvailabilityStateQueueStatusPermitsMerge({
         Published: { terminal_commitment: "88".repeat(32) },
       }),
     ).toBe(true);
   });
 
   it("derives unique bounded bond, challenge, tranche, and published identities", () => {
-    const bondAsset = daAvailabilityBondAssetNameV1(OUT_REF);
-    const challengeAsset = daAvailabilityChallengeAssetNameV1(OUT_REF);
-    const tranche0 = daAvailabilityTrancheAssetNameV1({
+    const bondAsset = daAvailabilityBondAssetName(OUT_REF);
+    const challengeAsset = daAvailabilityChallengeAssetName(OUT_REF);
+    const tranche0 = daAvailabilityTrancheAssetName({
       challengeAssetName: challengeAsset,
       trancheIndex: 0,
     });
-    const tranche15 = daAvailabilityTrancheAssetNameV1({
+    const tranche15 = daAvailabilityTrancheAssetName({
       challengeAssetName: challengeAsset,
       trancheIndex: 15,
     });
@@ -600,19 +598,19 @@ describe("Q58 canonical DA availability commitment V1", () => {
       4,
     );
     expect(
-      daAvailabilityBondAssetNameV1({ ...OUT_REF, outputIndex: 8n }),
+      daAvailabilityBondAssetName({ ...OUT_REF, outputIndex: 8n }),
     ).not.toBe(bondAsset);
     expect(
-      daAvailabilityTrancheAssetNameV1({
+      daAvailabilityTrancheAssetName({
         challengeAssetName: challengeAsset,
         trancheIndex: 0,
       }),
     ).not.toBe(tranche15);
-    expect(daAvailabilityPublishedTerminalCommitmentV1(build(1024))).toMatch(
+    expect(daAvailabilityPublishedTerminalCommitment(build(1024))).toMatch(
       /^[0-9a-f]{64}$/u,
     );
     expect(() =>
-      daAvailabilityTrancheAssetNameV1({
+      daAvailabilityTrancheAssetName({
         challengeAssetName: "00".repeat(32),
         trancheIndex: 0,
       }),
@@ -620,21 +618,21 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("plans exact ordered publications and advances only through the deadline", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 3,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
     const bytes = payload(5);
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: bytes,
       bondOwner: OWNER,
       responseGeometry: geometry,
     });
-    const challengeAssetName = daAvailabilityChallengeAssetNameV1(OUT_REF);
-    const [tranche] = planDaAvailabilityPublicationsV1({
+    const challengeAssetName = daAvailabilityChallengeAssetName(OUT_REF);
+    const [tranche] = planDaAvailabilityPublications({
       commitment,
       payload: bytes,
       challengeAssetName,
@@ -646,7 +644,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     expect(tranche?.publications.map((item) => item.chunk_byte_length)).toEqual(
       [3n, 2n],
     );
-    const deadline = daAvailabilityResponseDeadlineV1({
+    const deadline = daAvailabilityResponseDeadline({
       payloadByteLength: bytes.length,
       openedAt: 1_000n,
     });
@@ -663,7 +661,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
         challenger: OWNER,
       },
     } as const;
-    const first = advanceDaAvailabilityTrancheV1({
+    const first = advanceDaAvailabilityTranche({
       active,
       publication: tranche!.publications[0]!,
       responseGeometry: geometry,
@@ -671,7 +669,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       carrierOutputIndex: 1n,
     });
     expect(first).toHaveProperty("Active.next_offset", 3n);
-    const receipt = advanceDaAvailabilityTrancheV1({
+    const receipt = advanceDaAvailabilityTranche({
       active: first,
       publication: tranche!.publications[1]!,
       responseGeometry: geometry,
@@ -684,7 +682,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     );
 
     expect(() =>
-      advanceDaAvailabilityTrancheV1({
+      advanceDaAvailabilityTranche({
         active,
         publication: tranche!.publications[0]!,
         responseGeometry: geometry,
@@ -693,7 +691,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("exceeds the response deadline");
     expect(() =>
-      advanceDaAvailabilityTrancheV1({
+      advanceDaAvailabilityTranche({
         active,
         publication: {
           ...tranche!.publications[0]!,
@@ -705,7 +703,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("not an index-bound member");
     expect(() =>
-      advanceDaAvailabilityTrancheV1({
+      advanceDaAvailabilityTranche({
         active: receipt,
         publication: tranche!.publications[1]!,
         responseGeometry: geometry,
@@ -716,32 +714,32 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("uses one complete inline item through the measured fit boundary and chunks only above it", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
-    const challengeAssetName = daAvailabilityChallengeAssetNameV1(OUT_REF);
+    const challengeAssetName = daAvailabilityChallengeAssetName(OUT_REF);
     for (const [length, tier, publicationCount] of [
       [4095, "complete_item_inline", 1],
       [4096, "ordered_chunks", 2],
       [64 * 1024 + 1, "parallel_tranches", 18],
     ] as const) {
       const bytes = payload(length);
-      const commitment = buildDaAvailabilityCommitmentV1({
+      const commitment = buildDaAvailabilityCommitment({
         deploymentIdentity: DEPLOYMENT,
         headerHash: HEADER,
         payload: bytes,
         bondOwner: OWNER,
         responseGeometry: geometry,
       });
-      const plan = planDaAvailabilityPublicationsV1({
+      const plan = planDaAvailabilityPublications({
         commitment,
         payload: bytes,
         challengeAssetName,
       });
       expect(
-        daAvailabilityPublicationTierV1({
+        daAvailabilityPublicationTier({
           payloadByteLength: length,
           responseGeometry: geometry,
         }),
@@ -760,19 +758,19 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("closes only an exact ordered receipt set", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: payload(70 * 1024),
       bondOwner: OWNER,
       responseGeometry: geometry,
     });
-    const challengeAssetName = daAvailabilityChallengeAssetNameV1(OUT_REF);
+    const challengeAssetName = daAvailabilityChallengeAssetName(OUT_REF);
     const receipts = commitment.tranche_descriptors.map((descriptor) => ({
       Receipt: {
         deployment_identity: DEPLOYMENT,
@@ -785,15 +783,15 @@ describe("Q58 canonical DA availability commitment V1", () => {
       },
     }));
     expect(
-      assertDaAvailabilityTerminalReceiptsV1({
+      assertDaAvailabilityTerminalReceipts({
         commitment,
         challengeAssetName,
         challenger: OWNER,
         receipts,
       }),
-    ).toBe(daAvailabilityPublishedTerminalCommitmentV1(commitment));
+    ).toBe(daAvailabilityPublishedTerminalCommitment(commitment));
     expect(() =>
-      assertDaAvailabilityTerminalReceiptsV1({
+      assertDaAvailabilityTerminalReceipts({
         commitment,
         challengeAssetName,
         challenger: OWNER,
@@ -801,7 +799,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("does not equal its signed descriptor");
     expect(() =>
-      assertDaAvailabilityTerminalReceiptsV1({
+      assertDaAvailabilityTerminalReceipts({
         commitment,
         challengeAssetName,
         challenger: OWNER,
@@ -809,7 +807,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("does not equal its signed descriptor");
     expect(() =>
-      assertDaAvailabilityTerminalReceiptsV1({
+      assertDaAvailabilityTerminalReceipts({
         commitment,
         challengeAssetName,
         challenger: OWNER,
@@ -827,30 +825,30 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("reconstructs exact public L1 history and rejects missing or reordered chunks", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
     const bytes = payload(70 * 1024);
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: bytes,
       bondOwner: OWNER,
       responseGeometry: geometry,
     });
-    const challengeAssetName = daAvailabilityChallengeAssetNameV1(OUT_REF);
+    const challengeAssetName = daAvailabilityChallengeAssetName(OUT_REF);
     const openedAt = 1_000n;
-    const responseDeadline = daAvailabilityResponseDeadlineV1({
+    const responseDeadline = daAvailabilityResponseDeadline({
       payloadByteLength: bytes.length,
       openedAt,
     });
-    const parameters = daAvailabilityParametersV1({
+    const parameters = daAvailabilityParameters({
       responseGeometry: geometry,
-      daBondLovelace: DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1,
+      daBondLovelace: DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
       challengerBondLovelace:
-        DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1,
+        DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE,
       maxOpenFeeLovelace: MAX_OPEN_FEE,
       maxPublicationFeeLovelace: MAX_PUBLICATION_FEE,
       maxSettlementFeeLovelace: MAX_SETTLEMENT_FEE,
@@ -860,7 +858,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     const challengedBond = {
       ChallengedBond: {
         commitment,
-        da_bond_asset_name: daAvailabilityBondAssetNameV1(OUT_REF),
+        da_bond_asset_name: daAvailabilityBondAssetName(OUT_REF),
         committee_signers_hash: COMMITTEE_HASH,
         attested_signers: SIGNERS,
         challenge_asset_name: challengeAssetName,
@@ -870,14 +868,14 @@ describe("Q58 canonical DA availability commitment V1", () => {
       },
     } as const;
     const challengedBondEvidence = {
-      datumCborHex: encodeDaAvailabilityBondDatumV1(challengedBond, parameters),
+      datumCborHex: encodeDaAvailabilityBondDatum(challengedBond, parameters),
       bondInputOutRef: OUT_REF,
       challengedBondOutputOutRef: {
         transactionId: "98".repeat(32),
         outputIndex: 1n,
       },
     } as const;
-    const plan = planDaAvailabilityPublicationsV1({
+    const plan = planDaAvailabilityPublications({
       commitment,
       payload: bytes,
       challengeAssetName,
@@ -891,7 +889,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       })),
     }));
     expect(
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: challengedBondEvidence,
         parameters,
         tranches,
@@ -904,7 +902,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
         : item,
     );
     expect(() =>
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: challengedBondEvidence,
         parameters,
         tranches: missing,
@@ -924,7 +922,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
         : item,
     );
     expect(() =>
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: challengedBondEvidence,
         parameters,
         tranches: reordered,
@@ -938,10 +936,10 @@ describe("Q58 canonical DA availability commitment V1", () => {
           response_deadline: responseDeadline + 1n,
         },
       },
-      DaAvailabilityBondDatumV1,
+      DaAvailabilityBondDatum,
     );
     expect(() =>
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: {
           ...challengedBondEvidence,
           datumCborHex: forgedLaterDeadlineCbor,
@@ -951,7 +949,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("exact canonical response deadline");
     expect(() =>
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: {
           ...challengedBondEvidence,
           bondInputOutRef: {
@@ -964,14 +962,14 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("DACH identity derived from its consumed bond input");
     expect(() =>
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: {
           ...challengedBondEvidence,
-          datumCborHex: encodeDaAvailabilityBondDatumV1(
+          datumCborHex: encodeDaAvailabilityBondDatum(
             {
               Available: {
                 commitment,
-                da_bond_asset_name: daAvailabilityBondAssetNameV1(OUT_REF),
+                da_bond_asset_name: daAvailabilityBondAssetName(OUT_REF),
                 committee_signers_hash: COMMITTEE_HASH,
                 attested_signers: SIGNERS,
               },
@@ -988,7 +986,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       responseDeadline,
     };
     expect(() =>
-      reconstructDaAvailabilityPayloadV1({
+      reconstructDaAvailabilityPayload({
         challengedBond: evidenceWithExtraField,
         parameters,
         tranches,
@@ -998,17 +996,17 @@ describe("Q58 canonical DA availability commitment V1", () => {
 
   it("fails closed outside canonical payload and chunk bounds", () => {
     expect(() =>
-      deriveDaAvailabilityTrancheLayoutV1(0, CANDIDATE_GEOMETRY),
+      deriveDaAvailabilityTrancheLayout(0, CANDIDATE_GEOMETRY),
     ).toThrow();
     expect(() =>
-      deriveDaAvailabilityTrancheLayoutV1(
+      deriveDaAvailabilityTrancheLayout(
         64 * 1024 * 1024 + 1,
         CANDIDATE_GEOMETRY,
       ),
     ).toThrow();
     expect(() =>
-      availabilityResponseGeometryV1({
-        ...DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE_V1,
+      availabilityResponseGeometry({
+        ...DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
         chunkByteLength: 16_000,
       }),
     ).toThrow();
@@ -1018,14 +1016,13 @@ describe("Q58 canonical DA availability commitment V1", () => {
     const commitment = build(1024);
     expect({
       attestationMessage: Buffer.from(
-        daAvailabilityAttestationMessageV1(commitment),
+        daAvailabilityAttestationMessage(commitment),
       ).toString("hex"),
       terminalAccumulator:
         commitment.tranche_descriptors[0]?.terminal_accumulator,
-      publishedTerminal:
-        daAvailabilityPublishedTerminalCommitmentV1(commitment),
-      bondAsset: daAvailabilityBondAssetNameV1(OUT_REF),
-      challengeAsset: daAvailabilityChallengeAssetNameV1(OUT_REF),
+      publishedTerminal: daAvailabilityPublishedTerminalCommitment(commitment),
+      bondAsset: daAvailabilityBondAssetName(OUT_REF),
+      challengeAsset: daAvailabilityChallengeAssetName(OUT_REF),
     }).toEqual({
       attestationMessage:
         "3e6afd561e46492afcd026e421e69071e5eaecd5d1624beb98118f7db5e17bc7",
@@ -1041,7 +1038,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("strictly decodes release parameters and signed commitments for durable handoff", () => {
-    const parameters = daAvailabilityParametersV1({
+    const parameters = daAvailabilityParameters({
       responseGeometry: CANDIDATE_GEOMETRY,
       daBondLovelace: 12_000_000_000n,
       challengerBondLovelace: 12_000_000_000n,
@@ -1051,12 +1048,12 @@ describe("Q58 canonical DA availability commitment V1", () => {
       maxCloseFeeLovelace: MAX_CLOSE_FEE,
       maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
     });
-    const parametersCbor = encodeDaAvailabilityParametersV1(parameters);
-    expect(parseDaAvailabilityParametersV1Cbor(parametersCbor)).toEqual(
+    const parametersCbor = encodeDaAvailabilityParameters(parameters);
+    expect(parseDaAvailabilityParametersCbor(parametersCbor)).toEqual(
       parameters,
     );
     expect(() =>
-      parseDaAvailabilityParametersV1Cbor(parametersCbor.toUpperCase()),
+      parseDaAvailabilityParametersCbor(parametersCbor.toUpperCase()),
     ).toThrow("lowercase CBOR hex");
 
     const mismatchedBondsCbor = Data.to(
@@ -1064,67 +1061,67 @@ describe("Q58 canonical DA availability commitment V1", () => {
         ...parameters,
         challenger_bond_lovelace: parameters.challenger_bond_lovelace - 1n,
       },
-      DaAvailabilityParametersV1,
+      DaAvailabilityParameters,
     );
     expect(() =>
-      parseDaAvailabilityParametersV1Cbor(mismatchedBondsCbor),
+      parseDaAvailabilityParametersCbor(mismatchedBondsCbor),
     ).toThrow("exactly matching DA and challenger bonds");
 
     const commitment = build(70 * 1024);
-    const commitmentCbor = encodeDaAvailabilityCommitmentV1(commitment);
+    const commitmentCbor = encodeDaAvailabilityCommitment(commitment);
     expect(
-      parseDaAvailabilityCommitmentV1Cbor(commitmentCbor, CANDIDATE_GEOMETRY),
+      parseDaAvailabilityCommitmentCbor(commitmentCbor, CANDIDATE_GEOMETRY),
     ).toEqual(commitment);
-    const alternateGeometry = availabilityResponseGeometryV1({
+    const alternateGeometry = availabilityResponseGeometry({
       chunkByteLength: 8_000,
       trancheByteLength: 8 * 1024 * 1024,
       maxTrancheCount: 8,
     });
     expect(() =>
-      parseDaAvailabilityCommitmentV1Cbor(commitmentCbor, alternateGeometry),
+      parseDaAvailabilityCommitmentCbor(commitmentCbor, alternateGeometry),
     ).toThrow("does not equal the authenticated deployment/DA parameters");
   });
 
   it("strictly binds inline publication datums to the signed tranche descriptor", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 3,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
     const bytes = payload(5);
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: bytes,
       bondOwner: OWNER,
       responseGeometry: geometry,
     });
-    const [tranche] = planDaAvailabilityPublicationsV1({
+    const [tranche] = planDaAvailabilityPublications({
       commitment,
       payload: bytes,
-      challengeAssetName: daAvailabilityChallengeAssetNameV1(OUT_REF),
+      challengeAssetName: daAvailabilityChallengeAssetName(OUT_REF),
     });
     const publication = tranche!.publications[0]!;
-    const publicationCbor = encodeDaAvailabilityPublicationDatumV1(
+    const publicationCbor = encodeDaAvailabilityPublicationDatum(
       publication,
       geometry,
       tranche!.descriptor,
     );
     expect(
-      parseDaAvailabilityPublicationDatumV1Cbor(
+      parseDaAvailabilityPublicationDatumCbor(
         publicationCbor,
         geometry,
         tranche!.descriptor,
       ),
     ).toEqual(publication);
 
-    const oversizedGeometry = availabilityResponseGeometryV1({
+    const oversizedGeometry = availabilityResponseGeometry({
       chunkByteLength: 2,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
     expect(() =>
-      parseDaAvailabilityPublicationDatumV1Cbor(
+      parseDaAvailabilityPublicationDatumCbor(
         publicationCbor,
         oversizedGeometry,
         tranche!.descriptor,
@@ -1138,8 +1135,8 @@ describe("Q58 canonical DA availability commitment V1", () => {
       { ...publication, challenge_asset_name: "00".repeat(32) },
     ]) {
       expect(() =>
-        parseDaAvailabilityPublicationDatumV1Cbor(
-          Data.to(malformed, DaAvailabilityPublicationDatumV1),
+        parseDaAvailabilityPublicationDatumCbor(
+          Data.to(malformed, DaAvailabilityPublicationDatum),
           geometry,
           tranche!.descriptor,
         ),
@@ -1147,25 +1144,25 @@ describe("Q58 canonical DA availability commitment V1", () => {
     }
 
     const foreignPayload = Uint8Array.from(bytes, (value) => value ^ 0xff);
-    const foreignCommitment = buildDaAvailabilityCommitmentV1({
+    const foreignCommitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: foreignPayload,
       bondOwner: OWNER,
       responseGeometry: geometry,
     });
-    const [foreignTranche] = planDaAvailabilityPublicationsV1({
+    const [foreignTranche] = planDaAvailabilityPublications({
       commitment: foreignCommitment,
       payload: foreignPayload,
-      challengeAssetName: daAvailabilityChallengeAssetNameV1(OUT_REF),
+      challengeAssetName: daAvailabilityChallengeAssetName(OUT_REF),
     });
     const foreignPublication = foreignTranche!.publications[0]!;
     const foreignCbor = Data.to(
       foreignPublication,
-      DaAvailabilityPublicationDatumV1,
+      DaAvailabilityPublicationDatum,
     );
     expect(() =>
-      parseDaAvailabilityPublicationDatumV1Cbor(
+      parseDaAvailabilityPublicationDatumCbor(
         foreignCbor,
         geometry,
         tranche!.descriptor,
@@ -1174,12 +1171,12 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("derives exact challenge datums and deterministic tranche funding", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
-    const parameters = daAvailabilityParametersV1({
+    const parameters = daAvailabilityParameters({
       responseGeometry: geometry,
       daBondLovelace: 10_000_000_000n,
       challengerBondLovelace: 10_000_000_000n,
@@ -1189,7 +1186,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       maxCloseFeeLovelace: MAX_CLOSE_FEE,
       maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
     });
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: payload(70 * 1024),
@@ -1199,13 +1196,13 @@ describe("Q58 canonical DA availability commitment V1", () => {
     const availableBond = {
       Available: {
         commitment,
-        da_bond_asset_name: daAvailabilityBondAssetNameV1(OUT_REF),
+        da_bond_asset_name: daAvailabilityBondAssetName(OUT_REF),
         committee_signers_hash: COMMITTEE_HASH,
         attested_signers: SIGNERS,
       },
     } as const;
     const bondInputOutRef = { ...OUT_REF, outputIndex: 8n };
-    const plan = buildDaAvailabilityChallengeDatumPlanV1({
+    const plan = buildDaAvailabilityChallengeDatumPlan({
       availableBond,
       bondInputOutRef,
       challenger: OWNER,
@@ -1213,10 +1210,10 @@ describe("Q58 canonical DA availability commitment V1", () => {
       parameters,
     });
     expect(plan.challengeAssetName).toBe(
-      daAvailabilityChallengeAssetNameV1(bondInputOutRef),
+      daAvailabilityChallengeAssetName(bondInputOutRef),
     );
     expect(plan.responseDeadline).toBe(
-      1_000n + BigInt(DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS_V1),
+      1_000n + BigInt(DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS),
     );
     expect(plan.trancheThreads).toHaveLength(2);
     expect(plan.trancheFunding).toEqual([
@@ -1239,7 +1236,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       header_hash: HEADER,
       challenge_asset_name: plan.challengeAssetName,
       next_tranche_index: 0n,
-      folded_terminal_accumulator: daAvailabilityTerminalAccumulatorStartV1({
+      folded_terminal_accumulator: daAvailabilityTerminalAccumulatorStart({
         deploymentIdentity: DEPLOYMENT,
         headerHash: HEADER,
         challengeAssetName: plan.challengeAssetName,
@@ -1255,28 +1252,26 @@ describe("Q58 canonical DA availability commitment V1", () => {
       ),
     ).toEqual([0n, 64n * 1024n]);
     expect(
-      parseDaAvailabilityBondDatumV1Cbor(
-        encodeDaAvailabilityBondDatumV1(plan.challengedBond, parameters),
+      parseDaAvailabilityBondDatumCbor(
+        encodeDaAvailabilityBondDatum(plan.challengedBond, parameters),
         parameters,
       ),
     ).toEqual(plan.challengedBond);
     expect(
       plan.trancheThreads.map((thread) =>
-        parseDaAvailabilityTrancheDatumV1Cbor(
-          encodeDaAvailabilityTrancheDatumV1(thread),
+        parseDaAvailabilityTrancheDatumCbor(
+          encodeDaAvailabilityTrancheDatum(thread),
         ),
       ),
     ).toEqual(plan.trancheThreads);
     expect(
-      parseDaAvailabilityTerminalAccumulatorDatumV1Cbor(
-        encodeDaAvailabilityTerminalAccumulatorDatumV1(
-          plan.terminalAccumulator,
-        ),
+      parseDaAvailabilityTerminalAccumulatorDatumCbor(
+        encodeDaAvailabilityTerminalAccumulatorDatum(plan.terminalAccumulator),
       ),
     ).toEqual(plan.terminalAccumulator);
 
     expect(() =>
-      buildDaAvailabilityChallengeDatumPlanV1({
+      buildDaAvailabilityChallengeDatumPlan({
         availableBond: plan.challengedBond,
         bondInputOutRef,
         challenger: OWNER,
@@ -1295,20 +1290,20 @@ describe("Q58 canonical DA availability commitment V1", () => {
       },
     };
     expect(() =>
-      parseDaAvailabilityBondDatumV1Cbor(
-        Data.to(malformedDeadline, DaAvailabilityBondDatumV1),
+      parseDaAvailabilityBondDatumCbor(
+        Data.to(malformedDeadline, DaAvailabilityBondDatum),
         parameters,
       ),
     ).toThrow("exact canonical response deadline");
   });
 
   it("conserves isolated tranche/carrier value and attributes each fee exactly once", () => {
-    const geometry = availabilityResponseGeometryV1({
+    const geometry = availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 64 * 1024,
       maxTrancheCount: 1024,
     });
-    const parameters = daAvailabilityParametersV1({
+    const parameters = daAvailabilityParameters({
       responseGeometry: geometry,
       daBondLovelace: 10_000_000_000n,
       challengerBondLovelace: 10_000_000_000n,
@@ -1318,7 +1313,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       maxCloseFeeLovelace: MAX_CLOSE_FEE,
       maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
     });
-    const firstThread = planDaAvailabilityPublicationValueTransitionV1({
+    const firstThread = planDaAvailabilityPublicationValueTransition({
       threadInputLovelace: 5_004_350_000n,
       previousCarrierInputLovelace: 0n,
       nextCarrierOutputLovelace: 2_000_000n,
@@ -1328,14 +1323,14 @@ describe("Q58 canonical DA availability commitment V1", () => {
       parameters,
     });
     expect(firstThread).toBe(5_001_950_000n);
-    assertDaAvailabilityChallengerBondConservationV1({
+    assertDaAvailabilityChallengerBondConservation({
       initialChallengerBondLovelace: 10_000_000_000n,
       currentThreadLovelace: [firstThread, 4_995_650_000n],
       currentCarrierLovelace: [2_000_000n],
       paidTransactionFeesLovelace: [400_000n],
     });
 
-    const secondThread = planDaAvailabilityPublicationValueTransitionV1({
+    const secondThread = planDaAvailabilityPublicationValueTransition({
       threadInputLovelace: firstThread,
       previousCarrierInputLovelace: 2_000_000n,
       nextCarrierOutputLovelace: 1_800_000n,
@@ -1345,14 +1340,14 @@ describe("Q58 canonical DA availability commitment V1", () => {
       parameters,
     });
     expect(secondThread).toBe(5_001_700_000n);
-    assertDaAvailabilityChallengerBondConservationV1({
+    assertDaAvailabilityChallengerBondConservation({
       initialChallengerBondLovelace: 10_000_000_000n,
       currentThreadLovelace: [secondThread, 4_995_650_000n],
       currentCarrierLovelace: [1_800_000n],
       paidTransactionFeesLovelace: [400_000n, 450_000n],
     });
 
-    const refunds = planDaAvailabilityTerminalRefundV1({
+    const refunds = planDaAvailabilityTerminalRefund({
       kind: "close",
       tranches: [
         {
@@ -1386,7 +1381,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     ).toBe(10_000_000_000n - 400_000n - 450_000n - 900_000n);
 
     expect(() =>
-      planDaAvailabilityPublicationValueTransitionV1({
+      planDaAvailabilityPublicationValueTransition({
         threadInputLovelace: 5_004_350_000n,
         previousCarrierInputLovelace: 0n,
         nextCarrierOutputLovelace: 2_000_000n,
@@ -1397,7 +1392,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("fee above its authenticated ceiling");
     expect(() =>
-      planDaAvailabilityPublicationValueTransitionV1({
+      planDaAvailabilityPublicationValueTransition({
         threadInputLovelace: 5_004_350_000n,
         previousCarrierInputLovelace: 0n,
         nextCarrierOutputLovelace: 5_003_000_000n,
@@ -1408,7 +1403,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("consume the protected tranche working floor");
     expect(() =>
-      assertDaAvailabilityChallengerBondConservationV1({
+      assertDaAvailabilityChallengerBondConservation({
         initialChallengerBondLovelace: 10_000_000_000n,
         currentThreadLovelace: [firstThread, 4_995_650_000n],
         currentCarrierLovelace: [2_000_000n],
@@ -1416,7 +1411,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("not isolated and exactly conserved");
     expect(() =>
-      planDaAvailabilityTerminalRefundV1({
+      planDaAvailabilityTerminalRefund({
         kind: "close",
         tranches: [
           {
@@ -1435,7 +1430,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       }),
     ).toThrow("noncanonical protected value");
     expect(() =>
-      planDaAvailabilityTerminalRefundV1({
+      planDaAvailabilityTerminalRefund({
         kind: "timeout",
         tranches: [
           {
@@ -1456,7 +1451,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
   });
 
   it("folds published and timed-out tranches into the one canonical terminal accumulator", () => {
-    const parameters = daAvailabilityParametersV1({
+    const parameters = daAvailabilityParameters({
       responseGeometry: CANDIDATE_GEOMETRY,
       daBondLovelace: 10_000_000_000n,
       challengerBondLovelace: 10_000_000_000n,
@@ -1467,7 +1462,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       maxTimeoutFeeLovelace: MAX_TIMEOUT_FEE,
     });
     const bytes = payload(16_000);
-    const commitment = buildDaAvailabilityCommitmentV1({
+    const commitment = buildDaAvailabilityCommitment({
       deploymentIdentity: DEPLOYMENT,
       headerHash: HEADER,
       payload: bytes,
@@ -1482,14 +1477,14 @@ describe("Q58 canonical DA availability commitment V1", () => {
         attested_signers: SIGNERS,
       },
     } as const;
-    const challenge = buildDaAvailabilityChallengeDatumPlanV1({
+    const challenge = buildDaAvailabilityChallengeDatumPlan({
       availableBond: available,
       bondInputOutRef: OUT_REF,
       challenger: OWNER,
       openedAt: 1_000n,
       parameters,
     });
-    const [tranchePlan] = planDaAvailabilityPublicationsV1({
+    const [tranchePlan] = planDaAvailabilityPublications({
       commitment,
       payload: bytes,
       challengeAssetName: challenge.challengeAssetName,
@@ -1502,7 +1497,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     }
     let receipt = challenge.trancheThreads[0];
     for (const publication of tranchePlan.publications) {
-      receipt = advanceDaAvailabilityTrancheV1({
+      receipt = advanceDaAvailabilityTranche({
         active: receipt,
         publication,
         responseGeometry: CANDIDATE_GEOMETRY,
@@ -1510,7 +1505,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
         carrierOutputIndex: 1n,
       });
     }
-    const published = planDaAvailabilitySettlementV1({
+    const published = planDaAvailabilitySettlement({
       commitment,
       terminalAccumulator: challenge.terminalAccumulator,
       tranche: receipt,
@@ -1534,7 +1529,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
       published.nextTerminalAccumulator.folded_terminal_accumulator,
     ).toMatch(/^[0-9a-f]{64}$/u);
 
-    const timedOut = planDaAvailabilitySettlementV1({
+    const timedOut = planDaAvailabilitySettlement({
       commitment,
       terminalAccumulator: challenge.terminalAccumulator,
       tranche: challenge.trancheThreads[0]!,
@@ -1551,7 +1546,7 @@ describe("Q58 canonical DA availability commitment V1", () => {
     });
     expect(timedOut.nextTerminalAccumulator.has_timed_out_tranche).toBe(true);
     expect(() =>
-      planDaAvailabilitySettlementV1({
+      planDaAvailabilitySettlement({
         commitment,
         terminalAccumulator: challenge.terminalAccumulator,
         tranche: challenge.trancheThreads[0]!,

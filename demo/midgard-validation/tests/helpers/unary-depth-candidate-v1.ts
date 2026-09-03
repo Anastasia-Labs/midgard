@@ -16,7 +16,7 @@ const unaryConstructorPrefixHex = "d8799f";
 const unaryConstructorSuffixHex = "ff";
 const unaryLeafHex = "00";
 
-export const cardanoUnaryConstructorDataCborV1 = (depth: number): string => {
+export const cardanoUnaryConstructorDataCbor = (depth: number): string => {
   if (!Number.isSafeInteger(depth) || depth <= 0) {
     throw new Error("Cardano unary Data depth must be positive");
   }
@@ -27,7 +27,7 @@ export const cardanoUnaryConstructorDataCborV1 = (depth: number): string => {
   );
 };
 
-export const measureExactUnaryConstructorDataV1 = (
+export const measureExactUnaryConstructorData = (
   datumCborHex: string,
 ): {
   readonly depth: number;
@@ -127,7 +127,7 @@ const encodeCborMapRaw = (
 const encodeCborTagRaw = (tag: bigint, item: Uint8Array): Buffer =>
   Buffer.concat([encodeCborHead(6, tag), Buffer.from(item)]);
 
-export type RawSignedCardanoUnaryCandidateV1 = {
+export type RawSignedCardanoUnaryCandidate = {
   readonly requestedItemCount: number;
   readonly cborHex: string;
   readonly signedBytes: number;
@@ -144,7 +144,7 @@ export type RawSignedCardanoUnaryCandidateV1 = {
  * byte-for-byte with CML in the boundary suite, including the deterministic
  * vkey witness.
  */
-export const buildRawSignedCardanoUnaryCandidateV1 = ({
+export const buildRawSignedCardanoUnaryCandidate = ({
   privateKey,
   inputTransactionId,
   inputLovelace,
@@ -160,9 +160,9 @@ export const buildRawSignedCardanoUnaryCandidateV1 = ({
   readonly requestedDepth: number;
   readonly minFeeA: number;
   readonly minFeeB: number;
-}): RawSignedCardanoUnaryCandidateV1 => {
+}): RawSignedCardanoUnaryCandidate => {
   const datumCbor = Buffer.from(
-    cardanoUnaryConstructorDataCborV1(requestedDepth),
+    cardanoUnaryConstructorDataCbor(requestedDepth),
     "hex",
   );
   const input = encodeCborArrayRaw([
@@ -246,7 +246,7 @@ export const buildRawSignedCardanoUnaryCandidateV1 = ({
  * `CML.calc_script_data_hash`, which materializes the redeemer `PlutusData` and
  * therefore traps on maximum-depth unary Data.
  */
-const plutusV3LanguageViewsCborV1 = (costModel: readonly number[]): Buffer =>
+const plutusV3LanguageViewsCbor = (costModel: readonly number[]): Buffer =>
   encodeCborMapRaw([
     [
       encodeCborUint(2n),
@@ -264,7 +264,7 @@ const plutusV3LanguageViewsCborV1 = (costModel: readonly number[]): Buffer =>
  * entirely — not encoded as an empty list — whenever no datum witnesses are
  * present, which is the case for every candidate this builder produces.
  */
-const rawScriptDataHashV1 = ({
+const rawScriptDataHash = ({
   redeemersCbor,
   costModel,
 }: {
@@ -272,10 +272,10 @@ const rawScriptDataHashV1 = ({
   readonly costModel: readonly number[];
 }): Buffer =>
   computeHash32(
-    Buffer.concat([redeemersCbor, plutusV3LanguageViewsCborV1(costModel)]),
+    Buffer.concat([redeemersCbor, plutusV3LanguageViewsCbor(costModel)]),
   );
 
-export type RawSignedCardanoUnaryRedeemerCandidateV1 = {
+export type RawSignedCardanoUnaryRedeemerCandidate = {
   readonly requestedItemCount: number;
   readonly cborHex: string;
   readonly signedBytes: number;
@@ -288,7 +288,7 @@ export type RawSignedCardanoUnaryRedeemerCandidateV1 = {
 /**
  * Raw (CML-free) builder for the canonical V1 unary-depth Cardano *redeemer*
  * candidate — the field-8 counterpart of
- * `buildRawSignedCardanoUnaryCandidateV1`.
+ * `buildRawSignedCardanoUnaryCandidate`.
  *
  * `buildSignedCardanoSpendRedeemersCandidateV1` cannot reach the genuine
  * maximum: it routes the redeemer through `CML.PlutusData.from_cbor_hex` and
@@ -300,7 +300,7 @@ export type RawSignedCardanoUnaryRedeemerCandidateV1 = {
  * makes "the same transaction, only deeper" a measured claim rather than an
  * assumption.
  */
-export const buildRawSignedCardanoUnaryRedeemersCandidateV1 = ({
+export const buildRawSignedCardanoUnaryRedeemersCandidate = ({
   privateKey,
   spendInputs,
   scriptInputIndex,
@@ -340,7 +340,7 @@ export const buildRawSignedCardanoUnaryRedeemersCandidateV1 = ({
   readonly priceMem: number;
   readonly priceStep: number;
   readonly plutusV3CostModel: readonly number[];
-}): RawSignedCardanoUnaryRedeemerCandidateV1 => {
+}): RawSignedCardanoUnaryRedeemerCandidate => {
   if (spendInputs.length === 0) {
     throw new Error("Unary-depth redeemer candidate needs a spend input");
   }
@@ -352,7 +352,7 @@ export const buildRawSignedCardanoUnaryRedeemersCandidateV1 = ({
     throw new Error("Unary-depth redeemer script input index is out of range");
   }
   const redeemerDataCbor = Buffer.from(
-    cardanoUnaryConstructorDataCborV1(requestedDepth),
+    cardanoUnaryConstructorDataCbor(requestedDepth),
     "hex",
   );
   const address = Buffer.from(
@@ -394,7 +394,7 @@ export const buildRawSignedCardanoUnaryRedeemersCandidateV1 = ({
       ]),
     ],
   ]);
-  const scriptDataHash = rawScriptDataHashV1({
+  const scriptDataHash = rawScriptDataHash({
     redeemersCbor,
     costModel: plutusV3CostModel,
   });

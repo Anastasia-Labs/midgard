@@ -1,24 +1,24 @@
 /**
  * `da-hash-preimage` fault-proof family (Goal task `Q44`).
  *
- * A `transactions_root` leaf is `(key, Data(L2TransactionSourceV1))`. This
+ * A `transactions_root` leaf is `(key, Data(L2TransactionSource))`. This
  * module is the total TypeScript twin of
  * `onchain/aiken/lib/midgard/fraud-proofs/da-hash-preimage/rule.ak`: malformed
  * source envelopes are evidence, not decoder preconditions.
  */
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxCompactV1,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxProofFieldLengths,
+  decodeMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { L2TransactionSourceV1 } from "../ledger-state.js";
+import { L2TransactionSource } from "../ledger-state.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -29,24 +29,24 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const DA_HASH_PREIMAGE_VIOLATION_ID_V1 = "da-hash-preimage" as const;
+export const DA_HASH_PREIMAGE_VIOLATION_ID = "da-hash-preimage" as const;
 
 /** Exact constructor order of Aiken `VerdictV1`. */
-export const DaHashPreimageVerdictV1Schema = Data.Enum([
+export const DaHashPreimageVerdictSchema = Data.Enum([
   Data.Literal("MalformedSource"),
   Data.Literal("KeyMismatch"),
   Data.Literal("MalformedProofSource"),
   Data.Literal("DerivedIdMismatch"),
   Data.Literal("NoViolation"),
 ]);
-export type DaHashPreimageVerdictV1 = Data.Static<
-  typeof DaHashPreimageVerdictV1Schema
+export type DaHashPreimageVerdict = Data.Static<
+  typeof DaHashPreimageVerdictSchema
 >;
-export const DaHashPreimageVerdictV1 =
-  DaHashPreimageVerdictV1Schema as unknown as DaHashPreimageVerdictV1;
+export const DaHashPreimageVerdict =
+  DaHashPreimageVerdictSchema as unknown as DaHashPreimageVerdict;
 
-export type DaHashPreimageAdjudicationV1 = {
-  readonly verdict: DaHashPreimageVerdictV1;
+export type DaHashPreimageAdjudication = {
+  readonly verdict: DaHashPreimageVerdict;
   readonly embeddedTxId: string | null;
   readonly derivedTxId: string | null;
 };
@@ -71,18 +71,18 @@ const exactBytes = (
  * mismatch, then the valid negative. No malformed accusation escapes as an
  * exception.
  */
-export const adjudicateCommittedSourceLeafV1 = ({
+export const adjudicateCommittedSourceLeaf = ({
   committedTxId,
   committedLeafValue,
 }: {
   readonly committedTxId: string;
   readonly committedLeafValue: Uint8Array;
-}): DaHashPreimageAdjudicationV1 => {
+}): DaHashPreimageAdjudication => {
   const sourceCbor = Buffer.from(committedLeafValue).toString("hex");
-  let source: L2TransactionSourceV1;
+  let source: L2TransactionSource;
   try {
-    source = Data.from(sourceCbor, L2TransactionSourceV1);
-    if (Data.to(source, L2TransactionSourceV1) !== sourceCbor) {
+    source = Data.from(sourceCbor, L2TransactionSource);
+    if (Data.to(source, L2TransactionSource) !== sourceCbor) {
       return {
         verdict: "MalformedSource",
         embeddedTxId: null,
@@ -102,14 +102,14 @@ export const adjudicateCommittedSourceLeafV1 = ({
     return { verdict: "KeyMismatch", embeddedTxId, derivedTxId: null };
   }
 
-  let compact: ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+  let compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   try {
     const compactCbor = Buffer.from(source.source.compact_cbor, "hex");
     compact = exactBytes(
       compactCbor,
-      decodeMidgardNativeTxCompactV1,
-      encodeMidgardNativeTxCompactV1,
-    ) as ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+      decodeMidgardNativeTxCompact,
+      encodeMidgardNativeTxCompact,
+    ) as ReturnType<typeof decodeMidgardNativeTxCompact>;
 
     const witnessCbor = Buffer.from(
       source.source.witness_set_compact_cbor,
@@ -117,8 +117,8 @@ export const adjudicateCommittedSourceLeafV1 = ({
     );
     exactBytes(
       witnessCbor,
-      decodeMidgardNativeTxWitnessSetCompactV1,
-      encodeMidgardNativeTxWitnessSetCompactV1,
+      decodeMidgardNativeTxWitnessSetCompact,
+      encodeMidgardNativeTxWitnessSetCompact,
     );
     if (!computeHash32(witnessCbor).equals(compact.transactionWitnessSetHash)) {
       throw new Error("witness-set hash mismatch");
@@ -130,8 +130,8 @@ export const adjudicateCommittedSourceLeafV1 = ({
     );
     exactBytes(
       lengthsCbor,
-      decodeMidgardNativeTxProofFieldLengthsV1,
-      encodeMidgardNativeTxProofFieldLengthsV1,
+      decodeMidgardNativeTxProofFieldLengths,
+      encodeMidgardNativeTxProofFieldLengths,
     );
   } catch {
     return {
@@ -141,45 +141,45 @@ export const adjudicateCommittedSourceLeafV1 = ({
     };
   }
 
-  const derivedTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
+  const derivedTxId = computeMidgardNativeTxId(compact).toString("hex");
   return derivedTxId === embeddedTxId
     ? { verdict: "NoViolation", embeddedTxId, derivedTxId }
     : { verdict: "DerivedIdMismatch", embeddedTxId, derivedTxId };
 };
 
-export const isDaHashPreimageViolationV1 = (
-  verdict: DaHashPreimageVerdictV1,
+export const isDaHashPreimageViolation = (
+  verdict: DaHashPreimageVerdict,
 ): boolean => verdict !== "NoViolation";
 
 /** Evidence record derived from the authenticated raw committed leaf. */
-export type DaHashPreimageEvidenceV1 = {
-  readonly violationId: typeof DA_HASH_PREIMAGE_VIOLATION_ID_V1;
+export type DaHashPreimageEvidence = {
+  readonly violationId: typeof DA_HASH_PREIMAGE_VIOLATION_ID;
   readonly committedTxId: string;
   readonly committedLeafValueCbor: string;
-  readonly verdict: DaHashPreimageVerdictV1;
+  readonly verdict: DaHashPreimageVerdict;
   readonly embeddedTxId: string | null;
   readonly derivedTxId: string | null;
   readonly isViolation: boolean;
 };
 
-export const daHashPreimageEvidenceFromCommittedLeafV1 = ({
+export const daHashPreimageEvidenceFromCommittedLeaf = ({
   committedTxId,
   committedLeafValue,
 }: {
   readonly committedTxId: string;
   readonly committedLeafValue: Uint8Array;
-}): DaHashPreimageEvidenceV1 => {
+}): DaHashPreimageEvidence => {
   const normalizedCommittedTxId = committedTxId.toLowerCase();
-  const adjudication = adjudicateCommittedSourceLeafV1({
+  const adjudication = adjudicateCommittedSourceLeaf({
     committedTxId: normalizedCommittedTxId,
     committedLeafValue,
   });
   return Object.freeze({
-    violationId: DA_HASH_PREIMAGE_VIOLATION_ID_V1,
+    violationId: DA_HASH_PREIMAGE_VIOLATION_ID,
     committedTxId: normalizedCommittedTxId,
     committedLeafValueCbor: Buffer.from(committedLeafValue).toString("hex"),
     ...adjudication,
-    isViolation: isDaHashPreimageViolationV1(adjudication.verdict),
+    isViolation: isDaHashPreimageViolation(adjudication.verdict),
   });
 };
 
@@ -204,7 +204,7 @@ export const DaHashPreimageStep01SpendRedeemer =
 
 /** Mirrors `midgard/fraud_proofs/da_hash_preimage/step_02.State`. */
 export const DaHashPreimageStep02StateSchema = Data.Object({
-  verdict: DaHashPreimageVerdictV1Schema,
+  verdict: DaHashPreimageVerdictSchema,
 });
 export type DaHashPreimageStep02State = Data.Static<
   typeof DaHashPreimageStep02StateSchema
@@ -249,6 +249,6 @@ export const DaHashPreimageStepCancelSchema = FaultProofStepCancelSchema;
 export type DaHashPreimageStepCancel = FaultProofStepCancel;
 export const DaHashPreimageStepCancel = FaultProofStepCancel;
 
-export const daHashPreimageStep02StateFromEvidenceV1 = (
-  evidence: DaHashPreimageEvidenceV1,
+export const daHashPreimageStep02StateFromEvidence = (
+  evidence: DaHashPreimageEvidence,
 ): DaHashPreimageStep02State => ({ verdict: evidence.verdict });

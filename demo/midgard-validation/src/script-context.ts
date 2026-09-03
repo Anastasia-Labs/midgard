@@ -239,7 +239,7 @@ export const buildPlutusV3ScriptContext = (
     cardanoScriptInfoData(view, purpose),
   ]);
 
-export const buildMidgardV1ScriptContext = (
+export const buildMidgardScriptContext = (
   view: ScriptContextView,
   purpose: MidgardScriptPurpose,
   redeemer: MidgardLedgerRedeemer,

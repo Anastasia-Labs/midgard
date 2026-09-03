@@ -26,18 +26,18 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
-  type MissingNativeScriptTxContractsV1,
+  type MissingNativeScriptTxContracts,
 } from "./contracts-v1.js";
 import {
-  type MissingNativeScriptTxStepIndexV1,
-  missingNativeScriptTxStepLabelV1,
+  type MissingNativeScriptTxStepIndex,
+  missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxReferenceScriptV1,
+  requireMissingNativeScriptTxReferenceScript,
 } from "./submit-common-v1.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -50,8 +50,8 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: MissingNativeScriptTxContractsV1;
-}): MissingNativeScriptTxStepIndexV1 => {
+  readonly contracts: MissingNativeScriptTxContracts;
+}): MissingNativeScriptTxStepIndex => {
   for (const stepIndex of [0, 1, 2, 3, 4, 5] as const) {
     if (
       threadUtxo.address === contracts.steps[stepIndex].spendingScriptAddress
@@ -66,7 +66,7 @@ const locateStepIndex = ({
 
 export type SubmitMissingNativeScriptTxCancelResult = {
   readonly txHash: string;
-  readonly cancelledStepIndex: MissingNativeScriptTxStepIndexV1;
+  readonly cancelledStepIndex: MissingNativeScriptTxStepIndex;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
   readonly reclaimedLovelace: bigint;
@@ -86,13 +86,13 @@ export const submitMissingNativeScriptTxCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -101,7 +101,7 @@ export const submitMissingNativeScriptTxCancel = async ({
     label: `${MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL} thread`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = missingNativeScriptTxStepLabelV1(stepIndex);
+  const stepLabel = missingNativeScriptTxStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -157,13 +157,13 @@ export const submitMissingNativeScriptTxCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadBurnCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadBurnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel burn`,
   });
   const referenceInputs = [
-    requireMissingNativeScriptTxReferenceScriptV1({
+    requireMissingNativeScriptTxReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,

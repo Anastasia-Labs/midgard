@@ -24,21 +24,21 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  fabricatedDepositBlockEvidenceFromVerifiedPayloadV1,
-  prepareFabricatedDepositFromCommittedLeavesV1,
+  fabricatedDepositBlockEvidenceFromVerifiedPayload,
+  prepareFabricatedDepositFromCommittedLeaves,
 } from "../src/prepare-fabricated-deposit.js";
 import {
-  deriveFabricatedDepositStep01HandoffV1,
+  deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
   submitFabricatedDepositStep01,
 } from "../src/submit-fabricated-deposit-step-01.js";
 import { submitFabricatedDepositStep02 } from "../src/submit-fabricated-deposit-step-02.js";
 import {
-  deriveFabricatedDepositStep03HandoffV1,
+  deriveFabricatedDepositStep03Handoff,
   submitFabricatedDepositStep03,
 } from "../src/submit-fabricated-deposit-step-03.js";
 import {
-  assertFabricatedDepositStep04FinalizableV1,
+  assertFabricatedDepositStep04Finalizable,
   submitFabricatedDepositStep04,
 } from "../src/submit-fabricated-deposit-step-04.js";
 import {
@@ -46,12 +46,12 @@ import {
   keyValuePhasProof,
 } from "../src/transition-trace/phas.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h28,
   outRefCbor,
-  reencodeFixturePayloadV1,
+  reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -59,12 +59,12 @@ import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
-  submitFabricatedFamilyInitV1,
+  submitFabricatedFamilyInit,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -93,14 +93,14 @@ const HEADER_END_TIME = 20n;
 /** Stands in for the emulator prover's payment key hash. */
 const FRAUD_PROVER = h28(0x77);
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
 };
 
-const L1_OBSERVATION: SDK.AuthenticatedL1ObservationV1 = {
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+const L1_OBSERVATION: SDK.AuthenticatedL1Observation = {
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -112,10 +112,10 @@ const L1_OBSERVATION: SDK.AuthenticatedL1ObservationV1 = {
 };
 
 /** Commits the challenged block's single fabricated deposit leaf. */
-const buildChallengedBlockV1 = async () => {
-  const base = await buildCanonicalBlockFixtureV1({
+const buildChallengedBlock = async () => {
+  const base = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x21, 0n)],
         fee: 1_000_000n,
       }),
@@ -130,16 +130,16 @@ const buildChallengedBlockV1 = async () => {
       value: Buffer.from(VALUE_DIVERTED_DEPOSIT_INFO, "hex"),
     },
   ]);
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...base.header,
     depositsRoot: counted.root,
     depositCount: counted.count,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const deposits: SDK.DaPayloadEntry[] = [
     [KEY_AUTHENTIC_DEPOSIT_ID, VALUE_DIVERTED_DEPOSIT_INFO],
   ];
-  const payload: SDK.DaPayloadV1 = {
+  const payload: SDK.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -156,8 +156,8 @@ const buildChallengedBlockV1 = async () => {
     header,
     headerHash,
     depositsRoot: counted.root,
-    payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
-    observation: authenticatedHeaderObservationV1({
+    payloadEnvelopeCbor: await reencodeFixturePayload(payload),
+    observation: authenticatedHeaderObservation({
       ...base,
       header,
       headerHash,
@@ -171,7 +171,7 @@ const buildChallengedBlockV1 = async () => {
  * in the canonical production catalogue.
  */
 const makeEmulatorHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realFabricatedDeposit: true,
       alwaysFraudProofCatalogue: true,
@@ -184,7 +184,7 @@ const makeEmulatorHarness = async () => {
       "Harness did not build the fabricated-deposit contracts/category",
     );
   }
-  expect(category.categoryId).toBe(SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1);
+  expect(category.categoryId).toBe(SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID);
   expect(category.scriptHash).toBe(
     fabricatedDeposit.steps[0].spendingScriptHash,
   );
@@ -225,7 +225,7 @@ const setupChallengedBlockOnEmulator = async (
   // whenever that count is non-zero. Reusing the deposits counted root keeps
   // the header committable without touching validation traces (no forced or
   // L2 transactions in this block).
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(funderKeyHash, headerStartTime),
     depositsRoot: counted.root,
     depositCount: counted.count,
@@ -278,7 +278,7 @@ const setupChallengedBlockOnEmulator = async (
   };
   const eventDatumCbor = Data.to(authenticEventDatum, SDK.DepositDatum);
   const observedEventAssetName = await Effect.runPromise(
-    SDK.depositEventNonceV1(authenticEventDatum.event.id),
+    SDK.depositEventNonce(authenticEventDatum.event.id),
   );
   return {
     counted,
@@ -300,9 +300,9 @@ const setupChallengedBlockOnEmulator = async (
 describe("fabricated-deposit fault-proof emulator lifecycle", () => {
   it("admits retained-DA evidence and derives every thread handoff off-chain", async () => {
     // ## 1. Evidence admission over real retained-DA bytes.
-    const block = await buildChallengedBlockV1();
+    const block = await buildChallengedBlock();
     expect(block.depositsRoot).toBe(MM_DEPOSITS_ROOT);
-    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
       observation: block.observation,
       payloadEnvelopeCbor: block.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
@@ -311,7 +311,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     expect(evidence.headerHash).toBe(block.headerHash);
 
     // ## 2. The proof plan the prover would submit.
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedDepositsRoot: evidence.committedDepositsRoot,
       depositCount: evidence.depositCount,
@@ -328,7 +328,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       },
     });
     expect(plan.threadTokenAssetName).toBe(
-      `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1}${block.headerHash}`,
+      `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID}${block.headerHash}`,
     );
 
     // ## 3. Every thread datum an emulator lifecycle places on chain.
@@ -336,7 +336,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: null },
       SDK.FabricatedDepositStep01Datum,
     );
-    const step01Handoff = await deriveFabricatedDepositStep01HandoffV1({
+    const step01Handoff = await deriveFabricatedDepositStep01Handoff({
       header: block.header,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedDepositInclusion(plan.depositInclusion),
@@ -345,7 +345,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: step01Handoff.step02State },
       SDK.FabricatedDepositStep02Datum,
     );
-    const step03State = SDK.fabricatedDepositStep03StateV1(
+    const step03State = SDK.fabricatedDepositStep03State(
       step01Handoff.step02State,
       {
         DepositEventObserved: {
@@ -358,7 +358,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: step03State },
       SDK.FabricatedDepositStep03Datum,
     );
-    const step03Handoff = await deriveFabricatedDepositStep03HandoffV1({
+    const step03Handoff = await deriveFabricatedDepositStep03Handoff({
       state: step03State,
       eventDatumCbor: DATUM_AUTHENTIC_DEPOSIT_EVENT,
     });
@@ -366,7 +366,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: step03Handoff.step04State },
       SDK.FabricatedDepositStep04Datum,
     );
-    assertFabricatedDepositStep04FinalizableV1({
+    assertFabricatedDepositStep04Finalizable({
       state: step03Handoff.step04State,
       fraudulentHeaderHash: block.headerHash,
     });
@@ -448,8 +448,8 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     );
 
     // ## Evidence admission over the emulator block's retained-DA bytes.
-    const base = await buildCanonicalBlockFixtureV1({ transactions: [] });
-    const payload: SDK.DaPayloadV1 = {
+    const base = await buildCanonicalBlockFixture({ transactions: [] });
+    const payload: SDK.DaPayload = {
       ...base.payload,
       block_body: {
         ...base.payload.block_body,
@@ -462,20 +462,20 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         },
       },
     };
-    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1({
+    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation({
         ...base,
         header,
         headerHash,
       }),
-      payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
+      payloadEnvelopeCbor: await reencodeFixturePayload(payload),
       daProvenance: DA_PROVENANCE,
     });
     expect(evidence.headerHash).toBe(headerHash);
     expect(evidence.committedDepositsRoot).toBe(counted.root);
 
     // ## The proof plan, classified against the authentic event.
-    const plan = await prepareFabricatedDepositFromCommittedLeavesV1({
+    const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedDepositsRoot: evidence.committedDepositsRoot,
       depositCount: evidence.depositCount,
@@ -491,7 +491,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       },
     });
     expect(plan.threadTokenAssetName).toBe(
-      `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1}${headerHash}`,
+      `${SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID}${headerHash}`,
     );
     expect(plan.classification.fault).toEqual({
       MismatchedDepositContent: {
@@ -502,7 +502,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     });
 
     // ## init
-    const initResult = await submitFabricatedFamilyInitV1({
+    const initResult = await submitFabricatedFamilyInit({
       lucid: proverLucid,
       realBlueprint,
       contracts,
@@ -533,7 +533,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     const inclusion = parseSubmitFabricatedDepositInclusion(
       plan.depositInclusion,
     );
-    const expectedHandoff = await deriveFabricatedDepositStep01HandoffV1({
+    const expectedHandoff = await deriveFabricatedDepositStep01Handoff({
       header,
       headerHash,
       inclusion,
@@ -604,7 +604,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       initResult.computationThreadUnit,
     );
     expect(outRefLabel(thirdStepUtxo)).toBe(step02Result.nextThreadOutRef);
-    const step03State = SDK.fabricatedDepositStep03StateV1(
+    const step03State = SDK.fabricatedDepositStep03State(
       expectedHandoff.step02State,
       step02Result.verdict,
     );
@@ -638,7 +638,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       initResult.computationThreadUnit,
     );
     expect(outRefLabel(fourthStepUtxo)).toBe(step03Result.nextThreadOutRef);
-    const step03Handoff = await deriveFabricatedDepositStep03HandoffV1({
+    const step03Handoff = await deriveFabricatedDepositStep03Handoff({
       state: step03State,
       eventDatumCbor,
     });
@@ -728,7 +728,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     } = harness;
 
     // An honest block: the committed leaf's content IS the authentic event's.
-    const authenticInfoCbor = SDK.committedDepositValueBytesV1(
+    const authenticInfoCbor = SDK.committedDepositValueBytes(
       Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum).event.info,
     );
     const {
@@ -740,7 +740,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       referenceScriptUtxos,
     } = await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
 
-    const initResult = await submitFabricatedFamilyInitV1({
+    const initResult = await submitFabricatedFamilyInit({
       lucid: proverLucid,
       realBlueprint,
       contracts,
@@ -761,7 +761,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     // Plane 1 — off-chain fail-closed: the committed content hash equals the
     // authentic event's, so the classifier refuses to build a plan at all.
     await expect(
-      prepareFabricatedDepositFromCommittedLeavesV1({
+      prepareFabricatedDepositFromCommittedLeaves({
         headerHash: setup.headerHash,
         committedDepositsRoot: counted.root,
         depositCount: counted.count,

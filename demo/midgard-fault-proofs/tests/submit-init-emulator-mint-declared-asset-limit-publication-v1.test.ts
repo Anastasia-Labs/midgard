@@ -4,18 +4,18 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyMintDeclaredAssetLimitScriptsV1,
-  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1,
+  applyMintDeclaredAssetLimitScripts,
+  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
 } from "../src/mint-declared-asset-limit/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1.every((title) =>
+const hasFamily = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.every((title) =>
   blueprint.validators.some((validator) => validator.title === title),
 );
 
@@ -23,13 +23,13 @@ describe.runIf(hasFamily)(
   "mintDeclaredAssetLimit signed publication fit",
   () => {
     it("publishes all four applied scripts below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const proofAddressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyMintDeclaredAssetLimitScriptsV1({
+      const steps = applyMintDeclaredAssetLimitScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

@@ -4,11 +4,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyOutputReferenceScriptDecodingScriptsV1,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
+  applyOutputReferenceScriptDecodingScripts,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
 } from "../src/output-reference-script-decoding/index.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -19,17 +19,17 @@ const blueprint = readBlueprint(realBlueprintPath);
 describe("outputReferenceScriptDecoding signed publication fit", () => {
   it("publishes every fully applied step within ordinary L1 limits", async () => {
     expect(
-      OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.every((title) =>
+      OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES.every((title) =>
         blueprint.validators.some((validator) => validator.title === title),
       ),
     ).toBe(true);
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
     const addressData = await Effect.runPromise(
       addressDataFromBech32(
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = applyOutputReferenceScriptDecodingScriptsV1({
+    const steps = applyOutputReferenceScriptDecodingScripts({
       blueprint,
       network: "Preprod",
       computationThreadPolicyId: harness.contracts.computationThread.policyId,

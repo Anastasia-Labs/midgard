@@ -11,7 +11,7 @@ import {
   computeScriptIntegrityHashForLanguages,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  MIDGARD_V1_CANONICAL_COST_MODEL_VIEW,
+  MIDGARD_CANONICAL_COST_MODEL_VIEW,
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
   ScriptLanguageTags,
 } from "../src/index.js";
@@ -27,7 +27,7 @@ describe("script language views", () => {
     const harmonicV3 = toCostModelArrV3(defaultV3Costs);
 
     expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
-    expect(MIDGARD_V1_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
+    expect(MIDGARD_CANONICAL_COST_MODEL_VIEW).toEqual(harmonicV3);
   });
 
   it("uses EMPTY_NULL_ROOT for an empty required language set", () => {

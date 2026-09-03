@@ -16,7 +16,7 @@
  * would all die at prepare-selected with the same `Spend[0] unexpected empty
  * list` signature as the recorded rows — an unfalsifiable red that proves
  * nothing — so suites built on this harness must gate themselves with
- * {@link blueprintSpeaksOptionBCompleteItemWireV1} and skip loudly instead.
+ * {@link blueprintSpeaksOptionBCompleteItemWire} and skip loudly instead.
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
@@ -45,7 +45,7 @@ import {
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
   validationDisputeValidityRange,
-  type ValidationProofItemDeliveryV1,
+  type ValidationProofItemDelivery,
 } from "../../src/index.js";
 import { submitInit } from "./legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./submit-init-emulator-fixtures.js";
@@ -63,8 +63,8 @@ import {
   createValidationDisputeParties,
   expectSingleUtxoWithUnit,
   network,
-  publishFaultProofWitnessReferenceScriptsV1,
-  publishOperatorLifecycleReferenceScriptsV1,
+  publishFaultProofWitnessReferenceScripts,
+  publishOperatorLifecycleReferenceScripts,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -89,7 +89,7 @@ const ITEM_SEMANTIC_SPEND_TITLE =
  * expected-red rows — so suites skip on it rather than manufacture an
  * unfalsifiable failure.
  */
-export const blueprintSpeaksOptionBCompleteItemWireV1 = (
+export const blueprintSpeaksOptionBCompleteItemWire = (
   blueprint: Blueprint,
 ): boolean => {
   const itemSemantic = blueprint.validators.find(
@@ -105,7 +105,7 @@ export const blueprintSpeaksOptionBCompleteItemWireV1 = (
 
 /** The gate the route-freedom suites share, probed once at collection time. */
 export const realBlueprintSpeaksOptionBV1 = (): boolean =>
-  blueprintSpeaksOptionBCompleteItemWireV1(readBlueprint(realBlueprintPath));
+  blueprintSpeaksOptionBCompleteItemWire(readBlueprint(realBlueprintPath));
 
 export const OPTION_B_SKIP_REASON =
   "SKIPPED (#621): the blueprint at MIDGARD_REAL_BLUEPRINT_PATH (or " +
@@ -129,12 +129,12 @@ type SemanticResolutionResult = Awaited<
  * the journey already logs, plus every transaction the stage submitted, in
  * submission order, measured by `captureEmulatorSubmission`.
  */
-export type CapturedLifecycleStageV1 = {
+export type CapturedLifecycleStage = {
   readonly label: string;
   readonly measurements: readonly CompleteSignedTransactionMeasurement[];
 };
 
-export type RouteFreedomJourneyV1 = {
+export type RouteFreedomJourney = {
   readonly emulator: Emulator;
   readonly realBlueprint: Blueprint;
   readonly challengerLucid: LucidEvolution;
@@ -152,7 +152,7 @@ export type RouteFreedomJourneyV1 = {
    * per staged call, in staging order. The semantic-resolution and award
    * legs are captured by their own submit functions.
    */
-  readonly lifecycleMeasurements: readonly CapturedLifecycleStageV1[];
+  readonly lifecycleMeasurements: readonly CapturedLifecycleStage[];
   /**
    * One semantic-resolution attempt against the staged thread, with this
    * call's routing inputs. A refusal leaves the thread untouched, so failed
@@ -160,7 +160,7 @@ export type RouteFreedomJourneyV1 = {
    * {@link stagedThreadOutRef}.
    */
   readonly submitSemanticResolution: (routing?: {
-    readonly proofItemDelivery?: ValidationProofItemDeliveryV1;
+    readonly proofItemDelivery?: ValidationProofItemDelivery;
     readonly proofItemReferenceOutRef?: string;
   }) => Promise<CapturedSemanticSubmission>;
   readonly submitAward: (
@@ -192,9 +192,9 @@ export type RouteFreedomJourneyV1 = {
  * committed pins were read off exactly this print, and re-measuring after a
  * shape change is one env var away.
  */
-export const printRouteFreedomCampaignTableV1 = (
+export const printRouteFreedomCampaignTable = (
   headline: string,
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   semantic: CapturedSemanticSubmission,
 ): void => {
   if (process.env["MIDGARD_PRINT_PROOF_FIT"] !== "1") {
@@ -248,7 +248,7 @@ export const printRouteFreedomCampaignTableV1 = (
  * a measured anchor with 3% tolerance — wide enough for the observed <2%
  * wobble, regression-tight against Option B's 40-70% deltas.
  */
-export const expectExecutionWithinBandV1 = (
+export const expectExecutionWithinBand = (
   label: string,
   measurement: CompleteSignedTransactionMeasurement,
   anchor: { readonly memoryUnits: bigint; readonly stepUnits: bigint },
@@ -273,13 +273,13 @@ export const expectExecutionWithinBandV1 = (
  * Stages one full dispute up to (and including) prepare-selected and hands
  * back the semantic-resolution leg as a function of its routing inputs.
  */
-export const prepareRouteFreedomJourneyV1 = async ({
+export const prepareRouteFreedomJourney = async ({
   inlineDatumPayloadBytes,
   minimumCompleteItemBytes,
 }: {
   readonly inlineDatumPayloadBytes: number;
   readonly minimumCompleteItemBytes: number;
-}): Promise<RouteFreedomJourneyV1> => {
+}): Promise<RouteFreedomJourney> => {
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
   const {
@@ -297,7 +297,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
   // measurement campaign reads per-stage complete signed bytes and execution
   // units off the same journeys the #621 suites drive — capture only, no
   // transaction is shaped by it.
-  const lifecycleMeasurements: CapturedLifecycleStageV1[] = [];
+  const lifecycleMeasurements: CapturedLifecycleStage[] = [];
   const runCapturedLifecycleStage = async <T>(
     label: string,
     operation: () => Promise<T>,
@@ -332,13 +332,13 @@ export const prepareRouteFreedomJourneyV1 = async ({
   const contracts = {
     ...baseContracts,
     operatorLifecycleReferenceScripts:
-      await publishOperatorLifecycleReferenceScriptsV1({
+      await publishOperatorLifecycleReferenceScripts({
         lucid: challengerLucid,
         contracts: baseContracts,
       }),
   };
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: challengerLucid,
       realBlueprint,
       computationThreadMintingScript: contracts.computationThread.mintingScript,

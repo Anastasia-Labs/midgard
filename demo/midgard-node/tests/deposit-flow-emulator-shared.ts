@@ -13,11 +13,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
 
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
@@ -168,7 +168,7 @@ import {
   type WorkerOutput as CommitWorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
 import {
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   commitTimingBudget,
 } from "../src/workers/utils/commit-end-time.js";
 import { WorkerError } from "../src/workers/utils/common.js";
@@ -180,7 +180,7 @@ import {
   fetchRealStateQueueWitnessContext,
   resolveCurrentOperatorSchedulerWindow,
 } from "../src/workers/utils/scheduler-refresh.js";
-import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
+import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge-v1.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
@@ -222,60 +222,60 @@ export const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
 export const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
 export const EMULATOR_DEPLOYMENT_IDENTITY = ContractDeploymentIdentity.make({
   kind: "derived",
-  deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  deploymentMarker: makeDeploymentMarker("de".repeat(32)),
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 });
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
 // manifest, so the wave's Q58 script derivation takes the
 // `availabilityParametersFromExplicitEnvironment()` branch
 // (`src/transactions/da-attestation.ts`), which fails closed unless the whole
 // availability block is present in the environment. These are the same values
-// `.env.example` ships and `TEST_AVAILABILITY_CHALLENGE_V1` records; sourcing
+// `.env.example` ships and `TEST_AVAILABILITY_CHALLENGE` records; sourcing
 // them from that helper keeps one definition rather than a second copy.
 for (const [name, value] of [
   [
     "MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH",
-    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry.chunkByteLength,
+    TEST_AVAILABILITY_CHALLENGE.responseGeometry.chunkByteLength,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH",
-    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry.trancheByteLength,
+    TEST_AVAILABILITY_CHALLENGE.responseGeometry.trancheByteLength,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT",
-    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry.maxTrancheCount,
+    TEST_AVAILABILITY_CHALLENGE.responseGeometry.maxTrancheCount,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_BOND_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.daBondLovelace,
+    TEST_AVAILABILITY_CHALLENGE.daBondLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.challengerBondLovelace,
+    TEST_AVAILABILITY_CHALLENGE.challengerBondLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.maxOpenFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxOpenFeeLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.maxPublicationFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxPublicationFeeLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.maxSettlementFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxSettlementFeeLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.maxCloseFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxCloseFeeLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
-    TEST_AVAILABILITY_CHALLENGE_V1.maxTimeoutFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxTimeoutFeeLovelace,
   ],
   [
     "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL",
-    TEST_AVAILABILITY_CHALLENGE_V1.bondOwnerCredential,
+    TEST_AVAILABILITY_CHALLENGE.bondOwnerCredential,
   ],
 ] as const) {
   process.env[name] = String(value);
@@ -332,11 +332,11 @@ export const publicRetainedDaBlock = () =>
       max_inflight_requests: 32,
       max_inflight_requests_per_peer: 2,
       max_inflight_proof_requests: 1,
-      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   }) as const;
-export const EMPTY_PROGRAM_MATERIAL_SIDECAR_V1 =
-  encodeMidgardCekProgramMaterialSidecarV1([]);
+export const EMPTY_PROGRAM_MATERIAL_SIDECAR =
+  encodeMidgardCekProgramMaterialSidecar([]);
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
 
@@ -386,18 +386,16 @@ beforeAll(async () => {
           strict_sign: true,
           emit_self: false,
           allowed_topics_only: true,
-          max_gossip_message_bytes:
-            DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+          max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
         },
         limits: {
-          max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-          max_inline_response_bytes:
-            DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-          max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-          max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-          request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+          max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+          max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+          max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+          max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+          request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
         },
-        retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
       public_retained_da: publicRetainedDaBlock(),
       da_committee: {
@@ -1453,7 +1451,7 @@ export const runCommitWorkerUntilSubmitted = async ({
   await alignCommitSchedulerBeforeTestWorker({
     fixture,
     lucidService,
-    targetEndTimeMs: Date.now() + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    targetEndTimeMs: Date.now() + COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   });
 
   let lastOutput: CommitWorkerOutput | undefined;
@@ -2369,7 +2367,7 @@ export const getStateQueueDatumEndTime = (datum: SDK.LinkedListNodeView) =>
           yield* SDK.getConfirmedStateFromStateQueueDatum(datum);
         return Number(confirmedState.endTime);
       }
-      const latestHeader = yield* SDK.getHeaderV1FromStateQueueDatum(datum);
+      const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(datum);
       return Number(latestHeader.endTime);
     }),
   );
@@ -2520,10 +2518,10 @@ export const commitConfirmRecoverAndMerge = async ({
   const queuedBlockBeforeMerge =
     sortedStateQueueBeforeMerge[sortedStateQueueBeforeMerge.length - 1]!;
   const queuedHeaderBeforeMerge = await Effect.runPromise(
-    SDK.getHeaderV1FromStateQueueDatum(queuedBlockBeforeMerge.datum),
+    SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
   );
   const queuedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(queuedHeaderBeforeMerge),
+    SDK.hashBlockHeader(queuedHeaderBeforeMerge),
   );
   if (recoveryOutput.type !== "SuccessfulLocalFinalizationRecoveryOutput") {
     throw new Error(
@@ -2593,7 +2591,7 @@ export const expectedAuthenticatedEventRoot = (
   );
 
 export const expectHeaderRootsToMatchCandidate = (
-  header: SDK.HeaderV1,
+  header: SDK.Header,
   candidate: SpeculativeCandidateSummary,
 ): void => {
   expect(header.utxosRoot).toBe(candidate.roots.utxos);
@@ -2666,17 +2664,16 @@ export const configureEmulatorDaRuntimeManifest = async (): Promise<void> => {
         strict_sign: true,
         emit_self: false,
         allowed_topics_only: true,
-        max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+        max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
       },
       limits: {
-        max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        max_inline_response_bytes:
-          DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-        request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+        request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
       },
-      retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
     public_retained_da: publicRetainedDaBlock(),
     da_committee: {
@@ -2744,7 +2741,7 @@ export {
   buildUnsignedDepositTxFromFundingContextProgram,
   canonicalSlotConfigForLucid,
   CML,
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   commitExplicitBlockHeaderProgram,
   commitTimingBudget,
   commitTxDeltaCacheHitCounter,
@@ -2753,7 +2750,7 @@ export {
   confirmedLedgerFullScanCounter,
   ContractDeploymentIdentity,
   createHash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   DaPayloadsDB,
   Data,
   Database,
@@ -2761,7 +2758,7 @@ export {
   decodeNodeUtxo,
   DepositsDB,
   Effect,
-  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialSidecar,
   fetchStateQueueSnapshotProgram,
   fetchWithdrawalsOnceProgram,
   ForcedTransactionsDB,
@@ -2780,7 +2777,7 @@ export {
   MempoolLedgerDB,
   mergeMaturityWindow,
   Metric,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_CONSENSUS_PROFILE,
   MidgardContracts,
   MidgardMpf,
   NodeConfig,
@@ -2808,7 +2805,7 @@ export {
   toUnit,
   TxAdmissionsDB,
   TxUtils,
-  unwrapDaPayloadV1,
+  unwrapDaPayload,
   UserEventsUtils,
   utxosProgram,
   walletFromSeed,

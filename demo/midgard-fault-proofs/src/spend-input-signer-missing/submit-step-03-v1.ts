@@ -1,6 +1,6 @@
 import {
-  type FieldOpeningV1,
-  missingSignatureFieldWalkCheckpointV1,
+  type FieldOpening,
+  missingSignatureFieldWalkCheckpoint,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -14,29 +14,29 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
-import { planSpendInputSignerWitnessOpeningV1 } from "./field-plans-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
+import { planSpendInputSignerWitnessOpening } from "./field-plans-v1.js";
 import {
-  SpendInputSignerStep03DatumV1Schema,
-  SpendInputSignerStep03RedeemerV1Schema,
-  SpendInputSignerStep04DatumV1Schema,
+  SpendInputSignerStep03DatumSchema,
+  SpendInputSignerStep03RedeemerSchema,
+  SpendInputSignerStep04DatumSchema,
 } from "./schemas-v1.js";
-import type { SpendInputSignerMissingEvidenceV1 } from "./spend-input-signer-missing-v1.js";
+import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing-v1.js";
 
-export const submitSpendInputSignerMissingStep03V1 = async ({
+export const submitSpendInputSignerMissingStep03 = async ({
   lucid,
   network,
   contracts,
@@ -57,24 +57,24 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly contracts: SpendInputSignerMissingContractsV1;
+  readonly contracts: SpendInputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly publishCarriage?: boolean;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -82,7 +82,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     transaction_id: string;
     witness_set_hash: string;
@@ -90,7 +90,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: SpendInputSignerStep03DatumV1Schema as never,
+    schema: SpendInputSignerStep03DatumSchema as never,
     family: "spend-input-signer-missing",
     stepIndex,
   });
@@ -102,7 +102,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
     throw new Error(
       "spend-input-signer-missing: credential checkpoint changed",
     );
-  const planned = planSpendInputSignerWitnessOpeningV1({
+  const planned = planSpendInputSignerWitnessOpening({
     evidence,
     nativeTxCompactCbor,
     witnessSetCompactCbor,
@@ -110,7 +110,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
     publish: publishCarriage,
   });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+  const carriageUtxos = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
@@ -121,7 +121,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network,
             signer,
@@ -144,7 +144,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
         ).certificateUtxo
       : undefined;
   await onCarriageReady?.();
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "spend-input-signer-missing",
@@ -155,13 +155,13 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "spend-input-signer-missing address witnesses",
   });
-  const initial = missingSignatureFieldWalkCheckpointV1({
+  const initial = missingSignatureFieldWalkCheckpoint({
     txId: evidence.subject.transaction_id,
     itemCount: planned.itemCount,
     totalLength: planned.preimage.length,
@@ -180,7 +180,7 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
         checkpoint_hash: initial.checkpointHash,
       },
     } as never,
-    SpendInputSignerStep04DatumV1Schema as never,
+    SpendInputSignerStep04DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[3].spendingScriptAddress,
@@ -214,10 +214,10 @@ export const submitSpendInputSignerMissingStep03V1 = async ({
           },
         ],
       } as never,
-      SpendInputSignerStep03RedeemerV1Schema as never,
+      SpendInputSignerStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

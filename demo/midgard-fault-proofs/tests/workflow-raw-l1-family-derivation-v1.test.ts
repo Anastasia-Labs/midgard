@@ -1,12 +1,12 @@
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   castConfirmedStateToData,
-  castStateQueueNodeV1ToData,
+  castStateQueueNodeToData,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofTokenDatum,
-  hashBlockHeaderV1,
-  makeGenesisConfirmedStateV1,
+  hashBlockHeader,
+  makeGenesisConfirmedState,
   NO_DA_ATTESTATION,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -23,16 +23,16 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  computeFraudProofRawL1PointIdV1,
-  computeFraudProofRawL1RollbackCursorV1,
-  computeFraudProofReleaseEconomicsPolicyDigestV1,
-  deriveFraudProofRawL1FamilyStageV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofRawL1FamilyDefinitionV1,
-  type FraudProofRawL1SnapshotV1,
-  type FraudProofRawL1UtxoV1,
-  type VerifiedFraudProofReleaseEconomicsPolicyV1,
+  computeFraudProofRawL1PointId,
+  computeFraudProofRawL1RollbackCursor,
+  computeFraudProofReleaseEconomicsPolicyDigest,
+  deriveFraudProofRawL1FamilyStage,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
+  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  type FraudProofRawL1FamilyDefinition,
+  type FraudProofRawL1Snapshot,
+  type FraudProofRawL1Utxo,
+  type VerifiedFraudProofReleaseEconomicsPolicy,
 } from "../src/workflow/index.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 
@@ -54,12 +54,11 @@ const economicsPolicy = {
   proverCollateralFloorLovelace: "5000000",
 } as const;
 
-const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1 = {
-  schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
+  schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
   releaseIdentityDigest: RELEASE,
-  policyDigest:
-    computeFraudProofReleaseEconomicsPolicyDigestV1(economicsPolicy),
+  policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
   policy: economicsPolicy,
 };
 
@@ -99,7 +98,7 @@ const output = ({
 const raw = (
   outRef: string,
   transactionOutput: CML.TransactionOutput,
-): FraudProofRawL1UtxoV1 => ({
+): FraudProofRawL1Utxo => ({
   outRef,
   outputCbor: transactionOutput.to_canonical_cbor_hex(),
   datumCbor:
@@ -121,7 +120,7 @@ const fixture = async ({
   duplicateReward = false,
 } = {}) => {
   const header = makeHeader(OPERATOR, Date.now());
-  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const statePolicy = policy("21");
   const threadPolicy = policy("22");
   const proofPolicy = policy("23");
@@ -146,7 +145,7 @@ const fixture = async ({
   const targetDatum = encodeLinkedListNodeView({
     key: { Key: { key: headerHash } },
     next: "Empty",
-    data: castStateQueueNodeV1ToData({
+    data: castStateQueueNodeToData({
       header,
       da_attestation: NO_DA_ATTESTATION,
     }) as never,
@@ -154,7 +153,7 @@ const fixture = async ({
   const rootDatum = encodeLinkedListNodeView({
     key: "Empty",
     next: "Empty",
-    data: castConfirmedStateToData(makeGenesisConfirmedStateV1(0n)) as never,
+    data: castConfirmedStateToData(makeGenesisConfirmedState(0n)) as never,
   });
   const proofDatum = Data.to({ fraud_prover: PROVER }, FraudProofTokenDatum);
   const targetOutRef = `${hash32("41")}#0`;
@@ -272,7 +271,7 @@ const fixture = async ({
   };
   const point = {
     ...pointInput,
-    pointId: computeFraudProofRawL1PointIdV1(pointInput),
+    pointId: computeFraudProofRawL1PointId(pointInput),
   };
   const tipInput = {
     slot: "1030",
@@ -281,10 +280,10 @@ const fixture = async ({
   };
   const tip = {
     ...tipInput,
-    pointId: computeFraudProofRawL1PointIdV1(tipInput),
+    pointId: computeFraudProofRawL1PointId(tipInput),
   };
   const stepAddresses = ["35", "36", "37", "38"].map(scriptAddress);
-  const definition: FraudProofRawL1FamilyDefinitionV1 = {
+  const definition: FraudProofRawL1FamilyDefinition = {
     category: "doubleSpend",
     categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.doubleSpend,
     headerHash,
@@ -311,8 +310,8 @@ const fixture = async ({
     },
     schedulerAddress: scriptAddress("39"),
   };
-  const snapshot: FraudProofRawL1SnapshotV1 = {
-    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
+  const snapshot: FraudProofRawL1Snapshot = {
+    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT,
     releaseIdentityDigest: RELEASE,
     finalityPolicyDigest: FINALITY,
@@ -329,7 +328,7 @@ const fixture = async ({
       point,
       tip,
       confirmationDepth: 30,
-      rollbackCursor: computeFraudProofRawL1RollbackCursorV1({
+      rollbackCursor: computeFraudProofRawL1RollbackCursor({
         deploymentIdentityDigest: DEPLOYMENT,
         releaseIdentityDigest: RELEASE,
         finalityPolicyDigest: FINALITY,
@@ -352,7 +351,7 @@ const fixture = async ({
         utxos: [],
       },
       { role: "scheduler", address: definition.schedulerAddress, utxos: [] },
-    ] as FraudProofRawL1SnapshotV1["scopes"],
+    ] as FraudProofRawL1Snapshot["scopes"],
     historyUnits: [stateUnit, threadUnit, proofUnit],
     history: [
       {
@@ -418,7 +417,7 @@ describe("raw L1 family terminal economics", () => {
   it("derives a live sixth computation step from exact scoped bytes", async () => {
     const value = await fixture();
     const extraAddresses = [scriptAddress("3a"), scriptAddress("3b")];
-    const definition: FraudProofRawL1FamilyDefinitionV1 = {
+    const definition: FraudProofRawL1FamilyDefinition = {
       ...value.definition,
       computationThread: {
         ...value.definition.computationThread,
@@ -463,12 +462,12 @@ describe("raw L1 family terminal economics", () => {
           key: "Empty",
           next: { Key: { key: definition.headerHash } },
           data: castConfirmedStateToData(
-            makeGenesisConfirmedStateV1(0n),
+            makeGenesisConfirmedState(0n),
           ) as never,
         }),
       }),
     );
-    const snapshot: FraudProofRawL1SnapshotV1 = {
+    const snapshot: FraudProofRawL1Snapshot = {
       ...value.snapshot,
       scopes: value.snapshot.scopes
         .map((scope) => {
@@ -494,7 +493,7 @@ describe("raw L1 family terminal economics", () => {
         ]),
     };
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot,
         definition,
         releaseEconomics,
@@ -519,7 +518,7 @@ describe("raw L1 family terminal economics", () => {
       address,
       datumSchema: FraudProofTokenDatum,
     }));
-    const definition: FraudProofRawL1FamilyDefinitionV1 = {
+    const definition: FraudProofRawL1FamilyDefinition = {
       ...value.definition,
       computationThread: {
         ...value.definition.computationThread,
@@ -552,12 +551,12 @@ describe("raw L1 family terminal economics", () => {
           key: "Empty",
           next: { Key: { key: definition.headerHash } },
           data: castConfirmedStateToData(
-            makeGenesisConfirmedStateV1(0n),
+            makeGenesisConfirmedState(0n),
           ) as never,
         }),
       }),
     );
-    const snapshot: FraudProofRawL1SnapshotV1 = {
+    const snapshot: FraudProofRawL1Snapshot = {
       ...value.snapshot,
       scopes: value.snapshot.scopes
         .map((scope) =>
@@ -576,7 +575,7 @@ describe("raw L1 family terminal economics", () => {
         ),
     };
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot,
         definition,
         releaseEconomics,
@@ -592,7 +591,7 @@ describe("raw L1 family terminal economics", () => {
     const value = await fixture();
     const [first, second, ...rest] = value.definition.computationThread.steps;
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot: value.snapshot,
         definition: {
           ...value.definition,
@@ -609,7 +608,7 @@ describe("raw L1 family terminal economics", () => {
   it("derives the exact release-bound slash/reward from transaction bytes", async () => {
     const value = await fixture();
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot: value.snapshot,
         definition: value.definition,
         releaseEconomics,
@@ -633,7 +632,7 @@ describe("raw L1 family terminal economics", () => {
   it("rejects a substituted release economics identity", async () => {
     const value = await fixture();
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot: value.snapshot,
         definition: value.definition,
         releaseEconomics: {
@@ -647,7 +646,7 @@ describe("raw L1 family terminal economics", () => {
   it("keeps final removal separate from an earlier descendant slash", async () => {
     const value = await fixture({ descendant: true });
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot: value.snapshot,
         definition: value.definition,
         releaseEconomics,
@@ -668,7 +667,7 @@ describe("raw L1 family terminal economics", () => {
   it("accepts only the exact partially inactivity-slashed tranche", async () => {
     const value = await fixture({ partial: true });
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot: value.snapshot,
         definition: value.definition,
         releaseEconomics,
@@ -688,7 +687,7 @@ describe("raw L1 family terminal economics", () => {
   it("rejects duplicate reward outputs", async () => {
     const value = await fixture({ duplicateReward: true });
     await expect(
-      deriveFraudProofRawL1FamilyStageV1({
+      deriveFraudProofRawL1FamilyStage({
         snapshot: value.snapshot,
         definition: value.definition,
         releaseEconomics,

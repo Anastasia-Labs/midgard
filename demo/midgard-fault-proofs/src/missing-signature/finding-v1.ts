@@ -7,7 +7,7 @@
  * operator's manual CLI invocation alike.
  */
 import type { EventKey } from "@al-ft/midgard-sdk";
-import { missingSignatureVkeyHashV1 } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
 import { missingSignatureSubmitError } from "./submit-common-v1.js";
 
@@ -16,7 +16,7 @@ import { missingSignatureSubmitError } from "./submit-common-v1.js";
  * the other three are refused at the proving core's API boundary regardless
  * of policy — the classification, not the consumer, is the gate (§3.4).
  */
-export const MissingSignatureProvabilityV1 = Object.freeze({
+export const MissingSignatureProvability = Object.freeze({
   /**
    * A required signer's witness is absent and a vkey preimage for its hash
    * is known (§3.3): provable end-to-end.
@@ -38,14 +38,14 @@ export const MissingSignatureProvabilityV1 = Object.freeze({
   /** Every required signer is witnessed — the commitment is honest. */
   NotAFault: "notAFault",
 } as const);
-export type MissingSignatureProvabilityV1 =
-  (typeof MissingSignatureProvabilityV1)[keyof typeof MissingSignatureProvabilityV1];
+export type MissingSignatureProvability =
+  (typeof MissingSignatureProvability)[keyof typeof MissingSignatureProvability];
 
 /** The provability classes the proving core accepts. */
-export const MISSING_SIGNATURE_PROVABLE_CLASSES_V1: readonly MissingSignatureProvabilityV1[] =
-  [MissingSignatureProvabilityV1.MissingWitness];
+export const MISSING_SIGNATURE_PROVABLE_CLASSES: readonly MissingSignatureProvability[] =
+  [MissingSignatureProvability.MissingWitness];
 
-export type MissingSignatureFindingV1 = {
+export type MissingSignatureFinding = {
   /** The faulted block's 28-byte header hash, lowercase hex. */
   readonly headerHash: string;
   /** The authenticated block event whose accepted transaction diverged. */
@@ -74,7 +74,7 @@ export type MissingSignatureFindingV1 = {
    * second half of the §2.5 anchor step-01 writes into thread state.
    */
   readonly committedWitnessSetHash: string;
-  readonly provability: MissingSignatureProvabilityV1;
+  readonly provability: MissingSignatureProvability;
   /** §6 plan-time estimate of the thread's total L1 transaction count. */
   readonly estimatedThreadTxCount: number;
 };
@@ -83,10 +83,10 @@ export type MissingSignatureFindingV1 = {
  * The §3.2 boundary gate plus the record's own structural coherence.
  * Refusals here are classification refusals — no policy can override them.
  */
-export const assertMissingSignatureFindingProvableV1 = (
-  finding: MissingSignatureFindingV1,
+export const assertMissingSignatureFindingProvable = (
+  finding: MissingSignatureFinding,
 ): void => {
-  if (!MISSING_SIGNATURE_PROVABLE_CLASSES_V1.includes(finding.provability)) {
+  if (!MISSING_SIGNATURE_PROVABLE_CLASSES.includes(finding.provability)) {
     throw missingSignatureSubmitError(
       `finding class "${finding.provability}" is not provable by this family (§3.2/§7.2/§7.3) — it is journaled or routed, never proven here.`,
     );
@@ -131,7 +131,7 @@ export const assertMissingSignatureFindingProvableV1 = (
   }
   // Step-03's exact check, made before anything is paid for: the resolved
   // vkey must be the accused hash's preimage under blake2b-224.
-  const derived = missingSignatureVkeyHashV1(finding.resolvedVkey);
+  const derived = missingSignatureVkeyHash(finding.resolvedVkey);
   if (derived !== finding.accusedRequiredSignerHash) {
     throw missingSignatureSubmitError(
       `resolved vkey hashes to ${derived}, not the accused required signer ${finding.accusedRequiredSignerHash}.`,

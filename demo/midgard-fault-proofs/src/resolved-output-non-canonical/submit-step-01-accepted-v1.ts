@@ -5,22 +5,22 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ResolvedOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ResolvedOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  classifyResolvedOutputNonCanonicalFindingV1,
-  type ResolvedOutputEvidenceV1,
+  classifyResolvedOutputNonCanonicalFinding,
+  type ResolvedOutputEvidence,
 } from "./resolved-output-non-canonical-v1.js";
 import {
-  ResolvedOutputStep01RedeemerV1Schema,
-  ResolvedOutputStep02DatumV1Schema,
+  ResolvedOutputStep01RedeemerSchema,
+  ResolvedOutputStep02DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitResolvedOutputNonCanonicalStep01AcceptedV1 = async ({
+export const submitResolvedOutputNonCanonicalStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -39,9 +39,9 @@ export const submitResolvedOutputNonCanonicalStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: ResolvedOutputNonCanonicalContractsV1;
+  readonly contracts: ResolvedOutputNonCanonicalContracts;
   readonly signer: ResolvedProverSigner;
-  readonly finding: ResolvedOutputEvidenceV1;
+  readonly finding: ResolvedOutputEvidence;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -50,11 +50,11 @@ export const submitResolvedOutputNonCanonicalStep01AcceptedV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifyResolvedOutputNonCanonicalFindingV1(finding);
+  classifyResolvedOutputNonCanonicalFinding(finding);
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -65,9 +65,9 @@ export const submitResolvedOutputNonCanonicalStep01AcceptedV1 = async ({
         prior_root: finding.resolved.priorRoot,
       },
     } as never,
-    ResolvedOutputStep02DatumV1Schema as never,
+    ResolvedOutputStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -79,7 +79,7 @@ export const submitResolvedOutputNonCanonicalStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum,
-    spendRedeemerSchema: ResolvedOutputStep01RedeemerV1Schema,
+    spendRedeemerSchema: ResolvedOutputStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {

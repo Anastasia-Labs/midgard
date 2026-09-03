@@ -23,7 +23,7 @@ import {
  * role. Every entry is optional; a submitter only reads the roles its
  * transaction would otherwise inline-attach.
  */
-export type FaultProofWitnessReferenceScriptsV1 = {
+export type FaultProofWitnessReferenceScripts = {
   /** The computation-thread token minting policy. */
   readonly computationThreadMint?: UTxO;
   /** The fraud-proof token minting policy. */
@@ -44,7 +44,7 @@ const witnessOutRefLabel = (utxo: UTxO): string =>
  * carry a reference script hashing to exactly the script the caller would
  * otherwise inline-attach.
  */
-export const requireWitnessReferenceScriptUtxoV1 = ({
+export const requireWitnessReferenceScriptUtxo = ({
   utxo,
   script,
   label,
@@ -72,7 +72,7 @@ export const requireWitnessReferenceScriptUtxoV1 = ({
  * How one witness script reaches its transaction: through the published
  * reference UTxO in `referenceInputs`.
  */
-export type WitnessScriptCarriageV1 = {
+export type WitnessScriptCarriage = {
   /**
    * The hash-checked published UTxO. Callers MUST splice this into the transaction's reference
    * inputs BEFORE deriving any chunk/field-opening reference indices, so the
@@ -83,7 +83,7 @@ export type WitnessScriptCarriageV1 = {
   readonly attach: (tx: TxBuilder) => TxBuilder;
 };
 
-const witnessScriptCarriageV1 = ({
+const witnessScriptCarriage = ({
   script,
   referenceUtxo,
   label,
@@ -91,13 +91,13 @@ const witnessScriptCarriageV1 = ({
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 => {
+}): WitnessScriptCarriage => {
   if (referenceUtxo === undefined) {
     throw new Error(`${label} requires a published reference script UTxO.`);
   }
   return {
     referenceInputs: [
-      requireWitnessReferenceScriptUtxoV1({
+      requireWitnessReferenceScriptUtxo({
         utxo: referenceUtxo,
         script,
         label,
@@ -108,22 +108,22 @@ const witnessScriptCarriageV1 = ({
 };
 
 /** Carriage for a minting-policy witness. */
-export const witnessMintingPolicyCarriageV1 = (options: {
+export const witnessMintingPolicyCarriage = (options: {
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 => witnessScriptCarriageV1({ ...options });
+}): WitnessScriptCarriage => witnessScriptCarriage({ ...options });
 
 /** Carriage for a withdrawal-validator witness. */
-export const witnessWithdrawalValidatorCarriageV1 = (options: {
+export const witnessWithdrawalValidatorCarriage = (options: {
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 => witnessScriptCarriageV1({ ...options });
+}): WitnessScriptCarriage => witnessScriptCarriage({ ...options });
 
 /** Carriage for a spending-validator witness. */
-export const witnessSpendingValidatorCarriageV1 = (options: {
+export const witnessSpendingValidatorCarriage = (options: {
   readonly script: Script;
   readonly referenceUtxo: UTxO | undefined;
   readonly label: string;
-}): WitnessScriptCarriageV1 => witnessScriptCarriageV1({ ...options });
+}): WitnessScriptCarriage => witnessScriptCarriage({ ...options });

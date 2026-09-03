@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy-v1.js";
 
-export const FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION =
   "midgard-fraud-proof-raw-l1-snapshot-v1" as const;
-export const FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1 =
+export const FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY =
   "midgard-fraud-proof-raw-l1-snapshot-authority-v1" as const;
 
-export type FraudProofRawL1ComputationStepRoleV1 =
+export type FraudProofRawL1ComputationStepRole =
   | "computation_thread_step_01"
   | "computation_thread_step_02"
   | "computation_thread_step_03"
@@ -21,9 +21,9 @@ export type FraudProofRawL1ComputationStepRoleV1 =
   | "computation_thread_step_08"
   | "computation_thread_step_09";
 
-export type FraudProofRawL1ScopeRoleV1 =
+export type FraudProofRawL1ScopeRole =
   | "state_queue"
-  | FraudProofRawL1ComputationStepRoleV1
+  | FraudProofRawL1ComputationStepRole
   | "permanent_proof_token"
   | "active_operator_directory"
   | "retired_operator_directory"
@@ -32,48 +32,48 @@ export type FraudProofRawL1ScopeRoleV1 =
   | "field_publication"
   | "field_certificate";
 
-export type FraudProofRawL1SnapshotRequestV1 = {
+export type FraudProofRawL1SnapshotRequest = {
   readonly deploymentIdentityDigest: string;
   readonly releaseIdentityDigest: string;
   readonly finalityPolicyDigest: string;
   readonly headerHash: string;
   readonly scopes: readonly {
-    readonly role: FraudProofRawL1ScopeRoleV1;
+    readonly role: FraudProofRawL1ScopeRole;
     readonly address: string;
   }[];
   /** Exact units whose create/spend history must be returned. */
   readonly historyUnits: readonly string[];
 };
 
-export type FraudProofRawL1PointV1 = {
+export type FraudProofRawL1Point = {
   readonly slot: string;
   readonly blockHash: string;
   readonly blockNo: string;
   readonly pointId: string;
 };
 
-export type FraudProofRawL1UtxoV1 = {
+export type FraudProofRawL1Utxo = {
   readonly outRef: string;
   readonly outputCbor: string;
   readonly datumCbor: string | null;
   readonly referenceScriptCbor: string | null;
 };
 
-export type FraudProofRawL1TransactionV1 = {
+export type FraudProofRawL1Transaction = {
   readonly txHash: string;
   readonly bodyCbor: string;
   readonly witnessSetCbor: string;
   readonly redeemersCbor: string | null;
   readonly isValid: true;
-  readonly inclusionPoint: FraudProofRawL1PointV1;
+  readonly inclusionPoint: FraudProofRawL1Point;
   readonly confirmationDepth: number;
   /** Every ordinary input resolved to the exact output bytes it consumed. */
-  readonly resolvedInputs: readonly FraudProofRawL1UtxoV1[];
+  readonly resolvedInputs: readonly FraudProofRawL1Utxo[];
   /** Every reference input resolved to the exact output bytes it referenced. */
-  readonly resolvedReferenceInputs: readonly FraudProofRawL1UtxoV1[];
+  readonly resolvedReferenceInputs: readonly FraudProofRawL1Utxo[];
 };
 
-export type FraudProofRawL1UnitHistoryV1 = {
+export type FraudProofRawL1UnitHistory = {
   readonly unit: string;
   /** Kupo's matcher was scanned from origin rather than an arbitrary cursor. */
   readonly fromGenesis: true;
@@ -81,41 +81,41 @@ export type FraudProofRawL1UnitHistoryV1 = {
   readonly transactionHashes: readonly string[];
 };
 
-export type FraudProofRawL1SnapshotV1 = {
-  readonly schemaVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION;
+export type FraudProofRawL1Snapshot = {
+  readonly schemaVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
   readonly releaseIdentityDigest: string;
   readonly finalityPolicyDigest: string;
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1 & {
+  readonly provenance: EvidenceProvenance & {
     readonly trustClass: "authenticated_cardano_l1";
     readonly sourceMode: "local_kupo_ogmios";
-    readonly kupoCheckpoint: FraudProofRawL1PointV1;
-    readonly ogmiosTip: FraudProofRawL1PointV1;
+    readonly kupoCheckpoint: FraudProofRawL1Point;
+    readonly ogmiosTip: FraudProofRawL1Point;
   };
   readonly cursor: {
-    readonly point: FraudProofRawL1PointV1;
-    readonly tip: FraudProofRawL1PointV1;
+    readonly point: FraudProofRawL1Point;
+    readonly tip: FraudProofRawL1Point;
     readonly confirmationDepth: number;
     readonly rollbackCursor: string;
   };
   readonly scopes: readonly {
-    readonly role: FraudProofRawL1ScopeRoleV1;
+    readonly role: FraudProofRawL1ScopeRole;
     readonly address: string;
-    readonly utxos: readonly FraudProofRawL1UtxoV1[];
+    readonly utxos: readonly FraudProofRawL1Utxo[];
   }[];
   readonly historyUnits: readonly string[];
-  readonly history: readonly FraudProofRawL1UnitHistoryV1[];
-  readonly transactions: readonly FraudProofRawL1TransactionV1[];
+  readonly history: readonly FraudProofRawL1UnitHistory[];
+  readonly transactions: readonly FraudProofRawL1Transaction[];
 };
 
 /**
  * Provider-specific implementations return untrusted bytes. Admission and all
  * stage/terminal derivation stay in this package.
  */
-export interface FraudProofRawL1SnapshotAuthorityV1 {
-  readonly authorityVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1;
-  capture(request: FraudProofRawL1SnapshotRequestV1): Promise<unknown>;
+export interface FraudProofRawL1SnapshotAuthority {
+  readonly authorityVersion: typeof FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY;
+  capture(request: FraudProofRawL1SnapshotRequest): Promise<unknown>;
 }
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -125,7 +125,7 @@ const NATURAL = /^(0|[1-9][0-9]*)$/u;
 const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
 const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u;
 const MAX_COLLECTION_SIZE = 100_000;
-const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRoleV1>([
+const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRole>([
   "state_queue",
   "computation_thread_step_01",
   "computation_thread_step_02",
@@ -227,14 +227,14 @@ const array = (value: unknown, label: string): readonly unknown[] => {
   return value;
 };
 
-export const computeFraudProofRawL1PointIdV1 = ({
+export const computeFraudProofRawL1PointId = ({
   slot,
   blockHash,
   blockNo,
-}: Omit<FraudProofRawL1PointV1, "pointId">): string =>
+}: Omit<FraudProofRawL1Point, "pointId">): string =>
   createHash("sha256").update(`${slot}:${blockHash}:${blockNo}`).digest("hex");
 
-const point = (value: unknown, label: string): FraudProofRawL1PointV1 => {
+const point = (value: unknown, label: string): FraudProofRawL1Point => {
   const parsed = exact(
     value,
     ["slot", "blockHash", "blockNo", "pointId"],
@@ -251,18 +251,18 @@ const point = (value: unknown, label: string): FraudProofRawL1PointV1 => {
     blockHash: digest(parsed.blockHash, `${label}.blockHash`),
     pointId: digest(parsed.pointId, `${label}.pointId`),
   };
-  if (result.pointId !== computeFraudProofRawL1PointIdV1(result)) {
+  if (result.pointId !== computeFraudProofRawL1PointId(result)) {
     throw new Error(`${label}.pointId does not commit to the chain point`);
   }
   return result;
 };
 
-export const admitFraudProofRawL1PointV1 = (
+export const admitFraudProofRawL1Point = (
   value: unknown,
   label = "raw L1 point",
-): FraudProofRawL1PointV1 => point(value, label);
+): FraudProofRawL1Point => point(value, label);
 
-export const computeFraudProofRawL1RollbackCursorV1 = ({
+export const computeFraudProofRawL1RollbackCursor = ({
   deploymentIdentityDigest,
   releaseIdentityDigest,
   finalityPolicyDigest,
@@ -288,7 +288,7 @@ const outRefOf = (value: unknown, label: string): string => {
   return parsed;
 };
 
-const utxo = (value: unknown, label: string): FraudProofRawL1UtxoV1 => {
+const utxo = (value: unknown, label: string): FraudProofRawL1Utxo => {
   const parsed = exact(
     value,
     ["outRef", "outputCbor", "datumCbor", "referenceScriptCbor"],
@@ -328,12 +328,12 @@ const utxo = (value: unknown, label: string): FraudProofRawL1UtxoV1 => {
   };
 };
 
-export const admitFraudProofRawL1UtxoV1 = (
+export const admitFraudProofRawL1Utxo = (
   value: unknown,
   label = "raw L1 UTxO",
-): FraudProofRawL1UtxoV1 => utxo(value, label);
+): FraudProofRawL1Utxo => utxo(value, label);
 
-const outputAddress = (candidate: FraudProofRawL1UtxoV1): string =>
+const outputAddress = (candidate: FraudProofRawL1Utxo): string =>
   coreToTxOutput(CML.TransactionOutput.from_cbor_hex(candidate.outputCbor))
     .address;
 
@@ -364,11 +364,11 @@ const bodyReferenceInputOutRefs = (
   return result;
 };
 
-export const admitFraudProofRawL1TransactionV1 = (
+export const admitFraudProofRawL1Transaction = (
   value: unknown,
   label: string,
   minimumConfirmationDepth: number,
-): FraudProofRawL1TransactionV1 => {
+): FraudProofRawL1Transaction => {
   const parsed = exact(
     value,
     [
@@ -476,7 +476,7 @@ const outputContainsUnit = (
 ): boolean => (coreToTxOutput(output).assets[unit] ?? 0n) !== 0n;
 
 const transactionTouchesUnit = (
-  candidate: FraudProofRawL1TransactionV1,
+  candidate: FraudProofRawL1Transaction,
   unit: string,
 ): boolean => {
   if (
@@ -505,7 +505,7 @@ const transactionTouchesUnit = (
 const historyEntry = (
   value: unknown,
   label: string,
-): FraudProofRawL1UnitHistoryV1 => {
+): FraudProofRawL1UnitHistory => {
   const parsed = exact(
     value,
     ["unit", "fromGenesis", "completeThroughPointId", "transactionHashes"],
@@ -544,15 +544,15 @@ const sameStringSet = (
   return sortedLeft.every((value, index) => value === sortedRight[index]);
 };
 
-export const admitFraudProofRawL1SnapshotV1 = ({
+export const admitFraudProofRawL1Snapshot = ({
   value,
   request,
   releaseFinality,
 }: {
   readonly value: unknown;
-  readonly request: FraudProofRawL1SnapshotRequestV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): FraudProofRawL1SnapshotV1 => {
+  readonly request: FraudProofRawL1SnapshotRequest;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): FraudProofRawL1Snapshot => {
   const root = exact(
     value,
     [
@@ -570,7 +570,7 @@ export const admitFraudProofRawL1SnapshotV1 = ({
     ],
     "raw L1 snapshot",
   );
-  if (root.schemaVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION) {
+  if (root.schemaVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION) {
     throw new Error("raw L1 snapshot has an unsupported schema");
   }
   const deploymentIdentityDigest = digest(
@@ -686,7 +686,7 @@ export const admitFraudProofRawL1SnapshotV1 = ({
   }
   if (
     cursor.rollbackCursor !==
-    computeFraudProofRawL1RollbackCursorV1({
+    computeFraudProofRawL1RollbackCursor({
       deploymentIdentityDigest,
       releaseIdentityDigest,
       finalityPolicyDigest,
@@ -725,7 +725,7 @@ export const admitFraudProofRawL1SnapshotV1 = ({
       const role = string(
         parsed.role,
         `${label}.role`,
-      ) as FraudProofRawL1ScopeRoleV1;
+      ) as FraudProofRawL1ScopeRole;
       const scopedAddress = address(parsed.address, `${label}.address`);
       if (
         !RAW_L1_SCOPE_ROLES.has(role) ||
@@ -771,7 +771,7 @@ export const admitFraudProofRawL1SnapshotV1 = ({
     root.transactions,
     "raw L1 snapshot transactions",
   ).map((candidate, index) =>
-    admitFraudProofRawL1TransactionV1(
+    admitFraudProofRawL1Transaction(
       candidate,
       `raw L1 snapshot transactions[${index.toString()}]`,
       releaseFinality.policy.confirmationDepth,
@@ -864,7 +864,7 @@ export const admitFraudProofRawL1SnapshotV1 = ({
     }
   }
   return {
-    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
     deploymentIdentityDigest,
     releaseIdentityDigest,
     finalityPolicyDigest,

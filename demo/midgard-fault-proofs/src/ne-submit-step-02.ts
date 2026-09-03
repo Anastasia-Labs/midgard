@@ -5,7 +5,7 @@
  * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
  * whole `inputs_preimage: List<MidgardTxInput>` so the validator could re-hash
  * it against the commitment the thread carried. It now carries a
- * `FieldOpeningV1` — the disputed transaction's compact structure plus one §8
+ * `FieldOpening` — the disputed transaction's compact structure plus one §8
  * carriage tier — and the validator reads item `bad_input_index` off the
  * authenticated view arithmetically. The complete input list is still this
  * builder's input, because it is the §5.1 preimage; what changed is that it
@@ -13,9 +13,9 @@
  */
 
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   NonExistentInputStep02Datum,
   NonExistentInputStep02SpendRedeemer,
@@ -33,12 +33,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -57,11 +57,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** One spend input of the bad transaction, as committed by its inputs hash. */
@@ -190,8 +190,8 @@ export const neSubmitStep02 = async ({
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Durable boundary for legacy direct publication; production pre-publishes. */
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep02Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -231,11 +231,11 @@ export const neSubmitStep02 = async ({
   // transaction is what the validator's `opened_field_view` will re-derive, so a
   // list that does not open the disputed transaction's field 0 is refused here
   // rather than at a validator that has already been paid for.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: inputDatum.data.bad_tx_id,
     nativeTxCompactCbor,
-    itemCbors: midgardInputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: midgardInputs.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
     label: "Non-existent-input step 02 spend-inputs",
@@ -248,7 +248,7 @@ export const neSubmitStep02 = async ({
   // a chunk that already exists at this address rather than republishing.
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -261,7 +261,7 @@ export const neSubmitStep02 = async ({
       "Non-existent-input tier-3 certificate UTxO and policy identity must be supplied together.",
     );
   }
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "non-existent-input step 02 validator",
@@ -271,7 +271,7 @@ export const neSubmitStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const spendInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -373,9 +373,9 @@ export const neSubmitStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -421,7 +421,7 @@ export const neSubmitStep02 = async ({
 export const neSubmitStep02FromFiles = async (
   config: NeSubmitStep02CliConfig,
 ): Promise<NeSubmitStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-non-existent-input-step-02",
   });
   const [blueprint, deploymentInfo, inputsJson, nativeTxCompactJson, lucid] =
@@ -441,7 +441,7 @@ export const neSubmitStep02FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     inputsPreimage: inputsJson as readonly NeInputPreimageEntry[],
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { WatcherProductionFaultDecisionBridgeV1 } from "../../src/fault-proofs/production-fault-decision-bridge-v1.js";
+import type { WatcherFaultDecisionBridge } from "../../src/fault-proofs/production-fault-decision-bridge-v1.js";
 import type {
-  WatcherProductionStateQueueObservationSourceV1,
-  WatcherProductionStateQueueObservationV1,
+  WatcherAuthenticatedStateQueueObservation,
+  WatcherStateQueueObservationSource,
 } from "../../src/indexers/production-state-queue-observation-v1.js";
-import type { WatcherLocalKupmiosNativeObservationV1 } from "../../src/l1/local-kupmios-native-observation-v1.js";
-import type { WatcherNativeBlockAdmissionV1 } from "../../src/l1/native-block-admission-v1.js";
-import { createWatcherProductionStateQueueRuntimeV1 } from "../../src/runtime/production-state-queue-runtime-v1.js";
-import type { WatcherSqliteStateQueueObservationStoreV1 } from "../../src/storage/sqlite-durable-backend-v1.js";
+import type { WatcherLocalKupmiosNativeObservation } from "../../src/l1/local-kupmios-native-observation-v1.js";
+import type { WatcherNativeBlockAdmission } from "../../src/l1/native-block-admission-v1.js";
+import { createWatcherStateQueueRuntime } from "../../src/runtime/production-state-queue-runtime-v1.js";
+import type { WatcherSqliteStateQueueObservationStore } from "../../src/storage/sqlite-durable-backend-v1.js";
 
 const point = (blockNo: number, byte: string) =>
   Object.freeze({
@@ -22,7 +22,7 @@ const observation = (
   blockNo: number,
   byte: string,
   previousObservationDigest: string | null,
-): WatcherProductionStateQueueObservationV1 =>
+): WatcherAuthenticatedStateQueueObservation =>
   Object.freeze({
     observationDigest: byte.repeat(32),
     previousObservationDigest,
@@ -31,21 +31,21 @@ const observation = (
       parentBlockHash: "00".repeat(32),
       finalityDepth: "30",
     }),
-  }) as WatcherProductionStateQueueObservationV1;
+  }) as WatcherAuthenticatedStateQueueObservation;
 
 const nativeBlock = (
   blockNo: number,
   byte: string,
-): WatcherNativeBlockAdmissionV1 =>
+): WatcherNativeBlockAdmission =>
   Object.freeze({
     blockHash: byte.repeat(32),
     blockNo: blockNo.toString(),
     slot: (blockNo * 10).toString(),
-  }) as WatcherNativeBlockAdmissionV1;
+  }) as WatcherNativeBlockAdmission;
 
 const localObservation = Object.freeze(
   {},
-) as WatcherLocalKupmiosNativeObservationV1;
+) as WatcherLocalKupmiosNativeObservation;
 
 const bridge = () => {
   const invalidateForRollback = vi.fn();
@@ -67,7 +67,7 @@ const bridge = () => {
       invalidateForRollback,
       prepareForRecovery,
       reconcileAndDispatch,
-    }) as unknown as WatcherProductionFaultDecisionBridgeV1,
+    }) as unknown as WatcherFaultDecisionBridge,
   };
 };
 
@@ -79,7 +79,7 @@ describe("production state-queue runtime V1", () => {
     const rollbackTo = vi.fn(async () => {
       persisted = Object.freeze([before]);
     });
-    const store: WatcherSqliteStateQueueObservationStoreV1 = {
+    const store: WatcherSqliteStateQueueObservationStore = {
       readAll: async () => persisted,
       append: async () => "appended",
       rollbackTo,
@@ -94,7 +94,7 @@ describe("production state-queue runtime V1", () => {
         ogmiosTipBlockNo: "103",
       }),
     }));
-    const source: WatcherProductionStateQueueObservationSourceV1 = {
+    const source: WatcherStateQueueObservationSource = {
       restore,
       bootstrap: async () => {
         throw new Error("nonempty cache must restore");
@@ -105,7 +105,7 @@ describe("production state-queue runtime V1", () => {
       },
     };
 
-    const runtime = await createWatcherProductionStateQueueRuntimeV1({
+    const runtime = await createWatcherStateQueueRuntime({
       store,
       source,
     });
@@ -122,8 +122,8 @@ describe("production state-queue runtime V1", () => {
   it("starts at the exact reauthenticated cursor and catches an offline queue mutation", async () => {
     const before = observation(100, "11", null);
     const after = observation(102, "22", before.observationDigest);
-    const appended: WatcherProductionStateQueueObservationV1[] = [];
-    const store: WatcherSqliteStateQueueObservationStoreV1 = {
+    const appended: WatcherAuthenticatedStateQueueObservation[] = [];
+    const store: WatcherSqliteStateQueueObservationStore = {
       readAll: async () => Object.freeze([before]),
       append: async (value) => {
         appended.push(value);
@@ -131,7 +131,7 @@ describe("production state-queue runtime V1", () => {
       },
       rollbackTo: async () => undefined,
     };
-    const source: WatcherProductionStateQueueObservationSourceV1 = {
+    const source: WatcherStateQueueObservationSource = {
       restore: async () => ({
         previous: before,
         discardedObservationCount: 0,
@@ -152,7 +152,7 @@ describe("production state-queue runtime V1", () => {
       },
     };
     const decisionBridge = bridge();
-    const runtime = await createWatcherProductionStateQueueRuntimeV1({
+    const runtime = await createWatcherStateQueueRuntime({
       store,
       source,
     });
@@ -183,7 +183,7 @@ describe("production state-queue runtime V1", () => {
       releaseRollback = resolve;
     });
     const events: string[] = [];
-    const store: WatcherSqliteStateQueueObservationStoreV1 = {
+    const store: WatcherSqliteStateQueueObservationStore = {
       readAll: async () => Object.freeze([before]),
       append: async () => "appended",
       rollbackTo: async () => {
@@ -192,7 +192,7 @@ describe("production state-queue runtime V1", () => {
         events.push("rollback_finished");
       },
     };
-    const source: WatcherProductionStateQueueObservationSourceV1 = {
+    const source: WatcherStateQueueObservationSource = {
       restore: async () => ({
         previous: before,
         discardedObservationCount: 0,
@@ -215,7 +215,7 @@ describe("production state-queue runtime V1", () => {
     decisionBridge.invalidateForRollback.mockImplementation(() => {
       events.push("revoked");
     });
-    const runtime = await createWatcherProductionStateQueueRuntimeV1({
+    const runtime = await createWatcherStateQueueRuntime({
       store,
       source,
     });

@@ -9,13 +9,13 @@ import {
   midgardValueToCmlValue,
 } from "../src/codec/index.js";
 import {
-  advanceMidgardLedgerOutputScanV1,
-  buildMidgardLedgerOutputAssetFrontierV1,
-  buildMidgardLedgerOutputScanTraceV1,
-  commitMidgardValidationMerkleFrontierV1,
-  encodeMidgardLedgerOutputScanControlV1,
-  initialMidgardLedgerOutputScanControlV1,
-  MidgardLedgerOutputScanStagesV1,
+  advanceMidgardLedgerOutputScan,
+  buildMidgardLedgerOutputAssetFrontier,
+  buildMidgardLedgerOutputScanTrace,
+  commitMidgardValidationMerkleFrontier,
+  encodeMidgardLedgerOutputScanControl,
+  initialMidgardLedgerOutputScanControl,
+  MidgardLedgerOutputScanStages,
 } from "../src/index.js";
 
 const outputFixture = (): {
@@ -48,9 +48,9 @@ const outputFixture = (): {
 describe("ledger output scan V1", () => {
   it("streams a complete Cardano-sized output into bounded facts", () => {
     const fixture = outputFixture();
-    const trace = buildMidgardLedgerOutputScanTraceV1(fixture.cbor);
+    const trace = buildMidgardLedgerOutputScanTrace(fixture.cbor);
     const terminal = trace.terminal;
-    const expectedAssets = buildMidgardLedgerOutputAssetFrontierV1([
+    const expectedAssets = buildMidgardLedgerOutputAssetFrontier([
       {
         policyId: Buffer.alloc(28, 0x55),
         assetName: Buffer.from("ff", "hex"),
@@ -65,7 +65,7 @@ describe("ledger output scan V1", () => {
 
     expect(fixture.cbor.length).toBeGreaterThan(8_192);
     expect(fixture.cbor.length).toBeLessThan(16_384);
-    expect(terminal.stage).toBe(MidgardLedgerOutputScanStagesV1.Terminal);
+    expect(terminal.stage).toBe(MidgardLedgerOutputScanStages.Terminal);
     expect(terminal.cursor).toBe(fixture.cbor.length);
     expect(terminal.address).toStrictEqual(fixture.output.address);
     expect(terminal.lovelace).toBe(8_000_000n);
@@ -74,7 +74,7 @@ describe("ledger output scan V1", () => {
     );
     expect(terminal.assetFrontier.count).toBe(2);
     expect(
-      commitMidgardValidationMerkleFrontierV1(terminal.assetFrontier),
+      commitMidgardValidationMerkleFrontier(terminal.assetFrontier),
     ).toStrictEqual(expectedAssets.commitment);
     expect(terminal.datumLength).toBe(fixture.output.datum!.cbor.length);
     expect(terminal.referenceScriptLanguage).toBe(3);
@@ -82,18 +82,16 @@ describe("ledger output scan V1", () => {
     expect(terminal.cursor - terminal.referenceScriptItemOffset).toBe(
       encodeMidgardVersionedScript(fixture.output.script_ref!).length,
     );
-    expect(
-      encodeMidgardLedgerOutputScanControlV1(terminal).toString("hex"),
-    ).toBe(
+    expect(encodeMidgardLedgerOutputScanControl(terminal).toString("hex")).toBe(
       "970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770",
     );
     expect(
       trace.steps
         .filter(
           ({ control }) =>
-            control.stage === MidgardLedgerOutputScanStagesV1.DatumPayload ||
+            control.stage === MidgardLedgerOutputScanStages.DatumPayload ||
             control.stage ===
-              MidgardLedgerOutputScanStagesV1.ReferenceScriptPayload,
+              MidgardLedgerOutputScanStages.ReferenceScriptPayload,
         )
         .some(({ next }) => next.cursor > 0 && next.cursor % 4_095 === 0),
     ).toBe(true);
@@ -102,7 +100,7 @@ describe("ledger output scan V1", () => {
   it("fails closed when otherwise-canonical bytes have a trailing suffix", () => {
     const fixture = outputFixture();
     expect(() =>
-      buildMidgardLedgerOutputScanTraceV1(
+      buildMidgardLedgerOutputScanTrace(
         Buffer.concat([fixture.cbor, Buffer.from([0x00])]),
       ),
     ).toThrow(/failed closed|did not terminate/);
@@ -111,17 +109,17 @@ describe("ledger output scan V1", () => {
   it("fails closed for non-minimal CBOR and malformed control state", () => {
     const fixture = outputFixture();
     expect(() =>
-      buildMidgardLedgerOutputScanTraceV1(
+      buildMidgardLedgerOutputScanTrace(
         Buffer.concat([Buffer.from([0xb8, 0x04]), fixture.cbor.subarray(1)]),
       ),
     ).toThrow(/failed closed/);
 
     const malformed = {
-      ...initialMidgardLedgerOutputScanControlV1(),
+      ...initialMidgardLedgerOutputScanControl(),
       assetFrontier: { count: 1, peaks: [] },
     };
     expect(
-      advanceMidgardLedgerOutputScanV1({
+      advanceMidgardLedgerOutputScan({
         control: malformed,
         totalLength: fixture.cbor.length,
         window: fixture.cbor,
@@ -136,7 +134,7 @@ describe("ledger output scan V1", () => {
       "hex",
     );
 
-    expect(() => buildMidgardLedgerOutputScanTraceV1(emptyInlineDatum)).toThrow(
+    expect(() => buildMidgardLedgerOutputScanTrace(emptyInlineDatum)).toThrow(
       /canonical Plutus Data|failed closed/,
     );
   });

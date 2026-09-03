@@ -4,7 +4,7 @@
 
 import {
   encodeCbor,
-  type MidgardValidationMerkleFrontierV1,
+  type MidgardValidationMerkleFrontier,
 } from "@al-ft/midgard-core";
 import {
   encodeCborArrayRaw,
@@ -12,14 +12,9 @@ import {
   encodeCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
 
-type ValidationControlDataV1 =
-  | bigint
-  | Buffer
-  | readonly ValidationControlDataV1[];
+type ValidationControlData = bigint | Buffer | readonly ValidationControlData[];
 
-const encodeValidationControlDataV1 = (
-  value: ValidationControlDataV1,
-): Buffer => {
+const encodeValidationControlData = (value: ValidationControlData): Buffer => {
   if (typeof value === "bigint") {
     return encodeCborInteger(value);
   }
@@ -33,24 +28,24 @@ const encodeValidationControlDataV1 = (
     }
     return Buffer.concat([Buffer.from([0x5f]), ...chunks, Buffer.from([0xff])]);
   }
-  return encodeCborArrayRaw(value.map(encodeValidationControlDataV1));
+  return encodeCborArrayRaw(value.map(encodeValidationControlData));
 };
 
-export const encodeValidationControlListV1 = (
-  values: readonly ValidationControlDataV1[],
+export const encodeValidationControlList = (
+  values: readonly ValidationControlData[],
 ): Buffer =>
   Buffer.concat([
     Buffer.from([0x9f]),
-    ...values.map(encodeValidationControlDataV1),
+    ...values.map(encodeValidationControlData),
     Buffer.from([0xff]),
   ]);
 
-export const encodeValidationFrontierPeaksV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
+export const encodeValidationFrontierPeaks = (
+  frontier: MidgardValidationMerkleFrontier,
 ): readonly (readonly [bigint, Buffer])[] =>
   frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
 
-export type ScriptDiscoveryTraceControlV1 = {
+export type ScriptDiscoveryTraceControl = {
   readonly purposeCursor: number;
   readonly sourceCursor: number;
   readonly redeemerCursor: number;
@@ -64,11 +59,11 @@ export type ScriptDiscoveryTraceControlV1 = {
   readonly usedInlineBitmap: bigint;
   readonly usedRedeemerBitmap: bigint;
   readonly redeemerItemControlHash: Buffer;
-  readonly executionFrontier: MidgardValidationMerkleFrontierV1;
+  readonly executionFrontier: MidgardValidationMerkleFrontier;
 };
 
-export const encodeScriptDiscoveryControlCborV1 = (
-  discovery: ScriptDiscoveryTraceControlV1,
+export const encodeScriptDiscoveryControlCbor = (
+  discovery: ScriptDiscoveryTraceControl,
 ): Buffer =>
   encodeCbor([
     BigInt(discovery.purposeCursor),
@@ -85,5 +80,5 @@ export const encodeScriptDiscoveryControlCborV1 = (
     discovery.usedRedeemerBitmap,
     discovery.redeemerItemControlHash,
     BigInt(discovery.executionFrontier.count),
-    encodeValidationFrontierPeaksV1(discovery.executionFrontier),
+    encodeValidationFrontierPeaks(discovery.executionFrontier),
   ]);

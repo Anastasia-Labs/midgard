@@ -150,8 +150,8 @@ const stateQueueTipMetadata = (
         headerHash: null,
       };
     }
-    const header = yield* SDK.getHeaderV1FromStateQueueDatum(latestBlock.datum);
-    const headerHash = yield* SDK.hashBlockHeaderV1(header);
+    const header = yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
+    const headerHash = yield* SDK.hashBlockHeader(header);
     return {
       endTimeMs: Number(header.endTime),
       headerHash: Buffer.from(headerHash, "hex"),
@@ -515,7 +515,7 @@ export const buildBlockConfirmationAction = (
           const matchedBlock = yield* deserializeStateQueueUTxO(
             workerOutput.matchedPendingBlocksUTxO,
           ).pipe(Effect.orDie);
-          const matchedHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
+          const matchedHeader = yield* SDK.getHeaderFromStateQueueDatum(
             matchedBlock.datum,
           ).pipe(Effect.orDie);
           const journalHeaderHash =

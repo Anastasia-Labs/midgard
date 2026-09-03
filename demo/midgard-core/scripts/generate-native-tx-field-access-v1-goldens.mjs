@@ -41,32 +41,32 @@ import {
   parseGoldenChannelArguments,
 } from "./golden-channel.mjs";
 import {
-  decodeMidgardFieldArrayHeaderV1,
-  deriveMidgardFieldPreimageCertificateV1,
-  encodeMidgardDefiniteBytesV1,
-  encodeMidgardFieldArrayHeaderV1,
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
-  MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1,
-  MIDGARD_FIELD_COUNT_V1,
-  MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1,
-  MIDGARD_HASH28_ITEM_BYTES_V1,
-  MIDGARD_MAX_FIELD_ITEM_COUNT_V1,
-  MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
-  MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
-  midgardExpectedChunkCountV1,
-  midgardFieldCommitmentV1,
-  midgardFieldItemExtentV1,
-  midgardFieldStrideV1,
-  buildMidgardWholeFieldViewV1,
-  splitMidgardFieldPreimageIntoChunksV1,
+  decodeMidgardFieldArrayHeader,
+  deriveMidgardFieldPreimageCertificate,
+  encodeMidgardDefiniteBytes,
+  encodeMidgardFieldArrayHeader,
+  encodeMidgardFieldPreimage,
+  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_EMPTY_FIELD_COMMITMENT,
+  MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS,
+  MIDGARD_FIELD_COUNT,
+  MIDGARD_FIELD_VIEW_CONSTRUCTORS,
+  MIDGARD_HASH28_ITEM_BYTES,
+  MIDGARD_MAX_FIELD_ITEM_COUNT,
+  MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  MIDGARD_MAX_TIER3_CHUNK_COUNT,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
+  MIDGARD_SPEND_INPUT_ITEM_BYTES,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
+  midgardExpectedChunkCount,
+  midgardFieldCommitment,
+  midgardFieldItemExtent,
+  midgardFieldStride,
+  buildMidgardWholeFieldView,
+  splitMidgardFieldPreimageIntoChunks,
 } from "../dist/codec/native-tx-field-access-v1.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -197,11 +197,11 @@ const PREIMAGE_VECTORS = [
 
 /** §8.4's split rule at and around the tier boundary, plus the §5.4 cap. */
 const CHUNK_COUNT_TOTAL_LENGTHS = [
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_CHUNK_BYTES_K_V1 + 1,
-  2 * MIDGARD_CHUNK_BYTES_K_V1,
-  2 * MIDGARD_CHUNK_BYTES_K_V1 + 1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_CHUNK_BYTES_K + 1,
+  2 * MIDGARD_CHUNK_BYTES_K,
+  2 * MIDGARD_CHUNK_BYTES_K + 1,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
 ];
 
 /** §8.6. A fixed transaction id for the tier-3 certificate vector. */
@@ -214,14 +214,14 @@ const CERTIFICATE_TX_ID = filler(32, 42);
  * both languages can expand it and recompute `blake2b_256(chunk_j)` for
  * themselves.
  */
-const TIER3_TOTAL_LENGTH = MIDGARD_CHUNK_BYTES_K_V1 + 517;
+const TIER3_TOTAL_LENGTH = MIDGARD_CHUNK_BYTES_K + 517;
 const TIER3_PREIMAGE_BLOCK = filler(256, 77);
 
 const buildGolden = () => {
   const preimages = PREIMAGE_VECTORS.map((vector) => {
-    const preimage = encodeMidgardFieldPreimageV1(vector.items);
-    const commitment = midgardFieldCommitmentV1(preimage);
-    const view = buildMidgardWholeFieldViewV1({
+    const preimage = encodeMidgardFieldPreimage(vector.items);
+    const commitment = midgardFieldCommitment(preimage);
+    const view = buildMidgardWholeFieldView({
       fieldIndex: vector.fieldIndex,
       preimage,
       expectedCommitment: commitment,
@@ -229,13 +229,13 @@ const buildGolden = () => {
     return {
       label: vector.label,
       fieldIndex: vector.fieldIndex,
-      stride: midgardFieldStrideV1(vector.fieldIndex),
+      stride: midgardFieldStride(vector.fieldIndex),
       itemCount: vector.items.length,
       itemsHex: vector.items.map(hex),
       preimageHex: hex(preimage),
       commitmentHex: hex(commitment),
       itemExtents: vector.items.map((_, index) => {
-        const extent = midgardFieldItemExtentV1(view, index);
+        const extent = midgardFieldItemExtent(view, index);
         return { offset: extent.offset, length: extent.length };
       }),
     };
@@ -254,8 +254,8 @@ const buildGolden = () => {
       "tier-3 payload block is not a period of the filler it stands in for",
     );
   }
-  const tier3Chunks = splitMidgardFieldPreimageIntoChunksV1(tier3Preimage);
-  const tier3Certificate = deriveMidgardFieldPreimageCertificateV1({
+  const tier3Chunks = splitMidgardFieldPreimageIntoChunks(tier3Preimage);
+  const tier3Certificate = deriveMidgardFieldPreimageCertificate({
     owner: filler(28, 11),
     txId: CERTIFICATE_TX_ID,
     fieldIndex: 0,
@@ -269,35 +269,35 @@ const buildGolden = () => {
     generator:
       "demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.mjs",
     constants: {
-      fieldCount: MIDGARD_FIELD_COUNT_V1,
-      maxFieldItemCount: MIDGARD_MAX_FIELD_ITEM_COUNT_V1,
+      fieldCount: MIDGARD_FIELD_COUNT,
+      maxFieldItemCount: MIDGARD_MAX_FIELD_ITEM_COUNT,
       maxTransactionAggregateFieldBytes:
-        MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-      maxSpendInputsPreimageBytes: MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES_V1,
+        MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+      maxSpendInputsPreimageBytes: MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES,
       maximumCardanoSpendRedeemerCount:
-        MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
-      chunkBytesK: MIDGARD_CHUNK_BYTES_K_V1,
+        MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
+      chunkBytesK: MIDGARD_CHUNK_BYTES_K,
       maxTier1RedeemerPreimageBytes:
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-      maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+      maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT,
       // §5.3 item widths. The *strides* are what the encoders spend, and they
       // are pinned by the stride table below; these are the payload widths the
       // strides are built from, twinned constant-for-constant with the Aiken
       // module and otherwise referenced nowhere — exactly the shape a value can
       // drift in unnoticed, which is why they belong in the channel too.
-      spendInputItemBytes: MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
-      hash28ItemBytes: MIDGARD_HASH28_ITEM_BYTES_V1,
-      addressWitnessItemBytes: MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-      carriageConstructors: [...MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1],
-      viewConstructors: [...MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1],
+      spendInputItemBytes: MIDGARD_SPEND_INPUT_ITEM_BYTES,
+      hash28ItemBytes: MIDGARD_HASH28_ITEM_BYTES,
+      addressWitnessItemBytes: MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+      carriageConstructors: [...MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS],
+      viewConstructors: [...MIDGARD_FIELD_VIEW_CONSTRUCTORS],
     },
-    emptyFieldCommitmentHex: hex(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
-    strides: Array.from({ length: MIDGARD_FIELD_COUNT_V1 }, (_, fieldIndex) =>
-      midgardFieldStrideV1(fieldIndex),
+    emptyFieldCommitmentHex: hex(MIDGARD_EMPTY_FIELD_COMMITMENT),
+    strides: Array.from({ length: MIDGARD_FIELD_COUNT }, (_, fieldIndex) =>
+      midgardFieldStride(fieldIndex),
     ),
     arrayHeaders: ARRAY_HEADER_COUNTS.map((count) => {
-      const header = encodeMidgardFieldArrayHeaderV1(count);
-      const decoded = decodeMidgardFieldArrayHeaderV1(header);
+      const header = encodeMidgardFieldArrayHeader(count);
+      const decoded = decodeMidgardFieldArrayHeader(header);
       return {
         count,
         headerHex: hex(header),
@@ -307,13 +307,13 @@ const buildGolden = () => {
     itemWrappers: ITEM_WRAPPER_PAYLOAD_LENGTHS.map((payloadLength) => ({
       payloadLength,
       wrapperHex: hex(
-        encodeMidgardDefiniteBytesV1(filler(payloadLength, payloadLength)),
+        encodeMidgardDefiniteBytes(filler(payloadLength, payloadLength)),
       ).slice(0, payloadLength <= 23 ? 2 : payloadLength <= 255 ? 4 : 6),
     })),
     preimages,
     chunkCounts: CHUNK_COUNT_TOTAL_LENGTHS.map((totalLength) => ({
       totalLength,
-      chunkCount: midgardExpectedChunkCountV1(totalLength),
+      chunkCount: midgardExpectedChunkCount(totalLength),
     })),
     tier3Certificate: {
       txIdHex: hex(tier3Certificate.txId),
@@ -335,9 +335,9 @@ const buildGolden = () => {
     // certificate of the policy; the retired blake2b_256(field_index ‖ tx_id)
     // vector class is replaced by this constant plus the datum-shape vectors.
     certificateAssetName: {
-      assetNameHex: hex(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1),
-      byteLength: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.length,
-      ascii: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("ascii"),
+      assetNameHex: hex(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME),
+      byteLength: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.length,
+      ascii: MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("ascii"),
     },
   };
 };

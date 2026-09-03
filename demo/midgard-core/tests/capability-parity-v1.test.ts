@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assertMidgardCapabilityParityReportV1Complete,
-  buildMidgardCapabilityParityReportV1,
-  type CardanoCapabilitySnapshotV1,
-  MIDGARD_CAPABILITY_DIMENSIONS_V1,
-  type MidgardCapabilityBoundaryEvidenceSetV1,
+  assertMidgardCapabilityParityReportComplete,
+  buildMidgardCapabilityParityReport,
+  type CardanoCapabilitySnapshot,
+  MIDGARD_CAPABILITY_DIMENSIONS,
+  type MidgardCapabilityBoundaryEvidenceSet,
 } from "../src/index.js";
 
 const digest = (fill: string): string => fill.repeat(64);
 
-const completeBoundaryEvidence = (): MidgardCapabilityBoundaryEvidenceSetV1 =>
+const completeBoundaryEvidence = (): MidgardCapabilityBoundaryEvidenceSet =>
   Object.fromEntries(
-    MIDGARD_CAPABILITY_DIMENSIONS_V1.map((dimension) => [
+    MIDGARD_CAPABILITY_DIMENSIONS.map((dimension) => [
       dimension,
       {
         cardanoBoundaryFixtureDigest: digest("1"),
@@ -26,8 +26,8 @@ const completeBoundaryEvidence = (): MidgardCapabilityBoundaryEvidenceSetV1 =>
   );
 
 const cardanoSnapshot = (
-  overrides: Partial<CardanoCapabilitySnapshotV1["parameters"]> = {},
-): CardanoCapabilitySnapshotV1 => ({
+  overrides: Partial<CardanoCapabilitySnapshot["parameters"]> = {},
+): CardanoCapabilitySnapshot => ({
   version: 1,
   network: "cardano-mainnet",
   effectiveEpoch: 640,
@@ -55,23 +55,23 @@ const cardanoSnapshot = (
 
 describe("V1 Cardano capability parity evidence", () => {
   it("sets a digest only for a complete trusted passing report", () => {
-    const report = buildMidgardCapabilityParityReportV1(
+    const report = buildMidgardCapabilityParityReport(
       cardanoSnapshot(),
       completeBoundaryEvidence(),
     );
 
     expect(report.blockers).toEqual([]);
-    expect(report.rows).toHaveLength(MIDGARD_CAPABILITY_DIMENSIONS_V1.length);
+    expect(report.rows).toHaveLength(MIDGARD_CAPABILITY_DIMENSIONS.length);
     expect(report.rows.every((row) => row.status === "pass")).toBe(true);
     expect(report.reportDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(() =>
-      assertMidgardCapabilityParityReportV1Complete(report),
+      assertMidgardCapabilityParityReportComplete(report),
     ).not.toThrow();
   });
 
   it("keeps the digest unset when any boundary path is missing", () => {
     const evidence = completeBoundaryEvidence();
-    const report = buildMidgardCapabilityParityReportV1(cardanoSnapshot(), {
+    const report = buildMidgardCapabilityParityReport(cardanoSnapshot(), {
       ...evidence,
       total_transaction_bytes: undefined,
     });
@@ -80,13 +80,13 @@ describe("V1 Cardano capability parity evidence", () => {
     expect(report.blockers).toContain(
       "total_transaction_bytes:boundary_evidence_incomplete",
     );
-    expect(() => assertMidgardCapabilityParityReportV1Complete(report)).toThrow(
+    expect(() => assertMidgardCapabilityParityReportComplete(report)).toThrow(
       /incomplete/u,
     );
   });
 
   it("fails closed when the reference-script network limit is absent", () => {
-    const report = buildMidgardCapabilityParityReportV1(
+    const report = buildMidgardCapabilityParityReport(
       cardanoSnapshot({
         maxReferenceScriptBytesPerTransaction: null,
       }),
@@ -100,7 +100,7 @@ describe("V1 Cardano capability parity evidence", () => {
   });
 
   it("reports every Midgard limit below a raised Cardano boundary", () => {
-    const report = buildMidgardCapabilityParityReportV1(
+    const report = buildMidgardCapabilityParityReport(
       cardanoSnapshot({ maxTxSize: 32_768 }),
       completeBoundaryEvidence(),
     );
@@ -145,16 +145,14 @@ describe("V1 Cardano capability parity evidence", () => {
       },
     ]) {
       expect(
-        buildMidgardCapabilityParityReportV1(
-          snapshot,
-          completeBoundaryEvidence(),
-        ).reportDigest,
+        buildMidgardCapabilityParityReport(snapshot, completeBoundaryEvidence())
+          .reportDigest,
       ).toBeNull();
     }
   });
 
   it("treats malformed execution-unit values as unknown", () => {
-    const report = buildMidgardCapabilityParityReportV1(
+    const report = buildMidgardCapabilityParityReport(
       cardanoSnapshot({ maxTxExecutionCpuUnits: "10e9" }),
       completeBoundaryEvidence(),
     );

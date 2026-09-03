@@ -11,7 +11,7 @@
  *   `RetainedEventDatum`, because the cross pairs claim more than the evidence
  *   supports (`open_authentic_deposit_content_v1`); and
  * - the **establishment** rule that step 04 will re-apply
- *   (`isFabricatedDepositFaultV1`), including the
+ *   (`isFabricatedDepositFault`), including the
  *   `start_time < inclusion_time <= end_time` window, so a stale event cannot be
  *   walked one step further only to be refused at finalization.
  *
@@ -22,17 +22,17 @@
  */
 import {
   DepositDatum,
-  depositEventDatumCommitmentV1,
-  depositInfoCommitmentV1,
-  type FabricatedDepositAuthenticContentOpeningV1,
-  type FabricatedDepositFaultV1,
+  depositEventDatumCommitment,
+  depositInfoCommitment,
+  type FabricatedDepositAuthenticContentOpening,
+  type FabricatedDepositFault,
   FabricatedDepositStep03Datum,
   FabricatedDepositStep03SpendRedeemer,
   type FabricatedDepositStep03State,
   FabricatedDepositStep04Datum,
   type FabricatedDepositStep04State,
-  fabricatedDepositStep04StateV1,
-  isFabricatedDepositFaultV1,
+  fabricatedDepositStep04State,
+  isFabricatedDepositFault,
   OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -46,7 +46,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -60,7 +60,7 @@ import {
 } from "./runtime.js";
 import {
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
-  type FabricatedDepositContractsV1,
+  type FabricatedDepositContracts,
 } from "./submit-fabricated-deposit-step-01.js";
 import {
   requireComputationThreadToken,
@@ -68,15 +68,15 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** The step-03 handoff: the opening the redeemer carries and the fault it yields. */
-export type FabricatedDepositStep03HandoffV1 = {
-  readonly opening: FabricatedDepositAuthenticContentOpeningV1;
-  readonly fault: FabricatedDepositFaultV1;
+export type FabricatedDepositStep03Handoff = {
+  readonly opening: FabricatedDepositAuthenticContentOpening;
+  readonly fault: FabricatedDepositFault;
   readonly step04State: FabricatedDepositStep04State;
 };
 
@@ -110,7 +110,7 @@ export const requireFabricatedDepositStep03Datum = ({
  * Decodes a supplied event datum and refuses non-canonical bytes, whose hash
  * cannot be the commitment step 02 retained.
  */
-export const decodeCanonicalDepositEventDatumV1 = (
+export const decodeCanonicalDepositEventDatum = (
   eventDatumCbor: string,
 ): DepositDatum => {
   const decoded = Data.from(eventDatumCbor, DepositDatum);
@@ -128,15 +128,15 @@ export const decodeCanonicalDepositEventDatumV1 = (
  * establishment gate. Throws — fail-closed — on any pairing, commitment,
  * identity, equality or window failure.
  */
-export const deriveFabricatedDepositStep03HandoffV1 = async ({
+export const deriveFabricatedDepositStep03Handoff = async ({
   state,
   eventDatumCbor,
 }: {
   readonly state: FabricatedDepositStep03State;
   readonly eventDatumCbor?: string;
-}): Promise<FabricatedDepositStep03HandoffV1> => {
-  let opening: FabricatedDepositAuthenticContentOpeningV1;
-  let fault: FabricatedDepositFaultV1;
+}): Promise<FabricatedDepositStep03Handoff> => {
+  let opening: FabricatedDepositAuthenticContentOpening;
+  let fault: FabricatedDepositFault;
 
   if (state.verdict === "DepositIdentityAbsent") {
     if (eventDatumCbor !== undefined) {
@@ -154,9 +154,9 @@ export const deriveFabricatedDepositStep03HandoffV1 = async ({
     }
     const { event_datum_hash, event_inclusion_time } =
       state.verdict.DepositEventObserved;
-    const eventDatum = decodeCanonicalDepositEventDatumV1(eventDatumCbor);
+    const eventDatum = decodeCanonicalDepositEventDatum(eventDatumCbor);
     const suppliedHash = await Effect.runPromise(
-      depositEventDatumCommitmentV1(eventDatum),
+      depositEventDatumCommitment(eventDatum),
     );
     if (suppliedHash !== event_datum_hash) {
       throw new Error(
@@ -171,7 +171,7 @@ export const deriveFabricatedDepositStep03HandoffV1 = async ({
       );
     }
     const authenticDepositInfoHash = await Effect.runPromise(
-      depositInfoCommitmentV1(eventDatum.event.info),
+      depositInfoCommitment(eventDatum.event.info),
     );
     if (authenticDepositInfoHash === state.committed_deposit_info_hash) {
       throw new Error(
@@ -188,8 +188,8 @@ export const deriveFabricatedDepositStep03HandoffV1 = async ({
     };
   }
 
-  const step04State = fabricatedDepositStep04StateV1(state, fault);
-  if (!isFabricatedDepositFaultV1(step04State)) {
+  const step04State = fabricatedDepositStep04State(state, fault);
+  if (!isFabricatedDepositFault(step04State)) {
     throw new Error(
       `Fabricated-deposit step 03 refuses to hand step 04 a fault it must reject: the authentic event is not due for the challenged block (${state.header_start_time.toString()} < inclusion_time <= ${state.header_end_time.toString()}).`,
     );
@@ -234,7 +234,7 @@ export type SubmitFabricatedDepositStep03Result = {
   readonly computationThreadUnit: string;
   readonly thirdStepAddress: string;
   readonly fourthStepAddress: string;
-  readonly fault: FabricatedDepositFaultV1;
+  readonly fault: FabricatedDepositFault;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -256,12 +256,12 @@ export const submitFabricatedDepositStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedDepositContractsV1;
+  readonly contracts: FabricatedDepositContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly eventDatumCbor?: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep03Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -281,7 +281,7 @@ export const submitFabricatedDepositStep03 = async ({
     categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
   });
   const state = requireFabricatedDepositStep03Datum({ threadUtxo, signer });
-  const handoff = await deriveFabricatedDepositStep03HandoffV1({
+  const handoff = await deriveFabricatedDepositStep03Handoff({
     state,
     eventDatumCbor,
   });
@@ -332,7 +332,7 @@ export const submitFabricatedDepositStep03 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[2].spendingScriptHash,
         categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
@@ -356,10 +356,10 @@ export const submitFabricatedDepositStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof fabricated-deposit step-03",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[2].spendingScript,
@@ -397,7 +397,7 @@ export const submitFabricatedDepositStep03 = async ({
 
 export const submitFabricatedDepositStep03FromFiles = async (
   config: SubmitFabricatedDepositStep03CliConfig & {
-    readonly contracts: FabricatedDepositContractsV1;
+    readonly contracts: FabricatedDepositContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep03Result> => {

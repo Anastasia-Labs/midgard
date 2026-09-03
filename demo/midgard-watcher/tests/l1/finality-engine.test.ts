@@ -8,34 +8,34 @@ import { promisify } from "node:util";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
-  makeDeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  makeDeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
-  parseWatcherFinalityPolicyV1,
-  parseWatcherFinalityStateV1,
-  WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
-  WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
-  watcherFinalityConfiguredSourceV1,
-  type WatcherFinalityPolicyV1,
-  type WatcherFinalityStateV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
+  parseWatcherFinalityPolicy,
+  parseWatcherFinalityState,
+  WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
+  WATCHER_FINALITY_RESULT_SCHEMA_VERSION,
+  WATCHER_FINALITY_STATE_SCHEMA_VERSION,
+  watcherFinalityConfiguredSource,
+  type WatcherFinalityPolicy,
+  type WatcherFinalityState,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherL1TransportAttestationContextV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherL1TransportAttestationContext,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw } from "../../src/l1/multi-provider-consistency.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
@@ -118,11 +118,11 @@ const reorderObjectKeysForTest = (value: unknown): unknown => {
 const execFileAsync = promisify(execFile);
 const observationAttestations = new WeakMap<
   object,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 const transportContexts = new Map<
   string,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 let transportFixtureDirectory = "";
 const tlsTransportServers: Server[] = [];
@@ -199,7 +199,7 @@ const makeTlsTransport = async (identityByte: string) => {
 
 const cleanupTransportFixtures = async (): Promise<void> => {
   for (const context of transportContexts.values()) {
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
   }
   transportContexts.clear();
   const servers = [...tlsTransportServers];
@@ -243,7 +243,7 @@ beforeAll(async () => {
       );
       transportContexts.set(
         `external:${providerId}:${identityByte}:${operatorIdentityByte}`,
-        await establishWatcherExternalProviderTransportV1({
+        await establishWatcherExternalProviderTransport({
           network: "Preprod",
           providerId,
           operatorIdentitySha256: hex32(operatorIdentityByte),
@@ -356,7 +356,7 @@ const deploymentIdentity = (
   releaseEvidenceDigest: hex32(releaseByte),
   ruleBundleCommitment: hex32("44"),
   programCommitments: { validation: hex32("55") },
-  durableMarker: makeDeploymentMarkerV1(hex32(manifestByte)),
+  durableMarker: makeDeploymentMarker(hex32(manifestByte)),
 });
 
 const policy = (
@@ -364,13 +364,13 @@ const policy = (
   manifestByte = "11",
   releaseByte = "22",
   rollbackDepth = depth,
-): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(
+): WatcherFinalityPolicy => {
+  const value = makeWatcherFinalityPolicy(
     config(depth, rollbackDepth),
     deploymentIdentity(manifestByte, releaseByte),
   );
   expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
+  return value as WatcherFinalityPolicy;
 };
 
 // A policy over an explicit configured provider set, so a test can name a
@@ -378,9 +378,9 @@ const policy = (
 const policyOverProviders = (
   providers: readonly (readonly [string, string])[],
   depth = 3,
-): WatcherFinalityPolicyV1 => {
+): WatcherFinalityPolicy => {
   const base = config(depth, depth);
-  const value = makeWatcherFinalityPolicyV1(
+  const value = makeWatcherFinalityPolicy(
     {
       ...base,
       l1: {
@@ -400,7 +400,7 @@ const policyOverProviders = (
     deploymentIdentity(),
   );
   expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
+  return value as WatcherFinalityPolicy;
 };
 
 // Re-stamps a genuine W11 record onto another policy's configured source, so
@@ -410,12 +410,12 @@ const policyOverProviders = (
 // is the identity function, which the fully bound control asserts.
 const rebindConsistencyToPolicy = (
   record: unknown,
-  targetPolicy: WatcherFinalityPolicyV1,
+  targetPolicy: WatcherFinalityPolicy,
 ): Record<string, unknown> => {
   const rebound: Record<string, unknown> = {
     ...(record as Record<string, unknown>),
     configuredSourceDigest: sha256CanonicalForTest(
-      watcherFinalityConfiguredSourceV1(targetPolicy),
+      watcherFinalityConfiguredSource(targetPolicy),
     ),
   };
   delete rebound.consistencyDigest;
@@ -447,11 +447,11 @@ const transaction = (bodySeedHex: string) => {
   const bodyHex = body.to_canonical_cbor_hex();
   return {
     txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
-    fullTransaction: makeWatcherL1PublicBytesV1(
+    fullTransaction: makeWatcherL1PublicBytes(
       fullTransaction.to_canonical_cbor_hex(),
     ),
-    body: makeWatcherL1PublicBytesV1(bodyHex),
-    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    body: makeWatcherL1PublicBytes(bodyHex),
+    witnessSet: makeWatcherL1PublicBytes(witnessSet.to_canonical_cbor_hex()),
     utxos: [],
     scripts: [],
     datums: [],
@@ -473,14 +473,14 @@ const observation = (
   providerId: string,
   identityByte: string,
   options: ObservationOptions = {},
-): WatcherNormalizedL1BlockV1 => {
+): WatcherNormalizedL1Block => {
   const attestation = provider(
     providerId,
     identityByte,
     options.operatorIdentityByte ?? identityByte,
   );
-  const normalized = normalizeWatcherL1BlockV1(attestation, {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  const normalized = normalizeWatcherL1Block(attestation, {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId,
     chainPoint: {
@@ -497,10 +497,10 @@ const observation = (
   return normalized;
 };
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: unknown,
-  explicitAttestations?: readonly WatcherL1TransportAttestationContextV1[],
+  explicitAttestations?: readonly WatcherL1TransportAttestationContext[],
 ) => {
   const inferred = Array.isArray(observations)
     ? observations.flatMap((candidate) => {
@@ -509,7 +509,7 @@ const evaluateWatcherMultiProviderConsistencyV1 = (
         return attestation === undefined ? [] : [attestation];
       })
     : [];
-  return evaluateWatcherMultiProviderConsistencyV1Raw(
+  return evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     explicitAttestations ?? [...new Set(inferred)],
@@ -525,38 +525,38 @@ const agreement = (
     observation("provider-a", "a1", { ...options, depth }),
     observation("provider-b", "b2", { ...options, depth }),
   ];
-  return evaluateWatcherMultiProviderConsistencyV1(
+  return evaluateWatcherMultiProviderConsistency(
     externalSource(),
     reverse ? observations.reverse() : observations,
   );
 };
 
 const pendingAt = (
-  finalityPolicy: WatcherFinalityPolicyV1,
+  finalityPolicy: WatcherFinalityPolicy,
   depth: string,
   options: ObservationOptions = {},
-): WatcherFinalityStateV1 => {
-  const result = evaluateWatcherFinalityV1(
+): WatcherFinalityState => {
+  const result = evaluateWatcherFinality(
     finalityPolicy,
     null,
     agreement(depth, options),
   );
   expect(result.action).toBe("observe_pending");
-  return result.state as WatcherFinalityStateV1;
+  return result.state as WatcherFinalityState;
 };
 
 const finalizeAtThreshold = (
-  finalityPolicy: WatcherFinalityPolicyV1,
+  finalityPolicy: WatcherFinalityPolicy,
   options: ObservationOptions = {},
-): WatcherFinalityStateV1 => {
+): WatcherFinalityState => {
   const pending = pendingAt(finalityPolicy, "2", options);
-  const result = evaluateWatcherFinalityV1(
+  const result = evaluateWatcherFinality(
     finalityPolicy,
     pending,
     agreement("3", options),
   );
   expect(result.action).toBe("finalize");
-  return result.state as WatcherFinalityStateV1;
+  return result.state as WatcherFinalityState;
 };
 
 describe("canonical release-bound watcher finality", () => {
@@ -564,7 +564,7 @@ describe("canonical release-bound watcher finality", () => {
     const value = policy();
 
     expect(value).toMatchObject({
-      schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
       network: "Preprod",
       sourceMode: "external_providers",
       authorityNodeId: null,
@@ -591,15 +591,15 @@ describe("canonical release-bound watcher finality", () => {
       afterFinalityRollback: "quarantine",
       releaseEvidenceDigest: hex32("22"),
       deploymentMarker: {
-        schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+        schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
         manifestId: hex32("11"),
       },
     });
     expect(value.policyDigest).toMatch(/^[0-9a-f]{64}$/u);
-    expect(parseWatcherFinalityPolicyV1(value)).toEqual(value);
+    expect(parseWatcherFinalityPolicy(value)).toEqual(value);
     expect(Object.isFrozen(value)).toBe(true);
     expect(
-      parseWatcherFinalityPolicyV1({
+      parseWatcherFinalityPolicy({
         ...value,
         maximumPostFinalityRecoveryDepth: "2161",
       }),
@@ -610,7 +610,7 @@ describe("canonical release-bound watcher finality", () => {
         maximumPostFinalityRecoveryDepth: "2159",
       };
     expect(
-      parseWatcherFinalityPolicyV1({
+      parseWatcherFinalityPolicy({
         ...narrowedRecoveryPolicyCanonical,
         policyDigest: sha256CanonicalForTest(narrowedRecoveryPolicyCanonical),
       }),
@@ -619,7 +619,7 @@ describe("canonical release-bound watcher finality", () => {
     const changedEndpointConfig = config();
     changedEndpointConfig.l1.source.providers[0]!.endpoint =
       "https://cardano-a-new.example";
-    const changedEndpointPolicy = makeWatcherFinalityPolicyV1(
+    const changedEndpointPolicy = makeWatcherFinalityPolicy(
       changedEndpointConfig,
       deploymentIdentity(),
     );
@@ -629,14 +629,14 @@ describe("canonical release-bound watcher finality", () => {
     const reorderedConfig = config();
     reorderedConfig.l1.source.providers.reverse();
     expect(
-      makeWatcherFinalityPolicyV1(reorderedConfig, deploymentIdentity()),
+      makeWatcherFinalityPolicy(reorderedConfig, deploymentIdentity()),
     ).toEqual(value);
 
     const unauthenticatedTransportConfig = config();
     unauthenticatedTransportConfig.l1.source.providers[0]!.endpoint =
       "http://127.0.0.1:1442";
     expect(
-      makeWatcherFinalityPolicyV1(
+      makeWatcherFinalityPolicy(
         unauthenticatedTransportConfig,
         deploymentIdentity(),
       ),
@@ -645,7 +645,7 @@ describe("canonical release-bound watcher finality", () => {
 
   it("derives the local-node finality authority and Kupmios bindings from W01 config", () => {
     const base = config();
-    const value = makeWatcherFinalityPolicyV1(
+    const value = makeWatcherFinalityPolicy(
       {
         ...base,
         l1: {
@@ -697,26 +697,26 @@ describe("canonical release-bound watcher finality", () => {
         },
       ],
     });
-    expect(parseWatcherFinalityPolicyV1(value)).toEqual(value);
+    expect(parseWatcherFinalityPolicy(value)).toEqual(value);
   });
 
   it("rejects configuration/deployment mismatches without emitting values", () => {
-    const wrongNetwork = makeWatcherFinalityPolicyV1(
+    const wrongNetwork = makeWatcherFinalityPolicy(
       config(),
       deploymentIdentity("11", "22", "Preview"),
     );
     const malformedMarker = {
       ...deploymentIdentity(),
-      durableMarker: makeDeploymentMarkerV1(hex32("99")),
+      durableMarker: makeDeploymentMarker(hex32("99")),
     };
 
     expect(wrongNetwork).toBeNull();
-    expect(makeWatcherFinalityPolicyV1(config(), malformedMarker)).toBeNull();
+    expect(makeWatcherFinalityPolicy(config(), malformedMarker)).toBeNull();
   });
 
   it("rejects agreement from two distinct providers outside the W01 allowlist", () => {
     const finalityPolicy = policy();
-    const hostileAgreement = evaluateWatcherMultiProviderConsistencyV1(
+    const hostileAgreement = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-x", "c3", {
@@ -730,7 +730,7 @@ describe("canonical release-bound watcher finality", () => {
 
     expect(hostileAgreement.status).toBe("quarantined");
     expect(
-      evaluateWatcherFinalityV1(finalityPolicy, null, hostileAgreement),
+      evaluateWatcherFinality(finalityPolicy, null, hostileAgreement),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
@@ -741,7 +741,7 @@ describe("canonical release-bound watcher finality", () => {
   });
 
   it("rejects configured provider labels with substituted operator identities", () => {
-    const hostileAgreement = evaluateWatcherMultiProviderConsistencyV1(
+    const hostileAgreement = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-a", "c3", {
@@ -754,7 +754,7 @@ describe("canonical release-bound watcher finality", () => {
     );
 
     expect(
-      evaluateWatcherFinalityV1(policy(), null, hostileAgreement),
+      evaluateWatcherFinality(policy(), null, hostileAgreement),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
@@ -763,7 +763,7 @@ describe("canonical release-bound watcher finality", () => {
   });
 
   it("rejects an otherwise valid W11 agreement bound to another configured provider set", () => {
-    const foreign = evaluateWatcherMultiProviderConsistencyV1(
+    const foreign = evaluateWatcherMultiProviderConsistency(
       {
         sourceMode: "external_providers",
         network: "Preprod",
@@ -786,7 +786,7 @@ describe("canonical release-bound watcher finality", () => {
       ],
     );
     expect(foreign.status).toBe("agreed");
-    expect(evaluateWatcherFinalityV1(policy(), null, foreign)).toMatchObject({
+    expect(evaluateWatcherFinality(policy(), null, foreign)).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
       reasonCodes: ["source_authority_mismatch"],
@@ -817,12 +817,8 @@ describe("canonical release-bound watcher finality", () => {
     );
     expect(finalityPolicy.externalProviders).toHaveLength(3);
 
-    const first = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      null,
-      belowThreshold,
-    );
-    const second = evaluateWatcherFinalityV1(
+    const first = evaluateWatcherFinality(finalityPolicy, null, belowThreshold);
+    const second = evaluateWatcherFinality(
       finalityPolicy,
       first.state,
       atThreshold,
@@ -857,7 +853,7 @@ describe("canonical release-bound watcher finality", () => {
 
     expect(finalityPolicy.externalProviders).toHaveLength(4);
     expect(
-      evaluateWatcherFinalityV1(finalityPolicy, null, partial),
+      evaluateWatcherFinality(finalityPolicy, null, partial),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
@@ -880,12 +876,8 @@ describe("canonical release-bound watcher finality", () => {
     );
     expect(finalityPolicy.policyDigest).toBe(policy().policyDigest);
 
-    const first = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      null,
-      belowThreshold,
-    );
-    const second = evaluateWatcherFinalityV1(
+    const first = evaluateWatcherFinality(finalityPolicy, null, belowThreshold);
+    const second = evaluateWatcherFinality(
       finalityPolicy,
       first.state,
       atThreshold,
@@ -902,16 +894,16 @@ describe("canonical release-bound watcher finality", () => {
   });
 
   it("keeps first visibility pending even when already above the threshold", () => {
-    const first = evaluateWatcherFinalityV1(policy(), null, agreement("8"));
+    const first = evaluateWatcherFinality(policy(), null, agreement("8"));
 
     expect(first).toMatchObject({
-      schemaVersion: WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_RESULT_SCHEMA_VERSION,
       action: "observe_pending",
       protocolDecision: "hold",
       reasonCodes: ["first_visibility_pending"],
       alertCodes: ["watcher_finality_pending"],
       state: {
-        schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
         phase: "pending",
         pending: {
           firstSeenDepth: "8",
@@ -926,12 +918,12 @@ describe("canonical release-bound watcher finality", () => {
   it("finalizes threshold-1 to threshold exactly once", () => {
     const finalityPolicy = policy();
     const pending = pendingAt(finalityPolicy, "2");
-    const finalized = evaluateWatcherFinalityV1(
+    const finalized = evaluateWatcherFinality(
       finalityPolicy,
       pending,
       agreement("3"),
     );
-    const later = evaluateWatcherFinalityV1(
+    const later = evaluateWatcherFinality(
       finalityPolicy,
       finalized.state,
       agreement("4"),
@@ -963,17 +955,17 @@ describe("canonical release-bound watcher finality", () => {
   it("makes exact duplicates idempotent before and after restart", () => {
     const finalityPolicy = policy();
     const evidence = agreement("1");
-    const first = evaluateWatcherFinalityV1(finalityPolicy, null, evidence);
+    const first = evaluateWatcherFinality(finalityPolicy, null, evidence);
     const restarted = JSON.parse(
       JSON.stringify(first.state),
-    ) as WatcherFinalityStateV1;
-    const duplicate = evaluateWatcherFinalityV1(
+    ) as WatcherFinalityState;
+    const duplicate = evaluateWatcherFinality(
       finalityPolicy,
       restarted,
       evidence,
     );
 
-    expect(parseWatcherFinalityStateV1(restarted)).toEqual(first.state);
+    expect(parseWatcherFinalityState(restarted)).toEqual(first.state);
     expect(duplicate).toMatchObject({
       action: "duplicate",
       protocolDecision: "hold",
@@ -986,7 +978,7 @@ describe("canonical release-bound watcher finality", () => {
   it("advances below-threshold depth without irreversible state", () => {
     const finalityPolicy = policy(4);
     const pending = pendingAt(finalityPolicy, "1");
-    const advanced = evaluateWatcherFinalityV1(
+    const advanced = evaluateWatcherFinality(
       finalityPolicy,
       pending,
       agreement("2"),
@@ -1003,12 +995,12 @@ describe("canonical release-bound watcher finality", () => {
   it("emits a deterministic rewind for a pre-finality depth regression", () => {
     const finalityPolicy = policy(5);
     const pending = pendingAt(finalityPolicy, "3");
-    const rewound = evaluateWatcherFinalityV1(
+    const rewound = evaluateWatcherFinality(
       finalityPolicy,
       pending,
       agreement("2"),
     );
-    const replay = evaluateWatcherFinalityV1(
+    const replay = evaluateWatcherFinality(
       finalityPolicy,
       JSON.parse(JSON.stringify(pending)),
       agreement("2", {}, true),
@@ -1035,7 +1027,7 @@ describe("canonical release-bound watcher finality", () => {
   it("emits explicit rewinds for pre-finality fork and content mutation", () => {
     const finalityPolicy = policy(5);
     const pending = pendingAt(finalityPolicy, "1");
-    const fork = evaluateWatcherFinalityV1(
+    const fork = evaluateWatcherFinality(
       finalityPolicy,
       pending,
       agreement("2", {
@@ -1044,7 +1036,7 @@ describe("canonical release-bound watcher finality", () => {
         blockNo: "101",
       }),
     );
-    const content = evaluateWatcherFinalityV1(
+    const content = evaluateWatcherFinality(
       finalityPolicy,
       pending,
       agreement("2", { bodyHex: "a100" }),
@@ -1065,18 +1057,18 @@ describe("canonical release-bound watcher finality", () => {
   it("enforces the exact pre-finality rollback bound and adjacent excess", () => {
     const finalityPolicy = policy(5, "11", "22", 2);
     const depthTwo = pendingAt(finalityPolicy, "2");
-    const exactDepth = evaluateWatcherFinalityV1(
+    const exactDepth = evaluateWatcherFinality(
       finalityPolicy,
       depthTwo,
       agreement("0"),
     );
     const depthThree = pendingAt(finalityPolicy, "3");
-    const adjacentExcess = evaluateWatcherFinalityV1(
+    const adjacentExcess = evaluateWatcherFinality(
       finalityPolicy,
       depthThree,
       agreement("0"),
     );
-    const exactFork = evaluateWatcherFinalityV1(
+    const exactFork = evaluateWatcherFinality(
       finalityPolicy,
       pendingAt(finalityPolicy, "1"),
       agreement("2", {
@@ -1085,7 +1077,7 @@ describe("canonical release-bound watcher finality", () => {
         blockNo: "101",
       }),
     );
-    const excessiveFork = evaluateWatcherFinalityV1(
+    const excessiveFork = evaluateWatcherFinality(
       finalityPolicy,
       depthTwo,
       agreement("3", {
@@ -1119,7 +1111,7 @@ describe("canonical release-bound watcher finality", () => {
   it("fails closed when same-depth evidence arrives over a substituted endpoint", () => {
     const finalityPolicy = policy();
     const pending = pendingAt(finalityPolicy, "1");
-    const freshTransportAgreement = evaluateWatcherMultiProviderConsistencyV1(
+    const freshTransportAgreement = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-a", "c3", {
@@ -1129,7 +1121,7 @@ describe("canonical release-bound watcher finality", () => {
         observation("provider-b", "b2", { depth: "1" }),
       ],
     );
-    const stale = evaluateWatcherFinalityV1(
+    const stale = evaluateWatcherFinality(
       finalityPolicy,
       pending,
       freshTransportAgreement,
@@ -1145,7 +1137,7 @@ describe("canonical release-bound watcher finality", () => {
 
   it("rejects W11 pending and quarantine without advancing state", () => {
     const finalityPolicy = policy();
-    const initialPending = evaluateWatcherMultiProviderConsistencyV1(
+    const initialPending = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-a", "a1", { depth: "0" }),
@@ -1157,13 +1149,13 @@ describe("canonical release-bound watcher finality", () => {
         }),
       ],
     );
-    const quarantined = evaluateWatcherMultiProviderConsistencyV1(
+    const quarantined = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [observation("provider-a", "a1")],
     );
 
     expect(
-      evaluateWatcherFinalityV1(finalityPolicy, null, initialPending),
+      evaluateWatcherFinality(finalityPolicy, null, initialPending),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
@@ -1171,7 +1163,7 @@ describe("canonical release-bound watcher finality", () => {
       state: { phase: "unobserved" },
     });
     expect(
-      evaluateWatcherFinalityV1(finalityPolicy, null, quarantined),
+      evaluateWatcherFinality(finalityPolicy, null, quarantined),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
@@ -1183,7 +1175,7 @@ describe("canonical release-bound watcher finality", () => {
   it("holds same-point post-finality depth regression without an incident and resumes on recovered depth", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
-    const rolledBack = evaluateWatcherFinalityV1(
+    const rolledBack = evaluateWatcherFinality(
       finalityPolicy,
       finalized,
       agreement("2"),
@@ -1199,11 +1191,7 @@ describe("canonical release-bound watcher finality", () => {
     expect(rolledBack.state?.phase).toBe("finalized");
     expect(rolledBack.state?.incident).toBeNull();
     expect(
-      evaluateWatcherFinalityV1(
-        finalityPolicy,
-        rolledBack.state,
-        agreement("4"),
-      ),
+      evaluateWatcherFinality(finalityPolicy, rolledBack.state, agreement("4")),
     ).toMatchObject({
       action: "duplicate",
       protocolDecision: "hold",
@@ -1215,7 +1203,7 @@ describe("canonical release-bound watcher finality", () => {
   it("opens incidents only for agreed point replacement and keeps same-point content or transient disagreement nonterminal", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
-    const point = evaluateWatcherFinalityV1(
+    const point = evaluateWatcherFinality(
       finalityPolicy,
       finalized,
       agreement("4", {
@@ -1224,12 +1212,12 @@ describe("canonical release-bound watcher finality", () => {
         blockNo: "101",
       }),
     );
-    const content = evaluateWatcherFinalityV1(
+    const content = evaluateWatcherFinality(
       finalityPolicy,
       finalized,
       agreement("4", { bodyHex: "a100" }),
     );
-    const pendingW11 = evaluateWatcherMultiProviderConsistencyV1(
+    const pendingW11 = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-a", "a1"),
@@ -1240,7 +1228,7 @@ describe("canonical release-bound watcher finality", () => {
         }),
       ],
     );
-    const quasiRollback = evaluateWatcherFinalityV1(
+    const quasiRollback = evaluateWatcherFinality(
       finalityPolicy,
       finalized,
       pendingW11,
@@ -1265,7 +1253,7 @@ describe("canonical release-bound watcher finality", () => {
     expect(content.state).toEqual(finalized);
     expect(quasiRollback.state).toEqual(finalized);
     expect(
-      evaluateWatcherFinalityV1(
+      evaluateWatcherFinality(
         finalityPolicy,
         quasiRollback.state,
         agreement("4"),
@@ -1281,7 +1269,7 @@ describe("canonical release-bound watcher finality", () => {
   it("keeps malformed input and bounded external lag transient after finality", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
-    const boundedLag = evaluateWatcherMultiProviderConsistencyV1(
+    const boundedLag = evaluateWatcherMultiProviderConsistency(
       externalSource(),
       [
         observation("provider-a", "a1", { depth: "4" }),
@@ -1298,7 +1286,7 @@ describe("canonical release-bound watcher finality", () => {
       reasonCodes: ["bounded_provider_lag"],
     });
     for (const transient of [new Error("malformed"), boundedLag]) {
-      const held = evaluateWatcherFinalityV1(
+      const held = evaluateWatcherFinality(
         finalityPolicy,
         finalized,
         transient,
@@ -1311,7 +1299,7 @@ describe("canonical release-bound watcher finality", () => {
       expect(held.state?.phase).toBe("finalized");
       expect(held.state?.incident).toBeNull();
       expect(
-        evaluateWatcherFinalityV1(finalityPolicy, held.state, agreement("4")),
+        evaluateWatcherFinality(finalityPolicy, held.state, agreement("4")),
       ).toMatchObject({
         action: "duplicate",
         protocolDecision: "hold",
@@ -1328,19 +1316,19 @@ describe("canonical release-bound watcher finality", () => {
     const otherRelease = policy(3, "11", "99");
 
     expect(
-      evaluateWatcherFinalityV1(stalePolicy, state, agreement("2")),
+      evaluateWatcherFinality(stalePolicy, state, agreement("2")),
     ).toMatchObject({
       reasonCodes: ["stale_state"],
       state: null,
     });
     expect(
-      evaluateWatcherFinalityV1(otherDeployment, state, agreement("2")),
+      evaluateWatcherFinality(otherDeployment, state, agreement("2")),
     ).toMatchObject({
       reasonCodes: ["deployment_mismatch"],
       state: null,
     });
     expect(
-      evaluateWatcherFinalityV1(otherRelease, state, agreement("2")),
+      evaluateWatcherFinality(otherRelease, state, agreement("2")),
     ).toMatchObject({
       reasonCodes: ["release_evidence_mismatch"],
       state: null,
@@ -1359,10 +1347,10 @@ describe("canonical release-bound watcher finality", () => {
     delete canonical.stateDigest;
     impossible.stateDigest = sha256CanonicalForTest(canonical);
 
-    expect(parseWatcherFinalityStateV1(impossible)).not.toBeNull();
-    expect(parseWatcherFinalityStateV1(impossible, finalityPolicy)).toBeNull();
+    expect(parseWatcherFinalityState(impossible)).not.toBeNull();
+    expect(parseWatcherFinalityState(impossible, finalityPolicy)).toBeNull();
     expect(
-      evaluateWatcherFinalityV1(finalityPolicy, impossible, agreement("6")),
+      evaluateWatcherFinality(finalityPolicy, impossible, agreement("6")),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
@@ -1383,7 +1371,7 @@ describe("canonical release-bound watcher finality", () => {
     samePolicyImpossible.stateDigest =
       sha256CanonicalForTest(samePolicyCanonical);
     expect(
-      evaluateWatcherFinalityV1(
+      evaluateWatcherFinality(
         finalityPolicy,
         samePolicyImpossible,
         agreement("6"),
@@ -1400,12 +1388,12 @@ describe("canonical release-bound watcher finality", () => {
     const finalityPolicy = policy();
     const forwardEvidence = agreement("1");
     const reverseEvidence = agreement("1", {}, true);
-    const forward = evaluateWatcherFinalityV1(
+    const forward = evaluateWatcherFinality(
       finalityPolicy,
       null,
       forwardEvidence,
     );
-    const reverse = evaluateWatcherFinalityV1(
+    const reverse = evaluateWatcherFinality(
       reorderObjectKeysForTest(finalityPolicy),
       null,
       reorderObjectKeysForTest(reverseEvidence),
@@ -1475,7 +1463,7 @@ describe("canonical release-bound watcher finality", () => {
       new Error("no"),
     ]) {
       expect(
-        evaluateWatcherFinalityV1(finalityPolicy, null, malformed),
+        evaluateWatcherFinality(finalityPolicy, null, malformed),
       ).toMatchObject({
         action: "reject",
         protocolDecision: "quarantined",
@@ -1501,12 +1489,12 @@ describe("canonical release-bound watcher finality", () => {
         throw new Error(secret);
       },
     });
-    const policyFailure = evaluateWatcherFinalityV1(
+    const policyFailure = evaluateWatcherFinality(
       unsafePolicy,
       null,
       new Error(secret),
     );
-    const stateFailure = evaluateWatcherFinalityV1(
+    const stateFailure = evaluateWatcherFinality(
       policy(),
       unsafeState,
       new Error(secret),

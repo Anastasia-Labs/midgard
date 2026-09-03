@@ -1,7 +1,7 @@
 import {
-  availabilityResponseGeometryV1,
-  buildDaAvailabilityCommitmentV1,
-  daAvailabilityAttestationMessageV1,
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
+  daAvailabilityAttestationMessage,
 } from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -16,12 +16,12 @@ import {
 import { bytesToHex } from "../src/utils/hex.js";
 
 const availabilityCommitment = (headerHash: string) =>
-  buildDaAvailabilityCommitmentV1({
+  buildDaAvailabilityCommitment({
     deploymentIdentity: "11".repeat(28),
     headerHash,
     payload: Uint8Array.from([1, 2, 3, 4]),
     bondOwner: "22".repeat(28),
-    responseGeometry: availabilityResponseGeometryV1({
+    responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4095,
       trancheByteLength: 4 * 1024 * 1024,
       maxTrancheCount: 16,
@@ -99,7 +99,7 @@ describe("DA signer", () => {
     );
     expect(witness.slice(2)).toBe(
       cardanoPrivateKey
-        .sign(Buffer.from(daAvailabilityAttestationMessageV1(commitment)))
+        .sign(Buffer.from(daAvailabilityAttestationMessage(commitment)))
         .to_hex(),
     );
   });

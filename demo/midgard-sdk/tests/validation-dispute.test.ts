@@ -6,33 +6,33 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  PreparedValidationResolutionDatumV1,
-  type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
-  ValidationAwardSpendRedeemerV1,
-  type ValidationAwardSpendRedeemerV1 as ValidationAwardSpendRedeemerV1Data,
-  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
-  type ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 as ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data,
-  ValidationCekMaterialRouteV1,
-  type ValidationCekMaterialRouteV1 as ValidationCekMaterialRouteV1Data,
+  PreparedValidationResolutionDatum,
+  type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
+  ValidationAwardSpendRedeemer,
+  type ValidationAwardSpendRedeemer as ValidationAwardSpendRedeemerData,
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
+  type ValidationCanonicalDecodePrepareSelectedSpendRedeemer as ValidationCanonicalDecodePrepareSelectedSpendRedeemerData,
+  ValidationCekMaterialRoute,
+  type ValidationCekMaterialRoute as ValidationCekMaterialRouteData,
+  ValidationDispute,
   validationDisputeDataFromCore,
-  ValidationDisputeTurnV1Schema,
-  ValidationDisputeV1,
-  ValidationGameSpendRedeemerV1,
-  ValidationMachinePhaseV1Schema,
-  ValidationMachineSourceKindV1Schema,
-  type ValidationMachineStateV1,
-  ValidationMachineVerdictV1Schema,
-  ValidationOneStepEvidenceV1,
-  type ValidationOneStepEvidenceV1 as ValidationOneStepEvidenceV1Data,
-  ValidationOneStepWitnessV1,
-  ValidationPrepareSelectedSpendRedeemerV1,
-  type ValidationPrepareSelectedSpendRedeemerV1 as ValidationPrepareSelectedSpendRedeemerV1Data,
-  type ValidationResolutionStateV1,
+  ValidationDisputeTurnSchema,
+  ValidationGameSpendRedeemer,
+  ValidationMachinePhaseSchema,
+  ValidationMachineSourceKindSchema,
+  type ValidationMachineState,
+  ValidationMachineVerdictSchema,
+  ValidationOneStepEvidence,
+  type ValidationOneStepEvidence as ValidationOneStepEvidenceData,
+  ValidationOneStepWitness,
+  ValidationPrepareSelectedSpendRedeemer,
+  type ValidationPrepareSelectedSpendRedeemer as ValidationPrepareSelectedSpendRedeemerData,
+  type ValidationResolutionState,
   validationTraceDescriptorDataFromCore,
+  ValidationTraceProof,
   validationTraceProofDataFromCore,
-  ValidationTraceProofV1,
-  WinningValidationResolutionDatumV1,
-  type WinningValidationResolutionDatumV1 as WinningValidationResolutionDatumV1Data,
+  WinningValidationResolutionDatum,
+  type WinningValidationResolutionDatum as WinningValidationResolutionDatumData,
 } from "../src/index.js";
 
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
@@ -58,7 +58,7 @@ describe("validation dispute ABI", () => {
         "Terminal",
       ].map((value, tag) => ({
         value,
-        schema: ValidationMachinePhaseV1Schema,
+        schema: ValidationMachinePhaseSchema,
         expected:
           tag <= 6
             ? `d8${(0x79 + tag).toString(16)}80`
@@ -66,12 +66,12 @@ describe("validation dispute ABI", () => {
       })),
       ...["Pending", "Accepted", "Rejected"].map((value, tag) => ({
         value,
-        schema: ValidationMachineVerdictV1Schema,
+        schema: ValidationMachineVerdictSchema,
         expected: `d8${(0x79 + tag).toString(16)}80`,
       })),
       ...["Normal", "Forced"].map((value, tag) => ({
         value,
-        schema: ValidationMachineSourceKindV1Schema,
+        schema: ValidationMachineSourceKindSchema,
         expected: `d8${(0x79 + tag).toString(16)}80`,
       })),
     ] as const;
@@ -82,7 +82,7 @@ describe("validation dispute ABI", () => {
     expect(
       Data.to(
         { AwaitingOperator: { midpoint: 1n } } as never,
-        ValidationDisputeTurnV1Schema as never,
+        ValidationDisputeTurnSchema as never,
       ),
     ).toBe("d8799f01ff");
     expect(
@@ -93,23 +93,18 @@ describe("validation dispute ABI", () => {
             operator_midpoint_hash: "aa".repeat(32),
           },
         } as never,
-        ValidationDisputeTurnV1Schema as never,
+        ValidationDisputeTurnSchema as never,
       ),
     ).toBe(`d87a9f015820${"aa".repeat(32)}ff`);
     expect(
-      Data.to(
-        "ReadyForOneStep" as never,
-        ValidationDisputeTurnV1Schema as never,
-      ),
+      Data.to("ReadyForOneStep" as never, ValidationDisputeTurnSchema as never),
     ).toBe("d87b80");
 
-    expect(() => Data.from("d87c80", ValidationDisputeTurnV1Schema)).toThrow();
+    expect(() => Data.from("d87c80", ValidationDisputeTurnSchema)).toThrow();
     expect(() =>
-      Data.from("d8799f0102ff", ValidationDisputeTurnV1Schema),
+      Data.from("d8799f0102ff", ValidationDisputeTurnSchema),
     ).toThrow();
-    expect(() =>
-      Data.from("d9050f80", ValidationMachinePhaseV1Schema),
-    ).toThrow();
+    expect(() => Data.from("d9050f80", ValidationMachinePhaseSchema)).toThrow();
   });
 
   it("round-trips exact descriptors, proofs, disputes, and reveal redeemers", () => {
@@ -128,18 +123,15 @@ describe("validation dispute ABI", () => {
     });
     const disputeData = validationDisputeDataFromCore(dispute);
     expect(
-      Data.from(Data.to(disputeData, ValidationDisputeV1), ValidationDisputeV1),
+      Data.from(Data.to(disputeData, ValidationDispute), ValidationDispute),
     ).toEqual(disputeData);
 
     const proofData = validationTraceProofDataFromCore(operator.proofs[1]!);
     expect(
-      Data.from(
-        Data.to(proofData, ValidationTraceProofV1),
-        ValidationTraceProofV1,
-      ),
+      Data.from(Data.to(proofData, ValidationTraceProof), ValidationTraceProof),
     ).toEqual(proofData);
 
-    const redeemer: ValidationGameSpendRedeemerV1 = {
+    const redeemer: ValidationGameSpendRedeemer = {
       Continue: [
         {
           RevealOperator: {
@@ -152,8 +144,8 @@ describe("validation dispute ABI", () => {
     };
     expect(
       Data.from(
-        Data.to(redeemer, ValidationGameSpendRedeemerV1),
-        ValidationGameSpendRedeemerV1,
+        Data.to(redeemer, ValidationGameSpendRedeemer),
+        ValidationGameSpendRedeemer,
       ),
     ).toEqual(redeemer);
 
@@ -163,7 +155,7 @@ describe("validation dispute ABI", () => {
   });
 
   it("round-trips staged, direct, and award resolution V1 shapes", () => {
-    const state: ValidationMachineStateV1 = {
+    const state: ValidationMachineState = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
       transaction_id: "02".repeat(32),
@@ -180,7 +172,7 @@ describe("validation dispute ABI", () => {
       rejection_code_hash: "00".repeat(32),
       ledger_delta_root: "07".repeat(32),
     };
-    const resolution: ValidationResolutionStateV1 = {
+    const resolution: ValidationResolutionState = {
       version: 1n,
       pre_state: state,
       operator_successor_hash: "08".repeat(32),
@@ -191,17 +183,17 @@ describe("validation dispute ABI", () => {
       claimed_successor: { ...state, program_counter: 1n },
     };
     const auxiliary = "NoAuxiliaryWitness" as const;
-    const evidence: ValidationOneStepEvidenceV1Data = {
+    const evidence: ValidationOneStepEvidenceData = {
       transition,
       auxiliary,
     };
     expect(
       Data.from(
-        Data.to(transition, ValidationOneStepWitnessV1),
-        ValidationOneStepWitnessV1,
+        Data.to(transition, ValidationOneStepWitness),
+        ValidationOneStepWitness,
       ),
     ).toEqual(transition);
-    const prepared: PreparedValidationResolutionDatumV1Data = {
+    const prepared: PreparedValidationResolutionDatumData = {
       fraud_prover: "0a".repeat(28),
       data: {
         version: 1n,
@@ -211,12 +203,12 @@ describe("validation dispute ABI", () => {
     };
     expect(
       Data.from(
-        Data.to(prepared, PreparedValidationResolutionDatumV1),
-        PreparedValidationResolutionDatumV1,
+        Data.to(prepared, PreparedValidationResolutionDatum),
+        PreparedValidationResolutionDatum,
       ),
     ).toEqual(prepared);
 
-    const prepareSelected: ValidationPrepareSelectedSpendRedeemerV1Data = {
+    const prepareSelected: ValidationPrepareSelectedSpendRedeemerData = {
       Continue: [
         {
           input_index: 0n,
@@ -229,13 +221,13 @@ describe("validation dispute ABI", () => {
     };
     expect(
       Data.from(
-        Data.to(prepareSelected, ValidationPrepareSelectedSpendRedeemerV1),
-        ValidationPrepareSelectedSpendRedeemerV1,
+        Data.to(prepareSelected, ValidationPrepareSelectedSpendRedeemer),
+        ValidationPrepareSelectedSpendRedeemer,
       ),
     ).toEqual(prepareSelected);
     // Option B (#620): the canonical-decode prepare redeemer is transition-only
     // — one four-field constructor, no auxiliary, and no retired by-hash arm.
-    const canonicalDecodePrepareSelected: ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data =
+    const canonicalDecodePrepareSelected: ValidationCanonicalDecodePrepareSelectedSpendRedeemerData =
       {
         Continue: [
           {
@@ -248,12 +240,12 @@ describe("validation dispute ABI", () => {
       };
     const canonicalDecodePrepareSelectedCbor = Data.to(
       canonicalDecodePrepareSelected,
-      ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
+      ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
     );
     expect(
       Data.from(
         canonicalDecodePrepareSelectedCbor,
-        ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
+        ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
       ),
     ).toEqual(canonicalDecodePrepareSelected);
     // Wire pin: `Continue(PrepareSelected{input, output, resolver, transition})`
@@ -265,7 +257,7 @@ describe("validation dispute ABI", () => {
             0n,
             0n,
             0n,
-            Data.from(Data.to(transition, ValidationOneStepWitnessV1)),
+            Data.from(Data.to(transition, ValidationOneStepWitness)),
           ]),
         ]),
       ),
@@ -308,13 +300,10 @@ describe("validation dispute ABI", () => {
         },
         `d87d9f5820${"0c".repeat(32)}ff`,
       ],
-    ] satisfies readonly (readonly [
-      ValidationCekMaterialRouteV1Data,
-      string,
-    ])[];
+    ] satisfies readonly (readonly [ValidationCekMaterialRouteData, string])[];
     for (const [route, expectedCbor] of materialRouteVectors) {
-      expect(Data.to(route, ValidationCekMaterialRouteV1)).toBe(expectedCbor);
-      expect(Data.from(expectedCbor, ValidationCekMaterialRouteV1)).toEqual(
+      expect(Data.to(route, ValidationCekMaterialRoute)).toBe(expectedCbor);
+      expect(Data.from(expectedCbor, ValidationCekMaterialRoute)).toEqual(
         route,
       );
     }
@@ -324,29 +313,27 @@ describe("validation dispute ABI", () => {
       "d87a9f420102ff", // DirectCekMaterial wrong arity
       "d87c9f42010201ff", // multi indices field is not a list
     ]) {
-      expect(() =>
-        Data.from(malformed, ValidationCekMaterialRouteV1),
-      ).toThrow();
+      expect(() => Data.from(malformed, ValidationCekMaterialRoute)).toThrow();
     }
     expect(
       Data.from(
-        Data.to(evidence, ValidationOneStepEvidenceV1),
-        ValidationOneStepEvidenceV1,
+        Data.to(evidence, ValidationOneStepEvidence),
+        ValidationOneStepEvidence,
       ),
     ).toEqual(evidence);
 
-    const winning: WinningValidationResolutionDatumV1Data = {
+    const winning: WinningValidationResolutionDatumData = {
       fraud_prover: prepared.fraud_prover,
       data: { version: 1n },
     };
     expect(
       Data.from(
-        Data.to(winning, WinningValidationResolutionDatumV1),
-        WinningValidationResolutionDatumV1,
+        Data.to(winning, WinningValidationResolutionDatum),
+        WinningValidationResolutionDatum,
       ),
     ).toEqual(winning);
 
-    const award: ValidationAwardSpendRedeemerV1Data = {
+    const award: ValidationAwardSpendRedeemerData = {
       Continue: [
         {
           input_index: 0n,
@@ -357,8 +344,8 @@ describe("validation dispute ABI", () => {
     };
     expect(
       Data.from(
-        Data.to(award, ValidationAwardSpendRedeemerV1),
-        ValidationAwardSpendRedeemerV1,
+        Data.to(award, ValidationAwardSpendRedeemer),
+        ValidationAwardSpendRedeemer,
       ),
     ).toEqual(award);
   });

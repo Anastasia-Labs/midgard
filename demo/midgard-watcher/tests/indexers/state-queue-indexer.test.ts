@@ -14,7 +14,7 @@ import {
   DaAttestationMintRedeemer,
   DaAttestationSpendRedeemer,
   FraudProofTokenDatum,
-  HeaderV1,
+  Header,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   LinkedListDatum,
@@ -25,7 +25,7 @@ import {
   SettlementMintRedeemer,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
-  StateQueueNodeV1,
+  StateQueueNode,
   StateQueueRedeemer,
   StateQueueSpendRedeemer,
 } from "@al-ft/midgard-sdk";
@@ -33,57 +33,57 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  evaluateWatcherStateQueueIndexerV1 as evaluateWatcherStateQueueIndexerV1Raw,
-  makeWatcherStateQueueHeaderV1,
-  makeWatcherStateQueueIndexerPolicyV1,
-  makeWatcherStateQueueObservationV1,
-  makeWatcherStateQueueSnapshotV1,
-  parseWatcherStateQueueIndexerResultV1 as parseWatcherStateQueueIndexerResultV1Raw,
-  parseWatcherStateQueueIndexerStateV1 as parseWatcherStateQueueIndexerStateV1Raw,
-  WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS,
-  WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-  type WatcherStateQueueIndexerPolicyV1,
-  type WatcherStateQueueObservationV1,
-  type WatcherStateQueuePublicContextV1,
-  type WatcherStateQueueSnapshotV1,
+  evaluateWatcherStateQueueIndexer as evaluateWatcherStateQueueIndexerRaw,
+  makeWatcherStateQueueHeader,
+  makeWatcherStateQueueIndexerPolicy,
+  makeWatcherStateQueueObservation,
+  makeWatcherStateQueueSnapshot,
+  parseWatcherStateQueueIndexerResult as parseWatcherStateQueueIndexerResultRaw,
+  parseWatcherStateQueueIndexerState as parseWatcherStateQueueIndexerStateRaw,
+  WATCHER_STATE_QUEUE_INDEXER_BOUNDS,
+  WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
+  type WatcherStateQueueIndexerPolicy,
+  type WatcherStateQueueObservation,
+  type WatcherStateQueuePublicContext,
+  type WatcherStateQueueSnapshot,
 } from "../../src/indexers/state-queue-indexer.js";
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1NormalizationSessionV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherL1RedeemerV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1NormalizationSession,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block as normalizeWatcherL1BlockRaw,
+  WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherL1Redeemer,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
 } from "../../src/l1/l1-adapter.js";
 import {
-  evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw,
-  WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
+  evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw,
+  WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS,
 } from "../../src/l1/multi-provider-consistency.js";
 import {
-  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
-  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
-  makeWatcherRollbackBootstrapStateV1,
-  type WatcherPostFinalityRecoveryInputV1,
+  evaluateWatcherPostFinalityRecovery as evaluateWatcherPostFinalityRecoveryRaw,
+  evaluateWatcherRollback as evaluateWatcherRollbackRaw,
+  makeWatcherRollbackBootstrapState,
+  type WatcherPostFinalityRecoveryInput,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  type WatcherDurableRecordsV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  type WatcherDurableRecords,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  type WatcherProtocolUtxoV1,
+  type WatcherProtocolUtxo,
 } from "../../src/storage/durable-store.js";
 import { canonicalDigest } from "../support/canonical-json.js";
 import {
@@ -92,9 +92,9 @@ import {
   h28,
   h32,
   makeDeploymentAuthority,
-  WATCHER_AUTHORITY_RELEASE_DIGEST_V1 as RELEASE_DIGEST,
+  WATCHER_AUTHORITY_RELEASE_DIGEST as RELEASE_DIGEST,
 } from "../support/deployment-authority-fixture.js";
-import { makeWatcherTlsTransportFixtureV1 } from "../support/tls-transport-fixture.js";
+import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
 
 const EMPTY_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
@@ -107,13 +107,13 @@ const scriptAddress = (hash: string): string =>
   ).to_hex();
 
 type Mutable = Record<string, any>;
-const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const transportContexts: WatcherL1TransportAttestationContext[] = [];
 const tlsServers: Server[] = [];
 const transportEndpointByProviderId = new Map<string, string>();
 let transportFixtureDirectory = "";
 
 const makeTlsTransportFixture = async (providerId: string) =>
-  await makeWatcherTlsTransportFixtureV1(
+  await makeWatcherTlsTransportFixture(
     transportFixtureDirectory,
     tlsServers,
     providerId,
@@ -121,9 +121,9 @@ const makeTlsTransportFixture = async (providerId: string) =>
 
 const transportFor = (
   authenticatedProvider: unknown,
-): WatcherL1TransportAttestationContextV1 => {
+): WatcherL1TransportAttestationContext => {
   const matching = transportContexts.filter((context) => {
-    const details = watcherL1TransportAttestationDetailsV1(context);
+    const details = watcherL1TransportAttestationDetails(context);
     return (
       details !== null &&
       canonicalDigest(details.provider) ===
@@ -136,46 +136,46 @@ const transportFor = (
   return matching[0]!;
 };
 
-const normalizeWatcherL1BlockV1 = (
+const normalizeWatcherL1Block = (
   authenticatedProvider: unknown,
   observation: unknown,
-  session?: Parameters<typeof normalizeWatcherL1BlockV1Raw>[2],
+  session?: Parameters<typeof normalizeWatcherL1BlockRaw>[2],
 ) =>
-  normalizeWatcherL1BlockV1Raw(
+  normalizeWatcherL1BlockRaw(
     transportFor(authenticatedProvider),
     observation,
     session,
   );
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: unknown,
 ) =>
-  evaluateWatcherMultiProviderConsistencyV1Raw(
+  evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     transportContexts,
   );
 
-const parseWatcherStateQueueIndexerStateV1 = (
+const parseWatcherStateQueueIndexerState = (
   value: unknown,
   policyValue: unknown,
-  restartContexts: readonly WatcherStateQueuePublicContextV1[] = [],
+  restartContexts: readonly WatcherStateQueuePublicContext[] = [],
 ) =>
-  parseWatcherStateQueueIndexerStateV1Raw(
+  parseWatcherStateQueueIndexerStateRaw(
     value,
     policyValue,
     transportContexts,
     restartContexts,
   );
 
-const evaluateWatcherStateQueueIndexerV1 = (
+const evaluateWatcherStateQueueIndexer = (
   policyValue: unknown,
   previousStateValue: unknown,
   observationValue: unknown,
   publicContextValue: unknown,
 ) =>
-  evaluateWatcherStateQueueIndexerV1Raw(
+  evaluateWatcherStateQueueIndexerRaw(
     policyValue,
     previousStateValue,
     observationValue,
@@ -183,7 +183,7 @@ const evaluateWatcherStateQueueIndexerV1 = (
     transportContexts,
   );
 
-const evaluateWatcherRollbackV1 = (
+const evaluateWatcherRollback = (
   policyInput: unknown,
   storeInput: unknown,
   previousFinalityStateInput: unknown,
@@ -193,7 +193,7 @@ const evaluateWatcherRollbackV1 = (
   rollbackBootstrapStateInput: unknown,
   trustedCheckpointAuthorityInput?: unknown,
 ) =>
-  evaluateWatcherRollbackV1Raw(
+  evaluateWatcherRollbackRaw(
     policyInput,
     storeInput,
     previousFinalityStateInput,
@@ -205,22 +205,22 @@ const evaluateWatcherRollbackV1 = (
     transportContexts,
   );
 
-const evaluateWatcherPostFinalityRecoveryV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
+const evaluateWatcherPostFinalityRecovery = (
+  input: WatcherPostFinalityRecoveryInput,
 ) =>
-  evaluateWatcherPostFinalityRecoveryV1Raw({
+  evaluateWatcherPostFinalityRecoveryRaw({
     ...input,
     transportAttestations: transportContexts,
   });
 
-const parseWatcherStateQueueIndexerResultV1 = (
+const parseWatcherStateQueueIndexerResult = (
   value: unknown,
   context: Omit<
-    Parameters<typeof parseWatcherStateQueueIndexerResultV1Raw>[1],
+    Parameters<typeof parseWatcherStateQueueIndexerResultRaw>[1],
     "transportAttestations"
   >,
 ) =>
-  parseWatcherStateQueueIndexerResultV1Raw(value, {
+  parseWatcherStateQueueIndexerResultRaw(value, {
     ...context,
     transportAttestations: transportContexts,
   });
@@ -239,7 +239,7 @@ const categoryIds = Object.values(
   .map(({ categoryId }) => categoryId)
   .sort();
 
-const policy = makeWatcherStateQueueIndexerPolicyV1({
+const policy = makeWatcherStateQueueIndexerPolicy({
   network: "Preprod",
   releaseEvidenceDigest: RELEASE_DIGEST,
   deploymentMarker: deploymentAuthorityFixture.marker,
@@ -275,10 +275,10 @@ const policy = makeWatcherStateQueueIndexerPolicyV1({
   hubOracleAssetNameHex: HUB_ORACLE_ASSET_NAME,
   maturityDurationMs: maturity.toString(),
   maximumHistoryEntries: "32",
-}) as WatcherStateQueueIndexerPolicyV1;
+}) as WatcherStateQueueIndexerPolicy;
 
 const provider = {
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   network: "Preprod",
   providerId: "provider-a",
   source: {
@@ -342,7 +342,7 @@ beforeAll(async () => {
     (metadata.authentication as Mutable).publicIdentitySha256 =
       fixture.identitySha256;
     transportContexts.push(
-      await establishWatcherExternalProviderTransportV1({
+      await establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId: metadata.providerId,
         operatorIdentitySha256,
@@ -358,14 +358,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const context of transportContexts) {
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
   }
   for (const server of tlsServers) server.close();
   await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
 const finalityPolicyAtDepth = (depth: number) =>
-  makeWatcherFinalityPolicyV1(
+  makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "development",
@@ -444,7 +444,7 @@ const finalityPolicyAtDepth = (depth: number) =>
     },
   )!;
 
-let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicy>>;
 
 const confirmed: ConfirmedState = {
   headerHash: h28("00"),
@@ -517,7 +517,7 @@ const output = (
   ).to_canonical_cbor_hex();
 
 type OutputFixture = Readonly<{
-  role: WatcherProtocolUtxoV1["role"];
+  role: WatcherProtocolUtxo["role"];
   outputHex: string;
   datumHex: string;
 }>;
@@ -595,7 +595,7 @@ const chainPointByBlockHash = new Map<
   Readonly<{ slot: bigint; blockNo: bigint }>
 >();
 const stateQueueRedeemerTag = (
-  purpose: WatcherL1RedeemerV1["purpose"],
+  purpose: WatcherL1Redeemer["purpose"],
 ): CML.RedeemerTag => {
   switch (purpose) {
     case "spend":
@@ -616,7 +616,7 @@ const l1Block = (
   bodyHex: string,
   outputs: readonly OutputFixture[],
   redeemers: readonly Readonly<{
-    purpose: WatcherL1RedeemerV1["purpose"];
+    purpose: WatcherL1Redeemer["purpose"];
     index: string;
     bytesHex: string;
   }>[],
@@ -645,10 +645,10 @@ const l1Block = (
     return {
       outRef: `${txHash}#${index.toString()}`,
       outputIndex: index.toString(),
-      output: makeWatcherL1PublicBytesV1(fixture.outputHex),
+      output: makeWatcherL1PublicBytes(fixture.outputHex),
       datum: {
         datumHash: CML.hash_plutus_data(datum).to_hex(),
-        bytes: makeWatcherL1PublicBytesV1(fixture.datumHex),
+        bytes: makeWatcherL1PublicBytes(fixture.datumHex),
       },
       referenceScript: null,
     };
@@ -656,7 +656,7 @@ const l1Block = (
   const canonicalRedeemers = redeemers.map(({ purpose, index, bytesHex }) => ({
     purpose,
     index,
-    bytes: makeWatcherL1PublicBytesV1(
+    bytes: makeWatcherL1PublicBytes(
       CML.PlutusData.from_cbor_hex(bytesHex).to_canonical_cbor_hex(),
     ),
   }));
@@ -684,7 +684,7 @@ const l1Block = (
     undefined,
   );
   const observation = {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId: "provider-a",
     chainPoint: {
@@ -698,11 +698,11 @@ const l1Block = (
       {
         txHash,
         transactionIndex: "0",
-        fullTransaction: makeWatcherL1PublicBytesV1(
+        fullTransaction: makeWatcherL1PublicBytes(
           fullTransaction.to_canonical_cbor_hex(),
         ),
-        body: makeWatcherL1PublicBytesV1(canonicalBodyHex),
-        witnessSet: makeWatcherL1PublicBytesV1(
+        body: makeWatcherL1PublicBytes(canonicalBodyHex),
+        witnessSet: makeWatcherL1PublicBytes(
           witnessSet.to_canonical_cbor_hex(),
         ),
         utxos,
@@ -715,7 +715,7 @@ const l1Block = (
   const block = {
     txHash,
     raw: observation,
-    normalized: normalizeWatcherL1BlockV1(provider, observation),
+    normalized: normalizeWatcherL1Block(provider, observation),
   };
   blocksByObservationDigest.set(block.normalized.observationDigest, block);
   return block;
@@ -725,20 +725,20 @@ const blocksByObservationDigest = new Map<string, ReturnType<typeof l1Block>>();
 const protocolRecords = (
   block: ReturnType<typeof l1Block>,
   outputs: readonly OutputFixture[],
-): readonly WatcherProtocolUtxoV1[] =>
+): readonly WatcherProtocolUtxo[] =>
   outputs.map((fixture, index) => ({
     outRef: `${block.txHash}#${index.toString()}`,
     role: fixture.role,
     chainPointId: block.normalized.chainPoint.chainPointId,
-    output: makeWatcherDurablePayloadV1(fixture.outputHex),
+    output: makeWatcherDurablePayload(fixture.outputHex),
   }));
 
 const currentObservationRecord = (block: ReturnType<typeof l1Block>) => ({
   observationId: block.normalized.observationDigest,
   providerId: block.normalized.provider.providerId,
   chainPointId: block.normalized.chainPoint.chainPointId,
-  payload: makeWatcherDurablePayloadV1(
-    encodeWatcherNormalizedL1BlockV1(block.normalized).toString("hex"),
+  payload: makeWatcherDurablePayload(
+    encodeWatcherNormalizedL1Block(block.normalized).toString("hex"),
   ),
 });
 
@@ -751,16 +751,13 @@ const currentPointRecord = (block: ReturnType<typeof l1Block>) => ({
   depth: block.normalized.chainPoint.depth,
 });
 
-const storeSources = new WeakMap<
-  WatcherDurableStoreV1,
-  WatcherDurableStoreV1
->();
+const storeSources = new WeakMap<WatcherDurableStore, WatcherDurableStore>();
 
 const storeFor = (
   block: ReturnType<typeof l1Block>,
-  protocols: readonly WatcherProtocolUtxoV1[],
-  previous: WatcherDurableStoreV1 | null,
-): WatcherDurableStoreV1 => {
+  protocols: readonly WatcherProtocolUtxo[],
+  previous: WatcherDurableStore | null,
+): WatcherDurableStore => {
   const source = previous ?? emptyStore();
   const l1Observations = [
     ...(previous?.l1Observations ?? []),
@@ -770,13 +767,13 @@ const storeFor = (
     ...(previous?.chainPoints ?? []),
     currentPointRecord(block),
   ];
-  const journal = journalWatcherProtocolUtxoTransitionV1({
+  const journal = journalWatcherProtocolUtxoTransition({
     sourceStore: source,
     nextChainPoints: chainPoints,
     nextProtocolUtxos: protocols,
     spentAtChainPointId: block.normalized.chainPoint.chainPointId,
   });
-  const next = makeWatcherDurableStoreV1({
+  const next = makeWatcherDurableStore({
     deploymentMarker: policy.deploymentMarker,
     revision: (BigInt(previous?.revision ?? "0") + 1n).toString(),
     records: {
@@ -798,8 +795,8 @@ const storeFor = (
   return next;
 };
 
-const emptyStore = (): WatcherDurableStoreV1 =>
-  makeWatcherDurableStoreV1({
+const emptyStore = (): WatcherDurableStore =>
+  makeWatcherDurableStore({
     deploymentMarker: policy.deploymentMarker,
     revision: "0",
     records: {
@@ -819,11 +816,11 @@ const emptyStore = (): WatcherDurableStoreV1 =>
   });
 
 const remakeStore = (
-  source: WatcherDurableStoreV1,
-  overrides: Partial<WatcherDurableRecordsV1>,
+  source: WatcherDurableStore,
+  overrides: Partial<WatcherDurableRecords>,
   revision = source.revision,
-): WatcherDurableStoreV1 =>
-  makeWatcherDurableStoreV1({
+): WatcherDurableStore =>
+  makeWatcherDurableStore({
     deploymentMarker: source.deploymentMarker,
     revision,
     records: {
@@ -846,7 +843,7 @@ const remakeStore = (
 
 const externalFinalityAuthorityFor = (
   block: ReturnType<typeof l1Block>,
-): NonNullable<WatcherStateQueuePublicContextV1["finalityAuthority"]> => {
+): NonNullable<WatcherStateQueuePublicContext["finalityAuthority"]> => {
   const otherObservation = structuredClone(block.raw);
   otherObservation.providerId = providerB.providerId;
   const observations = [
@@ -856,10 +853,10 @@ const externalFinalityAuthorityFor = (
       l1Observation: otherObservation,
     },
   ];
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     externalSource,
     observations.map(({ authenticatedProvider, l1Observation }) =>
-      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      normalizeWatcherL1Block(authenticatedProvider, l1Observation),
     ),
   );
   const priorObservations = observations.map(
@@ -869,19 +866,19 @@ const externalFinalityAuthorityFor = (
       return { authenticatedProvider, l1Observation: prior };
     },
   );
-  const priorConsistency = evaluateWatcherMultiProviderConsistencyV1(
+  const priorConsistency = evaluateWatcherMultiProviderConsistency(
     externalSource,
     priorObservations.map(({ authenticatedProvider, l1Observation }) =>
-      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      normalizeWatcherL1Block(authenticatedProvider, l1Observation),
     ),
   );
-  const previousResult = evaluateWatcherFinalityV1(
+  const previousResult = evaluateWatcherFinality(
     finalityPolicy,
     null,
     priorConsistency,
   );
   const previousState = previousResult.state;
-  const result = evaluateWatcherFinalityV1(
+  const result = evaluateWatcherFinality(
     finalityPolicy,
     previousState,
     consistency,
@@ -903,26 +900,26 @@ const externalFinalityAuthorityFor = (
 };
 
 const withForgedExternalFinalityPredecessor = (
-  authority: NonNullable<WatcherStateQueuePublicContextV1["finalityAuthority"]>,
-): NonNullable<WatcherStateQueuePublicContextV1["finalityAuthority"]> => {
+  authority: NonNullable<WatcherStateQueuePublicContext["finalityAuthority"]>,
+): NonNullable<WatcherStateQueuePublicContext["finalityAuthority"]> => {
   const forgedPriorObservations = structuredClone(
     authority.lineage[0]!.observations,
   ) as Mutable[];
   for (const candidate of forgedPriorObservations) {
     candidate.l1Observation.chainPoint.depth = "0";
   }
-  const forgedConsistency = evaluateWatcherMultiProviderConsistencyV1(
+  const forgedConsistency = evaluateWatcherMultiProviderConsistency(
     externalSource,
     forgedPriorObservations.map(({ authenticatedProvider, l1Observation }) =>
-      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      normalizeWatcherL1Block(authenticatedProvider, l1Observation),
     ),
   );
-  const forgedPreviousResult = evaluateWatcherFinalityV1(
+  const forgedPreviousResult = evaluateWatcherFinality(
     authority.policy,
     null,
     forgedConsistency,
   );
-  const forgedResult = evaluateWatcherFinalityV1(
+  const forgedResult = evaluateWatcherFinality(
     authority.policy,
     forgedPreviousResult.state,
     authority.consistency,
@@ -937,11 +934,11 @@ const withForgedExternalFinalityPredecessor = (
 
 const contextFor = (
   block: ReturnType<typeof l1Block>,
-  store: WatcherDurableStoreV1,
-  sourceStore: WatcherDurableStoreV1 = storeSources.get(store) ?? emptyStore(),
-): WatcherStateQueuePublicContextV1 =>
+  store: WatcherDurableStore,
+  sourceStore: WatcherDurableStore = storeSources.get(store) ?? emptyStore(),
+): WatcherStateQueuePublicContext =>
   asWireValue({
-    schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: provider,
     l1Observation: block.raw,
     sourceDurableStore: sourceStore,
@@ -967,8 +964,8 @@ const contextFor = (
 
 const observationFor = (
   block: ReturnType<typeof l1Block>,
-  store: WatcherDurableStoreV1,
-  _snapshot: WatcherStateQueueSnapshotV1,
+  store: WatcherDurableStore,
+  _snapshot: WatcherStateQueueSnapshot,
   kind:
     | "bootstrap"
     | "append"
@@ -980,11 +977,11 @@ const observationFor = (
   predecessor: string | null,
   _lower: string | null,
   _upper: string | null,
-  overrides: Partial<WatcherStateQueueObservationV1> = {},
-): WatcherStateQueueObservationV1 => {
-  const encoded = encodeWatcherNormalizedL1BlockV1(block.normalized);
+  overrides: Partial<WatcherStateQueueObservation> = {},
+): WatcherStateQueueObservation => {
+  const encoded = encodeWatcherNormalizedL1Block(block.normalized);
   const sourceStore = storeSources.get(store) ?? emptyStore();
-  const observation = makeWatcherStateQueueObservationV1({
+  const observation = makeWatcherStateQueueObservation({
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1005,11 +1002,11 @@ const observationFor = (
     publicInputDigest: createHash("sha256").update(encoded).digest("hex"),
     sourceObservationDigest: block.normalized.observationDigest,
     sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(sourceStore),
+      encodeWatcherDurableStore(sourceStore),
     ),
     sourceDurableStoreRevision: sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     durableStoreRevision: store.revision,
     predecessorStateDigest: predecessor,
@@ -1020,17 +1017,17 @@ const observationFor = (
 };
 
 const remakeObservation = (
-  original: WatcherStateQueueObservationV1,
+  original: WatcherStateQueueObservation,
   overrides: Partial<
-    Omit<WatcherStateQueueObservationV1, "schemaVersion" | "observationDigest">
+    Omit<WatcherStateQueueObservation, "schemaVersion" | "observationDigest">
   >,
-): WatcherStateQueueObservationV1 => {
+): WatcherStateQueueObservation => {
   const {
     schemaVersion: _schemaVersion,
     observationDigest: _observationDigest,
     ...fields
   } = original;
-  const observation = makeWatcherStateQueueObservationV1({
+  const observation = makeWatcherStateQueueObservation({
     ...fields,
     ...overrides,
   });
@@ -1178,9 +1175,9 @@ const rootFixtures = (activeBond: bigint | null = null) => {
 
 const snapshotFor = (
   fixture: ReturnType<typeof rootFixtures>,
-  queue: WatcherStateQueueSnapshotV1["queue"] = [],
+  queue: WatcherStateQueueSnapshot["queue"] = [],
 ) => {
-  const snapshot = makeWatcherStateQueueSnapshotV1({
+  const snapshot = makeWatcherStateQueueSnapshot({
     confirmedState: {
       headerHash: confirmed.headerHash,
       prevHeaderHash: confirmed.prevHeaderHash,
@@ -1343,11 +1340,11 @@ const bootstrapBundleWithForeignRole = () => {
 const recoveryAppendBundle = (
   bootBundle: ReturnType<typeof bootstrapBundle>,
   bootState: NonNullable<
-    ReturnType<typeof evaluateWatcherStateQueueIndexerV1>["state"]
+    ReturnType<typeof evaluateWatcherStateQueueIndexer>["state"]
   >,
   parentBlockHash?: string,
 ) => {
-  const header = makeWatcherStateQueueHeaderV1({
+  const header = makeWatcherStateQueueHeader({
     nextHeaderHash: null,
     datumSha256: h32("00"),
     prevUtxosRoot: confirmed.utxoRoot,
@@ -1381,10 +1378,10 @@ const recoveryAppendBundle = (
   const rootDatum = linkedRoot(confirmed, ConfirmedState, header.headerHash);
   const nodeDatum = linkedNode(
     {
-      header: Data.from(header.headerCborHex, HeaderV1),
+      header: Data.from(header.headerCborHex, Header),
       da_attestation: "Unattested",
     },
-    StateQueueNodeV1,
+    StateQueueNode,
     null,
   );
   const activeDatum = linkedNode(
@@ -1499,7 +1496,7 @@ const recoveryAppendBundle = (
     ...protocolRecords(block, outputs),
   ];
   const store = storeFor(block, protocols, bootBundle.store);
-  const snapshot = makeWatcherStateQueueSnapshotV1({
+  const snapshot = makeWatcherStateQueueSnapshot({
     confirmedState: {
       ...bootState.snapshot.confirmedState,
       datumSha256: shaDatum(rootDatum),
@@ -1533,7 +1530,7 @@ const recoveryAppendBundle = (
     "4000",
     upper.toString(),
   );
-  const result = evaluateWatcherStateQueueIndexerV1(
+  const result = evaluateWatcherStateQueueIndexer(
     policy,
     bootState,
     observation,
@@ -1549,13 +1546,13 @@ const recoveryEvidence = (rawObservation: Mutable, depth: string) => {
   primaryRaw.providerId = primaryProvider.providerId;
   primaryRaw.chainPoint.depth = depth;
   const observations = [
-    normalizeWatcherL1BlockV1(provider, primaryRaw),
-    normalizeWatcherL1BlockV1(providerB, {
+    normalizeWatcherL1Block(provider, primaryRaw),
+    normalizeWatcherL1Block(providerB, {
       ...structuredClone(primaryRaw),
       providerId: providerB.providerId,
     }),
   ];
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     externalSource,
     observations,
   );
@@ -1587,7 +1584,7 @@ const postFinalityStateQueueRecoveryBundle = (
     "2",
   );
   const replacementRaw: Mutable = {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId: common.primaryProvider.providerId,
     chainPoint: {
@@ -1602,17 +1599,17 @@ const postFinalityStateQueueRecoveryBundle = (
     transactions: [],
   };
   const replacement = recoveryEvidence(replacementRaw, "0");
-  const pending = evaluateWatcherFinalityV1(
+  const pending = evaluateWatcherFinality(
     selectedPolicy,
     null,
     orphanPending.consistency,
   );
-  const finalized = evaluateWatcherFinalityV1(
+  const finalized = evaluateWatcherFinality(
     selectedPolicy,
     pending.state,
     orphanFinalized.consistency,
   );
-  const contradiction = evaluateWatcherFinalityV1(
+  const contradiction = evaluateWatcherFinality(
     selectedPolicy,
     finalized.state,
     replacement.consistency,
@@ -1644,8 +1641,8 @@ const postFinalityStateQueueRecoveryBundle = (
               observationId: observation.observationDigest,
               providerId: observation.provider.providerId,
               chainPointId: observation.chainPoint.chainPointId,
-              payload: makeWatcherDurablePayloadV1(
-                encodeWatcherNormalizedL1BlockV1(observation).toString("hex"),
+              payload: makeWatcherDurablePayload(
+                encodeWatcherNormalizedL1Block(observation).toString("hex"),
               ),
             })),
           ].map((entry) => [entry.observationId, entry]),
@@ -1670,12 +1667,12 @@ const postFinalityStateQueueRecoveryBundle = (
     },
     (BigInt(sourceBaseStore.revision) + 1n).toString(),
   );
-  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapState(
     selectedPolicy,
     sourceStore,
     finalized.state,
   )!;
-  const incident = evaluateWatcherRollbackV1(
+  const incident = evaluateWatcherRollback(
     selectedPolicy,
     sourceStore,
     finalized.state,
@@ -1685,7 +1682,7 @@ const postFinalityStateQueueRecoveryBundle = (
     rollbackBootstrapState,
   );
   expect(incident.action, JSON.stringify(incident)).toBe("quarantine_incident");
-  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+  const recoveryInput: WatcherPostFinalityRecoveryInput = {
     policy: selectedPolicy,
     sourceStore: incident.nextStore,
     currentStore: incident.nextStore,
@@ -1695,7 +1692,7 @@ const postFinalityStateQueueRecoveryBundle = (
     replacementCanonicalPath: [common.consistency, replacement.consistency],
     previousRecoveryState: null,
   };
-  const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  const recovery = evaluateWatcherPostFinalityRecovery(recoveryInput);
   expect(recovery).toMatchObject({
     action: "rewind_and_replay",
     protocolDecision: "resume_replay",
@@ -1717,8 +1714,8 @@ const postFinalityStateQueueRecoveryBundle = (
     normalized: common.observations[0]!,
   };
   storeSources.set(recovery.nextStore!, incident.nextStore!);
-  const context: WatcherStateQueuePublicContextV1 = {
-    schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const context: WatcherStateQueuePublicContext = {
+    schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: common.primaryProvider,
     l1Observation: common.primaryRaw,
     sourceDurableStore: incident.nextStore,
@@ -1742,10 +1739,10 @@ const postFinalityStateQueueRecoveryBundle = (
 };
 
 const attachDaBundle = (input: {
-  header: NonNullable<ReturnType<typeof makeWatcherStateQueueHeaderV1>>;
+  header: NonNullable<ReturnType<typeof makeWatcherStateQueueHeader>>;
   appendBlock: ReturnType<typeof l1Block>;
-  appendStore: WatcherDurableStoreV1;
-  appendSnapshot: WatcherStateQueueSnapshotV1;
+  appendStore: WatcherDurableStore;
+  appendSnapshot: WatcherStateQueueSnapshot;
   predecessorStateDigest: string;
   applyOutputIndex?: bigint;
   validFrom?: bigint;
@@ -1832,12 +1829,12 @@ const attachDaBundle = (input: {
   const oldNode = `${input.appendBlock.txHash}#1`;
   const attachedNodeDatum = linkedNode(
     {
-      header: Data.from(input.header.headerCborHex, HeaderV1),
+      header: Data.from(input.header.headerCborHex, Header),
       da_attestation: {
         Attested: { da_bond_asset_name: h32("ab") },
       },
     },
-    StateQueueNodeV1,
+    StateQueueNode,
     null,
   );
   const outputs: readonly OutputFixture[] = [
@@ -1931,14 +1928,14 @@ const attachDaBundle = (input: {
     producerStore,
   );
   const priorHeader = input.appendSnapshot.queue[0]!;
-  const attachedHeader = makeWatcherStateQueueHeaderV1({
+  const attachedHeader = makeWatcherStateQueueHeader({
     ...priorHeader,
     nextHeaderHash: priorHeader.nextHeaderHash,
     datumSha256: shaDatum(attachedNodeDatum),
     daAttestationPolicyId: policy.daAttestationPolicyId,
   });
   expect(attachedHeader).not.toBeNull();
-  const snapshot = makeWatcherStateQueueSnapshotV1({
+  const snapshot = makeWatcherStateQueueSnapshot({
     confirmedState: input.appendSnapshot.confirmedState,
     queue: [attachedHeader!],
     scheduler: input.appendSnapshot.scheduler,
@@ -1970,7 +1967,7 @@ const attachDaBundle = (input: {
 
 describe("authenticated state-queue indexer", () => {
   it("derives canonical HeaderV1 identity from real Plutus data", () => {
-    const header = makeWatcherStateQueueHeaderV1({
+    const header = makeWatcherStateQueueHeader({
       nextHeaderHash: null,
       datumSha256: h32("99"),
       prevUtxosRoot: EMPTY_ROOT,
@@ -2001,11 +1998,11 @@ describe("authenticated state-queue indexer", () => {
       daAttestationPolicyId: null,
     });
     expect(header).not.toBeNull();
-    expect(Data.to(Data.from(header!.headerCborHex, HeaderV1), HeaderV1)).toBe(
+    expect(Data.to(Data.from(header!.headerCborHex, Header), Header)).toBe(
       header!.headerCborHex,
     );
     expect(
-      makeWatcherStateQueueHeaderV1({
+      makeWatcherStateQueueHeader({
         ...header!,
         datumSha256: h32("99"),
         nextHeaderHash: null,
@@ -2021,7 +2018,7 @@ describe("authenticated state-queue indexer", () => {
       { validationTracesRoot: EMPTY_ROOT },
     ]) {
       expect(
-        makeWatcherStateQueueHeaderV1({
+        makeWatcherStateQueueHeader({
           ...header!,
           nextHeaderHash: null,
           datumSha256: h32("99"),
@@ -2037,7 +2034,7 @@ describe("authenticated state-queue indexer", () => {
     expect(bundle.context.finalityAuthority?.result).toMatchObject({
       protocolDecision: "finality_granted",
     });
-    const result = evaluateWatcherStateQueueIndexerV1(
+    const result = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bundle.observation,
@@ -2046,11 +2043,11 @@ describe("authenticated state-queue indexer", () => {
     expect(result.action, JSON.stringify(result)).toBe("accept");
     expect(result.reasonCodes).toEqual(["bootstrap_authenticated"]);
     expect(result.state).not.toBeNull();
-    expect(parseWatcherStateQueueIndexerStateV1(result.state, policy)).toEqual(
+    expect(parseWatcherStateQueueIndexerState(result.state, policy)).toEqual(
       result.state,
     );
     expect(
-      parseWatcherStateQueueIndexerResultV1(result, {
+      parseWatcherStateQueueIndexerResult(result, {
         policy,
         previousState: null,
         observation: bundle.observation,
@@ -2064,7 +2061,7 @@ describe("authenticated state-queue indexer", () => {
     const cyclicContext = asWireValue(bundle.context) as Record<string, any>;
     cyclicContext.sourceDurableStore = cyclicContext;
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         bundle.observation,
@@ -2078,7 +2075,7 @@ describe("authenticated state-queue indexer", () => {
     const aliasedContext = asWireValue(bundle.context) as Record<string, any>;
     aliasedContext.durableStore = aliasedContext.sourceDurableStore;
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         bundle.observation,
@@ -2096,7 +2093,7 @@ describe("authenticated state-queue indexer", () => {
     oversizedObservation.blockHash = "a".repeat(5 * 1_024 * 1_024);
     oversizedObservation.publicInputDigest = "b".repeat(5 * 1_024 * 1_024);
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         oversizedObservation,
@@ -2107,7 +2104,7 @@ describe("authenticated state-queue indexer", () => {
       reasonCodes: ["malformed_observation"],
     });
 
-    const boot = evaluateWatcherStateQueueIndexerV1(
+    const boot = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bundle.observation,
@@ -2115,9 +2112,7 @@ describe("authenticated state-queue indexer", () => {
     ).state!;
     const cyclicState = JSON.parse(JSON.stringify(boot)) as Record<string, any>;
     cyclicState.history[0].publicContext.rollbackResult = cyclicState;
-    expect(
-      parseWatcherStateQueueIndexerStateV1(cyclicState, policy),
-    ).toBeNull();
+    expect(parseWatcherStateQueueIndexerState(cyclicState, policy)).toBeNull();
   });
 
   it("indexes by the authenticated Cardano transaction sequence even when hash order is reversed", () => {
@@ -2139,7 +2134,7 @@ describe("authenticated state-queue indexer", () => {
     const block = {
       txHash: canonical.block.txHash,
       raw,
-      normalized: normalizeWatcherL1BlockV1(provider, raw),
+      normalized: normalizeWatcherL1Block(provider, raw),
     };
     blocksByObservationDigest.set(block.normalized.observationDigest, block);
     const store = storeFor(
@@ -2168,7 +2163,7 @@ describe("authenticated state-queue indexer", () => {
     );
     expect(observation.transactionIndex).toBe(transactionIndex.toString());
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         observation,
@@ -2216,14 +2211,14 @@ describe("authenticated state-queue indexer", () => {
     const block = {
       txHash: canonical.block.txHash,
       raw,
-      normalized: normalizeWatcherL1BlockV1(provider, raw),
+      normalized: normalizeWatcherL1Block(provider, raw),
     };
     blocksByObservationDigest.set(block.normalized.observationDigest, block);
-    const decoyRecord: WatcherProtocolUtxoV1 = {
+    const decoyRecord: WatcherProtocolUtxo = {
       outRef: `${decoy.txHash}#0`,
       role: "settlement",
       chainPointId: block.normalized.chainPoint.chainPointId,
-      output: makeWatcherDurablePayloadV1(decoyOutputs[0]!.outputHex),
+      output: makeWatcherDurablePayload(decoyOutputs[0]!.outputHex),
     };
     const sourceStore = remakeStore(
       emptyStore(),
@@ -2238,13 +2233,13 @@ describe("authenticated state-queue indexer", () => {
       decoyRecord,
       ...protocolRecords(block, canonical.fixture.outputs),
     ];
-    const journal = journalWatcherProtocolUtxoTransitionV1({
+    const journal = journalWatcherProtocolUtxoTransition({
       sourceStore,
       nextChainPoints: sourceStore.chainPoints,
       nextProtocolUtxos,
       spentAtChainPointId: block.normalized.chainPoint.chainPointId,
     });
-    const store = makeWatcherDurableStoreV1({
+    const store = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: "1",
       records: {
@@ -2274,7 +2269,7 @@ describe("authenticated state-queue indexer", () => {
     );
     expect(observation.transactionIndex).toBe("0");
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         observation,
@@ -2295,7 +2290,7 @@ describe("authenticated state-queue indexer", () => {
     const futureBlock = {
       ...decoy,
       raw: futureRaw,
-      normalized: normalizeWatcherL1BlockV1(provider, futureRaw),
+      normalized: normalizeWatcherL1Block(provider, futureRaw),
     };
     blocksByObservationDigest.set(
       futureBlock.normalized.observationDigest,
@@ -2317,7 +2312,7 @@ describe("authenticated state-queue indexer", () => {
       null,
     );
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         currentObservation,
@@ -2333,7 +2328,7 @@ describe("authenticated state-queue indexer", () => {
     const bundle = bootstrapBundle();
     const finalityAuthority = bundle.context.finalityAuthority!;
     expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, bundle.observation, {
+      evaluateWatcherStateQueueIndexer(policy, null, bundle.observation, {
         ...bundle.context,
         finalityAuthority:
           withForgedExternalFinalityPredecessor(finalityAuthority),
@@ -2347,7 +2342,7 @@ describe("authenticated state-queue indexer", () => {
         ...bundle.context,
         originAuthorities: Array.from(
           {
-            length: WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.originAuthorities + 1,
+            length: WATCHER_STATE_QUEUE_INDEXER_BOUNDS.originAuthorities + 1,
           },
           () => ({}),
         ),
@@ -2359,7 +2354,7 @@ describe("authenticated state-queue indexer", () => {
           trustRoots: Array.from(
             {
               length:
-                WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.deploymentTrustRoots + 1,
+                WATCHER_STATE_QUEUE_INDEXER_BOUNDS.deploymentTrustRoots + 1,
             },
             () => bundle.context.deploymentAuthority.trustRoots[0]!,
           ),
@@ -2372,7 +2367,7 @@ describe("authenticated state-queue indexer", () => {
           observations: Array.from(
             {
               length:
-                WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations + 1,
+                WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.observations + 1,
             },
             () => finalityAuthority.observations[0]!,
           ),
@@ -2385,7 +2380,7 @@ describe("authenticated state-queue indexer", () => {
           lineage: Array.from(
             {
               length:
-                WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.finalityLineageSteps + 1,
+                WATCHER_STATE_QUEUE_INDEXER_BOUNDS.finalityLineageSteps + 1,
             },
             () => finalityAuthority.lineage[0]!,
           ),
@@ -2393,7 +2388,7 @@ describe("authenticated state-queue indexer", () => {
       },
     ]) {
       expect(
-        evaluateWatcherStateQueueIndexerV1(
+        evaluateWatcherStateQueueIndexer(
           policy,
           null,
           bundle.observation,
@@ -2407,11 +2402,11 @@ describe("authenticated state-queue indexer", () => {
   });
 
   it("accepts the cumulative finality budget boundary and rejects the next valid authority", () => {
-    const setupNormalizationSession = makeWatcherL1NormalizationSessionV1();
+    const setupNormalizationSession = makeWatcherL1NormalizationSession();
     const origin = l1Block(bodyFrom([], [], [], [], null, null), [], []);
     const bundle = bootstrapBundle();
     const maximumLineage =
-      WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.finalityLineageSteps;
+      WATCHER_STATE_QUEUE_INDEXER_BOUNDS.finalityLineageSteps;
     const currentRaw = {
       ...bundle.block.raw,
       chainPoint: {
@@ -2422,7 +2417,7 @@ describe("authenticated state-queue indexer", () => {
     const currentBlock = {
       ...bundle.block,
       raw: currentRaw,
-      normalized: normalizeWatcherL1BlockV1(
+      normalized: normalizeWatcherL1Block(
         provider,
         currentRaw,
         setupNormalizationSession,
@@ -2465,17 +2460,17 @@ describe("authenticated state-queue indexer", () => {
           },
         }),
       );
-      const consistency = evaluateWatcherMultiProviderConsistencyV1(
+      const consistency = evaluateWatcherMultiProviderConsistency(
         externalSource,
         observations.map(({ authenticatedProvider, l1Observation }) =>
-          normalizeWatcherL1BlockV1(
+          normalizeWatcherL1Block(
             authenticatedProvider,
             l1Observation,
             setupNormalizationSession,
           ),
         ),
       );
-      const result = evaluateWatcherFinalityV1(
+      const result = evaluateWatcherFinality(
         finalityPolicy,
         previousState,
         consistency,
@@ -2493,17 +2488,17 @@ describe("authenticated state-queue indexer", () => {
         },
       }),
     );
-    const currentConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const currentConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       currentObservations.map(({ authenticatedProvider, l1Observation }) =>
-        normalizeWatcherL1BlockV1(
+        normalizeWatcherL1Block(
           authenticatedProvider,
           l1Observation,
           setupNormalizationSession,
         ),
       ),
     );
-    const currentResult = evaluateWatcherFinalityV1(
+    const currentResult = evaluateWatcherFinality(
       finalityPolicy,
       previousState,
       currentConsistency,
@@ -2518,8 +2513,8 @@ describe("authenticated state-queue indexer", () => {
       null,
       null,
     );
-    const boundaryContext: WatcherStateQueuePublicContextV1 = {
-      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+    const boundaryContext: WatcherStateQueuePublicContext = {
+      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
       authenticatedProvider: provider,
       l1Observation: currentRaw,
       sourceDurableStore: sourceStore,
@@ -2537,7 +2532,7 @@ describe("authenticated state-queue indexer", () => {
       rollbackAuthority: null,
     };
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         observation,
@@ -2548,7 +2543,7 @@ describe("authenticated state-queue indexer", () => {
       reasonCodes: ["bootstrap_authenticated"],
     });
     expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, observation, {
+      evaluateWatcherStateQueueIndexer(policy, null, observation, {
         ...boundaryContext,
         originAuthorities: [
           {
@@ -2572,7 +2567,7 @@ describe("authenticated state-queue indexer", () => {
       snapshot: bundle.snapshot,
     };
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         {
@@ -2596,7 +2591,7 @@ describe("authenticated state-queue indexer", () => {
     };
     altered.durableStore.protocolUtxos[0]!.output.cborHex = "80";
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         bundle.observation,
@@ -2607,7 +2602,7 @@ describe("authenticated state-queue indexer", () => {
 
   it("rejects a self-rehashed legitimate state output assigned another indexer's durable role", () => {
     const bundle = bootstrapBundle();
-    const wrongRoleStore = makeWatcherDurableStoreV1({
+    const wrongRoleStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: bundle.store.revision,
       records: {
@@ -2619,11 +2614,11 @@ describe("authenticated state-queue indexer", () => {
     });
     const wrongRoleObservation = remakeObservation(bundle.observation, {
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(wrongRoleStore),
+        encodeWatcherDurableStore(wrongRoleStore),
       ),
     });
     expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, wrongRoleObservation, {
+      evaluateWatcherStateQueueIndexer(policy, null, wrongRoleObservation, {
         ...bundle.context,
         durableStore: wrongRoleStore,
       }),
@@ -2639,7 +2634,7 @@ describe("authenticated state-queue indexer", () => {
     forgedDeployment.deploymentAuthority.policy.appliedScriptHashes.stateQueueMint =
       policy.schedulerPolicyId;
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         bundle.observation,
@@ -2648,7 +2643,7 @@ describe("authenticated state-queue indexer", () => {
     ).toMatchObject({ action: "reject" });
 
     const decoy = bootstrapBundle();
-    const relabelledStore = makeWatcherDurableStoreV1({
+    const relabelledStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: bundle.store.revision,
       records: {
@@ -2678,11 +2673,11 @@ describe("authenticated state-queue indexer", () => {
     });
     const relabelledObservation = remakeObservation(bundle.observation, {
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(relabelledStore),
+        encodeWatcherDurableStore(relabelledStore),
       ),
     });
     expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, relabelledObservation, {
+      evaluateWatcherStateQueueIndexer(policy, null, relabelledObservation, {
         ...bundle.context,
         durableStore: relabelledStore,
       }),
@@ -2694,17 +2689,17 @@ describe("authenticated state-queue indexer", () => {
     divergentRaw.chainPoint.blockHash = h32("ed");
     const normalized = [
       bundle.block.normalized,
-      normalizeWatcherL1BlockV1(providerB, divergentRaw),
+      normalizeWatcherL1Block(providerB, divergentRaw),
     ];
     divergent.finalityAuthority.consistency =
-      evaluateWatcherMultiProviderConsistencyV1(externalSource, normalized);
-    divergent.finalityAuthority.result = evaluateWatcherFinalityV1(
+      evaluateWatcherMultiProviderConsistency(externalSource, normalized);
+    divergent.finalityAuthority.result = evaluateWatcherFinality(
       finalityPolicy,
       divergent.finalityAuthority.previousState,
       divergent.finalityAuthority.consistency,
     );
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         bundle.observation,
@@ -2722,7 +2717,7 @@ describe("authenticated state-queue indexer", () => {
     };
     const fakeRaw = structuredClone(bundle.block.raw);
     fakeRaw.providerId = fakeProvider.providerId;
-    expect(() => normalizeWatcherL1BlockV1(fakeProvider, fakeRaw)).toThrow(
+    expect(() => normalizeWatcherL1Block(fakeProvider, fakeRaw)).toThrow(
       "test provider has no unique live transport attestation",
     );
     hostile.finalityAuthority.observations[1] = {
@@ -2731,7 +2726,7 @@ describe("authenticated state-queue indexer", () => {
     };
 
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         null,
         bundle.observation,
@@ -2745,14 +2740,14 @@ describe("authenticated state-queue indexer", () => {
 
   it("indexes node-accepted append, DA, merge, and rollback bytes while rejecting foreign-role insertion", () => {
     const bootBundle = bootstrapBundle();
-    const bootResult = evaluateWatcherStateQueueIndexerV1(
+    const bootResult = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bootBundle.observation,
       bootBundle.context,
     );
     const boot = bootResult.state!;
-    const headerBase = makeWatcherStateQueueHeaderV1({
+    const headerBase = makeWatcherStateQueueHeader({
       nextHeaderHash: null,
       datumSha256: h32("00"),
       prevUtxosRoot: confirmed.utxoRoot,
@@ -2788,11 +2783,11 @@ describe("authenticated state-queue indexer", () => {
       ConfirmedState,
       headerBase.headerHash,
     );
-    const nodeData: StateQueueNodeV1 = {
-      header: Data.from(headerBase.headerCborHex, HeaderV1),
+    const nodeData: StateQueueNode = {
+      header: Data.from(headerBase.headerCborHex, Header),
       da_attestation: "Unattested",
     };
-    const nodeDatum = linkedNode(nodeData, StateQueueNodeV1, null);
+    const nodeDatum = linkedNode(nodeData, StateQueueNode, null);
     const activeDatum = linkedNode(
       {
         bond_unlock_time: upper - 1n + maturity,
@@ -2908,7 +2903,7 @@ describe("authenticated state-queue indexer", () => {
       datumSha256: shaDatum(nodeDatum),
       daAttestationPolicyId: null,
     };
-    const snapshot = makeWatcherStateQueueSnapshotV1({
+    const snapshot = makeWatcherStateQueueSnapshot({
       confirmedState: {
         ...boot.snapshot.confirmedState,
         datumSha256: shaDatum(rootDatum),
@@ -2937,7 +2932,7 @@ describe("authenticated state-queue indexer", () => {
       upper.toString(),
     );
     const context = contextFor(block, store);
-    const result = evaluateWatcherStateQueueIndexerV1(
+    const result = evaluateWatcherStateQueueIndexer(
       policy,
       boot,
       observation,
@@ -2946,18 +2941,18 @@ describe("authenticated state-queue indexer", () => {
     expect(result.action, JSON.stringify(result)).toBe("accept");
     expect(result.reasonCodes).toEqual(["append_authenticated"]);
     expect(result.state?.snapshot.queue).toHaveLength(1);
-    expect(parseWatcherStateQueueIndexerStateV1(result.state, policy)).toEqual(
+    expect(parseWatcherStateQueueIndexerState(result.state, policy)).toEqual(
       result.state,
     );
     const regressedSourceStore = remakeStore(bootBundle.store, {}, "0");
     const regressedStore = remakeStore(store, {}, "1");
     const regressedObservation = remakeObservation(observation, {
       sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(regressedSourceStore),
+        encodeWatcherDurableStore(regressedSourceStore),
       ),
       sourceDurableStoreRevision: regressedSourceStore.revision,
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(regressedStore),
+        encodeWatcherDurableStore(regressedStore),
       ),
       durableStoreRevision: regressedStore.revision,
     });
@@ -2975,7 +2970,7 @@ describe("authenticated state-queue indexer", () => {
     const { stateDigest: _stateDigest, ...forgedStateFields } = forgedRestart;
     forgedRestart.stateDigest = canonicalDigest(forgedStateFields);
     expect(
-      parseWatcherStateQueueIndexerStateV1(forgedRestart, policy),
+      parseWatcherStateQueueIndexerState(forgedRestart, policy),
     ).toBeNull();
     expect(store.spentProtocolUtxos.length).toBeGreaterThan(0);
     for (const spentProtocolUtxos of [
@@ -2993,11 +2988,11 @@ describe("authenticated state-queue indexer", () => {
       const hostileStore = remakeStore(store, { spentProtocolUtxos });
       const hostileObservation = remakeObservation(observation, {
         durableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(hostileStore),
+          encodeWatcherDurableStore(hostileStore),
         ),
       });
       expect(
-        evaluateWatcherStateQueueIndexerV1(policy, boot, hostileObservation, {
+        evaluateWatcherStateQueueIndexer(policy, boot, hostileObservation, {
           ...context,
           durableStore: hostileStore,
         }),
@@ -3012,7 +3007,7 @@ describe("authenticated state-queue indexer", () => {
     });
     expect(attach.context.originAuthorities.length).toBeGreaterThan(0);
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         result.state,
         attach.observation,
@@ -3031,7 +3026,7 @@ describe("authenticated state-queue indexer", () => {
         forgedOriginContext.originAuthorities[0]!.finalityAuthority,
       );
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         result.state,
         attach.observation,
@@ -3041,7 +3036,7 @@ describe("authenticated state-queue indexer", () => {
       action: "reject",
       reasonCodes: ["malformed_public_context"],
     });
-    const attached = evaluateWatcherStateQueueIndexerV1(
+    const attached = evaluateWatcherStateQueueIndexer(
       policy,
       result.state,
       attach.observation,
@@ -3212,7 +3207,7 @@ describe("authenticated state-queue indexer", () => {
       ],
       attach.store,
     );
-    const mergeSnapshot = makeWatcherStateQueueSnapshotV1({
+    const mergeSnapshot = makeWatcherStateQueueSnapshot({
       confirmedState: {
         headerHash: mergedConfirmed.headerHash,
         prevHeaderHash: mergedConfirmed.prevHeaderHash,
@@ -3237,7 +3232,7 @@ describe("authenticated state-queue indexer", () => {
       mergeLower.toString(),
       null,
     );
-    const merged = evaluateWatcherStateQueueIndexerV1(
+    const merged = evaluateWatcherStateQueueIndexer(
       policy,
       attached.state,
       mergeObservation,
@@ -3253,17 +3248,17 @@ describe("authenticated state-queue indexer", () => {
           outRef: `${mergeBlock.txHash}#1`,
           role: "proof_thread",
           chainPointId: mergeBlock.normalized.chainPoint.chainPointId,
-          output: makeWatcherDurablePayloadV1(mergeOutputs[1]!.outputHex),
+          output: makeWatcherDurablePayload(mergeOutputs[1]!.outputHex),
         },
       ],
     });
     const wrongRoleMergeObservation = remakeObservation(mergeObservation, {
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(wrongRoleMergeStore),
+        encodeWatcherDurableStore(wrongRoleMergeStore),
       ),
     });
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         attached.state,
         wrongRoleMergeObservation,
@@ -3295,7 +3290,7 @@ describe("authenticated state-queue indexer", () => {
       observations: ReturnType<typeof pairedObservations>,
     ) =>
       observations.map(({ authenticatedProvider, l1Observation }) =>
-        normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+        normalizeWatcherL1Block(authenticatedProvider, l1Observation),
       );
     const oldNormalized = normalizeAuthorityObservations(oldObservations);
     const replacementNormalized = normalizeAuthorityObservations(
@@ -3305,20 +3300,20 @@ describe("authenticated state-queue indexer", () => {
     const secondReplacementNormalized = normalizeAuthorityObservations(
       secondReplacementObservations,
     );
-    const oldConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const oldConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       oldNormalized,
     );
-    const previousFinalityState = evaluateWatcherFinalityV1(
+    const previousFinalityState = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       null,
       oldConsistency,
     ).state!;
-    const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const replacementConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       replacementNormalized,
     );
-    const rollbackFinalityResult = evaluateWatcherFinalityV1(
+    const rollbackFinalityResult = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       previousFinalityState,
       replacementConsistency,
@@ -3338,8 +3333,8 @@ describe("authenticated state-queue indexer", () => {
             observationId: normalized.observationDigest,
             providerId: normalized.provider.providerId,
             chainPointId: normalized.chainPoint.chainPointId,
-            payload: makeWatcherDurablePayloadV1(
-              encodeWatcherNormalizedL1BlockV1(normalized).toString("hex"),
+            payload: makeWatcherDurablePayload(
+              encodeWatcherNormalizedL1Block(normalized).toString("hex"),
             ),
           })),
         ],
@@ -3357,12 +3352,12 @@ describe("authenticated state-queue indexer", () => {
       },
       (BigInt(mergeStore.revision) + 1n).toString(),
     );
-    const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+    const rollbackBootstrapState = makeWatcherRollbackBootstrapState(
       rollbackFinalityPolicy,
       rollbackSourceStore,
       previousFinalityState,
     )!;
-    const appliedRollback = evaluateWatcherRollbackV1(
+    const appliedRollback = evaluateWatcherRollback(
       rollbackFinalityPolicy,
       rollbackSourceStore,
       previousFinalityState,
@@ -3401,8 +3396,8 @@ describe("authenticated state-queue indexer", () => {
       null,
       { transactionHash: null },
     );
-    const rollbackContext: WatcherStateQueuePublicContextV1 = asWireValue({
-      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+    const rollbackContext: WatcherStateQueuePublicContext = asWireValue({
+      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
       authenticatedProvider: provider,
       l1Observation: attach.block.raw,
       sourceDurableStore: rollbackSourceStore,
@@ -3422,7 +3417,7 @@ describe("authenticated state-queue indexer", () => {
     cyclicRollbackContext.rollbackAuthority.result.nextStore =
       cyclicRollbackContext.rollbackAuthority.result;
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         merged.state,
         rollbackObservation,
@@ -3432,7 +3427,7 @@ describe("authenticated state-queue indexer", () => {
       action: "reject",
       reasonCodes: ["malformed_public_context"],
     });
-    const rolledBack = evaluateWatcherStateQueueIndexerV1(
+    const rolledBack = evaluateWatcherStateQueueIndexer(
       policy,
       merged.state,
       rollbackObservation,
@@ -3440,7 +3435,7 @@ describe("authenticated state-queue indexer", () => {
     );
     expect(rolledBack.action, JSON.stringify(rolledBack)).toBe("accept");
     expect(rolledBack.reasonCodes).toEqual(["rollback_authenticated"]);
-    const restarted = parseWatcherStateQueueIndexerStateV1(
+    const restarted = parseWatcherStateQueueIndexerState(
       JSON.parse(JSON.stringify(rolledBack.state)),
       policy,
     );
@@ -3464,7 +3459,7 @@ describe("authenticated state-queue indexer", () => {
       forgedPriorLink;
     forgedPriorLink.stateDigest = canonicalDigest(forgedPriorLinkStateFields);
     expect(
-      parseWatcherStateQueueIndexerStateV1(forgedPriorLink, policy),
+      parseWatcherStateQueueIndexerState(forgedPriorLink, policy),
     ).toBeNull();
 
     const noChangeBody = bodyFrom([], [], [], [], null, null);
@@ -3472,21 +3467,21 @@ describe("authenticated state-queue indexer", () => {
     const noChangeObservations = pairedObservations(noChangeBlock);
     const noChangeNormalized =
       normalizeAuthorityObservations(noChangeObservations);
-    const noChangeConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const noChangeConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       noChangeNormalized,
     );
-    const noChangePreviousFinalityState = evaluateWatcherFinalityV1(
+    const noChangePreviousFinalityState = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       null,
       noChangeConsistency,
     ).state!;
     const noChangeReplacementConsistency =
-      evaluateWatcherMultiProviderConsistencyV1(
+      evaluateWatcherMultiProviderConsistency(
         externalSource,
         secondReplacementNormalized,
       );
-    const noChangeFinalityResult = evaluateWatcherFinalityV1(
+    const noChangeFinalityResult = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       noChangePreviousFinalityState,
       noChangeReplacementConsistency,
@@ -3512,8 +3507,8 @@ describe("authenticated state-queue indexer", () => {
             observationId: candidate.observationDigest,
             providerId: candidate.provider.providerId,
             chainPointId: candidate.chainPoint.chainPointId,
-            payload: makeWatcherDurablePayloadV1(
-              encodeWatcherNormalizedL1BlockV1(candidate).toString("hex"),
+            payload: makeWatcherDurablePayload(
+              encodeWatcherNormalizedL1Block(candidate).toString("hex"),
             ),
           })),
         ],
@@ -3531,12 +3526,12 @@ describe("authenticated state-queue indexer", () => {
       },
       (BigInt(noChangeStore.revision) + 1n).toString(),
     );
-    const noChangeRollbackBootstrap = makeWatcherRollbackBootstrapStateV1(
+    const noChangeRollbackBootstrap = makeWatcherRollbackBootstrapState(
       rollbackFinalityPolicy,
       noChangeSourceStore,
       noChangePreviousFinalityState,
     )!;
-    const noChangeAppliedRollback = evaluateWatcherRollbackV1(
+    const noChangeAppliedRollback = evaluateWatcherRollback(
       rollbackFinalityPolicy,
       noChangeSourceStore,
       noChangePreviousFinalityState,
@@ -3561,12 +3556,12 @@ describe("authenticated state-queue indexer", () => {
       null,
       { transactionHash: null },
     );
-    const noChangeRollbackState = evaluateWatcherStateQueueIndexerV1(
+    const noChangeRollbackState = evaluateWatcherStateQueueIndexer(
       policy,
       result.state,
       noChangeObservation,
       asWireValue({
-        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
         authenticatedProvider: provider,
         l1Observation: block.raw,
         sourceDurableStore: noChangeSourceStore,
@@ -3599,7 +3594,7 @@ describe("authenticated state-queue indexer", () => {
     expect(noChangeRollbackState.state?.auditHistory).toMatchObject([
       { status: "rollback" },
     ]);
-    const afterNoChangeRestart = parseWatcherStateQueueIndexerStateV1(
+    const afterNoChangeRestart = parseWatcherStateQueueIndexerState(
       JSON.parse(JSON.stringify(noChangeRollbackState.state)),
       policy,
     );
@@ -3612,7 +3607,7 @@ describe("authenticated state-queue indexer", () => {
       predecessorStateDigest: afterNoChangeRestart!.stateDigest,
       validFrom: 2n,
     });
-    const afterNoChangeNormal = evaluateWatcherStateQueueIndexerV1(
+    const afterNoChangeNormal = evaluateWatcherStateQueueIndexer(
       policy,
       afterNoChangeRestart,
       afterNoChangeAttach.observation,
@@ -3623,7 +3618,7 @@ describe("authenticated state-queue indexer", () => {
       reasonCodes: ["da_attestation_authenticated"],
     });
     expect(
-      parseWatcherStateQueueIndexerStateV1(
+      parseWatcherStateQueueIndexerState(
         JSON.parse(JSON.stringify(afterNoChangeNormal.state)),
         policy,
       ),
@@ -3654,7 +3649,7 @@ describe("authenticated state-queue indexer", () => {
       },
     );
     expect(
-      parseWatcherStateQueueIndexerStateV1(substitutedAuthority, policy),
+      parseWatcherStateQueueIndexerState(substitutedAuthority, policy),
     ).toBeNull();
     const substitutedStore = remakeStore(
       appliedStore,
@@ -3662,7 +3657,7 @@ describe("authenticated state-queue indexer", () => {
       (BigInt(appliedStore.revision) + 1n).toString(),
     );
     const substitutedStoreDigest = watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(substitutedStore),
+      encodeWatcherDurableStore(substitutedStore),
     );
     const substitutedDurableStore = rehashRollbackRestart(
       structuredClone(rolledBack.state) as Mutable,
@@ -3684,22 +3679,22 @@ describe("authenticated state-queue indexer", () => {
       substitutedStateWithoutDigest,
     );
     expect(
-      parseWatcherStateQueueIndexerStateV1(substitutedDurableStore, policy),
+      parseWatcherStateQueueIndexerState(substitutedDurableStore, policy),
     ).toBeNull();
 
     const secondReplacementConsistency =
-      evaluateWatcherMultiProviderConsistencyV1(
+      evaluateWatcherMultiProviderConsistency(
         externalSource,
         secondReplacementNormalized,
       );
     const secondPreviousFinalityState = rollbackFinalityResult.state!;
-    const secondFinalityResult = evaluateWatcherFinalityV1(
+    const secondFinalityResult = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       secondPreviousFinalityState,
       secondReplacementConsistency,
     );
     expect(secondFinalityResult.action).toBe("rewind_pending");
-    const secondAppliedRollback = evaluateWatcherRollbackV1(
+    const secondAppliedRollback = evaluateWatcherRollback(
       rollbackFinalityPolicy,
       appliedStore,
       secondPreviousFinalityState,
@@ -3739,12 +3734,12 @@ describe("authenticated state-queue indexer", () => {
       previousRollbackState: appliedRollback.rollbackState,
       rollbackBootstrapState,
     };
-    const repeatedRollback = evaluateWatcherStateQueueIndexerV1(
+    const repeatedRollback = evaluateWatcherStateQueueIndexer(
       policy,
       restarted,
       repeatedRollbackObservation,
       asWireValue({
-        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
         authenticatedProvider: provider,
         l1Observation: block.raw,
         sourceDurableStore: appliedStore,
@@ -3762,7 +3757,7 @@ describe("authenticated state-queue indexer", () => {
       "accept",
     );
     expect(
-      parseWatcherStateQueueIndexerStateV1(
+      parseWatcherStateQueueIndexerState(
         JSON.parse(JSON.stringify(repeatedRollback.state)),
         policy,
       ),
@@ -3775,7 +3770,7 @@ describe("authenticated state-queue indexer", () => {
       predecessorStateDigest: repeatedRollback.state!.stateDigest,
       validFrom: 1n,
     });
-    const postRollbackAccepted = evaluateWatcherStateQueueIndexerV1(
+    const postRollbackAccepted = evaluateWatcherStateQueueIndexer(
       policy,
       repeatedRollback.state,
       postRollbackAttach.observation,
@@ -3786,12 +3781,12 @@ describe("authenticated state-queue indexer", () => {
       reasonCodes: ["da_attestation_authenticated"],
     });
     expect(
-      parseWatcherStateQueueIndexerStateV1(
+      parseWatcherStateQueueIndexerState(
         JSON.parse(JSON.stringify(postRollbackAccepted.state)),
         policy,
       ),
     ).toEqual(postRollbackAccepted.state);
-    const duplicateRollback = evaluateWatcherRollbackV1(
+    const duplicateRollback = evaluateWatcherRollback(
       rollbackFinalityPolicy,
       secondAppliedStore,
       secondPreviousFinalityState,
@@ -3806,18 +3801,18 @@ describe("authenticated state-queue indexer", () => {
       repeatedRollbackObservation,
       {
         sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(secondAppliedStore),
+          encodeWatcherDurableStore(secondAppliedStore),
         ),
         sourceDurableStoreRevision: secondAppliedStore.revision,
         predecessorStateDigest: repeatedRollback.state!.stateDigest,
       },
     );
-    const duplicate = evaluateWatcherStateQueueIndexerV1(
+    const duplicate = evaluateWatcherStateQueueIndexer(
       policy,
       repeatedRollback.state,
       duplicateObservation,
       asWireValue({
-        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_SCHEMA_VERSION,
         authenticatedProvider: provider,
         l1Observation: block.raw,
         sourceDurableStore: secondAppliedStore,
@@ -3851,7 +3846,7 @@ describe("authenticated state-queue indexer", () => {
       applyOutputIndex: 1n,
     });
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         result.state,
         hostileAttach.observation,
@@ -3872,7 +3867,7 @@ describe("authenticated state-queue indexer", () => {
       endTime: string,
       headerOperator: string,
     ) =>
-      makeWatcherStateQueueHeaderV1({
+      makeWatcherStateQueueHeader({
         nextHeaderHash: null,
         datumSha256: h32("00"),
         prevUtxosRoot,
@@ -3929,18 +3924,18 @@ describe("authenticated state-queue indexer", () => {
     );
     const firstDatum = linkedNode(
       {
-        header: Data.from(first.headerCborHex, HeaderV1),
+        header: Data.from(first.headerCborHex, Header),
         da_attestation: "Unattested",
       },
-      StateQueueNodeV1,
+      StateQueueNode,
       second.headerHash,
     );
     const secondDatum = linkedNode(
       {
-        header: Data.from(second.headerCborHex, HeaderV1),
+        header: Data.from(second.headerCborHex, Header),
         da_attestation: "Unattested",
       },
-      StateQueueNodeV1,
+      StateQueueNode,
       null,
     );
     const base = rootFixtures();
@@ -4016,7 +4011,7 @@ describe("authenticated state-queue indexer", () => {
       protocolRecords(bootstrapBlock, outputs),
       null,
     );
-    const bootstrapSnapshot = makeWatcherStateQueueSnapshotV1({
+    const bootstrapSnapshot = makeWatcherStateQueueSnapshot({
       confirmedState: {
         headerHash: confirmed.headerHash,
         prevHeaderHash: confirmed.prevHeaderHash,
@@ -4062,7 +4057,7 @@ describe("authenticated state-queue indexer", () => {
       null,
       null,
     );
-    const boot = evaluateWatcherStateQueueIndexerV1(
+    const boot = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bootstrapObservation,
@@ -4102,7 +4097,7 @@ describe("authenticated state-queue indexer", () => {
         protocolRecords(hostileBlock, hostileOutputs),
         null,
       );
-      return evaluateWatcherStateQueueIndexerV1(
+      return evaluateWatcherStateQueueIndexer(
         policy,
         null,
         observationFor(
@@ -4141,10 +4136,10 @@ describe("authenticated state-queue indexer", () => {
 
     const continuedFirstDatum = linkedNode(
       {
-        header: Data.from(first.headerCborHex, HeaderV1),
+        header: Data.from(first.headerCborHex, Header),
         da_attestation: "Unattested",
       },
-      StateQueueNodeV1,
+      StateQueueNode,
       null,
     );
     const removalOutputs: readonly OutputFixture[] = [
@@ -4251,7 +4246,7 @@ describe("authenticated state-queue indexer", () => {
       ],
       bootstrapStore,
     );
-    const removalSnapshot = makeWatcherStateQueueSnapshotV1({
+    const removalSnapshot = makeWatcherStateQueueSnapshot({
       confirmedState: bootstrapSnapshot.confirmedState,
       queue: [
         {
@@ -4274,7 +4269,7 @@ describe("authenticated state-queue indexer", () => {
       null,
       null,
     );
-    const removed = evaluateWatcherStateQueueIndexerV1(
+    const removed = evaluateWatcherStateQueueIndexer(
       policy,
       boot,
       removalObservation,
@@ -4282,7 +4277,7 @@ describe("authenticated state-queue indexer", () => {
     );
     expect(removed.action, JSON.stringify(removed)).toBe("accept");
     expect(removed.reasonCodes).toEqual(["removal_authenticated"]);
-    expect(parseWatcherStateQueueIndexerStateV1(removed.state, policy)).toEqual(
+    expect(parseWatcherStateQueueIndexerState(removed.state, policy)).toEqual(
       removed.state,
     );
     expect(removed.state?.history.at(-1)?.correctionTransition).toBeNull();
@@ -4346,7 +4341,7 @@ describe("authenticated state-queue indexer", () => {
       null,
       null,
     );
-    const timedOut = evaluateWatcherStateQueueIndexerV1(
+    const timedOut = evaluateWatcherStateQueueIndexer(
       policy,
       boot,
       timeoutObservation,
@@ -4362,9 +4357,9 @@ describe("authenticated state-queue indexer", () => {
       removedHeaderHashes: [second.headerHash],
       consumedQueueOutRefs: [firstOutRef, secondOutRef].sort(),
     });
-    expect(
-      parseWatcherStateQueueIndexerStateV1(timedOut.state, policy),
-    ).toEqual(timedOut.state);
+    expect(parseWatcherStateQueueIndexerState(timedOut.state, policy)).toEqual(
+      timedOut.state,
+    );
     const timeoutMislabeledAsFraud = observationFor(
       timeoutBlock,
       timeoutStore,
@@ -4375,7 +4370,7 @@ describe("authenticated state-queue indexer", () => {
       null,
     );
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         boot,
         timeoutMislabeledAsFraud,
@@ -4419,7 +4414,7 @@ describe("authenticated state-queue indexer", () => {
     );
     const crossForkContext = contextFor(crossForkBlock, crossForkStore);
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         boot,
         crossForkObservation,
@@ -4461,13 +4456,13 @@ describe("authenticated state-queue indexer", () => {
       crossForkStateWithoutDigest,
     );
     expect(
-      parseWatcherStateQueueIndexerStateV1(forgedCrossForkRestart, policy),
+      parseWatcherStateQueueIndexerState(forgedCrossForkRestart, policy),
     ).toBeNull();
   });
 
   it("rejects a fully self-rehashed history mutation because W03/W10 context is replayed", () => {
     const bundle = bootstrapBundle();
-    const result = evaluateWatcherStateQueueIndexerV1(
+    const result = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bundle.observation,
@@ -4486,12 +4481,12 @@ describe("authenticated state-queue indexer", () => {
     entry.entryDigest = canonicalDigest(entryFields);
     const { stateDigest: _oldStateDigest, ...stateFields } = forged;
     forged.stateDigest = canonicalDigest(stateFields);
-    expect(parseWatcherStateQueueIndexerStateV1(forged, policy)).toBeNull();
+    expect(parseWatcherStateQueueIndexerState(forged, policy)).toBeNull();
   });
 
   it("consumes exact external-provider W13 post-finality recovery and preserves foreign roles across restart", () => {
     const bootBundle = bootstrapBundleWithForeignRole();
-    const boot = evaluateWatcherStateQueueIndexerV1(
+    const boot = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bootBundle.observation,
@@ -4509,7 +4504,7 @@ describe("authenticated state-queue indexer", () => {
       null,
       { transactionHash: null },
     );
-    const recovered = evaluateWatcherStateQueueIndexerV1(
+    const recovered = evaluateWatcherStateQueueIndexer(
       policy,
       orphan.state,
       observation,
@@ -4533,16 +4528,16 @@ describe("authenticated state-queue indexer", () => {
       expect(
         (
           recovered.state?.auditHistory.at(-1)?.entry.publicContext
-            .durableStore as WatcherDurableStoreV1
+            .durableStore as WatcherDurableStore
         ).protocolUtxos,
       ).toContainEqual(bundle.foreignSentinel);
     }
 
     const serialized = JSON.parse(JSON.stringify(recovered.state));
-    const restarted = parseWatcherStateQueueIndexerStateV1(serialized, policy);
+    const restarted = parseWatcherStateQueueIndexerState(serialized, policy);
     expect(restarted).toEqual(recovered.state);
     expect(
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         orphan.state,
         observation,
@@ -4550,7 +4545,7 @@ describe("authenticated state-queue indexer", () => {
       ),
     ).toEqual(recovered);
     expect(
-      parseWatcherStateQueueIndexerResultV1(recovered, {
+      parseWatcherStateQueueIndexerResult(recovered, {
         policy,
         previousState: orphan.state,
         observation,
@@ -4561,7 +4556,7 @@ describe("authenticated state-queue indexer", () => {
 
   it("accepts post-finality recovery with no indexed owned change", () => {
     const bootBundle = bootstrapBundleWithForeignRole();
-    const boot = evaluateWatcherStateQueueIndexerV1(
+    const boot = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bootBundle.observation,
@@ -4584,7 +4579,7 @@ describe("authenticated state-queue indexer", () => {
       null,
       { transactionHash: null },
     );
-    const noOwnedChange = evaluateWatcherStateQueueIndexerV1(
+    const noOwnedChange = evaluateWatcherStateQueueIndexer(
       policy,
       boot,
       noOwnedChangeObservation,
@@ -4601,7 +4596,7 @@ describe("authenticated state-queue indexer", () => {
       },
     });
     expect(
-      parseWatcherStateQueueIndexerStateV1(
+      parseWatcherStateQueueIndexerState(
         structuredClone(noOwnedChange.state),
         policy,
       ),
@@ -4610,7 +4605,7 @@ describe("authenticated state-queue indexer", () => {
 
   it("rejects forged, mismatched, wrong-target, source-mode-invalid, duplicate-only, and self-rehashed recovery evidence", () => {
     const bootBundle = bootstrapBundleWithForeignRole();
-    const boot = evaluateWatcherStateQueueIndexerV1(
+    const boot = evaluateWatcherStateQueueIndexer(
       policy,
       null,
       bootBundle.observation,
@@ -4629,10 +4624,10 @@ describe("authenticated state-queue indexer", () => {
       { transactionHash: null },
     );
     const evaluate = (
-      selectedObservation: WatcherStateQueueObservationV1,
-      context: WatcherStateQueuePublicContextV1,
+      selectedObservation: WatcherStateQueueObservation,
+      context: WatcherStateQueuePublicContext,
     ) =>
-      evaluateWatcherStateQueueIndexerV1(
+      evaluateWatcherStateQueueIndexer(
         policy,
         orphan.state,
         selectedObservation,
@@ -4646,10 +4641,8 @@ describe("authenticated state-queue indexer", () => {
     forged.rollbackAuthority.result.resultDigest =
       canonicalDigest(forgedResult);
     expect(
-      evaluate(
-        observation,
-        forged as unknown as WatcherStateQueuePublicContextV1,
-      ).action,
+      evaluate(observation, forged as unknown as WatcherStateQueuePublicContext)
+        .action,
     ).toBe("reject");
 
     const mismatched = structuredClone(bundle.context) as Mutable;
@@ -4658,7 +4651,7 @@ describe("authenticated state-queue indexer", () => {
     expect(
       evaluate(
         observation,
-        mismatched as unknown as WatcherStateQueuePublicContextV1,
+        mismatched as unknown as WatcherStateQueuePublicContext,
       ).action,
     ).toBe("reject");
 
@@ -4669,7 +4662,7 @@ describe("authenticated state-queue indexer", () => {
     };
     storeSources.set(
       bundle.recovery.nextStore!,
-      bundle.recoveryInput.sourceStore as WatcherDurableStoreV1,
+      bundle.recoveryInput.sourceStore as WatcherDurableStore,
     );
     const wrongTargetObservation = observationFor(
       wrongTargetBlock,
@@ -4697,11 +4690,11 @@ describe("authenticated state-queue indexer", () => {
     expect(
       evaluate(
         observation,
-        wrongMode as unknown as WatcherStateQueuePublicContextV1,
+        wrongMode as unknown as WatcherStateQueuePublicContext,
       ).action,
     ).toBe("reject");
 
-    const duplicateRecovery = evaluateWatcherPostFinalityRecoveryV1({
+    const duplicateRecovery = evaluateWatcherPostFinalityRecovery({
       ...bundle.recoveryInput,
       currentStore: bundle.recovery.nextStore,
       previousRecoveryState: bundle.recovery.recoveryState,
@@ -4720,14 +4713,14 @@ describe("authenticated state-queue indexer", () => {
     };
     const duplicateObservation = remakeObservation(observation, {
       sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(bundle.recovery.nextStore!),
+        encodeWatcherDurableStore(bundle.recovery.nextStore!),
       ),
       sourceDurableStoreRevision: bundle.recovery.nextStore!.revision,
     });
     expect(
       evaluate(
         duplicateObservation,
-        duplicateOnly as unknown as WatcherStateQueuePublicContextV1,
+        duplicateOnly as unknown as WatcherStateQueuePublicContext,
       ).action,
     ).toBe("reject");
 
@@ -4743,9 +4736,7 @@ describe("authenticated state-queue indexer", () => {
     rollbackAudit.auditDigest = canonicalDigest(auditFields);
     const { stateDigest: _stateDigest, ...stateFields } = selfRehashed;
     selfRehashed.stateDigest = canonicalDigest(stateFields);
-    expect(
-      parseWatcherStateQueueIndexerStateV1(selfRehashed, policy),
-    ).toBeNull();
+    expect(parseWatcherStateQueueIndexerState(selfRehashed, policy)).toBeNull();
   }, 30_000);
 
   it("fails closed when W14 receives missing, detached, mismatched, or closed transport capabilities", () => {
@@ -4753,9 +4744,9 @@ describe("authenticated state-queue indexer", () => {
     const providerATransport = transportFor(provider);
     const providerBTransport = transportFor(providerB);
     const evaluateRaw = (
-      attestations: readonly WatcherL1TransportAttestationContextV1[],
+      attestations: readonly WatcherL1TransportAttestationContext[],
     ) =>
-      evaluateWatcherStateQueueIndexerV1Raw(
+      evaluateWatcherStateQueueIndexerRaw(
         policy,
         null,
         bundle.observation,
@@ -4771,7 +4762,7 @@ describe("authenticated state-queue indexer", () => {
       evaluateRaw(
         structuredClone(
           transportContexts,
-        ) as WatcherL1TransportAttestationContextV1[],
+        ) as WatcherL1TransportAttestationContext[],
       ),
     ).toMatchObject({
       action: "reject",
@@ -4782,7 +4773,7 @@ describe("authenticated state-queue indexer", () => {
       reasonCodes: ["malformed_public_context"],
     });
 
-    closeWatcherL1TransportAttestationContextV1(providerATransport);
+    closeWatcherL1TransportAttestationContext(providerATransport);
     expect(evaluateRaw(transportContexts)).toMatchObject({
       action: "reject",
       reasonCodes: ["malformed_public_context"],

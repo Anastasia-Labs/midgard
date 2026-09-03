@@ -1,30 +1,30 @@
 import { createHash } from "node:crypto";
 
 import {
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  type MidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  type MidgardValidationMerkleMembership,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const RECEIVE_PURPOSE_LANGUAGE_CATEGORY_V1 =
+export const RECEIVE_PURPOSE_LANGUAGE_CATEGORY =
   "receivePurposeLanguage" as const;
-export const RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID_V1 = "00000034" as const;
-export const RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID_V1 =
+export const RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID = "00000034" as const;
+export const RECEIVE_PURPOSE_PLUTUS_V3_FORBIDDEN_VIOLATION_ID =
   "receive-purpose-plutus-v3-forbidden" as const;
-export const RECEIVE_PURPOSE_KIND_V1 = 3 as const;
-export const PLUTUS_V3_LANGUAGE_TAG_V1 = 3 as const;
+export const RECEIVE_PURPOSE_KIND = 3 as const;
+export const PLUTUS_V3_LANGUAGE_TAG = 3 as const;
 
 const fail = (message: string): never => {
-  throw new Error(`${RECEIVE_PURPOSE_LANGUAGE_CATEGORY_V1}: ${message}`);
+  throw new Error(`${RECEIVE_PURPOSE_LANGUAGE_CATEGORY}: ${message}`);
 };
 const index = (value: number, label: string) =>
   Number.isSafeInteger(value) && value >= 0
@@ -35,19 +35,17 @@ const hex = (value: string, bytes: number, label: string) =>
     ? value
     : fail(`${label} is not canonical ${bytes}-byte hex`);
 
-export type ReceivePurposeLanguageFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type ReceivePurposeLanguageFinding = Readonly<{
+  subject: VerdictSubject;
   executionIndex: number;
 }>;
-export const classifyReceivePurposeLanguageFindingV1 = (
-  finding: ReceivePurposeLanguageFindingV1,
-): ReceivePurposeLanguageFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyReceivePurposeLanguageFinding = (
+  finding: ReceivePurposeLanguageFinding,
+): ReceivePurposeLanguageFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     fail("verdict subject is not canonical");
   index(finding.executionIndex, "execution index");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = finding.subject.rejection_reason;
     if (
       reason === null ||
@@ -58,15 +56,14 @@ export const classifyReceivePurposeLanguageFindingV1 = (
     )
       fail("typed rejection reason or execution coordinate changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   )
     fail("direction/reason polarity changed");
   return Object.freeze(finding);
 };
 
-export type ReceivePurposeLanguageDescriptorV1 = Readonly<{
+export type ReceivePurposeLanguageDescriptor = Readonly<{
   sourceIndex: number;
   originKind: 0 | 1;
   sourceKeyHex: string;
@@ -78,27 +75,27 @@ export type ReceivePurposeLanguageDescriptorV1 = Readonly<{
   purposeIndex: number;
   purposeSubjectHex: string;
   redeemerLeafHex: string;
-  purposeMembership: MidgardValidationMerkleMembershipV1;
-  sourceMembership: MidgardValidationMerkleMembershipV1;
-  executionMembership: MidgardValidationMerkleMembershipV1;
+  purposeMembership: MidgardValidationMerkleMembership;
+  sourceMembership: MidgardValidationMerkleMembership;
+  executionMembership: MidgardValidationMerkleMembership;
 }>;
-export type ReceivePurposeLanguageEvidenceV1 = Readonly<{
-  finding: ReceivePurposeLanguageFindingV1;
-  descriptor: ReceivePurposeLanguageDescriptorV1;
+export type ReceivePurposeLanguageEvidence = Readonly<{
+  finding: ReceivePurposeLanguageFinding;
+  descriptor: ReceivePurposeLanguageDescriptor;
   purposeLeafHex: string;
   sourceLeafHex: string;
   executionLeafHex: string;
 }>;
 
-export const prepareReceivePurposeLanguageEvidenceV1 = ({
+export const prepareReceivePurposeLanguageEvidence = ({
   finding: raw,
   descriptor,
 }: {
-  readonly finding: ReceivePurposeLanguageFindingV1;
-  readonly descriptor: ReceivePurposeLanguageDescriptorV1;
-}): ReceivePurposeLanguageEvidenceV1 => {
-  const finding = classifyReceivePurposeLanguageFindingV1(raw);
-  if (descriptor.purposeKind !== RECEIVE_PURPOSE_KIND_V1)
+  readonly finding: ReceivePurposeLanguageFinding;
+  readonly descriptor: ReceivePurposeLanguageDescriptor;
+}): ReceivePurposeLanguageEvidence => {
+  const finding = classifyReceivePurposeLanguageFinding(raw);
+  if (descriptor.purposeKind !== RECEIVE_PURPOSE_KIND)
     fail("authenticated purpose is not receive");
   index(descriptor.sourceIndex, "source index");
   index(descriptor.purposeIndex, "purpose index");
@@ -120,7 +117,7 @@ export const prepareReceivePurposeLanguageEvidenceV1 = ({
     !Number.isSafeInteger(descriptor.scriptTotalLength)
   )
     fail("script length is invalid");
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind: 3,
     purposeIndex: BigInt(descriptor.purposeIndex),
     scriptHash,
@@ -128,21 +125,21 @@ export const prepareReceivePurposeLanguageEvidenceV1 = ({
   });
   const sourceLeaf =
     descriptor.originKind === 0
-      ? hashMidgardInlineScriptSourceLeafV1({
+      ? hashMidgardInlineScriptSourceLeaf({
           sourceIndex: BigInt(descriptor.sourceIndex),
           scriptLanguageTag: descriptor.languageTag,
           scriptHash,
           scriptTotalLength: descriptor.scriptTotalLength,
           itemCommitment: commitment,
         })
-      : hashMidgardReferenceScriptSourceLeafV1({
+      : hashMidgardReferenceScriptSourceLeaf({
           sourceKey: Buffer.from(descriptor.sourceKeyHex, "hex"),
           scriptLanguageTag: descriptor.languageTag,
           scriptHash,
           scriptTotalLength: descriptor.scriptTotalLength,
           itemCommitment: commitment,
         });
-  const executionLeaf = hashMidgardScriptExecutionLeafV1({
+  const executionLeaf = hashMidgardScriptExecutionLeaf({
     languageTag: descriptor.languageTag,
     purposeLeaf,
     sourceLeaf,
@@ -154,7 +151,7 @@ export const prepareReceivePurposeLanguageEvidenceV1 = ({
     [descriptor.executionMembership, executionLeaf, "execution"],
   ] as const)
     if (
-      !verifyMidgardValidationMerkleMembershipV1({
+      !verifyMidgardValidationMerkleMembership({
         ...membership,
         leafHash: leaf,
       })
@@ -168,23 +165,23 @@ export const prepareReceivePurposeLanguageEvidenceV1 = ({
     executionLeafHex: executionLeaf.toString("hex"),
   });
 };
-export const receivePurposeLanguageFaultHoldsV1 = (
-  evidence: Pick<ReceivePurposeLanguageEvidenceV1, "descriptor">,
+export const receivePurposeLanguageFaultHolds = (
+  evidence: Pick<ReceivePurposeLanguageEvidence, "descriptor">,
 ): boolean =>
   evidence.descriptor.purposeKind === 3 &&
   evidence.descriptor.languageTag === 3;
-export const receivePurposeLanguageEvidenceClosesV1 = (
-  evidence: ReceivePurposeLanguageEvidenceV1,
+export const receivePurposeLanguageEvidenceCloses = (
+  evidence: ReceivePurposeLanguageEvidence,
 ): boolean =>
   evidence.finding.subject.direction ===
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
-    ? receivePurposeLanguageFaultHoldsV1(evidence)
-    : !receivePurposeLanguageFaultHoldsV1(evidence);
-export const receivePurposeLanguageEvidenceIdentityV1 = (
-  evidence: ReceivePurposeLanguageEvidenceV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
+    ? receivePurposeLanguageFaultHolds(evidence)
+    : !receivePurposeLanguageFaultHolds(evidence);
+export const receivePurposeLanguageEvidenceIdentity = (
+  evidence: ReceivePurposeLanguageEvidence,
 ): string =>
   createHash("sha256")
-    .update(RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID_V1)
+    .update(RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID)
     .update(evidence.finding.subject.transaction_id)
     .update(evidence.finding.executionIndex.toString())
     .update(evidence.executionLeafHex)

@@ -1,18 +1,18 @@
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "./consensus-profile-v1.js";
 import {
-  encodeMidgardValidationTraceDescriptorV1,
-  type MidgardValidationTraceDescriptorV1,
-  type MidgardValidationTraceProofV1,
-  verifyMidgardValidationTraceProofV1,
+  encodeMidgardValidationTraceDescriptor,
+  type MidgardValidationTraceDescriptor,
+  type MidgardValidationTraceProof,
+  verifyMidgardValidationTraceProof,
 } from "./validation-trace.js";
 
 export const MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS =
-  MIDGARD_CONSENSUS_LIMITS_V1.validationDisputeResponseWindowMs;
+  MIDGARD_CONSENSUS_LIMITS.validationDisputeResponseWindowMs;
 export const MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxValidationBisectionRounds;
+  MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds;
 export const MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS =
   (2 * MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS + 2) *
   MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS;
@@ -31,10 +31,10 @@ export type MidgardValidationDisputeTurn =
       readonly type: "readyForOneStep";
     };
 
-export type MidgardValidationDisputeV1 = {
-  readonly version: typeof MIDGARD_VALIDATION_DISPUTE_V1_VERSION;
-  readonly operatorDescriptor: MidgardValidationTraceDescriptorV1;
-  readonly challengerDescriptor: MidgardValidationTraceDescriptorV1;
+export type MidgardValidationDispute = {
+  readonly version: typeof MIDGARD_VALIDATION_DISPUTE_VERSION;
+  readonly operatorDescriptor: MidgardValidationTraceDescriptor;
+  readonly challengerDescriptor: MidgardValidationTraceDescriptor;
   readonly lowIndex: number;
   readonly highIndex: number;
   readonly agreedLowHash: Buffer;
@@ -58,11 +58,11 @@ const requireSafeUnsigned = (value: number, field: string): number => {
 };
 
 const requireDescriptor = (
-  descriptor: MidgardValidationTraceDescriptorV1,
+  descriptor: MidgardValidationTraceDescriptor,
   field: string,
 ): void => {
   try {
-    encodeMidgardValidationTraceDescriptorV1(descriptor);
+    encodeMidgardValidationTraceDescriptor(descriptor);
   } catch (cause) {
     throw new Error(
       `${field} is not a valid V1 descriptor: ${
@@ -84,10 +84,10 @@ const nextTurn = (low: number, high: number): MidgardValidationDisputeTurn =>
     : { type: "awaitingOperator", midpoint: midpoint(low, high) };
 
 const requireLiveDispute = (
-  dispute: MidgardValidationDisputeV1,
+  dispute: MidgardValidationDispute,
   currentTime: number,
 ): void => {
-  if (dispute.version !== MIDGARD_VALIDATION_DISPUTE_V1_VERSION) {
+  if (dispute.version !== MIDGARD_VALIDATION_DISPUTE_VERSION) {
     throw new Error("Unsupported validation dispute version");
   }
   requireSafeUnsigned(currentTime, "currentTime");
@@ -98,8 +98,8 @@ const requireLiveDispute = (
 };
 
 export const midgardValidationDescriptorsCanDispute = (
-  operator: MidgardValidationTraceDescriptorV1,
-  challenger: MidgardValidationTraceDescriptorV1,
+  operator: MidgardValidationTraceDescriptor,
+  challenger: MidgardValidationTraceDescriptor,
 ): boolean => {
   try {
     requireDescriptor(operator, "operatorDescriptor");
@@ -145,10 +145,10 @@ export const openMidgardValidationDispute = ({
   challengerDescriptor,
   currentTime,
 }: {
-  readonly operatorDescriptor: MidgardValidationTraceDescriptorV1;
-  readonly challengerDescriptor: MidgardValidationTraceDescriptorV1;
+  readonly operatorDescriptor: MidgardValidationTraceDescriptor;
+  readonly challengerDescriptor: MidgardValidationTraceDescriptor;
   readonly currentTime: number;
-}): MidgardValidationDisputeV1 => {
+}): MidgardValidationDispute => {
   requireSafeUnsigned(currentTime, "currentTime");
   if (
     !midgardValidationDescriptorsCanDispute(
@@ -165,7 +165,7 @@ export const openMidgardValidationDispute = ({
     currentTime + MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS;
   requireSafeUnsigned(responseDeadline, "responseDeadline");
   return {
-    version: MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+    version: MIDGARD_VALIDATION_DISPUTE_VERSION,
     operatorDescriptor,
     challengerDescriptor,
     lowIndex: 0,
@@ -184,17 +184,17 @@ export const revealMidgardValidationOperatorMidpoint = ({
   proof,
   currentTime,
 }: {
-  readonly dispute: MidgardValidationDisputeV1;
-  readonly proof: MidgardValidationTraceProofV1;
+  readonly dispute: MidgardValidationDispute;
+  readonly proof: MidgardValidationTraceProof;
   readonly currentTime: number;
-}): MidgardValidationDisputeV1 => {
+}): MidgardValidationDispute => {
   requireLiveDispute(dispute, currentTime);
   if (dispute.turn.type !== "awaitingOperator") {
     throw new Error("Validation dispute is not awaiting the operator");
   }
   if (
     proof.stateIndex !== dispute.turn.midpoint ||
-    !verifyMidgardValidationTraceProofV1({
+    !verifyMidgardValidationTraceProof({
       descriptor: dispute.operatorDescriptor,
       proof,
     })
@@ -218,17 +218,17 @@ export const revealMidgardValidationChallengerMidpoint = ({
   proof,
   currentTime,
 }: {
-  readonly dispute: MidgardValidationDisputeV1;
-  readonly proof: MidgardValidationTraceProofV1;
+  readonly dispute: MidgardValidationDispute;
+  readonly proof: MidgardValidationTraceProof;
   readonly currentTime: number;
-}): MidgardValidationDisputeV1 => {
+}): MidgardValidationDispute => {
   requireLiveDispute(dispute, currentTime);
   if (dispute.turn.type !== "awaitingChallenger") {
     throw new Error("Validation dispute is not awaiting the challenger");
   }
   if (
     proof.stateIndex !== dispute.turn.midpoint ||
-    !verifyMidgardValidationTraceProofV1({
+    !verifyMidgardValidationTraceProof({
       descriptor: dispute.challengerDescriptor,
       proof,
     })
@@ -270,10 +270,10 @@ export const timeoutMidgardValidationDispute = ({
   dispute,
   currentTime,
 }: {
-  readonly dispute: MidgardValidationDisputeV1;
+  readonly dispute: MidgardValidationDispute;
   readonly currentTime: number;
 }): MidgardValidationDisputeWinner => {
-  if (dispute.version !== MIDGARD_VALIDATION_DISPUTE_V1_VERSION) {
+  if (dispute.version !== MIDGARD_VALIDATION_DISPUTE_VERSION) {
     throw new Error("Unsupported validation dispute version");
   }
   requireSafeUnsigned(currentTime, "currentTime");
@@ -300,17 +300,17 @@ export const selectMidgardValidationDisputeReveal = ({
   role,
   proofs,
 }: {
-  readonly dispute: MidgardValidationDisputeV1;
+  readonly dispute: MidgardValidationDispute;
   readonly role: "operator" | "challenger";
-  readonly proofs: readonly MidgardValidationTraceProofV1[];
+  readonly proofs: readonly MidgardValidationTraceProof[];
 }):
   | {
       readonly type: "revealOperator";
-      readonly proof: MidgardValidationTraceProofV1;
+      readonly proof: MidgardValidationTraceProof;
     }
   | {
       readonly type: "revealChallenger";
-      readonly proof: MidgardValidationTraceProofV1;
+      readonly proof: MidgardValidationTraceProof;
     }
   | {
       readonly type: "readyForOneStep";

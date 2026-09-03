@@ -1,19 +1,19 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCompactV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCompact,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -24,46 +24,46 @@ import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  applyZeroInputScriptsV1,
-  type ZeroInputContractsV1,
+  applyZeroInputScripts,
+  type ZeroInputContracts,
 } from "../src/zero-input/contracts-v1.js";
 import {
-  prepareZeroInputEvidenceV1,
-  ZERO_INPUT_CATEGORY_ID_V1,
+  prepareZeroInputEvidence,
+  ZERO_INPUT_CATEGORY_ID,
 } from "../src/zero-input/family-v1.js";
-import { submitZeroInputCancelV1 } from "../src/zero-input/submit-cancel-v1.js";
+import { submitZeroInputCancel } from "../src/zero-input/submit-cancel-v1.js";
 import {
-  submitZeroInputStep01AcceptedV1,
-  submitZeroInputStep01ForcedV1,
+  submitZeroInputStep01Accepted,
+  submitZeroInputStep01Forced,
 } from "../src/zero-input/submit-step-01-v1.js";
 import { submitZeroInputStep02V1 } from "../src/zero-input/submit-step-02-v1.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
-  l2TransactionSourceCborV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import { setupFraudulentBlockV1 } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
 const network = "Custom" as const;
 
 describe("zeroInput wrongful-rejection real lifecycle", () => {
   it("preserves the accepted-invalid Init to permanent-mint lifecycle", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -71,7 +71,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyZeroInputScriptsV1({
+    const applied = applyZeroInputScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -81,7 +81,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
         harness.contracts.fieldPreimageCertificate.policyId,
       hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
     });
-    const contracts: ZeroInputContractsV1 = {
+    const contracts: ZeroInputContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -100,8 +100,8 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     );
     const category = catalogue.categories.zeroInput;
     const nativeTx = makeNativeTx({ spendInputCbors: [], fee: 0n });
-    const transactionId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compact = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const transactionId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compact = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -121,21 +121,20 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
       catalogue,
       fixture: { transactionsRoot, l2TransactionCount: 1n },
     });
-    const inputField = encodeMidgardFieldPreimageV1([]);
-    const evidence = prepareZeroInputEvidenceV1({
-      finding: { subject: acceptedVerdictSubjectV1(transactionId) },
+    const inputField = encodeMidgardFieldPreimage([]);
+    const evidence = prepareZeroInputEvidence({
+      finding: { subject: acceptedVerdictSubject(transactionId) },
       inputFieldPreimage: inputField,
-      committedFieldHashHex:
-        midgardFieldCommitmentV1(inputField).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(inputField).toString("hex"),
     });
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 0,
       anchorTxId: transactionId,
       nativeTxCompactCbor: compact.toString("hex"),
@@ -144,7 +143,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       publish: true,
       label: "zero input accepted field",
     });
-    await publishFaultProofFieldCarriageV1({
+    await publishFaultProofFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -191,7 +190,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     if (threadUtxo === undefined)
       throw new Error("accepted Init thread absent");
     const bound = await captureEmulatorSubmission(harness.emulator, () =>
-      submitZeroInputStep01AcceptedV1({
+      submitZeroInputStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -239,7 +238,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
   }, 600_000);
 
   it("runs Init, both cancel boundaries, out-ref restart, forced contradiction, and permanent mint", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realZeroInput: true,
         realInputSetUniqueness: true,
@@ -252,7 +251,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyZeroInputScriptsV1({
+    const applied = applyZeroInputScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -262,7 +261,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
         harness.contracts.fieldPreimageCertificate.policyId,
       hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
     });
-    const contracts: ZeroInputContractsV1 = {
+    const contracts: ZeroInputContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -280,7 +279,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       harness.contracts.fraudProofs,
     );
     const category = catalogue.categories.zeroInput;
-    expect(category.categoryId).toBe(ZERO_INPUT_CATEGORY_ID_V1);
+    expect(category.categoryId).toBe(ZERO_INPUT_CATEGORY_ID);
     const credential = getAddressDetails(
       await harness.funderLucid.wallet().address(),
     ).paymentCredential;
@@ -293,18 +292,18 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
           harness.emulator.now() + 120_000,
         ) - 1,
     });
-    const inputItem = encodeMidgardSpendInputItemV1({
+    const inputItem = encodeMidgardSpendInputItem({
       txId: Buffer.from("77".repeat(32), "hex"),
       outputIndex: 0,
     });
-    const inputField = encodeMidgardFieldPreimageV1([inputItem]);
+    const inputField = encodeMidgardFieldPreimage([inputItem]);
     const submitted = makeNativeTx({ spendInputCbors: [inputItem], fee: 0n });
-    const invalid = adjudicateMidgardNativeTxFullV1Validity(
+    const invalid = adjudicateMidgardNativeTxFullValidity(
       submitted,
       "TxIsInvalid",
     );
-    const transactionId = computeMidgardNativeTxIdV1(invalid).toString("hex");
-    const proofSource = deriveMidgardNativeTxProofSourceV1(invalid);
+    const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
+    const proofSource = deriveMidgardNativeTxProofSource(invalid);
     const forcedTransaction = {
       tx_id: transactionId,
       source: {
@@ -320,7 +319,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -348,19 +347,18 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       catalogue,
       header,
     });
-    const evidence = prepareZeroInputEvidenceV1({
+    const evidence = prepareZeroInputEvidence({
       finding: {
-        subject: forcedVerdictSubjectV1({
+        subject: forcedVerdictSubject({
           transactionId,
           sourceKey,
           rejectionReason: "EmptyInputs",
         }),
       },
       inputFieldPreimage: inputField,
-      committedFieldHashHex:
-        midgardFieldCommitmentV1(inputField).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(inputField).toString("hex"),
     });
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 0,
       anchorTxId: transactionId,
       nativeTxCompactCbor: proofSource.compactCbor.toString("hex"),
@@ -369,7 +367,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       publish: true,
       label: "zero input forced field",
     });
-    await publishFaultProofFieldCarriageV1({
+    await publishFaultProofFieldCarriage({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
@@ -414,7 +412,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     };
     const bind = async (threadOutRef: string) => {
       const captured = await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputStep01ForcedV1({
+        submitZeroInputStep01Forced({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -432,7 +430,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     const cancelAtStep01 = await initialize();
     captures.push(
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputCancelV1({
+        submitZeroInputCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -447,7 +445,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
     const cancelAtStep02 = await bind(await initialize());
     captures.push(
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitZeroInputCancelV1({
+        submitZeroInputCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

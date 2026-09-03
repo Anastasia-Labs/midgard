@@ -14,7 +14,7 @@ const emptyIds = (): T2CandidateEventIds => ({
   withdrawals: [],
 });
 
-const headerFor = (overrides: Partial<SDK.HeaderV1> = {}): SDK.HeaderV1 => ({
+const headerFor = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -48,12 +48,12 @@ const resolve = async ({
   candidateIds,
   payload,
 }: {
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly candidateIds: T2CandidateEventIds;
-  readonly payload?: SDK.DaPayloadV1;
+  readonly payload?: SDK.DaPayload;
 }) =>
   Effect.runPromise(
-    SDK.hashBlockHeaderV1(header).pipe(
+    SDK.hashBlockHeader(header).pipe(
       Effect.flatMap((foreignHeaderHash) =>
         resolveT2ForeignEventEvidence({
           foreignHeaderHash,
@@ -66,7 +66,7 @@ const resolve = async ({
   );
 
 const oneDepositPayload = async (depositId: string) => {
-  const counts: SDK.DaPayloadCountsV1 = {
+  const counts: SDK.DaPayloadCounts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
     l2TransactionCount: 0n,
@@ -75,8 +75,8 @@ const oneDepositPayload = async (depositId: string) => {
     transitionStepCount: 0n,
     validationTraceCount: 0n,
   };
-  const draft: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const draft: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header: headerFor(),
@@ -109,7 +109,7 @@ const oneDepositPayload = async (depositId: string) => {
     totalEventCount: 1n,
     validationTraceCount: 0n,
   });
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   return {
     header,
     payload: {
@@ -119,7 +119,7 @@ const oneDepositPayload = async (depositId: string) => {
         header_hash: headerHash,
         header,
       },
-    } satisfies SDK.DaPayloadV1,
+    } satisfies SDK.DaPayload,
   };
 };
 

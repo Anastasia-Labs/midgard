@@ -17,25 +17,25 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type LinearFaultStepContractV1,
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
+  type LinearFaultStepContract,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
 } from "./linear-fault-family-v1.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
 import { excludeUtxo } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
-export const submitLinearFaultFinalizeV1 = async ({
+export const submitLinearFaultFinalize = async ({
   lucid,
   family,
   stepIndex,
@@ -57,7 +57,7 @@ export const submitLinearFaultFinalizeV1 = async ({
   readonly lucid: LucidEvolution;
   readonly family: string;
   readonly stepIndex: number;
-  readonly step: LinearFaultStepContractV1;
+  readonly step: LinearFaultStepContract;
   readonly computationThread: {
     readonly policyId: string;
     readonly mintingScript: NonNullable<UTxO["scriptRef"]>;
@@ -86,24 +86,24 @@ export const submitLinearFaultFinalizeV1 = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation: boolean;
 }) => {
-  const label = linearFaultStepLabelV1(family, stepIndex);
+  const label = linearFaultStepLabel(family, stepIndex);
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: step.spendingScriptHash,
     family,
     stepIndex,
   });
-  const threadBurn = witnessMintingPolicyCarriageV1({
+  const threadBurn = witnessMintingPolicyCarriage({
     script: computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${label} thread burn`,
   });
-  const proofMint = witnessMintingPolicyCarriageV1({
+  const proofMint = witnessMintingPolicyCarriage({
     script: fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${label} proof mint`,
@@ -208,20 +208,20 @@ export const submitLinearFaultFinalizeV1 = async ({
     throw new Error(`${label}: unresolved final layout`);
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: label,
         utxo: stepReference,
         expectedScript: step.spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-thread-burn`,
         utxo: witnessReferenceScripts?.computationThreadMint,
         expectedScript: computationThread.mintingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-proof-mint`,
         utxo: witnessReferenceScripts?.fraudProofMint,
         expectedScript: fraudProof.mintingScript,

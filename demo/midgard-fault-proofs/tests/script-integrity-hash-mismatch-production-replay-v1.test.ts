@@ -7,12 +7,12 @@ const { buildAuthentication } = vi.hoisted(() => ({
 vi.mock(
   "../src/script-integrity-hash-mismatch/retained-stage-three-v1.js",
   () => ({
-    buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1:
+    buildScriptIntegrityStageThreeAuthenticationFromRetainedDa:
       buildAuthentication,
   }),
 );
 
-import { detectScriptIntegrityHashMismatchCanonicalViolationsV1 } from "../src/script-integrity-hash-mismatch/production-replay-v1.js";
+import { detectScriptIntegrityHashMismatchCanonicalViolations } from "../src/script-integrity-hash-mismatch/production-replay-v1.js";
 
 const expectedDual =
   "6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8";
@@ -64,7 +64,7 @@ describe("scriptIntegrityHashMismatch canonical production replay", () => {
       .mockResolvedValueOnce(authentication("ff".repeat(32)))
       .mockResolvedValueOnce(authentication(expectedDual));
     await expect(
-      detectScriptIntegrityHashMismatchCanonicalViolationsV1(block()),
+      detectScriptIntegrityHashMismatchCanonicalViolations(block()),
     ).resolves.toMatchObject([
       { detectionId: expect.stringContaining(":accepted:0:") },
       { detectionId: expect.stringContaining(":forced:0:") },
@@ -74,7 +74,7 @@ describe("scriptIntegrityHashMismatch canonical production replay", () => {
   it("returns no detection after equality/polarity mutations", async () => {
     buildAuthentication.mockResolvedValue(authentication(expectedDual));
     await expect(
-      detectScriptIntegrityHashMismatchCanonicalViolationsV1(
+      detectScriptIntegrityHashMismatchCanonicalViolations(
         block({ forcedReason: "InvalidRange" }),
       ),
     ).resolves.toEqual([]);

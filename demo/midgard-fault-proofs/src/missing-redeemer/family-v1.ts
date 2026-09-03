@@ -1,35 +1,35 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardRedeemerWitnessItemV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  midgardFieldCommitmentV1,
-  selectMidgardFieldCarriageTierV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardRedeemerWitnessItem,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptPurposeLeaf,
+  midgardFieldCommitment,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const MISSING_REDEEMER_CATEGORY_V1 = "missingRedeemer" as const;
-export const MISSING_REDEEMER_CATEGORY_ID_V1 = "0000002e" as const;
-export const MISSING_REDEEMER_VIOLATION_ID_V1 = "redeemer-missing" as const;
-export const MISSING_REDEEMER_SCAN_BATCH_V1 = 16;
+export const MISSING_REDEEMER_CATEGORY = "missingRedeemer" as const;
+export const MISSING_REDEEMER_CATEGORY_ID = "0000002e" as const;
+export const MISSING_REDEEMER_VIOLATION_ID = "redeemer-missing" as const;
+export const MISSING_REDEEMER_SCAN_BATCH = 16;
 
-export type MissingRedeemerPurposeKindV1 = 0 | 1 | 2 | 3;
-export type MissingRedeemerPurposeSourceV1 = "witness" | "resolved-reference";
+export type MissingRedeemerPurposeKind = 0 | 1 | 2 | 3;
+export type MissingRedeemerPurposeSource = "witness" | "resolved-reference";
 
-export type AuthenticatedScriptPurposeV1 = Readonly<{
-  purposeKind: MissingRedeemerPurposeKindV1;
+export type AuthenticatedScriptPurpose = Readonly<{
+  purposeKind: MissingRedeemerPurposeKind;
   purposeIndex: number;
   scriptHashHex: string;
   subjectHex: string;
-  source: MissingRedeemerPurposeSourceV1;
+  source: MissingRedeemerPurposeSource;
   sourceIndex: number;
   sourceOriginKind: 0 | 1;
   sourceKeyHex: string;
@@ -41,15 +41,15 @@ export type AuthenticatedScriptPurposeV1 = Readonly<{
   workRootHex: string;
 }>;
 
-export type MissingRedeemerFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
-  purposeKind: MissingRedeemerPurposeKindV1;
+export type MissingRedeemerFinding = Readonly<{
+  subject: VerdictSubject;
+  purposeKind: MissingRedeemerPurposeKind;
   purposeIndex: number;
 }>;
 
-export type MissingRedeemerEvidenceV1 = MissingRedeemerFindingV1 &
+export type MissingRedeemerEvidence = MissingRedeemerFinding &
   Readonly<{
-    purpose: AuthenticatedScriptPurposeV1;
+    purpose: AuthenticatedScriptPurpose;
     fieldPreimageHex: string;
     fieldCommitmentHex: string;
     itemCount: number;
@@ -60,7 +60,7 @@ export type MissingRedeemerEvidenceV1 = MissingRedeemerFindingV1 &
   }>;
 
 const fail = (message: string): never => {
-  throw new Error(`${MISSING_REDEEMER_CATEGORY_V1}: ${message}`);
+  throw new Error(`${MISSING_REDEEMER_CATEGORY}: ${message}`);
 };
 
 const exactIndex = (value: number, label: string): number => {
@@ -69,18 +69,16 @@ const exactIndex = (value: number, label: string): number => {
   return value;
 };
 
-const purposeTag = (kind: MissingRedeemerPurposeKindV1): number =>
+const purposeTag = (kind: MissingRedeemerPurposeKind): number =>
   [0, 1, 3, 6][kind]!;
 
-export const classifyMissingRedeemerFindingV1 = (
-  finding: MissingRedeemerFindingV1,
-): MissingRedeemerFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyMissingRedeemerFinding = (
+  finding: MissingRedeemerFinding,
+): MissingRedeemerFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   exactIndex(finding.purposeIndex, "purpose index");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = finding.subject.rejection_reason;
     if (
       reason === null ||
@@ -91,8 +89,7 @@ export const classifyMissingRedeemerFindingV1 = (
     )
       return fail("typed reason/purpose coordinate changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity changed");
@@ -101,11 +98,11 @@ export const classifyMissingRedeemerFindingV1 = (
 };
 
 const purposeKey = (
-  purpose: Pick<AuthenticatedScriptPurposeV1, "purposeKind" | "purposeIndex">,
+  purpose: Pick<AuthenticatedScriptPurpose, "purposeKind" | "purposeIndex">,
 ): string =>
   `${purpose.purposeKind.toString()}:${purpose.purposeIndex.toString()}`;
 
-const authenticatePurpose = (purpose: AuthenticatedScriptPurposeV1): string => {
+const authenticatePurpose = (purpose: AuthenticatedScriptPurpose): string => {
   exactIndex(purpose.purposeIndex, "frontier purpose index");
   if (!/^[0-9a-f]{56}$/u.test(purpose.scriptHashHex))
     return fail("frontier script hash is malformed");
@@ -140,7 +137,7 @@ const authenticatePurpose = (purpose: AuthenticatedScriptPurposeV1): string => {
             )
           )
             return fail("inline source key/index changed");
-          return hashMidgardInlineScriptSourceLeafV1({
+          return hashMidgardInlineScriptSourceLeaf({
             sourceIndex: BigInt(purpose.sourceIndex),
             scriptLanguageTag: purpose.sourceLanguageTag,
             scriptHash: Buffer.from(purpose.scriptHashHex, "hex"),
@@ -148,7 +145,7 @@ const authenticatePurpose = (purpose: AuthenticatedScriptPurposeV1): string => {
             itemCommitment: Buffer.from(purpose.sourceItemCommitmentHex, "hex"),
           });
         })()
-      : hashMidgardReferenceScriptSourceLeafV1({
+      : hashMidgardReferenceScriptSourceLeaf({
           sourceKey: Buffer.from(purpose.sourceKeyHex, "hex"),
           scriptLanguageTag: purpose.sourceLanguageTag,
           scriptHash: Buffer.from(purpose.scriptHashHex, "hex"),
@@ -157,7 +154,7 @@ const authenticatePurpose = (purpose: AuthenticatedScriptPurposeV1): string => {
         });
   if (sourceLeaf.toString("hex") !== purpose.sourceLeafHashHex)
     return fail("selected source descriptor/leaf changed");
-  return hashMidgardScriptPurposeLeafV1({
+  return hashMidgardScriptPurposeLeaf({
     purposeKind: purpose.purposeKind,
     purposeIndex: BigInt(purpose.purposeIndex),
     scriptHash: Buffer.from(purpose.scriptHashHex, "hex"),
@@ -166,32 +163,30 @@ const authenticatePurpose = (purpose: AuthenticatedScriptPurposeV1): string => {
 };
 
 /** Consumes one retained stage-10 authenticated purpose and every field-8 item. */
-export const prepareMissingRedeemerEvidenceV1 = ({
+export const prepareMissingRedeemerEvidence = ({
   finding: rawFinding,
   authenticatedPurpose,
   redeemerFieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: MissingRedeemerFindingV1;
-  readonly authenticatedPurpose: AuthenticatedScriptPurposeV1;
+  readonly finding: MissingRedeemerFinding;
+  readonly authenticatedPurpose: AuthenticatedScriptPurpose;
   readonly redeemerFieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): MissingRedeemerEvidenceV1 => {
-  const finding = classifyMissingRedeemerFindingV1(rawFinding);
+}): MissingRedeemerEvidence => {
+  const finding = classifyMissingRedeemerFinding(rawFinding);
   authenticatePurpose(authenticatedPurpose);
   if (purposeKey(authenticatedPurpose) !== purposeKey(finding))
     return fail("target differs from the authenticated stage-10 purpose");
-  const actual = midgardFieldCommitmentV1(redeemerFieldPreimage).toString(
-    "hex",
-  );
+  const actual = midgardFieldCommitment(redeemerFieldPreimage).toString("hex");
   if (actual !== committedFieldHashHex)
     return fail("retained redeemer field changed commitment");
-  const items = decodeMidgardFieldPreimageV1(redeemerFieldPreimage);
+  const items = decodeMidgardFieldPreimage(redeemerFieldPreimage);
   const pointers: string[] = [];
   const checkpoints: { cursor: number; found: boolean }[] = [];
   let found = false;
   items.forEach((item, index) => {
-    const decoded = decodeMidgardRedeemerWitnessItemV1(item);
+    const decoded = decodeMidgardRedeemerWitnessItem(item);
     const pointer = `${purposeTag(finding.purposeKind).toString()}:${finding.purposeIndex.toString()}`;
     const actualTag = (
       {
@@ -208,7 +203,7 @@ export const prepareMissingRedeemerEvidenceV1 = ({
     pointers.push(actualPointer);
     if (actualPointer === pointer) found = true;
     if (
-      (index + 1) % MISSING_REDEEMER_SCAN_BATCH_V1 === 0 ||
+      (index + 1) % MISSING_REDEEMER_SCAN_BATCH === 0 ||
       index + 1 === items.length
     )
       checkpoints.push({ cursor: index + 1, found });
@@ -225,17 +220,17 @@ export const prepareMissingRedeemerEvidenceV1 = ({
       checkpoints.map((checkpoint) => Object.freeze(checkpoint)),
     ),
     redeemerMissing: !found,
-    carriage: selectMidgardFieldCarriageTierV1(redeemerFieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(redeemerFieldPreimage.length),
   });
 };
 
-export const missingRedeemerEvidenceClosesV1 = (
-  evidence: MissingRedeemerEvidenceV1,
+export const missingRedeemerEvidenceCloses = (
+  evidence: MissingRedeemerEvidence,
 ): boolean =>
-  terminalVerdictContradictionV1(evidence.subject, evidence.redeemerMissing);
+  terminalVerdictContradiction(evidence.subject, evidence.redeemerMissing);
 
-export const missingRedeemerEvidenceIdentityV1 = (
-  evidence: MissingRedeemerEvidenceV1,
+export const missingRedeemerEvidenceIdentity = (
+  evidence: MissingRedeemerEvidence,
 ): string =>
   [
     evidence.subject.transaction_id,

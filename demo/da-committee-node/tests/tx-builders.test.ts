@@ -137,12 +137,12 @@ const referenceScripts: DaAttestationReferenceScripts = {
 
 const baseAttestationDatum = (): SDK.DaAttestationDatum => ({
   header_hash: HEADER_HASH,
-  availability_commitment: SDK.buildDaAvailabilityCommitmentV1({
+  availability_commitment: SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash: HEADER_HASH,
     payload: Buffer.from("public retained DA"),
     bondOwner: "76".repeat(28),
-    responseGeometry: SDK.availabilityResponseGeometryV1({
+    responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 14_020,
       trancheByteLength: 4 * 1_024 * 1_024,
       maxTrancheCount: 16,

@@ -3,26 +3,26 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { compressDaPayloadZstd } from "../src/da-compression.js";
-import { wrapDaPayloadV1 } from "../src/da-payload-envelope.js";
+import { wrapDaPayload } from "../src/da-payload-envelope.js";
 import {
   canonicalCborArgumentSize,
   canonicalCborByteStringSize,
-  daPayloadEnvelopeV1EncodedSize,
-  daPayloadSubmitV1EncodedSize,
-  maxDaPayloadV1InnerBytes,
-  projectDaPayloadV1Sizes,
+  daPayloadEnvelopeEncodedSize,
+  daPayloadSubmitEncodedSize,
+  maxDaPayloadInnerBytes,
+  projectDaPayloadSizes,
   zstdCompressBound,
 } from "../src/da-payload-sizing.js";
 import {
-  DA_TRANSPORT_LIMITS_V1,
-  encodeDaPayloadSubmitRequestV1Cbor,
+  DA_TRANSPORT_LIMITS,
+  encodeDaPayloadSubmitRequestCbor,
 } from "../src/da-transport.js";
 
 const submitRequestBytes = (
   payloadBytes: Buffer,
   payloadSchemaVersion: 1,
 ): number =>
-  encodeDaPayloadSubmitRequestV1Cbor({
+  encodeDaPayloadSubmitRequestCbor({
     deploymentFingerprint: Buffer.alloc(32),
     headerHash: Buffer.alloc(28),
     payloadHash: Buffer.alloc(32),
@@ -54,15 +54,15 @@ describe("DA V1 payload sizing", () => {
   it("matches actual envelope and inline-request encoders", async () => {
     for (const innerLength of [1, 23, 24, 255, 256, 65_535, 65_536]) {
       const inner = Buffer.alloc(innerLength, 0x5a);
-      const identity = await wrapDaPayloadV1(inner, { mode: "identity" });
+      const identity = await wrapDaPayload(inner, { mode: "identity" });
       expect(identity.length).toBe(
-        daPayloadEnvelopeV1EncodedSize({
+        daPayloadEnvelopeEncodedSize({
           innerBytes: innerLength,
           bodyBytes: innerLength,
         }),
       );
       expect(submitRequestBytes(identity, 1)).toBe(
-        daPayloadSubmitV1EncodedSize({
+        daPayloadSubmitEncodedSize({
           payloadBytes: identity.length,
           payloadSchemaVersion: 1,
         }),
@@ -79,17 +79,17 @@ describe("DA V1 payload sizing", () => {
   });
 
   it("computes exact mode ceilings beneath the unchanged V1 frame cap", () => {
-    expect(maxDaPayloadV1InnerBytes("identity")).toBe(67_108_710);
-    expect(maxDaPayloadV1InnerBytes("zstd")).toBe(66_847_587);
+    expect(maxDaPayloadInnerBytes("identity")).toBe(67_108_710);
+    expect(maxDaPayloadInnerBytes("zstd")).toBe(66_847_587);
     for (const mode of ["identity", "zstd"] as const) {
-      const maximum = maxDaPayloadV1InnerBytes(mode);
-      const pass = projectDaPayloadV1Sizes(maximum, mode);
-      const fail = projectDaPayloadV1Sizes(maximum + 1, mode);
+      const maximum = maxDaPayloadInnerBytes(mode);
+      const pass = projectDaPayloadSizes(maximum, mode);
+      const fail = projectDaPayloadSizes(maximum + 1, mode);
       expect(pass.requestBytesUpperBound).toBe(
-        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        DA_TRANSPORT_LIMITS.maxPayloadBytes,
       );
       expect(fail.requestBytesUpperBound).toBeGreaterThan(
-        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        DA_TRANSPORT_LIMITS.maxPayloadBytes,
       );
     }
   });

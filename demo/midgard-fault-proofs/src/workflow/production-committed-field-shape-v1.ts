@@ -1,29 +1,29 @@
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import {
-  COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1,
+  COMMITTED_FIELD_SHAPE_VIOLATION_ID,
   CommittedFieldShapeStep02Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import type { CommittedFieldShapeContractsV1 } from "../committed-field-shape/contracts-v1.js";
+import type { CommittedFieldShapeContracts } from "../committed-field-shape/contracts-v1.js";
 import {
-  prepareCommittedFieldShapeFromCanonicalTxV1,
-  type PreparedCommittedFieldShapeV1,
+  prepareCommittedFieldShapeFromCanonicalTx,
+  type PreparedCommittedFieldShape,
 } from "../committed-field-shape/prepare-committed-field-shape-v1.js";
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import { submitCommittedFieldShapeStep01 } from "../committed-field-shape/submit-committed-field-shape-step-01.js";
 import { submitCommittedFieldShapeStep02 } from "../committed-field-shape/submit-committed-field-shape-step-02.js";
 import {
-  admitCanonicalEvidenceForProofBuildV1,
-  type CanonicalEvidenceBuilderInputV1,
+  admitCanonicalEvidenceForProofBuild,
+  type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  requireTransactionsRootMatchV1,
-  transactionSourceTrieItemV1,
+  requireTransactionsRootMatch,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
   type StateQueueMutationLease,
@@ -33,58 +33,58 @@ import {
 import type { ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_COMMITTED_FIELD_SHAPE_ARTIFACT_V1 =
+export const COMMITTED_FIELD_SHAPE_ARTIFACT =
   "midgard-production-committed-field-shape-artifact-v1" as const;
 
-type ArtifactTransactionV1 = Readonly<{
+type ArtifactTransaction = Readonly<{
   nodeTxId: string;
   txCbor: string;
   l2TransactionSourceCbor: string;
 }>;
 
-export type ProductionCommittedFieldShapeArtifactV1 = JournalJsonObjectV1 & {
-  readonly schemaVersion: typeof PRODUCTION_COMMITTED_FIELD_SHAPE_ARTIFACT_V1;
+export type CommittedFieldShapeArtifact = JournalJsonObject & {
+  readonly schemaVersion: typeof COMMITTED_FIELD_SHAPE_ARTIFACT;
   readonly headerHash: string;
   readonly committedTransactionsRoot: string;
   readonly l2TransactionCount: number;
@@ -92,7 +92,7 @@ export type ProductionCommittedFieldShapeArtifactV1 = JournalJsonObjectV1 & {
   readonly selectedTransactionIndex: number;
   readonly selectedFieldIndex: number;
   readonly txMembershipProofCbor: string;
-  readonly transactions: readonly ArtifactTransactionV1[];
+  readonly transactions: readonly ArtifactTransaction[];
 };
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -159,12 +159,10 @@ const artifactFields = [
   "transactions",
 ] as const;
 
-const parseArtifact = (
-  value: unknown,
-): ProductionCommittedFieldShapeArtifactV1 => {
+const parseArtifact = (value: unknown): CommittedFieldShapeArtifact => {
   const artifact = record(value, "committed-field-shape artifact");
   exactKeys(artifact, artifactFields, "committed-field-shape artifact");
-  if (artifact.schemaVersion !== PRODUCTION_COMMITTED_FIELD_SHAPE_ARTIFACT_V1) {
+  if (artifact.schemaVersion !== COMMITTED_FIELD_SHAPE_ARTIFACT) {
     throw new Error("committed-field-shape artifact version changed");
   }
   if (
@@ -213,7 +211,7 @@ const parseArtifact = (
     );
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_COMMITTED_FIELD_SHAPE_ARTIFACT_V1,
+    schemaVersion: COMMITTED_FIELD_SHAPE_ARTIFACT,
     headerHash: canonicalHex(
       artifact.headerHash,
       HEX_28,
@@ -247,29 +245,29 @@ const parseArtifact = (
   });
 };
 
-type AdmittedCommittedFieldShapeArtifactV1 = Readonly<{
-  artifact: ProductionCommittedFieldShapeArtifactV1;
-  prepared: PreparedCommittedFieldShapeV1;
+type AdmittedCommittedFieldShapeArtifact = Readonly<{
+  artifact: CommittedFieldShapeArtifact;
+  prepared: PreparedCommittedFieldShape;
   txInclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
 }>;
 
 /** Strictly reopens every source leaf and reproduces the selected proof. */
-export const admitProductionCommittedFieldShapeArtifactV1 = async (
+export const admitCommittedFieldShapeArtifact = async (
   value: unknown,
-): Promise<AdmittedCommittedFieldShapeArtifactV1> => {
+): Promise<AdmittedCommittedFieldShapeArtifact> => {
   const artifact = parseArtifact(value);
   const decoded = await Promise.all(
     artifact.transactions.map((transaction) =>
       decodeTransactionMaterial(transaction),
     ),
   );
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   if (trie.root !== artifact.transactionsPhasRoot) {
     throw new Error(
       "committed-field-shape artifact transactions PHAS root changed",
     );
   }
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: trie.root,
     expectedTransactionsRoot: artifact.committedTransactionsRoot,
     count: BigInt(artifact.l2TransactionCount),
@@ -288,13 +286,13 @@ export const admitProductionCommittedFieldShapeArtifactV1 = async (
       "committed-field-shape transaction proof differs from leaf re-derivation",
     );
   }
-  const canonical = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const canonical = decodeMidgardNativeTxFullFromCanonicalCbor(
     Buffer.from(
       artifact.transactions[artifact.selectedTransactionIndex]!.txCbor,
       "hex",
     ),
   );
-  const prepared = prepareCommittedFieldShapeFromCanonicalTxV1({
+  const prepared = prepareCommittedFieldShapeFromCanonicalTx({
     tx: canonical,
     fieldIndex: artifact.selectedFieldIndex,
   });
@@ -320,7 +318,7 @@ const fieldIndexFromClassification = ({
   nodeTxId,
 }: {
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "committedFieldShape" };
   readonly transactionIndex: number;
@@ -328,14 +326,14 @@ const fieldIndexFromClassification = ({
 }): number => {
   if (
     classification.selected.violationId !==
-      COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1 ||
+      COMMITTED_FIELD_SHAPE_VIOLATION_ID ||
     classification.selected.position !== BigInt(transactionIndex)
   ) {
     throw new Error(
       "committed-field-shape classification does not bind its transaction position",
     );
   }
-  const prefix = `${COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1}:${transactionIndex.toString()}:${nodeTxId}:`;
+  const prefix = `${COMMITTED_FIELD_SHAPE_VIOLATION_ID}:${transactionIndex.toString()}:${nodeTxId}:`;
   if (!classification.selected.detectionId.startsWith(prefix)) {
     throw new Error(
       "committed-field-shape classification does not bind its canonical transaction",
@@ -350,16 +348,16 @@ const fieldIndexFromClassification = ({
   return Number(suffix);
 };
 
-const prepareArtifactFromEvidenceV1 = async ({
+const prepareArtifactFromEvidence = async ({
   evidence,
   classification,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "committedFieldShape" };
-}): Promise<ProductionCommittedFieldShapeArtifactV1> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+}): Promise<CommittedFieldShapeArtifact> => {
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   if (
     classification.headerHash !== admitted.headerHash ||
     classification.selected.position > BigInt(Number.MAX_SAFE_INTEGER)
@@ -383,13 +381,13 @@ const prepareArtifactFromEvidenceV1 = async ({
   const decoded = await Promise.all(
     admitted.transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
   if (trie.root !== evidence.reconstruction.rootData.transactions.phasRoot) {
     throw new Error(
       "committed-field-shape canonical source leaves differ from reconstructed DA",
     );
   }
-  await requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatch({
     sourceRoot: trie.root,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     count: BigInt(decoded.length),
@@ -399,8 +397,8 @@ const prepareArtifactFromEvidenceV1 = async ({
     Buffer.from(transaction.nodeTxId, "hex"),
     "committed-field-shape transaction",
   );
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_COMMITTED_FIELD_SHAPE_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: COMMITTED_FIELD_SHAPE_ARTIFACT,
     headerHash: admitted.headerHash,
     committedTransactionsRoot: admitted.expectedTransactionsRoot,
     l2TransactionCount: decoded.length,
@@ -413,43 +411,43 @@ const prepareArtifactFromEvidenceV1 = async ({
       txCbor: item.txCbor,
       l2TransactionSourceCbor: item.l2TransactionSourceCbor,
     })),
-  }) as ProductionCommittedFieldShapeArtifactV1;
-  await admitProductionCommittedFieldShapeArtifactV1(artifact);
+  }) as CommittedFieldShapeArtifact;
+  await admitCommittedFieldShapeArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type CommittedFieldShapeWorkflowReferenceScriptsV1 = Readonly<{
+export type CommittedFieldShapeWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-type BoundCommittedFieldShapeTransactionsConfigV1 = Readonly<{
+type BoundCommittedFieldShapeTransactionsConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"committedFieldShape">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"committedFieldShape">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  contracts: CommittedFieldShapeContractsV1;
-  category: FraudProofWorkflowDeploymentBindingV1<"committedFieldShape">["resolvedContracts"]["category"];
-  catalogue: FraudProofWorkflowDeploymentBindingV1<"committedFieldShape">["catalogue"];
-  referenceScripts: CommittedFieldShapeWorkflowReferenceScriptsV1;
+  contracts: CommittedFieldShapeContracts;
+  category: FraudProofWorkflowDeploymentBinding<"committedFieldShape">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"committedFieldShape">["catalogue"];
+  referenceScripts: CommittedFieldShapeWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
   deploymentInfo: unknown;
 }>;
 
-type CommittedFieldShapeBuilderSetV1 = Readonly<{
+type CommittedFieldShapeBuilderSet = Readonly<{
   init: typeof submitCommittedFieldShapeInit;
   step01: typeof submitCommittedFieldShapeStep01;
   step02: typeof submitCommittedFieldShapeStep02;
   remove: typeof submitRemoveFraudulentBlock;
 }>;
 
-const productionBuilders: CommittedFieldShapeBuilderSetV1 = Object.freeze({
+const productionBuilders: CommittedFieldShapeBuilderSet = Object.freeze({
   init: submitCommittedFieldShapeInit,
   step01: submitCommittedFieldShapeStep01,
   step02: submitCommittedFieldShapeStep02,
@@ -457,7 +455,7 @@ const productionBuilders: CommittedFieldShapeBuilderSetV1 = Object.freeze({
 });
 
 const requiredAction = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "committed-field-shape workflow action");
   if (
@@ -481,20 +479,19 @@ const stringField = (
   return value;
 };
 
-const createBoundTransactionPortV1 = ({
+const createBoundTransactionPort = ({
   config,
   builders,
 }: {
-  readonly config: BoundCommittedFieldShapeTransactionsConfigV1;
-  readonly builders: CommittedFieldShapeBuilderSetV1;
-}): ProductionLinearFamilyTransactionPortV1<"committedFieldShape"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  readonly config: BoundCommittedFieldShapeTransactionsConfig;
+  readonly builders: CommittedFieldShapeBuilderSet;
+}): LinearFamilyTransactionPort<"committedFieldShape"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "committedFieldShape",
   prepare: async ({ evidence, classification }) =>
-    await prepareArtifactFromEvidenceV1({ evidence, classification }),
+    await prepareArtifactFromEvidence({ evidence, classification }),
   capture: async ({ action, artifact }) => {
-    const admitted =
-      await admitProductionCommittedFieldShapeArtifactV1(artifact);
+    const admitted = await admitCommittedFieldShapeArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {
       throw new Error(
         "committed-field-shape artifact targets a different manifest-bound header",
@@ -502,7 +499,7 @@ const createBoundTransactionPortV1 = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.init({
             lucid: config.lucid,
@@ -523,7 +520,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step01({
             lucid: config.lucid,
@@ -546,7 +543,7 @@ const createBoundTransactionPortV1 = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step02({
             lucid: config.lucid,
@@ -575,7 +572,7 @@ const createBoundTransactionPortV1 = ({
       };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           await builders.remove({
             lucid: config.lucid,
@@ -590,7 +587,7 @@ const createBoundTransactionPortV1 = ({
             fraudProverRewardLovelace: config.fraudProverRewardLovelace,
             preSubmitBoundary: async (built) => {
               if (
-                !workflowTransactionInputOutRefsV1(built.signed).includes(
+                !workflowTransactionInputOutRefs(built.signed).includes(
                   nextRemovalOutRef,
                 )
               ) {
@@ -599,7 +596,7 @@ const createBoundTransactionPortV1 = ({
                 );
               }
               if (
-                !workflowTransactionReferenceInputOutRefsV1(
+                !workflowTransactionReferenceInputOutRefs(
                   built.signed,
                 ).includes(fraudProofOutRef)
               ) {
@@ -623,31 +620,31 @@ const createBoundTransactionPortV1 = ({
   },
 });
 
-export type ManifestBoundCommittedFieldShapeWorkflowConfigV1 = Readonly<{
+export type ManifestBoundCommittedFieldShapeWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: CommittedFieldShapeWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: CommittedFieldShapeWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundCommittedFieldShapeWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"committedFieldShape">;
-  l1: FraudProofFamilyL1ObservationPortV1<"committedFieldShape">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"committedFieldShape">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundCommittedFieldShapeWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"committedFieldShape">;
+  l1: FraudProofFamilyL1ObservationPort<"committedFieldShape">;
+  transactions: LinearFamilyTransactionPort<"committedFieldShape">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundCommittedFieldShapeWorkflowV1 = async (
-  config: ManifestBoundCommittedFieldShapeWorkflowConfigV1,
-): Promise<ManifestBoundCommittedFieldShapeWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundCommittedFieldShapeWorkflow = async (
+  config: ManifestBoundCommittedFieldShapeWorkflowConfig,
+): Promise<ManifestBoundCommittedFieldShapeWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -659,7 +656,7 @@ export const createManifestBoundCommittedFieldShapeWorkflowV1 = async (
       CommittedFieldShapeStep02Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -676,39 +673,40 @@ export const createManifestBoundCommittedFieldShapeWorkflowV1 = async (
       "committed-field-shape manifest binding omitted required contracts",
     );
   }
-  const references: CommittedFieldShapeWorkflowReferenceScriptsV1 =
-    Object.freeze({
+  const references: CommittedFieldShapeWorkflowReferenceScripts = Object.freeze(
+    {
       steps: Object.freeze([
-        requireManifestBoundReferenceScriptUtxoV1({
+        requireManifestBoundReferenceScriptUtxo({
           binding,
           contractName: "fraudProofCommittedFieldShape",
           utxo: config.referenceScripts.steps[0],
         }),
-        requireManifestBoundReferenceScriptUtxoV1({
+        requireManifestBoundReferenceScriptUtxo({
           binding,
           contractName: "fraudProofCommittedFieldShapeStep02",
           utxo: config.referenceScripts.steps[1],
         }),
       ] as const),
       witnesses: Object.freeze({
-        computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+        computationThreadMint: requireManifestBoundReferenceScriptUtxo({
           binding,
           contractName: "computationThreadMint",
           utxo: config.referenceScripts.witnesses.computationThreadMint,
         }),
-        fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+        fraudProofMint: requireManifestBoundReferenceScriptUtxo({
           binding,
           contractName: "fraudProofMint",
           utxo: config.referenceScripts.witnesses.fraudProofMint,
         }),
-        phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+        phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
           binding,
           contractName: "phasMembershipWithdraw",
           utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
         }),
       }),
-    });
-  const contracts: CommittedFieldShapeContractsV1 = Object.freeze({
+    },
+  );
+  const contracts: CommittedFieldShapeContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -722,13 +720,13 @@ export const createManifestBoundCommittedFieldShapeWorkflowV1 = async (
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const transactions = createBoundTransactionPortV1({
+  const transactions = createBoundTransactionPort({
     config: {
       lucid: config.lucid,
       blueprint: binding.blueprint,
@@ -752,38 +750,37 @@ export const createManifestBoundCommittedFieldShapeWorkflowV1 = async (
     binding,
     l1,
     transactions,
-    adapter: createProductionLinearFamilyWorkflowAdapterV1({
+    adapter: createLinearFamilyWorkflowAdapter({
       category: "committedFieldShape",
       l1,
       transactions,
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
     }),
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundCommittedFieldShapeWorkflowV1 = async ({
+export const runOrResumeManifestBoundCommittedFieldShapeWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundCommittedFieldShapeWorkflowV1;
+  readonly workflow: ManifestBoundCommittedFieldShapeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["committedFieldShape"],
     }),
@@ -794,7 +791,7 @@ export const runOrResumeManifestBoundCommittedFieldShapeWorkflowV1 = async ({
 };
 
 export const unsafeCreateCommittedFieldShapeTransactionPortForTest = (input: {
-  readonly config: BoundCommittedFieldShapeTransactionsConfigV1;
-  readonly builders: CommittedFieldShapeBuilderSetV1;
-}): ProductionLinearFamilyTransactionPortV1<"committedFieldShape"> =>
-  createBoundTransactionPortV1(input);
+  readonly config: BoundCommittedFieldShapeTransactionsConfig;
+  readonly builders: CommittedFieldShapeBuilderSet;
+}): LinearFamilyTransactionPort<"committedFieldShape"> =>
+  createBoundTransactionPort(input);

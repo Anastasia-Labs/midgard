@@ -1,9 +1,9 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 
-import type { WatcherNativeChainSyncRollForwardV1 } from "./native-chain-sync-v1.js";
+import type { WatcherNativeChainSyncRollForward } from "./native-chain-sync-v1.js";
 
-export const WATCHER_NATIVE_BLOCK_ADMISSION_V1_SCHEMA_VERSION =
+export const WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION =
   "midgard-watcher-native-block-admission-v1" as const;
 
 const BLOCK_TYPE_BY_PROTOCOL_MAJOR = Object.freeze({
@@ -21,8 +21,8 @@ const BLOCK_TYPE_BY_PROTOCOL_MAJOR = Object.freeze({
   "13": "8",
 } as const);
 
-export type WatcherNativeBlockAdmissionV1 = Readonly<{
-  schemaVersion: typeof WATCHER_NATIVE_BLOCK_ADMISSION_V1_SCHEMA_VERSION;
+export type WatcherNativeBlockAdmission = Readonly<{
+  schemaVersion: typeof WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION;
   blockType: string;
   protocolMajor: string;
   blockHash: string;
@@ -40,9 +40,9 @@ export type WatcherNativeBlockAdmissionV1 = Readonly<{
  * helper's metadata is treated only as a claim: CML re-derives the header,
  * protocol-era discriminator, block identity, ancestry and transaction order.
  */
-export const admitWatcherNativeRollForwardBlockV1 = (
-  event: WatcherNativeChainSyncRollForwardV1,
-): WatcherNativeBlockAdmissionV1 => {
+export const admitWatcherNativeRollForwardBlock = (
+  event: WatcherNativeChainSyncRollForward,
+): WatcherNativeBlockAdmission => {
   let block: CML.Block | undefined;
   let header: CML.Header | undefined;
   let headerBody: CML.HeaderBody | undefined;
@@ -123,7 +123,7 @@ export const admitWatcherNativeRollForwardBlockV1 = (
       }
     }
     return Object.freeze({
-      schemaVersion: WATCHER_NATIVE_BLOCK_ADMISSION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION,
       blockType,
       protocolMajor,
       blockHash,

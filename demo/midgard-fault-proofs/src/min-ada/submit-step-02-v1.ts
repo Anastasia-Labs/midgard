@@ -1,8 +1,8 @@
 /** Q27 step 02: adjudicate a produced output or authenticate post membership. */
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   MinAdaStep02DatumSchema,
   MinAdaStep02SpendRedeemerSchema,
   MinAdaStep03DatumSchema,
@@ -15,9 +15,9 @@ import {
   scriptRewardAddress,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerOutputMaterialV1,
-  MIDGARD_COINS_PER_UTXO_BYTE_V1,
-  outputMeetsMinAdaV1,
+  buildCanonicalMidgardLedgerOutputMaterial,
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
@@ -29,21 +29,21 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
 } from "../proof-chunk-carriage.js";
 import {
@@ -55,15 +55,15 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
-  type MinAdaContractsV1,
+  type MinAdaContracts,
 } from "./contracts-v1.js";
-import type { PreparedMinAdaTxV1, PreparedMinAdaUtxoV1 } from "./prepare-v1.js";
+import type { PreparedMinAdaTx, PreparedMinAdaUtxo } from "./prepare-v1.js";
 
 type State = NonNullable<Data.Static<typeof MinAdaStep02DatumSchema>["data"]>;
 type Step02Datum = Data.Static<typeof MinAdaStep02DatumSchema>;
@@ -99,13 +99,13 @@ const requireStep02 = async ({
   threadOutRef,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MinAdaContractsV1;
+  readonly contracts: MinAdaContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -113,7 +113,7 @@ const requireStep02 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
     schema: Step02Datum,
@@ -140,18 +140,18 @@ export const submitMinAdaTxStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MinAdaContractsV1;
+  readonly contracts: MinAdaContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedMinAdaTxV1;
+  readonly prepared: PreparedMinAdaTx;
   readonly publishCarriage?: boolean;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly yieldReferenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const { stepIndex, threadUtxo, threadToken, state } = await requireStep02({
@@ -161,7 +161,7 @@ export const submitMinAdaTxStep02 = async ({
     signer,
     threadOutRef,
   });
-  const label = `${linearFaultStepLabelV1(FAMILY, stepIndex)} transaction`;
+  const label = `${linearFaultStepLabel(FAMILY, stepIndex)} transaction`;
   if (
     state.bad_tx_id !== prepared.badTxId ||
     state.post_utxo !== null ||
@@ -176,22 +176,22 @@ export const submitMinAdaTxStep02 = async ({
   if (item === undefined) {
     throw new Error(`${label}: bad output index is outside field 2`);
   }
-  const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+  const material = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: Number(prepared.badOutputIndex),
     outputCbor: Buffer.from(item, "hex"),
   });
   if (
     material.descriptorCbor.toString("hex") !== prepared.descriptorCbor ||
-    outputMeetsMinAdaV1(
-      MIDGARD_COINS_PER_UTXO_BYTE_V1,
+    outputMeetsMinAda(
+      MIDGARD_COINS_PER_UTXO_BYTE,
       BigInt(material.descriptor.totalLength),
       material.descriptor.lovelace,
     )
   ) {
     throw new Error(`${label}: selected output does not violate min-Ada`);
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: prepared.nativeTxCompactCbor,
     itemCbors: prepared.outputItemCbors.map((cbor) => Buffer.from(cbor, "hex")),
@@ -202,7 +202,7 @@ export const submitMinAdaTxStep02 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -210,19 +210,19 @@ export const submitMinAdaTxStep02 = async ({
       label: `${label} field 2`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
-  const yieldReference = requireLinearFaultReferenceScriptV1({
+  const yieldReference = requireLinearFaultReferenceScript({
     utxo: yieldReferenceScriptUtxo,
     expectedScriptHash: contracts.yields.tx.withdrawalScriptHash,
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -311,12 +311,12 @@ export const submitMinAdaTxStep02 = async ({
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const {
-    reachFraudProofPreSubmitBoundaryV1,
-    workflowReferenceScriptsUsedByTransactionV1,
+    reachFraudProofPreSubmitBoundary,
+    workflowReferenceScriptsUsedByTransaction,
   } = await import("../workflow/transaction-boundary-v1.js");
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -366,16 +366,16 @@ export const submitMinAdaUtxoStep02 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MinAdaContractsV1;
+  readonly contracts: MinAdaContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedMinAdaUtxoV1;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly prepared: PreparedMinAdaUtxo;
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly referenceScriptUtxo: UTxO;
   readonly yieldReferenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const { stepIndex, threadUtxo, threadToken, state } = await requireStep02({
@@ -385,7 +385,7 @@ export const submitMinAdaUtxoStep02 = async ({
     signer,
     threadOutRef,
   });
-  const label = `${linearFaultStepLabelV1(FAMILY, stepIndex)} post membership`;
+  const label = `${linearFaultStepLabel(FAMILY, stepIndex)} post membership`;
   if (
     state.bad_tx_id !== prepared.outRef.transactionId ||
     state.fault !== "MinAdaUtxo" ||
@@ -398,13 +398,13 @@ export const submitMinAdaUtxoStep02 = async ({
   ) {
     throw new Error(`${label}: prepared UTxO does not match thread state`);
   }
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
-  const yieldReference = requireLinearFaultReferenceScriptV1({
+  const yieldReference = requireLinearFaultReferenceScript({
     utxo: yieldReferenceScriptUtxo,
     expectedScriptHash: contracts.yields.utxo.withdrawalScriptHash,
     family: FAMILY,
@@ -422,7 +422,7 @@ export const submitMinAdaUtxoStep02 = async ({
     network,
     membershipScript,
   );
-  const membershipWitness = witnessWithdrawalValidatorCarriageV1({
+  const membershipWitness = witnessWithdrawalValidatorCarriage({
     script: membershipScript,
     referenceUtxo: carriedByChunks
       ? witnessReferenceScripts?.chunkedVerifyWithdraw
@@ -440,7 +440,7 @@ export const submitMinAdaUtxoStep02 = async ({
     chunks,
     label,
   });
-  const outRefKey = encodeMidgardSpendInputItemV1({
+  const outRefKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(prepared.outRef.transactionId, "hex"),
     outputIndex: Number(prepared.outRef.outputIndex),
   }).toString("hex");
@@ -587,12 +587,12 @@ export const submitMinAdaUtxoStep02 = async ({
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
   const {
-    reachFraudProofPreSubmitBoundaryV1,
-    workflowReferenceScriptsUsedByTransactionV1,
+    reachFraudProofPreSubmitBoundary,
+    workflowReferenceScriptsUsedByTransaction,
   } = await import("../workflow/transaction-boundary-v1.js");
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

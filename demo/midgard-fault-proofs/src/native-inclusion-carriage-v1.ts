@@ -25,7 +25,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
 } from "./proof-chunk-carriage.js";
 import {
@@ -38,23 +38,23 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 
-type NativeInclusionLayoutV1 = {
+type NativeInclusionLayout = {
   readonly input_index: bigint;
   readonly output_index: bigint;
   readonly hub_ref_input_index: bigint;
   readonly state_queue_node_ref_input_index: bigint;
 };
 
-export type PreparedNativeTxInclusionCarriageV1 = {
+export type PreparedNativeTxInclusionCarriage = {
   readonly referenceInputs: UTxO[];
-  readonly chunks: readonly PublishedProofChunkV1[];
+  readonly chunks: readonly PublishedProofChunk[];
   readonly redeemer: (
     ctx: RedeemerContext,
-    layout: NativeInclusionLayoutV1,
+    layout: NativeInclusionLayout,
   ) => NativeTxInclusionCarriage;
   readonly attachWithdrawal: (tx: TxBuilder) => TxBuilder;
   readonly referenceScriptCandidates: readonly {
@@ -64,7 +64,7 @@ export type PreparedNativeTxInclusionCarriageV1 = {
   }[];
 };
 
-export const prepareNativeTxInclusionCarriageV1 = ({
+export const prepareNativeTxInclusionCarriage = ({
   blueprint,
   network,
   txInclusion,
@@ -76,11 +76,11 @@ export const prepareNativeTxInclusionCarriageV1 = ({
   readonly blueprint: unknown;
   readonly network: Network;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly baseReferenceInputs: readonly UTxO[];
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly label: string;
-}): PreparedNativeTxInclusionCarriageV1 => {
+}): PreparedNativeTxInclusionCarriage => {
   const carriedByChunks = publishedProofChunks.length > 0;
   const phasMembershipScript: Script = {
     type: "PlutusV3",
@@ -93,7 +93,7 @@ export const prepareNativeTxInclusionCarriageV1 = ({
   const selectedReferenceUtxo = carriedByChunks
     ? witnessReferenceScripts?.chunkedVerifyWithdraw
     : witnessReferenceScripts?.phasMembershipWithdraw;
-  const witness = witnessWithdrawalValidatorCarriageV1({
+  const witness = witnessWithdrawalValidatorCarriage({
     script: selectedScript,
     referenceUtxo: selectedReferenceUtxo,
     label: `${label} ${carriedByChunks ? "chunked verify" : "PHAS membership"}`,

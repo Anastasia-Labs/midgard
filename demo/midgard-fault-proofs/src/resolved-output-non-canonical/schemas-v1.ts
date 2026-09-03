@@ -1,43 +1,43 @@
 import {
-  BoundedItemChunkProofV1Schema,
+  BoundedItemChunkProofSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   MembershipCarriageSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ResolvedOutputVerdictSubjectV1Schema = Data.Object({
+export const ResolvedOutputVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const ResolvedOutputBoundInputV1Schema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectV1Schema,
+export const ResolvedOutputBoundInputSchema = Data.Object({
+  subject: ResolvedOutputVerdictSubjectSchema,
   source_kind: Data.Integer(),
   input_index: Data.Integer(),
   prior_root: Data.Bytes(),
 });
-export const ResolvedOutputAuthenticatedOutRefV1Schema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectV1Schema,
+export const ResolvedOutputAuthenticatedOutRefSchema = Data.Object({
+  subject: ResolvedOutputVerdictSubjectSchema,
   prior_root: Data.Bytes(),
   out_ref: OutputReferenceSchema,
 });
-export const ResolvedOutputCanonicalVerdictV1Schema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectV1Schema,
+export const ResolvedOutputCanonicalVerdictSchema = Data.Object({
+  subject: ResolvedOutputVerdictSubjectSchema,
   output_is_non_canonical: Data.Boolean(),
 });
 const PeakSchema = Data.Object({ height: Data.Integer(), hash: Data.Bytes() });
-export const ResolvedOutputScanControlV1Schema = Data.Object({
+export const ResolvedOutputScanControlSchema = Data.Object({
   version: Data.Integer(),
   stage: Data.Integer(),
   cursor: Data.Integer(),
@@ -62,12 +62,12 @@ export const ResolvedOutputScanControlV1Schema = Data.Object({
   reference_script_offset: Data.Integer(),
   reference_script_length: Data.Integer(),
 });
-export const ResolvedOutputReconstructionV1Schema = Data.Object({
-  subject: ResolvedOutputVerdictSubjectV1Schema,
+export const ResolvedOutputReconstructionSchema = Data.Object({
+  subject: ResolvedOutputVerdictSubjectSchema,
   descriptor_cbor: Data.Bytes(),
-  control: ResolvedOutputScanControlV1Schema,
+  control: ResolvedOutputScanControlSchema,
 });
-export const ResolvedOutputStep01SourceV1Schema = Data.Enum([
+export const ResolvedOutputStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -75,69 +75,74 @@ export const ResolvedOutputStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const ResolvedOutputStep01ArgsV1Schema = Data.Object({
-  source: ResolvedOutputStep01SourceV1Schema,
+export const ResolvedOutputStep01ArgsSchema = Data.Object({
+  source: ResolvedOutputStep01SourceSchema,
   source_kind: Data.Integer(),
   input_index: Data.Integer(),
 });
-export const ResolvedOutputStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ResolvedOutputStep01ArgsV1Schema);
-export const ResolvedOutputStep02DatumV1Schema = faultProofStepDatumSchema(
-  ResolvedOutputBoundInputV1Schema,
+export const ResolvedOutputStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  ResolvedOutputStep01ArgsSchema,
 );
-export const ResolvedOutputStep02ArgsV1Schema = Data.Object({
+export const ResolvedOutputStep02DatumSchema = faultProofStepDatumSchema(
+  ResolvedOutputBoundInputSchema,
+);
+export const ResolvedOutputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningV1Schema,
+  opening: FieldOpeningSchema,
 });
-export const ResolvedOutputStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ResolvedOutputStep02ArgsV1Schema);
-export const ResolvedOutputStep03DatumV1Schema = faultProofStepDatumSchema(
-  ResolvedOutputAuthenticatedOutRefV1Schema,
+export const ResolvedOutputStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  ResolvedOutputStep02ArgsSchema,
 );
-export const ResolvedOutputStep03ArgsV1Schema = Data.Object({
+export const ResolvedOutputStep03DatumSchema = faultProofStepDatumSchema(
+  ResolvedOutputAuthenticatedOutRefSchema,
+);
+export const ResolvedOutputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   descriptor_cbor: Data.Bytes(),
   membership: MembershipCarriageSchema,
 });
-export const ResolvedOutputStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ResolvedOutputStep03ArgsV1Schema);
-export const ResolvedOutputStep04DatumV1Schema = faultProofStepDatumSchema(
-  ResolvedOutputReconstructionV1Schema,
+export const ResolvedOutputStep03RedeemerSchema = faultProofStepRedeemerSchema(
+  ResolvedOutputStep03ArgsSchema,
 );
-export const ResolvedOutputStep04ActionV1Schema = Data.Enum([
+export const ResolvedOutputStep04DatumSchema = faultProofStepDatumSchema(
+  ResolvedOutputReconstructionSchema,
+);
+export const ResolvedOutputStep04ActionSchema = Data.Enum([
   Data.Object({
     Advance: Data.Object({
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
+      chunk_proof: BoundedItemChunkProofSchema,
+      next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
     }),
   }),
   Data.Literal("FinalizeCanonical"),
 ]);
-export const ResolvedOutputStep04ArgsV1Schema = Data.Object({
+export const ResolvedOutputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  action: ResolvedOutputStep04ActionV1Schema,
+  action: ResolvedOutputStep04ActionSchema,
 });
-export const ResolvedOutputStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ResolvedOutputStep04ArgsV1Schema);
-export const ResolvedOutputStep05DatumV1Schema = faultProofStepDatumSchema(
-  ResolvedOutputCanonicalVerdictV1Schema,
+export const ResolvedOutputStep04RedeemerSchema = faultProofStepRedeemerSchema(
+  ResolvedOutputStep04ArgsSchema,
 );
-export const ResolvedOutputStep05ArgsV1Schema = Data.Object({
+export const ResolvedOutputStep05DatumSchema = faultProofStepDatumSchema(
+  ResolvedOutputCanonicalVerdictSchema,
+);
+export const ResolvedOutputStep05ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
-export const ResolvedOutputStep05RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ResolvedOutputStep05ArgsV1Schema);
+export const ResolvedOutputStep05RedeemerSchema = faultProofStepRedeemerSchema(
+  ResolvedOutputStep05ArgsSchema,
+);

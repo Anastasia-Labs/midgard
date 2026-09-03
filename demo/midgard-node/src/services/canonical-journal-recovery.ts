@@ -61,9 +61,9 @@ export const fetchCanonicalCommittedHeaders = Effect.gen(function* () {
     if (block.datum.key === "Empty") {
       continue;
     }
-    const header = yield* SDK.getHeaderV1FromStateQueueDatum(block.datum);
+    const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
     headers.push({
-      headerHash: Buffer.from(yield* SDK.hashBlockHeaderV1(header), "hex"),
+      headerHash: Buffer.from(yield* SDK.hashBlockHeader(header), "hex"),
       endTimeMs: Number(header.endTime),
     });
   }

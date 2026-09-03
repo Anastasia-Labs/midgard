@@ -11,25 +11,25 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import { initialUnusedScriptWitnessReverseScanV1 } from "./checkpoint-v1.js";
-import type { UnusedScriptWitnessContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import { initialUnusedScriptWitnessReverseScan } from "./checkpoint-v1.js";
+import type { UnusedScriptWitnessContracts } from "./contracts-v1.js";
 import {
-  UnusedScriptAuthenticatedWitnessV1Schema,
-  UnusedScriptStep03DatumV1Schema,
-  UnusedScriptStep03RedeemerV1Schema,
-  UnusedScriptStep04DatumV1Schema,
+  UnusedScriptAuthenticatedWitnessSchema,
+  UnusedScriptStep03DatumSchema,
+  UnusedScriptStep03RedeemerSchema,
+  UnusedScriptStep04DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "unused-script-witness";
-export const submitUnusedScriptWitnessStep03V1 = async ({
+export const submitUnusedScriptWitnessStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,16 +40,16 @@ export const submitUnusedScriptWitnessStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: UnusedScriptWitnessContractsV1;
+  contracts: UnusedScriptWitnessContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -57,26 +57,26 @@ export const submitUnusedScriptWitnessStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const source = requireLinearFaultStepStateV1<
-    Data.Static<typeof UnusedScriptAuthenticatedWitnessV1Schema>
+  const source = requireLinearFaultStepState<
+    Data.Static<typeof UnusedScriptAuthenticatedWitnessSchema>
   >({
     threadUtxo,
     signer,
-    schema: UnusedScriptStep03DatumV1Schema as never,
+    schema: UnusedScriptStep03DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
-  const nextState = initialUnusedScriptWitnessReverseScanV1(source);
+  const nextState = initialUnusedScriptWitnessReverseScan(source);
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    UnusedScriptStep04DatumV1Schema as never,
+    UnusedScriptStep04DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[3].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -95,11 +95,11 @@ export const submitUnusedScriptWitnessStep03V1 = async ({
       {
         Continue: [{ input_index: inputIndex, output_index: outputIndex }],
       } as never,
-      UnusedScriptStep03RedeemerV1Schema as never,
+      UnusedScriptStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

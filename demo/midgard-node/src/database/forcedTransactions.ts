@@ -1,9 +1,9 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
   asArray,
@@ -13,13 +13,13 @@ import {
   encodeCbor,
 } from "@al-ft/midgard-core/codec/cbor";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -39,7 +39,7 @@ export const tableName = "forced_transaction_utxos";
 const PROOF_MAX_CANONICAL_TRANSACTION_BYTES = 295_041;
 if (
   PROOF_MAX_CANONICAL_TRANSACTION_BYTES !==
-  MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+  MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes
 ) {
   throw new Error("forced-transaction SQL bound does not match canonical V1");
 }
@@ -83,11 +83,11 @@ export type Entry = {
   [Columns.FORCED_INCLUSION_VALUE]: Buffer;
   /**
    * The verdict's two-valued projection — see
-   * {@link midgardTxValidityOfVerdictV1}. The verdict itself is carried, arm
+   * {@link midgardTxValidityOfVerdict}. The verdict itself is carried, arm
    * and coordinates, by {@link Columns.FORCED_INCLUSION_VALUE}.
    */
   [Columns.OPERATOR_VALIDITY]: SDK.MidgardTxValidity;
-  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.NATIVE_TX_CBOR]: Buffer;
   [Columns.TRANSACTION_COMMITMENT]: Buffer;
   [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer;
@@ -97,52 +97,52 @@ export type Entry = {
   [Columns.STATUS]: Status;
 };
 
-export type ForcedInclusionValueV1Input = {
+export type ForcedInclusionValueInput = {
   readonly nativeTxCbor: Buffer;
-  readonly verdict: SDK.OperatorVerdictV1;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly verdict: SDK.OperatorVerdict;
+  readonly consensusProfile: MidgardConsensusProfile;
 };
 
 /**
- * The two-valued projection of an {@link SDK.OperatorVerdictV1} onto the
+ * The two-valued projection of an {@link SDK.OperatorVerdict} onto the
  * compact leaf's validity scalar, as the #640 forced-arm authoritativeness
  * predicate binds them: `ForcedTxValid` ⇔ validity code 0 (`TxIsValid`),
  * `ForcedTxInvalid { _ }` ⇔ validity code 1 (`TxIsInvalid`).
  *
  * `operator_validity` persists exactly this bit; the full verdict — arm and
  * subject coordinates — lives in `forced_inclusion_value`, the byte-exact
- * `ForcedInclusionTxV1` leaf the roots commit to.
+ * `ForcedInclusionTx` leaf the roots commit to.
  */
-export const midgardTxValidityOfVerdictV1 = (
-  verdict: SDK.OperatorVerdictV1,
+export const midgardTxValidityOfVerdict = (
+  verdict: SDK.OperatorVerdict,
 ): SDK.MidgardTxValidity =>
   verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid";
 
-export const FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION = 1n;
+export const FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION = 1n;
 if (
-  Number(FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION) !==
-  MIDGARD_CONSENSUS_PROFILE_V1.forcedTransactionJournalVersion
+  Number(FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION) !==
+  MIDGARD_CONSENSUS_PROFILE.forcedTransactionJournalVersion
 ) {
   throw new Error(
     "ForcedTransactionJournalMemberV1 version does not match the compiled consensus profile",
   );
 }
 
-export type ForcedTransactionJournalMemberV1 = {
+export type ForcedTransactionJournalMember = {
   readonly sourceValueCbor: Buffer;
   readonly canonicalTransactionCbor: Buffer;
   readonly programMaterialSidecarCbor: Buffer;
 };
 
-const FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS = [
+const FORCED_TRANSACTION_JOURNAL_MEMBER_FIELDS = [
   "sourceValueCbor",
   "canonicalTransactionCbor",
   "programMaterialSidecarCbor",
 ] as const;
 
-const exactForcedTransactionJournalMemberV1 = (
+const exactForcedTransactionJournalMember = (
   value: unknown,
-): ForcedTransactionJournalMemberV1 => {
+): ForcedTransactionJournalMember => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
       "ForcedTransactionJournalMemberV1 must be an exact three-field record",
@@ -155,12 +155,12 @@ const exactForcedTransactionJournalMemberV1 = (
   const keys = Reflect.ownKeys(value);
   if (
     keys.length !== Object.keys(value).length ||
-    keys.length !== FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS.length ||
+    keys.length !== FORCED_TRANSACTION_JOURNAL_MEMBER_FIELDS.length ||
     keys.some(
       (key) =>
         typeof key !== "string" ||
-        !FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS.includes(
-          key as (typeof FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS)[number],
+        !FORCED_TRANSACTION_JOURNAL_MEMBER_FIELDS.includes(
+          key as (typeof FORCED_TRANSACTION_JOURNAL_MEMBER_FIELDS)[number],
         ),
     )
   ) {
@@ -187,13 +187,13 @@ const exactForcedTransactionJournalMemberV1 = (
   };
 };
 
-const encodeExactForcedTransactionJournalMemberV1 = ({
+const encodeExactForcedTransactionJournalMember = ({
   sourceValueCbor,
   canonicalTransactionCbor,
   programMaterialSidecarCbor,
-}: ForcedTransactionJournalMemberV1): Buffer =>
+}: ForcedTransactionJournalMember): Buffer =>
   encodeCbor([
-    FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION,
+    FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION,
     sourceValueCbor,
     canonicalTransactionCbor,
     programMaterialSidecarCbor,
@@ -204,16 +204,16 @@ const encodeExactForcedTransactionJournalMemberV1 = ({
  * canonical preimage remain distinct so the publisher cannot omit
  * either after header construction.
  */
-export const encodeForcedTransactionJournalMemberV1 = (
-  value: ForcedTransactionJournalMemberV1,
+export const encodeForcedTransactionJournalMember = (
+  value: ForcedTransactionJournalMember,
 ): Buffer =>
-  encodeExactForcedTransactionJournalMemberV1(
-    exactForcedTransactionJournalMemberV1(value),
+  encodeExactForcedTransactionJournalMember(
+    exactForcedTransactionJournalMember(value),
   );
 
-export const decodeForcedTransactionJournalMemberV1 = (
+export const decodeForcedTransactionJournalMember = (
   bytes: Uint8Array,
-): ForcedTransactionJournalMemberV1 => {
+): ForcedTransactionJournalMember => {
   const fields = asArray(
     decodeSingleCbor(bytes),
     "forced_transaction_journal_member_v1",
@@ -221,13 +221,13 @@ export const decodeForcedTransactionJournalMemberV1 = (
   if (
     fields.length !== 4 ||
     asBigInt(fields[0], "forced_transaction_journal_member_v1.version") !==
-      FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION
+      FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION
   ) {
     throw new Error(
       "forced_transaction_journal_member_v1 must contain exact version 1 and three byte fields",
     );
   }
-  const decoded = exactForcedTransactionJournalMemberV1({
+  const decoded = exactForcedTransactionJournalMember({
     sourceValueCbor: asBytes(
       fields[1],
       "forced_transaction_journal_member_v1.source_value_cbor",
@@ -242,7 +242,7 @@ export const decodeForcedTransactionJournalMemberV1 = (
     ),
   });
   if (
-    !encodeExactForcedTransactionJournalMemberV1(decoded).equals(
+    !encodeExactForcedTransactionJournalMember(decoded).equals(
       Buffer.from(bytes),
     )
   ) {
@@ -316,22 +316,22 @@ const sameImmutablePayload = (left: Entry, right: Entry): boolean => {
   );
 };
 
-export const encodeForcedInclusionValueV1 = ({
+export const encodeForcedInclusionValue = ({
   nativeTxCbor,
   verdict,
   consensusProfile,
-}: ForcedInclusionValueV1Input): Effect.Effect<
+}: ForcedInclusionValueInput): Effect.Effect<
   {
     readonly txId: Buffer;
     readonly txCompact: Buffer;
     readonly transactionCommitment: Buffer;
-    readonly source: ReturnType<typeof deriveMidgardNativeTxProofSourceV1>;
+    readonly source: ReturnType<typeof deriveMidgardNativeTxProofSource>;
     readonly value: Buffer;
   },
   DatabaseError
 > =>
   Effect.gen(function* () {
-    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    if (!isMidgardConsensusProfile(consensusProfile)) {
       return yield* Effect.fail(
         new DatabaseError({
           table: tableName,
@@ -345,27 +345,27 @@ export const encodeForcedInclusionValueV1 = ({
       try: () => {
         // Admission runs on the user's bytes: submitted preimages must claim
         // TxIsValid (E_IS_VALID_FALSE_FORBIDDEN).
-        const violation = validateMidgardConsensusV1TxCbor(nativeTxCbor);
+        const violation = validateMidgardConsensusTxCbor(nativeTxCbor);
         if (violation !== null) {
           throw new Error(
             `${violation.code} ${violation.featureId}: ${violation.detail}`,
           );
         }
         const nativeTx =
-          decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
+          decodeMidgardNativeTxFullFromCanonicalCbor(nativeTxCbor);
         // The committed leaf's validity scalar is the operator's adjudication,
         // stamped from the verdict so the #640 forced-arm predicate
         // (`ForcedTxValid` ⇔ code 0, `ForcedTxInvalid { _ }` ⇔ code 1) holds
         // for every leaf this encoder can produce. `tx_id` hashes the body
         // only, so stamping never moves the transaction's identity.
-        const adjudicatedTx = adjudicateMidgardNativeTxFullV1Validity(
+        const adjudicatedTx = adjudicateMidgardNativeTxFullValidity(
           nativeTx,
           verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
         );
-        const txId = computeMidgardNativeTxIdV1(adjudicatedTx);
-        const source = deriveMidgardNativeTxProofSourceV1(adjudicatedTx);
+        const txId = computeMidgardNativeTxId(adjudicatedTx);
+        const source = deriveMidgardNativeTxProofSource(adjudicatedTx);
         const transactionCommitment =
-          computeMidgardNativeTxProofCommitmentV1(source);
+          computeMidgardNativeTxProofCommitment(source);
         return {
           txId,
           source,
@@ -380,7 +380,7 @@ export const encodeForcedInclusionValueV1 = ({
           cause,
         }),
     });
-    const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
+    const forcedInclusionTx: SDK.ForcedInclusionTx = {
       tx_id: material.txId.toString("hex"),
       source: {
         compact_cbor: material.source.compactCbor.toString("hex"),
@@ -395,7 +395,7 @@ export const encodeForcedInclusionValueV1 = ({
       try: () =>
         Buffer.from(
           aikenSerialisedPlutusDataCbor(
-            LucidData.to(forcedInclusionTx, SDK.ForcedInclusionTxV1),
+            LucidData.to(forcedInclusionTx, SDK.ForcedInclusionTx),
           ),
           "hex",
         ),
@@ -427,7 +427,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
             'TxIsValid',
             'TxIsInvalid'
 	          )),
-	          ${sql(Columns.CONSENSUS_PROFILE_ID)} TEXT NOT NULL CHECK (${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_V1_ID}),
+	          ${sql(Columns.CONSENSUS_PROFILE_ID)} TEXT NOT NULL CHECK (${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_ID}),
 	          ${sql(Columns.NATIVE_TX_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.NATIVE_TX_CBOR)}) <= 295041),
 	          ${sql(Columns.TRANSACTION_COMMITMENT)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.TRANSACTION_COMMITMENT)}) = 32),
 	          ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} BYTEA NOT NULL CHECK (octet_length(${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}) > 0),
@@ -552,7 +552,7 @@ export const setProofClassifications = (
               ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} = ${sha256(classification.programMaterialSidecarCbor)},
               updated_at = NOW()
             WHERE ${sql(Columns.TX_ORDER_ID)} = ${classification.txOrderId}
-              AND ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_V1_ID}
+              AND ${sql(Columns.CONSENSUS_PROFILE_ID)} = ${MIDGARD_CONSENSUS_PROFILE_ID}
             RETURNING ${sql(Columns.TX_ORDER_ID)}
           `.pipe(
             Effect.flatMap((rows) =>

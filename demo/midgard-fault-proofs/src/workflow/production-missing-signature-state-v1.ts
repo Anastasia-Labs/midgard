@@ -1,16 +1,16 @@
 import {
-  assertSecurityGradeEvidenceV1,
-  type EvidenceProvenanceV1,
+  assertSecurityGradeEvidence,
+  type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 
 import type {
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowObservationV1,
-  FraudProofWorkflowReconcileResultV1,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowObservation,
+  FraudProofWorkflowReconcileResult,
 } from "./orchestrator-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "./raw-l1-family-derivation-v1.js";
+import type { FraudProofRawL1FamilyStage } from "./raw-l1-family-derivation-v1.js";
 
-export const PRODUCTION_MISSING_SIGNATURE_ACTION_V1 =
+export const MISSING_SIGNATURE_ACTION =
   "midgard-production-missing-signature-action-v1" as const;
 
 const CATEGORY = "missingSignature" as const;
@@ -35,10 +35,10 @@ const admitStage = ({
   stage,
 }: {
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
-}): FraudProofRawL1FamilyStageV1 => {
-  const admitted = assertSecurityGradeEvidenceV1(provenance);
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
+}): FraudProofRawL1FamilyStage => {
+  const admitted = assertSecurityGradeEvidence(provenance);
   if (admitted.trustClass !== "authenticated_cardano_l1") {
     throw new Error(
       "missingSignature workflow observation is not authenticated Cardano L1",
@@ -73,8 +73,8 @@ const admitStage = ({
 
 const action = (
   actionId: string,
-  input: FraudProofWorkflowActionV1["input"],
-): FraudProofWorkflowActionV1 => Object.freeze({ actionId, input });
+  input: FraudProofWorkflowAction["input"],
+): FraudProofWorkflowAction => Object.freeze({ actionId, input });
 
 /**
  * Authenticated chain-state dispatch for missing-signature.
@@ -84,15 +84,15 @@ const action = (
  * durable action identity. The on-chain datum carries the authenticated field
  * cursor; the workflow never invents or journals a second cursor.
  */
-export const productionMissingSignatureObservationV1 = ({
+export const missingSignatureObservation = ({
   headerHash,
   provenance,
   stage,
 }: {
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
-}): FraudProofWorkflowObservationV1 => {
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
+}): FraudProofWorkflowObservation => {
   const admitted = admitStage({ headerHash, provenance, stage });
   if (admitted.kind === "removed") {
     return { kind: "completed", terminal: admitted.terminal };
@@ -101,7 +101,7 @@ export const productionMissingSignatureObservationV1 = ({
     return {
       kind: "action_required",
       action: action(`init:${admitted.stateQueueBlockOutRef}`, {
-        schemaVersion: PRODUCTION_MISSING_SIGNATURE_ACTION_V1,
+        schemaVersion: MISSING_SIGNATURE_ACTION,
         category: CATEGORY,
         stage: "init",
         stateQueueBlockOutRef: admitted.stateQueueBlockOutRef,
@@ -115,7 +115,7 @@ export const productionMissingSignatureObservationV1 = ({
       action: action(
         `${stageName}:${admitted.threadOutRef}:${admitted.stateQueueBlockOutRef}`,
         {
-          schemaVersion: PRODUCTION_MISSING_SIGNATURE_ACTION_V1,
+          schemaVersion: MISSING_SIGNATURE_ACTION,
           category: CATEGORY,
           stage: stageName,
           ordinal: admitted.step,
@@ -130,7 +130,7 @@ export const productionMissingSignatureObservationV1 = ({
     action: action(
       `remove:${admitted.nextRemovalOutRef}:${admitted.fraudProofOutRef}:${admitted.stateQueueBlockOutRef}`,
       {
-        schemaVersion: PRODUCTION_MISSING_SIGNATURE_ACTION_V1,
+        schemaVersion: MISSING_SIGNATURE_ACTION,
         category: CATEGORY,
         stage: "remove",
         fraudProofOutRef: admitted.fraudProofOutRef,
@@ -143,17 +143,17 @@ export const productionMissingSignatureObservationV1 = ({
   };
 };
 
-type ParsedActionV1 = Readonly<{
+type ParsedAction = Readonly<{
   stage: "init" | "remove" | `step_0${1 | 2 | 3 | 4}`;
   ordinal?: 1 | 2 | 3 | 4;
   inputOutRef: string;
   proofOutRef?: string;
 }>;
 
-const parsedAction = (action: FraudProofWorkflowActionV1): ParsedActionV1 => {
+const parsedAction = (action: FraudProofWorkflowAction): ParsedAction => {
   const input = action.input;
   if (
-    input.schemaVersion !== PRODUCTION_MISSING_SIGNATURE_ACTION_V1 ||
+    input.schemaVersion !== MISSING_SIGNATURE_ACTION ||
     input.category !== CATEGORY ||
     typeof input.stage !== "string"
   ) {
@@ -215,7 +215,7 @@ const parsedAction = (action: FraudProofWorkflowActionV1): ParsedActionV1 => {
     );
   }
   return {
-    stage: input.stage as ParsedActionV1["stage"],
+    stage: input.stage as ParsedAction["stage"],
     ordinal,
     inputOutRef: canonicalOutRef(
       input.threadOutRef,
@@ -229,8 +229,8 @@ const exactSuccessor = ({
   stage,
   txHash,
 }: {
-  readonly parsed: ParsedActionV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly parsed: ParsedAction;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly txHash: string;
 }): boolean => {
   if (parsed.stage === "init") {
@@ -276,11 +276,11 @@ const sameRequiredAction = ({
   actionId,
 }: {
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly actionId: string;
 }): boolean => {
-  const observed = productionMissingSignatureObservationV1({
+  const observed = missingSignatureObservation({
     headerHash,
     provenance,
     stage,
@@ -291,7 +291,7 @@ const sameRequiredAction = ({
 };
 
 /** Reconciles one durable action solely from authenticated Cardano L1 state. */
-export const reconcileProductionMissingSignatureActionV1 = async ({
+export const reconcileMissingSignatureAction = async ({
   headerHash,
   action,
   txHash,
@@ -300,12 +300,12 @@ export const reconcileProductionMissingSignatureActionV1 = async ({
   transactionConfirmed,
 }: {
   readonly headerHash: string;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly action: FraudProofWorkflowAction;
   readonly txHash?: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: FraudProofRawL1FamilyStageV1;
+  readonly provenance: EvidenceProvenance;
+  readonly stage: FraudProofRawL1FamilyStage;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
-}): Promise<FraudProofWorkflowReconcileResultV1> => {
+}): Promise<FraudProofWorkflowReconcileResult> => {
   const admittedStage = admitStage({ headerHash, provenance, stage });
   const parsed = parsedAction(action);
   if (txHash === undefined) {

@@ -1,7 +1,7 @@
 import { withDaRequestDeadline } from "@al-ft/midgard-core/da-request-deadline";
 import {
-  DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_PUBLIC_RETAINED_DA_PROTOCOLS,
+  DA_TRANSPORT_LIMITS,
   daRequestResponseProtocolId,
 } from "@al-ft/midgard-core/da-transport";
 import { noise } from "@chainsafe/libp2p-noise";
@@ -105,9 +105,8 @@ export class PublicRetainedDaListener {
       limits,
       accessPolicy: { kind: "any_noise_authenticated_peer" },
     });
-    const expectedProtocols = DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1.map(
-      (protocol) =>
-        daRequestResponseProtocolId(options.deploymentFingerprint, protocol),
+    const expectedProtocols = DA_PUBLIC_RETAINED_DA_PROTOCOLS.map((protocol) =>
+      daRequestResponseProtocolId(options.deploymentFingerprint, protocol),
     );
     this.handlers = new Map(
       expectedProtocols.map((protocolId) => {
@@ -165,7 +164,7 @@ export class PublicRetainedDaListener {
       streamMuxers: [
         yamux({
           maxInboundStreams: this.config.limits.maxStreamsPerPeer,
-          maxMessageSize: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+          maxMessageSize: DA_TRANSPORT_LIMITS.maxChunkBytes,
         }),
       ],
       // Public input is accepted only after Noise authentication; outbound and

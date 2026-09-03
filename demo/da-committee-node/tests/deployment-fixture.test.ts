@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  verifyFinalizedDeploymentManifestV1,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +26,7 @@ describe("DA deployment fixture", () => {
     const contracts = fixture.contracts as Record<string, unknown>;
 
     expect(Object.keys(contracts).sort()).toEqual(
-      [...DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES].sort(),
+      [...DEPLOYMENT_MANIFEST_CONTRACT_NAMES].sort(),
     );
   });
 
@@ -48,7 +48,7 @@ describe("DA deployment fixture", () => {
     const sourceContracts = fixture.contracts as Record<string, unknown>;
     const manifestContracts = built.contracts as Record<string, unknown>;
 
-    for (const contractName of DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES) {
+    for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
       const source = sourceContracts[contractName] as Record<string, unknown>;
       const manifest = manifestContracts[contractName] as Record<
         string,
@@ -182,7 +182,7 @@ describe("DA deployment fixture", () => {
     >;
 
     for (const contractName of Object.values(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     )) {
       expect(contracts[contractName]!.refScriptUTxO).toMatchObject({
         txHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
@@ -193,6 +193,6 @@ describe("DA deployment fixture", () => {
 
   it("produces a finalized manifest that passes canonical verification", async () => {
     const manifest = await readDaDeploymentFixture();
-    expect(() => verifyFinalizedDeploymentManifestV1(manifest)).not.toThrow();
+    expect(() => verifyFinalizedDeploymentManifest(manifest)).not.toThrow();
   });
 });

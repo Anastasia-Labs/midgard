@@ -1,16 +1,16 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   Proof,
@@ -21,34 +21,34 @@ import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  prepareProtectedOutputSignerMissingEvidenceV1,
-  PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1,
-  type ProtectedOutputSignerMissingContractsV1,
-  submitProtectedOutputSignerMissingCancelV1,
-  submitProtectedOutputSignerMissingStep01AcceptedV1,
-  submitProtectedOutputSignerMissingStep02V1,
-  submitProtectedOutputSignerMissingStep03V1,
-  submitProtectedOutputSignerMissingStep04V1,
-  submitProtectedOutputSignerMissingStep05V1,
+  prepareProtectedOutputSignerMissingEvidence,
+  PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
+  PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+  PROTECTED_OUTPUT_SIGNER_MISSING_ID,
+  type ProtectedOutputSignerMissingContracts,
+  submitProtectedOutputSignerMissingCancel,
+  submitProtectedOutputSignerMissingStep01Accepted,
+  submitProtectedOutputSignerMissingStep02,
+  submitProtectedOutputSignerMissingStep03,
+  submitProtectedOutputSignerMissingStep04,
+  submitProtectedOutputSignerMissingStep05,
 } from "../src/protected-output-signer-missing/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
-import { makeProtectedOutputSignerIsolatedEvaluatorV1 } from "./protected-output-signer-missing-isolated-evaluator.js";
+import { makeProtectedOutputSignerIsolatedEvaluator } from "./protected-output-signer-missing-isolated-evaluator.js";
 import { applyCompiledScript } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
 import {
   countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
-  setupFraudulentBlockV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -62,10 +62,10 @@ const firstStepDeploymentEntry = "fraudProofProtectedOutputSignerMissing";
 
 describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
   it("runs maximum-carriage evidence through cancel, restartable scan, mint and leased removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
       lucidOptions: {
-        evaluator: makeProtectedOutputSignerIsolatedEvaluatorV1(),
+        evaluator: makeProtectedOutputSignerIsolatedEvaluator(),
       },
     });
     if (process.env.MIDGARD_PRINT_FIT === "1")
@@ -75,7 +75,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1;
+    const titles = PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES;
     const step05 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles[4], [
         harness.contracts.fraudProof.policyId,
@@ -112,12 +112,12 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       ]),
     );
     const steps = [step01, step02, step03, step04, step05] as const;
-    const contracts: ProtectedOutputSignerMissingContractsV1 = {
+    const contracts: ProtectedOutputSignerMissingContracts = {
       steps: steps.map((step, index) => ({
         ...step,
         blueprintTitle: titles[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as ProtectedOutputSignerMissingContractsV1["steps"],
+      })) as unknown as ProtectedOutputSignerMissingContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -131,7 +131,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         protectedOutputSignerMissing: {
-          categoryId: PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1,
+          categoryId: PROTECTED_OUTPUT_SIGNER_MISSING_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -142,16 +142,16 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       address: Buffer.concat([Buffer.from([0x68]), credential]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
-    const certifiedWitnessCount = PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1;
+    const certifiedWitnessCount = PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES;
     expect(certifiedWitnessCount).toBeLessThanOrEqual(
-      PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1,
+      PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
     );
     const witnesses = Array.from(
       { length: certifiedWitnessCount },
       (_unused, index) => {
         const key = Buffer.alloc(32);
         key.writeUInt32BE(index + 1, 28);
-        return encodeMidgardAddressWitnessItemV1({
+        return encodeMidgardAddressWitnessItem({
           verificationKey: key,
           signature: Buffer.alloc(64, 0xff),
         });
@@ -163,10 +163,10 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       outputCbor: output,
       addrTxWitsPreimageCbor: encodeCbor(witnesses),
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
-    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompactV1(
-      deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
+    const witnessSetCompactCbor = encodeMidgardNativeTxWitnessSetCompact(
+      deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
     ).toString("hex");
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
@@ -187,7 +187,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const predecessor = await setupFraudulentBlockV1({
+    const predecessor = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -195,10 +195,10 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
       fixture: {
         transactionsRoot,
         l2TransactionCount: 1n,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
       },
     });
-    const targetStart = emulatorSuccessorHeaderStartV1({
+    const targetStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: predecessor.header.endTime,
       emulator: harness.emulator,
     });
@@ -228,10 +228,10 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     };
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info("protected-output-signer-missing:max:block-ready");
-    const evidence = prepareProtectedOutputSignerMissingEvidenceV1({
-      subject: acceptedVerdictSubjectV1(nativeTxId),
+    const evidence = prepareProtectedOutputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(nativeTxId),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(nativeTx),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
     });
     expect(evidence.witnessCarriage).toBe("Certified");
     expect(evidence.validSignerHashes).toEqual([]);
@@ -282,7 +282,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     };
     const cancelInit = await initThread();
     const cancellation = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingCancelV1({
+      submitProtectedOutputSignerMissingCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -303,7 +303,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep01AcceptedV1({
+      submitProtectedOutputSignerMissingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -324,7 +324,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info("protected-output-signer-missing:max:step01-ready");
     const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep02V1({
+      submitProtectedOutputSignerMissingStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -340,7 +340,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     if (process.env.MIDGARD_PRINT_FIT === "1")
       console.info("protected-output-signer-missing:max:step02-ready");
     const step03Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep03V1({
+      submitProtectedOutputSignerMissingStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -360,7 +360,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     let scanThreadOutRef = step03Result.result.nextThreadOutRef;
     for (;;) {
       const result = await captureEmulatorSubmission(harness.emulator, () =>
-        submitProtectedOutputSignerMissingStep04V1({
+        submitProtectedOutputSignerMissingStep04({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -385,7 +385,7 @@ describe("protectedOutputSignerMissing real-blueprint lifecycle", () => {
     }
     expect(scanResults).toHaveLength(10);
     const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep05V1({
+      submitProtectedOutputSignerMissingStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

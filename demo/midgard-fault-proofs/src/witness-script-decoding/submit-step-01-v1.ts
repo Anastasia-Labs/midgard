@@ -1,16 +1,16 @@
 import {
-  acceptedVerdictSubjectV1,
-  type ForcedInclusionTxV1,
-  forcedVerdictSubjectV1,
-  type HeaderV1,
+  acceptedVerdictSubject,
+  type ForcedInclusionTx,
+  forcedVerdictSubject,
+  type Header,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
-  type WitnessScriptDecodingBoundV1,
-  WitnessScriptDecodingStep01RedeemerV1Schema,
-  WitnessScriptDecodingStep02DatumV1Schema,
+  type WitnessScriptDecodingBound,
+  WitnessScriptDecodingStep01RedeemerSchema,
+  WitnessScriptDecodingStep02DatumSchema,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -20,21 +20,21 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultInitialDatumV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultInitialDatum,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "../missing-native-script-tx/contracts-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   WITNESS_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type WitnessScriptDecodingContractsV1,
+  type WitnessScriptDecodingContracts,
 } from "./contracts-v1.js";
 
 const boundState = ({
@@ -43,18 +43,18 @@ const boundState = ({
   scriptIndex,
   accusedClass,
 }: {
-  readonly subject: WitnessScriptDecodingBoundV1["subject"];
+  readonly subject: WitnessScriptDecodingBound["subject"];
   readonly witnessSetHash: string;
   readonly scriptIndex: bigint;
   readonly accusedClass: bigint;
-}): WitnessScriptDecodingBoundV1 => ({
+}): WitnessScriptDecodingBound => ({
   subject,
   witness_set_hash: witnessSetHash,
   script_index: scriptIndex,
   accused_class: accusedClass,
 });
 
-export const submitWitnessScriptDecodingStep01AcceptedV1 = async ({
+export const submitWitnessScriptDecodingStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -73,9 +73,9 @@ export const submitWitnessScriptDecodingStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Parameters<
-    typeof submitMissingNativeScriptTxBindingV1
+    typeof submitMissingNativeScriptTxBinding
   >[0]["network"];
-  readonly contracts: WitnessScriptDecodingContractsV1;
+  readonly contracts: WitnessScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -83,12 +83,12 @@ export const submitWitnessScriptDecodingStep01AcceptedV1 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly scriptIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   if (scriptIndex < 0n) throw new Error(`${FAMILY}: negative script index`);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -96,24 +96,24 @@ export const submitWitnessScriptDecodingStep01AcceptedV1 = async ({
     stepIndex: 0,
     threadOutRef,
   });
-  requireLinearFaultInitialDatumV1({ threadUtxo, signer, family: FAMILY });
+  requireLinearFaultInitialDatum({ threadUtxo, signer, family: FAMILY });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: boundState({
-        subject: acceptedVerdictSubjectV1(txInclusion.nativeTxId),
+        subject: acceptedVerdictSubject(txInclusion.nativeTxId),
         witnessSetHash: txInclusion.nativeTx.witness_set_hash,
         scriptIndex,
         accusedClass: -1n,
       }),
     } as never,
-    WitnessScriptDecodingStep02DatumV1Schema as never,
+    WitnessScriptDecodingStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
-    contracts: contracts as unknown as MissingNativeScriptTxContractsV1,
+    contracts: contracts as unknown as MissingNativeScriptTxContracts,
     signer,
     stepIndex: 0,
     threadUtxo,
@@ -121,7 +121,7 @@ export const submitWitnessScriptDecodingStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum,
-    spendRedeemerSchema: WitnessScriptDecodingStep01RedeemerV1Schema,
+    spendRedeemerSchema: WitnessScriptDecodingStep01RedeemerSchema,
     wrapInclusionArgs: (args) => ({
       source: {
         AcceptedSource: {
@@ -138,7 +138,7 @@ export const submitWitnessScriptDecodingStep01AcceptedV1 = async ({
 };
 
 const accusedClassOf = (
-  reason: ForcedInclusionTxV1["verdict"],
+  reason: ForcedInclusionTx["verdict"],
   scriptIndex: bigint,
 ): bigint => {
   if (reason === "ForcedTxValid") return -1n;
@@ -163,7 +163,7 @@ const accusedClassOf = (
   throw new Error(`${FAMILY}: forced reason is outside family`);
 };
 
-export const submitWitnessScriptDecodingStep01ForcedV1 = async ({
+export const submitWitnessScriptDecodingStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -179,24 +179,21 @@ export const submitWitnessScriptDecodingStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WitnessScriptDecodingContractsV1;
+  readonly contracts: WitnessScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly header: HeaderV1;
-  readonly membership: RootMembershipProof<
-    OutputReference,
-    ForcedInclusionTxV1
-  >;
+  readonly header: Header;
+  readonly membership: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   readonly direction: bigint;
   readonly witnessSetHash: string;
   readonly scriptIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 0;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -204,11 +201,11 @@ export const submitWitnessScriptDecodingStep01ForcedV1 = async ({
     stepIndex,
     threadOutRef,
   });
-  requireLinearFaultInitialDatumV1({ threadUtxo, signer, family: FAMILY });
+  requireLinearFaultInitialDatum({ threadUtxo, signer, family: FAMILY });
   const verdict = membership.value.verdict;
   const rejectionReason =
     verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason;
-  const subject = forcedVerdictSubjectV1({
+  const subject = forcedVerdictSubject({
     transactionId: membership.value.tx_id,
     sourceKey: membership.key,
     rejectionReason,
@@ -226,9 +223,9 @@ export const submitWitnessScriptDecodingStep01ForcedV1 = async ({
         accusedClass: accusedClassOf(verdict, scriptIndex),
       }),
     } as never,
-    WitnessScriptDecodingStep02DatumV1Schema as never,
+    WitnessScriptDecodingStep02DatumSchema as never,
   );
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: FAMILY,
@@ -269,11 +266,11 @@ export const submitWitnessScriptDecodingStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      WitnessScriptDecodingStep01RedeemerV1Schema as never,
+      WitnessScriptDecodingStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

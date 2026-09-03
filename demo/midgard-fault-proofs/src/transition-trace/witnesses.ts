@@ -250,7 +250,7 @@ export const buildSourceMembershipProof = async ({
 
 /**
  * The raw forced-transaction leaf membership — the
- * `RootMembershipProof<OutputReference, ForcedInclusionTxV1>` shape itself,
+ * `RootMembershipProof<OutputReference, ForcedInclusionTx>` shape itself,
  * outside the `TransitionSourceMembershipProof` enum wrapper
  * `buildSourceMembershipProof` returns. The decoding-fault family's step-02
  * (`forced_membership`) consumes the leaf directly.
@@ -262,7 +262,7 @@ export const buildForcedTransactionLeafMembershipProof = async ({
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
 }): Promise<
-  SDK.RootMembershipProof<SDK.OutputReference, SDK.ForcedInclusionTxV1>
+  SDK.RootMembershipProof<SDK.OutputReference, SDK.ForcedInclusionTx>
 > => {
   const event = sourceEventOrThrow(reconstruction, eventKey);
   if (event.phase !== "ForcedTransaction") {
@@ -499,7 +499,7 @@ export type L2TransactionTransitionEvidence = {
 };
 
 export type AcceptedTransactionTransitionMismatchEvidence = {
-  readonly claim: SDK.ValidationClaimWitnessV1;
+  readonly claim: SDK.ValidationClaimWitness;
   readonly terminalAcceptanceWitnessCbor: string;
 };
 
@@ -719,7 +719,7 @@ export type OmittedDueL1EventEvidence =
       readonly txOrderId: SDK.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.OperatorVerdictV1;
+      readonly validityOverride: SDK.OperatorVerdict;
     };
 
 export const eventKeyFromOmittedEvidence = (
@@ -819,7 +819,7 @@ export type OutOfWindowSourceEventEvidence =
       readonly txOrderId: SDK.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.OperatorVerdictV1;
+      readonly validityOverride: SDK.OperatorVerdict;
     };
 
 const eventKeyFromOutOfWindowEvidence = (

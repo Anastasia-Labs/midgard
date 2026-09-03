@@ -1,36 +1,36 @@
 import {
-  hashMidgardCekBlsExpressionNodeV1,
-  hashMidgardCekSequenceNodeV1,
-  hashMidgardCekValueNodeV1,
-  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+  hashMidgardCekBlsExpressionNode,
+  hashMidgardCekSequenceNode,
+  hashMidgardCekValueNode,
+  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
 } from "@al-ft/midgard-core";
 import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
-  evaluateMidgardCekBlsFinalV1,
-  evaluateMidgardCekDirectBuiltinV1,
-  hashMidgardCekDirectValueWitnessV1,
-  hashMidgardCekRuntimeArgumentsV1,
-  type MidgardCekBlsExpressionWitnessV1,
-  type MidgardCekDirectValueWitnessV1,
-  type MidgardCekRuntimeValueWitnessV1,
-  verifyMidgardCekBlsFinalV1,
-  verifyMidgardCekBuiltinTypeFailureV1,
-  verifyMidgardCekDirectBuiltinFailureV1,
-  verifyMidgardCekDirectBuiltinV1,
+  evaluateMidgardCekBlsFinal,
+  evaluateMidgardCekDirectBuiltin,
+  hashMidgardCekDirectValueWitness,
+  hashMidgardCekRuntimeArguments,
+  type MidgardCekBlsExpressionWitness,
+  type MidgardCekDirectValueWitness,
+  type MidgardCekRuntimeValueWitness,
+  verifyMidgardCekBlsFinal,
+  verifyMidgardCekBuiltinTypeFailure,
+  verifyMidgardCekDirectBuiltin,
+  verifyMidgardCekDirectBuiltinFailure,
 } from "../src/cek-builtin.js";
 import {
-  decodeMidgardCekConstantWitnessV1,
-  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
-  midgardCekConstantWitnessFromUplcV1,
+  decodeMidgardCekConstantWitness,
+  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
+  midgardCekConstantWitnessFromUplc,
 } from "../src/cek-constant.js";
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
-const integer = (payloadHex: string): MidgardCekRuntimeValueWitnessV1 => ({
+const integer = (payloadHex: string): MidgardCekRuntimeValueWitness => ({
   kind: "constant",
   witness: {
     typeCbor: Buffer.from("9f00ff", "hex"),
@@ -38,7 +38,7 @@ const integer = (payloadHex: string): MidgardCekRuntimeValueWitnessV1 => ({
   },
 });
 
-const bytes = (payloadHex: string): MidgardCekRuntimeValueWitnessV1 => ({
+const bytes = (payloadHex: string): MidgardCekRuntimeValueWitness => ({
   kind: "constant",
   witness: {
     typeCbor: Buffer.from("9f01ff", "hex"),
@@ -48,10 +48,10 @@ const bytes = (payloadHex: string): MidgardCekRuntimeValueWitnessV1 => ({
 
 const builtinRoot = (
   tag: bigint,
-  arguments_: readonly MidgardCekRuntimeValueWitnessV1[],
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
 ): Uint8Array => {
-  const { root, count } = hashMidgardCekRuntimeArgumentsV1(arguments_);
-  return hashMidgardCekValueNodeV1({
+  const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
+  return hashMidgardCekValueNode({
     kind: "builtin",
     tag,
     forcesRemaining: 0n,
@@ -62,16 +62,16 @@ const builtinRoot = (
 
 describe("V1 builtin runtime type failures", () => {
   it("authenticates a closure supplied to addInteger", () => {
-    const arguments_: readonly MidgardCekRuntimeValueWitnessV1[] = [
+    const arguments_: readonly MidgardCekRuntimeValueWitness[] = [
       {
         kind: "lambda",
         body: hash(1),
-        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       },
       integer("01"),
     ];
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
+      verifyMidgardCekBuiltinTypeFailure(
         0n,
         builtinRoot(0n, arguments_),
         arguments_,
@@ -80,7 +80,7 @@ describe("V1 builtin runtime type failures", () => {
   });
 
   it("rejects an incongruent mkCons element type", () => {
-    const arguments_: readonly MidgardCekRuntimeValueWitnessV1[] = [
+    const arguments_: readonly MidgardCekRuntimeValueWitness[] = [
       bytes("4101"),
       {
         kind: "constant",
@@ -91,7 +91,7 @@ describe("V1 builtin runtime type failures", () => {
       },
     ];
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
+      verifyMidgardCekBuiltinTypeFailure(
         32n,
         builtinRoot(32n, arguments_),
         arguments_,
@@ -100,7 +100,7 @@ describe("V1 builtin runtime type failures", () => {
   });
 
   it("does not misclassify arbitrary control branches", () => {
-    const arguments_: readonly MidgardCekRuntimeValueWitnessV1[] = [
+    const arguments_: readonly MidgardCekRuntimeValueWitness[] = [
       {
         kind: "constant",
         witness: {
@@ -111,17 +111,17 @@ describe("V1 builtin runtime type failures", () => {
       {
         kind: "delay",
         body: hash(1),
-        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       },
       {
         kind: "constr",
         tag: 0n,
         valuesCount: 0n,
-        valuesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+        valuesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
       },
     ];
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
+      verifyMidgardCekBuiltinTypeFailure(
         26n,
         builtinRoot(26n, arguments_),
         arguments_,
@@ -131,13 +131,13 @@ describe("V1 builtin runtime type failures", () => {
 
   it("fails closed on a malformed or mismatched commitment", () => {
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(0n, hash(9), [
+      verifyMidgardCekBuiltinTypeFailure(0n, hash(9), [
         integer("01"),
         integer("02"),
       ]),
     ).toBe(false);
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(0n, hash(9), [
+      verifyMidgardCekBuiltinTypeFailure(0n, hash(9), [
         integer("1817"),
         integer("02"),
       ]),
@@ -145,15 +145,15 @@ describe("V1 builtin runtime type failures", () => {
   });
 });
 
-const direct = (constant: UPLCConst): MidgardCekDirectValueWitnessV1 => ({
+const direct = (constant: UPLCConst): MidgardCekDirectValueWitness => ({
   kind: "constant",
-  witness: midgardCekConstantWitnessFromUplcV1(constant),
+  witness: midgardCekConstantWitnessFromUplc(constant),
 });
 
-const directByteString = (byteLength: number): MidgardCekDirectValueWitnessV1 =>
+const directByteString = (byteLength: number): MidgardCekDirectValueWitness =>
   direct(UPLCConst.byteString(new DataB(Buffer.alloc(byteLength)).bytes));
 
-const directDataList = (count: number): MidgardCekDirectValueWitnessV1 =>
+const directDataList = (count: number): MidgardCekDirectValueWitness =>
   direct(
     UPLCConst.data(
       new DataList(Array.from({ length: count }, () => new DataI(0n))),
@@ -162,7 +162,7 @@ const directDataList = (count: number): MidgardCekDirectValueWitnessV1 =>
 
 const runtimeByteString = (
   byteLength: number,
-): MidgardCekRuntimeValueWitnessV1 => {
+): MidgardCekRuntimeValueWitness => {
   const value = directByteString(byteLength);
   if (value.kind !== "constant") throw new Error("expected a direct constant");
   return { kind: "constant", witness: value.witness };
@@ -170,19 +170,19 @@ const runtimeByteString = (
 
 const directBuiltinRoot = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
+  arguments_: readonly MidgardCekDirectValueWitness[],
 ): Uint8Array => {
-  let root: Uint8Array = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1;
+  let root: Uint8Array = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
   let count = 0n;
   for (const argument of arguments_) {
     count += 1n;
-    root = hashMidgardCekSequenceNodeV1({
-      head: hashMidgardCekDirectValueWitnessV1(argument),
+    root = hashMidgardCekSequenceNode({
+      head: hashMidgardCekDirectValueWitness(argument),
       tail: root,
       length: count,
     });
   }
-  return hashMidgardCekValueNodeV1({
+  return hashMidgardCekValueNode({
     kind: "builtin",
     tag,
     forcesRemaining: 0n,
@@ -194,15 +194,15 @@ const directBuiltinRoot = (
 describe("V1 direct builtin execution", () => {
   it("replays a successful integer builtin and its exact budget", () => {
     const arguments_ = [direct(UPLCConst.int(1)), direct(UPLCConst.int(128))];
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(0n, arguments_);
+    const evaluated = evaluateMidgardCekDirectBuiltin(0n, arguments_);
     expect(evaluated.kind).toBe("success");
     if (evaluated.kind !== "success") return;
     expect(evaluated.result.kind).toBe("constant");
     if (evaluated.result.kind !== "constant") return;
-    const result = decodeMidgardCekConstantWitnessV1(evaluated.result.witness);
+    const result = decodeMidgardCekConstantWitness(evaluated.result.witness);
     expect(result.payload).toMatchObject({ int: 129n });
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         0n,
         directBuiltinRoot(0n, arguments_),
         arguments_,
@@ -214,12 +214,12 @@ describe("V1 direct builtin execution", () => {
 
   it("distinguishes paid division failures from zero-cost shape failures", () => {
     const division = [direct(UPLCConst.int(1)), direct(UPLCConst.int(0))];
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(4n, division);
+    const evaluated = evaluateMidgardCekDirectBuiltin(4n, division);
     expect(evaluated.kind).toBe("failure");
     if (evaluated.kind !== "failure") return;
     expect(evaluated.budget.cpu).toBeGreaterThan(0n);
     expect(
-      verifyMidgardCekDirectBuiltinFailureV1(
+      verifyMidgardCekDirectBuiltinFailure(
         4n,
         directBuiltinRoot(4n, division),
         division,
@@ -230,7 +230,7 @@ describe("V1 direct builtin execution", () => {
       direct(UPLCConst.int(256)),
       direct(UPLCConst.byteString(new DataB(Buffer.alloc(0)).bytes)),
     ];
-    const shapeFailure = evaluateMidgardCekDirectBuiltinV1(11n, invalidByte);
+    const shapeFailure = evaluateMidgardCekDirectBuiltin(11n, invalidByte);
     expect(shapeFailure).toEqual({
       kind: "failure",
       budget: { cpu: 0n, memory: 0n },
@@ -239,17 +239,17 @@ describe("V1 direct builtin execution", () => {
 
   it("selects an opaque control branch without inspecting it", () => {
     const selected = { kind: "opaque", root: hash(7) } as const;
-    const arguments_: readonly MidgardCekDirectValueWitnessV1[] = [
+    const arguments_: readonly MidgardCekDirectValueWitness[] = [
       direct(UPLCConst.bool(true)),
       selected,
       { kind: "opaque", root: hash(8) },
     ];
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(26n, arguments_);
+    const evaluated = evaluateMidgardCekDirectBuiltin(26n, arguments_);
     expect(evaluated.kind).toBe("success");
     if (evaluated.kind !== "success") return;
     expect(evaluated.result).toEqual(selected);
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         26n,
         directBuiltinRoot(26n, arguments_),
         arguments_,
@@ -259,7 +259,7 @@ describe("V1 direct builtin execution", () => {
   });
 
   it("bridges compressed BLS constants and commits miller-loop expressions", () => {
-    const g1: MidgardCekDirectValueWitnessV1 = {
+    const g1: MidgardCekDirectValueWitness = {
       kind: "constant",
       witness: {
         typeCbor: Buffer.from("9f09ff", "hex"),
@@ -269,7 +269,7 @@ describe("V1 direct builtin execution", () => {
         ),
       },
     };
-    const g2: MidgardCekDirectValueWitnessV1 = {
+    const g2: MidgardCekDirectValueWitness = {
       kind: "constant",
       witness: {
         typeCbor: Buffer.from("9f0aff", "hex"),
@@ -280,22 +280,22 @@ describe("V1 direct builtin execution", () => {
       },
     };
 
-    const added = evaluateMidgardCekDirectBuiltinV1(54n, [g1, g1]);
+    const added = evaluateMidgardCekDirectBuiltin(54n, [g1, g1]);
     expect(added.kind).toBe("success");
     if (added.kind === "success" && added.result.kind === "constant") {
       expect(
-        decodeMidgardCekConstantWitnessV1(added.result.witness).type.kind,
+        decodeMidgardCekConstantWitness(added.result.witness).type.kind,
       ).toBe("blsG1");
     }
 
-    const miller = evaluateMidgardCekDirectBuiltinV1(68n, [g1, g2]);
+    const miller = evaluateMidgardCekDirectBuiltin(68n, [g1, g2]);
     expect(miller.kind).toBe("success");
     if (miller.kind !== "success") return;
     expect(miller.result.kind).toBe("blsMillerLoop");
     if (miller.result.kind !== "blsMillerLoop") return;
     const expressionRoot = miller.result.expressionRoot;
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         68n,
         directBuiltinRoot(68n, [g1, g2]),
         [g1, g2],
@@ -304,12 +304,12 @@ describe("V1 direct builtin execution", () => {
     ).toBe(true);
 
     if (g1.kind !== "constant" || g2.kind !== "constant") return;
-    const leaf: MidgardCekBlsExpressionWitnessV1 = {
+    const leaf: MidgardCekBlsExpressionWitness = {
       kind: "millerLoop",
       g1: g1.witness,
       g2: g2.witness,
     };
-    const finalized = evaluateMidgardCekBlsFinalV1(
+    const finalized = evaluateMidgardCekBlsFinal(
       expressionRoot,
       expressionRoot,
       leaf,
@@ -318,10 +318,10 @@ describe("V1 direct builtin execution", () => {
     expect(finalized.result.kind).toBe("constant");
     if (finalized.result.kind !== "constant") return;
     expect(
-      decodeMidgardCekConstantWitnessV1(finalized.result.witness).payload,
+      decodeMidgardCekConstantWitness(finalized.result.witness).payload,
     ).toEqual(new DataConstr(1, []));
     expect(
-      verifyMidgardCekBlsFinalV1(
+      verifyMidgardCekBlsFinal(
         directBuiltinRoot(70n, [miller.result, miller.result]),
         expressionRoot,
         expressionRoot,
@@ -331,7 +331,7 @@ describe("V1 direct builtin execution", () => {
       ),
     ).toBe(true);
 
-    let overLimit: MidgardCekBlsExpressionWitnessV1 = leaf;
+    let overLimit: MidgardCekBlsExpressionWitness = leaf;
     let overLimitRoot = expressionRoot;
     for (let index = 1; index < 10; index += 1) {
       overLimit = {
@@ -339,14 +339,14 @@ describe("V1 direct builtin execution", () => {
         left: overLimit,
         right: leaf,
       };
-      overLimitRoot = hashMidgardCekBlsExpressionNodeV1({
+      overLimitRoot = hashMidgardCekBlsExpressionNode({
         kind: "multiply",
         left: overLimitRoot,
         right: expressionRoot,
       });
     }
     expect(() =>
-      evaluateMidgardCekBlsFinalV1(
+      evaluateMidgardCekBlsFinal(
         overLimitRoot,
         expressionRoot,
         overLimit,
@@ -365,11 +365,11 @@ describe("V1 direct builtin execution", () => {
         (argument) =>
           argument.kind === "constant" &&
           argument.witness.payloadCbor.length <=
-            MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
+            MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
       ),
     ).toBe(true);
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
+      verifyMidgardCekBuiltinTypeFailure(
         0n,
         builtinRoot(0n, arguments_),
         arguments_,
@@ -383,11 +383,11 @@ describe("V1 direct builtin execution", () => {
       directByteString(4_608),
       directByteString(1),
     ] as const;
-    expect(() => evaluateMidgardCekDirectBuiltinV1(26n, arguments_)).toThrow(
+    expect(() => evaluateMidgardCekDirectBuiltin(26n, arguments_)).toThrow(
       /aggregate direct payload bound/,
     );
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         26n,
         directBuiltinRoot(26n, arguments_),
         arguments_,
@@ -402,11 +402,11 @@ describe("V1 direct builtin execution", () => {
       directByteString(3_200),
       directByteString(3_200),
     ] as const;
-    expect(() => evaluateMidgardCekDirectBuiltinV1(52n, arguments_)).toThrow(
+    expect(() => evaluateMidgardCekDirectBuiltin(52n, arguments_)).toThrow(
       /aggregate direct payload bound/,
     );
     expect(
-      verifyMidgardCekDirectBuiltinFailureV1(
+      verifyMidgardCekDirectBuiltinFailure(
         52n,
         directBuiltinRoot(52n, arguments_),
         arguments_,
@@ -420,7 +420,7 @@ describe("V1 direct builtin execution", () => {
       runtimeByteString(4_400),
     ] as const;
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
+      verifyMidgardCekBuiltinTypeFailure(
         0n,
         builtinRoot(0n, runtimeArguments),
         runtimeArguments,
@@ -432,14 +432,14 @@ describe("V1 direct builtin execution", () => {
       directByteString(4_400),
       directByteString(1),
     ] as const;
-    const directSuccess = evaluateMidgardCekDirectBuiltinV1(
+    const directSuccess = evaluateMidgardCekDirectBuiltin(
       26n,
       directSuccessArguments,
     );
     expect(directSuccess.kind).toBe("success");
     if (directSuccess.kind !== "success") return;
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         26n,
         directBuiltinRoot(26n, directSuccessArguments),
         directSuccessArguments,
@@ -453,7 +453,7 @@ describe("V1 direct builtin execution", () => {
       directByteString(2_800),
     ] as const;
     expect(
-      verifyMidgardCekDirectBuiltinFailureV1(
+      verifyMidgardCekDirectBuiltinFailure(
         52n,
         directBuiltinRoot(52n, directFailureArguments),
         directFailureArguments,
@@ -466,9 +466,7 @@ describe("V1 direct builtin execution", () => {
         typeCbor: Buffer.from("9f01ff", "hex"),
         payload: {
           root: hash(12),
-          cborLength: BigInt(
-            MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1 + 1,
-          ),
+          cborLength: BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES + 1),
           memory: 1n,
         },
         memory: 1n,
@@ -479,7 +477,7 @@ describe("V1 direct builtin execution", () => {
       semanticBranch,
       semanticBranch,
     ] as const;
-    const semanticResult = evaluateMidgardCekDirectBuiltinV1(
+    const semanticResult = evaluateMidgardCekDirectBuiltin(
       26n,
       semanticArguments,
     );
@@ -487,7 +485,7 @@ describe("V1 direct builtin execution", () => {
     if (semanticResult.kind !== "success") return;
     expect(semanticResult.result).toEqual(semanticBranch);
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         26n,
         directBuiltinRoot(26n, semanticArguments),
         semanticArguments,
@@ -501,14 +499,14 @@ describe("V1 direct builtin execution", () => {
     const input = arguments_[0]!;
     if (input.kind !== "constant") throw new Error("expected direct input");
     expect(input.witness.payloadCbor.length).toBeLessThanOrEqual(
-      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
     );
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(51n, arguments_);
+    const evaluated = evaluateMidgardCekDirectBuiltin(51n, arguments_);
     expect(evaluated.kind).toBe("success");
     if (evaluated.kind !== "success") return;
     expect(evaluated.result.kind).toBe("constant");
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         51n,
         directBuiltinRoot(51n, arguments_),
         arguments_,
@@ -523,10 +521,10 @@ describe("V1 direct builtin execution", () => {
     if (input.kind !== "constant") throw new Error("expected direct input");
     expect(input.witness.payloadCbor.length).toBe(9_002);
     expect(input.witness.payloadCbor.length).toBeLessThanOrEqual(
-      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
     );
 
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(51n, arguments_);
+    const evaluated = evaluateMidgardCekDirectBuiltin(51n, arguments_);
     expect(evaluated.kind).toBe("success");
     if (evaluated.kind !== "success") return;
     expect(evaluated.result.kind).toBe("semanticConstant");
@@ -540,7 +538,7 @@ describe("V1 direct builtin execution", () => {
       memory: 90_008n,
     });
     expect(
-      verifyMidgardCekDirectBuiltinV1(
+      verifyMidgardCekDirectBuiltin(
         51n,
         directBuiltinRoot(51n, arguments_),
         arguments_,

@@ -1,16 +1,16 @@
 import {
-  assertSecurityGradeEvidenceV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  type EvidenceProvenanceV1,
+  assertSecurityGradeEvidence,
+  type AuthenticatedStateQueueHeaderObservation,
+  type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 import {
-  deriveFieldPreimageCertificationV1,
+  deriveFieldPreimageCertification,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   FraudProofComputationThreadStepDatum,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
 import type {
   LucidEvolution,
@@ -19,18 +19,18 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
-import { prepareDoubleSpendFromCanonicalEvidenceV1 } from "../evidence/prepare-from-evidence-v1.js";
+import { prepareDoubleSpendFromCanonicalEvidence } from "../evidence/prepare-from-evidence-v1.js";
 import {
-  certifyFaultProofFieldCarriageV1,
-  fieldPreimageCertificateAddressV1,
-  findMissingFaultProofFieldPublicationV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  certifyFaultProofFieldCarriage,
+  fieldPreimageCertificateAddress,
+  findMissingFaultProofFieldPublication,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  publishProofChunksV1,
-  resolvePublishedProofChunksV1,
+  publishProofChunks,
+  resolvePublishedProofChunks,
 } from "../publish-proof-chunks.js";
 import {
   type StateQueueMutationLease,
@@ -47,73 +47,73 @@ import { submitStep02 } from "../submit-step-02.js";
 import { submitStep03 } from "../submit-step-03.js";
 import { submitStep04 } from "../submit-step-04.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import type {
-  FraudProofWorkflowJournalEntryV1,
-  FraudProofWorkflowJournalStoreV1,
-  FraudProofWorkflowTerminalV1,
-  JournalJsonObjectV1,
-  JournalJsonValueV1,
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalStore,
+  FraudProofWorkflowTerminal,
+  JournalJsonObject,
+  JournalJsonValue,
 } from "./journal-v1.js";
 import {
-  createLocalKupmiosHttpOgmiosRawSourceV1,
-  type LocalKupmiosHttpOgmiosSourceConfigV1,
+  createLocalKupmiosHttpOgmiosRawSource,
+  type LocalKupmiosHttpOgmiosSourceConfig,
 } from "./local-kupmios-http-ogmios-source-v1.js";
-import { createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1 } from "./local-kupmios-raw-l1-authority-v1.js";
+import { createLocalKupmiosFraudProofRawL1SnapshotAuthority } from "./local-kupmios-raw-l1-authority-v1.js";
 import type {
-  FraudProofFamilyWorkflowAdapterV1,
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowPreflightV1,
-  FraudProofWorkflowTerminalVerifierV1,
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
-  type FraudProofWorkflowRunResultV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofWorkflowRunResult,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1,
-  deriveFraudProofRawL1FamilyStageV1,
-  type FraudProofRawL1FamilyDefinitionV1,
-  fraudProofRawL1SnapshotRequestForFamilyV1,
+  deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
+  deriveFraudProofRawL1FamilyStage,
+  type FraudProofRawL1FamilyDefinition,
+  fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation-v1.js";
 import {
-  createFraudProofAuthenticatedPublicationObserverV1,
-  type FraudProofAuthenticatedPublicationObserverV1,
+  createFraudProofAuthenticatedPublicationObserver,
+  type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation-v1.js";
 import {
-  admitFraudProofRawL1SnapshotV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1,
-  type FraudProofRawL1SnapshotAuthorityV1,
+  admitFraudProofRawL1Snapshot,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofRawL1SnapshotAuthority,
 } from "./raw-l1-snapshot-v1.js";
-import type { VerifiedFraudProofReleaseEconomicsPolicyV1 } from "./release-economics-policy-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  LOCAL_UPLC_EVALUATOR_V1,
-  type LocallyEvaluatedTransactionV1,
-  requireReferenceOnlyScriptWitnessesV1,
-  submitCapturedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const DOUBLE_SPEND_WORKFLOW_ADAPTER_V1 =
+export const DOUBLE_SPEND_WORKFLOW_ADAPTER =
   "midgard-double-spend-production-workflow-adapter-v1" as const;
 
-export type DoubleSpendWorkflowStageV1 =
+export type DoubleSpendWorkflowStage =
   | { readonly kind: "not_started"; readonly stateQueueBlockOutRef: string }
   | {
       readonly kind: "step_01" | "step_02";
@@ -134,7 +134,7 @@ export type DoubleSpendWorkflowStageV1 =
     }
   | {
       readonly kind: "removed";
-      readonly terminal: FraudProofWorkflowTerminalV1;
+      readonly terminal: FraudProofWorkflowTerminal;
     };
 
 /**
@@ -142,18 +142,18 @@ export type DoubleSpendWorkflowStageV1 =
  * authentication boundary: production registration remains blocked until a
  * concrete raw local-node/provider implementation derives these facts.
  */
-export interface DoubleSpendL1ObservationPortV1 {
-  readonly publications?: FraudProofAuthenticatedPublicationObserverV1;
+export interface DoubleSpendL1ObservationPort {
+  readonly publications?: FraudProofAuthenticatedPublicationObserver;
   observeHeader?(input: {
     readonly headerHash: string;
-  }): Promise<AuthenticatedStateQueueHeaderObservationV1>;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
   transactionConfirmed?(input: {
     readonly headerHash: string;
     readonly txHash: string;
   }): Promise<boolean>;
   observe(input: { readonly headerHash: string }): Promise<{
-    readonly provenance: EvidenceProvenanceV1;
-    readonly stage: DoubleSpendWorkflowStageV1;
+    readonly provenance: EvidenceProvenance;
+    readonly stage: DoubleSpendWorkflowStage;
   }>;
 }
 
@@ -161,26 +161,26 @@ export interface DoubleSpendL1ObservationPortV1 {
  * Production observation port: the provider returns only untrusted exact bytes;
  * family stage and terminal facts are derived locally after strict admission.
  */
-export const createDoubleSpendRawL1ObservationPortV1 = ({
+export const createDoubleSpendRawL1ObservationPort = ({
   authority,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly authority: FraudProofRawL1SnapshotAuthorityV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly authority: FraudProofRawL1SnapshotAuthority;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "doubleSpend";
   };
-}): DoubleSpendL1ObservationPortV1 => {
+}): DoubleSpendL1ObservationPort => {
   if (
-    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1 ||
+    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length !== 4
   ) {
     throw new Error("double-spend raw L1 observation authority is incomplete");
   }
-  const request = fraudProofRawL1SnapshotRequestForFamilyV1({
+  const request = fraudProofRawL1SnapshotRequestForFamily({
     definition,
     releaseFinality,
   });
@@ -188,14 +188,14 @@ export const createDoubleSpendRawL1ObservationPortV1 = ({
     if (headerHash !== definition.headerHash) {
       throw new Error("double-spend raw L1 observation changed the header");
     }
-    return admitFraudProofRawL1SnapshotV1({
+    return admitFraudProofRawL1Snapshot({
       value: await authority.capture(request),
       request,
       releaseFinality,
     });
   };
   return {
-    publications: createFraudProofAuthenticatedPublicationObserverV1({
+    publications: createFraudProofAuthenticatedPublicationObserver({
       authority,
       releaseFinality,
     }),
@@ -204,18 +204,18 @@ export const createDoubleSpendRawL1ObservationPortV1 = ({
         (transaction) => transaction.txHash === txHash,
       ),
     observeHeader: async ({ headerHash }) =>
-      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1({
+      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
         snapshot: await capture(headerHash),
         definition,
       }),
     observe: async ({ headerHash }) => {
       const snapshot = await capture(headerHash);
-      const derived = await deriveFraudProofRawL1FamilyStageV1({
+      const derived = await deriveFraudProofRawL1FamilyStage({
         snapshot,
         definition,
         releaseEconomics,
       });
-      const stage: DoubleSpendWorkflowStageV1 =
+      const stage: DoubleSpendWorkflowStage =
         derived.kind === "step"
           ? {
               kind: `step_0${derived.step}` as
@@ -233,28 +233,25 @@ export const createDoubleSpendRawL1ObservationPortV1 = ({
 };
 
 /** Concrete loopback Kupo HTTP + Ogmios WS production construction. */
-export const createDoubleSpendLocalKupmiosL1ObservationPortV1 = ({
+export const createDoubleSpendLocalKupmiosL1ObservationPort = ({
   source,
   releaseFinality,
   releaseEconomics,
   definition,
 }: {
-  readonly source: Omit<
-    LocalKupmiosHttpOgmiosSourceConfigV1,
-    "releaseFinality"
-  >;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: "doubleSpend";
   };
-}): DoubleSpendL1ObservationPortV1 => {
-  const rawSource = createLocalKupmiosHttpOgmiosRawSourceV1({
+}): DoubleSpendL1ObservationPort => {
+  const rawSource = createLocalKupmiosHttpOgmiosRawSource({
     ...source,
     releaseFinality,
   });
-  return createDoubleSpendRawL1ObservationPortV1({
-    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthorityV1({
+  return createDoubleSpendRawL1ObservationPort({
+    authority: createLocalKupmiosFraudProofRawL1SnapshotAuthority({
       source: rawSource,
       releaseFinality,
     }),
@@ -265,15 +262,15 @@ export const createDoubleSpendLocalKupmiosL1ObservationPortV1 = ({
 };
 
 const sameTerminal = (
-  left: FraudProofWorkflowTerminalV1,
-  right: FraudProofWorkflowTerminalV1,
+  left: FraudProofWorkflowTerminal,
+  right: FraudProofWorkflowTerminal,
 ): boolean => JSON.stringify(left) === JSON.stringify(right);
 
 /** Second observation through the constrained integration port. */
-export const createDoubleSpendAuthenticatedL1TerminalVerifierV1 = (
-  l1: DoubleSpendL1ObservationPortV1,
-): FraudProofWorkflowTerminalVerifierV1 => ({
-  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+export const createDoubleSpendAuthenticatedL1TerminalVerifier = (
+  l1: DoubleSpendL1ObservationPort,
+): FraudProofWorkflowTerminalVerifier => ({
+  verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   verify: async ({ identity, candidate, releaseFinality }) => {
     if (identity.target.kind !== "state_queue_header") {
       throw new Error(
@@ -309,9 +306,9 @@ export const createDoubleSpendAuthenticatedL1TerminalVerifierV1 = (
   },
 });
 
-export type DoubleSpendWorkflowReferenceScriptsV1 = {
+export type DoubleSpendWorkflowReferenceScripts = {
   readonly steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  readonly witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  readonly witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -319,26 +316,26 @@ export type DoubleSpendWorkflowReferenceScriptsV1 = {
   };
 };
 
-export type DoubleSpendConstrainedWorkflowAdapterConfigV1 = {
+export type DoubleSpendConstrainedWorkflowAdapterConfig = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly referenceScripts: DoubleSpendWorkflowReferenceScriptsV1;
+  readonly referenceScripts: DoubleSpendWorkflowReferenceScripts;
   readonly fieldPreimageCertificate: {
     readonly policyId: string;
     readonly mintingScript: MintingPolicy;
     readonly referenceScriptUtxo: UTxO;
   };
-  readonly l1: DoubleSpendL1ObservationPortV1;
+  readonly l1: DoubleSpendL1ObservationPort;
   /** Coordination only; never used as proof evidence. */
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   readonly fraudProverRewardLovelace?: bigint;
 };
 
-export type ManifestBoundDoubleSpendWorkflowConfigV1 = Omit<
-  DoubleSpendConstrainedWorkflowAdapterConfigV1,
+export type ManifestBoundDoubleSpendWorkflowConfig = Omit<
+  DoubleSpendConstrainedWorkflowAdapterConfig,
   | "blueprint"
   | "deploymentInfo"
   | "network"
@@ -350,19 +347,16 @@ export type ManifestBoundDoubleSpendWorkflowConfigV1 = Omit<
   readonly blueprintJson: string;
   readonly deploymentInfo: unknown;
   readonly headerHash: string;
-  readonly source: Omit<
-    LocalKupmiosHttpOgmiosSourceConfigV1,
-    "releaseFinality"
-  >;
+  readonly source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   readonly fieldPreimageCertificateReferenceScript: UTxO;
 };
 
-export type ManifestBoundDoubleSpendWorkflowV1 = {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"doubleSpend">;
-  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfigV1;
-  readonly adapter: FraudProofFamilyWorkflowAdapterV1;
-  readonly terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundDoubleSpendWorkflow = {
+  readonly binding: FraudProofWorkflowDeploymentBinding<"doubleSpend">;
+  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
+  readonly adapter: FraudProofFamilyWorkflowAdapter;
+  readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 };
 
 /**
@@ -370,10 +364,10 @@ export type ManifestBoundDoubleSpendWorkflowV1 = {
  * economics, and finality value comes from the same finalized manifest; the
  * caller supplies only live runtime capabilities and published UTxOs.
  */
-export const createManifestBoundDoubleSpendWorkflowV1 = async (
-  config: ManifestBoundDoubleSpendWorkflowConfigV1,
-): Promise<ManifestBoundDoubleSpendWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundDoubleSpendWorkflow = async (
+  config: ManifestBoundDoubleSpendWorkflowConfig,
+): Promise<ManifestBoundDoubleSpendWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -393,7 +387,7 @@ export const createManifestBoundDoubleSpendWorkflowV1 = async (
       "double-spend deployment omitted the field-preimage certificate policy",
     );
   }
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -405,12 +399,12 @@ export const createManifestBoundDoubleSpendWorkflowV1 = async (
     "fraudProofDoubleSpendStep04",
   ] as const;
   const stepReference = (index: 0 | 1 | 2 | 3): UTxO =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: stepNames[index],
       utxo: config.referenceScripts.steps[index],
     });
-  const referenceScripts: DoubleSpendWorkflowReferenceScriptsV1 = {
+  const referenceScripts: DoubleSpendWorkflowReferenceScripts = {
     steps: [
       stepReference(0),
       stepReference(1),
@@ -418,40 +412,40 @@ export const createManifestBoundDoubleSpendWorkflowV1 = async (
       stepReference(3),
     ],
     witnesses: {
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: config.referenceScripts.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: config.referenceScripts.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
       }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "chunkedVerifyWithdraw",
         utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
       }),
     },
   };
-  const certificateReferenceScript = requireManifestBoundReferenceScriptUtxoV1({
+  const certificateReferenceScript = requireManifestBoundReferenceScriptUtxo({
     binding,
     contractName: "fieldPreimageCertificateMint",
     utxo: config.fieldPreimageCertificateReferenceScript,
   });
-  const l1 = createDoubleSpendLocalKupmiosL1ObservationPortV1({
+  const l1 = createDoubleSpendLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfigV1 = {
+  const adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig = {
     lucid: config.lucid,
     blueprint: binding.blueprint,
     deploymentInfo: binding.deploymentInfo,
@@ -473,24 +467,24 @@ export const createManifestBoundDoubleSpendWorkflowV1 = async (
   return {
     binding,
     adapterConfig,
-    adapter: createDoubleSpendConstrainedWorkflowAdapterV1(adapterConfig),
-    terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifierV1(l1),
+    adapter: createDoubleSpendConstrainedWorkflowAdapter(adapterConfig),
+    terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   };
 };
 
-type DoubleSpendArtifactV1 = JournalJsonObjectV1 & {
+type DoubleSpendArtifact = JournalJsonObject & {
   readonly headerHash: string;
-  readonly tx1: JournalJsonObjectV1 & {
-    readonly inclusion: JournalJsonObjectV1;
+  readonly tx1: JournalJsonObject & {
+    readonly inclusion: JournalJsonObject;
     readonly nativeTxId: string;
     readonly nativeTxCompactCbor: string;
     readonly spendInputCbors: readonly string[];
     readonly doubleSpentInputIndex: number;
   };
-  readonly tx2: JournalJsonObjectV1 & {
-    readonly inclusion: JournalJsonObjectV1;
+  readonly tx2: JournalJsonObject & {
+    readonly inclusion: JournalJsonObject;
     readonly nativeTxId: string;
     readonly nativeTxCompactCbor: string;
     readonly spendInputCbors: readonly string[];
@@ -498,7 +492,7 @@ type DoubleSpendArtifactV1 = JournalJsonObjectV1 & {
   };
 };
 
-const journalValue = (value: unknown): JournalJsonValueV1 => {
+const journalValue = (value: unknown): JournalJsonValue => {
   if (typeof value === "bigint") return value.toString();
   if (
     value === null ||
@@ -519,11 +513,11 @@ const journalValue = (value: unknown): JournalJsonValueV1 => {
   );
 };
 
-const artifactFrom = (value: JournalJsonObjectV1): DoubleSpendArtifactV1 =>
-  value as DoubleSpendArtifactV1;
+const artifactFrom = (value: JournalJsonObject): DoubleSpendArtifact =>
+  value as DoubleSpendArtifact;
 
 const requireJournalString = (
-  value: JournalJsonValueV1 | undefined,
+  value: JournalJsonValue | undefined,
   label: string,
 ): string => {
   if (typeof value !== "string") {
@@ -545,10 +539,10 @@ const admitSnapshot = ({
   stage,
 }: {
   readonly headerHash: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly stage: DoubleSpendWorkflowStageV1;
-}): DoubleSpendWorkflowStageV1 => {
-  const admitted = assertSecurityGradeEvidenceV1(provenance);
+  readonly provenance: EvidenceProvenance;
+  readonly stage: DoubleSpendWorkflowStage;
+}): DoubleSpendWorkflowStage => {
+  const admitted = assertSecurityGradeEvidence(provenance);
   if (admitted.trustClass !== "authenticated_cardano_l1") {
     throw new Error(
       "double-spend workflow observation is not authenticated L1",
@@ -577,7 +571,7 @@ const admitSnapshot = ({
 };
 
 const confirmed = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   actionId: string,
 ): boolean =>
   entries.some(
@@ -590,7 +584,7 @@ const contentActionId = ({
   entries,
 }: {
   readonly base: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
 }): string => {
   const priorConfirmations = entries.filter(
     (entry) =>
@@ -605,15 +599,15 @@ const contentActionId = ({
 
 const action = (
   actionId: string,
-  input: JournalJsonObjectV1,
-): FraudProofWorkflowActionV1 => ({ actionId, input });
+  input: JournalJsonObject,
+): FraudProofWorkflowAction => ({ actionId, input });
 
 const preflightOf = (
   actionId: string,
-  transaction: LocallyEvaluatedTransactionV1,
-  durableRecovery?: JournalJsonObjectV1,
-): FraudProofWorkflowPreflightV1 => {
-  requireReferenceOnlyScriptWitnessesV1({
+  transaction: LocallyEvaluatedTransaction,
+  durableRecovery?: JournalJsonObject,
+): FraudProofWorkflowPreflight => {
+  requireReferenceOnlyScriptWitnesses({
     transaction,
     label: "double-spend production transaction",
   });
@@ -624,7 +618,7 @@ const preflightOf = (
       transaction.referenceScripts.length === 0 ? "none" : "reference_scripts",
     localUplcEvaluation: {
       status: "passed",
-      evaluator: LOCAL_UPLC_EVALUATOR_V1,
+      evaluator: LOCAL_UPLC_EVALUATOR,
     },
     referenceScripts: transaction.referenceScripts,
     ...(durableRecovery === undefined ? {} : { durableRecovery }),
@@ -633,7 +627,7 @@ const preflightOf = (
 
 const mutationLeaseRecovery = (
   lease: StateQueueMutationLease,
-): JournalJsonObjectV1 => ({
+): JournalJsonObject => ({
   stateQueueMutationLease: {
     token: lease.token,
     source: lease.source,
@@ -641,7 +635,7 @@ const mutationLeaseRecovery = (
 });
 
 const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObjectV1 | undefined,
+  recovery: JournalJsonObject | undefined,
 ): { readonly token: string; readonly source: string } | undefined => {
   if (recovery === undefined) return undefined;
   const keys = Object.keys(recovery);
@@ -655,7 +649,7 @@ const parseMutationLeaseRecovery = (
   ) {
     throw new Error("durable recovery has an invalid mutation-lease shape");
   }
-  const record = value as Readonly<Record<string, JournalJsonValueV1>>;
+  const record = value as Readonly<Record<string, JournalJsonValue>>;
   if (
     Object.keys(record).sort().join(",") !== "source,token" ||
     typeof record.token !== "string" ||
@@ -676,13 +670,13 @@ const parseMutationLeaseRecovery = (
  * registered until tier-3 carriage, raw L1 authentication, and durable lease
  * recovery are closed.
  */
-export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
-  config: DoubleSpendConstrainedWorkflowAdapterConfigV1,
-): FraudProofFamilyWorkflowAdapterV1 => {
+export const createDoubleSpendConstrainedWorkflowAdapter = (
+  config: DoubleSpendConstrainedWorkflowAdapterConfig,
+): FraudProofFamilyWorkflowAdapter => {
   const preparedByAction = new Map<
     string,
     {
-      readonly transaction: LocallyEvaluatedTransactionV1;
+      readonly transaction: LocallyEvaluatedTransaction;
       readonly mutationLease?: StateQueueMutationLease;
     }
   >();
@@ -693,7 +687,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
   };
 
   const proofChunks = async (proofCbor: string) =>
-    await resolvePublishedProofChunksV1({
+    await resolvePublishedProofChunks({
       lucid: config.lucid,
       address: config.signer.address,
       proofCbor,
@@ -701,11 +695,11 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
 
   const fieldPlan = (
     proofStage: "step_03" | "step_04",
-    artifact: DoubleSpendArtifactV1,
+    artifact: DoubleSpendArtifact,
   ) => {
     const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
-    return planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    return planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
       anchorTxId: tx.nativeTxId,
       nativeTxCompactCbor: tx.nativeTxCompactCbor,
       itemCbors: tx.spendInputCbors.map((cbor) => Buffer.from(cbor, "hex")),
@@ -753,13 +747,13 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       const observed = await observer.observeExact({
         headerHash,
         kind: "field_certificate",
-        address: fieldPreimageCertificateAddressV1({
+        address: fieldPreimageCertificateAddress({
           network: config.network,
           certificatePolicyId: config.fieldPreimageCertificate.policyId,
         }),
         expectedOutRef: `${certificate.txHash}#${certificate.outputIndex.toString()}`,
         expectedDatumCbor: certificate.datum,
-        expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`,
+        expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
       });
       if (observed.kind !== "confirmed") {
         throw new Error(
@@ -773,15 +767,15 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
     artifact,
     entries,
   }: {
-    readonly artifact: DoubleSpendArtifactV1;
-    readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+    readonly artifact: DoubleSpendArtifact;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<
     | {
         readonly kind: "completed";
-        readonly terminal: FraudProofWorkflowTerminalV1;
+        readonly terminal: FraudProofWorkflowTerminal;
       }
     | { readonly kind: "conflict"; readonly reason: string }
-    | { readonly kind: "action"; readonly action: FraudProofWorkflowActionV1 }
+    | { readonly kind: "action"; readonly action: FraudProofWorkflowAction }
   > => {
     const stage = await snapshot(artifact.headerHash);
     if (stage.kind === "removed") {
@@ -829,7 +823,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
     }
     if (stage.kind === "step_03" || stage.kind === "step_04") {
       const plan = fieldPlan(stage.kind, artifact);
-      const missing = await findMissingFaultProofFieldPublicationV1({
+      const missing = await findMissingFaultProofFieldPublication({
         lucid: config.lucid,
         publisherAddress: config.signer.address,
         planned: plan,
@@ -847,19 +841,20 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
         };
       }
       if (plan.plan.tier === "Certified") {
-        const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+        const certificate = await resolveFaultProofFieldPreimageCertificate({
           lucid: config.lucid,
           network: config.network,
           planned: plan,
           certificatePolicyId: config.fieldPreimageCertificate.policyId,
         });
         if (certificate === undefined) {
-          const publications =
-            await resolveFaultProofFieldCarriagePublicationsV1({
+          const publications = await resolveFaultProofFieldCarriagePublications(
+            {
               lucid: config.lucid,
               publisherAddress: config.signer.address,
               planned: plan,
-            });
+            },
+          );
           if (publications === undefined) {
             throw new Error(
               "tier-3 field publications disappeared before certification",
@@ -916,13 +911,13 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
     action: requested,
     artifact,
   }: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: DoubleSpendArtifactV1;
-  }): Promise<LocallyEvaluatedTransactionV1> => {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: DoubleSpendArtifact;
+  }): Promise<LocallyEvaluatedTransaction> => {
     const stage = requireJournalString(requested.input.stage, "action.stage");
     if (stage === "publish-proof") {
-      return await captureLocallyEvaluatedTransactionV1(async (boundary) => {
-        await publishProofChunksV1({
+      return await captureLocallyEvaluatedTransaction(async (boundary) => {
+        await publishProofChunks({
           lucid: config.lucid,
           network: config.network,
           signer: config.signer,
@@ -935,7 +930,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       });
     }
     if (stage === "init") {
-      return await captureLocallyEvaluatedTransactionV1(async (boundary) => {
+      return await captureLocallyEvaluatedTransaction(async (boundary) => {
         await submitInit({
           lucid: config.lucid,
           blueprint: config.blueprint,
@@ -986,7 +981,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
         publishedProofChunks: chunks,
         witnessReferenceScripts: config.referenceScripts.witnesses,
       } as const;
-      return await captureLocallyEvaluatedTransactionV1(async (boundary) => {
+      return await captureLocallyEvaluatedTransaction(async (boundary) => {
         if (stage === "step_01") {
           await submitStep01({
             ...common,
@@ -1020,7 +1015,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           "field certification action does not match the tier-3 plan",
         );
       }
-      const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+      const publications = await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
         publisherAddress: config.signer.address,
         planned: plan,
@@ -1043,8 +1038,8 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           "field certification action does not match the observed chunk UTxOs",
         );
       }
-      return await captureLocallyEvaluatedTransactionV1(async (boundary) => {
-        await certifyFaultProofFieldCarriageV1({
+      return await captureLocallyEvaluatedTransaction(async (boundary) => {
+        await certifyFaultProofFieldCarriage({
           lucid: config.lucid,
           network: config.network,
           signer: config.signer,
@@ -1076,7 +1071,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
       const plan = fieldPlan(proofStage, artifact);
       if (stage === "publish-field") {
-        const expectedMissing = await findMissingFaultProofFieldPublicationV1({
+        const expectedMissing = await findMissingFaultProofFieldPublication({
           lucid: config.lucid,
           publisherAddress: config.signer.address,
           planned: plan,
@@ -1093,7 +1088,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       const publications =
         stage === "publish-field"
           ? undefined
-          : await resolveFaultProofFieldCarriagePublicationsV1({
+          : await resolveFaultProofFieldCarriagePublications({
               lucid: config.lucid,
               publisherAddress: config.signer.address,
               planned: plan,
@@ -1103,7 +1098,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       }
       const certificate =
         stage !== "publish-field" && plan.plan.tier === "Certified"
-          ? await resolveFaultProofFieldPreimageCertificateV1({
+          ? await resolveFaultProofFieldPreimageCertificate({
               lucid: config.lucid,
               network: config.network,
               planned: plan,
@@ -1128,7 +1123,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           ...(certificate === undefined ? {} : { certificate }),
         });
       }
-      return await captureLocallyEvaluatedTransactionV1(async (boundary) => {
+      return await captureLocallyEvaluatedTransaction(async (boundary) => {
         if (proofStage === "step_03") {
           await submitStep03({
             lucid: config.lucid,
@@ -1199,7 +1194,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           return acquired;
         },
       };
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
           await submitRemoveFraudulentBlock({
             lucid: config.lucid,
@@ -1218,7 +1213,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
                 }),
             preSubmitBoundary: async (transaction) => {
               if (
-                !workflowTransactionInputOutRefsV1(transaction.signed).includes(
+                !workflowTransactionInputOutRefs(transaction.signed).includes(
                   requireJournalString(
                     requested.input.nextRemovalOutRef,
                     "action.nextRemovalOutRef",
@@ -1230,7 +1225,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
                 );
               }
               if (
-                !workflowTransactionReferenceInputOutRefsV1(
+                !workflowTransactionReferenceInputOutRefs(
                   transaction.signed,
                 ).includes(
                   requireJournalString(
@@ -1270,11 +1265,11 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
   };
 
   return {
-    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category: "doubleSpend",
-    safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async ({ evidence }) => {
-      const prepared = await prepareDoubleSpendFromCanonicalEvidenceV1({
+      const prepared = await prepareDoubleSpendFromCanonicalEvidence({
         evidence,
       });
       return journalValue({
@@ -1293,7 +1288,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           spendInputCbors: prepared.tx2.spendInputCbors,
           doubleSpentInputIndex: prepared.tx2.doubleSpentInputIndex,
         },
-      }) as JournalJsonObjectV1;
+      }) as JournalJsonObject;
     },
     observe: async ({ artifact, entries }) => {
       const next = await nextAction({
@@ -1355,7 +1350,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       }
       return {
         kind: "submitted",
-        txHash: await submitCapturedTransactionV1(prepared.transaction),
+        txHash: await submitCapturedTransaction(prepared.transaction),
       };
     },
     reconcile: async ({
@@ -1477,27 +1472,28 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
             });
             if (observed.kind !== "confirmed") return { kind: "not_found" };
           } else {
-            const certificate =
-              await resolveFaultProofFieldPreimageCertificateV1({
+            const certificate = await resolveFaultProofFieldPreimageCertificate(
+              {
                 lucid: config.lucid,
                 network: config.network,
                 planned: plan,
                 certificatePolicyId: config.fieldPreimageCertificate.policyId,
-              });
+              },
+            );
             if (certificate === undefined || certificate.txHash !== txHash) {
               return { kind: "not_found" };
             }
-            const certification = deriveFieldPreimageCertificationV1(plan.plan);
+            const certification = deriveFieldPreimageCertification(plan.plan);
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
               kind: "field_certificate",
-              address: fieldPreimageCertificateAddressV1({
+              address: fieldPreimageCertificateAddress({
                 network: config.network,
                 certificatePolicyId: config.fieldPreimageCertificate.policyId,
               }),
               expectedOutRef: `${certificate.txHash}#${certificate.outputIndex.toString()}`,
               expectedDatumCbor: certification.datumCbor,
-              expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`,
+              expectedUnit: `${config.fieldPreimageCertificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`,
             });
             if (observed.kind !== "confirmed") return { kind: "not_found" };
           }
@@ -1568,7 +1564,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
 };
 
 /** Run/resume surface for supported constrained shapes; not production-ready. */
-export const runOrResumeConstrainedDoubleSpendWorkflowV1 = async ({
+export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   deploymentFingerprint,
   observation,
   sources,
@@ -1579,27 +1575,27 @@ export const runOrResumeConstrainedDoubleSpendWorkflowV1 = async ({
   maxActions,
 }: {
   readonly deploymentFingerprint: string;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfigV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
-}): Promise<FraudProofWorkflowRunResultV1> => {
-  const adapter = createDoubleSpendConstrainedWorkflowAdapterV1(adapterConfig);
-  return await runFraudProofWorkflowFromRetainedDaV1({
+}): Promise<FraudProofWorkflowRunResult> => {
+  const adapter = createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint,
     observation,
     sources,
-    replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [adapter],
       launchScope: ["doubleSpend"],
     }),
     journal,
     releaseFinalityAuthority,
-    terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifierV1(
+    terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifier(
       adapterConfig.l1,
     ),
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
@@ -1608,19 +1604,19 @@ export const runOrResumeConstrainedDoubleSpendWorkflowV1 = async ({
 };
 
 /** Production run/resume with the L1 header derived from admitted raw bytes. */
-export const runOrResumeManifestBoundDoubleSpendWorkflowV1 = async ({
+export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
   workflow,
   sources,
   journal,
   maxSubmissionAttempts,
   maxActions,
 }: {
-  readonly workflow: ManifestBoundDoubleSpendWorkflowV1;
+  readonly workflow: ManifestBoundDoubleSpendWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+}): Promise<FraudProofWorkflowRunResult> => {
   const observeHeader = workflow.adapterConfig.l1.observeHeader;
   if (observeHeader === undefined) {
     throw new Error(
@@ -1630,7 +1626,7 @@ export const runOrResumeManifestBoundDoubleSpendWorkflowV1 = async ({
   const observation = await observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runOrResumeConstrainedDoubleSpendWorkflowV1({
+  return await runOrResumeConstrainedDoubleSpendWorkflow({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,

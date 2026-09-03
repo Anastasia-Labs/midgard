@@ -3,28 +3,28 @@ import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type {
-  UnusedRedeemerJournalEntryV1,
-  UnusedRedeemerJournalV1,
+  UnusedRedeemerJournal,
+  UnusedRedeemerJournalEntry,
 } from "./workflow-v1.js";
 
 const fileName = (identity: string): string =>
   `${createHash("sha256").update(identity).digest("hex")}.jsonl`;
 
-const parse = (contents: string): readonly UnusedRedeemerJournalEntryV1[] =>
+const parse = (contents: string): readonly UnusedRedeemerJournalEntry[] =>
   contents
     .split("\n")
     .filter((line) => line !== "")
-    .map((line) => JSON.parse(line) as UnusedRedeemerJournalEntryV1);
+    .map((line) => JSON.parse(line) as UnusedRedeemerJournalEntry);
 
 /** Append-only, fsynced, compare-and-append workflow journal. */
-export const createUnusedRedeemerDirectoryJournalV1 = async (
+export const createUnusedRedeemerDirectoryJournal = async (
   directory: string,
-): Promise<UnusedRedeemerJournalV1> => {
+): Promise<UnusedRedeemerJournal> => {
   const root = resolve(directory);
   await mkdir(root, { recursive: true });
   const load = async (
     identity: string,
-  ): Promise<readonly UnusedRedeemerJournalEntryV1[]> => {
+  ): Promise<readonly UnusedRedeemerJournalEntry[]> => {
     try {
       return parse(await readFile(join(root, fileName(identity)), "utf8"));
     } catch (cause) {
@@ -40,7 +40,7 @@ export const createUnusedRedeemerDirectoryJournalV1 = async (
   };
   return Object.freeze({
     load,
-    append: async (entry: UnusedRedeemerJournalEntryV1) => {
+    append: async (entry: UnusedRedeemerJournalEntry) => {
       const path = join(root, fileName(entry.identity));
       const lockPath = `${path}.lock`;
       let lock;

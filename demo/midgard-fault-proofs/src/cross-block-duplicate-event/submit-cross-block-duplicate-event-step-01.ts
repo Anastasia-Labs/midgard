@@ -1,11 +1,11 @@
 import {
   commitCountedRootProgram,
-  type CommittedDuplicateEventProofV1,
+  type CommittedDuplicateEventProof,
   CrossBlockDuplicateEventStep01SpendRedeemer,
   CrossBlockDuplicateEventStep02Datum,
-  crossBlockDuplicateEventStep02StateV1,
-  duplicateEventKindAndKeyV1,
-  getHeaderV1FromStateQueueDatum,
+  crossBlockDuplicateEventStep02State,
+  duplicateEventKindAndKey,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
@@ -38,18 +38,18 @@ import {
 import { requireInitialStepDatum, selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
+import type { CrossBlockDuplicateEventContracts } from "./contracts-v1.js";
 import {
   crossBlockDuplicateEventSubmitError,
-  requireCrossBlockDuplicateEventReferenceScriptV1,
-  requireCrossBlockDuplicateEventThreadV1,
+  requireCrossBlockDuplicateEventReferenceScript,
+  requireCrossBlockDuplicateEventThread,
 } from "./submit-common-v1.js";
 
-const requireOpeningMatchesHeaderV1 = async ({
+const requireOpeningMatchesHeader = async ({
   committedEvent,
   depositsRoot,
   depositCount,
@@ -58,7 +58,7 @@ const requireOpeningMatchesHeaderV1 = async ({
   forcedTransactionsRoot,
   forcedTransactionCount,
 }: {
-  readonly committedEvent: CommittedDuplicateEventProofV1;
+  readonly committedEvent: CommittedDuplicateEventProof;
   readonly depositsRoot: string;
   readonly depositCount: bigint;
   readonly withdrawalsRoot: string;
@@ -113,7 +113,7 @@ export type SubmitCrossBlockDuplicateEventStep01Result = {
   readonly txHash: string;
   readonly nextThreadOutRef: string;
   readonly challengedHeaderHash: string;
-  readonly event: ReturnType<typeof duplicateEventKindAndKeyV1>;
+  readonly event: ReturnType<typeof duplicateEventKindAndKey>;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -133,18 +133,18 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly committedEvent: CommittedDuplicateEventProofV1;
+  readonly committedEvent: CommittedDuplicateEventProof;
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventStep01Result> => {
   const [{ threadUtxo, threadToken }, hubUtxo, blockUtxo] = await Promise.all([
-    requireCrossBlockDuplicateEventThreadV1({
+    requireCrossBlockDuplicateEventThread({
       lucid,
       contracts,
       threadOutRef,
@@ -177,10 +177,10 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
   }
   const header = await Effect.runPromise(
     getLinkedListNodeViewFromUTxO(blockUtxo).pipe(
-      Effect.flatMap(getHeaderV1FromStateQueueDatum),
+      Effect.flatMap(getHeaderFromStateQueueDatum),
     ),
   );
-  await requireOpeningMatchesHeaderV1({
+  await requireOpeningMatchesHeader({
     committedEvent,
     depositsRoot: header.depositsRoot,
     depositCount: header.depositCount,
@@ -193,7 +193,7 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
     throw crossBlockDuplicateEventSubmitError("hub oracle has no inline datum");
   }
   const hubDatum = Data.from(hubUtxo.datum, HubOracleDatum);
-  const state = crossBlockDuplicateEventStep02StateV1({
+  const state = crossBlockDuplicateEventStep02State({
     challengedHeaderHash,
     settlementPolicyId: hubDatum.settlement,
     committedEvent,
@@ -260,7 +260,7 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
     .readFrom([
       hubUtxo,
       blockUtxo,
-      requireCrossBlockDuplicateEventReferenceScriptV1({
+      requireCrossBlockDuplicateEventReferenceScript({
         utxo: referenceScriptUtxo,
         contracts,
         stepIndex: 0,
@@ -279,10 +279,10 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof cross-block-duplicate-event step-01",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[0].spendingScript,
@@ -303,7 +303,7 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
     challengedHeaderHash,
-    event: duplicateEventKindAndKeyV1(committedEvent),
+    event: duplicateEventKindAndKey(committedEvent),
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
     awaitedConfirmation: awaitConfirmation,

@@ -1,6 +1,6 @@
 import {
-  type MidgardFieldCarriagePlanV1,
-  planMidgardFieldCarriageV1,
+  type MidgardFieldCarriagePlan,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
   CML,
@@ -11,13 +11,13 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  deriveFieldPreimageCertificationV1,
-  fieldPreimagePublicationDatumCborV1,
-  requireFieldPreimageCertificateReferenceScriptV1,
-  resolveCertificateReferenceIndexV1,
-  resolveFieldPreimageCertificationReferenceLayoutV1,
+  deriveFieldPreimageCertification,
+  fieldPreimagePublicationDatumCbor,
+  requireFieldPreimageCertificateReferenceScript,
+  resolveCertificateReferenceIndex,
+  resolveFieldPreimageCertificationReferenceLayout,
 } from "@/fraud-proof/field-preimage-carriage-v1.js";
-import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1 } from "@/native-tx-field-access-v1.js";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@/native-tx-field-access-v1.js";
 
 /**
  * §8.6 certificate selection under #606's **constant** asset name (owner
@@ -30,7 +30,7 @@ import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1 } from "@/native-tx-field-
  * which is why it records that "consumers disambiguate by datum, never by token
  * alone".
  *
- * {@link resolveCertificateReferenceIndexV1} is the single off-chain function
+ * {@link resolveCertificateReferenceIndex} is the single off-chain function
  * that ruling changed, and every other certificate fixture in this repo puts
  * exactly **one** certificate UTxO in the reference-input set — where a
  * token-only resolver and a datum-filtering one are indistinguishable. These
@@ -66,7 +66,7 @@ const CERTIFICATE_ADDRESS = "addr_test1_field_preimage_certificate";
 /** §8.4: above `chunk_bytes_k` (15,148), so both plans are tier 3. */
 const TIER3_PREIMAGE_BYTES = 16_384;
 
-const CERTIFICATE_UNIT = `${CERTIFICATE_POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`;
+const CERTIFICATE_UNIT = `${CERTIFICATE_POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
 
 const utxo = ({
   txHash,
@@ -113,8 +113,8 @@ const planFor = ({
   readonly fieldIndex: number;
   readonly fill: number;
   readonly owner?: Buffer;
-}): MidgardFieldCarriagePlanV1 =>
-  planMidgardFieldCarriageV1({
+}): MidgardFieldCarriagePlan =>
+  planMidgardFieldCarriage({
     owner,
     txId: CARRIAGE_TX_ID,
     fieldIndex,
@@ -123,15 +123,15 @@ const planFor = ({
 
 /** The certificate UTxO a plan mints, placed at a chosen out-ref. */
 const certificateUtxoFor = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
   txHash: string,
   outputIndex = 0,
 ): UTxO => {
-  const certification = deriveFieldPreimageCertificationV1(plan);
+  const certification = deriveFieldPreimageCertification(plan);
   // #606: the name is branding. Every certificate below is the *same* unit, so
   // nothing in these rows can be selected by token.
   expect(certification.assetNameHex).toBe(
-    FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
+    FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   );
   return utxo({
     txHash,
@@ -143,7 +143,7 @@ const certificateUtxoFor = (
 };
 
 const chunkUtxosFor = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
   txHash: string,
 ): readonly UTxO[] =>
   plan.publications.map((publication, offset) =>
@@ -151,7 +151,7 @@ const chunkUtxosFor = (
       txHash,
       outputIndex: offset,
       address: PROVER_KEY_ADDRESS,
-      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }),
   );
 
@@ -179,10 +179,10 @@ const EARLIER_CERTIFICATE_INDEX = 5;
 const LATER_CERTIFICATE_INDEX = 6;
 
 const resolveFor = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
   referenceInputs: readonly UTxO[],
 ): number =>
-  resolveCertificateReferenceIndexV1({
+  resolveCertificateReferenceIndex({
     certificatePolicyId: CERTIFICATE_POLICY_ID,
     txIdHex: plan.txId.toString("hex"),
     fieldIndex: plan.fieldIndex,
@@ -203,7 +203,7 @@ describe("§8.6 certificate selection under the constant asset name V1", () => {
       datum: "d87980",
       scriptRef: policy,
     });
-    const layout = resolveFieldPreimageCertificationReferenceLayoutV1({
+    const layout = resolveFieldPreimageCertificationReferenceLayout({
       plan,
       certificatePolicyId: policyId,
       certificatePolicyReferenceUtxo: policyReference,
@@ -229,13 +229,13 @@ describe("§8.6 certificate selection under the constant asset name V1", () => {
       scriptRef: substituted.policy,
     });
     expect(() =>
-      requireFieldPreimageCertificateReferenceScriptV1({
+      requireFieldPreimageCertificateReferenceScript({
         certificatePolicyId: expected.policyId,
         referenceUtxo: reference,
       }),
     ).toThrow("reference script hashes to");
     expect(() =>
-      requireFieldPreimageCertificateReferenceScriptV1({
+      requireFieldPreimageCertificateReferenceScript({
         certificatePolicyId: expected.policyId,
         referenceUtxo: { ...reference, scriptRef: undefined },
       }),
@@ -324,8 +324,8 @@ describe("§8.6 certificate selection under the constant asset name V1", () => {
     // order a builder happened to collect the set in.
     const plan = planFor({ fieldIndex: 2, fill: 0xa5 });
     const healed = planFor({ fieldIndex: 2, fill: 0xa5, owner: HEALING_OWNER });
-    expect(deriveFieldPreimageCertificationV1(healed).datumCbor).not.toBe(
-      deriveFieldPreimageCertificationV1(plan).datumCbor,
+    expect(deriveFieldPreimageCertification(healed).datumCbor).not.toBe(
+      deriveFieldPreimageCertification(plan).datumCbor,
     );
 
     // Same tx hash, different output index — the tie-break the comparator falls
@@ -357,7 +357,7 @@ describe("§8.6 certificate selection under the constant asset name V1", () => {
       ...certificateUtxoFor(plan, "a1".repeat(32)),
       assets: {
         lovelace: 5_000_000n,
-        [`${FOREIGN_POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`]:
+        [`${FOREIGN_POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`]:
           1n,
       },
     };

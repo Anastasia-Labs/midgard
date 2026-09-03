@@ -13,7 +13,7 @@
  * stalled outcome instead).
  */
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
   faultProofStepRedeemerSchema,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
@@ -41,17 +41,17 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
-  type CrossBlockDuplicateEventContractsV1,
+  type CrossBlockDuplicateEventContracts,
 } from "./contracts-v1.js";
 import {
-  crossBlockDuplicateEventStepLabelV1,
+  crossBlockDuplicateEventStepLabel,
   crossBlockDuplicateEventSubmitError,
-  requireCrossBlockDuplicateEventReferenceScriptV1,
+  requireCrossBlockDuplicateEventReferenceScript,
 } from "./submit-common-v1.js";
 
 /**
@@ -86,7 +86,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
 }): 0 | 1 => {
   for (const stepIndex of [0, 1] as const) {
     if (
@@ -110,12 +110,12 @@ export const submitCrossBlockDuplicateEventCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Mandatory published reference script for the step being cancelled. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -124,11 +124,11 @@ export const submitCrossBlockDuplicateEventCancel = async ({
     label: `${CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = crossBlockDuplicateEventStepLabelV1(stepIndex);
+  const stepLabel = crossBlockDuplicateEventStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+    categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
     categoryLabel: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
   });
 
@@ -195,13 +195,13 @@ export const submitCrossBlockDuplicateEventCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,
   });
   const referenceInputs = [
-    requireCrossBlockDuplicateEventReferenceScriptV1({
+    requireCrossBlockDuplicateEventReferenceScript({
       utxo: referenceScriptUtxo,
       contracts,
       stepIndex,

@@ -1,5 +1,5 @@
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+  CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
   type CrossBlockDuplicateEventStep02State,
 } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
@@ -14,11 +14,11 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
-  type CrossBlockDuplicateEventContractsV1,
+  type CrossBlockDuplicateEventContracts,
 } from "./contracts-v1.js";
 
-export type CrossBlockDuplicateEventCatalogueCategoryV1 = {
-  readonly categoryId: typeof CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1;
+export type CrossBlockDuplicateEventCatalogueCategory = {
+  readonly categoryId: typeof CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
 };
@@ -26,16 +26,16 @@ export type CrossBlockDuplicateEventCatalogueCategoryV1 = {
 export const crossBlockDuplicateEventSubmitError = (message: string): Error =>
   new Error(`${CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL}: ${message}`);
 
-export const crossBlockDuplicateEventStepLabelV1 = (stepIndex: 0 | 1) =>
+export const crossBlockDuplicateEventStepLabel = (stepIndex: 0 | 1) =>
   `${CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
-export const requireCrossBlockDuplicateEventReferenceScriptV1 = ({
+export const requireCrossBlockDuplicateEventReferenceScript = ({
   utxo,
   contracts,
   stepIndex,
 }: {
   readonly utxo: UTxO;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
   readonly stepIndex: 0 | 1;
 }): UTxO => {
   if (utxo.scriptRef == null) {
@@ -47,43 +47,43 @@ export const requireCrossBlockDuplicateEventReferenceScriptV1 = ({
   const expected = contracts.steps[stepIndex].spendingScriptHash;
   if (actual !== expected) {
     throw crossBlockDuplicateEventSubmitError(
-      `reference script ${actual} does not match ${crossBlockDuplicateEventStepLabelV1(stepIndex)} ${expected}`,
+      `reference script ${actual} does not match ${crossBlockDuplicateEventStepLabel(stepIndex)} ${expected}`,
     );
   }
   return utxo;
 };
 
-export const requireCrossBlockDuplicateEventThreadV1 = async ({
+export const requireCrossBlockDuplicateEventThread = async ({
   lucid,
   contracts,
   threadOutRef,
   stepIndex,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
   readonly threadOutRef: string;
   readonly stepIndex: 0 | 1;
 }) => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
-    label: `${crossBlockDuplicateEventStepLabelV1(stepIndex)} thread`,
+    label: `${crossBlockDuplicateEventStepLabel(stepIndex)} thread`,
   });
   if (threadUtxo.address !== contracts.steps[stepIndex].spendingScriptAddress) {
     throw crossBlockDuplicateEventSubmitError(
-      `thread ${outRefLabel(threadUtxo)} is not at ${crossBlockDuplicateEventStepLabelV1(stepIndex)}`,
+      `thread ${outRefLabel(threadUtxo)} is not at ${crossBlockDuplicateEventStepLabel(stepIndex)}`,
     );
   }
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+    categoryId: CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID,
     categoryLabel: CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
   });
   return { threadUtxo, threadToken };
 };
 
-export const requireCrossBlockDuplicateEventStep02StateV1 = ({
+export const requireCrossBlockDuplicateEventStep02State = ({
   threadUtxo,
   signer,
   schema,

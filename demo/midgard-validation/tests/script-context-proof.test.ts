@@ -6,8 +6,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  commitMidgardScriptContextTxInInfoV1,
-  commitMidgardScriptContextTxOutV1,
+  commitMidgardScriptContextTxInInfo,
+  commitMidgardScriptContextTxOut,
 } from "../src/script-context-proof.js";
 
 const OUTPUT_CBOR =
@@ -23,8 +23,8 @@ describe("V1 script-context output commitments", () => {
     const output = decodeMidgardTxOutput(Buffer.from(OUTPUT_CBOR, "hex"));
     expect(encodeMidgardTxOutput(output).toString("hex")).toBe(OUTPUT_CBOR);
 
-    const cardano = commitMidgardScriptContextTxOutV1(output, "cardano");
-    const midgard = commitMidgardScriptContextTxOutV1(output, "midgard");
+    const cardano = commitMidgardScriptContextTxOut(output, "cardano");
+    const midgard = commitMidgardScriptContextTxOut(output, "midgard");
     expect(Buffer.from(cardano.root).toString("hex")).toBe(
       "e1649a619efea4d8319405dae3455e5add966785c25f269e83fd0f15352693a7",
     );
@@ -58,7 +58,7 @@ describe("V1 script-context output commitments", () => {
     const outputCbor = encodeMidgardTxOutput(output);
     expect(outputCbor.length).toBeLessThanOrEqual(4_095);
 
-    const commitment = commitMidgardScriptContextTxOutV1(output, "cardano");
+    const commitment = commitMidgardScriptContextTxOut(output, "cardano");
     const maximumStructuralPreimage = Math.max(
       ...[...commitment.dataNodes.values()].map(
         ({ preimage }) => preimage.length,
@@ -76,12 +76,12 @@ describe("V1 script-context output commitments", () => {
 
   it("matches the Aiken TxInInfo roots from bounded input and output preimages", () => {
     const output = decodeMidgardTxOutput(Buffer.from(OUTPUT_CBOR, "hex"));
-    const cardano = commitMidgardScriptContextTxInInfoV1(
+    const cardano = commitMidgardScriptContextTxInInfo(
       INPUT_CBOR,
       output,
       "cardano",
     );
-    const midgard = commitMidgardScriptContextTxInInfoV1(
+    const midgard = commitMidgardScriptContextTxInInfo(
       INPUT_CBOR,
       output,
       "midgard",

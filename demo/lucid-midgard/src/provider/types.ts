@@ -1,10 +1,10 @@
-import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
+import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import type {
   ScriptLanguageName,
   ScriptLanguageTag,
 } from "@al-ft/midgard-core/codec";
-import type { MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import type { DeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import type {
   Address,
@@ -42,8 +42,8 @@ type MidgardProtocolInfoCommon = {
 
 export type MidgardProtocolInfo = MidgardProtocolInfoCommon & {
   readonly apiVersion: 1;
-  readonly consensusProfile: MidgardConsensusProfileV1;
-  readonly deploymentMarker?: DeploymentMarkerV1;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly deploymentMarker?: DeploymentMarker;
 };
 
 export type ProviderDiagnostics = {
@@ -63,7 +63,7 @@ export type MidgardProvider = {
   getCurrentSlot(): Promise<bigint>;
   submitTx(
     txCanonicalCborHex: string,
-    programMaterial?: readonly MidgardCekProgramMaterialEntryV1[],
+    programMaterial?: readonly MidgardCekProgramMaterialEntry[],
   ): Promise<SubmitTxResult>;
   getTxStatus(txId: TxHash): Promise<TxStatus>;
   diagnostics(): ProviderDiagnostics;

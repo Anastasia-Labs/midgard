@@ -37,22 +37,22 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
 import {
-  type MissingNativeScriptTxStepIndexV1,
-  missingNativeScriptTxStepLabelV1,
+  type MissingNativeScriptTxStepIndex,
+  missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxReferenceScriptV1,
+  requireMissingNativeScriptTxReferenceScript,
 } from "./submit-common-v1.js";
 
-export type MissingNativeScriptTxBindingResultV1 = {
+export type MissingNativeScriptTxBindingResult = {
   readonly txHash: string;
   readonly nextThreadOutRef: string;
   readonly inputIndex: number;
@@ -62,7 +62,7 @@ export type MissingNativeScriptTxBindingResultV1 = {
 };
 
 /** Shared body of the two bare-`NativeTxInclusionArgs` binding steps. */
-export const submitMissingNativeScriptTxBindingV1 = async ({
+export const submitMissingNativeScriptTxBinding = async ({
   lucid,
   blueprint,
   network,
@@ -110,13 +110,13 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   ) => unknown;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Runs after local evaluation/signing and before provider submission. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation: boolean;
-}): Promise<MissingNativeScriptTxBindingResultV1> => {
-  const label = missingNativeScriptTxStepLabelV1(
-    stepIndex as MissingNativeScriptTxStepIndexV1,
+}): Promise<MissingNativeScriptTxBindingResult> => {
+  const label = missingNativeScriptTxStepLabel(
+    stepIndex as MissingNativeScriptTxStepIndex,
   );
   const [hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
     requireSingletonUtxo({
@@ -217,12 +217,12 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
       spendRedeemerSchema,
     );
   }) satisfies BuildTxWithRedeemer;
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${label} PHAS membership`,
   });
-  const stepReference = requireMissingNativeScriptTxReferenceScriptV1({
+  const stepReference = requireMissingNativeScriptTxReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
@@ -265,15 +265,15 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-spend`,
         utxo: stepReference,
         expectedScript: contracts.steps[stepIndex].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-phas-membership`,
         utxo: witnessReferenceScripts?.phasMembershipWithdraw,
         expectedScript: phasScript,

@@ -23,7 +23,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
 import { WithdrawalSourceMembershipProofSchema } from "../transition-trace.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -35,7 +35,7 @@ import {
 } from "./native.js";
 
 /** Normative violation identifier. */
-export const WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1 =
+export const WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID =
   "withdrawn-reference-input" as const;
 
 // ## Thread NFT asset name
@@ -45,7 +45,7 @@ export const WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1 =
  * family's category id (4 bytes; test-only or allocated at registration)
  * followed by the challenged header hash.
  */
-export const withdrawnReferenceInputThreadTokenAssetNameV1 = (
+export const withdrawnReferenceInputThreadTokenAssetName = (
   categoryId: string,
   challengedHeaderHash: string,
 ): string => {
@@ -130,7 +130,7 @@ export const WithdrawnReferenceInputStep02Datum =
 export const WithdrawnReferenceInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  reference_inputs_opening: FieldOpeningV1Schema,
+  reference_inputs_opening: FieldOpeningSchema,
   bad_reference_input_index: Data.Integer(),
 });
 export type WithdrawnReferenceInputStep02Args = Data.Static<
@@ -197,17 +197,17 @@ export const WithdrawnReferenceInputStep03SpendRedeemer =
 
 // ## Step resolver
 
-export const WITHDRAWN_REFERENCE_INPUT_STEP_NAMES_V1 = [
+export const WITHDRAWN_REFERENCE_INPUT_STEP_NAMES = [
   "step_01",
   "step_02",
   "step_03",
 ] as const;
-export type WithdrawnReferenceInputStepNameV1 =
-  (typeof WITHDRAWN_REFERENCE_INPUT_STEP_NAMES_V1)[number];
+export type WithdrawnReferenceInputStepName =
+  (typeof WITHDRAWN_REFERENCE_INPUT_STEP_NAMES)[number];
 
 /** Exhaustive datum-schema resolver for the three deployed steps. */
-export const withdrawnReferenceInputStepDatumSchemaV1 = (
-  step: WithdrawnReferenceInputStepNameV1,
+export const withdrawnReferenceInputStepDatumSchema = (
+  step: WithdrawnReferenceInputStepName,
 ) => {
   switch (step) {
     case "step_01":

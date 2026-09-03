@@ -1,7 +1,7 @@
 import {
-  assertConfirmedDuplicateEventV1,
+  assertConfirmedDuplicateEvent,
   commitCountedRootProgram,
-  type CommittedDuplicateEventProofV1,
+  type CommittedDuplicateEventProof,
   CrossBlockDuplicateEventStep02Datum,
   CrossBlockDuplicateEventStep02SpendRedeemer,
   FraudProofComputationThreadRedeemer,
@@ -34,20 +34,20 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
+import type { CrossBlockDuplicateEventContracts } from "./contracts-v1.js";
 import {
   crossBlockDuplicateEventSubmitError,
-  requireCrossBlockDuplicateEventReferenceScriptV1,
-  requireCrossBlockDuplicateEventStep02StateV1,
-  requireCrossBlockDuplicateEventThreadV1,
+  requireCrossBlockDuplicateEventReferenceScript,
+  requireCrossBlockDuplicateEventStep02State,
+  requireCrossBlockDuplicateEventThread,
 } from "./submit-common-v1.js";
 
 export type SubmitCrossBlockDuplicateEventStep02Result = {
@@ -75,16 +75,16 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly settlementOutRef: string;
   readonly settledHeaderHash: string;
-  readonly settledEvent: CommittedDuplicateEventProofV1;
+  readonly settledEvent: CommittedDuplicateEventProof;
   /** Mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventStep02Result> => {
   if (!/^[0-9a-f]{56}$/u.test(settledHeaderHash)) {
@@ -93,7 +93,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     );
   }
   const [{ threadUtxo, threadToken }, settlementUtxo] = await Promise.all([
-    requireCrossBlockDuplicateEventThreadV1({
+    requireCrossBlockDuplicateEventThread({
       lucid,
       contracts,
       threadOutRef,
@@ -105,7 +105,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
       label: "cross-block-duplicate-event confirmed settlement",
     }),
   ]);
-  const state = requireCrossBlockDuplicateEventStep02StateV1({
+  const state = requireCrossBlockDuplicateEventStep02State({
     threadUtxo,
     signer,
     schema: CrossBlockDuplicateEventStep02Datum,
@@ -115,7 +115,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
       "step-02 state header does not match the computation-thread asset name",
     );
   }
-  assertConfirmedDuplicateEventV1({ state, settledHeaderHash, settledEvent });
+  assertConfirmedDuplicateEvent({ state, settledHeaderHash, settledEvent });
   const settlementUnit = toUnit(state.settlement_policy_id, settledHeaderHash);
   if (
     settlementUtxo.assets[settlementUnit] !== 1n ||
@@ -261,19 +261,19 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "cross-block-duplicate-event computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "cross-block-duplicate-event fraud-proof mint",
   });
   const referenceInputs = [
     settlementUtxo,
-    requireCrossBlockDuplicateEventReferenceScriptV1({
+    requireCrossBlockDuplicateEventReferenceScript({
       utxo: referenceScriptUtxo,
       contracts,
       stepIndex: 1,
@@ -304,9 +304,9 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

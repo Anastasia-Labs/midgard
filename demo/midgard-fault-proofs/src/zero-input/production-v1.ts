@@ -1,8 +1,8 @@
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
-  detectZeroInputForcedReplayV1,
-  selectCanonicalZeroInputForcedDetectionV1,
+  detectZeroInputForcedReplay,
+  selectCanonicalZeroInputForcedDetection,
 } from "./replay-v1.js";
 
 /**
@@ -10,15 +10,15 @@ import {
  * DA and an authenticated Cardano header. Verdict, reason, evidence, and the
  * forced-source redeemer payload are all derived below this boundary.
  */
-export type ZeroInputForcedProductionInputV1 = Readonly<{
-  block: CanonicalBlockEvidenceV1;
+export type ZeroInputForcedInput = Readonly<{
+  block: CanonicalBlockEvidence;
 }>;
 
-export const prepareZeroInputForcedProductionPlanV1 = async ({
+export const prepareZeroInputForcedPlan = async ({
   block,
-}: ZeroInputForcedProductionInputV1) => {
-  const detection = selectCanonicalZeroInputForcedDetectionV1(
-    detectZeroInputForcedReplayV1(block),
+}: ZeroInputForcedInput) => {
+  const detection = selectCanonicalZeroInputForcedDetection(
+    detectZeroInputForcedReplay(block),
   );
   const transaction =
     block.reconstruction.forcedTransactions[detection.forcedIndex];

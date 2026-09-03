@@ -13,14 +13,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
-import type { PreparedNetworkIdWrongfulRejectionV1 } from "./wrongful-rejection-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
+import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection-v1.js";
 
-export const submitNetworkIdForcedBindV1 = async ({
+export const submitNetworkIdForcedBind = async ({
   lucid,
   contracts,
   signer,
@@ -32,13 +32,13 @@ export const submitNetworkIdForcedBindV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
-  readonly prepared: PreparedNetworkIdWrongfulRejectionV1;
+  readonly prepared: PreparedNetworkIdWrongfulRejection;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const forcedStep = contracts.forcedStep;
@@ -90,7 +90,7 @@ export const submitNetworkIdForcedBindV1 = async ({
       NetworkIdForcedStepSpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

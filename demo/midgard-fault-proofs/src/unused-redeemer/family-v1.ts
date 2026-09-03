@@ -1,27 +1,27 @@
 import { createHash } from "node:crypto";
 
 import {
-  buildMidgardBoundedItemV1,
-  decodeMidgardRedeemerWitnessFieldPreimageV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  hashMidgardRedeemerItemLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  type MidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardBoundedItem,
+  decodeMidgardRedeemerWitnessFieldPreimage,
+  encodeMidgardRedeemerWitnessItem,
+  hashMidgardRedeemerItemLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  type MidgardValidationMerkleMembership,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 as ACCEPTED,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1 as REJECTED,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE as ACCEPTED,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION as REJECTED,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const UNUSED_REDEEMER_CATEGORY_V1 = "unusedRedeemer" as const;
-export const UNUSED_REDEEMER_CATEGORY_ID_V1 = "00000030" as const;
-export const UNUSED_REDEEMER_VIOLATION_ID_V1 = "unused-redeemer" as const;
-export const UNUSED_REDEEMER_FIELD_INDEX_V1 = 8 as const;
+export const UNUSED_REDEEMER_CATEGORY = "unusedRedeemer" as const;
+export const UNUSED_REDEEMER_CATEGORY_ID = "00000030" as const;
+export const UNUSED_REDEEMER_VIOLATION_ID = "unused-redeemer" as const;
+export const UNUSED_REDEEMER_FIELD_INDEX = 8 as const;
 const fail = (m: string): never => {
   throw new Error(`unusedRedeemer: ${m}`);
 };
@@ -32,14 +32,14 @@ const hex = (s: string, bytes: number, label: string): string =>
     ? s
     : fail(`${label} is invalid`);
 
-export type UnusedRedeemerFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type UnusedRedeemerFinding = Readonly<{
+  subject: VerdictSubject;
   redeemerIndex: number;
 }>;
-export const classifyUnusedRedeemerFindingV1 = (
-  finding: UnusedRedeemerFindingV1,
-): UnusedRedeemerFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyUnusedRedeemerFinding = (
+  finding: UnusedRedeemerFinding,
+): UnusedRedeemerFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     fail("verdict subject is not canonical");
   index(finding.redeemerIndex, "redeemer index");
   if (finding.subject.direction === REJECTED) {
@@ -59,21 +59,21 @@ export const classifyUnusedRedeemerFindingV1 = (
   return Object.freeze(finding);
 };
 
-export type UnusedRedeemerSelectionOpeningV1 = Readonly<{
+export type UnusedRedeemerSelectionOpening = Readonly<{
   frontierIndex: number;
   purposeKind: 0 | 1 | 2 | 3;
   purposeIndex: number;
   scriptHashHex: string;
   purposeSubjectHex: string;
-  purposeMembership: MidgardValidationMerkleMembershipV1;
+  purposeMembership: MidgardValidationMerkleMembership;
   languageTag: 0 | 3 | 128;
   sourceLeafHex: string;
   redeemerLeafHex: string;
-  executionMembership: MidgardValidationMerkleMembershipV1;
+  executionMembership: MidgardValidationMerkleMembership;
 }>;
 // Compatibility carriage names consumed by the shared transaction builders;
 // production replay replaces these with the exact retained stage-10/12 seam.
-export type LegacyUnusedRedeemerSourceOpeningV1 = Readonly<{
+export type LegacyUnusedRedeemerSourceOpening = Readonly<{
   frontierIndex: number;
   originKind: 0 | 1;
   sourceIndex: number;
@@ -82,41 +82,41 @@ export type LegacyUnusedRedeemerSourceOpeningV1 = Readonly<{
   scriptHashHex: string;
   scriptTotalLength: number;
   itemCommitmentHex: string;
-  membership: MidgardValidationMerkleMembershipV1;
+  membership: MidgardValidationMerkleMembership;
 }>;
-export type LegacyUnusedRedeemerPurposeOpeningV1 = Readonly<{
+export type LegacyUnusedRedeemerPurposeOpening = Readonly<{
   frontierIndex: number;
   purposeKind: 0 | 1 | 2 | 3;
   purposeIndex: number;
   scriptHashHex: string;
   purposeSubjectHex: string;
-  membership: MidgardValidationMerkleMembershipV1;
+  membership: MidgardValidationMerkleMembership;
 }>;
-export type AuthenticatedCommittedRedeemerUniverseV1 =
+export type AuthenticatedCommittedRedeemerUniverse =
   | Readonly<{
       schemaVersion: "midgard-committed-redeemer-universe-v1";
       transactionId: string;
       universeDigest: string;
-      selections: readonly UnusedRedeemerSelectionOpeningV1[];
+      selections: readonly UnusedRedeemerSelectionOpening[];
     }>
   | Readonly<{
       schemaVersion: "midgard-committed-script-universe-v1";
       transactionId: string;
       universeDigest: string;
-      sources: readonly LegacyUnusedRedeemerSourceOpeningV1[];
-      purposes: readonly LegacyUnusedRedeemerPurposeOpeningV1[];
+      sources: readonly LegacyUnusedRedeemerSourceOpening[];
+      purposes: readonly LegacyUnusedRedeemerPurposeOpening[];
     }>;
-export type UnusedRedeemerEvidenceV1 = Readonly<{
-  finding: UnusedRedeemerFindingV1;
+export type UnusedRedeemerEvidence = Readonly<{
+  finding: UnusedRedeemerFinding;
   fieldPreimageHex: string;
   targetItemHex: string;
   targetPurposeTag: 0 | 1 | 3 | 6;
   targetPointerIndex: number;
   targetItemCommitmentHex: string;
   targetRedeemerLeafHex: string;
-  selections: readonly UnusedRedeemerSelectionOpeningV1[];
-  sources: readonly LegacyUnusedRedeemerSourceOpeningV1[];
-  purposes: readonly LegacyUnusedRedeemerPurposeOpeningV1[];
+  selections: readonly UnusedRedeemerSelectionOpening[];
+  sources: readonly LegacyUnusedRedeemerSourceOpening[];
+  purposes: readonly LegacyUnusedRedeemerPurposeOpening[];
   targetScriptHashHex: string;
   matchedSelectionIndex: number | null;
   unused: boolean;
@@ -126,7 +126,7 @@ const tagForKind = (kind: 0 | 1 | 2 | 3): 0 | 1 | 3 | 6 =>
   ([0, 1, 3, 6] as const)[kind];
 
 const verifySelections = (
-  items: readonly UnusedRedeemerSelectionOpeningV1[],
+  items: readonly UnusedRedeemerSelectionOpening[],
 ): void => {
   const count = items[0]?.purposeMembership.frontier.count ?? 0;
   if (count !== items.length) fail("purpose frontier is incomplete");
@@ -136,13 +136,13 @@ const verifySelections = (
     hex(item.sourceLeafHex, 32, "source leaf");
     if (item.redeemerLeafHex !== "")
       hex(item.redeemerLeafHex, 32, "redeemer leaf");
-    const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+    const purposeLeaf = hashMidgardScriptPurposeLeaf({
       purposeKind: item.purposeKind,
       purposeIndex: BigInt(item.purposeIndex),
       scriptHash: Buffer.from(item.scriptHashHex, "hex"),
       subject: Buffer.from(item.purposeSubjectHex, "hex"),
     });
-    const executionLeaf = hashMidgardScriptExecutionLeafV1({
+    const executionLeaf = hashMidgardScriptExecutionLeaf({
       languageTag: item.languageTag,
       purposeLeaf,
       sourceLeaf: Buffer.from(item.sourceLeafHex, "hex"),
@@ -156,23 +156,23 @@ const verifySelections = (
       item.executionMembership.frontier.count !== count ||
       !Buffer.from(item.purposeMembership.leafHash).equals(purposeLeaf) ||
       !Buffer.from(item.executionMembership.leafHash).equals(executionLeaf) ||
-      !verifyMidgardValidationMerkleMembershipV1(item.purposeMembership) ||
-      !verifyMidgardValidationMerkleMembershipV1(item.executionMembership)
+      !verifyMidgardValidationMerkleMembership(item.purposeMembership) ||
+      !verifyMidgardValidationMerkleMembership(item.executionMembership)
     )
       fail("purpose/execution frontier changed");
   });
 };
 
-export const prepareUnusedRedeemerEvidenceV1 = ({
+export const prepareUnusedRedeemerEvidence = ({
   finding: raw,
   fieldPreimage,
   universe,
 }: {
-  finding: UnusedRedeemerFindingV1;
+  finding: UnusedRedeemerFinding;
   fieldPreimage: Uint8Array;
-  universe: AuthenticatedCommittedRedeemerUniverseV1;
-}): UnusedRedeemerEvidenceV1 => {
-  const finding = classifyUnusedRedeemerFindingV1(raw);
+  universe: AuthenticatedCommittedRedeemerUniverse;
+}): UnusedRedeemerEvidence => {
+  const finding = classifyUnusedRedeemerFinding(raw);
   if (
     universe.transactionId !== finding.subject.transaction_id ||
     !/^[0-9a-f]{64}$/u.test(universe.universeDigest)
@@ -184,11 +184,11 @@ export const prepareUnusedRedeemerEvidenceV1 = ({
       : fail("retained replay omitted authenticated execution selections");
   verifySelections(selections);
   const target =
-    decodeMidgardRedeemerWitnessFieldPreimageV1(fieldPreimage)[
+    decodeMidgardRedeemerWitnessFieldPreimage(fieldPreimage)[
       finding.redeemerIndex
     ];
   if (target === undefined) fail("redeemer coordinate is outside field 8");
-  const decodedPurposeTag = MIDGARD_REDEEMER_PURPOSE_TAGS_V1[target.purpose];
+  const decodedPurposeTag = MIDGARD_REDEEMER_PURPOSE_TAGS[target.purpose];
   if (
     decodedPurposeTag !== 0 &&
     decodedPurposeTag !== 1 &&
@@ -197,13 +197,13 @@ export const prepareUnusedRedeemerEvidenceV1 = ({
   )
     fail("unsupported redeemer purpose");
   const purposeTag = decodedPurposeTag as 0 | 1 | 3 | 6;
-  const targetItem = encodeMidgardRedeemerWitnessItemV1(target);
-  const bounded = buildMidgardBoundedItemV1({
+  const targetItem = encodeMidgardRedeemerWitnessItem(target);
+  const bounded = buildMidgardBoundedItem({
     fieldIndex: 8,
     itemIndex: finding.redeemerIndex,
     bytes: targetItem,
   });
-  const targetLeaf = hashMidgardRedeemerItemLeafV1({
+  const targetLeaf = hashMidgardRedeemerItemLeaf({
     redeemerIndex: finding.redeemerIndex,
     itemCommitment: bounded.commitment,
   }).toString("hex");
@@ -250,21 +250,21 @@ export const prepareUnusedRedeemerEvidenceV1 = ({
     checkpointDigest,
   });
 };
-export const unusedRedeemerEvidenceClosesV1 = (
-  e: UnusedRedeemerEvidenceV1,
+export const unusedRedeemerEvidenceCloses = (
+  e: UnusedRedeemerEvidence,
 ): boolean => e.unused === (e.finding.subject.direction === ACCEPTED);
-export const unusedRedeemerAccountabilityRouteV1 = ({
+export const unusedRedeemerAccountabilityRoute = ({
   committedFrontierIsCanonical,
   evidence,
 }: {
   committedFrontierIsCanonical: boolean;
-  evidence: UnusedRedeemerEvidenceV1;
+  evidence: UnusedRedeemerEvidence;
 }): "unusedRedeemer" | "validationTraceInvalid" =>
-  committedFrontierIsCanonical && unusedRedeemerEvidenceClosesV1(evidence)
+  committedFrontierIsCanonical && unusedRedeemerEvidenceCloses(evidence)
     ? "unusedRedeemer"
     : "validationTraceInvalid";
-export const unusedRedeemerEvidenceIdentityV1 = (
-  e: UnusedRedeemerEvidenceV1,
+export const unusedRedeemerEvidenceIdentity = (
+  e: UnusedRedeemerEvidence,
 ): string =>
   createHash("sha256")
     .update("MidgardUnusedRedeemerIdentityV1\0")

@@ -1,18 +1,18 @@
 import { decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
 import type {
-  MidgardNativeTxWitnessSetCanonicalV1,
-  MidgardNativeTxWitnessSetCompactV1,
+  MidgardNativeTxWitnessSetCanonical,
+  MidgardNativeTxWitnessSetCompact,
 } from "./native.js";
-import { MIDGARD_NATIVE_TX_V1_VERSION } from "./native-constants.js";
-import { midgardFieldCommitmentV1 } from "./native-tx-field-access-v1.js";
+import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
+import { midgardFieldCommitment } from "./native-tx-field-access-v1.js";
 import { asFixedArray, bytesItem, hashItem } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
 type NativeTxWitnessSetCanonicalValue = readonly [Buffer, Buffer, Buffer];
 
 export const encodeNativeTxWitnessSetCompactValue = (
-  witnessSet: MidgardNativeTxWitnessSetCompactV1,
+  witnessSet: MidgardNativeTxWitnessSetCompact,
 ): NativeTxWitnessSetCompactValue => [
   ensureHash32(
     witnessSet.addrTxWitsHash,
@@ -32,7 +32,7 @@ export const decodeNativeTxWitnessSetCompactValue = (
   value: unknown,
   fieldName: string,
   _version: bigint,
-): MidgardNativeTxWitnessSetCompactV1 => {
+): MidgardNativeTxWitnessSetCompact => {
   const v = asFixedArray(value, 3, fieldName);
   return {
     addrTxWitsHash: hashItem(v, 0, fieldName),
@@ -43,7 +43,7 @@ export const decodeNativeTxWitnessSetCompactValue = (
 
 export const encodeNativeTxWitnessSetCanonicalValue = (
   _version: bigint,
-  witnessSet: MidgardNativeTxWitnessSetCanonicalV1,
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
 ): NativeTxWitnessSetCanonicalValue => [
   Buffer.from(witnessSet.addrTxWitsPreimageCbor),
   Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
@@ -54,7 +54,7 @@ export const decodeNativeTxWitnessSetCanonicalValue = (
   value: unknown,
   fieldName: string,
   _version: bigint,
-): MidgardNativeTxWitnessSetCanonicalV1 => {
+): MidgardNativeTxWitnessSetCanonical => {
   const v = asFixedArray(value, 3, fieldName);
   return {
     addrTxWitsPreimageCbor: bytesItem(v, 0, fieldName),
@@ -72,45 +72,43 @@ export const decodeNativeTxWitnessSetCanonicalValue = (
  * the grammar here. The note there is the full one.
  */
 export const deriveNativeTxWitnessSetCompact = (
-  witnessSet: MidgardNativeTxWitnessSetCanonicalV1,
-): MidgardNativeTxWitnessSetCompactV1 => ({
-  addrTxWitsHash: midgardFieldCommitmentV1(witnessSet.addrTxWitsPreimageCbor),
-  scriptTxWitsHash: midgardFieldCommitmentV1(
-    witnessSet.scriptTxWitsPreimageCbor,
-  ),
-  redeemerTxWitsHash: midgardFieldCommitmentV1(
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
+): MidgardNativeTxWitnessSetCompact => ({
+  addrTxWitsHash: midgardFieldCommitment(witnessSet.addrTxWitsPreimageCbor),
+  scriptTxWitsHash: midgardFieldCommitment(witnessSet.scriptTxWitsPreimageCbor),
+  redeemerTxWitsHash: midgardFieldCommitment(
     witnessSet.redeemerTxWitsPreimageCbor,
   ),
 });
 
 export const encodeNativeTxWitnessSetCompactCbor = (
-  witnessSet: MidgardNativeTxWitnessSetCompactV1,
+  witnessSet: MidgardNativeTxWitnessSetCompact,
 ): Buffer => encodeCbor(encodeNativeTxWitnessSetCompactValue(witnessSet));
 
 export const decodeNativeTxWitnessSetCompactCbor = (
   bytes: Uint8Array,
-): MidgardNativeTxWitnessSetCompactV1 =>
+): MidgardNativeTxWitnessSetCompact =>
   decodeNativeTxWitnessSetCompactValue(
     decodeSingleCbor(bytes),
     "transaction_witness_set",
-    MIDGARD_NATIVE_TX_V1_VERSION,
+    MIDGARD_NATIVE_TX_VERSION,
   );
 
 export const encodeNativeTxWitnessPreimagesCbor = (
-  witnessSet: MidgardNativeTxWitnessSetCanonicalV1,
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
 ): Buffer =>
   encodeCbor(
     encodeNativeTxWitnessSetCanonicalValue(
-      MIDGARD_NATIVE_TX_V1_VERSION,
+      MIDGARD_NATIVE_TX_VERSION,
       witnessSet,
     ),
   );
 
 export const decodeNativeTxWitnessPreimagesCbor = (
   bytes: Uint8Array,
-): MidgardNativeTxWitnessSetCanonicalV1 =>
+): MidgardNativeTxWitnessSetCanonical =>
   decodeNativeTxWitnessSetCanonicalValue(
     decodeSingleCbor(bytes),
     "transaction_witness_preimages",
-    MIDGARD_NATIVE_TX_V1_VERSION,
+    MIDGARD_NATIVE_TX_VERSION,
   );

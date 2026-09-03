@@ -24,8 +24,8 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -37,20 +37,20 @@ import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  buildValueNotPreservedFixtureV1,
-  makeValueNotPreservedEmulatorHarnessV1,
-  publishValueNotPreservedReferenceScriptsV1,
-  runValueNotPreservedThreadV1,
-  setupValueNotPreservedScenarioV1,
-  vnpOutputV1,
-  vnpOutRefV1,
-  vnpValueV1,
+  buildValueNotPreservedFixture,
+  makeValueNotPreservedEmulatorHarness,
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+  vnpOutput,
+  vnpOutRef,
+  vnpValue,
 } from "./support/value-not-preserved-emulator-v1.js";
 
 /**
@@ -60,8 +60,8 @@ import {
  */
 const paddedOutputs = () =>
   [23, 23, 23, 21, 21, 21, 21, 21, 21, 21].map((datumChunks, index) =>
-    vnpOutputV1({
-      value: vnpValueV1(1_000_000n),
+    vnpOutput({
+      value: vnpValue(1_000_000n),
       datumChunks,
       seed: index * 29,
     }),
@@ -69,34 +69,31 @@ const paddedOutputs = () =>
 
 describe("value-not-preserved emulator lifecycle (tier-2 ADA claim)", () => {
   it("proves inflated ADA through a size-forced RawUtxo outputs carriage, mints the permanent token, and removes the fraudulent commitment", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
+    const harness = await makeValueNotPreservedEmulatorHarness();
     const { emulator, funderLucid, proverLucid, proverSigner, family } =
       harness;
 
     // Sourced 10 ADA (6 + 4), paid out 9.5 + 10×1 = 19.5 ADA, fee 1 ADA:
     // `10 − 19.5 − 1 = −10.5` ADA.
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
-        { input: vnpOutRefV1("31", 0), spentValue: vnpValueV1(6_000_000n) },
-        { input: vnpOutRefV1("42", 1), spentValue: vnpValueV1(4_000_000n) },
+        { input: vnpOutRef("31", 0), spentValue: vnpValue(6_000_000n) },
+        { input: vnpOutRef("42", 1), spentValue: vnpValue(4_000_000n) },
       ],
-      outputs: [
-        vnpOutputV1({ value: vnpValueV1(9_500_000n) }),
-        ...paddedOutputs(),
-      ],
+      outputs: [vnpOutput({ value: vnpValue(9_500_000n) }), ...paddedOutputs()],
       fee: 1_000_000n,
     });
     // THE tier-2 assertion: the committed outputs preimage exceeds the
     // 14,336-byte tier-1 cap and fits the single-publication RawUtxo window
     // (≤ 15,148) — the §8.4 partition is decided by these bytes alone.
     expect(fixture.outputsPreimageCbor.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
     expect(fixture.outputsPreimageCbor.length).toBeLessThanOrEqual(
-      MIDGARD_CHUNK_BYTES_K_V1,
+      MIDGARD_CHUNK_BYTES_K,
     );
 
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
@@ -110,12 +107,12 @@ describe("value-not-preserved emulator lifecycle (tier-2 ADA claim)", () => {
         lucid: proverLucid,
         contracts: harness.contracts,
       });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: funderLucid,
       contracts: family,
     });
 
-    const run = await runValueNotPreservedThreadV1({
+    const run = await runValueNotPreservedThread({
       harness,
       fixture,
       setup,
@@ -140,7 +137,7 @@ describe("value-not-preserved emulator lifecycle (tier-2 ADA claim)", () => {
     expect(run.step04.completedState.final_delta).toBe(-10_500_000n);
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
     for (const [stage, measurement] of Object.entries(run.measurements)) {
-      expectProofFitV1({ stage, measurement, maxTxExMem, maxTxExSteps });
+      expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
 
     // Thread burned, permanent token minted.

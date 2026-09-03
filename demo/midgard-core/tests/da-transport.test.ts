@@ -6,41 +6,41 @@ import {
   encodeCborUnsigned,
 } from "../src/codec/cbor.js";
 import {
-  DA_ON_CHAIN_ATTESTATION_V1_DOMAIN,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
-  type DaAttestationGossipV1,
-  type DaCapabilitiesResponseV1,
+  DA_ON_CHAIN_ATTESTATION_DOMAIN,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
+  type DaAttestationGossip,
+  type DaCapabilitiesResponse,
+  type DaConflictEvidence,
   DaConflictEvidenceKind,
-  type DaConflictEvidenceV1,
   DaGossipTopic,
   daGossipTopic,
   DaLocalPayloadStatus,
-  type DaMetadataByHeaderResponseV1,
+  type DaMetadataByHeaderResponse,
   DaMetadataStatus,
-  type DaPayloadByHeaderResponseV1,
+  type DaPayloadByHeaderResponse,
   DaPayloadByHeaderStatus,
-  type DaPayloadChunkManifestV1,
+  type DaPayloadChunkManifest,
   DaPayloadSubmitMode,
-  type DaPayloadSubmitRequestV1,
+  type DaPayloadSubmitRequest,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaAttestationGossipV1Cbor,
-  decodeDaCapabilitiesRequestV1Cbor,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaConflictEvidenceV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
+  decodeDaAttestationGossipCbor,
+  decodeDaCapabilitiesRequestCbor,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaConflictEvidenceCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
   decodeDaPayloadChunkManifestCbor,
-  decodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaAttestationGossipV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaCapabilitiesResponseV1Cbor,
-  encodeDaConflictEvidenceV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
+  decodeDaPayloadSubmitRequestCbor,
+  encodeDaAttestationGossipCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaCapabilitiesResponseCbor,
+  encodeDaConflictEvidenceCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadByHeaderResponseCbor,
   encodeDaPayloadChunkManifestCbor,
-  encodeDaPayloadSubmitRequestV1Cbor,
+  encodeDaPayloadSubmitRequestCbor,
   normalizeDaDeploymentFingerprintHex,
   parseDaLibp2pRuntimeManifest,
 } from "../src/da-transport.js";
@@ -51,7 +51,7 @@ const deployment = b(0x01, 32);
 const header = b(0x02, 28);
 const payload = b(0x03, 32);
 
-const chunkManifest: DaPayloadChunkManifestV1 = {
+const chunkManifest: DaPayloadChunkManifest = {
   payloadHash: payload,
   totalBytes: 5,
   chunkSize: 2,
@@ -72,9 +72,9 @@ describe("DA libp2p transport protocol freeze", () => {
   });
 
   it("freezes protocol IDs, topics, domains, limits, and enum codes", () => {
-    expect(DA_TRANSPORT_V1_PROTOCOL_VERSION).toBe(1);
-    expect(DA_ON_CHAIN_ATTESTATION_V1_DOMAIN).toBe("MidgardDAAttestationV1");
-    expect(DA_TRANSPORT_LIMITS_V1).toEqual({
+    expect(DA_TRANSPORT_PROTOCOL_VERSION).toBe(1);
+    expect(DA_ON_CHAIN_ATTESTATION_DOMAIN).toBe("MidgardDAAttestationV1");
+    expect(DA_TRANSPORT_LIMITS).toEqual({
       maxPayloadBytes: 67_108_864,
       maxInlineResponseBytes: 1_048_576,
       maxChunkBytes: 1_048_576,
@@ -125,7 +125,7 @@ describe("DA libp2p transport protocol freeze", () => {
       local_signer_index: 0,
     };
     (watcherFixture.da_transport as Record<string, unknown>).retention_days =
-      DA_TRANSPORT_LIMITS_V1.minimumRetentionDays + 1;
+      DA_TRANSPORT_LIMITS.minimumRetentionDays + 1;
     const watcher = parseDaLibp2pRuntimeManifest(watcherFixture);
     expect(watcher.runtime_topology).toEqual({
       target: "watcher",
@@ -219,8 +219,8 @@ describe("DA libp2p transport protocol freeze", () => {
 
     assertVector(
       "PayloadSubmitRequestV1",
-      encodeDaPayloadSubmitRequestV1Cbor,
-      decodeDaPayloadSubmitRequestV1Cbor,
+      encodeDaPayloadSubmitRequestCbor,
+      decodeDaPayloadSubmitRequestCbor,
       {
         deploymentFingerprint: deployment,
         headerHash: header,
@@ -229,7 +229,7 @@ describe("DA libp2p transport protocol freeze", () => {
         mode: "chunked",
         payloadBytes: null,
         chunkManifest,
-      } satisfies DaPayloadSubmitRequestV1,
+      } satisfies DaPayloadSubmitRequest,
       [
         "87",
         `5820${h("01", 32)}`,
@@ -250,8 +250,8 @@ describe("DA libp2p transport protocol freeze", () => {
 
     assertVector(
       "PayloadByHeaderResponseV1",
-      encodeDaPayloadByHeaderResponseV1Cbor,
-      decodeDaPayloadByHeaderResponseV1Cbor,
+      encodeDaPayloadByHeaderResponseCbor,
+      decodeDaPayloadByHeaderResponseCbor,
       {
         status: "not_found",
         headerHash: header,
@@ -259,7 +259,7 @@ describe("DA libp2p transport protocol freeze", () => {
         payloadBytes: null,
         chunkManifest: null,
         reasonCode: "missing",
-      } satisfies DaPayloadByHeaderResponseV1,
+      } satisfies DaPayloadByHeaderResponse,
       [
         "86",
         "02",
@@ -273,8 +273,8 @@ describe("DA libp2p transport protocol freeze", () => {
 
     assertVector(
       "MetadataByHeaderResponseV1",
-      encodeDaMetadataByHeaderResponseV1Cbor,
-      decodeDaMetadataByHeaderResponseV1Cbor,
+      encodeDaMetadataByHeaderResponseCbor,
+      decodeDaMetadataByHeaderResponseCbor,
       {
         status: "found",
         headerHash: header,
@@ -287,7 +287,7 @@ describe("DA libp2p transport protocol freeze", () => {
         eventToStepRoot: Buffer.from("0a0b", "hex"),
         retainedUntilSlot: 42,
         localStatus: "verified",
-      } satisfies DaMetadataByHeaderResponseV1,
+      } satisfies DaMetadataByHeaderResponse,
       [
         "8b",
         "00",
@@ -306,8 +306,8 @@ describe("DA libp2p transport protocol freeze", () => {
 
     assertVector(
       "DaAttestationGossipV1",
-      encodeDaAttestationGossipV1Cbor,
-      decodeDaAttestationGossipV1Cbor,
+      encodeDaAttestationGossipCbor,
+      decodeDaAttestationGossipCbor,
       {
         deploymentFingerprint: deployment,
         headerHash: header,
@@ -319,7 +319,7 @@ describe("DA libp2p transport protocol freeze", () => {
         onChainWitness: b(0x0d, 65),
         retentionUntilSlot: 42,
         announcedByPeerId: "peer-a",
-      } satisfies DaAttestationGossipV1,
+      } satisfies DaAttestationGossip,
       [
         "8a",
         `5820${h("01", 32)}`,
@@ -337,15 +337,15 @@ describe("DA libp2p transport protocol freeze", () => {
 
     assertVector(
       "ConflictEvidenceV1",
-      encodeDaConflictEvidenceV1Cbor,
-      decodeDaConflictEvidenceV1Cbor,
+      encodeDaConflictEvidenceCbor,
+      decodeDaConflictEvidenceCbor,
       {
         deploymentFingerprint: deployment,
         headerHash: header,
         evidenceKind: "equivocation",
         evidenceHash: b(0x0e, 32),
         compactEvidence: Buffer.from("0f10", "hex"),
-      } satisfies DaConflictEvidenceV1,
+      } satisfies DaConflictEvidence,
       [
         "85",
         `5820${h("01", 32)}`,
@@ -359,12 +359,12 @@ describe("DA libp2p transport protocol freeze", () => {
 
   it("rejects non-tuple, trailing, and unsupported enum CBOR", () => {
     expect(() =>
-      decodeDaPayloadSubmitRequestV1Cbor(
+      decodeDaPayloadSubmitRequestCbor(
         encodeCborMapRaw([[encodeCborUnsigned(0n), encodeCborUnsigned(1n)]]),
       ),
     ).toThrow(/PayloadSubmitRequestV1/);
 
-    const encoded = encodeDaPayloadSubmitRequestV1Cbor({
+    const encoded = encodeDaPayloadSubmitRequestCbor({
       deploymentFingerprint: deployment,
       headerHash: header,
       payloadHash: payload,
@@ -374,7 +374,7 @@ describe("DA libp2p transport protocol freeze", () => {
       chunkManifest,
     });
     expect(() =>
-      decodeDaPayloadSubmitRequestV1Cbor(
+      decodeDaPayloadSubmitRequestCbor(
         Buffer.concat([encoded, Buffer.from([0xf6])]),
       ),
     ).toThrow(/trailing bytes/);
@@ -387,7 +387,7 @@ describe("DA libp2p transport protocol freeze", () => {
       Buffer.from("676d697373696e67", "hex"),
     ]);
     expect(() =>
-      decodeDaPayloadByHeaderResponseV1Cbor(unsupportedStatus),
+      decodeDaPayloadByHeaderResponseCbor(unsupportedStatus),
     ).toThrow(/unsupported enum code/);
 
     const malformedUtf8Reason = Buffer.concat([
@@ -398,7 +398,7 @@ describe("DA libp2p transport protocol freeze", () => {
       Buffer.from("6780697373696e67", "hex"),
     ]);
     expect(() =>
-      decodeDaPayloadByHeaderResponseV1Cbor(malformedUtf8Reason),
+      decodeDaPayloadByHeaderResponseCbor(malformedUtf8Reason),
     ).toThrow(/valid UTF-8/u);
   });
 
@@ -408,7 +408,7 @@ describe("DA libp2p transport protocol freeze", () => {
       readonly durationMs: number;
     }> = [];
     let now = 10;
-    const encoded = encodeDaPayloadSubmitRequestV1Cbor({
+    const encoded = encodeDaPayloadSubmitRequestCbor({
       deploymentFingerprint: deployment,
       headerHash: header,
       payloadHash: payload,
@@ -417,7 +417,7 @@ describe("DA libp2p transport protocol freeze", () => {
       payloadBytes: null,
       chunkManifest,
     });
-    const decoded = decodeDaPayloadSubmitRequestV1Cbor(encoded, {
+    const decoded = decodeDaPayloadSubmitRequestCbor(encoded, {
       monotonicNow: () => {
         now += 5;
         return now;
@@ -425,10 +425,10 @@ describe("DA libp2p transport protocol freeze", () => {
       onStageTiming: (stage, durationMs) => stages.push({ stage, durationMs }),
     });
 
-    expect(encodeDaPayloadSubmitRequestV1Cbor(decoded)).toEqual(encoded);
+    expect(encodeDaPayloadSubmitRequestCbor(decoded)).toEqual(encoded);
     expect(stages).toEqual([{ stage: "submit_request_decode", durationMs: 5 }]);
     expect(() =>
-      decodeDaPayloadSubmitRequestV1Cbor(encoded, {
+      decodeDaPayloadSubmitRequestCbor(encoded, {
         monotonicNow: () => {
           throw new Error("clock unavailable");
         },
@@ -442,7 +442,7 @@ describe("DA libp2p transport protocol freeze", () => {
       Buffer.from([0x98, 0x07]),
       encoded.subarray(1),
     ]);
-    expect(() => decodeDaPayloadSubmitRequestV1Cbor(nonMinimalArray)).toThrow(
+    expect(() => decodeDaPayloadSubmitRequestCbor(nonMinimalArray)).toThrow(
       /Non-minimal/u,
     );
   });
@@ -450,28 +450,26 @@ describe("DA libp2p transport protocol freeze", () => {
   it("round-trips deployment-scoped decoder capabilities canonically", () => {
     const request = { deploymentFingerprint: deployment };
     expect(
-      decodeDaCapabilitiesRequestV1Cbor(
-        encodeDaCapabilitiesRequestV1Cbor(request),
-      ),
+      decodeDaCapabilitiesRequestCbor(encodeDaCapabilitiesRequestCbor(request)),
     ).toEqual(request);
-    const response: DaCapabilitiesResponseV1 = {
+    const response: DaCapabilitiesResponse = {
       deploymentFingerprint: deployment,
-      transportProtocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
+      transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
       payloadSchemaVersions: [1],
       envelopeContentEncodings: [0, 1],
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     };
     expect(
-      decodeDaCapabilitiesResponseV1Cbor(
-        encodeDaCapabilitiesResponseV1Cbor(response),
+      decodeDaCapabilitiesResponseCbor(
+        encodeDaCapabilitiesResponseCbor(response),
       ),
     ).toEqual(response);
     expect(() =>
-      encodeDaCapabilitiesResponseV1Cbor({
+      encodeDaCapabilitiesResponseCbor({
         ...response,
         payloadSchemaVersions: [999] as unknown as readonly [1],
       }),
@@ -515,16 +513,16 @@ const runtimeManifestFixture = (): Record<string, unknown> => ({
       strict_sign: true,
       emit_self: false,
       allowed_topics_only: true,
-      max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+      max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
     },
     limits: {
-      max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      max_inline_response_bytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
-    retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+    retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
   },
   public_retained_da: {
     profile: "public-retained-da-v1",
@@ -546,7 +544,7 @@ const runtimeManifestFixture = (): Record<string, unknown> => ({
       max_inflight_requests: 32,
       max_inflight_requests_per_peer: 2,
       max_inflight_proof_requests: 1,
-      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   },
   da_committee: {

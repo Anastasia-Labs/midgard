@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { submitWithdrawnInputStep03 } from "../src/index.js";
 import {
-  advanceWithdrawnInputToStep03V1,
-  makeWithdrawnInputEmulatorScenarioV1,
+  advanceWithdrawnInputToStep03,
+  makeWithdrawnInputEmulatorScenario,
 } from "./support/withdrawn-input-emulator-v1.js";
 
 describe("withdrawn-input invalid-withdrawal refusal", () => {
   it("refuses on-chain even when the invalid leaf targets the spend input", async () => {
     const scenario =
-      await makeWithdrawnInputEmulatorScenarioV1("invalidWithdrawal");
-    const { step02 } = await advanceWithdrawnInputToStep03V1(scenario);
+      await makeWithdrawnInputEmulatorScenario("invalidWithdrawal");
+    const { step02 } = await advanceWithdrawnInputToStep03(scenario);
     await expect(
       submitWithdrawnInputStep03({
         lucid: scenario.harness.proverLucid,

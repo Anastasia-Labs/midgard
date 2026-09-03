@@ -2,7 +2,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  MinAdaFaultV1Schema,
+  MinAdaFaultSchema,
   MinAdaStep01SpendRedeemerSchema,
   MinAdaStep02DatumSchema,
   MinAdaStep02SpendRedeemerSchema,
@@ -15,9 +15,9 @@ const h32 = "22".repeat(32);
 describe("Q27 min-Ada wire codec", () => {
   it("pins the transaction and post-UTxO constructor indices", () => {
     expect(
-      Data.to({ MinAdaTx: { output_index: 3n } } as never, MinAdaFaultV1Schema),
+      Data.to({ MinAdaTx: { output_index: 3n } } as never, MinAdaFaultSchema),
     ).toBe("d8799f03ff");
-    expect(Data.to("MinAdaUtxo" as never, MinAdaFaultV1Schema)).toBe("d87a80");
+    expect(Data.to("MinAdaUtxo" as never, MinAdaFaultSchema)).toBe("d87a80");
   });
 
   it("round-trips direct post-root membership evidence", () => {

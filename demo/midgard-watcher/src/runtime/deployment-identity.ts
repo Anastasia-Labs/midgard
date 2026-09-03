@@ -6,53 +6,53 @@ import {
 } from "node:crypto";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  assertDeploymentMarkerV1Matches,
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  type DeploymentManifestV1AvailabilityChallenge,
-  type DeploymentManifestV1CardanoProtocolParameters,
-  type DeploymentMarkerV1,
-  makeDeploymentMarkerV1,
-  parseDeploymentManifestV1AvailabilityChallenge,
-  parseDeploymentManifestV1CardanoProtocolParameters,
-  parseDeploymentManifestV1Economics,
-  verifyDeploymentManifestV1Identity,
-  verifyFinalizedDeploymentManifestV1,
+  assertDeploymentMarkerMatches,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  type DeploymentManifestAvailabilityChallenge,
+  type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentMarker,
+  makeDeploymentMarker,
+  parseDeploymentManifestAvailabilityChallenge,
+  parseDeploymentManifestCardanoProtocolParameters,
+  parseDeploymentManifestEconomics,
+  verifyDeploymentManifestIdentity,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  computeFraudProofReleaseEconomicsPolicyDigestV1,
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofReleaseEconomicsAuthorityV1,
-  type FraudProofReleaseFinalityAuthorityV1,
-  type ReleaseFraudProofEconomicsPolicyV1,
-  type ReleaseL1FinalityPolicyV1,
-  validateVerifiedFraudProofReleaseEconomicsPolicyV1,
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
-  type VerifiedFraudProofReleaseEconomicsPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  computeFraudProofReleaseEconomicsPolicyDigest,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY,
+  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseEconomicsAuthority,
+  type FraudProofReleaseFinalityAuthority,
+  type ReleaseFraudProofEconomicsPolicy,
+  type ReleaseL1FinalityPolicy,
+  validateVerifiedFraudProofReleaseEconomicsPolicy,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+  type VerifiedFraudProofReleaseEconomicsPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
 
-export const WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION =
+export const WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION =
   "midgard-watcher-signed-deployment-identity-v1" as const;
-export const WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION =
+export const WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION =
   "midgard-watcher-deployment-release-bindings-v1" as const;
 export const WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN =
   "midgard-watcher-deployment-identity-signature-v1" as const;
-export const WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_V1_SCHEMA_VERSION =
+export const WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION =
   "midgard-watcher-deployment-protocol-script-authority-v1" as const;
-export const WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_V1_SCHEMA_VERSION =
+export const WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_SCHEMA_VERSION =
   "midgard-watcher-deployment-protocol-parameter-authority-v1" as const;
-export const WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_V1_SCHEMA_VERSION =
+export const WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_SCHEMA_VERSION =
   "midgard-watcher-deployment-availability-challenge-authority-v1" as const;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -120,7 +120,7 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
 } as const);
 
 const REFERENCE_SCRIPT_ROLES = Object.freeze(
-  Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+  Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
 );
 
 export type WatcherDeploymentIdentityErrorCode =
@@ -268,17 +268,17 @@ const equalStringMaps = (
   );
 };
 
-export type WatcherDeploymentTrustRootV1 = Readonly<{
+export type WatcherDeploymentTrustRoot = Readonly<{
   trustRootId: string;
   publicKeySpkiDerHex: string;
 }>;
 
-export type WatcherReferenceScriptIdentityV1 = Readonly<{
+export type WatcherReferenceScriptIdentity = Readonly<{
   scriptHash: string;
   outRef: string;
 }>;
 
-export type WatcherFraudProofCatalogueIdentityV1 = Readonly<{
+export type WatcherFraudProofCatalogueIdentity = Readonly<{
   root: string;
   categories: Readonly<
     Record<
@@ -288,12 +288,12 @@ export type WatcherFraudProofCatalogueIdentityV1 = Readonly<{
   >;
 }>;
 
-export type WatcherDeploymentIdentityPolicyV1 = Readonly<{
+export type WatcherDeploymentIdentityPolicy = Readonly<{
   network: "Mainnet" | "Preprod" | "Preview";
   hubOracleOneShotOutRef: string;
   appliedScriptHashes: Readonly<Record<string, string>>;
-  referenceScripts: Readonly<Record<string, WatcherReferenceScriptIdentityV1>>;
-  fraudProofCatalogue: WatcherFraudProofCatalogueIdentityV1;
+  referenceScripts: Readonly<Record<string, WatcherReferenceScriptIdentity>>;
+  fraudProofCatalogue: WatcherFraudProofCatalogueIdentity;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
   daMode: "authenticated_committee_v1";
@@ -302,12 +302,12 @@ export type WatcherDeploymentIdentityPolicyV1 = Readonly<{
   blueprintHash: string;
 }>;
 
-type ParsedPolicy = WatcherDeploymentIdentityPolicyV1;
+type ParsedPolicy = WatcherDeploymentIdentityPolicy;
 
 const parseReferenceScriptPolicy = (
   value: unknown,
   path: string,
-): Readonly<Record<string, WatcherReferenceScriptIdentityV1>> => {
+): Readonly<Record<string, WatcherReferenceScriptIdentity>> => {
   const record = plainRecord(value, path);
   const actualRoles = Object.keys(record).sort();
   const expectedRoles = [...REFERENCE_SCRIPT_ROLES].sort();
@@ -347,7 +347,7 @@ const parseReferenceScriptPolicy = (
 const parseCataloguePolicy = (
   value: unknown,
   path: string,
-): WatcherFraudProofCatalogueIdentityV1 => {
+): WatcherFraudProofCatalogueIdentity => {
   const catalogue = exactRecord(value, path, ["root", "categories"]);
   const categories = exactRecord(
     catalogue.categories,
@@ -381,13 +381,11 @@ const parseCataloguePolicy = (
           ];
         }),
       ),
-    ) as WatcherFraudProofCatalogueIdentityV1["categories"],
+    ) as WatcherFraudProofCatalogueIdentity["categories"],
   });
 };
 
-const parsePolicy = (
-  value: WatcherDeploymentIdentityPolicyV1,
-): ParsedPolicy => {
+const parsePolicy = (value: WatcherDeploymentIdentityPolicy): ParsedPolicy => {
   const policy = exactRecord(value, "$.policy", [
     "network",
     "hubOracleOneShotOutRef",
@@ -422,7 +420,7 @@ const parsePolicy = (
     appliedScriptHashes: exactDynamicHexMap(
       policy.appliedScriptHashes,
       "$.policy.appliedScriptHashes",
-      DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+      DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
       HEX_28,
     ),
     referenceScripts: parseReferenceScriptPolicy(
@@ -463,8 +461,8 @@ const parsePolicy = (
   });
 };
 
-type ReleaseBindingsV1 = Readonly<{
-  schemaVersion: typeof WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION;
+type ReleaseBindings = Readonly<{
+  schemaVersion: typeof WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
   da: Readonly<{
@@ -480,7 +478,7 @@ type ReleaseBindingsV1 = Readonly<{
 const parseReleaseBindings = (
   value: unknown,
   path: string,
-): ReleaseBindingsV1 => {
+): ReleaseBindings => {
   const bindings = exactRecord(value, path, [
     "schemaVersion",
     "ruleBundleCommitment",
@@ -490,7 +488,7 @@ const parseReleaseBindings = (
   ]);
   if (
     bindings.schemaVersion !==
-    WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION
+    WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION
   ) {
     fail("invalid_field", `${path}.schemaVersion`);
   }
@@ -504,7 +502,7 @@ const parseReleaseBindings = (
     ["digest", "blueprintHash"],
   );
   return Object.freeze({
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
     ruleBundleCommitment: exactString(
       bindings.ruleBundleCommitment,
       `${path}.ruleBundleCommitment`,
@@ -541,9 +539,9 @@ const parseReleaseBindings = (
 
 const signaturePayload = (
   manifestId: string,
-  bindings: ReleaseBindingsV1,
+  bindings: ReleaseBindings,
 ): Buffer => {
-  const identityDigest = computeDeploymentManifestV1JsonDigest({
+  const identityDigest = computeDeploymentManifestJsonDigest({
     manifestId,
     releaseBindings: bindings,
   });
@@ -553,7 +551,7 @@ const signaturePayload = (
   );
 };
 
-export const makeWatcherDeploymentIdentitySignaturePayloadV1 = (
+export const makeWatcherDeploymentIdentitySignaturePayload = (
   manifestId: string,
   releaseBindings: unknown,
 ): Buffer =>
@@ -568,7 +566,7 @@ type ParsedTrustRoot = Readonly<{
 }>;
 
 const parseTrustRoots = (
-  value: readonly WatcherDeploymentTrustRootV1[],
+  value: readonly WatcherDeploymentTrustRoot[],
 ): ReadonlyMap<string, ParsedTrustRoot> => {
   if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
     fail("invalid_trust_root", "$.trustRoots");
@@ -627,7 +625,7 @@ const mapManifestContracts = (
 ): Readonly<Record<string, string>> => {
   const contracts = plainRecord(manifest.contracts, "$.manifest.contracts");
   const hashes: Record<string, string> = {};
-  for (const contractName of DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES) {
+  for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
     const entry = plainRecord(
       contracts[contractName],
       `$.manifest.contracts.${contractName}`,
@@ -643,7 +641,7 @@ const mapManifestContracts = (
 
 const assertReferenceScripts = (
   manifest: JsonRecord,
-  expected: Readonly<Record<string, WatcherReferenceScriptIdentityV1>>,
+  expected: Readonly<Record<string, WatcherReferenceScriptIdentity>>,
 ): void => {
   const scripts = plainRecord(
     manifest.referenceScripts,
@@ -666,7 +664,7 @@ const assertReferenceScripts = (
 
 const assertCatalogue = (
   manifest: JsonRecord,
-  expected: WatcherFraudProofCatalogueIdentityV1,
+  expected: WatcherFraudProofCatalogueIdentity,
 ): void => {
   const contracts = plainRecord(manifest.contracts, "$.manifest.contracts");
   const catalogueContract = plainRecord(
@@ -720,13 +718,13 @@ const assertCatalogue = (
 
 const assertPolicyBindings = (
   manifest: JsonRecord,
-  bindings: ReleaseBindingsV1,
+  bindings: ReleaseBindings,
   policy: ParsedPolicy,
 ): void => {
   if (manifest.network !== policy.network) {
     fail("mismatched_identity", "$.manifest.network");
   }
-  if (manifest.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_V1_DIGEST) {
+  if (manifest.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST) {
     fail("mismatched_identity", "$.manifest.consensusProfileDigest");
   }
   const oneShot = plainRecord(
@@ -755,8 +753,7 @@ const assertPolicyBindings = (
   if (
     bindings.da.mode !== policy.daMode ||
     bindings.da.identityDigest !== policy.daIdentityDigest ||
-    computeDeploymentManifestV1JsonDigest(manifest.da) !==
-      policy.daIdentityDigest
+    computeDeploymentManifestJsonDigest(manifest.da) !== policy.daIdentityDigest
   ) {
     fail("mismatched_identity", "$.releaseBindings.da");
   }
@@ -777,7 +774,7 @@ const assertPolicyBindings = (
 const verifyCanonicalManifest = (value: unknown): JsonRecord => {
   const candidate = (() => {
     try {
-      return verifyDeploymentManifestV1Identity(value);
+      return verifyDeploymentManifestIdentity(value);
     } catch {
       return fail("canonical_manifest_invalid", "$.manifest");
     }
@@ -797,14 +794,14 @@ const verifyCanonicalManifest = (value: unknown): JsonRecord => {
     ...candidate,
     proofEvidence: {
       ...proofEvidence,
-      digest: MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+      digest: MIDGARD_RELEASE_EVIDENCE_DIGEST,
     },
   };
   const { manifestId: _manifestId, ...identityInput } = structuralIdentity;
   try {
-    verifyFinalizedDeploymentManifestV1({
+    verifyFinalizedDeploymentManifest({
       ...identityInput,
-      manifestId: computeDeploymentManifestV1Id(identityInput),
+      manifestId: computeDeploymentManifestId(identityInput),
     });
   } catch {
     fail("canonical_manifest_invalid", "$.manifest");
@@ -812,18 +809,18 @@ const verifyCanonicalManifest = (value: unknown): JsonRecord => {
   return candidate;
 };
 
-export type VerifiedWatcherDeploymentIdentityV1 = Readonly<{
+export type VerifiedWatcherDeploymentIdentity = Readonly<{
   manifestId: string;
   network: "Mainnet" | "Preprod" | "Preview";
   trustRootId: string;
   releaseEvidenceDigest: string;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
-  durableMarker: DeploymentMarkerV1;
+  durableMarker: DeploymentMarker;
 }>;
 
-export type WatcherDeploymentProtocolScriptAuthorityV1 = Readonly<{
-  schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_V1_SCHEMA_VERSION;
+export type WatcherDeploymentProtocolScriptAuthority = Readonly<{
+  schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION;
   deploymentFingerprint: string;
   network: "Mainnet" | "Preprod" | "Preview";
   hubOracleOneShotOutRef: string;
@@ -835,63 +832,62 @@ export type WatcherDeploymentProtocolScriptAuthorityV1 = Readonly<{
     fraudProofSpend: string;
     fraudProofMint: string;
   }>;
-  referenceScripts: Readonly<Record<string, WatcherReferenceScriptIdentityV1>>;
+  referenceScripts: Readonly<Record<string, WatcherReferenceScriptIdentity>>;
   authorityDigest: string;
 }>;
 
-export type WatcherDeploymentProtocolParameterAuthorityV1 = Readonly<{
-  schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_V1_SCHEMA_VERSION;
+export type WatcherDeploymentProtocolParameterAuthority = Readonly<{
+  schemaVersion: typeof WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_SCHEMA_VERSION;
   deploymentFingerprint: string;
-  snapshot: DeploymentManifestV1CardanoProtocolParameters;
+  snapshot: DeploymentManifestCardanoProtocolParameters;
   snapshotDigest: string;
   authorityDigest: string;
 }>;
 
-export type WatcherDeploymentAvailabilityChallengeAuthorityV1 = Readonly<{
-  schemaVersion: typeof WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_V1_SCHEMA_VERSION;
+export type WatcherDeploymentAvailabilityChallengeAuthority = Readonly<{
+  schemaVersion: typeof WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_SCHEMA_VERSION;
   deploymentFingerprint: string;
-  parameters: DeploymentManifestV1AvailabilityChallenge;
+  parameters: DeploymentManifestAvailabilityChallenge;
   parametersDigest: string;
   authorityDigest: string;
 }>;
 
-const authenticatedWatcherDeploymentIdentitiesV1 = new WeakSet<object>();
-const authenticatedWatcherProtocolScriptAuthoritiesV1 = new WeakSet<object>();
-const authenticatedWatcherProtocolParameterAuthoritiesV1 =
+const authenticatedWatcherDeploymentIdentities = new WeakSet<object>();
+const authenticatedWatcherProtocolScriptAuthorities = new WeakSet<object>();
+const authenticatedWatcherProtocolParameterAuthorities = new WeakSet<object>();
+const authenticatedWatcherReleaseFinalityAuthorities = new WeakSet<object>();
+const authenticatedWatcherReleaseEconomicsAuthorities = new WeakSet<object>();
+const authenticatedWatcherAvailabilityChallengeAuthorities =
   new WeakSet<object>();
-const authenticatedWatcherReleaseFinalityAuthoritiesV1 = new WeakSet<object>();
-const authenticatedWatcherReleaseEconomicsAuthoritiesV1 = new WeakSet<object>();
-const authenticatedWatcherAvailabilityChallengeAuthoritiesV1 =
-  new WeakSet<object>();
-const protocolScriptAuthorityByDeploymentIdentityV1 = new WeakMap<
+const protocolScriptAuthorityByDeploymentIdentity = new WeakMap<
   object,
-  WatcherDeploymentProtocolScriptAuthorityV1
+  WatcherDeploymentProtocolScriptAuthority
 >();
-const releaseFinalityAuthorityByDeploymentIdentityV1 = new WeakMap<
+const releaseFinalityAuthorityByDeploymentIdentity = new WeakMap<
   object,
-  FraudProofReleaseFinalityAuthorityV1
+  FraudProofReleaseFinalityAuthority
 >();
-const releaseEconomicsAuthorityByDeploymentIdentityV1 = new WeakMap<
+const releaseEconomicsAuthorityByDeploymentIdentity = new WeakMap<
   object,
-  FraudProofReleaseEconomicsAuthorityV1
+  FraudProofReleaseEconomicsAuthority
 >();
-const protocolParameterAuthorityByDeploymentIdentityV1 = new WeakMap<
+const protocolParameterAuthorityByDeploymentIdentity = new WeakMap<
   object,
-  WatcherDeploymentProtocolParameterAuthorityV1
+  WatcherDeploymentProtocolParameterAuthority
 >();
-const availabilityChallengeAuthorityByDeploymentIdentityV1 = new WeakMap<
+const availabilityChallengeAuthorityByDeploymentIdentity = new WeakMap<
   object,
-  WatcherDeploymentAvailabilityChallengeAuthorityV1
+  WatcherDeploymentAvailabilityChallengeAuthority
 >();
 
 /**
  * Refuses structural casts at production authority boundaries. Only the
  * signature/policy verifier in this module can admit an identity object.
  */
-export const assertVerifiedWatcherDeploymentIdentityV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
+export const assertVerifiedWatcherDeploymentIdentity = (
+  identity: VerifiedWatcherDeploymentIdentity,
 ): void => {
-  if (!authenticatedWatcherDeploymentIdentitiesV1.has(identity)) {
+  if (!authenticatedWatcherDeploymentIdentities.has(identity)) {
     fail("invalid_field", "$.verifiedDeploymentIdentity");
   }
 };
@@ -900,46 +896,46 @@ export const assertVerifiedWatcherDeploymentIdentityV1 = (
  * Refuses a structural policy/hash bundle. Only the signed deployment verifier
  * can mint the script authority consumed by production state-queue sources.
  */
-export const assertWatcherDeploymentProtocolScriptAuthorityV1 = (
-  authority: WatcherDeploymentProtocolScriptAuthorityV1,
+export const assertWatcherDeploymentProtocolScriptAuthority = (
+  authority: WatcherDeploymentProtocolScriptAuthority,
 ): void => {
-  if (!authenticatedWatcherProtocolScriptAuthoritiesV1.has(authority)) {
+  if (!authenticatedWatcherProtocolScriptAuthorities.has(authority)) {
     fail("invalid_field", "$.protocolScriptAuthority");
   }
 };
 
-export const watcherDeploymentProtocolScriptAuthorityV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
-): WatcherDeploymentProtocolScriptAuthorityV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(identity);
+export const watcherDeploymentProtocolScriptAuthority = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): WatcherDeploymentProtocolScriptAuthority => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
   return (
-    protocolScriptAuthorityByDeploymentIdentityV1.get(identity) ??
+    protocolScriptAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.protocolScripts")
   );
 };
 
-export const assertWatcherDeploymentProtocolParameterAuthorityV1 = (
-  authority: WatcherDeploymentProtocolParameterAuthorityV1,
+export const assertWatcherDeploymentProtocolParameterAuthority = (
+  authority: WatcherDeploymentProtocolParameterAuthority,
 ): void => {
-  if (!authenticatedWatcherProtocolParameterAuthoritiesV1.has(authority)) {
+  if (!authenticatedWatcherProtocolParameterAuthorities.has(authority)) {
     fail("invalid_field", "$.protocolParameterAuthority");
   }
 };
 
-export const watcherDeploymentProtocolParameterAuthorityV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
-): WatcherDeploymentProtocolParameterAuthorityV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(identity);
+export const watcherDeploymentProtocolParameterAuthority = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): WatcherDeploymentProtocolParameterAuthority => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
   return (
-    protocolParameterAuthorityByDeploymentIdentityV1.get(identity) ??
+    protocolParameterAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.protocolParameters")
   );
 };
 
-export const assertWatcherDeploymentAvailabilityChallengeAuthorityV1 = (
-  authority: WatcherDeploymentAvailabilityChallengeAuthorityV1,
+export const assertWatcherDeploymentAvailabilityChallengeAuthority = (
+  authority: WatcherDeploymentAvailabilityChallengeAuthority,
 ): void => {
-  if (!authenticatedWatcherAvailabilityChallengeAuthoritiesV1.has(authority)) {
+  if (!authenticatedWatcherAvailabilityChallengeAuthorities.has(authority)) {
     fail("invalid_field", "$.availabilityChallengeAuthority");
   }
 };
@@ -949,12 +945,12 @@ export const assertWatcherDeploymentAvailabilityChallengeAuthorityV1 = (
  * lifecycle fee ceiling admitted by the signed deployment manifest. A plain
  * object with the same fields is not production authority.
  */
-export const watcherDeploymentAvailabilityChallengeAuthorityV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
-): WatcherDeploymentAvailabilityChallengeAuthorityV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(identity);
+export const watcherDeploymentAvailabilityChallengeAuthority = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): WatcherDeploymentAvailabilityChallengeAuthority => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
   return (
-    availabilityChallengeAuthorityByDeploymentIdentityV1.get(identity) ??
+    availabilityChallengeAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.availabilityChallenge")
   );
 };
@@ -964,12 +960,12 @@ export const watcherDeploymentAvailabilityChallengeAuthorityV1 = (
  * verifier. The authority method authenticates its receiver, so spreading or
  * structurally copying the object cannot preserve workflow authority.
  */
-export const watcherDeploymentReleaseFinalityAuthorityV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
-): FraudProofReleaseFinalityAuthorityV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(identity);
+export const watcherDeploymentReleaseFinalityAuthority = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): FraudProofReleaseFinalityAuthority => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
   return (
-    releaseFinalityAuthorityByDeploymentIdentityV1.get(identity) ??
+    releaseFinalityAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.releaseFinality")
   );
 };
@@ -979,22 +975,22 @@ export const watcherDeploymentReleaseFinalityAuthorityV1 = (
  * verification. Structural copies cannot select a different collateral floor
  * or other F04 amount after launch.
  */
-export const watcherDeploymentReleaseEconomicsAuthorityV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
-): FraudProofReleaseEconomicsAuthorityV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(identity);
+export const watcherDeploymentReleaseEconomicsAuthority = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): FraudProofReleaseEconomicsAuthority => {
+  assertVerifiedWatcherDeploymentIdentity(identity);
   return (
-    releaseEconomicsAuthorityByDeploymentIdentityV1.get(identity) ??
+    releaseEconomicsAuthorityByDeploymentIdentity.get(identity) ??
     fail("invalid_field", "$.verifiedDeploymentIdentity.releaseEconomics")
   );
 };
 
-export const verifyWatcherDeploymentIdentityV1 = (input: {
+export const verifyWatcherDeploymentIdentity = (input: {
   readonly signedIdentity: unknown;
-  readonly policy: WatcherDeploymentIdentityPolicyV1;
-  readonly trustRoots: readonly WatcherDeploymentTrustRootV1[];
+  readonly policy: WatcherDeploymentIdentityPolicy;
+  readonly trustRoots: readonly WatcherDeploymentTrustRoot[];
   readonly durableMarker: unknown;
-}): VerifiedWatcherDeploymentIdentityV1 => {
+}): VerifiedWatcherDeploymentIdentity => {
   const policy = parsePolicy(input.policy);
   const trustRoots = parseTrustRoots(input.trustRoots);
   const envelope = exactRecord(input.signedIdentity, "$", [
@@ -1004,8 +1000,7 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
     "attestation",
   ]);
   if (
-    envelope.schemaVersion !==
-    WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION
+    envelope.schemaVersion !== WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION
   ) {
     fail("invalid_field", "$.schemaVersion");
   }
@@ -1062,12 +1057,12 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
   }
   assertPolicyBindings(manifest, bindings, policy);
 
-  const expectedMarker = makeDeploymentMarkerV1(manifestId);
+  const expectedMarker = makeDeploymentMarker(manifestId);
   if (input.durableMarker === null || input.durableMarker === undefined) {
     fail("missing_durable_marker", "$.durableMarker");
   }
   try {
-    assertDeploymentMarkerV1Matches(
+    assertDeploymentMarkerMatches(
       expectedMarker,
       input.durableMarker,
       "watcher durable store",
@@ -1104,8 +1099,7 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
     ),
   );
   const authorityInput = Object.freeze({
-    schemaVersion:
-      WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION,
     deploymentFingerprint: manifestId,
     network: policy.network,
     hubOracleOneShotOutRef: policy.hubOracleOneShotOutRef,
@@ -1114,7 +1108,7 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
   });
   const protocolScriptAuthority = Object.freeze({
     ...authorityInput,
-    authorityDigest: computeDeploymentManifestV1JsonDigest(authorityInput),
+    authorityDigest: computeDeploymentManifestJsonDigest(authorityInput),
   });
   const manifestProtocolParameters = exactRecord(
     manifest.cardanoProtocolParameters,
@@ -1122,7 +1116,7 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
     ["snapshot", "digest"],
   );
   const protocolParameterSnapshot =
-    parseDeploymentManifestV1CardanoProtocolParameters(
+    parseDeploymentManifestCardanoProtocolParameters(
       manifestProtocolParameters.snapshot,
     );
   const protocolParameterSnapshotDigest = exactString(
@@ -1131,40 +1125,40 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
     HEX_32,
   );
   if (
-    computeDeploymentManifestV1JsonDigest(protocolParameterSnapshot) !==
+    computeDeploymentManifestJsonDigest(protocolParameterSnapshot) !==
     protocolParameterSnapshotDigest
   ) {
     fail("mismatched_identity", "$.manifest.cardanoProtocolParameters.digest");
   }
   const protocolParameterAuthorityInput = Object.freeze({
     schemaVersion:
-      WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_V1_SCHEMA_VERSION,
+      WATCHER_DEPLOYMENT_PROTOCOL_PARAMETER_AUTHORITY_SCHEMA_VERSION,
     deploymentFingerprint: manifestId,
     snapshot: protocolParameterSnapshot,
     snapshotDigest: protocolParameterSnapshotDigest,
   });
   const protocolParameterAuthority = Object.freeze({
     ...protocolParameterAuthorityInput,
-    authorityDigest: computeDeploymentManifestV1JsonDigest(
+    authorityDigest: computeDeploymentManifestJsonDigest(
       protocolParameterAuthorityInput,
     ),
   });
   const availabilityChallengeParameters =
-    parseDeploymentManifestV1AvailabilityChallenge(
+    parseDeploymentManifestAvailabilityChallenge(
       manifest.availabilityChallenge,
     );
   const availabilityChallengeAuthorityInput = Object.freeze({
     schemaVersion:
-      WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_V1_SCHEMA_VERSION,
+      WATCHER_DEPLOYMENT_AVAILABILITY_CHALLENGE_AUTHORITY_SCHEMA_VERSION,
     deploymentFingerprint: manifestId,
     parameters: availabilityChallengeParameters,
-    parametersDigest: computeDeploymentManifestV1JsonDigest(
+    parametersDigest: computeDeploymentManifestJsonDigest(
       availabilityChallengeParameters,
     ),
   });
   const availabilityChallengeAuthority = Object.freeze({
     ...availabilityChallengeAuthorityInput,
-    authorityDigest: computeDeploymentManifestV1JsonDigest(
+    authorityDigest: computeDeploymentManifestJsonDigest(
       availabilityChallengeAuthorityInput,
     ),
   });
@@ -1177,28 +1171,28 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
     confirmationDepth: manifestL1Finality.confirmationDepth,
     automaticRecoveryMaxDepth: manifestL1Finality.automaticRecoveryMaxDepth,
     deepRollbackPolicy: manifestL1Finality.deepRollbackPolicy,
-  }) as ReleaseL1FinalityPolicyV1;
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+  }) as ReleaseL1FinalityPolicy;
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,
     releaseIdentityDigest: exactString(
       plainRecord(manifest.proofEvidence, "$.manifest.proofEvidence").digest,
       "$.manifest.proofEvidence.digest",
       HEX_32,
     ),
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
       releaseFinalityPolicy,
     ),
     policy: releaseFinalityPolicy,
   });
-  const releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1 =
+  const releaseFinalityAuthority: FraudProofReleaseFinalityAuthority =
     Object.freeze({
-      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       async verifyForWorkflow(
-        this: FraudProofReleaseFinalityAuthorityV1,
+        this: FraudProofReleaseFinalityAuthority,
         input: { readonly deploymentFingerprint: string },
-      ): Promise<VerifiedFraudProofReleaseFinalityPolicyV1> {
-        if (!authenticatedWatcherReleaseFinalityAuthoritiesV1.has(this)) {
+      ): Promise<VerifiedFraudProofReleaseFinalityPolicy> {
+        if (!authenticatedWatcherReleaseFinalityAuthorities.has(this)) {
           fail("invalid_field", "$.releaseFinalityAuthority");
         }
         if (input.deploymentFingerprint !== manifestId) {
@@ -1210,7 +1204,7 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
         return releaseFinality;
       },
     });
-  const manifestEconomics = parseDeploymentManifestV1Economics(
+  const manifestEconomics = parseDeploymentManifestEconomics(
     manifest.economics,
   );
   const releaseEconomicsPolicy = Object.freeze({
@@ -1224,28 +1218,28 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
       manifestEconomics.inactivitySlashingPenaltyLovelace.toString(),
     proverCollateralFloorLovelace:
       manifestEconomics.proverCollateralFloorLovelace.toString(),
-  }) satisfies ReleaseFraudProofEconomicsPolicyV1;
-  const releaseEconomics = validateVerifiedFraudProofReleaseEconomicsPolicyV1({
-    schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+  }) satisfies ReleaseFraudProofEconomicsPolicy;
+  const releaseEconomics = validateVerifiedFraudProofReleaseEconomicsPolicy({
+    schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifestId,
     releaseIdentityDigest: exactString(
       plainRecord(manifest.proofEvidence, "$.manifest.proofEvidence").digest,
       "$.manifest.proofEvidence.digest",
       HEX_32,
     ),
-    policyDigest: computeFraudProofReleaseEconomicsPolicyDigestV1(
+    policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(
       releaseEconomicsPolicy,
     ),
     policy: releaseEconomicsPolicy,
   });
-  const releaseEconomicsAuthority: FraudProofReleaseEconomicsAuthorityV1 =
+  const releaseEconomicsAuthority: FraudProofReleaseEconomicsAuthority =
     Object.freeze({
-      authorityVersion: FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY_V1,
+      authorityVersion: FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY,
       async verifyForWorkflow(
-        this: FraudProofReleaseEconomicsAuthorityV1,
+        this: FraudProofReleaseEconomicsAuthority,
         input: { readonly deploymentFingerprint: string },
-      ): Promise<VerifiedFraudProofReleaseEconomicsPolicyV1> {
-        if (!authenticatedWatcherReleaseEconomicsAuthoritiesV1.has(this)) {
+      ): Promise<VerifiedFraudProofReleaseEconomicsPolicy> {
+        if (!authenticatedWatcherReleaseEconomicsAuthorities.has(this)) {
           fail("invalid_field", "$.releaseEconomicsAuthority");
         }
         if (input.deploymentFingerprint !== manifestId) {
@@ -1257,37 +1251,35 @@ export const verifyWatcherDeploymentIdentityV1 = (input: {
         return releaseEconomics;
       },
     });
-  authenticatedWatcherDeploymentIdentitiesV1.add(verified);
-  authenticatedWatcherProtocolScriptAuthoritiesV1.add(protocolScriptAuthority);
-  authenticatedWatcherProtocolParameterAuthoritiesV1.add(
+  authenticatedWatcherDeploymentIdentities.add(verified);
+  authenticatedWatcherProtocolScriptAuthorities.add(protocolScriptAuthority);
+  authenticatedWatcherProtocolParameterAuthorities.add(
     protocolParameterAuthority,
   );
-  authenticatedWatcherReleaseFinalityAuthoritiesV1.add(
-    releaseFinalityAuthority,
-  );
-  authenticatedWatcherReleaseEconomicsAuthoritiesV1.add(
+  authenticatedWatcherReleaseFinalityAuthorities.add(releaseFinalityAuthority);
+  authenticatedWatcherReleaseEconomicsAuthorities.add(
     releaseEconomicsAuthority,
   );
-  authenticatedWatcherAvailabilityChallengeAuthoritiesV1.add(
+  authenticatedWatcherAvailabilityChallengeAuthorities.add(
     availabilityChallengeAuthority,
   );
-  protocolScriptAuthorityByDeploymentIdentityV1.set(
+  protocolScriptAuthorityByDeploymentIdentity.set(
     verified,
     protocolScriptAuthority,
   );
-  protocolParameterAuthorityByDeploymentIdentityV1.set(
+  protocolParameterAuthorityByDeploymentIdentity.set(
     verified,
     protocolParameterAuthority,
   );
-  releaseFinalityAuthorityByDeploymentIdentityV1.set(
+  releaseFinalityAuthorityByDeploymentIdentity.set(
     verified,
     releaseFinalityAuthority,
   );
-  releaseEconomicsAuthorityByDeploymentIdentityV1.set(
+  releaseEconomicsAuthorityByDeploymentIdentity.set(
     verified,
     releaseEconomicsAuthority,
   );
-  availabilityChallengeAuthorityByDeploymentIdentityV1.set(
+  availabilityChallengeAuthorityByDeploymentIdentity.set(
     verified,
     availabilityChallengeAuthority,
   );

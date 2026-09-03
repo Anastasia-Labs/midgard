@@ -41,7 +41,7 @@ import {
 } from "./native.js";
 
 /** Normative violation identifier (§9.1 output 1). */
-export const FABRICATED_DEPOSIT_VIOLATION_ID_V1 = "fabricated-deposit" as const;
+export const FABRICATED_DEPOSIT_VIOLATION_ID = "fabricated-deposit" as const;
 
 /**
  * Catalogue identifier of the `fabricatedDeposit` category.
@@ -52,7 +52,7 @@ export const FABRICATED_DEPOSIT_VIOLATION_ID_V1 = "fabricated-deposit" as const;
  * `fabricatedDeposit` is fixed at index 11 and is the byte twin of
  * `step_01.fabricated_deposit_fraud_category_id` in Aiken.
  */
-export const FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1 =
+export const FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fabricatedDeposit;
 
 /** 28-byte hash of the challenged block header. */
@@ -68,17 +68,16 @@ export type ChallengedHeaderHash = Data.Static<
  * A fabricated-deposit computation-thread token's asset name: this family's
  * category id followed by the challenged header hash.
  */
-export const fabricatedDepositThreadTokenAssetNameV1 = (
+export const fabricatedDepositThreadTokenAssetName = (
   challengedHeaderHash: ChallengedHeaderHash,
-): string =>
-  `${FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1}${challengedHeaderHash}`;
+): string => `${FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID}${challengedHeaderHash}`;
 
 // ## Step 01 — committed deposit-source membership
 
 /** Membership witness for one `(DepositId, DepositInfo)` leaf of `deposits_root`. */
-export const CommittedDepositSourceProofV1Schema =
+export const CommittedDepositSourceProofSchema =
   DepositSourceMembershipProofSchema;
-export type CommittedDepositSourceProofV1 = RootMembershipProof<
+export type CommittedDepositSourceProof = RootMembershipProof<
   OutputReference,
   DepositInfo
 >;
@@ -102,7 +101,7 @@ export const FabricatedDepositStep01ArgsSchema = Data.Object({
   /** Reference-input index of the challenged block's state-queue node. */
   state_queue_node_ref_input_index: Data.Integer(),
   /** The committed deposit leaf this thread challenges. */
-  committed_deposit: CommittedDepositSourceProofV1Schema,
+  committed_deposit: CommittedDepositSourceProofSchema,
 });
 export type FabricatedDepositStep01Args = Data.Static<
   typeof FabricatedDepositStep01ArgsSchema
@@ -148,7 +147,7 @@ export const FabricatedDepositStep02Datum =
   FabricatedDepositStep02DatumSchema as unknown as FabricatedDepositStep02Datum;
 
 /** The prover's chosen L1 witness about the committed deposit identity. */
-export const FabricatedDepositEvidenceV1Schema = Data.Enum([
+export const FabricatedDepositEvidenceSchema = Data.Enum([
   Data.Object({
     AbsentDepositIdentity: Data.Object({
       unspent_ref_input_index: Data.Integer(),
@@ -161,14 +160,14 @@ export const FabricatedDepositEvidenceV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedDepositEvidenceV1 = Data.Static<
-  typeof FabricatedDepositEvidenceV1Schema
+export type FabricatedDepositEvidence = Data.Static<
+  typeof FabricatedDepositEvidenceSchema
 >;
-export const FabricatedDepositEvidenceV1 =
-  FabricatedDepositEvidenceV1Schema as unknown as FabricatedDepositEvidenceV1;
+export const FabricatedDepositEvidence =
+  FabricatedDepositEvidenceSchema as unknown as FabricatedDepositEvidence;
 
 /** What L1 says about the committed identity, once authenticated. */
-export const FabricatedDepositEvidenceVerdictV1Schema = Data.Enum([
+export const FabricatedDepositEvidenceVerdictSchema = Data.Enum([
   Data.Literal("DepositIdentityAbsent"),
   Data.Object({
     DepositEventObserved: Data.Object({
@@ -177,11 +176,11 @@ export const FabricatedDepositEvidenceVerdictV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedDepositEvidenceVerdictV1 = Data.Static<
-  typeof FabricatedDepositEvidenceVerdictV1Schema
+export type FabricatedDepositEvidenceVerdict = Data.Static<
+  typeof FabricatedDepositEvidenceVerdictSchema
 >;
-export const FabricatedDepositEvidenceVerdictV1 =
-  FabricatedDepositEvidenceVerdictV1Schema as unknown as FabricatedDepositEvidenceVerdictV1;
+export const FabricatedDepositEvidenceVerdict =
+  FabricatedDepositEvidenceVerdictSchema as unknown as FabricatedDepositEvidenceVerdict;
 
 export const FabricatedDepositStep02ArgsSchema = Data.Object({
   /** Own input index. */
@@ -189,7 +188,7 @@ export const FabricatedDepositStep02ArgsSchema = Data.Object({
   /** Produced output index. */
   output_index: Data.Integer(),
   /** The prover's chosen L1 witness. */
-  evidence: FabricatedDepositEvidenceV1Schema,
+  evidence: FabricatedDepositEvidenceSchema,
 });
 export type FabricatedDepositStep02Args = Data.Static<
   typeof FabricatedDepositStep02ArgsSchema
@@ -219,7 +218,7 @@ export const FabricatedDepositStep03StateSchema = Data.Object({
   /** Blake2b-256 of the committed `DepositInfo`'s canonical bytes. */
   committed_deposit_info_hash: H32Schema,
   /** The authenticated verdict about L1. */
-  verdict: FabricatedDepositEvidenceVerdictV1Schema,
+  verdict: FabricatedDepositEvidenceVerdictSchema,
 });
 export type FabricatedDepositStep03State = Data.Static<
   typeof FabricatedDepositStep03StateSchema
@@ -244,17 +243,17 @@ export const FabricatedDepositStep03Datum =
  * must decode to: the wire bytes are identical, and the tighter type means a
  * builder cannot assemble an opening the L1 step would reject at decode time.
  */
-export const FabricatedDepositAuthenticContentOpeningV1Schema = Data.Enum([
+export const FabricatedDepositAuthenticContentOpeningSchema = Data.Enum([
   Data.Literal("NoAuthenticContent"),
   Data.Object({
     RetainedEventDatum: Data.Object({ event_datum: DepositDatumSchema }),
   }),
 ]);
-export type FabricatedDepositAuthenticContentOpeningV1 = Data.Static<
-  typeof FabricatedDepositAuthenticContentOpeningV1Schema
+export type FabricatedDepositAuthenticContentOpening = Data.Static<
+  typeof FabricatedDepositAuthenticContentOpeningSchema
 >;
-export const FabricatedDepositAuthenticContentOpeningV1 =
-  FabricatedDepositAuthenticContentOpeningV1Schema as unknown as FabricatedDepositAuthenticContentOpeningV1;
+export const FabricatedDepositAuthenticContentOpening =
+  FabricatedDepositAuthenticContentOpeningSchema as unknown as FabricatedDepositAuthenticContentOpening;
 
 export const FabricatedDepositStep03ArgsSchema = Data.Object({
   /** Own input index. */
@@ -262,7 +261,7 @@ export const FabricatedDepositStep03ArgsSchema = Data.Object({
   /** Produced output index. */
   output_index: Data.Integer(),
   /** The prover's opening of step-02's retained commitment. */
-  authentic_content: FabricatedDepositAuthenticContentOpeningV1Schema,
+  authentic_content: FabricatedDepositAuthenticContentOpeningSchema,
 });
 export type FabricatedDepositStep03Args = Data.Static<
   typeof FabricatedDepositStep03ArgsSchema
@@ -281,7 +280,7 @@ export const FabricatedDepositStep03SpendRedeemer =
 // ## Step 04 — the established fault
 
 /** The `FabricatedDeposit` violation, in its two shapes. */
-export const FabricatedDepositFaultV1Schema = Data.Enum([
+export const FabricatedDepositFaultSchema = Data.Enum([
   Data.Literal("NonexistentDepositIdentity"),
   Data.Object({
     MismatchedDepositContent: Data.Object({
@@ -291,11 +290,11 @@ export const FabricatedDepositFaultV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type FabricatedDepositFaultV1 = Data.Static<
-  typeof FabricatedDepositFaultV1Schema
+export type FabricatedDepositFault = Data.Static<
+  typeof FabricatedDepositFaultSchema
 >;
-export const FabricatedDepositFaultV1 =
-  FabricatedDepositFaultV1Schema as unknown as FabricatedDepositFaultV1;
+export const FabricatedDepositFault =
+  FabricatedDepositFaultSchema as unknown as FabricatedDepositFault;
 
 export const FabricatedDepositStep04StateSchema = Data.Object({
   /** 28-byte hash of the challenged block header. */
@@ -307,7 +306,7 @@ export const FabricatedDepositStep04StateSchema = Data.Object({
   /** The committed deposit identity — an L1 output reference. */
   committed_deposit_id: OutputReferenceSchema,
   /** The classified fault. */
-  fault: FabricatedDepositFaultV1Schema,
+  fault: FabricatedDepositFaultSchema,
 });
 export type FabricatedDepositStep04State = Data.Static<
   typeof FabricatedDepositStep04StateSchema
@@ -348,21 +347,21 @@ export const FabricatedDepositStep04SpendRedeemer =
 
 // ## Step resolver
 
-export const FABRICATED_DEPOSIT_STEP_NAMES_V1 = [
+export const FABRICATED_DEPOSIT_STEP_NAMES = [
   "step_01",
   "step_02",
   "step_03",
   "step_04",
 ] as const;
-export type FabricatedDepositStepNameV1 =
-  (typeof FABRICATED_DEPOSIT_STEP_NAMES_V1)[number];
+export type FabricatedDepositStepName =
+  (typeof FABRICATED_DEPOSIT_STEP_NAMES)[number];
 
 /**
  * Explicit, exhaustive step-datum resolver. There is no fallback branch: adding
  * a step without adding its schema fails to compile.
  */
-export const fabricatedDepositStepDatumSchemaV1 = (
-  step: FabricatedDepositStepNameV1,
+export const fabricatedDepositStepDatumSchema = (
+  step: FabricatedDepositStepName,
 ) => {
   switch (step) {
     case "step_01":
@@ -386,7 +385,7 @@ export const fabricatedDepositStepDatumSchemaV1 = (
  * Twin of `step_01.committed_deposit_info_hash_v1` /
  * `utils.serialise_and_hash_32`.
  */
-export const depositInfoCommitmentV1 = (
+export const depositInfoCommitment = (
   info: DepositInfo,
 ): Effect.Effect<string, HashingError> =>
   hashHexWithBlake2b(Data.to(info, DepositInfo), 32);
@@ -395,7 +394,7 @@ export const depositInfoCommitmentV1 = (
  * Blake2b-256 of a deposit event datum's canonical bytes — step-02's retained
  * commitment, whose preimage step-03 re-opens.
  */
-export const depositEventDatumCommitmentV1 = (
+export const depositEventDatumCommitment = (
   datum: DepositDatum,
 ): Effect.Effect<string, HashingError> =>
   hashHexWithBlake2b(Data.to(datum, DepositDatum), 32);
@@ -406,18 +405,17 @@ export const depositEventDatumCommitmentV1 = (
  * reason a still-unspent output at that reference proves no such event was ever
  * authenticated.
  */
-export const depositEventNonceV1 = (
+export const depositEventNonce = (
   depositId: OutputReference,
 ): Effect.Effect<string, HashingError> =>
   hashHexWithBlake2b(Data.to(depositId, OutputReference), 32);
 
 /** The canonical bytes of a committed deposit leaf's MPF key. */
-export const committedDepositKeyBytesV1 = (
-  depositId: OutputReference,
-): string => Data.to(depositId, OutputReference);
+export const committedDepositKeyBytes = (depositId: OutputReference): string =>
+  Data.to(depositId, OutputReference);
 
 /** The canonical bytes of a committed deposit leaf's MPF value. */
-export const committedDepositValueBytesV1 = (info: DepositInfo): string =>
+export const committedDepositValueBytes = (info: DepositInfo): string =>
   Data.to(info, DepositInfo);
 
 // ## Handoffs
@@ -427,7 +425,7 @@ export const committedDepositValueBytesV1 = (info: DepositInfo): string =>
  * the committed leaf the membership witness opens. Twin of the step-01
  * validator's `expected_output_state`.
  */
-export const fabricatedDepositStep02StateV1 = ({
+export const fabricatedDepositStep02State = ({
   challengedHeaderHash,
   headerStartTime,
   headerEndTime,
@@ -436,10 +434,10 @@ export const fabricatedDepositStep02StateV1 = ({
   readonly challengedHeaderHash: ChallengedHeaderHash;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
-  readonly committedDeposit: CommittedDepositSourceProofV1;
+  readonly committedDeposit: CommittedDepositSourceProof;
 }): Effect.Effect<FabricatedDepositStep02State, HashingError> =>
   Effect.map(
-    depositInfoCommitmentV1(committedDeposit.value),
+    depositInfoCommitment(committedDeposit.value),
     (committed_deposit_info_hash) => ({
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
@@ -450,9 +448,9 @@ export const fabricatedDepositStep02StateV1 = ({
   );
 
 /** The step-02 → step-03 handoff: the same facts plus the authenticated verdict. */
-export const fabricatedDepositStep03StateV1 = (
+export const fabricatedDepositStep03State = (
   state: FabricatedDepositStep02State,
-  verdict: FabricatedDepositEvidenceVerdictV1,
+  verdict: FabricatedDepositEvidenceVerdict,
 ): FabricatedDepositStep03State => ({
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
@@ -463,9 +461,9 @@ export const fabricatedDepositStep03StateV1 = (
 });
 
 /** The step-03 → step-04 handoff: the classified fault replaces the verdict. */
-export const fabricatedDepositStep04StateV1 = (
+export const fabricatedDepositStep04State = (
   state: FabricatedDepositStep03State,
-  fault: FabricatedDepositFaultV1,
+  fault: FabricatedDepositFault,
 ): FabricatedDepositStep04State => ({
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
@@ -482,7 +480,7 @@ export const fabricatedDepositStep04StateV1 = (
  * content commitments differ *and* the authentic event was due for the
  * challenged block (`start_time < inclusion_time <= end_time`).
  */
-export const isFabricatedDepositFaultV1 = (
+export const isFabricatedDepositFault = (
   state: FabricatedDepositStep04State,
 ): boolean => {
   const { fault } = state;
@@ -506,7 +504,7 @@ export const isFabricatedDepositFaultV1 = (
  * and cardinality. Re-exported through the family so a builder never re-derives
  * the counted-root tag itself.
  */
-export type FabricatedDepositCountedRootInputV1 = {
+export type FabricatedDepositCountedRootInput = {
   readonly phasRoot: MerkleRoot;
   readonly count: bigint;
 };

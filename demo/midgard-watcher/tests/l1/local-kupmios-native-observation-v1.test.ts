@@ -1,21 +1,21 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  computeFraudProofRawL1PointIdV1,
-  LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT_V1,
-  type LocalKupmiosRawBlockAtPointV1,
+  computeFraudProofRawL1PointId,
+  LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
+  type LocalKupmiosRawBlockAtPoint,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertWatcherLocalKupmiosNativeObservationV1,
+  assertWatcherLocalKupmiosNativeObservation,
   unsafeAssertNativeKupmiosAgreementForTest,
-  type WatcherLocalKupmiosNativeObservationV1,
+  type WatcherLocalKupmiosNativeObservation,
 } from "../../src/l1/local-kupmios-native-observation-v1.js";
-import { admitWatcherNativeRollForwardBlockV1 } from "../../src/l1/native-block-admission-v1.js";
+import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-admission-v1.js";
 import {
-  WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
-  type WatcherNativeChainSyncRollForwardV1,
+  WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
+  type WatcherNativeChainSyncRollForward,
 } from "../../src/l1/native-chain-sync-v1.js";
 
 const METADATA = Object.freeze({
@@ -27,7 +27,7 @@ const METADATA = Object.freeze({
 });
 
 const fixture = async () => {
-  const event: WatcherNativeChainSyncRollForwardV1 = Object.freeze({
+  const event: WatcherNativeChainSyncRollForward = Object.freeze({
     ...METADATA,
     kind: "roll_forward",
     rawBlockCbor: (
@@ -36,7 +36,7 @@ const fixture = async () => {
         "utf8",
       )
     ).trim(),
-    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
     tip: Object.freeze({
       blockHash: METADATA.blockHash,
       blockNo: METADATA.blockNo,
@@ -44,19 +44,19 @@ const fixture = async () => {
       slot: METADATA.slot,
     }),
   });
-  const native = admitWatcherNativeRollForwardBlockV1(event);
+  const native = admitWatcherNativeRollForwardBlock(event);
   const point = Object.freeze({
     blockHash: native.blockHash,
     blockNo: native.blockNo,
     slot: native.slot,
-    pointId: computeFraudProofRawL1PointIdV1({
+    pointId: computeFraudProofRawL1PointId({
       blockHash: native.blockHash,
       blockNo: native.blockNo,
       slot: native.slot,
     }),
   });
-  const raw: LocalKupmiosRawBlockAtPointV1 = Object.freeze({
-    schemaVersion: LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT_V1,
+  const raw: LocalKupmiosRawBlockAtPoint = Object.freeze({
+    schemaVersion: LOCAL_KUPMIOS_RAW_BLOCK_AT_POINT,
     sourceId: "fixture",
     point,
     parentBlockHash: native.prevHash.length === 0 ? null : native.prevHash,
@@ -80,8 +80,8 @@ describe("native Kupo/Ogmios agreement", () => {
   it("rejects a structural local observation that the live source did not admit", async () => {
     const { native } = await fixture();
     expect(() =>
-      assertWatcherLocalKupmiosNativeObservationV1(
-        Object.freeze({}) as WatcherLocalKupmiosNativeObservationV1,
+      assertWatcherLocalKupmiosNativeObservation(
+        Object.freeze({}) as WatcherLocalKupmiosNativeObservation,
         native,
       ),
     ).toThrow("is not admitted for the native block");
@@ -101,7 +101,7 @@ describe("native Kupo/Ogmios agreement", () => {
       const transactions = raw.transactions.map((transaction) => ({
         ...transaction,
       }));
-      let candidate: LocalKupmiosRawBlockAtPointV1;
+      let candidate: LocalKupmiosRawBlockAtPoint;
       if (attack === "point") {
         candidate = {
           ...raw,

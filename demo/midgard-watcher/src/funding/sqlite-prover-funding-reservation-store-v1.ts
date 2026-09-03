@@ -3,26 +3,26 @@ import { mkdir, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { computeDeploymentManifestV1JsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
-import { watcherCanonicalJsonV1 } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
 import {
-  assertWatcherProductionProverFundingReservationPlanV1,
-  parseWatcherProductionProverFundingReservationRecordV1,
-  type WatcherProductionProverFundingReservationInputV1,
-  type WatcherProductionProverFundingReservationPlanV1,
-  type WatcherProductionProverFundingReservationRecordV1,
-  type WatcherProductionProverFundingReservationStoreV1,
-  type WatcherProductionProverFundingReservationTransitionV1,
+  assertWatcherProverFundingReservationPlan,
+  parseWatcherProverFundingReservationRecord,
+  type WatcherProverFundingReservationInput,
+  type WatcherProverFundingReservationPlan,
+  type WatcherProverFundingReservationRecord,
+  type WatcherProverFundingReservationStore,
+  type WatcherProverFundingReservationTransition,
 } from "./production-prover-funding-reservation-v1.js";
 
-export const WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE_V1 =
+export const WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE =
   "midgard-watcher-sqlite-prover-funding-reservation-store-v1" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 
-export type WatcherProductionProverFundingReservationConflictV1 = Readonly<{
+export type WatcherProverFundingReservationConflict = Readonly<{
   code: "reservation_collision";
   outRef: string;
 }>;
@@ -30,7 +30,7 @@ export type WatcherProductionProverFundingReservationConflictV1 = Readonly<{
 const admittedConflicts = new WeakSet<object>();
 
 class ReservationConflictError extends Error {
-  readonly conflict: WatcherProductionProverFundingReservationConflictV1;
+  readonly conflict: WatcherProverFundingReservationConflict;
 
   constructor(outRef: string) {
     super("prover funding output is already reserved");
@@ -40,16 +40,16 @@ class ReservationConflictError extends Error {
   }
 }
 
-export const isWatcherProductionProverFundingReservationConflictV1 = (
+export const isWatcherProverFundingReservationConflict = (
   value: unknown,
 ): value is Error &
   Readonly<{
-    conflict: WatcherProductionProverFundingReservationConflictV1;
+    conflict: WatcherProverFundingReservationConflict;
   }> => value instanceof Error && admittedConflicts.has(value);
 
-export type WatcherSqliteProverFundingReservationStoreRuntimeV1 = Readonly<{
-  schemaVersion: typeof WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE_V1;
-  store: WatcherProductionProverFundingReservationStoreV1;
+export type WatcherSqliteProverFundingReservationStoreRuntime = Readonly<{
+  schemaVersion: typeof WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE;
+  store: WatcherProverFundingReservationStore;
   close(): void;
 }>;
 
@@ -71,13 +71,13 @@ const canonicalDatabasePath = (value: unknown): string => {
 };
 
 const identicalInputs = (
-  left: readonly WatcherProductionProverFundingReservationInputV1[],
-  right: readonly WatcherProductionProverFundingReservationInputV1[],
-): boolean => watcherCanonicalJsonV1(left) === watcherCanonicalJsonV1(right);
+  left: readonly WatcherProverFundingReservationInput[],
+  right: readonly WatcherProverFundingReservationInput[],
+): boolean => watcherCanonicalJson(left) === watcherCanonicalJson(right);
 
 const assertPlanMatchesRecord = (
-  plan: WatcherProductionProverFundingReservationPlanV1,
-  record: WatcherProductionProverFundingReservationRecordV1,
+  plan: WatcherProverFundingReservationPlan,
+  record: WatcherProverFundingReservationRecord,
 ): void => {
   if (
     record.reservationId !== plan.reservationId ||
@@ -91,13 +91,13 @@ const assertPlanMatchesRecord = (
 };
 
 const nextRecord = (input: {
-  readonly current: WatcherProductionProverFundingReservationRecordV1;
-  readonly state?: WatcherProductionProverFundingReservationRecordV1["state"];
-  readonly activeInputs?: readonly WatcherProductionProverFundingReservationInputV1[];
-  readonly pendingTransition?: WatcherProductionProverFundingReservationTransitionV1 | null;
+  readonly current: WatcherProverFundingReservationRecord;
+  readonly state?: WatcherProverFundingReservationRecord["state"];
+  readonly activeInputs?: readonly WatcherProverFundingReservationInput[];
+  readonly pendingTransition?: WatcherProverFundingReservationTransition | null;
   readonly lastConfirmedTransitionDigest?: string | null;
-  readonly conflictCode?: WatcherProductionProverFundingReservationRecordV1["conflictCode"];
-}): WatcherProductionProverFundingReservationRecordV1 => {
+  readonly conflictCode?: WatcherProverFundingReservationRecord["conflictCode"];
+}): WatcherProverFundingReservationRecord => {
   const recordInput = Object.freeze({
     reservationId: input.current.reservationId,
     deploymentFingerprint: input.current.deploymentFingerprint,
@@ -124,15 +124,15 @@ const nextRecord = (input: {
         ? input.current.conflictCode
         : input.conflictCode,
   });
-  return parseWatcherProductionProverFundingReservationRecordV1({
+  return parseWatcherProverFundingReservationRecord({
     ...recordInput,
-    recordDigest: computeDeploymentManifestV1JsonDigest(recordInput),
+    recordDigest: computeDeploymentManifestJsonDigest(recordInput),
   });
 };
 
 const initialRecord = (
-  plan: WatcherProductionProverFundingReservationPlanV1,
-): WatcherProductionProverFundingReservationRecordV1 => {
+  plan: WatcherProverFundingReservationPlan,
+): WatcherProverFundingReservationRecord => {
   const recordInput = Object.freeze({
     reservationId: plan.reservationId,
     deploymentFingerprint: plan.deploymentFingerprint,
@@ -146,9 +146,9 @@ const initialRecord = (
     lastConfirmedTransitionDigest: null,
     conflictCode: null,
   });
-  return parseWatcherProductionProverFundingReservationRecordV1({
+  return parseWatcherProverFundingReservationRecord({
     ...recordInput,
-    recordDigest: computeDeploymentManifestV1JsonDigest(recordInput),
+    recordDigest: computeDeploymentManifestJsonDigest(recordInput),
   });
 };
 
@@ -157,8 +157,8 @@ const makeTransition = (input: {
   readonly transactionHash: string;
   readonly transactionBodySha256: string;
   readonly consumedOutRefs: readonly string[];
-  readonly producedInputs: readonly WatcherProductionProverFundingReservationInputV1[];
-}): WatcherProductionProverFundingReservationTransitionV1 => {
+  readonly producedInputs: readonly WatcherProverFundingReservationInput[];
+}): WatcherProverFundingReservationTransition => {
   const transitionInput = Object.freeze({
     actionKind: input.actionKind,
     transactionHash: input.transactionHash,
@@ -172,7 +172,7 @@ const makeTransition = (input: {
   });
   const transition = Object.freeze({
     ...transitionInput,
-    transitionDigest: computeDeploymentManifestV1JsonDigest(transitionInput),
+    transitionDigest: computeDeploymentManifestJsonDigest(transitionInput),
   });
   const provisional = Object.freeze({
     reservationId: "00".repeat(32),
@@ -187,9 +187,9 @@ const makeTransition = (input: {
     lastConfirmedTransitionDigest: null,
     conflictCode: null,
   });
-  parseWatcherProductionProverFundingReservationRecordV1({
+  parseWatcherProverFundingReservationRecord({
     ...provisional,
-    recordDigest: computeDeploymentManifestV1JsonDigest(provisional),
+    recordDigest: computeDeploymentManifestJsonDigest(provisional),
   });
   return transition;
 };
@@ -216,10 +216,10 @@ const deriveSignedTransition = ({
   activeInputs,
   input,
 }: {
-  readonly plan: WatcherProductionProverFundingReservationPlanV1;
-  readonly activeInputs: readonly WatcherProductionProverFundingReservationInputV1[];
+  readonly plan: WatcherProverFundingReservationPlan;
+  readonly activeInputs: readonly WatcherProverFundingReservationInput[];
   readonly input: Parameters<
-    WatcherProductionProverFundingReservationStoreV1["prepareTransition"]
+    WatcherProverFundingReservationStore["prepareTransition"]
   >[0];
 }): Parameters<typeof makeTransition>[0] => {
   if (!/^(?:[0-9a-f]{2})+$/u.test(input.signedTransactionCborHex)) {
@@ -263,7 +263,7 @@ const deriveSignedTransition = ({
     (outRef) => planFunding.has(outRef),
   );
   const outputs = body.outputs();
-  const producedInputs: WatcherProductionProverFundingReservationInputV1[] = [];
+  const producedInputs: WatcherProverFundingReservationInput[] = [];
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = coreToTxOutput(outputs.get(index));
     if (output.address !== plan.walletAddress) continue;
@@ -297,10 +297,10 @@ const deriveSignedTransition = ({
   if (
     input.transactionHash !== derived.transactionHash ||
     input.transactionBodySha256 !== derived.transactionBodySha256 ||
-    watcherCanonicalJsonV1(input.consumedOutRefs) !==
-      watcherCanonicalJsonV1(derived.consumedOutRefs) ||
-    watcherCanonicalJsonV1(input.producedInputs) !==
-      watcherCanonicalJsonV1(derived.producedInputs)
+    watcherCanonicalJson(input.consumedOutRefs) !==
+      watcherCanonicalJson(derived.consumedOutRefs) ||
+    watcherCanonicalJson(input.producedInputs) !==
+      watcherCanonicalJson(derived.producedInputs)
   ) {
     throw new Error(
       "prover transition output differs from the signed transaction",
@@ -311,8 +311,8 @@ const deriveSignedTransition = ({
 
 const openInternal = async (
   input: Readonly<{ path: string; busyTimeoutMs?: number }>,
-  assertPlan: (plan: WatcherProductionProverFundingReservationPlanV1) => void,
-): Promise<WatcherSqliteProverFundingReservationStoreRuntimeV1> => {
+  assertPlan: (plan: WatcherProverFundingReservationPlan) => void,
+): Promise<WatcherSqliteProverFundingReservationStoreRuntime> => {
   const path = canonicalDatabasePath(input.path);
   const directory = dirname(path);
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -501,16 +501,14 @@ const openInternal = async (
     );
     if (
       output.to_canonical_cbor_hex() !== identity.resolvedOutputCborHex ||
-      computeDeploymentManifestV1JsonDigest(identity) !== row.lineage_digest
+      computeDeploymentManifestJsonDigest(identity) !== row.lineage_digest
     ) {
       throw new Error("prover funding lineage row digest mismatch");
     }
     return Object.freeze({ ...identity, phase: row.phase });
   };
 
-  const parseRow = (
-    row: RecordRow,
-  ): WatcherProductionProverFundingReservationRecordV1 => {
+  const parseRow = (row: RecordRow): WatcherProverFundingReservationRecord => {
     if (
       typeof row.reservation_id !== "string" ||
       !HEX_32.test(row.reservation_id) ||
@@ -526,10 +524,9 @@ const openInternal = async (
     } catch {
       throw new Error("prover funding reservation row is malformed");
     }
-    const record =
-      parseWatcherProductionProverFundingReservationRecordV1(value);
+    const record = parseWatcherProverFundingReservationRecord(value);
     if (
-      watcherCanonicalJsonV1(record) !== row.canonical_json ||
+      watcherCanonicalJson(record) !== row.canonical_json ||
       record.reservationId !== row.reservation_id ||
       record.recordDigest !== row.record_digest
     ) {
@@ -540,16 +537,16 @@ const openInternal = async (
 
   const readOne = (
     reservationId: string,
-  ): WatcherProductionProverFundingReservationRecordV1 | null => {
+  ): WatcherProverFundingReservationRecord | null => {
     const row = selectOne.get(reservationId) as RecordRow | undefined;
     return row === undefined ? null : parseRow(row);
   };
 
   const writeRecord = (
     currentDigest: string | null,
-    next: WatcherProductionProverFundingReservationRecordV1,
+    next: WatcherProverFundingReservationRecord,
   ): void => {
-    const canonicalJson = watcherCanonicalJsonV1(next);
+    const canonicalJson = watcherCanonicalJson(next);
     if (currentDigest === null) {
       insertRecord.run(next.reservationId, next.recordDigest, canonicalJson);
       return;
@@ -576,7 +573,7 @@ const openInternal = async (
   };
 
   const replaceLeases = (
-    record: WatcherProductionProverFundingReservationRecordV1,
+    record: WatcherProverFundingReservationRecord,
   ): void => {
     deleteLeases.run(record.reservationId);
     for (const value of record.activeInputs) {
@@ -594,7 +591,7 @@ const openInternal = async (
 
   const persistPendingLineage = (input: {
     readonly reservationId: string;
-    readonly transition: WatcherProductionProverFundingReservationTransitionV1;
+    readonly transition: WatcherProverFundingReservationTransition;
     readonly signedTransactionCborHex: string;
   }): number => {
     const transaction = CML.Transaction.from_cbor_hex(
@@ -617,95 +614,92 @@ const openInternal = async (
         identity.outRef,
         identity.resolvedOutputCborHex,
         identity.transitionDigest,
-        computeDeploymentManifestV1JsonDigest(identity),
+        computeDeploymentManifestJsonDigest(identity),
       );
     }
     return outputs.len();
   };
 
-  const audit =
-    (): readonly WatcherProductionProverFundingReservationRecordV1[] => {
-      const records = (selectAll.all() as RecordRow[]).map(parseRow);
-      const expected = new Map<
-        string,
-        Readonly<{
-          reservationId: string;
-          phase: "active" | "pending";
-          role: string;
-        }>
-      >();
-      for (const record of records) {
-        for (const value of record.activeInputs) {
-          expected.set(
-            value.outRef,
-            Object.freeze({
-              reservationId: record.reservationId,
-              phase: "active",
-              role: value.role,
-            }),
-          );
-        }
-        for (const value of record.pendingTransition?.producedInputs ?? []) {
-          if (expected.has(value.outRef)) {
-            throw new Error(
-              "prover funding reservation repeats an output lease",
-            );
-          }
-          expected.set(
-            value.outRef,
-            Object.freeze({
-              reservationId: record.reservationId,
-              phase: "pending",
-              role: value.role,
-            }),
-          );
-        }
+  const audit = (): readonly WatcherProverFundingReservationRecord[] => {
+    const records = (selectAll.all() as RecordRow[]).map(parseRow);
+    const expected = new Map<
+      string,
+      Readonly<{
+        reservationId: string;
+        phase: "active" | "pending";
+        role: string;
+      }>
+    >();
+    for (const record of records) {
+      for (const value of record.activeInputs) {
+        expected.set(
+          value.outRef,
+          Object.freeze({
+            reservationId: record.reservationId,
+            phase: "active",
+            role: value.role,
+          }),
+        );
       }
-      const leases = selectAllLeases.all() as LeaseRow[];
-      if (leases.length !== expected.size) {
-        throw new Error("prover funding reservation lease set mismatch");
-      }
-      for (const row of leases) {
-        if (
-          typeof row.out_ref !== "string" ||
-          typeof row.reservation_id !== "string" ||
-          (row.lease_phase !== "active" && row.lease_phase !== "pending") ||
-          (row.role !== "funding" && row.role !== "collateral")
-        ) {
-          throw new Error("prover funding reservation lease is malformed");
+      for (const value of record.pendingTransition?.producedInputs ?? []) {
+        if (expected.has(value.outRef)) {
+          throw new Error("prover funding reservation repeats an output lease");
         }
-        const value = expected.get(row.out_ref);
-        if (
-          value === undefined ||
-          value.reservationId !== row.reservation_id ||
-          value.phase !== row.lease_phase ||
-          value.role !== row.role
-        ) {
-          throw new Error("prover funding reservation lease metadata mismatch");
-        }
+        expected.set(
+          value.outRef,
+          Object.freeze({
+            reservationId: record.reservationId,
+            phase: "pending",
+            role: value.role,
+          }),
+        );
       }
-      const pendingByReservation = new Map(
-        records
-          .filter(({ pendingTransition }) => pendingTransition !== null)
-          .map((record) => [
-            record.reservationId,
-            record.pendingTransition!.transitionDigest,
-          ]),
-      );
-      for (const row of selectAllLineage.all() as LineageRow[]) {
-        const lineage = parseLineageRow(row);
-        if (
-          lineage.phase === "pending" &&
-          pendingByReservation.get(lineage.reservationId) !==
-            lineage.transitionDigest
-        ) {
-          throw new Error(
-            "prover funding pending lineage differs from reservation",
-          );
-        }
+    }
+    const leases = selectAllLeases.all() as LeaseRow[];
+    if (leases.length !== expected.size) {
+      throw new Error("prover funding reservation lease set mismatch");
+    }
+    for (const row of leases) {
+      if (
+        typeof row.out_ref !== "string" ||
+        typeof row.reservation_id !== "string" ||
+        (row.lease_phase !== "active" && row.lease_phase !== "pending") ||
+        (row.role !== "funding" && row.role !== "collateral")
+      ) {
+        throw new Error("prover funding reservation lease is malformed");
       }
-      return Object.freeze(records);
-    };
+      const value = expected.get(row.out_ref);
+      if (
+        value === undefined ||
+        value.reservationId !== row.reservation_id ||
+        value.phase !== row.lease_phase ||
+        value.role !== row.role
+      ) {
+        throw new Error("prover funding reservation lease metadata mismatch");
+      }
+    }
+    const pendingByReservation = new Map(
+      records
+        .filter(({ pendingTransition }) => pendingTransition !== null)
+        .map((record) => [
+          record.reservationId,
+          record.pendingTransition!.transitionDigest,
+        ]),
+    );
+    for (const row of selectAllLineage.all() as LineageRow[]) {
+      const lineage = parseLineageRow(row);
+      if (
+        lineage.phase === "pending" &&
+        pendingByReservation.get(lineage.reservationId) !==
+          lineage.transitionDigest
+      ) {
+        throw new Error(
+          "prover funding pending lineage differs from reservation",
+        );
+      }
+    }
+    return Object.freeze(records);
+  };
 
   const transaction = <T>(operation: () => T): T => {
     database.exec("BEGIN IMMEDIATE");
@@ -742,257 +736,243 @@ const openInternal = async (
 
   auditRead();
 
-  const store: WatcherProductionProverFundingReservationStoreV1 = Object.freeze(
-    {
-      readAll: async () => auditRead(),
-      readConfirmedActionOutput: async ({
+  const store: WatcherProverFundingReservationStore = Object.freeze({
+    readAll: async () => auditRead(),
+    readConfirmedActionOutput: async ({
+      reservationId,
+      sourceActionKind,
+      sourceOutputIndex,
+    }) => {
+      const row = selectConfirmedLineage.get(
         reservationId,
         sourceActionKind,
         sourceOutputIndex,
-      }) => {
-        const row = selectConfirmedLineage.get(
-          reservationId,
-          sourceActionKind,
-          sourceOutputIndex,
-        ) as LineageRow | undefined;
-        if (row === undefined) {
-          throw new Error("confirmed prover funding action output is missing");
+      ) as LineageRow | undefined;
+      if (row === undefined) {
+        throw new Error("confirmed prover funding action output is missing");
+      }
+      const lineage = parseLineageRow(row);
+      return Object.freeze({
+        sourceActionKind: lineage.sourceActionKind,
+        sourceOutputIndex: lineage.sourceOutputIndex,
+        outRef: lineage.outRef,
+        resolvedOutputCborHex: lineage.resolvedOutputCborHex,
+      });
+    },
+    reserve: async (plan) => {
+      assertPlan(plan);
+      return transaction(() => {
+        const current = readOne(plan.reservationId);
+        if (current !== null) {
+          assertPlanMatchesRecord(plan, current);
+          if (
+            current.revision === "0" &&
+            !identicalInputs(current.activeInputs, plan.inputs)
+          ) {
+            throw new Error("prover funding reservation plan was substituted");
+          }
+          if (current.state === "released") {
+            throw new Error("prover funding reservation was released");
+          }
+          if (current.state === "conflict") {
+            throw new Error("prover funding reservation is conflicted");
+          }
+          return "unchanged" as const;
         }
-        const lineage = parseLineageRow(row);
-        return Object.freeze({
-          sourceActionKind: lineage.sourceActionKind,
-          sourceOutputIndex: lineage.sourceOutputIndex,
-          outRef: lineage.outRef,
-          resolvedOutputCborHex: lineage.resolvedOutputCborHex,
+        for (const value of plan.inputs) {
+          assertLeaseAvailable(value.outRef, plan.reservationId);
+        }
+        const record = initialRecord(plan);
+        writeRecord(null, record);
+        replaceLeases(record);
+        return "reserved" as const;
+      });
+    },
+    prepareTransition: async (transitionInput) => {
+      assertPlan(transitionInput.plan);
+      return transaction(() => {
+        const current = readOne(transitionInput.plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(transitionInput.plan, current);
+        if (
+          current.state !== "active" ||
+          current.pendingTransition !== null ||
+          current.revision !== transitionInput.expectedRevision
+        ) {
+          throw new Error("prover reservation cannot prepare transition");
+        }
+        const activeOutRefs = new Set(
+          current.activeInputs.map(({ outRef }) => outRef),
+        );
+        if (
+          transitionInput.consumedOutRefs.length === 0 ||
+          transitionInput.consumedOutRefs.some(
+            (outRef) => !activeOutRefs.has(outRef),
+          )
+        ) {
+          throw new Error("prover transition consumes an unreserved input");
+        }
+        const transition = makeTransition(
+          deriveSignedTransition({
+            plan: transitionInput.plan,
+            activeInputs: current.activeInputs,
+            input: transitionInput,
+          }),
+        );
+        persistPendingLineage({
+          reservationId: current.reservationId,
+          transition,
+          signedTransactionCborHex: transitionInput.signedTransactionCborHex,
         });
-      },
-      reserve: async (plan) => {
-        assertPlan(plan);
-        return transaction(() => {
-          const current = readOne(plan.reservationId);
-          if (current !== null) {
-            assertPlanMatchesRecord(plan, current);
-            if (
-              current.revision === "0" &&
-              !identicalInputs(current.activeInputs, plan.inputs)
-            ) {
-              throw new Error(
-                "prover funding reservation plan was substituted",
-              );
-            }
-            if (current.state === "released") {
-              throw new Error("prover funding reservation was released");
-            }
-            if (current.state === "conflict") {
-              throw new Error("prover funding reservation is conflicted");
-            }
-            return "unchanged" as const;
-          }
-          for (const value of plan.inputs) {
-            assertLeaseAvailable(value.outRef, plan.reservationId);
-          }
-          const record = initialRecord(plan);
-          writeRecord(null, record);
-          replaceLeases(record);
-          return "reserved" as const;
+        for (const value of transition.producedInputs) {
+          assertLeaseAvailable(value.outRef, current.reservationId);
+        }
+        const next = nextRecord({
+          current,
+          pendingTransition: transition,
         });
-      },
-      prepareTransition: async (transitionInput) => {
-        assertPlan(transitionInput.plan);
-        return transaction(() => {
-          const current = readOne(transitionInput.plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(transitionInput.plan, current);
-          if (
-            current.state !== "active" ||
-            current.pendingTransition !== null ||
-            current.revision !== transitionInput.expectedRevision
-          ) {
-            throw new Error("prover reservation cannot prepare transition");
-          }
-          const activeOutRefs = new Set(
-            current.activeInputs.map(({ outRef }) => outRef),
-          );
-          if (
-            transitionInput.consumedOutRefs.length === 0 ||
-            transitionInput.consumedOutRefs.some(
-              (outRef) => !activeOutRefs.has(outRef),
-            )
-          ) {
-            throw new Error("prover transition consumes an unreserved input");
-          }
-          const transition = makeTransition(
-            deriveSignedTransition({
-              plan: transitionInput.plan,
-              activeInputs: current.activeInputs,
-              input: transitionInput,
-            }),
-          );
-          persistPendingLineage({
-            reservationId: current.reservationId,
-            transition,
-            signedTransactionCborHex: transitionInput.signedTransactionCborHex,
-          });
-          for (const value of transition.producedInputs) {
-            assertLeaseAvailable(value.outRef, current.reservationId);
-          }
-          const next = nextRecord({
-            current,
-            pendingTransition: transition,
-          });
-          writeRecord(current.recordDigest, next);
-          replaceLeases(next);
-          return next;
-        });
-      },
-      confirmTransition: async (confirmation) => {
-        assertPlan(confirmation.plan);
-        return transaction(() => {
-          const current = readOne(confirmation.plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(confirmation.plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== confirmation.expectedRevision ||
-            current.pendingTransition?.transitionDigest !==
-              confirmation.transitionDigest
-          ) {
-            throw new Error("prover reservation confirmation mismatch");
-          }
-          const consumed = new Set(current.pendingTransition.consumedOutRefs);
-          const active = [
-            ...current.activeInputs.filter(
-              ({ outRef }) => !consumed.has(outRef),
-            ),
-            ...current.pendingTransition.producedInputs,
-          ];
-          const next = nextRecord({
-            current,
-            activeInputs: active,
-            pendingTransition: null,
-            lastConfirmedTransitionDigest:
-              current.pendingTransition.transitionDigest,
-          });
-          const confirmedLineage = confirmLineage.run(
-            current.reservationId,
+        writeRecord(current.recordDigest, next);
+        replaceLeases(next);
+        return next;
+      });
+    },
+    confirmTransition: async (confirmation) => {
+      assertPlan(confirmation.plan);
+      return transaction(() => {
+        const current = readOne(confirmation.plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(confirmation.plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== confirmation.expectedRevision ||
+          current.pendingTransition?.transitionDigest !==
+            confirmation.transitionDigest
+        ) {
+          throw new Error("prover reservation confirmation mismatch");
+        }
+        const consumed = new Set(current.pendingTransition.consumedOutRefs);
+        const active = [
+          ...current.activeInputs.filter(({ outRef }) => !consumed.has(outRef)),
+          ...current.pendingTransition.producedInputs,
+        ];
+        const next = nextRecord({
+          current,
+          activeInputs: active,
+          pendingTransition: null,
+          lastConfirmedTransitionDigest:
             current.pendingTransition.transitionDigest,
-          );
-          if (confirmedLineage.changes < 1) {
-            throw new Error("prover reservation confirmation lacks lineage");
-          }
-          writeRecord(current.recordDigest, next);
-          replaceLeases(next);
-          return next;
         });
-      },
-      abandonPendingTransition: async (abandonment) => {
-        assertPlan(abandonment.plan);
-        return transaction(() => {
-          const current = readOne(abandonment.plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(abandonment.plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== abandonment.expectedRevision ||
-            current.pendingTransition?.transitionDigest !==
-              abandonment.transitionDigest
-          ) {
-            throw new Error("prover reservation abandonment mismatch");
-          }
-          const next = nextRecord({ current, pendingTransition: null });
+        const confirmedLineage = confirmLineage.run(
+          current.reservationId,
+          current.pendingTransition.transitionDigest,
+        );
+        if (confirmedLineage.changes < 1) {
+          throw new Error("prover reservation confirmation lacks lineage");
+        }
+        writeRecord(current.recordDigest, next);
+        replaceLeases(next);
+        return next;
+      });
+    },
+    abandonPendingTransition: async (abandonment) => {
+      assertPlan(abandonment.plan);
+      return transaction(() => {
+        const current = readOne(abandonment.plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(abandonment.plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== abandonment.expectedRevision ||
+          current.pendingTransition?.transitionDigest !==
+            abandonment.transitionDigest
+        ) {
+          throw new Error("prover reservation abandonment mismatch");
+        }
+        const next = nextRecord({ current, pendingTransition: null });
+        deletePendingLineage.run(
+          current.reservationId,
+          current.pendingTransition.transitionDigest,
+        );
+        writeRecord(current.recordDigest, next);
+        replaceLeases(next);
+        return next;
+      });
+    },
+    markConflict: async (conflict) => {
+      assertPlan(conflict.plan);
+      return transaction(() => {
+        const current = readOne(conflict.plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(conflict.plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== conflict.expectedRevision
+        ) {
+          throw new Error("prover reservation conflict transition mismatch");
+        }
+        const next = nextRecord({
+          current,
+          state: "conflict",
+          pendingTransition: null,
+          conflictCode: conflict.code,
+        });
+        if (current.pendingTransition !== null) {
           deletePendingLineage.run(
             current.reservationId,
             current.pendingTransition.transitionDigest,
           );
-          writeRecord(current.recordDigest, next);
-          replaceLeases(next);
-          return next;
-        });
-      },
-      markConflict: async (conflict) => {
-        assertPlan(conflict.plan);
-        return transaction(() => {
-          const current = readOne(conflict.plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(conflict.plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== conflict.expectedRevision
-          ) {
-            throw new Error("prover reservation conflict transition mismatch");
-          }
-          const next = nextRecord({
-            current,
-            state: "conflict",
-            pendingTransition: null,
-            conflictCode: conflict.code,
-          });
-          if (current.pendingTransition !== null) {
-            deletePendingLineage.run(
-              current.reservationId,
-              current.pendingTransition.transitionDigest,
-            );
-          }
-          writeRecord(current.recordDigest, next);
-          replaceLeases(next);
-          return next;
-        });
-      },
-      release: async (release) => {
-        assertPlan(release.plan);
-        return transaction(() => {
-          const current = readOne(release.plan.reservationId);
-          if (current === null)
-            throw new Error("prover reservation is missing");
-          assertPlanMatchesRecord(release.plan, current);
-          if (
-            current.state !== "active" ||
-            current.revision !== release.expectedRevision ||
-            current.pendingTransition !== null
-          ) {
-            throw new Error("prover reservation release mismatch");
-          }
-          const next = nextRecord({
-            current,
-            state: "released",
-            activeInputs: [],
-            pendingTransition: null,
-            conflictCode: null,
-          });
-          writeRecord(current.recordDigest, next);
-          replaceLeases(next);
-          return next;
-        });
-      },
+        }
+        writeRecord(current.recordDigest, next);
+        replaceLeases(next);
+        return next;
+      });
     },
-  );
+    release: async (release) => {
+      assertPlan(release.plan);
+      return transaction(() => {
+        const current = readOne(release.plan.reservationId);
+        if (current === null) throw new Error("prover reservation is missing");
+        assertPlanMatchesRecord(release.plan, current);
+        if (
+          current.state !== "active" ||
+          current.revision !== release.expectedRevision ||
+          current.pendingTransition !== null
+        ) {
+          throw new Error("prover reservation release mismatch");
+        }
+        const next = nextRecord({
+          current,
+          state: "released",
+          activeInputs: [],
+          pendingTransition: null,
+          conflictCode: null,
+        });
+        writeRecord(current.recordDigest, next);
+        replaceLeases(next);
+        return next;
+      });
+    },
+  });
 
   return Object.freeze({
-    schemaVersion: WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE_V1,
+    schemaVersion: WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
     store,
     close: () => database.close(),
   });
 };
 
-export const openWatcherSqliteProverFundingReservationStoreV1 = async (input: {
+export const openWatcherSqliteProverFundingReservationStore = async (input: {
   readonly path: string;
   readonly busyTimeoutMs?: number;
-}): Promise<WatcherSqliteProverFundingReservationStoreRuntimeV1> =>
-  await openInternal(
-    input,
-    assertWatcherProductionProverFundingReservationPlanV1,
-  );
+}): Promise<WatcherSqliteProverFundingReservationStoreRuntime> =>
+  await openInternal(input, assertWatcherProverFundingReservationPlan);
 
 /** Test-only storage seam. Production always requires an opaque admitted plan. */
-export const unsafeOpenWatcherSqliteProverFundingReservationStoreForTestV1 =
+export const unsafeOpenWatcherSqliteProverFundingReservationStoreForTest =
   async (
     input: Readonly<{ path: string; busyTimeoutMs?: number }>,
     unsafeAssertPlanForTest: (
-      plan: WatcherProductionProverFundingReservationPlanV1,
+      plan: WatcherProverFundingReservationPlan,
     ) => void,
-  ): Promise<WatcherSqliteProverFundingReservationStoreRuntimeV1> =>
+  ): Promise<WatcherSqliteProverFundingReservationStoreRuntime> =>
     await openInternal(input, unsafeAssertPlanForTest);

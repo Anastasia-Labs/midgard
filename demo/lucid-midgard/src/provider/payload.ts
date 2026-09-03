@@ -5,11 +5,11 @@ import {
   scriptLanguageTagToName,
 } from "@al-ft/midgard-core/codec";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { parseDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
 import { ProviderPayloadError } from "../core/errors.js";
@@ -349,7 +349,7 @@ export const parseProtocolInfo = (
       `apiVersion must equal 1; got ${apiVersion.toString()}`,
     );
   }
-  if (!isMidgardConsensusProfileV1(info.consensusProfile)) {
+  if (!isMidgardConsensusProfile(info.consensusProfile)) {
     throw new ProviderPayloadError(
       endpoint,
       "consensusProfile does not exactly match the compiled V1 profile",
@@ -357,7 +357,7 @@ export const parseProtocolInfo = (
   }
   const deploymentMarker = (() => {
     try {
-      return parseDeploymentMarkerV1(info.deploymentMarker);
+      return parseDeploymentMarker(info.deploymentMarker);
     } catch (cause) {
       throw new ProviderPayloadError(
         endpoint,
@@ -384,7 +384,7 @@ export const parseProtocolInfo = (
     "supportedScriptLanguages",
     MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   );
-  const profileTxLimit = MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes;
+  const profileTxLimit = MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes;
   const maxSubmitTxCborBytes = requireNumber(
     submissionLimits.maxSubmitTxCborBytes,
     "submissionLimits.maxSubmitTxCborBytes",
@@ -437,7 +437,7 @@ export const parseProtocolInfo = (
   return {
     ...common,
     apiVersion: 1,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     deploymentMarker,
   };
 };

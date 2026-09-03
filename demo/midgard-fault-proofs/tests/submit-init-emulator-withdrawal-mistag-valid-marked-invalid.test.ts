@@ -5,28 +5,28 @@ import { describe, expect, it } from "vitest";
 
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import {
-  driveWithdrawalMistagToFraudV1,
-  makeWithdrawalMistagEmulatorHarnessV1,
-  publishWithdrawalMistagScriptsV1,
-  removeWithdrawalMistagBlockV1,
-  setupWithdrawalMistagScenarioV1,
+  driveWithdrawalMistagToFraud,
+  makeWithdrawalMistagEmulatorHarness,
+  publishWithdrawalMistagScripts,
+  removeWithdrawalMistagBlock,
+  setupWithdrawalMistagScenario,
 } from "./support/withdrawal-mistag-emulator-v1.js";
 
 describe("withdrawal-mistag valid marked invalid emulator lifecycle", () => {
   it("mints permanent fraud evidence and removes the fraudulent block", async () => {
-    const harness = await makeWithdrawalMistagEmulatorHarnessV1();
-    const scenario = await setupWithdrawalMistagScenarioV1({
+    const harness = await makeWithdrawalMistagEmulatorHarness();
+    const scenario = await setupWithdrawalMistagScenario({
       harness,
       direction: "valid-marked-invalid",
     });
     expect(scenario.prepared.direction).toBe("valid-marked-invalid");
     expect(scenario.prepared.actualValid).toBe(true);
 
-    const published = await publishWithdrawalMistagScriptsV1({ harness });
+    const published = await publishWithdrawalMistagScripts({ harness });
     for (const measurement of published.publicationMeasurements) {
       expect(measurement.l1ByteMargin).toBeGreaterThanOrEqual(1_024);
     }
-    const lifecycle = await driveWithdrawalMistagToFraudV1({
+    const lifecycle = await driveWithdrawalMistagToFraud({
       harness,
       scenario,
       refs: published.refs,
@@ -58,7 +58,7 @@ describe("withdrawal-mistag valid marked invalid emulator lifecycle", () => {
     );
     expect(outRefLabel(beforeRemoval)).toBe(lifecycle.fraud.fraudProofOutRef);
 
-    const removal = await removeWithdrawalMistagBlockV1({
+    const removal = await removeWithdrawalMistagBlock({
       harness,
       scenario,
     });

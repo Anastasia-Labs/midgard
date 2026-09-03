@@ -35,23 +35,23 @@ import { describe, expect, it } from "vitest";
 
 import { main } from "../src/bin.js";
 import {
-  assertNoPermissiveDispatchV1,
-  emitClosureChecklistV1,
-  FAMILY_CLOSURE_OUTPUTS_V1,
-  FAMILY_SCAFFOLD_EMITTERS_V1,
-  familyScaffoldNamesV1,
-  FamilyScaffoldRejectionV1,
-  type FraudProofFamilyScaffoldSpecV1,
-  generateFraudProofFamilyScaffoldV1,
-  parseFraudProofFamilyScaffoldSpecV1,
-  PERMISSIVE_DISPATCH_RULES_V1,
-  PermissiveDispatchRejectionV1,
-  type ScaffoldArtifactLanguageV1,
-  type ScaffoldFieldV1,
-  ScaffoldGuardRejectionV1,
-  ScaffoldWriteRejectionV1,
-  scanForPermissiveDispatchV1,
-  writeFraudProofFamilyScaffoldV1,
+  assertNoPermissiveDispatch,
+  emitClosureChecklist as emitClosureChecklistV1,
+  FAMILY_CLOSURE_OUTPUTS,
+  FAMILY_SCAFFOLD_EMITTERS,
+  familyScaffoldNames,
+  FamilyScaffoldRejection,
+  type FraudProofFamilyScaffoldSpec,
+  generateFraudProofFamilyScaffold,
+  parseFraudProofFamilyScaffoldSpec,
+  PERMISSIVE_DISPATCH_RULES,
+  PermissiveDispatchRejection,
+  type ScaffoldArtifactLanguage,
+  type ScaffoldField,
+  ScaffoldGuardRejection,
+  ScaffoldWriteRejection,
+  scanForPermissiveDispatch,
+  writeFraudProofFamilyScaffold,
 } from "../src/family-scaffold/index.js";
 
 const REPO_ROOT = resolve(
@@ -124,7 +124,7 @@ const mutatedSpec = (
 const threeStepSpec = (): Record<string, unknown> =>
   mutatedSpec((spec) => {
     const steps = spec.steps as Record<string, unknown>[];
-    const nextField: ScaffoldFieldV1 = {
+    const nextField: ScaffoldField = {
       name: "next_state_bytes",
       type: "bytes",
       doc: "State produced by the intermediate step.",
@@ -147,16 +147,16 @@ const threeStepSpec = (): Record<string, unknown> =>
 
 const rejectionCode = (spec: unknown): string => {
   try {
-    parseFraudProofFamilyScaffoldSpecV1(spec);
+    parseFraudProofFamilyScaffoldSpec(spec);
   } catch (error) {
-    expect(error).toBeInstanceOf(FamilyScaffoldRejectionV1);
-    return (error as FamilyScaffoldRejectionV1).code;
+    expect(error).toBeInstanceOf(FamilyScaffoldRejection);
+    return (error as FamilyScaffoldRejection).code;
   }
   throw new Error("expected the spec parser to reject");
 };
 
 const artifact = (
-  plan: ReturnType<typeof generateFraudProofFamilyScaffoldV1>,
+  plan: ReturnType<typeof generateFraudProofFamilyScaffold>,
   path: string,
 ) => {
   const found = plan.artifacts.find((entry) => entry.path === path);
@@ -287,7 +287,7 @@ const startsWithPrefix = (
 
 describe("Q02 spec parsing is strict and fail-closed", () => {
   it("parses a complete family specification", () => {
-    const spec = parseFraudProofFamilyScaffoldSpecV1(validSpec());
+    const spec = parseFraudProofFamilyScaffoldSpec(validSpec());
     expect(spec.family).toBe("network-id");
     expect(spec.taskId).toBe("Q35");
     expect(spec.steps).toHaveLength(2);
@@ -300,7 +300,7 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
   });
 
   it("derives every name form from the kebab-case family id", () => {
-    expect(familyScaffoldNamesV1("withdrawn-reference-input")).toEqual({
+    expect(familyScaffoldNames("withdrawn-reference-input")).toEqual({
       family: "withdrawn-reference-input",
       aikenModule: "withdrawn_reference_input",
       pascal: "WithdrawnReferenceInput",
@@ -425,7 +425,7 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
       output[0].doc = "Producer-side description.";
       input[0].doc = "Consumer-side description.";
     });
-    expect(parseFraudProofFamilyScaffoldSpecV1(spec).steps).toHaveLength(2);
+    expect(parseFraudProofFamilyScaffoldSpec(spec).steps).toHaveLength(2);
   });
 
   it("rejects a terminal-shaped one-step specification", () => {
@@ -622,7 +622,7 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
 });
 
 describe("Q02 generated families retain explicit schemas and tests", () => {
-  const plan = generateFraudProofFamilyScaffoldV1({ spec: validSpec() });
+  const plan = generateFraudProofFamilyScaffold({ spec: validSpec() });
 
   it("emits exactly the per-step, off-chain, and closure artifacts", () => {
     expect(plan.artifacts.map((entry) => entry.path)).toEqual([
@@ -656,32 +656,30 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
   });
 
   it("sources next-state declarations from the preceding output contract", () => {
-    const parsed = parseFraudProofFamilyScaffoldSpecV1(validSpec());
-    const outputField: ScaffoldFieldV1 = {
+    const parsed = parseFraudProofFamilyScaffoldSpec(validSpec());
+    const outputField: ScaffoldField = {
       name: "declared_output_bytes",
       type: "bytes",
       doc: "The preceding step's declared output.",
     };
-    const inputField: ScaffoldFieldV1 = {
+    const inputField: ScaffoldField = {
       name: "declared_input_integer",
       type: "int",
       doc: "An intentionally inconsistent direct-emitter input.",
     };
-    const directSpec: FraudProofFamilyScaffoldSpecV1 = {
+    const directSpec: FraudProofFamilyScaffoldSpec = {
       ...parsed,
       steps: [
         { ...parsed.steps[0], outputState: [outputField] },
         { ...parsed.steps[1], inputState: [inputField] },
       ],
     };
-    const generatedTypes = FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepTypesModule(
-      {
-        spec: directSpec,
-        step: directSpec.steps[1],
-      },
-    ).contents;
+    const generatedTypes = FAMILY_SCAFFOLD_EMITTERS.emitAikenStepTypesModule({
+      spec: directSpec,
+      step: directSpec.steps[1],
+    }).contents;
     const generatedSdk =
-      FAMILY_SCAFFOLD_EMITTERS_V1.emitSdkFamilyModule(directSpec).contents;
+      FAMILY_SCAFFOLD_EMITTERS.emitSdkFamilyModule(directSpec).contents;
 
     expect(generatedTypes).toContain("declared_output_bytes: ByteArray,");
     expect(generatedTypes).not.toContain("declared_input_integer: Int,");
@@ -692,7 +690,7 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
   });
 
   it("binds output state visibly while keeping validators fail-loud", () => {
-    const plan = generateFraudProofFamilyScaffoldV1({
+    const plan = generateFraudProofFamilyScaffold({
       spec: threeStepSpec(),
     });
     for (const step of ["step-01", "step-02"]) {
@@ -795,7 +793,7 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
     };
     expect(checklist.taskId).toBe("Q35");
     expect(checklist.closureOutputs).toHaveLength(
-      FAMILY_CLOSURE_OUTPUTS_V1.length,
+      FAMILY_CLOSURE_OUTPUTS.length,
     );
     expect(checklist.closureOutputs.every((row) => row.status === "TODO")).toBe(
       true,
@@ -806,7 +804,7 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
 describe("Q02 permissive-dispatch scanner", () => {
   const SAMPLES: readonly {
     readonly ruleId: string;
-    readonly language: ScaffoldArtifactLanguageV1;
+    readonly language: ScaffoldArtifactLanguage;
     readonly line: string;
   }[] = [
     {
@@ -884,7 +882,7 @@ describe("Q02 permissive-dispatch scanner", () => {
 
   it("fires on a sample of every rule it declares", () => {
     for (const sample of SAMPLES) {
-      const findings = scanForPermissiveDispatchV1({
+      const findings = scanForPermissiveDispatch({
         path: `sample.${sample.ruleId}`,
         language: sample.language,
         contents: sample.line,
@@ -898,7 +896,7 @@ describe("Q02 permissive-dispatch scanner", () => {
 
   it("covers every declared rule with a sample", () => {
     expect(new Set(SAMPLES.map((sample) => sample.ruleId))).toEqual(
-      new Set(PERMISSIVE_DISPATCH_RULES_V1.map((rule) => rule.ruleId)),
+      new Set(PERMISSIVE_DISPATCH_RULES.map((rule) => rule.ruleId)),
     );
   });
 
@@ -914,7 +912,7 @@ describe("Q02 permissive-dispatch scanner", () => {
     const findings = (
       await Promise.all(
         files.map(async (path) =>
-          scanForPermissiveDispatchV1({
+          scanForPermissiveDispatch({
             path: path.slice(REPO_ROOT.length + 1),
             language: path.endsWith(".ak") ? "aiken" : "typescript",
             contents: await readFile(path, "utf8"),
@@ -931,7 +929,7 @@ describe("Q02 permissive-dispatch scanner", () => {
 
   it("ignores a forbidden construct that appears only in a comment", () => {
     expect(
-      scanForPermissiveDispatchV1({
+      scanForPermissiveDispatch({
         path: "sample.ak",
         language: "aiken",
         contents: "// never write `_ -> True` here\nexpect ok == True",
@@ -941,14 +939,14 @@ describe("Q02 permissive-dispatch scanner", () => {
 
   it("permits the step-datum phantom slot and rejects a widened schema", () => {
     expect(
-      scanForPermissiveDispatchV1({
+      scanForPermissiveDispatch({
         path: "sample.ak",
         language: "aiken",
         contents: "pub type Datum =\n  ct.StepDatum<Data>",
       }),
     ).toEqual([]);
     expect(
-      scanForPermissiveDispatchV1({
+      scanForPermissiveDispatch({
         path: "sample.ts",
         language: "typescript",
         contents:
@@ -956,7 +954,7 @@ describe("Q02 permissive-dispatch scanner", () => {
       }),
     ).toEqual([]);
     expect(
-      scanForPermissiveDispatchV1({
+      scanForPermissiveDispatch({
         path: "sample.ts",
         language: "typescript",
         contents: "export const S = Data.Object({ state: Data.Any() });",
@@ -971,7 +969,7 @@ describe("Q02 permissive-dispatch scanner", () => {
   // conditions, and the hostile controls below remove each in turn.
   it("permits a refusing catch-all arm and still catches every permissive one", () => {
     const ruleIds = (contents: string): readonly string[] =>
-      scanForPermissiveDispatchV1({
+      scanForPermissiveDispatch({
         path: "sample.ak",
         language: "aiken",
         contents,
@@ -1024,7 +1022,7 @@ describe("Q02 permissive-dispatch scanner", () => {
   // a fallback that feeds a verdict, a handler, or a widened acceptance is not.
   it("permits label-only and conservative fallbacks while catching dispatching ones", () => {
     const ruleIds = (contents: string): readonly string[] =>
-      scanForPermissiveDispatchV1({
+      scanForPermissiveDispatch({
         path: "sample.ts",
         language: "typescript",
         contents,
@@ -1077,7 +1075,7 @@ describe("Q02 permissive-dispatch scanner", () => {
 
   it("throws with every finding when asked to gate artifacts", () => {
     try {
-      assertNoPermissiveDispatchV1([
+      assertNoPermissiveDispatch([
         {
           path: "bad.ak",
           language: "aiken",
@@ -1085,8 +1083,8 @@ describe("Q02 permissive-dispatch scanner", () => {
         },
       ]);
     } catch (error) {
-      expect(error).toBeInstanceOf(PermissiveDispatchRejectionV1);
-      expect((error as PermissiveDispatchRejectionV1).findings).toHaveLength(2);
+      expect(error).toBeInstanceOf(PermissiveDispatchRejection);
+      expect((error as PermissiveDispatchRejection).findings).toHaveLength(2);
       return;
     }
     throw new Error("expected a permissive-dispatch rejection");
@@ -1095,19 +1093,19 @@ describe("Q02 permissive-dispatch scanner", () => {
 
 describe("Q02 generator refuses its own permissive or vacuous output", () => {
   const guardCode = (
-    emitters: Partial<typeof FAMILY_SCAFFOLD_EMITTERS_V1>,
+    emitters: Partial<typeof FAMILY_SCAFFOLD_EMITTERS>,
   ): string => {
     try {
-      generateFraudProofFamilyScaffoldV1({
+      generateFraudProofFamilyScaffold({
         spec: validSpec(),
-        emitters: { ...FAMILY_SCAFFOLD_EMITTERS_V1, ...emitters },
+        emitters: { ...FAMILY_SCAFFOLD_EMITTERS, ...emitters },
       });
     } catch (error) {
-      if (error instanceof PermissiveDispatchRejectionV1) {
+      if (error instanceof PermissiveDispatchRejection) {
         return error.findings[0]?.ruleId ?? "permissive";
       }
-      expect(error).toBeInstanceOf(ScaffoldGuardRejectionV1);
-      return (error as ScaffoldGuardRejectionV1).code;
+      expect(error).toBeInstanceOf(ScaffoldGuardRejection);
+      return (error as ScaffoldGuardRejection).code;
     }
     throw new Error("expected the generator to refuse its own output");
   };
@@ -1117,7 +1115,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
       guardCode({
         emitAikenStepValidator: (input) => {
           const emitted =
-            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
+            FAMILY_SCAFFOLD_EMITTERS.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: `${emitted.contents}\nfn accept(r: Redeemer) -> Bool {\n  when r is {\n    _ -> True\n  }\n}\n`,
@@ -1131,7 +1129,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
     expect(
       guardCode({
         emitSdkFamilyModule: (spec) => {
-          const emitted = FAMILY_SCAFFOLD_EMITTERS_V1.emitSdkFamilyModule(spec);
+          const emitted = FAMILY_SCAFFOLD_EMITTERS.emitSdkFamilyModule(spec);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -1149,7 +1147,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
       guardCode({
         emitAikenStepValidator: (input) => {
           const emitted =
-            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
+            FAMILY_SCAFFOLD_EMITTERS.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -1167,7 +1165,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
       guardCode({
         emitAikenStepValidator: (input) => {
           const emitted =
-            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
+            FAMILY_SCAFFOLD_EMITTERS.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: emitted.contents.replace(/todo\s+@"[^"]*"/gu, "True"),
@@ -1182,7 +1180,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
       guardCode({
         emitSdkFamilyTestModule: (spec) => {
           const emitted =
-            FAMILY_SCAFFOLD_EMITTERS_V1.emitSdkFamilyTestModule(spec);
+            FAMILY_SCAFFOLD_EMITTERS.emitSdkFamilyTestModule(spec);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -1199,7 +1197,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
     expect(
       guardCode({
         emitSdkFamilyModule: (spec) => {
-          const emitted = FAMILY_SCAFFOLD_EMITTERS_V1.emitSdkFamilyModule(spec);
+          const emitted = FAMILY_SCAFFOLD_EMITTERS.emitSdkFamilyModule(spec);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -1217,7 +1215,7 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
       guardCode({
         emitAikenStepValidator: (input) => {
           const emitted =
-            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
+            FAMILY_SCAFFOLD_EMITTERS.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -1248,8 +1246,8 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
 describe("Q02 scaffold writer is fail-closed", () => {
   const planFor = (
     family: string,
-  ): ReturnType<typeof generateFraudProofFamilyScaffoldV1> =>
-    generateFraudProofFamilyScaffoldV1({
+  ): ReturnType<typeof generateFraudProofFamilyScaffold> =>
+    generateFraudProofFamilyScaffold({
       spec: mutatedSpec((spec) => {
         spec.family = family;
         spec.catalogueCategory = "networkId";
@@ -1258,7 +1256,7 @@ describe("Q02 scaffold writer is fail-closed", () => {
 
   it("reports every target without touching the tree on a dry run", async () => {
     const root = await mkdtemp(join(tmpdir(), "q02-dry-"));
-    const result = await writeFraudProofFamilyScaffoldV1({
+    const result = await writeFraudProofFamilyScaffold({
       plan: planFor("network-id"),
       repoRoot: root,
       dryRun: true,
@@ -1273,7 +1271,7 @@ describe("Q02 scaffold writer is fail-closed", () => {
   it("writes every artifact under the given root", async () => {
     const root = await mkdtemp(join(tmpdir(), "q02-write-"));
     const plan = planFor("network-id");
-    const result = await writeFraudProofFamilyScaffoldV1({
+    const result = await writeFraudProofFamilyScaffold({
       plan,
       repoRoot: root,
     });
@@ -1295,8 +1293,8 @@ describe("Q02 scaffold writer is fail-closed", () => {
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, "// real implemented step\n", "utf8");
     await expect(
-      writeFraudProofFamilyScaffoldV1({ plan, repoRoot: root }),
-    ).rejects.toBeInstanceOf(ScaffoldWriteRejectionV1);
+      writeFraudProofFamilyScaffold({ plan, repoRoot: root }),
+    ).rejects.toBeInstanceOf(ScaffoldWriteRejection);
     // The refusal is atomic: nothing else was written either.
     expect(
       existsSync(
@@ -1319,14 +1317,14 @@ describe("Q02 scaffold writer is fail-closed", () => {
       ],
     };
     await expect(
-      writeFraudProofFamilyScaffoldV1({ plan: escaping, repoRoot: root }),
+      writeFraudProofFamilyScaffold({ plan: escaping, repoRoot: root }),
     ).rejects.toMatchObject({ code: "path_escapes_root" });
     const absolute: typeof plan = {
       ...plan,
       artifacts: [{ ...plan.artifacts[0], path: "/tmp/midgard-escape.ak" }],
     };
     await expect(
-      writeFraudProofFamilyScaffoldV1({ plan: absolute, repoRoot: root }),
+      writeFraudProofFamilyScaffold({ plan: absolute, repoRoot: root }),
     ).rejects.toMatchObject({ code: "path_escapes_root" });
   });
 });
@@ -1400,7 +1398,7 @@ describe("Q02 scaffold CLI", () => {
         "--repo-root",
         root,
       ]),
-    ).rejects.toBeInstanceOf(FamilyScaffoldRejectionV1);
+    ).rejects.toBeInstanceOf(FamilyScaffoldRejection);
     expect(existsSync(join(root, "onchain"))).toBe(false);
   });
 
@@ -1420,7 +1418,7 @@ describe("Q02 scaffold CLI", () => {
         "utf8",
       ),
     );
-    const plan = generateFraudProofFamilyScaffoldV1({ spec: example });
+    const plan = generateFraudProofFamilyScaffold({ spec: example });
     expect(plan.spec.family).toBe("network-id");
     expect(plan.artifacts).toHaveLength(7);
   });
@@ -1428,8 +1426,8 @@ describe("Q02 scaffold CLI", () => {
 
 describe("Q02 generated shape matches the deployed families", () => {
   it("mirrors the shipped zero-input step modules", async () => {
-    const spec: FraudProofFamilyScaffoldSpecV1 =
-      parseFraudProofFamilyScaffoldSpecV1(
+    const spec: FraudProofFamilyScaffoldSpec =
+      parseFraudProofFamilyScaffoldSpec(
         mutatedSpec((raw) => {
           raw.family = "zero-input";
           raw.taskId = "Q14";
@@ -1456,7 +1454,7 @@ describe("Q02 generated shape matches the deployed families", () => {
           ];
         }),
       );
-    const plan = generateFraudProofFamilyScaffoldV1({ spec });
+    const plan = generateFraudProofFamilyScaffold({ spec });
 
     const generatedTypes = artifact(
       plan,
@@ -1546,8 +1544,8 @@ describe("Q02 generated shape matches the deployed families", () => {
     // pinning a second, drifting copy of its rule. A sentinel family-specific
     // argument marks where the boilerplate prefix ends.
     const sentinel = "sentinel_family_argument";
-    const sentinelSpec: FraudProofFamilyScaffoldSpecV1 =
-      parseFraudProofFamilyScaffoldSpecV1(
+    const sentinelSpec: FraudProofFamilyScaffoldSpec =
+      parseFraudProofFamilyScaffoldSpec(
         mutatedSpec((raw) => {
           const steps = raw.steps as Record<string, unknown>[];
           steps[1].argsFields = [
@@ -1557,7 +1555,7 @@ describe("Q02 generated shape matches the deployed families", () => {
       );
     const generated = aikenRecordFieldNames(
       artifact(
-        generateFraudProofFamilyScaffoldV1({ spec: sentinelSpec }),
+        generateFraudProofFamilyScaffold({ spec: sentinelSpec }),
         `onchain/aiken/lib/midgard/fraud-proofs/${sentinelSpec.family}/step-02.ak`,
       ).contents,
       "Args",

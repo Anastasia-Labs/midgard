@@ -26,7 +26,7 @@ import {
 import {
   fetchExpectedStateQueueTailLocal,
   getConfirmedStateFromStateQueueDatumLocal,
-  getHeaderV1FromStateQueueDatumLocal,
+  getHeaderFromStateQueueDatumLocal,
   stateQueueBaseHeaderHash,
   stateQueueOutRef,
 } from "./state-queue.js";
@@ -52,9 +52,7 @@ const baseRootsFromStateQueueTail = (
       };
     }
 
-    const header = yield* getHeaderV1FromStateQueueDatumLocal(
-      latestBlock.datum,
-    );
+    const header = yield* getHeaderFromStateQueueDatumLocal(latestBlock.datum);
     return {
       utxosRoot: header.utxosRoot,
       forcedTransactionsRoot: header.forcedTransactionsRoot,

@@ -1,45 +1,45 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  computeMidgardNativeTxId,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
-  encodeMidgardAddressWitnessItemV1,
+  encodeMidgardAddressWitnessItem,
   encodeMidgardNativeScript,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
   buildNativeScriptInvalidFaultProofContracts,
-  encodeMidgardTxInputCanonicalV1,
+  encodeMidgardTxInputCanonical,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type MidgardTxInput,
-  type MinAdaFaultV1,
-  missingSignatureVkeyHashV1,
+  type MinAdaFault,
+  missingSignatureVkeyHash,
   type NativeTxWitnessSetCompact,
   parseFaultProofBlueprint,
   Proof,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
-  buildCanonicalMidgardLedgerOutputMaterialV1,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  buildCanonicalMidgardLedgerOutputMaterial,
 } from "@al-ft/midgard-validation";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { MinAdaContractsV1 } from "../../src/min-ada/contracts-v1.js";
+import type { MinAdaContracts } from "../../src/min-ada/contracts-v1.js";
 import type {
-  PreparedMinAdaTxV1,
-  PreparedMinAdaUtxoV1,
+  PreparedMinAdaTx,
+  PreparedMinAdaUtxo,
 } from "../../src/min-ada/prepare-v1.js";
-import type { MissingNativeScriptUtxoContractsV1 } from "../../src/missing-native-script-utxo/contracts-v1.js";
-import type { PreparedMissingNativeScriptUtxoV1 } from "../../src/missing-native-script-utxo/prepare-v1.js";
-import type { NativeScriptInvalidContractsV1 } from "../../src/native-script-invalid/contracts-v1.js";
-import type { PreparedNativeScriptInvalidV1 } from "../../src/native-script-invalid/prepare-v1.js";
+import type { MissingNativeScriptUtxoContracts } from "../../src/missing-native-script-utxo/contracts-v1.js";
+import type { PreparedMissingNativeScriptUtxo } from "../../src/missing-native-script-utxo/prepare-v1.js";
+import type { NativeScriptInvalidContracts } from "../../src/native-script-invalid/contracts-v1.js";
+import type { PreparedNativeScriptInvalid } from "../../src/native-script-invalid/prepare-v1.js";
 import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
 import {
   keyValuePhasNonMembershipProof,
@@ -50,16 +50,16 @@ import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-
 import {
   buildCatalogueDeploymentInfo,
   cloneBlueprint,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishPlainReferenceScriptUtxo,
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export const makeMinAdaEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeMinAdaEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realMinAda: true,
       alwaysFraudProofCatalogue: true,
@@ -74,8 +74,8 @@ export const makeMinAdaEmulatorHarnessV1 = async () => {
   return { ...harness, family, category };
 };
 
-export const makeMissingNativeScriptUtxoEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeMissingNativeScriptUtxoEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realMissingNativeScriptUtxo: true,
       alwaysFraudProofCatalogue: true,
@@ -92,8 +92,8 @@ export const makeMissingNativeScriptUtxoEmulatorHarnessV1 = async () => {
   };
 };
 
-export const makeNativeScriptInvalidEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeNativeScriptInvalidEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       alwaysFraudProofCatalogue: true,
     },
@@ -116,7 +116,7 @@ export const makeNativeScriptInvalidEmulatorHarnessV1 = async () => {
   ) {
     throw new Error("native-script-invalid did not share harness policies");
   }
-  const family: NativeScriptInvalidContractsV1 = {
+  const family: NativeScriptInvalidContracts = {
     steps: built.nativeScriptInvalid.steps,
     computationThread: built.computationThread,
     fraudProof: built.fraudProof,
@@ -148,7 +148,7 @@ export const makeNativeScriptInvalidEmulatorHarnessV1 = async () => {
   };
 };
 
-export const publishFinalFamilyReferenceScriptsV1 = async <
+export const publishFinalFamilyReferenceScripts = async <
   Family extends {
     readonly steps: readonly { readonly spendingScript: Script }[];
   },
@@ -184,7 +184,7 @@ export const publishFinalFamilyReferenceScriptsV1 = async <
   return refs;
 };
 
-export const buildMinAdaTxEmulatorFixtureV1 = async () => {
+export const buildMinAdaTxEmulatorFixture = async () => {
   const outputCbor = encodeMidgardTxOutput({
     address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x44)]),
     value: { lovelace: 0n, assets: new Map() },
@@ -194,10 +194,10 @@ export const buildMinAdaTxEmulatorFixtureV1 = async () => {
     fee: 7n,
     outputCbor,
   });
-  const badTxId = computeMidgardNativeTxIdV1(tx).toString("hex");
-  const nativeTxCompactCbor = encodeMidgardNativeTxCompactV1(
-    tx.compact,
-  ).toString("hex");
+  const badTxId = computeMidgardNativeTxId(tx).toString("hex");
+  const nativeTxCompactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(
+    "hex",
+  );
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(tx);
   const store = new Store(undefined);
   await store.ready();
@@ -207,21 +207,21 @@ export const buildMinAdaTxEmulatorFixtureV1 = async () => {
     Buffer.from(l2TransactionSourceCbor, "hex"),
   );
   const proof = await trie.prove(Buffer.from(badTxId, "hex"));
-  const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+  const material = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex: 0,
     outputCbor,
   });
   const fault = {
     MinAdaTx: { output_index: 0n },
-  } as MinAdaFaultV1;
-  const prepared: PreparedMinAdaTxV1 = {
+  } as MinAdaFault;
+  const prepared: PreparedMinAdaTx = {
     kind: "min-ada-tx",
     headerHash: "",
     badTxId,
     badOutputIndex: 0n,
-    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
     nativeTxCompactCbor,
-    outputItemCbors: decodeMidgardFieldPreimageV1(
+    outputItemCbors: decodeMidgardFieldPreimage(
       tx.body.outputsPreimageCbor,
     ).map((item) => Buffer.from(item).toString("hex")),
     descriptorCbor: material.descriptorCbor.toString("hex"),
@@ -242,7 +242,7 @@ export const buildMinAdaTxEmulatorFixtureV1 = async () => {
   };
 };
 
-export const buildMinAdaPostUtxoEmulatorFixtureV1 = async ({
+export const buildMinAdaPostUtxoEmulatorFixture = async ({
   emptyPrevious = false,
 }: {
   readonly emptyPrevious?: boolean;
@@ -252,13 +252,13 @@ export const buildMinAdaPostUtxoEmulatorFixtureV1 = async ({
     value: { lovelace: 0n, assets: new Map() },
   });
   const tx = makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbor });
-  const transactionId = computeMidgardNativeTxIdV1(tx).toString("hex");
+  const transactionId = computeMidgardNativeTxId(tx).toString("hex");
   const outRef = { transactionId, outputIndex: 0n } as const;
-  const outRefKey = encodeMidgardSpendInputItemV1({
+  const outRefKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(outRef.transactionId, "hex"),
     outputIndex: Number(outRef.outputIndex),
   });
-  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: outRefKey,
     outputCbor,
   }).descriptorCbor;
@@ -289,7 +289,7 @@ export const buildMinAdaPostUtxoEmulatorFixtureV1 = async ({
     Buffer.from(transactionId, "hex"),
     Buffer.from(l2TransactionSourceCborV1(tx), "hex"),
   );
-  const prepared: PreparedMinAdaUtxoV1 = {
+  const prepared: PreparedMinAdaUtxo = {
     kind: "min-ada-utxo",
     headerHash: "",
     outRef,
@@ -301,7 +301,7 @@ export const buildMinAdaPostUtxoEmulatorFixtureV1 = async ({
     postMembershipProofCbor,
     predecessorNonMembershipProof,
     predecessorNonMembershipProofCbor,
-    fault: "MinAdaUtxo" as MinAdaFaultV1,
+    fault: "MinAdaUtxo" as MinAdaFault,
   };
   return {
     transactionsRoot: trieRootHex(txTrie),
@@ -312,10 +312,10 @@ export const buildMinAdaPostUtxoEmulatorFixtureV1 = async ({
   };
 };
 
-const nativeWitnessSetV1 = (
+const nativeWitnessSet = (
   tx: ReturnType<typeof makeNativeTx>,
 ): NativeTxWitnessSetCompact => {
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet);
+  const compact = deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet);
   return {
     addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
     script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString("hex"),
@@ -325,7 +325,7 @@ const nativeWitnessSetV1 = (
   };
 };
 
-export const buildMissingNativeScriptUtxoEmulatorFixtureV1 = async ({
+export const buildMissingNativeScriptUtxoEmulatorFixture = async ({
   decoyWitnessCount = 0,
 }: {
   readonly decoyWitnessCount?: number;
@@ -352,11 +352,11 @@ export const buildMissingNativeScriptUtxoEmulatorFixtureV1 = async ({
     value: { lovelace: 2_000_000n, assets: new Map() },
   });
   const outRef = { transactionId: "ab".repeat(32), outputIndex: 0n } as const;
-  const outRefKey = encodeMidgardSpendInputItemV1({
+  const outRefKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(outRef.transactionId, "hex"),
     outputIndex: 0,
   });
-  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: outRefKey,
     outputCbor: predecessorOutput,
   }).descriptorCbor;
@@ -386,14 +386,14 @@ export const buildMissingNativeScriptUtxoEmulatorFixtureV1 = async ({
     });
   });
   const tx = makeNativeTx({
-    spendInputCbors: spendInputs.map(encodeMidgardTxInputCanonicalV1),
+    spendInputCbors: spendInputs.map(encodeMidgardTxInputCanonical),
     fee: 7n,
     scriptTxWitsPreimageCbor: encodeCbor(decoys),
   });
-  const badTxId = computeMidgardNativeTxIdV1(tx).toString("hex");
-  const nativeTxCompactCbor = encodeMidgardNativeTxCompactV1(
-    tx.compact,
-  ).toString("hex");
+  const badTxId = computeMidgardNativeTxId(tx).toString("hex");
+  const nativeTxCompactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(
+    "hex",
+  );
   const transactionSourceCbor = l2TransactionSourceCborV1(tx);
   const txStore = new Store(undefined);
   await txStore.ready();
@@ -403,13 +403,13 @@ export const buildMissingNativeScriptUtxoEmulatorFixtureV1 = async ({
     Buffer.from(transactionSourceCbor, "hex"),
   );
   const txProof = await txTrie.prove(Buffer.from(badTxId, "hex"));
-  const scriptWitnessItems = decodeMidgardFieldPreimageV1(
+  const scriptWitnessItems = decodeMidgardFieldPreimage(
     tx.witnessSet.scriptTxWitsPreimageCbor,
   );
-  const prepared: PreparedMissingNativeScriptUtxoV1 = {
+  const prepared: PreparedMissingNativeScriptUtxo = {
     headerHash: "",
     badTxId,
-    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
     nativeTxCompactCbor,
     txInclusion: {
       nativeTxId: badTxId,
@@ -421,7 +421,7 @@ export const buildMissingNativeScriptUtxoEmulatorFixtureV1 = async ({
     },
     badInputIndex: 0n,
     spendInputItemCbors: spendInputs.map((input) =>
-      encodeMidgardTxInputCanonicalV1(input).toString("hex"),
+      encodeMidgardTxInputCanonical(input).toString("hex"),
     ),
     outRef,
     descriptorCbor: descriptorCbor.toString("hex"),
@@ -441,19 +441,19 @@ export const buildMissingNativeScriptUtxoEmulatorFixtureV1 = async ({
     utxosRoot: previous.root,
     prepared,
     spendInputs,
-    witnessSet: nativeWitnessSetV1(tx),
+    witnessSet: nativeWitnessSet(tx),
     scriptWitnessItems,
   };
 };
 
-const sortedAddressWitnessesV1 = (count: number) =>
+const sortedAddressWitnesses = (count: number) =>
   Array.from({ length: count }, (_, index) => {
     const verificationKey = Buffer.alloc(32);
     verificationKey.writeUInt32BE(index, 28);
     return {
       verificationKey,
       signerHash: Buffer.from(
-        missingSignatureVkeyHashV1(verificationKey.toString("hex")),
+        missingSignatureVkeyHash(verificationKey.toString("hex")),
         "hex",
       ),
     };
@@ -461,18 +461,18 @@ const sortedAddressWitnessesV1 = (count: number) =>
     .sort((left, right) => Buffer.compare(left.signerHash, right.signerHash))
     .map(({ verificationKey }) => ({
       verificationKey,
-      item: encodeMidgardAddressWitnessItemV1({
+      item: encodeMidgardAddressWitnessItem({
         verificationKey,
         signature: Buffer.alloc(64, 0x55),
       }),
     }));
 
-export const buildNativeScriptInvalidEmulatorFixtureV1 = async ({
+export const buildNativeScriptInvalidEmulatorFixture = async ({
   signerCount = 33,
 }: {
   readonly signerCount?: number;
 } = {}) => {
-  const witnesses = sortedAddressWitnessesV1(signerCount);
+  const witnesses = sortedAddressWitnesses(signerCount);
   const nativeScript = {
     type: "all" as const,
     scripts: Array.from({ length: 31 }, (_, index) => ({
@@ -494,10 +494,10 @@ export const buildNativeScriptInvalidEmulatorFixtureV1 = async ({
     validityIntervalStart: 0n,
     validityIntervalEnd: 100n,
   });
-  const badTxId = computeMidgardNativeTxIdV1(tx).toString("hex");
-  const nativeTxCompactCbor = encodeMidgardNativeTxCompactV1(
-    tx.compact,
-  ).toString("hex");
+  const badTxId = computeMidgardNativeTxId(tx).toString("hex");
+  const nativeTxCompactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(
+    "hex",
+  );
   const transactionSourceCbor = l2TransactionSourceCborV1(tx);
   const store = new Store(undefined);
   await store.ready();
@@ -508,10 +508,10 @@ export const buildNativeScriptInvalidEmulatorFixtureV1 = async ({
   );
   const proof = await trie.prove(Buffer.from(badTxId, "hex"));
   const addressWitnessItems = witnesses.map(({ item }) => item);
-  const prepared: PreparedNativeScriptInvalidV1 = {
+  const prepared: PreparedNativeScriptInvalid = {
     headerHash: "",
     badTxId,
-    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
     nativeTxCompactCbor,
     txInclusion: {
       nativeTxId: badTxId,
@@ -537,7 +537,7 @@ export const buildNativeScriptInvalidEmulatorFixtureV1 = async ({
     transactionsRoot: trieRootHex(trie),
     l2TransactionCount: 1n,
     prepared,
-    witnessSet: nativeWitnessSetV1(tx),
+    witnessSet: nativeWitnessSet(tx),
     scriptItem,
     scriptWitnessItems: [scriptItem] as const,
     addressWitnessItems,
@@ -547,14 +547,14 @@ export const buildNativeScriptInvalidEmulatorFixtureV1 = async ({
   };
 };
 
-export type FinalFamilyHarnessV1<Family> = Awaited<
-  ReturnType<typeof makeFaultProofEmulatorHarnessV1>
+export type FinalFamilyHarness<Family> = Awaited<
+  ReturnType<typeof makeFaultProofEmulatorHarness>
 > & {
   readonly family: Family;
   readonly category: FraudProofCatalogueCategoryDeploymentInfo;
 };
 
-export type FinalMinAdaFamilyV1 = MinAdaContractsV1;
-export type FinalMissingNativeScriptUtxoFamilyV1 =
-  MissingNativeScriptUtxoContractsV1;
-export type FinalNativeScriptInvalidFamilyV1 = NativeScriptInvalidContractsV1;
+export type FinalMinAdaFamily = MinAdaContracts;
+export type FinalMissingNativeScriptUtxoFamily =
+  MissingNativeScriptUtxoContracts;
+export type FinalNativeScriptInvalidFamily = NativeScriptInvalidContracts;

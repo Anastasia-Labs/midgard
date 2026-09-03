@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import type { ProtectedOutputSignerMissingEvidenceV1 } from "./protected-output-signer-missing-v1.js";
+import type { ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing-v1.js";
 
-export const PROTECTED_OUTPUT_SIGNER_STAGES_V1 = [
+export const PROTECTED_OUTPUT_SIGNER_STAGES = [
   "none",
   "step01",
   "step02",
@@ -14,9 +14,9 @@ export const PROTECTED_OUTPUT_SIGNER_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type ProtectedOutputSignerStageV1 =
-  (typeof PROTECTED_OUTPUT_SIGNER_STAGES_V1)[number];
-export type ProtectedOutputSignerActionV1 =
+export type ProtectedOutputSignerStage =
+  (typeof PROTECTED_OUTPUT_SIGNER_STAGES)[number];
+export type ProtectedOutputSignerAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -27,40 +27,38 @@ export type ProtectedOutputSignerActionV1 =
   | "removeDescendants"
   | "done";
 
-type SubmitAction = Exclude<ProtectedOutputSignerActionV1, "done">;
-export type ProtectedOutputSignerJournalEntryV1 = Readonly<{
+type SubmitAction = Exclude<ProtectedOutputSignerAction, "done">;
+export type ProtectedOutputSignerJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  sourceStage: ProtectedOutputSignerStageV1;
-  targetStage: ProtectedOutputSignerStageV1;
+  sourceStage: ProtectedOutputSignerStage;
+  targetStage: ProtectedOutputSignerStage;
   action: SubmitAction;
   phase: "intent" | "submitted" | "confirmed";
   txHash: string;
 }>;
-export interface ProtectedOutputSignerJournalV1 {
-  load(
-    identity: string,
-  ): Promise<readonly ProtectedOutputSignerJournalEntryV1[]>;
-  append(entry: ProtectedOutputSignerJournalEntryV1): Promise<void>;
+export interface ProtectedOutputSignerJournal {
+  load(identity: string): Promise<readonly ProtectedOutputSignerJournalEntry[]>;
+  append(entry: ProtectedOutputSignerJournalEntry): Promise<void>;
 }
-export interface ProtectedOutputSignerActuatorV1 {
-  observe(identity: string): Promise<ProtectedOutputSignerStageV1>;
+export interface ProtectedOutputSignerActuator {
+  observe(identity: string): Promise<ProtectedOutputSignerStage>;
   build(input: {
     readonly action: SubmitAction;
-    readonly evidence: ProtectedOutputSignerMissingEvidenceV1;
+    readonly evidence: ProtectedOutputSignerMissingEvidence;
     readonly lease?: StateQueueMutationLeaseCoordinator;
   }): Promise<
     Readonly<{
       txHash: string;
-      targetStage: ProtectedOutputSignerStageV1;
+      targetStage: ProtectedOutputSignerStage;
       submit(): Promise<string>;
     }>
   >;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
 
-export const protectedOutputSignerEvidenceIdentityV1 = (
-  evidence: ProtectedOutputSignerMissingEvidenceV1,
+export const protectedOutputSignerEvidenceIdentity = (
+  evidence: ProtectedOutputSignerMissingEvidence,
 ): string =>
   createHash("sha256")
     .update(
@@ -80,9 +78,9 @@ export const protectedOutputSignerEvidenceIdentityV1 = (
     )
     .digest("hex");
 
-export const nextProtectedOutputSignerActionV1 = (
-  stage: ProtectedOutputSignerStageV1,
-): ProtectedOutputSignerActionV1 => {
+export const nextProtectedOutputSignerAction = (
+  stage: ProtectedOutputSignerStage,
+): ProtectedOutputSignerAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -106,8 +104,8 @@ export const nextProtectedOutputSignerActionV1 = (
 
 const requiredTargetStage = (
   action: SubmitAction,
-  claimed: ProtectedOutputSignerStageV1,
-): ProtectedOutputSignerStageV1 => {
+  claimed: ProtectedOutputSignerStage,
+): ProtectedOutputSignerStage => {
   switch (action) {
     case "submitInit":
       return "step01";
@@ -131,8 +129,8 @@ const requiredTargetStage = (
 };
 
 const pendingIntent = (
-  entries: readonly ProtectedOutputSignerJournalEntryV1[],
-): ProtectedOutputSignerJournalEntryV1 | undefined =>
+  entries: readonly ProtectedOutputSignerJournalEntry[],
+): ProtectedOutputSignerJournalEntry | undefined =>
   [...entries]
     .reverse()
     .find(
@@ -148,18 +146,18 @@ const pendingIntent = (
     );
 
 /** Pre-submit-intent workflow with exact-hash restart reconciliation. */
-export const runProtectedOutputSignerMissingWorkflowV1 = async ({
+export const runProtectedOutputSignerMissingWorkflow = async ({
   evidence,
   journal,
   actuator,
   removalLease,
 }: {
-  readonly evidence: ProtectedOutputSignerMissingEvidenceV1;
-  readonly journal: ProtectedOutputSignerJournalV1;
-  readonly actuator: ProtectedOutputSignerActuatorV1;
+  readonly evidence: ProtectedOutputSignerMissingEvidence;
+  readonly journal: ProtectedOutputSignerJournal;
+  readonly actuator: ProtectedOutputSignerActuator;
   readonly removalLease?: StateQueueMutationLeaseCoordinator;
-}): Promise<ProtectedOutputSignerStageV1> => {
-  const identity = protectedOutputSignerEvidenceIdentityV1(evidence);
+}): Promise<ProtectedOutputSignerStage> => {
+  const identity = protectedOutputSignerEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     if (
@@ -190,7 +188,7 @@ export const runProtectedOutputSignerMissingWorkflowV1 = async ({
       continue;
     }
     const observed = await actuator.observe(identity);
-    const action = nextProtectedOutputSignerActionV1(observed);
+    const action = nextProtectedOutputSignerAction(observed);
     if (action === "done") return observed;
     if (action === "removeDescendants" && removalLease === undefined)
       throw new Error(
@@ -206,7 +204,7 @@ export const runProtectedOutputSignerMissingWorkflowV1 = async ({
         "protectedOutputSignerMissing signed transaction hash is invalid",
       );
     const nextSequence = entries.length;
-    const intent: ProtectedOutputSignerJournalEntryV1 = {
+    const intent: ProtectedOutputSignerJournalEntry = {
       sequence: nextSequence,
       identity,
       sourceStage: observed,

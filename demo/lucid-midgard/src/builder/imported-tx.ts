@@ -1,11 +1,11 @@
-import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
+import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
-  encodeMidgardNativeTxCanonicalV1,
-  type MidgardNativeTxFullV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
+  encodeMidgardNativeTxCanonical,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 
 import { BuilderInvariantError, SigningError } from "../core/errors.js";
@@ -35,7 +35,7 @@ import {
 } from "./witness-bundle.js";
 
 export type ImportedTxInput =
-  | MidgardNativeTxFullV1
+  | MidgardNativeTxFull
   | Uint8Array
   | string
   | { readonly txCbor: Uint8Array | string }
@@ -45,7 +45,7 @@ export type FromTxOptions = {
   readonly resolvedSpendInputs?: readonly MidgardUtxo[];
   readonly resolvedReferenceInputs?: readonly MidgardUtxo[];
   /** Exact canonical V1 sidecar material when importing raw transaction bytes. */
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
   readonly allowUnexpectedResolvedInputs?: boolean;
   readonly allowUnknownExpectedWitnesses?: boolean;
   readonly partial?: boolean;
@@ -90,7 +90,7 @@ const assertImportedAddressNetwork = (
  */
 const outRefFromCbor = (inputCbor: Uint8Array, fieldName: string): OutRef => {
   try {
-    const decoded = decodeMidgardSpendInputItemV1(inputCbor);
+    const decoded = decodeMidgardSpendInputItem(inputCbor);
     return {
       txHash: Buffer.from(decoded.txId).toString("hex"),
       outputIndex: decoded.outputIndex,
@@ -135,7 +135,7 @@ const decodeOrderedInputOutRefs = (
 };
 
 const validatedNativeInputs = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): ValidatedNativeInputs => {
   const spendInputRefs = decodeOrderedInputOutRefs(
     tx.body.spendInputsPreimageCbor,
@@ -162,17 +162,17 @@ const validatedNativeInputs = (
 };
 
 export const nativeInputOutRefs = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): readonly OutRef[] => validatedNativeInputs(tx).spendInputRefs;
 
-const nativeOutputBytes = (tx: MidgardNativeTxFullV1): readonly Buffer[] =>
+const nativeOutputBytes = (tx: MidgardNativeTxFull): readonly Buffer[] =>
   decodeMidgardNativeByteListPreimage(
     tx.body.outputsPreimageCbor,
     "native.outputs",
   );
 
 const validatedNativeOutputs = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   expectedNetworkId: number | undefined,
 ): readonly ValidatedNativeOutput[] =>
   nativeOutputBytes(tx).map((outputCbor, index) => {
@@ -194,7 +194,7 @@ const validatedNativeOutputs = (
   });
 
 const requiredSignerKeyHashesFromTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): readonly string[] =>
   decodeMidgardNativeByteListPreimage(
     tx.body.requiredSignersPreimageCbor,
@@ -265,7 +265,7 @@ const normalizeResolvedSpendInputs = (
 };
 
 const importedExpectedWitnesses = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   options: FromTxOptions,
   normalizeUtxo: UtxoNormalizer,
   expectedNetworkId: number | undefined,
@@ -343,17 +343,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const canonicalImportedTxFromBytes = (
   bytes: Uint8Array,
-): MidgardNativeTxFullV1 => {
-  let tx: MidgardNativeTxFullV1;
+): MidgardNativeTxFull => {
+  let tx: MidgardNativeTxFull;
   try {
-    tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(bytes);
+    tx = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
   } catch (cause) {
     throw new BuilderInvariantError(
       "fromTx accepts only Midgard native canonical transaction bytes",
       cause instanceof Error ? cause.message : String(cause),
     );
   }
-  const canonical = encodeMidgardNativeTxCanonicalV1(tx);
+  const canonical = encodeMidgardNativeTxCanonical(tx);
   if (!canonical.equals(Buffer.from(bytes))) {
     throw new BuilderInvariantError(
       "fromTx requires canonical Midgard native transaction bytes",
@@ -363,11 +363,11 @@ const canonicalImportedTxFromBytes = (
 };
 
 const canonicalImportedTxFromObject = (
-  tx: MidgardNativeTxFullV1,
-): MidgardNativeTxFullV1 => {
+  tx: MidgardNativeTxFull,
+): MidgardNativeTxFull => {
   try {
-    return decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      encodeMidgardNativeTxCanonicalV1(tx),
+    return decodeMidgardNativeTxFullFromCanonicalCbor(
+      encodeMidgardNativeTxCanonical(tx),
     );
   } catch (cause) {
     throw new BuilderInvariantError(
@@ -379,7 +379,7 @@ const canonicalImportedTxFromObject = (
 
 export const decodeFromTxInput = (
   input: ImportedTxInput,
-): MidgardNativeTxFullV1 => {
+): MidgardNativeTxFull => {
   if (input instanceof Uint8Array) {
     return canonicalImportedTxFromBytes(input);
   }
@@ -407,14 +407,14 @@ export const decodeFromTxInput = (
       throw new BuilderInvariantError("txCbor must be bytes or hex");
     }
     return canonicalImportedTxFromObject(
-      input as unknown as MidgardNativeTxFullV1,
+      input as unknown as MidgardNativeTxFull,
     );
   }
   throw new BuilderInvariantError("Unsupported fromTx input");
 };
 
 export const importedTxMetadata = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   options: FromTxOptions,
   normalizeUtxo: UtxoNormalizer,
   expectedNetworkId: number | undefined,
@@ -447,7 +447,7 @@ export const importedTxMetadata = (
     expectedComplete: expected.complete,
     requireComplete: witnesses.length > 0 && expected.complete,
   });
-  const txBytes = encodeMidgardNativeTxCanonicalV1(tx);
+  const txBytes = encodeMidgardNativeTxCanonical(tx);
   return {
     fee: tx.body.fee,
     inputCount: inputs.spendInputRefs.length,
@@ -470,10 +470,10 @@ export const importedTxMetadata = (
 };
 
 export const localUtxosFromTx = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   expectedNetworkId?: number,
 ): readonly MidgardUtxo[] => {
-  const txId = computeMidgardNativeTxIdV1(tx).toString("hex");
+  const txId = computeMidgardNativeTxId(tx).toString("hex");
   return validatedNativeOutputs(tx, expectedNetworkId).map(
     ({ outputCbor }, index) => {
       const outRef = { txHash: txId, outputIndex: index };
@@ -487,7 +487,7 @@ export const localUtxosFromTx = (
 };
 
 export const localUtxoAt = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   outputIndex: number,
   expectedNetworkId?: number,
 ): MidgardUtxo => {
@@ -531,7 +531,7 @@ export const referenceOutputsByOutRef = (
 };
 
 export const resolveImportedReferenceInputs = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
   options: FromTxOptions,
   normalizeUtxo: UtxoNormalizer,
   expectedNetworkId: number | undefined,

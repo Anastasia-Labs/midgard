@@ -1,6 +1,6 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
-import type { MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
 import type { Effect } from "effect";
 
 import type { LedgerEntry } from "./ledger.js";
@@ -184,7 +184,7 @@ export type PhaseAConfig = {
   readonly minFeeB: bigint;
   readonly concurrency: number;
   readonly strictnessProfile: string;
-  readonly consensusProfile?: MidgardConsensusProfileV1;
+  readonly consensusProfile?: MidgardConsensusProfile;
 };
 
 /**

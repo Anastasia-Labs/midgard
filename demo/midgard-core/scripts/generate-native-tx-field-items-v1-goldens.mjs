@@ -54,32 +54,32 @@ import {
   parseGoldenChannelArguments,
 } from "./golden-channel.mjs";
 import {
-  buildMidgardChunkedFieldViewV1,
-  buildMidgardWholeFieldViewV1,
-  decodeMidgardFieldArrayHeaderV1,
-  deriveMidgardFieldPreimageCertificateV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_FIELD_COUNT_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
-  midgardFieldItemAtV1,
-  midgardFieldItemExtentV1,
-  midgardFieldStrideV1,
-  selectMidgardFieldCarriageTierV1,
+  buildMidgardChunkedFieldView,
+  buildMidgardWholeFieldView,
+  decodeMidgardFieldArrayHeader,
+  deriveMidgardFieldPreimageCertificate,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_FIELD_COUNT,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
+  midgardFieldItemAt,
+  midgardFieldItemExtent,
+  midgardFieldStride,
+  selectMidgardFieldCarriageTier,
 } from "../dist/codec/native-tx-field-access-v1.js";
 import {
-  encodeMidgardFieldItemsV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardFixedOutputIndexV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  encodeMidgardSpendInputItemV1,
-  MIDGARD_FIELD_NAMES_V1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  midgardFieldCommitmentForFieldV1,
+  encodeMidgardFieldItems,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardFixedOutputIndex,
+  encodeMidgardRedeemerWitnessItem,
+  encodeMidgardSpendInputItem,
+  MIDGARD_FIELD_NAMES,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  midgardFieldCommitmentForField,
 } from "../dist/codec/native-tx-field-items-v1.js";
 import {
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  midgardNativeTxProofFieldPreimageLengthsV1,
+  encodeMidgardNativeTxProofFieldLengths,
+  midgardNativeTxProofFieldPreimageLengths,
 } from "../dist/codec/native.js";
 import { encodeMidgardNativeScript } from "../dist/codec/native-script.js";
 import { encodeMidgardVersionedScript } from "../dist/codec/versioned-script.js";
@@ -95,7 +95,7 @@ import {
   FIELD_VECTORS,
   filler,
   FIXED_INDEX_BOUNDARIES,
-  midgardV1,
+  midgard,
   nativeCardano,
   plutusV3,
   redeemer,
@@ -148,7 +148,7 @@ const LANGUAGE_TAG_VECTORS = [
     language: "MidgardV1",
     aikenConstructor: "MidgardV1Script",
     tag: 128,
-    script: midgardV1(92, 8),
+    script: midgard(92, 8),
   },
 ];
 
@@ -189,19 +189,19 @@ const LANGUAGE_TAG_VECTORS = [
  * generator instead of quietly pinning a fiction.
  */
 const assertStraddleIsReachableV1 = (headerLength, preimageLength) => {
-  const stride = midgardFieldStrideV1(STRADDLE_FIELD_INDEX);
+  const stride = midgardFieldStride(STRADDLE_FIELD_INDEX);
   if (STRADDLE_FIELD_INDEX === 0) {
     const maximalSpendInputs =
-      headerLength + stride * MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1;
+      headerLength + stride * MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT;
     throw new Error(
       "§5.4: field 0 is capped at " +
-        `${MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1} spend inputs, so its largest ` +
+        `${MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT} spend inputs, so its largest ` +
         `admissible preimage is ${maximalSpendInputs} bytes and can never reach ` +
-        `tier 3 (K=${MIDGARD_CHUNK_BYTES_K_V1}); the straddle must live at a field that can`,
+        `tier 3 (K=${MIDGARD_CHUNK_BYTES_K}); the straddle must live at a field that can`,
     );
   }
   const maximumItems = Math.floor(
-    (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 - headerLength) / stride,
+    (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES - headerLength) / stride,
   );
   if (STRADDLE_ITEM_COUNT > maximumItems) {
     throw new Error(
@@ -209,10 +209,10 @@ const assertStraddleIsReachableV1 = (headerLength, preimageLength) => {
         `byte bound of ${maximumItems} at stride ${stride}`,
     );
   }
-  if (preimageLength <= MIDGARD_CHUNK_BYTES_K_V1) {
+  if (preimageLength <= MIDGARD_CHUNK_BYTES_K) {
     throw new Error(
       `§8.4: a ${preimageLength}-byte preimage does not exceed ` +
-        `K=${MIDGARD_CHUNK_BYTES_K_V1}, so it is not a tier-3 carriage at all`,
+        `K=${MIDGARD_CHUNK_BYTES_K}, so it is not a tier-3 carriage at all`,
     );
   }
 };
@@ -226,13 +226,13 @@ const assertStraddleIsReachableV1 = (headerLength, preimageLength) => {
  */
 const assertCarriageBoundariesStraddleKV1 = () => {
   for (const required of [
-    MIDGARD_CHUNK_BYTES_K_V1,
-    MIDGARD_CHUNK_BYTES_K_V1 + 1,
+    MIDGARD_CHUNK_BYTES_K,
+    MIDGARD_CHUNK_BYTES_K + 1,
   ]) {
     if (!CARRIAGE_BOUNDARY_LENGTHS.includes(required)) {
       throw new Error(
         `§8.3: CARRIAGE_BOUNDARY_LENGTHS must sample ${required.toString()} ` +
-          `(K=${MIDGARD_CHUNK_BYTES_K_V1.toString()} and K+1); got ` +
+          `(K=${MIDGARD_CHUNK_BYTES_K.toString()} and K+1); got ` +
           `[${CARRIAGE_BOUNDARY_LENGTHS.join(", ")}]`,
       );
     }
@@ -240,16 +240,16 @@ const assertCarriageBoundariesStraddleKV1 = () => {
 };
 
 const straddleItem = (patternIndex) =>
-  encodeMidgardSpendInputItemV1(straddleInputs()[patternIndex]);
+  encodeMidgardSpendInputItem(straddleInputs()[patternIndex]);
 
 const buildStraddle = () => {
   const selector = {
     fieldIndex: STRADDLE_FIELD_INDEX,
     items: straddleInputs(),
   };
-  const preimage = encodeMidgardFieldPreimageForFieldV1(selector);
-  const commitment = midgardFieldCommitmentForFieldV1(selector);
-  const header = decodeMidgardFieldArrayHeaderV1(preimage);
+  const preimage = encodeMidgardFieldPreimageForField(selector);
+  const commitment = midgardFieldCommitmentForField(selector);
+  const header = decodeMidgardFieldArrayHeader(preimage);
   assertStraddleIsReachableV1(header.nextOffset, preimage.length);
   // The repeating block is exactly `STRADDLE_BLOCK_ITEMS` wrapped elements, so
   // the artifacts carry 400 bytes rather than the 16,003 they expand to.
@@ -257,22 +257,22 @@ const buildStraddle = () => {
     header.nextOffset,
     header.nextOffset + STRADDLE_BLOCK_ITEMS * 40,
   );
-  const certificate = deriveMidgardFieldPreimageCertificateV1({
+  const certificate = deriveMidgardFieldPreimageCertificate({
     owner: STRADDLE_OWNER,
     txId: STRADDLE_TX_ID,
     fieldIndex: STRADDLE_FIELD_INDEX,
     preimage,
   });
   const chunks = [];
-  for (let start = 0; start < preimage.length; start += MIDGARD_CHUNK_BYTES_K_V1) {
+  for (let start = 0; start < preimage.length; start += MIDGARD_CHUNK_BYTES_K) {
     chunks.push(
       preimage.subarray(
         start,
-        Math.min(start + MIDGARD_CHUNK_BYTES_K_V1, preimage.length),
+        Math.min(start + MIDGARD_CHUNK_BYTES_K, preimage.length),
       ),
     );
   }
-  const view = buildMidgardChunkedFieldViewV1({
+  const view = buildMidgardChunkedFieldView({
     fieldIndex: STRADDLE_FIELD_INDEX,
     txId: certificate.txId,
     certificate,
@@ -284,18 +284,18 @@ const buildStraddle = () => {
     STRADDLE_ITEM_INDEX,
     STRADDLE_ITEM_INDEX + 1,
   ].map((index) => {
-    const extent = midgardFieldItemExtentV1(view, index);
+    const extent = midgardFieldItemExtent(view, index);
     return {
       itemIndex: index,
       offset: extent.offset,
       length: extent.length,
       // A read is straddling when its byte range crosses a multiple of K.
       straddles:
-        Math.floor(extent.offset / MIDGARD_CHUNK_BYTES_K_V1) !==
+        Math.floor(extent.offset / MIDGARD_CHUNK_BYTES_K) !==
         Math.floor(
-          (extent.offset + extent.length - 1) / MIDGARD_CHUNK_BYTES_K_V1,
+          (extent.offset + extent.length - 1) / MIDGARD_CHUNK_BYTES_K,
         ),
-      itemHex: hex(midgardFieldItemAtV1(view, index)),
+      itemHex: hex(midgardFieldItemAt(view, index)),
     };
   });
   // The whole point of the vector: the middle read, and only the middle read,
@@ -310,7 +310,7 @@ const buildStraddle = () => {
   }
   return {
     fieldIndex: STRADDLE_FIELD_INDEX,
-    stride: midgardFieldStrideV1(STRADDLE_FIELD_INDEX),
+    stride: midgardFieldStride(STRADDLE_FIELD_INDEX),
     blockHex: hex(block),
     blockElementCount: STRADDLE_BLOCK_ITEMS,
     repeats: STRADDLE_REPEATS,
@@ -318,7 +318,7 @@ const buildStraddle = () => {
     headerHex: hex(preimage.subarray(0, header.nextOffset)),
     totalLength: preimage.length,
     commitmentHex: hex(commitment),
-    carriageTier: selectMidgardFieldCarriageTierV1(preimage.length),
+    carriageTier: selectMidgardFieldCarriageTier(preimage.length),
     chunkLengths: chunks.map((chunk) => chunk.length),
     chunkDigestsHex: certificate.chunkDigests.map(hex),
     reads,
@@ -342,17 +342,17 @@ const buildStraddle = () => {
 const buildGolden = () => {
   const fields = FIELD_VECTORS.map((field) => ({
     fieldIndex: field.fieldIndex,
-    fieldName: MIDGARD_FIELD_NAMES_V1[field.fieldIndex],
-    stride: midgardFieldStrideV1(field.fieldIndex),
+    fieldName: MIDGARD_FIELD_NAMES[field.fieldIndex],
+    stride: midgardFieldStride(field.fieldIndex),
     aikenProducer: field.aikenProducer,
     aikenDecoder: field.aikenDecoder,
     vectors: field.vectors.map((vector) => {
       const selector = { fieldIndex: field.fieldIndex, items: vector.items };
-      const itemBytes = encodeMidgardFieldItemsV1(selector);
-      const preimage = encodeMidgardFieldPreimageForFieldV1(selector);
-      const commitment = midgardFieldCommitmentForFieldV1(selector);
-      const header = decodeMidgardFieldArrayHeaderV1(preimage);
-      const view = buildMidgardWholeFieldViewV1({
+      const itemBytes = encodeMidgardFieldItems(selector);
+      const preimage = encodeMidgardFieldPreimageForField(selector);
+      const commitment = midgardFieldCommitmentForField(selector);
+      const header = decodeMidgardFieldArrayHeader(preimage);
+      const view = buildMidgardWholeFieldView({
         fieldIndex: field.fieldIndex,
         preimage,
         expectedCommitment: commitment,
@@ -365,9 +365,9 @@ const buildGolden = () => {
         preimageHex: hex(preimage),
         preimageLength: preimage.length,
         commitmentHex: hex(commitment),
-        carriageTier: selectMidgardFieldCarriageTierV1(preimage.length),
+        carriageTier: selectMidgardFieldCarriageTier(preimage.length),
         itemExtents: itemBytes.map((_, index) => {
-          const extent = midgardFieldItemExtentV1(view, index);
+          const extent = midgardFieldItemExtent(view, index);
           return { offset: extent.offset, length: extent.length };
         }),
       };
@@ -380,12 +380,12 @@ const buildGolden = () => {
     tag,
     itemHex: hex(encodeMidgardVersionedScript(script)),
   }));
-  const purposeTags = Object.entries(MIDGARD_REDEEMER_PURPOSE_TAGS_V1).map(
+  const purposeTags = Object.entries(MIDGARD_REDEEMER_PURPOSE_TAGS).map(
     ([purpose, tag]) => ({
       purpose,
       tag,
       itemHex: hex(
-        encodeMidgardRedeemerWitnessItemV1(
+        encodeMidgardRedeemerWitnessItem(
           redeemer(purpose, 1, "d87980", 2, 3),
         ),
       ),
@@ -398,7 +398,7 @@ const buildGolden = () => {
   // nine distinct lengths: a transposition would be invisible under equal ones.
   // Derived through the function that performs the transposition, not written
   // down in wire order: a pre-ordered array would prove array order only.
-  const fieldPreimageLengths = midgardNativeTxProofFieldPreimageLengthsV1(
+  const fieldPreimageLengths = midgardNativeTxProofFieldPreimageLengths(
     FIELD_PREIMAGE_LENGTH_SOURCE,
   );
   if (
@@ -421,13 +421,13 @@ const buildGolden = () => {
     specDocument: "docs/spec/midgard-tx.md",
     generator:
       "demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.mjs",
-    fieldCount: MIDGARD_FIELD_COUNT_V1,
+    fieldCount: MIDGARD_FIELD_COUNT,
     fields,
     languageTags,
     purposeTags,
     fixedOutputIndexes: FIXED_INDEX_BOUNDARIES.map((outputIndex) => ({
       outputIndex,
-      encodedHex: hex(encodeMidgardFixedOutputIndexV1(outputIndex)),
+      encodedHex: hex(encodeMidgardFixedOutputIndex(outputIndex)),
     })),
     // §5.3: an out-ref's field-0/1 item *is* its ledger MPF trie key and its
     // ledger database `outref` column. These vectors are what the on-chain
@@ -441,7 +441,7 @@ const buildGolden = () => {
       return {
         txIdHex: hex(txId),
         outputIndex,
-        keyHex: hex(encodeMidgardSpendInputItemV1({ txId, outputIndex })),
+        keyHex: hex(encodeMidgardSpendInputItem({ txId, outputIndex })),
       };
     }),
     datumCanonicityBoundaries: DATUM_CANONICITY_BOUNDARIES.map(
@@ -452,12 +452,12 @@ const buildGolden = () => {
       // Produced by the TypeScript twin, whose own array already places the
       // script-witness length before the address-witness one.
       encodedHex: hex(
-        encodeMidgardNativeTxProofFieldLengthsV1(fieldPreimageLengths),
+        encodeMidgardNativeTxProofFieldLengths(fieldPreimageLengths),
       ),
     },
     carriageTiers: CARRIAGE_BOUNDARY_LENGTHS.map((preimageLength) => ({
       preimageLength,
-      tier: selectMidgardFieldCarriageTierV1(preimageLength),
+      tier: selectMidgardFieldCarriageTier(preimageLength),
     })),
     straddle: buildStraddle(),
   };
@@ -780,7 +780,7 @@ const renderAiken = (golden) => {
         "/// so a 39-byte item would otherwise decode to the *same* out-ref as the",
         "/// canonical 38-byte one — two trie keys naming one out-ref. The exact-38",
         "/// guard in `decode_midgard_tx_input_cbor` is what rejects it, and its",
-        "/// TypeScript twin `decodeMidgardSpendInputItemV1` rejects it on width too.",
+        "/// TypeScript twin `decodeMidgardSpendInputItem` rejects it on width too.",
       ],
       `encode_midgard_tx_input(decode_midgard_tx_input_cbor(${aikenBytes(
         `82590020${hex(filler(32, 1))}190002`,
@@ -967,7 +967,7 @@ const renderAiken = (golden) => {
     "///",
     `/// The carriage is field ${straddle.fieldIndex} (reference inputs), not field 0. The two share an`,
     `/// item encoder and stride ${straddle.stride}, so these are field 0's bytes as well — but §5.4`,
-    `/// caps field 0 at ${MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1} spend inputs, a maximal preimage of ${straddle.headerHex.length / 2 + straddle.stride * MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1} bytes,`,
+    `/// caps field 0 at ${MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT} spend inputs, a maximal preimage of ${straddle.headerHex.length / 2 + straddle.stride * MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT} bytes,`,
     "/// which still selects tier 1. Only field 1 can legally carry this many.",
     "fn golden_straddle_preimage() -> ByteArray {",
     "  bytearray.concat(",
@@ -989,7 +989,7 @@ const renderAiken = (golden) => {
     "}",
     "",
     `/// Item ${straddle.reads.find((read) => read.straddles)?.itemIndex ?? STRADDLE_ITEM_INDEX} crosses the K boundary: its payload spans`,
-    `/// [${straddle.reads.find((read) => read.straddles)?.offset}, ${(straddle.reads.find((read) => read.straddles)?.offset ?? 0) + (straddle.reads.find((read) => read.straddles)?.length ?? 0)}) while chunk 0 ends at ${MIDGARD_CHUNK_BYTES_K_V1}, so reading it stitches`,
+    `/// [${straddle.reads.find((read) => read.straddles)?.offset}, ${(straddle.reads.find((read) => read.straddles)?.offset ?? 0) + (straddle.reads.find((read) => read.straddles)?.length ?? 0)}) while chunk 0 ends at ${MIDGARD_CHUNK_BYTES_K}, so reading it stitches`,
     "/// bytes out of both chunks. Its neighbours are read too — they carry different",
     "/// bytes, so an off-by-one that silently returned an adjacent item would fail.",
     "test golden_straddle_read_matches_typescript() {",

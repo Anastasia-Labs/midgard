@@ -1,7 +1,7 @@
 import {
   MissingNativeScriptTxStep01SpendRedeemer,
   MissingNativeScriptTxStep02Datum,
-  missingNativeScriptTxStep02StateFromBadTxV1,
+  missingNativeScriptTxStep02StateFromBadTx,
 } from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -15,11 +15,11 @@ import {
   requireInitialStepDatum,
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
-import { requireMissingNativeScriptTxThreadUtxoV1 } from "./submit-common-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "./submit-native-binding-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
+import { requireMissingNativeScriptTxThreadUtxo } from "./submit-common-v1.js";
+import { submitMissingNativeScriptTxBinding } from "./submit-native-binding-v1.js";
 
 export type SubmitMissingNativeScriptTxStep01Result = {
   readonly txHash: string;
@@ -49,7 +49,7 @@ export const submitMissingNativeScriptTxStep01 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -57,12 +57,12 @@ export const submitMissingNativeScriptTxStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep01Result> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -74,14 +74,14 @@ export const submitMissingNativeScriptTxStep01 = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: missingNativeScriptTxStep02StateFromBadTxV1({
+      data: missingNativeScriptTxStep02StateFromBadTx({
         badTxId: txInclusion.nativeTxId,
         badTxWitnessSetHash,
       }),
     },
     MissingNativeScriptTxStep02Datum,
   );
-  const result = await submitMissingNativeScriptTxBindingV1({
+  const result = await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,

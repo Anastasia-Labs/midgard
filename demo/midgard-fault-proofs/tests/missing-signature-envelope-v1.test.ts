@@ -1,8 +1,8 @@
 /** Missing-signature compiled-size and three-axis carriage frontier gate. */
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  midgardFieldCarriageBoundsV1,
-  planMidgardFieldCarriageV1,
+  MIDGARD_CONSENSUS_LIMITS,
+  midgardFieldCarriageBounds,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import {
   AddressData,
@@ -24,22 +24,22 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  MISSING_SIGNATURE_BLUEPRINT_TITLES_V1,
-  proveMissingSignatureFaultV1,
+  MISSING_SIGNATURE_BLUEPRINT_TITLES,
+  proveMissingSignatureFault,
   submitMissingSignatureInit,
   submitMissingSignatureStep01,
 } from "../src/missing-signature/index.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { parseSubmitStep01TxInclusion } from "./support/legacy-submit-emulator.js";
 import {
-  makeMissingSignatureEmulatorHarnessV1,
-  MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT_V1,
-  MISSING_SIGNATURE_MAX_ADMISSIBLE_WITNESS_COUNT_V1,
-  missingSignatureFindingV1,
-  missingSignatureProverDepsV1,
-  publishMissingSignatureField07CertificateV1,
-  publishMissingSignatureReferenceScriptsV1,
-  setupMissingSignatureScenarioV1,
+  makeMissingSignatureEmulatorHarness,
+  MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT,
+  MISSING_SIGNATURE_MAX_ADMISSIBLE_WITNESS_COUNT,
+  missingSignatureFinding,
+  missingSignatureProverDeps,
+  publishMissingSignatureField07Certificate,
+  publishMissingSignatureReferenceScripts,
+  setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator-v1.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -48,7 +48,7 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildMissingSignatureChainV1,
+  buildMissingSignatureChain,
   funderPaymentKeyHash,
   makeHeader,
   network,
@@ -76,7 +76,7 @@ describe("missing-signature compiled envelope", () => {
 
   it("pins all four unapplied sizes and parameter-order-distinct applied hashes", async () => {
     for (const [step, title] of Object.entries(
-      MISSING_SIGNATURE_BLUEPRINT_TITLES_V1,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES,
     )) {
       const validator = blueprint.validators.find(
         (candidate) => candidate.title === title,
@@ -91,7 +91,7 @@ describe("missing-signature compiled envelope", () => {
         credentialToAddress(network, scriptHashToCredential("33".repeat(28))),
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const chain = buildMissingSignatureChainV1({
+    const chain = buildMissingSignatureChain({
       realBlueprint: blueprint,
       computationThreadPolicyId: "11".repeat(28),
       fraudProofPolicyId: "22".repeat(28),
@@ -141,11 +141,11 @@ describe("missing-signature compiled envelope", () => {
     expect(
       bytes(Data.to(redeemer, MissingSignatureStep01SpendRedeemer)) + overhead,
       "ESCALATE: the bare step-01 subject/inclusion no longer fits L1",
-    ).toBeLessThanOrEqual(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+    ).toBeLessThanOrEqual(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
   });
 
   it("executes the worst-depth step-01 inclusion transaction within the release envelope", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
+    const harness = await makeMissingSignatureEmulatorHarness();
     const fixture = await buildTransactionInclusionFixture({
       adversarialBranchLevels: ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
     });
@@ -170,7 +170,7 @@ describe("missing-signature compiled envelope", () => {
       catalogue: harness.catalogue,
       header,
     });
-    const [step01] = await publishMissingSignatureReferenceScriptsV1({
+    const [step01] = await publishMissingSignatureReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.missingSignature,
     });
@@ -206,7 +206,7 @@ describe("missing-signature compiled envelope", () => {
       }),
     );
     expect(capture.measurement.completeSignedBytes).toBeLessThanOrEqual(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
     expect(capture.measurement.executionMemory).toBeLessThanOrEqual(
       13_200_000n,
@@ -218,7 +218,7 @@ describe("missing-signature compiled envelope", () => {
 
   it("charts field-4 and field-7 at Inline/RawUtxo/Certified boundaries", () => {
     const plan = (fieldIndex: number, length: number, publish = false) =>
-      planMidgardFieldCarriageV1({
+      planMidgardFieldCarriage({
         owner: OWNER,
         txId: TX_ID,
         fieldIndex,
@@ -226,7 +226,7 @@ describe("missing-signature compiled envelope", () => {
         publish,
       });
     const { maxTier1RedeemerPreimageBytes, maxPublishableCarriageBytes } =
-      midgardFieldCarriageBoundsV1;
+      midgardFieldCarriageBounds;
     expect(plan(4, 29).tier).toBe("Inline");
     expect(plan(4, 29, true).tier).toBe("RawUtxo");
     expect(plan(4, maxTier1RedeemerPreimageBytes).tier).toBe("Inline");
@@ -250,7 +250,7 @@ describe("missing-signature compiled envelope", () => {
     const inline = {
       Inline: {
         preimage: Buffer.alloc(
-          midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+          midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
           0x80,
         ).toString("hex"),
       },
@@ -272,7 +272,7 @@ describe("missing-signature compiled envelope", () => {
     };
     expect(
       bytes(Data.to(step02, MissingSignatureStep02SpendRedeemer)),
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
     const step04: MissingSignatureStep04SpendRedeemerType = {
       Continue: [
         {
@@ -298,25 +298,25 @@ describe("missing-signature compiled envelope", () => {
     };
     expect(
       bytes(Data.to(step04, MissingSignatureStep04SpendRedeemer)),
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
   });
 
   it("proves the first automatic tier-2 witness frontier within the release ExUnits basis", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({
       harness,
-      decoyWitnessCount: MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT_V1,
+      decoyWitnessCount: MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT,
     });
     const [step01, step02, step03, step04] =
-      await publishMissingSignatureReferenceScriptsV1({
+      await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
     const capture = await captureEmulatorSubmission(harness.emulator, () =>
       Effect.runPromise(
-        proveMissingSignatureFaultV1(
-          missingSignatureFindingV1(scenario),
-          missingSignatureProverDepsV1({
+        proveMissingSignatureFault(
+          missingSignatureFinding(scenario),
+          missingSignatureProverDeps({
             harness,
             scenario,
             referenceScriptUtxos: { step01, step02, step03, step04 },
@@ -342,28 +342,28 @@ describe("missing-signature compiled envelope", () => {
   }, 600_000);
 
   it("proves the maximum admissible field-7 vector through certified carriage and bounded scans", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({
       harness,
-      decoyWitnessCount: MISSING_SIGNATURE_MAX_ADMISSIBLE_WITNESS_COUNT_V1,
+      decoyWitnessCount: MISSING_SIGNATURE_MAX_ADMISSIBLE_WITNESS_COUNT,
     });
     const [step01, step02, step03, step04] =
-      await publishMissingSignatureReferenceScriptsV1({
+      await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
-    const certificateUtxo = await publishMissingSignatureField07CertificateV1({
+    const certificateUtxo = await publishMissingSignatureField07Certificate({
       harness,
       scenario,
     });
-    const deps = missingSignatureProverDepsV1({
+    const deps = missingSignatureProverDeps({
       harness,
       scenario,
       referenceScriptUtxos: { step01, step02, step03, step04 },
     });
     const capture = await captureEmulatorSubmission(harness.emulator, () =>
       Effect.runPromise(
-        proveMissingSignatureFaultV1(missingSignatureFindingV1(scenario), {
+        proveMissingSignatureFault(missingSignatureFinding(scenario), {
           ...deps,
           fieldCertificates: { step04: certificateUtxo },
         }),
@@ -381,7 +381,7 @@ describe("missing-signature compiled envelope", () => {
     expect(capture.result.txHashes).toHaveLength(14);
     for (const measurement of capture.measurements) {
       expect(measurement.completeSignedBytes).toBeLessThanOrEqual(
-        MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+        MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
       );
       expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
       expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);

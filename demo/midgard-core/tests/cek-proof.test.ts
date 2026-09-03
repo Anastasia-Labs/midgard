@@ -1,77 +1,77 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  commitMidgardCekBlobV1,
-  decodeMidgardCekProgramEnvelopeV1,
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  decodeMidgardCekProgramMaterialEntryV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  decodeMidgardProofSubmissionV1,
-  encodeMidgardCekBlobBranchV1,
-  encodeMidgardCekBlobChunkV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialDaValueV1,
-  encodeMidgardCekProgramMaterialEntryV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekSequenceNodeV1,
-  encodeMidgardCekTermNodeV1,
-  encodeMidgardCekValueNodeV1,
-  encodeMidgardProofSubmissionV1,
-  hashMidgardCekBlobChunkV1,
-  hashMidgardCekBlsExpressionNodeV1,
-  hashMidgardCekContinuationFrameV1,
-  hashMidgardCekEnvironmentNodeV1,
-  hashMidgardCekMachineStateV1,
-  hashMidgardCekProgramEnvelopeV1,
-  hashMidgardCekProgramMaterialPreimageV1,
-  hashMidgardCekSequenceNodeV1,
-  hashMidgardCekTermNodeV1,
-  hashMidgardCekValueNodeV1,
-  mergeMidgardCekProgramMaterialSidecarsV1,
+  commitMidgardCekBlob,
+  decodeMidgardCekProgramEnvelope,
+  decodeMidgardCekProgramMaterialDaEntry,
+  decodeMidgardCekProgramMaterialEntry,
+  decodeMidgardCekProgramMaterialSidecar,
+  decodeMidgardProofSubmission,
+  encodeMidgardCekBlobBranch,
+  encodeMidgardCekBlobChunk,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialDaValue,
+  encodeMidgardCekProgramMaterialEntry,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekSequenceNode,
+  encodeMidgardCekTermNode,
+  encodeMidgardCekValueNode,
+  encodeMidgardProofSubmission,
+  hashMidgardCekBlobChunk,
+  hashMidgardCekBlsExpressionNode,
+  hashMidgardCekContinuationFrame,
+  hashMidgardCekEnvironmentNode,
+  hashMidgardCekMachineState,
+  hashMidgardCekProgramEnvelope,
+  hashMidgardCekProgramMaterialPreimage,
+  hashMidgardCekSequenceNode,
+  hashMidgardCekTermNode,
+  hashMidgardCekValueNode,
+  mergeMidgardCekProgramMaterialSidecars,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
-  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
-  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
-  MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK_V1,
-  MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS_V1,
-  MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
-  type MidgardCekProgramEnvelopeV1,
-  midgardCekProgramMaterialDependenciesV1,
-  type MidgardCekProgramMaterialEntryV1,
-  type MidgardCekProgramMaterialKindV1,
+  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
+  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
+  MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK,
+  MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS,
+  MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
+  type MidgardCekProgramEnvelope,
+  midgardCekProgramMaterialDependencies,
+  type MidgardCekProgramMaterialEntry,
+  type MidgardCekProgramMaterialKind,
   MidgardCekProgramMaterialMissingRootError,
-  verifyMidgardCekProgramMaterialBundleV1,
-  verifyMidgardCekProgramMaterialV1,
+  verifyMidgardCekProgramMaterial,
+  verifyMidgardCekProgramMaterialBundle,
 } from "../src/cek-proof.js";
 import {
-  encodeMidgardCekDataListNodeV1,
-  encodeMidgardCekDataNodeV1,
-  encodeMidgardCekDataPairNodeV1,
-  hashMidgardCekDataListNodeV1,
-  hashMidgardCekDataNodeV1,
-  MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
-  MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
-  midgardCekDataBytesCborLengthV1,
-  midgardCekDataConstrCborLengthV1,
-  midgardCekDataListCborLengthV1,
-  type MidgardCekDataNodeV1,
+  encodeMidgardCekDataListNode,
+  encodeMidgardCekDataNode,
+  encodeMidgardCekDataPairNode,
+  hashMidgardCekDataListNode,
+  hashMidgardCekDataNode,
+  MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
+  MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
+  midgardCekDataBytesCborLength,
+  midgardCekDataConstrCborLength,
+  midgardCekDataListCborLength,
+  type MidgardCekDataNode,
 } from "../src/cek-semantic.js";
 import type { Hash32 } from "../src/codec/hash.js";
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 const programMaterialEntry = (
-  kind: MidgardCekProgramMaterialKindV1,
+  kind: MidgardCekProgramMaterialKind,
   preimage: Buffer,
-): MidgardCekProgramMaterialEntryV1 => ({
+): MidgardCekProgramMaterialEntry => ({
   kind,
-  root: hashMidgardCekProgramMaterialPreimageV1(kind, preimage),
+  root: hashMidgardCekProgramMaterialPreimage(kind, preimage),
   preimage,
 });
 
@@ -84,17 +84,17 @@ const makeUnaryProgramMaterial = (
     readonly nodeCount: bigint;
     readonly materialByteLength: bigint;
   };
-  readonly material: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly material: readonly MidgardCekProgramMaterialEntry[];
 } => {
-  const material: MidgardCekProgramMaterialEntryV1[] = [];
+  const material: MidgardCekProgramMaterialEntry[] = [];
   const terminal = { kind: "error" } as const;
-  let preimage = encodeMidgardCekTermNodeV1(terminal);
-  let root = hashMidgardCekTermNodeV1(terminal);
+  let preimage = encodeMidgardCekTermNode(terminal);
+  let root = hashMidgardCekTermNode(terminal);
   material.push({ kind: "term", root, preimage });
   for (let index = 1; index < nodeCount; index += 1) {
     const parent = { kind: "lambda", body: root } as const;
-    preimage = encodeMidgardCekTermNodeV1(parent);
-    root = hashMidgardCekTermNodeV1(parent);
+    preimage = encodeMidgardCekTermNode(parent);
+    root = hashMidgardCekTermNode(parent);
     material.push({ kind: "term", root, preimage });
   }
   return {
@@ -141,14 +141,14 @@ const makeBytesConstantProgramMaterial = (
     readonly nodeCount: bigint;
     readonly materialByteLength: bigint;
   };
-  readonly material: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly termRoot: Hash32;
   readonly valueRoot: Hash32;
   readonly payloadCbor: Buffer;
 } => {
-  const typeBlob = commitMidgardCekBlobV1(Buffer.from("9f01ff", "hex"));
+  const typeBlob = commitMidgardCekBlob(Buffer.from("9f01ff", "hex"));
   const rawBytes = Buffer.alloc(rawByteLength, 0x5a);
-  const rawBlob = commitMidgardCekBlobV1(rawBytes);
+  const rawBlob = commitMidgardCekBlob(rawBytes);
   const payloadCbor = encodeCanonicalSemanticBytes(rawBytes);
   const semanticNode = {
     kind: "bytes",
@@ -157,7 +157,7 @@ const makeBytesConstantProgramMaterial = (
     cborLength: BigInt(payloadCbor.length),
     memory: 4n + BigInt(rawBytes.length),
   } as const;
-  const semanticRoot = hashMidgardCekDataNodeV1(semanticNode);
+  const semanticRoot = hashMidgardCekDataNode(semanticNode);
   const valueNode = {
     kind: "constant",
     typeRoot: typeBlob.root,
@@ -166,27 +166,27 @@ const makeBytesConstantProgramMaterial = (
     semanticRoot,
     memory: BigInt(Math.max(1, rawBytes.length)),
   } as const;
-  const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+  const valueRoot = hashMidgardCekValueNode(valueNode);
   const termNode = { kind: "constant", value: valueRoot } as const;
-  const termRoot = hashMidgardCekTermNodeV1(termNode);
-  const material: MidgardCekProgramMaterialEntryV1[] = [
+  const termRoot = hashMidgardCekTermNode(termNode);
+  const material: MidgardCekProgramMaterialEntry[] = [
     {
       kind: "term",
       root: termRoot,
-      preimage: encodeMidgardCekTermNodeV1(termNode),
+      preimage: encodeMidgardCekTermNode(termNode),
     },
     {
       kind: "value",
       root: valueRoot,
-      preimage: encodeMidgardCekValueNodeV1(valueNode),
+      preimage: encodeMidgardCekValueNode(valueNode),
     },
     {
       kind: "dataNode",
       root: semanticRoot,
-      preimage: encodeMidgardCekDataNodeV1(semanticNode),
+      preimage: encodeMidgardCekDataNode(semanticNode),
     },
     ...[...typeBlob.nodes.entries(), ...rawBlob.nodes.entries()].map(
-      ([rootHex, node]): MidgardCekProgramMaterialEntryV1 => ({
+      ([rootHex, node]): MidgardCekProgramMaterialEntry => ({
         kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
         root: Buffer.from(rootHex, "hex") as Hash32,
         preimage: node.preimage,
@@ -219,9 +219,9 @@ const makeNestedListConstantProgramMaterial = (
     0xff,
   ]),
 ): ReturnType<typeof makeBytesConstantProgramMaterial> => {
-  const typeBlob = commitMidgardCekBlobV1(typeCbor);
-  const integerBlob = commitMidgardCekBlobV1(Buffer.from([0]));
-  let semanticRoot = hashMidgardCekDataNodeV1({
+  const typeBlob = commitMidgardCekBlob(typeCbor);
+  const integerBlob = commitMidgardCekBlob(Buffer.from([0]));
+  let semanticRoot = hashMidgardCekDataNode({
     kind: "integer",
     cborRoot: integerBlob.root,
     cborLength: 1n,
@@ -229,11 +229,11 @@ const makeNestedListConstantProgramMaterial = (
   });
   let semanticCborLength = 1n;
   let semanticMemory = 5n;
-  const semanticMaterial: MidgardCekProgramMaterialEntryV1[] = [
+  const semanticMaterial: MidgardCekProgramMaterialEntry[] = [
     {
       kind: "dataNode",
       root: semanticRoot,
-      preimage: encodeMidgardCekDataNodeV1({
+      preimage: encodeMidgardCekDataNode({
         kind: "integer",
         cborRoot: integerBlob.root,
         cborLength: 1n,
@@ -246,18 +246,18 @@ const makeNestedListConstantProgramMaterial = (
       head: semanticRoot,
       headCborLength: semanticCborLength,
       headMemory: semanticMemory,
-      tail: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+      tail: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
       length: 1n,
       payloadCborLength: semanticCborLength,
       memory: semanticMemory,
     };
-    const listRoot = hashMidgardCekDataListNodeV1(listNode);
+    const listRoot = hashMidgardCekDataListNode(listNode);
     semanticMaterial.push({
       kind: "dataList",
       root: listRoot,
-      preimage: encodeMidgardCekDataListNodeV1(listNode),
+      preimage: encodeMidgardCekDataListNode(listNode),
     });
-    semanticCborLength = midgardCekDataListCborLengthV1(1n, semanticCborLength);
+    semanticCborLength = midgardCekDataListCborLength(1n, semanticCborLength);
     semanticMemory += 4n;
     const listDataNode = {
       kind: "list",
@@ -266,11 +266,11 @@ const makeNestedListConstantProgramMaterial = (
       cborLength: semanticCborLength,
       memory: semanticMemory,
     } as const;
-    semanticRoot = hashMidgardCekDataNodeV1(listDataNode);
+    semanticRoot = hashMidgardCekDataNode(listDataNode);
     semanticMaterial.push({
       kind: "dataNode",
       root: semanticRoot,
-      preimage: encodeMidgardCekDataNodeV1(listDataNode),
+      preimage: encodeMidgardCekDataNode(listDataNode),
     });
   }
   const valueNode = {
@@ -281,23 +281,23 @@ const makeNestedListConstantProgramMaterial = (
     semanticRoot,
     memory: 1n,
   } as const;
-  const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+  const valueRoot = hashMidgardCekValueNode(valueNode);
   const termNode = { kind: "constant", value: valueRoot } as const;
-  const termRoot = hashMidgardCekTermNodeV1(termNode);
-  const material: MidgardCekProgramMaterialEntryV1[] = [
+  const termRoot = hashMidgardCekTermNode(termNode);
+  const material: MidgardCekProgramMaterialEntry[] = [
     {
       kind: "term",
       root: termRoot,
-      preimage: encodeMidgardCekTermNodeV1(termNode),
+      preimage: encodeMidgardCekTermNode(termNode),
     },
     {
       kind: "value",
       root: valueRoot,
-      preimage: encodeMidgardCekValueNodeV1(valueNode),
+      preimage: encodeMidgardCekValueNode(valueNode),
     },
     ...semanticMaterial,
     ...[...typeBlob.nodes.entries(), ...integerBlob.nodes.entries()].map(
-      ([rootHex, node]): MidgardCekProgramMaterialEntryV1 => ({
+      ([rootHex, node]): MidgardCekProgramMaterialEntry => ({
         kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
         root: Buffer.from(rootHex, "hex") as Hash32,
         preimage: node.preimage,
@@ -396,17 +396,17 @@ const makeSemanticConstantProgramMaterial = (
   payload: FixtureData,
   memory: bigint,
 ): {
-  readonly envelope: MidgardCekProgramEnvelopeV1;
-  readonly material: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly envelope: MidgardCekProgramEnvelope;
+  readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly typeCbor: Buffer;
   readonly payloadCbor: Buffer;
 } => {
-  const byRoot = new Map<string, MidgardCekProgramMaterialEntryV1>();
-  const addEntry = (entry: MidgardCekProgramMaterialEntryV1): void => {
+  const byRoot = new Map<string, MidgardCekProgramMaterialEntry>();
+  const addEntry = (entry: MidgardCekProgramMaterialEntry): void => {
     if (!byRoot.has(hex(entry.root))) byRoot.set(hex(entry.root), entry);
   };
   const addBlob = (bytes: Buffer): Hash32 => {
-    const blob = commitMidgardCekBlobV1(bytes);
+    const blob = commitMidgardCekBlob(bytes);
     for (const [rootHex, node] of blob.nodes.entries()) {
       addEntry({
         kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
@@ -418,7 +418,7 @@ const makeSemanticConstantProgramMaterial = (
   };
   const commitList = (items: readonly FixtureData[]): FixtureListSummary => {
     let summary: FixtureListSummary = {
-      root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+      root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
       length: 0n,
       payloadCborLength: 0n,
       memory: 0n,
@@ -434,11 +434,11 @@ const makeSemanticConstantProgramMaterial = (
         payloadCborLength: head.cborLength + summary.payloadCborLength,
         memory: head.memory + summary.memory,
       };
-      const root = hashMidgardCekDataListNodeV1(node);
+      const root = hashMidgardCekDataListNode(node);
       addEntry({
         kind: "dataList",
         root,
-        preimage: encodeMidgardCekDataListNodeV1(node),
+        preimage: encodeMidgardCekDataListNode(node),
       });
       summary = {
         root,
@@ -451,7 +451,7 @@ const makeSemanticConstantProgramMaterial = (
   };
   function commitData(value: FixtureData): FixtureSummary {
     const cbor = encodeFixtureData(value);
-    let node: MidgardCekDataNodeV1;
+    let node: MidgardCekDataNode;
     if (typeof value === "bigint") {
       node = {
         kind: "integer",
@@ -465,7 +465,7 @@ const makeSemanticConstantProgramMaterial = (
         kind: "bytes",
         bytesRoot: addBlob(bytes),
         bytesLength: BigInt(bytes.length),
-        cborLength: midgardCekDataBytesCborLengthV1(BigInt(bytes.length)),
+        cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
         memory: 4n + BigInt(Math.max(1, bytes.length)),
       };
     } else if (Array.isArray(value)) {
@@ -474,7 +474,7 @@ const makeSemanticConstantProgramMaterial = (
         kind: "list",
         itemsCount: items.length,
         itemsRoot: items.root,
-        cborLength: midgardCekDataListCborLengthV1(
+        cborLength: midgardCekDataListCborLength(
           items.length,
           items.payloadCborLength,
         ),
@@ -488,7 +488,7 @@ const makeSemanticConstantProgramMaterial = (
         constructor: value.constructor,
         fieldsCount: fields.length,
         fieldsRoot: fields.root,
-        cborLength: midgardCekDataConstrCborLengthV1(
+        cborLength: midgardCekDataConstrCborLength(
           value.constructor,
           fields.length,
           fields.payloadCborLength,
@@ -499,11 +499,11 @@ const makeSemanticConstantProgramMaterial = (
     if (node.cborLength !== BigInt(cbor.length)) {
       throw new Error("fixture semantic Data CBOR summary is not exact");
     }
-    const root = hashMidgardCekDataNodeV1(node);
+    const root = hashMidgardCekDataNode(node);
     addEntry({
       kind: "dataNode",
       root,
-      preimage: encodeMidgardCekDataNodeV1(node),
+      preimage: encodeMidgardCekDataNode(node),
     });
     return { root, cborLength: node.cborLength, memory: node.memory };
   }
@@ -518,18 +518,18 @@ const makeSemanticConstantProgramMaterial = (
     semanticRoot: semantic.root,
     memory,
   } as const;
-  const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+  const valueRoot = hashMidgardCekValueNode(valueNode);
   const termNode = { kind: "constant", value: valueRoot } as const;
-  const termRoot = hashMidgardCekTermNodeV1(termNode);
+  const termRoot = hashMidgardCekTermNode(termNode);
   addEntry({
     kind: "value",
     root: valueRoot,
-    preimage: encodeMidgardCekValueNodeV1(valueNode),
+    preimage: encodeMidgardCekValueNode(valueNode),
   });
   addEntry({
     kind: "term",
     root: termRoot,
-    preimage: encodeMidgardCekTermNodeV1(termNode),
+    preimage: encodeMidgardCekTermNode(termNode),
   });
   const material = [...byRoot.values()];
   return {
@@ -550,33 +550,33 @@ const makeSemanticConstantProgramMaterial = (
 
 describe("V1 CEK commitments", () => {
   it("matches the Aiken node, state, and program vectors", () => {
-    const term = hashMidgardCekTermNodeV1({
+    const term = hashMidgardCekTermNode({
       kind: "application",
       function: hash(1),
       argument: hash(2),
     });
-    const value = hashMidgardCekValueNodeV1({
+    const value = hashMidgardCekValueNode({
       kind: "lambda",
       body: hash(3),
-      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
     });
-    const sequence = hashMidgardCekSequenceNodeV1({
+    const sequence = hashMidgardCekSequenceNode({
       head: term,
-      tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+      tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
       length: 1n,
     });
-    const environment = hashMidgardCekEnvironmentNodeV1({
+    const environment = hashMidgardCekEnvironmentNode({
       value,
-      tail: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+      tail: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       length: 1n,
     });
-    const continuation = hashMidgardCekContinuationFrameV1({
+    const continuation = hashMidgardCekContinuationFrame({
       kind: "applyArgument",
       argument: hash(4),
       environment,
-      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     });
-    const state = hashMidgardCekMachineStateV1({
+    const state = hashMidgardCekMachineState({
       mode: "compute",
       executionIndex: 2n,
       focusRoot: term,
@@ -586,70 +586,70 @@ describe("V1 CEK commitments", () => {
       cpu: 16_000n,
       memory: 100n,
     });
-    const program = hashMidgardCekProgramEnvelopeV1({
+    const program = hashMidgardCekProgramEnvelope({
       uplcVersion: [1n, 1n, 0n],
       termRoot: term,
       nodeCount: 3n,
       materialByteLength: 144n,
     });
-    const applyValue = hashMidgardCekContinuationFrameV1({
+    const applyValue = hashMidgardCekContinuationFrame({
       kind: "applyValue",
       value: hash(1),
       tail: hash(2),
     });
-    const caseSelect = hashMidgardCekContinuationFrameV1({
+    const caseSelect = hashMidgardCekContinuationFrame({
       kind: "caseSelect",
       environment: hash(1),
       tail: hash(2),
       valuesCount: 3n,
     });
-    const caseApply = hashMidgardCekContinuationFrameV1({
+    const caseApply = hashMidgardCekContinuationFrame({
       kind: "caseApply",
       environment: hash(1),
       builtContinuation: hash(2),
     });
-    const caseState = hashMidgardCekMachineStateV1({
+    const caseState = hashMidgardCekMachineState({
       mode: "caseApply",
       executionIndex: 0n,
       focusRoot: hash(1),
       environmentRoot: hash(2),
-      continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       auxiliary: 3n,
       cpu: 4n,
       memory: 5n,
     });
-    const semanticBuiltinState = hashMidgardCekMachineStateV1({
+    const semanticBuiltinState = hashMidgardCekMachineState({
       mode: "semanticBuiltin",
       executionIndex: 0n,
       focusRoot: hash(1),
       environmentRoot: hash(2),
-      continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       auxiliary: 3n,
       cpu: 4n,
       memory: 5n,
     });
-    const blsLeaf = hashMidgardCekBlsExpressionNodeV1({
+    const blsLeaf = hashMidgardCekBlsExpressionNode({
       kind: "millerLoop",
       g1Value: hash(1),
       g2Value: hash(2),
     });
-    const blsMultiply = hashMidgardCekBlsExpressionNodeV1({
+    const blsMultiply = hashMidgardCekBlsExpressionNode({
       kind: "multiply",
       left: hash(1),
       right: hash(2),
     });
-    const blsValue = hashMidgardCekValueNodeV1({
+    const blsValue = hashMidgardCekValueNode({
       kind: "blsMillerLoop",
       expressionRoot: blsLeaf,
     });
 
-    expect(hex(MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1)).toBe(
+    expect(hex(MIDGARD_CEK_EMPTY_SEQUENCE_ROOT)).toBe(
       "8ab46e13655026ca6fe253b057ff678ebf9fa088097d6fa4c62276ba140f1743",
     );
-    expect(hex(MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1)).toBe(
+    expect(hex(MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT)).toBe(
       "0b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7",
     );
-    expect(hex(MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1)).toBe(
+    expect(hex(MIDGARD_CEK_EMPTY_CONTINUATION_ROOT)).toBe(
       "53163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b",
     );
     expect(hex(term)).toBe(
@@ -697,47 +697,47 @@ describe("V1 CEK commitments", () => {
     expect(hex(blsValue)).toBe(
       "d93762ca25b0c585073f9e97f50873b76e13de1290182f6bb4744d29d9fb3fb7",
     );
-    expect(hex(hashMidgardCekBlobChunkV1(Buffer.from("010203", "hex")))).toBe(
+    expect(hex(hashMidgardCekBlobChunk(Buffer.from("010203", "hex")))).toBe(
       "0bb4f6f24cd0080e59e98d57a13c6453e07991452b80f14ff1d9791c02db1fc9",
     );
   });
 
   it("fails closed on malformed hashes, oversized chunks, and unknown builtins", () => {
     expect(() =>
-      hashMidgardCekTermNodeV1({
+      hashMidgardCekTermNode({
         kind: "application",
         function: Buffer.alloc(31),
         argument: hash(2),
       }),
     ).toThrow(/must be 32 bytes/u);
     expect(() =>
-      hashMidgardCekBlobChunkV1(Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1)),
+      hashMidgardCekBlobChunk(Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1)),
     ).toThrow(/at most 4095 bytes/u);
+    expect(() => hashMidgardCekTermNode({ kind: "builtin", tag: 87n })).toThrow(
+      /between 0 and 86/u,
+    );
     expect(() =>
-      hashMidgardCekTermNodeV1({ kind: "builtin", tag: 87n }),
-    ).toThrow(/between 0 and 86/u);
-    expect(() =>
-      hashMidgardCekSequenceNodeV1({
+      hashMidgardCekSequenceNode({
         head: hash(1),
-        tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+        tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
         length: 0n,
       }),
     ).toThrow(/must be positive/u);
   });
 
   it("decodes only the canonical bounded V1 program envelope", () => {
-    const envelope = encodeMidgardCekProgramEnvelopeV1({
+    const envelope = encodeMidgardCekProgramEnvelope({
       uplcVersion: [1n, 1n, 0n],
       termRoot: hash(1),
-      nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
-      materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
+      nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
+      materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
     });
-    expect(envelope).toHaveLength(MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES_V1);
-    expect(decodeMidgardCekProgramEnvelopeV1(envelope)).toEqual({
+    expect(envelope).toHaveLength(MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES);
+    expect(decodeMidgardCekProgramEnvelope(envelope)).toEqual({
       uplcVersion: [1n, 1n, 0n],
       termRoot: hash(1),
-      nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
-      materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
+      nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
+      materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
     });
 
     const noncanonical = Buffer.concat([
@@ -745,7 +745,7 @@ describe("V1 CEK commitments", () => {
       hash(1),
       Buffer.from("18031890", "hex"),
     ]);
-    expect(() => decodeMidgardCekProgramEnvelopeV1(noncanonical)).toThrow(
+    expect(() => decodeMidgardCekProgramEnvelope(noncanonical)).toThrow(
       /Non-minimal CBOR/u,
     );
     const unsupportedEnvelope = Buffer.concat([
@@ -753,12 +753,12 @@ describe("V1 CEK commitments", () => {
       hash(1),
       Buffer.from("031890", "hex"),
     ]);
+    expect(() => decodeMidgardCekProgramEnvelope(unsupportedEnvelope)).toThrow(
+      /unsupported CEK program envelope version 23/u,
+    );
     expect(() =>
-      decodeMidgardCekProgramEnvelopeV1(unsupportedEnvelope),
-    ).toThrow(/unsupported CEK program envelope version 23/u);
-    expect(() =>
-      decodeMidgardCekProgramEnvelopeV1(
-        encodeMidgardCekProgramEnvelopeV1({
+      decodeMidgardCekProgramEnvelope(
+        encodeMidgardCekProgramEnvelope({
           uplcVersion: [1n, 0n, 0n],
           termRoot: hash(1),
           nodeCount: 3n,
@@ -767,22 +767,22 @@ describe("V1 CEK commitments", () => {
       ),
     ).toThrow(/only UPLC 1.1.0/u);
     expect(() =>
-      decodeMidgardCekProgramEnvelopeV1(
-        encodeMidgardCekProgramEnvelopeV1({
+      decodeMidgardCekProgramEnvelope(
+        encodeMidgardCekProgramEnvelope({
           uplcVersion: [1n, 1n, 0n],
           termRoot: hash(1),
-          nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 + 1n,
+          nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT + 1n,
           materialByteLength: 144n,
         }),
       ),
     ).toThrow(/node count/u);
     expect(() =>
-      decodeMidgardCekProgramEnvelopeV1(
-        encodeMidgardCekProgramEnvelopeV1({
+      decodeMidgardCekProgramEnvelope(
+        encodeMidgardCekProgramEnvelope({
           uplcVersion: [1n, 1n, 0n],
           termRoot: hash(1),
           nodeCount: 3n,
-          materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1 + 1n,
+          materialByteLength: MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES + 1n,
         }),
       ),
     ).toThrow(/material length/u);
@@ -796,7 +796,7 @@ describe("V1 CEK commitments", () => {
     const five = hash(5);
     const six = hash(6);
     const dataList = (length: bigint, head: Hash32, tail: Hash32) =>
-      encodeMidgardCekDataListNodeV1({
+      encodeMidgardCekDataListNode({
         head,
         headCborLength: 1n,
         headMemory: 1n,
@@ -811,7 +811,7 @@ describe("V1 CEK commitments", () => {
       value: Hash32,
       tail: Hash32,
     ) =>
-      encodeMidgardCekDataPairNodeV1({
+      encodeMidgardCekDataPairNode({
         key,
         keyCborLength: 1n,
         keyMemory: 1n,
@@ -825,14 +825,14 @@ describe("V1 CEK commitments", () => {
       });
     const cases: readonly {
       readonly name: string;
-      readonly entry: MidgardCekProgramMaterialEntryV1;
+      readonly entry: MidgardCekProgramMaterialEntry;
       readonly expected: readonly Hash32[];
     }[] = [
       {
         name: "term variable",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "variable", index: 0n }),
+          encodeMidgardCekTermNode({ kind: "variable", index: 0n }),
         ),
         expected: [],
       },
@@ -840,7 +840,7 @@ describe("V1 CEK commitments", () => {
         name: "term error",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "error" }),
+          encodeMidgardCekTermNode({ kind: "error" }),
         ),
         expected: [],
       },
@@ -848,7 +848,7 @@ describe("V1 CEK commitments", () => {
         name: "term builtin",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "builtin", tag: 0n }),
+          encodeMidgardCekTermNode({ kind: "builtin", tag: 0n }),
         ),
         expected: [],
       },
@@ -856,7 +856,7 @@ describe("V1 CEK commitments", () => {
         name: "term delay",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "delay", body: one }),
+          encodeMidgardCekTermNode({ kind: "delay", body: one }),
         ),
         expected: [one],
       },
@@ -864,7 +864,7 @@ describe("V1 CEK commitments", () => {
         name: "term lambda",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "lambda", body: one }),
+          encodeMidgardCekTermNode({ kind: "lambda", body: one }),
         ),
         expected: [one],
       },
@@ -872,7 +872,7 @@ describe("V1 CEK commitments", () => {
         name: "term force",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "force", term: one }),
+          encodeMidgardCekTermNode({ kind: "force", term: one }),
         ),
         expected: [one],
       },
@@ -880,7 +880,7 @@ describe("V1 CEK commitments", () => {
         name: "term application",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "application",
             function: one,
             argument: two,
@@ -892,7 +892,7 @@ describe("V1 CEK commitments", () => {
         name: "term application deduplicates",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "application",
             function: one,
             argument: one,
@@ -904,7 +904,7 @@ describe("V1 CEK commitments", () => {
         name: "term constant",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({ kind: "constant", value: three }),
+          encodeMidgardCekTermNode({ kind: "constant", value: three }),
         ),
         expected: [three],
       },
@@ -912,11 +912,11 @@ describe("V1 CEK commitments", () => {
         name: "empty term constr",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "constr",
             tag: 0n,
             termsCount: 0n,
-            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
           }),
         ),
         expected: [],
@@ -925,7 +925,7 @@ describe("V1 CEK commitments", () => {
         name: "non-empty term constr",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "constr",
             tag: 0n,
             termsCount: 2n,
@@ -938,11 +938,11 @@ describe("V1 CEK commitments", () => {
         name: "empty term case",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "case",
             scrutinee: one,
             branchesCount: 0n,
-            branchesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            branchesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
           }),
         ),
         expected: [one],
@@ -951,7 +951,7 @@ describe("V1 CEK commitments", () => {
         name: "non-empty term case",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "case",
             scrutinee: one,
             branchesCount: 2n,
@@ -964,7 +964,7 @@ describe("V1 CEK commitments", () => {
         name: "value",
         entry: programMaterialEntry(
           "value",
-          encodeMidgardCekValueNodeV1({
+          encodeMidgardCekValueNode({
             kind: "constant",
             typeRoot: one,
             payloadRoot: two,
@@ -979,7 +979,7 @@ describe("V1 CEK commitments", () => {
         name: "value deduplicates roots",
         entry: programMaterialEntry(
           "value",
-          encodeMidgardCekValueNodeV1({
+          encodeMidgardCekValueNode({
             kind: "constant",
             typeRoot: one,
             payloadRoot: one,
@@ -994,9 +994,9 @@ describe("V1 CEK commitments", () => {
         name: "one-item sequence",
         entry: programMaterialEntry(
           "sequence",
-          encodeMidgardCekSequenceNodeV1({
+          encodeMidgardCekSequenceNode({
             head: one,
-            tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
             length: 1n,
           }),
         ),
@@ -1006,7 +1006,7 @@ describe("V1 CEK commitments", () => {
         name: "multi-item sequence",
         entry: programMaterialEntry(
           "sequence",
-          encodeMidgardCekSequenceNodeV1({
+          encodeMidgardCekSequenceNode({
             head: one,
             tail: two,
             length: 2n,
@@ -1018,7 +1018,7 @@ describe("V1 CEK commitments", () => {
         name: "blob chunk",
         entry: programMaterialEntry(
           "blobChunk",
-          encodeMidgardCekBlobChunkV1(Buffer.from("0102", "hex")),
+          encodeMidgardCekBlobChunk(Buffer.from("0102", "hex")),
         ),
         expected: [],
       },
@@ -1026,7 +1026,7 @@ describe("V1 CEK commitments", () => {
         name: "blob branch",
         entry: programMaterialEntry(
           "blobBranch",
-          encodeMidgardCekBlobBranchV1({
+          encodeMidgardCekBlobBranch({
             left: one,
             right: two,
             byteLength: 2n,
@@ -1038,7 +1038,7 @@ describe("V1 CEK commitments", () => {
         name: "blob branch deduplicates",
         entry: programMaterialEntry(
           "blobBranch",
-          encodeMidgardCekBlobBranchV1({
+          encodeMidgardCekBlobBranch({
             left: one,
             right: one,
             byteLength: 2n,
@@ -1050,11 +1050,11 @@ describe("V1 CEK commitments", () => {
         name: "empty small constructor Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "constrSmall",
             constructor: 0n,
             fieldsCount: 0n,
-            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1065,7 +1065,7 @@ describe("V1 CEK commitments", () => {
         name: "non-empty small constructor Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "constrSmall",
             constructor: 0n,
             fieldsCount: 1n,
@@ -1080,13 +1080,13 @@ describe("V1 CEK commitments", () => {
         name: "empty large constructor Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "constrLarge",
             constructorCborRoot: two,
             constructorCborLength: 1n,
             constructorMemory: 1n,
             fieldsCount: 0n,
-            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1097,7 +1097,7 @@ describe("V1 CEK commitments", () => {
         name: "non-empty large constructor Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "constrLarge",
             constructorCborRoot: two,
             constructorCborLength: 1n,
@@ -1114,10 +1114,10 @@ describe("V1 CEK commitments", () => {
         name: "empty map Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "map",
             entriesCount: 0n,
-            entriesRoot: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
+            entriesRoot: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1128,7 +1128,7 @@ describe("V1 CEK commitments", () => {
         name: "non-empty map Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "map",
             entriesCount: 1n,
             entriesRoot: three,
@@ -1142,10 +1142,10 @@ describe("V1 CEK commitments", () => {
         name: "empty list Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "list",
             itemsCount: 0n,
-            itemsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            itemsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1156,7 +1156,7 @@ describe("V1 CEK commitments", () => {
         name: "non-empty list Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "list",
             itemsCount: 1n,
             itemsRoot: four,
@@ -1170,7 +1170,7 @@ describe("V1 CEK commitments", () => {
         name: "integer Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "integer",
             cborRoot: five,
             cborLength: 1n,
@@ -1183,7 +1183,7 @@ describe("V1 CEK commitments", () => {
         name: "bytes Data",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "bytes",
             bytesRoot: six,
             bytesLength: 1n,
@@ -1197,7 +1197,7 @@ describe("V1 CEK commitments", () => {
         name: "one-item Data list",
         entry: programMaterialEntry(
           "dataList",
-          dataList(1n, one, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1),
+          dataList(1n, one, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT),
         ),
         expected: [one],
       },
@@ -1210,7 +1210,7 @@ describe("V1 CEK commitments", () => {
         name: "one-item Data pair",
         entry: programMaterialEntry(
           "dataPair",
-          dataPair(1n, one, two, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1),
+          dataPair(1n, one, two, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT),
         ),
         expected: [one, two],
       },
@@ -1224,7 +1224,7 @@ describe("V1 CEK commitments", () => {
     expect(
       cases.map(({ name, entry }) => ({
         name,
-        dependencies: midgardCekProgramMaterialDependenciesV1(entry).map(hex),
+        dependencies: midgardCekProgramMaterialDependencies(entry).map(hex),
       })),
     ).toEqual(
       cases.map(({ name, expected }) => ({
@@ -1240,7 +1240,7 @@ describe("V1 CEK commitments", () => {
     const dataList = (length: bigint, tail: Hash32) =>
       programMaterialEntry(
         "dataList",
-        encodeMidgardCekDataListNodeV1({
+        encodeMidgardCekDataListNode({
           head: one,
           headCborLength: 1n,
           headMemory: 1n,
@@ -1253,7 +1253,7 @@ describe("V1 CEK commitments", () => {
     const dataPair = (length: bigint, tail: Hash32) =>
       programMaterialEntry(
         "dataPair",
-        encodeMidgardCekDataPairNodeV1({
+        encodeMidgardCekDataPairNode({
           key: one,
           keyCborLength: 1n,
           keyMemory: 1n,
@@ -1268,7 +1268,7 @@ describe("V1 CEK commitments", () => {
       );
     const hostile: readonly {
       readonly name: string;
-      readonly entry: MidgardCekProgramMaterialEntryV1;
+      readonly entry: MidgardCekProgramMaterialEntry;
       readonly error: RegExp;
     }[] = [
       {
@@ -1276,7 +1276,7 @@ describe("V1 CEK commitments", () => {
         entry: {
           ...programMaterialEntry(
             "term",
-            encodeMidgardCekTermNodeV1({ kind: "error" }),
+            encodeMidgardCekTermNode({ kind: "error" }),
           ),
           root: hash(99),
         },
@@ -1291,7 +1291,7 @@ describe("V1 CEK commitments", () => {
         name: "runtime-only context constant",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "contextConstant",
             value: one,
           }),
@@ -1302,7 +1302,7 @@ describe("V1 CEK commitments", () => {
         name: "split value roots",
         entry: programMaterialEntry(
           "value",
-          encodeMidgardCekValueNodeV1({
+          encodeMidgardCekValueNode({
             kind: "constant",
             typeRoot: one,
             payloadRoot: one,
@@ -1317,7 +1317,7 @@ describe("V1 CEK commitments", () => {
         name: "empty constr with non-canonical root",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "constr",
             tag: 0n,
             termsCount: 0n,
@@ -1330,11 +1330,11 @@ describe("V1 CEK commitments", () => {
         name: "non-empty constr with empty root",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "constr",
             tag: 0n,
             termsCount: 1n,
-            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
           }),
         ),
         error: /non-empty CEK constr sequence/u,
@@ -1343,7 +1343,7 @@ describe("V1 CEK commitments", () => {
         name: "empty case with non-canonical root",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "case",
             scrutinee: one,
             branchesCount: 0n,
@@ -1356,11 +1356,11 @@ describe("V1 CEK commitments", () => {
         name: "non-empty case with empty root",
         entry: programMaterialEntry(
           "term",
-          encodeMidgardCekTermNodeV1({
+          encodeMidgardCekTermNode({
             kind: "case",
             scrutinee: one,
             branchesCount: 1n,
-            branchesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            branchesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
           }),
         ),
         error: /non-empty CEK case sequence/u,
@@ -1369,7 +1369,7 @@ describe("V1 CEK commitments", () => {
         name: "one-item sequence with non-canonical tail",
         entry: programMaterialEntry(
           "sequence",
-          encodeMidgardCekSequenceNodeV1({
+          encodeMidgardCekSequenceNode({
             head: one,
             tail: two,
             length: 1n,
@@ -1381,9 +1381,9 @@ describe("V1 CEK commitments", () => {
         name: "multi-item sequence with empty tail",
         entry: programMaterialEntry(
           "sequence",
-          encodeMidgardCekSequenceNodeV1({
+          encodeMidgardCekSequenceNode({
             head: one,
-            tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
             length: 2n,
           }),
         ),
@@ -1393,7 +1393,7 @@ describe("V1 CEK commitments", () => {
         name: "empty Data constructor with non-canonical root",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "constrSmall",
             constructor: 0n,
             fieldsCount: 0n,
@@ -1408,11 +1408,11 @@ describe("V1 CEK commitments", () => {
         name: "non-empty Data constructor with empty root",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "constrSmall",
             constructor: 0n,
             fieldsCount: 1n,
-            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1423,7 +1423,7 @@ describe("V1 CEK commitments", () => {
         name: "empty Data map with non-canonical root",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "map",
             entriesCount: 0n,
             entriesRoot: one,
@@ -1437,10 +1437,10 @@ describe("V1 CEK commitments", () => {
         name: "non-empty Data map with empty root",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "map",
             entriesCount: 1n,
-            entriesRoot: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
+            entriesRoot: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1451,7 +1451,7 @@ describe("V1 CEK commitments", () => {
         name: "empty Data list node with non-canonical root",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "list",
             itemsCount: 0n,
             itemsRoot: one,
@@ -1465,10 +1465,10 @@ describe("V1 CEK commitments", () => {
         name: "non-empty Data list node with empty root",
         entry: programMaterialEntry(
           "dataNode",
-          encodeMidgardCekDataNodeV1({
+          encodeMidgardCekDataNode({
             kind: "list",
             itemsCount: 1n,
-            itemsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            itemsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
             cborLength: 1n,
             memory: 1n,
           }),
@@ -1477,7 +1477,7 @@ describe("V1 CEK commitments", () => {
       },
       {
         name: "zero-length Data list material",
-        entry: dataList(0n, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1),
+        entry: dataList(0n, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT),
         error: /Data list material length must be positive/u,
       },
       {
@@ -1487,12 +1487,12 @@ describe("V1 CEK commitments", () => {
       },
       {
         name: "multi-item Data list with empty tail",
-        entry: dataList(2n, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1),
+        entry: dataList(2n, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT),
         error: /multi-item CEK Data list/u,
       },
       {
         name: "zero-length Data pair material",
-        entry: dataPair(0n, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1),
+        entry: dataPair(0n, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT),
         error: /Data pair material length must be positive/u,
       },
       {
@@ -1502,15 +1502,13 @@ describe("V1 CEK commitments", () => {
       },
       {
         name: "multi-item Data pair with empty tail",
-        entry: dataPair(2n, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1),
+        entry: dataPair(2n, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT),
         error: /multi-item CEK Data pair list/u,
       },
     ];
 
     for (const { entry, error } of hostile) {
-      expect(() => midgardCekProgramMaterialDependenciesV1(entry)).toThrow(
-        error,
-      );
+      expect(() => midgardCekProgramMaterialDependencies(entry)).toThrow(error);
     }
   });
 
@@ -1591,7 +1589,7 @@ describe("V1 CEK commitments", () => {
         testCase.payload,
         testCase.memory,
       );
-      const verified = verifyMidgardCekProgramMaterialV1(
+      const verified = verifyMidgardCekProgramMaterial(
         fixture.envelope,
         fixture.material,
       );
@@ -1683,14 +1681,14 @@ describe("V1 CEK commitments", () => {
       );
       expect(
         () =>
-          verifyMidgardCekProgramMaterialV1(fixture.envelope, fixture.material),
+          verifyMidgardCekProgramMaterial(fixture.envelope, fixture.material),
         testCase.name,
       ).toThrow(/payload does not match its semantic type/u);
     }
   });
 
   it("authenticates and traverses exact content-addressed program material", () => {
-    const typeBlob = commitMidgardCekBlobV1(Buffer.from("9f01ff", "hex"));
+    const typeBlob = commitMidgardCekBlob(Buffer.from("9f01ff", "hex"));
     const rawValue = Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1, 0x5a);
     const payloadBytes = Buffer.concat([
       Buffer.from([0x5f]),
@@ -1700,15 +1698,15 @@ describe("V1 CEK commitments", () => {
       }),
       Buffer.from([0xff]),
     ]);
-    const rawBlob = commitMidgardCekBlobV1(rawValue);
+    const rawBlob = commitMidgardCekBlob(rawValue);
     const semanticNode = {
       kind: "bytes",
       bytesRoot: rawBlob.root,
       bytesLength: BigInt(rawValue.length),
-      cborLength: midgardCekDataBytesCborLengthV1(BigInt(rawValue.length)),
+      cborLength: midgardCekDataBytesCborLength(BigInt(rawValue.length)),
       memory: 4n + BigInt(rawValue.length),
     } as const;
-    const semanticRoot = hashMidgardCekDataNodeV1(semanticNode);
+    const semanticRoot = hashMidgardCekDataNode(semanticNode);
     const valueNode = {
       kind: "constant",
       typeRoot: typeBlob.root,
@@ -1717,13 +1715,13 @@ describe("V1 CEK commitments", () => {
       semanticRoot,
       memory: BigInt(rawValue.length),
     } as const;
-    const valuePreimage = encodeMidgardCekValueNodeV1(valueNode);
-    const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+    const valuePreimage = encodeMidgardCekValueNode(valueNode);
+    const valueRoot = hashMidgardCekValueNode(valueNode);
     const termNode = { kind: "constant", value: valueRoot } as const;
-    const termPreimage = encodeMidgardCekTermNodeV1(termNode);
-    const termRoot = hashMidgardCekTermNodeV1(termNode);
+    const termPreimage = encodeMidgardCekTermNode(termNode);
+    const termRoot = hashMidgardCekTermNode(termNode);
 
-    const material: MidgardCekProgramMaterialEntryV1[] = [
+    const material: MidgardCekProgramMaterialEntry[] = [
       {
         kind: "term",
         root: termRoot,
@@ -1737,10 +1735,10 @@ describe("V1 CEK commitments", () => {
       {
         kind: "dataNode",
         root: semanticRoot,
-        preimage: encodeMidgardCekDataNodeV1(semanticNode),
+        preimage: encodeMidgardCekDataNode(semanticNode),
       },
       ...[...typeBlob.nodes.entries(), ...rawBlob.nodes.entries()].map(
-        ([rootHex, node]): MidgardCekProgramMaterialEntryV1 => ({
+        ([rootHex, node]): MidgardCekProgramMaterialEntry => ({
           kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
           root: Buffer.from(rootHex, "hex") as Hash32,
           preimage: node.preimage,
@@ -1757,7 +1755,7 @@ describe("V1 CEK commitments", () => {
       ),
     };
 
-    const verified = verifyMidgardCekProgramMaterialV1(envelope, material);
+    const verified = verifyMidgardCekProgramMaterial(envelope, material);
     expect(verified.nodeCount).toBe(BigInt(material.length));
     expect(verified.constants).toHaveLength(1);
     expect(verified.constants[0]!.typeCbor).toEqual(
@@ -1765,12 +1763,12 @@ describe("V1 CEK commitments", () => {
     );
     expect(verified.constants[0]!.payloadCbor).toEqual(payloadBytes);
     expect(
-      verifyMidgardCekProgramMaterialBundleV1([envelope], material),
+      verifyMidgardCekProgramMaterialBundle([envelope], material),
     ).toHaveLength(1);
 
     const unrelated = programMaterialEntry(
       "term",
-      encodeMidgardCekTermNodeV1({ kind: "error" }),
+      encodeMidgardCekTermNode({ kind: "error" }),
     );
     const availableByRoot = new Map(
       [...material, unrelated].map((entry) => [hex(entry.root), entry]),
@@ -1788,7 +1786,7 @@ describe("V1 CEK commitments", () => {
         throw new Error(`test material is missing ${key}`);
       }
       gathered.add(key);
-      pending.push(...midgardCekProgramMaterialDependenciesV1(entry));
+      pending.push(...midgardCekProgramMaterialDependencies(entry));
     }
     expect(gathered).toEqual(verified.reachableRoots);
     expect(fetchedRoots).toHaveLength(gathered.size);
@@ -1796,35 +1794,33 @@ describe("V1 CEK commitments", () => {
 
     const maximumChunkEntry = {
       kind: "blobChunk",
-      root: hashMidgardCekBlobChunkV1(
-        Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES),
-      ),
-      preimage: encodeMidgardCekBlobChunkV1(
+      root: hashMidgardCekBlobChunk(Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES)),
+      preimage: encodeMidgardCekBlobChunk(
         Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES),
       ),
     } as const;
     expect(maximumChunkEntry.preimage).toHaveLength(
-      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1,
+      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES,
     );
     const encodedEntry =
-      encodeMidgardCekProgramMaterialEntryV1(maximumChunkEntry);
+      encodeMidgardCekProgramMaterialEntry(maximumChunkEntry);
     expect(encodedEntry).toHaveLength(
-      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1,
+      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES,
     );
-    expect(decodeMidgardCekProgramMaterialEntryV1(encodedEntry)).toEqual(
+    expect(decodeMidgardCekProgramMaterialEntry(encodedEntry)).toEqual(
       maximumChunkEntry,
     );
-    const daValue = encodeMidgardCekProgramMaterialDaValueV1(maximumChunkEntry);
+    const daValue = encodeMidgardCekProgramMaterialDaValue(maximumChunkEntry);
     expect(daValue).toHaveLength(
-      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1,
+      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES,
     );
     expect(
-      decodeMidgardCekProgramMaterialDaEntryV1(maximumChunkEntry.root, daValue),
+      decodeMidgardCekProgramMaterialDaEntry(maximumChunkEntry.root, daValue),
     ).toEqual(maximumChunkEntry);
     const unsupportedDaValue = Buffer.from(daValue);
     unsupportedDaValue[1] = 23;
     expect(() =>
-      decodeMidgardCekProgramMaterialDaEntryV1(
+      decodeMidgardCekProgramMaterialDaEntry(
         maximumChunkEntry.root,
         unsupportedDaValue,
       ),
@@ -1839,19 +1835,19 @@ describe("V1 CEK commitments", () => {
       constructorCbor,
       Buffer.from([0x80]),
     ]);
-    const typeBlob = commitMidgardCekBlobV1(Buffer.from("9f08ff", "hex"));
-    const constructorBlob = commitMidgardCekBlobV1(constructorCbor);
+    const typeBlob = commitMidgardCekBlob(Buffer.from("9f08ff", "hex"));
+    const constructorBlob = commitMidgardCekBlob(constructorCbor);
     const semanticNode = {
       kind: "constrLarge",
       constructorCborRoot: constructorBlob.root,
       constructorCborLength: BigInt(constructorCbor.length),
       constructorMemory: 15n,
       fieldsCount: 0n,
-      fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
-      cborLength: midgardCekDataConstrCborLengthV1(constructor, 0n, 0n),
+      fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
+      cborLength: midgardCekDataConstrCborLength(constructor, 0n, 0n),
       memory: 4n,
     } as const;
-    const semanticRoot = hashMidgardCekDataNodeV1(semanticNode);
+    const semanticRoot = hashMidgardCekDataNode(semanticNode);
     const valueNode = {
       kind: "constant",
       typeRoot: typeBlob.root,
@@ -1860,27 +1856,27 @@ describe("V1 CEK commitments", () => {
       semanticRoot,
       memory: 4n,
     } as const;
-    const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+    const valueRoot = hashMidgardCekValueNode(valueNode);
     const termNode = { kind: "constant", value: valueRoot } as const;
-    const termRoot = hashMidgardCekTermNodeV1(termNode);
-    const material: MidgardCekProgramMaterialEntryV1[] = [
+    const termRoot = hashMidgardCekTermNode(termNode);
+    const material: MidgardCekProgramMaterialEntry[] = [
       {
         kind: "term",
         root: termRoot,
-        preimage: encodeMidgardCekTermNodeV1(termNode),
+        preimage: encodeMidgardCekTermNode(termNode),
       },
       {
         kind: "value",
         root: valueRoot,
-        preimage: encodeMidgardCekValueNodeV1(valueNode),
+        preimage: encodeMidgardCekValueNode(valueNode),
       },
       {
         kind: "dataNode",
         root: semanticRoot,
-        preimage: encodeMidgardCekDataNodeV1(semanticNode),
+        preimage: encodeMidgardCekDataNode(semanticNode),
       },
       ...[...typeBlob.nodes.entries(), ...constructorBlob.nodes.entries()].map(
-        ([rootHex, node]): MidgardCekProgramMaterialEntryV1 => ({
+        ([rootHex, node]): MidgardCekProgramMaterialEntry => ({
           kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
           root: Buffer.from(rootHex, "hex") as Hash32,
           preimage: node.preimage,
@@ -1897,33 +1893,33 @@ describe("V1 CEK commitments", () => {
       ),
     };
 
-    const verified = verifyMidgardCekProgramMaterialV1(envelope, material);
+    const verified = verifyMidgardCekProgramMaterial(envelope, material);
     expect(verified.constants[0]!.payloadCbor).toEqual(payloadCbor);
     expect(verified.constants[0]!.memory).toBe(4n);
   });
 
   it("rejects the retired split payload/semantic-root representation", () => {
-    const typeBlob = commitMidgardCekBlobV1(Buffer.from("9f01ff", "hex"));
+    const typeBlob = commitMidgardCekBlob(Buffer.from("9f01ff", "hex"));
     const payloadValue = Buffer.alloc(65, 0x5a);
     const payloadBytes = Buffer.concat([
       Buffer.from("5f5840", "hex"),
       payloadValue.subarray(0, 64),
       Buffer.from("415aff", "hex"),
     ]);
-    const payloadBlob = commitMidgardCekBlobV1(payloadBytes);
+    const payloadBlob = commitMidgardCekBlob(payloadBytes);
 
     // Canonical V1 has one semantic payload root. A value that retains the
     // retired split whole-payload blob root must fail before graph traversal.
     const conflictingValue = Buffer.alloc(65, 0x5b);
-    const conflictingBlob = commitMidgardCekBlobV1(conflictingValue);
+    const conflictingBlob = commitMidgardCekBlob(conflictingValue);
     const conflictingSemanticNode = {
       kind: "bytes",
       bytesRoot: conflictingBlob.root,
       bytesLength: 65n,
-      cborLength: midgardCekDataBytesCborLengthV1(65n),
+      cborLength: midgardCekDataBytesCborLength(65n),
       memory: 69n,
     } as const;
-    const conflictingSemanticRoot = hashMidgardCekDataNodeV1(
+    const conflictingSemanticRoot = hashMidgardCekDataNode(
       conflictingSemanticNode,
     );
     const valueNode = {
@@ -1934,31 +1930,31 @@ describe("V1 CEK commitments", () => {
       semanticRoot: conflictingSemanticRoot,
       memory: 65n,
     } as const;
-    const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+    const valueRoot = hashMidgardCekValueNode(valueNode);
     const termNode = { kind: "constant", value: valueRoot } as const;
-    const termRoot = hashMidgardCekTermNodeV1(termNode);
-    const material: MidgardCekProgramMaterialEntryV1[] = [
+    const termRoot = hashMidgardCekTermNode(termNode);
+    const material: MidgardCekProgramMaterialEntry[] = [
       {
         kind: "term",
         root: termRoot,
-        preimage: encodeMidgardCekTermNodeV1(termNode),
+        preimage: encodeMidgardCekTermNode(termNode),
       },
       {
         kind: "value",
         root: valueRoot,
-        preimage: encodeMidgardCekValueNodeV1(valueNode),
+        preimage: encodeMidgardCekValueNode(valueNode),
       },
       {
         kind: "dataNode",
         root: conflictingSemanticRoot,
-        preimage: encodeMidgardCekDataNodeV1(conflictingSemanticNode),
+        preimage: encodeMidgardCekDataNode(conflictingSemanticNode),
       },
       ...[
         ...typeBlob.nodes.entries(),
         ...payloadBlob.nodes.entries(),
         ...conflictingBlob.nodes.entries(),
       ].map(
-        ([rootHex, node]): MidgardCekProgramMaterialEntryV1 => ({
+        ([rootHex, node]): MidgardCekProgramMaterialEntry => ({
           kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
           root: Buffer.from(rootHex, "hex") as Hash32,
           preimage: node.preimage,
@@ -1975,25 +1971,23 @@ describe("V1 CEK commitments", () => {
       ),
     };
 
-    expect(() => verifyMidgardCekProgramMaterialV1(envelope, material)).toThrow(
+    expect(() => verifyMidgardCekProgramMaterial(envelope, material)).toThrow(
       /payload root must equal its canonical semantic root/u,
     );
   });
 
   it("classifies only an absent root and does not mask later bundle mismatches", () => {
     const missingNode = { kind: "error" } as const;
-    const missingRoot = hashMidgardCekTermNodeV1(missingNode);
+    const missingRoot = hashMidgardCekTermNode(missingNode);
     const missingEnvelope = {
       uplcVersion: [1n, 1n, 0n] as const,
       termRoot: missingRoot,
       nodeCount: 1n,
-      materialByteLength: BigInt(
-        encodeMidgardCekTermNodeV1(missingNode).length,
-      ),
+      materialByteLength: BigInt(encodeMidgardCekTermNode(missingNode).length),
     };
     let missingError: unknown;
     try {
-      verifyMidgardCekProgramMaterialV1(missingEnvelope, []);
+      verifyMidgardCekProgramMaterial(missingEnvelope, []);
     } catch (cause) {
       missingError = cause;
     }
@@ -2007,8 +2001,8 @@ describe("V1 CEK commitments", () => {
     const presentNode = { kind: "builtin", tag: 0n } as const;
     const present = {
       kind: "term" as const,
-      root: hashMidgardCekTermNodeV1(presentNode),
-      preimage: encodeMidgardCekTermNodeV1(presentNode),
+      root: hashMidgardCekTermNode(presentNode),
+      preimage: encodeMidgardCekTermNode(presentNode),
     };
     const laterMismatchEnvelope = {
       uplcVersion: [1n, 1n, 0n] as const,
@@ -2017,7 +2011,7 @@ describe("V1 CEK commitments", () => {
       materialByteLength: BigInt(present.preimage.length),
     };
     expect(() =>
-      verifyMidgardCekProgramMaterialBundleV1(
+      verifyMidgardCekProgramMaterialBundle(
         [missingEnvelope, laterMismatchEnvelope],
         [present],
       ),
@@ -2028,8 +2022,8 @@ describe("V1 CEK commitments", () => {
     const termNode = { kind: "error" } as const;
     const term = {
       kind: "term",
-      root: hashMidgardCekTermNodeV1(termNode),
-      preimage: encodeMidgardCekTermNodeV1(termNode),
+      root: hashMidgardCekTermNode(termNode),
+      preimage: encodeMidgardCekTermNode(termNode),
     } as const;
     const envelope = {
       uplcVersion: [1n, 1n, 0n] as const,
@@ -2037,43 +2031,43 @@ describe("V1 CEK commitments", () => {
       nodeCount: 1n,
       materialByteLength: BigInt(term.preimage.length),
     };
-    const submission = encodeMidgardProofSubmissionV1({
+    const submission = encodeMidgardProofSubmission({
       transactionCbor: Buffer.from("820102", "hex"),
       programMaterial: [term],
     });
-    expect(decodeMidgardProofSubmissionV1(submission)).toEqual({
+    expect(decodeMidgardProofSubmission(submission)).toEqual({
       transactionCbor: Buffer.from("820102", "hex"),
       programMaterial: [term],
     });
     const unsupportedSubmission = Buffer.from(submission);
     unsupportedSubmission[1] = 23;
-    expect(() => decodeMidgardProofSubmissionV1(unsupportedSubmission)).toThrow(
+    expect(() => decodeMidgardProofSubmission(unsupportedSubmission)).toThrow(
       /unsupported V1 submission version 23/u,
     );
-    const sidecar = encodeMidgardCekProgramMaterialSidecarV1([term]);
-    expect(decodeMidgardCekProgramMaterialSidecarV1(sidecar)).toEqual([term]);
-    expect(encodeMidgardCekProgramMaterialSidecarV1([]).toString("hex")).toBe(
+    const sidecar = encodeMidgardCekProgramMaterialSidecar([term]);
+    expect(decodeMidgardCekProgramMaterialSidecar(sidecar)).toEqual([term]);
+    expect(encodeMidgardCekProgramMaterialSidecar([]).toString("hex")).toBe(
       "820180",
     );
     expect(() =>
-      decodeMidgardCekProgramMaterialSidecarV1(Buffer.from("821780", "hex")),
+      decodeMidgardCekProgramMaterialSidecar(Buffer.from("821780", "hex")),
     ).toThrow(/unsupported V1 program material sidecar version 23/u);
     expect(() =>
-      decodeMidgardCekProgramMaterialSidecarV1(
+      decodeMidgardCekProgramMaterialSidecar(
         Buffer.concat([sidecar, Buffer.from([0])]),
       ),
     ).toThrow(/trailing bytes/u);
-    expect(
-      mergeMidgardCekProgramMaterialSidecarsV1([sidecar, sidecar]),
-    ).toEqual([term]);
-    expect(() => verifyMidgardCekProgramMaterialV1(envelope, [])).toThrow(
+    expect(mergeMidgardCekProgramMaterialSidecars([sidecar, sidecar])).toEqual([
+      term,
+    ]);
+    expect(() => verifyMidgardCekProgramMaterial(envelope, [])).toThrow(
       /missing root/u,
     );
     expect(() =>
-      verifyMidgardCekProgramMaterialV1(envelope, [term, term]),
+      verifyMidgardCekProgramMaterial(envelope, [term, term]),
     ).toThrow(/duplicate/u);
     expect(() =>
-      encodeMidgardProofSubmissionV1({
+      encodeMidgardProofSubmission({
         transactionCbor: Buffer.from("820102", "hex"),
         programMaterial: [term, term],
       }),
@@ -2082,53 +2076,53 @@ describe("V1 CEK commitments", () => {
     const extraNode = { kind: "builtin", tag: 0n } as const;
     const extra = {
       kind: "term",
-      root: hashMidgardCekTermNodeV1(extraNode),
-      preimage: encodeMidgardCekTermNodeV1(extraNode),
+      root: hashMidgardCekTermNode(extraNode),
+      preimage: encodeMidgardCekTermNode(extraNode),
     } as const;
     expect(() =>
-      verifyMidgardCekProgramMaterialV1(envelope, [term, extra]),
+      verifyMidgardCekProgramMaterial(envelope, [term, extra]),
     ).toThrow(/unreachable/u);
-    expect(() => verifyMidgardCekProgramMaterialBundleV1([], [term])).toThrow(
+    expect(() => verifyMidgardCekProgramMaterialBundle([], [term])).toThrow(
       /without a program envelope/u,
     );
     expect(() =>
-      verifyMidgardCekProgramMaterialV1({ ...envelope, nodeCount: 2n }, [term]),
+      verifyMidgardCekProgramMaterial({ ...envelope, nodeCount: 2n }, [term]),
     ).toThrow(/envelope declares 2/u);
 
-    const encoded = encodeMidgardCekProgramMaterialEntryV1(term);
+    const encoded = encodeMidgardCekProgramMaterialEntry(term);
     const tampered = Buffer.from(encoded);
     tampered[tampered.length - 1] ^= 1;
-    expect(() => decodeMidgardCekProgramMaterialEntryV1(tampered)).toThrow(
+    expect(() => decodeMidgardCekProgramMaterialEntry(tampered)).toThrow(
       /root does not match/u,
     );
 
     const nonCanonicalBlobPreimage = Buffer.from("5800", "hex");
     const malformedBlob = {
       kind: "blobChunk",
-      root: hashMidgardCekBlobChunkV1(Buffer.alloc(0)),
+      root: hashMidgardCekBlobChunk(Buffer.alloc(0)),
       preimage: nonCanonicalBlobPreimage,
     } as const;
     expect(() =>
-      encodeMidgardCekProgramMaterialEntryV1(malformedBlob),
+      encodeMidgardCekProgramMaterialEntry(malformedBlob),
     ).not.toThrow();
     expect(() =>
-      decodeMidgardCekProgramMaterialEntryV1(
-        encodeMidgardCekProgramMaterialEntryV1(malformedBlob),
+      decodeMidgardCekProgramMaterialEntry(
+        encodeMidgardCekProgramMaterialEntry(malformedBlob),
       ),
     ).toThrow(/root does not match/u);
   });
 
   it("keeps the authenticated runtime context term out of source programs", () => {
-    const preimage = encodeMidgardCekTermNodeV1({
+    const preimage = encodeMidgardCekTermNode({
       kind: "contextConstant",
       value: hash(1),
     });
-    const root = hashMidgardCekTermNodeV1({
+    const root = hashMidgardCekTermNode({
       kind: "contextConstant",
       value: hash(1),
     });
     expect(() =>
-      verifyMidgardCekProgramMaterialV1(
+      verifyMidgardCekProgramMaterial(
         {
           uplcVersion: [1n, 1n, 0n],
           termRoot: root,
@@ -2146,22 +2140,18 @@ describe("V1 CEK commitments", () => {
     let materializedRoots = 0;
 
     expect(() =>
-      verifyMidgardCekProgramMaterialV1(
-        oversized.envelope,
-        oversized.material,
-        {
-          onBlobMaterialized: () => {
-            materializedRoots += 1;
-          },
+      verifyMidgardCekProgramMaterial(oversized.envelope, oversized.material, {
+        onBlobMaterialized: () => {
+          materializedRoots += 1;
         },
-      ),
+      }),
     ).toThrow(/source constant payload exceeds the 9215-byte/u);
     expect(materializedRoots).toBe(0);
   });
 
   it("requires canonical indefinite semantic constant type lists", () => {
     const canonical = makeNestedListConstantProgramMaterial(0);
-    const verified = verifyMidgardCekProgramMaterialV1(
+    const verified = verifyMidgardCekProgramMaterial(
       canonical.envelope,
       canonical.material,
     );
@@ -2174,7 +2164,7 @@ describe("V1 CEK commitments", () => {
       Buffer.from("8100", "hex"),
     );
     expect(() =>
-      verifyMidgardCekProgramMaterialV1(
+      verifyMidgardCekProgramMaterial(
         nonCanonical.envelope,
         nonCanonical.material,
       ),
@@ -2182,21 +2172,21 @@ describe("V1 CEK commitments", () => {
   });
 
   it("parses the exact bounded semantic type iteratively and rejects one byte over deterministically", () => {
-    const boundaryDepth = MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1 - 3;
+    const boundaryDepth = MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES - 3;
     const boundary = makeNestedListConstantProgramMaterial(boundaryDepth);
-    const verified = verifyMidgardCekProgramMaterialV1(
+    const verified = verifyMidgardCekProgramMaterial(
       boundary.envelope,
       boundary.material,
     );
     expect(verified.constants[0]?.typeCbor).toHaveLength(
-      MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1,
+      MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES,
     );
     expect(verified.constants[0]?.payloadCbor).toEqual(boundary.payloadCbor);
 
     const over = makeNestedListConstantProgramMaterial(boundaryDepth + 1);
     let rejection: unknown;
     try {
-      verifyMidgardCekProgramMaterialV1(over.envelope, over.material);
+      verifyMidgardCekProgramMaterial(over.envelope, over.material);
     } catch (cause) {
       rejection = cause;
     }
@@ -2210,8 +2200,8 @@ describe("V1 CEK commitments", () => {
   it("bounds distinct-envelope byte work before traversal and materializes shared final roots once", () => {
     const shared = makeBytesConstantProgramMaterial(8_900);
     expect(shared.payloadCbor.length).toBeLessThanOrEqual(9_215);
-    const wrappers: MidgardCekProgramMaterialEntryV1[] = [];
-    const underCapEnvelopes: MidgardCekProgramEnvelopeV1[] = [];
+    const wrappers: MidgardCekProgramMaterialEntry[] = [];
+    const underCapEnvelopes: MidgardCekProgramEnvelope[] = [];
     let root = shared.termRoot;
     let reachableBytes = shared.envelope.materialByteLength;
     for (let depth = 1; depth <= 3; depth += 1) {
@@ -2220,8 +2210,8 @@ describe("V1 CEK commitments", () => {
         function: root,
         argument: shared.termRoot,
       } as const;
-      const preimage = encodeMidgardCekTermNodeV1(wrapper);
-      root = hashMidgardCekTermNodeV1(wrapper);
+      const preimage = encodeMidgardCekTermNode(wrapper);
+      root = hashMidgardCekTermNode(wrapper);
       wrappers.push({ kind: "term", root, preimage });
       reachableBytes += BigInt(preimage.length);
       underCapEnvelopes.push({
@@ -2234,7 +2224,7 @@ describe("V1 CEK commitments", () => {
 
     const materializedRoots: string[] = [];
     const materializedConstants: string[] = [];
-    const verified = verifyMidgardCekProgramMaterialBundleV1(
+    const verified = verifyMidgardCekProgramMaterialBundle(
       underCapEnvelopes,
       [...shared.material, ...wrappers],
       {
@@ -2261,19 +2251,19 @@ describe("V1 CEK commitments", () => {
       verified[1]!.constants[0]!.payloadCbor,
     );
 
-    const overCapEnvelopes: MidgardCekProgramEnvelopeV1[] = [];
+    const overCapEnvelopes: MidgardCekProgramEnvelope[] = [];
     let aggregateNodeVisits = 0n;
     let aggregateByteWork = 0n;
-    while (aggregateByteWork <= MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK_V1) {
+    while (aggregateByteWork <= MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK) {
       const wrapper = {
         kind: "application",
         function: root,
         argument: shared.termRoot,
       } as const;
-      const preimage = encodeMidgardCekTermNodeV1(wrapper);
-      root = hashMidgardCekTermNodeV1(wrapper);
+      const preimage = encodeMidgardCekTermNode(wrapper);
+      root = hashMidgardCekTermNode(wrapper);
       reachableBytes += BigInt(preimage.length);
-      const envelope: MidgardCekProgramEnvelopeV1 = {
+      const envelope: MidgardCekProgramEnvelope = {
         uplcVersion: [1n, 1n, 0n] as const,
         termRoot: root,
         nodeCount:
@@ -2286,15 +2276,15 @@ describe("V1 CEK commitments", () => {
       overCapEnvelopes.push(envelope);
     }
     expect(aggregateNodeVisits).toBeLessThanOrEqual(
-      MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS_V1,
+      MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS,
     );
     const traversalTrap = {
-      *[Symbol.iterator](): IterableIterator<MidgardCekProgramMaterialEntryV1> {
+      *[Symbol.iterator](): IterableIterator<MidgardCekProgramMaterialEntry> {
         throw new Error("material traversal must not start");
       },
     };
     expect(() =>
-      verifyMidgardCekProgramMaterialBundleV1(overCapEnvelopes, traversalTrap),
+      verifyMidgardCekProgramMaterialBundle(overCapEnvelopes, traversalTrap),
     ).toThrow(/aggregate unique-envelope byte work\/result/u);
   }, 10_000);
 
@@ -2305,10 +2295,7 @@ describe("V1 CEK commitments", () => {
       termRoot: Buffer.from(envelope.termRoot),
     }));
     const startedAt = performance.now();
-    const verified = verifyMidgardCekProgramMaterialBundleV1(
-      envelopes,
-      material,
-    );
+    const verified = verifyMidgardCekProgramMaterialBundle(envelopes, material);
     const elapsedMs = performance.now() - startedAt;
 
     expect(verified).toHaveLength(envelopes.length);
@@ -2323,11 +2310,11 @@ describe("V1 CEK commitments", () => {
     const envelope = {
       uplcVersion: [1n, 1n, 0n] as const,
       termRoot: hash(0xa1),
-      nodeCount: MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS_V1,
+      nodeCount: MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS,
       materialByteLength: 1n,
     };
     expect(() =>
-      verifyMidgardCekProgramMaterialBundleV1(
+      verifyMidgardCekProgramMaterialBundle(
         [
           envelope,
           {

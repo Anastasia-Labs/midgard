@@ -5,16 +5,16 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import type { TransactionOutputSubmissionAdapterV1 } from "./transaction-output-non-canonical-v1.js";
+import type { TransactionOutputSubmissionAdapter } from "./transaction-output-non-canonical-v1.js";
 
-export const TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1 = {
+export const TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
   step02: "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
   step03: "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
   step04: "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",
 } as const;
 
-export type TransactionOutputNonCanonicalStepContractV1 = {
+export type TransactionOutputNonCanonicalStepContract = {
   readonly blueprintTitle: string;
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
@@ -22,12 +22,12 @@ export type TransactionOutputNonCanonicalStepContractV1 = {
   readonly referenceOutRef: string;
 };
 
-export type TransactionOutputNonCanonicalContractsV1 = {
+export type TransactionOutputNonCanonicalContracts = {
   readonly steps: readonly [
-    TransactionOutputNonCanonicalStepContractV1,
-    TransactionOutputNonCanonicalStepContractV1,
-    TransactionOutputNonCanonicalStepContractV1,
-    TransactionOutputNonCanonicalStepContractV1,
+    TransactionOutputNonCanonicalStepContract,
+    TransactionOutputNonCanonicalStepContract,
+    TransactionOutputNonCanonicalStepContract,
+    TransactionOutputNonCanonicalStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;
@@ -44,12 +44,12 @@ export type TransactionOutputNonCanonicalContractsV1 = {
   readonly fieldPreimageCertificateMintingScript: Script;
 };
 
-export type TransactionOutputNonCanonicalProductionManifestV1 = {
+export type TransactionOutputNonCanonicalManifest = {
   readonly schemaVersion: "transaction-output-non-canonical-production-manifest-v1";
   readonly category: "transactionOutputNonCanonical";
   readonly categoryId: string;
   readonly network: Network;
-  readonly contracts: TransactionOutputNonCanonicalContractsV1;
+  readonly contracts: TransactionOutputNonCanonicalContracts;
 };
 
 const requireHex = (value: string, bytes: number, label: string): void => {
@@ -65,9 +65,9 @@ const requireHex = (value: string, bytes: number, label: string): void => {
  * intentionally independent of the central catalogue: registration supplies
  * the manifest, while this loader proves title/hash/address/reference binding.
  */
-export const loadTransactionOutputNonCanonicalProductionV1 = (
-  manifest: TransactionOutputNonCanonicalProductionManifestV1,
-): TransactionOutputNonCanonicalProductionManifestV1 => {
+export const loadTransactionOutputNonCanonical = (
+  manifest: TransactionOutputNonCanonicalManifest,
+): TransactionOutputNonCanonicalManifest => {
   if (
     manifest.schemaVersion !==
       "transaction-output-non-canonical-production-manifest-v1" ||
@@ -79,7 +79,7 @@ export const loadTransactionOutputNonCanonicalProductionV1 = (
   }
   requireHex(manifest.categoryId, 4, "category id");
   const expectedTitles = Object.values(
-    TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1,
+    TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
   );
   manifest.contracts.steps.forEach((step, index) => {
     if (step.blueprintTitle !== expectedTitles[index]) {
@@ -131,22 +131,22 @@ export const loadTransactionOutputNonCanonicalProductionV1 = (
   return Object.freeze(manifest);
 };
 
-export type TransactionOutputNonCanonicalProductionSubmittersV1 =
-  TransactionOutputSubmissionAdapterV1 & {
+export type TransactionOutputNonCanonicalSubmitters =
+  TransactionOutputSubmissionAdapter & {
     /** Init must be the registered-category computation-thread mint. */
     readonly submitInitIsRegisteredCategoryMint: true;
     /** Removal must consume the minted proof through canonical removal. */
     readonly removalIsCanonicalFraudProofSpend: true;
   };
 
-export const bindTransactionOutputNonCanonicalProductionSubmittersV1 = ({
+export const bindTransactionOutputNonCanonicalSubmitters = ({
   manifest,
   submitters,
 }: {
-  readonly manifest: TransactionOutputNonCanonicalProductionManifestV1;
-  readonly submitters: TransactionOutputNonCanonicalProductionSubmittersV1;
-}): TransactionOutputNonCanonicalProductionSubmittersV1 => {
-  loadTransactionOutputNonCanonicalProductionV1(manifest);
+  readonly manifest: TransactionOutputNonCanonicalManifest;
+  readonly submitters: TransactionOutputNonCanonicalSubmitters;
+}): TransactionOutputNonCanonicalSubmitters => {
+  loadTransactionOutputNonCanonical(manifest);
   if (
     submitters.submitInitIsRegisteredCategoryMint !== true ||
     submitters.removalIsCanonicalFraudProofSpend !== true

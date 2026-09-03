@@ -1,19 +1,19 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type OutputReferenceScriptDecodingContractsV1,
+  type OutputReferenceScriptDecodingContracts,
 } from "./contracts-v1.js";
 
-export const submitOutputReferenceScriptDecodingCancelV1 = async (
+export const submitOutputReferenceScriptDecodingCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
   > & {
-    readonly contracts: OutputReferenceScriptDecodingContractsV1;
+    readonly contracts: OutputReferenceScriptDecodingContracts;
   },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: FAMILY,
     steps: contracts.steps,

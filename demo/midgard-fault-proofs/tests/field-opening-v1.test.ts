@@ -8,17 +8,17 @@
  * apply would otherwise read as a passing rejection.
  */
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  encodeMidgardNativeTxCompactV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardNativeTxCompact,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { MIDGARD_FIELD_INDEX_V1 } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
 } from "../src/field-opening-v1.js";
 import { h32, makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
@@ -34,10 +34,8 @@ const fixture = () => {
   });
   return {
     nativeTx,
-    txId: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
-    compactCbor: encodeMidgardNativeTxCompactV1(nativeTx.compact).toString(
-      "hex",
-    ),
+    txId: computeMidgardNativeTxId(nativeTx).toString("hex"),
+    compactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString("hex"),
     spendInputItems: decodeMidgardNativeByteListPreimage(
       nativeTx.body.spendInputsPreimageCbor,
       "test.spend_inputs",
@@ -52,8 +50,8 @@ const fixture = () => {
 describe("planFaultProofFieldOpeningV1", () => {
   it("plans tier-1 inline carriage for a body field and opens the anchored slot", () => {
     const { txId, compactCbor, spendInputItems, nativeTx } = fixture();
-    const planned = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    const planned = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
       anchorTxId: txId,
       nativeTxCompactCbor: compactCbor,
       itemCbors: spendInputItems,
@@ -70,11 +68,11 @@ describe("planFaultProofFieldOpeningV1", () => {
         "hex",
       ),
     );
-    expect(midgardFieldCommitmentV1(planned.preimage).toString("hex")).toBe(
+    expect(midgardFieldCommitment(planned.preimage).toString("hex")).toBe(
       planned.commitment,
     );
 
-    expect(faultProofFieldOpeningV1({ planned, label: "test" })).toStrictEqual({
+    expect(faultProofFieldOpening({ planned, label: "test" })).toStrictEqual({
       BodyFieldOpening: {
         native_tx_compact_cbor: compactCbor,
         carriage: { Inline: { preimage: planned.preimage.toString("hex") } },
@@ -91,16 +89,16 @@ describe("planFaultProofFieldOpeningV1", () => {
       outputByte: "43",
       witnessByte: "44",
     });
-    const otherCompactCbor = encodeMidgardNativeTxCompactV1(
+    const otherCompactCbor = encodeMidgardNativeTxCompact(
       otherTx.compact,
     ).toString("hex");
     // The mutation landed: a different transaction, hence a different id.
     expect(otherCompactCbor).not.toBe(compactCbor);
-    expect(computeMidgardNativeTxIdV1(otherTx).toString("hex")).not.toBe(txId);
+    expect(computeMidgardNativeTxId(otherTx).toString("hex")).not.toBe(txId);
 
     expect(() =>
-      planFaultProofFieldOpeningV1({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+      planFaultProofFieldOpening({
+        fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         anchorTxId: txId,
         nativeTxCompactCbor: otherCompactCbor,
         itemCbors: spendInputItems,
@@ -116,13 +114,13 @@ describe("planFaultProofFieldOpeningV1", () => {
     // §4 removed field-index domain separation, so field 0 and field 1 commit
     // identically for identical items. The mutation is only meaningful because
     // these two item lists genuinely differ.
-    expect(midgardFieldCommitmentV1(referenceInputItems[0]!)).not.toStrictEqual(
-      midgardFieldCommitmentV1(spendInputItems[0]!),
+    expect(midgardFieldCommitment(referenceInputItems[0]!)).not.toStrictEqual(
+      midgardFieldCommitment(spendInputItems[0]!),
     );
 
     expect(() =>
-      planFaultProofFieldOpeningV1({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+      planFaultProofFieldOpening({
+        fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         anchorTxId: txId,
         nativeTxCompactCbor: compactCbor,
         itemCbors: referenceInputItems,
@@ -135,8 +133,8 @@ describe("planFaultProofFieldOpeningV1", () => {
   it("refuses a witness-set field with no witness set supplied", () => {
     const { txId, compactCbor } = fixture();
     expect(() =>
-      planFaultProofFieldOpeningV1({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+      planFaultProofFieldOpening({
+        fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         anchorTxId: txId,
         nativeTxCompactCbor: compactCbor,
         itemCbors: [],
@@ -149,13 +147,13 @@ describe("planFaultProofFieldOpeningV1", () => {
   it("refuses a witness set that is not the one the compact transaction names", () => {
     const { txId, compactCbor, nativeTx } = fixture();
     const honest = {
-      addr_tx_wits_hash: midgardFieldCommitmentV1(
+      addr_tx_wits_hash: midgardFieldCommitment(
         nativeTx.witnessSet.addrTxWitsPreimageCbor,
       ).toString("hex"),
-      script_tx_wits_hash: midgardFieldCommitmentV1(
+      script_tx_wits_hash: midgardFieldCommitment(
         nativeTx.witnessSet.scriptTxWitsPreimageCbor,
       ).toString("hex"),
-      redeemer_tx_wits_hash: midgardFieldCommitmentV1(
+      redeemer_tx_wits_hash: midgardFieldCommitment(
         nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
       ).toString("hex"),
     };
@@ -164,8 +162,8 @@ describe("planFaultProofFieldOpeningV1", () => {
     expect(forged.script_tx_wits_hash).not.toBe(honest.script_tx_wits_hash);
 
     expect(() =>
-      planFaultProofFieldOpeningV1({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+      planFaultProofFieldOpening({
+        fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         anchorTxId: txId,
         nativeTxCompactCbor: compactCbor,
         itemCbors: [],

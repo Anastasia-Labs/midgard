@@ -1,64 +1,64 @@
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { submitCapturedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { submitCapturedTransaction } from "../workflow/transaction-boundary-v1.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1,
-  type DistinctAssetAccumulationContractsV1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
+  type DistinctAssetAccumulationContracts,
 } from "./contracts-v1.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
 } from "./family-v1.js";
 import {
-  createDistinctAssetAccumulationActuatorV1,
-  type DistinctAssetAccumulationActuatorActionV1,
-  type DistinctAssetAccumulationWorkflowReferencesV1,
+  createDistinctAssetAccumulationActuator,
+  type DistinctAssetAccumulationActuatorAction,
+  type DistinctAssetAccumulationWorkflowReferences,
 } from "./production-actuator-v1.js";
-import { prepareProductionDistinctAssetAccumulationArtifactV1 } from "./production-replay-v1.js";
-import { DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS_V1 } from "./schemas-v1.js";
+import { prepareDistinctAssetAccumulationArtifact } from "./production-replay-v1.js";
+import { DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS } from "./schemas-v1.js";
 
-export const DISTINCT_ASSET_ACCUMULATION_PRODUCTION_WORKFLOW_V1 =
+export const DISTINCT_ASSET_ACCUMULATION_WORKFLOW =
   "midgard-distinct-asset-accumulation-production-workflow-v1" as const;
 
-export type DistinctAssetAccumulationRemovalReferencesV1 = Readonly<{
+export type DistinctAssetAccumulationRemovalReferences = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -70,43 +70,42 @@ export type DistinctAssetAccumulationRemovalReferencesV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type DistinctAssetAccumulationProductionReferencesV1 =
-  DistinctAssetAccumulationWorkflowReferencesV1 &
-    Readonly<{ removal: DistinctAssetAccumulationRemovalReferencesV1 }>;
+export type DistinctAssetAccumulationReferences =
+  DistinctAssetAccumulationWorkflowReferences &
+    Readonly<{ removal: DistinctAssetAccumulationRemovalReferences }>;
 
-export const DISTINCT_ASSET_ACCUMULATION_PRODUCTION_CONFIG_KEYS_V1 =
-  Object.freeze([
-    "manifest",
-    "blueprintJson",
-    "deploymentInfo",
-    "headerHash",
-    "lucid",
-    "signer",
-    "source",
-    "decisionDigest",
-    "referenceScripts",
-    "stateQueueMutationLeaseCoordinator",
-  ] as const);
+export const DISTINCT_ASSET_ACCUMULATION_CONFIG_KEYS = Object.freeze([
+  "manifest",
+  "blueprintJson",
+  "deploymentInfo",
+  "headerHash",
+  "lucid",
+  "signer",
+  "source",
+  "decisionDigest",
+  "referenceScripts",
+  "stateQueueMutationLeaseCoordinator",
+] as const);
 
-export type ManifestBoundDistinctAssetAccumulationWorkflowConfigV1 = Readonly<{
+export type ManifestBoundDistinctAssetAccumulationWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
-  referenceScripts: DistinctAssetAccumulationProductionReferencesV1;
+  referenceScripts: DistinctAssetAccumulationReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundDistinctAssetAccumulationWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"distinctAssetAccumulationLimit">;
+export type ManifestBoundDistinctAssetAccumulationWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"distinctAssetAccumulationLimit">;
   lucid: LucidEvolution;
   decisionDigest: string;
-  l1: FraudProofFamilyL1ObservationPortV1<"distinctAssetAccumulationLimit">;
-  actuator: ReturnType<typeof createDistinctAssetAccumulationActuatorV1>;
+  l1: FraudProofFamilyL1ObservationPort<"distinctAssetAccumulationLimit">;
+  actuator: ReturnType<typeof createDistinctAssetAccumulationActuator>;
 }>;
 
 const manifestContracts = Object.freeze({
@@ -139,12 +138,12 @@ const manifestContracts = Object.freeze({
 } as const);
 
 /** Manifest/reference/signer-bound workflow construction with no evidence input. */
-export const createManifestBoundDistinctAssetAccumulationWorkflowV1 = async (
-  config: ManifestBoundDistinctAssetAccumulationWorkflowConfigV1,
-): Promise<ManifestBoundDistinctAssetAccumulationWorkflowV1> => {
+export const createManifestBoundDistinctAssetAccumulationWorkflow = async (
+  config: ManifestBoundDistinctAssetAccumulationWorkflowConfig,
+): Promise<ManifestBoundDistinctAssetAccumulationWorkflow> => {
   if (
     Object.keys(config).sort().join("\0") !==
-    [...DISTINCT_ASSET_ACCUMULATION_PRODUCTION_CONFIG_KEYS_V1].sort().join("\0")
+    [...DISTINCT_ASSET_ACCUMULATION_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
       "distinctAssetAccumulationLimit production config contains callback authority",
@@ -153,16 +152,16 @@ export const createManifestBoundDistinctAssetAccumulationWorkflowV1 = async (
     throw new Error(
       "distinctAssetAccumulationLimit decision digest is malformed",
     );
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
-    category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
+    category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS_V1,
+    stepDatumSchemas: DISTINCT_ASSET_ACCUMULATION_STEP_DATUM_SCHEMAS,
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -179,40 +178,40 @@ export const createManifestBoundDistinctAssetAccumulationWorkflowV1 = async (
       "distinctAssetAccumulationLimit manifest omitted required contracts",
     );
   const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
     });
   const steps = manifestContracts.steps.map((name, index) =>
     bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as DistinctAssetAccumulationWorkflowReferencesV1["steps"];
+  ) as unknown as DistinctAssetAccumulationWorkflowReferences["steps"];
   const witnesses = Object.fromEntries(
     Object.entries(manifestContracts.witnesses).map(([role, name]) => [
       role,
       bind(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   for (const [role, name] of Object.entries(manifestContracts.removal))
     bind(
       name,
       config.referenceScripts.removal[
-        role as keyof DistinctAssetAccumulationRemovalReferencesV1
+        role as keyof DistinctAssetAccumulationRemovalReferences
       ],
     );
-  const contracts: DistinctAssetAccumulationContractsV1 = Object.freeze({
+  const contracts: DistinctAssetAccumulationContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
       blueprintTitle:
-        DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1[index]!,
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES[index]!,
       spendingScript: step.spendingScript,
       spendingScriptHash: step.spendingScriptHash,
       spendingScriptAddress: step.spendingScriptAddress,
-    })) as unknown as DistinctAssetAccumulationContractsV1["steps"],
+    })) as unknown as DistinctAssetAccumulationContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
       policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
@@ -224,7 +223,7 @@ export const createManifestBoundDistinctAssetAccumulationWorkflowV1 = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     stateQueuePolicyId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -235,13 +234,13 @@ export const createManifestBoundDistinctAssetAccumulationWorkflowV1 = async (
     lucid: config.lucid,
     decisionDigest: config.decisionDigest,
     l1,
-    actuator: createDistinctAssetAccumulationActuatorV1({
+    actuator: createDistinctAssetAccumulationActuator({
       lucid: config.lucid,
       blueprint: binding.blueprint,
       deploymentInfo: binding.deploymentInfo,
       network: binding.network,
       signer: config.signer,
-      categoryId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1,
+      categoryId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
       contracts,
       references: { steps, witnesses },
       stateQueueMutationLeaseCoordinator:
@@ -256,15 +255,15 @@ export const createManifestBoundDistinctAssetAccumulationWorkflowV1 = async (
 };
 
 const appendEvent = async (
-  journal: FraudProofWorkflowJournalStoreV1,
+  journal: FraudProofWorkflowJournalStore,
   workflowId: string,
-  identity: FraudProofWorkflowIdentityV1,
-  event: FraudProofWorkflowJournalEventV1,
+  identity: FraudProofWorkflowIdentity,
+  event: FraudProofWorkflowJournalEvent,
 ) => {
   const sequence = (await journal.load(workflowId)).length;
   await journal.append(
     {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence,
@@ -279,9 +278,9 @@ const actionFor = async ({
   workflow,
   headerHash,
 }: {
-  workflow: ManifestBoundDistinctAssetAccumulationWorkflowV1;
+  workflow: ManifestBoundDistinctAssetAccumulationWorkflow;
   headerHash: string;
-}): Promise<DistinctAssetAccumulationActuatorActionV1 | "removed"> => {
+}): Promise<DistinctAssetAccumulationActuatorAction | "removed"> => {
   const stage = (await workflow.l1.observe({ headerHash })).stage;
   if (stage.kind === "not_started")
     return {
@@ -315,30 +314,29 @@ const actionFor = async ({
 };
 
 /** One retained-DA-derived, locally evaluated, intent-journaled action. */
-export const executeManifestBoundDistinctAssetAccumulationWorkflowV1 = async ({
+export const executeManifestBoundDistinctAssetAccumulationWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  workflow: ManifestBoundDistinctAssetAccumulationWorkflowV1;
+  workflow: ManifestBoundDistinctAssetAccumulationWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStoreV1;
+  journal: FraudProofWorkflowJournalStore;
 }) => {
   const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidenceV1({
+  const block = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
-  const artifact =
-    await prepareProductionDistinctAssetAccumulationArtifactV1(block);
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const artifact = await prepareDistinctAssetAccumulationArtifact(block);
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
+    category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
     target: { kind: "state_queue_header", headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await appendEvent(journal, workflowId, identity, { kind: "started" });
@@ -385,7 +383,7 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflowV1 = async ({
     actionId,
     actionInput: {
       schemaVersion: "midgard-production-cursor-family-action-v1",
-      category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
+      category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
       stage: action.stage,
     },
     ...(captured.mutationLease === undefined
@@ -401,7 +399,7 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflowV1 = async ({
     attempt: 1,
     txHash: captured.transaction.txHash,
   });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error(
       "distinctAssetAccumulationLimit provider substituted transaction",
@@ -415,101 +413,98 @@ export const executeManifestBoundDistinctAssetAccumulationWorkflowV1 = async ({
   return { kind: "pending" as const, workflowId, txHash: submitted };
 };
 
-export const runOrResumeManifestBoundDistinctAssetAccumulationWorkflowV1 =
+export const runOrResumeManifestBoundDistinctAssetAccumulationWorkflow =
   async (input: {
-    workflow: ManifestBoundDistinctAssetAccumulationWorkflowV1;
+    workflow: ManifestBoundDistinctAssetAccumulationWorkflow;
     sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStoreV1;
+    journal: FraudProofWorkflowJournalStore;
   }) => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
       throw new Error(
         "distinctAssetAccumulationLimit runner rejects caller-authored evidence",
       );
-    return await executeManifestBoundDistinctAssetAccumulationWorkflowV1(input);
+    return await executeManifestBoundDistinctAssetAccumulationWorkflow(input);
   };
 
-export type LoadedDistinctAssetAccumulationProductionWorkflowV1 = Readonly<{
+export type LoadedDistinctAssetAccumulationWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundDistinctAssetAccumulationWorkflowConfigV1;
+  config: ManifestBoundDistinctAssetAccumulationWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadDistinctAssetAccumulationProductionWorkflowV1 = (input: {
+export type LoadDistinctAssetAccumulationWorkflow = (input: {
   runtimeConfigPath: string;
-  invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedDistinctAssetAccumulationProductionWorkflowV1>;
+  invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedDistinctAssetAccumulationWorkflow>;
 
 /** Standard strict loader-based surface consumed by ProductionWorkflowAdapter. */
-export const createDistinctAssetAccumulationProductionWorkflowRunnerSurfaceV1 =
-  ({
-    loadRuntimeConfig,
-  }: {
-    loadRuntimeConfig: LoadDistinctAssetAccumulationProductionWorkflowV1;
-  }): ProductionWorkflowAdapterRunnerV1 =>
-    Object.freeze({
-      runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-      runOrResume: async (invocation) => {
+export const createDistinctAssetAccumulationWorkflowRunnerSurface = ({
+  loadRuntimeConfig,
+}: {
+  loadRuntimeConfig: LoadDistinctAssetAccumulationWorkflow;
+}): WorkflowAdapterRunner =>
+  Object.freeze({
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
+    runOrResume: async (invocation) => {
+      if (invocation.category !== DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY)
+        throw new Error(
+          "distinctAssetAccumulationLimit runner category changed",
+        );
+      const journal = bindWorkflowFundingReservationJournal({
+        permit: invocation.fundingReservationPermit,
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
+            invocation.journalDirectory,
+          ),
+          permit: invocation.actuationPermit,
+          decisionDigest: invocation.decisionDigest,
+          deploymentFingerprint: invocation.deploymentFingerprint,
+          category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+          headerHash: invocation.headerHash,
+        }),
+      });
+      assertWorkflowJournalActuation({
+        journal,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY,
+        headerHash: invocation.headerHash,
+        checkpoint: "runner_start",
+      });
+      const loaded = await loadRuntimeConfig({
+        runtimeConfigPath: invocation.runtimeConfigPath,
+        invocation,
+      });
+      try {
         if (
-          invocation.category !== DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1
+          loaded.schemaVersion !==
+            "midgard-production-fraud-proof-runtime-config-v1" ||
+          loaded.retainedDaSources.length === 0 ||
+          loaded.retainedDaSources.some(
+            (source) => !(source instanceof DaLibp2pRetainedDaSource),
+          )
         )
           throw new Error(
-            "distinctAssetAccumulationLimit runner category changed",
+            "distinctAssetAccumulationLimit requires concrete public retained DA",
           );
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
-          permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
-            headerHash: invocation.headerHash,
-          }),
-        });
-        assertProductionWorkflowJournalActuationV1({
-          journal,
-          deploymentFingerprint: invocation.deploymentFingerprint,
-          category: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_V1,
-          headerHash: invocation.headerHash,
-          checkpoint: "runner_start",
-        });
-        const loaded = await loadRuntimeConfig({
-          runtimeConfigPath: invocation.runtimeConfigPath,
-          invocation,
-        });
-        try {
-          if (
-            loaded.schemaVersion !==
-              "midgard-production-fraud-proof-runtime-config-v1" ||
-            loaded.retainedDaSources.length === 0 ||
-            loaded.retainedDaSources.some(
-              (source) => !(source instanceof DaLibp2pRetainedDaSource),
-            )
-          )
-            throw new Error(
-              "distinctAssetAccumulationLimit requires concrete public retained DA",
-            );
-          const workflow =
-            await createManifestBoundDistinctAssetAccumulationWorkflowV1(
-              loaded.config,
-            );
-          if (
-            workflow.binding.deploymentFingerprint !==
-              invocation.deploymentFingerprint ||
-            workflow.binding.definition.headerHash !== invocation.headerHash ||
-            workflow.decisionDigest !== invocation.decisionDigest
-          )
-            throw new Error(
-              "distinctAssetAccumulationLimit runtime binding changed invocation",
-            );
-          return (await runOrResumeManifestBoundDistinctAssetAccumulationWorkflowV1(
-            { workflow, sources: loaded.retainedDaSources, journal },
-          )) as never;
-        } finally {
-          await loaded.close();
-        }
-      },
-    });
+        const workflow =
+          await createManifestBoundDistinctAssetAccumulationWorkflow(
+            loaded.config,
+          );
+        if (
+          workflow.binding.deploymentFingerprint !==
+            invocation.deploymentFingerprint ||
+          workflow.binding.definition.headerHash !== invocation.headerHash ||
+          workflow.decisionDigest !== invocation.decisionDigest
+        )
+          throw new Error(
+            "distinctAssetAccumulationLimit runtime binding changed invocation",
+          );
+        return (await runOrResumeManifestBoundDistinctAssetAccumulationWorkflow(
+          { workflow, sources: loaded.retainedDaSources, journal },
+        )) as never;
+      } finally {
+        await loaded.close();
+      }
+    },
+  });

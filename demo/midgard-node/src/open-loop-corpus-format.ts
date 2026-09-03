@@ -9,10 +9,10 @@
  * reach it without the operator package depending on its own test tooling.
  */
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
@@ -178,8 +178,8 @@ export const parseOpenLoopCorpusLine = (
   let computedTxHash: string;
   try {
     const nativeTx =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCborBytes);
-    computedTxHash = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+      decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCborBytes);
+    computedTxHash = computeMidgardNativeTxId(nativeTx).toString("hex");
     outputCount = decodeMidgardNativeByteListPreimage(
       nativeTx.body.outputsPreimageCbor,
       `corpus row ${index.toString()} outputs`,
@@ -269,7 +269,7 @@ export type CorpusFundingUtxo = {
 // fixed 38 bytes — which is what on-chain `ledger_outref_key` derives through
 // `encode_midgard_tx_input`, not CML's minimal-index `TransactionInput` CBOR.
 export const outRefCborHex = (txHash: string, outputIndex: number): string =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: hexToBytes(txHash, { fieldName: "outRef.txHash" }),
     outputIndex,
   }).toString("hex");

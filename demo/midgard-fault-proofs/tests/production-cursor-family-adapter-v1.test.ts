@@ -1,36 +1,36 @@
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
-  type FraudProofFamilyL1ObservationPortV1,
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation-v1.js";
 import type {
-  FraudProofWorkflowIdentityV1,
-  FraudProofWorkflowTerminalV1,
+  FraudProofWorkflowIdentity,
+  FraudProofWorkflowTerminal,
 } from "../src/workflow/journal-v1.js";
 import {
-  createProductionCursorFamilyWorkflowAdapterV1,
-  PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionCursorFamilyTransactionPortV1,
+  createCursorFamilyWorkflowAdapter,
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
 } from "../src/workflow/production-cursor-family-adapter-v1.js";
-import { MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1 } from "../src/workflow/production-cursor-family-spec-v1.js";
-import { productionCursorFamilyObservationV1 } from "../src/workflow/production-cursor-family-state-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "../src/workflow/raw-l1-family-derivation-v1.js";
-import type { LocallyEvaluatedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import { MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC } from "../src/workflow/production-cursor-family-spec-v1.js";
+import { cursorFamilyObservation } from "../src/workflow/production-cursor-family-state-v1.js";
+import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation-v1.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
 const txHash = hash("44");
 const referenceOutRef = outRef("55");
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
 };
 
-const identity: FraudProofWorkflowIdentityV1 = {
+const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: hash("aa"),
   category: "missingNativeScriptTx",
@@ -49,7 +49,7 @@ const signed = ({
   readonly includedReferenceOutRef?: string;
   readonly inlineScript?: boolean;
   readonly submit?: () => Promise<string>;
-} = {}): LocallyEvaluatedTransactionV1["signed"] => {
+} = {}): LocallyEvaluatedTransaction["signed"] => {
   const [referenceTxHash, referenceIndex] = includedReferenceOutRef.split("#");
   return {
     toHash: () => bodyHash,
@@ -71,12 +71,12 @@ const signed = ({
         }),
       }),
     }),
-  } as unknown as LocallyEvaluatedTransactionV1["signed"];
+  } as unknown as LocallyEvaluatedTransaction["signed"];
 };
 
 const transaction = (
-  overrides: Partial<LocallyEvaluatedTransactionV1> = {},
-): LocallyEvaluatedTransactionV1 => ({
+  overrides: Partial<LocallyEvaluatedTransaction> = {},
+): LocallyEvaluatedTransaction => ({
   txHash,
   signed: signed(),
   referenceScripts: [
@@ -90,10 +90,10 @@ const transaction = (
 });
 
 const l1 = (
-  stageRef: { value: FraudProofRawL1FamilyStageV1 },
+  stageRef: { value: FraudProofRawL1FamilyStage },
   confirmed = async (_txHash: string) => false,
-): FraudProofFamilyL1ObservationPortV1<"missingNativeScriptTx"> => ({
-  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
+): FraudProofFamilyL1ObservationPort<"missingNativeScriptTx"> => ({
+  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   category: "missingNativeScriptTx",
   publications: {} as never,
   observeHeader: async () => {
@@ -105,9 +105,9 @@ const l1 = (
 });
 
 const port = (
-  capture: ProductionCursorFamilyTransactionPortV1<"missingNativeScriptTx">["capture"],
-): ProductionCursorFamilyTransactionPortV1<"missingNativeScriptTx"> => ({
-  portVersion: PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
+  capture: CursorFamilyTransactionPort<"missingNativeScriptTx">["capture"],
+): CursorFamilyTransactionPort<"missingNativeScriptTx"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "missingNativeScriptTx",
   prepare: async () => ({ prepared: true }),
   capture,
@@ -126,9 +126,9 @@ const context = {
   entries: [],
 } as const;
 
-const required = (stage: FraudProofRawL1FamilyStageV1) => {
-  const observation = productionCursorFamilyObservationV1({
-    spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+const required = (stage: FraudProofRawL1FamilyStage) => {
+  const observation = cursorFamilyObservation({
+    spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
     headerHash,
     provenance,
     stage,
@@ -147,7 +147,7 @@ const terminal = ({
   readonly removalTxHash?: string;
   readonly removedOutRef?: string;
   readonly proofOutRef?: string;
-} = {}): FraudProofWorkflowTerminalV1 => ({
+} = {}): FraudProofWorkflowTerminal => ({
   schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
   category: "missingNativeScriptTx",
   headerHash,
@@ -189,11 +189,11 @@ describe("production cursor family adapter V1", () => {
         step: 7,
         threadOutRef: outRef("11"),
         stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
     const capture = vi.fn(async () => ({ transaction: transaction() }));
-    const adapter = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -222,7 +222,7 @@ describe("production cursor family adapter V1", () => {
         step: 6,
         threadOutRef: outRef("11"),
         stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
     const action = required(stage.value);
     const capture = vi.fn(async ({ artifact }) => {
@@ -231,8 +231,8 @@ describe("production cursor family adapter V1", () => {
       }
       return { transaction: transaction() };
     });
-    const adapter = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -262,8 +262,8 @@ describe("production cursor family adapter V1", () => {
         signed: signed({ includedReferenceOutRef: outRef("56") }),
       }),
     ]) {
-      const hostileAdapter = createProductionCursorFamilyWorkflowAdapterV1({
-        spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+      const hostileAdapter = createCursorFamilyWorkflowAdapter({
+        spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
         l1: l1(stage),
         transactions: port(async () => ({ transaction: hostile })),
         stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -281,11 +281,11 @@ describe("production cursor family adapter V1", () => {
         step: 7,
         threadOutRef: outRef("11"),
         stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
     const action = required(stage.value);
-    const first = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const first = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: transaction({
@@ -309,8 +309,8 @@ describe("production cursor family adapter V1", () => {
       first.submit({ ...context, action, preflight }),
     ).rejects.toThrow("connection closed after submission");
 
-    const fresh = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const fresh = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage, async (candidate) => candidate === txHash),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -329,7 +329,7 @@ describe("production cursor family adapter V1", () => {
         fraudProofOutRef: proofOutRef,
         stateQueueBlockOutRef: outRef("10"),
         nextRemovalOutRef: removalOutRef,
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
     const action = required(stage.value);
     const lease = () => ({
@@ -340,8 +340,8 @@ describe("production cursor family adapter V1", () => {
       fail: vi.fn(async () => undefined),
     });
     const acquired = lease();
-    const first = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const first = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: transaction(),
@@ -358,8 +358,8 @@ describe("production cursor family adapter V1", () => {
     });
 
     const pendingLease = lease();
-    const pending = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const pending = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: {
@@ -379,8 +379,8 @@ describe("production cursor family adapter V1", () => {
 
     const releasedLease = lease();
     stage.value = { kind: "removed", terminal: terminal() };
-    const confirmed = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const confirmed = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: {
@@ -403,8 +403,8 @@ describe("production cursor family adapter V1", () => {
       kind: "removed",
       terminal: terminal({ removedOutRef: outRef("34") }),
     };
-    const conflicted = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const conflicted = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage, async () => true),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: {
@@ -430,7 +430,7 @@ describe("production cursor family adapter V1", () => {
         fraudProofOutRef: outRef("22"),
         stateQueueBlockOutRef: outRef("10"),
         nextRemovalOutRef: outRef("33"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
     const action = required(stage.value);
     const lease = {
@@ -440,8 +440,8 @@ describe("production cursor family adapter V1", () => {
       release: vi.fn(async () => undefined),
       fail: vi.fn(async () => undefined),
     };
-    const adapter = createProductionCursorFamilyWorkflowAdapterV1({
-      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
+    const adapter = createCursorFamilyWorkflowAdapter({
+      spec: MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({
         transaction: transaction({ signed: signed({ inlineScript: true }) }),

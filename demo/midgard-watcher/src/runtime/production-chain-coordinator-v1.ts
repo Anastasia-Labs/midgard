@@ -1,59 +1,59 @@
 import {
-  evaluateWatcherFinalityV1,
-  type WatcherFinalityPolicyV1,
+  evaluateWatcherFinality,
+  type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
-import type { WatcherLocalKupmiosNativeObservationRuntimeV1 } from "../l1/local-kupmios-native-observation-v1.js";
-import type { WatcherLocalKupmiosNativeObservationV1 } from "../l1/local-kupmios-native-observation-v1.js";
-import type { WatcherMultiProviderConsistencyV1 } from "../l1/multi-provider-consistency.js";
+import type { WatcherLocalKupmiosNativeObservationRuntime } from "../l1/local-kupmios-native-observation-v1.js";
+import type { WatcherLocalKupmiosNativeObservation } from "../l1/local-kupmios-native-observation-v1.js";
+import type { WatcherMultiProviderConsistency } from "../l1/multi-provider-consistency.js";
 import {
-  admitWatcherNativeRollForwardBlockV1,
-  type WatcherNativeBlockAdmissionV1,
+  admitWatcherNativeRollForwardBlock,
+  type WatcherNativeBlockAdmission,
 } from "../l1/native-block-admission-v1.js";
 import type {
-  WatcherNativeChainSyncEventV1,
-  WatcherNativeChainSyncPointV1,
+  WatcherNativeChainSyncEvent,
+  WatcherNativeChainSyncPoint,
 } from "../l1/native-chain-sync-v1.js";
-import type { WatcherProductionDurableRuntimeV1 } from "../storage/production-durable-runtime-v1.js";
+import type { WatcherDurableRuntime } from "../storage/production-durable-runtime-v1.js";
 
-export const WATCHER_PRODUCTION_CHAIN_COORDINATOR_V1_SCHEMA_VERSION =
+export const WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION =
   "midgard-watcher-production-chain-coordinator-v1" as const;
 
-export type WatcherProductionChainCoordinatorV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_CHAIN_COORDINATOR_V1_SCHEMA_VERSION;
-  handle(event: WatcherNativeChainSyncEventV1): Promise<void>;
+export type WatcherChainCoordinator = Readonly<{
+  schemaVersion: typeof WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION;
+  handle(event: WatcherNativeChainSyncEvent): Promise<void>;
   status(): Readonly<{
-    rollbackPoint: WatcherNativeChainSyncPointV1 | null;
+    rollbackPoint: WatcherNativeChainSyncPoint | null;
     quarantined: boolean;
     bufferedBlockCount: number;
   }>;
 }>;
 
-export type WatcherProductionChainCoordinatorHooksV1 = Readonly<{
+export type WatcherChainCoordinatorHooks = Readonly<{
   /** Must revoke actuation authority synchronously before its first await. */
-  onRollback(point: WatcherNativeChainSyncPointV1): Promise<void>;
+  onRollback(point: WatcherNativeChainSyncPoint): Promise<void>;
   /**
    * Runs once for every exact release-final block, including authenticated
    * restart replay that the durable finality snapshot has already passed.
    */
   onFinalized(
     input: Readonly<{
-      nativeBlock: WatcherNativeBlockAdmissionV1;
-      localObservation: WatcherLocalKupmiosNativeObservationV1;
+      nativeBlock: WatcherNativeBlockAdmission;
+      localObservation: WatcherLocalKupmiosNativeObservation;
     }>,
   ): Promise<void>;
 }>;
 
-type AdmitRollForwardV1 = (
+type AdmitRollForward = (
   event: Extract<
-    WatcherNativeChainSyncEventV1,
+    WatcherNativeChainSyncEvent,
     { readonly kind: "roll_forward" }
   >,
-) => WatcherNativeBlockAdmissionV1;
+) => WatcherNativeBlockAdmission;
 
 const depthAtTip = (
-  block: WatcherNativeBlockAdmissionV1,
+  block: WatcherNativeBlockAdmission,
   event: Extract<
-    WatcherNativeChainSyncEventV1,
+    WatcherNativeChainSyncEvent,
     { readonly kind: "roll_forward" }
   >,
 ): string => {
@@ -71,17 +71,17 @@ const pointKey = (blockHash: string, slot: string): string =>
   `${blockHash}@${slot}`;
 
 const samePoint = (
-  point: WatcherNativeChainSyncPointV1,
-  block: WatcherNativeBlockAdmissionV1,
+  point: WatcherNativeChainSyncPoint,
+  block: WatcherNativeBlockAdmission,
 ): boolean =>
   point.kind === "point" &&
   point.blockHash === block.blockHash &&
   point.slot === block.slot;
 
 const canonicalPathFromHistory = (input: {
-  readonly history: readonly WatcherMultiProviderConsistencyV1[];
+  readonly history: readonly WatcherMultiProviderConsistency[];
   readonly ancestor: Extract<
-    WatcherNativeChainSyncPointV1,
+    WatcherNativeChainSyncPoint,
     { readonly kind: "point" }
   >;
   readonly terminal: Readonly<{
@@ -89,7 +89,7 @@ const canonicalPathFromHistory = (input: {
     blockNo: string;
     lastSeenConsistencyDigest: string;
   }>;
-}): readonly WatcherMultiProviderConsistencyV1[] | null => {
+}): readonly WatcherMultiProviderConsistency[] | null => {
   const terminal = input.history.find(
     ({ consistencyDigest }) =>
       consistencyDigest === input.terminal.lastSeenConsistencyDigest,
@@ -104,7 +104,7 @@ const canonicalPathFromHistory = (input: {
   ) {
     return null;
   }
-  const candidates = new Map<string, WatcherMultiProviderConsistencyV1>();
+  const candidates = new Map<string, WatcherMultiProviderConsistency>();
   for (const consistency of input.history) {
     const agreement = consistency.agreement;
     if (
@@ -130,7 +130,7 @@ const canonicalPathFromHistory = (input: {
       agreement.slot === input.ancestor.slot,
   );
   if (ancestor?.agreement === null || ancestor === undefined) return null;
-  const path: WatcherMultiProviderConsistencyV1[] = [];
+  const path: WatcherMultiProviderConsistency[] = [];
   for (
     let blockNo = BigInt(ancestor.agreement.blockNo);
     blockNo <= BigInt(input.terminal.blockNo);
@@ -144,10 +144,10 @@ const canonicalPathFromHistory = (input: {
 };
 
 const nextBufferedChild = (
-  blocks: ReadonlyMap<string, WatcherNativeBlockAdmissionV1>,
+  blocks: ReadonlyMap<string, WatcherNativeBlockAdmission>,
   parentHash: string | null,
   parentBlockNo: string | null,
-): WatcherNativeBlockAdmissionV1 | null => {
+): WatcherNativeBlockAdmission | null => {
   const candidates = [...blocks.values()].filter((block) => {
     if (parentHash === null || parentBlockNo === null) return true;
     return (
@@ -173,19 +173,19 @@ const nextBufferedChild = (
 };
 
 const productionDependencies = Object.freeze({
-  admitRollForward: admitWatcherNativeRollForwardBlockV1 as AdmitRollForwardV1,
+  admitRollForward: admitWatcherNativeRollForwardBlock as AdmitRollForward,
 });
 
 const createCoordinator = (input: {
-  readonly policy: WatcherFinalityPolicyV1;
-  readonly durable: WatcherProductionDurableRuntimeV1;
-  readonly observation: WatcherLocalKupmiosNativeObservationRuntimeV1;
-  readonly restartIntersection?: WatcherNativeChainSyncPointV1;
-  readonly hooks: WatcherProductionChainCoordinatorHooksV1;
-  readonly dependencies: Readonly<{ admitRollForward: AdmitRollForwardV1 }>;
-}): WatcherProductionChainCoordinatorV1 => {
-  const buffered = new Map<string, WatcherNativeBlockAdmissionV1>();
-  let rollbackPoint: WatcherNativeChainSyncPointV1 | null = null;
+  readonly policy: WatcherFinalityPolicy;
+  readonly durable: WatcherDurableRuntime;
+  readonly observation: WatcherLocalKupmiosNativeObservationRuntime;
+  readonly restartIntersection?: WatcherNativeChainSyncPoint;
+  readonly hooks: WatcherChainCoordinatorHooks;
+  readonly dependencies: Readonly<{ admitRollForward: AdmitRollForward }>;
+}): WatcherChainCoordinator => {
+  const buffered = new Map<string, WatcherNativeBlockAdmission>();
+  let rollbackPoint: WatcherNativeChainSyncPoint | null = null;
   let quarantined =
     input.durable.read().currentFinalityState.phase === "quarantined";
   const releaseFinalizedHooked = new Map<
@@ -236,18 +236,18 @@ const createCoordinator = (input: {
   })();
 
   const observe = async (
-    block: WatcherNativeBlockAdmissionV1,
+    block: WatcherNativeBlockAdmission,
     event: Extract<
-      WatcherNativeChainSyncEventV1,
+      WatcherNativeChainSyncEvent,
       { readonly kind: "roll_forward" }
     >,
   ) =>
     await input.observation.observe({ block, depth: depthAtTip(block, event) });
 
   const processRollbackReplacement = async (
-    block: WatcherNativeBlockAdmissionV1,
+    block: WatcherNativeBlockAdmission,
     event: Extract<
-      WatcherNativeChainSyncEventV1,
+      WatcherNativeChainSyncEvent,
       { readonly kind: "roll_forward" }
     >,
   ): Promise<void> => {
@@ -262,7 +262,7 @@ const createCoordinator = (input: {
     const previousFinalityState = before.currentFinalityState;
     const observed = await observe(block, event);
     await input.durable.persistObservation(observed);
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       input.policy,
       previousFinalityState,
       observed.consistency,
@@ -316,7 +316,7 @@ const createCoordinator = (input: {
 
   const advanceCanonical = async (
     event: Extract<
-      WatcherNativeChainSyncEventV1,
+      WatcherNativeChainSyncEvent,
       { readonly kind: "roll_forward" }
     >,
   ): Promise<void> => {
@@ -368,7 +368,7 @@ const createCoordinator = (input: {
   };
 
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_CHAIN_COORDINATOR_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
     handle: async (event) => {
       if (event.kind === "roll_backward") {
         // The production hook invalidates the in-memory actuation generation
@@ -465,26 +465,26 @@ const createCoordinator = (input: {
   });
 };
 
-export const createWatcherProductionChainCoordinatorV1 = (input: {
-  readonly policy: WatcherFinalityPolicyV1;
-  readonly durable: WatcherProductionDurableRuntimeV1;
-  readonly observation: WatcherLocalKupmiosNativeObservationRuntimeV1;
-  readonly restartIntersection?: WatcherNativeChainSyncPointV1;
-  readonly hooks: WatcherProductionChainCoordinatorHooksV1;
-}): WatcherProductionChainCoordinatorV1 =>
+export const createWatcherChainCoordinator = (input: {
+  readonly policy: WatcherFinalityPolicy;
+  readonly durable: WatcherDurableRuntime;
+  readonly observation: WatcherLocalKupmiosNativeObservationRuntime;
+  readonly restartIntersection?: WatcherNativeChainSyncPoint;
+  readonly hooks: WatcherChainCoordinatorHooks;
+}): WatcherChainCoordinator =>
   createCoordinator({ ...input, dependencies: productionDependencies });
 
 /** Test-only seam for independently exercising ordering and rollback states. */
-export const unsafeCreateWatcherProductionChainCoordinatorForTestV1 = (
+export const unsafeCreateWatcherChainCoordinatorForTest = (
   input: {
-    readonly policy: WatcherFinalityPolicyV1;
-    readonly durable: WatcherProductionDurableRuntimeV1;
-    readonly observation: WatcherLocalKupmiosNativeObservationRuntimeV1;
-    readonly restartIntersection?: WatcherNativeChainSyncPointV1;
-    readonly hooks?: WatcherProductionChainCoordinatorHooksV1;
+    readonly policy: WatcherFinalityPolicy;
+    readonly durable: WatcherDurableRuntime;
+    readonly observation: WatcherLocalKupmiosNativeObservationRuntime;
+    readonly restartIntersection?: WatcherNativeChainSyncPoint;
+    readonly hooks?: WatcherChainCoordinatorHooks;
   },
-  dependencies: Readonly<{ admitRollForward: AdmitRollForwardV1 }>,
-): WatcherProductionChainCoordinatorV1 =>
+  dependencies: Readonly<{ admitRollForward: AdmitRollForward }>,
+): WatcherChainCoordinator =>
   createCoordinator({
     ...input,
     hooks:

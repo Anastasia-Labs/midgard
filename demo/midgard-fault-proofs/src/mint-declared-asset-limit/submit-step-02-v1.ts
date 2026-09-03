@@ -1,6 +1,6 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,41 +13,41 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MintDeclaredAssetLimitContractsV1 } from "./contracts-v1.js";
-import type { MintDeclaredAssetLimitEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MintDeclaredAssetLimitContracts } from "./contracts-v1.js";
+import type { MintDeclaredAssetLimitEvidence } from "./family-v1.js";
 import {
-  MintDeclaredAssetLimitStep02DatumV1Schema,
-  MintDeclaredAssetLimitStep02RedeemerV1Schema,
-  MintDeclaredAssetLimitStep03DatumV1Schema,
+  MintDeclaredAssetLimitStep02DatumSchema,
+  MintDeclaredAssetLimitStep02RedeemerSchema,
+  MintDeclaredAssetLimitStep03DatumSchema,
 } from "./schemas-v1.js";
 import {
-  encodeMintDeclaredGrammarCheckpointV1,
-  hashMintDeclaredGrammarCheckpointV1,
-  hashMintDeclaredWalkCheckpointV1,
-  type MintDeclaredAssetLimitStagedPlanV1,
+  encodeMintDeclaredGrammarCheckpoint,
+  hashMintDeclaredGrammarCheckpoint,
+  hashMintDeclaredWalkCheckpoint,
+  type MintDeclaredAssetLimitStagedPlan,
 } from "./staged-plan-v1.js";
 
-export type MintDeclaredAssetLimitStep02ActionV1 =
+export type MintDeclaredAssetLimitStep02Action =
   | { readonly kind: "direct" }
   | { readonly kind: "grammar_start" }
   | { readonly kind: "grammar_resume"; readonly nextOrdinal: number }
   | { readonly kind: "grammar_finish" };
 
-export const submitMintDeclaredAssetLimitStep02V1 = async ({
+export const submitMintDeclaredAssetLimitStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -62,20 +62,20 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintDeclaredAssetLimitContractsV1;
+  readonly contracts: MintDeclaredAssetLimitContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: MintDeclaredAssetLimitEvidenceV1;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
   readonly nativeTxCompactCbor: string;
-  readonly staged: MintDeclaredAssetLimitStagedPlanV1;
-  readonly action: MintDeclaredAssetLimitStep02ActionV1;
+  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  readonly action: MintDeclaredAssetLimitStep02Action;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -83,10 +83,10 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<Record<string, unknown>>({
+  const state = requireLinearFaultStepState<Record<string, unknown>>({
     threadUtxo,
     signer,
-    schema: MintDeclaredAssetLimitStep02DatumV1Schema as never,
+    schema: MintDeclaredAssetLimitStep02DatumSchema as never,
     family: "mint-declared-asset-limit",
     stepIndex,
   });
@@ -104,10 +104,10 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
     selected.policy_index !== BigInt(evidence.policyIndex)
   )
     throw new Error("mintDeclaredAssetLimit: step-02 datum coordinate changed");
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 5,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
@@ -118,7 +118,7 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
   });
   if (action.kind === "direct" && planned.plan.tier === "Certified")
     throw new Error("mintDeclaredAssetLimit: certified field requires grammar");
-  const carriageUtxos = await resolveFaultProofFieldCarriagePublicationsV1({
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -127,7 +127,7 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
     throw new Error("mintDeclaredAssetLimit: field carriage disappeared");
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? await resolveFaultProofFieldPreimageCertificateV1({
+      ? await resolveFaultProofFieldPreimageCertificate({
           lucid,
           network: lucid.config().network!,
           planned,
@@ -136,13 +136,13 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("mintDeclaredAssetLimit: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "mint-declared-asset-limit",
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -171,7 +171,7 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
         policy_index: BigInt(evidence.policyIndex),
         target_policy_id: evidence.targetPolicyId,
         target_declared_count: BigInt(evidence.targetDeclaredCount),
-        checkpoint_hash: hashMintDeclaredWalkCheckpointV1(staged.initialWalk),
+        checkpoint_hash: hashMintDeclaredWalkCheckpoint(staged.initialWalk),
         accumulated_count: 0n,
         previous_policy: "",
         outcome: 0n,
@@ -182,7 +182,7 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
             subject: evidence.subject,
             policy_index: BigInt(evidence.policyIndex),
           },
-          checkpoint_hash: hashMintDeclaredGrammarCheckpointV1(
+          checkpoint_hash: hashMintDeclaredGrammarCheckpoint(
             grammarCheckpoint!,
           ),
         },
@@ -190,8 +190,8 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
     (advancesToFold
-      ? MintDeclaredAssetLimitStep03DatumV1Schema
-      : MintDeclaredAssetLimitStep02DatumV1Schema) as never,
+      ? MintDeclaredAssetLimitStep03DatumSchema
+      : MintDeclaredAssetLimitStep02DatumSchema) as never,
   );
   const nextStep = advancesToFold ? contracts.steps[2] : contracts.steps[1];
   const outputMatches = computationThreadOutputPredicate({
@@ -226,7 +226,7 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
             ? {
                 ResumeGrammar: {
                   ...common,
-                  checkpoint_bytes: encodeMintDeclaredGrammarCheckpointV1(
+                  checkpoint_bytes: encodeMintDeclaredGrammarCheckpoint(
                     staged.grammar[action.nextOrdinal - 1]!,
                   ).toString("hex"),
                   item_budget: 24n,
@@ -235,17 +235,17 @@ export const submitMintDeclaredAssetLimitStep02V1 = async ({
             : {
                 FinishGrammar: {
                   ...common,
-                  checkpoint_bytes: encodeMintDeclaredGrammarCheckpointV1(
+                  checkpoint_bytes: encodeMintDeclaredGrammarCheckpoint(
                     staged.grammar.at(-1)!,
                   ).toString("hex"),
                 },
               };
     return Data.to(
       { Continue: [familyAction] } as never,
-      MintDeclaredAssetLimitStep02RedeemerV1Schema as never,
+      MintDeclaredAssetLimitStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

@@ -27,10 +27,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -46,10 +46,10 @@ import {
   keyValuePhasRootWithCount,
 } from "./transition-trace/phas.js";
 
-export const DA_HASH_PREIMAGE_EVIDENCE_V1_SCHEMA_VERSION =
+export const DA_HASH_PREIMAGE_EVIDENCE_SCHEMA_VERSION =
   "midgard-da-hash-preimage-evidence-v1" as const;
 
-export type DaHashPreimageRejectionCodeV1 =
+export type DaHashPreimageRejectionCode =
   | "malformed_da_payload"
   | "non_canonical_da_payload"
   | "wrong_da_payload_version"
@@ -59,10 +59,10 @@ export type DaHashPreimageRejectionCodeV1 =
   | "leaf_not_committed";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
-export class DaHashPreimageRejectionV1 extends Error {
-  readonly code: DaHashPreimageRejectionCodeV1;
+export class DaHashPreimageRejection extends Error {
+  readonly code: DaHashPreimageRejectionCode;
 
-  constructor(code: DaHashPreimageRejectionCodeV1, detail: string) {
+  constructor(code: DaHashPreimageRejectionCode, detail: string) {
     super(`${code}: ${detail}`);
     this.name = "DaHashPreimageRejectionV1";
     this.code = code;
@@ -70,11 +70,11 @@ export class DaHashPreimageRejectionV1 extends Error {
 }
 
 /** One committed `transactions_root` leaf, classified by the Q44 rule. */
-export type CommittedTransactionsLeafV1 = {
+export type CommittedTransactionsLeaf = {
   readonly index: number;
   readonly committedTxId: string;
   readonly committedLeafValueCbor: string;
-  readonly verdict: SDK.DaHashPreimageVerdictV1;
+  readonly verdict: SDK.DaHashPreimageVerdict;
   readonly embeddedTxId: string | null;
   readonly derivedTxId: string | null;
   readonly committedLeafByteCount: number;
@@ -92,20 +92,20 @@ export type PreparedDaHashPreimageInclusionJson = {
 
 /** Exactly the step-02 state the on-chain step-01 validator will derive. */
 export type PreparedDaHashPreimageStateJson = {
-  readonly verdict: SDK.DaHashPreimageVerdictV1;
+  readonly verdict: SDK.DaHashPreimageVerdict;
 };
 
 export type PreparedDaHashPreimageOutput = {
-  readonly schemaVersion: typeof DA_HASH_PREIMAGE_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.DA_HASH_PREIMAGE_VIOLATION_ID_V1;
+  readonly schemaVersion: typeof DA_HASH_PREIMAGE_EVIDENCE_SCHEMA_VERSION;
+  readonly violationId: typeof SDK.DA_HASH_PREIMAGE_VIOLATION_ID;
   readonly headerHash: string;
   readonly l2TransactionCount: number;
   /** Raw MPF root opened by the leaf membership proof. */
   readonly transactionsPhasRoot: string;
   /** Counted, domain-separated root the header commits. */
   readonly committedTransactionsRoot: string;
-  readonly leaves: readonly CommittedTransactionsLeafV1[];
-  readonly violation: CommittedTransactionsLeafV1;
+  readonly leaves: readonly CommittedTransactionsLeaf[];
+  readonly violation: CommittedTransactionsLeaf;
   readonly txInclusion: PreparedDaHashPreimageInclusionJson;
   readonly step02State: PreparedDaHashPreimageStateJson;
   readonly files?: {
@@ -117,7 +117,7 @@ export type PreparedDaHashPreimageOutput = {
 const hexOf = (value: string, label: string): Buffer => {
   const normalized = value.toLowerCase();
   if (!/^(?:[0-9a-f]{2})*$/u.test(normalized)) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       "malformed_da_payload",
       `${label} is not even-length hexadecimal`,
     );
@@ -129,13 +129,13 @@ const hexOf = (value: string, label: string): Buffer => {
  * Classifies every committed leaf of an already-authenticated transactions
  * root. Pure and total: it never decodes a leaf value.
  */
-export const classifyCommittedTransactionsLeavesV1 = (
+export const classifyCommittedTransactionsLeaves = (
   entries: readonly (readonly [string, string])[],
-): readonly CommittedTransactionsLeafV1[] =>
+): readonly CommittedTransactionsLeaf[] =>
   entries.map(([keyHex, valueHex], index) => {
     const key = hexOf(keyHex, `transactions[${index.toString()}].key`);
     const value = hexOf(valueHex, `transactions[${index.toString()}].value`);
-    const evidence = SDK.daHashPreimageEvidenceFromCommittedLeafV1({
+    const evidence = SDK.daHashPreimageEvidenceFromCommittedLeaf({
       committedTxId: key.toString("hex"),
       committedLeafValue: value,
     });
@@ -166,7 +166,7 @@ export type PrepareDaHashPreimageFromCommittedLeavesOptions = {
  * counted `transactions_root`, then emits the membership proof and the exact
  * step-02 state for one violating leaf.
  */
-export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
+export const prepareDaHashPreimageFromCommittedLeaves = async ({
   headerHash,
   committedTransactionsRoot,
   l2TransactionCount,
@@ -188,13 +188,13 @@ export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
     countedRoot !== committedTransactionsRoot.toLowerCase() ||
     phas.count !== l2TransactionCount
   ) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       "transactions_root_mismatch",
       `header_transactions_root=${committedTransactionsRoot.toLowerCase()} derived=${countedRoot} header_count=${l2TransactionCount.toString()} derived_count=${phas.count.toString()}`,
     );
   }
 
-  const leaves = classifyCommittedTransactionsLeavesV1(entries);
+  const leaves = classifyCommittedTransactionsLeaves(entries);
   const violation =
     committedTxId === undefined
       ? leaves.find((leaf) => leaf.isViolation)
@@ -202,13 +202,13 @@ export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
           (leaf) => leaf.committedTxId === committedTxId.toLowerCase(),
         );
   if (violation === undefined) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       committedTxId === undefined ? "no_violating_leaf" : "leaf_not_committed",
       `header_hash=${headerHash} leaf_count=${leaves.length.toString()}`,
     );
   }
   if (!violation.isViolation) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       "no_violating_leaf",
       `committed_tx_id=${violation.committedTxId} derives its own key; a valid block cannot be challenged`,
     );
@@ -223,8 +223,8 @@ export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
     txMembershipProofCbor: requireProof(trie, key, "committed leaf"),
   };
   const output: PreparedDaHashPreimageOutput = {
-    schemaVersion: DA_HASH_PREIMAGE_EVIDENCE_V1_SCHEMA_VERSION,
-    violationId: SDK.DA_HASH_PREIMAGE_VIOLATION_ID_V1,
+    schemaVersion: DA_HASH_PREIMAGE_EVIDENCE_SCHEMA_VERSION,
+    violationId: SDK.DA_HASH_PREIMAGE_VIOLATION_ID,
     headerHash: headerHash.toLowerCase(),
     l2TransactionCount: Number(l2TransactionCount),
     transactionsPhasRoot: phas.root,
@@ -263,11 +263,11 @@ export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
   return { ...output, files: paths };
 };
 
-export type DaHashPreimageBlockEvidenceV1 = {
-  readonly grade: SDK.EvidenceGradeV1;
+export type DaHashPreimageBlockEvidence = {
+  readonly grade: SDK.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenanceV1;
-    readonly da: SDK.EvidenceProvenanceV1;
+    readonly l1: SDK.EvidenceProvenance;
+    readonly da: SDK.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -284,30 +284,30 @@ export type DaHashPreimageBlockEvidenceV1 = {
 /**
  * Extracts the committed `transactions` leaves from public retained-DA bytes
  * without requiring the block to be well-formed. Only the payload envelope,
- * canonical `DaPayloadV1` framing and the embedded-header identity are
+ * canonical `DaPayload` framing and the embedded-header identity are
  * enforced here; leaf correctness is what the family adjudicates.
  */
-export const daHashPreimageBlockEvidenceFromVerifiedPayloadV1 = async ({
+export const daHashPreimageBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenanceV1;
+  readonly daProvenance: SDK.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<DaHashPreimageBlockEvidenceV1> => {
+}): Promise<DaHashPreimageBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidenceV1(daProvenance);
+  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -317,54 +317,54 @@ export const daHashPreimageBlockEvidenceFromVerifiedPayloadV1 = async ({
   try {
     payloadCbor = Buffer.from(
       (
-        await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        await unwrapDaPayload(payloadEnvelopeCbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         })
       ).innerBytes,
     );
   } catch (cause) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       "malformed_da_payload",
       `failed to decode the mandatory DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayloadV1;
+  let payload: SDK.DaPayload;
   try {
-    payload = SDK.decodeDaPayloadV1(payloadCbor);
+    payload = SDK.decodeDaPayload(payloadCbor);
   } catch (cause) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1 canonical CBOR: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor)) {
-    throw new DaHashPreimageRejectionV1(
+  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+    throw new DaHashPreimageRejection(
       "non_canonical_da_payload",
       "DA payload CBOR is not canonical for DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
-    throw new DaHashPreimageRejectionV1(
+  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+    throw new DaHashPreimageRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_V1_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
   const embeddedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(body.header),
+    SDK.hashBlockHeader(body.header),
   );
   if (
     embeddedHeaderHash !== body.header_hash.toLowerCase() ||
     embeddedHeaderHash !== admittedObservation.headerHash
   ) {
-    throw new DaHashPreimageRejectionV1(
+    throw new DaHashPreimageRejection(
       "header_hash_mismatch",
       `embedded=${embeddedHeaderHash} payload=${body.header_hash.toLowerCase()} observed=${admittedObservation.headerHash}`,
     );
   }
 
   return {
-    grade: SDK.combineEvidenceGradeV1([
+    grade: SDK.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),
@@ -387,7 +387,7 @@ export const daHashPreimageBlockEvidenceFromVerifiedPayloadV1 = async ({
  * The security-grade entry point: authenticated L1 header observation + public
  * retained-DA payload -> a submittable `da-hash-preimage` proof plan.
  */
-export const prepareDaHashPreimageFromRetainedDaV1 = async ({
+export const prepareDaHashPreimageFromRetainedDa = async ({
   observation,
   sources,
   retries,
@@ -395,7 +395,7 @@ export const prepareDaHashPreimageFromRetainedDaV1 = async ({
   committedTxId,
   outputDir,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
   readonly minimumConfirmationDepth?: number;
@@ -403,13 +403,13 @@ export const prepareDaHashPreimageFromRetainedDaV1 = async ({
   readonly outputDir?: string;
 }): Promise<PreparedDaHashPreimageOutput> => {
   if (sources.length === 0) {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
@@ -420,17 +420,17 @@ export const prepareDaHashPreimageFromRetainedDaV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+  const evidence = await daHashPreimageBlockEvidenceFromVerifiedPayload({
     observation: admittedObservation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-    daProvenance: SDK.assertSecurityGradeEvidenceV1(
-      SDK.admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
+    daProvenance: SDK.assertSecurityGradeEvidence(
+      SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
     ),
     ...(minimumConfirmationDepth === undefined
       ? {}
       : { minimumConfirmationDepth }),
   });
-  return await prepareDaHashPreimageFromCommittedLeavesV1({
+  return await prepareDaHashPreimageFromCommittedLeaves({
     headerHash: evidence.headerHash,
     committedTransactionsRoot: evidence.committedTransactionsRoot,
     l2TransactionCount: evidence.l2TransactionCount,

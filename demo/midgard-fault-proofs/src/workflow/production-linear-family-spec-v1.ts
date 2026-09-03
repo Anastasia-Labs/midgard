@@ -1,9 +1,9 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-export const PRODUCTION_LINEAR_FAMILY_SPEC_V1 =
+export const LINEAR_FAMILY_SPEC =
   "midgard-production-linear-family-spec-v1" as const;
 
-export const PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1 = Object.freeze([
+export const LINEAR_FAMILY_CATEGORIES = Object.freeze([
   "nonExistentInput",
   "nonExistentInputNoIndex",
   "invalidRange",
@@ -25,10 +25,9 @@ export const PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1 = Object.freeze([
   "inputSetUniqueness",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);
 
-export type ProductionLinearFamilyCategoryV1 =
-  (typeof PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1)[number];
+export type LinearFamilyCategory = (typeof LINEAR_FAMILY_CATEGORIES)[number];
 
-export type ProductionLinearFamilyStepV1 = Readonly<{
+export type LinearFamilyStep = Readonly<{
   /** One-based position in the authenticated computation-thread chain. */
   ordinal: 1 | 2 | 3 | 4;
   actionId: `step_0${1 | 2 | 3 | 4}`;
@@ -38,10 +37,10 @@ export type ProductionLinearFamilyStepV1 = Readonly<{
   terminalStep: boolean;
 }>;
 
-export type ProductionLinearFamilySpecV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_LINEAR_FAMILY_SPEC_V1;
-  category: ProductionLinearFamilyCategoryV1;
-  steps: readonly ProductionLinearFamilyStepV1[];
+export type LinearFamilySpec = Readonly<{
+  schemaVersion: typeof LINEAR_FAMILY_SPEC;
+  category: LinearFamilyCategory;
+  steps: readonly LinearFamilyStep[];
   terminalSemantics: Readonly<{
     proofToken: "permanent_retained_v1";
     correction: "state_queue_removal_references_proof_token_v1";
@@ -57,7 +56,7 @@ const TERMINAL_SEMANTICS = Object.freeze({
 
 const steps = (
   ...manifestContractNames: readonly [string, ...string[]]
-): readonly ProductionLinearFamilyStepV1[] =>
+): readonly LinearFamilyStep[] =>
   Object.freeze(
     manifestContractNames.map((manifestContractName, index) => {
       const ordinal = (index + 1) as 1 | 2 | 3 | 4;
@@ -75,11 +74,11 @@ const steps = (
   );
 
 const spec = (
-  category: ProductionLinearFamilyCategoryV1,
+  category: LinearFamilyCategory,
   manifestContractNames: readonly [string, ...string[]],
-): ProductionLinearFamilySpecV1 =>
+): LinearFamilySpec =>
   Object.freeze({
-    schemaVersion: PRODUCTION_LINEAR_FAMILY_SPEC_V1,
+    schemaVersion: LINEAR_FAMILY_SPEC,
     category,
     steps: steps(...manifestContractNames),
     terminalSemantics: TERMINAL_SEMANTICS,
@@ -169,32 +168,27 @@ const rows = [
     "fraudProofInputSetUniquenessStep03",
     "fraudProofInputSetUniquenessStep04",
   ]),
-] as const satisfies readonly ProductionLinearFamilySpecV1[];
+] as const satisfies readonly LinearFamilySpec[];
 
 if (
-  rows.length !== PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1.length ||
-  rows.some(
-    (row, index) =>
-      row.category !== PRODUCTION_LINEAR_FAMILY_CATEGORIES_V1[index],
-  )
+  rows.length !== LINEAR_FAMILY_CATEGORIES.length ||
+  rows.some((row, index) => row.category !== LINEAR_FAMILY_CATEGORIES[index])
 ) {
   throw new Error("production linear family spec order is not canonical");
 }
 
-export const PRODUCTION_LINEAR_FAMILY_SPECS_V1 = Object.freeze(rows);
+export const LINEAR_FAMILY_SPECS = Object.freeze(rows);
 
-export const productionLinearFamilySpecV1 = <
-  Category extends ProductionLinearFamilyCategoryV1,
->(
+export const linearFamilySpec = <Category extends LinearFamilyCategory>(
   category: Category,
-): ProductionLinearFamilySpecV1 & { readonly category: Category } => {
-  const found = PRODUCTION_LINEAR_FAMILY_SPECS_V1.find(
+): LinearFamilySpec & { readonly category: Category } => {
+  const found = LINEAR_FAMILY_SPECS.find(
     (candidate) => candidate.category === category,
   );
   if (found === undefined) {
     throw new Error(`no production linear family spec for ${category}`);
   }
-  return found as ProductionLinearFamilySpecV1 & {
+  return found as LinearFamilySpec & {
     readonly category: Category;
   };
 };

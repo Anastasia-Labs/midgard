@@ -11,19 +11,19 @@ import { createServer, type Server } from "node:http";
 import { isAbsolute, join, normalize } from "node:path";
 
 import {
-  parseWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
+  parseWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
 import {
-  admitWatcherRollbackDurableTrustedHeadV1,
-  WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
-  type WatcherRollbackDurableTrustedHeadV1,
+  admitWatcherRollbackDurableTrustedHead,
+  WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION,
+  type WatcherRollbackDurableTrustedHead,
 } from "../l1/rollback-engine.js";
-import { watcherCanonicalJsonV1 } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
 
-export const WATCHER_TRUSTED_HEAD_AUTHORITY_V1_SCHEMA_VERSION =
+export const WATCHER_TRUSTED_HEAD_AUTHORITY_SCHEMA_VERSION =
   "midgard-watcher-trusted-head-authority-v1" as const;
-export const WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION =
+export const WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION =
   "midgard-watcher-trusted-head-authority-record-v1" as const;
 
 const RECORD_FILE = /^([0-9]{20})\.json$/u;
@@ -34,17 +34,17 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 class TrustedHeadCallerError extends Error {}
 
-type TrustedHeadAuthorityRecordV1 = Readonly<{
-  schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION;
+type TrustedHeadAuthorityRecord = Readonly<{
+  schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION;
   revision: string;
   priorRecordSha256: string | null;
-  head: WatcherRollbackDurableTrustedHeadV1;
+  head: WatcherRollbackDurableTrustedHead;
   recordAuthenticationKeyId: string;
   recordMac: string;
 }>;
 
-type TrustedHeadAuthorityRecordContentV1 = Omit<
-  TrustedHeadAuthorityRecordV1,
+type TrustedHeadAuthorityRecordContent = Omit<
+  TrustedHeadAuthorityRecord,
   "recordMac"
 >;
 
@@ -87,7 +87,7 @@ const canonicalDirectory = (value: unknown): string => {
   return value;
 };
 
-const revision = (head: WatcherRollbackDurableTrustedHeadV1): bigint => {
+const revision = (head: WatcherRollbackDurableTrustedHead): bigint => {
   const value = BigInt(head.revision);
   if (value > UINT64_MAX) {
     throw new Error("trusted-head authority revision exceeds uint64");
@@ -99,16 +99,16 @@ const recordName = (value: bigint): string =>
   `${value.toString().padStart(20, "0")}.json`;
 
 const sameHead = (
-  left: WatcherRollbackDurableTrustedHeadV1 | null,
-  right: WatcherRollbackDurableTrustedHeadV1 | null,
+  left: WatcherRollbackDurableTrustedHead | null,
+  right: WatcherRollbackDurableTrustedHead | null,
 ): boolean =>
   left === null || right === null
     ? left === right
-    : watcherCanonicalJsonV1(left) === watcherCanonicalJsonV1(right);
+    : watcherCanonicalJson(left) === watcherCanonicalJson(right);
 
 const sameCanonical = (left: unknown, right: unknown): boolean => {
   try {
-    return watcherCanonicalJsonV1(left) === watcherCanonicalJsonV1(right);
+    return watcherCanonicalJson(left) === watcherCanonicalJson(right);
   } catch {
     return false;
   }
@@ -121,22 +121,22 @@ const recordKeyId = (key: Uint8Array): string => sha256(key);
 
 const recordMac = (
   key: Uint8Array,
-  content: TrustedHeadAuthorityRecordContentV1,
+  content: TrustedHeadAuthorityRecordContent,
 ): string =>
   createHmac("sha256", key)
     .update(
-      `${WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION}:${watcherCanonicalJsonV1(content)}`,
+      `${WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION}:${watcherCanonicalJson(content)}`,
       "utf8",
     )
     .digest("hex");
 
 const makeAuthorityRecord = (input: {
-  readonly head: WatcherRollbackDurableTrustedHeadV1;
+  readonly head: WatcherRollbackDurableTrustedHead;
   readonly priorRecordSha256: string | null;
   readonly recordAuthenticationKey: Uint8Array;
-}): TrustedHeadAuthorityRecordV1 => {
+}): TrustedHeadAuthorityRecord => {
   const content = Object.freeze({
-    schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION,
     revision: input.head.revision,
     priorRecordSha256: input.priorRecordSha256,
     head: input.head,
@@ -174,9 +174,9 @@ const syncDirectory = async (directory: string): Promise<void> => {
   }
 };
 
-export type WatcherTrustedHeadAuthorityStoreV1 = Readonly<{
+export type WatcherTrustedHeadAuthorityStore = Readonly<{
   readRecordAuthenticationKeyId(): Promise<string>;
-  readCurrent(): Promise<WatcherRollbackDurableTrustedHeadV1 | null>;
+  readCurrent(): Promise<WatcherRollbackDurableTrustedHead | null>;
   compareAndSwap(input: {
     readonly expectedTrustedHead: unknown | null;
     readonly nextTrustedHead: unknown;
@@ -188,14 +188,14 @@ export type WatcherTrustedHeadAuthorityStoreV1 = Readonly<{
  * startup replays the complete directory and rejects gaps, substitutions,
  * malformed/HMAC-invalid records, and non-canonical bytes.
  */
-export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
+export const openWatcherTrustedHeadAuthorityStore = async (input: {
   readonly directory: string;
-  readonly policy: WatcherFinalityPolicyV1;
+  readonly policy: WatcherFinalityPolicy;
   /** Independently authenticates the append-only sidecar record chain. */
   readonly recordAuthenticationKey: Uint8Array;
-}): Promise<WatcherTrustedHeadAuthorityStoreV1> => {
+}): Promise<WatcherTrustedHeadAuthorityStore> => {
   const directory = canonicalDirectory(input.directory);
-  const policy = parseWatcherFinalityPolicyV1(input.policy);
+  const policy = parseWatcherFinalityPolicy(input.policy);
   if (policy === null) {
     throw new Error("trusted-head authority finality policy is invalid");
   }
@@ -213,7 +213,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
   const admitHead = (
     value: unknown,
     callerAuthored = false,
-  ): WatcherRollbackDurableTrustedHeadV1 => {
+  ): WatcherRollbackDurableTrustedHead => {
     const head = exactRecord(value, [
       "schemaVersion",
       "policyDigest",
@@ -227,7 +227,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
     if (
       head === null ||
       head.schemaVersion !==
-        WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION ||
+        WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION ||
       head.policyDigest !== policy.policyDigest ||
       !sameCanonical(head.deploymentMarker, policy.deploymentMarker) ||
       typeof head.authenticationKeyId !== "string" ||
@@ -245,7 +245,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
       throw new ErrorType("trusted-head authority record structure failed");
     }
     const admitted = Object.freeze({
-      schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION,
       policyDigest: head.policyDigest,
       deploymentMarker: policy.deploymentMarker,
       authenticationKeyId: head.authenticationKeyId,
@@ -253,12 +253,12 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
       snapshotSha256: head.snapshotSha256,
       authorityDigest: head.authorityDigest,
       headMac: head.headMac,
-    }) as WatcherRollbackDurableTrustedHeadV1;
+    }) as WatcherRollbackDurableTrustedHead;
     revision(admitted);
     return admitted;
   };
 
-  const admitRecord = (value: unknown): TrustedHeadAuthorityRecordV1 => {
+  const admitRecord = (value: unknown): TrustedHeadAuthorityRecord => {
     const record = exactRecord(value, [
       "schemaVersion",
       "revision",
@@ -270,7 +270,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
     if (
       record === null ||
       record.schemaVersion !==
-        WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION ||
+        WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION ||
       typeof record.revision !== "string" ||
       !/^(?:0|[1-9][0-9]*)$/u.test(record.revision) ||
       (record.priorRecordSha256 !== null &&
@@ -290,7 +290,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
       );
     }
     const content = Object.freeze({
-      schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_SCHEMA_VERSION,
       revision: record.revision,
       priorRecordSha256: record.priorRecordSha256 as string | null,
       head,
@@ -308,11 +308,11 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
     return Object.freeze({
       ...content,
       recordMac: record.recordMac,
-    }) as TrustedHeadAuthorityRecordV1;
+    }) as TrustedHeadAuthorityRecord;
   };
 
   const scan = async (): Promise<Readonly<{
-    head: WatcherRollbackDurableTrustedHeadV1;
+    head: WatcherRollbackDurableTrustedHead;
     recordSha256: string;
   }> | null> => {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -326,7 +326,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
     });
     names.sort();
     let previous: Readonly<{
-      head: WatcherRollbackDurableTrustedHeadV1;
+      head: WatcherRollbackDurableTrustedHead;
       recordSha256: string;
     }> | null = null;
     for (let index = 0; index < names.length; index += 1) {
@@ -341,8 +341,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
       if (
         revision(sidecarRecord.head) !== expectedRevision ||
         sidecarRecord.priorRecordSha256 !== expectedPriorRecordSha256 ||
-        new TextDecoder().decode(bytes) !==
-          watcherCanonicalJsonV1(sidecarRecord)
+        new TextDecoder().decode(bytes) !== watcherCanonicalJson(sidecarRecord)
       ) {
         throw new Error("trusted-head authority record is non-canonical");
       }
@@ -393,7 +392,7 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
       let handle: FileHandle | undefined;
       try {
         handle = await open(path, "wx", 0o600);
-        await handle.writeFile(watcherCanonicalJsonV1(sidecarRecord), {
+        await handle.writeFile(watcherCanonicalJson(sidecarRecord), {
           encoding: "utf8",
         });
         await handle.sync();
@@ -409,12 +408,12 @@ export const openWatcherTrustedHeadAuthorityStoreV1 = async (input: {
   });
 };
 
-export type WatcherTrustedHeadAuthorityClientV1 = Readonly<{
+export type WatcherTrustedHeadAuthorityClient = Readonly<{
   readRecordAuthenticationKeyId(): Promise<string>;
-  readCurrent(): Promise<WatcherRollbackDurableTrustedHeadV1 | null>;
+  readCurrent(): Promise<WatcherRollbackDurableTrustedHead | null>;
   compareAndSwap(input: {
-    readonly expectedTrustedHead: WatcherRollbackDurableTrustedHeadV1 | null;
-    readonly nextTrustedHead: WatcherRollbackDurableTrustedHeadV1;
+    readonly expectedTrustedHead: WatcherRollbackDurableTrustedHead | null;
+    readonly nextTrustedHead: WatcherRollbackDurableTrustedHead;
   }): Promise<boolean>;
 }>;
 
@@ -490,20 +489,20 @@ const replyJson = (
     "content-type": "application/json",
     "cache-control": "no-store",
   });
-  response.end(watcherCanonicalJsonV1(value));
+  response.end(watcherCanonicalJson(value));
 };
 
-export type WatcherTrustedHeadAuthorityServerV1 = Readonly<{
+export type WatcherTrustedHeadAuthorityServer = Readonly<{
   endpoint: string;
   close(): Promise<void>;
 }>;
 
-export const startWatcherTrustedHeadAuthorityServerV1 = async (input: {
+export const startWatcherTrustedHeadAuthorityServer = async (input: {
   readonly endpoint: string;
   readonly httpSecret: string;
-  readonly store: WatcherTrustedHeadAuthorityStoreV1;
+  readonly store: WatcherTrustedHeadAuthorityStore;
   readonly unsafeAllowEphemeralPortForTest?: true;
-}): Promise<WatcherTrustedHeadAuthorityServerV1> => {
+}): Promise<WatcherTrustedHeadAuthorityServer> => {
   const endpoint = endpointUrl(input.endpoint);
   const httpSecret = secret(input.httpSecret);
   const port = Number(endpoint.port || "80");
@@ -585,17 +584,17 @@ export const startWatcherTrustedHeadAuthorityServerV1 = async (input: {
   });
 };
 
-export const createWatcherTrustedHeadAuthorityClientV1 = (input: {
+export const createWatcherTrustedHeadAuthorityClient = (input: {
   readonly endpoint: string;
   readonly httpSecret: string;
-  readonly policy: WatcherFinalityPolicyV1;
+  readonly policy: WatcherFinalityPolicy;
   readonly authenticationKey: Uint8Array;
   readonly requestTimeoutMs: number;
-}): WatcherTrustedHeadAuthorityClientV1 => {
+}): WatcherTrustedHeadAuthorityClient => {
   const endpoint = endpointUrl(input.endpoint).toString().replace(/\/$/u, "");
   const httpSecret = secret(input.httpSecret);
-  const admit = (value: unknown): WatcherRollbackDurableTrustedHeadV1 => {
-    const head = admitWatcherRollbackDurableTrustedHeadV1({
+  const admit = (value: unknown): WatcherRollbackDurableTrustedHead => {
+    const head = admitWatcherRollbackDurableTrustedHead({
       head: value,
       policy: input.policy,
       authenticationKey: input.authenticationKey,
@@ -647,7 +646,7 @@ export const createWatcherTrustedHeadAuthorityClientV1 = (input: {
       const body = exactRecord(
         await call("/v1/trusted-head/cas", {
           method: "POST",
-          body: watcherCanonicalJsonV1({
+          body: watcherCanonicalJson({
             expectedTrustedHead,
             nextTrustedHead,
           }),

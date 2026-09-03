@@ -14,7 +14,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest-v1.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest-v1.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { runProviderStepWithRetry } from "../provider-retry.js";
 import { compareOutRefs, outRefLabel } from "../tx-context.js";
@@ -978,7 +978,7 @@ const publishMissingReferenceScriptTargets = (
   Effect.gen(function* () {
     yield* Effect.try({
       try: () =>
-        SDK.assertReferenceScriptRawBodiesFitL1EnvelopeV1(missingTargets),
+        SDK.assertReferenceScriptRawBodiesFitL1Envelope(missingTargets),
       catch: (cause) =>
         cause instanceof SDK.StateQueueError
           ? cause
@@ -1189,9 +1189,9 @@ const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
 
 const REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME: ReadonlyMap<string, string> =
   new Map<string, string>(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([role, contractName]) => [contractName, role] as const),
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => [contractName, role] as const,
+    ),
   );
 
 const upperFirst = (value: string): string =>

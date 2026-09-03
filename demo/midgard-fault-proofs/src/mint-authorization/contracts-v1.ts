@@ -29,7 +29,7 @@ import type { Script } from "@lucid-evolution/lucid";
 export const MINT_AUTHORIZATION_CATEGORY_LABEL = "mint-authorization";
 
 /** Blueprint titles of the five parameterized step validators. */
-export const MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1 = {
+export const MINT_AUTHORIZATION_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/mint_authorization/step_01.main.spend",
   step02: "fraud_proofs/mint_authorization/step_02.main.spend",
   step03: "fraud_proofs/mint_authorization/step_03.main.spend",
@@ -38,7 +38,7 @@ export const MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1 = {
 } as const;
 
 /** One deployed step of the `mint-authorization` chain. */
-export type MintAuthorizationStepContractV1 = {
+export type MintAuthorizationStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -52,14 +52,14 @@ export type MintAuthorizationStepContractV1 = {
  * names, catalogue lookups — take it separately from the deployment they are
  * actually talking to.
  */
-export type MintAuthorizationContractsV1 = {
+export type MintAuthorizationContracts = {
   /** Steps 01..05, in order. */
   readonly steps: readonly [
-    MintAuthorizationStepContractV1,
-    MintAuthorizationStepContractV1,
-    MintAuthorizationStepContractV1,
-    MintAuthorizationStepContractV1,
-    MintAuthorizationStepContractV1,
+    MintAuthorizationStepContract,
+    MintAuthorizationStepContract,
+    MintAuthorizationStepContract,
+    MintAuthorizationStepContract,
+    MintAuthorizationStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

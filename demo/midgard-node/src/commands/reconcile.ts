@@ -86,7 +86,7 @@ export type ReconciliationResult = {
   readonly repairActions: readonly string[];
 };
 
-const parseReconciliationEvidenceV1 = (
+const parseReconciliationEvidence = (
   value: unknown,
   label: string,
 ): ReconciliationEvidence => {
@@ -134,7 +134,7 @@ const lowerHex = (
   return parsed;
 };
 
-const parseReconciliationTargetV1 = (
+const parseReconciliationTarget = (
   value: unknown,
   milestone: ReconciliationMilestone,
   label: string,
@@ -203,7 +203,7 @@ const parseReconciliationTargetV1 = (
     : { headerHash: lowerHex(target.headerHash, `${label}.headerHash`, 28) };
 };
 
-export const parseReconciliationResultV1 = (
+export const parseReconciliationResult = (
   value: unknown,
 ): ReconciliationResult => {
   const label = "E2E reconciliation";
@@ -230,7 +230,7 @@ export const parseReconciliationResultV1 = (
   const parsed: ReconciliationResult = {
     schemaVersion: RECONCILIATION_SCHEMA_VERSION,
     milestone,
-    target: parseReconciliationTargetV1(
+    target: parseReconciliationTarget(
       input.target,
       milestone,
       `${label}.target`,
@@ -250,7 +250,7 @@ export const parseReconciliationResultV1 = (
     evidence: arrayOf(
       input.evidence,
       `${label}.evidence`,
-      parseReconciliationEvidenceV1,
+      parseReconciliationEvidence,
     ),
     nextAction:
       input.nextAction === null
@@ -314,7 +314,7 @@ const result = ({
   nextAction = null,
   repairActions = [],
 }: ReconciliationResultInput): ReconciliationResult =>
-  parseReconciliationResultV1({
+  parseReconciliationResult({
     schemaVersion: RECONCILIATION_SCHEMA_VERSION,
     milestone,
     target,
@@ -863,7 +863,7 @@ export const reconcileTxCommittedProgram = ({
 export type CanonicalDaAttestationObservation = {
   readonly datumHeaderHash: string;
   readonly computedHeaderHash: string;
-  readonly daAvailability: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly daAvailability: SDK.DaAvailabilityStateQueueStatus;
   readonly outRef: string;
 };
 
@@ -944,12 +944,12 @@ const fetchCanonicalDaAttestationObservations = Effect.gen(function* () {
   const canonicalHeaders = yield* fetchCanonicalStateQueueHeaders;
   const observations: CanonicalDaAttestationObservation[] = [];
   for (const canonicalHeader of canonicalHeaders) {
-    const node = yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
+    const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(
       canonicalHeader.utxo.datum,
     );
     observations.push({
       datumHeaderHash: canonicalHeader.headerHash,
-      computedHeaderHash: yield* SDK.hashBlockHeaderV1(node.header),
+      computedHeaderHash: yield* SDK.hashBlockHeader(node.header),
       daAvailability: node.da_attestation,
       outRef: canonicalHeader.outRef,
     });

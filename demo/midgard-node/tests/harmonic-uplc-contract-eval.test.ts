@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "../src/services/midgard-contracts.js";
-import { TEST_AVAILABILITY_PARAMETERS_V1 } from "./helpers/availability-challenge-v1.js";
+import { TEST_AVAILABILITY_PARAMETERS } from "./helpers/availability-challenge-v1.js";
 
 const oneShotOutRef = {
   txHash: "aa".repeat(32),
@@ -81,7 +81,7 @@ const loadRealContracts = () =>
         oneShotOutRef,
         {
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
-          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
+          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
         },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

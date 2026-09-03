@@ -1,10 +1,10 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardMpfProofFoldTraceV1,
-  encodeMidgardMpfProofFrameV1,
-  MIDGARD_MPF_PROOF_FRAME_MAX_BYTES_V1,
-  parseMidgardMpfProofJsonV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardMpfProofFoldTrace,
+  encodeMidgardMpfProofFrame,
+  MIDGARD_MPF_PROOF_FRAME_MAX_BYTES,
+  parseMidgardMpfProofJson,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
@@ -28,24 +28,24 @@ describe("bounded MPF proof folding V1", () => {
     const [key, value] = entries[1]!;
     const preRoot = exactRoot(trie);
     const proof = await trie.prove(key, false);
-    const trace = buildMidgardMpfProofFoldTraceV1({
+    const trace = buildMidgardMpfProofFoldTrace({
       key,
       value,
-      steps: parseMidgardMpfProofJsonV1(proof.toJSON()),
+      steps: parseMidgardMpfProofJson(proof.toJSON()),
     });
     await trie.delete(key);
 
     expect(trace.steps).not.toHaveLength(0);
     expect(
       trace.steps.every(({ membership }) =>
-        verifyMidgardValidationMerkleMembershipV1(membership),
+        verifyMidgardValidationMerkleMembership(membership),
       ),
     ).toBe(true);
     expect(
       trace.frames.every(
         (frame) =>
-          encodeMidgardMpfProofFrameV1(frame).length <=
-          MIDGARD_MPF_PROOF_FRAME_MAX_BYTES_V1,
+          encodeMidgardMpfProofFrame(frame).length <=
+          MIDGARD_MPF_PROOF_FRAME_MAX_BYTES,
       ),
     ).toBe(true);
     expect(trace.terminal.includingRoot).toEqual(preRoot);
@@ -69,10 +69,10 @@ describe("bounded MPF proof folding V1", () => {
       const value = Buffer.from("two");
       const preRoot = exactRoot(trie);
       const proof = await trie.prove(key, true);
-      const trace = buildMidgardMpfProofFoldTraceV1({
+      const trace = buildMidgardMpfProofFoldTrace({
         key,
         value,
-        steps: parseMidgardMpfProofJsonV1(proof.toJSON()),
+        steps: parseMidgardMpfProofJson(proof.toJSON()),
       });
       await trie.insert(key, value);
 
@@ -87,7 +87,7 @@ describe("bounded MPF proof folding V1", () => {
 
   it("rejects malformed proof JSON before constructing a frontier", () => {
     expect(() =>
-      parseMidgardMpfProofJsonV1([
+      parseMidgardMpfProofJson([
         {
           type: "branch",
           skip: 0,
@@ -96,7 +96,7 @@ describe("bounded MPF proof folding V1", () => {
       ]),
     ).toThrow(/exactly 128 bytes/u);
     expect(() =>
-      parseMidgardMpfProofJsonV1([
+      parseMidgardMpfProofJson([
         {
           type: "fork",
           skip: 64,

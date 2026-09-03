@@ -23,7 +23,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -47,28 +47,28 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { L2TxMistagContractsV1 } from "./contracts-v1.js";
+import type { L2TxMistagContracts } from "./contracts-v1.js";
 import {
   L2TxMistagStep01SpendRedeemer,
   L2TxMistagStep02Datum,
   type L2TxMistagStep02State,
 } from "./schemas-v1.js";
 import {
-  l2TxMistagStepLabelV1,
+  l2TxMistagStepLabel,
   l2TxMistagSubmitError,
-  requireL2TxMistagReferenceScriptV1,
-  requireL2TxMistagThreadUtxoV1,
+  requireL2TxMistagReferenceScript,
+  requireL2TxMistagThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = l2TxMistagStepLabelV1(0);
+const STEP_LABEL = l2TxMistagStepLabel(0);
 
 export type SubmitL2TxMistagStep01Result = {
   readonly txHash: string;
@@ -104,21 +104,21 @@ export const submitL2TxMistagStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: L2TxMistagContractsV1;
+  readonly contracts: L2TxMistagContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagStep01Result> => {
-  const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -126,7 +126,7 @@ export const submitL2TxMistagStep01 = async ({
     threadOutRef,
   });
   requireInitialStepDatum({ threadUtxo, signer });
-  const verifiedReferenceScript = requireL2TxMistagReferenceScriptV1({
+  const verifiedReferenceScript = requireL2TxMistagReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -193,7 +193,7 @@ export const submitL2TxMistagStep01 = async ({
     network,
     chunkedVerifyScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: carriedByChunks ? chunkedVerifyScript : phasMembershipScript,
     referenceUtxo: carriedByChunks
       ? witnessReferenceScripts?.chunkedVerifyWithdraw
@@ -322,9 +322,9 @@ export const submitL2TxMistagStep01 = async ({
     throw l2TxMistagSubmitError("step-01 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -8,11 +8,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1,
-  SPEND_INPUT_SIGNER_MISSING_ID_V1,
+  SPEND_INPUT_SIGNER_MISSING_CATEGORY,
+  SPEND_INPUT_SIGNER_MISSING_ID,
 } from "./spend-input-signer-missing-v1.js";
 
-export const SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1 = [
+export const SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES = [
   "fraud_proofs/spend_input_signer_missing/step_01.main.spend",
   "fraud_proofs/spend_input_signer_missing/step_02.main.spend",
   "fraud_proofs/spend_input_signer_missing/step_03.main.spend",
@@ -20,7 +20,7 @@ export const SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1 = [
   "fraud_proofs/spend_input_signer_missing/step_05.main.spend",
 ] as const;
 
-export type SpendInputSignerMissingAppliedStepV1 = Readonly<{
+export type SpendInputSignerMissingAppliedStep = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -28,13 +28,13 @@ export type SpendInputSignerMissingAppliedStepV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type SpendInputSignerMissingContractsV1 = Readonly<{
+export type SpendInputSignerMissingContracts = Readonly<{
   steps: readonly [
-    SpendInputSignerMissingAppliedStepV1,
-    SpendInputSignerMissingAppliedStepV1,
-    SpendInputSignerMissingAppliedStepV1,
-    SpendInputSignerMissingAppliedStepV1,
-    SpendInputSignerMissingAppliedStepV1,
+    SpendInputSignerMissingAppliedStep,
+    SpendInputSignerMissingAppliedStep,
+    SpendInputSignerMissingAppliedStep,
+    SpendInputSignerMissingAppliedStep,
+    SpendInputSignerMissingAppliedStep,
   ];
   computationThread: {
     readonly policyId: string;
@@ -51,12 +51,12 @@ export type SpendInputSignerMissingContractsV1 = Readonly<{
   fieldPreimageCertificateMintingScript: Script;
 }>;
 
-export type SpendInputSignerMissingProductionManifestV1 = Readonly<{
+export type SpendInputSignerMissingManifest = Readonly<{
   schemaVersion: "spend-input-signer-missing-production-manifest-v1";
-  category: typeof SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1;
-  categoryId: typeof SPEND_INPUT_SIGNER_MISSING_ID_V1;
+  category: typeof SPEND_INPUT_SIGNER_MISSING_CATEGORY;
+  categoryId: typeof SPEND_INPUT_SIGNER_MISSING_ID;
   network: Network;
-  steps: SpendInputSignerMissingContractsV1["steps"];
+  steps: SpendInputSignerMissingContracts["steps"];
   firstStepHash: string;
   computationThreadPolicyId: string;
   fraudProofPolicyId: string;
@@ -66,7 +66,7 @@ export type SpendInputSignerMissingProductionManifestV1 = Readonly<{
   stateQueuePolicyId: string;
 }>;
 
-export type SpendInputSignerMissingBlueprintV1 = Readonly<{
+export type SpendInputSignerMissingBlueprint = Readonly<{
   validators: readonly Readonly<{
     title: string;
     compiledCode: string;
@@ -74,7 +74,7 @@ export type SpendInputSignerMissingBlueprintV1 = Readonly<{
   }>[];
 }>;
 
-export const applySpendInputSignerMissingScriptsV1 = ({
+export const applySpendInputSignerMissingScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -83,30 +83,29 @@ export const applySpendInputSignerMissingScriptsV1 = ({
   fieldPreimageCertificatePolicyId,
   hubOracleScriptHash,
 }: {
-  readonly blueprint: SpendInputSignerMissingBlueprintV1;
+  readonly blueprint: SpendInputSignerMissingBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): SpendInputSignerMissingContractsV1["steps"] => {
+}): SpendInputSignerMissingContracts["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): SpendInputSignerMissingAppliedStepV1 => {
-    const blueprintTitle =
-      SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1[index]!;
+  ): SpendInputSignerMissingAppliedStep => {
+    const blueprintTitle = SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       (value) => value.title === blueprintTitle,
     );
     if (validator === undefined)
       throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: blueprint omitted ${blueprintTitle}`,
+        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: blueprint omitted ${blueprintTitle}`,
       );
     if ((validator.parameters?.length ?? 0) !== parameters.length)
       throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: ${blueprintTitle} parameter arity changed`,
+        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: ${blueprintTitle} parameter arity changed`,
       );
     const spendingScript: Script = {
       type: "PlutusV3",
@@ -150,50 +149,47 @@ export const applySpendInputSignerMissingScriptsV1 = ({
 
 const requireHash = (value: string, label: string): void => {
   if (!/^[0-9a-f]{56}$/u.test(value))
-    throw new Error(
-      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: invalid ${label}`,
-    );
+    throw new Error(`${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: invalid ${label}`);
 };
 
-export const loadSpendInputSignerMissingProductionManifestV1 = (
-  manifest: SpendInputSignerMissingProductionManifestV1,
-): SpendInputSignerMissingProductionManifestV1 => {
+export const loadSpendInputSignerMissingManifest = (
+  manifest: SpendInputSignerMissingManifest,
+): SpendInputSignerMissingManifest => {
   if (
     manifest.schemaVersion !==
       "spend-input-signer-missing-production-manifest-v1" ||
-    manifest.category !== SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1 ||
-    manifest.categoryId !== SPEND_INPUT_SIGNER_MISSING_ID_V1
+    manifest.category !== SPEND_INPUT_SIGNER_MISSING_CATEGORY ||
+    manifest.categoryId !== SPEND_INPUT_SIGNER_MISSING_ID
   )
     throw new Error(
-      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: wrong manifest identity`,
+      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: wrong manifest identity`,
     );
   manifest.steps.forEach((step, index) => {
     if (
-      step.blueprintTitle !==
-      SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES_V1[index]
+      step.blueprintTitle !== SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index]
     )
       throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: physical step order changed`,
+        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: physical step order changed`,
       );
     if (validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash)
       throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: applied step hash mismatch`,
+        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: applied step hash mismatch`,
       );
     if (
       validatorToAddress(manifest.network, step.spendingScript) !==
       step.spendingScriptAddress
     )
       throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: applied step address mismatch`,
+        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: applied step address mismatch`,
       );
     if (!/^[0-9a-f]{64}#[0-9]+$/u.test(step.referenceOutRef))
       throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: invalid step reference out-ref`,
+        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: invalid step reference out-ref`,
       );
   });
   if (manifest.firstStepHash !== manifest.steps[0].spendingScriptHash)
     throw new Error(
-      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY_V1}: first-step identity mismatch`,
+      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: first-step identity mismatch`,
     );
   requireHash(manifest.computationThreadPolicyId, "computation-thread policy");
   requireHash(manifest.fraudProofPolicyId, "fraud-proof policy");

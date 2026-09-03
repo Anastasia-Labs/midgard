@@ -15,24 +15,24 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FraudProofWorkflowActionV1 } from "./orchestrator-v1.js";
+import type { FraudProofWorkflowAction } from "./orchestrator-v1.js";
 import {
-  assertProductionWorkflowActuationPermitIdentityV1,
-  type ProductionWorkflowActuationPermitV1,
+  assertWorkflowActuationPermitIdentity,
+  type WorkflowActuationPermit,
 } from "./production-actuation-permit-v1.js";
-import type { ProductionWorkflowAdapterRunnerV1 } from "./production-adapters-v1.js";
+import type { WorkflowAdapterRunner } from "./production-adapters-v1.js";
 import {
-  productionWorkflowFundingRequirementsForRunnerV1,
-  type ProductionWorkflowFundingRequirementsV1,
+  type WorkflowFundingRequirements,
+  workflowFundingRequirementsForRunner,
 } from "./production-funding-requirements-v1.js";
 import {
-  productionWorkflowPreflightTransactionV1,
-  workflowTransactionCollateralInputOutRefsV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  workflowPreflightTransaction,
+  workflowTransactionCollateralInputOutRefs,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1 =
+export const WORKFLOW_FUNDING_RESERVATION_PERMIT =
   "midgard-production-workflow-funding-reservation-permit-v1" as const;
 
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -40,14 +40,14 @@ const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const ACTION_KIND = /^[a-z][a-zA-Z0-9_.:-]{0,127}$/u;
 
-export type ProductionWorkflowFundingReservedInputV1 = Readonly<{
+export type WorkflowFundingReservedInput = Readonly<{
   outRef: string;
   role: "funding" | "collateral";
   lovelace: string;
   assets: readonly Readonly<{ unit: string; quantity: string }>[];
 }>;
 
-export type ProductionWorkflowFundingReservationSnapshotV1 = Readonly<{
+export type WorkflowFundingReservationSnapshot = Readonly<{
   reservationId: string;
   deploymentFingerprint: string;
   decisionDigest: string;
@@ -58,16 +58,16 @@ export type ProductionWorkflowFundingReservationSnapshotV1 = Readonly<{
   walletAddress: string;
   fundingPaymentKeyHash: string;
   state: "active" | "released" | "conflict";
-  activeInputs: readonly ProductionWorkflowFundingReservedInputV1[];
+  activeInputs: readonly WorkflowFundingReservedInput[];
 }>;
 
-export type ProductionWorkflowFundingPreparedTransitionV1 = Readonly<{
+export type WorkflowFundingPreparedTransition = Readonly<{
   actionKind: string;
   signedTransactionCborHex: string;
   transactionHash: string;
   transactionBodySha256: string;
   consumedOutRefs: readonly string[];
-  producedInputs: readonly ProductionWorkflowFundingReservedInputV1[];
+  producedInputs: readonly WorkflowFundingReservedInput[];
 }>;
 
 /**
@@ -75,7 +75,7 @@ export type ProductionWorkflowFundingPreparedTransitionV1 = Readonly<{
  * port from its authenticated SQLite reservation store and local-node UTxO
  * source; workflow constructors never accept reservation data from config.
  */
-export interface ProductionWorkflowFundingReservationPortV1 {
+export interface WorkflowFundingReservationPort {
   load(): Promise<unknown>;
   resolveInputs(outRefs: readonly string[]): Promise<readonly UTxO[]>;
   resolveConfirmedActionOutput(input: {
@@ -89,7 +89,7 @@ export interface ProductionWorkflowFundingReservationPortV1 {
   }): Promise<unknown>;
   prepare(input: {
     readonly expectedRevision: string;
-    readonly transition: ProductionWorkflowFundingPreparedTransitionV1;
+    readonly transition: WorkflowFundingPreparedTransition;
   }): Promise<unknown>;
   confirm(input: {
     readonly expectedRevision: string;
@@ -106,18 +106,18 @@ export interface ProductionWorkflowFundingReservationPortV1 {
   release(input: { readonly expectedRevision: string }): Promise<unknown>;
 }
 
-export interface ProductionWorkflowFundingReservationPermitV1 {
-  readonly permitVersion: typeof PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1;
+export interface WorkflowFundingReservationPermit {
+  readonly permitVersion: typeof WORKFLOW_FUNDING_RESERVATION_PERMIT;
 }
 
-type PermitStateV1 = {
+type PermitState = {
   readonly category: FraudProofCatalogueCategoryName;
-  readonly requirements: ProductionWorkflowFundingRequirementsV1;
-  readonly actuationPermit: ProductionWorkflowActuationPermitV1;
-  readonly port: ProductionWorkflowFundingReservationPortV1;
+  readonly requirements: WorkflowFundingRequirements;
+  readonly actuationPermit: WorkflowActuationPermit;
+  readonly port: WorkflowFundingReservationPort;
   readonly maximumFundingInputs: number;
   readonly maximumCollateralInputs: number;
-  snapshot: ProductionWorkflowFundingReservationSnapshotV1;
+  snapshot: WorkflowFundingReservationSnapshot;
   resolvedInputs: ReadonlyMap<string, UTxO>;
   boundJournal: object | undefined;
   currentActionKind: string | undefined;
@@ -126,8 +126,8 @@ type PermitStateV1 = {
   pendingTransactionHash: string | undefined;
 };
 
-const admittedPermits = new WeakMap<object, PermitStateV1>();
-const journalPermits = new WeakMap<object, PermitStateV1>();
+const admittedPermits = new WeakMap<object, PermitState>();
+const journalPermits = new WeakMap<object, PermitState>();
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" &&
@@ -172,7 +172,7 @@ const canonicalOutRefs = (
 const reservedInput = (
   value: unknown,
   label: string,
-): ProductionWorkflowFundingReservedInputV1 => {
+): WorkflowFundingReservedInput => {
   const record = exact(value, ["outRef", "role", "lovelace", "assets"], label);
   if (
     typeof record.outRef !== "string" ||
@@ -219,9 +219,7 @@ const reservedInput = (
   });
 };
 
-const parseSnapshot = (
-  value: unknown,
-): ProductionWorkflowFundingReservationSnapshotV1 => {
+const parseSnapshot = (value: unknown): WorkflowFundingReservationSnapshot => {
   const record = exact(
     value,
     [
@@ -301,7 +299,7 @@ const assertSnapshotInputBounds = ({
   maximumFundingInputs,
   maximumCollateralInputs,
 }: {
-  readonly snapshot: ProductionWorkflowFundingReservationSnapshotV1;
+  readonly snapshot: WorkflowFundingReservationSnapshot;
   readonly maximumFundingInputs: number;
   readonly maximumCollateralInputs: number;
 }): void => {
@@ -318,9 +316,9 @@ const assertSnapshotInputBounds = ({
 };
 
 const parseStateSnapshot = (
-  state: PermitStateV1,
+  state: PermitState,
   value: unknown,
-): ProductionWorkflowFundingReservationSnapshotV1 => {
+): WorkflowFundingReservationSnapshot => {
   const snapshot = parseSnapshot(value);
   assertSnapshotInputBounds({
     snapshot,
@@ -334,7 +332,7 @@ const exactUtxos = ({
   snapshot,
   utxos,
 }: {
-  readonly snapshot: ProductionWorkflowFundingReservationSnapshotV1;
+  readonly snapshot: WorkflowFundingReservationSnapshot;
   readonly utxos: readonly UTxO[];
 }): ReadonlyMap<string, UTxO> => {
   const resolved = new Map<string, UTxO>();
@@ -386,7 +384,7 @@ const resolveExactOutRefs = async ({
   outRefs,
   label,
 }: {
-  readonly port: ProductionWorkflowFundingReservationPortV1;
+  readonly port: WorkflowFundingReservationPort;
   readonly outRefs: readonly string[];
   readonly label: string;
 }): Promise<ReadonlyMap<string, UTxO>> => {
@@ -511,7 +509,7 @@ const parseProtocolInputAuthority = (
   });
 };
 
-const refresh = async (state: PermitStateV1): Promise<void> => {
+const refresh = async (state: PermitState): Promise<void> => {
   const snapshot = parseStateSnapshot(state, await state.port.load());
   if (
     snapshot.reservationId !== state.snapshot.reservationId ||
@@ -533,7 +531,7 @@ const refresh = async (state: PermitStateV1): Promise<void> => {
   });
 };
 
-const actionKind = (action: FraudProofWorkflowActionV1): string => {
+const actionKind = (action: FraudProofWorkflowAction): string => {
   const value =
     typeof action.input.actionKind === "string"
       ? action.input.actionKind
@@ -546,7 +544,7 @@ const actionKind = (action: FraudProofWorkflowActionV1): string => {
   return value;
 };
 
-const stateForJournal = (journal: object): PermitStateV1 | undefined =>
+const stateForJournal = (journal: object): PermitState | undefined =>
   journalPermits.get(journal);
 
 const selectActionInputs = ({
@@ -556,7 +554,7 @@ const selectActionInputs = ({
   requiredAssets,
   label,
 }: {
-  readonly candidates: readonly ProductionWorkflowFundingReservedInputV1[];
+  readonly candidates: readonly WorkflowFundingReservedInput[];
   readonly maximumCount: number;
   readonly requiredLovelace: bigint;
   readonly requiredAssets: ReadonlyMap<string, bigint>;
@@ -572,7 +570,7 @@ const selectActionInputs = ({
     left.outRef.localeCompare(right.outRef),
   );
   const covers = (
-    selected: readonly ProductionWorkflowFundingReservedInputV1[],
+    selected: readonly WorkflowFundingReservedInput[],
   ): boolean => {
     if (
       selected.reduce(
@@ -595,7 +593,7 @@ const selectActionInputs = ({
   const search = (
     size: number,
     start: number,
-    selected: ProductionWorkflowFundingReservedInputV1[],
+    selected: WorkflowFundingReservedInput[],
   ): readonly string[] | null => {
     if (selected.length === size) {
       return covers(selected)
@@ -627,7 +625,7 @@ const selectActionInputs = ({
   );
 };
 
-export const createProductionWorkflowFundingReservationPermitV1 = async ({
+export const createWorkflowFundingReservationPermit = async ({
   category,
   runner,
   actuationPermit,
@@ -635,17 +633,17 @@ export const createProductionWorkflowFundingReservationPermitV1 = async ({
   port,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
-  readonly runner: ProductionWorkflowAdapterRunnerV1;
-  readonly actuationPermit: ProductionWorkflowActuationPermitV1;
+  readonly runner: WorkflowAdapterRunner;
+  readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
-  readonly port: ProductionWorkflowFundingReservationPortV1;
-}): Promise<ProductionWorkflowFundingReservationPermitV1> => {
-  const actuation = assertProductionWorkflowActuationPermitIdentityV1({
+  readonly port: WorkflowFundingReservationPort;
+}): Promise<WorkflowFundingReservationPermit> => {
+  const actuation = assertWorkflowActuationPermitIdentity({
     permit: actuationPermit,
     category,
     rollbackGeneration,
   });
-  const requirements = productionWorkflowFundingRequirementsForRunnerV1({
+  const requirements = workflowFundingRequirementsForRunner({
     category,
     runner,
   });
@@ -688,8 +686,8 @@ export const createProductionWorkflowFundingReservationPermitV1 = async ({
     maximumFundingInputs,
     maximumCollateralInputs,
   });
-  const permit: ProductionWorkflowFundingReservationPermitV1 = Object.freeze({
-    permitVersion: PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1,
+  const permit: WorkflowFundingReservationPermit = Object.freeze({
+    permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
   });
   admittedPermits.set(permit, {
     category,
@@ -714,19 +712,16 @@ export const createProductionWorkflowFundingReservationPermitV1 = async ({
   return permit;
 };
 
-export const bindProductionWorkflowFundingReservationJournalV1 = <
-  Journal extends object,
->({
+export const bindWorkflowFundingReservationJournal = <Journal extends object>({
   journal,
   permit,
 }: {
   readonly journal: Journal;
-  readonly permit: ProductionWorkflowFundingReservationPermitV1;
+  readonly permit: WorkflowFundingReservationPermit;
 }): Journal => {
   const state = admittedPermits.get(permit);
   if (
-    permit.permitVersion !==
-      PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1 ||
+    permit.permitVersion !== WORKFLOW_FUNDING_RESERVATION_PERMIT ||
     state === undefined
   ) {
     throw new Error("production funding reservation permit was not admitted");
@@ -746,12 +741,12 @@ export const bindProductionWorkflowFundingReservationJournalV1 = <
   return journal;
 };
 
-export const beginProductionWorkflowFundingReservationActionV1 = async ({
+export const beginWorkflowFundingReservationAction = async ({
   journal,
   action,
 }: {
   readonly journal: object;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly action: FraudProofWorkflowAction;
 }): Promise<void> => {
   const state = stateForJournal(journal);
   if (state === undefined) return;
@@ -831,8 +826,8 @@ const assertMeasuredTransactionBound = async ({
   bodyInputs,
   fundingOutRefs,
 }: {
-  readonly state: PermitStateV1;
-  readonly measured: ProductionWorkflowFundingRequirementsV1["actions"][number];
+  readonly state: PermitState;
+  readonly measured: WorkflowFundingRequirements["actions"][number];
   readonly signed: TxSigned;
   readonly bodyInputs: readonly string[];
   readonly fundingOutRefs: readonly string[];
@@ -884,7 +879,7 @@ const assertMeasuredTransactionBound = async ({
     );
   }
   const referenceOutRefs = [
-    ...workflowTransactionReferenceInputOutRefsV1(signed),
+    ...workflowTransactionReferenceInputOutRefs(signed),
   ].sort();
   const measuredReferenceOutRefs = measured.referenceInputs
     .map(({ outRef }) => outRef)
@@ -1115,11 +1110,11 @@ const producedFundingInputs = ({
 }: {
   readonly signed: TxSigned;
   readonly walletAddress: string;
-}): readonly ProductionWorkflowFundingReservedInputV1[] => {
+}): readonly WorkflowFundingReservedInput[] => {
   const body = signed.toTransaction().body();
   const outputs = body.outputs();
   const transactionHash = signed.toHash().toLowerCase();
-  const produced: ProductionWorkflowFundingReservedInputV1[] = [];
+  const produced: WorkflowFundingReservedInput[] = [];
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = outputs.get(index);
     if (output.address().to_bech32() !== walletAddress) continue;
@@ -1152,18 +1147,18 @@ const producedFundingInputs = ({
   return Object.freeze(produced);
 };
 
-export const prepareProductionWorkflowFundingReservationTransactionV1 = async ({
+export const prepareWorkflowFundingReservationTransaction = async ({
   journal,
   action,
   preflight,
 }: {
   readonly journal: object;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly action: FraudProofWorkflowAction;
   readonly preflight: object;
 }): Promise<void> => {
   const state = stateForJournal(journal);
   if (state === undefined) return;
-  const signed = productionWorkflowPreflightTransactionV1(preflight);
+  const signed = workflowPreflightTransaction(preflight);
   if (signed === undefined) {
     throw new Error(
       "production preflight omitted its captured signed transaction",
@@ -1189,9 +1184,9 @@ export const prepareProductionWorkflowFundingReservationTransactionV1 = async ({
     state.currentCollateralOutRefs,
     "reserved collateral inputs",
   );
-  const bodyInputs = [...workflowTransactionInputOutRefsV1(signed)].sort();
+  const bodyInputs = [...workflowTransactionInputOutRefs(signed)].sort();
   const bodyCollateral = [
-    ...workflowTransactionCollateralInputOutRefsV1(signed),
+    ...workflowTransactionCollateralInputOutRefs(signed),
   ].sort();
   if (
     fundingOutRefs.some((outRef) => !bodyInputs.includes(outRef)) ||
@@ -1234,30 +1229,27 @@ export const prepareProductionWorkflowFundingReservationTransactionV1 = async ({
   state.pendingTransactionHash = transactionHash;
 };
 
-export const assertProductionWorkflowFundingReservationReadyToSubmitV1 =
-  async ({
-    journal,
-    transactionHash,
-  }: {
-    readonly journal: object;
-    readonly transactionHash: string;
-  }): Promise<void> => {
-    const state = stateForJournal(journal);
-    if (state === undefined) return;
-    const expectedRevision = state.snapshot.revision;
-    const expectedPending = state.pendingTransactionHash;
-    await refresh(state);
-    if (
-      state.snapshot.state !== "active" ||
-      state.snapshot.revision !== expectedRevision ||
-      expectedPending !== transactionHash ||
-      state.pendingTransactionHash !== transactionHash
-    ) {
-      throw new Error(
-        "production funding reservation changed before submission",
-      );
-    }
-  };
+export const assertWorkflowFundingReservationReadyToSubmit = async ({
+  journal,
+  transactionHash,
+}: {
+  readonly journal: object;
+  readonly transactionHash: string;
+}): Promise<void> => {
+  const state = stateForJournal(journal);
+  if (state === undefined) return;
+  const expectedRevision = state.snapshot.revision;
+  const expectedPending = state.pendingTransactionHash;
+  await refresh(state);
+  if (
+    state.snapshot.state !== "active" ||
+    state.snapshot.revision !== expectedRevision ||
+    expectedPending !== transactionHash ||
+    state.pendingTransactionHash !== transactionHash
+  ) {
+    throw new Error("production funding reservation changed before submission");
+  }
+};
 
 const applyTransition = async ({
   journal,
@@ -1300,27 +1292,22 @@ const applyTransition = async ({
   state.currentCollateralOutRefs = Object.freeze([]);
 };
 
-export const confirmProductionWorkflowFundingReservationTransactionV1 =
-  async (input: {
-    readonly journal: object;
-    readonly transactionHash: string;
-  }): Promise<void> =>
-    await applyTransition({ ...input, outcome: "confirmed" });
+export const confirmWorkflowFundingReservationTransaction = async (input: {
+  readonly journal: object;
+  readonly transactionHash: string;
+}): Promise<void> => await applyTransition({ ...input, outcome: "confirmed" });
 
-export const abandonProductionWorkflowFundingReservationTransactionV1 =
-  async (input: {
-    readonly journal: object;
-    readonly transactionHash: string;
-  }): Promise<void> =>
-    await applyTransition({ ...input, outcome: "not_found" });
+export const abandonWorkflowFundingReservationTransaction = async (input: {
+  readonly journal: object;
+  readonly transactionHash: string;
+}): Promise<void> => await applyTransition({ ...input, outcome: "not_found" });
 
-export const conflictProductionWorkflowFundingReservationTransactionV1 =
-  async (input: {
-    readonly journal: object;
-    readonly transactionHash: string;
-  }): Promise<void> => await applyTransition({ ...input, outcome: "conflict" });
+export const conflictWorkflowFundingReservationTransaction = async (input: {
+  readonly journal: object;
+  readonly transactionHash: string;
+}): Promise<void> => await applyTransition({ ...input, outcome: "conflict" });
 
-export const releaseProductionWorkflowFundingReservationV1 = async ({
+export const releaseWorkflowFundingReservation = async ({
   journal,
 }: {
   readonly journal: object;
@@ -1352,12 +1339,12 @@ const balanceCbor = (utxos: readonly UTxO[]): string => {
  * ordinary and collateral UTxOs. Signing and submission still delegate to the
  * original enterprise-key wallet.
  */
-export const restrictProductionWorkflowFundingSignerV1 = ({
+export const restrictWorkflowFundingSigner = ({
   signer,
   permit,
 }: {
   readonly signer: ResolvedProverSigner;
-  readonly permit: ProductionWorkflowFundingReservationPermitV1;
+  readonly permit: WorkflowFundingReservationPermit;
 }): ResolvedProverSigner => {
   const state = admittedPermits.get(permit);
   if (state === undefined) {
@@ -1421,112 +1408,109 @@ export const restrictProductionWorkflowFundingSignerV1 = ({
 };
 
 /** Test-only identity seam for runtime lifecycle tests that never build a tx. */
-export const unsafeCreateProductionWorkflowFundingReservationPermitForTestV1 =
-  ({
+export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
+  category,
+  actuationPermit,
+  deploymentFingerprint,
+  decisionDigest,
+  rollbackGeneration,
+}: {
+  readonly category: FraudProofCatalogueCategoryName;
+  readonly actuationPermit: WorkflowActuationPermit;
+  readonly deploymentFingerprint: string;
+  readonly decisionDigest: string;
+  readonly rollbackGeneration: string;
+}): WorkflowFundingReservationPermit => {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("unsafe funding reservation permit is test-only");
+  }
+  const identity = assertWorkflowActuationPermitIdentity({
+    permit: actuationPermit,
     category,
-    actuationPermit,
+    rollbackGeneration,
+  });
+  if (
+    identity.deploymentFingerprint !== deploymentFingerprint ||
+    identity.decisionDigest !== decisionDigest
+  ) {
+    throw new Error("test funding reservation identity mismatch");
+  }
+  const permit: WorkflowFundingReservationPermit = Object.freeze({
+    permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
+  });
+  const snapshot: WorkflowFundingReservationSnapshot = Object.freeze({
+    reservationId: "01".repeat(32),
     deploymentFingerprint,
     decisionDigest,
+    profileDigest: "02".repeat(32),
+    calculationDigest: "03".repeat(32),
     rollbackGeneration,
-  }: {
-    readonly category: FraudProofCatalogueCategoryName;
-    readonly actuationPermit: ProductionWorkflowActuationPermitV1;
-    readonly deploymentFingerprint: string;
-    readonly decisionDigest: string;
-    readonly rollbackGeneration: string;
-  }): ProductionWorkflowFundingReservationPermitV1 => {
-    if (process.env.NODE_ENV !== "test") {
-      throw new Error("unsafe funding reservation permit is test-only");
-    }
-    const identity = assertProductionWorkflowActuationPermitIdentityV1({
-      permit: actuationPermit,
-      category,
-      rollbackGeneration,
-    });
-    if (
-      identity.deploymentFingerprint !== deploymentFingerprint ||
-      identity.decisionDigest !== decisionDigest
-    ) {
-      throw new Error("test funding reservation identity mismatch");
-    }
-    const permit: ProductionWorkflowFundingReservationPermitV1 = Object.freeze({
-      permitVersion: PRODUCTION_WORKFLOW_FUNDING_RESERVATION_PERMIT_V1,
-    });
-    const snapshot: ProductionWorkflowFundingReservationSnapshotV1 =
-      Object.freeze({
-        reservationId: "01".repeat(32),
-        deploymentFingerprint,
-        decisionDigest,
-        profileDigest: "02".repeat(32),
-        calculationDigest: "03".repeat(32),
-        rollbackGeneration,
-        revision: "0",
-        walletAddress: "test-only-no-wallet",
-        fundingPaymentKeyHash: "04".repeat(28),
-        state: "active",
-        activeInputs: Object.freeze([]),
-      });
-    const port: ProductionWorkflowFundingReservationPortV1 = Object.freeze({
-      load: async () => snapshot,
-      resolveInputs: async () => [],
-      resolveConfirmedActionOutput: async () => {
-        throw new Error("unsafe test permit has no confirmed action lineage");
-      },
-      resolveProtocolInputAuthority: async () => {
-        throw new Error("unsafe test permit has no protocol input authority");
-      },
-      prepare: async () => snapshot,
-      confirm: async () => snapshot,
-      abandon: async () => snapshot,
-      markConflict: async () => snapshot,
-      release: async () => snapshot,
-    });
-    admittedPermits.set(permit, {
-      category,
-      requirements: Object.freeze({
-        schemaVersion: "midgard-production-workflow-funding-requirements-v1",
-        scope: Object.freeze({ kind: "fraud_proof_category", category }),
-        deploymentFingerprint,
-        blueprintSha256: "05".repeat(32),
-        protocolParametersDigest: "06".repeat(32),
-        economicsPolicyDigest: "07".repeat(32),
-        fundingPaymentKeyHash: "04".repeat(28),
-        measurementToolVersion: "test-v1",
-        measurementArtifactSha256: "08".repeat(32),
-        actions: Object.freeze([]),
-        profileDigest: "02".repeat(32),
-      }),
-      actuationPermit,
-      port,
-      maximumFundingInputs: 0,
-      maximumCollateralInputs: 0,
-      snapshot,
-      resolvedInputs: new Map(),
-      boundJournal: undefined,
-      currentActionKind: undefined,
-      currentFundingOutRefs: Object.freeze([]),
-      currentCollateralOutRefs: Object.freeze([]),
-      pendingTransactionHash: undefined,
-    });
-    return permit;
-  };
+    revision: "0",
+    walletAddress: "test-only-no-wallet",
+    fundingPaymentKeyHash: "04".repeat(28),
+    state: "active",
+    activeInputs: Object.freeze([]),
+  });
+  const port: WorkflowFundingReservationPort = Object.freeze({
+    load: async () => snapshot,
+    resolveInputs: async () => [],
+    resolveConfirmedActionOutput: async () => {
+      throw new Error("unsafe test permit has no confirmed action lineage");
+    },
+    resolveProtocolInputAuthority: async () => {
+      throw new Error("unsafe test permit has no protocol input authority");
+    },
+    prepare: async () => snapshot,
+    confirm: async () => snapshot,
+    abandon: async () => snapshot,
+    markConflict: async () => snapshot,
+    release: async () => snapshot,
+  });
+  admittedPermits.set(permit, {
+    category,
+    requirements: Object.freeze({
+      schemaVersion: "midgard-production-workflow-funding-requirements-v1",
+      scope: Object.freeze({ kind: "fraud_proof_category", category }),
+      deploymentFingerprint,
+      blueprintSha256: "05".repeat(32),
+      protocolParametersDigest: "06".repeat(32),
+      economicsPolicyDigest: "07".repeat(32),
+      fundingPaymentKeyHash: "04".repeat(28),
+      measurementToolVersion: "test-v1",
+      measurementArtifactSha256: "08".repeat(32),
+      actions: Object.freeze([]),
+      profileDigest: "02".repeat(32),
+    }),
+    actuationPermit,
+    port,
+    maximumFundingInputs: 0,
+    maximumCollateralInputs: 0,
+    snapshot,
+    resolvedInputs: new Map(),
+    boundJournal: undefined,
+    currentActionKind: undefined,
+    currentFundingOutRefs: Object.freeze([]),
+    currentCollateralOutRefs: Object.freeze([]),
+    pendingTransactionHash: undefined,
+  });
+  return permit;
+};
 
-export const unsafeProductionWorkflowFundingReservationSelectedOutRefsForTestV1 =
-  (
-    permit: ProductionWorkflowFundingReservationPermitV1,
-  ): Readonly<{
-    fundingOutRefs: readonly string[];
-    collateralOutRefs: readonly string[];
-  }> => {
-    if (process.env.NODE_ENV !== "test") {
-      throw new Error("unsafe funding reservation inspection is test-only");
-    }
-    const state = admittedPermits.get(permit);
-    if (state === undefined) {
-      throw new Error("production funding reservation permit was not admitted");
-    }
-    return Object.freeze({
-      fundingOutRefs: Object.freeze([...state.currentFundingOutRefs]),
-      collateralOutRefs: Object.freeze([...state.currentCollateralOutRefs]),
-    });
-  };
+export const unsafeWorkflowFundingReservationSelectedOutRefsForTest = (
+  permit: WorkflowFundingReservationPermit,
+): Readonly<{
+  fundingOutRefs: readonly string[];
+  collateralOutRefs: readonly string[];
+}> => {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("unsafe funding reservation inspection is test-only");
+  }
+  const state = admittedPermits.get(permit);
+  if (state === undefined) {
+    throw new Error("production funding reservation permit was not admitted");
+  }
+  return Object.freeze({
+    fundingOutRefs: Object.freeze([...state.currentFundingOutRefs]),
+    collateralOutRefs: Object.freeze([...state.currentCollateralOutRefs]),
+  });
+};

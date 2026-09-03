@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
-  validationResolverIndexV1,
-  validationSemanticResolverGlobalIndexV1,
+  validationResolverIndex,
+  validationSemanticResolverGlobalIndex,
 } from "../src/index.js";
 import {
   buildAcceptedClaimOverMinAdaRejectingTransactionFixture,
@@ -90,7 +90,7 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     // of this measurement: `value_and_mint_v1` accepted the disputed step and
     // routed it to slot 5, the output-descriptor semantic resolver -- not to a
     // neighbouring kind, and not to the retired direct resolver.
-    const resolverIndex = validationResolverIndexV1("ValueAndMint");
+    const resolverIndex = validationResolverIndex("ValueAndMint");
     // Stage 3's descriptor step: `validationSemanticResolverIndexV1` maps the
     // `valueOutputDescriptor` witness kind to 5.
     const semanticResolverIndex = 5;
@@ -100,7 +100,7 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     );
     expect(
       Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics)[
-        validationSemanticResolverGlobalIndexV1(
+        validationSemanticResolverGlobalIndex(
           resolverIndex,
           semanticResolverIndex,
         )
@@ -135,7 +135,7 @@ describe("validation-dispute journey to the E_MIN_ADA output-descriptor convicti
     expect(semantic!.resolverIndex).toBe(resolverIndex);
     expect(semantic!.semanticResolverIndex).toBe(semanticResolverIndex);
     expect(semantic!.semanticResolverGlobalIndex).toBe(
-      validationSemanticResolverGlobalIndexV1(
+      validationSemanticResolverGlobalIndex(
         resolverIndex,
         semanticResolverIndex,
       ),

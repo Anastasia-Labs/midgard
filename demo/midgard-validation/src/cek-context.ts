@@ -1,4 +1,4 @@
-import { encodeCbor, MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core";
+import { encodeCbor, MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import {
   Constr,
@@ -8,17 +8,17 @@ import {
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import {
-  emptyMidgardCekDataListSummaryV1,
-  emptyMidgardCekDataPairSummaryV1,
-  type MidgardCekDataSequenceSummaryV1,
-  type MidgardCekDataSummaryV1,
-  prependMidgardCekDataListSummaryV1,
-  prependMidgardCekDataPairSummaryV1,
-  summarizeMidgardCekListDataV1,
-  summarizeMidgardCekMapDataV1,
-  summarizeMidgardCekSmallConstrDataV1,
+  emptyMidgardCekDataListSummary,
+  emptyMidgardCekDataPairSummary,
+  type MidgardCekDataSequenceSummary,
+  type MidgardCekDataSummary,
+  prependMidgardCekDataListSummary,
+  prependMidgardCekDataPairSummary,
+  summarizeMidgardCekListData,
+  summarizeMidgardCekMapData,
+  summarizeMidgardCekSmallConstrData,
 } from "./script-context-proof.js";
 
 const REDEEMER_CONTEXT_DOMAIN = Buffer.from(
@@ -51,22 +51,22 @@ const requiredHash32 = (field: string, value: Uint8Array): Buffer => {
   return exact;
 };
 
-export const emptyMidgardCekDataSummaryV1 = (): MidgardCekDataSummaryV1 => ({
+export const emptyMidgardCekDataSummary = (): MidgardCekDataSummary => ({
   root: Buffer.alloc(0),
   cborLength: 0n,
   memory: 0n,
 });
 
-export const encodeMidgardCekDataSummaryV1 = (
-  summary: MidgardCekDataSummaryV1,
+export const encodeMidgardCekDataSummary = (
+  summary: MidgardCekDataSummary,
 ): readonly [Buffer, bigint, bigint] => [
   bytes(summary.root),
   summary.cborLength,
   summary.memory,
 ];
 
-export const encodeMidgardCekDataSequenceSummaryV1 = (
-  summary: MidgardCekDataSequenceSummaryV1,
+export const encodeMidgardCekDataSequenceSummary = (
+  summary: MidgardCekDataSequenceSummary,
 ): readonly [Buffer, bigint, bigint, bigint] => [
   bytes(summary.root),
   summary.length,
@@ -74,11 +74,11 @@ export const encodeMidgardCekDataSequenceSummaryV1 = (
   summary.memory,
 ];
 
-export const summarizeMidgardCekLucidDataV1 = (
+export const summarizeMidgardCekLucidData = (
   value: LucidDataValue,
-): MidgardCekDataSummaryV1 => {
+): MidgardCekDataSummary => {
   const cbor = fromHex(Data.to(value));
-  const tree = commitMidgardCekDataTreeV1(dataFromCbor(cbor));
+  const tree = commitMidgardCekDataTree(dataFromCbor(cbor));
   return {
     root: Buffer.from(tree.root),
     cborLength: tree.cborLength,
@@ -86,39 +86,39 @@ export const summarizeMidgardCekLucidDataV1 = (
   };
 };
 
-export const summarizeMidgardCekLucidListV1 = (
+export const summarizeMidgardCekLucidList = (
   values: readonly LucidDataValue[],
-): MidgardCekDataSequenceSummaryV1 => {
-  let summary = emptyMidgardCekDataListSummaryV1();
+): MidgardCekDataSequenceSummary => {
+  let summary = emptyMidgardCekDataListSummary();
   for (let index = values.length - 1; index >= 0; index -= 1) {
-    summary = prependMidgardCekDataListSummaryV1(
-      summarizeMidgardCekLucidDataV1(values[index]!),
+    summary = prependMidgardCekDataListSummary(
+      summarizeMidgardCekLucidData(values[index]!),
       summary,
     );
   }
   return summary;
 };
 
-export const summarizeMidgardCekLucidMapV1 = (
+export const summarizeMidgardCekLucidMap = (
   value: ReadonlyMap<LucidDataValue, LucidDataValue>,
-): MidgardCekDataSequenceSummaryV1 => {
+): MidgardCekDataSequenceSummary => {
   const entries = [...value.entries()];
-  let summary = emptyMidgardCekDataPairSummaryV1();
+  let summary = emptyMidgardCekDataPairSummary();
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const [key, mapped] = entries[index]!;
-    summary = prependMidgardCekDataPairSummaryV1(
-      summarizeMidgardCekLucidDataV1(key),
-      summarizeMidgardCekLucidDataV1(mapped),
+    summary = prependMidgardCekDataPairSummary(
+      summarizeMidgardCekLucidData(key),
+      summarizeMidgardCekLucidData(mapped),
       summary,
     );
   }
   return summary;
 };
 
-export const validateMidgardCekObserverCollectionV1 = (
+export const validateMidgardCekObserverCollection = (
   observers: readonly Uint8Array[],
 ): void => {
-  if (observers.length > MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount) {
+  if (observers.length > MIDGARD_CONSENSUS_LIMITS.maxRequiredObserverCount) {
     throw new Error(
       "CEK observer context exceeds the transaction-size-derived collection guardrail",
     );
@@ -138,157 +138,155 @@ export const validateMidgardCekObserverCollectionV1 = (
   }
 };
 
-export const prependMidgardCekObserverItemV1 = (input: {
+export const prependMidgardCekObserverItem = (input: {
   readonly observerHash: Uint8Array;
   readonly midgardEncoding: boolean;
-  readonly tail: MidgardCekDataSequenceSummaryV1;
-}): MidgardCekDataSequenceSummaryV1 => {
+  readonly tail: MidgardCekDataSequenceSummary;
+}): MidgardCekDataSequenceSummary => {
   const observerHash = bytes(input.observerHash);
   if (observerHash.length !== 28) {
     throw new Error("CEK observer hash must be exactly 28 bytes");
   }
   if (input.midgardEncoding) {
-    return prependMidgardCekDataListSummaryV1(
-      summarizeMidgardCekLucidDataV1(observerHash.toString("hex")),
+    return prependMidgardCekDataListSummary(
+      summarizeMidgardCekLucidData(observerHash.toString("hex")),
       input.tail,
     );
   }
-  return prependMidgardCekDataPairSummaryV1(
-    summarizeMidgardCekLucidDataV1(
-      new Constr(1, [observerHash.toString("hex")]),
-    ),
-    summarizeMidgardCekLucidDataV1(0n),
+  return prependMidgardCekDataPairSummary(
+    summarizeMidgardCekLucidData(new Constr(1, [observerHash.toString("hex")])),
+    summarizeMidgardCekLucidData(0n),
     input.tail,
   );
 };
 
-export const finalizeMidgardCekObserverItemsV1 = (input: {
-  readonly items: MidgardCekDataSequenceSummaryV1;
+export const finalizeMidgardCekObserverItems = (input: {
+  readonly items: MidgardCekDataSequenceSummary;
   readonly midgardEncoding: boolean;
-}): MidgardCekDataSummaryV1 =>
+}): MidgardCekDataSummary =>
   input.midgardEncoding
-    ? summarizeMidgardCekListDataV1(input.items)
-    : summarizeMidgardCekMapDataV1(input.items);
+    ? summarizeMidgardCekListData(input.items)
+    : summarizeMidgardCekMapData(input.items);
 
-export type MidgardCekRedeemerContextControlV1 = {
+export type MidgardCekRedeemerContextControl = {
   readonly cursor: number;
-  readonly mapItems: MidgardCekDataSequenceSummaryV1;
+  readonly mapItems: MidgardCekDataSequenceSummary;
   readonly activeScanHash: Buffer;
   readonly activeRedeemerLeaf: Buffer;
-  readonly activePurpose: MidgardCekDataSummaryV1;
-  readonly currentRedeemer: MidgardCekDataSummaryV1;
+  readonly activePurpose: MidgardCekDataSummary;
+  readonly currentRedeemer: MidgardCekDataSummary;
 };
 
-export const initialMidgardCekRedeemerContextControlV1 =
-  (): MidgardCekRedeemerContextControlV1 => ({
+export const initialMidgardCekRedeemerContextControl =
+  (): MidgardCekRedeemerContextControl => ({
     cursor: 0,
-    mapItems: emptyMidgardCekDataPairSummaryV1(),
+    mapItems: emptyMidgardCekDataPairSummary(),
     activeScanHash: Buffer.alloc(0),
     activeRedeemerLeaf: Buffer.alloc(0),
-    activePurpose: emptyMidgardCekDataSummaryV1(),
-    currentRedeemer: emptyMidgardCekDataSummaryV1(),
+    activePurpose: emptyMidgardCekDataSummary(),
+    currentRedeemer: emptyMidgardCekDataSummary(),
   });
 
-export const encodeMidgardCekRedeemerContextControlV1 = (
-  control: MidgardCekRedeemerContextControlV1,
+export const encodeMidgardCekRedeemerContextControl = (
+  control: MidgardCekRedeemerContextControl,
 ): Buffer =>
   encodeCbor([
     BigInt(control.cursor),
-    encodeMidgardCekDataSequenceSummaryV1(control.mapItems),
+    encodeMidgardCekDataSequenceSummary(control.mapItems),
     control.activeScanHash,
     control.activeRedeemerLeaf,
-    encodeMidgardCekDataSummaryV1(control.activePurpose),
-    encodeMidgardCekDataSummaryV1(control.currentRedeemer),
+    encodeMidgardCekDataSummary(control.activePurpose),
+    encodeMidgardCekDataSummary(control.currentRedeemer),
   ]);
 
-export const hashMidgardCekRedeemerContextControlV1 = (
-  control: MidgardCekRedeemerContextControlV1,
+export const hashMidgardCekRedeemerContextControl = (
+  control: MidgardCekRedeemerContextControl,
 ): Buffer =>
   hash32(
     Buffer.concat([
       REDEEMER_CONTEXT_DOMAIN,
-      encodeMidgardCekRedeemerContextControlV1(control),
+      encodeMidgardCekRedeemerContextControl(control),
     ]),
   );
 
-export type MidgardCekFinalContextControlV1 = {
-  readonly txInfo: MidgardCekDataSummaryV1;
-  readonly redeemer: MidgardCekDataSummaryV1;
-  readonly scriptInfo: MidgardCekDataSummaryV1;
+export type MidgardCekFinalContextControl = {
+  readonly txInfo: MidgardCekDataSummary;
+  readonly redeemer: MidgardCekDataSummary;
+  readonly scriptInfo: MidgardCekDataSummary;
 };
 
-export type MidgardCekContextPartsControlV1 = {
-  readonly redeemerItems: MidgardCekDataSequenceSummaryV1;
-  readonly redeemer: MidgardCekDataSummaryV1;
-  readonly scriptInfo: MidgardCekDataSummaryV1;
+export type MidgardCekContextPartsControl = {
+  readonly redeemerItems: MidgardCekDataSequenceSummary;
+  readonly redeemer: MidgardCekDataSummary;
+  readonly scriptInfo: MidgardCekDataSummary;
 };
 
-export type MidgardCekTxInfoAssemblyControlV1 = {
-  readonly tailFields: MidgardCekDataSequenceSummaryV1;
-  readonly redeemer: MidgardCekDataSummaryV1;
-  readonly scriptInfo: MidgardCekDataSummaryV1;
+export type MidgardCekTxInfoAssemblyControl = {
+  readonly tailFields: MidgardCekDataSequenceSummary;
+  readonly redeemer: MidgardCekDataSummary;
+  readonly scriptInfo: MidgardCekDataSummary;
 };
 
 const encodeSummaryTriple = (control: {
-  readonly redeemer: MidgardCekDataSummaryV1;
-  readonly scriptInfo: MidgardCekDataSummaryV1;
-  readonly txInfo?: MidgardCekDataSummaryV1;
-  readonly redeemerItems?: MidgardCekDataSequenceSummaryV1;
-  readonly tailFields?: MidgardCekDataSequenceSummaryV1;
+  readonly redeemer: MidgardCekDataSummary;
+  readonly scriptInfo: MidgardCekDataSummary;
+  readonly txInfo?: MidgardCekDataSummary;
+  readonly redeemerItems?: MidgardCekDataSequenceSummary;
+  readonly tailFields?: MidgardCekDataSequenceSummary;
 }): Buffer =>
   encodeCbor([
     control.txInfo !== undefined
-      ? encodeMidgardCekDataSummaryV1(control.txInfo)
+      ? encodeMidgardCekDataSummary(control.txInfo)
       : control.redeemerItems !== undefined
-        ? encodeMidgardCekDataSequenceSummaryV1(control.redeemerItems)
-        : encodeMidgardCekDataSequenceSummaryV1(control.tailFields!),
-    encodeMidgardCekDataSummaryV1(control.redeemer),
-    encodeMidgardCekDataSummaryV1(control.scriptInfo),
+        ? encodeMidgardCekDataSequenceSummary(control.redeemerItems)
+        : encodeMidgardCekDataSequenceSummary(control.tailFields!),
+    encodeMidgardCekDataSummary(control.redeemer),
+    encodeMidgardCekDataSummary(control.scriptInfo),
   ]);
 
-export const encodeMidgardCekFinalContextControlV1 = (
-  control: MidgardCekFinalContextControlV1,
+export const encodeMidgardCekFinalContextControl = (
+  control: MidgardCekFinalContextControl,
 ): Buffer => encodeSummaryTriple(control);
 
-export const hashMidgardCekFinalContextControlV1 = (
-  control: MidgardCekFinalContextControlV1,
+export const hashMidgardCekFinalContextControl = (
+  control: MidgardCekFinalContextControl,
 ): Buffer =>
   hash32(
     Buffer.concat([
       FINAL_CONTEXT_DOMAIN,
-      encodeMidgardCekFinalContextControlV1(control),
+      encodeMidgardCekFinalContextControl(control),
     ]),
   );
 
-export const encodeMidgardCekContextPartsControlV1 = (
-  control: MidgardCekContextPartsControlV1,
+export const encodeMidgardCekContextPartsControl = (
+  control: MidgardCekContextPartsControl,
 ): Buffer => encodeSummaryTriple(control);
 
-export const hashMidgardCekContextPartsControlV1 = (
-  control: MidgardCekContextPartsControlV1,
+export const hashMidgardCekContextPartsControl = (
+  control: MidgardCekContextPartsControl,
 ): Buffer =>
   hash32(
     Buffer.concat([
       CONTEXT_PARTS_DOMAIN,
-      encodeMidgardCekContextPartsControlV1(control),
+      encodeMidgardCekContextPartsControl(control),
     ]),
   );
 
-export const encodeMidgardCekTxInfoAssemblyControlV1 = (
-  control: MidgardCekTxInfoAssemblyControlV1,
+export const encodeMidgardCekTxInfoAssemblyControl = (
+  control: MidgardCekTxInfoAssemblyControl,
 ): Buffer => encodeSummaryTriple(control);
 
-export const hashMidgardCekTxInfoAssemblyControlV1 = (
-  control: MidgardCekTxInfoAssemblyControlV1,
+export const hashMidgardCekTxInfoAssemblyControl = (
+  control: MidgardCekTxInfoAssemblyControl,
 ): Buffer =>
   hash32(
     Buffer.concat([
       TX_INFO_ASSEMBLY_DOMAIN,
-      encodeMidgardCekTxInfoAssemblyControlV1(control),
+      encodeMidgardCekTxInfoAssemblyControl(control),
     ]),
   );
 
-export type MidgardCekContextControlV1 = {
+export type MidgardCekContextControl = {
   readonly stage: number;
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Buffer;
@@ -301,22 +299,22 @@ export type MidgardCekContextControlV1 = {
   readonly redeemerContextControlHash: Buffer;
   readonly executionMemoryLimit: bigint;
   readonly executionCpuLimit: bigint;
-  readonly referenceItems: MidgardCekDataSequenceSummaryV1;
-  readonly spendItems: MidgardCekDataSequenceSummaryV1;
-  readonly outputItems: MidgardCekDataSequenceSummaryV1;
-  readonly signerItems: MidgardCekDataSequenceSummaryV1;
+  readonly referenceItems: MidgardCekDataSequenceSummary;
+  readonly spendItems: MidgardCekDataSequenceSummary;
+  readonly outputItems: MidgardCekDataSequenceSummary;
+  readonly signerItems: MidgardCekDataSequenceSummary;
   readonly observerCount: number;
-  readonly observerItems: MidgardCekDataSequenceSummaryV1;
+  readonly observerItems: MidgardCekDataSequenceSummary;
   readonly previousObserver: Buffer;
-  readonly observerSummary: MidgardCekDataSummaryV1;
+  readonly observerSummary: MidgardCekDataSummary;
   readonly mintCursor: number;
   readonly currentMintPolicy: Buffer;
-  readonly currentMintAssets: MidgardCekDataSequenceSummaryV1;
-  readonly mintPolicies: MidgardCekDataSequenceSummaryV1;
-  readonly mintSummary: MidgardCekDataSummaryV1;
+  readonly currentMintAssets: MidgardCekDataSequenceSummary;
+  readonly mintPolicies: MidgardCekDataSequenceSummary;
+  readonly mintSummary: MidgardCekDataSummary;
 };
 
-export const initialMidgardCekContextControlV1 = (input: {
+export const initialMidgardCekContextControl = (input: {
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Uint8Array;
   readonly programEnvelopeHash: Uint8Array;
@@ -325,7 +323,7 @@ export const initialMidgardCekContextControlV1 = (input: {
   readonly scriptHash: Uint8Array;
   readonly subject: Uint8Array;
   readonly redeemerLeaf: Uint8Array;
-}): MidgardCekContextControlV1 => ({
+}): MidgardCekContextControl => ({
   stage: 0,
   languageTag: input.languageTag,
   programTermRoot: bytes(input.programTermRoot),
@@ -341,26 +339,26 @@ export const initialMidgardCekContextControlV1 = (input: {
   redeemerContextControlHash: Buffer.alloc(0),
   executionMemoryLimit: 0n,
   executionCpuLimit: 0n,
-  referenceItems: emptyMidgardCekDataListSummaryV1(),
-  spendItems: emptyMidgardCekDataListSummaryV1(),
-  outputItems: emptyMidgardCekDataListSummaryV1(),
-  signerItems: emptyMidgardCekDataListSummaryV1(),
+  referenceItems: emptyMidgardCekDataListSummary(),
+  spendItems: emptyMidgardCekDataListSummary(),
+  outputItems: emptyMidgardCekDataListSummary(),
+  signerItems: emptyMidgardCekDataListSummary(),
   observerCount: 0,
   observerItems:
     input.languageTag === 128
-      ? emptyMidgardCekDataListSummaryV1()
-      : emptyMidgardCekDataPairSummaryV1(),
+      ? emptyMidgardCekDataListSummary()
+      : emptyMidgardCekDataPairSummary(),
   previousObserver: Buffer.alloc(0),
-  observerSummary: emptyMidgardCekDataSummaryV1(),
+  observerSummary: emptyMidgardCekDataSummary(),
   mintCursor: 0,
   currentMintPolicy: Buffer.alloc(0),
-  currentMintAssets: emptyMidgardCekDataPairSummaryV1(),
-  mintPolicies: emptyMidgardCekDataPairSummaryV1(),
-  mintSummary: emptyMidgardCekDataSummaryV1(),
+  currentMintAssets: emptyMidgardCekDataPairSummary(),
+  mintPolicies: emptyMidgardCekDataPairSummary(),
+  mintSummary: emptyMidgardCekDataSummary(),
 });
 
-export const encodeMidgardCekContextControlV1 = (
-  control: MidgardCekContextControlV1,
+export const encodeMidgardCekContextControl = (
+  control: MidgardCekContextControl,
 ): Buffer =>
   encodeCbor([
     BigInt(control.stage),
@@ -375,24 +373,24 @@ export const encodeMidgardCekContextControlV1 = (
     control.redeemerContextControlHash,
     control.executionMemoryLimit,
     control.executionCpuLimit,
-    encodeMidgardCekDataSequenceSummaryV1(control.referenceItems),
-    encodeMidgardCekDataSequenceSummaryV1(control.spendItems),
-    encodeMidgardCekDataSequenceSummaryV1(control.outputItems),
-    encodeMidgardCekDataSequenceSummaryV1(control.signerItems),
+    encodeMidgardCekDataSequenceSummary(control.referenceItems),
+    encodeMidgardCekDataSequenceSummary(control.spendItems),
+    encodeMidgardCekDataSequenceSummary(control.outputItems),
+    encodeMidgardCekDataSequenceSummary(control.signerItems),
     BigInt(control.observerCount),
-    encodeMidgardCekDataSequenceSummaryV1(control.observerItems),
+    encodeMidgardCekDataSequenceSummary(control.observerItems),
     control.previousObserver,
-    encodeMidgardCekDataSummaryV1(control.observerSummary),
+    encodeMidgardCekDataSummary(control.observerSummary),
     BigInt(control.mintCursor),
     control.currentMintPolicy,
-    encodeMidgardCekDataSequenceSummaryV1(control.currentMintAssets),
-    encodeMidgardCekDataSequenceSummaryV1(control.mintPolicies),
-    encodeMidgardCekDataSummaryV1(control.mintSummary),
+    encodeMidgardCekDataSequenceSummary(control.currentMintAssets),
+    encodeMidgardCekDataSequenceSummary(control.mintPolicies),
+    encodeMidgardCekDataSummary(control.mintSummary),
   ]);
 
-export const encodeMidgardCekValidationWitnessV1 = (input: {
+export const encodeMidgardCekValidationWitness = (input: {
   readonly nativeControlCbor: Uint8Array;
-  readonly contextControl: MidgardCekContextControlV1 | null;
+  readonly contextControl: MidgardCekContextControl | null;
   readonly executionCursor: number;
   readonly completedCpu: bigint;
   readonly completedMemory: bigint;
@@ -409,7 +407,7 @@ export const encodeMidgardCekValidationWitnessV1 = (input: {
     bytes(input.nativeControlCbor),
     input.contextControl === null
       ? Buffer.alloc(0)
-      : encodeMidgardCekContextControlV1(input.contextControl),
+      : encodeMidgardCekContextControl(input.contextControl),
     BigInt(input.executionCursor),
     input.completedCpu,
     input.completedMemory,
@@ -423,7 +421,7 @@ export const encodeMidgardCekValidationWitnessV1 = (input: {
     input.executionMemoryLimit,
   ]);
 
-export type MidgardCekDecodedContextV1 = {
+export type MidgardCekDecodedContext = {
   readonly context: LucidDataValue;
   readonly txInfo: LucidDataValue;
   readonly redeemer: LucidDataValue;
@@ -431,9 +429,9 @@ export type MidgardCekDecodedContextV1 = {
   readonly txInfoFields: readonly LucidDataValue[];
 };
 
-export const decodeMidgardCekContextV1 = (
+export const decodeMidgardCekContext = (
   contextCbor: Uint8Array,
-): MidgardCekDecodedContextV1 => {
+): MidgardCekDecodedContext => {
   const context = Data.from(Buffer.from(contextCbor).toString("hex"));
   if (!(context instanceof Constr) || context.index !== 0) {
     throw new Error("V1 script context must be constructor 0");
@@ -455,22 +453,22 @@ export const decodeMidgardCekContextV1 = (
   };
 };
 
-export const summarizeMidgardCekContextPartsV1 = (
-  decoded: MidgardCekDecodedContextV1,
+export const summarizeMidgardCekContextParts = (
+  decoded: MidgardCekDecodedContext,
   languageTag: 3 | 128,
 ): {
-  readonly context: MidgardCekDataSummaryV1;
-  readonly txInfo: MidgardCekDataSummaryV1;
-  readonly redeemer: MidgardCekDataSummaryV1;
-  readonly scriptInfo: MidgardCekDataSummaryV1;
-  readonly spendItems: MidgardCekDataSequenceSummaryV1;
-  readonly referenceItems: MidgardCekDataSequenceSummaryV1;
-  readonly outputItems: MidgardCekDataSequenceSummaryV1;
-  readonly observer: MidgardCekDataSummaryV1;
-  readonly signerItems: MidgardCekDataSequenceSummaryV1;
-  readonly mint: MidgardCekDataSummaryV1;
-  readonly redeemerItems: MidgardCekDataSequenceSummaryV1;
-  readonly tailFields: MidgardCekDataSequenceSummaryV1;
+  readonly context: MidgardCekDataSummary;
+  readonly txInfo: MidgardCekDataSummary;
+  readonly redeemer: MidgardCekDataSummary;
+  readonly scriptInfo: MidgardCekDataSummary;
+  readonly spendItems: MidgardCekDataSequenceSummary;
+  readonly referenceItems: MidgardCekDataSequenceSummary;
+  readonly outputItems: MidgardCekDataSequenceSummary;
+  readonly observer: MidgardCekDataSummary;
+  readonly signerItems: MidgardCekDataSequenceSummary;
+  readonly mint: MidgardCekDataSummary;
+  readonly redeemerItems: MidgardCekDataSequenceSummary;
+  readonly tailFields: MidgardCekDataSequenceSummary;
 } => {
   const fields = decoded.txInfoFields;
   const expected = languageTag === 128 ? 10 : 16;
@@ -503,39 +501,39 @@ export const summarizeMidgardCekContextPartsV1 = (
   const redeemerIndex = languageTag === 128 ? 8 : 9;
   const tailStart = languageTag === 128 ? 5 : 8;
   return {
-    context: summarizeMidgardCekLucidDataV1(decoded.context),
-    txInfo: summarizeMidgardCekLucidDataV1(decoded.txInfo),
-    redeemer: summarizeMidgardCekLucidDataV1(decoded.redeemer),
-    scriptInfo: summarizeMidgardCekLucidDataV1(decoded.scriptInfo),
-    spendItems: summarizeMidgardCekLucidListV1(
+    context: summarizeMidgardCekLucidData(decoded.context),
+    txInfo: summarizeMidgardCekLucidData(decoded.txInfo),
+    redeemer: summarizeMidgardCekLucidData(decoded.redeemer),
+    scriptInfo: summarizeMidgardCekLucidData(decoded.scriptInfo),
+    spendItems: summarizeMidgardCekLucidList(
       asList(fields[0]!, "spend inputs"),
     ),
-    referenceItems: summarizeMidgardCekLucidListV1(
+    referenceItems: summarizeMidgardCekLucidList(
       asList(fields[1]!, "reference inputs"),
     ),
-    outputItems: summarizeMidgardCekLucidListV1(asList(fields[2]!, "outputs")),
-    observer: summarizeMidgardCekLucidDataV1(fields[observerIndex]!),
-    signerItems: summarizeMidgardCekLucidListV1(
+    outputItems: summarizeMidgardCekLucidList(asList(fields[2]!, "outputs")),
+    observer: summarizeMidgardCekLucidData(fields[observerIndex]!),
+    signerItems: summarizeMidgardCekLucidList(
       asList(fields[signerIndex]!, "signers"),
     ),
-    mint: summarizeMidgardCekLucidDataV1(fields[mintIndex]!),
-    redeemerItems: summarizeMidgardCekLucidMapV1(
+    mint: summarizeMidgardCekLucidData(fields[mintIndex]!),
+    redeemerItems: summarizeMidgardCekLucidMap(
       asMap(fields[redeemerIndex]!, "redeemers"),
     ),
-    tailFields: summarizeMidgardCekLucidListV1(fields.slice(tailStart)),
+    tailFields: summarizeMidgardCekLucidList(fields.slice(tailStart)),
   };
 };
 
-export const composeMidgardCekContextSummaryV1 = (
-  control: MidgardCekFinalContextControlV1,
-): MidgardCekDataSummaryV1 =>
-  summarizeMidgardCekSmallConstrDataV1(
+export const composeMidgardCekContextSummary = (
+  control: MidgardCekFinalContextControl,
+): MidgardCekDataSummary =>
+  summarizeMidgardCekSmallConstrData(
     0n,
     [control.txInfo, control.redeemer, control.scriptInfo].reduceRight(
-      (tail, field) => prependMidgardCekDataListSummaryV1(field, tail),
-      emptyMidgardCekDataListSummaryV1(),
+      (tail, field) => prependMidgardCekDataListSummary(field, tail),
+      emptyMidgardCekDataListSummary(),
     ),
   );
 
-export const asMidgardCekListSummaryV1 = summarizeMidgardCekListDataV1;
-export const asMidgardCekMapSummaryV1 = summarizeMidgardCekMapDataV1;
+export const asMidgardCekListSummary = summarizeMidgardCekListData;
+export const asMidgardCekMapSummary = summarizeMidgardCekMapData;

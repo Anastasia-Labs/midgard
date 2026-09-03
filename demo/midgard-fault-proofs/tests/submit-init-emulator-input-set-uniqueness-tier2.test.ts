@@ -25,30 +25,30 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import {
-  fieldPreimagePublicationDatumCborV1,
+  fieldPreimagePublicationDatumCbor,
   type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  requireInputSetUniquenessClaimV1,
-  scanInputSetUniquenessV1,
+  requireInputSetUniquenessClaim,
+  scanInputSetUniqueness,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
-import { expectOnchainRefusalV1 } from "./support/emulator/expect-onchain-refusal-v1.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal-v1.js";
 import {
-  buildInputSetUniquenessFixtureV1,
-  isuOutRefV1,
-  makeInputSetUniquenessEmulatorHarnessV1,
-  publishInputSetUniquenessReferenceScriptsV1,
-  setupInputSetUniquenessScenarioV1,
+  buildInputSetUniquenessFixture,
+  isuOutRef,
+  makeInputSetUniquenessEmulatorHarness,
+  publishInputSetUniquenessReferenceScripts,
+  setupInputSetUniquenessScenario,
 } from "./support/input-set-uniqueness-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
@@ -62,35 +62,33 @@ const LARGE_SPEND_INPUT_COUNT = 365;
 const DUPLICATE_FIRST_INDEX = 40;
 const DUPLICATE_SECOND_INDEX = 320;
 
-const largeDuplicateSpendInputsV1 = (): readonly MidgardTxInput[] => {
+const largeDuplicateSpendInputs = (): readonly MidgardTxInput[] => {
   const inputs = Array.from({ length: LARGE_SPEND_INPUT_COUNT }, (_, index) =>
-    isuOutRefV1("a1", index),
+    isuOutRef("a1", index),
   );
   inputs[DUPLICATE_SECOND_INDEX] = inputs[DUPLICATE_FIRST_INDEX]!;
   return inputs;
 };
 
 /** The §5.1 field-0 preimage the fixture commits, canonical producer form. */
-const fieldPreimageV1 = (itemCbors: readonly string[]): Buffer =>
-  encodeMidgardFieldPreimageV1(
-    itemCbors.map((item) => Buffer.from(item, "hex")),
-  );
+const fieldPreimage = (itemCbors: readonly string[]): Buffer =>
+  encodeMidgardFieldPreimage(itemCbors.map((item) => Buffer.from(item, "hex")));
 
 const driveToStep01 = async () => {
-  const harness = await makeInputSetUniquenessEmulatorHarnessV1();
-  const fixture = await buildInputSetUniquenessFixtureV1({
-    spendInputs: largeDuplicateSpendInputsV1(),
-    referenceInputs: [isuOutRefV1("33", 1)],
+  const harness = await makeInputSetUniquenessEmulatorHarness();
+  const fixture = await buildInputSetUniquenessFixture({
+    spendInputs: largeDuplicateSpendInputs(),
+    referenceInputs: [isuOutRef("33", 1)],
   });
   // The size, not any flag, is what selects tier 2: past the tier-1 redeemer
   // bound, within one publication.
-  const preimageBytes = fieldPreimageV1(fixture.spendInputItemCbors).length;
+  const preimageBytes = fieldPreimage(fixture.spendInputItemCbors).length;
   expect(preimageBytes).toBeGreaterThan(
-    MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   );
-  expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+  expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
 
-  const claims = scanInputSetUniquenessV1({
+  const claims = scanInputSetUniqueness({
     spendInputItemCbors: fixture.spendInputItemCbors,
     referenceInputItemCbors: fixture.referenceInputItemCbors,
   });
@@ -101,17 +99,17 @@ const driveToStep01 = async () => {
       secondIndex: BigInt(DUPLICATE_SECOND_INDEX),
     },
   ]);
-  const claim = requireInputSetUniquenessClaimV1({
+  const claim = requireInputSetUniquenessClaim({
     spendInputItemCbors: fixture.spendInputItemCbors,
     referenceInputItemCbors: fixture.referenceInputItemCbors,
   });
 
-  const { setup } = await setupInputSetUniquenessScenarioV1({
+  const { setup } = await setupInputSetUniquenessScenario({
     harness,
     fixture,
   });
   const [step01Ref, step02Ref] =
-    await publishInputSetUniquenessReferenceScriptsV1({
+    await publishInputSetUniquenessReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -187,8 +185,8 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     // the prover's address as a bytes-only inline datum, and the step
     // transaction consumed it as a reference input rather than carrying
     // 14,603 bytes in its own redeemer.
-    const expectedDatum = fieldPreimagePublicationDatumCborV1(
-      fieldPreimageV1(fixture.spendInputItemCbors),
+    const expectedDatum = fieldPreimagePublicationDatumCbor(
+      fieldPreimage(fixture.spendInputItemCbors),
     );
     const publications = (
       await harness.proverLucid.utxosAt(harness.proverSigner.address)
@@ -223,9 +221,9 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
 
     // Publish a byte-flipped twin of the honest preimage at the prover's own
     // address — same length, same shape, wrong content.
-    const tampered = Buffer.from(fieldPreimageV1(fixture.spendInputItemCbors));
+    const tampered = Buffer.from(fieldPreimage(fixture.spendInputItemCbors));
     tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 0xff;
-    const tamperedDatum = fieldPreimagePublicationDatumCborV1(tampered);
+    const tamperedDatum = fieldPreimagePublicationDatumCbor(tampered);
     harness.proverSigner.selectWallet(harness.proverLucid);
     const publishTx = await harness.proverLucid
       .newTx()
@@ -247,7 +245,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     // The redeemer names the tampered UTxO as its RawUtxo carriage; the
     // door re-hashes the referenced bytes against the committed field hash
     // and the validator refuses.
-    const refusal = await expectOnchainRefusalV1(() =>
+    const refusal = await expectOnchainRefusal(() =>
       submitInputSetUniquenessStep02({
         lucid: harness.proverLucid,
         contracts: harness.family,

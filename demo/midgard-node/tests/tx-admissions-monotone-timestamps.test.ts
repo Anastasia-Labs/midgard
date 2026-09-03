@@ -3,9 +3,9 @@ import "./utils.js";
 import { createHash } from "node:crypto";
 
 import {
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekTermNodeV1,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
@@ -29,11 +29,11 @@ describe("durable admission monotone timestamps", () => {
           const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");
           const terminalNode = { kind: "error" as const };
           const programMaterialSidecarCbor =
-            encodeMidgardCekProgramMaterialSidecarV1([
+            encodeMidgardCekProgramMaterialSidecar([
               {
                 kind: "term",
-                root: hashMidgardCekTermNodeV1(terminalNode),
-                preimage: encodeMidgardCekTermNodeV1(terminalNode),
+                root: hashMidgardCekTermNode(terminalNode),
+                preimage: encodeMidgardCekTermNode(terminalNode),
               },
             ]);
           const txId = createHash("sha256").update(txCanonicalCbor).digest();
@@ -121,7 +121,7 @@ describe("durable admission monotone timestamps", () => {
             terminal?.[
               TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
             ],
-          ).toEqual(encodeMidgardCekProgramMaterialSidecarV1([]));
+          ).toEqual(encodeMidgardCekProgramMaterialSidecar([]));
           expect(terminal?.terminal_at?.getTime()).toBeGreaterThanOrEqual(
             future[0]!.future.getTime(),
           );

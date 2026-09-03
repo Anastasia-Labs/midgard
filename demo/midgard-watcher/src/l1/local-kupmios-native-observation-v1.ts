@@ -1,64 +1,64 @@
 import {
-  computeFraudProofRawL1PointIdV1,
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  createLocalKupmiosHttpOgmiosRawSourceV1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type LocalKupmiosFraudProofRawSourceV1,
-  localKupmiosHttpOgmiosRawSourceDetailsV1,
-  type LocalKupmiosRawBlockAtPointV1,
-  readAdmittedLocalKupmiosRawBlockAtPointV1,
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  computeFraudProofRawL1PointId,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  createLocalKupmiosHttpOgmiosRawSource,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type LocalKupmiosFraudProofRawSource,
+  localKupmiosHttpOgmiosRawSourceDetails,
+  type LocalKupmiosRawBlockAtPoint,
+  readAdmittedLocalKupmiosRawBlockAtPoint,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
 
 import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
-import { watcherSha256CanonicalJsonV1 } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
-  normalizeWatcherL1BlockFromTransactionCborsV1,
-  type WatcherL1TransportAttestationContextV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  establishWatcherLocalNodeAuthorityTransport,
+  establishWatcherLocalNodeQueryTransport,
+  normalizeWatcherL1BlockFromTransactionCbors,
+  type WatcherL1TransportAttestationContext,
+  type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "./multi-provider-consistency.js";
-import type { WatcherNativeBlockAdmissionV1 } from "./native-block-admission-v1.js";
+import { evaluateWatcherMultiProviderConsistency } from "./multi-provider-consistency.js";
+import type { WatcherNativeBlockAdmission } from "./native-block-admission-v1.js";
 import {
-  watcherNativeChainSyncAuthorityDetailsV1,
-  type WatcherNativeChainSyncAuthorityV1,
+  type WatcherNativeChainSyncAuthority,
+  watcherNativeChainSyncAuthorityDetails,
 } from "./native-chain-sync-v1.js";
 
-export const WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_V1_SCHEMA_VERSION =
+export const WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-local-kupmios-native-observation-v1" as const;
 
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
-export type WatcherLocalKupmiosNativeObservationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_V1_SCHEMA_VERSION;
-  block: WatcherNormalizedL1BlockV1;
-  ogmiosBlock: WatcherNormalizedL1BlockV1;
-  kupoCheckpoint: WatcherNormalizedL1BlockV1;
-  observations: readonly WatcherNormalizedL1BlockV1[];
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-  consistency: ReturnType<typeof evaluateWatcherMultiProviderConsistencyV1>;
+export type WatcherLocalKupmiosNativeObservation = Readonly<{
+  schemaVersion: typeof WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_SCHEMA_VERSION;
+  block: WatcherNormalizedL1Block;
+  ogmiosBlock: WatcherNormalizedL1Block;
+  kupoCheckpoint: WatcherNormalizedL1Block;
+  observations: readonly WatcherNormalizedL1Block[];
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  consistency: ReturnType<typeof evaluateWatcherMultiProviderConsistency>;
 }>;
 
-export type WatcherLocalKupmiosNativeObservationRuntimeV1 = Readonly<{
+export type WatcherLocalKupmiosNativeObservationRuntime = Readonly<{
   /** Opaque, deployment-bound source shared with downstream exact L1 readers. */
-  rawSource: LocalKupmiosFraudProofRawSourceV1;
+  rawSource: LocalKupmiosFraudProofRawSource;
   observe(input: {
-    readonly block: WatcherNativeBlockAdmissionV1;
+    readonly block: WatcherNativeBlockAdmission;
     readonly depth: string;
-  }): Promise<WatcherLocalKupmiosNativeObservationV1>;
+  }): Promise<WatcherLocalKupmiosNativeObservation>;
   close(): void;
 }>;
 
 const expectedRawSourceId = (
-  deploymentIdentity: VerifiedWatcherDeploymentIdentityV1,
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity,
   authorityNodeId: string,
 ): string =>
   [
@@ -67,12 +67,10 @@ const expectedRawSourceId = (
     authorityNodeId,
   ].join("/");
 
-const nativeBindingByLocalObservationV1 = new WeakMap<object, string>();
+const nativeBindingByLocalObservation = new WeakMap<object, string>();
 
-const nativeObservationBindingV1 = (
-  block: WatcherNativeBlockAdmissionV1,
-): string =>
-  watcherSha256CanonicalJsonV1({
+const nativeObservationBinding = (block: WatcherNativeBlockAdmission): string =>
+  watcherSha256CanonicalJson({
     schemaVersion: block.schemaVersion,
     blockType: block.blockType,
     protocolMajor: block.protocolMajor,
@@ -90,13 +88,13 @@ const nativeObservationBindingV1 = (
  * Proves this exact observation was produced after native/Kupo/Ogmios byte and
  * point agreement for the supplied native block. Structural copies reject.
  */
-export const assertWatcherLocalKupmiosNativeObservationV1 = (
-  observation: WatcherLocalKupmiosNativeObservationV1,
-  nativeBlock: WatcherNativeBlockAdmissionV1,
+export const assertWatcherLocalKupmiosNativeObservation = (
+  observation: WatcherLocalKupmiosNativeObservation,
+  nativeBlock: WatcherNativeBlockAdmission,
 ): void => {
   if (
-    nativeBindingByLocalObservationV1.get(observation) !==
-    nativeObservationBindingV1(nativeBlock)
+    nativeBindingByLocalObservation.get(observation) !==
+    nativeObservationBinding(nativeBlock)
   ) {
     throw new Error(
       "watcher local Kupo/Ogmios observation is not admitted for the native block",
@@ -117,9 +115,9 @@ const sameStrings = (
  * native-vs-Ogmios byte/order invariant directly testable without creating a
  * second source-authority implementation in the watcher.
  */
-const assertNativeKupmiosAgreementV1 = (
-  native: WatcherNativeBlockAdmissionV1,
-  raw: LocalKupmiosRawBlockAtPointV1,
+const assertNativeKupmiosAgreement = (
+  native: WatcherNativeBlockAdmission,
+  raw: LocalKupmiosRawBlockAtPoint,
 ): void => {
   const transactionIds = raw.transactions.map(({ txHash }) => txHash);
   const transactionCbors = raw.transactions.map(
@@ -142,23 +140,23 @@ const assertNativeKupmiosAgreementV1 = (
 
 /** Test-only direct exercise of the deterministic comparison above. */
 export const unsafeAssertNativeKupmiosAgreementForTest = (
-  native: WatcherNativeBlockAdmissionV1,
-  raw: LocalKupmiosRawBlockAtPointV1,
-): void => assertNativeKupmiosAgreementV1(native, raw);
+  native: WatcherNativeBlockAdmission,
+  raw: LocalKupmiosRawBlockAtPoint,
+): void => assertNativeKupmiosAgreement(native, raw);
 
-const releaseFinalityFromDeploymentV1 = (
-  identity: VerifiedWatcherDeploymentIdentityV1,
-): VerifiedFraudProofReleaseFinalityPolicyV1 => {
+const releaseFinalityFromDeployment = (
+  identity: VerifiedWatcherDeploymentIdentity,
+): VerifiedFraudProofReleaseFinalityPolicy => {
   const policy = Object.freeze({
     confirmationDepth: 30 as const,
     automaticRecoveryMaxDepth: 2160 as const,
     deepRollbackPolicy: "automated_rewind_replay_incident-v1" as const,
   });
-  return validateVerifiedFraudProofReleaseFinalityPolicyV1({
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+  return validateVerifiedFraudProofReleaseFinalityPolicy({
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: identity.manifestId,
     releaseIdentityDigest: identity.releaseEvidenceDigest,
-    policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(policy),
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
     policy,
   });
 };
@@ -183,14 +181,14 @@ const tcpTransport = (
  * native chain-sync process is started. The runtime must subsequently bind
  * this exact source to the native authority before processing any event.
  */
-export const createWatcherLocalKupmiosRawSourceV1 = (
+export const createWatcherLocalKupmiosRawSource = (
   input: Readonly<{
     watcherConfig: unknown;
-    deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   }>,
-): LocalKupmiosFraudProofRawSourceV1 => {
+): LocalKupmiosFraudProofRawSource => {
   const watcherConfig = parseWatcherConfig(input.watcherConfig);
-  assertVerifiedWatcherDeploymentIdentityV1(input.deploymentIdentity);
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   if (
     watcherConfig.mode !== "acceptance" ||
     watcherConfig.targetNetwork !== "Preprod" ||
@@ -214,14 +212,14 @@ export const createWatcherLocalKupmiosRawSourceV1 = (
       "configured db-sync requires a concrete authenticated watcher query adapter",
     );
   }
-  return createLocalKupmiosHttpOgmiosRawSourceV1({
+  return createLocalKupmiosHttpOgmiosRawSource({
     sourceId: expectedRawSourceId(
       input.deploymentIdentity,
       source.authorityNodeId,
     ),
     kupoHttpUrl: kupo.endpoint,
     ogmiosUrl: ogmios.endpoint,
-    releaseFinality: releaseFinalityFromDeploymentV1(input.deploymentIdentity),
+    releaseFinality: releaseFinalityFromDeployment(input.deploymentIdentity),
     timeoutMs: watcherConfig.l1.requestTimeoutMs,
   });
 };
@@ -232,17 +230,17 @@ export const createWatcherLocalKupmiosRawSourceV1 = (
  * contributes only its authenticated point; Ogmios must reproduce the native
  * transaction vector byte-for-byte.
  */
-export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
+export const createWatcherLocalKupmiosNativeObservationRuntime = async (
   input: Readonly<{
     watcherConfig: unknown;
-    deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-    nativeAuthority: WatcherNativeChainSyncAuthorityV1;
-    rawSource?: LocalKupmiosFraudProofRawSourceV1;
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    nativeAuthority: WatcherNativeChainSyncAuthority;
+    rawSource?: LocalKupmiosFraudProofRawSource;
   }>,
-): Promise<WatcherLocalKupmiosNativeObservationRuntimeV1> => {
+): Promise<WatcherLocalKupmiosNativeObservationRuntime> => {
   const watcherConfig = parseWatcherConfig(input.watcherConfig);
-  assertVerifiedWatcherDeploymentIdentityV1(input.deploymentIdentity);
-  const nativeDetails = watcherNativeChainSyncAuthorityDetailsV1(
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  const nativeDetails = watcherNativeChainSyncAuthorityDetails(
     input.nativeAuthority,
   );
   if (
@@ -286,29 +284,28 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
     );
   }
 
-  const authorityContext = establishWatcherLocalNodeAuthorityTransportV1(
+  const authorityContext = establishWatcherLocalNodeAuthorityTransport(
     input.nativeAuthority,
   );
-  const queryContexts: WatcherL1TransportAttestationContextV1[] = [];
+  const queryContexts: WatcherL1TransportAttestationContext[] = [];
   try {
-    const kupoContext = await establishWatcherLocalNodeQueryTransportV1(
+    const kupoContext = await establishWatcherLocalNodeQueryTransport(
       authorityContext,
       tcpTransport(kupo, watcherConfig.l1.requestTimeoutMs),
     );
     queryContexts.push(kupoContext);
-    const ogmiosContext = await establishWatcherLocalNodeQueryTransportV1(
+    const ogmiosContext = await establishWatcherLocalNodeQueryTransport(
       authorityContext,
       tcpTransport(ogmios, watcherConfig.l1.requestTimeoutMs),
     );
     queryContexts.push(ogmiosContext);
     const rawSource =
       input.rawSource ??
-      createWatcherLocalKupmiosRawSourceV1({
+      createWatcherLocalKupmiosRawSource({
         watcherConfig,
         deploymentIdentity: input.deploymentIdentity,
       });
-    const rawSourceDetails =
-      localKupmiosHttpOgmiosRawSourceDetailsV1(rawSource);
+    const rawSourceDetails = localKupmiosHttpOgmiosRawSourceDetails(rawSource);
     if (
       rawSourceDetails === null ||
       rawSourceDetails.sourceId !==
@@ -336,17 +333,17 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
           blockHash: block.blockHash,
           blockNo: block.blockNo,
           slot: block.slot,
-          pointId: computeFraudProofRawL1PointIdV1({
+          pointId: computeFraudProofRawL1PointId({
             blockHash: block.blockHash,
             blockNo: block.blockNo,
             slot: block.slot,
           }),
         });
-        const raw = await readAdmittedLocalKupmiosRawBlockAtPointV1({
+        const raw = await readAdmittedLocalKupmiosRawBlockAtPoint({
           source: rawSource,
           point,
         });
-        assertNativeKupmiosAgreementV1(block, raw);
+        assertNativeKupmiosAgreement(block, raw);
         const chainPoint = Object.freeze({
           blockHash: block.blockHash,
           parentBlockHash: block.prevHash.length === 0 ? null : block.prevHash,
@@ -354,7 +351,7 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
           blockNo: block.blockNo,
           depth,
         });
-        const blockObservation = normalizeWatcherL1BlockFromTransactionCborsV1(
+        const blockObservation = normalizeWatcherL1BlockFromTransactionCbors(
           authorityContext,
           {
             network: watcherConfig.targetNetwork,
@@ -362,7 +359,7 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
             transactionCbors: block.transactionCbors,
           },
         );
-        const ogmiosBlock = normalizeWatcherL1BlockFromTransactionCborsV1(
+        const ogmiosBlock = normalizeWatcherL1BlockFromTransactionCbors(
           ogmiosContext,
           {
             network: watcherConfig.targetNetwork,
@@ -372,7 +369,7 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
             ),
           },
         );
-        const kupoCheckpoint = normalizeWatcherL1BlockFromTransactionCborsV1(
+        const kupoCheckpoint = normalizeWatcherL1BlockFromTransactionCbors(
           kupoContext,
           {
             network: watcherConfig.targetNetwork,
@@ -400,7 +397,7 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
               ),
           ),
         });
-        const consistency = evaluateWatcherMultiProviderConsistencyV1(
+        const consistency = evaluateWatcherMultiProviderConsistency(
           configuredSource,
           [blockObservation, kupoCheckpoint, ogmiosBlock],
           [authorityContext, kupoContext, ogmiosContext],
@@ -425,7 +422,7 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
         ]);
         const observation = Object.freeze({
           schemaVersion:
-            WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_V1_SCHEMA_VERSION,
+            WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_SCHEMA_VERSION,
           block: blockObservation,
           ogmiosBlock,
           kupoCheckpoint,
@@ -437,9 +434,9 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
           ]),
           consistency,
         });
-        nativeBindingByLocalObservationV1.set(
+        nativeBindingByLocalObservation.set(
           observation,
-          nativeObservationBindingV1(block),
+          nativeObservationBinding(block),
         );
         return observation;
       },
@@ -447,16 +444,16 @@ export const createWatcherLocalKupmiosNativeObservationRuntimeV1 = async (
         if (closed) return;
         closed = true;
         for (const context of queryContexts) {
-          closeWatcherL1TransportAttestationContextV1(context);
+          closeWatcherL1TransportAttestationContext(context);
         }
-        closeWatcherL1TransportAttestationContextV1(authorityContext);
+        closeWatcherL1TransportAttestationContext(authorityContext);
       },
     });
   } catch (error) {
     for (const context of queryContexts) {
-      closeWatcherL1TransportAttestationContextV1(context);
+      closeWatcherL1TransportAttestationContext(context);
     }
-    closeWatcherL1TransportAttestationContextV1(authorityContext);
+    closeWatcherL1TransportAttestationContext(authorityContext);
     throw error;
   }
 };

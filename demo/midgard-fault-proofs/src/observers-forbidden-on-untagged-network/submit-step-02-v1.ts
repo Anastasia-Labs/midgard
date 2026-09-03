@@ -1,32 +1,32 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ObserversForbiddenContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ObserversForbiddenContracts } from "./contracts-v1.js";
 import {
-  observersForbiddenEvidenceClosesV1,
-  type ObserversForbiddenEvidenceV1,
+  type ObserversForbiddenEvidence,
+  observersForbiddenEvidenceCloses,
 } from "./family-v1.js";
 import {
-  ObserversForbiddenStep02DatumV1Schema,
-  ObserversForbiddenStep02RedeemerV1Schema,
+  ObserversForbiddenStep02DatumSchema,
+  ObserversForbiddenStep02RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitObserversForbiddenStep02V1 = async ({
+export const submitObserversForbiddenStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,21 +40,21 @@ export const submitObserversForbiddenStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ObserversForbiddenContractsV1;
+  readonly contracts: ObserversForbiddenContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ObserversForbiddenEvidenceV1;
+  readonly evidence: ObserversForbiddenEvidence;
   readonly nativeTxCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!observersForbiddenEvidenceClosesV1(evidence))
+  if (!observersForbiddenEvidenceCloses(evidence))
     throw new Error("observersForbidden: terminal evidence is honest");
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -62,30 +62,30 @@ export const submitObserversForbiddenStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     network_id: bigint;
   }>({
     threadUtxo,
     signer,
-    schema: ObserversForbiddenStep02DatumV1Schema as never,
+    schema: ObserversForbiddenStep02DatumSchema as never,
     family: "observers-forbidden-on-untagged-network",
     stepIndex,
   });
   if (state.network_id !== BigInt(evidence.networkId))
     throw new Error("observersForbidden: bound network scalar changed");
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 3,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: decodeMidgardFieldPreimageV1(
+    itemCbors: decodeMidgardFieldPreimage(
       Buffer.from(evidence.observerFieldPreimageCbor, "hex"),
     ),
     owner: signer.paymentKeyHash,
     publish: true,
     label: "observers forbidden field 3",
   });
-  const carriageUtxos = await resolveFaultProofFieldCarriagePublicationsV1({
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -96,7 +96,7 @@ export const submitObserversForbiddenStep02V1 = async ({
     );
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? await resolveFaultProofFieldPreimageCertificateV1({
+      ? await resolveFaultProofFieldPreimageCertificate({
           lucid,
           network: lucid.config().network!,
           planned,
@@ -105,13 +105,13 @@ export const submitObserversForbiddenStep02V1 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("observersForbidden: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "observers-forbidden-on-untagged-network",
     stepIndex,
   });
-  const opening = faultProofFieldOpeningV1({
+  const opening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -127,7 +127,7 @@ export const submitObserversForbiddenStep02V1 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "observers forbidden field 3",
   });
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "observers-forbidden-on-untagged-network",
     stepIndex,
@@ -137,7 +137,7 @@ export const submitObserversForbiddenStep02V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ObserversForbiddenStep02RedeemerV1Schema,
+    spendRedeemerSchema: ObserversForbiddenStep02RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

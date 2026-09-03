@@ -1,4 +1,4 @@
-import { missingNativeScriptTxVersionedScriptHashV1 } from "@al-ft/midgard-sdk";
+import { missingNativeScriptTxVersionedScriptHash } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,15 +11,15 @@ const authority = vi.hoisted(() => ({
 vi.mock(
   "../src/workflow/production-historical-native-script-corpus-v1.js",
   () => ({
-    PRODUCTION_HISTORICAL_NATIVE_SCRIPT_PREIMAGE_V1:
+    HISTORICAL_NATIVE_SCRIPT_PREIMAGE:
       "midgard-production-historical-native-script-preimage-v1",
-    requireProductionHistoricalNativeScriptCorpusV1: (value: object) => {
+    requireHistoricalNativeScriptCorpus: (value: object) => {
       if (!authority.corpora.has(value)) {
         throw new Error("corpus was not admitted");
       }
       return {};
     },
-    productionHistoricalNativeScriptPreimageFromCorpusV1: ({
+    historicalNativeScriptPreimageFromCorpus: ({
       corpus,
       scriptHash,
     }: {
@@ -51,9 +51,7 @@ vi.mock(
       authority.preimages.add(preimage);
       return preimage;
     },
-    requireProductionHistoricalNativeScriptCorpusPreimageV1: (
-      value: object,
-    ) => {
+    requireHistoricalNativeScriptCorpusPreimage: (value: object) => {
       if (!authority.preimages.has(value)) {
         throw new Error("corpus preimage was not admitted");
       }
@@ -63,7 +61,7 @@ vi.mock(
 );
 
 vi.mock("../src/missing-native-script-tx/historical-script-v1.js", () => ({
-  historicalNativeScriptBytesV1: (
+  historicalNativeScriptBytes: (
     value: Readonly<{ scriptBytesHex: string }>,
   ) => {
     if (!authority.evidence.has(value)) {
@@ -71,7 +69,7 @@ vi.mock("../src/missing-native-script-tx/historical-script-v1.js", () => ({
     }
     return Buffer.from(value.scriptBytesHex, "hex");
   },
-  admitHistoricalNativeScriptEvidenceV1: ({ value }: { value: unknown }) => {
+  admitHistoricalNativeScriptEvidence: ({ value }: { value: unknown }) => {
     if (
       typeof value !== "object" ||
       value === null ||
@@ -90,10 +88,10 @@ vi.mock("../src/missing-native-script-tx/historical-script-v1.js", () => ({
 }));
 
 import {
-  admitProductionHistoricalNativeScriptPreimageV1,
-  prepareProductionHistoricalNativeScriptPreimageV1,
+  admitHistoricalNativeScriptPreimage,
+  prepareHistoricalNativeScriptPreimage,
 } from "../src/missing-native-script-tx/production-historical-preimage-v1.js";
-import { computeFraudProofRawL1PointIdV1 } from "../src/workflow/raw-l1-snapshot-v1.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot-v1.js";
 
 const throughPoint = (() => {
   const point = {
@@ -103,14 +101,14 @@ const throughPoint = (() => {
   };
   return Object.freeze({
     ...point,
-    pointId: computeFraudProofRawL1PointIdV1(point),
+    pointId: computeFraudProofRawL1PointId(point),
   });
 })();
 
 const fixture = () => {
   const native = CML.NativeScript.new_script_all(CML.NativeScriptList.new());
   const scriptBytesHex = native.to_canonical_cbor_hex();
-  const expectedScriptHash = missingNativeScriptTxVersionedScriptHashV1(
+  const expectedScriptHash = missingNativeScriptTxVersionedScriptHash(
     Buffer.from(scriptBytesHex, "hex"),
   );
   const occurrence = Object.freeze({
@@ -150,7 +148,7 @@ describe("production historical native-script preimage V1", () => {
   it("persists and re-admits the exact corpus occurrence plus full L1 evidence", async () => {
     const { corpus, corroboration, expectedScriptHash, scriptBytesHex } =
       fixture();
-    const artifact = prepareProductionHistoricalNativeScriptPreimageV1({
+    const artifact = prepareHistoricalNativeScriptPreimage({
       corpus: corpus as never,
       expectedHeaderHash: corpus.throughHeaderHash,
       expectedScriptHash,
@@ -166,7 +164,7 @@ describe("production historical native-script preimage V1", () => {
       historicalL1Corroboration: corroboration,
     });
     const persisted: unknown = JSON.parse(JSON.stringify(artifact));
-    const admitted = await admitProductionHistoricalNativeScriptPreimageV1({
+    const admitted = await admitHistoricalNativeScriptPreimage({
       value: persisted,
       corpus: corpus as never,
       expectedHeaderHash: corpus.throughHeaderHash,
@@ -184,7 +182,7 @@ describe("production historical native-script preimage V1", () => {
   it("rejects structural authority clones and persisted substitutions", async () => {
     const { corpus, corroboration, expectedScriptHash } = fixture();
     expect(() =>
-      prepareProductionHistoricalNativeScriptPreimageV1({
+      prepareHistoricalNativeScriptPreimage({
         corpus: { ...corpus } as never,
         expectedHeaderHash: corpus.throughHeaderHash,
         expectedScriptHash,
@@ -192,7 +190,7 @@ describe("production historical native-script preimage V1", () => {
       }),
     ).toThrow("corpus was not admitted");
     expect(() =>
-      prepareProductionHistoricalNativeScriptPreimageV1({
+      prepareHistoricalNativeScriptPreimage({
         corpus: corpus as never,
         expectedHeaderHash: corpus.throughHeaderHash,
         expectedScriptHash,
@@ -200,14 +198,14 @@ describe("production historical native-script preimage V1", () => {
       }),
     ).toThrow("L1 evidence was not admitted");
 
-    const artifact = prepareProductionHistoricalNativeScriptPreimageV1({
+    const artifact = prepareHistoricalNativeScriptPreimage({
       corpus: corpus as never,
       expectedHeaderHash: corpus.throughHeaderHash,
       expectedScriptHash,
       corroboration: corroboration as never,
     });
     await expect(
-      admitProductionHistoricalNativeScriptPreimageV1({
+      admitHistoricalNativeScriptPreimage({
         value: { ...artifact, corpusDigest: "ff".repeat(32) },
         corpus: corpus as never,
         expectedHeaderHash: corpus.throughHeaderHash,

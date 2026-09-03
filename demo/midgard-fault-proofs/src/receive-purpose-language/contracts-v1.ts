@@ -7,24 +7,24 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/receive_purpose_language/step_01.main.spend",
   "fraud_proofs/receive_purpose_language/step_02.main.spend",
   "fraud_proofs/receive_purpose_language/step_03.main.spend",
 ] as const);
 
-export type ReceivePurposeLanguageStepContractV1 = Readonly<{
+export type ReceivePurposeLanguageStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type ReceivePurposeLanguageContractsV1 = Readonly<{
+export type ReceivePurposeLanguageContracts = Readonly<{
   steps: readonly [
-    ReceivePurposeLanguageStepContractV1,
-    ReceivePurposeLanguageStepContractV1,
-    ReceivePurposeLanguageStepContractV1,
+    ReceivePurposeLanguageStepContract,
+    ReceivePurposeLanguageStepContract,
+    ReceivePurposeLanguageStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -45,7 +45,7 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-export const applyReceivePurposeLanguageScriptsV1 = ({
+export const applyReceivePurposeLanguageScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -59,9 +59,9 @@ export const applyReceivePurposeLanguageScriptsV1 = ({
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
-}): ReceivePurposeLanguageContractsV1["steps"] => {
+}): ReceivePurposeLanguageContracts["steps"] => {
   const apply = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES_V1[index]!;
+    const blueprintTitle = RECEIVE_PURPOSE_LANGUAGE_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

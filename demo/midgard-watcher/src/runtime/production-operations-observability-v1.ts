@@ -1,6 +1,6 @@
-import type { WatcherProductionFaultProofSupervisorV1 } from "../fault-proofs/production-fault-proof-supervisor-v1.js";
+import type { WatcherFaultProofSupervisor } from "../fault-proofs/production-fault-proof-supervisor-v1.js";
 
-export const WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1 =
+export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -8,7 +8,7 @@ const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const MAXIMUM_PAGE_SIZE = 100;
 const MAXIMUM_RETAINED_DIAGNOSTICS = 10_000;
 
-export const WATCHER_PRODUCTION_ALERT_CODES_V1 = Object.freeze([
+export const WATCHER_ALERT_CODES = Object.freeze([
   "da_fetch_failure",
   "root_mismatch",
   "proof_submission_failure",
@@ -20,10 +20,9 @@ export const WATCHER_PRODUCTION_ALERT_CODES_V1 = Object.freeze([
   "l1_source_stale",
 ] as const);
 
-export type WatcherProductionAlertCodeV1 =
-  (typeof WATCHER_PRODUCTION_ALERT_CODES_V1)[number];
+export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
 
-export type WatcherProductionOperationsDiagnosticKindV1 =
+export type WatcherOperationsDiagnosticKind =
   | "verification"
   | "da_fetch"
   | "proof_step"
@@ -31,7 +30,7 @@ export type WatcherProductionOperationsDiagnosticKindV1 =
   | "l1_source"
   | "alert";
 
-export const WATCHER_PRODUCTION_PROOF_STAGE_KINDS_V1 = Object.freeze([
+export const WATCHER_PROOF_STAGE_KINDS = Object.freeze([
   "prepare",
   "init",
   "proof_step",
@@ -42,12 +41,11 @@ export const WATCHER_PRODUCTION_PROOF_STAGE_KINDS_V1 = Object.freeze([
   "terminal",
 ] as const);
 
-export type WatcherProductionProofStageKindV1 =
-  (typeof WATCHER_PRODUCTION_PROOF_STAGE_KINDS_V1)[number];
+export type WatcherProofStageKind = (typeof WATCHER_PROOF_STAGE_KINDS)[number];
 
-type SequencedV1 = Readonly<{ sequence: string }>;
+type Sequenced = Readonly<{ sequence: string }>;
 
-export type WatcherProductionVerificationDiagnosticV1 = SequencedV1 &
+export type WatcherVerificationDiagnostic = Sequenced &
   Readonly<{
     kind: "verification";
     subjectDigest: string;
@@ -64,7 +62,7 @@ export type WatcherProductionVerificationDiagnosticV1 = SequencedV1 &
       | "failed";
   }>;
 
-export type WatcherProductionDaFetchDiagnosticV1 = SequencedV1 &
+export type WatcherDaFetchDiagnostic = Sequenced &
   Readonly<{
     kind: "da_fetch";
     subjectDigest: string;
@@ -73,11 +71,11 @@ export type WatcherProductionDaFetchDiagnosticV1 = SequencedV1 &
     outcome: "succeeded" | "failed" | "timed_out";
   }>;
 
-export type WatcherProductionProofStepDiagnosticV1 = SequencedV1 &
+export type WatcherProofStepDiagnostic = Sequenced &
   Readonly<{
     kind: "proof_step";
     decisionDigest: string;
-    stage: WatcherProductionProofStageKindV1;
+    stage: WatcherProofStageKind;
     actionIdentityDigest: string;
     status:
       | "queued"
@@ -91,7 +89,7 @@ export type WatcherProductionProofStepDiagnosticV1 = SequencedV1 &
     updatedAtMs: string;
   }>;
 
-export type WatcherProductionEventDiagnosticV1 = SequencedV1 &
+export type WatcherEventDiagnostic = Sequenced &
   Readonly<{
     kind: "event";
     eventDigest: string;
@@ -101,7 +99,7 @@ export type WatcherProductionEventDiagnosticV1 = SequencedV1 &
     updatedAtMs: string;
   }>;
 
-export type WatcherProductionL1SourceDiagnosticV1 = SequencedV1 &
+export type WatcherL1SourceDiagnostic = Sequenced &
   Readonly<{
     kind: "l1_source";
     sourceIdentityDigest: string;
@@ -113,25 +111,25 @@ export type WatcherProductionL1SourceDiagnosticV1 = SequencedV1 &
     observedAtMs: string;
   }>;
 
-export type WatcherProductionAlertDiagnosticV1 = SequencedV1 &
+export type WatcherAlertDiagnostic = Sequenced &
   Readonly<{
     kind: "alert";
-    code: WatcherProductionAlertCodeV1;
+    code: WatcherAlertCode;
     subjectDigest: string;
     active: boolean;
     observedAtMs: string;
   }>;
 
-export type WatcherProductionOperationsDiagnosticV1 =
-  | WatcherProductionVerificationDiagnosticV1
-  | WatcherProductionDaFetchDiagnosticV1
-  | WatcherProductionProofStepDiagnosticV1
-  | WatcherProductionEventDiagnosticV1
-  | WatcherProductionL1SourceDiagnosticV1
-  | WatcherProductionAlertDiagnosticV1;
+export type WatcherOperationsDiagnostic =
+  | WatcherVerificationDiagnostic
+  | WatcherDaFetchDiagnostic
+  | WatcherProofStepDiagnostic
+  | WatcherEventDiagnostic
+  | WatcherL1SourceDiagnostic
+  | WatcherAlertDiagnostic;
 
-export type WatcherProductionOperationsStatusV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1;
+export type WatcherOperationsStatus = Readonly<{
+  schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
   deploymentFingerprint: string;
   observedAtMs: string;
   liveness: "live" | "stopping" | "stopped" | "blocked";
@@ -151,16 +149,16 @@ export type WatcherProductionOperationsStatusV1 = Readonly<{
     requiredCategoryCount: string;
     complete: boolean;
   }>;
-  supervisor: ReturnType<WatcherProductionFaultProofSupervisorV1["status"]>;
+  supervisor: ReturnType<WatcherFaultProofSupervisor["status"]>;
   activeAlerts: readonly Readonly<{
-    code: WatcherProductionAlertCodeV1;
+    code: WatcherAlertCode;
     subjectDigest: string;
     observedAtMs: string;
   }>[];
 }>;
 
-export type WatcherProductionOperationsMetricsV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1;
+export type WatcherOperationsMetrics = Readonly<{
+  schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
   observedAtMs: string;
   queuedProofCount: string;
   oldestQueuedProofAgeMs: string | null;
@@ -200,50 +198,46 @@ export type WatcherProductionOperationsMetricsV1 = Readonly<{
   activeAlertCount: string;
 }>;
 
-export type WatcherProductionOperationsPageV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1;
-  kind: WatcherProductionOperationsDiagnosticKindV1;
-  records: readonly WatcherProductionOperationsDiagnosticV1[];
+export type WatcherOperationsPage = Readonly<{
+  schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
+  kind: WatcherOperationsDiagnosticKind;
+  records: readonly WatcherOperationsDiagnostic[];
   nextCursor: string | null;
 }>;
 
-export type WatcherProductionOperationsApiV1 = Readonly<{
-  status(): WatcherProductionOperationsStatusV1;
-  metrics(): WatcherProductionOperationsMetricsV1;
+export type WatcherOperationsApi = Readonly<{
+  status(): WatcherOperationsStatus;
+  metrics(): WatcherOperationsMetrics;
   diagnostics(
     input: Readonly<{
-      kind: WatcherProductionOperationsDiagnosticKindV1;
+      kind: WatcherOperationsDiagnosticKind;
       cursor?: string;
       limit?: number;
     }>,
-  ): WatcherProductionOperationsPageV1;
+  ): WatcherOperationsPage;
 }>;
 
-export type WatcherProductionOperationsSinkV1 = Readonly<{
+export type WatcherOperationsSink = Readonly<{
   recordVerification(
-    value: Omit<WatcherProductionVerificationDiagnosticV1, "kind" | "sequence">,
+    value: Omit<WatcherVerificationDiagnostic, "kind" | "sequence">,
   ): void;
   recordDaFetch(
-    value: Omit<WatcherProductionDaFetchDiagnosticV1, "kind" | "sequence">,
+    value: Omit<WatcherDaFetchDiagnostic, "kind" | "sequence">,
   ): void;
   recordProofStep(
-    value: Omit<WatcherProductionProofStepDiagnosticV1, "kind" | "sequence">,
+    value: Omit<WatcherProofStepDiagnostic, "kind" | "sequence">,
   ): void;
-  recordEvent(
-    value: Omit<WatcherProductionEventDiagnosticV1, "kind" | "sequence">,
-  ): void;
+  recordEvent(value: Omit<WatcherEventDiagnostic, "kind" | "sequence">): void;
   recordL1Source(
-    value: Omit<WatcherProductionL1SourceDiagnosticV1, "kind" | "sequence">,
+    value: Omit<WatcherL1SourceDiagnostic, "kind" | "sequence">,
   ): void;
-  setAlert(
-    value: Omit<WatcherProductionAlertDiagnosticV1, "kind" | "sequence">,
-  ): void;
+  setAlert(value: Omit<WatcherAlertDiagnostic, "kind" | "sequence">): void;
 }>;
 
-export type WatcherProductionOperationsObservabilityV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1;
-  api: WatcherProductionOperationsApiV1;
-  sink: WatcherProductionOperationsSinkV1;
+export type WatcherOperationsObservability = Readonly<{
+  schemaVersion: typeof WATCHER_OPERATIONS_OBSERVABILITY;
+  api: WatcherOperationsApi;
+  sink: WatcherOperationsSink;
   handleHttpRequest(request: Request): Promise<Response>;
 }>;
 
@@ -280,9 +274,9 @@ const percentile = (
   return ordered[rank]!.toString();
 };
 
-export const createWatcherProductionOperationsObservabilityV1 = (input: {
+export const createWatcherOperationsObservability = (input: {
   readonly deploymentFingerprint: string;
-  readonly supervisor: WatcherProductionFaultProofSupervisorV1;
+  readonly supervisor: WatcherFaultProofSupervisor;
   readonly launchScopeStatus: () => Readonly<{
     installedCategoryCount: number;
     requiredCategoryCount: number;
@@ -295,7 +289,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
   readonly nowMs?: () => bigint;
   readonly l1FreshnessMaximumAgeMs?: number;
   readonly maximumRetainedDiagnostics?: number;
-}): WatcherProductionOperationsObservabilityV1 => {
+}): WatcherOperationsObservability => {
   hash32(input.deploymentFingerprint, "observability deployment fingerprint");
   const nowMs = input.nowMs ?? (() => BigInt(Date.now()));
   const l1FreshnessMaximumAgeMs = input.l1FreshnessMaximumAgeMs ?? 120_000;
@@ -313,21 +307,15 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
   }
 
   let nextSequence = 1n;
-  const diagnostics: WatcherProductionOperationsDiagnosticV1[] = [];
+  const diagnostics: WatcherOperationsDiagnostic[] = [];
   const verificationLatencies: bigint[] = [];
   const daLatencies: bigint[] = [];
-  const latestProofSteps = new Map<
-    string,
-    WatcherProductionProofStepDiagnosticV1
-  >();
-  const latestEvents = new Map<string, WatcherProductionEventDiagnosticV1>();
-  const latestL1Sources = new Map<
-    string,
-    WatcherProductionL1SourceDiagnosticV1
-  >();
-  const latestAlerts = new Map<string, WatcherProductionAlertDiagnosticV1>();
+  const latestProofSteps = new Map<string, WatcherProofStepDiagnostic>();
+  const latestEvents = new Map<string, WatcherEventDiagnostic>();
+  const latestL1Sources = new Map<string, WatcherL1SourceDiagnostic>();
+  const latestAlerts = new Map<string, WatcherAlertDiagnostic>();
 
-  const append = <T extends WatcherProductionOperationsDiagnosticV1>(
+  const append = <T extends WatcherOperationsDiagnostic>(
     record: Omit<T, "sequence">,
   ): T => {
     const sequenced = Object.freeze({
@@ -354,7 +342,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
     return time;
   };
 
-  const sink: WatcherProductionOperationsSinkV1 = Object.freeze({
+  const sink: WatcherOperationsSink = Object.freeze({
     recordVerification: (value) => {
       hash32(value.subjectDigest, "verification subject digest");
       orderedInterval(
@@ -368,7 +356,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
         "verification interval",
       );
       observedTime(value.completedAtMs, "verification completion time");
-      append<WatcherProductionVerificationDiagnosticV1>({
+      append<WatcherVerificationDiagnostic>({
         kind: "verification",
         ...value,
       });
@@ -382,7 +370,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
         "DA fetch interval",
       );
       observedTime(value.completedAtMs, "DA fetch completion time");
-      append<WatcherProductionDaFetchDiagnosticV1>({
+      append<WatcherDaFetchDiagnostic>({
         kind: "da_fetch",
         ...value,
       });
@@ -391,11 +379,11 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
     recordProofStep: (value) => {
       hash32(value.decisionDigest, "proof-step decision digest");
       hash32(value.actionIdentityDigest, "proof-step action identity digest");
-      if (!WATCHER_PRODUCTION_PROOF_STAGE_KINDS_V1.includes(value.stage)) {
+      if (!WATCHER_PROOF_STAGE_KINDS.includes(value.stage)) {
         throw new Error("proof-step stage is invalid");
       }
       observedTime(value.updatedAtMs, "proof-step update time");
-      const record = append<WatcherProductionProofStepDiagnosticV1>({
+      const record = append<WatcherProofStepDiagnostic>({
         kind: "proof_step",
         ...value,
       });
@@ -412,7 +400,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
         "event observation interval",
       );
       observedTime(value.updatedAtMs, "event update time");
-      const record = append<WatcherProductionEventDiagnosticV1>({
+      const record = append<WatcherEventDiagnostic>({
         kind: "event",
         ...value,
       });
@@ -424,19 +412,19 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
       natural(value.blockNo, "L1 source block number");
       natural(value.slot, "L1 source slot");
       observedTime(value.observedAtMs, "L1 source observation time");
-      const record = append<WatcherProductionL1SourceDiagnosticV1>({
+      const record = append<WatcherL1SourceDiagnostic>({
         kind: "l1_source",
         ...value,
       });
       latestL1Sources.set(value.sourceIdentityDigest, record);
     },
     setAlert: (value) => {
-      if (!WATCHER_PRODUCTION_ALERT_CODES_V1.includes(value.code)) {
+      if (!WATCHER_ALERT_CODES.includes(value.code)) {
         throw new Error("operational alert code is invalid");
       }
       hash32(value.subjectDigest, "operational alert subject digest");
       observedTime(value.observedAtMs, "operational alert observation time");
-      const record = append<WatcherProductionAlertDiagnosticV1>({
+      const record = append<WatcherAlertDiagnostic>({
         kind: "alert",
         ...value,
       });
@@ -499,15 +487,14 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
         ),
     );
 
-  const status = (): WatcherProductionOperationsStatusV1 => {
+  const status = (): WatcherOperationsStatus => {
     const observedAt = nowMs();
     if (observedAt < 0n) throw new Error("observability clock is invalid");
     const supervisor = input.supervisor.status();
     const scope = launchScope();
     const sources = sourceHealth(observedAt);
     const alerts = activeAlerts();
-    const reasons: WatcherProductionOperationsStatusV1["readinessReasons"][number][] =
-      [];
+    const reasons: WatcherOperationsStatus["readinessReasons"][number][] = [];
     if (supervisor.phase !== "accepting")
       reasons.push("supervisor_not_accepting");
     if (!supervisor.recovered) reasons.push("recovery_incomplete");
@@ -528,7 +515,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
             ? "blocked"
             : "live";
     return Object.freeze({
-      schemaVersion: WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1,
+      schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
       deploymentFingerprint: input.deploymentFingerprint,
       observedAtMs: observedAt.toString(),
       liveness,
@@ -540,7 +527,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
     });
   };
 
-  const metrics = (): WatcherProductionOperationsMetricsV1 => {
+  const metrics = (): WatcherOperationsMetrics => {
     const observedAt = nowMs();
     if (observedAt < 0n) throw new Error("observability clock is invalid");
     const supervisor = input.supervisor.status();
@@ -586,7 +573,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
         maximum: percentile(values, 100, 100),
       });
     return Object.freeze({
-      schemaVersion: WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1,
+      schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
       observedAtMs: observedAt.toString(),
       queuedProofCount: durableQueue.queuedJobCount.toString(),
       oldestQueuedProofAgeMs:
@@ -604,7 +591,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
             value.toString(),
           ]),
         ),
-      ) as WatcherProductionOperationsMetricsV1["proofSteps"],
+      ) as WatcherOperationsMetrics["proofSteps"],
       unprocessedEventCount: unprocessed.length.toString(),
       oldestUnprocessedEventAgeMs:
         unprocessed.length === 0
@@ -631,7 +618,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
     });
   };
 
-  const api: WatcherProductionOperationsApiV1 = Object.freeze({
+  const api: WatcherOperationsApi = Object.freeze({
     status,
     metrics,
     diagnostics: ({ kind, cursor = "0", limit = 50 }) => {
@@ -657,7 +644,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
       );
       const records = Object.freeze(matching.slice(0, limit));
       return Object.freeze({
-        schemaVersion: WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1,
+        schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
         kind,
         records,
         nextCursor:
@@ -716,7 +703,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
         return jsonResponse(
           200,
           api.diagnostics({
-            kind: kind as WatcherProductionOperationsDiagnosticKindV1,
+            kind: kind as WatcherOperationsDiagnosticKind,
             ...(cursor === undefined ? {} : { cursor }),
             ...(limit === undefined ? {} : { limit }),
           }),
@@ -729,7 +716,7 @@ export const createWatcherProductionOperationsObservabilityV1 = (input: {
   };
 
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1,
+    schemaVersion: WATCHER_OPERATIONS_OBSERVABILITY,
     api,
     sink,
     handleHttpRequest,

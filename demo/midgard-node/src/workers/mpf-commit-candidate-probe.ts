@@ -18,10 +18,10 @@ import {
   runCommitBlockHeaderCandidateBuildProgram,
 } from "./commit-block-header.js";
 import {
-  assertArchitectureGCandidateSlotRuntimeIdentityV1,
-  decodeArchitectureGCommitCandidateInputV1,
-  decodeArchitectureGFixtureCreationV1,
-  validateArchitectureGCommitCandidateProbeResultV1,
+  assertArchitectureGCandidateSlotRuntimeIdentity,
+  decodeArchitectureGCommitCandidateInput,
+  decodeArchitectureGFixtureCreation,
+  validateArchitectureGCommitCandidateProbeResult,
 } from "./utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
@@ -34,7 +34,7 @@ const probeSha256 = createHash("sha256")
   .digest("hex");
 
 const loadInput = async (): Promise<{
-  readonly input: ReturnType<typeof decodeArchitectureGCommitCandidateInputV1>;
+  readonly input: ReturnType<typeof decodeArchitectureGCommitCandidateInput>;
   readonly resolvedInputPath: string;
   readonly inputSha256: string;
 }> => {
@@ -45,7 +45,7 @@ const loadInput = async (): Promise<{
   }
   const resolvedInputPath = resolve(inputPath);
   const inputBytes = await readFile(resolvedInputPath);
-  const parsed = decodeArchitectureGCommitCandidateInputV1(
+  const parsed = decodeArchitectureGCommitCandidateInput(
     JSON.parse(inputBytes.toString("utf8")) as unknown,
   );
   const fixtureCreationBytes = await readFile(parsed.fixtureCreationPath);
@@ -55,7 +55,7 @@ const loadInput = async (): Promise<{
   if (actualFixtureCreationSha256 !== parsed.fixtureCreationSha256) {
     throw new Error("Fixture creation evidence SHA-256 mismatch");
   }
-  decodeArchitectureGFixtureCreationV1({
+  decodeArchitectureGFixtureCreation({
     value: JSON.parse(fixtureCreationBytes.toString("utf8")) as unknown,
     expectedFixturePath: parsed.levelPath,
     expectedMarker: parsed.workerInput.data.speculativeBuild.base.utxosRoot,
@@ -113,7 +113,7 @@ void (async () => {
           : undefined;
       yield* Effect.try({
         try: () =>
-          assertArchitectureGCandidateSlotRuntimeIdentityV1({
+          assertArchitectureGCandidateSlotRuntimeIdentity({
             input,
             runtimeNetwork: nodeConfig.NETWORK,
             ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
@@ -207,7 +207,7 @@ void (async () => {
     if (measured.journalRowsAfter !== measured.journalRowsBefore) {
       throw new Error("Commit-candidate build-only probe mutated the journal");
     }
-    const artifact = validateArchitectureGCommitCandidateProbeResultV1({
+    const artifact = validateArchitectureGCommitCandidateProbeResult({
       value: {
         schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
         probePath,

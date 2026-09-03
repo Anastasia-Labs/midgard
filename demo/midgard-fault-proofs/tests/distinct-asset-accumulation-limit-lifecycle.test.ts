@@ -1,11 +1,11 @@
 import {
   buildMidgardValidationTraceTree,
-  hashMidgardMintAssetLeafV1,
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
+  hashMidgardMintAssetLeaf,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  type MidgardValidationMachineStateV1,
+  type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -15,26 +15,26 @@ import { describe, expect, it } from "vitest";
 import { makeNativeTx } from "../../midgard-validation/tests/validation-fixtures.js";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1,
-  prepareDistinctAssetAccumulationEvidenceV1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
+  prepareDistinctAssetAccumulationEvidence,
 } from "../src/distinct-asset-accumulation-limit/family-v1.js";
-import { detectDistinctAssetAccumulationCanonicalViolationsV1 } from "../src/distinct-asset-accumulation-limit/production-replay-v1.js";
-import { buildDistinctAssetAuthenticationFromRetainedDaV1 } from "../src/distinct-asset-accumulation-limit/retained-value-and-mint-v1.js";
-import { submitDistinctAssetAccumulationCancelV1 } from "../src/distinct-asset-accumulation-limit/submit-cancel-v1.js";
-import { submitDistinctAssetAccumulationFoldV1 } from "../src/distinct-asset-accumulation-limit/submit-fold-v1.js";
-import { submitDistinctAssetAccumulationStep01AcceptedV1 } from "../src/distinct-asset-accumulation-limit/submit-step-01-v1.js";
-import { submitDistinctAssetAccumulationStep02V1 } from "../src/distinct-asset-accumulation-limit/submit-step-02-v1.js";
-import { submitDistinctAssetAccumulationStep06V1 } from "../src/distinct-asset-accumulation-limit/submit-step-06-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../src/linear-fault-family-v1.js";
+import { detectDistinctAssetAccumulationCanonicalViolations } from "../src/distinct-asset-accumulation-limit/production-replay-v1.js";
+import { buildDistinctAssetAuthenticationFromRetainedDa } from "../src/distinct-asset-accumulation-limit/retained-value-and-mint-v1.js";
+import { submitDistinctAssetAccumulationCancel } from "../src/distinct-asset-accumulation-limit/submit-cancel-v1.js";
+import { submitDistinctAssetAccumulationFold } from "../src/distinct-asset-accumulation-limit/submit-fold-v1.js";
+import { submitDistinctAssetAccumulationStep01Accepted } from "../src/distinct-asset-accumulation-limit/submit-step-01-v1.js";
+import { submitDistinctAssetAccumulationStep02 } from "../src/distinct-asset-accumulation-limit/submit-step-02-v1.js";
+import { submitDistinctAssetAccumulationStep06 } from "../src/distinct-asset-accumulation-limit/submit-step-06-v1.js";
+import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -45,7 +45,7 @@ const network = "Custom" as const;
 
 describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
   it("runs Init through permanent mint, restart, six cancellations, and leased removal", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realDistinctAssetAccumulationLimit: true,
         alwaysFraudProofCatalogue: true,
@@ -63,11 +63,11 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
     });
     const category = catalogue.categories.distinctAssetAccumulationLimit!;
     expect(category.categoryId).toBe(
-      DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
     );
 
     const nativeTx = makeNativeTx().tx;
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -91,7 +91,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
     const policyId = Buffer.alloc(28, 0x5a);
     const assetName = Buffer.from("first-crossing", "ascii");
     const quantity = 1n;
-    const mintLeaf = hashMidgardMintAssetLeafV1({
+    const mintLeaf = hashMidgardMintAssetLeaf({
       policyId,
       assetName,
       quantity,
@@ -145,9 +145,9 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       0n,
       accumulatorCbor,
     ]);
-    const state: MidgardValidationMachineStateV1 = {
+    const state: MidgardValidationMachineState = {
       machineVersion: 1,
-      eventKeyHash: hashMidgardValidationEventKeyV1(eventKeyCbor),
+      eventKeyHash: hashMidgardValidationEventKey(eventKeyCbor),
       transactionId: Buffer.from(transactionId, "hex"),
       transactionCommitment: Buffer.alloc(32, 0x11),
       validationContextHash: Buffer.alloc(32, 0x22),
@@ -155,7 +155,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       priorLedgerRoot: Buffer.from(SDK.EMPTY_MERKLE_TREE_ROOT, "hex"),
       phase: "valueAndMint",
       programCounter: 0,
-      workRoot: hashMidgardValidationWorkWitnessV1({
+      workRoot: hashMidgardValidationWorkWitness({
         phase: "valueAndMint",
         programCounter: 0,
         witnessCbor,
@@ -167,11 +167,11 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       ledgerDeltaRoot: Buffer.from(SDK.EMPTY_MERKLE_TREE_ROOT, "hex"),
     };
     const trace = buildMidgardValidationTraceTree(
-      [hashMidgardValidationMachineStateV1(state)],
+      [hashMidgardValidationMachineState(state)],
       "accepted",
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     );
-    const descriptor: SDK.ValidationTraceDescriptorV1 = {
+    const descriptor: SDK.ValidationTraceDescriptor = {
       schema_version: BigInt(trace.descriptor.schemaVersion),
       machine_version: BigInt(trace.descriptor.machineVersion),
       trace_root: trace.descriptor.traceRoot.toString("hex"),
@@ -184,7 +184,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
     const descriptorCbor = Buffer.from(
       Data.to(
         descriptor as never,
-        SDK.ValidationTraceDescriptorV1Schema as never,
+        SDK.ValidationTraceDescriptorSchema as never,
       ),
       "hex",
     );
@@ -192,7 +192,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       SDK.ROOT_DOMAINS.validationTraces,
       [{ key: eventKeyCbor, value: descriptorCbor }],
     );
-    const auxiliary: SDK.ValidationAuxiliaryWitnessV1 = {
+    const auxiliary: SDK.ValidationAuxiliaryWitness = {
       ValueMintAssetWitness: {
         mint_index: 0n,
         policy_id: policyId.toString("hex"),
@@ -206,7 +206,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
         },
       },
     };
-    const retained: SDK.RetainedValidationWitnessV1 = {
+    const retained: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(state),
       trace_proof: SDK.validationTraceProofDataFromCore(trace.proofs[0]!),
       phase: 12n,
@@ -214,31 +214,29 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       witness_cbor: witnessCbor.toString("hex"),
       auxiliary,
     };
-    const retainedKey: SDK.RetainedValidationWitnessKeyV1 = {
+    const retainedKey: SDK.RetainedValidationWitnessKey = {
       event_key: eventKey,
       execution_index: -1n,
     };
     const finding = {
-      subject: SDK.acceptedVerdictSubjectV1(transactionId),
+      subject: SDK.acceptedVerdictSubject(transactionId),
       coordinate: { kind: "mint" as const, mintIndex: 0 },
     };
-    const retainedAuth = await buildDistinctAssetAuthenticationFromRetainedDaV1(
-      {
-        eventKey,
-        finding,
-        authenticatedValidationTraceEntries: [
-          { key: eventKeyCbor, value: descriptorCbor },
-        ],
-        retainedValidationWitnessEntries: [
-          {
-            key: SDK.encodeRetainedValidationWitnessKeyV1(retainedKey),
-            value: SDK.encodeRetainedValidationWitnessV1(retained),
-          },
-        ],
-        expectedValidationTracesRoot: traceRoot.root,
-      },
-    );
-    const evidence = prepareDistinctAssetAccumulationEvidenceV1({
+    const retainedAuth = await buildDistinctAssetAuthenticationFromRetainedDa({
+      eventKey,
+      finding,
+      authenticatedValidationTraceEntries: [
+        { key: eventKeyCbor, value: descriptorCbor },
+      ],
+      retainedValidationWitnessEntries: [
+        {
+          key: SDK.encodeRetainedValidationWitnessKey(retainedKey),
+          value: SDK.encodeRetainedValidationWitness(retained),
+        },
+      ],
+      expectedValidationTracesRoot: traceRoot.root,
+    });
+    const evidence = prepareDistinctAssetAccumulationEvidence({
       finding,
       traceStateHashHex: retained.trace_proof.state_hash,
       workRootHex: retained.machine_state.work_root,
@@ -271,10 +269,10 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
             validation_trace_witnesses: [
               [
                 Buffer.from(
-                  SDK.encodeRetainedValidationWitnessKeyV1(retainedKey),
+                  SDK.encodeRetainedValidationWitnessKey(retainedKey),
                 ).toString("hex"),
                 Buffer.from(
-                  SDK.encodeRetainedValidationWitnessV1(retained),
+                  SDK.encodeRetainedValidationWitness(retained),
                 ).toString("hex"),
               ],
             ],
@@ -288,7 +286,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       })),
     } as never;
     expect(
-      await detectDistinctAssetAccumulationCanonicalViolationsV1(replayBlock),
+      await detectDistinctAssetAccumulationCanonicalViolations(replayBlock),
     ).toHaveLength(1);
     const setup = await submitSetupTx({
       lucid: harness.funderLucid,
@@ -348,7 +346,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step01 = async (threadOutRef: string) => {
-      const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+      const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -356,7 +354,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
         stepIndex: 0,
         threadOutRef,
       });
-      return await submitDistinctAssetAccumulationStep01AcceptedV1({
+      return await submitDistinctAssetAccumulationStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -374,7 +372,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
       });
     };
     const step02 = (threadOutRef: string) =>
-      submitDistinctAssetAccumulationStep02V1({
+      submitDistinctAssetAccumulationStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -384,7 +382,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
         referenceScriptUtxo: references[1]!,
       });
     const fold = (threadOutRef: string, stepIndex: 2 | 3 | 4) =>
-      submitDistinctAssetAccumulationFoldV1({
+      submitDistinctAssetAccumulationFold({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -395,7 +393,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
         referenceScriptUtxo: references[stepIndex]!,
       });
     const finalize = (threadOutRef: string) =>
-      submitDistinctAssetAccumulationStep06V1({
+      submitDistinctAssetAccumulationStep06({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -417,7 +415,7 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
     for (let stepIndex = 0; stepIndex < 6; stepIndex += 1) {
       const outRef = await advance(stepIndex);
       await measured(`cancel-step-${(stepIndex + 1).toString()}`, () =>
-        submitDistinctAssetAccumulationCancelV1({
+        submitDistinctAssetAccumulationCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

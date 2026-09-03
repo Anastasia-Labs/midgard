@@ -16,7 +16,7 @@ import {
 import { sleep } from "midgard-node/sleep";
 
 import {
-  parseRedactedCommandV1,
+  parseRedactedCommand,
   redactArg,
   type RedactedCommand,
   redactEnvKeys,
@@ -24,8 +24,8 @@ import {
 import {
   type HttpProbeSample,
   inspectPidFile,
-  parseHttpProbeSampleV1,
-  parsePidFileObservationV1,
+  parseHttpProbeSample,
+  parsePidFileObservation,
   type PidFileObservation,
   probeHttpEndpoint,
 } from "../e2e/service-supervisor.js";
@@ -60,7 +60,7 @@ export type StartServiceSummary = {
   readonly command: RedactedCommand;
 };
 
-export const parseManagedServiceSummaryV1 = (
+export const parseManagedServiceSummary = (
   value: unknown,
 ): StartServiceSummary => {
   const label = "managed service summary";
@@ -88,14 +88,14 @@ export const parseManagedServiceSummaryV1 = (
     service: nonEmptyString(input.service, `${label}.service`),
     pid: positiveInteger(input.pid, `${label}.pid`),
     rawLogPath: nonEmptyString(input.rawLogPath, `${label}.rawLogPath`),
-    pidFile: parsePidFileObservationV1(input.pidFile, `${label}.pidFile`),
-    ready: parseHttpProbeSampleV1(input.ready, `${label}.ready`),
+    pidFile: parsePidFileObservation(input.pidFile, `${label}.pidFile`),
+    ready: parseHttpProbeSample(input.ready, `${label}.ready`),
     ...(input.health === undefined
       ? {}
       : {
-          health: parseHttpProbeSampleV1(input.health, `${label}.health`),
+          health: parseHttpProbeSample(input.health, `${label}.health`),
         }),
-    command: parseRedactedCommandV1(input.command, `${label}.command`),
+    command: parseRedactedCommand(input.command, `${label}.command`),
   };
   if (
     parsed.pidFile.status !== "runner_owned" ||
@@ -210,7 +210,7 @@ export const startManagedService = async (
             label: `${options.service}:health`,
             url: options.healthUrl,
           });
-    return parseManagedServiceSummaryV1({
+    return parseManagedServiceSummary({
       schemaVersion: E2E_MANAGED_SERVICE_SCHEMA_VERSION,
       service: options.service,
       pid,

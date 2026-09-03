@@ -1,27 +1,27 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type OutputReferenceScriptDecodingContractsV1,
+  type OutputReferenceScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  type OutputReferenceScriptDecodingEvidenceV1,
-  outputReferenceScriptEvidenceClosesV1,
+  type OutputReferenceScriptDecodingEvidence,
+  outputReferenceScriptEvidenceCloses,
 } from "./output-reference-script-decoding-v1.js";
 import {
-  OutputReferenceStep06DatumV1Schema,
-  OutputReferenceStep06RedeemerV1Schema,
+  OutputReferenceStep06DatumSchema,
+  OutputReferenceStep06RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitOutputReferenceScriptDecodingStep06V1 = async ({
+export const submitOutputReferenceScriptDecodingStep06 = async ({
   lucid,
   contracts,
   categoryId,
@@ -34,18 +34,18 @@ export const submitOutputReferenceScriptDecodingStep06V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: OutputReferenceScriptDecodingContractsV1;
+  readonly contracts: OutputReferenceScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: OutputReferenceScriptDecodingEvidenceV1;
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 5;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -53,7 +53,7 @@ export const submitOutputReferenceScriptDecodingStep06V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     readonly bound: {
       readonly subject: { readonly transaction_id: string };
       readonly output_index: bigint;
@@ -62,12 +62,12 @@ export const submitOutputReferenceScriptDecodingStep06V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: OutputReferenceStep06DatumV1Schema as never,
+    schema: OutputReferenceStep06DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
   if (
-    !outputReferenceScriptEvidenceClosesV1(evidence) ||
+    !outputReferenceScriptEvidenceCloses(evidence) ||
     state.result_class === -1n ||
     state.bound.subject.transaction_id !== evidence.subject.transaction_id ||
     state.bound.output_index !== BigInt(evidence.outputIndex)
@@ -75,7 +75,7 @@ export const submitOutputReferenceScriptDecodingStep06V1 = async ({
     throw new Error(
       `${FAMILY}: terminal state differs from retained contradiction`,
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,
@@ -85,7 +85,7 @@ export const submitOutputReferenceScriptDecodingStep06V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: OutputReferenceStep06RedeemerV1Schema,
+    spendRedeemerSchema: OutputReferenceStep06RedeemerSchema,
     buildFamilyArgs: (layout) => ({
       input_index: layout.inputIndex,
       output_index: layout.outputIndex,

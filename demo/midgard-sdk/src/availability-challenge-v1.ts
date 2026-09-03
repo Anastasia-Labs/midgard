@@ -1,35 +1,35 @@
 import {
-  buildMidgardValidationMerkleMembershipIndexV1,
-  commitMidgardValidationMerkleFrontierV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1,
-  MIDGARD_MAX_DA_PAYLOAD_BYTES_V1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleMembershipIndex,
+  commitMidgardValidationMerkleFrontier,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES,
+  MIDGARD_MAX_DA_PAYLOAD_BYTES,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import { Data, fromHex, toHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import { type OutputReference, OutputReferenceSchema } from "./common.js";
-import { FrontierPeakV1Schema } from "./fraud-proof/validation-auxiliary-witness-v1.js";
+import { FrontierPeakSchema } from "./fraud-proof/validation-auxiliary-witness-v1.js";
 import { HeaderHashSchema } from "./ledger-state.js";
 export {
-  daAvailabilityStateQueueStatusPermitsMergeV1,
-  DaAvailabilityStateQueueStatusV1,
-  DaAvailabilityStateQueueStatusV1Schema,
+  DaAvailabilityStateQueueStatus,
+  daAvailabilityStateQueueStatusPermitsMerge,
+  DaAvailabilityStateQueueStatusSchema,
 } from "./da-availability-state-v1.js";
 
-export const DA_AVAILABILITY_COMMITMENT_V1_VERSION = 1n;
+export const DA_AVAILABILITY_COMMITMENT_VERSION = 1n;
 
-export const DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES_V1 = 64 * 1024;
-export const DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES_V1 =
-  MIDGARD_MAX_DA_PAYLOAD_BYTES_V1;
+export const DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES = 64 * 1024;
+export const DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES =
+  MIDGARD_MAX_DA_PAYLOAD_BYTES;
 
-export const DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS_V1 = 60 * 60 * 1_000;
-export const DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS_V1 = 48 * 60 * 60 * 1_000;
+export const DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS = 60 * 60 * 1_000;
+export const DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS = 48 * 60 * 60 * 1_000;
 
-export const DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1 =
+export const DA_AVAILABILITY_BOND_LOVELACE_MEASUREMENT_CANDIDATE =
   10_000_000_000n;
-export const DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1 =
+export const DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE =
   10_000_000_000n;
 
 /**
@@ -38,7 +38,7 @@ export const DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE_MEASUREMENT_CANDIDATE_V1 =
  * bound only after a signed, reference-script-backed testnet-profile
  * transaction retains the protocol's 512-byte reliability reserve.
  */
-export const DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE_V1 =
+export const DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE =
   Object.freeze({
     // Exact signed reference-script transaction frontier: 15,872 bytes,
     // retaining the required 512-byte maxTxSize reserve. 14,021 serializes to
@@ -49,10 +49,10 @@ export const DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE_V1 =
   });
 
 /** Absolute safety ceilings, not an activated response geometry. */
-export const DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1 =
-  MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1;
-export const DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1 =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxOutputCount;
+export const DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES =
+  MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES;
+export const DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY =
+  MIDGARD_CONSENSUS_LIMITS.maxOutputCount;
 
 const HASH_28 = /^[0-9a-f]{56}$/u;
 const HASH_32 = /^[0-9a-f]{64}$/u;
@@ -61,7 +61,7 @@ const CANONICAL_CBOR_HEX = /^(?:[0-9a-f]{2})+$/u;
 const requireHash = (value: string, width: 28 | 32, field: string): void => {
   const pattern = width === 28 ? HASH_28 : HASH_32;
   if (!pattern.test(value)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       `${field} must be exactly ${width.toString()} lowercase hex bytes`,
     );
   }
@@ -69,7 +69,7 @@ const requireHash = (value: string, width: 28 | 32, field: string): void => {
 
 const requireSafePositiveInteger = (value: number, field: string): void => {
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       `${field} must be a positive safe integer`,
     );
   }
@@ -89,7 +89,7 @@ const parseCanonicalDataCbor = <Schema, Value>(input: {
   readonly name: string;
 }): Value => {
   if (!CANONICAL_CBOR_HEX.test(input.cborHex)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       `${input.name} must be non-empty lowercase CBOR hex`,
     );
   }
@@ -97,12 +97,12 @@ const parseCanonicalDataCbor = <Schema, Value>(input: {
   try {
     decoded = Data.from(input.cborHex, input.schema as never) as Value;
   } catch (error) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       `${input.name} is not valid V1 Plutus Data: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   if (Data.to(decoded as never, input.schema as never) !== input.cborHex) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       `${input.name} must use the canonical V1 Plutus Data encoding`,
     );
   }
@@ -168,31 +168,31 @@ const outRefIdentity28 = (outRef: OutputReference): string =>
     }),
   );
 
-export const daAvailabilityBondAssetNameV1 = (
+export const daAvailabilityBondAssetName = (
   attestationInputOutRef: OutputReference,
 ): string =>
   `${DA_AVAILABILITY_BOND_ASSET_NAME_PREFIX}${outRefIdentity28(attestationInputOutRef)}`;
 
-export const daAvailabilityChallengeAssetNameV1 = (
+export const daAvailabilityChallengeAssetName = (
   bondInputOutRef: OutputReference,
 ): string =>
   `${DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX}${outRefIdentity28(bondInputOutRef)}`;
 
-export const daAvailabilityTrancheAssetNameV1 = (input: {
+export const daAvailabilityTrancheAssetName = (input: {
   readonly challengeAssetName: string;
   readonly trancheIndex: number;
 }): string => {
   if (!CHALLENGE_ASSET_NAME.test(input.challengeAssetName)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challengeAssetName must be the canonical 32-byte DACH identity",
     );
   }
   if (
     !Number.isSafeInteger(input.trancheIndex) ||
     input.trancheIndex < 0 ||
-    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1
+    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "trancheIndex is outside the structural transaction safety bound",
     );
   }
@@ -204,11 +204,11 @@ export const daAvailabilityTrancheAssetNameV1 = (input: {
     .padStart(4, "0")}`;
 };
 
-export const daAvailabilityTerminalAccumulatorAssetNameV1 = (
+export const daAvailabilityTerminalAccumulatorAssetName = (
   challengeAssetName: string,
 ): string => {
   if (!CHALLENGE_ASSET_NAME.test(challengeAssetName)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challengeAssetName must be the canonical 32-byte DACH identity",
     );
   }
@@ -217,7 +217,7 @@ export const daAvailabilityTerminalAccumulatorAssetNameV1 = (
   )}`;
 };
 
-export const DaAvailabilityTrancheDescriptorV1Schema = Data.Object({
+export const DaAvailabilityTrancheDescriptorSchema = Data.Object({
   tranche_index: Data.Integer(),
   start_offset: Data.Integer(),
   byte_length: Data.Integer(),
@@ -225,11 +225,11 @@ export const DaAvailabilityTrancheDescriptorV1Schema = Data.Object({
   chunk_commitment: Data.Bytes({ minLength: 32, maxLength: 32 }),
   terminal_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
 });
-export type DaAvailabilityTrancheDescriptorV1 = Data.Static<
-  typeof DaAvailabilityTrancheDescriptorV1Schema
+export type DaAvailabilityTrancheDescriptor = Data.Static<
+  typeof DaAvailabilityTrancheDescriptorSchema
 >;
-export const DaAvailabilityTrancheDescriptorV1 =
-  DaAvailabilityTrancheDescriptorV1Schema as unknown as DaAvailabilityTrancheDescriptorV1;
+export const DaAvailabilityTrancheDescriptor =
+  DaAvailabilityTrancheDescriptorSchema as unknown as DaAvailabilityTrancheDescriptor;
 
 /**
  * Release-bound response geometry. The applied response-transaction
@@ -237,24 +237,24 @@ export const DaAvailabilityTrancheDescriptorV1 =
  * the wire schema does not turn the first 4 MiB/4 KiB sizing probe into
  * protocol law.
  */
-export const DaAvailabilityResponseGeometryV1Schema = Data.Object({
+export const DaAvailabilityResponseGeometrySchema = Data.Object({
   chunk_byte_length: Data.Integer(),
   tranche_byte_length: Data.Integer(),
   max_tranche_count: Data.Integer(),
 });
-export type DaAvailabilityResponseGeometryV1 = Data.Static<
-  typeof DaAvailabilityResponseGeometryV1Schema
+export type DaAvailabilityResponseGeometry = Data.Static<
+  typeof DaAvailabilityResponseGeometrySchema
 >;
-export const DaAvailabilityResponseGeometryV1 =
-  DaAvailabilityResponseGeometryV1Schema as unknown as DaAvailabilityResponseGeometryV1;
+export const DaAvailabilityResponseGeometry =
+  DaAvailabilityResponseGeometrySchema as unknown as DaAvailabilityResponseGeometry;
 
 /**
  * Authenticated release/DA parameters selected after applied response-cost
  * measurement. The two bonds remain matching, but their activated lovelace
  * amount is deployment data rather than a wire-level constant.
  */
-export const DaAvailabilityParametersV1Schema = Data.Object({
-  response_geometry: DaAvailabilityResponseGeometryV1Schema,
+export const DaAvailabilityParametersSchema = Data.Object({
+  response_geometry: DaAvailabilityResponseGeometrySchema,
   da_bond_lovelace: Data.Integer(),
   challenger_bond_lovelace: Data.Integer(),
   max_open_fee_lovelace: Data.Integer(),
@@ -263,28 +263,28 @@ export const DaAvailabilityParametersV1Schema = Data.Object({
   max_close_fee_lovelace: Data.Integer(),
   max_timeout_fee_lovelace: Data.Integer(),
 });
-export type DaAvailabilityParametersV1 = Data.Static<
-  typeof DaAvailabilityParametersV1Schema
+export type DaAvailabilityParameters = Data.Static<
+  typeof DaAvailabilityParametersSchema
 >;
-export const DaAvailabilityParametersV1 =
-  DaAvailabilityParametersV1Schema as unknown as DaAvailabilityParametersV1;
+export const DaAvailabilityParameters =
+  DaAvailabilityParametersSchema as unknown as DaAvailabilityParameters;
 
-export const DaAvailabilityCommitmentV1Schema = Data.Object({
+export const DaAvailabilityCommitmentSchema = Data.Object({
   version: Data.Integer(),
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
   header_hash: HeaderHashSchema,
   payload_byte_length: Data.Integer(),
-  response_geometry: DaAvailabilityResponseGeometryV1Schema,
-  tranche_descriptors: Data.Array(DaAvailabilityTrancheDescriptorV1Schema),
+  response_geometry: DaAvailabilityResponseGeometrySchema,
+  tranche_descriptors: Data.Array(DaAvailabilityTrancheDescriptorSchema),
   bond_owner: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
-export type DaAvailabilityCommitmentV1 = Data.Static<
-  typeof DaAvailabilityCommitmentV1Schema
+export type DaAvailabilityCommitment = Data.Static<
+  typeof DaAvailabilityCommitmentSchema
 >;
-export const DaAvailabilityCommitmentV1 =
-  DaAvailabilityCommitmentV1Schema as unknown as DaAvailabilityCommitmentV1;
+export const DaAvailabilityCommitment =
+  DaAvailabilityCommitmentSchema as unknown as DaAvailabilityCommitment;
 
-const DaAvailabilityTrancheStartV1Schema = Data.Object({
+const DaAvailabilityTrancheStartSchema = Data.Object({
   version: Data.Integer(),
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
   header_hash: HeaderHashSchema,
@@ -293,7 +293,7 @@ const DaAvailabilityTrancheStartV1Schema = Data.Object({
   byte_length: Data.Integer(),
 });
 
-const DaAvailabilityTrancheStepV1Schema = Data.Object({
+const DaAvailabilityTrancheStepSchema = Data.Object({
   version: Data.Integer(),
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
   header_hash: HeaderHashSchema,
@@ -304,14 +304,14 @@ const DaAvailabilityTrancheStepV1Schema = Data.Object({
   previous_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
 });
 
-const DaAvailabilityTerminalAccumulatorStartV1Schema = Data.Object({
+const DaAvailabilityTerminalAccumulatorStartSchema = Data.Object({
   version: Data.Integer(),
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
   header_hash: HeaderHashSchema,
   challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
 });
 
-const DaAvailabilityChunkLeafV1Schema = Data.Object({
+const DaAvailabilityChunkLeafSchema = Data.Object({
   version: Data.Integer(),
   tranche_index: Data.Integer(),
   chunk_index: Data.Integer(),
@@ -320,10 +320,10 @@ const DaAvailabilityChunkLeafV1Schema = Data.Object({
   chunk_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
 });
 
-export const DaAvailabilityBondDatumV1Schema = Data.Enum([
+export const DaAvailabilityBondDatumSchema = Data.Enum([
   Data.Object({
     Available: Data.Object({
-      commitment: DaAvailabilityCommitmentV1Schema,
+      commitment: DaAvailabilityCommitmentSchema,
       da_bond_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
       committee_signers_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
       attested_signers: Data.Bytes({ minLength: 32, maxLength: 32 }),
@@ -331,7 +331,7 @@ export const DaAvailabilityBondDatumV1Schema = Data.Enum([
   }),
   Data.Object({
     ChallengedBond: Data.Object({
-      commitment: DaAvailabilityCommitmentV1Schema,
+      commitment: DaAvailabilityCommitmentSchema,
       da_bond_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
       committee_signers_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
       attested_signers: Data.Bytes({ minLength: 32, maxLength: 32 }),
@@ -342,19 +342,19 @@ export const DaAvailabilityBondDatumV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type DaAvailabilityBondDatumV1 = Data.Static<
-  typeof DaAvailabilityBondDatumV1Schema
+export type DaAvailabilityBondDatum = Data.Static<
+  typeof DaAvailabilityBondDatumSchema
 >;
-export const DaAvailabilityBondDatumV1 =
-  DaAvailabilityBondDatumV1Schema as unknown as DaAvailabilityBondDatumV1;
+export const DaAvailabilityBondDatum =
+  DaAvailabilityBondDatumSchema as unknown as DaAvailabilityBondDatum;
 
-export const DaAvailabilityTrancheDatumV1Schema = Data.Enum([
+export const DaAvailabilityTrancheDatumSchema = Data.Enum([
   Data.Object({
     Active: Data.Object({
       deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
       header_hash: HeaderHashSchema,
       challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      descriptor: DaAvailabilityTrancheDescriptorV1Schema,
+      descriptor: DaAvailabilityTrancheDescriptorSchema,
       next_offset: Data.Integer(),
       accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
       latest_carrier_output_index: Data.Nullable(Data.Integer()),
@@ -367,20 +367,20 @@ export const DaAvailabilityTrancheDatumV1Schema = Data.Enum([
       deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
       header_hash: HeaderHashSchema,
       challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
-      descriptor: DaAvailabilityTrancheDescriptorV1Schema,
+      descriptor: DaAvailabilityTrancheDescriptorSchema,
       terminal_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
       terminal_carrier_output_index: Data.Integer(),
       challenger: Data.Bytes({ minLength: 28, maxLength: 28 }),
     }),
   }),
 ]);
-export type DaAvailabilityTrancheDatumV1 = Data.Static<
-  typeof DaAvailabilityTrancheDatumV1Schema
+export type DaAvailabilityTrancheDatum = Data.Static<
+  typeof DaAvailabilityTrancheDatumSchema
 >;
-export const DaAvailabilityTrancheDatumV1 =
-  DaAvailabilityTrancheDatumV1Schema as unknown as DaAvailabilityTrancheDatumV1;
+export const DaAvailabilityTrancheDatum =
+  DaAvailabilityTrancheDatumSchema as unknown as DaAvailabilityTrancheDatum;
 
-export const DaAvailabilityTrancheTerminalStatusV1Schema = Data.Enum([
+export const DaAvailabilityTrancheTerminalStatusSchema = Data.Enum([
   Data.Object({
     PublishedTranche: Data.Object({
       terminal_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
@@ -393,20 +393,20 @@ export const DaAvailabilityTrancheTerminalStatusV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type DaAvailabilityTrancheTerminalStatusV1 = Data.Static<
-  typeof DaAvailabilityTrancheTerminalStatusV1Schema
+export type DaAvailabilityTrancheTerminalStatus = Data.Static<
+  typeof DaAvailabilityTrancheTerminalStatusSchema
 >;
-export const DaAvailabilityTrancheTerminalStatusV1 =
-  DaAvailabilityTrancheTerminalStatusV1Schema as unknown as DaAvailabilityTrancheTerminalStatusV1;
+export const DaAvailabilityTrancheTerminalStatus =
+  DaAvailabilityTrancheTerminalStatusSchema as unknown as DaAvailabilityTrancheTerminalStatus;
 
-const DaAvailabilityTerminalAccumulatorStepV1Schema = Data.Object({
+const DaAvailabilityTerminalAccumulatorStepSchema = Data.Object({
   version: Data.Integer(),
   previous_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
   tranche_index: Data.Integer(),
-  status: DaAvailabilityTrancheTerminalStatusV1Schema,
+  status: DaAvailabilityTrancheTerminalStatusSchema,
 });
 
-export const DaAvailabilityTerminalAccumulatorDatumV1Schema = Data.Object({
+export const DaAvailabilityTerminalAccumulatorDatumSchema = Data.Object({
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
   header_hash: HeaderHashSchema,
   challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
@@ -417,13 +417,13 @@ export const DaAvailabilityTerminalAccumulatorDatumV1Schema = Data.Object({
   challenger: Data.Bytes({ minLength: 28, maxLength: 28 }),
   remaining_challenger_lovelace: Data.Integer(),
 });
-export type DaAvailabilityTerminalAccumulatorDatumV1 = Data.Static<
-  typeof DaAvailabilityTerminalAccumulatorDatumV1Schema
+export type DaAvailabilityTerminalAccumulatorDatum = Data.Static<
+  typeof DaAvailabilityTerminalAccumulatorDatumSchema
 >;
-export const DaAvailabilityTerminalAccumulatorDatumV1 =
-  DaAvailabilityTerminalAccumulatorDatumV1Schema as unknown as DaAvailabilityTerminalAccumulatorDatumV1;
+export const DaAvailabilityTerminalAccumulatorDatum =
+  DaAvailabilityTerminalAccumulatorDatumSchema as unknown as DaAvailabilityTerminalAccumulatorDatum;
 
-export const DaAvailabilityPublicationDatumV1Schema = Data.Object({
+export const DaAvailabilityPublicationDatumSchema = Data.Object({
   deployment_identity: Data.Bytes({ minLength: 28, maxLength: 28 }),
   header_hash: HeaderHashSchema,
   challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
@@ -432,20 +432,20 @@ export const DaAvailabilityPublicationDatumV1Schema = Data.Object({
   chunk_offset: Data.Integer(),
   chunk_byte_length: Data.Integer(),
   chunk_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
-  chunk_frontier: Data.Array(FrontierPeakV1Schema),
+  chunk_frontier: Data.Array(FrontierPeakSchema),
   chunk_siblings: Data.Array(Data.Bytes({ minLength: 32, maxLength: 32 })),
   previous_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
   next_accumulator: Data.Bytes({ minLength: 32, maxLength: 32 }),
   chunk: Data.Bytes(),
 });
-export type DaAvailabilityPublicationDatumV1 = Data.Static<
-  typeof DaAvailabilityPublicationDatumV1Schema
+export type DaAvailabilityPublicationDatum = Data.Static<
+  typeof DaAvailabilityPublicationDatumSchema
 >;
-export const DaAvailabilityPublicationDatumV1 =
-  DaAvailabilityPublicationDatumV1Schema as unknown as DaAvailabilityPublicationDatumV1;
+export const DaAvailabilityPublicationDatum =
+  DaAvailabilityPublicationDatumSchema as unknown as DaAvailabilityPublicationDatum;
 
 /** Exact minting-policy ABI for the retained DA bond/challenge lifecycle. */
-export const DaAvailabilityMintRedeemerV1Schema = Data.Enum([
+export const DaAvailabilityMintRedeemerSchema = Data.Enum([
   Data.Object({
     MintBondFromAttestation: Data.Object({
       hub_oracle_ref_input_index: Data.Integer(),
@@ -500,14 +500,14 @@ export const DaAvailabilityMintRedeemerV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type DaAvailabilityMintRedeemerV1 = Data.Static<
-  typeof DaAvailabilityMintRedeemerV1Schema
+export type DaAvailabilityMintRedeemer = Data.Static<
+  typeof DaAvailabilityMintRedeemerSchema
 >;
-export const DaAvailabilityMintRedeemerV1 =
-  DaAvailabilityMintRedeemerV1Schema as unknown as DaAvailabilityMintRedeemerV1;
+export const DaAvailabilityMintRedeemer =
+  DaAvailabilityMintRedeemerSchema as unknown as DaAvailabilityMintRedeemer;
 
 /** Exact spending-validator ABI for bond, tranche and carrier UTxOs. */
-export const DaAvailabilitySpendRedeemerV1Schema = Data.Enum([
+export const DaAvailabilitySpendRedeemerSchema = Data.Enum([
   Data.Object({
     AdvanceTranche: Data.Object({
       thread_output_index: Data.Integer(),
@@ -525,56 +525,56 @@ export const DaAvailabilitySpendRedeemerV1Schema = Data.Enum([
     Coordinate: Data.Object({ mint_redeemer_index: Data.Integer() }),
   }),
 ]);
-export type DaAvailabilitySpendRedeemerV1 = Data.Static<
-  typeof DaAvailabilitySpendRedeemerV1Schema
+export type DaAvailabilitySpendRedeemer = Data.Static<
+  typeof DaAvailabilitySpendRedeemerSchema
 >;
-export const DaAvailabilitySpendRedeemerV1 =
-  DaAvailabilitySpendRedeemerV1Schema as unknown as DaAvailabilitySpendRedeemerV1;
+export const DaAvailabilitySpendRedeemer =
+  DaAvailabilitySpendRedeemerSchema as unknown as DaAvailabilitySpendRedeemer;
 
-export class DaAvailabilityCommitmentV1Error extends Error {
+export class DaAvailabilityCommitmentError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DaAvailabilityCommitmentV1Error";
   }
 }
 
-export const daAvailabilityResponseWindowMsV1 = (
+export const daAvailabilityResponseWindowMs = (
   payloadByteLength: number,
 ): number => {
   requireSafePositiveInteger(payloadByteLength, "payloadByteLength");
-  if (payloadByteLength > DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES_V1) {
-    throw new DaAvailabilityCommitmentV1Error(
+  if (payloadByteLength > DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES) {
+    throw new DaAvailabilityCommitmentError(
       "payloadByteLength exceeds the canonical 64 MiB V1 DA limit",
     );
   }
-  return payloadByteLength <= DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES_V1
-    ? DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS_V1
-    : DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS_V1;
+  return payloadByteLength <= DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES
+    ? DA_AVAILABILITY_SMALL_RESPONSE_WINDOW_MS
+    : DA_AVAILABILITY_FULL_RESPONSE_WINDOW_MS;
 };
 
-export const daAvailabilityResponseDeadlineV1 = (input: {
+export const daAvailabilityResponseDeadline = (input: {
   readonly payloadByteLength: number;
   readonly openedAt: bigint;
 }): bigint => {
   if (input.openedAt < 0n) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "availability challenge openedAt must be non-negative",
     );
   }
   return (
     input.openedAt +
-    BigInt(daAvailabilityResponseWindowMsV1(input.payloadByteLength))
+    BigInt(daAvailabilityResponseWindowMs(input.payloadByteLength))
   );
 };
 
-export type DaAvailabilityTrancheLayoutV1 = Readonly<{
+export type DaAvailabilityTrancheLayout = Readonly<{
   trancheIndex: number;
   startOffset: number;
   byteLength: number;
 }>;
 
-export const assertCanonicalDaAvailabilityResponseGeometryV1 = (
-  geometry: DaAvailabilityResponseGeometryV1,
+export const assertCanonicalDaAvailabilityResponseGeometry = (
+  geometry: DaAvailabilityResponseGeometry,
 ): void => {
   const chunkByteLength = Number(geometry.chunk_byte_length);
   const trancheByteLength = Number(geometry.tranche_byte_length);
@@ -596,57 +596,57 @@ export const assertCanonicalDaAvailabilityResponseGeometryV1 = (
     BigInt(trancheByteLength) !== geometry.tranche_byte_length ||
     BigInt(maxTrancheCount) !== geometry.max_tranche_count
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "response geometry must fit canonical safe integers",
     );
   }
-  if (chunkByteLength > DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1) {
-    throw new DaAvailabilityCommitmentV1Error(
+  if (chunkByteLength > DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES) {
+    throw new DaAvailabilityCommitmentError(
       "response chunk exceeds the L1 reliable-publication safety ceiling",
     );
   }
   if (
-    trancheByteLength < DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES_V1 ||
-    trancheByteLength > DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES_V1
+    trancheByteLength < DA_AVAILABILITY_SMALL_PAYLOAD_MAX_BYTES ||
+    trancheByteLength > DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "response tranche must cover the complete small class and stay within the 64 MiB payload ceiling",
     );
   }
   if (
-    maxTrancheCount > DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1 ||
-    Math.ceil(DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES_V1 / trancheByteLength) >
+    maxTrancheCount > DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY ||
+    Math.ceil(DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES / trancheByteLength) >
       maxTrancheCount
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "response geometry cannot cover the 64 MiB class within its authenticated tranche-count bound",
     );
   }
 };
 
-export const availabilityResponseGeometryV1 = (input: {
+export const availabilityResponseGeometry = (input: {
   readonly chunkByteLength: number;
   readonly trancheByteLength: number;
   readonly maxTrancheCount: number;
-}): DaAvailabilityResponseGeometryV1 => {
+}): DaAvailabilityResponseGeometry => {
   const geometry = {
     chunk_byte_length: BigInt(input.chunkByteLength),
     tranche_byte_length: BigInt(input.trancheByteLength),
     max_tranche_count: BigInt(input.maxTrancheCount),
   };
-  assertCanonicalDaAvailabilityResponseGeometryV1(geometry);
+  assertCanonicalDaAvailabilityResponseGeometry(geometry);
   return geometry;
 };
 
-export const assertCanonicalDaAvailabilityParametersV1 = (
-  parameters: DaAvailabilityParametersV1,
+export const assertCanonicalDaAvailabilityParameters = (
+  parameters: DaAvailabilityParameters,
 ): void => {
-  assertCanonicalDaAvailabilityResponseGeometryV1(parameters.response_geometry);
+  assertCanonicalDaAvailabilityResponseGeometry(parameters.response_geometry);
   if (
     parameters.da_bond_lovelace <= 0n ||
     parameters.challenger_bond_lovelace !== parameters.da_bond_lovelace
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "availability release parameters require positive, exactly matching DA and challenger bonds",
     );
   }
@@ -657,12 +657,12 @@ export const assertCanonicalDaAvailabilityParametersV1 = (
     parameters.max_close_fee_lovelace <= 0n ||
     parameters.max_timeout_fee_lovelace <= 0n
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "availability release fee ceilings must be positive measured values",
     );
   }
   const maximumPublicationCount = BigInt(
-    maximumDaAvailabilityPublicationCountV1(parameters.response_geometry),
+    maximumDaAvailabilityPublicationCount(parameters.response_geometry),
   );
   const terminalFeeCeiling =
     parameters.max_close_fee_lovelace > parameters.max_timeout_fee_lovelace
@@ -675,14 +675,14 @@ export const assertCanonicalDaAvailabilityParametersV1 = (
       terminalFeeCeiling >=
     parameters.challenger_bond_lovelace
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenger bond must cover every maximum-size publication fee plus the larger terminal fee ceiling",
     );
   }
 };
 
-export const daAvailabilityParametersV1 = (input: {
-  readonly responseGeometry: DaAvailabilityResponseGeometryV1;
+export const daAvailabilityParameters = (input: {
+  readonly responseGeometry: DaAvailabilityResponseGeometry;
   readonly daBondLovelace: bigint;
   readonly challengerBondLovelace: bigint;
   readonly maxOpenFeeLovelace: bigint;
@@ -690,7 +690,7 @@ export const daAvailabilityParametersV1 = (input: {
   readonly maxSettlementFeeLovelace: bigint;
   readonly maxCloseFeeLovelace: bigint;
   readonly maxTimeoutFeeLovelace: bigint;
-}): DaAvailabilityParametersV1 => {
+}): DaAvailabilityParameters => {
   const parameters = {
     response_geometry: input.responseGeometry,
     da_bond_lovelace: input.daBondLovelace,
@@ -701,36 +701,33 @@ export const daAvailabilityParametersV1 = (input: {
     max_close_fee_lovelace: input.maxCloseFeeLovelace,
     max_timeout_fee_lovelace: input.maxTimeoutFeeLovelace,
   };
-  assertCanonicalDaAvailabilityParametersV1(parameters);
+  assertCanonicalDaAvailabilityParameters(parameters);
   return parameters;
 };
 
-export const encodeDaAvailabilityParametersV1 = (
-  parameters: DaAvailabilityParametersV1,
+export const encodeDaAvailabilityParameters = (
+  parameters: DaAvailabilityParameters,
 ): string => {
-  assertCanonicalDaAvailabilityParametersV1(parameters);
-  return Data.to(
-    parameters as never,
-    DaAvailabilityParametersV1Schema as never,
-  );
+  assertCanonicalDaAvailabilityParameters(parameters);
+  return Data.to(parameters as never, DaAvailabilityParametersSchema as never);
 };
 
 /**
  * Strict durable/configuration codec. Shape-compatible or non-canonical CBOR
  * is never accepted as authenticated release parameters.
  */
-export const parseDaAvailabilityParametersV1Cbor = (
+export const parseDaAvailabilityParametersCbor = (
   cborHex: string,
-): DaAvailabilityParametersV1 => {
+): DaAvailabilityParameters => {
   const parameters = parseCanonicalDataCbor<
-    typeof DaAvailabilityParametersV1Schema,
-    DaAvailabilityParametersV1
+    typeof DaAvailabilityParametersSchema,
+    DaAvailabilityParameters
   >({
     cborHex,
-    schema: DaAvailabilityParametersV1Schema,
+    schema: DaAvailabilityParametersSchema,
     name: "availability parameters",
   });
-  assertCanonicalDaAvailabilityParametersV1(parameters);
+  assertCanonicalDaAvailabilityParameters(parameters);
   return parameters;
 };
 
@@ -739,20 +736,20 @@ export const parseDaAvailabilityParametersV1Cbor = (
  * geometry. Its tranche width/count are release data, while the exact 64 KiB
  * and 64 MiB response classes stay protocol-fixed.
  */
-export const deriveDaAvailabilityTrancheLayoutV1 = (
+export const deriveDaAvailabilityTrancheLayout = (
   payloadByteLength: number,
-  responseGeometry: DaAvailabilityResponseGeometryV1,
-): readonly DaAvailabilityTrancheLayoutV1[] => {
-  daAvailabilityResponseWindowMsV1(payloadByteLength);
-  assertCanonicalDaAvailabilityResponseGeometryV1(responseGeometry);
+  responseGeometry: DaAvailabilityResponseGeometry,
+): readonly DaAvailabilityTrancheLayout[] => {
+  daAvailabilityResponseWindowMs(payloadByteLength);
+  assertCanonicalDaAvailabilityResponseGeometry(responseGeometry);
   const trancheByteLength = Number(responseGeometry.tranche_byte_length);
   const trancheCount = Math.ceil(payloadByteLength / trancheByteLength);
   if (trancheCount > Number(responseGeometry.max_tranche_count)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "payload requires more than the authenticated response geometry's tranche bound",
     );
   }
-  const result: DaAvailabilityTrancheLayoutV1[] = [];
+  const result: DaAvailabilityTrancheLayout[] = [];
   let startOffset = 0;
   for (let trancheIndex = 0; trancheIndex < trancheCount; trancheIndex += 1) {
     const byteLength = Math.min(
@@ -765,13 +762,13 @@ export const deriveDaAvailabilityTrancheLayoutV1 = (
   return result;
 };
 
-export const maximumDaAvailabilityPublicationCountV1 = (
-  responseGeometry: DaAvailabilityResponseGeometryV1,
+export const maximumDaAvailabilityPublicationCount = (
+  responseGeometry: DaAvailabilityResponseGeometry,
 ): number => {
-  assertCanonicalDaAvailabilityResponseGeometryV1(responseGeometry);
+  assertCanonicalDaAvailabilityResponseGeometry(responseGeometry);
   const chunkByteLength = Number(responseGeometry.chunk_byte_length);
-  return deriveDaAvailabilityTrancheLayoutV1(
-    DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES_V1,
+  return deriveDaAvailabilityTrancheLayout(
+    DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES,
     responseGeometry,
   ).reduce(
     (total, tranche) => total + Math.ceil(tranche.byteLength / chunkByteLength),
@@ -779,7 +776,7 @@ export const maximumDaAvailabilityPublicationCountV1 = (
   );
 };
 
-export const daAvailabilityTrancheStartAccumulatorV1 = (input: {
+export const daAvailabilityTrancheStartAccumulator = (input: {
   readonly deploymentIdentity: string;
   readonly headerHash: string;
   readonly trancheIndex: number;
@@ -792,29 +789,29 @@ export const daAvailabilityTrancheStartAccumulatorV1 = (input: {
   if (
     !Number.isSafeInteger(input.trancheIndex) ||
     input.trancheIndex < 0 ||
-    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1 ||
+    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY ||
     !Number.isSafeInteger(input.startOffset) ||
     input.startOffset < 0
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "tranche index and start offset must be canonical non-negative integers",
     );
   }
   const cbor = Data.to(
     {
-      version: DA_AVAILABILITY_COMMITMENT_V1_VERSION,
+      version: DA_AVAILABILITY_COMMITMENT_VERSION,
       deployment_identity: input.deploymentIdentity,
       header_hash: input.headerHash,
       tranche_index: BigInt(input.trancheIndex),
       start_offset: BigInt(input.startOffset),
       byte_length: BigInt(input.byteLength),
     } as never,
-    DaAvailabilityTrancheStartV1Schema as never,
+    DaAvailabilityTrancheStartSchema as never,
   );
   return hashDomainAndData(TRANCHE_START_DOMAIN, cbor);
 };
 
-export const daAvailabilityTerminalAccumulatorStartV1 = (input: {
+export const daAvailabilityTerminalAccumulatorStart = (input: {
   readonly deploymentIdentity: string;
   readonly headerHash: string;
   readonly challengeAssetName: string;
@@ -822,35 +819,35 @@ export const daAvailabilityTerminalAccumulatorStartV1 = (input: {
   requireHash(input.deploymentIdentity, 28, "deploymentIdentity");
   requireHash(input.headerHash, 28, "headerHash");
   if (!CHALLENGE_ASSET_NAME.test(input.challengeAssetName)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challengeAssetName must be the canonical 32-byte DACH identity",
     );
   }
   const cbor = Data.to(
     {
-      version: DA_AVAILABILITY_COMMITMENT_V1_VERSION,
+      version: DA_AVAILABILITY_COMMITMENT_VERSION,
       deployment_identity: input.deploymentIdentity,
       header_hash: input.headerHash,
       challenge_asset_name: input.challengeAssetName,
     } as never,
-    DaAvailabilityTerminalAccumulatorStartV1Schema as never,
+    DaAvailabilityTerminalAccumulatorStartSchema as never,
   );
   return hashDomainAndData(TERMINAL_ACCUMULATOR_START_DOMAIN, cbor);
 };
 
 /** Cross-language twin of the bounded per-tranche terminal fold. */
-export const foldDaAvailabilityTerminalAccumulatorV1 = (input: {
+export const foldDaAvailabilityTerminalAccumulator = (input: {
   readonly previousAccumulator: string;
   readonly trancheIndex: number;
-  readonly status: DaAvailabilityTrancheTerminalStatusV1;
+  readonly status: DaAvailabilityTrancheTerminalStatus;
 }): string => {
   requireHash(input.previousAccumulator, 32, "previousAccumulator");
   if (
     !Number.isSafeInteger(input.trancheIndex) ||
     input.trancheIndex < 0 ||
-    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1
+    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "terminal accumulator tranche index must be a canonical bounded integer",
     );
   }
@@ -863,7 +860,7 @@ export const foldDaAvailabilityTerminalAccumulatorV1 = (input: {
   } else {
     const timedOut = input.status.TimedOutTranche;
     if (timedOut.next_offset < 0n) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "timed-out tranche next offset must be non-negative",
       );
     }
@@ -875,17 +872,17 @@ export const foldDaAvailabilityTerminalAccumulatorV1 = (input: {
   }
   const cbor = Data.to(
     {
-      version: DA_AVAILABILITY_COMMITMENT_V1_VERSION,
+      version: DA_AVAILABILITY_COMMITMENT_VERSION,
       previous_accumulator: input.previousAccumulator,
       tranche_index: BigInt(input.trancheIndex),
       status: input.status,
     } as never,
-    DaAvailabilityTerminalAccumulatorStepV1Schema as never,
+    DaAvailabilityTerminalAccumulatorStepSchema as never,
   );
   return hashDomainAndData(TERMINAL_ACCUMULATOR_STEP_DOMAIN, cbor);
 };
 
-export const daAvailabilityTrancheStepAccumulatorV1 = (input: {
+export const daAvailabilityTrancheStepAccumulator = (input: {
   readonly deploymentIdentity: string;
   readonly headerHash: string;
   readonly trancheIndex: number;
@@ -900,17 +897,17 @@ export const daAvailabilityTrancheStepAccumulatorV1 = (input: {
   if (
     !Number.isSafeInteger(input.trancheIndex) ||
     input.trancheIndex < 0 ||
-    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1 ||
+    input.trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY ||
     !Number.isSafeInteger(input.chunkOffset) ||
     input.chunkOffset < 0
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "tranche index and chunk offset must be canonical non-negative integers",
     );
   }
   const cbor = Data.to(
     {
-      version: DA_AVAILABILITY_COMMITMENT_V1_VERSION,
+      version: DA_AVAILABILITY_COMMITMENT_VERSION,
       deployment_identity: input.deploymentIdentity,
       header_hash: input.headerHash,
       tranche_index: BigInt(input.trancheIndex),
@@ -919,12 +916,12 @@ export const daAvailabilityTrancheStepAccumulatorV1 = (input: {
       chunk_hash: toHex(blake2b(input.chunk, { dkLen: 32 })),
       previous_accumulator: input.previousAccumulator,
     } as never,
-    DaAvailabilityTrancheStepV1Schema as never,
+    DaAvailabilityTrancheStepSchema as never,
   );
   return hashDomainAndData(TRANCHE_STEP_DOMAIN, cbor);
 };
 
-export const daAvailabilityChunkLeafHashV1 = (input: {
+export const daAvailabilityChunkLeafHash = (input: {
   readonly trancheIndex: number;
   readonly chunkIndex: number;
   readonly chunkOffset: number;
@@ -937,7 +934,7 @@ export const daAvailabilityChunkLeafHashV1 = (input: {
     ["chunkOffset", input.chunkOffset],
   ] as const) {
     if (!Number.isSafeInteger(value) || value < 0) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `${field} must be a canonical non-negative safe integer`,
       );
     }
@@ -946,20 +943,20 @@ export const daAvailabilityChunkLeafHashV1 = (input: {
   requireHash(input.chunkHash, 32, "chunkHash");
   const cbor = Data.to(
     {
-      version: DA_AVAILABILITY_COMMITMENT_V1_VERSION,
+      version: DA_AVAILABILITY_COMMITMENT_VERSION,
       tranche_index: BigInt(input.trancheIndex),
       chunk_index: BigInt(input.chunkIndex),
       chunk_offset: BigInt(input.chunkOffset),
       chunk_byte_length: BigInt(input.chunkByteLength),
       chunk_hash: input.chunkHash,
     } as never,
-    DaAvailabilityChunkLeafV1Schema as never,
+    DaAvailabilityChunkLeafSchema as never,
   );
   return hashDomainAndData(CHUNK_LEAF_DOMAIN, cbor);
 };
 
 const trancheChunkLeafHashes = (input: {
-  readonly layout: DaAvailabilityTrancheLayoutV1;
+  readonly layout: DaAvailabilityTrancheLayout;
   readonly payload: Uint8Array;
   readonly chunkByteLength: number;
 }): readonly Buffer[] => {
@@ -975,7 +972,7 @@ const trancheChunkLeafHashes = (input: {
     const chunk = input.payload.subarray(chunkOffset, chunkEnd);
     leaves.push(
       Buffer.from(
-        daAvailabilityChunkLeafHashV1({
+        daAvailabilityChunkLeafHash({
           trancheIndex: input.layout.trancheIndex,
           chunkIndex,
           chunkOffset,
@@ -993,11 +990,11 @@ const trancheChunkLeafHashes = (input: {
 const terminalAccumulator = (input: {
   readonly deploymentIdentity: string;
   readonly headerHash: string;
-  readonly layout: DaAvailabilityTrancheLayoutV1;
+  readonly layout: DaAvailabilityTrancheLayout;
   readonly payload: Uint8Array;
   readonly chunkByteLength: number;
 }): string => {
-  let accumulator = daAvailabilityTrancheStartAccumulatorV1({
+  let accumulator = daAvailabilityTrancheStartAccumulator({
     deploymentIdentity: input.deploymentIdentity,
     headerHash: input.headerHash,
     trancheIndex: input.layout.trancheIndex,
@@ -1011,7 +1008,7 @@ const terminalAccumulator = (input: {
     chunkOffset += input.chunkByteLength
   ) {
     const chunkEnd = Math.min(chunkOffset + input.chunkByteLength, endOffset);
-    accumulator = daAvailabilityTrancheStepAccumulatorV1({
+    accumulator = daAvailabilityTrancheStepAccumulator({
       deploymentIdentity: input.deploymentIdentity,
       headerHash: input.headerHash,
       trancheIndex: input.layout.trancheIndex,
@@ -1023,37 +1020,37 @@ const terminalAccumulator = (input: {
   return accumulator;
 };
 
-export const buildDaAvailabilityCommitmentV1 = (input: {
+export const buildDaAvailabilityCommitment = (input: {
   readonly deploymentIdentity: string;
   readonly headerHash: string;
   readonly payload: Uint8Array;
   readonly bondOwner: string;
-  readonly responseGeometry: DaAvailabilityResponseGeometryV1;
-}): DaAvailabilityCommitmentV1 => {
+  readonly responseGeometry: DaAvailabilityResponseGeometry;
+}): DaAvailabilityCommitment => {
   requireHash(input.deploymentIdentity, 28, "deploymentIdentity");
   requireHash(input.headerHash, 28, "headerHash");
   requireHash(input.bondOwner, 28, "bondOwner");
-  assertCanonicalDaAvailabilityResponseGeometryV1(input.responseGeometry);
+  assertCanonicalDaAvailabilityResponseGeometry(input.responseGeometry);
   const chunkByteLength = Number(input.responseGeometry.chunk_byte_length);
-  const layout = deriveDaAvailabilityTrancheLayoutV1(
+  const layout = deriveDaAvailabilityTrancheLayout(
     input.payload.length,
     input.responseGeometry,
   );
   const trancheDescriptors = layout.map(
-    (entry): DaAvailabilityTrancheDescriptorV1 => {
+    (entry): DaAvailabilityTrancheDescriptor => {
       const leaves = trancheChunkLeafHashes({
         layout: entry,
         payload: input.payload,
         chunkByteLength,
       });
-      const membership = buildMidgardValidationMerkleMembershipIndexV1(leaves);
+      const membership = buildMidgardValidationMerkleMembershipIndex(leaves);
       return {
         tranche_index: BigInt(entry.trancheIndex),
         start_offset: BigInt(entry.startOffset),
         byte_length: BigInt(entry.byteLength),
         chunk_count: BigInt(leaves.length),
         chunk_commitment: toHex(
-          commitMidgardValidationMerkleFrontierV1(membership.frontier),
+          commitMidgardValidationMerkleFrontier(membership.frontier),
         ),
         terminal_accumulator: terminalAccumulator({
           deploymentIdentity: input.deploymentIdentity,
@@ -1066,7 +1063,7 @@ export const buildDaAvailabilityCommitmentV1 = (input: {
     },
   );
   return {
-    version: DA_AVAILABILITY_COMMITMENT_V1_VERSION,
+    version: DA_AVAILABILITY_COMMITMENT_VERSION,
     deployment_identity: input.deploymentIdentity,
     header_hash: input.headerHash,
     payload_byte_length: BigInt(input.payload.length),
@@ -1076,12 +1073,12 @@ export const buildDaAvailabilityCommitmentV1 = (input: {
   };
 };
 
-export const assertCanonicalDaAvailabilityCommitmentV1 = (
-  commitment: DaAvailabilityCommitmentV1,
-  expectedResponseGeometry?: DaAvailabilityResponseGeometryV1,
+export const assertCanonicalDaAvailabilityCommitment = (
+  commitment: DaAvailabilityCommitment,
+  expectedResponseGeometry?: DaAvailabilityResponseGeometry,
 ): void => {
-  if (commitment.version !== DA_AVAILABILITY_COMMITMENT_V1_VERSION) {
-    throw new DaAvailabilityCommitmentV1Error(
+  if (commitment.version !== DA_AVAILABILITY_COMMITMENT_VERSION) {
+    throw new DaAvailabilityCommitmentError(
       "availability commitment version must be exactly V1",
     );
   }
@@ -1091,32 +1088,32 @@ export const assertCanonicalDaAvailabilityCommitmentV1 = (
   const payloadByteLength = Number(commitment.payload_byte_length);
   requireSafePositiveInteger(payloadByteLength, "payload_byte_length");
   if (BigInt(payloadByteLength) !== commitment.payload_byte_length) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "payload length must fit a canonical safe integer",
     );
   }
-  assertCanonicalDaAvailabilityResponseGeometryV1(commitment.response_geometry);
+  assertCanonicalDaAvailabilityResponseGeometry(commitment.response_geometry);
   if (
     expectedResponseGeometry !== undefined &&
     Data.to(
       commitment.response_geometry as never,
-      DaAvailabilityResponseGeometryV1Schema as never,
+      DaAvailabilityResponseGeometrySchema as never,
     ) !==
       Data.to(
         expectedResponseGeometry as never,
-        DaAvailabilityResponseGeometryV1Schema as never,
+        DaAvailabilityResponseGeometrySchema as never,
       )
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "response geometry does not equal the authenticated deployment/DA parameters",
     );
   }
-  const layout = deriveDaAvailabilityTrancheLayoutV1(
+  const layout = deriveDaAvailabilityTrancheLayout(
     payloadByteLength,
     commitment.response_geometry,
   );
   if (commitment.tranche_descriptors.length !== layout.length) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "tranche descriptor count is not the deterministic minimal partition",
     );
   }
@@ -1135,7 +1132,7 @@ export const assertCanonicalDaAvailabilityCommitmentV1 = (
           ),
         )
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "tranche descriptors must be contiguous, ordered, and minimally partitioned",
       );
     }
@@ -1152,38 +1149,32 @@ export const assertCanonicalDaAvailabilityCommitmentV1 = (
   }
 };
 
-export const encodeDaAvailabilityCommitmentV1 = (
-  commitment: DaAvailabilityCommitmentV1,
+export const encodeDaAvailabilityCommitment = (
+  commitment: DaAvailabilityCommitment,
 ): string => {
-  assertCanonicalDaAvailabilityCommitmentV1(commitment);
-  return Data.to(
-    commitment as never,
-    DaAvailabilityCommitmentV1Schema as never,
-  );
+  assertCanonicalDaAvailabilityCommitment(commitment);
+  return Data.to(commitment as never, DaAvailabilityCommitmentSchema as never);
 };
 
 /** Strict signed-commitment codec for restart and cross-service handoff. */
-export const parseDaAvailabilityCommitmentV1Cbor = (
+export const parseDaAvailabilityCommitmentCbor = (
   cborHex: string,
-  expectedResponseGeometry?: DaAvailabilityResponseGeometryV1,
-): DaAvailabilityCommitmentV1 => {
+  expectedResponseGeometry?: DaAvailabilityResponseGeometry,
+): DaAvailabilityCommitment => {
   const commitment = parseCanonicalDataCbor<
-    typeof DaAvailabilityCommitmentV1Schema,
-    DaAvailabilityCommitmentV1
+    typeof DaAvailabilityCommitmentSchema,
+    DaAvailabilityCommitment
   >({
     cborHex,
-    schema: DaAvailabilityCommitmentV1Schema,
+    schema: DaAvailabilityCommitmentSchema,
     name: "availability commitment",
   });
-  assertCanonicalDaAvailabilityCommitmentV1(
-    commitment,
-    expectedResponseGeometry,
-  );
+  assertCanonicalDaAvailabilityCommitment(commitment, expectedResponseGeometry);
   return commitment;
 };
 
-const assertCanonicalDaAvailabilityTrancheDescriptorV1 = (
-  descriptor: DaAvailabilityTrancheDescriptorV1,
+const assertCanonicalDaAvailabilityTrancheDescriptor = (
+  descriptor: DaAvailabilityTrancheDescriptor,
 ): void => {
   const trancheIndex = Number(descriptor.tranche_index);
   const startOffset = Number(descriptor.start_offset);
@@ -1191,22 +1182,22 @@ const assertCanonicalDaAvailabilityTrancheDescriptorV1 = (
   if (
     !Number.isSafeInteger(trancheIndex) ||
     trancheIndex < 0 ||
-    trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1 ||
+    trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY ||
     !Number.isSafeInteger(startOffset) ||
     startOffset < 0 ||
     BigInt(trancheIndex) !== descriptor.tranche_index ||
     BigInt(startOffset) !== descriptor.start_offset
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "tranche descriptor index and offset must be canonical bounded integers",
     );
   }
   requireSafePositiveInteger(byteLength, "tranche descriptor byte_length");
   if (
     BigInt(byteLength) !== descriptor.byte_length ||
-    startOffset + byteLength > DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES_V1
+    startOffset + byteLength > DA_AVAILABILITY_FULL_PAYLOAD_MAX_BYTES
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "tranche descriptor must fit within the canonical 64 MiB payload range",
     );
   }
@@ -1217,20 +1208,20 @@ const assertCanonicalDaAvailabilityTrancheDescriptorV1 = (
   );
 };
 
-export const assertCanonicalDaAvailabilityBondDatumV1 = (
-  datum: DaAvailabilityBondDatumV1,
-  expectedParameters?: DaAvailabilityParametersV1,
+export const assertCanonicalDaAvailabilityBondDatum = (
+  datum: DaAvailabilityBondDatum,
+  expectedParameters?: DaAvailabilityParameters,
 ): void => {
   if (expectedParameters !== undefined) {
-    assertCanonicalDaAvailabilityParametersV1(expectedParameters);
+    assertCanonicalDaAvailabilityParameters(expectedParameters);
   }
   const fields = "Available" in datum ? datum.Available : datum.ChallengedBond;
-  assertCanonicalDaAvailabilityCommitmentV1(
+  assertCanonicalDaAvailabilityCommitment(
     fields.commitment,
     expectedParameters?.response_geometry,
   );
   if (!BOND_ASSET_NAME.test(fields.da_bond_asset_name)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "da_bond_asset_name must be the canonical 32-byte DABN identity",
     );
   }
@@ -1239,7 +1230,7 @@ export const assertCanonicalDaAvailabilityBondDatumV1 = (
   if ("ChallengedBond" in datum) {
     const challenged = datum.ChallengedBond;
     if (!CHALLENGE_ASSET_NAME.test(challenged.challenge_asset_name)) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "challenge_asset_name must be the canonical 32-byte DACH identity",
       );
     }
@@ -1247,55 +1238,55 @@ export const assertCanonicalDaAvailabilityBondDatumV1 = (
     if (
       challenged.opened_at < 0n ||
       challenged.response_deadline !==
-        daAvailabilityResponseDeadlineV1({
+        daAvailabilityResponseDeadline({
           payloadByteLength: Number(challenged.commitment.payload_byte_length),
           openedAt: challenged.opened_at,
         })
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "challenged bond must carry the exact canonical response deadline",
       );
     }
   }
 };
 
-export const encodeDaAvailabilityBondDatumV1 = (
-  datum: DaAvailabilityBondDatumV1,
-  expectedParameters?: DaAvailabilityParametersV1,
+export const encodeDaAvailabilityBondDatum = (
+  datum: DaAvailabilityBondDatum,
+  expectedParameters?: DaAvailabilityParameters,
 ): string => {
-  assertCanonicalDaAvailabilityBondDatumV1(datum, expectedParameters);
-  return Data.to(datum as never, DaAvailabilityBondDatumV1Schema as never);
+  assertCanonicalDaAvailabilityBondDatum(datum, expectedParameters);
+  return Data.to(datum as never, DaAvailabilityBondDatumSchema as never);
 };
 
-export const parseDaAvailabilityBondDatumV1Cbor = (
+export const parseDaAvailabilityBondDatumCbor = (
   cborHex: string,
-  expectedParameters?: DaAvailabilityParametersV1,
-): DaAvailabilityBondDatumV1 => {
+  expectedParameters?: DaAvailabilityParameters,
+): DaAvailabilityBondDatum => {
   const datum = parseCanonicalDataCbor<
-    typeof DaAvailabilityBondDatumV1Schema,
-    DaAvailabilityBondDatumV1
+    typeof DaAvailabilityBondDatumSchema,
+    DaAvailabilityBondDatum
   >({
     cborHex,
-    schema: DaAvailabilityBondDatumV1Schema,
+    schema: DaAvailabilityBondDatumSchema,
     name: "availability bond datum",
   });
-  assertCanonicalDaAvailabilityBondDatumV1(datum, expectedParameters);
+  assertCanonicalDaAvailabilityBondDatum(datum, expectedParameters);
   return datum;
 };
 
-export const assertCanonicalDaAvailabilityTrancheDatumV1 = (
-  datum: DaAvailabilityTrancheDatumV1,
+export const assertCanonicalDaAvailabilityTrancheDatum = (
+  datum: DaAvailabilityTrancheDatum,
 ): void => {
   const fields = "Active" in datum ? datum.Active : datum.Receipt;
   requireHash(fields.deployment_identity, 28, "deployment_identity");
   requireHash(fields.header_hash, 28, "header_hash");
   if (!CHALLENGE_ASSET_NAME.test(fields.challenge_asset_name)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenge_asset_name must be the canonical 32-byte DACH identity",
     );
   }
   requireHash(fields.challenger, 28, "challenger");
-  assertCanonicalDaAvailabilityTrancheDescriptorV1(fields.descriptor);
+  assertCanonicalDaAvailabilityTrancheDescriptor(fields.descriptor);
   if ("Active" in datum) {
     const active = datum.Active;
     const endOffset =
@@ -1305,7 +1296,7 @@ export const assertCanonicalDaAvailabilityTrancheDatumV1 = (
       active.next_offset >= endOffset ||
       active.response_deadline < 0n
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "active tranche cursor/deadline is outside its canonical range",
       );
     }
@@ -1314,41 +1305,41 @@ export const assertCanonicalDaAvailabilityTrancheDatumV1 = (
     datum.Receipt.terminal_accumulator !==
     datum.Receipt.descriptor.terminal_accumulator
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "receipt terminal accumulator must equal its signed descriptor",
     );
   }
 };
 
-export const encodeDaAvailabilityTrancheDatumV1 = (
-  datum: DaAvailabilityTrancheDatumV1,
+export const encodeDaAvailabilityTrancheDatum = (
+  datum: DaAvailabilityTrancheDatum,
 ): string => {
-  assertCanonicalDaAvailabilityTrancheDatumV1(datum);
-  return Data.to(datum as never, DaAvailabilityTrancheDatumV1Schema as never);
+  assertCanonicalDaAvailabilityTrancheDatum(datum);
+  return Data.to(datum as never, DaAvailabilityTrancheDatumSchema as never);
 };
 
-export const parseDaAvailabilityTrancheDatumV1Cbor = (
+export const parseDaAvailabilityTrancheDatumCbor = (
   cborHex: string,
-): DaAvailabilityTrancheDatumV1 => {
+): DaAvailabilityTrancheDatum => {
   const datum = parseCanonicalDataCbor<
-    typeof DaAvailabilityTrancheDatumV1Schema,
-    DaAvailabilityTrancheDatumV1
+    typeof DaAvailabilityTrancheDatumSchema,
+    DaAvailabilityTrancheDatum
   >({
     cborHex,
-    schema: DaAvailabilityTrancheDatumV1Schema,
+    schema: DaAvailabilityTrancheDatumSchema,
     name: "availability tranche datum",
   });
-  assertCanonicalDaAvailabilityTrancheDatumV1(datum);
+  assertCanonicalDaAvailabilityTrancheDatum(datum);
   return datum;
 };
 
-export const assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1 = (
-  datum: DaAvailabilityTerminalAccumulatorDatumV1,
+export const assertCanonicalDaAvailabilityTerminalAccumulatorDatum = (
+  datum: DaAvailabilityTerminalAccumulatorDatum,
 ): void => {
   requireHash(datum.deployment_identity, 28, "deployment_identity");
   requireHash(datum.header_hash, 28, "header_hash");
   if (!CHALLENGE_ASSET_NAME.test(datum.challenge_asset_name)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenge_asset_name must be the canonical 32-byte DACH identity",
     );
   }
@@ -1361,52 +1352,52 @@ export const assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1 = (
   if (
     datum.next_tranche_index < 0n ||
     datum.next_tranche_index >
-      BigInt(DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1) ||
+      BigInt(DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY) ||
     datum.response_deadline < 0n ||
     datum.remaining_challenger_lovelace <= 0n
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "terminal accumulator cursor, deadline, and remaining challenger value must be canonical",
     );
   }
 };
 
-export const encodeDaAvailabilityTerminalAccumulatorDatumV1 = (
-  datum: DaAvailabilityTerminalAccumulatorDatumV1,
+export const encodeDaAvailabilityTerminalAccumulatorDatum = (
+  datum: DaAvailabilityTerminalAccumulatorDatum,
 ): string => {
-  assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1(datum);
+  assertCanonicalDaAvailabilityTerminalAccumulatorDatum(datum);
   return Data.to(
     datum as never,
-    DaAvailabilityTerminalAccumulatorDatumV1Schema as never,
+    DaAvailabilityTerminalAccumulatorDatumSchema as never,
   );
 };
 
-export const parseDaAvailabilityTerminalAccumulatorDatumV1Cbor = (
+export const parseDaAvailabilityTerminalAccumulatorDatumCbor = (
   cborHex: string,
-): DaAvailabilityTerminalAccumulatorDatumV1 => {
+): DaAvailabilityTerminalAccumulatorDatum => {
   const datum = parseCanonicalDataCbor<
-    typeof DaAvailabilityTerminalAccumulatorDatumV1Schema,
-    DaAvailabilityTerminalAccumulatorDatumV1
+    typeof DaAvailabilityTerminalAccumulatorDatumSchema,
+    DaAvailabilityTerminalAccumulatorDatum
   >({
     cborHex,
-    schema: DaAvailabilityTerminalAccumulatorDatumV1Schema,
+    schema: DaAvailabilityTerminalAccumulatorDatumSchema,
     name: "availability terminal accumulator datum",
   });
-  assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1(datum);
+  assertCanonicalDaAvailabilityTerminalAccumulatorDatum(datum);
   return datum;
 };
 
-export type DaAvailabilityChallengeDatumPlanV1 = Readonly<{
+export type DaAvailabilityChallengeDatumPlan = Readonly<{
   challengeAssetName: string;
   responseDeadline: bigint;
-  challengedBond: DaAvailabilityBondDatumV1;
-  trancheThreads: readonly DaAvailabilityTrancheDatumV1[];
-  trancheFunding: readonly DaAvailabilityTrancheFundingV1[];
-  terminalAccumulator: DaAvailabilityTerminalAccumulatorDatumV1;
+  challengedBond: DaAvailabilityBondDatum;
+  trancheThreads: readonly DaAvailabilityTrancheDatum[];
+  trancheFunding: readonly DaAvailabilityTrancheFunding[];
+  terminalAccumulator: DaAvailabilityTerminalAccumulatorDatum;
   terminalAccumulatorFundingLovelace: bigint;
 }>;
 
-export type DaAvailabilityTrancheFundingV1 = Readonly<{
+export type DaAvailabilityTrancheFunding = Readonly<{
   trancheIndex: number;
   initialLovelace: bigint;
   maximumPublicationFeeReserveLovelace: bigint;
@@ -1420,12 +1411,12 @@ export type DaAvailabilityTrancheFundingV1 = Readonly<{
  * the larger close/timeout ceiling. All remaining working/refund value is
  * split with a one-lovelace remainder assigned to the earliest descriptors.
  */
-export const planDaAvailabilityTrancheFundingV1 = (input: {
-  readonly commitment: DaAvailabilityCommitmentV1;
-  readonly parameters: DaAvailabilityParametersV1;
-}): readonly DaAvailabilityTrancheFundingV1[] => {
-  assertCanonicalDaAvailabilityParametersV1(input.parameters);
-  assertCanonicalDaAvailabilityCommitmentV1(
+export const planDaAvailabilityTrancheFunding = (input: {
+  readonly commitment: DaAvailabilityCommitment;
+  readonly parameters: DaAvailabilityParameters;
+}): readonly DaAvailabilityTrancheFunding[] => {
+  assertCanonicalDaAvailabilityParameters(input.parameters);
+  assertCanonicalDaAvailabilityCommitment(
     input.commitment,
     input.parameters.response_geometry,
   );
@@ -1456,7 +1447,7 @@ export const planDaAvailabilityTrancheFundingV1 = (input: {
     totalSettlementFeeReserve -
     terminalFeeCeiling;
   if (distributable <= 0n) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenger bond does not leave working/refund value after publication, settlement, and terminal fee reserves",
     );
   }
@@ -1483,33 +1474,30 @@ export const planDaAvailabilityTrancheFundingV1 = (input: {
  * fixes identity, deadline and the initial per-tranche shares, while the
  * measured fee ceiling and each exact transaction fee remain separate.
  */
-export const buildDaAvailabilityChallengeDatumPlanV1 = (input: {
-  readonly availableBond: DaAvailabilityBondDatumV1;
+export const buildDaAvailabilityChallengeDatumPlan = (input: {
+  readonly availableBond: DaAvailabilityBondDatum;
   readonly bondInputOutRef: OutputReference;
   readonly challenger: string;
   readonly openedAt: bigint;
-  readonly parameters: DaAvailabilityParametersV1;
-}): DaAvailabilityChallengeDatumPlanV1 => {
-  assertCanonicalDaAvailabilityParametersV1(input.parameters);
-  assertCanonicalDaAvailabilityBondDatumV1(
-    input.availableBond,
-    input.parameters,
-  );
+  readonly parameters: DaAvailabilityParameters;
+}): DaAvailabilityChallengeDatumPlan => {
+  assertCanonicalDaAvailabilityParameters(input.parameters);
+  assertCanonicalDaAvailabilityBondDatum(input.availableBond, input.parameters);
   if (!("Available" in input.availableBond)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "only an available retained DA bond may open a challenge",
     );
   }
   requireHash(input.challenger, 28, "challenger");
   const available = input.availableBond.Available;
-  const challengeAssetName = daAvailabilityChallengeAssetNameV1(
+  const challengeAssetName = daAvailabilityChallengeAssetName(
     input.bondInputOutRef,
   );
-  const responseDeadline = daAvailabilityResponseDeadlineV1({
+  const responseDeadline = daAvailabilityResponseDeadline({
     payloadByteLength: Number(available.commitment.payload_byte_length),
     openedAt: input.openedAt,
   });
-  const challengedBond: DaAvailabilityBondDatumV1 = {
+  const challengedBond: DaAvailabilityBondDatum = {
     ChallengedBond: {
       ...available,
       challenge_asset_name: challengeAssetName,
@@ -1519,14 +1507,14 @@ export const buildDaAvailabilityChallengeDatumPlanV1 = (input: {
     },
   };
   const trancheThreads = available.commitment.tranche_descriptors.map(
-    (descriptor): DaAvailabilityTrancheDatumV1 => ({
+    (descriptor): DaAvailabilityTrancheDatum => ({
       Active: {
         deployment_identity: available.commitment.deployment_identity,
         header_hash: available.commitment.header_hash,
         challenge_asset_name: challengeAssetName,
         descriptor,
         next_offset: descriptor.start_offset,
-        accumulator: daAvailabilityTrancheStartAccumulatorV1({
+        accumulator: daAvailabilityTrancheStartAccumulator({
           deploymentIdentity: available.commitment.deployment_identity,
           headerHash: available.commitment.header_hash,
           trancheIndex: Number(descriptor.tranche_index),
@@ -1539,9 +1527,9 @@ export const buildDaAvailabilityChallengeDatumPlanV1 = (input: {
       },
     }),
   );
-  assertCanonicalDaAvailabilityBondDatumV1(challengedBond, input.parameters);
-  trancheThreads.forEach(assertCanonicalDaAvailabilityTrancheDatumV1);
-  const trancheFunding = planDaAvailabilityTrancheFundingV1({
+  assertCanonicalDaAvailabilityBondDatum(challengedBond, input.parameters);
+  trancheThreads.forEach(assertCanonicalDaAvailabilityTrancheDatum);
+  const trancheFunding = planDaAvailabilityTrancheFunding({
     commitment: available.commitment,
     parameters: input.parameters,
   });
@@ -1550,12 +1538,12 @@ export const buildDaAvailabilityChallengeDatumPlanV1 = (input: {
     input.parameters.max_timeout_fee_lovelace
       ? input.parameters.max_close_fee_lovelace
       : input.parameters.max_timeout_fee_lovelace;
-  const terminalAccumulator: DaAvailabilityTerminalAccumulatorDatumV1 = {
+  const terminalAccumulator: DaAvailabilityTerminalAccumulatorDatum = {
     deployment_identity: available.commitment.deployment_identity,
     header_hash: available.commitment.header_hash,
     challenge_asset_name: challengeAssetName,
     next_tranche_index: 0n,
-    folded_terminal_accumulator: daAvailabilityTerminalAccumulatorStartV1({
+    folded_terminal_accumulator: daAvailabilityTerminalAccumulatorStart({
       deploymentIdentity: available.commitment.deployment_identity,
       headerHash: available.commitment.header_hash,
       challengeAssetName,
@@ -1565,7 +1553,7 @@ export const buildDaAvailabilityChallengeDatumPlanV1 = (input: {
     challenger: input.challenger,
     remaining_challenger_lovelace: terminalAccumulatorFundingLovelace,
   };
-  assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1(terminalAccumulator);
+  assertCanonicalDaAvailabilityTerminalAccumulatorDatum(terminalAccumulator);
   return {
     challengeAssetName,
     responseDeadline,
@@ -1577,16 +1565,16 @@ export const buildDaAvailabilityChallengeDatumPlanV1 = (input: {
   };
 };
 
-export const planDaAvailabilityPublicationValueTransitionV1 = (input: {
+export const planDaAvailabilityPublicationValueTransition = (input: {
   readonly threadInputLovelace: bigint;
   readonly previousCarrierInputLovelace: bigint;
   readonly nextCarrierOutputLovelace: bigint;
   readonly transactionFeeLovelace: bigint;
   readonly minimumThreadOutputLovelace: bigint;
   readonly isFirstPublication: boolean;
-  readonly parameters: DaAvailabilityParametersV1;
+  readonly parameters: DaAvailabilityParameters;
 }): bigint => {
-  assertCanonicalDaAvailabilityParametersV1(input.parameters);
+  assertCanonicalDaAvailabilityParameters(input.parameters);
   if (
     input.threadInputLovelace <= 0n ||
     input.previousCarrierInputLovelace < 0n ||
@@ -1599,7 +1587,7 @@ export const planDaAvailabilityPublicationValueTransitionV1 = (input: {
       ? input.previousCarrierInputLovelace !== 0n
       : input.previousCarrierInputLovelace <= 0n)
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication value transition has a noncanonical carrier, thread floor, or fee above its authenticated ceiling",
     );
   }
@@ -1609,16 +1597,16 @@ export const planDaAvailabilityPublicationValueTransitionV1 = (input: {
     input.nextCarrierOutputLovelace -
     input.transactionFeeLovelace;
   if (threadOutputLovelace < input.minimumThreadOutputLovelace) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication fee/carrier would consume the protected tranche working floor",
     );
   }
   return threadOutputLovelace;
 };
 
-export type DaAvailabilitySettlementPlanV1 = Readonly<{
-  status: DaAvailabilityTrancheTerminalStatusV1;
-  nextTerminalAccumulator: DaAvailabilityTerminalAccumulatorDatumV1;
+export type DaAvailabilitySettlementPlan = Readonly<{
+  status: DaAvailabilityTrancheTerminalStatus;
+  nextTerminalAccumulator: DaAvailabilityTerminalAccumulatorDatum;
   nextTerminalLovelace: bigint;
 }>;
 
@@ -1627,25 +1615,25 @@ export type DaAvailabilitySettlementPlanV1 = Readonly<{
  * feed it decoded, script-authenticated UTxO data and then emit the exact datum
  * and value it returns.
  */
-export const planDaAvailabilitySettlementV1 = (input: {
-  readonly commitment: DaAvailabilityCommitmentV1;
-  readonly terminalAccumulator: DaAvailabilityTerminalAccumulatorDatumV1;
-  readonly tranche: DaAvailabilityTrancheDatumV1;
+export const planDaAvailabilitySettlement = (input: {
+  readonly commitment: DaAvailabilityCommitment;
+  readonly terminalAccumulator: DaAvailabilityTerminalAccumulatorDatum;
+  readonly tranche: DaAvailabilityTrancheDatum;
   readonly threadLovelace: bigint;
   readonly carrierLovelace: bigint;
   readonly transactionFeeLovelace: bigint;
   readonly inclusiveValidityLower: bigint;
-  readonly parameters: DaAvailabilityParametersV1;
-}): DaAvailabilitySettlementPlanV1 => {
-  assertCanonicalDaAvailabilityParametersV1(input.parameters);
-  assertCanonicalDaAvailabilityCommitmentV1(
+  readonly parameters: DaAvailabilityParameters;
+}): DaAvailabilitySettlementPlan => {
+  assertCanonicalDaAvailabilityParameters(input.parameters);
+  assertCanonicalDaAvailabilityCommitment(
     input.commitment,
     input.parameters.response_geometry,
   );
-  assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1(
+  assertCanonicalDaAvailabilityTerminalAccumulatorDatum(
     input.terminalAccumulator,
   );
-  assertCanonicalDaAvailabilityTrancheDatumV1(input.tranche);
+  assertCanonicalDaAvailabilityTrancheDatum(input.tranche);
   const terminal = input.terminalAccumulator;
   const descriptorIndex = Number(terminal.next_tranche_index);
   if (
@@ -1657,17 +1645,17 @@ export const planDaAvailabilitySettlementV1 = (input: {
     input.transactionFeeLovelace <= 0n ||
     input.transactionFeeLovelace > input.parameters.max_settlement_fee_lovelace
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "settlement indices, values, or fee are not canonical",
     );
   }
   const descriptor = input.commitment.tranche_descriptors[descriptorIndex]!;
-  let status: DaAvailabilityTrancheTerminalStatusV1;
+  let status: DaAvailabilityTrancheTerminalStatus;
   let trancheIdentity: {
     readonly deployment_identity: string;
     readonly header_hash: string;
     readonly challenge_asset_name: string;
-    readonly descriptor: DaAvailabilityTrancheDescriptorV1;
+    readonly descriptor: DaAvailabilityTrancheDescriptor;
     readonly challenger: string;
   };
   if ("Receipt" in input.tranche) {
@@ -1676,7 +1664,7 @@ export const planDaAvailabilitySettlementV1 = (input: {
       input.tranche.Receipt.terminal_accumulator !==
       descriptor.terminal_accumulator
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "published settlement receipt does not equal its signed terminal accumulator",
       );
     }
@@ -1688,7 +1676,7 @@ export const planDaAvailabilitySettlementV1 = (input: {
   } else {
     trancheIdentity = input.tranche.Active;
     if (input.inclusiveValidityLower < terminal.response_deadline) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "an active tranche may settle only at or after the authenticated deadline",
       );
     }
@@ -1706,18 +1694,18 @@ export const planDaAvailabilitySettlementV1 = (input: {
     trancheIdentity.challenge_asset_name !== terminal.challenge_asset_name ||
     Data.to(
       trancheIdentity.descriptor as never,
-      DaAvailabilityTrancheDescriptorV1Schema as never,
+      DaAvailabilityTrancheDescriptorSchema as never,
     ) !==
       Data.to(
         descriptor as never,
-        DaAvailabilityTrancheDescriptorV1Schema as never,
+        DaAvailabilityTrancheDescriptorSchema as never,
       ) ||
     trancheIdentity.challenger !== terminal.challenger ||
     terminal.deployment_identity !== input.commitment.deployment_identity ||
     terminal.header_hash !== input.commitment.header_hash ||
     terminal.next_tranche_index !== descriptor.tranche_index
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "settlement tranche, terminal accumulator, and signed commitment identities differ",
     );
   }
@@ -1727,14 +1715,14 @@ export const planDaAvailabilitySettlementV1 = (input: {
     input.carrierLovelace -
     input.transactionFeeLovelace;
   if (nextTerminalLovelace <= 0n) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "settlement consumes the protected challenger value",
     );
   }
-  const nextTerminalAccumulator: DaAvailabilityTerminalAccumulatorDatumV1 = {
+  const nextTerminalAccumulator: DaAvailabilityTerminalAccumulatorDatum = {
     ...terminal,
     next_tranche_index: terminal.next_tranche_index + 1n,
-    folded_terminal_accumulator: foldDaAvailabilityTerminalAccumulatorV1({
+    folded_terminal_accumulator: foldDaAvailabilityTerminalAccumulator({
       previousAccumulator: terminal.folded_terminal_accumulator,
       trancheIndex: descriptorIndex,
       status,
@@ -1743,13 +1731,13 @@ export const planDaAvailabilitySettlementV1 = (input: {
       terminal.has_timed_out_tranche || "TimedOutTranche" in status,
     remaining_challenger_lovelace: nextTerminalLovelace,
   };
-  assertCanonicalDaAvailabilityTerminalAccumulatorDatumV1(
+  assertCanonicalDaAvailabilityTerminalAccumulatorDatum(
     nextTerminalAccumulator,
   );
   return { status, nextTerminalAccumulator, nextTerminalLovelace };
 };
 
-export const assertDaAvailabilityChallengerBondConservationV1 = (input: {
+export const assertDaAvailabilityChallengerBondConservation = (input: {
   readonly initialChallengerBondLovelace: bigint;
   readonly currentThreadLovelace: readonly bigint[];
   readonly currentCarrierLovelace: readonly bigint[];
@@ -1768,31 +1756,31 @@ export const assertDaAvailabilityChallengerBondConservationV1 = (input: {
       allFees.reduce((total, value) => total + value, 0n) !==
       input.initialChallengerBondLovelace
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenger bond is not isolated and exactly conserved by live threads, carriers, and paid fees",
     );
   }
 };
 
-export type DaAvailabilityTrancheProtectedValueV1 = Readonly<{
+export type DaAvailabilityTrancheProtectedValue = Readonly<{
   trancheIndex: number;
   threadLovelace: bigint;
   carrierLovelace: bigint;
 }>;
 
-export type DaAvailabilityTrancheRefundV1 = Readonly<{
+export type DaAvailabilityTrancheRefund = Readonly<{
   trancheIndex: number;
   refundLovelace: bigint;
   attributedTransactionFeeLovelace: bigint;
 }>;
 
-export const planDaAvailabilityTerminalRefundV1 = (input: {
+export const planDaAvailabilityTerminalRefund = (input: {
   readonly kind: "close" | "timeout";
-  readonly tranches: readonly DaAvailabilityTrancheProtectedValueV1[];
+  readonly tranches: readonly DaAvailabilityTrancheProtectedValue[];
   readonly transactionFeeLovelace: bigint;
-  readonly parameters: DaAvailabilityParametersV1;
-}): readonly DaAvailabilityTrancheRefundV1[] => {
-  assertCanonicalDaAvailabilityParametersV1(input.parameters);
+  readonly parameters: DaAvailabilityParameters;
+}): readonly DaAvailabilityTrancheRefund[] => {
+  assertCanonicalDaAvailabilityParameters(input.parameters);
   const feeCeiling =
     input.kind === "close"
       ? input.parameters.max_close_fee_lovelace
@@ -1808,12 +1796,12 @@ export const planDaAvailabilityTerminalRefundV1 = (input: {
     input.transactionFeeLovelace <= 0n ||
     input.transactionFeeLovelace > feeCeiling
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "terminal availability transition has a noncanonical protected value or fee above its authenticated ceiling",
     );
   }
   const refunds = input.tranches.map(
-    (value, index): DaAvailabilityTrancheRefundV1 => {
+    (value, index): DaAvailabilityTrancheRefund => {
       const attributedTransactionFeeLovelace =
         index === 0 ? input.transactionFeeLovelace : 0n;
       return {
@@ -1827,22 +1815,22 @@ export const planDaAvailabilityTerminalRefundV1 = (input: {
     },
   );
   if (refunds.some((refund) => refund.refundLovelace <= 0n)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "terminal availability transition leaves no challenger refund",
     );
   }
   return refunds;
 };
 
-export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
-  publication: DaAvailabilityPublicationDatumV1,
-  expectedResponseGeometry: DaAvailabilityResponseGeometryV1,
-  expectedDescriptor: DaAvailabilityTrancheDescriptorV1,
+export const assertCanonicalDaAvailabilityPublicationDatum = (
+  publication: DaAvailabilityPublicationDatum,
+  expectedResponseGeometry: DaAvailabilityResponseGeometry,
+  expectedDescriptor: DaAvailabilityTrancheDescriptor,
 ): void => {
   requireHash(publication.deployment_identity, 28, "deployment_identity");
   requireHash(publication.header_hash, 28, "header_hash");
   if (!CHALLENGE_ASSET_NAME.test(publication.challenge_asset_name)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenge_asset_name must be the canonical 32-byte DACH identity",
     );
   }
@@ -1850,7 +1838,7 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
   requireHash(publication.previous_accumulator, 32, "previous_accumulator");
   requireHash(publication.next_accumulator, 32, "next_accumulator");
   if (!CANONICAL_CBOR_HEX.test(publication.chunk)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "availability publication chunk must be non-empty lowercase hex bytes",
     );
   }
@@ -1861,7 +1849,7 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
   if (
     !Number.isSafeInteger(trancheIndex) ||
     trancheIndex < 0 ||
-    trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY_V1 ||
+    trancheIndex >= DA_AVAILABILITY_MAX_TRANCHE_COUNT_SAFETY ||
     !Number.isSafeInteger(chunkIndex) ||
     chunkIndex < 0 ||
     !Number.isSafeInteger(chunkOffset) ||
@@ -1870,35 +1858,35 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
     BigInt(chunkIndex) !== publication.chunk_index ||
     BigInt(chunkOffset) !== publication.chunk_offset
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication tranche/chunk indices and chunk offset must be canonical bounded integers",
     );
   }
   requireSafePositiveInteger(chunkByteLength, "chunk_byte_length");
   if (BigInt(chunkByteLength) !== publication.chunk_byte_length) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication chunk length must fit a canonical safe integer",
     );
   }
   const chunk = fromHex(publication.chunk);
   if (
     chunk.length !== chunkByteLength ||
-    chunkByteLength > DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1
+    chunkByteLength > DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication chunk bytes do not equal its bounded declared length",
     );
   }
-  assertCanonicalDaAvailabilityResponseGeometryV1(expectedResponseGeometry);
+  assertCanonicalDaAvailabilityResponseGeometry(expectedResponseGeometry);
   if (
     publication.chunk_byte_length > expectedResponseGeometry.chunk_byte_length
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication chunk exceeds the authenticated response geometry",
     );
   }
   if (publication.chunk_hash !== toHex(blake2b(chunk, { dkLen: 32 }))) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication chunk hash does not equal its inline bytes",
     );
   }
@@ -1910,7 +1898,7 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
         height < 0 ||
         BigInt(height) !== peak.height
       ) {
-        throw new DaAvailabilityCommitmentV1Error(
+        throw new DaAvailabilityCommitmentError(
           `chunk_frontier[${index.toString()}].height is not canonical`,
         );
       }
@@ -1926,7 +1914,7 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
     requireHash(sibling, 32, `chunk_siblings[${index.toString()}]`);
   }
   const leafHash = Buffer.from(
-    daAvailabilityChunkLeafHashV1({
+    daAvailabilityChunkLeafHash({
       trancheIndex,
       chunkIndex,
       chunkOffset,
@@ -1936,7 +1924,7 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
     "hex",
   );
   if (
-    !verifyMidgardValidationMerkleMembershipV1({
+    !verifyMidgardValidationMerkleMembership({
       frontier,
       leafIndex: chunkIndex,
       leafHash,
@@ -1945,20 +1933,20 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
       ),
     })
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication chunk is not an index-bound member of its signed frontier",
     );
   }
   if (
     expectedDescriptor.chunk_count !== BigInt(frontier.count) ||
     expectedDescriptor.chunk_commitment !==
-      toHex(commitMidgardValidationMerkleFrontierV1(frontier))
+      toHex(commitMidgardValidationMerkleFrontier(frontier))
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication frontier does not equal the signed tranche descriptor",
     );
   }
-  const expectedNextAccumulator = daAvailabilityTrancheStepAccumulatorV1({
+  const expectedNextAccumulator = daAvailabilityTrancheStepAccumulator({
     deploymentIdentity: publication.deployment_identity,
     headerHash: publication.header_hash,
     trancheIndex,
@@ -1967,43 +1955,43 @@ export const assertCanonicalDaAvailabilityPublicationDatumV1 = (
     previousAccumulator: publication.previous_accumulator,
   });
   if (publication.next_accumulator !== expectedNextAccumulator) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication next accumulator does not equal its canonical step",
     );
   }
 };
 
-export const encodeDaAvailabilityPublicationDatumV1 = (
-  publication: DaAvailabilityPublicationDatumV1,
-  expectedResponseGeometry: DaAvailabilityResponseGeometryV1,
-  expectedDescriptor: DaAvailabilityTrancheDescriptorV1,
+export const encodeDaAvailabilityPublicationDatum = (
+  publication: DaAvailabilityPublicationDatum,
+  expectedResponseGeometry: DaAvailabilityResponseGeometry,
+  expectedDescriptor: DaAvailabilityTrancheDescriptor,
 ): string => {
-  assertCanonicalDaAvailabilityPublicationDatumV1(
+  assertCanonicalDaAvailabilityPublicationDatum(
     publication,
     expectedResponseGeometry,
     expectedDescriptor,
   );
   return Data.to(
     publication as never,
-    DaAvailabilityPublicationDatumV1Schema as never,
+    DaAvailabilityPublicationDatumSchema as never,
   );
 };
 
 /** Strict inline-publication codec; L1 provenance remains service-owned. */
-export const parseDaAvailabilityPublicationDatumV1Cbor = (
+export const parseDaAvailabilityPublicationDatumCbor = (
   cborHex: string,
-  expectedResponseGeometry: DaAvailabilityResponseGeometryV1,
-  expectedDescriptor: DaAvailabilityTrancheDescriptorV1,
-): DaAvailabilityPublicationDatumV1 => {
+  expectedResponseGeometry: DaAvailabilityResponseGeometry,
+  expectedDescriptor: DaAvailabilityTrancheDescriptor,
+): DaAvailabilityPublicationDatum => {
   const publication = parseCanonicalDataCbor<
-    typeof DaAvailabilityPublicationDatumV1Schema,
-    DaAvailabilityPublicationDatumV1
+    typeof DaAvailabilityPublicationDatumSchema,
+    DaAvailabilityPublicationDatum
   >({
     cborHex,
-    schema: DaAvailabilityPublicationDatumV1Schema,
+    schema: DaAvailabilityPublicationDatumSchema,
     name: "availability publication",
   });
-  assertCanonicalDaAvailabilityPublicationDatumV1(
+  assertCanonicalDaAvailabilityPublicationDatum(
     publication,
     expectedResponseGeometry,
     expectedDescriptor,
@@ -2011,38 +1999,38 @@ export const parseDaAvailabilityPublicationDatumV1Cbor = (
   return publication;
 };
 
-export const daAvailabilityAttestationMessageV1 = (
-  commitment: DaAvailabilityCommitmentV1,
+export const daAvailabilityAttestationMessage = (
+  commitment: DaAvailabilityCommitment,
 ): Uint8Array => {
-  assertCanonicalDaAvailabilityCommitmentV1(commitment);
+  assertCanonicalDaAvailabilityCommitment(commitment);
   return fromHex(
     hashDomainAndData(
       ATTESTATION_COMMITMENT_DOMAIN,
-      Data.to(commitment as never, DaAvailabilityCommitmentV1Schema as never),
+      Data.to(commitment as never, DaAvailabilityCommitmentSchema as never),
     ),
   );
 };
 
 /** Compact state-queue marker admitted only after every ordered receipt. */
-export const daAvailabilityPublishedTerminalCommitmentV1 = (
-  commitment: DaAvailabilityCommitmentV1,
+export const daAvailabilityPublishedTerminalCommitment = (
+  commitment: DaAvailabilityCommitment,
 ): string => {
-  assertCanonicalDaAvailabilityCommitmentV1(commitment);
+  assertCanonicalDaAvailabilityCommitment(commitment);
   return hashDomainAndData(
     PUBLISHED_TERMINAL_DOMAIN,
-    Data.to(commitment as never, DaAvailabilityCommitmentV1Schema as never),
+    Data.to(commitment as never, DaAvailabilityCommitmentSchema as never),
   );
 };
 
-export const verifyDaAvailabilityPayloadCommitmentV1 = (input: {
-  readonly commitment: DaAvailabilityCommitmentV1;
+export const verifyDaAvailabilityPayloadCommitment = (input: {
+  readonly commitment: DaAvailabilityCommitment;
   readonly payload: Uint8Array;
 }): boolean => {
-  assertCanonicalDaAvailabilityCommitmentV1(input.commitment);
+  assertCanonicalDaAvailabilityCommitment(input.commitment);
   if (BigInt(input.payload.length) !== input.commitment.payload_byte_length) {
     return false;
   }
-  const rebuilt = buildDaAvailabilityCommitmentV1({
+  const rebuilt = buildDaAvailabilityCommitment({
     deploymentIdentity: input.commitment.deployment_identity,
     headerHash: input.commitment.header_hash,
     payload: input.payload,
@@ -2050,21 +2038,18 @@ export const verifyDaAvailabilityPayloadCommitmentV1 = (input: {
     responseGeometry: input.commitment.response_geometry,
   });
   return (
-    Data.to(rebuilt as never, DaAvailabilityCommitmentV1Schema as never) ===
-    Data.to(
-      input.commitment as never,
-      DaAvailabilityCommitmentV1Schema as never,
-    )
+    Data.to(rebuilt as never, DaAvailabilityCommitmentSchema as never) ===
+    Data.to(input.commitment as never, DaAvailabilityCommitmentSchema as never)
   );
 };
 
-export type DaAvailabilityTranchePublicationPlanV1 = Readonly<{
-  descriptor: DaAvailabilityTrancheDescriptorV1;
+export type DaAvailabilityTranchePublicationPlan = Readonly<{
+  descriptor: DaAvailabilityTrancheDescriptor;
   initialAccumulator: string;
-  publications: readonly DaAvailabilityPublicationDatumV1[];
+  publications: readonly DaAvailabilityPublicationDatum[];
 }>;
 
-export type DaAvailabilityPublicationTierV1 =
+export type DaAvailabilityPublicationTier =
   | "complete_item_inline"
   | "ordered_chunks"
   | "parallel_tranches";
@@ -2074,12 +2059,12 @@ export type DaAvailabilityPublicationTierV1 =
  * applied-transaction measurement. A complete item is never split when it
  * fits the signed inline-publication byte limit.
  */
-export const daAvailabilityPublicationTierV1 = (input: {
+export const daAvailabilityPublicationTier = (input: {
   readonly payloadByteLength: number;
-  readonly responseGeometry: DaAvailabilityResponseGeometryV1;
-}): DaAvailabilityPublicationTierV1 => {
-  daAvailabilityResponseWindowMsV1(input.payloadByteLength);
-  assertCanonicalDaAvailabilityResponseGeometryV1(input.responseGeometry);
+  readonly responseGeometry: DaAvailabilityResponseGeometry;
+}): DaAvailabilityPublicationTier => {
+  daAvailabilityResponseWindowMs(input.payloadByteLength);
+  assertCanonicalDaAvailabilityResponseGeometry(input.responseGeometry);
   if (
     input.payloadByteLength <= Number(input.responseGeometry.chunk_byte_length)
   ) {
@@ -2095,30 +2080,30 @@ export const daAvailabilityPublicationTierV1 = (input: {
  * Reconstructs the exact ordered public response. Each publication carries one
  * inline-datum chunk, while the continued tranche UTxO can remain compact.
  */
-export const planDaAvailabilityPublicationsV1 = (input: {
-  readonly commitment: DaAvailabilityCommitmentV1;
+export const planDaAvailabilityPublications = (input: {
+  readonly commitment: DaAvailabilityCommitment;
   readonly payload: Uint8Array;
   readonly challengeAssetName: string;
-}): readonly DaAvailabilityTranchePublicationPlanV1[] => {
+}): readonly DaAvailabilityTranchePublicationPlan[] => {
   if (!CHALLENGE_ASSET_NAME.test(input.challengeAssetName)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challengeAssetName must be the canonical 32-byte DACH identity",
     );
   }
   if (
-    !verifyDaAvailabilityPayloadCommitmentV1({
+    !verifyDaAvailabilityPayloadCommitment({
       commitment: input.commitment,
       payload: input.payload,
     })
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "payload does not equal the signed DA availability commitment",
     );
   }
   const chunkByteLength = Number(
     input.commitment.response_geometry.chunk_byte_length,
   );
-  const tier = daAvailabilityPublicationTierV1({
+  const tier = daAvailabilityPublicationTier({
     payloadByteLength: input.payload.length,
     responseGeometry: input.commitment.response_geometry,
   });
@@ -2130,24 +2115,24 @@ export const planDaAvailabilityPublicationsV1 = (input: {
       trancheIndex,
       startOffset,
       byteLength: Number(descriptor.byte_length),
-    } satisfies DaAvailabilityTrancheLayoutV1;
+    } satisfies DaAvailabilityTrancheLayout;
     const chunkLeaves = trancheChunkLeafHashes({
       layout,
       payload: input.payload,
       chunkByteLength,
     });
     const membershipIndex =
-      buildMidgardValidationMerkleMembershipIndexV1(chunkLeaves);
+      buildMidgardValidationMerkleMembershipIndex(chunkLeaves);
     if (
       descriptor.chunk_count !== BigInt(chunkLeaves.length) ||
       descriptor.chunk_commitment !==
-        toHex(commitMidgardValidationMerkleFrontierV1(membershipIndex.frontier))
+        toHex(commitMidgardValidationMerkleFrontier(membershipIndex.frontier))
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `tranche ${trancheIndex.toString()} chunk commitment does not equal the signed payload`,
       );
     }
-    const initialAccumulator = daAvailabilityTrancheStartAccumulatorV1({
+    const initialAccumulator = daAvailabilityTrancheStartAccumulator({
       deploymentIdentity: input.commitment.deployment_identity,
       headerHash: input.commitment.header_hash,
       trancheIndex,
@@ -2155,7 +2140,7 @@ export const planDaAvailabilityPublicationsV1 = (input: {
       byteLength: Number(descriptor.byte_length),
     });
     let previousAccumulator = initialAccumulator;
-    const publications: DaAvailabilityPublicationDatumV1[] = [];
+    const publications: DaAvailabilityPublicationDatum[] = [];
     let chunkIndex = 0;
     for (
       let chunkOffset = startOffset;
@@ -2165,7 +2150,7 @@ export const planDaAvailabilityPublicationsV1 = (input: {
       const chunkEnd = Math.min(chunkOffset + chunkByteLength, endOffset);
       const chunk = input.payload.subarray(chunkOffset, chunkEnd);
       const chunkHash = toHex(blake2b(chunk, { dkLen: 32 }));
-      const nextAccumulator = daAvailabilityTrancheStepAccumulatorV1({
+      const nextAccumulator = daAvailabilityTrancheStepAccumulator({
         deploymentIdentity: input.commitment.deployment_identity,
         headerHash: input.commitment.header_hash,
         trancheIndex,
@@ -2196,7 +2181,7 @@ export const planDaAvailabilityPublicationsV1 = (input: {
       chunkIndex += 1;
     }
     if (previousAccumulator !== descriptor.terminal_accumulator) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `tranche ${trancheIndex.toString()} does not reach its signed terminal accumulator`,
       );
     }
@@ -2207,7 +2192,7 @@ export const planDaAvailabilityPublicationsV1 = (input: {
         publications[0]!.chunk_byte_length !==
           input.commitment.payload_byte_length)
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "a complete fitting availability item must use exactly one inline publication",
       );
     }
@@ -2216,32 +2201,32 @@ export const planDaAvailabilityPublicationsV1 = (input: {
 };
 
 /** Off-chain twin of the deadline-bound in-tranche validator transition. */
-export const advanceDaAvailabilityTrancheV1 = (input: {
-  readonly active: DaAvailabilityTrancheDatumV1;
-  readonly publication: DaAvailabilityPublicationDatumV1;
-  readonly responseGeometry: DaAvailabilityResponseGeometryV1;
+export const advanceDaAvailabilityTranche = (input: {
+  readonly active: DaAvailabilityTrancheDatum;
+  readonly publication: DaAvailabilityPublicationDatum;
+  readonly responseGeometry: DaAvailabilityResponseGeometry;
   readonly inclusiveValidityUpper: bigint;
   readonly carrierOutputIndex: bigint;
-}): DaAvailabilityTrancheDatumV1 => {
-  assertCanonicalDaAvailabilityResponseGeometryV1(input.responseGeometry);
+}): DaAvailabilityTrancheDatum => {
+  assertCanonicalDaAvailabilityResponseGeometry(input.responseGeometry);
   if (typeof input.active !== "object" || !("Active" in input.active)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "a terminal receipt cannot accept another publication",
     );
   }
   const active = input.active.Active;
   if (input.carrierOutputIndex < 0n) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "publication carrier output index must be non-negative",
     );
   }
   if (input.inclusiveValidityUpper > active.response_deadline) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "availability publication validity upper exceeds the response deadline",
     );
   }
   const descriptor = active.descriptor;
-  assertCanonicalDaAvailabilityPublicationDatumV1(
+  assertCanonicalDaAvailabilityPublicationDatum(
     input.publication,
     input.responseGeometry,
     descriptor,
@@ -2253,7 +2238,7 @@ export const advanceDaAvailabilityTrancheV1 = (input: {
       ? remaining
       : input.responseGeometry.chunk_byte_length;
   const chunk = fromHex(input.publication.chunk);
-  const nextAccumulator = daAvailabilityTrancheStepAccumulatorV1({
+  const nextAccumulator = daAvailabilityTrancheStepAccumulator({
     deploymentIdentity: active.deployment_identity,
     headerHash: active.header_hash,
     trancheIndex: Number(descriptor.tranche_index),
@@ -2277,14 +2262,14 @@ export const advanceDaAvailabilityTrancheV1 = (input: {
     input.publication.previous_accumulator !== active.accumulator ||
     input.publication.next_accumulator !== nextAccumulator
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "availability publication does not exactly advance the authenticated tranche",
     );
   }
   const nextOffset = active.next_offset + expectedChunkLength;
   if (nextOffset === endOffset) {
     if (nextAccumulator !== descriptor.terminal_accumulator) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         "terminal publication does not equal the signed tranche accumulator",
       );
     }
@@ -2314,21 +2299,21 @@ export const advanceDaAvailabilityTrancheV1 = (input: {
  * Exact close gate: one compact receipt per signed descriptor, in descriptor
  * order, with no duplicate, foreign, or merely shape-compatible receipt.
  */
-export const assertDaAvailabilityTerminalReceiptsV1 = (input: {
-  readonly commitment: DaAvailabilityCommitmentV1;
+export const assertDaAvailabilityTerminalReceipts = (input: {
+  readonly commitment: DaAvailabilityCommitment;
   readonly challengeAssetName: string;
   readonly challenger: string;
-  readonly receipts: readonly DaAvailabilityTrancheDatumV1[];
+  readonly receipts: readonly DaAvailabilityTrancheDatum[];
 }): string => {
-  assertCanonicalDaAvailabilityCommitmentV1(input.commitment);
+  assertCanonicalDaAvailabilityCommitment(input.commitment);
   if (!CHALLENGE_ASSET_NAME.test(input.challengeAssetName)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challengeAssetName must be the canonical 32-byte DACH identity",
     );
   }
   requireHash(input.challenger, 28, "challenger");
   if (input.receipts.length !== input.commitment.tranche_descriptors.length) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "terminal receipt count must equal the signed descriptor count",
     );
   }
@@ -2342,7 +2327,7 @@ export const assertDaAvailabilityTerminalReceiptsV1 = (input: {
       typeof datum !== "object" ||
       !("Receipt" in datum)
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `terminal receipt ${index.toString()} is missing or still active`,
       );
     }
@@ -2354,35 +2339,35 @@ export const assertDaAvailabilityTerminalReceiptsV1 = (input: {
       receipt.challenger !== input.challenger ||
       Data.to(
         receipt.descriptor as never,
-        DaAvailabilityTrancheDescriptorV1Schema as never,
+        DaAvailabilityTrancheDescriptorSchema as never,
       ) !==
         Data.to(
           descriptor as never,
-          DaAvailabilityTrancheDescriptorV1Schema as never,
+          DaAvailabilityTrancheDescriptorSchema as never,
         ) ||
       receipt.terminal_accumulator !== descriptor.terminal_accumulator
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `terminal receipt ${index.toString()} does not equal its signed descriptor`,
       );
     }
   }
-  return daAvailabilityPublishedTerminalCommitmentV1(input.commitment);
+  return daAvailabilityPublishedTerminalCommitment(input.commitment);
 };
 
-export type DaAvailabilityPublicationObservationV1 = Readonly<{
-  publication: DaAvailabilityPublicationDatumV1;
+export type DaAvailabilityPublicationObservation = Readonly<{
+  publication: DaAvailabilityPublicationDatum;
   inclusiveValidityUpper: bigint;
   /** Exact output index of this publication's carrier in its admitted L1 tx. */
   carrierOutputIndex: bigint;
 }>;
 
-export type DaAvailabilityTrancheEvidenceV1 = Readonly<{
-  descriptor: DaAvailabilityTrancheDescriptorV1;
-  publications: readonly DaAvailabilityPublicationObservationV1[];
+export type DaAvailabilityTrancheEvidence = Readonly<{
+  descriptor: DaAvailabilityTrancheDescriptor;
+  publications: readonly DaAvailabilityPublicationObservation[];
 }>;
 
-export type DaAvailabilityChallengedBondEvidenceV1 = Readonly<{
+export type DaAvailabilityChallengedBondEvidence = Readonly<{
   /** Exact inline datum read from the challenged retained-bond output. */
   datumCborHex: string;
   /** Available-bond input consumed by the challenge transaction; derives DACH. */
@@ -2391,12 +2376,12 @@ export type DaAvailabilityChallengedBondEvidenceV1 = Readonly<{
   challengedBondOutputOutRef: OutputReference;
 }>;
 
-type DaAvailabilityChallengedBondFieldsV1 = Extract<
-  DaAvailabilityBondDatumV1,
+type DaAvailabilityChallengedBondFields = Extract<
+  DaAvailabilityBondDatum,
   { ChallengedBond: unknown }
 >["ChallengedBond"];
 
-const assertCanonicalDaAvailabilityEvidenceOutRefV1 = (
+const assertCanonicalDaAvailabilityEvidenceOutRef = (
   outRef: OutputReference,
   field: string,
 ): void => {
@@ -2411,17 +2396,17 @@ const assertCanonicalDaAvailabilityEvidenceOutRefV1 = (
     outRef.outputIndex < 0n ||
     outRef.outputIndex > 65_535n
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       `${field} must be a canonical bounded Cardano output reference`,
     );
   }
 };
 
-const challengedBondFieldsFromEvidenceV1 = (
-  evidence: DaAvailabilityChallengedBondEvidenceV1,
-  parameters: DaAvailabilityParametersV1,
-): DaAvailabilityChallengedBondFieldsV1 => {
-  assertCanonicalDaAvailabilityParametersV1(parameters);
+const challengedBondFieldsFromEvidence = (
+  evidence: DaAvailabilityChallengedBondEvidence,
+  parameters: DaAvailabilityParameters,
+): DaAvailabilityChallengedBondFields => {
+  assertCanonicalDaAvailabilityParameters(parameters);
   if (
     typeof evidence !== "object" ||
     evidence === null ||
@@ -2431,15 +2416,15 @@ const challengedBondFieldsFromEvidenceV1 = (
     !Reflect.has(evidence, "bondInputOutRef") ||
     !Reflect.has(evidence, "challengedBondOutputOutRef")
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challengedBond evidence must contain exactly datum and input/output identities",
     );
   }
-  assertCanonicalDaAvailabilityEvidenceOutRefV1(
+  assertCanonicalDaAvailabilityEvidenceOutRef(
     evidence.bondInputOutRef,
     "challengedBond.bondInputOutRef",
   );
-  assertCanonicalDaAvailabilityEvidenceOutRefV1(
+  assertCanonicalDaAvailabilityEvidenceOutRef(
     evidence.challengedBondOutputOutRef,
     "challengedBond.challengedBondOutputOutRef",
   );
@@ -2449,25 +2434,25 @@ const challengedBondFieldsFromEvidenceV1 = (
     evidence.bondInputOutRef.outputIndex ===
       evidence.challengedBondOutputOutRef.outputIndex
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenged bond output cannot equal its consumed available-bond input",
     );
   }
-  const bondDatum = parseDaAvailabilityBondDatumV1Cbor(
+  const bondDatum = parseDaAvailabilityBondDatumCbor(
     evidence.datumCborHex,
     parameters,
   );
   if (!("ChallengedBond" in bondDatum)) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "public evidence reconstruction requires the authenticated challenged-bond datum",
     );
   }
   const challenged = bondDatum.ChallengedBond;
-  const expectedChallengeAssetName = daAvailabilityChallengeAssetNameV1(
+  const expectedChallengeAssetName = daAvailabilityChallengeAssetName(
     evidence.bondInputOutRef,
   );
   if (challenged.challenge_asset_name !== expectedChallengeAssetName) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "challenged-bond datum does not carry the DACH identity derived from its consumed bond input",
     );
   }
@@ -2479,16 +2464,16 @@ const challengedBondFieldsFromEvidenceV1 = (
  * exact challenged-bond datum. Production callers must obtain the evidence
  * from the admitted raw-L1 challenge transaction.
  */
-export const planDaAvailabilityPublicationsFromChallengedBondV1 = (input: {
-  readonly challengedBond: DaAvailabilityChallengedBondEvidenceV1;
-  readonly parameters: DaAvailabilityParametersV1;
+export const planDaAvailabilityPublicationsFromChallengedBond = (input: {
+  readonly challengedBond: DaAvailabilityChallengedBondEvidence;
+  readonly parameters: DaAvailabilityParameters;
   readonly payload: Uint8Array;
-}): readonly DaAvailabilityTranchePublicationPlanV1[] => {
-  const challenged = challengedBondFieldsFromEvidenceV1(
+}): readonly DaAvailabilityTranchePublicationPlan[] => {
+  const challenged = challengedBondFieldsFromEvidence(
     input.challengedBond,
     input.parameters,
   );
-  return planDaAvailabilityPublicationsV1({
+  return planDaAvailabilityPublications({
     commitment: challenged.commitment,
     payload: input.payload,
     challengeAssetName: challenged.challenge_asset_name,
@@ -2500,18 +2485,18 @@ export const planDaAvailabilityPublicationsFromChallengedBondV1 = (input: {
  * The caller supplies chain-ordered observations; this verifier never sorts or
  * repairs them, so a missing/reordered/replayed chunk fails closed.
  */
-export const reconstructDaAvailabilityPayloadV1 = (input: {
-  readonly challengedBond: DaAvailabilityChallengedBondEvidenceV1;
-  readonly parameters: DaAvailabilityParametersV1;
-  readonly tranches: readonly DaAvailabilityTrancheEvidenceV1[];
+export const reconstructDaAvailabilityPayload = (input: {
+  readonly challengedBond: DaAvailabilityChallengedBondEvidence;
+  readonly parameters: DaAvailabilityParameters;
+  readonly tranches: readonly DaAvailabilityTrancheEvidence[];
 }): Uint8Array => {
-  const challenged = challengedBondFieldsFromEvidenceV1(
+  const challenged = challengedBondFieldsFromEvidence(
     input.challengedBond,
     input.parameters,
   );
   const commitment = challenged.commitment;
   if (input.tranches.length !== commitment.tranche_descriptors.length) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "public evidence tranche count does not equal the signed descriptor count",
     );
   }
@@ -2522,25 +2507,25 @@ export const reconstructDaAvailabilityPayloadV1 = (input: {
       evidence === undefined ||
       Data.to(
         evidence.descriptor as never,
-        DaAvailabilityTrancheDescriptorV1Schema as never,
+        DaAvailabilityTrancheDescriptorSchema as never,
       ) !==
         Data.to(
           descriptor as never,
-          DaAvailabilityTrancheDescriptorV1Schema as never,
+          DaAvailabilityTrancheDescriptorSchema as never,
         )
     ) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `public evidence tranche ${index.toString()} is missing or reordered`,
       );
     }
-    let state: DaAvailabilityTrancheDatumV1 = {
+    let state: DaAvailabilityTrancheDatum = {
       Active: {
         deployment_identity: commitment.deployment_identity,
         header_hash: commitment.header_hash,
         challenge_asset_name: challenged.challenge_asset_name,
         descriptor,
         next_offset: descriptor.start_offset,
-        accumulator: daAvailabilityTrancheStartAccumulatorV1({
+        accumulator: daAvailabilityTrancheStartAccumulator({
           deploymentIdentity: commitment.deployment_identity,
           headerHash: commitment.header_hash,
           trancheIndex: Number(descriptor.tranche_index),
@@ -2553,7 +2538,7 @@ export const reconstructDaAvailabilityPayloadV1 = (input: {
       },
     };
     for (const observation of evidence.publications) {
-      state = advanceDaAvailabilityTrancheV1({
+      state = advanceDaAvailabilityTranche({
         active: state,
         publication: observation.publication,
         responseGeometry: commitment.response_geometry,
@@ -2563,7 +2548,7 @@ export const reconstructDaAvailabilityPayloadV1 = (input: {
       payloadParts.push(fromHex(observation.publication.chunk));
     }
     if (typeof state !== "object" || !("Receipt" in state)) {
-      throw new DaAvailabilityCommitmentV1Error(
+      throw new DaAvailabilityCommitmentError(
         `public evidence tranche ${index.toString()} is incomplete`,
       );
     }
@@ -2572,12 +2557,12 @@ export const reconstructDaAvailabilityPayloadV1 = (input: {
     Buffer.concat(payloadParts.map((part) => Buffer.from(part))),
   );
   if (
-    !verifyDaAvailabilityPayloadCommitmentV1({
+    !verifyDaAvailabilityPayloadCommitment({
       commitment,
       payload,
     })
   ) {
-    throw new DaAvailabilityCommitmentV1Error(
+    throw new DaAvailabilityCommitmentError(
       "reconstructed public evidence does not equal the signed payload commitment",
     );
   }

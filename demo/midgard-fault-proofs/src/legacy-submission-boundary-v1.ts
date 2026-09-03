@@ -44,14 +44,14 @@ const RETIRED_INIT_CATEGORIES = new Set([
   "withdrawnInput",
 ]);
 
-export const RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_CODE_V1 =
+export const RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_CODE =
   "RF-043_LEGACY_SUBMISSION_RETIRED" as const;
 
-export const RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1 =
-  `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_CODE_V1}: unauthenticated diagnostic submission routes are retired` as const;
+export const RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX =
+  `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_CODE}: unauthenticated diagnostic submission routes are retired` as const;
 
 /** Returns whether a CLI/function route is part of the retired surface. */
-export const isRetiredUnauthenticatedSubmissionRouteV1 = ({
+export const isRetiredUnauthenticatedSubmissionRoute = ({
   command,
   fraudCategory,
 }: {
@@ -69,14 +69,14 @@ export const isRetiredUnauthenticatedSubmissionRouteV1 = ({
  * `command` remains a stable route name so every shipped caller produces the
  * same deterministic error and tests can cover the complete surface.
  */
-export const rejectRetiredUnauthenticatedSubmissionRouteV1 = ({
+export const rejectRetiredUnauthenticatedSubmissionRoute = ({
   command,
   fraudCategory,
 }: {
   readonly command: string | undefined;
   readonly fraudCategory?: string;
 }): void => {
-  if (!isRetiredUnauthenticatedSubmissionRouteV1({ command, fraudCategory })) {
+  if (!isRetiredUnauthenticatedSubmissionRoute({ command, fraudCategory })) {
     return;
   }
   const categorySuffix =
@@ -84,6 +84,6 @@ export const rejectRetiredUnauthenticatedSubmissionRouteV1 = ({
       ? ` fraudCategory=${fraudCategory}`
       : "";
   throw new Error(
-    `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1}: ${String(command)}${categorySuffix}; authenticated canonical evidence submission is unavailable`,
+    `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX}: ${String(command)}${categorySuffix}; authenticated canonical evidence submission is unavailable`,
   );
 };

@@ -136,7 +136,7 @@ const makeCandidate = (
     status === "skipped_oldest_block_not_mature"
       ? readyAfterUnixTime - 1_000
       : readyAfterUnixTime;
-  const currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1 =
+  const currentDaAvailability: SDK.DaAvailabilityStateQueueStatus =
     status === "skipped_oldest_block_unattested"
       ? SDK.NO_DA_ATTESTATION
       : { Published: { terminal_commitment: "22".repeat(32) } };
@@ -144,7 +144,7 @@ const makeCandidate = (
   const candidateIdentity = [
     firstBlockOutRef,
     headerHash,
-    SDK.daAvailabilityStateQueueStatusIdentityV1(currentDaAvailability),
+    SDK.daAvailabilityStateQueueStatusIdentity(currentDaAvailability),
     readyAfterUnixTime.toString(),
   ].join("|");
   return {
@@ -283,7 +283,7 @@ describe("merge maturity semantic preflight", () => {
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
       // The state-queue node's `da_attestation` is the
-      // `DaAvailabilityStateQueueStatusV1` enum now, so
+      // `DaAvailabilityStateQueueStatus` enum now, so
       // `classifyOldestQueuedBlockReadiness` reports the decoded availability
       // kind under `current_da_availability=` (see `makeCandidate` above,
       // which already builds the wave-current reason string).

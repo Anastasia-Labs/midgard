@@ -12,9 +12,9 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "../ledger-state.js";
+import { ForcedInclusionTxSchema, HeaderSchema } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -23,7 +23,7 @@ import {
   NonMembershipCarriageSchema,
 } from "./native.js";
 
-export const NetworkIdFaultV1Schema = Data.Enum([
+export const NetworkIdFaultSchema = Data.Enum([
   Data.Literal("TransactionNetwork"),
   Data.Object({ OutputNetwork: Data.Object({ output_index: Data.Integer() }) }),
   Data.Object({
@@ -33,12 +33,11 @@ export const NetworkIdFaultV1Schema = Data.Enum([
   }),
   Data.Literal("ForcedNetworkIdMismatch"),
 ]);
-export type NetworkIdFaultV1 = Data.Static<typeof NetworkIdFaultV1Schema>;
-export const NetworkIdFaultV1 =
-  NetworkIdFaultV1Schema as unknown as NetworkIdFaultV1;
+export type NetworkIdFault = Data.Static<typeof NetworkIdFaultSchema>;
+export const NetworkIdFault = NetworkIdFaultSchema as unknown as NetworkIdFault;
 
 export const NetworkIdStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
-export const NetworkIdPostUtxoPredecessorV1Schema = Data.Enum([
+export const NetworkIdPostUtxoPredecessorSchema = Data.Enum([
   Data.Literal("Introduced"),
   Data.Object({
     NetworkChanged: Data.Object({
@@ -46,12 +45,12 @@ export const NetworkIdPostUtxoPredecessorV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type NetworkIdPostUtxoPredecessorV1 = Data.Static<
-  typeof NetworkIdPostUtxoPredecessorV1Schema
+export type NetworkIdPostUtxoPredecessor = Data.Static<
+  typeof NetworkIdPostUtxoPredecessorSchema
 >;
-export const NetworkIdPostUtxoPredecessorV1 =
-  NetworkIdPostUtxoPredecessorV1Schema as unknown as NetworkIdPostUtxoPredecessorV1;
-export const NetworkIdPostUtxoMembershipV1Schema = Data.Object({
+export const NetworkIdPostUtxoPredecessor =
+  NetworkIdPostUtxoPredecessorSchema as unknown as NetworkIdPostUtxoPredecessor;
+export const NetworkIdPostUtxoMembershipSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
@@ -59,23 +58,23 @@ export const NetworkIdPostUtxoMembershipV1Schema = Data.Object({
   out_ref: OutputReferenceSchema,
   descriptor_cbor: Data.Bytes(),
   membership: MembershipCarriageSchema,
-  predecessor: NetworkIdPostUtxoPredecessorV1Schema,
+  predecessor: NetworkIdPostUtxoPredecessorSchema,
 });
-export type NetworkIdPostUtxoMembershipV1 = Data.Static<
-  typeof NetworkIdPostUtxoMembershipV1Schema
+export type NetworkIdPostUtxoMembership = Data.Static<
+  typeof NetworkIdPostUtxoMembershipSchema
 >;
-export const NetworkIdPostUtxoMembershipV1 =
-  NetworkIdPostUtxoMembershipV1Schema as unknown as NetworkIdPostUtxoMembershipV1;
+export const NetworkIdPostUtxoMembership =
+  NetworkIdPostUtxoMembershipSchema as unknown as NetworkIdPostUtxoMembership;
 export const NetworkIdStep01ArgsSchema = Data.Object({
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),
-  post_utxo_membership: Data.Nullable(NetworkIdPostUtxoMembershipV1Schema),
+  post_utxo_membership: Data.Nullable(NetworkIdPostUtxoMembershipSchema),
   forced_source: Data.Nullable(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
     }),
   ),
-  fault: NetworkIdFaultV1Schema,
+  fault: NetworkIdFaultSchema,
 });
 export const NetworkIdStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   NetworkIdStep01ArgsSchema,
@@ -84,10 +83,10 @@ export const NetworkIdStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
 export const NetworkIdForcedStepArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  header: HeaderV1Schema,
+  header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
+    ForcedInclusionTxSchema,
   ),
   direction: Data.Integer(),
 });
@@ -98,13 +97,13 @@ export const NetworkIdStep02StateSchema = Data.Object({
   bad_tx_id: H32Schema,
   committed_tx_network_id: Data.Integer(),
   expected_network_id: Data.Integer(),
-  fault: NetworkIdFaultV1Schema,
+  fault: NetworkIdFaultSchema,
   post_utxo: Data.Nullable(
     Data.Object({
       out_ref: OutputReferenceSchema,
       descriptor_cbor: Data.Bytes(),
       prev_utxos_root: H32Schema,
-      predecessor: NetworkIdPostUtxoPredecessorV1Schema,
+      predecessor: NetworkIdPostUtxoPredecessorSchema,
     }),
   ),
   forced_source_key: Data.Nullable(Data.Bytes()),
@@ -127,7 +126,7 @@ export const NetworkIdStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  outputs_opening: Data.Nullable(FieldOpeningV1Schema),
+  outputs_opening: Data.Nullable(FieldOpeningSchema),
   predecessor_carriage: Data.Nullable(
     Data.Enum([
       Data.Object({
@@ -147,7 +146,7 @@ export const NetworkIdStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
 );
 
 /** Pure twin of the final transaction-body predicate. */
-export const isExplicitTransactionNetworkMismatchV1 = ({
+export const isExplicitTransactionNetworkMismatch = ({
   committedNetworkId,
   expectedNetworkId,
 }: {
@@ -157,7 +156,7 @@ export const isExplicitTransactionNetworkMismatchV1 = ({
   committedNetworkId !== 255n && committedNetworkId !== expectedNetworkId;
 
 /** Complete twin used for wrongful forced-rejection contradiction. */
-export const isAnyNetworkIdMismatchV1 = ({
+export const isAnyNetworkIdMismatch = ({
   committedNetworkId,
   outputNetworkIds,
   expectedNetworkId,
@@ -166,7 +165,7 @@ export const isAnyNetworkIdMismatchV1 = ({
   readonly outputNetworkIds: readonly bigint[];
   readonly expectedNetworkId: 0n | 1n;
 }): boolean =>
-  isExplicitTransactionNetworkMismatchV1({
+  isExplicitTransactionNetworkMismatch({
     committedNetworkId,
     expectedNetworkId,
   }) || outputNetworkIds.some((networkId) => networkId !== expectedNetworkId);

@@ -140,7 +140,7 @@ The implemented validity codes are:
 
 Only `TxIsValid` is accepted by Phase A. Codes `2..5` carried coarse rejection
 arms before the #640 format wave and are no longer decodable; the operator's
-rejection reason is carried by the forced leaf's `OperatorVerdictV1`.
+rejection reason is carried by the forced leaf's `OperatorVerdict`.
 
 `transaction_body_full` has exactly 18 elements (`native.ts:401-507`):
 

@@ -1,53 +1,53 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   decodeMidgardNativeScript,
-  decodeMidgardSpendInputItemV1,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
+  encodeMidgardSpendInputItem,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
-  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1,
+  MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID,
   Proof,
   type Proof as ProofV1,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import type { CanonicalBlockClassificationV1 } from "../workflow/classification-v1.js";
-import type { JournalJsonObjectV1 } from "../workflow/journal-v1.js";
-import type { ProductionHistoricalNativeScriptCorpusV1 } from "../workflow/production-historical-native-script-corpus-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockClassification } from "../workflow/classification-v1.js";
+import type { JournalJsonObject } from "../workflow/journal-v1.js";
+import type { HistoricalNativeScriptCorpus } from "../workflow/production-historical-native-script-corpus-v1.js";
 import {
-  admitProductionNativeInclusionArtifactV1,
-  admitProductionTxInputListV1,
-  canonicalHexV1,
-  canonicalNaturalStringV1,
-  EVEN_HEX_V1,
-  exactJournalRecordV1,
-  HEX_28_V1,
-  HEX_32_V1,
-  type ProductionNativeInclusionArtifactV1,
-  safeNaturalNumberV1,
+  admitNativeInclusionArtifact,
+  admitTxInputList,
+  canonicalHex,
+  canonicalNaturalString,
+  EVEN_HEX,
+  exactJournalRecord,
+  HEX_28,
+  HEX_32,
+  type NativeInclusionArtifact,
+  safeNaturalNumber,
 } from "../workflow/production-native-index-artifact-v1.js";
 import {
-  type PreparedMissingNativeScriptUtxoV1,
-  prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1,
+  type PreparedMissingNativeScriptUtxo,
+  prepareMissingNativeScriptUtxoFromCanonicalEvidence,
 } from "./prepare-v1.js";
 
-export const PRODUCTION_MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT_V1 =
+export const MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT =
   "midgard-production-missing-native-script-utxo-artifact-v1" as const;
 
-type InputJsonV1 = Readonly<{ tx_id: string; output_index: string }>;
+type InputJson = Readonly<{ tx_id: string; output_index: string }>;
 
-export type ProductionMissingNativeScriptUtxoArtifactV1 = JournalJsonObjectV1 &
+export type MissingNativeScriptUtxoArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT_V1;
+    schemaVersion: typeof MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
-    tx: ProductionNativeInclusionArtifactV1;
+    tx: NativeInclusionArtifact;
     nativeTxCanonicalCbor: string;
     badInputIndex: string;
-    spendInputs: readonly InputJsonV1[];
+    spendInputs: readonly InputJson[];
     descriptorCbor: string;
     prevUtxosRoot: string;
     membershipProofCbor: string;
@@ -56,9 +56,9 @@ export type ProductionMissingNativeScriptUtxoArtifactV1 = JournalJsonObjectV1 &
     scriptWitnessItemCbors: readonly string[];
   }>;
 
-export type AdmittedProductionMissingNativeScriptUtxoArtifactV1 = Readonly<{
-  artifact: ProductionMissingNativeScriptUtxoArtifactV1;
-  prepared: PreparedMissingNativeScriptUtxoV1;
+export type AdmittedMissingNativeScriptUtxoArtifact = Readonly<{
+  artifact: MissingNativeScriptUtxoArtifact;
+  prepared: PreparedMissingNativeScriptUtxo;
 }>;
 
 const proofSteps = (proof: ProofV1) =>
@@ -92,44 +92,44 @@ const canonicalHexList = (value: unknown, label: string): readonly string[] => {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   return Object.freeze(
     value.map((item, index) =>
-      canonicalHexV1(item, EVEN_HEX_V1, `${label}[${index.toString()}]`),
+      canonicalHex(item, EVEN_HEX, `${label}[${index.toString()}]`),
     ),
   );
 };
 
-export const missingNativeScriptUtxoDetectionIdV1 = ({
+export const missingNativeScriptUtxoDetectionId = ({
   txId,
   inputIndex,
 }: {
   readonly txId: string;
   readonly inputIndex: bigint;
 }): string =>
-  `${MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1}:${txId}:${inputIndex.toString()}`;
+  `${MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID}:${txId}:${inputIndex.toString()}`;
 
-export const prepareProductionMissingNativeScriptUtxoArtifactV1 = async ({
+export const prepareMissingNativeScriptUtxoArtifact = async ({
   evidence,
   historicalNativeScriptCorpus,
   classification,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly historicalNativeScriptCorpus: ProductionHistoricalNativeScriptCorpusV1;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly historicalNativeScriptCorpus: HistoricalNativeScriptCorpus;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   > & { readonly category: "missingNativeScriptUtxo" };
-}): Promise<ProductionMissingNativeScriptUtxoArtifactV1> => {
-  const prepared = await prepareMissingNativeScriptUtxoFromCanonicalEvidenceV1({
+}): Promise<MissingNativeScriptUtxoArtifact> => {
+  const prepared = await prepareMissingNativeScriptUtxoFromCanonicalEvidence({
     evidence,
     historicalNativeScriptCorpus,
   });
   const selected = classification.selected;
-  const detectionId = missingNativeScriptUtxoDetectionIdV1({
+  const detectionId = missingNativeScriptUtxoDetectionId({
     txId: prepared.badTxId,
     inputIndex: prepared.badInputIndex,
   });
   if (
     classification.headerHash !== prepared.headerHash ||
-    selected.violationId !== MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID_V1 ||
+    selected.violationId !== MISSING_NATIVE_SCRIPT_UTXO_VIOLATION_ID ||
     selected.detectionId !== detectionId ||
     selected.position < 0n ||
     selected.position > BigInt(Number.MAX_SAFE_INTEGER)
@@ -139,14 +139,14 @@ export const prepareProductionMissingNativeScriptUtxoArtifactV1 = async ({
     );
   }
   const spendInputs = prepared.spendInputItemCbors.map((item) => {
-    const decoded = decodeMidgardSpendInputItemV1(Buffer.from(item, "hex"));
+    const decoded = decodeMidgardSpendInputItem(Buffer.from(item, "hex"));
     return Object.freeze({
       tx_id: Buffer.from(decoded.txId).toString("hex"),
       output_index: decoded.outputIndex.toString(),
     });
   });
   return Object.freeze({
-    schemaVersion: PRODUCTION_MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT_V1,
+    schemaVersion: MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId,
     position: Number(selected.position),
@@ -169,10 +169,10 @@ export const prepareProductionMissingNativeScriptUtxoArtifactV1 = async ({
   });
 };
 
-export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
+export const admitMissingNativeScriptUtxoArtifact = (
   value: unknown,
-): AdmittedProductionMissingNativeScriptUtxoArtifactV1 => {
-  const parsed = exactJournalRecordV1(
+): AdmittedMissingNativeScriptUtxoArtifact => {
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -192,25 +192,25 @@ export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
     ],
     "missing-native-script-utxo artifact",
   );
-  const tx = admitProductionNativeInclusionArtifactV1(
+  const tx = admitNativeInclusionArtifact(
     parsed.tx,
     "missing-native-script-utxo transaction",
   );
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     parsed.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "missing-native-script-utxo header hash",
   );
-  const position = safeNaturalNumberV1(
+  const position = safeNaturalNumber(
     parsed.position,
     "missing-native-script-utxo position",
   );
-  const badInputIndexString = canonicalNaturalStringV1(
+  const badInputIndexString = canonicalNaturalString(
     parsed.badInputIndex,
     "missing-native-script-utxo input index",
   );
   const badInputIndex = BigInt(badInputIndexString);
-  const spend = admitProductionTxInputListV1(
+  const spend = admitTxInputList(
     parsed.spendInputs,
     "missing-native-script-utxo spend inputs",
   );
@@ -218,19 +218,19 @@ export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
     throw new Error("missing-native-script-utxo input index is out of bounds");
   }
   const selectedInputJson = spend.json[Number(badInputIndex)]!;
-  const descriptorCbor = canonicalHexV1(
+  const descriptorCbor = canonicalHex(
     parsed.descriptorCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "missing-native-script-utxo descriptor",
   );
-  const prevUtxosRoot = canonicalHexV1(
+  const prevUtxosRoot = canonicalHex(
     parsed.prevUtxosRoot,
-    HEX_32_V1,
+    HEX_32,
     "missing-native-script-utxo predecessor root",
   );
-  const membershipProofCbor = canonicalHexV1(
+  const membershipProofCbor = canonicalHex(
     parsed.membershipProofCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "missing-native-script-utxo predecessor membership proof",
   );
   let membershipProof: ProofV1;
@@ -241,7 +241,7 @@ export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
       "missing-native-script-utxo predecessor membership proof is malformed",
     );
   }
-  const selectedInputCbor = encodeMidgardSpendInputItemV1({
+  const selectedInputCbor = encodeMidgardSpendInputItem({
     txId: Buffer.from(selectedInputJson.tx_id, "hex"),
     outputIndex: Number(selectedInputJson.output_index),
   }).toString("hex");
@@ -262,14 +262,14 @@ export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
       "missing-native-script-utxo predecessor membership proof does not open prev_utxos_root",
     );
   }
-  const missingNativeScriptBytes = canonicalHexV1(
+  const missingNativeScriptBytes = canonicalHex(
     parsed.missingNativeScriptBytes,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "missing-native-script-utxo native preimage",
   );
-  const expectedMissingScriptHash = canonicalHexV1(
+  const expectedMissingScriptHash = canonicalHex(
     parsed.expectedMissingScriptHash,
-    HEX_28_V1,
+    HEX_28,
     "missing-native-script-utxo expected script hash",
   );
   let derivedHash: string;
@@ -296,24 +296,23 @@ export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
     parsed.scriptWitnessItemCbors,
     "missing-native-script-utxo script witnesses",
   );
-  const nativeTxCanonicalCbor = canonicalHexV1(
+  const nativeTxCanonicalCbor = canonicalHex(
     parsed.nativeTxCanonicalCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "missing-native-script-utxo canonical transaction",
   );
-  const detectionId = missingNativeScriptUtxoDetectionIdV1({
+  const detectionId = missingNativeScriptUtxoDetectionId({
     txId: tx.artifact.nativeTxId,
     inputIndex: badInputIndex,
   });
   if (
-    parsed.schemaVersion !==
-      PRODUCTION_MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT_V1 ||
+    parsed.schemaVersion !== MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT ||
     parsed.detectionId !== detectionId
   ) {
     throw new Error("missing-native-script-utxo artifact identity changed");
   }
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT_V1,
+    schemaVersion: MISSING_NATIVE_SCRIPT_UTXO_ARTIFACT,
     headerHash,
     detectionId,
     position,
@@ -345,7 +344,7 @@ export const admitProductionMissingNativeScriptUtxoArtifactV1 = (
       },
       badInputIndex,
       spendInputItemCbors: spend.json.map((input) =>
-        encodeMidgardSpendInputItemV1({
+        encodeMidgardSpendInputItem({
           txId: Buffer.from(input.tx_id, "hex"),
           outputIndex: Number(input.output_index),
         }).toString("hex"),

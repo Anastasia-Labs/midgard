@@ -1,29 +1,29 @@
 import { createHash } from "node:crypto";
 
-import { missingNativeScriptTxVersionedScriptHashV1 } from "@al-ft/midgard-sdk";
+import { missingNativeScriptTxVersionedScriptHash } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
-  type ProductionHistoricalNativeScriptProviderRosterV1,
-  requireProductionHistoricalNativeScriptProviderRosterV1,
+  type HistoricalNativeScriptProviderRoster,
+  requireHistoricalNativeScriptProviderRoster,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
 import {
-  admitFraudProofRawL1PointV1,
-  type FraudProofRawL1PointV1,
+  admitFraudProofRawL1Point,
+  type FraudProofRawL1Point,
 } from "../workflow/raw-l1-snapshot-v1.js";
 import {
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../workflow/release-finality-policy-v1.js";
 
-export const HISTORICAL_NATIVE_SCRIPT_SOURCE_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_SOURCE =
   "midgard-historical-native-script-source-v1" as const;
-export const HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION =
+export const HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION =
   "midgard-historical-native-script-evidence-v1" as const;
-export const HISTORICAL_NATIVE_SCRIPT_SOURCE_ROSTER_V1 =
+export const HISTORICAL_NATIVE_SCRIPT_SOURCE_ROSTER =
   "midgard-historical-native-script-source-roster-v1" as const;
 
-export type HistoricalNativeScriptSourceModeV1 =
+export type HistoricalNativeScriptSourceMode =
   | "local_node"
   | "external_providers";
 
@@ -35,9 +35,9 @@ export type HistoricalNativeScriptSourceModeV1 =
  * provider; the coordinator below requires exact quorum agreement. Returned
  * values remain untrusted and are decoded again in this package.
  */
-export interface HistoricalNativeScriptSourceV1 {
-  readonly sourceVersion: typeof HISTORICAL_NATIVE_SCRIPT_SOURCE_V1;
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
+export interface HistoricalNativeScriptSource {
+  readonly sourceVersion: typeof HISTORICAL_NATIVE_SCRIPT_SOURCE;
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
   readonly sourceId: string;
   readonly operatorIdentitySha256: string | null;
   resolveReferenceScriptPublication(input: {
@@ -45,18 +45,18 @@ export interface HistoricalNativeScriptSourceV1 {
     readonly releaseIdentityDigest: string;
     readonly finalityPolicyDigest: string;
     readonly expectedScriptHash: string;
-    readonly throughPoint: FraudProofRawL1PointV1;
+    readonly throughPoint: FraudProofRawL1Point;
   }): Promise<unknown>;
   /** Reconfirms inclusion ancestry and the pinned boundary after every read. */
   confirmCanonicalHistory(input: {
-    readonly inclusionPoint: FraudProofRawL1PointV1;
-    readonly throughPoint: FraudProofRawL1PointV1;
+    readonly inclusionPoint: FraudProofRawL1Point;
+    readonly throughPoint: FraudProofRawL1Point;
   }): Promise<unknown>;
 }
 
-export type HistoricalNativeScriptSourceRosterV1 = Readonly<{
-  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_SOURCE_ROSTER_V1;
-  sourceMode: HistoricalNativeScriptSourceModeV1;
+export type HistoricalNativeScriptSourceRoster = Readonly<{
+  schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_SOURCE_ROSTER;
+  sourceMode: HistoricalNativeScriptSourceMode;
   /** Digest of the single immutable application-installed history overlay. */
   applicationOverlayDigest: string;
   deploymentIdentityDigest: string;
@@ -69,8 +69,8 @@ export type HistoricalNativeScriptSourceRosterV1 = Readonly<{
   rosterDigest: string;
 }>;
 
-export type HistoricalNativeScriptEvidenceV1 = Readonly<{
-  readonly schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION;
+export type HistoricalNativeScriptEvidence = Readonly<{
+  readonly schemaVersion: typeof HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
   readonly releaseIdentityDigest: string;
   readonly finalityPolicyDigest: string;
@@ -83,10 +83,10 @@ export type HistoricalNativeScriptEvidenceV1 = Readonly<{
   readonly publicationTransactionIndex: number;
   /** Exact raw-block transaction order at `inclusionPoint`. */
   readonly inclusionBlockTransactionIds: readonly string[];
-  readonly inclusionPoint: FraudProofRawL1PointV1;
-  readonly throughPoint: FraudProofRawL1PointV1;
+  readonly inclusionPoint: FraudProofRawL1Point;
+  readonly throughPoint: FraudProofRawL1Point;
   readonly confirmationDepth: number;
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
   readonly applicationOverlayDigest: string;
   readonly rosterDigest: string;
   readonly sources: readonly Readonly<{
@@ -97,12 +97,13 @@ export type HistoricalNativeScriptEvidenceV1 = Readonly<{
   readonly evidenceDigest: string;
 }>;
 
-const admittedHistoricalNativeScriptEvidenceV1 = new WeakSet<object>();
-const admittedHistoricalNativeScriptRostersV1 = new WeakMap<
+const admittedHistoricalNativeScriptEvidence = new WeakSet<object>();
+const admittedHistoricalNativeScriptRosters = new WeakMap<
   object,
-  readonly HistoricalNativeScriptSourceV1[]
+  readonly HistoricalNativeScriptSource[]
 >();
-const admittedProductionHistoricalNativeScriptRostersV1 = new WeakSet<object>();
+const admittedAuthenticatedHistoricalNativeScriptRosters =
+  new WeakSet<object>();
 
 const DIGEST = /^[0-9a-f]{64}$/u;
 const SCRIPT_HASH = /^[0-9a-f]{56}$/u;
@@ -167,8 +168,8 @@ const cbor = (value: unknown, label: string): string => {
 };
 
 const samePoint = (
-  left: FraudProofRawL1PointV1,
-  right: FraudProofRawL1PointV1,
+  left: FraudProofRawL1Point,
+  right: FraudProofRawL1Point,
 ): boolean =>
   left.slot === right.slot &&
   left.blockNo === right.blockNo &&
@@ -179,9 +180,9 @@ const admitSourceIdentities = ({
   sourceMode,
   sources,
 }: {
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
-  readonly sources: readonly HistoricalNativeScriptSourceV1[];
-}): HistoricalNativeScriptSourceRosterV1["sources"] => {
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
+  readonly sources: readonly HistoricalNativeScriptSource[];
+}): HistoricalNativeScriptSourceRoster["sources"] => {
   const requiredCount = sourceMode === "local_node" ? 1 : 2;
   const maximumCount = sourceMode === "local_node" ? 1 : 4;
   if (sources.length < requiredCount || sources.length > maximumCount) {
@@ -196,7 +197,7 @@ const admitSourceIdentities = ({
   return Object.freeze(
     sources.map((source) => {
       if (
-        source.sourceVersion !== HISTORICAL_NATIVE_SCRIPT_SOURCE_V1 ||
+        source.sourceVersion !== HISTORICAL_NATIVE_SCRIPT_SOURCE ||
         source.sourceMode !== sourceMode ||
         source.sourceId.trim() !== source.sourceId ||
         source.sourceId.length === 0 ||
@@ -238,18 +239,18 @@ const admitSourceIdentities = ({
  * restart admission accept only this module-minted object, never a structural
  * array of callbacks supplied alongside a workflow invocation.
  */
-const createHistoricalNativeScriptSourceRosterV1 = ({
+const createHistoricalNativeScriptSourceRoster = ({
   sourceMode,
   sources,
   applicationOverlayDigest: untrustedApplicationOverlayDigest,
   releaseFinality: untrustedReleaseFinality,
 }: {
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
-  readonly sources: readonly HistoricalNativeScriptSourceV1[];
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
+  readonly sources: readonly HistoricalNativeScriptSource[];
   readonly applicationOverlayDigest: string;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): HistoricalNativeScriptSourceRosterV1 => {
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1(
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): HistoricalNativeScriptSourceRoster => {
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     untrustedReleaseFinality,
   );
   const applicationOverlayDigest = digest(
@@ -258,7 +259,7 @@ const createHistoricalNativeScriptSourceRosterV1 = ({
   );
   const identities = admitSourceIdentities({ sourceMode, sources });
   const withoutDigest = Object.freeze({
-    schemaVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE_ROSTER_V1,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE_ROSTER,
     sourceMode,
     applicationOverlayDigest,
     deploymentIdentityDigest: releaseFinality.deploymentIdentityDigest,
@@ -272,7 +273,7 @@ const createHistoricalNativeScriptSourceRosterV1 = ({
       .update(JSON.stringify(withoutDigest))
       .digest("hex"),
   });
-  admittedHistoricalNativeScriptRostersV1.set(
+  admittedHistoricalNativeScriptRosters.set(
     roster,
     Object.freeze([...sources]),
   );
@@ -280,10 +281,10 @@ const createHistoricalNativeScriptSourceRosterV1 = ({
 };
 
 /** Explicit callback seam for resolver unit tests; production rejects it. */
-export const unsafeCreateHistoricalNativeScriptSourceRosterForTestV1 =
-  createHistoricalNativeScriptSourceRosterV1;
+export const unsafeCreateHistoricalNativeScriptSourceRosterForTest =
+  createHistoricalNativeScriptSourceRoster;
 
-const postHistoricalNativeScriptJsonV1 = async ({
+const postHistoricalNativeScriptJson = async ({
   authorityEndpoint,
   path,
   body,
@@ -315,30 +316,29 @@ const postHistoricalNativeScriptJsonV1 = async ({
  * Concrete production quorum derived only from the admitted immutable history
  * overlay. No callback or source identity is accepted alongside a workflow.
  */
-export const createProductionExternalHistoricalNativeScriptSourceRosterV1 = ({
+export const createExternalHistoricalNativeScriptSourceRoster = ({
   providerRoster: untrustedProviderRoster,
   releaseFinality,
 }: {
-  readonly providerRoster: ProductionHistoricalNativeScriptProviderRosterV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): HistoricalNativeScriptSourceRosterV1 => {
-  const providerRoster =
-    requireProductionHistoricalNativeScriptProviderRosterV1(
-      untrustedProviderRoster,
-    );
+  readonly providerRoster: HistoricalNativeScriptProviderRoster;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): HistoricalNativeScriptSourceRoster => {
+  const providerRoster = requireHistoricalNativeScriptProviderRoster(
+    untrustedProviderRoster,
+  );
   const sources = providerRoster.providers.map(
-    (provider): HistoricalNativeScriptSourceV1 =>
+    (provider): HistoricalNativeScriptSource =>
       Object.freeze({
-        sourceVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE_V1,
+        sourceVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE,
         sourceMode: "external_providers",
         sourceId: provider.sourceId,
         operatorIdentitySha256: provider.operatorIdentitySha256,
         resolveReferenceScriptPublication: async (
           request: Parameters<
-            HistoricalNativeScriptSourceV1["resolveReferenceScriptPublication"]
+            HistoricalNativeScriptSource["resolveReferenceScriptPublication"]
           >[0],
         ) =>
-          await postHistoricalNativeScriptJsonV1({
+          await postHistoricalNativeScriptJson({
             authorityEndpoint: provider.authorityEndpoint,
             path: "/midgard/v1/native-script-publication",
             body: request,
@@ -346,10 +346,10 @@ export const createProductionExternalHistoricalNativeScriptSourceRosterV1 = ({
           }),
         confirmCanonicalHistory: async (
           request: Parameters<
-            HistoricalNativeScriptSourceV1["confirmCanonicalHistory"]
+            HistoricalNativeScriptSource["confirmCanonicalHistory"]
           >[0],
         ) =>
-          await postHistoricalNativeScriptJsonV1({
+          await postHistoricalNativeScriptJson({
             authorityEndpoint: provider.authorityEndpoint,
             path: "/midgard/v1/native-script-publication/canonicality",
             body: request,
@@ -357,23 +357,23 @@ export const createProductionExternalHistoricalNativeScriptSourceRosterV1 = ({
           }),
       }),
   );
-  const roster = createHistoricalNativeScriptSourceRosterV1({
+  const roster = createHistoricalNativeScriptSourceRoster({
     sourceMode: "external_providers",
     sources,
     applicationOverlayDigest: providerRoster.rosterDigest,
     releaseFinality,
   });
-  admittedProductionHistoricalNativeScriptRostersV1.add(roster);
+  admittedAuthenticatedHistoricalNativeScriptRosters.add(roster);
   return roster;
 };
 
-export const requireProductionHistoricalNativeScriptSourceRosterV1 = (
-  roster: HistoricalNativeScriptSourceRosterV1,
-  releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1,
-): HistoricalNativeScriptSourceRosterV1 => {
+export const requireHistoricalNativeScriptSourceRoster = (
+  roster: HistoricalNativeScriptSourceRoster,
+  releaseFinality: VerifiedFraudProofReleaseFinalityPolicy,
+): HistoricalNativeScriptSourceRoster => {
   const verifiedFinality =
-    validateVerifiedFraudProofReleaseFinalityPolicyV1(releaseFinality);
-  if (!admittedProductionHistoricalNativeScriptRostersV1.has(roster)) {
+    validateVerifiedFraudProofReleaseFinalityPolicy(releaseFinality);
+  if (!admittedAuthenticatedHistoricalNativeScriptRosters.has(roster)) {
     throw new Error(
       "historical native-script source roster is not a concrete production authority",
     );
@@ -386,10 +386,10 @@ const requireSourceRoster = ({
   roster,
   releaseFinality,
 }: {
-  readonly roster: HistoricalNativeScriptSourceRosterV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): readonly HistoricalNativeScriptSourceV1[] => {
-  const sources = admittedHistoricalNativeScriptRostersV1.get(roster);
+  readonly roster: HistoricalNativeScriptSourceRoster;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): readonly HistoricalNativeScriptSource[] => {
+  const sources = admittedHistoricalNativeScriptRosters.get(roster);
   if (
     sources === undefined ||
     roster.deploymentIdentityDigest !==
@@ -418,8 +418,8 @@ const requireSourceRoster = ({
   return sources;
 };
 
-type AdmittedCandidateV1 = Omit<
-  HistoricalNativeScriptEvidenceV1,
+type AdmittedCandidate = Omit<
+  HistoricalNativeScriptEvidence,
   | "schemaVersion"
   | "sourceMode"
   | "applicationOverlayDigest"
@@ -436,11 +436,11 @@ const admitCandidate = ({
   releaseFinality,
 }: {
   readonly value: unknown;
-  readonly source: HistoricalNativeScriptSourceV1;
+  readonly source: HistoricalNativeScriptSource;
   readonly expectedScriptHash: string;
-  readonly throughPoint: FraudProofRawL1PointV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): AdmittedCandidateV1 => {
+  readonly throughPoint: FraudProofRawL1Point;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): AdmittedCandidate => {
   const label = `historical native script source ${source.sourceId}`;
   const parsed = exact(
     value,
@@ -465,7 +465,7 @@ const admitCandidate = ({
     label,
   );
   if (
-    parsed.schemaVersion !== HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION
+    parsed.schemaVersion !== HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION
   ) {
     throw new Error(`${label} has an unsupported schema`);
   }
@@ -496,14 +496,14 @@ const admitCandidate = ({
   ) {
     throw new Error(`${label} changed the release/script identity`);
   }
-  const admittedThroughPoint = admitFraudProofRawL1PointV1(
+  const admittedThroughPoint = admitFraudProofRawL1Point(
     parsed.throughPoint,
     `${label}.throughPoint`,
   );
   if (!samePoint(admittedThroughPoint, throughPoint)) {
     throw new Error(`${label} changed the pinned historical boundary`);
   }
-  const inclusionPoint = admitFraudProofRawL1PointV1(
+  const inclusionPoint = admitFraudProofRawL1Point(
     parsed.inclusionPoint,
     `${label}.inclusionPoint`,
   );
@@ -609,7 +609,7 @@ const admitCandidate = ({
   const scriptBytesHex = nativeScript.to_canonical_cbor_hex();
   if (
     parsed.scriptBytesHex !== scriptBytesHex ||
-    missingNativeScriptTxVersionedScriptHashV1(
+    missingNativeScriptTxVersionedScriptHash(
       Buffer.from(scriptBytesHex, "hex"),
     ) !== expectedScriptHash
   ) {
@@ -632,7 +632,7 @@ const admitCandidate = ({
   };
 };
 
-const candidateDigest = (candidate: AdmittedCandidateV1): string =>
+const candidateDigest = (candidate: AdmittedCandidate): string =>
   createHash("sha256")
     .update(
       JSON.stringify({
@@ -661,13 +661,13 @@ const evidenceWithoutDigest = ({
   rosterDigest,
   sources,
 }: {
-  readonly candidate: AdmittedCandidateV1;
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
+  readonly candidate: AdmittedCandidate;
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
   readonly applicationOverlayDigest: string;
   readonly rosterDigest: string;
-  readonly sources: HistoricalNativeScriptEvidenceV1["sources"];
-}): Omit<HistoricalNativeScriptEvidenceV1, "evidenceDigest"> => ({
-  schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION,
+  readonly sources: HistoricalNativeScriptEvidence["sources"];
+}): Omit<HistoricalNativeScriptEvidence, "evidenceDigest"> => ({
+  schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
   ...candidate,
   sourceMode,
   applicationOverlayDigest,
@@ -676,10 +676,10 @@ const evidenceWithoutDigest = ({
 });
 
 const computeEvidenceDigest = (
-  value: Omit<HistoricalNativeScriptEvidenceV1, "evidenceDigest">,
+  value: Omit<HistoricalNativeScriptEvidence, "evidenceDigest">,
 ): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-const freezeCandidate = (candidate: AdmittedCandidateV1): AdmittedCandidateV1 =>
+const freezeCandidate = (candidate: AdmittedCandidate): AdmittedCandidate =>
   Object.freeze({
     ...candidate,
     inclusionBlockTransactionIds: Object.freeze([
@@ -696,12 +696,12 @@ const sealEvidence = ({
   rosterDigest,
   sources,
 }: {
-  readonly candidate: AdmittedCandidateV1;
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
+  readonly candidate: AdmittedCandidate;
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
   readonly applicationOverlayDigest: string;
   readonly rosterDigest: string;
-  readonly sources: HistoricalNativeScriptEvidenceV1["sources"];
-}): HistoricalNativeScriptEvidenceV1 => {
+  readonly sources: HistoricalNativeScriptEvidence["sources"];
+}): HistoricalNativeScriptEvidence => {
   const candidate = freezeCandidate(unsealedCandidate);
   const withoutDigest = evidenceWithoutDigest({
     candidate,
@@ -714,7 +714,7 @@ const sealEvidence = ({
     ...withoutDigest,
     evidenceDigest: computeEvidenceDigest(withoutDigest),
   });
-  admittedHistoricalNativeScriptEvidenceV1.add(evidence);
+  admittedHistoricalNativeScriptEvidence.add(evidence);
   return evidence;
 };
 
@@ -723,8 +723,8 @@ const admitEvidenceSources = ({
   sourceMode,
 }: {
   readonly value: unknown;
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
-}): HistoricalNativeScriptEvidenceV1["sources"] => {
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
+}): HistoricalNativeScriptEvidence["sources"] => {
   if (!Array.isArray(value)) {
     throw new Error(
       "historical native script evidence.sources must be an array",
@@ -776,7 +776,7 @@ const admitEvidenceSources = ({
 };
 
 /** Strict structural parser used before live roster-backed reconfirmation. */
-const parsePersistedHistoricalNativeScriptEvidenceV1 = ({
+const parsePersistedHistoricalNativeScriptEvidence = ({
   value,
   sourceMode,
   applicationOverlayDigest: expectedApplicationOverlayDigest,
@@ -786,13 +786,13 @@ const parsePersistedHistoricalNativeScriptEvidenceV1 = ({
   releaseFinality: untrustedReleaseFinality,
 }: {
   readonly value: unknown;
-  readonly sourceMode: HistoricalNativeScriptSourceModeV1;
+  readonly sourceMode: HistoricalNativeScriptSourceMode;
   readonly applicationOverlayDigest: string;
   readonly rosterDigest: string;
   readonly expectedScriptHash: string;
-  readonly throughPoint: FraudProofRawL1PointV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): HistoricalNativeScriptEvidenceV1 => {
+  readonly throughPoint: FraudProofRawL1Point;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): HistoricalNativeScriptEvidence => {
   if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
     throw new Error("historical native script evidence source mode is invalid");
   }
@@ -827,18 +827,17 @@ const parsePersistedHistoricalNativeScriptEvidenceV1 = ({
     "historical native script evidence",
   );
   if (
-    parsed.schemaVersion !==
-      HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION ||
+    parsed.schemaVersion !== HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION ||
     parsed.sourceMode !== sourceMode
   ) {
     throw new Error(
       "historical native script evidence schema/source mode mismatch",
     );
   }
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1(
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     untrustedReleaseFinality,
   );
-  const throughPoint = admitFraudProofRawL1PointV1(
+  const throughPoint = admitFraudProofRawL1Point(
     untrustedThroughPoint,
     "historical native script expected throughPoint",
   );
@@ -860,8 +859,8 @@ const parsePersistedHistoricalNativeScriptEvidenceV1 = ({
     );
   }
   const primarySource = sources[0]!;
-  const source: HistoricalNativeScriptSourceV1 = {
-    sourceVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE_V1,
+  const source: HistoricalNativeScriptSource = {
+    sourceVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE,
     sourceMode,
     sourceId: primarySource.sourceId,
     operatorIdentitySha256: primarySource.operatorIdentitySha256,
@@ -926,20 +925,20 @@ const confirmSourceHistory = async ({
   inclusionPoint,
   throughPoint,
 }: {
-  readonly source: HistoricalNativeScriptSourceV1;
-  readonly inclusionPoint: FraudProofRawL1PointV1;
-  readonly throughPoint: FraudProofRawL1PointV1;
+  readonly source: HistoricalNativeScriptSource;
+  readonly inclusionPoint: FraudProofRawL1Point;
+  readonly throughPoint: FraudProofRawL1Point;
 }): Promise<void> => {
   const parsed = exact(
     await source.confirmCanonicalHistory({ inclusionPoint, throughPoint }),
     ["canonical", "inclusionPoint", "throughPoint"],
     `historical native script confirmation ${source.sourceId}`,
   );
-  const confirmedInclusionPoint = admitFraudProofRawL1PointV1(
+  const confirmedInclusionPoint = admitFraudProofRawL1Point(
     parsed.inclusionPoint,
     `historical native script confirmation ${source.sourceId}.inclusionPoint`,
   );
-  const confirmedThroughPoint = admitFraudProofRawL1PointV1(
+  const confirmedThroughPoint = admitFraudProofRawL1Point(
     parsed.throughPoint,
     `historical native script confirmation ${source.sourceId}.throughPoint`,
   );
@@ -959,29 +958,29 @@ const confirmSourceHistory = async ({
  * No caller-supplied bytes are accepted. Optional retained-DA bytes can only
  * corroborate the L1 publication and can never replace it.
  */
-export const resolveHistoricalNativeScriptEvidenceV1 = async ({
+export const resolveHistoricalNativeScriptEvidence = async ({
   roster,
   expectedScriptHash,
   throughPoint: untrustedThroughPoint,
   releaseFinality: untrustedReleaseFinality,
   retainedDaCorroboratingScriptBytes,
 }: {
-  readonly roster: HistoricalNativeScriptSourceRosterV1;
+  readonly roster: HistoricalNativeScriptSourceRoster;
   readonly expectedScriptHash: string;
-  readonly throughPoint: FraudProofRawL1PointV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
+  readonly throughPoint: FraudProofRawL1Point;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly retainedDaCorroboratingScriptBytes?: Uint8Array;
-}): Promise<HistoricalNativeScriptEvidenceV1> => {
+}): Promise<HistoricalNativeScriptEvidence> => {
   if (!SCRIPT_HASH.test(expectedScriptHash)) {
     throw new Error(
       "historical native script hash must be 28-byte lowercase hex",
     );
   }
-  const throughPoint = admitFraudProofRawL1PointV1(
+  const throughPoint = admitFraudProofRawL1Point(
     untrustedThroughPoint,
     "historical native script throughPoint",
   );
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1(
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     untrustedReleaseFinality,
   );
   const sources = requireSourceRoster({ roster, releaseFinality });
@@ -1051,7 +1050,7 @@ export const resolveHistoricalNativeScriptEvidenceV1 = async ({
  * roster again and reconfirming publication ancestry through the pinned L1
  * point. A valid unkeyed digest or structural source clone is insufficient.
  */
-export const admitHistoricalNativeScriptEvidenceV1 = async ({
+export const admitHistoricalNativeScriptEvidence = async ({
   value,
   roster,
   expectedScriptHash,
@@ -1059,12 +1058,12 @@ export const admitHistoricalNativeScriptEvidenceV1 = async ({
   releaseFinality,
 }: {
   readonly value: unknown;
-  readonly roster: HistoricalNativeScriptSourceRosterV1;
+  readonly roster: HistoricalNativeScriptSourceRoster;
   readonly expectedScriptHash: string;
-  readonly throughPoint: FraudProofRawL1PointV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): Promise<HistoricalNativeScriptEvidenceV1> => {
-  const persisted = parsePersistedHistoricalNativeScriptEvidenceV1({
+  readonly throughPoint: FraudProofRawL1Point;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): Promise<HistoricalNativeScriptEvidence> => {
+  const persisted = parsePersistedHistoricalNativeScriptEvidence({
     value,
     sourceMode: roster.sourceMode,
     applicationOverlayDigest: roster.applicationOverlayDigest,
@@ -1073,7 +1072,7 @@ export const admitHistoricalNativeScriptEvidenceV1 = async ({
     throughPoint,
     releaseFinality,
   });
-  const live = await resolveHistoricalNativeScriptEvidenceV1({
+  const live = await resolveHistoricalNativeScriptEvidence({
     roster,
     expectedScriptHash,
     throughPoint,
@@ -1094,10 +1093,10 @@ export const admitHistoricalNativeScriptEvidenceV1 = async ({
   return live;
 };
 
-export const historicalNativeScriptBytesV1 = (
-  evidence: HistoricalNativeScriptEvidenceV1,
+export const historicalNativeScriptBytes = (
+  evidence: HistoricalNativeScriptEvidence,
 ): Uint8Array => {
-  if (!admittedHistoricalNativeScriptEvidenceV1.has(evidence)) {
+  if (!admittedHistoricalNativeScriptEvidence.has(evidence)) {
     throw new Error(
       "historical native script evidence was not admitted by the authenticated resolver",
     );

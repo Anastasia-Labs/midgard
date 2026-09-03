@@ -15,7 +15,7 @@ import {
   type MissingSignatureStep03State,
   MissingSignatureStep04Datum,
   type MissingSignatureStep04State,
-  missingSignatureVkeyHashV1,
+  missingSignatureVkeyHash,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -34,20 +34,20 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
+import type { MissingSignatureContracts } from "./contracts-v1.js";
 import {
-  missingSignatureStepLabelV1,
+  missingSignatureStepLabel,
   missingSignatureSubmitError,
-  requireMissingSignatureReferenceScriptV1,
-  requireMissingSignatureStepStateV1,
-  requireMissingSignatureThreadUtxoV1,
+  requireMissingSignatureReferenceScript,
+  requireMissingSignatureStepState,
+  requireMissingSignatureThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = missingSignatureStepLabelV1(2);
+const STEP_LABEL = missingSignatureStepLabel(2);
 
 export type SubmitMissingSignatureStep03Result = {
   readonly txHash: string;
@@ -77,7 +77,7 @@ export const submitMissingSignatureStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -85,29 +85,25 @@ export const submitMissingSignatureStep03 = async ({
   readonly missingRequiredSignerVkey: string;
   /** §2.3: the published step-03 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep03Result> => {
-  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
-    {
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 2,
-      threadOutRef,
-    },
-  );
-  const state: MissingSignatureStep03State = requireMissingSignatureStepStateV1(
-    {
-      threadUtxo,
-      signer,
-      schema: MissingSignatureStep03Datum,
-      stepIndex: 2,
-    },
-  );
+  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 2,
+    threadOutRef,
+  });
+  const state: MissingSignatureStep03State = requireMissingSignatureStepState({
+    threadUtxo,
+    signer,
+    schema: MissingSignatureStep03Datum,
+    stepIndex: 2,
+  });
 
   const vkey = missingRequiredSignerVkey.toLowerCase();
-  const derivedHash = missingSignatureVkeyHashV1(vkey);
+  const derivedHash = missingSignatureVkeyHash(vkey);
   if (derivedHash !== state.missing_required_signer_hash) {
     throw missingSignatureSubmitError(
       `supplied verification key hashes to ${derivedHash}, not the thread's accused required signer ${state.missing_required_signer_hash} — no known preimage means this finding is the §7.2 UnknownVkeyPreimage corner, which this family cannot prove.`,
@@ -174,7 +170,7 @@ export const submitMissingSignatureStep03 = async ({
     )
     .addSignerKey(signer.paymentKeyHash)
     .readFrom([
-      requireMissingSignatureReferenceScriptV1({
+      requireMissingSignatureReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[2].spendingScriptHash,
         stepIndex: 2,
@@ -188,10 +184,10 @@ export const submitMissingSignatureStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof missing-signature step-03",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[2].spendingScript,

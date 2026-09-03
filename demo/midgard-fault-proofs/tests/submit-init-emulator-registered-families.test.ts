@@ -25,10 +25,10 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  type MidgardNativeTxFullV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCompact,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { type NativeTxWitnessSetCompact, Proof } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -44,13 +44,13 @@ import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,
-  setupFraudulentBlockV1 as setupFraudulentBlock,
+  setupFraudulentBlock as setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   trieRootHex,
@@ -82,10 +82,10 @@ type SingleTxBlockFixture = {
  * shape, so the fixture is shared.
  */
 const buildSingleTxBlockFixture = async (
-  nativeTx: MidgardNativeTxFullV1,
+  nativeTx: MidgardNativeTxFull,
 ): Promise<SingleTxBlockFixture> => {
-  const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const store = new Store(undefined);
   await store.ready();
@@ -119,7 +119,7 @@ type FamilyFlag =
   | "realInvalidSignature";
 
 const makeEmulatorHarness = async (familyFlag: FamilyFlag) =>
-  await makeFaultProofEmulatorHarnessV1({
+  await makeFaultProofEmulatorHarness({
     contractOptions: { [familyFlag]: true, alwaysFraudProofCatalogue: true },
   });
 
@@ -325,7 +325,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         witnessByte: "66",
       });
       const fixture = await buildSingleTxBlockFixture(badTx);
-      const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompactV1(
+      const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompact(
         badTx.witnessSet,
       );
       const badTxWitnessSetCompact: NativeTxWitnessSetCompact = {

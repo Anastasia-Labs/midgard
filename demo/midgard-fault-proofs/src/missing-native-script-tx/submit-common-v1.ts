@@ -10,10 +10,10 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
-  type MissingNativeScriptTxContractsV1,
+  type MissingNativeScriptTxContracts,
 } from "./contracts-v1.js";
 
-export type MissingNativeScriptTxCatalogueCategoryV1 = {
+export type MissingNativeScriptTxCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -22,16 +22,16 @@ export type MissingNativeScriptTxCatalogueCategoryV1 = {
 export const missingNativeScriptTxSubmitError = (message: string): Error =>
   new Error(`${MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL}: ${message}`);
 
-export type MissingNativeScriptTxStepIndexV1 = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type MissingNativeScriptTxStepIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-export const missingNativeScriptTxStepLabelV1 = (
-  stepIndex: MissingNativeScriptTxStepIndexV1,
+export const missingNativeScriptTxStepLabel = (
+  stepIndex: MissingNativeScriptTxStepIndex,
 ): string =>
   `${MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL} step 0${(
     stepIndex + 1
   ).toString()}`;
 
-export const requireMissingNativeScriptTxThreadUtxoV1 = async ({
+export const requireMissingNativeScriptTxThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -39,15 +39,15 @@ export const requireMissingNativeScriptTxThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
-  readonly stepIndex: MissingNativeScriptTxStepIndexV1;
+  readonly stepIndex: MissingNativeScriptTxStepIndex;
   readonly threadOutRef: string;
 }): Promise<{
   readonly threadUtxo: UTxO;
   readonly threadToken: ReturnType<typeof requireComputationThreadToken>;
 }> => {
-  const label = missingNativeScriptTxStepLabelV1(stepIndex);
+  const label = missingNativeScriptTxStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -70,18 +70,18 @@ export const requireMissingNativeScriptTxThreadUtxoV1 = async ({
   };
 };
 
-export const requireMissingNativeScriptTxReferenceScriptV1 = ({
+export const requireMissingNativeScriptTxReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
 }: {
   readonly utxo: UTxO;
   readonly expectedScriptHash: string;
-  readonly stepIndex: MissingNativeScriptTxStepIndexV1;
+  readonly stepIndex: MissingNativeScriptTxStepIndex;
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw missingNativeScriptTxSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${missingNativeScriptTxStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${missingNativeScriptTxStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
@@ -93,7 +93,7 @@ export const requireMissingNativeScriptTxReferenceScriptV1 = ({
   return utxo;
 };
 
-export const requireMissingNativeScriptTxStepStateV1 = <State>({
+export const requireMissingNativeScriptTxStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -102,9 +102,9 @@ export const requireMissingNativeScriptTxStepStateV1 = <State>({
   readonly threadUtxo: UTxO;
   readonly signer: ResolvedProverSigner;
   readonly schema: { fraud_prover: string; data: State | null };
-  readonly stepIndex: MissingNativeScriptTxStepIndexV1;
+  readonly stepIndex: MissingNativeScriptTxStepIndex;
 }): State => {
-  const label = missingNativeScriptTxStepLabelV1(stepIndex);
+  const label = missingNativeScriptTxStepLabel(stepIndex);
   if (threadUtxo.datum == null) {
     throw missingNativeScriptTxSubmitError(
       `thread UTxO ${outRefLabel(threadUtxo)} at ${label} has no inline datum.`,

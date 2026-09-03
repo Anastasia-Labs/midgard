@@ -4,14 +4,14 @@ import { dirname, isAbsolute, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
-  assertWatcherProductionStateQueueObservationV1,
-  type WatcherProductionStateQueueObservationV1,
+  assertWatcherStateQueueObservation,
+  type WatcherAuthenticatedStateQueueObservation,
 } from "../indexers/production-state-queue-observation-v1.js";
-import type { WatcherNativeChainSyncPointV1 } from "../l1/native-chain-sync-v1.js";
+import type { WatcherNativeChainSyncPoint } from "../l1/native-chain-sync-v1.js";
 import type { WatcherDurableAtomicBackend } from "./durable-store.js";
-import { watcherCanonicalJsonV1 } from "./durable-store.js";
+import { watcherCanonicalJson } from "./durable-store.js";
 
-export const WATCHER_SQLITE_DURABLE_BACKEND_V1_SCHEMA_VERSION =
+export const WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION =
   "midgard-watcher-sqlite-durable-backend-v1" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -47,37 +47,37 @@ const deepFreezeJson = (value: unknown): unknown => {
   return Object.freeze(value);
 };
 
-export type WatcherSqliteDurableBackendV1 = Readonly<{
-  schemaVersion: typeof WATCHER_SQLITE_DURABLE_BACKEND_V1_SCHEMA_VERSION;
+export type WatcherSqliteDurableBackend = Readonly<{
+  schemaVersion: typeof WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION;
   backend: WatcherDurableAtomicBackend;
-  stateQueueObservations: WatcherSqliteStateQueueObservationStoreV1;
+  stateQueueObservations: WatcherSqliteStateQueueObservationStore;
   close(): void;
 }>;
 
-export type WatcherSqliteStateQueueObservationStoreV1 = Readonly<{
+export type WatcherSqliteStateQueueObservationStore = Readonly<{
   /** Returns an untrusted cache. The production source must reauthenticate it. */
   readAll(): Promise<readonly unknown[]>;
   /** Persists only module-admitted observations and ignores an exact repeat. */
   append(
-    observation: WatcherProductionStateQueueObservationV1,
+    observation: WatcherAuthenticatedStateQueueObservation,
   ): Promise<"appended" | "unchanged">;
   /** Revokes cache entries on the discarded side of a native rollback. */
-  rollbackTo(point: WatcherNativeChainSyncPointV1): Promise<void>;
+  rollbackTo(point: WatcherNativeChainSyncPoint): Promise<void>;
 }>;
 
 /**
  * Production complete-snapshot CAS over SQLite. The independent trusted-head
  * authority deliberately does not share this database or its backup domain.
  */
-const openWatcherSqliteDurableBackendInternalV1 = async (
+const openWatcherSqliteDurableBackendInternal = async (
   input: {
     readonly path: string;
     readonly busyTimeoutMs?: number;
   },
   assertStateQueueObservation: (
-    observation: WatcherProductionStateQueueObservationV1,
+    observation: WatcherAuthenticatedStateQueueObservation,
   ) => void,
-): Promise<WatcherSqliteDurableBackendV1> => {
+): Promise<WatcherSqliteDurableBackend> => {
   const path = canonicalDatabasePath(input.path);
   const directory = dirname(path);
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -298,7 +298,7 @@ const openWatcherSqliteDurableBackendInternalV1 = async (
       throw new Error("watcher SQLite state-queue observation is malformed");
     }
     if (
-      watcherCanonicalJsonV1(parsed) !== value.canonical_json ||
+      watcherCanonicalJson(parsed) !== value.canonical_json ||
       typeof parsed !== "object" ||
       parsed === null ||
       (parsed as { observationDigest?: unknown }).observationDigest !==
@@ -360,7 +360,7 @@ const openWatcherSqliteDurableBackendInternalV1 = async (
     return row === undefined ? null : parseStateQueueObservationRow(row);
   };
 
-  const stateQueueObservations: WatcherSqliteStateQueueObservationStoreV1 =
+  const stateQueueObservations: WatcherSqliteStateQueueObservationStore =
     Object.freeze({
       readAll: async () =>
         Object.freeze(
@@ -368,7 +368,7 @@ const openWatcherSqliteDurableBackendInternalV1 = async (
         ),
       append: async (observation) => {
         assertStateQueueObservation(observation);
-        const canonicalJson = watcherCanonicalJsonV1(observation);
+        const canonicalJson = watcherCanonicalJson(observation);
         database.exec("BEGIN IMMEDIATE");
         try {
           const latest = latestStateQueueObservation();
@@ -453,33 +453,33 @@ const openWatcherSqliteDurableBackendInternalV1 = async (
     });
 
   return Object.freeze({
-    schemaVersion: WATCHER_SQLITE_DURABLE_BACKEND_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
     backend,
     stateQueueObservations,
     close: () => database.close(),
   });
 };
 
-export const openWatcherSqliteDurableBackendV1 = async (input: {
+export const openWatcherSqliteDurableBackend = async (input: {
   readonly path: string;
   readonly busyTimeoutMs?: number;
-}): Promise<WatcherSqliteDurableBackendV1> =>
-  await openWatcherSqliteDurableBackendInternalV1(
+}): Promise<WatcherSqliteDurableBackend> =>
+  await openWatcherSqliteDurableBackendInternal(
     input,
-    assertWatcherProductionStateQueueObservationV1,
+    assertWatcherStateQueueObservation,
   );
 
 /** Test-only authority seam; production always uses the opaque source guard. */
-export const unsafeOpenWatcherSqliteDurableBackendForTestV1 = async (
+export const unsafeOpenWatcherSqliteDurableBackendForTest = async (
   input: {
     readonly path: string;
     readonly busyTimeoutMs?: number;
   },
   unsafeAssertStateQueueObservationForTest: (
-    observation: WatcherProductionStateQueueObservationV1,
+    observation: WatcherAuthenticatedStateQueueObservation,
   ) => void,
-): Promise<WatcherSqliteDurableBackendV1> =>
-  await openWatcherSqliteDurableBackendInternalV1(
+): Promise<WatcherSqliteDurableBackend> =>
+  await openWatcherSqliteDurableBackendInternal(
     input,
     unsafeAssertStateQueueObservationForTest,
   );

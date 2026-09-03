@@ -59,7 +59,7 @@ export const ledgerOrderedIndex = (
  * With no extras the emitted root and every base proof are byte-identical to
  * the one-argument behaviour, so no measured fixture moves.
  */
-export type CatalogueExtraCategoryV1 = {
+export type CatalogueExtraCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -72,9 +72,7 @@ export const buildCatalogueDeploymentInfo = async (
   > = {},
 ): Promise<
   FraudProofCatalogueDeploymentInfo & {
-    readonly extraCategories: Readonly<
-      Record<string, CatalogueExtraCategoryV1>
-    >;
+    readonly extraCategories: Readonly<Record<string, CatalogueExtraCategory>>;
   }
 > => {
   const categories = Object.fromEntries(
@@ -113,8 +111,7 @@ export const buildCatalogueDeploymentInfo = async (
       membershipProofCbor: proof.toCBOR().toString("hex"),
     };
   }
-  const extraCategoriesWithProofs: Record<string, CatalogueExtraCategoryV1> =
-    {};
+  const extraCategoriesWithProofs: Record<string, CatalogueExtraCategory> = {};
   for (const [name, extra] of Object.entries(extraCategories)) {
     const proof = await trie.prove(encodeCatalogueKey(extra.categoryId));
     extraCategoriesWithProofs[name] = {

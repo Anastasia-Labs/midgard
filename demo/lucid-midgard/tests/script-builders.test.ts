@@ -1,17 +1,17 @@
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardRedeemerWitnessFieldPreimageV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardRedeemerWitnessFieldPreimage,
   decodeMidgardVersionedScriptListPreimage,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   hashMidgardVersionedScript,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -28,7 +28,7 @@ import {
 const pubkeyAddress =
   "addr_test1qq4jrrcfzylccwgqu3su865es52jkf7yzrdu9cw3z84nycnn3zz9lvqj7vs95tej896xkekzkufhpuk64ja7pga2g8ksdf8km4";
 const rawPlutusV3Script = Buffer.from("010100480001", "hex");
-const canonicalPlutusV3 = buildMidgardCanonicalCekProgramV1(rawPlutusV3Script);
+const canonicalPlutusV3 = buildMidgardCanonicalCekProgram(rawPlutusV3Script);
 const canonicalEnvelope = Buffer.from(canonicalPlutusV3.envelopeCbor);
 const canonicalProgramMaterial = [...canonicalPlutusV3.material.values()];
 const sortedCanonicalProgramMaterial = [...canonicalProgramMaterial].sort(
@@ -39,7 +39,7 @@ const plutusV3Hash = hashMidgardVersionedScript({
   language: "PlutusV3",
   scriptBytes: canonicalEnvelope,
 });
-const midgardV1Hash = hashMidgardVersionedScript({
+const midgardHash = hashMidgardVersionedScript({
   language: "MidgardV1",
   scriptBytes: canonicalEnvelope,
 });
@@ -52,13 +52,13 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "production",
@@ -129,19 +129,18 @@ const makeReferenceUtxo = (ref: OutRef, script: Uint8Array): MidgardUtxo =>
 
 /** `purpose_tag:index` per redeemer, read back through the §5.3 field-8 decoder. */
 const redeemerPointers = (preimageCbor: Uint8Array): readonly string[] =>
-  decodeMidgardRedeemerWitnessFieldPreimageV1(preimageCbor).map(
+  decodeMidgardRedeemerWitnessFieldPreimage(preimageCbor).map(
     (witness) =>
-      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose])}:${witness.index.toString(10)}`,
+      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose])}:${witness.index.toString(10)}`,
   );
 
 const expectScriptIntegrity = (
-  tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+  tx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>,
   languages: readonly ("PlutusV3" | "MidgardV1")[],
 ): void => {
   expect(tx.body.scriptIntegrityHash).toEqual(
     computeScriptIntegrityHashForLanguages(
-      deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet)
-        .redeemerTxWitsHash,
+      deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet).redeemerTxWitsHash,
       languages,
     ),
   );
@@ -196,7 +195,7 @@ describe("V1 script and mint feature surface", () => {
       )
       .pay.ToAddress(pubkeyAddress, { lovelace: 3_000_000n })
       .complete({ fee: 0n });
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     expect(redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor)).toEqual([
       "0:0",
@@ -209,7 +208,7 @@ describe("V1 script and mint feature surface", () => {
     ).toEqual([{ language: "PlutusV3", scriptBytes: canonicalEnvelope }]);
     expect(completed.programMaterial).toEqual(sortedCanonicalProgramMaterial);
     expectScriptIntegrity(tx, ["PlutusV3"]);
-    expect(completed.txId).toEqual(computeMidgardNativeTxIdV1(tx));
+    expect(completed.txId).toEqual(computeMidgardNativeTxId(tx));
     expect(completed.toHash()).toBe(completed.txIdHex);
   });
 
@@ -218,7 +217,7 @@ describe("V1 script and mint feature surface", () => {
       network: "Preview",
       networkId: 0,
     });
-    const spend = makeUtxo(makeOutRef(0x11), scriptAddress(midgardV1Hash), {
+    const spend = makeUtxo(makeOutRef(0x11), scriptAddress(midgardHash), {
       lovelace: 2_000_000n,
     });
     const reference = makeReferenceUtxo(
@@ -231,7 +230,7 @@ describe("V1 script and mint feature surface", () => {
       .readFrom([reference])
       .pay.ToAddress(pubkeyAddress, { lovelace: 2_000_000n })
       .complete({ fee: 0n, programMaterial: canonicalProgramMaterial });
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const referenceKey = Buffer.from(outRefToCbor(reference)).toString("hex");
 
     expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
@@ -246,7 +245,7 @@ describe("V1 script and mint feature surface", () => {
         completed.resolvedReferenceOutputsByOutRef?.get(referenceKey) ?? [],
       ),
     ).toEqual(Buffer.from(reference.cbor!.output!));
-    expect(completed.txId).toEqual(computeMidgardNativeTxIdV1(tx));
+    expect(completed.txId).toEqual(computeMidgardNativeTxId(tx));
   });
 
   it("rejects missing, corrupted, and raw historical reference material", async () => {
@@ -254,7 +253,7 @@ describe("V1 script and mint feature surface", () => {
       network: "Preview",
       networkId: 0,
     });
-    const spend = makeUtxo(makeOutRef(0x31), scriptAddress(midgardV1Hash), {
+    const spend = makeUtxo(makeOutRef(0x31), scriptAddress(midgardHash), {
       lovelace: 2_000_000n,
     });
     const reference = makeReferenceUtxo(

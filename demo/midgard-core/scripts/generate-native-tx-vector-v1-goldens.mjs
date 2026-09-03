@@ -45,7 +45,7 @@ import * as codec from "../dist/index.js";
 // vitest suite drives the *same* definitions through `src/` while this script
 // drives them through `dist/`, so a codec that drifts is caught on both sides
 // rather than only by `--check`.
-import { deriveNativeTxVectorV1 } from "../tests/fixtures/native-tx-vector-v1.vectors.mjs";
+import { deriveNativeTxVector } from "../tests/fixtures/native-tx-vector-v1.vectors.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
@@ -64,7 +64,7 @@ const { checkOnly } = parseGoldenChannelArguments(
 );
 const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
 
-const vector = deriveNativeTxVectorV1(codec);
+const vector = deriveNativeTxVector(codec);
 
 /**
  * Which Aiken constant carries which vector value.

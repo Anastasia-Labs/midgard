@@ -1,6 +1,6 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -30,24 +30,24 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible(manifestId, {
         kind: "manifest",
         manifestId,
-        deploymentMarker: makeDeploymentMarkerV1(manifestId),
+        deploymentMarker: makeDeploymentMarker(manifestId),
         path: "/deployment.json",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).not.toThrow();
     expect(() =>
       assertDaDeploymentIdentityCompatible("cd".repeat(32), {
         kind: "manifest",
         manifestId,
-        deploymentMarker: makeDeploymentMarkerV1(manifestId),
+        deploymentMarker: makeDeploymentMarker(manifestId),
         path: "/deployment.json",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).toThrow(/identities do not match/);
     expect(() =>
       assertDaDeploymentIdentityCompatible(manifestId, {
         kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     ).toThrow(/requires a verified deployment-manifest contract source/);
   });
@@ -59,9 +59,9 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible("cd".repeat(32), {
         kind: "manifest",
         manifestId,
-        deploymentMarker: makeDeploymentMarkerV1(manifestId),
+        deploymentMarker: makeDeploymentMarker(manifestId),
         path: "/deployment.json",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       });
       throw new Error("deployment mismatch unexpectedly accepted");
     });

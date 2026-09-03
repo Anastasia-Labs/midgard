@@ -8,39 +8,36 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
   computeHash32,
   encodeMidgardNativeScript,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  MidgardNativeScriptDecodingDirectionsV1,
-  type MidgardNativeScriptScanFrameV1,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  MidgardNativeScriptDecodingDirections,
+  type MidgardNativeScriptScanFrame,
 } from "@al-ft/midgard-core";
-import {
-  BoundedItemChunkProofV1,
-  MIDGARD_FIELD_INDEX_V1,
-} from "@al-ft/midgard-sdk";
+import { BoundedItemChunkProof, MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingChunkProofV1,
-  buildNativeScriptDecodingLedgerMembershipV1,
-  buildNativeScriptDecodingScanPlanV1,
-  classifyNativeScriptDecodingOutOfDomainFaceV1,
-  nativeScriptDecodingChunkProofDataV1,
-  nativeScriptDecodingFrameDataV1,
-  NativeScriptDecodingOutOfDomainFacesV1,
-  nativeScriptDecodingOutpointKeyHashV1,
-  nativeScriptDecodingOutpointKeyV1,
-  nativeScriptDecodingScanAccusationOfV1,
-  nativeScriptDecodingScanArgsEvidenceV1,
-  nativeScriptDecodingSubjectFieldIndexV1,
-  nativeScriptDecodingWindowProofsV1,
+  buildNativeScriptDecodingChunkProof,
+  buildNativeScriptDecodingLedgerMembership,
+  buildNativeScriptDecodingScanPlan,
+  classifyNativeScriptDecodingOutOfDomainFace,
+  nativeScriptDecodingChunkProofData,
+  nativeScriptDecodingFrameData,
+  NativeScriptDecodingOutOfDomainFaces,
+  nativeScriptDecodingOutpointKey,
+  nativeScriptDecodingOutpointKeyHash,
+  nativeScriptDecodingScanAccusationOf,
+  nativeScriptDecodingScanArgsEvidence,
+  nativeScriptDecodingSubjectFieldIndex,
+  nativeScriptDecodingWindowProofs,
 } from "../src/native-script-decoding/index.js";
 
 const TX_ID_HEX = "ab".repeat(32);
-const FIELD = MIDGARD_FIELD_INDEX_V1.referenceInputs;
+const FIELD = MIDGARD_FIELD_INDEX.referenceInputs;
 
 const signerKey = Buffer.alloc(28, 0x55);
 /** The versioned tag-0 item wrapping one canonical signature node. */
@@ -58,17 +55,17 @@ const sigItemBytes = (): Uint8Array => {
 
 describe("native-script-decoding evidence v1", () => {
   it("derives the accused outpoint's 38-byte trie key and its hash", () => {
-    const key = nativeScriptDecodingOutpointKeyV1({
+    const key = nativeScriptDecodingOutpointKey({
       txIdHex: TX_ID_HEX,
       outputIndex: 0x0102,
     });
     expect(key.length).toBe(38);
     expect(key.toString("hex")).toBe(`825820${TX_ID_HEX}190102`);
-    expect(nativeScriptDecodingOutpointKeyHashV1(key)).toBe(
+    expect(nativeScriptDecodingOutpointKeyHash(key)).toBe(
       computeHash32(key).toString("hex"),
     );
     expect(() =>
-      nativeScriptDecodingOutpointKeyV1({
+      nativeScriptDecodingOutpointKey({
         txIdHex: "abcd",
         outputIndex: 0,
       }),
@@ -76,45 +73,43 @@ describe("native-script-decoding evidence v1", () => {
   });
 
   it("maps outpoint source kinds onto the SS2.5 field indices and refuses strangers", () => {
-    expect(nativeScriptDecodingSubjectFieldIndexV1(0n)).toBe(
-      MIDGARD_FIELD_INDEX_V1.spendInputs,
+    expect(nativeScriptDecodingSubjectFieldIndex(0n)).toBe(
+      MIDGARD_FIELD_INDEX.spendInputs,
     );
-    expect(nativeScriptDecodingSubjectFieldIndexV1(1n)).toBe(
-      MIDGARD_FIELD_INDEX_V1.referenceInputs,
+    expect(nativeScriptDecodingSubjectFieldIndex(1n)).toBe(
+      MIDGARD_FIELD_INDEX.referenceInputs,
     );
-    expect(() => nativeScriptDecodingSubjectFieldIndexV1(2n)).toThrow(
-      /names no/,
-    );
+    expect(() => nativeScriptDecodingSubjectFieldIndex(2n)).toThrow(/names no/);
   });
 
   it("converts core chunk proofs to the wire shape and round-trips through Data", () => {
     const itemBytes = Buffer.alloc(
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 + 905,
+      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES + 905,
       0xab,
     );
-    const coreProof = buildMidgardBoundedItemChunkProofV1(
-      buildMidgardBoundedItemV1({
+    const coreProof = buildMidgardBoundedItemChunkProof(
+      buildMidgardBoundedItem({
         fieldIndex: FIELD,
         itemIndex: 3,
         bytes: itemBytes,
       }),
       1,
     );
-    const wire = nativeScriptDecodingChunkProofDataV1(coreProof);
+    const wire = nativeScriptDecodingChunkProofData(coreProof);
     expect(wire.field_index).toBe(BigInt(FIELD));
     expect(wire.item_index).toBe(3n);
     expect(wire.total_length).toBe(BigInt(itemBytes.length));
     expect(wire.chunk_index).toBe(1n);
     expect(wire.chunk).toBe(
-      itemBytes.subarray(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1).toString("hex"),
+      itemBytes.subarray(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES).toString("hex"),
     );
-    const cbor = Data.to(wire, BoundedItemChunkProofV1);
-    expect(Data.from(cbor, BoundedItemChunkProofV1)).toStrictEqual(wire);
+    const cbor = Data.to(wire, BoundedItemChunkProof);
+    expect(Data.from(cbor, BoundedItemChunkProof)).toStrictEqual(wire);
   });
 
   it("builds chunk proofs by index and refuses chunks outside the item", () => {
     const itemBytes = Buffer.alloc(100, 0x11);
-    const wire = buildNativeScriptDecodingChunkProofV1({
+    const wire = buildNativeScriptDecodingChunkProof({
       fieldIndex: FIELD,
       itemIndex: 0,
       itemBytes,
@@ -124,7 +119,7 @@ describe("native-script-decoding evidence v1", () => {
     expect(wire.chunk).toBe(itemBytes.toString("hex"));
     for (const chunkIndex of [1, -1]) {
       expect(() =>
-        buildNativeScriptDecodingChunkProofV1({
+        buildNativeScriptDecodingChunkProof({
           fieldIndex: FIELD,
           itemIndex: 0,
           itemBytes,
@@ -136,10 +131,10 @@ describe("native-script-decoding evidence v1", () => {
 
   it("selects window proofs exactly as the plan windows demand", () => {
     const single = Buffer.alloc(64, 0x22);
-    const double = Buffer.alloc(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 + 1, 0x33);
+    const double = Buffer.alloc(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES + 1, 0x33);
 
     expect(
-      nativeScriptDecodingWindowProofsV1({
+      nativeScriptDecodingWindowProofs({
         window: null,
         fieldIndex: FIELD,
         itemIndex: 0,
@@ -147,7 +142,7 @@ describe("native-script-decoding evidence v1", () => {
       }),
     ).toStrictEqual({ chunk_proof: null, next_chunk_proof: null });
 
-    const windowed = nativeScriptDecodingWindowProofsV1({
+    const windowed = nativeScriptDecodingWindowProofs({
       window: { chunkIndex: 0, needNext: false },
       fieldIndex: FIELD,
       itemIndex: 0,
@@ -156,7 +151,7 @@ describe("native-script-decoding evidence v1", () => {
     expect(windowed.chunk_proof?.chunk_index).toBe(0n);
     expect(windowed.next_chunk_proof).toBeNull();
 
-    const adjacent = nativeScriptDecodingWindowProofsV1({
+    const adjacent = nativeScriptDecodingWindowProofs({
       window: { chunkIndex: 0, needNext: true },
       fieldIndex: FIELD,
       itemIndex: 0,
@@ -166,7 +161,7 @@ describe("native-script-decoding evidence v1", () => {
     expect(adjacent.next_chunk_proof?.chunk_index).toBe(1n);
 
     expect(() =>
-      nativeScriptDecodingWindowProofsV1({
+      nativeScriptDecodingWindowProofs({
         window: { chunkIndex: 1, needNext: true },
         fieldIndex: FIELD,
         itemIndex: 0,
@@ -176,7 +171,7 @@ describe("native-script-decoding evidence v1", () => {
   });
 
   it("converts engine frame witnesses to the wire shape", () => {
-    const frame: MidgardNativeScriptScanFrameV1 = {
+    const frame: MidgardNativeScriptScanFrame = {
       tail: Buffer.from("8200581cdead", "hex"),
       kind: 1,
       childCount: 3,
@@ -184,7 +179,7 @@ describe("native-script-decoding evidence v1", () => {
       validCount: 1,
       required: 0n,
     };
-    expect(nativeScriptDecodingFrameDataV1(frame)).toStrictEqual({
+    expect(nativeScriptDecodingFrameData(frame)).toStrictEqual({
       tail: "8200581cdead",
       kind: 1n,
       child_count: 3n,
@@ -196,13 +191,13 @@ describe("native-script-decoding evidence v1", () => {
 
   it("assembles Scan-redeemer evidence from a planned segment", () => {
     const itemBytes = sigItemBytes();
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes,
-      direction: MidgardNativeScriptDecodingDirectionsV1.WrongfulRejection,
+      direction: MidgardNativeScriptDecodingDirections.WrongfulRejection,
     });
     expect(plan.segments.length).toBeGreaterThan(0);
     const segment = plan.segments[0]!;
-    const evidence = nativeScriptDecodingScanArgsEvidenceV1({
+    const evidence = nativeScriptDecodingScanArgsEvidence({
       segment,
       fieldIndex: FIELD,
       itemIndex: 0,
@@ -219,7 +214,7 @@ describe("native-script-decoding evidence v1", () => {
 
   it("copies each decoding accusation verbatim and refuses foreign rejection arms", () => {
     expect(
-      nativeScriptDecodingScanAccusationOfV1({
+      nativeScriptDecodingScanAccusationOf({
         ResolvedReferenceScriptMalformed: { source_kind: 1n, input_index: 0n },
       }),
     ).toStrictEqual({
@@ -228,7 +223,7 @@ describe("native-script-decoding evidence v1", () => {
       outpointCursor: 0n,
     });
     expect(
-      nativeScriptDecodingScanAccusationOfV1({
+      nativeScriptDecodingScanAccusationOf({
         ResolvedReferenceScriptNodeLimit: { source_kind: 0n, input_index: 7n },
       }),
     ).toStrictEqual({
@@ -237,7 +232,7 @@ describe("native-script-decoding evidence v1", () => {
       outpointCursor: 7n,
     });
     expect(
-      nativeScriptDecodingScanAccusationOfV1({
+      nativeScriptDecodingScanAccusationOf({
         ResolvedReferenceScriptDepthLimit: {
           source_kind: 2n,
           input_index: -3n,
@@ -249,25 +244,25 @@ describe("native-script-decoding evidence v1", () => {
       outpointCursor: -3n,
     });
     expect(() =>
-      nativeScriptDecodingScanAccusationOfV1("FeeBelowMinimum"),
+      nativeScriptDecodingScanAccusationOf("FeeBelowMinimum"),
     ).toThrow(/three decoding arms/);
   });
 
   it("classifies every SS7.2 out-of-domain face and refuses in-domain pairs", () => {
-    const classify = classifyNativeScriptDecodingOutOfDomainFaceV1;
+    const classify = classifyNativeScriptDecodingOutOfDomainFace;
     expect(
       classify({ outpointSourceKind: 2n, outpointCursor: 0n, itemCount: null }),
-    ).toBe(NativeScriptDecodingOutOfDomainFacesV1.UnknownSourceKind);
+    ).toBe(NativeScriptDecodingOutOfDomainFaces.UnknownSourceKind);
     expect(
       classify({
         outpointSourceKind: 0n,
         outpointCursor: -1n,
         itemCount: null,
       }),
-    ).toBe(NativeScriptDecodingOutOfDomainFacesV1.NegativeOrdinal);
+    ).toBe(NativeScriptDecodingOutOfDomainFaces.NegativeOrdinal);
     expect(
       classify({ outpointSourceKind: 1n, outpointCursor: 5n, itemCount: 5n }),
-    ).toBe(NativeScriptDecodingOutOfDomainFacesV1.CountFace);
+    ).toBe(NativeScriptDecodingOutOfDomainFaces.CountFace);
     expect(
       classify({ outpointSourceKind: 0n, outpointCursor: 4n, itemCount: 5n }),
     ).toBeNull();
@@ -277,7 +272,7 @@ describe("native-script-decoding evidence v1", () => {
   });
 
   it("proves ledger membership through the injected trie handle and refuses a root mismatch", async () => {
-    const key = nativeScriptDecodingOutpointKeyV1({
+    const key = nativeScriptDecodingOutpointKey({
       txIdHex: TX_ID_HEX,
       outputIndex: 7,
     });
@@ -292,7 +287,7 @@ describe("native-script-decoding evidence v1", () => {
         Buffer.from((await trie.prove(target)).toCBOR()),
     };
 
-    const proof = await buildNativeScriptDecodingLedgerMembershipV1({
+    const proof = await buildNativeScriptDecodingLedgerMembership({
       trie: handle,
       outpointKey: key,
       priorLedgerRootHex: handle.rootHex.toUpperCase(),
@@ -300,7 +295,7 @@ describe("native-script-decoding evidence v1", () => {
     expect(Array.isArray(proof)).toBe(true);
 
     await expect(
-      buildNativeScriptDecodingLedgerMembershipV1({
+      buildNativeScriptDecodingLedgerMembership({
         trie: handle,
         outpointKey: key,
         priorLedgerRootHex: "00".repeat(32),

@@ -14,7 +14,7 @@
  * 2. a `DaPayloadEnvelopeV1` retrieved over the public retained-DA protocol
  *    (`public_or_permissionless_da`),
  *
- * which are cross-checked by `reconstructDaPayloadV1`: it re-derives every
+ * which are cross-checked by `reconstructDaPayload`: it re-derives every
  * counted root and count from the payload and requires them to equal the
  * L1-committed header. Operator REST/DB/file inputs are not reachable from this
  * module; the labelled-diagnostic escape hatch lives in
@@ -25,16 +25,16 @@ import {
   type DaRequestResponseProtocol,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  admitAuthenticatedStateQueueHeaderObservationV1,
-  admitEvidenceProvenanceV1,
-  assertSecurityGradeEvidenceV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CanonicalEvidenceRejectionV1,
-  combineEvidenceGradeV1,
-  type EvidenceGradeV1,
-  type EvidenceProvenanceV1,
-  type HeaderV1,
-  type TransactionsInclusionRootAuthenticationV1,
+  admitAuthenticatedStateQueueHeaderObservation,
+  admitEvidenceProvenance,
+  assertSecurityGradeEvidence,
+  type AuthenticatedStateQueueHeaderObservation,
+  CanonicalEvidenceRejection,
+  combineEvidenceGrade,
+  type EvidenceGrade,
+  type EvidenceProvenance,
+  type Header,
+  type TransactionsInclusionRootAuthentication,
 } from "@al-ft/midgard-sdk";
 
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
@@ -44,46 +44,46 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import {
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   type TransitionTraceReconstruction,
 } from "../transition-trace/reconstruct.js";
 
-export const CANONICAL_BLOCK_EVIDENCE_V1_SCHEMA_VERSION =
+export const CANONICAL_BLOCK_EVIDENCE_SCHEMA_VERSION =
   "midgard-canonical-block-evidence-v1" as const;
 
 /**
  * One transaction of a canonically verified block: the exact canonical native
  * CBOR carried by the payload's `transaction_preimages`, already authenticated
- * by `reconstructDaPayloadV1` against the payload's `transactions` entry and
+ * by `reconstructDaPayload` against the payload's `transactions` entry and
  * therefore against the L1-committed `transactions_root`.
  */
-export type CanonicalBlockTransactionV1 = NodeTransactionPayload & {
+export type CanonicalBlockTransaction = NodeTransactionPayload & {
   /** Canonical Data(L2TransactionSourceV1) bytes committed by the header. */
   readonly l2TransactionSourceCbor: string;
 };
 
-export type CanonicalBlockEvidenceProvenanceV1 = {
-  readonly l1: EvidenceProvenanceV1;
-  readonly da: EvidenceProvenanceV1;
+export type CanonicalBlockEvidenceProvenance = {
+  readonly l1: EvidenceProvenance;
+  readonly da: EvidenceProvenance;
 };
 
-export type CanonicalBlockEvidenceV1 = {
-  readonly schemaVersion: typeof CANONICAL_BLOCK_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly grade: EvidenceGradeV1;
-  readonly provenance: CanonicalBlockEvidenceProvenanceV1;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+export type CanonicalBlockEvidence = {
+  readonly schemaVersion: typeof CANONICAL_BLOCK_EVIDENCE_SCHEMA_VERSION;
+  readonly grade: EvidenceGrade;
+  readonly provenance: CanonicalBlockEvidenceProvenance;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly headerHash: string;
-  readonly header: HeaderV1;
+  readonly header: Header;
   /** SHA-256 of the exact public `DaPayloadEnvelopeV1` bytes. */
   readonly payloadEnvelopeSha256: string;
   /** SHA-256 of the unwrapped canonical `DaPayloadV1` bytes. */
   readonly payloadSha256: string;
   readonly reconstruction: TransitionTraceReconstruction;
-  readonly transactions: readonly CanonicalBlockTransactionV1[];
-  readonly inclusionRootAuthentication: TransactionsInclusionRootAuthenticationV1;
+  readonly transactions: readonly CanonicalBlockTransaction[];
+  readonly inclusionRootAuthentication: TransactionsInclusionRootAuthentication;
 };
 
-export type CanonicalBlockEvidenceFetchAttemptV1 = {
+export type CanonicalBlockEvidenceFetchAttempt = {
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly protocol: DaRequestResponseProtocol;
@@ -91,14 +91,14 @@ export type CanonicalBlockEvidenceFetchAttemptV1 = {
 };
 
 /** Re-derives the one normative transaction-source leaf convention. */
-export const authenticateTransactionsInclusionRootsV1 = async ({
+export const authenticateTransactionsInclusionRoots = async ({
   header,
   reconstruction,
 }: {
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly reconstruction: TransitionTraceReconstruction;
-  readonly transactions: readonly CanonicalBlockTransactionV1[];
-}): Promise<TransactionsInclusionRootAuthenticationV1> => {
+  readonly transactions: readonly CanonicalBlockTransaction[];
+}): Promise<TransactionsInclusionRootAuthentication> => {
   const source = reconstruction.rootData.transactions;
   return {
     headerTransactionsRoot: header.transactionsRoot,
@@ -119,27 +119,27 @@ export const authenticateTransactionsInclusionRootsV1 = async ({
  * canonical store). No transport is involved, so this is the reusable core for
  * both the retained-DA client and offline deterministic replay.
  */
-export const canonicalBlockEvidenceFromVerifiedPayloadV1 = async ({
+export const canonicalBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: EvidenceProvenanceV1;
+  readonly daProvenance: EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<CanonicalBlockEvidenceV1> => {
+}): Promise<CanonicalBlockEvidence> => {
   const admittedObservation =
-    await admitAuthenticatedStateQueueHeaderObservationV1({
+    await admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = assertSecurityGradeEvidenceV1(daProvenance);
+  const admittedDa = assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new CanonicalEvidenceRejectionV1(
+    throw new CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -148,28 +148,28 @@ export const canonicalBlockEvidenceFromVerifiedPayloadV1 = async ({
   // The cross-check: every counted root and count of the public payload must
   // equal the L1-committed header, and the embedded header must hash to the
   // observed header hash.
-  const reconstruction = await reconstructDaPayloadV1({
+  const reconstruction = await reconstructDaPayload({
     payloadEnvelopeCbor,
     expectedHeaderHash: admittedObservation.headerHash,
     committedHeader: admittedObservation.header,
   });
 
-  const transactions: readonly CanonicalBlockTransactionV1[] =
+  const transactions: readonly CanonicalBlockTransaction[] =
     reconstruction.transactions.map((entry) => ({
       nodeTxId: entry.txId,
       txCbor: entry.fullTransactionCbor.toString("hex"),
       l2TransactionSourceCbor: entry.valueBytes.toString("hex"),
     }));
   const inclusionRootAuthentication =
-    await authenticateTransactionsInclusionRootsV1({
+    await authenticateTransactionsInclusionRoots({
       header: admittedObservation.header,
       reconstruction,
       transactions,
     });
 
   return {
-    schemaVersion: CANONICAL_BLOCK_EVIDENCE_V1_SCHEMA_VERSION,
-    grade: combineEvidenceGradeV1([admittedObservation.provenance, admittedDa]),
+    schemaVersion: CANONICAL_BLOCK_EVIDENCE_SCHEMA_VERSION,
+    grade: combineEvidenceGrade([admittedObservation.provenance, admittedDa]),
     provenance: { l1: admittedObservation.provenance, da: admittedDa },
     observation: admittedObservation,
     headerHash: admittedObservation.headerHash,
@@ -186,8 +186,8 @@ export const canonicalBlockEvidenceFromVerifiedPayloadV1 = async ({
   };
 };
 
-export type FetchCanonicalBlockEvidenceOptionsV1 = {
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+export type FetchCanonicalBlockEvidenceOptions = {
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   /** Public retained-DA sources, e.g. `DaLibp2pRetainedDaSource`. */
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
@@ -198,20 +198,20 @@ export type FetchCanonicalBlockEvidenceOptionsV1 = {
  * The canonical evidence-source entry point: authenticated L1 header
  * observation + public retained-DA payload -> verified block evidence.
  */
-export const fetchCanonicalBlockEvidenceV1 = async ({
+export const fetchCanonicalBlockEvidence = async ({
   observation,
   sources,
   retries,
   minimumConfirmationDepth,
-}: FetchCanonicalBlockEvidenceOptionsV1): Promise<CanonicalBlockEvidenceV1> => {
+}: FetchCanonicalBlockEvidenceOptions): Promise<CanonicalBlockEvidence> => {
   if (sources.length === 0) {
-    throw new CanonicalEvidenceRejectionV1(
+    throw new CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
   const admittedObservation =
-    await admitAuthenticatedStateQueueHeaderObservationV1({
+    await admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
@@ -222,10 +222,10 @@ export const fetchCanonicalBlockEvidenceV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const daProvenance = assertSecurityGradeEvidenceV1(
-    admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
+  const daProvenance = assertSecurityGradeEvidence(
+    admitEvidenceProvenance({ provenance: fetched.provenance }),
   );
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
+  return await canonicalBlockEvidenceFromVerifiedPayload({
     observation: admittedObservation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
     daProvenance,
@@ -241,10 +241,10 @@ export const fetchCanonicalBlockEvidenceV1 = async ({
  * proof: every byte is already bound to the L1-committed `transactions_root`
  * through the payload reconstruction.
  */
-export const blockTransactionsFromCanonicalEvidenceV1 = (
-  evidence: CanonicalBlockEvidenceV1,
-): readonly CanonicalBlockTransactionV1[] => {
-  assertSecurityGradeEvidenceV1(evidence.provenance.da);
-  assertSecurityGradeEvidenceV1(evidence.provenance.l1);
+export const blockTransactionsFromCanonicalEvidence = (
+  evidence: CanonicalBlockEvidence,
+): readonly CanonicalBlockTransaction[] => {
+  assertSecurityGradeEvidence(evidence.provenance.da);
+  assertSecurityGradeEvidence(evidence.provenance.l1);
   return evidence.transactions;
 };

@@ -1,42 +1,42 @@
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardAddressWitnessItemV1,
-  decodeMidgardFieldPreimageV1,
+  decodeMidgardAddressWitnessItem,
+  decodeMidgardFieldPreimage,
   decodeMidgardTxOutput,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  selectMidgardFieldCarriageTierV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
-  missingSignatureVkeyHashV1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
+  missingSignatureVkeyHash,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
   verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 
-export const PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY_V1 =
+export const PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY =
   "protectedOutputSignerMissing" as const;
-export const PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1 = "0000002b" as const;
-export const PROTECTED_OUTPUT_SIGNER_SCAN_BATCH_V1 = 32;
-export const PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1 = 318;
+export const PROTECTED_OUTPUT_SIGNER_MISSING_ID = "0000002b" as const;
+export const PROTECTED_OUTPUT_SIGNER_SCAN_BATCH = 32;
+export const PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES = 318;
 
 const fail = (message: string): never => {
-  throw new Error(`${PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY_V1}: ${message}`);
+  throw new Error(`${PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY}: ${message}`);
 };
 
-export type ProtectedOutputSignerMissingFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type ProtectedOutputSignerMissingFinding = Readonly<{
+  subject: VerdictSubject;
   outputIndex: number;
 }>;
 
-export type ProtectedOutputSignerMissingEvidenceV1 =
-  ProtectedOutputSignerMissingFindingV1 &
+export type ProtectedOutputSignerMissingEvidence =
+  ProtectedOutputSignerMissingFinding &
     Readonly<{
       canonicalTransactionCborHex: string;
       outputCborHex: string;
@@ -53,7 +53,7 @@ export type ProtectedOutputSignerMissingEvidenceV1 =
       }>[];
     }>;
 
-const exactForcedOutputIndex = (subject: VerdictSubjectV1): number => {
+const exactForcedOutputIndex = (subject: VerdictSubject): number => {
   const reason = subject.rejection_reason;
   if (
     reason === null ||
@@ -68,39 +68,39 @@ const exactForcedOutputIndex = (subject: VerdictSubjectV1): number => {
   return outputIndex;
 };
 
-export const classifyProtectedOutputSignerMissingFindingV1 = ({
+export const classifyProtectedOutputSignerMissingFinding = ({
   subject,
   outputIndex,
-}: ProtectedOutputSignerMissingFindingV1): void => {
-  if (!verdictSubjectIsCanonicalV1(subject))
+}: ProtectedOutputSignerMissingFinding): void => {
+  if (!verdictSubjectIsCanonical(subject))
     return fail("subject is not canonical");
   if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
     return fail("output coordinate is invalid");
-  if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1) {
+  if (subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (exactForcedOutputIndex(subject) !== outputIndex)
       return fail("reason output coordinate was substituted");
   } else if (
-    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     subject.rejection_reason !== null
   ) {
     return fail("subject polarity is invalid");
   }
 };
 
-export const prepareProtectedOutputSignerMissingEvidenceV1 = ({
+export const prepareProtectedOutputSignerMissingEvidence = ({
   subject,
   outputIndex,
   canonicalTransactionCbor,
-}: ProtectedOutputSignerMissingFindingV1 & {
+}: ProtectedOutputSignerMissingFinding & {
   readonly canonicalTransactionCbor: Uint8Array;
-}): ProtectedOutputSignerMissingEvidenceV1 => {
-  classifyProtectedOutputSignerMissingFindingV1({ subject, outputIndex });
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+}): ProtectedOutputSignerMissingEvidence => {
+  classifyProtectedOutputSignerMissingFinding({ subject, outputIndex });
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     canonicalTransactionCbor,
   );
   if (material.transactionId.toString("hex") !== subject.transaction_id)
     return fail("transaction identity was substituted");
-  const outputItems = decodeMidgardFieldPreimageV1(material.fieldPreimages[2]!);
+  const outputItems = decodeMidgardFieldPreimage(material.fieldPreimages[2]!);
   const outputCbor = outputItems[outputIndex];
   if (outputCbor === undefined)
     return fail("output coordinate is out of range");
@@ -110,16 +110,14 @@ export const prepareProtectedOutputSignerMissingEvidenceV1 = ({
   if (address.paymentCredential.kind !== "PubKey")
     return fail("selected protected output does not use a key credential");
   const paymentCredentialHex = address.paymentCredential.hash.toString("hex");
-  const witnessItems = decodeMidgardFieldPreimageV1(
-    material.fieldPreimages[7]!,
-  );
-  if (witnessItems.length > PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1)
+  const witnessItems = decodeMidgardFieldPreimage(material.fieldPreimages[7]!);
+  if (witnessItems.length > PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES)
     return fail("address-witness frontier exceeds the canonical maximum");
   let signerPresent = false;
   const validSignerHashes: string[] = [];
   const checkpoints: { cursor: number; signerPresent: boolean }[] = [];
   witnessItems.forEach((item, index) => {
-    const witness = decodeMidgardAddressWitnessItemV1(item);
+    const witness = decodeMidgardAddressWitnessItem(item);
     const verificationKey = Buffer.from(witness.verificationKey).toString(
       "hex",
     );
@@ -131,12 +129,12 @@ export const prepareProtectedOutputSignerMissingEvidenceV1 = ({
       },
     });
     if (valid) {
-      const hash = missingSignatureVkeyHashV1(verificationKey);
+      const hash = missingSignatureVkeyHash(verificationKey);
       validSignerHashes.push(hash);
       if (hash === paymentCredentialHex) signerPresent = true;
     }
     if (
-      (index + 1) % PROTECTED_OUTPUT_SIGNER_SCAN_BATCH_V1 === 0 ||
+      (index + 1) % PROTECTED_OUTPUT_SIGNER_SCAN_BATCH === 0 ||
       index + 1 === witnessItems.length
     ) {
       checkpoints.push({ cursor: index + 1, signerPresent });
@@ -158,43 +156,43 @@ export const prepareProtectedOutputSignerMissingEvidenceV1 = ({
     addressWitnessFieldPreimageHex: material.fieldPreimages[7]!.toString("hex"),
     validSignerHashes: Object.freeze(validSignerHashes),
     signerPresent,
-    outputCarriage: selectMidgardFieldCarriageTierV1(
+    outputCarriage: selectMidgardFieldCarriageTier(
       material.fieldPreimages[2]!.length,
     ),
-    witnessCarriage: selectMidgardFieldCarriageTierV1(
+    witnessCarriage: selectMidgardFieldCarriageTier(
       material.fieldPreimages[7]!.length,
     ),
     checkpoints: Object.freeze(
       checkpoints.map((checkpoint) => Object.freeze(checkpoint)),
     ),
   });
-  if (!protectedOutputSignerMissingEvidenceClosesV1(evidence))
+  if (!protectedOutputSignerMissingEvidenceCloses(evidence))
     return fail("authenticated signer state agrees with the operator verdict");
   return evidence;
 };
 
-export const protectedOutputSignerMissingEvidenceClosesV1 = (
-  evidence: ProtectedOutputSignerMissingEvidenceV1,
+export const protectedOutputSignerMissingEvidenceCloses = (
+  evidence: ProtectedOutputSignerMissingEvidence,
 ): boolean =>
-  terminalVerdictContradictionV1(evidence.subject, !evidence.signerPresent);
+  terminalVerdictContradiction(evidence.subject, !evidence.signerPresent);
 
 /** Exhaustive accepted plus exact forced-reason replay over authenticated DA. */
-export const detectProtectedOutputSignerMissingCompleteReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly ProtectedOutputSignerMissingEvidenceV1[] => {
-  const detections: ProtectedOutputSignerMissingEvidenceV1[] = [];
+export const detectProtectedOutputSignerMissingCompleteReplay = (
+  block: CanonicalBlockEvidence,
+): readonly ProtectedOutputSignerMissingEvidence[] => {
+  const detections: ProtectedOutputSignerMissingEvidence[] = [];
   const inspect = (
-    subject: VerdictSubjectV1,
+    subject: VerdictSubject,
     transaction: Uint8Array,
     outputIndex: number,
   ): void => {
     try {
-      const evidence = prepareProtectedOutputSignerMissingEvidenceV1({
+      const evidence = prepareProtectedOutputSignerMissingEvidence({
         subject,
         outputIndex,
         canonicalTransactionCbor: transaction,
       });
-      if (protectedOutputSignerMissingEvidenceClosesV1(evidence))
+      if (protectedOutputSignerMissingEvidenceCloses(evidence))
         detections.push(evidence);
     } catch (cause) {
       if (
@@ -214,11 +212,11 @@ export const detectProtectedOutputSignerMissingCompleteReplayV1 = (
   };
   block.transactions.forEach((transaction) => {
     const bytes = Buffer.from(transaction.txCbor, "hex");
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(bytes);
-    const subject = acceptedVerdictSubjectV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(bytes);
+    const subject = acceptedVerdictSubject(
       material.transactionId.toString("hex"),
     );
-    decodeMidgardFieldPreimageV1(material.fieldPreimages[2]!).forEach(
+    decodeMidgardFieldPreimage(material.fieldPreimages[2]!).forEach(
       (_output, outputIndex) => inspect(subject, bytes, outputIndex),
     );
   });
@@ -234,7 +232,7 @@ export const detectProtectedOutputSignerMissingCompleteReplayV1 = (
       reason.ProtectedOutputSignerMissing.output_index,
     );
     inspect(
-      forcedVerdictSubjectV1({
+      forcedVerdictSubject({
         transactionId: forced.value.tx_id,
         sourceKey: forced.key,
         rejectionReason: reason,

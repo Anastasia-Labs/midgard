@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data } from "@lucid-evolution/lucid";
@@ -43,8 +43,8 @@ const outputReference = (
 const outputReferenceCbor = (value: SDK.OutputReference): Buffer =>
   Buffer.from(Data.to(value, SDK.OutputReference), "hex");
 
-const canonicalTransaction = (): MidgardNativeTxCanonicalV1 => ({
-  version: MIDGARD_NATIVE_TX_V1_VERSION,
+const canonicalTransaction = (): MidgardNativeTxCanonical => ({
+  version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -75,19 +75,19 @@ const forcedEntry = ({
 }: {
   readonly label: string;
   readonly txOrderId: SDK.OutputReference;
-  readonly verdict: SDK.OperatorVerdictV1;
+  readonly verdict: SDK.OperatorVerdict;
   readonly inclusionTime: Date;
 }): Effect.Effect<ForcedTransactionsDB.Entry, DatabaseError> =>
   Effect.gen(function* () {
-    const nativeTxCbor = encodeMidgardNativeTxCanonicalV1(
-      materializeMidgardNativeTxFromCanonicalV1(canonicalTransaction()),
+    const nativeTxCbor = encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical(canonicalTransaction()),
     );
-    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
+    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
       nativeTxCbor,
       verdict,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
-    const sidecarCbor = encodeMidgardCekProgramMaterialSidecarV1([]);
+    const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
     return {
       [ForcedTransactionsDB.Columns.TX_ORDER_ID]:
         outputReferenceCbor(txOrderId),
@@ -108,9 +108,9 @@ const forcedEntry = ({
       [ForcedTransactionsDB.Columns.TX_COMPACT]: encoded.txCompact,
       [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
       [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]:
-        ForcedTransactionsDB.midgardTxValidityOfVerdictV1(verdict),
+        ForcedTransactionsDB.midgardTxValidityOfVerdict(verdict),
       [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
-        MIDGARD_CONSENSUS_PROFILE_V1.profileId,
+        MIDGARD_CONSENSUS_PROFILE.profileId,
       [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: nativeTxCbor,
       [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
         encoded.transactionCommitment,
@@ -185,8 +185,8 @@ describe("forced transaction source roots", () => {
         invalid[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE].toString(
           "hex",
         ),
-        SDK.ForcedInclusionTxV1,
-      ) as SDK.ForcedInclusionTxV1;
+        SDK.ForcedInclusionTx,
+      ) as SDK.ForcedInclusionTx;
       const membership = yield* buildRootMembershipProof({
         root: {
           ...built,
@@ -200,7 +200,7 @@ describe("forced transaction source roots", () => {
         key: txOrderId,
         value: decodedValue,
         keySchema: SDK.OutputReferenceSchema,
-        valueSchema: SDK.ForcedInclusionTxV1Schema,
+        valueSchema: SDK.ForcedInclusionTxSchema,
       });
 
       expect(decodedValue.verdict).toEqual({
@@ -217,7 +217,7 @@ describe("forced transaction source roots", () => {
       yield* verifyRootMembershipProof({
         witness: membership,
         keySchema: SDK.OutputReferenceSchema,
-        valueSchema: SDK.ForcedInclusionTxV1Schema,
+        valueSchema: SDK.ForcedInclusionTxSchema,
         options: {
           expectedDomain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
           expectedRoot: built.root,

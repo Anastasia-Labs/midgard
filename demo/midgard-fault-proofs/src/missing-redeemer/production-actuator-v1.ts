@@ -3,44 +3,44 @@ import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingRedeemerContractsV1 } from "./contracts-v1.js";
-import { MISSING_REDEEMER_CATEGORY_V1 } from "./family-v1.js";
+import type { MissingRedeemerContracts } from "./contracts-v1.js";
+import { MISSING_REDEEMER_CATEGORY } from "./family-v1.js";
 import {
-  admitMissingRedeemerProductionArtifactV1,
-  type MissingRedeemerProductionArtifactV1,
+  admitMissingRedeemerArtifact,
+  type MissingRedeemerArtifact,
 } from "./production-replay-v1.js";
-import { planMissingRedeemerStagedWalkV1 } from "./staged-plan-v1.js";
+import { planMissingRedeemerStagedWalk } from "./staged-plan-v1.js";
 import {
-  submitMissingRedeemerStep02aV1,
-  submitMissingRedeemerStep02bV1,
-  submitMissingRedeemerStep02V1,
+  submitMissingRedeemerStep02,
+  submitMissingRedeemerStep02a,
+  submitMissingRedeemerStep02b,
 } from "./submit-authentication-v1.js";
-import { submitMissingRedeemerCancelV1 } from "./submit-cancel-v1.js";
+import { submitMissingRedeemerCancel } from "./submit-cancel-v1.js";
 import {
-  type MissingRedeemerStep03ActionV1,
-  submitMissingRedeemerStep03V1,
-  submitMissingRedeemerStep04V1,
+  type MissingRedeemerStep03Action,
+  submitMissingRedeemerStep03,
+  submitMissingRedeemerStep04,
 } from "./submit-field-scan-v1.js";
 import {
-  submitMissingRedeemerStep01AcceptedV1,
-  submitMissingRedeemerStep01ForcedV1,
+  submitMissingRedeemerStep01Accepted,
+  submitMissingRedeemerStep01Forced,
 } from "./submit-step-01-v1.js";
-import { submitMissingRedeemerStep05V1 } from "./submit-step-05-v1.js";
+import { submitMissingRedeemerStep05 } from "./submit-step-05-v1.js";
 
-export type MissingRedeemerWorkflowReferencesV1 = Readonly<{
+export type MissingRedeemerWorkflowReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
-export type BoundMissingRedeemerActuatorConfigV1 = Readonly<{
+export type BoundMissingRedeemerActuatorConfig = Readonly<{
   binding: Readonly<{
     blueprint: unknown;
     deploymentInfo: unknown;
@@ -58,11 +58,11 @@ export type BoundMissingRedeemerActuatorConfigV1 = Readonly<{
   }>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: MissingRedeemerContractsV1;
-  references: MissingRedeemerWorkflowReferencesV1;
+  contracts: MissingRedeemerContracts;
+  references: MissingRedeemerWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
-export type MissingRedeemerActuatorActionV1 =
+export type MissingRedeemerActuatorAction =
   | { readonly stage: "init"; readonly stateQueueBlockOutRef: string }
   | {
       readonly stage: "step_01";
@@ -76,7 +76,7 @@ export type MissingRedeemerActuatorActionV1 =
   | {
       readonly stage: "field";
       readonly threadOutRef: string;
-      readonly action: MissingRedeemerStep03ActionV1;
+      readonly action: MissingRedeemerStep03Action;
     }
   | {
       readonly stage: "cancel";
@@ -88,32 +88,32 @@ export type MissingRedeemerActuatorActionV1 =
       readonly nextRemovalOutRef: string;
       readonly fraudProofOutRef: string;
     };
-export type MissingRedeemerCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type MissingRedeemerCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<MissingRedeemerCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<MissingRedeemerCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /** Concrete seven-role actuator; configuration contains infrastructure only. */
-export const createMissingRedeemerActuatorV1 = (
-  config: BoundMissingRedeemerActuatorConfigV1,
+export const createMissingRedeemerActuator = (
+  config: BoundMissingRedeemerActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      action: MissingRedeemerActuatorActionV1;
-      artifact: MissingRedeemerProductionArtifactV1;
-    }): Promise<MissingRedeemerCapturedActionV1> => {
-      artifact = admitMissingRedeemerProductionArtifactV1(artifact);
+      action: MissingRedeemerActuatorAction;
+      artifact: MissingRedeemerArtifact;
+    }): Promise<MissingRedeemerCapturedAction> => {
+      artifact = admitMissingRedeemerArtifact(artifact);
       if (artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error("missingRedeemer artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
@@ -125,7 +125,7 @@ export const createMissingRedeemerActuatorV1 = (
             deploymentInfo: config.binding.deploymentInfo,
             network: config.binding.network,
             signer: config.signer,
-            fraudCategory: MISSING_REDEEMER_CATEGORY_V1 as never,
+            fraudCategory: MISSING_REDEEMER_CATEGORY as never,
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
@@ -149,7 +149,7 @@ export const createMissingRedeemerActuatorV1 = (
             awaitConfirmation: false,
           } as const;
           if (artifact.acceptedInclusion !== undefined)
-            await submitMissingRedeemerStep01AcceptedV1({
+            await submitMissingRedeemerStep01Accepted({
               ...common,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -158,7 +158,7 @@ export const createMissingRedeemerActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else if (artifact.forcedMembership !== undefined)
-            await submitMissingRedeemerStep01ForcedV1({
+            await submitMissingRedeemerStep01Forced({
               ...common,
               membership: artifact.forcedMembership,
             });
@@ -195,18 +195,18 @@ export const createMissingRedeemerActuatorV1 = (
             awaitConfirmation: false,
           };
           if (action.stage === "step_02")
-            await submitMissingRedeemerStep02V1(args);
+            await submitMissingRedeemerStep02(args);
           else if (action.stage === "step_02a")
-            await submitMissingRedeemerStep02aV1(args);
-          else await submitMissingRedeemerStep02bV1(args);
+            await submitMissingRedeemerStep02a(args);
+          else await submitMissingRedeemerStep02b(args);
         });
-      const staged = planMissingRedeemerStagedWalkV1({
+      const staged = planMissingRedeemerStagedWalk({
         transactionId: artifact.evidence.subject.transaction_id,
         fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
       });
       if (action.stage === "field")
         return await capture(async (preSubmitBoundary) => {
-          await submitMissingRedeemerStep03V1({
+          await submitMissingRedeemerStep03({
             ...common!,
             nativeTxCompactCbor: artifact.nativeTxCompactCbor,
             staged,
@@ -218,7 +218,7 @@ export const createMissingRedeemerActuatorV1 = (
         });
       if (action.stage === "scan")
         return await capture(async (preSubmitBoundary) => {
-          await submitMissingRedeemerStep04V1({
+          await submitMissingRedeemerStep04({
             ...common!,
             nativeTxCompactCbor: artifact.nativeTxCompactCbor,
             staged,
@@ -229,7 +229,7 @@ export const createMissingRedeemerActuatorV1 = (
         });
       if (action.stage === "finalize")
         return await capture(async (preSubmitBoundary) => {
-          await submitMissingRedeemerStep05V1({
+          await submitMissingRedeemerStep05({
             ...common!,
             referenceScriptUtxo: config.references.steps[6],
             witnessReferenceScripts: config.references.witnesses,
@@ -245,7 +245,7 @@ export const createMissingRedeemerActuatorV1 = (
         )
           throw new Error("missingRedeemer cancellation step is invalid");
         return await capture(async (preSubmitBoundary) => {
-          await submitMissingRedeemerCancelV1({
+          await submitMissingRedeemerCancel({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -260,9 +260,9 @@ export const createMissingRedeemerActuatorV1 = (
       }
       if (action.stage !== "remove")
         throw new Error("missingRedeemer actuator action is unsupported");
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
-          name: MISSING_REDEEMER_CATEGORY_V1,
+          name: MISSING_REDEEMER_CATEGORY,
           categoryId,
           firstStepDeploymentEntry: "fraudProofMissingRedeemer",
           firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
@@ -283,11 +283,11 @@ export const createMissingRedeemerActuatorV1 = (
         headerHash: artifact.headerHash,
         input: {
           schemaVersion: "midgard-production-cursor-family-action-v1",
-          category: MISSING_REDEEMER_CATEGORY_V1,
+          category: MISSING_REDEEMER_CATEGORY,
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

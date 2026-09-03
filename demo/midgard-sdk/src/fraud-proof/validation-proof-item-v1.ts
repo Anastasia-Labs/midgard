@@ -9,8 +9,8 @@ import { Effect } from "effect";
 
 import type { ValidationTraceDisputeFaultProofContracts } from "./contracts/index.js";
 import {
-  ValidationProofItemDatumV1,
-  type ValidationProofItemDatumV1 as ValidationProofItemDatumV1Type,
+  ValidationProofItemDatum,
+  type ValidationProofItemDatum as ValidationProofItemDatumType,
 } from "./validation-auxiliary-witness-v1.js";
 
 const hash32 = (value: string, label: string): string => {
@@ -20,8 +20,8 @@ const hash32 = (value: string, label: string): string => {
   return value;
 };
 
-export type ValidationProofItemPublicationV1 = {
-  readonly datum: ValidationProofItemDatumV1Type;
+export type ValidationProofItemPublication = {
+  readonly datum: ValidationProofItemDatumType;
   readonly datumCbor: string;
 };
 
@@ -40,13 +40,13 @@ const resolveProtocolParameters = async (
   return await config.provider.getProtocolParameters();
 };
 
-export const minimumLovelaceForValidationProofItemPublicationV1 = ({
+export const minimumLovelaceForValidationProofItemPublication = ({
   contracts,
   publication,
   coinsPerUtxoByte,
 }: {
   readonly contracts: ValidationTraceDisputeFaultProofContracts;
-  readonly publication: ValidationProofItemPublicationV1;
+  readonly publication: ValidationProofItemPublication;
   readonly coinsPerUtxoByte: bigint;
 }): bigint => {
   const address = CML.Address.from_bech32(
@@ -93,7 +93,7 @@ export const minimumLovelaceForValidationProofItemPublicationV1 = ({
  * at the same address cannot pass a preimage off as belonging to a different
  * dispute, because the door checks both against the step's pre-state.
  */
-export const deriveValidationProofItemPublicationV1 = ({
+export const deriveValidationProofItemPublication = ({
   transactionId,
   transactionCommitment,
   fieldPreimage,
@@ -102,7 +102,7 @@ export const deriveValidationProofItemPublicationV1 = ({
   readonly transactionCommitment: string;
   /** The §5.1 enveloped field preimage, lowercase hexadecimal. */
   readonly fieldPreimage: string;
-}): ValidationProofItemPublicationV1 => {
+}): ValidationProofItemPublication => {
   if (!/^(?:[0-9a-f]{2})*$/u.test(fieldPreimage)) {
     throw new Error(
       "validation proof field preimage must be lowercase hexadecimal CBOR",
@@ -111,7 +111,7 @@ export const deriveValidationProofItemPublicationV1 = ({
   if (fieldPreimage.length === 0) {
     throw new Error("validation proof field preimage must not be empty");
   }
-  const datum: ValidationProofItemDatumV1Type = {
+  const datum: ValidationProofItemDatumType = {
     version: 1n,
     transaction_id: hash32(transactionId, "validation proof transaction id"),
     transaction_commitment: hash32(
@@ -122,19 +122,19 @@ export const deriveValidationProofItemPublicationV1 = ({
   };
   return {
     datum,
-    datumCbor: Data.to(datum, ValidationProofItemDatumV1),
+    datumCbor: Data.to(datum, ValidationProofItemDatum),
   };
 };
 
-export const buildUnsignedValidationProofItemPublicationV1Program = (
+export const buildUnsignedValidationProofItemPublicationProgram = (
   lucid: LucidEvolution,
   contracts: ValidationTraceDisputeFaultProofContracts,
-  publication: ValidationProofItemPublicationV1,
+  publication: ValidationProofItemPublication,
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
     try: async () => {
       const protocolParameters = await resolveProtocolParameters(lucid);
-      const lovelace = minimumLovelaceForValidationProofItemPublicationV1({
+      const lovelace = minimumLovelaceForValidationProofItemPublication({
         contracts,
         publication,
         coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,

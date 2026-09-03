@@ -1,7 +1,7 @@
-import type { ProductionCursorFamilySpecV1 } from "../workflow/production-cursor-family-state-v1.js";
+import type { CursorFamilySpec } from "../workflow/production-cursor-family-state-v1.js";
 
 /** Exact authenticated L1 cursor topology for Q34's direct/staged routes. */
-export const NATIVE_SCRIPT_INVALID_CURSOR_SPEC_V1 = Object.freeze({
+export const NATIVE_SCRIPT_INVALID_CURSOR_SPEC = Object.freeze({
   category: "nativeScriptInvalid",
   stepCount: 5,
   successors: Object.freeze({
@@ -11,4 +11,4 @@ export const NATIVE_SCRIPT_INVALID_CURSOR_SPEC_V1 = Object.freeze({
     4: Object.freeze([4, 5] as const),
     5: Object.freeze([5, "proof_token"] as const),
   }),
-}) satisfies ProductionCursorFamilySpecV1<"nativeScriptInvalid">;
+}) satisfies CursorFamilySpec<"nativeScriptInvalid">;

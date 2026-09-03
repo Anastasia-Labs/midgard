@@ -20,19 +20,19 @@
  * tests/support/uplc-heap-guard.ts.
  */
 
-import { MIDGARD_V1_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   OPTION_B_SKIP_REASON,
-  prepareRouteFreedomJourneyV1,
+  prepareRouteFreedomJourney,
   realBlueprintSpeaksOptionBV1,
 } from "./support/route-freedom-journey.js";
 
 const RELIABLE_DIRECT_PIN =
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+  MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
 
 const optionB = realBlueprintSpeaksOptionBV1();
@@ -47,7 +47,7 @@ describe.skipIf(!optionB)(
   "route freedom: envelope fallback and spent-publication recovery (#621)",
   () => {
     it("refuses an oversized inline door pre-sign and completes by automatic publication fallback", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         // The largest payload whose complete item still selects §8.4 tier-1
         // `Inline`: one step further and the fixture's carriage goes tier-2
         // `RawUtxo`, which admits no routing override at all.
@@ -62,7 +62,7 @@ describe.skipIf(!optionB)(
       // ... and the fallback publication is possible at all because the item
       // sits under the owner-signed single-publication ceiling.
       expect(journey.completeItemBytes).toBeLessThanOrEqual(
-        MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+        MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
       );
 
       // The explicit inline request is honored up to the envelope, and the
@@ -123,7 +123,7 @@ describe.skipIf(!optionB)(
     }, 900_000);
 
     it("recovers from a genuinely spent publication out-ref by re-publishing", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: 13_600,
         minimumCompleteItemBytes: RELIABLE_DIRECT_PIN,
       });

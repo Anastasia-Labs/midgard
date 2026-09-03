@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const maximumShape =
   "32,768-byte Certified field 6; nine authenticated bounded-item chunks";
@@ -45,7 +45,7 @@ const measurements = [
 
 describe("witnessScriptDecoding signed Van Rossem fit ledger", () => {
   it("reproduces positive size, execution, and publication-reserve margins", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "witnessScriptDecoding:00000022:testnet",
       blueprintSha256:
         "5cc9a404fac1172e5569ec3f0ea59b031132ee706169280166edbc49ad4a647c",

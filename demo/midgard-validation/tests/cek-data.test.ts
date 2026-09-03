@@ -1,36 +1,36 @@
 import {
-  hashMidgardCekTermNodeV1,
-  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
-  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-  type MidgardCekMachineStateV1,
+  hashMidgardCekTermNode,
+  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
+  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+  type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeMidgardCekCoreStepDataCborV1,
-  midgardCekCoreStepWitnessDataV1,
-  midgardCekMachineStateDataV1,
+  encodeMidgardCekCoreStepDataCbor,
+  midgardCekCoreStepWitnessData,
+  midgardCekMachineStateData,
 } from "../src/cek-data.js";
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
 describe("V1 CEK Plutus Data ABI", () => {
   it("matches the Aiken machine-state and application-step vector", () => {
-    const pre: MidgardCekMachineStateV1 = {
+    const pre: MidgardCekMachineState = {
       mode: "compute",
       executionIndex: 2n,
-      focusRoot: hashMidgardCekTermNodeV1({
+      focusRoot: hashMidgardCekTermNode({
         kind: "application",
         function: hash(1),
         argument: hash(2),
       }),
-      environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       auxiliary: 0n,
       cpu: 10n,
       memory: 11n,
     };
-    const post: MidgardCekMachineStateV1 = {
+    const post: MidgardCekMachineState = {
       ...pre,
       focusRoot: hash(1),
       continuationRoot: hash(3),
@@ -43,10 +43,10 @@ describe("V1 CEK Plutus Data ABI", () => {
       argument: hash(2),
     } as const;
 
-    expect(midgardCekMachineStateDataV1(pre).index).toBe(0);
-    expect(midgardCekCoreStepWitnessDataV1(witness).index).toBe(4);
+    expect(midgardCekMachineStateData(pre).index).toBe(0);
+    expect(midgardCekCoreStepWitnessData(witness).index).toBe(4);
     expect(
-      encodeMidgardCekCoreStepDataCborV1({
+      encodeMidgardCekCoreStepDataCbor({
         pre,
         post,
         witness,
@@ -76,7 +76,7 @@ describe("V1 CEK Plutus Data ABI", () => {
       },
     } as const;
     expect(
-      midgardCekCoreStepWitnessDataV1({
+      midgardCekCoreStepWitnessData({
         kind: "executeBuiltinBlsFinal",
         leftRoot: hash(1),
         rightRoot: hash(2),
@@ -86,14 +86,14 @@ describe("V1 CEK Plutus Data ABI", () => {
       }).index,
     ).toBe(37);
     expect(
-      midgardCekCoreStepWitnessDataV1({
+      midgardCekCoreStepWitnessData({
         kind: "executeBuiltinFailure",
         tag: 4n,
         arguments: [constant],
       }).index,
     ).toBe(38);
     expect(
-      midgardCekCoreStepWitnessDataV1({
+      midgardCekCoreStepWitnessData({
         kind: "executeBuiltinTypeFailure",
         tag: 0n,
         arguments: [constant],

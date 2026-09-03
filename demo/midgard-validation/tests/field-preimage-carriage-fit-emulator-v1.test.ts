@@ -1,46 +1,46 @@
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core";
 import {
-  healMidgardFieldCarriageV1,
-  layOutMidgardFieldCarriageV1,
-  MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1,
-  MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
-  MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
-  midgardCarriageDataByteStringBytesV1,
-  midgardCarriagePublicationBytesV1,
-  midgardCarriagePublicationFramingBytesV1,
-  midgardFieldCarriagePlansAreInterchangeableV1,
-  type MidgardFieldCarriagePlanV1,
-  midgardFieldCarriagePublishabilityV1,
-  planMidgardFieldCarriageV1,
+  healMidgardFieldCarriage,
+  layOutMidgardFieldCarriage,
+  MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES,
+  MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES,
+  MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
+  midgardCarriageDataByteStringBytes,
+  midgardCarriagePublicationBytes,
+  midgardCarriagePublicationFramingBytes,
+  type MidgardFieldCarriagePlan,
+  midgardFieldCarriagePlansAreInterchangeable,
+  midgardFieldCarriagePublishability,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
-  authenticatedMidgardFieldViewV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  midgardFieldCommitmentV1,
-  midgardFieldItemAtV1,
-  midgardFieldItemCountV1,
-  type MidgardFieldViewV1,
-  type ResolvedCarriageReferenceInputV1,
+  authenticatedMidgardFieldView,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  midgardFieldCommitment,
+  midgardFieldItemAt,
+  midgardFieldItemCount,
+  type MidgardFieldView,
+  type ResolvedCarriageReferenceInput,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  buildUnsignedFieldPreimageCertificationV1Program,
-  buildUnsignedFieldPreimagePublicationV1Program,
-  certifyFieldPreimageRedeemerV1,
-  deriveFieldPreimageCertificationV1,
-  FieldPreimageCertificateV1,
-  fieldPreimagePublicationBytesV1,
-  fieldPreimagePublicationDatumCborV1,
-  fieldPreimagePublicationOutputsV1,
-  type FieldPreimagePublicationOutputV1,
-  minimumLovelaceForFieldPreimageCertificateV1,
-  minimumLovelaceForFieldPreimagePublicationV1,
-  resolveChunkReferenceIndicesV1,
-  retireFieldPreimageCertificateRedeemerV1,
+  buildUnsignedFieldPreimageCertificationProgram,
+  buildUnsignedFieldPreimagePublicationProgram,
+  certifyFieldPreimageRedeemer,
+  deriveFieldPreimageCertification,
+  FieldPreimageCertificate,
+  fieldPreimagePublicationBytes,
+  fieldPreimagePublicationDatumCbor,
+  type FieldPreimagePublicationOutput,
+  fieldPreimagePublicationOutputs,
+  minimumLovelaceForFieldPreimageCertificate,
+  minimumLovelaceForFieldPreimagePublication,
+  resolveChunkReferenceIndices,
+  retireFieldPreimageCertificateRedeemer,
 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -90,7 +90,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
  * that happen is worth keeping in view: the inflated blocks asserted their
  * over-limit-ness explicitly, so the re-pin turned them red and had to come back
  * here and say so, rather than leaving them quietly vacuous. Every verdict is
- * still taken against `MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes`,
+ * still taken against `MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes`,
  * never against whatever the emulator was willing to accept.
  *
  * **The certificate is minted, under a stand-in policy.** The compiled
@@ -112,8 +112,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 // maxTxSize with room for the variability a real submission path introduces).
 // Named by the codec rather than restated here, so the frontier this file
 // measures and the frontier the SDK guard enforces are the same reserve.
-const RELIABILITY_RESERVE_BYTES = MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1;
-const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const RELIABILITY_RESERVE_BYTES = MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES;
+const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /** Field 1 (reference inputs): §5.3 stride 40, 38-byte items. */
 const FIELD_INDEX = 1;
@@ -205,7 +205,7 @@ const MEASUREMENT_MAX_TX_BYTES = 65_536;
  * it does so explicitly rather than by calling something else.
  */
 const MEASUREMENT_PUBLICATION_BUDGET_BYTES =
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1;
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
 
 /**
  * `maxTxSize` defaults to the **real** deployment floor. A block that wants
@@ -242,10 +242,10 @@ const setupEmulator = async ({
  * just its datum, which is why it is not called `publicationDatum`.
  */
 const publicationOutputFor = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
   chunkIndex: number,
-): FieldPreimagePublicationOutputV1 => {
-  const output = fieldPreimagePublicationOutputsV1(plan).find(
+): FieldPreimagePublicationOutput => {
+  const output = fieldPreimagePublicationOutputs(plan).find(
     (candidate) => candidate.chunkIndex === chunkIndex,
   );
   if (output === undefined) {
@@ -263,11 +263,11 @@ const publicationOutputFor = (
  */
 const rawPublicationOutput = (
   bytes: Buffer,
-): FieldPreimagePublicationOutputV1 => ({
+): FieldPreimagePublicationOutput => ({
   chunkIndex: 0,
-  datumCbor: fieldPreimagePublicationDatumCborV1(bytes),
+  datumCbor: fieldPreimagePublicationDatumCbor(bytes),
   byteLength: bytes.length,
-  digestHex: midgardFieldCommitmentV1(bytes).toString("hex"),
+  digestHex: midgardFieldCommitment(bytes).toString("hex"),
 });
 
 type PublicationResult = {
@@ -282,7 +282,7 @@ type PublicationResult = {
  * cost.
  *
  * The builder under test really is the SDK's —
- * {@link buildUnsignedFieldPreimagePublicationV1Program} — and nothing here
+ * {@link buildUnsignedFieldPreimagePublicationProgram} — and nothing here
  * reimplements it. That matters more than it looks: an earlier revision of this
  * file said exactly this sentence while assembling the transaction inline, so
  * the shipped builder had no caller anywhere in the repository and its §8.3 E1
@@ -300,7 +300,7 @@ const publish = async ({
   maxPublicationBytes,
 }: {
   readonly harness: Harness;
-  readonly publication: FieldPreimagePublicationOutputV1;
+  readonly publication: FieldPreimagePublicationOutput;
   readonly signerKey: CML.PrivateKey;
   readonly address: string;
   readonly submit?: boolean;
@@ -311,13 +311,13 @@ const publish = async ({
   if (protocolParameters === undefined) {
     throw new Error("emulator protocol parameters are unavailable");
   }
-  const minAdaLovelace = minimumLovelaceForFieldPreimagePublicationV1({
+  const minAdaLovelace = minimumLovelaceForFieldPreimagePublication({
     publisherAddress: address,
     output: publication,
     coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
   });
   const unsigned = await Effect.runPromise(
-    buildUnsignedFieldPreimagePublicationV1Program(harness.lucid, {
+    buildUnsignedFieldPreimagePublicationProgram(harness.lucid, {
       publication,
       publisherAddress: address,
       ...(maxPublicationBytes === undefined ? {} : { maxPublicationBytes }),
@@ -366,19 +366,19 @@ const readItemThroughTheDoor = ({
   referenceInputs,
   index,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
-  readonly referenceInputs: readonly ResolvedCarriageReferenceInputV1[];
+  readonly plan: MidgardFieldCarriagePlan;
+  readonly referenceInputs: readonly ResolvedCarriageReferenceInput[];
   readonly index: number;
-}): { readonly view: MidgardFieldViewV1; readonly item: Buffer } => {
-  const layout = layOutMidgardFieldCarriageV1({ plan });
-  const view = authenticatedMidgardFieldViewV1({
+}): { readonly view: MidgardFieldView; readonly item: Buffer } => {
+  const layout = layOutMidgardFieldCarriage({ plan });
+  const view = authenticatedMidgardFieldView({
     fieldIndex: plan.fieldIndex,
     txId: plan.txId,
     expectedCommitment: plan.commitment,
     carriage: layout.carriage,
     referenceInputs,
   });
-  return { view, item: midgardFieldItemAtV1(view, index) };
+  return { view, item: midgardFieldItemAt(view, index) };
 };
 
 /**
@@ -390,10 +390,10 @@ const resolveReferenceInputs = ({
   plan,
   utxos,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly utxos: readonly UTxO[];
-}): readonly ResolvedCarriageReferenceInputV1[] => {
-  const layout = layOutMidgardFieldCarriageV1({ plan });
+}): readonly ResolvedCarriageReferenceInput[] => {
+  const layout = layOutMidgardFieldCarriage({ plan });
   if (layout.carriage.carriage === "Inline") {
     return [];
   }
@@ -412,7 +412,7 @@ const resolveReferenceInputs = ({
     if (datum === undefined || datum === null) {
       throw new Error("resolved carriage UTxO carries no inline datum");
     }
-    return { inlineDatumBytes: fieldPreimagePublicationBytesV1(datum) };
+    return { inlineDatumBytes: fieldPreimagePublicationBytes(datum) };
   });
   if (layout.carriage.carriage === "RawUtxo") {
     return chunkInputs;
@@ -440,10 +440,10 @@ const referenceInputsWithSubstitutedChunk = ({
   chunkIndex,
   bytes,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly chunkIndex: number;
   readonly bytes: Buffer;
-}): readonly ResolvedCarriageReferenceInputV1[] => {
+}): readonly ResolvedCarriageReferenceInput[] => {
   const certificate = plan.certificate;
   const certificateAssetName = plan.certificateAssetName;
   if (certificate === null || certificateAssetName === null) {
@@ -460,8 +460,8 @@ const referenceInputsWithSubstitutedChunk = ({
 
 describe("§8 carriage ladder — tier selection is a partition", () => {
   it("assigns exactly one tier to every length up to the §5.4 cap", () => {
-    const planFor = (bytes: number): MidgardFieldCarriagePlanV1 =>
-      planMidgardFieldCarriageV1({
+    const planFor = (bytes: number): MidgardFieldCarriagePlan =>
+      planMidgardFieldCarriage({
         owner: keyHash(PUBLISHER_KEY),
         txId: TX_ID,
         fieldIndex: FIELD_INDEX,
@@ -471,32 +471,32 @@ describe("§8 carriage ladder — tier selection is a partition", () => {
     // The boundaries are the interesting inputs: one byte either side of each
     // rung, so a tier chosen with the wrong comparison operator is visible.
     expect(planFor(1).tier).toBe("Inline");
-    expect(planFor(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1).tier).toBe(
+    expect(planFor(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES).tier).toBe(
       "Inline",
     );
-    expect(
-      planFor(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 + 40).tier,
-    ).toBe("RawUtxo");
-    expect(planFor(MIDGARD_CHUNK_BYTES_K_V1).tier).toBe("RawUtxo");
-    expect(planFor(MIDGARD_CHUNK_BYTES_K_V1 + 40).tier).toBe("Certified");
-    const corner = planFor(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1);
+    expect(planFor(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES + 40).tier).toBe(
+      "RawUtxo",
+    );
+    expect(planFor(MIDGARD_CHUNK_BYTES_K).tier).toBe("RawUtxo");
+    expect(planFor(MIDGARD_CHUNK_BYTES_K + 40).tier).toBe("Certified");
+    const corner = planFor(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES);
     expect(corner.tier).toBe("Certified");
     expect(corner.publications.length).toBe(3);
     expect(corner.publications.map((entry) => entry.bytes.length)).toEqual([
-      MIDGARD_CHUNK_BYTES_K_V1,
-      MIDGARD_CHUNK_BYTES_K_V1,
-      corner.totalLength - 2 * MIDGARD_CHUNK_BYTES_K_V1,
+      MIDGARD_CHUNK_BYTES_K,
+      MIDGARD_CHUNK_BYTES_K,
+      corner.totalLength - 2 * MIDGARD_CHUNK_BYTES_K,
     ]);
   });
 
   it("refuses a preimage above the §5.4 aggregate cap", () => {
     expect(() =>
-      planMidgardFieldCarriageV1({
+      planMidgardFieldCarriage({
         owner: keyHash(PUBLISHER_KEY),
         txId: TX_ID,
         fieldIndex: FIELD_INDEX,
         preimage: Buffer.alloc(
-          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 + 1,
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES + 1,
         ),
       }),
     ).toThrow();
@@ -520,7 +520,7 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
       { label: "tier 2 — raw UTxO", bytes: 15_000, tier: "RawUtxo" as const },
       {
         label: "tier 3 — certified chunks",
-        bytes: MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+        bytes: MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
         tier: "Certified" as const,
       },
     ];
@@ -528,16 +528,16 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
     for (const testCase of cases) {
       const itemCount = itemCountForPreimageBytes(testCase.bytes);
       const preimage = fieldPreimage(itemCount);
-      const plan = planMidgardFieldCarriageV1({
+      const plan = planMidgardFieldCarriage({
         owner: keyHash(PUBLISHER_KEY),
         txId: TX_ID,
         fieldIndex: FIELD_INDEX,
         preimage,
       });
       expect(plan.tier).toBe(testCase.tier);
-      expect(plan.commitment).toEqual(midgardFieldCommitmentV1(preimage));
+      expect(plan.commitment).toEqual(midgardFieldCommitment(preimage));
 
-      for (const publication of fieldPreimagePublicationOutputsV1(plan)) {
+      for (const publication of fieldPreimagePublicationOutputs(plan)) {
         const result = await publish({
           harness,
           publication,
@@ -550,20 +550,18 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
         // live defect, and it is asserted as an exact overrun so that the day
         // `K` is re-pinned this line turns red and has to be revisited rather
         // than silently continuing to pass.
-        if (
-          publication.byteLength <= MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1
-        ) {
+        if (publication.byteLength <= MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES) {
           expect(result.signedBytes).toBeLessThanOrEqual(
             MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES,
           );
         } else {
-          expect(publication.byteLength).toBe(MIDGARD_CHUNK_BYTES_K_V1);
+          expect(publication.byteLength).toBe(MIDGARD_CHUNK_BYTES_K);
           expect(result.signedBytes).toBe(16_648);
           expect(result.signedBytes - MAX_L1_TX_BYTES).toBe(264);
         }
         // Whatever the size, the cost model the guard is built on reproduces
         // the real signed transaction to the byte.
-        expect(midgardCarriagePublicationBytesV1(publication.byteLength)).toBe(
+        expect(midgardCarriagePublicationBytes(publication.byteLength)).toBe(
           result.signedBytes,
         );
       }
@@ -579,12 +577,12 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
         referenceInputs,
         index: lastIndex,
       });
-      expect(midgardFieldItemCountV1(view)).toBe(itemCount);
+      expect(midgardFieldItemCount(view)).toBe(itemCount);
       expect(item).toEqual(itemPayloadAt(preimage, lastIndex));
 
       // And an item that straddles a chunk boundary wherever there is one.
       if (plan.publications.length > 1) {
-        const straddling = Math.floor((MIDGARD_CHUNK_BYTES_K_V1 - 3) / STRIDE);
+        const straddling = Math.floor((MIDGARD_CHUNK_BYTES_K - 3) / STRIDE);
         const straddled = readItemThroughTheDoor({
           plan,
           referenceInputs,
@@ -615,14 +613,14 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
   const publishCorner = async (): Promise<{
     readonly preimage: Buffer;
     readonly itemCount: number;
-    readonly plan: MidgardFieldCarriagePlanV1;
+    readonly plan: MidgardFieldCarriagePlan;
     readonly published: readonly UTxO[];
   }> => {
     const itemCount = itemCountForPreimageBytes(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
     );
     const preimage = fieldPreimage(itemCount);
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
@@ -631,7 +629,7 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
     expect(plan.tier).toBe("Certified");
     expect(plan.publications.length).toBe(3);
     const published: UTxO[] = [];
-    for (const publication of fieldPreimagePublicationOutputsV1(plan)) {
+    for (const publication of fieldPreimagePublicationOutputs(plan)) {
       const result = await publish({
         harness,
         publication,
@@ -650,7 +648,7 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
    * wrong chunk.
    */
   const itemIndexInsideChunk = (chunkIndex: number): number =>
-    Math.floor((MIDGARD_CHUNK_BYTES_K_V1 * chunkIndex + 200) / STRIDE);
+    Math.floor((MIDGARD_CHUNK_BYTES_K * chunkIndex + 200) / STRIDE);
 
   // §8.7 names two ways carriage stops being usable, and #565 claims healing
   // for both. They are different failures — one removes the UTxO, the other
@@ -668,9 +666,7 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
       const chunkBytes = plan.publications[chunkIndex]?.bytes.length;
       // The corner's ragged tail: 32,763 − 2·15,148 = 2,467 bytes at E1's
       // repaired `K`. It was 963 at the superseded 15,900.
-      expect(chunkBytes).toBe(
-        chunkIndex === 2 ? 2_467 : MIDGARD_CHUNK_BYTES_K_V1,
-      );
+      expect(chunkBytes).toBe(chunkIndex === 2 ? 2_467 : MIDGARD_CHUNK_BYTES_K);
 
       const beforeYank = readItemThroughTheDoor({
         plan,
@@ -739,14 +735,14 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
       // The heal. A second identity — different key, different UTxOs, different
       // min-Ada reclaim authority, no relationship to the original publisher —
       // re-derives the carriage from the preimage bytes alone.
-      const healedPlan = healMidgardFieldCarriageV1({
+      const healedPlan = healMidgardFieldCarriage({
         healer: keyHash(HEALER_KEY),
         txId: TX_ID,
         fieldIndex: FIELD_INDEX,
         preimage,
       });
       expect(
-        midgardFieldCarriagePlansAreInterchangeableV1(plan, healedPlan),
+        midgardFieldCarriagePlansAreInterchangeable(plan, healedPlan),
       ).toBe(true);
       expect(healedPlan.certificate?.owner).not.toEqual(
         plan.certificate?.owner,
@@ -824,9 +820,9 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
       harness,
       publication: {
         chunkIndex: 0,
-        datumCbor: fieldPreimagePublicationDatumCborV1(corrupted),
+        datumCbor: fieldPreimagePublicationDatumCbor(corrupted),
         byteLength: corrupted.length,
-        digestHex: midgardFieldCommitmentV1(corrupted).toString("hex"),
+        digestHex: midgardFieldCommitment(corrupted).toString("hex"),
       },
       signerKey: HEALER_KEY,
       address: HEALER_ADDRESS,
@@ -920,7 +916,7 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
   };
 
   it("reproduces the real signed transaction size from the three-term cost model", async () => {
-    // The frontiers below are *derived* from `midgardCarriagePublicationBytesV1`
+    // The frontiers below are *derived* from `midgardCarriagePublicationBytes`
     // rather than searched for, which is only sound if that function is the
     // truth. This is where that is established: across four orders of magnitude
     // of payload, the model and the real signed emulator transaction agree to
@@ -945,16 +941,16 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
       const signedBytes = await measure(payloadBytes);
       expect({ payloadBytes, signedBytes }).toEqual({
         payloadBytes,
-        signedBytes: midgardCarriagePublicationBytesV1(payloadBytes),
+        signedBytes: midgardCarriagePublicationBytes(payloadBytes),
       });
       // And the decomposition §8.3 E1 publishes: whatever is left after the
       // payload's own Plutus Data encoding is the fixed 245 bytes plus that
       // datum's own head. This is the assertion that would catch the claim E1
       // corrected — that the 740 bytes measured at the frontier were a floor
       // for the family rather than a figure that moves with the payload.
-      const datumBytes = midgardCarriageDataByteStringBytesV1(payloadBytes);
+      const datumBytes = midgardCarriageDataByteStringBytes(payloadBytes);
       expect(signedBytes - datumBytes).toBe(
-        midgardCarriagePublicationFramingBytesV1(datumBytes),
+        midgardCarriagePublicationFramingBytes(datumBytes),
       );
     }
 
@@ -971,19 +967,17 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // A frontier is a pair of adjacent measurements, not a single one: the
     // largest payload that fits, and the smallest that does not. Both are real
     // signed transactions.
-    const exactSigned = await measure(
-      MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
-    );
+    const exactSigned = await measure(MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES);
     const exactOverSigned = await measure(
-      MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
+      MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES + 1,
     );
     const reliableSigned = await measure(
-      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
     );
     const reliableOverSigned = await measure(
-      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
+      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES + 1,
     );
-    const atKSigned = await measure(MIDGARD_CHUNK_BYTES_K_V1);
+    const atKSigned = await measure(MIDGARD_CHUNK_BYTES_K);
 
     // Reported so a re-take reads the numbers off the report rather than
     // reconstructing them. This is the Phase-4 measurement §8.3 declared
@@ -993,34 +987,33 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
         measurement: "tier2-raw-utxo-bound-v1",
         maxL1TxBytes: MAX_L1_TX_BYTES,
         reliabilityReserveBytes: RELIABILITY_RESERVE_BYTES,
-        supersededChunkBytesK: MIDGARD_CHUNK_BYTES_K_V1,
-        exactFrontierPreimageBytes: MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+        supersededChunkBytesK: MIDGARD_CHUNK_BYTES_K,
+        exactFrontierPreimageBytes: MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES,
         exactFrontierTransactionBytes: exactSigned,
         firstUnpublishablePreimageBytes:
-          MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1,
+          MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES + 1,
         firstUnpublishableTransactionBytes: exactOverSigned,
-        reliableFrontierPreimageBytes:
-          MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+        reliableFrontierPreimageBytes: MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
         reliableFrontierTransactionBytes: reliableSigned,
         transactionBytesAtSupersededK: atKSigned,
         supersededKOverrunBytes: atKSigned - MAX_L1_TX_BYTES,
         framingBytesAtExactFrontier:
-          exactSigned - MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+          exactSigned - MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES,
         // Non-datum framing *at this datum size* — 245 fixed plus a 3-byte
         // head. Reported under a name that says so, because an earlier
         // revision called the same subtraction "fixed" and that is what let
         // the head hide inside it.
         nonDatumFramingBytesAtExactFrontier:
           exactSigned -
-          midgardCarriageDataByteStringBytesV1(
-            MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+          midgardCarriageDataByteStringBytes(
+            MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES,
           ),
         countedEraExactFrontier:
-          MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes,
+          MIDGARD_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes,
         countedEraReliableFrontier:
-          MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
+          MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
         countedEraAppliedCap:
-          MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+          MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
       }),
     );
 
@@ -1029,8 +1022,8 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // `maxReliableCompleteItemPublicationBytes`: spec §8.10 and §8.3's erratum
     // quote these numbers, so an environment or builder change that moves them
     // has to move the document too rather than drifting away from it.
-    expect(MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1).toBe(15_644);
-    expect(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1).toBe(15_148);
+    expect(MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES).toBe(15_644);
+    expect(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES).toBe(15_148);
     // "Lands on `maxTxSize`" is asserted as an equality, because that is the
     // claim §8.10's row makes and the previous revision's 16,383 did not meet.
     expect(exactSigned).toBe(MAX_L1_TX_BYTES);
@@ -1052,18 +1045,18 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // +155 / +155.** The two counted-era frontiers this subtracts from were
     // themselves ~80 bytes low — 14,993/15,489 where the counted publisher
     // actually reaches 15,073/15,570, as the three sibling measurements in the
-    // same `MIDGARD_V1_ENVELOPE_MEASUREMENTS` block (datum bytes, min-Ada, fee)
+    // same `MIDGARD_ENVELOPE_MEASUREMENTS` block (datum bytes, min-Ada, fee)
     // had said all along. The flat format's real gain over the counted era is
     // therefore about half what was claimed. The overstated figure is not
     // preserved anywhere as if it still held; the measured one replaces it here
     // and in §8.10 of `docs/spec/midgard-tx.md`.
     expect(
-      MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 -
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes,
+      MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES -
+        MIDGARD_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes,
     ).toBe(74);
     expect(
-      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 -
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
+      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES -
+        MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
     ).toBe(75);
     // The counted reliable publication and the flat reliable frontier land in
     // the same size of transaction. That is what makes the two gains comparable
@@ -1073,7 +1066,7 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // shape's steps by 16 (740 B at 15,644 -> 724 B at 15,148), so 16 - 15 = 1.
     // Two ends of one gain, not two different gains.
     expect(reliableSigned).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationTransactionBytes,
     );
 
     // §8.3's provisional `K = 15,900` was **falsified** by this measurement: a
@@ -1094,22 +1087,20 @@ describe("§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound", () => {
     // closed, and it is written as `=== 0` on purpose — any future re-pin of
     // either half that does not move the other turns it red instead of leaving a
     // silent gap, which is what the superseded 752-byte gap was.
-    expect(
-      MIDGARD_CHUNK_BYTES_K_V1 - MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
-    ).toBe(0);
+    expect(MIDGARD_CHUNK_BYTES_K - MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES).toBe(
+      0,
+    );
     // And the superseded value, kept as a measurement rather than as prose: it
     // is still over the limit, which is why it is no longer `K`.
-    expect(midgardCarriagePublicationBytesV1(15_900)).toBe(16_648);
-    expect(midgardCarriagePublicationBytesV1(15_900) - MAX_L1_TX_BYTES).toBe(
-      264,
-    );
+    expect(midgardCarriagePublicationBytes(15_900)).toBe(16_648);
+    expect(midgardCarriagePublicationBytes(15_900) - MAX_L1_TX_BYTES).toBe(264);
 
     // §8.3 E1's tier-1 note: the same Plutus Data chunking cost applies to
     // redeemer carriage, and it is 450 bytes of the 2,048-byte allowance before
     // any step machinery exists.
     expect(
-      midgardCarriageDataByteStringBytesV1(
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      midgardCarriageDataByteStringBytes(
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       ),
     ).toBe(14_786);
   }, 300_000);
@@ -1127,7 +1118,7 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
     const atFrontier = await publish({
       harness,
       publication: rawPublicationOutput(
-        Buffer.alloc(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1, 0x5c),
+        Buffer.alloc(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES, 0x5c),
       ),
       signerKey: PUBLISHER_KEY,
       address: PUBLISHER_ADDRESS,
@@ -1147,7 +1138,7 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       publish({
         harness,
         publication: rawPublicationOutput(
-          Buffer.alloc(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 + 1, 0x5c),
+          Buffer.alloc(MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES + 1, 0x5c),
         ),
         signerKey: PUBLISHER_KEY,
         address: PUBLISHER_ADDRESS,
@@ -1156,13 +1147,13 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
   }, 120_000);
 
   it("passes every chunk of the largest tier-3 plan, and still names one over a lowered budget", () => {
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage: fieldPreimage(
         itemCountForPreimageBytes(
-          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
         ),
       ),
     });
@@ -1175,15 +1166,15 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
     expect(plan.tier).toBe("Certified");
     expect(
       plan.publications.map((publication) => publication.bytes.length),
-    ).toEqual([MIDGARD_CHUNK_BYTES_K_V1, MIDGARD_CHUNK_BYTES_K_V1, 2_467]);
-    const report = midgardFieldCarriagePublishabilityV1({ plan });
+    ).toEqual([MIDGARD_CHUNK_BYTES_K, MIDGARD_CHUNK_BYTES_K, 2_467]);
+    const report = midgardFieldCarriagePublishability({ plan });
     expect(report.publishable).toBe(true);
     expect(report.unpublishableChunks).toEqual([]);
     // The guard is not vacuous now that honest plans pass it: judged against a
     // budget one byte under the full-`K` publication it names exactly the two
     // full chunks and the overrun to the byte. Without this half the row would
     // be a gate that cannot fail.
-    const tightened = midgardFieldCarriagePublishabilityV1({
+    const tightened = midgardFieldCarriagePublishability({
       plan,
       budgetBytes: MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES - 1,
     });
@@ -1192,7 +1183,7 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       tightened.unpublishableChunks.map((chunk) => chunk.chunkIndex),
     ).toEqual([0, 1]);
     for (const chunk of tightened.unpublishableChunks) {
-      expect(chunk.byteLength).toBe(MIDGARD_CHUNK_BYTES_K_V1);
+      expect(chunk.byteLength).toBe(MIDGARD_CHUNK_BYTES_K);
       expect(chunk.publicationBytes).toBe(
         MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES,
       );
@@ -1207,19 +1198,17 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
     // actually make, so "a yanked publication is healed" is demonstrated as a
     // property of the deployed parameters rather than of an emulator setting.
     const itemCount = itemCountForPreimageBytes(
-      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+      MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
     );
     const preimage = fieldPreimage(itemCount);
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage,
     });
     expect(plan.tier).toBe("RawUtxo");
-    expect(midgardFieldCarriagePublishabilityV1({ plan }).publishable).toBe(
-      true,
-    );
+    expect(midgardFieldCarriagePublishability({ plan }).publishable).toBe(true);
 
     const original = await publish({
       harness,
@@ -1257,15 +1246,15 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
       }),
     ).toThrow("carriage for chunk 0 is not on the ledger");
 
-    const healedPlan = healMidgardFieldCarriageV1({
+    const healedPlan = healMidgardFieldCarriage({
       healer: keyHash(HEALER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage,
     });
-    expect(
-      midgardFieldCarriagePlansAreInterchangeableV1(plan, healedPlan),
-    ).toBe(true);
+    expect(midgardFieldCarriagePlansAreInterchangeable(plan, healedPlan)).toBe(
+      true,
+    );
     const healed = await publish({
       harness,
       publication: publicationOutputFor(healedPlan, 0),
@@ -1297,7 +1286,7 @@ describe("§8.3 erratum E1 — the publishable frontier is enforced, at the real
  * written once so the two cannot drift apart.
  */
 const CERTIFY_REDEEMER_BYTES =
-  certifyFieldPreimageRedeemerV1({
+  certifyFieldPreimageRedeemer({
     compactCbor: "ab".repeat(400),
     witnessSetCompactCbor: "cd".repeat(100),
     chunkRefInputIndices: [0, 1, 2],
@@ -1313,17 +1302,17 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
     }
     const { coinsPerUtxoByte } = protocolParameters;
 
-    const cornerPlan = planMidgardFieldCarriageV1({
+    const cornerPlan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage: fieldPreimage(
         itemCountForPreimageBytes(
-          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
         ),
       ),
     });
-    const certification = deriveFieldPreimageCertificationV1(cornerPlan);
+    const certification = deriveFieldPreimageCertification(cornerPlan);
     // The certificate lives at the validator's own address. Its *code* comes
     // from the blueprint #579 regenerates, but min-Ada depends only on the
     // output's serialised size — address, value, inline datum — so a stand-in
@@ -1338,19 +1327,19 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
       .to_address()
       .to_bech32();
 
-    const certificateMinAda = minimumLovelaceForFieldPreimageCertificateV1({
+    const certificateMinAda = minimumLovelaceForFieldPreimageCertificate({
       certificateAddress,
       certification,
       certificatePolicyId,
       coinsPerUtxoByte,
     });
 
-    const chunkMinAda = minimumLovelaceForFieldPreimagePublicationV1({
+    const chunkMinAda = minimumLovelaceForFieldPreimagePublication({
       publisherAddress: PUBLISHER_ADDRESS,
       output: publicationOutputFor(cornerPlan, 0),
       coinsPerUtxoByte,
     });
-    const raggedMinAda = minimumLovelaceForFieldPreimagePublicationV1({
+    const raggedMinAda = minimumLovelaceForFieldPreimagePublication({
       publisherAddress: PUBLISHER_ADDRESS,
       output: publicationOutputFor(cornerPlan, 2),
       coinsPerUtxoByte,
@@ -1404,7 +1393,7 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
     // erratum E1's repair of `K`: the full chunk was 15,900 B of payload in a
     // 16,400-byte datum at 71.5762 ADA, and the ragged tail 963 B in 996 at
     // 5.1849 ADA. The manifest is unmoved — three digests either way.)
-    expect(midgardCarriageDataByteStringBytesV1(MIDGARD_CHUNK_BYTES_K_V1)).toBe(
+    expect(midgardCarriageDataByteStringBytes(MIDGARD_CHUNK_BYTES_K)).toBe(
       15_624,
     );
     expect(publicationOutputFor(cornerPlan, 0).datumCbor.length / 2).toBe(
@@ -1423,13 +1412,13 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
 
   it("shows last-chunk publication and certification cannot share a transaction", async () => {
     const harness = await setupEmulator();
-    const cornerPlan = planMidgardFieldCarriageV1({
+    const cornerPlan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage: fieldPreimage(
         itemCountForPreimageBytes(
-          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
         ),
       ),
     });
@@ -1462,7 +1451,7 @@ describe("§8.6 Phase-4 exit measurement — certificate min-Ada and the one-tra
       submit: false,
     });
     const redeemerBytes = CERTIFY_REDEEMER_BYTES;
-    const certification = deriveFieldPreimageCertificationV1(cornerPlan);
+    const certification = deriveFieldPreimageCertification(cornerPlan);
     const certificateOutputBytes = certification.datumCbor.length / 2;
 
     console.log(
@@ -1541,12 +1530,12 @@ const standInCertificatePolicy = (): {
 const resolveCertificateFromLedger = (
   utxo: UTxO,
   policyId: string,
-): ResolvedCarriageReferenceInputV1 => {
+): ResolvedCarriageReferenceInput => {
   const datum = utxo.datum;
   if (datum === undefined || datum === null) {
     throw new Error("certificate UTxO carries no inline datum");
   }
-  const decoded = Data.from(datum, FieldPreimageCertificateV1);
+  const decoded = Data.from(datum, FieldPreimageCertificate);
   const units = Object.keys(utxo.assets).filter(
     (unit) => unit !== "lovelace" && unit.startsWith(policyId),
   );
@@ -1581,17 +1570,17 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
 
   it("publishes, certifies, and resolves the manifest back out of the UTxO set", async () => {
     const itemCount = itemCountForPreimageBytes(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
     );
     const preimage = fieldPreimage(itemCount);
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage,
     });
     const chunkUtxos: UTxO[] = [];
-    for (const publication of fieldPreimagePublicationOutputsV1(plan)) {
+    for (const publication of fieldPreimagePublicationOutputs(plan)) {
       const result = await publish({
         harness,
         publication,
@@ -1606,9 +1595,9 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
 
     // The SDK's certification builder, driven end to end. It derives the
     // manifest, the asset name, the min-Ada, the redeemer and — through
-    // `resolveChunkReferenceIndicesV1` — the positional chunk indices.
+    // `resolveChunkReferenceIndices` — the positional chunk indices.
     const unsigned = await Effect.runPromise(
-      buildUnsignedFieldPreimageCertificationV1Program(harness.lucid, {
+      buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
         plan,
         certificatePolicyId: policyId,
         certificateAddress: address,
@@ -1655,8 +1644,8 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // And the whole tier-3 read runs with that ledger-resolved certificate in
     // the certificate slot, rather than the plan's own copy.
     const lastIndex = itemCount - 1;
-    const layout = layOutMidgardFieldCarriageV1({ plan });
-    const view = authenticatedMidgardFieldViewV1({
+    const layout = layOutMidgardFieldCarriage({ plan });
+    const view = authenticatedMidgardFieldView({
       fieldIndex: plan.fieldIndex,
       txId: plan.txId,
       expectedCommitment: plan.commitment,
@@ -1668,7 +1657,7 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
         })),
       ],
     });
-    expect(midgardFieldItemAtV1(view, lastIndex)).toEqual(
+    expect(midgardFieldItemAt(view, lastIndex)).toEqual(
       itemPayloadAt(preimage, lastIndex),
     );
 
@@ -1679,12 +1668,12 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // **Healing is pinned on the datum, not the token (#606).** Under the
     // retired derivation the token name was `blake2b_256(field_index ‖ tx_id)`
     // and "same name" was the healing property. Since the owner ruling of
-    // 2026-08-16 `deriveFieldPreimageCertificationV1` returns a module-level
+    // 2026-08-16 `deriveFieldPreimageCertification` returns a module-level
     // constant unconditionally, so an assertion that two plans agree on
     // `assetNameHex` holds for *any* two plans in the repo and says nothing
     // about healing. What the ruling actually promises is "same bytes ⇒ same
     // datum (modulo `owner`)", and that is what these rows check.
-    const healedPlan = healMidgardFieldCarriageV1({
+    const healedPlan = healMidgardFieldCarriage({
       healer: keyHash(HEALER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
@@ -1709,36 +1698,36 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // At the wire level: the healed manifest's datum differs from the
     // original's only because the reclaim authority does, and the two become
     // byte-identical the moment the owners agree.
-    expect(deriveFieldPreimageCertificationV1(healedPlan).datumCbor).not.toBe(
-      deriveFieldPreimageCertificationV1(plan).datumCbor,
+    expect(deriveFieldPreimageCertification(healedPlan).datumCbor).not.toBe(
+      deriveFieldPreimageCertification(plan).datumCbor,
     );
     expect(
-      deriveFieldPreimageCertificationV1({
+      deriveFieldPreimageCertification({
         ...healedPlan,
         certificate: { ...healedCertificate, owner: originalCertificate.owner },
       }).datumCbor,
-    ).toBe(deriveFieldPreimageCertificationV1(plan).datumCbor);
+    ).toBe(deriveFieldPreimageCertification(plan).datumCbor);
     // The guard that keeps the rows above from going vacuous a second time: a
     // certificate over *different* bytes of a *different* transaction is the
     // same token name and a different manifest. If the token ever discriminated
     // this pair, the constant name would have come back.
     const unrelatedPreimage = Buffer.from(preimage);
     unrelatedPreimage[unrelatedPreimage.length - 1] ^= 0xff;
-    const unrelatedPlan = planMidgardFieldCarriageV1({
+    const unrelatedPlan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: Buffer.alloc(32, 0x5e),
       fieldIndex: FIELD_INDEX,
       preimage: unrelatedPreimage,
     });
-    expect(deriveFieldPreimageCertificationV1(unrelatedPlan).assetNameHex).toBe(
-      deriveFieldPreimageCertificationV1(plan).assetNameHex,
+    expect(deriveFieldPreimageCertification(unrelatedPlan).assetNameHex).toBe(
+      deriveFieldPreimageCertification(plan).assetNameHex,
     );
     expect(unrelatedPlan.certificate?.fieldHash).not.toEqual(
       originalCertificate.fieldHash,
     );
-    expect(
-      deriveFieldPreimageCertificationV1(unrelatedPlan).datumCbor,
-    ).not.toBe(deriveFieldPreimageCertificationV1(plan).datumCbor);
+    expect(deriveFieldPreimageCertification(unrelatedPlan).datumCbor).not.toBe(
+      deriveFieldPreimageCertification(plan).datumCbor,
+    );
 
     // The burn half of §8.7's yank mode is **not** exercised here and cannot
     // be: retirement spends the certificate output, and that needs the compiled
@@ -1747,17 +1736,17 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // proved. What is checked here is that the off-chain half of it — the
     // `Retire` redeemer an off-chain burner emits — is the frozen Constr tag 1
     // the policy branches on.
-    expect(retireFieldPreimageCertificateRedeemerV1()).toBe("d87a80");
+    expect(retireFieldPreimageCertificateRedeemer()).toBe("d87a80");
   }, 300_000);
 
   it("orders reference-input indices the way the ledger does, not the way it was handed them", () => {
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage: fieldPreimage(
         itemCountForPreimageBytes(
-          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
         ),
       ),
     });
@@ -1769,14 +1758,14 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
       outputIndex: 0,
       address: PUBLISHER_ADDRESS,
       assets: { lovelace: 1n },
-      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }));
     expect(
-      resolveChunkReferenceIndicesV1({ plan, referenceInputs: utxos }),
+      resolveChunkReferenceIndices({ plan, referenceInputs: utxos }),
     ).toEqual([2, 1, 0]);
     // Handing them in a different order changes nothing, which is the property.
     expect(
-      resolveChunkReferenceIndicesV1({
+      resolveChunkReferenceIndices({
         plan,
         referenceInputs: [...utxos].reverse(),
       }),
@@ -1784,18 +1773,18 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
   });
 
   it("refuses to locate a chunk that is not among the reference inputs", () => {
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: keyHash(PUBLISHER_KEY),
       txId: TX_ID,
       fieldIndex: FIELD_INDEX,
       preimage: fieldPreimage(
         itemCountForPreimageBytes(
-          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+          MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
         ),
       ),
     });
     expect(() =>
-      resolveChunkReferenceIndicesV1({ plan, referenceInputs: [] }),
+      resolveChunkReferenceIndices({ plan, referenceInputs: [] }),
     ).toThrow("is not among the transaction's reference inputs");
   });
 });

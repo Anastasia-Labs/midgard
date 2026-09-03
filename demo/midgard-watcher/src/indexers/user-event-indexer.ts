@@ -2,22 +2,22 @@ import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 
 import {
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  verifyMidgardNativeTxProofSourceV1,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxProofFieldLengths,
+  verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec/native";
-import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   DepositDatumSchema,
   DepositEventSchema,
   DepositSpendRedeemerSchema,
   EVENT_WAIT_DURATION_MS,
-  ForcedInclusionTxV1Schema,
+  ForcedInclusionTxSchema,
   HubOracleDatumSchema,
   MerkleRoot,
   outputReferenceToPlutusDataCbor,
@@ -25,15 +25,15 @@ import {
   PayoutMintRedeemerSchema,
   Proof,
   rejectionCodeOf,
+  type RejectionReason,
   rejectionReasonArmOf,
-  type RejectionReasonV1,
   resolveEventInclusionTime,
   RootDomainSchema,
   SettlementDatumSchema,
-  TxOrderDatumV1Schema,
-  TxOrderEventV1Schema,
-  TxOrderMintRedeemerV1,
-  TxOrderSpendRedeemerV1Schema,
+  TxOrderDatumSchema,
+  TxOrderEventSchema,
+  TxOrderMintRedeemer,
+  TxOrderSpendRedeemerSchema,
   UserEventMintRedeemer,
   UserEventWitnessPublishRedeemer,
   userEventWitnessScriptHash,
@@ -45,62 +45,62 @@ import { CML, Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import {
-  evaluateWatcherFinalityV1,
-  parseWatcherFinalityPolicyV1,
-  watcherFinalityConfiguredSourceV1,
-  type WatcherFinalityPolicyV1,
-  type WatcherFinalityResultV1,
+  evaluateWatcherFinality,
+  parseWatcherFinalityPolicy,
+  watcherFinalityConfiguredSource,
+  type WatcherFinalityPolicy,
+  type WatcherFinalityResult,
 } from "../l1/finality-engine.js";
 import {
-  encodeWatcherNormalizedL1BlockV1,
-  normalizeWatcherL1BlockV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherNormalizedL1BlockV1,
+  encodeWatcherNormalizedL1Block,
+  normalizeWatcherL1Block,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+  type WatcherNormalizedL1Block,
 } from "../l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "../l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency } from "../l1/multi-provider-consistency.js";
 import {
-  parseWatcherPostFinalityRecoveryResultV1,
-  parseWatcherRollbackResultV1,
-  type WatcherPostFinalityRecoveryInputV1,
-  type WatcherPostFinalityRecoveryResultV1,
-  type WatcherRollbackResultV1,
-  type WatcherRollbackVerificationContextV1,
+  parseWatcherPostFinalityRecoveryResult,
+  parseWatcherRollbackResult,
+  type WatcherPostFinalityRecoveryInput,
+  type WatcherPostFinalityRecoveryResult,
+  type WatcherRollbackResult,
+  type WatcherRollbackVerificationContext,
 } from "../l1/rollback-engine.js";
 import {
-  type VerifiedWatcherDeploymentIdentityV1,
-  verifyWatcherDeploymentIdentityV1,
-  type WatcherDeploymentIdentityPolicyV1,
-  type WatcherDeploymentTrustRootV1,
+  type VerifiedWatcherDeploymentIdentity,
+  verifyWatcherDeploymentIdentity,
+  type WatcherDeploymentIdentityPolicy,
+  type WatcherDeploymentTrustRoot,
 } from "../runtime/deployment-identity.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  parseWatcherDurableStoreV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  parseWatcherDurableStore,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  watcherSameCanonicalJsonV1,
-  watcherSha256CanonicalJsonV1,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 
-export const WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION =
   "midgard-watcher-user-event-indexer-policy-v1" as const;
-export const WATCHER_USER_EVENT_SNAPSHOT_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_SNAPSHOT_SCHEMA_VERSION =
   "midgard-watcher-user-event-snapshot-v1" as const;
-export const WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-user-event-observation-v1" as const;
-export const WATCHER_USER_EVENT_HISTORY_ENTRY_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION =
   "midgard-watcher-user-event-history-entry-v1" as const;
-export const WATCHER_USER_EVENT_INDEXER_STATE_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION =
   "midgard-watcher-user-event-indexer-state-v1" as const;
-export const WATCHER_USER_EVENT_INDEXER_RESULT_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_INDEXER_RESULT_SCHEMA_VERSION =
   "midgard-watcher-user-event-indexer-result-v1" as const;
-export const WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION =
+export const WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION =
   "midgard-watcher-user-event-public-context-v1" as const;
-export const WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION =
+export const WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION =
   "midgard-watcher-forced-terminal-classification-v1" as const;
 
-export const WATCHER_USER_EVENT_INDEXER_V1_BOUNDS = Object.freeze({
+export const WATCHER_USER_EVENT_INDEXER_BOUNDS = Object.freeze({
   activeEvents: 4_096,
   terminalEvents: 8_192,
   activeHistoryEntries: 128,
@@ -116,7 +116,7 @@ export const WATCHER_USER_EVENT_INDEXER_V1_BOUNDS = Object.freeze({
   cumulativeEvidenceNodes: 2_000_000,
 });
 
-export const WATCHER_USER_EVENT_INDEXER_REASON_CODES_V1 = [
+export const WATCHER_USER_EVENT_INDEXER_REASON_CODES = [
   "block_authenticated",
   "rollback_authenticated",
   "duplicate_observation",
@@ -143,21 +143,21 @@ export const WATCHER_USER_EVENT_INDEXER_REASON_CODES_V1 = [
   "post_finality_quarantine",
 ] as const;
 
-export const WATCHER_USER_EVENT_INDEXER_ALERT_CODES_V1 = [
+export const WATCHER_USER_EVENT_INDEXER_ALERT_CODES = [
   "watcher_user_event_input_rejected",
   "watcher_user_event_binding_rejected",
   "watcher_user_event_transition_rejected",
   "watcher_user_event_rollback_quarantined",
 ] as const;
 
-export type WatcherUserEventIndexerReasonCodeV1 =
-  (typeof WATCHER_USER_EVENT_INDEXER_REASON_CODES_V1)[number];
-export type WatcherUserEventIndexerAlertCodeV1 =
-  (typeof WATCHER_USER_EVENT_INDEXER_ALERT_CODES_V1)[number];
-export type WatcherUserEventNetworkV1 = "Mainnet" | "Preprod" | "Preview";
-export type WatcherUserEventKindV1 = "deposit" | "withdrawal" | "forced_order";
-export type WatcherUserEventFinalityStatusV1 = "pending" | "final";
-export type WatcherUserEventTerminalStatusV1 =
+export type WatcherUserEventIndexerReasonCode =
+  (typeof WATCHER_USER_EVENT_INDEXER_REASON_CODES)[number];
+export type WatcherUserEventIndexerAlertCode =
+  (typeof WATCHER_USER_EVENT_INDEXER_ALERT_CODES)[number];
+export type WatcherUserEventNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherUserEventKind = "deposit" | "withdrawal" | "forced_order";
+export type WatcherUserEventFinalityStatus = "pending" | "final";
+export type WatcherUserEventTerminalStatus =
   | "absorbed"
   | "payout_initialized"
   | "refunded"
@@ -169,18 +169,18 @@ type EventPolicyFields = Readonly<{
   addressHex: string;
 }>;
 
-export type WatcherUserEventDeploymentAuthorityV1 = Readonly<{
+export type WatcherUserEventDeploymentAuthority = Readonly<{
   signedIdentity: unknown;
-  policy: WatcherDeploymentIdentityPolicyV1;
-  trustRoots: readonly WatcherDeploymentTrustRootV1[];
-  result: VerifiedWatcherDeploymentIdentityV1;
+  policy: WatcherDeploymentIdentityPolicy;
+  trustRoots: readonly WatcherDeploymentTrustRoot[];
+  result: VerifiedWatcherDeploymentIdentity;
 }>;
 
-export type WatcherUserEventIndexerPolicyV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION;
-  network: WatcherUserEventNetworkV1;
+export type WatcherUserEventIndexerPolicy = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION;
+  network: WatcherUserEventNetwork;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   deposit: EventPolicyFields;
   withdrawal: EventPolicyFields;
   forcedOrder: EventPolicyFields;
@@ -193,8 +193,8 @@ export type WatcherUserEventIndexerPolicyV1 = Readonly<{
   policyDigest: string;
 }>;
 
-export type WatcherIndexedUserEventV1 = Readonly<{
-  kind: WatcherUserEventKindV1;
+export type WatcherIndexedUserEvent = Readonly<{
+  kind: WatcherUserEventKind;
   eventId: string;
   outRef: string;
   transactionHash: string;
@@ -217,25 +217,25 @@ export type WatcherIndexedUserEventV1 = Readonly<{
   originBlockHash: string;
   originSlot: string;
   originBlockNo: string;
-  finalityStatus: WatcherUserEventFinalityStatusV1;
+  finalityStatus: WatcherUserEventFinalityStatus;
 }>;
 
-export type WatcherTerminalUserEventV1 = WatcherIndexedUserEventV1 &
+export type WatcherTerminalUserEvent = WatcherIndexedUserEvent &
   Readonly<{
-    terminalStatus: WatcherUserEventTerminalStatusV1;
+    terminalStatus: WatcherUserEventTerminalStatus;
     terminalTransactionHash: string;
     terminalPointDigest: string;
     terminalBlockHash: string;
     terminalSlot: string;
     terminalBlockNo: string;
-    terminalFinalityStatus: WatcherUserEventFinalityStatusV1;
-    terminalClassification?: WatcherForcedTerminalClassificationV1;
+    terminalFinalityStatus: WatcherUserEventFinalityStatus;
+    terminalClassification?: WatcherForcedTerminalClassification;
   }>;
 
 /**
  * The watcher's JSON-safe spelling of a forced-inclusion operator verdict
  * (`ForcedInclusionTxV1.verdict`, #640): the literal `ForcedTxValid`, or the
- * constructor tag of the `RejectionReasonV1` an invalid verdict carries.
+ * constructor tag of the `RejectionReason` an invalid verdict carries.
  *
  * The reason's subject coordinates are deliberately dropped. Watcher
  * classification records are canonical-JSON digested and round-trip through
@@ -244,29 +244,29 @@ export type WatcherTerminalUserEventV1 = WatcherIndexedUserEventV1 &
  * classification ever discriminated, so nothing this comparison consumed is
  * lost.
  */
-export type WatcherForcedOperatorVerdictV1 = string;
+export type WatcherForcedOperatorVerdict = string;
 
-export type WatcherForcedTerminalClassificationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION;
-  operatorValidity: WatcherForcedOperatorVerdictV1;
+export type WatcherForcedTerminalClassification = Readonly<{
+  schemaVersion: typeof WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION;
+  operatorValidity: WatcherForcedOperatorVerdict;
   terminalTransactionHash: string;
   terminalPointDigest: string;
 }>;
 
-export type WatcherUserEventSnapshotV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_SNAPSHOT_V1_SCHEMA_VERSION;
-  activeEvents: readonly WatcherIndexedUserEventV1[];
-  terminalEvents: readonly WatcherTerminalUserEventV1[];
+export type WatcherUserEventSnapshot = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_SNAPSHOT_SCHEMA_VERSION;
+  activeEvents: readonly WatcherIndexedUserEvent[];
+  terminalEvents: readonly WatcherTerminalUserEvent[];
   quarantined: boolean;
   snapshotDigest: string;
 }>;
 
-export type WatcherUserEventObservationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION;
+export type WatcherUserEventObservation = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION;
   policyDigest: string;
-  network: WatcherUserEventNetworkV1;
+  network: WatcherUserEventNetwork;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   transitionKind: "apply_block" | "rollback";
   pointDigest: string | null;
   blockHash: string | null;
@@ -279,18 +279,18 @@ export type WatcherUserEventObservationV1 = Readonly<{
   durableStoreDigest: string;
   durableStoreRevision: string;
   rollbackTargetEntryDigest: string | null;
-  snapshot: WatcherUserEventSnapshotV1;
+  snapshot: WatcherUserEventSnapshot;
   observationDigest: string;
 }>;
 
-export type WatcherUserEventRollbackAuthorityV1 = Readonly<{
+export type WatcherUserEventRollbackAuthority = Readonly<{
   result: unknown;
   context:
-    | WatcherRollbackVerificationContextV1
-    | WatcherPostFinalityRecoveryInputV1;
+    | WatcherRollbackVerificationContext
+    | WatcherPostFinalityRecoveryInput;
 }>;
 
-export type WatcherUserEventFinalityAuthorityV1 = Readonly<{
+export type WatcherUserEventFinalityAuthority = Readonly<{
   policy: unknown;
   lineage: readonly Readonly<{
     observations: readonly Readonly<{
@@ -309,47 +309,47 @@ export type WatcherUserEventFinalityAuthorityV1 = Readonly<{
   result: unknown;
 }>;
 
-export type WatcherUserEventPublicContextV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION;
+export type WatcherUserEventPublicContext = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION;
   authenticatedProvider: unknown | null;
   l1Observation: unknown | null;
   sourceDurableStore: unknown;
   durableStore: unknown;
-  deploymentAuthority: WatcherUserEventDeploymentAuthorityV1;
+  deploymentAuthority: WatcherUserEventDeploymentAuthority;
   rollbackRestoredEventUtxos: readonly unknown[];
-  finalityAuthority: WatcherUserEventFinalityAuthorityV1 | null;
-  rollbackAuthority: WatcherUserEventRollbackAuthorityV1 | null;
+  finalityAuthority: WatcherUserEventFinalityAuthority | null;
+  rollbackAuthority: WatcherUserEventRollbackAuthority | null;
 }>;
 
-export type WatcherUserEventHistoryEntryV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_HISTORY_ENTRY_V1_SCHEMA_VERSION;
+export type WatcherUserEventHistoryEntry = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION;
   predecessorStateDigest: string | null;
-  observation: WatcherUserEventObservationV1;
-  publicContext: WatcherUserEventPublicContextV1;
+  observation: WatcherUserEventObservation;
+  publicContext: WatcherUserEventPublicContext;
   entryDigest: string;
 }>;
 
-export type WatcherUserEventIndexerStateV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_STATE_V1_SCHEMA_VERSION;
+export type WatcherUserEventIndexerState = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION;
   policyDigest: string;
-  network: WatcherUserEventNetworkV1;
+  network: WatcherUserEventNetwork;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   durableStoreDigest: string;
   durableStoreRevision: string;
-  snapshot: WatcherUserEventSnapshotV1;
-  history: readonly WatcherUserEventHistoryEntryV1[];
+  snapshot: WatcherUserEventSnapshot;
+  history: readonly WatcherUserEventHistoryEntry[];
   activeEntryDigests: readonly string[];
   stateDigest: string;
 }>;
 
-export type WatcherUserEventIndexerResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_RESULT_V1_SCHEMA_VERSION;
+export type WatcherUserEventIndexerResult = Readonly<{
+  schemaVersion: typeof WATCHER_USER_EVENT_INDEXER_RESULT_SCHEMA_VERSION;
   action: "accept" | "duplicate" | "reject" | "quarantine";
   protocolDecision: "indexed" | "hold" | "quarantined";
-  reasonCodes: readonly WatcherUserEventIndexerReasonCodeV1[];
-  alertCodes: readonly WatcherUserEventIndexerAlertCodeV1[];
-  state: WatcherUserEventIndexerStateV1 | null;
+  reasonCodes: readonly WatcherUserEventIndexerReasonCode[];
+  alertCodes: readonly WatcherUserEventIndexerAlertCode[];
+  state: WatcherUserEventIndexerState | null;
   resultDigest: string;
 }>;
 
@@ -390,9 +390,7 @@ const evidenceWithinBounds = (
   const path = new WeakSet<object>();
   const visit = (candidate: unknown): boolean => {
     budget.nodes += 1;
-    if (
-      budget.nodes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphNodes
-    ) {
+    if (budget.nodes > WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceGraphNodes) {
       return false;
     }
     if (typeof candidate === "string") {
@@ -412,9 +410,7 @@ const evidenceWithinBounds = (
     } else if (typeof candidate === "boolean") {
       budget.bytes += 8;
     }
-    if (
-      budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
-    ) {
+    if (budget.bytes > WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceGraphBytes) {
       return false;
     }
     if (typeof candidate !== "object" || candidate === null) {
@@ -441,7 +437,7 @@ const evidenceWithinBounds = (
     if (
       array &&
       candidate.length >
-        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceContainerEntries
+        WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries
     ) {
       return false;
     }
@@ -461,8 +457,7 @@ const evidenceWithinBounds = (
     }
     if (
       !array &&
-      keys.length >
-        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceContainerEntries
+      keys.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceContainerEntries
     ) {
       return false;
     }
@@ -480,9 +475,7 @@ const evidenceWithinBounds = (
         continue;
       }
       budget.bytes += Buffer.byteLength(key as string, "utf8");
-      if (
-        budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
-      ) {
+      if (budget.bytes > WATCHER_USER_EVENT_INDEXER_BOUNDS.evidenceGraphBytes) {
         return false;
       }
       if (!visit(descriptor.value)) {
@@ -501,8 +494,8 @@ const evidenceWithinBounds = (
 
 const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
-const sha256Canonical = watcherSha256CanonicalJsonV1;
-const same = watcherSameCanonicalJsonV1;
+const sha256Canonical = watcherSha256CanonicalJson;
+const same = watcherSameCanonicalJson;
 const samePlutusData = (left: unknown, right: unknown): boolean => {
   if (left === right) {
     return true;
@@ -510,7 +503,7 @@ const samePlutusData = (left: unknown, right: unknown): boolean => {
   try {
     return Data.to(left as never) === Data.to(right as never);
   } catch {
-    return watcherSameCanonicalJsonV1(left, right);
+    return watcherSameCanonicalJson(left, right);
   }
 };
 
@@ -553,32 +546,32 @@ const isHexBytes = (value: unknown): value is string =>
   typeof value === "string" && HEX_BYTES.test(value);
 const isNatural = (value: unknown): value is string =>
   typeof value === "string" && NATURAL.test(value);
-const isNetwork = (value: unknown): value is WatcherUserEventNetworkV1 =>
+const isNetwork = (value: unknown): value is WatcherUserEventNetwork =>
   typeof value === "string" &&
-  NETWORKS.includes(value as WatcherUserEventNetworkV1);
+  NETWORKS.includes(value as WatcherUserEventNetwork);
 
 /**
  * `ForcedTxValid` — the watcher spelling of an accepting operator verdict.
  */
-export const WATCHER_FORCED_TX_VALID_V1 = "ForcedTxValid" as const;
+export const WATCHER_FORCED_TX_VALID = "ForcedTxValid" as const;
 
 /**
- * Membership test for {@link WatcherForcedOperatorVerdictV1}: the accepting
- * literal, or any constructor tag the canonical 47-arm `RejectionReasonV1`
+ * Membership test for {@link WatcherForcedOperatorVerdict}: the accepting
+ * literal, or any constructor tag the canonical 47-arm `RejectionReason`
  * bridge knows. Delegating to `rejectionCodeOf` (rather than restating the
  * arm list here) keeps the watcher vocabulary in lockstep with the SDK twin.
  */
-export const isWatcherForcedOperatorVerdictV1 = (
+export const isWatcherForcedOperatorVerdict = (
   value: unknown,
-): value is WatcherForcedOperatorVerdictV1 => {
+): value is WatcherForcedOperatorVerdict => {
   if (typeof value !== "string") {
     return false;
   }
-  if (value === WATCHER_FORCED_TX_VALID_V1) {
+  if (value === WATCHER_FORCED_TX_VALID) {
     return true;
   }
   try {
-    rejectionCodeOf(value as RejectionReasonV1);
+    rejectionCodeOf(value as RejectionReason);
     return true;
   } catch {
     return false;
@@ -589,11 +582,11 @@ export const isWatcherForcedOperatorVerdictV1 = (
  * Projects a decoded `OperatorVerdictV1` (`ForcedInclusionTxV1.verdict`) onto
  * its watcher spelling, or `null` when the value is not a verdict at all.
  */
-export const watcherForcedOperatorVerdictV1 = (
+export const watcherForcedOperatorVerdict = (
   verdict: unknown,
-): WatcherForcedOperatorVerdictV1 | null => {
-  if (verdict === WATCHER_FORCED_TX_VALID_V1) {
-    return WATCHER_FORCED_TX_VALID_V1;
+): WatcherForcedOperatorVerdict | null => {
+  if (verdict === WATCHER_FORCED_TX_VALID) {
+    return WATCHER_FORCED_TX_VALID;
   }
   if (typeof verdict !== "object" || verdict === null) {
     return null;
@@ -611,16 +604,16 @@ export const watcherForcedOperatorVerdictV1 = (
   }
   let arm: string;
   try {
-    arm = rejectionReasonArmOf(reason as RejectionReasonV1);
+    arm = rejectionReasonArmOf(reason as RejectionReason);
   } catch {
     return null;
   }
-  return isWatcherForcedOperatorVerdictV1(arm) ? arm : null;
+  return isWatcherForcedOperatorVerdict(arm) ? arm : null;
 };
 
 const parseForcedTerminalClassification = (
   value: unknown,
-): WatcherForcedTerminalClassificationV1 | null => {
+): WatcherForcedTerminalClassification | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "operatorValidity",
@@ -630,15 +623,15 @@ const parseForcedTerminalClassification = (
   if (
     record === null ||
     record.schemaVersion !==
-      WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION ||
-    !isWatcherForcedOperatorVerdictV1(record.operatorValidity) ||
+      WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION ||
+    !isWatcherForcedOperatorVerdict(record.operatorValidity) ||
     !isHex32(record.terminalTransactionHash) ||
     !isHex32(record.terminalPointDigest)
   ) {
     return null;
   }
   return Object.freeze({
-    schemaVersion: WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION,
     operatorValidity: record.operatorValidity,
     terminalTransactionHash: record.terminalTransactionHash,
     terminalPointDigest: record.terminalPointDigest,
@@ -695,17 +688,17 @@ const snapshotTerminalClassificationsAreExact = (value: unknown): boolean => {
   return true;
 };
 
-const cloneMarker = (value: unknown): DeploymentMarkerV1 | null => {
+const cloneMarker = (value: unknown): DeploymentMarker | null => {
   const record = exactRecord(value, ["schemaVersion", "manifestId"]);
   if (
     record === null ||
-    record.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION ||
     !isHex32(record.manifestId)
   ) {
     return null;
   }
   return Object.freeze({
-    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
     manifestId: record.manifestId,
   });
 };
@@ -743,9 +736,9 @@ const policyFields = (value: unknown): EventPolicyFields | null => {
 };
 
 const policyWithoutDigest = (
-  value: Omit<WatcherUserEventIndexerPolicyV1, "policyDigest">,
+  value: Omit<WatcherUserEventIndexerPolicy, "policyDigest">,
 ) => ({
-  schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
   network: value.network,
   releaseEvidenceDigest: value.releaseEvidenceDigest,
   deploymentMarker: value.deploymentMarker,
@@ -760,26 +753,26 @@ const policyWithoutDigest = (
   maximumAuditHistoryEntries: value.maximumAuditHistoryEntries,
 });
 
-export const makeWatcherUserEventIndexerPolicyV1 = (
+export const makeWatcherUserEventIndexerPolicy = (
   value: Omit<
-    WatcherUserEventIndexerPolicyV1,
+    WatcherUserEventIndexerPolicy,
     "schemaVersion" | "policyDigest" | "eventWaitDurationMs"
   >,
-): WatcherUserEventIndexerPolicyV1 | null => {
+): WatcherUserEventIndexerPolicy | null => {
   const canonical = policyWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
     ...value,
     eventWaitDurationMs: EVENT_WAIT_DURATION_MS.toString(),
   });
-  return parseWatcherUserEventIndexerPolicyV1({
+  return parseWatcherUserEventIndexerPolicy({
     ...canonical,
     policyDigest: sha256Canonical(canonical),
   });
 };
 
-export const parseWatcherUserEventIndexerPolicyV1 = (
+export const parseWatcherUserEventIndexerPolicy = (
   value: unknown,
-): WatcherUserEventIndexerPolicyV1 | null => {
+): WatcherUserEventIndexerPolicy | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "network",
@@ -806,8 +799,7 @@ export const parseWatcherUserEventIndexerPolicyV1 = (
     deposit === null ||
     withdrawal === null ||
     forcedOrder === null ||
-    record.schemaVersion !==
-      WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION ||
     !isNetwork(record.network) ||
     !isHex32(record.releaseEvidenceDigest) ||
     !isHex32(record.bootstrapStoreDigest) ||
@@ -817,17 +809,15 @@ export const parseWatcherUserEventIndexerPolicyV1 = (
     !isNatural(record.requiredFinalityDepth) ||
     BigInt(record.requiredFinalityDepth) === 0n ||
     BigInt(record.requiredFinalityDepth) >
-      BigInt(
-        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.requiredFinalityDepthMaximum,
-      ) ||
+      BigInt(WATCHER_USER_EVENT_INDEXER_BOUNDS.requiredFinalityDepthMaximum) ||
     !isNatural(record.maximumActiveHistoryEntries) ||
     BigInt(record.maximumActiveHistoryEntries) === 0n ||
     BigInt(record.maximumActiveHistoryEntries) >
-      BigInt(WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.activeHistoryEntries) ||
+      BigInt(WATCHER_USER_EVENT_INDEXER_BOUNDS.activeHistoryEntries) ||
     !isNatural(record.maximumAuditHistoryEntries) ||
     BigInt(record.maximumAuditHistoryEntries) === 0n ||
     BigInt(record.maximumAuditHistoryEntries) >
-      BigInt(WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.auditHistoryEntries) ||
+      BigInt(WATCHER_USER_EVENT_INDEXER_BOUNDS.auditHistoryEntries) ||
     BigInt(record.maximumAuditHistoryEntries) <
       BigInt(record.maximumActiveHistoryEntries) ||
     !isHex32(record.policyDigest) ||
@@ -850,7 +840,7 @@ export const parseWatcherUserEventIndexerPolicyV1 = (
     }
   }
   const canonical = policyWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_INDEXER_POLICY_SCHEMA_VERSION,
     network: record.network,
     releaseEvidenceDigest: record.releaseEvidenceDigest,
     deploymentMarker: marker,
@@ -871,8 +861,8 @@ export const parseWatcherUserEventIndexerPolicyV1 = (
 };
 
 const eventPolicy = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  kind: WatcherUserEventKindV1,
+  policy: WatcherUserEventIndexerPolicy,
+  kind: WatcherUserEventKind,
 ): EventPolicyFields =>
   kind === "deposit"
     ? policy.deposit
@@ -881,9 +871,9 @@ const eventPolicy = (
       : policy.forcedOrder;
 
 const kindForPolicy = (
-  policy: WatcherUserEventIndexerPolicyV1,
+  policy: WatcherUserEventIndexerPolicy,
   policyId: string,
-): WatcherUserEventKindV1 | null =>
+): WatcherUserEventKind | null =>
   policy.deposit.policyId === policyId
     ? "deposit"
     : policy.withdrawal.policyId === policyId
@@ -920,7 +910,7 @@ const mintPolicyIndex = (mint: CML.Mint, policyId: string): number => {
 };
 
 const matchingRedeemer = (
-  transaction: WatcherNormalizedL1BlockV1["transactions"][number],
+  transaction: WatcherNormalizedL1Block["transactions"][number],
   purpose: "spend" | "mint" | "certificate",
   index: number,
 ) => {
@@ -932,7 +922,7 @@ const matchingRedeemer = (
 };
 
 const redeemerAtGlobalIndex = (
-  transaction: WatcherNormalizedL1BlockV1["transactions"][number],
+  transaction: WatcherNormalizedL1Block["transactions"][number],
   index: bigint,
 ) =>
   index >= 0n && index <= BigInt(Number.MAX_SAFE_INTEGER)
@@ -987,7 +977,7 @@ type DecodedUserEventMintRedeemer = Readonly<{
  */
 const decodeMintRedeemer = (
   bytesHex: string,
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
 ): DecodedUserEventMintRedeemer | null => {
   if (kind !== "forced_order") {
     const event = dataRoundTrip<UserEventMintRedeemerBody>(
@@ -1001,7 +991,7 @@ const decodeMintRedeemer = (
       event: UserEventMintRedeemerBody;
       material_carriage: readonly unknown[];
     }>
-  >(bytesHex, TxOrderMintRedeemerV1 as unknown as EventSchema);
+  >(bytesHex, TxOrderMintRedeemer as unknown as EventSchema);
   return wrapped === null
     ? null
     : { event: wrapped.event, materialCarriage: wrapped.material_carriage };
@@ -1037,7 +1027,7 @@ const forcedOrderMaterialFieldCount = (payload: unknown): number | null => {
     return null;
   }
   try {
-    return midgardV1TxFieldCommitmentsFromSourceV1({
+    return midgardTxFieldCommitmentsFromSource({
       compactCbor: Buffer.from(candidate.source.compact_cbor, "hex"),
       witnessSetCompactCbor: Buffer.from(
         candidate.source.witness_set_compact_cbor,
@@ -1048,7 +1038,7 @@ const forcedOrderMaterialFieldCount = (payload: unknown): number | null => {
         "hex",
       ),
     }).filter(
-      (commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT_V1),
+      (commitment) => !commitment.equals(MIDGARD_EMPTY_FIELD_COMMITMENT),
     ).length;
   } catch {
     return null;
@@ -1113,9 +1103,9 @@ const inlineDatumCbor = (output: CML.TransactionOutput): string | null =>
   output.datum()?.as_datum()?.to_cbor_hex() ?? null;
 
 const durableOutputAt = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
   outRef: string | null,
-  role: WatcherDurableStoreV1["protocolUtxos"][number]["role"],
+  role: WatcherDurableStore["protocolUtxos"][number]["role"],
 ): CML.TransactionOutput | null => {
   if (outRef === null) {
     return null;
@@ -1137,10 +1127,10 @@ const durableOutputAt = (
 };
 
 const decodeHubAt = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
   body: CML.TransactionBody,
   index: bigint,
-  deployment: WatcherDeploymentIdentityPolicyV1,
+  deployment: WatcherDeploymentIdentityPolicy,
 ) => {
   const outRef = referencedOutRefAt(body, index);
   const output = durableOutputAt(store, outRef, "hub_oracle");
@@ -1200,7 +1190,7 @@ const exactlyOneAsset = (
 };
 
 const canonicalDatumForOutput = (
-  transaction: WatcherNormalizedL1BlockV1["transactions"][number],
+  transaction: WatcherNormalizedL1Block["transactions"][number],
   outputIndex: number,
   output: CML.TransactionOutput,
 ): Readonly<{ cborHex: string; digest: string }> | null => {
@@ -1235,16 +1225,16 @@ const nonceAssetName = (input: CML.TransactionInput): string => {
 };
 
 const eventSchemas = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
 ): Readonly<{ datum: EventSchema; event: EventSchema }> =>
   kind === "deposit"
     ? { datum: DepositDatumSchema, event: DepositEventSchema }
     : kind === "withdrawal"
       ? { datum: WithdrawalOrderDatumSchema, event: WithdrawalEventSchema }
-      : { datum: TxOrderDatumV1Schema, event: TxOrderEventV1Schema };
+      : { datum: TxOrderDatumSchema, event: TxOrderEventSchema };
 
 const parseEventDatum = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
   cborHex: string,
 ): Readonly<{
   event: unknown;
@@ -1278,7 +1268,7 @@ const parseEventDatum = (
 };
 
 const eventIdMatchesNonce = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
   event: unknown,
   input: CML.TransactionInput,
 ): boolean => {
@@ -1293,13 +1283,13 @@ const eventIdMatchesNonce = (
 };
 
 const scanCreatedEvents = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  block: WatcherNormalizedL1BlockV1,
-  sourceStore: WatcherDurableStoreV1,
-  deployment: WatcherDeploymentIdentityPolicyV1,
-): readonly WatcherIndexedUserEventV1[] | null => {
+  policy: WatcherUserEventIndexerPolicy,
+  block: WatcherNormalizedL1Block,
+  sourceStore: WatcherDurableStore,
+  deployment: WatcherDeploymentIdentityPolicy,
+): readonly WatcherIndexedUserEvent[] | null => {
   const failCreated = (_label: string): null => null;
-  const events: WatcherIndexedUserEventV1[] = [];
+  const events: WatcherIndexedUserEvent[] = [];
   for (const transaction of block.transactions) {
     if (!transaction.isValid) {
       continue;
@@ -1316,7 +1306,7 @@ const scanCreatedEvents = (
       const knownPolicies = outputPolicies(output)
         .map((policyId) => [policyId, kindForPolicy(policy, policyId)] as const)
         .filter(
-          (entry): entry is readonly [string, WatcherUserEventKindV1] =>
+          (entry): entry is readonly [string, WatcherUserEventKind] =>
             entry[1] !== null,
         );
       if (knownPolicies.length === 0) {
@@ -1473,7 +1463,7 @@ const scanCreatedEvents = (
       if (
         (kind === "deposit" &&
           nonNftAssetCount >
-            WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.maximumDepositNonNftAssets) ||
+            WATCHER_USER_EVENT_INDEXER_BOUNDS.maximumDepositNonNftAssets) ||
         (kind !== "deposit" &&
           (policies.length !== 1 || nonNftAssetCount !== 1))
       ) {
@@ -1521,7 +1511,7 @@ const scanCreatedEvents = (
     left.outRef.localeCompare(right.outRef),
   );
   if (
-    sorted.length > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.activeEvents ||
+    sorted.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.activeEvents ||
     new Set(sorted.map(({ outRef }) => outRef)).size !== sorted.length ||
     new Set(sorted.map(({ eventId }) => eventId)).size !== sorted.length
   ) {
@@ -1531,7 +1521,7 @@ const scanCreatedEvents = (
 };
 
 type DecodedTerminalSpend = Readonly<{
-  terminalStatus: WatcherUserEventTerminalStatusV1;
+  terminalStatus: WatcherUserEventTerminalStatus;
   outputIndex: bigint;
   hubRefInputIndex: bigint;
   settlementRefInputIndex: bigint;
@@ -1551,7 +1541,7 @@ type DecodedTerminalSpend = Readonly<{
 }>;
 
 const decodeTerminalSpend = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
   bytesHex: string,
   inputIndex: number,
 ): DecodedTerminalSpend | null => {
@@ -1590,7 +1580,7 @@ const decodeTerminalSpend = (
       membership_proof: DecodedTerminalSpend["membershipProof"];
       inclusion_proof_script_withdraw_redeemer_index: bigint;
       validity_override: unknown;
-    }>(bytesHex, TxOrderSpendRedeemerV1Schema);
+    }>(bytesHex, TxOrderSpendRedeemerSchema);
     return decoded?.input_index === BigInt(inputIndex)
       ? {
           terminalStatus: "processed",
@@ -1671,10 +1661,10 @@ const outputValue = (
 };
 
 const expectedTerminalValue = (
-  event: WatcherIndexedUserEventV1,
+  event: WatcherIndexedUserEvent,
   input: CML.TransactionOutput,
   hubDatum: Record<string, unknown>,
-  status: WatcherUserEventTerminalStatusV1,
+  status: WatcherUserEventTerminalStatus,
 ): ReadonlyMap<string, bigint> => {
   const expected = new Map(outputValue(input));
   expected.delete(`${event.policyId}${event.assetNameHex}`);
@@ -1724,7 +1714,7 @@ const addressMatchesData = (address: CML.Address, value: unknown): boolean => {
 };
 
 const eventKeyValueCbor = (
-  event: WatcherIndexedUserEventV1,
+  event: WatcherIndexedUserEvent,
 ): Readonly<{ key: string; value: string; payload: unknown }> | null => {
   try {
     const parsed = Data.from(
@@ -1812,7 +1802,7 @@ const membershipWithdrawalCbor = (
 };
 
 const authenticReferenceDatum = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
   body: CML.TransactionBody,
   index: bigint,
   role: "settlement" | "hub_oracle",
@@ -1933,20 +1923,20 @@ const forcedPayloadMatchesNativeSource = (payload: unknown): boolean => {
         "hex",
       ),
     };
-    verifyMidgardNativeTxProofSourceV1({
+    verifyMidgardNativeTxProofSource({
       transactionId: Buffer.from(candidate.tx_id, "hex"),
       source,
     });
     if (
-      computeMidgardNativeTxProofCommitmentV1(source).toString("hex") !==
+      computeMidgardNativeTxProofCommitment(source).toString("hex") !==
       candidate.transaction_commitment
     ) {
       return false;
     }
     // The committed field lengths are decoded, not merely present: a payload whose
     // length vector is malformed or is not nine entries is not a §4 binding, and
-    // `decodeMidgardNativeTxProofFieldLengthsV1` is the thing that says so.
-    decodeMidgardNativeTxProofFieldLengthsV1(source.fieldPreimageLengthsCbor);
+    // `decodeMidgardNativeTxProofFieldLengths` is the thing that says so.
+    decodeMidgardNativeTxProofFieldLengths(source.fieldPreimageLengthsCbor);
     // What stood here walked the counted publication receipt chain: it resolved
     // `terminal_receipt_reference` out of the durable store, checked the receipt
     // datum's identity and its minted `deriveMidgardTxFieldReceiptAssetNameV1`
@@ -2011,13 +2001,13 @@ const cardanoDatumMatches = (
 };
 
 const verifyTerminalSemantics = (
-  event: WatcherIndexedUserEventV1,
-  sourceStore: WatcherDurableStoreV1,
-  transaction: WatcherNormalizedL1BlockV1["transactions"][number],
+  event: WatcherIndexedUserEvent,
+  sourceStore: WatcherDurableStore,
+  transaction: WatcherNormalizedL1Block["transactions"][number],
   body: CML.TransactionBody,
   inputIndex: number,
   spend: DecodedTerminalSpend,
-  deployment: WatcherDeploymentIdentityPolicyV1,
+  deployment: WatcherDeploymentIdentityPolicy,
 ): boolean => {
   const outputs = body.outputs();
   if (
@@ -2061,7 +2051,7 @@ const verifyTerminalSemantics = (
                 source: tx.source,
                 verdict: spend.purpose,
               } as never,
-              ForcedInclusionTxV1Schema as never,
+              ForcedInclusionTxSchema as never,
             );
           } catch {
             return null;
@@ -2237,16 +2227,16 @@ const verifyTerminalSemantics = (
 };
 
 const scanConsumedEvents = (
-  block: WatcherNormalizedL1BlockV1,
-  sourceStore: WatcherDurableStoreV1,
-  activeEvents: readonly WatcherIndexedUserEventV1[],
-  deployment: WatcherDeploymentIdentityPolicyV1,
+  block: WatcherNormalizedL1Block,
+  sourceStore: WatcherDurableStore,
+  activeEvents: readonly WatcherIndexedUserEvent[],
+  deployment: WatcherDeploymentIdentityPolicy,
 ): Readonly<{
-  remaining: readonly WatcherIndexedUserEventV1[];
-  terminal: readonly WatcherTerminalUserEventV1[];
+  remaining: readonly WatcherIndexedUserEvent[];
+  terminal: readonly WatcherTerminalUserEvent[];
 }> | null => {
   const active = new Map(activeEvents.map((event) => [event.outRef, event]));
-  const terminal: WatcherTerminalUserEventV1[] = [];
+  const terminal: WatcherTerminalUserEvent[] = [];
   for (const transaction of block.transactions) {
     if (!transaction.isValid) {
       continue;
@@ -2346,7 +2336,7 @@ const scanConsumedEvents = (
       }
       const forcedOperatorValidity =
         event.kind === "forced_order"
-          ? watcherForcedOperatorVerdictV1(terminalSpend.purpose)
+          ? watcherForcedOperatorVerdict(terminalSpend.purpose)
           : null;
       if (event.kind === "forced_order" && forcedOperatorValidity === null) {
         return null;
@@ -2367,7 +2357,7 @@ const scanConsumedEvents = (
             : {
                 terminalClassification: Object.freeze({
                   schemaVersion:
-                    WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION,
+                    WATCHER_FORCED_TERMINAL_CLASSIFICATION_SCHEMA_VERSION,
                   operatorValidity: forcedOperatorValidity,
                   terminalTransactionHash: transaction.txHash,
                   terminalPointDigest: block.chainPoint.pointDigest,
@@ -2390,27 +2380,27 @@ const scanConsumedEvents = (
 };
 
 const snapshotWithoutDigest = (
-  value: Omit<WatcherUserEventSnapshotV1, "snapshotDigest">,
+  value: Omit<WatcherUserEventSnapshot, "snapshotDigest">,
 ) => ({
-  schemaVersion: WATCHER_USER_EVENT_SNAPSHOT_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_USER_EVENT_SNAPSHOT_SCHEMA_VERSION,
   activeEvents: value.activeEvents,
   terminalEvents: value.terminalEvents,
   quarantined: value.quarantined,
 });
 
 const makeSnapshot = (
-  activeEvents: readonly WatcherIndexedUserEventV1[],
-  terminalEvents: readonly WatcherTerminalUserEventV1[],
+  activeEvents: readonly WatcherIndexedUserEvent[],
+  terminalEvents: readonly WatcherTerminalUserEvent[],
   quarantined = false,
-): WatcherUserEventSnapshotV1 | null => {
+): WatcherUserEventSnapshot | null => {
   if (
-    activeEvents.length > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.activeEvents ||
-    terminalEvents.length > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.terminalEvents
+    activeEvents.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.activeEvents ||
+    terminalEvents.length > WATCHER_USER_EVENT_INDEXER_BOUNDS.terminalEvents
   ) {
     return null;
   }
   const canonical = snapshotWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_SNAPSHOT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_SNAPSHOT_SCHEMA_VERSION,
     activeEvents: Object.freeze([...activeEvents]),
     terminalEvents: Object.freeze([...terminalEvents]),
     quarantined,
@@ -2422,13 +2412,13 @@ const makeSnapshot = (
 };
 
 const protocolRole = (
-  kind: WatcherUserEventKindV1,
+  kind: WatcherUserEventKind,
 ): "deposit" | "withdrawal" | "forced_transaction" =>
   kind === "forced_order" ? "forced_transaction" : kind;
 
 const topologyMatches = (
-  store: WatcherDurableStoreV1,
-  snapshot: WatcherUserEventSnapshotV1,
+  store: WatcherDurableStore,
+  snapshot: WatcherUserEventSnapshot,
 ): boolean => {
   const durable = store.protocolUtxos
     .filter(({ role }) =>
@@ -2455,28 +2445,28 @@ const topologyMatches = (
 };
 
 type VerifiedBlockContext = Readonly<{
-  block: WatcherNormalizedL1BlockV1;
-  lineageBlocks: readonly WatcherNormalizedL1BlockV1[];
-  sourceStore: WatcherDurableStoreV1;
-  store: WatcherDurableStoreV1;
-  finalityPolicy: WatcherFinalityPolicyV1;
-  finalityResult: WatcherFinalityResultV1;
-  context: WatcherUserEventPublicContextV1;
+  block: WatcherNormalizedL1Block;
+  lineageBlocks: readonly WatcherNormalizedL1Block[];
+  sourceStore: WatcherDurableStore;
+  store: WatcherDurableStore;
+  finalityPolicy: WatcherFinalityPolicy;
+  finalityResult: WatcherFinalityResult;
+  context: WatcherUserEventPublicContext;
 }>;
 
 const transportAttestationForProvider = (
   provider: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherL1TransportAttestationContextV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherL1TransportAttestationContext | null => {
   if (
     !Array.isArray(transportAttestations) ||
     transportAttestations.length >
-      WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.observationsPerFinalityStep
+      WATCHER_USER_EVENT_INDEXER_BOUNDS.observationsPerFinalityStep
   ) {
     return null;
   }
   const matches = transportAttestations.filter((candidate) => {
-    const details = watcherL1TransportAttestationDetailsV1(candidate);
+    const details = watcherL1TransportAttestationDetails(candidate);
     return details !== null && same(details.provider, provider);
   });
   return matches.length === 1 ? matches[0]! : null;
@@ -2485,10 +2475,10 @@ const transportAttestationForProvider = (
 const normalizeTransportAttestedBlock = (
   provider: unknown,
   observation: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
 ): Readonly<{
-  block: WatcherNormalizedL1BlockV1;
-  transportAttestation: WatcherL1TransportAttestationContextV1;
+  block: WatcherNormalizedL1Block;
+  transportAttestation: WatcherL1TransportAttestationContext;
 }> | null => {
   const transportAttestation = transportAttestationForProvider(
     provider,
@@ -2498,18 +2488,18 @@ const normalizeTransportAttestedBlock = (
     return null;
   }
   return Object.freeze({
-    block: normalizeWatcherL1BlockV1(transportAttestation, observation),
+    block: normalizeWatcherL1Block(transportAttestation, observation),
     transportAttestation,
   });
 };
 
-const storeDigest = (store: WatcherDurableStoreV1): string =>
-  watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
+const storeDigest = (store: WatcherDurableStore): string =>
+  watcherDurableStoreBytesSha256(encodeWatcherDurableStore(store));
 
 const canonicalSuccessor = (
-  prior: WatcherUserEventObservationV1,
-  next: WatcherNormalizedL1BlockV1,
-  lineage: readonly WatcherNormalizedL1BlockV1[],
+  prior: WatcherUserEventObservation,
+  next: WatcherNormalizedL1Block,
+  lineage: readonly WatcherNormalizedL1Block[],
 ): boolean => {
   if (
     prior.transitionKind !== "apply_block" ||
@@ -2533,7 +2523,7 @@ const canonicalSuccessor = (
   ) {
     return false;
   }
-  const ancestors = new Map<string, WatcherNormalizedL1BlockV1>();
+  const ancestors = new Map<string, WatcherNormalizedL1Block>();
   for (const candidate of lineage) {
     const existing = ancestors.get(candidate.chainPoint.blockHash);
     if (
@@ -2575,8 +2565,8 @@ const canonicalSuccessor = (
 };
 
 const canonicalSuccessorAfterRollback = (
-  source: WatcherDurableStoreV1,
-  next: WatcherNormalizedL1BlockV1,
+  source: WatcherDurableStore,
+  next: WatcherNormalizedL1Block,
 ): boolean => {
   const prior = [...source.chainPoints]
     .filter(
@@ -2598,11 +2588,11 @@ const canonicalSuccessorAfterRollback = (
 };
 
 const verifyDeploymentAuthority = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  authority: WatcherUserEventDeploymentAuthorityV1,
-): VerifiedWatcherDeploymentIdentityV1 | null => {
+  policy: WatcherUserEventIndexerPolicy,
+  authority: WatcherUserEventDeploymentAuthority,
+): VerifiedWatcherDeploymentIdentity | null => {
   try {
-    const verified = verifyWatcherDeploymentIdentityV1({
+    const verified = verifyWatcherDeploymentIdentity({
       signedIdentity: authority.signedIdentity,
       policy: authority.policy,
       trustRoots: authority.trustRoots,
@@ -2631,10 +2621,10 @@ const sameRecordSet = <T>(left: readonly T[], right: readonly T[]): boolean =>
   same(left, right);
 
 const storeTransitionMatches = (
-  source: WatcherDurableStoreV1,
-  next: WatcherDurableStoreV1,
-  block: WatcherNormalizedL1BlockV1,
-  snapshot: WatcherUserEventSnapshotV1,
+  source: WatcherDurableStore,
+  next: WatcherDurableStore,
+  block: WatcherNormalizedL1Block,
+  snapshot: WatcherUserEventSnapshot,
 ): boolean => {
   if (
     BigInt(next.revision) !== BigInt(source.revision) + 1n ||
@@ -2698,7 +2688,7 @@ const storeTransitionMatches = (
     ({ role }) => !eventRoles.has(role),
   );
   try {
-    const journal = journalWatcherProtocolUtxoTransitionV1({
+    const journal = journalWatcherProtocolUtxoTransition({
       sourceStore: source,
       nextChainPoints: next.chainPoints,
       nextProtocolUtxos: next.protocolUtxos,
@@ -2715,8 +2705,8 @@ const storeTransitionMatches = (
 };
 
 const rollbackSourceExtends = (
-  prior: WatcherDurableStoreV1,
-  source: WatcherDurableStoreV1,
+  prior: WatcherDurableStore,
+  source: WatcherDurableStore,
   recoverableEventOutRefs: ReadonlySet<string> | null = null,
 ): boolean => {
   const retainsExactRecords = <T>(
@@ -2851,7 +2841,7 @@ const rollbackSourceExtends = (
 
 const parsePublicContext = (
   value: unknown,
-): WatcherUserEventPublicContextV1 | null => {
+): WatcherUserEventPublicContext | null => {
   if (!evidenceWithinBounds(value)) {
     return null;
   }
@@ -2868,7 +2858,7 @@ const parsePublicContext = (
   ]);
   if (
     record === null ||
-    record.schemaVersion !== WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION
+    record.schemaVersion !== WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION
   ) {
     return null;
   }
@@ -2895,10 +2885,10 @@ const parsePublicContext = (
     (finalityAuthority === null ||
       !Array.isArray(finalityAuthority.lineage) ||
       finalityAuthority.lineage.length >
-        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.finalityLineageSteps ||
+        WATCHER_USER_EVENT_INDEXER_BOUNDS.finalityLineageSteps ||
       !Array.isArray(finalityAuthority.observations) ||
       finalityAuthority.observations.length >
-        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.observationsPerFinalityStep)
+        WATCHER_USER_EVENT_INDEXER_BOUNDS.observationsPerFinalityStep)
   ) {
     return null;
   }
@@ -2925,7 +2915,7 @@ const parsePublicContext = (
         step === null ||
         !Array.isArray(step.observations) ||
         step.observations.length >
-          WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.observationsPerFinalityStep
+          WATCHER_USER_EVENT_INDEXER_BOUNDS.observationsPerFinalityStep
       ) {
         return null;
       }
@@ -2980,17 +2970,17 @@ const parsePublicContext = (
     return null;
   }
   return Object.freeze({
-    schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider: record.authenticatedProvider,
     l1Observation: record.l1Observation,
     sourceDurableStore: record.sourceDurableStore,
     durableStore: record.durableStore,
     deploymentAuthority: {
       signedIdentity: deploymentAuthority.signedIdentity,
-      policy: deploymentAuthority.policy as WatcherDeploymentIdentityPolicyV1,
+      policy: deploymentAuthority.policy as WatcherDeploymentIdentityPolicy,
       trustRoots:
-        deploymentAuthority.trustRoots as readonly WatcherDeploymentTrustRootV1[],
-      result: deploymentAuthority.result as VerifiedWatcherDeploymentIdentityV1,
+        deploymentAuthority.trustRoots as readonly WatcherDeploymentTrustRoot[],
+      result: deploymentAuthority.result as VerifiedWatcherDeploymentIdentity,
     },
     rollbackRestoredEventUtxos:
       record.rollbackRestoredEventUtxos as readonly unknown[],
@@ -3011,15 +3001,15 @@ const parsePublicContext = (
         : {
             result: rollbackAuthority.result,
             context:
-              rollbackAuthority.context as WatcherRollbackVerificationContextV1,
+              rollbackAuthority.context as WatcherRollbackVerificationContext,
           },
   });
 };
 
 const verifyBlockContext = (
-  policy: WatcherUserEventIndexerPolicyV1,
+  policy: WatcherUserEventIndexerPolicy,
   rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
 ): VerifiedBlockContext | null => {
   const context = parsePublicContext(rawContext);
   if (
@@ -3042,9 +3032,9 @@ const verifyBlockContext = (
       return null;
     }
     const block = normalizedBlock.block;
-    const sourceStore = parseWatcherDurableStoreV1(context.sourceDurableStore);
-    const store = parseWatcherDurableStoreV1(context.durableStore);
-    const finalityPolicy = parseWatcherFinalityPolicyV1(
+    const sourceStore = parseWatcherDurableStore(context.sourceDurableStore);
+    const store = parseWatcherDurableStore(context.durableStore);
+    const finalityPolicy = parseWatcherFinalityPolicy(
       context.finalityAuthority.policy,
     );
     if (
@@ -3065,7 +3055,7 @@ const verifyBlockContext = (
       return null;
     }
     let replayedState: unknown = null;
-    const lineageBlocks: WatcherNormalizedL1BlockV1[] = [];
+    const lineageBlocks: WatcherNormalizedL1Block[] = [];
     for (const step of context.finalityAuthority.lineage) {
       const normalizedStepWithAttestations = step.observations.map(
         ({ authenticatedProvider, l1Observation }) =>
@@ -3082,14 +3072,14 @@ const verifyBlockContext = (
         (entry) => entry!.block,
       );
       lineageBlocks.push(...normalizedStep);
-      const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
-        watcherFinalityConfiguredSourceV1(finalityPolicy),
+      const stepConsistency = evaluateWatcherMultiProviderConsistency(
+        watcherFinalityConfiguredSource(finalityPolicy),
         normalizedStep,
         normalizedStepWithAttestations.map(
           (entry) => entry!.transportAttestation,
         ),
       );
-      const stepResult = evaluateWatcherFinalityV1(
+      const stepResult = evaluateWatcherFinality(
         finalityPolicy,
         replayedState,
         stepConsistency,
@@ -3119,12 +3109,12 @@ const verifyBlockContext = (
       return null;
     }
     const normalized = normalizedWithAttestations.map((entry) => entry!.block);
-    const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      watcherFinalityConfiguredSourceV1(finalityPolicy),
+    const consistency = evaluateWatcherMultiProviderConsistency(
+      watcherFinalityConfiguredSource(finalityPolicy),
       normalized,
       normalizedWithAttestations.map((entry) => entry!.transportAttestation),
     );
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       context.finalityAuthority.previousState,
       consistency,
@@ -3171,7 +3161,7 @@ const verifyBlockContext = (
       return null;
     }
     const persistedBytes =
-      encodeWatcherNormalizedL1BlockV1(block).toString("hex");
+      encodeWatcherNormalizedL1Block(block).toString("hex");
     if (
       block.network !== policy.network ||
       !same(sourceStore.deploymentMarker, policy.deploymentMarker) ||
@@ -3212,8 +3202,8 @@ const verifyBlockContext = (
 const withCurrentFinality = (
   currentPointDigest: string,
   finalityGranted: boolean,
-  events: readonly WatcherIndexedUserEventV1[],
-): readonly WatcherIndexedUserEventV1[] =>
+  events: readonly WatcherIndexedUserEvent[],
+): readonly WatcherIndexedUserEvent[] =>
   Object.freeze(
     events.map((event) => ({
       ...event,
@@ -3227,8 +3217,8 @@ const withCurrentFinality = (
 const withCurrentTerminalFinality = (
   currentPointDigest: string,
   finalityGranted: boolean,
-  events: readonly WatcherTerminalUserEventV1[],
-): readonly WatcherTerminalUserEventV1[] =>
+  events: readonly WatcherTerminalUserEvent[],
+): readonly WatcherTerminalUserEvent[] =>
   Object.freeze(
     events.map((event) => ({
       ...event,
@@ -3240,9 +3230,9 @@ const withCurrentTerminalFinality = (
   );
 
 const observationWithoutDigest = (
-  value: Omit<WatcherUserEventObservationV1, "observationDigest">,
+  value: Omit<WatcherUserEventObservation, "observationDigest">,
 ) => ({
-  schemaVersion: WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
   policyDigest: value.policyDigest,
   network: value.network,
   releaseEvidenceDigest: value.releaseEvidenceDigest,
@@ -3263,8 +3253,8 @@ const observationWithoutDigest = (
 });
 
 const makeObservation = (
-  value: Omit<WatcherUserEventObservationV1, "observationDigest">,
-): WatcherUserEventObservationV1 => {
+  value: Omit<WatcherUserEventObservation, "observationDigest">,
+): WatcherUserEventObservation => {
   const canonical = observationWithoutDigest(value);
   return Object.freeze({
     ...canonical,
@@ -3273,11 +3263,11 @@ const makeObservation = (
 };
 
 const deriveBlockObservation = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  previous: WatcherUserEventIndexerStateV1 | null,
+  policy: WatcherUserEventIndexerPolicy,
+  previous: WatcherUserEventIndexerState | null,
   rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherUserEventObservationV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherUserEventObservation | null => {
   const verified = verifyBlockContext(
     policy,
     rawContext,
@@ -3303,12 +3293,12 @@ const deriveBlockObservation = (
           ) ?? null);
   const followsRollback =
     previous?.history.at(-1)?.observation.transitionKind === "rollback";
-  let priorStore: WatcherDurableStoreV1 | null = null;
+  let priorStore: WatcherDurableStore | null = null;
   try {
     priorStore =
       previous === null
         ? null
-        : parseWatcherDurableStoreV1(
+        : parseWatcherDurableStore(
             previous.history.at(-1)?.publicContext.durableStore,
           );
   } catch {
@@ -3415,7 +3405,7 @@ const deriveBlockObservation = (
     return null;
   }
   return makeObservation({
-    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3430,7 +3420,7 @@ const deriveBlockObservation = (
     sourceDurableStoreDigest: sourceDigest,
     sourceDurableStoreRevision: verified.sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(verified.store),
+      encodeWatcherDurableStore(verified.store),
     ),
     durableStoreRevision: verified.store.revision,
     rollbackTargetEntryDigest: null,
@@ -3439,26 +3429,26 @@ const deriveBlockObservation = (
 };
 
 type VerifiedRollbackContextBase = Readonly<{
-  sourceStore: WatcherDurableStoreV1;
-  store: WatcherDurableStoreV1;
-  context: WatcherUserEventPublicContextV1;
+  sourceStore: WatcherDurableStore;
+  store: WatcherDurableStore;
+  context: WatcherUserEventPublicContext;
 }>;
 type VerifiedRollbackContext =
   | (VerifiedRollbackContextBase &
       Readonly<{
         kind: "pre_finality_rollback";
-        result: WatcherRollbackResultV1;
+        result: WatcherRollbackResult;
       }>)
   | (VerifiedRollbackContextBase &
       Readonly<{
         kind: "post_finality_recovery";
-        result: WatcherPostFinalityRecoveryResultV1;
+        result: WatcherPostFinalityRecoveryResult;
       }>);
 
 const verifyRollbackContext = (
-  policy: WatcherUserEventIndexerPolicyV1,
+  policy: WatcherUserEventIndexerPolicy,
   rawContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
 ): VerifiedRollbackContext | null => {
   const context = parsePublicContext(rawContext);
   if (
@@ -3472,21 +3462,21 @@ const verifyRollbackContext = (
     return null;
   }
   try {
-    const rollbackResult = parseWatcherRollbackResultV1(
+    const rollbackResult = parseWatcherRollbackResult(
       context.rollbackAuthority.result,
       {
         ...(context.rollbackAuthority
-          .context as WatcherRollbackVerificationContextV1),
+          .context as WatcherRollbackVerificationContext),
         transportAttestations,
       },
     );
     const recoveryResult =
       rollbackResult === null
-        ? parseWatcherPostFinalityRecoveryResultV1(
+        ? parseWatcherPostFinalityRecoveryResult(
             context.rollbackAuthority.result,
             {
               ...(context.rollbackAuthority
-                .context as WatcherPostFinalityRecoveryInputV1),
+                .context as WatcherPostFinalityRecoveryInput),
               transportAttestations,
             },
           )
@@ -3501,8 +3491,8 @@ const verifyRollbackContext = (
     ) {
       return null;
     }
-    const sourceStore = parseWatcherDurableStoreV1(context.sourceDurableStore);
-    const store = parseWatcherDurableStoreV1(context.durableStore);
+    const sourceStore = parseWatcherDurableStore(context.sourceDurableStore);
+    const store = parseWatcherDurableStore(context.durableStore);
     if (
       !same(sourceStore, context.rollbackAuthority.context.sourceStore) ||
       storeDigest(sourceStore) !== result.sourceStoreDigest ||
@@ -3543,18 +3533,18 @@ const verifyRollbackContext = (
 };
 
 const historyEntryForDigest = (
-  state: WatcherUserEventIndexerStateV1,
+  state: WatcherUserEventIndexerState,
   digest: string,
-): WatcherUserEventHistoryEntryV1 | null =>
+): WatcherUserEventHistoryEntry | null =>
   state.history.find(({ entryDigest }) => entryDigest === digest) ?? null;
 
 const deriveRollbackObservation = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  previous: WatcherUserEventIndexerStateV1,
+  policy: WatcherUserEventIndexerPolicy,
+  previous: WatcherUserEventIndexerState,
   rawContext: unknown,
   requestedRollbackTargetEntryDigest: string | null,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherUserEventObservationV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherUserEventObservation | null => {
   const verified = verifyRollbackContext(
     policy,
     rawContext,
@@ -3563,9 +3553,9 @@ const deriveRollbackObservation = (
   if (verified === null) {
     return null;
   }
-  let previousStore: WatcherDurableStoreV1;
+  let previousStore: WatcherDurableStore;
   try {
-    previousStore = parseWatcherDurableStoreV1(
+    previousStore = parseWatcherDurableStore(
       previous.history.at(-1)?.publicContext.durableStore,
     );
   } catch {
@@ -3595,7 +3585,7 @@ const deriveRollbackObservation = (
     return snapshot === null
       ? null
       : makeObservation({
-          schemaVersion: WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION,
+          schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
           policyDigest: policy.policyDigest,
           network: policy.network,
           releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3610,7 +3600,7 @@ const deriveRollbackObservation = (
           sourceDurableStoreDigest: storeDigest(verified.sourceStore),
           sourceDurableStoreRevision: verified.sourceStore.revision,
           durableStoreDigest: watcherDurableStoreBytesSha256(
-            encodeWatcherDurableStoreV1(verified.store),
+            encodeWatcherDurableStore(verified.store),
           ),
           durableStoreRevision: verified.store.revision,
           rollbackTargetEntryDigest: null,
@@ -3620,7 +3610,7 @@ const deriveRollbackObservation = (
   const activeEntries = previous.activeEntryDigests
     .map((digest) => historyEntryForDigest(previous, digest))
     .filter(
-      (entry): entry is WatcherUserEventHistoryEntryV1 =>
+      (entry): entry is WatcherUserEventHistoryEntry =>
         entry !== null && entry.observation.transitionKind === "apply_block",
     );
   const commonAncestorBlockNo =
@@ -3654,7 +3644,7 @@ const deriveRollbackObservation = (
   const removedObservations = new Set(
     verified.result.removedRecords.l1ObservationIds,
   );
-  const removed = (entry: WatcherUserEventHistoryEntryV1): boolean =>
+  const removed = (entry: WatcherUserEventHistoryEntry): boolean =>
     (entry.observation.chainPointId !== null &&
       removedPoints.has(entry.observation.chainPointId)) ||
     (entry.observation.sourceObservationDigest !== null &&
@@ -3682,12 +3672,10 @@ const deriveRollbackObservation = (
   ) {
     return null;
   }
-  let targetStore: WatcherDurableStoreV1 | null = null;
+  let targetStore: WatcherDurableStore | null = null;
   if (target !== null) {
     try {
-      targetStore = parseWatcherDurableStoreV1(
-        target.publicContext.durableStore,
-      );
+      targetStore = parseWatcherDurableStore(target.publicContext.durableStore);
     } catch {
       return null;
     }
@@ -3727,7 +3715,7 @@ const deriveRollbackObservation = (
     }
   }
   return makeObservation({
-    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3742,7 +3730,7 @@ const deriveRollbackObservation = (
     sourceDurableStoreDigest: storeDigest(verified.sourceStore),
     sourceDurableStoreRevision: verified.sourceStore.revision,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(verified.store),
+      encodeWatcherDurableStore(verified.store),
     ),
     durableStoreRevision: verified.store.revision,
     rollbackTargetEntryDigest,
@@ -3750,13 +3738,13 @@ const deriveRollbackObservation = (
   });
 };
 
-export const deriveWatcherUserEventObservationV1 = (
+export const deriveWatcherUserEventObservation = (
   rawPolicy: unknown,
   rawPreviousState: unknown,
   rawPublicContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
   rollbackTargetEntryDigest: string | null = null,
-): WatcherUserEventObservationV1 | null => {
+): WatcherUserEventObservation | null => {
   const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
   if (
     !evidenceWithinBounds(rawPolicy, evidenceBudget) ||
@@ -3766,14 +3754,14 @@ export const deriveWatcherUserEventObservationV1 = (
   ) {
     return null;
   }
-  const policy = parseWatcherUserEventIndexerPolicyV1(rawPolicy);
+  const policy = parseWatcherUserEventIndexerPolicy(rawPolicy);
   if (policy === null) {
     return null;
   }
   const previous =
     rawPreviousState === null
       ? null
-      : parseWatcherUserEventIndexerStateV1(
+      : parseWatcherUserEventIndexerState(
           rawPreviousState,
           policy,
           transportAttestations,
@@ -3799,18 +3787,18 @@ export const deriveWatcherUserEventObservationV1 = (
 };
 
 const historyEntryWithoutDigest = (
-  value: Omit<WatcherUserEventHistoryEntryV1, "entryDigest">,
+  value: Omit<WatcherUserEventHistoryEntry, "entryDigest">,
 ) => ({
-  schemaVersion: WATCHER_USER_EVENT_HISTORY_ENTRY_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION,
   predecessorStateDigest: value.predecessorStateDigest,
   observation: value.observation,
   publicContext: value.publicContext,
 });
 
 const stateWithoutDigest = (
-  value: Omit<WatcherUserEventIndexerStateV1, "stateDigest">,
+  value: Omit<WatcherUserEventIndexerState, "stateDigest">,
 ) => ({
-  schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION,
   policyDigest: value.policyDigest,
   network: value.network,
   releaseEvidenceDigest: value.releaseEvidenceDigest,
@@ -3823,13 +3811,13 @@ const stateWithoutDigest = (
 });
 
 const applyObservation = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  previous: WatcherUserEventIndexerStateV1 | null,
-  observation: WatcherUserEventObservationV1,
-  publicContext: WatcherUserEventPublicContextV1,
-): WatcherUserEventIndexerStateV1 | null => {
+  policy: WatcherUserEventIndexerPolicy,
+  previous: WatcherUserEventIndexerState | null,
+  observation: WatcherUserEventObservation,
+  publicContext: WatcherUserEventPublicContext,
+): WatcherUserEventIndexerState | null => {
   const entryCanonical = historyEntryWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_HISTORY_ENTRY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION,
     predecessorStateDigest: previous?.stateDigest ?? null,
     observation,
     publicContext,
@@ -3860,7 +3848,7 @@ const applyObservation = (
     return null;
   }
   const canonical = stateWithoutDigest({
-    schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3879,7 +3867,7 @@ const applyObservation = (
 
 const parseObservationStructural = (
   value: unknown,
-): WatcherUserEventObservationV1 | null => {
+): WatcherUserEventObservation | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "policyDigest",
@@ -3903,7 +3891,7 @@ const parseObservationStructural = (
   ]);
   if (
     record === null ||
-    record.schemaVersion !== WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_USER_EVENT_OBSERVATION_SCHEMA_VERSION ||
     !isHex32(record.policyDigest) ||
     !isNetwork(record.network) ||
     !isHex32(record.releaseEvidenceDigest) ||
@@ -3918,18 +3906,18 @@ const parseObservationStructural = (
   ) {
     return null;
   }
-  const candidate = value as WatcherUserEventObservationV1;
+  const candidate = value as WatcherUserEventObservation;
   const canonical = observationWithoutDigest(candidate);
   return sha256Canonical(canonical) === candidate.observationDigest
     ? candidate
     : null;
 };
 
-export const parseWatcherUserEventIndexerStateV1 = (
+export const parseWatcherUserEventIndexerState = (
   value: unknown,
   rawPolicy: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherUserEventIndexerStateV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherUserEventIndexerState | null => {
   const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
   if (
     !evidenceWithinBounds(rawPolicy, evidenceBudget) ||
@@ -3937,7 +3925,7 @@ export const parseWatcherUserEventIndexerStateV1 = (
   ) {
     return null;
   }
-  const policy = parseWatcherUserEventIndexerPolicyV1(rawPolicy);
+  const policy = parseWatcherUserEventIndexerPolicy(rawPolicy);
   const record = exactRecord(value, [
     "schemaVersion",
     "policyDigest",
@@ -3954,8 +3942,7 @@ export const parseWatcherUserEventIndexerStateV1 = (
   if (
     policy === null ||
     record === null ||
-    record.schemaVersion !==
-      WATCHER_USER_EVENT_INDEXER_STATE_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_USER_EVENT_INDEXER_STATE_SCHEMA_VERSION ||
     !Array.isArray(record.history) ||
     !Array.isArray(record.activeEntryDigests) ||
     !isHex32(record.stateDigest) ||
@@ -3969,7 +3956,7 @@ export const parseWatcherUserEventIndexerStateV1 = (
   ) {
     return null;
   }
-  let replay: WatcherUserEventIndexerStateV1 | null = null;
+  let replay: WatcherUserEventIndexerState | null = null;
   for (const rawEntry of record.history) {
     const entryRecord = exactRecord(rawEntry, [
       "schemaVersion",
@@ -3991,7 +3978,7 @@ export const parseWatcherUserEventIndexerStateV1 = (
       observation === null ||
       publicContext === null ||
       entryRecord.schemaVersion !==
-        WATCHER_USER_EVENT_HISTORY_ENTRY_V1_SCHEMA_VERSION ||
+        WATCHER_USER_EVENT_HISTORY_ENTRY_SCHEMA_VERSION ||
       entryRecord.predecessorStateDigest !== (replay?.stateDigest ?? null) ||
       !isHex32(entryRecord.entryDigest)
     ) {
@@ -4032,14 +4019,14 @@ export const parseWatcherUserEventIndexerStateV1 = (
 };
 
 const result = (
-  action: WatcherUserEventIndexerResultV1["action"],
-  protocolDecision: WatcherUserEventIndexerResultV1["protocolDecision"],
-  reasonCodes: readonly WatcherUserEventIndexerReasonCodeV1[],
-  alertCodes: readonly WatcherUserEventIndexerAlertCodeV1[],
-  state: WatcherUserEventIndexerStateV1 | null,
-): WatcherUserEventIndexerResultV1 => {
+  action: WatcherUserEventIndexerResult["action"],
+  protocolDecision: WatcherUserEventIndexerResult["protocolDecision"],
+  reasonCodes: readonly WatcherUserEventIndexerReasonCode[],
+  alertCodes: readonly WatcherUserEventIndexerAlertCode[],
+  state: WatcherUserEventIndexerState | null,
+): WatcherUserEventIndexerResult => {
   const canonical = {
-    schemaVersion: WATCHER_USER_EVENT_INDEXER_RESULT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_USER_EVENT_INDEXER_RESULT_SCHEMA_VERSION,
     action,
     protocolDecision,
     reasonCodes,
@@ -4053,18 +4040,18 @@ const result = (
 };
 
 const reject = (
-  reason: WatcherUserEventIndexerReasonCodeV1,
-  alert: WatcherUserEventIndexerAlertCodeV1 = "watcher_user_event_input_rejected",
-): WatcherUserEventIndexerResultV1 =>
+  reason: WatcherUserEventIndexerReasonCode,
+  alert: WatcherUserEventIndexerAlertCode = "watcher_user_event_input_rejected",
+): WatcherUserEventIndexerResult =>
   result("reject", "hold", [reason], [alert], null);
 
-export const evaluateWatcherUserEventIndexerV1 = (
+export const evaluateWatcherUserEventIndexer = (
   rawPolicy: unknown,
   rawState: unknown,
   rawObservation: unknown,
   rawPublicContext: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherUserEventIndexerResultV1 => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherUserEventIndexerResult => {
   const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
   if (!evidenceWithinBounds(rawPolicy, evidenceBudget)) {
     return reject("malformed_policy");
@@ -4078,14 +4065,14 @@ export const evaluateWatcherUserEventIndexerV1 = (
   if (!evidenceWithinBounds(rawPublicContext, evidenceBudget)) {
     return reject("malformed_public_context");
   }
-  const policy = parseWatcherUserEventIndexerPolicyV1(rawPolicy);
+  const policy = parseWatcherUserEventIndexerPolicy(rawPolicy);
   if (policy === null) {
     return reject("malformed_policy");
   }
   const previous =
     rawState === null
       ? null
-      : parseWatcherUserEventIndexerStateV1(
+      : parseWatcherUserEventIndexerState(
           rawState,
           policy,
           transportAttestations,
@@ -4177,23 +4164,23 @@ export const evaluateWatcherUserEventIndexerV1 = (
   );
 };
 
-export const parseWatcherUserEventIndexerResultV1 = (
+export const parseWatcherUserEventIndexerResult = (
   value: unknown,
   context: Readonly<{
     policy: unknown;
     previousState: unknown;
     observation: unknown;
     publicContext: unknown;
-    transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+    transportAttestations: readonly WatcherL1TransportAttestationContext[];
   }>,
-): WatcherUserEventIndexerResultV1 | null => {
+): WatcherUserEventIndexerResult | null => {
   if (typeof value === "object" && value !== null && isProxy(value)) {
     return null;
   }
   if (!evidenceWithinBounds(value)) {
     return null;
   }
-  const expected = evaluateWatcherUserEventIndexerV1(
+  const expected = evaluateWatcherUserEventIndexer(
     context.policy,
     context.previousState,
     context.observation,

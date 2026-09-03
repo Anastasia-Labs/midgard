@@ -5,21 +5,21 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpointV1,
-  advanceMissingNativeScriptTxSemanticCheckpointV1,
-  decodeMissingNativeScriptTxGrammarCheckpointV1,
-  decodeMissingNativeScriptTxSemanticCheckpointV1,
-  encodeMissingNativeScriptTxGrammarCheckpointV1,
-  encodeMissingNativeScriptTxSemanticCheckpointV1,
-  hashMissingNativeScriptTxGrammarCheckpointV1,
-  hashMissingNativeScriptTxSemanticCheckpointV1,
-  initialMissingNativeScriptTxGrammarCheckpointV1,
-  initialMissingNativeScriptTxSemanticCheckpointV1,
-  missingNativeScriptTxGrammarCheckpointIsCompleteV1,
-  missingNativeScriptTxRequiredScriptPresentThroughV1,
-  missingNativeScriptTxSemanticCheckpointIsCompleteV1,
-  resolveMissingNativeScriptTxGrammarCheckpointV1,
-  resolveMissingNativeScriptTxSemanticCheckpointV1,
+  advanceMissingNativeScriptTxGrammarCheckpoint,
+  advanceMissingNativeScriptTxSemanticCheckpoint,
+  decodeMissingNativeScriptTxGrammarCheckpoint,
+  decodeMissingNativeScriptTxSemanticCheckpoint,
+  encodeMissingNativeScriptTxGrammarCheckpoint,
+  encodeMissingNativeScriptTxSemanticCheckpoint,
+  hashMissingNativeScriptTxGrammarCheckpoint,
+  hashMissingNativeScriptTxSemanticCheckpoint,
+  initialMissingNativeScriptTxGrammarCheckpoint,
+  initialMissingNativeScriptTxSemanticCheckpoint,
+  missingNativeScriptTxGrammarCheckpointIsComplete,
+  missingNativeScriptTxRequiredScriptPresentThrough,
+  missingNativeScriptTxSemanticCheckpointIsComplete,
+  resolveMissingNativeScriptTxGrammarCheckpoint,
+  resolveMissingNativeScriptTxSemanticCheckpoint,
 } from "../src/missing-native-script-tx/staged-walk-v1.js";
 
 const TX_ID = "11".repeat(32);
@@ -31,80 +31,80 @@ const items = scripts.map(encodeMidgardVersionedScript);
 
 describe("missing-native-script staged checkpoint twins", () => {
   it("uses the exact fixed-width grammar wire and reaches terminal in bounded batches", () => {
-    const initial = initialMissingNativeScriptTxGrammarCheckpointV1({
+    const initial = initialMissingNativeScriptTxGrammarCheckpoint({
       txId: TX_ID,
       items,
     });
-    const first = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    const first = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: initial,
       items,
       budget: 32,
     });
-    const second = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    const second = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: first,
       items,
       budget: 32,
     });
-    const terminal = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    const terminal = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: second,
       items,
       budget: 32,
     });
 
-    const encoded = encodeMissingNativeScriptTxGrammarCheckpointV1(terminal);
+    const encoded = encodeMissingNativeScriptTxGrammarCheckpoint(terminal);
     expect(encoded).toHaveLength(87);
-    expect(decodeMissingNativeScriptTxGrammarCheckpointV1(encoded)).toEqual(
+    expect(decodeMissingNativeScriptTxGrammarCheckpoint(encoded)).toEqual(
       terminal,
     );
     expect(first.nextItemIndex).toBe(32);
     expect(second.nextItemIndex).toBe(64);
     expect(terminal.nextItemIndex).toBe(65);
-    expect(missingNativeScriptTxGrammarCheckpointIsCompleteV1(terminal)).toBe(
+    expect(missingNativeScriptTxGrammarCheckpointIsComplete(terminal)).toBe(
       true,
     );
-    expect(hashMissingNativeScriptTxGrammarCheckpointV1(terminal)).toMatch(
+    expect(hashMissingNativeScriptTxGrammarCheckpoint(terminal)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
     expect(
-      resolveMissingNativeScriptTxGrammarCheckpointV1({
+      resolveMissingNativeScriptTxGrammarCheckpoint({
         txId: TX_ID,
         items,
-        committedHash: hashMissingNativeScriptTxGrammarCheckpointV1(second),
+        committedHash: hashMissingNativeScriptTxGrammarCheckpoint(second),
       }),
     ).toEqual(second);
   });
 
   it("derives semantic checkpoints only from terminal grammar and finds a required script cumulatively", () => {
-    const initialGrammar = initialMissingNativeScriptTxGrammarCheckpointV1({
+    const initialGrammar = initialMissingNativeScriptTxGrammarCheckpoint({
       txId: TX_ID,
       items,
     });
     expect(() =>
-      initialMissingNativeScriptTxSemanticCheckpointV1({
+      initialMissingNativeScriptTxSemanticCheckpoint({
         grammar: initialGrammar,
         items,
       }),
     ).toThrow(/terminal grammar/u);
-    const terminalGrammar = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    const terminalGrammar = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: initialGrammar,
       items,
       budget: 32,
     });
-    const terminalGrammar2 = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    const terminalGrammar2 = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: terminalGrammar,
       items,
       budget: 32,
     });
-    const terminalGrammar3 = advanceMissingNativeScriptTxGrammarCheckpointV1({
+    const terminalGrammar3 = advanceMissingNativeScriptTxGrammarCheckpoint({
       checkpoint: terminalGrammar2,
       items,
       budget: 32,
     });
-    const semantic = initialMissingNativeScriptTxSemanticCheckpointV1({
+    const semantic = initialMissingNativeScriptTxSemanticCheckpoint({
       grammar: terminalGrammar3,
       items,
     });
-    const first = advanceMissingNativeScriptTxSemanticCheckpointV1({
+    const first = advanceMissingNativeScriptTxSemanticCheckpoint({
       checkpoint: semantic,
       txId: TX_ID,
       items,
@@ -112,71 +112,71 @@ describe("missing-native-script staged checkpoint twins", () => {
     });
     const targetHash = hashMidgardVersionedScript(scripts[40]!);
     expect(
-      missingNativeScriptTxRequiredScriptPresentThroughV1({
+      missingNativeScriptTxRequiredScriptPresentThrough({
         expectedScriptHash: targetHash,
         items,
         nextItemIndex: first.nextItemIndex,
       }),
     ).toBe(false);
-    const second = advanceMissingNativeScriptTxSemanticCheckpointV1({
+    const second = advanceMissingNativeScriptTxSemanticCheckpoint({
       checkpoint: first,
       txId: TX_ID,
       items,
       budget: 32,
     });
     expect(
-      missingNativeScriptTxRequiredScriptPresentThroughV1({
+      missingNativeScriptTxRequiredScriptPresentThrough({
         expectedScriptHash: targetHash,
         items,
         nextItemIndex: second.nextItemIndex,
       }),
     ).toBe(true);
-    const terminal = advanceMissingNativeScriptTxSemanticCheckpointV1({
+    const terminal = advanceMissingNativeScriptTxSemanticCheckpoint({
       checkpoint: second,
       txId: TX_ID,
       items,
       budget: 32,
     });
-    const encoded = encodeMissingNativeScriptTxSemanticCheckpointV1(terminal);
+    const encoded = encodeMissingNativeScriptTxSemanticCheckpoint(terminal);
     expect(encoded).toHaveLength(53);
-    expect(decodeMissingNativeScriptTxSemanticCheckpointV1(encoded)).toEqual(
+    expect(decodeMissingNativeScriptTxSemanticCheckpoint(encoded)).toEqual(
       terminal,
     );
-    expect(missingNativeScriptTxSemanticCheckpointIsCompleteV1(terminal)).toBe(
+    expect(missingNativeScriptTxSemanticCheckpointIsComplete(terminal)).toBe(
       true,
     );
-    expect(hashMissingNativeScriptTxSemanticCheckpointV1(terminal)).toMatch(
+    expect(hashMissingNativeScriptTxSemanticCheckpoint(terminal)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
     expect(
-      resolveMissingNativeScriptTxSemanticCheckpointV1({
+      resolveMissingNativeScriptTxSemanticCheckpoint({
         txId: TX_ID,
         items,
-        committedHash: hashMissingNativeScriptTxSemanticCheckpointV1(second),
+        committedHash: hashMissingNativeScriptTxSemanticCheckpoint(second),
       }),
     ).toEqual(second);
   });
 
   it("rejects noncanonical, substituted, and out-of-range checkpoints", () => {
-    const grammar = initialMissingNativeScriptTxGrammarCheckpointV1({
+    const grammar = initialMissingNativeScriptTxGrammarCheckpoint({
       txId: TX_ID,
       items,
     });
-    const encoded = encodeMissingNativeScriptTxGrammarCheckpointV1(grammar);
+    const encoded = encodeMissingNativeScriptTxGrammarCheckpoint(grammar);
     const forged = Buffer.from(encoded);
     forged[0] = 0x86;
+    expect(() => decodeMissingNativeScriptTxGrammarCheckpoint(forged)).toThrow(
+      /not canonical/u,
+    );
     expect(() =>
-      decodeMissingNativeScriptTxGrammarCheckpointV1(forged),
-    ).toThrow(/not canonical/u);
-    expect(() =>
-      advanceMissingNativeScriptTxGrammarCheckpointV1({
+      advanceMissingNativeScriptTxGrammarCheckpoint({
         checkpoint: { ...grammar, fieldCommitment: "22".repeat(32) },
         items,
         budget: 32,
       }),
     ).toThrow(/exact field preimage/u);
     expect(() =>
-      advanceMissingNativeScriptTxGrammarCheckpointV1({
+      advanceMissingNativeScriptTxGrammarCheckpoint({
         checkpoint: grammar,
         items,
         budget: 33,

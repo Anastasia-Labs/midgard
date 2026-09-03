@@ -32,41 +32,41 @@
 import { createHash } from "node:crypto";
 
 import {
-  assertRetentionDaysCoverWindowV1,
-  DA_TRANSPORT_LIMITS_V1,
-  type DeploymentMarkerV1,
-  MIDGARD_MIN_RETENTION_DAYS_V1,
-  MIDGARD_RETENTION_WINDOW_V1,
-  parseDeploymentMarkerV1,
-  retentionDeadlineForBlockV1,
+  assertRetentionDaysCoverWindow,
+  DA_TRANSPORT_LIMITS,
+  type DeploymentMarker,
+  MIDGARD_MIN_RETENTION_DAYS,
+  MIDGARD_RETENTION_WINDOW,
+  parseDeploymentMarker,
+  retentionDeadlineForBlock,
 } from "@al-ft/midgard-core";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
-import { assertSecurityGradeEvidenceV1 } from "@al-ft/midgard-sdk";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import { assertSecurityGradeEvidence } from "@al-ft/midgard-sdk";
 
 import {
-  type VerifiedWatcherDeploymentIdentityV1,
-  verifyWatcherDeploymentIdentityV1,
-  type WatcherDeploymentIdentityPolicyV1,
-  type WatcherDeploymentTrustRootV1,
+  type VerifiedWatcherDeploymentIdentity,
+  verifyWatcherDeploymentIdentity,
+  type WatcherDeploymentIdentityPolicy,
+  type WatcherDeploymentTrustRoot,
 } from "../runtime/deployment-identity.js";
 import {
-  compareAndSwapWatcherDurableAtomicSnapshotV1,
-  readWatcherDurableAtomicSnapshotV1,
-  watcherCanonicalJsonV1,
-  type WatcherDaProofInputV1,
+  compareAndSwapWatcherDurableAtomicSnapshot,
+  readWatcherDurableAtomicSnapshot,
+  watcherCanonicalJson,
+  type WatcherDaProofInput,
   type WatcherDurableAtomicBackend,
   watcherDurableStoreBytesSha256,
   WatcherDurableStoreError,
 } from "./durable-store.js";
 import type {
-  WatcherPublicDaEventToStepV1,
-  WatcherPublicDaPayloadV1,
-  WatcherPublicDaProofBundleV1,
-  WatcherPublicDaTraceStepV1,
+  WatcherPublicDaEventToStep,
+  WatcherPublicDaPayload,
+  WatcherPublicDaProofBundle,
+  WatcherPublicDaTraceStep,
 } from "./public-da-client.js";
 
-export const WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION =
+export const WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION =
   "midgard-watcher-canonical-block-store-v1" as const;
 
 /**
@@ -75,9 +75,9 @@ export const WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION =
  * shares with L1. The conversion is a chain constant, not window arithmetic -
  * every duration still comes from the Q54 helpers.
  */
-export const WATCHER_CANONICAL_SLOT_LENGTH_MS_V1 = 1_000 as const;
+export const WATCHER_CANONICAL_SLOT_LENGTH_MS = 1_000 as const;
 
-export const WATCHER_CANONICAL_CONTENT_KINDS_V1 = [
+export const WATCHER_CANONICAL_CONTENT_KINDS = [
   "da_payload",
   "event_to_step_entry",
   "event_to_step_nonmembership",
@@ -85,16 +85,16 @@ export const WATCHER_CANONICAL_CONTENT_KINDS_V1 = [
   "trace_step",
 ] as const;
 
-export type WatcherCanonicalContentKindV1 =
-  (typeof WATCHER_CANONICAL_CONTENT_KINDS_V1)[number];
+export type WatcherCanonicalContentKind =
+  (typeof WATCHER_CANONICAL_CONTENT_KINDS)[number];
 
 /**
- * Every content kind maps onto exactly one reserved `WatcherDaProofInputV1`
+ * Every content kind maps onto exactly one reserved `WatcherDaProofInput`
  * record kind. Only the block body itself is a `da_payload`; every other
  * public artifact is proof input.
  */
-export const WATCHER_CANONICAL_RECORD_KIND_BY_CONTENT_KIND_V1: Readonly<
-  Record<WatcherCanonicalContentKindV1, WatcherDaProofInputV1["kind"]>
+export const WATCHER_CANONICAL_RECORD_KIND_BY_CONTENT_KIND: Readonly<
+  Record<WatcherCanonicalContentKind, WatcherDaProofInput["kind"]>
 > = Object.freeze({
   da_payload: "da_payload",
   event_to_step_entry: "proof_input",
@@ -103,25 +103,25 @@ export const WATCHER_CANONICAL_RECORD_KIND_BY_CONTENT_KIND_V1: Readonly<
   trace_step: "proof_input",
 });
 
-export const WATCHER_CANONICAL_PRUNE_REASON_CODES_V1 = [
+export const WATCHER_CANONICAL_PRUNE_REASON_CODES = [
   "expired_and_not_challengeable",
   "retention_not_expired",
   "still_challengeable",
   "unknown_input_id",
 ] as const;
 
-export type WatcherCanonicalPruneReasonCodeV1 =
-  (typeof WATCHER_CANONICAL_PRUNE_REASON_CODES_V1)[number];
+export type WatcherCanonicalPruneReasonCode =
+  (typeof WATCHER_CANONICAL_PRUNE_REASON_CODES)[number];
 
-export const WATCHER_CANONICAL_BLOCK_STORE_ALERT_CODES_V1 = [
+export const WATCHER_CANONICAL_BLOCK_STORE_ALERT_CODES = [
   "deadline_at_risk",
 ] as const;
 
-export type WatcherCanonicalBlockStoreAlertCodeV1 =
-  (typeof WATCHER_CANONICAL_BLOCK_STORE_ALERT_CODES_V1)[number];
+export type WatcherCanonicalBlockStoreAlertCode =
+  (typeof WATCHER_CANONICAL_BLOCK_STORE_ALERT_CODES)[number];
 
 /** Bounded retry budget for ordinary compare-and-swap contention. */
-export const WATCHER_CANONICAL_BLOCK_STORE_MAX_CAS_ATTEMPTS_V1 = 8 as const;
+export const WATCHER_CANONICAL_BLOCK_STORE_MAX_CAS_ATTEMPTS = 8 as const;
 
 export type WatcherCanonicalBlockStoreErrorCode =
   | "cas_contention"
@@ -237,17 +237,17 @@ const exactSlot = (value: unknown, path: string): number => {
   return value as number;
 };
 
-const parseMarker = (value: unknown, path: string): DeploymentMarkerV1 => {
+const parseMarker = (value: unknown, path: string): DeploymentMarker => {
   try {
-    return parseDeploymentMarkerV1(value);
+    return parseDeploymentMarker(value);
   } catch {
     return fail("invalid_field", path);
   }
 };
 
 const markersMatch = (
-  left: DeploymentMarkerV1,
-  right: DeploymentMarkerV1,
+  left: DeploymentMarker,
+  right: DeploymentMarker,
 ): boolean =>
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
@@ -256,11 +256,11 @@ const markersMatch = (
 // Records
 // ---------------------------------------------------------------------------
 
-export type WatcherCanonicalRecordMetadataV1 = Readonly<{
+export type WatcherCanonicalRecordMetadata = Readonly<{
   /** Addressing key: the public DA client's `inputId` for this artifact. */
   inputId: string;
-  kind: WatcherDaProofInputV1["kind"];
-  contentKind: WatcherCanonicalContentKindV1;
+  kind: WatcherDaProofInput["kind"];
+  contentKind: WatcherCanonicalContentKind;
   /** 28-byte L2 header hash the artifact belongs to. */
   headerHash: string;
   /** sha256 of the exact stored byte string. */
@@ -270,22 +270,22 @@ export type WatcherCanonicalRecordMetadataV1 = Readonly<{
   byteLength: number;
   sourcePeerIdentity: string;
   sourcePeerId: string;
-  provenance: EvidenceProvenanceV1;
-  deploymentMarker: DeploymentMarkerV1;
+  provenance: EvidenceProvenance;
+  deploymentMarker: DeploymentMarker;
   observedAtSlot: number;
   retainUntilSlot: number;
 }>;
 
-export type WatcherCanonicalBlockRecordV1 = Readonly<{
-  input: WatcherDaProofInputV1;
-  metadata: WatcherCanonicalRecordMetadataV1;
+export type WatcherCanonicalBlockRecord = Readonly<{
+  input: WatcherDaProofInput;
+  metadata: WatcherCanonicalRecordMetadata;
 }>;
 
-export type WatcherCanonicalBlockStoreSnapshotV1 = Readonly<{
-  schemaVersion: typeof WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION;
+export type WatcherCanonicalBlockStoreSnapshot = Readonly<{
+  schemaVersion: typeof WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION;
   revision: string;
-  deploymentMarker: DeploymentMarkerV1;
-  records: readonly WatcherCanonicalBlockRecordV1[];
+  deploymentMarker: DeploymentMarker;
+  records: readonly WatcherCanonicalBlockRecord[];
 }>;
 
 const METADATA_KEYS = [
@@ -306,26 +306,23 @@ const METADATA_KEYS = [
 
 const PROVENANCE_KEYS = ["grade", "sourceId", "trustClass"] as const;
 
-const parseProvenance = (
-  value: unknown,
-  path: string,
-): EvidenceProvenanceV1 => {
+const parseProvenance = (value: unknown, path: string): EvidenceProvenance => {
   const record = exactRecord(value, path, PROVENANCE_KEYS);
-  const provenance: EvidenceProvenanceV1 = {
+  const provenance: EvidenceProvenance = {
     trustClass: exactString(
       record.trustClass,
       `${path}.trustClass`,
       NON_EMPTY_TEXT,
-    ) as EvidenceProvenanceV1["trustClass"],
+    ) as EvidenceProvenance["trustClass"],
     sourceId: exactString(record.sourceId, `${path}.sourceId`, NON_EMPTY_TEXT),
     grade: exactLiteral(record.grade, `${path}.grade`, [
       "security",
-    ] as const) as EvidenceProvenanceV1["grade"],
+    ] as const) as EvidenceProvenance["grade"],
   };
   // Q03: only public/permissionless DA may back a submittable proof, and only
   // at security grade. Anything else is refused before it can be persisted.
   try {
-    assertSecurityGradeEvidenceV1(provenance);
+    assertSecurityGradeEvidence(provenance);
   } catch {
     return fail("provenance_not_public_da", `${path}.trustClass`);
   }
@@ -338,7 +335,7 @@ const parseProvenance = (
 const parseDurableInput = (
   value: unknown,
   path: string,
-): WatcherDaProofInputV1 => {
+): WatcherDaProofInput => {
   const record = exactRecord(value, path, ["inputId", "kind", "payload"]);
   const payload = exactRecord(record.payload, `${path}.payload`, [
     "cborHex",
@@ -353,7 +350,7 @@ const parseDurableInput = (
   if (bytes.length === 0) {
     fail("invalid_field", `${path}.payload.cborHex`);
   }
-  if (bytes.length > DA_TRANSPORT_LIMITS_V1.maxPayloadBytes) {
+  if (bytes.length > DA_TRANSPORT_LIMITS.maxPayloadBytes) {
     fail("invalid_field", `${path}.payload.cborHex`);
   }
   const digest = exactString(payload.sha256, `${path}.payload.sha256`, HEX_32);
@@ -374,12 +371,12 @@ const parseDurableInput = (
  * Structural and digest validation of one record. Everything checkable from
  * the stored bytes alone is checked here; the inner-payload digest of a DA
  * envelope additionally needs an unwrap and is verified by
- * `verifyWatcherCanonicalRecordV1`.
+ * `verifyWatcherCanonicalRecord`.
  */
-export const parseWatcherCanonicalBlockRecordV1 = (
+export const parseWatcherCanonicalBlockRecord = (
   value: unknown,
   path = "$",
-): WatcherCanonicalBlockRecordV1 => {
+): WatcherCanonicalBlockRecord => {
   const record = exactRecord(value, path, ["input", "metadata"]);
   const input = parseDurableInput(record.input, `${path}.input`);
   const metadataRecord = exactRecord(
@@ -391,13 +388,13 @@ export const parseWatcherCanonicalBlockRecordV1 = (
   const contentKind = exactLiteral(
     metadataRecord.contentKind,
     `${metadataPath}.contentKind`,
-    WATCHER_CANONICAL_CONTENT_KINDS_V1,
+    WATCHER_CANONICAL_CONTENT_KINDS,
   );
   const kind = exactLiteral(metadataRecord.kind, `${metadataPath}.kind`, [
     "da_payload",
     "proof_input",
   ] as const);
-  if (kind !== WATCHER_CANONICAL_RECORD_KIND_BY_CONTENT_KIND_V1[contentKind]) {
+  if (kind !== WATCHER_CANONICAL_RECORD_KIND_BY_CONTENT_KIND[contentKind]) {
     fail("invalid_field", `${metadataPath}.kind`);
   }
   if (kind !== input.kind) {
@@ -450,7 +447,7 @@ export const parseWatcherCanonicalBlockRecordV1 = (
   if (retainUntilSlot <= observedAtSlot) {
     fail("invalid_field", `${metadataPath}.retainUntilSlot`);
   }
-  const metadata: WatcherCanonicalRecordMetadataV1 = Object.freeze({
+  const metadata: WatcherCanonicalRecordMetadata = Object.freeze({
     inputId,
     kind,
     contentKind,
@@ -490,18 +487,18 @@ export const parseWatcherCanonicalBlockRecordV1 = (
  * Full verification of one record, including the digests that can only be
  * confirmed by re-deriving them from the stored bytes.
  */
-export const verifyWatcherCanonicalRecordV1 = async (
+export const verifyWatcherCanonicalRecord = async (
   value: unknown,
   path = "$",
-): Promise<WatcherCanonicalBlockRecordV1> => {
-  const record = parseWatcherCanonicalBlockRecordV1(value, path);
+): Promise<WatcherCanonicalBlockRecord> => {
+  const record = parseWatcherCanonicalBlockRecord(value, path);
   if (record.metadata.contentKind === "da_payload") {
     const envelope = Buffer.from(record.input.payload.cborHex, "hex");
     let innerBytes: Buffer;
     try {
       innerBytes = (
-        await unwrapDaPayloadV1(envelope, {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        await unwrapDaPayload(envelope, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         })
       ).innerBytes;
     } catch {
@@ -518,10 +515,10 @@ export const verifyWatcherCanonicalRecordV1 = async (
 // Retention window (R5)
 // ---------------------------------------------------------------------------
 
-export type WatcherCanonicalRetentionWindowV1 = Readonly<{
-  schemaVersion: typeof WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION;
+export type WatcherCanonicalRetentionWindow = Readonly<{
+  schemaVersion: typeof WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION;
   manifestId: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   retentionDays: number;
   deployedRetentionMs: number;
   requiredRetentionMs: number;
@@ -536,7 +533,7 @@ export type WatcherCanonicalRetentionWindowV1 = Readonly<{
 }>;
 
 const msToSlots = (milliseconds: number): number =>
-  Math.floor(milliseconds / WATCHER_CANONICAL_SLOT_LENGTH_MS_V1);
+  Math.floor(milliseconds / WATCHER_CANONICAL_SLOT_LENGTH_MS);
 
 const manifestRetentionDays = (manifest: unknown, path: string): unknown => {
   const root = plainRecord(manifest, path);
@@ -552,13 +549,13 @@ const assertRetentionDays = (value: unknown, path: string): number => {
   let retentionDays: number;
   try {
     // Q54 is the single authority for maturity + worst-case proof-time bound.
-    retentionDays = assertRetentionDaysCoverWindowV1(value, path);
+    retentionDays = assertRetentionDaysCoverWindow(value, path);
   } catch {
     return fail("retention_window_insufficient", path);
   }
   // The deployed DA transport profile floor is stricter than the bare
   // challengeability horizon; both must hold.
-  if (retentionDays < DA_TRANSPORT_LIMITS_V1.minimumRetentionDays) {
+  if (retentionDays < DA_TRANSPORT_LIMITS.minimumRetentionDays) {
     return fail("retention_window_insufficient", path);
   }
   return retentionDays;
@@ -566,37 +563,37 @@ const assertRetentionDays = (value: unknown, path: string): number => {
 
 const makeRetentionWindow = (
   manifestId: string,
-  deploymentMarker: DeploymentMarkerV1,
+  deploymentMarker: DeploymentMarker,
   retentionDays: number,
-): WatcherCanonicalRetentionWindowV1 => {
+): WatcherCanonicalRetentionWindow => {
   // Duration arithmetic is delegated to the Q54 helper so a profile change
   // propagates instead of being restated here.
-  const deadline = retentionDeadlineForBlockV1({
+  const deadline = retentionDeadlineForBlock({
     blockEndTimeMs: 0,
     retentionDays,
   });
   return Object.freeze({
-    schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
     manifestId,
     deploymentMarker,
     retentionDays,
     deployedRetentionMs: deadline.deployedRetentionMs,
-    requiredRetentionMs: MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
-    maturityMs: MIDGARD_RETENTION_WINDOW_V1.maturityMs,
+    requiredRetentionMs: MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
+    maturityMs: MIDGARD_RETENTION_WINDOW.maturityMs,
     worstCaseProofTimeBoundMs:
-      MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs,
+      MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     marginMs:
       deadline.deployedRetentionMs -
-      MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     retentionSlots: msToSlots(deadline.deployedRetentionMs),
     requiredRetentionSlots: msToSlots(
-      MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     ),
-    maturitySlots: msToSlots(MIDGARD_RETENTION_WINDOW_V1.maturityMs),
+    maturitySlots: msToSlots(MIDGARD_RETENTION_WINDOW.maturityMs),
     alertHeadroomSlots: msToSlots(
       Math.max(
         deadline.deployedRetentionMs -
-          MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+          MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
         0,
       ),
     ),
@@ -605,17 +602,17 @@ const makeRetentionWindow = (
 
 /**
  * Reads the window out of a deployment manifest that has ALREADY been
- * verified. This is the second half of `resolveWatcherCanonicalRetentionWindowV1`
+ * verified. This is the second half of `resolveWatcherCanonicalRetentionWindow`
  * and exists separately only so the manifest-shape and floor behaviour can be
  * exercised directly; it performs no signature or policy checking of its own
  * and must never be called with an unverified manifest.
  */
-export const watcherCanonicalRetentionWindowFromVerifiedManifestV1 = (input: {
+export const watcherCanonicalRetentionWindowFromVerifiedManifest = (input: {
   readonly manifest: unknown;
   readonly manifestId: string;
-  readonly deploymentMarker: DeploymentMarkerV1;
+  readonly deploymentMarker: DeploymentMarker;
   readonly path?: string;
-}): WatcherCanonicalRetentionWindowV1 => {
+}): WatcherCanonicalRetentionWindow => {
   const path = input.path ?? "$.manifest";
   const retentionDays = assertRetentionDays(
     manifestRetentionDays(input.manifest, path),
@@ -634,16 +631,16 @@ export const watcherCanonicalRetentionWindowFromVerifiedManifestV1 = (input: {
  * read out of the manifest whose digest that verification bound. A window is
  * never accepted from a caller.
  */
-export const resolveWatcherCanonicalRetentionWindowV1 = (input: {
+export const resolveWatcherCanonicalRetentionWindow = (input: {
   readonly signedIdentity: unknown;
-  readonly policy: WatcherDeploymentIdentityPolicyV1;
-  readonly trustRoots: readonly WatcherDeploymentTrustRootV1[];
+  readonly policy: WatcherDeploymentIdentityPolicy;
+  readonly trustRoots: readonly WatcherDeploymentTrustRoot[];
   readonly durableMarker: unknown;
 }): Readonly<{
-  identity: VerifiedWatcherDeploymentIdentityV1;
-  window: WatcherCanonicalRetentionWindowV1;
+  identity: VerifiedWatcherDeploymentIdentity;
+  window: WatcherCanonicalRetentionWindow;
 }> => {
-  const identity = verifyWatcherDeploymentIdentityV1({
+  const identity = verifyWatcherDeploymentIdentity({
     signedIdentity: input.signedIdentity,
     policy: input.policy,
     trustRoots: input.trustRoots,
@@ -652,7 +649,7 @@ export const resolveWatcherCanonicalRetentionWindowV1 = (input: {
   const envelope = plainRecord(input.signedIdentity, "$.signedIdentity");
   return Object.freeze({
     identity,
-    window: watcherCanonicalRetentionWindowFromVerifiedManifestV1({
+    window: watcherCanonicalRetentionWindowFromVerifiedManifest({
       manifest: envelope.manifest,
       manifestId: identity.manifestId,
       deploymentMarker: identity.durableMarker,
@@ -662,13 +659,11 @@ export const resolveWatcherCanonicalRetentionWindowV1 = (input: {
 };
 
 /** Re-validates a window value before it is allowed to influence retention. */
-export const assertWatcherCanonicalRetentionWindowV1 = (
-  window: WatcherCanonicalRetentionWindowV1,
+export const assertWatcherCanonicalRetentionWindow = (
+  window: WatcherCanonicalRetentionWindow,
   path = "$.retentionWindow",
-): WatcherCanonicalRetentionWindowV1 => {
-  if (
-    window.schemaVersion !== WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION
-  ) {
+): WatcherCanonicalRetentionWindow => {
+  if (window.schemaVersion !== WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION) {
     fail("unsupported_schema", `${path}.schemaVersion`);
   }
   const retentionDays = assertRetentionDays(
@@ -696,43 +691,43 @@ export const assertWatcherCanonicalRetentionWindowV1 = (
 };
 
 /** The slot at which a record observed at `observedAtSlot` stops being kept. */
-export const watcherCanonicalRetainUntilSlotV1 = (input: {
-  readonly window: WatcherCanonicalRetentionWindowV1;
+export const watcherCanonicalRetainUntilSlot = (input: {
+  readonly window: WatcherCanonicalRetentionWindow;
   readonly observedAtSlot: number;
 }): number => {
-  const window = assertWatcherCanonicalRetentionWindowV1(input.window);
+  const window = assertWatcherCanonicalRetentionWindow(input.window);
   const observedAtSlot = exactSlot(input.observedAtSlot, "$.observedAtSlot");
   return observedAtSlot + window.retentionSlots;
 };
 
 /** Whole days of retention this deployment must promise, at minimum. */
-export const WATCHER_CANONICAL_MIN_RETENTION_DAYS_V1 = Math.max(
-  MIDGARD_MIN_RETENTION_DAYS_V1,
-  DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+export const WATCHER_CANONICAL_MIN_RETENTION_DAYS = Math.max(
+  MIDGARD_MIN_RETENTION_DAYS,
+  DA_TRANSPORT_LIMITS.minimumRetentionDays,
 );
 
 // ---------------------------------------------------------------------------
 // Record builders over the W20 client's return values
 // ---------------------------------------------------------------------------
 
-export type WatcherCanonicalRecordContextV1 = Readonly<{
-  window: WatcherCanonicalRetentionWindowV1;
-  deploymentMarker: DeploymentMarkerV1;
+export type WatcherCanonicalRecordContext = Readonly<{
+  window: WatcherCanonicalRetentionWindow;
+  deploymentMarker: DeploymentMarker;
   observedAtSlot: number;
 }>;
 
 const buildRecord = (input: {
-  readonly durableInput: WatcherDaProofInputV1;
-  readonly contentKind: WatcherCanonicalContentKindV1;
+  readonly durableInput: WatcherDaProofInput;
+  readonly contentKind: WatcherCanonicalContentKind;
   readonly headerHash: string;
   readonly bytes: Uint8Array;
   readonly innerSha256: string | null;
   readonly sourcePeerIdentity: string;
   readonly sourcePeerId: string;
-  readonly provenance: EvidenceProvenanceV1;
-  readonly context: WatcherCanonicalRecordContextV1;
-}): WatcherCanonicalBlockRecordV1 =>
-  parseWatcherCanonicalBlockRecordV1({
+  readonly provenance: EvidenceProvenance;
+  readonly context: WatcherCanonicalRecordContext;
+}): WatcherCanonicalBlockRecord =>
+  parseWatcherCanonicalBlockRecord({
     input: {
       inputId: input.durableInput.inputId,
       kind: input.durableInput.kind,
@@ -761,7 +756,7 @@ const buildRecord = (input: {
         manifestId: input.context.deploymentMarker.manifestId,
       },
       observedAtSlot: input.context.observedAtSlot,
-      retainUntilSlot: watcherCanonicalRetainUntilSlotV1({
+      retainUntilSlot: watcherCanonicalRetainUntilSlot({
         window: input.context.window,
         observedAtSlot: input.context.observedAtSlot,
       }),
@@ -769,10 +764,10 @@ const buildRecord = (input: {
   });
 
 /** Block-body payload: stored envelope bytes plus the unwrapped inner digest. */
-export const makeWatcherCanonicalDaPayloadRecordV1 = (input: {
-  readonly payload: WatcherPublicDaPayloadV1;
-  readonly context: WatcherCanonicalRecordContextV1;
-}): WatcherCanonicalBlockRecordV1 =>
+export const makeWatcherCanonicalDaPayloadRecord = (input: {
+  readonly payload: WatcherPublicDaPayload;
+  readonly context: WatcherCanonicalRecordContext;
+}): WatcherCanonicalBlockRecord =>
   buildRecord({
     durableInput: input.payload.durableInput,
     contentKind: "da_payload",
@@ -786,10 +781,10 @@ export const makeWatcherCanonicalDaPayloadRecordV1 = (input: {
   });
 
 /** Proof bundle: an atomic artifact, so `innerSha256` is null. */
-export const makeWatcherCanonicalProofBundleRecordV1 = (input: {
-  readonly proofBundle: WatcherPublicDaProofBundleV1;
-  readonly context: WatcherCanonicalRecordContextV1;
-}): WatcherCanonicalBlockRecordV1 =>
+export const makeWatcherCanonicalProofBundleRecord = (input: {
+  readonly proofBundle: WatcherPublicDaProofBundle;
+  readonly context: WatcherCanonicalRecordContext;
+}): WatcherCanonicalBlockRecord =>
   buildRecord({
     durableInput: input.proofBundle.durableInput,
     contentKind: "proof_bundle",
@@ -807,10 +802,10 @@ export const makeWatcherCanonicalProofBundleRecordV1 = (input: {
  * builds no durable record for them, so the record is constructed here: the
  * step bytes are the stored bytes, the witness digest is `innerSha256`.
  */
-export const makeWatcherCanonicalTraceStepRecordV1 = (input: {
-  readonly traceStep: WatcherPublicDaTraceStepV1;
-  readonly context: WatcherCanonicalRecordContextV1;
-}): WatcherCanonicalBlockRecordV1 =>
+export const makeWatcherCanonicalTraceStepRecord = (input: {
+  readonly traceStep: WatcherPublicDaTraceStep;
+  readonly context: WatcherCanonicalRecordContext;
+}): WatcherCanonicalBlockRecord =>
   buildRecord({
     durableInput: {
       inputId: input.traceStep.transitionStepSha256,
@@ -835,10 +830,10 @@ export const makeWatcherCanonicalTraceStepRecordV1 = (input: {
  * the witness digest; a non-membership answer has no entry, so the witness
  * itself is the stored artifact and `innerSha256` is null.
  */
-export const makeWatcherCanonicalEventToStepRecordV1 = (input: {
-  readonly eventToStep: WatcherPublicDaEventToStepV1;
-  readonly context: WatcherCanonicalRecordContextV1;
-}): WatcherCanonicalBlockRecordV1 => {
+export const makeWatcherCanonicalEventToStepRecord = (input: {
+  readonly eventToStep: WatcherPublicDaEventToStep;
+  readonly context: WatcherCanonicalRecordContext;
+}): WatcherCanonicalBlockRecord => {
   const entryBytes = input.eventToStep.eventToStepEntryBytes;
   const membership = entryBytes !== null;
   const bytes = membership
@@ -879,13 +874,11 @@ const SNAPSHOT_KEYS = [
   "schemaVersion",
 ] as const;
 
-export const parseWatcherCanonicalBlockStoreSnapshotV1 = (
+export const parseWatcherCanonicalBlockStoreSnapshot = (
   value: unknown,
-): WatcherCanonicalBlockStoreSnapshotV1 => {
+): WatcherCanonicalBlockStoreSnapshot => {
   const record = exactRecord(value, "$", SNAPSHOT_KEYS);
-  if (
-    record.schemaVersion !== WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION
-  ) {
+  if (record.schemaVersion !== WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION) {
     fail("unsupported_schema", "$.schemaVersion");
   }
   const revision = exactString(
@@ -902,10 +895,10 @@ export const parseWatcherCanonicalBlockStoreSnapshotV1 = (
   }
   const members = record.records as readonly unknown[];
   const records = members.map((member, index) =>
-    parseWatcherCanonicalBlockRecordV1(member, `$.records[${String(index)}]`),
+    parseWatcherCanonicalBlockRecord(member, `$.records[${String(index)}]`),
   );
   for (let index = 0; index < records.length; index += 1) {
-    const current = records[index] as WatcherCanonicalBlockRecordV1;
+    const current = records[index] as WatcherCanonicalBlockRecord;
     if (!markersMatch(deploymentMarker, current.metadata.deploymentMarker)) {
       fail(
         "deployment_marker_mismatch",
@@ -915,7 +908,7 @@ export const parseWatcherCanonicalBlockStoreSnapshotV1 = (
     if (index === 0) {
       continue;
     }
-    const previous = records[index - 1] as WatcherCanonicalBlockRecordV1;
+    const previous = records[index - 1] as WatcherCanonicalBlockRecord;
     if (current.input.inputId === previous.input.inputId) {
       fail("content_conflict", `$.records[${String(index)}].input.inputId`);
     }
@@ -924,24 +917,24 @@ export const parseWatcherCanonicalBlockStoreSnapshotV1 = (
     }
   }
   return Object.freeze({
-    schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
     revision,
     deploymentMarker,
     records: Object.freeze(records),
   });
 };
 
-export const encodeWatcherCanonicalBlockStoreSnapshotV1 = (
-  snapshot: WatcherCanonicalBlockStoreSnapshotV1,
+export const encodeWatcherCanonicalBlockStoreSnapshot = (
+  snapshot: WatcherCanonicalBlockStoreSnapshot,
 ): Uint8Array =>
   UTF8_ENCODER.encode(
-    watcherCanonicalJsonV1(parseWatcherCanonicalBlockStoreSnapshotV1(snapshot)),
+    watcherCanonicalJson(parseWatcherCanonicalBlockStoreSnapshot(snapshot)),
   );
 
 /** Decodes one snapshot, refusing anything that is not its canonical encoding. */
-export const decodeWatcherCanonicalBlockStoreSnapshotV1 = (
+export const decodeWatcherCanonicalBlockStoreSnapshot = (
   bytes: Uint8Array,
-): WatcherCanonicalBlockStoreSnapshotV1 => {
+): WatcherCanonicalBlockStoreSnapshot => {
   let text = "";
   let decoded: unknown;
   try {
@@ -950,18 +943,18 @@ export const decodeWatcherCanonicalBlockStoreSnapshotV1 = (
   } catch {
     return fail("invalid_encoding", "$");
   }
-  const parsed = parseWatcherCanonicalBlockStoreSnapshotV1(decoded);
-  if (text !== watcherCanonicalJsonV1(parsed)) {
+  const parsed = parseWatcherCanonicalBlockStoreSnapshot(decoded);
+  if (text !== watcherCanonicalJson(parsed)) {
     fail("noncanonical_encoding", "$");
   }
   return parsed;
 };
 
-export const makeEmptyWatcherCanonicalBlockStoreSnapshotV1 = (
-  deploymentMarker: DeploymentMarkerV1,
-): WatcherCanonicalBlockStoreSnapshotV1 =>
-  parseWatcherCanonicalBlockStoreSnapshotV1({
-    schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+export const makeEmptyWatcherCanonicalBlockStoreSnapshot = (
+  deploymentMarker: DeploymentMarker,
+): WatcherCanonicalBlockStoreSnapshot =>
+  parseWatcherCanonicalBlockStoreSnapshot({
+    schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
     revision: "0",
     deploymentMarker: {
       schemaVersion: deploymentMarker.schemaVersion,
@@ -977,8 +970,8 @@ const nextRevision = (revision: string): string =>
 // Durable authority
 // ---------------------------------------------------------------------------
 
-export type WatcherCanonicalBlockStoreLoadV1 = Readonly<{
-  snapshot: WatcherCanonicalBlockStoreSnapshotV1;
+export type WatcherCanonicalBlockStoreLoad = Readonly<{
+  snapshot: WatcherCanonicalBlockStoreSnapshot;
   snapshotSha256: string;
 }>;
 
@@ -986,7 +979,7 @@ const readSnapshotBytes = async (
   backend: WatcherDurableAtomicBackend,
 ): Promise<Readonly<{ bytes: Uint8Array; sha256: string }> | null> => {
   try {
-    return await readWatcherDurableAtomicSnapshotV1(backend);
+    return await readWatcherDurableAtomicSnapshot(backend);
   } catch (error) {
     if (
       error instanceof WatcherDurableStoreError &&
@@ -1004,10 +997,10 @@ const commitSnapshot = async (input: {
   readonly next: Uint8Array;
 }): Promise<string | null> => {
   let result: Awaited<
-    ReturnType<typeof compareAndSwapWatcherDurableAtomicSnapshotV1>
+    ReturnType<typeof compareAndSwapWatcherDurableAtomicSnapshot>
   >;
   try {
-    result = await compareAndSwapWatcherDurableAtomicSnapshotV1(input);
+    result = await compareAndSwapWatcherDurableAtomicSnapshot(input);
   } catch (error) {
     if (
       error instanceof WatcherDurableStoreError &&
@@ -1021,14 +1014,14 @@ const commitSnapshot = async (input: {
 };
 
 const verifySnapshot = async (
-  snapshot: WatcherCanonicalBlockStoreSnapshotV1,
-  expectedMarker: DeploymentMarkerV1,
-): Promise<WatcherCanonicalBlockStoreSnapshotV1> => {
+  snapshot: WatcherCanonicalBlockStoreSnapshot,
+  expectedMarker: DeploymentMarker,
+): Promise<WatcherCanonicalBlockStoreSnapshot> => {
   if (!markersMatch(expectedMarker, snapshot.deploymentMarker)) {
     fail("deployment_marker_mismatch", "$.deploymentMarker");
   }
   for (let index = 0; index < snapshot.records.length; index += 1) {
-    await verifyWatcherCanonicalRecordV1(
+    await verifyWatcherCanonicalRecord(
       snapshot.records[index],
       `$.records[${String(index)}]`,
     );
@@ -1041,24 +1034,24 @@ const verifySnapshot = async (
  * marker are re-derived from the stored bytes, so a snapshot mutated underneath
  * the process is rejected rather than trusted.
  */
-export const loadWatcherCanonicalBlockStoreV1 = async (input: {
+export const loadWatcherCanonicalBlockStore = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  readonly retentionWindow?: WatcherCanonicalRetentionWindowV1;
-}): Promise<WatcherCanonicalBlockStoreLoadV1 | null> => {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly retentionWindow?: WatcherCanonicalRetentionWindow;
+}): Promise<WatcherCanonicalBlockStoreLoad | null> => {
   if (input.retentionWindow !== undefined) {
-    assertWatcherCanonicalRetentionWindowV1(input.retentionWindow);
+    assertWatcherCanonicalRetentionWindow(input.retentionWindow);
   }
   const stored = await readSnapshotBytes(input.backend);
   if (stored === null) {
     return null;
   }
-  const snapshot = decodeWatcherCanonicalBlockStoreSnapshotV1(stored.bytes);
+  const snapshot = decodeWatcherCanonicalBlockStoreSnapshot(stored.bytes);
   await verifySnapshot(snapshot, input.deploymentIdentity.durableMarker);
   return Object.freeze({ snapshot, snapshotSha256: stored.sha256 });
 };
 
-export type WatcherCanonicalPersistResultV1 = Readonly<{
+export type WatcherCanonicalPersistResult = Readonly<{
   committed: boolean;
   alreadyPresent: boolean;
   inputId: string;
@@ -1067,9 +1060,9 @@ export type WatcherCanonicalPersistResultV1 = Readonly<{
 }>;
 
 const sameRecord = (
-  left: WatcherCanonicalBlockRecordV1,
-  right: WatcherCanonicalBlockRecordV1,
-): boolean => watcherCanonicalJsonV1(left) === watcherCanonicalJsonV1(right);
+  left: WatcherCanonicalBlockRecord,
+  right: WatcherCanonicalBlockRecord,
+): boolean => watcherCanonicalJson(left) === watcherCanonicalJson(right);
 
 /**
  * Persists one public byte string exactly as received, before any verification
@@ -1077,29 +1070,29 @@ const sameRecord = (
  *
  * Idempotent for a byte-identical re-persist. A different byte string under an
  * existing key is a hard `content_conflict`: the store never overwrites, and
- * the only way a record leaves is `pruneWatcherCanonicalBlockStoreV1`.
+ * the only way a record leaves is `pruneWatcherCanonicalBlockStore`.
  */
-export const persistWatcherCanonicalPublicBytesV1 = async (input: {
+export const persistWatcherCanonicalPublicBytes = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  readonly record: WatcherCanonicalBlockRecordV1;
-}): Promise<WatcherCanonicalPersistResultV1> => {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly record: WatcherCanonicalBlockRecord;
+}): Promise<WatcherCanonicalPersistResult> => {
   const marker = input.deploymentIdentity.durableMarker;
-  const record = await verifyWatcherCanonicalRecordV1(input.record, "$.record");
+  const record = await verifyWatcherCanonicalRecord(input.record, "$.record");
   if (!markersMatch(marker, record.metadata.deploymentMarker)) {
     fail("deployment_marker_mismatch", "$.record.metadata.deploymentMarker");
   }
   for (
     let attempt = 0;
-    attempt < WATCHER_CANONICAL_BLOCK_STORE_MAX_CAS_ATTEMPTS_V1;
+    attempt < WATCHER_CANONICAL_BLOCK_STORE_MAX_CAS_ATTEMPTS;
     attempt += 1
   ) {
     const stored = await readSnapshotBytes(input.backend);
     const current =
       stored === null
-        ? makeEmptyWatcherCanonicalBlockStoreSnapshotV1(marker)
+        ? makeEmptyWatcherCanonicalBlockStoreSnapshot(marker)
         : await verifySnapshot(
-            decodeWatcherCanonicalBlockStoreSnapshotV1(stored.bytes),
+            decodeWatcherCanonicalBlockStoreSnapshot(stored.bytes),
             marker,
           );
     const existing = current.records.find(
@@ -1116,14 +1109,14 @@ export const persistWatcherCanonicalPublicBytesV1 = async (input: {
         snapshotSha256:
           stored === null
             ? watcherDurableStoreBytesSha256(
-                encodeWatcherCanonicalBlockStoreSnapshotV1(current),
+                encodeWatcherCanonicalBlockStoreSnapshot(current),
               )
             : stored.sha256,
         revision: current.revision,
       });
     }
-    const next = parseWatcherCanonicalBlockStoreSnapshotV1({
-      schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+    const next = parseWatcherCanonicalBlockStoreSnapshot({
+      schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
       revision: nextRevision(current.revision),
       deploymentMarker: {
         schemaVersion: current.deploymentMarker.schemaVersion,
@@ -1136,7 +1129,7 @@ export const persistWatcherCanonicalPublicBytesV1 = async (input: {
     const sha256 = await commitSnapshot({
       backend: input.backend,
       expectedSha256: stored === null ? null : stored.sha256,
-      next: encodeWatcherCanonicalBlockStoreSnapshotV1(next),
+      next: encodeWatcherCanonicalBlockStoreSnapshot(next),
     });
     if (sha256 !== null) {
       return Object.freeze({
@@ -1155,22 +1148,22 @@ export const persistWatcherCanonicalPublicBytesV1 = async (input: {
 // Retention prune
 // ---------------------------------------------------------------------------
 
-export type WatcherCanonicalPruneDecisionV1 = Readonly<{
+export type WatcherCanonicalPruneDecision = Readonly<{
   inputId: string;
   decision: "pruned" | "retained";
-  reasonCode: WatcherCanonicalPruneReasonCodeV1;
+  reasonCode: WatcherCanonicalPruneReasonCode;
   retainUntilSlot: number | null;
   remainingSlots: number | null;
-  alertCode: WatcherCanonicalBlockStoreAlertCodeV1 | null;
+  alertCode: WatcherCanonicalBlockStoreAlertCode | null;
 }>;
 
-export type WatcherCanonicalPruneResultV1 = Readonly<{
+export type WatcherCanonicalPruneResult = Readonly<{
   committed: boolean;
   revision: string;
   snapshotSha256: string | null;
   prunedInputIds: readonly string[];
-  decisions: readonly WatcherCanonicalPruneDecisionV1[];
-  alerts: readonly WatcherCanonicalPruneDecisionV1[];
+  decisions: readonly WatcherCanonicalPruneDecision[];
+  alerts: readonly WatcherCanonicalPruneDecision[];
 }>;
 
 /**
@@ -1180,14 +1173,14 @@ export type WatcherCanonicalPruneResultV1 = Readonly<{
  * record whose remaining headroom has been consumed raises `deadline_at_risk`
  * before it can expire.
  */
-export const pruneWatcherCanonicalBlockStoreV1 = async (input: {
+export const pruneWatcherCanonicalBlockStore = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly atSlot: number;
   readonly stillChallengeableInputIds: readonly string[];
   readonly inputIds?: readonly string[];
-  readonly retentionWindow?: WatcherCanonicalRetentionWindowV1;
-}): Promise<WatcherCanonicalPruneResultV1> => {
+  readonly retentionWindow?: WatcherCanonicalRetentionWindow;
+}): Promise<WatcherCanonicalPruneResult> => {
   const marker = input.deploymentIdentity.durableMarker;
   const atSlot = exactSlot(input.atSlot, "$.atSlot");
   const challengeable = new Set(
@@ -1201,8 +1194,8 @@ export const pruneWatcherCanonicalBlockStoreV1 = async (input: {
   );
   const alertHeadroomSlots =
     input.retentionWindow === undefined
-      ? msToSlots(MIDGARD_RETENTION_WINDOW_V1.marginMs)
-      : assertWatcherCanonicalRetentionWindowV1(input.retentionWindow)
+      ? msToSlots(MIDGARD_RETENTION_WINDOW.marginMs)
+      : assertWatcherCanonicalRetentionWindow(input.retentionWindow)
           .alertHeadroomSlots;
   const requested =
     input.inputIds === undefined
@@ -1215,7 +1208,7 @@ export const pruneWatcherCanonicalBlockStoreV1 = async (input: {
 
   for (
     let attempt = 0;
-    attempt < WATCHER_CANONICAL_BLOCK_STORE_MAX_CAS_ATTEMPTS_V1;
+    attempt < WATCHER_CANONICAL_BLOCK_STORE_MAX_CAS_ATTEMPTS;
     attempt += 1
   ) {
     const stored = await readSnapshotBytes(input.backend);
@@ -1242,14 +1235,14 @@ export const pruneWatcherCanonicalBlockStoreV1 = async (input: {
       });
     }
     const current = await verifySnapshot(
-      decodeWatcherCanonicalBlockStoreSnapshotV1(stored.bytes),
+      decodeWatcherCanonicalBlockStoreSnapshot(stored.bytes),
       marker,
     );
     const known = new Set(
       current.records.map((record) => record.input.inputId),
     );
-    const decisions: WatcherCanonicalPruneDecisionV1[] = [];
-    const kept: WatcherCanonicalBlockRecordV1[] = [];
+    const decisions: WatcherCanonicalPruneDecision[] = [];
+    const kept: WatcherCanonicalBlockRecord[] = [];
     const pruned: string[] = [];
     for (const record of current.records) {
       const { inputId, retainUntilSlot } = record.metadata;
@@ -1331,8 +1324,8 @@ export const pruneWatcherCanonicalBlockStoreV1 = async (input: {
         alerts,
       });
     }
-    const next = parseWatcherCanonicalBlockStoreSnapshotV1({
-      schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_V1_SCHEMA_VERSION,
+    const next = parseWatcherCanonicalBlockStoreSnapshot({
+      schemaVersion: WATCHER_CANONICAL_BLOCK_STORE_SCHEMA_VERSION,
       revision: nextRevision(current.revision),
       deploymentMarker: {
         schemaVersion: current.deploymentMarker.schemaVersion,
@@ -1343,7 +1336,7 @@ export const pruneWatcherCanonicalBlockStoreV1 = async (input: {
     const sha256 = await commitSnapshot({
       backend: input.backend,
       expectedSha256: stored.sha256,
-      next: encodeWatcherCanonicalBlockStoreSnapshotV1(next),
+      next: encodeWatcherCanonicalBlockStoreSnapshot(next),
     });
     if (sha256 !== null) {
       return Object.freeze({

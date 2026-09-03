@@ -1,8 +1,8 @@
 import {
-  assertDeploymentMarkerV1Matches,
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-  parseDeploymentMarkerV1,
+  assertDeploymentMarkerMatches,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { Pool, type PoolClient } from "pg";
 
@@ -14,15 +14,15 @@ import type {
   DaPeerNonceRecord,
   DaSignatureRecord,
   DaSignatureRecordV1,
-  DaStoredConflictEvidenceRecordV1,
-  DaStoredPayloadRecordV1,
+  DaStoredConflictEvidenceRecord,
+  DaStoredPayloadRecord,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "../domain.js";
 import {
-  parseDaSignatureRecordV1,
-  parseDaStoredConflictEvidenceRecordV1,
-  parseDaStoredPayloadRecordV1,
+  parseDaSignatureRecord,
+  parseDaStoredConflictEvidenceRecord,
+  parseDaStoredPayloadRecord,
 } from "../domain.js";
 import {
   DECISION_EFFECT_PENDING_LEASE_MS,
@@ -82,12 +82,12 @@ export class PostgresWatcherStore implements WatcherStore {
   }
 
   async initDeployment(args: {
-    readonly marker: DeploymentMarkerV1;
+    readonly marker: DeploymentMarker;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
-    const marker = parseDeploymentMarkerV1(args.marker);
+    const marker = parseDeploymentMarker(args.marker);
     const result = await this.pool.query<{
       readonly marker_schema_version: string;
       readonly manifest_id: string;
@@ -97,7 +97,7 @@ export class PostgresWatcherStore implements WatcherStore {
     const existing = result.rows[0];
     if (existing !== undefined) {
       try {
-        assertDeploymentMarkerV1Matches(
+        assertDeploymentMarkerMatches(
           marker,
           {
             schemaVersion: existing.marker_schema_version,
@@ -160,7 +160,7 @@ export class PostgresWatcherStore implements WatcherStore {
       return undefined;
     }
     return {
-      marker: parseDeploymentMarkerV1({
+      marker: parseDeploymentMarker({
         schemaVersion: row.marker_schema_version,
         manifestId: row.manifest_id,
       }),
@@ -231,7 +231,7 @@ export class PostgresWatcherStore implements WatcherStore {
     const signature =
       args.signature === undefined
         ? undefined
-        : parseDaSignatureRecordV1(args.signature);
+        : parseDaSignatureRecord(args.signature);
     assertPostgresDecisionSignature(effect, signature);
     await this.withClient(async (client) => {
       await client.query("BEGIN");
@@ -319,7 +319,7 @@ export class PostgresWatcherStore implements WatcherStore {
         const signature =
           args.signature === undefined
             ? undefined
-            : parseDaSignatureRecordV1(args.signature);
+            : parseDaSignatureRecord(args.signature);
         assertPostgresDecisionSignature(existing, signature);
         const completed = parseDecisionOutboxRecord({
           ...existing,
@@ -483,10 +483,8 @@ export class PostgresWatcherStore implements WatcherStore {
     );
   }
 
-  async saveDaPayload(
-    record: DaPayloadRecord,
-  ): Promise<DaStoredPayloadRecordV1> {
-    const canonicalRecord = parseDaStoredPayloadRecordV1(record);
+  async saveDaPayload(record: DaPayloadRecord): Promise<DaStoredPayloadRecord> {
+    const canonicalRecord = parseDaStoredPayloadRecord(record);
     return this.withClient(async (client) => {
       await client.query("BEGIN");
       try {
@@ -494,7 +492,7 @@ export class PostgresWatcherStore implements WatcherStore {
           client,
           "SELECT header_hash, record FROM watcher_da_payloads WHERE header_hash = $1 FOR UPDATE",
           [canonicalRecord.headerHash],
-          parseDaStoredPayloadRecordV1,
+          parseDaStoredPayloadRecord,
           assertPayloadRowIdentity,
         );
         const saved = resolveDaPayloadSave(existing, canonicalRecord);
@@ -515,20 +513,20 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async getDaPayload(
     headerHash: string,
-  ): Promise<DaStoredPayloadRecordV1 | undefined> {
+  ): Promise<DaStoredPayloadRecord | undefined> {
     return this.getParsedRecord(
       "SELECT header_hash, record FROM watcher_da_payloads WHERE header_hash = $1",
       [headerHash],
-      parseDaStoredPayloadRecordV1,
+      parseDaStoredPayloadRecord,
       assertPayloadRowIdentity,
     );
   }
 
-  async listDaPayloads(): Promise<readonly DaStoredPayloadRecordV1[]> {
+  async listDaPayloads(): Promise<readonly DaStoredPayloadRecord[]> {
     return this.listParsedRecords(
       "SELECT header_hash, record FROM watcher_da_payloads ORDER BY header_hash",
       [],
-      parseDaStoredPayloadRecordV1,
+      parseDaStoredPayloadRecord,
       assertPayloadRowIdentity,
     );
   }
@@ -542,7 +540,7 @@ export class PostgresWatcherStore implements WatcherStore {
   }
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
-    const canonicalRecord = parseDaSignatureRecordV1(record);
+    const canonicalRecord = parseDaSignatureRecord(record);
     await this.withClient(async (client) => {
       await client.query("BEGIN");
       try {
@@ -570,7 +568,7 @@ export class PostgresWatcherStore implements WatcherStore {
       `SELECT header_hash, commitment_digest, signer_index, record FROM watcher_da_signatures
        WHERE header_hash = $1 AND commitment_digest = $2 AND signer_index = $3`,
       [args.headerHash, args.availabilityCommitmentDigest, args.signerIndex],
-      parseDaSignatureRecordV1,
+      parseDaSignatureRecord,
       assertSignatureRowIdentity,
     );
   }
@@ -588,15 +586,15 @@ export class PostgresWatcherStore implements WatcherStore {
            WHERE header_hash = $1
            ORDER BY header_hash, commitment_digest, signer_index`,
       headerHash === undefined ? [] : [headerHash],
-      parseDaSignatureRecordV1,
+      parseDaSignatureRecord,
       assertSignatureRowIdentity,
     );
   }
 
   async saveDaConflictEvidence(
-    record: DaStoredConflictEvidenceRecordV1,
+    record: DaStoredConflictEvidenceRecord,
   ): Promise<boolean> {
-    const canonicalRecord = parseDaStoredConflictEvidenceRecordV1(record);
+    const canonicalRecord = parseDaStoredConflictEvidenceRecord(record);
     const result = await this.pool.query(
       `INSERT INTO watcher_da_conflict_evidence (
          deployment_fingerprint,
@@ -629,7 +627,7 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async listDaConflictEvidence(
     headerHash?: string,
-  ): Promise<readonly DaStoredConflictEvidenceRecordV1[]> {
+  ): Promise<readonly DaStoredConflictEvidenceRecord[]> {
     return this.listParsedRecords(
       headerHash === undefined
         ? `SELECT deployment_fingerprint, evidence_hash, header_hash,
@@ -646,7 +644,7 @@ export class PostgresWatcherStore implements WatcherStore {
            WHERE header_hash = $1
            ORDER BY header_hash, signer_index, evidence_hash`,
       headerHash === undefined ? [] : [headerHash],
-      parseDaStoredConflictEvidenceRecordV1,
+      parseDaStoredConflictEvidenceRecord,
       assertConflictEvidenceRowIdentity,
     );
   }
@@ -809,7 +807,7 @@ export class PostgresWatcherStore implements WatcherStore {
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS watcher_deployment (
         id integer PRIMARY KEY CHECK (id = 1),
-        marker_schema_version text NOT NULL CHECK (marker_schema_version = '${MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION}'),
+        marker_schema_version text NOT NULL CHECK (marker_schema_version = '${MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION}'),
         manifest_id text NOT NULL CHECK (manifest_id ~ '^[0-9a-f]{64}$'),
         manifest_sha256 text NOT NULL CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
         contract_deployment_info_sha256 text NOT NULL CHECK (contract_deployment_info_sha256 ~ '^[0-9a-f]{64}$'),
@@ -1136,7 +1134,7 @@ const assertSignatureRowIdentity = (
 
 const assertConflictEvidenceRowIdentity = (
   row: JsonRecordRow,
-  record: DaStoredConflictEvidenceRecordV1,
+  record: DaStoredConflictEvidenceRecord,
 ): void => {
   if (
     row.deployment_fingerprint !== record.deploymentFingerprint ||

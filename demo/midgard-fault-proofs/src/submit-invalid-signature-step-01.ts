@@ -34,8 +34,8 @@ import {
   HUB_ORACLE_ASSET_NAME,
   InvalidSignatureStep01SpendRedeemer,
   InvalidSignatureStep02Datum,
-  invalidSignatureStep02StateFromBadTxV1,
-  invalidSignatureWitnessSetCommitmentV1,
+  invalidSignatureStep02StateFromBadTx,
+  invalidSignatureWitnessSetCommitment,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -54,9 +54,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";
-import { prepareNativeTxInclusionCarriageV1 } from "./native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage-v1.js";
 import {
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
 import {
@@ -83,13 +83,13 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /**
@@ -198,12 +198,12 @@ export const submitInvalidSignatureStep01 = async ({
   /** Preimage of the committed `witness_set_hash`, opened by this step. */
   readonly badTxWitnessSetCompact: NativeTxWitnessSetCompact;
   /** Present selects the authenticated published-chunk inclusion route. */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep01Result> => {
   const resolvedDeployment = await resolveInvalidSignatureDeploymentContracts({
@@ -277,7 +277,7 @@ export const submitInvalidSignatureStep01 = async ({
   // The signature itself cannot be tested yet — the transaction commits its
   // address witnesses only as a hash, whose preimage step 02 supplies.
   const badTxWitnessSetHash = txInclusion.nativeTx.witness_set_hash;
-  const derivedWitnessSetHash = invalidSignatureWitnessSetCommitmentV1(
+  const derivedWitnessSetHash = invalidSignatureWitnessSetCommitment(
     badTxWitnessSetCompact,
   );
   if (derivedWitnessSetHash !== badTxWitnessSetHash) {
@@ -294,12 +294,12 @@ export const submitInvalidSignatureStep01 = async ({
       chunks,
     }),
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.invalidSignature.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "invalid-signature step 01 validator",
   });
-  const inclusionCarriage = prepareNativeTxInclusionCarriageV1({
+  const inclusionCarriage = prepareNativeTxInclusionCarriage({
     blueprint,
     network,
     txInclusion,
@@ -315,7 +315,7 @@ export const submitInvalidSignatureStep01 = async ({
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: invalidSignatureStep02StateFromBadTxV1({
+      data: invalidSignatureStep02StateFromBadTx({
         badTxId: txInclusion.nativeTxId,
         badTxWitnessSetHash,
       }),
@@ -404,9 +404,9 @@ export const submitInvalidSignatureStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

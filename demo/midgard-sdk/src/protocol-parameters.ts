@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Network } from "@lucid-evolution/lucid";
 
 import { PosixTimeDuration } from "./common.js";
@@ -6,7 +6,7 @@ import { PosixTimeDuration } from "./common.js";
 export const SHIFT_DURATION_MS = 60n * 60n * 1000n;
 export const REGISTRATION_DURATION_MS = 30n;
 export const MATURITY_DURATION_MS = BigInt(
-  MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+  MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
 );
 export const USER_EVENTS_NEGLIGENCE_TIMEOUT_MS = 5n * 60n * 1000n;
 export const MAX_INACTIVITY_BETWEEN_BLOCK_COMMITMENTS_MS = 10n * 6n * 1000n;

@@ -12,7 +12,7 @@ export { neSubmitStep03 } from "../../src/ne-submit-step-03.js";
 export { neSubmitStep04 } from "../../src/ne-submit-step-04.js";
 export { submitInit } from "../../src/submit-init.js";
 export { submitInvalidRangeStep01 } from "../../src/submit-invalid-range-step-01.js";
-export { submitInvalidRangeStep02 } from "../../src/submit-invalid-range-step-02.js";
+export { submitInvalidRangeStep02V1 } from "../../src/submit-invalid-range-step-02.js";
 export {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -25,4 +25,4 @@ export {
 } from "../../src/submit-step-03.js";
 export { submitStep04 } from "../../src/submit-step-04.js";
 export { submitZeroInputStep01 } from "../../src/submit-zero-input-step-01.js";
-export { submitZeroInputStep02 } from "../../src/submit-zero-input-step-02.js";
+export { submitZeroInputStep02V1 } from "../../src/submit-zero-input-step-02.js";

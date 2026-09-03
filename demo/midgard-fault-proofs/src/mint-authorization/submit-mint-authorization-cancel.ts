@@ -39,19 +39,19 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
   MINT_AUTHORIZATION_CATEGORY_LABEL,
-  type MintAuthorizationContractsV1,
+  type MintAuthorizationContracts,
 } from "./contracts-v1.js";
 import {
-  type MintAuthorizationStepIndexV1,
-  mintAuthorizationStepLabelV1,
+  type MintAuthorizationStepIndex,
+  mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
-  requireMintAuthorizationReferenceScriptV1,
+  requireMintAuthorizationReferenceScript,
 } from "./submit-common-v1.js";
 
 /**
@@ -70,7 +70,7 @@ export type SubmitMintAuthorizationCancelResult = {
   readonly fraudProver: string;
   readonly threadOutRef: string;
   /** The step the thread was cancelled out of. */
-  readonly cancelledStepIndex: MintAuthorizationStepIndexV1;
+  readonly cancelledStepIndex: MintAuthorizationStepIndex;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
   /** The thread UTxO's lovelace, returned to the prover wallet as change. */
@@ -86,8 +86,8 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: MintAuthorizationContractsV1;
-}): MintAuthorizationStepIndexV1 => {
+  readonly contracts: MintAuthorizationContracts;
+}): MintAuthorizationStepIndex => {
   for (const stepIndex of [0, 1, 2, 3, 4] as const) {
     if (
       threadUtxo.address === contracts.steps[stepIndex].spendingScriptAddress
@@ -111,14 +111,14 @@ export const submitMintAuthorizationCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintAuthorizationContractsV1;
+  readonly contracts: MintAuthorizationContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** The located step.s mandatory published reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -127,7 +127,7 @@ export const submitMintAuthorizationCancel = async ({
     label: `${MINT_AUTHORIZATION_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = mintAuthorizationStepLabelV1(stepIndex);
+  const stepLabel = mintAuthorizationStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -198,7 +198,7 @@ export const submitMintAuthorizationCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,
@@ -206,12 +206,12 @@ export const submitMintAuthorizationCancel = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireMintAuthorizationReferenceScriptV1({
+      : requireMintAuthorizationReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
           stepIndex,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[stepIndex].spendingScript,
     referenceUtxo: stepReference,
     label: `${stepLabel} cancel spending validator`,

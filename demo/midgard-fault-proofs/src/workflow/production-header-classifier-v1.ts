@@ -2,60 +2,59 @@ import { createHash } from "node:crypto";
 
 import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
-  admitAuthenticatedStateQueueHeaderObservationV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_DECODABILITY_VIOLATION_ID_V1,
-  DA_HASH_PREIMAGE_VIOLATION_ID_V1,
+  admitAuthenticatedStateQueueHeaderObservation,
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_DECODABILITY_VIOLATION_ID,
+  DA_HASH_PREIMAGE_VIOLATION_ID,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-  HeaderV1,
+  Header,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  fetchProductionFraudProofEvidenceV1,
-  PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+  fetchFraudProofEvidence,
+  FRAUD_PROOF_EVIDENCE_ROUTE,
 } from "../evidence/production-fraud-proof-evidence-v1.js";
-import { FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1 } from "../field-preimage-length-mismatch/production-evidence-v1.js";
+import { FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID } from "../field-preimage-length-mismatch/production-evidence-v1.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import {
-  type CanonicalBlockClassificationV1,
-  type CanonicalViolationDetectionV1,
-  classifyCanonicalBlockViolationsV1,
+  type CanonicalBlockClassification,
+  type CanonicalViolationDetection,
+  classifyCanonicalBlockViolations,
 } from "./classification-v1.js";
 import {
-  admitCompleteCanonicalReplayHistoricalCorpusV1,
-  admitCompleteCanonicalReplayPredecessorV1,
-  COMPLETE_CANONICAL_REPLAY_V1,
-  type CompleteCanonicalReplayContextV1,
-  completeCanonicalReplayDecisionDigestV1,
-  type CompleteCanonicalReplayV1,
-  requireCompleteCanonicalReplayBundleV1,
-  requireCompleteCanonicalReplayDecisionV1,
+  admitCompleteCanonicalReplayHistoricalCorpus,
+  admitCompleteCanonicalReplayPredecessor,
+  COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplay,
+  type CompleteCanonicalReplayContext,
+  completeCanonicalReplayDecisionDigest,
+  requireCompleteCanonicalReplayBundle,
+  requireCompleteCanonicalReplayDecision,
 } from "./complete-replay-v1.js";
 import {
-  type ProductionHistoricalNativeScriptCheckpointStoreV1,
-  type ProductionHistoricalNativeScriptHistorySourceV1,
-  requireProductionHistoricalNativeScriptHistoryAuthorityV1,
-  resolveProductionHistoricalNativeScriptCorpusV1,
+  type HistoricalNativeScriptCheckpointStore,
+  type HistoricalNativeScriptHistorySource,
+  requireHistoricalNativeScriptHistoryAuthority,
+  resolveHistoricalNativeScriptCorpus,
 } from "./production-historical-native-script-corpus-v1.js";
 import {
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  type FraudProofReleaseFinalityAuthorityV1,
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  type FraudProofReleaseFinalityAuthority,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy-v1.js";
 
-export const PRODUCTION_HEADER_CLASSIFIER_V1 =
+export const HEADER_CLASSIFIER =
   "midgard-production-header-classifier-v1" as const;
-export const PRODUCTION_HEADER_DECISION_V1 =
-  "midgard-production-header-decision-v1" as const;
-export const PRODUCTION_PREDECESSOR_CONTEXT_REQUIRED_V1 =
+export const HEADER_DECISION = "midgard-production-header-decision-v1" as const;
+export const PREDECESSOR_CONTEXT_REQUIRED =
   "production-predecessor-context-required-v1" as const;
-const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1 =
+const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID =
   "mint-declared-asset-limit" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -85,7 +84,7 @@ const digest = (value: CanonicalJson): string =>
     .update(JSON.stringify(canonicalize(value)))
     .digest("hex");
 
-type DetectionJsonV1 = Readonly<{
+type DetectionJson = Readonly<{
   detectionId: string;
   headerHash: string;
   violationId: string;
@@ -94,8 +93,8 @@ type DetectionJsonV1 = Readonly<{
 }>;
 
 const detectionJson = (
-  detection: CanonicalViolationDetectionV1,
-): DetectionJsonV1 => ({
+  detection: CanonicalViolationDetection,
+): DetectionJson => ({
   detectionId: detection.detectionId,
   headerHash: detection.headerHash,
   violationId: detection.violationId,
@@ -104,7 +103,7 @@ const detectionJson = (
 });
 
 const classificationJson = (
-  classification: CanonicalBlockClassificationV1,
+  classification: CanonicalBlockClassification,
 ): CanonicalJson => ({
   schemaVersion: classification.schemaVersion,
   decision: classification.decision,
@@ -129,14 +128,14 @@ const classificationJson = (
  * by the L1 source extractor. Header CBOR is used instead of object key order,
  * and the source mode/provenance/chain point/depth remain explicit.
  */
-export const authenticatedStateQueueObservationDigestV1 = async ({
+export const authenticatedStateQueueObservationDigest = async ({
   observation,
   minimumConfirmationDepth,
 }: {
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly minimumConfirmationDepth: number;
 }): Promise<string> => {
-  const admitted = await admitAuthenticatedStateQueueHeaderObservationV1({
+  const admitted = await admitAuthenticatedStateQueueHeaderObservation({
     observation,
     minimumConfirmationDepth,
   });
@@ -155,19 +154,19 @@ export const authenticatedStateQueueObservationDigestV1 = async ({
     },
     confirmationDepth: admitted.confirmationDepth,
     headerHash: admitted.headerHash,
-    headerCbor: Data.to(admitted.header, HeaderV1),
+    headerCbor: Data.to(admitted.header, Header),
   });
 };
 
-type CommonDecisionV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_HEADER_DECISION_V1;
-  classifierVersion: typeof PRODUCTION_HEADER_CLASSIFIER_V1;
+type CommonDecision = Readonly<{
+  schemaVersion: typeof HEADER_DECISION;
+  classifierVersion: typeof HEADER_CLASSIFIER;
   deploymentFingerprint: string;
   headerHash: string;
   authenticatedObservationDigest: string;
   payloadEnvelopeSha256: string;
   payloadSha256: string;
-  replayVersion: typeof COMPLETE_CANONICAL_REPLAY_V1;
+  replayVersion: typeof COMPLETE_CANONICAL_REPLAY;
   replayDigest: string;
   launchScope: readonly FraudProofCatalogueCategoryName[];
   launchScopeDigest: string;
@@ -175,7 +174,7 @@ type CommonDecisionV1 = Readonly<{
   decisionDigest: string;
 }>;
 
-export type ProductionHeaderFaultDecisionV1 = CommonDecisionV1 &
+export type HeaderFaultDecision = CommonDecision &
   Readonly<{
     decision: "fault_detected";
     category: FraudProofCatalogueCategoryName;
@@ -184,10 +183,10 @@ export type ProductionHeaderFaultDecisionV1 = CommonDecisionV1 &
     position: string;
   }>;
 
-export type ProductionHeaderHealthyDecisionV1 = CommonDecisionV1 &
+export type HeaderHealthyDecision = CommonDecision &
   Readonly<{ decision: "healthy" }>;
 
-export type ProductionHeaderUnprovableDecisionV1 = CommonDecisionV1 &
+export type HeaderUnprovableDecision = CommonDecision &
   Readonly<{
     decision: "unprovable";
     reason:
@@ -199,18 +198,18 @@ export type ProductionHeaderUnprovableDecisionV1 = CommonDecisionV1 &
     position: string;
   }>;
 
-export type ProductionHeaderDecisionV1 =
-  | ProductionHeaderFaultDecisionV1
-  | ProductionHeaderHealthyDecisionV1
-  | ProductionHeaderUnprovableDecisionV1;
+export type HeaderDecision =
+  | HeaderFaultDecision
+  | HeaderHealthyDecision
+  | HeaderUnprovableDecision;
 
-type UnsealedProductionHeaderDecisionV1 =
-  | Omit<ProductionHeaderFaultDecisionV1, "decisionDigest">
-  | Omit<ProductionHeaderHealthyDecisionV1, "decisionDigest">
-  | Omit<ProductionHeaderUnprovableDecisionV1, "decisionDigest">;
+type UnsealedHeaderDecision =
+  | Omit<HeaderFaultDecision, "decisionDigest">
+  | Omit<HeaderHealthyDecision, "decisionDigest">
+  | Omit<HeaderUnprovableDecision, "decisionDigest">;
 
-export interface ProductionHeaderClassifierV1 {
-  readonly classifierVersion: typeof PRODUCTION_HEADER_CLASSIFIER_V1;
+export interface HeaderClassifier {
+  readonly classifierVersion: typeof HEADER_CLASSIFIER;
   readonly deploymentFingerprint: string;
   readonly launchScope: readonly FraudProofCatalogueCategoryName[];
 }
@@ -218,18 +217,18 @@ export interface ProductionHeaderClassifierV1 {
 const admittedClassifiers = new WeakMap<
   object,
   Readonly<{
-    replayer: CompleteCanonicalReplayV1;
+    replayer: CompleteCanonicalReplay;
     confirmationDepth: number;
     historicalReplayAuthority?: Readonly<{
-      checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-      historySource: ProductionHistoricalNativeScriptHistorySourceV1;
+      checkpointStore: HistoricalNativeScriptCheckpointStore;
+      historySource: HistoricalNativeScriptHistorySource;
     }>;
   }>
 >();
 const admittedDecisions = new WeakSet<object>();
 const replayContextByDecision = new WeakMap<
   object,
-  CompleteCanonicalReplayContextV1
+  CompleteCanonicalReplayContext
 >();
 
 const exactCanonicalScope = (
@@ -251,24 +250,24 @@ const exactCanonicalScope = (
   return Object.freeze([...scope]);
 };
 
-export const createProductionHeaderClassifierV1 = async ({
+export const createHeaderClassifier = async ({
   deploymentFingerprint,
   replayer,
   releaseFinalityAuthority,
   historicalReplayAuthority,
 }: {
   readonly deploymentFingerprint: string;
-  readonly replayer: CompleteCanonicalReplayV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  readonly replayer: CompleteCanonicalReplay;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly historicalReplayAuthority?: Readonly<{
-    checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-    historySource: ProductionHistoricalNativeScriptHistorySourceV1;
+    checkpointStore: HistoricalNativeScriptCheckpointStore;
+    historySource: HistoricalNativeScriptHistorySource;
   }>;
-}): Promise<ProductionHeaderClassifierV1> => {
+}): Promise<HeaderClassifier> => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
-  requireCompleteCanonicalReplayBundleV1(replayer);
+  requireCompleteCanonicalReplayBundle(replayer);
   const requiresHistoricalReplay = replayer.launchScope.some((category) =>
     ["resolvedOutputNonCanonical", "spendInputSignerMissing"].includes(
       category,
@@ -282,20 +281,20 @@ export const createProductionHeaderClassifierV1 = async ({
     );
   }
   if (historicalReplayAuthority !== undefined) {
-    requireProductionHistoricalNativeScriptHistoryAuthorityV1({
+    requireHistoricalNativeScriptHistoryAuthority({
       deploymentFingerprint: normalizedDeploymentFingerprint,
       ...historicalReplayAuthority,
     });
   }
   if (
     releaseFinalityAuthority.authorityVersion !==
-    FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1
+    FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY
   ) {
     throw new Error(
       "production classifier requires the admitted replay and release-finality authorities",
     );
   }
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1(
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     await releaseFinalityAuthority.verifyForWorkflow({
       deploymentFingerprint: normalizedDeploymentFingerprint,
     }),
@@ -307,8 +306,8 @@ export const createProductionHeaderClassifierV1 = async ({
       "production classifier finality authority changed deployment identity",
     );
   }
-  const classifier: ProductionHeaderClassifierV1 = Object.freeze({
-    classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+  const classifier: HeaderClassifier = Object.freeze({
+    classifierVersion: HEADER_CLASSIFIER,
     deploymentFingerprint: normalizedDeploymentFingerprint,
     launchScope: exactCanonicalScope(replayer.launchScope),
   });
@@ -326,11 +325,11 @@ export const createProductionHeaderClassifierV1 = async ({
 };
 
 const sealDecision = (
-  decision: UnsealedProductionHeaderDecisionV1,
-  replayContext?: CompleteCanonicalReplayContextV1,
-): ProductionHeaderDecisionV1 => {
+  decision: UnsealedHeaderDecision,
+  replayContext?: CompleteCanonicalReplayContext,
+): HeaderDecision => {
   const decisionDigest = digest(decision as CanonicalJson);
-  const sealed: ProductionHeaderDecisionV1 = Object.freeze({
+  const sealed: HeaderDecision = Object.freeze({
     ...decision,
     decisionDigest,
   });
@@ -345,9 +344,9 @@ const sealDecision = (
  * Returns the non-revivable predecessor authority retained for a live
  * classifier decision. Persisted decision envelopes never recreate it.
  */
-export const productionHeaderDecisionReplayContextV1 = (
-  decision: ProductionHeaderDecisionV1,
-): CompleteCanonicalReplayContextV1 | undefined => {
+export const headerDecisionReplayContext = (
+  decision: HeaderDecision,
+): CompleteCanonicalReplayContext | undefined => {
   if (!admittedDecisions.has(decision)) {
     throw new Error("production header decision was not module-admitted");
   }
@@ -360,7 +359,7 @@ export const productionHeaderDecisionReplayContextV1 = (
  * new runnable job authority only while its module-private admission survives;
  * its full value and digest may be persisted for journal-authorized recovery.
  */
-export const classifyProductionHeaderV1 = async ({
+export const classifyHeader = async ({
   classifier,
   observation,
   authenticatedObservationDigest,
@@ -369,23 +368,23 @@ export const classifyProductionHeaderV1 = async ({
   replayContext,
   predecessorObservation,
 }: {
-  readonly classifier: ProductionHeaderClassifierV1;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly classifier: HeaderClassifier;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly authenticatedObservationDigest: string;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
-  readonly replayContext?: CompleteCanonicalReplayContextV1;
+  readonly replayContext?: CompleteCanonicalReplayContext;
   /**
    * Opaque L1-admitted predecessor header. Its retained-DA bytes are fetched
    * here through the same concrete public sources as the challenged block.
    */
-  readonly predecessorObservation?: AuthenticatedStateQueueHeaderObservationV1;
-}): Promise<ProductionHeaderDecisionV1> => {
+  readonly predecessorObservation?: AuthenticatedStateQueueHeaderObservation;
+}): Promise<HeaderDecision> => {
   const authority = admittedClassifiers.get(classifier);
   if (authority === undefined) {
     throw new Error("production header classifier was not module-admitted");
   }
-  const observationDigest = await authenticatedStateQueueObservationDigestV1({
+  const observationDigest = await authenticatedStateQueueObservationDigest({
     observation,
     minimumConfirmationDepth: authority.confirmationDepth,
   });
@@ -397,18 +396,18 @@ export const classifyProductionHeaderV1 = async ({
       "L1 source observation digest differs from the admitted observation",
     );
   }
-  const routed = await fetchProductionFraudProofEvidenceV1({
+  const routed = await fetchFraudProofEvidence({
     observation,
     sources,
     ...(retries === undefined ? {} : { retries }),
     minimumConfirmationDepth: authority.confirmationDepth,
   });
-  if (routed.schemaVersion !== PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1) {
+  if (routed.schemaVersion !== FRAUD_PROOF_EVIDENCE_ROUTE) {
     throw new Error("production evidence route version changed");
   }
   const launchScopeDigest = digest(classifier.launchScope);
   if (routed.kind === "observers_forbidden_on_untagged_network") {
-    const selected: CanonicalViolationDetectionV1 = {
+    const selected: CanonicalViolationDetection = {
       detectionId: routed.selected.detectionId,
       headerHash: routed.selected.headerHash,
       violationId: "observers-forbidden-on-untagged-network",
@@ -423,14 +422,14 @@ export const classifyProductionHeaderV1 = async ({
       reason: installed ? null : "category_not_installed",
     } as const;
     const common = {
-      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      schemaVersion: HEADER_DECISION,
+      classifierVersion: HEADER_CLASSIFIER,
       deploymentFingerprint: classifier.deploymentFingerprint,
       headerHash: routed.evidence.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       replayDigest: digest({
         route: "authenticated_observers_forbidden_raw_v1",
         launchScope: classifier.launchScope,
@@ -459,10 +458,10 @@ export const classifyProductionHeaderV1 = async ({
         });
   }
   if (routed.kind === "mint_declared_asset_limit") {
-    const selected: CanonicalViolationDetectionV1 = {
+    const selected: CanonicalViolationDetection = {
       detectionId: routed.selected.detectionId,
       headerHash: routed.selected.headerHash,
-      violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1,
+      violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
       position: routed.selected.position,
     };
     const installed = classifier.launchScope.includes("mintDeclaredAssetLimit");
@@ -472,14 +471,14 @@ export const classifyProductionHeaderV1 = async ({
       reason: installed ? null : "category_not_installed",
     } as const;
     const common = {
-      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      schemaVersion: HEADER_DECISION,
+      classifierVersion: HEADER_CLASSIFIER,
       deploymentFingerprint: classifier.deploymentFingerprint,
       headerHash: routed.evidence.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       replayDigest: digest({
         route: "authenticated_mint_declared_asset_limit_v1",
         launchScope: classifier.launchScope,
@@ -508,10 +507,10 @@ export const classifyProductionHeaderV1 = async ({
         });
   }
   if (routed.kind === "canonical_decodability") {
-    const selected: CanonicalViolationDetectionV1 = {
-      detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID_V1}:${routed.evidence.selected.transactionIndex.toString()}:${routed.evidence.selected.nodeTxId}:${routed.evidence.selected.fieldIndex.toString()}:${routed.evidence.selected.verdict.toString()}`,
+    const selected: CanonicalViolationDetection = {
+      detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID}:${routed.evidence.selected.transactionIndex.toString()}:${routed.evidence.selected.nodeTxId}:${routed.evidence.selected.fieldIndex.toString()}:${routed.evidence.selected.verdict.toString()}`,
       headerHash: routed.evidence.headerHash,
-      violationId: CANONICAL_DECODABILITY_VIOLATION_ID_V1,
+      violationId: CANONICAL_DECODABILITY_VIOLATION_ID,
       position: BigInt(routed.evidence.selected.transactionIndex),
     };
     const installed = classifier.launchScope.includes("canonicalDecodability");
@@ -521,14 +520,14 @@ export const classifyProductionHeaderV1 = async ({
       reason: installed ? null : "category_not_installed",
     } as const;
     const common = {
-      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      schemaVersion: HEADER_DECISION,
+      classifierVersion: HEADER_CLASSIFIER,
       deploymentFingerprint: classifier.deploymentFingerprint,
       headerHash: routed.evidence.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       replayDigest: digest({
         route: "authenticated_canonical_decodability_field_v1",
         launchScope: classifier.launchScope,
@@ -557,10 +556,10 @@ export const classifyProductionHeaderV1 = async ({
         });
   }
   if (routed.kind === "da_hash_preimage") {
-    const selected: CanonicalViolationDetectionV1 = {
-      detectionId: `${DA_HASH_PREIMAGE_VIOLATION_ID_V1}:${routed.plan.violation.index.toString()}:${routed.plan.violation.committedTxId}:${routed.plan.violation.verdict.toString()}`,
+    const selected: CanonicalViolationDetection = {
+      detectionId: `${DA_HASH_PREIMAGE_VIOLATION_ID}:${routed.plan.violation.index.toString()}:${routed.plan.violation.committedTxId}:${routed.plan.violation.verdict.toString()}`,
       headerHash: routed.evidence.headerHash,
-      violationId: DA_HASH_PREIMAGE_VIOLATION_ID_V1,
+      violationId: DA_HASH_PREIMAGE_VIOLATION_ID,
       position: BigInt(routed.plan.violation.index),
     };
     const installed = classifier.launchScope.includes("daHashPreimage");
@@ -570,14 +569,14 @@ export const classifyProductionHeaderV1 = async ({
       reason: installed ? null : "category_not_installed",
     } as const;
     const common = {
-      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      schemaVersion: HEADER_DECISION,
+      classifierVersion: HEADER_CLASSIFIER,
       deploymentFingerprint: classifier.deploymentFingerprint,
       headerHash: routed.evidence.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       replayDigest: digest({
         route: "authenticated_da_hash_preimage_v1",
         launchScope: classifier.launchScope,
@@ -606,10 +605,10 @@ export const classifyProductionHeaderV1 = async ({
         });
   }
   if (routed.kind === "field_preimage_length_mismatch") {
-    const selected: CanonicalViolationDetectionV1 = {
-      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1}:${routed.evidence.position.toString()}:${routed.evidence.prepared.transactionId}:${routed.evidence.prepared.fieldIndex.toString()}:${routed.evidence.prepared.direction}`,
+    const selected: CanonicalViolationDetection = {
+      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID}:${routed.evidence.position.toString()}:${routed.evidence.prepared.transactionId}:${routed.evidence.prepared.fieldIndex.toString()}:${routed.evidence.prepared.direction}`,
       headerHash: routed.evidence.prepared.headerHash,
-      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1,
+      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID,
       position: routed.evidence.position,
     };
     const installed = classifier.launchScope.includes(
@@ -621,14 +620,14 @@ export const classifyProductionHeaderV1 = async ({
       reason: installed ? null : "category_not_installed",
     } as const;
     const common = {
-      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      schemaVersion: HEADER_DECISION,
+      classifierVersion: HEADER_CLASSIFIER,
       deploymentFingerprint: classifier.deploymentFingerprint,
       headerHash: routed.evidence.prepared.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       replayDigest: digest({
         route: "authenticated_field_preimage_length_mismatch_v1",
         launchScope: classifier.launchScope,
@@ -688,7 +687,7 @@ export const classifyProductionHeaderV1 = async ({
       ...(retries === undefined ? {} : { retries }),
     });
     admittedReplayContext = Object.freeze({
-      predecessor: await admitCompleteCanonicalReplayPredecessorV1({
+      predecessor: await admitCompleteCanonicalReplayPredecessor({
         value: Object.freeze({
           observation: predecessorObservation,
           payloadEnvelopeCborHex:
@@ -701,10 +700,10 @@ export const classifyProductionHeaderV1 = async ({
     });
   }
   if (predecessorRequired && admittedReplayContext === undefined) {
-    const selected: CanonicalViolationDetectionV1 = {
-      detectionId: `${PRODUCTION_PREDECESSOR_CONTEXT_REQUIRED_V1}:0:${routed.evidence.header.prevHeaderHash}`,
+    const selected: CanonicalViolationDetection = {
+      detectionId: `${PREDECESSOR_CONTEXT_REQUIRED}:0:${routed.evidence.header.prevHeaderHash}`,
       headerHash: routed.evidence.headerHash,
-      violationId: PRODUCTION_PREDECESSOR_CONTEXT_REQUIRED_V1,
+      violationId: PREDECESSOR_CONTEXT_REQUIRED,
       position: 0n,
       diagnostic:
         "complete replay requires the authenticated predecessor header and public retained-DA payload",
@@ -715,14 +714,14 @@ export const classifyProductionHeaderV1 = async ({
       selected: detectionJson(selected),
     } as const;
     return sealDecision({
-      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      schemaVersion: HEADER_DECISION,
+      classifierVersion: HEADER_CLASSIFIER,
       deploymentFingerprint: classifier.deploymentFingerprint,
       headerHash: routed.evidence.headerHash,
       authenticatedObservationDigest: observationDigest,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
       payloadSha256: routed.evidence.payloadSha256,
-      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayVersion: COMPLETE_CANONICAL_REPLAY,
       replayDigest: digest({
         route: "predecessor_context_unavailable_v1",
         launchScope: classifier.launchScope,
@@ -753,7 +752,7 @@ export const classifyProductionHeaderV1 = async ({
         "historical-output complete replay lost its admitted historical authority",
       );
     }
-    const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+    const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: classifier.deploymentFingerprint,
       ...historicalAuthority,
       currentEvidence: routed.evidence,
@@ -764,7 +763,7 @@ export const classifyProductionHeaderV1 = async ({
       ...(admittedReplayContext?.predecessor === undefined
         ? {}
         : { predecessor: admittedReplayContext.predecessor }),
-      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpusV1({
+      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpus({
         evidence: routed.evidence,
         corpus,
       }),
@@ -774,7 +773,7 @@ export const classifyProductionHeaderV1 = async ({
     routed.evidence,
     admittedReplayContext,
   );
-  const detections = requireCompleteCanonicalReplayDecisionV1({
+  const detections = requireCompleteCanonicalReplayDecision({
     evidence: routed.evidence,
     replayer: authority.replayer,
     decision: replayDecision,
@@ -782,7 +781,7 @@ export const classifyProductionHeaderV1 = async ({
       ? {}
       : { context: admittedReplayContext }),
   });
-  const classification = await classifyCanonicalBlockViolationsV1({
+  const classification = await classifyCanonicalBlockViolations({
     evidence: routed.evidence,
     detections,
     minimumConfirmationDepth: authority.confirmationDepth,
@@ -796,15 +795,15 @@ export const classifyProductionHeaderV1 = async ({
     );
   }
   const common = {
-    schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-    classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+    schemaVersion: HEADER_DECISION,
+    classifierVersion: HEADER_CLASSIFIER,
     deploymentFingerprint: classifier.deploymentFingerprint,
     headerHash: routed.evidence.headerHash,
     authenticatedObservationDigest: observationDigest,
     payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
     payloadSha256: routed.evidence.payloadSha256,
-    replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
-    replayDigest: completeCanonicalReplayDecisionDigestV1({
+    replayVersion: COMPLETE_CANONICAL_REPLAY,
+    replayDigest: completeCanonicalReplayDecisionDigest({
       evidence: routed.evidence,
       replayer: authority.replayer,
       decision: replayDecision,
@@ -848,9 +847,9 @@ export const classifyProductionHeaderV1 = async ({
   );
 };
 
-export const requireRunnableProductionHeaderFaultV1 = (
-  decision: ProductionHeaderDecisionV1,
-): ProductionHeaderFaultDecisionV1 => {
+export const requireRunnableHeaderFault = (
+  decision: HeaderDecision,
+): HeaderFaultDecision => {
   if (!admittedDecisions.has(decision)) {
     throw new Error("production header decision was not module-admitted");
   }
@@ -863,9 +862,9 @@ export const requireRunnableProductionHeaderFaultV1 = (
 };
 
 /** Persistable exact envelope; does not recreate runnable admission. */
-export const productionHeaderDecisionEnvelopeV1 = (
-  decision: ProductionHeaderDecisionV1,
-): ProductionHeaderDecisionV1 => {
+export const headerDecisionEnvelope = (
+  decision: HeaderDecision,
+): HeaderDecision => {
   if (!admittedDecisions.has(decision)) {
     throw new Error("production header decision was not module-admitted");
   }

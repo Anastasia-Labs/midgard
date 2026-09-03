@@ -1,30 +1,30 @@
 import { createHash } from "node:crypto";
 
 import {
-  bindExactVerdictSubjectReasonV1,
-  encodeVerdictSubjectV1,
-  type RejectionReasonV1,
-  terminalVerdictContradictionV1,
-  type VerdictSubjectV1,
+  bindExactVerdictSubjectReason,
+  encodeVerdictSubject,
+  type RejectionReason,
+  terminalVerdictContradiction,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  type ForcedLeafEvidenceV1,
-  forcedLeafVerdictSubjectV1,
-  requireForcedLeafAcceptedV1,
-  requireForcedLeafRejectedForV1,
+  type ForcedLeafEvidence,
+  forcedLeafVerdictSubject,
+  requireForcedLeafAccepted,
+  requireForcedLeafRejectedFor,
 } from "../evidence/forced-leaf-evidence-v1.js";
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY =
   "scriptIntegrityHashMissing" as const;
-export const SCRIPT_INTEGRITY_HASH_MISSING_PROPOSED_ID_V1 = "00000023";
-export const SCRIPT_INTEGRITY_HASH_MISSING_REASON_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISSING_PROPOSED_ID = "00000023";
+export const SCRIPT_INTEGRITY_HASH_MISSING_REASON =
   "ScriptIntegrityHashMissing" as const;
-export const SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH_V1 = "00".repeat(32);
+export const SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH = "00".repeat(32);
 
-const exactReason = (reason: RejectionReasonV1): boolean =>
-  reason === SCRIPT_INTEGRITY_HASH_MISSING_REASON_V1;
+const exactReason = (reason: RejectionReason): boolean =>
+  reason === SCRIPT_INTEGRITY_HASH_MISSING_REASON;
 
 const canonicalHex = (value: string, bytes: number, name: string): string => {
   if (!new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value)) {
@@ -33,21 +33,21 @@ const canonicalHex = (value: string, bytes: number, name: string): string => {
   return value;
 };
 
-export type ScriptIntegrityHashMissingFindingV1 = {
-  readonly category: typeof SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY_V1;
+export type ScriptIntegrityHashMissingFinding = {
+  readonly category: typeof SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY;
   readonly headerHash: string;
   readonly transactionId: string;
   readonly direction: "wrongfulAcceptance" | "wrongfulRejection";
   readonly source: "accepted" | "forced";
-  readonly rejectionReason: RejectionReasonV1 | null;
+  readonly rejectionReason: RejectionReason | null;
 };
 
-export const assertScriptIntegrityHashMissingFindingV1 = (
-  finding: ScriptIntegrityHashMissingFindingV1,
+export const assertScriptIntegrityHashMissingFinding = (
+  finding: ScriptIntegrityHashMissingFinding,
 ): void => {
   canonicalHex(finding.headerHash, 28, "headerHash");
   canonicalHex(finding.transactionId, 32, "transactionId");
-  if (finding.category !== SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY_V1) {
+  if (finding.category !== SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY) {
     throw new Error("finding belongs to another fault-proof category");
   }
   if (finding.direction === "wrongfulRejection") {
@@ -64,16 +64,16 @@ export const assertScriptIntegrityHashMissingFindingV1 = (
   }
 };
 
-export const classifyScriptIntegrityHashMissingFindingV1 = (
-  finding: ScriptIntegrityHashMissingFindingV1,
-): typeof SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY_V1 => {
-  assertScriptIntegrityHashMissingFindingV1(finding);
-  return SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY_V1;
+export const classifyScriptIntegrityHashMissingFinding = (
+  finding: ScriptIntegrityHashMissingFinding,
+): typeof SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY => {
+  assertScriptIntegrityHashMissingFinding(finding);
+  return SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY;
 };
 
-export type ScriptIntegrityHashMissingEvidenceV1 = {
-  readonly finding: ScriptIntegrityHashMissingFindingV1;
-  readonly subject: VerdictSubjectV1;
+export type ScriptIntegrityHashMissingEvidence = {
+  readonly finding: ScriptIntegrityHashMissingFinding;
+  readonly subject: VerdictSubject;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly fieldPreimageLengthsCbor: string;
@@ -82,15 +82,15 @@ export type ScriptIntegrityHashMissingEvidenceV1 = {
   readonly scriptIntegrityHash: string;
   readonly scriptLanguages: readonly (0 | 3 | 128)[];
   readonly redeemerCount: number;
-  readonly forcedLeaf?: ForcedLeafEvidenceV1;
+  readonly forcedLeaf?: ForcedLeafEvidence;
 };
 
-export const scriptIntegrityHashMissingFaultHoldsV1 = ({
+export const scriptIntegrityHashMissingFaultHolds = ({
   scriptIntegrityHash,
   scriptLanguages,
   redeemerCount,
 }: Pick<
-  ScriptIntegrityHashMissingEvidenceV1,
+  ScriptIntegrityHashMissingEvidence,
   "scriptIntegrityHash" | "scriptLanguages" | "redeemerCount"
 >): boolean => {
   canonicalHex(scriptIntegrityHash, 32, "scriptIntegrityHash");
@@ -101,18 +101,18 @@ export const scriptIntegrityHashMissingFaultHoldsV1 = ({
   const requiresPlutus =
     containsNonNative ||
     redeemerCount > 0 ||
-    scriptIntegrityHash !== SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH_V1;
+    scriptIntegrityHash !== SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH;
   return (
     requiresPlutus &&
-    scriptIntegrityHash === SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH_V1
+    scriptIntegrityHash === SCRIPT_INTEGRITY_HASH_MISSING_ZERO_HASH
   );
 };
 
 /** Retained payloads remain evidence; this preparation never trusts a verdict. */
-export const prepareScriptIntegrityHashMissingEvidenceV1 = (
-  evidence: ScriptIntegrityHashMissingEvidenceV1,
-): ScriptIntegrityHashMissingEvidenceV1 => {
-  assertScriptIntegrityHashMissingFindingV1(evidence.finding);
+export const prepareScriptIntegrityHashMissingEvidence = (
+  evidence: ScriptIntegrityHashMissingEvidence,
+): ScriptIntegrityHashMissingEvidence => {
+  assertScriptIntegrityHashMissingFinding(evidence.finding);
   if (evidence.subject.transaction_id !== evidence.finding.transactionId) {
     throw new Error("authenticated subject transaction differs from finding");
   }
@@ -144,18 +144,18 @@ export const prepareScriptIntegrityHashMissingEvidenceV1 = (
       throw new Error("forced source requires retained forced-leaf evidence");
     }
     if (evidence.finding.direction === "wrongfulRejection") {
-      requireForcedLeafRejectedForV1(
+      requireForcedLeafRejectedFor(
         evidence.forcedLeaf,
-        SCRIPT_INTEGRITY_HASH_MISSING_REASON_V1,
+        SCRIPT_INTEGRITY_HASH_MISSING_REASON,
       );
-      bindExactVerdictSubjectReasonV1(
+      bindExactVerdictSubjectReason(
         evidence.subject,
-        SCRIPT_INTEGRITY_HASH_MISSING_REASON_V1,
+        SCRIPT_INTEGRITY_HASH_MISSING_REASON,
       );
     } else {
-      requireForcedLeafAcceptedV1(evidence.forcedLeaf);
+      requireForcedLeafAccepted(evidence.forcedLeaf);
     }
-    const bound = forcedLeafVerdictSubjectV1(evidence.forcedLeaf);
+    const bound = forcedLeafVerdictSubject(evidence.forcedLeaf);
     if (
       bound.transaction_id !== evidence.subject.transaction_id ||
       bound.source_key !== evidence.subject.source_key ||
@@ -166,9 +166,9 @@ export const prepareScriptIntegrityHashMissingEvidenceV1 = (
     }
   }
   if (
-    !terminalVerdictContradictionV1(
+    !terminalVerdictContradiction(
       evidence.subject,
-      scriptIntegrityHashMissingFaultHoldsV1(evidence),
+      scriptIntegrityHashMissingFaultHolds(evidence),
     )
   ) {
     throw new Error(
@@ -190,10 +190,10 @@ const cborBytes = (bytes: Buffer): Buffer => {
 };
 
 /** Exact twin of Aiken `encode_decision_state_v1`. */
-export const encodeScriptIntegrityHashMissingDecisionStateV1 = (
-  evidence: ScriptIntegrityHashMissingEvidenceV1,
+export const encodeScriptIntegrityHashMissingDecisionState = (
+  evidence: ScriptIntegrityHashMissingEvidence,
 ): Buffer => {
-  const subject = encodeVerdictSubjectV1(evidence.subject);
+  const subject = encodeVerdictSubject(evidence.subject);
   const boolSchema = Data.Boolean();
   return Buffer.concat([
     Buffer.from([0x84]),
@@ -219,16 +219,16 @@ export const encodeScriptIntegrityHashMissingDecisionStateV1 = (
 };
 
 /** Durable identity of every authenticated byte and dispatch coordinate. */
-export const scriptIntegrityHashMissingEvidenceDigestV1 = (
-  evidence: ScriptIntegrityHashMissingEvidenceV1,
+export const scriptIntegrityHashMissingEvidenceDigest = (
+  evidence: ScriptIntegrityHashMissingEvidence,
 ): string => {
-  const prepared = prepareScriptIntegrityHashMissingEvidenceV1(evidence);
+  const prepared = prepareScriptIntegrityHashMissingEvidence(evidence);
   return createHash("sha256")
     .update(
       JSON.stringify({
         domain: "MidgardScriptIntegrityHashMissingEvidenceV1",
         finding: prepared.finding,
-        subjectCbor: encodeVerdictSubjectV1(prepared.subject).toString("hex"),
+        subjectCbor: encodeVerdictSubject(prepared.subject).toString("hex"),
         nativeTxCompactCbor: prepared.nativeTxCompactCbor,
         witnessSetCompactCbor: prepared.witnessSetCompactCbor,
         fieldPreimageLengthsCbor: prepared.fieldPreimageLengthsCbor,
@@ -243,7 +243,7 @@ export const scriptIntegrityHashMissingEvidenceDigestV1 = (
     .digest("hex");
 };
 
-export type ScriptIntegrityHashMissingCarriageV1 =
+export type ScriptIntegrityHashMissingCarriage =
   | { readonly kind: "direct" }
   | { readonly kind: "published"; readonly chunkOutRefs: readonly string[] }
   | { readonly kind: "rawFields"; readonly fieldOutRefs: readonly string[] }
@@ -253,9 +253,9 @@ export type ScriptIntegrityHashMissingCarriageV1 =
       readonly chunkOutRefs: readonly string[];
     };
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_CERTIFIED_CHUNK_BYTES_V1 = 15_148;
+export const SCRIPT_INTEGRITY_HASH_MISSING_CERTIFIED_CHUNK_BYTES = 15_148;
 
-export const selectScriptIntegrityHashMissingCarriageV1 = ({
+export const selectScriptIntegrityHashMissingCarriage = ({
   membershipBytes,
   fieldBytes,
   directBudget = 8_192,
@@ -267,12 +267,12 @@ export const selectScriptIntegrityHashMissingCarriageV1 = ({
   if (membershipBytes < 0 || fieldBytes < 0)
     throw new Error("evidence sizes cannot be negative");
   if (membershipBytes + fieldBytes <= directBudget) return "direct";
-  if (fieldBytes > SCRIPT_INTEGRITY_HASH_MISSING_CERTIFIED_CHUNK_BYTES_V1)
+  if (fieldBytes > SCRIPT_INTEGRITY_HASH_MISSING_CERTIFIED_CHUNK_BYTES)
     return "certifiedFields";
   return membershipBytes > fieldBytes ? "published" : "rawFields";
 };
 
-export type ScriptIntegrityHashMissingWorkflowStageV1 =
+export type ScriptIntegrityHashMissingWorkflowStage =
   | "absent"
   | "init"
   | "step01"
@@ -286,34 +286,34 @@ export type ScriptIntegrityHashMissingWorkflowStageV1 =
   | "complete"
   | "cancelled";
 
-export type ScriptIntegrityHashMissingJournalV1 = {
+export type ScriptIntegrityHashMissingJournal = {
   readonly workflowId: string;
   readonly evidenceDigest: string;
-  readonly stage: ScriptIntegrityHashMissingWorkflowStageV1;
+  readonly stage: ScriptIntegrityHashMissingWorkflowStage;
   readonly submittedTxHash?: string;
 };
 
-export type ScriptIntegrityHashMissingWorkflowDepsV1 = {
+export type ScriptIntegrityHashMissingWorkflowDeps = {
   readonly loadJournal: (
     workflowId: string,
-  ) => Promise<ScriptIntegrityHashMissingJournalV1 | null>;
+  ) => Promise<ScriptIntegrityHashMissingJournal | null>;
   readonly appendJournal: (
-    entry: ScriptIntegrityHashMissingJournalV1,
+    entry: ScriptIntegrityHashMissingJournal,
   ) => Promise<void>;
   readonly observeStage: (
     workflowId: string,
-  ) => Promise<ScriptIntegrityHashMissingWorkflowStageV1>;
+  ) => Promise<ScriptIntegrityHashMissingWorkflowStage>;
   readonly submit: (
     stage: Exclude<
-      ScriptIntegrityHashMissingWorkflowStageV1,
+      ScriptIntegrityHashMissingWorkflowStage,
       "absent" | "complete" | "cancelled"
     >,
-    evidence: ScriptIntegrityHashMissingEvidenceV1,
+    evidence: ScriptIntegrityHashMissingEvidence,
   ) => Promise<{ readonly txHash: string }>;
 };
 
 const nextStage = (
-  stage: ScriptIntegrityHashMissingWorkflowStageV1,
+  stage: ScriptIntegrityHashMissingWorkflowStage,
 ):
   | "init"
   | "step01"
@@ -347,17 +347,17 @@ const nextStage = (
                       ? null
                       : null;
 
-export const runScriptIntegrityHashMissingWorkflowV1 = async ({
+export const runScriptIntegrityHashMissingWorkflow = async ({
   workflowId,
   evidence: rawEvidence,
   deps,
 }: {
   readonly workflowId: string;
-  readonly evidence: ScriptIntegrityHashMissingEvidenceV1;
-  readonly deps: ScriptIntegrityHashMissingWorkflowDepsV1;
-}): Promise<ScriptIntegrityHashMissingJournalV1> => {
-  const evidence = prepareScriptIntegrityHashMissingEvidenceV1(rawEvidence);
-  const evidenceDigest = scriptIntegrityHashMissingEvidenceDigestV1(evidence);
+  readonly evidence: ScriptIntegrityHashMissingEvidence;
+  readonly deps: ScriptIntegrityHashMissingWorkflowDeps;
+}): Promise<ScriptIntegrityHashMissingJournal> => {
+  const evidence = prepareScriptIntegrityHashMissingEvidence(rawEvidence);
+  const evidenceDigest = scriptIntegrityHashMissingEvidenceDigest(evidence);
   const prior = await deps.loadJournal(workflowId);
   if (prior !== null && prior.evidenceDigest !== evidenceDigest) {
     throw new Error("durable workflow evidence identity changed on restart");
@@ -395,9 +395,9 @@ export const runScriptIntegrityHashMissingWorkflowV1 = async ({
   return terminal;
 };
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_WIRING_V1 = Object.freeze({
-  category: SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY_V1,
-  proposedId: SCRIPT_INTEGRITY_HASH_MISSING_PROPOSED_ID_V1,
+export const SCRIPT_INTEGRITY_HASH_MISSING_WIRING = Object.freeze({
+  category: SCRIPT_INTEGRITY_HASH_MISSING_CATEGORY,
+  proposedId: SCRIPT_INTEGRITY_HASH_MISSING_PROPOSED_ID,
   firstStepHashRole: "scriptIntegrityHashMissingStep01",
   orderedPhysicalScripts: [
     "fraud_proofs/script_integrity_hash_missing/step_01.main.spend",

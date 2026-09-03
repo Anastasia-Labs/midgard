@@ -176,7 +176,7 @@ describe("#604 per-family mutation negatives", () => {
     // A body opening at field 7 is what a builder that forgot the §2.5 split
     // would produce. It must not be constructible.
     expect(() =>
-      SDK.fieldOpeningV1ForField({
+      SDK.fieldOpeningForField({
         fieldIndex: 7,
         nativeTxCompactCbor: "a1b2c3",
         carriage: { Inline: { preimage: "80" } },
@@ -184,7 +184,7 @@ describe("#604 per-family mutation negatives", () => {
     ).toThrow(SDK.MidgardFieldOpeningError);
     // And a witness anchor with no anchored witness_set_hash to check against.
     expect(() =>
-      SDK.nativeTxAnchorV1ForField({ fieldIndex: 7, txId: h32("11") }),
+      SDK.nativeTxAnchorForField({ fieldIndex: 7, txId: h32("11") }),
     ).toThrow(SDK.MidgardFieldOpeningError);
   });
 });

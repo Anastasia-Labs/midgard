@@ -1,5 +1,5 @@
 import {
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardValueToCmlValue,
@@ -101,7 +101,7 @@ export const decodeStoredUtxo = (
       // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
       // The decoder bounds the index to a CBOR uint16, so no safe-integer
       // check is needed on the way out.
-      const input = decodeMidgardSpendInputItemV1(entry.outref);
+      const input = decodeMidgardSpendInputItem(entry.outref);
       const output = decodeMidgardTxOutput(entry.output);
       return {
         txHash: Buffer.from(input.txId).toString("hex"),

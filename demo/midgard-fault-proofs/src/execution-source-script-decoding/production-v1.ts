@@ -1,85 +1,84 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPortV1 } from "../workflow/family-l1-observation-v1.js";
+import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { submitCapturedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { submitCapturedTransaction } from "../workflow/transaction-boundary-v1.js";
 import {
-  EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
-  type ExecutionSourceScriptDecodingContractsV1,
+  EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
+  type ExecutionSourceScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  type BoundExecutionSourceScriptDecodingActuatorConfigV1,
-  createExecutionSourceScriptDecodingActuatorV1,
-  type ExecutionSourceScriptDecodingActuatorActionV1,
-  type ExecutionSourceScriptDecodingWorkflowReferencesV1,
+  type BoundExecutionSourceScriptDecodingActuatorConfig,
+  createExecutionSourceScriptDecodingActuator,
+  type ExecutionSourceScriptDecodingActuatorAction,
+  type ExecutionSourceScriptDecodingWorkflowReferences,
 } from "./production-actuator-v1.js";
-import { prepareProductionExecutionSourceScriptDecodingArtifactV1 } from "./production-replay-v1.js";
+import { prepareExecutionSourceScriptDecodingArtifact } from "./production-replay-v1.js";
 import {
-  ExecutionSourceStep02DatumV1Schema,
-  ExecutionSourceStep03DatumV1Schema,
-  ExecutionSourceStep04DatumV1Schema,
-  ExecutionSourceStep05DatumV1Schema,
+  ExecutionSourceStep02DatumSchema,
+  ExecutionSourceStep03DatumSchema,
+  ExecutionSourceStep04DatumSchema,
+  ExecutionSourceStep05DatumSchema,
 } from "./schemas-v1.js";
 
-export const EXECUTION_SOURCE_SCRIPT_DECODING_PRODUCTION_WORKFLOW_V1 =
+export const EXECUTION_SOURCE_SCRIPT_DECODING_WORKFLOW =
   "midgard-execution-source-script-decoding-production-workflow-v1" as const;
-export const EXECUTION_SOURCE_SCRIPT_DECODING_PRODUCTION_CONFIG_KEYS_V1 =
-  Object.freeze([
-    "manifest",
-    "blueprintJson",
-    "deploymentInfo",
-    "headerHash",
-    "lucid",
-    "signer",
-    "source",
-    "decisionDigest",
-    "stateQueueMutationLeaseCoordinator",
-    "referenceScripts",
-  ] as const);
-export const EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS_V1 =
+export const EXECUTION_SOURCE_SCRIPT_DECODING_CONFIG_KEYS = Object.freeze([
+  "manifest",
+  "blueprintJson",
+  "deploymentInfo",
+  "headerHash",
+  "lucid",
+  "signer",
+  "source",
+  "decisionDigest",
+  "stateQueueMutationLeaseCoordinator",
+  "referenceScripts",
+] as const);
+export const EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS =
   Object.freeze([
     FraudProofComputationThreadStepDatum,
-    ExecutionSourceStep02DatumV1Schema,
-    ExecutionSourceStep03DatumV1Schema,
-    ExecutionSourceStep04DatumV1Schema,
-    ExecutionSourceStep05DatumV1Schema,
+    ExecutionSourceStep02DatumSchema,
+    ExecutionSourceStep03DatumSchema,
+    ExecutionSourceStep04DatumSchema,
+    ExecutionSourceStep05DatumSchema,
   ] as const);
 
-export type ExecutionSourceScriptDecodingRemovalReferencesV1 = Readonly<{
+export type ExecutionSourceScriptDecodingRemovalReferences = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -91,7 +90,7 @@ export type ExecutionSourceScriptDecodingRemovalReferencesV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1 =
+export type ManifestBoundExecutionSourceScriptDecodingWorkflowConfig =
   Readonly<{
     manifest: unknown;
     blueprintJson: string;
@@ -99,23 +98,23 @@ export type ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1 =
     headerHash: string;
     lucid: LucidEvolution;
     signer: ResolvedProverSigner;
-    source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+    source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
     decisionDigest: string;
     stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-    referenceScripts: ExecutionSourceScriptDecodingWorkflowReferencesV1 &
+    referenceScripts: ExecutionSourceScriptDecodingWorkflowReferences &
       Readonly<{
-        removal: ExecutionSourceScriptDecodingRemovalReferencesV1;
+        removal: ExecutionSourceScriptDecodingRemovalReferences;
       }>;
   }>;
 
-export type ManifestBoundExecutionSourceScriptDecodingWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<never> &
-    BoundExecutionSourceScriptDecodingActuatorConfigV1["binding"];
-  actuator: ReturnType<typeof createExecutionSourceScriptDecodingActuatorV1>;
+export type ManifestBoundExecutionSourceScriptDecodingWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<never> &
+    BoundExecutionSourceScriptDecodingActuatorConfig["binding"];
+  actuator: ReturnType<typeof createExecutionSourceScriptDecodingActuator>;
   lucid: LucidEvolution;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPortV1>;
+  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -124,134 +123,129 @@ export type ManifestBoundExecutionSourceScriptDecodingWorkflowV1 = Readonly<{
  * authenticated references only: no evidence, stage, submit, or journal
  * callbacks are accepted.
  */
-export const createManifestBoundExecutionSourceScriptDecodingWorkflowV1 =
-  async (
-    config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1,
-  ): Promise<ManifestBoundExecutionSourceScriptDecodingWorkflowV1> => {
-    if (
-      Object.keys(config).sort().join("\0") !==
-      [...EXECUTION_SOURCE_SCRIPT_DECODING_PRODUCTION_CONFIG_KEYS_V1]
-        .sort()
-        .join("\0")
-    )
-      throw new Error(
-        "executionSourceScriptDecoding production config contains callback authority",
-      );
-    if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
-      throw new Error(
-        "executionSourceScriptDecoding decision digest is malformed",
-      );
-    const rawBinding = await bindFraudProofWorkflowDeploymentV1({
-      manifest: config.manifest,
-      blueprintJson: config.blueprintJson,
-      deploymentInfo: config.deploymentInfo,
-      category: "executionSourceScriptDecoding" as never,
-      headerHash: config.headerHash,
-      proverCredential: config.signer.paymentKeyHash,
-      stepDatumSchemas: EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS_V1,
-    });
-    assertManifestBoundWorkflowSignerV1({
-      network: rawBinding.network,
-      address: config.signer.address,
-      paymentKeyHash: config.signer.paymentKeyHash,
-    });
-    const binding =
-      rawBinding as unknown as FraudProofWorkflowDeploymentBindingV1<never> &
-        BoundExecutionSourceScriptDecodingActuatorConfigV1["binding"] & {
-          resolvedContracts: {
-            contracts: {
-              computationThread: ExecutionSourceScriptDecodingContractsV1["computationThread"];
-              fraudProof: ExecutionSourceScriptDecodingContractsV1["fraudProof"] & {
-                spendingScriptHash: string;
-              };
-              executionSourceScriptDecoding?: {
-                steps: ExecutionSourceScriptDecodingContractsV1["steps"];
-              };
+export const createManifestBoundExecutionSourceScriptDecodingWorkflow = async (
+  config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
+): Promise<ManifestBoundExecutionSourceScriptDecodingWorkflow> => {
+  if (
+    Object.keys(config).sort().join("\0") !==
+    [...EXECUTION_SOURCE_SCRIPT_DECODING_CONFIG_KEYS].sort().join("\0")
+  )
+    throw new Error(
+      "executionSourceScriptDecoding production config contains callback authority",
+    );
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error(
+      "executionSourceScriptDecoding decision digest is malformed",
+    );
+  const rawBinding = await bindFraudProofWorkflowDeployment({
+    manifest: config.manifest,
+    blueprintJson: config.blueprintJson,
+    deploymentInfo: config.deploymentInfo,
+    category: "executionSourceScriptDecoding" as never,
+    headerHash: config.headerHash,
+    proverCredential: config.signer.paymentKeyHash,
+    stepDatumSchemas: EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS,
+  });
+  assertManifestBoundWorkflowSigner({
+    network: rawBinding.network,
+    address: config.signer.address,
+    paymentKeyHash: config.signer.paymentKeyHash,
+  });
+  const binding =
+    rawBinding as unknown as FraudProofWorkflowDeploymentBinding<never> &
+      BoundExecutionSourceScriptDecodingActuatorConfig["binding"] & {
+        resolvedContracts: {
+          contracts: {
+            computationThread: ExecutionSourceScriptDecodingContracts["computationThread"];
+            fraudProof: ExecutionSourceScriptDecodingContracts["fraudProof"] & {
+              spendingScriptHash: string;
+            };
+            executionSourceScriptDecoding?: {
+              steps: ExecutionSourceScriptDecodingContracts["steps"];
             };
           };
         };
-    const chain =
-      binding.resolvedContracts.contracts.executionSourceScriptDecoding;
-    const hubOraclePolicyId =
-      rawBinding.deploymentInfo.hubOracleMint?.scriptHash;
-    if (
-      chain === undefined ||
-      chain.steps.length !== 5 ||
-      hubOraclePolicyId === undefined
-    )
-      throw new Error(
-        "executionSourceScriptDecoding manifest omitted five-step chain",
-      );
-    const bindReference = (name: string, utxo: UTxO) =>
-      requireManifestBoundReferenceScriptUtxoV1({
-        binding: rawBinding,
-        contractName: name,
-        utxo,
-      });
-    const stepNames = [
-      "fraudProofExecutionSourceScriptDecoding",
-      "fraudProofExecutionSourceScriptDecodingStep02",
-      "fraudProofExecutionSourceScriptDecodingStep03",
-      "fraudProofExecutionSourceScriptDecodingStep04",
-      "fraudProofExecutionSourceScriptDecodingStep05",
-    ] as const;
-    const steps = stepNames.map((name, index) =>
-      bindReference(name, config.referenceScripts.steps[index]!),
-    ) as unknown as ExecutionSourceScriptDecodingWorkflowReferencesV1["steps"];
-    const witnessNames = {
-      computationThreadMint: "computationThreadMint",
-      fraudProofMint: "fraudProofMint",
-      phasMembershipWithdraw: "phasMembershipWithdraw",
-      chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
-      pexcludesWithdraw: "pexcludesWithdraw",
-    } as const;
-    const witnesses = Object.fromEntries(
-      Object.entries(witnessNames).map(([role, name]) => [
-        role,
-        bindReference(
-          name,
-          config.referenceScripts.witnesses[
-            role as keyof FaultProofWitnessReferenceScriptsV1
-          ]!,
-        ),
-      ]),
-    ) as Required<FaultProofWitnessReferenceScriptsV1>;
-    const contracts: ExecutionSourceScriptDecodingContractsV1 = {
-      steps: chain.steps.map((step, index) => ({
-        ...step,
-        blueprintTitle:
-          EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1[index]!,
-        referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-      })) as unknown as ExecutionSourceScriptDecodingContractsV1["steps"],
-      computationThread: binding.resolvedContracts.contracts.computationThread,
-      fraudProof: binding.resolvedContracts.contracts.fraudProof,
-      hubOraclePolicyId,
-    };
-    const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
-      source: config.source,
-      releaseFinality: binding.releaseFinality,
-      releaseEconomics: binding.releaseEconomics,
-      definition: binding.definition,
+      };
+  const chain =
+    binding.resolvedContracts.contracts.executionSourceScriptDecoding;
+  const hubOraclePolicyId = rawBinding.deploymentInfo.hubOracleMint?.scriptHash;
+  if (
+    chain === undefined ||
+    chain.steps.length !== 5 ||
+    hubOraclePolicyId === undefined
+  )
+    throw new Error(
+      "executionSourceScriptDecoding manifest omitted five-step chain",
+    );
+  const bindReference = (name: string, utxo: UTxO) =>
+    requireManifestBoundReferenceScriptUtxo({
+      binding: rawBinding,
+      contractName: name,
+      utxo,
     });
-    return Object.freeze({
+  const stepNames = [
+    "fraudProofExecutionSourceScriptDecoding",
+    "fraudProofExecutionSourceScriptDecodingStep02",
+    "fraudProofExecutionSourceScriptDecodingStep03",
+    "fraudProofExecutionSourceScriptDecodingStep04",
+    "fraudProofExecutionSourceScriptDecodingStep05",
+  ] as const;
+  const steps = stepNames.map((name, index) =>
+    bindReference(name, config.referenceScripts.steps[index]!),
+  ) as unknown as ExecutionSourceScriptDecodingWorkflowReferences["steps"];
+  const witnessNames = {
+    computationThreadMint: "computationThreadMint",
+    fraudProofMint: "fraudProofMint",
+    phasMembershipWithdraw: "phasMembershipWithdraw",
+    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+    pexcludesWithdraw: "pexcludesWithdraw",
+  } as const;
+  const witnesses = Object.fromEntries(
+    Object.entries(witnessNames).map(([role, name]) => [
+      role,
+      bindReference(
+        name,
+        config.referenceScripts.witnesses[
+          role as keyof FaultProofWitnessReferenceScripts
+        ]!,
+      ),
+    ]),
+  ) as Required<FaultProofWitnessReferenceScripts>;
+  const contracts: ExecutionSourceScriptDecodingContracts = {
+    steps: chain.steps.map((step, index) => ({
+      ...step,
+      blueprintTitle: EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES[index]!,
+      referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
+    })) as unknown as ExecutionSourceScriptDecodingContracts["steps"],
+    computationThread: binding.resolvedContracts.contracts.computationThread,
+    fraudProof: binding.resolvedContracts.contracts.fraudProof,
+    hubOraclePolicyId,
+  };
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
+    source: config.source,
+    releaseFinality: binding.releaseFinality,
+    releaseEconomics: binding.releaseEconomics,
+    definition: binding.definition,
+  });
+  return Object.freeze({
+    binding,
+    lucid: config.lucid,
+    source: config.source,
+    decisionDigest: config.decisionDigest,
+    l1,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+    actuator: createExecutionSourceScriptDecodingActuator({
       binding,
       lucid: config.lucid,
-      source: config.source,
-      decisionDigest: config.decisionDigest,
-      l1,
+      signer: config.signer,
+      contracts,
+      references: { steps, witnesses },
       stateQueueMutationLeaseCoordinator:
         config.stateQueueMutationLeaseCoordinator,
-      actuator: createExecutionSourceScriptDecodingActuatorV1({
-        binding,
-        lucid: config.lucid,
-        signer: config.signer,
-        contracts,
-        references: { steps, witnesses },
-        stateQueueMutationLeaseCoordinator:
-          config.stateQueueMutationLeaseCoordinator,
-      }),
-    });
-  };
+    }),
+  });
+};
 
 const appendEvent = async ({
   journal,
@@ -259,15 +253,15 @@ const appendEvent = async ({
   identity,
   event,
 }: {
-  journal: FraudProofWorkflowJournalStoreV1;
+  journal: FraudProofWorkflowJournalStore;
   workflowId: string;
-  identity: FraudProofWorkflowIdentityV1;
-  event: FraudProofWorkflowJournalEventV1;
+  identity: FraudProofWorkflowIdentity;
+  event: FraudProofWorkflowJournalEvent;
 }) => {
   const sequence = (await journal.load(workflowId)).length;
   await journal.append(
     {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence,
@@ -279,8 +273,8 @@ const appendEvent = async ({
 };
 
 const currentAction = async (
-  workflow: ManifestBoundExecutionSourceScriptDecodingWorkflowV1,
-): Promise<ExecutionSourceScriptDecodingActuatorActionV1 | "removed"> => {
+  workflow: ManifestBoundExecutionSourceScriptDecodingWorkflow,
+): Promise<ExecutionSourceScriptDecodingActuatorAction | "removed"> => {
   const stage = (
     await workflow.l1.observe({
       headerHash: workflow.binding.definition.headerHash,
@@ -317,38 +311,38 @@ const currentAction = async (
     : { stage: action, threadOutRef: stage.threadOutRef };
 };
 
-export type ExecutionSourceScriptDecodingWorkflowRunResultV1 = Readonly<{
+export type ExecutionSourceScriptDecodingWorkflowRunResult = Readonly<{
   kind: "pending" | "completed";
   workflowId: string;
   txHash?: string;
 }>;
 
 /** One package-owned locally evaluated, intent-journaled action per call. */
-export const executeManifestBoundExecutionSourceScriptDecodingWorkflowV1 =
+export const executeManifestBoundExecutionSourceScriptDecodingWorkflow =
   async ({
     workflow,
     sources,
     journal,
   }: {
-    workflow: ManifestBoundExecutionSourceScriptDecodingWorkflowV1;
+    workflow: ManifestBoundExecutionSourceScriptDecodingWorkflow;
     sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStoreV1;
-  }): Promise<ExecutionSourceScriptDecodingWorkflowRunResultV1> => {
+    journal: FraudProofWorkflowJournalStore;
+  }): Promise<ExecutionSourceScriptDecodingWorkflowRunResult> => {
     const headerHash = workflow.binding.definition.headerHash;
-    const evidence = await fetchCanonicalBlockEvidenceV1({
+    const evidence = await fetchCanonicalBlockEvidence({
       observation: await workflow.l1.observeHeader({ headerHash }),
       sources,
     });
     const artifact =
-      await prepareProductionExecutionSourceScriptDecodingArtifactV1(evidence);
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+      await prepareExecutionSourceScriptDecodingArtifact(evidence);
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: workflow.binding.deploymentFingerprint,
       category: "executionSourceScriptDecoding" as never,
       target: { kind: "state_queue_header", headerHash },
       decisionDigest: workflow.decisionDigest,
     };
-    const workflowId = computeFraudProofWorkflowIdV1(identity);
+    const workflowId = computeFraudProofWorkflowId(identity);
     let entries = await journal.load(workflowId);
     if (entries.length === 0) {
       await appendEvent({
@@ -424,7 +418,7 @@ export const executeManifestBoundExecutionSourceScriptDecodingWorkflowV1 =
         txHash: captured.transaction.txHash,
       },
     });
-    const submitted = await submitCapturedTransactionV1(captured.transaction);
+    const submitted = await submitCapturedTransaction(captured.transaction);
     if (submitted !== captured.transaction.txHash)
       throw new Error(
         "executionSourceScriptDecoding provider substituted transaction",
@@ -438,102 +432,101 @@ export const executeManifestBoundExecutionSourceScriptDecodingWorkflowV1 =
     return { kind: "pending", workflowId, txHash: submitted };
   };
 
-export const runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflowV1 =
+export const runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow =
   async (input: {
-    workflow: ManifestBoundExecutionSourceScriptDecodingWorkflowV1;
+    workflow: ManifestBoundExecutionSourceScriptDecodingWorkflow;
     sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStoreV1;
+    journal: FraudProofWorkflowJournalStore;
   }) => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
       throw new Error(
         "executionSourceScriptDecoding runner rejects caller-authored evidence",
       );
-    return await executeManifestBoundExecutionSourceScriptDecodingWorkflowV1(
+    return await executeManifestBoundExecutionSourceScriptDecodingWorkflow(
       input,
     );
   };
 
-export type LoadedExecutionSourceScriptDecodingProductionWorkflowV1 = Readonly<{
+export type LoadedExecutionSourceScriptDecodingWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1;
+  config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadExecutionSourceScriptDecodingProductionWorkflowV1 = (input: {
+export type LoadExecutionSourceScriptDecodingWorkflow = (input: {
   runtimeConfigPath: string;
-  invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedExecutionSourceScriptDecodingProductionWorkflowV1>;
+  invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedExecutionSourceScriptDecodingWorkflow>;
 
-export const createExecutionSourceScriptDecodingProductionWorkflowRunnerSurfaceV1 =
-  ({
-    loadRuntimeConfig,
-  }: {
-    loadRuntimeConfig: LoadExecutionSourceScriptDecodingProductionWorkflowV1;
-  }): ProductionWorkflowAdapterRunnerV1 =>
-    Object.freeze({
-      runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-      runOrResume: async (invocation) => {
-        if (String(invocation.category) !== "executionSourceScriptDecoding")
-          throw new Error(
-            "executionSourceScriptDecoding runner category changed",
-          );
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
-          permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category: "executionSourceScriptDecoding" as never,
-            headerHash: invocation.headerHash,
-          }),
-        });
-        assertProductionWorkflowJournalActuationV1({
-          journal,
+export const createExecutionSourceScriptDecodingWorkflowRunnerSurface = ({
+  loadRuntimeConfig,
+}: {
+  loadRuntimeConfig: LoadExecutionSourceScriptDecodingWorkflow;
+}): WorkflowAdapterRunner =>
+  Object.freeze({
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
+    runOrResume: async (invocation) => {
+      if (String(invocation.category) !== "executionSourceScriptDecoding")
+        throw new Error(
+          "executionSourceScriptDecoding runner category changed",
+        );
+      const journal = bindWorkflowFundingReservationJournal({
+        permit: invocation.fundingReservationPermit,
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
+            invocation.journalDirectory,
+          ),
+          permit: invocation.actuationPermit,
+          decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
           category: "executionSourceScriptDecoding" as never,
           headerHash: invocation.headerHash,
-          checkpoint: "runner_start",
-        });
-        const loaded = await loadRuntimeConfig({
-          runtimeConfigPath: invocation.runtimeConfigPath,
-          invocation,
-        });
-        try {
-          if (
-            loaded.retainedDaSources.length === 0 ||
-            loaded.retainedDaSources.some(
-              (source) => !(source instanceof DaLibp2pRetainedDaSource),
-            )
+        }),
+      });
+      assertWorkflowJournalActuation({
+        journal,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        category: "executionSourceScriptDecoding" as never,
+        headerHash: invocation.headerHash,
+        checkpoint: "runner_start",
+      });
+      const loaded = await loadRuntimeConfig({
+        runtimeConfigPath: invocation.runtimeConfigPath,
+        invocation,
+      });
+      try {
+        if (
+          loaded.retainedDaSources.length === 0 ||
+          loaded.retainedDaSources.some(
+            (source) => !(source instanceof DaLibp2pRetainedDaSource),
           )
-            throw new Error(
-              "executionSourceScriptDecoding requires concrete public retained DA",
-            );
-          const workflow =
-            await createManifestBoundExecutionSourceScriptDecodingWorkflowV1(
-              loaded.config,
-            );
-          if (
-            workflow.binding.deploymentFingerprint !==
-              invocation.deploymentFingerprint ||
-            workflow.binding.definition.headerHash !== invocation.headerHash ||
-            workflow.decisionDigest !== invocation.decisionDigest
-          )
-            throw new Error(
-              "executionSourceScriptDecoding runtime binding changed invocation",
-            );
-          return (await runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflowV1(
-            {
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-            },
-          )) as never;
-        } finally {
-          await loaded.close();
-        }
-      },
-    });
+        )
+          throw new Error(
+            "executionSourceScriptDecoding requires concrete public retained DA",
+          );
+        const workflow =
+          await createManifestBoundExecutionSourceScriptDecodingWorkflow(
+            loaded.config,
+          );
+        if (
+          workflow.binding.deploymentFingerprint !==
+            invocation.deploymentFingerprint ||
+          workflow.binding.definition.headerHash !== invocation.headerHash ||
+          workflow.decisionDigest !== invocation.decisionDigest
+        )
+          throw new Error(
+            "executionSourceScriptDecoding runtime binding changed invocation",
+          );
+        return (await runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow(
+          {
+            workflow,
+            sources: loaded.retainedDaSources,
+            journal,
+          },
+        )) as never;
+      } finally {
+        await loaded.close();
+      }
+    },
+  });

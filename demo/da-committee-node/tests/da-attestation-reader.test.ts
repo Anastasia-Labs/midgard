@@ -328,13 +328,13 @@ describe("LucidDaAttestationChainReader", () => {
 
 const availabilityCommitment = (
   headerHash: string,
-): SDK.DaAvailabilityCommitmentV1 =>
-  SDK.buildDaAvailabilityCommitmentV1({
+): SDK.DaAvailabilityCommitment =>
+  SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash,
     payload: Buffer.from("public retained DA"),
     bondOwner: "76".repeat(28),
-    responseGeometry: SDK.availabilityResponseGeometryV1({
+    responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 14_020,
       trancheByteLength: 4 * 1_024 * 1_024,
       maxTrancheCount: 16,

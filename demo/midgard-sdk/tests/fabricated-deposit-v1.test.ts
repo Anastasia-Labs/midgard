@@ -21,22 +21,22 @@ import { describe, expect, it } from "vitest";
 
 import { OutputReference } from "../src/common.js";
 import {
-  committedDepositKeyBytesV1,
-  committedDepositValueBytesV1,
-  depositEventDatumCommitmentV1,
-  depositEventNonceV1,
-  depositInfoCommitmentV1,
-  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
+  committedDepositKeyBytes,
+  committedDepositValueBytes,
+  depositEventDatumCommitment,
+  depositEventNonce,
+  depositInfoCommitment,
+  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
   type FabricatedDepositStep02State,
   FabricatedDepositStep02State as FabricatedDepositStep02StateType,
   type FabricatedDepositStep03State,
   FabricatedDepositStep03State as FabricatedDepositStep03StateType,
-  fabricatedDepositStep03StateV1,
+  fabricatedDepositStep03State,
   type FabricatedDepositStep04State,
   FabricatedDepositStep04State as FabricatedDepositStep04StateType,
-  fabricatedDepositStep04StateV1,
-  fabricatedDepositThreadTokenAssetNameV1,
-  isFabricatedDepositFaultV1,
+  fabricatedDepositStep04State,
+  fabricatedDepositThreadTokenAssetName,
+  isFabricatedDepositFault,
 } from "../src/fraud-proof/fabricated-deposit-v1.js";
 import {
   commitCountedRootProgram,
@@ -187,10 +187,10 @@ const mmStep02State: FabricatedDepositStep02State = {
 };
 
 const fiStep03State: FabricatedDepositStep03State =
-  fabricatedDepositStep03StateV1(fiStep02State, "DepositIdentityAbsent");
+  fabricatedDepositStep03State(fiStep02State, "DepositIdentityAbsent");
 
 const mmStep03State: FabricatedDepositStep03State =
-  fabricatedDepositStep03StateV1(mmStep02State, {
+  fabricatedDepositStep03State(mmStep02State, {
     DepositEventObserved: {
       event_datum_hash: HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM,
       event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
@@ -198,10 +198,10 @@ const mmStep03State: FabricatedDepositStep03State =
   });
 
 const fiStep04State: FabricatedDepositStep04State =
-  fabricatedDepositStep04StateV1(fiStep03State, "NonexistentDepositIdentity");
+  fabricatedDepositStep04State(fiStep03State, "NonexistentDepositIdentity");
 
 const mmStep04State: FabricatedDepositStep04State =
-  fabricatedDepositStep04StateV1(mmStep03State, {
+  fabricatedDepositStep04State(mmStep03State, {
     MismatchedDepositContent: {
       committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
       authentic_deposit_info_hash: HASH_AUTHENTIC_DEPOSIT_INFO,
@@ -211,10 +211,10 @@ const mmStep04State: FabricatedDepositStep04State =
 
 describe("fabricated-deposit v1 byte twins", () => {
   it("encodes the committed deposit leaf key exactly as Aiken serialises a DepositId", () => {
-    expect(committedDepositKeyBytesV1(AUTHENTIC_DEPOSIT_ID)).toBe(
+    expect(committedDepositKeyBytes(AUTHENTIC_DEPOSIT_ID)).toBe(
       KEY_AUTHENTIC_DEPOSIT_ID,
     );
-    expect(committedDepositKeyBytesV1(FABRICATED_DEPOSIT_ID)).toBe(
+    expect(committedDepositKeyBytes(FABRICATED_DEPOSIT_ID)).toBe(
       KEY_FABRICATED_DEPOSIT_ID,
     );
     expect(Data.to(AUTHENTIC_DEPOSIT_ID, OutputReference)).toBe(
@@ -223,23 +223,23 @@ describe("fabricated-deposit v1 byte twins", () => {
   });
 
   it("encodes the committed deposit leaf value and its commitment exactly as Aiken does", () => {
-    expect(committedDepositValueBytesV1(AUTHENTIC_DEPOSIT_INFO)).toBe(
+    expect(committedDepositValueBytes(AUTHENTIC_DEPOSIT_INFO)).toBe(
       VALUE_AUTHENTIC_DEPOSIT_INFO,
     );
-    expect(committedDepositValueBytesV1(DIVERTED_DEPOSIT_INFO)).toBe(
+    expect(committedDepositValueBytes(DIVERTED_DEPOSIT_INFO)).toBe(
       VALUE_DIVERTED_DEPOSIT_INFO,
     );
-    expect(
-      Effect.runSync(depositInfoCommitmentV1(AUTHENTIC_DEPOSIT_INFO)),
-    ).toBe(HASH_AUTHENTIC_DEPOSIT_INFO);
-    expect(Effect.runSync(depositInfoCommitmentV1(DIVERTED_DEPOSIT_INFO))).toBe(
+    expect(Effect.runSync(depositInfoCommitment(AUTHENTIC_DEPOSIT_INFO))).toBe(
+      HASH_AUTHENTIC_DEPOSIT_INFO,
+    );
+    expect(Effect.runSync(depositInfoCommitment(DIVERTED_DEPOSIT_INFO))).toBe(
       HASH_DIVERTED_DEPOSIT_INFO,
     );
     expect(HASH_AUTHENTIC_DEPOSIT_INFO).not.toBe(HASH_DIVERTED_DEPOSIT_INFO);
   });
 
   it("derives the deposit event NFT nonce exactly as Aiken's out_ref_to_nonce does", () => {
-    expect(Effect.runSync(depositEventNonceV1(AUTHENTIC_DEPOSIT_ID))).toBe(
+    expect(Effect.runSync(depositEventNonce(AUTHENTIC_DEPOSIT_ID))).toBe(
       NONCE_AUTHENTIC_DEPOSIT_ID,
     );
   });
@@ -250,7 +250,7 @@ describe("fabricated-deposit v1 byte twins", () => {
     );
     expect(
       Effect.runSync(
-        depositEventDatumCommitmentV1(AUTHENTIC_DEPOSIT_EVENT_DATUM),
+        depositEventDatumCommitment(AUTHENTIC_DEPOSIT_EVENT_DATUM),
       ),
     ).toBe(HASH_AUTHENTIC_DEPOSIT_EVENT_DATUM);
   });
@@ -274,11 +274,11 @@ describe("fabricated-deposit v1 byte twins", () => {
         }),
       ),
     ).toBe(MM_DEPOSITS_ROOT);
-    expect(FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1).toBe("0000000b");
-    expect(fabricatedDepositThreadTokenAssetNameV1(FI_HEADER_HASH)).toBe(
+    expect(FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID).toBe("0000000b");
+    expect(fabricatedDepositThreadTokenAssetName(FI_HEADER_HASH)).toBe(
       FI_THREAD_TOKEN_ASSET_NAME,
     );
-    expect(fabricatedDepositThreadTokenAssetNameV1(MM_HEADER_HASH)).toBe(
+    expect(fabricatedDepositThreadTokenAssetName(MM_HEADER_HASH)).toBe(
       MM_THREAD_TOKEN_ASSET_NAME,
     );
   });
@@ -309,13 +309,13 @@ describe("fabricated-deposit v1 byte twins", () => {
       MM_STEP_04_STATE_CBOR,
     );
     // The rule twin of `fabricated_deposit_fault_is_established_v1`.
-    expect(isFabricatedDepositFaultV1(fiStep04State)).toBe(true);
-    expect(isFabricatedDepositFaultV1(mmStep04State)).toBe(true);
+    expect(isFabricatedDepositFault(fiStep04State)).toBe(true);
+    expect(isFabricatedDepositFault(mmStep04State)).toBe(true);
     // A header committing exactly the authentic content is not a fault, and an
     // authentic event outside the challenged block's window is not this block's
     // fault, whichever side of the window it falls on.
     expect(
-      isFabricatedDepositFaultV1({
+      isFabricatedDepositFault({
         ...mmStep04State,
         fault: {
           MismatchedDepositContent: {
@@ -327,7 +327,7 @@ describe("fabricated-deposit v1 byte twins", () => {
       }),
     ).toBe(false);
     expect(
-      isFabricatedDepositFaultV1({
+      isFabricatedDepositFault({
         ...mmStep04State,
         fault: {
           MismatchedDepositContent: {
@@ -339,7 +339,7 @@ describe("fabricated-deposit v1 byte twins", () => {
       }),
     ).toBe(false);
     expect(
-      isFabricatedDepositFaultV1({
+      isFabricatedDepositFault({
         ...mmStep04State,
         fault: {
           MismatchedDepositContent: {

@@ -20,7 +20,7 @@ import type { Script } from "@lucid-evolution/lucid";
 export const MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL =
   "missing-native-script-tx";
 
-export const MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1 = {
+export const MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/missing_native_script_tx/step_01.main.spend",
   step02: "fraud_proofs/missing_native_script_tx/step_02.main.spend",
   step03: "fraud_proofs/missing_native_script_tx/step_03.main.spend",
@@ -31,22 +31,22 @@ export const MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1 = {
   step08: "fraud_proofs/missing_native_script_tx/step_08.main.spend",
 } as const;
 
-export type MissingNativeScriptTxStepContractV1 = {
+export type MissingNativeScriptTxStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
-export type MissingNativeScriptTxContractsV1 = {
+export type MissingNativeScriptTxContracts = {
   readonly steps: readonly [
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
-    MissingNativeScriptTxStepContractV1,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
+    MissingNativeScriptTxStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

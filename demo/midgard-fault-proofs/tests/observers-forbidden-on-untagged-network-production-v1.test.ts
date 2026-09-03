@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { ManifestBoundObserversForbiddenWorkflowConfigV1 } from "../src/observers-forbidden-on-untagged-network/production-v1.js";
+import type { ManifestBoundObserversForbiddenWorkflowConfig } from "../src/observers-forbidden-on-untagged-network/production-v1.js";
 import {
-  observersForbiddenActionIdV1,
-  observersForbiddenSubmissionPreludeV1,
-  reconcileObserversForbiddenSubmissionIntentV1,
+  observersForbiddenActionId,
+  observersForbiddenSubmissionPrelude,
+  reconcileObserversForbiddenSubmissionIntent,
 } from "../src/observers-forbidden-on-untagged-network/production-v1.js";
 
 describe("observersForbiddenOnUntaggedNetwork durable production boundary", () => {
@@ -20,7 +20,7 @@ describe("observersForbiddenOnUntaggedNetwork durable production boundary", () =
       "decisionDigest",
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
-    ] satisfies readonly (keyof ManifestBoundObserversForbiddenWorkflowConfigV1)[];
+    ] satisfies readonly (keyof ManifestBoundObserversForbiddenWorkflowConfig)[];
     expect(keys).not.toContain("submit");
     expect(keys).not.toContain("loadJournal");
     expect(keys).not.toContain("appendJournal");
@@ -29,7 +29,7 @@ describe("observersForbiddenOnUntaggedNetwork durable production boundary", () =
   });
 
   it("journals local preflight and intent before network submission", () => {
-    const events = observersForbiddenSubmissionPreludeV1({
+    const events = observersForbiddenSubmissionPrelude({
       actionId: "action-1",
       actionInput: {
         schemaVersion: "midgard-production-cursor-family-action-v1",
@@ -52,9 +52,9 @@ describe("observersForbiddenOnUntaggedNetwork durable production boundary", () =
       stage: "step_02" as const,
       threadOutRef: `${"03".repeat(32)}#0`,
     };
-    const actionId = observersForbiddenActionIdV1(action);
+    const actionId = observersForbiddenActionId(action);
     expect(
-      reconcileObserversForbiddenSubmissionIntentV1({
+      reconcileObserversForbiddenSubmissionIntent({
         intendedActionId: actionId,
         txHash: "04".repeat(32),
         transactionConfirmed: false,
@@ -62,7 +62,7 @@ describe("observersForbiddenOnUntaggedNetwork durable production boundary", () =
       }).kind,
     ).toBe("pending");
     expect(
-      reconcileObserversForbiddenSubmissionIntentV1({
+      reconcileObserversForbiddenSubmissionIntent({
         intendedActionId: actionId,
         txHash: "04".repeat(32),
         transactionConfirmed: false,
@@ -76,7 +76,7 @@ describe("observersForbiddenOnUntaggedNetwork durable production boundary", () =
 
   it("accepts an exactly confirmed transaction identity", () => {
     expect(
-      reconcileObserversForbiddenSubmissionIntentV1({
+      reconcileObserversForbiddenSubmissionIntent({
         intendedActionId: "action-1",
         txHash: "06".repeat(32),
         transactionConfirmed: true,

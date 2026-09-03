@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1,
-  type LoadedRedeemerCanonicityProductionWorkflowV1,
+  createRedeemerCanonicityWorkflowRunnerSurface,
+  type LoadedRedeemerCanonicityWorkflow,
 } from "../src/redeemer-canonicity/production-runtime-v1.js";
 
 const invocation = (category: string) =>
@@ -21,7 +21,7 @@ const invocation = (category: string) =>
 describe("redeemerCanonicity production runner surface", () => {
   it("refuses another category before loading runtime state", async () => {
     const loadRuntimeConfig = vi.fn();
-    const runner = createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1({
+    const runner = createRedeemerCanonicityWorkflowRunnerSurface({
       loadRuntimeConfig,
     });
     await expect(
@@ -46,8 +46,8 @@ describe("redeemerCanonicity production runner surface", () => {
       },
       retainedDaSources: [],
       close,
-    } as unknown as LoadedRedeemerCanonicityProductionWorkflowV1;
-    const runner = createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1({
+    } as unknown as LoadedRedeemerCanonicityWorkflow;
+    const runner = createRedeemerCanonicityWorkflowRunnerSurface({
       loadRuntimeConfig: async () => loaded,
     });
     await expect(

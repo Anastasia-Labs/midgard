@@ -1,17 +1,17 @@
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-  midgardFieldCommitmentV1,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -39,13 +39,13 @@ const fakeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -78,13 +78,13 @@ const zeroFeeProvider: MidgardProvider = {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -157,10 +157,10 @@ describe("TxBuilder finalization", () => {
       .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete();
 
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
       completed.txCbor,
     );
-    expect(completed.txId).toEqual(computeMidgardNativeTxIdV1(decoded));
+    expect(completed.txId).toEqual(computeMidgardNativeTxId(decoded));
     expect(completed.toHash()).toBe(completed.txIdHex);
     expect(completed.toCBOR()).toBe(completed.txHex);
     expect(completed.toJSON()).toMatchObject({
@@ -195,7 +195,7 @@ describe("TxBuilder finalization", () => {
       network: "Preview",
       networkId: 0,
     });
-    const canonical = buildMidgardCanonicalCekProgramV1(
+    const canonical = buildMidgardCanonicalCekProgram(
       Buffer.from("010100200101", "hex"),
     );
     const spend = makeUtxo(makeOutRef(0x31), { lovelace: 2_000_000n });
@@ -254,7 +254,7 @@ describe("TxBuilder finalization", () => {
     });
     expect(importedRaw.txHex).toBe(completed.txHex);
     const detached = new CompleteTx(completed.tx, completed.metadata, {
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       networkId: 0n,
       programMaterial: material,
       resolvedReferenceOutputsByOutRef: new Map([
@@ -460,15 +460,15 @@ describe("TxBuilder finalization", () => {
       .collectFrom([makeUtxo(makeOutRef(0x11), { lovelace: 1_000_000n })])
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
-    const witnessCompact = deriveMidgardNativeTxWitnessSetCompactV1(
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
+    const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
       tx.witnessSet,
     );
     // §4: one plain `blake2b_256` per field over its §5.1 preimage bytes. The
     // field index is not an argument because it is not in the hash input — field
     // identity is positional, carried by the compact slot being compared.
     const fieldCommitment = (_fieldIndex: number, preimageCbor: Uint8Array) =>
-      midgardFieldCommitmentV1(preimageCbor);
+      midgardFieldCommitment(preimageCbor);
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
       fieldCommitment(0, tx.body.spendInputsPreimageCbor),
@@ -521,7 +521,7 @@ describe("TxBuilder finalization", () => {
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .pay.ToAddress(address, { lovelace: 2_000_000n })
       .complete();
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
 
     const spendInputs = decodeMidgardNativeByteListPreimage(
       tx.body.spendInputsPreimageCbor,
@@ -745,7 +745,7 @@ describe("TxBuilder finalization", () => {
     const tx = completed.tx;
     tx.body.outputsPreimageCbor[0] ^= 0xff;
     expect(completed.tx.body.outputsPreimageCbor.toString("hex")).toBe(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.from(completed.txHex, "hex"),
       ).body.outputsPreimageCbor.toString("hex"),
     );

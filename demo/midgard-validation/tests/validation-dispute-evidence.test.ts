@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import {
   buildMidgardValidationTraceTree,
   encodeCbor,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationRejectionCode,
+  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationVerdictName,
 } from "@al-ft/midgard-core";
@@ -16,14 +16,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationDisputeEvidenceBundleV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationDisputeEvidenceBundle,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   RejectCodes,
 } from "../src/index.js";
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
@@ -38,7 +38,7 @@ const blueprint = JSON.parse(
 ) as unknown;
 
 const baseContext = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x73)]),
   sourceKind: "forced" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -56,7 +56,7 @@ const falsifyTerminalVerdict = (
   const rejectionCodeHash =
     rejectionCode === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCodeV1(rejectionCode);
+      : hashMidgardValidationRejectionCode(rejectionCode);
   const states = trace.states.map((state, index) =>
     index === trace.states.length - 1
       ? {
@@ -67,7 +67,7 @@ const falsifyTerminalVerdict = (
       : state,
   );
   const tree = buildMidgardValidationTraceTree(
-    states.map(hashMidgardValidationMachineStateV1),
+    states.map(hashMidgardValidationMachineState),
     verdict,
     rejectionCodeHash,
   );
@@ -89,7 +89,7 @@ const buildAcceptedForcedTrace =
     // output can no longer be. The rejected counterpart below keeps its
     // 10-lovelace output deliberately: it is convicted at `inputSets`, well
     // before ValueAndMint, and that is the rejection this fixture is about.
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -97,7 +97,7 @@ const buildAcceptedForcedTrace =
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -148,7 +148,7 @@ const buildRejectedForcedTrace =
   };
 
 const expectExactBundle = (
-  bundle: ReturnType<typeof buildValidationDisputeEvidenceBundleV1>,
+  bundle: ReturnType<typeof buildValidationDisputeEvidenceBundle>,
 ): void => {
   expect(bundle.finalDispute.turn).toEqual({ type: "readyForOneStep" });
   expect(bundle.finalDispute.highIndex).toBe(bundle.finalDispute.lowIndex + 1);
@@ -198,7 +198,7 @@ describe("validation dispute evidence construction", () => {
   it("challenges a valid forced transaction falsely classified as a no-op", async () => {
     const challengerTrace = await buildAcceptedForcedTrace();
     const operatorTrace = falsifyTerminalVerdict(challengerTrace, "rejected");
-    const bundle = buildValidationDisputeEvidenceBundleV1({
+    const bundle = buildValidationDisputeEvidenceBundle({
       operatorTrace,
       challengerTrace,
       currentTime: 1_750_000_001_000,
@@ -217,7 +217,7 @@ describe("validation dispute evidence construction", () => {
   it("challenges an invalid forced no-op falsely classified as effectful", async () => {
     const challengerTrace = await buildRejectedForcedTrace();
     const operatorTrace = falsifyTerminalVerdict(challengerTrace, "accepted");
-    const bundle = buildValidationDisputeEvidenceBundleV1({
+    const bundle = buildValidationDisputeEvidenceBundle({
       operatorTrace,
       challengerTrace,
       currentTime: 1_750_000_001_000,
@@ -236,7 +236,7 @@ describe("validation dispute evidence construction", () => {
   it("fails closed when the two trace descriptors do not conflict", async () => {
     const trace = await buildAcceptedForcedTrace();
     expect(() =>
-      buildValidationDisputeEvidenceBundleV1({
+      buildValidationDisputeEvidenceBundle({
         operatorTrace: trace,
         challengerTrace: trace,
         currentTime: 1_750_000_001_000,

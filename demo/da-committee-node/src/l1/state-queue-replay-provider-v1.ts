@@ -7,7 +7,7 @@ const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-type Queue = readonly SDK.StateQueueTransitionNodeV1[];
+type Queue = readonly SDK.StateQueueTransitionNode[];
 type Point = Readonly<{ slot: number; blockHash: string }>;
 type Spend = Readonly<{ transactionHash: string; point: Point }>;
 type Transaction = Readonly<{
@@ -17,21 +17,21 @@ type Transaction = Readonly<{
   blockNo: number;
   transactionIndex: number;
   mintPolicyIds: readonly string[];
-  redeemers: readonly SDK.StateQueueTransitionRedeemerV1[];
+  redeemers: readonly SDK.StateQueueTransitionRedeemer[];
   spentInputOutRefs: readonly string[];
   referenceInputOutRefs: readonly string[];
 }>;
 type HistoricalOutput = Readonly<{
-  node: SDK.StateQueueTransitionNodeV1;
+  node: SDK.StateQueueTransitionNode;
   nextHeaderHash: string | null;
 }>;
 
-export type StateQueueReplayFetchV1 = (
+export type StateQueueReplayFetch = (
   input: string,
   init?: RequestInit,
 ) => Promise<Response>;
 
-export type StateQueueReplayWebSocketV1 = Readonly<{
+export type StateQueueReplayWebSocket = Readonly<{
   send(data: string): void;
   close(code?: number, reason?: string): void;
   addEventListener(
@@ -41,9 +41,9 @@ export type StateQueueReplayWebSocketV1 = Readonly<{
   ): void;
 }>;
 
-export type StateQueueReplayWebSocketFactoryV1 = (
+export type StateQueueReplayWebSocketFactory = (
   url: string,
-) => StateQueueReplayWebSocketV1;
+) => StateQueueReplayWebSocket;
 
 const stableJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -83,7 +83,7 @@ const wsUrl = (value: string): string => {
   return url.toString().replace(/\/$/u, "");
 };
 const json = async (
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
   url: string,
   init?: RequestInit,
 ): Promise<unknown> => {
@@ -119,7 +119,7 @@ const point = (value: unknown, label: string): Point => {
 const fetchSpend = async (
   kupoUrl: string,
   reference: string,
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
 ): Promise<Spend | null> => {
   const { txHash, index } = splitOutRef(reference);
   const body = await json(
@@ -158,7 +158,7 @@ const fetchSpend = async (
 const fetchAncestor = async (
   kupoUrl: string,
   slot: number,
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
 ): Promise<Point> => {
   if (slot < 1) throw new Error("genesis has no replay ancestor");
   return point(
@@ -176,7 +176,7 @@ type Rpc = Readonly<{
 }>;
 const openRpc = async (
   url: string,
-  factory: StateQueueReplayWebSocketFactoryV1,
+  factory: StateQueueReplayWebSocketFactory,
 ): Promise<Rpc> => {
   const socket = factory(wsUrl(url));
   const pending = new Map<
@@ -357,7 +357,7 @@ const readTransaction = async (
   ogmiosUrl: string,
   ancestor: Point,
   spend: Spend,
-  factory: StateQueueReplayWebSocketFactoryV1,
+  factory: StateQueueReplayWebSocketFactory,
 ): Promise<Transaction> => {
   const rpc = await openRpc(ogmiosUrl, factory);
   try {
@@ -428,7 +428,7 @@ const fetchOutputs = async (
   transactionHash: string,
   stateQueueAddress: string,
   stateQueuePolicyId: string,
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
 ): Promise<readonly HistoricalOutput[]> => {
   const body = await json(
     fetchImpl,
@@ -565,7 +565,7 @@ const decodeCorrectionLockOutput = (
 const fetchResolvedOutput = async (
   kupoUrl: string,
   reference: string,
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
 ): Promise<unknown> => {
   const { txHash, index } = splitOutRef(reference);
   const body = await json(
@@ -591,7 +591,7 @@ const fetchCorrectionLockOutputs = async (
   transactionHash: string,
   correctionLockAddress: string,
   hubOraclePolicyId: string,
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
 ): Promise<readonly CorrectionLockOutput[]> => {
   const body = await json(
     fetchImpl,
@@ -676,8 +676,8 @@ const correctionLockWitness = async ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofAddress: string;
   readonly kupoUrl: string;
-  readonly fetchImpl: StateQueueReplayFetchV1;
-}): Promise<SDK.StateQueueCorrectionLockWitnessV1> => {
+  readonly fetchImpl: StateQueueReplayFetch;
+}): Promise<SDK.StateQueueCorrectionLockWitness> => {
   const spentResolved = await Promise.all(
     transaction.spentInputOutRefs.map(async (reference) => ({
       reference,
@@ -906,7 +906,7 @@ const reconstruct = (
 
 const fetchTipBlockNo = async (
   ogmiosUrl: string,
-  fetchImpl: StateQueueReplayFetchV1,
+  fetchImpl: StateQueueReplayFetch,
 ): Promise<number> => {
   const body = (await json(fetchImpl, httpUrl(ogmiosUrl), {
     method: "POST",
@@ -930,7 +930,7 @@ const fetchTipBlockNo = async (
 };
 
 /** Independent committee-side local Kupmios ordered state-queue replay. */
-export const createLocalKupmiosStateQueueReplayProviderV1 = ({
+export const createLocalKupmiosStateQueueReplayProvider = ({
   deploymentIdentityDigest,
   stateQueuePolicyId,
   stateQueueAddress,
@@ -942,7 +942,7 @@ export const createLocalKupmiosStateQueueReplayProviderV1 = ({
   ogmiosUrl,
   fetchImpl = fetch,
   webSocketFactory = (url) =>
-    new WebSocket(url) as unknown as StateQueueReplayWebSocketV1,
+    new WebSocket(url) as unknown as StateQueueReplayWebSocket,
 }: {
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
@@ -953,12 +953,12 @@ export const createLocalKupmiosStateQueueReplayProviderV1 = ({
   readonly fraudProofAddress: string;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;
-  readonly fetchImpl?: StateQueueReplayFetchV1;
-  readonly webSocketFactory?: StateQueueReplayWebSocketFactoryV1;
+  readonly fetchImpl?: StateQueueReplayFetch;
+  readonly webSocketFactory?: StateQueueReplayWebSocketFactory;
 }): ((
   previousQueue: Queue,
   currentQueue: Queue,
-) => Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]>) => {
+) => Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]>) => {
   if (
     !HEX_32.test(deploymentIdentityDigest) ||
     !HEX_28.test(stateQueuePolicyId) ||
@@ -971,7 +971,7 @@ export const createLocalKupmiosStateQueueReplayProviderV1 = ({
   }
   return async (previousQueue, currentQueue) => {
     let queue = previousQueue;
-    const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpointV1[] = [];
+    const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpoint[] = [];
     const tipBlockNo = await fetchTipBlockNo(ogmiosUrl, fetchImpl);
     for (let replayed = 0; replayed < 1_000; replayed += 1) {
       if (sameQueue(queue, currentQueue)) return checkpoints;
@@ -1044,7 +1044,7 @@ export const createLocalKupmiosStateQueueReplayProviderV1 = ({
         kupoUrl,
         fetchImpl,
       });
-      const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpointV1({
+      const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
         deploymentIdentityDigest,
         stateQueuePolicyId,
         transactionHash: transaction.transactionHash,

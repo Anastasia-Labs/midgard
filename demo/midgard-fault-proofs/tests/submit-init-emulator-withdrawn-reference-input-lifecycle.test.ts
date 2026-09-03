@@ -18,17 +18,17 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  makeWithdrawnReferenceInputEmulatorHarnessV1,
-  publishWithdrawnReferenceInputReferenceScriptsV1,
-  setupWithdrawnReferenceInputScenarioV1,
+  makeWithdrawnReferenceInputEmulatorHarness,
+  publishWithdrawnReferenceInputReferenceScripts,
+  setupWithdrawnReferenceInputScenario,
 } from "./support/withdrawn-reference-input-emulator-v1.js";
 
 describe("withdrawn-reference-input emulator lifecycle", () => {
   it("proves the same-block conflict, mints permanent evidence, and removes the fraudulent block", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const scenario = await setupWithdrawnReferenceInputScenarioV1({ harness });
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const scenario = await setupWithdrawnReferenceInputScenario({ harness });
     const [step01Ref, step02Ref, step03Ref] =
-      await publishWithdrawnReferenceInputReferenceScriptsV1({
+      await publishWithdrawnReferenceInputReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.family,
       });

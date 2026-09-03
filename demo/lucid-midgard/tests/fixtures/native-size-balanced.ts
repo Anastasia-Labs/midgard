@@ -40,27 +40,27 @@
 import {
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardFieldPreimage,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardRedeemerWitnessItem,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
-  type MidgardRedeemerWitnessV1,
+  type MidgardNativeTxCanonical,
+  type MidgardRedeemerWitness,
   type MidgardTxOutput,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
-  deriveNativeTxFixtureFacetsV1,
+  deriveNativeTxFixtureFacets,
   type NativeTxFixtureEnvelope,
 } from "./native-tx-fixture-shape.js";
 
@@ -382,7 +382,7 @@ export const buildSizeBalancedNativeTxFixture =
       ...receiveScripts,
     ];
 
-    const redeemers: MidgardRedeemerWitnessV1[] = [
+    const redeemers: MidgardRedeemerWitness[] = [
       ...spendScripts.map((_unused, index) => ({
         purpose: "Spend" as const,
         index: BigInt(parameters.pubKeySpendInputs + index),
@@ -406,15 +406,15 @@ export const buildSizeBalancedNativeTxFixture =
       executionUnits: parameters.executionUnits,
     }));
 
-    const canonical: MidgardNativeTxCanonicalV1 = {
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const canonical: MidgardNativeTxCanonical = {
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: encodeCbor(
-          spendInputs.map(encodeMidgardSpendInputItemV1),
+          spendInputs.map(encodeMidgardSpendInputItem),
         ),
         referenceInputsPreimageCbor: encodeCbor(
-          referenceInputs.map(encodeMidgardSpendInputItemV1),
+          referenceInputs.map(encodeMidgardSpendInputItem),
         ),
         outputsPreimageCbor: encodeCbor(outputs.map(encodeMidgardTxOutput)),
         fee: parameters.fee,
@@ -425,7 +425,7 @@ export const buildSizeBalancedNativeTxFixture =
         // §5.6: the enveloped per-policy item list. `mintPolicies` and
         // `assetName` already emit canonical key order, which the encoder then
         // enforces rather than trusts.
-        mintPreimageCbor: encodeMidgardFieldPreimageForFieldV1({
+        mintPreimageCbor: encodeMidgardFieldPreimageForField({
           fieldIndex: 5,
           items: mintPolicies.map(({ policyId }, policyOrdinal) => ({
             policyId,
@@ -444,27 +444,27 @@ export const buildSizeBalancedNativeTxFixture =
       },
       witnessSet: {
         addrTxWitsPreimageCbor: encodeCbor(
-          addressWitnesses.map(encodeMidgardAddressWitnessItemV1),
+          addressWitnesses.map(encodeMidgardAddressWitnessItem),
         ),
         // §5.1: fields 6 and 8 carry the per-item byte-string envelope like the
         // other seven. `encodeCborArrayRaw` was the retired counted-era raw
         // concatenation and is prohibited.
-        scriptTxWitsPreimageCbor: encodeMidgardFieldPreimageV1(
+        scriptTxWitsPreimageCbor: encodeMidgardFieldPreimage(
           scriptWitnesses.map(encodeMidgardVersionedScript),
         ),
-        redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageV1(
-          redeemers.map(encodeMidgardRedeemerWitnessItemV1),
+        redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimage(
+          redeemers.map(encodeMidgardRedeemerWitnessItem),
         ),
       },
     };
 
-    const materialized = materializeMidgardNativeTxFromCanonicalV1(canonical);
-    const fullTxCbor = encodeMidgardNativeTxCanonicalV1(materialized);
+    const materialized = materializeMidgardNativeTxFromCanonical(canonical);
+    const fullTxCbor = encodeMidgardNativeTxCanonical(materialized);
     // The shared derivation decodes these bytes before it reports anything about
     // them, which is this construction's own gate: an item the canonical
     // producers emitted but the canonical decoder rejects is not a fixture, it
     // is a bug with a JSON file attached.
-    const facets = deriveNativeTxFixtureFacetsV1(fullTxCbor);
+    const facets = deriveNativeTxFixtureFacets(fullTxCbor);
 
     const lowerBound =
       parameters.targetFullTxCborBytes - parameters.fullTxCborToleranceBytes;

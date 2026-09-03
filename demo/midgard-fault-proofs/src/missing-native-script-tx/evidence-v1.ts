@@ -3,15 +3,15 @@ import {
   decodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
-  missingNativeScriptIsAbsentV1,
-  missingNativeScriptTxVersionedScriptHashV1,
+  missingNativeScriptIsAbsent,
+  missingNativeScriptTxVersionedScriptHash,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 
-import { planFaultProofFieldOpeningV1 } from "../field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../field-opening-v1.js";
 import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
@@ -19,7 +19,7 @@ import {
 import { missingNativeScriptTxSubmitError } from "./submit-common-v1.js";
 
 /** Complete, consumer-agnostic evidence needed by the six submitters. */
-export type MissingNativeScriptTxEvidenceV1 = {
+export type MissingNativeScriptTxEvidence = {
   readonly badTxInclusion: SubmitStep01TxInclusion;
   readonly badTxSpendInputs: readonly MidgardTxInput[];
   readonly badInputIndex: bigint;
@@ -36,7 +36,7 @@ export type MissingNativeScriptTxEvidenceV1 = {
  * three §8.8 anchor/field pairings. Unknown script preimages therefore refuse
  * before a computation thread is opened.
  */
-export const buildMissingNativeScriptTxEvidenceV1 = ({
+export const buildMissingNativeScriptTxEvidence = ({
   badTxInclusion,
   badTxSpendInputs,
   badInputIndex,
@@ -46,9 +46,9 @@ export const buildMissingNativeScriptTxEvidenceV1 = ({
   badTxWitnessSet,
   badTxScriptWitnessItemCbors,
   owner,
-}: Omit<MissingNativeScriptTxEvidenceV1, "expectedMissingScriptHash"> & {
+}: Omit<MissingNativeScriptTxEvidence, "expectedMissingScriptHash"> & {
   readonly owner: string;
-}): MissingNativeScriptTxEvidenceV1 => {
+}): MissingNativeScriptTxEvidence => {
   requireNativeTxMatchesCompactCbor(badTxInclusion);
   requireNativeTxMatchesCompactCbor(producingTxInclusion);
   const accusedInput = badTxSpendInputs[Number(badInputIndex)];
@@ -78,7 +78,7 @@ export const buildMissingNativeScriptTxEvidenceV1 = ({
     );
   }
   const expectedMissingScriptHash = credential.hash.toString("hex");
-  const derived = missingNativeScriptTxVersionedScriptHashV1(
+  const derived = missingNativeScriptTxVersionedScriptHash(
     missingNativeScriptBytes,
   );
   if (derived !== expectedMissingScriptHash) {
@@ -87,7 +87,7 @@ export const buildMissingNativeScriptTxEvidenceV1 = ({
     );
   }
   if (
-    !missingNativeScriptIsAbsentV1({
+    !missingNativeScriptIsAbsent({
       scriptTxWitsItems: badTxScriptWitnessItemCbors,
       expectedMissingScriptHash,
     })
@@ -96,24 +96,24 @@ export const buildMissingNativeScriptTxEvidenceV1 = ({
       "the required script is present; this is an honest transaction.",
     );
   }
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: badTxInclusion.nativeTxId,
     nativeTxCompactCbor: badTxInclusion.nativeTxCompactCbor,
-    itemCbors: badTxSpendInputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: badTxSpendInputs.map(encodeMidgardTxInputCanonical),
     owner,
     label: "missing-native-script-tx evidence spend inputs",
   });
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: producingTxInclusion.nativeTxId,
     nativeTxCompactCbor: producingTxInclusion.nativeTxCompactCbor,
     itemCbors: producingOutputItemCbors,
     owner,
     label: "missing-native-script-tx evidence producing outputs",
   });
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: badTxInclusion.nativeTxId,
     nativeTxCompactCbor: badTxInclusion.nativeTxCompactCbor,
     itemCbors: badTxScriptWitnessItemCbors,

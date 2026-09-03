@@ -9,10 +9,10 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
-  type WithdrawnInputContractsV1,
+  type WithdrawnInputContracts,
 } from "./contracts-v1.js";
 
-export type WithdrawnInputCatalogueCategoryV1 = {
+export type WithdrawnInputCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -21,10 +21,10 @@ export type WithdrawnInputCatalogueCategoryV1 = {
 export const withdrawnInputSubmitError = (message: string): Error =>
   new Error(`${WITHDRAWN_INPUT_CATEGORY_LABEL}: ${message}`);
 
-export const withdrawnInputStepLabelV1 = (stepIndex: 0 | 1 | 2) =>
+export const withdrawnInputStepLabel = (stepIndex: 0 | 1 | 2) =>
   `${WITHDRAWN_INPUT_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
-export const requireWithdrawnInputThreadUtxoV1 = async ({
+export const requireWithdrawnInputThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -32,12 +32,12 @@ export const requireWithdrawnInputThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: WithdrawnInputContractsV1;
+  readonly contracts: WithdrawnInputContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1 | 2;
   readonly threadOutRef: string;
 }) => {
-  const label = withdrawnInputStepLabelV1(stepIndex);
+  const label = withdrawnInputStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -60,31 +60,31 @@ export const requireWithdrawnInputThreadUtxoV1 = async ({
 };
 
 /** All family step spends are reference-script-only. */
-export const requireWithdrawnInputReferenceScriptV1 = ({
+export const requireWithdrawnInputReferenceScript = ({
   utxo,
   contracts,
   stepIndex,
 }: {
   readonly utxo: UTxO;
-  readonly contracts: WithdrawnInputContractsV1;
+  readonly contracts: WithdrawnInputContracts;
   readonly stepIndex: 0 | 1 | 2;
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw withdrawnInputSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${withdrawnInputStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${withdrawnInputStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
   const expected = contracts.steps[stepIndex].spendingScriptHash;
   if (actual !== expected) {
     throw withdrawnInputSubmitError(
-      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not ${withdrawnInputStepLabelV1(stepIndex)} validator ${expected}.`,
+      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not ${withdrawnInputStepLabel(stepIndex)} validator ${expected}.`,
     );
   }
   return utxo;
 };
 
-export const requireWithdrawnInputStepStateV1 = <State>({
+export const requireWithdrawnInputStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -98,7 +98,7 @@ export const requireWithdrawnInputStepStateV1 = <State>({
   };
   readonly stepIndex: 1 | 2;
 }): State => {
-  const label = withdrawnInputStepLabelV1(stepIndex);
+  const label = withdrawnInputStepLabel(stepIndex);
   if (threadUtxo.datum == null) {
     throw withdrawnInputSubmitError(
       `thread UTxO ${outRefLabel(threadUtxo)} at ${label} has no inline datum.`,

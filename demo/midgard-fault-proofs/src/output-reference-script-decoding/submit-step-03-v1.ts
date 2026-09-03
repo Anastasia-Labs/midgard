@@ -11,30 +11,30 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type OutputReferenceScriptDecodingContractsV1,
+  type OutputReferenceScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  outputReferenceScriptControlDataV1,
-  type OutputReferenceScriptDecodingEvidenceV1,
+  outputReferenceScriptControlData,
+  type OutputReferenceScriptDecodingEvidence,
 } from "./output-reference-script-decoding-v1.js";
 import {
-  OutputReferenceOutputControlV1Schema,
-  OutputReferenceStep03DatumV1Schema,
-  OutputReferenceStep03RedeemerV1Schema,
-  OutputReferenceStep04DatumV1Schema,
+  OutputReferenceOutputControlSchema,
+  OutputReferenceStep03DatumSchema,
+  OutputReferenceStep03RedeemerSchema,
+  OutputReferenceStep04DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitOutputReferenceScriptDecodingStep03V1 = async ({
+export const submitOutputReferenceScriptDecodingStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -46,17 +46,17 @@ export const submitOutputReferenceScriptDecodingStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: OutputReferenceScriptDecodingContractsV1;
+  readonly contracts: OutputReferenceScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: OutputReferenceScriptDecodingEvidenceV1;
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,7 +64,7 @@ export const submitOutputReferenceScriptDecodingStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     bound: unknown;
     item_length: bigint;
     item_hash: string;
@@ -74,7 +74,7 @@ export const submitOutputReferenceScriptDecodingStep03V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: OutputReferenceStep03DatumV1Schema as never,
+    schema: OutputReferenceStep03DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -87,13 +87,13 @@ export const submitOutputReferenceScriptDecodingStep03V1 = async ({
     throw new Error(`${FAMILY}: output scan checkpoint identity changed`);
   const encoded = Data.to(
     state.control as never,
-    OutputReferenceOutputControlV1Schema as never,
+    OutputReferenceOutputControlSchema as never,
   );
   const controlIndex = evidence.outputScanControls.findIndex(
     (control) =>
       Data.to(
-        outputReferenceScriptControlDataV1(control) as never,
-        OutputReferenceOutputControlV1Schema as never,
+        outputReferenceScriptControlData(control) as never,
+        OutputReferenceOutputControlSchema as never,
       ) === encoded,
   );
   if (controlIndex < 0)
@@ -106,22 +106,22 @@ export const submitOutputReferenceScriptDecodingStep03V1 = async ({
   const terminal = controlIndex + 1 === evidence.outputScanControls.length - 1;
   const nextState = {
     ...state,
-    control: outputReferenceScriptControlDataV1(nextControl),
+    control: outputReferenceScriptControlData(nextControl),
     outcome: terminal ? 1n : 0n,
   };
   const nextStepIndex = terminal ? 3 : 2;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
     (terminal
-      ? OutputReferenceStep04DatumV1Schema
-      : OutputReferenceStep03DatumV1Schema) as never,
+      ? OutputReferenceStep04DatumSchema
+      : OutputReferenceStep03DatumSchema) as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: FAMILY,
@@ -150,10 +150,10 @@ export const submitOutputReferenceScriptDecodingStep03V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, window },
         ],
       } as never,
-      OutputReferenceStep03RedeemerV1Schema as never,
+      OutputReferenceStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

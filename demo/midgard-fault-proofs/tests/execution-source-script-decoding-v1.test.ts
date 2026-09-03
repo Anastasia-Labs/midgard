@@ -1,65 +1,65 @@
 import {
-  buildMidgardBoundedItemV1,
-  buildMidgardValidationMerkleMembershipV1,
+  buildMidgardBoundedItem,
+  buildMidgardValidationMerkleMembership,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyExecutionSourceScriptDecodingFindingV1,
-  type ExecutionSourceDescriptorV1,
-  executionSourceScriptDecodingCheckpointV1,
-  executionSourceScriptDecodingEvidenceClosesV1,
-  executionSourceScriptDecodingEvidenceIdentityV1,
-  ExecutionSourceScriptDecodingResultClassesV1,
-  executionSourceScriptDecodingViolationIdV1,
-  nextExecutionSourceScriptDecodingActionV1,
-  prepareExecutionSourceScriptDecodingEvidenceV1,
+  classifyExecutionSourceScriptDecodingFinding,
+  type ExecutionSourceDescriptor,
+  executionSourceScriptDecodingCheckpoint,
+  executionSourceScriptDecodingEvidenceCloses,
+  executionSourceScriptDecodingEvidenceIdentity,
+  ExecutionSourceScriptDecodingResultClasses,
+  executionSourceScriptDecodingViolationId,
+  nextExecutionSourceScriptDecodingAction,
+  prepareExecutionSourceScriptDecodingEvidence,
 } from "../src/execution-source-script-decoding/family-v1.js";
-import { createExecutionSourceScriptDecodingActuatorV1 } from "../src/execution-source-script-decoding/production-actuator-v1.js";
+import { createExecutionSourceScriptDecodingActuator } from "../src/execution-source-script-decoding/production-actuator-v1.js";
 import {
-  createManifestBoundExecutionSourceScriptDecodingWorkflowV1,
-  EXECUTION_SOURCE_SCRIPT_DECODING_PRODUCTION_CONFIG_KEYS_V1,
-  EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS_V1,
-  runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflowV1,
+  createManifestBoundExecutionSourceScriptDecodingWorkflow,
+  EXECUTION_SOURCE_SCRIPT_DECODING_CONFIG_KEYS,
+  EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS,
+  runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow,
 } from "../src/execution-source-script-decoding/production-v1.js";
 import {
-  detectExecutionSourceScriptDecodingAcceptedRawReplayV1,
-  selectExecutionSourceScriptDecodingCanonicalFindingV1,
+  detectExecutionSourceScriptDecodingAcceptedRawReplay,
+  selectExecutionSourceScriptDecodingCanonicalFinding,
 } from "../src/execution-source-script-decoding/replay-v1.js";
 import {
-  ExecutionSourceStep02DatumV1Schema,
-  ExecutionSourceStep03DatumV1Schema,
-  ExecutionSourceStep04DatumV1Schema,
-  ExecutionSourceStep05DatumV1Schema,
+  ExecutionSourceStep02DatumSchema,
+  ExecutionSourceStep03DatumSchema,
+  ExecutionSourceStep04DatumSchema,
+  ExecutionSourceStep05DatumSchema,
 } from "../src/execution-source-script-decoding/schemas-v1.js";
 import {
-  cancelExecutionSourceScriptDecodingWorkflowV1,
-  type ExecutionSourceScriptDecodingCursorV1,
-  type ExecutionSourceScriptDecodingJournalEntryV1,
-  runExecutionSourceScriptDecodingWorkflowV1,
+  cancelExecutionSourceScriptDecodingWorkflow,
+  type ExecutionSourceScriptDecodingCursor,
+  type ExecutionSourceScriptDecodingJournalEntry,
+  runExecutionSourceScriptDecodingWorkflow,
 } from "../src/execution-source-script-decoding/workflow-v1.js";
 
 const txId = "00".repeat(32);
 const scriptHash = "22".repeat(28);
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const forced = (constructor: string, executionIndex = 0) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "33".repeat(32), outputIndex: 0n },
     rejectionReason: {
@@ -73,26 +73,26 @@ const signatureItem = Buffer.concat([
 ]);
 const malformedItem = Buffer.from("820043820700", "hex");
 
-const descriptor = (item: Buffer): ExecutionSourceDescriptorV1 => {
-  const bounded = buildMidgardBoundedItemV1({
+const descriptor = (item: Buffer): ExecutionSourceDescriptor => {
+  const bounded = buildMidgardBoundedItem({
     fieldIndex: 6,
     itemIndex: 0,
     bytes: item,
   });
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind: 0,
     purposeIndex: 0n,
     scriptHash: Buffer.from(scriptHash, "hex"),
     subject: Buffer.from("aa", "hex"),
   });
-  const sourceLeaf = hashMidgardInlineScriptSourceLeafV1({
+  const sourceLeaf = hashMidgardInlineScriptSourceLeaf({
     sourceIndex: 0n,
     scriptLanguageTag: 0,
     scriptHash: Buffer.from(scriptHash, "hex"),
     scriptTotalLength: item.length,
     itemCommitment: bounded.commitment,
   });
-  const executionLeaf = hashMidgardScriptExecutionLeafV1({
+  const executionLeaf = hashMidgardScriptExecutionLeaf({
     languageTag: 0,
     purposeLeaf,
     sourceLeaf,
@@ -108,26 +108,23 @@ const descriptor = (item: Buffer): ExecutionSourceDescriptorV1 => {
     purposeIndex: 0,
     purposeSubjectHex: "aa",
     redeemerLeafHex: "",
-    purposeMembership: buildMidgardValidationMerkleMembershipV1(
-      [purposeLeaf],
-      0,
-    ),
-    sourceMembership: buildMidgardValidationMerkleMembershipV1([sourceLeaf], 0),
-    executionMembership: buildMidgardValidationMerkleMembershipV1(
+    purposeMembership: buildMidgardValidationMerkleMembership([purposeLeaf], 0),
+    sourceMembership: buildMidgardValidationMerkleMembership([sourceLeaf], 0),
+    executionMembership: buildMidgardValidationMerkleMembership(
       [executionLeaf],
       0,
     ),
   };
 };
 const evidence = (item: Buffer, subject = accepted) =>
-  prepareExecutionSourceScriptDecodingEvidenceV1({
+  prepareExecutionSourceScriptDecodingEvidence({
     finding: { subject, executionIndex: 0 },
     descriptor: descriptor(item),
   });
 
 describe("executionSourceScriptDecoding V1", () => {
   it("admits infrastructure-only production configuration", async () => {
-    expect(EXECUTION_SOURCE_SCRIPT_DECODING_PRODUCTION_CONFIG_KEYS_V1).toEqual([
+    expect(EXECUTION_SOURCE_SCRIPT_DECODING_CONFIG_KEYS).toEqual([
       "manifest",
       "blueprintJson",
       "deploymentInfo",
@@ -140,7 +137,7 @@ describe("executionSourceScriptDecoding V1", () => {
       "referenceScripts",
     ]);
     await expect(
-      createManifestBoundExecutionSourceScriptDecodingWorkflowV1({
+      createManifestBoundExecutionSourceScriptDecodingWorkflow({
         manifest: {},
         blueprintJson: "{}",
         deploymentInfo: {},
@@ -157,17 +154,17 @@ describe("executionSourceScriptDecoding V1", () => {
   });
 
   it("binds generic Init then the exact five physical datum ABIs", () => {
-    expect(EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS_V1).toEqual([
+    expect(EXECUTION_SOURCE_SCRIPT_DECODING_STEP_DATUM_SCHEMAS).toEqual([
       FraudProofComputationThreadStepDatum,
-      ExecutionSourceStep02DatumV1Schema,
-      ExecutionSourceStep03DatumV1Schema,
-      ExecutionSourceStep04DatumV1Schema,
-      ExecutionSourceStep05DatumV1Schema,
+      ExecutionSourceStep02DatumSchema,
+      ExecutionSourceStep03DatumSchema,
+      ExecutionSourceStep04DatumSchema,
+      ExecutionSourceStep05DatumSchema,
     ]);
   });
 
   it("owns every transaction capture action inside the family actuator", () => {
-    const actuator = createExecutionSourceScriptDecodingActuatorV1({
+    const actuator = createExecutionSourceScriptDecodingActuator({
       binding: {} as never,
       lucid: {} as never,
       signer: {} as never,
@@ -180,7 +177,7 @@ describe("executionSourceScriptDecoding V1", () => {
 
   it("rejects caller-authored evidence at the production runner boundary", async () => {
     await expect(
-      runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflowV1({
+      runOrResumeManifestBoundExecutionSourceScriptDecodingWorkflow({
         workflow: {} as never,
         sources: [],
         journal: {} as never,
@@ -191,7 +188,7 @@ describe("executionSourceScriptDecoding V1", () => {
   it("binds the frozen ID reason arms and exact execution coordinate", () => {
     expect(
       [0, 1, 2].map((value) =>
-        executionSourceScriptDecodingViolationIdV1(value as 0 | 1 | 2),
+        executionSourceScriptDecodingViolationId(value as 0 | 1 | 2),
       ),
     ).toEqual([
       "execution-native-script-malformed",
@@ -204,14 +201,14 @@ describe("executionSourceScriptDecoding V1", () => {
       ["ExecutionNativeScriptDepthLimit", 2],
     ] as const) {
       expect(
-        classifyExecutionSourceScriptDecodingFindingV1({
+        classifyExecutionSourceScriptDecodingFinding({
           subject: forced(constructor),
           executionIndex: 0,
         }).accusedClass,
       ).toBe(resultClass);
     }
     expect(() =>
-      classifyExecutionSourceScriptDecodingFindingV1({
+      classifyExecutionSourceScriptDecodingFinding({
         subject: forced("ExecutionNativeScriptMalformed", 1),
         executionIndex: 0,
       }),
@@ -224,7 +221,7 @@ describe("executionSourceScriptDecoding V1", () => {
     expect(exact.chunkProofCount).toBe(1);
     const substituted = descriptor(signatureItem);
     expect(() =>
-      prepareExecutionSourceScriptDecodingEvidenceV1({
+      prepareExecutionSourceScriptDecodingEvidence({
         finding: { subject: accepted, executionIndex: 0 },
         descriptor: {
           ...substituted,
@@ -240,7 +237,7 @@ describe("executionSourceScriptDecoding V1", () => {
   it("refuses root, descriptor-coordinate, and raw-item substitution", () => {
     const exact = descriptor(malformedItem);
     expect(() =>
-      prepareExecutionSourceScriptDecodingEvidenceV1({
+      prepareExecutionSourceScriptDecodingEvidence({
         finding: { subject: accepted, executionIndex: 0 },
         descriptor: {
           ...exact,
@@ -258,13 +255,13 @@ describe("executionSourceScriptDecoding V1", () => {
       }),
     ).toThrow(/purpose frontier membership was substituted/u);
     expect(() =>
-      prepareExecutionSourceScriptDecodingEvidenceV1({
+      prepareExecutionSourceScriptDecodingEvidence({
         finding: { subject: accepted, executionIndex: 0 },
         descriptor: { ...exact, purposeIndex: 1 },
       }),
     ).toThrow(/purpose frontier membership was substituted/u);
     expect(() =>
-      prepareExecutionSourceScriptDecodingEvidenceV1({
+      prepareExecutionSourceScriptDecodingEvidence({
         finding: { subject: accepted, executionIndex: 0 },
         descriptor: { ...exact, scriptItemHex: signatureItem.toString("hex") },
       }),
@@ -273,18 +270,18 @@ describe("executionSourceScriptDecoding V1", () => {
 
   it("closes malformed acceptance and decodable wrongful rejection only", () => {
     expect(
-      executionSourceScriptDecodingEvidenceClosesV1(evidence(malformedItem)),
+      executionSourceScriptDecodingEvidenceCloses(evidence(malformedItem)),
     ).toBe(true);
     expect(
-      executionSourceScriptDecodingEvidenceClosesV1(evidence(signatureItem)),
+      executionSourceScriptDecodingEvidenceCloses(evidence(signatureItem)),
     ).toBe(false);
     expect(
-      executionSourceScriptDecodingEvidenceClosesV1(
+      executionSourceScriptDecodingEvidenceCloses(
         evidence(signatureItem, forced("ExecutionNativeScriptMalformed")),
       ),
     ).toBe(true);
     expect(
-      executionSourceScriptDecodingEvidenceClosesV1(
+      executionSourceScriptDecodingEvidenceCloses(
         evidence(malformedItem, forced("ExecutionNativeScriptMalformed")),
       ),
     ).toBe(false);
@@ -292,22 +289,22 @@ describe("executionSourceScriptDecoding V1", () => {
 
   it("binds resume checkpoints and identity to source and successor", () => {
     const exact = evidence(signatureItem);
-    const first = executionSourceScriptDecodingCheckpointV1({
+    const first = executionSourceScriptDecodingCheckpoint({
       evidence: exact,
       controlCbor: exact.initialControlCbor,
       nextExpectedScriptHash: "44".repeat(28),
     });
-    const next = executionSourceScriptDecodingCheckpointV1({
+    const next = executionSourceScriptDecodingCheckpoint({
       evidence: exact,
       controlCbor: exact.initialControlCbor,
       nextExpectedScriptHash: "45".repeat(28),
     });
     expect(first).toMatch(/^[0-9a-f]{64}$/u);
     expect(next).not.toBe(first);
-    expect(executionSourceScriptDecodingEvidenceIdentityV1(exact)).toContain(
+    expect(executionSourceScriptDecodingEvidenceIdentity(exact)).toContain(
       exact.executionLeafHex,
     );
-    expect(nextExecutionSourceScriptDecodingActionV1("scan")).toBe(
+    expect(nextExecutionSourceScriptDecodingAction("scan")).toBe(
       "submitScanOrResume",
     );
   });
@@ -322,13 +319,13 @@ describe("executionSourceScriptDecoding V1", () => {
     const maximum = evidence(item);
     expect(maximum.chunkProofCount).toBe(9);
     expect(maximum.resultClass).toBe(
-      ExecutionSourceScriptDecodingResultClassesV1.Malformed,
+      ExecutionSourceScriptDecodingResultClasses.Malformed,
     );
   });
 
   it("retains malformed accepted field-6 bytes before canonical decoding", () => {
-    const raw = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const raw = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -350,10 +347,10 @@ describe("executionSourceScriptDecoding V1", () => {
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     });
-    const findings = detectExecutionSourceScriptDecodingAcceptedRawReplayV1({
+    const findings = detectExecutionSourceScriptDecodingAcceptedRawReplay({
       headerHash: "ab".repeat(28),
       position: 3n,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(raw),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(raw),
       authenticatedDescriptors: [
         { executionIndex: 0, descriptor: descriptor(malformedItem) },
       ],
@@ -363,17 +360,17 @@ describe("executionSourceScriptDecoding V1", () => {
       "execution-native-script-malformed",
     );
     expect(() =>
-      detectExecutionSourceScriptDecodingAcceptedRawReplayV1({
+      detectExecutionSourceScriptDecodingAcceptedRawReplay({
         headerHash: "ab".repeat(28),
         position: 3n,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(raw),
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(raw),
         authenticatedDescriptors: [
           { executionIndex: 0, descriptor: descriptor(signatureItem) },
         ],
       }),
     ).toThrow(/raw field-6 source item changed/u);
     expect(
-      selectExecutionSourceScriptDecodingCanonicalFindingV1([
+      selectExecutionSourceScriptDecodingCanonicalFinding([
         {
           ...findings[0]!,
           detection: { ...findings[0]!.detection, position: 9n },
@@ -385,8 +382,8 @@ describe("executionSourceScriptDecoding V1", () => {
 
   it("journals intent before submit and resumes the exact self-loop checkpoint", async () => {
     const exact = evidence(malformedItem);
-    const entries: ExecutionSourceScriptDecodingJournalEntryV1[] = [];
-    let cursor: ExecutionSourceScriptDecodingCursorV1 = {
+    const entries: ExecutionSourceScriptDecodingJournalEntry[] = [];
+    let cursor: ExecutionSourceScriptDecodingCursor = {
       stage: "scan",
       threadOutRef: `${"11".repeat(32)}#0`,
       checkpointHash: "22".repeat(32),
@@ -399,7 +396,7 @@ describe("executionSourceScriptDecoding V1", () => {
       checkpointHash: "44".repeat(32),
       controlCbor: "8100",
     };
-    await runExecutionSourceScriptDecodingWorkflowV1({
+    await runExecutionSourceScriptDecodingWorkflow({
       evidence: exact,
       journal: {
         load: async () => entries,
@@ -421,7 +418,7 @@ describe("executionSourceScriptDecoding V1", () => {
     });
     expect(intentVisibleAtSubmit).toBe(true);
     expect(entries.map(({ phase }) => phase)).toEqual(["intent", "submitted"]);
-    await runExecutionSourceScriptDecodingWorkflowV1({
+    await runExecutionSourceScriptDecodingWorkflow({
       evidence: exact,
       journal: {
         load: async () => entries,
@@ -440,7 +437,7 @@ describe("executionSourceScriptDecoding V1", () => {
 
   it("refuses restart transaction/cursor substitution", async () => {
     const exact = evidence(malformedItem);
-    const identity = executionSourceScriptDecodingEvidenceIdentityV1(exact);
+    const identity = executionSourceScriptDecodingEvidenceIdentity(exact);
     const source = {
       stage: "scan",
       threadOutRef: "a",
@@ -452,7 +449,7 @@ describe("executionSourceScriptDecoding V1", () => {
       threadOutRef: "b",
       checkpointHash: "22".repeat(32),
     };
-    const entries: ExecutionSourceScriptDecodingJournalEntryV1[] = [
+    const entries: ExecutionSourceScriptDecodingJournalEntry[] = [
       {
         sequence: 0,
         identity,
@@ -464,7 +461,7 @@ describe("executionSourceScriptDecoding V1", () => {
       },
     ];
     await expect(
-      runExecutionSourceScriptDecodingWorkflowV1({
+      runExecutionSourceScriptDecodingWorkflow({
         evidence: exact,
         journal: { load: async () => entries, append: async () => undefined },
         transactions: {
@@ -482,15 +479,15 @@ describe("executionSourceScriptDecoding V1", () => {
     "cancels authenticated nonterminal %s",
     async (stage) => {
       const exact = evidence(malformedItem);
-      const entries: ExecutionSourceScriptDecodingJournalEntryV1[] = [];
-      let cursor: ExecutionSourceScriptDecodingCursorV1 = {
+      const entries: ExecutionSourceScriptDecodingJournalEntry[] = [];
+      let cursor: ExecutionSourceScriptDecodingCursor = {
         stage,
         threadOutRef: `${"66".repeat(32)}#0`,
         checkpointHash: "77".repeat(32),
         controlCbor: "80",
       };
       await expect(
-        cancelExecutionSourceScriptDecodingWorkflowV1({
+        cancelExecutionSourceScriptDecodingWorkflow({
           evidence: exact,
           journal: {
             load: async () => entries,

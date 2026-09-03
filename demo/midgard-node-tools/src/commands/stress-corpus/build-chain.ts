@@ -1,6 +1,6 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import type { Network } from "@lucid-evolution/lucid";
 import {
@@ -116,7 +116,7 @@ export const buildCorpusChain = async (
       );
     }
     const outputs = decodeMidgardNativeByteListPreimage(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(built.txCbor).body
+      decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor).body
         .outputsPreimageCbor,
       "native.outputs",
     );

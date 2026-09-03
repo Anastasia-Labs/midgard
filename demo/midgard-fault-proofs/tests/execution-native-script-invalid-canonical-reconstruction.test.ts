@@ -6,7 +6,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeMintPreimageCbor,
   makeNativeTx,
@@ -14,7 +14,7 @@ import {
   nativeScriptWitness,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { reconstructExecutionNativeScriptPurposesV1 } from "../src/execution-native-script-invalid/canonical-reconstruction-v1.js";
+import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction-v1.js";
 
 describe("executionNativeScriptInvalid canonical source reconstruction", () => {
   it("derives spend, mint, observe, and receive execution order independently of witness order", () => {
@@ -29,9 +29,9 @@ describe("executionNativeScriptInvalid canonical source reconstruction", () => {
         .to_raw_bytes(),
     );
     const spent = outRefFromByte(0x61);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, scriptAddress);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE, scriptAddress);
     const protectedReceive = protectMidgardAddress(scriptAddress);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, protectedReceive);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE, protectedReceive);
     const assetName = Buffer.from("31", "hex");
     const tx = makeNativeTx({
       version: 1n,
@@ -43,7 +43,7 @@ describe("executionNativeScriptInvalid canonical source reconstruction", () => {
         new Map([[scriptHash, new Map([[assetName, 1n]])]]),
       ),
     });
-    const reconstructed = reconstructExecutionNativeScriptPurposesV1({
+    const reconstructed = reconstructExecutionNativeScriptPurposes({
       canonicalTransactionCbor: tx.txCbor,
       resolvedOutputsByOutRef: new Map([[spent.toString("hex"), spentOutput]]),
     });
@@ -67,7 +67,7 @@ describe("executionNativeScriptInvalid canonical source reconstruction", () => {
     const scriptHash = Buffer.from(hashScriptWitness(script), "hex");
     const spent = outRefFromByte(0x62);
     const reference = outRefFromByte(0x63, 7n);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const referenceOutput = encodeMidgardTxOutput({
       address: Buffer.from(
         CML.EnterpriseAddress.new(
@@ -79,7 +79,7 @@ describe("executionNativeScriptInvalid canonical source reconstruction", () => {
           .to_address()
           .to_raw_bytes(),
       ),
-      value: { lovelace: FUNDED_OUTPUT_LOVELACE_V1, assets: new Map() },
+      value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
       script_ref: script,
     });
     const assetName = Buffer.from("31", "hex");
@@ -87,13 +87,13 @@ describe("executionNativeScriptInvalid canonical source reconstruction", () => {
       version: 1n,
       spendInputs: [spent],
       referenceInputs: [reference],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
       scriptWitnesses: [],
       mintPreimageCbor: makeMintPreimageCbor(
         new Map([[scriptHash, new Map([[assetName, 1n]])]]),
       ),
     });
-    const reconstructed = reconstructExecutionNativeScriptPurposesV1({
+    const reconstructed = reconstructExecutionNativeScriptPurposes({
       canonicalTransactionCbor: tx.txCbor,
       resolvedOutputsByOutRef: new Map([
         [spent.toString("hex"), spentOutput],
@@ -117,10 +117,10 @@ describe("executionNativeScriptInvalid canonical source reconstruction", () => {
     const tx = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
     });
     expect(() =>
-      reconstructExecutionNativeScriptPurposesV1({
+      reconstructExecutionNativeScriptPurposes({
         canonicalTransactionCbor: tx.txCbor,
         resolvedOutputsByOutRef: new Map(),
       }),

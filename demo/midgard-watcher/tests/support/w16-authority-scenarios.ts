@@ -25,64 +25,64 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
-  evaluateWatcherSettlementIndexerV1 as evaluateWatcherSettlementIndexerV1Raw,
-  makeWatcherSettlementIndexerPolicyV1,
-  makeWatcherSettlementObservationV1,
-  makeWatcherSettlementResourceFromProtocolUtxoV1,
-  makeWatcherSettlementSnapshotV1,
-  makeWatcherSettlementSubjectV1,
-  parseWatcherSettlementIndexerResultV1 as parseWatcherSettlementIndexerResultV1Raw,
-  parseWatcherSettlementIndexerStateV1 as parseWatcherSettlementIndexerStateV1Raw,
-  WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-  type WatcherSettlementIndexerPolicyV1,
-  type WatcherSettlementIndexerStateV1,
-  type WatcherSettlementObservationV1,
-  type WatcherSettlementPublicContextV1,
-  type WatcherSettlementResultVerificationContextV1,
-  type WatcherSettlementSnapshotV1,
-  type WatcherSettlementSubjectV1,
-  type WatcherSettlementTransitionKindV1,
-  type WatcherSettlementTransitionV1,
+  evaluateWatcherSettlementIndexer as evaluateWatcherSettlementIndexerRaw,
+  makeWatcherSettlementIndexerPolicy,
+  makeWatcherSettlementObservation,
+  makeWatcherSettlementResourceFromProtocolUtxo,
+  makeWatcherSettlementSnapshot,
+  makeWatcherSettlementSubject,
+  parseWatcherSettlementIndexerResult as parseWatcherSettlementIndexerResultRaw,
+  parseWatcherSettlementIndexerState as parseWatcherSettlementIndexerStateRaw,
+  WATCHER_SETTLEMENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
+  type WatcherSettlementIndexerPolicy,
+  type WatcherSettlementIndexerState,
+  type WatcherSettlementObservation,
+  type WatcherSettlementPublicContext,
+  type WatcherSettlementResultVerificationContext,
+  type WatcherSettlementSnapshot,
+  type WatcherSettlementSubject,
+  type WatcherSettlementTransition,
+  type WatcherSettlementTransitionKind,
 } from "../../src/indexers/settlement-indexer.js";
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block as normalizeWatcherL1BlockRaw,
+  WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1Provider,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw } from "../../src/l1/multi-provider-consistency.js";
 import {
-  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
-  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
-  type WatcherPostFinalityRecoveryInputV1,
+  evaluateWatcherPostFinalityRecovery as evaluateWatcherPostFinalityRecoveryRaw,
+  evaluateWatcherRollback as evaluateWatcherRollbackRaw,
+  type WatcherPostFinalityRecoveryInput,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  type WatcherProtocolUtxoV1,
+  type WatcherProtocolUtxo,
 } from "../../src/storage/durable-store.js";
 import { h28, h32 } from "./deployment-authority-fixture.js";
-import { makeWatcherAuthorityDeploymentFixtureV1 } from "./watcher-opaque-authority-harness.js";
+import { makeWatcherAuthorityDeploymentFixture } from "./watcher-opaque-authority-harness.js";
 
 type Mutable = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
-const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const transportContexts: WatcherL1TransportAttestationContext[] = [];
 const tlsServers: Server[] = [];
 const tlsIdentityByProviderId = new Map<string, string>();
 const transportEndpointByProviderId = new Map<string, string>();
@@ -152,9 +152,9 @@ const makeTlsTransportFixture = async (providerId: string) => {
 
 const transportFor = (
   authenticatedProvider: unknown,
-): WatcherL1TransportAttestationContextV1 => {
+): WatcherL1TransportAttestationContext => {
   const matching = transportContexts.filter((context) => {
-    const details = watcherL1TransportAttestationDetailsV1(context);
+    const details = watcherL1TransportAttestationDetails(context);
     return (
       details !== null &&
       isDeepStrictEqual(details.provider, authenticatedProvider)
@@ -166,36 +166,36 @@ const transportFor = (
   return matching[0]!;
 };
 
-const normalizeWatcherL1BlockV1 = (
+const normalizeWatcherL1Block = (
   authenticatedProvider: unknown,
   observation: unknown,
-  session?: Parameters<typeof normalizeWatcherL1BlockV1Raw>[2],
+  session?: Parameters<typeof normalizeWatcherL1BlockRaw>[2],
 ) =>
-  normalizeWatcherL1BlockV1Raw(
+  normalizeWatcherL1BlockRaw(
     transportFor(authenticatedProvider),
     observation,
     session,
   );
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: unknown,
 ) =>
-  evaluateWatcherMultiProviderConsistencyV1Raw(
+  evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     transportContexts,
   );
 
-export const parseWatcherSettlementIndexerStateV1 = (
+export const parseWatcherSettlementIndexerState = (
   value: unknown,
   policyValue: unknown,
-  restartContexts: readonly WatcherSettlementPublicContextV1["restartContexts"][number][] = [],
+  restartContexts: readonly WatcherSettlementPublicContext["restartContexts"][number][] = [],
   restartRollbackContexts: Parameters<
-    typeof parseWatcherSettlementIndexerStateV1Raw
+    typeof parseWatcherSettlementIndexerStateRaw
   >[4] = [],
-): WatcherSettlementIndexerStateV1 | null =>
-  parseWatcherSettlementIndexerStateV1Raw(
+): WatcherSettlementIndexerState | null =>
+  parseWatcherSettlementIndexerStateRaw(
     value,
     policyValue,
     transportContexts,
@@ -203,13 +203,13 @@ export const parseWatcherSettlementIndexerStateV1 = (
     restartRollbackContexts,
   );
 
-const evaluateWatcherSettlementIndexerV1 = (
+const evaluateWatcherSettlementIndexer = (
   policyValue: unknown,
   previousStateValue: unknown,
   observationValue: unknown,
   publicContextValue: unknown,
 ) =>
-  evaluateWatcherSettlementIndexerV1Raw(
+  evaluateWatcherSettlementIndexerRaw(
     policyValue,
     previousStateValue,
     observationValue,
@@ -217,7 +217,7 @@ const evaluateWatcherSettlementIndexerV1 = (
     transportContexts,
   );
 
-export const evaluateWatcherRollbackV1 = (
+export const evaluateWatcherRollback = (
   policyInput: unknown,
   storeInput: unknown,
   previousFinalityStateInput: unknown,
@@ -227,7 +227,7 @@ export const evaluateWatcherRollbackV1 = (
   rollbackBootstrapStateInput: unknown,
   trustedCheckpointAuthorityInput?: unknown,
 ) =>
-  evaluateWatcherRollbackV1Raw(
+  evaluateWatcherRollbackRaw(
     policyInput,
     storeInput,
     previousFinalityStateInput,
@@ -239,22 +239,22 @@ export const evaluateWatcherRollbackV1 = (
     transportContexts,
   );
 
-export const evaluateWatcherPostFinalityRecoveryV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
+export const evaluateWatcherPostFinalityRecovery = (
+  input: WatcherPostFinalityRecoveryInput,
 ) =>
-  evaluateWatcherPostFinalityRecoveryV1Raw({
+  evaluateWatcherPostFinalityRecoveryRaw({
     ...input,
     transportAttestations: transportContexts,
   });
 
-const parseWatcherSettlementIndexerResultV1 = (
+const parseWatcherSettlementIndexerResult = (
   value: unknown,
   context: Omit<
-    Parameters<typeof parseWatcherSettlementIndexerResultV1Raw>[1],
+    Parameters<typeof parseWatcherSettlementIndexerResultRaw>[1],
     "transportAttestations"
   >,
 ) =>
-  parseWatcherSettlementIndexerResultV1Raw(value, {
+  parseWatcherSettlementIndexerResultRaw(value, {
     ...context,
     transportAttestations: transportContexts,
   });
@@ -267,7 +267,7 @@ const SETTLEMENT_REFERENCE_OUT_REF = `${h32("7b")}#0`;
 const RELEASE_DIGEST = h32("22");
 const RULE_BUNDLE_COMMITMENT = h32("44");
 
-const deploymentAuthorityFixture = makeWatcherAuthorityDeploymentFixtureV1();
+const deploymentAuthorityFixture = makeWatcherAuthorityDeploymentFixture();
 const applied = deploymentAuthorityFixture.policy.appliedScriptHashes;
 let deploymentAuthority = {
   signedIdentity: deploymentAuthorityFixture.signedIdentity,
@@ -311,14 +311,14 @@ const hubReferenceOutputHex = CML.TransactionOutput.new(
   null,
   null,
 ).to_canonical_cbor_hex();
-const hubReferenceUtxo: WatcherProtocolUtxoV1 = {
+const hubReferenceUtxo: WatcherProtocolUtxo = {
   outRef: HUB_REFERENCE_OUT_REF,
   role: "hub_oracle",
   chainPointId: h32("00"),
-  output: makeWatcherDurablePayloadV1(hubReferenceOutputHex),
+  output: makeWatcherDurablePayload(hubReferenceOutputHex),
 };
 
-const bootstrapStore = makeWatcherDurableStoreV1({
+const bootstrapStore = makeWatcherDurableStore({
   deploymentMarker: deploymentAuthorityFixture.marker,
   revision: "0",
   records: {
@@ -346,7 +346,7 @@ const bootstrapStore = makeWatcherDurableStoreV1({
   },
 });
 
-const policy = makeWatcherSettlementIndexerPolicyV1({
+const policy = makeWatcherSettlementIndexerPolicy({
   network: "Preprod",
   releaseEvidenceDigest: RELEASE_DIGEST,
   deploymentMarker: deploymentAuthorityFixture.marker,
@@ -367,17 +367,17 @@ const policy = makeWatcherSettlementIndexerPolicyV1({
   payoutAddressHex: enterpriseScriptAddress(payoutSpendScriptHash),
   withdrawalAddressHex: enterpriseScriptAddress(withdrawalSpendScriptHash),
   bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-    encodeWatcherDurableStoreV1(bootstrapStore),
+    encodeWatcherDurableStore(bootstrapStore),
   ),
   deploymentTrustRootId: deploymentAuthorityFixture.result.trustRootId,
   requiredFinalityDepth: "2",
   maximumHistoryEntries: "32",
   maximumRollbackEntries: "16",
   maximumRetryAttempts: "2",
-}) as WatcherSettlementIndexerPolicyV1;
+}) as WatcherSettlementIndexerPolicy;
 
 const makeExternalFinalityPolicy = () =>
-  makeWatcherFinalityPolicyV1(
+  makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "development",
@@ -456,7 +456,7 @@ const makeExternalFinalityPolicy = () =>
     },
   )!;
 
-let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicy>>;
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -642,12 +642,12 @@ const settlementRedeemerTag = (purpose: string): CML.RedeemerTag => {
 
 const settlementSubject = (
   outRef: string | null,
-  status: WatcherSettlementSubjectV1["status"],
+  status: WatcherSettlementSubject["status"],
   attempt = "0",
   failureCode: string | null = null,
   terminalTransactionHash: string | null = null,
-): WatcherSettlementSubjectV1 =>
-  makeWatcherSettlementSubjectV1({
+): WatcherSettlementSubject =>
+  makeWatcherSettlementSubject({
     subjectId: settlementAsset,
     subjectKind: "settlement",
     status,
@@ -660,13 +660,13 @@ const settlementSubject = (
     failureCode,
   })!;
 
-const emptySnapshot = (): WatcherSettlementSnapshotV1 =>
-  makeWatcherSettlementSnapshotV1({ resources: [], subjects: [] })!;
+const emptySnapshot = (): WatcherSettlementSnapshot =>
+  makeWatcherSettlementSnapshot({ resources: [], subjects: [] })!;
 
 const makePrimaryProvider = (
   publicIdentitySha256: string,
-): WatcherAuthenticatedL1ProviderV1 => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+): WatcherAuthenticatedL1Provider => ({
+  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   network: "Preprod",
   providerId: "provider-a",
   source: {
@@ -709,8 +709,8 @@ const externalSource: {
 const rollbackProvider = (
   providerId: string,
   identityByte: string,
-): WatcherAuthenticatedL1ProviderV1 => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+): WatcherAuthenticatedL1Provider => ({
+  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   network: "Preprod",
   providerId,
   source: {
@@ -741,7 +741,7 @@ const initializeOpaqueSettlementTransports = async (
     ) {
       throw new Error("W16 opaque authority fixture state is not clean");
     }
-    const freshDeployment = makeWatcherAuthorityDeploymentFixtureV1();
+    const freshDeployment = makeWatcherAuthorityDeploymentFixture();
     deploymentAuthority = {
       signedIdentity: freshDeployment.signedIdentity,
       policy: freshDeployment.policy,
@@ -771,7 +771,7 @@ const initializeOpaqueSettlementTransports = async (
         provider = makePrimaryProvider(fixture.identitySha256);
       }
       transportContexts.push(
-        await establishWatcherExternalProviderTransportV1({
+        await establishWatcherExternalProviderTransport({
           network: "Preprod",
           providerId,
           operatorIdentitySha256,
@@ -806,7 +806,7 @@ const disposeOpaqueSettlementTransports = (
   const cleanupPromise = Promise.resolve().then(async () => {
     try {
       for (const context of transportContexts) {
-        closeWatcherL1TransportAttestationContextV1(context);
+        closeWatcherL1TransportAttestationContext(context);
       }
       await Promise.all(
         tlsServers.map(
@@ -852,34 +852,31 @@ type RollbackPoint = Readonly<{
 }>;
 
 export const rawBlock = (
-  authenticatedProvider: WatcherAuthenticatedL1ProviderV1,
+  authenticatedProvider: WatcherAuthenticatedL1Provider,
   point: RollbackPoint,
   transaction: Mutable,
 ): Mutable => ({
-  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
   network: "Preprod",
   providerId: authenticatedProvider.providerId,
   chainPoint: point,
   transactions: [transaction],
 });
 
-export const persistedObservation = (value: WatcherNormalizedL1BlockV1) => ({
+export const persistedObservation = (value: WatcherNormalizedL1Block) => ({
   observationId: value.observationDigest,
   providerId: value.provider.providerId,
   chainPointId: value.chainPoint.chainPointId,
-  payload: makeWatcherDurablePayloadV1(
-    encodeWatcherNormalizedL1BlockV1(value).toString("hex"),
+  payload: makeWatcherDurablePayload(
+    encodeWatcherNormalizedL1Block(value).toString("hex"),
   ),
 });
 
 export const persistedChainPoints = (
-  values: readonly WatcherNormalizedL1BlockV1[],
+  values: readonly WatcherNormalizedL1Block[],
   preferredProviderId = "provider-a",
 ) => {
-  const points = new Map<
-    string,
-    WatcherDurableStoreV1["chainPoints"][number]
-  >();
+  const points = new Map<string, WatcherDurableStore["chainPoints"][number]>();
   for (const value of values) {
     if (
       !points.has(value.chainPoint.chainPointId) ||
@@ -904,7 +901,7 @@ export const persistedChainPoints = (
  * the newest point has to be selected by (blockNo, slot) the same way
  * `compareChainPointOrder` does inside the durable store.
  */
-export const latestChainPoint = (store: WatcherDurableStoreV1) =>
+export const latestChainPoint = (store: WatcherDurableStore) =>
   store.chainPoints.reduce((latest, candidate) =>
     BigInt(candidate.blockNo) > BigInt(latest.blockNo) ||
     (BigInt(candidate.blockNo) === BigInt(latest.blockNo) &&
@@ -916,16 +913,16 @@ export const latestChainPoint = (store: WatcherDurableStoreV1) =>
 let serial = 0;
 
 type Bundle = Readonly<{
-  observation: WatcherSettlementObservationV1;
-  context: WatcherSettlementPublicContextV1;
-  restartBinding: WatcherSettlementPublicContextV1["restartContexts"][number];
-  store: ReturnType<typeof makeWatcherDurableStoreV1>;
-  finalityState: ReturnType<typeof evaluateWatcherFinalityV1>["state"];
-  finalityResult: ReturnType<typeof evaluateWatcherFinalityV1>;
+  observation: WatcherSettlementObservation;
+  context: WatcherSettlementPublicContext;
+  restartBinding: WatcherSettlementPublicContext["restartContexts"][number];
+  store: ReturnType<typeof makeWatcherDurableStore>;
+  finalityState: ReturnType<typeof evaluateWatcherFinality>["state"];
+  finalityResult: ReturnType<typeof evaluateWatcherFinality>;
 }>;
 
 type SettlementFinalityLineage = NonNullable<
-  WatcherSettlementPublicContextV1["finalityAuthority"]
+  WatcherSettlementPublicContext["finalityAuthority"]
 >["lineage"];
 
 const settlementFinalityLineageByStateDigest = new Map<
@@ -934,10 +931,10 @@ const settlementFinalityLineageByStateDigest = new Map<
 >();
 
 const bundle = (input: {
-  policyOverride?: WatcherSettlementIndexerPolicyV1;
-  kind: WatcherSettlementTransitionKindV1;
-  previousState: WatcherSettlementIndexerStateV1 | null;
-  snapshot: WatcherSettlementSnapshotV1;
+  policyOverride?: WatcherSettlementIndexerPolicy;
+  kind: WatcherSettlementTransitionKind;
+  previousState: WatcherSettlementIndexerState | null;
+  snapshot: WatcherSettlementSnapshot;
   inputs?: readonly string[];
   outputHexes?: readonly string[];
   redeemers?: readonly {
@@ -950,17 +947,17 @@ const bundle = (input: {
     assetName: string;
     quantity: bigint;
   }[];
-  transition?: Partial<WatcherSettlementTransitionV1>;
-  restartBindings?: readonly WatcherSettlementPublicContextV1["restartContexts"][number][];
-  restartRollbackBindings?: readonly WatcherSettlementPublicContextV1["restartRollbackContexts"][number][];
-  protocolUtxos?: readonly WatcherProtocolUtxoV1[];
-  authenticatedProvider?: WatcherAuthenticatedL1ProviderV1;
+  transition?: Partial<WatcherSettlementTransition>;
+  restartBindings?: readonly WatcherSettlementPublicContext["restartContexts"][number][];
+  restartRollbackBindings?: readonly WatcherSettlementPublicContext["restartRollbackContexts"][number][];
+  protocolUtxos?: readonly WatcherProtocolUtxo[];
+  authenticatedProvider?: WatcherAuthenticatedL1Provider;
   l1Observation?: Mutable;
-  sourceDurableStore?: WatcherDurableStoreV1;
-  durableStore?: WatcherDurableStoreV1;
+  sourceDurableStore?: WatcherDurableStore;
+  durableStore?: WatcherDurableStore;
   journalSpentAtChainPointId?: string;
   previousFinalityState?: unknown;
-  rollbackAuthority?: WatcherSettlementPublicContextV1["rollbackAuthority"];
+  rollbackAuthority?: WatcherSettlementPublicContext["rollbackAuthority"];
   predecessorStateDigest?: string;
   chainPointOffset?: bigint;
   parentBlockHash?: string | null;
@@ -994,7 +991,7 @@ const bundle = (input: {
     return {
       outRef: `${transactionHash}#${outputIndex.toString()}`,
       outputIndex: outputIndex.toString(),
-      output: makeWatcherL1PublicBytesV1(canonicalOutputHex),
+      output: makeWatcherL1PublicBytes(canonicalOutputHex),
       datum:
         datumHex === undefined
           ? null
@@ -1002,14 +999,14 @@ const bundle = (input: {
               datumHash: computeHash32(Buffer.from(datumHex, "hex")).toString(
                 "hex",
               ),
-              bytes: makeWatcherL1PublicBytesV1(datumHex),
+              bytes: makeWatcherL1PublicBytes(datumHex),
             },
       referenceScript: null,
     };
   });
   const authenticatedProvider = input.authenticatedProvider ?? provider;
   const previousStore = input.restartBindings?.at(-1)?.durableStore as
-    | WatcherDurableStoreV1
+    | WatcherDurableStore
     | undefined;
   const sourceStore =
     input.sourceDurableStore ?? previousStore ?? bootstrapStore;
@@ -1027,7 +1024,7 @@ const bundle = (input: {
   const canonicalRedeemers = (input.redeemers ?? []).map((redeemer) => ({
     purpose: redeemer.purpose,
     index: redeemer.index,
-    bytes: makeWatcherL1PublicBytesV1(
+    bytes: makeWatcherL1PublicBytes(
       CML.PlutusData.from_cbor_hex(redeemer.cborHex).to_canonical_cbor_hex(),
     ),
   }));
@@ -1055,7 +1052,7 @@ const bundle = (input: {
   const l1Observation: Mutable =
     input.l1Observation ??
     ({
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
       network: "Preprod",
       providerId: authenticatedProvider.providerId,
       chainPoint: {
@@ -1076,11 +1073,11 @@ const bundle = (input: {
             {
               txHash: transactionHash,
               transactionIndex: "0",
-              fullTransaction: makeWatcherL1PublicBytesV1(
+              fullTransaction: makeWatcherL1PublicBytes(
                 fullTransaction.to_canonical_cbor_hex(),
               ),
-              body: makeWatcherL1PublicBytesV1(bodyHex),
-              witnessSet: makeWatcherL1PublicBytesV1(
+              body: makeWatcherL1PublicBytes(bodyHex),
+              witnessSet: makeWatcherL1PublicBytes(
                 witnessSet.to_canonical_cbor_hex(),
               ),
               utxos: input.transactionIsValid === false ? [] : utxos,
@@ -1091,7 +1088,7 @@ const bundle = (input: {
           ]
         : [],
     } satisfies Mutable);
-  const normalized = normalizeWatcherL1BlockV1(
+  const normalized = normalizeWatcherL1Block(
     authenticatedProvider,
     l1Observation,
   );
@@ -1112,8 +1109,8 @@ const bundle = (input: {
     observationId: normalized.observationDigest,
     providerId: normalized.provider.providerId,
     chainPointId: normalized.chainPoint.chainPointId,
-    payload: makeWatcherDurablePayloadV1(
-      encodeWatcherNormalizedL1BlockV1(normalized).toString("hex"),
+    payload: makeWatcherDurablePayload(
+      encodeWatcherNormalizedL1Block(normalized).toString("hex"),
     ),
   };
   const chainPointRecord = {
@@ -1140,7 +1137,7 @@ const bundle = (input: {
       ? []
       : [chainPointRecord]),
   ];
-  const protocolJournal = journalWatcherProtocolUtxoTransitionV1({
+  const protocolJournal = journalWatcherProtocolUtxoTransition({
     sourceStore,
     nextChainPoints,
     nextProtocolUtxos: protocolUtxos,
@@ -1149,7 +1146,7 @@ const bundle = (input: {
   });
   const store =
     input.durableStore ??
-    makeWatcherDurableStoreV1({
+    makeWatcherDurableStore({
       deploymentMarker: activePolicy.deploymentMarker,
       revision: (BigInt(sourceStore.revision) + 1n).toString(),
       records: {
@@ -1168,7 +1165,7 @@ const bundle = (input: {
         correctionResults: sourceStore.correctionResults,
       },
     });
-  const transition: WatcherSettlementTransitionV1 = {
+  const transition: WatcherSettlementTransition = {
     kind: input.kind,
     subjectId: null,
     relatedSubjectId: null,
@@ -1180,7 +1177,7 @@ const bundle = (input: {
     retryAttempt: null,
     ...input.transition,
   };
-  const observation = makeWatcherSettlementObservationV1({
+  const observation = makeWatcherSettlementObservation({
     policyDigest: activePolicy.policyDigest,
     network: activePolicy.network,
     releaseEvidenceDigest: activePolicy.releaseEvidenceDigest,
@@ -1196,7 +1193,7 @@ const bundle = (input: {
       : null,
     sourceObservationDigest: normalized.observationDigest,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     predecessorStateDigest:
       input.predecessorStateDigest ?? input.previousState?.stateDigest ?? null,
@@ -1216,10 +1213,10 @@ const bundle = (input: {
   ];
   const configuredSource = externalSource;
   const activeFinalityPolicy = finalityPolicy;
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     configuredSource,
     finalityObservations.map(({ authenticatedProvider, l1Observation }) =>
-      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      normalizeWatcherL1Block(authenticatedProvider, l1Observation),
     ),
   );
   const previousFinalityState = input.previousFinalityState ?? null;
@@ -1234,7 +1231,7 @@ const bundle = (input: {
     previousStateDigest === null
       ? []
       : (settlementFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
-  const finalityResult = evaluateWatcherFinalityV1(
+  const finalityResult = evaluateWatcherFinality(
     activeFinalityPolicy,
     previousFinalityState,
     consistency,
@@ -1263,8 +1260,8 @@ const bundle = (input: {
           consistency,
           result: finalityResult,
         };
-  const context: WatcherSettlementPublicContextV1 = {
-    schemaVersion: WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const context: WatcherSettlementPublicContext = {
+    schemaVersion: WATCHER_SETTLEMENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider,
     l1Observation,
     sourceDurableStore: sourceStore,
@@ -1280,10 +1277,10 @@ const bundle = (input: {
     observationDigest: observation!.observationDigest,
     normalizedObservationDigest: normalized.observationDigest,
     sourceStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(sourceStore),
+      encodeWatcherDurableStore(sourceStore),
     ),
     storeDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     deploymentAuthorityDigest: sha256CanonicalForTest(deploymentAuthority),
     finalityResultDigest: finalityAuthority?.result.resultDigest ?? null,
@@ -1331,11 +1328,11 @@ const sha256CanonicalForTest = (value: unknown): string => {
 };
 
 const accepted = (
-  state: WatcherSettlementIndexerStateV1 | null,
+  state: WatcherSettlementIndexerState | null,
   evidence: Bundle,
-  activePolicy: WatcherSettlementIndexerPolicyV1 = policy,
-): WatcherSettlementIndexerStateV1 => {
-  const result = evaluateWatcherSettlementIndexerV1(
+  activePolicy: WatcherSettlementIndexerPolicy = policy,
+): WatcherSettlementIndexerState => {
+  const result = evaluateWatcherSettlementIndexer(
     activePolicy,
     state,
     evidence.observation,
@@ -1344,7 +1341,7 @@ const accepted = (
   expect(result.action, JSON.stringify(result)).toBe("accept");
   expect(result.state).not.toBeNull();
   expect(
-    parseWatcherSettlementIndexerResultV1(result, {
+    parseWatcherSettlementIndexerResult(result, {
       policy: activePolicy,
       previousState: state,
       observation: evidence.observation,
@@ -1357,21 +1354,21 @@ const accepted = (
 const protocolUtxo = (
   outRef: string,
   outputHex: string,
-): WatcherProtocolUtxoV1 => ({
+): WatcherProtocolUtxo => ({
   outRef,
   role: "settlement",
   chainPointId: h32("00"),
-  output: makeWatcherDurablePayloadV1(outputHex),
+  output: makeWatcherDurablePayload(outputHex),
 });
 
 export const scenarioBootstrap = (
-  protocolUtxos: readonly WatcherProtocolUtxoV1[],
-  spentProtocolUtxos: WatcherDurableStoreV1["spentProtocolUtxos"] = [],
+  protocolUtxos: readonly WatcherProtocolUtxo[],
+  spentProtocolUtxos: WatcherDurableStore["spentProtocolUtxos"] = [],
 ): Readonly<{
-  policy: WatcherSettlementIndexerPolicyV1;
-  store: WatcherDurableStoreV1;
+  policy: WatcherSettlementIndexerPolicy;
+  store: WatcherDurableStore;
 }> => {
-  const store = makeWatcherDurableStoreV1({
+  const store = makeWatcherDurableStore({
     deploymentMarker: policy.deploymentMarker,
     revision: "0",
     records: {
@@ -1402,10 +1399,10 @@ export const scenarioBootstrap = (
       correctionResults: [],
     },
   });
-  const scenarioPolicy = makeWatcherSettlementIndexerPolicyV1({
+  const scenarioPolicy = makeWatcherSettlementIndexerPolicy({
     ...policy,
     bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
   });
   expect(scenarioPolicy).not.toBeNull();
@@ -1466,11 +1463,11 @@ const spawnSequence = (
   );
   const outRef = `${transactionHash}#0`;
   const durable = protocolUtxo(outRef, outputHex);
-  const resource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+  const resource = makeWatcherSettlementResourceFromProtocolUtxo(
     policy,
     durable,
   )!;
-  const snapshot = makeWatcherSettlementSnapshotV1({
+  const snapshot = makeWatcherSettlementSnapshot({
     resources: [resource],
     subjects: [settlementSubject(outRef, "open")],
   })!;
@@ -1549,37 +1546,37 @@ const spawnSequence = (
   };
 };
 
-export type GenuineW16SpawnAuthorityFixtureV1 = Readonly<{
+export type GenuineSettlementSpawnAuthorityFixture = Readonly<{
   spawn: Readonly<{
-    result: ReturnType<typeof evaluateWatcherSettlementIndexerV1Raw>;
-    context: WatcherSettlementResultVerificationContextV1;
-    parsed: ReturnType<typeof evaluateWatcherSettlementIndexerV1Raw>;
-    observation: WatcherSettlementObservationV1;
+    result: ReturnType<typeof evaluateWatcherSettlementIndexerRaw>;
+    context: WatcherSettlementResultVerificationContext;
+    parsed: ReturnType<typeof evaluateWatcherSettlementIndexerRaw>;
+    observation: WatcherSettlementObservation;
     historyEntryDigests: readonly string[];
   }>;
   dispose: () => Promise<void>;
 }>;
 
 /** Builds a real spawn transaction, finality evidence, and parser-accepted W16 authority. */
-export const createGenuineW16SpawnAuthorityV1 =
-  async (): Promise<GenuineW16SpawnAuthorityFixtureV1> => {
+export const createGenuineSettlementSpawnAuthority =
+  async (): Promise<GenuineSettlementSpawnAuthorityFixture> => {
     const leaseOwner = await initializeOpaqueSettlementTransports();
     try {
       const scenario = spawnSequence();
-      const result = evaluateWatcherSettlementIndexerV1(
+      const result = evaluateWatcherSettlementIndexer(
         policy,
         scenario.bootstrapState,
         scenario.spawnEvidence.observation,
         scenario.spawnEvidence.context,
       );
-      const context: WatcherSettlementResultVerificationContextV1 = {
+      const context: WatcherSettlementResultVerificationContext = {
         policy,
         previousState: scenario.bootstrapState,
         observation: scenario.spawnEvidence.observation,
         publicContext: scenario.spawnEvidence.context,
         transportAttestations: Object.freeze([...transportContexts]),
       };
-      const parsed = parseWatcherSettlementIndexerResultV1(result, context);
+      const parsed = parseWatcherSettlementIndexerResult(result, context);
       if (
         parsed === null ||
         parsed.action !== "accept" ||
@@ -1612,7 +1609,7 @@ export const createGenuineW16SpawnAuthorityV1 =
     }
   };
 
-export type GenuineW15SettlementEventRecordV1 = Readonly<{
+export type GenuineUserEventSettlementEventRecord = Readonly<{
   outRef: string;
   outputCborHex: string;
   datumCborHex: string;
@@ -1620,27 +1617,27 @@ export type GenuineW15SettlementEventRecordV1 = Readonly<{
   policyId: string;
 }>;
 
-export type GenuineW16SettlementAuthorityV1 = Readonly<{
-  result: ReturnType<typeof evaluateWatcherSettlementIndexerV1Raw>;
-  context: WatcherSettlementResultVerificationContextV1;
-  parsed: ReturnType<typeof evaluateWatcherSettlementIndexerV1Raw>;
-  observation: WatcherSettlementObservationV1;
+export type GenuineSettlementAuthority = Readonly<{
+  result: ReturnType<typeof evaluateWatcherSettlementIndexerRaw>;
+  context: WatcherSettlementResultVerificationContext;
+  parsed: ReturnType<typeof evaluateWatcherSettlementIndexerRaw>;
+  observation: WatcherSettlementObservation;
   historyEntryDigests: readonly string[];
 }>;
 
-export type GenuineW16SettlementAuthorityFixtureSetV1 = Readonly<{
-  spawn: GenuineW16SettlementAuthorityV1;
-  absorbToReserve: GenuineW16SettlementAuthorityV1;
-  initializePayout: GenuineW16SettlementAuthorityV1;
-  refundWithdrawal: GenuineW16SettlementAuthorityV1;
+export type GenuineSettlementAuthorityFixtureSet = Readonly<{
+  spawn: GenuineSettlementAuthority;
+  absorbToReserve: GenuineSettlementAuthority;
+  initializePayout: GenuineSettlementAuthority;
+  refundWithdrawal: GenuineSettlementAuthority;
   dispose: () => Promise<void>;
 }>;
 
-export type GenuineW16SettlementAuthorityFixtureInputV1 = Readonly<{
+export type GenuineSettlementAuthorityFixtureInput = Readonly<{
   /** Test-only root override used to prove setup-failure lease cleanup. */
   transportFixtureRoot?: string;
-  deposit: GenuineW15SettlementEventRecordV1;
-  withdrawal: GenuineW15SettlementEventRecordV1;
+  deposit: GenuineUserEventSettlementEventRecord;
+  withdrawal: GenuineUserEventSettlementEventRecord;
 }>;
 
 type WithdrawalDatumView = Readonly<{
@@ -1658,7 +1655,7 @@ type WithdrawalDatumView = Readonly<{
 }>;
 
 const eventRecordOutRef = (
-  event: GenuineW15SettlementEventRecordV1,
+  event: GenuineUserEventSettlementEventRecord,
 ): Readonly<{ transactionId: string; outputIndex: bigint }> => {
   const match = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/.exec(event.outRef);
   if (match === null)
@@ -1667,7 +1664,7 @@ const eventRecordOutRef = (
 };
 
 const eventRecordOutput = (
-  event: GenuineW15SettlementEventRecordV1,
+  event: GenuineUserEventSettlementEventRecord,
   expectedPolicyId: string,
 ): CML.TransactionOutput => {
   if (
@@ -1727,35 +1724,35 @@ const eventValueAssets = (
 };
 
 const protocolEventUtxo = (
-  event: GenuineW15SettlementEventRecordV1,
+  event: GenuineUserEventSettlementEventRecord,
   role: "deposit" | "withdrawal",
-): WatcherProtocolUtxoV1 => ({
+): WatcherProtocolUtxo => ({
   outRef: event.outRef,
   role,
   chainPointId: h32("00"),
-  output: makeWatcherDurablePayloadV1(event.outputCborHex),
+  output: makeWatcherDurablePayload(event.outputCborHex),
 });
 
 const settlementAuthority = (
-  previousState: WatcherSettlementIndexerStateV1 | null,
+  previousState: WatcherSettlementIndexerState | null,
   evidence: Bundle,
-  activePolicy: WatcherSettlementIndexerPolicyV1,
-  expectedKind: WatcherSettlementTransitionKindV1,
-): GenuineW16SettlementAuthorityV1 => {
-  const result = evaluateWatcherSettlementIndexerV1(
+  activePolicy: WatcherSettlementIndexerPolicy,
+  expectedKind: WatcherSettlementTransitionKind,
+): GenuineSettlementAuthority => {
+  const result = evaluateWatcherSettlementIndexer(
     activePolicy,
     previousState,
     evidence.observation,
     evidence.context,
   );
-  const context: WatcherSettlementResultVerificationContextV1 = {
+  const context: WatcherSettlementResultVerificationContext = {
     policy: activePolicy,
     previousState,
     observation: evidence.observation,
     publicContext: evidence.context,
     transportAttestations: Object.freeze([...transportContexts]),
   };
-  const parsed = parseWatcherSettlementIndexerResultV1(result, context);
+  const parsed = parseWatcherSettlementIndexerResult(result, context);
   if (
     parsed === null ||
     parsed.action !== "accept" ||
@@ -1784,15 +1781,15 @@ const settlementAuthority = (
 };
 
 const pendingWithdrawalSnapshot = (
-  activePolicy: WatcherSettlementIndexerPolicyV1,
-  event: GenuineW15SettlementEventRecordV1,
-  durable: WatcherProtocolUtxoV1,
-): WatcherSettlementSnapshotV1 => {
-  const resource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+  activePolicy: WatcherSettlementIndexerPolicy,
+  event: GenuineUserEventSettlementEventRecord,
+  durable: WatcherProtocolUtxo,
+): WatcherSettlementSnapshot => {
+  const resource = makeWatcherSettlementResourceFromProtocolUtxo(
     activePolicy,
     durable,
   );
-  const subject = makeWatcherSettlementSubjectV1({
+  const subject = makeWatcherSettlementSubject({
     subjectId: event.assetNameHex,
     subjectKind: "withdrawal",
     status: "withdrawal_pending",
@@ -1804,7 +1801,7 @@ const pendingWithdrawalSnapshot = (
     terminalTransactionHash: null,
     failureCode: null,
   });
-  const snapshot = makeWatcherSettlementSnapshotV1({
+  const snapshot = makeWatcherSettlementSnapshot({
     resources: resource === null ? [] : [resource],
     subjects: subject === null ? [] : [subject],
   });
@@ -1814,9 +1811,9 @@ const pendingWithdrawalSnapshot = (
 };
 
 const bootstrapEventScenario = (
-  event: GenuineW15SettlementEventRecordV1,
-  durable: WatcherProtocolUtxoV1,
-  snapshot: WatcherSettlementSnapshotV1,
+  event: GenuineUserEventSettlementEventRecord,
+  durable: WatcherProtocolUtxo,
+  snapshot: WatcherSettlementSnapshot,
 ) => {
   const scenario = scenarioBootstrap([durable]);
   const evidence = bundle({
@@ -1837,8 +1834,8 @@ const bootstrapEventScenario = (
 };
 
 const absorbToReserveAuthority = (
-  event: GenuineW15SettlementEventRecordV1,
-): GenuineW16SettlementAuthorityV1 => {
+  event: GenuineUserEventSettlementEventRecord,
+): GenuineSettlementAuthority => {
   const inputOutput = eventRecordOutput(event, depositPolicyId);
   if (
     inputOutput.address().to_hex() !==
@@ -1867,17 +1864,17 @@ const absorbToReserveAuthority = (
     Buffer.from(transactionBody([event.outRef], [reserveOutput], mint), "hex"),
   ).toString("hex");
   const reserveOutRef = `${transactionHash}#0`;
-  const reserveDurable: WatcherProtocolUtxoV1 = {
+  const reserveDurable: WatcherProtocolUtxo = {
     outRef: reserveOutRef,
     role: "reserve",
     chainPointId: h32("00"),
-    output: makeWatcherDurablePayloadV1(reserveOutput),
+    output: makeWatcherDurablePayload(reserveOutput),
   };
-  const reserveResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+  const reserveResource = makeWatcherSettlementResourceFromProtocolUtxo(
     bootstrap.scenario.policy,
     reserveDurable,
   );
-  const reserveSubject = makeWatcherSettlementSubjectV1({
+  const reserveSubject = makeWatcherSettlementSubject({
     subjectId: `reserve-deposit-${event.assetNameHex}`,
     subjectKind: "reserve",
     status: "reserve_active",
@@ -1889,7 +1886,7 @@ const absorbToReserveAuthority = (
     terminalTransactionHash: null,
     failureCode: null,
   });
-  const snapshot = makeWatcherSettlementSnapshotV1({
+  const snapshot = makeWatcherSettlementSnapshot({
     resources: reserveResource === null ? [] : [reserveResource],
     subjects: reserveSubject === null ? [] : [reserveSubject],
   });
@@ -2068,7 +2065,7 @@ const addressDataToHex = (value: unknown): string => {
 };
 
 const withdrawalDatumView = (
-  event: GenuineW15SettlementEventRecordV1,
+  event: GenuineUserEventSettlementEventRecord,
 ): WithdrawalDatumView =>
   Data.from(event.datumCborHex, WithdrawalOrderDatum) as WithdrawalDatumView;
 
@@ -2095,8 +2092,8 @@ const payoutTargetValue = (
 };
 
 const initializePayoutAuthority = (
-  event: GenuineW15SettlementEventRecordV1,
-): GenuineW16SettlementAuthorityV1 => {
+  event: GenuineUserEventSettlementEventRecord,
+): GenuineSettlementAuthority => {
   const inputOutput = eventRecordOutput(event, withdrawalPolicyId);
   if (inputOutput.address().to_hex() !== policy.withdrawalAddressHex)
     throw new Error("genuine W15 withdrawal has the wrong address");
@@ -2142,17 +2139,17 @@ const initializePayoutAuthority = (
     Buffer.from(transactionBody([event.outRef], [payoutOutput], mint), "hex"),
   ).toString("hex");
   const payoutOutRef = `${transactionHash}#0`;
-  const payoutDurable: WatcherProtocolUtxoV1 = {
+  const payoutDurable: WatcherProtocolUtxo = {
     outRef: payoutOutRef,
     role: "payout",
     chainPointId: h32("00"),
-    output: makeWatcherDurablePayloadV1(payoutOutput),
+    output: makeWatcherDurablePayload(payoutOutput),
   };
-  const payoutResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+  const payoutResource = makeWatcherSettlementResourceFromProtocolUtxo(
     bootstrap.scenario.policy,
     payoutDurable,
   );
-  const payoutSubject = makeWatcherSettlementSubjectV1({
+  const payoutSubject = makeWatcherSettlementSubject({
     subjectId: event.assetNameHex,
     subjectKind: "payout",
     status: "payout_funded",
@@ -2164,7 +2161,7 @@ const initializePayoutAuthority = (
     terminalTransactionHash: null,
     failureCode: null,
   });
-  const resolvedWithdrawal = makeWatcherSettlementSubjectV1({
+  const resolvedWithdrawal = makeWatcherSettlementSubject({
     subjectId: event.assetNameHex,
     subjectKind: "withdrawal",
     status: "resolved",
@@ -2176,10 +2173,10 @@ const initializePayoutAuthority = (
     terminalTransactionHash: transactionHash,
     failureCode: null,
   });
-  const snapshot = makeWatcherSettlementSnapshotV1({
+  const snapshot = makeWatcherSettlementSnapshot({
     resources: payoutResource === null ? [] : [payoutResource],
     subjects: [payoutSubject, resolvedWithdrawal].filter(
-      (subject): subject is WatcherSettlementSubjectV1 => subject !== null,
+      (subject): subject is WatcherSettlementSubject => subject !== null,
     ),
   });
   if (
@@ -2355,8 +2352,8 @@ const refundDatumOption = (value: unknown): CML.DatumOption | null => {
 };
 
 const refundWithdrawalAuthority = (
-  event: GenuineW15SettlementEventRecordV1,
-): GenuineW16SettlementAuthorityV1 => {
+  event: GenuineUserEventSettlementEventRecord,
+): GenuineSettlementAuthority => {
   const inputOutput = eventRecordOutput(event, withdrawalPolicyId);
   if (inputOutput.address().to_hex() !== policy.withdrawalAddressHex)
     throw new Error("genuine W15 withdrawal has the wrong address");
@@ -2386,7 +2383,7 @@ const refundWithdrawalAuthority = (
   const transactionHash = computeHash32(
     Buffer.from(transactionBody([event.outRef], [refundOutput], mint), "hex"),
   ).toString("hex");
-  const refunded = makeWatcherSettlementSubjectV1({
+  const refunded = makeWatcherSettlementSubject({
     subjectId: event.assetNameHex,
     subjectKind: "withdrawal",
     status: "refunded",
@@ -2398,7 +2395,7 @@ const refundWithdrawalAuthority = (
     terminalTransactionHash: transactionHash,
     failureCode: null,
   });
-  const snapshot = makeWatcherSettlementSnapshotV1({
+  const snapshot = makeWatcherSettlementSnapshot({
     resources: [],
     subjects: refunded === null ? [] : [refunded],
   });
@@ -2531,9 +2528,9 @@ const refundWithdrawalAuthority = (
  * Builds parser-accepted W16 authorities that consume the caller's exact
  * genuine W15 deposit and withdrawal records.
  */
-export const createGenuineW16SettlementAuthoritiesV1 = async (
-  input: GenuineW16SettlementAuthorityFixtureInputV1,
-): Promise<GenuineW16SettlementAuthorityFixtureSetV1> => {
+export const createGenuineSettlementAuthorities = async (
+  input: GenuineSettlementAuthorityFixtureInput,
+): Promise<GenuineSettlementAuthorityFixtureSet> => {
   const leaseOwner = await initializeOpaqueSettlementTransports(
     input.transportFixtureRoot,
   );
@@ -2557,45 +2554,43 @@ export const createGenuineW16SettlementAuthoritiesV1 = async (
   }
 };
 
-export type W16AuthorityScenarioInputV1 = Readonly<{
-  policy: WatcherSettlementIndexerPolicyV1;
-  previousState: WatcherSettlementIndexerStateV1 | null;
-  observationInput: Parameters<typeof makeWatcherSettlementObservationV1>[0];
-  publicContext: WatcherSettlementPublicContextV1;
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+export type SettlementAuthorityScenarioInput = Readonly<{
+  policy: WatcherSettlementIndexerPolicy;
+  previousState: WatcherSettlementIndexerState | null;
+  observationInput: Parameters<typeof makeWatcherSettlementObservation>[0];
+  publicContext: WatcherSettlementPublicContext;
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
 }>;
-export type W16AcceptedAuthorityScenarioV1 = Readonly<{
-  result: ReturnType<typeof evaluateWatcherSettlementIndexerV1Raw>;
-  context: WatcherSettlementResultVerificationContextV1;
-  parsed: ReturnType<typeof evaluateWatcherSettlementIndexerV1Raw>;
-  observation: WatcherSettlementObservationV1;
-  observationInput: Parameters<typeof makeWatcherSettlementObservationV1>[0];
+export type SettlementAcceptedAuthorityScenario = Readonly<{
+  result: ReturnType<typeof evaluateWatcherSettlementIndexerRaw>;
+  context: WatcherSettlementResultVerificationContext;
+  parsed: ReturnType<typeof evaluateWatcherSettlementIndexerRaw>;
+  observation: WatcherSettlementObservation;
+  observationInput: Parameters<typeof makeWatcherSettlementObservation>[0];
   historyEntryDigests: readonly string[];
 }>;
-export const replayAcceptedW16AuthorityScenarioV1 = (
-  input: W16AuthorityScenarioInputV1,
-  expectedKind: WatcherSettlementTransitionKindV1,
-): W16AcceptedAuthorityScenarioV1 => {
-  const observation = makeWatcherSettlementObservationV1(
-    input.observationInput,
-  );
+export const replayAcceptedSettlementAuthorityScenario = (
+  input: SettlementAuthorityScenarioInput,
+  expectedKind: WatcherSettlementTransitionKind,
+): SettlementAcceptedAuthorityScenario => {
+  const observation = makeWatcherSettlementObservation(input.observationInput);
   if (observation === null || observation.transition.kind !== expectedKind)
     throw new Error(`W16 authority scenario did not produce ${expectedKind}`);
-  const result = evaluateWatcherSettlementIndexerV1Raw(
+  const result = evaluateWatcherSettlementIndexerRaw(
     input.policy,
     input.previousState,
     observation,
     input.publicContext,
     input.transportAttestations,
   );
-  const context: WatcherSettlementResultVerificationContextV1 = {
+  const context: WatcherSettlementResultVerificationContext = {
     policy: input.policy,
     previousState: input.previousState,
     observation,
     publicContext: input.publicContext,
     transportAttestations: input.transportAttestations,
   };
-  const parsed = parseWatcherSettlementIndexerResultV1Raw(result, context);
+  const parsed = parseWatcherSettlementIndexerResultRaw(result, context);
   if (
     parsed === null ||
     parsed.action !== "accept" ||
@@ -2623,15 +2618,15 @@ export const replayAcceptedW16AuthorityScenarioV1 = (
     historyEntryDigests: Object.freeze(historyEntryDigests),
   });
 };
-export const replayGenuineSpawnSettlementAuthorityScenarioV1 = (
-  input: W16AuthorityScenarioInputV1,
-): W16AcceptedAuthorityScenarioV1 =>
-  replayAcceptedW16AuthorityScenarioV1(input, "spawn_settlement");
-export const replayGenuineRefundWithdrawalAuthorityScenarioV1 = (
-  input: W16AuthorityScenarioInputV1,
-): W16AcceptedAuthorityScenarioV1 =>
-  replayAcceptedW16AuthorityScenarioV1(input, "refund_withdrawal");
-export const replayGenuineAbsorbToReserveAuthorityScenarioV1 = (
-  input: W16AuthorityScenarioInputV1,
-): W16AcceptedAuthorityScenarioV1 =>
-  replayAcceptedW16AuthorityScenarioV1(input, "absorb_to_reserve");
+export const replayGenuineSpawnSettlementAuthorityScenario = (
+  input: SettlementAuthorityScenarioInput,
+): SettlementAcceptedAuthorityScenario =>
+  replayAcceptedSettlementAuthorityScenario(input, "spawn_settlement");
+export const replayGenuineRefundWithdrawalAuthorityScenario = (
+  input: SettlementAuthorityScenarioInput,
+): SettlementAcceptedAuthorityScenario =>
+  replayAcceptedSettlementAuthorityScenario(input, "refund_withdrawal");
+export const replayGenuineAbsorbToReserveAuthorityScenario = (
+  input: SettlementAuthorityScenarioInput,
+): SettlementAcceptedAuthorityScenario =>
+  replayAcceptedSettlementAuthorityScenario(input, "absorb_to_reserve");

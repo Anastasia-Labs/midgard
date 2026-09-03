@@ -1,5 +1,5 @@
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,16 +13,16 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ProtectedOutputSignerMissingContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ProtectedOutputSignerMissingContracts } from "./contracts-v1.js";
 
-export const submitProtectedOutputSignerOpeningTransitionV1 = async ({
+export const submitProtectedOutputSignerOpeningTransition = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,22 +40,22 @@ export const submitProtectedOutputSignerOpeningTransitionV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ProtectedOutputSignerMissingContractsV1;
+  readonly contracts: ProtectedOutputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stepIndex: 1 | 2 | 3;
   readonly nextStepIndex: 2 | 3 | 4;
   readonly nextDatum: string;
-  readonly opening: FieldOpeningV1;
+  readonly opening: FieldOpening;
   readonly checkpointCbor?: string;
   readonly referenceScriptUtxo: UTxO;
   readonly carriageReferenceInputs: readonly UTxO[];
   readonly redeemerSchema: PlutusData;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,7 +64,7 @@ export const submitProtectedOutputSignerOpeningTransitionV1 = async ({
     threadOutRef,
   });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: "protected-output-signer-missing",
@@ -108,7 +108,7 @@ export const submitProtectedOutputSignerOpeningTransitionV1 = async ({
       redeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

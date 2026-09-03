@@ -13,7 +13,7 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  isDaHashPreimageViolationV1,
+  isDaHashPreimageViolation,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -48,14 +48,14 @@ import {
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitDaHashPreimageStep02CliConfig = SubmitProviderConfig & {
@@ -276,8 +276,8 @@ export const submitDaHashPreimageStep02 = async ({
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDaHashPreimageStep02Result> => {
   const { daHashPreimageCategory, contracts } =
@@ -309,7 +309,7 @@ export const submitDaHashPreimageStep02 = async ({
     categoryLabel: "da-hash-preimage",
   });
   const inputDatum = requireStep02Datum({ threadUtxo, signer });
-  if (!isDaHashPreimageViolationV1(inputDatum.data.verdict)) {
+  if (!isDaHashPreimageViolation(inputDatum.data.verdict)) {
     throw new Error(
       "Da-hash-preimage step 02 datum does not describe a hash/preimage violation; a valid block cannot be challenged.",
     );
@@ -331,17 +331,17 @@ export const submitDaHashPreimageStep02 = async ({
   };
   let spendLayout: DaHashPreimageStep02SpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.daHashPreimage.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "da-hash-preimage step 02 validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "da-hash-preimage step 02 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "da-hash-preimage step 02 fraud-proof mint",
@@ -416,9 +416,9 @@ export const submitDaHashPreimageStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

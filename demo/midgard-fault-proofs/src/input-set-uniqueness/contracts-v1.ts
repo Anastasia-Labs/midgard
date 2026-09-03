@@ -30,7 +30,7 @@ import type { Script } from "@lucid-evolution/lucid";
 export const INPUT_SET_UNIQUENESS_CATEGORY_LABEL = "input-set-uniqueness";
 
 /** Blueprint titles of the four parameterized step validators. */
-export const INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1 = {
+export const INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/input_set_uniqueness/step_01.main.spend",
   step02: "fraud_proofs/input_set_uniqueness/step_02.main.spend",
   step03: "fraud_proofs/input_set_uniqueness/step_03.main.spend",
@@ -38,7 +38,7 @@ export const INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1 = {
 } as const;
 
 /** One deployed step of the `input-set-uniqueness` chain. */
-export type InputSetUniquenessStepContractV1 = {
+export type InputSetUniquenessStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -52,13 +52,13 @@ export type InputSetUniquenessStepContractV1 = {
  * that need one — thread-token asset names, catalogue lookups — take it
  * separately from the deployment they are actually talking to.
  */
-export type InputSetUniquenessContractsV1 = {
+export type InputSetUniquenessContracts = {
   /** Steps 01..04, in order. Accepted proofs use 01→02; forced use 01→03→04*. */
   readonly steps: readonly [
-    InputSetUniquenessStepContractV1,
-    InputSetUniquenessStepContractV1,
-    InputSetUniquenessStepContractV1,
-    InputSetUniquenessStepContractV1,
+    InputSetUniquenessStepContract,
+    InputSetUniquenessStepContract,
+    InputSetUniquenessStepContract,
+    InputSetUniquenessStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

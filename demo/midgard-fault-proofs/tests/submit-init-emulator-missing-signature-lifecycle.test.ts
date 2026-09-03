@@ -1,7 +1,7 @@
 /** Both positive planes for the pre-registration missing-signature family. */
 import {
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -10,7 +10,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  proveMissingSignatureFaultV1,
+  proveMissingSignatureFault,
   submitMissingSignatureInit,
   submitMissingSignatureStep01,
   submitMissingSignatureStep02,
@@ -19,11 +19,11 @@ import {
 } from "../src/missing-signature/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
-  makeMissingSignatureEmulatorHarnessV1,
-  missingSignatureFindingV1,
-  missingSignatureProverDepsV1,
-  publishMissingSignatureReferenceScriptsV1,
-  setupMissingSignatureScenarioV1,
+  makeMissingSignatureEmulatorHarness,
+  missingSignatureFinding,
+  missingSignatureProverDeps,
+  publishMissingSignatureReferenceScripts,
+  setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -34,16 +34,16 @@ import {
 
 describe("missing-signature positive emulator lifecycle", () => {
   it("proves through the core, refuses a duplicate proof, and removes/slashes the fraudulent block", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({ harness });
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({ harness });
     const [step01, step02, step03, step04] =
-      await publishMissingSignatureReferenceScriptsV1({
+      await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
-    const finding = missingSignatureFindingV1(scenario);
+    const finding = missingSignatureFinding(scenario);
     const events: string[] = [];
-    const deps = missingSignatureProverDepsV1({
+    const deps = missingSignatureProverDeps({
       harness,
       scenario,
       referenceScriptUtxos: { step01, step02, step03, step04 },
@@ -51,7 +51,7 @@ describe("missing-signature positive emulator lifecycle", () => {
     });
 
     const outcome = await Effect.runPromise(
-      proveMissingSignatureFaultV1(finding, deps),
+      proveMissingSignatureFault(finding, deps),
     );
     if (outcome.kind !== "proven") {
       throw new Error(
@@ -84,7 +84,7 @@ describe("missing-signature positive emulator lifecycle", () => {
     );
 
     await expect(
-      Effect.runPromise(proveMissingSignatureFaultV1(finding, deps)),
+      Effect.runPromise(proveMissingSignatureFault(finding, deps)),
     ).resolves.toMatchObject({ kind: "refused", refusal: "alreadyProven" });
 
     const removalReferences = await publishRemovalReferenceScripts({
@@ -167,13 +167,13 @@ describe("missing-signature positive emulator lifecycle", () => {
   }, 600_000);
 
   it("drives every submitter directly at tier-1 inline carriage", async () => {
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({ harness });
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({ harness });
     if (scenario.block.txInclusion === null) {
       throw new Error("normal subject has no counted-root inclusion");
     }
     const [step01Ref, step02Ref, step03Ref, step04Ref] =
-      await publishMissingSignatureReferenceScriptsV1({
+      await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
@@ -257,8 +257,8 @@ describe("missing-signature positive emulator lifecycle", () => {
     // `RawUtxo`. Nothing forces the tier; the committed data's size does. The
     // required-signer field stays one hash and rides inline at tier 1, and
     // the 142-item witness scan spans five 32-item step-04 batches.
-    const harness = await makeMissingSignatureEmulatorHarnessV1();
-    const scenario = await setupMissingSignatureScenarioV1({
+    const harness = await makeMissingSignatureEmulatorHarness();
+    const scenario = await setupMissingSignatureScenario({
       harness,
       decoyWitnessCount: TIER2_DECOY_WITNESS_COUNT,
     });
@@ -266,21 +266,21 @@ describe("missing-signature positive emulator lifecycle", () => {
       scenario.subject.addrTxWits,
     ).length;
     expect(preimageBytes).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
     const [step01, step02, step03, step04] =
-      await publishMissingSignatureReferenceScriptsV1({
+      await publishMissingSignatureReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
-    const deps = missingSignatureProverDepsV1({
+    const deps = missingSignatureProverDeps({
       harness,
       scenario,
       referenceScriptUtxos: { step01, step02, step03, step04 },
     });
     const outcome = await Effect.runPromise(
-      proveMissingSignatureFaultV1(missingSignatureFindingV1(scenario), deps),
+      proveMissingSignatureFault(missingSignatureFinding(scenario), deps),
     );
     if (outcome.kind !== "proven") {
       throw new Error(

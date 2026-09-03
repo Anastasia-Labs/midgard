@@ -1,15 +1,15 @@
 import {
   computeHash28,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeCbor,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
@@ -25,12 +25,12 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
-  detectExecutionSourceScriptDecodingCanonicalViolationsV1,
-  prepareProductionExecutionSourceScriptDecodingArtifactV1,
+  detectExecutionSourceScriptDecodingCanonicalViolations,
+  prepareExecutionSourceScriptDecodingArtifact,
 } from "../src/execution-source-script-decoding/production-replay-v1.js";
-import { buildExecutionSourceMachineAuthenticationFromRetainedDaV1 } from "../src/execution-source-script-decoding/retained-witness-v1.js";
+import { buildExecutionSourceMachineAuthenticationFromRetainedDa } from "../src/execution-source-script-decoding/retained-witness-v1.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 
 const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
@@ -41,7 +41,7 @@ const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
 describe("executionSourceScriptDecoding retained-DA production replay", () => {
   it("reconstructs an accepted malformed source from the exact retained trace witness", async () => {
     const spent = outRefFromByte(0x7a);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const malformedPayload = Buffer.from("820700", "hex");
     const malformedItem = Buffer.from("820043820700", "hex");
     const policyId = computeHash28(
@@ -49,7 +49,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     );
     const assetName = Buffer.from("31", "hex");
     const output = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
@@ -72,7 +72,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     });
     const acceptedOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(malformed.txId),
         outputCbor: output,
       }),
@@ -86,7 +86,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     } as const;
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: Buffer.from(
           Data.to(eventKey as never, SDK.EventKeySchema),
           "hex",
@@ -118,7 +118,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     if (witness.auxiliary?.kind !== "nativeExecutionDescriptor")
       throw new Error("fixture omitted native execution descriptor");
 
-    const descriptor: SDK.ValidationTraceDescriptorV1 = {
+    const descriptor: SDK.ValidationTraceDescriptor = {
       schema_version: BigInt(trace.tree.descriptor.schemaVersion),
       machine_version: BigInt(trace.tree.descriptor.machineVersion),
       trace_root: trace.tree.descriptor.traceRoot.toString("hex"),
@@ -134,19 +134,19 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     const descriptorEntry = entry(
       Buffer.from(Data.to(eventKey as never, SDK.EventKeySchema), "hex"),
       Buffer.from(
-        Data.to(descriptor as never, SDK.ValidationTraceDescriptorV1Schema),
+        Data.to(descriptor as never, SDK.ValidationTraceDescriptorSchema),
         "hex",
       ),
     );
     const auxiliary = Data.from(
-      Data.to(validationAuxiliaryWitnessDataV1(witness.auxiliary) as never),
-      SDK.ValidationAuxiliaryWitnessV1Schema,
-    ) as unknown as SDK.ValidationAuxiliaryWitnessV1;
-    const retainedKey: SDK.RetainedValidationWitnessKeyV1 = {
+      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
+      SDK.ValidationAuxiliaryWitnessSchema,
+    ) as unknown as SDK.ValidationAuxiliaryWitness;
+    const retainedKey: SDK.RetainedValidationWitnessKey = {
       event_key: eventKey,
       execution_index: BigInt(witness.auxiliary.executionIndex),
     };
-    const retainedValue: SDK.RetainedValidationWitnessV1 = {
+    const retainedValue: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(
         trace.states[stateIndex]!,
       ),
@@ -159,8 +159,8 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       auxiliary,
     };
     const retainedEntry = entry(
-      SDK.encodeRetainedValidationWitnessKeyV1(retainedKey),
-      SDK.encodeRetainedValidationWitnessV1(retainedValue),
+      SDK.encodeRetainedValidationWitnessKey(retainedKey),
+      SDK.encodeRetainedValidationWitness(retainedValue),
     );
     const validationRoot = await buildCountedRoot(
       SDK.ROOT_DOMAINS.validationTraces,
@@ -171,10 +171,10 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
         },
       ],
     );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       malformed.txCbor,
     );
-    const sourceValue: SDK.L2TransactionSourceV1 = {
+    const sourceValue: SDK.L2TransactionSource = {
       tx_id: malformed.txId.toString("hex"),
       source: {
         compact_cbor: material.proofSource.compactCbor.toString("hex"),
@@ -186,7 +186,7 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     };
     const sourceValueCbor = Data.to(
       sourceValue as never,
-      SDK.L2TransactionSourceV1Schema,
+      SDK.L2TransactionSourceSchema,
     );
     const retainedInput = {
       eventKey,
@@ -209,12 +209,12 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     changedWorkWitness[changedWorkWitness.length - 1] =
       changedWorkWitness[changedWorkWitness.length - 1]! ^ 1;
     await expect(
-      buildExecutionSourceMachineAuthenticationFromRetainedDaV1({
+      buildExecutionSourceMachineAuthenticationFromRetainedDa({
         ...retainedInput,
         retainedValidationWitnessEntries: [
           {
             ...retainedInput.retainedValidationWitnessEntries[0]!,
-            value: SDK.encodeRetainedValidationWitnessV1({
+            value: SDK.encodeRetainedValidationWitness({
               ...retainedValue,
               witness_cbor: changedWorkWitness.toString("hex"),
             }),
@@ -228,12 +228,12 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
     )
       throw new Error("fixture retained the wrong auxiliary kind");
     await expect(
-      buildExecutionSourceMachineAuthenticationFromRetainedDaV1({
+      buildExecutionSourceMachineAuthenticationFromRetainedDa({
         ...retainedInput,
         retainedValidationWitnessEntries: [
           {
             ...retainedInput.retainedValidationWitnessEntries[0]!,
-            value: SDK.encodeRetainedValidationWitnessV1({
+            value: SDK.encodeRetainedValidationWitness({
               ...retainedValue,
               auxiliary: {
                 NativeExecutionDescriptorWitness: {
@@ -247,12 +247,12 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       }),
     ).rejects.toThrow(/membership is invalid/u);
     await expect(
-      buildExecutionSourceMachineAuthenticationFromRetainedDaV1({
+      buildExecutionSourceMachineAuthenticationFromRetainedDa({
         ...retainedInput,
         retainedValidationWitnessEntries: [
           {
             ...retainedInput.retainedValidationWitnessEntries[0]!,
-            value: SDK.encodeRetainedValidationWitnessV1({
+            value: SDK.encodeRetainedValidationWitness({
               ...retainedValue,
               auxiliary: {
                 NativeExecutionDescriptorWitness: {
@@ -270,11 +270,11 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
       }),
     ).rejects.toThrow(/signer frontier is invalid/u);
     await expect(
-      buildExecutionSourceMachineAuthenticationFromRetainedDaV1({
+      buildExecutionSourceMachineAuthenticationFromRetainedDa({
         ...retainedInput,
         retainedValidationWitnessEntries: [
           {
-            key: SDK.encodeRetainedValidationWitnessKeyV1({
+            key: SDK.encodeRetainedValidationWitnessKey({
               ...retainedKey,
               execution_index: 1n,
             }),
@@ -304,11 +304,10 @@ describe("executionSourceScriptDecoding retained-DA production replay", () => {
           l2TransactionSourceCbor: sourceValueCbor,
         },
       ],
-    } as unknown as CanonicalBlockEvidenceV1;
+    } as unknown as CanonicalBlockEvidence;
     const detections =
-      await detectExecutionSourceScriptDecodingCanonicalViolationsV1(block);
-    const artifact =
-      await prepareProductionExecutionSourceScriptDecodingArtifactV1(block);
+      await detectExecutionSourceScriptDecodingCanonicalViolations(block);
+    const artifact = await prepareExecutionSourceScriptDecodingArtifact(block);
 
     expect(detections).toMatchObject([
       { violationId: "execution-native-script-malformed", position: 0n },

@@ -1,7 +1,7 @@
 import {
   DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
   type DaLibp2pRuntimeManifest,
   normalizeDaDeploymentFingerprintHex,
   parseDaLibp2pRuntimeManifest,
@@ -157,7 +157,7 @@ export const generateDaLibp2pRuntimeManifest = async (
   );
 
   return parseDaLibp2pRuntimeManifest({
-    schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+    schemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
     network: options.network,
     deployment: {
       fingerprint: deploymentFingerprint,
@@ -184,17 +184,16 @@ export const generateDaLibp2pRuntimeManifest = async (
         strict_sign: true,
         emit_self: false,
         allowed_topics_only: true,
-        max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+        max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
       },
       limits: {
-        max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        max_inline_response_bytes:
-          DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-        request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+        request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
       },
-      retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      retention_days: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
     public_retained_da: {
       profile: "public-retained-da-v1",
@@ -221,7 +220,7 @@ export const generateDaLibp2pRuntimeManifest = async (
         max_inflight_requests: 32,
         max_inflight_requests_per_peer: 2,
         max_inflight_proof_requests: 1,
-        request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
       },
     },
     da_committee: {

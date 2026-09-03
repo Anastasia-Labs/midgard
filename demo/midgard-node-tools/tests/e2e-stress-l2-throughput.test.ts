@@ -1,15 +1,15 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
 import { walletFromSeed } from "@lucid-evolution/lucid";
@@ -21,8 +21,8 @@ import {
   E2E_L2_STRESS_CONFIG_SCHEMA_VERSION,
   E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
   parseE2EL2StressConfig,
-  parseE2EL2StressConfigArtifactV1,
-  parseE2EL2StressSummaryV1,
+  parseE2EL2StressConfigArtifact,
+  parseE2EL2StressSummary,
   runE2EL2StressThroughput,
   type StressSubmitTransfer,
 } from "../src/commands/e2e-stress-l2-throughput.js";
@@ -64,8 +64,8 @@ const jsonClone = <Value>(value: Value): Value =>
   JSON.parse(JSON.stringify(value)) as Value;
 
 const corpusRow = (index: number): OpenLoopCorpusRow => {
-  const nativeTransaction = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const nativeTransaction = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -95,8 +95,8 @@ const corpusRow = (index: number): OpenLoopCorpusRow => {
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   });
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(nativeTransaction);
-  const txHash = computeMidgardNativeTxIdV1(nativeTransaction).toString("hex");
+  const canonicalCbor = encodeMidgardNativeTxCanonical(nativeTransaction);
+  const txHash = computeMidgardNativeTxId(nativeTransaction).toString("hex");
   return {
     txHash,
     canonicalCborHex: canonicalCbor.toString("hex"),
@@ -349,22 +349,20 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(parsedConfig.schemaVersion).toBe(
       E2E_L2_STRESS_CONFIG_SCHEMA_VERSION,
     );
-    expect(parseE2EL2StressConfigArtifactV1(parsedConfig)).toEqual(
-      parsedConfig,
-    );
+    expect(parseE2EL2StressConfigArtifact(parsedConfig)).toEqual(parsedConfig);
     const missingConfig = { ...parsedConfig };
     delete missingConfig.runId;
-    expect(() => parseE2EL2StressConfigArtifactV1(missingConfig)).toThrow(
+    expect(() => parseE2EL2StressConfigArtifact(missingConfig)).toThrow(
       "missing required field",
     );
     expect(() =>
-      parseE2EL2StressConfigArtifactV1({
+      parseE2EL2StressConfigArtifact({
         ...parsedConfig,
         unexpected: true,
       }),
     ).toThrow("unknown field");
     expect(() =>
-      parseE2EL2StressConfigArtifactV1({
+      parseE2EL2StressConfigArtifact({
         ...parsedConfig,
         schemaVersion: "wrong-config-version",
       }),
@@ -380,32 +378,30 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(parsedSummary.schemaVersion).toBe(
       E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
     );
-    expect(parseE2EL2StressSummaryV1(parsedSummary)).toEqual(parsedSummary);
+    expect(parseE2EL2StressSummary(parsedSummary)).toEqual(parsedSummary);
     const missingSummary = { ...parsedSummary };
     delete missingSummary.runId;
-    expect(() => parseE2EL2StressSummaryV1(missingSummary)).toThrow(
+    expect(() => parseE2EL2StressSummary(missingSummary)).toThrow(
       "missing required field",
     );
     expect(() =>
-      parseE2EL2StressSummaryV1({
+      parseE2EL2StressSummary({
         ...parsedSummary,
         unexpected: true,
       }),
     ).toThrow("unknown field");
     expect(() =>
-      parseE2EL2StressSummaryV1({
+      parseE2EL2StressSummary({
         ...parsedSummary,
         schemaVersion: "wrong-summary-version",
       }),
     ).toThrow(E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION);
     const contradictoryCount = jsonClone(parsedSummary);
     contradictoryCount.submittedCount = 1;
-    expect(() => parseE2EL2StressSummaryV1(contradictoryCount)).toThrow(
-      "counts",
-    );
+    expect(() => parseE2EL2StressSummary(contradictoryCount)).toThrow("counts");
     const contradictoryDuration = jsonClone(parsedSummary);
     contradictoryDuration.durationMs = 1;
-    expect(() => parseE2EL2StressSummaryV1(contradictoryDuration)).toThrow(
+    expect(() => parseE2EL2StressSummary(contradictoryDuration)).toThrow(
       "chronology",
     );
     const contradictoryPolicy = jsonClone(parsedSummary);
@@ -414,7 +410,7 @@ describe("e2e-stress-l2-throughput runner", () => {
       unknown
     >;
     policy.advanceOn = "scheduled_submit";
-    expect(() => parseE2EL2StressSummaryV1(contradictoryPolicy)).toThrow(
+    expect(() => parseE2EL2StressSummary(contradictoryPolicy)).toThrow(
       "policy",
     );
     const contradictoryTransaction = jsonClone(parsedSummary);
@@ -425,16 +421,16 @@ describe("e2e-stress-l2-throughput runner", () => {
     const firstTransaction = transactions[0]!;
     const submission = firstTransaction.submission as Record<string, unknown>;
     submission.submittedAt = null;
-    expect(() => parseE2EL2StressSummaryV1(contradictoryTransaction)).toThrow(
+    expect(() => parseE2EL2StressSummary(contradictoryTransaction)).toThrow(
       "transactions[0]",
     );
     const duplicateTransactionIdentity = jsonClone(parsedSummary);
     const duplicateTransactions =
       duplicateTransactionIdentity.transactions as Record<string, unknown>[];
     duplicateTransactions[1]!.txHash = duplicateTransactions[0]!.txHash;
-    expect(() =>
-      parseE2EL2StressSummaryV1(duplicateTransactionIdentity),
-    ).toThrow("identities");
+    expect(() => parseE2EL2StressSummary(duplicateTransactionIdentity)).toThrow(
+      "identities",
+    );
     const contradictoryMetric = jsonClone(parsedSummary);
     const metrics = contradictoryMetric.metrics as Record<string, unknown>;
     const clientSubmission = metrics.clientSubmission as Record<
@@ -442,15 +438,13 @@ describe("e2e-stress-l2-throughput runner", () => {
       unknown
     >;
     clientSubmission.perSecond = 999;
-    expect(() => parseE2EL2StressSummaryV1(contradictoryMetric)).toThrow(
-      "rate",
-    );
+    expect(() => parseE2EL2StressSummary(contradictoryMetric)).toThrow("rate");
     const missingInterruptionReason = jsonClone(parsedSummary);
     missingInterruptionReason.status = "interrupted";
-    expect(() => parseE2EL2StressSummaryV1(missingInterruptionReason)).toThrow(
+    expect(() => parseE2EL2StressSummary(missingInterruptionReason)).toThrow(
       "status",
     );
-    expect(() => parseE2EL2StressSummaryV1(parsedConfig)).toThrow();
+    expect(() => parseE2EL2StressSummary(parsedConfig)).toThrow();
     expect(summaryJson).toContain('"observedCommittedCount": 2');
     expect(parsedSummary).toHaveProperty("metrics");
     expect(parsedSummary).not.toHaveProperty("throughput");

@@ -1,31 +1,31 @@
 import { createHash } from "node:crypto";
 
 import {
-  buildMidgardBoundedItemV1,
-  decodeMidgardScriptWitnessFieldPreimageV1,
+  buildMidgardBoundedItem,
+  decodeMidgardScriptWitnessFieldPreimage,
   encodeMidgardVersionedScript,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptPurposeLeafV1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptPurposeLeaf,
   hashMidgardVersionedScript,
-  type MidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  type MidgardValidationMerkleMembership,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const UNUSED_SCRIPT_WITNESS_CATEGORY_V1 = "unusedScriptWitness" as const;
-export const UNUSED_SCRIPT_WITNESS_CATEGORY_ID_V1 = "0000002f" as const;
-export const UNUSED_SCRIPT_WITNESS_VIOLATION_ID_V1 =
+export const UNUSED_SCRIPT_WITNESS_CATEGORY = "unusedScriptWitness" as const;
+export const UNUSED_SCRIPT_WITNESS_CATEGORY_ID = "0000002f" as const;
+export const UNUSED_SCRIPT_WITNESS_VIOLATION_ID =
   "unused-script-witness" as const;
-export const UNUSED_SCRIPT_WITNESS_FIELD_INDEX_V1 = 6 as const;
+export const UNUSED_SCRIPT_WITNESS_FIELD_INDEX = 6 as const;
 
 const fail = (message: string): never => {
-  throw new Error(`${UNUSED_SCRIPT_WITNESS_CATEGORY_V1}: ${message}`);
+  throw new Error(`${UNUSED_SCRIPT_WITNESS_CATEGORY}: ${message}`);
 };
 const index = (value: number, label: string): number =>
   Number.isSafeInteger(value) && value >= 0
@@ -36,20 +36,18 @@ const hex = (value: string, bytes: number, label: string): string =>
     ? value
     : fail(`${label} is not canonical ${bytes.toString()}-byte hex`);
 
-export type UnusedScriptWitnessFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type UnusedScriptWitnessFinding = Readonly<{
+  subject: VerdictSubject;
   scriptIndex: number;
 }>;
 
-export const classifyUnusedScriptWitnessFindingV1 = (
-  finding: UnusedScriptWitnessFindingV1,
-): UnusedScriptWitnessFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyUnusedScriptWitnessFinding = (
+  finding: UnusedScriptWitnessFinding,
+): UnusedScriptWitnessFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     fail("verdict subject is not canonical");
   index(finding.scriptIndex, "script index");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = finding.subject.rejection_reason;
     if (
       reason === null ||
@@ -59,8 +57,7 @@ export const classifyUnusedScriptWitnessFindingV1 = (
     )
       fail("typed rejection reason or script coordinate changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   ) {
     fail("direction/reason polarity changed");
@@ -68,7 +65,7 @@ export const classifyUnusedScriptWitnessFindingV1 = (
   return Object.freeze(finding);
 };
 
-export type UnusedScriptSourceOpeningV1 = Readonly<{
+export type UnusedScriptSourceOpening = Readonly<{
   frontierIndex: number;
   originKind: 0 | 1;
   sourceIndex: number;
@@ -77,37 +74,37 @@ export type UnusedScriptSourceOpeningV1 = Readonly<{
   scriptHashHex: string;
   scriptTotalLength: number;
   itemCommitmentHex: string;
-  membership: MidgardValidationMerkleMembershipV1;
+  membership: MidgardValidationMerkleMembership;
 }>;
-export type UnusedScriptPurposeOpeningV1 = Readonly<{
+export type UnusedScriptPurposeOpening = Readonly<{
   frontierIndex: number;
   purposeKind: 0 | 1 | 2 | 3;
   purposeIndex: number;
   scriptHashHex: string;
   purposeSubjectHex: string;
-  membership: MidgardValidationMerkleMembershipV1;
+  membership: MidgardValidationMerkleMembership;
 }>;
 /**
  * Consumer-side shape for a fully header/trace/work-root-bound terminal ScriptSources
  * universe. Production values must come from retained-DA authentication; the
  * pure family rule never admits a free-standing frontier.
  */
-export type AuthenticatedCommittedScriptUniverseV1 = Readonly<{
+export type AuthenticatedCommittedScriptUniverse = Readonly<{
   schemaVersion: "midgard-committed-script-universe-v1";
   transactionId: string;
   universeDigest: string;
-  sources: readonly UnusedScriptSourceOpeningV1[];
-  purposes: readonly UnusedScriptPurposeOpeningV1[];
+  sources: readonly UnusedScriptSourceOpening[];
+  purposes: readonly UnusedScriptPurposeOpening[];
 }>;
-export type UnusedScriptWitnessEvidenceV1 = Readonly<{
-  finding: UnusedScriptWitnessFindingV1;
+export type UnusedScriptWitnessEvidence = Readonly<{
+  finding: UnusedScriptWitnessFinding;
   fieldPreimageHex: string;
   targetItemHex: string;
   targetScriptHashHex: string;
   targetItemCommitmentHex: string;
   targetSourceLeafHex: string;
-  sources: readonly UnusedScriptSourceOpeningV1[];
-  purposes: readonly UnusedScriptPurposeOpeningV1[];
+  sources: readonly UnusedScriptSourceOpening[];
+  purposes: readonly UnusedScriptPurposeOpening[];
   firstMatchingSourceIndex: number;
   matchedPurposeIndex: number | null;
   unused: boolean;
@@ -117,7 +114,7 @@ export type UnusedScriptWitnessEvidenceV1 = Readonly<{
 const verifyCompleteFrontier = <
   T extends {
     readonly frontierIndex: number;
-    readonly membership: MidgardValidationMerkleMembershipV1;
+    readonly membership: MidgardValidationMerkleMembership;
   },
 >(
   items: readonly T[],
@@ -135,22 +132,22 @@ const verifyCompleteFrontier = <
       item.frontierIndex !== frontierIndex ||
       item.membership.leafIndex !== frontierIndex ||
       item.membership.frontier.count !== frontierCount ||
-      !verifyMidgardValidationMerkleMembershipV1(item.membership)
+      !verifyMidgardValidationMerkleMembership(item.membership)
     )
       fail(`${label} frontier is incomplete, reordered, or unauthenticated`);
   });
 };
 
-export const prepareUnusedScriptWitnessEvidenceV1 = ({
+export const prepareUnusedScriptWitnessEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   universe,
 }: {
-  readonly finding: UnusedScriptWitnessFindingV1;
+  readonly finding: UnusedScriptWitnessFinding;
   readonly fieldPreimage: Uint8Array;
-  readonly universe: AuthenticatedCommittedScriptUniverseV1;
-}): UnusedScriptWitnessEvidenceV1 => {
-  const finding = classifyUnusedScriptWitnessFindingV1(rawFinding);
+  readonly universe: AuthenticatedCommittedScriptUniverse;
+}): UnusedScriptWitnessEvidence => {
+  const finding = classifyUnusedScriptWitnessFinding(rawFinding);
   if (
     universe.schemaVersion !== "midgard-committed-script-universe-v1" ||
     universe.transactionId !== finding.subject.transaction_id ||
@@ -158,7 +155,7 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
   )
     fail("authenticated committed script universe identity changed");
   const { sources, purposes } = universe;
-  const scripts = decodeMidgardScriptWitnessFieldPreimageV1(fieldPreimage);
+  const scripts = decodeMidgardScriptWitnessFieldPreimage(fieldPreimage);
   const target = scripts[finding.scriptIndex];
   if (target === undefined) fail("script coordinate is outside field 6");
   verifyCompleteFrontier(sources, "source", false);
@@ -166,15 +163,15 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
   const sourceFrontierCount = sources[0]?.membership.frontier.count ?? 0;
   if (
     sources.length !==
-    (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
       ? finding.scriptIndex + 1
       : sourceFrontierCount)
   )
     fail("source frontier prefix does not match the direction seam");
   const item = encodeMidgardVersionedScript(target);
   const targetHash = hashMidgardVersionedScript(target);
-  const bounded = buildMidgardBoundedItemV1({
-    fieldIndex: UNUSED_SCRIPT_WITNESS_FIELD_INDEX_V1,
+  const bounded = buildMidgardBoundedItem({
+    fieldIndex: UNUSED_SCRIPT_WITNESS_FIELD_INDEX,
     itemIndex: finding.scriptIndex,
     bytes: item,
   });
@@ -184,7 +181,7 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
       : target.language === "PlutusV3"
         ? 3
         : 128;
-  const targetLeaf = hashMidgardInlineScriptSourceLeafV1({
+  const targetLeaf = hashMidgardInlineScriptSourceLeaf({
     sourceIndex: BigInt(finding.scriptIndex),
     scriptLanguageTag: languageTag,
     scriptHash: Buffer.from(targetHash, "hex"),
@@ -220,7 +217,7 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
             inlineCount += 1;
             if (source.sourceKeyHex !== "")
               return fail("inline source carries a reference key");
-            return hashMidgardInlineScriptSourceLeafV1({
+            return hashMidgardInlineScriptSourceLeaf({
               sourceIndex: BigInt(source.sourceIndex),
               scriptLanguageTag: source.languageTag,
               scriptHash: Buffer.from(source.scriptHashHex, "hex"),
@@ -236,7 +233,7 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
             )
               return fail("reference sources are not canonical and ordered");
             priorReferenceKey = source.sourceKeyHex;
-            return hashMidgardReferenceScriptSourceLeafV1({
+            return hashMidgardReferenceScriptSourceLeaf({
               sourceKey: Buffer.from(source.sourceKeyHex, "hex"),
               scriptLanguageTag: source.languageTag,
               scriptHash: Buffer.from(source.scriptHashHex, "hex"),
@@ -252,7 +249,7 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
     if (![0, 1, 2, 3].includes(purpose.purposeKind))
       fail("purpose kind is outside the complete Midgard frontier");
     hex(purpose.scriptHashHex, 28, "purpose script hash");
-    const leaf = hashMidgardScriptPurposeLeafV1({
+    const leaf = hashMidgardScriptPurposeLeaf({
       purposeKind: purpose.purposeKind,
       purposeIndex: BigInt(purpose.purposeIndex),
       scriptHash: Buffer.from(purpose.scriptHashHex, "hex"),
@@ -272,7 +269,7 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
     : undefined;
   const unused = !selected || matchedPurpose === undefined;
   const checkpointDigest = createHash("sha256")
-    .update(UNUSED_SCRIPT_WITNESS_CATEGORY_ID_V1)
+    .update(UNUSED_SCRIPT_WITNESS_CATEGORY_ID)
     .update(finding.subject.transaction_id)
     .update(finding.scriptIndex.toString())
     .update(targetHash)
@@ -302,21 +299,21 @@ export const prepareUnusedScriptWitnessEvidenceV1 = ({
   });
 };
 
-export const unusedScriptWitnessEvidenceClosesV1 = (
-  evidence: UnusedScriptWitnessEvidenceV1,
+export const unusedScriptWitnessEvidenceCloses = (
+  evidence: UnusedScriptWitnessEvidence,
 ): boolean =>
   evidence.finding.subject.direction ===
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
     ? evidence.unused
     : !evidence.unused;
 
 /** Explicit optimistic-accountability disjunction used by replay tests. */
-export const unusedScriptWitnessAccountabilityRouteV1 = ({
+export const unusedScriptWitnessAccountabilityRoute = ({
   evidence,
   committedUniverseDigest,
   canonicalUniverseDigest,
 }: {
-  readonly evidence: UnusedScriptWitnessEvidenceV1;
+  readonly evidence: UnusedScriptWitnessEvidence;
   readonly committedUniverseDigest: string;
   readonly canonicalUniverseDigest: string;
 }): "direct" | "traceInvalid" | "none" => {
@@ -324,13 +321,13 @@ export const unusedScriptWitnessAccountabilityRouteV1 = ({
   hex(canonicalUniverseDigest, 32, "canonical universe digest");
   if (committedUniverseDigest !== canonicalUniverseDigest)
     return "traceInvalid";
-  return unusedScriptWitnessEvidenceClosesV1(evidence) ? "direct" : "none";
+  return unusedScriptWitnessEvidenceCloses(evidence) ? "direct" : "none";
 };
 
-export const unusedScriptWitnessEvidenceIdentityV1 = (
-  evidence: UnusedScriptWitnessEvidenceV1,
+export const unusedScriptWitnessEvidenceIdentity = (
+  evidence: UnusedScriptWitnessEvidence,
 ): string =>
   createHash("sha256")
-    .update(UNUSED_SCRIPT_WITNESS_CATEGORY_ID_V1)
+    .update(UNUSED_SCRIPT_WITNESS_CATEGORY_ID)
     .update(evidence.checkpointDigest)
     .digest("hex");

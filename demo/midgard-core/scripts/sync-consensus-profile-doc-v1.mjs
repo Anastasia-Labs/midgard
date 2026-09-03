@@ -1,8 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 import {
-  encodeMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  encodeMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "../dist/consensus-profile-v1.js";
 
 const START =
@@ -14,12 +14,12 @@ const DOCUMENT_URL = new URL(
 );
 
 const profile = JSON.parse(
-  Buffer.from(encodeMidgardConsensusProfileV1()).toString("utf8"),
+  Buffer.from(encodeMidgardConsensusProfile()).toString("utf8"),
 );
 const generated = [
   START,
   "",
-  `Profile digest: \`${MIDGARD_CONSENSUS_PROFILE_V1_DIGEST}\``,
+  `Profile digest: \`${MIDGARD_CONSENSUS_PROFILE_DIGEST}\``,
   "",
   "```json",
   JSON.stringify(profile, null, 2),

@@ -7,15 +7,14 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES_V1 =
-  Object.freeze(
-    Array.from(
-      { length: 6 },
-      (_, index) =>
-        `fraud_proofs/execution_native_script_invalid/step_${String(index + 1).padStart(2, "0")}.main.spend`,
-    ),
-  );
-export const EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1 =
+export const EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES = Object.freeze(
+  Array.from(
+    { length: 6 },
+    (_, index) =>
+      `fraud_proofs/execution_native_script_invalid/step_${String(index + 1).padStart(2, "0")}.main.spend`,
+  ),
+);
+export const EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES =
   Object.freeze([
     "fraud_proofs/execution_native_script_invalid/accepted_reconstruction_init.main.spend",
     "fraud_proofs/execution_native_script_invalid/accepted_spend_prefix.main.spend",
@@ -27,16 +26,16 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1 =
   ] as const);
 export const EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL =
   "execution-native-script-invalid" as const;
-export type ExecutionNativeScriptInvalidStepContractV1 = Readonly<{
+export type ExecutionNativeScriptInvalidStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type ExecutionNativeScriptInvalidContractsV1 = Readonly<{
-  steps: readonly ExecutionNativeScriptInvalidStepContractV1[];
-  acceptedPrelude?: readonly ExecutionNativeScriptInvalidStepContractV1[];
+export type ExecutionNativeScriptInvalidContracts = Readonly<{
+  steps: readonly ExecutionNativeScriptInvalidStepContract[];
+  acceptedPrelude?: readonly ExecutionNativeScriptInvalidStepContract[];
   computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;
@@ -58,13 +57,13 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-export type ExecutionNativeScriptInvalidAppliedScriptsV1 =
-  readonly ExecutionNativeScriptInvalidStepContractV1[] &
+export type ExecutionNativeScriptInvalidAppliedScripts =
+  readonly ExecutionNativeScriptInvalidStepContract[] &
     Readonly<{
-      acceptedPrelude: readonly ExecutionNativeScriptInvalidStepContractV1[];
+      acceptedPrelude: readonly ExecutionNativeScriptInvalidStepContract[];
     }>;
 
-export const applyExecutionNativeScriptInvalidScriptsV1 = ({
+export const applyExecutionNativeScriptInvalidScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -80,10 +79,10 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
   fieldPreimageCertificatePolicyId: string;
-}): ExecutionNativeScriptInvalidAppliedScriptsV1 => {
+}): ExecutionNativeScriptInvalidAppliedScripts => {
   const apply = (index: number, parameters: readonly Data[]) => {
     const blueprintTitle =
-      EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES_V1[index]!;
+      EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );
@@ -157,7 +156,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     computationThreadPolicyId,
   ]);
   const acceptedReferenceSource = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[6],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[6],
     [
       step03.spendingScriptHash,
       computationThreadPolicyId,
@@ -165,7 +164,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ],
   );
   const acceptedInlineSource = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[5],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[5],
     [
       step03.spendingScriptHash,
       acceptedReferenceSource.spendingScriptHash,
@@ -174,7 +173,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ],
   );
   const acceptedReceive = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[4],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[4],
     [
       acceptedInlineSource.spendingScriptHash,
       computationThreadPolicyId,
@@ -182,7 +181,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ],
   );
   const acceptedObserver = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[3],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[3],
     [
       acceptedReceive.spendingScriptHash,
       acceptedInlineSource.spendingScriptHash,
@@ -191,7 +190,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ],
   );
   const acceptedMint = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[2],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[2],
     [
       acceptedObserver.spendingScriptHash,
       acceptedInlineSource.spendingScriptHash,
@@ -200,7 +199,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ],
   );
   const acceptedSpend = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[1],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[1],
     [
       acceptedMint.spendingScriptHash,
       acceptedInlineSource.spendingScriptHash,
@@ -209,7 +208,7 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ],
   );
   const acceptedInit = applyTitle(
-    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[0],
+    EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[0],
     [acceptedSpend.spendingScriptHash, computationThreadPolicyId],
   );
   const step01 = apply(0, [
@@ -231,5 +230,5 @@ export const applyExecutionNativeScriptInvalidScriptsV1 = ({
     ]),
     enumerable: false,
   });
-  return logicalSteps as unknown as ExecutionNativeScriptInvalidAppliedScriptsV1;
+  return logicalSteps as unknown as ExecutionNativeScriptInvalidAppliedScripts;
 };

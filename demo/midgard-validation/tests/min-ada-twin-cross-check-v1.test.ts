@@ -5,13 +5,13 @@ import {
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
 import {
-  MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1,
-  minAdaLovelaceV1,
-  outputMeetsMinAdaV1,
+  MIN_ADA_OUTPUT_OVERHEAD_BYTES,
+  minAdaLovelace,
+  outputMeetsMinAda,
 } from "../src/value-accounting.js";
 
 /**
@@ -19,7 +19,7 @@ import {
  * `coins_per_utxo_byte * (160 + serialized canonical output bytes)` exists as
  * two hand-written copies -- `min_ada_lovelace_v1`/`output_meets_min_ada_v1` in
  * `onchain/aiken/lib/midgard/validation-machine-v1.ak` and
- * `minAdaLovelaceV1`/`outputMeetsMinAdaV1` in `../src/value-accounting.ts`.
+ * `minAdaLovelace`/`outputMeetsMinAda` in `../src/value-accounting.ts`.
  * Nothing forced them to agree: both sides' existing boundary tests exercise
  * a single rate and a single output shape, state their slope and comparison
  * legs relative to the formula under test, and pin nothing across the language
@@ -172,9 +172,7 @@ const AIKEN_ENV_TESTNET_RATE = parseUnderscoredInt(
 // The TypeScript production pin: the mirror carried in the consensus profile,
 // imported as a value (not scraped) so a deleted or renamed field is a type
 // error rather than a silently skipped assertion.
-const TYPESCRIPT_PRODUCTION_RATE = BigInt(
-  MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte,
-);
+const TYPESCRIPT_RATE = BigInt(MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte);
 
 // The C70 target-parameter snapshot the pins are provenanced FROM. It is no
 // longer the binding this suite convicts on -- it is the third, corroborating
@@ -407,7 +405,7 @@ type MinAdaVector = {
   readonly floorLovelace: bigint;
 };
 
-const MIN_ADA_CROSS_LANGUAGE_VECTORS_V1: readonly MinAdaVector[] = [
+const MIN_ADA_CROSS_LANGUAGE_VECTORS: readonly MinAdaVector[] = [
   {
     label: "C70 snapshot rate, zero-byte intercept",
     coinsPerUtxoByte: 4_310n,
@@ -457,24 +455,24 @@ const MIN_ADA_CROSS_LANGUAGE_VECTORS_V1: readonly MinAdaVector[] = [
 // The two shared canonical outputs, as the Aiken probe built them: an
 // unprotected network-0 enterprise pub-key address over `0xaa * 28`, and the
 // same payment credential with an `0xbb * 28` stake credential.
-const ENTERPRISE_ADDRESS_V1 = Buffer.concat([
+const ENTERPRISE_ADDRESS = Buffer.concat([
   Buffer.from([0x60]),
   Buffer.alloc(28, 0xaa),
 ]);
 
-const BASE_ADDRESS_V1 = Buffer.concat([
+const BASE_ADDRESS = Buffer.concat([
   Buffer.from([0x00]),
   Buffer.alloc(28, 0xaa),
   Buffer.alloc(28, 0xbb),
 ]);
 
-const ENTERPRISE_OUTPUT_V1: MidgardTxOutput = {
-  address: ENTERPRISE_ADDRESS_V1,
+const ENTERPRISE_OUTPUT: MidgardTxOutput = {
+  address: ENTERPRISE_ADDRESS,
   value: { lovelace: 2_000_000n, assets: new Map() },
 };
 
-const RICH_OUTPUT_V1: MidgardTxOutput = {
-  address: BASE_ADDRESS_V1,
+const RICH_OUTPUT: MidgardTxOutput = {
+  address: BASE_ADDRESS,
   value: {
     lovelace: 9_999_999n,
     assets: new Map([
@@ -495,16 +493,16 @@ const RICH_OUTPUT_V1: MidgardTxOutput = {
   },
 };
 
-const ENTERPRISE_OUTPUT_CBOR_HEX_V1 =
+const ENTERPRISE_OUTPUT_CBOR_HEX =
   "a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a0";
 
-const RICH_OUTPUT_CBOR_HEX_V1 =
+const RICH_OUTPUT_CBOR_HEX =
   "a400583900aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb01821a0098967fa2581c11111111111111111111111111111111111111111111111111111111a242abcd075820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01581c22222222222222222222222222222222222222222222222222222222a140182a0243d879800382034e4d01000033222220051200120011";
 
 describe("min-Ada twin cross-check (D-S4 / C49)", () => {
   it("extracts the Aiken twin as the exact expected source form", () => {
     expect(AIKEN_OVERHEAD_BYTES).toBe(160n);
-    expect(AIKEN_OVERHEAD_BYTES).toBe(MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1);
+    expect(AIKEN_OVERHEAD_BYTES).toBe(MIN_ADA_OUTPUT_OVERHEAD_BYTES);
     expect(AIKEN_FLOOR_BODY.replace(/\s+/gu, " ")).toBe(
       "coins_per_utxo_byte * ( min_ada_output_overhead_bytes + serialized_output_bytes )",
     );
@@ -525,20 +523,20 @@ describe("min-Ada twin cross-check (D-S4 / C49)", () => {
     // with, and keeps the snapshot only as a corroborating witness.
     expect(AIKEN_ENV_DEFAULT_RATE).toBe(4_310n);
     expect(AIKEN_ENV_TESTNET_RATE).toBe(4_310n);
-    expect(TYPESCRIPT_PRODUCTION_RATE).toBe(4_310n);
+    expect(TYPESCRIPT_RATE).toBe(4_310n);
     expect(TYPESCRIPT_TARGET_SNAPSHOT_RATE).toBe(4_310n);
 
     // Held equal to each other, not merely equal to a literal: a coordinated
     // edit that moves every pin at once still has to move them together.
     expect(AIKEN_ENV_TESTNET_RATE).toBe(AIKEN_ENV_DEFAULT_RATE);
-    expect(TYPESCRIPT_PRODUCTION_RATE).toBe(AIKEN_ENV_DEFAULT_RATE);
-    expect(TYPESCRIPT_TARGET_SNAPSHOT_RATE).toBe(TYPESCRIPT_PRODUCTION_RATE);
+    expect(TYPESCRIPT_RATE).toBe(AIKEN_ENV_DEFAULT_RATE);
+    expect(TYPESCRIPT_TARGET_SNAPSHOT_RATE).toBe(TYPESCRIPT_RATE);
 
     // A zero rate would collapse every floor to zero and silently disable the
     // whole rule; neither side guards against it at runtime, because at a
     // compiled constant it cannot arise at runtime. This is that guard.
     expect(AIKEN_ENV_DEFAULT_RATE > 0n).toBe(true);
-    expect(TYPESCRIPT_PRODUCTION_RATE > 0n).toBe(true);
+    expect(TYPESCRIPT_RATE > 0n).toBe(true);
   });
 
   it("binds the Aiken vectors to the env pin rather than a duplicated literal", () => {
@@ -582,24 +580,24 @@ describe("min-Ada twin cross-check (D-S4 / C49)", () => {
   });
 
   it("serializes the two shared canonical outputs to their pinned absolute bytes", () => {
-    const enterprise = encodeMidgardTxOutput(ENTERPRISE_OUTPUT_V1);
-    expect(enterprise.toString("hex")).toBe(ENTERPRISE_OUTPUT_CBOR_HEX_V1);
+    const enterprise = encodeMidgardTxOutput(ENTERPRISE_OUTPUT);
+    expect(enterprise.toString("hex")).toBe(ENTERPRISE_OUTPUT_CBOR_HEX);
     expect(enterprise.length).toBe(41);
 
-    const rich = encodeMidgardTxOutput(RICH_OUTPUT_V1);
-    expect(rich.toString("hex")).toBe(RICH_OUTPUT_CBOR_HEX_V1);
+    const rich = encodeMidgardTxOutput(RICH_OUTPUT);
+    expect(rich.toString("hex")).toBe(RICH_OUTPUT_CBOR_HEX);
     expect(rich.length).toBe(196);
 
     // The floors those two fixtures fund, as absolute lovelace.
-    expect(minAdaLovelaceV1(4_310n, BigInt(enterprise.length))).toBe(866_310n);
-    expect(minAdaLovelaceV1(4_310n, BigInt(rich.length))).toBe(1_534_360n);
+    expect(minAdaLovelace(4_310n, BigInt(enterprise.length))).toBe(866_310n);
+    expect(minAdaLovelace(4_310n, BigInt(rich.length))).toBe(1_534_360n);
   });
 
-  for (const vector of MIN_ADA_CROSS_LANGUAGE_VECTORS_V1) {
+  for (const vector of MIN_ADA_CROSS_LANGUAGE_VECTORS) {
     it(`agrees on the absolute floor: ${vector.label}`, () => {
       const { coinsPerUtxoByte, serializedOutputBytes, floorLovelace } = vector;
 
-      expect(minAdaLovelaceV1(coinsPerUtxoByte, serializedOutputBytes)).toBe(
+      expect(minAdaLovelace(coinsPerUtxoByte, serializedOutputBytes)).toBe(
         floorLovelace,
       );
       expect(
@@ -618,7 +616,7 @@ describe("min-Ada twin cross-check (D-S4 / C49)", () => {
 
       for (const leg of legs) {
         expect(
-          outputMeetsMinAdaV1(
+          outputMeetsMinAda(
             coinsPerUtxoByte,
             serializedOutputBytes,
             leg.lovelace,

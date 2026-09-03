@@ -4,11 +4,11 @@ import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import type {
   Libp2pDaPeerConfig,
@@ -68,17 +68,17 @@ describe("real separate-process canonical V1 DA publication", () => {
       validationTraceCount: BigInt(TRANSACTION_COUNT),
     });
 
-    const envelope = await wrapDaPayloadV1(fixture.innerPayloadCbor, {
+    const envelope = await wrapDaPayload(fixture.innerPayloadCbor, {
       mode: "zstd",
       zstdLevel: 3,
     });
     expect(fixture.innerPayloadCbor.length).toBeGreaterThan(0);
     expect(envelope.length).toBeGreaterThan(0);
     expect(fixture.innerPayloadCbor.length).toBeLessThanOrEqual(
-      DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      DA_TRANSPORT_LIMITS.maxPayloadBytes,
     );
     expect(envelope.length).toBeLessThanOrEqual(
-      DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      DA_TRANSPORT_LIMITS.maxPayloadBytes,
     );
 
     // Keep the bundled executable below the package root so Node's ESM
@@ -181,17 +181,16 @@ describe("real separate-process canonical V1 DA publication", () => {
             strictSign: true,
             emitSelf: false,
             allowedTopicsOnly: true,
-            maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+            maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
           },
           limits: {
-            maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-            maxInlineResponseBytes:
-              DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-            maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-            maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-            requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+            maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+            maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+            maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+            maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+            requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
           },
-          retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+          retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
           peers: [...committeePeers, producerPeer],
         };
         const configPath = join(temp, `peer-${index.toString()}.json`);
@@ -218,12 +217,12 @@ describe("real separate-process canonical V1 DA publication", () => {
         contractDeploymentManifestId: DEPLOYMENT,
         localPrivateKeySource: producerSeed,
         threshold: THRESHOLD,
-        requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-        maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-        maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-        maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-        maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+        requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+        maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+        maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+        maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
         listenMultiaddrs: [],
         announceMultiaddrs: [
           `/ip4/127.0.0.1/tcp/0/p2p/${producerIdentity.peerId}`,
@@ -298,11 +297,11 @@ describe("real separate-process canonical V1 DA publication", () => {
       ).toBe(true);
       expect(validThresholdDurationMs).toBeGreaterThan(0);
       expect(validThresholdDurationMs).toBeLessThanOrEqual(
-        DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
       );
       expect(validAllPeerDurationMs).toBeGreaterThan(0);
       expect(validAllPeerDurationMs).toBeLessThanOrEqual(
-        DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
       );
 
       const mutatedEnvelope = Buffer.from(envelope);
@@ -350,7 +349,7 @@ describe("real separate-process canonical V1 DA publication", () => {
       ).toBe(true);
       expect(hostileAllPeerDurationMs).toBeGreaterThan(0);
       expect(hostileAllPeerDurationMs).toBeLessThanOrEqual(
-        DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
       );
       expect(children.every((child) => child.exitCode === null)).toBe(true);
 
@@ -411,7 +410,7 @@ describe("real separate-process canonical V1 DA publication", () => {
         envelopeBytes: envelope.length,
         innerSha256: sha256Hex(fixture.innerPayloadCbor),
         envelopeSha256: sha256Hex(envelope),
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         valid: {
           acceptedPeers: validPublication.acceptedPeers,
           thresholdDurationMs: validThresholdDurationMs,
@@ -439,7 +438,7 @@ const insertFromFixture = (
   envelope: Buffer,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: envelope,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(envelope),

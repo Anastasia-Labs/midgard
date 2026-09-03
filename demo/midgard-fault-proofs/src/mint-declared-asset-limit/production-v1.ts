@@ -1,6 +1,6 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -8,84 +8,84 @@ import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
-  type JournalJsonObjectV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  type JournalJsonObject,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import type { FraudProofWorkflowActionV1 } from "../workflow/orchestrator-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriagePrerequisitePortV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriagePrerequisitePort,
 } from "../workflow/production-field-carriage-prerequisite-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  submitCapturedTransactionV1,
-  workflowTransactionInputOutRefsV1,
+  submitCapturedTransaction,
+  workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary-v1.js";
 import {
-  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1,
-  type MintDeclaredAssetLimitContractsV1,
+  MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
+  type MintDeclaredAssetLimitContracts,
 } from "./contracts-v1.js";
 import {
-  createMintDeclaredAssetLimitActuatorV1,
-  type MintDeclaredAssetLimitActuatorActionV1,
-  mintDeclaredAssetLimitFieldRequirementV1,
-  type MintDeclaredAssetLimitWorkflowReferenceScriptsV1,
+  createMintDeclaredAssetLimitActuator,
+  type MintDeclaredAssetLimitActuatorAction,
+  mintDeclaredAssetLimitFieldRequirement,
+  type MintDeclaredAssetLimitWorkflowReferenceScripts,
 } from "./production-actuator-v1.js";
 import {
-  admitProductionMintDeclaredAssetLimitArtifactV1,
-  productionMintDeclaredAssetLimitArtifactDigestV1,
-  type ProductionMintDeclaredAssetLimitArtifactV1,
+  admitMintDeclaredAssetLimitArtifact,
+  type MintDeclaredAssetLimitArtifact,
+  mintDeclaredAssetLimitArtifactDigest,
 } from "./production-artifact-v1.js";
 import {
-  detectMintDeclaredAssetLimitAcceptedRawReplayV1,
-  mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1,
-  prepareProductionMintDeclaredAssetLimitAcceptedArtifactV1,
-  prepareProductionMintDeclaredAssetLimitForcedArtifactV1,
+  detectMintDeclaredAssetLimitAcceptedRawReplay,
+  mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload,
+  prepareMintDeclaredAssetLimitAcceptedArtifact,
+  prepareMintDeclaredAssetLimitForcedArtifact,
 } from "./replay-v1.js";
 import {
-  MintDeclaredAssetLimitStep02DatumV1Schema,
-  MintDeclaredAssetLimitStep03DatumV1Schema,
-  MintDeclaredAssetLimitStep04DatumV1Schema,
+  MintDeclaredAssetLimitStep02DatumSchema,
+  MintDeclaredAssetLimitStep03DatumSchema,
+  MintDeclaredAssetLimitStep04DatumSchema,
 } from "./schemas-v1.js";
 import {
-  hashMintDeclaredGrammarCheckpointV1,
-  hashMintDeclaredWalkCheckpointV1,
+  hashMintDeclaredGrammarCheckpoint,
+  hashMintDeclaredWalkCheckpoint,
 } from "./staged-plan-v1.js";
 
-export const MINT_DECLARED_ASSET_LIMIT_PRODUCTION_WORKFLOW_V1 =
+export const MINT_DECLARED_ASSET_LIMIT_WORKFLOW =
   "midgard-mint-declared-asset-limit-production-workflow-v1" as const;
 
-export type MintDeclaredAssetLimitRemovalReferenceScriptsV1 = Readonly<{
+export type MintDeclaredAssetLimitRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -97,25 +97,25 @@ export type MintDeclaredAssetLimitRemovalReferenceScriptsV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1 = Readonly<{
+export type ManifestBoundMintDeclaredAssetLimitWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: MintDeclaredAssetLimitWorkflowReferenceScriptsV1 &
-    Readonly<{ removal: MintDeclaredAssetLimitRemovalReferenceScriptsV1 }>;
+  referenceScripts: MintDeclaredAssetLimitWorkflowReferenceScripts &
+    Readonly<{ removal: MintDeclaredAssetLimitRemovalReferenceScripts }>;
 }>;
 
-export type ManifestBoundMintDeclaredAssetLimitWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"mintDeclaredAssetLimit">;
-  l1: FraudProofFamilyL1ObservationPortV1<"mintDeclaredAssetLimit">;
-  actuator: ReturnType<typeof createMintDeclaredAssetLimitActuatorV1>;
-  prerequisite: ProductionFieldCarriagePrerequisitePortV1<"mintDeclaredAssetLimit">;
+export type ManifestBoundMintDeclaredAssetLimitWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"mintDeclaredAssetLimit">;
+  l1: FraudProofFamilyL1ObservationPort<"mintDeclaredAssetLimit">;
+  actuator: ReturnType<typeof createMintDeclaredAssetLimitActuator>;
+  prerequisite: FieldCarriagePrerequisitePort<"mintDeclaredAssetLimit">;
   lucid: LucidEvolution;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
@@ -123,12 +123,12 @@ export type ManifestBoundMintDeclaredAssetLimitWorkflowV1 = Readonly<{
 
 const CATEGORY = "mintDeclaredAssetLimit" as const;
 
-export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
-  config: ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1,
-): Promise<ManifestBoundMintDeclaredAssetLimitWorkflowV1> => {
+export const createManifestBoundMintDeclaredAssetLimitWorkflow = async (
+  config: ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+): Promise<ManifestBoundMintDeclaredAssetLimitWorkflow> => {
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("mintDeclaredAssetLimit decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -136,13 +136,13 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
-      MintDeclaredAssetLimitStep02DatumV1Schema,
-      MintDeclaredAssetLimitStep02DatumV1Schema,
-      MintDeclaredAssetLimitStep03DatumV1Schema,
-      MintDeclaredAssetLimitStep04DatumV1Schema,
+      MintDeclaredAssetLimitStep02DatumSchema,
+      MintDeclaredAssetLimitStep02DatumSchema,
+      MintDeclaredAssetLimitStep03DatumSchema,
+      MintDeclaredAssetLimitStep04DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -160,12 +160,12 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
       "mintDeclaredAssetLimit manifest omitted required contracts",
     );
   const bindReference = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
     });
-  const steps = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1.map(
+  const steps = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.map(
     (_title, index) =>
       bindReference(
         [
@@ -176,7 +176,7 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
         ][index]!,
         config.referenceScripts.steps[index]!,
       ),
-  ) as unknown as MintDeclaredAssetLimitWorkflowReferenceScriptsV1["steps"];
+  ) as unknown as MintDeclaredAssetLimitWorkflowReferenceScripts["steps"];
   const witnessNames = {
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
@@ -190,11 +190,11 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
       bindReference(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   const references = Object.freeze({
     steps: Object.freeze(steps),
     witnesses: Object.freeze(witnesses),
@@ -203,14 +203,14 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
       config.referenceScripts.fieldPreimageCertificateMint,
     ),
   });
-  const contracts: MintDeclaredAssetLimitContractsV1 = Object.freeze({
+  const contracts: MintDeclaredAssetLimitContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
-      blueprintTitle: MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES[index]!,
       spendingScript: step.spendingScript,
       spendingScriptHash: step.spendingScriptHash,
       spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as MintDeclaredAssetLimitContractsV1["steps"],
+    })) as unknown as MintDeclaredAssetLimitContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
       policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
@@ -224,13 +224,13 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
     definition: binding.definition,
   });
-  const actuator = createMintDeclaredAssetLimitActuatorV1({
+  const actuator = createMintDeclaredAssetLimitActuator({
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -239,16 +239,15 @@ export const createManifestBoundMintDeclaredAssetLimitWorkflowV1 = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePortV1({
+  const prerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: CATEGORY,
     lucid: config.lucid,
     network: binding.network,
     signer: config.signer,
     publications: l1.publications,
     requirementForAction: ({ action, artifact }) =>
-      mintDeclaredAssetLimitFieldRequirementV1({
-        action:
-          action.input as unknown as MintDeclaredAssetLimitActuatorActionV1,
+      mintDeclaredAssetLimitFieldRequirement({
+        action: action.input as unknown as MintDeclaredAssetLimitActuatorAction,
         artifact,
         owner: config.signer.paymentKeyHash,
         certificate: {
@@ -278,14 +277,14 @@ const appendEvent = async ({
   identity,
   event,
 }: {
-  readonly journal: FraudProofWorkflowJournalStoreV1;
+  readonly journal: FraudProofWorkflowJournalStore;
   readonly workflowId: string;
-  readonly identity: FraudProofWorkflowIdentityV1;
-  readonly event: FraudProofWorkflowJournalEventV1;
+  readonly identity: FraudProofWorkflowIdentity;
+  readonly event: FraudProofWorkflowJournalEvent;
 }) => {
   const sequence = (await journal.load(workflowId)).length;
-  const entry: FraudProofWorkflowJournalEntryV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+  const entry: FraudProofWorkflowJournalEntry = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
     workflowId,
     identity,
     sequence,
@@ -295,15 +294,15 @@ const appendEvent = async ({
   await journal.append(entry, sequence);
 };
 
-export const mintDeclaredAssetLimitActionIdV1 = (
-  action: MintDeclaredAssetLimitActuatorActionV1,
+export const mintDeclaredAssetLimitActionId = (
+  action: MintDeclaredAssetLimitActuatorAction,
 ): string =>
   `mintDeclaredAssetLimit:${Buffer.from(JSON.stringify(action)).toString("hex")}`;
 
 const workflowAction = (
-  action: MintDeclaredAssetLimitActuatorActionV1,
-): FraudProofWorkflowActionV1 => ({
-  actionId: mintDeclaredAssetLimitActionIdV1(action),
+  action: MintDeclaredAssetLimitActuatorAction,
+): FraudProofWorkflowAction => ({
+  actionId: mintDeclaredAssetLimitActionId(action),
   input: {
     schemaVersion: "midgard-production-cursor-family-action-v1",
     category: "mintDeclaredAssetLimit",
@@ -315,12 +314,12 @@ const currentAction = async ({
   workflow,
   artifact,
 }: {
-  readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflowV1;
-  readonly artifact: ProductionMintDeclaredAssetLimitArtifactV1;
-}): Promise<MintDeclaredAssetLimitActuatorActionV1 | "removed"> => {
+  readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflow;
+  readonly artifact: MintDeclaredAssetLimitArtifact;
+}): Promise<MintDeclaredAssetLimitActuatorAction | "removed"> => {
   const stage = (await workflow.l1.observe({ headerHash: artifact.headerHash }))
     .stage;
-  const admitted = admitProductionMintDeclaredAssetLimitArtifactV1(artifact);
+  const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
   if (stage.kind === "not_started")
     return {
       stage: "init",
@@ -348,7 +347,7 @@ const currentAction = async ({
       throw new Error("mintDeclaredAssetLimit step-02 datum disappeared");
     const state = Data.from(
       utxo.datum,
-      MintDeclaredAssetLimitStep02DatumV1Schema as never,
+      MintDeclaredAssetLimitStep02DatumSchema as never,
     ) as { data: Record<string, unknown> };
     if ("Bound" in state.data)
       return admitted.evidence.carriage === "Certified"
@@ -365,8 +364,7 @@ const currentAction = async ({
     const grammar = (state.data.Grammar as { checkpoint_hash: string })
       .checkpoint_hash;
     const ordinal = admitted.staged.grammar.findIndex(
-      (checkpoint) =>
-        hashMintDeclaredGrammarCheckpointV1(checkpoint) === grammar,
+      (checkpoint) => hashMintDeclaredGrammarCheckpoint(checkpoint) === grammar,
     );
     if (ordinal < 0)
       throw new Error("mintDeclaredAssetLimit grammar checkpoint substitution");
@@ -391,14 +389,14 @@ const currentAction = async ({
       throw new Error("mintDeclaredAssetLimit step-03 datum disappeared");
     const state = Data.from(
       utxo.datum,
-      MintDeclaredAssetLimitStep03DatumV1Schema as never,
+      MintDeclaredAssetLimitStep03DatumSchema as never,
     ) as { data: { checkpoint_hash: string } };
     const hash = state.data.checkpoint_hash;
     const ordinal = [
       admitted.staged.initialWalk,
       ...admitted.staged.walk,
     ].findIndex(
-      (checkpoint) => hashMintDeclaredWalkCheckpointV1(checkpoint) === hash,
+      (checkpoint) => hashMintDeclaredWalkCheckpoint(checkpoint) === hash,
     );
     if (ordinal < 0 || ordinal >= admitted.staged.walk.length)
       throw new Error("mintDeclaredAssetLimit fold checkpoint substitution");
@@ -413,13 +411,13 @@ const currentAction = async ({
   throw new Error("mintDeclaredAssetLimit observed an impossible step");
 };
 
-export type MintDeclaredAssetLimitWorkflowRunResultV1 = Readonly<{
+export type MintDeclaredAssetLimitWorkflowRunResult = Readonly<{
   kind: "pending" | "completed";
   workflowId: string;
   txHash?: string;
 }>;
 
-export const reconcileMintDeclaredAssetLimitSubmissionIntentV1 = ({
+export const reconcileMintDeclaredAssetLimitSubmissionIntent = ({
   intendedActionId,
   txHash,
   transactionConfirmed,
@@ -428,7 +426,7 @@ export const reconcileMintDeclaredAssetLimitSubmissionIntentV1 = ({
   readonly intendedActionId: string;
   readonly txHash: string;
   readonly transactionConfirmed: boolean;
-  readonly observedAction: MintDeclaredAssetLimitActuatorActionV1 | "removed";
+  readonly observedAction: MintDeclaredAssetLimitActuatorAction | "removed";
 }):
   | Readonly<{ kind: "confirmed"; txHash: string }>
   | Readonly<{ kind: "pending"; txHash: string }>
@@ -436,14 +434,14 @@ export const reconcileMintDeclaredAssetLimitSubmissionIntentV1 = ({
   if (transactionConfirmed) return { kind: "confirmed", txHash };
   if (
     observedAction === "removed" ||
-    mintDeclaredAssetLimitActionIdV1(observedAction) !== intendedActionId
+    mintDeclaredAssetLimitActionId(observedAction) !== intendedActionId
   )
     return { kind: "conflict", txHash };
   return { kind: "pending", txHash };
 };
 
 /** Deterministic durability prelude shared by prerequisite and proof actions. */
-export const mintDeclaredAssetLimitSubmissionPreludeV1 = ({
+export const mintDeclaredAssetLimitSubmissionPrelude = ({
   actionId,
   actionInput,
   txHash,
@@ -451,20 +449,20 @@ export const mintDeclaredAssetLimitSubmissionPreludeV1 = ({
   durableRecovery,
 }: {
   readonly actionId: string;
-  readonly actionInput: JournalJsonObjectV1;
+  readonly actionInput: JournalJsonObject;
   readonly txHash: string;
   readonly referenceScripts: Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "preflight_passed" }
   >["referenceScripts"];
-  readonly durableRecovery?: JournalJsonObjectV1;
+  readonly durableRecovery?: JournalJsonObject;
 }): readonly [
   Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "preflight_passed" }
   >,
   Extract<
-    FraudProofWorkflowJournalEventV1,
+    FraudProofWorkflowJournalEvent,
     { readonly kind: "submission_intent" }
   >,
 ] =>
@@ -487,15 +485,15 @@ export const mintDeclaredAssetLimitSubmissionPreludeV1 = ({
   ]);
 
 /** One crash-safe action per call; callers resume by invoking the same runner. */
-export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
+export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflowV1;
+  readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<MintDeclaredAssetLimitWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<MintDeclaredAssetLimitWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
@@ -503,27 +501,25 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
     headerHash: observation.headerHash,
     sources,
   });
-  const raw = await mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1(
-    {
-      observation,
-      payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-      daProvenance: fetched.provenance,
-    },
-  );
+  const raw = await mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload({
+    observation,
+    payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+    daProvenance: fetched.provenance,
+  });
   const artifact =
-    detectMintDeclaredAssetLimitAcceptedRawReplayV1(raw).length > 0
-      ? await prepareProductionMintDeclaredAssetLimitAcceptedArtifactV1(raw)
-      : await prepareProductionMintDeclaredAssetLimitForcedArtifactV1(
-          await fetchCanonicalBlockEvidenceV1({ observation, sources }),
+    detectMintDeclaredAssetLimitAcceptedRawReplay(raw).length > 0
+      ? await prepareMintDeclaredAssetLimitAcceptedArtifact(raw)
+      : await prepareMintDeclaredAssetLimitForcedArtifact(
+          await fetchCanonicalBlockEvidence({ observation, sources }),
         );
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     category: CATEGORY,
     target: { kind: "state_queue_header", headerHash: artifact.headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await appendEvent({
@@ -539,8 +535,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
       event: {
         kind: "prepared",
         artifact,
-        artifactDigest:
-          productionMintDeclaredAssetLimitArtifactDigestV1(artifact),
+        artifactDigest: mintDeclaredAssetLimitArtifactDigest(artifact),
       },
     });
     entries = await journal.load(workflowId);
@@ -549,7 +544,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
     if (
       prepared?.event.kind !== "prepared" ||
       prepared.event.artifactDigest !==
-        productionMintDeclaredAssetLimitArtifactDigestV1(artifact)
+        mintDeclaredAssetLimitArtifactDigest(artifact)
     )
       throw new Error("mintDeclaredAssetLimit durable artifact substitution");
   }
@@ -580,13 +575,12 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
           : undefined;
       if (!onChain) {
         const observedAction = await currentAction({ workflow, artifact });
-        const reconciliation =
-          reconcileMintDeclaredAssetLimitSubmissionIntentV1({
-            intendedActionId: intent.actionId,
-            txHash: intent.txHash,
-            transactionConfirmed: false,
-            observedAction,
-          });
+        const reconciliation = reconcileMintDeclaredAssetLimitSubmissionIntent({
+          intendedActionId: intent.actionId,
+          txHash: intent.txHash,
+          transactionConfirmed: false,
+          observedAction,
+        });
         if (reconciliation.kind === "conflict") {
           await resumed?.fail(
             "mintDeclaredAssetLimit observed a different transaction at the durable cursor",
@@ -640,8 +634,8 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
         event: {
           kind: "completed",
           terminal: terminalStage.terminal,
-          terminalDigest: journalJsonDigestV1(
-            terminalStage.terminal as unknown as JournalJsonObjectV1,
+          terminalDigest: journalJsonDigest(
+            terminalStage.terminal as unknown as JournalJsonObject,
           ),
         },
       });
@@ -661,7 +655,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
       action: prerequisite.action,
       artifact,
     });
-    const prelude = mintDeclaredAssetLimitSubmissionPreludeV1({
+    const prelude = mintDeclaredAssetLimitSubmissionPrelude({
       actionId: prerequisite.action.actionId,
       actionInput: prerequisite.action.input,
       txHash: captured.transaction.txHash,
@@ -670,7 +664,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
     });
     for (const event of prelude)
       await appendEvent({ journal, workflowId, identity, event });
-    const submitted = await submitCapturedTransactionV1(captured.transaction);
+    const submitted = await submitCapturedTransaction(captured.transaction);
     await appendEvent({
       journal,
       workflowId,
@@ -686,7 +680,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
   }
   const id = baseAction.actionId;
   const captured = await workflow.actuator.capture({ action, artifact });
-  const prelude = mintDeclaredAssetLimitSubmissionPreludeV1({
+  const prelude = mintDeclaredAssetLimitSubmissionPrelude({
     actionId: id,
     actionInput: baseAction.input,
     txHash: captured.transaction.txHash,
@@ -704,7 +698,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
   });
   for (const event of prelude)
     await appendEvent({ journal, workflowId, identity, event });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error("mintDeclaredAssetLimit provider substituted transaction");
   await appendEvent({
@@ -715,7 +709,7 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
   });
   if (
     action.stage === "remove" &&
-    !workflowTransactionInputOutRefsV1(captured.transaction.signed).includes(
+    !workflowTransactionInputOutRefs(captured.transaction.signed).includes(
       action.nextRemovalOutRef,
     )
   )
@@ -723,33 +717,33 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflowV1 = async ({
   return { kind: "pending", workflowId, txHash: submitted };
 };
 
-export type LoadedMintDeclaredAssetLimitProductionWorkflowV1 = Readonly<{
+export type LoadedMintDeclaredAssetLimitWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1;
+  config: ManifestBoundMintDeclaredAssetLimitWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadMintDeclaredAssetLimitProductionWorkflowV1 = (input: {
+export type LoadMintDeclaredAssetLimitWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedMintDeclaredAssetLimitProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedMintDeclaredAssetLimitWorkflow>;
 
 /** Standard runtime-loader-compatible package runner; core config has no callbacks. */
-export const createMintDeclaredAssetLimitProductionWorkflowRunnerSurfaceV1 = ({
+export const createMintDeclaredAssetLimitWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  readonly loadRuntimeConfig: LoadMintDeclaredAssetLimitProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  readonly loadRuntimeConfig: LoadMintDeclaredAssetLimitWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (invocation.category !== (CATEGORY as string))
         throw new Error("mintDeclaredAssetLimit runner category changed");
-      const journal = bindProductionWorkflowFundingReservationJournalV1({
+      const journal = bindWorkflowFundingReservationJournal({
         permit: invocation.fundingReservationPermit,
-        journal: bindProductionWorkflowActuationJournalV1({
-          journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
             invocation.journalDirectory,
           ),
           permit: invocation.actuationPermit,
@@ -759,7 +753,7 @@ export const createMintDeclaredAssetLimitProductionWorkflowRunnerSurfaceV1 = ({
           headerHash: invocation.headerHash,
         }),
       });
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
         category: CATEGORY,
@@ -783,7 +777,7 @@ export const createMintDeclaredAssetLimitProductionWorkflowRunnerSurfaceV1 = ({
             "mintDeclaredAssetLimit runtime requires concrete public retained DA",
           );
         const workflow =
-          await createManifestBoundMintDeclaredAssetLimitWorkflowV1(
+          await createManifestBoundMintDeclaredAssetLimitWorkflow(
             loaded.config,
           );
         if (
@@ -795,7 +789,7 @@ export const createMintDeclaredAssetLimitProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "mintDeclaredAssetLimit runtime binding changed invocation",
           );
-        return (await executeManifestBoundMintDeclaredAssetLimitWorkflowV1({
+        return (await executeManifestBoundMintDeclaredAssetLimitWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

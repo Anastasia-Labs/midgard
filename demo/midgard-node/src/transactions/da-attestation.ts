@@ -1,5 +1,5 @@
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -16,7 +16,7 @@ import { DatabaseError } from "../database/utils/common.js";
 import { NodeConfig } from "../services/config.js";
 import {
   availabilityParametersFromExplicitEnvironment,
-  availabilityParametersFromManifestV1,
+  availabilityParametersFromManifest,
   ContractDeploymentIdentity,
   Database,
   Lucid,
@@ -339,13 +339,13 @@ const fetchUnattestedHeaders = (
       if (stateQueueUtxo.datum.key === "Empty") {
         continue;
       }
-      const node = yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
+      const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(
         stateQueueUtxo.datum,
       );
       if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
         continue;
       }
-      const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(node.header);
+      const recomputedHeaderHash = yield* SDK.hashBlockHeader(node.header);
       const datumHeaderHash = stateQueueUtxo.datum.key.Key.key;
       if (recomputedHeaderHash !== datumHeaderHash) {
         return yield* Effect.fail(
@@ -392,12 +392,12 @@ const fetchUnattestedHeaders = (
  * indexed, and the attestation validator would reject them.
  */
 const localDaSignatureWitnesses = (
-  availabilityCommitment: SDK.DaAvailabilityCommitmentV1,
+  availabilityCommitment: SDK.DaAvailabilityCommitment,
   nodeConfig: OperatorDaConfig,
   committeeHex: string,
 ): readonly SDK.DaAttestationSignatureWitness[] => {
   const message = Buffer.from(
-    SDK.daAvailabilityAttestationMessageV1(availabilityCommitment),
+    SDK.daAvailabilityAttestationMessage(availabilityCommitment),
   );
   return daLocalSigners(nodeConfig)
     .flatMap((signer) => {
@@ -431,8 +431,8 @@ const attestHeader = ({
   readonly daParamsDatum: SDK.DaParamsDatum;
   readonly target: SDK.DaAttestationStateQueueTarget;
   readonly referenceScripts: SDK.DaAttestationReferenceScripts;
-  readonly availabilityCommitment: SDK.DaAvailabilityCommitmentV1;
-  readonly availabilityParameters: SDK.DaAvailabilityParametersV1;
+  readonly availabilityCommitment: SDK.DaAvailabilityCommitment;
+  readonly availabilityParameters: SDK.DaAvailabilityParameters;
   readonly hubOracleRefInput: UTxO;
 }): Effect.Effect<
   AttestStateQueueHeaderResult,
@@ -638,7 +638,7 @@ export const attestStateQueueOnceProgram = (
     const availabilityParameters =
       deploymentIdentity.manifest === undefined
         ? availabilityParametersFromExplicitEnvironment()
-        : availabilityParametersFromManifestV1(
+        : availabilityParametersFromManifest(
             deploymentIdentity.manifest.availabilityChallenge,
           );
     const hubOracle = yield* SDK.fetchHubOracleUTxOProgram(lucid, {
@@ -679,32 +679,30 @@ export const attestStateQueueOnceProgram = (
       const payload = yield* Effect.tryPromise({
         try: () =>
           payloadRow.value[DaPayloadsDB.Columns.VERSION] !==
-          Number(SDK.DA_PAYLOAD_V1_VERSION)
+          Number(SDK.DA_PAYLOAD_VERSION)
             ? Promise.reject(
                 new Error(
                   "Stored DA payload schema version must equal canonical V1",
                 ),
               )
-            : unwrapDaPayloadV1(payloadCbor, {
-                maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-              }).then((unwrapped) =>
-                SDK.decodeDaPayloadV1(unwrapped.innerBytes),
-              ),
+            : unwrapDaPayload(payloadCbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+              }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes)),
         catch: (cause) =>
           new SDK.StateQueueError({
             message: "Retained DA payload is not canonical V1 CBOR",
             cause,
           }),
       });
-      const payloadHeaderHash = yield* SDK.hashBlockHeaderV1(
+      const payloadHeaderHash = yield* SDK.hashBlockHeader(
         payload.block_body.header,
       );
       if (
         payloadHash !== storedPayloadHash ||
         payload.block_body.header_hash !== target.headerHash ||
         payloadHeaderHash !== target.headerHash ||
-        Data.to(payload.block_body.header, SDK.HeaderV1) !==
-          Data.to(target.stateQueueNode.header, SDK.HeaderV1)
+        Data.to(payload.block_body.header, SDK.Header) !==
+          Data.to(target.stateQueueNode.header, SDK.Header)
       ) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
@@ -742,7 +740,7 @@ export const attestStateQueueOnceProgram = (
           }),
         );
       }
-      const availabilityCommitment = SDK.buildDaAvailabilityCommitmentV1({
+      const availabilityCommitment = SDK.buildDaAvailabilityCommitment({
         deploymentIdentity: contracts.hubOracle.policyId,
         headerHash: target.headerHash,
         payload: payloadCbor,

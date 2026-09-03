@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  type ManifestBoundObserverOrderInvalidWorkflowConfigV1,
-  observerOrderInvalidActionIdV1,
-  observerOrderInvalidSubmissionPreludeV1,
-  reconcileObserverOrderInvalidSubmissionIntentV1,
+  type ManifestBoundObserverOrderInvalidWorkflowConfig,
+  observerOrderInvalidActionId,
+  observerOrderInvalidSubmissionPrelude,
+  reconcileObserverOrderInvalidSubmissionIntent,
 } from "../src/observer-order-invalid/production-v1.js";
 
 describe("observerOrderInvalid package-owned production V1", () => {
@@ -20,7 +20,7 @@ describe("observerOrderInvalid package-owned production V1", () => {
       "decisionDigest",
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
-    ] as const satisfies readonly (keyof ManifestBoundObserverOrderInvalidWorkflowConfigV1)[];
+    ] as const satisfies readonly (keyof ManifestBoundObserverOrderInvalidWorkflowConfig)[];
     expect(exactKeys).not.toContain("evidence" as never);
     expect(exactKeys).not.toContain("loadJournal" as never);
     expect(exactKeys).not.toContain("appendJournal" as never);
@@ -30,7 +30,7 @@ describe("observerOrderInvalid package-owned production V1", () => {
 
   it("journals the exact locally evaluated transaction intent before submission", () => {
     const txHash = "ab".repeat(32);
-    const events = observerOrderInvalidSubmissionPreludeV1({
+    const events = observerOrderInvalidSubmissionPrelude({
       actionId: "observerOrderInvalid:authenticate:1",
       actionInput: {
         schemaVersion: "midgard-production-cursor-family-action-v1",
@@ -68,9 +68,9 @@ describe("observerOrderInvalid package-owned production V1", () => {
       threadOutRef: `${"11".repeat(32)}#0`,
       action: { kind: "authenticate" as const },
     };
-    const intendedActionId = observerOrderInvalidActionIdV1(intended);
+    const intendedActionId = observerOrderInvalidActionId(intended);
     expect(
-      reconcileObserverOrderInvalidSubmissionIntentV1({
+      reconcileObserverOrderInvalidSubmissionIntent({
         intendedActionId,
         txHash: "aa".repeat(32),
         transactionConfirmed: false,
@@ -78,7 +78,7 @@ describe("observerOrderInvalid package-owned production V1", () => {
       }),
     ).toEqual({ kind: "pending", txHash: "aa".repeat(32) });
     expect(
-      reconcileObserverOrderInvalidSubmissionIntentV1({
+      reconcileObserverOrderInvalidSubmissionIntent({
         intendedActionId,
         txHash: "aa".repeat(32),
         transactionConfirmed: false,

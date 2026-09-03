@@ -1,40 +1,40 @@
 import {
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
-  type MidgardValidationMachineStateV1,
-  type MidgardValidationMerkleFrontierV1,
-  verifyMidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationTraceProofV1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptPurposeLeaf,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+  type MidgardValidationMachineState,
+  type MidgardValidationMerkleFrontier,
+  verifyMidgardValidationMerkleMembership,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   Proof,
   ROOT_DOMAINS,
   validationTraceDescriptorCoreFromData,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { MissingRedeemerScriptSourcesControlV1Schema } from "../missing-redeemer/schemas-v1.js";
+import { MissingRedeemerScriptSourcesControlSchema } from "../missing-redeemer/schemas-v1.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
 
 type EncodedEntry = Readonly<{ key: Uint8Array; value: Uint8Array }>;
-type Control = Data.Static<typeof MissingRedeemerScriptSourcesControlV1Schema>;
-type Retained = ReturnType<typeof decodeRetainedValidationWitnessV1>;
+type Control = Data.Static<typeof MissingRedeemerScriptSourcesControlSchema>;
+type Retained = ReturnType<typeof decodeRetainedValidationWitness>;
 
-export type RetainedUnusedScriptSourceV1 = Readonly<{
+export type RetainedUnusedScriptSource = Readonly<{
   sourceIndex: number;
   originKind: 0 | 1;
   sourceKeyHex: string;
@@ -45,7 +45,7 @@ export type RetainedUnusedScriptSourceV1 = Readonly<{
   siblings: readonly string[];
 }>;
 
-export type RetainedUnusedScriptPurposeV1 = Readonly<{
+export type RetainedUnusedScriptPurpose = Readonly<{
   frontierIndex: number;
   purposeKind: 0 | 1 | 2 | 3;
   purposeIndex: number;
@@ -122,7 +122,7 @@ const decodeDiscovery = (value: unknown): Control["discovery"] => {
 };
 
 /** Decodes the exact consensus 31-field stage-11/12 direction seam. */
-export const decodeUnusedScriptWitnessDirectionControlV1 = (
+export const decodeUnusedScriptWitnessDirectionControl = (
   witnessCbor: Uint8Array,
 ): Control => {
   const fields = array(decodeSingleCbor(witnessCbor), "stage-12 control");
@@ -216,15 +216,15 @@ export const decodeUnusedScriptWitnessDirectionControlV1 = (
   return Data.from(
     Data.to(
       control as never,
-      MissingRedeemerScriptSourcesControlV1Schema as never,
+      MissingRedeemerScriptSourcesControlSchema as never,
     ),
-    MissingRedeemerScriptSourcesControlV1Schema as never,
+    MissingRedeemerScriptSourcesControlSchema as never,
   ) as Control;
 };
 
 const machineState = (
   state: Retained["machine_state"],
-): MidgardValidationMachineStateV1 => {
+): MidgardValidationMachineState => {
   if (state.phase !== "ScriptSources")
     throw new Error("unusedScriptWitness retained machine phase changed");
   const version = exactNumber(state.machine_version, "machine version");
@@ -256,7 +256,7 @@ const machineState = (
 const coreFrontier = (
   count: bigint,
   peaks: readonly { height: bigint; hash: string }[],
-): MidgardValidationMerkleFrontierV1 => ({
+): MidgardValidationMerkleFrontier => ({
   count: exactNumber(count, "frontier count"),
   peaks: peaks.map(({ height, hash }) => ({
     height: exactNumber(height, "frontier height"),
@@ -265,7 +265,7 @@ const coreFrontier = (
 });
 
 /** Strict, callback-free reconstruction of the complete stage-12 universe. */
-export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
+export const buildUnusedScriptWitnessDirectionControlFromRetainedDa = async ({
   eventKey,
   transactionId,
   direction,
@@ -298,13 +298,13 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
     );
   const descriptorData = Data.from(
     descriptorMatches[0]!.value.toString("hex"),
-    ValidationTraceDescriptorV1Schema,
-  ) as unknown as import("@al-ft/midgard-sdk").ValidationTraceDescriptorV1;
+    ValidationTraceDescriptorSchema,
+  ) as unknown as import("@al-ft/midgard-sdk").ValidationTraceDescriptor;
   const descriptor = validationTraceDescriptorCoreFromData(descriptorData);
   const eventEntries = retainedValidationWitnessEntries
     .map((entry) => ({
-      key: decodeRetainedValidationWitnessKeyV1(entry.key),
-      retained: decodeRetainedValidationWitnessV1(entry.value),
+      key: decodeRetainedValidationWitnessKey(entry.key),
+      retained: decodeRetainedValidationWitness(entry.value),
     }))
     .filter(({ key }) =>
       Buffer.from(
@@ -328,12 +328,12 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
         retained.program_counter !== retained.machine_state.program_counter ||
         state.transactionId.toString("hex") !== transactionId ||
         !state.eventKeyHash.equals(
-          hashMidgardValidationEventKeyV1(eventKeyCbor),
+          hashMidgardValidationEventKey(eventKeyCbor),
         ) ||
-        !hashMidgardValidationMachineStateV1(state).equals(proof.stateHash) ||
-        !verifyMidgardValidationTraceProofV1({ descriptor, proof }) ||
+        !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
+        !verifyMidgardValidationTraceProof({ descriptor, proof }) ||
         !state.workRoot.equals(
-          hashMidgardValidationWorkWitnessV1({
+          hashMidgardValidationWorkWitness({
             phase: "scriptSources",
             programCounter: state.programCounter,
             witnessCbor: Buffer.from(retained.witness_cbor, "hex"),
@@ -347,7 +347,7 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
     });
   const terminals = validated.flatMap(({ retained }) => {
     try {
-      const control = decodeUnusedScriptWitnessDirectionControlV1(
+      const control = decodeUnusedScriptWitnessDirectionControl(
         Buffer.from(retained.witness_cbor, "hex"),
       );
       const auxiliary = retained.auxiliary;
@@ -429,7 +429,7 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
         );
       const leaf =
         originKind === 0
-          ? hashMidgardInlineScriptSourceLeafV1({
+          ? hashMidgardInlineScriptSourceLeaf({
               sourceIndex: BigInt(sourceIndex),
               scriptLanguageTag: languageTag,
               scriptHash: Buffer.from(source.script_hash, "hex"),
@@ -439,7 +439,7 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
               ),
               itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
             })
-          : hashMidgardReferenceScriptSourceLeafV1({
+          : hashMidgardReferenceScriptSourceLeaf({
               sourceKey: Buffer.from(source.source_key, "hex"),
               scriptLanguageTag: languageTag,
               scriptHash: Buffer.from(source.script_hash, "hex"),
@@ -450,7 +450,7 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
               itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
             });
       if (
-        !verifyMidgardValidationMerkleMembershipV1({
+        !verifyMidgardValidationMerkleMembership({
           frontier: coreFrontier(control.source_count, control.source_peaks),
           leafIndex: sourceIndex,
           leafHash: leaf,
@@ -472,7 +472,7 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
         ),
         itemCommitmentHex: source.script_item_commitment,
         siblings: source.siblings,
-      } as RetainedUnusedScriptSourceV1;
+      } as RetainedUnusedScriptSource;
     },
   );
 
@@ -498,14 +498,14 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
     )
       throw new Error("unusedScriptWitness retained purpose kind changed");
     const purposeIndex = exactNumber(purpose.purpose_index, "purpose index");
-    const leaf = hashMidgardScriptPurposeLeafV1({
+    const leaf = hashMidgardScriptPurposeLeaf({
       purposeKind,
       purposeIndex: BigInt(purposeIndex),
       scriptHash: Buffer.from(purpose.script_hash, "hex"),
       subject: Buffer.from(purpose.subject, "hex"),
     });
     if (
-      !verifyMidgardValidationMerkleMembershipV1({
+      !verifyMidgardValidationMerkleMembership({
         frontier: coreFrontier(control.purpose_count, control.purpose_peaks),
         leafIndex: frontierIndex,
         leafHash: leaf,
@@ -522,7 +522,7 @@ export const buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 = async ({
       scriptHashHex: purpose.script_hash,
       purposeSubjectHex: purpose.subject,
       siblings: purpose.siblings,
-    } as RetainedUnusedScriptPurposeV1;
+    } as RetainedUnusedScriptPurpose;
   });
 
   const root = await buildCountedRoot(

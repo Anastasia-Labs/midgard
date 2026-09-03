@@ -5,22 +5,22 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
 import {
-  SpendInputSignerStep01RedeemerV1Schema,
-  SpendInputSignerStep02DatumV1Schema,
+  SpendInputSignerStep01RedeemerSchema,
+  SpendInputSignerStep02DatumSchema,
 } from "./schemas-v1.js";
 import {
-  classifySpendInputSignerMissingFindingV1,
-  type SpendInputSignerMissingEvidenceV1,
+  classifySpendInputSignerMissingFinding,
+  type SpendInputSignerMissingEvidence,
 } from "./spend-input-signer-missing-v1.js";
 
-export const submitSpendInputSignerMissingStep01AcceptedV1 = async ({
+export const submitSpendInputSignerMissingStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -39,9 +39,9 @@ export const submitSpendInputSignerMissingStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: SpendInputSignerMissingContractsV1;
+  readonly contracts: SpendInputSignerMissingContracts;
   readonly signer: ResolvedProverSigner;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -50,11 +50,11 @@ export const submitSpendInputSignerMissingStep01AcceptedV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifySpendInputSignerMissingFindingV1(evidence);
+  classifySpendInputSignerMissingFinding(evidence);
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -65,9 +65,9 @@ export const submitSpendInputSignerMissingStep01AcceptedV1 = async ({
         witness_set_hash: evidence.witnessSetHashHex,
       },
     } as never,
-    SpendInputSignerStep02DatumV1Schema as never,
+    SpendInputSignerStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -79,7 +79,7 @@ export const submitSpendInputSignerMissingStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum,
-    spendRedeemerSchema: SpendInputSignerStep01RedeemerV1Schema,
+    spendRedeemerSchema: SpendInputSignerStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {

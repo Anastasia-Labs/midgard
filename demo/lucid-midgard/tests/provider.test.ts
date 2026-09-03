@@ -1,15 +1,15 @@
 import {
-  decodeMidgardProofSubmissionV1,
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekTermNodeV1,
+  decodeMidgardProofSubmission,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -32,14 +32,14 @@ const outRef: OutRef = {
   txHash: "11".repeat(32),
   outputIndex: 0,
 };
-const deploymentMarker = makeDeploymentMarkerV1("ab".repeat(32));
+const deploymentMarker = makeDeploymentMarker("ab".repeat(32));
 
 const protocolInfo: MidgardProtocolInfo = {
   apiVersion: 1,
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: 123456n,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   deploymentMarker,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -49,7 +49,7 @@ const protocolInfo: MidgardProtocolInfo = {
   },
   submissionLimits: {
     maxSubmitTxCborBytes:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -62,7 +62,7 @@ const protocolInfoJson = {
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: "123456",
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   deploymentMarker,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -72,7 +72,7 @@ const protocolInfoJson = {
   },
   submissionLimits: {
     maxSubmitTxCborBytes:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -97,18 +97,16 @@ const submitTxHex =
   "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000";
 const submitTx = {
   txHex: submitTxHex,
-  txId: computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      Buffer.from(submitTxHex, "hex"),
-    ),
+  txId: computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(Buffer.from(submitTxHex, "hex")),
   ).toString("hex"),
 };
 const submitProgramTerm = { kind: "error" } as const;
 const submitProgramMaterial = [
   {
     kind: "term" as const,
-    root: hashMidgardCekTermNodeV1(submitProgramTerm),
-    preimage: encodeMidgardCekTermNodeV1(submitProgramTerm),
+    root: hashMidgardCekTermNode(submitProgramTerm),
+    preimage: encodeMidgardCekTermNode(submitProgramTerm),
   },
 ];
 
@@ -156,7 +154,7 @@ describe("MidgardNodeProvider", () => {
 
     await expect(provider.getProtocolInfo()).resolves.toMatchObject({
       apiVersion: 1,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       deploymentMarker,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     });
@@ -167,7 +165,7 @@ describe("MidgardNodeProvider", () => {
           jsonResponse({
             ...v1ProtocolInfoJson,
             consensusProfile: {
-              ...MIDGARD_CONSENSUS_PROFILE_V1,
+              ...MIDGARD_CONSENSUS_PROFILE,
               protocolVersion: 2,
             },
           }),
@@ -320,7 +318,7 @@ describe("MidgardNodeProvider", () => {
       networkId: 0n,
       deploymentManifestId: deploymentMarker.manifestId,
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     });
     expect(provider.diagnostics().protocolInfoSource).toBe("node");
   });
@@ -443,7 +441,7 @@ describe("MidgardNodeProvider", () => {
 
   it("accepts a lower bounded submit cap from protocol-info", async () => {
     const maxSubmitTxCborBytes =
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1;
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes - 1;
     const provider = await MidgardNodeProvider.create({
       endpoint: "http://127.0.0.1:3000",
       fetch: async () =>
@@ -465,7 +463,7 @@ describe("MidgardNodeProvider", () => {
       {
         ...protocolInfoJson,
         consensusProfile: {
-          ...MIDGARD_CONSENSUS_PROFILE_V1,
+          ...MIDGARD_CONSENSUS_PROFILE,
           protocolVersion: 99,
         },
       },
@@ -473,7 +471,7 @@ describe("MidgardNodeProvider", () => {
         ...protocolInfoJson,
         submissionLimits: {
           maxSubmitTxCborBytes:
-            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes + 1,
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes + 1,
         },
       },
       {
@@ -625,7 +623,7 @@ describe("MidgardNodeProvider", () => {
         init?.body instanceof Uint8Array
           ? Buffer.from(init.body)
           : Buffer.from(await new Response(init?.body).arrayBuffer());
-      const submission = decodeMidgardProofSubmissionV1(body);
+      const submission = decodeMidgardProofSubmission(body);
       expect(submission.transactionCbor.toString("hex")).toBe(submitTx.txHex);
       expect(submission.programMaterial).toEqual(submitProgramMaterial);
       submittedBodies.push(submission.transactionCbor.toString("hex"));

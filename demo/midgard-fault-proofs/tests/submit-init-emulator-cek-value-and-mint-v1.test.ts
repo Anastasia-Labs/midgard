@@ -3,8 +3,8 @@ import { PROTOCOL_PARAMETERS_DEFAULT, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  validationResolverIndexV1,
-  validationSemanticResolverGlobalIndexV1,
+  validationResolverIndex,
+  validationSemanticResolverGlobalIndex,
 } from "../src/index.js";
 import {
   buildForgedOperatorSuccessorValidationDisputeFixture,
@@ -54,7 +54,7 @@ describe("validation-dispute journeys through the cek and ValueAndMint decomposi
           }),
       );
       const { fixture, lowIndex, highIndex } = result;
-      const resolverIndex = validationResolverIndexV1(resolverName);
+      const resolverIndex = validationResolverIndex(resolverName);
 
       // The bisection landed on exactly the forged boundary: the honest
       // pre-state is the first state of the disputed phase and the operator's
@@ -83,7 +83,7 @@ describe("validation-dispute journeys through the cek and ValueAndMint decomposi
       );
       expect(
         Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics)[
-          validationSemanticResolverGlobalIndexV1(
+          validationSemanticResolverGlobalIndex(
             resolverIndex,
             semanticResolverIndex,
           )

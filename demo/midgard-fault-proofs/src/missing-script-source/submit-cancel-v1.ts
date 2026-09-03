@@ -1,17 +1,17 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
-import type { MissingScriptSourceContractsV1 } from "./contracts-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
+import type { MissingScriptSourceContracts } from "./contracts-v1.js";
 
 const FAMILY = "missing-script-source";
-export const submitMissingScriptSourceCancelV1 = async (
+export const submitMissingScriptSourceCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
   > & {
-    readonly contracts: MissingScriptSourceContractsV1;
+    readonly contracts: MissingScriptSourceContracts;
   },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: FAMILY,
     steps: contracts.steps,

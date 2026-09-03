@@ -34,13 +34,13 @@ import {
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
 import {
-  buildMintAuthorizationLedgerFixtureV1,
-  buildMintAuthorizationSubjectV1,
-  makeMintAuthorizationEmulatorHarnessV1,
-  publishMintAuthorizationReferenceScriptsV1,
-  referenceInputItemCborV1,
-  setupMintAuthorizationScenarioV1,
-  smallMintItemCborsV1,
+  buildMintAuthorizationLedgerFixture,
+  buildMintAuthorizationSubject,
+  makeMintAuthorizationEmulatorHarness,
+  publishMintAuthorizationReferenceScripts,
+  referenceInputItemCbor,
+  setupMintAuthorizationScenario,
+  smallMintItemCbors,
 } from "./support/mint-authorization-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -49,12 +49,11 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
-const DIRECTION_SCRIPT_ABSENT =
-  SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1;
+const DIRECTION_SCRIPT_ABSENT = SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT;
 
 describe("mint-authorization direction-A emulator lifecycle", () => {
   it("proves an absent mint policy end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1();
+    const harness = await makeMintAuthorizationEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -65,10 +64,10 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       category,
     } = harness;
 
-    const subject = buildMintAuthorizationSubjectV1({
-      mintItemCbors: smallMintItemCborsV1(),
+    const subject = buildMintAuthorizationSubject({
+      mintItemCbors: smallMintItemCbors(),
     });
-    const scenario = await setupMintAuthorizationScenarioV1({
+    const scenario = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -85,7 +84,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
         contracts: harness.contracts,
       });
     const [step01Ref, step02Ref, step03Ref, step04Ref, step05Ref] =
-      await publishMintAuthorizationReferenceScriptsV1({
+      await publishMintAuthorizationReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -290,7 +289,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
   }, 600_000);
 
   it("scans one reference input through the step-04 ResolveNext self-loop, then finalizes", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1();
+    const harness = await makeMintAuthorizationEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -306,20 +305,20 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
     // accused policy so the absence claim holds.
     const refTxId = "cd".repeat(32);
     const refOutputIndex = 2;
-    const ledger = await buildMintAuthorizationLedgerFixtureV1({
+    const ledger = await buildMintAuthorizationLedgerFixture({
       txIdHex: refTxId,
       outputIndex: refOutputIndex,
     });
-    const subject = buildMintAuthorizationSubjectV1({
-      mintItemCbors: smallMintItemCborsV1(),
+    const subject = buildMintAuthorizationSubject({
+      mintItemCbors: smallMintItemCbors(),
       referenceInputItemCbors: [
-        referenceInputItemCborV1({
+        referenceInputItemCbor({
           txIdHex: refTxId,
           outputIndex: refOutputIndex,
         }),
       ],
     });
-    const scenario = await setupMintAuthorizationScenarioV1({
+    const scenario = await setupMintAuthorizationScenario({
       harness,
       subject,
       priorLedgerRoot: ledger.rootHex,
@@ -329,7 +328,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       throw new Error("normal mint-authorization fixture has no inclusion");
     }
     const [step01Ref, step02Ref, step03Ref, step04Ref, step05Ref] =
-      await publishMintAuthorizationReferenceScriptsV1({
+      await publishMintAuthorizationReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });

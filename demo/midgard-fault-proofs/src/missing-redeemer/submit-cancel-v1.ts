@@ -1,15 +1,15 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
-import type { MissingRedeemerContractsV1 } from "./contracts-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
+import type { MissingRedeemerContracts } from "./contracts-v1.js";
 
 /** Burns the computation thread through the shared cancellation protocol. */
-export const submitMissingRedeemerCancelV1 = async (
+export const submitMissingRedeemerCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
-  > & { readonly contracts: MissingRedeemerContractsV1 },
+  > & { readonly contracts: MissingRedeemerContracts },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: "missing-redeemer",
     steps: contracts.steps,

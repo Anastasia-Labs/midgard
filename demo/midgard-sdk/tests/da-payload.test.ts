@@ -1,30 +1,30 @@
 import {
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
-  MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1,
-  MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1,
-  MIDGARD_MAX_DA_PAYLOAD_BYTES_V1,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
+  MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES,
+  MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
+  MIDGARD_MAX_DA_PAYLOAD_BYTES,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
 
 import {
-  DA_PAYLOAD_V1_VERSION,
+  DA_PAYLOAD_VERSION,
+  DaPayload,
+  type DaPayload as DaPayloadType,
+  daPayloadEncodedSize,
+  daPayloadEncodedSizeFromUtxoAggregate,
   daPayloadEntriesEncodedSizeFromAggregate,
   type DaPayloadEntry,
   daPayloadEntryEncodedSize,
-  DaPayloadV1,
-  type DaPayloadV1 as DaPayloadV1Type,
-  daPayloadV1EncodedSize,
-  daPayloadV1EncodedSizeFromUtxoAggregate,
-  decodeDaPayloadV1,
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  decodeDaPayload,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
-  encodeRetainedValidationWitnessKeyV1,
-  encodeRetainedValidationWitnessV1,
+  encodeDaPayload,
+  encodeRetainedValidationWitness,
+  encodeRetainedValidationWitnessKey,
 } from "../src/index.js";
 
 const bytes = (value: number, length: number): string =>
@@ -36,7 +36,7 @@ const entries = (seed: number, count: number): DaPayloadEntry[] =>
     bytes((seed * 3 + index) % 256, index % 2 === 0 ? 0 : 40 + index),
   ]);
 
-const payload = (seed: number): DaPayloadV1Type => {
+const payload = (seed: number): DaPayloadType => {
   const utxos = entries(seed, seed % 4);
   const withdrawals = entries(seed + 1, (seed + 1) % 3);
   const forcedTransactions = entries(seed + 2, (seed + 2) % 3);
@@ -66,7 +66,7 @@ const payload = (seed: number): DaPayloadV1Type => {
     validationTraceCount: BigInt(validationTraces.length),
   };
   return {
-    version: DA_PAYLOAD_V1_VERSION,
+    version: DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: bytes(seed, 28),
       header: {
@@ -107,7 +107,7 @@ const payload = (seed: number): DaPayloadV1Type => {
   };
 };
 
-const emptyPayload = (): DaPayloadV1Type => {
+const emptyPayload = (): DaPayloadType => {
   const value = payload(0);
   const counts = {
     withdrawalCount: 0n,
@@ -119,7 +119,7 @@ const emptyPayload = (): DaPayloadV1Type => {
     validationTraceCount: 0n,
   };
   return {
-    version: DA_PAYLOAD_V1_VERSION,
+    version: DA_PAYLOAD_VERSION,
     block_body: {
       ...value.block_body,
       header: {
@@ -193,24 +193,24 @@ describe("DaPayloadV1 canonical codec", () => {
       witness_cbor: "80",
       auxiliary: "NoAuxiliaryWitness" as const,
     };
-    const keyCbor = encodeRetainedValidationWitnessKeyV1(key);
-    const valueCbor = encodeRetainedValidationWitnessV1(value);
-    expect(decodeRetainedValidationWitnessKeyV1(keyCbor)).toEqual(key);
-    expect(decodeRetainedValidationWitnessV1(valueCbor)).toEqual(value);
+    const keyCbor = encodeRetainedValidationWitnessKey(key);
+    const valueCbor = encodeRetainedValidationWitness(value);
+    expect(decodeRetainedValidationWitnessKey(keyCbor)).toEqual(key);
+    expect(decodeRetainedValidationWitness(valueCbor)).toEqual(value);
     const withWitness = payload(1);
     withWitness.block_body.validation_trace_witnesses = [
       [keyCbor.toString("hex"), valueCbor.toString("hex")],
     ];
-    expect(daPayloadV1EncodedSize(withWitness)).toBe(
-      encodeDaPayloadV1(withWitness).length,
+    expect(daPayloadEncodedSize(withWitness)).toBe(
+      encodeDaPayload(withWitness).length,
     );
   });
 
   it("pins the exact V1 body/count field order and constructor arities", () => {
     const value = emptyPayload();
-    const encoded = encodeDaPayloadV1(value);
+    const encoded = encodeDaPayload(value);
 
-    expect(encoded).toEqual(Buffer.from(Data.to(value, DaPayloadV1), "hex"));
+    expect(encoded).toEqual(Buffer.from(Data.to(value, DaPayload), "hex"));
     expect(encoded).toHaveLength(446);
     expect(Buffer.from(sha256(encoded)).toString("hex")).toBe(
       "e033dde650d6160e438b2b061adc17d481260f95b875eb8634a6eeefb7f23b71",
@@ -223,7 +223,7 @@ describe("DaPayloadV1 canonical codec", () => {
         Buffer.from([0]),
         encoded.subarray(insertion),
       ]);
-      expect(() => decodeDaPayloadV1(extraField)).toThrow(
+      expect(() => decodeDaPayload(extraField)).toThrow(
         /unexpected CBOR framing/u,
       );
     }
@@ -232,11 +232,11 @@ describe("DaPayloadV1 canonical codec", () => {
   it("uses the newest payload shape and is byte-identical to its schema", () => {
     for (let seed = 0; seed < 20; seed += 1) {
       const value = payload(seed);
-      const expected = Buffer.from(Data.to(value, DaPayloadV1), "hex");
-      const encoded = encodeDaPayloadV1(value);
+      const expected = Buffer.from(Data.to(value, DaPayload), "hex");
+      const encoded = encodeDaPayload(value);
       expect(encoded).toEqual(expected);
-      expect(daPayloadV1EncodedSize(value)).toBe(encoded.length);
-      expect(decodeDaPayloadV1(encoded)).toEqual(value);
+      expect(daPayloadEncodedSize(value)).toBe(encoded.length);
+      expect(decodeDaPayload(encoded)).toEqual(value);
     }
   });
 
@@ -247,11 +247,11 @@ describe("DaPayloadV1 canonical codec", () => {
       0,
     );
     expect(
-      daPayloadV1EncodedSizeFromUtxoAggregate(value, {
+      daPayloadEncodedSizeFromUtxoAggregate(value, {
         entryCount: value.block_body.utxos.length,
         encodedTupleBytes,
       }),
-    ).toBe(encodeDaPayloadV1(value).length);
+    ).toBe(encodeDaPayload(value).length);
     expect(() =>
       daPayloadEntriesEncodedSizeFromAggregate({
         entryCount: 0,
@@ -262,13 +262,13 @@ describe("DaPayloadV1 canonical codec", () => {
 
   it("fails closed on every version other than 1", () => {
     const value = payload(1);
-    expect(() => encodeDaPayloadV1({ ...value, version: 23n })).toThrow(
+    expect(() => encodeDaPayload({ ...value, version: 23n })).toThrow(
       /version must equal 1/u,
     );
-    const encoded = encodeDaPayloadV1(value);
+    const encoded = encodeDaPayload(value);
     const wrongVersion = Buffer.from(encoded);
     wrongVersion[3] = 23;
-    expect(() => decodeDaPayloadV1(wrongVersion)).toThrow(
+    expect(() => decodeDaPayload(wrongVersion)).toThrow(
       /version must equal 1/u,
     );
   });
@@ -280,7 +280,7 @@ describe("DaPayloadV1 canonical codec", () => {
       0xffff_ffff_ffff_ffffn,
     ]) {
       expect(() =>
-        encodeDaPayloadV1({
+        encodeDaPayload({
           ...base,
           block_body: {
             ...base.block_body,
@@ -294,7 +294,7 @@ describe("DaPayloadV1 canonical codec", () => {
       0x1_0000_0000_0000_0000n,
     ]) {
       expect(() =>
-        encodeDaPayloadV1({
+        encodeDaPayload({
           ...base,
           block_body: {
             ...base.block_body,
@@ -308,15 +308,15 @@ describe("DaPayloadV1 canonical codec", () => {
   it("rejects malformed fields and non-canonical framing", () => {
     const value = payload(1);
     expect(() =>
-      encodeDaPayloadV1({
+      encodeDaPayload({
         ...value,
         block_body: { ...value.block_body, header_hash: "not-hex" },
       }),
     ).toThrow("even-length hexadecimal");
 
-    const canonical = encodeDaPayloadV1(value);
+    const canonical = encodeDaPayload(value);
     expect(() =>
-      decodeDaPayloadV1(
+      decodeDaPayload(
         replaceFirst(
           canonical,
           Buffer.from([0xd8, 0x79, 0x9f, 0x01]),
@@ -327,7 +327,7 @@ describe("DaPayloadV1 canonical codec", () => {
 
     const shortBytes = Buffer.from(value.block_body.header_hash, "hex");
     expect(() =>
-      decodeDaPayloadV1(
+      decodeDaPayload(
         replaceFirst(
           canonical,
           Buffer.concat([Buffer.from([0x58, 0x1c]), shortBytes]),
@@ -345,7 +345,7 @@ describe("DaPayloadV1 canonical codec", () => {
     const empty = emptyPayload();
     const minimumMaterialEntry: DaPayloadEntry = [bytes(0, 32), "8301004100"];
     const tupleBytes = daPayloadEntryEncodedSize(minimumMaterialEntry);
-    const nonEmptyBytes = daPayloadV1EncodedSize({
+    const nonEmptyBytes = daPayloadEncodedSize({
       ...empty,
       block_body: {
         ...empty.block_body,
@@ -353,24 +353,24 @@ describe("DaPayloadV1 canonical codec", () => {
       },
     });
 
-    expect(daPayloadV1EncodedSize(empty)).toBe(446);
-    expect(tupleBytes).toBe(MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1);
+    expect(daPayloadEncodedSize(empty)).toBe(446);
+    expect(tupleBytes).toBe(MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES);
     expect(nonEmptyBytes).toBe(
-      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1 + tupleBytes,
+      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES + tupleBytes,
     );
-    expect(MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1).toBe(
+    expect(MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT).toBe(
       BigInt(
         Math.floor(
-          (MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 -
-            MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1) /
+          (MIDGARD_MAX_DA_PAYLOAD_BYTES -
+            MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES) /
             tupleBytes,
         ),
       ),
     );
-    expect(MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1).toBe(
+    expect(MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES).toBe(
       BigInt(
-        MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 -
-          MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1,
+        MIDGARD_MAX_DA_PAYLOAD_BYTES -
+          MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES,
       ),
     );
   });

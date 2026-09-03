@@ -23,23 +23,23 @@
  * a window chunk outside the item, a face that is actually in-domain.
  */
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
   computeHash32,
-  encodeMidgardSpendInputItemV1,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  midgardBoundedItemChunkCountV1,
-  type MidgardBoundedItemChunkProofV1,
-  type MidgardNativeScriptScanFrameV1,
+  encodeMidgardSpendInputItem,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  midgardBoundedItemChunkCount,
+  type MidgardBoundedItemChunkProof,
+  type MidgardNativeScriptScanFrame,
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
-  MIDGARD_FIELD_INDEX_V1,
-  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1,
-  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
-  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1,
+  MIDGARD_FIELD_INDEX,
+  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE,
+  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
+  NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT,
   Proof,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -52,8 +52,8 @@ import {
 } from "../transition-trace/witnesses.js";
 import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts-v1.js";
 import type {
-  NativeScriptDecodingPlanWindowV1,
-  NativeScriptDecodingScanSegmentPlanV1,
+  NativeScriptDecodingPlanWindow,
+  NativeScriptDecodingScanSegmentPlan,
 } from "./scan-plan-v1.js";
 
 const evidenceError = (message: string): Error =>
@@ -65,7 +65,7 @@ const evidenceError = (message: string): Error =>
  * Twin of `encode_midgard_tx_input` — the §5.3 fixed 38-byte spend-input
  * item IS the ledger trie's key for the outpoint.
  */
-export const nativeScriptDecodingOutpointKeyV1 = ({
+export const nativeScriptDecodingOutpointKey = ({
   txIdHex,
   outputIndex,
 }: {
@@ -77,14 +77,14 @@ export const nativeScriptDecodingOutpointKeyV1 = ({
       "accused outpoint tx id must be 32 bytes of lowercase hex",
     );
   }
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: Buffer.from(txIdHex, "hex"),
     outputIndex,
   });
 };
 
 /** `blake2b_256` of the key bytes — the thread state's `outpoint_key_hash`. */
-export const nativeScriptDecodingOutpointKeyHashV1 = (
+export const nativeScriptDecodingOutpointKeyHash = (
   outpointKey: Buffer,
 ): string => computeHash32(outpointKey).toString("hex");
 
@@ -92,16 +92,14 @@ export const nativeScriptDecodingOutpointKeyHashV1 = (
  * The §2.5 field the accused pair names: `outpoint_source_kind` 0 reads the
  * spend inputs, 1 the reference inputs.
  */
-export const nativeScriptDecodingSubjectFieldIndexV1 = (
+export const nativeScriptDecodingSubjectFieldIndex = (
   outpointSourceKind: bigint,
 ): number => {
-  if (outpointSourceKind === NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1) {
-    return MIDGARD_FIELD_INDEX_V1.spendInputs;
+  if (outpointSourceKind === NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND) {
+    return MIDGARD_FIELD_INDEX.spendInputs;
   }
-  if (
-    outpointSourceKind === NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1
-  ) {
-    return MIDGARD_FIELD_INDEX_V1.referenceInputs;
+  if (outpointSourceKind === NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE) {
+    return MIDGARD_FIELD_INDEX.referenceInputs;
   }
   throw evidenceError(
     `outpoint source kind ${outpointSourceKind.toString()} names no §2.5 field`,
@@ -116,7 +114,7 @@ export const nativeScriptDecodingSubjectFieldIndexV1 = (
  * (the watcher's block replay, or a test's hand-built trie) — the handle is
  * structural precisely so this package depends on neither.
  */
-export type NativeScriptDecodingLedgerTrieHandleV1 = {
+export type NativeScriptDecodingLedgerTrieHandle = {
   /** The trie's current root, 32 bytes of hex. */
   readonly rootHex: string;
   /** MPF membership-proof CBOR for the key; must throw when absent. */
@@ -130,12 +128,12 @@ export type NativeScriptDecodingLedgerTrieHandleV1 = {
  * a proof from any other tree would abort on-chain after the thread's
  * unrepeatable bind.
  */
-export const buildNativeScriptDecodingLedgerMembershipV1 = async ({
+export const buildNativeScriptDecodingLedgerMembership = async ({
   trie,
   outpointKey,
   priorLedgerRootHex,
 }: {
-  readonly trie: NativeScriptDecodingLedgerTrieHandleV1;
+  readonly trie: NativeScriptDecodingLedgerTrieHandle;
   readonly outpointKey: Buffer;
   readonly priorLedgerRootHex: string;
 }): Promise<SDK.Proof> => {
@@ -152,10 +150,10 @@ export const buildNativeScriptDecodingLedgerMembershipV1 = async ({
 
 // ## Bounded-item chunk proofs, in wire shape
 
-/** Core chunk proof → the `BoundedItemChunkProofV1` wire value. */
-export const nativeScriptDecodingChunkProofDataV1 = (
-  proof: MidgardBoundedItemChunkProofV1,
-): SDK.BoundedItemChunkProofV1 => ({
+/** Core chunk proof → the `BoundedItemChunkProof` wire value. */
+export const nativeScriptDecodingChunkProofData = (
+  proof: MidgardBoundedItemChunkProof,
+): SDK.BoundedItemChunkProof => ({
   version: BigInt(proof.version),
   field_index: BigInt(proof.fieldIndex),
   item_index: BigInt(proof.itemIndex),
@@ -175,7 +173,7 @@ export const nativeScriptDecodingChunkProofDataV1 = (
  * One authenticated chunk of the accused reference-script item, ready for a
  * redeemer's `chunk_proof` slots.
  */
-export const buildNativeScriptDecodingChunkProofV1 = ({
+export const buildNativeScriptDecodingChunkProof = ({
   fieldIndex,
   itemIndex,
   itemBytes,
@@ -185,16 +183,16 @@ export const buildNativeScriptDecodingChunkProofV1 = ({
   readonly itemIndex: number;
   readonly itemBytes: Uint8Array;
   readonly chunkIndex: number;
-}): SDK.BoundedItemChunkProofV1 => {
-  const chunkCount = midgardBoundedItemChunkCountV1(itemBytes.length);
+}): SDK.BoundedItemChunkProof => {
+  const chunkCount = midgardBoundedItemChunkCount(itemBytes.length);
   if (chunkIndex < 0 || chunkIndex >= chunkCount) {
     throw evidenceError(
       `chunk ${chunkIndex.toString()} is outside the item's ${chunkCount.toString()} chunks`,
     );
   }
-  return nativeScriptDecodingChunkProofDataV1(
-    buildMidgardBoundedItemChunkProofV1(
-      buildMidgardBoundedItemV1({
+  return nativeScriptDecodingChunkProofData(
+    buildMidgardBoundedItemChunkProof(
+      buildMidgardBoundedItem({
         fieldIndex,
         itemIndex,
         bytes: Buffer.from(itemBytes),
@@ -212,32 +210,32 @@ export const buildNativeScriptDecodingChunkProofV1 = ({
  * whenever the item has one (`needNext`). A windowless plan carries `null`
  * in both slots.
  */
-export const nativeScriptDecodingWindowProofsV1 = ({
+export const nativeScriptDecodingWindowProofs = ({
   window,
   fieldIndex,
   itemIndex,
   itemBytes,
 }: {
-  readonly window: NativeScriptDecodingPlanWindowV1 | null;
+  readonly window: NativeScriptDecodingPlanWindow | null;
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly itemBytes: Uint8Array;
 }): {
-  readonly chunk_proof: SDK.BoundedItemChunkProofV1 | null;
-  readonly next_chunk_proof: SDK.BoundedItemChunkProofV1 | null;
+  readonly chunk_proof: SDK.BoundedItemChunkProof | null;
+  readonly next_chunk_proof: SDK.BoundedItemChunkProof | null;
 } => {
   if (window === null) {
     return { chunk_proof: null, next_chunk_proof: null };
   }
   return {
-    chunk_proof: buildNativeScriptDecodingChunkProofV1({
+    chunk_proof: buildNativeScriptDecodingChunkProof({
       fieldIndex,
       itemIndex,
       itemBytes,
       chunkIndex: window.chunkIndex,
     }),
     next_chunk_proof: window.needNext
-      ? buildNativeScriptDecodingChunkProofV1({
+      ? buildNativeScriptDecodingChunkProof({
           fieldIndex,
           itemIndex,
           itemBytes,
@@ -247,10 +245,10 @@ export const nativeScriptDecodingWindowProofsV1 = ({
   };
 };
 
-/** Engine-twin frame witness → the `NativeScriptFrameV1` wire value. */
-export const nativeScriptDecodingFrameDataV1 = (
-  frame: MidgardNativeScriptScanFrameV1,
-): SDK.NativeScriptFrameV1 => ({
+/** Engine-twin frame witness → the `NativeScriptFrame` wire value. */
+export const nativeScriptDecodingFrameData = (
+  frame: MidgardNativeScriptScanFrame,
+): SDK.NativeScriptFrame => ({
   tail: Buffer.from(frame.tail).toString("hex"),
   kind: BigInt(frame.kind),
   child_count: BigInt(frame.childCount),
@@ -263,31 +261,31 @@ export const nativeScriptDecodingFrameDataV1 = (
  * Everything a `Scan` redeemer carries besides its positional indices, from
  * one planned segment.
  */
-export const nativeScriptDecodingScanArgsEvidenceV1 = ({
+export const nativeScriptDecodingScanArgsEvidence = ({
   segment,
   fieldIndex,
   itemIndex,
   itemBytes,
 }: {
-  readonly segment: NativeScriptDecodingScanSegmentPlanV1;
+  readonly segment: NativeScriptDecodingScanSegmentPlan;
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly itemBytes: Uint8Array;
 }): {
   readonly control_cbor: string;
-  readonly chunk_proof: SDK.BoundedItemChunkProofV1 | null;
-  readonly next_chunk_proof: SDK.BoundedItemChunkProofV1 | null;
-  readonly frames: readonly SDK.NativeScriptFrameV1[];
+  readonly chunk_proof: SDK.BoundedItemChunkProof | null;
+  readonly next_chunk_proof: SDK.BoundedItemChunkProof | null;
+  readonly frames: readonly SDK.NativeScriptFrame[];
   readonly step_budget: bigint;
 } => ({
   control_cbor: segment.controlBefore.cborHex,
-  ...nativeScriptDecodingWindowProofsV1({
+  ...nativeScriptDecodingWindowProofs({
     window: segment.window,
     fieldIndex,
     itemIndex,
     itemBytes,
   }),
-  frames: segment.frames.map(nativeScriptDecodingFrameDataV1),
+  frames: segment.frames.map(nativeScriptDecodingFrameData),
   step_budget: BigInt(segment.stepBudget),
 });
 
@@ -299,19 +297,19 @@ export const nativeScriptDecodingScanArgsEvidenceV1 = ({
  * rather than by a caller-supplied index, so the two proofs cannot name
  * different steps; `forced_membership` exists exactly for forced threads.
  */
-export const buildNativeScriptDecodingStep02EvidenceV1 = async ({
+export const buildNativeScriptDecodingStep02Evidence = async ({
   reconstruction,
   eventKey,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
 }): Promise<{
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly eventToStepMembership: SDK.EventToStepMembershipProof;
   readonly transitionStepMembership: SDK.IndexedTraceProof;
   readonly forcedMembership: SDK.RootMembershipProof<
     SDK.OutputReference,
-    SDK.ForcedInclusionTxV1
+    SDK.ForcedInclusionTx
   > | null;
 }> => {
   const eventToStepMembership = await buildEventToStepMembershipProof({
@@ -341,7 +339,7 @@ export const buildNativeScriptDecodingStep02EvidenceV1 = async ({
  * The accusation a decoding-family rejection makes: its refusal class and the
  * accused `(source_kind, ordinal)` pair.
  */
-export type NativeScriptDecodingScanAccusationV1 = {
+export type NativeScriptDecodingScanAccusation = {
   readonly scanReasonClass: bigint;
   readonly outpointSourceKind: bigint;
   readonly outpointCursor: bigint;
@@ -355,16 +353,16 @@ export type NativeScriptDecodingScanAccusationV1 = {
  * out-of-domain pair is OpenSubject's direction-B close, not a refusal
  * here.
  */
-export const nativeScriptDecodingScanAccusationOfV1 = (
-  reason: SDK.RejectionReasonV1,
-): NativeScriptDecodingScanAccusationV1 => {
+export const nativeScriptDecodingScanAccusationOf = (
+  reason: SDK.RejectionReason,
+): NativeScriptDecodingScanAccusation => {
   if (
     typeof reason === "object" &&
     "ResolvedReferenceScriptMalformed" in reason
   ) {
     const arm = reason.ResolvedReferenceScriptMalformed;
     return {
-      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED_V1,
+      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
       outpointSourceKind: arm.source_kind,
       outpointCursor: arm.input_index,
     };
@@ -375,7 +373,7 @@ export const nativeScriptDecodingScanAccusationOfV1 = (
   ) {
     const arm = reason.ResolvedReferenceScriptNodeLimit;
     return {
-      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT_V1,
+      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT,
       outpointSourceKind: arm.source_kind,
       outpointCursor: arm.input_index,
     };
@@ -386,7 +384,7 @@ export const nativeScriptDecodingScanAccusationOfV1 = (
   ) {
     const arm = reason.ResolvedReferenceScriptDepthLimit;
     return {
-      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT_V1,
+      scanReasonClass: NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT,
       outpointSourceKind: arm.source_kind,
       outpointCursor: arm.input_index,
     };
@@ -398,7 +396,7 @@ export const nativeScriptDecodingScanAccusationOfV1 = (
 
 // ## §7.2 out-of-domain faces (direction B closing arm)
 
-export const NativeScriptDecodingOutOfDomainFacesV1 = Object.freeze({
+export const NativeScriptDecodingOutOfDomainFaces = Object.freeze({
   /** `source_kind` names no field — closes with no opening. */
   UnknownSourceKind: "unknownSourceKind",
   /** A negative ordinal — closes with no opening. */
@@ -410,8 +408,8 @@ export const NativeScriptDecodingOutOfDomainFacesV1 = Object.freeze({
   CountFace: "countFace",
 } as const);
 
-export type NativeScriptDecodingOutOfDomainFaceV1 =
-  (typeof NativeScriptDecodingOutOfDomainFacesV1)[keyof typeof NativeScriptDecodingOutOfDomainFacesV1];
+export type NativeScriptDecodingOutOfDomainFace =
+  (typeof NativeScriptDecodingOutOfDomainFaces)[keyof typeof NativeScriptDecodingOutOfDomainFaces];
 
 /**
  * Which §7.2 face — if any — the accused pair presents. `itemCount` is the
@@ -421,7 +419,7 @@ export type NativeScriptDecodingOutOfDomainFaceV1 =
  * neutralisation selector `rejects_an_in_domain_ordinal_close` is the same
  * refusal).
  */
-export const classifyNativeScriptDecodingOutOfDomainFaceV1 = ({
+export const classifyNativeScriptDecodingOutOfDomainFace = ({
   outpointSourceKind,
   outpointCursor,
   itemCount,
@@ -429,15 +427,15 @@ export const classifyNativeScriptDecodingOutOfDomainFaceV1 = ({
   readonly outpointSourceKind: bigint;
   readonly outpointCursor: bigint;
   readonly itemCount: bigint | null;
-}): NativeScriptDecodingOutOfDomainFaceV1 | null => {
+}): NativeScriptDecodingOutOfDomainFace | null => {
   if (
-    outpointSourceKind !== NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1 &&
-    outpointSourceKind !== NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE_V1
+    outpointSourceKind !== NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND &&
+    outpointSourceKind !== NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE
   ) {
-    return NativeScriptDecodingOutOfDomainFacesV1.UnknownSourceKind;
+    return NativeScriptDecodingOutOfDomainFaces.UnknownSourceKind;
   }
   if (outpointCursor < 0n) {
-    return NativeScriptDecodingOutOfDomainFacesV1.NegativeOrdinal;
+    return NativeScriptDecodingOutOfDomainFaces.NegativeOrdinal;
   }
   if (itemCount === null) {
     throw evidenceError(
@@ -445,9 +443,9 @@ export const classifyNativeScriptDecodingOutOfDomainFaceV1 = ({
     );
   }
   return outpointCursor >= itemCount
-    ? NativeScriptDecodingOutOfDomainFacesV1.CountFace
+    ? NativeScriptDecodingOutOfDomainFaces.CountFace
     : null;
 };
 
 /** Re-exported so submitters name the shared constant, not a literal. */
-export { MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 };
+export { MIDGARD_BOUNDED_ITEM_CHUNK_BYTES };

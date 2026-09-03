@@ -1,21 +1,21 @@
 import {
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCanonical,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  captureLocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
   prepareMinFeeFromTransactions,
-  submitCapturedTransactionV1,
+  submitCapturedTransaction,
   submitMinFeeInit,
   submitMinFeeStep01,
   submitMinFeeStep02,
   submitRemoveFraudulentBlock,
-  workflowTransactionInputOutRefsV1,
+  workflowTransactionInputOutRefs,
 } from "../src/index.js";
-import type { MinFeeFieldItemCborsV1 } from "../src/submit-min-fee-step-02.js";
+import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
 import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import {
   buildProvedDoubleSpendFixture,
@@ -33,7 +33,7 @@ import {
 describe("Q53 fraud-proof reward idempotency", () => {
   const expectExactNonZeroFullSlashEconomics = (
     signed: Awaited<
-      ReturnType<typeof captureLocallyEvaluatedTransactionV1>
+      ReturnType<typeof captureLocallyEvaluatedTransaction>
     >["signed"],
   ) => {
     const economics = SDK.getProtocolParameters(network);
@@ -52,7 +52,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
 
     const capture = async (label: string) => {
       try {
-        return await captureLocallyEvaluatedTransactionV1(
+        return await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) =>
             await submitRemovalForFixture(fixture, { preSubmitBoundary }),
         );
@@ -67,8 +67,8 @@ describe("Q53 fraud-proof reward idempotency", () => {
     expect(replacement.txHash).not.toBe(first.txHash);
     expectExactNonZeroFullSlashEconomics(first.signed);
     expectExactNonZeroFullSlashEconomics(replacement.signed);
-    const firstInputs = workflowTransactionInputOutRefsV1(first.signed);
-    const replacementInputs = workflowTransactionInputOutRefsV1(
+    const firstInputs = workflowTransactionInputOutRefs(first.signed);
+    const replacementInputs = workflowTransactionInputOutRefs(
       replacement.signed,
     );
     expect(
@@ -80,9 +80,9 @@ describe("Q53 fraud-proof reward idempotency", () => {
       ]),
     );
 
-    const winnerHash = await submitCapturedTransactionV1(first);
+    const winnerHash = await submitCapturedTransaction(first);
     await expect(fixture.emulator.awaitTx(winnerHash)).resolves.toBe(true);
-    await expect(submitCapturedTransactionV1(replacement)).rejects.toThrow(
+    await expect(submitCapturedTransaction(replacement)).rejects.toThrow(
       /already spent|input.*not found|utxo/iu,
     );
     await expectRemovedFraudProofState(fixture);
@@ -126,13 +126,13 @@ describe("Q53 fraud-proof reward idempotency", () => {
       transactions: [
         {
           nodeTxId: fixture.transactionInclusion.tx1.nativeTxId,
-          txCbor: encodeMidgardNativeTxCanonicalV1(
+          txCbor: encodeMidgardNativeTxCanonical(
             fixture.transactionInclusion.tx1Full,
           ).toString("hex"),
         },
         {
           nodeTxId: fixture.transactionInclusion.tx2.nativeTxId,
-          txCbor: encodeMidgardNativeTxCanonicalV1(
+          txCbor: encodeMidgardNativeTxCanonical(
             fixture.transactionInclusion.tx2Full,
           ).toString("hex"),
         },
@@ -190,7 +190,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
     );
     const fieldItemCbors = prepared.tx.fieldItemCbors.map((field) =>
       field.map((item) => Buffer.from(item, "hex")),
-    ) as unknown as MinFeeFieldItemCborsV1;
+    ) as unknown as MinFeeFieldItemCbors;
     const minFeeProof = await atStage("min-fee step-02", async () =>
       submitMinFeeStep02({
         lucid: fixture.proverLucid,
@@ -228,12 +228,12 @@ describe("Q53 fraud-proof reward idempotency", () => {
       },
     );
 
-    const doubleSpendRemoval = await captureLocallyEvaluatedTransactionV1(
+    const doubleSpendRemoval = await captureLocallyEvaluatedTransaction(
       async (preSubmitBoundary) =>
         await submitRemovalForFixture(fixture, { preSubmitBoundary }),
     );
     const removeNow = BigInt(fixture.emulator.now());
-    const minFeeRemoval = await captureLocallyEvaluatedTransactionV1(
+    const minFeeRemoval = await captureLocallyEvaluatedTransaction(
       async (preSubmitBoundary) =>
         await submitRemoveFraudulentBlock({
           lucid: fixture.proverLucid,
@@ -252,12 +252,10 @@ describe("Q53 fraud-proof reward idempotency", () => {
     );
     expectExactNonZeroFullSlashEconomics(doubleSpendRemoval.signed);
     expectExactNonZeroFullSlashEconomics(minFeeRemoval.signed);
-    const doubleSpendInputs = workflowTransactionInputOutRefsV1(
+    const doubleSpendInputs = workflowTransactionInputOutRefs(
       doubleSpendRemoval.signed,
     );
-    const minFeeInputs = workflowTransactionInputOutRefsV1(
-      minFeeRemoval.signed,
-    );
+    const minFeeInputs = workflowTransactionInputOutRefs(minFeeRemoval.signed);
     expect(
       doubleSpendInputs.filter((outRef) => minFeeInputs.includes(outRef)),
     ).toEqual(
@@ -267,9 +265,9 @@ describe("Q53 fraud-proof reward idempotency", () => {
       ]),
     );
 
-    const winnerHash = await submitCapturedTransactionV1(doubleSpendRemoval);
+    const winnerHash = await submitCapturedTransaction(doubleSpendRemoval);
     await expect(fixture.emulator.awaitTx(winnerHash)).resolves.toBe(true);
-    await expect(submitCapturedTransactionV1(minFeeRemoval)).rejects.toThrow(
+    await expect(submitCapturedTransaction(minFeeRemoval)).rejects.toThrow(
       /already spent|input.*not found|utxo/iu,
     );
     await expectRemovedFraudProofState(fixture);

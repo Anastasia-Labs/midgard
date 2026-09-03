@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import * as Ledger from "../database/utils/ledger.js";
 import { keyValuePhasRoot } from "../workers/utils/mpf/phas.js";
 import { MpfError } from "./errors.js";
-import { ledgerOutputToInsertBatchOpV1 } from "./ledger-delta.js";
+import { ledgerOutputToInsertBatchOp } from "./ledger-delta.js";
 import {
   type MpfBatchOp,
   type MpfStoredValue,
@@ -195,7 +195,7 @@ export const computeUtxoPayloadRoot = (
   Effect.try({
     try: () =>
       entries.map((entry) =>
-        ledgerOutputToInsertBatchOpV1({
+        ledgerOutputToInsertBatchOp({
           outRef: entry.outref,
           outputCbor: entry.output,
         }),

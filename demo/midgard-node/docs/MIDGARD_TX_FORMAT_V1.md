@@ -19,7 +19,7 @@
     - `1 TxIsInvalid`
   - The #640 format wave retired the coarse rejection arms from this scalar:
     codes `2..5` are no longer decodable. A rejection's reason and its subject
-    coordinates live in the forced leaf's `OperatorVerdictV1`
+    coordinates live in the forced leaf's `OperatorVerdict`
     (`midgard/rejection_reason_v1`), not in the compact wire.
 
 - `MidgardTxBodyCompactV1`

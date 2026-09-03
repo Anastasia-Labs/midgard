@@ -54,10 +54,10 @@ import {
   MidgardMpf,
   MpfError,
   type NativeMpfBuildContext,
-  type ParkedEventFlatOverlayV1,
-  type ParkedMpfOverlayV1,
+  type ParkedEventFlatOverlay,
+  type ParkedMpfOverlay,
   processMpfs,
-  utxoToLedgerInsertMaterialV1,
+  utxoToLedgerInsertMaterial,
   withMpfBlockOverlays,
   withMpfRootTransactions,
 } from "../mpf/index.js";
@@ -124,7 +124,7 @@ import {
 } from "./utils/commit-block-planner.js";
 import {
   COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
 } from "./utils/commit-end-time.js";
@@ -935,7 +935,7 @@ const resolveCommitBaseLedgerEntries = ({
           const genesisEntries = yield* Effect.forEach(
             nodeConfig.GENESIS_UTXOS,
             (utxo) =>
-              utxoToLedgerInsertMaterialV1(utxo).pipe(
+              utxoToLedgerInsertMaterial(utxo).pipe(
                 Effect.map(({ ledgerOp, outputCbor }) => ({
                   [Ledger.Columns.OUTREF]: ledgerOp.key,
                   [Ledger.Columns.OUTPUT]: outputCbor,
@@ -958,11 +958,11 @@ const resolveCommitBaseLedgerEntries = ({
           }
         }
       } else {
-        const header = yield* SDK.getHeaderV1FromStateQueueDatum(
+        const header = yield* SDK.getHeaderFromStateQueueDatum(
           latestBlock.datum,
         );
         const currentLedgerRootHex = yield* currentLedgerRoot();
-        const headerHash = yield* SDK.hashBlockHeaderV1(header);
+        const headerHash = yield* SDK.hashBlockHeader(header);
         const journal = yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
           Buffer.from(headerHash, "hex"),
         );
@@ -1460,13 +1460,13 @@ type NotifySpeculativeCommitProgress = (
 type SpeculativeMpfArtifacts =
   | {
       readonly engine: "overlay";
-      readonly ledger: ParkedMpfOverlayV1;
-      readonly transactions: ParkedMpfOverlayV1;
+      readonly ledger: ParkedMpfOverlay;
+      readonly transactions: ParkedMpfOverlay;
     }
   | {
       readonly engine: "event_flat";
-      readonly ledger: ParkedEventFlatOverlayV1;
-      readonly transactions: ParkedMpfOverlayV1;
+      readonly ledger: ParkedEventFlatOverlay;
+      readonly transactions: ParkedMpfOverlay;
     };
 
 export const parkSpeculativeMpfsForConfirmationWait = ({
@@ -1528,13 +1528,13 @@ export const parkSpeculativeMpfsForConfirmationWait = ({
 type ResumeParkedOverlay = (
   trieName: string,
   levelDBFilePath: string | undefined,
-  artifact: ParkedMpfOverlayV1,
+  artifact: ParkedMpfOverlay,
 ) => Effect.Effect<MidgardMpf, MpfError>;
 
 type ResumeParkedEventFlatOverlay = (
   trieName: string,
   levelDBFilePath: string | undefined,
-  artifact: ParkedEventFlatOverlayV1,
+  artifact: ParkedEventFlatOverlay,
 ) => Effect.Effect<MidgardMpf, MpfError>;
 
 type OpenLocalFinalizationTransactionsMpf = () => Effect.Effect<
@@ -1886,7 +1886,7 @@ const databaseOperationsProgram = (
           latestEndTime: latestEndTimeMs,
           candidateEndTime: candidateEndTimeMs,
           nowMs: schedulerPlanningNowMs,
-          minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+          minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
           maximumEndTimeMs: currentSchedulerWindow.endTimeMs,
         });
       }
@@ -1898,8 +1898,7 @@ const databaseOperationsProgram = (
       currentBlockStartTimeMs: currentBlockStartTime.getTime(),
       nowMs: schedulerPlanningNowMs,
       minimumCurrentWindowBudgetMs: COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
-      productionMinimumFutureBufferMs:
-        COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+      productionMinimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       currentWindowCommitEndTimeFit,
     });
     if (
@@ -2387,9 +2386,9 @@ const databaseOperationsProgram = (
       const confirmedHeaderHash =
         confirmedBlock.datum.key === "Empty"
           ? undefined
-          : yield* SDK.getHeaderV1FromStateQueueDatum(
-              confirmedBlock.datum,
-            ).pipe(Effect.flatMap(SDK.hashBlockHeaderV1));
+          : yield* SDK.getHeaderFromStateQueueDatum(confirmedBlock.datum).pipe(
+              Effect.flatMap(SDK.hashBlockHeader),
+            );
       if (confirmedHeaderHash !== speculativeBuild.base.headerHash) {
         return {
           type: "SpeculativeCandidateInvalidatedOutput",
@@ -2480,7 +2479,7 @@ const databaseOperationsProgram = (
           latestEndTime: confirmedEndTimeMs,
           candidateEndTime: candidateEndTime.getTime(),
           nowMs: Date.now(),
-          minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+          minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
           maximumEndTimeMs: submitSchedulerWindow.endTimeMs,
         });
         if (submitFit.status === "exceeds_cap") {

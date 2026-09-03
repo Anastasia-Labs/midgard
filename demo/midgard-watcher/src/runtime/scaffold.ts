@@ -7,7 +7,7 @@ export type WatcherCommandIo = Readonly<{
   writeError: (text: string) => void;
 }>;
 
-type WatcherCommandDependenciesV1 = Readonly<{
+type WatcherCommandDependencies = Readonly<{
   runAuthority(
     configPath: string,
   ): Promise<Readonly<{ close(): Promise<void> }>>;
@@ -46,30 +46,28 @@ const waitForShutdown = async (): Promise<"SIGINT" | "SIGTERM"> =>
     process.once("SIGTERM", onSigterm);
   });
 
-const productionDependencies: WatcherCommandDependenciesV1 = Object.freeze({
+const productionDependencies: WatcherCommandDependencies = Object.freeze({
   runAuthority: async (configPath) => {
     const [
-      { loadWatcherTrustedHeadAuthorityProcessConfigFileV1 },
-      { startWatcherTrustedHeadAuthorityProcessV1 },
+      { loadWatcherTrustedHeadAuthorityProcessConfigFile },
+      { startWatcherTrustedHeadAuthorityProcess },
     ] = await Promise.all([
       import("./production-process-config-v1.js"),
       import("./production-trusted-head-runtime-v1.js"),
     ]);
-    return await startWatcherTrustedHeadAuthorityProcessV1({
+    return await startWatcherTrustedHeadAuthorityProcess({
       config:
-        await loadWatcherTrustedHeadAuthorityProcessConfigFileV1(configPath),
+        await loadWatcherTrustedHeadAuthorityProcessConfigFile(configPath),
     });
   },
   runWatcher: async (configPath) => {
-    const [
-      { loadWatcherProductionProcessConfigFileV1 },
-      { createWatcherProductionRuntimeV1 },
-    ] = await Promise.all([
-      import("./production-process-config-v1.js"),
-      import("./production-watcher-runtime-v1.js"),
-    ]);
-    return await createWatcherProductionRuntimeV1({
-      config: await loadWatcherProductionProcessConfigFileV1(configPath),
+    const [{ loadWatcherProcessConfigFile }, { createWatcherRuntime }] =
+      await Promise.all([
+        import("./production-process-config-v1.js"),
+        import("./production-watcher-runtime-v1.js"),
+      ]);
+    return await createWatcherRuntime({
+      config: await loadWatcherProcessConfigFile(configPath),
     });
   },
   waitForShutdown,
@@ -82,7 +80,7 @@ const execute = async (
   command: WatcherCommand,
   configPath: string,
   io: WatcherCommandIo,
-  dependencies: WatcherCommandDependenciesV1,
+  dependencies: WatcherCommandDependencies,
 ): Promise<number> => {
   if (command === "authority") {
     const authority = await dependencies.runAuthority(configPath);
@@ -163,9 +161,9 @@ export const runWatcherCommand = async (
   await execute(command, configPath, io, productionDependencies);
 
 /** Test-only process seam; it cannot change production dependency selection. */
-export const unsafeRunWatcherCommandForTestV1 = async (
+export const unsafeRunWatcherCommandForTest = async (
   command: WatcherCommand,
   configPath: string,
   io: WatcherCommandIo,
-  dependencies: WatcherCommandDependenciesV1,
+  dependencies: WatcherCommandDependencies,
 ): Promise<number> => await execute(command, configPath, io, dependencies);

@@ -11,25 +11,25 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
 import {
-  SpendInputSignerStep01RedeemerV1Schema,
-  SpendInputSignerStep02DatumV1Schema,
+  SpendInputSignerStep01RedeemerSchema,
+  SpendInputSignerStep02DatumSchema,
 } from "./schemas-v1.js";
 import {
-  classifySpendInputSignerMissingFindingV1,
-  type SpendInputSignerMissingEvidenceV1,
+  classifySpendInputSignerMissingFinding,
+  type SpendInputSignerMissingEvidence,
 } from "./spend-input-signer-missing-v1.js";
 
-export const submitSpendInputSignerMissingStep01ForcedV1 = async ({
+export const submitSpendInputSignerMissingStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -42,19 +42,19 @@ export const submitSpendInputSignerMissingStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: SpendInputSignerMissingContractsV1;
+  readonly contracts: SpendInputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifySpendInputSignerMissingFindingV1(evidence);
+  classifySpendInputSignerMissingFinding(evidence);
   const stepIndex = 0;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,7 +64,7 @@ export const submitSpendInputSignerMissingStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "spend-input-signer-missing",
@@ -80,7 +80,7 @@ export const submitSpendInputSignerMissingStep01ForcedV1 = async ({
         witness_set_hash: evidence.witnessSetHashHex,
       },
     } as never,
-    SpendInputSignerStep02DatumV1Schema as never,
+    SpendInputSignerStep02DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[1].spendingScriptAddress,
@@ -119,10 +119,10 @@ export const submitSpendInputSignerMissingStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      SpendInputSignerStep01RedeemerV1Schema as never,
+      SpendInputSignerStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

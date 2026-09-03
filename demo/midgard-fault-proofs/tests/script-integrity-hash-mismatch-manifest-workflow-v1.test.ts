@@ -11,20 +11,20 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/workflow/deployment-manifest-binding-v1.js", () => ({
-  bindFraudProofWorkflowDeploymentV1: mocks.bindDeployment,
-  assertManifestBoundWorkflowSignerV1: mocks.assertSigner,
-  requireManifestBoundReferenceScriptUtxoV1: mocks.bindReference,
+  bindFraudProofWorkflowDeployment: mocks.bindDeployment,
+  assertManifestBoundWorkflowSigner: mocks.assertSigner,
+  requireManifestBoundReferenceScriptUtxo: mocks.bindReference,
 }));
 vi.mock("../src/workflow/family-l1-observation-v1.js", () => ({
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1: mocks.createL1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort: mocks.createL1,
 }));
 vi.mock("../src/script-integrity-hash-mismatch/lucid-actuator-v1.js", () => ({
-  createScriptIntegrityHashMismatchLucidActuatorV1: mocks.createActuator,
+  createScriptIntegrityHashMismatchLucidActuator: mocks.createActuator,
 }));
 
 import {
-  createManifestBoundScriptIntegrityHashMismatchWorkflowV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_PRODUCTION_CONFIG_KEYS_V1,
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS,
 } from "../src/script-integrity-hash-mismatch/manifest-workflow-v1.js";
 
 const utxo = (index: number) => ({
@@ -108,9 +108,7 @@ describe("scriptIntegrityHashMismatch manifest workflow", () => {
 
   it("binds exactly five steps, five witnesses, and nine removal roles", async () => {
     await expect(
-      createManifestBoundScriptIntegrityHashMismatchWorkflowV1(
-        config() as never,
-      ),
+      createManifestBoundScriptIntegrityHashMismatchWorkflow(config() as never),
     ).resolves.toMatchObject({ decisionDigest: "33".repeat(32) });
     expect(mocks.bindReference).toHaveBeenCalledTimes(19);
     expect(
@@ -144,13 +142,11 @@ describe("scriptIntegrityHashMismatch manifest workflow", () => {
   });
 
   it("rejects caller-supplied proof or callback authority before binding", async () => {
-    expect(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_PRODUCTION_CONFIG_KEYS_V1,
-    ).not.toEqual(
+    expect(SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS).not.toEqual(
       expect.arrayContaining(["evidence", "actuator", "verdict", "submit"]),
     );
     await expect(
-      createManifestBoundScriptIntegrityHashMismatchWorkflowV1({
+      createManifestBoundScriptIntegrityHashMismatchWorkflow({
         ...config(),
         evidence: {},
       } as never),

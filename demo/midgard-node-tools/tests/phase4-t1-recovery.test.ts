@@ -4,9 +4,9 @@ import {
   assertPhase4T1Gate,
   assertPhase4T1NoopAdvance,
   assertPhase4T1ReplacementAttemptOrdering,
-  decodePhase4T1AdvanceEvidenceV1,
-  decodePhase4T1ProbeEvidenceV1,
-  decodePhase4T1RecoveryAttestationV1,
+  decodePhase4T1AdvanceEvidence,
+  decodePhase4T1ProbeEvidence,
+  decodePhase4T1RecoveryAttestation,
   parseAndValidatePhase4T1RecoveryAttestation,
   PHASE4_T1_ACCEPTANCE_TOKEN,
   PHASE4_T1_PROBE_SCHEMA,
@@ -206,8 +206,8 @@ describe("Phase 4 T1 canonical no-op advance", () => {
       after,
       invariants,
     } as const;
-    expect(decodePhase4T1ProbeEvidenceV1(before)).toEqual(before);
-    expect(decodePhase4T1AdvanceEvidenceV1(advance)).toEqual(advance);
+    expect(decodePhase4T1ProbeEvidence(before)).toEqual(before);
+    expect(decodePhase4T1AdvanceEvidence(advance)).toEqual(advance);
 
     for (const mutation of [
       { ...before, schemaVersion: "midgard-phase4-t1-probe-v2" },
@@ -232,20 +232,20 @@ describe("Phase 4 T1 canonical no-op advance", () => {
         schemaVersion: "midgard-phase4-t1-canonical-advance-v1",
       },
     ]) {
-      expect(() => decodePhase4T1ProbeEvidenceV1(mutation)).toThrow();
+      expect(() => decodePhase4T1ProbeEvidence(mutation)).toThrow();
     }
     const { attemptId: _attemptId, ...missingProbeKey } = before;
-    expect(() => decodePhase4T1ProbeEvidenceV1(missingProbeKey)).toThrow(
+    expect(() => decodePhase4T1ProbeEvidence(missingProbeKey)).toThrow(
       "fields",
     );
     expect(() =>
-      decodePhase4T1AdvanceEvidenceV1({
+      decodePhase4T1AdvanceEvidence({
         ...advance,
         after: { ...advance.after, unknown: true },
       }),
     ).toThrow();
     expect(() =>
-      decodePhase4T1AdvanceEvidenceV1({
+      decodePhase4T1AdvanceEvidence({
         ...advance,
         recoveredTipHeaderHash: h28("33"),
       }),
@@ -341,7 +341,7 @@ describe("Phase 4 T1 recovery attestation", () => {
   });
 
   it("rejects wrong-family, missing, and unknown nested recovery shapes", () => {
-    expect(decodePhase4T1RecoveryAttestationV1(valid)).toEqual(valid);
+    expect(decodePhase4T1RecoveryAttestation(valid)).toEqual(valid);
     const { snapshotSetSha256: _snapshotSetSha256, ...missing } = valid;
     for (const changed of [
       missing,
@@ -350,7 +350,7 @@ describe("Phase 4 T1 recovery attestation", () => {
       { ...valid, cardanoTip: { ...valid.cardanoTip, unexpected: true } },
       { ...valid, canonicalAdvanceTxHash: h32("AA") },
     ]) {
-      expect(() => decodePhase4T1RecoveryAttestationV1(changed)).toThrow();
+      expect(() => decodePhase4T1RecoveryAttestation(changed)).toThrow();
     }
   });
 });

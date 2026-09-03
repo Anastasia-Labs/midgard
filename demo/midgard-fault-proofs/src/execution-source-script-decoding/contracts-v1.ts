@@ -7,29 +7,28 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 =
-  Object.freeze([
-    "fraud_proofs/execution_source_script_decoding/step_01.main.spend",
-    "fraud_proofs/execution_source_script_decoding/step_02.main.spend",
-    "fraud_proofs/execution_source_script_decoding/step_03.main.spend",
-    "fraud_proofs/execution_source_script_decoding/step_04.main.spend",
-    "fraud_proofs/execution_source_script_decoding/step_05.main.spend",
-  ] as const);
+export const EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES = Object.freeze([
+  "fraud_proofs/execution_source_script_decoding/step_01.main.spend",
+  "fraud_proofs/execution_source_script_decoding/step_02.main.spend",
+  "fraud_proofs/execution_source_script_decoding/step_03.main.spend",
+  "fraud_proofs/execution_source_script_decoding/step_04.main.spend",
+  "fraud_proofs/execution_source_script_decoding/step_05.main.spend",
+] as const);
 
-export type ExecutionSourceScriptDecodingStepContractV1 = Readonly<{
+export type ExecutionSourceScriptDecodingStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type ExecutionSourceScriptDecodingContractsV1 = Readonly<{
+export type ExecutionSourceScriptDecodingContracts = Readonly<{
   steps: readonly [
-    ExecutionSourceScriptDecodingStepContractV1,
-    ExecutionSourceScriptDecodingStepContractV1,
-    ExecutionSourceScriptDecodingStepContractV1,
-    ExecutionSourceScriptDecodingStepContractV1,
-    ExecutionSourceScriptDecodingStepContractV1,
+    ExecutionSourceScriptDecodingStepContract,
+    ExecutionSourceScriptDecodingStepContract,
+    ExecutionSourceScriptDecodingStepContract,
+    ExecutionSourceScriptDecodingStepContract,
+    ExecutionSourceScriptDecodingStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -50,7 +49,7 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-export const applyExecutionSourceScriptDecodingScriptsV1 = ({
+export const applyExecutionSourceScriptDecodingScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -64,10 +63,10 @@ export const applyExecutionSourceScriptDecodingScriptsV1 = ({
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
-}): ExecutionSourceScriptDecodingContractsV1["steps"] => {
+}): ExecutionSourceScriptDecodingContracts["steps"] => {
   const apply = (index: number, parameters: readonly Data[]) => {
     const blueprintTitle =
-      EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1[index]!;
+      EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

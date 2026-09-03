@@ -8,7 +8,7 @@ import type { Database } from "midgard-node/services/database";
 
 import {
   E2E_STEP_SCHEMA_VERSION,
-  parseE2EStepV1,
+  parseE2EStep,
   type StepSummary,
 } from "../e2e/runner.js";
 import {
@@ -25,24 +25,24 @@ import {
   writeSummaryMarkdownAtomic,
 } from "../e2e/summary.js";
 import {
-  type E2EStateCorrectionAcceptanceV1,
-  parseE2EStateCorrectionAcceptanceV1,
+  type E2EStateCorrectionAcceptance,
+  parseE2EStateCorrectionAcceptance,
   stateCorrectionAcceptanceEvidence,
-  stateCorrectionLocalReadinessEvidenceV1,
+  stateCorrectionLocalReadinessEvidence,
 } from "./e2e-state-correction-acceptance.js";
 import {
-  createLocalKupmiosStateCorrectionAuthorityV1,
-  loadLocalAuthorityDeploymentV1,
+  createLocalKupmiosStateCorrectionAuthority,
+  loadLocalAuthorityDeployment,
 } from "./e2e-state-correction-local-authority.js";
 import {
-  reconcileStateCorrectionIndependentEvidenceV1,
-  type StateCorrectionIndependentAuthorityV1,
-  type StateCorrectionIndependentSourcePathsV1,
+  reconcileStateCorrectionIndependentEvidence,
+  type StateCorrectionIndependentAuthority,
+  type StateCorrectionIndependentSourcePaths,
 } from "./e2e-state-correction-reconciliation.js";
 import {
   type E2EL2StressSummary,
   type E2EL2StressTransaction,
-  parseE2EL2StressSummaryV1,
+  parseE2EL2StressSummary,
 } from "./e2e-stress-l2-throughput.js";
 import type { StressMetricWindow } from "./stress-stage-metrics.js";
 
@@ -57,8 +57,8 @@ export type FinalizeSummaryOptions = {
   readonly transactions?: readonly TransactionEvidence[];
   readonly stressSummaryPath?: string;
   readonly stateCorrectionEvidencePath?: string;
-  readonly stateCorrectionIndependentSourcePaths?: StateCorrectionIndependentSourcePathsV1;
-  readonly stateCorrectionIndependentAuthority?: StateCorrectionIndependentAuthorityV1;
+  readonly stateCorrectionIndependentSourcePaths?: StateCorrectionIndependentSourcePaths;
+  readonly stateCorrectionIndependentAuthority?: StateCorrectionIndependentAuthority;
   readonly stateCorrectionLocalAuthorityConfig?: {
     readonly provider: string | undefined;
     readonly providerFailover: string | undefined;
@@ -180,7 +180,7 @@ const loadStepSummaries = async (
 ): Promise<readonly StepSummary[]> =>
   Promise.all(
     paths.map(async (path) =>
-      parseE2EStepV1(
+      parseE2EStep(
         JSON.parse(await readFile(path, "utf8")) as unknown,
         `E2E step summary ${path}`,
       ),
@@ -190,14 +190,12 @@ const loadStepSummaries = async (
 export const loadStressSummary = async (
   path: string,
 ): Promise<E2EL2StressSummary> =>
-  parseE2EL2StressSummaryV1(
-    JSON.parse(await readFile(path, "utf8")) as unknown,
-  );
+  parseE2EL2StressSummary(JSON.parse(await readFile(path, "utf8")) as unknown);
 
 export const loadStateCorrectionAcceptance = async (
   path: string,
-): Promise<E2EStateCorrectionAcceptanceV1> =>
-  parseE2EStateCorrectionAcceptanceV1(
+): Promise<E2EStateCorrectionAcceptance> =>
+  parseE2EStateCorrectionAcceptance(
     JSON.parse(await readFile(path, "utf8")) as unknown,
   );
 
@@ -838,7 +836,7 @@ export const finalizeE2ESummaryProgram = (
       stateCorrectionIndependentSourcePaths === undefined
         ? undefined
         : yield* Effect.promise(() =>
-            loadLocalAuthorityDeploymentV1(
+            loadLocalAuthorityDeployment(
               stateCorrectionIndependentSourcePaths.deploymentManifestPath,
             ),
           );
@@ -849,7 +847,7 @@ export const finalizeE2ESummaryProgram = (
       stateCorrectionDeployment === undefined
         ? undefined
         : yield* Effect.promise(async () => {
-            return createLocalKupmiosStateCorrectionAuthorityV1({
+            return createLocalKupmiosStateCorrectionAuthority({
               ...stateCorrectionLocalAuthorityConfig,
               ...stateCorrectionDeployment,
               observeDatabase: async () => {
@@ -885,7 +883,7 @@ export const finalizeE2ESummaryProgram = (
       effectiveStateCorrectionAuthority === undefined
         ? undefined
         : yield* Effect.promise(() =>
-            reconcileStateCorrectionIndependentEvidenceV1({
+            reconcileStateCorrectionIndependentEvidence({
               expectedRunId: runId,
               claim: stateCorrectionAcceptance,
               paths: stateCorrectionIndependentSourcePaths,
@@ -903,7 +901,7 @@ export const finalizeE2ESummaryProgram = (
           ? {}
           : { evidencePath: stateCorrectionEvidencePath }),
       });
-    const stateCorrectionReadiness = stateCorrectionLocalReadinessEvidenceV1({
+    const stateCorrectionReadiness = stateCorrectionLocalReadinessEvidence({
       availabilityChallengeCapability:
         stateCorrectionDeployment?.availabilityChallengeCapability ?? "missing",
     });

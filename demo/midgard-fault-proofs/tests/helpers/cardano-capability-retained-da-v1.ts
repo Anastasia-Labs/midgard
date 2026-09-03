@@ -1,21 +1,21 @@
 import {
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramMaterialDaValueV1,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramMaterialDaValue,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
-  MIDGARD_VALIDATION_MACHINE_V1_VERSION,
-  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
+  MIDGARD_VALIDATION_MACHINE_VERSION,
+  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { encodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -67,9 +67,9 @@ const validationDescriptor = (
   index: number,
 ): SDK.DaPayloadEntry => [
   Data.to(eventKey as never, SDK.EventKeySchema as never),
-  encodeMidgardValidationTraceDescriptorV1({
-    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-    machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+  encodeMidgardValidationTraceDescriptor({
+    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+    machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
     traceRoot: Buffer.from(hash32(0xa0 + index), "hex"),
     stepCount: 1,
     initialStateHash: Buffer.from(hash32(0xb0 + index), "hex"),
@@ -79,17 +79,17 @@ const validationDescriptor = (
   }).toString("hex"),
 ];
 
-export type StrictRetainedDaPairFixtureV1 = {
-  readonly payload: SDK.DaPayloadV1;
+export type StrictRetainedDaPairFixture = {
+  readonly payload: SDK.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
   readonly forcedOrderIdHex: string;
 };
 
-export const buildStrictRetainedDaPairFixtureV1 = async ({
+export const buildStrictRetainedDaPairFixture = async ({
   canonicalTransactionCbor,
   canonicalMaterialSidecarCbor,
   resolvedReferenceUtxos,
@@ -97,17 +97,16 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
   readonly canonicalTransactionCbor: Uint8Array;
   readonly canonicalMaterialSidecarCbor?: Uint8Array;
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
-}): Promise<StrictRetainedDaPairFixtureV1> => {
+}): Promise<StrictRetainedDaPairFixture> => {
   const canonicalCbor = Buffer.from(canonicalTransactionCbor);
-  const transaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
   const transactionIdHex =
-    computeMidgardNativeTxIdV1(transaction).toString("hex");
+    computeMidgardNativeTxId(transaction).toString("hex");
   const proofSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
   const transactionCommitmentHex =
-    computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex");
-  const source: SDK.L2TransactionSourceV1 = {
+    computeMidgardNativeTxProofCommitment(proofSource).toString("hex");
+  const source: SDK.L2TransactionSource = {
     tx_id: transactionIdHex,
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
@@ -122,7 +121,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
     outputIndex: 0n,
   };
   const forcedOrderIdHex = Data.to(forcedOrder, SDK.OutputReference);
-  const forcedSource: SDK.ForcedInclusionTxV1 = {
+  const forcedSource: SDK.ForcedInclusionTx = {
     ...source,
     verdict: "ForcedTxValid",
   };
@@ -140,7 +139,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
   const utxoRoot = await keyValuePhasRootWithCount(
     utxos.map(([outRefHex, outputHex]) => ({
       key: Buffer.from(outRefHex, "hex"),
-      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: Buffer.from(outRefHex, "hex"),
         outputCbor: Buffer.from(outputHex, "hex"),
       }).descriptorCbor,
@@ -169,14 +168,11 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
       key: forcedOrder,
       keySchema: SDK.OutputReference as never,
       value: forcedSource,
-      valueSchema: SDK.ForcedInclusionTxV1Schema,
+      valueSchema: SDK.ForcedInclusionTxSchema,
     }),
   ];
   const transactions: SDK.DaPayloadEntry[] = [
-    [
-      transactionIdHex,
-      Data.to(source as never, SDK.L2TransactionSourceV1Schema),
-    ],
+    [transactionIdHex, Data.to(source as never, SDK.L2TransactionSourceSchema)],
   ];
   const transitionTrace = steps.map(
     (step): SDK.DaPayloadEntry =>
@@ -214,11 +210,11 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
   const cekProgramMaterial = sorted(
     (canonicalMaterialSidecarCbor === undefined
       ? []
-      : decodeMidgardCekProgramMaterialSidecarV1(canonicalMaterialSidecarCbor)
+      : decodeMidgardCekProgramMaterialSidecar(canonicalMaterialSidecarCbor)
     ).map(
       (entry): SDK.DaPayloadEntry => [
         Buffer.from(entry.root).toString("hex"),
-        encodeMidgardCekProgramMaterialDaValueV1(entry).toString("hex"),
+        encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
       ],
     ),
   );
@@ -243,7 +239,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
       validationTraces,
     ),
   };
-  const counts: SDK.DaPayloadCountsV1 = {
+  const counts: SDK.DaPayloadCounts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
     l2TransactionCount: 1n,
@@ -252,7 +248,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
     transitionStepCount: 2n,
     validationTraceCount: 2n,
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: utxoRoot.root,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
@@ -273,9 +269,9 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
     operatorVkey: hash28(0xe1),
     protocolVersion: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -300,7 +296,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,

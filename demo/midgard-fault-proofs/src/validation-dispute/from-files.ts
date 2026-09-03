@@ -1,17 +1,17 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  hashMidgardCekProgramEnvelopeV1,
+  decodeMidgardCekProgramEnvelope,
+  hashMidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core";
 import {
-  ValidationBoundaryEvidenceV1,
-  ValidationClaimWitnessV1,
-  ValidationTraceDescriptorV1,
+  ValidationBoundaryEvidence,
+  ValidationClaimWitness,
+  ValidationTraceDescriptor,
+  ValidationTraceProof,
   validationTraceProofCoreFromData,
-  ValidationTraceProofV1,
 } from "@al-ft/midgard-sdk";
-import { parseCekProgramMaterialNecessityReceiptSetV1 } from "@al-ft/midgard-validation";
+import { parseCekProgramMaterialNecessityReceiptSet } from "@al-ft/midgard-validation";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { readJsonFile } from "../json-file.js";
@@ -42,8 +42,8 @@ import {
   type SubmitValidationDisputeTimeoutResult,
   submitValidationDisputeVerifySource,
   type SubmitValidationDisputeVerifySourceResult,
-  validateCekSubmissionEvidenceV1,
-  type ValidationOneStepSubmissionArgumentV1,
+  validateCekSubmissionEvidence,
+  type ValidationOneStepSubmissionArgument,
 } from "./submit.js";
 
 type ValidationDisputeFromFilesBase = Omit<
@@ -124,7 +124,7 @@ export type ValidationOneStepArgumentFromFiles = {
 
 export const validationOneStepArgumentFromFiles = async (
   config: ValidationOneStepArgumentFromFiles,
-): Promise<ValidationOneStepSubmissionArgumentV1> => {
+): Promise<ValidationOneStepSubmissionArgument> => {
   if (
     !Number.isSafeInteger(config.validationResolverIndex) ||
     config.validationResolverIndex < 0 ||
@@ -189,11 +189,11 @@ export const validationOneStepArgumentFromFiles = async (
       ? Promise.resolve(undefined)
       : readJsonFile(
           config.validationCekIncrementalNecessityReceiptSetPath,
-        ).then(parseCekProgramMaterialNecessityReceiptSetV1),
+        ).then(parseCekProgramMaterialNecessityReceiptSet),
   ]);
   const envelopeBytes =
     envelopeCbor === undefined ? undefined : Buffer.from(envelopeCbor, "hex");
-  const argument: ValidationOneStepSubmissionArgumentV1 = {
+  const argument: ValidationOneStepSubmissionArgument = {
     resolverIndex: config.validationResolverIndex,
     semanticResolverIndex: config.validationSemanticResolverIndex,
     transitionCbor: Buffer.from(transitionCbor, "hex"),
@@ -207,8 +207,8 @@ export const validationOneStepArgumentFromFiles = async (
               programMaterialSidecarCbor,
               "hex",
             ),
-            programEnvelopeHash: hashMidgardCekProgramEnvelopeV1(
-              decodeMidgardCekProgramEnvelopeV1(envelopeBytes),
+            programEnvelopeHash: hashMidgardCekProgramEnvelope(
+              decodeMidgardCekProgramEnvelope(envelopeBytes),
             ),
           },
         }),
@@ -216,7 +216,7 @@ export const validationOneStepArgumentFromFiles = async (
       ? {}
       : { cekIncrementalNecessityReceiptSet: necessityReceiptSet }),
   };
-  validateCekSubmissionEvidenceV1(argument);
+  validateCekSubmissionEvidence(argument);
   return argument;
 };
 
@@ -243,10 +243,10 @@ export const submitValidationDisputeOpenFromFiles = async (
     network: config.network,
     threadOutRef: config.threadOutRef,
     stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    claim: Data.from(claimCbor, ValidationClaimWitnessV1),
+    claim: Data.from(claimCbor, ValidationClaimWitness),
     challengerDescriptor: Data.from(
       challengerDescriptorCbor,
-      ValidationTraceDescriptorV1,
+      ValidationTraceDescriptor,
     ),
     awaitConfirmation: config.awaitConfirmation,
   });
@@ -266,7 +266,7 @@ export const submitValidationDisputeRevealFromFiles = async (
     ),
   ]);
   const proof = validationTraceProofCoreFromData(
-    Data.from(proofCbor, ValidationTraceProofV1),
+    Data.from(proofCbor, ValidationTraceProof),
   );
   return await submitValidationDisputeReveal({
     ...runtime,
@@ -316,7 +316,7 @@ export const submitValidationDisputePrepareResolutionFromFiles = async (
   ]);
   const boundaryEvidence = Data.from(
     boundaryEvidenceCbor,
-    ValidationBoundaryEvidenceV1,
+    ValidationBoundaryEvidence,
   );
   return await submitValidationDisputePrepareResolution({
     ...runtime,

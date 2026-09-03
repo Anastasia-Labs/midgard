@@ -31,7 +31,7 @@ import {
 import { getCompiledScript } from "./runtime.js";
 
 /** One published proof chunk, as the step builder needs to see it. */
-export type PublishedProofChunkV1 = {
+export type PublishedProofChunk = {
   readonly utxo: UTxO;
   readonly outRef: string;
   readonly datumCbor: string;
@@ -83,7 +83,7 @@ export const walletInputsExcludingChunks = ({
   chunks,
 }: {
   readonly walletUtxos: readonly UTxO[];
-  readonly chunks: readonly PublishedProofChunkV1[];
+  readonly chunks: readonly PublishedProofChunk[];
 }): UTxO[] =>
   walletUtxos.filter(
     (utxo) =>
@@ -109,7 +109,7 @@ export const derivedChunkReferenceIndices = ({
   label,
 }: {
   readonly referenceInputs: readonly UTxO[];
-  readonly chunks: readonly PublishedProofChunkV1[];
+  readonly chunks: readonly PublishedProofChunk[];
   readonly label: string;
 }): bigint[] => {
   const canonical = [...referenceInputs].sort(compareOutRefs);
@@ -136,7 +136,7 @@ export const requireBuiltChunkReferenceIndices = ({
   label,
 }: {
   readonly ctx: RedeemerContext;
-  readonly chunks: readonly PublishedProofChunkV1[];
+  readonly chunks: readonly PublishedProofChunk[];
   readonly derived: readonly bigint[];
   readonly label: string;
 }): void => {

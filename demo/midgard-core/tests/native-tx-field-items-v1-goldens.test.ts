@@ -4,38 +4,38 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  midgardNativeTxProofFieldPreimageLengthsV1,
+  encodeMidgardNativeTxProofFieldLengths,
+  midgardNativeTxProofFieldPreimageLengths,
 } from "../src/codec/native.js";
 import {
-  buildMidgardChunkedFieldViewV1,
-  buildMidgardWholeFieldViewV1,
-  decodeMidgardFieldArrayHeaderV1,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardFieldPreimageCertificateV1,
-  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_HASH28_ITEM_BYTES_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1,
-  MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
-  midgardFieldItemAtV1,
-  midgardFieldItemExtentV1,
-  midgardFieldStrideV1,
-  selectMidgardFieldCarriageTierV1,
+  buildMidgardChunkedFieldView,
+  buildMidgardWholeFieldView,
+  decodeMidgardFieldArrayHeader,
+  decodeMidgardFieldPreimage,
+  deriveMidgardFieldPreimageCertificate,
+  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_HASH28_ITEM_BYTES,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
+  MIDGARD_SPEND_INPUT_ITEM_BYTES,
+  midgardFieldItemAt,
+  midgardFieldItemExtent,
+  midgardFieldStride,
+  selectMidgardFieldCarriageTier,
 } from "../src/codec/native-tx-field-access-v1.js";
 import {
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardFieldItemsV1,
-  encodeMidgardFieldPreimageForFieldV1,
-  encodeMidgardFixedOutputIndexV1,
-  encodeMidgardHash28ItemV1,
-  encodeMidgardMintPolicyItemV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  encodeMidgardSpendInputItemV1,
-  MIDGARD_FIELD_NAMES_V1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  midgardFieldCommitmentForFieldV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardFieldItems,
+  encodeMidgardFieldPreimageForField,
+  encodeMidgardFixedOutputIndex,
+  encodeMidgardHash28Item,
+  encodeMidgardMintPolicyItem,
+  encodeMidgardRedeemerWitnessItem,
+  encodeMidgardSpendInputItem,
+  MIDGARD_FIELD_NAMES,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  midgardFieldCommitmentForField,
 } from "../src/codec/native-tx-field-items-v1.js";
 import {
   encodeMidgardVersionedScript,
@@ -228,8 +228,8 @@ describe("per-field golden fixture provenance", () => {
       0, 1, 2, 3, 4, 5, 6, 7, 8,
     ]);
     for (const field of golden.fields) {
-      expect(field.fieldName).toBe(MIDGARD_FIELD_NAMES_V1[field.fieldIndex]);
-      expect(field.stride).toBe(midgardFieldStrideV1(field.fieldIndex));
+      expect(field.fieldName).toBe(MIDGARD_FIELD_NAMES[field.fieldIndex]);
+      expect(field.stride).toBe(midgardFieldStride(field.fieldIndex));
       // A field with no vectors would pass every assertion below vacuously.
       expect(field.vectors.length).toBeGreaterThan(0);
       // §5.1's empty case is normative for all nine, mint included.
@@ -268,9 +268,9 @@ describe("§5.3 per-field item encodings recompute from the twin", () => {
             vectorDefinition,
           );
 
-          const itemBytes = encodeMidgardFieldItemsV1(selector);
-          const preimage = encodeMidgardFieldPreimageForFieldV1(selector);
-          const commitment = midgardFieldCommitmentForFieldV1(selector);
+          const itemBytes = encodeMidgardFieldItems(selector);
+          const preimage = encodeMidgardFieldPreimageForField(selector);
+          const commitment = midgardFieldCommitmentForField(selector);
 
           // The §5.3 item bytes — the thing this suite exists for.
           expect(itemBytes.map(hex)).toEqual(goldenVector.itemsHex);
@@ -280,39 +280,39 @@ describe("§5.3 per-field item encodings recompute from the twin", () => {
           expect(hex(commitment)).toBe(goldenVector.commitmentHex);
           expect(itemBytes.length).toBe(goldenVector.itemCount);
 
-          const header = decodeMidgardFieldArrayHeaderV1(preimage);
+          const header = decodeMidgardFieldArrayHeader(preimage);
           expect(header.count).toBe(goldenVector.itemCount);
           expect(header.nextOffset).toBe(goldenVector.headerLength);
 
           // §5.1's fail-closed decoder must recover exactly the items.
-          expect(decodeMidgardFieldPreimageV1(preimage).map(hex)).toEqual(
+          expect(decodeMidgardFieldPreimage(preimage).map(hex)).toEqual(
             goldenVector.itemsHex,
           );
 
           // §8's tier for this preimage length.
-          expect(selectMidgardFieldCarriageTierV1(preimage.length)).toBe(
+          expect(selectMidgardFieldCarriageTier(preimage.length)).toBe(
             goldenVector.carriageTier,
           );
 
           // §7.2 extents and reads through a real authenticated view.
-          const view = buildMidgardWholeFieldViewV1({
+          const view = buildMidgardWholeFieldView({
             fieldIndex: fieldDefinition.fieldIndex,
             preimage,
             expectedCommitment: commitment,
           });
           goldenVector.itemExtents.forEach((extent, index) => {
-            expect(midgardFieldItemExtentV1(view, index)).toEqual({
+            expect(midgardFieldItemExtent(view, index)).toEqual({
               offset: extent.offset,
               length: extent.length,
             });
-            expect(hex(midgardFieldItemAtV1(view, index))).toBe(
+            expect(hex(midgardFieldItemAt(view, index))).toBe(
               goldenVector.itemsHex[index],
             );
           });
           // §7.3 abort, never clamp: one past the end must fail, not return
           // the last item again.
           expect(() =>
-            midgardFieldItemExtentV1(view, goldenVector.itemCount),
+            midgardFieldItemExtent(view, goldenVector.itemCount),
           ).toThrow();
         });
       }
@@ -323,11 +323,11 @@ describe("§5.3 per-field item encodings recompute from the twin", () => {
 describe("§5.3 fixed-width item assertions", () => {
   it("keeps fields 0/1 at 38 bytes for every §9 boundary index", () => {
     for (const outputIndex of vectors.FIXED_INDEX_BOUNDARIES) {
-      const item = encodeMidgardSpendInputItemV1(vectors.input(1, outputIndex));
-      expect(item.length).toBe(MIDGARD_SPEND_INPUT_ITEM_BYTES_V1);
+      const item = encodeMidgardSpendInputItem(vectors.input(1, outputIndex));
+      expect(item.length).toBe(MIDGARD_SPEND_INPUT_ITEM_BYTES);
       // The index occupies the last three bytes and is always `19 XXXX`.
       expect(hex(item.subarray(-3))).toBe(
-        hex(encodeMidgardFixedOutputIndexV1(outputIndex)),
+        hex(encodeMidgardFixedOutputIndex(outputIndex)),
       );
       expect(item[35]).toBe(0x19);
     }
@@ -338,7 +338,7 @@ describe("§5.3 fixed-width item assertions", () => {
       vectors.FIXED_INDEX_BOUNDARIES,
     );
     for (const entry of golden.fixedOutputIndexes) {
-      expect(hex(encodeMidgardFixedOutputIndexV1(entry.outputIndex))).toBe(
+      expect(hex(encodeMidgardFixedOutputIndex(entry.outputIndex))).toBe(
         entry.encodedHex,
       );
       // Three bytes, always — including for 0 and 23, which minimal CBOR
@@ -353,16 +353,14 @@ describe("§5.3 fixed-width item assertions", () => {
       if (field.fieldIndex === 3 || field.fieldIndex === 4) {
         for (const vector of field.vectors) {
           for (const itemHex of vector.itemsHex) {
-            expect(itemHex.length / 2).toBe(MIDGARD_HASH28_ITEM_BYTES_V1);
+            expect(itemHex.length / 2).toBe(MIDGARD_HASH28_ITEM_BYTES);
           }
         }
       }
       if (field.fieldIndex === 7) {
         for (const vector of field.vectors) {
           for (const itemHex of vector.itemsHex) {
-            expect(itemHex.length / 2).toBe(
-              MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-            );
+            expect(itemHex.length / 2).toBe(MIDGARD_ADDRESS_WITNESS_ITEM_BYTES);
           }
         }
       }
@@ -370,33 +368,33 @@ describe("§5.3 fixed-width item assertions", () => {
   });
 
   it("rejects an out-of-range output index rather than truncating it", () => {
-    expect(() => encodeMidgardFixedOutputIndexV1(65_536)).toThrow();
-    expect(() => encodeMidgardFixedOutputIndexV1(-1)).toThrow();
+    expect(() => encodeMidgardFixedOutputIndex(65_536)).toThrow();
+    expect(() => encodeMidgardFixedOutputIndex(-1)).toThrow();
   });
 
   /**
    * The width rules of §5.3 are what fix the strides, so they have to be
    * enforced, not merely satisfied by every vector. A positive-only suite
    * cannot tell an enforced assertion from a deleted one: loosen
-   * `encodeMidgardHash28ItemV1` and every vector above still passes.
+   * `encodeMidgardHash28Item` and every vector above still passes.
    */
   it("rejects items that are not exactly the §5.3 width", () => {
-    expect(() => encodeMidgardHash28ItemV1(vectors.filler(27, 1))).toThrow();
-    expect(() => encodeMidgardHash28ItemV1(vectors.filler(29, 1))).toThrow();
+    expect(() => encodeMidgardHash28Item(vectors.filler(27, 1))).toThrow();
+    expect(() => encodeMidgardHash28Item(vectors.filler(29, 1))).toThrow();
     expect(() =>
-      encodeMidgardSpendInputItemV1({
+      encodeMidgardSpendInputItem({
         txId: vectors.filler(31, 1),
         outputIndex: 0,
       }),
     ).toThrow();
     expect(() =>
-      encodeMidgardAddressWitnessItemV1({
+      encodeMidgardAddressWitnessItem({
         verificationKey: vectors.filler(31, 1),
         signature: vectors.filler(64, 2),
       }),
     ).toThrow();
     expect(() =>
-      encodeMidgardAddressWitnessItemV1({
+      encodeMidgardAddressWitnessItem({
         verificationKey: vectors.filler(32, 1),
         signature: vectors.filler(63, 2),
       }),
@@ -412,7 +410,7 @@ describe("§5.6 mint ordering is enforced, not assumed", () => {
     // Canonical order is length-first, then byte-lexicographic: "4141" (2 B)
     // sorts after "42" (1 B), so this pair is descending.
     expect(() =>
-      encodeMidgardMintPolicyItemV1(
+      encodeMidgardMintPolicyItem(
         vectors.mintPolicy(1, [
           vectors.asset("4141", 1),
           vectors.asset("42", 2),
@@ -420,7 +418,7 @@ describe("§5.6 mint ordering is enforced, not assumed", () => {
       ),
     ).toThrow();
     expect(() =>
-      encodeMidgardMintPolicyItemV1(
+      encodeMidgardMintPolicyItem(
         vectors.mintPolicy(1, [vectors.asset("41", 1), vectors.asset("41", 2)]),
       ),
     ).toThrow();
@@ -428,15 +426,15 @@ describe("§5.6 mint ordering is enforced, not assumed", () => {
 
   it("rejects a zero quantity and an over-long asset name", () => {
     expect(() =>
-      encodeMidgardMintPolicyItemV1(vectors.mintPolicy(1, [])),
+      encodeMidgardMintPolicyItem(vectors.mintPolicy(1, [])),
     ).toThrow();
     expect(() =>
-      encodeMidgardMintPolicyItemV1(
+      encodeMidgardMintPolicyItem(
         vectors.mintPolicy(1, [vectors.asset("41", 0)]),
       ),
     ).toThrow();
     expect(() =>
-      encodeMidgardMintPolicyItemV1(
+      encodeMidgardMintPolicyItem(
         vectors.mintPolicy(1, [
           vectors.asset(vectors.filler(33, 1).toString("hex"), 1),
         ]),
@@ -454,16 +452,16 @@ describe("§5.6 mint ordering is enforced, not assumed", () => {
     const descending = [...ascending].reverse();
 
     expect(() =>
-      encodeMidgardFieldPreimageForFieldV1({ fieldIndex: 5, items: ascending }),
+      encodeMidgardFieldPreimageForField({ fieldIndex: 5, items: ascending }),
     ).not.toThrow();
     expect(() =>
-      encodeMidgardFieldPreimageForFieldV1({
+      encodeMidgardFieldPreimageForField({
         fieldIndex: 5,
         items: descending,
       }),
     ).toThrow();
     expect(() =>
-      encodeMidgardFieldPreimageForFieldV1({
+      encodeMidgardFieldPreimageForField({
         fieldIndex: 5,
         items: [ascending[0]!, ascending[0]!],
       }),
@@ -491,20 +489,20 @@ describe("§5.3 the two value sets", () => {
 
   it("pins all seven redeemer purpose tags at one byte each", () => {
     expect(golden.purposeTags.map((entry) => entry.purpose)).toEqual(
-      Object.keys(MIDGARD_REDEEMER_PURPOSE_TAGS_V1),
+      Object.keys(MIDGARD_REDEEMER_PURPOSE_TAGS),
     );
     for (const entry of golden.purposeTags) {
       expect(
-        MIDGARD_REDEEMER_PURPOSE_TAGS_V1[
-          entry.purpose as keyof typeof MIDGARD_REDEEMER_PURPOSE_TAGS_V1
+        MIDGARD_REDEEMER_PURPOSE_TAGS[
+          entry.purpose as keyof typeof MIDGARD_REDEEMER_PURPOSE_TAGS
         ],
       ).toBe(entry.tag);
       expect(entry.tag).toBeLessThanOrEqual(23);
       expect(
         hex(
-          encodeMidgardRedeemerWitnessItemV1(
+          encodeMidgardRedeemerWitnessItem(
             vectors.redeemer(
-              entry.purpose as keyof typeof MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+              entry.purpose as keyof typeof MIDGARD_REDEEMER_PURPOSE_TAGS,
               1,
               "d87980",
               2,
@@ -560,7 +558,7 @@ describe("§2.4 field-preimage lengths keep the wire-order transposition", () =>
     // Driven through the function that performs the transposition. Handing a
     // pre-ordered array to the encoder would prove array order only, and would
     // still pass with the two witness slots swapped.
-    const derived = midgardNativeTxProofFieldPreimageLengthsV1(source);
+    const derived = midgardNativeTxProofFieldPreimageLengths(source);
 
     expect(derived).toEqual(golden.fieldPreimageLengths.lengths);
     // Pairwise distinct, or a transposition could not be observed at all.
@@ -575,7 +573,7 @@ describe("§2.4 field-preimage lengths keep the wire-order transposition", () =>
       source.witnessSet.addrTxWitsPreimageCbor.length,
     );
 
-    expect(hex(encodeMidgardNativeTxProofFieldLengthsV1(derived))).toBe(
+    expect(hex(encodeMidgardNativeTxProofFieldLengths(derived))).toBe(
       golden.fieldPreimageLengths.encodedHex,
     );
     const encoded = Buffer.from(golden.fieldPreimageLengths.encodedHex, "hex");
@@ -589,7 +587,7 @@ describe("§8 carriage tiers", () => {
       vectors.CARRIAGE_BOUNDARY_LENGTHS,
     );
     for (const entry of golden.carriageTiers) {
-      expect(selectMidgardFieldCarriageTierV1(entry.preimageLength)).toBe(
+      expect(selectMidgardFieldCarriageTier(entry.preimageLength)).toBe(
         entry.tier,
       );
     }
@@ -617,14 +615,14 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
     expect(vectors.STRADDLE_FIELD_INDEX).toBe(straddle.fieldIndex);
     const maximalField0Preimage =
       Buffer.from(straddle.headerHex, "hex").length +
-      straddle.stride * MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT_V1;
-    expect(selectMidgardFieldCarriageTierV1(maximalField0Preimage)).toBe(
+      straddle.stride * MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT;
+    expect(selectMidgardFieldCarriageTier(maximalField0Preimage)).toBe(
       "Inline",
     );
     // …and the cardinality this vector does use is inside field 1's byte bound.
     expect(straddle.itemCount).toBeLessThanOrEqual(
       Math.floor(
-        (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 -
+        (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES -
           Buffer.from(straddle.headerHex, "hex").length) /
           straddle.stride,
       ),
@@ -633,13 +631,13 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
       fieldIndex: vectors.STRADDLE_FIELD_INDEX,
       items: vectors.straddleInputs(),
     };
-    const preimage = encodeMidgardFieldPreimageForFieldV1(selector);
-    const commitment = midgardFieldCommitmentForFieldV1(selector);
+    const preimage = encodeMidgardFieldPreimageForField(selector);
+    const commitment = midgardFieldCommitmentForField(selector);
 
     expect(preimage.length).toBe(straddle.totalLength);
     expect(hex(commitment)).toBe(straddle.commitmentHex);
     expect(straddle.carriageTier).toBe("Certified");
-    expect(selectMidgardFieldCarriageTierV1(preimage.length)).toBe("Certified");
+    expect(selectMidgardFieldCarriageTier(preimage.length)).toBe("Certified");
 
     // The compaction is lossless: header ‖ block×repeats rebuilds the preimage.
     const rebuilt = Buffer.concat([
@@ -650,7 +648,7 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
     ]);
     expect(hex(rebuilt)).toBe(hex(preimage));
 
-    const certificate = deriveMidgardFieldPreimageCertificateV1({
+    const certificate = deriveMidgardFieldPreimageCertificate({
       owner: vectors.STRADDLE_OWNER,
       txId: vectors.STRADDLE_TX_ID,
       fieldIndex: vectors.STRADDLE_FIELD_INDEX,
@@ -662,18 +660,18 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
     for (
       let start = 0;
       start < preimage.length;
-      start += MIDGARD_CHUNK_BYTES_K_V1
+      start += MIDGARD_CHUNK_BYTES_K
     ) {
       chunks.push(
         preimage.subarray(
           start,
-          Math.min(start + MIDGARD_CHUNK_BYTES_K_V1, preimage.length),
+          Math.min(start + MIDGARD_CHUNK_BYTES_K, preimage.length),
         ),
       );
     }
     expect(chunks.map((chunk) => chunk.length)).toEqual(straddle.chunkLengths);
 
-    const view = buildMidgardChunkedFieldViewV1({
+    const view = buildMidgardChunkedFieldView({
       fieldIndex: vectors.STRADDLE_FIELD_INDEX,
       txId: vectors.STRADDLE_TX_ID,
       certificate,
@@ -685,16 +683,14 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
     // its neighbours carry different bytes, so an off-by-one is visible.
     expect(straddle.reads.filter((read) => read.straddles).length).toBe(1);
     for (const read of straddle.reads) {
-      expect(midgardFieldItemExtentV1(view, read.itemIndex)).toEqual({
+      expect(midgardFieldItemExtent(view, read.itemIndex)).toEqual({
         offset: read.offset,
         length: read.length,
       });
-      expect(hex(midgardFieldItemAtV1(view, read.itemIndex))).toBe(
-        read.itemHex,
-      );
+      expect(hex(midgardFieldItemAt(view, read.itemIndex))).toBe(read.itemHex);
       const crosses =
-        Math.floor(read.offset / MIDGARD_CHUNK_BYTES_K_V1) !==
-        Math.floor((read.offset + read.length - 1) / MIDGARD_CHUNK_BYTES_K_V1);
+        Math.floor(read.offset / MIDGARD_CHUNK_BYTES_K) !==
+        Math.floor((read.offset + read.length - 1) / MIDGARD_CHUNK_BYTES_K);
       expect(crosses).toBe(read.straddles);
     }
     const straddling = straddle.reads.find((read) => read.straddles);
@@ -705,6 +701,6 @@ describe("§8.4 tier-3 straddle at the stride fields 0/1 share", () => {
     );
 
     // §7.3 again, on the chunked branch.
-    expect(() => midgardFieldItemExtentV1(view, straddle.itemCount)).toThrow();
+    expect(() => midgardFieldItemExtent(view, straddle.itemCount)).toThrow();
   });
 });

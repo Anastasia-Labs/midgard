@@ -1,9 +1,9 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
 import { Database } from "../services/database.js";
-import { admitDaPayloadRetentionReleaseAuthorityV1 } from "./daPayloadTerminalOutcomes.js";
+import { admitDaPayloadRetentionReleaseAuthority } from "./daPayloadTerminalOutcomes.js";
 import { computeChallengeableCutoff } from "./retention-policy.js";
 import {
   clearTable,
@@ -42,7 +42,7 @@ export enum Columns {
 
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
-  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.VERSION]: 1;
   [Columns.PAYLOAD_CBOR]: Buffer;
   [Columns.PAYLOAD_SHA256]: Buffer;
@@ -259,7 +259,7 @@ export const pruneOlderThan = (
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const authority =
-      admitDaPayloadRetentionReleaseAuthorityV1(deploymentManifest);
+      admitDaPayloadRetentionReleaseAuthority(deploymentManifest);
     if (
       authority === null ||
       authority.availabilityChallengeCapability !== "deployed_inactive"

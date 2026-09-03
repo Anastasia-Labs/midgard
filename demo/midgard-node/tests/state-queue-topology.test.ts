@@ -120,7 +120,7 @@ describe("state queue topology", () => {
   it("walks the canonical queue by exact linked NFT units for commit preflight", async () => {
     const headerHash = "11".repeat(28);
     const tailAssetName = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
-    const header: SDK.HeaderV1 = {
+    const header: SDK.Header = {
       prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: "77".repeat(32),
       withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -166,7 +166,7 @@ describe("state queue topology", () => {
       key: { Key: { key: headerHash } },
       next: "Empty",
       txByte: "33",
-      data: SDK.castStateQueueNodeV1ToData({
+      data: SDK.castStateQueueNodeToData({
         header,
         da_attestation: SDK.NO_DA_ATTESTATION,
       }) as SDK.LinkedListNodeView["data"],

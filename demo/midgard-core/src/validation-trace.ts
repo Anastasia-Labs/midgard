@@ -14,19 +14,19 @@ import {
 } from "./codec/errors.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_VALIDATION_MACHINE_V1_VERSION,
-  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_VALIDATION_MACHINE_VERSION,
+  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
 } from "./consensus-profile-v1.js";
 import {
-  encodeMidgardMpfProofDescriptorV1,
-  type MidgardMpfProofDescriptorV1,
+  encodeMidgardMpfProofDescriptor,
+  type MidgardMpfProofDescriptor,
 } from "./mpf-proof-fold-v1.js";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "./plutus-data-cbor.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  commitMidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleFrontierV1,
+  buildMidgardValidationMerkleFrontier,
+  commitMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
 } from "./validation-merkle.js";
 
 const STATE_HASH_DOMAIN = Buffer.from(
@@ -113,8 +113,8 @@ const sourceKindNames = new Map<number, MidgardValidationSourceKindName>(
   ]),
 );
 
-export type MidgardValidationMachineStateV1 = {
-  readonly machineVersion: typeof MIDGARD_VALIDATION_MACHINE_V1_VERSION;
+export type MidgardValidationMachineState = {
+  readonly machineVersion: typeof MIDGARD_VALIDATION_MACHINE_VERSION;
   readonly eventKeyHash: Hash32;
   readonly transactionId: Hash32;
   /**
@@ -136,9 +136,9 @@ export type MidgardValidationMachineStateV1 = {
   readonly ledgerDeltaRoot: Hash32;
 };
 
-export type MidgardValidationTraceDescriptorV1 = {
-  readonly schemaVersion: typeof MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION;
-  readonly machineVersion: typeof MIDGARD_VALIDATION_MACHINE_V1_VERSION;
+export type MidgardValidationTraceDescriptor = {
+  readonly schemaVersion: typeof MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION;
+  readonly machineVersion: typeof MIDGARD_VALIDATION_MACHINE_VERSION;
   readonly traceRoot: Hash32;
   /** Number of transitions. The trace contains stepCount + 1 state hashes. */
   readonly stepCount: number;
@@ -148,17 +148,17 @@ export type MidgardValidationTraceDescriptorV1 = {
   readonly rejectionCodeHash: Hash32;
 };
 
-export type MidgardValidationTraceProofV1 = {
+export type MidgardValidationTraceProof = {
   readonly stateIndex: number;
   readonly stateHash: Hash32;
   readonly siblings: readonly Hash32[];
 };
 
 export type MidgardValidationTraceTree = {
-  readonly descriptor: MidgardValidationTraceDescriptorV1;
+  readonly descriptor: MidgardValidationTraceDescriptor;
   readonly stateHashes: readonly Hash32[];
   readonly paddedLeafCount: number;
-  readonly proofs: readonly MidgardValidationTraceProofV1[];
+  readonly proofs: readonly MidgardValidationTraceProof[];
 };
 
 const fail = (message: string, detail?: string): never => {
@@ -206,7 +206,7 @@ const hashDomain = (domain: Uint8Array, bytes: Uint8Array): Hash32 =>
   );
 
 /** Exact event-key hash committed into every validation-machine state. */
-export const hashMidgardValidationEventKeyV1 = (
+export const hashMidgardValidationEventKey = (
   canonicalEventKeyCbor: Uint8Array,
 ): Hash32 =>
   ensureHash32(
@@ -214,8 +214,8 @@ export const hashMidgardValidationEventKeyV1 = (
     "validation_event_key_hash",
   );
 
-export const encodeMidgardValidationMachineStateV1 = (
-  state: MidgardValidationMachineStateV1,
+export const encodeMidgardValidationMachineState = (
+  state: MidgardValidationMachineState,
 ): Buffer => {
   validateVerdictRejectionBinding(
     state.verdict,
@@ -243,9 +243,9 @@ export const encodeMidgardValidationMachineStateV1 = (
   ]);
 };
 
-export const decodeMidgardValidationMachineStateV1 = (
+export const decodeMidgardValidationMachineState = (
   bytes: Uint8Array,
-): MidgardValidationMachineStateV1 => {
+): MidgardValidationMachineState => {
   const fields = asArray(
     decodeSingleCbor(bytes),
     "validation_machine_state_v1",
@@ -257,7 +257,7 @@ export const decodeMidgardValidationMachineStateV1 = (
     );
   }
   const machineVersion = asBoundedUint(fields[0], "state.machine_version", 255);
-  if (machineVersion !== MIDGARD_VALIDATION_MACHINE_V1_VERSION) {
+  if (machineVersion !== MIDGARD_VALIDATION_MACHINE_VERSION) {
     return fail(
       "Unsupported validation machine version",
       machineVersion.toString(),
@@ -275,7 +275,7 @@ export const decodeMidgardValidationMachineStateV1 = (
   );
   validateVerdictRejectionBinding(verdict, rejectionCodeHash, "state");
   return {
-    machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+    machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
     eventKeyHash: ensureHash32(
       asBytes(fields[1], "state.event_key_hash"),
       "state.event_key_hash",
@@ -318,13 +318,13 @@ export const decodeMidgardValidationMachineStateV1 = (
   };
 };
 
-export const hashMidgardValidationMachineStateV1 = (
-  state: MidgardValidationMachineStateV1,
+export const hashMidgardValidationMachineState = (
+  state: MidgardValidationMachineState,
 ): Hash32 =>
-  hashDomain(STATE_HASH_DOMAIN, encodeMidgardValidationMachineStateV1(state));
+  hashDomain(STATE_HASH_DOMAIN, encodeMidgardValidationMachineState(state));
 
-export const encodeMidgardValidationTraceDescriptorV1 = (
-  descriptor: MidgardValidationTraceDescriptorV1,
+export const encodeMidgardValidationTraceDescriptor = (
+  descriptor: MidgardValidationTraceDescriptor,
 ): Buffer => {
   validateVerdictRejectionBinding(
     descriptor.verdict,
@@ -334,7 +334,7 @@ export const encodeMidgardValidationTraceDescriptorV1 = (
   const stepCount = asBoundedUint(
     descriptor.stepCount,
     "descriptor.step_count",
-    MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
+    MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
   );
   return encodeCbor([
     BigInt(descriptor.schemaVersion),
@@ -354,9 +354,9 @@ export const encodeMidgardValidationTraceDescriptorV1 = (
   ]);
 };
 
-export const decodeMidgardValidationTraceDescriptorV1 = (
+export const decodeMidgardValidationTraceDescriptor = (
   bytes: Uint8Array,
-): MidgardValidationTraceDescriptorV1 => {
+): MidgardValidationTraceDescriptor => {
   const fields = asArray(
     decodeSingleCbor(bytes),
     "validation_trace_descriptor_v1",
@@ -372,7 +372,7 @@ export const decodeMidgardValidationTraceDescriptorV1 = (
     "descriptor.schema_version",
     255,
   );
-  if (schemaVersion !== MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION) {
+  if (schemaVersion !== MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION) {
     return fail(
       "Unsupported validation trace descriptor version",
       schemaVersion.toString(),
@@ -383,7 +383,7 @@ export const decodeMidgardValidationTraceDescriptorV1 = (
     "descriptor.machine_version",
     255,
   );
-  if (machineVersion !== MIDGARD_VALIDATION_MACHINE_V1_VERSION) {
+  if (machineVersion !== MIDGARD_VALIDATION_MACHINE_VERSION) {
     return fail(
       "Unsupported validation machine version",
       machineVersion.toString(),
@@ -399,8 +399,8 @@ export const decodeMidgardValidationTraceDescriptorV1 = (
   );
   validateVerdictRejectionBinding(verdict, rejectionCodeHash, "descriptor");
   return {
-    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-    machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+    machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
     traceRoot: ensureHash32(
       asBytes(fields[2], "descriptor.trace_root"),
       "descriptor.trace_root",
@@ -408,7 +408,7 @@ export const decodeMidgardValidationTraceDescriptorV1 = (
     stepCount: asBoundedUint(
       fields[3],
       "descriptor.step_count",
-      MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
+      MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
     ),
     initialStateHash: ensureHash32(
       asBytes(fields[4], "descriptor.initial_state_hash"),
@@ -442,7 +442,7 @@ const validateVerdictRejectionBinding = (
   }
 };
 
-export const hashMidgardValidationRejectionCodeV1 = (
+export const hashMidgardValidationRejectionCode = (
   rejectCode: string,
 ): Hash32 => {
   if (!/^E_[A-Z0-9_]+$/u.test(rejectCode)) {
@@ -459,7 +459,7 @@ export const hashMidgardValidationRejectionCodeV1 = (
  * transition. The phase and program counter are inside the commitment so the
  * same bytes cannot be replayed as a different instruction.
  */
-export const hashMidgardValidationWorkWitnessV1 = ({
+export const hashMidgardValidationWorkWitness = ({
   phase,
   programCounter,
   witnessCbor,
@@ -477,7 +477,7 @@ export const hashMidgardValidationWorkWitnessV1 = ({
           asBoundedUint(
             programCounter,
             "work_witness.program_counter",
-            MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
+            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
           ),
         ),
       ),
@@ -490,12 +490,12 @@ export const hashMidgardValidationWorkWitnessV1 = ({
     ]),
   );
 
-export const hashMidgardValidationContextV1 = (
+export const hashMidgardValidationContext = (
   canonicalContextCbor: Uint8Array,
 ): Hash32 =>
   hashDomain(VALIDATION_CONTEXT_DOMAIN, Buffer.from(canonicalContextCbor));
 
-export const hashMidgardValidationLedgerDeltaCborV1 = (
+export const hashMidgardValidationLedgerDeltaCbor = (
   canonicalLedgerDeltaCbor: Uint8Array,
 ): Hash32 =>
   hashDomain(LEDGER_DELTA_DOMAIN, Buffer.from(canonicalLedgerDeltaCbor));
@@ -505,7 +505,7 @@ const LEDGER_DELTA_OPERATION_DOMAIN = Buffer.from(
   "utf8",
 );
 
-export type MidgardValidationLedgerDeltaOperationV1 =
+export type MidgardValidationLedgerDeltaOperation =
   | {
       readonly type: "delete";
       readonly key: Uint8Array;
@@ -516,13 +516,13 @@ export type MidgardValidationLedgerDeltaOperationV1 =
       readonly value: Uint8Array;
     };
 
-export type MidgardValidationAuthenticatedLedgerDeltaOperationV1 =
-  MidgardValidationLedgerDeltaOperationV1 & {
-    readonly proofDescriptor: MidgardMpfProofDescriptorV1;
+export type MidgardValidationAuthenticatedLedgerDeltaOperation =
+  MidgardValidationLedgerDeltaOperation & {
+    readonly proofDescriptor: MidgardMpfProofDescriptor;
   };
 
-export const hashMidgardValidationLedgerDeltaOperationV1 = (
-  operation: MidgardValidationAuthenticatedLedgerDeltaOperationV1,
+export const hashMidgardValidationLedgerDeltaOperation = (
+  operation: MidgardValidationAuthenticatedLedgerDeltaOperation,
 ): Hash32 =>
   hashDomain(
     LEDGER_DELTA_OPERATION_DOMAIN,
@@ -534,22 +534,22 @@ export const hashMidgardValidationLedgerDeltaOperationV1 = (
           ? Buffer.alloc(0)
           : Buffer.from(operation.value),
       ),
-      encodeMidgardMpfProofDescriptorV1(operation.proofDescriptor),
+      encodeMidgardMpfProofDescriptor(operation.proofDescriptor),
     ]),
   );
 
-export const buildMidgardValidationLedgerDeltaFrontierV1 = (
-  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperationV1[],
-): MidgardValidationMerkleFrontierV1 =>
-  buildMidgardValidationMerkleFrontierV1(
-    operations.map(hashMidgardValidationLedgerDeltaOperationV1),
+export const buildMidgardValidationLedgerDeltaFrontier = (
+  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperation[],
+): MidgardValidationMerkleFrontier =>
+  buildMidgardValidationMerkleFrontier(
+    operations.map(hashMidgardValidationLedgerDeltaOperation),
   );
 
-export const hashMidgardValidationLedgerDeltaV1 = (
-  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperationV1[],
+export const hashMidgardValidationLedgerDelta = (
+  operations: readonly MidgardValidationAuthenticatedLedgerDeltaOperation[],
 ): Hash32 =>
-  commitMidgardValidationMerkleFrontierV1(
-    buildMidgardValidationLedgerDeltaFrontierV1(operations),
+  commitMidgardValidationMerkleFrontier(
+    buildMidgardValidationLedgerDeltaFrontier(operations),
   );
 
 export const MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH = ensureHash32(
@@ -590,7 +590,7 @@ export const validationTraceDepthForStepCount = (stepCount: number): number => {
   const bounded = asBoundedUint(
     stepCount,
     "trace.step_count",
-    MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
+    MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
   );
   return Math.ceil(Math.log2(bounded + 1));
 };
@@ -608,7 +608,7 @@ export const buildMidgardValidationTraceTree = (
   asBoundedUint(
     stepCount,
     "trace.step_count",
-    MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
+    MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
   );
   const stateHashes = stateHashesInput.map((stateHash, index) =>
     ensureHash32(stateHash, `trace.state_hashes[${index.toString()}]`),
@@ -642,8 +642,8 @@ export const buildMidgardValidationTraceTree = (
   const traceRoot = levels[levels.length - 1]![0]!;
   return {
     descriptor: {
-      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-      machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+      schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+      machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
       traceRoot,
       stepCount,
       initialStateHash: stateHashes[0]!,
@@ -660,12 +660,12 @@ export const buildMidgardValidationTraceTree = (
   };
 };
 
-export const verifyMidgardValidationTraceProofV1 = ({
+export const verifyMidgardValidationTraceProof = ({
   descriptor,
   proof,
 }: {
-  readonly descriptor: MidgardValidationTraceDescriptorV1;
-  readonly proof: MidgardValidationTraceProofV1;
+  readonly descriptor: MidgardValidationTraceDescriptor;
+  readonly proof: MidgardValidationTraceProof;
 }): boolean => {
   if (
     !Number.isSafeInteger(proof.stateIndex) ||

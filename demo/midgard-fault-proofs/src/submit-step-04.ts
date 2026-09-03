@@ -12,11 +12,11 @@
 import {
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
-  type FieldOpeningV1,
+  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -37,12 +37,12 @@ import {
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -66,14 +66,14 @@ import {
 import { parseSpendInputCbors } from "./submit-step-03.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitStep04CliConfig = SubmitProviderConfig & {
@@ -200,7 +200,7 @@ const makeStep04SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly tx2SpendInputsOpening: FieldOpeningV1;
+  readonly tx2SpendInputsOpening: FieldOpening;
   readonly doubleSpentInputIndex: bigint;
   readonly onLayout: (layout: Step04SpendLayout) => void;
 }): BuildTxWithRedeemer =>
@@ -338,9 +338,9 @@ export const submitStep04 = async ({
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Production workflow seam for carriage and proof-step submissions. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep04Result> => {
   const { doubleSpendCategory, contracts } =
@@ -372,8 +372,8 @@ export const submitStep04 = async ({
   });
   const inputDatum = requireStep04Datum({ threadUtxo, signer });
   // The door's own checks, run before a transaction is built.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: inputDatum.data.verified_tx2_id,
     nativeTxCompactCbor,
     itemCbors: tx2SpendInputCbors.map((inputCbor) =>
@@ -411,7 +411,7 @@ export const submitStep04 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -419,17 +419,17 @@ export const submitStep04 = async ({
       label: "Double-spend step 04 tx2 spend-inputs",
       preSubmitBoundary,
     }));
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.doubleSpend.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "double-spend step 04 validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "double-spend step 04 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "double-spend step 04 fraud-proof mint",
@@ -448,7 +448,7 @@ export const submitStep04 = async ({
       walletUtxos,
     ),
   );
-  const tx2SpendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const tx2SpendInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -549,20 +549,20 @@ export const submitStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-04",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.doubleSpend.steps[3].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof computation-thread minting",
         utxo: witnessReferenceScripts?.computationThreadMint,
         expectedScript: contracts.computationThread.mintingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof token minting",
         utxo: witnessReferenceScripts?.fraudProofMint,
         expectedScript: contracts.fraudProof.mintingScript,
@@ -617,7 +617,7 @@ export const submitStep04 = async ({
 export const submitStep04FromFiles = async (
   config: SubmitStep04CliConfig,
 ): Promise<SubmitStep04Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-step-04",
   });
   const [blueprint, deploymentInfo, tx2InputsJson, nativeTxCompactJson, lucid] =
@@ -641,7 +641,7 @@ export const submitStep04FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     tx2SpendInputCbors,
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

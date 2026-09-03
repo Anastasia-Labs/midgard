@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
  * coverage/fit contract and its reproducibility.
  *
  * Of the 122 contractual resolver slots:
- *   - 14 top-level resolvers (`VALIDATION_TRACE_RESOLVER_COUNT_V1`), including
+ *   - 14 top-level resolvers (`VALIDATION_TRACE_RESOLVER_COUNT`), including
  *     both direct resolvers (cek at resolverIndex 11, valueAndMint at
  *     resolverIndex 12)
  *   - 90 registered semantic resolvers
@@ -140,15 +140,15 @@ const unfitPin = JSON.parse(
   readFileSync(unfitPinUrl, "utf8"),
 ) as ResolverProofFitUnfitPin;
 
-const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
-const SEMANTIC_RESOLVER_COUNT_V1 = 90;
-const PREPARE_RESOLVER_COUNT_V1 = 14;
-const CANONICAL_DECODE_ITEM_STAGE_COUNT_V1 = 4;
+const VALIDATION_TRACE_RESOLVER_COUNT = 14;
+const SEMANTIC_RESOLVER_COUNT = 90;
+const PREPARE_RESOLVER_COUNT = 14;
+const CANONICAL_DECODE_ITEM_STAGE_COUNT = 4;
 const EXPECTED_ROW_COUNT =
-  VALIDATION_TRACE_RESOLVER_COUNT_V1 +
-  SEMANTIC_RESOLVER_COUNT_V1 +
-  PREPARE_RESOLVER_COUNT_V1 +
-  CANONICAL_DECODE_ITEM_STAGE_COUNT_V1;
+  VALIDATION_TRACE_RESOLVER_COUNT +
+  SEMANTIC_RESOLVER_COUNT +
+  PREPARE_RESOLVER_COUNT +
+  CANONICAL_DECODE_ITEM_STAGE_COUNT;
 
 const rowsByCategory = (category: ResolverProofFitRow["category"]) =>
   artifact.rows.filter((row) => row.category === category);
@@ -175,29 +175,29 @@ describe("resolver proof-fit sweep V1", () => {
     expect(artifact.rowCount).toBe(EXPECTED_ROW_COUNT);
     expect(artifact.rows).toHaveLength(EXPECTED_ROW_COUNT);
     expect(artifact.categoryCounts).toEqual({
-      topLevel: VALIDATION_TRACE_RESOLVER_COUNT_V1,
-      prepare: PREPARE_RESOLVER_COUNT_V1,
-      semantic: SEMANTIC_RESOLVER_COUNT_V1,
-      canonicalDecodeItemStage: CANONICAL_DECODE_ITEM_STAGE_COUNT_V1,
+      topLevel: VALIDATION_TRACE_RESOLVER_COUNT,
+      prepare: PREPARE_RESOLVER_COUNT,
+      semantic: SEMANTIC_RESOLVER_COUNT,
+      canonicalDecodeItemStage: CANONICAL_DECODE_ITEM_STAGE_COUNT,
     });
 
     const topLevel = rowsByCategory("topLevel");
     expect(topLevel.map((row) => row.index).sort((a, b) => a - b)).toEqual(
-      Array.from({ length: VALIDATION_TRACE_RESOLVER_COUNT_V1 }, (_, i) => i),
+      Array.from({ length: VALIDATION_TRACE_RESOLVER_COUNT }, (_, i) => i),
     );
     const semantic = rowsByCategory("semantic");
     expect(semantic.map((row) => row.index).sort((a, b) => a - b)).toEqual(
-      Array.from({ length: SEMANTIC_RESOLVER_COUNT_V1 }, (_, i) => i),
+      Array.from({ length: SEMANTIC_RESOLVER_COUNT }, (_, i) => i),
     );
     const prepare = rowsByCategory("prepare");
     expect(prepare.map((row) => row.index).sort((a, b) => a - b)).toEqual(
-      Array.from({ length: PREPARE_RESOLVER_COUNT_V1 }, (_, i) => i),
+      Array.from({ length: PREPARE_RESOLVER_COUNT }, (_, i) => i),
     );
     const canonicalDecodeItemStage = rowsByCategory("canonicalDecodeItemStage");
     expect(
       canonicalDecodeItemStage.map((row) => row.index).sort((a, b) => a - b),
     ).toEqual(
-      Array.from({ length: CANONICAL_DECODE_ITEM_STAGE_COUNT_V1 }, (_, i) => i),
+      Array.from({ length: CANONICAL_DECODE_ITEM_STAGE_COUNT }, (_, i) => i),
     );
 
     // Both direct resolvers (§8.3's two heaviest) must be present as

@@ -4,7 +4,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_BLUEPRINT_TITLES_V1 = [
+export const SCRIPT_INTEGRITY_HASH_MISSING_BLUEPRINT_TITLES = [
   "fraud_proofs/script_integrity_hash_missing/step_01.main.spend",
   "fraud_proofs/script_integrity_hash_missing/step_02.main.spend",
   "fraud_proofs/script_integrity_hash_missing/step_03.main.spend",
@@ -14,7 +14,7 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_BLUEPRINT_TITLES_V1 = [
   "fraud_proofs/script_integrity_hash_missing/step_04.main.spend",
 ] as const;
 
-export type ScriptIntegrityHashMissingStepContractV1 = {
+export type ScriptIntegrityHashMissingStepContract = {
   readonly blueprintTitle?: string;
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
@@ -22,15 +22,15 @@ export type ScriptIntegrityHashMissingStepContractV1 = {
   readonly referenceOutRef?: string;
 };
 
-export type ScriptIntegrityHashMissingContractsV1 = {
+export type ScriptIntegrityHashMissingContracts = {
   readonly steps: readonly [
-    ScriptIntegrityHashMissingStepContractV1,
-    ScriptIntegrityHashMissingStepContractV1,
-    ScriptIntegrityHashMissingStepContractV1,
-    ScriptIntegrityHashMissingStepContractV1,
-    ScriptIntegrityHashMissingStepContractV1,
-    ScriptIntegrityHashMissingStepContractV1,
-    ScriptIntegrityHashMissingStepContractV1,
+    ScriptIntegrityHashMissingStepContract,
+    ScriptIntegrityHashMissingStepContract,
+    ScriptIntegrityHashMissingStepContract,
+    ScriptIntegrityHashMissingStepContract,
+    ScriptIntegrityHashMissingStepContract,
+    ScriptIntegrityHashMissingStepContract,
+    ScriptIntegrityHashMissingStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;
@@ -47,12 +47,12 @@ export type ScriptIntegrityHashMissingContractsV1 = {
   readonly stateQueuePolicyId: string;
 };
 
-export type ScriptIntegrityHashMissingProductionManifestV1 = {
+export type ScriptIntegrityHashMissingManifest = {
   readonly schemaVersion: "script-integrity-hash-missing-production-manifest-v1";
   readonly category: "scriptIntegrityHashMissing";
   readonly categoryId: string;
   readonly network: Network;
-  readonly contracts: ScriptIntegrityHashMissingContractsV1;
+  readonly contracts: ScriptIntegrityHashMissingContracts;
 };
 
 const requireHex = (value: string, bytes: number, label: string): void => {
@@ -64,9 +64,9 @@ const requireHex = (value: string, bytes: number, label: string): void => {
 };
 
 /** Family-local loader. Registration is deliberately a separate central change. */
-export const loadScriptIntegrityHashMissingProductionV1 = (
-  manifest: ScriptIntegrityHashMissingProductionManifestV1,
-): ScriptIntegrityHashMissingProductionManifestV1 => {
+export const loadScriptIntegrityHashMissing = (
+  manifest: ScriptIntegrityHashMissingManifest,
+): ScriptIntegrityHashMissingManifest => {
   if (
     manifest.schemaVersion !==
       "script-integrity-hash-missing-production-manifest-v1" ||
@@ -80,7 +80,7 @@ export const loadScriptIntegrityHashMissingProductionV1 = (
   manifest.contracts.steps.forEach((step, index) => {
     if (
       step.blueprintTitle !==
-      SCRIPT_INTEGRITY_HASH_MISSING_BLUEPRINT_TITLES_V1[index]
+      SCRIPT_INTEGRITY_HASH_MISSING_BLUEPRINT_TITLES[index]
     ) {
       throw new Error(
         `scriptIntegrityHashMissing: physical step ${(index + 1).toString()} title mismatch`,

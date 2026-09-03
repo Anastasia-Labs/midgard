@@ -1,15 +1,15 @@
 import {
-  decodeMidgardNativeTxCompactV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  decodeMidgardNativeTxCompact,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  type CanonicalBlockEvidenceV1,
-  fetchCanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   type StateQueueMutationLeaseCoordinator,
@@ -26,60 +26,60 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPortV1 } from "../workflow/family-l1-observation-v1.js";
+import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation-v1.js";
 import {
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
-  type JournalJsonObjectV1,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
+  type JournalJsonObject,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  REDEEMER_CANONICITY_BLUEPRINT_TITLES_V1,
-  type RedeemerCanonicityContractsV1,
+  REDEEMER_CANONICITY_BLUEPRINT_TITLES,
+  type RedeemerCanonicityContracts,
 } from "./contracts-v1.js";
 import {
-  detectRedeemerCanonicityFromCanonicalBlockV1,
-  type RedeemerCanonicityDetectionV1,
+  detectRedeemerCanonicityFromCanonicalBlock,
+  type RedeemerCanonicityDetection,
 } from "./production-workflow-v1.js";
 import {
-  RedeemerCanonicityStep02DatumV1Schema,
-  RedeemerCanonicityStep03DatumV1Schema,
+  RedeemerCanonicityStep02DatumSchema,
+  RedeemerCanonicityStep03DatumSchema,
 } from "./schemas-v1.js";
 import {
-  submitRedeemerCanonicityStep01AcceptedV1,
-  submitRedeemerCanonicityStep01ForcedV1,
+  submitRedeemerCanonicityStep01Accepted,
+  submitRedeemerCanonicityStep01Forced,
 } from "./submit-step-01-v1.js";
-import { submitRedeemerCanonicityStep02V1 } from "./submit-step-02-v1.js";
-import { submitRedeemerCanonicityStep03V1 } from "./submit-step-03-v1.js";
+import { submitRedeemerCanonicityStep02 } from "./submit-step-02-v1.js";
+import { submitRedeemerCanonicityStep03 } from "./submit-step-03-v1.js";
 import type {
-  RedeemerCanonicityActuatorV1,
-  RedeemerCanonicityDurableStateV1,
-  RedeemerCanonicityJournalV1,
+  RedeemerCanonicityActuator,
+  RedeemerCanonicityDurableState,
+  RedeemerCanonicityJournal,
 } from "./workflow-v1.js";
-import { runRedeemerCanonicityWorkflowV1 } from "./workflow-v1.js";
+import { runRedeemerCanonicityWorkflow } from "./workflow-v1.js";
 
-export const REDEEMER_CANONICITY_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze([
+export const REDEEMER_CANONICITY_CONFIG_KEYS = Object.freeze([
   "manifest",
   "blueprintJson",
   "deploymentInfo",
@@ -92,7 +92,7 @@ export const REDEEMER_CANONICITY_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze([
   "referenceScripts",
 ] as const);
 
-export type RedeemerCanonicityRemovalReferenceScriptsV1 = Readonly<{
+export type RedeemerCanonicityRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -103,51 +103,51 @@ export type RedeemerCanonicityRemovalReferenceScriptsV1 = Readonly<{
   retiredOperatorsMint: UTxO;
   schedulerSpend: UTxO;
 }>;
-export type RedeemerCanonicityWorkflowReferenceScriptsV1 = Readonly<{
+export type RedeemerCanonicityWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
-  removal: RedeemerCanonicityRemovalReferenceScriptsV1;
+  removal: RedeemerCanonicityRemovalReferenceScripts;
 }>;
-export type ManifestBoundRedeemerCanonicityWorkflowConfigV1 = Readonly<{
+export type ManifestBoundRedeemerCanonicityWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: RedeemerCanonicityWorkflowReferenceScriptsV1;
+  referenceScripts: RedeemerCanonicityWorkflowReferenceScripts;
 }>;
 
-type Binding = FraudProofWorkflowDeploymentBindingV1<"redeemerCanonicity">;
-export type ManifestBoundRedeemerCanonicityWorkflowV1 = Readonly<{
+type Binding = FraudProofWorkflowDeploymentBinding<"redeemerCanonicity">;
+export type ManifestBoundRedeemerCanonicityWorkflow = Readonly<{
   binding: Binding;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPortV1>;
+  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: RedeemerCanonicityContractsV1;
-  referenceScripts: RedeemerCanonicityWorkflowReferenceScriptsV1;
+  contracts: RedeemerCanonicityContracts;
+  referenceScripts: RedeemerCanonicityWorkflowReferenceScripts;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
 /** Strict manifest/reference binding whose input admits no callback authority. */
-export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
-  config: ManifestBoundRedeemerCanonicityWorkflowConfigV1,
-): Promise<ManifestBoundRedeemerCanonicityWorkflowV1> => {
+export const createManifestBoundRedeemerCanonicityWorkflow = async (
+  config: ManifestBoundRedeemerCanonicityWorkflowConfig,
+): Promise<ManifestBoundRedeemerCanonicityWorkflow> => {
   if (
     Object.keys(config).sort().join("\0") !==
-    [...REDEEMER_CANONICITY_PRODUCTION_CONFIG_KEYS_V1].sort().join("\0")
+    [...REDEEMER_CANONICITY_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
       "redeemerCanonicity production config contains callback authority",
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("redeemerCanonicity decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -156,11 +156,11 @@ export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
     proverCredential: config.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      RedeemerCanonicityStep02DatumV1Schema,
-      RedeemerCanonicityStep03DatumV1Schema,
+      RedeemerCanonicityStep02DatumSchema,
+      RedeemerCanonicityStep03DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -176,7 +176,7 @@ export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
   )
     throw new Error("redeemerCanonicity manifest omitted required contracts");
   const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
@@ -188,7 +188,7 @@ export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
   ] as const;
   const steps = stepNames.map((name, index) =>
     bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as RedeemerCanonicityWorkflowReferenceScriptsV1["steps"];
+  ) as unknown as RedeemerCanonicityWorkflowReferenceScripts["steps"];
   const witnessNames = {
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
@@ -202,23 +202,23 @@ export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
       bind(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   bind(
     "fieldPreimageCertificateMint",
     config.referenceScripts.fieldPreimageCertificateMint,
   );
   for (const [name, utxo] of Object.entries(config.referenceScripts.removal))
     bind(name, utxo);
-  const contracts: RedeemerCanonicityContractsV1 = {
+  const contracts: RedeemerCanonicityContracts = {
     steps: chain.steps.map((step, index) => ({
       ...step,
-      blueprintTitle: REDEEMER_CANONICITY_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: REDEEMER_CANONICITY_BLUEPRINT_TITLES[index]!,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as RedeemerCanonicityContractsV1["steps"],
+    })) as unknown as RedeemerCanonicityContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: binding.resolvedContracts.contracts.fraudProof,
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
@@ -228,7 +228,7 @@ export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
   };
   return Object.freeze({
     binding,
-    l1: createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+    l1: createFraudProofFamilyLocalKupmiosL1ObservationPort({
       source: config.source,
       releaseFinality: binding.releaseFinality,
       releaseEconomics: binding.releaseEconomics,
@@ -249,8 +249,8 @@ export const createManifestBoundRedeemerCanonicityWorkflowV1 = async (
 };
 
 const selectDetection = (
-  detections: readonly RedeemerCanonicityDetectionV1[],
-): RedeemerCanonicityDetectionV1 => {
+  detections: readonly RedeemerCanonicityDetection[],
+): RedeemerCanonicityDetection => {
   const selected = [...detections].sort((left, right) =>
     left.position === right.position
       ? left.detectionId.localeCompare(right.detectionId)
@@ -270,8 +270,8 @@ const selectDetection = (
  * inside the trusted runtime loader from Lucid, signer and bound references;
  * it is never accepted in the public JSON/config surface.
  */
-export type RedeemerCanonicityProductionRuntimeDependenciesV1 = Readonly<{
-  journal: RedeemerCanonicityJournalV1;
+export type RedeemerCanonicityRuntimeDependencies = Readonly<{
+  journal: RedeemerCanonicityJournal;
 }>;
 
 const createConcreteActuator = ({
@@ -279,11 +279,11 @@ const createConcreteActuator = ({
   detection,
   block,
 }: {
-  workflow: ManifestBoundRedeemerCanonicityWorkflowV1;
-  detection: RedeemerCanonicityDetectionV1;
-  block: CanonicalBlockEvidenceV1;
-}): RedeemerCanonicityActuatorV1 => {
-  const observed = async (): Promise<RedeemerCanonicityDurableStateV1> => {
+  workflow: ManifestBoundRedeemerCanonicityWorkflow;
+  detection: RedeemerCanonicityDetection;
+  block: CanonicalBlockEvidence;
+}): RedeemerCanonicityActuator => {
+  const observed = async (): Promise<RedeemerCanonicityDurableState> => {
     const stage = (
       await workflow.l1.observe({
         headerHash: workflow.binding.definition.headerHash,
@@ -324,7 +324,7 @@ const createConcreteActuator = ({
       );
       if (tx === undefined)
         throw new Error("redeemerCanonicity accepted source disappeared");
-      return deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      return deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(tx.txCbor, "hex"),
       );
     }
@@ -334,7 +334,7 @@ const createConcreteActuator = ({
     );
     if (tx === undefined)
       throw new Error("redeemerCanonicity forced source disappeared");
-    return deriveMidgardNativeTxFaultEvidenceMaterialV1(tx.fullTransactionCbor);
+    return deriveMidgardNativeTxFaultEvidenceMaterial(tx.fullTransactionCbor);
   };
   return Object.freeze({
     observe: async () => await observed(),
@@ -389,7 +389,7 @@ const createConcreteActuator = ({
             ),
           });
           const { threadUtxo, threadToken } =
-            await requireLinearFaultThreadUtxoV1({
+            await requireLinearFaultThreadUtxo({
               lucid: workflow.lucid,
               contracts: workflow.contracts,
               categoryId,
@@ -397,7 +397,7 @@ const createConcreteActuator = ({
               stepIndex: 0,
               threadOutRef: stage.threadOutRef,
             });
-          await submitRedeemerCanonicityStep01AcceptedV1({
+          await submitRedeemerCanonicityStep01Accepted({
             lucid: workflow.lucid,
             blueprint: workflow.binding.blueprint,
             network: workflow.binding.network,
@@ -423,10 +423,10 @@ const createConcreteActuator = ({
               ForcedTransactionEventKey: { tx_order_id: forced.key },
             },
           });
-          const compact = decodeMidgardNativeTxCompactV1(
+          const compact = decodeMidgardNativeTxCompact(
             Buffer.from(forced.value.source.compact_cbor, "hex"),
           );
-          await submitRedeemerCanonicityStep01ForcedV1({
+          await submitRedeemerCanonicityStep01Forced({
             lucid: workflow.lucid,
             contracts: workflow.contracts,
             categoryId,
@@ -444,7 +444,7 @@ const createConcreteActuator = ({
         if (stage.kind !== "step" || stage.step !== 2)
           throw new Error("redeemerCanonicity decode stage changed");
         const txMaterial = material();
-        await submitRedeemerCanonicityStep02V1({
+        await submitRedeemerCanonicityStep02({
           lucid: workflow.lucid,
           contracts: workflow.contracts,
           categoryId,
@@ -462,7 +462,7 @@ const createConcreteActuator = ({
       } else if (action === "finalize") {
         if (stage.kind !== "step" || stage.step !== 3)
           throw new Error("redeemerCanonicity finalize stage changed");
-        await submitRedeemerCanonicityStep03V1({
+        await submitRedeemerCanonicityStep03({
           lucid: workflow.lucid,
           contracts: workflow.contracts,
           categoryId,
@@ -497,78 +497,78 @@ const createConcreteActuator = ({
   });
 };
 
-export const executeManifestBoundRedeemerCanonicityWorkflowV1 = async ({
+export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
   workflow,
   sources,
   runtime,
 }: {
-  readonly workflow: ManifestBoundRedeemerCanonicityWorkflowV1;
+  readonly workflow: ManifestBoundRedeemerCanonicityWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly runtime: RedeemerCanonicityProductionRuntimeDependenciesV1;
+  readonly runtime: RedeemerCanonicityRuntimeDependencies;
 }): Promise<"removed" | "cancelled"> => {
   const headerHash = workflow.binding.definition.headerHash;
-  const canonical = await fetchCanonicalBlockEvidenceV1({
+  const canonical = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
   const detection = selectDetection(
-    detectRedeemerCanonicityFromCanonicalBlockV1(canonical),
+    detectRedeemerCanonicityFromCanonicalBlock(canonical),
   );
-  return await runRedeemerCanonicityWorkflowV1({
+  return await runRedeemerCanonicityWorkflow({
     evidence: detection.evidence,
     journal: runtime.journal,
     actuator: createConcreteActuator({ workflow, detection, block: canonical }),
   });
 };
 
-export const runOrResumeManifestBoundRedeemerCanonicityWorkflowV1 =
-  executeManifestBoundRedeemerCanonicityWorkflowV1;
+export const runOrResumeManifestBoundRedeemerCanonicityWorkflow =
+  executeManifestBoundRedeemerCanonicityWorkflow;
 
-export const createManifestBoundRedeemerCanonicityProductionRuntimeV1 = ({
+export const createManifestBoundRedeemerCanonicityRuntime = ({
   workflow,
   sources,
   runtime,
 }: {
-  readonly workflow: ManifestBoundRedeemerCanonicityWorkflowV1;
+  readonly workflow: ManifestBoundRedeemerCanonicityWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly runtime: RedeemerCanonicityProductionRuntimeDependenciesV1;
+  readonly runtime: RedeemerCanonicityRuntimeDependencies;
 }) =>
   Object.freeze({
     runOrResume: async () =>
-      await executeManifestBoundRedeemerCanonicityWorkflowV1({
+      await executeManifestBoundRedeemerCanonicityWorkflow({
         workflow,
         sources,
         runtime,
       }),
   });
 
-export type LoadedRedeemerCanonicityProductionWorkflowV1 = Readonly<{
+export type LoadedRedeemerCanonicityWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundRedeemerCanonicityWorkflowConfigV1;
+  config: ManifestBoundRedeemerCanonicityWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
-export type LoadRedeemerCanonicityProductionWorkflowV1 = (input: {
+export type LoadRedeemerCanonicityWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedRedeemerCanonicityProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedRedeemerCanonicityWorkflow>;
 
 const journalAdapter = (
-  journal: FraudProofWorkflowJournalStoreV1,
-  entryIdentity: FraudProofWorkflowIdentityV1,
-): RedeemerCanonicityJournalV1 => ({
+  journal: FraudProofWorkflowJournalStore,
+  entryIdentity: FraudProofWorkflowIdentity,
+): RedeemerCanonicityJournal => ({
   load: async (identity) =>
     (await journal.load(identity)).flatMap((entry) => {
       const value = entry.event;
       if (value.kind !== "prepared") return [];
-      return [value.artifact as unknown as RedeemerCanonicityDurableStateV1];
+      return [value.artifact as unknown as RedeemerCanonicityDurableState];
     }),
   append: async (identity, expectedLength, state) => {
     const entries = await journal.load(identity);
-    const artifact = state as unknown as JournalJsonObjectV1;
+    const artifact = state as unknown as JournalJsonObject;
     await journal.append(
       {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
         workflowId: identity,
         identity: entries[0]?.identity ?? entryIdentity,
         sequence: entries.length,
@@ -576,7 +576,7 @@ const journalAdapter = (
         event: {
           kind: "prepared",
           artifact,
-          artifactDigest: journalJsonDigestV1(artifact),
+          artifactDigest: journalJsonDigest(artifact),
         },
       },
       expectedLength,
@@ -584,13 +584,13 @@ const journalAdapter = (
   },
 });
 
-export const createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1 = ({
+export const createRedeemerCanonicityWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  readonly loadRuntimeConfig: LoadRedeemerCanonicityProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  readonly loadRuntimeConfig: LoadRedeemerCanonicityWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (String(invocation.category) !== "redeemerCanonicity")
         throw new Error(
@@ -610,10 +610,10 @@ export const createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "redeemerCanonicity has no public retained-DA source",
           );
-        const durable = bindProductionWorkflowFundingReservationJournalV1({
+        const durable = bindWorkflowFundingReservationJournal({
           permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+          journal: bindWorkflowActuationJournal({
+            journal: new DirectoryFraudProofWorkflowJournalStore(
               invocation.journalDirectory,
             ),
             permit: invocation.actuationPermit,
@@ -623,14 +623,14 @@ export const createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1 = ({
             headerHash: invocation.headerHash,
           }),
         });
-        assertProductionWorkflowJournalActuationV1({
+        assertWorkflowJournalActuation({
           journal: durable,
           deploymentFingerprint: invocation.deploymentFingerprint,
           category: "redeemerCanonicity",
           headerHash: invocation.headerHash,
           checkpoint: "runner_start",
         });
-        const workflow = await createManifestBoundRedeemerCanonicityWorkflowV1(
+        const workflow = await createManifestBoundRedeemerCanonicityWorkflow(
           loaded.config,
         );
         if (
@@ -642,12 +642,12 @@ export const createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "redeemerCanonicity runtime identity differs from invocation",
           );
-        return await executeManifestBoundRedeemerCanonicityWorkflowV1({
+        return await executeManifestBoundRedeemerCanonicityWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           runtime: {
             journal: journalAdapter(durable, {
-              schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+              schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
               deploymentFingerprint: invocation.deploymentFingerprint,
               category: "redeemerCanonicity",
               target: {
@@ -664,5 +664,5 @@ export const createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1 = ({
     },
   });
 
-export const createRedeemerCanonicityProductionWorkflowRunnerFactoryV1 =
-  createRedeemerCanonicityProductionWorkflowRunnerSurfaceV1;
+export const createRedeemerCanonicityWorkflowRunnerFactory =
+  createRedeemerCanonicityWorkflowRunnerSurface;

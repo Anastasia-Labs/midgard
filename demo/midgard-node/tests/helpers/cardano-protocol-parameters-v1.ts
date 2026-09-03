@@ -1,6 +1,6 @@
-import type { DeploymentManifestV1CardanoProtocolParameters } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import type { DeploymentManifestCardanoProtocolParameters } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
-export const TEST_CARDANO_PROTOCOL_PARAMETERS_V1 = Object.freeze({
+export const TEST_CARDANO_PROTOCOL_PARAMETERS = Object.freeze({
   minFeeA: "44",
   minFeeB: "155381",
   priceMemory: Object.freeze({ numerator: "577", denominator: "10000" }),
@@ -20,4 +20,4 @@ export const TEST_CARDANO_PROTOCOL_PARAMETERS_V1 = Object.freeze({
     multiplier: Object.freeze({ numerator: "6", denominator: "5" }),
     maximumSizeBytes: "204800",
   }),
-}) satisfies DeploymentManifestV1CardanoProtocolParameters;
+}) satisfies DeploymentManifestCardanoProtocolParameters;

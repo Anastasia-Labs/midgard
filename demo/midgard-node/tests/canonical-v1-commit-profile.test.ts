@@ -1,5 +1,5 @@
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
@@ -83,7 +83,7 @@ vi.mock("../src/database/index.js", async () => {
         Effect.succeed(
           txIds.map((txId) => ({
             txId,
-            sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+            sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
           })),
         ),
       ),
@@ -263,7 +263,7 @@ const forcedEntryMissingMaterial = {
 
 const baseCommitArgs = {
   contracts,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   deploymentMarker,
   latestBlock,
   endTime: new Date("2026-01-01T00:07:00.999Z"),
@@ -395,7 +395,7 @@ describe("canonical V1 commit profile", () => {
     const deploymentIdentity = ContractDeploymentIdentity.make({
       kind: "derived",
       deploymentMarker,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
     const speculativeBuild = {
       base: {

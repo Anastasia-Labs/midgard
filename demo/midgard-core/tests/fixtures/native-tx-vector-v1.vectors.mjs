@@ -25,7 +25,7 @@
 
 /** The nine-field golden: everything empty, every scalar distinct. */
 export const nativeTxVectorCanonicalV1 = (codec) => ({
-  version: codec.MIDGARD_NATIVE_TX_V1_VERSION,
+  version: codec.MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsInvalid",
   body: {
     spendInputsPreimageCbor: codec.EMPTY_CBOR_LIST,
@@ -74,17 +74,17 @@ export const nativeTxVectorOrderedLengthCanonicalV1 = (codec) => {
     body: {
       ...base.body,
       // 0 items — `80`.
-      spendInputsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      spendInputsPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 0,
         items: [],
       }),
       // 1 item — stride 40.
-      referenceInputsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      referenceInputsPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 1,
         items: [input(7)],
       }),
       // 1 output with an address and a bare-lovelace value.
-      outputsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      outputsPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 2,
         items: [
           {
@@ -99,19 +99,19 @@ export const nativeTxVectorOrderedLengthCanonicalV1 = (codec) => {
         ],
       }),
       // 1 × 28-byte hash — stride 30.
-      requiredObserversPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1(
+      requiredObserversPreimageCbor: codec.encodeMidgardFieldPreimageForField(
         {
           fieldIndex: 3,
           items: [Buffer.alloc(28, 0x02)],
         },
       ),
       // 2 × 28-byte hashes, ascending so §5.3's order rule holds.
-      requiredSignersPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      requiredSignersPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 4,
         items: [Buffer.alloc(28, 0x03), Buffer.alloc(28, 0x04)],
       }),
       // §5.6's smallest policy item: one policy, one empty-named asset.
-      mintPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      mintPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 5,
         items: [
           {
@@ -123,7 +123,7 @@ export const nativeTxVectorOrderedLengthCanonicalV1 = (codec) => {
     },
     witnessSet: {
       // 1 witness — stride 103.
-      addrTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      addrTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 7,
         items: [
           {
@@ -135,12 +135,12 @@ export const nativeTxVectorOrderedLengthCanonicalV1 = (codec) => {
       // The narrowest §5.3 field-6 item: `82 03 40`. `PlutusV3` rather than
       // `NativeCardano` because §5.3 makes the native language carry a script
       // *structure*, not a raw payload, so it has no empty form.
-      scriptTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      scriptTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 6,
         items: [{ language: "PlutusV3", scriptBytes: Buffer.alloc(0) }],
       }),
       // The narrowest §5.3 field-8 item: `84 00 00 40 82 00 00`.
-      redeemerTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForFieldV1({
+      redeemerTxWitsPreimageCbor: codec.encodeMidgardFieldPreimageForField({
         fieldIndex: 8,
         items: [
           {
@@ -169,45 +169,45 @@ export const NATIVE_TX_VECTOR_ORDERED_LENGTH_TUPLE_V1 = [
  * of it into the Aiken module's `n0x` constants.
  */
 export const deriveNativeTxVectorV1 = (codec) => {
-  const tx = codec.materializeMidgardNativeTxFromCanonicalV1(
+  const tx = codec.materializeMidgardNativeTxFromCanonical(
     nativeTxVectorCanonicalV1(codec),
   );
-  const source = codec.deriveMidgardNativeTxProofSourceV1(tx);
-  const orderedLengthTx = codec.materializeMidgardNativeTxFromCanonicalV1(
+  const source = codec.deriveMidgardNativeTxProofSource(tx);
+  const orderedLengthTx = codec.materializeMidgardNativeTxFromCanonical(
     nativeTxVectorOrderedLengthCanonicalV1(codec),
   );
   const hex = (bytes) => Buffer.from(bytes).toString("hex");
   return {
-    bodyCanonical: hex(codec.encodeMidgardNativeTxBodyCanonicalV1(tx.body)),
+    bodyCanonical: hex(codec.encodeMidgardNativeTxBodyCanonical(tx.body)),
     bodyCompact: hex(
-      codec.encodeMidgardNativeTxBodyCompactV1(tx.compact.transactionBody),
+      codec.encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
     ),
     witnessPreimages: hex(
-      codec.encodeMidgardNativeTxWitnessPreimagesV1(tx.witnessSet),
+      codec.encodeMidgardNativeTxWitnessPreimages(tx.witnessSet),
     ),
     witnessCompact: hex(
-      codec.encodeMidgardNativeTxWitnessSetCompactV1(
-        codec.deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet),
+      codec.encodeMidgardNativeTxWitnessSetCompact(
+        codec.deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet),
       ),
     ),
-    compact: hex(codec.encodeMidgardNativeTxCompactV1(tx.compact)),
-    canonical: hex(codec.encodeMidgardNativeTxCanonicalV1(tx)),
-    transactionId: hex(codec.computeMidgardNativeTxIdV1(tx)),
-    fullHash: hex(codec.computeMidgardNativeTxFullHashV1(tx)),
+    compact: hex(codec.encodeMidgardNativeTxCompact(tx.compact)),
+    canonical: hex(codec.encodeMidgardNativeTxCanonical(tx)),
+    transactionId: hex(codec.computeMidgardNativeTxId(tx)),
+    fullHash: hex(codec.computeMidgardNativeTxFullHash(tx)),
     proofCompact: hex(source.compactCbor),
     proofWitnessCompact: hex(source.witnessSetCompactCbor),
     proofLengths: hex(source.fieldPreimageLengthsCbor),
-    proofSource: hex(codec.encodeMidgardNativeTxProofSourceV1(source)),
-    proofCommitment: hex(codec.computeMidgardNativeTxProofCommitmentV1(source)),
+    proofSource: hex(codec.encodeMidgardNativeTxProofSource(source)),
+    proofCommitment: hex(codec.computeMidgardNativeTxProofCommitment(source)),
     canonicalSize:
-      codec.computeMidgardNativeTxCanonicalSizeFromProofSourceV1(source),
+      codec.computeMidgardNativeTxCanonicalSizeFromProofSource(source),
     orderedLengthTuple: hex(
-      codec.encodeMidgardNativeTxProofFieldLengthsV1(
+      codec.encodeMidgardNativeTxProofFieldLengths(
         NATIVE_TX_VECTOR_ORDERED_LENGTH_TUPLE_V1,
       ),
     ),
     derivedOrderedLengthTuple: hex(
-      codec.deriveMidgardNativeTxProofSourceV1(orderedLengthTx)
+      codec.deriveMidgardNativeTxProofSource(orderedLengthTx)
         .fieldPreimageLengthsCbor,
     ),
   };

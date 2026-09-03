@@ -1,47 +1,47 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
-  midgardFieldCommitmentV1,
-  type MidgardNativeTxFaultEvidenceMaterialV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
+  midgardFieldCommitment,
+  type MidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import { daHashPreimageBlockEvidenceFromVerifiedPayloadV1 } from "../prepare-da-hash-preimage.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatchV1,
+  requireTransactionsRootMatch,
 } from "../prepare-double-spend.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
-  MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1,
-  mintDeclaredAssetLimitEvidenceClosesV1,
-  type MintDeclaredAssetLimitEvidenceV1,
-  prepareMintDeclaredAssetLimitEvidenceV1,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY,
+  MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX,
+  type MintDeclaredAssetLimitEvidence,
+  mintDeclaredAssetLimitEvidenceCloses,
+  prepareMintDeclaredAssetLimitEvidence,
 } from "./family-v1.js";
 import {
-  buildProductionMintDeclaredAssetLimitArtifactV1,
-  MintDeclaredAssetLimitForcedSourcePayloadV1Schema,
-  type ProductionMintDeclaredAssetLimitArtifactV1,
+  buildMintDeclaredAssetLimitArtifact,
+  type MintDeclaredAssetLimitArtifact,
+  MintDeclaredAssetLimitForcedSourcePayloadSchema,
 } from "./production-artifact-v1.js";
 
-export const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1 =
+export const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID =
   "mint-declared-asset-limit" as const;
-export const MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE_V1 =
+export const MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE =
   "midgard-mint-declared-asset-limit-raw-evidence-v1" as const;
 
-export type MintDeclaredAssetLimitReplayDetectionV1 = Readonly<{
+export type MintDeclaredAssetLimitReplayDetection = Readonly<{
   detectionId: string;
   headerHash: string;
-  violationId: typeof MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1;
+  violationId: typeof MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID;
   position: bigint;
   transactionId: string;
   policyIndex: number;
@@ -50,12 +50,12 @@ export type MintDeclaredAssetLimitReplayDetectionV1 = Readonly<{
   forcedIndex?: number;
 }>;
 
-export type AuthenticatedMintDeclaredAssetLimitRawTransactionV1 = Readonly<{
+export type AuthenticatedMintDeclaredAssetLimitRawTransaction = Readonly<{
   index: number;
   nodeTxId: string;
   l2TransactionSourceCbor: string;
   fullTransactionCbor: string;
-  material: MidgardNativeTxFaultEvidenceMaterialV1;
+  material: MidgardNativeTxFaultEvidenceMaterial;
 }>;
 
 /**
@@ -63,30 +63,27 @@ export type AuthenticatedMintDeclaredAssetLimitRawTransactionV1 = Readonly<{
  * CanonicalBlockEvidence. The accepted machine error is observable from the
  * canonical field-5 prefix and target map header even when its body truncates.
  */
-export type MintDeclaredAssetLimitRawBlockEvidenceV1 = Readonly<{
-  schemaVersion: typeof MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE_V1;
+export type MintDeclaredAssetLimitRawBlockEvidence = Readonly<{
+  schemaVersion: typeof MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE;
   headerHash: string;
   committedTransactionsRoot: string;
   l2TransactionCount: bigint;
   transactionsPhasRoot: string;
   payloadEnvelopeSha256: string;
   payloadSha256: string;
-  transactions: readonly AuthenticatedMintDeclaredAssetLimitRawTransactionV1[];
+  transactions: readonly AuthenticatedMintDeclaredAssetLimitRawTransaction[];
 }>;
 
-const decodeSource = (
-  cbor: string,
-  index: number,
-): SDK.L2TransactionSourceV1 => {
-  let source: SDK.L2TransactionSourceV1;
+const decodeSource = (cbor: string, index: number): SDK.L2TransactionSource => {
+  let source: SDK.L2TransactionSource;
   try {
-    source = Data.from(cbor, SDK.L2TransactionSourceV1);
+    source = Data.from(cbor, SDK.L2TransactionSource);
   } catch (cause) {
     throw new Error(
       `mintDeclaredAssetLimit transactions[${index.toString()}] source does not decode: ${String(cause)}`,
     );
   }
-  if (Data.to(source, SDK.L2TransactionSourceV1) !== cbor) {
+  if (Data.to(source, SDK.L2TransactionSource) !== cbor) {
     throw new Error(
       `mintDeclaredAssetLimit transactions[${index.toString()}] source is not canonical Data`,
     );
@@ -94,19 +91,19 @@ const decodeSource = (
   return source;
 };
 
-export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1 =
+export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayload =
   async ({
     observation,
     payloadEnvelopeCbor,
     daProvenance,
     minimumConfirmationDepth,
   }: {
-    readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+    readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
     readonly payloadEnvelopeCbor: Uint8Array;
-    readonly daProvenance: SDK.EvidenceProvenanceV1;
+    readonly daProvenance: SDK.EvidenceProvenance;
     readonly minimumConfirmationDepth?: number;
-  }): Promise<MintDeclaredAssetLimitRawBlockEvidenceV1> => {
-    const raw = await daHashPreimageBlockEvidenceFromVerifiedPayloadV1({
+  }): Promise<MintDeclaredAssetLimitRawBlockEvidence> => {
+    const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
       observation,
       payloadEnvelopeCbor,
       daProvenance,
@@ -116,13 +113,13 @@ export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1 =
     });
     const payloadCbor = Buffer.from(
       (
-        await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        await unwrapDaPayload(payloadEnvelopeCbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         })
       ).innerBytes,
     );
-    const payload = SDK.decodeDaPayloadV1(payloadCbor);
-    if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor))
+    const payload = SDK.decodeDaPayload(payloadCbor);
+    if (!SDK.encodeDaPayload(payload).equals(payloadCbor))
       throw new Error("mintDeclaredAssetLimit DA payload is not canonical");
 
     const entries = raw.entries.map(([key, value]) => ({
@@ -130,7 +127,7 @@ export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1 =
       value: Buffer.from(value, "hex"),
     }));
     const trie = await buildTrieView(entries);
-    await requireTransactionsRootMatchV1({
+    await requireTransactionsRootMatch({
       sourceRoot: trie.root,
       expectedTransactionsRoot: raw.committedTransactionsRoot,
       count: raw.l2TransactionCount,
@@ -148,7 +145,7 @@ export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1 =
           `mintDeclaredAssetLimit transaction preimage omitted ${key}`,
         );
       const source = decodeSource(sourceCbor, index);
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(txCbor, "hex"),
       );
       if (
@@ -177,7 +174,7 @@ export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1 =
         "mintDeclaredAssetLimit has uncommitted transaction preimages",
       );
     return Object.freeze({
-      schemaVersion: MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE_V1,
+      schemaVersion: MINT_DECLARED_ASSET_LIMIT_RAW_EVIDENCE,
       headerHash: raw.headerHash,
       committedTransactionsRoot: raw.committedTransactionsRoot,
       l2TransactionCount: raw.l2TransactionCount,
@@ -189,44 +186,42 @@ export const mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1 =
   };
 
 const acceptedEvidence = (
-  transaction: AuthenticatedMintDeclaredAssetLimitRawTransactionV1,
+  transaction: AuthenticatedMintDeclaredAssetLimitRawTransaction,
   policyIndex: number,
-): MintDeclaredAssetLimitEvidenceV1 | null => {
+): MintDeclaredAssetLimitEvidence | null => {
   if (transaction.material.canonical.validity !== "TxIsValid") return null;
   const field =
-    transaction.material.fieldPreimages[
-      MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1
-    ];
+    transaction.material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
   if (field === undefined) return null;
   try {
-    const evidence = prepareMintDeclaredAssetLimitEvidenceV1({
+    const evidence = prepareMintDeclaredAssetLimitEvidence({
       finding: {
-        subject: SDK.acceptedVerdictSubjectV1(transaction.nodeTxId),
+        subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
         policyIndex,
       },
       fieldPreimage: field,
-      committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
     });
-    return mintDeclaredAssetLimitEvidenceClosesV1(evidence) ? evidence : null;
+    return mintDeclaredAssetLimitEvidenceCloses(evidence) ? evidence : null;
   } catch {
     return null;
   }
 };
 
 /** Complete accepted scan; every field-5 item is tried as a possible first crossing. */
-export const detectMintDeclaredAssetLimitAcceptedRawReplayV1 = (
-  block: MintDeclaredAssetLimitRawBlockEvidenceV1,
-): readonly MintDeclaredAssetLimitReplayDetectionV1[] => {
-  const detections: MintDeclaredAssetLimitReplayDetectionV1[] = [];
+export const detectMintDeclaredAssetLimitAcceptedRawReplay = (
+  block: MintDeclaredAssetLimitRawBlockEvidence,
+): readonly MintDeclaredAssetLimitReplayDetection[] => {
+  const detections: MintDeclaredAssetLimitReplayDetection[] = [];
   for (const transaction of block.transactions) {
     const field =
       transaction.material.fieldPreimages[
-        MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1
+        MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX
       ];
     if (field === undefined) continue;
     let itemCount: number;
     try {
-      itemCount = decodeMidgardFieldPreimageV1(field).length;
+      itemCount = decodeMidgardFieldPreimage(field).length;
     } catch {
       // Field-envelope failures belong to the earlier decoding families.
       continue;
@@ -238,9 +233,9 @@ export const detectMintDeclaredAssetLimitAcceptedRawReplayV1 = (
       if (evidence === null) continue;
       detections.push(
         Object.freeze({
-          detectionId: `${MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}:${policyIndex.toString()}`,
+          detectionId: `${MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}:${policyIndex.toString()}`,
           headerHash: block.headerHash,
-          violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1,
+          violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
           position: BigInt(transaction.index),
           transactionId: transaction.nodeTxId,
           policyIndex,
@@ -255,10 +250,10 @@ export const detectMintDeclaredAssetLimitAcceptedRawReplayV1 = (
 };
 
 /** Complete canonical scan of exact wrongful-rejection contradictions. */
-export const detectMintDeclaredAssetLimitForcedReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly MintDeclaredAssetLimitReplayDetectionV1[] => {
-  const detections: MintDeclaredAssetLimitReplayDetectionV1[] = [];
+export const detectMintDeclaredAssetLimitForcedReplay = (
+  block: CanonicalBlockEvidence,
+): readonly MintDeclaredAssetLimitReplayDetection[] => {
+  const detections: MintDeclaredAssetLimitReplayDetection[] = [];
   block.reconstruction.forcedTransactions.forEach(
     (transaction, forcedIndex) => {
       const verdict = transaction.value.verdict;
@@ -267,7 +262,7 @@ export const detectMintDeclaredAssetLimitForcedReplayV1 = (
       if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
         return;
       const policyIndex = Number(reason.MintDeclaredAssetLimit.policy_index);
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (
@@ -283,11 +278,11 @@ export const detectMintDeclaredAssetLimitForcedReplayV1 = (
           "mintDeclaredAssetLimit forced transaction differs from its authenticated leaf",
         );
       const field =
-        material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1];
+        material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
       if (field === undefined) return;
-      const evidence = prepareMintDeclaredAssetLimitEvidenceV1({
+      const evidence = prepareMintDeclaredAssetLimitEvidence({
         finding: {
-          subject: SDK.forcedVerdictSubjectV1({
+          subject: SDK.forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: reason,
@@ -295,14 +290,14 @@ export const detectMintDeclaredAssetLimitForcedReplayV1 = (
           policyIndex,
         },
         fieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       });
-      if (!mintDeclaredAssetLimitEvidenceClosesV1(evidence)) return;
+      if (!mintDeclaredAssetLimitEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
-          detectionId: `${MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${policyIndex.toString()}`,
+          detectionId: `${MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${policyIndex.toString()}`,
           headerHash: block.headerHash,
-          violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1,
+          violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
           position: BigInt(forcedIndex),
           transactionId: transaction.value.tx_id,
           policyIndex,
@@ -316,12 +311,12 @@ export const detectMintDeclaredAssetLimitForcedReplayV1 = (
   return Object.freeze(detections);
 };
 
-export const selectCanonicalMintDeclaredAssetLimitDetectionV1 = (
-  detections: readonly MintDeclaredAssetLimitReplayDetectionV1[],
-): MintDeclaredAssetLimitReplayDetectionV1 => {
+export const selectCanonicalMintDeclaredAssetLimitDetection = (
+  detections: readonly MintDeclaredAssetLimitReplayDetection[],
+): MintDeclaredAssetLimitReplayDetection => {
   if (detections.length === 0)
     throw new Error(
-      `${MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1}: no authenticated detection`,
+      `${MINT_DECLARED_ASSET_LIMIT_CATEGORY}: no authenticated detection`,
     );
   return [...detections].sort((left, right) =>
     left.position === right.position
@@ -332,11 +327,11 @@ export const selectCanonicalMintDeclaredAssetLimitDetectionV1 = (
   )[0]!;
 };
 
-export const mintDeclaredAssetLimitAcceptedMembershipV1 = async ({
+export const mintDeclaredAssetLimitAcceptedMembership = async ({
   block,
   transactionId,
 }: {
-  readonly block: MintDeclaredAssetLimitRawBlockEvidenceV1;
+  readonly block: MintDeclaredAssetLimitRawBlockEvidence;
   readonly transactionId: string;
 }): Promise<string> => {
   const entries = block.transactions.map((transaction) => ({
@@ -351,11 +346,11 @@ export const mintDeclaredAssetLimitAcceptedMembershipV1 = async ({
 };
 
 /** Reconstructs the selected accepted artifact without caller-prepared evidence. */
-export const prepareProductionMintDeclaredAssetLimitAcceptedArtifactV1 = async (
-  block: MintDeclaredAssetLimitRawBlockEvidenceV1,
-): Promise<ProductionMintDeclaredAssetLimitArtifactV1> => {
-  const detection = selectCanonicalMintDeclaredAssetLimitDetectionV1(
-    detectMintDeclaredAssetLimitAcceptedRawReplayV1(block),
+export const prepareMintDeclaredAssetLimitAcceptedArtifact = async (
+  block: MintDeclaredAssetLimitRawBlockEvidence,
+): Promise<MintDeclaredAssetLimitArtifact> => {
+  const detection = selectCanonicalMintDeclaredAssetLimitDetection(
+    detectMintDeclaredAssetLimitAcceptedRawReplay(block),
   );
   const transaction = block.transactions[Number(detection.position)];
   if (
@@ -366,20 +361,18 @@ export const prepareProductionMintDeclaredAssetLimitAcceptedArtifactV1 = async (
       "mintDeclaredAssetLimit selected accepted transaction disappeared",
     );
   const field =
-    transaction.material.fieldPreimages[
-      MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1
-    ];
+    transaction.material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
   if (field === undefined)
     throw new Error("mintDeclaredAssetLimit selected field 5 disappeared");
-  const evidence = prepareMintDeclaredAssetLimitEvidenceV1({
+  const evidence = prepareMintDeclaredAssetLimitEvidence({
     finding: {
-      subject: SDK.acceptedVerdictSubjectV1(transaction.nodeTxId),
+      subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
       policyIndex: detection.policyIndex,
     },
     fieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
-  return buildProductionMintDeclaredAssetLimitArtifactV1({
+  return buildMintDeclaredAssetLimitArtifact({
     headerHash: block.headerHash,
     detectionId: detection.detectionId,
     position: detection.position,
@@ -390,21 +383,19 @@ export const prepareProductionMintDeclaredAssetLimitAcceptedArtifactV1 = async (
       transaction.material.proofSource.witnessSetCompactCbor.toString("hex"),
     l2TransactionSourceCbor: transaction.l2TransactionSourceCbor,
     transactionsPhasRoot: block.transactionsPhasRoot,
-    transactionMembershipCbor: await mintDeclaredAssetLimitAcceptedMembershipV1(
-      {
-        block,
-        transactionId: transaction.nodeTxId,
-      },
-    ),
+    transactionMembershipCbor: await mintDeclaredAssetLimitAcceptedMembership({
+      block,
+      transactionId: transaction.nodeTxId,
+    }),
   });
 };
 
 /** Reconstructs the exact forced wrongful-rejection artifact from canonical replay. */
-export const prepareProductionMintDeclaredAssetLimitForcedArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<ProductionMintDeclaredAssetLimitArtifactV1> => {
-  const detection = selectCanonicalMintDeclaredAssetLimitDetectionV1(
-    detectMintDeclaredAssetLimitForcedReplayV1(block),
+export const prepareMintDeclaredAssetLimitForcedArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<MintDeclaredAssetLimitArtifact> => {
+  const detection = selectCanonicalMintDeclaredAssetLimitDetection(
+    detectMintDeclaredAssetLimitForcedReplay(block),
   );
   const transaction =
     block.reconstruction.forcedTransactions[detection.forcedIndex!];
@@ -415,18 +406,17 @@ export const prepareProductionMintDeclaredAssetLimitForcedArtifactV1 = async (
   const verdict = transaction.value.verdict;
   if (verdict === "ForcedTxValid")
     throw new Error("mintDeclaredAssetLimit forced rejection changed verdict");
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-    encodeMidgardNativeTxCanonicalV1(
-      adjudicateMidgardNativeTxFullV1Validity(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(
+        decodeMidgardNativeTxFullFromCanonicalCbor(
           transaction.fullTransactionCbor,
         ),
         "TxIsInvalid",
       ),
     ),
   );
-  const field =
-    material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1];
+  const field = material.fieldPreimages[MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX];
   if (field === undefined)
     throw new Error("mintDeclaredAssetLimit forced field 5 disappeared");
   const eventKey = {
@@ -436,9 +426,9 @@ export const prepareProductionMintDeclaredAssetLimitForcedArtifactV1 = async (
     reconstruction: block.reconstruction,
     eventKey,
   });
-  const evidence = prepareMintDeclaredAssetLimitEvidenceV1({
+  const evidence = prepareMintDeclaredAssetLimitEvidence({
     finding: {
-      subject: SDK.forcedVerdictSubjectV1({
+      subject: SDK.forcedVerdictSubject({
         transactionId: transaction.value.tx_id,
         sourceKey: transaction.key,
         rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -446,13 +436,13 @@ export const prepareProductionMintDeclaredAssetLimitForcedArtifactV1 = async (
       policyIndex: detection.policyIndex,
     },
     fieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
   const forcedSourceCbor = Data.to(
     { header: block.header, membership, direction: 1n } as never,
-    MintDeclaredAssetLimitForcedSourcePayloadV1Schema as never,
+    MintDeclaredAssetLimitForcedSourcePayloadSchema as never,
   );
-  return buildProductionMintDeclaredAssetLimitArtifactV1({
+  return buildMintDeclaredAssetLimitArtifact({
     headerHash: block.headerHash,
     detectionId: detection.detectionId,
     position: detection.position,
@@ -466,7 +456,7 @@ export const prepareProductionMintDeclaredAssetLimitForcedArtifactV1 = async (
         tx_id: transaction.value.tx_id,
         source: transaction.value.source,
       } as never,
-      SDK.L2TransactionSourceV1 as never,
+      SDK.L2TransactionSource as never,
     ),
     transactionsPhasRoot: "00".repeat(32),
     transactionMembershipCbor: Data.to(

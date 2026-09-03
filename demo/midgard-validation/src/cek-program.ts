@@ -1,25 +1,25 @@
 import {
-  commitMidgardCekBlobV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekSequenceNodeV1,
-  encodeMidgardCekTermNodeV1,
-  encodeMidgardCekValueNodeV1,
+  commitMidgardCekBlob,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekSequenceNode,
+  encodeMidgardCekTermNode,
+  encodeMidgardCekValueNode,
   type Hash32,
-  hashMidgardCekProgramEnvelopeV1,
-  hashMidgardCekSequenceNodeV1,
-  hashMidgardCekTermNodeV1,
-  hashMidgardCekValueNodeV1,
+  hashMidgardCekProgramEnvelope,
+  hashMidgardCekSequenceNode,
+  hashMidgardCekTermNode,
+  hashMidgardCekValueNode,
   hashMidgardVersionedScript,
-  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  type MidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramMaterialEntryV1,
-  type MidgardCekTermNodeV1,
+  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
+  MIDGARD_CONSENSUS_LIMITS,
+  type MidgardCekProgramEnvelope,
+  type MidgardCekProgramMaterialEntry,
+  type MidgardCekTermNode,
   type MidgardVersionedScript,
-  verifyMidgardCekProgramMaterialBundleV1,
-  verifyMidgardCekProgramMaterialV1,
+  verifyMidgardCekProgramMaterial,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import {
@@ -39,38 +39,38 @@ import {
   UPLCVar,
 } from "@harmoniclabs/uplc";
 
-import type { MidgardCekConstantValueWitnessV1 } from "./cek-builtin.js";
+import type { MidgardCekConstantValueWitness } from "./cek-builtin.js";
 import {
-  encodeMidgardCekCanonicalConstantV1,
-  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
-  midgardCekConstantMemorySizeV1,
+  encodeMidgardCekCanonicalConstant,
+  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
+  midgardCekConstantMemorySize,
 } from "./cek-constant.js";
-import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 
 export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramNodeCount;
+  MIDGARD_CONSENSUS_LIMITS.maxCekProgramNodeCount;
 export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxCekProgramMaterialBytes;
+  MIDGARD_CONSENSUS_LIMITS.maxCekProgramMaterialBytes;
 
-export type MidgardCekProgramMaterialKindV1 =
-  MidgardCekProgramMaterialEntryV1["kind"];
-export type MidgardCekProgramMaterialNodeV1 = MidgardCekProgramMaterialEntryV1;
+export type MidgardCekProgramMaterialKind =
+  MidgardCekProgramMaterialEntry["kind"];
+export type MidgardCekProgramMaterialNode = MidgardCekProgramMaterialEntry;
 
-export type MidgardCanonicalCekProgramV1 = {
-  readonly envelope: MidgardCekProgramEnvelopeV1;
+export type MidgardCanonicalCekProgram = {
+  readonly envelope: MidgardCekProgramEnvelope;
   readonly envelopeCbor: Buffer;
   readonly envelopeHash: Hash32;
-  readonly material: ReadonlyMap<string, MidgardCekProgramMaterialNodeV1>;
+  readonly material: ReadonlyMap<string, MidgardCekProgramMaterialNode>;
   readonly constantWitnesses: ReadonlyMap<
     string,
-    MidgardCekConstantValueWitnessV1
+    MidgardCekConstantValueWitness
   >;
 };
 
-export type MidgardCanonicalScriptArtifactLanguageV1 = "PlutusV3" | "MidgardV1";
+export type MidgardCanonicalScriptArtifactLanguage = "PlutusV3" | "MidgardV1";
 
-export type MidgardCanonicalScriptArtifactInputV1 = {
-  readonly language: MidgardCanonicalScriptArtifactLanguageV1;
+export type MidgardCanonicalScriptArtifactInput = {
+  readonly language: MidgardCanonicalScriptArtifactLanguage;
   readonly sourceRawFlatProgramBytes: Uint8Array;
 };
 
@@ -83,12 +83,12 @@ export type MidgardCanonicalScriptArtifactInputV1 = {
  * artifact or create aliases between its script, program, material, or sidecar
  * representations.
  */
-export type MidgardCanonicalScriptArtifactV1 = {
+export type MidgardCanonicalScriptArtifact = {
   readonly canonicalMidgardCredentialScript: MidgardVersionedScript;
   readonly canonicalMidgardCredentialScriptHash: string;
   readonly sourceRawScriptAuditHash: string;
-  readonly canonicalProgram: MidgardCanonicalCekProgramV1;
-  readonly canonicalMaterialEntries: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly canonicalProgram: MidgardCanonicalCekProgram;
+  readonly canonicalMaterialEntries: readonly MidgardCekProgramMaterialEntry[];
   readonly canonicalMaterialSidecarCbor: Buffer;
 };
 
@@ -153,9 +153,9 @@ const canonicalFlatProgramBytes = (scriptBytes: Buffer): Buffer => {
  * hash-addressed CEK graph used by the canonical V1 proof profile. Raw UPLC is an SDK input;
  * the returned envelope is the consensus script payload.
  */
-export const buildMidgardCanonicalCekProgramV1 = (
+export const buildMidgardCanonicalCekProgram = (
   scriptBytes: Uint8Array,
-): MidgardCanonicalCekProgramV1 => {
+): MidgardCanonicalCekProgram => {
   const raw = Buffer.from(scriptBytes);
   if (raw.length === 0) {
     throw new Error("CEK program input must not be empty");
@@ -179,11 +179,11 @@ export const buildMidgardCanonicalCekProgramV1 = (
     );
   }
 
-  const material = new Map<string, MidgardCekProgramMaterialNodeV1>();
-  const constantWitnesses = new Map<string, MidgardCekConstantValueWitnessV1>();
+  const material = new Map<string, MidgardCekProgramMaterialNode>();
+  const constantWitnesses = new Map<string, MidgardCekConstantValueWitness>();
   let materialByteLength = 0;
   const addMaterial = (
-    kind: MidgardCekProgramMaterialKindV1,
+    kind: MidgardCekProgramMaterialKind,
     root: Hash32,
     preimage: Uint8Array,
   ): void => {
@@ -208,7 +208,7 @@ export const buildMidgardCanonicalCekProgramV1 = (
   };
 
   const addBlob = (bytes: Uint8Array): Hash32 => {
-    const committed = commitMidgardCekBlobV1(bytes);
+    const committed = commitMidgardCekBlob(bytes);
     for (const [key, node] of committed.nodes) {
       const root = Buffer.from(key, "hex") as Hash32;
       addMaterial(
@@ -220,29 +220,29 @@ export const buildMidgardCanonicalCekProgramV1 = (
     return committed.root;
   };
 
-  const addTermNode = (node: MidgardCekTermNodeV1): Hash32 => {
-    const root = hashMidgardCekTermNodeV1(node);
-    addMaterial("term", root, encodeMidgardCekTermNodeV1(node));
+  const addTermNode = (node: MidgardCekTermNode): Hash32 => {
+    const root = hashMidgardCekTermNode(node);
+    addMaterial("term", root, encodeMidgardCekTermNode(node));
     return root;
   };
 
   const addTermSequence = (terms: readonly UPLCTerm[]): Hash32 => {
-    let root = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1;
+    let root = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
     for (let index = terms.length - 1; index >= 0; index -= 1) {
       const head = addTerm(terms[index]!);
       const length = BigInt(terms.length - index);
       const node = { head, tail: root, length };
-      root = hashMidgardCekSequenceNodeV1(node);
-      addMaterial("sequence", root, encodeMidgardCekSequenceNodeV1(node));
+      root = hashMidgardCekSequenceNode(node);
+      addMaterial("sequence", root, encodeMidgardCekSequenceNode(node));
     }
     return root;
   };
 
   const addConstantValue = (constant: UPLCConst): Hash32 => {
-    const canonical = encodeMidgardCekCanonicalConstantV1(constant);
+    const canonical = encodeMidgardCekCanonicalConstant(constant);
     if (
       canonical.payloadCbor.length >
-      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
     ) {
       throw new Error(
         "V1 source constant payload exceeds the 9,215-byte L1 proof envelope",
@@ -250,7 +250,7 @@ export const buildMidgardCanonicalCekProgramV1 = (
     }
     const typeRoot = addBlob(canonical.typeCbor);
     const payload = dataFromCbor(canonical.payloadCbor);
-    const semantic = commitMidgardCekDataTreeV1(payload);
+    const semantic = commitMidgardCekDataTree(payload);
     for (const [key, entry] of semantic.dataNodes) {
       addMaterial(
         "dataNode",
@@ -285,10 +285,10 @@ export const buildMidgardCanonicalCekProgramV1 = (
       payloadRoot: semantic.root,
       payloadLength: semantic.cborLength,
       semanticRoot: semantic.root,
-      memory: midgardCekConstantMemorySizeV1(canonical.type, payload),
+      memory: midgardCekConstantMemorySize(canonical.type, payload),
     } as const;
-    const root = hashMidgardCekValueNodeV1(node);
-    addMaterial("value", root, encodeMidgardCekValueNodeV1(node));
+    const root = hashMidgardCekValueNode(node);
+    addMaterial("value", root, encodeMidgardCekValueNode(node));
     constantWitnesses.set(
       rootHex(root),
       Object.freeze({
@@ -392,19 +392,19 @@ export const buildMidgardCanonicalCekProgramV1 = (
     nodeCount: BigInt(material.size),
     materialByteLength: BigInt(materialByteLength),
   });
-  verifyMidgardCekProgramMaterialV1(envelope, material.values());
+  verifyMidgardCekProgramMaterial(envelope, material.values());
   return Object.freeze({
     envelope,
-    envelopeCbor: encodeMidgardCekProgramEnvelopeV1(envelope),
-    envelopeHash: hashMidgardCekProgramEnvelopeV1(envelope),
+    envelopeCbor: encodeMidgardCekProgramEnvelope(envelope),
+    envelopeHash: hashMidgardCekProgramEnvelope(envelope),
     material,
     constantWitnesses,
   });
 };
 
-const copyProgramEnvelopeV1 = (
-  envelope: MidgardCekProgramEnvelopeV1,
-): MidgardCekProgramEnvelopeV1 => {
+const copyProgramEnvelope = (
+  envelope: MidgardCekProgramEnvelope,
+): MidgardCekProgramEnvelope => {
   const termRoot = Buffer.from(envelope.termRoot);
   return Object.freeze({
     uplcVersion: Object.freeze([...envelope.uplcVersion]) as readonly [
@@ -420,9 +420,9 @@ const copyProgramEnvelopeV1 = (
   });
 };
 
-const copyProgramMaterialEntryV1 = (
-  entry: MidgardCekProgramMaterialEntryV1,
-): MidgardCekProgramMaterialEntryV1 => {
+const copyProgramMaterialEntry = (
+  entry: MidgardCekProgramMaterialEntry,
+): MidgardCekProgramMaterialEntry => {
   const root = Buffer.from(entry.root);
   const preimage = Buffer.from(entry.preimage);
   return Object.freeze({
@@ -436,9 +436,9 @@ const copyProgramMaterialEntryV1 = (
   });
 };
 
-const copyConstantValueWitnessV1 = (
-  value: MidgardCekConstantValueWitnessV1,
-): MidgardCekConstantValueWitnessV1 => {
+const copyConstantValueWitness = (
+  value: MidgardCekConstantValueWitness,
+): MidgardCekConstantValueWitness => {
   if (value.kind === "constant") {
     const typeCbor = Buffer.from(value.witness.typeCbor);
     const payloadCbor = Buffer.from(value.witness.payloadCbor);
@@ -480,29 +480,29 @@ const copyConstantValueWitnessV1 = (
   });
 };
 
-const copyCanonicalProgramV1 = (
-  program: MidgardCanonicalCekProgramV1,
-): MidgardCanonicalCekProgramV1 =>
+const copyCanonicalProgram = (
+  program: MidgardCanonicalCekProgram,
+): MidgardCanonicalCekProgram =>
   Object.freeze({
-    envelope: copyProgramEnvelopeV1(program.envelope),
+    envelope: copyProgramEnvelope(program.envelope),
     envelopeCbor: Buffer.from(program.envelopeCbor),
     envelopeHash: Buffer.from(program.envelopeHash) as Hash32,
     material: new Map(
       [...program.material].map(([key, entry]) => [
         key,
-        copyProgramMaterialEntryV1(entry),
+        copyProgramMaterialEntry(entry),
       ]),
     ),
     constantWitnesses: new Map(
       [...program.constantWitnesses].map(([key, value]) => [
         key,
-        copyConstantValueWitnessV1(value),
+        copyConstantValueWitness(value),
       ]),
     ),
   });
 
-const copyCanonicalCredentialScriptV1 = (
-  language: MidgardCanonicalScriptArtifactLanguageV1,
+const copyCanonicalCredentialScript = (
+  language: MidgardCanonicalScriptArtifactLanguage,
   envelopeCbor: Uint8Array,
 ): MidgardVersionedScript => {
   const scriptBytes = Buffer.from(envelopeCbor);
@@ -518,48 +518,48 @@ const copyCanonicalCredentialScriptV1 = (
  * Builds the exact canonical V1 script artifact used for Midgard credentials
  * from raw PlutusV3 or MidgardV1 Flat authoring input.
  */
-export const buildMidgardCanonicalScriptArtifactV1 = ({
+export const buildMidgardCanonicalScriptArtifact = ({
   language,
   sourceRawFlatProgramBytes,
-}: MidgardCanonicalScriptArtifactInputV1): MidgardCanonicalScriptArtifactV1 => {
+}: MidgardCanonicalScriptArtifactInput): MidgardCanonicalScriptArtifact => {
   const sourceBytes = Buffer.from(sourceRawFlatProgramBytes);
-  const canonicalProgram = buildMidgardCanonicalCekProgramV1(sourceBytes);
+  const canonicalProgram = buildMidgardCanonicalCekProgram(sourceBytes);
   const sourceRawScriptAuditHash = hashMidgardVersionedScript({
     language,
     scriptBytes: sourceBytes,
   });
-  const canonicalCredentialScript = copyCanonicalCredentialScriptV1(
+  const canonicalCredentialScript = copyCanonicalCredentialScript(
     language,
     canonicalProgram.envelopeCbor,
   );
   const canonicalMidgardCredentialScriptHash = hashMidgardVersionedScript(
     canonicalCredentialScript,
   );
-  const encodedSidecar = encodeMidgardCekProgramMaterialSidecarV1([
+  const encodedSidecar = encodeMidgardCekProgramMaterialSidecar([
     ...canonicalProgram.material.values(),
   ]);
   const canonicalMaterialEntries =
-    decodeMidgardCekProgramMaterialSidecarV1(encodedSidecar);
-  verifyMidgardCekProgramMaterialBundleV1(
+    decodeMidgardCekProgramMaterialSidecar(encodedSidecar);
+  verifyMidgardCekProgramMaterialBundle(
     [canonicalProgram.envelope],
     canonicalMaterialEntries,
   );
 
   return Object.freeze({
     get canonicalMidgardCredentialScript(): MidgardVersionedScript {
-      return copyCanonicalCredentialScriptV1(
+      return copyCanonicalCredentialScript(
         language,
         canonicalProgram.envelopeCbor,
       );
     },
     canonicalMidgardCredentialScriptHash,
     sourceRawScriptAuditHash,
-    get canonicalProgram(): MidgardCanonicalCekProgramV1 {
-      return copyCanonicalProgramV1(canonicalProgram);
+    get canonicalProgram(): MidgardCanonicalCekProgram {
+      return copyCanonicalProgram(canonicalProgram);
     },
-    get canonicalMaterialEntries(): readonly MidgardCekProgramMaterialEntryV1[] {
+    get canonicalMaterialEntries(): readonly MidgardCekProgramMaterialEntry[] {
       return Object.freeze(
-        canonicalMaterialEntries.map(copyProgramMaterialEntryV1),
+        canonicalMaterialEntries.map(copyProgramMaterialEntry),
       );
     },
     get canonicalMaterialSidecarCbor(): Buffer {

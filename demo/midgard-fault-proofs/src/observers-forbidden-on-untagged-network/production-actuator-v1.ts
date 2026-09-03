@@ -1,57 +1,57 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxCompactV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { planFaultProofFieldOpeningV1 } from "../field-opening-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { planFaultProofFieldOpening } from "../field-opening-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { nativeTxFromCoreCompact } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "../workflow/deployment-manifest-binding-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
-import type { ProductionFieldCarriageRequirementV1 } from "../workflow/production-field-carriage-prerequisite-v1.js";
+import type { FieldCarriageRequirement } from "../workflow/production-field-carriage-prerequisite-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ObserversForbiddenContractsV1 } from "./contracts-v1.js";
-import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1 } from "./family-v1.js";
+import type { ObserversForbiddenContracts } from "./contracts-v1.js";
+import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY } from "./family-v1.js";
 import {
-  admitProductionObserversForbiddenArtifactV1,
-  ObserversForbiddenForcedSourcePayloadV1Schema,
+  admitObserversForbiddenArtifact,
+  ObserversForbiddenForcedSourcePayloadSchema,
 } from "./production-artifact-v1.js";
 import {
-  submitObserversForbiddenStep01AcceptedV1,
-  submitObserversForbiddenStep01ForcedV1,
+  submitObserversForbiddenStep01Accepted,
+  submitObserversForbiddenStep01Forced,
 } from "./submit-step-01-v1.js";
-import { submitObserversForbiddenStep02V1 } from "./submit-step-02-v1.js";
+import { submitObserversForbiddenStep02 } from "./submit-step-02-v1.js";
 
-export type ObserversForbiddenWorkflowReferenceScriptsV1 = Readonly<{
+export type ObserversForbiddenWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-export type BoundObserversForbiddenActuatorConfigV1 = Readonly<{
+export type BoundObserversForbiddenActuatorConfig = Readonly<{
   // Structurally identical deployment binding; the central category union is
   // intentionally protected until the serial integration pass.
-  binding: FraudProofWorkflowDeploymentBindingV1<"observersForbiddenOnUntaggedNetwork">;
+  binding: FraudProofWorkflowDeploymentBinding<"observersForbiddenOnUntaggedNetwork">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ObserversForbiddenContractsV1;
-  references: ObserversForbiddenWorkflowReferenceScriptsV1;
+  contracts: ObserversForbiddenContracts;
+  references: ObserversForbiddenWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ObserversForbiddenActuatorActionV1 =
+export type ObserversForbiddenActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step_01";
@@ -65,35 +65,35 @@ export type ObserversForbiddenActuatorActionV1 =
       fraudProofOutRef: string;
     }>;
 
-export type ObserversForbiddenCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type ObserversForbiddenCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
 
-export const observersForbiddenFieldRequirementV1 = ({
+export const observersForbiddenFieldRequirement = ({
   action,
   artifact,
   owner,
   certificate,
 }: {
-  readonly action: ObserversForbiddenActuatorActionV1;
+  readonly action: ObserversForbiddenActuatorAction;
   readonly artifact: unknown;
   readonly owner: string;
-  readonly certificate: ProductionFieldCarriageRequirementV1["certificate"];
-}): ProductionFieldCarriageRequirementV1 | null => {
+  readonly certificate: FieldCarriageRequirement["certificate"];
+}): FieldCarriageRequirement | null => {
   if (action.stage !== "step_02") return null;
-  const admitted = admitProductionObserversForbiddenArtifactV1(artifact);
+  const admitted = admitObserversForbiddenArtifact(artifact);
   return {
-    planned: planFaultProofFieldOpeningV1({
+    planned: planFaultProofFieldOpening({
       fieldIndex: 3,
       anchorTxId: admitted.artifact.transactionId,
       nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
       itemCbors:
         admitted.evidence.observerCount === 0
           ? []
-          : decodeMidgardFieldPreimageV1(
+          : decodeMidgardFieldPreimage(
               Buffer.from(admitted.artifact.fieldPreimageCbor, "hex"),
             ),
       owner,
@@ -107,13 +107,13 @@ export const observersForbiddenFieldRequirementV1 = ({
 };
 
 const inclusionFromArtifact = (
-  admitted: ReturnType<typeof admitProductionObserversForbiddenArtifactV1>,
+  admitted: ReturnType<typeof admitObserversForbiddenArtifact>,
 ) => {
   const artifact = admitted.artifact;
   return Object.freeze({
     nativeTxId: artifact.transactionId,
     nativeTx: nativeTxFromCoreCompact(
-      decodeMidgardNativeTxCompactV1(
+      decodeMidgardNativeTxCompact(
         Buffer.from(artifact.nativeTxCompactCbor, "hex"),
       ),
     ),
@@ -126,25 +126,25 @@ const inclusionFromArtifact = (
 };
 
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<ObserversForbiddenCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<ObserversForbiddenCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /** Package-owned transaction actuator; callers receive no submission callback. */
-export const createObserversForbiddenActuatorV1 = (
-  config: BoundObserversForbiddenActuatorConfigV1,
+export const createObserversForbiddenActuator = (
+  config: BoundObserversForbiddenActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      readonly action: ObserversForbiddenActuatorActionV1;
+      readonly action: ObserversForbiddenActuatorAction;
       readonly artifact: unknown;
-    }): Promise<ObserversForbiddenCapturedActionV1> => {
-      const admitted = admitProductionObserversForbiddenArtifactV1(artifact);
+    }): Promise<ObserversForbiddenCapturedAction> => {
+      const admitted = admitObserversForbiddenArtifact(artifact);
       if (admitted.artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error("observersForbidden artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
@@ -157,7 +157,7 @@ export const createObserversForbiddenActuatorV1 = (
             network: config.binding.network,
             signer: config.signer,
             fraudCategory:
-              OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1 as never,
+              OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY as never,
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: admitted.artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
@@ -166,15 +166,14 @@ export const createObserversForbiddenActuatorV1 = (
           });
         });
       if (action.stage === "step_01") {
-        const { threadUtxo, threadToken } =
-          await requireLinearFaultThreadUtxoV1({
-            lucid: config.lucid,
-            contracts: config.contracts,
-            categoryId,
-            family: "observers-forbidden-on-untagged-network",
-            stepIndex: 0,
-            threadOutRef: action.threadOutRef,
-          });
+        const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+          lucid: config.lucid,
+          contracts: config.contracts,
+          categoryId,
+          family: "observers-forbidden-on-untagged-network",
+          stepIndex: 0,
+          threadOutRef: action.threadOutRef,
+        });
         return await capture(async (preSubmitBoundary) => {
           const common = {
             lucid: config.lucid,
@@ -186,7 +185,7 @@ export const createObserversForbiddenActuatorV1 = (
             awaitConfirmation: false,
           } as const;
           if (admitted.artifact.sourceKind === "accepted")
-            await submitObserversForbiddenStep01AcceptedV1({
+            await submitObserversForbiddenStep01Accepted({
               ...common,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -197,20 +196,20 @@ export const createObserversForbiddenActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else
-            await submitObserversForbiddenStep01ForcedV1({
+            await submitObserversForbiddenStep01Forced({
               ...common,
               categoryId,
               threadOutRef: action.threadOutRef,
               forcedSource: Data.from(
                 admitted.artifact.forcedSourceCbor,
-                ObserversForbiddenForcedSourcePayloadV1Schema as never,
+                ObserversForbiddenForcedSourcePayloadSchema as never,
               ) as Readonly<Record<string, unknown>>,
             });
         });
       }
       if (action.stage === "step_02")
         return await capture(async (preSubmitBoundary) => {
-          await submitObserversForbiddenStep02V1({
+          await submitObserversForbiddenStep02({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -224,9 +223,9 @@ export const createObserversForbiddenActuatorV1 = (
             awaitConfirmation: false,
           });
         });
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
-          name: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1,
+          name: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
           categoryId,
           firstStepDeploymentEntry:
             "fraudProofObserversForbiddenOnUntaggedNetwork",
@@ -248,11 +247,11 @@ export const createObserversForbiddenActuatorV1 = (
         headerHash: admitted.artifact.headerHash,
         input: {
           schemaVersion: "midgard-production-cursor-family-action-v1",
-          category: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1,
+          category: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

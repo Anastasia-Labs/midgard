@@ -2,8 +2,8 @@ import { open, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  ScriptIntegrityHashMismatchJournalEntryV1,
-  ScriptIntegrityHashMismatchJournalV1,
+  ScriptIntegrityHashMismatchJournal,
+  ScriptIntegrityHashMismatchJournalEntry,
 } from "./workflow-v1.js";
 
 const canonicalIdentity = (identity: string): string => {
@@ -13,9 +13,9 @@ const canonicalIdentity = (identity: string): string => {
 };
 
 /** Crash-durable, fsynced, atomic per-thread production journal. */
-export const createScriptIntegrityHashMismatchDirectoryJournalV1 = (
+export const createScriptIntegrityHashMismatchDirectoryJournal = (
   directory: string,
-): ScriptIntegrityHashMismatchJournalV1 => {
+): ScriptIntegrityHashMismatchJournal => {
   const file = (identity: string) =>
     path.join(directory, `${canonicalIdentity(identity)}.json`);
   return Object.freeze({
@@ -23,19 +23,19 @@ export const createScriptIntegrityHashMismatchDirectoryJournalV1 = (
       try {
         return JSON.parse(
           await readFile(file(identity), "utf8"),
-        ) as readonly ScriptIntegrityHashMismatchJournalEntryV1[];
+        ) as readonly ScriptIntegrityHashMismatchJournalEntry[];
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
         throw error;
       }
     },
-    append: async (entry: ScriptIntegrityHashMismatchJournalEntryV1) => {
+    append: async (entry: ScriptIntegrityHashMismatchJournalEntry) => {
       const target = file(entry.identity);
       const current = await (async () => {
         try {
           return JSON.parse(
             await readFile(target, "utf8"),
-          ) as ScriptIntegrityHashMismatchJournalEntryV1[];
+          ) as ScriptIntegrityHashMismatchJournalEntry[];
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
           throw error;

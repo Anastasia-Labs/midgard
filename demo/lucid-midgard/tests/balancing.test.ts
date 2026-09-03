@@ -1,9 +1,9 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML, valueToAssets } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -57,13 +57,13 @@ const makeProvider = (
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: feePolicy,
     submissionLimits: {
       maxSubmitTxCborBytes:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -187,7 +187,7 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 2_000_000n, [unit]: 4n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const outputs = decodeMidgardNativeByteListPreimage(
       tx.body.outputsPreimageCbor,
     );
@@ -328,7 +328,7 @@ describe("TxBuilder balancing and fees", () => {
       .newTx()
       .pay.ToAddress(address, { lovelace: 1_000_000n, [unit]: 1n })
       .complete({ changeAddress: address, feePolicy: "provider" });
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(completed.txCbor);
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(completed.txCbor);
     const inputs = decodeMidgardNativeByteListPreimage(
       tx.body.spendInputsPreimageCbor,
     ).map((bytes) => CML.TransactionInput.from_cbor_bytes(bytes));

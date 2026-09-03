@@ -33,8 +33,8 @@ import { runLoggedChildProcessAttempt } from "./logged-child-process.js";
 import type { ChildProcessCleanupResult } from "./process-cleanup.js";
 import type { OwnedProcessGroupSpec } from "./process-ownership.js";
 import {
-  parseChildProcessCleanupV1,
-  parseRedactedCommandV1,
+  parseChildProcessCleanup,
+  parseRedactedCommand,
   redactArg,
   type RedactedCommand,
 } from "./runner.js";
@@ -127,7 +127,7 @@ export type ServiceSupervisorSummary = {
   readonly terminalClassification: ServiceErrorClassification;
 };
 
-export const parseServiceErrorClassificationV1 = (
+export const parseServiceErrorClassification = (
   value: unknown,
   label = "service error classification",
 ): ServiceErrorClassification => {
@@ -156,7 +156,7 @@ export const parseServiceErrorClassificationV1 = (
   return parsed;
 };
 
-export const parseHttpProbeSampleV1 = (
+export const parseHttpProbeSample = (
   value: unknown,
   label = "HTTP probe sample",
 ): HttpProbeSample => {
@@ -218,7 +218,7 @@ export const parseHttpProbeSampleV1 = (
   return parsed;
 };
 
-export const parsePidFileObservationV1 = (
+export const parsePidFileObservation = (
   value: unknown,
   label = "PID file observation",
 ): PidFileObservation => {
@@ -247,7 +247,7 @@ export const parsePidFileObservationV1 = (
   return parsed;
 };
 
-const parseOutputTerminationObservationV1 = (
+const parseOutputTerminationObservation = (
   value: unknown,
   label: string,
 ): OutputTerminationObservation => {
@@ -265,7 +265,7 @@ const parseOutputTerminationObservationV1 = (
   };
 };
 
-const parseFileTerminationObservationV1 = (
+const parseFileTerminationObservation = (
   value: unknown,
   label: string,
 ): FileTerminationObservation => {
@@ -277,7 +277,7 @@ const parseFileTerminationObservationV1 = (
   };
 };
 
-const parseServiceAttemptSummaryV1 = (
+const parseServiceAttemptSummary = (
   value: unknown,
   label: string,
 ): ServiceAttemptSummary => {
@@ -304,25 +304,25 @@ const parseServiceAttemptSummaryV1 = (
     exitCode: nullable(input.exitCode, `${label}.exitCode`, nonNegativeInteger),
     signal: nullable(input.signal, `${label}.signal`, nodeSignal),
     timedOut: booleanValue(input.timedOut, `${label}.timedOut`),
-    classification: parseServiceErrorClassificationV1(
+    classification: parseServiceErrorClassification(
       input.classification,
       `${label}.classification`,
     ),
     cleanup:
       input.cleanup === null
         ? null
-        : parseChildProcessCleanupV1(input.cleanup, `${label}.cleanup`),
+        : parseChildProcessCleanup(input.cleanup, `${label}.cleanup`),
     outputTermination:
       input.outputTermination === null
         ? null
-        : parseOutputTerminationObservationV1(
+        : parseOutputTerminationObservation(
             input.outputTermination,
             `${label}.outputTermination`,
           ),
     fileTermination:
       input.fileTermination === null
         ? null
-        : parseFileTerminationObservationV1(
+        : parseFileTerminationObservation(
             input.fileTermination,
             `${label}.fileTermination`,
           ),
@@ -362,7 +362,7 @@ const parseServiceAttemptSummaryV1 = (
   return parsed;
 };
 
-export const parseServiceSupervisorSummaryV1 = (
+export const parseServiceSupervisorSummary = (
   value: unknown,
 ): ServiceSupervisorSummary => {
   const label = "service supervisor summary";
@@ -384,7 +384,7 @@ export const parseServiceSupervisorSummaryV1 = (
   const parsed: ServiceSupervisorSummary = {
     schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
     service: nonEmptyString(input.service, `${label}.service`),
-    command: parseRedactedCommandV1(input.command, `${label}.command`),
+    command: parseRedactedCommand(input.command, `${label}.command`),
     status: oneOf(input.status, `${label}.status`, [
       "exited_success",
       "failed",
@@ -396,13 +396,13 @@ export const parseServiceSupervisorSummaryV1 = (
     attempts: arrayOf(
       input.attempts,
       `${label}.attempts`,
-      parseServiceAttemptSummaryV1,
+      parseServiceAttemptSummary,
     ),
     restartCount: nonNegativeInteger(
       input.restartCount,
       `${label}.restartCount`,
     ),
-    terminalClassification: parseServiceErrorClassificationV1(
+    terminalClassification: parseServiceErrorClassification(
       input.terminalClassification,
       `${label}.terminalClassification`,
     ),
@@ -582,7 +582,7 @@ export const probeHttpEndpoint = async ({
     try {
       json = await response.json();
     } catch {
-      return parseHttpProbeSampleV1({
+      return parseHttpProbeSample({
         label,
         url,
         status: "malformed_json",
@@ -592,7 +592,7 @@ export const probeHttpEndpoint = async ({
         error: "response body was not JSON",
       });
     }
-    return parseHttpProbeSampleV1({
+    return parseHttpProbeSample({
       label,
       url,
       status: response.ok ? "healthy" : "not_ready",
@@ -602,7 +602,7 @@ export const probeHttpEndpoint = async ({
       error: null,
     });
   } catch (error) {
-    return parseHttpProbeSampleV1({
+    return parseHttpProbeSample({
       label,
       url,
       status:
@@ -639,7 +639,7 @@ export const inspectPidFile = async ({
   try {
     raw = await readFile(path, "utf8");
   } catch {
-    return parsePidFileObservationV1({
+    return parsePidFileObservation({
       path,
       status: "absent",
       pid: null,
@@ -647,16 +647,16 @@ export const inspectPidFile = async ({
   }
   const pid = Number(raw.trim());
   if (!Number.isSafeInteger(pid) || pid <= 0) {
-    return parsePidFileObservationV1({
+    return parsePidFileObservation({
       path,
       status: "invalid",
       pid: null,
     });
   }
   if (!pidAlive(pid)) {
-    return parsePidFileObservationV1({ path, status: "stale", pid });
+    return parsePidFileObservation({ path, status: "stale", pid });
   }
-  return parsePidFileObservationV1({
+  return parsePidFileObservation({
     path,
     status: runnerOwnedPids.has(pid) ? "runner_owned" : "foreign",
     pid,
@@ -782,7 +782,7 @@ export const superviseHostProcess = async (
       summary.outputTermination === null &&
       summary.fileTermination === null
     ) {
-      return parseServiceSupervisorSummaryV1({
+      return parseServiceSupervisorSummary({
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
         service: spec.service,
         command: redactedCommand(spec, resolvedEnv.provenance),
@@ -794,7 +794,7 @@ export const superviseHostProcess = async (
       });
     }
     if (!summary.classification.restartable) {
-      return parseServiceSupervisorSummaryV1({
+      return parseServiceSupervisorSummary({
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
         service: spec.service,
         command: redactedCommand(spec, resolvedEnv.provenance),
@@ -811,7 +811,7 @@ export const superviseHostProcess = async (
       });
     }
     if (restartCount >= maxRestarts) {
-      return parseServiceSupervisorSummaryV1({
+      return parseServiceSupervisorSummary({
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
         service: spec.service,
         command: redactedCommand(spec, resolvedEnv.provenance),
@@ -826,7 +826,7 @@ export const superviseHostProcess = async (
     await sleep(restartBackoffMs * 2 ** (restartCount - 1));
   }
 
-  return parseServiceSupervisorSummaryV1({
+  return parseServiceSupervisorSummary({
     schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
     service: spec.service,
     command: redactedCommand(spec, resolvedEnv.provenance),

@@ -1,32 +1,32 @@
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
-  type FraudProofFamilyL1ObservationPortV1,
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation-v1.js";
-import type { FraudProofWorkflowIdentityV1 } from "../src/workflow/journal-v1.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/journal-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "../src/workflow/production-linear-family-adapter-v1.js";
-import { productionLinearFamilyObservationV1 } from "../src/workflow/production-linear-family-state-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "../src/workflow/raw-l1-family-derivation-v1.js";
-import type { LocallyEvaluatedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import { linearFamilyObservation } from "../src/workflow/production-linear-family-state-v1.js";
+import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation-v1.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
 const txHash = hash("44");
 const referenceOutRef = outRef("55");
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
 };
 
-const identity: FraudProofWorkflowIdentityV1 = {
+const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: hash("aa"),
   category: "daHashPreimage",
@@ -41,7 +41,7 @@ const signed = ({
   readonly submittedHash?: string;
   readonly includedReferenceOutRef?: string;
   readonly inlineScriptKind?: "native" | "plutusV1" | "plutusV2" | "plutusV3";
-} = {}): LocallyEvaluatedTransactionV1["signed"] => {
+} = {}): LocallyEvaluatedTransaction["signed"] => {
   const [referenceTxHash, referenceIndex] = includedReferenceOutRef.split("#");
   return {
     toHash: () => txHash,
@@ -67,12 +67,12 @@ const signed = ({
         }),
       }),
     }),
-  } as unknown as LocallyEvaluatedTransactionV1["signed"];
+  } as unknown as LocallyEvaluatedTransaction["signed"];
 };
 
 const transaction = (
-  overrides: Partial<LocallyEvaluatedTransactionV1> = {},
-): LocallyEvaluatedTransactionV1 => ({
+  overrides: Partial<LocallyEvaluatedTransaction> = {},
+): LocallyEvaluatedTransaction => ({
   txHash,
   signed: signed(),
   referenceScripts: [
@@ -86,10 +86,10 @@ const transaction = (
 });
 
 const l1 = (
-  stageRef: { value: FraudProofRawL1FamilyStageV1 },
+  stageRef: { value: FraudProofRawL1FamilyStage },
   confirmed = async (_txHash: string) => false,
-): FraudProofFamilyL1ObservationPortV1<"daHashPreimage"> => ({
-  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
+): FraudProofFamilyL1ObservationPort<"daHashPreimage"> => ({
+  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   category: "daHashPreimage",
   publications: {} as never,
   observeHeader: async () => {
@@ -101,9 +101,9 @@ const l1 = (
 });
 
 const port = (
-  capture: ProductionLinearFamilyTransactionPortV1<"daHashPreimage">["capture"],
-): ProductionLinearFamilyTransactionPortV1<"daHashPreimage"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  capture: LinearFamilyTransactionPort<"daHashPreimage">["capture"],
+): LinearFamilyTransactionPort<"daHashPreimage"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "daHashPreimage",
   prepare: async () => ({ prepared: true }),
   capture,
@@ -133,7 +133,7 @@ describe("production linear family adapter V1", () => {
       } as const,
     };
     const capture = vi.fn(async () => ({ transaction: transaction() }));
-    const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+    const adapter = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
@@ -173,13 +173,13 @@ describe("production linear family adapter V1", () => {
       } as const,
     };
     const capture = vi.fn(async () => ({ transaction: transaction() }));
-    const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+    const adapter = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: leaseCoordinator,
     });
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -207,7 +207,7 @@ describe("production linear family adapter V1", () => {
         stateQueueBlockOutRef: outRef("10"),
       } as const,
     };
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -215,7 +215,7 @@ describe("production linear family adapter V1", () => {
     });
     if (required.kind !== "action_required") throw new Error("missing action");
 
-    const inline = createProductionLinearFamilyWorkflowAdapterV1({
+    const inline = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({
@@ -227,7 +227,7 @@ describe("production linear family adapter V1", () => {
       inline.preflight({ ...context, action: required.action }),
     ).rejects.toThrow("did not use published reference scripts");
 
-    const forged = createProductionLinearFamilyWorkflowAdapterV1({
+    const forged = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({
@@ -247,7 +247,7 @@ describe("production linear family adapter V1", () => {
       "plutusV2",
       "plutusV3",
     ] as const) {
-      const embedded = createProductionLinearFamilyWorkflowAdapterV1({
+      const embedded = createLinearFamilyWorkflowAdapter({
         category: "daHashPreimage",
         l1: l1(stage),
         transactions: port(async () => ({
@@ -270,7 +270,7 @@ describe("production linear family adapter V1", () => {
         stateQueueBlockOutRef: outRef("10"),
       } as const,
     };
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -278,7 +278,7 @@ describe("production linear family adapter V1", () => {
     });
     if (required.kind !== "action_required") throw new Error("missing action");
     const capture = vi.fn(async () => ({ transaction: transaction() }));
-    const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+    const adapter = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(capture),
@@ -298,9 +298,9 @@ describe("production linear family adapter V1", () => {
         fraudProofOutRef: outRef("22"),
         stateQueueBlockOutRef: outRef("11"),
         nextRemovalOutRef: outRef("33"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -314,7 +314,7 @@ describe("production linear family adapter V1", () => {
       release: vi.fn(async () => undefined),
       fail: vi.fn(async () => undefined),
     };
-    const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+    const adapter = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({
@@ -339,16 +339,16 @@ describe("production linear family adapter V1", () => {
         step: 1,
         threadOutRef: outRef("11"),
         stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
       stage: stage.value,
     });
     if (required.kind !== "action_required") throw new Error("missing action");
-    const fresh = createProductionLinearFamilyWorkflowAdapterV1({
+    const fresh = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage, async (requested) => requested === txHash),
       transactions: port(async () => ({ transaction: transaction() })),
@@ -376,9 +376,9 @@ describe("production linear family adapter V1", () => {
         fraudProofOutRef: outRef("22"),
         stateQueueBlockOutRef: outRef("11"),
         nextRemovalOutRef: outRef("33"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
@@ -392,7 +392,7 @@ describe("production linear family adapter V1", () => {
       release: vi.fn(async () => undefined),
       fail: vi.fn(async () => undefined),
     };
-    const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+    const adapter = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({
@@ -419,7 +419,7 @@ describe("production linear family adapter V1", () => {
       renew: vi.fn(async () => undefined),
     };
     const resume = vi.fn(async () => resumedLease);
-    const fresh = createProductionLinearFamilyWorkflowAdapterV1({
+    const fresh = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({ transaction: transaction() })),
@@ -450,16 +450,16 @@ describe("production linear family adapter V1", () => {
         fraudProofOutRef: outRef("22"),
         stateQueueBlockOutRef: outRef("11"),
         nextRemovalOutRef: outRef("33"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
-    const required = productionLinearFamilyObservationV1({
+    const required = linearFamilyObservation({
       category: "daHashPreimage",
       headerHash,
       provenance,
       stage: stage.value,
     });
     if (required.kind !== "action_required") throw new Error("missing action");
-    const missing = createProductionLinearFamilyWorkflowAdapterV1({
+    const missing = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions: port(async () => ({ transaction: transaction() })),
@@ -492,7 +492,7 @@ describe("production linear family adapter V1", () => {
       } as const,
     };
     expect(() =>
-      createProductionLinearFamilyWorkflowAdapterV1({
+      createLinearFamilyWorkflowAdapter({
         category: "daHashPreimage",
         l1: { ...l1(stage), category: "minFee" } as never,
         transactions: port(async () => ({ transaction: transaction() })),
@@ -500,7 +500,7 @@ describe("production linear family adapter V1", () => {
       }),
     ).toThrow("ports changed identity");
     expect(() =>
-      createProductionLinearFamilyWorkflowAdapterV1({
+      createLinearFamilyWorkflowAdapter({
         category: "daHashPreimage",
         l1: l1(stage),
         transactions: {

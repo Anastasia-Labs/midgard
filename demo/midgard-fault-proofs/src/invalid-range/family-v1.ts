@@ -1,24 +1,24 @@
 import {
   type NormalizedTimeRange,
   normalizeNativeTxValidityRange,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const INVALID_RANGE_CATEGORY_V1 = "invalidRange" as const;
-export const INVALID_RANGE_CATEGORY_ID_V1 = "00000003" as const;
-export type InvalidRangeReasonV1 =
+export const INVALID_RANGE_CATEGORY = "invalidRange" as const;
+export const INVALID_RANGE_CATEGORY_ID = "00000003" as const;
+export type InvalidRangeReason =
   | "ValidityIntervalMalformed"
   | "ValidityIntervalExcludesBlockSlot";
 
-export type InvalidRangeEvidenceV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type InvalidRangeEvidence = Readonly<{
+  subject: VerdictSubject;
   blockSlot: bigint;
   normalizedRange: NormalizedTimeRange;
 }>;
 
-export const invalidRangeFaultForReasonV1 = (
-  reason: InvalidRangeReasonV1,
+export const invalidRangeFaultForReason = (
+  reason: InvalidRangeReason,
   range: NormalizedTimeRange,
   slot: bigint,
 ): boolean => {
@@ -30,16 +30,16 @@ export const invalidRangeFaultForReasonV1 = (
   return range.ToPosInf.lower > slot;
 };
 
-export const prepareInvalidRangeEvidenceV1 = ({
+export const prepareInvalidRangeEvidence = ({
   subject,
   blockSlot,
   txBody,
 }: Readonly<{
-  subject: VerdictSubjectV1;
+  subject: VerdictSubject;
   blockSlot: bigint;
   txBody: Parameters<typeof normalizeNativeTxValidityRange>[0];
-}>): InvalidRangeEvidenceV1 => {
-  if (!verdictSubjectIsCanonicalV1(subject))
+}>): InvalidRangeEvidence => {
+  if (!verdictSubjectIsCanonical(subject))
     throw new Error("invalidRange: verdict subject is not canonical");
   if (subject.direction === 1n) {
     if (
@@ -57,20 +57,20 @@ export const prepareInvalidRangeEvidenceV1 = ({
   });
 };
 
-export const invalidRangeEvidenceClosesV1 = (
-  evidence: InvalidRangeEvidenceV1,
+export const invalidRangeEvidenceCloses = (
+  evidence: InvalidRangeEvidence,
 ): boolean => {
   const reason = evidence.subject.rejection_reason;
   const fault =
     reason === null
       ? evidence.normalizedRange === "InvalidRange" ||
-        invalidRangeFaultForReasonV1(
+        invalidRangeFaultForReason(
           "ValidityIntervalExcludesBlockSlot",
           evidence.normalizedRange,
           evidence.blockSlot,
         )
-      : invalidRangeFaultForReasonV1(
-          reason as InvalidRangeReasonV1,
+      : invalidRangeFaultForReason(
+          reason as InvalidRangeReason,
           evidence.normalizedRange,
           evidence.blockSlot,
         );

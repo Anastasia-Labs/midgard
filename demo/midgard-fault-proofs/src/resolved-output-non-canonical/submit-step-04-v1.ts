@@ -1,7 +1,7 @@
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
-  type MidgardBoundedItemChunkProofV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
+  type MidgardBoundedItemChunkProof,
 } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
@@ -16,27 +16,27 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ResolvedOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ResolvedOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  type ResolvedOutputEvidenceV1,
-  resolvedOutputScanControlDataV1,
+  type ResolvedOutputEvidence,
+  resolvedOutputScanControlData,
 } from "./resolved-output-non-canonical-v1.js";
 import {
-  ResolvedOutputScanControlV1Schema,
-  ResolvedOutputStep04DatumV1Schema,
-  ResolvedOutputStep04RedeemerV1Schema,
-  ResolvedOutputStep05DatumV1Schema,
+  ResolvedOutputScanControlSchema,
+  ResolvedOutputStep04DatumSchema,
+  ResolvedOutputStep04RedeemerSchema,
+  ResolvedOutputStep05DatumSchema,
 } from "./schemas-v1.js";
 
-const proofData = (proof: MidgardBoundedItemChunkProofV1) => ({
+const proofData = (proof: MidgardBoundedItemChunkProof) => ({
   version: BigInt(proof.version),
   field_index: BigInt(proof.fieldIndex),
   item_index: BigInt(proof.itemIndex),
@@ -50,7 +50,7 @@ const proofData = (proof: MidgardBoundedItemChunkProofV1) => ({
   siblings: proof.siblings.map((hash) => hash.toString("hex")),
 });
 
-export const submitResolvedOutputNonCanonicalStep04V1 = async ({
+export const submitResolvedOutputNonCanonicalStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -62,17 +62,17 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ResolvedOutputNonCanonicalContractsV1;
+  readonly contracts: ResolvedOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ResolvedOutputEvidenceV1;
+  readonly evidence: ResolvedOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -80,14 +80,14 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     descriptor_cbor: string;
     control: { cursor: bigint };
   }>({
     threadUtxo,
     signer,
-    schema: ResolvedOutputStep04DatumV1Schema as never,
+    schema: ResolvedOutputStep04DatumSchema as never,
     family: "resolved-output-non-canonical",
     stepIndex,
   });
@@ -97,13 +97,13 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
     );
   const encodedState = Data.to(
     state.control as never,
-    ResolvedOutputScanControlV1Schema as never,
+    ResolvedOutputScanControlSchema as never,
   );
   const controlIndex = evidence.scanControls.findIndex(
     (control) =>
       Data.to(
-        resolvedOutputScanControlDataV1(control) as never,
-        ResolvedOutputScanControlV1Schema as never,
+        resolvedOutputScanControlData(control) as never,
+        ResolvedOutputScanControlSchema as never,
       ) === encodedState,
   );
   if (controlIndex < 0)
@@ -117,7 +117,7 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
   const terminal = nextControl === undefined;
   const item =
     evidence.canonicalTrace?.item ??
-    buildMidgardBoundedItemV1({
+    buildMidgardBoundedItem({
       fieldIndex: 2,
       itemIndex: evidence.resolved.outputIndex,
       bytes: Buffer.from(evidence.resolved.outputCborHex, "hex"),
@@ -131,13 +131,13 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
       : {
           Advance: {
             chunk_proof: proofData(
-              buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
+              buildMidgardBoundedItemChunkProof(item, chunkIndex),
             ),
             next_chunk_proof:
               nextChunkIndex === null
                 ? null
                 : proofData(
-                    buildMidgardBoundedItemChunkProofV1(item, nextChunkIndex),
+                    buildMidgardBoundedItemChunkProof(item, nextChunkIndex),
                   ),
           },
         };
@@ -152,12 +152,12 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
         : {
             subject: evidence.subject,
             descriptor_cbor: evidence.resolved.descriptorCborHex,
-            control: resolvedOutputScanControlDataV1(nextControl!),
+            control: resolvedOutputScanControlData(nextControl!),
           },
     } as never,
     (terminal
-      ? ResolvedOutputStep05DatumV1Schema
-      : ResolvedOutputStep04DatumV1Schema) as never,
+      ? ResolvedOutputStep05DatumSchema
+      : ResolvedOutputStep04DatumSchema) as never,
   );
   const nextStepIndex = terminal ? 4 : 3;
   const outputMatches = computationThreadOutputPredicate({
@@ -188,15 +188,15 @@ export const submitResolvedOutputNonCanonicalStep04V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, action },
         ],
       } as never,
-      ResolvedOutputStep04RedeemerV1Schema as never,
+      ResolvedOutputStep04RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,
     threadUnit: threadToken.unit,
-    stepReference: requireLinearFaultReferenceScriptV1({
+    stepReference: requireLinearFaultReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[3].spendingScriptHash,
       family: "resolved-output-non-canonical",

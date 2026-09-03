@@ -1,34 +1,34 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  DA_PAYLOAD_V1_VERSION,
+  DA_PAYLOAD_VERSION,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
+  encodeDaPayload,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
-  hashBlockHeaderV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
+  hashBlockHeader,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
   TransitionStepSchema,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -37,34 +37,34 @@ import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/subm
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import {
-  prepareTransactionOutputEvidenceV1,
-  submitTransactionOutputNonCanonicalCancelV1,
-  submitTransactionOutputNonCanonicalStep01AcceptedV1,
-  submitTransactionOutputNonCanonicalStep01ForcedV1,
-  submitTransactionOutputNonCanonicalStep02V1,
-  submitTransactionOutputNonCanonicalStep03V1,
-  submitTransactionOutputNonCanonicalStep04V1,
-  TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1,
-  TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID_V1,
-  type TransactionOutputNonCanonicalContractsV1,
+  prepareTransactionOutputEvidence,
+  submitTransactionOutputNonCanonicalCancel,
+  submitTransactionOutputNonCanonicalStep01Accepted,
+  submitTransactionOutputNonCanonicalStep01Forced,
+  submitTransactionOutputNonCanonicalStep02,
+  submitTransactionOutputNonCanonicalStep03,
+  submitTransactionOutputNonCanonicalStep04,
+  TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+  TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID,
+  type TransactionOutputNonCanonicalContracts,
 } from "../src/transaction-output-non-canonical/index.js";
 import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
-import { reconstructDaPayloadV1 } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { applyCompiledScript } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
 import {
   outputReferenceCbor,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
   sortedDaEntries,
   transitionTraceRawEntry,
 } from "./support/submit-init-emulator-fixtures.js";
@@ -91,7 +91,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
     ),
     "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
   );
-  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: Buffer.from(finalUtxo[0], "hex"),
     outputCbor: Buffer.from(finalUtxo[1], "hex"),
   }).descriptorCbor;
@@ -108,14 +108,14 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
     ),
     witnessByte: "b8",
   });
-  const source = deriveMidgardNativeTxProofSourceV1(
-    adjudicateMidgardNativeTxFullV1Validity(nativeTx, "TxIsInvalid"),
+  const source = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(nativeTx, "TxIsInvalid"),
   );
   const rejectionReason = {
     OutputNonCanonical: { output_index: 0n },
   } as const;
   const transaction = {
-    tx_id: computeMidgardNativeTxIdV1(nativeTx).toString("hex"),
+    tx_id: computeMidgardNativeTxId(nativeTx).toString("hex"),
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
       witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
@@ -129,7 +129,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
       key: txOrderId,
       keySchema: OutputReference as never,
       value: transaction,
-      valueSchema: ForcedInclusionTxV1Schema,
+      valueSchema: ForcedInclusionTxSchema,
     }),
   ];
   const transitionEntries = [
@@ -169,7 +169,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
         verdict: "Rejected",
         rejection_code_hash: h32("c4"),
       },
-      valueSchema: ValidationTraceDescriptorV1Schema,
+      valueSchema: ValidationTraceDescriptorSchema,
     }),
   ];
   const counted = async (
@@ -208,10 +208,10 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
     validationTracesRoot: validationRoot.root,
     ...counts,
   };
-  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
-  const payloadEnvelopeCbor = await wrapDaPayloadV1(
-    encodeDaPayloadV1({
-      version: DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
+  const payloadEnvelopeCbor = await wrapDaPayload(
+    encodeDaPayload({
+      version: DA_PAYLOAD_VERSION,
       block_body: {
         header_hash: headerHash,
         header,
@@ -226,7 +226,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
         forced_transaction_preimages: sortedDaEntries([
           transitionTraceRawEntry(
             forcedEntries[0]![0],
-            encodeMidgardNativeTxCanonicalV1(nativeTx).toString("hex"),
+            encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
           ),
         ]),
         cek_program_material: [],
@@ -239,7 +239,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
   );
   return {
     header,
-    reconstruction: await reconstructDaPayloadV1({
+    reconstruction: await reconstructDaPayload({
       payloadEnvelopeCbor,
       expectedHeaderHash: headerHash,
       committedHeader: header,
@@ -253,7 +253,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
 
 describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
   it("runs accepted and forced Init through scan, final mint, and removal before central registration", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -261,7 +261,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const titles = TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1;
+    const titles = TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES;
     const step04 = makeSpendingValidator(
       applyCompiledScript(harness.realBlueprint, titles.step04, [
         harness.contracts.fraudProof.policyId,
@@ -290,12 +290,12 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       ]),
     );
     const steps = [step01, step02, step03, step04] as const;
-    const contracts: TransactionOutputNonCanonicalContractsV1 = {
+    const contracts: TransactionOutputNonCanonicalContracts = {
       steps: steps.map((step, index) => ({
         ...step,
         blueprintTitle: Object.values(titles)[index]!,
         referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-      })) as unknown as TransactionOutputNonCanonicalContractsV1["steps"],
+      })) as unknown as TransactionOutputNonCanonicalContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -309,7 +309,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         transactionOutputNonCanonical: {
-          categoryId: TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID_V1,
+          categoryId: TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID,
           scriptHash: step01.spendingScriptHash,
         },
       },
@@ -326,8 +326,8 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       fee: 7n,
       outputCbors: [malformedOutput, Buffer.alloc(16_377)],
     });
-    const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -347,21 +347,21 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: proof.toCBOR().toString("hex"),
     };
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
       catalogue,
       fixture: { transactionsRoot, l2TransactionCount: 1n },
     });
-    const evidence = prepareTransactionOutputEvidenceV1({
+    const evidence = prepareTransactionOutputEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(nativeTxId),
+        subject: acceptedVerdictSubject(nativeTxId),
         fieldIndex: 2,
         itemIndex: 0,
       },
       fieldPreimage: nativeTx.body.outputsPreimageCbor,
-      committedFieldHashHex: midgardFieldCommitmentV1(
+      committedFieldHashHex: midgardFieldCommitment(
         nativeTx.body.outputsPreimageCbor,
       ).toString("hex"),
     });
@@ -415,7 +415,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep01AcceptedV1({
+      submitTransactionOutputNonCanonicalStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -434,7 +434,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       }),
     );
     const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep02V1({
+      submitTransactionOutputNonCanonicalStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -442,15 +442,15 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         threadOutRef: step01Result.result.nextThreadOutRef,
         evidence,
         nativeTxCompactCbor: compactCbor.toString("hex"),
-        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-          deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+          deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
         ).toString("hex"),
         referenceScriptUtxo: references[1]!,
         certificateReferenceScriptUtxo: certificateReference,
       }),
     );
     const step03Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep03V1({
+      submitTransactionOutputNonCanonicalStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -464,7 +464,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
     );
     expect(step03Result.result.terminal).toBe(true);
     const step04Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep04V1({
+      submitTransactionOutputNonCanonicalStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -535,7 +535,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         if (cancelThreadUtxo === undefined)
           throw new Error("cancel thread absent");
         cancelThread = (
-          await submitTransactionOutputNonCanonicalStep01AcceptedV1({
+          await submitTransactionOutputNonCanonicalStep01Accepted({
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -556,7 +556,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       }
       if (targetStep >= 2) {
         cancelThread = (
-          await submitTransactionOutputNonCanonicalStep02V1({
+          await submitTransactionOutputNonCanonicalStep02({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -564,8 +564,8 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
             threadOutRef: cancelThread,
             evidence,
             nativeTxCompactCbor: compactCbor.toString("hex"),
-            witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-              deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+            witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+              deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
             ).toString("hex"),
             referenceScriptUtxo: references[1]!,
             certificateReferenceScriptUtxo: certificateReference,
@@ -573,7 +573,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         ).nextThreadOutRef;
       }
       if (targetStep >= 3) {
-        const scan = await submitTransactionOutputNonCanonicalStep03V1({
+        const scan = await submitTransactionOutputNonCanonicalStep03({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -588,7 +588,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         cancelThread = scan.nextThreadOutRef;
       }
       const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-        submitTransactionOutputNonCanonicalCancelV1({
+        submitTransactionOutputNonCanonicalCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -677,7 +677,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
     }
 
     {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
       });
       const addressData = await Effect.runPromise(
@@ -687,7 +687,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
           Effect.map((address) => Data.from(Data.to(address, AddressData))),
         ),
       );
-      const titles = TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1;
+      const titles = TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES;
       const step04 = makeSpendingValidator(
         applyCompiledScript(harness.realBlueprint, titles.step04, [
           harness.contracts.fraudProof.policyId,
@@ -716,12 +716,12 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         ]),
       );
       const steps = [step01, step02, step03, step04] as const;
-      const contracts: TransactionOutputNonCanonicalContractsV1 = {
+      const contracts: TransactionOutputNonCanonicalContracts = {
         steps: steps.map((step, index) => ({
           ...step,
           blueprintTitle: Object.values(titles)[index]!,
           referenceOutRef: `${"00".repeat(32)}#${index.toString()}`,
-        })) as unknown as TransactionOutputNonCanonicalContractsV1["steps"],
+        })) as unknown as TransactionOutputNonCanonicalContracts["steps"],
         computationThread: harness.contracts.computationThread,
         fraudProof: harness.contracts.fraudProof,
         hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -735,7 +735,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         harness.contracts.fraudProofs,
         {
           transactionOutputNonCanonical: {
-            categoryId: TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID_V1,
+            categoryId: TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID,
             scriptHash: step01.spendingScriptHash,
           },
         },
@@ -802,9 +802,9 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         reconstruction: forced.reconstruction,
         eventKey: forced.eventKey,
       });
-      const forcedEvidence = prepareTransactionOutputEvidenceV1({
+      const forcedEvidence = prepareTransactionOutputEvidence({
         finding: {
-          subject: forcedVerdictSubjectV1({
+          subject: forcedVerdictSubject({
             transactionId: forced.transaction.tx_id,
             sourceKey: membership.key,
             rejectionReason: forced.rejectionReason,
@@ -813,7 +813,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
           itemIndex: 0,
         },
         fieldPreimage: forced.nativeTx.body.outputsPreimageCbor,
-        committedFieldHashHex: midgardFieldCommitmentV1(
+        committedFieldHashHex: midgardFieldCommitment(
           forced.nativeTx.body.outputsPreimageCbor,
         ).toString("hex"),
       });
@@ -834,7 +834,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         fraudulentBlockOutRef: forcedSetup.fraudulentBlockOutRef,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
-      const forced01 = await submitTransactionOutputNonCanonicalStep01ForcedV1({
+      const forced01 = await submitTransactionOutputNonCanonicalStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -844,7 +844,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         forcedSource: { header: forced.header, membership, direction: 1n },
         referenceScriptUtxo: references[0]!,
       });
-      const forced02 = await submitTransactionOutputNonCanonicalStep02V1({
+      const forced02 = await submitTransactionOutputNonCanonicalStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -858,7 +858,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
       });
       let forcedThread = forced02.nextThreadOutRef;
       for (;;) {
-        const scan = await submitTransactionOutputNonCanonicalStep03V1({
+        const scan = await submitTransactionOutputNonCanonicalStep03({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -873,7 +873,7 @@ describe("transactionOutputNonCanonical local-catalogue lifecycle", () => {
         forcedThread = scan.nextThreadOutRef;
         if (scan.terminal) break;
       }
-      const forced04 = await submitTransactionOutputNonCanonicalStep04V1({
+      const forced04 = await submitTransactionOutputNonCanonicalStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

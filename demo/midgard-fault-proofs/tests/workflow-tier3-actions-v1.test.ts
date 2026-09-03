@@ -3,10 +3,10 @@ import {
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import {
-  deriveFieldPreimageCertificationV1,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
-  fieldPreimagePublicationDatumCborV1,
-  MIDGARD_FIELD_INDEX_V1,
+  deriveFieldPreimageCertification,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  fieldPreimagePublicationDatumCbor,
+  MIDGARD_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
 import type {
   LucidEvolution,
@@ -16,32 +16,32 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  fieldPreimageCertificateAddressV1,
-  planFaultProofFieldOpeningV1,
+  fieldPreimageCertificateAddress,
+  planFaultProofFieldOpening,
 } from "../src/field-opening-v1.js";
 import {
-  planNetworkIdOutputsOpeningV1,
-  type PreparedNetworkIdProofV1,
+  planNetworkIdOutputsOpening,
+  type PreparedNetworkIdProof,
 } from "../src/network-id/prepare-v1.js";
 import {
-  createNetworkIdWorkflowAdapterV1,
-  type NetworkIdWorkflowAdapterConfigV1,
+  createNetworkIdWorkflowAdapter,
+  type NetworkIdWorkflowAdapterConfig,
 } from "../src/network-id/workflow-adapter-v1.js";
-import { deriveL2TransactionSourceCborV1 } from "../src/prepare-double-spend.js";
+import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
 import {
-  createDoubleSpendConstrainedWorkflowAdapterV1,
-  type DoubleSpendConstrainedWorkflowAdapterConfigV1,
+  createDoubleSpendConstrainedWorkflowAdapter,
+  type DoubleSpendConstrainedWorkflowAdapterConfig,
 } from "../src/workflow/double-spend-adapter-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type JournalJsonObjectV1,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type JournalJsonObject,
 } from "../src/workflow/journal-v1.js";
-import type { FraudProofFamilyWorkflowAdapterV1 } from "../src/workflow/orchestrator-v1.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator-v1.js";
 import {
-  buildFixtureTransactionV1,
+  buildFixtureTransaction,
   h28,
   h32,
   outRefCbor,
@@ -83,13 +83,13 @@ const utxo = ({
 });
 
 const publicationsFor = (
-  plan: ReturnType<typeof planFaultProofFieldOpeningV1>,
+  plan: ReturnType<typeof planFaultProofFieldOpening>,
 ): readonly UTxO[] =>
   plan.plan.publications.map((publication, index) =>
     utxo({
       txHash: h32(0x20 + index),
       outputIndex: 0,
-      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }),
   );
 
@@ -97,15 +97,15 @@ const certificateFor = ({
   plan,
   network,
 }: {
-  readonly plan: ReturnType<typeof planFaultProofFieldOpeningV1>;
+  readonly plan: ReturnType<typeof planFaultProofFieldOpening>;
   readonly network: "Preview";
 }): UTxO => {
-  const certification = deriveFieldPreimageCertificationV1(plan.plan);
-  const unit = `${POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`;
+  const certification = deriveFieldPreimageCertification(plan.plan);
+  const unit = `${POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
   return utxo({
     txHash: h32(0x61),
     outputIndex: 0,
-    address: fieldPreimageCertificateAddressV1({
+    address: fieldPreimageCertificateAddress({
       network,
       certificatePolicyId: POLICY_ID,
     }),
@@ -114,15 +114,15 @@ const certificateFor = ({
   });
 };
 
-const confirmedEntry = (actionId: string): FraudProofWorkflowJournalEntryV1 =>
+const confirmedEntry = (actionId: string): FraudProofWorkflowJournalEntry =>
   ({
     event: { kind: "confirmed", actionId, txHash: h32(0x41) },
-  }) as FraudProofWorkflowJournalEntryV1;
+  }) as FraudProofWorkflowJournalEntry;
 
 const workflowIdentity = (
   category: "doubleSpend" | "networkId",
-): FraudProofWorkflowIdentityV1 => ({
-  schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+): FraudProofWorkflowIdentity => ({
+  schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   deploymentFingerprint: "d1".repeat(32),
   category,
   target: { kind: "state_queue_header", headerHash: HEADER_HASH },
@@ -134,10 +134,10 @@ const observe = async ({
   artifact,
   entries = [],
 }: {
-  readonly adapter: FraudProofFamilyWorkflowAdapterV1;
+  readonly adapter: FraudProofFamilyWorkflowAdapter;
   readonly category: "doubleSpend" | "networkId";
-  readonly artifact: JournalJsonObjectV1;
-  readonly entries?: readonly FraudProofWorkflowJournalEntryV1[];
+  readonly artifact: JournalJsonObject;
+  readonly entries?: readonly FraudProofWorkflowJournalEntry[];
 }) => {
   return await adapter.observe({
     identity: workflowIdentity(category),
@@ -152,12 +152,12 @@ describe("Q38 tier-3 workflow action chains", () => {
     const spendInputs = Array.from({ length: 440 }, (_, index) =>
       outRefCbor((index % 200) + 1, BigInt(Math.floor(index / 200))),
     );
-    const transaction = buildFixtureTransactionV1({
+    const transaction = buildFixtureTransaction({
       spendInputs,
       fee: 1n,
     });
-    const plan = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+    const plan = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
       anchorTxId: transaction.txId,
       nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
       itemCbors: spendInputs,
@@ -186,9 +186,9 @@ describe("Q38 tier-3 workflow action chains", () => {
       signer: SIGNER,
       referenceScripts: {
         steps:
-          [] as unknown as DoubleSpendConstrainedWorkflowAdapterConfigV1["referenceScripts"]["steps"],
+          [] as unknown as DoubleSpendConstrainedWorkflowAdapterConfig["referenceScripts"]["steps"],
         witnesses:
-          {} as DoubleSpendConstrainedWorkflowAdapterConfigV1["referenceScripts"]["witnesses"],
+          {} as DoubleSpendConstrainedWorkflowAdapterConfig["referenceScripts"]["witnesses"],
       },
       fieldPreimageCertificate: {
         policyId: POLICY_ID,
@@ -223,8 +223,8 @@ describe("Q38 tier-3 workflow action chains", () => {
           throw new Error("removal is outside this test");
         },
       },
-    } satisfies DoubleSpendConstrainedWorkflowAdapterConfigV1;
-    const adapter = createDoubleSpendConstrainedWorkflowAdapterV1(config);
+    } satisfies DoubleSpendConstrainedWorkflowAdapterConfig;
+    const adapter = createDoubleSpendConstrainedWorkflowAdapter(config);
     const txArtifact = {
       inclusion: {},
       nativeTxId: transaction.txId,
@@ -236,7 +236,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       headerHash: HEADER_HASH,
       tx1: txArtifact,
       tx2: txArtifact,
-    } as unknown as JournalJsonObjectV1;
+    } as unknown as JournalJsonObject;
 
     const publication = await observe({
       adapter,
@@ -341,7 +341,7 @@ describe("Q38 tier-3 workflow action chains", () => {
     const outputs = Array.from({ length: 440 }, () =>
       encodeMidgardTxOutput(output),
     );
-    const transaction = buildFixtureTransactionV1({
+    const transaction = buildFixtureTransaction({
       spendInputs: [],
       outputs,
       fee: 1n,
@@ -360,14 +360,14 @@ describe("Q38 tier-3 workflow action chains", () => {
         nativeTxId: transaction.txId,
         nativeTx: {} as never,
         nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
-        l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+        l2TransactionSourceCbor: deriveL2TransactionSourceCbor(
           transaction.canonicalCbor,
         ),
         transactionsPhasRoot: h32(0x31),
         txMembershipProofCbor: "d87980",
       },
-    } satisfies PreparedNetworkIdProofV1;
-    const plan = planNetworkIdOutputsOpeningV1({
+    } satisfies PreparedNetworkIdProof;
+    const plan = planNetworkIdOutputsOpening({
       prepared,
       owner: SIGNER.paymentKeyHash,
     });
@@ -470,8 +470,8 @@ describe("Q38 tier-3 workflow action chains", () => {
       terminalFacts: async () => {
         throw new Error("terminal state is outside this test");
       },
-    } as unknown as NetworkIdWorkflowAdapterConfigV1;
-    const adapter = createNetworkIdWorkflowAdapterV1(config);
+    } as unknown as NetworkIdWorkflowAdapterConfig;
+    const adapter = createNetworkIdWorkflowAdapter(config);
     const artifact = {
       schemaVersion: "midgard-network-id-workflow-artifact-v1",
       headerHash: HEADER_HASH,
@@ -479,7 +479,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       badTxId: transaction.txId,
       nativeTxCanonicalCbor: transaction.canonicalCbor.toString("hex"),
       nativeTxCompactCbor: transaction.compactCbor.toString("hex"),
-      l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+      l2TransactionSourceCbor: deriveL2TransactionSourceCbor(
         transaction.canonicalCbor,
       ),
       outputsItemCbors: outputs.map((item) => item.toString("hex")),
@@ -487,7 +487,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       outputIndex: "0",
       transactionsPhasRoot: h32(0x31),
       txMembershipProofCbor: "d87980",
-    } as JournalJsonObjectV1;
+    } as JournalJsonObject;
 
     const publication = await observe({
       adapter,
@@ -608,10 +608,10 @@ describe("Q38 tier-3 workflow action chains", () => {
         },
         resume,
       },
-    } as unknown as DoubleSpendConstrainedWorkflowAdapterConfigV1;
-    const adapter = createDoubleSpendConstrainedWorkflowAdapterV1(config);
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    } as unknown as DoubleSpendConstrainedWorkflowAdapterConfig;
+    const adapter = createDoubleSpendConstrainedWorkflowAdapter(config);
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: "d1".repeat(32),
       category: "doubleSpend",
       target: { kind: "state_queue_header", headerHash: HEADER_HASH },
@@ -649,7 +649,7 @@ describe("Q38 tier-3 workflow action chains", () => {
     });
     expect(renew).toHaveBeenCalledTimes(1);
 
-    const secondAdapter = createDoubleSpendConstrainedWorkflowAdapterV1(config);
+    const secondAdapter = createDoubleSpendConstrainedWorkflowAdapter(config);
     await expect(secondAdapter.reconcile(context)).resolves.toMatchObject({
       kind: "conflict",
       reason: expect.stringContaining("omitted its durable mutation-lease"),

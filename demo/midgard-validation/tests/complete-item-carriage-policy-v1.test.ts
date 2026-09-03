@@ -69,7 +69,7 @@ const generalFieldChunkFallbackIsGuarded = (source: string): boolean => {
   }
   const window = source.slice(guardIndex, guardIndex + 2_600);
   return (
-    window.includes("midgardBoundedItemChunkCountV1") &&
+    window.includes("midgardBoundedItemChunkCount") &&
     window.includes('kind: "transactionFieldChunk"')
   );
 };
@@ -115,7 +115,7 @@ describe("C21 complete-item carriage production searches", () => {
 
   it("keeps the public complete-item publication API free of prover-managed chunking", () => {
     expect(sdkProofItemSource).toContain(
-      "deriveValidationProofItemPublicationV1",
+      "deriveValidationProofItemPublication",
     );
     // #597: the publication's unit is the field's whole §5.1 preimage. §4
     // commits a field by one flat hash over those bytes, so a per-item opening
@@ -138,9 +138,7 @@ describe("C21 complete-item carriage production searches", () => {
     // remains is the SDK against the stale blueprint — which is #579's single
     // regeneration, not a language-half divergence.
     const datumBlock = sdkWitnessSource.slice(
-      sdkWitnessSource.indexOf(
-        "ValidationProofItemDatumV1Schema = Data.Object",
-      ),
+      sdkWitnessSource.indexOf("ValidationProofItemDatumSchema = Data.Object"),
     );
     for (const field of [
       "version: Data.Integer()",
@@ -167,7 +165,7 @@ describe("C21 complete-item carriage production searches", () => {
       const block = sdkWitnessSource.slice(
         sdkWitnessSource.indexOf(`${constructor}: Data.Object({`),
       );
-      expect(block.slice(0, 260)).toContain("carriage: FieldCarriageV1Schema");
+      expect(block.slice(0, 260)).toContain("carriage: FieldCarriageSchema");
     }
   });
 

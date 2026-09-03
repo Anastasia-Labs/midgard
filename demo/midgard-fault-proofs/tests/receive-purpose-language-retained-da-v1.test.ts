@@ -1,25 +1,25 @@
 import {
   buildMidgardValidationTraceTree,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
   encodeCbor,
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -29,23 +29,23 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
-  prepareReceivePurposeLanguageEvidenceV1,
-  receivePurposeLanguageEvidenceClosesV1,
+  prepareReceivePurposeLanguageEvidence,
+  receivePurposeLanguageEvidenceCloses,
 } from "../src/receive-purpose-language/family-v1.js";
 import {
-  detectReceivePurposeLanguageCanonicalViolationsV1,
-  prepareProductionReceivePurposeLanguageArtifactV1,
+  detectReceivePurposeLanguageCanonicalViolations,
+  prepareReceivePurposeLanguageArtifact,
 } from "../src/receive-purpose-language/production-replay-v1.js";
-import { buildReceivePurposeLanguageAuthenticationFromRetainedDaV1 } from "../src/receive-purpose-language/retained-witness-v1.js";
-import { receivePurposeLanguageDescriptorFromAuthenticationV1 } from "../src/receive-purpose-language/retained-witness-v1.js";
+import { buildReceivePurposeLanguageAuthenticationFromRetainedDa } from "../src/receive-purpose-language/retained-witness-v1.js";
+import { receivePurposeLanguageDescriptorFromAuthentication } from "../src/receive-purpose-language/retained-witness-v1.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 
 describe("receivePurposeLanguage retained DA", () => {
   it("reconstructs the forbidden receive purpose and PlutusV3 language without callback evidence", async () => {
     const spent = outRefFromByte(0x73);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const script = plutusV3ScriptWitness(
       Buffer.from(
         "85018301010058207d068efad94d2953eefe63951671327af75e08c963cd1f232b08966e6026bf5e021827",
@@ -54,7 +54,7 @@ describe("receivePurposeLanguage retained DA", () => {
     );
     const output = makeProtectedScriptOutput(
       hashScriptWitness(script),
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
     );
     const transaction = makeNativeTx({
       version: 1n,
@@ -73,7 +73,7 @@ describe("receivePurposeLanguage retained DA", () => {
     const mutations = await buildValidationMachineLedgerMutationSteps({
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: [
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(transaction.txId),
           outputCbor: output,
         }),
@@ -84,7 +84,7 @@ describe("receivePurposeLanguage retained DA", () => {
     } as const;
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: Buffer.from(
           Data.to(eventKey as never, SDK.EventKeySchema),
           "hex",
@@ -122,11 +122,11 @@ describe("receivePurposeLanguage retained DA", () => {
     if (witness.auxiliary?.kind !== "nativeExecutionDescriptor")
       throw new Error("fixture omitted receive execution descriptor");
     const claimedAcceptedTree = buildMidgardValidationTraceTree(
-      trace.states.map(hashMidgardValidationMachineStateV1),
+      trace.states.map(hashMidgardValidationMachineState),
       "accepted",
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     );
-    const descriptor: SDK.ValidationTraceDescriptorV1 = {
+    const descriptor: SDK.ValidationTraceDescriptor = {
       schema_version: BigInt(claimedAcceptedTree.descriptor.schemaVersion),
       machine_version: BigInt(claimedAcceptedTree.descriptor.machineVersion),
       trace_root: claimedAcceptedTree.descriptor.traceRoot.toString("hex"),
@@ -144,17 +144,17 @@ describe("receivePurposeLanguage retained DA", () => {
       "hex",
     );
     const descriptorCbor = Buffer.from(
-      Data.to(descriptor as never, SDK.ValidationTraceDescriptorV1Schema),
+      Data.to(descriptor as never, SDK.ValidationTraceDescriptorSchema),
       "hex",
     );
     const root = await buildCountedRoot(SDK.ROOT_DOMAINS.validationTraces, [
       { key: eventKeyCbor, value: descriptorCbor },
     ]);
     const auxiliary = Data.from(
-      Data.to(validationAuxiliaryWitnessDataV1(witness.auxiliary) as never),
-      SDK.ValidationAuxiliaryWitnessV1Schema,
-    ) as unknown as SDK.ValidationAuxiliaryWitnessV1;
-    const retainedValue: SDK.RetainedValidationWitnessV1 = {
+      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
+      SDK.ValidationAuxiliaryWitnessSchema,
+    ) as unknown as SDK.ValidationAuxiliaryWitness;
+    const retainedValue: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(
         trace.states[stateIndex]!,
       ),
@@ -166,7 +166,7 @@ describe("receivePurposeLanguage retained DA", () => {
       witness_cbor: witness.cbor.toString("hex"),
       auxiliary,
     };
-    const retainedKey: SDK.RetainedValidationWitnessKeyV1 = {
+    const retainedKey: SDK.RetainedValidationWitnessKey = {
       event_key: eventKey,
       execution_index: BigInt(witness.auxiliary.executionIndex),
     };
@@ -178,31 +178,31 @@ describe("receivePurposeLanguage retained DA", () => {
       ],
       retainedValidationWitnessEntries: [
         {
-          key: SDK.encodeRetainedValidationWitnessKeyV1(retainedKey),
-          value: SDK.encodeRetainedValidationWitnessV1(retainedValue),
+          key: SDK.encodeRetainedValidationWitnessKey(retainedKey),
+          value: SDK.encodeRetainedValidationWitness(retainedValue),
         },
       ],
       expectedValidationTracesRoot: root.root,
       expectedLanguageTag: 3 as const,
     };
     const rebuilt =
-      await buildReceivePurposeLanguageAuthenticationFromRetainedDaV1(input);
+      await buildReceivePurposeLanguageAuthenticationFromRetainedDa(input);
     expect(rebuilt.authentication).toMatchObject({
       purpose_index: 0n,
       language_tag: 3n,
     });
-    const evidence = prepareReceivePurposeLanguageEvidenceV1({
+    const evidence = prepareReceivePurposeLanguageEvidence({
       finding: {
-        subject: SDK.acceptedVerdictSubjectV1(transaction.txId.toString("hex")),
+        subject: SDK.acceptedVerdictSubject(transaction.txId.toString("hex")),
         executionIndex: 0,
       },
-      descriptor: receivePurposeLanguageDescriptorFromAuthenticationV1(
+      descriptor: receivePurposeLanguageDescriptorFromAuthentication(
         rebuilt.authentication,
         0,
       ),
     });
-    expect(receivePurposeLanguageEvidenceClosesV1(evidence)).toBe(true);
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    expect(receivePurposeLanguageEvidenceCloses(evidence)).toBe(true);
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       transaction.txCbor,
     );
     const l2Source = Data.to(
@@ -216,12 +216,12 @@ describe("receivePurposeLanguage retained DA", () => {
             material.proofSource.fieldPreimageLengthsCbor.toString("hex"),
         },
       } as never,
-      SDK.L2TransactionSourceV1Schema,
+      SDK.L2TransactionSourceSchema,
     );
     const encodedRetainedKey =
-      SDK.encodeRetainedValidationWitnessKeyV1(retainedKey);
+      SDK.encodeRetainedValidationWitnessKey(retainedKey);
     const encodedRetainedValue =
-      SDK.encodeRetainedValidationWitnessV1(retainedValue);
+      SDK.encodeRetainedValidationWitness(retainedValue);
     const block = {
       headerHash: "ab".repeat(28),
       header: { validationTracesRoot: root.root },
@@ -248,18 +248,18 @@ describe("receivePurposeLanguage retained DA", () => {
           l2TransactionSourceCbor: l2Source,
         },
       ],
-    } as unknown as CanonicalBlockEvidenceV1;
+    } as unknown as CanonicalBlockEvidence;
     expect(
-      await detectReceivePurposeLanguageCanonicalViolationsV1(block),
+      await detectReceivePurposeLanguageCanonicalViolations(block),
     ).toMatchObject([
       { violationId: "receive-purpose-plutus-v3-forbidden", position: 0n },
     ]);
     expect(
-      (await prepareProductionReceivePurposeLanguageArtifactV1(block))
-        .authentication.language_tag,
+      (await prepareReceivePurposeLanguageArtifact(block)).authentication
+        .language_tag,
     ).toBe(3n);
     await expect(
-      buildReceivePurposeLanguageAuthenticationFromRetainedDaV1({
+      buildReceivePurposeLanguageAuthenticationFromRetainedDa({
         ...input,
         expectedLanguageTag: 128,
       }),
@@ -270,12 +270,12 @@ describe("receivePurposeLanguage retained DA", () => {
     )
       throw new Error("fixture retained wrong auxiliary kind");
     await expect(
-      buildReceivePurposeLanguageAuthenticationFromRetainedDaV1({
+      buildReceivePurposeLanguageAuthenticationFromRetainedDa({
         ...input,
         retainedValidationWitnessEntries: [
           {
-            key: SDK.encodeRetainedValidationWitnessKeyV1(retainedKey),
-            value: SDK.encodeRetainedValidationWitnessV1({
+            key: SDK.encodeRetainedValidationWitnessKey(retainedKey),
+            value: SDK.encodeRetainedValidationWitness({
               ...retainedValue,
               auxiliary: {
                 NativeExecutionDescriptorWitness: {

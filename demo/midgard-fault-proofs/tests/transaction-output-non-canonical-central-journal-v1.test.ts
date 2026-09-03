@@ -4,21 +4,21 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createTransactionOutputNonCanonicalCentralJournalAdapterV1 } from "../src/transaction-output-non-canonical/central-journal-v1.js";
+import { createTransactionOutputNonCanonicalCentralJournalAdapter } from "../src/transaction-output-non-canonical/central-journal-v1.js";
 import {
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalStoreV1,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal-v1.js";
 
 const familyDirectoryStore = (
   directory: string,
-): FraudProofWorkflowJournalStoreV1 => {
+): FraudProofWorkflowJournalStore => {
   const file = join(directory, "journal.json");
-  const load = async (): Promise<FraudProofWorkflowJournalEntryV1[]> => {
+  const load = async (): Promise<FraudProofWorkflowJournalEntry[]> => {
     try {
       return JSON.parse(
         await readFile(file, "utf8"),
-      ) as FraudProofWorkflowJournalEntryV1[];
+      ) as FraudProofWorkflowJournalEntry[];
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
@@ -35,8 +35,8 @@ const familyDirectoryStore = (
 };
 
 const memoryStore = () => {
-  const entries: FraudProofWorkflowJournalEntryV1[] = [];
-  const store: FraudProofWorkflowJournalStoreV1 = {
+  const entries: FraudProofWorkflowJournalEntry[] = [];
+  const store: FraudProofWorkflowJournalStore = {
     load: async () => entries,
     append: async (entry, expected) => {
       if (expected !== entries.length) throw new Error("sequence conflict");
@@ -46,10 +46,10 @@ const memoryStore = () => {
   return { entries, store };
 };
 const bridge = (
-  store: FraudProofWorkflowJournalStoreV1,
+  store: FraudProofWorkflowJournalStore,
   confirmed = async (_txHash: string) => true,
 ) =>
-  createTransactionOutputNonCanonicalCentralJournalAdapterV1({
+  createTransactionOutputNonCanonicalCentralJournalAdapter({
     store,
     deploymentFingerprint: "1".repeat(64),
     headerHash: "2".repeat(56),

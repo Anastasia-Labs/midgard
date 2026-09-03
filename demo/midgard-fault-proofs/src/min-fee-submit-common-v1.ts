@@ -3,7 +3,7 @@ import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import {
   MIN_FEE_CATEGORY_LABEL,
-  type MinFeeContractsV1,
+  type MinFeeContracts,
 } from "./min-fee-contracts-v1.js";
 import {
   fetchUtxoByOutRef,
@@ -13,7 +13,7 @@ import {
 } from "./runtime.js";
 import { requireComputationThreadToken } from "./submit-step-01.js";
 
-export type MinFeeCatalogueCategoryV1 = {
+export type MinFeeCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -22,10 +22,10 @@ export type MinFeeCatalogueCategoryV1 = {
 export const minFeeSubmitError = (message: string): Error =>
   new Error(`${MIN_FEE_CATEGORY_LABEL}: ${message}`);
 
-export const minFeeStepLabelV1 = (stepIndex: 0 | 1): string =>
+export const minFeeStepLabel = (stepIndex: 0 | 1): string =>
   `${MIN_FEE_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
-export const requireMinFeeThreadUtxoV1 = async ({
+export const requireMinFeeThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -33,7 +33,7 @@ export const requireMinFeeThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: MinFeeContractsV1;
+  readonly contracts: MinFeeContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1;
   readonly threadOutRef: string;
@@ -41,7 +41,7 @@ export const requireMinFeeThreadUtxoV1 = async ({
   readonly threadUtxo: UTxO;
   readonly threadToken: ReturnType<typeof requireComputationThreadToken>;
 }> => {
-  const label = minFeeStepLabelV1(stepIndex);
+  const label = minFeeStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -65,7 +65,7 @@ export const requireMinFeeThreadUtxoV1 = async ({
 };
 
 /** Reference-script-only: absence is an error, never an inline fallback. */
-export const requireMinFeeReferenceScriptV1 = ({
+export const requireMinFeeReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
@@ -76,7 +76,7 @@ export const requireMinFeeReferenceScriptV1 = ({
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw minFeeSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${minFeeStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${minFeeStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
@@ -88,7 +88,7 @@ export const requireMinFeeReferenceScriptV1 = ({
   return utxo;
 };
 
-export const requireMinFeeStepStateV1 = <State>({
+export const requireMinFeeStepState = <State>({
   threadUtxo,
   signer,
   schema,

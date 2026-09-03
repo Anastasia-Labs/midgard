@@ -2,18 +2,18 @@ import { createHash } from "node:crypto";
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  midgardFieldCarriagePlansAreInterchangeableV1,
-  type MidgardFieldCarriagePlanV1,
-  planMidgardFieldCarriageV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxCompact,
+  type MidgardFieldCarriagePlan,
+  midgardFieldCarriagePlansAreInterchangeable,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import {
-  buildUnsignedFieldPreimagePublicationV1Program,
-  deriveFieldPreimageCertificationV1,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
-  fieldPreimagePublicationDatumCborV1,
+  buildUnsignedFieldPreimagePublicationProgram,
+  deriveFieldPreimageCertification,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  fieldPreimagePublicationDatumCbor,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 import {
@@ -27,55 +27,55 @@ import {
 import { Effect } from "effect";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  type FaultProofFieldOpeningPlanV1,
-  fieldPreimageCertificateAddressV1,
+  certifyFaultProofFieldCarriage,
+  type FaultProofFieldOpeningPlan,
+  fieldPreimageCertificateAddress,
 } from "../field-opening-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type {
-  FraudProofWorkflowJournalEntryV1,
-  JournalJsonObjectV1,
+  FraudProofWorkflowJournalEntry,
+  JournalJsonObject,
 } from "./journal-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowPreflightV1,
-  type FraudProofWorkflowReconcileResultV1,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowPreflight,
+  type FraudProofWorkflowReconcileResult,
 } from "./orchestrator-v1.js";
 import {
-  FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1,
-  type FraudProofAuthenticatedPublicationObserverV1,
+  FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+  type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation-v1.js";
 import {
-  bindProductionWorkflowPreflightTransactionV1,
-  captureLocallyEvaluatedTransactionV1,
-  LOCAL_UPLC_EVALUATOR_V1,
-  type LocallyEvaluatedTransactionV1,
-  requireReferenceOnlyScriptWitnessesV1,
-  submitCapturedTransactionV1,
+  bindWorkflowPreflightTransaction,
+  captureLocallyEvaluatedTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1 =
+export const FIELD_CARRIAGE_PREREQUISITE =
   "midgard-production-field-carriage-prerequisite-v1" as const;
-export const PRODUCTION_FIELD_CARRIAGE_RECOVERY_V1 =
+export const FIELD_CARRIAGE_RECOVERY =
   "midgard-production-field-carriage-recovery-v1" as const;
 
 const TX_HASH = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-export type ProductionRawCommittedFieldCarriagePlanV1 = Readonly<{
+export type RawCommittedFieldCarriagePlan = Readonly<{
   kind: "raw_committed_preimage_v1";
   fieldIndex: number;
   nativeTxId: string;
   preimage: Buffer;
   commitment: string;
-  plan: MidgardFieldCarriagePlanV1;
+  plan: MidgardFieldCarriagePlan;
 }>;
 
 /** Plans raw committed bytes without pretending they decoded into §5.1 items. */
-export const createProductionRawCommittedFieldCarriagePlanV1 = ({
+export const createRawCommittedFieldCarriagePlan = ({
   owner,
   nativeTxId,
   fieldIndex,
@@ -85,12 +85,12 @@ export const createProductionRawCommittedFieldCarriagePlanV1 = ({
   readonly nativeTxId: string;
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
-}): ProductionRawCommittedFieldCarriagePlanV1 => {
+}): RawCommittedFieldCarriagePlan => {
   if (!/^[0-9a-f]{56}$/u.test(owner) || !/^[0-9a-f]{64}$/u.test(nativeTxId)) {
     throw new Error("raw committed field carriage identity is malformed");
   }
   const bytes = Buffer.from(preimage);
-  const plan = planMidgardFieldCarriageV1({
+  const plan = planMidgardFieldCarriage({
     owner: Buffer.from(owner, "hex"),
     txId: Buffer.from(nativeTxId, "hex"),
     fieldIndex,
@@ -106,10 +106,8 @@ export const createProductionRawCommittedFieldCarriagePlanV1 = ({
   });
 };
 
-export type ProductionFieldCarriageRequirementV1 = Readonly<{
-  planned:
-    | FaultProofFieldOpeningPlanV1
-    | ProductionRawCommittedFieldCarriagePlanV1;
+export type FieldCarriageRequirement = Readonly<{
+  planned: FaultProofFieldOpeningPlan | RawCommittedFieldCarriagePlan;
   /** Exact compact bytes the tier-3 certificate policy welds. */
   compactCbor: string;
   witnessSetCompactCbor?: string;
@@ -120,7 +118,7 @@ export type ProductionFieldCarriageRequirementV1 = Readonly<{
   }>;
 }>;
 
-type RequirementV1 = ProductionFieldCarriageRequirementV1 &
+type Requirement = FieldCarriageRequirement &
   Readonly<{
     identitySha256: string;
     publicationDatums: readonly string[];
@@ -129,8 +127,8 @@ type RequirementV1 = ProductionFieldCarriageRequirementV1 &
     certificateUnit: string | null;
   }>;
 
-type RecoveryV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_FIELD_CARRIAGE_RECOVERY_V1;
+type Recovery = Readonly<{
+  schemaVersion: typeof FIELD_CARRIAGE_RECOVERY;
   kind: "publication" | "certificate";
   requirementSha256: string;
   outRef: string;
@@ -138,47 +136,47 @@ type RecoveryV1 = Readonly<{
   unit: string | null;
 }>;
 
-export interface ProductionFieldCarriagePrerequisitePortV1<
+export interface FieldCarriagePrerequisitePort<
   Category extends FraudProofCatalogueCategoryName,
 > {
-  readonly portVersion: typeof PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1;
+  readonly portVersion: typeof FIELD_CARRIAGE_PREREQUISITE;
   readonly category: Category;
   resolveAuthenticated(input: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }): Promise<
     Readonly<{
       publications: readonly UTxO[];
       certificate?: UTxO;
-      requirement: ProductionFieldCarriageRequirementV1 | null;
+      requirement: FieldCarriageRequirement | null;
     }>
   >;
   inspect(input: {
     readonly headerHash: string;
-    readonly baseAction: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-    readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<
     | { readonly kind: "not_required" | "satisfied" }
     | { readonly kind: "pending"; readonly reason: string }
-    | { readonly kind: "required"; readonly action: FraudProofWorkflowActionV1 }
+    | { readonly kind: "required"; readonly action: FraudProofWorkflowAction }
   >;
   capture(input: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }): Promise<{
-    readonly transaction: LocallyEvaluatedTransactionV1;
-    readonly durableRecovery: JournalJsonObjectV1;
+    readonly transaction: LocallyEvaluatedTransaction;
+    readonly durableRecovery: JournalJsonObject;
   }>;
   reconcile(input: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
     readonly txHash?: string;
-    readonly durableRecovery?: JournalJsonObjectV1;
-  }): Promise<FraudProofWorkflowReconcileResultV1>;
+    readonly durableRecovery?: JournalJsonObject;
+  }): Promise<FraudProofWorkflowReconcileResult>;
 }
 
 const sha256 = (value: string): string =>
@@ -224,13 +222,13 @@ const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 const requirementIdentity = (
-  requirement: ProductionFieldCarriageRequirementV1,
-): RequirementV1 => {
+  requirement: FieldCarriageRequirement,
+): Requirement => {
   const { planned } = requirement;
   const normalizedCompactCbor = requirement.compactCbor.toLowerCase();
-  let decodedCompact: ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+  let decodedCompact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   try {
-    decodedCompact = decodeMidgardNativeTxCompactV1(
+    decodedCompact = decodeMidgardNativeTxCompact(
       Buffer.from(normalizedCompactCbor, "hex"),
     );
   } catch (cause) {
@@ -241,7 +239,7 @@ const requirementIdentity = (
   const planBytes =
     planned.plan.inlinePreimage ??
     Buffer.concat(planned.plan.publications.map(({ bytes }) => bytes));
-  const replayedPlan = planMidgardFieldCarriageV1({
+  const replayedPlan = planMidgardFieldCarriage({
     owner: planned.plan.certificate?.owner ?? Buffer.alloc(28),
     txId: planned.plan.txId,
     fieldIndex: planned.plan.fieldIndex,
@@ -251,18 +249,15 @@ const requirementIdentity = (
   });
   if (
     !/^(?:[0-9a-f]{2})+$/u.test(requirement.compactCbor) ||
-    encodeMidgardNativeTxCompactV1(decodedCompact).toString("hex") !==
+    encodeMidgardNativeTxCompact(decodedCompact).toString("hex") !==
       normalizedCompactCbor ||
-    computeMidgardNativeTxIdV1(decodedCompact).toString("hex") !==
+    computeMidgardNativeTxId(decodedCompact).toString("hex") !==
       planned.nativeTxId ||
     planned.plan.txId.toString("hex") !== planned.nativeTxId ||
     planned.plan.fieldIndex !== planned.fieldIndex ||
     planned.plan.totalLength !== planned.preimage.length ||
     !planBytes.equals(planned.preimage) ||
-    !midgardFieldCarriagePlansAreInterchangeableV1(
-      replayedPlan,
-      planned.plan,
-    ) ||
+    !midgardFieldCarriagePlansAreInterchangeable(replayedPlan, planned.plan) ||
     computeHash32(planned.preimage).toString("hex") !== planned.commitment ||
     planned.plan.commitment.toString("hex") !== planned.commitment ||
     !/^[0-9a-f]{56}$/u.test(requirement.certificate.policyId) ||
@@ -279,7 +274,7 @@ const requirementIdentity = (
   }
   const publicationDatums = Object.freeze(
     planned.plan.publications.map((publication) =>
-      fieldPreimagePublicationDatumCborV1(publication.bytes),
+      fieldPreimagePublicationDatumCbor(publication.bytes),
     ),
   );
   const publicationDigests = Object.freeze(
@@ -289,12 +284,12 @@ const requirementIdentity = (
   );
   const certification =
     planned.plan.tier === "Certified"
-      ? deriveFieldPreimageCertificationV1(planned.plan)
+      ? deriveFieldPreimageCertification(planned.plan)
       : null;
   const certificateUnit =
     certification === null
       ? null
-      : `${requirement.certificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`;
+      : `${requirement.certificate.policyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
   const identitySha256 = sha256(
     JSON.stringify({
       fieldIndex: planned.fieldIndex,
@@ -330,8 +325,8 @@ const requirementIdentity = (
 };
 
 const frozenBaseAction = (
-  action: FraudProofWorkflowActionV1,
-): FraudProofWorkflowActionV1 =>
+  action: FraudProofWorkflowAction,
+): FraudProofWorkflowAction =>
   Object.freeze({
     actionId: action.actionId,
     input: Object.freeze({ ...action.input }),
@@ -344,14 +339,14 @@ const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
   publicationIndex,
 }: {
   readonly category: Category;
-  readonly baseAction: FraudProofWorkflowActionV1;
-  readonly requirement: RequirementV1;
+  readonly baseAction: FraudProofWorkflowAction;
+  readonly requirement: Requirement;
   readonly publicationIndex: number;
-}): FraudProofWorkflowActionV1 =>
+}): FraudProofWorkflowAction =>
   Object.freeze({
     actionId: `publish-field-carriage:${baseAction.actionId}:${requirement.identitySha256}:${publicationIndex.toString()}`,
     input: Object.freeze({
-      schemaVersion: PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
+      schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "publish_field_carriage",
       forAction: frozenBaseAction(baseAction),
@@ -368,13 +363,13 @@ const certificateAction = <Category extends FraudProofCatalogueCategoryName>({
   requirement,
 }: {
   readonly category: Category;
-  readonly baseAction: FraudProofWorkflowActionV1;
-  readonly requirement: RequirementV1;
-}): FraudProofWorkflowActionV1 =>
+  readonly baseAction: FraudProofWorkflowAction;
+  readonly requirement: Requirement;
+}): FraudProofWorkflowAction =>
   Object.freeze({
     actionId: `certify-field-carriage:${baseAction.actionId}:${requirement.identitySha256}`,
     input: Object.freeze({
-      schemaVersion: PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
+      schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
       category,
       stage: "certify_field_carriage",
       forAction: frozenBaseAction(baseAction),
@@ -384,22 +379,22 @@ const certificateAction = <Category extends FraudProofCatalogueCategoryName>({
     }),
   });
 
-const isPrerequisiteAction = (action: FraudProofWorkflowActionV1): boolean =>
-  action.input.schemaVersion === PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1 &&
+const isPrerequisiteAction = (action: FraudProofWorkflowAction): boolean =>
+  action.input.schemaVersion === FIELD_CARRIAGE_PREREQUISITE &&
   (action.input.stage === "publish_field_carriage" ||
     action.input.stage === "certify_field_carriage");
 
 const parseBaseAction = (
   value: unknown,
   label: string,
-): FraudProofWorkflowActionV1 => {
+): FraudProofWorkflowAction => {
   const parsed = exact(value, ["actionId", "input"], label);
   if (typeof parsed.actionId !== "string") {
     throw new Error(`${label} actionId is malformed`);
   }
   return {
     actionId: parsed.actionId,
-    input: record(parsed.input, `${label} input`) as JournalJsonObjectV1,
+    input: record(parsed.input, `${label} input`) as JournalJsonObject,
   };
 };
 
@@ -411,13 +406,13 @@ const recovery = ({
   datumCbor,
   unit,
 }: {
-  readonly kind: RecoveryV1["kind"];
-  readonly requirement: RequirementV1;
-  readonly transaction: LocallyEvaluatedTransactionV1;
+  readonly kind: Recovery["kind"];
+  readonly requirement: Requirement;
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly address: string;
   readonly datumCbor: string;
   readonly unit: string | null;
-}): JournalJsonObjectV1 => {
+}): JournalJsonObject => {
   const outputs = transaction.signed.toTransaction().body().outputs();
   let found: number | undefined;
   for (let index = 0; index < outputs.len(); index += 1) {
@@ -449,7 +444,7 @@ const recovery = ({
   }
   return Object.freeze({
     fieldCarriage: Object.freeze({
-      schemaVersion: PRODUCTION_FIELD_CARRIAGE_RECOVERY_V1,
+      schemaVersion: FIELD_CARRIAGE_RECOVERY,
       kind,
       requirementSha256: requirement.identitySha256,
       outRef: `${transaction.txHash}#${found.toString()}`,
@@ -465,11 +460,11 @@ const parseRecovery = ({
   txHash,
   kind,
 }: {
-  readonly value: JournalJsonObjectV1 | undefined;
-  readonly requirement: RequirementV1;
+  readonly value: JournalJsonObject | undefined;
+  readonly requirement: Requirement;
   readonly txHash: string;
-  readonly kind: RecoveryV1["kind"];
-}): RecoveryV1 => {
+  readonly kind: Recovery["kind"];
+}): Recovery => {
   const outer = exact(value, ["fieldCarriage"], "field carriage recovery");
   const parsed = exact(
     outer.fieldCarriage,
@@ -484,7 +479,7 @@ const parseRecovery = ({
     "field carriage recovery payload",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_FIELD_CARRIAGE_RECOVERY_V1 ||
+    parsed.schemaVersion !== FIELD_CARRIAGE_RECOVERY ||
     parsed.kind !== kind ||
     parsed.requirementSha256 !== requirement.identitySha256 ||
     typeof parsed.outRef !== "string" ||
@@ -496,7 +491,7 @@ const parseRecovery = ({
     throw new Error("field carriage recovery changed identity");
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_FIELD_CARRIAGE_RECOVERY_V1,
+    schemaVersion: FIELD_CARRIAGE_RECOVERY,
     kind,
     requirementSha256: requirement.identitySha256,
     outRef: parsed.outRef,
@@ -510,7 +505,7 @@ const parseRecovery = ({
  * Candidate discovery may use Lucid, but only raw-L1 admission can satisfy an
  * action or reconcile an ambiguous submission.
  */
-export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
+export const createAuthenticatedFieldCarriagePrerequisitePort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
@@ -525,29 +520,29 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly publications: FraudProofAuthenticatedPublicationObserverV1;
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
   readonly requirementForAction: (input: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }) =>
-    | ProductionFieldCarriageRequirementV1
+    | FieldCarriageRequirement
     | null
-    | Promise<ProductionFieldCarriageRequirementV1 | null>;
+    | Promise<FieldCarriageRequirement | null>;
   readonly transactionConfirmed: (input: {
     readonly headerHash: string;
     readonly txHash: string;
   }) => Promise<boolean>;
-}): ProductionFieldCarriagePrerequisitePortV1<Category> => {
+}): FieldCarriagePrerequisitePort<Category> => {
   if (
     publications.observerVersion !==
-    FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1
+    FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER
   ) {
     throw new Error(`${category} field carriage requires a raw-L1 observer`);
   }
   const requirement = async (input: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-  }): Promise<RequirementV1 | null> => {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<Requirement | null> => {
     const resolved = await requirementForAction(input);
     return resolved === null ? null : requirementIdentity(resolved);
   };
@@ -606,8 +601,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
     artifact,
   }: {
     readonly headerHash: string;
-    readonly baseAction: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }) => {
     const required = await requirement({ action: baseAction, artifact });
     if (required === null || required.planned.plan.tier === "Inline") {
@@ -645,7 +640,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
     const certificate = await candidate({
       headerHash,
       kind: "field_certificate",
-      address: fieldPreimageCertificateAddressV1({
+      address: fieldPreimageCertificateAddress({
         network,
         certificatePolicyId: required.certificate.policyId,
       }),
@@ -673,13 +668,13 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
     action,
     artifact,
   }: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }): Promise<
     Readonly<{
-      kind: RecoveryV1["kind"];
-      baseAction: FraudProofWorkflowActionV1;
-      requirement: RequirementV1;
+      kind: Recovery["kind"];
+      baseAction: FraudProofWorkflowAction;
+      requirement: Requirement;
       publicationIndex?: number;
     }>
   > => {
@@ -707,7 +702,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
           ];
     const input = exact(action.input, keys, `${category} field action`);
     if (
-      input.schemaVersion !== PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1 ||
+      input.schemaVersion !== FIELD_CARRIAGE_PREREQUISITE ||
       input.category !== category ||
       (input.stage !== "publish_field_carriage" &&
         input.stage !== "certify_field_carriage")
@@ -763,8 +758,8 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
     }
     return { kind: "certificate", baseAction, requirement: required };
   };
-  const port: ProductionFieldCarriagePrerequisitePortV1<Category> = {
-    portVersion: PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
+  const port: FieldCarriagePrerequisitePort<Category> = {
+    portVersion: FIELD_CARRIAGE_PREREQUISITE,
     category,
     resolveAuthenticated: async ({ headerHash, action, artifact }) => {
       const required = await requirement({ action, artifact });
@@ -799,7 +794,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
       const observed = await candidate({
         headerHash,
         kind: "field_certificate",
-        address: fieldPreimageCertificateAddressV1({
+        address: fieldPreimageCertificateAddress({
           network,
           certificatePolicyId: required.certificate.policyId,
         }),
@@ -827,7 +822,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
           parsed.requirement.planned.plan.publications[index]!;
         const datumCbor = parsed.requirement.publicationDatums[index]!;
         const unsigned = await Effect.runPromise(
-          buildUnsignedFieldPreimagePublicationV1Program(lucid, {
+          buildUnsignedFieldPreimagePublicationProgram(lucid, {
             publication: {
               chunkIndex: publication.chunkIndex,
               datumCbor,
@@ -838,7 +833,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
           }),
         );
         const signed = await unsigned.sign.withWallet().complete();
-        const transaction: LocallyEvaluatedTransactionV1 = Object.freeze({
+        const transaction: LocallyEvaluatedTransaction = Object.freeze({
           txHash: signed.toHash().toLowerCase(),
           signed,
           referenceScripts: Object.freeze([]),
@@ -871,9 +866,9 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
         }
         chunkUtxos.push(observed.utxo);
       }
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network,
             signer,
@@ -896,7 +891,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
           });
         },
       );
-      const address = fieldPreimageCertificateAddressV1({
+      const address = fieldPreimageCertificateAddress({
         network,
         certificatePolicyId: parsed.requirement.certificate.policyId,
       });
@@ -926,7 +921,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
           reason: `${category} field prerequisite omitted its exact transaction hash`,
         };
       }
-      let recovered: RecoveryV1;
+      let recovered: Recovery;
       try {
         recovered = parseRecovery({
           value: durableRecovery,
@@ -957,7 +952,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePortV1 = <
       const address =
         parsed.kind === "publication"
           ? signer.address
-          : fieldPreimageCertificateAddressV1({
+          : fieldPreimageCertificateAddress({
               network,
               certificatePolicyId: parsed.requirement.certificate.policyId,
             });
@@ -990,7 +985,7 @@ const cacheKey = (workflowId: string, actionId: string): string =>
   `${workflowId}\u0000${actionId}`;
 
 /** Adds durable field publication/certification in front of a family adapter. */
-export const withProductionFieldCarriagePrerequisiteV1 = <
+export const withFieldCarriagePrerequisite = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
@@ -998,14 +993,14 @@ export const withProductionFieldCarriagePrerequisiteV1 = <
   prerequisite,
 }: {
   readonly category: Category;
-  readonly base: FraudProofFamilyWorkflowAdapterV1;
-  readonly prerequisite: ProductionFieldCarriagePrerequisitePortV1<Category>;
-}): FraudProofFamilyWorkflowAdapterV1 => {
+  readonly base: FraudProofFamilyWorkflowAdapter;
+  readonly prerequisite: FieldCarriagePrerequisitePort<Category>;
+}): FraudProofFamilyWorkflowAdapter => {
   if (
-    base.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER_V1 ||
+    base.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER ||
     base.category !== category ||
-    !sameJson(base.safety, FRAUD_PROOF_WORKFLOW_SAFETY_V1) ||
-    prerequisite.portVersion !== PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1 ||
+    !sameJson(base.safety, FRAUD_PROOF_WORKFLOW_SAFETY) ||
+    prerequisite.portVersion !== FIELD_CARRIAGE_PREREQUISITE ||
     prerequisite.category !== category
   ) {
     throw new Error(`${category} field prerequisite ports changed identity`);
@@ -1013,14 +1008,14 @@ export const withProductionFieldCarriagePrerequisiteV1 = <
   const prepared = new Map<
     string,
     Readonly<{
-      transaction: LocallyEvaluatedTransactionV1;
-      durableRecovery: JournalJsonObjectV1;
+      transaction: LocallyEvaluatedTransaction;
+      durableRecovery: JournalJsonObject;
     }>
   >();
-  const adapter: FraudProofFamilyWorkflowAdapterV1 = {
-    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category,
-    safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async (input) => await base.prepare(input),
     observe: async (context) => {
       const observed = await base.observe(context);
@@ -1100,12 +1095,12 @@ export const withProductionFieldCarriagePrerequisiteV1 = <
       ) {
         throw new Error(`${category} field prerequisite body hash is invalid`);
       }
-      requireReferenceOnlyScriptWitnessesV1({
+      requireReferenceOnlyScriptWitnesses({
         transaction: captured.transaction,
         label: `${category} field prerequisite`,
       });
       prepared.set(key, captured);
-      return bindProductionWorkflowPreflightTransactionV1(
+      return bindWorkflowPreflightTransaction(
         {
           actionId: context.action.actionId,
           txHash: captured.transaction.txHash,
@@ -1115,11 +1110,11 @@ export const withProductionFieldCarriagePrerequisiteV1 = <
               : "reference_scripts",
           localUplcEvaluation: {
             status: "passed",
-            evaluator: LOCAL_UPLC_EVALUATOR_V1,
+            evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: captured.transaction.referenceScripts,
           durableRecovery: captured.durableRecovery,
-        } satisfies FraudProofWorkflowPreflightV1,
+        } satisfies FraudProofWorkflowPreflight,
         captured.transaction.signed,
       );
     },
@@ -1141,7 +1136,7 @@ export const withProductionFieldCarriagePrerequisiteV1 = <
       try {
         return {
           kind: "submitted",
-          txHash: await submitCapturedTransactionV1(captured.transaction),
+          txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);

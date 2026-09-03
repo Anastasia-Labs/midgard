@@ -14,7 +14,7 @@ import {
 import { fileURLToPath } from "node:url";
 import { CML } from "@lucid-evolution/lucid";
 import { Pool } from "undici";
-import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
   BENCHMARK_WINDOWS_MS,
   acceptedStatuses,
@@ -1058,7 +1058,7 @@ const submitTxHex = async (
   let attempt = 0;
   const attempts = [];
   while (attempt <= retryLimit) {
-    const bodyBytes = encodeMidgardProofSubmissionV1({
+    const bodyBytes = encodeMidgardProofSubmission({
       transactionCbor: Buffer.from(txHex, "hex"),
       programMaterial: [],
     });

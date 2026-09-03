@@ -2,17 +2,16 @@ import { createHash } from "node:crypto";
 
 import { computeScriptIntegrityHashForLanguages } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY =
   "scriptIntegrityHashMismatch" as const;
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID_V1 =
-  "00000033" as const;
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID = "00000033" as const;
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID =
   "script-integrity-hash-mismatch" as const;
 
 const fail = (message: string): never => {
@@ -23,11 +22,11 @@ const h32 = (value: string, label: string): string =>
     ? value
     : fail(`${label} is not canonical hash32`);
 
-export type ScriptIntegrityHashMismatchFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type ScriptIntegrityHashMismatchFinding = Readonly<{
+  subject: VerdictSubject;
 }>;
-export type ScriptIntegrityHashMismatchEvidenceV1 = Readonly<{
-  finding: ScriptIntegrityHashMismatchFindingV1;
+export type ScriptIntegrityHashMismatchEvidence = Readonly<{
+  finding: ScriptIntegrityHashMismatchFinding;
   scriptIntegrityHash: string;
   redeemerWitnessHash: string;
   selectedLanguageBitmap: 0 | 1 | 2 | 3;
@@ -35,7 +34,7 @@ export type ScriptIntegrityHashMismatchEvidenceV1 = Readonly<{
   expectedHash: string;
 }>;
 
-export const languagesForIntegrityBitmapV1 = (
+export const languagesForIntegrityBitmap = (
   bitmap: 0 | 1 | 2 | 3,
 ): readonly ("PlutusV3" | "MidgardV1")[] =>
   Object.freeze([
@@ -43,21 +42,19 @@ export const languagesForIntegrityBitmapV1 = (
     ...(bitmap >= 2 ? (["MidgardV1"] as const) : []),
   ]);
 
-export const prepareScriptIntegrityHashMismatchEvidenceV1 = ({
+export const prepareScriptIntegrityHashMismatchEvidence = ({
   finding,
   scriptIntegrityHash,
   redeemerWitnessHash,
   selectedLanguageBitmap,
   executionCount,
 }: Omit<
-  ScriptIntegrityHashMismatchEvidenceV1,
+  ScriptIntegrityHashMismatchEvidence,
   "expectedHash"
->): ScriptIntegrityHashMismatchEvidenceV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+>): ScriptIntegrityHashMismatchEvidence => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     fail("verdict subject is not canonical");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = finding.subject.rejection_reason;
     if (
       reason === null ||
@@ -66,8 +63,7 @@ export const prepareScriptIntegrityHashMismatchEvidenceV1 = ({
     )
       fail("typed rejection reason changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   )
     fail("direction/reason polarity changed");
@@ -76,7 +72,7 @@ export const prepareScriptIntegrityHashMismatchEvidenceV1 = ({
   if (executionCount < 0n) fail("execution count is negative");
   const expectedHash = computeScriptIntegrityHashForLanguages(
     Buffer.from(h32(redeemerWitnessHash, "redeemer witness hash"), "hex"),
-    languagesForIntegrityBitmapV1(selectedLanguageBitmap),
+    languagesForIntegrityBitmap(selectedLanguageBitmap),
   ).toString("hex");
   return Object.freeze({
     finding: Object.freeze(finding),
@@ -88,21 +84,21 @@ export const prepareScriptIntegrityHashMismatchEvidenceV1 = ({
   });
 };
 
-export const scriptIntegrityHashMismatchFaultHoldsV1 = (
-  evidence: ScriptIntegrityHashMismatchEvidenceV1,
+export const scriptIntegrityHashMismatchFaultHolds = (
+  evidence: ScriptIntegrityHashMismatchEvidence,
 ): boolean => evidence.scriptIntegrityHash !== evidence.expectedHash;
-export const scriptIntegrityHashMismatchEvidenceClosesV1 = (
-  evidence: ScriptIntegrityHashMismatchEvidenceV1,
+export const scriptIntegrityHashMismatchEvidenceCloses = (
+  evidence: ScriptIntegrityHashMismatchEvidence,
 ): boolean =>
   evidence.finding.subject.direction ===
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
-    ? scriptIntegrityHashMismatchFaultHoldsV1(evidence)
-    : !scriptIntegrityHashMismatchFaultHoldsV1(evidence);
-export const scriptIntegrityHashMismatchEvidenceIdentityV1 = (
-  evidence: ScriptIntegrityHashMismatchEvidenceV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
+    ? scriptIntegrityHashMismatchFaultHolds(evidence)
+    : !scriptIntegrityHashMismatchFaultHolds(evidence);
+export const scriptIntegrityHashMismatchEvidenceIdentity = (
+  evidence: ScriptIntegrityHashMismatchEvidence,
 ): string =>
   createHash("sha256")
-    .update(SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID_V1)
+    .update(SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID)
     .update(evidence.finding.subject.transaction_id)
     .update(evidence.scriptIntegrityHash)
     .update(evidence.redeemerWitnessHash)

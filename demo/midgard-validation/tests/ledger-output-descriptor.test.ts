@@ -1,23 +1,23 @@
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
-  buildMidgardLedgerOutputProofTraceV1,
-  commitMidgardLedgerOutputReferenceScriptItemV1,
-  commitMidgardValidationMerkleFrontierV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  digestMidgardLedgerOutputReferenceScriptV1,
-  encodeMidgardLedgerOutputCommitmentV1,
-  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
-  summarizeMidgardLedgerOutputCardanoSpendDatumV1,
-  summarizeMidgardLedgerOutputCardanoTxOutV1,
-  summarizeMidgardLedgerOutputMidgardTxOutV1,
-  verifyMidgardLedgerOutputChunkV1,
-  verifyMidgardLedgerOutputDescriptorV1,
-  verifyMidgardLedgerOutputReferenceScriptChunkV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
+  buildMidgardLedgerOutputProofTrace,
+  commitMidgardLedgerOutputReferenceScriptItem,
+  commitMidgardValidationMerkleFrontier,
+  decodeMidgardLedgerOutputCommitment,
+  digestMidgardLedgerOutputReferenceScript,
+  encodeMidgardLedgerOutputCommitment,
+  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
+  summarizeMidgardLedgerOutputCardanoSpendDatum,
+  summarizeMidgardLedgerOutputCardanoTxOut,
+  summarizeMidgardLedgerOutputMidgardTxOut,
+  verifyMidgardLedgerOutputChunk,
+  verifyMidgardLedgerOutputDescriptor,
+  verifyMidgardLedgerOutputReferenceScriptChunk,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardDatum,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   type MidgardTxOutput,
@@ -26,8 +26,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
-  buildCanonicalMidgardLedgerOutputMaterialV1,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  buildCanonicalMidgardLedgerOutputMaterial,
 } from "../src/ledger-output-descriptor.js";
 
 const protectedScriptAddress = Buffer.concat([
@@ -68,15 +68,15 @@ describe("canonical ledger output descriptor V1", () => {
     // The ledger out-ref key is §5.3's field-0/1 item, so it is built with that
     // encoder rather than written out as a literal: a literal here could drift
     // from the encoder the ledger and the on-chain `ledger_outref_key` use.
-    const outRef = encodeMidgardSpendInputItemV1({
+    const outRef = encodeMidgardSpendInputItem({
       txId: Buffer.alloc(32, 0x42),
       outputIndex: 7,
     });
-    const fromEntry = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    const fromEntry = buildCanonicalMidgardLedgerEntryOutputMaterial({
       outRef,
       outputCbor: fixture.cbor,
     });
-    const fromCreation = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const fromCreation = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: fixture.cbor,
     });
@@ -107,7 +107,7 @@ describe("canonical ledger output descriptor V1", () => {
 
     for (const [label, hex] of Object.entries(rejected)) {
       expect(() =>
-        buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        buildCanonicalMidgardLedgerEntryOutputMaterial({
           outRef: Buffer.from(hex, "hex"),
           outputCbor: fixture.cbor,
         }),
@@ -118,11 +118,11 @@ describe("canonical ledger output descriptor V1", () => {
 
   it("derives every compact fact from a multi-chunk canonical output", () => {
     const fixture = outputFixture();
-    const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const material = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: fixture.cbor,
     });
-    const repeated = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const repeated = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: fixture.cbor,
     });
@@ -140,8 +140,8 @@ describe("canonical ledger output descriptor V1", () => {
       material.descriptor.midgardTxOut.root,
     );
     expect(
-      encodeMidgardLedgerOutputCommitmentV1(
-        decodeMidgardLedgerOutputCommitmentV1(material.descriptorCbor),
+      encodeMidgardLedgerOutputCommitment(
+        decodeMidgardLedgerOutputCommitment(material.descriptorCbor),
       ),
     ).toStrictEqual(material.descriptorCbor);
 
@@ -151,16 +151,16 @@ describe("canonical ledger output descriptor V1", () => {
       chunkIndex += 1
     ) {
       expect(
-        verifyMidgardLedgerOutputChunkV1({
+        verifyMidgardLedgerOutputChunk({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(material.item, chunkIndex),
+          proof: buildMidgardBoundedItemChunkProof(material.item, chunkIndex),
         }),
       ).toBe(true);
     }
 
     const scriptCbor = encodeMidgardVersionedScript(fixture.output.script_ref!);
-    const scriptItem = buildMidgardBoundedItemV1({
-      fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+    const scriptItem = buildMidgardBoundedItem({
+      fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
       itemIndex: 7,
       bytes: scriptCbor,
     });
@@ -173,9 +173,9 @@ describe("canonical ledger output descriptor V1", () => {
       chunkIndex += 1
     ) {
       expect(
-        verifyMidgardLedgerOutputReferenceScriptChunkV1({
+        verifyMidgardLedgerOutputReferenceScriptChunk({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(scriptItem, chunkIndex),
+          proof: buildMidgardBoundedItemChunkProof(scriptItem, chunkIndex),
         }),
       ).toBe(true);
     }
@@ -183,11 +183,11 @@ describe("canonical ledger output descriptor V1", () => {
 
   it("matches every descriptor fact currently authenticated by the L1 scan", () => {
     const fixture = outputFixture();
-    const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const material = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: fixture.cbor,
     });
-    const terminal = buildMidgardLedgerOutputProofTraceV1({
+    const terminal = buildMidgardLedgerOutputProofTrace({
       outputIndex: 7,
       outputCbor: fixture.cbor,
     }).terminal;
@@ -197,32 +197,32 @@ describe("canonical ledger output descriptor V1", () => {
     expect(scan.lovelace).toBe(material.descriptor.lovelace);
     expect(scan.assetFrontier.count).toBe(material.descriptor.assetCount);
     expect(
-      commitMidgardValidationMerkleFrontierV1(scan.assetFrontier),
+      commitMidgardValidationMerkleFrontier(scan.assetFrontier),
     ).toStrictEqual(material.descriptor.assetFrontierCommitment);
     expect(scan.cardanoValueSize).toBe(material.descriptor.cardanoValueSize);
     expect(scan.referenceScriptLanguage).toBe(
       material.descriptor.referenceScriptLanguage,
     );
     expect(
-      summarizeMidgardLedgerOutputCardanoSpendDatumV1(terminal),
+      summarizeMidgardLedgerOutputCardanoSpendDatum(terminal),
     ).toStrictEqual(material.descriptor.cardanoSpendDatum);
-    expect(summarizeMidgardLedgerOutputCardanoTxOutV1(terminal)).toStrictEqual(
+    expect(summarizeMidgardLedgerOutputCardanoTxOut(terminal)).toStrictEqual(
       material.descriptor.cardanoTxOut,
     );
-    expect(summarizeMidgardLedgerOutputMidgardTxOutV1(terminal)).toStrictEqual(
+    expect(summarizeMidgardLedgerOutputMidgardTxOut(terminal)).toStrictEqual(
       material.descriptor.midgardTxOut,
     );
     expect(terminal.totalLength - scan.referenceScriptItemOffset).toBe(
       material.descriptor.referenceScriptTotalLength,
     );
-    expect(digestMidgardLedgerOutputReferenceScriptV1(terminal)).toStrictEqual(
+    expect(digestMidgardLedgerOutputReferenceScript(terminal)).toStrictEqual(
       material.descriptor.referenceScriptHash,
     );
     expect(
-      commitMidgardLedgerOutputReferenceScriptItemV1(terminal),
+      commitMidgardLedgerOutputReferenceScriptItem(terminal),
     ).toStrictEqual(material.descriptor.referenceScriptItemCommitment);
     expect(
-      verifyMidgardLedgerOutputDescriptorV1({
+      verifyMidgardLedgerOutputDescriptor({
         control: terminal,
         descriptor: material.descriptor,
       }),
@@ -335,7 +335,7 @@ describe("canonical ledger output descriptor V1", () => {
     ];
     for (const substituted of substitutions) {
       expect(
-        verifyMidgardLedgerOutputDescriptorV1({
+        verifyMidgardLedgerOutputDescriptor({
           control: terminal,
           descriptor: substituted,
         }),
@@ -348,25 +348,25 @@ describe("canonical ledger output descriptor V1", () => {
       ...withoutDatum
     } = fixture.output;
     const withoutDatumCbor = encodeMidgardTxOutput(withoutDatum);
-    const withoutDatumMaterial = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const withoutDatumMaterial = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: 7,
       outputCbor: withoutDatumCbor,
     });
-    const withoutDatumTerminal = buildMidgardLedgerOutputProofTraceV1({
+    const withoutDatumTerminal = buildMidgardLedgerOutputProofTrace({
       outputIndex: 7,
       outputCbor: withoutDatumCbor,
     }).terminal;
     expect(
-      summarizeMidgardLedgerOutputCardanoSpendDatumV1(withoutDatumTerminal),
+      summarizeMidgardLedgerOutputCardanoSpendDatum(withoutDatumTerminal),
     ).toStrictEqual(withoutDatumMaterial.descriptor.cardanoSpendDatum);
     expect(
-      summarizeMidgardLedgerOutputCardanoTxOutV1(withoutDatumTerminal),
+      summarizeMidgardLedgerOutputCardanoTxOut(withoutDatumTerminal),
     ).toStrictEqual(withoutDatumMaterial.descriptor.cardanoTxOut);
     expect(
-      summarizeMidgardLedgerOutputMidgardTxOutV1(withoutDatumTerminal),
+      summarizeMidgardLedgerOutputMidgardTxOut(withoutDatumTerminal),
     ).toStrictEqual(withoutDatumMaterial.descriptor.midgardTxOut);
     expect(
-      verifyMidgardLedgerOutputDescriptorV1({
+      verifyMidgardLedgerOutputDescriptor({
         control: withoutDatumTerminal,
         descriptor: withoutDatumMaterial.descriptor,
       }),
@@ -427,7 +427,7 @@ describe("cross-language ledger output descriptor V1 vectors", () => {
   ])(
     "encodes the pinned $label vector exactly",
     ({ outputIndex, outputCbor, descriptorCbor }) => {
-      const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+      const material = buildCanonicalMidgardLedgerOutputMaterial({
         outputIndex,
         outputCbor: Buffer.from(outputCbor, "hex"),
       });
@@ -435,9 +435,7 @@ describe("cross-language ledger output descriptor V1 vectors", () => {
         descriptorCbor,
       );
       expect(
-        decodeMidgardLedgerOutputCommitmentV1(
-          Buffer.from(descriptorCbor, "hex"),
-        ),
+        decodeMidgardLedgerOutputCommitment(Buffer.from(descriptorCbor, "hex")),
       ).toEqual(material.descriptor);
     },
   );

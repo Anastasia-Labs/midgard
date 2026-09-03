@@ -18,18 +18,18 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
-import { encodeMidgardTxInputCanonicalV1 } from "@al-ft/midgard-sdk";
-import { fieldPreimagePublicationDatumCborV1 } from "@al-ft/midgard-sdk";
+import { encodeMidgardTxInputCanonical } from "@al-ft/midgard-sdk";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { submitWithdrawnInputStep03 } from "../src/index.js";
 import {
-  advanceWithdrawnInputToStep03V1,
-  makeWithdrawnInputEmulatorScenarioV1,
+  advanceWithdrawnInputToStep03,
+  makeWithdrawnInputEmulatorScenario,
 } from "./support/withdrawn-input-emulator-v1.js";
 
 /**
@@ -42,26 +42,26 @@ const TIER2_DECOY_SPEND_INPUT_COUNT = 364;
 
 describe("withdrawn-input emulator tier-2 carriage", () => {
   it("convicts a withdrawn input buried in a 14,603-byte spend-input field through a size-selected RawUtxo publication", async () => {
-    const scenario = await makeWithdrawnInputEmulatorScenarioV1("fault", {
+    const scenario = await makeWithdrawnInputEmulatorScenario("fault", {
       decoySpendInputCount: TIER2_DECOY_SPEND_INPUT_COUNT,
     });
     // The size, not any flag, is what selects tier 2: past the tier-1
     // redeemer bound, within one publication.
-    const preimage = encodeMidgardFieldPreimageV1(
-      scenario.fixture.spendInputs.map(encodeMidgardTxInputCanonicalV1),
+    const preimage = encodeMidgardFieldPreimage(
+      scenario.fixture.spendInputs.map(encodeMidgardTxInputCanonical),
     );
     expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
 
-    const { step02 } = await advanceWithdrawnInputToStep03V1(scenario);
+    const { step02 } = await advanceWithdrawnInputToStep03(scenario);
     expect(step02.carriageTier).toBe("RawUtxo");
 
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
     // the prover's address as a bytes-only inline datum, referenced rather
     // than carried in the step's own redeemer.
-    const expectedDatum = fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await scenario.harness.proverLucid.utxosAt(
         scenario.harness.proverSigner.address,

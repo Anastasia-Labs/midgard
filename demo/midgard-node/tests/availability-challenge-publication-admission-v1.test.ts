@@ -42,7 +42,7 @@ describe("Q58 availability-challenge publication admission V1", () => {
       },
     ]);
     expect(() =>
-      SDK.assertReferenceScriptRawBodiesFitL1EnvelopeV1(targets),
+      SDK.assertReferenceScriptRawBodiesFitL1Envelope(targets),
     ).toThrow(/availability-challenge spending raw script/u);
   });
 

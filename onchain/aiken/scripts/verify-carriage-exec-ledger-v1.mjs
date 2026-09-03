@@ -10,7 +10,7 @@
  * gate-that-cannot-fail shape — the numbers could drift arbitrarily far from the
  * validator without any suite going red, and a cost claim nothing can falsify is
  * not a measurement. The byte-level constants in the same section are pinned
- * (`MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1` and its neighbours are asserted
+ * (`MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES` and its neighbours are asserted
  * in the emulator suite); the execution figures now are too.
  *
  * Aiken tests cannot assert their own execution units — the units are the

@@ -1,5 +1,5 @@
-import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
-import type { MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
 
 import type { Assets } from "../core/assets.js";
 import {
@@ -54,8 +54,8 @@ export type CompleteTxContext = {
   readonly wallet?: () => MidgardWallet | undefined;
   readonly networkId?: bigint;
   readonly maxSubmitTxCborBytes?: number;
-  readonly consensusProfile?: MidgardConsensusProfileV1;
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly consensusProfile?: MidgardConsensusProfile;
+  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
   readonly resolvedReferenceOutputsByOutRef?: ReferenceOutputsByOutRef;
 };
 

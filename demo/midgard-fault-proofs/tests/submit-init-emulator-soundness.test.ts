@@ -1,11 +1,11 @@
 import { PROTOCOL_PARAMETERS_DEFAULT, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { validationResolverIndexV1 } from "../src/index.js";
+import { validationResolverIndex } from "../src/index.js";
 import {
   buildAcceptedClaimOverRejectingTransactionFixture,
-  buildNonEmptyClaimedLedgerDeltaRootV1,
-  EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1,
+  buildNonEmptyClaimedLedgerDeltaRoot,
+  EMPTY_CLAIMED_LEDGER_DELTA_ROOT,
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -18,14 +18,13 @@ import {
 // submit-init-emulator-soundness-honest-operator.test.ts.
 describe("validation-dispute soundness with a non-empty claimed ledger delta", () => {
   it("lets a challenger win against an operator who claimed Accepted over a non-empty claimed ledger delta", async () => {
-    const claimedLedgerDeltaRoot =
-      await buildNonEmptyClaimedLedgerDeltaRootV1();
+    const claimedLedgerDeltaRoot = await buildNonEmptyClaimedLedgerDeltaRoot();
     // Guard against the fixture silently degrading back into the empty-delta
     // special case that hid VM-DEFECT-2.
     expect(claimedLedgerDeltaRoot).toHaveLength(32);
-    expect(
-      claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
-    ).toBe(false);
+    expect(claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT)).toBe(
+      false,
+    );
 
     let removalReferenceScriptPublicationAttempts = 0;
     const result = await runForcedValidationDisputeScenario(
@@ -63,7 +62,7 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
     ).toBe(true);
     expect(
       challengerSuccessor.ledgerDeltaRoot.equals(
-        EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1,
+        EMPTY_CLAIMED_LEDGER_DELTA_ROOT,
       ),
     ).toBe(false);
     // The operator really did commit `Accepted`, which the forced-source
@@ -72,7 +71,7 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
     expect(fixture.challengerTrace.tree.descriptor.verdict).toBe("rejected");
     expect(fixture.evidence.moves.length).toBeGreaterThan(0);
     expect(fixture.evidence.oneStepArgument.resolverIndex).toBe(
-      validationResolverIndexV1("InputSets"),
+      validationResolverIndex("InputSets"),
     );
 
     // The challenger reached the award and removed the operator's block.

@@ -227,7 +227,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       withdrawalScript: stateQueueAuthenticated.spendingScript,
       withdrawalScriptHash: stateQueueAuthenticated.spendingScriptHash,
     };
-    const stateQueue: SDK.StateQueueValidatorV1 = {
+    const stateQueue: SDK.StateQueueValidator = {
       ...stateQueueAuthenticated,
       yields: {
         commit: stateQueueYield,

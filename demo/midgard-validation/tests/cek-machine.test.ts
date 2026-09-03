@@ -1,36 +1,36 @@
 import {
-  hashMidgardCekContinuationFrameV1,
-  hashMidgardCekSequenceNodeV1,
-  hashMidgardCekTermNodeV1,
-  hashMidgardCekValueNodeV1,
-  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
-  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+  hashMidgardCekContinuationFrame,
+  hashMidgardCekSequenceNode,
+  hashMidgardCekTermNode,
+  hashMidgardCekValueNode,
+  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
+  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MidgardCekMachineModes,
-  type MidgardCekMachineStateV1,
+  type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  hashMidgardCekRuntimeArgumentsV1,
-  type MidgardCekRuntimeValueWitnessV1,
+  hashMidgardCekRuntimeArguments,
+  type MidgardCekRuntimeValueWitness,
 } from "../src/cek-builtin.js";
 import {
   MidgardCekErrorCodes,
-  verifyMidgardCekCoreStepV1,
+  verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
 const state = (
-  mode: MidgardCekMachineStateV1["mode"],
+  mode: MidgardCekMachineState["mode"],
   focusRoot: Uint8Array,
   environmentRoot: Uint8Array,
   continuationRoot: Uint8Array,
   auxiliary: bigint,
   cpu: bigint,
   memory: bigint,
-): MidgardCekMachineStateV1 => ({
+): MidgardCekMachineState => ({
   mode,
   executionIndex: 0n,
   focusRoot,
@@ -67,7 +67,7 @@ describe("V1 structural CEK machine", () => {
   });
 
   it("matches the Aiken application transition and rejects a budget drift", () => {
-    const application = hashMidgardCekTermNodeV1({
+    const application = hashMidgardCekTermNode({
       kind: "application",
       function: hash(1),
       argument: hash(2),
@@ -75,36 +75,36 @@ describe("V1 structural CEK machine", () => {
     const pre = state(
       "compute",
       application,
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       0n,
       100n,
       100n,
     );
-    const continuation = hashMidgardCekContinuationFrameV1({
+    const continuation = hashMidgardCekContinuationFrame({
       kind: "applyArgument",
       argument: hash(2),
-      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     });
     const post = state(
       "compute",
       hash(1),
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       continuation,
       0n,
       16_100n,
       200n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(pre, post, {
+      verifyMidgardCekCoreStep(pre, post, {
         kind: "computeApplication",
         function: hash(1),
         argument: hash(2),
       }),
     ).toBe(true);
     expect(
-      verifyMidgardCekCoreStepV1(
+      verifyMidgardCekCoreStep(
         pre,
         { ...post, cpu: post.cpu - 1n },
         {
@@ -117,45 +117,45 @@ describe("V1 structural CEK machine", () => {
   });
 
   it("streams constructor fields and case arguments in the same order as L1", () => {
-    const empty = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1;
-    const firstTerm = hashMidgardCekTermNodeV1({
+    const empty = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
+    const firstTerm = hashMidgardCekTermNode({
       kind: "constant",
       value: hash(1),
     });
-    const secondTerm = hashMidgardCekTermNodeV1({
+    const secondTerm = hashMidgardCekTermNode({
       kind: "constant",
       value: hash(2),
     });
-    const termsTail = hashMidgardCekSequenceNodeV1({
+    const termsTail = hashMidgardCekSequenceNode({
       head: secondTerm,
       tail: empty,
       length: 1n,
     });
-    const termsRoot = hashMidgardCekSequenceNodeV1({
+    const termsRoot = hashMidgardCekSequenceNode({
       head: firstTerm,
       tail: termsTail,
       length: 2n,
     });
-    const firstFrame = hashMidgardCekContinuationFrameV1({
+    const firstFrame = hashMidgardCekContinuationFrame({
       kind: "constr",
       tag: 7n,
       remainingTermsCount: 1n,
       remainingTermsRoot: termsTail,
       valuesCount: 0n,
       valuesRoot: empty,
-      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     });
     const pre = state(
       "compute",
-      hashMidgardCekTermNodeV1({
+      hashMidgardCekTermNode({
         kind: "constr",
         tag: 7n,
         termsCount: 2n,
         termsRoot,
       }),
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       0n,
       100n,
       100n,
@@ -163,14 +163,14 @@ describe("V1 structural CEK machine", () => {
     const computingFirst = state(
       "compute",
       firstTerm,
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       firstFrame,
       0n,
       16_100n,
       200n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(pre, computingFirst, {
+      verifyMidgardCekCoreStep(pre, computingFirst, {
         kind: "computeConstrNonempty",
         tag: 7n,
         termsCount: 2n,
@@ -179,27 +179,27 @@ describe("V1 structural CEK machine", () => {
       }),
     ).toBe(true);
 
-    const firstValues = hashMidgardCekSequenceNodeV1({
+    const firstValues = hashMidgardCekSequenceNode({
       head: hash(1),
       tail: empty,
       length: 1n,
     });
-    const finalFrame = hashMidgardCekContinuationFrameV1({
+    const finalFrame = hashMidgardCekContinuationFrame({
       kind: "constr",
       tag: 7n,
       remainingTermsCount: 0n,
       remainingTermsRoot: empty,
       valuesCount: 1n,
       valuesRoot: firstValues,
-      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     });
     expect(
-      verifyMidgardCekCoreStepV1(
+      verifyMidgardCekCoreStep(
         state(
           "return",
           hash(1),
-          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
           firstFrame,
           0n,
           16_100n,
@@ -208,7 +208,7 @@ describe("V1 structural CEK machine", () => {
         state(
           "compute",
           secondTerm,
-          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
           finalFrame,
           0n,
           16_100n,
@@ -222,29 +222,29 @@ describe("V1 structural CEK machine", () => {
           remainingTermsTail: empty,
           valuesCount: 0n,
           valuesRoot: empty,
-          capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-          tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+          capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+          tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
         },
       ),
     ).toBe(true);
 
-    const valuesRoot = hashMidgardCekSequenceNodeV1({
+    const valuesRoot = hashMidgardCekSequenceNode({
       head: hash(2),
       tail: firstValues,
       length: 2n,
     });
-    const constrValue = hashMidgardCekValueNodeV1({
+    const constrValue = hashMidgardCekValueNode({
       kind: "constr",
       tag: 7n,
       valuesCount: 2n,
       valuesRoot,
     });
     expect(
-      verifyMidgardCekCoreStepV1(
+      verifyMidgardCekCoreStep(
         state(
           "return",
           hash(2),
-          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
           finalFrame,
           0n,
           16_100n,
@@ -253,8 +253,8 @@ describe("V1 structural CEK machine", () => {
         state(
           "return",
           constrValue,
-          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-          MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+          MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
           0n,
           16_100n,
           200n,
@@ -264,33 +264,33 @@ describe("V1 structural CEK machine", () => {
           tag: 7n,
           valuesCount: 1n,
           valuesRoot: firstValues,
-          capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-          tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+          capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+          tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
         },
       ),
     ).toBe(true);
 
-    const branchTail = hashMidgardCekSequenceNodeV1({
+    const branchTail = hashMidgardCekSequenceNode({
       head: hash(4),
       tail: empty,
       length: 1n,
     });
-    const branchesRoot = hashMidgardCekSequenceNodeV1({
+    const branchesRoot = hashMidgardCekSequenceNode({
       head: hash(3),
       tail: branchTail,
       length: 2n,
     });
-    const caseFrame = hashMidgardCekContinuationFrameV1({
+    const caseFrame = hashMidgardCekContinuationFrame({
       kind: "case",
       branchesCount: 2n,
       branchesRoot,
-      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     });
-    const selectWork = hashMidgardCekContinuationFrameV1({
+    const selectWork = hashMidgardCekContinuationFrame({
       kind: "caseSelect",
-      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       valuesCount: 2n,
     });
     const selecting = state(
@@ -303,16 +303,16 @@ describe("V1 structural CEK machine", () => {
       200n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(
+      verifyMidgardCekCoreStep(
         state(
           "return",
-          hashMidgardCekValueNodeV1({
+          hashMidgardCekValueNode({
             kind: "constr",
             tag: 1n,
             valuesCount: 2n,
             valuesRoot,
           }),
-          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+          MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
           caseFrame,
           0n,
           16_100n,
@@ -326,8 +326,8 @@ describe("V1 structural CEK machine", () => {
           valuesRoot,
           branchesCount: 2n,
           branchesRoot,
-          capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-          tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+          capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+          tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
         },
       ),
     ).toBe(true);
@@ -342,13 +342,13 @@ describe("V1 structural CEK machine", () => {
       200n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(selecting, selected, {
+      verifyMidgardCekCoreStep(selecting, selected, {
         kind: "selectCaseBranch",
         branch: hash(3),
         remainingBranchesRoot: branchTail,
         length: 2n,
-        capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-        tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+        capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+        tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
         valuesCount: 2n,
       }),
     ).toBe(true);
@@ -357,23 +357,23 @@ describe("V1 structural CEK machine", () => {
       "caseApply",
       valuesRoot,
       hash(4),
-      hashMidgardCekContinuationFrameV1({
+      hashMidgardCekContinuationFrame({
         kind: "caseApply",
-        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-        builtContinuation: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+        builtContinuation: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       }),
       2n,
       16_100n,
       200n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(selected, applying, {
+      verifyMidgardCekCoreStep(selected, applying, {
         kind: "selectCaseBranch",
         branch: hash(4),
         remainingBranchesRoot: empty,
         length: 1n,
-        capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-        tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+        capturedEnvironment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+        tail: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
         valuesCount: 2n,
       }),
     ).toBe(true);
@@ -383,14 +383,14 @@ describe("V1 structural CEK machine", () => {
     const pre = state(
       "builtin",
       hash(1),
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       0n,
       0n,
       0n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(pre, pre, {
+      verifyMidgardCekCoreStep(pre, pre, {
         kind: "computeBuiltin",
         tag: 0n,
       }),
@@ -398,11 +398,11 @@ describe("V1 structural CEK machine", () => {
   });
 
   it("halts an authenticated builtin runtime-type failure without charging", () => {
-    const arguments_: readonly MidgardCekRuntimeValueWitnessV1[] = [
+    const arguments_: readonly MidgardCekRuntimeValueWitness[] = [
       {
         kind: "lambda",
         body: hash(2),
-        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+        environment: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       },
       {
         kind: "constant",
@@ -412,17 +412,17 @@ describe("V1 structural CEK machine", () => {
         },
       },
     ];
-    const { root, count } = hashMidgardCekRuntimeArgumentsV1(arguments_);
+    const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
     const pre = state(
       "builtin",
-      hashMidgardCekValueNodeV1({
+      hashMidgardCekValueNode({
         kind: "builtin",
         tag: 0n,
         forcesRemaining: 0n,
         argumentsCount: count,
         argumentsRoot: root,
       }),
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       hash(1),
       0n,
       100n,
@@ -430,15 +430,15 @@ describe("V1 structural CEK machine", () => {
     );
     const post = state(
       "haltError",
-      hashMidgardCekTermNodeV1({ kind: "error" }),
-      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+      hashMidgardCekTermNode({ kind: "error" }),
+      MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+      MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       7n,
       100n,
       100n,
     );
     expect(
-      verifyMidgardCekCoreStepV1(pre, post, {
+      verifyMidgardCekCoreStep(pre, post, {
         kind: "executeBuiltinTypeFailure",
         tag: 0n,
         arguments: arguments_,

@@ -8,8 +8,8 @@ import {
 import { readFile } from "node:fs/promises";
 
 import {
-  daAvailabilityAttestationMessageV1,
-  type DaAvailabilityCommitmentV1,
+  daAvailabilityAttestationMessage,
+  type DaAvailabilityCommitment,
 } from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -115,7 +115,7 @@ export const signDaAttestation = ({
 }: {
   readonly signer: DaSigner;
   readonly signerIndex: number;
-  readonly availabilityCommitment: DaAvailabilityCommitmentV1;
+  readonly availabilityCommitment: DaAvailabilityCommitment;
 }): string => {
   if (
     !Number.isSafeInteger(signerIndex) ||
@@ -125,7 +125,7 @@ export const signDaAttestation = ({
     throw new Error("signer index must fit in one byte");
   }
   const signature = signer.sign(
-    Buffer.from(daAvailabilityAttestationMessageV1(availabilityCommitment)),
+    Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
   );
   if (signature.length !== 64) {
     throw new Error("Ed25519 signature was not 64 bytes");
@@ -139,7 +139,7 @@ export const verifyDaSignatureWitness = ({
   witnessHex,
 }: {
   readonly publicKeyHex: string;
-  readonly availabilityCommitment: DaAvailabilityCommitmentV1;
+  readonly availabilityCommitment: DaAvailabilityCommitment;
   readonly witnessHex: string;
 }): boolean => {
   const witness = hexToBytes(witnessHex, "signature witness", 65);
@@ -153,7 +153,7 @@ export const verifyDaSignatureWitness = ({
   });
   return verify(
     null,
-    Buffer.from(daAvailabilityAttestationMessageV1(availabilityCommitment)),
+    Buffer.from(daAvailabilityAttestationMessage(availabilityCommitment)),
     publicKey,
     witness.subarray(1),
   );

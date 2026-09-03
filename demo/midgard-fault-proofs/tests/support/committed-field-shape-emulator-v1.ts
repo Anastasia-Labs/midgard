@@ -1,23 +1,23 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxCompactV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxCompact,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxWitnessSetCompact,
+  encodeMidgardRedeemerWitnessItem,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
-  type MidgardNativeTxFullV1,
-  midgardNativeTxProofFieldPreimageLengthsV1,
+  type MidgardNativeTxCanonical,
+  type MidgardNativeTxFull,
+  midgardNativeTxProofFieldPreimageLengths,
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type CommittedFieldClaimV1,
+  type CommittedFieldClaim,
   CommittedFieldShapeStep01SpendRedeemer,
   CommittedFieldShapeStep02Datum,
   CommittedFieldShapeStep02SpendRedeemer,
@@ -47,13 +47,13 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { CommittedFieldShapeContractsV1 } from "../../src/committed-field-shape/contracts-v1.js";
-import type { PreparedCommittedFieldShapeV1 } from "../../src/committed-field-shape/prepare-committed-field-shape-v1.js";
+import type { CommittedFieldShapeContracts } from "../../src/committed-field-shape/contracts-v1.js";
+import type { PreparedCommittedFieldShape } from "../../src/committed-field-shape/prepare-committed-field-shape-v1.js";
 import {
-  type CommittedFieldShapeCatalogueCategoryV1,
-  requireCommittedFieldShapeThreadUtxoV1,
+  type CommittedFieldShapeCatalogueCategory,
+  requireCommittedFieldShapeThreadUtxo,
 } from "../../src/committed-field-shape/submit-common-v1.js";
-import { encodeL2TransactionSourceValueV1 } from "../../src/prepare-double-spend.js";
+import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -77,14 +77,14 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
-import { l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
-import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
+import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishPlainReferenceScriptUtxo,
@@ -92,13 +92,13 @@ import {
 
 const EMPTY = Buffer.from("80", "hex");
 
-export type CommittedFieldShapeEmulatorHarnessV1 = Awaited<
-  ReturnType<typeof makeCommittedFieldShapeEmulatorHarnessV1>
+export type CommittedFieldShapeEmulatorHarness = Awaited<
+  ReturnType<typeof makeCommittedFieldShapeEmulatorHarness>
 >;
 
 /** Builds the real two-step chain plus a third, initially empty, wallet. */
-export const makeCommittedFieldShapeEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeCommittedFieldShapeEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realCommittedFieldShape: true,
       alwaysFraudProofCatalogue: true,
@@ -106,7 +106,7 @@ export const makeCommittedFieldShapeEmulatorHarnessV1 = async () => {
   });
   const committedFieldShape = harness.contracts.committedFieldShape;
   const category = harness.catalogue.categories.committedFieldShape as
-    | CommittedFieldShapeCatalogueCategoryV1
+    | CommittedFieldShapeCatalogueCategory
     | undefined;
   if (committedFieldShape === undefined || category === undefined) {
     throw new Error(
@@ -136,14 +136,14 @@ export const makeCommittedFieldShapeEmulatorHarnessV1 = async () => {
 };
 
 /** Both step validators are always published and consumed by reference. */
-export const publishCommittedFieldShapeReferenceScriptsV1 = async ({
+export const publishCommittedFieldShapeReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: CommittedFieldShapeContractsV1;
+  readonly contracts: CommittedFieldShapeContracts;
 }): Promise<readonly [UTxO, UTxO]> => {
   const publications: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -157,17 +157,17 @@ export const publishCommittedFieldShapeReferenceScriptsV1 = async ({
   return publications as unknown as readonly [UTxO, UTxO];
 };
 
-export type CommittedFieldShapeScenarioKindV1 =
+export type CommittedFieldShapeScenarioKind =
   | "wrong-stride"
   | "honest"
   | "field-item-width-illegal"
   | "redeemer-canonicity"
   | "non-envelope";
 
-export type CommittedFieldShapeScenarioV1 = {
-  readonly kind: CommittedFieldShapeScenarioKindV1;
-  readonly canonicalTx: MidgardNativeTxCanonicalV1 | null;
-  readonly fullTx: MidgardNativeTxFullV1 | null;
+export type CommittedFieldShapeScenario = {
+  readonly kind: CommittedFieldShapeScenarioKind;
+  readonly canonicalTx: MidgardNativeTxCanonical | null;
+  readonly fullTx: MidgardNativeTxFull | null;
   readonly nativeTxId: string;
   readonly compactCbor: string;
   readonly fieldIndex: number;
@@ -175,11 +175,11 @@ export type CommittedFieldShapeScenarioV1 = {
   readonly inclusion: SubmitStep01TxInclusion;
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
-  readonly setup: Awaited<ReturnType<typeof setupFraudulentBlockV1>>;
+  readonly setup: Awaited<ReturnType<typeof setupFraudulentBlock>>;
 };
 
-const invalidNonEnvelopeCanonicalV1 = (): MidgardNativeTxCanonicalV1 => ({
-  version: MIDGARD_NATIVE_TX_V1_VERSION,
+const invalidNonEnvelopeCanonical = (): MidgardNativeTxCanonical => ({
+  version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
   body: {
     spendInputsPreimageCbor: EMPTY,
@@ -202,37 +202,37 @@ const invalidNonEnvelopeCanonicalV1 = (): MidgardNativeTxCanonicalV1 => ({
   },
 });
 
-export const committedFieldShapeScenarioMaterialV1 = (
-  kind: CommittedFieldShapeScenarioKindV1,
+export const committedFieldShapeScenarioMaterial = (
+  kind: CommittedFieldShapeScenarioKind,
 ): {
-  readonly canonicalTx: MidgardNativeTxCanonicalV1 | null;
-  readonly fullTx: MidgardNativeTxFullV1 | null;
-  readonly compact: ReturnType<typeof deriveMidgardNativeTxCompactV1>;
+  readonly canonicalTx: MidgardNativeTxCanonical | null;
+  readonly fullTx: MidgardNativeTxFull | null;
+  readonly compact: ReturnType<typeof deriveMidgardNativeTxCompact>;
   readonly l2TransactionSourceCbor: string;
   readonly fieldIndex: number;
   readonly committedPreimage: Buffer;
 } => {
   if (kind === "non-envelope") {
-    const invalid = invalidNonEnvelopeCanonicalV1();
-    const compact = deriveMidgardNativeTxCompactV1(
+    const invalid = invalidNonEnvelopeCanonical();
+    const compact = deriveMidgardNativeTxCompact(
       invalid.body,
       invalid.witnessSet,
       invalid.validity,
     );
-    const nativeTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
+    const nativeTxId = computeMidgardNativeTxId(compact).toString("hex");
     return {
       canonicalTx: null,
       fullTx: null,
       compact,
-      l2TransactionSourceCbor: encodeL2TransactionSourceValueV1({
+      l2TransactionSourceCbor: encodeL2TransactionSourceValue({
         txId: nativeTxId,
         proofSource: {
-          compactCbor: encodeMidgardNativeTxCompactV1(compact),
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-            deriveMidgardNativeTxWitnessSetCompactV1(invalid.witnessSet),
+          compactCbor: encodeMidgardNativeTxCompact(compact),
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+            deriveMidgardNativeTxWitnessSetCompact(invalid.witnessSet),
           ),
-          fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
-            midgardNativeTxProofFieldPreimageLengthsV1({
+          fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
+            midgardNativeTxProofFieldPreimageLengths({
               body: invalid.body,
               witnessSet: invalid.witnessSet,
             }),
@@ -278,7 +278,7 @@ export const committedFieldShapeScenarioMaterialV1 = (
     // retaining the full 224-item field proves that exact-coordinate access
     // remains bounded independently of unrelated trailing witnesses.
     const redeemerItems = Array.from({ length: 224 }, (_, index) =>
-      encodeMidgardRedeemerWitnessItemV1({
+      encodeMidgardRedeemerWitnessItem({
         purpose: "Spend",
         index: BigInt(index),
         redeemerCbor:
@@ -288,7 +288,7 @@ export const committedFieldShapeScenarioMaterialV1 = (
         executionUnits: { memory: 1_000_000n, steps: 1_000_000n },
       }),
     );
-    const redeemerPreimage = encodeMidgardFieldPreimageV1(redeemerItems);
+    const redeemerPreimage = encodeMidgardFieldPreimage(redeemerItems);
     const fullTx = makeNativeTx({
       spendInputCbors: [],
       fee: 7n,
@@ -314,15 +314,15 @@ export const committedFieldShapeScenarioMaterialV1 = (
     canonicalTx: fullTx,
     fullTx,
     compact: fullTx.compact,
-    l2TransactionSourceCbor: encodeL2TransactionSourceValueV1({
-      txId: computeMidgardNativeTxIdV1(fullTx).toString("hex"),
+    l2TransactionSourceCbor: encodeL2TransactionSourceValue({
+      txId: computeMidgardNativeTxId(fullTx).toString("hex"),
       proofSource: {
-        compactCbor: encodeMidgardNativeTxCompactV1(fullTx.compact),
-        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-          deriveMidgardNativeTxWitnessSetCompactV1(fullTx.witnessSet),
+        compactCbor: encodeMidgardNativeTxCompact(fullTx.compact),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+          deriveMidgardNativeTxWitnessSetCompact(fullTx.witnessSet),
         ),
-        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
-          midgardNativeTxProofFieldPreimageLengthsV1({
+        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
+          midgardNativeTxProofFieldPreimageLengths({
             body: fullTx.body,
             witnessSet: fullTx.witnessSet,
           }),
@@ -335,18 +335,16 @@ export const committedFieldShapeScenarioMaterialV1 = (
 };
 
 /** Commits the chosen real shape as a one-leaf transactions MPF and block. */
-export const setupCommittedFieldShapeScenarioV1 = async ({
+export const setupCommittedFieldShapeScenario = async ({
   harness,
   kind,
 }: {
-  readonly harness: CommittedFieldShapeEmulatorHarnessV1;
-  readonly kind: CommittedFieldShapeScenarioKindV1;
-}): Promise<CommittedFieldShapeScenarioV1> => {
-  const material = committedFieldShapeScenarioMaterialV1(kind);
-  const nativeTxId = computeMidgardNativeTxIdV1(material.compact).toString(
-    "hex",
-  );
-  const compact = encodeMidgardNativeTxCompactV1(material.compact);
+  readonly harness: CommittedFieldShapeEmulatorHarness;
+  readonly kind: CommittedFieldShapeScenarioKind;
+}): Promise<CommittedFieldShapeScenario> => {
+  const material = committedFieldShapeScenarioMaterial(kind);
+  const nativeTxId = computeMidgardNativeTxId(material.compact).toString("hex");
+  const compact = encodeMidgardNativeTxCompact(material.compact);
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
@@ -365,7 +363,7 @@ export const setupCommittedFieldShapeScenarioV1 = async ({
     txMembershipProof: Data.from(proof.toCBOR().toString("hex"), SDK.Proof),
     txMembershipProofCbor: proof.toCBOR().toString("hex"),
   };
-  const setup = await setupFraudulentBlockV1({
+  const setup = await setupFraudulentBlock({
     funderLucid: harness.funderLucid,
     emulator: harness.emulator,
     contracts: harness.contracts,
@@ -399,8 +397,8 @@ export const setupCommittedFieldShapeScenarioV1 = async ({
  * the raw drivers re-select through the signer, so funding only the base
  * address strands every transaction the outsider builds after that call.
  */
-export const fundCommittedFieldShapeOutsiderV1 = async (
-  harness: CommittedFieldShapeEmulatorHarnessV1,
+export const fundCommittedFieldShapeOutsider = async (
+  harness: CommittedFieldShapeEmulatorHarness,
 ): Promise<void> => {
   const outsiderAddress = await harness.outsiderLucid.wallet().address();
   const unsigned = await harness.funderLucid
@@ -418,7 +416,7 @@ export const fundCommittedFieldShapeOutsiderV1 = async (
  * Raw step-01 with no evidence/verdict guard. Used only to prove the validator
  * itself refuses fabricated verdicts and uncommitted preimages.
  */
-export const submitRawCommittedFieldShapeStep01V1 = async ({
+export const submitRawCommittedFieldShapeStep01 = async ({
   harness,
   threadOutRef,
   scenario,
@@ -426,15 +424,15 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
   forwardedState,
   referenceScriptUtxo,
 }: {
-  readonly harness: CommittedFieldShapeEmulatorHarnessV1;
+  readonly harness: CommittedFieldShapeEmulatorHarness;
   readonly threadOutRef: string;
-  readonly scenario: CommittedFieldShapeScenarioV1;
-  readonly claim: CommittedFieldClaimV1;
+  readonly scenario: CommittedFieldShapeScenario;
+  readonly claim: CommittedFieldClaim;
   readonly forwardedState: CommittedFieldShapeStep02State;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<{ readonly txHash: string; readonly nextThreadOutRef: string }> => {
   const { threadUtxo, threadToken } =
-    await requireCommittedFieldShapeThreadUtxoV1({
+    await requireCommittedFieldShapeThreadUtxo({
       lucid: harness.proverLucid,
       contracts: harness.committedFieldShape,
       categoryId: harness.category.categoryId,
@@ -483,7 +481,7 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
     ),
   };
   const phasAddress = phasMembershipRewardAddress(network, phasScript);
-  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasCarriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: harness.witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw committed-field-shape PHAS membership",
@@ -600,17 +598,17 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
 };
 
 /** Raw finalization without the production submitter's predicate guard. */
-export const submitRawCommittedFieldShapeStep02V1 = async ({
+export const submitRawCommittedFieldShapeStep02 = async ({
   harness,
   threadOutRef,
   referenceScriptUtxo,
 }: {
-  readonly harness: CommittedFieldShapeEmulatorHarnessV1;
+  readonly harness: CommittedFieldShapeEmulatorHarness;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireCommittedFieldShapeThreadUtxoV1({
+    await requireCommittedFieldShapeThreadUtxo({
       lucid: harness.proverLucid,
       contracts: harness.committedFieldShape,
       categoryId: harness.category.categoryId,
@@ -694,12 +692,12 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: harness.committedFieldShape.computationThread.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
     label: "raw committed-field-shape step-02 computation-thread mint",
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: harness.committedFieldShape.fraudProof.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
     label: "raw committed-field-shape step-02 fraud-proof mint",
@@ -738,7 +736,7 @@ type RawCancelSchema = Data.Static<typeof RawCancelSchemaValue>;
 const RawCancelSchema = RawCancelSchemaValue as unknown as RawCancelSchema;
 
 /** Raw outsider cancel, bypassing only the off-chain signer guard. */
-export const submitRawCommittedFieldShapeCancelV1 = async ({
+export const submitRawCommittedFieldShapeCancel = async ({
   lucid,
   contracts,
   signer,
@@ -750,14 +748,14 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
   witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CommittedFieldShapeContractsV1;
+  readonly contracts: CommittedFieldShapeContracts;
   readonly signer: ResolvedProverSigner;
   readonly stepIndex: 0 | 1;
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
   readonly threadAssetName: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   if (threadUtxo.address !== contracts.steps[stepIndex].spendingScriptAddress) {
     throw new Error("raw cancel thread is not at the named family step");
@@ -795,7 +793,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw committed-field-shape cancel computation-thread mint",
@@ -820,7 +818,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
 };
 
 /** Exact evaluator-failure assertion: off-chain errors are not security proof. */
-export const expectCommittedFieldShapeOnchainRefusalV1 = async (
+export const expectCommittedFieldShapeOnchainRefusal = async (
   build: () => Promise<unknown>,
 ): Promise<string> => {
   let failure: unknown;
@@ -842,13 +840,13 @@ export const expectCommittedFieldShapeOnchainRefusalV1 = async (
 };
 
 /** Convenience inline claim for raw adversarial builders. */
-export const committedFieldShapeInlineClaimV1 = ({
+export const committedFieldShapeInlineClaim = ({
   fieldIndex,
   preimage,
 }: {
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
-}): CommittedFieldClaimV1 => ({
+}): CommittedFieldClaim => ({
   BodyFieldClaim: {
     field_index: BigInt(fieldIndex),
     carriage: {
@@ -857,10 +855,10 @@ export const committedFieldShapeInlineClaimV1 = ({
   },
 });
 
-export const preparedFromScenarioV1 = (
-  scenario: CommittedFieldShapeScenarioV1,
-  prepare: (tx: MidgardNativeTxCanonicalV1) => PreparedCommittedFieldShapeV1,
-): PreparedCommittedFieldShapeV1 => {
+export const preparedFromScenario = (
+  scenario: CommittedFieldShapeScenario,
+  prepare: (tx: MidgardNativeTxCanonical) => PreparedCommittedFieldShape,
+): PreparedCommittedFieldShape => {
   if (scenario.canonicalTx === null) {
     throw new Error("scenario has no canonical transaction for prepare");
   }

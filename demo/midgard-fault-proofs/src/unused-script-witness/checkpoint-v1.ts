@@ -2,17 +2,17 @@ import { hashHexWithBlake2b } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { UnusedScriptWitnessEvidenceV1 } from "./family-v1.js";
+import type { UnusedScriptWitnessEvidence } from "./family-v1.js";
 import {
-  UnusedScriptAuthenticatedWitnessV1Schema,
-  UnusedScriptReverseScanV1Schema,
+  UnusedScriptAuthenticatedWitnessSchema,
+  UnusedScriptReverseScanSchema,
 } from "./schemas-v1.js";
 
-export type UnusedScriptAuthenticatedWitnessDatumV1 = Data.Static<
-  typeof UnusedScriptAuthenticatedWitnessV1Schema
+export type UnusedScriptAuthenticatedWitnessDatum = Data.Static<
+  typeof UnusedScriptAuthenticatedWitnessSchema
 >;
-export type UnusedScriptReverseScanDatumV1 = Data.Static<
-  typeof UnusedScriptReverseScanV1Schema
+export type UnusedScriptReverseScanDatum = Data.Static<
+  typeof UnusedScriptReverseScanSchema
 >;
 
 const hash = (bytes: Buffer): string =>
@@ -21,9 +21,9 @@ const integer = (value: bigint): Buffer =>
   Buffer.from(Data.to(value as never, Data.Integer()), "hex");
 const domain = Buffer.from("MidgardUnusedScriptWitnessScanV1", "ascii");
 
-export const initialUnusedScriptWitnessReverseScanV1 = (
-  witness: UnusedScriptAuthenticatedWitnessDatumV1,
-): UnusedScriptReverseScanDatumV1 => ({
+export const initialUnusedScriptWitnessReverseScan = (
+  witness: UnusedScriptAuthenticatedWitnessDatum,
+): UnusedScriptReverseScanDatum => ({
   witness,
   alternate_cursor: 0n,
   purpose_cursor: 0n,
@@ -40,13 +40,13 @@ export const initialUnusedScriptWitnessReverseScanV1 = (
   ),
 });
 
-export const advanceUnusedScriptWitnessSourcesV1 = ({
+export const advanceUnusedScriptWitnessSources = ({
   state,
   evidence,
 }: {
-  state: UnusedScriptReverseScanDatumV1;
-  evidence: UnusedScriptWitnessEvidenceV1;
-}): UnusedScriptReverseScanDatumV1 => {
+  state: UnusedScriptReverseScanDatum;
+  evidence: UnusedScriptWitnessEvidence;
+}): UnusedScriptReverseScanDatum => {
   let next = state;
   while (next.alternate_cursor < next.witness.bound.script_index) {
     const source = evidence.sources[Number(next.alternate_cursor)];
@@ -74,15 +74,15 @@ export const advanceUnusedScriptWitnessSourcesV1 = ({
   return next;
 };
 
-export const advanceUnusedScriptWitnessPurposesV1 = ({
+export const advanceUnusedScriptWitnessPurposes = ({
   state,
   evidence,
   itemBudget = 24,
 }: {
-  state: UnusedScriptReverseScanDatumV1;
-  evidence: UnusedScriptWitnessEvidenceV1;
+  state: UnusedScriptReverseScanDatum;
+  evidence: UnusedScriptWitnessEvidence;
   itemBudget?: number;
-}): UnusedScriptReverseScanDatumV1 => {
+}): UnusedScriptReverseScanDatum => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget < 1 || itemBudget > 24)
     throw new Error("unusedScriptWitness item budget changed");
   let next = state;

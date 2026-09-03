@@ -1,6 +1,6 @@
 import type {
-  ForcedInclusionTxV1,
-  HeaderV1,
+  ForcedInclusionTx,
+  Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
@@ -10,41 +10,41 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ScriptIntegrityHashMismatchContractsV1 } from "./contracts-v1.js";
-import type { ScriptIntegrityHashMismatchEvidenceV1 } from "./family-v1.js";
-import type { ScriptIntegrityStageThreeAuthenticationV1 } from "./retained-stage-three-v1.js";
+import type { ScriptIntegrityHashMismatchContracts } from "./contracts-v1.js";
+import type { ScriptIntegrityHashMismatchEvidence } from "./family-v1.js";
+import type { ScriptIntegrityStageThreeAuthentication } from "./retained-stage-three-v1.js";
 import {
-  submitScriptIntegrityHashMismatchCancelV1,
-  submitScriptIntegrityHashMismatchStep01AcceptedV1,
-  submitScriptIntegrityHashMismatchStep01ForcedV1,
-  submitScriptIntegrityHashMismatchStep02V1,
-  submitScriptIntegrityHashMismatchStep03V1,
-  submitScriptIntegrityHashMismatchStep04V1,
-  submitScriptIntegrityHashMismatchStep05V1,
+  submitScriptIntegrityHashMismatchCancel,
+  submitScriptIntegrityHashMismatchStep01Accepted,
+  submitScriptIntegrityHashMismatchStep01Forced,
+  submitScriptIntegrityHashMismatchStep02,
+  submitScriptIntegrityHashMismatchStep03,
+  submitScriptIntegrityHashMismatchStep04,
+  submitScriptIntegrityHashMismatchStep05,
 } from "./submit-v1.js";
 
-export type ScriptIntegrityHashMismatchProductionArtifactV1 = Readonly<{
+export type ScriptIntegrityHashMismatchArtifact = Readonly<{
   headerHash: string;
-  header: HeaderV1;
-  evidence: ScriptIntegrityHashMismatchEvidenceV1;
-  authentication: ScriptIntegrityStageThreeAuthenticationV1;
+  header: Header;
+  evidence: ScriptIntegrityHashMismatchEvidence;
+  authentication: ScriptIntegrityStageThreeAuthentication;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
 }>;
-export type ScriptIntegrityHashMismatchWorkflowReferencesV1 = Readonly<{
+export type ScriptIntegrityHashMismatchWorkflowReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
-export type ScriptIntegrityHashMismatchLucidActionV1 =
+export type ScriptIntegrityHashMismatchLucidAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step_01";
@@ -65,13 +65,13 @@ export type ScriptIntegrityHashMismatchLucidActionV1 =
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
-export type ScriptIntegrityHashMismatchCapturedLucidActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type ScriptIntegrityHashMismatchCapturedLucidAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
-export type BoundScriptIntegrityHashMismatchLucidActuatorConfigV1 = Readonly<{
+export type BoundScriptIntegrityHashMismatchLucidActuatorConfig = Readonly<{
   binding: Readonly<{
     blueprint: unknown;
     deploymentInfo: unknown;
@@ -89,30 +89,30 @@ export type BoundScriptIntegrityHashMismatchLucidActuatorConfigV1 = Readonly<{
   }>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ScriptIntegrityHashMismatchContractsV1;
-  references: ScriptIntegrityHashMismatchWorkflowReferencesV1;
+  contracts: ScriptIntegrityHashMismatchContracts;
+  references: ScriptIntegrityHashMismatchWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
 const captured = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<ScriptIntegrityHashMismatchCapturedLucidActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<ScriptIntegrityHashMismatchCapturedLucidAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /** Concrete callback-free Lucid actuator for every physical family transition. */
-export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
-  config: BoundScriptIntegrityHashMismatchLucidActuatorConfigV1,
+export const createScriptIntegrityHashMismatchLucidActuator = (
+  config: BoundScriptIntegrityHashMismatchLucidActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      action: ScriptIntegrityHashMismatchLucidActionV1;
-      artifact: ScriptIntegrityHashMismatchProductionArtifactV1;
-    }): Promise<ScriptIntegrityHashMismatchCapturedLucidActionV1> => {
+      action: ScriptIntegrityHashMismatchLucidAction;
+      artifact: ScriptIntegrityHashMismatchArtifact;
+    }): Promise<ScriptIntegrityHashMismatchCapturedLucidAction> => {
       if (artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error(
           "scriptIntegrityHashMismatch artifact changed bound header",
@@ -151,7 +151,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
             preSubmitBoundary,
           } as const;
           if (artifact.acceptedInclusion !== undefined)
-            await submitScriptIntegrityHashMismatchStep01AcceptedV1({
+            await submitScriptIntegrityHashMismatchStep01Accepted({
               ...args,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -160,7 +160,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else if (artifact.forcedMembership !== undefined)
-            await submitScriptIntegrityHashMismatchStep01ForcedV1({
+            await submitScriptIntegrityHashMismatchStep01Forced({
               ...args,
               membership: artifact.forcedMembership,
             });
@@ -171,7 +171,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
         });
       if (action.stage === "cancel")
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMismatchCancelV1({
+          await submitScriptIntegrityHashMismatchCancel({
             ...common,
             threadOutRef: action.threadOutRef,
             referenceScriptUtxo: config.references.steps[action.stepIndex],
@@ -181,7 +181,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
         });
       if (action.stage === "step_02")
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMismatchStep02V1({
+          await submitScriptIntegrityHashMismatchStep02({
             ...common,
             threadOutRef: action.threadOutRef,
             authentication: artifact.authentication,
@@ -191,7 +191,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
         });
       if (action.stage === "step_03")
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMismatchStep03V1({
+          await submitScriptIntegrityHashMismatchStep03({
             ...common,
             threadOutRef: action.threadOutRef,
             referenceScriptUtxo: config.references.steps[2],
@@ -200,7 +200,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
         });
       if (action.stage === "step_04")
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMismatchStep04V1({
+          await submitScriptIntegrityHashMismatchStep04({
             ...common,
             threadOutRef: action.threadOutRef,
             referenceScriptUtxo: config.references.steps[3],
@@ -209,7 +209,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
         });
       if (action.stage === "step_05")
         return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMismatchStep05V1({
+          await submitScriptIntegrityHashMismatchStep05({
             ...common,
             threadOutRef: action.threadOutRef,
             referenceScriptUtxo: config.references.steps[4],
@@ -219,7 +219,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
         });
       if (action.stage !== "remove")
         throw new Error("scriptIntegrityHashMismatch actuator stage changed");
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: "scriptIntegrityHashMismatch",
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
@@ -233,7 +233,7 @@ export const createScriptIntegrityHashMismatchLucidActuatorV1 = (
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

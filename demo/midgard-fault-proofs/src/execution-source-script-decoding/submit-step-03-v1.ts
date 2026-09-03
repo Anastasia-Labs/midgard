@@ -11,31 +11,31 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import { buildNativeScriptDecodingChunkProofV1 } from "../native-script-decoding/evidence-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { buildNativeScriptDecodingChunkProof } from "../native-script-decoding/evidence-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ExecutionSourceScriptDecodingContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ExecutionSourceScriptDecodingContracts } from "./contracts-v1.js";
 import {
-  executionSourceScriptDecodingCheckpointV1,
-  type ExecutionSourceScriptDecodingEvidenceV1,
-  ExecutionSourceScriptDecodingResultClassesV1,
+  executionSourceScriptDecodingCheckpoint,
+  type ExecutionSourceScriptDecodingEvidence,
+  ExecutionSourceScriptDecodingResultClasses,
 } from "./family-v1.js";
 import {
-  AuthenticatedExecutionSourceV1Schema,
-  ExecutionSourceScanStateV1Schema,
-  ExecutionSourceStep03DatumV1Schema,
-  ExecutionSourceStep03RedeemerV1Schema,
-  ExecutionSourceStep04DatumV1Schema,
+  AuthenticatedExecutionSourceSchema,
+  ExecutionSourceScanStateSchema,
+  ExecutionSourceStep03DatumSchema,
+  ExecutionSourceStep03RedeemerSchema,
+  ExecutionSourceStep04DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "execution-source-script-decoding";
-export const submitExecutionSourceScriptDecodingStep03V1 = async ({
+export const submitExecutionSourceScriptDecodingStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -47,17 +47,17 @@ export const submitExecutionSourceScriptDecodingStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionSourceScriptDecodingContractsV1;
+  contracts: ExecutionSourceScriptDecodingContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: ExecutionSourceScriptDecodingEvidenceV1;
+  evidence: ExecutionSourceScriptDecodingEvidence;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -65,12 +65,12 @@ export const submitExecutionSourceScriptDecodingStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const source = requireLinearFaultStepStateV1<
-    Data.Static<typeof AuthenticatedExecutionSourceV1Schema>
+  const source = requireLinearFaultStepState<
+    Data.Static<typeof AuthenticatedExecutionSourceSchema>
   >({
     threadUtxo,
     signer,
-    schema: ExecutionSourceStep03DatumV1Schema as never,
+    schema: ExecutionSourceStep03DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -83,7 +83,7 @@ export const submitExecutionSourceScriptDecodingStep03V1 = async ({
     source.origin_kind === 0n
       ? Number(source.source_index)
       : Buffer.from(source.source_key, "hex").readUInt16BE(36);
-  const firstChunk = buildNativeScriptDecodingChunkProofV1({
+  const firstChunk = buildNativeScriptDecodingChunkProof({
     fieldIndex: source.origin_kind === 0n ? 6 : 2,
     itemIndex,
     itemBytes: Buffer.from(evidence.descriptor.scriptItemHex, "hex"),
@@ -92,12 +92,12 @@ export const submitExecutionSourceScriptDecodingStep03V1 = async ({
   const initialResult =
     evidence.initialControlCbor === ""
       ? evidence.resultClass
-      : ExecutionSourceScriptDecodingResultClassesV1.Pending;
-  const nextState: Data.Static<typeof ExecutionSourceScanStateV1Schema> = {
+      : ExecutionSourceScriptDecodingResultClasses.Pending;
+  const nextState: Data.Static<typeof ExecutionSourceScanStateSchema> = {
     source,
     control_cbor: evidence.initialControlCbor,
     next_expected_script_hash: contracts.steps[3].spendingScriptHash,
-    checkpoint_hash: executionSourceScriptDecodingCheckpointV1({
+    checkpoint_hash: executionSourceScriptDecodingCheckpoint({
       evidence,
       controlCbor: evidence.initialControlCbor,
       nextExpectedScriptHash: contracts.steps[3].spendingScriptHash,
@@ -106,14 +106,14 @@ export const submitExecutionSourceScriptDecodingStep03V1 = async ({
   };
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    ExecutionSourceStep04DatumV1Schema as never,
+    ExecutionSourceStep04DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[3].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -138,11 +138,11 @@ export const submitExecutionSourceScriptDecodingStep03V1 = async ({
           },
         ],
       } as never,
-      ExecutionSourceStep03RedeemerV1Schema as never,
+      ExecutionSourceStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

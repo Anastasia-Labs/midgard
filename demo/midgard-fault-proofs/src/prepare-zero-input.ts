@@ -33,7 +33,7 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
 
 export type PrepareZeroInputCliConfig = {
@@ -153,11 +153,11 @@ export const prepareZeroInputFromTransactions = async ({
   }
 
   const nativeTrie = await buildTrieView(
-    decoded.map(transactionSourceTrieItemV1),
+    decoded.map(transactionSourceTrieItem),
   );
   const proofCbor = requireProof(
     nativeTrie,
-    transactionSourceTrieItemV1(selected).key,
+    transactionSourceTrieItem(selected).key,
     "zero-input tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(

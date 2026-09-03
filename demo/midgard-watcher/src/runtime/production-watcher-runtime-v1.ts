@@ -2,106 +2,106 @@ import { mkdir, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  createSqliteProductionHistoricalNativeScriptCheckpointStoreV1,
-  isProductionWorkflowActuationRevokedErrorV1,
-  type ProductionWorkflowActuationPermitV1,
-  type ProductionWorkflowAdapterRunnerInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
-  type ProductionWorkflowFundingReservationPermitV1,
+  createSqliteHistoricalNativeScriptCheckpointStore,
+  isWorkflowActuationRevokedError,
   resolveProverSigner,
+  type WorkflowActuationPermit,
+  type WorkflowAdapterRunner,
+  type WorkflowAdapterRunnerInput,
+  type WorkflowFundingReservationPermit,
 } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { Kupmios, type UTxO, utxoToCore } from "@lucid-evolution/lucid";
 
 import {
-  createWatcherProductionFaultDecisionBridgeV1,
-  type WatcherProductionFaultDecisionBridgeV1,
+  createWatcherFaultDecisionBridge,
+  type WatcherFaultDecisionBridge,
 } from "../fault-proofs/production-fault-decision-bridge-v1.js";
 import {
-  createWatcherFaultProofProductionApplicationV1,
-  WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-  type WatcherFaultProofProductionApplicationV1,
-  type WatcherFaultProofStartupReadinessV1,
-  type WatcherInstalledProductionWorkflowCategoryV1,
+  createWatcherFaultProofApplication,
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  type WatcherFaultProofApplication,
+  type WatcherFaultProofStartupReadiness,
+  type WatcherInstalledWorkflowCategory,
 } from "../fault-proofs/production-fault-proof-application-v1.js";
 import {
-  createWatcherProductionFaultProofSupervisorV1,
-  type WatcherProductionFaultProofSupervisorV1,
+  createWatcherFaultProofSupervisor,
+  type WatcherFaultProofSupervisor,
 } from "../fault-proofs/production-fault-proof-supervisor-v1.js";
 import {
-  assertWatcherProductionProverFundingAuthorityFactoryV1,
-  createWatcherProductionProverFundingAuthorityFactoryV1,
-  type WatcherProductionProverFundingAuthorityFactoryV1,
+  assertWatcherProverFundingAuthorityFactory,
+  createWatcherProverFundingAuthorityFactory,
+  type WatcherProverFundingAuthorityFactory,
 } from "../funding/production-prover-funding-authority-v1.js";
-import { createWatcherProductionProtocolParameterRuntimeAuthorityV1 } from "../funding/production-prover-funding-v1.js";
+import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/production-prover-funding-v1.js";
 import {
-  loadWatcherProductionWorkflowFundingProfileOverlayV1,
-  productionWorkflowFundingProfileFromOverlayV1,
-  type WatcherProductionWorkflowFundingProfileOverlayV1,
+  loadWatcherWorkflowFundingProfileOverlay,
+  type WatcherWorkflowFundingProfileOverlay,
+  workflowFundingProfileFromOverlay,
 } from "../funding/production-workflow-funding-profile-overlay-v1.js";
 import {
-  openWatcherSqliteProverFundingReservationStoreV1,
-  type WatcherSqliteProverFundingReservationStoreRuntimeV1,
+  openWatcherSqliteProverFundingReservationStore,
+  type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "../funding/sqlite-prover-funding-reservation-store-v1.js";
-import { createWatcherProductionStateQueueObservationSourceV1 } from "../indexers/production-state-queue-observation-v1.js";
+import { createWatcherStateQueueObservationSource } from "../indexers/production-state-queue-observation-v1.js";
 import {
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
 import {
-  createWatcherLocalKupmiosNativeObservationRuntimeV1,
-  createWatcherLocalKupmiosRawSourceV1,
+  createWatcherLocalKupmiosNativeObservationRuntime,
+  createWatcherLocalKupmiosRawSource,
 } from "../l1/local-kupmios-native-observation-v1.js";
 import {
-  startWatcherNativeChainSyncWithRetryV1,
-  watcherNativeChainSyncAuthorityDetailsV1,
-  type WatcherNativeChainSyncEventV1,
-  type WatcherNativeChainSyncPointV1,
-  type WatcherNativeChainSyncRuntimeV1,
+  startWatcherNativeChainSyncWithRetry,
+  watcherNativeChainSyncAuthorityDetails,
+  type WatcherNativeChainSyncEvent,
+  type WatcherNativeChainSyncPoint,
+  type WatcherNativeChainSyncRuntime,
 } from "../l1/native-chain-sync-v1.js";
 import {
-  watcherCanonicalJsonV1,
-  watcherSha256CanonicalJsonV1,
+  watcherCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
-import { createWatcherProductionDurableRuntimeV1 } from "../storage/production-durable-runtime-v1.js";
+import { createWatcherDurableRuntime } from "../storage/production-durable-runtime-v1.js";
 import {
-  bindWatcherProductionRetainedDaOperationsV1,
-  type WatcherProductionRetainedDaOperationsBindingV1,
+  bindWatcherRetainedDaOperations,
+  type WatcherRetainedDaOperationsBinding,
 } from "../storage/production-retained-da-runtime-v1.js";
-import { openWatcherSqliteDurableBackendV1 } from "../storage/sqlite-durable-backend-v1.js";
+import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend-v1.js";
 import { parseWatcherConfigJson } from "./config.js";
 import {
-  createWatcherProductionChainCoordinatorV1,
-  type WatcherProductionChainCoordinatorV1,
+  createWatcherChainCoordinator,
+  type WatcherChainCoordinator,
 } from "./production-chain-coordinator-v1.js";
-import { loadWatcherVerifiedDeploymentAuthorityV1 } from "./production-deployment-authority-v1.js";
+import { loadWatcherVerifiedDeploymentAuthority } from "./production-deployment-authority-v1.js";
 import {
-  startWatcherProductionOperationsHttpServerV1,
-  type WatcherProductionOperationsHttpServerV1,
+  startWatcherOperationsHttpServer,
+  type WatcherOperationsHttpServer,
 } from "./production-operations-http-v1.js";
 import {
-  createWatcherProductionOperationsObservabilityV1,
-  type WatcherProductionOperationsObservabilityV1,
-  type WatcherProductionOperationsSinkV1,
+  createWatcherOperationsObservability,
+  type WatcherOperationsObservability,
+  type WatcherOperationsSink,
 } from "./production-operations-observability-v1.js";
 import {
-  loadWatcherSecretTextV1,
-  type WatcherProductionProcessConfigV1,
+  loadWatcherSecretText,
+  type WatcherProcessConfig,
 } from "./production-process-config-v1.js";
-import { createWatcherProductionStateQueueRuntimeV1 } from "./production-state-queue-runtime-v1.js";
-import { createWatcherProductionTrustedHeadClientRuntimeV1 } from "./production-trusted-head-runtime-v1.js";
+import { createWatcherStateQueueRuntime } from "./production-state-queue-runtime-v1.js";
+import { createWatcherTrustedHeadClientRuntime } from "./production-trusted-head-runtime-v1.js";
 
-export const WATCHER_PRODUCTION_RUNTIME_V1_SCHEMA_VERSION =
+export const WATCHER_RUNTIME_SCHEMA_VERSION =
   "midgard-watcher-production-runtime-v1" as const;
 
-export type WatcherProductionRuntimeV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_RUNTIME_V1_SCHEMA_VERSION;
-  policy: WatcherFinalityPolicyV1;
-  coordinator: WatcherProductionChainCoordinatorV1;
-  faultProofApplication: WatcherFaultProofProductionApplicationV1;
-  faultProofReadiness: readonly WatcherFaultProofStartupReadinessV1[];
-  faultProofSupervisor: WatcherProductionFaultProofSupervisorV1;
-  operations: WatcherProductionOperationsObservabilityV1;
+export type WatcherRuntime = Readonly<{
+  schemaVersion: typeof WATCHER_RUNTIME_SCHEMA_VERSION;
+  policy: WatcherFinalityPolicy;
+  coordinator: WatcherChainCoordinator;
+  faultProofApplication: WatcherFaultProofApplication;
+  faultProofReadiness: readonly WatcherFaultProofStartupReadiness[];
+  faultProofSupervisor: WatcherFaultProofSupervisor;
+  operations: WatcherOperationsObservability;
   operationsEndpoint: string;
   recoveredFaultProofWorkflowCount: number;
   done: Promise<void>;
@@ -111,9 +111,7 @@ export type WatcherProductionRuntimeV1 = Readonly<{
     liveness: boolean;
     readiness: boolean;
     caughtUp: boolean;
-    proofSupervisor: ReturnType<
-      WatcherProductionFaultProofSupervisorV1["status"]
-    >;
+    proofSupervisor: ReturnType<WatcherFaultProofSupervisor["status"]>;
   }>;
   close(): Promise<void>;
 }>;
@@ -123,7 +121,7 @@ export type WatcherProductionRuntimeV1 = Readonly<{
  * family could otherwise be misreported as healthy. Launch therefore requires
  * the exact canonical catalogue, in canonical order, before native L1 intake.
  */
-export const assertWatcherProductionFaultProofLaunchScopeV1 = (
+export const assertWatcherFaultProofLaunchScope = (
   categories: readonly string[],
 ): void => {
   if (
@@ -138,7 +136,7 @@ export const assertWatcherProductionFaultProofLaunchScopeV1 = (
   }
 };
 
-const parseWatcherProverFundingOutRefV1 = (
+const parseWatcherProverFundingOutRef = (
   outRef: string,
 ): Readonly<{ txHash: string; outputIndex: number }> => {
   const match = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u.exec(outRef);
@@ -148,7 +146,7 @@ const parseWatcherProverFundingOutRefV1 = (
   return Object.freeze({ txHash: match[1]!, outputIndex: Number(match[2]!) });
 };
 
-export type WatcherProverFundingUtxoProviderV1 = Readonly<{
+export type WatcherProverFundingUtxoProvider = Readonly<{
   getUtxos(address: string): Promise<UTxO[]>;
   getUtxosByOutRef(
     outRefs: readonly Readonly<{ txHash: string; outputIndex: number }>[],
@@ -163,62 +161,61 @@ export type WatcherProverFundingUtxoProviderV1 = Readonly<{
  * protocol-input resolution goes through the same local-node Kupo/Ogmios
  * authority the runners execute against.
  */
-export const mintWatcherProductionProverFundingReservationPermitV1 =
-  async (input: {
-    readonly category: WatcherInstalledProductionWorkflowCategoryV1;
-    readonly runner: ProductionWorkflowAdapterRunnerV1;
-    readonly fundingProfileOverlay: WatcherProductionWorkflowFundingProfileOverlayV1;
-    readonly factory: WatcherProductionProverFundingAuthorityFactoryV1;
-    readonly actuationPermit: ProductionWorkflowActuationPermitV1;
-    readonly rollbackGeneration: string;
-    readonly decisionDigest: string;
-    readonly walletAddress: string;
-    readonly provider: WatcherProverFundingUtxoProviderV1;
-  }): Promise<ProductionWorkflowFundingReservationPermitV1> => {
-    assertWatcherProductionProverFundingAuthorityFactoryV1(input.factory);
-    const fundingRequirements = productionWorkflowFundingProfileFromOverlayV1({
-      overlay: input.fundingProfileOverlay,
-      category: input.category,
-    });
-    return await input.factory.create({
-      category: input.category,
-      runner: input.runner,
-      fundingRequirements,
-      actuationPermit: input.actuationPermit,
-      rollbackGeneration: input.rollbackGeneration,
-      decisionDigest: input.decisionDigest,
-      walletAddress: input.walletAddress,
-      walletUtxos: await input.provider.getUtxos(input.walletAddress),
-      resolveInputs: async (outRefs) =>
-        await input.provider.getUtxosByOutRef(
-          outRefs.map(parseWatcherProverFundingOutRefV1),
-        ),
-      resolveProtocolInputAuthority: async ({
-        deploymentIdentity,
+export const mintWatcherProverFundingReservationPermit = async (input: {
+  readonly category: WatcherInstalledWorkflowCategory;
+  readonly runner: WorkflowAdapterRunner;
+  readonly fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
+  readonly factory: WatcherProverFundingAuthorityFactory;
+  readonly actuationPermit: WorkflowActuationPermit;
+  readonly rollbackGeneration: string;
+  readonly decisionDigest: string;
+  readonly walletAddress: string;
+  readonly provider: WatcherProverFundingUtxoProvider;
+}): Promise<WorkflowFundingReservationPermit> => {
+  assertWatcherProverFundingAuthorityFactory(input.factory);
+  const fundingRequirements = workflowFundingProfileFromOverlay({
+    overlay: input.fundingProfileOverlay,
+    category: input.category,
+  });
+  return await input.factory.create({
+    category: input.category,
+    runner: input.runner,
+    fundingRequirements,
+    actuationPermit: input.actuationPermit,
+    rollbackGeneration: input.rollbackGeneration,
+    decisionDigest: input.decisionDigest,
+    walletAddress: input.walletAddress,
+    walletUtxos: await input.provider.getUtxos(input.walletAddress),
+    resolveInputs: async (outRefs) =>
+      await input.provider.getUtxosByOutRef(
+        outRefs.map(parseWatcherProverFundingOutRef),
+      ),
+    resolveProtocolInputAuthority: async ({
+      deploymentIdentity,
+      outRef,
+      semanticRole,
+    }) => {
+      const resolved = await input.provider.getUtxosByOutRef([
+        parseWatcherProverFundingOutRef(outRef),
+      ]);
+      if (resolved.length !== 1) {
+        throw new Error(
+          "prover funding protocol input is not a unique live local-node output",
+        );
+      }
+      return Object.freeze({
+        deploymentFingerprint: deploymentIdentity.manifestId,
         outRef,
         semanticRole,
-      }) => {
-        const resolved = await input.provider.getUtxosByOutRef([
-          parseWatcherProverFundingOutRefV1(outRef),
-        ]);
-        if (resolved.length !== 1) {
-          throw new Error(
-            "prover funding protocol input is not a unique live local-node output",
-          );
-        }
-        return Object.freeze({
-          deploymentFingerprint: deploymentIdentity.manifestId,
-          outRef,
-          semanticRole,
-          resolvedOutputCborHex: utxoToCore(resolved[0]!)
-            .output()
-            .to_canonical_cbor_hex(),
-        });
-      },
-    });
-  };
+        resolvedOutputCborHex: utxoToCore(resolved[0]!)
+          .output()
+          .to_canonical_cbor_hex(),
+      });
+    },
+  });
+};
 
-const sameTipPoint = (event: WatcherNativeChainSyncEventV1): boolean => {
+const sameTipPoint = (event: WatcherNativeChainSyncEvent): boolean => {
   if (event.tip.kind === "origin")
     return event.kind === "roll_backward" && event.point.kind === "origin";
   return event.kind === "roll_forward"
@@ -230,16 +227,14 @@ const sameTipPoint = (event: WatcherNativeChainSyncEventV1): boolean => {
         event.point.slot === event.tip.slot;
 };
 
-export const createWatcherProductionNativeEventHandlerV1 =
+export const createWatcherNativeEventHandler =
   (input: {
-    readonly coordinator: Promise<
-      Pick<WatcherProductionChainCoordinatorV1, "handle">
-    >;
+    readonly coordinator: Promise<Pick<WatcherChainCoordinator, "handle">>;
     readonly onCaughtUp: () => void;
-    readonly operationsSink?: WatcherProductionOperationsSinkV1;
+    readonly operationsSink?: WatcherOperationsSink;
     readonly sourceIdentityDigest?: string;
     readonly nowMs?: () => bigint;
-  }): ((event: WatcherNativeChainSyncEventV1) => Promise<void>) =>
+  }): ((event: WatcherNativeChainSyncEvent) => Promise<void>) =>
   async (event) => {
     const coordinator = await input.coordinator;
     await coordinator.handle(event);
@@ -288,7 +283,7 @@ export const createWatcherProductionNativeEventHandlerV1 =
   };
 
 const requireWatcherRuntimeConfig = async (
-  config: WatcherProductionProcessConfigV1,
+  config: WatcherProcessConfig,
 ): Promise<void> => {
   if (
     (await realpath(config.watcherRuntimeConfigPath)) !==
@@ -299,8 +294,7 @@ const requireWatcherRuntimeConfig = async (
   const raw = await readFile(config.watcherRuntimeConfigPath, "utf8");
   const parsed = parseWatcherConfigJson(raw);
   if (
-    watcherCanonicalJsonV1(parsed) !==
-    watcherCanonicalJsonV1(config.watcherConfig)
+    watcherCanonicalJson(parsed) !== watcherCanonicalJson(config.watcherConfig)
   ) {
     throw new Error(
       "watcher process and workflow runtime configurations differ",
@@ -321,15 +315,15 @@ const prepareJournalDirectory = async (path: string): Promise<void> => {
  * event. Every admitted event is then serialized through the sidecar-backed
  * durable coordinator.
  */
-export const createWatcherProductionRuntimeV1 = async (input: {
-  readonly config: WatcherProductionProcessConfigV1;
-}): Promise<WatcherProductionRuntimeV1> => {
+export const createWatcherRuntime = async (input: {
+  readonly config: WatcherProcessConfig;
+}): Promise<WatcherRuntime> => {
   await requireWatcherRuntimeConfig(input.config);
   await prepareJournalDirectory(input.config.workflowJournalDirectory);
-  const deploymentIdentity = await loadWatcherVerifiedDeploymentAuthorityV1({
+  const deploymentIdentity = await loadWatcherVerifiedDeploymentAuthority({
     path: input.config.deploymentAuthorityPath,
   });
-  const policy = makeWatcherFinalityPolicyV1(
+  const policy = makeWatcherFinalityPolicy(
     input.config.watcherConfig,
     deploymentIdentity,
   );
@@ -349,7 +343,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
   if (localL1Source.sourceMode !== "local_node") {
     throw new Error("watcher production runtime requires local-node authority");
   }
-  const trusted = await createWatcherProductionTrustedHeadClientRuntimeV1({
+  const trusted = await createWatcherTrustedHeadClientRuntime({
     config: input.config,
     policy,
     additionalSecretSources: [
@@ -357,26 +351,23 @@ export const createWatcherProductionRuntimeV1 = async (input: {
     ],
   });
   const historicalNativeScriptCheckpointStore =
-    createSqliteProductionHistoricalNativeScriptCheckpointStoreV1({
+    createSqliteHistoricalNativeScriptCheckpointStore({
       path: input.config.watcherConfig.storage.path,
       rollbackAuthenticationKey: trusted.rollbackAuthenticationKey,
     });
-  const fundingProfileOverlay =
-    await loadWatcherProductionWorkflowFundingProfileOverlayV1({
-      bundlePath: input.config.fundingProfileBundlePath,
-      deploymentIdentity,
-    });
-  const faultProofApplication = createWatcherFaultProofProductionApplicationV1({
+  const fundingProfileOverlay = await loadWatcherWorkflowFundingProfileOverlay({
+    bundlePath: input.config.fundingProfileBundlePath,
+    deploymentIdentity,
+  });
+  const faultProofApplication = createWatcherFaultProofApplication({
     deploymentIdentity,
     infrastructure: input.config.faultProofInfrastructure,
     historicalNativeScriptCheckpointStore,
     fundingProfileOverlay,
   });
-  assertWatcherProductionFaultProofLaunchScopeV1(
-    faultProofApplication.installedCategories,
-  );
-  const faultProofReadiness: WatcherFaultProofStartupReadinessV1[] = [];
-  for (const category of WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1) {
+  assertWatcherFaultProofLaunchScope(faultProofApplication.installedCategories);
+  const faultProofReadiness: WatcherFaultProofStartupReadiness[] = [];
+  for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
     const journalDirectory = join(
       input.config.workflowJournalDirectory,
       "readiness",
@@ -396,23 +387,23 @@ export const createWatcherProductionRuntimeV1 = async (input: {
     );
   }
 
-  const sqlite = await openWatcherSqliteDurableBackendV1({
+  const sqlite = await openWatcherSqliteDurableBackend({
     path: input.config.watcherConfig.storage.path,
   });
-  let native: WatcherNativeChainSyncRuntimeV1 | undefined;
+  let native: WatcherNativeChainSyncRuntime | undefined;
   let observation:
     | Awaited<
-        ReturnType<typeof createWatcherLocalKupmiosNativeObservationRuntimeV1>
+        ReturnType<typeof createWatcherLocalKupmiosNativeObservationRuntime>
       >
     | undefined;
-  let faultProofSupervisor: WatcherProductionFaultProofSupervisorV1 | undefined;
-  let faultDecisionBridge: WatcherProductionFaultDecisionBridgeV1 | undefined;
-  let operationsHttp: WatcherProductionOperationsHttpServerV1 | undefined;
+  let faultProofSupervisor: WatcherFaultProofSupervisor | undefined;
+  let faultDecisionBridge: WatcherFaultDecisionBridge | undefined;
+  let operationsHttp: WatcherOperationsHttpServer | undefined;
   let retainedDaOperationsBinding:
-    | WatcherProductionRetainedDaOperationsBindingV1
+    | WatcherRetainedDaOperationsBinding
     | undefined;
   let proverFundingStore:
-    | WatcherSqliteProverFundingReservationStoreRuntimeV1
+    | WatcherSqliteProverFundingReservationStoreRuntime
     | undefined;
   const closeAllocatedResources = async (): Promise<void> => {
     const failures: unknown[] = [];
@@ -465,9 +456,9 @@ export const createWatcherProductionRuntimeV1 = async (input: {
       );
     }
   };
-  let resolveCoordinator!: (value: WatcherProductionChainCoordinatorV1) => void;
+  let resolveCoordinator!: (value: WatcherChainCoordinator) => void;
   let rejectCoordinator!: (reason: Error) => void;
-  const coordinatorReady = new Promise<WatcherProductionChainCoordinatorV1>(
+  const coordinatorReady = new Promise<WatcherChainCoordinator>(
     (resolve, reject) => {
       resolveCoordinator = resolve;
       rejectCoordinator = reject;
@@ -480,22 +471,21 @@ export const createWatcherProductionRuntimeV1 = async (input: {
     rejectCaughtUp = reject;
   });
   try {
-    const durable = await createWatcherProductionDurableRuntimeV1({
+    const durable = await createWatcherDurableRuntime({
       backend: sqlite.backend,
       policy,
       authenticationKey: trusted.rollbackAuthenticationKey,
       client: trusted.client,
     });
-    const rawSource = createWatcherLocalKupmiosRawSourceV1({
+    const rawSource = createWatcherLocalKupmiosRawSource({
       watcherConfig: input.config.watcherConfig,
       deploymentIdentity,
     });
-    const stateQueueSource =
-      createWatcherProductionStateQueueObservationSourceV1({
-        deploymentIdentity,
-        rawSource,
-      });
-    const stateQueueRuntime = await createWatcherProductionStateQueueRuntimeV1({
+    const stateQueueSource = createWatcherStateQueueObservationSource({
+      deploymentIdentity,
+      rawSource,
+    });
+    const stateQueueRuntime = await createWatcherStateQueueRuntime({
       store: sqlite.stateQueueObservations,
       source: stateQueueSource,
     });
@@ -510,26 +500,24 @@ export const createWatcherProductionRuntimeV1 = async (input: {
         "watcher production runtime omitted its Kupo or Ogmios query authority",
       );
     }
-    proverFundingStore = await openWatcherSqliteProverFundingReservationStoreV1(
-      {
-        path: input.config.watcherConfig.storage.path,
-      },
-    );
+    proverFundingStore = await openWatcherSqliteProverFundingReservationStore({
+      path: input.config.watcherConfig.storage.path,
+    });
     const proverFundingProtocolParameters =
-      await createWatcherProductionProtocolParameterRuntimeAuthorityV1({
+      await createWatcherProtocolParameterRuntimeAuthority({
         deploymentIdentity,
         ogmiosUrl: ogmiosService.endpoint,
         timeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
       });
     const proverFundingAuthorityFactory =
-      createWatcherProductionProverFundingAuthorityFactoryV1({
+      createWatcherProverFundingAuthorityFactory({
         deploymentIdentity,
         protocolParameters: proverFundingProtocolParameters,
         store: proverFundingStore.store,
       });
     // Address derivation only; the runtime never holds a live signer. The
     // executing runner re-resolves the same secret source itself.
-    const proverSecret = await loadWatcherSecretTextV1(
+    const proverSecret = await loadWatcherSecretText(
       input.config.watcherConfig.proverWallet.keySource,
     );
     const proverWalletAddress = resolveProverSigner(
@@ -548,7 +536,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
       kupoService.endpoint,
       ogmiosService.endpoint,
     );
-    faultProofSupervisor = createWatcherProductionFaultProofSupervisorV1({
+    faultProofSupervisor = createWatcherFaultProofSupervisor({
       journalRoot: input.config.workflowJournalDirectory,
       deploymentFingerprint: deploymentIdentity.manifestId,
       deadlineAlertHeadroomMs: Math.max(
@@ -561,7 +549,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
       run: async ({ job, actuationPermit }) => {
         const { mode, category, headerHash, decisionDigest } = job;
         const updatedAtMs = Date.now().toString();
-        const actionIdentityDigest = watcherSha256CanonicalJsonV1({
+        const actionIdentityDigest = watcherSha256CanonicalJson({
           category,
           headerHash,
           decisionDigest,
@@ -583,7 +571,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
         await prepareJournalDirectory(journalDirectory);
         try {
           const fundingReservationPermit =
-            await mintWatcherProductionProverFundingReservationPermitV1({
+            await mintWatcherProverFundingReservationPermit({
               category,
               runner: faultProofApplication.runners[category],
               fundingProfileOverlay,
@@ -594,7 +582,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
               walletAddress: proverWalletAddress,
               provider: proverUtxoProvider,
             });
-          const invocation: ProductionWorkflowAdapterRunnerInputV1 = {
+          const invocation: WorkflowAdapterRunnerInput = {
             mode,
             category,
             deploymentFingerprint: deploymentIdentity.manifestId,
@@ -615,7 +603,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
           });
           return result;
         } catch (error) {
-          const cancelled = isProductionWorkflowActuationRevokedErrorV1(error);
+          const cancelled = isWorkflowActuationRevokedError(error);
           operations.sink.recordProofStep({
             decisionDigest,
             stage: "terminal",
@@ -635,7 +623,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
         }
       },
     });
-    const operations = createWatcherProductionOperationsObservabilityV1({
+    const operations = createWatcherOperationsObservability({
       deploymentFingerprint: deploymentIdentity.manifestId,
       supervisor: faultProofSupervisor,
       launchScopeStatus: () => ({
@@ -645,11 +633,11 @@ export const createWatcherProductionRuntimeV1 = async (input: {
       }),
       durableProofQueueStatus: faultProofSupervisor.durableQueueStatus,
     });
-    retainedDaOperationsBinding = bindWatcherProductionRetainedDaOperationsV1({
+    retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,
       sink: operations.sink,
     });
-    faultDecisionBridge = await createWatcherProductionFaultDecisionBridgeV1({
+    faultDecisionBridge = await createWatcherFaultDecisionBridge({
       application: faultProofApplication,
       supervisor: faultProofSupervisor,
       stateQueueSource,
@@ -661,16 +649,16 @@ export const createWatcherProductionRuntimeV1 = async (input: {
     await faultDecisionBridge.prepareForRecovery(stateQueueRuntime.current());
     const recoveredFaultProofWorkflowCount =
       await faultDecisionBridge.recoverExisting();
-    operationsHttp = await startWatcherProductionOperationsHttpServerV1({
+    operationsHttp = await startWatcherOperationsHttpServer({
       endpoint: input.config.operationsEndpoint,
       observability: operations,
     });
-    const replayIntersection: WatcherNativeChainSyncPointV1 = Object.freeze({
+    const replayIntersection: WatcherNativeChainSyncPoint = Object.freeze({
       kind: "point",
       blockHash: stateQueueRuntime.replayIntersection.blockHash,
       slot: stateQueueRuntime.replayIntersection.slot,
     });
-    native = await startWatcherNativeChainSyncWithRetryV1({
+    native = await startWatcherNativeChainSyncWithRetry({
       binaryPath: input.config.nativeChainSyncBinaryPath,
       watcherConfig: input.config.watcherConfig,
       // State-queue authority owns this exact intersection. Retrying an older
@@ -678,7 +666,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
       // reverse authenticated queue transitions, so there is no fallback.
       intersectionCandidates: Object.freeze([replayIntersection]),
       startupTimeoutMs: input.config.watcherConfig.l1.requestTimeoutMs,
-      onEvent: createWatcherProductionNativeEventHandlerV1({
+      onEvent: createWatcherNativeEventHandler({
         coordinator: coordinatorReady,
         onCaughtUp: resolveCaughtUp,
         operationsSink: operations.sink,
@@ -688,13 +676,13 @@ export const createWatcherProductionRuntimeV1 = async (input: {
     void native.done.catch((error) => {
       rejectCaughtUp(error instanceof Error ? error : new Error(String(error)));
     });
-    observation = await createWatcherLocalKupmiosNativeObservationRuntimeV1({
+    observation = await createWatcherLocalKupmiosNativeObservationRuntime({
       watcherConfig: input.config.watcherConfig,
       deploymentIdentity,
       nativeAuthority: native.authority,
       rawSource,
     });
-    const details = watcherNativeChainSyncAuthorityDetailsV1(native.authority);
+    const details = watcherNativeChainSyncAuthorityDetails(native.authority);
     if (details === null) {
       throw new Error("native chain-sync authority expired during startup");
     }
@@ -721,7 +709,7 @@ export const createWatcherProductionRuntimeV1 = async (input: {
         "native chain-sync tip differs from the admitted state-queue recovery bound",
       );
     }
-    const coordinator = createWatcherProductionChainCoordinatorV1({
+    const coordinator = createWatcherChainCoordinator({
       policy,
       durable,
       observation,
@@ -763,8 +751,8 @@ export const createWatcherProductionRuntimeV1 = async (input: {
         if (phase === "live") phase = "failed";
       },
     );
-    const runtime: WatcherProductionRuntimeV1 = Object.freeze({
-      schemaVersion: WATCHER_PRODUCTION_RUNTIME_V1_SCHEMA_VERSION,
+    const runtime: WatcherRuntime = Object.freeze({
+      schemaVersion: WATCHER_RUNTIME_SCHEMA_VERSION,
       policy,
       coordinator,
       faultProofApplication,

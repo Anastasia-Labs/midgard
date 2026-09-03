@@ -1,9 +1,9 @@
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
@@ -13,61 +13,60 @@ import { Effect } from "effect";
 
 import {
   buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifestV1,
-  type DeploymentManifestV1IdentityContext,
+  buildDeploymentManifest,
+  type DeploymentManifestIdentityContext,
 } from "../../src/commands/contract-deployment-info.js";
 import {
-  computeDeploymentManifestV1DaCommitteeSignersHash,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  type DeploymentManifestV1Value,
-  normalizeDeploymentManifestV1JsonValue,
-  parseDeploymentManifestV1Value,
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  type DeploymentManifestValue,
+  normalizeDeploymentManifestJsonValue,
+  parseDeploymentManifestValue,
 } from "../../src/deployment-manifest-v1.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "../../src/transactions/initialization.js";
-import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./availability-challenge-v1.js";
-import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./cardano-protocol-parameters-v1.js";
+import { TEST_AVAILABILITY_CHALLENGE } from "./availability-challenge-v1.js";
+import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./cardano-protocol-parameters-v1.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 const DA_VKEY = "44".repeat(32);
-const CARDANO_PARAMETERS = TEST_CARDANO_PROTOCOL_PARAMETERS_V1;
-const IDENTITY: DeploymentManifestV1IdentityContext = {
-  availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
-  economics:
-    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+const CARDANO_PARAMETERS = TEST_CARDANO_PROTOCOL_PARAMETERS;
+const IDENTITY: DeploymentManifestIdentityContext = {
+  availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
+  economics: DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   cardanoProtocolParameters: {
     snapshot: CARDANO_PARAMETERS,
-    digest: computeDeploymentManifestV1JsonDigest(CARDANO_PARAMETERS),
+    digest: computeDeploymentManifestJsonDigest(CARDANO_PARAMETERS),
   },
   genesis: {
     headerHash: "00".repeat(28),
-    utxoSetDigest: computeDeploymentManifestV1JsonDigest(
-      normalizeDeploymentManifestV1JsonValue([]),
+    utxoSetDigest: computeDeploymentManifestJsonDigest(
+      normalizeDeploymentManifestJsonValue([]),
     ),
   },
   da: {
     committeeVkeys: [DA_VKEY],
-    committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+    committeeSignersHash: computeDeploymentManifestDaCommitteeSignersHash([
       DA_VKEY,
     ]),
     threshold: 1,
     transportProfile: {
-      protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+      protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+      runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
       envelopeEncoding: "identity",
       zstdLevel: 3,
-      limits: DA_TRANSPORT_LIMITS_V1,
-      retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+      limits: DA_TRANSPORT_LIMITS,
+      retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
     },
   },
   proofEvidence: { digest: null, blueprintHash: "55".repeat(32) },
 };
 
-export const makeFinalizedDeploymentManifestV1Fixture =
-  async (): Promise<DeploymentManifestV1Value> => {
+export const makeFinalizedDeploymentManifestFixture =
+  async (): Promise<DeploymentManifestValue> => {
     const contracts = await loadRealMidgardContractsForTest({
       txHash: "ab".repeat(32),
       outputIndex: 0,
@@ -89,23 +88,23 @@ export const makeFinalizedDeploymentManifestV1Fixture =
       postTimelockAudit: { required: true, rule: "test fixture" },
     };
     const referenceScriptOutRefs = new Map(
-      Object.values(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-      ).map((contractName, index) => [
-        contractName,
-        {
-          txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
-          outputIndex: 0,
-        },
-      ]),
+      Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+        (contractName, index) => [
+          contractName,
+          {
+            txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
+            outputIndex: 0,
+          },
+        ],
+      ),
     );
     const catalogue = await Effect.runPromise(
       buildFraudProofCatalogueDeploymentInfo(
         fraudProofsToIndexedValidators(contracts.fraudProofs),
       ),
     );
-    return parseDeploymentManifestV1Value(
-      buildDeploymentManifestV1(
+    return parseDeploymentManifestValue(
+      buildDeploymentManifest(
         buildContractDeploymentInfoFromContracts(
           contracts,
           referenceScriptAuthPolicy,

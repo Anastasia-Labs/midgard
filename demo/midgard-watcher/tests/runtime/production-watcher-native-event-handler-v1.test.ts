@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION } from "../../src/l1/native-chain-sync-v1.js";
-import type { WatcherProductionOperationsSinkV1 } from "../../src/runtime/production-operations-observability-v1.js";
-import { createWatcherProductionNativeEventHandlerV1 } from "../../src/runtime/production-watcher-runtime-v1.js";
+import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync-v1.js";
+import type { WatcherOperationsSink } from "../../src/runtime/production-operations-observability-v1.js";
+import { createWatcherNativeEventHandler } from "../../src/runtime/production-watcher-runtime-v1.js";
 
 const hash = (byte: string): string => byte.repeat(64);
 
@@ -15,8 +15,8 @@ describe("watcher production native event delivery V1", () => {
     const operationsSink = Object.freeze({
       recordL1Source,
       setAlert,
-    }) as unknown as WatcherProductionOperationsSinkV1;
-    const onEvent = createWatcherProductionNativeEventHandlerV1({
+    }) as unknown as WatcherOperationsSink;
+    const onEvent = createWatcherNativeEventHandler({
       coordinator: Promise.resolve({ handle }),
       onCaughtUp,
       operationsSink,
@@ -24,7 +24,7 @@ describe("watcher production native event delivery V1", () => {
       nowMs: () => 1_000n,
     });
     const rollForward = Object.freeze({
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
       kind: "roll_forward" as const,
       blockHash: hash("a"),
       blockType: "conway",
@@ -40,7 +40,7 @@ describe("watcher production native event delivery V1", () => {
       }),
     });
     const rollback = Object.freeze({
-      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION,
       kind: "roll_backward" as const,
       point: Object.freeze({
         kind: "point" as const,

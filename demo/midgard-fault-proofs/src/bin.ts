@@ -5,35 +5,35 @@ import { fileURLToPath } from "node:url";
 
 import { formatUnknownError } from "@al-ft/midgard-core";
 import {
-  assertSecurityGradeEvidenceV1,
+  assertSecurityGradeEvidence,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
 } from "@al-ft/midgard-sdk";
 
 import {
-  diagnosticEvidenceBannerV1,
-  LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1,
-  MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1,
-  SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1,
+  diagnosticEvidenceBanner,
+  LOCAL_FILE_DIAGNOSTIC_PROVENANCE,
+  MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE,
+  SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE,
 } from "./evidence/diagnostic-evidence-v1.js";
 import {
-  resolveFabricatedDepositCliContractsV1,
-  resolveFabricatedWithdrawalCliContractsV1,
+  resolveFabricatedDepositCliContracts,
+  resolveFabricatedWithdrawalCliContracts,
 } from "./fabricated-cli-contracts-v1.js";
 import {
-  generateFraudProofFamilyScaffoldV1,
-  writeFraudProofFamilyScaffoldV1,
+  generateFraudProofFamilyScaffold,
+  writeFraudProofFamilyScaffold,
 } from "./family-scaffold/generate-v1.js";
 import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
 import { readJsonFile, stringifyJson } from "./json-file.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
 import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
 import { neSubmitStep04FromFiles } from "./ne-submit-step-04.js";
-import { prepareTransitionTraceFromDaEnvelopeV1 } from "./prepare-transition-trace.js";
+import { prepareTransitionTraceFromDaEnvelope } from "./prepare-transition-trace.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { submitUnattestedTimeoutCorrectionFromFiles } from "./remove-unattested-block.js";
 import { type ProviderKind } from "./runtime.js";
@@ -87,8 +87,8 @@ import {
   submitValidationDisputeVerifySourceFromFiles,
 } from "./validation-dispute/from-files.js";
 import {
-  productionWorkflowReadinessReportV1,
-  runProductionFraudProofWorkflowCliV1,
+  runFraudProofWorkflowCli,
+  workflowReadinessReport,
 } from "./workflow/cli-v1.js";
 
 export type ParsedArgs = {
@@ -853,7 +853,7 @@ export const main = async (): Promise<void> => {
 
   if (args.command === "workflow-readiness") {
     writeJson(
-      productionWorkflowReadinessReportV1(
+      workflowReadinessReport(
         args.fraudCategory === undefined ? undefined : [args.fraudCategory],
       ),
     );
@@ -876,7 +876,7 @@ export const main = async (): Promise<void> => {
     if (args.workflowRuntimeConfigPath === undefined) {
       throw new Error(`Missing required --workflow-runtime-config.\n${usage}`);
     }
-    await runProductionFraudProofWorkflowCliV1({
+    await runFraudProofWorkflowCli({
       mode: args.command === "run-workflow" ? "run" : "resume",
       category: args.fraudCategory,
       deploymentFingerprint: args.deploymentFingerprint,
@@ -893,10 +893,10 @@ export const main = async (): Promise<void> => {
     if (args.scaffoldSpecPath === undefined) {
       throw new Error(`Missing required --scaffold-spec <path>.\n${usage}`);
     }
-    const plan = generateFraudProofFamilyScaffoldV1({
+    const plan = generateFraudProofFamilyScaffold({
       spec: await readJsonFile(args.scaffoldSpecPath),
     });
-    const result = await writeFraudProofFamilyScaffoldV1({
+    const result = await writeFraudProofFamilyScaffold({
       plan,
       repoRoot: args.repoRoot ?? process.cwd(),
       dryRun: args.dryRun,
@@ -937,7 +937,7 @@ export const main = async (): Promise<void> => {
       );
     }
     writeJson(
-      await prepareTransitionTraceFromDaEnvelopeV1({
+      await prepareTransitionTraceFromDaEnvelope({
         daPayloadEnvelopePath: args.daPayloadEnvelopePath,
         headerHash: args.headerHash,
         ...(args.outputDir === undefined ? {} : { outputDir: args.outputDir }),
@@ -1013,7 +1013,7 @@ export const main = async (): Promise<void> => {
   // RF-043: reject every legacy diagnostic submission route before any
   // blueprint/deployment read or provider/wallet construction.  Only
   // canonical evidence submitters may cross this boundary in the future.
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: args.command,
     fraudCategory: args.fraudCategory,
   });
@@ -1035,13 +1035,13 @@ export const main = async (): Promise<void> => {
     }
     const provenance =
       args.midgardNodeUrl !== undefined
-        ? MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1
+        ? MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE
         : args.transactionsPath !== undefined
-          ? LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1
-          : SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1;
-    process.stderr.write(`${diagnosticEvidenceBannerV1(provenance)}\n`);
-    assertSecurityGradeEvidenceV1(provenance);
-    // `assertSecurityGradeEvidenceV1` always throws for these prohibited
+          ? LOCAL_FILE_DIAGNOSTIC_PROVENANCE
+          : SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE;
+    process.stderr.write(`${diagnosticEvidenceBanner(provenance)}\n`);
+    assertSecurityGradeEvidence(provenance);
+    // `assertSecurityGradeEvidence` always throws for these prohibited
     // diagnostic trust classes. This return documents that no prepare command
     // can fall through to blueprint/wallet/submission paths.
     return;
@@ -2340,7 +2340,7 @@ export const main = async (): Promise<void> => {
       throw new Error(`Missing required --deposit-inclusion <path>.\n${usage}`);
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedDepositCliContractsV1({
+      await resolveFabricatedDepositCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2385,7 +2385,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedDepositCliContractsV1({
+      await resolveFabricatedDepositCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2427,7 +2427,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedDepositCliContractsV1({
+      await resolveFabricatedDepositCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2469,7 +2469,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedDepositCliContractsV1({
+      await resolveFabricatedDepositCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2520,7 +2520,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedWithdrawalCliContractsV1({
+      await resolveFabricatedWithdrawalCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2565,7 +2565,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedWithdrawalCliContractsV1({
+      await resolveFabricatedWithdrawalCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2607,7 +2607,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedWithdrawalCliContractsV1({
+      await resolveFabricatedWithdrawalCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,
@@ -2649,7 +2649,7 @@ export const main = async (): Promise<void> => {
       );
     }
     const { contracts, referenceScriptUtxo } =
-      await resolveFabricatedWithdrawalCliContractsV1({
+      await resolveFabricatedWithdrawalCliContracts({
         config: {
           blueprintPath: args.blueprintPath,
           deploymentInfoPath: args.deploymentInfoPath,

@@ -6,26 +6,26 @@ import { join, resolve } from "node:path";
 import {
   buildMidgardValidationTraceTree,
   encodeCbor,
-  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialSidecar,
   MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
 } from "@al-ft/midgard-core";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   Proof,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
-  ValidationAuxiliaryWitnessV1,
-  ValidationAwardSpendRedeemerV1,
-  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
-  type ValidationMachineStateV1,
-  ValidationOneStepWitnessV1,
-  ValidationPrepareSelectedSpendRedeemerV1Schema,
+  ValidationAuxiliaryWitness,
+  ValidationAwardSpendRedeemer,
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
+  type ValidationMachineState,
+  ValidationOneStepWitness,
+  ValidationPrepareSelectedSpendRedeemerSchema,
 } from "@al-ft/midgard-sdk";
 import {
-  buildMidgardCanonicalCekProgramV1,
-  type CekProgramMaterialNecessityReceiptSetV1,
+  buildMidgardCanonicalCekProgram,
+  type CekProgramMaterialNecessityReceiptSet,
 } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -37,8 +37,8 @@ import {
   validationOneStepArgumentFromFiles,
 } from "../src/validation-dispute/from-files.js";
 import {
-  encodeScriptSourcesStageOneSpendRedeemerV1,
-  encodeValidationSemanticResolutionRedeemerV1,
+  encodeScriptSourcesStageOneSpendRedeemer,
+  encodeValidationSemanticResolutionRedeemer,
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
   requireValidationCanonicalDecodePrepareReferenceScriptOutRef,
@@ -46,20 +46,20 @@ import {
   requireValidationItemObserveReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
   requireValidationValueAndMintSemanticReferenceScriptOutRef,
-  selectValidationCompleteItemCarriageV1,
-  validateCekSubmissionEvidenceV1,
+  selectValidationCompleteItemCarriage,
+  validateCekSubmissionEvidence,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+  VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES,
   VALIDATION_ITEM_OBSERVE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
-  VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1,
-  VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
-  validationCekSemanticReferenceScriptDeploymentEntryV1,
+  VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
+  VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES,
+  validationCekSemanticReferenceScriptDeploymentEntry,
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
-  validationOneStepEvidenceHashV1,
-  validationSemanticResolverGlobalIndexV1,
-  validationValueAndMintSemanticReferenceScriptDeploymentEntryV1,
+  validationOneStepEvidenceHash,
+  validationSemanticResolverGlobalIndex,
+  validationValueAndMintSemanticReferenceScriptDeploymentEntry,
 } from "../src/validation-dispute/submit.js";
 
 const blueprintPath =
@@ -72,10 +72,10 @@ const encodeRuntimeSchema = Data.to as unknown as (
 ) => string;
 
 const cekSelectionFixture = () => {
-  const program = buildMidgardCanonicalCekProgramV1(
+  const program = buildMidgardCanonicalCekProgram(
     Buffer.from("010100200101", "hex"),
   );
-  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecarV1([
+  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar([
     ...program.material.values(),
   ]);
   const selectedScript = encodeCbor([3n, program.envelopeCbor]);
@@ -110,7 +110,7 @@ const cekSelectionFixture = () => {
           },
         },
       },
-      ValidationAuxiliaryWitnessV1,
+      ValidationAuxiliaryWitness,
     ),
     "hex",
   );
@@ -217,7 +217,7 @@ const routeTimingComponents = {
 
 const necessityReceiptSet = (
   programEnvelopeHash: Uint8Array,
-): CekProgramMaterialNecessityReceiptSetV1 => {
+): CekProgramMaterialNecessityReceiptSet => {
   const singlePublication = concreteTransactionReceipt({
     role: "publication",
     seed: 2,
@@ -372,14 +372,14 @@ type MutableNecessityReceiptSetFixture = {
 } & Record<string, unknown>;
 
 const mutateNecessityReceiptSet = (
-  receiptSet: CekProgramMaterialNecessityReceiptSetV1,
+  receiptSet: CekProgramMaterialNecessityReceiptSet,
   mutate: (draft: MutableNecessityReceiptSetFixture) => void,
-): CekProgramMaterialNecessityReceiptSetV1 => {
+): CekProgramMaterialNecessityReceiptSet => {
   const draft = JSON.parse(
     JSON.stringify(receiptSet),
   ) as MutableNecessityReceiptSetFixture;
   mutate(draft);
-  return draft as unknown as CekProgramMaterialNecessityReceiptSetV1;
+  return draft as unknown as CekProgramMaterialNecessityReceiptSet;
 };
 
 describe("validation-dispute transaction validity", () => {
@@ -421,19 +421,15 @@ describe("validation-dispute transaction validity", () => {
 
   it("selects direct then automatic reference carriage at measured boundaries", () => {
     const direct =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const publication =
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
-    expect(selectValidationCompleteItemCarriageV1(direct)).toBe("direct");
-    expect(selectValidationCompleteItemCarriageV1(direct + 1)).toBe(
-      "reference",
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes;
+    expect(selectValidationCompleteItemCarriage(direct)).toBe("direct");
+    expect(selectValidationCompleteItemCarriage(direct + 1)).toBe("reference");
+    expect(selectValidationCompleteItemCarriage(publication)).toBe("reference");
+    expect(() => selectValidationCompleteItemCarriage(publication + 1)).toThrow(
+      /single-publication envelope/u,
     );
-    expect(selectValidationCompleteItemCarriageV1(publication)).toBe(
-      "reference",
-    );
-    expect(() =>
-      selectValidationCompleteItemCarriageV1(publication + 1),
-    ).toThrow(/single-publication envelope/u);
   });
 
   it("requires the published item-semantic reference script from deployment info", () => {
@@ -584,18 +580,18 @@ describe("validation-dispute transaction validity", () => {
     const scriptHash = "ab".repeat(28);
     const otherScriptHash = "cd".repeat(28);
     const refScriptUTxO = { txHash: "12".repeat(32), outputIndex: 3 };
-    expect(
-      VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
-    ).toEqual({
-      1: "validationTraceDisputeCekExecutionSelectionSemantic",
-      2: "validationTraceDisputeCekContextStepSemantic",
-      3: "validationTraceDisputeCekCoreStepSemantic",
-    });
+    expect(VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES).toEqual(
+      {
+        1: "validationTraceDisputeCekExecutionSelectionSemantic",
+        2: "validationTraceDisputeCekContextStepSemantic",
+        3: "validationTraceDisputeCekCoreStepSemantic",
+      },
+    );
     // The finish resolver fits the envelope and attaches inline.
-    expect(validationCekSemanticReferenceScriptDeploymentEntryV1(0)).toBe(
+    expect(validationCekSemanticReferenceScriptDeploymentEntry(0)).toBe(
       undefined,
     );
-    expect(validationCekSemanticReferenceScriptDeploymentEntryV1(4)).toBe(
+    expect(validationCekSemanticReferenceScriptDeploymentEntry(4)).toBe(
       undefined,
     );
     expect(() =>
@@ -607,11 +603,11 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/CEK semantic resolver 0 is not published by reference/u);
     for (const semanticResolverIndex of [1, 2, 3] as const) {
       const entryName =
-        VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+        VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
           semanticResolverIndex
         ];
       expect(
-        validationCekSemanticReferenceScriptDeploymentEntryV1(
+        validationCekSemanticReferenceScriptDeploymentEntry(
           semanticResolverIndex,
         ),
       ).toBe(entryName);
@@ -679,7 +675,7 @@ describe("validation-dispute transaction validity", () => {
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
     );
     const rosterKeys = Object.keys(
-      VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+      VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES,
     ).map(Number);
     expect(rosterKeys).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
@@ -701,8 +697,8 @@ describe("validation-dispute transaction validity", () => {
     for (const semanticResolverIndex of rosterKeys) {
       const title =
         semanticTitles[
-          validationSemanticResolverGlobalIndexV1(
-            VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1,
+          validationSemanticResolverGlobalIndex(
+            VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX,
             semanticResolverIndex,
           )
         ];
@@ -710,7 +706,7 @@ describe("validation-dispute transaction validity", () => {
         /^fraud_proofs\/validation_trace\/value_and_mint_.+_semantic_v1\.main\.spend$/u,
       );
       expect(
-        validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+        validationValueAndMintSemanticReferenceScriptDeploymentEntry(
           semanticResolverIndex,
         ),
       ).toBe(titleToEntryName(title!));
@@ -723,18 +719,18 @@ describe("validation-dispute transaction validity", () => {
     ).length;
     expect(rosterKeys.length).toBe(valueAndMintTitleCount);
     expect(
-      validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(-1),
+      validationValueAndMintSemanticReferenceScriptDeploymentEntry(-1),
     ).toBe(undefined);
     expect(
-      validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(11),
+      validationValueAndMintSemanticReferenceScriptDeploymentEntry(11),
     ).toBe(undefined);
     expect(
-      validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(1.5),
+      validationValueAndMintSemanticReferenceScriptDeploymentEntry(1.5),
     ).toBe(undefined);
     expect(
       new Set(
         Object.values(
-          VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1,
+          VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES,
         ),
       ).size,
     ).toBe(11);
@@ -757,7 +753,7 @@ describe("validation-dispute transaction validity", () => {
       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ] as const) {
       const entryName =
-        VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+        VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
           semanticResolverIndex
         ];
       expect(
@@ -899,8 +895,8 @@ describe("validation-dispute transaction validity", () => {
         ...base,
         challengedBlockEndTime: 0n,
         sourceValidityRange: {
-          validFrom: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs - 100,
-          validTo: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs + 1,
+          validFrom: MIDGARD_CONSENSUS_LIMITS.blockMaturityMs - 100,
+          validTo: MIDGARD_CONSENSUS_LIMITS.blockMaturityMs + 1,
         },
       }),
     ).toThrow(/cannot complete before the challenged block matures/u);
@@ -909,25 +905,25 @@ describe("validation-dispute transaction validity", () => {
   it("hashes exact canonical one-step evidence and rejects ambiguous data", () => {
     const emptyConstructor = Buffer.from("d87980", "hex");
     expect(
-      validationOneStepEvidenceHashV1({
+      validationOneStepEvidenceHash({
         transitionCbor: emptyConstructor,
         auxiliaryCbor: emptyConstructor,
       }),
     ).toBe("a9ee2618651193d3a6c6c658f3f3d19f6a296103ac660e0071b45d903bc1e192");
     expect(() =>
-      validationOneStepEvidenceHashV1({
+      validationOneStepEvidenceHash({
         transitionCbor: Buffer.from("d8799fff", "hex"),
         auxiliaryCbor: emptyConstructor,
       }),
     ).toThrow(/not exact canonical V1 Plutus Data/u);
     expect(() =>
-      validationOneStepEvidenceHashV1({
+      validationOneStepEvidenceHash({
         transitionCbor: new Uint8Array(),
         auxiliaryCbor: emptyConstructor,
       }),
     ).toThrow(/non-empty/u);
     expect(() =>
-      validationOneStepEvidenceHashV1({
+      validationOneStepEvidenceHash({
         transitionCbor: new Uint8Array(16 * 1024),
         auxiliaryCbor: emptyConstructor,
       }),
@@ -935,7 +931,7 @@ describe("validation-dispute transaction validity", () => {
   });
 
   it("matches the exact prepare, semantic, and award Aiken redeemer ABIs", () => {
-    const state: ValidationMachineStateV1 = {
+    const state: ValidationMachineState = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
       transaction_id: "02".repeat(32),
@@ -973,7 +969,7 @@ describe("validation-dispute transaction validity", () => {
               },
             ],
           },
-          ValidationPrepareSelectedSpendRedeemerV1Schema,
+          ValidationPrepareSelectedSpendRedeemerSchema,
         ),
       },
       {
@@ -988,7 +984,7 @@ describe("validation-dispute transaction validity", () => {
               },
             ],
           },
-          ValidationAwardSpendRedeemerV1,
+          ValidationAwardSpendRedeemer,
         ),
       },
     ] as const;
@@ -1020,7 +1016,7 @@ describe("validation-dispute transaction validity", () => {
           },
         ],
       },
-      ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
+      ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
     );
     expect(canonicalDecodePrepareCbor).toBe(
       Data.to(
@@ -1029,18 +1025,18 @@ describe("validation-dispute transaction validity", () => {
             0n,
             0n,
             0n,
-            Data.from(Data.to(transition, ValidationOneStepWitnessV1)),
+            Data.from(Data.to(transition, ValidationOneStepWitness)),
           ]),
         ]),
       ),
     );
 
     const transitionCbor = Buffer.from(
-      Data.to(transition, ValidationOneStepWitnessV1),
+      Data.to(transition, ValidationOneStepWitness),
       "hex",
     );
     const transitionData = Data.from(
-      Data.to(transition, ValidationOneStepWitnessV1),
+      Data.to(transition, ValidationOneStepWitness),
     );
     // R5 item 1: the cek index is a `prepare_selected` family. Semantic 0
     // (finish) is transition-only; semantic 1 (execution selection) carries
@@ -1053,7 +1049,7 @@ describe("validation-dispute transaction validity", () => {
     expect(cekSelectionAuxiliary.index).toBe(11);
     expect(cekSelectionAuxiliary.fields).toHaveLength(16);
     const cekSelectionRedeemer = Data.from(
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 11,
           semanticResolverIndex: 1,
@@ -1083,7 +1079,7 @@ describe("validation-dispute transaction validity", () => {
     expect(cekRoute.fields[1]).toEqual([7n, 2n]);
     // The route is mandatory for 11/1 and refused everywhere else.
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 11,
           semanticResolverIndex: 1,
@@ -1097,7 +1093,7 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/requires a material route/u);
     const noAuxiliaryCbor = Buffer.from(Data.to(new Constr(0, [])), "hex");
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 11,
           semanticResolverIndex: 0,
@@ -1109,7 +1105,7 @@ describe("validation-dispute transaction validity", () => {
         materialRoute: "NoCekMaterial",
       }),
     ).toThrow(/permitted only for the CEK execution-selection/u);
-    const cekFinishRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+    const cekFinishRedeemer = encodeValidationSemanticResolutionRedeemer({
       oneStepArgument: {
         resolverIndex: 11,
         semanticResolverIndex: 0,
@@ -1132,7 +1128,7 @@ describe("validation-dispute transaction validity", () => {
     ]);
     const coreStepWitness = new Constr(12, [coreStepEvidence]);
     const cekCoreStepRedeemer = Data.from(
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 11,
           semanticResolverIndex: 3,
@@ -1153,7 +1149,7 @@ describe("validation-dispute transaction validity", () => {
       "hex",
     );
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 11,
           semanticResolverIndex: 3,
@@ -1165,7 +1161,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/validation Cek auxiliary witness/u);
     const cekContextStepRedeemer = Data.from(
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 11,
           semanticResolverIndex: 2,
@@ -1206,7 +1202,7 @@ describe("validation-dispute transaction validity", () => {
     ] as const;
     for (const shape of valueAndMintShapes) {
       const redeemer = Data.from(
-        encodeValidationSemanticResolutionRedeemerV1({
+        encodeValidationSemanticResolutionRedeemer({
           oneStepArgument: {
             resolverIndex: 12,
             semanticResolverIndex: shape.semantic,
@@ -1224,7 +1220,7 @@ describe("validation-dispute transaction validity", () => {
       expect(action.fields).toHaveLength(shape.fields);
     }
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 12,
           semanticResolverIndex: 2,
@@ -1250,7 +1246,7 @@ describe("validation-dispute transaction validity", () => {
     // to request any more. The checked-in blueprint still carries the
     // pre-#620 two-arm definition until the wave's blueprint regeneration
     // lands, so pin the exact wire bytes; the Aiken twin pins the decode side.
-    const itemSemanticCbor = encodeValidationSemanticResolutionRedeemerV1({
+    const itemSemanticCbor = encodeValidationSemanticResolutionRedeemer({
       oneStepArgument: {
         resolverIndex: 0,
         semanticResolverIndex: 1,
@@ -1266,14 +1262,14 @@ describe("validation-dispute transaction validity", () => {
           new Constr(0, [
             0n,
             0n,
-            Data.from(Data.to(transition, ValidationOneStepWitnessV1)),
+            Data.from(Data.to(transition, ValidationOneStepWitness)),
           ]),
         ]),
       ),
     );
     // A non-item auxiliary refuses at the ingress shape gate.
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 0,
           semanticResolverIndex: 1,
@@ -1289,7 +1285,7 @@ describe("validation-dispute transaction validity", () => {
     // the retired four-field `Verify` was the only shape it could ever have
     // targeted — so redeemer construction refuses it fail-closed.
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 0,
           semanticResolverIndex: 1,
@@ -1319,7 +1315,7 @@ describe("validation-dispute transaction validity", () => {
       Data.to(new Constr(29, [completeItemCarriage]) as never),
       "hex",
     );
-    const stageFourDirect = encodeValidationSemanticResolutionRedeemerV1({
+    const stageFourDirect = encodeValidationSemanticResolutionRedeemer({
       oneStepArgument: {
         resolverIndex: 8,
         semanticResolverIndex: 0,
@@ -1492,7 +1488,7 @@ describe("validation-dispute transaction validity", () => {
         Data.to(selected.auxiliary as never),
         "hex",
       );
-      const cbor = encodeValidationSemanticResolutionRedeemerV1({
+      const cbor = encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 8,
           semanticResolverIndex: selected.index,
@@ -1512,7 +1508,7 @@ describe("validation-dispute transaction validity", () => {
       ).toBeInstanceOf(Constr);
     }
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 8,
           semanticResolverIndex: 13,
@@ -1527,7 +1523,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow("does not match the selected ScriptSources proof family");
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 8,
           semanticResolverIndex: 10,
@@ -1594,7 +1590,7 @@ describe("validation-dispute transaction validity", () => {
         module: "native_scripts_effectful_semantic_v1",
       },
     ] as const) {
-      const cbor = encodeValidationSemanticResolutionRedeemerV1({
+      const cbor = encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 9,
           semanticResolverIndex: selected.index,
@@ -1617,7 +1613,7 @@ describe("validation-dispute transaction validity", () => {
       ).toBeInstanceOf(Constr);
     }
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 9,
           semanticResolverIndex: 2,
@@ -1639,10 +1635,10 @@ describe("validation-dispute transaction validity", () => {
     // The stage-one redeemer envelope is the last semantic resolver, after
     // the fourteen indices' 90 kind resolvers (75 before R5 item 1 added the
     // four cek and eleven ValueAndMint kinds).
-    expect(validationSemanticResolverGlobalIndexV1(8, 28)).toBe(90);
-    expect(validationSemanticResolverGlobalIndexV1(8, 15)).toBe(47);
+    expect(validationSemanticResolverGlobalIndex(8, 28)).toBe(90);
+    expect(validationSemanticResolverGlobalIndex(8, 15)).toBe(47);
 
-    const state: ValidationMachineStateV1 = {
+    const state: ValidationMachineState = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
       transaction_id: "02".repeat(32),
@@ -1665,7 +1661,7 @@ describe("validation-dispute transaction validity", () => {
           work_witness_cbor: "8100",
           claimed_successor: { ...state, program_counter: 1n },
         },
-        ValidationOneStepWitnessV1,
+        ValidationOneStepWitness,
       ),
     );
     const none = new Constr(1, []);
@@ -1753,7 +1749,7 @@ describe("validation-dispute transaction validity", () => {
       {
         definition:
           "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemerV1({
+        cbor: encodeScriptSourcesStageOneSpendRedeemer({
           stage: "envelope",
           inputIndex: 0n,
           outputIndex: 0n,
@@ -1766,7 +1762,7 @@ describe("validation-dispute transaction validity", () => {
       {
         definition:
           "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_traversal_normalizer_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemerV1({
+        cbor: encodeScriptSourcesStageOneSpendRedeemer({
           stage: "traversal",
           inputIndex: 0n,
           outputIndex: 0n,
@@ -1778,7 +1774,7 @@ describe("validation-dispute transaction validity", () => {
       {
         definition:
           "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_outer_normalizer_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemerV1({
+        cbor: encodeScriptSourcesStageOneSpendRedeemer({
           stage: "outer",
           inputIndex: 0n,
           outputIndex: 0n,
@@ -1789,7 +1785,7 @@ describe("validation-dispute transaction validity", () => {
         "script_sources_stage_one_redeemer_finalize_frame_executor_v1",
       ].map((module) => ({
         definition: `fraud_proofs/validation_trace/${module}/SpendRedeemer`,
-        cbor: encodeScriptSourcesStageOneSpendRedeemerV1({
+        cbor: encodeScriptSourcesStageOneSpendRedeemer({
           stage: "executor",
           inputIndex: 0n,
           outputIndex: 0n,
@@ -1801,7 +1797,7 @@ describe("validation-dispute transaction validity", () => {
       {
         definition:
           "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1/SpendRedeemer",
-        cbor: encodeScriptSourcesStageOneSpendRedeemerV1({
+        cbor: encodeScriptSourcesStageOneSpendRedeemer({
           stage: "settlement",
           inputIndex: 0n,
           outputIndex: 0n,
@@ -1820,7 +1816,7 @@ describe("validation-dispute transaction validity", () => {
       ).toBeInstanceOf(Constr);
     }
     expect(() =>
-      encodeScriptSourcesStageOneSpendRedeemerV1({
+      encodeScriptSourcesStageOneSpendRedeemer({
         stage: "envelope",
         inputIndex: 0n,
         outputIndex: 0n,
@@ -1841,7 +1837,7 @@ describe("validation-dispute transaction validity", () => {
     // blueprint still carries the pre-#620 definition until the wave's
     // blueprint regeneration lands, so pin the exact emitted wire; the Aiken
     // twin pins the decode side.
-    const state: ValidationMachineStateV1 = {
+    const state: ValidationMachineState = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
       transaction_id: "02".repeat(32),
@@ -1864,7 +1860,7 @@ describe("validation-dispute transaction validity", () => {
           work_witness_cbor: "8100",
           claimed_successor: { ...state, program_counter: 1n },
         },
-        ValidationOneStepWitnessV1,
+        ValidationOneStepWitness,
       ),
       "hex",
     );
@@ -1878,7 +1874,7 @@ describe("validation-dispute transaction validity", () => {
         "hex",
       ),
     };
-    const directRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+    const directRedeemer = encodeValidationSemanticResolutionRedeemer({
       oneStepArgument,
       inputIndex: 5n,
       outputIndex: 7n,
@@ -1900,7 +1896,7 @@ describe("validation-dispute transaction validity", () => {
   });
 
   it("encodes resolver-7 non-membership evidence into the exact semantic ABI", () => {
-    const state: ValidationMachineStateV1 = {
+    const state: ValidationMachineState = {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
       transaction_id: "02".repeat(32),
@@ -1923,7 +1919,7 @@ describe("validation-dispute transaction validity", () => {
           work_witness_cbor: "8100",
           claimed_successor: { ...state, program_counter: 1n },
         },
-        ValidationOneStepWitnessV1,
+        ValidationOneStepWitness,
       ),
       "hex",
     );
@@ -1951,7 +1947,7 @@ describe("validation-dispute transaction validity", () => {
       "hex",
     );
 
-    const redeemer = encodeValidationSemanticResolutionRedeemerV1({
+    const redeemer = encodeValidationSemanticResolutionRedeemer({
       oneStepArgument: {
         resolverIndex: 7,
         semanticResolverIndex: 5,
@@ -1997,7 +1993,7 @@ describe("validation-dispute transaction validity", () => {
       "hex",
     );
     expect(() =>
-      encodeValidationSemanticResolutionRedeemerV1({
+      encodeValidationSemanticResolutionRedeemer({
         oneStepArgument: {
           resolverIndex: 7,
           semanticResolverIndex: 5,
@@ -2021,12 +2017,12 @@ describe("validation-dispute transaction validity", () => {
       cekRouteMaterial: fixture.routeMaterial,
       cekIncrementalNecessityReceiptSet: receiptSet,
     } as const;
-    expect(validateCekSubmissionEvidenceV1(argument)).toEqual({
+    expect(validateCekSubmissionEvidence(argument)).toEqual({
       cekRouteMaterial: fixture.routeMaterial,
       cekIncrementalNecessityReceiptSet: receiptSet,
     });
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekRouteMaterial: undefined,
         cekIncrementalNecessityReceiptSet: undefined,
@@ -2034,11 +2030,11 @@ describe("validation-dispute transaction validity", () => {
     ).toThrow(/requires complete route material/u);
 
     const noAuxiliaryCbor = Buffer.from(
-      Data.to("NoAuxiliaryWitness", ValidationAuxiliaryWitnessV1),
+      Data.to("NoAuxiliaryWitness", ValidationAuxiliaryWitness),
       "hex",
     );
     expect(
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         resolverIndex: 11,
         semanticResolverIndex: 0,
         transitionCbor: argument.transitionCbor,
@@ -2047,7 +2043,7 @@ describe("validation-dispute transaction validity", () => {
     ).toEqual({});
     for (const resolverIndex of [11, 12]) {
       expect(() =>
-        validateCekSubmissionEvidenceV1({
+        validateCekSubmissionEvidence({
           ...argument,
           resolverIndex,
           auxiliaryCbor:
@@ -2058,14 +2054,14 @@ describe("validation-dispute transaction validity", () => {
     // Route material rides only the execution-selection semantic (11/1): the
     // same selection witness under another cek semantic index is refused.
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         semanticResolverIndex: 2,
       }),
     ).toThrow(/permitted only for an exact program-selection witness/u);
 
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: {
           ...receiptSet,
@@ -2074,7 +2070,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/another program envelope/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2088,7 +2084,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/directProof rejected attempt/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2099,7 +2095,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid transaction-role grammar/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2114,7 +2110,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid transaction-role grammar/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2125,7 +2121,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/32-byte lowercase hex/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2136,7 +2132,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid program-material input counts/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2148,7 +2144,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/must bind increasing output indices of its txId/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2160,7 +2156,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/material outrefs do not match/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2171,7 +2167,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/32-byte lowercase hex/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2183,7 +2179,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/target-inconsistent measured margin/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2195,7 +2191,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/target-inconsistent measured margin/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2206,7 +2202,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid maturity-window margin/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2217,7 +2213,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid maturity-window margin/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2230,7 +2226,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/must contain exactly/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2241,7 +2237,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid limiting measured margin/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2255,7 +2251,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/fit attempt contains a failed constraint/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2272,7 +2268,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid transaction-role grammar/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2288,7 +2284,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/omit published material sources/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2305,7 +2301,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).not.toThrow();
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2324,7 +2320,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/consumed and reference inputs must be disjoint/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2335,7 +2331,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/do not match the exact minimum/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2346,7 +2342,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/must be at least two/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2357,7 +2353,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/invalid for the selected route/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2368,7 +2364,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/strictly sorted without duplicates/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2380,7 +2376,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/strictly sorted without duplicates/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2391,7 +2387,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/requires validator identities/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2402,7 +2398,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/28-byte lowercase hex/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2414,7 +2410,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/duplicate transaction identities/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,
@@ -2425,7 +2421,7 @@ describe("validation-dispute transaction validity", () => {
       }),
     ).toThrow(/must contain exactly/u);
     expect(() =>
-      validateCekSubmissionEvidenceV1({
+      validateCekSubmissionEvidence({
         ...argument,
         cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
           receiptSet,

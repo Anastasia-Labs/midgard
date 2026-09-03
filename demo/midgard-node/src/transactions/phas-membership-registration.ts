@@ -85,7 +85,7 @@ export type PhasMembershipRegistrationOptions = {
   ) => void;
 };
 
-export const decodePhasMembershipRegistrationTransactionBodyEvidenceV1 = (
+export const decodePhasMembershipRegistrationTransactionBodyEvidence = (
   value: unknown,
 ): PhasMembershipRegistrationTransactionBodyEvidence => {
   if (
@@ -130,7 +130,7 @@ export const decodePhasMembershipRegistrationTransactionBodyEvidenceV1 = (
   return value as PhasMembershipRegistrationTransactionBodyEvidence;
 };
 
-export const decodePhasMembershipRewardRegistrationResultV1 = (
+export const decodePhasMembershipRewardRegistrationResult = (
   value: unknown,
 ): PhasMembershipRewardRegistrationResult => {
   if (
@@ -183,7 +183,7 @@ export const decodePhasMembershipRewardRegistrationResultV1 = (
     throw new Error("PHAS registration result status is not canonical V1");
   }
   const transactionBody =
-    decodePhasMembershipRegistrationTransactionBodyEvidenceV1(
+    decodePhasMembershipRegistrationTransactionBodyEvidence(
       value.transactionBody,
     );
   if (
@@ -250,7 +250,7 @@ export const inspectPhasMembershipRegistrationTransaction = (
     );
   }
   const bytes = Buffer.from(unsignedTransactionCborHex, "hex");
-  const evidence = decodePhasMembershipRegistrationTransactionBodyEvidenceV1({
+  const evidence = decodePhasMembershipRegistrationTransactionBodyEvidence({
     schemaVersion: "midgard-phas-registration-transaction-body-v1",
     txHash: CML.hash_transaction(body).to_hex(),
     cborSha256: createHash("sha256").update(bytes).digest("hex"),
@@ -386,7 +386,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       yield* Effect.logInfo(
         `PHAS membership reward account is already registered before submission: scriptHash=${identity.scriptHash},rewardAddress=${identity.rewardAddress}`,
       );
-      return decodePhasMembershipRewardRegistrationResultV1({
+      return decodePhasMembershipRewardRegistrationResult({
         status: "already_registered",
         rewardAddress: identity.rewardAddress,
         scriptHash: identity.scriptHash,
@@ -404,7 +404,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
           options.inspectRegistrationTx ??
           inspectPhasMembershipRegistrationTransaction
         )(built, identity);
-        decodePhasMembershipRegistrationTransactionBodyEvidenceV1(
+        decodePhasMembershipRegistrationTransactionBodyEvidence(
           captured.evidence,
         );
         return captured;
@@ -430,7 +430,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         yield* Effect.logInfo(
           `PHAS membership reward account is already registered: scriptHash=${built.scriptHash},rewardAddress=${built.rewardAddress}`,
         );
-        return decodePhasMembershipRewardRegistrationResultV1({
+        return decodePhasMembershipRewardRegistrationResult({
           status: "already_registered",
           rewardAddress: built.rewardAddress,
           scriptHash: built.scriptHash,
@@ -451,7 +451,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
       );
     }
     options.onSubmittedRegistrationTx?.(capturedTransaction);
-    return decodePhasMembershipRewardRegistrationResultV1({
+    return decodePhasMembershipRewardRegistrationResult({
       status: "registration_submitted",
       rewardAddress: built.rewardAddress,
       scriptHash: built.scriptHash,

@@ -19,12 +19,12 @@
  * check mirrored off-chain); the last reaches local UPLC evaluation and fails
  * inside the validator. Own file for the wasm-leak isolation its siblings cite.
  */
-import { midgardFieldCarriageBoundsV1 } from "@al-ft/midgard-core";
+import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_FIELD_INDEX_V1 } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpeningV1 } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
 import {
   submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
@@ -33,19 +33,19 @@ import {
   submitMintAuthorizationStep03WitnessAbsence,
 } from "../src/mint-authorization/index.js";
 import {
-  addressWitnessItemCborsV1,
-  buildMintAuthorizationSubjectV1,
-  directionAPresentScriptV1,
-  directionBSatisfiedNativeScriptV1,
-  expectOnchainRefusalV1,
-  largeMintItemCborsV1,
-  makeMintAuthorizationEmulatorHarnessV1,
-  type MintAuthorizationHarnessV1,
-  publishMintAuthorizationReferenceScriptsV1,
-  setupMintAuthorizationScenarioV1,
-  smallMintItemCborsV1,
-  submitRawMintAuthorizationStep02TamperedMintV1,
-  tamperFieldPreimageBytesV1,
+  addressWitnessItemCbors,
+  buildMintAuthorizationSubject,
+  directionAPresentScript,
+  directionBSatisfiedNativeScript,
+  expectOnchainRefusal,
+  largeMintItemCbors,
+  makeMintAuthorizationEmulatorHarness,
+  type MintAuthorizationHarness,
+  publishMintAuthorizationReferenceScripts,
+  setupMintAuthorizationScenario,
+  smallMintItemCbors,
+  submitRawMintAuthorizationStep02TamperedMint,
+  tamperFieldPreimageBytes,
 } from "./support/mint-authorization-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
@@ -53,26 +53,26 @@ const ACCUSED_POLICY_INDEX = 0n;
 
 /** The honest init leg every negative shares, plus published references. */
 const driveInit = async (
-  harness: MintAuthorizationHarnessV1,
-  setup: Awaited<ReturnType<typeof setupMintAuthorizationScenarioV1>>["setup"],
+  harness: MintAuthorizationHarness,
+  setup: Awaited<ReturnType<typeof setupMintAuthorizationScenario>>["setup"],
 ): Promise<{
   readonly initResult: Awaited<ReturnType<typeof submitMintAuthorizationInit>>;
   readonly refs: readonly [
     step01Ref: Awaited<
-      ReturnType<typeof publishMintAuthorizationReferenceScriptsV1>
+      ReturnType<typeof publishMintAuthorizationReferenceScripts>
     >[number],
     step02Ref: Awaited<
-      ReturnType<typeof publishMintAuthorizationReferenceScriptsV1>
+      ReturnType<typeof publishMintAuthorizationReferenceScripts>
     >[number],
     step03Ref: Awaited<
-      ReturnType<typeof publishMintAuthorizationReferenceScriptsV1>
+      ReturnType<typeof publishMintAuthorizationReferenceScripts>
     >[number],
   ];
 }> => {
   const { realBlueprint, funderLucid, proverLucid, proverSigner, catalogue } =
     harness;
   const [step01Ref, step02Ref, step03Ref] =
-    await publishMintAuthorizationReferenceScriptsV1({
+    await publishMintAuthorizationReferenceScripts({
       lucid: funderLucid,
       contracts: harness.family,
     });
@@ -97,14 +97,14 @@ const driveInit = async (
 
 describe("mint-authorization emulator adversarial polarity", () => {
   it("never binds a committed leaf the operator honestly recorded as rejected", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1({
+    const harness = await makeMintAuthorizationEmulatorHarness({
       useScalusEvaluator: false,
     });
-    const subject = buildMintAuthorizationSubjectV1({
-      mintItemCbors: smallMintItemCborsV1(),
+    const subject = buildMintAuthorizationSubject({
+      mintItemCbors: smallMintItemCbors(),
       validity: "TxIsInvalid",
     });
-    const { block, setup } = await setupMintAuthorizationScenarioV1({
+    const { block, setup } = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -133,15 +133,15 @@ describe("mint-authorization emulator adversarial polarity", () => {
   }, 600_000);
 
   it("refuses a false absence claim when the committed field 6 consulted the policy's script", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1({
+    const harness = await makeMintAuthorizationEmulatorHarness({
       useScalusEvaluator: false,
     });
-    const present = directionAPresentScriptV1();
-    const subject = buildMintAuthorizationSubjectV1({
+    const present = directionAPresentScript();
+    const subject = buildMintAuthorizationSubject({
       mintItemCbors: [present.mintItemCbor],
       scriptWitnessItemCbors: [present.scriptWitnessItemCbor],
     });
-    const { block, setup } = await setupMintAuthorizationScenarioV1({
+    const { block, setup } = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -170,7 +170,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
       threadOutRef: step01.nextThreadOutRef,
       reconstruction: block.reconstruction,
       policyIndex: ACCUSED_POLICY_INDEX,
-      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: refs[1],
@@ -193,15 +193,15 @@ describe("mint-authorization emulator adversarial polarity", () => {
   }, 600_000);
 
   it("refuses an unsatisfied claim when the committed signers SATISFY the native script", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1({
+    const harness = await makeMintAuthorizationEmulatorHarness({
       useScalusEvaluator: false,
     });
-    const satisfied = directionBSatisfiedNativeScriptV1();
-    const subject = buildMintAuthorizationSubjectV1({
+    const satisfied = directionBSatisfiedNativeScript();
+    const subject = buildMintAuthorizationSubject({
       mintItemCbors: [satisfied.mintItemCbor],
       addrWitnessItemCbors: [satisfied.addrWitnessItemCbor],
     });
-    const { block, setup } = await setupMintAuthorizationScenarioV1({
+    const { block, setup } = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -230,7 +230,7 @@ describe("mint-authorization emulator adversarial polarity", () => {
       threadOutRef: step01.nextThreadOutRef,
       reconstruction: block.reconstruction,
       policyIndex: ACCUSED_POLICY_INDEX,
-      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
+      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: refs[1],
@@ -254,15 +254,15 @@ describe("mint-authorization emulator adversarial polarity", () => {
   }, 600_000);
 
   it("refuses a tampered predeployed tier-2 mint publication at the field re-hash", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1({
+    const harness = await makeMintAuthorizationEmulatorHarness({
       useScalusEvaluator: false,
     });
-    const largeMint = largeMintItemCborsV1();
-    const subject = buildMintAuthorizationSubjectV1({
+    const largeMint = largeMintItemCbors();
+    const subject = buildMintAuthorizationSubject({
       mintItemCbors: largeMint.itemCbors,
-      addrWitnessItemCbors: addressWitnessItemCborsV1(1),
+      addrWitnessItemCbors: addressWitnessItemCbors(1),
     });
-    const { block, setup } = await setupMintAuthorizationScenarioV1({
+    const { block, setup } = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -272,8 +272,8 @@ describe("mint-authorization emulator adversarial polarity", () => {
 
     // The honest tier-2 mint preimage, tampered in its last content byte: the
     // published bytes still decode, but no longer re-hash to the committed slot.
-    const plannedMint = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
+    const plannedMint = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.mint,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       itemCbors: largeMint.itemCbors.map((hex) => Buffer.from(hex, "hex")),
@@ -282,14 +282,14 @@ describe("mint-authorization emulator adversarial polarity", () => {
     });
     expect(plannedMint.plan.tier).toBe("RawUtxo");
     expect(plannedMint.preimage.length).toBeGreaterThan(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
-    const tamperedPreimageBytes = tamperFieldPreimageBytesV1(
+    const tamperedPreimageBytes = tamperFieldPreimageBytes(
       plannedMint.preimage,
     );
 
     const [step01Ref, step02Ref] =
-      await publishMintAuthorizationReferenceScriptsV1({
+      await publishMintAuthorizationReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.family,
       });
@@ -323,8 +323,8 @@ describe("mint-authorization emulator adversarial polarity", () => {
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
 
-    await expectOnchainRefusalV1(() =>
-      submitRawMintAuthorizationStep02TamperedMintV1({
+    await expectOnchainRefusal(() =>
+      submitRawMintAuthorizationStep02TamperedMint({
         harness,
         threadOutRef: step01.nextThreadOutRef,
         block,

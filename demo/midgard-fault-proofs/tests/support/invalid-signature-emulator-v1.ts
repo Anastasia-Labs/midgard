@@ -13,16 +13,16 @@
  * That is what makes the honest polarity expressible at all: an honest block
  * commits witnesses that genuinely sign the transaction id, and the only way to
  * accuse it is to bypass the submitter's local guard — which
- * {@link submitRawInvalidSignatureStep02V1} does, so the refusal comes from the
+ * {@link submitRawInvalidSignatureStep02} does, so the refusal comes from the
  * validator rather than from the builder.
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  midgardFieldCarriageBoundsV1,
-  type MidgardNativeTxFullV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCompact,
+  midgardFieldCarriageBounds,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -35,12 +35,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../../src/field-opening-v1.js";
 import {
-  requireFaultProofStepReferenceScriptV1,
+  requireFaultProofStepReferenceScript,
   resolveInvalidSignatureDeploymentContracts,
 } from "../../src/runtime.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
@@ -50,11 +50,11 @@ import {
   selectFeeInput,
 } from "../../src/submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
-import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
-import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
+import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts-v1.js";
+import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
 import {
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishPlainReferenceScriptUtxo,
@@ -67,7 +67,7 @@ import {
  * byte string (`0x58 0x65` + 101) = 103. §5.3 fixes the stride, which is what
  * lets the on-chain `field_item_at` reach witness `n` by arithmetic.
  */
-export const INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1 = 103;
+export const INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE = 103;
 
 /**
  * First field-7 vector too large for tier 1, so §8.4 selects a tier-2 `RawUtxo`
@@ -76,17 +76,17 @@ export const INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1 = 103;
  * the constant is a floor rather than an exact fit and the resulting preimage
  * (14,422 B) clears the 14,336-byte tier-1 bound by a full item.
  */
-export const INVALID_SIGNATURE_FIRST_RAW_WITNESS_COUNT_V1 =
+export const INVALID_SIGNATURE_FIRST_RAW_WITNESS_COUNT =
   Math.floor(
-    (midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes - 3) /
-      INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1,
+    (midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes - 3) /
+      INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE,
   ) + 1;
 
 /**
  * A deterministic Ed25519 keypair. Fixtures are reproducible run to run, which
  * matters here because the committed signatures are the evidence under test.
  */
-const witnessKeyPairV1 = (
+const witnessKeyPair = (
   index: number,
 ): {
   readonly verificationKey: string;
@@ -105,14 +105,14 @@ const witnessKeyPairV1 = (
 };
 
 /** A witness whose signature genuinely verifies against `txId`. */
-export const honestAddressWitnessV1 = ({
+export const honestAddressWitness = ({
   index,
   txId,
 }: {
   readonly index: number;
   readonly txId: string;
 }): SDK.MidgardAddressWitness => {
-  const key = witnessKeyPairV1(index);
+  const key = witnessKeyPair(index);
   return {
     verification_key: key.verificationKey,
     signature: key.sign(Buffer.from(txId, "hex")),
@@ -124,15 +124,15 @@ export const honestAddressWitnessV1 = ({
  * one: exactly the shape a block commits when it violates the rule. The key is
  * a real Ed25519 point, so nothing but the signature check can refuse it.
  */
-export const invalidAddressWitnessV1 = (
+export const invalidAddressWitness = (
   index: number,
 ): SDK.MidgardAddressWitness => ({
-  verification_key: witnessKeyPairV1(index).verificationKey,
+  verification_key: witnessKeyPair(index).verificationKey,
   signature: Buffer.alloc(64, (index % 251) + 1).toString("hex"),
 });
 
-export type InvalidSignatureSubjectV1 = {
-  readonly nativeTx: MidgardNativeTxFullV1;
+export type InvalidSignatureSubject = {
+  readonly nativeTx: MidgardNativeTxFull;
   readonly nativeTxId: string;
   readonly nativeTxCompactCbor: string;
   readonly addrTxWits: readonly SDK.MidgardAddressWitness[];
@@ -143,7 +143,7 @@ export type InvalidSignatureSubjectV1 = {
   readonly inclusion: SubmitStep01TxInclusion;
 };
 
-const nativeTxWithWitnessesV1 = ({
+const nativeTxWithWitnesses = ({
   spendInputByte,
   fee,
   addrTxWits,
@@ -151,7 +151,7 @@ const nativeTxWithWitnessesV1 = ({
   readonly spendInputByte: string;
   readonly fee: bigint;
   readonly addrTxWits: readonly SDK.MidgardAddressWitness[];
-}): MidgardNativeTxFullV1 =>
+}): MidgardNativeTxFull =>
   makeNativeTx({
     spendInputCbors: [
       Buffer.from(
@@ -173,8 +173,8 @@ const nativeTxWithWitnessesV1 = ({
  * Commits one canonical native-V1 compact transaction as the sole leaf of a
  * block's raw transactions MPF and returns the step-01 inclusion evidence.
  */
-export const buildInvalidSignatureBlockFixtureV1 = async (
-  nativeTx: MidgardNativeTxFullV1,
+export const buildInvalidSignatureBlockFixture = async (
+  nativeTx: MidgardNativeTxFull,
 ): Promise<{
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
@@ -182,8 +182,8 @@ export const buildInvalidSignatureBlockFixtureV1 = async (
   readonly nativeTxCompactCbor: string;
   readonly inclusion: SubmitStep01TxInclusion;
 }> => {
-  const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const store = new Store(undefined);
   await store.ready();
@@ -213,9 +213,9 @@ export const buildInvalidSignatureBlockFixtureV1 = async (
 };
 
 const witnessSetCompactOf = (
-  nativeTx: MidgardNativeTxFullV1,
+  nativeTx: MidgardNativeTxFull,
 ): SDK.NativeTxWitnessSetCompact => {
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet);
+  const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
   return {
     addr_tx_wits_hash: compact.addrTxWitsHash.toString("hex"),
     script_tx_wits_hash: compact.scriptTxWitsHash.toString("hex"),
@@ -236,7 +236,7 @@ const witnessSetCompactOf = (
  * witness exists: the builder derives it from a witness-free twin of the same
  * body, signs *that*, and asserts the populated transaction re-derives to it.
  */
-export const buildInvalidSignatureSubjectV1 = async ({
+export const buildInvalidSignatureSubject = async ({
   accused,
   decoyWitnessCount = 0,
   spendInputByte = "55",
@@ -246,28 +246,28 @@ export const buildInvalidSignatureSubjectV1 = async ({
   readonly decoyWitnessCount?: number;
   readonly spendInputByte?: string;
   readonly fee?: bigint;
-}): Promise<InvalidSignatureSubjectV1> => {
-  const bodyOnly = nativeTxWithWitnessesV1({
+}): Promise<InvalidSignatureSubject> => {
+  const bodyOnly = nativeTxWithWitnesses({
     spendInputByte,
     fee,
     addrTxWits: [],
   });
-  const nativeTxId = computeMidgardNativeTxIdV1(bodyOnly).toString("hex");
+  const nativeTxId = computeMidgardNativeTxId(bodyOnly).toString("hex");
   const accusedIndex = decoyWitnessCount;
   const addrTxWits: readonly SDK.MidgardAddressWitness[] = [
     ...Array.from({ length: decoyWitnessCount }, (_unused, index) =>
-      honestAddressWitnessV1({ index, txId: nativeTxId }),
+      honestAddressWitness({ index, txId: nativeTxId }),
     ),
     accused === "honest"
-      ? honestAddressWitnessV1({ index: accusedIndex, txId: nativeTxId })
-      : invalidAddressWitnessV1(accusedIndex),
+      ? honestAddressWitness({ index: accusedIndex, txId: nativeTxId })
+      : invalidAddressWitness(accusedIndex),
   ];
-  const nativeTx = nativeTxWithWitnessesV1({
+  const nativeTx = nativeTxWithWitnesses({
     spendInputByte,
     fee,
     addrTxWits,
   });
-  const fixture = await buildInvalidSignatureBlockFixtureV1(nativeTx);
+  const fixture = await buildInvalidSignatureBlockFixture(nativeTx);
   if (fixture.nativeTxId !== nativeTxId) {
     throw new Error(
       "address witnesses moved the native transaction id; §3's id preimage should be the body alone",
@@ -286,8 +286,8 @@ export const buildInvalidSignatureSubjectV1 = async ({
   };
 };
 
-export const makeInvalidSignatureEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeInvalidSignatureEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realInvalidSignature: true,
       alwaysFraudProofCatalogue: true,
@@ -307,8 +307,8 @@ export const makeInvalidSignatureEmulatorHarnessV1 = async () => {
   return { ...harness, family, category };
 };
 
-export type InvalidSignatureEmulatorHarnessV1 = Awaited<
-  ReturnType<typeof makeInvalidSignatureEmulatorHarnessV1>
+export type InvalidSignatureEmulatorHarness = Awaited<
+  ReturnType<typeof makeInvalidSignatureEmulatorHarness>
 >;
 
 /**
@@ -316,12 +316,12 @@ export type InvalidSignatureEmulatorHarnessV1 = Awaited<
  * ruling: a fault proof sources every script witness from a published reference
  * script, never from an inline attachment.
  */
-export const publishInvalidSignatureReferenceScriptsV1 = async ({
+export const publishInvalidSignatureReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: InvalidSignatureEmulatorHarnessV1["family"];
+  readonly contracts: InvalidSignatureEmulatorHarness["family"];
 }): Promise<readonly [UTxO, UTxO]> => {
   const publications: UTxO[] = [];
   // Sequential: each publication spends UTxOs the next one selects from.
@@ -340,14 +340,14 @@ export const publishInvalidSignatureReferenceScriptsV1 = async ({
   return [step01, step02];
 };
 
-export const setupInvalidSignatureScenarioV1 = async ({
+export const setupInvalidSignatureScenario = async ({
   harness,
   subject,
 }: {
-  readonly harness: InvalidSignatureEmulatorHarnessV1;
-  readonly subject: InvalidSignatureSubjectV1;
-}): Promise<Awaited<ReturnType<typeof setupFraudulentBlockV1>>> =>
-  await setupFraudulentBlockV1({
+  readonly harness: InvalidSignatureEmulatorHarness;
+  readonly subject: InvalidSignatureSubject;
+}): Promise<Awaited<ReturnType<typeof setupFraudulentBlock>>> =>
+  await setupFraudulentBlock({
     funderLucid: harness.funderLucid,
     emulator: harness.emulator,
     contracts: harness.contracts,
@@ -368,7 +368,7 @@ export const setupInvalidSignatureScenarioV1 = async ({
  * step-02's on-chain `verify_ed25519_signature(...) == False`, which is the
  * check that must refuse the attack.
  */
-export const submitRawInvalidSignatureStep02V1 = async ({
+export const submitRawInvalidSignatureStep02 = async ({
   harness,
   deploymentInfo,
   threadOutRef,
@@ -376,10 +376,10 @@ export const submitRawInvalidSignatureStep02V1 = async ({
   referenceScriptUtxo,
   badAddrTxWitIndex,
 }: {
-  readonly harness: InvalidSignatureEmulatorHarnessV1;
+  readonly harness: InvalidSignatureEmulatorHarness;
   readonly deploymentInfo: unknown;
   readonly threadOutRef: string;
-  readonly subject: InvalidSignatureSubjectV1;
+  readonly subject: InvalidSignatureSubject;
   readonly referenceScriptUtxo: UTxO;
   readonly badAddrTxWitIndex?: bigint;
 }): Promise<string> => {
@@ -415,33 +415,31 @@ export const submitRawInvalidSignatureStep02V1 = async ({
   if (datum.data === null) {
     throw new Error("Raw step-02 thread UTxO carries no step state");
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: datum.data.bad_tx_id,
     nativeTxCompactCbor: subject.nativeTxCompactCbor,
-    itemCbors: subject.addrTxWits.map(
-      SDK.encodeMidgardAddressWitnessCanonicalV1,
-    ),
+    itemCbors: subject.addrTxWits.map(SDK.encodeMidgardAddressWitnessCanonical),
     owner: signer.paymentKeyHash,
     witnessSet: subject.witnessSetCompact,
     anchorWitnessSetHash: datum.data.bad_tx_witness_set_hash,
     label: "Raw invalid-signature step 02",
   });
   signer.selectWallet(lucid);
-  const published = await publishFaultProofFieldCarriageV1({
+  const published = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
     publisherAddress: signer.address,
     label: "Raw invalid-signature step 02 field",
   });
-  const stepReference = requireFaultProofStepReferenceScriptV1({
+  const stepReference = requireFaultProofStepReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.invalidSignature.steps[1].spendingScriptHash,
     label: "raw invalid-signature step 02",
   });
   const referenceInputs = [...published, stepReference];
-  const addrTxWitsOpening = faultProofFieldOpeningV1({
+  const addrTxWitsOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     label: "Raw invalid-signature step 02",
@@ -516,12 +514,12 @@ export const submitRawInvalidSignatureStep02V1 = async ({
       SDK.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
 
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.computationThreadMint,
     label: "raw invalid-signature step 02 computation-thread mint",
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
     label: "raw invalid-signature step 02 fraud-proof mint",

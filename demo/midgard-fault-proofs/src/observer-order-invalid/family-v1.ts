@@ -1,34 +1,33 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
-  selectMidgardFieldCarriageTierV1,
+  decodeMidgardFieldPreimage,
+  midgardFieldCommitment,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  type RejectionReasonV1,
-  RejectionReasonV1Schema,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type RejectionReason,
+  RejectionReasonSchema,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const OBSERVER_ORDER_INVALID_CATEGORY_V1 =
-  "observerOrderInvalid" as const;
-export const OBSERVER_ORDER_INVALID_CATEGORY_ID_V1 = "00000025" as const;
-export const OBSERVER_ORDER_INVALID_FIELD_INDEX_V1 = 3 as const;
-export const OBSERVER_ORDER_INVALID_ITEM_BUDGET_V1 = 24 as const;
+export const OBSERVER_ORDER_INVALID_CATEGORY = "observerOrderInvalid" as const;
+export const OBSERVER_ORDER_INVALID_CATEGORY_ID = "00000025" as const;
+export const OBSERVER_ORDER_INVALID_FIELD_INDEX = 3 as const;
+export const OBSERVER_ORDER_INVALID_ITEM_BUDGET = 24 as const;
 
 const fail = (message: string): never => {
-  throw new Error(`${OBSERVER_ORDER_INVALID_CATEGORY_V1}: ${message}`);
+  throw new Error(`${OBSERVER_ORDER_INVALID_CATEGORY}: ${message}`);
 };
 const natural = (value: number, label: string): number => {
   if (!Number.isSafeInteger(value) || value < 0)
     return fail(`${label} must be a non-negative safe integer`);
   return value;
 };
-const reasonIndex = (reason: RejectionReasonV1): number => {
+const reasonIndex = (reason: RejectionReason): number => {
   if (typeof reason === "string" || !("ObserverOrderInvalid" in reason))
     return fail("typed rejection reason is not ObserverOrderInvalid");
   return natural(
@@ -37,28 +36,25 @@ const reasonIndex = (reason: RejectionReasonV1): number => {
   );
 };
 
-export type ObserverOrderInvalidFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type ObserverOrderInvalidFinding = Readonly<{
+  subject: VerdictSubject;
   observerIndex: number;
 }>;
-export const classifyObserverOrderInvalidFindingV1 = (
-  finding: ObserverOrderInvalidFindingV1,
-): ObserverOrderInvalidFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyObserverOrderInvalidFinding = (
+  finding: ObserverOrderInvalidFinding,
+): ObserverOrderInvalidFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   const observerIndex = natural(finding.observerIndex, "observer index");
   if (observerIndex === 0)
     return fail("observer index must name the later item of an adjacent pair");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (finding.subject.rejection_reason === null)
       return fail("wrongful rejection has no typed reason");
     if (reasonIndex(finding.subject.rejection_reason) !== observerIndex)
       return fail("typed reason observer coordinate changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity is invalid");
@@ -66,16 +62,16 @@ export const classifyObserverOrderInvalidFindingV1 = (
   return Object.freeze({ subject: finding.subject, observerIndex });
 };
 
-export type ObserverOrderInvalidScanResultV1 = Readonly<{
+export type ObserverOrderInvalidScanResult = Readonly<{
   violation: boolean;
   previousObserverHex: string;
   observerHex: string;
 }>;
 /** Exact first-offending-adjacent-pair twin of PhaseAScriptPreconditions. */
-export const scanObserverOrderInvalidV1 = (
+export const scanObserverOrderInvalid = (
   items: readonly Uint8Array[],
   observerIndex: number,
-): ObserverOrderInvalidScanResultV1 => {
+): ObserverOrderInvalidScanResult => {
   natural(observerIndex, "observer index");
   if (observerIndex === 0 || observerIndex >= items.length)
     return fail("observer coordinate is outside an adjacent field-3 pair");
@@ -98,72 +94,72 @@ export const scanObserverOrderInvalidV1 = (
   return fail("unreachable observer scan state");
 };
 
-export type ObserverOrderInvalidEvidenceV1 = ObserverOrderInvalidFindingV1 &
-  ObserverOrderInvalidScanResultV1 &
+export type ObserverOrderInvalidEvidence = ObserverOrderInvalidFinding &
+  ObserverOrderInvalidScanResult &
   Readonly<{
     fieldPreimageHex: string;
     fieldCommitmentHex: string;
     carriage: "Inline" | "RawUtxo" | "Certified";
   }>;
-export const prepareObserverOrderInvalidEvidenceV1 = ({
+export const prepareObserverOrderInvalidEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: ObserverOrderInvalidFindingV1;
+  readonly finding: ObserverOrderInvalidFinding;
   readonly fieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): ObserverOrderInvalidEvidenceV1 => {
-  const finding = classifyObserverOrderInvalidFindingV1(rawFinding);
+}): ObserverOrderInvalidEvidence => {
+  const finding = classifyObserverOrderInvalidFinding(rawFinding);
   if (!/^[0-9a-f]{64}$/u.test(committedFieldHashHex))
     return fail("field commitment is not 32-byte lowercase hex");
-  const actual = midgardFieldCommitmentV1(fieldPreimage).toString("hex");
+  const actual = midgardFieldCommitment(fieldPreimage).toString("hex");
   if (actual !== committedFieldHashHex)
     return fail("retained field-3 bytes do not match the compact commitment");
-  const items = decodeMidgardFieldPreimageV1(fieldPreimage);
+  const items = decodeMidgardFieldPreimage(fieldPreimage);
   return Object.freeze({
     ...finding,
-    ...scanObserverOrderInvalidV1(items, finding.observerIndex),
+    ...scanObserverOrderInvalid(items, finding.observerIndex),
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
     fieldCommitmentHex: actual,
-    carriage: selectMidgardFieldCarriageTierV1(fieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
   });
 };
-export const observerOrderInvalidEvidenceClosesV1 = (
-  evidence: ObserverOrderInvalidEvidenceV1,
+export const observerOrderInvalidEvidenceCloses = (
+  evidence: ObserverOrderInvalidEvidence,
 ): boolean =>
-  terminalVerdictContradictionV1(evidence.subject, evidence.violation);
+  terminalVerdictContradiction(evidence.subject, evidence.violation);
 
-export const ObserverOrderInvalidVerdictSubjectV1Schema = Data.Object({
+export const ObserverOrderInvalidVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const ObserverOrderInvalidBoundObserverV1Schema = Data.Object({
-  subject: ObserverOrderInvalidVerdictSubjectV1Schema,
+export const ObserverOrderInvalidBoundObserverSchema = Data.Object({
+  subject: ObserverOrderInvalidVerdictSubjectSchema,
   observer_index: Data.Integer(),
 });
-export const ObserverOrderInvalidAuthenticationStateV1Schema = Data.Enum([
+export const ObserverOrderInvalidAuthenticationStateSchema = Data.Enum([
   Data.Object({
-    Bound: Data.Object({ bound: ObserverOrderInvalidBoundObserverV1Schema }),
+    Bound: Data.Object({ bound: ObserverOrderInvalidBoundObserverSchema }),
   }),
   Data.Object({
-    Reserved: Data.Object({ bound: ObserverOrderInvalidBoundObserverV1Schema }),
+    Reserved: Data.Object({ bound: ObserverOrderInvalidBoundObserverSchema }),
   }),
 ]);
-export const ObserverOrderInvalidScanStateV1Schema = Data.Object({
-  subject: ObserverOrderInvalidVerdictSubjectV1Schema,
+export const ObserverOrderInvalidScanStateSchema = Data.Object({
+  subject: ObserverOrderInvalidVerdictSubjectSchema,
   observer_index: Data.Integer(),
   checkpoint_hash: Data.Bytes(),
   seen: Data.Integer(),
   previous_observer: Data.Bytes(),
   outcome: Data.Integer(),
 });
-export const ObserverOrderInvalidDecisionStateV1Schema = Data.Object({
-  subject: ObserverOrderInvalidVerdictSubjectV1Schema,
+export const ObserverOrderInvalidDecisionStateSchema = Data.Object({
+  subject: ObserverOrderInvalidVerdictSubjectSchema,
   observer_index: Data.Integer(),
   violation: Data.Boolean(),
 });

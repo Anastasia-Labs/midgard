@@ -7,8 +7,8 @@
  */
 import { isZeroAssets, normalizeAssets } from "@al-ft/midgard-core/assets";
 import {
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardProofSubmissionV1,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardProofSubmission,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardAddressBytes,
@@ -406,7 +406,7 @@ export const submitNativeTransferTx = (
       };
       validateRetryPolicy(policy);
       const txBytes = Buffer.from(txHex, "hex");
-      const submissionBytes = encodeMidgardProofSubmissionV1({
+      const submissionBytes = encodeMidgardProofSubmission({
         transactionCbor: txBytes,
         programMaterial: [],
       });
@@ -506,7 +506,7 @@ export const submitNativeTransferTx = (
 export const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
   txId: built.txId,
   txCbor: built.txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   arrivalSeq: 0n,
   createdAt: new Date(),
 });

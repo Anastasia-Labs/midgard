@@ -1,9 +1,9 @@
 import {
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
-import { computeMidgardNativeTxFullHashFromCanonicalCborV1 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
@@ -259,10 +259,9 @@ const verifyClaimedPayloadRows = (
   Effect.gen(function* () {
     for (const row of rows) {
       const txIdHex = row[Columns.TX_ID].toString("hex");
-      const expectedFullHash =
-        computeMidgardNativeTxFullHashFromCanonicalCborV1(
-          row[Columns.TX_CANONICAL_CBOR],
-        );
+      const expectedFullHash = computeMidgardNativeTxFullHashFromCanonicalCbor(
+        row[Columns.TX_CANONICAL_CBOR],
+      );
       if (!expectedFullHash.equals(row[Columns.TX_FULL_HASH_V1])) {
         return yield* Effect.fail(
           new DatabaseError({
@@ -307,8 +306,8 @@ export const tryInsert = ({
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const txFullHashV1 =
-      computeMidgardNativeTxFullHashFromCanonicalCborV1(txCanonicalCbor);
+    const txFullHash =
+      computeMidgardNativeTxFullHashFromCanonicalCbor(txCanonicalCbor);
     const materialSidecarSha256 = sha256(programMaterialSidecarCbor);
     const inserted = yield* sql<RawEntry>`WITH inserted_admission AS (
         INSERT INTO ${sql(tableName)} (
@@ -333,7 +332,7 @@ export const tryInsert = ({
         SELECT
           ${sql(Columns.TX_ID)},
           ${txCanonicalCbor},
-          ${txFullHashV1},
+          ${txFullHash},
           ${programMaterialSidecarCbor},
           ${materialSidecarSha256}
         FROM inserted_admission
@@ -355,7 +354,7 @@ export const tryInsert = ({
 
 const touchDuplicateCount = ({
   txId,
-  txFullHashV1,
+  txFullHashV1: txFullHash,
   txCanonicalCbor,
   programMaterialSidecarCbor,
   programMaterialSidecarSha256,
@@ -388,7 +387,7 @@ const touchDuplicateCount = ({
       FROM ${sql(payloadTableName)} AS payload
       WHERE admission.${sql(Columns.TX_ID)} = ${txId}
         AND payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
-        AND payload.${sql(Columns.TX_FULL_HASH_V1)} = ${txFullHashV1}
+        AND payload.${sql(Columns.TX_FULL_HASH_V1)} = ${txFullHash}
         AND payload.${sql(Columns.TX_CANONICAL_CBOR)} = ${txCanonicalCbor}
         AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} =
           ${programMaterialSidecarSha256}
@@ -410,7 +409,7 @@ const touchDuplicateCount = ({
 
 export const touchDuplicate = ({
   txId,
-  txFullHashV1,
+  txFullHashV1: txFullHash,
   txCanonicalCbor,
   programMaterialSidecarCbor,
 }: {
@@ -421,7 +420,7 @@ export const touchDuplicate = ({
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   touchDuplicateCount({
     txId,
-    txFullHashV1,
+    txFullHashV1: txFullHash,
     txCanonicalCbor,
     programMaterialSidecarCbor,
     programMaterialSidecarSha256: sha256(programMaterialSidecarCbor),
@@ -448,13 +447,13 @@ const admitWithoutByteQuota = ({
   Database
 > =>
   Effect.gen(function* () {
-    const txFullHashV1 =
-      computeMidgardNativeTxFullHashFromCanonicalCborV1(txCanonicalCbor);
+    const txFullHash =
+      computeMidgardNativeTxFullHashFromCanonicalCbor(txCanonicalCbor);
     const max = BigInt(Math.max(0, maxBacklog));
     if (currentBacklog >= max) {
       const duplicate = yield* touchDuplicate({
         txId,
-        txFullHashV1,
+        txFullHashV1: txFullHash,
         txCanonicalCbor,
         programMaterialSidecarCbor,
       });
@@ -484,7 +483,7 @@ const admitWithoutByteQuota = ({
 
     const duplicate = yield* touchDuplicate({
       txId,
-      txFullHashV1,
+      txFullHashV1: txFullHash,
       txCanonicalCbor,
       programMaterialSidecarCbor,
     });
@@ -503,7 +502,7 @@ const admitWithoutByteQuota = ({
 
 const ADMISSION_BYTE_QUOTA_LOCK_KEY = 0x4d_49_44_47_41_52_44n;
 const DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes;
+  MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes;
 
 const normalizedMaxBacklogBytes = (value: number | undefined): bigint => {
   const normalized = value ?? DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES;
@@ -621,7 +620,7 @@ const groupReservedAdmissionVariants = (
     if (matching === undefined) {
       variants.push({
         ...request,
-        txFullHashV1: computeMidgardNativeTxFullHashFromCanonicalCborV1(
+        txFullHashV1: computeMidgardNativeTxFullHashFromCanonicalCbor(
           request.txCanonicalCbor,
         ),
         programMaterialSidecarSha256: sha256(
@@ -1389,7 +1388,7 @@ export const markAccepted = ({
   readonly processedTxs: readonly ProcessedTx[];
   readonly referenceProgramEnvelopesByTxId?: ReadonlyMap<
     string,
-    readonly MidgardCekProgramEnvelopeV1[]
+    readonly MidgardCekProgramEnvelope[]
   >;
 }): Effect.Effect<void, DatabaseError, Database | NodeConfig | WriteBehind> =>
   Effect.gen(function* () {
@@ -1399,7 +1398,7 @@ export const markAccepted = ({
     const totalStartedAt = Date.now();
     const acceptedTxIds = processedTxs.map((tx) => tx.txId);
     const acceptedTxIdArray = postgresByteaArray(acceptedTxIds);
-    const terminalSidecar = encodeMidgardCekProgramMaterialSidecarV1([]);
+    const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
     const sql = yield* SqlClient.SqlClient;
     const pg = sql as PgClient;
     yield* sql.withTransaction(
@@ -1836,7 +1835,7 @@ export const markRejected = ({
         // duplicate matching but do not retain attacker-sized sidecar bytes.
         // Rejected rows are never claimable, so the canonical empty sidecar is
         // a tombstone rather than validation input.
-        const terminalSidecar = encodeMidgardCekProgramMaterialSidecarV1([]);
+        const terminalSidecar = encodeMidgardCekProgramMaterialSidecar([]);
         yield* sql`UPDATE ${sql(payloadTableName)}
           SET ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)} =
             ${terminalSidecar}

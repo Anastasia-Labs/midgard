@@ -1,8 +1,8 @@
 import {
-  decodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramMaterialSidecar,
   hashMidgardVersionedScript,
-  verifyMidgardCekProgramMaterialBundleV1,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
 import {
   Application,
@@ -17,8 +17,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildMidgardCanonicalCekProgramV1,
-  buildMidgardCanonicalScriptArtifactV1,
+  buildMidgardCanonicalCekProgram,
+  buildMidgardCanonicalScriptArtifact,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "../src/cek-program.js";
@@ -74,8 +74,8 @@ const materialShape = (
 describe("canonical V1 CEK programs", () => {
   it("turns raw UPLC into one deterministic content-addressed graph", () => {
     const script = compile([1, 1, 0]);
-    const first = buildMidgardCanonicalCekProgramV1(script);
-    const second = buildMidgardCanonicalCekProgramV1(script);
+    const first = buildMidgardCanonicalCekProgram(script);
+    const second = buildMidgardCanonicalCekProgram(script);
 
     expect(first.envelope).toEqual(second.envelope);
     expect(first.envelopeCbor).toEqual(second.envelopeCbor);
@@ -103,18 +103,18 @@ describe("canonical V1 CEK programs", () => {
   });
 
   it("fails closed on an unpinned UPLC version without a stale raw-byte cap", () => {
-    expect(() => buildMidgardCanonicalCekProgramV1(compile([1, 0, 0]))).toThrow(
+    expect(() => buildMidgardCanonicalCekProgram(compile([1, 0, 0]))).toThrow(
       /only UPLC 1\.1\.0/u,
     );
     const raw = compileLargeString(7_000);
     expect(raw.length).toBeGreaterThan(6_911);
-    const canonical = buildMidgardCanonicalCekProgramV1(raw);
+    const canonical = buildMidgardCanonicalCekProgram(raw);
     expect(canonical.envelopeCbor.length).toBeLessThanOrEqual(48);
     expect(canonical.envelope.materialByteLength).toBeGreaterThan(6_911n);
   });
 
   it("restores canonical builtin forces and rejects lossy force normalization", () => {
-    const canonical = buildMidgardCanonicalCekProgramV1(
+    const canonical = buildMidgardCanonicalCekProgram(
       Buffer.from(
         UPLCEncoder.compile(
           new UPLCProgram([1, 1, 0], Builtin.headList),
@@ -126,10 +126,10 @@ describe("canonical V1 CEK programs", () => {
     // Bare and over-forced Flat both decode to Harmonic's same normalized
     // Builtin AST. Neither is the canonical UPLC 1.1.0 encoding.
     expect(() =>
-      buildMidgardCanonicalCekProgramV1(Buffer.from("0101007430", "hex")),
+      buildMidgardCanonicalCekProgram(Buffer.from("0101007430", "hex")),
     ).toThrow(/exactly the builtin forces/u);
     expect(() =>
-      buildMidgardCanonicalCekProgramV1(Buffer.from("010100557421", "hex")),
+      buildMidgardCanonicalCekProgram(Buffer.from("010100557421", "hex")),
     ).toThrow(/exactly the builtin forces/u);
   });
 });
@@ -137,12 +137,12 @@ describe("canonical V1 CEK programs", () => {
 describe("canonical V1 script artifacts", () => {
   it("binds the existing program to one deterministic credential and exact sidecar", () => {
     const source = compile([1, 1, 0]);
-    const program = buildMidgardCanonicalCekProgramV1(source);
-    const first = buildMidgardCanonicalScriptArtifactV1({
+    const program = buildMidgardCanonicalCekProgram(source);
+    const first = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: source,
     });
-    const second = buildMidgardCanonicalScriptArtifactV1({
+    const second = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: source,
     });
@@ -174,7 +174,7 @@ describe("canonical V1 script artifacts", () => {
       first.canonicalMidgardCredentialScriptHash,
     );
     expect(first.canonicalMaterialSidecarCbor).toEqual(
-      encodeMidgardCekProgramMaterialSidecarV1([...program.material.values()]),
+      encodeMidgardCekProgramMaterialSidecar([...program.material.values()]),
     );
     expect(first.canonicalMaterialSidecarCbor).toEqual(
       second.canonicalMaterialSidecarCbor,
@@ -183,14 +183,14 @@ describe("canonical V1 script artifacts", () => {
       second.canonicalMidgardCredentialScriptHash,
     );
 
-    const decoded = decodeMidgardCekProgramMaterialSidecarV1(
+    const decoded = decodeMidgardCekProgramMaterialSidecar(
       first.canonicalMaterialSidecarCbor,
     );
     expect(materialShape(decoded)).toEqual(
       materialShape(first.canonicalMaterialEntries),
     );
     expect(
-      verifyMidgardCekProgramMaterialBundleV1(
+      verifyMidgardCekProgramMaterialBundle(
         [first.canonicalProgram.envelope],
         decoded,
       ),
@@ -199,11 +199,11 @@ describe("canonical V1 script artifacts", () => {
 
   it("uses the requested canonical MidgardV1 language tag", () => {
     const source = compile([1, 1, 0]);
-    const plutus = buildMidgardCanonicalScriptArtifactV1({
+    const plutus = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: source,
     });
-    const midgard = buildMidgardCanonicalScriptArtifactV1({
+    const midgard = buildMidgardCanonicalScriptArtifact({
       language: "MidgardV1",
       sourceRawFlatProgramBytes: source,
     });
@@ -222,7 +222,7 @@ describe("canonical V1 script artifacts", () => {
 
   it("rejects mutated preimages and valid unreachable material", () => {
     const source = compile([1, 1, 0]);
-    const artifact = buildMidgardCanonicalScriptArtifactV1({
+    const artifact = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: source,
     });
@@ -236,13 +236,13 @@ describe("canonical V1 script artifacts", () => {
       };
     });
     expect(() =>
-      verifyMidgardCekProgramMaterialBundleV1(
+      verifyMidgardCekProgramMaterialBundle(
         [artifact.canonicalProgram.envelope],
         mutated,
       ),
     ).toThrow();
 
-    const unreachable = buildMidgardCanonicalScriptArtifactV1({
+    const unreachable = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: compileError(),
     });
@@ -259,7 +259,7 @@ describe("canonical V1 script artifacts", () => {
       artifact.canonicalMaterialEntries.length,
     );
     expect(() =>
-      verifyMidgardCekProgramMaterialBundleV1(
+      verifyMidgardCekProgramMaterialBundle(
         [artifact.canonicalProgram.envelope],
         merged.values(),
       ),
@@ -268,11 +268,11 @@ describe("canonical V1 script artifacts", () => {
 
   it("isolates all returned bytes from caller and cross-view mutation", () => {
     const source = compile([1, 1, 0]);
-    const artifact = buildMidgardCanonicalScriptArtifactV1({
+    const artifact = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: source,
     });
-    const fresh = buildMidgardCanonicalScriptArtifactV1({
+    const fresh = buildMidgardCanonicalScriptArtifact({
       language: "PlutusV3",
       sourceRawFlatProgramBytes: Buffer.from(source),
     });

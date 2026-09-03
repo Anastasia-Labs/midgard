@@ -11,7 +11,7 @@
  *   `RetainedEventDatum`, because the cross pairs claim more than the evidence
  *   supports (`open_authentic_withdrawal_content_v1`); and
  * - the **establishment** rule that step 04 will re-apply
- *   (`isFabricatedWithdrawalFaultV1`), including the
+ *   (`isFabricatedWithdrawalFault`), including the
  *   `start_time < inclusion_time <= end_time` window, so a stale event cannot be
  *   walked one step further only to be refused at finalization.
  *
@@ -33,22 +33,22 @@
  * re-serialises whatever wire form the redeemer arrived in.
  */
 import {
-  type FabricatedWithdrawalAuthenticContentOpeningV1,
-  type FabricatedWithdrawalFaultV1,
+  type FabricatedWithdrawalAuthenticContentOpening,
+  type FabricatedWithdrawalFault,
   FabricatedWithdrawalStep03Datum,
   FabricatedWithdrawalStep03SpendRedeemer,
   type FabricatedWithdrawalStep03State,
   FabricatedWithdrawalStep04Datum,
   type FabricatedWithdrawalStep04State,
-  fabricatedWithdrawalStep04StateV1,
-  isFabricatedWithdrawalFaultV1,
+  fabricatedWithdrawalStep04State,
+  isFabricatedWithdrawalFault,
   OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  withdrawalEventDatumBytesV1,
-  withdrawalEventDatumCommitmentV1,
-  withdrawalInfoCommitmentV1,
+  withdrawalEventDatumBytes,
+  withdrawalEventDatumCommitment,
+  withdrawalInfoCommitment,
   WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
@@ -59,7 +59,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -73,7 +73,7 @@ import {
 } from "./runtime.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
-  type FabricatedWithdrawalContractsV1,
+  type FabricatedWithdrawalContracts,
 } from "./submit-fabricated-withdrawal-step-01.js";
 import {
   requireComputationThreadToken,
@@ -81,15 +81,15 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** The step-03 handoff: the opening the redeemer carries and the fault it yields. */
-export type FabricatedWithdrawalStep03HandoffV1 = {
-  readonly opening: FabricatedWithdrawalAuthenticContentOpeningV1;
-  readonly fault: FabricatedWithdrawalFaultV1;
+export type FabricatedWithdrawalStep03Handoff = {
+  readonly opening: FabricatedWithdrawalAuthenticContentOpening;
+  readonly fault: FabricatedWithdrawalFault;
   readonly step04State: FabricatedWithdrawalStep04State;
 };
 
@@ -123,7 +123,7 @@ export const requireFabricatedWithdrawalStep03Datum = ({
  * Decodes a supplied withdrawal event datum and reports the `serialise_data` bytes
  * the on-chain step will actually hash, whatever wire form the operator supplied.
  */
-export const decodeWithdrawalEventDatumForOpeningV1 = (
+export const decodeWithdrawalEventDatumForOpening = (
   eventDatumCbor: string,
 ): {
   readonly eventDatum: WithdrawalOrderDatum;
@@ -132,7 +132,7 @@ export const decodeWithdrawalEventDatumForOpeningV1 = (
   const eventDatum = Data.from(eventDatumCbor, WithdrawalOrderDatum);
   return {
     eventDatum,
-    serialisedBytes: withdrawalEventDatumBytesV1(eventDatum),
+    serialisedBytes: withdrawalEventDatumBytes(eventDatum),
   };
 };
 
@@ -141,15 +141,15 @@ export const decodeWithdrawalEventDatumForOpeningV1 = (
  * establishment gate. Throws — fail-closed — on any pairing, commitment,
  * identity, equality or window failure.
  */
-export const deriveFabricatedWithdrawalStep03HandoffV1 = async ({
+export const deriveFabricatedWithdrawalStep03Handoff = async ({
   state,
   eventDatumCbor,
 }: {
   readonly state: FabricatedWithdrawalStep03State;
   readonly eventDatumCbor?: string;
-}): Promise<FabricatedWithdrawalStep03HandoffV1> => {
-  let opening: FabricatedWithdrawalAuthenticContentOpeningV1;
-  let fault: FabricatedWithdrawalFaultV1;
+}): Promise<FabricatedWithdrawalStep03Handoff> => {
+  let opening: FabricatedWithdrawalAuthenticContentOpening;
+  let fault: FabricatedWithdrawalFault;
 
   if (state.verdict === "WithdrawalIdentityAbsent") {
     if (eventDatumCbor !== undefined) {
@@ -168,9 +168,9 @@ export const deriveFabricatedWithdrawalStep03HandoffV1 = async ({
     const { event_datum_hash, event_inclusion_time } =
       state.verdict.WithdrawalEventObserved;
     const { eventDatum, serialisedBytes } =
-      decodeWithdrawalEventDatumForOpeningV1(eventDatumCbor);
+      decodeWithdrawalEventDatumForOpening(eventDatumCbor);
     const suppliedHash = await Effect.runPromise(
-      withdrawalEventDatumCommitmentV1(eventDatum),
+      withdrawalEventDatumCommitment(eventDatum),
     );
     if (suppliedHash !== event_datum_hash) {
       throw new Error(
@@ -185,7 +185,7 @@ export const deriveFabricatedWithdrawalStep03HandoffV1 = async ({
       );
     }
     const authenticWithdrawalInfoHash = await Effect.runPromise(
-      withdrawalInfoCommitmentV1(eventDatum.event.info),
+      withdrawalInfoCommitment(eventDatum.event.info),
     );
     if (authenticWithdrawalInfoHash === state.committed_withdrawal_info_hash) {
       throw new Error(
@@ -202,8 +202,8 @@ export const deriveFabricatedWithdrawalStep03HandoffV1 = async ({
     };
   }
 
-  const step04State = fabricatedWithdrawalStep04StateV1(state, fault);
-  if (!isFabricatedWithdrawalFaultV1(step04State)) {
+  const step04State = fabricatedWithdrawalStep04State(state, fault);
+  if (!isFabricatedWithdrawalFault(step04State)) {
     throw new Error(
       `Fabricated-withdrawal step 03 refuses to hand step 04 a fault it must reject: the authentic event is not due for the challenged block (${state.header_start_time.toString()} < inclusion_time <= ${state.header_end_time.toString()}).`,
     );
@@ -251,7 +251,7 @@ export type SubmitFabricatedWithdrawalStep03Result = {
   readonly computationThreadUnit: string;
   readonly thirdStepAddress: string;
   readonly fourthStepAddress: string;
-  readonly fault: FabricatedWithdrawalFaultV1;
+  readonly fault: FabricatedWithdrawalFault;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -273,12 +273,12 @@ export const submitFabricatedWithdrawalStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedWithdrawalContractsV1;
+  readonly contracts: FabricatedWithdrawalContracts;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly eventDatumCbor?: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep03Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -298,7 +298,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
     categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   });
   const state = requireFabricatedWithdrawalStep03Datum({ threadUtxo, signer });
-  const handoff = await deriveFabricatedWithdrawalStep03HandoffV1({
+  const handoff = await deriveFabricatedWithdrawalStep03Handoff({
     state,
     eventDatumCbor,
   });
@@ -349,7 +349,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[2].spendingScriptHash,
         categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
@@ -373,10 +373,10 @@ export const submitFabricatedWithdrawalStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-03",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[2].spendingScript,
@@ -414,7 +414,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
 
 export const submitFabricatedWithdrawalStep03FromFiles = async (
   config: SubmitFabricatedWithdrawalStep03CliConfig & {
-    readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly contracts: FabricatedWithdrawalContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep03Result> => {

@@ -15,7 +15,7 @@ import {
   TxSubmitError,
 } from "../../transactions/utils.js";
 import {
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   type CommitTimingBudget,
   commitTimingBudget,
   formatCommitTimingBudget,
@@ -30,9 +30,9 @@ import {
 } from "../utils/scheduler-refresh.js";
 import {
   getLatestBlockDatumEndTime,
-  hashBlockHeaderV1Local,
+  hashBlockHeaderLocal,
   resolveCommitAppendFenceReferencesLocal,
-  updateLatestBlocksDatumAndGetTheNewHeaderV1Local,
+  updateLatestBlocksDatumAndGetTheNewHeaderLocal,
 } from "./state-queue.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
@@ -40,7 +40,7 @@ const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 
 export type BuiltCommitTx = {
   readonly newHeaderHash: string;
-  readonly newHeader: SDK.HeaderV1;
+  readonly newHeader: SDK.Header;
   readonly newHeaderCbor: Buffer;
   readonly blockEndTimeMs: number;
   readonly txValidFromMs: number;
@@ -65,7 +65,7 @@ export const buildUnsignedCommitTx = (
   txsRoot: string,
   depositsRoot: string,
   withdrawalsRoot: string,
-  transitionCommitments: SDK.HeaderTransitionCommitmentsV1,
+  transitionCommitments: SDK.HeaderTransitionCommitments,
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
   endDate: Date,
   initialOperatorWalletView?: OperatorWalletView,
@@ -127,7 +127,7 @@ export const buildUnsignedCommitTx = (
         latestEndTime,
         candidateEndTime: candidateEndTimeMs,
         nowMs: commitValidityResolutionNow,
-        minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+        minimumFutureBufferMs: COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
     const enforceCommitValidityCap = (
       commitValidityWindow: ReturnType<typeof resolveCommitValidityWindow>,
@@ -243,7 +243,7 @@ export const buildUnsignedCommitTx = (
       );
       yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
       const { nodeDatum: updatedNodeDatum, header: newHeader } =
-        yield* updateLatestBlocksDatumAndGetTheNewHeaderV1Local(
+        yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
           lucid.api,
           latestBlock.datum,
           utxosRoot,
@@ -260,25 +260,24 @@ export const buildUnsignedCommitTx = (
           },
         );
 
-      const newHeaderHash = yield* hashBlockHeaderV1Local(newHeader);
+      const newHeaderHash = yield* hashBlockHeaderLocal(newHeader);
       yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
       yield* Effect.logInfo(
         "🔹 Building commitment with real state_queue witness context.",
       );
       yield* Effect.logInfo("🔹 Building block commitment transaction...");
 
-      const { tx: txBuilder } =
-        yield* SDK.buildProductionCommitBlockHeaderTxProgram({
-          lucid: lucid.api,
-          contracts,
-          latestBlock,
-          updatedNodeDatum,
-          newHeader,
-          validFrom: txValidFromMs,
-          validTo: txValidToMs,
-          witness: witnessContext,
-          headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
-        });
+      const { tx: txBuilder } = yield* SDK.buildCommitBlockHeaderTxProgram({
+        lucid: lucid.api,
+        contracts,
+        latestBlock,
+        updatedNodeDatum,
+        newHeader,
+        validFrom: txValidFromMs,
+        validTo: txValidToMs,
+        witness: witnessContext,
+        headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+      });
 
       const txSize = txBuilder.toCBOR().length / 2;
       yield* Effect.logInfo(
@@ -347,7 +346,7 @@ export const buildUnsignedCommitTx = (
         newHeaderHash,
         newHeader,
         newHeaderCbor: Buffer.from(
-          LucidData.to(newHeader as never, SDK.HeaderV1 as never),
+          LucidData.to(newHeader as never, SDK.Header as never),
           "hex",
         ),
         blockEndTimeMs,

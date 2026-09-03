@@ -1,31 +1,31 @@
 import {
-  buildMidgardBoundedItemV1,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  encodeMidgardLedgerOutputCommitmentV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  buildMidgardBoundedItem,
+  computeMidgardNativeTxId,
+  decodeMidgardLedgerOutputCommitment,
+  encodeMidgardLedgerOutputCommitment,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyResolvedOutputNonCanonicalFindingV1,
-  detectResolvedOutputNonCanonicalCompleteReplayV1,
-  RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY_V1,
-  RESOLVED_OUTPUT_NON_CANONICAL_ID_V1,
+  classifyResolvedOutputNonCanonicalFinding,
+  detectResolvedOutputNonCanonicalCompleteReplay,
+  RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY,
+  RESOLVED_OUTPUT_NON_CANONICAL_ID,
 } from "../src/resolved-output-non-canonical/resolved-output-non-canonical-v1.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const txId = "11".repeat(32);
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const rejected = (sourceKind = 1, inputIndex = 4) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
     rejectionReason: {
@@ -38,21 +38,21 @@ const rejected = (sourceKind = 1, inputIndex = 4) =>
 
 describe("resolvedOutputNonCanonical V1 family boundary", () => {
   it("freezes category identity 00000026", () => {
-    expect(RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY_V1).toBe(
+    expect(RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY).toBe(
       "resolvedOutputNonCanonical",
     );
-    expect(RESOLVED_OUTPUT_NON_CANONICAL_ID_V1).toBe("00000026");
+    expect(RESOLVED_OUTPUT_NON_CANONICAL_ID).toBe("00000026");
   });
 
   it("admits either exact prior-input collection for accepted subjects", () => {
     expect(() =>
-      classifyResolvedOutputNonCanonicalFindingV1({
+      classifyResolvedOutputNonCanonicalFinding({
         subject: accepted,
         coordinate: { sourceKind: 0, inputIndex: 0 },
       }),
     ).not.toThrow();
     expect(() =>
-      classifyResolvedOutputNonCanonicalFindingV1({
+      classifyResolvedOutputNonCanonicalFinding({
         subject: accepted,
         coordinate: { sourceKind: 1, inputIndex: 9 },
       }),
@@ -61,19 +61,19 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
 
   it("binds the forced reason constructor and coordinate exactly", () => {
     expect(() =>
-      classifyResolvedOutputNonCanonicalFindingV1({
+      classifyResolvedOutputNonCanonicalFinding({
         subject: rejected(),
         coordinate: { sourceKind: 1, inputIndex: 4 },
       }),
     ).not.toThrow();
     expect(() =>
-      classifyResolvedOutputNonCanonicalFindingV1({
+      classifyResolvedOutputNonCanonicalFinding({
         subject: rejected(),
         coordinate: { sourceKind: 0, inputIndex: 4 },
       }),
     ).toThrow(/coordinate was substituted/u);
     expect(() =>
-      classifyResolvedOutputNonCanonicalFindingV1({
+      classifyResolvedOutputNonCanonicalFinding({
         subject: rejected(),
         coordinate: { sourceKind: 1, inputIndex: 3 },
       }),
@@ -81,7 +81,7 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
   });
 
   it("refuses an adjacent input-not-found reason independently", () => {
-    const other = forcedVerdictSubjectV1({
+    const other = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
       rejectionReason: {
@@ -89,7 +89,7 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
       },
     });
     expect(() =>
-      classifyResolvedOutputNonCanonicalFindingV1({
+      classifyResolvedOutputNonCanonicalFinding({
         subject: other,
         coordinate: { sourceKind: 1, inputIndex: 4 },
       }),
@@ -98,27 +98,26 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
 
   it("complete replay distinguishes wrongful and honest forced reasons and rejects identity mutation", () => {
     const priorTxId = "33".repeat(32);
-    const outRef = encodeMidgardSpendInputItemV1({
+    const outRef = encodeMidgardSpendInputItem({
       txId: Buffer.from(priorTxId, "hex"),
       outputIndex: 0,
     });
     const transaction = makeNativeTx({ spendInputCbors: [outRef], fee: 7n });
-    const transactionCbor = encodeMidgardNativeTxCanonicalV1(transaction);
-    const transactionId =
-      computeMidgardNativeTxIdV1(transaction).toString("hex");
+    const transactionCbor = encodeMidgardNativeTxCanonical(transaction);
+    const transactionId = computeMidgardNativeTxId(transaction).toString("hex");
     const canonicalOutput = encodeMidgardTxOutput({
       address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 1)]),
       value: { lovelace: 2_000_000n, assets: new Map() },
     });
     const malformedOutput = Buffer.concat([canonicalOutput, Buffer.from([0])]);
     const resolved = (output: Buffer) => {
-      const template = decodeMidgardLedgerOutputCommitmentV1(
-        buildCanonicalMidgardLedgerOutputMaterialV1({
+      const template = decodeMidgardLedgerOutputCommitment(
+        buildCanonicalMidgardLedgerOutputMaterial({
           outputIndex: 0,
           outputCbor: canonicalOutput,
         }).descriptorCbor,
       );
-      const item = buildMidgardBoundedItemV1({
+      const item = buildMidgardBoundedItem({
         fieldIndex: 2,
         itemIndex: 0,
         bytes: output,
@@ -126,7 +125,7 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
       return {
         transactionId: priorTxId,
         outputIndex: 0,
-        descriptorCborHex: encodeMidgardLedgerOutputCommitmentV1({
+        descriptorCborHex: encodeMidgardLedgerOutputCommitment({
           ...template,
           totalLength: output.length,
           itemCommitment: item.commitment,
@@ -170,25 +169,25 @@ describe("resolvedOutputNonCanonical V1 family boundary", () => {
     });
 
     expect(
-      detectResolvedOutputNonCanonicalCompleteReplayV1({
+      detectResolvedOutputNonCanonicalCompleteReplay({
         block: block([], true),
         priorLedger: ledger(malformedOutput),
       }),
     ).toHaveLength(1);
     expect(
-      detectResolvedOutputNonCanonicalCompleteReplayV1({
+      detectResolvedOutputNonCanonicalCompleteReplay({
         block: block([forced()]),
         priorLedger: ledger(canonicalOutput),
       }),
     ).toHaveLength(1);
     expect(
-      detectResolvedOutputNonCanonicalCompleteReplayV1({
+      detectResolvedOutputNonCanonicalCompleteReplay({
         block: block([forced()]),
         priorLedger: ledger(malformedOutput),
       }),
     ).toEqual([]);
     expect(() =>
-      detectResolvedOutputNonCanonicalCompleteReplayV1({
+      detectResolvedOutputNonCanonicalCompleteReplay({
         block: block([forced("66".repeat(32))]),
         priorLedger: ledger(canonicalOutput),
       }),

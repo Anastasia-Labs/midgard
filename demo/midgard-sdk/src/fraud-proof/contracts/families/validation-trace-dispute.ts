@@ -9,7 +9,7 @@ import {
 import {
   applyBlueprintParams,
   declaredParameters,
-  deriveValidationTraceDeploymentIdV1,
+  deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
   getBlueprintValidator,
   getUnappliedScript,
@@ -18,8 +18,8 @@ import {
 } from "../blueprint.js";
 import { buildSharedFaultProofContracts } from "../shared.js";
 import {
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
-  VALIDATION_TRACE_RESOLVER_COUNT_V1,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
+  VALIDATION_TRACE_RESOLVER_COUNT,
 } from "../titles.js";
 import {
   type BuildFaultProofContractsParams,
@@ -449,7 +449,7 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          getUnappliedScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1),
+          getUnappliedScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE),
         ),
     );
     const award = yield* tryBuild(
@@ -469,7 +469,7 @@ export const buildValidationTraceDisputeChain = ({
         ),
     );
 
-    const deploymentId = deriveValidationTraceDeploymentIdV1(
+    const deploymentId = deriveValidationTraceDeploymentId(
       fraudProofCataloguePolicyId,
     );
     const buildStageOneRedeemerExecutor = (
@@ -1003,7 +1003,7 @@ export const buildValidationTraceDisputeChain = ({
     ] as const;
     if (
       new Set(resolvers.map(({ spendingScriptHash }) => spendingScriptHash))
-        .size !== VALIDATION_TRACE_RESOLVER_COUNT_V1
+        .size !== VALIDATION_TRACE_RESOLVER_COUNT
     ) {
       return yield* Effect.fail(
         new Error("Validation-trace resolver hashes must be distinct"),

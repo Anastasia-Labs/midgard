@@ -3,8 +3,8 @@
 // Every transaction modelled here sources its validator from a reference input
 // and embeds no script witness. That is the SINGLE-TRANSACTION BY-REFERENCE
 // basis. It is still NOT the basis of
-// `MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes`, which
-// governs `selectValidationCompleteItemCarriageV1`: since the #617
+// `MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes`, which
+// governs `selectValidationCompleteItemCarriage`: since the #617
 // reference-script wiring (#597 ruling a) the deployed direct route also
 // sources every validator by reference, but its frontier is measured
 // end-to-end through the production submitter's five-stage lifecycle and is
@@ -92,7 +92,7 @@ const scriptAddress = (scriptHashHex) =>
 const proofItemAddress = scriptAddress(proofItemScriptHash);
 const awardAddress = scriptAddress("11".repeat(28));
 
-// Deployed ValidationProofItemDatumV1: version, transaction_id,
+// Deployed ValidationProofItemDatum: version, transaction_id,
 // transaction_commitment, field_preimage (validation-machine-v1.ak:421-426).
 const proofItemDatum = (itemBytes) =>
   constr(0, [
@@ -200,7 +200,7 @@ const machineState = constr(0, [
 ]);
 const transition = constr(0, [bytes(Buffer.from([0x81, 0x00])), machineState]);
 const proofTransaction = (itemBytes, route) => {
-  // Deployed Verify carries the FieldCarriageV1 as its own fourth field;
+  // Deployed Verify carries the FieldCarriage as its own fourth field;
   // Inline is Constr(0, [preimage]) (canonical-decode-item-semantic-v1.ak:20-26,
   // native-tx-field-access-v1.ts:39-88).
   const carriage = constr(0, [bytes(Buffer.alloc(itemBytes, 0x55))]);
@@ -295,7 +295,7 @@ console.log(
       },
       shapeBasis: {
         proofItemDatumFields: 4,
-        directCarriage: "Inline{preimage} (FieldCarriageV1)",
+        directCarriage: "Inline{preimage} (FieldCarriage)",
       },
       boundaries: [
         reportBoundary("complete-item-publication", publicationTransaction),

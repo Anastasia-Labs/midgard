@@ -12,21 +12,21 @@ import {
   submitMintAuthorizationStep04AdvanceComplete,
 } from "../src/mint-authorization/index.js";
 import {
-  buildMintAuthorizationSubjectV1,
-  makeMintAuthorizationEmulatorHarnessV1,
-  publishMintAuthorizationReferenceScriptsV1,
-  setupMintAuthorizationScenarioV1,
-  smallMintItemCborsV1,
+  buildMintAuthorizationSubject,
+  makeMintAuthorizationEmulatorHarness,
+  publishMintAuthorizationReferenceScripts,
+  setupMintAuthorizationScenario,
+  smallMintItemCbors,
 } from "./support/mint-authorization-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 describe("mint-authorization cancellation and restart", () => {
   it("cancels through the public submitter after all evidence is resolved and starts a fresh thread", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1();
-    const subject = buildMintAuthorizationSubjectV1({
-      mintItemCbors: smallMintItemCborsV1(),
+    const harness = await makeMintAuthorizationEmulatorHarness();
+    const subject = buildMintAuthorizationSubject({
+      mintItemCbors: smallMintItemCbors(),
     });
-    const { block, setup } = await setupMintAuthorizationScenarioV1({
+    const { block, setup } = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -35,7 +35,7 @@ describe("mint-authorization cancellation and restart", () => {
         "mint-authorization fixture has no transaction inclusion",
       );
     }
-    const refs = await publishMintAuthorizationReferenceScriptsV1({
+    const refs = await publishMintAuthorizationReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -77,7 +77,7 @@ describe("mint-authorization cancellation and restart", () => {
       threadOutRef: step01.nextThreadOutRef,
       reconstruction: block.reconstruction,
       policyIndex: 0n,
-      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: refs[1],

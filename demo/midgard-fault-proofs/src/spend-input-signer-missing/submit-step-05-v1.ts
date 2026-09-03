@@ -1,24 +1,24 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
 import {
-  SpendInputSignerStep05DatumV1Schema,
-  SpendInputSignerStep05RedeemerV1Schema,
+  SpendInputSignerStep05DatumSchema,
+  SpendInputSignerStep05RedeemerSchema,
 } from "./schemas-v1.js";
 import {
-  spendInputSignerMissingEvidenceClosesV1,
-  type SpendInputSignerMissingEvidenceV1,
+  type SpendInputSignerMissingEvidence,
+  spendInputSignerMissingEvidenceCloses,
 } from "./spend-input-signer-missing-v1.js";
 
-export const submitSpendInputSignerMissingStep05V1 = async ({
+export const submitSpendInputSignerMissingStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -31,22 +31,22 @@ export const submitSpendInputSignerMissingStep05V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: SpendInputSignerMissingContractsV1;
+  readonly contracts: SpendInputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!spendInputSignerMissingEvidenceClosesV1(evidence))
+  if (!spendInputSignerMissingEvidenceCloses(evidence))
     throw new Error(
       "spend-input-signer-missing: terminal state does not contradict verdict",
     );
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -54,13 +54,13 @@ export const submitSpendInputSignerMissingStep05V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     signer_missing: boolean;
   }>({
     threadUtxo,
     signer,
-    schema: SpendInputSignerStep05DatumV1Schema as never,
+    schema: SpendInputSignerStep05DatumSchema as never,
     family: "spend-input-signer-missing",
     stepIndex,
   });
@@ -68,7 +68,7 @@ export const submitSpendInputSignerMissingStep05V1 = async ({
     throw new Error(
       "spend-input-signer-missing: terminal signer verdict changed",
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "spend-input-signer-missing",
     stepIndex,
@@ -78,7 +78,7 @@ export const submitSpendInputSignerMissingStep05V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: SpendInputSignerStep05RedeemerV1Schema,
+    spendRedeemerSchema: SpendInputSignerStep05RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

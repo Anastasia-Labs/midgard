@@ -1,37 +1,37 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  type ForcedInclusionTxV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  type ForcedInclusionTx,
+  forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
-  type HeaderV1,
+  type Header,
   type OutputReference,
   OutputReferenceSchema,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
-  RejectionReasonV1Schema,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
+  RejectionReasonSchema,
   type RootMembershipProof,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  type CanonicalBlockEvidenceV1,
-  fetchCanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
@@ -45,62 +45,62 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "../workflow/family-l1-observation-v1.js";
 import {
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  type FraudProofWorkflowJournalStoreV1,
+  DirectoryFraudProofWorkflowJournalStore,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { createFieldItemWidthIllegalCentralJournalAdapterV1 } from "./central-journal-v1.js";
-import type { FieldItemWidthIllegalContractsV1 } from "./contracts-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { createFieldItemWidthIllegalCentralJournalAdapter } from "./central-journal-v1.js";
+import type { FieldItemWidthIllegalContracts } from "./contracts-v1.js";
 import {
-  fieldItemWidthCoordinateIsSupportedV1,
-  fieldItemWidthEvidenceClosesV1,
-  fieldItemWidthEvidenceIdentityV1,
-  type FieldItemWidthEvidenceV1,
-  fieldItemWidthIsIllegalV1,
-  type FieldItemWidthJournalV1,
-  type FieldItemWidthStageV1,
-  prepareFieldItemWidthEvidenceV1,
-  runFieldItemWidthProofV1,
+  fieldItemWidthCoordinateIsSupported,
+  type FieldItemWidthEvidence,
+  fieldItemWidthEvidenceCloses,
+  fieldItemWidthEvidenceIdentity,
+  fieldItemWidthIsIllegal,
+  type FieldItemWidthJournal,
+  type FieldItemWidthStage,
+  prepareFieldItemWidthEvidence,
+  runFieldItemWidthProof,
 } from "./field-item-width-illegal-v1.js";
 import {
-  FieldItemWidthStep02DatumV1Schema,
-  FieldItemWidthStep03DatumV1Schema,
+  FieldItemWidthStep02DatumSchema,
+  FieldItemWidthStep03DatumSchema,
 } from "./schemas-v1.js";
-import { submitFieldItemWidthIllegalCancelV1 } from "./submit-cancel-v1.js";
-import { submitFieldItemWidthIllegalStep01AcceptedV1 } from "./submit-step-01-accepted-v1.js";
-import { submitFieldItemWidthIllegalStep01ForcedV1 } from "./submit-step-01-forced-v1.js";
-import { submitFieldItemWidthIllegalStep02V1 } from "./submit-step-02-v1.js";
-import { submitFieldItemWidthIllegalStep03V1 } from "./submit-step-03-v1.js";
+import { submitFieldItemWidthIllegalCancel } from "./submit-cancel-v1.js";
+import { submitFieldItemWidthIllegalStep01Accepted } from "./submit-step-01-accepted-v1.js";
+import { submitFieldItemWidthIllegalStep01Forced } from "./submit-step-01-forced-v1.js";
+import { submitFieldItemWidthIllegalStep02 } from "./submit-step-02-v1.js";
+import { submitFieldItemWidthIllegalStep03 } from "./submit-step-03-v1.js";
 
-export const FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1 =
+export const FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW =
   "midgard-field-item-width-illegal-production-workflow-v1" as const;
-export const FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID_V1 =
+export const FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID =
   "field-item-width-illegal" as const;
 
-export const FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS_V1 = Object.freeze({
+export const FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS = Object.freeze({
   step01: "fraudProofFieldItemWidthIllegal",
   step02: "fraudProofFieldItemWidthIllegalStep02",
   step03: "fraudProofFieldItemWidthIllegalStep03",
@@ -110,35 +110,35 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS_V1 = Object.freeze({
   fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
 } as const);
 
-export type FieldItemWidthIllegalProductionReferenceScriptsV1 = Readonly<{
+export type FieldItemWidthIllegalReferenceScripts = Readonly<{
   step01: UTxO;
   step02: UTxO;
   step03: UTxO;
   fieldPreimageCertificateMint: UTxO;
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
   };
 }>;
 
-export type ManifestBoundFieldItemWidthIllegalConfigV1 = Readonly<{
-  schemaVersion: typeof FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1;
+export type ManifestBoundFieldItemWidthIllegalConfig = Readonly<{
+  schemaVersion: typeof FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  binding: FraudProofWorkflowDeploymentBindingV1<"fieldItemWidthIllegal">;
-  contracts: FieldItemWidthIllegalContractsV1;
-  referenceScripts: FieldItemWidthIllegalProductionReferenceScriptsV1;
+  binding: FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal">;
+  contracts: FieldItemWidthIllegalContracts;
+  referenceScripts: FieldItemWidthIllegalReferenceScripts;
 }>;
 
-export type LoadManifestBoundFieldItemWidthIllegalConfigV1 = Readonly<{
+export type LoadManifestBoundFieldItemWidthIllegalConfig = Readonly<{
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
-  referenceScripts: FieldItemWidthIllegalProductionReferenceScriptsV1;
+  referenceScripts: FieldItemWidthIllegalReferenceScripts;
 }>;
 
 const bindReference = ({
@@ -146,20 +146,20 @@ const bindReference = ({
   contractName,
   utxo,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"fieldItemWidthIllegal">;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal">;
   readonly contractName: string;
   readonly utxo: UTxO;
 }): UTxO =>
-  requireManifestBoundReferenceScriptUtxoV1({ binding, contractName, utxo });
+  requireManifestBoundReferenceScriptUtxo({ binding, contractName, utxo });
 
-export const bindFieldItemWidthIllegalReferenceScriptsV1 = ({
+export const bindFieldItemWidthIllegalReferenceScripts = ({
   binding,
   referenceScripts,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<"fieldItemWidthIllegal">;
-  readonly referenceScripts: FieldItemWidthIllegalProductionReferenceScriptsV1;
-}): FieldItemWidthIllegalProductionReferenceScriptsV1 => {
-  const names = FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS_V1;
+  readonly binding: FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal">;
+  readonly referenceScripts: FieldItemWidthIllegalReferenceScripts;
+}): FieldItemWidthIllegalReferenceScripts => {
+  const names = FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS;
   return Object.freeze({
     step01: bindReference({
       binding,
@@ -202,10 +202,10 @@ export const bindFieldItemWidthIllegalReferenceScriptsV1 = ({
   });
 };
 
-export const loadManifestBoundFieldItemWidthIllegalConfigV1 = async (
-  input: LoadManifestBoundFieldItemWidthIllegalConfigV1,
-): Promise<ManifestBoundFieldItemWidthIllegalConfigV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const loadManifestBoundFieldItemWidthIllegalConfig = async (
+  input: LoadManifestBoundFieldItemWidthIllegalConfig,
+): Promise<ManifestBoundFieldItemWidthIllegalConfig> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: input.manifest,
     blueprintJson: input.blueprintJson,
     deploymentInfo: input.deploymentInfo,
@@ -214,11 +214,11 @@ export const loadManifestBoundFieldItemWidthIllegalConfigV1 = async (
     proverCredential: input.signer.paymentKeyHash,
     stepDatumSchemas: [
       FraudProofComputationThreadStepDatum,
-      FieldItemWidthStep02DatumV1Schema,
-      FieldItemWidthStep03DatumV1Schema,
+      FieldItemWidthStep02DatumSchema,
+      FieldItemWidthStep03DatumSchema,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
     paymentKeyHash: input.signer.paymentKeyHash,
@@ -235,12 +235,12 @@ export const loadManifestBoundFieldItemWidthIllegalConfigV1 = async (
       "fieldItemWidthIllegal deployment omitted field-preimage certificate",
     );
   }
-  const referenceScripts = bindFieldItemWidthIllegalReferenceScriptsV1({
+  const referenceScripts = bindFieldItemWidthIllegalReferenceScripts({
     binding,
     referenceScripts: input.referenceScripts,
   });
   return Object.freeze({
-    schemaVersion: FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1,
+    schemaVersion: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
     lucid: input.lucid,
     signer: input.signer,
     binding,
@@ -264,7 +264,7 @@ export const loadManifestBoundFieldItemWidthIllegalConfigV1 = async (
             referenceScripts.step03,
           ][index]!.outputIndex.toString(),
         ),
-      })) as unknown as FieldItemWidthIllegalContractsV1["steps"],
+      })) as unknown as FieldItemWidthIllegalContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
       hubOraclePolicyId: binding.deploymentInfo.hubOracleMint!.scriptHash,
@@ -276,15 +276,15 @@ export const loadManifestBoundFieldItemWidthIllegalConfigV1 = async (
   });
 };
 
-export type FieldItemWidthIllegalProductionStageV1 = Readonly<{
+export type FieldItemWidthIllegalStage = Readonly<{
   fraudulentBlockOutRef: string;
   threadOutRef?: string;
   threadUtxo?: UTxO;
   threadToken?: Readonly<{ unit: string; fraudulentHeaderHash: string }>;
   stateQueueBlockOutRef?: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
   nativeTxCompactCbor?: string;
   witnessSetCompactCbor?: string;
@@ -295,24 +295,23 @@ export type FieldItemWidthIllegalProductionStageV1 = Readonly<{
 }>;
 
 /** Derives the only admissible family evidence from L1-bound public retained DA. */
-export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1 = (
-  block: CanonicalBlockEvidenceV1,
-): FieldItemWidthEvidenceV1 => {
-  const findings: FieldItemWidthEvidenceV1[] = [];
+export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock = (
+  block: CanonicalBlockEvidence,
+): FieldItemWidthEvidence => {
+  const findings: FieldItemWidthEvidence[] = [];
   const inspect = ({
     canonicalCbor,
     subject,
     forcedCoordinate,
   }: {
     readonly canonicalCbor: Uint8Array;
-    readonly subject: ReturnType<typeof acceptedVerdictSubjectV1>;
+    readonly subject: ReturnType<typeof acceptedVerdictSubject>;
     readonly forcedCoordinate?: {
       readonly fieldIndex: number;
       readonly itemIndex: number;
     };
   }) => {
-    const material =
-      deriveMidgardNativeTxFaultEvidenceMaterialV1(canonicalCbor);
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(canonicalCbor);
     if (material.transactionId.toString("hex") !== subject.transaction_id) {
       throw new Error(
         "fieldItemWidthIllegal retained-DA transaction identity changed",
@@ -321,7 +320,7 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1 = (
     const coordinates =
       forcedCoordinate === undefined
         ? ([2, 5] as const).flatMap((fieldIndex) =>
-            decodeMidgardFieldPreimageV1(
+            decodeMidgardFieldPreimage(
               material.fieldPreimages[fieldIndex]!,
             ).map((_, itemIndex) => ({ fieldIndex, itemIndex })),
           )
@@ -329,33 +328,33 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1 = (
     for (const coordinate of coordinates) {
       const fieldPreimage = material.fieldPreimages[coordinate.fieldIndex]!;
       const item =
-        decodeMidgardFieldPreimageV1(fieldPreimage)[coordinate.itemIndex];
+        decodeMidgardFieldPreimage(fieldPreimage)[coordinate.itemIndex];
       if (item === undefined) {
         throw new Error(
           "fieldItemWidthIllegal retained-DA reason coordinate is absent",
         );
       }
-      const illegal = fieldItemWidthIsIllegalV1(
+      const illegal = fieldItemWidthIsIllegal(
         coordinate.fieldIndex,
         item.length,
       );
       if (forcedCoordinate === undefined && !illegal) continue;
-      const prepared = prepareFieldItemWidthEvidenceV1({
+      const prepared = prepareFieldItemWidthEvidence({
         finding: { subject, ...coordinate },
         fieldPreimage,
         committedFieldHashHex:
-          midgardFieldCommitmentV1(fieldPreimage).toString("hex"),
+          midgardFieldCommitment(fieldPreimage).toString("hex"),
       });
-      if (fieldItemWidthEvidenceClosesV1(prepared)) findings.push(prepared);
+      if (fieldItemWidthEvidenceCloses(prepared)) findings.push(prepared);
     }
   };
   for (const transaction of block.transactions) {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     inspect({
       canonicalCbor: Buffer.from(transaction.txCbor, "hex"),
-      subject: acceptedVerdictSubjectV1(material.transactionId.toString("hex")),
+      subject: acceptedVerdictSubject(material.transactionId.toString("hex")),
     });
   }
   for (const forced of block.reconstruction.forcedTransactions) {
@@ -364,7 +363,7 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1 = (
     if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason))
       continue;
     const coordinate = reason.FieldItemWidthIllegal;
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       forced.fullTransactionCbor,
     );
     if (material.transactionId.toString("hex") !== forced.value.tx_id) {
@@ -374,7 +373,7 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1 = (
     }
     inspect({
       canonicalCbor: forced.fullTransactionCbor,
-      subject: forcedVerdictSubjectV1({
+      subject: forcedVerdictSubject({
         transactionId: forced.value.tx_id,
         sourceKey: forced.key,
         rejectionReason: reason,
@@ -393,24 +392,24 @@ export const deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1 = (
   return findings[0]!;
 };
 
-export type FieldItemWidthIllegalAuthenticatedSourceV1 = Readonly<{
+export type FieldItemWidthIllegalAuthenticatedSource = Readonly<{
   nativeTxCompactCbor: string;
   witnessSetCompactCbor: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: HeaderV1;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedHeader?: Header;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
   forcedDirection?: bigint;
 }>;
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
-export const deriveFieldItemWidthIllegalAuthenticatedSourceV1 = async ({
+export const deriveFieldItemWidthIllegalAuthenticatedSource = async ({
   block,
   evidence,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
-  readonly evidence: FieldItemWidthEvidenceV1;
-}): Promise<FieldItemWidthIllegalAuthenticatedSourceV1> => {
-  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1) {
+  readonly block: CanonicalBlockEvidence;
+  readonly evidence: FieldItemWidthEvidence;
+}): Promise<FieldItemWidthIllegalAuthenticatedSource> => {
+  if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
     );
@@ -422,7 +421,7 @@ export const deriveFieldItemWidthIllegalAuthenticatedSourceV1 = async ({
         "fieldItemWidthIllegal accepted subject disappeared from retained DA",
       );
     }
-    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItem));
     if (
       trie.root !== block.reconstruction.rootData.transactions.phasRoot ||
       trie.root !== block.inclusionRootAuthentication.sourceValuePhasRoot
@@ -431,7 +430,7 @@ export const deriveFieldItemWidthIllegalAuthenticatedSourceV1 = async ({
         "fieldItemWidthIllegal accepted source trie differs from authenticated reconstruction",
       );
     }
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(selected.txCbor, "hex"),
     );
     return Object.freeze({
@@ -469,22 +468,20 @@ export const deriveFieldItemWidthIllegalAuthenticatedSourceV1 = async ({
   const reason = forced.value.verdict.ForcedTxInvalid.reason;
   if (
     evidence.subject.rejection_reason === null ||
-    Data.to(reason as never, RejectionReasonV1Schema as never) !==
+    Data.to(reason as never, RejectionReasonSchema as never) !==
       Data.to(
         evidence.subject.rejection_reason as never,
-        RejectionReasonV1Schema as never,
+        RejectionReasonSchema as never,
       )
   ) {
     throw new Error(
       "fieldItemWidthIllegal forced reason differs from authenticated source",
     );
   }
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-    encodeMidgardNativeTxCanonicalV1(
-      adjudicateMidgardNativeTxFullV1Validity(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(
-          forced.fullTransactionCbor,
-        ),
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(
+        decodeMidgardNativeTxFullFromCanonicalCbor(forced.fullTransactionCbor),
         "TxIsInvalid",
       ),
     ),
@@ -518,12 +515,12 @@ export const deriveFieldItemWidthIllegalAuthenticatedSourceV1 = async ({
 };
 
 /** Complete accepted-block replay member: scans every field-2/field-5 item. */
-export const detectFieldItemWidthIllegalCompleteReplayV1 = (
-  evidence: CanonicalBlockEvidenceV1,
-): readonly CanonicalViolationDetectionV1[] => {
+export const detectFieldItemWidthIllegalCompleteReplay = (
+  evidence: CanonicalBlockEvidence,
+): readonly CanonicalViolationDetection[] => {
   const accepted = evidence.transactions.flatMap(
     (transaction, transactionIndex) => {
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(transaction.txCbor, "hex"),
       );
       const transactionId = material.transactionId.toString("hex");
@@ -533,15 +530,15 @@ export const detectFieldItemWidthIllegalCompleteReplayV1 = (
         );
       }
       return ([2, 5] as const).flatMap((fieldIndex) =>
-        decodeMidgardFieldPreimageV1(
+        decodeMidgardFieldPreimage(
           material.fieldPreimages[fieldIndex]!,
         ).flatMap((item, itemIndex) =>
-          fieldItemWidthIsIllegalV1(fieldIndex, item.length)
+          fieldItemWidthIsIllegal(fieldIndex, item.length)
             ? [
                 {
-                  detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID_V1}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
+                  detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
                   headerHash: evidence.headerHash,
-                  violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID_V1,
+                  violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
                   position: BigInt(transactionIndex),
                   diagnostic: `transaction ${transactionId} field ${fieldIndex.toString()} item ${itemIndex.toString()} has illegal width ${item.length.toString()}`,
                 },
@@ -558,10 +555,10 @@ export const detectFieldItemWidthIllegalCompleteReplayV1 = (
       if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason)) {
         return [];
       }
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-        encodeMidgardNativeTxCanonicalV1(
-          adjudicateMidgardNativeTxFullV1Validity(
-            decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+        encodeMidgardNativeTxCanonical(
+          adjudicateMidgardNativeTxFullValidity(
+            decodeMidgardNativeTxFullFromCanonicalCbor(
               transaction.fullTransactionCbor,
             ),
             "TxIsInvalid",
@@ -584,25 +581,25 @@ export const detectFieldItemWidthIllegalCompleteReplayV1 = (
       const coordinate = reason.FieldItemWidthIllegal;
       const fieldIndex = Number(coordinate.field_index);
       const itemIndex = Number(coordinate.item_index);
-      if (!fieldItemWidthCoordinateIsSupportedV1(fieldIndex, itemIndex)) {
+      if (!fieldItemWidthCoordinateIsSupported(fieldIndex, itemIndex)) {
         return [];
       }
       const preimage = material.fieldPreimages[fieldIndex];
       const item =
         preimage === undefined
           ? undefined
-          : decodeMidgardFieldPreimageV1(preimage)[itemIndex];
+          : decodeMidgardFieldPreimage(preimage)[itemIndex];
       if (
         item === undefined ||
-        fieldItemWidthIsIllegalV1(fieldIndex, item.length)
+        fieldItemWidthIsIllegal(fieldIndex, item.length)
       ) {
         return [];
       }
       return [
         {
-          detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
+          detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
           headerHash: evidence.headerHash,
-          violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID_V1,
+          violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
           position: BigInt(forcedIndex),
           diagnostic: `forced transaction ${transaction.value.tx_id} was rejected for legal field ${fieldIndex.toString()} item ${itemIndex.toString()} width ${item.length.toString()}`,
         },
@@ -612,10 +609,10 @@ export const detectFieldItemWidthIllegalCompleteReplayV1 = (
   return [...accepted, ...forced];
 };
 
-export type FieldItemWidthIllegalProductionRuntimeLoaderV1 = Readonly<{
-  config: LoadManifestBoundFieldItemWidthIllegalConfigV1;
-  journal: FieldItemWidthJournalV1;
-  observe: (identity: string) => Promise<FieldItemWidthStageV1>;
+export type FieldItemWidthIllegalRuntimeLoader = Readonly<{
+  config: LoadManifestBoundFieldItemWidthIllegalConfig;
+  journal: FieldItemWidthJournal;
+  observe: (identity: string) => Promise<FieldItemWidthStage>;
   resolveStage: (input: {
     readonly action:
       | "submitInit"
@@ -624,20 +621,20 @@ export type FieldItemWidthIllegalProductionRuntimeLoaderV1 = Readonly<{
       | "submitStep03"
       | "removeDescendants"
       | "cancel";
-    readonly evidence: FieldItemWidthEvidenceV1;
-  }) => Promise<FieldItemWidthIllegalProductionStageV1>;
+    readonly evidence: FieldItemWidthEvidence;
+  }) => Promise<FieldItemWidthIllegalStage>;
 }>;
 
-export const createFieldItemWidthIllegalRawL1StageResolverV1 =
+export const createFieldItemWidthIllegalRawL1StageResolver =
   ({
     config,
     l1,
     source,
   }: {
-    readonly config: ManifestBoundFieldItemWidthIllegalConfigV1;
-    readonly l1: FraudProofFamilyL1ObservationPortV1<"fieldItemWidthIllegal">;
-    readonly source: FieldItemWidthIllegalAuthenticatedSourceV1;
-  }): FieldItemWidthIllegalProductionRuntimeLoaderV1["resolveStage"] =>
+    readonly config: ManifestBoundFieldItemWidthIllegalConfig;
+    readonly l1: FraudProofFamilyL1ObservationPort<"fieldItemWidthIllegal">;
+    readonly source: FieldItemWidthIllegalAuthenticatedSource;
+  }): FieldItemWidthIllegalRuntimeLoader["resolveStage"] =>
   async ({ action, evidence }) => {
     const observed = await l1.observe({
       headerHash: config.binding.definition.headerHash,
@@ -673,7 +670,7 @@ export const createFieldItemWidthIllegalRawL1StageResolverV1 =
       witnessSetCompactCbor: source.witnessSetCompactCbor,
     };
     if (action !== "submitStep01") return common;
-    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED_V1) {
+    if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_FORCED) {
       return {
         ...common,
         forcedHeader: required(
@@ -690,7 +687,7 @@ export const createFieldItemWidthIllegalRawL1StageResolverV1 =
         ),
       };
     }
-    const thread = await requireLinearFaultThreadUtxoV1({
+    const thread = await requireLinearFaultThreadUtxo({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -716,18 +713,18 @@ const required = <T>(value: T | undefined, label: string): T => {
   return value;
 };
 
-export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
+export const createManifestBoundFieldItemWidthIllegalSubmission = ({
   config,
   observe,
   resolveStage,
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundFieldItemWidthIllegalConfigV1;
-  readonly observe: (identity: string) => Promise<FieldItemWidthStageV1>;
-  readonly resolveStage: FieldItemWidthIllegalProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundFieldItemWidthIllegalConfig;
+  readonly observe: (identity: string) => Promise<FieldItemWidthStage>;
+  readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createFieldItemWidthIllegalCentralJournalAdapterV1
+    typeof createFieldItemWidthIllegalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => ({
@@ -739,13 +736,13 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
       | "submitStep02"
       | "submitStep03"
       | "removeDescendants",
-    evidence: FieldItemWidthEvidenceV1,
+    evidence: FieldItemWidthEvidence,
   ) => {
     if (evidence.subject.transaction_id.length !== 64)
       throw new Error(
         "fieldItemWidthIllegal evidence transaction id is not canonical",
       );
-    const familyIdentity = fieldItemWidthEvidenceIdentityV1(evidence);
+    const familyIdentity = fieldItemWidthEvidenceIdentity(evidence);
     const transition =
       action === "submitInit"
         ? (["none", "step01"] as const)
@@ -789,10 +786,8 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
       };
     }
     if (action === "submitStep01") {
-      if (
-        evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1
-      ) {
-        const result = await submitFieldItemWidthIllegalStep01AcceptedV1({
+      if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
+        const result = await submitFieldItemWidthIllegalStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -821,11 +816,11 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
           outputReference: result.nextThreadOutRef,
         };
       }
-      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED_V1)
+      if (evidence.subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED)
         throw new Error(
           "fieldItemWidthIllegal evidence source kind is invalid",
         );
-      const result = await submitFieldItemWidthIllegalStep01ForcedV1({
+      const result = await submitFieldItemWidthIllegalStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -853,7 +848,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
     }
     if (action === "submitStep02") {
       const auxiliaryHashes: string[] = [];
-      const result = await submitFieldItemWidthIllegalStep02V1({
+      const result = await submitFieldItemWidthIllegalStep02({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -908,7 +903,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
       };
     }
     if (action === "submitStep03") {
-      const result = await submitFieldItemWidthIllegalStep03V1({
+      const result = await submitFieldItemWidthIllegalStep03({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -964,11 +959,11 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
   },
   cancel: async (
     current: "step01" | "step02" | "step03",
-    evidence: FieldItemWidthEvidenceV1,
+    evidence: FieldItemWidthEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index = current === "step01" ? 0 : current === "step02" ? 1 : 2;
-    const result = await submitFieldItemWidthIllegalCancelV1({
+    const result = await submitFieldItemWidthIllegalCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -989,13 +984,13 @@ export const createManifestBoundFieldItemWidthIllegalSubmissionV1 = ({
   },
 });
 
-export const loadFieldItemWidthIllegalProductionRuntimeV1 = async (
-  input: FieldItemWidthIllegalProductionRuntimeLoaderV1,
+export const loadFieldItemWidthIllegalRuntime = async (
+  input: FieldItemWidthIllegalRuntimeLoader,
 ) => {
-  const config = await loadManifestBoundFieldItemWidthIllegalConfigV1(
+  const config = await loadManifestBoundFieldItemWidthIllegalConfig(
     input.config,
   );
-  return createManifestBoundFieldItemWidthIllegalProductionRuntimeV1({
+  return createManifestBoundFieldItemWidthIllegalRuntime({
     config,
     journal: input.journal,
     observe: input.observe,
@@ -1003,7 +998,7 @@ export const loadFieldItemWidthIllegalProductionRuntimeV1 = async (
   });
 };
 
-export const createManifestBoundFieldItemWidthIllegalProductionRuntimeV1 = ({
+export const createManifestBoundFieldItemWidthIllegalRuntime = ({
   config,
   journal,
   observe,
@@ -1011,16 +1006,16 @@ export const createManifestBoundFieldItemWidthIllegalProductionRuntimeV1 = ({
   centralJournal,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly config: ManifestBoundFieldItemWidthIllegalConfigV1;
-  readonly journal: FieldItemWidthJournalV1;
-  readonly observe: FieldItemWidthIllegalProductionRuntimeLoaderV1["observe"];
-  readonly resolveStage: FieldItemWidthIllegalProductionRuntimeLoaderV1["resolveStage"];
+  readonly config: ManifestBoundFieldItemWidthIllegalConfig;
+  readonly journal: FieldItemWidthJournal;
+  readonly observe: FieldItemWidthIllegalRuntimeLoader["observe"];
+  readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
   readonly centralJournal?: ReturnType<
-    typeof createFieldItemWidthIllegalCentralJournalAdapterV1
+    typeof createFieldItemWidthIllegalCentralJournalAdapter
   >;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
 }) => {
-  const submission = createManifestBoundFieldItemWidthIllegalSubmissionV1({
+  const submission = createManifestBoundFieldItemWidthIllegalSubmission({
     config,
     observe: async (identity) => {
       const observed = await observe(identity);
@@ -1032,10 +1027,10 @@ export const createManifestBoundFieldItemWidthIllegalProductionRuntimeV1 = ({
     stateQueueMutationLeaseCoordinator,
   });
   return Object.freeze({
-    runtimeVersion: FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1,
+    runtimeVersion: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
     config,
-    runOrResume: async (evidence: FieldItemWidthEvidenceV1) =>
-      await runFieldItemWidthProofV1({
+    runOrResume: async (evidence: FieldItemWidthEvidence) =>
+      await runFieldItemWidthProof({
         evidence,
         journal,
         submission,
@@ -1043,36 +1038,36 @@ export const createManifestBoundFieldItemWidthIllegalProductionRuntimeV1 = ({
   });
 };
 
-export type ManifestBoundFieldItemWidthIllegalWorkflowConfigV1 =
-  LoadManifestBoundFieldItemWidthIllegalConfigV1 &
+export type ManifestBoundFieldItemWidthIllegalWorkflowConfig =
+  LoadManifestBoundFieldItemWidthIllegalConfig &
     Readonly<{
-      source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+      source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
       decisionDigest: string;
       stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
     }>;
 
-export type ManifestBoundFieldItemWidthIllegalWorkflowV1 = Readonly<{
-  workflowVersion: typeof FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1;
-  config: ManifestBoundFieldItemWidthIllegalConfigV1;
-  binding: FraudProofWorkflowDeploymentBindingV1<"fieldItemWidthIllegal">;
-  l1: FraudProofFamilyL1ObservationPortV1<"fieldItemWidthIllegal">;
+export type ManifestBoundFieldItemWidthIllegalWorkflow = Readonly<{
+  workflowVersion: typeof FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW;
+  config: ManifestBoundFieldItemWidthIllegalConfig;
+  binding: FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal">;
+  l1: FraudProofFamilyL1ObservationPort<"fieldItemWidthIllegal">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   decisionDigest: string;
 }>;
 
 /** Production installation factory; no evidence object is accepted here. */
-export const createManifestBoundFieldItemWidthIllegalWorkflowV1 = async (
-  input: ManifestBoundFieldItemWidthIllegalWorkflowConfigV1,
-): Promise<ManifestBoundFieldItemWidthIllegalWorkflowV1> => {
-  const config = await loadManifestBoundFieldItemWidthIllegalConfigV1(input);
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+export const createManifestBoundFieldItemWidthIllegalWorkflow = async (
+  input: ManifestBoundFieldItemWidthIllegalWorkflowConfig,
+): Promise<ManifestBoundFieldItemWidthIllegalWorkflow> => {
+  const config = await loadManifestBoundFieldItemWidthIllegalConfig(input);
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: input.source,
     releaseFinality: config.binding.releaseFinality,
     releaseEconomics: config.binding.releaseEconomics,
     definition: config.binding.definition,
   });
   return Object.freeze({
-    workflowVersion: FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1,
+    workflowVersion: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
     config,
     binding: config.binding,
     l1,
@@ -1085,10 +1080,10 @@ export const createManifestBoundFieldItemWidthIllegalWorkflowV1 = async (
 const fieldItemWidthStageFromL1 = (
   stage: Awaited<
     ReturnType<
-      FraudProofFamilyL1ObservationPortV1<"fieldItemWidthIllegal">["observe"]
+      FraudProofFamilyL1ObservationPort<"fieldItemWidthIllegal">["observe"]
     >
   >["stage"],
-): FieldItemWidthStageV1 => {
+): FieldItemWidthStage => {
   switch (stage.kind) {
     case "not_started":
       return "none";
@@ -1110,12 +1105,12 @@ const fieldItemWidthStageFromL1 = (
  * Watcher-facing runner. Evidence is always reconstructed from authenticated
  * L1 plus public retained DA; unknown/caller-authored evidence fields fail.
  */
-export const runOrResumeManifestBoundFieldItemWidthIllegalWorkflowV1 =
+export const runOrResumeManifestBoundFieldItemWidthIllegalWorkflow =
   async (input: {
-    readonly workflow: ManifestBoundFieldItemWidthIllegalWorkflowV1;
+    readonly workflow: ManifestBoundFieldItemWidthIllegalWorkflow;
     readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FieldItemWidthJournalV1;
-  }): Promise<FieldItemWidthStageV1> => {
+    readonly journal: FieldItemWidthJournal;
+  }): Promise<FieldItemWidthStage> => {
     if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
       throw new Error(
         "fieldItemWidthIllegal runner rejects caller-authored evidence inputs",
@@ -1123,55 +1118,53 @@ export const runOrResumeManifestBoundFieldItemWidthIllegalWorkflowV1 =
     }
     const headerHash = input.workflow.binding.definition.headerHash;
     const observation = await input.workflow.l1.observeHeader({ headerHash });
-    const canonical = await fetchCanonicalBlockEvidenceV1({
+    const canonical = await fetchCanonicalBlockEvidence({
       observation,
       sources: input.sources,
     });
     const evidence =
-      deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1(canonical);
-    const source = await deriveFieldItemWidthIllegalAuthenticatedSourceV1({
+      deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(canonical);
+    const source = await deriveFieldItemWidthIllegalAuthenticatedSource({
       block: canonical,
       evidence,
     });
-    const runtime = createManifestBoundFieldItemWidthIllegalProductionRuntimeV1(
-      {
+    const runtime = createManifestBoundFieldItemWidthIllegalRuntime({
+      config: input.workflow.config,
+      journal: input.journal,
+      observe: async () =>
+        fieldItemWidthStageFromL1(
+          (await input.workflow.l1.observe({ headerHash })).stage,
+        ),
+      resolveStage: createFieldItemWidthIllegalRawL1StageResolver({
         config: input.workflow.config,
-        journal: input.journal,
-        observe: async () =>
-          fieldItemWidthStageFromL1(
-            (await input.workflow.l1.observe({ headerHash })).stage,
-          ),
-        resolveStage: createFieldItemWidthIllegalRawL1StageResolverV1({
-          config: input.workflow.config,
-          l1: input.workflow.l1,
-          source,
-        }),
-      },
-    );
+        l1: input.workflow.l1,
+        source,
+      }),
+    });
     return await runtime.runOrResume(evidence);
   };
 
-export const executeManifestBoundFieldItemWidthIllegalWorkflowV1 = async ({
+export const executeManifestBoundFieldItemWidthIllegalWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundFieldItemWidthIllegalWorkflowV1;
+  readonly workflow: ManifestBoundFieldItemWidthIllegalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FieldItemWidthStageV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FieldItemWidthStage> => {
   const headerHash = workflow.binding.definition.headerHash;
-  const canonical = await fetchCanonicalBlockEvidenceV1({
+  const canonical = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
   const evidence =
-    deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1(canonical);
-  const source = await deriveFieldItemWidthIllegalAuthenticatedSourceV1({
+    deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(canonical);
+  const source = await deriveFieldItemWidthIllegalAuthenticatedSource({
     block: canonical,
     evidence,
   });
-  const centralJournal = createFieldItemWidthIllegalCentralJournalAdapterV1({
+  const centralJournal = createFieldItemWidthIllegalCentralJournalAdapter({
     store: journal,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     headerHash,
@@ -1179,14 +1172,14 @@ export const executeManifestBoundFieldItemWidthIllegalWorkflowV1 = async ({
     transactionConfirmed: async (txHash) =>
       await workflow.l1.transactionConfirmed({ headerHash, txHash }),
   });
-  const runtime = createManifestBoundFieldItemWidthIllegalProductionRuntimeV1({
+  const runtime = createManifestBoundFieldItemWidthIllegalRuntime({
     config: workflow.config,
     journal: centralJournal.familyJournal,
     observe: async () =>
       fieldItemWidthStageFromL1(
         (await workflow.l1.observe({ headerHash })).stage,
       ),
-    resolveStage: createFieldItemWidthIllegalRawL1StageResolverV1({
+    resolveStage: createFieldItemWidthIllegalRawL1StageResolver({
       config: workflow.config,
       l1: workflow.l1,
       source,
@@ -1198,40 +1191,40 @@ export const executeManifestBoundFieldItemWidthIllegalWorkflowV1 = async ({
   return await runtime.runOrResume(evidence);
 };
 
-export type LoadedFieldItemWidthIllegalProductionWorkflowV1 = Readonly<{
+export type LoadedFieldItemWidthIllegalWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundFieldItemWidthIllegalWorkflowConfigV1;
+  config: ManifestBoundFieldItemWidthIllegalWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadFieldItemWidthIllegalProductionWorkflowV1 = (input: {
+export type LoadFieldItemWidthIllegalWorkflow = (input: {
   readonly runtimeConfigPath: string;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedFieldItemWidthIllegalProductionWorkflowV1>;
+  readonly invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedFieldItemWidthIllegalWorkflow>;
 
 /**
  * Family-local runner surface for central admission. It consumes only a
  * manifest/runtime path and concrete public-DA transports; neither evidence
  * nor a watcher-owned journal implementation can enter this boundary.
  */
-export const createFieldItemWidthIllegalProductionWorkflowRunnerSurfaceV1 = ({
+export const createFieldItemWidthIllegalWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  readonly loadRuntimeConfig: LoadFieldItemWidthIllegalProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  readonly loadRuntimeConfig: LoadFieldItemWidthIllegalWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (invocation.category !== "fieldItemWidthIllegal") {
         throw new Error(
           `fieldItemWidthIllegal production runner category mismatch: ${invocation.category}`,
         );
       }
-      const journal = bindProductionWorkflowFundingReservationJournalV1({
+      const journal = bindWorkflowFundingReservationJournal({
         permit: invocation.fundingReservationPermit,
-        journal: bindProductionWorkflowActuationJournalV1({
-          journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
             invocation.journalDirectory,
           ),
           permit: invocation.actuationPermit,
@@ -1241,7 +1234,7 @@ export const createFieldItemWidthIllegalProductionWorkflowRunnerSurfaceV1 = ({
           headerHash: invocation.headerHash,
         }),
       });
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint: invocation.deploymentFingerprint,
         category: "fieldItemWidthIllegal",
@@ -1276,10 +1269,9 @@ export const createFieldItemWidthIllegalProductionWorkflowRunnerSurfaceV1 = ({
             "fieldItemWidthIllegal production runner requires concrete public retained-DA sources",
           );
         }
-        const workflow =
-          await createManifestBoundFieldItemWidthIllegalWorkflowV1(
-            loaded.config,
-          );
+        const workflow = await createManifestBoundFieldItemWidthIllegalWorkflow(
+          loaded.config,
+        );
         if (
           workflow.binding.deploymentFingerprint !==
             invocation.deploymentFingerprint ||
@@ -1291,7 +1283,7 @@ export const createFieldItemWidthIllegalProductionWorkflowRunnerSurfaceV1 = ({
             "fieldItemWidthIllegal manifest-bound workflow identity differs from invocation",
           );
         }
-        return await executeManifestBoundFieldItemWidthIllegalWorkflowV1({
+        return await executeManifestBoundFieldItemWidthIllegalWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

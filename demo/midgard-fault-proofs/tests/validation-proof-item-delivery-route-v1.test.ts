@@ -13,12 +13,12 @@
  * at the #617 wave sign-off (ruling (b), 2026-08-22) — these tests pin that
  * this builder reads it and never overrides it.
  */
-import { MIDGARD_V1_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
+import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  resolveValidationProofItemDeliveryRouteV1,
-  ValidationInlineDeliveryEnvelopeRefusedErrorV1,
+  resolveValidationProofItemDeliveryRoute,
+  ValidationInlineDeliveryEnvelopeRefusedError,
 } from "../src/index.js";
 
 const RELIABLE_DIRECT_PIN = 13_522;
@@ -26,14 +26,14 @@ const RELIABLE_DIRECT_PIN = 13_522;
 describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
   it("pins the heuristic threshold to the owner-signed 13,522-byte measurement", () => {
     expect(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
     ).toBe(RELIABLE_DIRECT_PIN);
   });
 
   it("refuses a delivery request off the complete-item path", () => {
     for (const requestedDelivery of ["inline", "reference"] as const) {
       expect(() =>
-        resolveValidationProofItemDeliveryRouteV1({
+        resolveValidationProofItemDeliveryRoute({
           requestedDelivery,
           hasProofItemReferenceOutRef: false,
           committedCarriage: undefined,
@@ -44,7 +44,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
   it("resolves no route off the complete-item path when nothing is requested", () => {
     expect(
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: undefined,
         hasProofItemReferenceOutRef: false,
         committedCarriage: undefined,
@@ -55,14 +55,14 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
   it("refuses a delivery request on §8.4 tiers 2-3, naming the tier", () => {
     for (const requestedDelivery of ["inline", "reference"] as const) {
       expect(() =>
-        resolveValidationProofItemDeliveryRouteV1({
+        resolveValidationProofItemDeliveryRoute({
           requestedDelivery,
           hasProofItemReferenceOutRef: false,
           committedCarriage: "RawUtxo",
         }),
       ).toThrow(/tier-2 `RawUtxo` already names reference inputs/u);
       expect(() =>
-        resolveValidationProofItemDeliveryRouteV1({
+        resolveValidationProofItemDeliveryRoute({
           requestedDelivery,
           hasProofItemReferenceOutRef: false,
           committedCarriage: "Certified",
@@ -74,7 +74,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
   it("resolves no tier-1 route on tiers 2-3 when nothing is requested", () => {
     for (const committedCarriage of ["RawUtxo", "Certified"] as const) {
       expect(
-        resolveValidationProofItemDeliveryRouteV1({
+        resolveValidationProofItemDeliveryRoute({
           requestedDelivery: undefined,
           hasProofItemReferenceOutRef: false,
           committedCarriage,
@@ -85,7 +85,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
   it("refuses the inline request that contradicts a supplied publication out-ref", () => {
     expect(() =>
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: "inline",
         hasProofItemReferenceOutRef: true,
         committedCarriage: "Inline",
@@ -97,7 +97,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
   it("honors an explicit inline request at any tier-1 size — the envelope, not the heuristic, is the inline gate", () => {
     for (const preimageByteLength of [0, RELIABLE_DIRECT_PIN, 14_332]) {
       expect(
-        resolveValidationProofItemDeliveryRouteV1({
+        resolveValidationProofItemDeliveryRoute({
           requestedDelivery: "inline",
           hasProofItemReferenceOutRef: false,
           committedCarriage: "Inline",
@@ -111,7 +111,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
     for (const hasProofItemReferenceOutRef of [false, true]) {
       for (const preimageByteLength of [0, 100, 14_332]) {
         expect(
-          resolveValidationProofItemDeliveryRouteV1({
+          resolveValidationProofItemDeliveryRoute({
             requestedDelivery: "reference",
             hasProofItemReferenceOutRef,
             committedCarriage: "Inline",
@@ -124,7 +124,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
   it("implies the reference route from a supplied out-ref when nothing is requested", () => {
     expect(
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: undefined,
         hasProofItemReferenceOutRef: true,
         committedCarriage: "Inline",
@@ -135,7 +135,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
   it("routes by the measured heuristic when nothing is requested, splitting exactly at the pin", () => {
     expect(
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: undefined,
         hasProofItemReferenceOutRef: false,
         committedCarriage: "Inline",
@@ -143,7 +143,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
       }),
     ).toBe("inline");
     expect(
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: undefined,
         hasProofItemReferenceOutRef: false,
         committedCarriage: "Inline",
@@ -154,7 +154,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
   it("refuses the heuristic without a preimage length rather than guessing", () => {
     expect(() =>
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: undefined,
         hasProofItemReferenceOutRef: false,
         committedCarriage: "Inline",
@@ -164,7 +164,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
   it("propagates the single-publication envelope refusal for impossible sizes", () => {
     expect(() =>
-      resolveValidationProofItemDeliveryRouteV1({
+      resolveValidationProofItemDeliveryRoute({
         requestedDelivery: undefined,
         hasProofItemReferenceOutRef: false,
         committedCarriage: "Inline",
@@ -176,7 +176,7 @@ describe("resolveValidationProofItemDeliveryRouteV1 (#621)", () => {
 
 describe("ValidationInlineDeliveryEnvelopeRefusedErrorV1 (#621)", () => {
   it("carries the projection and the envelope it refused against", () => {
-    const error = new ValidationInlineDeliveryEnvelopeRefusedErrorV1({
+    const error = new ValidationInlineDeliveryEnvelopeRefusedError({
       label: "Validation canonical item observation",
       projectedSignedBytes: 16_500,
       maxTransactionBytes: 16_384,

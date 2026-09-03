@@ -12,31 +12,31 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   requireInitialStepDatum,
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { DistinctAssetAccumulationContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { DistinctAssetAccumulationContracts } from "./contracts-v1.js";
 import {
-  classifyDistinctAssetAccumulationFindingV1,
-  type DistinctAssetAccumulationFindingV1,
+  classifyDistinctAssetAccumulationFinding,
+  type DistinctAssetAccumulationFinding,
 } from "./family-v1.js";
 import {
-  DistinctAssetStep01RedeemerV1Schema,
-  DistinctAssetStep02DatumV1Schema,
+  DistinctAssetStep01RedeemerSchema,
+  DistinctAssetStep02DatumSchema,
 } from "./schemas-v1.js";
 
 const coordinateData = (
-  finding: DistinctAssetAccumulationFindingV1,
+  finding: DistinctAssetAccumulationFinding,
 ): Readonly<{ fold: bigint; primary_index: bigint; asset_index: bigint }> => {
   const coordinate = finding.coordinate;
   return coordinate.kind === "input"
@@ -58,7 +58,7 @@ const coordinateData = (
         };
 };
 
-export const submitDistinctAssetAccumulationStep01AcceptedV1 = async ({
+export const submitDistinctAssetAccumulationStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -79,9 +79,9 @@ export const submitDistinctAssetAccumulationStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: DistinctAssetAccumulationContractsV1;
+  readonly contracts: DistinctAssetAccumulationContracts;
   readonly signer: ResolvedProverSigner;
-  readonly finding: DistinctAssetAccumulationFindingV1;
+  readonly finding: DistinctAssetAccumulationFinding;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -92,11 +92,11 @@ export const submitDistinctAssetAccumulationStep01AcceptedV1 = async ({
   readonly validationTracesRoot: string;
   readonly validationTraceCount: bigint;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifyDistinctAssetAccumulationFindingV1(finding);
+  classifyDistinctAssetAccumulationFinding(finding);
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -107,9 +107,9 @@ export const submitDistinctAssetAccumulationStep01AcceptedV1 = async ({
         coordinate: coordinateData(finding),
       },
     } as never,
-    DistinctAssetStep02DatumV1Schema as never,
+    DistinctAssetStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -121,7 +121,7 @@ export const submitDistinctAssetAccumulationStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum,
-    spendRedeemerSchema: DistinctAssetStep01RedeemerV1Schema,
+    spendRedeemerSchema: DistinctAssetStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {
@@ -137,7 +137,7 @@ export const submitDistinctAssetAccumulationStep01AcceptedV1 = async ({
   });
 };
 
-export const submitDistinctAssetAccumulationStep01ForcedV1 = async ({
+export const submitDistinctAssetAccumulationStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -150,22 +150,22 @@ export const submitDistinctAssetAccumulationStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DistinctAssetAccumulationContractsV1;
+  readonly contracts: DistinctAssetAccumulationContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: DistinctAssetAccumulationFindingV1;
+  readonly finding: DistinctAssetAccumulationFinding;
   readonly forcedSource: Readonly<{
     header: Readonly<Record<string, unknown>>;
     [field: string]: unknown;
   }>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  classifyDistinctAssetAccumulationFindingV1(finding);
+  classifyDistinctAssetAccumulationFinding(finding);
   const stepIndex = 0;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -188,9 +188,9 @@ export const submitDistinctAssetAccumulationStep01ForcedV1 = async ({
         coordinate: coordinateData(finding),
       },
     } as never,
-    DistinctAssetStep02DatumV1Schema as never,
+    DistinctAssetStep02DatumSchema as never,
   );
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "distinct-asset-accumulation-limit",
@@ -233,10 +233,10 @@ export const submitDistinctAssetAccumulationStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      DistinctAssetStep01RedeemerV1Schema as never,
+      DistinctAssetStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  openWatcherProductionFaultProofQueueJournalV1,
-  watcherProductionFaultProofQueueIdentityDigestV1,
+  openWatcherFaultProofQueueJournal,
+  watcherFaultProofQueueIdentityDigest,
 } from "../../src/fault-proofs/production-fault-proof-queue-journal-v1.js";
 
 const directories: string[] = [];
@@ -29,7 +29,7 @@ describe("production fault-proof queue journal V1", () => {
   it("preserves original queued time through authenticated restart and retry", async () => {
     const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
     directories.push(journalRoot);
-    const first = await openWatcherProductionFaultProofQueueJournalV1({
+    const first = await openWatcherFaultProofQueueJournal({
       journalRoot,
       deploymentFingerprint,
       authenticationKey,
@@ -38,13 +38,13 @@ describe("production fault-proof queue journal V1", () => {
       queuedAtMs: "1000",
       finished: false,
     });
-    const digest = watcherProductionFaultProofQueueIdentityDigestV1({
+    const digest = watcherFaultProofQueueIdentityDigest({
       deploymentFingerprint,
       identity,
     });
     await first.markStarted(digest, "1001");
 
-    const recovered = await openWatcherProductionFaultProofQueueJournalV1({
+    const recovered = await openWatcherFaultProofQueueJournal({
       journalRoot,
       deploymentFingerprint,
       authenticationKey,
@@ -72,14 +72,14 @@ describe("production fault-proof queue journal V1", () => {
   it("rejects a wrong queue authentication key on restart", async () => {
     const journalRoot = await mkdtemp("/var/tmp/midgard-proof-queue-");
     directories.push(journalRoot);
-    const first = await openWatcherProductionFaultProofQueueJournalV1({
+    const first = await openWatcherFaultProofQueueJournal({
       journalRoot,
       deploymentFingerprint,
       authenticationKey,
     });
     await first.register(identity, "1000");
     await expect(
-      openWatcherProductionFaultProofQueueJournalV1({
+      openWatcherFaultProofQueueJournal({
         journalRoot,
         deploymentFingerprint,
         authenticationKey: Uint8Array.from({ length: 32 }, () => 0x43),

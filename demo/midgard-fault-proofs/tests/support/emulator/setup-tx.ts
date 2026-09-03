@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -17,11 +17,11 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   getProtocolParameters,
-  hashBlockHeaderV1,
-  HeaderV1,
+  hashBlockHeader,
+  Header,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
@@ -74,16 +74,16 @@ import {
   SETUP_OUTPUT_INDEX,
 } from "./header-fixtures.js";
 import {
-  type MinAdaYieldReferenceScriptsV1,
-  publishMinAdaYieldReferenceScriptsV1,
-  publishStateQueueYieldReferenceScriptV1,
+  type MinAdaYieldReferenceScripts,
+  publishMinAdaYieldReferenceScripts,
+  publishStateQueueYieldReferenceScript,
 } from "./reference-scripts.js";
-import { type OperatorLifecycleReferenceScriptsV1 } from "./reference-scripts.js";
+import { type OperatorLifecycleReferenceScripts } from "./reference-scripts.js";
 
 type SetupLucid = Awaited<ReturnType<typeof Lucid>>;
 type SetupContracts = MidgardValidators & {
-  readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScriptsV1;
-  readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScriptsV1;
+  readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScripts;
+  readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
   readonly minAda?: {
     readonly yields: MidgardValidators["fraudProofContracts"]["minAda"]["yields"];
   };
@@ -92,7 +92,7 @@ type SetupContracts = MidgardValidators & {
 /** Every asset unit the four setup transactions mint or track. */
 const setupUnits = (
   contracts: MidgardValidators,
-  header: HeaderV1,
+  header: Header,
   headerHash: string,
 ) => ({
   hubOracle: toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME),
@@ -151,9 +151,9 @@ type SetupUnits = ReturnType<typeof setupUnits>;
  * transaction fails balancing by exactly 301,700 lovelace. The round figure
  * here clears the 1,448,160-lovelace worst case with margin for datum drift.
  */
-const CORRECTION_LOCK_LOVELACE_V1 = 2_000_000n;
+const CORRECTION_LOCK_LOVELACE = 2_000_000n;
 
-const registerStateQueueYieldRewardAccountsV1 = async (
+const registerStateQueueYieldRewardAccounts = async (
   lucid: SetupLucid,
   contracts: MidgardValidators,
 ): Promise<void> => {
@@ -195,7 +195,7 @@ const submitInitialMintTx = async ({
   readonly contracts: SetupContracts;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly units: SetupUnits;
 }): Promise<void> => {
   const initialReferences =
@@ -244,7 +244,7 @@ const submitInitialMintTx = async ({
       contracts.correctionLock.spendingScriptAddress,
       { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
       {
-        lovelace: CORRECTION_LOCK_LOVELACE_V1,
+        lovelace: CORRECTION_LOCK_LOVELACE,
         [units.correctionLock]: 1n,
       },
     )
@@ -416,7 +416,7 @@ const submitOperatorActivationTx = async ({
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly units: SetupUnits;
 }): Promise<void> => {
   const [hubOracleUtxo, activeRootUtxo, retiredRootUtxo, registeredRootUtxo] =
@@ -661,7 +661,7 @@ const submitSchedulerAppointmentTx = async ({
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: MidgardValidators;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly units: SetupUnits;
   readonly schedulerUtxo: UTxO;
   readonly activeOperatorNode: UTxO;
@@ -768,7 +768,7 @@ const submitHeaderCommitTx = async ({
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: MidgardValidators;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly headerHash: string;
   readonly units: SetupUnits;
   readonly hubOracleUtxo: UTxO;
@@ -781,8 +781,8 @@ const submitHeaderCommitTx = async ({
   readonly fraudulentBlockUtxo: UTxO;
   readonly continuedActiveOperatorNode: UTxO;
 }> => {
-  await registerStateQueueYieldRewardAccountsV1(lucid, contracts);
-  const commitYieldPublication = await publishStateQueueYieldReferenceScriptV1({
+  await registerStateQueueYieldRewardAccounts(lucid, contracts);
+  const commitYieldPublication = await publishStateQueueYieldReferenceScript({
     lucid,
     contracts,
     arm: "commit",
@@ -801,7 +801,7 @@ const submitHeaderCommitTx = async ({
         bond_unlock_time:
           commitValidTo -
           1n +
-          BigInt(MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs),
+          BigInt(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs),
         inactivity_strikes: 0n,
       },
       ActiveOperatorDatum,
@@ -910,7 +910,7 @@ const submitHeaderCommitTx = async ({
     utxoToStateQueueUTxO(fraudulentBlockUtxo, contracts.stateQueue.policyId),
   );
   const committedHeader = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(committedBlock.datum),
+    getHeaderFromStateQueueDatum(committedBlock.datum),
   );
   expect(committedHeader.transactionsRoot).toBe(header.transactionsRoot);
   const continuedRoot = await Effect.runPromise(
@@ -943,7 +943,7 @@ export const submitSetupTx = async ({
   readonly contracts: SetupContracts;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
-  readonly header: HeaderV1;
+  readonly header: Header;
 }): Promise<{
   readonly fraudulentBlockOutRef: string;
   readonly headerHash: string;
@@ -958,9 +958,9 @@ export const submitSetupTx = async ({
   readonly activeOperatorNode: UTxO;
   readonly activeOperatorNodeUnit: string;
   readonly registeredOperatorsRoot: UTxO;
-  readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScriptsV1;
+  readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
 }> => {
-  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
 
   await submitInitialMintTx({
@@ -975,7 +975,7 @@ export const submitSetupTx = async ({
     contracts.minAda === undefined
       ? undefined
       : (contracts.minAdaYieldReferenceScripts ??
-        (await publishMinAdaYieldReferenceScriptsV1({ lucid, contracts })));
+        (await publishMinAdaYieldReferenceScripts({ lucid, contracts })));
   await submitOperatorActivationTx({ lucid, contracts, header, units });
 
   const hubOracleUtxo = await requireUtxoWithUnit(
@@ -1079,19 +1079,19 @@ export const submitSetupTx = async ({
  * callers retain the original single-header behavior; this helper only
  * advances when explicitly invoked by a multi-header lifecycle fixture.
  */
-export const submitSecondHeaderTxV1 = async ({
+export const submitSecondHeaderTx = async ({
   lucid,
   contracts,
   header,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: MidgardValidators;
-  readonly header: HeaderV1;
+  readonly header: Header;
 }): Promise<{
   readonly blockOutRef: string;
   readonly headerHash: string;
 }> => {
-  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
   const hubOracleUtxo = await requireUtxoWithUnit(
     lucid,

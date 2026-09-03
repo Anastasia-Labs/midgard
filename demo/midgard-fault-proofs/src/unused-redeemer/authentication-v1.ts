@@ -1,34 +1,34 @@
-import type { ValidationAuxiliaryWitnessV1 } from "@al-ft/midgard-sdk";
+import type { ValidationAuxiliaryWitness } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  UnusedRedeemerAuthenticatedControlV1Schema,
-  UnusedRedeemerAuthenticatedDescriptorV1Schema,
-  UnusedRedeemerAuthenticatedItemHeaderV1Schema,
-  UnusedRedeemerAuthenticatedV1Schema,
-  UnusedRedeemerScriptSourcesControlV1Schema,
-  UnusedRedeemerStep02aRedeemerV1Schema,
-  UnusedRedeemerStep02RedeemerV1Schema,
+  UnusedRedeemerAuthenticatedControlSchema,
+  UnusedRedeemerAuthenticatedDescriptorSchema,
+  UnusedRedeemerAuthenticatedItemHeaderSchema,
+  UnusedRedeemerAuthenticatedSchema,
+  UnusedRedeemerScriptSourcesControlSchema,
+  UnusedRedeemerStep02aRedeemerSchema,
+  UnusedRedeemerStep02RedeemerSchema,
 } from "./schemas-v1.js";
 
 type Step02aContinue = Extract<
-  Data.Static<typeof UnusedRedeemerStep02aRedeemerV1Schema>,
+  Data.Static<typeof UnusedRedeemerStep02aRedeemerSchema>,
   { Continue: unknown }
 >["Continue"][0];
 
-export type UnusedRedeemerAuthenticationV1 = Readonly<{
+export type UnusedRedeemerAuthentication = Readonly<{
   traceMembership: Omit<
     Extract<
-      Data.Static<typeof UnusedRedeemerStep02RedeemerV1Schema>,
+      Data.Static<typeof UnusedRedeemerStep02RedeemerSchema>,
       { Continue: unknown }
     >["Continue"][0],
     "input_index" | "output_index"
   >["trace_membership"];
   machineState: Step02aContinue["machine_state"];
   traceProof: Step02aContinue["trace_proof"];
-  control: Data.Static<typeof UnusedRedeemerScriptSourcesControlV1Schema>;
+  control: Data.Static<typeof UnusedRedeemerScriptSourcesControlSchema>;
   itemControl: Extract<
-    ValidationAuxiliaryWitnessV1,
+    ValidationAuxiliaryWitness,
     { RedeemerItemStepWitness: unknown }
   >["RedeemerItemStepWitness"]["control"];
   headerChunkProof: unknown;
@@ -36,11 +36,9 @@ export type UnusedRedeemerAuthenticationV1 = Readonly<{
   tailChunkProof: unknown;
   tailNextChunkProof: unknown | null;
   descriptorState: Data.Static<
-    typeof UnusedRedeemerAuthenticatedDescriptorV1Schema
+    typeof UnusedRedeemerAuthenticatedDescriptorSchema
   >;
-  controlState: Data.Static<typeof UnusedRedeemerAuthenticatedControlV1Schema>;
-  headerState: Data.Static<
-    typeof UnusedRedeemerAuthenticatedItemHeaderV1Schema
-  >;
-  authenticatedState: Data.Static<typeof UnusedRedeemerAuthenticatedV1Schema>;
+  controlState: Data.Static<typeof UnusedRedeemerAuthenticatedControlSchema>;
+  headerState: Data.Static<typeof UnusedRedeemerAuthenticatedItemHeaderSchema>;
+  authenticatedState: Data.Static<typeof UnusedRedeemerAuthenticatedSchema>;
 }>;

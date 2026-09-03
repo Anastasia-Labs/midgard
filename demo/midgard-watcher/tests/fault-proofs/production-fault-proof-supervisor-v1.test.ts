@@ -1,13 +1,13 @@
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ProductionWorkflowActuationRevokedErrorV1 } from "@al-ft/midgard-fault-proofs";
+import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  createWatcherProductionFaultProofSupervisorV1,
-  unsafeCreateWatcherProductionFaultProofSupervisorForTestV1,
-  type WatcherProductionFaultProofJobV1,
+  createWatcherFaultProofSupervisor,
+  unsafeCreateWatcherFaultProofSupervisorForTest,
+  type WatcherFaultProofJob,
 } from "../../src/fault-proofs/production-fault-proof-supervisor-v1.js";
 
 const directories: string[] = [];
@@ -56,7 +56,7 @@ afterEach(async () => {
 describe("production fault-proof supervisor", () => {
   it("does not expose caller-selected category dispatch in production", async () => {
     const root = await directory();
-    const supervisor = createWatcherProductionFaultProofSupervisorV1({
+    const supervisor = createWatcherFaultProofSupervisor({
       journalRoot: root,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       deadlineAlertHeadroomMs: 3_600_000,
@@ -89,15 +89,14 @@ describe("production fault-proof supervisor", () => {
       }),
     ]);
     const observed: string[] = [];
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        run: async (job) => {
-          observed.push(`${job.mode}:${job.category}:${job.headerHash}`);
-          return job.headerHash;
-        },
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async (job) => {
+        observed.push(`${job.mode}:${job.category}:${job.headerHash}`);
+        return job.headerHash;
+      },
+    });
 
     await expect(supervisor.recoverExisting(null)).resolves.toBe(3);
     await supervisor.close();
@@ -119,7 +118,7 @@ describe("production fault-proof supervisor", () => {
     await mkdir(join(unknownRoot, "fault-proofs", "forgedFamily"), {
       recursive: true,
     });
-    const unknown = unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
+    const unknown = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: unknownRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       run: async () => undefined,
@@ -133,12 +132,11 @@ describe("production fault-proof supervisor", () => {
       recursive: true,
     });
     await mkdir(join(malformedRoot, "fault-proofs", "doubleSpend", "not-hex"));
-    const malformed =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: malformedRoot,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        run: async () => undefined,
-      });
+    const malformed = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: malformedRoot,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => undefined,
+    });
     await expect(malformed.recoverExisting(null)).rejects.toThrow(
       "invalid doubleSpend target not-hex",
     );
@@ -152,7 +150,7 @@ describe("production fault-proof supervisor", () => {
       outside,
       join(symlinkRoot, "fault-proofs", "doubleSpend", h28("bb")),
     );
-    const linked = unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
+    const linked = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: symlinkRoot,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       run: async () => undefined,
@@ -165,16 +163,15 @@ describe("production fault-proof supervisor", () => {
   it("deduplicates only an exact decision generation and serializes replacements", async () => {
     const root = await directory();
     const first = deferred<string>();
-    const starts: WatcherProductionFaultProofJobV1[] = [];
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        run: async (job) => {
-          starts.push(job);
-          return starts.length === 1 ? await first.promise : job.headerHash;
-        },
-      });
+    const starts: WatcherFaultProofJob[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async (job) => {
+        starts.push(job);
+        return starts.length === 1 ? await first.promise : job.headerHash;
+      },
+    });
     await supervisor.recoverExisting(null);
     const firstJob = {
       mode: "run" as const,
@@ -227,12 +224,11 @@ describe("production fault-proof supervisor", () => {
   it("stops intake and drains an accepted workflow before graceful close", async () => {
     const root = await directory();
     const gate = deferred<string>();
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        run: async () => await gate.promise,
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => await gate.promise,
+    });
     await supervisor.recoverExisting(null);
     const running = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -263,16 +259,15 @@ describe("production fault-proof supervisor", () => {
   it("acknowledges durable scheduling without awaiting the active workflow", async () => {
     const root = await directory();
     const active = deferred<string>();
-    const starts: WatcherProductionFaultProofJobV1[] = [];
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        run: async (job) => {
-          starts.push(job);
-          return starts.length === 1 ? await active.promise : "second";
-        },
-      });
+    const starts: WatcherFaultProofJob[] = [];
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async (job) => {
+        starts.push(job);
+        return starts.length === 1 ? await active.promise : "second";
+      },
+    });
     await supervisor.recoverExisting(null);
     const first = supervisor.unsafeScheduleForTest({
       mode: "run",
@@ -308,22 +303,20 @@ describe("production fault-proof supervisor", () => {
       decisionDigest: "73".repeat(32),
       rollbackGeneration: "0",
       checkpoint: "before_submit" as const,
-    }) as ProductionWorkflowActuationRevokedErrorV1;
+    }) as WorkflowActuationRevokedError;
     let calls = 0;
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        unsafeIsActuationRevokedErrorForTest: (
-          error,
-        ): error is ProductionWorkflowActuationRevokedErrorV1 =>
-          error === revoked,
-        run: async () => {
-          calls += 1;
-          if (calls === 1) throw revoked;
-          return "fresh-generation-completed";
-        },
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      unsafeIsActuationRevokedErrorForTest: (
+        error,
+      ): error is WorkflowActuationRevokedError => error === revoked,
+      run: async () => {
+        calls += 1;
+        if (calls === 1) throw revoked;
+        return "fresh-generation-completed";
+      },
+    });
     await supervisor.recoverExisting(null);
     const first = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -356,16 +349,15 @@ describe("production fault-proof supervisor", () => {
     const root = await directory();
     const gate = deferred<void>();
     let calls = 0;
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        run: async () => {
-          calls += 1;
-          await gate.promise;
-          throw new Error("authenticated workflow stalled");
-        },
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      run: async () => {
+        calls += 1;
+        await gate.promise;
+        throw new Error("authenticated workflow stalled");
+      },
+    });
     await supervisor.recoverExisting(null);
     const failed = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -413,16 +405,15 @@ describe("production fault-proof supervisor", () => {
     const root = await directory();
     const active = deferred<void>();
     const starts: string[] = [];
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        unsafeNowMsForTest: () => 1_000,
-        run: async (job) => {
-          starts.push(job.headerHash);
-          if (starts.length === 1) await active.promise;
-        },
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      unsafeNowMsForTest: () => 1_000,
+      run: async (job) => {
+        starts.push(job.headerHash);
+        if (starts.length === 1) await active.promise;
+      },
+    });
     await supervisor.recoverExisting(null);
     const first = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -460,16 +451,15 @@ describe("production fault-proof supervisor", () => {
     const root = await directory();
     const active = deferred<void>();
     let nowMs = 1_000;
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        deadlineAlertHeadroomMs: 1_000,
-        unsafeNowMsForTest: () => nowMs,
-        run: async (job) => {
-          if (job.headerHash === h28("84")) await active.promise;
-        },
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      deadlineAlertHeadroomMs: 1_000,
+      unsafeNowMsForTest: () => nowMs,
+      run: async (job) => {
+        if (job.headerHash === h28("84")) await active.promise;
+      },
+    });
     await supervisor.recoverExisting(null);
     const running = supervisor.unsafeRunOrResumeForTest({
       mode: "run",
@@ -509,14 +499,13 @@ describe("production fault-proof supervisor", () => {
     const root = await directory();
     const gate = deferred<void>();
     let nowMs = 302_399_500;
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        deadlineAlertHeadroomMs: 1_000,
-        unsafeNowMsForTest: () => nowMs,
-        run: async () => await gate.promise,
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      deadlineAlertHeadroomMs: 1_000,
+      unsafeNowMsForTest: () => nowMs,
+      run: async () => await gate.promise,
+    });
     await supervisor.recoverExisting(null);
     const run = supervisor.unsafeRunOrResumeForTest({
       mode: "run",

@@ -4,14 +4,14 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -32,7 +32,7 @@ const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -40,7 +40,7 @@ const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
 const makeNativeTx = (
   inputs: readonly Buffer[],
   fee: bigint,
-): MidgardNativeTxFullV1 => {
+): MidgardNativeTxFull => {
   const body = {
     spendInputsPreimageCbor: encodeCbor(inputs),
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -60,17 +60,17 @@ const makeNativeTx = (
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
-  return materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  return materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body,
     witnessSet,
   });
 };
 
-const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 const payloadFromInputs = (

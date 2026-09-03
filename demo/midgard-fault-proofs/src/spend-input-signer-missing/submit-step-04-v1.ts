@@ -1,8 +1,8 @@
-import { decodeMidgardAddressWitnessFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardAddressWitnessFieldPreimage } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
-  missingSignatureFieldWalkCheckpointV1,
-  missingSignatureVkeyHashV1,
+  type FieldOpening,
+  missingSignatureFieldWalkCheckpoint,
+  missingSignatureVkeyHash,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -17,29 +17,29 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { SpendInputSignerMissingContractsV1 } from "./contracts-v1.js";
-import { planSpendInputSignerWitnessOpeningV1 } from "./field-plans-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { SpendInputSignerMissingContracts } from "./contracts-v1.js";
+import { planSpendInputSignerWitnessOpening } from "./field-plans-v1.js";
 import {
-  SpendInputSignerStep04DatumV1Schema,
-  SpendInputSignerStep04RedeemerV1Schema,
-  SpendInputSignerStep05DatumV1Schema,
+  SpendInputSignerStep04DatumSchema,
+  SpendInputSignerStep04RedeemerSchema,
+  SpendInputSignerStep05DatumSchema,
 } from "./schemas-v1.js";
 import {
-  SPEND_INPUT_SIGNER_SCAN_BATCH_V1,
-  type SpendInputSignerMissingEvidenceV1,
+  SPEND_INPUT_SIGNER_SCAN_BATCH,
+  type SpendInputSignerMissingEvidence,
 } from "./spend-input-signer-missing-v1.js";
 
 const resolveCursor = ({
@@ -56,9 +56,9 @@ const resolveCursor = ({
   for (
     let cursor = 0;
     cursor < itemCount || cursor === 0;
-    cursor += SPEND_INPUT_SIGNER_SCAN_BATCH_V1
+    cursor += SPEND_INPUT_SIGNER_SCAN_BATCH
   ) {
-    const candidate = missingSignatureFieldWalkCheckpointV1({
+    const candidate = missingSignatureFieldWalkCheckpoint({
       txId,
       itemCount,
       totalLength,
@@ -72,7 +72,7 @@ const resolveCursor = ({
   );
 };
 
-export const submitSpendInputSignerMissingStep04V1 = async ({
+export const submitSpendInputSignerMissingStep04 = async ({
   lucid,
   network,
   contracts,
@@ -93,24 +93,24 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly contracts: SpendInputSignerMissingContractsV1;
+  readonly contracts: SpendInputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly publishCarriage?: boolean;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -118,7 +118,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     authenticated: {
       subject: typeof evidence.subject;
       transaction_id: string;
@@ -129,7 +129,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: SpendInputSignerStep04DatumV1Schema as never,
+    schema: SpendInputSignerStep04DatumSchema as never,
     family: "spend-input-signer-missing",
     stepIndex,
   });
@@ -139,7 +139,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
     state.authenticated.payment_credential !== evidence.paymentCredentialHex
   )
     throw new Error("spend-input-signer-missing: scan authority changed");
-  const planned = planSpendInputSignerWitnessOpeningV1({
+  const planned = planSpendInputSignerWitnessOpening({
     evidence,
     nativeTxCompactCbor,
     witnessSetCompactCbor,
@@ -153,10 +153,10 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
     checkpointHash: state.checkpoint_hash,
   });
   const nextCursor = Math.min(
-    checkpoint.nextItemIndex + SPEND_INPUT_SIGNER_SCAN_BATCH_V1,
+    checkpoint.nextItemIndex + SPEND_INPUT_SIGNER_SCAN_BATCH,
     planned.itemCount,
   );
-  const witnesses = decodeMidgardAddressWitnessFieldPreimageV1(
+  const witnesses = decodeMidgardAddressWitnessFieldPreimage(
     Buffer.from(evidence.addressWitnessFieldPreimageHex, "hex"),
   );
   const signerPresent = witnesses
@@ -173,21 +173,21 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
             signature: Buffer.from(witness.signature).toString("hex"),
           },
         }) &&
-        missingSignatureVkeyHashV1(verificationKey) ===
+        missingSignatureVkeyHash(verificationKey) ===
           evidence.paymentCredentialHex
       );
     });
   const terminal = signerPresent || nextCursor === planned.itemCount;
   const nextCheckpoint = terminal
     ? undefined
-    : missingSignatureFieldWalkCheckpointV1({
+    : missingSignatureFieldWalkCheckpoint({
         txId: evidence.subject.transaction_id,
         itemCount: planned.itemCount,
         totalLength: planned.preimage.length,
         nextItemIndex: nextCursor,
       });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+  const carriageUtxos = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
@@ -198,7 +198,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network,
             signer,
@@ -221,7 +221,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
         ).certificateUtxo
       : undefined;
   await onCarriageReady?.();
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,
     family: "spend-input-signer-missing",
@@ -232,7 +232,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -244,7 +244,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
           fraud_prover: signer.paymentKeyHash,
           data: { subject: evidence.subject, signer_missing: !signerPresent },
         } as never,
-        SpendInputSignerStep05DatumV1Schema as never,
+        SpendInputSignerStep05DatumSchema as never,
       )
     : Data.to(
         {
@@ -254,7 +254,7 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
             checkpoint_hash: nextCheckpoint!.checkpointHash,
           },
         } as never,
-        SpendInputSignerStep04DatumV1Schema as never,
+        SpendInputSignerStep04DatumSchema as never,
       );
   const nextStep = terminal ? contracts.steps[4] : contracts.steps[3];
   const outputMatches = computationThreadOutputPredicate({
@@ -290,10 +290,10 @@ export const submitSpendInputSignerMissingStep04V1 = async ({
           },
         ],
       } as never,
-      SpendInputSignerStep04RedeemerV1Schema as never,
+      SpendInputSignerStep04RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

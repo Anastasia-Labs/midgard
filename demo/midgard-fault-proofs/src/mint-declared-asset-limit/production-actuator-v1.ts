@@ -1,57 +1,57 @@
-import { decodeMidgardNativeTxCompactV1 } from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import { planFaultProofFieldOpeningV1 } from "../field-opening-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { planFaultProofFieldOpening } from "../field-opening-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { nativeTxFromCoreCompact } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "../workflow/deployment-manifest-binding-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
-import type { ProductionFieldCarriageRequirementV1 } from "../workflow/production-field-carriage-prerequisite-v1.js";
+import type { FieldCarriageRequirement } from "../workflow/production-field-carriage-prerequisite-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MintDeclaredAssetLimitContractsV1 } from "./contracts-v1.js";
-import { MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1 } from "./family-v1.js";
+import type { MintDeclaredAssetLimitContracts } from "./contracts-v1.js";
+import { MINT_DECLARED_ASSET_LIMIT_CATEGORY } from "./family-v1.js";
 import {
-  admitProductionMintDeclaredAssetLimitArtifactV1,
-  MintDeclaredAssetLimitForcedSourcePayloadV1Schema,
+  admitMintDeclaredAssetLimitArtifact,
+  MintDeclaredAssetLimitForcedSourcePayloadSchema,
 } from "./production-artifact-v1.js";
 import {
-  submitMintDeclaredAssetLimitStep01AcceptedV1,
-  submitMintDeclaredAssetLimitStep01ForcedV1,
+  submitMintDeclaredAssetLimitStep01Accepted,
+  submitMintDeclaredAssetLimitStep01Forced,
 } from "./submit-step-01-v1.js";
 import {
-  type MintDeclaredAssetLimitStep02ActionV1,
-  submitMintDeclaredAssetLimitStep02V1,
+  type MintDeclaredAssetLimitStep02Action,
+  submitMintDeclaredAssetLimitStep02,
 } from "./submit-step-02-v1.js";
-import { submitMintDeclaredAssetLimitStep03V1 } from "./submit-step-03-v1.js";
-import { submitMintDeclaredAssetLimitStep04V1 } from "./submit-step-04-v1.js";
+import { submitMintDeclaredAssetLimitStep03 } from "./submit-step-03-v1.js";
+import { submitMintDeclaredAssetLimitStep04 } from "./submit-step-04-v1.js";
 
-export type MintDeclaredAssetLimitWorkflowReferenceScriptsV1 = Readonly<{
+export type MintDeclaredAssetLimitWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-export type BoundMintDeclaredAssetLimitActuatorConfigV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"mintDeclaredAssetLimit">;
+export type BoundMintDeclaredAssetLimitActuatorConfig = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"mintDeclaredAssetLimit">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: MintDeclaredAssetLimitContractsV1;
-  references: MintDeclaredAssetLimitWorkflowReferenceScriptsV1;
+  contracts: MintDeclaredAssetLimitContracts;
+  references: MintDeclaredAssetLimitWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type MintDeclaredAssetLimitActuatorActionV1 =
+export type MintDeclaredAssetLimitActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step_01";
@@ -61,7 +61,7 @@ export type MintDeclaredAssetLimitActuatorActionV1 =
   | Readonly<{
       stage: "step_02";
       threadOutRef: string;
-      action: MintDeclaredAssetLimitStep02ActionV1;
+      action: MintDeclaredAssetLimitStep02Action;
     }>
   | Readonly<{
       stage: "step_03";
@@ -75,29 +75,29 @@ export type MintDeclaredAssetLimitActuatorActionV1 =
       fraudProofOutRef: string;
     }>;
 
-export type MintDeclaredAssetLimitCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type MintDeclaredAssetLimitCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
 
 /** Package-owned prerequisite plan used before every field-consuming action. */
-export const mintDeclaredAssetLimitFieldRequirementV1 = ({
+export const mintDeclaredAssetLimitFieldRequirement = ({
   action,
   artifact,
   owner,
   certificate,
 }: {
-  readonly action: MintDeclaredAssetLimitActuatorActionV1;
+  readonly action: MintDeclaredAssetLimitActuatorAction;
   readonly artifact: unknown;
   readonly owner: string;
-  readonly certificate: ProductionFieldCarriageRequirementV1["certificate"];
-}): ProductionFieldCarriageRequirementV1 | null => {
+  readonly certificate: FieldCarriageRequirement["certificate"];
+}): FieldCarriageRequirement | null => {
   if (action.stage !== "step_02" && action.stage !== "step_03") return null;
-  const admitted = admitProductionMintDeclaredAssetLimitArtifactV1(artifact);
+  const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
   return {
-    planned: planFaultProofFieldOpeningV1({
+    planned: planFaultProofFieldOpening({
       fieldIndex: 5,
       anchorTxId: admitted.artifact.transactionId,
       nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
@@ -113,10 +113,10 @@ export const mintDeclaredAssetLimitFieldRequirementV1 = ({
 };
 
 const inclusionFromArtifact = (
-  admitted: ReturnType<typeof admitProductionMintDeclaredAssetLimitArtifactV1>,
+  admitted: ReturnType<typeof admitMintDeclaredAssetLimitArtifact>,
 ) => {
   const artifact = admitted.artifact;
-  const decoded = decodeMidgardNativeTxCompactV1(
+  const decoded = decodeMidgardNativeTxCompact(
     Buffer.from(artifact.nativeTxCompactCbor, "hex"),
   );
   return Object.freeze({
@@ -131,10 +131,10 @@ const inclusionFromArtifact = (
 };
 
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<MintDeclaredAssetLimitCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<MintDeclaredAssetLimitCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /**
@@ -142,19 +142,18 @@ const capture = async (
  * boundary with `awaitConfirmation:false`; the durable workflow owns the only
  * subsequent submit authority.
  */
-export const createMintDeclaredAssetLimitActuatorV1 = (
-  config: BoundMintDeclaredAssetLimitActuatorConfigV1,
+export const createMintDeclaredAssetLimitActuator = (
+  config: BoundMintDeclaredAssetLimitActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      readonly action: MintDeclaredAssetLimitActuatorActionV1;
+      readonly action: MintDeclaredAssetLimitActuatorAction;
       readonly artifact: unknown;
-    }): Promise<MintDeclaredAssetLimitCapturedActionV1> => {
-      const admitted =
-        admitProductionMintDeclaredAssetLimitArtifactV1(artifact);
+    }): Promise<MintDeclaredAssetLimitCapturedAction> => {
+      const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
       if (admitted.artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error("mintDeclaredAssetLimit artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
@@ -166,7 +165,7 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
             deploymentInfo: config.binding.deploymentInfo,
             network: config.binding.network,
             signer: config.signer,
-            fraudCategory: MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
+            fraudCategory: MINT_DECLARED_ASSET_LIMIT_CATEGORY,
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: admitted.artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
@@ -175,15 +174,14 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
           });
         });
       if (action.stage === "step_01") {
-        const { threadUtxo, threadToken } =
-          await requireLinearFaultThreadUtxoV1({
-            lucid: config.lucid,
-            contracts: config.contracts,
-            categoryId,
-            family: "mint-declared-asset-limit",
-            stepIndex: 0,
-            threadOutRef: action.threadOutRef,
-          });
+        const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+          lucid: config.lucid,
+          contracts: config.contracts,
+          categoryId,
+          family: "mint-declared-asset-limit",
+          stepIndex: 0,
+          threadOutRef: action.threadOutRef,
+        });
         return await capture(async (preSubmitBoundary) => {
           const common = {
             lucid: config.lucid,
@@ -195,7 +193,7 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
             awaitConfirmation: false,
           } as const;
           if (admitted.artifact.sourceKind === "accepted")
-            await submitMintDeclaredAssetLimitStep01AcceptedV1({
+            await submitMintDeclaredAssetLimitStep01Accepted({
               ...common,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -206,20 +204,20 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else
-            await submitMintDeclaredAssetLimitStep01ForcedV1({
+            await submitMintDeclaredAssetLimitStep01Forced({
               ...common,
               categoryId,
               threadOutRef: action.threadOutRef,
               forcedSource: Data.from(
                 admitted.artifact.forcedSourceCbor,
-                MintDeclaredAssetLimitForcedSourcePayloadV1Schema as never,
+                MintDeclaredAssetLimitForcedSourcePayloadSchema as never,
               ) as Readonly<Record<string, unknown>>,
             });
         });
       }
       if (action.stage === "step_02")
         return await capture(async (preSubmitBoundary) => {
-          await submitMintDeclaredAssetLimitStep02V1({
+          await submitMintDeclaredAssetLimitStep02({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -236,7 +234,7 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
         });
       if (action.stage === "step_03")
         return await capture(async (preSubmitBoundary) => {
-          await submitMintDeclaredAssetLimitStep03V1({
+          await submitMintDeclaredAssetLimitStep03({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -253,7 +251,7 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
         });
       if (action.stage === "step_04")
         return await capture(async (preSubmitBoundary) => {
-          await submitMintDeclaredAssetLimitStep04V1({
+          await submitMintDeclaredAssetLimitStep04({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -266,9 +264,9 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
             awaitConfirmation: false,
           });
         });
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
-          name: MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
+          name: MINT_DECLARED_ASSET_LIMIT_CATEGORY,
           categoryId,
           firstStepDeploymentEntry: "fraudProofMintDeclaredAssetLimit",
           firstStepScriptHash: config.contracts.steps[0].spendingScriptHash,
@@ -289,11 +287,11 @@ export const createMintDeclaredAssetLimitActuatorV1 = (
         headerHash: admitted.artifact.headerHash,
         input: {
           schemaVersion: "midgard-production-cursor-family-action-v1",
-          category: MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
+          category: MINT_DECLARED_ASSET_LIMIT_CATEGORY,
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

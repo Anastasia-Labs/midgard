@@ -11,31 +11,31 @@ const FRONTIER_DOMAIN = Buffer.from(
 
 export const MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT = 0xffff_ffff;
 
-export type MidgardValidationMerklePeakV1 = {
+export type MidgardValidationMerklePeak = {
   readonly height: number;
   readonly hash: Hash32;
 };
 
-export type MidgardValidationMerkleFrontierV1 = {
+export type MidgardValidationMerkleFrontier = {
   readonly count: number;
-  readonly peaks: readonly MidgardValidationMerklePeakV1[];
+  readonly peaks: readonly MidgardValidationMerklePeak[];
 };
 
-export type MidgardValidationMerkleMembershipV1 = {
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+export type MidgardValidationMerkleMembership = {
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly leafIndex: number;
   readonly leafHash: Hash32;
   readonly siblings: readonly Hash32[];
 };
 
-export type MidgardValidationMerkleMembershipIndexV1 = {
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+export type MidgardValidationMerkleMembershipIndex = {
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly membershipAt: (
     leafIndex: number,
-  ) => MidgardValidationMerkleMembershipV1;
+  ) => MidgardValidationMerkleMembership;
 };
 
-type PrecomputedMidgardValidationMerklePeakV1 = {
+type PrecomputedMidgardValidationMerklePeak = {
   readonly height: number;
   readonly start: number;
   readonly levels: readonly (readonly Hash32[])[];
@@ -58,7 +58,7 @@ const boundedCount = (count: number, field: string): number => {
 const bitIsSet = (value: number, height: number): boolean =>
   Math.floor(value / 2 ** height) % 2 === 1;
 
-export const hashMidgardValidationMerkleBranchV1 = (
+export const hashMidgardValidationMerkleBranch = (
   left: Uint8Array,
   right: Uint8Array,
 ): Hash32 =>
@@ -70,11 +70,11 @@ export const hashMidgardValidationMerkleBranchV1 = (
     ]),
   );
 
-export const emptyMidgardValidationMerkleFrontierV1 =
-  (): MidgardValidationMerkleFrontierV1 => ({ count: 0, peaks: [] });
+export const emptyMidgardValidationMerkleFrontier =
+  (): MidgardValidationMerkleFrontier => ({ count: 0, peaks: [] });
 
-export const validateMidgardValidationMerkleFrontierV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
+export const validateMidgardValidationMerkleFrontier = (
+  frontier: MidgardValidationMerkleFrontier,
 ): void => {
   const count = boundedCount(frontier.count, "validation_merkle.count");
   let peakIndex = 0;
@@ -99,33 +99,33 @@ export const validateMidgardValidationMerkleFrontierV1 = (
   }
 };
 
-export const encodeMidgardValidationMerkleFrontierV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
+export const encodeMidgardValidationMerkleFrontier = (
+  frontier: MidgardValidationMerkleFrontier,
 ): Buffer => {
-  validateMidgardValidationMerkleFrontierV1(frontier);
+  validateMidgardValidationMerkleFrontier(frontier);
   return encodeCbor(
     frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]),
   );
 };
 
-export const commitMidgardValidationMerkleFrontierV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
+export const commitMidgardValidationMerkleFrontier = (
+  frontier: MidgardValidationMerkleFrontier,
 ): Hash32 => {
-  validateMidgardValidationMerkleFrontierV1(frontier);
+  validateMidgardValidationMerkleFrontier(frontier);
   return hash32(
     Buffer.concat([
       FRONTIER_DOMAIN,
       encodeCbor(BigInt(frontier.count)),
-      encodeMidgardValidationMerkleFrontierV1(frontier),
+      encodeMidgardValidationMerkleFrontier(frontier),
     ]),
   );
 };
 
-export const appendMidgardValidationMerkleLeafV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
+export const appendMidgardValidationMerkleLeaf = (
+  frontier: MidgardValidationMerkleFrontier,
   leafHash: Uint8Array,
-): MidgardValidationMerkleFrontierV1 => {
-  validateMidgardValidationMerkleFrontierV1(frontier);
+): MidgardValidationMerkleFrontier => {
+  validateMidgardValidationMerkleFrontier(frontier);
   if (frontier.count >= MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT) {
     throw new Error("validation Merkle frontier is full");
   }
@@ -138,25 +138,25 @@ export const appendMidgardValidationMerkleLeafV1 = (
     if (left === undefined || left.height !== height) {
       throw new Error("validation Merkle frontier carry is malformed");
     }
-    carry = hashMidgardValidationMerkleBranchV1(left.hash, carry);
+    carry = hashMidgardValidationMerkleBranch(left.hash, carry);
     oldCount = Math.floor(oldCount / 2);
     height += 1;
   }
   const next = {
     count: frontier.count + 1,
     peaks: [{ height, hash: carry }, ...peaks],
-  } satisfies MidgardValidationMerkleFrontierV1;
-  validateMidgardValidationMerkleFrontierV1(next);
+  } satisfies MidgardValidationMerkleFrontier;
+  validateMidgardValidationMerkleFrontier(next);
   return next;
 };
 
-export const buildMidgardValidationMerkleFrontierV1 = (
+export const buildMidgardValidationMerkleFrontier = (
   leafHashes: readonly Uint8Array[],
-): MidgardValidationMerkleFrontierV1 =>
+): MidgardValidationMerkleFrontier =>
   leafHashes.reduce(
     (frontier, leafHash) =>
-      appendMidgardValidationMerkleLeafV1(frontier, leafHash),
-    emptyMidgardValidationMerkleFrontierV1(),
+      appendMidgardValidationMerkleLeaf(frontier, leafHash),
+    emptyMidgardValidationMerkleFrontier(),
   );
 
 const locatePeak = (
@@ -175,9 +175,9 @@ const locatePeak = (
   throw new Error("validation Merkle leaf is outside the frontier");
 };
 
-const cloneMidgardValidationMerkleFrontierV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
-): MidgardValidationMerkleFrontierV1 => ({
+const cloneMidgardValidationMerkleFrontier = (
+  frontier: MidgardValidationMerkleFrontier,
+): MidgardValidationMerkleFrontier => ({
   count: frontier.count,
   peaks: frontier.peaks.map((peak) => ({
     height: peak.height,
@@ -185,14 +185,14 @@ const cloneMidgardValidationMerkleFrontierV1 = (
   })),
 });
 
-export const buildMidgardValidationMerkleMembershipIndexV1 = (
+export const buildMidgardValidationMerkleMembershipIndex = (
   leafHashes: readonly Uint8Array[],
-): MidgardValidationMerkleMembershipIndexV1 => {
+): MidgardValidationMerkleMembershipIndex => {
   boundedCount(leafHashes.length, "validation_merkle.leaves.length");
   const leaves = leafHashes.map((leaf, index) =>
     ensureHash32(leaf, `validation_merkle.leaves[${index}]`),
   );
-  const peaks: PrecomputedMidgardValidationMerklePeakV1[] = [];
+  const peaks: PrecomputedMidgardValidationMerklePeak[] = [];
   let start = 0;
   for (
     let height =
@@ -207,7 +207,7 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
       const next: Hash32[] = [];
       for (let index = 0; index < level.length; index += 2) {
         next.push(
-          hashMidgardValidationMerkleBranchV1(level[index]!, level[index + 1]!),
+          hashMidgardValidationMerkleBranch(level[index]!, level[index + 1]!),
         );
       }
       levels.push(next);
@@ -215,7 +215,7 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
     peaks.push({ height, start, levels });
     start += 2 ** height;
   }
-  const cachedFrontier: MidgardValidationMerkleFrontierV1 = {
+  const cachedFrontier: MidgardValidationMerkleFrontier = {
     count: leaves.length,
     peaks: peaks
       .map((peak) => ({
@@ -224,11 +224,11 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
       }))
       .reverse(),
   };
-  validateMidgardValidationMerkleFrontierV1(cachedFrontier);
+  validateMidgardValidationMerkleFrontier(cachedFrontier);
 
   return {
-    frontier: cloneMidgardValidationMerkleFrontierV1(cachedFrontier),
-    membershipAt: (leafIndex: number): MidgardValidationMerkleMembershipV1 => {
+    frontier: cloneMidgardValidationMerkleFrontier(cachedFrontier),
+    membershipAt: (leafIndex: number): MidgardValidationMerkleMembership => {
       if (
         !Number.isSafeInteger(leafIndex) ||
         leafIndex < 0 ||
@@ -260,7 +260,7 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
         localIndex = Math.floor(localIndex / 2);
       }
       return {
-        frontier: cloneMidgardValidationMerkleFrontierV1(cachedFrontier),
+        frontier: cloneMidgardValidationMerkleFrontier(cachedFrontier),
         leafIndex,
         leafHash: Buffer.from(leaves[leafIndex]!),
         siblings,
@@ -269,10 +269,10 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
   };
 };
 
-export const buildMidgardValidationMerkleMembershipV1 = (
+export const buildMidgardValidationMerkleMembership = (
   leafHashes: readonly Uint8Array[],
   leafIndex: number,
-): MidgardValidationMerkleMembershipV1 => {
+): MidgardValidationMerkleMembership => {
   if (
     !Number.isSafeInteger(leafIndex) ||
     leafIndex < 0 ||
@@ -283,7 +283,7 @@ export const buildMidgardValidationMerkleMembershipV1 = (
   const leaves = leafHashes.map((leaf, index) =>
     ensureHash32(leaf, `validation_merkle.leaves[${index}]`),
   );
-  const frontier = buildMidgardValidationMerkleFrontierV1(leaves);
+  const frontier = buildMidgardValidationMerkleFrontier(leaves);
   const location = locatePeak(leaves.length, leafIndex);
   let localIndex = leafIndex - location.start;
   let level = leaves.slice(
@@ -296,7 +296,7 @@ export const buildMidgardValidationMerkleMembershipV1 = (
     const next: Hash32[] = [];
     for (let index = 0; index < level.length; index += 2) {
       next.push(
-        hashMidgardValidationMerkleBranchV1(level[index]!, level[index + 1]!),
+        hashMidgardValidationMerkleBranch(level[index]!, level[index + 1]!),
       );
     }
     localIndex = Math.floor(localIndex / 2);
@@ -310,11 +310,11 @@ export const buildMidgardValidationMerkleMembershipV1 = (
   };
 };
 
-export const verifyMidgardValidationMerkleMembershipV1 = (
-  membership: MidgardValidationMerkleMembershipV1,
+export const verifyMidgardValidationMerkleMembership = (
+  membership: MidgardValidationMerkleMembership,
 ): boolean => {
   try {
-    validateMidgardValidationMerkleFrontierV1(membership.frontier);
+    validateMidgardValidationMerkleFrontier(membership.frontier);
     if (
       !Number.isSafeInteger(membership.leafIndex) ||
       membership.leafIndex < 0 ||
@@ -339,8 +339,8 @@ export const verifyMidgardValidationMerkleMembershipV1 = (
       );
       current =
         localIndex % 2 === 0
-          ? hashMidgardValidationMerkleBranchV1(current, exactSibling)
-          : hashMidgardValidationMerkleBranchV1(exactSibling, current);
+          ? hashMidgardValidationMerkleBranch(current, exactSibling)
+          : hashMidgardValidationMerkleBranch(exactSibling, current);
       localIndex = Math.floor(localIndex / 2);
     }
     const peak = membership.frontier.peaks.find(

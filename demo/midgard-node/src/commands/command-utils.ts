@@ -1,8 +1,8 @@
 import {
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   midgardAddressFromText,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
@@ -197,7 +197,7 @@ export const parseTxOutRefLabel = (
     // the ledger MPF trie key / `outref` column bytes that on-chain
     // `ledger_outref_key` derives through `encode_midgard_tx_input`, not CML's
     // minimal-index `TransactionInput` CBOR.
-    cbor = encodeMidgardSpendInputItemV1({
+    cbor = encodeMidgardSpendInputItem({
       txId: hexToBytes(parsed.txHash, { fieldName: `${fieldName}.txHash` }),
       outputIndex: parsed.outputIndex,
     });
@@ -221,7 +221,7 @@ export const parseTxOutRefCborHex = (
     // CBOR: the decoder asserts the fixed 38-byte width and the `0x19` index
     // head, so a minimal-index spelling is rejected rather than re-canonicalized.
     // Re-encoding proves the round trip lands on the one admissible spelling.
-    return encodeMidgardSpendInputItemV1(decodeMidgardSpendInputItemV1(bytes));
+    return encodeMidgardSpendInputItem(decodeMidgardSpendInputItem(bytes));
   } catch (cause) {
     throw new Error(
       `Invalid ${fieldName}: failed to decode TxOutRef CBOR (${String(cause)}).`,
@@ -341,7 +341,7 @@ export const decodeNodeUtxo = (raw: RawNodeUtxo): NodeUtxo => {
   // §5.3 field-0/1 item form (fixed 38 bytes, `19 XXXX` output index) — the
   // ledger out-ref encoding matching on-chain `ledger_outref_key`, not CML's
   // minimal-index `TransactionInput` CBOR.
-  const input = decodeMidgardSpendInputItemV1(outrefCbor);
+  const input = decodeMidgardSpendInputItem(outrefCbor);
   const output = decodeMidgardTxOutput(outputCbor);
   return {
     txHash: Buffer.from(input.txId).toString("hex"),

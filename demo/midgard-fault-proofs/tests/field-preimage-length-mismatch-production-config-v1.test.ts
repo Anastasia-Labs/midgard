@@ -9,26 +9,26 @@ vi.mock(
       >();
     return {
       ...original,
-      detectAuthenticatedFieldPreimageLengthProductionEvidenceV1: vi.fn(),
+      detectAuthenticatedFieldPreimageLengthEvidence: vi.fn(),
     };
   },
 );
 
 import {
-  createFieldPreimageLengthLucidSubmissionV1,
-  FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS_V1,
-  type FieldPreimageLengthLucidBuildersV1,
-  type ManifestBoundFieldPreimageLengthConfigV1,
-  runManifestBoundFieldPreimageLengthWorkflowV1,
+  createFieldPreimageLengthLucidSubmission,
+  FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS,
+  type FieldPreimageLengthLucidBuilders,
+  type ManifestBoundFieldPreimageLengthConfig,
+  runManifestBoundFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/production-config-v1.js";
-import { detectAuthenticatedFieldPreimageLengthProductionEvidenceV1 } from "../src/field-preimage-length-mismatch/production-evidence-v1.js";
+import { detectAuthenticatedFieldPreimageLengthEvidence } from "../src/field-preimage-length-mismatch/production-evidence-v1.js";
 import {
-  type ManifestBoundFieldPreimageLengthWorkflowV1,
-  runOrResumeManifestBoundFieldPreimageLengthWorkflowV1,
+  type ManifestBoundFieldPreimageLengthWorkflow,
+  runOrResumeManifestBoundFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/production-workflow-v1.js";
 import type {
-  FieldPreimageLengthJournalV1,
-  PreparedFieldPreimageLengthWorkflowV1,
+  FieldPreimageLengthJournal,
+  PreparedFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/workflow-v1.js";
 
 const hash = (byte: string, bytes: number): string => byte.repeat(bytes * 2);
@@ -36,8 +36,8 @@ const transactionId = hash("a", 32);
 const headerHash = hash("b", 28);
 
 const prepared = (
-  direction: PreparedFieldPreimageLengthWorkflowV1["direction"],
-): PreparedFieldPreimageLengthWorkflowV1 => ({
+  direction: PreparedFieldPreimageLengthWorkflow["direction"],
+): PreparedFieldPreimageLengthWorkflow => ({
   schemaVersion: "midgard-field-preimage-length-mismatch-workflow-v1",
   headerHash,
   transactionId: hash("c", 32),
@@ -52,7 +52,7 @@ const prepared = (
 
 const config = {
   binding: { definition: { headerHash } },
-} as unknown as ManifestBoundFieldPreimageLengthConfigV1;
+} as unknown as ManifestBoundFieldPreimageLengthConfig;
 
 const fieldMaterial = {
   nativeTxCompactCbor: "80",
@@ -61,9 +61,9 @@ const fieldMaterial = {
 };
 
 const builders = (): {
-  readonly value: FieldPreimageLengthLucidBuildersV1;
+  readonly value: FieldPreimageLengthLucidBuilders;
   readonly calls: Readonly<
-    Record<keyof FieldPreimageLengthLucidBuildersV1, ReturnType<typeof vi.fn>>
+    Record<keyof FieldPreimageLengthLucidBuilders, ReturnType<typeof vi.fn>>
   >;
 } => {
   const calls = {
@@ -84,7 +84,7 @@ const builders = (): {
 describe("field-preimage-length production wiring", () => {
   test("names all four distinct physical manifest identities", () => {
     expect(
-      Object.values(FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS_V1).slice(0, 4),
+      Object.values(FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS).slice(0, 4),
     ).toEqual([
       "fraudProofFieldPreimageLengthMismatch",
       "fraudProofFieldPreimageLengthMismatchStep02Accepted",
@@ -93,7 +93,7 @@ describe("field-preimage-length production wiring", () => {
     ]);
     expect(
       new Set(
-        Object.values(FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS_V1).slice(0, 4),
+        Object.values(FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS).slice(0, 4),
       ).size,
     ).toBe(4);
   });
@@ -105,7 +105,7 @@ describe("field-preimage-length production wiring", () => {
     ["wrongfulRejection", "authenticate", "authenticateForced"],
   ] as const)("routes %s %s to %s", async (direction, action, selected) => {
     const fixture = builders();
-    const submission = createFieldPreimageLengthLucidSubmissionV1({
+    const submission = createFieldPreimageLengthLucidSubmission({
       config,
       builders: fixture.value,
     });
@@ -126,7 +126,7 @@ describe("field-preimage-length production wiring", () => {
     "exposes %s through its concrete builder slot",
     async (action, selected) => {
       const fixture = builders();
-      const submission = createFieldPreimageLengthLucidSubmissionV1({
+      const submission = createFieldPreimageLengthLucidSubmission({
         config,
         builders: fixture.value,
       });
@@ -137,7 +137,7 @@ describe("field-preimage-length production wiring", () => {
 
   test("rejects cross-header replay before a builder sees it", async () => {
     const fixture = builders();
-    const submission = createFieldPreimageLengthLucidSubmissionV1({
+    const submission = createFieldPreimageLengthLucidSubmission({
       config,
       builders: fixture.value,
     });
@@ -153,7 +153,7 @@ describe("field-preimage-length production wiring", () => {
   test("rejects a provider identity that is not canonical transaction hex", async () => {
     const fixture = builders();
     fixture.calls.finalize.mockResolvedValueOnce("not-a-tx-id");
-    const submission = createFieldPreimageLengthLucidSubmissionV1({
+    const submission = createFieldPreimageLengthLucidSubmission({
       config,
       builders: fixture.value,
     });
@@ -164,7 +164,7 @@ describe("field-preimage-length production wiring", () => {
 
   test("reconciles a captured identity on restart before invoking concrete builders", async () => {
     const fixture = builders();
-    let journal: FieldPreimageLengthJournalV1 = {
+    let journal: FieldPreimageLengthJournal = {
       prepared: prepared("wrongfulAcceptance"),
       confirmed: [] as readonly (
         | "init"
@@ -175,7 +175,7 @@ describe("field-preimage-length production wiring", () => {
       )[],
       transactionIds: { init: transactionId },
     };
-    journal = await runManifestBoundFieldPreimageLengthWorkflowV1({
+    journal = await runManifestBoundFieldPreimageLengthWorkflow({
       config,
       builders: fixture.value,
       load: async () => journal,
@@ -201,7 +201,7 @@ describe("field-preimage-length production wiring", () => {
   test("watcher-facing resume re-derives retained-DA evidence and refuses digest substitution", async () => {
     const canonical = prepared("wrongfulAcceptance");
     const deriveAuthenticatedEvidence = vi.mocked(
-      detectAuthenticatedFieldPreimageLengthProductionEvidenceV1,
+      detectAuthenticatedFieldPreimageLengthEvidence,
     );
     deriveAuthenticatedEvidence.mockResolvedValueOnce({
       prepared: canonical,
@@ -215,8 +215,8 @@ describe("field-preimage-length production wiring", () => {
       l1: { observeHeader: vi.fn(async () => ({})) },
       resolveChainStage: vi.fn(),
       remove: vi.fn(),
-    } as unknown as ManifestBoundFieldPreimageLengthWorkflowV1;
-    const complete: FieldPreimageLengthJournalV1 = {
+    } as unknown as ManifestBoundFieldPreimageLengthWorkflow;
+    const complete: FieldPreimageLengthJournal = {
       prepared: canonical,
       confirmed: ["init", "dispatch", "authenticate", "finalize", "remove"],
       transactionIds: {},
@@ -227,7 +227,7 @@ describe("field-preimage-length production wiring", () => {
       observeConfirmed: vi.fn(),
     };
     await expect(
-      runOrResumeManifestBoundFieldPreimageLengthWorkflowV1({
+      runOrResumeManifestBoundFieldPreimageLengthWorkflow({
         workflow,
         sources: [{} as never],
         journal,
@@ -240,7 +240,7 @@ describe("field-preimage-length production wiring", () => {
       stageEvidence: {},
     });
     await expect(
-      runOrResumeManifestBoundFieldPreimageLengthWorkflowV1({
+      runOrResumeManifestBoundFieldPreimageLengthWorkflow({
         workflow,
         sources: [{} as never],
         journal,
@@ -256,9 +256,9 @@ describe("field-preimage-length production wiring", () => {
       l1: { observeHeader: vi.fn() },
       resolveChainStage: vi.fn(),
       remove: vi.fn(),
-    } as unknown as ManifestBoundFieldPreimageLengthWorkflowV1;
+    } as unknown as ManifestBoundFieldPreimageLengthWorkflow;
     await expect(
-      runOrResumeManifestBoundFieldPreimageLengthWorkflowV1({
+      runOrResumeManifestBoundFieldPreimageLengthWorkflow({
         workflow,
         sources: [{} as never],
         journal: {} as never,

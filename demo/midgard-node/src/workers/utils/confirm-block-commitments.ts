@@ -163,7 +163,7 @@ export const resolveStateQueueBlockEndTimeMs = (
       );
       return Number(data.endTime);
     }
-    const header = yield* SDK.getHeaderV1FromStateQueueDatum(block.datum);
+    const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
     return Number(header.endTime);
   });
 
@@ -179,8 +179,8 @@ export const findCommittedStateQueueBlockByHeaderHash = (
       if (block.datum.key === "Empty") {
         continue;
       }
-      const header = yield* SDK.getHeaderV1FromStateQueueDatum(block.datum);
-      const headerHash = yield* SDK.hashBlockHeaderV1(header);
+      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
+      const headerHash = yield* SDK.hashBlockHeader(header);
       if (headerHash === expectedHeaderHash) {
         return Option.some(block);
       }
@@ -203,9 +203,9 @@ export const serializeCanonicalCommittedHeaders = (
       if (block.datum.key === "Empty") {
         continue;
       }
-      const header = yield* SDK.getHeaderV1FromStateQueueDatum(block.datum);
+      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
       headers.push({
-        headerHash: yield* SDK.hashBlockHeaderV1(header),
+        headerHash: yield* SDK.hashBlockHeader(header),
         endTimeMs: Number(header.endTime),
         blockUTxO: yield* serializeStateQueueUTxO(block),
       });

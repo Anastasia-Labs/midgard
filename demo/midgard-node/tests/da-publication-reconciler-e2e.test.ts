@@ -3,10 +3,10 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import type {
   Libp2pDaPeerConfig,
@@ -41,7 +41,7 @@ import { provideDatabaseLayers } from "./utils.js";
 
 const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";
 const DEPLOYMENT = "c7".repeat(32);
-const RETENTION_DAYS = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
+const RETENTION_DAYS = DA_TRANSPORT_LIMITS.minimumRetentionDays;
 // A dedicated, non-committee Noise identity for the public retained-DA
 // plane, as parseDaLibp2pRuntimeManifest requires.
 const PEER_RETAINED = "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
@@ -112,14 +112,14 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
           strictSign: true,
           emitSelf: false,
           allowedTopicsOnly: true,
-          maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+          maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
         },
         limits: {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-          maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-          maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-          maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-          requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+          maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+          maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+          maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+          requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
         },
         retentionDays: RETENTION_DAYS,
         peers: [...committeePeers, producerPeer],
@@ -140,12 +140,12 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       contractDeploymentManifestId: DEPLOYMENT,
       localPrivateKeySource: producerSeed,
       threshold: 2,
-      requestTimeoutMs: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-      maxInlineResponseBytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-      maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-      maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-      maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+      requestTimeoutMs: DA_TRANSPORT_LIMITS.requestTimeoutMs,
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+      maxInlineResponseBytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+      maxChunkBytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+      maxStreamsPerPeer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      maxGossipMessageBytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
       listenMultiaddrs: ["/ip4/127.0.0.1/tcp/0"],
       announceMultiaddrs: [
         "/ip4/127.0.0.1/tcp/0/p2p/" + producerIdentity.peerId,
@@ -379,7 +379,7 @@ const runtimeManifest = (
       max_inflight_requests: 32,
       max_inflight_requests_per_peer: 2,
       max_inflight_proof_requests: 1,
-      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   },
   da_committee: {
@@ -398,7 +398,7 @@ const insertFromFixture = (
   fixture: Awaited<ReturnType<typeof makePayloadFixture>>,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: fixture.payloadCbor,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(

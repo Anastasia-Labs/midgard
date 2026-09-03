@@ -10,22 +10,22 @@ import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 
 import {
-  watcherNativeChainSyncAuthorityDetailsV1,
-  type WatcherNativeChainSyncAuthorityV1,
+  type WatcherNativeChainSyncAuthority,
+  watcherNativeChainSyncAuthorityDetails,
 } from "./native-chain-sync-v1.js";
 
-export const WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION =
+export const WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION =
   "midgard-watcher-authenticated-l1-provider-v1" as const;
-export const WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION =
+export const WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-l1-block-observation-v1" as const;
-export const WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION =
+export const WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION =
   "midgard-watcher-normalized-l1-block-v1" as const;
-export const WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION =
+export const WATCHER_L1_NORMALIZATION_SESSION_SCHEMA_VERSION =
   "midgard-watcher-l1-normalization-session-v1" as const;
-export const WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION =
+export const WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_SCHEMA_VERSION =
   "midgard-watcher-l1-transport-attestation-context-v1" as const;
 
-export const WATCHER_L1_ADAPTER_V1_BOUNDS = Object.freeze({
+export const WATCHER_L1_ADAPTER_BOUNDS = Object.freeze({
   arrayMembers: 4_096,
   totalCollectionMembers: 65_536,
   publicBytes: 1_048_576,
@@ -34,14 +34,14 @@ export const WATCHER_L1_ADAPTER_V1_BOUNDS = Object.freeze({
   normalizationSessionBytes: 16_777_216,
 });
 
-export const WATCHER_L1_SCRIPT_LANGUAGES_V1 = [
+export const WATCHER_L1_SCRIPT_LANGUAGES = [
   "Native",
   "PlutusV1",
   "PlutusV2",
   "PlutusV3",
 ] as const;
 
-export const WATCHER_L1_REDEEMER_PURPOSES_V1 = [
+export const WATCHER_L1_REDEEMER_PURPOSES = [
   "spend",
   "mint",
   "certificate",
@@ -51,11 +51,11 @@ export const WATCHER_L1_REDEEMER_PURPOSES_V1 = [
 ] as const;
 
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
-export const WATCHER_L1_SOURCE_MODES_V1 = [
+export const WATCHER_L1_SOURCE_MODES = [
   "local_node",
   "external_providers",
 ] as const;
-export const WATCHER_LOCAL_NODE_SURFACES_V1 = [
+export const WATCHER_LOCAL_NODE_SURFACES = [
   "chain_sync",
   "ogmios",
   "kupo",
@@ -74,16 +74,16 @@ const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const PROVIDER_ID = /^[a-z][a-z0-9-]{0,62}$/u;
 const UINT64_MAX = 18_446_744_073_709_551_615n;
 
-export type WatcherL1NetworkV1 = (typeof NETWORKS)[number];
-export type WatcherL1SourceModeV1 = (typeof WATCHER_L1_SOURCE_MODES_V1)[number];
-export type WatcherLocalNodeSurfaceV1 =
-  (typeof WATCHER_LOCAL_NODE_SURFACES_V1)[number];
+export type WatcherL1Network = (typeof NETWORKS)[number];
+export type WatcherL1SourceModeV1 = (typeof WATCHER_L1_SOURCE_MODES)[number];
+export type WatcherLocalNodeSurface =
+  (typeof WATCHER_LOCAL_NODE_SURFACES)[number];
 
-export type WatcherL1SourceIdentityV1 =
+export type WatcherL1SourceIdentity =
   | Readonly<{
       sourceMode: "local_node";
       authorityNodeId: string;
-      surface: WatcherLocalNodeSurfaceV1;
+      surface: WatcherLocalNodeSurface;
     }>
   | Readonly<{
       sourceMode: "external_providers";
@@ -95,9 +95,9 @@ export type WatcherL1SourceIdentityV1 =
  * must come from the configured TLS trust identity or a future native local
  * adapter, never from the provider response being normalized.
  */
-type WatcherAuthenticatedL1ProviderBaseV1 = Readonly<{
-  schemaVersion: typeof WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION;
-  network: WatcherL1NetworkV1;
+type WatcherAuthenticatedL1ProviderBase = Readonly<{
+  schemaVersion: typeof WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION;
+  network: WatcherL1Network;
   providerId: string;
   authentication: Readonly<{
     kind: (typeof AUTHENTICATION_KINDS)[number];
@@ -105,9 +105,9 @@ type WatcherAuthenticatedL1ProviderBaseV1 = Readonly<{
   }>;
 }>;
 
-export type WatcherAuthenticatedL1ProviderV1 = Readonly<
-  WatcherAuthenticatedL1ProviderBaseV1 & {
-    source: WatcherL1SourceIdentityV1;
+export type WatcherAuthenticatedL1Provider = Readonly<
+  WatcherAuthenticatedL1ProviderBase & {
+    source: WatcherL1SourceIdentity;
   }
 >;
 
@@ -121,16 +121,16 @@ export type WatcherAuthenticatedL1ProviderV1 = Readonly<
  * module-private WeakMap membership, so a parsed or deserialized object cannot
  * be used to normalize protocol evidence.
  */
-export type WatcherL1TransportAttestationContextV1 = Readonly<{
-  schemaVersion: typeof WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION;
+export type WatcherL1TransportAttestationContext = Readonly<{
+  schemaVersion: typeof WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_SCHEMA_VERSION;
   attestationDigest: string;
 }>;
 
-export type WatcherLocalNodeQueryTransportV1 =
+export type WatcherLocalNodeQueryTransport =
   | Readonly<{
       transportKind: "tcp";
       providerId: string;
-      surface: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+      surface: Exclude<WatcherLocalNodeSurface, "chain_sync">;
       /** Exact W01 HTTP, WS, or PostgreSQL endpoint. */
       endpoint: string;
       connectTimeoutMs: number;
@@ -138,7 +138,7 @@ export type WatcherLocalNodeQueryTransportV1 =
   | Readonly<{
       transportKind: "https_tls";
       providerId: string;
-      surface: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+      surface: Exclude<WatcherLocalNodeSurface, "chain_sync">;
       /** Exact W01 HTTPS or WSS endpoint; host, port and SNI are derived. */
       endpoint: string;
       caPem: string;
@@ -146,8 +146,8 @@ export type WatcherLocalNodeQueryTransportV1 =
       connectTimeoutMs: number;
     }>;
 
-export type WatcherExternalProviderTransportV1 = Readonly<{
-  network: WatcherL1NetworkV1;
+export type WatcherExternalProviderTransport = Readonly<{
+  network: WatcherL1Network;
   providerId: string;
   operatorIdentitySha256: string;
   /** Exact W01 HTTPS endpoint; host, port and SNI are derived from it. */
@@ -157,8 +157,8 @@ export type WatcherExternalProviderTransportV1 = Readonly<{
   connectTimeoutMs: number;
 }>;
 
-export type WatcherL1TransportAttestationDetailsV1 = Readonly<{
-  provider: WatcherNormalizedAuthenticatedL1ProviderV1;
+export type WatcherL1TransportAttestationDetails = Readonly<{
+  provider: WatcherNormalizedAuthenticatedL1Provider;
   authorityBindingSha256: string | null;
   /**
    * Exact configured W01 transport location used to establish the live
@@ -167,56 +167,56 @@ export type WatcherL1TransportAttestationDetailsV1 = Readonly<{
   transportEndpoint: string;
 }>;
 
-export type WatcherNormalizedAuthenticatedL1ProviderV1 = Readonly<
-  WatcherAuthenticatedL1ProviderBaseV1 & {
-    source: WatcherL1SourceIdentityV1;
+export type WatcherNormalizedAuthenticatedL1Provider = Readonly<
+  WatcherAuthenticatedL1ProviderBase & {
+    source: WatcherL1SourceIdentity;
   }
 >;
 
-export type WatcherL1PublicBytesV1 = Readonly<{
+export type WatcherL1PublicBytes = Readonly<{
   bytesHex: string;
   sha256: string;
 }>;
 
-export type WatcherL1ScriptV1 = Readonly<{
+export type WatcherL1Script = Readonly<{
   scriptHash: string;
-  language: (typeof WATCHER_L1_SCRIPT_LANGUAGES_V1)[number];
-  bytes: WatcherL1PublicBytesV1;
+  language: (typeof WATCHER_L1_SCRIPT_LANGUAGES)[number];
+  bytes: WatcherL1PublicBytes;
 }>;
 
-export type WatcherL1DatumV1 = Readonly<{
+export type WatcherL1Datum = Readonly<{
   datumHash: string;
-  bytes: WatcherL1PublicBytesV1;
+  bytes: WatcherL1PublicBytes;
 }>;
 
-export type WatcherL1RedeemerV1 = Readonly<{
-  purpose: (typeof WATCHER_L1_REDEEMER_PURPOSES_V1)[number];
+export type WatcherL1Redeemer = Readonly<{
+  purpose: (typeof WATCHER_L1_REDEEMER_PURPOSES)[number];
   index: string;
-  bytes: WatcherL1PublicBytesV1;
+  bytes: WatcherL1PublicBytes;
 }>;
 
-export type WatcherL1UtxoV1 = Readonly<{
+export type WatcherL1Utxo = Readonly<{
   outRef: string;
   outputIndex: string;
-  output: WatcherL1PublicBytesV1;
-  datum: WatcherL1DatumV1 | null;
-  referenceScript: WatcherL1ScriptV1 | null;
+  output: WatcherL1PublicBytes;
+  datum: WatcherL1Datum | null;
+  referenceScript: WatcherL1Script | null;
 }>;
 
-export type WatcherL1TransactionV1 = Readonly<{
+export type WatcherL1Transaction = Readonly<{
   txHash: string;
   transactionIndex?: string;
   isValid: boolean;
-  fullTransaction: WatcherL1PublicBytesV1;
-  body: WatcherL1PublicBytesV1;
-  witnessSet: WatcherL1PublicBytesV1;
-  utxos: readonly WatcherL1UtxoV1[];
-  scripts: readonly WatcherL1ScriptV1[];
-  datums: readonly WatcherL1DatumV1[];
-  redeemers: readonly WatcherL1RedeemerV1[];
+  fullTransaction: WatcherL1PublicBytes;
+  body: WatcherL1PublicBytes;
+  witnessSet: WatcherL1PublicBytes;
+  utxos: readonly WatcherL1Utxo[];
+  scripts: readonly WatcherL1Script[];
+  datums: readonly WatcherL1Datum[];
+  redeemers: readonly WatcherL1Redeemer[];
 }>;
 
-export type WatcherL1ChainPointV1 = Readonly<{
+export type WatcherL1ChainPoint = Readonly<{
   chainPointId: string;
   pointDigest: string;
   blockHash: string;
@@ -226,45 +226,45 @@ export type WatcherL1ChainPointV1 = Readonly<{
   depth: string;
 }>;
 
-export type WatcherNormalizedL1BlockV1 = Readonly<{
-  schemaVersion: typeof WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION;
-  network: WatcherL1NetworkV1;
-  provider: WatcherNormalizedAuthenticatedL1ProviderV1;
-  chainPoint: WatcherL1ChainPointV1;
-  transactions: readonly WatcherL1TransactionV1[];
+export type WatcherNormalizedL1Block = Readonly<{
+  schemaVersion: typeof WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION;
+  network: WatcherL1Network;
+  provider: WatcherNormalizedAuthenticatedL1Provider;
+  chainPoint: WatcherL1ChainPoint;
+  transactions: readonly WatcherL1Transaction[];
   blockContentDigest: string;
   observationDigest: string;
 }>;
 
-export type WatcherL1NormalizationSessionV1 = Readonly<{
-  schemaVersion: typeof WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION;
+export type WatcherL1NormalizationSession = Readonly<{
+  schemaVersion: typeof WATCHER_L1_NORMALIZATION_SESSION_SCHEMA_VERSION;
 }>;
 
-type WatcherDerivedL1TransactionV1 = Readonly<{
-  fullTransaction: WatcherL1PublicBytesV1;
-  body: WatcherL1PublicBytesV1;
+type WatcherDerivedL1Transaction = Readonly<{
+  fullTransaction: WatcherL1PublicBytes;
+  body: WatcherL1PublicBytes;
   txHash: string;
   isValid: boolean;
-  witnessSet: WatcherL1PublicBytesV1;
-  utxos: readonly WatcherL1UtxoV1[];
-  scripts: readonly WatcherL1ScriptV1[];
-  datums: readonly WatcherL1DatumV1[];
-  redeemers: readonly WatcherL1RedeemerV1[];
+  witnessSet: WatcherL1PublicBytes;
+  utxos: readonly WatcherL1Utxo[];
+  scripts: readonly WatcherL1Script[];
+  datums: readonly WatcherL1Datum[];
+  redeemers: readonly WatcherL1Redeemer[];
 }>;
 
-type WatcherL1NormalizationSessionStateV1 = {
+type WatcherL1NormalizationSessionState = {
   readonly transactions: Map<
     string,
     Readonly<{
       bytesHex: string;
       retainedBytes: number;
-      derived: WatcherDerivedL1TransactionV1;
+      derived: WatcherDerivedL1Transaction;
     }>
   >;
   retainedBytes: number;
 };
 
-export type WatcherL1NormalizationSessionStatsV1 = Readonly<{
+export type WatcherL1NormalizationSessionStats = Readonly<{
   retainedEntries: number;
   retainedBytes: number;
   maximumEntries: number;
@@ -272,11 +272,11 @@ export type WatcherL1NormalizationSessionStatsV1 = Readonly<{
 }>;
 
 const normalizationSessionStates = new WeakMap<
-  WatcherL1NormalizationSessionV1,
-  WatcherL1NormalizationSessionStateV1
+  WatcherL1NormalizationSession,
+  WatcherL1NormalizationSessionState
 >();
-type WatcherL1TransportAttestationStateV1 = {
-  details: WatcherL1TransportAttestationDetailsV1;
+type WatcherL1TransportAttestationState = {
+  details: WatcherL1TransportAttestationDetails;
   transports: readonly (Socket | TLSSocket)[];
   ownedTransports: readonly (Socket | TLSSocket)[];
   upstreamIsLive: () => boolean;
@@ -284,18 +284,18 @@ type WatcherL1TransportAttestationStateV1 = {
 };
 
 const transportAttestationStates = new WeakMap<
-  WatcherL1TransportAttestationContextV1,
-  WatcherL1TransportAttestationStateV1
+  WatcherL1TransportAttestationContext,
+  WatcherL1TransportAttestationState
 >();
 const normalizedBlockProvenance = new WeakMap<
   object,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 
-export const makeWatcherL1NormalizationSessionV1 =
-  (): WatcherL1NormalizationSessionV1 => {
+export const makeWatcherL1NormalizationSession =
+  (): WatcherL1NormalizationSession => {
     const session = Object.freeze({
-      schemaVersion: WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_L1_NORMALIZATION_SESSION_SCHEMA_VERSION,
     });
     normalizationSessionStates.set(session, {
       transactions: new Map(),
@@ -304,9 +304,9 @@ export const makeWatcherL1NormalizationSessionV1 =
     return session;
   };
 
-export const watcherL1NormalizationSessionStatsV1 = (
-  session: WatcherL1NormalizationSessionV1,
-): WatcherL1NormalizationSessionStatsV1 => {
+export const watcherL1NormalizationSessionStats = (
+  session: WatcherL1NormalizationSession,
+): WatcherL1NormalizationSessionStats => {
   const state = normalizationSessionStates.get(session);
   if (state === undefined) {
     throw new Error("unknown watcher L1 normalization session");
@@ -314,32 +314,32 @@ export const watcherL1NormalizationSessionStatsV1 = (
   return Object.freeze({
     retainedEntries: state.transactions.size,
     retainedBytes: state.retainedBytes,
-    maximumEntries: WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionEntries,
-    maximumBytes: WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionBytes,
+    maximumEntries: WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionEntries,
+    maximumBytes: WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionBytes,
   });
 };
 
-export const isWatcherL1AdapterNormalizedBlockV1 = (
+export const isWatcherL1AdapterNormalizedBlock = (
   value: unknown,
-): value is WatcherNormalizedL1BlockV1 => {
+): value is WatcherNormalizedL1Block => {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const context = normalizedBlockProvenance.get(value);
   return (
     context !== undefined &&
-    watcherL1TransportAttestationDetailsV1(context) !== null
+    watcherL1TransportAttestationDetails(context) !== null
   );
 };
 
-export const watcherL1TransportAttestationDetailsV1 = (
+export const watcherL1TransportAttestationDetails = (
   context: unknown,
-): WatcherL1TransportAttestationDetailsV1 | null => {
+): WatcherL1TransportAttestationDetails | null => {
   if (typeof context !== "object" || context === null) {
     return null;
   }
   const state = transportAttestationStates.get(
-    context as WatcherL1TransportAttestationContextV1,
+    context as WatcherL1TransportAttestationContext,
   );
   return state !== undefined &&
     state.active &&
@@ -355,7 +355,7 @@ export const watcherL1TransportAttestationDetailsV1 = (
     : null;
 };
 
-export const isWatcherL1BlockAttestedByV1 = (
+export const isWatcherL1BlockAttestedBy = (
   block: unknown,
   context: unknown,
 ): boolean =>
@@ -364,10 +364,10 @@ export const isWatcherL1BlockAttestedByV1 = (
   typeof context === "object" &&
   context !== null &&
   normalizedBlockProvenance.get(block) === context &&
-  watcherL1TransportAttestationDetailsV1(context) !== null;
+  watcherL1TransportAttestationDetails(context) !== null;
 
-export const closeWatcherL1TransportAttestationContextV1 = (
-  context: WatcherL1TransportAttestationContextV1,
+export const closeWatcherL1TransportAttestationContext = (
+  context: WatcherL1TransportAttestationContext,
 ): void => {
   const state =
     transportAttestationStates.get(context) ??
@@ -545,7 +545,7 @@ const exactArray = (value: unknown, path: string): readonly unknown[] => {
       fail("unsafe_value", path);
     }
   }
-  if (values.length > WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers) {
+  if (values.length > WATCHER_L1_ADAPTER_BOUNDS.arrayMembers) {
     fail("out_of_bounds", path);
   }
   return values;
@@ -558,8 +558,7 @@ const reserveCollectionMembers = (
 ): void => {
   budget.collectionMembers += count;
   if (
-    budget.collectionMembers >
-    WATCHER_L1_ADAPTER_V1_BOUNDS.totalCollectionMembers
+    budget.collectionMembers > WATCHER_L1_ADAPTER_BOUNDS.totalCollectionMembers
   ) {
     fail("out_of_bounds", path);
   }
@@ -628,7 +627,7 @@ const digestCanonicalJson = (value: CanonicalJson): string =>
 const freezePublicBytes = (
   bytesHex: string,
   sha256: string,
-): WatcherL1PublicBytesV1 =>
+): WatcherL1PublicBytes =>
   Object.freeze({
     bytesHex,
     sha256,
@@ -638,7 +637,7 @@ const parsePublicBytes = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-): WatcherL1PublicBytesV1 => {
+): WatcherL1PublicBytes => {
   const record = exactRecord(value, path, ["bytesHex", "sha256"]);
   const bytesHex = exactString(
     record.bytesHex,
@@ -646,11 +645,11 @@ const parsePublicBytes = (
     LOWER_HEX_BYTES,
   );
   const byteLength = bytesHex.length / 2;
-  if (byteLength > WATCHER_L1_ADAPTER_V1_BOUNDS.publicBytes) {
+  if (byteLength > WATCHER_L1_ADAPTER_BOUNDS.publicBytes) {
     fail("out_of_bounds", `${path}.bytesHex`);
   }
   budget.publicBytes += byteLength;
-  if (budget.publicBytes > WATCHER_L1_ADAPTER_V1_BOUNDS.totalPublicBytes) {
+  if (budget.publicBytes > WATCHER_L1_ADAPTER_BOUNDS.totalPublicBytes) {
     fail("out_of_bounds", "$.transactions");
   }
   const sha256 = exactString(record.sha256, `${path}.sha256`, HEX_32);
@@ -660,12 +659,12 @@ const parsePublicBytes = (
   return freezePublicBytes(bytesHex, sha256);
 };
 
-export const makeWatcherL1PublicBytesV1 = (
+export const makeWatcherL1PublicBytes = (
   bytesHex: string,
-): WatcherL1PublicBytesV1 => {
+): WatcherL1PublicBytes => {
   if (
     !LOWER_HEX_BYTES.test(bytesHex) ||
-    bytesHex.length / 2 > WATCHER_L1_ADAPTER_V1_BOUNDS.publicBytes
+    bytesHex.length / 2 > WATCHER_L1_ADAPTER_BOUNDS.publicBytes
   ) {
     fail("invalid_field", "$.bytesHex");
   }
@@ -676,14 +675,14 @@ const parseScript = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-): WatcherL1ScriptV1 => {
+): WatcherL1Script => {
   const record = exactRecord(value, path, ["scriptHash", "language", "bytes"]);
   return Object.freeze({
     scriptHash: exactString(record.scriptHash, `${path}.scriptHash`, HEX_28),
     language: exactLiteral(
       record.language,
       `${path}.language`,
-      WATCHER_L1_SCRIPT_LANGUAGES_V1,
+      WATCHER_L1_SCRIPT_LANGUAGES,
     ),
     bytes: parsePublicBytes(record.bytes, `${path}.bytes`, budget),
   });
@@ -693,7 +692,7 @@ const parseDatum = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-): WatcherL1DatumV1 => {
+): WatcherL1Datum => {
   const record = exactRecord(value, path, ["datumHash", "bytes"]);
   const bytes = parsePublicBytes(record.bytes, `${path}.bytes`, budget);
   const datumHash = exactString(record.datumHash, `${path}.datumHash`, HEX_32);
@@ -710,27 +709,27 @@ const parseOptionalDatum = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-): WatcherL1DatumV1 | null =>
+): WatcherL1Datum | null =>
   value === null ? null : parseDatum(value, path, budget);
 
 const parseOptionalScript = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-): WatcherL1ScriptV1 | null =>
+): WatcherL1Script | null =>
   value === null ? null : parseScript(value, path, budget);
 
 const parseRedeemer = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-): WatcherL1RedeemerV1 => {
+): WatcherL1Redeemer => {
   const record = exactRecord(value, path, ["purpose", "index", "bytes"]);
   return Object.freeze({
     purpose: exactLiteral(
       record.purpose,
       `${path}.purpose`,
-      WATCHER_L1_REDEEMER_PURPOSES_V1,
+      WATCHER_L1_REDEEMER_PURPOSES,
     ),
     index: exactNatural(record.index, `${path}.index`),
     bytes: parsePublicBytes(record.bytes, `${path}.bytes`, budget),
@@ -751,7 +750,7 @@ const parseUtxo = (
   path: string,
   txHash: string,
   budget: ParseBudget,
-): WatcherL1UtxoV1 => {
+): WatcherL1Utxo => {
   const record = exactRecord(value, path, [
     "outRef",
     "outputIndex",
@@ -802,12 +801,12 @@ const freezeSortedUnique = <T>(
 };
 
 const purposeOrder = new Map(
-  WATCHER_L1_REDEEMER_PURPOSES_V1.map((purpose, index) => [purpose, index]),
+  WATCHER_L1_REDEEMER_PURPOSES.map((purpose, index) => [purpose, index]),
 );
 
 const compareRedeemers = (
-  left: WatcherL1RedeemerV1,
-  right: WatcherL1RedeemerV1,
+  left: WatcherL1Redeemer,
+  right: WatcherL1Redeemer,
 ): number => {
   const purposeComparison =
     (purposeOrder.get(left.purpose) as number) -
@@ -817,9 +816,7 @@ const compareRedeemers = (
     : purposeComparison;
 };
 
-const publicBytesFromCanonicalCbor = (
-  bytesHex: string,
-): WatcherL1PublicBytesV1 =>
+const publicBytesFromCanonicalCbor = (bytesHex: string): WatcherL1PublicBytes =>
   freezePublicBytes(bytesHex, sha256Bytes(Buffer.from(bytesHex, "hex")));
 
 type CmlWitnessScript = Readonly<{
@@ -834,9 +831,9 @@ type CmlWitnessScriptList = Readonly<{
 
 const collectWitnessScripts = (
   list: CmlWitnessScriptList | undefined,
-  language: WatcherL1ScriptV1["language"],
-): WatcherL1ScriptV1[] => {
-  const scripts: WatcherL1ScriptV1[] = [];
+  language: WatcherL1Script["language"],
+): WatcherL1Script[] => {
+  const scripts: WatcherL1Script[] = [];
   if (list === undefined) {
     return scripts;
   }
@@ -856,7 +853,7 @@ const collectWitnessScripts = (
 const redeemerPurpose = (
   tag: CML.RedeemerTag,
   path: string,
-): WatcherL1RedeemerV1["purpose"] => {
+): WatcherL1Redeemer["purpose"] => {
   switch (tag) {
     case CML.RedeemerTag.Spend:
       return "spend";
@@ -880,7 +877,7 @@ const witnessRedeemer = (
   index: bigint,
   data: CML.PlutusData,
   path: string,
-): WatcherL1RedeemerV1 =>
+): WatcherL1Redeemer =>
   Object.freeze({
     purpose: redeemerPurpose(tag, path),
     index: index.toString(),
@@ -890,9 +887,9 @@ const witnessRedeemer = (
 const collectWitnessRedeemers = (
   witnessSet: CML.TransactionWitnessSet,
   path: string,
-): readonly WatcherL1RedeemerV1[] => {
+): readonly WatcherL1Redeemer[] => {
   const redeemers = witnessSet.redeemers();
-  const collected: WatcherL1RedeemerV1[] = [];
+  const collected: WatcherL1Redeemer[] = [];
   if (redeemers === undefined) {
     return Object.freeze(collected);
   }
@@ -939,9 +936,9 @@ const collectWitnessRedeemers = (
 const collectWitnessDatums = (
   witnessSet: CML.TransactionWitnessSet,
   path: string,
-): readonly WatcherL1DatumV1[] => {
+): readonly WatcherL1Datum[] => {
   const datums = witnessSet.plutus_datums();
-  const collected: WatcherL1DatumV1[] = [];
+  const collected: WatcherL1Datum[] = [];
   if (datums !== undefined) {
     for (let index = 0; index < datums.len(); index += 1) {
       const bytes = publicBytesFromCanonicalCbor(
@@ -968,10 +965,10 @@ const collectWitnessViews = (
   transaction: CML.Transaction,
   path: string,
 ): Readonly<{
-  witnessSet: WatcherL1PublicBytesV1;
-  scripts: readonly WatcherL1ScriptV1[];
-  datums: readonly WatcherL1DatumV1[];
-  redeemers: readonly WatcherL1RedeemerV1[];
+  witnessSet: WatcherL1PublicBytes;
+  scripts: readonly WatcherL1Script[];
+  datums: readonly WatcherL1Datum[];
+  redeemers: readonly WatcherL1Redeemer[];
 }> => {
   const witnessSet = transaction.witness_set();
   const scripts = freezeSortedUnique(
@@ -1005,14 +1002,14 @@ const collectWitnessViews = (
 const referenceScriptView = (
   script: CML.Script,
   path: string,
-): WatcherL1ScriptV1 => {
+): WatcherL1Script => {
   const native = script.as_native();
   const plutusV1 = script.as_plutus_v1();
   const plutusV2 = script.as_plutus_v2();
   const plutusV3 = script.as_plutus_v3();
   const selected:
     | Readonly<{
-        language: WatcherL1ScriptV1["language"];
+        language: WatcherL1Script["language"];
         script: CmlWitnessScript;
       }>
     | undefined =
@@ -1039,7 +1036,7 @@ const referenceScriptView = (
 
 const inlineDatumView = (
   output: CML.TransactionOutput,
-): WatcherL1DatumV1 | null => {
+): WatcherL1Datum | null => {
   const datum = output.datum()?.as_datum();
   if (datum === undefined) {
     return null;
@@ -1057,7 +1054,7 @@ const collectAppliedUtxos = (
   transaction: CML.Transaction,
   txHash: string,
   path: string,
-): readonly WatcherL1UtxoV1[] => {
+): readonly WatcherL1Utxo[] => {
   const body = transaction.body();
   const outputs = body.outputs();
   const collateralReturn = body.collateral_return();
@@ -1066,10 +1063,10 @@ const collectAppliedUtxos = (
     : collateralReturn === undefined
       ? 0
       : 1;
-  if (appliedOutputCount > WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers) {
+  if (appliedOutputCount > WATCHER_L1_ADAPTER_BOUNDS.arrayMembers) {
     fail("out_of_bounds", `${path}.utxos`);
   }
-  const utxos: WatcherL1UtxoV1[] = [];
+  const utxos: WatcherL1Utxo[] = [];
   for (let index = 0; index < appliedOutputCount; index += 1) {
     const output = transaction.is_valid()
       ? outputs.get(index)
@@ -1097,7 +1094,7 @@ const collectAppliedUtxos = (
 };
 
 const decodeCanonicalTransaction = (
-  fullTransaction: WatcherL1PublicBytesV1,
+  fullTransaction: WatcherL1PublicBytes,
   path: string,
 ): CML.Transaction => {
   try {
@@ -1115,10 +1112,10 @@ const decodeCanonicalTransaction = (
 };
 
 const deriveCanonicalTransaction = (
-  fullTransaction: WatcherL1PublicBytesV1,
+  fullTransaction: WatcherL1PublicBytes,
   path: string,
-  session: WatcherL1NormalizationSessionStateV1 | undefined,
-): WatcherDerivedL1TransactionV1 => {
+  session: WatcherL1NormalizationSessionState | undefined,
+): WatcherDerivedL1Transaction => {
   const cached = session?.transactions.get(fullTransaction.sha256);
   if (cached !== undefined && cached.bytesHex === fullTransaction.bytesHex) {
     return cached.derived;
@@ -1149,7 +1146,7 @@ const deriveCanonicalTransaction = (
     session !== undefined &&
     cached === undefined &&
     session.transactions.size <
-      WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionEntries
+      WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionEntries
   ) {
     const retainedBytes = Buffer.byteLength(
       canonicalJson(derived as unknown as CanonicalJson),
@@ -1157,7 +1154,7 @@ const deriveCanonicalTransaction = (
     );
     if (
       retainedBytes <=
-      WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionBytes -
+      WATCHER_L1_ADAPTER_BOUNDS.normalizationSessionBytes -
         session.retainedBytes
     ) {
       session.transactions.set(
@@ -1175,8 +1172,8 @@ const deriveCanonicalTransaction = (
 };
 
 const assertPublicBytesMatch = (
-  claimed: WatcherL1PublicBytesV1,
-  actual: WatcherL1PublicBytesV1,
+  claimed: WatcherL1PublicBytes,
+  actual: WatcherL1PublicBytes,
   path: string,
 ): void => {
   if (
@@ -1190,16 +1187,16 @@ const assertPublicBytesMatch = (
 const assertWitnessViewsMatch = (
   path: string,
   claimed: Readonly<{
-    witnessSet: WatcherL1PublicBytesV1;
-    scripts: readonly WatcherL1ScriptV1[];
-    datums: readonly WatcherL1DatumV1[];
-    redeemers: readonly WatcherL1RedeemerV1[];
+    witnessSet: WatcherL1PublicBytes;
+    scripts: readonly WatcherL1Script[];
+    datums: readonly WatcherL1Datum[];
+    redeemers: readonly WatcherL1Redeemer[];
   }>,
   actual: Readonly<{
-    witnessSet: WatcherL1PublicBytesV1;
-    scripts: readonly WatcherL1ScriptV1[];
-    datums: readonly WatcherL1DatumV1[];
-    redeemers: readonly WatcherL1RedeemerV1[];
+    witnessSet: WatcherL1PublicBytes;
+    scripts: readonly WatcherL1Script[];
+    datums: readonly WatcherL1Datum[];
+    redeemers: readonly WatcherL1Redeemer[];
   }>,
 ): void => {
   assertPublicBytesMatch(
@@ -1221,8 +1218,8 @@ const assertWitnessViewsMatch = (
 };
 
 const assertUtxoViewsMatch = (
-  claimed: readonly WatcherL1UtxoV1[],
-  actual: readonly WatcherL1UtxoV1[],
+  claimed: readonly WatcherL1Utxo[],
+  actual: readonly WatcherL1Utxo[],
   path: string,
 ): void => {
   if (
@@ -1239,8 +1236,8 @@ const parseTransaction = (
   value: unknown,
   path: string,
   budget: ParseBudget,
-  session: WatcherL1NormalizationSessionStateV1 | undefined,
-): WatcherL1TransactionV1 => {
+  session: WatcherL1NormalizationSessionState | undefined,
+): WatcherL1Transaction => {
   const unparsed = plainRecord(value, path);
   const hasTransactionIndex = Object.prototype.hasOwnProperty.call(
     unparsed,
@@ -1339,7 +1336,7 @@ const parseTransaction = (
 
 const parseAuthenticatedProvider = (
   value: unknown,
-): WatcherNormalizedAuthenticatedL1ProviderV1 => {
+): WatcherNormalizedAuthenticatedL1Provider => {
   const unparsed = plainRecord(value, "$.authenticatedProvider");
   const record = exactRecord(unparsed, "$.authenticatedProvider", [
     "schemaVersion",
@@ -1349,7 +1346,7 @@ const parseAuthenticatedProvider = (
     "authentication",
   ]);
   if (
-    record.schemaVersion !== WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION
+    record.schemaVersion !== WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION
   ) {
     fail("unsupported_schema", "$.authenticatedProvider.schemaVersion");
   }
@@ -1365,7 +1362,7 @@ const parseAuthenticatedProvider = (
   const sourceMode = exactLiteral(
     sourceRecord.sourceMode,
     "$.authenticatedProvider.source.sourceMode",
-    WATCHER_L1_SOURCE_MODES_V1,
+    WATCHER_L1_SOURCE_MODES,
   );
   const authenticationKind = exactLiteral(
     authentication.kind,
@@ -1377,7 +1374,7 @@ const parseAuthenticatedProvider = (
     "$.authenticatedProvider.authentication.publicIdentitySha256",
     HEX_32,
   );
-  const source: WatcherL1SourceIdentityV1 =
+  const source: WatcherL1SourceIdentity =
     sourceMode === "local_node"
       ? (() => {
           const local = exactRecord(
@@ -1395,7 +1392,7 @@ const parseAuthenticatedProvider = (
             surface: exactLiteral(
               local.surface,
               "$.authenticatedProvider.source.surface",
-              WATCHER_LOCAL_NODE_SURFACES_V1,
+              WATCHER_LOCAL_NODE_SURFACES,
             ),
           });
         })()
@@ -1422,7 +1419,7 @@ const parseAuthenticatedProvider = (
     fail("identity_mismatch", "$.authenticatedProvider.authentication.kind");
   }
   return Object.freeze({
-    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
     network: exactLiteral(
       record.network,
       "$.authenticatedProvider.network",
@@ -1442,18 +1439,18 @@ const parseAuthenticatedProvider = (
 };
 
 const makeTransportAttestationContext = (
-  details: WatcherL1TransportAttestationDetailsV1,
+  details: WatcherL1TransportAttestationDetails,
   transports: readonly (Socket | TLSSocket)[],
   ownedTransports: readonly (Socket | TLSSocket)[] = transports,
   upstreamIsLive: () => boolean = () => true,
-): WatcherL1TransportAttestationContextV1 => {
+): WatcherL1TransportAttestationContext => {
   const attestationDigest = digestCanonicalJson({
     provider: providerJson(details.provider),
     authorityBindingSha256: details.authorityBindingSha256,
     transportEndpoint: details.transportEndpoint,
   });
   const context = Object.freeze({
-    schemaVersion: WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_SCHEMA_VERSION,
     attestationDigest,
   });
   transportAttestationStates.set(context, {
@@ -1713,14 +1710,14 @@ const establishTlsSocket = async (
  * produced after the pinned native NtC helper completed its Unix-socket
  * handshake and returned the exact W01 startup identity.
  */
-export const establishWatcherLocalNodeAuthorityTransportV1 = (
-  nativeAuthority: WatcherNativeChainSyncAuthorityV1,
-): WatcherL1TransportAttestationContextV1 => {
+export const establishWatcherLocalNodeAuthorityTransport = (
+  nativeAuthority: WatcherNativeChainSyncAuthority,
+): WatcherL1TransportAttestationContext => {
   const details =
-    watcherNativeChainSyncAuthorityDetailsV1(nativeAuthority) ??
+    watcherNativeChainSyncAuthorityDetails(nativeAuthority) ??
     fail("invalid_field", "$.nativeChainSyncAuthority");
   const provider = parseAuthenticatedProvider({
-    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
     network: details.network,
     providerId: details.authorityNodeId,
     source: {
@@ -1741,15 +1738,15 @@ export const establishWatcherLocalNodeAuthorityTransportV1 = (
     },
     [],
     [],
-    () => watcherNativeChainSyncAuthorityDetailsV1(nativeAuthority) !== null,
+    () => watcherNativeChainSyncAuthorityDetails(nativeAuthority) !== null,
   );
 };
 
-export const establishWatcherLocalNodeQueryTransportV1 = async (
-  authorityContext: WatcherL1TransportAttestationContextV1,
-  input: WatcherLocalNodeQueryTransportV1,
-): Promise<WatcherL1TransportAttestationContextV1> => {
-  const authority = watcherL1TransportAttestationDetailsV1(authorityContext);
+export const establishWatcherLocalNodeQueryTransport = async (
+  authorityContext: WatcherL1TransportAttestationContext,
+  input: WatcherLocalNodeQueryTransport,
+): Promise<WatcherL1TransportAttestationContext> => {
+  const authority = watcherL1TransportAttestationDetails(authorityContext);
   const authorityState = transportAttestationStates.get(authorityContext);
   if (
     authority === null ||
@@ -1760,18 +1757,17 @@ export const establishWatcherLocalNodeQueryTransportV1 = async (
   ) {
     fail("invalid_field", "$.localNodeAuthorityContext");
   }
-  const trustedAuthority =
-    authority as WatcherL1TransportAttestationDetailsV1 & {
-      readonly authorityBindingSha256: string;
-      readonly provider: WatcherNormalizedAuthenticatedL1ProviderV1 & {
-        readonly source: Extract<
-          WatcherL1SourceIdentityV1,
-          { readonly sourceMode: "local_node" }
-        >;
-      };
+  const trustedAuthority = authority as WatcherL1TransportAttestationDetails & {
+    readonly authorityBindingSha256: string;
+    readonly provider: WatcherNormalizedAuthenticatedL1Provider & {
+      readonly source: Extract<
+        WatcherL1SourceIdentity,
+        { readonly sourceMode: "local_node" }
+      >;
     };
+  };
   const trustedAuthorityState =
-    authorityState as WatcherL1TransportAttestationStateV1;
+    authorityState as WatcherL1TransportAttestationState;
   const base = plainRecord(input, "$.localNodeQueryTransport");
   const transportKind = exactLiteral(
     base.transportKind,
@@ -1807,10 +1803,10 @@ export const establishWatcherLocalNodeQueryTransportV1 = async (
   const surface = exactLiteral(
     record.surface,
     "$.localNodeQueryTransport.surface",
-    WATCHER_LOCAL_NODE_SURFACES_V1.filter(
+    WATCHER_LOCAL_NODE_SURFACES.filter(
       (candidate) => candidate !== "chain_sync",
     ),
-  ) as Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+  ) as Exclude<WatcherLocalNodeSurface, "chain_sync">;
   const plainProtocols =
     surface === "db_sync"
       ? ["postgresql:"]
@@ -1838,7 +1834,7 @@ export const establishWatcherLocalNodeQueryTransportV1 = async (
       ? await establishTcpSocket(tcpEndpoint!, "$.localNodeQueryTransport")
       : await establishTlsSocket(tlsEndpoint!, "$.localNodeQueryTransport");
   const provider = parseAuthenticatedProvider({
-    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
     network: trustedAuthority.provider.network,
     providerId,
     source: {
@@ -1867,9 +1863,9 @@ export const establishWatcherLocalNodeQueryTransportV1 = async (
   );
 };
 
-export const establishWatcherExternalProviderTransportV1 = async (
-  input: WatcherExternalProviderTransportV1,
-): Promise<WatcherL1TransportAttestationContextV1> => {
+export const establishWatcherExternalProviderTransport = async (
+  input: WatcherExternalProviderTransport,
+): Promise<WatcherL1TransportAttestationContext> => {
   const record = exactRecord(input, "$.externalProviderTransport", [
     "network",
     "providerId",
@@ -1885,7 +1881,7 @@ export const establishWatcherExternalProviderTransportV1 = async (
     "$.externalProviderTransport",
   );
   const provider = parseAuthenticatedProvider({
-    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
     network: exactLiteral(
       record.network,
       "$.externalProviderTransport.network",
@@ -1919,9 +1915,7 @@ export const establishWatcherExternalProviderTransportV1 = async (
   );
 };
 
-const transactionJson = (
-  transaction: WatcherL1TransactionV1,
-): CanonicalJson => ({
+const transactionJson = (transaction: WatcherL1Transaction): CanonicalJson => ({
   txHash: transaction.txHash,
   ...(transaction.transactionIndex === undefined
     ? {}
@@ -1937,7 +1931,7 @@ const transactionJson = (
 });
 
 const providerJson = (
-  provider: WatcherNormalizedAuthenticatedL1ProviderV1,
+  provider: WatcherNormalizedAuthenticatedL1Provider,
 ): CanonicalJson => ({
   schemaVersion: provider.schemaVersion,
   network: provider.network,
@@ -1947,13 +1941,13 @@ const providerJson = (
 });
 
 const contentJson = (input: {
-  network: WatcherL1NetworkV1;
+  network: WatcherL1Network;
   pointDigest: string;
   blockHash: string;
   parentBlockHash: string | null;
   slot: string;
   blockNo: string;
-  transactions: readonly WatcherL1TransactionV1[];
+  transactions: readonly WatcherL1Transaction[];
 }): CanonicalJson => ({
   network: input.network,
   pointDigest: input.pointDigest,
@@ -1964,8 +1958,8 @@ const contentJson = (input: {
   transactions: input.transactions.map(transactionJson),
 });
 
-export const encodeWatcherNormalizedL1BlockV1 = (
-  value: WatcherNormalizedL1BlockV1,
+export const encodeWatcherNormalizedL1Block = (
+  value: WatcherNormalizedL1Block,
 ): Buffer =>
   Buffer.from(
     canonicalJson({
@@ -1980,11 +1974,11 @@ export const encodeWatcherNormalizedL1BlockV1 = (
     "utf8",
   );
 
-export const normalizeWatcherL1BlockV1 = (
-  transportAttestationContext: WatcherL1TransportAttestationContextV1,
+export const normalizeWatcherL1Block = (
+  transportAttestationContext: WatcherL1TransportAttestationContext,
   observationInput: unknown,
-  normalizationSession?: WatcherL1NormalizationSessionV1,
-): WatcherNormalizedL1BlockV1 => {
+  normalizationSession?: WatcherL1NormalizationSession,
+): WatcherNormalizedL1Block => {
   /*
    * Trust boundary: the opaque context proves the configured live transport
    * location and peer identity; it does not claim that this arbitrary JS value
@@ -2001,13 +1995,13 @@ export const normalizeWatcherL1BlockV1 = (
       ? undefined
       : (normalizationSessionStates.get(normalizationSession) ??
         fail("invalid_field", "$.normalizationSession"));
-  const attestation = watcherL1TransportAttestationDetailsV1(
+  const attestation = watcherL1TransportAttestationDetails(
     transportAttestationContext,
   );
   if (attestation === null) {
     fail("invalid_field", "$.transportAttestationContext");
   }
-  const provider = (attestation as WatcherL1TransportAttestationDetailsV1)
+  const provider = (attestation as WatcherL1TransportAttestationDetails)
     .provider;
   const observation = exactRecord(observationInput, "$", [
     "schemaVersion",
@@ -2017,7 +2011,7 @@ export const normalizeWatcherL1BlockV1 = (
     "transactions",
   ]);
   if (
-    observation.schemaVersion !== WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION
+    observation.schemaVersion !== WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION
   ) {
     fail("unsupported_schema", "$.schemaVersion");
   }
@@ -2120,13 +2114,13 @@ export const normalizeWatcherL1BlockV1 = (
     }),
   );
   const observationDigest = digestCanonicalJson({
-    schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
     provider: providerJson(provider),
     chainPoint,
     blockContentDigest,
   });
   const normalized = Object.freeze({
-    schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
     network,
     provider,
     chainPoint,
@@ -2136,7 +2130,7 @@ export const normalizeWatcherL1BlockV1 = (
   });
   normalizedBlockProvenance.set(
     normalized,
-    transportAttestationContext as WatcherL1TransportAttestationContextV1,
+    transportAttestationContext as WatcherL1TransportAttestationContext,
   );
   return normalized;
 };
@@ -2148,10 +2142,10 @@ export const normalizeWatcherL1BlockV1 = (
  * strict normalizer; callers cannot supply hashes, witnesses, outputs,
  * datums, scripts or redeemers independently of the transaction bytes.
  */
-export const normalizeWatcherL1BlockFromTransactionCborsV1 = (
-  transportAttestationContext: WatcherL1TransportAttestationContextV1,
+export const normalizeWatcherL1BlockFromTransactionCbors = (
+  transportAttestationContext: WatcherL1TransportAttestationContext,
   input: Readonly<{
-    network: WatcherL1NetworkV1;
+    network: WatcherL1Network;
     chainPoint: Readonly<{
       blockHash: string;
       parentBlockHash: string | null;
@@ -2161,15 +2155,15 @@ export const normalizeWatcherL1BlockFromTransactionCborsV1 = (
     }>;
     transactionCbors: readonly string[];
   }>,
-  normalizationSession?: WatcherL1NormalizationSessionV1,
-): WatcherNormalizedL1BlockV1 => {
-  const attestation = watcherL1TransportAttestationDetailsV1(
+  normalizationSession?: WatcherL1NormalizationSession,
+): WatcherNormalizedL1Block => {
+  const attestation = watcherL1TransportAttestationDetails(
     transportAttestationContext,
   );
   if (attestation === null) {
     fail("invalid_field", "$.transportAttestationContext");
   }
-  const providerId = (attestation as WatcherL1TransportAttestationDetailsV1)
+  const providerId = (attestation as WatcherL1TransportAttestationDetails)
     .provider.providerId;
   const transactions = input.transactionCbors.map((cborHex, index) => {
     const fullTransaction = publicBytesFromCanonicalCbor(cborHex);
@@ -2190,10 +2184,10 @@ export const normalizeWatcherL1BlockFromTransactionCborsV1 = (
       redeemers: derived.redeemers,
     });
   });
-  return normalizeWatcherL1BlockV1(
+  return normalizeWatcherL1Block(
     transportAttestationContext,
     {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
       network: input.network,
       providerId,
       chainPoint: input.chainPoint,

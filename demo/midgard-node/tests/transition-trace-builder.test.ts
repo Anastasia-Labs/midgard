@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -816,7 +816,7 @@ describe("transition trace builder", () => {
         const excessiveSourceCount = yield* buildTransitionTraceResult({
           initialUtxos: [],
           sourceEvents: [],
-          withdrawalCount: MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount + 1,
+          withdrawalCount: MIDGARD_CONSENSUS_LIMITS.maxWithdrawalCount + 1,
           forcedTransactionCount: 0,
           l2TransactionCount: 0,
           depositCount: 0,
@@ -831,8 +831,7 @@ describe("transition trace builder", () => {
               eventKey: l2TransactionEventKey(99),
               ledgerOps: Array.from(
                 {
-                  length:
-                    MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount + 1,
+                  length: MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount + 1,
                 },
                 () => ({ type: "delete" as const, key: outRef(1) }),
               ),

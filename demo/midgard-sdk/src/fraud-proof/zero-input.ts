@@ -6,11 +6,11 @@
  * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 
-import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -74,7 +74,7 @@ export const ZeroInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
 });
 export type ZeroInputStep02Args = Data.Static<typeof ZeroInputStep02ArgsSchema>;
 export const ZeroInputStep02Args =
@@ -101,7 +101,7 @@ export {
  * nothing: `docs/spec/midgard-tx.md` §4's flat commitment of the empty §5.1
  * field, i.e. `blake2b_256(#"80")`.
  *
- * Taken from `midgard-core`'s `MIDGARD_EMPTY_FIELD_COMMITMENT_V1` rather than
+ * Taken from `midgard-core`'s `MIDGARD_EMPTY_FIELD_COMMITMENT` rather than
  * written out as a literal, so it cannot drift from the hashes the codec,
  * fixtures and builders in this repository actually produce. Its Aiken twin is
  * `native_tx_field_access_v1.empty_field_commitment`, which is what
@@ -115,7 +115,7 @@ export {
  * compact structure in view — here, `txBody.spend_inputs_hash`.
  */
 export const EMPTY_SPEND_INPUTS_HASH: string =
-  MIDGARD_EMPTY_FIELD_COMMITMENT_V1.toString("hex");
+  MIDGARD_EMPTY_FIELD_COMMITMENT.toString("hex");
 
 /**
  * A transaction violates the "at least one input" ledger rule when its body

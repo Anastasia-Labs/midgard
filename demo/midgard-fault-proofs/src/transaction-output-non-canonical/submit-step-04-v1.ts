@@ -1,24 +1,24 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { TransactionOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { TransactionOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  TransactionOutputStep04DatumV1Schema,
-  TransactionOutputStep04RedeemerV1Schema,
+  TransactionOutputStep04DatumSchema,
+  TransactionOutputStep04RedeemerSchema,
 } from "./schemas-v1.js";
 import {
-  transactionOutputEvidenceClosesV1,
-  type TransactionOutputEvidenceV1,
+  type TransactionOutputEvidence,
+  transactionOutputEvidenceCloses,
 } from "./transaction-output-non-canonical-v1.js";
 
-export const submitTransactionOutputNonCanonicalStep04V1 = async ({
+export const submitTransactionOutputNonCanonicalStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -31,23 +31,23 @@ export const submitTransactionOutputNonCanonicalStep04V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: TransactionOutputNonCanonicalContractsV1;
+  readonly contracts: TransactionOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: TransactionOutputEvidenceV1;
+  readonly evidence: TransactionOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!transactionOutputEvidenceClosesV1(evidence)) {
+  if (!transactionOutputEvidenceCloses(evidence)) {
     throw new Error(
       "transaction-output-non-canonical: terminal scan does not contradict verdict",
     );
   }
   const stepIndex = 3;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -55,7 +55,7 @@ export const submitTransactionOutputNonCanonicalStep04V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     output_index: bigint;
     item_length: bigint;
@@ -65,7 +65,7 @@ export const submitTransactionOutputNonCanonicalStep04V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: TransactionOutputStep04DatumV1Schema as never,
+    schema: TransactionOutputStep04DatumSchema as never,
     family: "transaction-output-non-canonical",
     stepIndex,
   });
@@ -81,7 +81,7 @@ export const submitTransactionOutputNonCanonicalStep04V1 = async ({
       "transaction-output-non-canonical: terminal state differs from prepared evidence",
     );
   }
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "transaction-output-non-canonical",
     stepIndex,
@@ -91,7 +91,7 @@ export const submitTransactionOutputNonCanonicalStep04V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: TransactionOutputStep04RedeemerV1Schema,
+    spendRedeemerSchema: TransactionOutputStep04RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

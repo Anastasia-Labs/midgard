@@ -1,8 +1,8 @@
 /** Real lifecycle for the registered standalone single-party min-fee proof. */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -17,11 +17,11 @@ import {
   submitMinFeeStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import type { MinFeeFieldItemCborsV1 } from "../src/submit-min-fee-step-02.js";
+import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
 import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import {
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 import {
@@ -29,7 +29,7 @@ import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishPlainReferenceScriptUtxo,
@@ -47,15 +47,15 @@ const TIER2_SPEND_INPUT_COUNT = 365;
 
 const fieldItemCbors = (
   fields: readonly (readonly string[])[],
-): MinFeeFieldItemCborsV1 => {
+): MinFeeFieldItemCbors => {
   if (fields.length !== 9) throw new Error("fixture requires nine fields");
   return fields.map((items) =>
     items.map((item) => Buffer.from(item, "hex")),
-  ) as unknown as MinFeeFieldItemCborsV1;
+  ) as unknown as MinFeeFieldItemCbors;
 };
 
 const makeHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realMinFee: true,
       alwaysFraudProofCatalogue: true,
@@ -96,14 +96,14 @@ const setupScenario = async ({
   readonly headerMinimum: bigint;
   readonly spendInputs?: readonly Buffer[];
 }) => {
-  const tx = buildFixtureTransactionV1({
+  const tx = buildFixtureTransaction({
     spendInputs,
     fee,
   });
   // The header's normative transactions MPF commits
   // `Data(L2TransactionSourceV1)` per transaction id, which is the value
   // step-01 authenticates and `prepareMinFeeFromTransactions` recounts.
-  const block = await buildCanonicalBlockFixtureV1({
+  const block = await buildCanonicalBlockFixture({
     transactions: [tx],
   });
   const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
@@ -112,7 +112,7 @@ const setupScenario = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(operatorVkey, start, block.payloadSourceTransactionsRoot, 1n),
     minFeeA: 0n,
     minFeeB: headerMinimum,
@@ -275,7 +275,7 @@ describe("min-fee emulator lifecycle", () => {
         threadOutRef: bound.nextThreadOutRef,
         nativeTxCompactCbor: scenario.prepared.tx.nativeTxCompactCbor,
         witnessSet: scenario.prepared.tx.witnessSet,
-        fieldItemCbors: missing as unknown as MinFeeFieldItemCborsV1,
+        fieldItemCbors: missing as unknown as MinFeeFieldItemCbors,
         referenceScriptUtxo: scenario.refs[1],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
@@ -292,7 +292,7 @@ describe("min-fee emulator lifecycle", () => {
         threadOutRef: bound.nextThreadOutRef,
         nativeTxCompactCbor: scenario.prepared.tx.nativeTxCompactCbor,
         witnessSet: scenario.prepared.tx.witnessSet,
-        fieldItemCbors: permuted as unknown as MinFeeFieldItemCborsV1,
+        fieldItemCbors: permuted as unknown as MinFeeFieldItemCbors,
         referenceScriptUtxo: scenario.refs[1],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
@@ -418,13 +418,13 @@ describe("min-fee emulator lifecycle", () => {
         outRefCbor(0x31, BigInt(index)),
       ),
     });
-    const preimageBytes = encodeMidgardFieldPreimageV1(
+    const preimageBytes = encodeMidgardFieldPreimage(
       scenario.fieldItemCbors[0],
     ).length;
     expect(preimageBytes).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimageBytes).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
 
     const init = await initThread(harness, scenario);
     const bound = await advanceStep01(harness, scenario, init.nextThreadOutRef);
@@ -450,8 +450,8 @@ describe("min-fee emulator lifecycle", () => {
 
     // The tier-2 publication really exists at the prover's address as a
     // bytes-only inline datum, referenced rather than spent by the step.
-    const expectedDatum = SDK.fieldPreimagePublicationDatumCborV1(
-      encodeMidgardFieldPreimageV1(scenario.fieldItemCbors[0]),
+    const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(
+      encodeMidgardFieldPreimage(scenario.fieldItemCbors[0]),
     );
     const publications = (
       await harness.proverLucid.utxosAt(harness.proverSigner.address)

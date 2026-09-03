@@ -1,22 +1,22 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardBoundedItemV1,
-  commitMidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleFrontierV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardBoundedItem,
+  commitMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
+  verifyMidgardValidationMerkleMembership,
 } from "@al-ft/midgard-core";
 import {
-  assertMidgardCekProgramMaterialBundleV1,
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramEnvelopeV1,
+  assertMidgardCekProgramMaterialBundle,
+  decodeMidgardCekProgramMaterialDaEntry,
+  encodeMidgardCekProgramEnvelope,
+  type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
   decodeSingleCbor,
@@ -25,36 +25,36 @@ import {
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_PROTOCOL_V1_VERSION,
-  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_PROTOCOL_VERSION,
+  MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
   type DaPayloadEnvelopeTimingStage,
-  unwrapDaPayloadV1,
+  unwrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  collectMidgardV1ReferencedProgramEnvelopes,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
+  collectMidgardAttachedProgramEnvelopes,
+  collectMidgardReferencedProgramEnvelopes,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
 } from "@al-ft/midgard-core/script-proof";
 import {
-  decodeMidgardValidationTraceDescriptorV1,
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
-  type MidgardValidationMachineStateV1,
-  type MidgardValidationTraceDescriptorV1,
-  verifyMidgardValidationTraceProofV1,
+  decodeMidgardValidationTraceDescriptor,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+  type MidgardValidationMachineState,
+  type MidgardValidationTraceDescriptor,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
   projectMidgardRawEnvelopeForPhaseAV1,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -92,27 +92,27 @@ export type DaPayloadVerificationTimingOptions = {
   ) => void;
 };
 
-export type DaPayloadRootSetV1 = PayloadRootSet & {
+export type DaPayloadRootSet = PayloadRootSet & {
   readonly validationTracesRoot: string;
 };
 
-export type DaPayloadCountSetV1 = PayloadCountSet & {
+export type DaPayloadCountSet = PayloadCountSet & {
   readonly validationTraceCount: bigint;
 };
 
-export type VerifiedDaPayloadV1 = {
-  readonly payload: SDK.DaPayloadV1;
+export type VerifiedDaPayload = {
+  readonly payload: SDK.DaPayload;
   readonly storedPayloadCbor: Buffer;
   readonly innerPayloadCbor: Buffer;
   readonly payloadSha256: string;
-  readonly roots: DaPayloadRootSetV1;
-  readonly counts: DaPayloadCountSetV1;
+  readonly roots: DaPayloadRootSet;
+  readonly counts: DaPayloadCountSet;
   readonly validation: Omit<
     ValidationSummary,
     "rootSummary" | "countSummary"
   > & {
-    readonly rootSummary: DaPayloadRootSetV1;
-    readonly countSummary: DaPayloadCountSetV1;
+    readonly rootSummary: DaPayloadRootSet;
+    readonly countSummary: DaPayloadCountSet;
   };
 };
 
@@ -145,29 +145,29 @@ export class DaPayloadValidationError extends Error {
   }
 }
 
-export const decodeDaPayloadV1Strict = (
+export const decodeDaPayloadStrict = (
   payloadCbor: Uint8Array,
   timing: DaPayloadVerificationTimingOptions = {},
-): SDK.DaPayloadV1 => {
-  if (payloadCbor.length > MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes) {
+): SDK.DaPayload => {
+  if (payloadCbor.length > MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes) {
     throw new DaPayloadValidationError(
       "consensus_bound",
-      `canonical DA payload bytes ${payloadCbor.length.toString()} exceed V1 maximum ${MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes.toString()}`,
+      `canonical DA payload bytes ${payloadCbor.length.toString()} exceed V1 maximum ${MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes.toString()}`,
     );
   }
   const payloadBuffer = Buffer.isBuffer(payloadCbor)
     ? payloadCbor
     : Buffer.from(payloadCbor);
-  let payload: SDK.DaPayloadV1;
+  let payload: SDK.DaPayload;
   const decodeStartedAt = readMonotonicNow(timing);
   try {
-    payload = SDK.decodeDaPayloadV1(payloadBuffer);
+    payload = SDK.decodeDaPayload(payloadBuffer);
   } catch (cause) {
     throw new DaPayloadValidationError(
-      cause instanceof SDK.DaPayloadV1NonCanonicalError
+      cause instanceof SDK.DaPayloadNonCanonicalError
         ? "non_canonical"
         : "malformed_da",
-      cause instanceof SDK.DaPayloadV1NonCanonicalError
+      cause instanceof SDK.DaPayloadNonCanonicalError
         ? "payload CBOR was not canonical for DaPayloadV1"
         : "failed to decode DaPayloadV1 canonical CBOR",
       { cause },
@@ -178,10 +178,10 @@ export const decodeDaPayloadV1Strict = (
 
   const validationStartedAt = readMonotonicNow(timing);
   try {
-    if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
+    if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
       throw new DaPayloadValidationError(
         "wrong_version",
-        `expected DaPayloadV1 version ${SDK.DA_PAYLOAD_V1_VERSION.toString()}, got ${payload.version.toString()}`,
+        `expected DaPayloadV1 version ${SDK.DA_PAYLOAD_VERSION.toString()}, got ${payload.version.toString()}`,
       );
     }
     const body = payload.block_body;
@@ -189,7 +189,7 @@ export const decodeDaPayloadV1Strict = (
       fieldName: "payload header_hash",
       byteLength: 28,
     });
-    const embeddedHeaderHash = hashBlockHeaderCborV1(body.header);
+    const embeddedHeaderHash = hashBlockHeaderCbor(body.header);
     if (embeddedHeaderHash !== body.header_hash) {
       throw new DaPayloadValidationError(
         "header_hash_mismatch",
@@ -214,9 +214,9 @@ export const decodeDaPayloadV1Strict = (
       "validation_trace_witnesses",
       body.validation_trace_witnesses,
     );
-    validateDaPayloadCountsV1(body.counts);
-    validateDaPayloadConsensusV1(body);
-    validateProofTraceCoverageV1(payload);
+    validateDaPayloadCounts(body.counts);
+    validateDaPayloadConsensus(body);
+    validateProofTraceCoverage(payload);
     return payload;
   } finally {
     recordTiming(timing, "payload_structure_validation", validationStartedAt);
@@ -224,7 +224,7 @@ export const decodeDaPayloadV1Strict = (
 };
 
 const computeDaPayloadRootsForForcedDomain = async (
-  payload: SDK.DaPayloadV1,
+  payload: SDK.DaPayload,
 ): Promise<PayloadRootSet> => {
   const body = payload.block_body;
   const transactionValues: Buffer[] = [];
@@ -236,7 +236,7 @@ const computeDaPayloadRootsForForcedDomain = async (
       const outputCbor = hexToBytes(outputHex, "utxos value");
       utxoKeys.push(outRef);
       utxoDescriptorValues.push(
-        buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        buildCanonicalMidgardLedgerEntryOutputMaterial({
           outRef,
           outputCbor,
         }).descriptorCbor,
@@ -295,9 +295,9 @@ const computeDaPayloadRootsForForcedDomain = async (
   };
 };
 
-export const computeDaPayloadV1Roots = async (
-  payload: SDK.DaPayloadV1,
-): Promise<DaPayloadRootSetV1> => {
+export const computeDaPayloadRoots = async (
+  payload: SDK.DaPayload,
+): Promise<DaPayloadRootSet> => {
   const proofRoots = await computeDaPayloadRootsForForcedDomain(payload);
   return {
     ...proofRoots,
@@ -308,16 +308,16 @@ export const computeDaPayloadV1Roots = async (
   };
 };
 
-export const verifyDaPayloadV1AgainstHeader = async (
+export const verifyDaPayloadAgainstHeader = async (
   storedPayloadCbor: Uint8Array,
   expectedHeaderHash: string,
-  header: SDK.HeaderV1,
+  header: SDK.Header,
   options: PayloadVerificationOptions,
-): Promise<VerifiedDaPayloadV1> => {
-  if (options.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)) {
+): Promise<VerifiedDaPayload> => {
+  if (options.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)) {
     throw new DaPayloadValidationError(
       "wrong_version",
-      `expected DA payload schema version ${SDK.DA_PAYLOAD_V1_VERSION.toString()}, got ${String(options.payloadSchemaVersion)}`,
+      `expected DA payload schema version ${SDK.DA_PAYLOAD_VERSION.toString()}, got ${String(options.payloadSchemaVersion)}`,
     );
   }
   const storedPayloadBuffer = Buffer.from(storedPayloadCbor);
@@ -327,8 +327,8 @@ export const verifyDaPayloadV1AgainstHeader = async (
   let payloadBuffer: Buffer;
   try {
     payloadBuffer = (
-      await unwrapDaPayloadV1(storedPayloadBuffer, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      await unwrapDaPayload(storedPayloadBuffer, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         timing: options.timing,
       })
     ).innerBytes;
@@ -343,7 +343,7 @@ export const verifyDaPayloadV1AgainstHeader = async (
     fieldName: "expected header hash",
     byteLength: 28,
   });
-  const payload = decodeDaPayloadV1Strict(payloadBuffer, options.timing);
+  const payload = decodeDaPayloadStrict(payloadBuffer, options.timing);
   const semanticStartedAt = readMonotonicNow(options.timing);
   try {
     if (payload.block_body.header_hash !== normalizedHeaderHash) {
@@ -352,37 +352,35 @@ export const verifyDaPayloadV1AgainstHeader = async (
         `payload header_hash ${payload.block_body.header_hash} does not match L1 header hash ${normalizedHeaderHash}`,
       );
     }
-    if (hashBlockHeaderCborV1(header) !== normalizedHeaderHash) {
+    if (hashBlockHeaderCbor(header) !== normalizedHeaderHash) {
       throw new DaPayloadValidationError(
         "header_hash_mismatch",
         `L1 V1 header body does not hash to expected header_hash ${normalizedHeaderHash}`,
       );
     }
-    if (
-      headerCborHexV1(payload.block_body.header) !== headerCborHexV1(header)
-    ) {
+    if (headerCborHex(payload.block_body.header) !== headerCborHex(header)) {
       throw new DaPayloadValidationError(
         "header_mismatch",
         "payload embedded V1 header does not match the L1 header",
       );
     }
-    if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+    if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
       throw new DaPayloadValidationError(
         "version_mismatch",
-        `V1 header protocol_version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${header.protocolVersion.toString()}`,
+        `V1 header protocol_version must equal ${MIDGARD_PROTOCOL_VERSION.toString()}, got ${header.protocolVersion.toString()}`,
       );
     }
-    const roots = await computeDaPayloadV1Roots(payload);
+    const roots = await computeDaPayloadRoots(payload);
     const counts = payload.block_body.counts;
-    const rootMismatchFields = daPayloadRootMismatchesV1(header, roots);
+    const rootMismatchFields = daPayloadRootMismatches(header, roots);
     if (rootMismatchFields.length > 0) {
       throw new DaPayloadValidationError(
         "root_mismatch",
         `V1 DA payload roots do not match L1 header: ${rootMismatchFields.join(",")}`,
       );
     }
-    const countMismatchFields = daPayloadCountMismatchesV1(
-      daPayloadHeaderCountsV1(header),
+    const countMismatchFields = daPayloadCountMismatches(
+      daPayloadHeaderCounts(header),
       counts,
     );
     if (countMismatchFields.length > 0) {
@@ -477,7 +475,7 @@ const validateEntries = (
   }
 };
 
-const validateCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
+const validateCounts = (counts: SDK.DaPayloadCounts): void => {
   const fields = [
     ["withdrawal_count", counts.withdrawalCount],
     ["forced_transaction_count", counts.forcedTransactionCount],
@@ -513,8 +511,8 @@ const validateCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
   }
 };
 
-const validateDaPayloadCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
-  validateCountsV1(counts);
+const validateDaPayloadCounts = (counts: SDK.DaPayloadCounts): void => {
+  validateCounts(counts);
   if (counts.validationTraceCount < 0n) {
     throw new DaPayloadValidationError(
       "count_mismatch",
@@ -532,16 +530,16 @@ const validateDaPayloadCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
 };
 
 const collectProofProgramEnvelopes = (
-  tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+  tx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>,
   fieldName: string,
-  target: Map<string, MidgardCekProgramEnvelopeV1>,
+  target: Map<string, MidgardCekProgramEnvelope>,
   resolvedOutputsByOutRef?: ReadonlyMap<string, Uint8Array>,
 ): void => {
   try {
-    const envelopes = [...collectMidgardV1AttachedProgramEnvelopes(tx)];
+    const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx)];
     if (resolvedOutputsByOutRef !== undefined) {
       envelopes.push(
-        ...collectMidgardV1ReferencedProgramEnvelopes(
+        ...collectMidgardReferencedProgramEnvelopes(
           tx,
           resolvedOutputsByOutRef,
         ),
@@ -549,7 +547,7 @@ const collectProofProgramEnvelopes = (
     }
     for (const envelope of envelopes) {
       target.set(
-        encodeMidgardCekProgramEnvelopeV1(envelope).toString("hex"),
+        encodeMidgardCekProgramEnvelope(envelope).toString("hex"),
         envelope,
       );
     }
@@ -562,15 +560,15 @@ const collectProofProgramEnvelopes = (
   }
 };
 
-const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
-  if (body.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
+  if (body.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
     throw new DaPayloadValidationError(
       "version_mismatch",
-      `embedded V1 header protocol_version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}, got ${body.header.protocolVersion.toString()}`,
+      `embedded V1 header protocol_version must equal ${MIDGARD_PROTOCOL_VERSION.toString()}, got ${body.header.protocolVersion.toString()}`,
     );
   }
 
-  const limits = MIDGARD_CONSENSUS_LIMITS_V1;
+  const limits = MIDGARD_CONSENSUS_LIMITS;
   const countBounds = [
     [
       "withdrawal_count",
@@ -638,15 +636,15 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
 
   let canonicalTransactionBytes = 0;
   let ledgerOperationCount = body.deposits.length;
-  const programEnvelopes = new Map<string, MidgardCekProgramEnvelopeV1>();
+  const programEnvelopes = new Map<string, MidgardCekProgramEnvelope>();
   const validateFullTransaction = (
     txCbor: Buffer,
     fieldName: string,
-  ): ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor> => {
+  ): ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor> => {
     canonicalTransactionBytes += txCbor.length;
     let tx;
     try {
-      tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
+      tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
     } catch (cause) {
       throw new DaPayloadValidationError(
         "malformed_transaction",
@@ -654,7 +652,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         { cause },
       );
     }
-    const violation = validateMidgardConsensusV1TxCbor(txCbor);
+    const violation = validateMidgardConsensusTxCbor(txCbor);
     if (violation !== null) {
       throw new DaPayloadValidationError(
         violation.code === "E_TX_SIZE" ||
@@ -674,7 +672,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
     return tx;
   };
   const countLedgerOperations = (
-    tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+    tx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>,
     fieldName: string,
   ): void => {
     ledgerOperationCount +=
@@ -688,11 +686,11 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
       ).length;
   };
   const assertSourceBinding = (
-    source: SDK.L2TransactionSourceV1,
-    tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
+    source: SDK.L2TransactionSource,
+    tx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>,
     fieldName: string,
   ): string => {
-    const decodedTxId = computeMidgardNativeTxIdV1(tx).toString("hex");
+    const decodedTxId = computeMidgardNativeTxId(tx).toString("hex");
     const committedTxId = normalizeHex(source.tx_id, {
       fieldName: `${fieldName}.tx_id`,
       byteLength: 32,
@@ -703,7 +701,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         `${fieldName}.tx_id ${committedTxId} does not match decoded transaction id ${decodedTxId}`,
       );
     }
-    const derived = deriveMidgardNativeTxProofSourceV1(tx);
+    const derived = deriveMidgardNativeTxProofSource(tx);
     const compactCbor = normalizeHex(source.source.compact_cbor, {
       fieldName: `${fieldName}.source.compact_cbor`,
     });
@@ -751,9 +749,9 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         `${fieldName} has no same-key transaction_preimages entry`,
       );
     }
-    const source = decodeCanonicalData<SDK.L2TransactionSourceV1>(
+    const source = decodeCanonicalData<SDK.L2TransactionSource>(
       valueHex,
-      SDK.L2TransactionSourceV1Schema as never,
+      SDK.L2TransactionSourceSchema as never,
       `${fieldName}.value`,
     );
     const tx = validateFullTransaction(
@@ -781,9 +779,9 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         `${fieldName} has no same-key forced_transaction_preimages entry`,
       );
     }
-    const forced = decodeCanonicalData<SDK.ForcedInclusionTxV1>(
+    const forced = decodeCanonicalData<SDK.ForcedInclusionTx>(
       valueHex,
-      SDK.ForcedInclusionTxV1Schema as never,
+      SDK.ForcedInclusionTxSchema as never,
       `${fieldName}.value`,
     );
     const tx = validateFullTransaction(
@@ -800,7 +798,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
     // invariant under adjudication.
     assertSourceBinding(
       forced,
-      adjudicateMidgardNativeTxFullV1Validity(
+      adjudicateMidgardNativeTxFullValidity(
         tx,
         forced.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
       ),
@@ -825,12 +823,12 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
   }
   try {
     const material = body.cek_program_material.map(([rootHex, valueHex]) =>
-      decodeMidgardCekProgramMaterialDaEntryV1(
+      decodeMidgardCekProgramMaterialDaEntry(
         hexToBytes(rootHex, "cek_program_material.root"),
         hexToBytes(valueHex, "cek_program_material.value"),
       ),
     );
-    assertMidgardCekProgramMaterialBundleV1(
+    assertMidgardCekProgramMaterialBundle(
       [...programEnvelopes.values()],
       material,
     );
@@ -994,13 +992,11 @@ const parseCanonicalL2EventToStep = (
   }
 };
 
-const headerCborHexV1 = (header: SDK.HeaderV1): string =>
-  dataHex(header, SDK.HeaderV1 as never);
+const headerCborHex = (header: SDK.Header): string =>
+  dataHex(header, SDK.Header as never);
 
-const hashBlockHeaderCborV1 = (header: SDK.HeaderV1): string =>
-  bytesToHex(
-    blake2b(Buffer.from(headerCborHexV1(header), "hex"), { dkLen: 28 }),
-  );
+const hashBlockHeaderCbor = (header: SDK.Header): string =>
+  bytesToHex(blake2b(Buffer.from(headerCborHex(header), "hex"), { dkLen: 28 }));
 
 const eventKeyFingerprint = (eventKey: SDK.EventKey): string =>
   dataHex(eventKey, SDK.EventKeySchema);
@@ -1018,7 +1014,7 @@ const eventPhase = (eventKey: SDK.EventKey): SDK.TransitionPhase => {
   return "Deposit";
 };
 
-const sourceEventFingerprints = (body: SDK.DaPayloadBodyV1): Set<string> => {
+const sourceEventFingerprints = (body: SDK.DaPayloadBody): Set<string> => {
   const fingerprints = new Set<string>();
   const add = (fingerprint: string, fieldName: string) => {
     if (fingerprints.has(fingerprint)) {
@@ -1079,11 +1075,11 @@ const sourceEventFingerprints = (body: SDK.DaPayloadBodyV1): Set<string> => {
   return fingerprints;
 };
 
-const validateTraceCoverage = (payload: SDK.DaPayloadV1): void => {
+const validateTraceCoverage = (payload: SDK.DaPayload): void => {
   const body = payload.block_body;
   const counts = body.counts;
   const expectedTransitionStepSchemaVersion =
-    MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION;
+    MIDGARD_TRANSITION_STEP_SCHEMA_VERSION;
   const memberCounts: PayloadCountSet = {
     withdrawalCount: BigInt(body.withdrawals.length),
     forcedTransactionCount: BigInt(body.forced_transactions.length),
@@ -1263,7 +1259,7 @@ const validateTraceCoverage = (payload: SDK.DaPayloadV1): void => {
   }
 };
 
-const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
+const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
   validateTraceCoverage(payload);
   const body = payload.block_body;
   if (
@@ -1289,9 +1285,9 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
       SDK.OutputReference as never,
       `forced_transactions[${index.toString()}].key`,
     );
-    const forced = decodeCanonicalData<SDK.ForcedInclusionTxV1>(
+    const forced = decodeCanonicalData<SDK.ForcedInclusionTx>(
       value,
-      SDK.ForcedInclusionTxV1Schema as never,
+      SDK.ForcedInclusionTxSchema as never,
       `forced_transactions[${index.toString()}].value`,
     );
     expectedVerdicts.set(
@@ -1307,7 +1303,7 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
     string,
     {
       readonly keyCbor: Buffer;
-      readonly descriptor: MidgardValidationTraceDescriptorV1;
+      readonly descriptor: MidgardValidationTraceDescriptor;
     }
   >();
   for (const [index, [keyHex, valueHex]] of body.validation_traces.entries()) {
@@ -1341,7 +1337,7 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
     }
     let descriptor;
     try {
-      descriptor = decodeMidgardValidationTraceDescriptorV1(
+      descriptor = decodeMidgardValidationTraceDescriptor(
         hexToBytes(valueHex, `validation_traces[${index.toString()}].value`),
       );
     } catch (cause) {
@@ -1372,15 +1368,15 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
       );
     }
   }
-  validateRetainedValidationWitnessesV1(
+  validateRetainedValidationWitnesses(
     body.validation_trace_witnesses,
     descriptors,
-    retainedTransactionPreimagesV1(payload),
+    retainedTransactionPreimages(payload),
   );
 };
 
-const retainedTransactionPreimagesV1 = (
-  payload: SDK.DaPayloadV1,
+const retainedTransactionPreimages = (
+  payload: SDK.DaPayload,
 ): ReadonlyMap<string, Buffer> => {
   const result = new Map<string, Buffer>();
   for (const [txId, txCbor] of payload.block_body.transaction_preimages) {
@@ -1436,8 +1432,8 @@ const retainedSafeNumber = (value: bigint, label: string): number => {
 };
 
 const stateFromRetainedData = (
-  state: SDK.ValidationMachineStateV1,
-): MidgardValidationMachineStateV1 => {
+  state: SDK.ValidationMachineState,
+): MidgardValidationMachineState => {
   const machineVersion = retainedSafeNumber(
     state.machine_version,
     "machine version",
@@ -1478,7 +1474,7 @@ const stateFromRetainedData = (
 const retainedFrontier = (
   count: bigint,
   peaks: readonly { readonly height: bigint; readonly hash: string }[],
-): MidgardValidationMerkleFrontierV1 => ({
+): MidgardValidationMerkleFrontier => ({
   count: retainedSafeNumber(count, "frontier count"),
   peaks: peaks.map(({ height, hash }) => ({
     height: retainedSafeNumber(height, "frontier peak height"),
@@ -1536,14 +1532,14 @@ const valueAndMintControlStage = (witnessCbor: Buffer): bigint | null => {
 };
 
 const requireRetainedMembership = (
-  frontier: MidgardValidationMerkleFrontierV1,
+  frontier: MidgardValidationMerkleFrontier,
   leafIndex: bigint,
   leafHash: Buffer,
   siblings: readonly string[],
   label: string,
 ): void => {
   if (
-    !verifyMidgardValidationMerkleMembershipV1({
+    !verifyMidgardValidationMerkleMembership({
       frontier,
       leafIndex: retainedSafeNumber(leafIndex, `${label} index`),
       leafHash,
@@ -1557,28 +1553,24 @@ const requireRetainedMembership = (
   }
 };
 
-const validateRetainedValidationWitnessesV1 = (
+const validateRetainedValidationWitnesses = (
   entries: readonly SDK.DaPayloadEntry[],
   descriptors: ReadonlyMap<
     string,
     {
       readonly keyCbor: Buffer;
-      readonly descriptor: MidgardValidationTraceDescriptorV1;
+      readonly descriptor: MidgardValidationTraceDescriptor;
     }
   >,
   rawTransactions: ReadonlyMap<string, Buffer>,
 ): void => {
   const coordinates = new Set<string>();
   for (const [index, [keyHex, valueHex]] of entries.entries()) {
-    let key: SDK.RetainedValidationWitnessKeyV1;
-    let value: SDK.RetainedValidationWitnessV1;
+    let key: SDK.RetainedValidationWitnessKey;
+    let value: SDK.RetainedValidationWitness;
     try {
-      key = SDK.decodeRetainedValidationWitnessKeyV1(
-        Buffer.from(keyHex, "hex"),
-      );
-      value = SDK.decodeRetainedValidationWitnessV1(
-        Buffer.from(valueHex, "hex"),
-      );
+      key = SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex"));
+      value = SDK.decodeRetainedValidationWitness(Buffer.from(valueHex, "hex"));
     } catch (cause) {
       throw new DaPayloadValidationError(
         "malformed_trace",
@@ -1710,7 +1702,7 @@ const validateRetainedValidationWitnessesV1 = (
           "inline retained validation witness source index is absent from raw field 6",
         );
       }
-      const bounded = buildMidgardBoundedItemV1({
+      const bounded = buildMidgardBoundedItem({
         fieldIndex: 6,
         itemIndex: sourceIndex,
         bytes: rawScript.versionedItemBytes,
@@ -1746,8 +1738,8 @@ const validateRetainedValidationWitnessesV1 = (
       value.program_counter !== value.machine_state.program_counter ||
       state.programCounter !==
         retainedSafeNumber(value.program_counter, "program counter") ||
-      !hashMidgardValidationMachineStateV1(state).equals(proof.stateHash) ||
-      !verifyMidgardValidationTraceProofV1({
+      !hashMidgardValidationMachineState(state).equals(proof.stateHash) ||
+      !verifyMidgardValidationTraceProof({
         descriptor: descriptor.descriptor,
         proof,
       })
@@ -1757,15 +1749,14 @@ const validateRetainedValidationWitnessesV1 = (
         "retained validation witness state/proof does not open the committed descriptor",
       );
     }
-    const expectedEventHash =
-      hashMidgardValidationEventKeyV1(canonicalEventKey);
+    const expectedEventHash = hashMidgardValidationEventKey(canonicalEventKey);
     if (!state.eventKeyHash.equals(expectedEventHash)) {
       throw new DaPayloadValidationError(
         "coverage_mismatch",
         "retained validation witness state is bound to another event key",
       );
     }
-    const expectedWorkRoot = hashMidgardValidationWorkWitnessV1({
+    const expectedWorkRoot = hashMidgardValidationWorkWitness({
       phase: expectedPhase.core,
       programCounter: state.programCounter,
       witnessCbor: Buffer.from(value.witness_cbor, "hex"),
@@ -1791,7 +1782,7 @@ const validateRetainedValidationWitnessesV1 = (
         "retained validation witness purpose kind is unsupported",
       );
     }
-    const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+    const purposeLeaf = hashMidgardScriptPurposeLeaf({
       purposeKind: purposeKind as 0 | 1 | 2 | 3,
       purposeIndex: native.purpose_index,
       scriptHash: Buffer.from(native.script_hash, "hex"),
@@ -1799,7 +1790,7 @@ const validateRetainedValidationWitnessesV1 = (
     });
     const sourceLeaf =
       native.origin_kind === 0n
-        ? hashMidgardInlineScriptSourceLeafV1({
+        ? hashMidgardInlineScriptSourceLeaf({
             sourceIndex: native.source_index,
             scriptLanguageTag: Number(native.language_tag) as 0 | 3 | 128,
             scriptHash: Buffer.from(native.script_hash, "hex"),
@@ -1809,7 +1800,7 @@ const validateRetainedValidationWitnessesV1 = (
             ),
             itemCommitment: Buffer.from(native.script_item_commitment, "hex"),
           })
-        : hashMidgardReferenceScriptSourceLeafV1({
+        : hashMidgardReferenceScriptSourceLeaf({
             sourceKey: Buffer.from(native.source_key, "hex"),
             scriptLanguageTag: Number(native.language_tag) as 0 | 3 | 128,
             scriptHash: Buffer.from(native.script_hash, "hex"),
@@ -1819,7 +1810,7 @@ const validateRetainedValidationWitnessesV1 = (
             ),
             itemCommitment: Buffer.from(native.script_item_commitment, "hex"),
           });
-    const executionLeaf = hashMidgardScriptExecutionLeafV1({
+    const executionLeaf = hashMidgardScriptExecutionLeaf({
       languageTag: Number(native.language_tag) as 0 | 3 | 128,
       purposeLeaf,
       sourceLeaf,
@@ -1849,7 +1840,7 @@ const validateRetainedValidationWitnessesV1 = (
     let signerFrontierValid = native.language_tag !== 0n;
     if (native.language_tag === 0n) {
       try {
-        signerFrontierValid = commitMidgardValidationMerkleFrontierV1(
+        signerFrontierValid = commitMidgardValidationMerkleFrontier(
           retainedFrontier(roots.signerCount, native.signer_peaks),
         ).equals(roots.signerCommitment);
       } catch {
@@ -1911,8 +1902,8 @@ const countedRootWithValues = async (
   );
 };
 
-const rootMismatchesV1 = (
-  header: SDK.HeaderV1,
+const rootMismatches = (
+  header: SDK.Header,
   roots: PayloadRootSet,
 ): readonly string[] =>
   [
@@ -1935,17 +1926,17 @@ const rootMismatchesV1 = (
       : "event_to_step_root",
   ].filter((field): field is string => field !== undefined);
 
-const daPayloadRootMismatchesV1 = (
-  header: SDK.HeaderV1,
-  roots: DaPayloadRootSetV1,
+const daPayloadRootMismatches = (
+  header: SDK.Header,
+  roots: DaPayloadRootSet,
 ): readonly string[] => [
-  ...rootMismatchesV1(header, roots),
+  ...rootMismatches(header, roots),
   ...(header.validationTracesRoot === roots.validationTracesRoot
     ? []
     : ["validation_traces_root"]),
 ];
 
-const headerCountsV1 = (header: SDK.HeaderV1): PayloadCountSet => ({
+const headerCounts = (header: SDK.Header): PayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -1954,10 +1945,8 @@ const headerCountsV1 = (header: SDK.HeaderV1): PayloadCountSet => ({
   transitionStepCount: header.transitionStepCount,
 });
 
-const daPayloadHeaderCountsV1 = (
-  header: SDK.HeaderV1,
-): DaPayloadCountSetV1 => ({
-  ...headerCountsV1(header),
+const daPayloadHeaderCounts = (header: SDK.Header): DaPayloadCountSet => ({
+  ...headerCounts(header),
   validationTraceCount: header.validationTraceCount,
 });
 
@@ -1984,9 +1973,9 @@ const countMismatches = (
       : "transition_step_count",
   ].filter((field): field is string => field !== undefined);
 
-const daPayloadCountMismatchesV1 = (
-  expected: DaPayloadCountSetV1,
-  actual: DaPayloadCountSetV1,
+const daPayloadCountMismatches = (
+  expected: DaPayloadCountSet,
+  actual: DaPayloadCountSet,
 ): readonly string[] => [
   ...countMismatches(expected, actual),
   ...(expected.validationTraceCount === actual.validationTraceCount

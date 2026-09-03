@@ -36,7 +36,7 @@ import {
 import { fetchHubOracleUTxOProgram, HubOracleError } from "./hub-oracle.js";
 import { AuthenticUTxO } from "./internals.js";
 import { WithdrawalValiditySchema } from "./ledger-state.js";
-import { OperatorVerdictV1Schema } from "./rejection-reason-v1.js";
+import { OperatorVerdictSchema } from "./rejection-reason-v1.js";
 import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
@@ -58,10 +58,7 @@ import {
 } from "./tx-context-redeemer.js";
 import { outputDatumCborMatches } from "./tx-output-utils.js";
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
-import {
-  TxOrderUTxOV1,
-  utxosToTxOrderUTxOsV1,
-} from "./user-events/tx-order.js";
+import { TxOrderUTxOV1, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import {
   utxosToWithdrawalUTxOs,
   WithdrawalUTxO,
@@ -95,7 +92,7 @@ export const EventTypeSchema = Data.Enum([
   }),
   Data.Object({
     TxOrder: Data.Object({
-      validity_override: OperatorVerdictV1Schema,
+      validity_override: OperatorVerdictSchema,
     }),
   }),
 ]);
@@ -526,7 +523,7 @@ export const fetchUserEventRefUTxO = (
     const authenticUTxOs = yield* userEventType === "Deposit"
       ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId)
       : "TxOrder" in userEventType
-        ? utxosToTxOrderUTxOsV1(allUTxOs, userEventPolicyId)
+        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
         : "Withdrawal" in userEventType
           ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId)
           : Effect.fail(

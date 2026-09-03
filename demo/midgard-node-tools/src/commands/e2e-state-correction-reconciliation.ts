@@ -3,17 +3,17 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { computeDeploymentManifestV1JsonDigest } from "@al-ft/midgard-core";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
 import {
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowTerminalV1,
-  journalJsonDigestV1,
-  normalizeJournalJsonV1,
-  validateFraudProofWorkflowJournalV1,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
+  journalJsonDigest,
+  normalizeJournalJson,
+  validateFraudProofWorkflowJournal,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  type DeploymentManifestV1Value,
-  parseDeploymentManifestV1Value,
+  type DeploymentManifestValue,
+  parseDeploymentManifestValue,
 } from "midgard-node/deployment-manifest-v1";
 
 import type {
@@ -21,7 +21,7 @@ import type {
   RawEvidenceRef,
   TransactionEvidence,
 } from "../e2e/summary.js";
-import type { E2EStateCorrectionAcceptanceV1 } from "./e2e-state-correction-acceptance.js";
+import type { E2EStateCorrectionAcceptance } from "./e2e-state-correction-acceptance.js";
 import { REQUIRED_STATE_CORRECTION_GATE_LABELS } from "./e2e-state-correction-acceptance.js";
 
 export const E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION =
@@ -31,7 +31,7 @@ export const E2E_STATE_CORRECTION_RECOVERY_OBSERVATION_SCHEMA_VERSION =
 export const E2E_STATE_CORRECTION_FINAL_SNAPSHOT_SCHEMA_VERSION =
   "midgard-e2e-state-correction-final-snapshot-v1" as const;
 
-export type StateCorrectionIndependentSourcePathsV1 = {
+export type StateCorrectionIndependentSourcePaths = {
   readonly deploymentManifestPath: string;
   readonly blueprintPath: string;
   readonly cataloguePath: string;
@@ -43,7 +43,7 @@ export type StateCorrectionIndependentSourcePathsV1 = {
   readonly finalSnapshotPath: string;
 };
 
-export type StateCorrectionIndependentEvidenceV1 = {
+export type StateCorrectionIndependentEvidence = {
   readonly db: readonly DbEvidence[];
   readonly transactions: readonly TransactionEvidence[];
   readonly rawEvidence: readonly RawEvidenceRef[];
@@ -55,7 +55,7 @@ export type StateCorrectionIndependentEvidenceV1 = {
  * Cardano sources and database; returning success from data loaded out of the
  * evidence directory is not an implementation of this port.
  */
-export interface StateCorrectionIndependentAuthorityV1 {
+export interface StateCorrectionIndependentAuthority {
   authenticateTransaction(input: {
     readonly txHash: string;
     readonly kupoOutputIndex: number;
@@ -125,7 +125,7 @@ type ChainPoint = {
   readonly blockHash: string;
 };
 
-type AuthenticatedL1TxObservationV1 = {
+type AuthenticatedL1TxObservation = {
   readonly schemaVersion: typeof E2E_AUTHENTICATED_L1_TX_OBSERVATION_SCHEMA_VERSION;
   readonly runId: string;
   readonly network: "Preprod";
@@ -144,7 +144,7 @@ type AuthenticatedL1TxObservationV1 = {
   };
 };
 
-type RecoveryObservationV1 = {
+type RecoveryObservation = {
   readonly schemaVersion: typeof E2E_STATE_CORRECTION_RECOVERY_OBSERVATION_SCHEMA_VERSION;
   readonly runId: string;
   readonly manifestId: string;
@@ -160,7 +160,7 @@ type RecoveryObservationV1 = {
   readonly watcherState: "ready_after_reconciliation";
 };
 
-type FinalSnapshotV1 = {
+type FinalSnapshot = {
   readonly schemaVersion: typeof E2E_STATE_CORRECTION_FINAL_SNAPSHOT_SCHEMA_VERSION;
   readonly runId: string;
   readonly network: "Preprod";
@@ -230,8 +230,8 @@ type FinalSnapshotV1 = {
   }[];
 };
 
-type NodeDatabaseExportV1 = Pick<
-  FinalSnapshotV1,
+type NodeDatabaseExport = Pick<
+  FinalSnapshot,
   | "runId"
   | "manifestId"
   | "stateQueue"
@@ -247,8 +247,8 @@ type NodeDatabaseExportV1 = Pick<
 type LoadedWorkflow = {
   readonly directory: string;
   readonly digest: string;
-  readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
-  readonly terminal: FraudProofWorkflowTerminalV1;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly terminal: FraudProofWorkflowTerminal;
   readonly confirmedTxHashes: ReadonlySet<string>;
   readonly entryPaths: readonly string[];
 };
@@ -562,7 +562,7 @@ const parseOgmiosTip = (value: unknown, field: string): ParsedOgmiosTip => {
 };
 
 type DerivedL1Observation = {
-  readonly observation: AuthenticatedL1TxObservationV1;
+  readonly observation: AuthenticatedL1TxObservation;
   readonly kupoOutputIndex: number;
   readonly inclusionHeight: number;
   readonly rawPaths: readonly string[];
@@ -573,9 +573,9 @@ const deriveAuthenticatedL1Observation = async ({
   observationPath,
   authority,
 }: {
-  readonly observation: AuthenticatedL1TxObservationV1;
+  readonly observation: AuthenticatedL1TxObservation;
   readonly observationPath: string;
-  readonly authority: StateCorrectionIndependentAuthorityV1;
+  readonly authority: StateCorrectionIndependentAuthority;
 }): Promise<DerivedL1Observation> => {
   const [kupoRaw, ogmiosBlockRaw, ogmiosTipRaw] = await Promise.all([
     readDigestCheckedJson({
@@ -681,7 +681,7 @@ const deriveAuthenticatedL1Observation = async ({
 const parseAuthenticatedL1Observation = (
   value: unknown,
   field: string,
-): AuthenticatedL1TxObservationV1 => {
+): AuthenticatedL1TxObservation => {
   const candidate = record(value, field);
   exactKeys(
     candidate,
@@ -766,7 +766,7 @@ const parseAuthenticatedL1Observation = (
 const parseRecoveryObservation = (
   value: unknown,
   field: string,
-): RecoveryObservationV1 => {
+): RecoveryObservation => {
   const candidate = record(value, field);
   exactKeys(
     candidate,
@@ -837,7 +837,7 @@ const parseRecoveryObservation = (
   };
 };
 
-const parseFinalSnapshot = (value: unknown): FinalSnapshotV1 => {
+const parseFinalSnapshot = (value: unknown): FinalSnapshot => {
   const field = "final snapshot";
   const candidate = record(value, field);
   exactKeys(
@@ -1217,7 +1217,7 @@ const parseFinalSnapshot = (value: unknown): FinalSnapshotV1 => {
   };
 };
 
-const parseNodeDatabaseExport = (value: unknown): NodeDatabaseExportV1 => {
+const parseNodeDatabaseExport = (value: unknown): NodeDatabaseExport => {
   const field = "raw node database export";
   const candidate = record(value, field);
   exactKeys(
@@ -1310,12 +1310,12 @@ const loadWorkflow = async (directory: string): Promise<LoadedWorkflow> => {
     entryPaths.map((path) => readFile(path, "utf8")),
   );
   const entries = contents.map(
-    (content) => JSON.parse(content) as FraudProofWorkflowJournalEntryV1,
+    (content) => JSON.parse(content) as FraudProofWorkflowJournalEntry,
   );
   const workflowId = entries[0]?.workflowId;
   if (workflowId === undefined)
     throw new Error(`workflow journal ${directory} is empty`);
-  validateFraudProofWorkflowJournalV1({ workflowId, entries });
+  validateFraudProofWorkflowJournal({ workflowId, entries });
   const completed = entries.filter((entry) => entry.event.kind === "completed");
   const last = entries.at(-1);
   if (
@@ -1328,8 +1328,8 @@ const loadWorkflow = async (directory: string): Promise<LoadedWorkflow> => {
     );
   }
   const terminalEvent = completed[0].event;
-  const terminalDigest = journalJsonDigestV1(
-    normalizeJournalJsonV1(
+  const terminalDigest = journalJsonDigest(
+    normalizeJournalJson(
       terminalEvent.terminal,
       "acceptance workflow terminal",
     ),
@@ -1340,7 +1340,7 @@ const loadWorkflow = async (directory: string): Promise<LoadedWorkflow> => {
   for (const entry of entries) {
     if (
       entry.event.kind === "prepared" &&
-      journalJsonDigestV1(entry.event.artifact) !== entry.event.artifactDigest
+      journalJsonDigest(entry.event.artifact) !== entry.event.artifactDigest
     ) {
       throw new Error(`workflow journal ${directory} prepared digest mismatch`);
     }
@@ -1418,9 +1418,9 @@ const assertEqual = (
 };
 
 const manifestCatalogue = (
-  manifest: DeploymentManifestV1Value,
+  manifest: DeploymentManifestValue,
 ): NonNullable<
-  DeploymentManifestV1Value["contracts"][string]["fraudProofCatalogue"]
+  DeploymentManifestValue["contracts"][string]["fraudProofCatalogue"]
 > => {
   const catalogue =
     manifest.contracts.fraudProofCatalogueMint?.fraudProofCatalogue;
@@ -1436,7 +1436,7 @@ type RequiredTransaction = {
 };
 
 const requiredTransactions = (
-  claim: E2EStateCorrectionAcceptanceV1,
+  claim: E2EStateCorrectionAcceptance,
 ): readonly RequiredTransaction[] => [
   ...claim.families.flatMap((family) => [
     { label: `fault-proof:${family.familyId}:init`, txHash: family.initTxHash },
@@ -1489,17 +1489,17 @@ const requiredTransactions = (
   ]),
 ];
 
-export const reconcileStateCorrectionIndependentEvidenceV1 = async ({
+export const reconcileStateCorrectionIndependentEvidence = async ({
   expectedRunId,
   claim,
   paths,
   authority,
 }: {
   readonly expectedRunId: string;
-  readonly claim: E2EStateCorrectionAcceptanceV1;
-  readonly paths: StateCorrectionIndependentSourcePathsV1;
-  readonly authority: StateCorrectionIndependentAuthorityV1;
-}): Promise<StateCorrectionIndependentEvidenceV1> => {
+  readonly claim: E2EStateCorrectionAcceptance;
+  readonly paths: StateCorrectionIndependentSourcePaths;
+  readonly authority: StateCorrectionIndependentAuthority;
+}): Promise<StateCorrectionIndependentEvidence> => {
   assertEqual(claim.runId, expectedRunId, "state-correction acceptance run");
   const [
     manifestValue,
@@ -1523,7 +1523,7 @@ export const reconcileStateCorrectionIndependentEvidenceV1 = async ({
     readJson(paths.finalSnapshotPath),
   ]);
 
-  const manifest = parseDeploymentManifestV1Value(manifestValue);
+  const manifest = parseDeploymentManifestValue(manifestValue);
   if (manifest.network !== "Preprod") {
     throw new Error(
       `deployment manifest network must be Preprod, found ${manifest.network}`,
@@ -1534,8 +1534,7 @@ export const reconcileStateCorrectionIndependentEvidenceV1 = async ({
   const catalogue = manifestCatalogue(manifest);
   assertEqual(catalogueValue, catalogue, "independent catalogue source");
   const blueprintSha256 = sha256(blueprintBytes);
-  const parametersSha256 =
-    computeDeploymentManifestV1JsonDigest(parametersValue);
+  const parametersSha256 = computeDeploymentManifestJsonDigest(parametersValue);
   const releaseEvidenceSha256 = sha256(releaseEvidenceBytes);
   assertEqual(
     manifest.manifestId,
@@ -1593,7 +1592,7 @@ export const reconcileStateCorrectionIndependentEvidenceV1 = async ({
   if (workflowByCategory.size !== workflows.length) {
     throw new Error("workflow journals contain duplicate family categories");
   }
-  const terminals = new Map<string, FraudProofWorkflowTerminalV1>();
+  const terminals = new Map<string, FraudProofWorkflowTerminal>();
   for (const family of claim.families) {
     const workflow = workflowByCategory.get(
       family.familyId as Parameters<typeof workflowByCategory.get>[0],

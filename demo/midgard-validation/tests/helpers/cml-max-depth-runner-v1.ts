@@ -25,14 +25,14 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-export const MAX_DEPTH_V8_STACK_SIZE_KB_V1 = 2_000;
+export const MAX_DEPTH_V8_STACK_SIZE_KB = 2_000;
 
-export const CML_MAX_DEPTH_CHILD_SCRIPT_V1 = join(
+export const CML_MAX_DEPTH_CHILD_SCRIPT = join(
   HERE,
   "cml-max-depth-child-v1.mjs",
 );
 
-export type MaxDepthCmlRequestV1 =
+export type MaxDepthCmlRequest =
   | {
       readonly operation: "plutusDataParse";
       readonly cmlMainPath: string;
@@ -55,7 +55,7 @@ export type MaxDepthCmlRequestV1 =
       readonly protocolParameters: Record<string, unknown>;
     };
 
-export type MaxDepthCmlResultV1 = {
+export type MaxDepthCmlResult = {
   readonly ok: boolean;
   readonly errorName?: string;
   readonly message?: string;
@@ -76,19 +76,19 @@ const encodeBigints = (value: unknown): unknown => {
   return value;
 };
 
-export const runMaxDepthCmlOperationV1 = (
-  request: MaxDepthCmlRequestV1,
+export const runMaxDepthCmlOperation = (
+  request: MaxDepthCmlRequest,
   {
-    stackSizeKb = MAX_DEPTH_V8_STACK_SIZE_KB_V1,
+    stackSizeKb = MAX_DEPTH_V8_STACK_SIZE_KB,
     timeoutMs = 300_000,
   }: { readonly stackSizeKb?: number | null; readonly timeoutMs?: number } = {},
-): MaxDepthCmlResultV1 => {
+): MaxDepthCmlResult => {
   const scratch = mkdtempSync(join(tmpdir(), "midgard-c26-maxdepth-"));
   const requestPath = join(scratch, "request.json");
   writeFileSync(requestPath, JSON.stringify(encodeBigints(request)), "utf8");
   const nodeArgs = [
     ...(stackSizeKb === null ? [] : [`--stack-size=${stackSizeKb}`]),
-    CML_MAX_DEPTH_CHILD_SCRIPT_V1,
+    CML_MAX_DEPTH_CHILD_SCRIPT,
     requestPath,
   ];
   const stdout = execFileSync(process.execPath, nodeArgs, {
@@ -96,5 +96,5 @@ export const runMaxDepthCmlOperationV1 = (
     timeout: timeoutMs,
     maxBuffer: 64 * 1024 * 1024,
   });
-  return JSON.parse(stdout) as MaxDepthCmlResultV1;
+  return JSON.parse(stdout) as MaxDepthCmlResult;
 };

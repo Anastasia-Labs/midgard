@@ -2,10 +2,10 @@
  * Blueprint titles shared across families.
  */
 
-export const CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1 =
+export const CEK_PROGRAM_MATERIAL_SPEND_TITLE =
   "user_events/cek_program_material_v1.spend.spend";
 
-export const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
+export const VALIDATION_TRACE_RESOLVER_COUNT = 14;
 
 export const FAULT_PROOF_SHARED_TITLES = {
   computationThreadMint: "computation_thread.mint.mint",

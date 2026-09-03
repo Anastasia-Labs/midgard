@@ -3,19 +3,19 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  buildMidgardValidationMerkleMembershipV1,
-  type MidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleFrontier,
+  buildMidgardValidationMerkleMembership,
+  type MidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleMembership,
 } from "./validation-merkle.js";
 
 const FRAME_DOMAIN = Buffer.from("MidgardMpfProofFrameV1", "ascii");
 const NULL_HASH = Buffer.alloc(32);
 const PATH_NIBBLE_COUNT = 64;
 
-export const MIDGARD_MPF_PROOF_FRAME_MAX_BYTES_V1 = 141;
+export const MIDGARD_MPF_PROOF_FRAME_MAX_BYTES = 141;
 
-export type MidgardMpfProofStepV1 =
+export type MidgardMpfProofStep =
   | {
       readonly kind: "branch";
       readonly skip: number;
@@ -37,41 +37,41 @@ export type MidgardMpfProofStepV1 =
       readonly value: Hash32;
     };
 
-export type MidgardMpfProofFrameV1 = {
+export type MidgardMpfProofFrame = {
   readonly version: 1;
   readonly frameIndex: number;
   readonly cursor: number;
   readonly nextCursor: number;
-  readonly step: MidgardMpfProofStepV1;
+  readonly step: MidgardMpfProofStep;
 };
 
-export type MidgardMpfProofDescriptorV1 = {
+export type MidgardMpfProofDescriptor = {
   readonly version: 1;
   readonly frameCount: number;
   readonly terminalCursor: number;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
 };
 
-export type MidgardMpfProofFoldControlV1 = {
+export type MidgardMpfProofFoldControl = {
   readonly nextFrameIndex: number;
   readonly expectedNextCursor: number;
   readonly includingRoot: Hash32;
   readonly excludingRoot: Hash32;
 };
 
-export type MidgardMpfProofFoldStepV1 = {
-  readonly frame: MidgardMpfProofFrameV1;
-  readonly membership: MidgardValidationMerkleMembershipV1;
-  readonly pre: MidgardMpfProofFoldControlV1;
-  readonly post: MidgardMpfProofFoldControlV1;
+export type MidgardMpfProofFoldStep = {
+  readonly frame: MidgardMpfProofFrame;
+  readonly membership: MidgardValidationMerkleMembership;
+  readonly pre: MidgardMpfProofFoldControl;
+  readonly post: MidgardMpfProofFoldControl;
 };
 
-export type MidgardMpfProofFoldTraceV1 = {
-  readonly descriptor: MidgardMpfProofDescriptorV1;
-  readonly frames: readonly MidgardMpfProofFrameV1[];
-  readonly initial: MidgardMpfProofFoldControlV1;
-  readonly steps: readonly MidgardMpfProofFoldStepV1[];
-  readonly terminal: MidgardMpfProofFoldControlV1;
+export type MidgardMpfProofFoldTrace = {
+  readonly descriptor: MidgardMpfProofDescriptor;
+  readonly frames: readonly MidgardMpfProofFrame[];
+  readonly initial: MidgardMpfProofFoldControl;
+  readonly steps: readonly MidgardMpfProofFoldStep[];
+  readonly terminal: MidgardMpfProofFoldControl;
 };
 
 type JsonRecord = Readonly<Record<string, unknown>>;
@@ -127,9 +127,9 @@ const asHexBytes = (
   return bytes;
 };
 
-export const parseMidgardMpfProofJsonV1 = (
+export const parseMidgardMpfProofJson = (
   value: unknown,
-): readonly MidgardMpfProofStepV1[] => {
+): readonly MidgardMpfProofStep[] => {
   if (!Array.isArray(value)) {
     throw new Error("MPF proof JSON must be an array");
   }
@@ -299,7 +299,7 @@ const sparseMerkle16 = (
 
 const doBranch = (
   path: Uint8Array,
-  frame: MidgardMpfProofFrameV1,
+  frame: MidgardMpfProofFrame,
   childRoot: Uint8Array,
 ): Hash32 => {
   if (frame.step.kind !== "branch") {
@@ -321,7 +321,7 @@ const doBranch = (
 
 const doFork = (
   path: Uint8Array,
-  frame: MidgardMpfProofFrameV1,
+  frame: MidgardMpfProofFrame,
   childRoot: Uint8Array,
   neighborNibble: number,
   neighborPrefix: Uint8Array,
@@ -339,7 +339,7 @@ const doFork = (
 
 const foldIncludingFrame = (
   path: Uint8Array,
-  frame: MidgardMpfProofFrameV1,
+  frame: MidgardMpfProofFrame,
   childRoot: Uint8Array,
 ): Hash32 => {
   if (frame.step.kind === "branch") {
@@ -367,7 +367,7 @@ const foldIncludingFrame = (
 
 const foldExcludingFrame = (
   path: Uint8Array,
-  frame: MidgardMpfProofFrameV1,
+  frame: MidgardMpfProofFrame,
   childRoot: Uint8Array,
   isTerminalFrame: boolean,
 ): Hash32 => {
@@ -406,7 +406,7 @@ const foldExcludingFrame = (
   );
 };
 
-const validateFrameStructure = (frame: MidgardMpfProofFrameV1): void => {
+const validateFrameStructure = (frame: MidgardMpfProofFrame): void => {
   if (
     frame.version !== 1 ||
     !Number.isSafeInteger(frame.frameIndex) ||
@@ -446,8 +446,8 @@ const validateFrameStructure = (frame: MidgardMpfProofFrameV1): void => {
   ensureHash32(frame.step.value, "mpf_proof_frame.leaf.value");
 };
 
-export const encodeMidgardMpfProofFrameV1 = (
-  frame: MidgardMpfProofFrameV1,
+export const encodeMidgardMpfProofFrame = (
+  frame: MidgardMpfProofFrame,
 ): Buffer => {
   validateFrameStructure(frame);
   const prefix = [
@@ -463,7 +463,7 @@ export const encodeMidgardMpfProofFrameV1 = (
       BigInt(frame.step.skip),
       frame.step.neighbors,
     ]);
-    if (encoded.length > MIDGARD_MPF_PROOF_FRAME_MAX_BYTES_V1) {
+    if (encoded.length > MIDGARD_MPF_PROOF_FRAME_MAX_BYTES) {
       throw new Error("MPF branch frame exceeds its generated proof bound");
     }
     return encoded;
@@ -477,7 +477,7 @@ export const encodeMidgardMpfProofFrameV1 = (
       frame.step.neighbor.prefix,
       frame.step.neighbor.root,
     ]);
-    if (encoded.length > MIDGARD_MPF_PROOF_FRAME_MAX_BYTES_V1) {
+    if (encoded.length > MIDGARD_MPF_PROOF_FRAME_MAX_BYTES) {
       throw new Error("MPF fork frame exceeds its generated proof bound");
     }
     return encoded;
@@ -489,20 +489,18 @@ export const encodeMidgardMpfProofFrameV1 = (
     frame.step.key,
     frame.step.value,
   ]);
-  if (encoded.length > MIDGARD_MPF_PROOF_FRAME_MAX_BYTES_V1) {
+  if (encoded.length > MIDGARD_MPF_PROOF_FRAME_MAX_BYTES) {
     throw new Error("MPF leaf frame exceeds its generated proof bound");
   }
   return encoded;
 };
 
-export const hashMidgardMpfProofFrameV1 = (
-  frame: MidgardMpfProofFrameV1,
-): Hash32 =>
-  hash32(Buffer.concat([FRAME_DOMAIN, encodeMidgardMpfProofFrameV1(frame)]));
+export const hashMidgardMpfProofFrame = (frame: MidgardMpfProofFrame): Hash32 =>
+  hash32(Buffer.concat([FRAME_DOMAIN, encodeMidgardMpfProofFrame(frame)]));
 
-export const buildMidgardMpfProofFramesV1 = (
-  steps: readonly MidgardMpfProofStepV1[],
-): readonly MidgardMpfProofFrameV1[] => {
+export const buildMidgardMpfProofFrames = (
+  steps: readonly MidgardMpfProofStep[],
+): readonly MidgardMpfProofFrame[] => {
   if (steps.length > PATH_NIBBLE_COUNT) {
     throw new Error("MPF proof has more frames than the key path");
   }
@@ -518,15 +516,15 @@ export const buildMidgardMpfProofFramesV1 = (
       cursor,
       nextCursor,
       step,
-    } as const satisfies MidgardMpfProofFrameV1;
+    } as const satisfies MidgardMpfProofFrame;
     cursor = nextCursor;
     return frame;
   });
 };
 
-export const buildMidgardMpfProofDescriptorV1 = (
-  frames: readonly MidgardMpfProofFrameV1[],
-): MidgardMpfProofDescriptorV1 => {
+export const buildMidgardMpfProofDescriptor = (
+  frames: readonly MidgardMpfProofFrame[],
+): MidgardMpfProofDescriptor => {
   let cursor = 0;
   frames.forEach((frame, frameIndex) => {
     validateFrameStructure(frame);
@@ -535,17 +533,17 @@ export const buildMidgardMpfProofDescriptorV1 = (
     }
     cursor = frame.nextCursor;
   });
-  const leafHashes = frames.map(hashMidgardMpfProofFrameV1);
+  const leafHashes = frames.map(hashMidgardMpfProofFrame);
   return {
     version: 1,
     frameCount: frames.length,
     terminalCursor: frames.at(-1)?.nextCursor ?? 0,
-    frontier: buildMidgardValidationMerkleFrontierV1(leafHashes),
+    frontier: buildMidgardValidationMerkleFrontier(leafHashes),
   };
 };
 
-export const encodeMidgardMpfProofDescriptorV1 = (
-  descriptor: MidgardMpfProofDescriptorV1,
+export const encodeMidgardMpfProofDescriptor = (
+  descriptor: MidgardMpfProofDescriptor,
 ): Buffer => {
   if (
     descriptor.version !== 1 ||
@@ -573,20 +571,20 @@ export const encodeMidgardMpfProofDescriptorV1 = (
   ]);
 };
 
-export const buildMidgardMpfProofFoldTraceV1 = ({
+export const buildMidgardMpfProofFoldTrace = ({
   key,
   value,
   steps,
 }: {
   readonly key: Uint8Array;
   readonly value: Uint8Array;
-  readonly steps: readonly MidgardMpfProofStepV1[];
-}): MidgardMpfProofFoldTraceV1 => {
-  const frames = buildMidgardMpfProofFramesV1(steps);
-  const descriptor = buildMidgardMpfProofDescriptorV1(frames);
+  readonly steps: readonly MidgardMpfProofStep[];
+}): MidgardMpfProofFoldTrace => {
+  const frames = buildMidgardMpfProofFrames(steps);
+  const descriptor = buildMidgardMpfProofDescriptor(frames);
   const path = hash32(key);
-  const leafHashes = frames.map(hashMidgardMpfProofFrameV1);
-  let control: MidgardMpfProofFoldControlV1 = {
+  const leafHashes = frames.map(hashMidgardMpfProofFrame);
+  let control: MidgardMpfProofFoldControl = {
     nextFrameIndex: frames.length - 1,
     expectedNextCursor: descriptor.terminalCursor,
     includingRoot: combine(
@@ -596,7 +594,7 @@ export const buildMidgardMpfProofFoldTraceV1 = ({
     excludingRoot: ensureHash32(NULL_HASH, "mpf_proof_fold.null_hash"),
   };
   const initial = control;
-  const foldSteps: MidgardMpfProofFoldStepV1[] = [];
+  const foldSteps: MidgardMpfProofFoldStep[] = [];
   for (let frameIndex = frames.length - 1; frameIndex >= 0; frameIndex -= 1) {
     const frame = frames[frameIndex]!;
     if (
@@ -605,7 +603,7 @@ export const buildMidgardMpfProofFoldTraceV1 = ({
     ) {
       throw new Error("MPF proof fold frame continuity is invalid");
     }
-    const post: MidgardMpfProofFoldControlV1 = {
+    const post: MidgardMpfProofFoldControl = {
       nextFrameIndex: frameIndex - 1,
       expectedNextCursor: frame.cursor,
       includingRoot: foldIncludingFrame(path, frame, control.includingRoot),
@@ -618,7 +616,7 @@ export const buildMidgardMpfProofFoldTraceV1 = ({
     };
     foldSteps.push({
       frame,
-      membership: buildMidgardValidationMerkleMembershipV1(
+      membership: buildMidgardValidationMerkleMembership(
         leafHashes,
         frameIndex,
       ),

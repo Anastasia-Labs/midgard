@@ -17,7 +17,7 @@
  */
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { computeMidgardNativeTxIdV1, outRefLabel } from "@al-ft/midgard-core";
+import { computeMidgardNativeTxId, outRefLabel } from "@al-ft/midgard-core";
 import {
   DaHashPreimageStep02Datum,
   FraudProofTokenDatum,
@@ -35,13 +35,13 @@ import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.j
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,
-  setupFraudulentBlockV1 as setupFraudulentBlock,
+  setupFraudulentBlock as setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   network,
   publishRemovalReferenceScripts,
@@ -80,10 +80,10 @@ const buildCommittedLeafFixture = async (
     witnessByte: "64",
   });
   const committedLeafValue = Buffer.from(
-    l2TransactionSourceCborV1(nativeTx),
+    l2TransactionSourceCbor(nativeTx),
     "hex",
   );
-  const canonicalTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+  const canonicalTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
   const committedTxId = committedKey ?? FOREIGN_COMMITTED_KEY;
 
   const store = new Store(undefined);
@@ -113,7 +113,7 @@ const buildCommittedLeafFixture = async (
 };
 
 const makeEmulatorHarness = async () =>
-  await makeFaultProofEmulatorHarnessV1({
+  await makeFaultProofEmulatorHarness({
     contractOptions: {
       realDaHashPreimage: true,
       alwaysFraudProofCatalogue: true,

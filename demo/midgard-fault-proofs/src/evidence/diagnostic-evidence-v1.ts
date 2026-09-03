@@ -12,8 +12,8 @@
  * evidence preparation, remain diagnostic-only.
  */
 import {
-  admitEvidenceProvenanceV1,
-  type EvidenceProvenanceV1,
+  admitEvidenceProvenance,
+  type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 
 import {
@@ -23,44 +23,44 @@ import {
   readNodeTransactionPayloadsFile,
 } from "../prepare-double-spend.js";
 
-export const DIAGNOSTIC_EVIDENCE_V1_SCHEMA_VERSION =
+export const DIAGNOSTIC_EVIDENCE_SCHEMA_VERSION =
   "midgard-diagnostic-evidence-v1" as const;
 
-export const MIDGARD_NODE_URL_DIAGNOSTIC_LABEL_V1 =
+export const MIDGARD_NODE_URL_DIAGNOSTIC_LABEL =
   "operator node REST endpoint: diagnostic and import only, never a security input for a submitted proof" as const;
 
-export const LOCAL_FILE_DIAGNOSTIC_LABEL_V1 =
+export const LOCAL_FILE_DIAGNOSTIC_LABEL =
   "operator-local file import: diagnostic and import only, never a security input for a submitted proof" as const;
 
-export const SAMPLE_EVIDENCE_DIAGNOSTIC_LABEL_V1 =
+export const SAMPLE_EVIDENCE_DIAGNOSTIC_LABEL =
   "generated sample evidence: diagnostic only, never an authenticated L1/public-DA security input for a submitted proof" as const;
 
 /** Provenance every `--midgard-node-url` evidence import carries. */
-export const MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1: EvidenceProvenanceV1 = {
+export const MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE: EvidenceProvenance = {
   trustClass: "operator_admin_api",
   sourceId: "midgard-node-url",
   grade: "diagnostic",
-  diagnosticLabel: MIDGARD_NODE_URL_DIAGNOSTIC_LABEL_V1,
+  diagnosticLabel: MIDGARD_NODE_URL_DIAGNOSTIC_LABEL,
 };
 
 /** Provenance every operator-local file evidence import carries. */
-export const LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1: EvidenceProvenanceV1 = {
+export const LOCAL_FILE_DIAGNOSTIC_PROVENANCE: EvidenceProvenance = {
   trustClass: "operator_private_file",
   sourceId: "transactions-file",
   grade: "diagnostic",
-  diagnosticLabel: LOCAL_FILE_DIAGNOSTIC_LABEL_V1,
+  diagnosticLabel: LOCAL_FILE_DIAGNOSTIC_LABEL,
 };
 
-export const SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1: EvidenceProvenanceV1 = {
+export const SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE: EvidenceProvenance = {
   trustClass: "operator_only_diagnostic_endpoint",
   sourceId: "sample-double-spend",
   grade: "diagnostic",
-  diagnosticLabel: SAMPLE_EVIDENCE_DIAGNOSTIC_LABEL_V1,
+  diagnosticLabel: SAMPLE_EVIDENCE_DIAGNOSTIC_LABEL,
 };
 
-export type DiagnosticBlockTransactionsV1 = {
-  readonly schemaVersion: typeof DIAGNOSTIC_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly provenance: EvidenceProvenanceV1;
+export type DiagnosticBlockTransactions = {
+  readonly schemaVersion: typeof DIAGNOSTIC_EVIDENCE_SCHEMA_VERSION;
+  readonly provenance: EvidenceProvenance;
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
 };
@@ -76,8 +76,8 @@ const diagnosticProvenance = ({
     | "operator_only_diagnostic_endpoint";
   readonly sourceId: string;
   readonly diagnosticLabel: string;
-}): EvidenceProvenanceV1 =>
-  admitEvidenceProvenanceV1({
+}): EvidenceProvenance =>
+  admitEvidenceProvenance({
     provenance: { trustClass, sourceId, grade: "diagnostic", diagnosticLabel },
     allowDiagnostic: true,
   });
@@ -86,7 +86,7 @@ const diagnosticProvenance = ({
  * Diagnostic import of a block's transactions from the operator node's REST
  * API. The result is unusable as security evidence by construction.
  */
-export const diagnosticBlockTransactionsFromMidgardNodeV1 = async ({
+export const diagnosticBlockTransactionsFromMidgardNode = async ({
   midgardNodeUrl,
   headerHash,
   fetchImpl,
@@ -94,12 +94,12 @@ export const diagnosticBlockTransactionsFromMidgardNodeV1 = async ({
   readonly midgardNodeUrl: string;
   readonly headerHash: string;
   readonly fetchImpl?: FetchLike;
-}): Promise<DiagnosticBlockTransactionsV1> => ({
-  schemaVersion: DIAGNOSTIC_EVIDENCE_V1_SCHEMA_VERSION,
+}): Promise<DiagnosticBlockTransactions> => ({
+  schemaVersion: DIAGNOSTIC_EVIDENCE_SCHEMA_VERSION,
   provenance: diagnosticProvenance({
     trustClass: "operator_admin_api",
     sourceId: "midgard-node-url",
-    diagnosticLabel: MIDGARD_NODE_URL_DIAGNOSTIC_LABEL_V1,
+    diagnosticLabel: MIDGARD_NODE_URL_DIAGNOSTIC_LABEL,
   }),
   headerHash,
   transactions: await fetchNodeBlockTransactions({
@@ -110,18 +110,18 @@ export const diagnosticBlockTransactionsFromMidgardNodeV1 = async ({
 });
 
 /** Diagnostic import of a block's transactions from an operator-local file. */
-export const diagnosticBlockTransactionsFromFileV1 = async ({
+export const diagnosticBlockTransactionsFromFile = async ({
   transactionsPath,
   headerHash,
 }: {
   readonly transactionsPath: string;
   readonly headerHash: string;
-}): Promise<DiagnosticBlockTransactionsV1> => ({
-  schemaVersion: DIAGNOSTIC_EVIDENCE_V1_SCHEMA_VERSION,
+}): Promise<DiagnosticBlockTransactions> => ({
+  schemaVersion: DIAGNOSTIC_EVIDENCE_SCHEMA_VERSION,
   provenance: diagnosticProvenance({
     trustClass: "operator_private_file",
     sourceId: "transactions-file",
-    diagnosticLabel: LOCAL_FILE_DIAGNOSTIC_LABEL_V1,
+    diagnosticLabel: LOCAL_FILE_DIAGNOSTIC_LABEL,
   }),
   headerHash,
   transactions: await readNodeTransactionPayloadsFile(transactionsPath),
@@ -132,8 +132,8 @@ export const diagnosticBlockTransactionsFromFileV1 = async ({
  * evidence, so an operator can never mistake a diagnostic run for a
  * canonical-evidence run.
  */
-export const diagnosticEvidenceBannerV1 = (
-  provenance: EvidenceProvenanceV1,
+export const diagnosticEvidenceBanner = (
+  provenance: EvidenceProvenance,
 ): string =>
   `DIAGNOSTIC EVIDENCE (${provenance.trustClass}/${provenance.sourceId}): ${
     provenance.diagnosticLabel ?? ""

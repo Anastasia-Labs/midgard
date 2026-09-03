@@ -1,33 +1,33 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { unsafeAdmitWatcherProductionStateQueueObservationForReplayTestV1 } from "../../src/indexers/production-state-queue-observation-v1.js";
-import { watcherSha256CanonicalJsonV1 } from "../../src/storage/durable-store.js";
-import { watcherBlockReplayPriorStateV1 } from "../../src/verification/block-replay.js";
+import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/production-state-queue-observation-v1.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { watcherBlockReplayPriorState } from "../../src/verification/block-replay.js";
 import {
-  assertWatcherProductionAuthenticatedReplayTranscriptV1,
-  createWatcherProductionAuthenticatedReplayTranscriptV1,
-  replayWatcherProductionAuthenticatedReplayTranscriptV1,
-  watcherProductionAuthenticatedReplayTranscriptCborHexV1,
-  type WatcherProductionAuthenticatedReplayTranscriptV1,
-  watcherProductionReplayRawRecordCborHexV1,
+  assertWatcherAuthenticatedReplayTranscript,
+  createWatcherAuthenticatedReplayTranscript,
+  replayWatcherAuthenticatedReplayTranscript,
+  type WatcherAuthenticatedReplayTranscript,
+  watcherAuthenticatedReplayTranscriptCborHex,
+  watcherReplayRawRecordCborHex,
 } from "../../src/verification/production-authenticated-replay-transcript-v1.js";
 import {
-  computeWatcherRuleBundleV1Commitment,
-  makeWatcherCanonicalRuleBundleV1,
+  computeWatcherRuleBundleCommitment,
+  makeWatcherCanonicalRuleBundle,
 } from "../../src/verification/rule-bundle-v1.js";
-import { makeWatcherDeploymentAuthorityFixtureV1 } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 
 const genuineFixture = async () => {
-  const baseAuthority = makeWatcherDeploymentAuthorityFixtureV1();
-  const bundle = makeWatcherCanonicalRuleBundleV1({
+  const baseAuthority = makeWatcherDeploymentAuthorityFixture();
+  const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
       manifestId: baseAuthority.result.manifestId,
       network: baseAuthority.result.network,
@@ -36,8 +36,8 @@ const genuineFixture = async () => {
     },
     targetParameterSnapshot: { finalityDepth: 30 },
   });
-  const ruleBundleCommitment = computeWatcherRuleBundleV1Commitment(bundle);
-  const authority = makeWatcherDeploymentAuthorityFixtureV1({
+  const ruleBundleCommitment = computeWatcherRuleBundleCommitment(bundle);
+  const authority = makeWatcherDeploymentAuthorityFixture({
     ruleBundleCommitment,
     programCommitments: baseAuthority.result.programCommitments,
     releaseDigest: baseAuthority.result.releaseEvidenceDigest,
@@ -46,7 +46,7 @@ const genuineFixture = async () => {
 
   const emptyRoot = async (domain: SDK.RootDomain): Promise<string> =>
     (await buildCountedRoot(domain, [])).root;
-  const ledger = await watcherBlockReplayPriorStateV1([]);
+  const ledger = await watcherBlockReplayPriorState([]);
   const counts = Object.freeze({
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
@@ -56,7 +56,7 @@ const genuineFixture = async () => {
     transitionStepCount: 0n,
     validationTraceCount: 0n,
   });
-  const header: SDK.HeaderV1 = Object.freeze({
+  const header: SDK.Header = Object.freeze({
     prevUtxosRoot: ledger.root,
     utxosRoot: ledger.root,
     withdrawalsRoot: await emptyRoot(SDK.ROOT_DOMAINS.withdrawals),
@@ -79,12 +79,12 @@ const genuineFixture = async () => {
     operatorVkey: h28("32"),
     protocolVersion: BigInt(bundle.protocolVersion),
   });
-  const headerCborHex = Data.to(header, SDK.HeaderV1);
+  const headerCborHex = Data.to(header, SDK.Header);
   const headerHash = computeHash28(Buffer.from(headerCborHex, "hex")).toString(
     "hex",
   );
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -103,8 +103,8 @@ const genuineFixture = async () => {
       counts,
     },
   };
-  const payloadEnvelopeCbor = await wrapDaPayloadV1(
-    SDK.encodeDaPayloadV1(payload),
+  const payloadEnvelopeCbor = await wrapDaPayload(
+    SDK.encodeDaPayload(payload),
     { mode: "identity" },
   );
   const headerObservation = {
@@ -112,7 +112,7 @@ const genuineFixture = async () => {
     headerCborHex,
     stateQueueNodeCborHex: Data.to(
       { header, da_attestation: "Unattested" },
-      SDK.StateQueueNodeV1,
+      SDK.StateQueueNode,
     ),
     linkedListDatumCborHex: "80",
     daAvailability: "Unattested" as const,
@@ -151,12 +151,12 @@ const genuineFixture = async () => {
     correctionLockWitnesses: [],
   };
   const stateQueueObservation =
-    unsafeAdmitWatcherProductionStateQueueObservationForReplayTestV1({
+    unsafeAdmitWatcherStateQueueObservationForReplayTest({
       ...canonicalObservation,
-      observationDigest: watcherSha256CanonicalJsonV1(canonicalObservation),
+      observationDigest: watcherSha256CanonicalJson(canonicalObservation),
     });
   const admittedHeader = stateQueueObservation.finalizedHeaders[0]!;
-  const daProvenance: SDK.EvidenceProvenanceV1 = Object.freeze({
+  const daProvenance: SDK.EvidenceProvenance = Object.freeze({
     trustClass: "public_or_permissionless_da",
     sourceId: "watcher-da-peer-1",
     grade: "security",
@@ -177,11 +177,11 @@ const genuineFixture = async () => {
 
 describe("production authenticated replay transcript V1", () => {
   it("canonically encodes exact raw replay records", () => {
-    const left = watcherProductionReplayRawRecordCborHexV1({
+    const left = watcherReplayRawRecordCborHex({
       z: [1n, new Uint8Array([2, 3])],
       a: { accepted: true, label: "W22" },
     });
-    const right = watcherProductionReplayRawRecordCborHexV1({
+    const right = watcherReplayRawRecordCborHex({
       a: { label: "W22", accepted: true },
       z: [1n, new Uint8Array([2, 3])],
     });
@@ -197,18 +197,16 @@ describe("production authenticated replay transcript V1", () => {
       get: () => "caller-authored",
     });
 
-    expect(() => watcherProductionReplayRawRecordCborHexV1(cycle)).toThrow(
-      "cycle",
-    );
-    expect(() => watcherProductionReplayRawRecordCborHexV1(accessor)).toThrow(
+    expect(() => watcherReplayRawRecordCborHex(cycle)).toThrow("cycle");
+    expect(() => watcherReplayRawRecordCborHex(accessor)).toThrow(
       "exact data property",
     );
-    expect(() =>
-      watcherProductionReplayRawRecordCborHexV1({ value: -0 }),
-    ).toThrow("noncanonical number");
-    expect(() =>
-      watcherProductionReplayRawRecordCborHexV1({ value: undefined }),
-    ).toThrow("exact data property");
+    expect(() => watcherReplayRawRecordCborHex({ value: -0 })).toThrow(
+      "noncanonical number",
+    );
+    expect(() => watcherReplayRawRecordCborHex({ value: undefined })).toThrow(
+      "exact data property",
+    );
   });
 
   it("does not admit a structural transcript or mutated digest", () => {
@@ -218,13 +216,13 @@ describe("production authenticated replay transcript V1", () => {
       transcriptDigest: "00".repeat(32),
       decisionDigest: "11".repeat(32),
       finding: "caller-authored",
-    }) as unknown as WatcherProductionAuthenticatedReplayTranscriptV1;
+    }) as unknown as WatcherAuthenticatedReplayTranscript;
 
     expect(() =>
-      assertWatcherProductionAuthenticatedReplayTranscriptV1(structural),
+      assertWatcherAuthenticatedReplayTranscript(structural),
     ).toThrow("not admitted");
     expect(() =>
-      assertWatcherProductionAuthenticatedReplayTranscriptV1({
+      assertWatcherAuthenticatedReplayTranscript({
         ...structural,
         transcriptDigest: "22".repeat(32),
       }),
@@ -233,26 +231,24 @@ describe("production authenticated replay transcript V1", () => {
 
   it("constructs and offline re-admits only a byte-exact fresh W22/W24/W25 replay", async () => {
     const fixture = await genuineFixture();
-    const transcript =
-      await createWatcherProductionAuthenticatedReplayTranscriptV1({
-        ...fixture.createInput,
-        coordinate: { domain: "block", index: "0" },
-      });
-    assertWatcherProductionAuthenticatedReplayTranscriptV1(transcript);
+    const transcript = await createWatcherAuthenticatedReplayTranscript({
+      ...fixture.createInput,
+      coordinate: { domain: "block", index: "0" },
+    });
+    assertWatcherAuthenticatedReplayTranscript(transcript);
     const persistedTranscriptCborHex =
-      watcherProductionAuthenticatedReplayTranscriptCborHexV1(transcript);
-    const replayed =
-      await replayWatcherProductionAuthenticatedReplayTranscriptV1({
-        ...fixture.createInput,
-        persistedTranscriptCborHex,
-      });
+      watcherAuthenticatedReplayTranscriptCborHex(transcript);
+    const replayed = await replayWatcherAuthenticatedReplayTranscript({
+      ...fixture.createInput,
+      persistedTranscriptCborHex,
+    });
     expect(replayed).toEqual(transcript);
-    expect(
-      watcherProductionAuthenticatedReplayTranscriptCborHexV1(replayed),
-    ).toBe(persistedTranscriptCborHex);
+    expect(watcherAuthenticatedReplayTranscriptCborHex(replayed)).toBe(
+      persistedTranscriptCborHex,
+    );
 
     await expect(
-      replayWatcherProductionAuthenticatedReplayTranscriptV1({
+      replayWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
         payloadEnvelopeCbor: Uint8Array.from([
           ...fixture.createInput.payloadEnvelopeCbor.slice(0, -1),
@@ -262,27 +258,27 @@ describe("production authenticated replay transcript V1", () => {
       }),
     ).rejects.toThrow();
     await expect(
-      replayWatcherProductionAuthenticatedReplayTranscriptV1({
+      replayWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
-        persistedTranscriptCborHex: watcherProductionReplayRawRecordCborHexV1({
+        persistedTranscriptCborHex: watcherReplayRawRecordCborHex({
           ...transcript,
           coordinate: { domain: "transaction", index: "0" },
         }),
       }),
     ).rejects.toThrow("coordinate is outside exact replay");
     await expect(
-      replayWatcherProductionAuthenticatedReplayTranscriptV1({
+      replayWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
-        persistedTranscriptCborHex: watcherProductionReplayRawRecordCborHexV1({
+        persistedTranscriptCborHex: watcherReplayRawRecordCborHex({
           ...transcript,
           payloadSha256: "ff".repeat(32),
         }),
       }),
     ).rejects.toThrow("differs from fresh authenticated replay");
     await expect(
-      replayWatcherProductionAuthenticatedReplayTranscriptV1({
+      replayWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
-        persistedTranscriptCborHex: watcherProductionReplayRawRecordCborHexV1({
+        persistedTranscriptCborHex: watcherReplayRawRecordCborHex({
           ...transcript,
           decisionDigest: "aa".repeat(32),
           finding: "caller-authored",
@@ -290,7 +286,7 @@ describe("production authenticated replay transcript V1", () => {
       }),
     ).rejects.toThrow("differs from fresh authenticated replay");
     await expect(
-      createWatcherProductionAuthenticatedReplayTranscriptV1({
+      createWatcherAuthenticatedReplayTranscript({
         ...fixture.createInput,
         deploymentIdentity: {
           ...fixture.createInput.deploymentIdentity,

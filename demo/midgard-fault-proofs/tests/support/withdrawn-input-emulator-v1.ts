@@ -1,14 +1,14 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardSpendInputItemV1,
+  computeMidgardNativeTxId,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type MidgardTxInput,
   type OutputReference,
@@ -21,19 +21,19 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  prepareWithdrawnInputFromMaterialV1,
+  prepareWithdrawnInputFromMaterial,
   submitWithdrawnInputInit,
   submitWithdrawnInputStep01,
   submitWithdrawnInputStep02,
-  type WithdrawnInputCatalogueCategoryV1,
+  type WithdrawnInputCatalogueCategory,
 } from "../../src/index.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   makeNativeTx,
   network,
@@ -42,13 +42,13 @@ import {
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export type WithdrawnInputFixtureModeV1 =
+export type WithdrawnInputFixtureMode =
   | "fault"
   | "honestDifferentWithdrawal"
   | "invalidWithdrawal";
 
-export type WithdrawnInputBlockFixtureV1 = {
-  readonly mode: WithdrawnInputFixtureModeV1;
+export type WithdrawnInputBlockFixture = {
+  readonly mode: WithdrawnInputFixtureMode;
   readonly transactionsRoot: string;
   readonly committedTransactionsRoot: string;
   readonly withdrawalsPhasRoot: string;
@@ -70,7 +70,7 @@ export type WithdrawnInputBlockFixtureV1 = {
 };
 
 const inputCbor = (input: MidgardTxInput): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(input.tx_id, "hex"),
     outputIndex: Number(input.output_index),
   });
@@ -99,10 +99,10 @@ const withdrawalInfo = ({
   validity,
 });
 
-export const buildWithdrawnInputBlockFixtureV1 = async (
-  mode: WithdrawnInputFixtureModeV1,
+export const buildWithdrawnInputBlockFixture = async (
+  mode: WithdrawnInputFixtureMode,
   { decoySpendInputCount = 0 }: { readonly decoySpendInputCount?: number } = {},
-): Promise<WithdrawnInputBlockFixtureV1> => {
+): Promise<WithdrawnInputBlockFixture> => {
   const withdrawnInput: MidgardTxInput = {
     tx_id: "71".repeat(32),
     output_index: 3n,
@@ -129,8 +129,8 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
     spendInputCbors: spendInputs.map(inputCbor),
     fee: 7n,
   });
-  const txId = computeMidgardNativeTxIdV1(transaction).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(transaction.compact);
+  const txId = computeMidgardNativeTxId(transaction).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(transaction.compact);
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(transaction);
   const txStore = new Store(undefined);
   await txStore.ready();
@@ -169,11 +169,11 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
     outputIndex: 0n,
   };
   const withdrawalKey = Buffer.from(
-    committedWithdrawalKeyBytesV1(withdrawalId),
+    committedWithdrawalKeyBytes(withdrawalId),
     "hex",
   );
   const withdrawalValue = Buffer.from(
-    committedWithdrawalValueBytesV1(committedWithdrawal),
+    committedWithdrawalValueBytes(committedWithdrawal),
     "hex",
   );
   const withdrawalStore = new Store(undefined);
@@ -209,10 +209,10 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
   };
   const nodeTransaction = {
     nodeTxId: txId,
-    txCbor: encodeMidgardNativeTxCanonicalV1(transaction).toString("hex"),
+    txCbor: encodeMidgardNativeTxCanonical(transaction).toString("hex"),
   };
   if (mode === "fault") {
-    const prepared = await prepareWithdrawnInputFromMaterialV1({
+    const prepared = await prepareWithdrawnInputFromMaterial({
       headerHash: "75".repeat(28),
       transactions: [nodeTransaction],
       expectedTransactionsRoot: committedTransactionsRoot,
@@ -246,11 +246,11 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
   };
 };
 
-export const makeWithdrawnInputEmulatorScenarioV1 = async (
-  mode: WithdrawnInputFixtureModeV1,
+export const makeWithdrawnInputEmulatorScenario = async (
+  mode: WithdrawnInputFixtureMode,
   fixtureOptions: { readonly decoySpendInputCount?: number } = {},
 ) => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realWithdrawnInput: true,
       alwaysFraudProofCatalogue: true,
@@ -261,7 +261,7 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
   if (contracts === undefined || category === undefined) {
     throw new Error("withdrawn-input emulator contracts/category missing");
   }
-  const fixture = await buildWithdrawnInputBlockFixtureV1(mode, fixtureOptions);
+  const fixture = await buildWithdrawnInputBlockFixture(mode, fixtureOptions);
   const references: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
     references.push(
@@ -303,7 +303,7 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
     catalogue: harness.catalogue,
     header,
   });
-  const explicitCategory: WithdrawnInputCatalogueCategoryV1 = {
+  const explicitCategory: WithdrawnInputCatalogueCategory = {
     categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnInput,
     scriptHash: contracts.steps[0].spendingScriptHash,
     membershipProofCbor: category.membershipProofCbor,
@@ -336,8 +336,8 @@ export const makeWithdrawnInputEmulatorScenarioV1 = async (
   };
 };
 
-export const advanceWithdrawnInputToStep03V1 = async (
-  scenario: Awaited<ReturnType<typeof makeWithdrawnInputEmulatorScenarioV1>>,
+export const advanceWithdrawnInputToStep03 = async (
+  scenario: Awaited<ReturnType<typeof makeWithdrawnInputEmulatorScenario>>,
 ) => {
   const step01 = await submitWithdrawnInputStep01({
     lucid: scenario.harness.proverLucid,

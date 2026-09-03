@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   deserializePhaseACandidate,
   MidgardRedeemerTag,
@@ -75,7 +75,7 @@ const phaseAConfig = {
   minFeeB: 0n,
   concurrency: 1,
   strictnessProfile: "phase2_script_heavy",
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 } as const;
 
 const blueprint = JSON.parse(

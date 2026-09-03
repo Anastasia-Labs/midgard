@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 
 import {
-  type DeploymentMarkerV1,
-  parseDeploymentMarkerV1,
+  type DeploymentMarker,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
-export const WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION =
+export const WATCHER_DURABLE_STORE_SCHEMA_VERSION =
   "midgard-watcher-durable-store-v1" as const;
-export const WATCHER_DURABLE_CACHE_V1_SCHEMA_VERSION =
+export const WATCHER_DURABLE_CACHE_SCHEMA_VERSION =
   "midgard-watcher-durable-cache-v1" as const;
 export const WATCHER_DURABLE_MIGRATION_VERSION = 1 as const;
 
@@ -29,7 +29,7 @@ const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
 
 export const WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256 = sha256Utf8(
-  `${WATCHER_DURABLE_MIGRATION_VERSION}:${MIGRATION_NAME}:${WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION}`,
+  `${WATCHER_DURABLE_MIGRATION_VERSION}:${MIGRATION_NAME}:${WATCHER_DURABLE_STORE_SCHEMA_VERSION}`,
 );
 
 export type WatcherDurableStoreErrorCode =
@@ -218,32 +218,29 @@ const canonicalJson = (
   return result;
 };
 
-export const watcherCanonicalJsonV1 = (value: unknown): string =>
+export const watcherCanonicalJson = (value: unknown): string =>
   canonicalJson(value);
 
-export const watcherSha256CanonicalJsonV1 = (value: unknown): string =>
-  sha256Utf8(watcherCanonicalJsonV1(value));
+export const watcherSha256CanonicalJson = (value: unknown): string =>
+  sha256Utf8(watcherCanonicalJson(value));
 
-export const watcherSameCanonicalJsonV1 = (
+export const watcherSameCanonicalJson = (
   left: unknown,
   right: unknown,
 ): boolean => {
   try {
-    return watcherCanonicalJsonV1(left) === watcherCanonicalJsonV1(right);
+    return watcherCanonicalJson(left) === watcherCanonicalJson(right);
   } catch {
     return false;
   }
 };
 
-export type WatcherDurablePayloadV1 = Readonly<{
+export type WatcherDurablePayload = Readonly<{
   cborHex: string;
   sha256: string;
 }>;
 
-const parsePayload = (
-  value: unknown,
-  path: string,
-): WatcherDurablePayloadV1 => {
+const parsePayload = (value: unknown, path: string): WatcherDurablePayload => {
   const payload = exactRecord(value, path, ["cborHex", "sha256"]);
   const cborHex = exactString(
     payload.cborHex,
@@ -257,9 +254,9 @@ const parsePayload = (
   return { cborHex, sha256: digest };
 };
 
-export const makeWatcherDurablePayloadV1 = (
+export const makeWatcherDurablePayload = (
   cborHex: string,
-): WatcherDurablePayloadV1 => {
+): WatcherDurablePayload => {
   if (!LOWER_HEX_BYTES.test(cborHex)) {
     fail("invalid_field", "$.cborHex");
   }
@@ -269,7 +266,7 @@ export const makeWatcherDurablePayloadV1 = (
   };
 };
 
-export type WatcherL1ChainPointV1 = Readonly<{
+export type WatcherL1ChainPoint = Readonly<{
   chainPointId: string;
   providerId: string;
   blockHash: string;
@@ -278,14 +275,14 @@ export type WatcherL1ChainPointV1 = Readonly<{
   depth: string;
 }>;
 
-export type WatcherL1ObservationV1 = Readonly<{
+export type WatcherL1Observation = Readonly<{
   observationId: string;
   providerId: string;
   chainPointId: string;
-  payload: WatcherDurablePayloadV1;
+  payload: WatcherDurablePayload;
 }>;
 
-export const WATCHER_PROTOCOL_UTXO_ROLES_V1 = [
+export const WATCHER_PROTOCOL_UTXO_ROLES = [
   "state_queue",
   "hub_oracle",
   "operator_directory",
@@ -299,34 +296,34 @@ export const WATCHER_PROTOCOL_UTXO_ROLES_V1 = [
   "computation_thread",
 ] as const;
 
-export type WatcherProtocolUtxoV1 = Readonly<{
+export type WatcherProtocolUtxo = Readonly<{
   outRef: string;
-  role: (typeof WATCHER_PROTOCOL_UTXO_ROLES_V1)[number];
+  role: (typeof WATCHER_PROTOCOL_UTXO_ROLES)[number];
   chainPointId: string;
-  output: WatcherDurablePayloadV1;
+  output: WatcherDurablePayload;
 }>;
 
-export type WatcherSpentProtocolUtxoV1 = WatcherProtocolUtxoV1 &
+export type WatcherSpentProtocolUtxo = WatcherProtocolUtxo &
   Readonly<{
     spentAtChainPointId: string;
   }>;
 
-export type WatcherDaProofInputV1 = Readonly<{
+export type WatcherDaProofInput = Readonly<{
   inputId: string;
   kind: "da_payload" | "proof_input";
-  payload: WatcherDurablePayloadV1;
+  payload: WatcherDurablePayload;
 }>;
 
-export type WatcherReconstructedStateV1 = Readonly<{
+export type WatcherReconstructedState = Readonly<{
   blockHash: string;
   chainPointId: string;
   priorStateRoot: string;
   postStateRoot: string;
   inputIds: readonly string[];
-  state: WatcherDurablePayloadV1;
+  state: WatcherDurablePayload;
 }>;
 
-export const WATCHER_BLOCK_DECISIONS_V1 = [
+export const WATCHER_BLOCK_DECISIONS = [
   "verified",
   "pending_da",
   "unprovable_gap",
@@ -335,28 +332,28 @@ export const WATCHER_BLOCK_DECISIONS_V1 = [
   "removed_or_resolved",
 ] as const;
 
-export type WatcherBlockDecisionV1 = Readonly<{
+export type WatcherBlockDecision = Readonly<{
   blockHash: string;
-  decision: (typeof WATCHER_BLOCK_DECISIONS_V1)[number];
+  decision: (typeof WATCHER_BLOCK_DECISIONS)[number];
   reconstructionDigest: string;
   evidenceDigest: string;
 }>;
 
-export type WatcherFaultV1 = Readonly<{
+export type WatcherFault = Readonly<{
   faultId: string;
   blockHash: string;
   familyId: string;
-  evidence: WatcherDurablePayloadV1;
+  evidence: WatcherDurablePayload;
 }>;
 
-export type WatcherSubmissionV1 = Readonly<{
+export type WatcherSubmission = Readonly<{
   submissionId: string;
   faultId: string;
   txBodyHash: string;
   status: "prepared" | "submitted" | "ambiguous";
 }>;
 
-export type WatcherConfirmationV1 = Readonly<{
+export type WatcherConfirmation = Readonly<{
   confirmationId: string;
   submissionId: string;
   txHash: string;
@@ -365,7 +362,7 @@ export type WatcherConfirmationV1 = Readonly<{
   status: "observed" | "confirmed" | "rolled_back";
 }>;
 
-export type WatcherRetryV1 = Readonly<{
+export type WatcherRetry = Readonly<{
   retryId: string;
   submissionId: string;
   attempt: string;
@@ -378,7 +375,7 @@ export type WatcherRetryV1 = Readonly<{
     | "topology_changed";
 }>;
 
-export const WATCHER_DEADLINE_KINDS_V1 = [
+export const WATCHER_DEADLINE_KINDS = [
   "da_fetch",
   "da_publication",
   "construction",
@@ -390,15 +387,15 @@ export const WATCHER_DEADLINE_KINDS_V1 = [
   "maturity",
 ] as const;
 
-export type WatcherDeadlineV1 = Readonly<{
+export type WatcherDeadline = Readonly<{
   deadlineId: string;
   subjectKind: "fault" | "submission";
   subjectId: string;
-  kind: (typeof WATCHER_DEADLINE_KINDS_V1)[number];
+  kind: (typeof WATCHER_DEADLINE_KINDS)[number];
   expiresAtSlot: string;
 }>;
 
-export type WatcherCorrectionResultV1 = Readonly<{
+export type WatcherCorrectionResult = Readonly<{
   correctionId: string;
   faultId: string;
   confirmationId: string;
@@ -427,48 +424,48 @@ type CacheNamespace =
   | "spent_protocol_utxos"
   | "submissions";
 
-export type WatcherDurableCacheEntryV1 = Readonly<{
+export type WatcherDurableCacheEntry = Readonly<{
   namespace: CacheNamespace;
   key: string;
   index: string;
   recordSha256: string;
 }>;
 
-export type WatcherDurableCachesV1 = Readonly<{
-  schemaVersion: typeof WATCHER_DURABLE_CACHE_V1_SCHEMA_VERSION;
+export type WatcherDurableCaches = Readonly<{
+  schemaVersion: typeof WATCHER_DURABLE_CACHE_SCHEMA_VERSION;
   sourceSha256: string;
-  entries: readonly WatcherDurableCacheEntryV1[];
+  entries: readonly WatcherDurableCacheEntry[];
 }>;
 
-export type WatcherDurableRecordsV1 = Readonly<{
-  l1Observations: readonly WatcherL1ObservationV1[];
-  chainPoints: readonly WatcherL1ChainPointV1[];
-  protocolUtxos: readonly WatcherProtocolUtxoV1[];
-  spentProtocolUtxos: readonly WatcherSpentProtocolUtxoV1[];
-  daProofInputs: readonly WatcherDaProofInputV1[];
-  reconstructedStates: readonly WatcherReconstructedStateV1[];
-  decisions: readonly WatcherBlockDecisionV1[];
-  faults: readonly WatcherFaultV1[];
-  submissions: readonly WatcherSubmissionV1[];
-  confirmations: readonly WatcherConfirmationV1[];
-  retries: readonly WatcherRetryV1[];
-  deadlines: readonly WatcherDeadlineV1[];
-  correctionResults: readonly WatcherCorrectionResultV1[];
+export type WatcherDurableRecords = Readonly<{
+  l1Observations: readonly WatcherL1Observation[];
+  chainPoints: readonly WatcherL1ChainPoint[];
+  protocolUtxos: readonly WatcherProtocolUtxo[];
+  spentProtocolUtxos: readonly WatcherSpentProtocolUtxo[];
+  daProofInputs: readonly WatcherDaProofInput[];
+  reconstructedStates: readonly WatcherReconstructedState[];
+  decisions: readonly WatcherBlockDecision[];
+  faults: readonly WatcherFault[];
+  submissions: readonly WatcherSubmission[];
+  confirmations: readonly WatcherConfirmation[];
+  retries: readonly WatcherRetry[];
+  deadlines: readonly WatcherDeadline[];
+  correctionResults: readonly WatcherCorrectionResult[];
 }>;
 
-export type WatcherDurableStoreV1 = WatcherDurableRecordsV1 &
+export type WatcherDurableStore = WatcherDurableRecords &
   Readonly<{
-    schemaVersion: typeof WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION;
+    schemaVersion: typeof WATCHER_DURABLE_STORE_SCHEMA_VERSION;
     migrationVersion: typeof WATCHER_DURABLE_MIGRATION_VERSION;
     migrationManifestSha256: string;
     revision: string;
-    deploymentMarker: DeploymentMarkerV1;
-    caches: WatcherDurableCachesV1;
+    deploymentMarker: DeploymentMarker;
+    caches: WatcherDurableCaches;
   }>;
 
 type RecordParser<T> = (value: unknown, path: string) => T;
 
-const parseChainPoint: RecordParser<WatcherL1ChainPointV1> = (value, path) => {
+const parseChainPoint: RecordParser<WatcherL1ChainPoint> = (value, path) => {
   const record = exactRecord(value, path, [
     "chainPointId",
     "providerId",
@@ -496,8 +493,8 @@ const parseChainPoint: RecordParser<WatcherL1ChainPointV1> = (value, path) => {
 };
 
 const compareChainPointOrder = (
-  left: Pick<WatcherL1ChainPointV1, "blockNo" | "slot">,
-  right: Pick<WatcherL1ChainPointV1, "blockNo" | "slot">,
+  left: Pick<WatcherL1ChainPoint, "blockNo" | "slot">,
+  right: Pick<WatcherL1ChainPoint, "blockNo" | "slot">,
 ): number => {
   const leftBlockNo = BigInt(left.blockNo);
   const rightBlockNo = BigInt(right.blockNo);
@@ -512,7 +509,7 @@ const compareChainPointOrder = (
   return leftSlot < rightSlot ? -1 : leftSlot > rightSlot ? 1 : 0;
 };
 
-const parseL1Observation: RecordParser<WatcherL1ObservationV1> = (
+const parseL1Observation: RecordParser<WatcherL1Observation> = (
   value,
   path,
 ) => {
@@ -542,10 +539,7 @@ const parseL1Observation: RecordParser<WatcherL1ObservationV1> = (
   };
 };
 
-const parseProtocolUtxo: RecordParser<WatcherProtocolUtxoV1> = (
-  value,
-  path,
-) => {
+const parseProtocolUtxo: RecordParser<WatcherProtocolUtxo> = (value, path) => {
   const record = exactRecord(value, path, [
     "outRef",
     "role",
@@ -557,7 +551,7 @@ const parseProtocolUtxo: RecordParser<WatcherProtocolUtxoV1> = (
     role: exactLiteral(
       record.role,
       `${path}.role`,
-      WATCHER_PROTOCOL_UTXO_ROLES_V1,
+      WATCHER_PROTOCOL_UTXO_ROLES,
     ),
     chainPointId: exactString(
       record.chainPointId,
@@ -568,7 +562,7 @@ const parseProtocolUtxo: RecordParser<WatcherProtocolUtxoV1> = (
   };
 };
 
-const parseSpentProtocolUtxo: RecordParser<WatcherSpentProtocolUtxoV1> = (
+const parseSpentProtocolUtxo: RecordParser<WatcherSpentProtocolUtxo> = (
   value,
   path,
 ) => {
@@ -598,10 +592,7 @@ const parseSpentProtocolUtxo: RecordParser<WatcherSpentProtocolUtxoV1> = (
   };
 };
 
-const parseDaProofInput: RecordParser<WatcherDaProofInputV1> = (
-  value,
-  path,
-) => {
+const parseDaProofInput: RecordParser<WatcherDaProofInput> = (value, path) => {
   const record = exactRecord(value, path, ["inputId", "kind", "payload"]);
   return {
     inputId: exactString(record.inputId, `${path}.inputId`, HEX_32),
@@ -637,7 +628,7 @@ const parseSortedDigests = (
   return digests;
 };
 
-const parseReconstructedState: RecordParser<WatcherReconstructedStateV1> = (
+const parseReconstructedState: RecordParser<WatcherReconstructedState> = (
   value,
   path,
 ) => {
@@ -671,7 +662,7 @@ const parseReconstructedState: RecordParser<WatcherReconstructedStateV1> = (
   };
 };
 
-const parseDecision: RecordParser<WatcherBlockDecisionV1> = (value, path) => {
+const parseDecision: RecordParser<WatcherBlockDecision> = (value, path) => {
   const record = exactRecord(value, path, [
     "blockHash",
     "decision",
@@ -683,7 +674,7 @@ const parseDecision: RecordParser<WatcherBlockDecisionV1> = (value, path) => {
     decision: exactLiteral(
       record.decision,
       `${path}.decision`,
-      WATCHER_BLOCK_DECISIONS_V1,
+      WATCHER_BLOCK_DECISIONS,
     ),
     reconstructionDigest: exactString(
       record.reconstructionDigest,
@@ -698,7 +689,7 @@ const parseDecision: RecordParser<WatcherBlockDecisionV1> = (value, path) => {
   };
 };
 
-const parseFault: RecordParser<WatcherFaultV1> = (value, path) => {
+const parseFault: RecordParser<WatcherFault> = (value, path) => {
   const record = exactRecord(value, path, [
     "faultId",
     "blockHash",
@@ -713,7 +704,7 @@ const parseFault: RecordParser<WatcherFaultV1> = (value, path) => {
   };
 };
 
-const parseSubmission: RecordParser<WatcherSubmissionV1> = (value, path) => {
+const parseSubmission: RecordParser<WatcherSubmission> = (value, path) => {
   const record = exactRecord(value, path, [
     "submissionId",
     "faultId",
@@ -736,10 +727,7 @@ const parseSubmission: RecordParser<WatcherSubmissionV1> = (value, path) => {
   };
 };
 
-const parseConfirmation: RecordParser<WatcherConfirmationV1> = (
-  value,
-  path,
-) => {
+const parseConfirmation: RecordParser<WatcherConfirmation> = (value, path) => {
   const record = exactRecord(value, path, [
     "confirmationId",
     "submissionId",
@@ -774,7 +762,7 @@ const parseConfirmation: RecordParser<WatcherConfirmationV1> = (
   };
 };
 
-const parseRetry: RecordParser<WatcherRetryV1> = (value, path) => {
+const parseRetry: RecordParser<WatcherRetry> = (value, path) => {
   const record = exactRecord(value, path, [
     "retryId",
     "submissionId",
@@ -805,7 +793,7 @@ const parseRetry: RecordParser<WatcherRetryV1> = (value, path) => {
   };
 };
 
-const parseDeadline: RecordParser<WatcherDeadlineV1> = (value, path) => {
+const parseDeadline: RecordParser<WatcherDeadline> = (value, path) => {
   const record = exactRecord(value, path, [
     "deadlineId",
     "subjectKind",
@@ -820,7 +808,7 @@ const parseDeadline: RecordParser<WatcherDeadlineV1> = (value, path) => {
       "submission",
     ]),
     subjectId: exactString(record.subjectId, `${path}.subjectId`, HEX_32),
-    kind: exactLiteral(record.kind, `${path}.kind`, WATCHER_DEADLINE_KINDS_V1),
+    kind: exactLiteral(record.kind, `${path}.kind`, WATCHER_DEADLINE_KINDS),
     expiresAtSlot: exactString(
       record.expiresAtSlot,
       `${path}.expiresAtSlot`,
@@ -829,7 +817,7 @@ const parseDeadline: RecordParser<WatcherDeadlineV1> = (value, path) => {
   };
 };
 
-const parseCorrectionResult: RecordParser<WatcherCorrectionResultV1> = (
+const parseCorrectionResult: RecordParser<WatcherCorrectionResult> = (
   value,
   path,
 ) => {
@@ -930,7 +918,7 @@ const STORE_KEYS = [
   "caches",
 ] as const;
 
-const parseRecords = (record: JsonRecord): WatcherDurableRecordsV1 => ({
+const parseRecords = (record: JsonRecord): WatcherDurableRecords => ({
   l1Observations: parseSortedRecords(
     record.l1Observations,
     "$.l1Observations",
@@ -1011,7 +999,7 @@ const parseRecords = (record: JsonRecord): WatcherDurableRecordsV1 => ({
   ),
 });
 
-const assertReferences = (records: WatcherDurableRecordsV1): void => {
+const assertReferences = (records: WatcherDurableRecords): void => {
   const chainPoints = new Map(
     records.chainPoints.map((entry) => [entry.chainPointId, entry]),
   );
@@ -1179,8 +1167,8 @@ const assertReferences = (records: WatcherDurableRecordsV1): void => {
   }
 };
 
-type CacheSource = WatcherDurableRecordsV1 &
-  Readonly<{ deploymentMarker: DeploymentMarkerV1 }>;
+type CacheSource = WatcherDurableRecords &
+  Readonly<{ deploymentMarker: DeploymentMarker }>;
 
 const cacheCollections = (
   source: CacheSource,
@@ -1192,73 +1180,73 @@ const cacheCollections = (
   {
     namespace: "l1_observations",
     records: source.l1Observations,
-    keyOf: (record: WatcherL1ObservationV1) => record.observationId,
+    keyOf: (record: WatcherL1Observation) => record.observationId,
   },
   {
     namespace: "chain_points",
     records: source.chainPoints,
-    keyOf: (record: WatcherL1ChainPointV1) => record.chainPointId,
+    keyOf: (record: WatcherL1ChainPoint) => record.chainPointId,
   },
   {
     namespace: "protocol_utxos",
     records: source.protocolUtxos,
-    keyOf: (record: WatcherProtocolUtxoV1) => record.outRef,
+    keyOf: (record: WatcherProtocolUtxo) => record.outRef,
   },
   {
     namespace: "spent_protocol_utxos",
     records: source.spentProtocolUtxos,
-    keyOf: (record: WatcherSpentProtocolUtxoV1) => record.outRef,
+    keyOf: (record: WatcherSpentProtocolUtxo) => record.outRef,
   },
   {
     namespace: "da_proof_inputs",
     records: source.daProofInputs,
-    keyOf: (record: WatcherDaProofInputV1) => record.inputId,
+    keyOf: (record: WatcherDaProofInput) => record.inputId,
   },
   {
     namespace: "reconstructed_states",
     records: source.reconstructedStates,
-    keyOf: (record: WatcherReconstructedStateV1) => record.blockHash,
+    keyOf: (record: WatcherReconstructedState) => record.blockHash,
   },
   {
     namespace: "decisions",
     records: source.decisions,
-    keyOf: (record: WatcherBlockDecisionV1) => record.blockHash,
+    keyOf: (record: WatcherBlockDecision) => record.blockHash,
   },
   {
     namespace: "faults",
     records: source.faults,
-    keyOf: (record: WatcherFaultV1) => record.faultId,
+    keyOf: (record: WatcherFault) => record.faultId,
   },
   {
     namespace: "submissions",
     records: source.submissions,
-    keyOf: (record: WatcherSubmissionV1) => record.submissionId,
+    keyOf: (record: WatcherSubmission) => record.submissionId,
   },
   {
     namespace: "confirmations",
     records: source.confirmations,
-    keyOf: (record: WatcherConfirmationV1) => record.confirmationId,
+    keyOf: (record: WatcherConfirmation) => record.confirmationId,
   },
   {
     namespace: "retries",
     records: source.retries,
-    keyOf: (record: WatcherRetryV1) => record.retryId,
+    keyOf: (record: WatcherRetry) => record.retryId,
   },
   {
     namespace: "deadlines",
     records: source.deadlines,
-    keyOf: (record: WatcherDeadlineV1) => record.deadlineId,
+    keyOf: (record: WatcherDeadline) => record.deadlineId,
   },
   {
     namespace: "correction_results",
     records: source.correctionResults,
-    keyOf: (record: WatcherCorrectionResultV1) => record.correctionId,
+    keyOf: (record: WatcherCorrectionResult) => record.correctionId,
   },
 ];
 
-export const rebuildWatcherDurableCachesV1 = (
+export const rebuildWatcherDurableCaches = (
   source: CacheSource,
-): WatcherDurableCachesV1 => {
+): WatcherDurableCaches => {
   const sourceSha256 = sha256Utf8(canonicalJson(source as CanonicalJson));
   const entries = cacheCollections(source)
     .flatMap(({ namespace, records, keyOf }) =>
@@ -1276,25 +1264,25 @@ export const rebuildWatcherDurableCachesV1 = (
         : namespaceOrder;
     });
   return {
-    schemaVersion: WATCHER_DURABLE_CACHE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DURABLE_CACHE_SCHEMA_VERSION,
     sourceSha256,
     entries,
   };
 };
 
-const parseCaches = (value: unknown): WatcherDurableCachesV1 => {
+const parseCaches = (value: unknown): WatcherDurableCaches => {
   const caches = exactRecord(value, "$.caches", [
     "schemaVersion",
     "sourceSha256",
     "entries",
   ]);
-  if (caches.schemaVersion !== WATCHER_DURABLE_CACHE_V1_SCHEMA_VERSION) {
+  if (caches.schemaVersion !== WATCHER_DURABLE_CACHE_SCHEMA_VERSION) {
     fail("unsupported_schema", "$.caches.schemaVersion");
   }
   const entries = parseSortedRecords(
     caches.entries,
     "$.caches.entries",
-    (member, path): WatcherDurableCacheEntryV1 => {
+    (member, path): WatcherDurableCacheEntry => {
       const entry = exactRecord(member, path, [
         "namespace",
         "key",
@@ -1333,7 +1321,7 @@ const parseCaches = (value: unknown): WatcherDurableCachesV1 => {
     (entry) => `${entry.namespace}\u0000${entry.key}`,
   );
   return {
-    schemaVersion: WATCHER_DURABLE_CACHE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DURABLE_CACHE_SCHEMA_VERSION,
     sourceSha256: exactString(
       caches.sourceSha256,
       "$.caches.sourceSha256",
@@ -1350,8 +1338,8 @@ const sortRecords = <T>(
   [...records].sort((left, right) => keyOf(left).localeCompare(keyOf(right)));
 
 const canonicalizeRecords = (
-  records: WatcherDurableRecordsV1,
-): WatcherDurableRecordsV1 => ({
+  records: WatcherDurableRecords,
+): WatcherDurableRecords => ({
   l1Observations: sortRecords(
     records.l1Observations,
     (entry) => entry.observationId,
@@ -1385,19 +1373,19 @@ const canonicalizeRecords = (
   ),
 });
 
-const parseMarker = (value: unknown): DeploymentMarkerV1 => {
+const parseMarker = (value: unknown): DeploymentMarker => {
   try {
-    return parseDeploymentMarkerV1(value);
+    return parseDeploymentMarker(value);
   } catch {
     return fail("invalid_field", "$.deploymentMarker");
   }
 };
 
-export const parseWatcherDurableStoreV1 = (
+export const parseWatcherDurableStore = (
   value: unknown,
-): WatcherDurableStoreV1 => {
+): WatcherDurableStore => {
   const record = exactRecord(value, "$", STORE_KEYS);
-  if (record.schemaVersion !== WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION) {
+  if (record.schemaVersion !== WATCHER_DURABLE_STORE_SCHEMA_VERSION) {
     fail("unsupported_schema", "$.schemaVersion");
   }
   if (record.migrationVersion !== WATCHER_DURABLE_MIGRATION_VERSION) {
@@ -1412,7 +1400,7 @@ export const parseWatcherDurableStoreV1 = (
   const records = parseRecords(record);
   assertReferences(records);
   const caches = parseCaches(record.caches);
-  const expectedCaches = rebuildWatcherDurableCachesV1({
+  const expectedCaches = rebuildWatcherDurableCaches({
     deploymentMarker,
     ...records,
   });
@@ -1423,7 +1411,7 @@ export const parseWatcherDurableStoreV1 = (
     fail("cache_mismatch", "$.caches");
   }
   return {
-    schemaVersion: WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DURABLE_STORE_SCHEMA_VERSION,
     migrationVersion: WATCHER_DURABLE_MIGRATION_VERSION,
     migrationManifestSha256: WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256,
     revision: exactString(record.revision, "$.revision", CANONICAL_NATURAL),
@@ -1433,47 +1421,47 @@ export const parseWatcherDurableStoreV1 = (
   };
 };
 
-type WatcherDurableRecordsInputV1 = Omit<
-  WatcherDurableRecordsV1,
+type WatcherDurableRecordsInput = Omit<
+  WatcherDurableRecords,
   "spentProtocolUtxos"
 > &
-  Partial<Pick<WatcherDurableRecordsV1, "spentProtocolUtxos">>;
+  Partial<Pick<WatcherDurableRecords, "spentProtocolUtxos">>;
 
-export const makeWatcherDurableStoreV1 = (input: {
-  readonly deploymentMarker: DeploymentMarkerV1;
+export const makeWatcherDurableStore = (input: {
+  readonly deploymentMarker: DeploymentMarker;
   readonly revision: string;
-  readonly records: WatcherDurableRecordsInputV1;
-}): WatcherDurableStoreV1 => {
+  readonly records: WatcherDurableRecordsInput;
+}): WatcherDurableStore => {
   const deploymentMarker = parseMarker(input.deploymentMarker);
   const records = canonicalizeRecords({
     ...input.records,
     spentProtocolUtxos: input.records.spentProtocolUtxos ?? [],
   });
   const candidate = {
-    schemaVersion: WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DURABLE_STORE_SCHEMA_VERSION,
     migrationVersion: WATCHER_DURABLE_MIGRATION_VERSION,
     migrationManifestSha256: WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256,
     revision: input.revision,
     deploymentMarker,
     ...records,
-    caches: rebuildWatcherDurableCachesV1({
+    caches: rebuildWatcherDurableCaches({
       deploymentMarker,
       ...records,
     }),
   };
-  return parseWatcherDurableStoreV1(candidate);
+  return parseWatcherDurableStore(candidate);
 };
 
-export const journalWatcherProtocolUtxoTransitionV1 = (input: {
+export const journalWatcherProtocolUtxoTransition = (input: {
   readonly sourceStore: unknown;
-  readonly nextChainPoints: readonly WatcherL1ChainPointV1[];
-  readonly nextProtocolUtxos: readonly WatcherProtocolUtxoV1[];
+  readonly nextChainPoints: readonly WatcherL1ChainPoint[];
+  readonly nextProtocolUtxos: readonly WatcherProtocolUtxo[];
   readonly spentAtChainPointId: string;
 }): Readonly<{
-  protocolUtxos: readonly WatcherProtocolUtxoV1[];
-  spentProtocolUtxos: readonly WatcherSpentProtocolUtxoV1[];
+  protocolUtxos: readonly WatcherProtocolUtxo[];
+  spentProtocolUtxos: readonly WatcherSpentProtocolUtxo[];
 }> => {
-  const source = parseWatcherDurableStoreV1(input.sourceStore);
+  const source = parseWatcherDurableStore(input.sourceStore);
   const spentAtChainPointId = exactString(
     input.spentAtChainPointId,
     "$.spentAtChainPointId",
@@ -1498,7 +1486,7 @@ export const journalWatcherProtocolUtxoTransitionV1 = (input: {
   const spentAtPoint = input.nextChainPoints.find(
     ({ chainPointId }) => chainPointId === spentAtChainPointId,
   );
-  const nextActive = new Map<string, WatcherProtocolUtxoV1>();
+  const nextActive = new Map<string, WatcherProtocolUtxo>();
   for (const entry of input.nextProtocolUtxos) {
     if (nextActive.has(entry.outRef) || priorSpent.has(entry.outRef)) {
       fail("duplicate_key", `$.protocolUtxos.${entry.outRef}`);
@@ -1542,7 +1530,7 @@ export const journalWatcherProtocolUtxoTransitionV1 = (input: {
   });
 };
 
-const EMPTY_RECORDS: WatcherDurableRecordsV1 = Object.freeze({
+const EMPTY_RECORDS: WatcherDurableRecords = Object.freeze({
   l1Observations: [],
   chainPoints: [],
   protocolUtxos: [],
@@ -1558,10 +1546,10 @@ const EMPTY_RECORDS: WatcherDurableRecordsV1 = Object.freeze({
   correctionResults: [],
 });
 
-export const makeEmptyWatcherDurableStoreV1 = (
-  deploymentMarker: DeploymentMarkerV1,
-): WatcherDurableStoreV1 =>
-  makeWatcherDurableStoreV1({
+export const makeEmptyWatcherDurableStore = (
+  deploymentMarker: DeploymentMarker,
+): WatcherDurableStore =>
+  makeWatcherDurableStore({
     deploymentMarker,
     revision: "0",
     records: EMPTY_RECORDS,
@@ -1570,19 +1558,19 @@ export const makeEmptyWatcherDurableStoreV1 = (
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
-export const encodeWatcherDurableStoreV1 = (
-  value: WatcherDurableStoreV1,
+export const encodeWatcherDurableStore = (
+  value: WatcherDurableStore,
 ): Uint8Array =>
   UTF8_ENCODER.encode(
-    canonicalJson(parseWatcherDurableStoreV1(value) as CanonicalJson),
+    canonicalJson(parseWatcherDurableStore(value) as CanonicalJson),
   );
 
 export const watcherDurableStoreBytesSha256 = (value: Uint8Array): string =>
   sha256Bytes(value);
 
-export const decodeWatcherDurableStoreV1 = (
+export const decodeWatcherDurableStore = (
   value: Uint8Array,
-): WatcherDurableStoreV1 => {
+): WatcherDurableStore => {
   let text = "";
   let decoded: unknown;
   try {
@@ -1591,7 +1579,7 @@ export const decodeWatcherDurableStoreV1 = (
   } catch {
     return fail("invalid_encoding", "$");
   }
-  const parsed = parseWatcherDurableStoreV1(decoded);
+  const parsed = parseWatcherDurableStore(decoded);
   if (text !== canonicalJson(parsed as CanonicalJson)) {
     fail("noncanonical_encoding", "$");
   }
@@ -1612,12 +1600,12 @@ export type WatcherDurableAtomicBackend = Readonly<{
   ) => Promise<boolean>;
 }>;
 
-export type WatcherDurableAtomicSnapshotV1 = Readonly<{
+export type WatcherDurableAtomicSnapshot = Readonly<{
   bytes: Uint8Array;
   sha256: string;
 }>;
 
-export type WatcherDurableAtomicCommitV1 =
+export type WatcherDurableAtomicCommit =
   | Readonly<{
       committed: true;
       sha256: string;
@@ -1630,9 +1618,9 @@ export type WatcherDurableAtomicCommitV1 =
  * Reads one complete immutable backend snapshot. The returned bytes are copied
  * so a backend cannot mutate the value after the digest has been established.
  */
-export const readWatcherDurableAtomicSnapshotV1 = async (
+export const readWatcherDurableAtomicSnapshot = async (
   backend: WatcherDurableAtomicBackend,
-): Promise<WatcherDurableAtomicSnapshotV1 | null> => {
+): Promise<WatcherDurableAtomicSnapshot | null> => {
   const bytes = await readBackend(backend);
   if (bytes === null) {
     return null;
@@ -1649,11 +1637,11 @@ export const readWatcherDurableAtomicSnapshotV1 = async (
  * still current. A false result is an ordinary stale/concurrent-writer
  * conflict; backend failures remain explicit persistence failures.
  */
-export const compareAndSwapWatcherDurableAtomicSnapshotV1 = async (input: {
+export const compareAndSwapWatcherDurableAtomicSnapshot = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
   readonly expectedSha256: string | null;
   readonly next: Uint8Array;
-}): Promise<WatcherDurableAtomicCommitV1> => {
+}): Promise<WatcherDurableAtomicCommit> => {
   if (input.expectedSha256 !== null && !HEX_32.test(input.expectedSha256)) {
     return fail("invalid_field", "$.expectedSha256");
   }
@@ -1675,13 +1663,13 @@ export const compareAndSwapWatcherDurableAtomicSnapshotV1 = async (input: {
 
 export type WatcherDurableMigrationResult = Readonly<{
   initialized: boolean;
-  snapshot: WatcherDurableStoreV1;
+  snapshot: WatcherDurableStore;
   encodedSha256: string;
 }>;
 
 const assertMarkerMatches = (
-  expected: DeploymentMarkerV1,
-  actual: DeploymentMarkerV1,
+  expected: DeploymentMarker,
+  actual: DeploymentMarker,
 ): void => {
   if (
     expected.schemaVersion !== actual.schemaVersion ||
@@ -1701,9 +1689,9 @@ const readBackend = async (
   }
 };
 
-export const migrateWatcherDurableStoreV1 = async (input: {
+export const migrateWatcherDurableStore = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly deploymentMarker: DeploymentMarkerV1;
+  readonly deploymentMarker: DeploymentMarker;
   readonly maxConflicts?: number;
 }): Promise<WatcherDurableMigrationResult> => {
   const expectedMarker = parseMarker(input.deploymentMarker);
@@ -1714,7 +1702,7 @@ export const migrateWatcherDurableStoreV1 = async (input: {
   for (let attempt = 0; attempt < maxConflicts; attempt += 1) {
     const current = await readBackend(input.backend);
     if (current !== null) {
-      const snapshot = decodeWatcherDurableStoreV1(current);
+      const snapshot = decodeWatcherDurableStore(current);
       assertMarkerMatches(expectedMarker, snapshot.deploymentMarker);
       return {
         initialized: false,
@@ -1723,8 +1711,8 @@ export const migrateWatcherDurableStoreV1 = async (input: {
       };
     }
 
-    const snapshot = makeEmptyWatcherDurableStoreV1(expectedMarker);
-    const encoded = encodeWatcherDurableStoreV1(snapshot);
+    const snapshot = makeEmptyWatcherDurableStore(expectedMarker);
+    const encoded = encodeWatcherDurableStore(snapshot);
     let written: boolean;
     try {
       written = await input.backend.compareAndSwap(null, encoded);

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   E2E_DA_GATE_SCHEMA_VERSION,
-  parseDaGateProbeResultV1,
-  parseDaGateResultV1,
-  parseWaitForDaGateResultV1,
+  parseDaGateProbeResult,
+  parseDaGateResult,
+  parseWaitForDaGateResult,
   probeDaGate,
   waitForDaGate,
 } from "../src/e2e/da-gates.js";
@@ -144,23 +144,23 @@ describe("e2e DA publication gates", () => {
       },
       now: new Date("2026-01-01T00:00:00.000Z"),
     });
-    expect(parseDaGateProbeResultV1(probe)).toEqual(probe);
-    expect(parseDaGateResultV1(probe)).toEqual(probe);
+    expect(parseDaGateProbeResult(probe)).toEqual(probe);
+    expect(parseDaGateResult(probe)).toEqual(probe);
     const { reason: _reason, ...missingReason } = probe;
-    expect(() => parseDaGateProbeResultV1(missingReason)).toThrow(
+    expect(() => parseDaGateProbeResult(missingReason)).toThrow(
       "missing required field",
     );
     expect(() =>
-      parseDaGateProbeResultV1({ ...probe, unexpected: true }),
+      parseDaGateProbeResult({ ...probe, unexpected: true }),
     ).toThrow("unknown field");
     expect(() =>
-      parseDaGateProbeResultV1({
+      parseDaGateProbeResult({
         ...probe,
         schemaVersion: "midgard-e2e-da-gate-v0",
       }),
     ).toThrow(E2E_DA_GATE_SCHEMA_VERSION);
     expect(() =>
-      parseWaitForDaGateResultV1({
+      parseWaitForDaGateResult({
         ...probe,
         kind: "wait",
         attempts: 0,
@@ -168,24 +168,24 @@ describe("e2e DA publication gates", () => {
       }),
     ).toThrow("positive safe integer");
     expect(() =>
-      parseWaitForDaGateResultV1({
+      parseWaitForDaGateResult({
         ...probe,
         attempts: 1,
         timedOut: false,
       }),
     ).toThrow(".kind must be wait");
     expect(() =>
-      parseDaGateProbeResultV1({ ...probe, acceptedPeers: 0 }),
+      parseDaGateProbeResult({ ...probe, acceptedPeers: 0 }),
     ).toThrow("publication evidence is inconsistent");
     expect(() =>
-      parseDaGateProbeResultV1({
+      parseDaGateProbeResult({
         ...probe,
         status: "pending",
         nextSafeAction: "wait_for_da_payload_publication",
       }),
     ).toThrow("publication evidence is inconsistent");
     expect(() =>
-      parseDaGateProbeResultV1({
+      parseDaGateProbeResult({
         ...probe,
         peerResults: [
           probe.peerResults[0],

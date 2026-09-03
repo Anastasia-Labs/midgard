@@ -2,21 +2,21 @@ import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
   type CorrectionLockDatum,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  HeaderV1,
-  type HeaderV1 as HeaderV1Type,
+  Header,
+  type Header as HeaderType,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { unsafeCreateWatcherProductionFaultDecisionBridgeForTestV1 } from "../../src/fault-proofs/production-fault-decision-bridge-v1.js";
-import type { WatcherPersistedProductionFaultDecisionRecordV1 } from "../../src/fault-proofs/production-fault-decision-journal-v1.js";
-import { WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1 } from "../../src/fault-proofs/production-fault-proof-application-v1.js";
-import type { WatcherProductionStateQueueObservationV1 } from "../../src/indexers/production-state-queue-observation-v1.js";
+import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/production-fault-decision-bridge-v1.js";
+import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/production-fault-decision-journal-v1.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/production-fault-proof-application-v1.js";
+import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/production-state-queue-observation-v1.js";
 
 const DEPLOYMENT = "dd".repeat(32);
 const OBSERVATION_DIGEST = "11".repeat(32);
 
-const headerFixture = (suffix = "00"): HeaderV1Type => ({
+const headerFixture = (suffix = "00"): HeaderType => ({
   prevUtxosRoot: "00".repeat(32),
   transactionsRoot: "01".repeat(32),
   utxosRoot: "02".repeat(32),
@@ -44,8 +44,8 @@ const headerFixture = (suffix = "00"): HeaderV1Type => ({
   protocolVersion: 1n,
 });
 
-const encodedHeader = (header: HeaderV1Type) => {
-  const cbor = Data.to(header, HeaderV1);
+const encodedHeader = (header: HeaderType) => {
+  const cbor = Data.to(header, Header);
   return {
     cbor,
     hash: computeHash28(Buffer.from(cbor, "hex")).toString("hex"),
@@ -53,9 +53,9 @@ const encodedHeader = (header: HeaderV1Type) => {
 };
 
 const observation = (
-  headers: readonly HeaderV1Type[],
+  headers: readonly HeaderType[],
   lockDatum: CorrectionLockDatum = "Idle",
-): WatcherProductionStateQueueObservationV1 => {
+): WatcherAuthenticatedStateQueueObservation => {
   const encoded = headers.map(encodedHeader);
   return Object.freeze({
     schemaVersion: "midgard-watcher-production-state-queue-observation-v1",
@@ -119,7 +119,7 @@ const observation = (
 
 const decision = (
   headerHash: string,
-  category: (typeof WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1)[number],
+  category: (typeof WATCHER_INSTALLED_WORKFLOW_CATEGORIES)[number],
   decisionDigest = `${FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category]}${headerHash}`,
 ) =>
   Object.freeze({
@@ -132,7 +132,7 @@ const decision = (
     payloadSha256: "27".repeat(32),
     replayVersion: "midgard-complete-canonical-replay-v1" as const,
     replayDigest: "28".repeat(32),
-    launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+    launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     launchScopeDigest: "29".repeat(32),
     classificationDigest: "2a".repeat(32),
     decisionDigest,
@@ -144,9 +144,9 @@ const decision = (
   });
 
 const harness = (input: {
-  readonly current: WatcherProductionStateQueueObservationV1;
+  readonly current: WatcherAuthenticatedStateQueueObservation;
   readonly categoryByHeader: Readonly<Record<string, string>>;
-  readonly records?: readonly WatcherPersistedProductionFaultDecisionRecordV1[];
+  readonly records?: readonly WatcherPersistedFaultDecisionRecord[];
   readonly classifyOverride?: (
     value: ReturnType<typeof decision>,
   ) => ReturnType<typeof decision> | Promise<ReturnType<typeof decision>>;
@@ -160,14 +160,12 @@ const harness = (input: {
   const revocations: string[] = [];
   const application = {
     deploymentFingerprint: DEPLOYMENT,
-    installedCategories: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+    installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     classifyHeader: vi.fn(async ({ observation: header }) => {
       const category = input.categoryByHeader[header.headerHash];
       if (
         category === undefined ||
-        !WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1.includes(
-          category as never,
-        )
+        !WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(category as never)
       ) {
         throw new Error("test omitted category");
       }
@@ -177,7 +175,7 @@ const harness = (input: {
         : await input.classifyOverride(fresh);
     }),
   };
-  const bridge = unsafeCreateWatcherProductionFaultDecisionBridgeForTestV1({
+  const bridge = unsafeCreateWatcherFaultDecisionBridgeForTest({
     application,
     runtimeConfigPath: "/var/lib/midgard/watcher.json",
     maximumClassificationConcurrency: 2,

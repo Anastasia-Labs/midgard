@@ -1,39 +1,39 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardSpendInputItemV1,
+  computeMidgardNativeTxId,
+  decodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
   AddressData,
   addressDataFromBech32,
   EMPTY_MERKLE_TREE_ROOT,
-  NETWORK_ID_FRAUD_CATEGORY_ID_V1,
-  NetworkIdFaultV1,
+  NETWORK_ID_FRAUD_CATEGORY_ID,
+  NetworkIdFault,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  NETWORK_ID_BLUEPRINT_TITLES_V1,
-  type NetworkIdContractsV1,
+  NETWORK_ID_BLUEPRINT_TITLES,
+  type NetworkIdContracts,
 } from "../../src/network-id/contracts-v1.js";
 import type {
-  PreparedNetworkIdPostUtxoProofV1,
-  PreparedNetworkIdProofV1,
+  PreparedNetworkIdPostUtxoProof,
+  PreparedNetworkIdProof,
 } from "../../src/network-id/prepare-v1.js";
 import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
 import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
 import {
   applyCompiledScript,
   buildCatalogueDeploymentInfo,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeNativeTx,
   makeSpendingValidator,
   publishPlainReferenceScriptUtxo,
@@ -41,10 +41,9 @@ import {
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export const NETWORK_ID_EMULATOR_CATEGORY_ID_V1 =
-  NETWORK_ID_FRAUD_CATEGORY_ID_V1;
+export const NETWORK_ID_EMULATOR_CATEGORY_ID = NETWORK_ID_FRAUD_CATEGORY_ID;
 
-export const buildNetworkIdFixtureV1 = async ({
+export const buildNetworkIdFixture = async ({
   outputNetworkId = 1,
   protectedAddress = true,
 }: {
@@ -67,10 +66,10 @@ export const buildNetworkIdFixtureV1 = async ({
     value: { lovelace: 2_000_000n, assets: new Map() },
   });
   const tx = makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbor });
-  const badTxId = computeMidgardNativeTxIdV1(tx).toString("hex");
-  const nativeTxCompactCbor = encodeMidgardNativeTxCompactV1(
-    tx.compact,
-  ).toString("hex");
+  const badTxId = computeMidgardNativeTxId(tx).toString("hex");
+  const nativeTxCompactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(
+    "hex",
+  );
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(tx);
   const store = new Store(undefined);
   await store.ready();
@@ -83,14 +82,14 @@ export const buildNetworkIdFixtureV1 = async ({
   const proofCbor = proof.toCBOR().toString("hex");
   const fault = {
     OutputNetwork: { output_index: 0n },
-  } as NetworkIdFaultV1;
-  const prepared: PreparedNetworkIdProofV1 = {
+  } as NetworkIdFault;
+  const prepared: PreparedNetworkIdProof = {
     headerHash: "", // rebound after the state-queue fixture hashes its header
     expectedNetworkId: 0n,
     badTxId,
-    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+    nativeTxCanonicalCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
     nativeTxCompactCbor,
-    outputsItemCbors: decodeMidgardFieldPreimageV1(
+    outputsItemCbors: decodeMidgardFieldPreimage(
       tx.body.outputsPreimageCbor,
     ).map((item) => Buffer.from(item).toString("hex")),
     faultClaim: { kind: "output-network", outputIndex: 0n },
@@ -117,7 +116,7 @@ export const buildNetworkIdFixtureV1 = async ({
  * proof authenticates the exact descriptor under `header.utxos_root` and its
  * absence under the empty predecessor root, without carrying the full output.
  */
-export const buildNetworkIdPostUtxoFixtureV1 = async ({
+export const buildNetworkIdPostUtxoFixture = async ({
   outputNetworkId = 2,
   protectedAddress = false,
 }: {
@@ -145,11 +144,11 @@ export const buildNetworkIdPostUtxoFixtureV1 = async ({
     transactionId: "cc".repeat(32),
     outputIndex: 0n,
   } as const;
-  const outRefKey = encodeMidgardSpendInputItemV1({
+  const outRefKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(outRef.transactionId, "hex"),
     outputIndex: Number(outRef.outputIndex),
   });
-  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: outRefKey,
     outputCbor,
   }).descriptorCbor;
@@ -162,8 +161,8 @@ export const buildNetworkIdPostUtxoFixtureV1 = async ({
   const emptyProof = Data.from(Data.to([], Proof), Proof);
   const fault = {
     OutputNetworkUtxo: { observed_network_id: BigInt(outputNetworkId) },
-  } as NetworkIdFaultV1;
-  const prepared: PreparedNetworkIdPostUtxoProofV1 = {
+  } as NetworkIdFault;
+  const prepared: PreparedNetworkIdPostUtxoProof = {
     headerHash: "", // rebound after the state-queue fixture hashes its header
     expectedNetworkId: 0n,
     outRef,
@@ -192,8 +191,8 @@ export const buildNetworkIdPostUtxoFixtureV1 = async ({
   };
 };
 
-export const makeNetworkIdEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeNetworkIdEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: { alwaysFraudProofCatalogue: true },
     registerAdditionalRewardAccounts: async (lucid, blueprint) => {
       await registerPexcludesExclusionRewardAccount(lucid, blueprint);
@@ -210,7 +209,7 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES_V1.step02,
+      NETWORK_ID_BLUEPRINT_TITLES.step02,
       [
         harness.contracts.fraudProof.policyId,
         fraudProofTokenAddressData,
@@ -222,7 +221,7 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
   const forcedStep = makeSpendingValidator(
     applyCompiledScript(
       harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES_V1.forcedStep,
+      NETWORK_ID_BLUEPRINT_TITLES.forcedStep,
       [
         step02.spendingScriptHash,
         harness.contracts.computationThread.policyId,
@@ -233,7 +232,7 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       harness.realBlueprint,
-      NETWORK_ID_BLUEPRINT_TITLES_V1.step01,
+      NETWORK_ID_BLUEPRINT_TITLES.step01,
       [
         step02.spendingScriptHash,
         forcedStep.spendingScriptHash,
@@ -243,7 +242,7 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
       ],
     ),
   );
-  const networkId: NetworkIdContractsV1 = {
+  const networkId: NetworkIdContracts = {
     steps: [step01, step02],
     forcedStep,
     expectedNetworkId: 0n,
@@ -267,14 +266,14 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
   return { ...harness, networkId, catalogue, category };
 };
 
-export const publishNetworkIdReferenceScriptsV1 = async ({
+export const publishNetworkIdReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
 }): Promise<readonly [UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {

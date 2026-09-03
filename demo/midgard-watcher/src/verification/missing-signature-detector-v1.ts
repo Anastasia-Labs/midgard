@@ -5,29 +5,29 @@
  * material they already reconstructed.
  */
 import {
-  type MissingSignatureFindingV1,
-  MissingSignatureProvabilityV1,
+  type MissingSignatureFinding,
+  MissingSignatureProvability,
 } from "@al-ft/midgard-fault-proofs";
 import type { MidgardAddressWitness } from "@al-ft/midgard-sdk";
 import {
   type EventKey,
-  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
-  missingSignatureVkeyHashV1,
+  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
+  missingSignatureVkeyHash,
 } from "@al-ft/midgard-sdk";
 import { type RejectCode, RejectCodes } from "@al-ft/midgard-validation/types";
 
-export const WATCHER_MISSING_SIGNATURE_DETECTOR_V1_SCHEMA_VERSION =
+export const WATCHER_MISSING_SIGNATURE_DETECTOR_SCHEMA_VERSION =
   "midgard-watcher-missing-signature-detector-v1" as const;
 
-export type WatcherMissingSignatureDetectionConfigV1 = {
+export type WatcherMissingSignatureDetectionConfig = {
   /** Safety coverage is default-on; this isolated switch is operational only. */
   readonly enabled: boolean;
 };
 
-export const WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS_V1: WatcherMissingSignatureDetectionConfigV1 =
+export const WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS: WatcherMissingSignatureDetectionConfig =
   Object.freeze({ enabled: true });
 
-export type WatcherMissingSignatureVkeySourcesV1 = {
+export type WatcherMissingSignatureVkeySources = {
   /** Vkeys indexed from any committed L2 transaction, in deterministic order. */
   readonly committedL2Vkeys: readonly string[];
   /** Vkeys observed in L1 transaction witness sets, in deterministic order. */
@@ -36,7 +36,7 @@ export type WatcherMissingSignatureVkeySourcesV1 = {
   readonly operatorSuppliedVkey?: string;
 };
 
-export type WatcherMissingSignatureCandidateV1 = {
+export type WatcherMissingSignatureCandidate = {
   readonly headerHash: string;
   readonly eventKey: EventKey;
   readonly fraudulentBlockOutRef: string;
@@ -49,12 +49,12 @@ export type WatcherMissingSignatureCandidateV1 = {
   readonly replayRejectCode: RejectCode | null;
   readonly requiredSignerHashes: readonly string[];
   readonly addrTxWits: readonly MidgardAddressWitness[];
-  readonly vkeySources: WatcherMissingSignatureVkeySourcesV1;
+  readonly vkeySources: WatcherMissingSignatureVkeySources;
 };
 
-export type WatcherMissingSignatureDetectionV1 = {
-  readonly schemaVersion: typeof WATCHER_MISSING_SIGNATURE_DETECTOR_V1_SCHEMA_VERSION;
-  readonly finding: MissingSignatureFindingV1;
+export type WatcherMissingSignatureDetection = {
+  readonly schemaVersion: typeof WATCHER_MISSING_SIGNATURE_DETECTOR_SCHEMA_VERSION;
+  readonly finding: MissingSignatureFinding;
 };
 
 const normalizeVkey = (vkey: string): string | null => {
@@ -63,12 +63,12 @@ const normalizeVkey = (vkey: string): string | null => {
 };
 
 /** Recovery order is part of the detector contract (§3.3). */
-export const recoverMissingSignatureVkeyV1 = ({
+export const recoverMissingSignatureVkey = ({
   requiredSignerHash,
   sources,
 }: {
   readonly requiredSignerHash: string;
-  readonly sources: WatcherMissingSignatureVkeySourcesV1;
+  readonly sources: WatcherMissingSignatureVkeySources;
 }): string | null => {
   const candidates = [
     ...sources.committedL2Vkeys,
@@ -81,7 +81,7 @@ export const recoverMissingSignatureVkeyV1 = ({
     const normalized = normalizeVkey(candidate);
     if (
       normalized !== null &&
-      missingSignatureVkeyHashV1(normalized) === requiredSignerHash
+      missingSignatureVkeyHash(normalized) === requiredSignerHash
     ) {
       return normalized;
     }
@@ -93,18 +93,18 @@ export const recoverMissingSignatureVkeyV1 = ({
  * Classify one replay divergence and emit the finding record consumed by the
  * proving core. Every non-provable class is still returned for journaling.
  */
-export const detectMissingSignatureFindingV1 = ({
+export const detectMissingSignatureFinding = ({
   candidate,
-  config = WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS_V1,
+  config = WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS,
 }: {
-  readonly candidate: WatcherMissingSignatureCandidateV1;
-  readonly config?: WatcherMissingSignatureDetectionConfigV1;
-}): WatcherMissingSignatureDetectionV1 | null => {
+  readonly candidate: WatcherMissingSignatureCandidate;
+  readonly config?: WatcherMissingSignatureDetectionConfig;
+}): WatcherMissingSignatureDetection | null => {
   if (!config.enabled) return null;
 
   const witnessHashes = new Set(
     candidate.addrTxWits.map((witness) =>
-      missingSignatureVkeyHashV1(witness.verification_key),
+      missingSignatureVkeyHash(witness.verification_key),
     ),
   );
   const accusedIndex = candidate.requiredSignerHashes.findIndex(
@@ -115,33 +115,33 @@ export const detectMissingSignatureFindingV1 = ({
       ? (candidate.requiredSignerHashes[0]?.toLowerCase() ?? "00".repeat(28))
       : candidate.requiredSignerHashes[accusedIndex]!.toLowerCase();
 
-  let provability: MissingSignatureFindingV1["provability"];
+  let provability: MissingSignatureFinding["provability"];
   let resolvedVkey: string | null = null;
   if (!candidate.committedAccepted) {
-    provability = MissingSignatureProvabilityV1.NotAFault;
+    provability = MissingSignatureProvability.NotAFault;
   } else if (
     candidate.replayRejectCode === RejectCodes.MissingRequiredWitness &&
     accusedIndex >= 0
   ) {
-    resolvedVkey = recoverMissingSignatureVkeyV1({
+    resolvedVkey = recoverMissingSignatureVkey({
       requiredSignerHash: accusedHash,
       sources: candidate.vkeySources,
     });
     provability =
       resolvedVkey === null
-        ? MissingSignatureProvabilityV1.UnknownVkeyPreimage
-        : MissingSignatureProvabilityV1.MissingWitness;
+        ? MissingSignatureProvability.UnknownVkeyPreimage
+        : MissingSignatureProvability.MissingWitness;
   } else if (
     candidate.replayRejectCode === RejectCodes.InvalidSignature &&
     accusedIndex < 0
   ) {
-    provability = MissingSignatureProvabilityV1.PresentButInvalid;
+    provability = MissingSignatureProvability.PresentButInvalid;
   } else {
-    provability = MissingSignatureProvabilityV1.NotAFault;
+    provability = MissingSignatureProvability.NotAFault;
   }
 
   return {
-    schemaVersion: WATCHER_MISSING_SIGNATURE_DETECTOR_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_MISSING_SIGNATURE_DETECTOR_SCHEMA_VERSION,
     finding: {
       headerHash: candidate.headerHash,
       eventKey: candidate.eventKey,
@@ -157,27 +157,27 @@ export const detectMissingSignatureFindingV1 = ({
         5 +
         Math.floor(
           Math.max(0, candidate.addrTxWits.length - 1) /
-            MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
+            MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
         ),
     },
   };
 };
 
 /** Default-on batch adapter with a journal callback for every classification. */
-export const detectAndJournalMissingSignatureFindingsV1 = async ({
+export const detectAndJournalMissingSignatureFindings = async ({
   candidates,
-  config = WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS_V1,
+  config = WATCHER_MISSING_SIGNATURE_DETECTION_DEFAULTS,
   journal,
 }: {
-  readonly candidates: readonly WatcherMissingSignatureCandidateV1[];
-  readonly config?: WatcherMissingSignatureDetectionConfigV1;
+  readonly candidates: readonly WatcherMissingSignatureCandidate[];
+  readonly config?: WatcherMissingSignatureDetectionConfig;
   readonly journal: (
-    detection: WatcherMissingSignatureDetectionV1,
+    detection: WatcherMissingSignatureDetection,
   ) => void | Promise<void>;
-}): Promise<readonly WatcherMissingSignatureDetectionV1[]> => {
-  const detections: WatcherMissingSignatureDetectionV1[] = [];
+}): Promise<readonly WatcherMissingSignatureDetection[]> => {
+  const detections: WatcherMissingSignatureDetection[] = [];
   for (const candidate of candidates) {
-    const detection = detectMissingSignatureFindingV1({ candidate, config });
+    const detection = detectMissingSignatureFinding({ candidate, config });
     if (detection === null) continue;
     detections.push(detection);
     await journal(detection);

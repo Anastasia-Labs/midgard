@@ -1,49 +1,49 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ProtectedOutputSignerVerdictSubjectV1Schema = Data.Object({
+export const ProtectedOutputSignerVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const ProtectedOutputSignerBoundV1Schema = Data.Object({
-  subject: ProtectedOutputSignerVerdictSubjectV1Schema,
+export const ProtectedOutputSignerBoundSchema = Data.Object({
+  subject: ProtectedOutputSignerVerdictSubjectSchema,
   output_index: Data.Integer(),
 });
-export const ProtectedOutputSignerStep02StateV1Schema = Data.Object({
-  bound: ProtectedOutputSignerBoundV1Schema,
+export const ProtectedOutputSignerStep02StateSchema = Data.Object({
+  bound: ProtectedOutputSignerBoundSchema,
   witness_set_hash: Data.Bytes(),
 });
-export const ProtectedOutputSignerCredentialV1Schema = Data.Object({
-  subject: ProtectedOutputSignerVerdictSubjectV1Schema,
+export const ProtectedOutputSignerCredentialSchema = Data.Object({
+  subject: ProtectedOutputSignerVerdictSubjectSchema,
   transaction_id: Data.Bytes(),
   witness_set_hash: Data.Bytes(),
   output_index: Data.Integer(),
   payment_credential: Data.Bytes(),
 });
-export const ProtectedOutputSignerScanV1Schema = Data.Object({
-  protected: ProtectedOutputSignerCredentialV1Schema,
+export const ProtectedOutputSignerScanSchema = Data.Object({
+  protected: ProtectedOutputSignerCredentialSchema,
   checkpoint_hash: Data.Bytes(),
   signer_present: Data.Boolean(),
 });
-export const ProtectedOutputSignerVerdictV1Schema = Data.Object({
-  subject: ProtectedOutputSignerVerdictSubjectV1Schema,
+export const ProtectedOutputSignerVerdictSchema = Data.Object({
+  subject: ProtectedOutputSignerVerdictSubjectSchema,
   signer_present: Data.Boolean(),
 });
-export const ProtectedOutputSignerStep01SourceV1Schema = Data.Enum([
+export const ProtectedOutputSignerStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -51,50 +51,54 @@ export const ProtectedOutputSignerStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const ProtectedOutputSignerStep01RedeemerV1Schema =
+export const ProtectedOutputSignerStep01RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
-      source: ProtectedOutputSignerStep01SourceV1Schema,
+      source: ProtectedOutputSignerStep01SourceSchema,
       output_index: Data.Integer(),
     }),
   );
-export const ProtectedOutputSignerStep02DatumV1Schema =
-  faultProofStepDatumSchema(ProtectedOutputSignerStep02StateV1Schema);
-export const ProtectedOutputSignerStep02RedeemerV1Schema =
+export const ProtectedOutputSignerStep02DatumSchema = faultProofStepDatumSchema(
+  ProtectedOutputSignerStep02StateSchema,
+);
+export const ProtectedOutputSignerStep02RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
     }),
   );
-export const ProtectedOutputSignerStep03DatumV1Schema =
-  faultProofStepDatumSchema(ProtectedOutputSignerCredentialV1Schema);
-export const ProtectedOutputSignerStep03RedeemerV1Schema =
-  ProtectedOutputSignerStep02RedeemerV1Schema;
-export const ProtectedOutputSignerStep04DatumV1Schema =
-  faultProofStepDatumSchema(ProtectedOutputSignerScanV1Schema);
-export const ProtectedOutputSignerStep04RedeemerV1Schema =
+export const ProtectedOutputSignerStep03DatumSchema = faultProofStepDatumSchema(
+  ProtectedOutputSignerCredentialSchema,
+);
+export const ProtectedOutputSignerStep03RedeemerSchema =
+  ProtectedOutputSignerStep02RedeemerSchema;
+export const ProtectedOutputSignerStep04DatumSchema = faultProofStepDatumSchema(
+  ProtectedOutputSignerScanSchema,
+);
+export const ProtectedOutputSignerStep04RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
       checkpoint_cbor: Data.Bytes(),
     }),
   );
-export const ProtectedOutputSignerStep05DatumV1Schema =
-  faultProofStepDatumSchema(ProtectedOutputSignerVerdictV1Schema);
-export const ProtectedOutputSignerStep05RedeemerV1Schema =
+export const ProtectedOutputSignerStep05DatumSchema = faultProofStepDatumSchema(
+  ProtectedOutputSignerVerdictSchema,
+);
+export const ProtectedOutputSignerStep05RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),

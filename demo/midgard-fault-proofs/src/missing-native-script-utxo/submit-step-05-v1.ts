@@ -1,7 +1,7 @@
 import {
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
-  missingNativeScriptIsAbsentV1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
+  missingNativeScriptIsAbsent,
   MissingNativeScriptUtxoStep05DatumSchema,
   MissingNativeScriptUtxoStep05SpendRedeemerSchema,
   type NativeTxWitnessSetCompact,
@@ -9,21 +9,21 @@ import {
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_UTXO_CATEGORY_LABEL as FAMILY,
-  type MissingNativeScriptUtxoContractsV1,
+  type MissingNativeScriptUtxoContracts,
 } from "./contracts-v1.js";
 
 type State = NonNullable<
@@ -56,7 +56,7 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptUtxoContractsV1;
+  readonly contracts: MissingNativeScriptUtxoContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -67,13 +67,13 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -81,7 +81,7 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
     schema: Datum,
@@ -89,15 +89,15 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
     stepIndex,
   });
   if (
-    !missingNativeScriptIsAbsentV1({
+    !missingNativeScriptIsAbsent({
       scriptTxWitsItems: scriptWitnessItems,
       expectedMissingScriptHash: state.expected_missing_script_hash,
     })
   ) {
     throw new Error(`${FAMILY}: accused script is present in field 6`);
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
     itemCbors: scriptWitnessItems,
@@ -110,7 +110,7 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -129,13 +129,13 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
       ? []
       : [witnessReferenceScripts.fraudProofMint]),
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${FAMILY} final field 6`,
   });
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,

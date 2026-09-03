@@ -1,38 +1,38 @@
 import {
-  commitMidgardCekBlobV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialDaValueV1,
-  encodeMidgardCekTermNodeV1,
-  encodeMidgardCekValueNodeV1,
-  hashMidgardCekTermNodeV1,
-  hashMidgardCekValueNodeV1,
-  type MidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramMaterialEntryV1,
+  commitMidgardCekBlob,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialDaValue,
+  encodeMidgardCekTermNode,
+  encodeMidgardCekValueNode,
+  hashMidgardCekTermNode,
+  hashMidgardCekValueNode,
+  type MidgardCekProgramEnvelope,
+  type MidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  encodeMidgardCekDataNodeV1,
-  hashMidgardCekDataNodeV1,
-  midgardCekDataBytesCborLengthV1,
+  encodeMidgardCekDataNode,
+  hashMidgardCekDataNode,
+  midgardCekDataBytesCborLength,
 } from "@al-ft/midgard-core/cek-semantic";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardVersionedScriptListPreimage,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
 import type { Hash32 } from "@al-ft/midgard-core/codec/hash";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  computeDaPayloadV1Roots,
-  decodeDaPayloadV1Strict,
-  verifyDaPayloadV1AgainstHeader,
+  computeDaPayloadRoots,
+  decodeDaPayloadStrict,
+  verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 import { makePayloadFixture } from "./helpers.js";
 
@@ -47,11 +47,11 @@ const dummyRetainedWitnessEntry = (
   eventKey: SDK.EventKey,
   executionIndex = 0n,
 ): SDK.DaPayloadEntry => {
-  const key = SDK.encodeRetainedValidationWitnessKeyV1({
+  const key = SDK.encodeRetainedValidationWitnessKey({
     event_key: eventKey,
     execution_index: executionIndex,
   });
-  const value = SDK.encodeRetainedValidationWitnessV1({
+  const value = SDK.encodeRetainedValidationWitness({
     machine_state: {
       machine_version: 1n,
       event_key_hash: "01".repeat(32),
@@ -96,31 +96,31 @@ const rewriteL2EventTxId = (
 };
 
 const payloadWithProgramMaterial = async (
-  envelopes: readonly MidgardCekProgramEnvelopeV1[],
-  material: readonly MidgardCekProgramMaterialEntryV1[],
-): Promise<SDK.DaPayloadV1> => {
+  envelopes: readonly MidgardCekProgramEnvelope[],
+  material: readonly MidgardCekProgramMaterialEntry[],
+): Promise<SDK.DaPayload> => {
   const fixture = await makePayloadFixture();
   const scriptWitnesses = encodeMidgardVersionedScriptListPreimage(
     envelopes.map((envelope) => ({
       language: "MidgardV1" as const,
-      scriptBytes: encodeMidgardCekProgramEnvelopeV1(envelope),
+      scriptBytes: encodeMidgardCekProgramEnvelope(envelope),
     })),
   );
   const rewrittenTransactions = fixture.payload.block_body.transaction_preimages
     .map(([oldTxId, txCborHex]) => {
-      const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.from(txCborHex, "hex"),
       );
-      const tx = materializeMidgardNativeTxFromCanonicalV1({
+      const tx = materializeMidgardNativeTxFromCanonical({
         ...decoded,
         witnessSet: {
           ...decoded.witnessSet,
           scriptTxWitsPreimageCbor: scriptWitnesses,
         },
       });
-      const txId = computeMidgardNativeTxIdV1(tx).toString("hex");
-      const source = deriveMidgardNativeTxProofSourceV1(tx);
-      const committedSource: SDK.L2TransactionSourceV1 = {
+      const txId = computeMidgardNativeTxId(tx).toString("hex");
+      const source = deriveMidgardNativeTxProofSource(tx);
+      const committedSource: SDK.L2TransactionSource = {
         tx_id: txId,
         source: {
           compact_cbor: source.compactCbor.toString("hex"),
@@ -133,7 +133,7 @@ const payloadWithProgramMaterial = async (
       return {
         oldTxId,
         txId,
-        txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+        txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
         committedSource,
       };
     })
@@ -175,7 +175,7 @@ const payloadWithProgramMaterial = async (
         txId,
         LucidData.to(
           committedSource as never,
-          SDK.L2TransactionSourceV1Schema as never,
+          SDK.L2TransactionSourceSchema as never,
         ),
       ]),
       transaction_preimages: rewrittenTransactions.map(({ txId, txCbor }) => [
@@ -187,7 +187,7 @@ const payloadWithProgramMaterial = async (
           (entry) =>
             [
               Buffer.from(entry.root).toString("hex"),
-              encodeMidgardCekProgramMaterialDaValueV1(entry).toString("hex"),
+              encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
             ] satisfies SDK.DaPayloadEntry,
         ),
       ),
@@ -209,12 +209,12 @@ const payloadWithProgramMaterial = async (
 };
 
 const payloadWithDuplicateProgramEnvelopes = async (): Promise<{
-  readonly payload: SDK.DaPayloadV1;
+  readonly payload: SDK.DaPayload;
   readonly materialEntry: SDK.DaPayloadEntry;
 }> => {
   const terminal = { kind: "error" } as const;
-  const preimage = encodeMidgardCekTermNodeV1(terminal);
-  const root = hashMidgardCekTermNodeV1(terminal);
+  const preimage = encodeMidgardCekTermNode(terminal);
+  const root = hashMidgardCekTermNode(terminal);
   const envelope = {
     uplcVersion: [1n, 1n, 0n] as const,
     termRoot: root,
@@ -224,7 +224,7 @@ const payloadWithDuplicateProgramEnvelopes = async (): Promise<{
   const material = [{ kind: "term", root, preimage }] as const;
   const materialEntry = [
     root.toString("hex"),
-    encodeMidgardCekProgramMaterialDaValueV1(material[0]).toString("hex"),
+    encodeMidgardCekProgramMaterialDaValue(material[0]).toString("hex"),
   ] satisfies SDK.DaPayloadEntry;
   return {
     payload: await payloadWithProgramMaterial(
@@ -239,8 +239,8 @@ const makeDaBytesConstantMaterial = (
   rawByteLength: number,
   wrapperCount: number,
 ): {
-  readonly envelopes: readonly MidgardCekProgramEnvelopeV1[];
-  readonly material: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly envelopes: readonly MidgardCekProgramEnvelope[];
+  readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly payloadCborLength: number;
 } => {
   const rawBytes = Buffer.alloc(rawByteLength, 0x5a);
@@ -256,16 +256,16 @@ const makeDaBytesConstantMaterial = (
   }
   chunks.push(Buffer.from([0xff]));
   const payloadCbor = Buffer.concat(chunks);
-  const typeBlob = commitMidgardCekBlobV1(Buffer.from("9f01ff", "hex"));
-  const rawBlob = commitMidgardCekBlobV1(rawBytes);
+  const typeBlob = commitMidgardCekBlob(Buffer.from("9f01ff", "hex"));
+  const rawBlob = commitMidgardCekBlob(rawBytes);
   const semanticNode = {
     kind: "bytes",
     bytesRoot: rawBlob.root,
     bytesLength: BigInt(rawBytes.length),
-    cborLength: midgardCekDataBytesCborLengthV1(BigInt(rawBytes.length)),
+    cborLength: midgardCekDataBytesCborLength(BigInt(rawBytes.length)),
     memory: 4n + BigInt(rawBytes.length),
   } as const;
-  const semanticRoot = hashMidgardCekDataNodeV1(semanticNode);
+  const semanticRoot = hashMidgardCekDataNode(semanticNode);
   const valueNode = {
     kind: "constant",
     typeRoot: typeBlob.root,
@@ -274,27 +274,27 @@ const makeDaBytesConstantMaterial = (
     semanticRoot,
     memory: BigInt(rawBytes.length),
   } as const;
-  const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+  const valueRoot = hashMidgardCekValueNode(valueNode);
   const termNode = { kind: "constant", value: valueRoot } as const;
-  let termRoot = hashMidgardCekTermNodeV1(termNode);
-  const material: MidgardCekProgramMaterialEntryV1[] = [
+  let termRoot = hashMidgardCekTermNode(termNode);
+  const material: MidgardCekProgramMaterialEntry[] = [
     {
       kind: "term",
       root: termRoot,
-      preimage: encodeMidgardCekTermNodeV1(termNode),
+      preimage: encodeMidgardCekTermNode(termNode),
     },
     {
       kind: "value",
       root: valueRoot,
-      preimage: encodeMidgardCekValueNodeV1(valueNode),
+      preimage: encodeMidgardCekValueNode(valueNode),
     },
     {
       kind: "dataNode",
       root: semanticRoot,
-      preimage: encodeMidgardCekDataNodeV1(semanticNode),
+      preimage: encodeMidgardCekDataNode(semanticNode),
     },
     ...[...typeBlob.nodes.entries(), ...rawBlob.nodes.entries()].map(
-      ([rootHex, node]): MidgardCekProgramMaterialEntryV1 => ({
+      ([rootHex, node]): MidgardCekProgramMaterialEntry => ({
         kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
         root: Buffer.from(rootHex, "hex") as Hash32,
         preimage: node.preimage,
@@ -306,7 +306,7 @@ const makeDaBytesConstantMaterial = (
     (total, entry) => total + BigInt(entry.preimage.length),
     0n,
   );
-  const envelopes: MidgardCekProgramEnvelopeV1[] = [];
+  const envelopes: MidgardCekProgramEnvelope[] = [];
   if (wrapperCount === 0) {
     envelopes.push({
       uplcVersion: [1n, 1n, 0n],
@@ -322,8 +322,8 @@ const makeDaBytesConstantMaterial = (
       function: termRoot,
       argument: sharedConstantTermRoot,
     } as const;
-    const preimage = encodeMidgardCekTermNodeV1(wrapper);
-    termRoot = hashMidgardCekTermNodeV1(wrapper);
+    const preimage = encodeMidgardCekTermNode(wrapper);
+    termRoot = hashMidgardCekTermNode(wrapper);
     material.push({ kind: "term", root: termRoot, preimage });
     reachableNodeCount += 1n;
     reachableByteLength += BigInt(preimage.length);
@@ -346,8 +346,8 @@ describe("canonical V1 DA payload verification", () => {
     ) as SDK.EventKey;
     const duplicate = dummyRetainedWitnessEntry(existingEvent);
     expect(() =>
-      decodeDaPayloadV1Strict(
-        SDK.encodeDaPayloadV1({
+      decodeDaPayloadStrict(
+        SDK.encodeDaPayload({
           ...fixture.payload,
           block_body: {
             ...fixture.payload.block_body,
@@ -361,8 +361,8 @@ describe("canonical V1 DA payload verification", () => {
       L2TransactionEventKey: { tx_id: "ff".repeat(32) },
     });
     expect(() =>
-      decodeDaPayloadV1Strict(
-        SDK.encodeDaPayloadV1({
+      decodeDaPayloadStrict(
+        SDK.encodeDaPayload({
           ...fixture.payload,
           block_body: {
             ...fixture.payload.block_body,
@@ -380,8 +380,8 @@ describe("canonical V1 DA payload verification", () => {
       SDK.EventKeySchema as never,
     ) as SDK.EventKey;
     expect(() =>
-      decodeDaPayloadV1Strict(
-        SDK.encodeDaPayloadV1({
+      decodeDaPayloadStrict(
+        SDK.encodeDaPayload({
           ...fixture.payload,
           block_body: {
             ...fixture.payload.block_body,
@@ -397,24 +397,24 @@ describe("canonical V1 DA payload verification", () => {
   it("decodes the canonical inner payload and derives every committed root", async () => {
     const fixture = await makePayloadFixture();
 
-    expect(decodeDaPayloadV1Strict(fixture.innerPayloadCbor)).toEqual(
+    expect(decodeDaPayloadStrict(fixture.innerPayloadCbor)).toEqual(
       fixture.payload,
     );
-    await expect(
-      computeDaPayloadV1Roots(fixture.payload),
-    ).resolves.toMatchObject({
-      utxosRoot: fixture.header.utxosRoot,
-      transactionsRoot: fixture.header.transactionsRoot,
-      transitionTraceRoot: fixture.header.transitionTraceRoot,
-      eventToStepRoot: fixture.header.eventToStepRoot,
-      validationTracesRoot: fixture.header.validationTracesRoot,
-    });
+    await expect(computeDaPayloadRoots(fixture.payload)).resolves.toMatchObject(
+      {
+        utxosRoot: fixture.header.utxosRoot,
+        transactionsRoot: fixture.header.transactionsRoot,
+        transitionTraceRoot: fixture.header.transitionTraceRoot,
+        eventToStepRoot: fixture.header.eventToStepRoot,
+        validationTracesRoot: fixture.header.validationTracesRoot,
+      },
+    );
   });
 
   it("verifies mandatory envelope, header binding, roots, counts, and trace coverage", async () => {
     const fixture = await makePayloadFixture();
 
-    const verified = await verifyDaPayloadV1AgainstHeader(
+    const verified = await verifyDaPayloadAgainstHeader(
       fixture.payloadCbor,
       fixture.headerHash,
       fixture.header,
@@ -472,7 +472,7 @@ describe("canonical V1 DA payload verification", () => {
     const fixture = await makePayloadFixture();
 
     await expect(
-      verifyDaPayloadV1AgainstHeader(
+      verifyDaPayloadAgainstHeader(
         fixture.innerPayloadCbor,
         fixture.headerHash,
         fixture.header,
@@ -491,7 +491,7 @@ describe("canonical V1 DA payload verification", () => {
 
     for (const payloadSchemaVersion of [0, 2]) {
       await expect(
-        verifyDaPayloadV1AgainstHeader(
+        verifyDaPayloadAgainstHeader(
           fixture.payloadCbor,
           fixture.headerHash,
           fixture.header,
@@ -508,7 +508,7 @@ describe("canonical V1 DA payload verification", () => {
 
   it("rejects transaction preimage coverage gaps before attestation", () => {
     return makePayloadFixture().then((fixture) => {
-      const malformed = SDK.encodeDaPayloadV1({
+      const malformed = SDK.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -517,7 +517,7 @@ describe("canonical V1 DA payload verification", () => {
         },
       });
 
-      expect(() => decodeDaPayloadV1Strict(malformed)).toThrow(
+      expect(() => decodeDaPayloadStrict(malformed)).toThrow(
         /exactly one canonical transaction preimage/u,
       );
     });
@@ -525,7 +525,7 @@ describe("canonical V1 DA payload verification", () => {
 
   it("rejects well-formed payload members whose derived roots differ from the header", async () => {
     const fixture = await makePayloadFixture();
-    const inner = SDK.encodeDaPayloadV1({
+    const inner = SDK.encodeDaPayload({
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -536,7 +536,7 @@ describe("canonical V1 DA payload verification", () => {
             // §5.3 encoder rather than hand-written. CML's minimal-index form
             // (`825820…00`, 36 bytes) is not an admissible out-ref spelling and
             // would fail closed as `malformed_da` before the root comparison.
-            encodeMidgardSpendInputItemV1({
+            encodeMidgardSpendInputItem({
               txId: Buffer.alloc(32, 0x01),
               outputIndex: 0,
             }).toString("hex"),
@@ -545,18 +545,13 @@ describe("canonical V1 DA payload verification", () => {
         ],
       },
     });
-    const stored = await wrapDaPayloadV1(inner, { mode: "identity" });
+    const stored = await wrapDaPayload(inner, { mode: "identity" });
 
     await expect(
-      verifyDaPayloadV1AgainstHeader(
-        stored,
-        fixture.headerHash,
-        fixture.header,
-        {
-          payloadSchemaVersion: 1,
-          stateQueueOutRef: "state-queue#0",
-        },
-      ),
+      verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
+      }),
     ).rejects.toMatchObject({
       code: "root_mismatch",
     });
@@ -569,7 +564,7 @@ describe("canonical V1 DA payload verification", () => {
     if (firstTransaction === undefined) {
       throw new Error("canonical fixture must contain a transaction");
     }
-    const inner = SDK.encodeDaPayloadV1({
+    const inner = SDK.encodeDaPayload({
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -580,18 +575,13 @@ describe("canonical V1 DA payload verification", () => {
         ],
       },
     });
-    const stored = await wrapDaPayloadV1(inner, { mode: "identity" });
+    const stored = await wrapDaPayload(inner, { mode: "identity" });
 
     await expect(
-      verifyDaPayloadV1AgainstHeader(
-        stored,
-        fixture.headerHash,
-        fixture.header,
-        {
-          payloadSchemaVersion: 1,
-          stateQueueOutRef: "state-queue#0",
-        },
-      ),
+      verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
+      }),
     ).rejects.toMatchObject({
       code: "duplicate_key",
     });
@@ -599,7 +589,7 @@ describe("canonical V1 DA payload verification", () => {
 
   it("rejects missing transition and validation trace evidence", () => {
     return makePayloadFixture().then((fixture) => {
-      const missingTransition = SDK.encodeDaPayloadV1({
+      const missingTransition = SDK.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -607,7 +597,7 @@ describe("canonical V1 DA payload verification", () => {
             fixture.payload.block_body.transition_trace.slice(1),
         },
       });
-      const missingValidation = SDK.encodeDaPayloadV1({
+      const missingValidation = SDK.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -616,10 +606,10 @@ describe("canonical V1 DA payload verification", () => {
         },
       });
 
-      expect(() => decodeDaPayloadV1Strict(missingTransition)).toThrow(
+      expect(() => decodeDaPayloadStrict(missingTransition)).toThrow(
         /payload counts do not match payload member arrays/u,
       );
-      expect(() => decodeDaPayloadV1Strict(missingValidation)).toThrow(
+      expect(() => decodeDaPayloadStrict(missingValidation)).toThrow(
         /validation_traces member count/u,
       );
     });
@@ -628,7 +618,7 @@ describe("canonical V1 DA payload verification", () => {
   it("deduplicates repeated retained program envelopes without weakening exact material coverage", async () => {
     const fixture = await payloadWithDuplicateProgramEnvelopes();
     expect(() =>
-      decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(fixture.payload)),
+      decodeDaPayloadStrict(SDK.encodeDaPayload(fixture.payload)),
     ).not.toThrow();
 
     const missing = {
@@ -638,16 +628,16 @@ describe("canonical V1 DA payload verification", () => {
         cek_program_material: [],
       },
     };
-    expect(() =>
-      decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(missing)),
-    ).toThrow(/exactly cover every inline and newly referenced V1 program/u);
+    expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(missing))).toThrow(
+      /exactly cover every inline and newly referenced V1 program/u,
+    );
 
     const extraNode = { kind: "builtin", tag: 0n } as const;
-    const extraPreimage = encodeMidgardCekTermNodeV1(extraNode);
-    const extraRoot = hashMidgardCekTermNodeV1(extraNode);
+    const extraPreimage = encodeMidgardCekTermNode(extraNode);
+    const extraRoot = hashMidgardCekTermNode(extraNode);
     const extraEntry = [
       extraRoot.toString("hex"),
-      encodeMidgardCekProgramMaterialDaValueV1({
+      encodeMidgardCekProgramMaterialDaValue({
         kind: "term",
         preimage: extraPreimage,
       }).toString("hex"),
@@ -662,7 +652,7 @@ describe("canonical V1 DA payload verification", () => {
         ]),
       },
     };
-    expect(() => decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(extra))).toThrow(
+    expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(extra))).toThrow(
       /exactly cover every inline and newly referenced V1 program/u,
     );
   });
@@ -676,7 +666,7 @@ describe("canonical V1 DA payload verification", () => {
     );
 
     expect(() =>
-      decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(payload)),
+      decodeDaPayloadStrict(SDK.encodeDaPayload(payload)),
     ).not.toThrow();
   });
 
@@ -690,7 +680,7 @@ describe("canonical V1 DA payload verification", () => {
     let rejection: unknown;
 
     try {
-      decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(payload));
+      decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
     } catch (cause) {
       rejection = cause;
     }

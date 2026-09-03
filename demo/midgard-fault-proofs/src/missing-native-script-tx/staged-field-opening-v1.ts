@@ -1,29 +1,29 @@
 import {
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { excludeUtxo } from "../spend-input-witness.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
 import {
-  type MissingNativeScriptTxStepIndexV1,
+  type MissingNativeScriptTxStepIndex,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxReferenceScriptV1,
+  requireMissingNativeScriptTxReferenceScript,
 } from "./submit-common-v1.js";
 
-export type MissingNativeScriptTxStagedFieldOpeningV1 = Readonly<{
-  planned: FaultProofFieldOpeningPlanV1;
-  opening: FieldOpeningV1;
+export type MissingNativeScriptTxStagedFieldOpening = Readonly<{
+  planned: FaultProofFieldOpeningPlan;
+  opening: FieldOpening;
   referenceInputs: readonly UTxO[];
   usableWalletUtxos: readonly UTxO[];
   stepReference: UTxO;
@@ -38,7 +38,7 @@ export type MissingNativeScriptTxStagedFieldOpeningV1 = Readonly<{
  * never mints a certificate. A tier-3 proof transaction must be handed the
  * already observed certificate UTxO from its preceding journal action.
  */
-export const prepareMissingNativeScriptTxStagedFieldOpeningV1 = async ({
+export const prepareMissingNativeScriptTxStagedFieldOpening = async ({
   lucid,
   contracts,
   signer,
@@ -57,9 +57,9 @@ export const prepareMissingNativeScriptTxStagedFieldOpeningV1 = async ({
   label,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly signer: ResolvedProverSigner;
-  readonly stepIndex: MissingNativeScriptTxStepIndexV1;
+  readonly stepIndex: MissingNativeScriptTxStepIndex;
   readonly nativeTxCompactCbor: string;
   readonly witnessSet: NativeTxWitnessSetCompact;
   readonly scriptTxWitsItems: readonly Uint8Array[];
@@ -70,11 +70,11 @@ export const prepareMissingNativeScriptTxStagedFieldOpeningV1 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly extraReferenceInputs?: readonly UTxO[];
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly label: string;
-}): Promise<MissingNativeScriptTxStagedFieldOpeningV1> => {
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+}): Promise<MissingNativeScriptTxStagedFieldOpening> => {
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
     anchorTxId: badTxId,
     nativeTxCompactCbor,
     itemCbors: scriptTxWitsItems,
@@ -97,7 +97,7 @@ export const prepareMissingNativeScriptTxStagedFieldOpeningV1 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -110,7 +110,7 @@ export const prepareMissingNativeScriptTxStagedFieldOpeningV1 = async ({
       `${label} requires ${planned.plan.publications.length.toString()} exact carriage publications, but ${carriageUtxos.length.toString()} were supplied.`,
     );
   }
-  const stepReference = requireMissingNativeScriptTxReferenceScriptV1({
+  const stepReference = requireMissingNativeScriptTxReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
@@ -121,7 +121,7 @@ export const prepareMissingNativeScriptTxStagedFieldOpeningV1 = async ({
     stepReference,
     ...extraReferenceInputs,
   ];
-  const opening = faultProofFieldOpeningV1({
+  const opening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Behavioral self-test for the HeaderV1 ABI gate (V-8, issue #531). The gate is
+// Behavioral self-test for the Header ABI gate (V-8, issue #531). The gate is
 // the only path that compares the registry-owned contract against BOTH real
 // projections — the blueprint the Aiken compiler generated and the Data schema
 // the built SDK exports — and until now nothing invoked it, so nothing proved
@@ -56,7 +56,7 @@ for (const [label, path, remedy] of [
 
 const registry = JSON.parse(readFileSync(registryPath, "utf8"));
 const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8"));
-const HEADER_DEFINITION = "midgard/ledger_state/HeaderV1";
+const HEADER_DEFINITION = "midgard/ledger_state/Header";
 
 const workspace = mkdtempSync(resolve(tmpdir(), "header-v1-abi-self-test-"));
 const candidateRegistryPath = resolve(workspace, "registry.json");
@@ -103,7 +103,7 @@ const mustReject = (label, expected, seed) => {
 
 // --- Seeded blueprint mismatches (real registry, real SDK schema) -----------
 
-// Only the HeaderV1 definition is cloned; every other definition in the 11 MB
+// Only the Header definition is cloned; every other definition in the 11 MB
 // generated blueprint is carried over by reference, so each candidate is the
 // real compiler output with exactly one seeded edit.
 const seedBlueprint = (mutate) => {
@@ -119,7 +119,7 @@ const seedBlueprint = (mutate) => {
 const headerFields = (definition) => definition.anyOf[0].fields;
 
 mustReject(
-  "the blueprint renames HeaderV1 field 0",
+  "the blueprint renames Header field 0",
   /Aiken field 0 name mismatch/u,
   () =>
     seedBlueprint((definition) => {
@@ -128,7 +128,7 @@ mustReject(
 );
 
 mustReject(
-  "the blueprint transposes HeaderV1 fields 0 and 1",
+  "the blueprint transposes Header fields 0 and 1",
   /Aiken field 0 name mismatch/u,
   () =>
     seedBlueprint((definition) => {
@@ -138,7 +138,7 @@ mustReject(
 );
 
 mustReject(
-  "the blueprint drops a HeaderV1 field",
+  "the blueprint drops a Header field",
   /Aiken constructor arity mismatch: expected 25, got 24/u,
   () =>
     seedBlueprint((definition) => {
@@ -147,7 +147,7 @@ mustReject(
 );
 
 mustReject(
-  "the blueprint appends a HeaderV1 field",
+  "the blueprint appends a Header field",
   /Aiken constructor arity mismatch: expected 25, got 26/u,
   () =>
     seedBlueprint((definition) => {
@@ -157,8 +157,8 @@ mustReject(
 );
 
 mustReject(
-  "the blueprint moves HeaderV1 off constructor tag 0",
-  /blueprint HeaderV1 constructor 0 is missing/u,
+  "the blueprint moves Header off constructor tag 0",
+  /blueprint Header constructor 0 is missing/u,
   () =>
     seedBlueprint((definition) => {
       definition.anyOf[0].index = 1;
@@ -166,7 +166,7 @@ mustReject(
 );
 
 mustReject(
-  "the blueprint retypes a HeaderV1 field's referenced definition",
+  "the blueprint retypes a Header field's referenced definition",
   /Aiken field \d+ definition mismatch/u,
   () =>
     seedBlueprint((definition) => {
@@ -174,15 +174,15 @@ mustReject(
       const replacement = fields.find((field) => field.$ref !== fields[0].$ref);
       assert.ok(
         replacement !== undefined,
-        "HeaderV1 must reference more than one definition",
+        "Header must reference more than one definition",
       );
       fields[0].$ref = replacement.$ref;
     }),
 );
 
 mustReject(
-  "the blueprint no longer defines HeaderV1 at all",
-  /blueprint HeaderV1 definition must be an object/u,
+  "the blueprint no longer defines Header at all",
+  /blueprint Header definition must be an object/u,
   () =>
     seedBlueprint((_definition, definitions) => {
       delete definitions[HEADER_DEFINITION];
@@ -201,7 +201,7 @@ const seedRegistry = (mutate) => {
 };
 
 mustReject(
-  "the registry renames an Aiken-facing HeaderV1 field",
+  "the registry renames an Aiken-facing Header field",
   /Aiken field 7 name mismatch/u,
   () =>
     seedRegistry((contract) => {
@@ -211,7 +211,7 @@ mustReject(
 );
 
 mustReject(
-  "the registry renames an SDK-facing HeaderV1 field",
+  "the registry renames an SDK-facing Header field",
   /SDK field 2 name mismatch/u,
   () =>
     seedRegistry((contract) => {
@@ -220,14 +220,14 @@ mustReject(
 );
 
 mustReject(
-  "the registry retypes an SDK-facing HeaderV1 field",
+  "the registry retypes an SDK-facing Header field",
   /SDK field \d+ type mismatch/u,
   () =>
     seedRegistry((contract) => {
       const index = contract.fields.findIndex((field) =>
         field.type.startsWith("bytes"),
       );
-      assert.ok(index >= 0, "HeaderV1 must declare a bytes field");
+      assert.ok(index >= 0, "Header must declare a bytes field");
       // The Aiken comparison erases the width suffix, so only the SDK's
       // runtime minLength/maxLength can catch this: the gate must not be
       // satisfied by the blueprint half agreeing.
@@ -237,7 +237,7 @@ mustReject(
 );
 
 mustReject(
-  "the registry understates the HeaderV1 constructor arity",
+  "the registry understates the Header constructor arity",
   /contract\.constructor\.arity must be 25/u,
   () =>
     seedRegistry((contract) => {

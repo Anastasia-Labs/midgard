@@ -11,16 +11,16 @@ import {
 
 import { hash32 } from "./input-resolution.js";
 
-const NATIVE_SCRIPT_SCAN_FRAME_DOMAIN_V1 = Buffer.from(
+const NATIVE_SCRIPT_SCAN_FRAME_DOMAIN = Buffer.from(
   "MidgardNativeScriptScanFrameV1",
   "ascii",
 );
 
-export const MAX_NATIVE_SCRIPT_SCAN_NODES_V1 = 16_384;
+export const MAX_NATIVE_SCRIPT_SCAN_NODES = 16_384;
 
-export const MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1 = 16_384;
+export const MAX_NATIVE_SCRIPT_SCAN_DEPTH = 16_384;
 
-export type ValidationMachineNativeScriptTokenV1 = {
+export type ValidationMachineNativeScriptToken = {
   readonly kind: 0 | 1 | 2 | 3 | 4 | 5;
   readonly nextOffset: number;
   readonly childCount: number;
@@ -29,12 +29,12 @@ export type ValidationMachineNativeScriptTokenV1 = {
   readonly slot: bigint;
 };
 
-export type ValidationMachineNativeScriptTokenHeadV1 = {
+export type ValidationMachineNativeScriptTokenHead = {
   readonly kind: 0 | 1 | 2 | 3 | 4 | 5;
   readonly payloadOffset: number;
 };
 
-export type ValidationMachineNativeScriptFrameV1 = {
+export type ValidationMachineNativeScriptFrame = {
   readonly tail: Buffer;
   readonly kind: 1 | 2 | 3;
   readonly childCount: number;
@@ -43,15 +43,15 @@ export type ValidationMachineNativeScriptFrameV1 = {
   readonly required: bigint;
 };
 
-export type ValidationMachineVersionedScriptHeaderV1 = {
+export type ValidationMachineVersionedScriptHeader = {
   readonly languageTag: 0 | 3 | 128;
   readonly payloadOffset: number;
   readonly payloadLength: number;
 };
 
-export const readValidationMachineVersionedScriptHeaderV1 = (
+export const readValidationMachineVersionedScriptHeader = (
   item: Buffer,
-): ValidationMachineVersionedScriptHeaderV1 => {
+): ValidationMachineVersionedScriptHeader => {
   const outer = readCborArrayHeader(item, 0, "versioned_script");
   if (outer.length !== 2) {
     throw new Error("versioned script must contain exactly two fields");
@@ -81,10 +81,10 @@ export const readValidationMachineVersionedScriptHeaderV1 = (
   };
 };
 
-export const readValidationMachineNativeScriptTokenHeadV1 = (
+export const readValidationMachineNativeScriptTokenHead = (
   item: Buffer,
   offset: number,
-): ValidationMachineNativeScriptTokenHeadV1 => {
+): ValidationMachineNativeScriptTokenHead => {
   const outer = readCborArrayHeader(item, offset, "native_script");
   const tag = readCborUnsigned(item, outer.nextOffset, "native_script.tag");
   if (tag.value < 0n || tag.value > 5n) {
@@ -100,11 +100,11 @@ export const readValidationMachineNativeScriptTokenHeadV1 = (
   return { kind, payloadOffset: tag.nextOffset };
 };
 
-export const readValidationMachineNativeScriptPayloadV1 = (
+export const readValidationMachineNativeScriptPayload = (
   item: Buffer,
   offset: number,
   kind: 0 | 1 | 2 | 3 | 4 | 5,
-): ValidationMachineNativeScriptTokenV1 => {
+): ValidationMachineNativeScriptToken => {
   if (kind === 0) {
     const keyHash = readCborBytes(item, offset, "native_script.key_hash");
     if (keyHash.value.length !== 28) {
@@ -125,7 +125,7 @@ export const readValidationMachineNativeScriptPayloadV1 = (
       offset,
       "native_script.children",
     );
-    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
+    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES) {
       throw new Error("native all/any script has an invalid shape");
     }
     return {
@@ -144,7 +144,7 @@ export const readValidationMachineNativeScriptPayloadV1 = (
       required.nextOffset,
       "native_script.children",
     );
-    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
+    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES) {
       throw new Error("native at-least script has an invalid shape");
     }
     return {
@@ -170,14 +170,14 @@ export const readValidationMachineNativeScriptPayloadV1 = (
   throw new Error("native script payload has an unsupported tag");
 };
 
-const validationMachineNativeScriptFrameIsWellFormedV1 = (
-  frame: ValidationMachineNativeScriptFrameV1,
+const validationMachineNativeScriptFrameIsWellFormed = (
+  frame: ValidationMachineNativeScriptFrame,
 ): boolean => {
   const processed = frame.childCount - frame.remaining;
   return (
     (frame.tail.length === 0 || frame.tail.length === 32) &&
     frame.childCount > 0 &&
-    frame.childCount <= MAX_NATIVE_SCRIPT_SCAN_NODES_V1 &&
+    frame.childCount <= MAX_NATIVE_SCRIPT_SCAN_NODES &&
     frame.remaining > 0 &&
     frame.remaining <= frame.childCount &&
     frame.validCount >= 0 &&
@@ -186,15 +186,15 @@ const validationMachineNativeScriptFrameIsWellFormedV1 = (
   );
 };
 
-export const hashValidationMachineNativeScriptFrameV1 = (
-  frame: ValidationMachineNativeScriptFrameV1,
+export const hashValidationMachineNativeScriptFrame = (
+  frame: ValidationMachineNativeScriptFrame,
 ): Buffer => {
-  if (!validationMachineNativeScriptFrameIsWellFormedV1(frame)) {
+  if (!validationMachineNativeScriptFrameIsWellFormed(frame)) {
     throw new Error("cannot hash a malformed native-script frame");
   }
   return hash32(
     Buffer.concat([
-      NATIVE_SCRIPT_SCAN_FRAME_DOMAIN_V1,
+      NATIVE_SCRIPT_SCAN_FRAME_DOMAIN,
       encodeCbor([
         frame.tail,
         BigInt(frame.kind),

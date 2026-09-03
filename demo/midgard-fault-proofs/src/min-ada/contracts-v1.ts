@@ -2,7 +2,7 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const MIN_ADA_CATEGORY_LABEL = "min-ada";
 
-export const MIN_ADA_BLUEPRINT_TITLES_V1 = {
+export const MIN_ADA_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/min_ada/step_01.main.spend",
   step02: "fraud_proofs/min_ada/step_02.main.spend",
   step03: "fraud_proofs/min_ada/step_03.main.spend",
@@ -10,19 +10,19 @@ export const MIN_ADA_BLUEPRINT_TITLES_V1 = {
   step05: "fraud_proofs/min_ada/step_05.main.spend",
 } as const;
 
-export type MinAdaStepContractV1 = {
+export type MinAdaStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
-export type MinAdaContractsV1 = {
+export type MinAdaContracts = {
   readonly steps: readonly [
-    MinAdaStepContractV1,
-    MinAdaStepContractV1,
-    MinAdaStepContractV1,
-    MinAdaStepContractV1,
-    MinAdaStepContractV1,
+    MinAdaStepContract,
+    MinAdaStepContract,
+    MinAdaStepContract,
+    MinAdaStepContract,
+    MinAdaStepContract,
   ];
   readonly yields: {
     readonly tx: {

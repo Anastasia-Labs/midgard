@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 
 import {
-  type DeploymentManifestV1EconomicsProfile,
-  parseDeploymentManifestV1Economics,
+  type DeploymentManifestEconomicsProfile,
+  parseDeploymentManifestEconomics,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
-export const FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY_V1 =
+export const FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY =
   "midgard-fraud-proof-release-economics-authority-v1" as const;
-export const FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION =
+export const FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION =
   "midgard-fraud-proof-release-economics-policy-v1" as const;
 
-export type ReleaseFraudProofEconomicsPolicyV1 = {
-  readonly profile: DeploymentManifestV1EconomicsProfile;
+export type ReleaseFraudProofEconomicsPolicy = {
+  readonly profile: DeploymentManifestEconomicsProfile;
   readonly requiredBondLovelace: string;
   readonly slashingPenaltyLovelace: string;
   readonly fraudProverRewardLovelace: string;
@@ -23,26 +23,26 @@ export type ReleaseFraudProofEconomicsPolicyV1 = {
  * Deployment-manifest authenticated economics. A workflow must never derive
  * these values from its caller's network label or a local SDK default.
  */
-export type VerifiedFraudProofReleaseEconomicsPolicyV1 = {
-  readonly schemaVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION;
+export type VerifiedFraudProofReleaseEconomicsPolicy = {
+  readonly schemaVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION;
   readonly deploymentIdentityDigest: string;
   readonly releaseIdentityDigest: string;
   readonly policyDigest: string;
-  readonly policy: ReleaseFraudProofEconomicsPolicyV1;
+  readonly policy: ReleaseFraudProofEconomicsPolicy;
 };
 
-export interface FraudProofReleaseEconomicsAuthorityV1 {
-  readonly authorityVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY_V1;
+export interface FraudProofReleaseEconomicsAuthority {
+  readonly authorityVersion: typeof FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY;
   verifyForWorkflow(input: {
     readonly deploymentFingerprint: string;
-  }): Promise<VerifiedFraudProofReleaseEconomicsPolicyV1>;
+  }): Promise<VerifiedFraudProofReleaseEconomicsPolicy>;
 }
 
 const DIGEST = /^[0-9a-f]{64}$/u;
 const NATURAL = /^(0|[1-9][0-9]*)$/u;
 
 const canonicalPolicyJson = (
-  policy: ReleaseFraudProofEconomicsPolicyV1,
+  policy: ReleaseFraudProofEconomicsPolicy,
 ): string =>
   JSON.stringify({
     profile: policy.profile,
@@ -53,14 +53,14 @@ const canonicalPolicyJson = (
     slashingPenaltyLovelace: policy.slashingPenaltyLovelace,
   });
 
-export const computeFraudProofReleaseEconomicsPolicyDigestV1 = (
-  policy: ReleaseFraudProofEconomicsPolicyV1,
+export const computeFraudProofReleaseEconomicsPolicyDigest = (
+  policy: ReleaseFraudProofEconomicsPolicy,
 ): string =>
   createHash("sha256").update(canonicalPolicyJson(policy)).digest("hex");
 
-export const validateVerifiedFraudProofReleaseEconomicsPolicyV1 = (
-  value: VerifiedFraudProofReleaseEconomicsPolicyV1,
-): VerifiedFraudProofReleaseEconomicsPolicyV1 => {
+export const validateVerifiedFraudProofReleaseEconomicsPolicy = (
+  value: VerifiedFraudProofReleaseEconomicsPolicy,
+): VerifiedFraudProofReleaseEconomicsPolicy => {
   const policyKeys = [
     "profile",
     "requiredBondLovelace",
@@ -83,8 +83,7 @@ export const validateVerifiedFraudProofReleaseEconomicsPolicyV1 = (
     );
   }
   if (
-    value.schemaVersion !==
-    FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION
+    value.schemaVersion !== FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION
   ) {
     throw new Error("release economics policy has an unsupported schema");
   }
@@ -108,7 +107,7 @@ export const validateVerifiedFraudProofReleaseEconomicsPolicyV1 = (
       "release economics policy is not a canonical launch profile",
     );
   }
-  parseDeploymentManifestV1Economics({
+  parseDeploymentManifestEconomics({
     profile: value.policy.profile,
     requiredBondLovelace: Number(value.policy.requiredBondLovelace),
     slashingPenaltyLovelace: Number(value.policy.slashingPenaltyLovelace),
@@ -129,7 +128,7 @@ export const validateVerifiedFraudProofReleaseEconomicsPolicyV1 = (
       "release economics bond does not equal penalty plus reward",
     );
   }
-  const digest = computeFraudProofReleaseEconomicsPolicyDigestV1(value.policy);
+  const digest = computeFraudProofReleaseEconomicsPolicyDigest(value.policy);
   if (digest !== value.policyDigest) {
     throw new Error("release economics policy digest mismatch");
   }

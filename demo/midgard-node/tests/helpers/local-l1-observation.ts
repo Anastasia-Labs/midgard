@@ -47,7 +47,7 @@ import { CML } from "@lucid-evolution/lucid";
  *   on every match including outputs that never had one, where it is `null`. A
  *   `null` under the flag is also Kupo's answer for a datum whose bytes it does
  *   not hold, and the reader has to survive both.
- *   {@link LocalL1V1.ignoreResolveHashes} serves the flag-ignoring shape a Kupo
+ *   {@link LocalL1.ignoreResolveHashes} serves the flag-ignoring shape a Kupo
  *   below the floor answers with, so the deployment-mismatch refusal is testable.
  * - The datum hash is content-derived here rather than Blake2b-256: nothing
  *   authenticates it, it is only the key joining a match to the datum store the
@@ -68,23 +68,23 @@ const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 /** Slots between consecutive blocks, so checkpoint lookup is never exact. */
 const SLOTS_PER_BLOCK = 20;
 
-export type LocalL1PointV1 = {
+export type LocalL1Point = {
   readonly slot: number;
   readonly headerHash: string;
 };
 
-export type LocalL1BlockV1 = LocalL1PointV1 & {
+export type LocalL1Block = LocalL1Point & {
   readonly height: number;
   readonly transactions: readonly unknown[];
 };
 
-export type LocalL1V1 = {
+export type LocalL1 = {
   /** Value for `L1_OGMIOS_KEY`. */
   readonly ogmiosUrl: string;
   /** Value for `L1_KUPO_KEY`. */
   readonly kupoUrl: string;
   /** Appends one block carrying the given signed transactions. */
-  readonly appendBlock: (transactionCbors: readonly string[]) => LocalL1BlockV1;
+  readonly appendBlock: (transactionCbors: readonly string[]) => LocalL1Block;
   /**
    * Rewrites the datum the `?resolve_hashes` join returns on a match, for the
    * negatives that prove the read stays fail-closed. The rewrite is handed the
@@ -111,7 +111,7 @@ export type LocalL1V1 = {
  * properties and nothing else. `datum` and `script` are not optional members of
  * this type on purpose: they exist only on the resolved shape below.
  */
-type KupoMatchV1 = {
+type KupoMatch = {
   readonly transaction_index: number;
   readonly transaction_id: string;
   readonly output_index: number;
@@ -129,7 +129,7 @@ type KupoMatchV1 = {
 };
 
 /** The same match under `?resolve_hashes`: both joins present, either may be null. */
-type KupoResolvedMatchV1 = KupoMatchV1 & {
+type KupoResolvedMatch = KupoMatch & {
   readonly datum: string | null;
   readonly script: null;
 };
@@ -404,9 +404,9 @@ const listen = async (server: Server): Promise<number> => {
   return address.port;
 };
 
-export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
-  const blocks: LocalL1BlockV1[] = [];
-  const matches = new Map<string, KupoMatchV1>();
+export const startLocalL1Observation = async (): Promise<LocalL1> => {
+  const blocks: LocalL1Block[] = [];
+  const matches = new Map<string, KupoMatch>();
   const datums = new Map<string, string>();
   let datumRewrite: ((datum: string) => string | null) | null = null;
   let ignoringResolveHashes = false;
@@ -419,7 +419,7 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
     transactions: [],
   });
 
-  const appendBlock = (transactionCbors: readonly string[]): LocalL1BlockV1 => {
+  const appendBlock = (transactionCbors: readonly string[]): LocalL1Block => {
     const previous = blocks[blocks.length - 1]!;
     const slot = previous.slot + SLOTS_PER_BLOCK;
     const decoded = transactionCbors.map(decodeTransaction);
@@ -427,7 +427,7 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
       slot,
       decoded.map((transaction) => transaction.txHash),
     );
-    const block: LocalL1BlockV1 = {
+    const block: LocalL1Block = {
       slot,
       headerHash,
       height: previous.height + 1,
@@ -462,10 +462,10 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
   /**
    * The `?resolve_hashes` join, as Kupo performs it: `datum` and `script` both
    * become present on the match, each carrying the stored value or `null`. A datum
-   * the store cannot produce — which is what {@link LocalL1V1.rewriteDatums} can
+   * the store cannot produce — which is what {@link LocalL1.rewriteDatums} can
    * turn any datum into — is `null` under a **present** key, never an absent one.
    */
-  const resolveHashesOn = (match: KupoMatchV1): KupoResolvedMatchV1 => {
+  const resolveHashesOn = (match: KupoMatch): KupoResolvedMatch => {
     const stored =
       match.datum_hash === null ? undefined : datums.get(match.datum_hash);
     const datum =
@@ -553,7 +553,7 @@ export const startLocalL1ObservationV1 = async (): Promise<LocalL1V1> => {
       ].join("\r\n"),
     );
     let cursor = -1;
-    let pendingRollback: LocalL1PointV1 | null = null;
+    let pendingRollback: LocalL1Point | null = null;
     const tip = (): unknown => {
       const last = blocks[blocks.length - 1]!;
       return { slot: last.slot, id: last.headerHash, height: last.height };

@@ -21,7 +21,7 @@ mutated signer/evaluator checkpoint cannot convict.
 - off-chain family:
   `demo/midgard-fault-proofs/src/native-script-invalid/`
 - production runner factory:
-  `createNativeScriptInvalidProductionWorkflowRunnerV1`
+  `createNativeScriptInvalidWorkflowRunner`
 - Aiken tests: `staged-v1.test.ak`
 - evidence-machine tests:
   `demo/midgard-fault-proofs/tests/native-script-invalid-evidence-machine-v1.test.ts`

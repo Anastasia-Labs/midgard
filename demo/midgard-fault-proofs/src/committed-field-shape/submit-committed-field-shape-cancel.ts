@@ -26,22 +26,22 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
-  type CommittedFieldShapeContractsV1,
+  type CommittedFieldShapeContracts,
 } from "./contracts-v1.js";
 import {
-  committedFieldShapeStepLabelV1,
+  committedFieldShapeStepLabel,
   committedFieldShapeSubmitError,
-  requireCommittedFieldShapeReferenceScriptV1,
+  requireCommittedFieldShapeReferenceScript,
 } from "./submit-common-v1.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -54,7 +54,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: CommittedFieldShapeContractsV1;
+  readonly contracts: CommittedFieldShapeContracts;
 }): 0 | 1 => {
   for (const stepIndex of [0, 1] as const) {
     if (
@@ -96,13 +96,13 @@ export const submitCommittedFieldShapeCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CommittedFieldShapeContractsV1;
+  readonly contracts: CommittedFieldShapeContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCommittedFieldShapeCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -111,7 +111,7 @@ export const submitCommittedFieldShapeCancel = async ({
     label: `${COMMITTED_FIELD_SHAPE_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = committedFieldShapeStepLabelV1(stepIndex);
+  const stepLabel = committedFieldShapeStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -169,13 +169,13 @@ export const submitCommittedFieldShapeCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,
   });
   const referenceInputs = [
-    requireCommittedFieldShapeReferenceScriptV1({
+    requireCommittedFieldShapeReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,
@@ -197,9 +197,9 @@ export const submitCommittedFieldShapeCancel = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -13,8 +13,8 @@
  * `tests/submit-input-no-idx-step-02.test.ts` and the input-no-idx emulator leg.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardFieldPreimage,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
   Data,
@@ -41,7 +41,7 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const inputCbor = (index: number): string =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(index.toString(16).padStart(64, "0"), "hex"),
     outputIndex: index,
   }).toString("hex");
@@ -68,9 +68,9 @@ describe("spend-input witness helpers", () => {
     const expectedLovelace = minimumLovelaceForInlineDatumOutput({
       address,
       datum: Data.to(
-        encodeMidgardFieldPreimageV1(
+        encodeMidgardFieldPreimage(
           witness.inputs.map((input) =>
-            encodeMidgardSpendInputItemV1({
+            encodeMidgardSpendInputItem({
               txId: Buffer.from(input.tx_id, "hex"),
               outputIndex: Number(input.output_index),
             }),

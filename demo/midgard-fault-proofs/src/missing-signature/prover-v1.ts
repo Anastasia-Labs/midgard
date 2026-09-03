@@ -10,8 +10,8 @@
 import {
   FraudProofComputationThreadStepDatum,
   type MidgardAddressWitness,
-  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
-  missingSignatureThreadTokenAssetNameV1,
+  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
+  missingSignatureThreadTokenAssetName,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 import {
@@ -25,14 +25,14 @@ import { Effect } from "effect";
 
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { MissingSignatureContracts } from "./contracts-v1.js";
 import {
-  assertMissingSignatureFindingProvableV1,
-  type MissingSignatureFindingV1,
+  assertMissingSignatureFindingProvable,
+  type MissingSignatureFinding,
 } from "./finding-v1.js";
 import {
-  type MissingSignatureCatalogueCategoryV1,
+  type MissingSignatureCatalogueCategory,
   missingSignatureSubmitError,
 } from "./submit-common-v1.js";
 import { submitMissingSignatureInit } from "./submit-missing-signature-init.js";
@@ -41,7 +41,7 @@ import { submitMissingSignatureStep02 } from "./submit-missing-signature-step-02
 import { submitMissingSignatureStep03 } from "./submit-missing-signature-step-03.js";
 import { submitMissingSignatureStep04 } from "./submit-missing-signature-step-04.js";
 
-export type MissingSignatureProverPolicyV1 = {
+export type MissingSignatureProverPolicy = {
   /** Minimum L1 depth before a new thread may be initialized. */
   readonly minSettlementDepth: bigint;
   /** Projected fee cap for init, proof steps, resumable scans and removal. */
@@ -51,7 +51,7 @@ export type MissingSignatureProverPolicyV1 = {
   readonly singleFlight: number;
 };
 
-export const MISSING_SIGNATURE_PROVER_POLICY_DEFAULTS_V1: MissingSignatureProverPolicyV1 =
+export const MISSING_SIGNATURE_PROVER_POLICY_DEFAULTS: MissingSignatureProverPolicy =
   Object.freeze({
     minSettlementDepth: 2_160n,
     maxThreadBudgetLovelace: 20_000_000n,
@@ -59,31 +59,31 @@ export const MISSING_SIGNATURE_PROVER_POLICY_DEFAULTS_V1: MissingSignatureProver
     singleFlight: 1,
   });
 
-export type MissingSignatureSubjectEvidenceV1 = {
+export type MissingSignatureSubjectEvidence = {
   readonly nativeTxCompactCbor: string;
   readonly requiredSignerHashes: readonly string[];
   readonly addrTxWits: readonly MidgardAddressWitness[];
   readonly witnessSetCompact: NativeTxWitnessSetCompact;
 };
 
-export type MissingSignatureProverEvidenceV1 = {
+export type MissingSignatureProverEvidence = {
   /** Counted transaction-root inclusion used by step-01. */
   readonly txInclusion: (
-    finding: MissingSignatureFindingV1,
+    finding: MissingSignatureFinding,
   ) => Promise<SubmitStep01TxInclusion>;
   /** Canonical field-4/field-7 evidence used by steps 02 and 04. */
   readonly subjectTx: (
-    finding: MissingSignatureFindingV1,
-  ) => Promise<MissingSignatureSubjectEvidenceV1>;
+    finding: MissingSignatureFinding,
+  ) => Promise<MissingSignatureSubjectEvidence>;
 };
 
-export type MissingSignatureProverObservationsV1 = {
+export type MissingSignatureProverObservations = {
   readonly settlementDepthOf?: (
     fraudulentBlockOutRef: string,
   ) => Promise<bigint>;
 };
 
-export type MissingSignatureProverEventV1 = {
+export type MissingSignatureProverEvent = {
   readonly phase:
     | "boundary"
     | "policy"
@@ -99,49 +99,49 @@ export type MissingSignatureProverEventV1 = {
   readonly threadOutRef?: string;
 };
 
-export type MissingSignatureReferenceScriptsV1 = {
+export type MissingSignatureReferenceScripts = {
   readonly step01: UTxO;
   readonly step02: UTxO;
   readonly step03: UTxO;
   readonly step04: UTxO;
 };
 
-export type MissingSignatureFieldCertificatesV1 = {
+export type MissingSignatureFieldCertificates = {
   /** Required only if the actual field-4 plan selects certified carriage. */
   readonly step02?: UTxO;
   /** Required only if the actual field-7 plan selects certified carriage. */
   readonly step04?: UTxO;
 };
 
-export type MissingSignatureProverDepsV1 = {
+export type MissingSignatureProverDeps = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingSignatureContractsV1;
-  readonly category: MissingSignatureCatalogueCategoryV1;
+  readonly contracts: MissingSignatureContracts;
+  readonly category: MissingSignatureCatalogueCategory;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
     readonly root: string;
   };
   readonly signer: ResolvedProverSigner;
-  readonly evidence: MissingSignatureProverEvidenceV1;
-  readonly observations: MissingSignatureProverObservationsV1;
+  readonly evidence: MissingSignatureProverEvidence;
+  readonly observations: MissingSignatureProverObservations;
   readonly journal: (
-    event: MissingSignatureProverEventV1,
+    event: MissingSignatureProverEvent,
   ) => void | Promise<void>;
-  readonly policy: MissingSignatureProverPolicyV1;
+  readonly policy: MissingSignatureProverPolicy;
   /** Owner ruling: all four steps are sourced by reference, never inline. */
-  readonly referenceScriptUtxos: MissingSignatureReferenceScriptsV1;
+  readonly referenceScriptUtxos: MissingSignatureReferenceScripts;
   /** Published shared minting and PHAS witnesses used across the journey. */
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   /** Externally minted §8.6 manifests; certification is deployment-owned. */
-  readonly fieldCertificates?: MissingSignatureFieldCertificatesV1;
+  readonly fieldCertificates?: MissingSignatureFieldCertificates;
   /** Force carriage publication in tests; tier selection remains planner-owned. */
   readonly publishCarriage?: boolean;
 };
 
-export type MissingSignatureProofOutcomeV1 =
+export type MissingSignatureProofOutcome =
   | {
       readonly kind: "proven";
       readonly fraudProofUnit: string;
@@ -164,7 +164,7 @@ export type MissingSignatureProofOutcomeV1 =
       readonly cause: unknown;
     };
 
-export type MissingSignatureThreadPositionV1 =
+export type MissingSignatureThreadPosition =
   | { readonly step: "none" }
   | {
       readonly step: "step01" | "step02" | "step03" | "step04";
@@ -172,19 +172,17 @@ export type MissingSignatureThreadPositionV1 =
     };
 
 /** Locate one live thread; multiple matches are refused rather than guessed. */
-export const locateMissingSignatureThreadV1 = async ({
+export const locateMissingSignatureThread = async ({
   lucid,
   contracts,
   threadUnit,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
   readonly threadUnit: string;
-}): Promise<MissingSignatureThreadPositionV1> => {
-  let found: Exclude<
-    MissingSignatureThreadPositionV1,
-    { step: "none" }
-  > | null = null;
+}): Promise<MissingSignatureThreadPosition> => {
+  let found: Exclude<MissingSignatureThreadPosition, { step: "none" }> | null =
+    null;
   for (const stepIndex of [0, 1, 2, 3] as const) {
     const utxos = await lucid.utxosAtWithUnit(
       contracts.steps[stepIndex].spendingScriptAddress,
@@ -222,14 +220,14 @@ const requireDatum = (utxo: UTxO): string => {
   return utxo.datum;
 };
 
-const assertEvidenceCoherentV1 = ({
+const assertEvidenceCoherent = ({
   finding,
   txInclusion,
   subject,
 }: {
-  readonly finding: MissingSignatureFindingV1;
+  readonly finding: MissingSignatureFinding;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly subject: MissingSignatureSubjectEvidenceV1;
+  readonly subject: MissingSignatureSubjectEvidence;
 }): void => {
   if (txInclusion.nativeTxId !== finding.txId) {
     throw missingSignatureSubmitError(
@@ -262,19 +260,19 @@ const assertEvidenceCoherentV1 = ({
   }
 };
 
-export const runMissingSignatureProverV1 = async (
-  finding: MissingSignatureFindingV1,
-  deps: MissingSignatureProverDepsV1,
-): Promise<MissingSignatureProofOutcomeV1> => {
+export const runMissingSignatureProver = async (
+  finding: MissingSignatureFinding,
+  deps: MissingSignatureProverDeps,
+): Promise<MissingSignatureProofOutcome> => {
   const { lucid, contracts, policy, signer } = deps;
   const headerHash = finding.headerHash;
   const journal = async (
-    event: Omit<MissingSignatureProverEventV1, "headerHash">,
+    event: Omit<MissingSignatureProverEvent, "headerHash">,
   ) => deps.journal({ ...event, headerHash });
   const refused = async (
     refusal: "classification" | "policy" | "duplicate" | "alreadyProven",
     reason: string,
-  ): Promise<MissingSignatureProofOutcomeV1> => {
+  ): Promise<MissingSignatureProofOutcome> => {
     await journal({
       phase: "outcome",
       message: `refused (${refusal}): ${reason}`,
@@ -285,7 +283,7 @@ export const runMissingSignatureProverV1 = async (
     reason: string,
     threadOutRef: string | null,
     cause: unknown,
-  ): Promise<MissingSignatureProofOutcomeV1> => {
+  ): Promise<MissingSignatureProofOutcome> => {
     await journal({
       phase: "outcome",
       message: `STALLED: ${reason}`,
@@ -295,12 +293,12 @@ export const runMissingSignatureProverV1 = async (
   };
 
   try {
-    assertMissingSignatureFindingProvableV1(finding);
+    assertMissingSignatureFindingProvable(finding);
   } catch (cause) {
     return refused("classification", toError(cause).message);
   }
 
-  const assetName = missingSignatureThreadTokenAssetNameV1(
+  const assetName = missingSignatureThreadTokenAssetName(
     deps.category.categoryId,
     headerHash,
   );
@@ -317,9 +315,9 @@ export const runMissingSignatureProverV1 = async (
     );
   }
 
-  let position: MissingSignatureThreadPositionV1;
+  let position: MissingSignatureThreadPosition;
   try {
-    position = await locateMissingSignatureThreadV1({
+    position = await locateMissingSignatureThread({
       lucid,
       contracts,
       threadUnit,
@@ -353,13 +351,13 @@ export const runMissingSignatureProverV1 = async (
   }
 
   let txInclusion: SubmitStep01TxInclusion;
-  let subject: MissingSignatureSubjectEvidenceV1;
+  let subject: MissingSignatureSubjectEvidence;
   try {
     [txInclusion, subject] = await Promise.all([
       deps.evidence.txInclusion(finding),
       deps.evidence.subjectTx(finding),
     ]);
-    assertEvidenceCoherentV1({ finding, txInclusion, subject });
+    assertEvidenceCoherent({ finding, txInclusion, subject });
   } catch (cause) {
     return position.step === "none"
       ? refused("classification", toError(cause).message)
@@ -391,7 +389,7 @@ export const runMissingSignatureProverV1 = async (
     if (policy.maxThreadBudgetLovelace !== null) {
       const extraScans = Math.floor(
         Math.max(0, subject.addrTxWits.length - 1) /
-          MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
+          MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
       );
       const projected = BigInt(6 + extraScans) * policy.assumedFeePerTxLovelace;
       if (projected > policy.maxThreadBudgetLovelace) {
@@ -412,7 +410,7 @@ export const runMissingSignatureProverV1 = async (
   const maximumStep04Transactions =
     Math.floor(
       Math.max(0, subject.addrTxWits.length - 1) /
-        MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1,
+        MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
     ) + 1;
 
   try {
@@ -571,11 +569,11 @@ export const runMissingSignatureProverV1 = async (
 };
 
 /** The proving core as an Effect for watcher/runtime composition. */
-export const proveMissingSignatureFaultV1 = (
-  finding: MissingSignatureFindingV1,
-  deps: MissingSignatureProverDepsV1,
-): Effect.Effect<MissingSignatureProofOutcomeV1, Error> =>
+export const proveMissingSignatureFault = (
+  finding: MissingSignatureFinding,
+  deps: MissingSignatureProverDeps,
+): Effect.Effect<MissingSignatureProofOutcome, Error> =>
   Effect.tryPromise({
-    try: () => runMissingSignatureProverV1(finding, deps),
+    try: () => runMissingSignatureProver(finding, deps),
     catch: toError,
   });

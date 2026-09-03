@@ -44,34 +44,34 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
-  type NativeScriptDecodingContractsV1,
-  type NativeScriptDecodingStepContractV1,
+  type NativeScriptDecodingContracts,
+  type NativeScriptDecodingStepContract,
 } from "./contracts-v1.js";
 import {
-  type NativeScriptDecodingCatalogueCategoryV1,
+  type NativeScriptDecodingCatalogueCategory,
   nativeScriptDecodingSubmitError,
 } from "./submit-common-v1.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
-export type NativeScriptDecodingInitContractsV1 = Omit<
-  NativeScriptDecodingContractsV1,
+export type NativeScriptDecodingInitContracts = Omit<
+  NativeScriptDecodingContracts,
   "steps"
 > & {
   readonly steps: readonly [
-    NativeScriptDecodingStepContractV1,
-    ...NativeScriptDecodingStepContractV1[],
+    NativeScriptDecodingStepContract,
+    ...NativeScriptDecodingStepContract[],
   ];
 };
 
@@ -110,8 +110,8 @@ export const submitNativeScriptDecodingInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: NativeScriptDecodingInitContractsV1;
-  readonly category: NativeScriptDecodingCatalogueCategoryV1;
+  readonly contracts: NativeScriptDecodingInitContracts;
+  readonly category: NativeScriptDecodingCatalogueCategory;
   /** The deployed fraud-proof catalogue: its NFT policy, spend address, and MPF root. */
   readonly catalogue: {
     readonly policyId: string;
@@ -122,8 +122,8 @@ export const submitNativeScriptDecodingInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingInitResult> => {
   // The registered category must be the very step-01 this chain deploys —
@@ -179,12 +179,12 @@ export const submitNativeScriptDecodingInit = async ({
     network,
     phasMembershipScript,
   );
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} init PHAS membership`,
@@ -298,9 +298,9 @@ export const submitNativeScriptDecodingInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

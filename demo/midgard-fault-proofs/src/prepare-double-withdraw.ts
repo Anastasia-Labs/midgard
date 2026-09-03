@@ -6,10 +6,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -26,10 +26,10 @@ import {
   keyValuePhasRootWithCount,
 } from "./transition-trace/phas.js";
 
-export const DOUBLE_WITHDRAW_EVIDENCE_V1_SCHEMA_VERSION =
+export const DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION =
   "midgard-double-withdraw-evidence-v1" as const;
 
-export type DoubleWithdrawRejectionCodeV1 =
+export type DoubleWithdrawRejectionCode =
   | "malformed_da_payload"
   | "non_canonical_da_payload"
   | "wrong_da_payload_version"
@@ -45,10 +45,10 @@ export type DoubleWithdrawRejectionCodeV1 =
   | "no_payable_duplicate_pair";
 
 /** Deterministic rejection whose detail contains committed/public facts only. */
-export class DoubleWithdrawRejectionV1 extends Error {
-  readonly code: DoubleWithdrawRejectionCodeV1;
+export class DoubleWithdrawRejection extends Error {
+  readonly code: DoubleWithdrawRejectionCode;
 
-  constructor(code: DoubleWithdrawRejectionCodeV1, detail: string) {
+  constructor(code: DoubleWithdrawRejectionCode, detail: string) {
     super(`${code}: ${detail}`);
     this.name = "DoubleWithdrawRejectionV1";
     this.code = code;
@@ -59,7 +59,7 @@ const hex = (value: string, label: string, bytes?: number): string => {
   const normalized = value.toLowerCase();
   const exact = bytes === undefined ? "*" : `{${(bytes * 2).toString()}}`;
   if (!new RegExp(`^[0-9a-f]${exact}$`, "u").test(normalized)) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "malformed_da_payload",
       `${label} is not ${bytes === undefined ? "even-length" : bytes.toString() + "-byte"} hexadecimal`,
     );
@@ -71,7 +71,7 @@ const sameOutRef = (a: SDK.OutputReference, b: SDK.OutputReference): boolean =>
   a.transactionId.toLowerCase() === b.transactionId.toLowerCase() &&
   a.outputIndex === b.outputIndex;
 
-export type DoubleWithdrawCommittedLeafV1 = {
+export type DoubleWithdrawCommittedLeaf = {
   readonly index: number;
   readonly withdrawalIdCbor: string;
   readonly withdrawalInfoCbor: string;
@@ -82,7 +82,7 @@ export type DoubleWithdrawCommittedLeafV1 = {
 const decodeLeaf = (
   entry: readonly [string, string],
   index: number,
-): DoubleWithdrawCommittedLeafV1 => {
+): DoubleWithdrawCommittedLeaf => {
   const withdrawalIdCbor = hex(
     entry[0],
     `withdrawals[${index.toString()}].key`,
@@ -97,16 +97,16 @@ const decodeLeaf = (
     withdrawalId = Data.from(withdrawalIdCbor, SDK.OutputReference);
     withdrawalInfo = Data.from(withdrawalInfoCbor, SDK.WithdrawalInfo);
   } catch (cause) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "malformed_withdrawal_leaf",
       `withdrawals[${index.toString()}] does not decode as (WithdrawalId, WithdrawalInfo): ${String(cause)}`,
     );
   }
   if (
-    SDK.committedWithdrawalKeyBytesV1(withdrawalId) !== withdrawalIdCbor ||
-    SDK.committedWithdrawalValueBytesV1(withdrawalInfo) !== withdrawalInfoCbor
+    SDK.committedWithdrawalKeyBytes(withdrawalId) !== withdrawalIdCbor ||
+    SDK.committedWithdrawalValueBytes(withdrawalInfo) !== withdrawalInfoCbor
   ) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "non_canonical_withdrawal_leaf",
       `withdrawals[${index.toString()}] is not in serialiseData form`,
     );
@@ -120,25 +120,25 @@ const decodeLeaf = (
   };
 };
 
-export type PreparedDoubleWithdrawInclusionV1 = {
+export type PreparedDoubleWithdrawInclusion = {
   readonly withdrawalIdCbor: string;
   readonly withdrawalInfoCbor: string;
   readonly withdrawalsPhasRoot: string;
   readonly withdrawalMembershipProofCbor: string;
 };
 
-export type PreparedDoubleWithdrawOutputV1 = {
-  readonly schemaVersion: typeof DOUBLE_WITHDRAW_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.DOUBLE_WITHDRAW_VIOLATION_ID_V1;
+export type PreparedDoubleWithdrawOutput = {
+  readonly schemaVersion: typeof DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION;
+  readonly violationId: typeof SDK.DOUBLE_WITHDRAW_VIOLATION_ID;
   readonly headerHash: string;
   readonly withdrawalCount: number;
   readonly withdrawalsPhasRoot: string;
   readonly committedWithdrawalsRoot: string;
-  readonly leaves: readonly DoubleWithdrawCommittedLeafV1[];
-  readonly firstLeaf: DoubleWithdrawCommittedLeafV1;
-  readonly secondLeaf: DoubleWithdrawCommittedLeafV1;
-  readonly firstInclusion: PreparedDoubleWithdrawInclusionV1;
-  readonly secondInclusion: PreparedDoubleWithdrawInclusionV1;
+  readonly leaves: readonly DoubleWithdrawCommittedLeaf[];
+  readonly firstLeaf: DoubleWithdrawCommittedLeaf;
+  readonly secondLeaf: DoubleWithdrawCommittedLeaf;
+  readonly firstInclusion: PreparedDoubleWithdrawInclusion;
+  readonly secondInclusion: PreparedDoubleWithdrawInclusion;
   readonly step02State: SDK.DoubleWithdrawStep02State;
   readonly files?: {
     readonly firstInclusionPath: string;
@@ -152,15 +152,15 @@ const requireSelectedPair = ({
   firstWithdrawalIdCbor,
   secondWithdrawalIdCbor,
 }: {
-  readonly leaves: readonly DoubleWithdrawCommittedLeafV1[];
+  readonly leaves: readonly DoubleWithdrawCommittedLeaf[];
   readonly firstWithdrawalIdCbor?: string;
   readonly secondWithdrawalIdCbor?: string;
-}): readonly [DoubleWithdrawCommittedLeafV1, DoubleWithdrawCommittedLeafV1] => {
+}): readonly [DoubleWithdrawCommittedLeaf, DoubleWithdrawCommittedLeaf] => {
   if (
     (firstWithdrawalIdCbor === undefined) !==
     (secondWithdrawalIdCbor === undefined)
   ) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "selected_leaf_not_committed",
       "both selected withdrawal ids must be supplied together",
     );
@@ -174,25 +174,25 @@ const requireSelectedPair = ({
     const first = leaves.find((leaf) => leaf.withdrawalIdCbor === firstId);
     const second = leaves.find((leaf) => leaf.withdrawalIdCbor === secondId);
     if (first === undefined || second === undefined) {
-      throw new DoubleWithdrawRejectionV1(
+      throw new DoubleWithdrawRejection(
         "selected_leaf_not_committed",
         "one or both selected withdrawal ids are absent from the committed set",
       );
     }
     if (sameOutRef(first.withdrawalId, second.withdrawalId)) {
-      throw new DoubleWithdrawRejectionV1(
+      throw new DoubleWithdrawRejection(
         "same_leaf_twice",
         "the selected withdrawal identities are equal",
       );
     }
-    if (!SDK.isPayableWithdrawalLeafV1(first.withdrawalInfo)) {
-      throw new DoubleWithdrawRejectionV1(
+    if (!SDK.isPayableWithdrawalLeaf(first.withdrawalInfo)) {
+      throw new DoubleWithdrawRejection(
         "first_leaf_not_payable",
         "the selected first leaf is not WithdrawalIsValid",
       );
     }
-    if (!SDK.isPayableWithdrawalLeafV1(second.withdrawalInfo)) {
-      throw new DoubleWithdrawRejectionV1(
+    if (!SDK.isPayableWithdrawalLeaf(second.withdrawalInfo)) {
+      throw new DoubleWithdrawRejection(
         "second_leaf_not_payable",
         "the selected second leaf is not WithdrawalIsValid",
       );
@@ -203,7 +203,7 @@ const requireSelectedPair = ({
         second.withdrawalInfo.body.l2_outref,
       )
     ) {
-      throw new DoubleWithdrawRejectionV1(
+      throw new DoubleWithdrawRejection(
         "distinct_l2_outrefs",
         "the selected leaves drain different L2 output references",
       );
@@ -213,11 +213,11 @@ const requireSelectedPair = ({
 
   for (let left = 0; left < leaves.length; left += 1) {
     const first = leaves[left]!;
-    if (!SDK.isPayableWithdrawalLeafV1(first.withdrawalInfo)) continue;
+    if (!SDK.isPayableWithdrawalLeaf(first.withdrawalInfo)) continue;
     for (let right = left + 1; right < leaves.length; right += 1) {
       const second = leaves[right]!;
       if (
-        SDK.isPayableWithdrawalLeafV1(second.withdrawalInfo) &&
+        SDK.isPayableWithdrawalLeaf(second.withdrawalInfo) &&
         !sameOutRef(first.withdrawalId, second.withdrawalId) &&
         sameOutRef(
           first.withdrawalInfo.body.l2_outref,
@@ -228,14 +228,14 @@ const requireSelectedPair = ({
       }
     }
   }
-  throw new DoubleWithdrawRejectionV1(
+  throw new DoubleWithdrawRejection(
     "no_payable_duplicate_pair",
     `the committed ${leaves.length.toString()}-leaf withdrawal set contains no distinct both-payable same-outref pair`,
   );
 };
 
 /** Authenticate the committed set, select a deterministic fault pair, and prove both leaves. */
-export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
+export const prepareDoubleWithdrawFromCommittedLeaves = async ({
   headerHash,
   committedWithdrawalsRoot,
   withdrawalCount,
@@ -251,7 +251,7 @@ export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
   readonly firstWithdrawalIdCbor?: string;
   readonly secondWithdrawalIdCbor?: string;
   readonly outputDir?: string;
-}): Promise<PreparedDoubleWithdrawOutputV1> => {
+}): Promise<PreparedDoubleWithdrawOutput> => {
   const normalizedHeaderHash = hex(headerHash, "headerHash", 28);
   const normalizedRoot = hex(
     committedWithdrawalsRoot,
@@ -272,7 +272,7 @@ export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
     count: phas.count,
   });
   if (countedRoot !== normalizedRoot || phas.count !== withdrawalCount) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "withdrawals_root_mismatch",
       `header_root=${normalizedRoot} derived_root=${countedRoot} header_count=${withdrawalCount.toString()} derived_count=${phas.count.toString()}`,
     );
@@ -285,8 +285,8 @@ export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
   });
   const trie = await buildTrieView(entriesBytes);
   const inclusion = (
-    leaf: DoubleWithdrawCommittedLeafV1,
-  ): PreparedDoubleWithdrawInclusionV1 => ({
+    leaf: DoubleWithdrawCommittedLeaf,
+  ): PreparedDoubleWithdrawInclusion => ({
     withdrawalIdCbor: leaf.withdrawalIdCbor,
     withdrawalInfoCbor: leaf.withdrawalInfoCbor,
     withdrawalsPhasRoot: phas.root,
@@ -296,9 +296,9 @@ export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
       `double-withdraw leaf ${leaf.index.toString()}`,
     ),
   });
-  const output: PreparedDoubleWithdrawOutputV1 = {
-    schemaVersion: DOUBLE_WITHDRAW_EVIDENCE_V1_SCHEMA_VERSION,
-    violationId: SDK.DOUBLE_WITHDRAW_VIOLATION_ID_V1,
+  const output: PreparedDoubleWithdrawOutput = {
+    schemaVersion: DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION,
+    violationId: SDK.DOUBLE_WITHDRAW_VIOLATION_ID,
     headerHash: normalizedHeaderHash,
     withdrawalCount: Number(withdrawalCount),
     withdrawalsPhasRoot: phas.root,
@@ -308,7 +308,7 @@ export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
     secondLeaf,
     firstInclusion: inclusion(firstLeaf),
     secondInclusion: inclusion(secondLeaf),
-    step02State: SDK.doubleWithdrawStep02StateV1({
+    step02State: SDK.doubleWithdrawStep02State({
       challengedHeaderHash: normalizedHeaderHash,
       committedWithdrawal: {
         domain: SDK.ROOT_DOMAINS.withdrawals,
@@ -347,11 +347,11 @@ export const prepareDoubleWithdrawFromCommittedLeavesV1 = async ({
   return { ...output, files };
 };
 
-export type DoubleWithdrawBlockEvidenceV1 = {
-  readonly grade: SDK.EvidenceGradeV1;
+export type DoubleWithdrawBlockEvidence = {
+  readonly grade: SDK.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenanceV1;
-    readonly da: SDK.EvidenceProvenanceV1;
+    readonly l1: SDK.EvidenceProvenance;
+    readonly da: SDK.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -362,27 +362,27 @@ export type DoubleWithdrawBlockEvidenceV1 = {
 };
 
 /** Admit retained DA against an authenticated state-queue header. */
-export const doubleWithdrawBlockEvidenceFromVerifiedPayloadV1 = async ({
+export const doubleWithdrawBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenanceV1;
+  readonly daProvenance: SDK.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<DoubleWithdrawBlockEvidenceV1> => {
+}): Promise<DoubleWithdrawBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidenceV1(daProvenance);
+  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -391,53 +391,53 @@ export const doubleWithdrawBlockEvidenceFromVerifiedPayloadV1 = async ({
   try {
     payloadCbor = Buffer.from(
       (
-        await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        await unwrapDaPayload(payloadEnvelopeCbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         })
       ).innerBytes,
     );
   } catch (cause) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayloadV1;
+  let payload: SDK.DaPayload;
   try {
-    payload = SDK.decodeDaPayloadV1(payloadCbor);
+    payload = SDK.decodeDaPayload(payloadCbor);
   } catch (cause) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor)) {
-    throw new DoubleWithdrawRejectionV1(
+  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+    throw new DoubleWithdrawRejection(
       "non_canonical_da_payload",
       "payload CBOR is not canonical DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
-    throw new DoubleWithdrawRejectionV1(
+  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+    throw new DoubleWithdrawRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_V1_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
   const embeddedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(body.header),
+    SDK.hashBlockHeader(body.header),
   );
   if (
     embeddedHeaderHash !== body.header_hash.toLowerCase() ||
     embeddedHeaderHash !== admittedObservation.headerHash
   ) {
-    throw new DoubleWithdrawRejectionV1(
+    throw new DoubleWithdrawRejection(
       "header_hash_mismatch",
       `embedded=${embeddedHeaderHash} payload=${body.header_hash.toLowerCase()} observed=${admittedObservation.headerHash}`,
     );
   }
   return {
-    grade: SDK.combineEvidenceGradeV1([
+    grade: SDK.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),
@@ -454,7 +454,7 @@ export const doubleWithdrawBlockEvidenceFromVerifiedPayloadV1 = async ({
 };
 
 /** Security-grade watcher entrypoint: L1 header + public DA -> proof plan. */
-export const prepareDoubleWithdrawFromRetainedDaV1 = async ({
+export const prepareDoubleWithdrawFromRetainedDa = async ({
   observation,
   sources,
   retries,
@@ -463,21 +463,21 @@ export const prepareDoubleWithdrawFromRetainedDaV1 = async ({
   secondWithdrawalIdCbor,
   outputDir,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
   readonly minimumConfirmationDepth?: number;
   readonly firstWithdrawalIdCbor?: string;
   readonly secondWithdrawalIdCbor?: string;
   readonly outputDir?: string;
-}): Promise<PreparedDoubleWithdrawOutputV1> => {
+}): Promise<PreparedDoubleWithdrawOutput> => {
   if (sources.length === 0) {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
-  const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+  const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({
     observation,
     ...(minimumConfirmationDepth === undefined
       ? {}
@@ -488,17 +488,17 @@ export const prepareDoubleWithdrawFromRetainedDaV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const evidence = await doubleWithdrawBlockEvidenceFromVerifiedPayloadV1({
+  const evidence = await doubleWithdrawBlockEvidenceFromVerifiedPayload({
     observation: admitted,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-    daProvenance: SDK.assertSecurityGradeEvidenceV1(
-      SDK.admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
+    daProvenance: SDK.assertSecurityGradeEvidence(
+      SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
     ),
     ...(minimumConfirmationDepth === undefined
       ? {}
       : { minimumConfirmationDepth }),
   });
-  return prepareDoubleWithdrawFromCommittedLeavesV1({
+  return prepareDoubleWithdrawFromCommittedLeaves({
     headerHash: evidence.headerHash,
     committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
     withdrawalCount: evidence.withdrawalCount,

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
-  unusedScriptWitnessEvidenceIdentityV1,
-  type UnusedScriptWitnessEvidenceV1,
+  type UnusedScriptWitnessEvidence,
+  unusedScriptWitnessEvidenceIdentity,
 } from "./family-v1.js";
 
-export const UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES_V1 = [
+export const UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES = [
   "none",
   "step01",
   "step02",
@@ -17,9 +17,9 @@ export const UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type UnusedScriptWitnessWorkflowStageV1 =
-  (typeof UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES_V1)[number];
-export type UnusedScriptWitnessWorkflowActionV1 =
+export type UnusedScriptWitnessWorkflowStage =
+  (typeof UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES)[number];
+export type UnusedScriptWitnessWorkflowAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -29,42 +29,42 @@ export type UnusedScriptWitnessWorkflowActionV1 =
   | "submitStep06"
   | "removeDescendants"
   | "cancel";
-export type UnusedScriptWitnessCursorV1 = Readonly<{
-  stage: UnusedScriptWitnessWorkflowStageV1;
+export type UnusedScriptWitnessCursor = Readonly<{
+  stage: UnusedScriptWitnessWorkflowStage;
   threadOutRef: string;
   checkpointDigest: string;
 }>;
-export type UnusedScriptWitnessJournalEntryV1 = Readonly<{
+export type UnusedScriptWitnessJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  action: UnusedScriptWitnessWorkflowActionV1;
+  action: UnusedScriptWitnessWorkflowAction;
   phase: "intent" | "submitted" | "confirmed";
-  source: UnusedScriptWitnessCursorV1;
-  target: UnusedScriptWitnessCursorV1;
+  source: UnusedScriptWitnessCursor;
+  target: UnusedScriptWitnessCursor;
   txHash: string;
 }>;
-export interface UnusedScriptWitnessJournalV1 {
-  load(identity: string): Promise<readonly UnusedScriptWitnessJournalEntryV1[]>;
-  append(entry: UnusedScriptWitnessJournalEntryV1): Promise<void>;
+export interface UnusedScriptWitnessJournal {
+  load(identity: string): Promise<readonly UnusedScriptWitnessJournalEntry[]>;
+  append(entry: UnusedScriptWitnessJournalEntry): Promise<void>;
 }
-export interface UnusedScriptWitnessActuatorV1 {
-  observe(identity: string): Promise<UnusedScriptWitnessCursorV1>;
+export interface UnusedScriptWitnessActuator {
+  observe(identity: string): Promise<UnusedScriptWitnessCursor>;
   capture(input: {
-    action: UnusedScriptWitnessWorkflowActionV1;
-    evidence: UnusedScriptWitnessEvidenceV1;
-    source: UnusedScriptWitnessCursorV1;
+    action: UnusedScriptWitnessWorkflowAction;
+    evidence: UnusedScriptWitnessEvidence;
+    source: UnusedScriptWitnessCursor;
   }): Promise<
     Readonly<{
       txHash: string;
-      target: UnusedScriptWitnessCursorV1;
+      target: UnusedScriptWitnessCursor;
       submit: () => Promise<string>;
     }>
   >;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
 const actions: Record<
-  UnusedScriptWitnessWorkflowStageV1,
-  UnusedScriptWitnessWorkflowActionV1 | "done"
+  UnusedScriptWitnessWorkflowStage,
+  UnusedScriptWitnessWorkflowAction | "done"
 > = {
   none: "submitInit",
   step01: "submitStep01",
@@ -80,7 +80,7 @@ const actions: Record<
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const validate = (
-  entries: readonly UnusedScriptWitnessJournalEntryV1[],
+  entries: readonly UnusedScriptWitnessJournalEntry[],
   identity: string,
 ) =>
   entries.forEach((entry, sequence) => {
@@ -91,16 +91,16 @@ const validate = (
     )
       throw new Error("unusedScriptWitness journal identity changed");
   });
-export const runUnusedScriptWitnessWorkflowV1 = async ({
+export const runUnusedScriptWitnessWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  evidence: UnusedScriptWitnessEvidenceV1;
-  journal: UnusedScriptWitnessJournalV1;
-  actuator: UnusedScriptWitnessActuatorV1;
-}): Promise<UnusedScriptWitnessWorkflowStageV1> => {
-  const identity = unusedScriptWitnessEvidenceIdentityV1(evidence);
+  evidence: UnusedScriptWitnessEvidence;
+  journal: UnusedScriptWitnessJournal;
+  actuator: UnusedScriptWitnessActuator;
+}): Promise<UnusedScriptWitnessWorkflowStage> => {
+  const identity = unusedScriptWitnessEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   const intent = [...entries]
@@ -137,7 +137,7 @@ export const runUnusedScriptWitnessWorkflowV1 = async ({
   if (!/^[0-9a-f]{64}$/u.test(captured.txHash))
     throw new Error("unusedScriptWitness captured transaction is malformed");
   const nextSequence = entries.length;
-  const next: UnusedScriptWitnessJournalEntryV1 = {
+  const next: UnusedScriptWitnessJournalEntry = {
     sequence: nextSequence,
     identity,
     action,
@@ -159,16 +159,16 @@ export const runUnusedScriptWitnessWorkflowV1 = async ({
   return source.stage;
 };
 
-export const cancelUnusedScriptWitnessWorkflowV1 = async ({
+export const cancelUnusedScriptWitnessWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  evidence: UnusedScriptWitnessEvidenceV1;
-  journal: UnusedScriptWitnessJournalV1;
-  actuator: UnusedScriptWitnessActuatorV1;
+  evidence: UnusedScriptWitnessEvidence;
+  journal: UnusedScriptWitnessJournal;
+  actuator: UnusedScriptWitnessActuator;
 }): Promise<"cancelled"> => {
-  const identity = unusedScriptWitnessEvidenceIdentityV1(evidence);
+  const identity = unusedScriptWitnessEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   const unresolved = [...entries]
@@ -201,7 +201,7 @@ export const cancelUnusedScriptWitnessWorkflowV1 = async ({
   if (captured.target.stage !== "cancelled")
     throw new Error("unusedScriptWitness cancellation target changed");
   const sequence = entries.length;
-  const intent: UnusedScriptWitnessJournalEntryV1 = {
+  const intent: UnusedScriptWitnessJournalEntry = {
     sequence,
     identity,
     action: "cancel",

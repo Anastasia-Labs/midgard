@@ -23,29 +23,29 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { L2TxMistagContractsV1 } from "./contracts-v1.js";
+import type { L2TxMistagContracts } from "./contracts-v1.js";
 import {
   L2TxMistagStep02Datum,
   L2TxMistagStep02SpendRedeemer,
   type L2TxMistagStep02State,
 } from "./schemas-v1.js";
 import {
-  l2TxMistagStepLabelV1,
+  l2TxMistagStepLabel,
   l2TxMistagSubmitError,
-  requireL2TxMistagReferenceScriptV1,
-  requireL2TxMistagStepStateV1,
-  requireL2TxMistagThreadUtxoV1,
+  requireL2TxMistagReferenceScript,
+  requireL2TxMistagStepState,
+  requireL2TxMistagThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = l2TxMistagStepLabelV1(1);
+const STEP_LABEL = l2TxMistagStepLabel(1);
 
 export type SubmitL2TxMistagStep02Result = {
   readonly txHash: string;
@@ -80,24 +80,24 @@ export const submitL2TxMistagStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: L2TxMistagContractsV1;
+  readonly contracts: L2TxMistagContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagStep02Result> => {
-  const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxo({
     lucid,
     contracts,
     categoryId,
     stepIndex: 1,
     threadOutRef,
   });
-  const state: L2TxMistagStep02State = requireL2TxMistagStepStateV1({
+  const state: L2TxMistagStep02State = requireL2TxMistagStepState({
     threadUtxo,
     signer,
     schema: L2TxMistagStep02Datum,
@@ -113,7 +113,7 @@ export const submitL2TxMistagStep02 = async ({
       `step-02 state carries out-of-domain code ${state.committed_validity_code.toString()}.`,
     );
   }
-  const verifiedReferenceScript = requireL2TxMistagReferenceScriptV1({
+  const verifiedReferenceScript = requireL2TxMistagReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
@@ -203,12 +203,12 @@ export const submitL2TxMistagStep02 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -245,9 +245,9 @@ export const submitL2TxMistagStep02 = async ({
     throw l2TxMistagSubmitError("step-02 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

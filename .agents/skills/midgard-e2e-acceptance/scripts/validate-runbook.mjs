@@ -233,7 +233,7 @@ for (const [text, needle, label] of [
   ],
   [
     stateCorrectionAuthoritySource,
-    "stateCorrectionValueDigestV1",
+    "stateCorrectionValueDigest",
     "canonical live Q57 value digest",
   ],
   [

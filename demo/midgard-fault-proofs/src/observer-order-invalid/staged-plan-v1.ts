@@ -1,85 +1,83 @@
-import {
-  computeHash32,
-  decodeMidgardFieldPreimageV1,
-} from "@al-ft/midgard-core";
+import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpointV1,
-  advanceMissingNativeScriptTxSemanticCheckpointV1,
-  encodeMissingNativeScriptTxSemanticCheckpointV1,
-  initialMissingNativeScriptTxGrammarCheckpointV1,
-  initialMissingNativeScriptTxSemanticCheckpointV1,
-  type MissingNativeScriptTxGrammarCheckpointV1,
-  type MissingNativeScriptTxSemanticCheckpointV1,
+  advanceMissingNativeScriptTxGrammarCheckpoint,
+  advanceMissingNativeScriptTxSemanticCheckpoint,
+  encodeMissingNativeScriptTxSemanticCheckpoint,
+  initialMissingNativeScriptTxGrammarCheckpoint,
+  initialMissingNativeScriptTxSemanticCheckpoint,
+  type MissingNativeScriptTxGrammarCheckpoint,
+  type MissingNativeScriptTxSemanticCheckpoint,
 } from "../missing-native-script-tx/staged-walk-v1.js";
 import {
-  OBSERVER_ORDER_INVALID_ITEM_BUDGET_V1,
-  scanObserverOrderInvalidV1,
+  OBSERVER_ORDER_INVALID_ITEM_BUDGET,
+  scanObserverOrderInvalid,
 } from "./family-v1.js";
 
 const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
-type ObserverOrderGrammarCheckpointV1 =
-  MissingNativeScriptTxGrammarCheckpointV1 & { readonly fieldIndex: 3 };
-export type ObserverOrderWalkCheckpointV1 =
-  MissingNativeScriptTxSemanticCheckpointV1 & { readonly fieldIndex: 3 };
+type ObserverOrderGrammarCheckpoint = MissingNativeScriptTxGrammarCheckpoint & {
+  readonly fieldIndex: 3;
+};
+export type ObserverOrderWalkCheckpoint =
+  MissingNativeScriptTxSemanticCheckpoint & { readonly fieldIndex: 3 };
 const grammar3 = (
-  value: MissingNativeScriptTxGrammarCheckpointV1,
-): ObserverOrderGrammarCheckpointV1 =>
-  ({ ...value, fieldIndex: 3 }) as ObserverOrderGrammarCheckpointV1;
+  value: MissingNativeScriptTxGrammarCheckpoint,
+): ObserverOrderGrammarCheckpoint =>
+  ({ ...value, fieldIndex: 3 }) as ObserverOrderGrammarCheckpoint;
 const walk3 = (
-  value: MissingNativeScriptTxSemanticCheckpointV1,
-): ObserverOrderWalkCheckpointV1 =>
-  ({ ...value, fieldIndex: 3 }) as ObserverOrderWalkCheckpointV1;
-const grammar6 = (value: ObserverOrderGrammarCheckpointV1) => ({
+  value: MissingNativeScriptTxSemanticCheckpoint,
+): ObserverOrderWalkCheckpoint =>
+  ({ ...value, fieldIndex: 3 }) as ObserverOrderWalkCheckpoint;
+const grammar6 = (value: ObserverOrderGrammarCheckpoint) => ({
   ...value,
   fieldIndex: 6,
 });
-const walk6 = (value: ObserverOrderWalkCheckpointV1) => ({
+const walk6 = (value: ObserverOrderWalkCheckpoint) => ({
   ...value,
   fieldIndex: 6,
 });
 
-export const encodeObserverOrderWalkCheckpointV1 = (
-  value: ObserverOrderWalkCheckpointV1,
+export const encodeObserverOrderWalkCheckpoint = (
+  value: ObserverOrderWalkCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxSemanticCheckpointV1(walk6(value));
+  const encoded = encodeMissingNativeScriptTxSemanticCheckpoint(walk6(value));
   encoded[36] = 3;
   return encoded;
 };
-export const hashObserverOrderWalkCheckpointV1 = (
-  value: ObserverOrderWalkCheckpointV1,
+export const hashObserverOrderWalkCheckpoint = (
+  value: ObserverOrderWalkCheckpoint,
 ): string =>
   computeHash32(
-    Buffer.concat([WALK_DOMAIN, encodeObserverOrderWalkCheckpointV1(value)]),
+    Buffer.concat([WALK_DOMAIN, encodeObserverOrderWalkCheckpoint(value)]),
   ).toString("hex");
 
-export type ObserverOrderInvalidStagedPlanV1 = Readonly<{
+export type ObserverOrderInvalidStagedPlan = Readonly<{
   items: readonly Buffer[];
-  initialWalk: ObserverOrderWalkCheckpointV1;
-  walk: readonly ObserverOrderWalkCheckpointV1[];
+  initialWalk: ObserverOrderWalkCheckpoint;
+  walk: readonly ObserverOrderWalkCheckpoint[];
   violation: boolean;
   previousObserverHex: string;
   observerHex: string;
 }>;
 
-export const planObserverOrderInvalidStagedWalkV1 = ({
+export const planObserverOrderInvalidStagedWalk = ({
   transactionId,
   fieldPreimageCbor,
   observerIndex,
-  itemBudget = OBSERVER_ORDER_INVALID_ITEM_BUDGET_V1,
+  itemBudget = OBSERVER_ORDER_INVALID_ITEM_BUDGET,
 }: {
   readonly transactionId: string;
   readonly fieldPreimageCbor: string;
   readonly observerIndex: number;
   readonly itemBudget?: number;
-}): ObserverOrderInvalidStagedPlanV1 => {
+}): ObserverOrderInvalidStagedPlan => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget <= 0 || itemBudget > 24)
     throw new Error("observerOrderInvalid item budget must be in 1..24");
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(fieldPreimageCbor, "hex"),
   ).map(Buffer.from);
   const initialGrammar = grammar3(
-    initialMissingNativeScriptTxGrammarCheckpointV1({
+    initialMissingNativeScriptTxGrammarCheckpoint({
       txId: transactionId,
       items,
     }),
@@ -87,7 +85,7 @@ export const planObserverOrderInvalidStagedWalkV1 = ({
   let grammarCursor = initialGrammar;
   do {
     grammarCursor = grammar3(
-      advanceMissingNativeScriptTxGrammarCheckpointV1({
+      advanceMissingNativeScriptTxGrammarCheckpoint({
         checkpoint: grammar6(grammarCursor),
         items,
         budget: itemBudget,
@@ -95,17 +93,17 @@ export const planObserverOrderInvalidStagedWalkV1 = ({
     );
   } while (grammarCursor.nextItemIndex < items.length);
   const initialWalk = walk3(
-    initialMissingNativeScriptTxSemanticCheckpointV1({
+    initialMissingNativeScriptTxSemanticCheckpoint({
       grammar: grammar6(grammarCursor),
       items,
     }),
   );
-  const walk: ObserverOrderWalkCheckpointV1[] = [];
+  const walk: ObserverOrderWalkCheckpoint[] = [];
   let walkCursor = initialWalk;
   while (walkCursor.nextItemIndex <= observerIndex) {
     const remaining = observerIndex + 1 - walkCursor.nextItemIndex;
     walkCursor = walk3(
-      advanceMissingNativeScriptTxSemanticCheckpointV1({
+      advanceMissingNativeScriptTxSemanticCheckpoint({
         checkpoint: walk6(walkCursor),
         txId: transactionId,
         items,
@@ -118,11 +116,11 @@ export const planObserverOrderInvalidStagedWalkV1 = ({
     items: Object.freeze(items),
     initialWalk,
     walk: Object.freeze(walk),
-    ...scanObserverOrderInvalidV1(items, observerIndex),
+    ...scanObserverOrderInvalid(items, observerIndex),
   });
 };
 
-export const observerOrderPrefixV1 = ({
+export const observerOrderPrefix = ({
   items,
   nextItemIndex,
   observerIndex,

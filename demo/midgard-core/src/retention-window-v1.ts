@@ -16,18 +16,18 @@
  * observability only and must never be used as the retention floor.
  */
 
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "./consensus-profile-v1.js";
-import { DA_TRANSPORT_LIMITS_V1 } from "./da-transport.js";
+import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile-v1.js";
+import { DA_TRANSPORT_LIMITS } from "./da-transport.js";
 
 /** Milliseconds in one calendar-independent 24h day. */
-export const RETENTION_MS_PER_DAY_V1 = 24 * 60 * 60 * 1000;
+export const RETENTION_MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Terminal L1 state-queue header statuses. Only a header that has reached a
  * terminal on-chain outcome can make its retained evidence prunable; anything
  * else (including an unrecognised status) is still challengeable.
  */
-export const RETENTION_TERMINAL_HEADER_STATUSES_V1 = Object.freeze([
+export const RETENTION_TERMINAL_HEADER_STATUSES = Object.freeze([
   "merged",
   "removed",
 ] as const);
@@ -36,7 +36,7 @@ export const RETENTION_TERMINAL_HEADER_STATUSES_V1 = Object.freeze([
  * Closed set of header statuses the retention decision understands. A status
  * outside this set is treated as unknown and therefore retained.
  */
-export const RETENTION_KNOWN_HEADER_STATUSES_V1 = Object.freeze([
+export const RETENTION_KNOWN_HEADER_STATUSES = Object.freeze([
   "unattested",
   "attesting",
   "attested",
@@ -45,10 +45,10 @@ export const RETENTION_KNOWN_HEADER_STATUSES_V1 = Object.freeze([
   "conflicted",
 ] as const);
 
-export type RetentionHeaderStatusV1 =
-  (typeof RETENTION_KNOWN_HEADER_STATUSES_V1)[number];
+export type RetentionHeaderStatus =
+  (typeof RETENTION_KNOWN_HEADER_STATUSES)[number];
 
-export type RetentionWindowV1 = {
+export type RetentionWindow = {
   /** Block maturity, derived from the consensus profile. */
   readonly maturityMs: number;
   /**
@@ -71,14 +71,14 @@ export type RetentionWindowV1 = {
   readonly measuredValidationDisputeScheduleMs: number;
 };
 
-const deriveRetentionWindowV1 = (): RetentionWindowV1 => {
-  const maturityMs = MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs;
+const deriveRetentionWindow = (): RetentionWindow => {
+  const maturityMs = MIDGARD_CONSENSUS_LIMITS.blockMaturityMs;
   // GOAL_SPEC 3.3 clause 3: the complete correction path must fit inside the
   // first half of maturity, so half maturity is the worst-case bound.
   const worstCaseProofTimeBoundMs = maturityMs / 2;
   const requiredRetentionMs = maturityMs + worstCaseProofTimeBoundMs;
-  const retentionDays = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
-  const deployedRetentionMs = retentionDays * RETENTION_MS_PER_DAY_V1;
+  const retentionDays = DA_TRANSPORT_LIMITS.minimumRetentionDays;
+  const deployedRetentionMs = retentionDays * RETENTION_MS_PER_DAY;
   return Object.freeze({
     maturityMs,
     worstCaseProofTimeBoundMs,
@@ -87,28 +87,28 @@ const deriveRetentionWindowV1 = (): RetentionWindowV1 => {
     deployedRetentionMs,
     marginMs: deployedRetentionMs - requiredRetentionMs,
     measuredValidationDisputeScheduleMs:
-      MIDGARD_CONSENSUS_LIMITS_V1.minValidationDisputeMaturityMs,
+      MIDGARD_CONSENSUS_LIMITS.minValidationDisputeMaturityMs,
   });
 };
 
 /** The single derived canonical V1 retention window. */
-export const MIDGARD_RETENTION_WINDOW_V1: RetentionWindowV1 =
-  deriveRetentionWindowV1();
+export const MIDGARD_RETENTION_WINDOW: RetentionWindow =
+  deriveRetentionWindow();
 
 // Module-load fail-closed assertion: the shipped profile pair must already
 // cover the still-challengeable horizon. If a future profile edit breaks this,
 // every importer fails at load rather than silently pruning live evidence.
 if (
-  !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW_V1.deployedRetentionMs) ||
-  !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs) ||
-  MIDGARD_RETENTION_WINDOW_V1.deployedRetentionMs <
-    MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs
+  !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW.deployedRetentionMs) ||
+  !Number.isSafeInteger(MIDGARD_RETENTION_WINDOW.requiredRetentionMs) ||
+  MIDGARD_RETENTION_WINDOW.deployedRetentionMs <
+    MIDGARD_RETENTION_WINDOW.requiredRetentionMs
 ) {
   throw new Error(
     `Canonical V1 retention window is under-provisioned: deployedRetentionMs=${String(
-      MIDGARD_RETENTION_WINDOW_V1.deployedRetentionMs,
+      MIDGARD_RETENTION_WINDOW.deployedRetentionMs,
     )} must be >= requiredRetentionMs=${String(
-      MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     )}`,
   );
 }
@@ -117,8 +117,8 @@ if (
  * Minimum whole days of retention that cover the still-challengeable horizon.
  * Derived, so the node/committee floors cannot be lowered independently.
  */
-export const MIDGARD_MIN_RETENTION_DAYS_V1 = Math.ceil(
-  MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs / RETENTION_MS_PER_DAY_V1,
+export const MIDGARD_MIN_RETENTION_DAYS = Math.ceil(
+  MIDGARD_RETENTION_WINDOW.requiredRetentionMs / RETENTION_MS_PER_DAY,
 );
 
 /**
@@ -126,7 +126,7 @@ export const MIDGARD_MIN_RETENTION_DAYS_V1 = Math.ceil(
  * every malformed shape (NaN, negative, fractional, string, null, unsafe
  * integer) before any comparison is attempted.
  */
-export const requireRetentionDaysV1 = (
+export const requireRetentionDays = (
   value: unknown,
   fieldName: string,
 ): number => {
@@ -139,30 +139,30 @@ export const requireRetentionDaysV1 = (
 };
 
 /** True when `retentionDays` whole days cover the still-challengeable horizon. */
-export const retentionDaysCoverWindowV1 = (
+export const retentionDaysCoverWindow = (
   value: unknown,
   fieldName = "retentionDays",
 ): boolean =>
-  requireRetentionDaysV1(value, fieldName) * RETENTION_MS_PER_DAY_V1 >=
-  MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs;
+  requireRetentionDays(value, fieldName) * RETENTION_MS_PER_DAY >=
+  MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
 
 /**
  * Fail-closed retention-days floor check used by node and committee config
  * loading.
  */
-export const assertRetentionDaysCoverWindowV1 = (
+export const assertRetentionDaysCoverWindow = (
   value: unknown,
   fieldName = "retentionDays",
 ): number => {
-  const retentionDays = requireRetentionDaysV1(value, fieldName);
-  if (!retentionDaysCoverWindowV1(retentionDays, fieldName)) {
+  const retentionDays = requireRetentionDays(value, fieldName);
+  if (!retentionDaysCoverWindow(retentionDays, fieldName)) {
     throw new Error(
       `${fieldName} must be at least ${String(
-        MIDGARD_MIN_RETENTION_DAYS_V1,
+        MIDGARD_MIN_RETENTION_DAYS,
       )} days so retained evidence survives block maturity (${String(
-        MIDGARD_RETENTION_WINDOW_V1.maturityMs,
+        MIDGARD_RETENTION_WINDOW.maturityMs,
       )} ms) plus the worst-case proof-time bound (${String(
-        MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs,
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       )} ms)`,
     );
   }
@@ -173,7 +173,7 @@ export const assertRetentionDaysCoverWindowV1 = (
  * Enforcement of GOAL_SPEC 3.3 clause 3: an observed or configured worst-case
  * correction path must fit inside the half-maturity bound.
  */
-export const assertWorstCaseProofTimeWithinBoundV1 = (
+export const assertWorstCaseProofTimeWithinBound = (
   observedMs: unknown,
   fieldName = "worstCaseProofTimeMs",
 ): number => {
@@ -184,10 +184,10 @@ export const assertWorstCaseProofTimeWithinBoundV1 = (
   ) {
     throw new Error(`${fieldName} must be a non-negative safe integer of ms`);
   }
-  if (observedMs > MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs) {
+  if (observedMs > MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs) {
     throw new Error(
       `${fieldName}=${String(observedMs)} exceeds the canonical V1 worst-case proof-time bound ${String(
-        MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs,
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       )} ms`,
     );
   }
@@ -204,7 +204,7 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
  * `da.transportProfile.retentionDays` must itself cover the still-challengeable
  * horizon. Fails closed on any missing or malformed path segment.
  */
-export const assertRetentionWindowCoversDeploymentV1 = (
+export const assertRetentionWindowCoversDeployment = (
   manifest: unknown,
 ): number => {
   const root = asRecord(manifest);
@@ -221,13 +221,13 @@ export const assertRetentionWindowCoversDeploymentV1 = (
       "Deployment manifest da.transportProfile must be an object",
     );
   }
-  return assertRetentionDaysCoverWindowV1(
+  return assertRetentionDaysCoverWindow(
     transportProfile.retentionDays,
     "Deployment manifest da.transportProfile.retentionDays",
   );
 };
 
-export type RetentionDeadlineV1 = {
+export type RetentionDeadline = {
   /** Block end time the deadline is keyed on. */
   readonly blockEndTimeMs: number;
   /** Last instant the block's evidence is still challengeable. */
@@ -245,10 +245,10 @@ export type RetentionDeadlineV1 = {
  * block's END TIME (the L2 consensus fact), never on a local insert timestamp -
  * a late or replayed local write must not extend or shorten challengeability.
  */
-export const retentionDeadlineForBlockV1 = (args: {
+export const retentionDeadlineForBlock = (args: {
   readonly blockEndTimeMs: unknown;
   readonly retentionDays?: unknown;
-}): RetentionDeadlineV1 => {
+}): RetentionDeadline => {
   const blockEndTimeMs = args.blockEndTimeMs;
   if (
     typeof blockEndTimeMs !== "number" ||
@@ -261,11 +261,11 @@ export const retentionDeadlineForBlockV1 = (args: {
   }
   const retentionDays =
     args.retentionDays === undefined
-      ? MIDGARD_RETENTION_WINDOW_V1.retentionDays
-      : requireRetentionDaysV1(args.retentionDays, "retentionDays");
-  const deployedRetentionMs = retentionDays * RETENTION_MS_PER_DAY_V1;
+      ? MIDGARD_RETENTION_WINDOW.retentionDays
+      : requireRetentionDays(args.retentionDays, "retentionDays");
+  const deployedRetentionMs = retentionDays * RETENTION_MS_PER_DAY;
   const challengeableUntilMs =
-    blockEndTimeMs + MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs;
+    blockEndTimeMs + MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
   return {
     blockEndTimeMs,
     challengeableUntilMs,
@@ -275,7 +275,7 @@ export const retentionDeadlineForBlockV1 = (args: {
   };
 };
 
-export type RetentionPruneReasonCodeV1 =
+export type RetentionPruneReasonCode =
   | "active_availability_challenge"
   | "availability_challenge_state_unknown"
   | "still_within_maturity"
@@ -285,15 +285,15 @@ export type RetentionPruneReasonCodeV1 =
   | "missing_block_end_time"
   | "expired_and_terminal";
 
-export type RetentionPruneDecisionV1 = {
+export type RetentionPruneDecision = {
   readonly decision: "retain" | "prune";
-  readonly reasonCode: RetentionPruneReasonCodeV1;
+  readonly reasonCode: RetentionPruneReasonCode;
   readonly challengeableUntilMs?: number;
   readonly retainUntilMs?: number;
   readonly remainingMs?: number;
 };
 
-export type RetentionPruneRecordV1 = {
+export type RetentionPruneRecord = {
   readonly headerHash?: string;
   readonly blockEndTimeMs?: number | null;
 };
@@ -306,18 +306,18 @@ export type RetentionPruneRecordV1 = {
  * challengeability horizon has strictly passed AND whose L1 header reached a
  * terminal outcome is prunable.
  */
-export const daRetentionPruneDecisionV1 = (
-  record: RetentionPruneRecordV1,
+export const daRetentionPruneDecision = (
+  record: RetentionPruneRecord,
   options: {
     readonly nowMs: number;
-    readonly window?: RetentionWindowV1;
+    readonly window?: RetentionWindow;
     readonly retentionDays?: number;
     readonly headerStatus?: unknown;
     /** Only an authenticated `inactive` observation permits pruning. */
     readonly availabilityChallengeState?: unknown;
   },
-): RetentionPruneDecisionV1 => {
-  const window = options.window ?? MIDGARD_RETENTION_WINDOW_V1;
+): RetentionPruneDecision => {
+  const window = options.window ?? MIDGARD_RETENTION_WINDOW;
   if (options.availabilityChallengeState === "active") {
     return {
       decision: "retain",
@@ -344,8 +344,8 @@ export const daRetentionPruneDecisionV1 = (
   const status = options.headerStatus;
   const knownStatus =
     typeof status === "string" &&
-    (RETENTION_KNOWN_HEADER_STATUSES_V1 as readonly string[]).includes(status)
-      ? (status as RetentionHeaderStatusV1)
+    (RETENTION_KNOWN_HEADER_STATUSES as readonly string[]).includes(status)
+      ? (status as RetentionHeaderStatus)
       : undefined;
   if (knownStatus === undefined) {
     return { decision: "retain", reasonCode: "header_status_unknown" };
@@ -353,8 +353,7 @@ export const daRetentionPruneDecisionV1 = (
 
   const retentionDays = options.retentionDays ?? window.retentionDays;
   const challengeableUntilMs = blockEndTimeMs + window.requiredRetentionMs;
-  const retainUntilMs =
-    blockEndTimeMs + retentionDays * RETENTION_MS_PER_DAY_V1;
+  const retainUntilMs = blockEndTimeMs + retentionDays * RETENTION_MS_PER_DAY;
   const remainingMs = challengeableUntilMs - options.nowMs;
   const base = { challengeableUntilMs, retainUntilMs, remainingMs };
 
@@ -369,7 +368,7 @@ export const daRetentionPruneDecisionV1 = (
     };
   }
   if (
-    !(RETENTION_TERMINAL_HEADER_STATUSES_V1 as readonly string[]).includes(
+    !(RETENTION_TERMINAL_HEADER_STATUSES as readonly string[]).includes(
       knownStatus,
     )
   ) {
@@ -382,7 +381,7 @@ export const daRetentionPruneDecisionV1 = (
   return { decision: "prune", reasonCode: "expired_and_terminal", ...base };
 };
 
-export type RetentionDeadlineAlertV1 = {
+export type RetentionDeadlineAlert = {
   readonly headerHash?: string;
   readonly challengeableUntilMs: number;
   readonly remainingMs: number;
@@ -395,22 +394,22 @@ export type RetentionDeadlineAlertV1 = {
  * derived operational margin, so the alert fires exactly when a still
  * challengeable record has burned through its entire headroom.
  */
-export const retentionDeadlineAlertV1 = (args: {
+export const retentionDeadlineAlert = (args: {
   readonly nowMs: number;
   readonly blockEndTimeMs: number;
   readonly retentionDays?: number;
   readonly alertThresholdMs?: number;
   readonly headerHash?: string;
-}): RetentionDeadlineAlertV1 => {
+}): RetentionDeadlineAlert => {
   const alertThresholdMs =
-    args.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW_V1.marginMs;
+    args.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW.marginMs;
   if (
     !Number.isSafeInteger(alertThresholdMs) ||
     (alertThresholdMs as number) < 0
   ) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
-  const deadline = retentionDeadlineForBlockV1({
+  const deadline = retentionDeadlineForBlock({
     blockEndTimeMs: args.blockEndTimeMs,
     retentionDays: args.retentionDays,
   });

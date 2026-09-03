@@ -4,14 +4,14 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  FieldOpeningV1,
-  fieldOpeningV1ForField,
-  isMidgardWitnessSetFieldV1,
-  MIDGARD_FIELD_INDEX_V1,
-  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1,
+  FieldOpening,
+  fieldOpeningForField,
+  isMidgardWitnessSetField,
+  MIDGARD_FIELD_INDEX,
+  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
   MidgardFieldOpeningError,
-  NativeTxAnchorV1,
-  nativeTxAnchorV1ForField,
+  NativeTxAnchor,
+  nativeTxAnchorForField,
 } from "../src/fraud-proof/field-opening-v1.js";
 
 /**
@@ -143,10 +143,10 @@ describe("NativeTxAnchorV1 wire contract", () => {
     // so the payload sits directly in the constructor: `BodyAnchor { tx_id }` is
     // `Constr 0 [B]`, never `Constr 0 [Constr 0 [B]]`. A `Data.Tuple` payload
     // would produce the second shape and this assertion is what catches it.
-    const body = Data.to({ BodyAnchor: { tx_id: TX_ID } }, NativeTxAnchorV1);
+    const body = Data.to({ BodyAnchor: { tx_id: TX_ID } }, NativeTxAnchor);
     const witness = Data.to(
       { WitnessAnchor: { tx_id: TX_ID, witness_set_hash: WITNESS_SET_HASH } },
-      NativeTxAnchorV1,
+      NativeTxAnchor,
     );
 
     expect(body).toBe(`d8799f5820${TX_ID}ff`);
@@ -154,10 +154,10 @@ describe("NativeTxAnchorV1 wire contract", () => {
     expect(body.startsWith(constructorTagPrefix(0))).toBe(true);
     expect(witness.startsWith(constructorTagPrefix(1))).toBe(true);
 
-    expect(Data.from(body, NativeTxAnchorV1)).toEqual({
+    expect(Data.from(body, NativeTxAnchor)).toEqual({
       BodyAnchor: { tx_id: TX_ID },
     });
-    expect(Data.from(witness, NativeTxAnchorV1)).toEqual({
+    expect(Data.from(witness, NativeTxAnchor)).toEqual({
       WitnessAnchor: { tx_id: TX_ID, witness_set_hash: WITNESS_SET_HASH },
     });
   });
@@ -188,11 +188,11 @@ describe("FieldOpeningV1 wire contract", () => {
           carriage: { Inline: { preimage: "80" } },
         },
       },
-      FieldOpeningV1,
+      FieldOpening,
     );
     expect(opening).toBe(`d8799f43${COMPACT_CBOR}d8799f4180ffff`);
     expect(opening.startsWith(constructorTagPrefix(0))).toBe(true);
-    expect(Data.from(opening, FieldOpeningV1)).toEqual({
+    expect(Data.from(opening, FieldOpening)).toEqual({
       BodyFieldOpening: {
         native_tx_compact_cbor: COMPACT_CBOR,
         carriage: { Inline: { preimage: "80" } },
@@ -209,13 +209,13 @@ describe("FieldOpeningV1 wire contract", () => {
           carriage: { RawUtxo: { ref_input_index: 2n } },
         },
       },
-      FieldOpeningV1,
+      FieldOpening,
     );
     expect(opening).toBe(
       `d87a9f43${COMPACT_CBOR}d8799f5820${WITNESS_SET.addr_tx_wits_hash}5820${WITNESS_SET.script_tx_wits_hash}5820${WITNESS_SET.redeemer_tx_wits_hash}ffd87a9f02ffff`,
     );
     expect(opening.startsWith(constructorTagPrefix(1))).toBe(true);
-    expect(Data.from(opening, FieldOpeningV1)).toEqual({
+    expect(Data.from(opening, FieldOpening)).toEqual({
       WitnessFieldOpening: {
         native_tx_compact_cbor: COMPACT_CBOR,
         witness_set: WITNESS_SET,
@@ -238,7 +238,7 @@ describe("§2.5 field table", () => {
       }
       return Number(match[1]);
     };
-    expect(MIDGARD_FIELD_INDEX_V1).toEqual({
+    expect(MIDGARD_FIELD_INDEX).toEqual({
       spendInputs: aikenIndex("spend_inputs"),
       referenceInputs: aikenIndex("reference_inputs"),
       outputs: aikenIndex("outputs"),
@@ -251,7 +251,7 @@ describe("§2.5 field table", () => {
     });
     // The boundary is named off the table on both sides rather than restated, so
     // this pins that the Aiken module still derives it the same way.
-    expect(MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1).toBe(6);
+    expect(MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX).toBe(6);
     expect(
       /^pub const first_witness_set_field_index: Int = script_witnesses_field_index$/mu.test(
         source,
@@ -260,7 +260,7 @@ describe("§2.5 field table", () => {
   });
 
   it("splits the nine fields at 6", () => {
-    expect([0, 1, 2, 3, 4, 5].map(isMidgardWitnessSetFieldV1)).toEqual([
+    expect([0, 1, 2, 3, 4, 5].map(isMidgardWitnessSetField)).toEqual([
       false,
       false,
       false,
@@ -268,25 +268,21 @@ describe("§2.5 field table", () => {
       false,
       false,
     ]);
-    expect([6, 7, 8].map(isMidgardWitnessSetFieldV1)).toEqual([
-      true,
-      true,
-      true,
-    ]);
+    expect([6, 7, 8].map(isMidgardWitnessSetField)).toEqual([true, true, true]);
   });
 });
 
 describe("the §2.5 pairing is derived, not chosen", () => {
   it("anchors a body field on BodyAnchor and a witness field on WitnessAnchor", () => {
     expect(
-      nativeTxAnchorV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+      nativeTxAnchorForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         txId: TX_ID,
       }),
     ).toEqual({ BodyAnchor: { tx_id: TX_ID } });
     expect(
-      nativeTxAnchorV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+      nativeTxAnchorForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         txId: TX_ID,
         witnessSetHash: WITNESS_SET_HASH,
       }),
@@ -297,8 +293,8 @@ describe("the §2.5 pairing is derived, not chosen", () => {
 
   it("refuses a witness anchor with no witness_set_hash to anchor", () => {
     expect(() =>
-      nativeTxAnchorV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.scriptWitnesses,
+      nativeTxAnchorForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.scriptWitnesses,
         txId: TX_ID,
       }),
     ).toThrow(MidgardFieldOpeningError);
@@ -306,8 +302,8 @@ describe("the §2.5 pairing is derived, not chosen", () => {
 
   it("refuses a body anchor handed a witness_set_hash it cannot carry", () => {
     expect(() =>
-      nativeTxAnchorV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+      nativeTxAnchorForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.outputs,
         txId: TX_ID,
         witnessSetHash: WITNESS_SET_HASH,
       }),
@@ -316,8 +312,8 @@ describe("the §2.5 pairing is derived, not chosen", () => {
 
   it("opens a body field with no witness set and a witness field with one", () => {
     expect(
-      fieldOpeningV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+      fieldOpeningForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
         nativeTxCompactCbor: COMPACT_CBOR,
         carriage: { Inline: { preimage: "80" } },
       }),
@@ -328,8 +324,8 @@ describe("the §2.5 pairing is derived, not chosen", () => {
       },
     });
     expect(
-      fieldOpeningV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+      fieldOpeningForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
         nativeTxCompactCbor: COMPACT_CBOR,
         carriage: { Inline: { preimage: "80" } },
         witnessSet: WITNESS_SET,
@@ -345,15 +341,15 @@ describe("the §2.5 pairing is derived, not chosen", () => {
 
   it("refuses a witness opening with no witness set, and a body one carrying one", () => {
     expect(() =>
-      fieldOpeningV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.redeemers,
+      fieldOpeningForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.redeemers,
         nativeTxCompactCbor: COMPACT_CBOR,
         carriage: { Inline: { preimage: "80" } },
       }),
     ).toThrow(MidgardFieldOpeningError);
     expect(() =>
-      fieldOpeningV1ForField({
-        fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
+      fieldOpeningForField({
+        fieldIndex: MIDGARD_FIELD_INDEX.mint,
         nativeTxCompactCbor: COMPACT_CBOR,
         carriage: { Inline: { preimage: "80" } },
         witnessSet: WITNESS_SET,
@@ -363,9 +359,9 @@ describe("the §2.5 pairing is derived, not chosen", () => {
 
   it("refuses a field index §2.5 does not name", () => {
     for (const fieldIndex of [-1, 9, 1.5]) {
-      expect(() =>
-        nativeTxAnchorV1ForField({ fieldIndex, txId: TX_ID }),
-      ).toThrow(MidgardFieldOpeningError);
+      expect(() => nativeTxAnchorForField({ fieldIndex, txId: TX_ID })).toThrow(
+        MidgardFieldOpeningError,
+      );
     }
   });
 });
@@ -385,7 +381,7 @@ describe("#606 — tier 3 is admissible at every field (E2 limit 3 resolved)", (
   it("emits a certified carriage on every witness-set field", () => {
     for (const fieldIndex of [6, 7, 8]) {
       expect(
-        fieldOpeningV1ForField({
+        fieldOpeningForField({
           fieldIndex,
           nativeTxCompactCbor: COMPACT_CBOR,
           carriage: certified,
@@ -405,7 +401,7 @@ describe("#606 — tier 3 is admissible at every field (E2 limit 3 resolved)", (
   it("still admits a certified carriage on every body field", () => {
     for (const fieldIndex of [0, 1, 2, 3, 4, 5]) {
       expect(
-        fieldOpeningV1ForField({
+        fieldOpeningForField({
           fieldIndex,
           nativeTxCompactCbor: COMPACT_CBOR,
           carriage: certified,

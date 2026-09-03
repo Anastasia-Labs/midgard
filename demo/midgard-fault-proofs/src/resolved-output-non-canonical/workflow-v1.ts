@@ -1,7 +1,7 @@
-import type { ResolvedOutputNonCanonicalEvidenceV1 } from "./resolved-output-non-canonical-v1.js";
-import { resolvedOutputEvidenceIdentityV1 } from "./resolved-output-non-canonical-v1.js";
+import type { ResolvedOutputNonCanonicalEvidence } from "./resolved-output-non-canonical-v1.js";
+import { resolvedOutputEvidenceIdentity } from "./resolved-output-non-canonical-v1.js";
 
-export const RESOLVED_OUTPUT_STAGES_V1 = [
+export const RESOLVED_OUTPUT_STAGES = [
   "none",
   "step01",
   "step02",
@@ -12,8 +12,8 @@ export const RESOLVED_OUTPUT_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type ResolvedOutputStageV1 = (typeof RESOLVED_OUTPUT_STAGES_V1)[number];
-export type ResolvedOutputActionV1 =
+export type ResolvedOutputStage = (typeof RESOLVED_OUTPUT_STAGES)[number];
+export type ResolvedOutputAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -23,31 +23,31 @@ export type ResolvedOutputActionV1 =
   | "removeDescendants"
   | "done";
 
-export type ResolvedOutputJournalEntryV1 = Readonly<{
+export type ResolvedOutputJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  stage: ResolvedOutputStageV1;
-  action?: Exclude<ResolvedOutputActionV1, "done">;
+  stage: ResolvedOutputStage;
+  action?: Exclude<ResolvedOutputAction, "done">;
   phase?: "intent" | "submitted" | "confirmed";
   txHash: string;
   outputReference: string | null;
 }>;
-export type ResolvedOutputJournalV1 = Readonly<{
-  load(identity: string): Promise<readonly ResolvedOutputJournalEntryV1[]>;
-  append(entry: ResolvedOutputJournalEntryV1): Promise<void>;
+export type ResolvedOutputJournal = Readonly<{
+  load(identity: string): Promise<readonly ResolvedOutputJournalEntry[]>;
+  append(entry: ResolvedOutputJournalEntry): Promise<void>;
 }>;
-export type ResolvedOutputSubmissionAdapterV1 = Readonly<{
-  observe(identity: string): Promise<ResolvedOutputStageV1>;
+export type ResolvedOutputSubmissionAdapter = Readonly<{
+  observe(identity: string): Promise<ResolvedOutputStage>;
   build(
-    action: Exclude<ResolvedOutputActionV1, "done">,
-    evidence: ResolvedOutputNonCanonicalEvidenceV1,
+    action: Exclude<ResolvedOutputAction, "done">,
+    evidence: ResolvedOutputNonCanonicalEvidence,
   ): Promise<Readonly<{ txHash: string; submit(): Promise<string> }>>;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }>;
 
-export const nextResolvedOutputActionV1 = (
-  stage: ResolvedOutputStageV1,
-): ResolvedOutputActionV1 => {
+export const nextResolvedOutputAction = (
+  stage: ResolvedOutputStage,
+): ResolvedOutputAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -70,9 +70,9 @@ export const nextResolvedOutputActionV1 = (
 };
 
 const targetStage = (
-  action: Exclude<ResolvedOutputActionV1, "done">,
-  observed: ResolvedOutputStageV1,
-): ResolvedOutputStageV1 => {
+  action: Exclude<ResolvedOutputAction, "done">,
+  observed: ResolvedOutputStage,
+): ResolvedOutputStage => {
   switch (action) {
     case "submitInit":
       return "step01";
@@ -92,8 +92,8 @@ const targetStage = (
 };
 
 const lastIntent = (
-  entries: readonly ResolvedOutputJournalEntryV1[],
-): ResolvedOutputJournalEntryV1 | undefined =>
+  entries: readonly ResolvedOutputJournalEntry[],
+): ResolvedOutputJournalEntry | undefined =>
   [...entries]
     .reverse()
     .find(
@@ -110,16 +110,16 @@ const lastIntent = (
     );
 
 /** Crash-safe family driver: intent precedes submit and restart reconciles the exact hash. */
-export const runResolvedOutputNonCanonicalWorkflowV1 = async ({
+export const runResolvedOutputNonCanonicalWorkflow = async ({
   evidence,
   journal,
   submission,
 }: {
-  readonly evidence: ResolvedOutputNonCanonicalEvidenceV1;
-  readonly journal: ResolvedOutputJournalV1;
-  readonly submission: ResolvedOutputSubmissionAdapterV1;
-}): Promise<ResolvedOutputStageV1> => {
-  const identity = resolvedOutputEvidenceIdentityV1(evidence);
+  readonly evidence: ResolvedOutputNonCanonicalEvidence;
+  readonly journal: ResolvedOutputJournal;
+  readonly submission: ResolvedOutputSubmissionAdapter;
+}): Promise<ResolvedOutputStage> => {
+  const identity = resolvedOutputEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     if (
@@ -151,14 +151,14 @@ export const runResolvedOutputNonCanonicalWorkflowV1 = async ({
       continue;
     }
     const observed = await submission.observe(identity);
-    const action = nextResolvedOutputActionV1(observed);
+    const action = nextResolvedOutputAction(observed);
     if (action === "done") return observed;
     const built = await submission.build(action, evidence);
     if (!/^[0-9a-f]{64}$/u.test(built.txHash))
       throw new Error(
         "resolvedOutputNonCanonical: locally evaluated tx hash is invalid",
       );
-    const intent: ResolvedOutputJournalEntryV1 = {
+    const intent: ResolvedOutputJournalEntry = {
       sequence: entries.length,
       identity,
       stage: observed,

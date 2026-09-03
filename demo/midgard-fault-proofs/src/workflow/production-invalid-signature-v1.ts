@@ -1,28 +1,28 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  decodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardAddressWitnessCanonicalV1,
+  encodeMidgardAddressWitnessCanonical,
   FraudProofComputationThreadStepDatum,
-  INVALID_SIGNATURE_VIOLATION_ID_V1,
-  invalidSignatureAddressWitnessesCommitmentV1,
+  INVALID_SIGNATURE_VIOLATION_ID,
+  invalidSignatureAddressWitnessesCommitment,
   InvalidSignatureStep02Datum,
-  invalidSignatureWitnessSetCommitmentV1,
-  MIDGARD_FIELD_INDEX_V1,
+  invalidSignatureWitnessSetCommitment,
+  MIDGARD_FIELD_INDEX,
   type MidgardAddressWitness,
   type NativeTxWitnessSetCompact,
   verifyAddressWitness,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { prepareInvalidSignatureFromCanonicalEvidenceV1 } from "../evidence/prepare-from-evidence-v1.js";
+import { prepareInvalidSignatureFromCanonicalEvidence } from "../evidence/prepare-from-evidence-v1.js";
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
   type StateQueueMutationLease,
@@ -38,63 +38,63 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriageRequirementV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriageRequirement,
+  withFieldCarriagePrerequisite,
 } from "./production-field-carriage-prerequisite-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
 import {
-  createAuthenticatedProofChunkPrerequisitePortV1,
-  resolveDirectFirstProofChunksV1,
-  withProductionProofChunkPrerequisiteV1,
+  createAuthenticatedProofChunkPrerequisitePort,
+  resolveDirectFirstProofChunks,
+  withProofChunkPrerequisite,
 } from "./production-proof-chunk-prerequisite-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_INVALID_SIGNATURE_ARTIFACT_V1 =
+export const INVALID_SIGNATURE_ARTIFACT =
   "midgard-production-invalid-signature-artifact-v1" as const;
 
-export type ProductionInvalidSignatureArtifactV1 = JournalJsonObjectV1 &
+export type InvalidSignatureArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_INVALID_SIGNATURE_ARTIFACT_V1;
+    schemaVersion: typeof INVALID_SIGNATURE_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
@@ -115,12 +115,12 @@ export type ProductionInvalidSignatureArtifactV1 = JournalJsonObjectV1 &
     badWitnessIndex: number;
   }>;
 
-type AdmittedArtifactV1 = Readonly<{
-  artifact: ProductionInvalidSignatureArtifactV1;
+type AdmittedArtifact = Readonly<{
+  artifact: InvalidSignatureArtifact;
   inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
   witnessSet: NativeTxWitnessSetCompact;
   addressWitnesses: readonly MidgardAddressWitness[];
-  fieldPlan: FaultProofFieldOpeningPlanV1;
+  fieldPlan: FaultProofFieldOpeningPlan;
 }>;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -260,16 +260,16 @@ const proofSteps = (
   });
 
 const witnessSetCbor = (witnessSet: NativeTxWitnessSetCompact): string =>
-  encodeMidgardNativeTxWitnessSetCompactV1({
+  encodeMidgardNativeTxWitnessSetCompact({
     addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
     scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
     redeemerTxWitsHash: Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
   }).toString("hex");
 
-export const admitProductionInvalidSignatureArtifactV1 = (
+export const admitInvalidSignatureArtifact = (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): AdmittedArtifactV1 => {
+): AdmittedArtifact => {
   if (!HEX_28.test(carriageOwner)) {
     throw new Error("invalid-signature carriage owner is malformed");
   }
@@ -292,7 +292,7 @@ export const admitProductionInvalidSignatureArtifactV1 = (
     "invalid-signature artifact",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_INVALID_SIGNATURE_ARTIFACT_V1 ||
+    parsed.schemaVersion !== INVALID_SIGNATURE_ARTIFACT ||
     typeof parsed.detectionId !== "string" ||
     parsed.detectionId.trim() !== parsed.detectionId
   ) {
@@ -301,7 +301,7 @@ export const admitProductionInvalidSignatureArtifactV1 = (
   const witnessSet = parseWitnessSet(parsed.witnessSet);
   const addressWitnesses = parseAddressWitnesses(parsed.addressWitnesses);
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_INVALID_SIGNATURE_ARTIFACT_V1,
+    schemaVersion: INVALID_SIGNATURE_ARTIFACT,
     headerHash: hex(parsed.headerHash, HEX_28, "artifact header hash"),
     detectionId: parsed.detectionId,
     position: safeNatural(parsed.position, "artifact position"),
@@ -332,11 +332,11 @@ export const admitProductionInvalidSignatureArtifactV1 = (
       parsed.badWitnessIndex,
       "artifact bad witness index",
     ),
-  }) satisfies ProductionInvalidSignatureArtifactV1;
+  }) satisfies InvalidSignatureArtifact;
   const inclusion = parseSubmitStep01TxInclusion({
     nativeTxId: artifact.nativeTxId,
     nativeTx: nativeTxFromCoreCompact(
-      decodeMidgardNativeTxCompactV1(
+      decodeMidgardNativeTxCompact(
         Buffer.from(artifact.nativeTxCompactCbor, "hex"),
       ),
     ),
@@ -364,9 +364,9 @@ export const admitProductionInvalidSignatureArtifactV1 = (
     );
   }
   if (
-    invalidSignatureWitnessSetCommitmentV1(witnessSet) !==
+    invalidSignatureWitnessSetCommitment(witnessSet) !==
       inclusion.nativeTx.witness_set_hash ||
-    invalidSignatureAddressWitnessesCommitmentV1(addressWitnesses) !==
+    invalidSignatureAddressWitnessesCommitment(addressWitnesses) !==
       witnessSet.addr_tx_wits_hash
   ) {
     throw new Error(
@@ -378,17 +378,17 @@ export const admitProductionInvalidSignatureArtifactV1 = (
     badWitness === undefined ||
     verifyAddressWitness({ txId: artifact.nativeTxId, witness: badWitness }) ||
     artifact.detectionId !==
-      `${INVALID_SIGNATURE_VIOLATION_ID_V1}:${artifact.position.toString()}:${artifact.badWitnessIndex.toString()}:${artifact.nativeTxId}:${badWitness.verification_key}`
+      `${INVALID_SIGNATURE_VIOLATION_ID}:${artifact.position.toString()}:${artifact.badWitnessIndex.toString()}:${artifact.nativeTxId}:${badWitness.verification_key}`
   ) {
     throw new Error(
       "invalid-signature artifact does not re-derive its selected violation",
     );
   }
-  const fieldPlan = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+  const fieldPlan = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: artifact.nativeTxId,
     nativeTxCompactCbor: artifact.nativeTxCompactCbor,
-    itemCbors: addressWitnesses.map(encodeMidgardAddressWitnessCanonicalV1),
+    itemCbors: addressWitnesses.map(encodeMidgardAddressWitnessCanonical),
     owner: carriageOwner,
     publish: false,
     witnessSet,
@@ -406,16 +406,16 @@ export const admitProductionInvalidSignatureArtifactV1 = (
 
 const selectedIdentity = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >,
 ) => {
   const fields = classification.selected.detectionId.split(":");
   if (
     classification.category !== "invalidSignature" ||
-    classification.selected.violationId !== INVALID_SIGNATURE_VIOLATION_ID_V1 ||
+    classification.selected.violationId !== INVALID_SIGNATURE_VIOLATION_ID ||
     fields.length !== 5 ||
-    fields[0] !== INVALID_SIGNATURE_VIOLATION_ID_V1 ||
+    fields[0] !== INVALID_SIGNATURE_VIOLATION_ID ||
     !NATURAL.test(fields[1] ?? "") ||
     !NATURAL.test(fields[2] ?? "") ||
     !HEX_32.test(fields[3] ?? "") ||
@@ -432,18 +432,18 @@ const selectedIdentity = (
   });
 };
 
-export const prepareProductionInvalidSignatureArtifactV1 = async ({
+export const prepareInvalidSignatureArtifact = async ({
   evidence,
   classification,
 }: {
   readonly evidence: Parameters<
-    typeof prepareInvalidSignatureFromCanonicalEvidenceV1
+    typeof prepareInvalidSignatureFromCanonicalEvidence
   >[0]["evidence"];
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
-}): Promise<ProductionInvalidSignatureArtifactV1> => {
+}): Promise<InvalidSignatureArtifact> => {
   if (
     classification.headerHash !== evidence.headerHash ||
     classification.selected.position > BigInt(Number.MAX_SAFE_INTEGER)
@@ -453,7 +453,7 @@ export const prepareProductionInvalidSignatureArtifactV1 = async ({
     );
   }
   const selected = selectedIdentity(classification);
-  const prepared = await prepareInvalidSignatureFromCanonicalEvidenceV1({
+  const prepared = await prepareInvalidSignatureFromCanonicalEvidence({
     evidence,
     txId: selected.txId,
   });
@@ -465,8 +465,8 @@ export const prepareProductionInvalidSignatureArtifactV1 = async ({
       "invalid-signature prepared evidence changed the selected witness",
     );
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_INVALID_SIGNATURE_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: INVALID_SIGNATURE_ARTIFACT,
     headerHash: prepared.headerHash,
     detectionId: classification.selected.detectionId,
     position: selected.transactionIndex,
@@ -478,14 +478,14 @@ export const prepareProductionInvalidSignatureArtifactV1 = async ({
     witnessSet: prepared.tx.badTxWitnessSetCompact,
     addressWitnesses: prepared.tx.addrTxWitsPreimage,
     badWitnessIndex: prepared.tx.badAddrTxWitIndex,
-  }) as ProductionInvalidSignatureArtifactV1;
-  admitProductionInvalidSignatureArtifactV1(artifact);
+  }) as InvalidSignatureArtifact;
+  admitInvalidSignatureArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type InvalidSignatureWorkflowReferenceScriptsV1 = Readonly<{
+export type InvalidSignatureWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -494,23 +494,23 @@ export type InvalidSignatureWorkflowReferenceScriptsV1 = Readonly<{
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-type BoundConfigV1 = Readonly<{
+type BoundConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"invalidSignature">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"invalidSignature">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  referenceScripts: InvalidSignatureWorkflowReferenceScriptsV1;
+  referenceScripts: InvalidSignatureWorkflowReferenceScripts;
   certificate: NonNullable<
-    FraudProofWorkflowDeploymentBindingV1<"invalidSignature">["fieldPreimageCertificate"]
+    FraudProofWorkflowDeploymentBinding<"invalidSignature">["fieldPreimageCertificate"]
   >;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
 
 const actionInput = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "invalid-signature workflow action");
   if (
@@ -535,7 +535,7 @@ const stringField = (
 };
 
 const captureRemoval = async (
-  config: BoundConfigV1,
+  config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -549,7 +549,7 @@ const captureRemoval = async (
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -564,10 +564,10 @@ const captureRemoval = async (
         fraudProverRewardLovelace: config.fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -587,10 +587,10 @@ const captureRemoval = async (
 };
 
 const resolveFieldCarriage = async (
-  config: BoundConfigV1,
-  admitted: AdmittedArtifactV1,
+  config: BoundConfig,
+  admitted: AdmittedArtifact,
 ) => {
-  const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: admitted.fieldPlan,
@@ -600,7 +600,7 @@ const resolveFieldCarriage = async (
       "invalid-signature field publications disappeared after authenticated prerequisite",
     );
   }
-  const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: config.lucid,
     network: config.network,
     planned: admitted.fieldPlan,
@@ -621,17 +621,17 @@ const resolveFieldCarriage = async (
 };
 
 const createTransactionPort = (
-  config: BoundConfigV1,
-): ProductionLinearFamilyTransactionPortV1<"invalidSignature"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"invalidSignature"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "invalidSignature",
   prepare: async ({ evidence, classification }) =>
-    await prepareProductionInvalidSignatureArtifactV1({
+    await prepareInvalidSignatureArtifact({
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitProductionInvalidSignatureArtifactV1(
+    const admitted = admitInvalidSignatureArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -643,7 +643,7 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInit({
               lucid: config.lucid,
@@ -666,14 +666,14 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_01") {
-      const chunks = await resolveDirectFirstProofChunksV1({
+      const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
         address: config.signer.address,
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInvalidSignatureStep01({
               lucid: config.lucid,
@@ -701,7 +701,7 @@ const createTransactionPort = (
     if (input.stage === "step_02") {
       const carriage = await resolveFieldCarriage(config, admitted);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInvalidSignatureStep02({
               lucid: config.lucid,
@@ -736,31 +736,31 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundInvalidSignatureWorkflowConfigV1 = Readonly<{
+export type ManifestBoundInvalidSignatureWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: InvalidSignatureWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: InvalidSignatureWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundInvalidSignatureWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"invalidSignature">;
-  l1: FraudProofFamilyL1ObservationPortV1<"invalidSignature">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"invalidSignature">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundInvalidSignatureWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"invalidSignature">;
+  l1: FraudProofFamilyL1ObservationPort<"invalidSignature">;
+  transactions: LinearFamilyTransactionPort<"invalidSignature">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundInvalidSignatureWorkflowV1 = async (
-  config: ManifestBoundInvalidSignatureWorkflowConfigV1,
-): Promise<ManifestBoundInvalidSignatureWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundInvalidSignatureWorkflow = async (
+  config: ManifestBoundInvalidSignatureWorkflowConfig,
+): Promise<ManifestBoundInvalidSignatureWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -772,7 +772,7 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
       InvalidSignatureStep02Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -783,48 +783,48 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
     );
   }
   const certificate = binding.fieldPreimageCertificate;
-  const references: InvalidSignatureWorkflowReferenceScriptsV1 = Object.freeze({
+  const references: InvalidSignatureWorkflowReferenceScripts = Object.freeze({
     steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofInvalidSignature",
         utxo: config.referenceScripts.steps[0],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofInvalidSignatureStep02",
         utxo: config.referenceScripts.steps[1],
       }),
     ] as const),
     witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: config.referenceScripts.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: config.referenceScripts.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
       }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "chunkedVerifyWithdraw",
         utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
       }),
     }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxoV1({
+    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: "fieldPreimageCertificateMint",
       utxo: config.referenceScripts.fieldPreimageCertificateMint,
     }),
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -850,14 +850,14 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
       binding.releaseEconomics.policy.fraudProverRewardLovelace,
     ),
   });
-  let adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  let adapter = createLinearFamilyWorkflowAdapter({
     category: "invalidSignature",
     l1,
     transactions,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePortV1({
+  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: "invalidSignature",
     lucid: config.lucid,
     network: binding.network,
@@ -869,7 +869,7 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
         "invalid-signature field prerequisite action",
       );
       if (input.stage !== "step_02") return null;
-      const admitted = admitProductionInvalidSignatureArtifactV1(
+      const admitted = admitInvalidSignatureArtifact(
         artifact,
         config.signer.paymentKeyHash,
       );
@@ -882,17 +882,17 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
           mintingScript: certificate.mintingScript,
           referenceScriptUtxo: references.fieldPreimageCertificateMint,
         },
-      } satisfies ProductionFieldCarriageRequirementV1;
+      } satisfies FieldCarriageRequirement;
     },
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
-  adapter = withProductionFieldCarriagePrerequisiteV1({
+  adapter = withFieldCarriagePrerequisite({
     category: "invalidSignature",
     base: adapter,
     prerequisite: fieldPrerequisite,
   });
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePortV1({
+  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
     category: "invalidSignature",
     lucid: config.lucid,
     network: binding.network,
@@ -904,16 +904,14 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
         "invalid-signature proof prerequisite action",
       );
       return input.stage === "step_01"
-        ? admitProductionInvalidSignatureArtifactV1(
-            artifact,
-            config.signer.paymentKeyHash,
-          ).artifact.txMembershipProofCbor
+        ? admitInvalidSignatureArtifact(artifact, config.signer.paymentKeyHash)
+            .artifact.txMembershipProofCbor
         : null;
     },
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
-  adapter = withProductionProofChunkPrerequisiteV1({
+  adapter = withProofChunkPrerequisite({
     category: "invalidSignature",
     base: adapter,
     prerequisite: proofPrerequisite,
@@ -923,31 +921,30 @@ export const createManifestBoundInvalidSignatureWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundInvalidSignatureWorkflowV1 = async ({
+export const runOrResumeManifestBoundInvalidSignatureWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundInvalidSignatureWorkflowV1;
+  readonly workflow: ManifestBoundInvalidSignatureWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+    replayer: INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["invalidSignature"],
     }),

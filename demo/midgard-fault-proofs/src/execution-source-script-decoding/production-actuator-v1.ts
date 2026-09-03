@@ -1,6 +1,6 @@
 import type {
-  ForcedInclusionTxV1,
-  HeaderV1,
+  ForcedInclusionTx,
+  Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
@@ -10,40 +10,40 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ExecutionSourceScriptDecodingContractsV1 } from "./contracts-v1.js";
-import type { ExecutionSourceScriptDecodingEvidenceV1 } from "./family-v1.js";
-import { submitExecutionSourceScriptDecodingStep01AcceptedV1 } from "./submit-step-01-v1.js";
-import { submitExecutionSourceScriptDecodingStep01ForcedV1 } from "./submit-step-01-v1.js";
-import type { ExecutionSourceAuthenticationDataV1 } from "./submit-step-02-v1.js";
-import { submitExecutionSourceScriptDecodingStep02V1 } from "./submit-step-02-v1.js";
-import { submitExecutionSourceScriptDecodingStep03V1 } from "./submit-step-03-v1.js";
-import { submitExecutionSourceScriptDecodingStep04V1 } from "./submit-step-04-v1.js";
-import { submitExecutionSourceScriptDecodingStep05V1 } from "./submit-step-05-v1.js";
+import type { ExecutionSourceScriptDecodingContracts } from "./contracts-v1.js";
+import type { ExecutionSourceScriptDecodingEvidence } from "./family-v1.js";
+import { submitExecutionSourceScriptDecodingStep01Accepted } from "./submit-step-01-v1.js";
+import { submitExecutionSourceScriptDecodingStep01Forced } from "./submit-step-01-v1.js";
+import type { ExecutionSourceAuthenticationData } from "./submit-step-02-v1.js";
+import { submitExecutionSourceScriptDecodingStep02 } from "./submit-step-02-v1.js";
+import { submitExecutionSourceScriptDecodingStep03 } from "./submit-step-03-v1.js";
+import { submitExecutionSourceScriptDecodingStep04 } from "./submit-step-04-v1.js";
+import { submitExecutionSourceScriptDecodingStep05 } from "./submit-step-05-v1.js";
 
-export type ExecutionSourceScriptDecodingProductionArtifactV1 = Readonly<{
+export type ExecutionSourceScriptDecodingArtifact = Readonly<{
   headerHash: string;
-  header: HeaderV1;
-  evidence: ExecutionSourceScriptDecodingEvidenceV1;
-  authentication: ExecutionSourceAuthenticationDataV1;
+  header: Header;
+  evidence: ExecutionSourceScriptDecodingEvidence;
+  authentication: ExecutionSourceAuthenticationData;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
 }>;
 
-export type ExecutionSourceScriptDecodingWorkflowReferencesV1 = Readonly<{
+export type ExecutionSourceScriptDecodingWorkflowReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
 
-export type ExecutionSourceScriptDecodingActuatorActionV1 =
+export type ExecutionSourceScriptDecodingActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step_01";
@@ -60,14 +60,14 @@ export type ExecutionSourceScriptDecodingActuatorActionV1 =
       fraudProofOutRef: string;
     }>;
 
-export type ExecutionSourceScriptDecodingCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type ExecutionSourceScriptDecodingCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
 
-export type BoundExecutionSourceScriptDecodingActuatorConfigV1 = Readonly<{
+export type BoundExecutionSourceScriptDecodingActuatorConfig = Readonly<{
   // Family-local structural binding until the protected catalogue serial pass.
   binding: Readonly<{
     blueprint: unknown;
@@ -86,30 +86,30 @@ export type BoundExecutionSourceScriptDecodingActuatorConfigV1 = Readonly<{
   }>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ExecutionSourceScriptDecodingContractsV1;
-  references: ExecutionSourceScriptDecodingWorkflowReferencesV1;
+  contracts: ExecutionSourceScriptDecodingContracts;
+  references: ExecutionSourceScriptDecodingWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
 const captured = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<ExecutionSourceScriptDecodingCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<ExecutionSourceScriptDecodingCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /** Package-owned locally evaluated transaction actuator. */
-export const createExecutionSourceScriptDecodingActuatorV1 = (
-  config: BoundExecutionSourceScriptDecodingActuatorConfigV1,
+export const createExecutionSourceScriptDecodingActuator = (
+  config: BoundExecutionSourceScriptDecodingActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      action: ExecutionSourceScriptDecodingActuatorActionV1;
-      artifact: ExecutionSourceScriptDecodingProductionArtifactV1;
-    }): Promise<ExecutionSourceScriptDecodingCapturedActionV1> => {
+      action: ExecutionSourceScriptDecodingActuatorAction;
+      artifact: ExecutionSourceScriptDecodingArtifact;
+    }): Promise<ExecutionSourceScriptDecodingCapturedAction> => {
       if (artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error(
           "executionSourceScriptDecoding artifact changed bound header",
@@ -146,7 +146,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
             awaitConfirmation: false,
           } as const;
           if (artifact.acceptedInclusion !== undefined)
-            await submitExecutionSourceScriptDecodingStep01AcceptedV1({
+            await submitExecutionSourceScriptDecodingStep01Accepted({
               ...common,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -155,7 +155,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else if (artifact.forcedMembership !== undefined)
-            await submitExecutionSourceScriptDecodingStep01ForcedV1({
+            await submitExecutionSourceScriptDecodingStep01Forced({
               ...common,
               membership: artifact.forcedMembership,
             });
@@ -167,7 +167,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
       const linear = async (
         operation: (
           preSubmitBoundary: Parameters<
-            typeof captureLocallyEvaluatedTransactionV1
+            typeof captureLocallyEvaluatedTransaction
           >[0] extends (boundary: infer T) => unknown
             ? T
             : never,
@@ -175,7 +175,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
       ) => await captured(operation);
       if (action.stage === "step_02")
         return await linear(async (preSubmitBoundary) => {
-          await submitExecutionSourceScriptDecodingStep02V1({
+          await submitExecutionSourceScriptDecodingStep02({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -190,7 +190,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
         });
       if (action.stage === "step_03")
         return await linear(async (preSubmitBoundary) => {
-          await submitExecutionSourceScriptDecodingStep03V1({
+          await submitExecutionSourceScriptDecodingStep03({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -204,7 +204,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
         });
       if (action.stage === "scan")
         return await linear(async (preSubmitBoundary) => {
-          await submitExecutionSourceScriptDecodingStep04V1({
+          await submitExecutionSourceScriptDecodingStep04({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -218,7 +218,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
         });
       if (action.stage === "finalize")
         return await linear(async (preSubmitBoundary) => {
-          await submitExecutionSourceScriptDecodingStep05V1({
+          await submitExecutionSourceScriptDecodingStep05({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -231,7 +231,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
             awaitConfirmation: false,
           });
         });
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
           name: "executionSourceScriptDecoding",
           categoryId,
@@ -258,7 +258,7 @@ export const createExecutionSourceScriptDecodingActuatorV1 = (
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

@@ -1,21 +1,21 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  materializeMidgardNativeTxFromCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxV1Schema,
-  forcedVerdictSubjectV1,
+  ForcedInclusionTxSchema,
+  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -26,35 +26,35 @@ import { describe, expect, it, vi } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  certifyFaultProofFieldCarriageV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
 import {
-  applyObserversForbiddenScriptsV1,
-  type ObserversForbiddenContractsV1,
+  applyObserversForbiddenScripts,
+  type ObserversForbiddenContracts,
 } from "../src/observers-forbidden-on-untagged-network/contracts-v1.js";
 import {
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID_V1,
-  prepareObserversForbiddenEvidenceV1,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
+  prepareObserversForbiddenEvidence,
 } from "../src/observers-forbidden-on-untagged-network/family-v1.js";
-import { createObserversForbiddenActuatorV1 } from "../src/observers-forbidden-on-untagged-network/production-actuator-v1.js";
-import { buildProductionObserversForbiddenArtifactV1 } from "../src/observers-forbidden-on-untagged-network/production-artifact-v1.js";
-import { submitObserversForbiddenCancelV1 } from "../src/observers-forbidden-on-untagged-network/submit-cancel-v1.js";
+import { createObserversForbiddenActuator } from "../src/observers-forbidden-on-untagged-network/production-actuator-v1.js";
+import { buildObserversForbiddenArtifact } from "../src/observers-forbidden-on-untagged-network/production-artifact-v1.js";
+import { submitObserversForbiddenCancel } from "../src/observers-forbidden-on-untagged-network/submit-cancel-v1.js";
 import {
-  submitObserversForbiddenStep01AcceptedV1,
-  submitObserversForbiddenStep01ForcedV1,
+  submitObserversForbiddenStep01Accepted,
+  submitObserversForbiddenStep01Forced,
 } from "../src/observers-forbidden-on-untagged-network/submit-step-01-v1.js";
-import { submitObserversForbiddenStep02V1 } from "../src/observers-forbidden-on-untagged-network/submit-step-02-v1.js";
+import { submitObserversForbiddenStep02 } from "../src/observers-forbidden-on-untagged-network/submit-step-02-v1.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { submitCapturedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
-  l2TransactionSourceCborV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
@@ -62,7 +62,7 @@ import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deploymen
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
@@ -75,7 +75,7 @@ const runForcedContradiction = async ({
   readonly networkId: 0 | 1 | 255;
   readonly observerCount: number;
 }) => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       alwaysFraudProofCatalogue: true,
       alwaysStateQueue: true,
@@ -86,7 +86,7 @@ const runForcedContradiction = async ({
       harness.contracts.fraudProof.spendingScriptAddress,
     ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
   );
-  const applied = applyObserversForbiddenScriptsV1({
+  const applied = applyObserversForbiddenScripts({
     blueprint: harness.realBlueprint,
     network,
     computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -96,7 +96,7 @@ const runForcedContradiction = async ({
       harness.contracts.fieldPreimageCertificate.policyId,
     hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
   });
-  const contracts: ObserversForbiddenContractsV1 = {
+  const contracts: ObserversForbiddenContracts = {
     steps: applied,
     computationThread: harness.contracts.computationThread,
     fraudProof: harness.contracts.fraudProof,
@@ -111,7 +111,7 @@ const runForcedContradiction = async ({
     harness.contracts.fraudProofs,
     {
       observersForbiddenOnUntaggedNetwork: {
-        categoryId: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID_V1,
+        categoryId: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
         scriptHash: applied[0].spendingScriptHash,
       },
     },
@@ -130,13 +130,13 @@ const runForcedContradiction = async ({
         harness.emulator.now() + 120_000,
       ) - 1,
   });
-  const observerField = encodeMidgardFieldPreimageV1(
+  const observerField = encodeMidgardFieldPreimage(
     Array.from({ length: observerCount }, (_, index) =>
       Buffer.alloc(28, index + 1),
     ),
   );
   const base = makeNativeTx({ spendInputCbors: [], fee: 0n });
-  const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
+  const nativeTx = materializeMidgardNativeTxFromCanonical({
     version: base.version,
     validity: base.validity,
     body: {
@@ -146,12 +146,12 @@ const runForcedContradiction = async ({
     },
     witnessSet: base.witnessSet,
   });
-  const invalid = adjudicateMidgardNativeTxFullV1Validity(
+  const invalid = adjudicateMidgardNativeTxFullValidity(
     nativeTx,
     "TxIsInvalid",
   );
-  const transactionId = computeMidgardNativeTxIdV1(invalid).toString("hex");
-  const proofSource = deriveMidgardNativeTxProofSourceV1(invalid);
+  const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
+  const proofSource = deriveMidgardNativeTxProofSource(invalid);
   const forcedTransaction = {
     tx_id: transactionId,
     source: {
@@ -168,7 +168,7 @@ const runForcedContradiction = async ({
   const sourceKey = baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
   const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
   const valueBytes = Buffer.from(
-    Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
+    Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
     "hex",
   );
   const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
@@ -196,9 +196,9 @@ const runForcedContradiction = async ({
     catalogue,
     header,
   });
-  const evidence = prepareObserversForbiddenEvidenceV1({
+  const evidence = prepareObserversForbiddenEvidence({
     finding: {
-      subject: forcedVerdictSubjectV1({
+      subject: forcedVerdictSubject({
         transactionId,
         sourceKey,
         rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
@@ -207,7 +207,7 @@ const runForcedContradiction = async ({
     },
     observerFieldPreimage: observerField,
     committedFieldHashHex:
-      midgardFieldCommitmentV1(observerField).toString("hex"),
+      midgardFieldCommitment(observerField).toString("hex"),
   });
   const references: UTxO[] = [];
   for (const [index, step] of applied.entries())
@@ -220,7 +220,7 @@ const runForcedContradiction = async ({
         })
       ).utxo,
     );
-  const forcedPlan = planFaultProofFieldOpeningV1({
+  const forcedPlan = planFaultProofFieldOpening({
     fieldIndex: 3,
     anchorTxId: transactionId,
     nativeTxCompactCbor: proofSource.compactCbor.toString("hex"),
@@ -231,7 +231,7 @@ const runForcedContradiction = async ({
     publish: true,
     label: "observers forbidden forced field",
   });
-  await publishFaultProofFieldCarriageV1({
+  await publishFaultProofFieldCarriage({
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned: forcedPlan,
@@ -259,7 +259,7 @@ const runForcedContradiction = async ({
   );
   const threadOutRef = `${initialized.result.txHash}#${initialized.result.firstStepOutputIndex.toString()}`;
   const bound = await captureEmulatorSubmission(harness.emulator, () =>
-    submitObserversForbiddenStep01ForcedV1({
+    submitObserversForbiddenStep01Forced({
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -271,7 +271,7 @@ const runForcedContradiction = async ({
     }),
   );
   const final = await captureEmulatorSubmission(harness.emulator, () =>
-    submitObserversForbiddenStep02V1({
+    submitObserversForbiddenStep02({
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -293,7 +293,7 @@ const runForcedContradiction = async ({
 
 describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
   it("runs maximum certified accepted Init, cancel/restart, and permanent mint", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = await Effect.runPromise(
@@ -301,7 +301,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const applied = applyObserversForbiddenScriptsV1({
+    const applied = applyObserversForbiddenScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -311,7 +311,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
         harness.contracts.fieldPreimageCertificate.policyId,
       hubOracleScriptHash: harness.contracts.hubOracle.spendingScriptHash,
     });
-    const contracts: ObserversForbiddenContractsV1 = {
+    const contracts: ObserversForbiddenContracts = {
       steps: applied,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -326,7 +326,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       harness.contracts.fraudProofs,
       {
         observersForbiddenOnUntaggedNetwork: {
-          categoryId: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID_V1,
+          categoryId: OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
           scriptHash: applied[0].spendingScriptHash,
         },
       },
@@ -334,12 +334,12 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
     const category =
       catalogue.extraCategories.observersForbiddenOnUntaggedNetwork!;
 
-    const observerField = encodeMidgardFieldPreimageV1(
+    const observerField = encodeMidgardFieldPreimage(
       Array.from({ length: 505 }, (_, index) => Buffer.alloc(28, index + 1)),
     );
     expect(observerField).toHaveLength(15_153);
     const base = makeNativeTx({ spendInputCbors: [], fee: 7n });
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
       version: base.version,
       validity: base.validity,
       body: {
@@ -349,8 +349,8 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       },
       witnessSet: base.witnessSet,
     });
-    const transactionId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const compact = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const transactionId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const compact = encodeMidgardNativeTxCompact(nativeTx.compact);
     const sourceCbor = l2TransactionSourceCborV1(nativeTx);
     const store = new Store(undefined);
     await store.ready();
@@ -370,21 +370,21 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       txMembershipProof: Data.from(membership.toCBOR().toString("hex"), Proof),
       txMembershipProofCbor: membership.toCBOR().toString("hex"),
     };
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
       catalogue,
       fixture: { transactionsRoot, l2TransactionCount: 1n },
     });
-    const evidence = prepareObserversForbiddenEvidenceV1({
+    const evidence = prepareObserversForbiddenEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(transactionId),
+        subject: acceptedVerdictSubject(transactionId),
         networkId: 255,
       },
       observerFieldPreimage: observerField,
       committedFieldHashHex:
-        midgardFieldCommitmentV1(observerField).toString("hex"),
+        midgardFieldCommitment(observerField).toString("hex"),
     });
     expect(evidence.carriage).toBe("Certified");
 
@@ -406,7 +406,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
         label: "observers-forbidden-certificate",
       })
     ).utxo;
-    const planned = planFaultProofFieldOpeningV1({
+    const planned = planFaultProofFieldOpening({
       fieldIndex: 3,
       anchorTxId: transactionId,
       nativeTxCompactCbor: compact.toString("hex"),
@@ -418,7 +418,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       label: "observers forbidden maximum field",
     });
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriageV1({
+      publishFaultProofFieldCarriage({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
@@ -427,7 +427,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       }),
     );
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriageV1({
+      certifyFaultProofFieldCarriage({
         lucid: harness.proverLucid,
         network,
         signer: harness.proverSigner,
@@ -439,25 +439,25 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
         certificateReferenceScriptUtxo: certificateReference,
         chunkUtxos: carriage.result,
         compactCbor: compact.toString("hex"),
-        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-          deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+          deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
         ).toString("hex"),
       }),
     );
-    const artifact = buildProductionObserversForbiddenArtifactV1({
+    const artifact = buildObserversForbiddenArtifact({
       headerHash: setup.headerHash,
       detectionId: `${transactionId}:accepted`,
       position: 0n,
       evidence,
       nativeTxCompactCbor: compact.toString("hex"),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-        deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet),
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+        deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet),
       ).toString("hex"),
       l2TransactionSourceCbor: sourceCbor,
       transactionsPhasRoot: transactionsRoot,
       transactionMembershipCbor: membership.toCBOR().toString("hex"),
     });
-    const proofActuator = createObserversForbiddenActuatorV1({
+    const proofActuator = createObserversForbiddenActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
         resolvedContracts: {
@@ -531,7 +531,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
       if (threadUtxo === undefined)
         throw new Error("accepted Init thread absent");
       return await captureEmulatorSubmission(harness.emulator, () =>
-        submitObserversForbiddenStep01AcceptedV1({
+        submitObserversForbiddenStep01Accepted({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -551,7 +551,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
     const cancelledAtInit = await initialize();
     console.info("[observers-forbidden-progress] cancel-step-01");
     const cancelInit = await captureEmulatorSubmission(harness.emulator, () =>
-      submitObserversForbiddenCancelV1({
+      submitObserversForbiddenCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -567,7 +567,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
     captures.push(["step-01-before-cancel", cancelledAtStep2]);
     console.info("[observers-forbidden-progress] cancel-step-02");
     const cancelStep2 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitObserversForbiddenCancelV1({
+      submitObserversForbiddenCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -591,7 +591,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
           },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         const next = (
@@ -617,7 +617,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
           },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         const proof = (
@@ -660,7 +660,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
         },
       },
     };
-    const removalActuator = createObserversForbiddenActuatorV1({
+    const removalActuator = createObserversForbiddenActuator({
       binding: {
         definition: { headerHash: setup.headerHash },
         resolvedContracts: {
@@ -709,7 +709,7 @@ describe("observersForbiddenOnUntaggedNetwork real lifecycle", () => {
           },
           artifact,
         });
-        const txHash = await submitCapturedTransactionV1(captured.transaction);
+        const txHash = await submitCapturedTransaction(captured.transaction);
         expect(txHash).toBe(captured.transaction.txHash);
         await harness.proverLucid.awaitTx(txHash);
         return { txHash };

@@ -6,9 +6,9 @@ import type { DaSignatureRecord } from "../domain.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
 import {
-  buildDaSignatureConflictEvidenceV1,
-  type DaAvailabilityCommitmentAuthorityV1,
-  deriveExpectedDaAvailabilityCommitmentV1,
+  buildDaSignatureConflictEvidence,
+  type DaAvailabilityCommitmentAuthority,
+  deriveExpectedDaAvailabilityCommitment,
   validateDaSignatureRecord,
 } from "./signatures.js";
 import { attestationPeersExcludingLocal } from "./targets.js";
@@ -19,7 +19,7 @@ export type PeerSignaturePollerDeps = {
   readonly localPeerId?: string;
   readonly attestationExchange?: DaAttestationExchange;
   readonly signerValidation: DaCommitteeValidation;
-  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1;
+  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
   readonly store: Pick<
     WatcherStore,
     | "getDaPayload"
@@ -71,7 +71,7 @@ export class PeerSignaturePoller {
       if (verifiedPayload === undefined) {
         return;
       }
-      const expectedCommitment = deriveExpectedDaAvailabilityCommitmentV1({
+      const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
         authority: this.deps.availabilityCommitmentAuthority,
         headerHash,
         payloadCborHex: verifiedPayload.payloadCborHex,
@@ -109,7 +109,7 @@ export class PeerSignaturePoller {
         );
         await this.deps.store.saveDaSignature(canonicalCandidate);
         if (priorSameHeaderSigner !== undefined) {
-          const conflict = buildDaSignatureConflictEvidenceV1({
+          const conflict = buildDaSignatureConflictEvidence({
             first: priorSameHeaderSigner,
             second: canonicalCandidate,
             daVkey:

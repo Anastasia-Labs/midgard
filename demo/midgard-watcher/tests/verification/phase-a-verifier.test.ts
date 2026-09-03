@@ -26,8 +26,8 @@
  *   (demo/midgard-node/src/workers/commit-block-header/da-payload.ts), then
  *   put through the real W22 evaluation, so the W24 input is a genuinely
  *   accepted W22 record rather than a literal.
- * - Header and Phase A parameters: the L1-committed `HeaderV1`, reached only
- *   through `makeWatcherAuthenticatedHeaderObservationV1`.
+ * - Header and Phase A parameters: the L1-committed `Header`, reached only
+ *   through `makeWatcherAuthenticatedHeaderObservation`.
  *
  * CROSS-LANGUAGE VECTORS: N/A, and deliberately so. W24 adds no new TS/Aiken
  * boundary: it introduces no serialization format, no hash preimage, and no
@@ -39,20 +39,20 @@
  * counterpart.
  */
 import {
-  encodeMidgardCekProgramMaterialDaValueV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekTermNodeV1,
+  encodeMidgardCekProgramMaterialDaValue,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import type { MidgardNativeScript } from "@al-ft/midgard-core/codec/native-script";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
@@ -75,38 +75,38 @@ import {
   plutusV3ScriptWitness,
   TEST_ADDRESS_BYTES,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
-import type { WatcherStateQueueHeaderV1 } from "../../src/indexers/state-queue-indexer.js";
-import { watcherSha256CanonicalJsonV1 } from "../../src/storage/durable-store.js";
+import type { WatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
-  evaluateWatcherHeaderRootReconstructionV1,
-  makeWatcherAuthenticatedHeaderObservationV1,
-  type WatcherHeaderRootReconstructionResultV1,
+  evaluateWatcherHeaderRootReconstruction,
+  makeWatcherAuthenticatedHeaderObservation,
+  type WatcherHeaderRootReconstructionResult,
 } from "../../src/verification/header-root-reconstruction.js";
 import {
-  evaluateWatcherPhaseABlockV1,
-  evaluateWatcherPhaseAQueuedTxsV1,
-  makeWatcherPhaseAConfigV1,
-  WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1,
-  WATCHER_PHASE_A_CONSENSUS_REJECT_CODES_V1,
-  WATCHER_PHASE_A_DIRECT_REJECT_CODES_V1,
-  WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1,
-  WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1,
-  WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1,
-  WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1,
-  WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1,
-  WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1,
-  WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1,
-  WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
-  watcherPhaseAQueuedTxsV1,
-  watcherPhaseARejectionProjectionV1,
-  type WatcherPhaseAVerificationResultV1,
+  evaluateWatcherPhaseABlock,
+  evaluateWatcherPhaseAQueuedTxs,
+  makeWatcherPhaseAConfig,
+  WATCHER_PHASE_A_CANONICAL_REJECT_CODES,
+  WATCHER_PHASE_A_CONSENSUS_REJECT_CODES,
+  WATCHER_PHASE_A_DIRECT_REJECT_CODES,
+  WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS,
+  WATCHER_PHASE_A_DOMINATED_REJECT_CODES,
+  WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
+  WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS,
+  WATCHER_PHASE_A_EXCLUDED_REJECT_CODES,
+  WATCHER_PHASE_A_REACHABLE_REJECT_CODES,
+  WATCHER_PHASE_A_VERIFIER_REASON_CODES,
+  WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
+  watcherPhaseAQueuedTxs,
+  watcherPhaseARejectionProjection,
+  type WatcherPhaseAVerificationResult,
   WatcherPhaseAVerifierError,
 } from "../../src/verification/phase-a-verifier.js";
 import {
-  computeWatcherRuleBundleV1Commitment,
-  makeWatcherCanonicalRuleBundleV1,
-  WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
-  type WatcherRuleBundleV1,
+  computeWatcherRuleBundleCommitment,
+  makeWatcherCanonicalRuleBundle,
+  WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+  type WatcherRuleBundle,
 } from "../../src/verification/rule-bundle-v1.js";
 
 // ---------------------------------------------------------------------------
@@ -128,13 +128,13 @@ const SLOW_TEST_TIMEOUT_MS = 120_000;
 /** Deterministic signing key: fixture bytes must not vary between runs. */
 const KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 7));
 
-const L1_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const L1_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "watcher-local-node",
   grade: "security",
 };
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "watcher-da-peer-1",
   grade: "security",
@@ -142,7 +142,7 @@ const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
 
 const CHAIN_POINT = { slot: 4242n, blockHash: h32(7) } as const;
 
-const RULE_BUNDLE: WatcherRuleBundleV1 = makeWatcherCanonicalRuleBundleV1({
+const RULE_BUNDLE: WatcherRuleBundle = makeWatcherCanonicalRuleBundle({
   constructionIdentity: {
     manifestId: h32(0x21),
     network: "Preprod",
@@ -155,10 +155,9 @@ const RULE_BUNDLE: WatcherRuleBundleV1 = makeWatcherCanonicalRuleBundleV1({
   targetParameterSnapshot: { finalityDepth: 12 },
 });
 
-const RULE_BUNDLE_COMMITMENT =
-  computeWatcherRuleBundleV1Commitment(RULE_BUNDLE);
+const RULE_BUNDLE_COMMITMENT = computeWatcherRuleBundleCommitment(RULE_BUNDLE);
 
-const baseHeader = (overrides: Partial<SDK.HeaderV1> = {}): SDK.HeaderV1 => ({
+const baseHeader = (overrides: Partial<SDK.Header> = {}): SDK.Header => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -187,15 +186,15 @@ const baseHeader = (overrides: Partial<SDK.HeaderV1> = {}): SDK.HeaderV1 => ({
   ...overrides,
 });
 
-const configFor = (overrides: Partial<SDK.HeaderV1> = {}): PhaseAConfig =>
-  makeWatcherPhaseAConfigV1({
+const configFor = (overrides: Partial<SDK.Header> = {}): PhaseAConfig =>
+  makeWatcherPhaseAConfig({
     header: baseHeader(overrides),
     ruleBundle: RULE_BUNDLE,
   });
 
 const CONFIG = configFor();
 
-const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecarV1([]);
+const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
 
 const queuedTx = (
   txId: Buffer,
@@ -245,14 +244,12 @@ const manyOutputs = (count: number): Buffer[] =>
 const ORPHAN_TERM_NODE = { kind: "error" as const };
 const ORPHAN_MATERIAL_ENTRY = {
   kind: "term" as const,
-  root: hashMidgardCekTermNodeV1(ORPHAN_TERM_NODE),
-  preimage: encodeMidgardCekTermNodeV1(ORPHAN_TERM_NODE),
+  root: hashMidgardCekTermNode(ORPHAN_TERM_NODE),
+  preimage: encodeMidgardCekTermNode(ORPHAN_TERM_NODE),
 };
 const ORPHAN_MATERIAL_DA_ENTRY: SDK.DaPayloadEntry = [
   Buffer.from(ORPHAN_MATERIAL_ENTRY.root).toString("hex"),
-  encodeMidgardCekProgramMaterialDaValueV1(ORPHAN_MATERIAL_ENTRY).toString(
-    "hex",
-  ),
+  encodeMidgardCekProgramMaterialDaValue(ORPHAN_MATERIAL_ENTRY).toString("hex"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -390,9 +387,9 @@ const EVIDENCE_CASES: readonly EvidenceCase[] = [
     {
       ...CONFIG,
       consensusProfile: {
-        ...MIDGARD_CONSENSUS_PROFILE_V1,
+        ...MIDGARD_CONSENSUS_PROFILE,
         protocolVersion: 2,
-      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE_V1,
+      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE,
     },
   ),
   evidenceCase(
@@ -460,9 +457,9 @@ const VALID_CASES: readonly QueuedTx[] = [
 // Block fixture
 // ---------------------------------------------------------------------------
 
-const headerHashOf = (header: SDK.HeaderV1): string =>
+const headerHashOf = (header: SDK.Header): string =>
   Buffer.from(
-    blake2b(Buffer.from(Data.to(header, SDK.HeaderV1), "hex"), { dkLen: 28 }),
+    blake2b(Buffer.from(Data.to(header, SDK.Header), "hex"), { dkLen: 28 }),
   ).toString("hex");
 
 const sortEntries = (
@@ -484,11 +481,11 @@ const hex = <A>(value: A, schema: Parameters<typeof Data.to>[1]): string =>
   encodeData(value, schema as never).toString("hex");
 
 const watcherHeaderRecord = (
-  header: SDK.HeaderV1,
+  header: SDK.Header,
   headerHash: string,
-): WatcherStateQueueHeaderV1 => ({
+): WatcherStateQueueHeader => ({
   headerHash,
-  headerCborHex: Data.to(header, SDK.HeaderV1),
+  headerCborHex: Data.to(header, SDK.Header),
   nextHeaderHash: null,
   datumSha256: h32(3),
   prevUtxosRoot: header.prevUtxosRoot,
@@ -520,32 +517,32 @@ const watcherHeaderRecord = (
 });
 
 type BlockFixture = {
-  readonly payload: SDK.DaPayloadV1;
-  readonly header: SDK.HeaderV1;
+  readonly payload: SDK.DaPayload;
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly envelope: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
-  readonly reconstruction: WatcherHeaderRootReconstructionResultV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly reconstruction: WatcherHeaderRootReconstructionResult;
   readonly txCbors: readonly Buffer[];
 };
 
 /**
  * Builds a real block the way the node does: `transactions` carries the
- * canonical `L2TransactionSourceV1` commitment, `transaction_preimages`
+ * canonical `L2TransactionSource` commitment, `transaction_preimages`
  * carries the exact canonical transaction bytes, and every header root and
  * count is derived from those entries rather than declared.
  */
 const buildBlock = async (input: {
   readonly txCbors: readonly Buffer[];
   readonly programMaterial?: readonly SDK.DaPayloadEntry[];
-  readonly headerOverrides?: Partial<SDK.HeaderV1>;
+  readonly headerOverrides?: Partial<SDK.Header>;
 }): Promise<BlockFixture> => {
   const transactions = input.txCbors.map((canonicalCbor) => {
-    const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+    const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
     const proofSource =
-      deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-    const source: SDK.L2TransactionSourceV1 = {
-      tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
+      deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+    const source: SDK.L2TransactionSource = {
+      tx_id: computeMidgardNativeTxId(full).toString("hex"),
       source: {
         compact_cbor: proofSource.compactCbor.toString("hex"),
         witness_set_compact_cbor:
@@ -559,7 +556,7 @@ const buildBlock = async (input: {
 
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.source.tx_id,
-    encodeData(tx.source, SDK.L2TransactionSourceV1Schema).toString("hex"),
+    encodeData(tx.source, SDK.L2TransactionSourceSchema).toString("hex"),
   ]);
   const preimageEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.source.tx_id,
@@ -596,8 +593,8 @@ const buildBlock = async (input: {
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
           rejection_code_hash: h32(170 + index),
-        } satisfies SDK.ValidationTraceDescriptorV1,
-        SDK.ValidationTraceDescriptorV1Schema,
+        } satisfies SDK.ValidationTraceDescriptor,
+        SDK.ValidationTraceDescriptorSchema,
       ),
     ],
   );
@@ -618,7 +615,7 @@ const buildBlock = async (input: {
     validationTraceCount: BigInt(validationTraceEntries.length),
   };
 
-  const header: SDK.HeaderV1 = baseHeader({
+  const header: SDK.Header = baseHeader({
     withdrawalsRoot: await countedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
     forcedTransactionsRoot: await countedRoot(
       SDK.ROOT_DOMAINS.forcedTransactionsV1,
@@ -645,8 +642,8 @@ const buildBlock = async (input: {
     ...input.headerOverrides,
   });
   const headerHash = headerHashOf(header);
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -665,17 +662,17 @@ const buildBlock = async (input: {
       counts,
     },
   };
-  const envelope = await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+  const envelope = await wrapDaPayload(SDK.encodeDaPayload(payload), {
     mode: "identity",
   });
-  const observation = await makeWatcherAuthenticatedHeaderObservationV1({
+  const observation = await makeWatcherAuthenticatedHeaderObservation({
     header: watcherHeaderRecord(header, headerHash),
     chainPoint: CHAIN_POINT,
     confirmationDepth: 12,
     sourceMode: "local_node",
     provenance: L1_PROVENANCE,
   });
-  const reconstruction = await evaluateWatcherHeaderRootReconstructionV1({
+  const reconstruction = await evaluateWatcherHeaderRootReconstruction({
     observation,
     payloadEnvelopeCbor: envelope,
     daProvenance: DA_PROVENANCE,
@@ -693,9 +690,9 @@ const buildBlock = async (input: {
 
 const evaluateBlock = async (
   fixture: BlockFixture,
-  overrides: Partial<Parameters<typeof evaluateWatcherPhaseABlockV1>[0]> = {},
-): Promise<WatcherPhaseAVerificationResultV1> =>
-  await evaluateWatcherPhaseABlockV1({
+  overrides: Partial<Parameters<typeof evaluateWatcherPhaseABlock>[0]> = {},
+): Promise<WatcherPhaseAVerificationResult> =>
+  await evaluateWatcherPhaseABlock({
     observation: fixture.observation,
     reconstruction: fixture.reconstruction,
     payloadEnvelopeCbor: fixture.envelope,
@@ -711,50 +708,50 @@ const evaluateBlock = async (
 
 describe("published rejection vocabulary", () => {
   it("mirrors the canonical 50-member RejectCodes vocabulary", () => {
-    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toHaveLength(50);
-    expect(new Set(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).size).toBe(50);
-    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toStrictEqual(
+    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).toHaveLength(50);
+    expect(new Set(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).size).toBe(50);
+    expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).toStrictEqual(
       Object.values(RejectCodes),
     );
   });
 
   it("partitions the vocabulary into 32 reachable and 18 excluded codes", () => {
-    expect(WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1).toHaveLength(32);
-    expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1).toHaveLength(18);
+    expect(WATCHER_PHASE_A_REACHABLE_REJECT_CODES).toHaveLength(32);
+    expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES).toHaveLength(18);
     expect(
       [
-        ...WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1,
-        ...WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1,
+        ...WATCHER_PHASE_A_REACHABLE_REJECT_CODES,
+        ...WATCHER_PHASE_A_EXCLUDED_REJECT_CODES,
       ].sort(),
-    ).toStrictEqual([...WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1].sort());
-    for (const code of WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1) {
-      expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1).not.toContain(code);
+    ).toStrictEqual([...WATCHER_PHASE_A_CANONICAL_REJECT_CODES].sort());
+    for (const code of WATCHER_PHASE_A_REACHABLE_REJECT_CODES) {
+      expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES).not.toContain(code);
     }
   });
 
   it("derives the reachable set from the canonical Phase A call sites", () => {
     const derived = new Set<string>([
-      ...WATCHER_PHASE_A_DIRECT_REJECT_CODES_V1,
-      ...WATCHER_PHASE_A_CONSENSUS_REJECT_CODES_V1,
+      ...WATCHER_PHASE_A_DIRECT_REJECT_CODES,
+      ...WATCHER_PHASE_A_CONSENSUS_REJECT_CODES,
     ]);
-    expect(WATCHER_PHASE_A_CONSENSUS_REJECT_CODES_V1).toHaveLength(19);
-    expect(new Set(WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1)).toStrictEqual(
+    expect(WATCHER_PHASE_A_CONSENSUS_REJECT_CODES).toHaveLength(19);
+    expect(new Set(WATCHER_PHASE_A_REACHABLE_REJECT_CODES)).toStrictEqual(
       derived,
     );
   });
 
   it("keeps every published list in canonical declaration order", () => {
     const order = new Map(
-      WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1.map((code, index) => [
+      WATCHER_PHASE_A_CANONICAL_REJECT_CODES.map((code, index) => [
         code,
         index,
       ]),
     );
     for (const list of [
-      WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1,
-      WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1,
-      WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1,
-      WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1,
+      WATCHER_PHASE_A_REACHABLE_REJECT_CODES,
+      WATCHER_PHASE_A_EXCLUDED_REJECT_CODES,
+      WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
+      WATCHER_PHASE_A_DOMINATED_REJECT_CODES,
     ]) {
       const positions = list.map((code) => order.get(code)!);
       expect(positions).toStrictEqual([...positions].sort((a, b) => a - b));
@@ -763,18 +760,14 @@ describe("published rejection vocabulary", () => {
 
   it("justifies every excluded and every dominated code exactly once", () => {
     expect(
-      Object.keys(
-        WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1,
-      ).sort(),
-    ).toStrictEqual([...WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1].sort());
+      Object.keys(WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS).sort(),
+    ).toStrictEqual([...WATCHER_PHASE_A_EXCLUDED_REJECT_CODES].sort());
     expect(
-      Object.keys(
-        WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1,
-      ).sort(),
-    ).toStrictEqual([...WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1].sort());
+      Object.keys(WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS).sort(),
+    ).toStrictEqual([...WATCHER_PHASE_A_DOMINATED_REJECT_CODES].sort());
     for (const justification of [
-      ...Object.values(WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1),
-      ...Object.values(WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1),
+      ...Object.values(WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS),
+      ...Object.values(WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS),
     ]) {
       expect(justification.length).toBeGreaterThan(30);
     }
@@ -788,28 +781,28 @@ describe("published rejection vocabulary", () => {
       RejectCodes.InputNotFound,
       RejectCodes.ValueNotPreserved,
     ]) {
-      expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1).toContain(code);
+      expect(WATCHER_PHASE_A_EXCLUDED_REJECT_CODES).toContain(code);
     }
     // The recorded waiver text lists E_MIN_FEE with the Phase-B set, but
     // phase-a.ts:509-516 emits it from the header-committed minFeeA/minFeeB,
     // and the evidence corpus below reaches it. It is published as reachable.
-    expect(WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1).toContain(
+    expect(WATCHER_PHASE_A_REACHABLE_REJECT_CODES).toContain(
       RejectCodes.MinFee,
     );
-    expect(WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1).toContain(
+    expect(WATCHER_PHASE_A_EVIDENCED_REJECT_CODES).toContain(
       RejectCodes.MinFee,
     );
   });
 
   it("splits the reachable set into 21 evidenced and 11 dominated codes", () => {
-    expect(WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1).toHaveLength(21);
-    expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1).toHaveLength(11);
+    expect(WATCHER_PHASE_A_EVIDENCED_REJECT_CODES).toHaveLength(21);
+    expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES).toHaveLength(11);
     expect(
       [
-        ...WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1,
-        ...WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1,
+        ...WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
+        ...WATCHER_PHASE_A_DOMINATED_REJECT_CODES,
       ].sort(),
-    ).toStrictEqual([...WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1].sort());
+    ).toStrictEqual([...WATCHER_PHASE_A_REACHABLE_REJECT_CODES].sort());
   });
 });
 
@@ -874,7 +867,7 @@ describe("differential against the canonical Phase A entry point", () => {
     "reproduces the canonical verdict exactly for %s",
     (_label, entry) => {
       const canonical = canonicalVerdict(entry.queued, entry.config);
-      const result = evaluateWatcherPhaseAQueuedTxsV1({
+      const result = evaluateWatcherPhaseAQueuedTxs({
         queuedTxs: [entry.queued],
         config: entry.config,
       });
@@ -908,7 +901,7 @@ describe("differential against the canonical Phase A entry point", () => {
     () => {
       for (const entry of corpus) {
         const canonical = canonicalVerdict(entry.queued, entry.config);
-        const result = evaluateWatcherPhaseAQueuedTxsV1({
+        const result = evaluateWatcherPhaseAQueuedTxs({
           queuedTxs: [entry.queued],
           config: entry.config,
         });
@@ -929,7 +922,7 @@ describe("differential against the canonical Phase A entry point", () => {
       const batch = corpus
         .filter((entry) => entry.config === CONFIG)
         .map((entry) => entry.queued);
-      const result = evaluateWatcherPhaseAQueuedTxsV1({
+      const result = evaluateWatcherPhaseAQueuedTxs({
         queuedTxs: batch,
         config: CONFIG,
       });
@@ -973,11 +966,11 @@ describe("rejection evidence per reachable code", () => {
   it.each(EVIDENCE_CASES.map((entry) => [entry.code, entry] as const))(
     "produces %s deterministically",
     (code, entry) => {
-      const first = evaluateWatcherPhaseAQueuedTxsV1({
+      const first = evaluateWatcherPhaseAQueuedTxs({
         queuedTxs: [entry.queued],
         config: entry.config,
       });
-      const second = evaluateWatcherPhaseAQueuedTxsV1({
+      const second = evaluateWatcherPhaseAQueuedTxs({
         queuedTxs: [entry.queued],
         config: entry.config,
       });
@@ -1005,10 +998,10 @@ describe("rejection evidence per reachable code", () => {
         ),
       );
       expect([...produced].sort()).toStrictEqual(
-        [...WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1].sort(),
+        [...WATCHER_PHASE_A_EVIDENCED_REJECT_CODES].sort(),
       );
       expect(EVIDENCE_CASES).toHaveLength(
-        WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1.length,
+        WATCHER_PHASE_A_EVIDENCED_REJECT_CODES.length,
       );
     },
     SLOW_TEST_TIMEOUT_MS,
@@ -1024,13 +1017,13 @@ describe("adjacent boundary", () => {
     const fixture = makeNativeTx({ privateKey: KEY, fee: 7n });
     const config = configFor({ minFeeB: 7n });
     expect(
-      evaluateWatcherPhaseAQueuedTxsV1({
+      evaluateWatcherPhaseAQueuedTxs({
         queuedTxs: [queuedTx(fixture.txId, fixture.txCbor)],
         config,
       }).action,
     ).toBe("accept");
     const below = makeNativeTx({ privateKey: KEY, fee: 6n });
-    const result = evaluateWatcherPhaseAQueuedTxsV1({
+    const result = evaluateWatcherPhaseAQueuedTxs({
       queuedTxs: [queuedTx(below.txId, below.txCbor)],
       config,
     });
@@ -1045,7 +1038,7 @@ describe("adjacent boundary", () => {
         outputs: manyOutputs(700),
       });
       expect(
-        evaluateWatcherPhaseAQueuedTxsV1({
+        evaluateWatcherPhaseAQueuedTxs({
           queuedTxs: [queuedTx(under.txId, under.txCbor)],
           config: CONFIG,
         }).action,
@@ -1055,7 +1048,7 @@ describe("adjacent boundary", () => {
         outputs: manyOutputs(2000),
       });
       expect(
-        evaluateWatcherPhaseAQueuedTxsV1({
+        evaluateWatcherPhaseAQueuedTxs({
           queuedTxs: [queuedTx(over.txId, over.txCbor)],
           config: CONFIG,
         }).rejections[0]!.code,
@@ -1105,9 +1098,9 @@ describe("adjacent boundary", () => {
   ])(
     "shows %s is dominated by %s rather than silently unreachable",
     (dominated, dominating, build) => {
-      expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1).toContain(dominated);
+      expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES).toContain(dominated);
       const fixture = build();
-      const result = evaluateWatcherPhaseAQueuedTxsV1({
+      const result = evaluateWatcherPhaseAQueuedTxs({
         queuedTxs: [queuedTx(fixture.txId, fixture.txCbor)],
         config: CONFIG,
       });
@@ -1118,7 +1111,7 @@ describe("adjacent boundary", () => {
   );
 
   it("shows the canonical encoder refuses an over-deep native script", () => {
-    expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1).toContain(
+    expect(WATCHER_PHASE_A_DOMINATED_REJECT_CODES).toContain(
       RejectCodes.NativeScriptDepth,
     );
     expect(() =>
@@ -1140,7 +1133,7 @@ describe("deterministic ordering", () => {
       requiredSignerItems: [Buffer.alloc(28, 0x5a)],
     });
     const earlyStage = fromNativeTx({ auxiliaryDataHash: Buffer.alloc(32, 1) });
-    const result = evaluateWatcherPhaseAQueuedTxsV1({
+    const result = evaluateWatcherPhaseAQueuedTxs({
       queuedTxs: [lateStage, earlyStage],
       config: CONFIG,
     });
@@ -1160,7 +1153,7 @@ describe("deterministic ordering", () => {
   it("breaks a phase tie by canonical block order", () => {
     const first = fromNativeTx({ auxiliaryDataHash: Buffer.alloc(32, 1) });
     const second = fromNativeTx({ auxiliaryDataHash: Buffer.alloc(32, 2) });
-    const result = evaluateWatcherPhaseAQueuedTxsV1({
+    const result = evaluateWatcherPhaseAQueuedTxs({
       queuedTxs: [first, second],
       config: CONFIG,
     });
@@ -1168,12 +1161,12 @@ describe("deterministic ordering", () => {
   });
 
   it("uses the W23 phase priority for stagePriority", () => {
-    const result = evaluateWatcherPhaseAQueuedTxsV1({
+    const result = evaluateWatcherPhaseAQueuedTxs({
       queuedTxs: [fromNativeTx({ requiredSignerItems: [Buffer.alloc(28, 1)] })],
       config: CONFIG,
     });
     expect(result.rejections[0]!.stagePriority).toBe(
-      WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY.indexOf("signatures"),
+      WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY.indexOf("signatures"),
     );
   });
 });
@@ -1195,9 +1188,7 @@ describe("block verification", () => {
     expect(fixture.reconstruction.action).toBe("accept");
     const first = await evaluateBlock(fixture);
     const second = await evaluateBlock(fixture);
-    expect(first.schemaVersion).toBe(
-      WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
-    );
+    expect(first.schemaVersion).toBe(WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION);
     expect(first.action).toBe("accept");
     expect(first.reasonCodes).toStrictEqual([]);
     expect(first.rejections).toStrictEqual([]);
@@ -1229,9 +1220,7 @@ describe("block verification", () => {
     expect(second.rejections[0]!.code).toBe(RejectCodes.InvalidSignature);
     expect(first.resultDigest).not.toBe(second.resultDigest);
     const { resultDigest: _digest, ...withoutDigest } = second;
-    expect(watcherSha256CanonicalJsonV1(withoutDigest)).toBe(
-      second.resultDigest,
-    );
+    expect(watcherSha256CanonicalJson(withoutDigest)).toBe(second.resultDigest);
   });
 
   it("matches the canonical verdict for a mixed block", async () => {
@@ -1257,8 +1246,8 @@ describe("block verification", () => {
     // verdict. The watcher record must be the canonical record, reshaped.
     const byTxId = new Map(
       cbors.map((cbor) => [
-        computeMidgardNativeTxIdV1(
-          decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor),
+        computeMidgardNativeTxId(
+          decodeMidgardNativeTxFullFromCanonicalCbor(cbor),
         ).toString("hex"),
         cbor,
       ]),
@@ -1271,7 +1260,7 @@ describe("block verification", () => {
         queuedTx(Buffer.from(txId, "hex"), byTxId.get(txId)!, {
           arrivalSeq: BigInt(index),
         }),
-        makeWatcherPhaseAConfigV1({
+        makeWatcherPhaseAConfig({
           header: fixture.header,
           ruleBundle: RULE_BUNDLE,
         }),
@@ -1319,7 +1308,7 @@ describe("program-material projection", () => {
 
     // Control: handing the unprojected block-wide set to the canonical
     // validator is exactly what the projection exists to avoid.
-    const fullSidecar = encodeMidgardCekProgramMaterialSidecarV1([
+    const fullSidecar = encodeMidgardCekProgramMaterialSidecar([
       ORPHAN_MATERIAL_ENTRY,
     ]);
     const tx = makeNativeTx({ privateKey: KEY });
@@ -1334,7 +1323,7 @@ describe("program-material projection", () => {
 
   it("derives an empty sidecar when the block carries no material", () => {
     const tx = makeNativeTx({ privateKey: KEY });
-    const [queued] = watcherPhaseAQueuedTxsV1({
+    const [queued] = watcherPhaseAQueuedTxs({
       transactions: [{ txId: tx.txId.toString("hex"), txCbor: tx.txCbor }],
       programMaterial: [],
     });
@@ -1347,12 +1336,12 @@ describe("program-material projection", () => {
     // Phase A more permissive than the operator's own admission. Feeding bytes
     // the canonical decoder rejects forces the fallback and pins it to the
     // complete block-wide set, not the empty one.
-    const [queued] = watcherPhaseAQueuedTxsV1({
+    const [queued] = watcherPhaseAQueuedTxs({
       transactions: [{ txId: h32(0x11), txCbor: Buffer.from([0xff]) }],
       programMaterial: [ORPHAN_MATERIAL_DA_ENTRY],
     });
     expect(queued!.programMaterialSidecarCbor).toStrictEqual(
-      encodeMidgardCekProgramMaterialSidecarV1([ORPHAN_MATERIAL_ENTRY]),
+      encodeMidgardCekProgramMaterialSidecar([ORPHAN_MATERIAL_ENTRY]),
     );
     expect(queued!.programMaterialSidecarCbor).not.toStrictEqual(EMPTY_SIDECAR);
   });
@@ -1366,7 +1355,7 @@ describe("program-material projection", () => {
       privateKey: KEY,
       spendInputs: [outRefFromByte(12)],
     });
-    const derived = watcherPhaseAQueuedTxsV1({
+    const derived = watcherPhaseAQueuedTxs({
       transactions: [
         { txId: first.txId.toString("hex"), txCbor: first.txCbor },
         { txId: second.txId.toString("hex"), txCbor: second.txCbor },
@@ -1381,7 +1370,7 @@ describe("program-material projection", () => {
 
   it("fails closed on undecodable block program material", () => {
     expect(() =>
-      watcherPhaseAQueuedTxsV1({
+      watcherPhaseAQueuedTxs({
         transactions: [],
         programMaterial: [[h32(1), "00"]],
       }),
@@ -1416,9 +1405,9 @@ describe("malformed inputs", () => {
       txCbors: [makeNativeTx({ privateKey: KEY }).txCbor],
     });
     expect(() =>
-      SDK.encodeDaPayloadV1({
+      SDK.encodeDaPayload({
         ...fixture.payload,
-        version: (SDK.DA_PAYLOAD_V1_VERSION + 1n) as never,
+        version: (SDK.DA_PAYLOAD_VERSION + 1n) as never,
       }),
     ).toThrow(/version must equal/u);
     // A version byte flipped after encoding is not decodable either.
@@ -1434,7 +1423,7 @@ describe("malformed inputs", () => {
   });
 
   it("rejects undecodable transaction bytes through the canonical decoder", () => {
-    const result = evaluateWatcherPhaseAQueuedTxsV1({
+    const result = evaluateWatcherPhaseAQueuedTxs({
       queuedTxs: [queuedTx(Buffer.alloc(32), Buffer.alloc(0))],
       config: CONFIG,
     });
@@ -1444,7 +1433,7 @@ describe("malformed inputs", () => {
 
   it("rejects a malformed transaction id in the derived queue", () => {
     expect(() =>
-      watcherPhaseAQueuedTxsV1({
+      watcherPhaseAQueuedTxs({
         transactions: [{ txId: "zz", txCbor: Buffer.alloc(1) }],
         programMaterial: [],
       }),
@@ -1458,16 +1447,16 @@ describe("malformed inputs", () => {
 
 describe("fail-closed bindings", () => {
   const tamper = (
-    reconstruction: WatcherHeaderRootReconstructionResultV1,
-    patch: Partial<WatcherHeaderRootReconstructionResultV1>,
+    reconstruction: WatcherHeaderRootReconstructionResult,
+    patch: Partial<WatcherHeaderRootReconstructionResult>,
     reDigest: boolean,
-  ): WatcherHeaderRootReconstructionResultV1 => {
+  ): WatcherHeaderRootReconstructionResult => {
     const next = { ...reconstruction, ...patch };
     if (!reDigest) {
       return next;
     }
     const { resultDigest: _drop, ...rest } = next;
-    return { ...next, resultDigest: watcherSha256CanonicalJsonV1(rest) };
+    return { ...next, resultDigest: watcherSha256CanonicalJson(rest) };
   };
 
   it("refuses a W22 record whose digest does not cover its fields", async () => {
@@ -1559,7 +1548,7 @@ describe("fail-closed bindings", () => {
       ruleBundle: {
         ...RULE_BUNDLE,
         consensusProfileDigest: h32(0x6d),
-      } as WatcherRuleBundleV1,
+      } as WatcherRuleBundle,
     });
     expect(result.action).toBe("error");
     expect(result.reasonCodes).toStrictEqual(["rule_bundle_profile_mismatch"]);
@@ -1567,7 +1556,7 @@ describe("fail-closed bindings", () => {
 
   it("refuses a rule bundle with a foreign rejection-selection rule", () => {
     expect(() =>
-      makeWatcherPhaseAConfigV1({
+      makeWatcherPhaseAConfig({
         header: baseHeader(),
         ruleBundle: {
           ...RULE_BUNDLE,
@@ -1575,7 +1564,7 @@ describe("fail-closed bindings", () => {
             ...RULE_BUNDLE.validation,
             rejectionSelection: "last_rejection_wins_v0",
           },
-        } as unknown as WatcherRuleBundleV1,
+        } as unknown as WatcherRuleBundle,
       }),
     ).toThrow(
       expect.objectContaining({
@@ -1586,27 +1575,27 @@ describe("fail-closed bindings", () => {
 
   it("refuses a rule bundle with a reordered validation phase priority", () => {
     expect(() =>
-      makeWatcherPhaseAConfigV1({
+      makeWatcherPhaseAConfig({
         header: baseHeader(),
         ruleBundle: {
           ...RULE_BUNDLE,
           validation: {
             ...RULE_BUNDLE.validation,
             phasePriority: [
-              ...WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
+              ...WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
             ].reverse(),
           },
-        } as WatcherRuleBundleV1,
+        } as WatcherRuleBundle,
       }),
     ).toThrow(WatcherPhaseAVerifierError);
   });
 
   it("refuses a header whose protocol version differs from the bundle", () => {
-    // A real `HeaderV1` cannot carry a non-V1 protocol version - the SDK
+    // A real `Header` cannot carry a non-V1 protocol version - the SDK
     // refuses to admit the observation first - so this guard is exercised at
     // the configuration boundary it protects.
     expect(() =>
-      makeWatcherPhaseAConfigV1({
+      makeWatcherPhaseAConfig({
         header: baseHeader({ protocolVersion: 9n }),
         ruleBundle: RULE_BUNDLE,
       }),
@@ -1632,7 +1621,7 @@ describe("fail-closed bindings", () => {
 
   it("fails closed on a reject code outside the canonical vocabulary", () => {
     expect(() =>
-      watcherPhaseARejectionProjectionV1({
+      watcherPhaseARejectionProjection({
         rejected: {
           txId: Buffer.alloc(32, 1),
           code: "E_NOT_A_REAL_CODE" as RejectCode,
@@ -1649,7 +1638,7 @@ describe("fail-closed bindings", () => {
 
   it("fails closed on a rejection without a canonical stage", () => {
     expect(() =>
-      watcherPhaseARejectionProjectionV1({
+      watcherPhaseARejectionProjection({
         rejected: {
           txId: Buffer.alloc(32, 1),
           code: RejectCodes.EmptyInputs,
@@ -1665,7 +1654,7 @@ describe("fail-closed bindings", () => {
 
   it("fails closed on a rejection carrying a foreign transaction id", () => {
     expect(() =>
-      watcherPhaseARejectionProjectionV1({
+      watcherPhaseARejectionProjection({
         rejected: {
           txId: Buffer.alloc(32, 2),
           code: RejectCodes.EmptyInputs,
@@ -1681,8 +1670,8 @@ describe("fail-closed bindings", () => {
   });
 
   it("keeps every reason code in the declared total order", () => {
-    expect(new Set(WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1).size).toBe(
-      WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1.length,
+    expect(new Set(WATCHER_PHASE_A_VERIFIER_REASON_CODES).size).toBe(
+      WATCHER_PHASE_A_VERIFIER_REASON_CODES.length,
     );
   });
 

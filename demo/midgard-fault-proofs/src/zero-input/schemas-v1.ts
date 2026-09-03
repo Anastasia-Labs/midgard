@@ -1,18 +1,18 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
   rootMembershipProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { ZeroInputStateV1Schema } from "./family-v1.js";
+import { ZeroInputStateSchema } from "./family-v1.js";
 
-export const ZeroInputStep01SourceV1Schema = Data.Enum([
+export const ZeroInputStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -20,39 +20,38 @@ export const ZeroInputStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const ZeroInputForcedSourcePayloadV1Schema = Data.Object({
-  header: HeaderV1Schema,
+export const ZeroInputForcedSourcePayloadSchema = Data.Object({
+  header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
-    ForcedInclusionTxV1Schema,
+    ForcedInclusionTxSchema,
   ),
   direction: Data.Integer(),
 });
-export const ZeroInputStep01ArgsV1Schema = Data.Object({
-  source: ZeroInputStep01SourceV1Schema,
+export const ZeroInputStep01ArgsSchema = Data.Object({
+  source: ZeroInputStep01SourceSchema,
 });
-export const ZeroInputStep01RedeemerV1Schema = faultProofStepRedeemerSchema(
-  ZeroInputStep01ArgsV1Schema,
+export const ZeroInputStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  ZeroInputStep01ArgsSchema,
 );
 
-export const ZeroInputStep02DatumV1Schema = faultProofStepDatumSchema(
-  ZeroInputStateV1Schema,
-);
-export const ZeroInputStep02ArgsV1Schema = Data.Object({
+export const ZeroInputStep02DatumSchema =
+  faultProofStepDatumSchema(ZeroInputStateSchema);
+export const ZeroInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
 });
-export const ZeroInputStep02RedeemerV1Schema = faultProofStepRedeemerSchema(
-  ZeroInputStep02ArgsV1Schema,
+export const ZeroInputStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  ZeroInputStep02ArgsSchema,
 );

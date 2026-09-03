@@ -1,38 +1,38 @@
 import { createHash } from "node:crypto";
 
 import {
-  buildMidgardValidationMerkleMembershipV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptPurposeLeafV1,
+  buildMidgardValidationMerkleMembership,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptPurposeLeaf,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  decodeRetainedValidationWitnessV1,
+  acceptedVerdictSubject,
+  decodeRetainedValidationWitness,
   type EventKey,
-  forcedVerdictSubjectV1,
-  type VerdictSubjectV1,
+  forcedVerdictSubject,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { projectMidgardRawEnvelopeForPhaseAV1 } from "@al-ft/midgard-validation";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  prepareUnusedScriptWitnessEvidenceV1,
-  UNUSED_SCRIPT_WITNESS_VIOLATION_ID_V1,
-  type UnusedScriptPurposeOpeningV1,
-  type UnusedScriptSourceOpeningV1,
+  prepareUnusedScriptWitnessEvidence,
+  UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
+  type UnusedScriptPurposeOpening,
+  type UnusedScriptSourceOpening,
 } from "./family-v1.js";
-import type { UnusedScriptWitnessProductionArtifactV1 } from "./production-actuator-v1.js";
-import { buildUnusedScriptWitnessDirectionControlFromRetainedDaV1 } from "./retained-stage-twelve-v1.js";
-import type { UnusedScriptWitnessAuthenticationV1 } from "./submit-step-02-v1.js";
+import type { UnusedScriptWitnessArtifact } from "./production-actuator-v1.js";
+import { buildUnusedScriptWitnessDirectionControlFromRetainedDa } from "./retained-stage-twelve-v1.js";
+import type { UnusedScriptWitnessAuthentication } from "./submit-step-02-v1.js";
 
 const exactIndex = (value: bigint, label: string): number => {
   const result = Number(value);
@@ -47,11 +47,11 @@ type SelectedInlineSource = Readonly<{
 }>;
 
 const selectedInlineSources = (
-  block: CanonicalBlockEvidenceV1,
+  block: CanonicalBlockEvidence,
 ): readonly SelectedInlineSource[] =>
   block.reconstruction.payload.block_body.validation_trace_witnesses.flatMap(
     ([, encoded]) => {
-      const retained = decodeRetainedValidationWitnessV1(
+      const retained = decodeRetainedValidationWitness(
         Buffer.from(encoded, "hex"),
       );
       if (
@@ -78,11 +78,11 @@ const selectedInlineSources = (
  * every other inline field-6 coordinate is unused. A self-consistent forged
  * descriptor remains accountable through the validation-trace-invalid arm.
  */
-export const detectUnusedScriptWitnessCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly CanonicalViolationDetectionV1[]> => {
+export const detectUnusedScriptWitnessCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly CanonicalViolationDetection[]> => {
   const selected = selectedInlineSources(block);
-  const detections: CanonicalViolationDetectionV1[] = [];
+  const detections: CanonicalViolationDetection[] = [];
   block.transactions.forEach((transaction, position) => {
     let projection;
     try {
@@ -100,9 +100,9 @@ export const detectUnusedScriptWitnessCanonicalViolationsV1 = async (
     projection.scriptWitnesses.forEach((_, scriptIndex) => {
       if (used.has(scriptIndex)) return;
       detections.push({
-        detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID_V1}:accepted:${position.toString()}:${transaction.nodeTxId}:${scriptIndex.toString()}`,
+        detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${scriptIndex.toString()}`,
         headerHash: block.headerHash,
-        violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID_V1,
+        violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
         position: BigInt(position),
         diagnostic: `accepted transaction retained unused script witness ${scriptIndex.toString()}`,
       });
@@ -129,9 +129,9 @@ export const detectUnusedScriptWitnessCanonicalViolationsV1 = async (
     )
       return;
     detections.push({
-      detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID_V1}:forced:${position.toString()}:${transaction.value.tx_id}:${scriptIndex.toString()}`,
+      detectionId: `${UNUSED_SCRIPT_WITNESS_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${scriptIndex.toString()}`,
       headerHash: block.headerHash,
-      violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID_V1,
+      violationId: UNUSED_SCRIPT_WITNESS_VIOLATION_ID,
       position: BigInt(block.transactions.length + position),
       diagnostic: `forced rejection called selected script witness ${scriptIndex.toString()} unused`,
     });
@@ -145,7 +145,7 @@ export const detectUnusedScriptWitnessCanonicalViolationsV1 = async (
   );
 };
 
-const retainedEntries = (block: CanonicalBlockEvidenceV1) => ({
+const retainedEntries = (block: CanonicalBlockEvidence) => ({
   traces: block.reconstruction.payload.block_body.validation_traces.map(
     ([key, value]) => ({
       key: Buffer.from(key, "hex"),
@@ -168,16 +168,16 @@ const buildMaterial = async ({
   scriptIndex,
   txCbor,
 }: {
-  block: CanonicalBlockEvidenceV1;
+  block: CanonicalBlockEvidence;
   eventKey: EventKey;
-  subject: VerdictSubjectV1;
+  subject: VerdictSubject;
   scriptIndex: number;
   txCbor: Buffer;
 }) => {
   const { traces, witnesses } = retainedEntries(block);
   if (subject.direction !== 0n && subject.direction !== 1n)
     throw new Error("unusedScriptWitness direction changed");
-  const base = await buildUnusedScriptWitnessDirectionControlFromRetainedDaV1({
+  const base = await buildUnusedScriptWitnessDirectionControlFromRetainedDa({
     eventKey,
     transactionId: subject.transaction_id,
     direction: subject.direction,
@@ -190,14 +190,14 @@ const buildMaterial = async ({
   const sourceBare = base.sources;
   const sourceLeaves = sourceBare.map((source) =>
     source.originKind === 0
-      ? hashMidgardInlineScriptSourceLeafV1({
+      ? hashMidgardInlineScriptSourceLeaf({
           sourceIndex: BigInt(source.sourceIndex),
           scriptLanguageTag: source.languageTag,
           scriptHash: Buffer.from(source.scriptHashHex, "hex"),
           scriptTotalLength: source.scriptTotalLength,
           itemCommitment: Buffer.from(source.itemCommitmentHex, "hex"),
         })
-      : hashMidgardReferenceScriptSourceLeafV1({
+      : hashMidgardReferenceScriptSourceLeaf({
           sourceKey: Buffer.from(source.sourceKeyHex, "hex"),
           scriptLanguageTag: source.languageTag,
           scriptHash: Buffer.from(source.scriptHashHex, "hex"),
@@ -205,7 +205,7 @@ const buildMaterial = async ({
           itemCommitment: Buffer.from(source.itemCommitmentHex, "hex"),
         }),
   );
-  const sources: readonly UnusedScriptSourceOpeningV1[] = sourceBare.map(
+  const sources: readonly UnusedScriptSourceOpening[] = sourceBare.map(
     (source, frontierIndex) => ({
       ...source,
       frontierIndex,
@@ -225,17 +225,17 @@ const buildMaterial = async ({
   );
   const purposeBare = base.purposes;
   const purposeLeaves = purposeBare.map((purpose) =>
-    hashMidgardScriptPurposeLeafV1({
+    hashMidgardScriptPurposeLeaf({
       purposeKind: purpose.purposeKind,
       purposeIndex: BigInt(purpose.purposeIndex),
       scriptHash: Buffer.from(purpose.scriptHashHex, "hex"),
       subject: Buffer.from(purpose.purposeSubjectHex, "hex"),
     }),
   );
-  const purposes: readonly UnusedScriptPurposeOpeningV1[] = purposeBare.map(
+  const purposes: readonly UnusedScriptPurposeOpening[] = purposeBare.map(
     (purpose, frontierIndex) => ({
       ...purpose,
-      membership: buildMidgardValidationMerkleMembershipV1(
+      membership: buildMidgardValidationMerkleMembership(
         purposeLeaves,
         frontierIndex,
       ),
@@ -244,7 +244,7 @@ const buildMaterial = async ({
   const universeDigest = createHash("sha256")
     .update(Buffer.concat([...sourceLeaves, ...purposeLeaves]))
     .digest("hex");
-  const evidence = prepareUnusedScriptWitnessEvidenceV1({
+  const evidence = prepareUnusedScriptWitnessEvidence({
     finding: { subject, scriptIndex },
     fieldPreimage: projection.canonical.witnessSet.scriptTxWitsPreimageCbor,
     universe: {
@@ -256,7 +256,7 @@ const buildMaterial = async ({
     },
   });
   const target = sources[scriptIndex]!;
-  const authentication: UnusedScriptWitnessAuthenticationV1 = {
+  const authentication: UnusedScriptWitnessAuthentication = {
     trace_membership: base.traceMembership,
     machine_state: base.machineState,
     trace_proof: base.traceProof,
@@ -273,11 +273,11 @@ const buildMaterial = async ({
 };
 
 /** Exact retained-DA artifact for the first canonical ID2f detection. */
-export const prepareProductionUnusedScriptWitnessArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<UnusedScriptWitnessProductionArtifactV1> => {
+export const prepareUnusedScriptWitnessArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<UnusedScriptWitnessArtifact> => {
   const detection = (
-    await detectUnusedScriptWitnessCanonicalViolationsV1(block)
+    await detectUnusedScriptWitnessCanonicalViolations(block)
   )[0];
   if (detection === undefined)
     throw new Error(
@@ -299,7 +299,7 @@ export const prepareProductionUnusedScriptWitnessArtifactV1 = async (
     const material = await buildMaterial({
       block,
       eventKey,
-      subject: acceptedVerdictSubjectV1(transactionId!),
+      subject: acceptedVerdictSubject(transactionId!),
       scriptIndex,
       txCbor: Buffer.from(transaction.txCbor, "hex"),
     });
@@ -309,7 +309,7 @@ export const prepareProductionUnusedScriptWitnessArtifactV1 = async (
         value: Buffer.from(entry.l2TransactionSourceCbor, "hex"),
       })),
     );
-    const native = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const native = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     return Object.freeze({
@@ -345,7 +345,7 @@ export const prepareProductionUnusedScriptWitnessArtifactV1 = async (
   const material = await buildMaterial({
     block,
     eventKey,
-    subject: forcedVerdictSubjectV1({
+    subject: forcedVerdictSubject({
       transactionId: transaction.value.tx_id,
       sourceKey: transaction.key,
       rejectionReason: verdict.ForcedTxInvalid.reason,

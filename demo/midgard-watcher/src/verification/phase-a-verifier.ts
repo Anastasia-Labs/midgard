@@ -27,10 +27,10 @@
  *
  * 2. PUBLISHED REJECTION VOCABULARY. The canonical 50-member `RejectCodes`
  *    vocabulary (`@al-ft/midgard-validation/types`) is partitioned below into
- *    `WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1` (32) and
- *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1` (18), each excluded code
+ *    `WATCHER_PHASE_A_REACHABLE_REJECT_CODES` (32) and
+ *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODES` (18), each excluded code
  *    carrying a one-line justification in
- *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1`. The partition is
+ *    `WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS`. The partition is
  *    derived from the canonical source, not invented: the reachable set is
  *    exactly the union of the codes `validatePhaseASingle` can return directly
  *    (13, phase-a.ts:412-545) and the codes `consensusProfileRejectCode`
@@ -43,7 +43,7 @@
  *    rejection into an acceptance.
  *
  * NON-CIRCULAR INPUT BINDING. The transaction bytes are never taken from a
- * caller-supplied list. They come from `canonicalBlockEvidenceFromVerifiedPayloadV1`
+ * caller-supplied list. They come from `canonicalBlockEvidenceFromVerifiedPayload`
  * (the Q03 evidence core), which re-admits the L1-authenticated header
  * observation, re-derives every root, and authenticates each
  * `transaction_preimages` entry against its `transactions` source commitment
@@ -60,30 +60,30 @@
  * validator accepted every transaction in the block.
  *
  * Like the finality engine and W22, the result is frozen, versioned, and
- * digest-bound with `watcherSha256CanonicalJsonV1`, so two runs over the same
+ * digest-bound with `watcherSha256CanonicalJson`, so two runs over the same
  * bytes produce the same `resultDigest`.
  */
 
 import {
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramMaterialEntryV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  decodeMidgardCekProgramMaterialDaEntry,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialEntry,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec/native";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/native";
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  MIDGARD_PROTOCOL_V1_VERSION,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+  MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "@al-ft/midgard-fault-proofs";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs";
 import type {
-  AuthenticatedStateQueueHeaderObservationV1,
-  EvidenceProvenanceV1,
-  HeaderV1,
+  AuthenticatedStateQueueHeaderObservation,
+  EvidenceProvenance,
+  Header,
 } from "@al-ft/midgard-sdk";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import type {
@@ -94,16 +94,16 @@ import type {
 } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 
-import { watcherSha256CanonicalJsonV1 } from "../storage/durable-store.js";
-import type { WatcherHeaderRootReconstructionResultV1 } from "./header-root-reconstruction.js";
-import { WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION } from "./header-root-reconstruction.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import type { WatcherHeaderRootReconstructionResult } from "./header-root-reconstruction.js";
+import { WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION } from "./header-root-reconstruction.js";
 import {
-  WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-  WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY,
-  type WatcherRuleBundleV1,
+  WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+  WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+  type WatcherRuleBundle,
 } from "./rule-bundle-v1.js";
 
-export const WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION =
+export const WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION =
   "midgard-watcher-phase-a-verifier-v1" as const;
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ export const WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION =
  * (:268, :277), `E_NETWORK_ID_MISMATCH` (:502), `E_TX_VERSION` (:447 for a
  * non-V1 consensus profile), `E_CEK_PROGRAM_MATERIAL` (:456, :487).
  */
-export const WATCHER_PHASE_A_DIRECT_REJECT_CODES_V1 = Object.freeze([
+export const WATCHER_PHASE_A_DIRECT_REJECT_CODES = Object.freeze([
   RejectCodes.CborDeserialization,
   RejectCodes.TxHashMismatch,
   RejectCodes.EmptyInputs,
@@ -146,7 +146,7 @@ export const WATCHER_PHASE_A_DIRECT_REJECT_CODES_V1 = Object.freeze([
  * declaration order. `E_TX_VERSION` is also a direct code, so the two lists
  * overlap by exactly one member.
  */
-export const WATCHER_PHASE_A_CONSENSUS_REJECT_CODES_V1 = Object.freeze([
+export const WATCHER_PHASE_A_CONSENSUS_REJECT_CODES = Object.freeze([
   RejectCodes.IsValidFalseForbidden,
   RejectCodes.AuxDataForbidden,
   RejectCodes.TxVersion,
@@ -169,28 +169,28 @@ export const WATCHER_PHASE_A_CONSENSUS_REJECT_CODES_V1 = Object.freeze([
 ] as const);
 
 /** The full canonical vocabulary, in `RejectCodes` declaration order. */
-export const WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1 = Object.freeze(
+export const WATCHER_PHASE_A_CANONICAL_REJECT_CODES = Object.freeze(
   Object.values(RejectCodes),
 );
 
 const REACHABLE_SET: ReadonlySet<string> = new Set<string>([
-  ...WATCHER_PHASE_A_DIRECT_REJECT_CODES_V1,
-  ...WATCHER_PHASE_A_CONSENSUS_REJECT_CODES_V1,
+  ...WATCHER_PHASE_A_DIRECT_REJECT_CODES,
+  ...WATCHER_PHASE_A_CONSENSUS_REJECT_CODES,
 ]);
 
 /**
  * The 32 canonical codes Phase A can produce, in `RejectCodes` declaration
  * order so the published table and every emitted list are stable.
  */
-export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1 = Object.freeze(
-  WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1.filter((code) =>
+export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES = Object.freeze(
+  WATCHER_PHASE_A_CANONICAL_REJECT_CODES.filter((code) =>
     REACHABLE_SET.has(code),
   ),
 );
 
 /** The 18 canonical codes Phase A cannot produce. */
-export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1 = Object.freeze(
-  WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1.filter(
+export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
+  WATCHER_PHASE_A_CANONICAL_REJECT_CODES.filter(
     (code) => !REACHABLE_SET.has(code),
   ),
 );
@@ -202,7 +202,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES_V1 = Object.freeze(
  * The suite asserts this list equals the set of codes its evidence corpus
  * actually produced, so it cannot drift into an unbacked claim.
  */
-export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1 = Object.freeze([
+export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.CborDeserialization,
   RejectCodes.TxHashMismatch,
   RejectCodes.EmptyInputs,
@@ -227,7 +227,7 @@ export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1 = Object.freeze([
 ] as const);
 
 const EVIDENCED_SET: ReadonlySet<string> = new Set<string>(
-  WATCHER_PHASE_A_EVIDENCED_REJECT_CODES_V1,
+  WATCHER_PHASE_A_EVIDENCED_REJECT_CODES,
 );
 
 /**
@@ -235,8 +235,8 @@ const EVIDENCED_SET: ReadonlySet<string> = new Set<string>(
  * V1 transaction: an earlier canonical rule always fires first, so no input
  * exists that reaches the check.
  */
-export const WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1 = Object.freeze(
-  WATCHER_PHASE_A_REACHABLE_REJECT_CODES_V1.filter(
+export const WATCHER_PHASE_A_DOMINATED_REJECT_CODES = Object.freeze(
+  WATCHER_PHASE_A_REACHABLE_REJECT_CODES.filter(
     (code) => !EVIDENCED_SET.has(code),
   ),
 );
@@ -246,7 +246,7 @@ export const WATCHER_PHASE_A_DOMINATED_REJECT_CODES_V1 = Object.freeze(
  * first. Each claim is pinned by an "adjacent boundary" case in the W24 suite
  * that shows the dominating code, not the dominated one.
  */
-export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1 =
+export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
   Object.freeze({
     [RejectCodes.InputCount]:
       "dominated: 16,385 spend inputs need far more than the 32,768-byte spend-inputs preimage bound, and short-enough items fail canonical out-ref decoding first (E_INVALID_FIELD_TYPE).",
@@ -281,7 +281,7 @@ export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS_V1 =
  * `consensusProfileRejectCode` case can emit it, so a watcher-side check would
  * be a new, looser rule rather than a reuse.
  */
-export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1 =
+export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS =
   Object.freeze({
     [RejectCodes.UnsupportedFieldNonEmpty]:
       "no Phase A call site: V1 canonical decoding rejects unsupported fields structurally, so the code is never constructed.",
@@ -326,7 +326,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODE_JUSTIFICATIONS_V1 =
 // ---------------------------------------------------------------------------
 
 /** Every reason this evaluation can report, in a fixed total order. */
-export const WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1 = [
+export const WATCHER_PHASE_A_VERIFIER_REASON_CODES = [
   "reconstruction_not_accepted",
   "reconstruction_unsupported_schema",
   "reconstruction_digest_mismatch",
@@ -345,14 +345,14 @@ export const WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1 = [
   "phase_a_rejection",
 ] as const;
 
-export type WatcherPhaseAVerifierReasonCodeV1 =
-  (typeof WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1)[number];
+export type WatcherPhaseAVerifierReasonCode =
+  (typeof WATCHER_PHASE_A_VERIFIER_REASON_CODES)[number];
 
 export class WatcherPhaseAVerifierError extends Error {
-  readonly code: WatcherPhaseAVerifierReasonCodeV1;
+  readonly code: WatcherPhaseAVerifierReasonCode;
   readonly path: string;
 
-  constructor(code: WatcherPhaseAVerifierReasonCodeV1, path: string) {
+  constructor(code: WatcherPhaseAVerifierReasonCode, path: string) {
     super(`${code}: ${path}`);
     this.name = "WatcherPhaseAVerifierError";
     this.code = code;
@@ -360,7 +360,7 @@ export class WatcherPhaseAVerifierError extends Error {
   }
 }
 
-const fail = (code: WatcherPhaseAVerifierReasonCodeV1, path: string): never => {
+const fail = (code: WatcherPhaseAVerifierReasonCode, path: string): never => {
   throw new WatcherPhaseAVerifierError(code, path);
 };
 
@@ -368,7 +368,7 @@ const fail = (code: WatcherPhaseAVerifierReasonCodeV1, path: string): never => {
 // Result shape
 // ---------------------------------------------------------------------------
 
-export type WatcherPhaseARejectionV1 = Readonly<{
+export type WatcherPhaseARejection = Readonly<{
   /** Position in the canonical block transaction order. */
   index: number;
   /** 32-byte canonical transaction id, lowercase hex. */
@@ -383,13 +383,13 @@ export type WatcherPhaseARejectionV1 = Readonly<{
   detail: string | null;
 }>;
 
-export type WatcherPhaseAVerificationResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION;
+export type WatcherPhaseAVerificationResult = Readonly<{
+  schemaVersion: typeof WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION;
   action: "accept" | "reject" | "error";
-  reasonCodes: readonly WatcherPhaseAVerifierReasonCodeV1[];
+  reasonCodes: readonly WatcherPhaseAVerifierReasonCode[];
   /** W23 rejection-selection rule that produced `selectedRejection`. */
-  rejectionSelection: typeof WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION;
-  consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  rejectionSelection: typeof WATCHER_RULE_BUNDLE_REJECTION_SELECTION;
+  consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   /** Null for a queued-transaction evaluation with no block context. */
   headerHash: string | null;
   payloadEnvelopeSha256: string | null;
@@ -401,28 +401,26 @@ export type WatcherPhaseAVerificationResultV1 = Readonly<{
   /** Accepted transaction ids in canonical block order. */
   acceptedTxIds: readonly string[];
   /** Rejections in canonical block order (ascending `index`). */
-  rejections: readonly WatcherPhaseARejectionV1[];
+  rejections: readonly WatcherPhaseARejection[];
   /** The W23-priority first fault: lowest `stagePriority`, then `index`. */
-  selectedRejection: WatcherPhaseARejectionV1 | null;
+  selectedRejection: WatcherPhaseARejection | null;
   resultDigest: string;
 }>;
 
 const digestResult = (
-  result: Omit<WatcherPhaseAVerificationResultV1, "resultDigest">,
-): WatcherPhaseAVerificationResultV1 =>
+  result: Omit<WatcherPhaseAVerificationResult, "resultDigest">,
+): WatcherPhaseAVerificationResult =>
   Object.freeze({
     ...result,
-    resultDigest: watcherSha256CanonicalJsonV1(result),
+    resultDigest: watcherSha256CanonicalJson(result),
   });
 
 const orderReasonCodes = (
-  codes: Iterable<WatcherPhaseAVerifierReasonCodeV1>,
-): readonly WatcherPhaseAVerifierReasonCodeV1[] => {
+  codes: Iterable<WatcherPhaseAVerifierReasonCode>,
+): readonly WatcherPhaseAVerifierReasonCode[] => {
   const present = new Set<string>(codes);
   return Object.freeze(
-    WATCHER_PHASE_A_VERIFIER_REASON_CODES_V1.filter((code) =>
-      present.has(code),
-    ),
+    WATCHER_PHASE_A_VERIFIER_REASON_CODES.filter((code) => present.has(code)),
   );
 };
 
@@ -440,18 +438,18 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
  * failure path throws, and the caller turns a throw into an error result, so
  * an unrecognisable canonical rejection can never become an acceptance.
  */
-export const watcherPhaseARejectionProjectionV1 = (input: {
+export const watcherPhaseARejectionProjection = (input: {
   readonly rejected: RejectedTx;
   readonly index: number;
   readonly expectedTxId: string;
-}): WatcherPhaseARejectionV1 => {
+}): WatcherPhaseARejection => {
   const { rejected, index, expectedTxId } = input;
   const txId = rejected.txId.toString("hex");
   if (txId !== expectedTxId) {
     fail("rejection_tx_id_mismatch", `$.rejections[${index.toString()}].txId`);
   }
   const code: string = rejected.code;
-  if (!WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1.includes(code as RejectCode)) {
+  if (!WATCHER_PHASE_A_CANONICAL_REJECT_CODES.includes(code as RejectCode)) {
     fail("unknown_reject_code", `$.rejections[${index.toString()}].code`);
   }
   // One guard, not two: the W23 priority list is the canonical phase
@@ -459,10 +457,9 @@ export const watcherPhaseARejectionProjectionV1 = (input: {
   // missing stage and an unknown stage name. A second `in MidgardValidationPhase`
   // check would be unreachable, and unreachable guards are indistinguishable
   // from no guard at all under mutation.
-  const stagePriority =
-    WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY.indexOf(
-      rejected.consensusPhase as MidgardValidationPhaseName,
-    );
+  const stagePriority = WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY.indexOf(
+    rejected.consensusPhase as MidgardValidationPhaseName,
+  );
   if (stagePriority < 0) {
     fail("missing_rejection_stage", `$.rejections[${index.toString()}].stage`);
   }
@@ -488,9 +485,9 @@ export const watcherPhaseARejectionProjectionV1 = (input: {
  * never displaced. An explicit tie-break clause would be unreachable code.
  */
 const selectRejection = (
-  rejections: readonly WatcherPhaseARejectionV1[],
-): WatcherPhaseARejectionV1 | null => {
-  let selected: WatcherPhaseARejectionV1 | null = null;
+  rejections: readonly WatcherPhaseARejection[],
+): WatcherPhaseARejection | null => {
+  let selected: WatcherPhaseARejection | null = null;
   for (const rejection of rejections) {
     if (selected === null || rejection.stagePriority < selected.stagePriority) {
       selected = rejection;
@@ -509,7 +506,7 @@ const selectRejection = (
  * verifier has no throughput requirement and the value must not influence a
  * digest.
  */
-export const WATCHER_PHASE_A_CONCURRENCY_V1 = 1 as const;
+export const WATCHER_PHASE_A_CONCURRENCY = 1 as const;
 
 /**
  * Arrival metadata is submission bookkeeping, not a validation input:
@@ -518,7 +515,7 @@ export const WATCHER_PHASE_A_CONCURRENCY_V1 = 1 as const;
  * values from public DA, so it pins them: `arrivalSeq` is the canonical block
  * position and `createdAt` is the Unix epoch. Neither appears in the result.
  */
-export const WATCHER_PHASE_A_CREATED_AT_V1 = new Date(0);
+export const WATCHER_PHASE_A_CREATED_AT = new Date(0);
 
 /**
  * Builds the canonical `PhaseAConfig` from the L1-committed header and the
@@ -526,26 +523,26 @@ export const WATCHER_PHASE_A_CREATED_AT_V1 = new Date(0);
  * numeric parameters are header fields, and the profile is the exact compiled
  * V1 tuple the rule bundle commits to.
  */
-export const makeWatcherPhaseAConfigV1 = (input: {
-  readonly header: HeaderV1;
-  readonly ruleBundle: WatcherRuleBundleV1;
+export const makeWatcherPhaseAConfig = (input: {
+  readonly header: Header;
+  readonly ruleBundle: WatcherRuleBundle;
 }): PhaseAConfig => {
   const { header, ruleBundle } = input;
   if (
-    ruleBundle.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID ||
-    ruleBundle.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_V1_DIGEST ||
-    ruleBundle.protocolVersion !== MIDGARD_PROTOCOL_V1_VERSION
+    ruleBundle.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID ||
+    ruleBundle.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST ||
+    ruleBundle.protocolVersion !== MIDGARD_PROTOCOL_VERSION
   ) {
     fail("rule_bundle_profile_mismatch", "$.ruleBundle.consensusProfileId");
   }
   if (
     ruleBundle.validation.rejectionSelection !==
-      WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION ||
+      WATCHER_RULE_BUNDLE_REJECTION_SELECTION ||
     ruleBundle.validation.phasePriority.length !==
-      WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY.length ||
+      WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY.length ||
     ruleBundle.validation.phasePriority.some(
       (phase, index) =>
-        phase !== WATCHER_RULE_BUNDLE_V1_VALIDATION_PHASE_PRIORITY[index],
+        phase !== WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY[index],
     )
   ) {
     fail("rule_bundle_profile_mismatch", "$.ruleBundle.validation");
@@ -557,9 +554,9 @@ export const makeWatcherPhaseAConfigV1 = (input: {
     expectedNetworkId: header.expectedNetworkId,
     minFeeA: header.minFeeA,
     minFeeB: header.minFeeB,
-    concurrency: WATCHER_PHASE_A_CONCURRENCY_V1,
-    strictnessProfile: MIDGARD_CONSENSUS_PROFILE_V1_ID,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    concurrency: WATCHER_PHASE_A_CONCURRENCY,
+    strictnessProfile: MIDGARD_CONSENSUS_PROFILE_ID,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   });
 };
 
@@ -567,7 +564,7 @@ export const makeWatcherPhaseAConfigV1 = (input: {
 // Program-material projection
 // ---------------------------------------------------------------------------
 
-const EMPTY_SIDECAR_V1 = encodeMidgardCekProgramMaterialSidecarV1([]);
+const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
 
 /**
  * Reconstructs the per-transaction CEK program-material sidecar from the
@@ -578,28 +575,28 @@ const EMPTY_SIDECAR_V1 = encodeMidgardCekProgramMaterialSidecarV1([]);
  * (`mergeMidgardCekProgramMaterialSidecarsV1`, cek-proof.ts:3856). Handing the
  * merged superset to Phase A would be wrong in the unsafe direction's mirror
  * image - it would reject honest transactions, because
- * `verifyMidgardCekProgramMaterialBundleV1` requires every supplied node to be
+ * `verifyMidgardCekProgramMaterialBundle` requires every supplied node to be
  * reachable from the transaction's own program envelopes.
  *
  * So the watcher projects the superset down to the reachable subset, and it
  * does so with the canonical reachability computation itself: the envelopes
- * come from `collectMidgardV1AttachedProgramEnvelopes` and the reachable roots
- * come from `verifyMidgardCekProgramMaterialBundleV1(..., allowUnreachable)`.
+ * come from `collectMidgardAttachedProgramEnvelopes` and the reachable roots
+ * come from `verifyMidgardCekProgramMaterialBundle(..., allowUnreachable)`.
  * There is no watcher-authored traversal. If that canonical computation throws
  * for any reason, the complete block-wide set is handed to Phase A unchanged,
  * so the canonical validator - not this function - renders the verdict.
  */
-const projectProgramMaterialSidecarV1 = (
+const projectProgramMaterialSidecar = (
   txCbor: Buffer,
-  blockMaterial: readonly MidgardCekProgramMaterialEntryV1[],
+  blockMaterial: readonly MidgardCekProgramMaterialEntry[],
 ): Buffer => {
   if (blockMaterial.length === 0) {
-    return EMPTY_SIDECAR_V1;
+    return EMPTY_SIDECAR;
   }
   try {
-    const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
-    const envelopes = collectMidgardV1AttachedProgramEnvelopes(canonicalTx);
-    const verifications = verifyMidgardCekProgramMaterialBundleV1(
+    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
+    const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
+    const verifications = verifyMidgardCekProgramMaterialBundle(
       envelopes,
       blockMaterial,
       { allowUnreachable: true },
@@ -610,24 +607,24 @@ const projectProgramMaterialSidecarV1 = (
         reached.add(root);
       }
     }
-    return encodeMidgardCekProgramMaterialSidecarV1(
+    return encodeMidgardCekProgramMaterialSidecar(
       blockMaterial.filter((entry) =>
         reached.has(Buffer.from(entry.root).toString("hex")),
       ),
     );
   } catch {
-    return encodeMidgardCekProgramMaterialSidecarV1(blockMaterial);
+    return encodeMidgardCekProgramMaterialSidecar(blockMaterial);
   }
 };
 
 /** Decodes the block-wide DA program-material entries, or fails closed. */
-const decodeBlockProgramMaterialV1 = (
+const decodeBlockProgramMaterial = (
   entries: readonly (readonly [string, string])[],
-): readonly MidgardCekProgramMaterialEntryV1[] => {
+): readonly MidgardCekProgramMaterialEntry[] => {
   try {
     return Object.freeze(
       entries.map(([rootHex, valueHex]) =>
-        decodeMidgardCekProgramMaterialDaEntryV1(
+        decodeMidgardCekProgramMaterialDaEntry(
           Buffer.from(rootHex, "hex"),
           Buffer.from(valueHex, "hex"),
         ),
@@ -645,7 +642,7 @@ const decodeBlockProgramMaterialV1 = (
 // Queued-transaction derivation
 // ---------------------------------------------------------------------------
 
-export type WatcherPhaseABlockTransactionV1 = Readonly<{
+export type WatcherPhaseABlockTransaction = Readonly<{
   /** 32-byte canonical transaction id, lowercase hex. */
   txId: string;
   /** Exact canonical transaction CBOR from `transaction_preimages`. */
@@ -660,11 +657,11 @@ export type WatcherPhaseABlockTransactionV1 = Readonly<{
  * (reconstruct.ts:445-490), and `validatePhaseASingle` re-checks it a second
  * time (E_TX_HASH_MISMATCH, phase-a.ts:431). This function only reshapes.
  */
-export const watcherPhaseAQueuedTxsV1 = (input: {
-  readonly transactions: readonly WatcherPhaseABlockTransactionV1[];
+export const watcherPhaseAQueuedTxs = (input: {
+  readonly transactions: readonly WatcherPhaseABlockTransaction[];
   readonly programMaterial: readonly (readonly [string, string])[];
 }): readonly QueuedTx[] => {
-  const blockMaterial = decodeBlockProgramMaterialV1(input.programMaterial);
+  const blockMaterial = decodeBlockProgramMaterial(input.programMaterial);
   return Object.freeze(
     input.transactions.map((transaction, index) => {
       if (!HEX_32.test(transaction.txId)) {
@@ -676,12 +673,12 @@ export const watcherPhaseAQueuedTxsV1 = (input: {
       return Object.freeze({
         txId: Buffer.from(transaction.txId, "hex"),
         txCbor: transaction.txCbor,
-        programMaterialSidecarCbor: projectProgramMaterialSidecarV1(
+        programMaterialSidecarCbor: projectProgramMaterialSidecar(
           transaction.txCbor,
           blockMaterial,
         ),
         arrivalSeq: BigInt(index),
-        createdAt: WATCHER_PHASE_A_CREATED_AT_V1,
+        createdAt: WATCHER_PHASE_A_CREATED_AT,
       });
     }),
   );
@@ -691,7 +688,7 @@ export const watcherPhaseAQueuedTxsV1 = (input: {
 // Core evaluation
 // ---------------------------------------------------------------------------
 
-export type WatcherPhaseABlockContextV1 = Readonly<{
+export type WatcherPhaseABlockContext = Readonly<{
   headerHash: string;
   payloadEnvelopeSha256: string;
   payloadSha256: string;
@@ -708,16 +705,16 @@ const NULL_CONTEXT = {
 } as const;
 
 const errorResult = (
-  reasonCodes: Iterable<WatcherPhaseAVerifierReasonCodeV1>,
-  context: WatcherPhaseABlockContextV1 | null,
+  reasonCodes: Iterable<WatcherPhaseAVerifierReasonCode>,
+  context: WatcherPhaseABlockContext | null,
   transactionCount: number,
-): WatcherPhaseAVerificationResultV1 =>
+): WatcherPhaseAVerificationResult =>
   digestResult({
-    schemaVersion: WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
     action: "error",
     reasonCodes: orderReasonCodes(reasonCodes),
-    rejectionSelection: WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    rejectionSelection: WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     ...(context ?? NULL_CONTEXT),
     transactionCount,
     acceptedCount: 0,
@@ -726,7 +723,7 @@ const errorResult = (
     selectedRejection: null,
   });
 
-const reasonCodeOf = (error: unknown): WatcherPhaseAVerifierReasonCodeV1 =>
+const reasonCodeOf = (error: unknown): WatcherPhaseAVerifierReasonCode =>
   error instanceof WatcherPhaseAVerifierError
     ? error.code
     : "canonical_validation_threw";
@@ -741,17 +738,17 @@ const reasonCodeOf = (error: unknown): WatcherPhaseAVerifierReasonCodeV1 =>
  * rejection, or an accepted/rejected count that does not add up all yield
  * `action: "error"`.
  */
-export const evaluateWatcherPhaseAQueuedTxsV1 = (input: {
+export const evaluateWatcherPhaseAQueuedTxs = (input: {
   readonly queuedTxs: readonly QueuedTx[];
   readonly config: PhaseAConfig;
-  readonly context?: WatcherPhaseABlockContextV1;
-}): WatcherPhaseAVerificationResultV1 => {
+  readonly context?: WatcherPhaseABlockContext;
+}): WatcherPhaseAVerificationResult => {
   const { queuedTxs, config } = input;
   const context = input.context ?? null;
   const transactionCount = queuedTxs.length;
-  const reasonCodes = new Set<WatcherPhaseAVerifierReasonCodeV1>();
+  const reasonCodes = new Set<WatcherPhaseAVerifierReasonCode>();
   const acceptedTxIds: string[] = [];
-  const rejections: WatcherPhaseARejectionV1[] = [];
+  const rejections: WatcherPhaseARejection[] = [];
 
   for (const [index, queuedTx] of queuedTxs.entries()) {
     const expectedTxId = queuedTx.txId.toString("hex");
@@ -769,9 +766,9 @@ export const evaluateWatcherPhaseAQueuedTxsV1 = (input: {
       acceptedTxIds.push(expectedTxId);
       continue;
     }
-    let projected: WatcherPhaseARejectionV1;
+    let projected: WatcherPhaseARejection;
     try {
-      projected = watcherPhaseARejectionProjectionV1({
+      projected = watcherPhaseARejectionProjection({
         rejected: outcome,
         index,
         expectedTxId,
@@ -791,11 +788,11 @@ export const evaluateWatcherPhaseAQueuedTxsV1 = (input: {
   // cannot disagree. A guard that no input can trip is not fail-closed
   // behaviour, it is unreachable code.
   return digestResult({
-    schemaVersion: WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
     action: rejections.length === 0 ? "accept" : "reject",
     reasonCodes: orderReasonCodes(reasonCodes),
-    rejectionSelection: WATCHER_RULE_BUNDLE_V1_REJECTION_SELECTION,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    rejectionSelection: WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     ...(context ?? NULL_CONTEXT),
     transactionCount,
     acceptedCount: acceptedTxIds.length,
@@ -809,17 +806,17 @@ export const evaluateWatcherPhaseAQueuedTxsV1 = (input: {
 // Block evaluation
 // ---------------------------------------------------------------------------
 
-export type EvaluateWatcherPhaseABlockInputV1 = {
+export type EvaluateWatcherPhaseABlockInput = {
   /** L1-authenticated header observation, as W22 consumed it. */
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   /** The accepted W22 record for this block. */
-  readonly reconstruction: WatcherHeaderRootReconstructionResultV1;
+  readonly reconstruction: WatcherHeaderRootReconstructionResult;
   /** Exact public `DaPayloadEnvelopeV1` bytes, from the W21 store. */
   readonly payloadEnvelopeCbor: Uint8Array;
   /** Provenance of those bytes; must be public/permissionless DA. */
-  readonly daProvenance: EvidenceProvenanceV1;
+  readonly daProvenance: EvidenceProvenance;
   /** The W23 rule bundle, with its commitment. */
-  readonly ruleBundle: WatcherRuleBundleV1;
+  readonly ruleBundle: WatcherRuleBundle;
   readonly ruleBundleCommitment: string;
   readonly minimumConfirmationDepth?: number;
 };
@@ -834,20 +831,20 @@ export type EvaluateWatcherPhaseABlockInputV1 = {
  * describing a different block, a different payload, or a rejected
  * reconstruction cannot reach the validator.
  */
-const bindReconstructionV1 = (input: {
-  readonly reconstruction: WatcherHeaderRootReconstructionResultV1;
+const bindReconstruction = (input: {
+  readonly reconstruction: WatcherHeaderRootReconstructionResult;
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
 }): void => {
   const { reconstruction } = input;
   if (
     reconstruction.schemaVersion !==
-    WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION
+    WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION
   ) {
     fail("reconstruction_unsupported_schema", "$.reconstruction.schemaVersion");
   }
   const { resultDigest, ...withoutDigest } = reconstruction;
-  if (watcherSha256CanonicalJsonV1(withoutDigest) !== resultDigest) {
+  if (watcherSha256CanonicalJson(withoutDigest) !== resultDigest) {
     fail("reconstruction_digest_mismatch", "$.reconstruction.resultDigest");
   }
   if (
@@ -871,12 +868,12 @@ const bindReconstructionV1 = (input: {
  * bytes plus the W23 rule bundle produce a frozen, digest-bound record of the
  * canonical Phase A verdict for every transaction in the block.
  */
-export const evaluateWatcherPhaseABlockV1 = async (
-  input: EvaluateWatcherPhaseABlockInputV1,
-): Promise<WatcherPhaseAVerificationResultV1> => {
+export const evaluateWatcherPhaseABlock = async (
+  input: EvaluateWatcherPhaseABlockInput,
+): Promise<WatcherPhaseAVerificationResult> => {
   let evidence;
   try {
-    evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
+    evidence = await canonicalBlockEvidenceFromVerifiedPayload({
       observation: input.observation,
       payloadEnvelopeCbor: input.payloadEnvelopeCbor,
       daProvenance: input.daProvenance,
@@ -888,7 +885,7 @@ export const evaluateWatcherPhaseABlockV1 = async (
     return errorResult(["canonical_reconstruction_failed"], null, 0);
   }
 
-  const context: WatcherPhaseABlockContextV1 = Object.freeze({
+  const context: WatcherPhaseABlockContext = Object.freeze({
     headerHash: evidence.headerHash,
     payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
     payloadSha256: evidence.payloadSha256,
@@ -899,16 +896,16 @@ export const evaluateWatcherPhaseABlockV1 = async (
   let queuedTxs: readonly QueuedTx[];
   let config: PhaseAConfig;
   try {
-    bindReconstructionV1({
+    bindReconstruction({
       reconstruction: input.reconstruction,
       headerHash: evidence.headerHash,
       payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
     });
-    config = makeWatcherPhaseAConfigV1({
+    config = makeWatcherPhaseAConfig({
       header: evidence.header,
       ruleBundle: input.ruleBundle,
     });
-    queuedTxs = watcherPhaseAQueuedTxsV1({
+    queuedTxs = watcherPhaseAQueuedTxs({
       transactions: evidence.reconstruction.transactions.map((entry) =>
         Object.freeze({
           txId: entry.txId,
@@ -926,5 +923,5 @@ export const evaluateWatcherPhaseABlockV1 = async (
     );
   }
 
-  return evaluateWatcherPhaseAQueuedTxsV1({ queuedTxs, config, context });
+  return evaluateWatcherPhaseAQueuedTxs({ queuedTxs, config, context });
 };

@@ -10,11 +10,11 @@ import {
   parseOgmiosShelleyGenesisSlotConfig,
 } from "../src/local-ledger-slot.js";
 import {
-  assertArchitectureGCandidateSlotRuntimeIdentityV1,
-  decodeArchitectureGCommitCandidateInputV1,
-  decodeArchitectureGFixtureCreationV1,
-  validateArchitectureGCommitCandidateProbeResultV1,
-  validateArchitectureGRootProbeResultV1,
+  assertArchitectureGCandidateSlotRuntimeIdentity,
+  decodeArchitectureGCommitCandidateInput,
+  decodeArchitectureGFixtureCreation,
+  validateArchitectureGCommitCandidateProbeResult,
+  validateArchitectureGRootProbeResult,
 } from "../src/workers/utils/mpf-commit-candidate-artifacts.js";
 
 const hash = (byte: number): string =>
@@ -416,7 +416,7 @@ const rootProbeResult = () => {
 };
 
 const validateFixture = (value: unknown) =>
-  decodeArchitectureGFixtureCreationV1({
+  decodeArchitectureGFixtureCreation({
     value,
     expectedFixturePath: "/evidence/architecture-g-level",
     expectedMarker: fixtureRoot,
@@ -431,20 +431,19 @@ const validateFixture = (value: unknown) =>
 describe("Architecture G commit-candidate probe V1 artifacts", () => {
   it("accepts the complete canonical candidate input", () => {
     const value = candidateInput();
-    expect(decodeArchitectureGCommitCandidateInputV1(value)).toBe(value);
+    expect(decodeArchitectureGCommitCandidateInput(value)).toBe(value);
   });
 
   it("binds standard and Custom slot evidence to the runtime node identity", () => {
-    const standard =
-      decodeArchitectureGCommitCandidateInputV1(candidateInput());
+    const standard = decodeArchitectureGCommitCandidateInput(candidateInput());
     expect(() =>
-      assertArchitectureGCandidateSlotRuntimeIdentityV1({
+      assertArchitectureGCandidateSlotRuntimeIdentity({
         input: standard,
         runtimeNetwork: "Preprod",
       }),
     ).not.toThrow();
     expect(() =>
-      assertArchitectureGCandidateSlotRuntimeIdentityV1({
+      assertArchitectureGCandidateSlotRuntimeIdentity({
         input: standard,
         runtimeNetwork: "Mainnet",
       }),
@@ -467,9 +466,9 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
         },
       },
     };
-    const custom = decodeArchitectureGCommitCandidateInputV1(customValue);
+    const custom = decodeArchitectureGCommitCandidateInput(customValue);
     expect(() =>
-      assertArchitectureGCandidateSlotRuntimeIdentityV1({
+      assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
         ogmiosUrl: customOgmiosUrl,
@@ -477,7 +476,7 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       }),
     ).not.toThrow();
     expect(() =>
-      assertArchitectureGCandidateSlotRuntimeIdentityV1({
+      assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
         ogmiosUrl: customOgmiosUrl,
@@ -488,7 +487,7 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
       }),
     ).toThrow(/does not match the live configured Ogmios genesis/u);
     expect(() =>
-      assertArchitectureGCandidateSlotRuntimeIdentityV1({
+      assertArchitectureGCandidateSlotRuntimeIdentity({
         input: custom,
         runtimeNetwork: "Custom",
         ogmiosUrl: "ws://127.0.0.1:2337/",
@@ -537,7 +536,7 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
   ])("rejects extended, mismatched, or unsafe candidate input %#", (mutate) => {
     const value = candidateInput();
     mutate(value);
-    expect(() => decodeArchitectureGCommitCandidateInputV1(value)).toThrow();
+    expect(() => decodeArchitectureGCommitCandidateInput(value)).toThrow();
   });
 
   it("accepts the complete fixture artifact and binds canonical funding", () => {
@@ -548,7 +547,7 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
   it("accepts a synthetic fixture only when canonical funding is explicitly absent", () => {
     const value = { ...fixtureCreation(), canonicalFunding: null };
     expect(
-      decodeArchitectureGFixtureCreationV1({
+      decodeArchitectureGFixtureCreation({
         value,
         expectedFixturePath: "/evidence/architecture-g-level",
         expectedMarker: fixtureRoot,
@@ -599,9 +598,9 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
     const input = candidateInput();
     const valid = candidateProbeResult();
     const validate = (value: unknown) =>
-      validateArchitectureGCommitCandidateProbeResultV1({
+      validateArchitectureGCommitCandidateProbeResult({
         value,
-        expectedInput: decodeArchitectureGCommitCandidateInputV1(input),
+        expectedInput: decodeArchitectureGCommitCandidateInput(input),
         expectedInputPath: "/evidence/candidate-input.json",
         expectedInputSha256: hash(31),
         expectedProbePath: "/probes/mpf-commit-candidate-probe.js",
@@ -653,7 +652,7 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
   it("validates the exact Architecture G root-probe artifact before emission", () => {
     const valid = rootProbeResult();
     const validate = (value: unknown) =>
-      validateArchitectureGRootProbeResultV1({
+      validateArchitectureGRootProbeResult({
         value,
         expectedTransactionCount: 2,
         expectedInitialUtxoCount: 100,

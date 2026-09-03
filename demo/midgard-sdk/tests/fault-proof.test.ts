@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 import {
   computeHash32,
   encodeCbor,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentFromItemsV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardFieldPreimage,
+  midgardFieldCommitment,
+  midgardFieldCommitmentFromItems,
 } from "@al-ft/midgard-core";
 import {
   applyParamsToScript,
@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "@/index.js";
 
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   buildDoubleSpendFaultProofContracts,
@@ -34,8 +34,8 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
-  deriveValidationTraceDeploymentIdV1,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
+  deriveValidationTraceDeploymentId,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
@@ -66,7 +66,7 @@ import {
   type Proof,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
-  VALIDATION_TRACE_RESOLVER_COUNT_V1,
+  VALIDATION_TRACE_RESOLVER_COUNT,
   ZERO_INPUT_FAULT_PROOF_TITLES,
   ZeroInputStep01Datum,
   ZeroInputStep01SpendRedeemer,
@@ -351,7 +351,7 @@ describe("fault-proof ABI", () => {
     const step02Datum = {
       fraud_prover: h28,
       data: {
-        subject: acceptedVerdictSubjectV1(h32),
+        subject: acceptedVerdictSubject(h32),
         block_slot: 10n,
         bad_tx_normalized_validity_range: {
           ClosedRange: { lower: 11n, upper: 19n },
@@ -448,7 +448,7 @@ describe("fault-proof ABI", () => {
     // Malformed witness lengths are rejected, matching the on-chain
     // `expect bytearray.length(...) == 32 / 64`.
     expect(() =>
-      SDK.encodeMidgardAddressWitnessCanonicalV1({
+      SDK.encodeMidgardAddressWitnessCanonical({
         verification_key: "aa".repeat(31),
         signature: "bb".repeat(64),
       }),
@@ -461,14 +461,14 @@ describe("fault-proof ABI", () => {
       { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
     ];
     const items = witnesses.map((witness) =>
-      encodeMidgardAddressWitnessItemV1({
+      encodeMidgardAddressWitnessItem({
         verificationKey: Buffer.from(witness.verification_key, "hex"),
         signature: Buffer.from(witness.signature, "hex"),
       }),
     );
     // Twin of `native_tx_field_access_v1.field_commitment(encode_address_witness_preimage(...))`.
-    expect(SDK.invalidSignatureAddressWitnessesCommitmentV1(witnesses)).toBe(
-      midgardFieldCommitmentFromItemsV1(items).toString("hex"),
+    expect(SDK.invalidSignatureAddressWitnessesCommitment(witnesses)).toBe(
+      midgardFieldCommitmentFromItems(items).toString("hex"),
     );
     // The commitment is over the assembled preimage bytes and nothing else:
     // envelope-then-hash and hash-of-envelope are the same value, and no field
@@ -478,8 +478,8 @@ describe("fault-proof ABI", () => {
     // What separates the fields now is positional (§4's positional-identity
     // invariant): step-01 takes its expected hash from
     // `witness_set.addr_tx_wits_hash` in the committed compact structure.
-    expect(midgardFieldCommitmentFromItemsV1(items)).toEqual(
-      midgardFieldCommitmentV1(encodeMidgardFieldPreimageV1(items)),
+    expect(midgardFieldCommitmentFromItems(items)).toEqual(
+      midgardFieldCommitment(encodeMidgardFieldPreimage(items)),
     );
   });
 
@@ -493,7 +493,7 @@ describe("fault-proof ABI", () => {
     // on-chain §8.8 field-access door computes it, in positional order. The
     // standalone `verify_native_tx_witness_set` helper was deleted by #575; the
     // check now lives inside `authenticated_field_view`.
-    expect(SDK.invalidSignatureWitnessSetCommitmentV1(witnessSet)).toBe(
+    expect(SDK.invalidSignatureWitnessSetCommitment(witnessSet)).toBe(
       computeHash32(
         encodeCbor([
           Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
@@ -556,7 +556,7 @@ describe("fault-proof ABI", () => {
       step02Datum,
     );
     expect(
-      SDK.invalidSignatureStep02StateFromBadTxV1({
+      SDK.invalidSignatureStep02StateFromBadTx({
         badTxId: h32.toUpperCase(),
         badTxWitnessSetHash: h32b.toUpperCase(),
       }),
@@ -594,8 +594,8 @@ describe("fault-proof ABI", () => {
     // refusal (#606) is asserted at the family rather than only in the shared
     // module's tests: a tier-3 opening of field 7 is emitted, not thrown.
     expect(
-      SDK.fieldOpeningV1ForField({
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+      SDK.fieldOpeningForField({
+        fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
         nativeTxCompactCbor: "a1b2c3",
         carriage: {
           Certified: {
@@ -696,7 +696,7 @@ describe("fault-proof ABI", () => {
     expect(roundTrip(step02Datum, SDK.InputNoIdxStep02Datum)).toEqual(
       step02Datum,
     );
-    expect(SDK.inputNoIdxStep02StateFromBadTxV1(h32)).toEqual({
+    expect(SDK.inputNoIdxStep02StateFromBadTx(h32)).toEqual({
       verified_tx_id: h32,
     });
 
@@ -928,10 +928,10 @@ describe("fault-proof ABI", () => {
     // committed compact structure (`body.reference_inputs_hash` versus
     // `body.spend_inputs_hash`), which is §4's positional-identity invariant.
     expect(
-      SDK.referenceInputNoIdxReferenceInputsCommitmentV1(referenceInputs),
-    ).toBe(SDK.inputNoIdxSpendInputsCommitmentV1(referenceInputs));
-    expect(SDK.referenceInputNoIdxOutputsCommitmentV1([referenceOutput])).toBe(
-      SDK.inputNoIdxOutputsCommitmentV1([referenceOutput]),
+      SDK.referenceInputNoIdxReferenceInputsCommitment(referenceInputs),
+    ).toBe(SDK.inputNoIdxSpendInputsCommitment(referenceInputs));
+    expect(SDK.referenceInputNoIdxOutputsCommitment([referenceOutput])).toBe(
+      SDK.inputNoIdxOutputsCommitment([referenceOutput]),
     );
   });
 
@@ -1027,7 +1027,7 @@ describe("fault-proof ABI", () => {
     // worth pinning rather than assuming: `WitnessFieldOpening` is a legitimate
     // arm of `FieldOpeningV1`, so a witness opening aimed at a body field
     // decodes cleanly and is refused later — off-chain by
-    // `fieldOpeningV1ForField`, on-chain by `field_pairs_with`. A reader who
+    // `fieldOpeningForField`, on-chain by `field_pairs_with`. A reader who
     // expected the schema to catch it (this test's first draft did) would
     // otherwise conclude the guard was somewhere it is not.
     const witnessOpeningAtBodyField = new Constr(1, [
@@ -1049,8 +1049,8 @@ describe("fault-proof ABI", () => {
       ),
     ).not.toThrow();
     expect(() =>
-      SDK.fieldOpeningV1ForField({
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.spendInputs,
+      SDK.fieldOpeningForField({
+        fieldIndex: SDK.MIDGARD_FIELD_INDEX.spendInputs,
         nativeTxCompactCbor: "a1b2c3",
         carriage: { Inline: { preimage: "80" } },
         witnessSet: {
@@ -1064,33 +1064,33 @@ describe("fault-proof ABI", () => {
 
   it("detects an input-no-idx violation from the producing outputs count", () => {
     expect(
-      SDK.isInputNoIdxViolationV1({
+      SDK.isInputNoIdxViolation({
         badInputOutputIndex: 7n,
         producingTxOutputCount: 1,
       }),
     ).toBe(true);
     // A valid block: the spent index exists in its producing transaction.
     expect(
-      SDK.isInputNoIdxViolationV1({
+      SDK.isInputNoIdxViolation({
         badInputOutputIndex: 0n,
         producingTxOutputCount: 1,
       }),
     ).toBe(false);
-    const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactionsV1({
+    const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactions({
       badTxId: h32,
       badInputsIndex: 0,
       badInput: { tx_id: h32b, output_index: 7n },
       producingTxOutputCount: 1,
     });
-    expect(evidence.violationId).toBe(SDK.INPUT_NO_IDX_VIOLATION_ID_V1);
+    expect(evidence.violationId).toBe(SDK.INPUT_NO_IDX_VIOLATION_ID);
     expect(evidence.producingTxId).toBe(h32b);
     expect(evidence.isViolation).toBe(true);
-    expect(SDK.inputNoIdxStep03StateFromEvidenceV1(evidence)).toEqual({
+    expect(SDK.inputNoIdxStep03StateFromEvidence(evidence)).toEqual({
       bad_input_tx_id: h32b,
       bad_input_output_index: 7n,
     });
     expect(
-      SDK.inputNoIdxStep04StateFromEvidenceV1({
+      SDK.inputNoIdxStep04StateFromEvidence({
         evidence,
         producingTxId: h32,
       }),
@@ -1314,7 +1314,7 @@ describe("fault-proof contract builder", () => {
     );
     expect(contracts.validationTraceDispute.steps).toHaveLength(121);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
-      VALIDATION_TRACE_RESOLVER_COUNT_V1,
+      VALIDATION_TRACE_RESOLVER_COUNT,
     );
     expect(contracts.fabricatedDeposit.steps).toHaveLength(4);
     expect(contracts.fabricatedWithdrawal.steps).toHaveLength(4);
@@ -1835,7 +1835,7 @@ describe("fault-proof contract builder", () => {
       ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     ]);
 
     const contracts = await Effect.runPromise(
@@ -1865,7 +1865,7 @@ describe("fault-proof contract builder", () => {
         fraudProofTokenAddressData,
       ],
     );
-    const deploymentId = deriveValidationTraceDeploymentIdV1(h28c);
+    const deploymentId = deriveValidationTraceDeploymentId(h28c);
     const expectedStageOneRedeemerFoldMapExecutor = applyParamsToScript(
       compiledScript(
         blueprint,
@@ -2080,7 +2080,7 @@ describe("fault-proof contract builder", () => {
     );
     const expectedCekProgramMaterial = compiledScript(
       blueprint,
-      CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE,
     );
     const expectedResolvers = [
       expectedPrepareResolvers[0]!,
@@ -2098,7 +2098,7 @@ describe("fault-proof contract builder", () => {
       expectedPrepareResolvers[12]!,
       expectedPrepareResolvers[13]!,
     ];
-    expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT_V1);
+    expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT);
     const resolverHashesData = Data.from(
       Data.to(
         expectedResolvers.map((cbor) => spendingScriptHash(cbor)),

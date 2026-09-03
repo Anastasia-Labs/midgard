@@ -30,37 +30,37 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
-import { prepareMissingNativeScriptTxStagedFieldOpeningV1 } from "./staged-field-opening-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
+import { prepareMissingNativeScriptTxStagedFieldOpening } from "./staged-field-opening-v1.js";
 import {
-  advanceMissingNativeScriptTxSemanticCheckpointV1,
-  decodeMissingNativeScriptTxSemanticCheckpointV1,
-  encodeMissingNativeScriptTxSemanticCheckpointV1,
-  hashMissingNativeScriptTxSemanticCheckpointV1,
-  MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1,
-  missingNativeScriptTxRequiredScriptPresentThroughV1,
-  missingNativeScriptTxSemanticCheckpointIsCompleteV1,
-  resolveMissingNativeScriptTxSemanticCheckpointV1,
+  advanceMissingNativeScriptTxSemanticCheckpoint,
+  decodeMissingNativeScriptTxSemanticCheckpoint,
+  encodeMissingNativeScriptTxSemanticCheckpoint,
+  hashMissingNativeScriptTxSemanticCheckpoint,
+  MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
+  missingNativeScriptTxRequiredScriptPresentThrough,
+  missingNativeScriptTxSemanticCheckpointIsComplete,
+  resolveMissingNativeScriptTxSemanticCheckpoint,
 } from "./staged-walk-v1.js";
 import {
-  missingNativeScriptTxStepLabelV1,
+  missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxStepStateV1,
-  requireMissingNativeScriptTxThreadUtxoV1,
+  requireMissingNativeScriptTxStepState,
+  requireMissingNativeScriptTxThreadUtxo,
 } from "./submit-common-v1.js";
 
 const STEP_INDEX = 7 as const;
-const STEP_LABEL = missingNativeScriptTxStepLabelV1(STEP_INDEX);
+const STEP_LABEL = missingNativeScriptTxStepLabel(STEP_INDEX);
 
-export type SubmitMissingNativeScriptTxStep08ResultV1 = Readonly<{
+export type SubmitMissingNativeScriptTxStep08Result = Readonly<{
   txHash: string;
   action: "ResumeSemanticScan" | "FinalizeSemanticScan";
   nextThreadOutRef?: string;
@@ -76,7 +76,7 @@ export type SubmitMissingNativeScriptTxStep08ResultV1 = Readonly<{
 }>;
 
 /** Resumes step 08 or finalizes exactly when the bounded fold reaches terminal. */
-export const submitMissingNativeScriptTxStep08V1 = async ({
+export const submitMissingNativeScriptTxStep08 = async ({
   lucid,
   contracts,
   categoryId,
@@ -86,7 +86,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
   witnessSet,
   scriptTxWitsItems,
   semanticCheckpointBytes,
-  itemBudget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1,
+  itemBudget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
   publishCarriage = false,
   publishedCarriageUtxos,
   certificateUtxo,
@@ -97,7 +97,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -111,13 +111,13 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitMissingNativeScriptTxStep08ResultV1> => {
+}): Promise<SubmitMissingNativeScriptTxStep08Result> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -125,7 +125,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
       threadOutRef,
     });
   const state: MissingNativeScriptTxStep08State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer,
       schema: MissingNativeScriptTxStep08Datum,
@@ -142,29 +142,28 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
   }
   const semantic =
     semanticCheckpointBytes === undefined
-      ? resolveMissingNativeScriptTxSemanticCheckpointV1({
+      ? resolveMissingNativeScriptTxSemanticCheckpoint({
           txId: state.bad_tx_id,
           items: scriptTxWitsItems,
           committedHash: state.phase.SemanticScan.checkpoint_hash,
           budget: itemBudget,
         })
-      : decodeMissingNativeScriptTxSemanticCheckpointV1(
-          semanticCheckpointBytes,
-        );
+      : decodeMissingNativeScriptTxSemanticCheckpoint(semanticCheckpointBytes);
   if (
-    hashMissingNativeScriptTxSemanticCheckpointV1(semantic) !==
+    hashMissingNativeScriptTxSemanticCheckpoint(semantic) !==
     state.phase.SemanticScan.checkpoint_hash
   ) {
     throw missingNativeScriptTxSubmitError(
       "step-08 semantic checkpoint bytes do not match the on-chain checkpoint hash.",
     );
   }
-  const derivedCurrentFound =
-    missingNativeScriptTxRequiredScriptPresentThroughV1({
+  const derivedCurrentFound = missingNativeScriptTxRequiredScriptPresentThrough(
+    {
       expectedScriptHash: state.expected_missing_script_hash,
       items: scriptTxWitsItems,
       nextItemIndex: semantic.nextItemIndex,
-    });
+    },
+  );
   if (
     derivedCurrentFound !== state.phase.SemanticScan.required_script_is_present
   ) {
@@ -172,19 +171,19 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
       "step-08 on-chain semantic accumulator does not match the exact authenticated witness prefix.",
     );
   }
-  if (missingNativeScriptTxSemanticCheckpointIsCompleteV1(semantic)) {
+  if (missingNativeScriptTxSemanticCheckpointIsComplete(semantic)) {
     throw missingNativeScriptTxSubmitError(
       "step-08 cannot resume an already terminal semantic checkpoint.",
     );
   }
-  const next = advanceMissingNativeScriptTxSemanticCheckpointV1({
+  const next = advanceMissingNativeScriptTxSemanticCheckpoint({
     checkpoint: semantic,
     txId: state.bad_tx_id,
     items: scriptTxWitsItems,
     budget: itemBudget,
   });
-  const finalizes = missingNativeScriptTxSemanticCheckpointIsCompleteV1(next);
-  const nextFound = missingNativeScriptTxRequiredScriptPresentThroughV1({
+  const finalizes = missingNativeScriptTxSemanticCheckpointIsComplete(next);
+  const nextFound = missingNativeScriptTxRequiredScriptPresentThrough({
     expectedScriptHash: state.expected_missing_script_hash,
     items: scriptTxWitsItems,
     nextItemIndex: next.nextItemIndex,
@@ -195,18 +194,18 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
     );
   }
   const checkpointBytes =
-    encodeMissingNativeScriptTxSemanticCheckpointV1(next).toString("hex");
-  const checkpointHash = hashMissingNativeScriptTxSemanticCheckpointV1(next);
+    encodeMissingNativeScriptTxSemanticCheckpoint(next).toString("hex");
+  const checkpointHash = hashMissingNativeScriptTxSemanticCheckpoint(next);
 
   const computationThreadBurnCarriage = finalizes
-    ? witnessMintingPolicyCarriageV1({
+    ? witnessMintingPolicyCarriage({
         script: contracts.computationThread.mintingScript,
         referenceUtxo: witnessReferenceScripts?.computationThreadMint,
         label: `${STEP_LABEL} computation-thread burn`,
       })
     : undefined;
   const fraudProofMintCarriage = finalizes
-    ? witnessMintingPolicyCarriageV1({
+    ? witnessMintingPolicyCarriage({
         script: contracts.fraudProof.mintingScript,
         referenceUtxo: witnessReferenceScripts?.fraudProofMint,
         label: `${STEP_LABEL} fraud-proof mint`,
@@ -216,7 +215,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
     ...(computationThreadBurnCarriage?.referenceInputs ?? []),
     ...(fraudProofMintCarriage?.referenceInputs ?? []),
   ];
-  const prepared = await prepareMissingNativeScriptTxStagedFieldOpeningV1({
+  const prepared = await prepareMissingNativeScriptTxStagedFieldOpening({
     lucid,
     contracts,
     signer,
@@ -313,7 +312,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
                     resolved.fraudProofMintRedeemerIndex!,
                   script_tx_wits_opening: prepared.opening,
                   checkpoint_bytes: Buffer.from(
-                    encodeMissingNativeScriptTxSemanticCheckpointV1(semantic),
+                    encodeMissingNativeScriptTxSemanticCheckpoint(semantic),
                   ).toString("hex"),
                   item_budget: BigInt(itemBudget),
                 },
@@ -324,7 +323,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
                   output_index: resolved.outputIndex,
                   script_tx_wits_opening: prepared.opening,
                   checkpoint_bytes: Buffer.from(
-                    encodeMissingNativeScriptTxSemanticCheckpointV1(semantic),
+                    encodeMissingNativeScriptTxSemanticCheckpoint(semantic),
                   ).toString("hex"),
                   item_budget: BigInt(itemBudget),
                 },
@@ -412,9 +411,9 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

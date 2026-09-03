@@ -1,25 +1,25 @@
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytesV1,
-  encodeMidgardTxInputCanonicalV1,
+  committedWithdrawalKeyBytes,
+  encodeMidgardTxInputCanonical,
   FraudProofComputationThreadStepDatum,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   ROOT_DOMAINS,
   WithdrawalSourceMembershipProof,
   type WithdrawalSourceMembershipProof as WithdrawalSourceMembershipProofV1,
-  WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1,
+  WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
   WithdrawnReferenceInputStep02Datum,
   WithdrawnReferenceInputStep03Datum,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
   type StateQueueMutationLease,
@@ -28,99 +28,97 @@ import {
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { WithdrawnReferenceInputContractsV1 } from "../withdrawn-reference-input/contracts-v1.js";
+import type { WithdrawnReferenceInputContracts } from "../withdrawn-reference-input/contracts-v1.js";
 import {
-  prepareWithdrawnReferenceInputV1,
-  verifyWithdrawnReferenceInputMembershipV1,
+  prepareWithdrawnReferenceInput,
+  verifyWithdrawnReferenceInputMembership,
 } from "../withdrawn-reference-input/prepare-withdrawn-reference-input-v1.js";
 import { submitWithdrawnReferenceInputInit } from "../withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
 import { submitWithdrawnReferenceInputStep01 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-01.js";
 import { submitWithdrawnReferenceInputStep02 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-02.js";
 import { submitWithdrawnReferenceInputStep03 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-03.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import { WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import { WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriageRequirementV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriageRequirement,
+  withFieldCarriagePrerequisite,
 } from "./production-field-carriage-prerequisite-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
 import {
-  admitProductionNativeInclusionArtifactV1,
-  admitProductionTxInputListV1,
-  canonicalHexV1,
-  EVEN_HEX_V1,
-  exactJournalRecordV1,
-  HEX_28_V1,
-  HEX_32_V1,
-  NATURAL_DECIMAL_V1,
-  type ProductionNativeInclusionArtifactV1,
-  safeNaturalNumberV1,
+  admitNativeInclusionArtifact,
+  admitTxInputList,
+  canonicalHex,
+  EVEN_HEX,
+  exactJournalRecord,
+  HEX_28,
+  HEX_32,
+  type NativeInclusionArtifact,
+  NATURAL_DECIMAL,
+  safeNaturalNumber,
 } from "./production-native-index-artifact-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_WITHDRAWN_REFERENCE_INPUT_ARTIFACT_V1 =
+export const WITHDRAWN_REFERENCE_INPUT_ARTIFACT =
   "midgard-production-withdrawn-reference-input-artifact-v1" as const;
 
-type InputJsonV1 = Readonly<{ tx_id: string; output_index: string }>;
+type InputJson = Readonly<{ tx_id: string; output_index: string }>;
 
-export type ProductionWithdrawnReferenceInputArtifactV1 = JournalJsonObjectV1 &
+export type WithdrawnReferenceInputArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_WITHDRAWN_REFERENCE_INPUT_ARTIFACT_V1;
+    schemaVersion: typeof WITHDRAWN_REFERENCE_INPUT_ARTIFACT;
     headerHash: string;
     detectionId: string;
     position: number;
-    tx: ProductionNativeInclusionArtifactV1;
-    referenceInputs: readonly InputJsonV1[];
+    tx: NativeInclusionArtifact;
+    referenceInputs: readonly InputJson[];
     badReferenceInputIndex: number;
     withdrawalIndex: number;
     withdrawalMembershipCbor: string;
   }>;
 
-type AdmittedArtifactV1 = Readonly<{
-  artifact: ProductionWithdrawnReferenceInputArtifactV1;
-  inclusion: ReturnType<
-    typeof admitProductionNativeInclusionArtifactV1
-  >["inclusion"];
-  referenceInputs: ReturnType<typeof admitProductionTxInputListV1>["inputs"];
+type AdmittedArtifact = Readonly<{
+  artifact: WithdrawnReferenceInputArtifact;
+  inclusion: ReturnType<typeof admitNativeInclusionArtifact>["inclusion"];
+  referenceInputs: ReturnType<typeof admitTxInputList>["inputs"];
   withdrawalMembership: WithdrawalSourceMembershipProofV1;
-  referencePlan: FaultProofFieldOpeningPlanV1;
+  referencePlan: FaultProofFieldOpeningPlan;
 }>;
 
 const verifyMembership = async (
@@ -130,8 +128,8 @@ const verifyMembership = async (
     JSON.stringify(membership.domain) !==
       JSON.stringify(ROOT_DOMAINS.withdrawals) ||
     membership.count <= 0n ||
-    !HEX_32_V1.test(membership.root) ||
-    !HEX_32_V1.test(membership.phas_root)
+    !HEX_32.test(membership.root) ||
+    !HEX_32.test(membership.phas_root)
   ) {
     throw new Error("withdrawn-reference-input membership is malformed");
   }
@@ -147,17 +145,17 @@ const verifyMembership = async (
       "withdrawn-reference-input membership count does not open its root",
     );
   }
-  verifyWithdrawnReferenceInputMembershipV1(membership);
+  verifyWithdrawnReferenceInputMembership(membership);
 };
 
-export const admitProductionWithdrawnReferenceInputArtifactV1 = async (
+export const admitWithdrawnReferenceInputArtifact = async (
   value: unknown,
   carriageOwner = "00".repeat(28),
-): Promise<AdmittedArtifactV1> => {
-  if (!HEX_28_V1.test(carriageOwner)) {
+): Promise<AdmittedArtifact> => {
+  if (!HEX_28.test(carriageOwner)) {
     throw new Error("withdrawn-reference-input carriage owner is malformed");
   }
-  const parsed = exactJournalRecordV1(
+  const parsed = exactJournalRecord(
     value,
     [
       "schemaVersion",
@@ -173,36 +171,36 @@ export const admitProductionWithdrawnReferenceInputArtifactV1 = async (
     "withdrawn-reference-input artifact",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_WITHDRAWN_REFERENCE_INPUT_ARTIFACT_V1 ||
+    parsed.schemaVersion !== WITHDRAWN_REFERENCE_INPUT_ARTIFACT ||
     typeof parsed.detectionId !== "string"
   ) {
     throw new Error("withdrawn-reference-input artifact identity changed");
   }
-  const headerHash = canonicalHexV1(
+  const headerHash = canonicalHex(
     parsed.headerHash,
-    HEX_28_V1,
+    HEX_28,
     "withdrawn-reference-input header",
   );
-  const position = safeNaturalNumberV1(
+  const position = safeNaturalNumber(
     parsed.position,
     "withdrawn-reference-input position",
   );
-  const badReferenceInputIndex = safeNaturalNumberV1(
+  const badReferenceInputIndex = safeNaturalNumber(
     parsed.badReferenceInputIndex,
     "withdrawn-reference-input bad reference-input index",
   );
-  const withdrawalIndex = safeNaturalNumberV1(
+  const withdrawalIndex = safeNaturalNumber(
     parsed.withdrawalIndex,
     "withdrawn-reference-input withdrawal index",
   );
-  const tx = admitProductionNativeInclusionArtifactV1(
+  const tx = admitNativeInclusionArtifact(
     parsed.tx,
     "withdrawn-reference-input transaction",
   );
   if (tx.inclusion.nativeTx.validity_code !== 0n) {
     throw new Error("withdrawn-reference-input transaction is not accepted");
   }
-  const referenceInputs = admitProductionTxInputListV1(
+  const referenceInputs = admitTxInputList(
     parsed.referenceInputs,
     "withdrawn-reference-input reference inputs",
   );
@@ -210,9 +208,9 @@ export const admitProductionWithdrawnReferenceInputArtifactV1 = async (
   if (selectedInput === undefined) {
     throw new Error("withdrawn-reference-input selection is out of range");
   }
-  const withdrawalMembershipCbor = canonicalHexV1(
+  const withdrawalMembershipCbor = canonicalHex(
     parsed.withdrawalMembershipCbor,
-    EVEN_HEX_V1,
+    EVEN_HEX,
     "withdrawn-reference-input membership",
   );
   let withdrawalMembership: WithdrawalSourceMembershipProofV1;
@@ -241,20 +239,20 @@ export const admitProductionWithdrawnReferenceInputArtifactV1 = async (
       "withdrawn-reference-input artifact does not prove its violation",
     );
   }
-  const expectedDetection = `${WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1}:${position.toString()}:${badReferenceInputIndex.toString()}:${withdrawalIndex.toString()}:${tx.artifact.nativeTxId}:${committedWithdrawalKeyBytesV1(withdrawalMembership.key)}`;
+  const expectedDetection = `${WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID}:${position.toString()}:${badReferenceInputIndex.toString()}:${withdrawalIndex.toString()}:${tx.artifact.nativeTxId}:${committedWithdrawalKeyBytes(withdrawalMembership.key)}`;
   if (parsed.detectionId !== expectedDetection) {
     throw new Error("withdrawn-reference-input detection identity changed");
   }
-  const referencePlan = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+  const referencePlan = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: tx.artifact.nativeTxId,
     nativeTxCompactCbor: tx.artifact.nativeTxCompactCbor,
-    itemCbors: referenceInputs.inputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: referenceInputs.inputs.map(encodeMidgardTxInputCanonical),
     owner: carriageOwner,
     label: "withdrawn-reference-input artifact reference inputs",
   });
   const artifact = Object.freeze({
-    schemaVersion: PRODUCTION_WITHDRAWN_REFERENCE_INPUT_ARTIFACT_V1,
+    schemaVersion: WITHDRAWN_REFERENCE_INPUT_ARTIFACT,
     headerHash,
     detectionId: parsed.detectionId,
     position,
@@ -263,7 +261,7 @@ export const admitProductionWithdrawnReferenceInputArtifactV1 = async (
     badReferenceInputIndex,
     withdrawalIndex,
     withdrawalMembershipCbor,
-  }) satisfies ProductionWithdrawnReferenceInputArtifactV1;
+  }) satisfies WithdrawnReferenceInputArtifact;
   return Object.freeze({
     artifact,
     inclusion: tx.inclusion,
@@ -275,7 +273,7 @@ export const admitProductionWithdrawnReferenceInputArtifactV1 = async (
 
 const selectedIdentity = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >,
 ) => {
@@ -291,14 +289,14 @@ const selectedIdentity = (
   if (
     classification.category !== "withdrawnReferenceInput" ||
     classification.selected.violationId !==
-      WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1 ||
-    violationId !== WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1 ||
+      WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID ||
+    violationId !== WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID ||
     rest.length !== 0 ||
-    !NATURAL_DECIMAL_V1.test(positionValue ?? "") ||
-    !NATURAL_DECIMAL_V1.test(inputValue ?? "") ||
-    !NATURAL_DECIMAL_V1.test(withdrawalValue ?? "") ||
-    !HEX_32_V1.test(txId ?? "") ||
-    !EVEN_HEX_V1.test(withdrawalKey ?? "")
+    !NATURAL_DECIMAL.test(positionValue ?? "") ||
+    !NATURAL_DECIMAL.test(inputValue ?? "") ||
+    !NATURAL_DECIMAL.test(withdrawalValue ?? "") ||
+    !HEX_32.test(txId ?? "") ||
+    !EVEN_HEX.test(withdrawalKey ?? "")
   ) {
     throw new Error("withdrawn-reference-input classification is malformed");
   }
@@ -322,21 +320,21 @@ const selectedIdentity = (
   });
 };
 
-export const prepareProductionWithdrawnReferenceInputArtifactV1 = async ({
+export const prepareWithdrawnReferenceInputArtifact = async ({
   evidence,
   classification,
 }: {
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
-}): Promise<ProductionWithdrawnReferenceInputArtifactV1> => {
+}): Promise<WithdrawnReferenceInputArtifact> => {
   if (classification.headerHash !== evidence.headerHash) {
     throw new Error("withdrawn-reference-input classification changed header");
   }
   const selected = selectedIdentity(classification);
-  const prepared = await prepareWithdrawnReferenceInputV1({
+  const prepared = await prepareWithdrawnReferenceInput({
     header: evidence.header,
     blockTxs: evidence.transactions,
     withdrawals: evidence.reconstruction.withdrawals.map(({ key, value }) => ({
@@ -350,15 +348,15 @@ export const prepareProductionWithdrawnReferenceInputArtifactV1 = async ({
   if (
     selectedWithdrawal === undefined ||
     prepared.badReferenceInputIndex !== selected.badReferenceInputIndex ||
-    committedWithdrawalKeyBytesV1(selectedWithdrawal.key) !==
+    committedWithdrawalKeyBytes(selectedWithdrawal.key) !==
       selected.withdrawalKey ||
-    committedWithdrawalKeyBytesV1(prepared.withdrawal.id) !==
+    committedWithdrawalKeyBytes(prepared.withdrawal.id) !==
       selected.withdrawalKey
   ) {
     throw new Error("withdrawn-reference-input public evidence changed");
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_WITHDRAWN_REFERENCE_INPUT_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: WITHDRAWN_REFERENCE_INPUT_ARTIFACT,
     headerHash: evidence.headerHash,
     detectionId: classification.selected.detectionId,
     position: selected.position,
@@ -379,14 +377,14 @@ export const prepareProductionWithdrawnReferenceInputArtifactV1 = async ({
       prepared.withdrawalMembership,
       WithdrawalSourceMembershipProof,
     ),
-  }) as ProductionWithdrawnReferenceInputArtifactV1;
-  await admitProductionWithdrawnReferenceInputArtifactV1(artifact);
+  }) as WithdrawnReferenceInputArtifact;
+  await admitWithdrawnReferenceInputArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type WithdrawnReferenceInputWorkflowReferenceScriptsV1 = Readonly<{
+export type WithdrawnReferenceInputWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -394,26 +392,26 @@ export type WithdrawnReferenceInputWorkflowReferenceScriptsV1 = Readonly<{
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-type BoundConfigV1 = Readonly<{
+type BoundConfig = Readonly<{
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<"withdrawnReferenceInput">["network"];
+  network: FraudProofWorkflowDeploymentBinding<"withdrawnReferenceInput">["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  contracts: WithdrawnReferenceInputContractsV1;
-  category: FraudProofWorkflowDeploymentBindingV1<"withdrawnReferenceInput">["resolvedContracts"]["category"];
-  catalogue: FraudProofWorkflowDeploymentBindingV1<"withdrawnReferenceInput">["catalogue"];
-  referenceScripts: WithdrawnReferenceInputWorkflowReferenceScriptsV1;
+  contracts: WithdrawnReferenceInputContracts;
+  category: FraudProofWorkflowDeploymentBinding<"withdrawnReferenceInput">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"withdrawnReferenceInput">["catalogue"];
+  referenceScripts: WithdrawnReferenceInputWorkflowReferenceScripts;
   certificate: NonNullable<
-    FraudProofWorkflowDeploymentBindingV1<"withdrawnReferenceInput">["fieldPreimageCertificate"]
+    FraudProofWorkflowDeploymentBinding<"withdrawnReferenceInput">["fieldPreimageCertificate"]
   >;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
 }>;
 
-const actionInput = (action: FraudProofWorkflowActionV1) => {
-  const input = exactJournalRecordV1(
+const actionInput = (action: FraudProofWorkflowAction) => {
+  const input = exactJournalRecord(
     action.input,
     Object.keys(action.input),
     "withdrawn-reference-input action",
@@ -440,10 +438,10 @@ const stringField = (
 };
 
 const resolveField = async (
-  config: BoundConfigV1,
-  plan: FaultProofFieldOpeningPlanV1,
+  config: BoundConfig,
+  plan: FaultProofFieldOpeningPlan,
 ) => {
-  const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned: plan,
@@ -451,7 +449,7 @@ const resolveField = async (
   if (publications === undefined) {
     throw new Error("withdrawn-reference-input publications disappeared");
   }
-  const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: config.lucid,
     network: config.network,
     planned: plan,
@@ -464,7 +462,7 @@ const resolveField = async (
 };
 
 const captureRemoval = async (
-  config: BoundConfigV1,
+  config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -478,7 +476,7 @@ const captureRemoval = async (
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -493,10 +491,10 @@ const captureRemoval = async (
         fraudProverRewardLovelace: config.fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -516,17 +514,17 @@ const captureRemoval = async (
 };
 
 const createTransactionPort = (
-  config: BoundConfigV1,
-): ProductionLinearFamilyTransactionPortV1<"withdrawnReferenceInput"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"withdrawnReferenceInput"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "withdrawnReferenceInput",
   prepare: async ({ evidence, classification }) =>
-    await prepareProductionWithdrawnReferenceInputArtifactV1({
+    await prepareWithdrawnReferenceInputArtifact({
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = await admitProductionWithdrawnReferenceInputArtifactV1(
+    const admitted = await admitWithdrawnReferenceInputArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -536,7 +534,7 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitWithdrawnReferenceInputInit({
               lucid: config.lucid,
@@ -561,7 +559,7 @@ const createTransactionPort = (
     }
     if (input.stage === "step_01") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitWithdrawnReferenceInputStep01({
               lucid: config.lucid,
@@ -588,7 +586,7 @@ const createTransactionPort = (
     if (input.stage === "step_02") {
       const field = await resolveField(config, admitted.referencePlan);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitWithdrawnReferenceInputStep02({
               lucid: config.lucid,
@@ -616,7 +614,7 @@ const createTransactionPort = (
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitWithdrawnReferenceInputStep03({
               lucid: config.lucid,
@@ -641,31 +639,31 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundWithdrawnReferenceInputWorkflowConfigV1 = Readonly<{
+export type ManifestBoundWithdrawnReferenceInputWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: WithdrawnReferenceInputWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: WithdrawnReferenceInputWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundWithdrawnReferenceInputWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"withdrawnReferenceInput">;
-  l1: FraudProofFamilyL1ObservationPortV1<"withdrawnReferenceInput">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"withdrawnReferenceInput">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundWithdrawnReferenceInputWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"withdrawnReferenceInput">;
+  l1: FraudProofFamilyL1ObservationPort<"withdrawnReferenceInput">;
+  transactions: LinearFamilyTransactionPort<"withdrawnReferenceInput">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
-  config: ManifestBoundWithdrawnReferenceInputWorkflowConfigV1,
-): Promise<ManifestBoundWithdrawnReferenceInputWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundWithdrawnReferenceInputWorkflow = async (
+  config: ManifestBoundWithdrawnReferenceInputWorkflowConfig,
+): Promise<ManifestBoundWithdrawnReferenceInputWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -678,7 +676,7 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
       WithdrawnReferenceInputStep03Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -698,7 +696,7 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
   ) {
     throw new Error("withdrawn-reference-input deployment chain is incomplete");
   }
-  const contracts: WithdrawnReferenceInputContractsV1 = Object.freeze({
+  const contracts: WithdrawnReferenceInputContracts = Object.freeze({
     steps: [chain.steps[0]!, chain.steps[1]!, chain.steps[2]!] as const,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -713,12 +711,12 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });
   const ref = (contractName: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo,
     });
-  const referenceScripts: WithdrawnReferenceInputWorkflowReferenceScriptsV1 =
+  const referenceScripts: WithdrawnReferenceInputWorkflowReferenceScripts =
     Object.freeze({
       steps: Object.freeze([
         ref(
@@ -753,7 +751,7 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
         config.referenceScripts.fieldPreimageCertificateMint,
       ),
     });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -780,17 +778,17 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
       binding.releaseEconomics.policy.fraudProverRewardLovelace,
     ),
   });
-  let adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  let adapter = createLinearFamilyWorkflowAdapter({
     category: "withdrawnReferenceInput",
     l1,
     transactions,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  adapter = withProductionFieldCarriagePrerequisiteV1({
+  adapter = withFieldCarriagePrerequisite({
     category: "withdrawnReferenceInput",
     base: adapter,
-    prerequisite: createAuthenticatedFieldCarriagePrerequisitePortV1({
+    prerequisite: createAuthenticatedFieldCarriagePrerequisitePort({
       category: "withdrawnReferenceInput",
       lucid: config.lucid,
       network: binding.network,
@@ -798,7 +796,7 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
       publications: l1.publications,
       requirementForAction: async ({ action, artifact }) => {
         if (actionInput(action).stage !== "step_02") return null;
-        const admitted = await admitProductionWithdrawnReferenceInputArtifactV1(
+        const admitted = await admitWithdrawnReferenceInputArtifact(
           artifact,
           config.signer.paymentKeyHash,
         );
@@ -810,7 +808,7 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
             mintingScript: certificate.mintingScript,
             referenceScriptUtxo: referenceScripts.fieldPreimageCertificateMint,
           },
-        } satisfies ProductionFieldCarriageRequirementV1;
+        } satisfies FieldCarriageRequirement;
       },
       transactionConfirmed: async ({ headerHash, txHash }) =>
         await l1.transactionConfirmed({ headerHash, txHash }),
@@ -821,37 +819,35 @@ export const createManifestBoundWithdrawnReferenceInputWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const runOrResumeManifestBoundWithdrawnReferenceInputWorkflowV1 =
-  async ({
-    workflow,
+export const runOrResumeManifestBoundWithdrawnReferenceInputWorkflow = async ({
+  workflow,
+  sources,
+  journal,
+}: {
+  readonly workflow: ManifestBoundWithdrawnReferenceInputWorkflow;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
+  const observation = await workflow.l1.observeHeader({
+    headerHash: workflow.binding.definition.headerHash,
+  });
+  return await runFraudProofWorkflowFromRetainedDa({
+    deploymentFingerprint: workflow.binding.deploymentFingerprint,
+    observation,
     sources,
+    replayer: WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
+      adapters: [workflow.adapter],
+      launchScope: ["withdrawnReferenceInput"],
+    }),
     journal,
-  }: {
-    readonly workflow: ManifestBoundWithdrawnReferenceInputWorkflowV1;
-    readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FraudProofWorkflowJournalStoreV1;
-  }): Promise<FraudProofWorkflowRunResultV1> => {
-    const observation = await workflow.l1.observeHeader({
-      headerHash: workflow.binding.definition.headerHash,
-    });
-    return await runFraudProofWorkflowFromRetainedDaV1({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      observation,
-      sources,
-      replayer: WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-      registry: createFraudProofWorkflowRegistryV1({
-        adapters: [workflow.adapter],
-        launchScope: ["withdrawnReferenceInput"],
-      }),
-      journal,
-      terminalVerifier: workflow.terminalVerifier,
-      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    });
-  };
+    terminalVerifier: workflow.terminalVerifier,
+    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+  });
+};

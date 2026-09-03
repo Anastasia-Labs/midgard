@@ -1,6 +1,6 @@
 import {
-  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
-  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
+  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
   type FabricatedDepositFaultProofContracts,
   type FabricatedWithdrawalFaultProofContracts,
 } from "@al-ft/midgard-sdk";
@@ -13,34 +13,34 @@ import {
   resolveFaultProofDeploymentContracts,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { type FabricatedDepositContractsV1 } from "./submit-fabricated-deposit-step-01.js";
-import { type FabricatedWithdrawalContractsV1 } from "./submit-fabricated-withdrawal-step-01.js";
+import { type FabricatedDepositContracts } from "./submit-fabricated-deposit-step-01.js";
+import { type FabricatedWithdrawalContracts } from "./submit-fabricated-withdrawal-step-01.js";
 
 /**
  * Deployment-info names of the four `fabricated-deposit` step scripts, in step
  * order. These are the same names `submit-init` registers, so a thread opened
  * by the CLI and one opened by the emulator resolve identical script hashes.
  */
-const FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES_V1 = [
+const FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES = [
   "fraudProofFabricatedDeposit",
   "fraudProofFabricatedDepositStep02",
   "fraudProofFabricatedDepositStep03",
   "fraudProofFabricatedDepositStep04",
 ] as const;
 
-const FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES_V1 = [
+const FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES = [
   "fraudProofFabricatedWithdrawal",
   "fraudProofFabricatedWithdrawalStep02",
   "fraudProofFabricatedWithdrawalStep03",
   "fraudProofFabricatedWithdrawalStep04",
 ] as const;
 
-export type FabricatedCliContractsConfigV1 = SubmitProviderConfig & {
+export type FabricatedCliContractsConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
   readonly deploymentInfoPath: string;
 };
 
-export type FabricatedStepIndexV1 = 0 | 1 | 2 | 3;
+export type FabricatedStepIndex = 0 | 1 | 2 | 3;
 
 /**
  * Both fabricated families deploy their step scripts as reference scripts
@@ -50,12 +50,12 @@ export type FabricatedStepIndexV1 = 0 | 1 | 2 | 3;
  * from the same deployment info, and the reference script is re-hashed against
  * the deployed script hash before it is used.
  */
-const resolveStepReferenceScriptV1 = async ({
+const resolveStepReferenceScript = async ({
   config,
   deploymentInfo,
   name,
 }: {
-  readonly config: FabricatedCliContractsConfigV1;
+  readonly config: FabricatedCliContractsConfig;
   readonly deploymentInfo: Parameters<
     typeof requireDeploymentReferenceScript
   >[0]["deploymentInfo"];
@@ -69,14 +69,14 @@ const resolveStepReferenceScriptV1 = async ({
   });
 };
 
-export const resolveFabricatedDepositCliContractsV1 = async ({
+export const resolveFabricatedDepositCliContracts = async ({
   config,
   stepIndex,
 }: {
-  readonly config: FabricatedCliContractsConfigV1;
-  readonly stepIndex: FabricatedStepIndexV1;
+  readonly config: FabricatedCliContractsConfig;
+  readonly stepIndex: FabricatedStepIndex;
 }): Promise<{
-  readonly contracts: FabricatedDepositContractsV1;
+  readonly contracts: FabricatedDepositContracts;
   readonly referenceScriptUtxo: UTxO;
 }> => {
   const [blueprint, deploymentInfo] = await Promise.all([
@@ -97,30 +97,30 @@ export const resolveFabricatedDepositCliContractsV1 = async ({
       "Deployment info resolved no stateQueueMint policy id for fabricated-deposit.",
     );
   }
-  const contracts: FabricatedDepositContractsV1 = {
+  const contracts: FabricatedDepositContracts = {
     steps: chain.fabricatedDeposit.steps,
     computationThread: chain.computationThread,
     fraudProof: chain.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     stateQueuePolicyId: resolved.stateQueuePolicyId,
-    categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
+    categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
   };
-  const referenceScriptUtxo = await resolveStepReferenceScriptV1({
+  const referenceScriptUtxo = await resolveStepReferenceScript({
     config,
     deploymentInfo: resolved.deploymentInfo,
-    name: FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES_V1[stepIndex],
+    name: FABRICATED_DEPOSIT_STEP_DEPLOYMENT_NAMES[stepIndex],
   });
   return { contracts, referenceScriptUtxo };
 };
 
-export const resolveFabricatedWithdrawalCliContractsV1 = async ({
+export const resolveFabricatedWithdrawalCliContracts = async ({
   config,
   stepIndex,
 }: {
-  readonly config: FabricatedCliContractsConfigV1;
-  readonly stepIndex: FabricatedStepIndexV1;
+  readonly config: FabricatedCliContractsConfig;
+  readonly stepIndex: FabricatedStepIndex;
 }): Promise<{
-  readonly contracts: FabricatedWithdrawalContractsV1;
+  readonly contracts: FabricatedWithdrawalContracts;
   readonly referenceScriptUtxo: UTxO;
 }> => {
   const [blueprint, deploymentInfo] = await Promise.all([
@@ -141,18 +141,18 @@ export const resolveFabricatedWithdrawalCliContractsV1 = async ({
       "Deployment info resolved no stateQueueMint policy id for fabricated-withdrawal.",
     );
   }
-  const contracts: FabricatedWithdrawalContractsV1 = {
+  const contracts: FabricatedWithdrawalContracts = {
     steps: chain.fabricatedWithdrawal.steps,
     computationThread: chain.computationThread,
     fraudProof: chain.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     stateQueuePolicyId: resolved.stateQueuePolicyId,
-    categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+    categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
   };
-  const referenceScriptUtxo = await resolveStepReferenceScriptV1({
+  const referenceScriptUtxo = await resolveStepReferenceScript({
     config,
     deploymentInfo: resolved.deploymentInfo,
-    name: FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES_V1[stepIndex],
+    name: FABRICATED_WITHDRAWAL_STEP_DEPLOYMENT_NAMES[stepIndex],
   });
   return { contracts, referenceScriptUtxo };
 };

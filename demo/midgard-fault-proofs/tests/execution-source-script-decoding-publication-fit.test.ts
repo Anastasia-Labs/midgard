@@ -4,18 +4,18 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyExecutionSourceScriptDecodingScriptsV1,
-  EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
+  applyExecutionSourceScriptDecodingScripts,
+  EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
 } from "../src/execution-source-script-decoding/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.every(
+const hasFamily = EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES.every(
   (title) =>
     blueprint.validators.some((validator) => validator.title === title),
 );
@@ -24,13 +24,13 @@ describe.runIf(hasFamily)(
   "executionSourceScriptDecoding signed publication fit",
   () => {
     it("publishes all five applied scripts below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const addressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyExecutionSourceScriptDecodingScriptsV1({
+      const steps = applyExecutionSourceScriptDecodingScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

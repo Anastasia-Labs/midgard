@@ -6,12 +6,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  bindProtectedOutputSignerMissingReferenceScriptsV1,
-  createProtectedOutputSignerMissingProductionWorkflowRunnerSurfaceV1,
-  createProtectedOutputSignerMissingRawL1StageResolverV1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1,
-  type ProtectedOutputSignerMissingDeploymentBindingV1,
-  type ProtectedOutputSignerMissingProductionReferenceScriptsV1,
+  bindProtectedOutputSignerMissingReferenceScripts,
+  createProtectedOutputSignerMissingRawL1StageResolver,
+  createProtectedOutputSignerMissingWorkflowRunnerSurface,
+  PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
+  type ProtectedOutputSignerMissingDeploymentBinding,
+  type ProtectedOutputSignerMissingReferenceScripts,
 } from "../src/protected-output-signer-missing/index.js";
 
 const script = (byte: string): Script => ({
@@ -25,35 +25,33 @@ const utxo = (byte: string, outputIndex: number): UTxO => ({
   assets: { lovelace: 2_000_000n },
   scriptRef: script(byte),
 });
-const references =
-  (): ProtectedOutputSignerMissingProductionReferenceScriptsV1 => ({
-    step01: utxo("1", 0),
-    step02: utxo("2", 1),
-    step03: utxo("3", 2),
-    step04: utxo("4", 3),
-    step05: utxo("5", 4),
-    fieldPreimageCertificateMint: utxo("6", 5),
-    witnesses: {
-      computationThreadMint: utxo("7", 6),
-      fraudProofMint: utxo("8", 7),
-      phasMembershipWithdraw: utxo("9", 8),
-    },
-  });
+const references = (): ProtectedOutputSignerMissingReferenceScripts => ({
+  step01: utxo("1", 0),
+  step02: utxo("2", 1),
+  step03: utxo("3", 2),
+  step04: utxo("4", 3),
+  step05: utxo("5", 4),
+  fieldPreimageCertificateMint: utxo("6", 5),
+  witnesses: {
+    computationThreadMint: utxo("7", 6),
+    fraudProofMint: utxo("8", 7),
+    phasMembershipWithdraw: utxo("9", 8),
+  },
+});
 
 describe("protectedOutputSignerMissing production workflow", () => {
   it("exposes the standard callback-free runner and complete manifest roles", () => {
-    const runner =
-      createProtectedOutputSignerMissingProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig: async () => {
-          throw new Error("not reached");
-        },
-      });
+    const runner = createProtectedOutputSignerMissingWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        throw new Error("not reached");
+      },
+    });
     expect(Object.keys(runner).sort()).toEqual([
       "runOrResume",
       "runnerVersion",
     ]);
     expect(
-      Object.values(PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1),
+      Object.values(PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS),
     ).toEqual([
       "fraudProofProtectedOutputSignerMissing",
       "fraudProofProtectedOutputSignerMissingStep02",
@@ -70,7 +68,7 @@ describe("protectedOutputSignerMissing production workflow", () => {
   it("authenticates every reference out-ref and refuses substitution", () => {
     const supplied = references();
     const names = Object.values(
-      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1,
+      PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
     );
     const values = [
       supplied.step01,
@@ -93,15 +91,15 @@ describe("protectedOutputSignerMissing production workflow", () => {
           },
         ]),
       ),
-    } as unknown as ProtectedOutputSignerMissingDeploymentBindingV1;
+    } as unknown as ProtectedOutputSignerMissingDeploymentBinding;
     expect(
-      bindProtectedOutputSignerMissingReferenceScriptsV1({
+      bindProtectedOutputSignerMissingReferenceScripts({
         binding,
         referenceScripts: supplied,
       }),
     ).toStrictEqual(supplied);
     expect(() =>
-      bindProtectedOutputSignerMissingReferenceScriptsV1({
+      bindProtectedOutputSignerMissingReferenceScripts({
         binding,
         referenceScripts: {
           ...supplied,
@@ -118,7 +116,7 @@ describe("protectedOutputSignerMissing production workflow", () => {
       threadOutRef: `${"a".repeat(64)}#0`,
       stateQueueBlockOutRef: `${"b".repeat(64)}#0`,
     };
-    const resolver = createProtectedOutputSignerMissingRawL1StageResolverV1({
+    const resolver = createProtectedOutputSignerMissingRawL1StageResolver({
       config: {
         binding: { definition: { headerHash: "c".repeat(56) } },
       } as never,

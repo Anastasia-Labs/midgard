@@ -8,18 +8,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1,
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
 } from "./family-v1.js";
 
-export const MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/mint_declared_asset_limit/step_01.main.spend",
   "fraud_proofs/mint_declared_asset_limit/step_02.main.spend",
   "fraud_proofs/mint_declared_asset_limit/step_03.main.spend",
   "fraud_proofs/mint_declared_asset_limit/step_04.main.spend",
 ] as const);
 
-export type MintDeclaredAssetLimitStepContractV1 = Readonly<{
+export type MintDeclaredAssetLimitStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -27,12 +27,12 @@ export type MintDeclaredAssetLimitStepContractV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type MintDeclaredAssetLimitContractsV1 = Readonly<{
+export type MintDeclaredAssetLimitContracts = Readonly<{
   steps: readonly [
-    MintDeclaredAssetLimitStepContractV1,
-    MintDeclaredAssetLimitStepContractV1,
-    MintDeclaredAssetLimitStepContractV1,
-    MintDeclaredAssetLimitStepContractV1,
+    MintDeclaredAssetLimitStepContract,
+    MintDeclaredAssetLimitStepContract,
+    MintDeclaredAssetLimitStepContract,
+    MintDeclaredAssetLimitStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -49,7 +49,7 @@ export type MintDeclaredAssetLimitContractsV1 = Readonly<{
   fieldPreimageCertificateMintingScript: Script;
 }>;
 
-export type MintDeclaredAssetLimitBlueprintV1 = Readonly<{
+export type MintDeclaredAssetLimitBlueprint = Readonly<{
   validators: readonly Readonly<{
     title: string;
     compiledCode: string;
@@ -58,7 +58,7 @@ export type MintDeclaredAssetLimitBlueprintV1 = Readonly<{
 }>;
 
 const applyExact = (
-  blueprint: MintDeclaredAssetLimitBlueprintV1,
+  blueprint: MintDeclaredAssetLimitBlueprint,
   title: string,
   parameters: readonly Data[],
 ): Script => {
@@ -74,7 +74,7 @@ const applyExact = (
 };
 
 /** Applies the four scripts backwards, in their blueprint-declared order. */
-export const applyMintDeclaredAssetLimitScriptsV1 = ({
+export const applyMintDeclaredAssetLimitScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -83,20 +83,19 @@ export const applyMintDeclaredAssetLimitScriptsV1 = ({
   fieldPreimageCertificatePolicyId,
   hubOracleScriptHash,
 }: {
-  readonly blueprint: MintDeclaredAssetLimitBlueprintV1;
+  readonly blueprint: MintDeclaredAssetLimitBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): MintDeclaredAssetLimitContractsV1["steps"] => {
+}): MintDeclaredAssetLimitContracts["steps"] => {
   const applied = (
     index: number,
     parameters: readonly Data[],
-  ): MintDeclaredAssetLimitStepContractV1 => {
-    const blueprintTitle =
-      MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1[index]!;
+  ): MintDeclaredAssetLimitStepContract => {
+    const blueprintTitle = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES[index]!;
     const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
     return Object.freeze({
       blueprintTitle,
@@ -129,12 +128,12 @@ export const applyMintDeclaredAssetLimitScriptsV1 = ({
   return [step01, step02, step03, step04];
 };
 
-export type MintDeclaredAssetLimitProductionManifestV1 = Readonly<{
+export type MintDeclaredAssetLimitManifest = Readonly<{
   schemaVersion: "mint-declared-asset-limit-production-manifest-v1";
-  category: typeof MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1;
-  categoryId: typeof MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1;
+  category: typeof MINT_DECLARED_ASSET_LIMIT_CATEGORY;
+  categoryId: typeof MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID;
   network: Network;
-  contracts: MintDeclaredAssetLimitContractsV1;
+  contracts: MintDeclaredAssetLimitContracts;
 }>;
 
 const hex = (value: string, bytes: number, label: string): void => {
@@ -142,20 +141,19 @@ const hex = (value: string, bytes: number, label: string): void => {
     throw new Error(`mintDeclaredAssetLimit: ${label} is not canonical hex`);
 };
 
-export const loadMintDeclaredAssetLimitProductionManifestV1 = (
-  manifest: MintDeclaredAssetLimitProductionManifestV1,
-): MintDeclaredAssetLimitProductionManifestV1 => {
+export const loadMintDeclaredAssetLimitManifest = (
+  manifest: MintDeclaredAssetLimitManifest,
+): MintDeclaredAssetLimitManifest => {
   if (
     manifest.schemaVersion !==
       "mint-declared-asset-limit-production-manifest-v1" ||
-    manifest.category !== MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1 ||
-    manifest.categoryId !== MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1
+    manifest.category !== MINT_DECLARED_ASSET_LIMIT_CATEGORY ||
+    manifest.categoryId !== MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID
   )
     throw new Error("mintDeclaredAssetLimit: manifest identity changed");
   manifest.contracts.steps.forEach((step, index) => {
     if (
-      step.blueprintTitle !==
-      MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1[index]
+      step.blueprintTitle !== MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES[index]
     )
       throw new Error(
         "mintDeclaredAssetLimit: ordered blueprint title changed",

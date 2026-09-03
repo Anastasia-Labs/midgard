@@ -10,8 +10,8 @@ import { describe, expect, it, vi } from "vitest";
 import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   type CapturedPhasMembershipRegistrationTransaction,
-  decodePhasMembershipRegistrationTransactionBodyEvidenceV1,
-  decodePhasMembershipRewardRegistrationResultV1,
+  decodePhasMembershipRegistrationTransactionBodyEvidence,
+  decodePhasMembershipRewardRegistrationResult,
   ensurePhasMembershipRewardAccountRegisteredProgram,
   inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
@@ -80,11 +80,9 @@ describe("PHAS membership reward registration", () => {
       transactionBody: capture.evidence,
     } as const;
     expect(
-      decodePhasMembershipRegistrationTransactionBodyEvidenceV1(
-        capture.evidence,
-      ),
+      decodePhasMembershipRegistrationTransactionBodyEvidence(capture.evidence),
     ).toEqual(capture.evidence);
-    expect(decodePhasMembershipRewardRegistrationResultV1(result)).toEqual(
+    expect(decodePhasMembershipRewardRegistrationResult(result)).toEqual(
       result,
     );
 
@@ -108,15 +106,15 @@ describe("PHAS membership reward registration", () => {
       },
     ]) {
       expect(() =>
-        decodePhasMembershipRegistrationTransactionBodyEvidenceV1(mutation),
+        decodePhasMembershipRegistrationTransactionBodyEvidence(mutation),
       ).toThrow();
     }
     const { cborSha256: _cborSha256, ...missing } = capture.evidence;
     expect(() =>
-      decodePhasMembershipRegistrationTransactionBodyEvidenceV1(missing),
+      decodePhasMembershipRegistrationTransactionBodyEvidence(missing),
     ).toThrow("fields");
     expect(() =>
-      decodePhasMembershipRewardRegistrationResultV1({
+      decodePhasMembershipRewardRegistrationResult({
         ...result,
         txHash: "bb".repeat(32),
       }),

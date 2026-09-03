@@ -4,19 +4,19 @@ import { join } from "node:path";
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -37,7 +37,7 @@ const LEDGER_OUTPUT_CBOR =
   "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0";
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txHash, "hex"),
     outputIndex: Number(outputIndex),
   });
@@ -50,9 +50,9 @@ const makeNativeTx = ({
   readonly spendInputs: readonly Buffer[];
   readonly referenceInputs: readonly Buffer[];
   readonly fee: bigint;
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputs),
@@ -75,9 +75,9 @@ const makeNativeTx = ({
     },
   });
 
-const payloadFromTx = (tx: MidgardNativeTxFullV1): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdV1(tx).toString("hex"),
-  txCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
+  txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
 
 // Phantom reference input the bad tx reads (absent from an empty-genesis ledger
@@ -119,7 +119,7 @@ const ZERO_COUNTS = {
 };
 
 /**
- * Builds a minimal `DaPayloadV1` whose body carries only a `utxos` set (the
+ * Builds a minimal `DaPayload` whose body carries only a `utxos` set (the
  * ledger snapshot), with every other body root empty. Returns its canonical CBOR
  * and the raw `utxos_root` — which is what the *next* block commits as its
  * `prev_utxos_root`.
@@ -133,13 +133,13 @@ const buildPrevBlockPayload = async (
   const utxoRoot = await keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
-      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: Buffer.from(key, "hex"),
         outputCbor: Buffer.from(value, "hex"),
       }).descriptorCbor,
     })),
   );
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -160,9 +160,9 @@ const buildPrevBlockPayload = async (
     operatorVkey: h28("91"),
     protocolVersion: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -184,7 +184,7 @@ const buildPrevBlockPayload = async (
     },
   };
   return {
-    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
     utxosRoot: utxoRoot.root,

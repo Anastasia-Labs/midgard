@@ -1,7 +1,7 @@
 import {
   computeDaSha256Hash,
-  encodeDaConflictEvidenceV1Cbor,
-  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  encodeDaConflictEvidenceCbor,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
@@ -9,9 +9,9 @@ import { parseSignatureWitness } from "../coordinator/witnesses.js";
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
-  DaStoredConflictEvidenceRecordV1,
+  DaStoredConflictEvidenceRecord,
 } from "../domain.js";
-import { parseDaSignatureRecordV1 } from "../domain.js";
+import { parseDaSignatureRecord } from "../domain.js";
 import {
   type DaCommitteeValidation,
   verifyDaSignatureWitness,
@@ -28,7 +28,7 @@ export type SignatureRecordValidationArgs = {
   readonly expectedAvailabilityCommitmentDigest?: string;
 };
 
-export type DaAvailabilityCommitmentAuthorityV1 = Readonly<{
+export type DaAvailabilityCommitmentAuthority = Readonly<{
   deploymentIdentity: string;
   bondOwnerCredential: string;
   responseGeometry: Readonly<{
@@ -38,7 +38,7 @@ export type DaAvailabilityCommitmentAuthorityV1 = Readonly<{
   }>;
 }>;
 
-export const classifyDaLocalSigningCommitmentV1 = (args: {
+export const classifyDaLocalSigningCommitment = (args: {
   readonly records: readonly DaSignatureRecord[];
   readonly signerIndex: number;
   readonly expectedCommitmentDigest: string;
@@ -65,25 +65,25 @@ export const classifyDaLocalSigningCommitmentV1 = (args: {
   };
 };
 
-export const deriveExpectedDaAvailabilityCommitmentV1 = (args: {
-  readonly authority: DaAvailabilityCommitmentAuthorityV1;
+export const deriveExpectedDaAvailabilityCommitment = (args: {
+  readonly authority: DaAvailabilityCommitmentAuthority;
   readonly headerHash: string;
   readonly payloadCborHex: string;
 }): Readonly<{
-  commitment: SDK.DaAvailabilityCommitmentV1;
+  commitment: SDK.DaAvailabilityCommitment;
   commitmentCbor: string;
   commitmentDigest: string;
 }> => {
-  const commitment = SDK.buildDaAvailabilityCommitmentV1({
+  const commitment = SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: args.authority.deploymentIdentity,
     headerHash: args.headerHash,
     payload: Buffer.from(args.payloadCborHex, "hex"),
     bondOwner: args.authority.bondOwnerCredential,
-    responseGeometry: SDK.availabilityResponseGeometryV1(
+    responseGeometry: SDK.availabilityResponseGeometry(
       args.authority.responseGeometry,
     ),
   });
-  const commitmentCbor = SDK.encodeDaAvailabilityCommitmentV1(commitment);
+  const commitmentCbor = SDK.encodeDaAvailabilityCommitment(commitment);
   return {
     commitment,
     commitmentCbor,
@@ -93,7 +93,7 @@ export const deriveExpectedDaAvailabilityCommitmentV1 = (args: {
   };
 };
 
-export const buildDaSignatureConflictEvidenceV1 = (args: {
+export const buildDaSignatureConflictEvidence = (args: {
   readonly first: DaSignatureRecord;
   readonly second: DaSignatureRecord;
   readonly daVkey: string;
@@ -101,12 +101,12 @@ export const buildDaSignatureConflictEvidenceV1 = (args: {
   readonly receivedAt: string;
 }):
   | Readonly<{
-      record: DaStoredConflictEvidenceRecordV1;
+      record: DaStoredConflictEvidenceRecord;
       gossipCbor: Buffer;
     }>
   | undefined => {
-  const first = parseDaSignatureRecordV1(args.first);
-  const second = parseDaSignatureRecordV1(args.second);
+  const first = parseDaSignatureRecord(args.first);
+  const second = parseDaSignatureRecord(args.second);
   if (
     first.deploymentFingerprint !== second.deploymentFingerprint ||
     first.signerIndex !== second.signerIndex
@@ -124,7 +124,7 @@ export const buildDaSignatureConflictEvidenceV1 = (args: {
     firstIdentity.localeCompare(secondIdentity) < 0
       ? [first, second]
       : [second, first];
-  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
     signerIndex: lower.signerIndex,
     daVkey: Buffer.from(args.daVkey, "hex"),
     lowerHeaderHash: Buffer.from(lower.headerHash, "hex"),
@@ -135,7 +135,7 @@ export const buildDaSignatureConflictEvidenceV1 = (args: {
     upperHeaderWitness: Buffer.from(upper.signatureWitness, "hex"),
   });
   const evidenceHash = computeDaSha256Hash(compactEvidence);
-  const record: DaStoredConflictEvidenceRecordV1 = {
+  const record: DaStoredConflictEvidenceRecord = {
     conflictSchemaVersion: 1,
     deploymentFingerprint: lower.deploymentFingerprint,
     headerHash: lower.headerHash,
@@ -151,7 +151,7 @@ export const buildDaSignatureConflictEvidenceV1 = (args: {
   };
   return {
     record,
-    gossipCbor: encodeDaConflictEvidenceV1Cbor({
+    gossipCbor: encodeDaConflictEvidenceCbor({
       deploymentFingerprint: Buffer.from(lower.deploymentFingerprint, "hex"),
       headerHash: Buffer.from(lower.headerHash, "hex"),
       evidenceKind: "equivocation",
@@ -171,9 +171,9 @@ export const validateDaSignatureRecord = ({
   expectedAvailabilityCommitmentCbor,
   expectedAvailabilityCommitmentDigest,
 }: SignatureRecordValidationArgs): string | undefined => {
-  let record: ReturnType<typeof parseDaSignatureRecordV1>;
+  let record: ReturnType<typeof parseDaSignatureRecord>;
   try {
-    record = parseDaSignatureRecordV1(body);
+    record = parseDaSignatureRecord(body);
   } catch {
     return "invalid signature record";
   }
@@ -232,7 +232,7 @@ export const validateDaSignatureRecord = ({
     return "signature signer index is outside the DA committee";
   }
   const publicKeyHex = signerValidation.committeeKeys[signerIndex]!;
-  const availabilityCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const availabilityCommitment = SDK.parseDaAvailabilityCommitmentCbor(
     record.availabilityCommitmentCbor,
   );
   return verifyDaSignatureWitness({
@@ -257,11 +257,11 @@ export const validateSignatureMatchesVerifiedPayload = (
   if (payload.payloadSha256 !== signature.payloadHash) {
     return "signature payload hash does not match local verified payload";
   }
-  const commitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const commitment = SDK.parseDaAvailabilityCommitmentCbor(
     signature.availabilityCommitmentCbor,
   );
   if (
-    !SDK.verifyDaAvailabilityPayloadCommitmentV1({
+    !SDK.verifyDaAvailabilityPayloadCommitment({
       commitment,
       payload: Buffer.from(payload.payloadCborHex, "hex"),
     })

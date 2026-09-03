@@ -1,18 +1,18 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { buildMidgardBoundedItemV1 } from "./bounded-item-v1.js";
+import { buildMidgardBoundedItem } from "./bounded-item-v1.js";
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  type MidgardCekProgramEnvelopeV1,
+  decodeMidgardCekProgramEnvelope,
+  type MidgardCekProgramEnvelope,
 } from "./cek-proof.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
   decodeMidgardNativeByteListPreimage,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "./codec/native.js";
-import { decodeMidgardSpendInputItemV1 } from "./codec/native-tx-field-item-decoders-v1.js";
-import { encodeMidgardSpendInputItemV1 } from "./codec/native-tx-field-items-v1.js";
+import { decodeMidgardSpendInputItem } from "./codec/native-tx-field-item-decoders-v1.js";
+import { encodeMidgardSpendInputItem } from "./codec/native-tx-field-items-v1.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
   decodeMidgardVersionedScriptListPreimage,
@@ -64,12 +64,12 @@ const hash32 = (bytes: Uint8Array): Hash32 =>
  * the decoder is injective, so equality against the original bytes admits one
  * spelling per out-ref. Twin of `canonical_reference_source_key`.
  */
-const decodeCanonicalReferenceScriptSourceKeyV1 = (
+const decodeCanonicalReferenceScriptSourceKey = (
   sourceKeyBytes: Uint8Array,
 ): { readonly outputIndex: bigint } => {
   let decoded;
   try {
-    decoded = decodeMidgardSpendInputItemV1(sourceKeyBytes);
+    decoded = decodeMidgardSpendInputItem(sourceKeyBytes);
   } catch (cause) {
     throw new Error(
       `reference script source key is not an output reference: ${
@@ -78,7 +78,7 @@ const decodeCanonicalReferenceScriptSourceKeyV1 = (
     );
   }
   if (
-    !encodeMidgardSpendInputItemV1(decoded).equals(Buffer.from(sourceKeyBytes))
+    !encodeMidgardSpendInputItem(decoded).equals(Buffer.from(sourceKeyBytes))
   ) {
     throw new Error("reference script source key is not canonical");
   }
@@ -88,12 +88,12 @@ const decodeCanonicalReferenceScriptSourceKeyV1 = (
 /**
  * Validates V1's meaning of non-native script bytes.
  */
-export const decodeMidgardV1ScriptProgramEnvelope = (
+export const decodeMidgardScriptProgramEnvelope = (
   script: MidgardVersionedScript,
-): MidgardCekProgramEnvelopeV1 | null =>
+): MidgardCekProgramEnvelope | null =>
   script.language === "NativeCardano"
     ? null
-    : decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+    : decodeMidgardCekProgramEnvelope(script.scriptBytes);
 
 /**
  * Computes a V1 script credential only after the executable program
@@ -102,7 +102,7 @@ export const decodeMidgardV1ScriptProgramEnvelope = (
 export const hashMidgardV1VersionedScript = (
   script: MidgardVersionedScript,
 ): string => {
-  if (decodeMidgardV1ScriptProgramEnvelope(script) === null) {
+  if (decodeMidgardScriptProgramEnvelope(script) === null) {
     throw new Error(
       "NativeCardano scripts are not canonical Midgard V1 program envelopes",
     );
@@ -116,14 +116,14 @@ export const hashMidgardV1VersionedScript = (
  * outputs. Programs reached through reference inputs are resolved from ledger
  * state later and therefore are intentionally not inferred here.
  */
-export const collectMidgardV1AttachedProgramEnvelopes = (
-  tx: MidgardNativeTxCanonicalV1,
-): readonly MidgardCekProgramEnvelopeV1[] => {
-  const envelopes: MidgardCekProgramEnvelopeV1[] = [];
+export const collectMidgardAttachedProgramEnvelopes = (
+  tx: MidgardNativeTxCanonical,
+): readonly MidgardCekProgramEnvelope[] => {
+  const envelopes: MidgardCekProgramEnvelope[] = [];
   for (const script of decodeMidgardVersionedScriptListPreimage(
     tx.witnessSet.scriptTxWitsPreimageCbor,
   )) {
-    const envelope = decodeMidgardV1ScriptProgramEnvelope(script);
+    const envelope = decodeMidgardScriptProgramEnvelope(script);
     if (envelope !== null) envelopes.push(envelope);
   }
   const outputs = decodeSingleCbor(tx.body.outputsPreimageCbor);
@@ -136,7 +136,7 @@ export const collectMidgardV1AttachedProgramEnvelopes = (
     }
     const script = decodeMidgardTxOutput(outputCbor).script_ref;
     if (script === undefined) continue;
-    const envelope = decodeMidgardV1ScriptProgramEnvelope(script);
+    const envelope = decodeMidgardScriptProgramEnvelope(script);
     if (envelope !== null) envelopes.push(envelope);
   }
   return Object.freeze(envelopes);
@@ -148,11 +148,11 @@ export const collectMidgardV1AttachedProgramEnvelopes = (
  * output-reference CBOR bytes committed by the transaction; values are the
  * corresponding canonical ledger-output bytes.
  */
-export const collectMidgardV1ReferencedProgramEnvelopes = (
-  tx: MidgardNativeTxCanonicalV1,
+export const collectMidgardReferencedProgramEnvelopes = (
+  tx: MidgardNativeTxCanonical,
   resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array>,
-): readonly MidgardCekProgramEnvelopeV1[] => {
-  const envelopes: MidgardCekProgramEnvelopeV1[] = [];
+): readonly MidgardCekProgramEnvelope[] => {
+  const envelopes: MidgardCekProgramEnvelope[] = [];
   const referenceInputs = decodeMidgardNativeByteListPreimage(
     tx.body.referenceInputsPreimageCbor,
     "reference_inputs_preimage",
@@ -167,13 +167,13 @@ export const collectMidgardV1ReferencedProgramEnvelopes = (
     }
     const script = decodeMidgardTxOutput(outputCbor).script_ref;
     if (script === undefined) continue;
-    const envelope = decodeMidgardV1ScriptProgramEnvelope(script);
+    const envelope = decodeMidgardScriptProgramEnvelope(script);
     if (envelope !== null) envelopes.push(envelope);
   }
   return Object.freeze(envelopes);
 };
 
-export const hashMidgardScriptSourceLeafV1 = (input: {
+export const hashMidgardScriptSourceLeaf = (input: {
   readonly originKind: "inline" | "reference";
   readonly sourceKey: Uint8Array;
   readonly script: MidgardVersionedScript;
@@ -193,12 +193,12 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     ) {
       throw new Error("inline script source key is not a canonical index");
     }
-    const item = buildMidgardBoundedItemV1({
+    const item = buildMidgardBoundedItem({
       fieldIndex: 6,
       itemIndex: Number(sourceIndex),
       bytes: encodeMidgardVersionedScript(input.script),
     });
-    return hashMidgardInlineScriptSourceLeafV1({
+    return hashMidgardInlineScriptSourceLeaf({
       sourceIndex,
       scriptLanguageTag: Number(
         MidgardVersionedScriptTags[input.script.language],
@@ -212,16 +212,16 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     hashMidgardVersionedScript(input.script),
     "hex",
   );
-  const { outputIndex } = decodeCanonicalReferenceScriptSourceKeyV1(
+  const { outputIndex } = decodeCanonicalReferenceScriptSourceKey(
     input.sourceKey,
   );
   const scriptCbor = encodeMidgardVersionedScript(input.script);
-  const item = buildMidgardBoundedItemV1({
+  const item = buildMidgardBoundedItem({
     fieldIndex: 2,
     itemIndex: Number(outputIndex),
     bytes: scriptCbor,
   });
-  return hashMidgardReferenceScriptSourceLeafV1({
+  return hashMidgardReferenceScriptSourceLeaf({
     sourceKey: input.sourceKey,
     scriptLanguageTag: Number(
       MidgardVersionedScriptTags[input.script.language],
@@ -232,14 +232,14 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
   });
 };
 
-export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
+export const hashMidgardReferenceScriptSourceLeaf = (input: {
   readonly sourceKey: Uint8Array;
   readonly scriptLanguageTag: 0 | 3 | 128;
   readonly scriptHash: Uint8Array;
   readonly scriptTotalLength: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
-  decodeCanonicalReferenceScriptSourceKeyV1(input.sourceKey);
+  decodeCanonicalReferenceScriptSourceKey(input.sourceKey);
   if (
     input.scriptLanguageTag !== 0 &&
     input.scriptLanguageTag !== 3 &&
@@ -274,7 +274,7 @@ export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
   );
 };
 
-export const hashMidgardInlineScriptSourceLeafV1 = (input: {
+export const hashMidgardInlineScriptSourceLeaf = (input: {
   readonly sourceIndex: bigint;
   readonly scriptLanguageTag: 0 | 3 | 128;
   readonly scriptHash: Uint8Array;
@@ -317,7 +317,7 @@ export const hashMidgardInlineScriptSourceLeafV1 = (input: {
   );
 };
 
-export const hashMidgardRedeemerItemLeafV1 = (input: {
+export const hashMidgardRedeemerItemLeaf = (input: {
   readonly redeemerIndex: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
@@ -337,22 +337,22 @@ export const hashMidgardRedeemerItemLeafV1 = (input: {
   );
 };
 
-export const hashMidgardRedeemerLeafV1 = (input: {
+export const hashMidgardRedeemerLeaf = (input: {
   readonly redeemerIndex: number;
   readonly canonicalRedeemerWitnessCbor: Uint8Array;
 }): Hash32 => {
-  const item = buildMidgardBoundedItemV1({
+  const item = buildMidgardBoundedItem({
     fieldIndex: 8,
     itemIndex: input.redeemerIndex,
     bytes: input.canonicalRedeemerWitnessCbor,
   });
-  return hashMidgardRedeemerItemLeafV1({
+  return hashMidgardRedeemerItemLeaf({
     redeemerIndex: input.redeemerIndex,
     itemCommitment: item.commitment,
   });
 };
 
-export const hashMidgardScriptPurposeLeafV1 = (input: {
+export const hashMidgardScriptPurposeLeaf = (input: {
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: bigint;
   readonly scriptHash: Uint8Array;
@@ -376,7 +376,7 @@ export const hashMidgardScriptPurposeLeafV1 = (input: {
   );
 };
 
-export const hashMidgardSignerLeafV1 = (signerHash: Uint8Array): Hash32 => {
+export const hashMidgardSignerLeaf = (signerHash: Uint8Array): Hash32 => {
   const exactSignerHash = Buffer.from(signerHash);
   if (exactSignerHash.length !== 28) {
     throw new Error("signer hash must contain exactly 28 bytes");
@@ -386,7 +386,7 @@ export const hashMidgardSignerLeafV1 = (signerHash: Uint8Array): Hash32 => {
   );
 };
 
-export const hashMidgardOutputItemLeafV1 = (input: {
+export const hashMidgardOutputItemLeaf = (input: {
   readonly outputIndex: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
@@ -406,16 +406,16 @@ export const hashMidgardOutputItemLeafV1 = (input: {
   );
 };
 
-export const hashMidgardOutputLeafV1 = (input: {
+export const hashMidgardOutputLeaf = (input: {
   readonly outputIndex: number;
   readonly outputCbor: Uint8Array;
 }): Hash32 => {
-  const item = buildMidgardBoundedItemV1({
+  const item = buildMidgardBoundedItem({
     fieldIndex: 2,
     itemIndex: input.outputIndex,
     bytes: input.outputCbor,
   });
-  return hashMidgardOutputItemLeafV1({
+  return hashMidgardOutputItemLeaf({
     outputIndex: input.outputIndex,
     itemCommitment: item.commitment,
   });
@@ -425,7 +425,7 @@ export const hashMidgardOutputLeafV1 = (input: {
  * Commits the exact compact ledger descriptor derived by the bounded output
  * proof. Full output bytes remain available through transaction DA.
  */
-export const hashMidgardOutputDescriptorLeafV1 = (input: {
+export const hashMidgardOutputDescriptorLeaf = (input: {
   readonly outputIndex: number;
   readonly descriptorCbor: Uint8Array;
 }): Hash32 => {
@@ -441,7 +441,7 @@ export const hashMidgardOutputDescriptorLeafV1 = (input: {
   );
 };
 
-export const hashMidgardScriptExecutionLeafV1 = (input: {
+export const hashMidgardScriptExecutionLeaf = (input: {
   readonly languageTag: 0 | 3 | 128;
   readonly purposeLeaf: Uint8Array;
   readonly sourceLeaf: Uint8Array;
@@ -469,7 +469,7 @@ export const hashMidgardScriptExecutionLeafV1 = (input: {
   );
 };
 
-export const hashMidgardMintAssetLeafV1 = (input: {
+export const hashMidgardMintAssetLeaf = (input: {
   readonly policyId: Uint8Array;
   readonly assetName: Uint8Array;
   readonly quantity: bigint;
@@ -495,7 +495,7 @@ export const hashMidgardMintAssetLeafV1 = (input: {
   );
 };
 
-export const hashMidgardScriptContextItemLeafV1 = (input: {
+export const hashMidgardScriptContextItemLeaf = (input: {
   readonly collectionKind: number;
   readonly itemIndex: number;
   readonly semanticRoot: Uint8Array;
@@ -537,7 +537,7 @@ export const hashMidgardScriptContextItemLeafV1 = (input: {
   );
 };
 
-export const hashMidgardResolvedContextItemLeafV1 = (input: {
+export const hashMidgardResolvedContextItemLeaf = (input: {
   readonly sourceKind: "spend" | "reference";
   readonly itemIndex: number;
   readonly key: Uint8Array;

@@ -3,10 +3,7 @@
  */
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  encodeCbor,
-  type MidgardLedgerOutputAssetV1,
-} from "@al-ft/midgard-core";
+import { encodeCbor, type MidgardLedgerOutputAsset } from "@al-ft/midgard-core";
 import { type MidgardValue } from "@al-ft/midgard-core/codec";
 
 import {
@@ -46,7 +43,7 @@ export type ValidationValueContribution = {
 
 export const midgardValueAssets = (
   value: MidgardValue,
-): readonly MidgardLedgerOutputAssetV1[] =>
+): readonly MidgardLedgerOutputAsset[] =>
   [...value.assets.entries()].flatMap(([policyId, policyAssets]) =>
     [...policyAssets.entries()].map(([assetName, quantity]) => ({
       policyId: Buffer.from(policyId, "hex"),

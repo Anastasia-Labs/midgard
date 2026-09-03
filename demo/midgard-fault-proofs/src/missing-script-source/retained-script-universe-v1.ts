@@ -1,25 +1,25 @@
 import {
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  hashMidgardValidationEventKeyV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationWorkWitnessV1,
-  type MidgardValidationMachineStateV1,
-  verifyMidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationTraceProofV1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  hashMidgardScriptPurposeLeaf,
+  hashMidgardValidationEventKey,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+  type MidgardValidationMachineState,
+  verifyMidgardValidationMerkleMembership,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   Proof,
-  type RetainedValidationWitnessV1,
+  type RetainedValidationWitness,
   ROOT_DOMAINS,
   validationTraceDescriptorCoreFromData,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofCoreFromData,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -28,9 +28,9 @@ import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
-import type { ExecutionSourceDescriptorV1 } from "./family-v1.js";
-import { ScriptSourcesControlV1Schema } from "./schemas-v1.js";
-import type { ExecutionSourceAuthenticationDataV1 } from "./submit-step-02-v1.js";
+import type { ExecutionSourceDescriptor } from "./family-v1.js";
+import { ScriptSourcesControlSchema } from "./schemas-v1.js";
+import type { ExecutionSourceAuthenticationData } from "./submit-step-02-v1.js";
 
 type EncodedEntry = Readonly<{ key: Uint8Array; value: Uint8Array }>;
 type Peak = Readonly<{ height: bigint; hash: string }>;
@@ -68,7 +68,7 @@ const peaks = (value: unknown, label: string): readonly Peak[] =>
   });
 
 type ParsedControl = Readonly<{
-  control: Data.Static<typeof ScriptSourcesControlV1Schema>;
+  control: Data.Static<typeof ScriptSourcesControlSchema>;
   controlData: Data;
   sourceCount: bigint;
   sourcePeaks: readonly Peak[];
@@ -112,7 +112,7 @@ const parseStageNineControl = (witnessCbor: string): ParsedControl => {
     return fail("nested ScriptSources control shape changed");
   const frontier = (raw: unknown, label: string) =>
     peaks(raw, label).map(({ height, hash }) => ({ height, hash }));
-  const control: Data.Static<typeof ScriptSourcesControlV1Schema> = {
+  const control: Data.Static<typeof ScriptSourcesControlSchema> = {
     compact_cbor: bytes(value[0], "compact cbor"),
     witness_set_compact_cbor: bytes(value[1], "witness set compact cbor"),
     field_preimage_lengths_cbor: bytes(value[2], "field lengths cbor"),
@@ -190,7 +190,7 @@ const parseStageNineControl = (witnessCbor: string): ParsedControl => {
   return {
     control,
     controlData: Data.from(
-      Data.to(control as never, ScriptSourcesControlV1Schema as never),
+      Data.to(control as never, ScriptSourcesControlSchema as never),
     ),
     sourceCount,
     sourcePeaks,
@@ -214,8 +214,8 @@ const sameEvent = (left: EventKey, right: EventKey): boolean =>
   Data.to(right as never, EventKeySchema);
 
 const stateFromData = (
-  state: RetainedValidationWitnessV1["machine_state"],
-): MidgardValidationMachineStateV1 => {
+  state: RetainedValidationWitness["machine_state"],
+): MidgardValidationMachineState => {
   const machineVersion = exactNumber(state.machine_version, "machine version");
   if (machineVersion !== 1) return fail("machine version changed");
   if (state.phase !== "ScriptSources")
@@ -263,7 +263,7 @@ type SourceScanWitness = Readonly<{
 }>;
 
 const auxiliaryObject = <T>(
-  witness: RetainedValidationWitnessV1,
+  witness: RetainedValidationWitness,
   name: string,
 ): T | null => {
   const auxiliary = witness.auxiliary;
@@ -274,22 +274,22 @@ const auxiliaryObject = <T>(
     : null;
 };
 
-export type RetainedMissingScriptSourceUniverseV1 = Readonly<{
-  authentication: ExecutionSourceAuthenticationDataV1;
+export type RetainedMissingScriptSourceUniverse = Readonly<{
+  authentication: ExecutionSourceAuthenticationData;
   purpose: Readonly<{
     absoluteIndex: number;
     purposeKind: 0 | 1 | 2 | 3;
     purposeIndex: number;
     requiredScriptHashHex: string;
     subjectHex: string;
-    membership: ExecutionSourceDescriptorV1["purposeMembership"];
+    membership: ExecutionSourceDescriptor["purposeMembership"];
   }>;
-  sources: readonly ExecutionSourceDescriptorV1[];
+  sources: readonly ExecutionSourceDescriptor[];
   transactionSourceCount: number;
 }>;
 
 /** Discovers each canonical unmatched stage-9 purpose coordinate in one pass. */
-export const discoverRetainedMissingScriptSourceCoordinatesV1 = ({
+export const discoverRetainedMissingScriptSourceCoordinates = ({
   eventKey,
   retainedValidationWitnessEntries,
 }: {
@@ -304,9 +304,9 @@ export const discoverRetainedMissingScriptSourceCoordinatesV1 = ({
     { purposeKind: 0 | 1 | 2 | 3; purposeIndex: number }
   >();
   for (const entry of retainedValidationWitnessEntries) {
-    const key = decodeRetainedValidationWitnessKeyV1(entry.key);
+    const key = decodeRetainedValidationWitnessKey(entry.key);
     if (!sameEvent(key.event_key, eventKey)) continue;
-    const witness = decodeRetainedValidationWitnessV1(entry.value);
+    const witness = decodeRetainedValidationWitness(entry.value);
     if (witness.phase !== 8n || witness.auxiliary !== "NoAuxiliaryWitness")
       continue;
     let control: ParsedControl;
@@ -338,7 +338,7 @@ export const discoverRetainedMissingScriptSourceCoordinatesV1 = ({
 };
 
 /** Reconstructs the exact stage-9 missing-source universe from public retained DA. */
-export const buildRetainedMissingScriptSourceUniverseV1 = async ({
+export const buildRetainedMissingScriptSourceUniverse = async ({
   eventKey,
   purposeKind,
   purposeIndex,
@@ -354,11 +354,11 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
   retainedValidationWitnessEntries: readonly EncodedEntry[];
   expectedValidationTracesRoot: string;
   expectedPresence?: boolean;
-}): Promise<RetainedMissingScriptSourceUniverseV1> => {
+}): Promise<RetainedMissingScriptSourceUniverse> => {
   const retained = retainedValidationWitnessEntries
     .map((entry) => ({
-      key: decodeRetainedValidationWitnessKeyV1(entry.key),
-      witness: decodeRetainedValidationWitnessV1(entry.value),
+      key: decodeRetainedValidationWitnessKey(entry.key),
+      witness: decodeRetainedValidationWitness(entry.value),
     }))
     .filter(({ key }) => sameEvent(key.event_key, eventKey))
     .sort((a, b) => Number(a.key.execution_index - b.key.execution_index));
@@ -412,7 +412,7 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
     purposeWitness.subject !== terminal.control.discovery.subject
   )
     return fail("purpose witness differs from terminal discovery control");
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind,
     purposeIndex: BigInt(purposeIndex),
     scriptHash: Buffer.from(purposeWitness.script_hash, "hex"),
@@ -435,7 +435,7 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
       Buffer.from(value, "hex"),
     ),
   };
-  if (!verifyMidgardValidationMerkleMembershipV1(purposeMembership))
+  if (!verifyMidgardValidationMerkleMembership(purposeMembership))
     return fail("purpose frontier membership is invalid");
   const sourceRows = retained
     .filter(
@@ -466,69 +466,67 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
       hash: Buffer.from(hash, "hex"),
     })),
   };
-  const sources = sourceRows.map(
-    (source, index): ExecutionSourceDescriptorV1 => {
-      const originKind = Number(source.origin_kind) as 0 | 1;
-      if (originKind !== 0 && originKind !== 1)
-        return fail("source origin kind changed");
-      if (originKind === 1) {
-        sawReference = true;
-        transactionSourceCount = Math.min(transactionSourceCount, index);
-      } else if (sawReference)
-        return fail("inline source follows a reference source");
-      if (source.source_index !== BigInt(index))
-        return fail("source witnesses are not consensus ordered");
-      const leaf =
-        originKind === 0
-          ? hashMidgardInlineScriptSourceLeafV1({
-              sourceIndex: BigInt(index),
-              scriptLanguageTag: Number(source.script_language_tag) as
-                | 0
-                | 3
-                | 128,
-              scriptHash: Buffer.from(source.script_hash, "hex"),
-              scriptTotalLength: Number(source.script_total_length),
-              itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
-            })
-          : hashMidgardReferenceScriptSourceLeafV1({
-              sourceKey: Buffer.from(source.source_key, "hex"),
-              scriptLanguageTag: Number(source.script_language_tag) as
-                | 0
-                | 3
-                | 128,
-              scriptHash: Buffer.from(source.script_hash, "hex"),
-              scriptTotalLength: Number(source.script_total_length),
-              itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
-            });
-      const sourceMembership = {
-        frontier: sourceFrontier,
-        leafIndex: index,
-        leafHash: leaf,
-        siblings: (source.siblings as string[]).map((value) =>
-          Buffer.from(value, "hex"),
-        ),
-      };
-      if (!verifyMidgardValidationMerkleMembershipV1(sourceMembership))
-        return fail(`source ${index.toString()} membership is invalid`);
-      return {
-        sourceIndex: index,
-        originKind,
-        sourceKeyHex: source.source_key,
-        languageTag: Number(source.script_language_tag) as 0 | 3 | 128,
-        scriptHashHex: source.script_hash,
-        scriptItemHex: "",
-        scriptTotalLength: Number(source.script_total_length),
-        scriptItemCommitmentHex: source.script_item_commitment,
-        purposeKind,
-        purposeIndex,
-        purposeSubjectHex: purposeWitness.subject,
-        redeemerLeafHex: "",
-        purposeMembership,
-        sourceMembership,
-        executionMembership: purposeMembership,
-      };
-    },
-  );
+  const sources = sourceRows.map((source, index): ExecutionSourceDescriptor => {
+    const originKind = Number(source.origin_kind) as 0 | 1;
+    if (originKind !== 0 && originKind !== 1)
+      return fail("source origin kind changed");
+    if (originKind === 1) {
+      sawReference = true;
+      transactionSourceCount = Math.min(transactionSourceCount, index);
+    } else if (sawReference)
+      return fail("inline source follows a reference source");
+    if (source.source_index !== BigInt(index))
+      return fail("source witnesses are not consensus ordered");
+    const leaf =
+      originKind === 0
+        ? hashMidgardInlineScriptSourceLeaf({
+            sourceIndex: BigInt(index),
+            scriptLanguageTag: Number(source.script_language_tag) as
+              | 0
+              | 3
+              | 128,
+            scriptHash: Buffer.from(source.script_hash, "hex"),
+            scriptTotalLength: Number(source.script_total_length),
+            itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
+          })
+        : hashMidgardReferenceScriptSourceLeaf({
+            sourceKey: Buffer.from(source.source_key, "hex"),
+            scriptLanguageTag: Number(source.script_language_tag) as
+              | 0
+              | 3
+              | 128,
+            scriptHash: Buffer.from(source.script_hash, "hex"),
+            scriptTotalLength: Number(source.script_total_length),
+            itemCommitment: Buffer.from(source.script_item_commitment, "hex"),
+          });
+    const sourceMembership = {
+      frontier: sourceFrontier,
+      leafIndex: index,
+      leafHash: leaf,
+      siblings: (source.siblings as string[]).map((value) =>
+        Buffer.from(value, "hex"),
+      ),
+    };
+    if (!verifyMidgardValidationMerkleMembership(sourceMembership))
+      return fail(`source ${index.toString()} membership is invalid`);
+    return {
+      sourceIndex: index,
+      originKind,
+      sourceKeyHex: source.source_key,
+      languageTag: Number(source.script_language_tag) as 0 | 3 | 128,
+      scriptHashHex: source.script_hash,
+      scriptItemHex: "",
+      scriptTotalLength: Number(source.script_total_length),
+      scriptItemCommitmentHex: source.script_item_commitment,
+      purposeKind,
+      purposeIndex,
+      purposeSubjectHex: purposeWitness.subject,
+      redeemerLeafHex: "",
+      purposeMembership,
+      sourceMembership,
+      executionMembership: purposeMembership,
+    };
+  });
   const eventKeyCbor = Buffer.from(
     Data.to(eventKey as never, EventKeySchema),
     "hex",
@@ -543,8 +541,8 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
     return fail("validation descriptor is absent or duplicated");
   const descriptorData = Data.from(
     descriptorMatch[0]!.value.toString("hex"),
-    ValidationTraceDescriptorV1Schema,
-  ) as unknown as import("@al-ft/midgard-sdk").ValidationTraceDescriptorV1;
+    ValidationTraceDescriptorSchema,
+  ) as unknown as import("@al-ft/midgard-sdk").ValidationTraceDescriptor;
   const descriptor = validationTraceDescriptorCoreFromData(
     descriptorData as never,
   );
@@ -560,11 +558,11 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
         terminal.witness.program_counter,
         "retained program counter",
       ) ||
-    !hashMidgardValidationMachineStateV1(state).equals(traceProof.stateHash) ||
-    !verifyMidgardValidationTraceProofV1({ descriptor, proof: traceProof }) ||
-    !state.eventKeyHash.equals(hashMidgardValidationEventKeyV1(eventKeyCbor)) ||
+    !hashMidgardValidationMachineState(state).equals(traceProof.stateHash) ||
+    !verifyMidgardValidationTraceProof({ descriptor, proof: traceProof }) ||
+    !state.eventKeyHash.equals(hashMidgardValidationEventKey(eventKeyCbor)) ||
     !state.workRoot.equals(
-      hashMidgardValidationWorkWitnessV1({
+      hashMidgardValidationWorkWitness({
         phase: "scriptSources",
         programCounter: state.programCounter,
         witnessCbor: Buffer.from(terminal.witness.witness_cbor, "hex"),
@@ -617,7 +615,7 @@ export const buildRetainedMissingScriptSourceUniverseV1 = async ({
       ) ?? [],
     redeemer_leaf: "",
     execution_siblings: [],
-  } satisfies ExecutionSourceAuthenticationDataV1;
+  } satisfies ExecutionSourceAuthenticationData;
   return Object.freeze({
     authentication,
     purpose: Object.freeze({

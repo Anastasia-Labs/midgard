@@ -1,31 +1,31 @@
-import { deriveMidgardNativeTxFaultEvidenceMaterialV1 } from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
-  type VerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  prepareScriptIntegrityHashMismatchEvidenceV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID_V1,
-  scriptIntegrityHashMismatchEvidenceClosesV1,
-  type ScriptIntegrityHashMismatchEvidenceV1,
+  prepareScriptIntegrityHashMismatchEvidence,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID,
+  type ScriptIntegrityHashMismatchEvidence,
+  scriptIntegrityHashMismatchEvidenceCloses,
 } from "./family-v1.js";
-import type { ScriptIntegrityHashMismatchProductionArtifactV1 } from "./lucid-actuator-v1.js";
-import { buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 } from "./retained-stage-three-v1.js";
+import type { ScriptIntegrityHashMismatchArtifact } from "./lucid-actuator-v1.js";
+import { buildScriptIntegrityStageThreeAuthenticationFromRetainedDa } from "./retained-stage-three-v1.js";
 
 type CandidateSource = "accepted" | "forced";
 
 /** Pure terminal-polarity detector shared by canonical replay and unit vectors. */
-export const scriptIntegrityHashMismatchDetectionFromEvidenceV1 = ({
+export const scriptIntegrityHashMismatchDetectionFromEvidence = ({
   headerHash,
   position,
   source,
@@ -34,14 +34,14 @@ export const scriptIntegrityHashMismatchDetectionFromEvidenceV1 = ({
   readonly headerHash: string;
   readonly position: bigint;
   readonly source: CandidateSource;
-  readonly evidence: ScriptIntegrityHashMismatchEvidenceV1;
-}): CanonicalViolationDetectionV1 | null => {
-  if (!scriptIntegrityHashMismatchEvidenceClosesV1(evidence)) return null;
+  readonly evidence: ScriptIntegrityHashMismatchEvidence;
+}): CanonicalViolationDetection | null => {
+  if (!scriptIntegrityHashMismatchEvidenceCloses(evidence)) return null;
   const transactionId = evidence.finding.subject.transaction_id;
   return Object.freeze({
-    detectionId: `${SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID_V1}:${source}:${position.toString()}:${transactionId}`,
+    detectionId: `${SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID}:${source}:${position.toString()}:${transactionId}`,
     headerHash,
-    violationId: SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID_V1,
+    violationId: SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID,
     position,
     diagnostic:
       source === "accepted"
@@ -55,8 +55,8 @@ const evidenceFor = async ({
   subject,
   eventKey,
 }: {
-  readonly block: CanonicalBlockEvidenceV1;
-  readonly subject: VerdictSubjectV1;
+  readonly block: CanonicalBlockEvidence;
+  readonly subject: VerdictSubject;
   readonly eventKey:
     | Readonly<{ L2TransactionEventKey: Readonly<{ tx_id: string }> }>
     | Readonly<{
@@ -69,17 +69,17 @@ const evidenceFor = async ({
       }>;
 }): Promise<
   Readonly<{
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
+    evidence: ScriptIntegrityHashMismatchEvidence;
     authentication: Awaited<
       ReturnType<
-        typeof buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1
+        typeof buildScriptIntegrityStageThreeAuthenticationFromRetainedDa
       >
     >;
   }>
 > => {
   const body = block.reconstruction.payload.block_body;
   const authentication =
-    await buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1({
+    await buildScriptIntegrityStageThreeAuthenticationFromRetainedDa({
       eventKey,
       authenticatedValidationTraceEntries: body.validation_traces.map(
         ([key, value]) => ({
@@ -102,7 +102,7 @@ const evidenceFor = async ({
     );
   return Object.freeze({
     authentication,
-    evidence: prepareScriptIntegrityHashMismatchEvidenceV1({
+    evidence: prepareScriptIntegrityHashMismatchEvidence({
       finding: { subject },
       scriptIntegrityHash: authentication.scriptIntegrityHash,
       redeemerWitnessHash: authentication.redeemerWitnessHash,
@@ -113,19 +113,19 @@ const evidenceFor = async ({
 };
 
 /** Complete accepted/forced replay in deterministic canonical selection order. */
-export const detectScriptIntegrityHashMismatchCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly CanonicalViolationDetectionV1[]> => {
+export const detectScriptIntegrityHashMismatchCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly CanonicalViolationDetection[]> => {
   const accepted = await Promise.all(
     block.transactions.map(async (transaction, position) => {
       const { evidence } = await evidenceFor({
         block,
-        subject: acceptedVerdictSubjectV1(transaction.nodeTxId),
+        subject: acceptedVerdictSubject(transaction.nodeTxId),
         eventKey: {
           L2TransactionEventKey: { tx_id: transaction.nodeTxId },
         },
       });
-      return scriptIntegrityHashMismatchDetectionFromEvidenceV1({
+      return scriptIntegrityHashMismatchDetectionFromEvidence({
         headerHash: block.headerHash,
         position: BigInt(position),
         source: "accepted",
@@ -147,14 +147,14 @@ export const detectScriptIntegrityHashMismatchCanonicalViolationsV1 = async (
         } as const;
         const { evidence } = await evidenceFor({
           block,
-          subject: forcedVerdictSubjectV1({
+          subject: forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: verdict.ForcedTxInvalid.reason,
           }),
           eventKey,
         });
-        return scriptIntegrityHashMismatchDetectionFromEvidenceV1({
+        return scriptIntegrityHashMismatchDetectionFromEvidence({
           headerHash: block.headerHash,
           position: BigInt(position),
           source: "forced",
@@ -166,7 +166,7 @@ export const detectScriptIntegrityHashMismatchCanonicalViolationsV1 = async (
   return Object.freeze(
     [...accepted, ...forced]
       .filter(
-        (candidate): candidate is CanonicalViolationDetectionV1 =>
+        (candidate): candidate is CanonicalViolationDetection =>
           candidate !== null,
       )
       .sort(
@@ -178,11 +178,11 @@ export const detectScriptIntegrityHashMismatchCanonicalViolationsV1 = async (
 };
 
 /** Selects the first canonical contradiction and constructs its exact actuator artifact. */
-export const prepareProductionScriptIntegrityHashMismatchArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<ScriptIntegrityHashMismatchProductionArtifactV1> => {
+export const prepareScriptIntegrityHashMismatchArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<ScriptIntegrityHashMismatchArtifact> => {
   const selected = (
-    await detectScriptIntegrityHashMismatchCanonicalViolationsV1(block)
+    await detectScriptIntegrityHashMismatchCanonicalViolations(block)
   )[0];
   if (selected === undefined)
     throw new Error(
@@ -202,10 +202,10 @@ export const prepareProductionScriptIntegrityHashMismatchArtifactV1 = async (
     } as const;
     const { evidence, authentication } = await evidenceFor({
       block,
-      subject: acceptedVerdictSubjectV1(transaction.nodeTxId),
+      subject: acceptedVerdictSubject(transaction.nodeTxId),
       eventKey,
     });
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     const trie = await buildTrieView(
@@ -244,7 +244,7 @@ export const prepareProductionScriptIntegrityHashMismatchArtifactV1 = async (
   } as const;
   const { evidence, authentication } = await evidenceFor({
     block,
-    subject: forcedVerdictSubjectV1({
+    subject: forcedVerdictSubject({
       transactionId: transaction.value.tx_id,
       sourceKey: transaction.key,
       rejectionReason: transaction.value.verdict.ForcedTxInvalid.reason,

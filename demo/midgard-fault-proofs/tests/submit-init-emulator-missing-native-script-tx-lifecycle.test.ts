@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  prepareMissingNativeScriptTxV1,
+  prepareMissingNativeScriptTx,
   submitMissingNativeScriptTxCancel,
   submitMissingNativeScriptTxInit,
   submitMissingNativeScriptTxStep01,
@@ -17,9 +17,9 @@ import {
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  makeMissingNativeScriptTxEmulatorHarnessV1,
-  publishMissingNativeScriptTxReferenceScriptsV1,
-  setupMissingNativeScriptTxFixtureV1,
+  makeMissingNativeScriptTxEmulatorHarness,
+  publishMissingNativeScriptTxReferenceScripts,
+  setupMissingNativeScriptTxFixture,
 } from "./support/missing-native-script-tx-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -30,9 +30,9 @@ import {
 
 describe("missing-native-script-tx emulator lifecycle", () => {
   it.skip("proves the absent script through six reference-script steps, cancels explicitly, and removes the fraudulent commitment", async () => {
-    const harness = await makeMissingNativeScriptTxEmulatorHarnessV1();
-    const fixture = await setupMissingNativeScriptTxFixtureV1({ harness });
-    const refs = await publishMissingNativeScriptTxReferenceScriptsV1({
+    const harness = await makeMissingNativeScriptTxEmulatorHarness();
+    const fixture = await setupMissingNativeScriptTxFixture({ harness });
+    const refs = await publishMissingNativeScriptTxReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -43,7 +43,7 @@ describe("missing-native-script-tx emulator lifecycle", () => {
     if (badInclusion === null || producingInclusion === undefined) {
       throw new Error("two-transaction fixture is missing inclusion evidence");
     }
-    const prepared = prepareMissingNativeScriptTxV1({
+    const prepared = prepareMissingNativeScriptTx({
       badTxInclusion: badInclusion,
       badTxSpendInputs: fixture.badTxSpendInputs,
       badInputIndex: 0n,

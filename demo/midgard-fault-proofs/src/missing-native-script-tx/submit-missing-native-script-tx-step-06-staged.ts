@@ -1,5 +1,5 @@
 import {
-  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1,
+  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT,
   MissingNativeScriptTxStep06Datum,
   MissingNativeScriptTxStep06SpendRedeemer,
   type MissingNativeScriptTxStep06State,
@@ -23,31 +23,31 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
-import { prepareMissingNativeScriptTxStagedFieldOpeningV1 } from "./staged-field-opening-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
+import { prepareMissingNativeScriptTxStagedFieldOpening } from "./staged-field-opening-v1.js";
 import {
-  advanceMissingNativeScriptTxGrammarCheckpointV1,
-  encodeMissingNativeScriptTxGrammarCheckpointV1,
-  hashMissingNativeScriptTxGrammarCheckpointV1,
-  initialMissingNativeScriptTxGrammarCheckpointV1,
-  MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1,
-  missingNativeScriptTxGrammarCheckpointIsCompleteV1,
+  advanceMissingNativeScriptTxGrammarCheckpoint,
+  encodeMissingNativeScriptTxGrammarCheckpoint,
+  hashMissingNativeScriptTxGrammarCheckpoint,
+  initialMissingNativeScriptTxGrammarCheckpoint,
+  MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
+  missingNativeScriptTxGrammarCheckpointIsComplete,
 } from "./staged-walk-v1.js";
 import {
-  missingNativeScriptTxStepLabelV1,
+  missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxStepStateV1,
-  requireMissingNativeScriptTxThreadUtxoV1,
+  requireMissingNativeScriptTxStepState,
+  requireMissingNativeScriptTxThreadUtxo,
 } from "./submit-common-v1.js";
 
 const STEP_INDEX = 5 as const;
-const STEP_LABEL = missingNativeScriptTxStepLabelV1(STEP_INDEX);
+const STEP_LABEL = missingNativeScriptTxStepLabel(STEP_INDEX);
 
-export type SubmitMissingNativeScriptTxStep06StartGrammarResultV1 = Readonly<{
+export type SubmitMissingNativeScriptTxStep06StartGrammarResult = Readonly<{
   txHash: string;
   nextThreadOutRef: string;
   checkpointBytes: string;
@@ -59,7 +59,7 @@ export type SubmitMissingNativeScriptTxStep06StartGrammarResultV1 = Readonly<{
 }>;
 
 /** Starts the >64-witness grammar certification route at step 06. */
-export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
+export const submitMissingNativeScriptTxStep06StartGrammar = async ({
   lucid,
   contracts,
   categoryId,
@@ -68,7 +68,7 @@ export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
   nativeTxCompactCbor,
   witnessSet,
   scriptTxWitsItems,
-  itemBudget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1,
+  itemBudget = MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
   publishCarriage = false,
   publishedCarriageUtxos,
   certificateUtxo,
@@ -78,7 +78,7 @@ export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -90,12 +90,12 @@ export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitMissingNativeScriptTxStep06StartGrammarResultV1> => {
+}): Promise<SubmitMissingNativeScriptTxStep06StartGrammarResult> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -103,7 +103,7 @@ export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
       threadOutRef,
     });
   const state: MissingNativeScriptTxStep06State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer,
       schema: MissingNativeScriptTxStep06Datum,
@@ -115,30 +115,30 @@ export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
     );
   }
   if (
-    scriptTxWitsItems.length <= MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1
+    scriptTxWitsItems.length <= MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT
   ) {
     throw missingNativeScriptTxSubmitError(
-      `step-06 staged grammar certification requires more than ${MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1.toString()} witnesses.`,
+      `step-06 staged grammar certification requires more than ${MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT.toString()} witnesses.`,
     );
   }
-  const initial = initialMissingNativeScriptTxGrammarCheckpointV1({
+  const initial = initialMissingNativeScriptTxGrammarCheckpoint({
     txId: state.bad_tx_id,
     items: scriptTxWitsItems,
   });
-  const next = advanceMissingNativeScriptTxGrammarCheckpointV1({
+  const next = advanceMissingNativeScriptTxGrammarCheckpoint({
     checkpoint: initial,
     items: scriptTxWitsItems,
     budget: itemBudget,
   });
-  if (missingNativeScriptTxGrammarCheckpointIsCompleteV1(next)) {
+  if (missingNativeScriptTxGrammarCheckpointIsComplete(next)) {
     throw missingNativeScriptTxSubmitError(
       "step-06 grammar start must leave a non-terminal checkpoint for step-07.",
     );
   }
   const checkpointBytes =
-    encodeMissingNativeScriptTxGrammarCheckpointV1(next).toString("hex");
-  const checkpointHash = hashMissingNativeScriptTxGrammarCheckpointV1(next);
-  const prepared = await prepareMissingNativeScriptTxStagedFieldOpeningV1({
+    encodeMissingNativeScriptTxGrammarCheckpoint(next).toString("hex");
+  const checkpointHash = hashMissingNativeScriptTxGrammarCheckpoint(next);
+  const prepared = await prepareMissingNativeScriptTxStagedFieldOpening({
     lucid,
     contracts,
     signer,
@@ -225,9 +225,9 @@ export const submitMissingNativeScriptTxStep06StartGrammarV1 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

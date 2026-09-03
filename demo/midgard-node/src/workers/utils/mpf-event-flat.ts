@@ -49,7 +49,7 @@ export type AuthenticatedPackedMpfRecord = PackedMpfProofNode & {
   readonly branchMerkleNodes?: readonly Buffer[];
 };
 
-export type ParkedEventFlatShardV1 = {
+export type ParkedEventFlatShard = {
   readonly nodeCount: number;
   readonly nodeHashes: ArrayBuffer;
   readonly nodeValues: ArrayBuffer;
@@ -58,14 +58,14 @@ export type ParkedEventFlatShardV1 = {
   readonly encodedBytes: number;
 };
 
-export type ParkedEventFlatOverlayV1 = {
+export type ParkedEventFlatOverlay = {
   readonly schemaVersion: 1;
   readonly trieName: string;
   readonly baseRoot: ArrayBuffer;
   readonly candidateRoot: ArrayBuffer;
   readonly closureDigest: ArrayBuffer;
   readonly nodeCount: number;
-  readonly shards: readonly ParkedEventFlatShardV1[];
+  readonly shards: readonly ParkedEventFlatShard[];
   readonly encodedBytes: number;
 };
 
@@ -240,7 +240,7 @@ const eventFlatClosureDigest = ({
   readonly trieName: string;
   readonly baseRoot: ArrayBuffer;
   readonly candidateRoot: ArrayBuffer;
-  readonly shards: readonly ParkedEventFlatShardV1[];
+  readonly shards: readonly ParkedEventFlatShard[];
 }): Buffer => {
   const trieNameBytes = Buffer.from(trieName);
   const header = Buffer.alloc(12);
@@ -265,7 +265,7 @@ const eventFlatClosureDigest = ({
 
 const packEventFlatShard = (
   records: readonly (readonly [string, PackedMpfStoredValue])[],
-): Omit<ParkedEventFlatShardV1, "digest" | "encodedBytes"> => {
+): Omit<ParkedEventFlatShard, "digest" | "encodedBytes"> => {
   const nodeHashes = new Uint8Array(records.length * HASH_BYTES);
   const encodedValues = records.map(([, value]) =>
     Buffer.from(JSON.stringify(value)),
@@ -292,14 +292,14 @@ const packEventFlatShard = (
   };
 };
 
-type EventFlatWorkerShard = ParkedEventFlatShardV1 & {
+type EventFlatWorkerShard = ParkedEventFlatShard & {
   readonly branchMerkleNodes?: ArrayBuffer;
   readonly branchMerkleDigest?: ArrayBuffer;
 };
 
 const runEventFlatFreezeWorker = (
   shardIndex: number,
-  packed: Omit<ParkedEventFlatShardV1, "digest" | "encodedBytes">,
+  packed: Omit<ParkedEventFlatShard, "digest" | "encodedBytes">,
   includeMerkleNodes = false,
 ): Promise<EventFlatWorkerShard> => {
   const require = createRequire(import.meta.url);
@@ -482,7 +482,7 @@ blake2b.ready(() => {
       "message",
       (
         response:
-          | (Omit<ParkedEventFlatShardV1, "encodedBytes"> & {
+          | (Omit<ParkedEventFlatShard, "encodedBytes"> & {
               readonly shardIndex: number;
               readonly branchMerkleNodes?: ArrayBuffer;
               readonly branchMerkleDigest?: ArrayBuffer;
@@ -595,11 +595,11 @@ export class PackedMpfProof {
   }
 }
 
-export class ResumedEventFlatOverlayV1 {
+export class ResumedEventFlatOverlay {
   private readonly arena: AuthenticatedPackedMpfArena;
   private readonly records: ReadonlyMap<string, PackedMpfStoredValue>;
 
-  public constructor(public readonly artifact: ParkedEventFlatOverlayV1) {
+  public constructor(public readonly artifact: ParkedEventFlatOverlay) {
     if (
       artifact.schemaVersion !== 1 ||
       artifact.baseRoot.byteLength !== HASH_BYTES ||
@@ -1828,7 +1828,7 @@ export class EventFlatMutationArena {
     readonly trieName: string;
     readonly baseRoot: Buffer;
     readonly shardCount?: number;
-  }): Promise<ParkedEventFlatOverlayV1> {
+  }): Promise<ParkedEventFlatOverlay> {
     assertHash(baseRoot, "Event-flat V1 base root");
     const boundedShardCount = Math.max(1, Math.min(16, Math.floor(shardCount)));
     const records = [...this.reachableDirtyRecords()].sort(([left], [right]) =>

@@ -8,11 +8,11 @@ import {
   readCborUnsigned,
 } from "./codec/cbor.js";
 
-export const MIDGARD_NATIVE_SCRIPT_SCAN_V1_VERSION = 1 as const;
-export const MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1 = 16_384 as const;
-export const MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1 = 16_384 as const;
+export const MIDGARD_NATIVE_SCRIPT_SCAN_VERSION = 1 as const;
+export const MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES = 16_384 as const;
+export const MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH = 16_384 as const;
 
-export const MidgardNativeScriptKindsV1 = Object.freeze({
+export const MidgardNativeScriptKinds = Object.freeze({
   Signature: 0,
   All: 1,
   Any: 2,
@@ -21,41 +21,41 @@ export const MidgardNativeScriptKindsV1 = Object.freeze({
   Before: 5,
 } as const);
 
-export type MidgardNativeScriptKindV1 =
-  (typeof MidgardNativeScriptKindsV1)[keyof typeof MidgardNativeScriptKindsV1];
+export type MidgardNativeScriptKind =
+  (typeof MidgardNativeScriptKinds)[keyof typeof MidgardNativeScriptKinds];
 
-type MidgardNativeScriptContainerKindV1 =
-  | typeof MidgardNativeScriptKindsV1.All
-  | typeof MidgardNativeScriptKindsV1.Any
-  | typeof MidgardNativeScriptKindsV1.AtLeast;
+type MidgardNativeScriptContainerKind =
+  | typeof MidgardNativeScriptKinds.All
+  | typeof MidgardNativeScriptKinds.Any
+  | typeof MidgardNativeScriptKinds.AtLeast;
 
-const isMidgardNativeScriptContainerKindV1 = (
-  kind: MidgardNativeScriptKindV1,
-): kind is MidgardNativeScriptContainerKindV1 =>
-  kind === MidgardNativeScriptKindsV1.All ||
-  kind === MidgardNativeScriptKindsV1.Any ||
-  kind === MidgardNativeScriptKindsV1.AtLeast;
+const isMidgardNativeScriptContainerKind = (
+  kind: MidgardNativeScriptKind,
+): kind is MidgardNativeScriptContainerKind =>
+  kind === MidgardNativeScriptKinds.All ||
+  kind === MidgardNativeScriptKinds.Any ||
+  kind === MidgardNativeScriptKinds.AtLeast;
 
-export const MidgardNativeScriptStructureStagesV1 = Object.freeze({
+export const MidgardNativeScriptStructureStages = Object.freeze({
   Token: 0,
   Frame: 1,
   Finalize: 2,
   Terminal: 3,
 } as const);
 
-export type MidgardNativeScriptStructureStageV1 =
-  (typeof MidgardNativeScriptStructureStagesV1)[keyof typeof MidgardNativeScriptStructureStagesV1];
+export type MidgardNativeScriptStructureStage =
+  (typeof MidgardNativeScriptStructureStages)[keyof typeof MidgardNativeScriptStructureStages];
 
-export const MidgardNativeScriptStructureResultKindsV1 = Object.freeze({
+export const MidgardNativeScriptStructureResultKinds = Object.freeze({
   Advanced: "advanced",
   Invalid: "invalid",
   NodeLimit: "nodeLimit",
   DepthLimit: "depthLimit",
 } as const);
 
-export type MidgardNativeScriptStructureControlV1 = {
-  readonly version: typeof MIDGARD_NATIVE_SCRIPT_SCAN_V1_VERSION;
-  readonly stage: MidgardNativeScriptStructureStageV1;
+export type MidgardNativeScriptStructureControl = {
+  readonly version: typeof MIDGARD_NATIVE_SCRIPT_SCAN_VERSION;
+  readonly stage: MidgardNativeScriptStructureStage;
   readonly startOffset: number;
   readonly cursor: number;
   readonly endOffset: number;
@@ -64,41 +64,41 @@ export type MidgardNativeScriptStructureControlV1 = {
   readonly nodeCount: number;
 };
 
-export type MidgardNativeScriptScanFrameV1 = {
+export type MidgardNativeScriptScanFrame = {
   readonly tail: Buffer;
-  readonly kind: MidgardNativeScriptContainerKindV1;
+  readonly kind: MidgardNativeScriptContainerKind;
   readonly childCount: number;
   readonly remaining: number;
   readonly validCount: number;
   readonly required: bigint;
 };
 
-export type MidgardNativeScriptTokenV1 = {
-  readonly kind: MidgardNativeScriptKindV1;
+export type MidgardNativeScriptToken = {
+  readonly kind: MidgardNativeScriptKind;
   readonly nextOffset: number;
   readonly childCount: number;
   readonly required: bigint;
 };
 
-export type MidgardNativeScriptStructureStepResultV1 =
+export type MidgardNativeScriptStructureStepResult =
   | {
-      readonly kind: typeof MidgardNativeScriptStructureResultKindsV1.Advanced;
-      readonly control: MidgardNativeScriptStructureControlV1;
+      readonly kind: typeof MidgardNativeScriptStructureResultKinds.Advanced;
+      readonly control: MidgardNativeScriptStructureControl;
     }
   | {
       readonly kind:
-        | typeof MidgardNativeScriptStructureResultKindsV1.Invalid
-        | typeof MidgardNativeScriptStructureResultKindsV1.NodeLimit
-        | typeof MidgardNativeScriptStructureResultKindsV1.DepthLimit;
+        | typeof MidgardNativeScriptStructureResultKinds.Invalid
+        | typeof MidgardNativeScriptStructureResultKinds.NodeLimit
+        | typeof MidgardNativeScriptStructureResultKinds.DepthLimit;
     };
 
-export type MidgardNativeScriptStructureTraceStepV1 = {
-  readonly control: MidgardNativeScriptStructureControlV1;
-  readonly next: MidgardNativeScriptStructureControlV1;
-  readonly frame: MidgardNativeScriptScanFrameV1 | null;
+export type MidgardNativeScriptStructureTraceStep = {
+  readonly control: MidgardNativeScriptStructureControl;
+  readonly next: MidgardNativeScriptStructureControl;
+  readonly frame: MidgardNativeScriptScanFrame | null;
 };
 
-const FRAME_DOMAIN_V1 = Buffer.from("MidgardNativeScriptScanFrameV1", "ascii");
+const FRAME_DOMAIN = Buffer.from("MidgardNativeScriptScanFrameV1", "ascii");
 
 const exactSafeInteger = ({
   value,
@@ -131,17 +131,17 @@ const decodedSafeInteger = (value: unknown, field: string): number => {
   throw new Error(`Invalid V1 native-script scan ${field}`);
 };
 
-export const isWellFormedMidgardNativeScriptStructureControlV1 = (
-  control: MidgardNativeScriptStructureControlV1,
+export const isWellFormedMidgardNativeScriptStructureControl = (
+  control: MidgardNativeScriptStructureControl,
 ): boolean => {
   try {
     if (
-      control.version !== MIDGARD_NATIVE_SCRIPT_SCAN_V1_VERSION ||
+      control.version !== MIDGARD_NATIVE_SCRIPT_SCAN_VERSION ||
       exactSafeInteger({
         value: control.stage,
         field: "stage",
-        minimum: MidgardNativeScriptStructureStagesV1.Token,
-        maximum: MidgardNativeScriptStructureStagesV1.Terminal,
+        minimum: MidgardNativeScriptStructureStages.Token,
+        maximum: MidgardNativeScriptStructureStages.Terminal,
       }) !== control.stage
     ) {
       return false;
@@ -166,13 +166,13 @@ export const isWellFormedMidgardNativeScriptStructureControlV1 = (
       value: control.stackDepth,
       field: "stack depth",
       minimum: 0,
-      maximum: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1,
+      maximum: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
     });
     exactSafeInteger({
       value: control.nodeCount,
       field: "node count",
       minimum: 0,
-      maximum: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1,
+      maximum: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
     });
     const emptyStack = control.stackRoot.length === 0;
     const committedStack = control.stackRoot.length === 32;
@@ -182,13 +182,13 @@ export const isWellFormedMidgardNativeScriptStructureControlV1 = (
     ) {
       return false;
     }
-    if (control.stage === MidgardNativeScriptStructureStagesV1.Token) {
+    if (control.stage === MidgardNativeScriptStructureStages.Token) {
       return control.cursor < control.endOffset;
     }
-    if (control.stage === MidgardNativeScriptStructureStagesV1.Frame) {
+    if (control.stage === MidgardNativeScriptStructureStages.Frame) {
       return control.stackDepth > 0 && committedStack;
     }
-    if (control.stage === MidgardNativeScriptStructureStagesV1.Finalize) {
+    if (control.stage === MidgardNativeScriptStructureStages.Finalize) {
       return control.stackDepth === 0 && emptyStack;
     }
     return (
@@ -202,42 +202,42 @@ export const isWellFormedMidgardNativeScriptStructureControlV1 = (
   }
 };
 
-export const initialMidgardNativeScriptStructureControlV1 = ({
+export const initialMidgardNativeScriptStructureControl = ({
   startOffset,
   totalLength,
 }: {
   readonly startOffset: number;
   readonly totalLength: number;
-}): MidgardNativeScriptStructureControlV1 => {
+}): MidgardNativeScriptStructureControl => {
   exactSafeInteger({
     value: totalLength,
     field: "total length",
     minimum: 1,
   });
   const control = {
-    version: MIDGARD_NATIVE_SCRIPT_SCAN_V1_VERSION,
-    stage: MidgardNativeScriptStructureStagesV1.Token,
+    version: MIDGARD_NATIVE_SCRIPT_SCAN_VERSION,
+    stage: MidgardNativeScriptStructureStages.Token,
     startOffset,
     cursor: startOffset,
     endOffset: startOffset + totalLength,
     stackRoot: Buffer.alloc(0),
     stackDepth: 0,
     nodeCount: 0,
-  } satisfies MidgardNativeScriptStructureControlV1;
-  if (!isWellFormedMidgardNativeScriptStructureControlV1(control)) {
+  } satisfies MidgardNativeScriptStructureControl;
+  if (!isWellFormedMidgardNativeScriptStructureControl(control)) {
     throw new Error("Invalid V1 native-script scan span");
   }
   return control;
 };
 
-export const encodeMidgardNativeScriptStructureControlV1 = (
-  control: MidgardNativeScriptStructureControlV1,
+export const encodeMidgardNativeScriptStructureControl = (
+  control: MidgardNativeScriptStructureControl,
 ): Buffer => {
-  if (!isWellFormedMidgardNativeScriptStructureControlV1(control)) {
+  if (!isWellFormedMidgardNativeScriptStructureControl(control)) {
     throw new Error("Invalid V1 native-script structure control");
   }
   return encodeCbor([
-    BigInt(MIDGARD_NATIVE_SCRIPT_SCAN_V1_VERSION),
+    BigInt(MIDGARD_NATIVE_SCRIPT_SCAN_VERSION),
     BigInt(control.stage),
     BigInt(control.startOffset),
     BigInt(control.cursor),
@@ -248,9 +248,9 @@ export const encodeMidgardNativeScriptStructureControlV1 = (
   ]);
 };
 
-export const decodeMidgardNativeScriptStructureControlV1 = (
+export const decodeMidgardNativeScriptStructureControl = (
   controlCbor: Uint8Array,
-): MidgardNativeScriptStructureControlV1 => {
+): MidgardNativeScriptStructureControl => {
   const value = decodeSingleCbor(controlCbor);
   if (
     !Array.isArray(value) ||
@@ -263,21 +263,21 @@ export const decodeMidgardNativeScriptStructureControlV1 = (
     version: decodedSafeInteger(
       value[0],
       "version",
-    ) as typeof MIDGARD_NATIVE_SCRIPT_SCAN_V1_VERSION,
+    ) as typeof MIDGARD_NATIVE_SCRIPT_SCAN_VERSION,
     stage: decodedSafeInteger(
       value[1],
       "stage",
-    ) as MidgardNativeScriptStructureStageV1,
+    ) as MidgardNativeScriptStructureStage,
     startOffset: decodedSafeInteger(value[2], "start offset"),
     cursor: decodedSafeInteger(value[3], "cursor"),
     endOffset: decodedSafeInteger(value[4], "end offset"),
     stackRoot: Buffer.from(value[5]),
     stackDepth: decodedSafeInteger(value[6], "stack depth"),
     nodeCount: decodedSafeInteger(value[7], "node count"),
-  } satisfies MidgardNativeScriptStructureControlV1;
+  } satisfies MidgardNativeScriptStructureControl;
   if (
-    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
-    !encodeMidgardNativeScriptStructureControlV1(control).equals(
+    !isWellFormedMidgardNativeScriptStructureControl(control) ||
+    !encodeMidgardNativeScriptStructureControl(control).equals(
       Buffer.from(controlCbor),
     )
   ) {
@@ -286,40 +286,40 @@ export const decodeMidgardNativeScriptStructureControlV1 = (
   return control;
 };
 
-export const midgardNativeScriptScanFrameIsWellFormedV1 = (
-  frame: MidgardNativeScriptScanFrameV1,
+export const midgardNativeScriptScanFrameIsWellFormed = (
+  frame: MidgardNativeScriptScanFrame,
 ): boolean => {
   const processed = frame.childCount - frame.remaining;
   return (
     (frame.tail.length === 0 || frame.tail.length === 32) &&
     Number.isSafeInteger(frame.kind) &&
-    frame.kind >= MidgardNativeScriptKindsV1.All &&
-    frame.kind <= MidgardNativeScriptKindsV1.AtLeast &&
+    frame.kind >= MidgardNativeScriptKinds.All &&
+    frame.kind <= MidgardNativeScriptKinds.AtLeast &&
     Number.isSafeInteger(frame.childCount) &&
     frame.childCount > 0 &&
-    frame.childCount <= MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1 &&
+    frame.childCount <= MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES &&
     Number.isSafeInteger(frame.remaining) &&
     frame.remaining > 0 &&
     frame.remaining <= frame.childCount &&
     Number.isSafeInteger(frame.validCount) &&
     frame.validCount >= 0 &&
     frame.validCount <= processed &&
-    (frame.kind === MidgardNativeScriptKindsV1.AtLeast
+    (frame.kind === MidgardNativeScriptKinds.AtLeast
       ? frame.required >= 0n
       : frame.required === 0n)
   );
 };
 
-export const hashMidgardNativeScriptScanFrameV1 = (
-  frame: MidgardNativeScriptScanFrameV1,
+export const hashMidgardNativeScriptScanFrame = (
+  frame: MidgardNativeScriptScanFrame,
 ): Buffer => {
-  if (!midgardNativeScriptScanFrameIsWellFormedV1(frame)) {
+  if (!midgardNativeScriptScanFrameIsWellFormed(frame)) {
     throw new Error("Invalid V1 native-script scan frame");
   }
   return Buffer.from(
     blake2b(
       Buffer.concat([
-        FRAME_DOMAIN_V1,
+        FRAME_DOMAIN,
         encodeCbor([
           frame.tail,
           BigInt(frame.kind),
@@ -349,34 +349,34 @@ const readToken = ({
   window,
   windowOffset,
 }: {
-  readonly control: MidgardNativeScriptStructureControlV1;
+  readonly control: MidgardNativeScriptStructureControl;
   readonly window: Uint8Array;
   readonly windowOffset: number;
-}): MidgardNativeScriptTokenV1 => {
+}): MidgardNativeScriptToken => {
   const outer = readCborArrayHeader(window, windowOffset, "native_script");
   const tag = readCborUnsigned(window, outer.nextOffset, "native_script.tag");
-  if (tag.value > BigInt(MidgardNativeScriptKindsV1.Before)) {
+  if (tag.value > BigInt(MidgardNativeScriptKinds.Before)) {
     throw new Error("Unsupported V1 native-script tag");
   }
-  const kind = Number(tag.value) as MidgardNativeScriptKindV1;
+  const kind = Number(tag.value) as MidgardNativeScriptKind;
   if (
-    (kind === MidgardNativeScriptKindsV1.AtLeast && outer.length !== 3) ||
-    (kind !== MidgardNativeScriptKindsV1.AtLeast && outer.length !== 2)
+    (kind === MidgardNativeScriptKinds.AtLeast && outer.length !== 3) ||
+    (kind !== MidgardNativeScriptKinds.AtLeast && outer.length !== 2)
   ) {
     throw new Error("Invalid V1 native-script outer shape");
   }
   let nextOffset = tag.nextOffset;
   let childCount = 0;
   let required = 0n;
-  if (kind === MidgardNativeScriptKindsV1.Signature) {
+  if (kind === MidgardNativeScriptKinds.Signature) {
     const keyHash = readCborBytes(window, nextOffset, "native_script.key_hash");
     if (keyHash.value.length !== 28) {
       throw new Error("Invalid V1 native signature key hash");
     }
     nextOffset = keyHash.nextOffset;
   } else if (
-    kind === MidgardNativeScriptKindsV1.All ||
-    kind === MidgardNativeScriptKindsV1.Any
+    kind === MidgardNativeScriptKinds.All ||
+    kind === MidgardNativeScriptKinds.Any
   ) {
     const children = readCborArrayHeader(
       window,
@@ -385,7 +385,7 @@ const readToken = ({
     );
     childCount = children.length;
     nextOffset = children.nextOffset;
-  } else if (kind === MidgardNativeScriptKindsV1.AtLeast) {
+  } else if (kind === MidgardNativeScriptKinds.AtLeast) {
     const threshold = readCborUnsigned(
       window,
       nextOffset,
@@ -417,30 +417,30 @@ const readToken = ({
 
 // The exact parser the token step consumes, exported so the decoding-fault
 // engine twin can reconstruct pushed frames without a second CBOR parser.
-export const readMidgardNativeScriptStructureTokenV1 = readToken;
+export const readMidgardNativeScriptStructureToken = readToken;
 
 const advanced = (
-  control: MidgardNativeScriptStructureControlV1,
-): MidgardNativeScriptStructureStepResultV1 =>
-  isWellFormedMidgardNativeScriptStructureControlV1(control)
+  control: MidgardNativeScriptStructureControl,
+): MidgardNativeScriptStructureStepResult =>
+  isWellFormedMidgardNativeScriptStructureControl(control)
     ? {
-        kind: MidgardNativeScriptStructureResultKindsV1.Advanced,
+        kind: MidgardNativeScriptStructureResultKinds.Advanced,
         control,
       }
-    : { kind: MidgardNativeScriptStructureResultKindsV1.Invalid };
+    : { kind: MidgardNativeScriptStructureResultKinds.Invalid };
 
-export const advanceMidgardNativeScriptStructureTokenV1 = ({
+export const advanceMidgardNativeScriptStructureToken = ({
   control,
   window,
   windowOffset,
 }: {
-  readonly control: MidgardNativeScriptStructureControlV1;
+  readonly control: MidgardNativeScriptStructureControl;
   readonly window: Uint8Array;
   readonly windowOffset: number;
-}): MidgardNativeScriptStructureStepResultV1 | null => {
+}): MidgardNativeScriptStructureStepResult | null => {
   if (
-    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
-    control.stage !== MidgardNativeScriptStructureStagesV1.Token ||
+    !isWellFormedMidgardNativeScriptStructureControl(control) ||
+    control.stage !== MidgardNativeScriptStructureStages.Token ||
     !Number.isSafeInteger(windowOffset) ||
     windowOffset < 0 ||
     windowOffset >= window.length
@@ -453,20 +453,20 @@ export const advanceMidgardNativeScriptStructureTokenV1 = ({
       token.nextOffset <= control.cursor ||
       token.nextOffset > control.endOffset
     ) {
-      return { kind: MidgardNativeScriptStructureResultKindsV1.Invalid };
+      return { kind: MidgardNativeScriptStructureResultKinds.Invalid };
     }
     const nodeCount = control.nodeCount + 1;
-    if (nodeCount > MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1) {
-      return { kind: MidgardNativeScriptStructureResultKindsV1.NodeLimit };
+    if (nodeCount > MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES) {
+      return { kind: MidgardNativeScriptStructureResultKinds.NodeLimit };
     }
     if (
-      isMidgardNativeScriptContainerKindV1(token.kind) &&
+      isMidgardNativeScriptContainerKind(token.kind) &&
       token.childCount > 0
     ) {
       const stackDepth = control.stackDepth + 1;
-      if (stackDepth > MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1) {
+      if (stackDepth > MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH) {
         return {
-          kind: MidgardNativeScriptStructureResultKindsV1.DepthLimit,
+          kind: MidgardNativeScriptStructureResultKinds.DepthLimit,
         };
       }
       const frame = {
@@ -476,11 +476,11 @@ export const advanceMidgardNativeScriptStructureTokenV1 = ({
         remaining: token.childCount,
         validCount: 0,
         required: token.required,
-      } satisfies MidgardNativeScriptScanFrameV1;
+      } satisfies MidgardNativeScriptScanFrame;
       return advanced({
         ...control,
         cursor: token.nextOffset,
-        stackRoot: hashMidgardNativeScriptScanFrameV1(frame),
+        stackRoot: hashMidgardNativeScriptScanFrame(frame),
         stackDepth,
         nodeCount,
       });
@@ -489,32 +489,32 @@ export const advanceMidgardNativeScriptStructureTokenV1 = ({
       ...control,
       stage:
         control.stackDepth > 0
-          ? MidgardNativeScriptStructureStagesV1.Frame
-          : MidgardNativeScriptStructureStagesV1.Finalize,
+          ? MidgardNativeScriptStructureStages.Frame
+          : MidgardNativeScriptStructureStages.Finalize,
       cursor: token.nextOffset,
       nodeCount,
     });
   } catch {
-    return { kind: MidgardNativeScriptStructureResultKindsV1.Invalid };
+    return { kind: MidgardNativeScriptStructureResultKinds.Invalid };
   }
 };
 
-export const advanceMidgardNativeScriptStructureFrameV1 = ({
+export const advanceMidgardNativeScriptStructureFrame = ({
   control,
   frame,
 }: {
-  readonly control: MidgardNativeScriptStructureControlV1;
-  readonly frame: MidgardNativeScriptScanFrameV1;
-}): MidgardNativeScriptStructureStepResultV1 | null => {
+  readonly control: MidgardNativeScriptStructureControl;
+  readonly frame: MidgardNativeScriptScanFrame;
+}): MidgardNativeScriptStructureStepResult | null => {
   if (
-    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
-    control.stage !== MidgardNativeScriptStructureStagesV1.Frame ||
-    !midgardNativeScriptScanFrameIsWellFormedV1(frame)
+    !isWellFormedMidgardNativeScriptStructureControl(control) ||
+    control.stage !== MidgardNativeScriptStructureStages.Frame ||
+    !midgardNativeScriptScanFrameIsWellFormed(frame)
   ) {
     return null;
   }
   try {
-    if (!hashMidgardNativeScriptScanFrameV1(frame).equals(control.stackRoot)) {
+    if (!hashMidgardNativeScriptScanFrame(frame).equals(control.stackRoot)) {
       return null;
     }
     if (frame.remaining === 1) {
@@ -523,8 +523,8 @@ export const advanceMidgardNativeScriptStructureFrameV1 = ({
         ...control,
         stage:
           stackDepth > 0
-            ? MidgardNativeScriptStructureStagesV1.Frame
-            : MidgardNativeScriptStructureStagesV1.Finalize,
+            ? MidgardNativeScriptStructureStages.Frame
+            : MidgardNativeScriptStructureStages.Finalize,
         stackRoot: frame.tail,
         stackDepth,
       });
@@ -532,71 +532,71 @@ export const advanceMidgardNativeScriptStructureFrameV1 = ({
     const nextFrame = {
       ...frame,
       remaining: frame.remaining - 1,
-    } satisfies MidgardNativeScriptScanFrameV1;
+    } satisfies MidgardNativeScriptScanFrame;
     return advanced({
       ...control,
-      stage: MidgardNativeScriptStructureStagesV1.Token,
-      stackRoot: hashMidgardNativeScriptScanFrameV1(nextFrame),
+      stage: MidgardNativeScriptStructureStages.Token,
+      stackRoot: hashMidgardNativeScriptScanFrame(nextFrame),
     });
   } catch {
     return null;
   }
 };
 
-export const finalizeMidgardNativeScriptStructureV1 = (
-  control: MidgardNativeScriptStructureControlV1,
-): MidgardNativeScriptStructureStepResultV1 | null => {
+export const finalizeMidgardNativeScriptStructure = (
+  control: MidgardNativeScriptStructureControl,
+): MidgardNativeScriptStructureStepResult | null => {
   if (
-    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
-    control.stage !== MidgardNativeScriptStructureStagesV1.Finalize
+    !isWellFormedMidgardNativeScriptStructureControl(control) ||
+    control.stage !== MidgardNativeScriptStructureStages.Finalize
   ) {
     return null;
   }
   return control.cursor === control.endOffset && control.nodeCount > 0
     ? advanced({
         ...control,
-        stage: MidgardNativeScriptStructureStagesV1.Terminal,
+        stage: MidgardNativeScriptStructureStages.Terminal,
       })
-    : { kind: MidgardNativeScriptStructureResultKindsV1.Invalid };
+    : { kind: MidgardNativeScriptStructureResultKinds.Invalid };
 };
 
-export const isExactMidgardNativeScriptStructureTerminalV1 = (
-  control: MidgardNativeScriptStructureControlV1,
+export const isExactMidgardNativeScriptStructureTerminal = (
+  control: MidgardNativeScriptStructureControl,
 ): boolean =>
-  isWellFormedMidgardNativeScriptStructureControlV1(control) &&
-  control.stage === MidgardNativeScriptStructureStagesV1.Terminal;
+  isWellFormedMidgardNativeScriptStructureControl(control) &&
+  control.stage === MidgardNativeScriptStructureStages.Terminal;
 
-export const buildMidgardNativeScriptStructureTraceV1 = (
+export const buildMidgardNativeScriptStructureTrace = (
   scriptBytes: Uint8Array,
   startOffset = 0,
-): readonly MidgardNativeScriptStructureTraceStepV1[] => {
+): readonly MidgardNativeScriptStructureTraceStep[] => {
   const bytes = Buffer.from(scriptBytes);
-  let control = initialMidgardNativeScriptStructureControlV1({
+  let control = initialMidgardNativeScriptStructureControl({
     startOffset,
     totalLength: bytes.length,
   });
-  const frames: MidgardNativeScriptScanFrameV1[] = [];
-  const steps: MidgardNativeScriptStructureTraceStepV1[] = [];
-  const maximumSteps = MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1 * 2 + 1;
+  const frames: MidgardNativeScriptScanFrame[] = [];
+  const steps: MidgardNativeScriptStructureTraceStep[] = [];
+  const maximumSteps = MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES * 2 + 1;
   while (
-    control.stage !== MidgardNativeScriptStructureStagesV1.Terminal &&
+    control.stage !== MidgardNativeScriptStructureStages.Terminal &&
     steps.length < maximumSteps
   ) {
-    let result: MidgardNativeScriptStructureStepResultV1 | null;
-    let frame: MidgardNativeScriptScanFrameV1 | null = null;
-    if (control.stage === MidgardNativeScriptStructureStagesV1.Token) {
+    let result: MidgardNativeScriptStructureStepResult | null;
+    let frame: MidgardNativeScriptScanFrame | null = null;
+    if (control.stage === MidgardNativeScriptStructureStages.Token) {
       const token = readToken({
         control,
         window: bytes,
         windowOffset: control.cursor - startOffset,
       });
-      result = advanceMidgardNativeScriptStructureTokenV1({
+      result = advanceMidgardNativeScriptStructureToken({
         control,
         window: bytes,
         windowOffset: control.cursor - startOffset,
       });
       if (
-        isMidgardNativeScriptContainerKindV1(token.kind) &&
+        isMidgardNativeScriptContainerKind(token.kind) &&
         token.childCount > 0
       ) {
         frames.push({
@@ -608,12 +608,12 @@ export const buildMidgardNativeScriptStructureTraceV1 = (
           required: token.required,
         });
       }
-    } else if (control.stage === MidgardNativeScriptStructureStagesV1.Frame) {
+    } else if (control.stage === MidgardNativeScriptStructureStages.Frame) {
       frame = frames.at(-1) ?? null;
       if (frame === null) {
         throw new Error("V1 native-script trace lost its stack frame");
       }
-      result = advanceMidgardNativeScriptStructureFrameV1({
+      result = advanceMidgardNativeScriptStructureFrame({
         control,
         frame,
       });
@@ -626,11 +626,11 @@ export const buildMidgardNativeScriptStructureTraceV1 = (
         };
       }
     } else {
-      result = finalizeMidgardNativeScriptStructureV1(control);
+      result = finalizeMidgardNativeScriptStructure(control);
     }
     if (
       result === null ||
-      result.kind !== MidgardNativeScriptStructureResultKindsV1.Advanced
+      result.kind !== MidgardNativeScriptStructureResultKinds.Advanced
     ) {
       throw new Error(
         `Canonical V1 native-script scan failed: ${result?.kind ?? "malformed"}`,
@@ -641,7 +641,7 @@ export const buildMidgardNativeScriptStructureTraceV1 = (
   }
   if (
     frames.length !== 0 ||
-    !isExactMidgardNativeScriptStructureTerminalV1(control)
+    !isExactMidgardNativeScriptStructureTerminal(control)
   ) {
     throw new Error("Canonical V1 native-script scan did not terminate");
   }

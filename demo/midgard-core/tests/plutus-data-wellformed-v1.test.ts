@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { decodeMidgardDatum } from "../src/codec/datum.js";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  assertMidgardPlutusDataWellFormedV1,
+  assertMidgardPlutusDataWellFormed,
 } from "../src/plutus-data-cbor.js";
 
 const unaryConstructorDataCborHex = (depth: number): string =>
@@ -12,7 +12,7 @@ const unaryConstructorDataCborHex = (depth: number): string =>
 
 const gateAccepts = (hex: string): boolean => {
   try {
-    assertMidgardPlutusDataWellFormedV1(Buffer.from(hex, "hex"));
+    assertMidgardPlutusDataWellFormed(Buffer.from(hex, "hex"));
     return true;
   } catch {
     return false;
@@ -111,7 +111,7 @@ describe("assertMidgardPlutusDataWellFormedV1", () => {
     const start = Date.now();
     for (const depth of [1, 1_024, 1_523, 2_048, 4_043, 4_044, 16_000]) {
       expect(() =>
-        assertMidgardPlutusDataWellFormedV1(
+        assertMidgardPlutusDataWellFormed(
           Buffer.from(unaryConstructorDataCborHex(depth), "hex"),
         ),
       ).not.toThrow();

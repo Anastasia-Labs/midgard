@@ -1,9 +1,9 @@
-import { decodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { decodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-  parseDeploymentMarkerV1,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
@@ -128,11 +128,11 @@ const ACTIVE_STATUSES: readonly Status[] = [
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
   [Columns.HEADER_CBOR]: Buffer;
-  [Columns.FORMAT_VERSION]: typeof PENDING_BLOCK_FINALIZATION_V1_VERSION;
-  [Columns.REPLAY_KIND]: PendingBlockFinalizationReplayKindV1;
-  [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION;
+  [Columns.FORMAT_VERSION]: typeof PENDING_BLOCK_FINALIZATION_VERSION;
+  [Columns.REPLAY_KIND]: PendingBlockFinalizationReplayKind;
+  [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION;
   [Columns.DEPLOYMENT_MANIFEST_ID]: string;
-  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.SUBMITTED_TX_HASH]: Buffer | null;
   [Columns.STATE_QUEUE_LEASE_TOKEN]: string;
   [Columns.BASE_SNAPSHOT_ID]: string;
@@ -325,19 +325,19 @@ export type NativeMpfReplayInput = {
   readonly eventCount: number;
 };
 
-export const PENDING_BLOCK_FINALIZATION_V1_VERSION = 1 as const;
+export const PENDING_BLOCK_FINALIZATION_VERSION = 1 as const;
 
-export const PendingBlockFinalizationReplayKindV1 = {
+export const PendingBlockFinalizationReplayKind = {
   LedgerDelta: "ledger_delta_v1",
   LedgerDeltaWithNativeMpf: "ledger_delta_native_mpf_v1",
 } as const;
 
-export type PendingBlockFinalizationReplayKindV1 =
-  (typeof PendingBlockFinalizationReplayKindV1)[keyof typeof PendingBlockFinalizationReplayKindV1];
+export type PendingBlockFinalizationReplayKind =
+  (typeof PendingBlockFinalizationReplayKind)[keyof typeof PendingBlockFinalizationReplayKind];
 
 export type PendingBlockFinalizationMetadata = {
-  readonly deploymentMarker: DeploymentMarkerV1;
-  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  readonly deploymentMarker: DeploymentMarker;
+  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   readonly stateQueueLeaseToken: string;
   readonly baseSnapshotId: string;
   readonly baseTailOutRef: string;
@@ -372,16 +372,16 @@ export type PendingBlockFinalizationMetadata = {
   };
 };
 
-export type PendingBlockFinalizationV1 = {
-  readonly version: typeof PENDING_BLOCK_FINALIZATION_V1_VERSION;
+export type PendingBlockFinalization = {
+  readonly version: typeof PENDING_BLOCK_FINALIZATION_VERSION;
   readonly metadata: PendingBlockFinalizationMetadata;
   readonly replay:
     | {
-        readonly kind: typeof PendingBlockFinalizationReplayKindV1.LedgerDelta;
+        readonly kind: typeof PendingBlockFinalizationReplayKind.LedgerDelta;
         readonly ledgerDelta: LedgerDeltaInput;
       }
     | {
-        readonly kind: typeof PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf;
+        readonly kind: typeof PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf;
         readonly ledgerDelta: LedgerDeltaInput;
         readonly nativeMpfReplay: NativeMpfReplayInput;
       };
@@ -461,7 +461,7 @@ const exactNonNegativeBigInt = (value: unknown, label: string): bigint => {
   return value;
 };
 
-const parseLedgerDeltaV1 = (value: unknown): LedgerDeltaInput => {
+const parseLedgerDelta = (value: unknown): LedgerDeltaInput => {
   const candidate = exactRecord(
     value,
     ["spent", "produced"],
@@ -541,7 +541,7 @@ const assertNativeMpfReplay = (replay: NativeMpfReplayInput): void => {
   }
 };
 
-const parseNativeMpfReplayV1 = (value: unknown): NativeMpfReplayInput => {
+const parseNativeMpfReplay = (value: unknown): NativeMpfReplayInput => {
   const candidate = exactRecord(
     value,
     [
@@ -606,7 +606,7 @@ const parseNativeMpfReplayV1 = (value: unknown): NativeMpfReplayInput => {
   return replay;
 };
 
-const parsePendingBlockFinalizationMetadataV1 = (
+const parsePendingBlockFinalizationMetadata = (
   value: unknown,
 ): PendingBlockFinalizationMetadata => {
   const candidate = exactRecord(
@@ -664,10 +664,10 @@ const parsePendingBlockFinalizationMetadataV1 = (
     ],
     "PendingBlockFinalizationV1 metadata.expectedCounts",
   );
-  const deploymentMarker = parseDeploymentMarkerV1(candidate.deploymentMarker);
-  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID) {
+  const deploymentMarker = parseDeploymentMarker(candidate.deploymentMarker);
+  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID) {
     throw new Error(
-      `PendingBlockFinalizationV1 metadata.consensusProfileId must equal ${MIDGARD_CONSENSUS_PROFILE_V1_ID}`,
+      `PendingBlockFinalizationV1 metadata.consensusProfileId must equal ${MIDGARD_CONSENSUS_PROFILE_ID}`,
     );
   }
   const counts = {
@@ -716,7 +716,7 @@ const parsePendingBlockFinalizationMetadataV1 = (
   }
   return {
     deploymentMarker,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     stateQueueLeaseToken: exactNonEmptyString(
       candidate.stateQueueLeaseToken,
       "PendingBlockFinalizationV1 metadata.stateQueueLeaseToken",
@@ -815,52 +815,48 @@ const parsePendingBlockFinalizationMetadataV1 = (
   };
 };
 
-export const parsePendingBlockFinalizationV1 = (
+export const parsePendingBlockFinalization = (
   value: unknown,
-): PendingBlockFinalizationV1 => {
+): PendingBlockFinalization => {
   const candidate = exactRecord(
     value,
     ["version", "metadata", "replay"],
     "PendingBlockFinalizationV1",
   );
-  if (candidate.version !== PENDING_BLOCK_FINALIZATION_V1_VERSION) {
+  if (candidate.version !== PENDING_BLOCK_FINALIZATION_VERSION) {
     throw new Error(
-      `PendingBlockFinalizationV1 version must equal ${PENDING_BLOCK_FINALIZATION_V1_VERSION.toString()}`,
+      `PendingBlockFinalizationV1 version must equal ${PENDING_BLOCK_FINALIZATION_VERSION.toString()}`,
     );
   }
-  const metadata = parsePendingBlockFinalizationMetadataV1(candidate.metadata);
+  const metadata = parsePendingBlockFinalizationMetadata(candidate.metadata);
   const replayCandidate = exactRecord(
     candidate.replay,
     (candidate.replay as { readonly kind?: unknown })?.kind ===
-      PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+      PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf
       ? ["kind", "ledgerDelta", "nativeMpfReplay"]
       : ["kind", "ledgerDelta"],
     "PendingBlockFinalizationV1 replay",
   );
-  const ledgerDelta = parseLedgerDeltaV1(replayCandidate.ledgerDelta);
-  if (
-    replayCandidate.kind === PendingBlockFinalizationReplayKindV1.LedgerDelta
-  ) {
+  const ledgerDelta = parseLedgerDelta(replayCandidate.ledgerDelta);
+  if (replayCandidate.kind === PendingBlockFinalizationReplayKind.LedgerDelta) {
     return {
-      version: PENDING_BLOCK_FINALIZATION_V1_VERSION,
+      version: PENDING_BLOCK_FINALIZATION_VERSION,
       metadata,
       replay: {
-        kind: PendingBlockFinalizationReplayKindV1.LedgerDelta,
+        kind: PendingBlockFinalizationReplayKind.LedgerDelta,
         ledgerDelta,
       },
     };
   }
   if (
     replayCandidate.kind !==
-    PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+    PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf
   ) {
     throw new Error(
       "PendingBlockFinalizationV1 replay kind must be an exact V1 discriminator",
     );
   }
-  const nativeMpfReplay = parseNativeMpfReplayV1(
-    replayCandidate.nativeMpfReplay,
-  );
+  const nativeMpfReplay = parseNativeMpfReplay(replayCandidate.nativeMpfReplay);
   if (
     nativeMpfReplay.baseRoot.toString("hex") !== metadata.baseRoots.utxosRoot ||
     nativeMpfReplay.candidateRoot.toString("hex") !==
@@ -871,10 +867,10 @@ export const parsePendingBlockFinalizationV1 = (
     );
   }
   return {
-    version: PENDING_BLOCK_FINALIZATION_V1_VERSION,
+    version: PENDING_BLOCK_FINALIZATION_VERSION,
     metadata,
     replay: {
-      kind: PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf,
+      kind: PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf,
       ledgerDelta,
       nativeMpfReplay,
     },
@@ -893,8 +889,7 @@ const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
     row[Columns.MPF_REPLAY_EVENT_COUNT],
   ];
   if (
-    row[Columns.REPLAY_KIND] ===
-    PendingBlockFinalizationReplayKindV1.LedgerDelta
+    row[Columns.REPLAY_KIND] === PendingBlockFinalizationReplayKind.LedgerDelta
   ) {
     if (values.some((value) => value != null)) {
       throw new Error(
@@ -905,7 +900,7 @@ const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
   }
   if (
     row[Columns.REPLAY_KIND] !==
-    PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+    PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf
   ) {
     throw new Error(
       "PendingBlockFinalizationV1 persisted replay kind is unsupported",
@@ -926,7 +921,7 @@ const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
     eventRoots: Buffer.from(row[Columns.MPF_REPLAY_EVENT_ROOTS]!),
     eventCount: row[Columns.MPF_REPLAY_EVENT_COUNT]!,
   };
-  return parseNativeMpfReplayV1(replay);
+  return parseNativeMpfReplay(replay);
 };
 
 const decodeHexArray = (value: unknown, label: string): readonly Buffer[] => {
@@ -961,7 +956,7 @@ const decodeLedgerDelta = (row: Row): LedgerDeltaInput => {
   if (!Array.isArray(produced)) {
     throw new Error("ledger_delta_produced must be an array");
   }
-  return parseLedgerDeltaV1({
+  return parseLedgerDelta({
     spent: decodeHexArray(spent, "ledger_delta_spent"),
     produced: produced.map((entry) => {
       const candidate = exactRecord(
@@ -1139,13 +1134,11 @@ const forcedTransactionMemberEntry = (
         }),
       );
     }
-    const payload = ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1(
-      {
-        sourceValueCbor,
-        canonicalTransactionCbor,
-        programMaterialSidecarCbor,
-      },
-    );
+    const payload = ForcedTransactionsDB.encodeForcedTransactionJournalMember({
+      sourceValueCbor,
+      canonicalTransactionCbor,
+      programMaterialSidecarCbor,
+    });
     const memberId = Buffer.from(
       entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
     );
@@ -1231,7 +1224,7 @@ const retrieveMembers = (
       ORDER BY ${sql(MemberColumns.ORDINAL)} ASC`;
   }).pipe(Effect.orDie);
 
-export const validateForcedTransactionJournalMembersV1 = (
+export const validateForcedTransactionJournalMembers = (
   members: readonly MemberRecord[],
   headerHash: Buffer,
 ): Effect.Effect<void, DatabaseError> =>
@@ -1252,7 +1245,7 @@ export const validateForcedTransactionJournalMembersV1 = (
             `forced journal member identity or payload digest mismatch: member_id=${memberId.toString("hex")}`,
           );
         }
-        ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(payload);
+        ForcedTransactionsDB.decodeForcedTransactionJournalMember(payload);
       }
     },
     catch: (cause) =>
@@ -1264,7 +1257,7 @@ export const validateForcedTransactionJournalMembersV1 = (
       }),
   });
 
-const decodePendingBlockFinalizationRowV1 = (
+const decodePendingBlockFinalizationRow = (
   row: RawRow,
 ): Effect.Effect<
   {
@@ -1277,15 +1270,15 @@ const decodePendingBlockFinalizationRowV1 = (
   Effect.try({
     try: () => {
       const persistedFormatVersion: unknown = row[Columns.FORMAT_VERSION];
-      if (persistedFormatVersion !== PENDING_BLOCK_FINALIZATION_V1_VERSION) {
+      if (persistedFormatVersion !== PENDING_BLOCK_FINALIZATION_VERSION) {
         throw new Error(
-          `persisted format_version must equal ${PENDING_BLOCK_FINALIZATION_V1_VERSION.toString()}`,
+          `persisted format_version must equal ${PENDING_BLOCK_FINALIZATION_VERSION.toString()}`,
         );
       }
       const normalizedRow = normalizeRow(row);
       const ledgerDelta = decodeLedgerDelta(normalizedRow);
       const nativeMpfReplay = decodeNativeMpfReplay(normalizedRow);
-      const pending = parsePendingBlockFinalizationV1({
+      const pending = parsePendingBlockFinalization({
         version: normalizedRow[Columns.FORMAT_VERSION],
         metadata: pendingBlockFinalizationMetadataFromRow(normalizedRow),
         replay:
@@ -1318,7 +1311,7 @@ const decodePendingBlockFinalizationRowV1 = (
         ledgerDelta: pending.replay.ledgerDelta,
         nativeMpfReplay:
           pending.replay.kind ===
-          PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+          PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf
             ? pending.replay.nativeMpfReplay
             : undefined,
       };
@@ -1336,7 +1329,7 @@ const retrieveRecord = (
   row: RawRow,
 ): Effect.Effect<Record, DatabaseError, never> =>
   Effect.gen(function* () {
-    const decoded = yield* decodePendingBlockFinalizationRowV1(row);
+    const decoded = yield* decodePendingBlockFinalizationRow(row);
     const { normalizedRow, ledgerDelta, nativeMpfReplay } = decoded;
     const [
       depositEventIds,
@@ -1388,7 +1381,7 @@ const retrieveRecord = (
       ],
       { concurrency: 1 },
     );
-    yield* validateForcedTransactionJournalMembersV1(
+    yield* validateForcedTransactionJournalMembers(
       forcedTransactionEventIds,
       normalizedRow[Columns.HEADER_HASH],
     );
@@ -1496,7 +1489,7 @@ export const retrieveActiveByStateQueueLeaseToken = (
     return yield* Effect.forEach(
       rows,
       (row) =>
-        decodePendingBlockFinalizationRowV1(row).pipe(
+        decodePendingBlockFinalizationRow(row).pipe(
           Effect.map(({ normalizedRow }) => normalizedRow),
         ),
       { concurrency: 1 },
@@ -1520,7 +1513,7 @@ export const retrieveByStateQueueLeaseToken = (
     return yield* Effect.forEach(
       rows,
       (row) =>
-        decodePendingBlockFinalizationRowV1(row).pipe(
+        decodePendingBlockFinalizationRow(row).pipe(
           Effect.map(({ normalizedRow }) => normalizedRow),
         ),
       { concurrency: 1 },
@@ -1594,17 +1587,17 @@ export const preparePendingSubmission = (
     const sql = yield* SqlClient.SqlClient;
     const pendingV1 = yield* Effect.try({
       try: () => {
-        const pending = parsePendingBlockFinalizationV1({
-          version: PENDING_BLOCK_FINALIZATION_V1_VERSION,
+        const pending = parsePendingBlockFinalization({
+          version: PENDING_BLOCK_FINALIZATION_VERSION,
           metadata: input.metadata,
           replay:
             input.nativeMpfReplay === undefined
               ? {
-                  kind: PendingBlockFinalizationReplayKindV1.LedgerDelta,
+                  kind: PendingBlockFinalizationReplayKind.LedgerDelta,
                   ledgerDelta: input.ledgerDelta,
                 }
               : {
-                  kind: PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf,
+                  kind: PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf,
                   ledgerDelta: input.ledgerDelta,
                   nativeMpfReplay: input.nativeMpfReplay,
                 },
@@ -1640,7 +1633,7 @@ export const preparePendingSubmission = (
     const ledgerDelta = pendingV1.replay.ledgerDelta;
     const nativeMpfReplay =
       pendingV1.replay.kind ===
-      PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+      PendingBlockFinalizationReplayKind.LedgerDeltaWithNativeMpf
         ? pendingV1.replay.nativeMpfReplay
         : undefined;
     const deploymentMarker = metadata.deploymentMarker;
@@ -1697,8 +1690,7 @@ export const preparePendingSubmission = (
         );
       }
       yield* Effect.try({
-        try: () =>
-          decodeMidgardCekProgramMaterialSidecarV1(material.sidecarCbor),
+        try: () => decodeMidgardCekProgramMaterialSidecar(material.sidecarCbor),
         catch: (cause) =>
           new DatabaseError({
             table: txsTableName,
@@ -2211,7 +2203,7 @@ export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
         const deletedRows = yield* Effect.forEach(
           finalizedRows,
           (finalized) =>
-            decodePendingBlockFinalizationRowV1(finalized).pipe(
+            decodePendingBlockFinalizationRow(finalized).pipe(
               Effect.flatMap(({ normalizedRow }) =>
                 deleteSupersededAbandonedUnsubmittedJournals(
                   sql,

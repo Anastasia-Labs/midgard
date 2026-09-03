@@ -1,16 +1,16 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   daDeploymentFingerprintFromHex,
-  type DaEventToStepByEventRequestV1,
-  type DaEventToStepByEventResponseV1,
-  type DaProofBundleByHeaderRequestV1,
-  type DaProofBundleByHeaderResponseV1,
-  type DaTraceStepByIndexRequestV1,
-  type DaTraceStepByIndexResponseV1,
+  type DaEventToStepByEventRequest,
+  type DaEventToStepByEventResponse,
+  type DaProofBundleByHeaderRequest,
+  type DaProofBundleByHeaderResponse,
+  type DaTraceStepByIndexRequest,
+  type DaTraceStepByIndexResponse,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -19,18 +19,18 @@ import { Effect } from "effect";
 
 import type {
   DaPayloadRecord,
-  HeaderV1,
+  Header,
   StateQueueHeaderRecord,
 } from "../domain.js";
-import { hashBlockHeaderV1 } from "../l1/state-queue-scanner.js";
+import { hashBlockHeader } from "../l1/state-queue-scanner.js";
 import type { WatcherStore } from "../store.js";
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
 import {
-  computeDaPayloadV1Roots,
-  type DaPayloadCountSetV1,
-  type DaPayloadRootSetV1,
+  computeDaPayloadRoots,
+  type DaPayloadCountSet,
+  type DaPayloadRootSet,
   daPayloadSha256,
-  decodeDaPayloadV1Strict,
+  decodeDaPayloadStrict,
 } from "./payload.js";
 
 type DataSchema = Parameters<typeof LucidData.Nullable>[0];
@@ -97,15 +97,15 @@ type CountedRoot = KeyValuePhasRoot & {
   readonly phasRoot: string;
 };
 
-type ProofRootSetInput = DaPayloadRootSetV1;
+type ProofRootSetInput = DaPayloadRootSet;
 
-type ProofCountSetInput = DaPayloadCountSetV1;
+type ProofCountSetInput = DaPayloadCountSet;
 
 type TraceProofReconstruction = {
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly rootSummary: DaPayloadRootSetV1;
-  readonly countSummary: DaPayloadCountSetV1;
+  readonly rootSummary: DaPayloadRootSet;
+  readonly countSummary: DaPayloadCountSet;
   readonly transitionTrace: ReadonlyMap<
     bigint,
     DecodedRootEntry<bigint, SDK.TransitionStep>
@@ -133,7 +133,7 @@ type VerifiedPayloadResolution =
 
 const MIDGARD_EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const NON_MEMBERSHIP_DUMMY_VALUE = Buffer.alloc(0);
-const PROOF_BUNDLE_V1_VERSION = 1n;
+const PROOF_BUNDLE_VERSION = 1n;
 
 export class DaProofArtifactDeriver {
   private readonly deploymentFingerprint: string;
@@ -151,8 +151,8 @@ export class DaProofArtifactDeriver {
   }
 
   async proofBundleByHeader(
-    request: DaProofBundleByHeaderRequestV1,
-  ): Promise<DaProofArtifactDerivation<DaProofBundleByHeaderResponseV1>> {
+    request: DaProofBundleByHeaderRequest,
+  ): Promise<DaProofArtifactDerivation<DaProofBundleByHeaderResponse>> {
     const headerHash = request.headerHash;
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
       return {
@@ -186,7 +186,7 @@ export class DaProofArtifactDeriver {
         ),
       };
     }
-    const proofBundleBytes = encodeProofBundleV1(resolution.reconstruction);
+    const proofBundleBytes = encodeProofBundle(resolution.reconstruction);
     const proofBundleHash = computeDaSha256Hash(proofBundleBytes);
     if (proofBundleBytes.length > request.maxInlineBytes) {
       return {
@@ -215,11 +215,11 @@ export class DaProofArtifactDeriver {
   }
 
   async traceStepByIndex(
-    request: DaTraceStepByIndexRequestV1,
-  ): Promise<DaProofArtifactDerivation<DaTraceStepByIndexResponseV1>> {
+    request: DaTraceStepByIndexRequest,
+  ): Promise<DaProofArtifactDerivation<DaTraceStepByIndexResponse>> {
     const absentResponse = (
-      status: DaTraceStepByIndexResponseV1["status"],
-    ): DaTraceStepByIndexResponseV1 => ({
+      status: DaTraceStepByIndexResponse["status"],
+    ): DaTraceStepByIndexResponse => ({
       status,
       headerHash: request.headerHash,
       stepIndex: request.stepIndex,
@@ -281,11 +281,11 @@ export class DaProofArtifactDeriver {
   }
 
   async eventToStepByEvent(
-    request: DaEventToStepByEventRequestV1,
-  ): Promise<DaProofArtifactDerivation<DaEventToStepByEventResponseV1>> {
+    request: DaEventToStepByEventRequest,
+  ): Promise<DaProofArtifactDerivation<DaEventToStepByEventResponse>> {
     const absentResponse = (
-      status: DaEventToStepByEventResponseV1["status"],
-    ): DaEventToStepByEventResponseV1 => ({
+      status: DaEventToStepByEventResponse["status"],
+    ): DaEventToStepByEventResponse => ({
       status,
       headerHash: request.headerHash,
       eventKey: request.eventKey,
@@ -400,12 +400,12 @@ export class DaProofArtifactDeriver {
     if (record.payloadSchemaVersion !== 1) {
       return { kind: "rejected", reasonCode: "stored_payload_malformed" };
     }
-    let payload: SDK.DaPayloadV1;
+    let payload: SDK.DaPayload;
     try {
-      const unwrapped = await unwrapDaPayloadV1(payloadBytes, {
-        maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      const unwrapped = await unwrapDaPayload(payloadBytes, {
+        maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
       });
-      payload = decodeDaPayloadV1Strict(unwrapped.innerBytes);
+      payload = decodeDaPayloadStrict(unwrapped.innerBytes);
     } catch {
       return { kind: "rejected", reasonCode: "stored_payload_malformed" };
     }
@@ -416,9 +416,9 @@ export class DaProofArtifactDeriver {
     ) {
       return { kind: "rejected", reasonCode: "payload_header_hash_mismatch" };
     }
-    let roots: DaPayloadRootSetV1;
+    let roots: DaPayloadRootSet;
     try {
-      roots = await computeDaPayloadV1Roots(payload);
+      roots = await computeDaPayloadRoots(payload);
     } catch {
       return {
         kind: "rejected",
@@ -530,7 +530,7 @@ export class DaProofArtifactDeriver {
           fieldName: "computed header hash",
           byteLength: 28,
         }) !== headerHashHex ||
-        hashBlockHeaderV1(record.header) !== headerHashHex
+        hashBlockHeader(record.header) !== headerHashHex
       ) {
         return "record_header_hash_mismatch";
       }
@@ -548,7 +548,7 @@ export class DaProofArtifactDeriver {
 const rejectedProofBundleResponse = (
   headerHash: Buffer,
   reasonCode: DaProofArtifactReasonCode,
-): DaProofBundleByHeaderResponseV1 => ({
+): DaProofBundleByHeaderResponse => ({
   status: "rejected",
   headerHash,
   proofBundleHash: null,
@@ -557,11 +557,9 @@ const rejectedProofBundleResponse = (
   reasonCode,
 });
 
-const encodeProofBundleV1 = (
-  reconstruction: TraceProofReconstruction,
-): Buffer =>
+const encodeProofBundle = (reconstruction: TraceProofReconstruction): Buffer =>
   encodeCbor([
-    PROOF_BUNDLE_V1_VERSION,
+    PROOF_BUNDLE_VERSION,
     reconstruction.headerHash,
     reconstruction.payloadHash,
     rootSummaryHash(reconstruction.rootSummary),
@@ -569,11 +567,11 @@ const encodeProofBundleV1 = (
     countSummaryValues(reconstruction.countSummary),
   ]);
 
-const rootSummaryHash = (rootSummary: DaPayloadRootSetV1): Buffer =>
+const rootSummaryHash = (rootSummary: DaPayloadRootSet): Buffer =>
   computeDaSha256Hash(Buffer.concat(rootSummaryValues(rootSummary)));
 
 const rootSummaryValues = (
-  rootSummary: DaPayloadRootSetV1,
+  rootSummary: DaPayloadRootSet,
 ): readonly Buffer[] => [
   hexToBytes(rootSummary.utxosRoot, "utxos root", 32),
   hexToBytes(rootSummary.withdrawalsRoot, "withdrawals root", 32),
@@ -590,7 +588,7 @@ const rootSummaryValues = (
 ];
 
 const countSummaryValues = (
-  countSummary: DaPayloadCountSetV1,
+  countSummary: DaPayloadCountSet,
 ): readonly bigint[] => [
   countSummary.withdrawalCount,
   countSummary.forcedTransactionCount,
@@ -618,12 +616,12 @@ const decodeCanonicalEventKey = (bytes: Buffer): SDK.EventKey | null => {
 };
 
 const reconstructTraceProofs = async (
-  payload: SDK.DaPayloadV1,
+  payload: SDK.DaPayload,
   context: {
     readonly headerHash: Buffer;
     readonly payloadHash: Buffer;
-    readonly rootSummary: DaPayloadRootSetV1;
-    readonly countSummary: DaPayloadCountSetV1;
+    readonly rootSummary: DaPayloadRootSet;
+    readonly countSummary: DaPayloadCountSet;
   },
 ): Promise<TraceProofReconstruction> => {
   const { block_body: body } = payload;
@@ -907,7 +905,7 @@ const buildEventToStepNonMembershipProof = async (
 const normalizeRootSet = (
   roots: ProofRootSetInput,
   fieldName: string,
-): DaPayloadRootSetV1 => ({
+): DaPayloadRootSet => ({
   utxosRoot: normalizeHex(roots.utxosRoot, {
     fieldName: `${fieldName}.utxos_root`,
     byteLength: 32,
@@ -1005,7 +1003,7 @@ const countMismatches = (
       : "validation_trace_count",
   ].filter((field): field is string => field !== null);
 
-const headerRoots = (header: HeaderV1): DaPayloadRootSetV1 => ({
+const headerRoots = (header: Header): DaPayloadRootSet => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -1016,7 +1014,7 @@ const headerRoots = (header: HeaderV1): DaPayloadRootSetV1 => ({
   validationTracesRoot: header.validationTracesRoot,
 });
 
-const headerCounts = (header: HeaderV1): DaPayloadCountSetV1 => ({
+const headerCounts = (header: Header): DaPayloadCountSet => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
@@ -1026,5 +1024,5 @@ const headerCounts = (header: HeaderV1): DaPayloadCountSetV1 => ({
   validationTraceCount: header.validationTraceCount,
 });
 
-const headerCborHex = (header: HeaderV1): string =>
-  LucidData.to(header, SDK.HeaderV1);
+const headerCborHex = (header: Header): string =>
+  LucidData.to(header, SDK.Header);

@@ -10,23 +10,23 @@ import {
 } from "./runtime.js";
 import { requireComputationThreadToken } from "./submit-step-01.js";
 
-export type LinearFaultStepContractV1 = {
+export type LinearFaultStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
-export type LinearFaultContractsV1 = {
-  readonly steps: readonly LinearFaultStepContractV1[];
+export type LinearFaultContracts = {
+  readonly steps: readonly LinearFaultStepContract[];
   readonly computationThread: { readonly policyId: string };
 };
 
-export const linearFaultStepLabelV1 = (
+export const linearFaultStepLabel = (
   family: string,
   stepIndex: number,
 ): string => `${family} step ${String(stepIndex + 1).padStart(2, "0")}`;
 
-export const requireLinearFaultThreadUtxoV1 = async ({
+export const requireLinearFaultThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -35,7 +35,7 @@ export const requireLinearFaultThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: LinearFaultContractsV1;
+  readonly contracts: LinearFaultContracts;
   readonly categoryId: string;
   readonly family: string;
   readonly stepIndex: number;
@@ -48,11 +48,11 @@ export const requireLinearFaultThreadUtxoV1 = async ({
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
-    label: `${linearFaultStepLabelV1(family, stepIndex)} thread`,
+    label: `${linearFaultStepLabel(family, stepIndex)} thread`,
   });
   if (threadUtxo.address !== step.spendingScriptAddress) {
     throw new Error(
-      `${family}: thread ${outRefLabel(threadUtxo)} is not locked at ${linearFaultStepLabelV1(family, stepIndex)}`,
+      `${family}: thread ${outRefLabel(threadUtxo)} is not locked at ${linearFaultStepLabel(family, stepIndex)}`,
     );
   }
   return {
@@ -66,7 +66,7 @@ export const requireLinearFaultThreadUtxoV1 = async ({
   };
 };
 
-export const requireLinearFaultReferenceScriptV1 = ({
+export const requireLinearFaultReferenceScript = ({
   utxo,
   expectedScriptHash,
   family,
@@ -79,7 +79,7 @@ export const requireLinearFaultReferenceScriptV1 = ({
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw new Error(
-      `${family}: ${linearFaultStepLabelV1(family, stepIndex)} reference ${outRefLabel(utxo)} carries no script`,
+      `${family}: ${linearFaultStepLabel(family, stepIndex)} reference ${outRefLabel(utxo)} carries no script`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
@@ -91,7 +91,7 @@ export const requireLinearFaultReferenceScriptV1 = ({
   return utxo;
 };
 
-export const requireLinearFaultStepStateV1 = <State>({
+export const requireLinearFaultStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -110,13 +110,13 @@ export const requireLinearFaultStepStateV1 = <State>({
   const datum = Data.from(threadUtxo.datum, schema);
   if (datum.fraud_prover !== signer.paymentKeyHash || datum.data === null) {
     throw new Error(
-      `${family}: ${linearFaultStepLabelV1(family, stepIndex)} datum does not name the signer and a state`,
+      `${family}: ${linearFaultStepLabel(family, stepIndex)} datum does not name the signer and a state`,
     );
   }
   return datum.data;
 };
 
-export const requireLinearFaultInitialDatumV1 = ({
+export const requireLinearFaultInitialDatum = ({
   threadUtxo,
   signer,
   family,

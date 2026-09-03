@@ -3,17 +3,17 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  buildMidgardValidationMerkleFrontierV1,
-  buildMidgardValidationMerkleMembershipV1,
-  commitMidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleMembershipV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleFrontier,
+  buildMidgardValidationMerkleMembership,
+  commitMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleMembership,
+  verifyMidgardValidationMerkleMembership,
 } from "./validation-merkle.js";
 
-export const MIDGARD_BOUNDED_BLOB_V1_VERSION = 1 as const;
-export const MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1 = 4_095 as const;
-export const MIDGARD_BOUNDED_BLOB_FIELD_COUNT_V1 = 9 as const;
+export const MIDGARD_BOUNDED_BLOB_VERSION = 1 as const;
+export const MIDGARD_BOUNDED_BLOB_CHUNK_BYTES = 4_095 as const;
+export const MIDGARD_BOUNDED_BLOB_FIELD_COUNT = 9 as const;
 
 const CHUNK_DOMAIN = Buffer.from("MidgardBoundedBlobChunkV1", "ascii");
 const COMMITMENT_DOMAIN = Buffer.from(
@@ -21,22 +21,22 @@ const COMMITMENT_DOMAIN = Buffer.from(
   "ascii",
 );
 
-export type MidgardBoundedBlobV1 = {
+export type MidgardBoundedBlob = {
   readonly fieldIndex: number;
   readonly totalLength: number;
   readonly chunks: readonly Buffer[];
   readonly leafHashes: readonly Hash32[];
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly commitment: Hash32;
 };
 
-export type MidgardBoundedBlobChunkProofV1 = {
-  readonly version: typeof MIDGARD_BOUNDED_BLOB_V1_VERSION;
+export type MidgardBoundedBlobChunkProof = {
+  readonly version: typeof MIDGARD_BOUNDED_BLOB_VERSION;
   readonly fieldIndex: number;
   readonly totalLength: number;
   readonly chunkIndex: number;
   readonly chunk: Buffer;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
   readonly siblings: readonly Hash32[];
 };
 
@@ -47,7 +47,7 @@ const boundedFieldIndex = (fieldIndex: number): number => {
   if (
     !Number.isSafeInteger(fieldIndex) ||
     fieldIndex < 0 ||
-    fieldIndex >= MIDGARD_BOUNDED_BLOB_FIELD_COUNT_V1
+    fieldIndex >= MIDGARD_BOUNDED_BLOB_FIELD_COUNT
   ) {
     throw new Error(`unknown V1 bounded-blob field index ${fieldIndex}`);
   }
@@ -63,21 +63,21 @@ const boundedLength = (totalLength: number): number => {
   return totalLength;
 };
 
-export const midgardBoundedBlobChunkCountV1 = (totalLength: number): number => {
+export const midgardBoundedBlobChunkCount = (totalLength: number): number => {
   const length = boundedLength(totalLength);
   return length === 0
     ? 0
-    : Math.ceil(length / MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1);
+    : Math.ceil(length / MIDGARD_BOUNDED_BLOB_CHUNK_BYTES);
 };
 
-export const midgardBoundedBlobChunkLengthV1 = ({
+export const midgardBoundedBlobChunkLength = ({
   totalLength,
   chunkIndex,
 }: {
   readonly totalLength: number;
   readonly chunkIndex: number;
 }): number => {
-  const count = midgardBoundedBlobChunkCountV1(totalLength);
+  const count = midgardBoundedBlobChunkCount(totalLength);
   if (
     !Number.isSafeInteger(chunkIndex) ||
     chunkIndex < 0 ||
@@ -86,11 +86,11 @@ export const midgardBoundedBlobChunkLengthV1 = ({
     throw new Error("V1 bounded-blob chunk index is out of range");
   }
   return chunkIndex + 1 < count
-    ? MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1
-    : totalLength - chunkIndex * MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1;
+    ? MIDGARD_BOUNDED_BLOB_CHUNK_BYTES
+    : totalLength - chunkIndex * MIDGARD_BOUNDED_BLOB_CHUNK_BYTES;
 };
 
-export const hashMidgardBoundedBlobChunkV1 = ({
+export const hashMidgardBoundedBlobChunk = ({
   fieldIndex,
   chunkIndex,
   chunk,
@@ -104,16 +104,16 @@ export const hashMidgardBoundedBlobChunkV1 = ({
     throw new Error("V1 bounded-blob chunk index must be non-negative");
   }
   const bytes = Buffer.from(chunk);
-  if (bytes.length > MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1) {
+  if (bytes.length > MIDGARD_BOUNDED_BLOB_CHUNK_BYTES) {
     throw new Error(
-      `V1 bounded-blob chunk exceeds ${MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1.toString()} bytes`,
+      `V1 bounded-blob chunk exceeds ${MIDGARD_BOUNDED_BLOB_CHUNK_BYTES.toString()} bytes`,
     );
   }
   return hash32(
     Buffer.concat([
       CHUNK_DOMAIN,
       encodeCbor([
-        BigInt(MIDGARD_BOUNDED_BLOB_V1_VERSION),
+        BigInt(MIDGARD_BOUNDED_BLOB_VERSION),
         BigInt(exactFieldIndex),
         BigInt(chunkIndex),
         bytes,
@@ -122,18 +122,18 @@ export const hashMidgardBoundedBlobChunkV1 = ({
   );
 };
 
-export const commitMidgardBoundedBlobV1 = ({
+export const commitMidgardBoundedBlob = ({
   fieldIndex,
   totalLength,
   frontier,
 }: {
   readonly fieldIndex: number;
   readonly totalLength: number;
-  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly frontier: MidgardValidationMerkleFrontier;
 }): Hash32 => {
   const exactFieldIndex = boundedFieldIndex(fieldIndex);
   const exactLength = boundedLength(totalLength);
-  const expectedCount = midgardBoundedBlobChunkCountV1(exactLength);
+  const expectedCount = midgardBoundedBlobChunkCount(exactLength);
   if (frontier.count !== expectedCount) {
     throw new Error(
       `V1 bounded-blob frontier count does not match its length: ${frontier.count.toString()} != ${expectedCount.toString()}`,
@@ -143,49 +143,49 @@ export const commitMidgardBoundedBlobV1 = ({
     Buffer.concat([
       COMMITMENT_DOMAIN,
       encodeCbor([
-        BigInt(MIDGARD_BOUNDED_BLOB_V1_VERSION),
+        BigInt(MIDGARD_BOUNDED_BLOB_VERSION),
         BigInt(exactFieldIndex),
         BigInt(exactLength),
-        commitMidgardValidationMerkleFrontierV1(frontier),
+        commitMidgardValidationMerkleFrontier(frontier),
       ]),
     ]),
   );
 };
 
-export const buildMidgardBoundedBlobV1 = ({
+export const buildMidgardBoundedBlob = ({
   fieldIndex,
   bytes,
 }: {
   readonly fieldIndex: number;
   readonly bytes: Uint8Array;
-}): MidgardBoundedBlobV1 => {
+}): MidgardBoundedBlob => {
   const exactFieldIndex = boundedFieldIndex(fieldIndex);
   const source = Buffer.from(bytes);
   const chunks: Buffer[] = [];
   for (
     let offset = 0;
     offset < source.length;
-    offset += MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1
+    offset += MIDGARD_BOUNDED_BLOB_CHUNK_BYTES
   ) {
     chunks.push(
-      source.subarray(offset, offset + MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1),
+      source.subarray(offset, offset + MIDGARD_BOUNDED_BLOB_CHUNK_BYTES),
     );
   }
   const leafHashes = chunks.map((chunk, chunkIndex) =>
-    hashMidgardBoundedBlobChunkV1({
+    hashMidgardBoundedBlobChunk({
       fieldIndex: exactFieldIndex,
       chunkIndex,
       chunk,
     }),
   );
-  const frontier = buildMidgardValidationMerkleFrontierV1(leafHashes);
+  const frontier = buildMidgardValidationMerkleFrontier(leafHashes);
   return {
     fieldIndex: exactFieldIndex,
     totalLength: source.length,
     chunks,
     leafHashes,
     frontier,
-    commitment: commitMidgardBoundedBlobV1({
+    commitment: commitMidgardBoundedBlob({
       fieldIndex: exactFieldIndex,
       totalLength: source.length,
       frontier,
@@ -193,14 +193,14 @@ export const buildMidgardBoundedBlobV1 = ({
   };
 };
 
-export const buildMidgardBoundedBlobChunkProofV1 = (
-  blob: MidgardBoundedBlobV1,
+export const buildMidgardBoundedBlobChunkProof = (
+  blob: MidgardBoundedBlob,
   chunkIndex: number,
-): MidgardBoundedBlobChunkProofV1 => {
-  const membership: MidgardValidationMerkleMembershipV1 =
-    buildMidgardValidationMerkleMembershipV1(blob.leafHashes, chunkIndex);
+): MidgardBoundedBlobChunkProof => {
+  const membership: MidgardValidationMerkleMembership =
+    buildMidgardValidationMerkleMembership(blob.leafHashes, chunkIndex);
   return {
-    version: MIDGARD_BOUNDED_BLOB_V1_VERSION,
+    version: MIDGARD_BOUNDED_BLOB_VERSION,
     fieldIndex: blob.fieldIndex,
     totalLength: blob.totalLength,
     chunkIndex,
@@ -210,27 +210,27 @@ export const buildMidgardBoundedBlobChunkProofV1 = (
   };
 };
 
-export const verifyMidgardBoundedBlobChunkProofV1 = ({
+export const verifyMidgardBoundedBlobChunkProof = ({
   expectedCommitment,
   proof,
 }: {
   readonly expectedCommitment: Uint8Array;
-  readonly proof: MidgardBoundedBlobChunkProofV1;
+  readonly proof: MidgardBoundedBlobChunkProof;
 }): boolean => {
   try {
-    if (proof.version !== MIDGARD_BOUNDED_BLOB_V1_VERSION) return false;
-    const expectedChunkLength = midgardBoundedBlobChunkLengthV1({
+    if (proof.version !== MIDGARD_BOUNDED_BLOB_VERSION) return false;
+    const expectedChunkLength = midgardBoundedBlobChunkLength({
       totalLength: proof.totalLength,
       chunkIndex: proof.chunkIndex,
     });
     if (proof.chunk.length !== expectedChunkLength) return false;
-    const leafHash = hashMidgardBoundedBlobChunkV1({
+    const leafHash = hashMidgardBoundedBlobChunk({
       fieldIndex: proof.fieldIndex,
       chunkIndex: proof.chunkIndex,
       chunk: proof.chunk,
     });
     if (
-      !verifyMidgardValidationMerkleMembershipV1({
+      !verifyMidgardValidationMerkleMembership({
         frontier: proof.frontier,
         leafIndex: proof.chunkIndex,
         leafHash,
@@ -239,7 +239,7 @@ export const verifyMidgardBoundedBlobChunkProofV1 = ({
     ) {
       return false;
     }
-    return commitMidgardBoundedBlobV1({
+    return commitMidgardBoundedBlob({
       fieldIndex: proof.fieldIndex,
       totalLength: proof.totalLength,
       frontier: proof.frontier,

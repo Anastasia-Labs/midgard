@@ -1,37 +1,37 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  missingScriptSourceEvidenceClosesV1,
-  type MissingScriptSourceEvidenceV1,
-  MissingScriptSourceResultClassesV1,
-  missingScriptSourceViolationIdV1,
+  type MissingScriptSourceEvidence,
+  missingScriptSourceEvidenceCloses,
+  MissingScriptSourceResultClasses,
+  missingScriptSourceViolationId,
 } from "./family-v1.js";
-import type { MissingScriptSourceProductionArtifactV1 } from "./production-actuator-v1.js";
+import type { MissingScriptSourceArtifact } from "./production-actuator-v1.js";
 import {
-  type MissingScriptSourceReplayFindingV1,
-  selectMissingScriptSourceCanonicalFindingV1,
+  type MissingScriptSourceReplayFinding,
+  selectMissingScriptSourceCanonicalFinding,
 } from "./replay-v1.js";
 import {
-  buildRetainedMissingScriptSourceUniverseV1,
-  discoverRetainedMissingScriptSourceCoordinatesV1,
-  type RetainedMissingScriptSourceUniverseV1,
+  buildRetainedMissingScriptSourceUniverse,
+  discoverRetainedMissingScriptSourceCoordinates,
+  type RetainedMissingScriptSourceUniverse,
 } from "./retained-script-universe-v1.js";
 
 const exactIndex = (value: bigint, label: string): number => {
@@ -41,21 +41,21 @@ const exactIndex = (value: bigint, label: string): number => {
   return result;
 };
 
-export const missingScriptSourceEvidenceFromUniverseV1 = ({
+export const missingScriptSourceEvidenceFromUniverse = ({
   subject,
   universe,
 }: {
-  subject: MissingScriptSourceEvidenceV1["finding"]["subject"];
-  universe: RetainedMissingScriptSourceUniverseV1;
-}): MissingScriptSourceEvidenceV1 => {
+  subject: MissingScriptSourceEvidence["finding"]["subject"];
+  universe: RetainedMissingScriptSourceUniverse;
+}): MissingScriptSourceEvidence => {
   const foundAtSourceIndex = universe.sources.findIndex(
     ({ scriptHashHex }) =>
       scriptHashHex === universe.purpose.requiredScriptHashHex,
   );
   const resultClass =
     foundAtSourceIndex < 0
-      ? MissingScriptSourceResultClassesV1.Missing
-      : MissingScriptSourceResultClassesV1.Present;
+      ? MissingScriptSourceResultClasses.Missing
+      : MissingScriptSourceResultClasses.Present;
   const first = universe.sources[0];
   const descriptor =
     first === undefined
@@ -90,8 +90,8 @@ export const missingScriptSourceEvidenceFromUniverseV1 = ({
       executionIndex: universe.purpose.absoluteIndex,
       accusedClass:
         subject.direction === 0n
-          ? MissingScriptSourceResultClassesV1.Pending
-          : MissingScriptSourceResultClassesV1.Missing,
+          ? MissingScriptSourceResultClasses.Pending
+          : MissingScriptSourceResultClasses.Missing,
     }),
     descriptor,
     itemCommitmentHex: first?.scriptItemCommitmentHex ?? "",
@@ -108,7 +108,7 @@ export const missingScriptSourceEvidenceFromUniverseV1 = ({
   });
 };
 
-const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
+const replayCandidates = async (block: CanonicalBlockEvidence) => {
   const validationTraceEntries =
     block.reconstruction.payload.block_body.validation_traces.map(
       ([key, value]) => ({
@@ -125,19 +125,19 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
     );
   const accepted = await Promise.all(
     block.transactions.map(async (transaction, position) => {
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(transaction.txCbor, "hex"),
       );
       const eventKey = {
         L2TransactionEventKey: { tx_id: transaction.nodeTxId },
       } as const;
-      const terminals = discoverRetainedMissingScriptSourceCoordinatesV1({
+      const terminals = discoverRetainedMissingScriptSourceCoordinates({
         eventKey,
         retainedValidationWitnessEntries: retainedWitnessEntries,
       });
       const universes = await Promise.all(
         terminals.map((coordinate) =>
-          buildRetainedMissingScriptSourceUniverseV1({
+          buildRetainedMissingScriptSourceUniverse({
             eventKey,
             ...coordinate,
             authenticatedValidationTraceEntries: validationTraceEntries,
@@ -166,13 +166,13 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
         txMembershipProofCbor: proofCbor,
       });
       return universes.flatMap((universe) => {
-        const evidence = missingScriptSourceEvidenceFromUniverseV1({
-          subject: acceptedVerdictSubjectV1(transaction.nodeTxId),
+        const evidence = missingScriptSourceEvidenceFromUniverse({
+          subject: acceptedVerdictSubject(transaction.nodeTxId),
           universe,
         });
-        if (!missingScriptSourceEvidenceClosesV1(evidence)) return [];
-        const violationId = missingScriptSourceViolationIdV1();
-        const finding: MissingScriptSourceReplayFindingV1 = {
+        if (!missingScriptSourceEvidenceCloses(evidence)) return [];
+        const violationId = missingScriptSourceViolationId();
+        const finding: MissingScriptSourceReplayFinding = {
           evidence,
           detection: {
             detectionId: `${violationId}:accepted:${position.toString()}:${transaction.nodeTxId}:${universe.purpose.absoluteIndex.toString()}`,
@@ -182,15 +182,13 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
             diagnostic: `accepted transaction ${transaction.nodeTxId} omitted purpose script source`,
           },
         };
-        const artifact: MissingScriptSourceProductionArtifactV1 = Object.freeze(
-          {
-            headerHash: block.headerHash,
-            header: block.header,
-            evidence,
-            authentication: universe.authentication,
-            acceptedInclusion: inclusion,
-          },
-        );
+        const artifact: MissingScriptSourceArtifact = Object.freeze({
+          headerHash: block.headerHash,
+          header: block.header,
+          evidence,
+          authentication: universe.authentication,
+          acceptedInclusion: inclusion,
+        });
         return [{ finding, artifact }];
       });
     }),
@@ -217,7 +215,7 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
         const eventKey = {
           ForcedTransactionEventKey: { tx_order_id: transaction.key },
         } as const;
-        const universe = await buildRetainedMissingScriptSourceUniverseV1({
+        const universe = await buildRetainedMissingScriptSourceUniverse({
           eventKey,
           purposeKind: purposeKind as 0 | 1 | 2 | 3,
           purposeIndex,
@@ -226,16 +224,16 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
           expectedValidationTracesRoot: block.header.validationTracesRoot,
           expectedPresence: true,
         });
-        const adjudicated = encodeMidgardNativeTxCanonicalV1(
-          adjudicateMidgardNativeTxFullV1Validity(
-            decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        const adjudicated = encodeMidgardNativeTxCanonical(
+          adjudicateMidgardNativeTxFullValidity(
+            decodeMidgardNativeTxFullFromCanonicalCbor(
               transaction.fullTransactionCbor,
             ),
             "TxIsInvalid",
           ),
         );
         const material =
-          deriveMidgardNativeTxFaultEvidenceMaterialV1(adjudicated);
+          deriveMidgardNativeTxFaultEvidenceMaterial(adjudicated);
         if (
           material.transactionId.toString("hex") !== transaction.value.tx_id ||
           material.proofSource.compactCbor.toString("hex") !==
@@ -248,17 +246,17 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
           throw new Error(
             "missingScriptSource forced source changed authenticated leaf",
           );
-        const evidence = missingScriptSourceEvidenceFromUniverseV1({
-          subject: forcedVerdictSubjectV1({
+        const evidence = missingScriptSourceEvidenceFromUniverse({
+          subject: forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: reason,
           }),
           universe,
         });
-        if (!missingScriptSourceEvidenceClosesV1(evidence)) return null;
-        const violationId = missingScriptSourceViolationIdV1();
-        const finding: MissingScriptSourceReplayFindingV1 = {
+        if (!missingScriptSourceEvidenceCloses(evidence)) return null;
+        const violationId = missingScriptSourceViolationId();
+        const finding: MissingScriptSourceReplayFinding = {
           evidence,
           detection: {
             detectionId: `${violationId}:forced:${position.toString()}:${transaction.value.tx_id}:${universe.purpose.absoluteIndex.toString()}`,
@@ -268,18 +266,16 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
             diagnostic: `forced transaction ${transaction.value.tx_id} rejected despite retained purpose source`,
           },
         };
-        const artifact: MissingScriptSourceProductionArtifactV1 = Object.freeze(
-          {
-            headerHash: block.headerHash,
-            header: block.header,
-            evidence,
-            authentication: universe.authentication,
-            forcedMembership: await buildForcedTransactionLeafMembershipProof({
-              reconstruction: block.reconstruction,
-              eventKey,
-            }),
-          },
-        );
+        const artifact: MissingScriptSourceArtifact = Object.freeze({
+          headerHash: block.headerHash,
+          header: block.header,
+          evidence,
+          authentication: universe.authentication,
+          forcedMembership: await buildForcedTransactionLeafMembershipProof({
+            reconstruction: block.reconstruction,
+            eventKey,
+          }),
+        });
         return { finding, artifact };
       },
     ),
@@ -289,9 +285,9 @@ const replayCandidates = async (block: CanonicalBlockEvidenceV1) => {
   );
 };
 
-export const detectMissingScriptSourceCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly CanonicalViolationDetectionV1[]> =>
+export const detectMissingScriptSourceCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly CanonicalViolationDetection[]> =>
   Object.freeze(
     (await replayCandidates(block))
       .map(({ finding }) => finding.detection)
@@ -302,11 +298,11 @@ export const detectMissingScriptSourceCanonicalViolationsV1 = async (
       ),
   );
 
-export const prepareProductionMissingScriptSourceArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<MissingScriptSourceProductionArtifactV1> => {
+export const prepareMissingScriptSourceArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<MissingScriptSourceArtifact> => {
   const candidates = await replayCandidates(block);
-  const selected = selectMissingScriptSourceCanonicalFindingV1(
+  const selected = selectMissingScriptSourceCanonicalFinding(
     candidates.map(({ finding }) => finding),
   );
   const exact = candidates.find(

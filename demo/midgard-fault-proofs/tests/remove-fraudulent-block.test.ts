@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createHttpStateQueueMutationLeaseCoordinator,
-  fraudRemovalUsesWalletCoinSelectionV1,
-  fraudSlashEconomicsFromDeploymentManifestV1,
-  resolveFraudSlashEconomicsV1,
+  fraudRemovalUsesWalletCoinSelection,
+  fraudSlashEconomicsFromDeploymentManifest,
+  resolveFraudSlashEconomics,
   submitRemoveFraudulentBlockFromFiles,
 } from "../src/remove-fraudulent-block.js";
 
@@ -27,20 +27,20 @@ const boundedEconomics = {
 
 describe("Q53 exact fraud-slash economics", () => {
   it("disables wallet coin selection only for exact bond-backed slash branches", () => {
-    expect(fraudRemovalUsesWalletCoinSelectionV1("SlashActiveOperator")).toBe(
+    expect(fraudRemovalUsesWalletCoinSelection("SlashActiveOperator")).toBe(
       false,
     );
-    expect(fraudRemovalUsesWalletCoinSelectionV1("SlashRetiredOperator")).toBe(
+    expect(fraudRemovalUsesWalletCoinSelection("SlashRetiredOperator")).toBe(
       false,
     );
-    expect(
-      fraudRemovalUsesWalletCoinSelectionV1("OperatorAlreadySlashed"),
-    ).toBe(true);
+    expect(fraudRemovalUsesWalletCoinSelection("OperatorAlreadySlashed")).toBe(
+      true,
+    );
   });
 
   it("binds the public and testnet full/partially-inactivity-slashed tranches", () => {
     expect(
-      resolveFraudSlashEconomicsV1(publicEconomics, 100_000_000_000n),
+      resolveFraudSlashEconomics(publicEconomics, 100_000_000_000n),
     ).toEqual({
       requiredBondLovelace: 100_000_000_000n,
       fraudProverRewardLovelace: 75_000_000_000n,
@@ -48,24 +48,20 @@ describe("Q53 exact fraud-slash economics", () => {
       tranche: "full",
     });
     expect(
-      resolveFraudSlashEconomicsV1(publicEconomics, 90_000_000_000n),
+      resolveFraudSlashEconomics(publicEconomics, 90_000_000_000n),
     ).toEqual({
       requiredBondLovelace: 100_000_000_000n,
       fraudProverRewardLovelace: 75_000_000_000n,
       exactFeeLovelace: 15_000_000_000n,
       tranche: "partially-inactivity-slashed",
     });
-    expect(
-      resolveFraudSlashEconomicsV1(boundedEconomics, 900_000_000n),
-    ).toEqual({
+    expect(resolveFraudSlashEconomics(boundedEconomics, 900_000_000n)).toEqual({
       requiredBondLovelace: 900_000_000n,
       fraudProverRewardLovelace: 400_000_000n,
       exactFeeLovelace: 500_000_000n,
       tranche: "full",
     });
-    expect(
-      resolveFraudSlashEconomicsV1(boundedEconomics, 800_000_000n),
-    ).toEqual({
+    expect(resolveFraudSlashEconomics(boundedEconomics, 800_000_000n)).toEqual({
       requiredBondLovelace: 900_000_000n,
       fraudProverRewardLovelace: 400_000_000n,
       exactFeeLovelace: 400_000_000n,
@@ -81,19 +77,19 @@ describe("Q53 exact fraud-slash economics", () => {
     700_000_000n,
   ])("rejects illegal testnet bond tranche %s", (lovelace) => {
     expect(() =>
-      resolveFraudSlashEconomicsV1(boundedEconomics, lovelace),
+      resolveFraudSlashEconomics(boundedEconomics, lovelace),
     ).toThrow(/must be exactly/);
   });
 
   it("rejects a manifest economics tuple with inconsistent slash relations", () => {
     expect(() =>
-      resolveFraudSlashEconomicsV1(
+      resolveFraudSlashEconomics(
         { ...boundedEconomics, fraudProverRewardLovelace: 399_999_999n },
         900_000_000n,
       ),
     ).toThrow(/violate F04 slash relations/u);
     expect(() =>
-      resolveFraudSlashEconomicsV1(
+      resolveFraudSlashEconomics(
         {
           ...boundedEconomics,
           inactivitySlashingPenaltyLovelace: 500_000_000n,
@@ -105,7 +101,7 @@ describe("Q53 exact fraud-slash economics", () => {
 
   it("selects economics from the release manifest, never the Cardano network label", () => {
     expect(
-      fraudSlashEconomicsFromDeploymentManifestV1({
+      fraudSlashEconomicsFromDeploymentManifest({
         economics: {
           ...publicEconomics,
           requiredBondLovelace: Number(publicEconomics.requiredBondLovelace),
@@ -125,7 +121,7 @@ describe("Q53 exact fraud-slash economics", () => {
       }),
     ).toEqual(publicEconomics);
     expect(() =>
-      fraudSlashEconomicsFromDeploymentManifestV1({
+      fraudSlashEconomicsFromDeploymentManifest({
         economics: {
           profile: "public-preprod-launch-v1",
           requiredBondLovelace: 900_000_000,

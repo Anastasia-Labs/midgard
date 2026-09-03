@@ -1,9 +1,9 @@
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
 
-import type { WatcherProductionOperationsObservabilityV1 } from "./production-operations-observability-v1.js";
+import type { WatcherOperationsObservability } from "./production-operations-observability-v1.js";
 
-export const WATCHER_PRODUCTION_OPERATIONS_HTTP_V1 =
+export const WATCHER_OPERATIONS_HTTP =
   "midgard-watcher-production-operations-http-v1" as const;
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1"]);
@@ -60,8 +60,8 @@ const closeServer = async (
     server.closeIdleConnections();
   });
 
-export type WatcherProductionOperationsHttpServerV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_OPERATIONS_HTTP_V1;
+export type WatcherOperationsHttpServer = Readonly<{
+  schemaVersion: typeof WATCHER_OPERATIONS_HTTP;
   endpoint: string;
   done: Promise<void>;
   close(): Promise<void>;
@@ -71,11 +71,11 @@ export type WatcherProductionOperationsHttpServerV1 = Readonly<{
  * Loopback-only, read-only operations surface. It exposes only the bounded,
  * secret-safe response objects produced by the admitted observability module.
  */
-export const startWatcherProductionOperationsHttpServerV1 = async (input: {
+export const startWatcherOperationsHttpServer = async (input: {
   readonly endpoint: string;
-  readonly observability: WatcherProductionOperationsObservabilityV1;
+  readonly observability: WatcherOperationsObservability;
   readonly unsafeAllowEphemeralPortForTest?: boolean;
-}): Promise<WatcherProductionOperationsHttpServerV1> => {
+}): Promise<WatcherOperationsHttpServer> => {
   const configured = endpoint(
     input.endpoint,
     input.unsafeAllowEphemeralPortForTest === true,
@@ -174,7 +174,7 @@ export const startWatcherProductionOperationsHttpServerV1 = async (input: {
     address.family === "IPv6" ? `[${address.address}]` : address.address;
   const advertisedEndpoint = `http://${advertisedHostname}:${address.port.toString()}`;
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_OPERATIONS_HTTP_V1,
+    schemaVersion: WATCHER_OPERATIONS_HTTP,
     endpoint: advertisedEndpoint,
     done,
     close: () => {

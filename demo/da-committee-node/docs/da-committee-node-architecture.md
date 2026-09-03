@@ -45,7 +45,7 @@ The public committee architecture below is the generalized profile that should r
 ## Current Implementation Boundary
 
 `demo/midgard-node` remains the block producer, not a committee signer. It
-persists only canonical `DaPayloadEnvelopeV1` bytes and serves that exact
+persists only canonical `DaPayloadEnvelope` bytes and serves that exact
 stored artifact over the manifest-bound libp2p transport. The stored/wire
 SHA-256 binds the envelope; the envelope also binds the decoded V1 content
 with an exact inner length and SHA-256.
@@ -57,7 +57,7 @@ with an exact inner length and SHA-256.
 - fetches payload, metadata, chunks, proof artifacts, and attestations over
   allowlisted libp2p V1 protocols;
 - unwraps V1 with a dual compressed/decoded size cap, canonical-decodes
-  the inner `DaPayloadV1`, recomputes the eight payload roots (all HeaderV1
+  the inner `DaPayload`, recomputes the eight payload roots (all HeaderV1
   roots except `prev_utxos_root`) and the seven committed counts, and compares
   the embedded header and header hash with L1;
 - stores deployment, header, payload, signature, peer, and L1 submission state
@@ -105,7 +105,7 @@ On chain, the signature preimage is exactly the UTF-8 bytes of `MidgardDAAttesta
 
 `MidgardDAAttestationV1` is the attestation profile and signing domain, not a separately served payload format.
 In the current implementation, it means the signer fetched and durably stored a
-canonical `DaPayloadV1`, matched its embedded header to L1, and recomputed the
+canonical `DaPayload`, matched its embedded header to L1, and recomputed the
 UTxO, withdrawal, forced-transaction, transaction, deposit, transition-trace,
 and event-to-step roots and counts. Proof bundles are served through separate
 protocols and are not yet a prerequisite enforced by the signer, so the
@@ -148,7 +148,7 @@ transport, including as fallback, debug, gateway, or local development transport
 
 Transport responsibilities:
 
-- Accept canonical `DaPayloadEnvelopeV1` bytes from manifested producers or
+- Accept canonical `DaPayloadEnvelope` bytes from manifested producers or
   committee peers.
 - Authenticate peers by deployment-manifest peer id and configured signing key.
 - Reject oversized payloads before expensive validation.
@@ -209,7 +209,7 @@ Validation responsibilities:
 - Recompute the eight payload roots (all HeaderV1 roots except
   `prev_utxos_root`) and all seven header counts from the payload.
 - Validate transition-trace and event-to-step coverage carried by the payload.
-- Decode the exact Midgard `HeaderV1` value embedded in the payload.
+- Decode the exact Midgard `Header` value embedded in the payload.
 - Compute `header_hash = blake2b_224(serialise_data(reconstructed_header))`.
 - Resolve the matching state-queue node from Cardano L1 before signing.
 - Verify the reconstructed header equals the state-queue header datum observed on L1.
@@ -410,10 +410,10 @@ The manifest is not currently authenticated by the DA contracts; deployments mus
 
 ## Payload Schema
 
-The inner shared payload codec is `DaPayloadV1` in
+The inner shared payload codec is `DaPayload` in
 `demo/midgard-sdk/src/da-payload.ts`. Its canonical Plutus-data CBOR shape is:
 
-The embedded `HeaderV1` is constructor tag 0 with arity 25. Its exact field
+The embedded `Header` is constructor tag 0 with arity 25. Its exact field
 order is the single registry contract:
 
 ```text
@@ -469,7 +469,7 @@ expiry. A timed-out waiter is removed from the queue, so a stalled manifested
 peer cannot monopolize the only decode slot.
 
 Deployment identity is bound by the libp2p runtime manifest and protocol
-envelopes rather than duplicated inside `DaPayloadV1`. Proof bundles, trace
+envelopes rather than duplicated inside `DaPayload`. Proof bundles, trace
 steps, and event-to-step records have separate request-response protocols; the
 payload alone is not a claim that every launch-scope proof witness is available.
 
@@ -637,7 +637,7 @@ Required alerts:
 ## Implementation Status
 
 The repository implements the original transport and coordinator milestones:
-canonical `DaPayloadV1`, manifest-bound libp2p V1 transport, header/root/count
+canonical `DaPayload`, manifest-bound libp2p V1 transport, header/root/count
 validation, JSON/PostgreSQL stores, signer membership checks, peer signature
 exchange, and optional on-chain `Init`/`AddSignatures`/`ApplyToStateQueue`
 reconciliation. The focused package checks are `pnpm build`, `pnpm typecheck`,

@@ -1,29 +1,29 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
-  decodeMidgardCekProgramEnvelopeV1,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  decodeMidgardCekProgramEnvelope,
+  decodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   type MidgardTxOutput,
   type MidgardValue,
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  decodeMidgardV1ScriptProgramEnvelope,
+  collectMidgardAttachedProgramEnvelopes,
+  decodeMidgardScriptProgramEnvelope,
 } from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
 import {
-  buildMidgardCekExecutionGraphV1,
-  executeMidgardCekStructuralProgramV1,
+  buildMidgardCekExecutionGraph,
+  executeMidgardCekStructuralProgram,
 } from "./cek-executor.js";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import type {
@@ -43,7 +43,7 @@ import {
   MidgardScriptPurpose,
 } from "./midgard-redeemers.js";
 import {
-  buildMidgardV1ScriptContext,
+  buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
   ScriptContextView,
 } from "./script-context.js";
@@ -65,8 +65,8 @@ import {
   describeValueDelta,
   isZeroValueDelta,
   mintDeltaToScriptMintValue,
-  outputCborMeetsMinAdaV1,
-  outputCborMinAdaLovelaceV1,
+  outputCborMeetsMinAda,
+  outputCborMinAdaLovelace,
   sumMidgardValues,
   valuePreservationDelta,
 } from "./value-accounting.js";
@@ -110,10 +110,10 @@ const minAdaViolation = (
         `phase B min-Ada scan: produced entry ${index.toString()} has no matching ledger output`,
       );
     }
-    if (!outputCborMeetsMinAdaV1(outputCbor, lovelace)) {
+    if (!outputCborMeetsMinAda(outputCbor, lovelace)) {
       return {
         index,
-        detail: `output[${index.toString()}] ${lovelace.toString()} < ${outputCborMinAdaLovelaceV1(
+        detail: `output[${index.toString()}] ${lovelace.toString()} < ${outputCborMinAdaLovelace(
           outputCbor,
         ).toString()} for ${outputCbor.length.toString()} serialized bytes`,
       };
@@ -277,23 +277,23 @@ const resolveReferenceInputs = (
   const sidecar = node.candidate.submission.programMaterialSidecarCbor;
   if (sidecar !== null) {
     try {
-      const material = decodeMidgardCekProgramMaterialSidecarV1(sidecar);
-      const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const material = decodeMidgardCekProgramMaterialSidecar(sidecar);
+      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
         node.candidate.submission.txCbor,
       );
       const envelopes = [
-        ...collectMidgardV1AttachedProgramEnvelopes(canonicalTx),
+        ...collectMidgardAttachedProgramEnvelopes(canonicalTx),
       ];
       for (const input of inputs) {
         if (input.output.script_ref === undefined) continue;
-        const envelope = decodeMidgardV1ScriptProgramEnvelope(
+        const envelope = decodeMidgardScriptProgramEnvelope(
           input.output.script_ref,
         );
         if (envelope !== null) {
           envelopes.push(envelope);
         }
       }
-      verifyMidgardCekProgramMaterialBundleV1(envelopes, material);
+      verifyMidgardCekProgramMaterialBundle(envelopes, material);
     } catch (cause) {
       return reject(
         node.candidate.ledgerTx.txId,
@@ -601,11 +601,11 @@ const runLocalScriptEvaluation = (
       return discovered;
     }
     let proofProgramMaterial: ReturnType<
-      typeof decodeMidgardCekProgramMaterialSidecarV1
+      typeof decodeMidgardCekProgramMaterialSidecar
     > | null = null;
     if (candidate.submission.programMaterialSidecarCbor !== null) {
       try {
-        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecarV1(
+        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
           candidate.submission.programMaterialSidecarCbor,
         );
       } catch (cause) {
@@ -697,7 +697,7 @@ const runLocalScriptEvaluation = (
 
       const context =
         execution.resolved.version === "MidgardV1"
-          ? buildMidgardV1ScriptContext(
+          ? buildMidgardScriptContext(
               discovered.contextView,
               execution.purpose,
               redeemer,
@@ -725,20 +725,19 @@ const runLocalScriptEvaluation = (
           );
         } else {
           try {
-            const envelope = decodeMidgardCekProgramEnvelopeV1(
+            const envelope = decodeMidgardCekProgramEnvelope(
               execution.resolved.source.scriptBytes,
             );
-            const graph = buildMidgardCekExecutionGraphV1(
+            const graph = buildMidgardCekExecutionGraph(
               envelope,
               proofProgramMaterial,
               contextCbor,
             );
-            const cek = executeMidgardCekStructuralProgramV1({
+            const cek = executeMidgardCekStructuralProgram({
               root: graph.root,
               material: graph.material.values(),
               constantWitnesses: graph.constantWitnesses,
-              maxSteps:
-                MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
+              maxSteps: MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
               executionBudget,
             });
             result =

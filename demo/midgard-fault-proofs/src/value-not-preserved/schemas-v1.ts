@@ -19,8 +19,8 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldCarriageV1Schema,
-  FieldOpeningV1Schema,
+  FieldCarriageSchema,
+  FieldOpeningSchema,
   H32Schema,
   NativeTxInclusionArgsSchema,
   ProofSchema,
@@ -31,8 +31,8 @@ import { Data } from "@lucid-evolution/lucid";
 // The single-asset claim (lib step-01)
 // ---------------------------------------------------------------------------
 
-/** `ClaimedAssetV1`: `AdaAsset` is Constr 0, `TokenAsset` Constr 1. */
-export const ClaimedAssetV1Schema = Data.Enum([
+/** `ClaimedAsset`: `AdaAsset` is Constr 0, `TokenAsset` Constr 1. */
+export const ClaimedAssetSchema = Data.Enum([
   Data.Literal("AdaAsset"),
   Data.Object({
     TokenAsset: Data.Object({
@@ -41,23 +41,23 @@ export const ClaimedAssetV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type ClaimedAssetV1 = Data.Static<typeof ClaimedAssetV1Schema>;
-export const ClaimedAssetV1 = ClaimedAssetV1Schema as unknown as ClaimedAssetV1;
+export type ClaimedAsset = Data.Static<typeof ClaimedAssetSchema>;
+export const ClaimedAsset = ClaimedAssetSchema as unknown as ClaimedAsset;
 
 /**
- * `ClaimedImbalanceDirectionV1`: `ClaimedAssetInflated` (Constr 0) convicts
+ * `ClaimedImbalanceDirection`: `ClaimedAssetInflated` (Constr 0) convicts
  * on `final_delta < 0`, `ClaimedAssetDeflated` (Constr 1) on
  * `final_delta > 0`.
  */
-export const ClaimedImbalanceDirectionV1Schema = Data.Enum([
+export const ClaimedImbalanceDirectionSchema = Data.Enum([
   Data.Literal("ClaimedAssetInflated"),
   Data.Literal("ClaimedAssetDeflated"),
 ]);
-export type ClaimedImbalanceDirectionV1 = Data.Static<
-  typeof ClaimedImbalanceDirectionV1Schema
+export type ClaimedImbalanceDirection = Data.Static<
+  typeof ClaimedImbalanceDirectionSchema
 >;
-export const ClaimedImbalanceDirectionV1 =
-  ClaimedImbalanceDirectionV1Schema as unknown as ClaimedImbalanceDirectionV1;
+export const ClaimedImbalanceDirection =
+  ClaimedImbalanceDirectionSchema as unknown as ClaimedImbalanceDirection;
 
 // ---------------------------------------------------------------------------
 // Step 01 — bind and freeze the claim
@@ -65,8 +65,8 @@ export const ClaimedImbalanceDirectionV1 =
 
 export const ValueNotPreservedStep01ArgsSchema = Data.Object({
   tx_inclusion: NativeTxInclusionArgsSchema,
-  claimed_asset: ClaimedAssetV1Schema,
-  claimed_direction: ClaimedImbalanceDirectionV1Schema,
+  claimed_asset: ClaimedAssetSchema,
+  claimed_direction: ClaimedImbalanceDirectionSchema,
 });
 export type ValueNotPreservedStep01Args = Data.Static<
   typeof ValueNotPreservedStep01ArgsSchema
@@ -88,8 +88,8 @@ export const ValueNotPreservedStep01SpendRedeemer =
 
 export const ValueNotPreservedStep02StateSchema = Data.Object({
   bad_tx_id: H32Schema,
-  claimed_asset: ClaimedAssetV1Schema,
-  claimed_direction: ClaimedImbalanceDirectionV1Schema,
+  claimed_asset: ClaimedAssetSchema,
+  claimed_direction: ClaimedImbalanceDirectionSchema,
   committed_fee: Data.Integer(),
   prev_utxos_root: H32Schema,
   input_cursor: Data.Integer(),
@@ -111,42 +111,42 @@ export const ValueNotPreservedStep02Datum =
   ValueNotPreservedStep02DatumSchema as unknown as ValueNotPreservedStep02Datum;
 
 /** One authenticated asset leaf of a spent input's descriptor, in index order. */
-export const AssetLeafOpeningV1Schema = Data.Object({
+export const AssetLeafOpeningSchema = Data.Object({
   policy_id: Data.Bytes({ minLength: 28, maxLength: 28 }),
   asset_name: Data.Bytes({ maxLength: 32 }),
   quantity: Data.Integer(),
   siblings: Data.Array(H32Schema),
 });
-export type AssetLeafOpeningV1 = Data.Static<typeof AssetLeafOpeningV1Schema>;
-export const AssetLeafOpeningV1 =
-  AssetLeafOpeningV1Schema as unknown as AssetLeafOpeningV1;
+export type AssetLeafOpening = Data.Static<typeof AssetLeafOpeningSchema>;
+export const AssetLeafOpening =
+  AssetLeafOpeningSchema as unknown as AssetLeafOpening;
 
 /** Wire twin of the aiken `validation_merkle_v1.FrontierPeak`. */
-export const FrontierPeakV1Schema = Data.Object({
+export const FrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: H32Schema,
 });
-export type FrontierPeakV1 = Data.Static<typeof FrontierPeakV1Schema>;
-export const FrontierPeakV1 = FrontierPeakV1Schema as unknown as FrontierPeakV1;
+export type FrontierPeak = Data.Static<typeof FrontierPeakSchema>;
+export const FrontierPeak = FrontierPeakSchema as unknown as FrontierPeak;
 
 /** The pre-state value witness for one spend input. */
-export const SpentInputValueWitnessV1Schema = Data.Object({
+export const SpentInputValueWitnessSchema = Data.Object({
   descriptor_cbor: Data.Bytes(),
   ledger_membership_proof: ProofSchema,
-  asset_peaks: Data.Array(FrontierPeakV1Schema),
-  asset_openings: Data.Array(AssetLeafOpeningV1Schema),
+  asset_peaks: Data.Array(FrontierPeakSchema),
+  asset_openings: Data.Array(AssetLeafOpeningSchema),
 });
-export type SpentInputValueWitnessV1 = Data.Static<
-  typeof SpentInputValueWitnessV1Schema
+export type SpentInputValueWitness = Data.Static<
+  typeof SpentInputValueWitnessSchema
 >;
-export const SpentInputValueWitnessV1 =
-  SpentInputValueWitnessV1Schema as unknown as SpentInputValueWitnessV1;
+export const SpentInputValueWitness =
+  SpentInputValueWitnessSchema as unknown as SpentInputValueWitness;
 
 export const ValueNotPreservedStep02FoldArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
-  value_witness: SpentInputValueWitnessV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
+  value_witness: SpentInputValueWitnessSchema,
 });
 export type ValueNotPreservedStep02FoldArgs = Data.Static<
   typeof ValueNotPreservedStep02FoldArgsSchema
@@ -163,7 +163,7 @@ export const ValueNotPreservedStep02ArgsSchema = Data.Enum([
     FinishInputs: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      spend_inputs_opening: FieldOpeningV1Schema,
+      spend_inputs_opening: FieldOpeningSchema,
     }),
   }),
 ]);
@@ -187,8 +187,8 @@ export const ValueNotPreservedStep02SpendRedeemer =
 
 export const ValueNotPreservedStep03StateSchema = Data.Object({
   bad_tx_id: H32Schema,
-  claimed_asset: ClaimedAssetV1Schema,
-  claimed_direction: ClaimedImbalanceDirectionV1Schema,
+  claimed_asset: ClaimedAssetSchema,
+  claimed_direction: ClaimedImbalanceDirectionSchema,
   committed_fee: Data.Integer(),
   claimed_delta: Data.Integer(),
 });
@@ -211,9 +211,9 @@ export const ValueNotPreservedStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   native_tx_compact_cbor: Data.Bytes(),
-  outputs_carriage: FieldCarriageV1Schema,
+  outputs_carriage: FieldCarriageSchema,
   /** `Some` exactly for a token claim; an ADA claim must carry `None`. */
-  mint_carriage: Data.Nullable(FieldCarriageV1Schema),
+  mint_carriage: Data.Nullable(FieldCarriageSchema),
 });
 export type ValueNotPreservedStep03Args = Data.Static<
   typeof ValueNotPreservedStep03ArgsSchema
@@ -235,8 +235,8 @@ export const ValueNotPreservedStep03SpendRedeemer =
 
 export const ValueNotPreservedStep04StateSchema = Data.Object({
   bad_tx_id: H32Schema,
-  claimed_asset: ClaimedAssetV1Schema,
-  claimed_direction: ClaimedImbalanceDirectionV1Schema,
+  claimed_asset: ClaimedAssetSchema,
+  claimed_direction: ClaimedImbalanceDirectionSchema,
   final_delta: Data.Integer(),
 });
 export type ValueNotPreservedStep04State = Data.Static<
@@ -278,7 +278,7 @@ export const ValueNotPreservedStep04SpendRedeemer =
 // ---------------------------------------------------------------------------
 
 /** Twin of `claimed_asset_is_well_formed_v1`, applied before paying for step-01. */
-export const claimedAssetIsWellFormedV1 = (claim: ClaimedAssetV1): boolean => {
+export const claimedAssetIsWellFormed = (claim: ClaimedAsset): boolean => {
   if (claim === "AdaAsset") return true;
   const { policy_id, asset_name } = claim.TokenAsset;
   return policy_id.length === 56 && asset_name.length <= 64;
@@ -289,11 +289,11 @@ export const claimedAssetIsWellFormedV1 = (claim: ClaimedAssetV1): boolean => {
  * conviction condition. A zero delta satisfies neither direction, so a
  * balanced fold is never finalizable.
  */
-export const valueNotPreservedFaultIsEstablishedV1 = ({
+export const valueNotPreservedFaultIsEstablished = ({
   claimedDirection,
   finalDelta,
 }: {
-  readonly claimedDirection: ClaimedImbalanceDirectionV1;
+  readonly claimedDirection: ClaimedImbalanceDirection;
   readonly finalDelta: bigint;
 }): boolean =>
   claimedDirection === "ClaimedAssetInflated"

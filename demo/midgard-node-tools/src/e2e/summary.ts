@@ -19,8 +19,8 @@ import {
 } from "midgard-node/files/atomic-write";
 
 import {
-  parseE2EStepV1,
-  parseTxObservationV1,
+  parseE2EStep,
+  parseTxObservation,
   type StepStatus,
   type StepSummary,
   type TxObservation,
@@ -151,7 +151,7 @@ const parseStringDetails = (
   );
 };
 
-const parseStepRetrySummaryV1 = (
+const parseStepRetrySummary = (
   value: unknown,
   label: string,
 ): StepRetrySummary => {
@@ -194,7 +194,7 @@ const parseStepRetrySummaryV1 = (
   return parsed;
 };
 
-const parseFinalFunctionalGateV1 = (
+const parseFinalFunctionalGate = (
   value: unknown,
   label: string,
 ): FinalFunctionalGate => {
@@ -217,7 +217,7 @@ const parseFinalFunctionalGateV1 = (
   };
 };
 
-const parseCleanRunGateV1 = (value: unknown, label: string): CleanRunGate => {
+const parseCleanRunGate = (value: unknown, label: string): CleanRunGate => {
   const input = exactRecord(value, label, [
     "label",
     "status",
@@ -238,7 +238,7 @@ const parseCleanRunGateV1 = (value: unknown, label: string): CleanRunGate => {
   };
 };
 
-const parseTransactionEvidenceV1 = (
+const parseTransactionEvidence = (
   value: unknown,
   label: string,
 ): TransactionEvidence => {
@@ -264,7 +264,7 @@ const parseTransactionEvidenceV1 = (
   };
 };
 
-const parseHttpEvidenceV1 = (value: unknown, label: string): HttpEvidence => {
+const parseHttpEvidence = (value: unknown, label: string): HttpEvidence => {
   const input = exactRecord(value, label, [
     "label",
     "method",
@@ -288,7 +288,7 @@ const parseHttpEvidenceV1 = (value: unknown, label: string): HttpEvidence => {
   };
 };
 
-const parseDbEvidenceV1 = (value: unknown, label: string): DbEvidence => {
+const parseDbEvidence = (value: unknown, label: string): DbEvidence => {
   const input = exactRecord(value, label, [
     "label",
     "status",
@@ -308,10 +308,7 @@ const parseDbEvidenceV1 = (value: unknown, label: string): DbEvidence => {
   };
 };
 
-const parseRawEvidenceRefV1 = (
-  value: unknown,
-  label: string,
-): RawEvidenceRef => {
+const parseRawEvidenceRef = (value: unknown, label: string): RawEvidenceRef => {
   const input = exactRecord(value, label, ["label", "path"]);
   return {
     label: nonEmptyString(input.label, `${label}.label`),
@@ -319,7 +316,7 @@ const parseRawEvidenceRefV1 = (
   };
 };
 
-export const parseE2ERunSummaryV1 = (
+export const parseE2ERunSummary = (
   value: unknown,
   label = "E2E run summary",
 ): E2ERunSummary => {
@@ -386,38 +383,38 @@ export const parseE2ERunSummaryV1 = (
     ]),
     startedAt: isoTimestamp(input.startedAt, `${label}.startedAt`),
     updatedAt: isoTimestamp(input.updatedAt, `${label}.updatedAt`),
-    steps: arrayOf(input.steps, `${label}.steps`, parseE2EStepV1),
+    steps: arrayOf(input.steps, `${label}.steps`, parseE2EStep),
     stepRetrySummary: arrayOf(
       input.stepRetrySummary,
       `${label}.stepRetrySummary`,
-      parseStepRetrySummaryV1,
+      parseStepRetrySummary,
     ),
     txObservations: arrayOf(
       input.txObservations,
       `${label}.txObservations`,
-      parseTxObservationV1,
+      parseTxObservation,
     ),
     finalFunctionalGates: arrayOf(
       input.finalFunctionalGates,
       `${label}.finalFunctionalGates`,
-      parseFinalFunctionalGateV1,
+      parseFinalFunctionalGate,
     ),
     cleanRunGates: arrayOf(
       input.cleanRunGates,
       `${label}.cleanRunGates`,
-      parseCleanRunGateV1,
+      parseCleanRunGate,
     ),
     transactions: arrayOf(
       input.transactions,
       `${label}.transactions`,
-      parseTransactionEvidenceV1,
+      parseTransactionEvidence,
     ),
-    http: arrayOf(input.http, `${label}.http`, parseHttpEvidenceV1),
-    db: arrayOf(input.db, `${label}.db`, parseDbEvidenceV1),
+    http: arrayOf(input.http, `${label}.http`, parseHttpEvidence),
+    db: arrayOf(input.db, `${label}.db`, parseDbEvidence),
     rawEvidence: arrayOf(
       input.rawEvidence,
       `${label}.rawEvidence`,
-      parseRawEvidenceRefV1,
+      parseRawEvidenceRef,
     ),
     notes: stringArray(input.notes, `${label}.notes`),
   };
@@ -477,7 +474,7 @@ export const createE2ERunSummary = ({
   readonly now?: Date;
 }): E2ERunSummary => {
   const timestamp = now.toISOString();
-  return parseE2ERunSummaryV1({
+  return parseE2ERunSummary({
     schemaVersion: E2E_SUMMARY_SCHEMA_VERSION,
     runId,
     mode,
@@ -947,7 +944,7 @@ export const updateE2ERunSummary = (
     functionalVerdict,
     verdict,
   };
-  return parseE2ERunSummaryV1({
+  return parseE2ERunSummary({
     ...next,
     nextSafeAction: classifyNextSafeAction({ ...next, verdict }),
   });
@@ -957,7 +954,7 @@ export const writeSummaryJsonAtomic = async (
   path: string,
   summary: E2ERunSummary,
 ): Promise<void> => {
-  await writeJsonFileAtomic(path, parseE2ERunSummaryV1(summary));
+  await writeJsonFileAtomic(path, parseE2ERunSummary(summary));
 };
 
 export const renderSummaryMarkdown = (summary: E2ERunSummary): string => {

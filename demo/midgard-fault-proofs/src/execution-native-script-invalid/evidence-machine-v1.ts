@@ -1,45 +1,45 @@
 import {
-  appendMidgardValidationMerkleLeafV1,
-  buildMidgardValidationMerkleMembershipIndexV1,
+  appendMidgardValidationMerkleLeaf,
+  buildMidgardValidationMerkleMembershipIndex,
   computeHash32,
-  decodeMidgardAddressWitnessItemV1,
-  emptyMidgardValidationMerkleFrontierV1,
-  hashMidgardSignerLeafV1,
-  type MidgardValidationMerkleFrontierV1,
+  decodeMidgardAddressWitnessItem,
+  emptyMidgardValidationMerkleFrontier,
+  hashMidgardSignerLeaf,
+  type MidgardValidationMerkleFrontier,
   readCborArrayHeader,
   readCborBytes,
   readCborUnsigned,
 } from "@al-ft/midgard-core";
 import {
-  type FrontierPeakV1,
-  missingSignatureFieldWalkCheckpointV1,
-  missingSignatureVkeyHashV1,
-  type NativeScriptPushdownFrameV1,
-  type SignerSetProofV1,
+  type FrontierPeak,
+  missingSignatureFieldWalkCheckpoint,
+  missingSignatureVkeyHash,
+  type NativeScriptPushdownFrame,
+  type SignerSetProof,
 } from "@al-ft/midgard-sdk";
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1 = 28;
-export const EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1 = 16;
-export const EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1 = 16;
-export const EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1 = 16;
-export const EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH_V1 = 16;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT = 28;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH = 16;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH = 16;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH = 16;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH = 16;
 
-export const executionNativeScriptInvalidUsesDirectRouteV1 = ({
+export const executionNativeScriptInvalidUsesDirectRoute = ({
   signerCount,
   scriptBytes,
 }: {
   readonly signerCount: number;
   readonly scriptBytes: number;
 }): boolean =>
-  signerCount <= EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1 &&
+  signerCount <= EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT &&
   scriptBytes <= 1_024;
 
-export const assertExecutionNativeScriptInvalidDirectRouteV1 = (
+export const assertExecutionNativeScriptInvalidDirectRoute = (
   signerCount: number,
 ) => {
-  if (signerCount > EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1) {
+  if (signerCount > EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT) {
     throw new Error(
-      `execution-native-script-invalid: direct signer limit is ${EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1.toString()}; use the staged route`,
+      `execution-native-script-invalid: direct signer limit is ${EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT.toString()}; use the staged route`,
     );
   }
 };
@@ -55,14 +55,14 @@ const u24 = (value: number, label: string): Buffer => {
   return result;
 };
 
-const exactSignerHashesV1 = (
+const exactSignerHashes = (
   addressWitnessItems: readonly Uint8Array[],
 ): readonly Buffer[] => {
   const hashes: Buffer[] = [];
   for (const item of addressWitnessItems) {
-    const witness = decodeMidgardAddressWitnessItemV1(item);
+    const witness = decodeMidgardAddressWitnessItem(item);
     const hash = Buffer.from(
-      missingSignatureVkeyHashV1(
+      missingSignatureVkeyHash(
         Buffer.from(witness.verificationKey).toString("hex"),
       ),
       "hex",
@@ -79,24 +79,24 @@ const exactSignerHashesV1 = (
 };
 
 const frontierWire = (
-  frontier: MidgardValidationMerkleFrontierV1,
-): FrontierPeakV1[] =>
+  frontier: MidgardValidationMerkleFrontier,
+): FrontierPeak[] =>
   frontier.peaks.map((peak) => ({
     height: BigInt(peak.height),
     hash: Buffer.from(peak.hash).toString("hex"),
   }));
 
-export type ExecutionNativeScriptInvalidSignerScanStateV1 = Readonly<{
+export type ExecutionNativeScriptInvalidSignerScanState = Readonly<{
   checkpointBytes: string;
   checkpointHash: string;
   previousSignerHash: string;
   signerCount: bigint;
-  signerPeaks: readonly FrontierPeakV1[];
+  signerPeaks: readonly FrontierPeak[];
   nextItemIndex: number;
   complete: boolean;
 }>;
 
-export const resolveExecutionNativeScriptInvalidSignerCheckpointV1 = ({
+export const resolveExecutionNativeScriptInvalidSignerCheckpoint = ({
   txId,
   itemCount,
   totalLength,
@@ -107,7 +107,7 @@ export const resolveExecutionNativeScriptInvalidSignerCheckpointV1 = ({
   readonly totalLength: number;
   readonly committedHash: string;
 }) => {
-  missingSignatureFieldWalkCheckpointV1({
+  missingSignatureFieldWalkCheckpoint({
     txId,
     itemCount,
     totalLength,
@@ -120,11 +120,11 @@ export const resolveExecutionNativeScriptInvalidSignerCheckpointV1 = ({
     );
   }
   for (
-    let cursor = EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1;
+    let cursor = EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH;
     cursor < itemCount;
-    cursor += EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1
+    cursor += EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH
   ) {
-    const candidate = missingSignatureFieldWalkCheckpointV1({
+    const candidate = missingSignatureFieldWalkCheckpoint({
       txId,
       itemCount,
       totalLength,
@@ -137,29 +137,29 @@ export const resolveExecutionNativeScriptInvalidSignerCheckpointV1 = ({
   );
 };
 
-export const executionNativeScriptInvalidSignerScanStateV1 = ({
+export const executionNativeScriptInvalidSignerScanState = ({
   txId,
   addressWitnessItems,
   totalLength,
   committedCheckpointHash = "",
-  batchSize = EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1,
+  batchSize = EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH,
 }: {
   readonly txId: string;
   readonly addressWitnessItems: readonly Uint8Array[];
   readonly totalLength: number;
   readonly committedCheckpointHash?: string;
   readonly batchSize?: number;
-}): ExecutionNativeScriptInvalidSignerScanStateV1 => {
+}): ExecutionNativeScriptInvalidSignerScanState => {
   if (
     !Number.isSafeInteger(batchSize) ||
     batchSize <= 0 ||
-    batchSize > EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1
+    batchSize > EXECUTION_NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH
   ) {
     throw new Error(
       "execution-native-script-invalid: signer batch size must be 1..16",
     );
   }
-  const current = resolveExecutionNativeScriptInvalidSignerCheckpointV1({
+  const current = resolveExecutionNativeScriptInvalidSignerCheckpoint({
     txId,
     itemCount: addressWitnessItems.length,
     totalLength,
@@ -170,18 +170,18 @@ export const executionNativeScriptInvalidSignerScanStateV1 = ({
     addressWitnessItems.length,
     currentIndex + batchSize,
   );
-  const signerHashes = exactSignerHashesV1(
+  const signerHashes = exactSignerHashes(
     addressWitnessItems.slice(0, nextItemIndex),
   );
   const frontier = signerHashes.reduce(
     (currentFrontier, signerHash) =>
-      appendMidgardValidationMerkleLeafV1(
+      appendMidgardValidationMerkleLeaf(
         currentFrontier,
-        hashMidgardSignerLeafV1(signerHash),
+        hashMidgardSignerLeaf(signerHash),
       ),
-    emptyMidgardValidationMerkleFrontierV1(),
+    emptyMidgardValidationMerkleFrontier(),
   );
-  const checkpoint = missingSignatureFieldWalkCheckpointV1({
+  const checkpoint = missingSignatureFieldWalkCheckpoint({
     txId,
     itemCount: addressWitnessItems.length,
     totalLength,
@@ -198,20 +198,20 @@ export const executionNativeScriptInvalidSignerScanStateV1 = ({
   };
 };
 
-export type ExecutionNativeScriptInvalidSignerSetV1 = Readonly<{
+export type ExecutionNativeScriptInvalidSignerSet = Readonly<{
   hashes: readonly Buffer[];
-  frontier: MidgardValidationMerkleFrontierV1;
-  proofFor: (signerHash: Uint8Array) => SignerSetProofV1;
+  frontier: MidgardValidationMerkleFrontier;
+  proofFor: (signerHash: Uint8Array) => SignerSetProof;
 }>;
 
-export const executionNativeScriptInvalidSignerSetV1 = (
+export const executionNativeScriptInvalidSignerSet = (
   addressWitnessItems: readonly Uint8Array[],
-): ExecutionNativeScriptInvalidSignerSetV1 => {
-  const hashes = exactSignerHashesV1(addressWitnessItems);
-  const leafHashes = hashes.map(hashMidgardSignerLeafV1);
-  const membership = buildMidgardValidationMerkleMembershipIndexV1(leafHashes);
+): ExecutionNativeScriptInvalidSignerSet => {
+  const hashes = exactSignerHashes(addressWitnessItems);
+  const leafHashes = hashes.map(hashMidgardSignerLeaf);
+  const membership = buildMidgardValidationMerkleMembershipIndex(leafHashes);
   const peaks = frontierWire(membership.frontier);
-  const proofFor = (raw: Uint8Array): SignerSetProofV1 => {
+  const proofFor = (raw: Uint8Array): SignerSetProof => {
     const signerHash = Buffer.from(raw);
     if (signerHash.length !== 28) {
       throw new Error(
@@ -290,12 +290,12 @@ type PushdownState = {
   readonly scriptDigest: Buffer;
   readonly scriptLength: number;
   readonly offset: number;
-  readonly frames: readonly NativeScriptPushdownFrameV1[];
+  readonly frames: readonly NativeScriptPushdownFrame[];
   readonly nodesVisited: number;
   readonly pending: 0 | 1 | 2;
 };
 
-const encodeFrame = (frame: NativeScriptPushdownFrameV1): Buffer =>
+const encodeFrame = (frame: NativeScriptPushdownFrame): Buffer =>
   Buffer.concat([
     Buffer.from([Number(frame.kind)]),
     u24(Number(frame.remaining), "native script frame remaining"),
@@ -303,14 +303,11 @@ const encodeFrame = (frame: NativeScriptPushdownFrameV1): Buffer =>
     u24(Number(frame.required), "native script frame required"),
   ]);
 
-const chainFrame = (
-  below: Buffer,
-  frame: NativeScriptPushdownFrameV1,
-): Buffer =>
+const chainFrame = (below: Buffer, frame: NativeScriptPushdownFrame): Buffer =>
   hash32(Buffer.concat([SCRIPT_FRAME_DOMAIN, below, encodeFrame(frame)]));
 
 const frameRoots = (
-  frames: readonly NativeScriptPushdownFrameV1[],
+  frames: readonly NativeScriptPushdownFrame[],
 ): readonly Buffer[] => {
   const roots: Buffer[] = new Array(frames.length);
   let below = hash32(SCRIPT_FRAME_DOMAIN);
@@ -357,7 +354,7 @@ const decodeCursor = ({
   committedHash,
 }: {
   readonly bytes: Uint8Array;
-  readonly frames: readonly NativeScriptPushdownFrameV1[];
+  readonly frames: readonly NativeScriptPushdownFrame[];
   readonly scriptBytes: Uint8Array;
   readonly committedHash: string;
 }): PushdownState => {
@@ -498,7 +495,7 @@ const readNode = ({
       "execution-native-script-invalid: native script depth bound exceeded",
     );
   }
-  const frame: NativeScriptPushdownFrameV1 = {
+  const frame: NativeScriptPushdownFrame = {
     kind: BigInt(kind),
     remaining: BigInt(children.length),
     satisfied: 0n,
@@ -542,23 +539,23 @@ const foldFrame = (state: PushdownState): PushdownState => {
   };
 };
 
-export type ExecutionNativeScriptInvalidPushdownStepV1 = Readonly<{
+export type ExecutionNativeScriptInvalidPushdownStep = Readonly<{
   currentCursorBytes?: string;
-  currentFrames: readonly NativeScriptPushdownFrameV1[];
+  currentFrames: readonly NativeScriptPushdownFrame[];
   nextCursorBytes: string;
   nextCursorHash: string;
-  nextFrames: readonly NativeScriptPushdownFrameV1[];
+  nextFrames: readonly NativeScriptPushdownFrame[];
   signerHashes: readonly string[];
   complete: boolean;
   satisfied?: boolean;
 }>;
 
-export const executionNativeScriptInvalidPushdownStepV1 = ({
+export const executionNativeScriptInvalidPushdownStep = ({
   scriptBytes: rawScriptBytes,
   validityIntervalStart,
   validityIntervalEnd,
   signerSet,
-  nodeBudget = EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
+  nodeBudget = EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH,
   committedCursorHash,
   cursorBytes,
   frames = [],
@@ -566,16 +563,16 @@ export const executionNativeScriptInvalidPushdownStepV1 = ({
   readonly scriptBytes: Uint8Array;
   readonly validityIntervalStart: bigint;
   readonly validityIntervalEnd: bigint;
-  readonly signerSet: ExecutionNativeScriptInvalidSignerSetV1;
+  readonly signerSet: ExecutionNativeScriptInvalidSignerSet;
   readonly nodeBudget?: number;
   readonly committedCursorHash?: string;
   readonly cursorBytes?: Uint8Array;
-  readonly frames?: readonly NativeScriptPushdownFrameV1[];
-}): ExecutionNativeScriptInvalidPushdownStepV1 => {
+  readonly frames?: readonly NativeScriptPushdownFrame[];
+}): ExecutionNativeScriptInvalidPushdownStep => {
   if (
     !Number.isSafeInteger(nodeBudget) ||
     nodeBudget <= 0 ||
-    nodeBudget > EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH_V1
+    nodeBudget > EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH
   ) {
     throw new Error(
       "execution-native-script-invalid: node budget must be 1..16",
@@ -647,30 +644,30 @@ export const executionNativeScriptInvalidPushdownStepV1 = ({
  * trusted journal state, and the walk is bounded by the canonical 32-node
  * native-script maximum.
  */
-export const resolveExecutionNativeScriptInvalidPushdownResumeV1 = ({
+export const resolveExecutionNativeScriptInvalidPushdownResume = ({
   scriptBytes,
   validityIntervalStart,
   validityIntervalEnd,
   signerSet,
   committedCursorHash,
-  nodeBudget = EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
+  nodeBudget = EXECUTION_NATIVE_SCRIPT_INVALID_NODE_BATCH,
 }: {
   readonly scriptBytes: Uint8Array;
   readonly validityIntervalStart: bigint;
   readonly validityIntervalEnd: bigint;
-  readonly signerSet: ExecutionNativeScriptInvalidSignerSetV1;
+  readonly signerSet: ExecutionNativeScriptInvalidSignerSet;
   readonly committedCursorHash: string;
   readonly nodeBudget?: number;
 }): Readonly<{
   cursorBytes: Buffer;
-  frames: readonly NativeScriptPushdownFrameV1[];
+  frames: readonly NativeScriptPushdownFrame[];
 }> => {
   if (!/^[0-9a-f]{64}$/u.test(committedCursorHash)) {
     throw new Error(
       "execution-native-script-invalid: committed resume hash is not 32-byte hex",
     );
   }
-  let transition = executionNativeScriptInvalidPushdownStepV1({
+  let transition = executionNativeScriptInvalidPushdownStep({
     scriptBytes,
     validityIntervalStart,
     validityIntervalEnd,
@@ -685,7 +682,7 @@ export const resolveExecutionNativeScriptInvalidPushdownResumeV1 = ({
       });
     }
     if (transition.complete) break;
-    transition = executionNativeScriptInvalidPushdownStepV1({
+    transition = executionNativeScriptInvalidPushdownStep({
       scriptBytes,
       validityIntervalStart,
       validityIntervalEnd,

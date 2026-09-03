@@ -1,45 +1,45 @@
 import {
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardMintPolicyItemV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardFieldPreimage,
+  encodeMidgardMintPolicyItem,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyMintDeclaredAssetLimitFindingV1,
-  decodeMintDeclaredPolicyHeaderV1,
-  foldMintDeclaredAssetLimitV1,
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1,
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
-  mintDeclaredAssetLimitEvidenceClosesV1,
-  prepareMintDeclaredAssetLimitEvidenceV1,
+  classifyMintDeclaredAssetLimitFinding,
+  decodeMintDeclaredPolicyHeader,
+  foldMintDeclaredAssetLimit,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
+  mintDeclaredAssetLimitEvidenceCloses,
+  prepareMintDeclaredAssetLimitEvidence,
 } from "../src/mint-declared-asset-limit/family-v1.js";
 import {
-  admitProductionMintDeclaredAssetLimitArtifactV1,
-  buildProductionMintDeclaredAssetLimitArtifactV1,
-  productionMintDeclaredAssetLimitArtifactDigestV1,
+  admitMintDeclaredAssetLimitArtifact,
+  buildMintDeclaredAssetLimitArtifact,
+  mintDeclaredAssetLimitArtifactDigest,
 } from "../src/mint-declared-asset-limit/production-artifact-v1.js";
 import {
-  MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1,
-  type MintDeclaredAssetLimitReplayDetectionV1,
-  selectCanonicalMintDeclaredAssetLimitDetectionV1,
+  MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
+  type MintDeclaredAssetLimitReplayDetection,
+  selectCanonicalMintDeclaredAssetLimitDetection,
 } from "../src/mint-declared-asset-limit/replay-v1.js";
 import {
-  encodeMintDeclaredGrammarCheckpointV1,
-  encodeMintDeclaredWalkCheckpointV1,
-  hashMintDeclaredGrammarCheckpointV1,
-  hashMintDeclaredWalkCheckpointV1,
-  planMintDeclaredAssetLimitStagedWalkV1,
+  encodeMintDeclaredGrammarCheckpoint,
+  encodeMintDeclaredWalkCheckpoint,
+  hashMintDeclaredGrammarCheckpoint,
+  hashMintDeclaredWalkCheckpoint,
+  planMintDeclaredAssetLimitStagedWalk,
 } from "../src/mint-declared-asset-limit/staged-plan-v1.js";
 
 const txId = "00".repeat(31).concat("01");
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const rejected = (policyIndex: number) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
     rejectionReason: {
@@ -48,7 +48,7 @@ const rejected = (policyIndex: number) =>
   });
 
 const singleton = (policyByte: number) =>
-  encodeMidgardMintPolicyItemV1({
+  encodeMidgardMintPolicyItem({
     policyId: Buffer.alloc(28, policyByte),
     assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
   });
@@ -62,21 +62,19 @@ const crossing = (policyByte: number, padding = 0): Buffer =>
   ]);
 
 const evidence = (subject: typeof accepted, item: Buffer) => {
-  const field = encodeMidgardFieldPreimageV1([item]);
-  return prepareMintDeclaredAssetLimitEvidenceV1({
+  const field = encodeMidgardFieldPreimage([item]);
+  return prepareMintDeclaredAssetLimitEvidence({
     finding: { subject, policyIndex: 0 },
     fieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
 };
 
 describe("mintDeclaredAssetLimit V1 semantics", () => {
   it("freezes category identity and reads the exact pre-body header", () => {
-    expect(MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1).toBe(
-      "mintDeclaredAssetLimit",
-    );
-    expect(MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1).toBe("0000002c");
-    const header = decodeMintDeclaredPolicyHeaderV1(crossing(1));
+    expect(MINT_DECLARED_ASSET_LIMIT_CATEGORY).toBe("mintDeclaredAssetLimit");
+    expect(MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID).toBe("0000002c");
+    const header = decodeMintDeclaredPolicyHeader(crossing(1));
     expect(header.policyId.toString("hex")).toBe("01".repeat(28));
     expect(header.declaredCount).toBe(16_385);
   });
@@ -85,39 +83,39 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     const result = evidence(accepted, crossing(1));
     expect(result.crossing).toBe(true);
     expect(result.accumulatedCount).toBe(0);
-    expect(mintDeclaredAssetLimitEvidenceClosesV1(result)).toBe(true);
+    expect(mintDeclaredAssetLimitEvidenceCloses(result)).toBe(true);
   });
 
   it("proves exact forced contradiction only after a complete target item", () => {
     const result = evidence(rejected(0), singleton(1));
     expect(result.crossing).toBe(false);
     expect(result.accumulatedCount).toBe(1);
-    expect(mintDeclaredAssetLimitEvidenceClosesV1(result)).toBe(true);
+    expect(mintDeclaredAssetLimitEvidenceCloses(result)).toBe(true);
   });
 
   it("refuses honest accepted and forced polarities", () => {
     expect(
-      mintDeclaredAssetLimitEvidenceClosesV1(evidence(accepted, singleton(1))),
+      mintDeclaredAssetLimitEvidenceCloses(evidence(accepted, singleton(1))),
     ).toBe(false);
     expect(
-      mintDeclaredAssetLimitEvidenceClosesV1(rejectedEvidence(crossing(1))),
+      mintDeclaredAssetLimitEvidenceCloses(rejectedEvidence(crossing(1))),
     ).toBe(false);
   });
 
   it("binds the forced reason and policy coordinate exactly", () => {
     expect(() =>
-      classifyMintDeclaredAssetLimitFindingV1({
+      classifyMintDeclaredAssetLimitFinding({
         subject: rejected(2),
         policyIndex: 1,
       }),
     ).toThrow(/coordinate changed/u);
-    const wrongReason = forcedVerdictSubjectV1({
+    const wrongReason = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
       rejectionReason: { OutputNonCanonical: { output_index: 0n } },
     });
     expect(() =>
-      classifyMintDeclaredAssetLimitFindingV1({
+      classifyMintDeclaredAssetLimitFinding({
         subject: wrongReason,
         policyIndex: 0,
       }),
@@ -125,23 +123,23 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
   });
 
   it("refuses commitment, target item, and first-crossing substitutions", () => {
-    const field = encodeMidgardFieldPreimageV1([singleton(1)]);
+    const field = encodeMidgardFieldPreimage([singleton(1)]);
     expect(() =>
-      prepareMintDeclaredAssetLimitEvidenceV1({
+      prepareMintDeclaredAssetLimitEvidence({
         finding: { subject: accepted, policyIndex: 0 },
         fieldPreimage: field,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/do not match/u);
     expect(() =>
-      prepareMintDeclaredAssetLimitEvidenceV1({
+      prepareMintDeclaredAssetLimitEvidence({
         finding: { subject: accepted, policyIndex: 1 },
         fieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       }),
     ).toThrow(/outside field 5/u);
     expect(() =>
-      foldMintDeclaredAssetLimitV1([crossing(1), crossing(2)], 1),
+      foldMintDeclaredAssetLimit([crossing(1), crossing(2)], 1),
     ).toThrow(/earlier policy/u);
   });
 
@@ -158,29 +156,27 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     const items = Array.from({ length: 49 }, (_, index) =>
       singleton(index + 1),
     );
-    const field = encodeMidgardFieldPreimageV1(items);
+    const field = encodeMidgardFieldPreimage(items);
     const input = {
       transactionId: txId,
       fieldPreimageCbor: field.toString("hex"),
       policyIndex: 48,
     } as const;
-    const first = planMintDeclaredAssetLimitStagedWalkV1(input);
-    const restarted = planMintDeclaredAssetLimitStagedWalkV1(input);
+    const first = planMintDeclaredAssetLimitStagedWalk(input);
+    const restarted = planMintDeclaredAssetLimitStagedWalk(input);
     expect(first).toEqual(restarted);
     expect(first.grammar).toHaveLength(3);
     expect(first.walk).toHaveLength(3);
-    const grammarBytes = encodeMintDeclaredGrammarCheckpointV1(
-      first.grammar[0]!,
-    );
-    const walkBytes = encodeMintDeclaredWalkCheckpointV1(first.walk[0]!);
+    const grammarBytes = encodeMintDeclaredGrammarCheckpoint(first.grammar[0]!);
+    const walkBytes = encodeMintDeclaredWalkCheckpoint(first.walk[0]!);
     expect(grammarBytes).toHaveLength(87);
     expect(walkBytes).toHaveLength(53);
     expect(grammarBytes[36]).toBe(5);
     expect(walkBytes[36]).toBe(5);
-    expect(hashMintDeclaredGrammarCheckpointV1(first.grammar[0]!)).toMatch(
+    expect(hashMintDeclaredGrammarCheckpoint(first.grammar[0]!)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
-    expect(hashMintDeclaredWalkCheckpointV1(first.walk[0]!)).toMatch(
+    expect(hashMintDeclaredWalkCheckpoint(first.walk[0]!)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
   });
@@ -189,10 +185,10 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     const detection = (
       position: bigint,
       detectionId: string,
-    ): MintDeclaredAssetLimitReplayDetectionV1 => ({
+    ): MintDeclaredAssetLimitReplayDetection => ({
       detectionId,
       headerHash: "22".repeat(28),
-      violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1,
+      violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
       position,
       transactionId: txId,
       policyIndex: 0,
@@ -200,7 +196,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
       direction: "wrongfulAcceptance",
     });
     expect(
-      selectCanonicalMintDeclaredAssetLimitDetectionV1([
+      selectCanonicalMintDeclaredAssetLimitDetection([
         detection(9n, "z"),
         detection(2n, "b"),
         detection(2n, "a"),
@@ -210,7 +206,7 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
 
   it("reconstructs its staged artifact and refuses field substitution", () => {
     const prepared = evidence(accepted, crossing(1));
-    const artifact = buildProductionMintDeclaredAssetLimitArtifactV1({
+    const artifact = buildMintDeclaredAssetLimitArtifact({
       headerHash: "22".repeat(28),
       detectionId: "mint-declared-asset-limit:accepted:0:test:0",
       position: 0n,
@@ -222,13 +218,13 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
       transactionsPhasRoot: "33".repeat(32),
       transactionMembershipCbor: "80",
     });
-    const admitted = admitProductionMintDeclaredAssetLimitArtifactV1(artifact);
+    const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
     expect(admitted.evidence).toEqual(prepared);
-    expect(productionMintDeclaredAssetLimitArtifactDigestV1(artifact)).toMatch(
+    expect(mintDeclaredAssetLimitArtifactDigest(artifact)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
     expect(() =>
-      admitProductionMintDeclaredAssetLimitArtifactV1({
+      admitMintDeclaredAssetLimitArtifact({
         ...artifact,
         fieldPreimageCbor: `${artifact.fieldPreimageCbor.slice(0, -2)}ff`,
       }),

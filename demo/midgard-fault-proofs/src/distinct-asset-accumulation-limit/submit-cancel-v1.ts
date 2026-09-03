@@ -1,13 +1,13 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { DistinctAssetAccumulationContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { DistinctAssetAccumulationContracts } from "./contracts-v1.js";
 
 /** Cancels any one of the six live physical thread steps. */
-export const submitDistinctAssetAccumulationCancelV1 = async ({
+export const submitDistinctAssetAccumulationCancel = async ({
   lucid,
   contracts,
   categoryId,
@@ -19,16 +19,16 @@ export const submitDistinctAssetAccumulationCancelV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DistinctAssetAccumulationContractsV1;
+  readonly contracts: DistinctAssetAccumulationContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) =>
-  await submitLinearFaultCancelV1({
+  await submitLinearFaultCancel({
     lucid,
     family: "distinct-asset-accumulation-limit",
     steps: contracts.steps,

@@ -43,7 +43,7 @@ import { MAXIMUM_CHUNK_PROOF_STEP_COUNT } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  publishProofChunksV1,
+  publishProofChunks,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import { MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES } from "../src/validation-dispute/submit.js";
@@ -56,13 +56,13 @@ import {
   parseSubmitStep01TxInclusion,
   submitInit,
   submitInvalidRangeStep01,
-  submitInvalidRangeStep02,
+  submitInvalidRangeStep02V1,
   submitStep01,
   submitStep02,
   submitStep03,
   submitStep04,
   submitZeroInputStep01,
-  submitZeroInputStep02,
+  submitZeroInputStep02V1,
 } from "./support/legacy-submit-emulator.js";
 import {
   buildInvalidRangeTransactionInclusionFixture,
@@ -79,20 +79,20 @@ import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
-  printProofFitV1,
+  printProofFit,
   publishRemovalReferenceScripts,
   registerChunkedVerifyRewardAccount,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  syntheticDeepMembershipProofV1,
-  syntheticDeepSharedRootProofsV1,
+  syntheticDeepMembershipProof,
+  syntheticDeepSharedRootProofs,
 } from "./support/synthetic-deep-proof-v1.js";
 
 /**
@@ -113,7 +113,7 @@ const printCarriageFit = (
   proofFit: Record<string, CompleteSignedTransactionMeasurement>,
   extra: Record<string, unknown>,
 ): void =>
-  printProofFitV1({
+  printProofFit({
     headline: `${label} chunked carriage fit`,
     stages: proofFit,
     extra,
@@ -140,7 +140,7 @@ const deepenInclusion = ({
   // The transactions trie commits `Data(L2TransactionSourceV1)` per tx id, not
   // the bare compact encoding, so the synthesised proof must prove that value —
   // it is the value the step's inclusion claim names.
-  const deep = syntheticDeepMembershipProofV1({
+  const deep = syntheticDeepMembershipProof({
     key: Buffer.from(parsed.nativeTxId, "hex"),
     value: Buffer.from(parsed.l2TransactionSourceCbor, "hex"),
     branchLevels,
@@ -190,7 +190,7 @@ const deepenSharedRoot = ({
 }) => {
   // Same committed value as `deepenInclusion`: the trie's per-tx-id value is
   // `Data(L2TransactionSourceV1)`.
-  const shared = syntheticDeepSharedRootProofsV1({
+  const shared = syntheticDeepSharedRootProofs({
     claims: [
       ...members.map((member) => ({
         key: Buffer.from(member.nativeTxId, "hex"),
@@ -232,7 +232,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     readonly chunkCount: number;
     readonly proofCborBytes: number;
   }> => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
       registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
     });
@@ -288,7 +288,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const publicationCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: proverLucid,
           network,
           signer: proverSigner,
@@ -370,7 +370,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       initResult.computationThreadUnit,
     );
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitZeroInputStep02({
+      submitZeroInputStep02V1({
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
@@ -419,7 +419,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     }
 
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `zero-input chunked ${stage}`,
         measurement,
         maxTxExMem,
@@ -503,7 +503,7 @@ describe("fault-proof published-chunk proof carriage", () => {
   }, 900_000);
 
   it("carries an invalid-range membership proof past the direct route's envelope ceiling", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realInvalidRange: true,
         alwaysFraudProofCatalogue: true,
@@ -563,7 +563,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const publicationCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: proverLucid,
           network,
           signer: proverSigner,
@@ -626,7 +626,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       initResult.computationThreadUnit,
     );
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitInvalidRangeStep02({
+      submitInvalidRangeStep02V1({
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
@@ -675,7 +675,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `invalid-range chunked ${stage}`,
         measurement,
         maxTxExMem,
@@ -701,7 +701,7 @@ describe("fault-proof published-chunk proof carriage", () => {
    * carriage; they are measured because the claim is about the complete path.
    */
   it("carries both double-spend membership proofs past the direct route's envelope ceiling", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
       registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,
     });
@@ -765,7 +765,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const tx1PublicationCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: proverLucid,
           network,
           signer: proverSigner,
@@ -833,7 +833,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const tx2PublicationCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: proverLucid,
           network,
           signer: proverSigner,
@@ -975,7 +975,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `double-spend chunked ${stage}`,
         measurement,
         maxTxExMem,
@@ -1010,7 +1010,7 @@ describe("fault-proof published-chunk proof carriage", () => {
    * route: its proof is a constant with nothing for depth to grow.
    */
   it("carries a no-input membership and absence proof past the direct route's envelope ceiling", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realNonExistentInput: true,
         alwaysFraudProofCatalogue: true,
@@ -1080,7 +1080,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const membershipPublicationCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: proverLucid,
           network,
           signer: proverSigner,
@@ -1191,7 +1191,7 @@ describe("fault-proof published-chunk proof carriage", () => {
     const absencePublicationCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: proverLucid,
           network,
           signer: proverSigner,
@@ -1271,7 +1271,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `no-input chunked ${stage}`,
         measurement,
         maxTxExMem,

@@ -1,29 +1,29 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardMintPolicyItemV1,
-  midgardFieldCommitmentV1,
-  selectMidgardFieldCarriageTierV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardMintPolicyItem,
+  midgardFieldCommitment,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  type RejectionReasonV1,
-  RejectionReasonV1Schema,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type RejectionReason,
+  RejectionReasonSchema,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1 =
+export const MINT_DECLARED_ASSET_LIMIT_CATEGORY =
   "mintDeclaredAssetLimit" as const;
-export const MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1 = "0000002c" as const;
-export const MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX_V1 = 5 as const;
-export const MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS_V1 = 16_384 as const;
-export const MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET_V1 = 24 as const;
+export const MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID = "0000002c" as const;
+export const MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX = 5 as const;
+export const MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS = 16_384 as const;
+export const MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET = 24 as const;
 
 const fail = (message: string): never => {
-  throw new Error(`${MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1}: ${message}`);
+  throw new Error(`${MINT_DECLARED_ASSET_LIMIT_CATEGORY}: ${message}`);
 };
 
 const exactIndex = (value: number, label: string): number => {
@@ -62,7 +62,7 @@ const readCanonicalLength = (
 };
 
 /** The exact pre-rejection header read performed by the frozen machine. */
-export const decodeMintDeclaredPolicyHeaderV1 = (item: Uint8Array): Header => {
+export const decodeMintDeclaredPolicyHeader = (item: Uint8Array): Header => {
   if (item[0] !== 0x82)
     return fail("mint policy item is not the canonical two-element array");
   const policyLength = readCanonicalLength(item, 1, 2, "policy id");
@@ -79,7 +79,7 @@ export const decodeMintDeclaredPolicyHeaderV1 = (item: Uint8Array): Header => {
   });
 };
 
-const reasonPolicyIndex = (reason: RejectionReasonV1): number => {
+const reasonPolicyIndex = (reason: RejectionReason): number => {
   if (typeof reason === "string" || !("MintDeclaredAssetLimit" in reason))
     return fail("typed rejection reason is not MintDeclaredAssetLimit");
   return exactIndex(
@@ -88,27 +88,24 @@ const reasonPolicyIndex = (reason: RejectionReasonV1): number => {
   );
 };
 
-export type MintDeclaredAssetLimitFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type MintDeclaredAssetLimitFinding = Readonly<{
+  subject: VerdictSubject;
   policyIndex: number;
 }>;
 
-export const classifyMintDeclaredAssetLimitFindingV1 = (
-  finding: MintDeclaredAssetLimitFindingV1,
-): MintDeclaredAssetLimitFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyMintDeclaredAssetLimitFinding = (
+  finding: MintDeclaredAssetLimitFinding,
+): MintDeclaredAssetLimitFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   const policyIndex = exactIndex(finding.policyIndex, "policy index");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     if (finding.subject.rejection_reason === null)
       return fail("wrongful rejection has no typed reason");
     if (reasonPolicyIndex(finding.subject.rejection_reason) !== policyIndex)
       return fail("typed reason policy coordinate changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity is invalid");
@@ -116,7 +113,7 @@ export const classifyMintDeclaredAssetLimitFindingV1 = (
   return Object.freeze({ subject: finding.subject, policyIndex });
 };
 
-export type MintDeclaredAssetLimitFoldResultV1 = Readonly<{
+export type MintDeclaredAssetLimitFoldResult = Readonly<{
   crossing: boolean;
   accumulatedCount: number;
   targetPolicyId: string;
@@ -128,10 +125,10 @@ export type MintDeclaredAssetLimitFoldResultV1 = Readonly<{
  * items must decode fully; the target crossing is decided from its map header
  * before target-body decoding.
  */
-export const foldMintDeclaredAssetLimitV1 = (
+export const foldMintDeclaredAssetLimit = (
   items: readonly Uint8Array[],
   policyIndex: number,
-): MintDeclaredAssetLimitFoldResultV1 => {
+): MintDeclaredAssetLimitFoldResult => {
   exactIndex(policyIndex, "policy index");
   const target = items[policyIndex];
   if (target === undefined) return fail("policy coordinate is outside field 5");
@@ -139,7 +136,7 @@ export const foldMintDeclaredAssetLimitV1 = (
   let previousPolicy: Buffer | null = null;
   for (let index = 0; index <= policyIndex; index += 1) {
     const item = items[index]!;
-    const header = decodeMintDeclaredPolicyHeaderV1(item);
+    const header = decodeMintDeclaredPolicyHeader(item);
     if (
       previousPolicy !== null &&
       Buffer.compare(previousPolicy, header.policyId) >= 0
@@ -147,14 +144,14 @@ export const foldMintDeclaredAssetLimitV1 = (
       return fail("mint policy order is not strictly ascending");
     const next = accumulatedCount + header.declaredCount;
     if (index === policyIndex) {
-      if (next > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS_V1)
+      if (next > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS)
         return Object.freeze({
           crossing: true,
           accumulatedCount,
           targetPolicyId: header.policyId.toString("hex"),
           targetDeclaredCount: header.declaredCount,
         });
-      const decoded = decodeMidgardMintPolicyItemV1(item);
+      const decoded = decodeMidgardMintPolicyItem(item);
       if (decoded.assets.length !== header.declaredCount)
         return fail("target policy declared/decoded count changed");
       return Object.freeze({
@@ -164,9 +161,9 @@ export const foldMintDeclaredAssetLimitV1 = (
         targetDeclaredCount: header.declaredCount,
       });
     }
-    if (next > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS_V1)
+    if (next > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS)
       return fail("an earlier policy is the first declared-count crossing");
-    const decoded = decodeMidgardMintPolicyItemV1(item);
+    const decoded = decodeMidgardMintPolicyItem(item);
     if (decoded.assets.length !== header.declaredCount)
       return fail("prior policy declared/decoded count changed");
     accumulatedCount = next;
@@ -175,8 +172,8 @@ export const foldMintDeclaredAssetLimitV1 = (
   return fail("unreachable mint declared-count fold state");
 };
 
-export type MintDeclaredAssetLimitEvidenceV1 = MintDeclaredAssetLimitFindingV1 &
-  MintDeclaredAssetLimitFoldResultV1 &
+export type MintDeclaredAssetLimitEvidence = MintDeclaredAssetLimitFinding &
+  MintDeclaredAssetLimitFoldResult &
   Readonly<{
     fieldPreimageHex: string;
     fieldCommitmentHex: string;
@@ -184,67 +181,66 @@ export type MintDeclaredAssetLimitEvidenceV1 = MintDeclaredAssetLimitFindingV1 &
     carriage: "Inline" | "RawUtxo" | "Certified";
   }>;
 
-export const prepareMintDeclaredAssetLimitEvidenceV1 = ({
+export const prepareMintDeclaredAssetLimitEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: MintDeclaredAssetLimitFindingV1;
+  readonly finding: MintDeclaredAssetLimitFinding;
   readonly fieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): MintDeclaredAssetLimitEvidenceV1 => {
-  const finding = classifyMintDeclaredAssetLimitFindingV1(rawFinding);
+}): MintDeclaredAssetLimitEvidence => {
+  const finding = classifyMintDeclaredAssetLimitFinding(rawFinding);
   if (!/^[0-9a-f]{64}$/u.test(committedFieldHashHex))
     return fail("field commitment is not 32-byte lowercase hex");
-  const actual = midgardFieldCommitmentV1(fieldPreimage).toString("hex");
+  const actual = midgardFieldCommitment(fieldPreimage).toString("hex");
   if (actual !== committedFieldHashHex)
     return fail("retained field-5 bytes do not match the compact commitment");
-  const items = decodeMidgardFieldPreimageV1(fieldPreimage);
+  const items = decodeMidgardFieldPreimage(fieldPreimage);
   const target = items[finding.policyIndex];
   if (target === undefined) return fail("policy coordinate is outside field 5");
   return Object.freeze({
     ...finding,
-    ...foldMintDeclaredAssetLimitV1(items, finding.policyIndex),
+    ...foldMintDeclaredAssetLimit(items, finding.policyIndex),
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
     fieldCommitmentHex: actual,
     targetItemHex: target.toString("hex"),
-    carriage: selectMidgardFieldCarriageTierV1(fieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
   });
 };
 
-export const mintDeclaredAssetLimitEvidenceClosesV1 = (
-  evidence: MintDeclaredAssetLimitEvidenceV1,
-): boolean =>
-  terminalVerdictContradictionV1(evidence.subject, evidence.crossing);
+export const mintDeclaredAssetLimitEvidenceCloses = (
+  evidence: MintDeclaredAssetLimitEvidence,
+): boolean => terminalVerdictContradiction(evidence.subject, evidence.crossing);
 
-export const MintDeclaredAssetLimitVerdictSubjectV1Schema = Data.Object({
+export const MintDeclaredAssetLimitVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
 
-export const MintDeclaredAssetLimitBoundPolicyV1Schema = Data.Object({
-  subject: MintDeclaredAssetLimitVerdictSubjectV1Schema,
+export const MintDeclaredAssetLimitBoundPolicySchema = Data.Object({
+  subject: MintDeclaredAssetLimitVerdictSubjectSchema,
   policy_index: Data.Integer(),
 });
 
-export const MintDeclaredAssetLimitAuthenticationStateV1Schema = Data.Enum([
+export const MintDeclaredAssetLimitAuthenticationStateSchema = Data.Enum([
   Data.Object({
-    Bound: Data.Object({ bound: MintDeclaredAssetLimitBoundPolicyV1Schema }),
+    Bound: Data.Object({ bound: MintDeclaredAssetLimitBoundPolicySchema }),
   }),
   Data.Object({
     Grammar: Data.Object({
-      bound: MintDeclaredAssetLimitBoundPolicyV1Schema,
+      bound: MintDeclaredAssetLimitBoundPolicySchema,
       checkpoint_hash: Data.Bytes(),
     }),
   }),
 ]);
 
-export const MintDeclaredAssetLimitFoldStateV1Schema = Data.Object({
-  subject: MintDeclaredAssetLimitVerdictSubjectV1Schema,
+export const MintDeclaredAssetLimitFoldStateSchema = Data.Object({
+  subject: MintDeclaredAssetLimitVerdictSubjectSchema,
   policy_index: Data.Integer(),
   target_policy_id: Data.Bytes(),
   target_declared_count: Data.Integer(),
@@ -254,8 +250,8 @@ export const MintDeclaredAssetLimitFoldStateV1Schema = Data.Object({
   outcome: Data.Integer(),
 });
 
-export const MintDeclaredAssetLimitDecisionStateV1Schema = Data.Object({
-  subject: MintDeclaredAssetLimitVerdictSubjectV1Schema,
+export const MintDeclaredAssetLimitDecisionStateSchema = Data.Object({
+  subject: MintDeclaredAssetLimitVerdictSubjectSchema,
   policy_index: Data.Integer(),
   crossing: Data.Boolean(),
 });

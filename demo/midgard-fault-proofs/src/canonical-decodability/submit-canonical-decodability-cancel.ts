@@ -27,22 +27,22 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
-  type CanonicalDecodabilityContractsV1,
+  type CanonicalDecodabilityContracts,
 } from "./contracts-v1.js";
 import {
-  canonicalDecodabilityStepLabelV1,
+  canonicalDecodabilityStepLabel,
   canonicalDecodabilitySubmitError,
-  requireCanonicalDecodabilityReferenceScriptV1,
+  requireCanonicalDecodabilityReferenceScript,
 } from "./submit-common-v1.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -70,7 +70,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
 }): 0 | 1 => {
   for (const stepIndex of [0, 1] as const) {
     if (
@@ -96,16 +96,16 @@ export const submitCanonicalDecodabilityCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Published reference script for the located step; mandatory. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Runs after local evaluation/signing and before provider submission. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -114,7 +114,7 @@ export const submitCanonicalDecodabilityCancel = async ({
     label: `${CANONICAL_DECODABILITY_CATEGORY_LABEL} computation-thread UTxO`,
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = canonicalDecodabilityStepLabelV1(stepIndex);
+  const stepLabel = canonicalDecodabilityStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -135,12 +135,12 @@ export const submitCanonicalDecodabilityCancel = async ({
       `${stepLabel} thread names fraud prover ${datum.fraud_prover}, not signing wallet ${signer.paymentKeyHash}.`,
     );
   }
-  const stepReference = requireCanonicalDecodabilityReferenceScriptV1({
+  const stepReference = requireCanonicalDecodabilityReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancellation computation-thread mint`,
@@ -204,15 +204,15 @@ export const submitCanonicalDecodabilityCancel = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${stepLabel}-cancel`,
         utxo: stepReference,
         expectedScript: contracts.steps[stepIndex].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${stepLabel}-cancel-computation-thread-mint`,
         utxo: witnessReferenceScripts?.computationThreadMint,
         expectedScript: contracts.computationThread.mintingScript,

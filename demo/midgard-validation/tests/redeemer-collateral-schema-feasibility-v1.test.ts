@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardFieldPreimageForFieldV1,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardFieldPreimageForField,
   midgardNativeTxFullToCardanoTxEncoding,
-  midgardRedeemerPurposeFromTagV1,
+  midgardRedeemerPurposeFromTag,
 } from "@al-ft/midgard-core";
 import {
   applyDoubleCborEncoding,
@@ -19,12 +19,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildCollateralFreeMidgardSchemaParallelCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  measureCollateralizedPlutusFeasibilityCandidateV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildCollateralFreeMidgardSchemaParallelCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  deterministicCardanoBoundaryPrivateKey,
+  exerciseMidgardOrderedCollectionBoundary,
+  measureCollateralizedPlutusFeasibilityCandidate,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
 
 type BlueprintValidator = {
@@ -202,7 +202,7 @@ const sharedBodyFields = (
 
 describe("canonical V1 redeemer/collateral schema feasibility", () => {
   it("maps one genuine collateralized Plutus redeemer to an exact collateral-free shared-schema fixture", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const walletAddress = CML.EnterpriseAddress.new(
       0,
       CML.Credential.new_pub_key(privateKey.to_public().hash()),
@@ -228,7 +228,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
           outputData: { inline: Data.void() },
         },
       ],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromPrivateKey(privateKey.to_bech32());
@@ -253,7 +253,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       .complete({ localUPLCEval: true });
     const signed = await completed.sign.withWallet().complete();
     const collateralizedCardanoCborHex = signed.toCBOR();
-    const collateralized = measureCollateralizedPlutusFeasibilityCandidateV1(
+    const collateralized = measureCollateralizedPlutusFeasibilityCandidate(
       collateralizedCardanoCborHex,
     );
     const collateralizedTransaction = CML.Transaction.from_cbor_hex(
@@ -268,11 +268,11 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
     expect(collateralizedFlatRedeemers.len()).toBe(1);
     const collateralizedRedeemer = collateralizedFlatRedeemers.get(0);
     // §5.1/§5.3: one enveloped `enc_8` item.
-    const expectedMidgardRedeemersCbor = encodeMidgardFieldPreimageForFieldV1({
+    const expectedMidgardRedeemersCbor = encodeMidgardFieldPreimageForField({
       fieldIndex: 8,
       items: [
         {
-          purpose: midgardRedeemerPurposeFromTagV1(
+          purpose: midgardRedeemerPurposeFromTag(
             Number(collateralizedRedeemer.tag()),
           ),
           index: collateralizedRedeemer.index(),
@@ -304,7 +304,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       genesisKeyOutRefs.includes(outRef),
     );
     expect(collateralized.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(collateralized.inputCount).toBe(2);
     expect(fullSpendOutRefs).toContain(`${"00".repeat(32)}#2`);
@@ -336,7 +336,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
         }
       | undefined;
     try {
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(collateralizedCardanoCborHex, "hex"),
       );
     } catch (error) {
@@ -358,7 +358,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       detail: "collateral_inputs",
     });
 
-    const parallel = buildCollateralFreeMidgardSchemaParallelCandidateV1({
+    const parallel = buildCollateralFreeMidgardSchemaParallelCandidate({
       collateralizedCardanoCborHex,
       privateKeyBech32: privateKey.to_bech32(),
     });
@@ -412,7 +412,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
             redeemerCollateralSchemaFeasibilityDiagnosticV1: {
               cardanoSignedBytes: collateralized.signedBytes,
               cardanoByteMargin:
-                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - collateralized.signedBytes,
+                CARDANO_BOUNDARY_MAX_TX_SIZE - collateralized.signedBytes,
               sharedSpendOutRefs: fullSpendOutRefs,
               collateralInputOutRefs: collateralized.collateralInputOutRefs,
               collateralReturnCborHex:
@@ -438,11 +438,11 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       );
     }
 
-    const parallelNativeCbor = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    const parallelNativeCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       Buffer.from(parallel.cborHex, "hex"),
     );
     const parallelNative =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(parallelNativeCbor);
+      decodeMidgardNativeTxFullFromCanonicalCbor(parallelNativeCbor);
     expect(
       parallelNative.witnessSet.redeemerTxWitsPreimageCbor.toString("hex"),
     ).toBe(expectedMidgardRedeemersCbor.toString("hex"));
@@ -471,7 +471,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       memory: collateralizedRedeemer.ex_units().mem(),
       steps: collateralizedRedeemer.ex_units().steps(),
     });
-    const redeemerField = exerciseMidgardOrderedCollectionBoundaryV1({
+    const redeemerField = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: parallel.cborHex,
       fieldIndex: 8,
     });
@@ -486,7 +486,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
             redeemerCollateralSchemaFeasibilityV1: {
               cardanoSignedBytes: collateralized.signedBytes,
               cardanoByteMargin:
-                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - collateralized.signedBytes,
+                CARDANO_BOUNDARY_MAX_TX_SIZE - collateralized.signedBytes,
               inputCount: collateralized.inputCount,
               outputCount: collateralized.outputCount,
               fee: collateralized.fee.toString(),

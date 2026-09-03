@@ -10,18 +10,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultInitialDatumV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultInitialDatum,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "../missing-native-script-tx/contracts-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_UTXO_CATEGORY_LABEL,
-  type MissingNativeScriptUtxoContractsV1,
+  type MissingNativeScriptUtxoContracts,
 } from "./contracts-v1.js";
 
 type Step02Datum = Data.Static<typeof MissingNativeScriptUtxoStep02DatumSchema>;
@@ -47,7 +47,7 @@ export const submitMissingNativeScriptUtxoStep01 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingNativeScriptUtxoContractsV1;
+  readonly contracts: MissingNativeScriptUtxoContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -55,11 +55,11 @@ export const submitMissingNativeScriptUtxoStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly prevUtxosRoot: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -67,7 +67,7 @@ export const submitMissingNativeScriptUtxoStep01 = async ({
     stepIndex: 0,
     threadOutRef,
   });
-  requireLinearFaultInitialDatumV1({
+  requireLinearFaultInitialDatum({
     threadUtxo,
     signer,
     family: MISSING_NATIVE_SCRIPT_UTXO_CATEGORY_LABEL,
@@ -83,11 +83,11 @@ export const submitMissingNativeScriptUtxoStep01 = async ({
     },
     Step02Datum,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
-    contracts: contracts as unknown as MissingNativeScriptTxContractsV1,
+    contracts: contracts as unknown as MissingNativeScriptTxContracts,
     signer,
     stepIndex: 0,
     threadUtxo,

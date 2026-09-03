@@ -36,9 +36,9 @@
  * tests/support/uplc-heap-guard.ts.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -46,7 +46,7 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpeningV1 } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
 import {
   submitNoReferenceInputStep01,
   submitNoReferenceInputStep02,
@@ -57,30 +57,30 @@ import {
 import { buildNonMembershipProof } from "../src/ne-proofs.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
-  buildNoReferenceInputFixtureV1,
-  NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1,
-  type NoReferenceInputFixtureV1,
-  noReferenceInputOutRefV1,
-  publishNoReferenceInputReferenceScriptsV1,
-  requireNoReferenceInputTxsMembershipProofV1,
-  requireNoReferenceInputTxsNonMembershipProofV1,
+  buildNoReferenceInputFixture,
+  NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
+  type NoReferenceInputFixture,
+  noReferenceInputOutRef,
+  publishNoReferenceInputReferenceScripts,
+  requireNoReferenceInputTxsMembershipProof,
+  requireNoReferenceInputTxsNonMembershipProof,
 } from "./support/no-reference-input-emulator-v1.js";
 import {
   expectStateQueueHeaderOrder,
   registerPexcludesExclusionRewardAccount,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
-  expectOnchainRefusalV1,
+  expectOnchainRefusal,
   expectSingleUtxoWithUnit,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
-const makeNoReferenceInputHarnessV1 = async () =>
-  await makeFaultProofEmulatorHarnessV1({
+const makeNoReferenceInputHarness = async () =>
+  await makeFaultProofEmulatorHarness({
     contractOptions: {
       realNoReferenceInput: true,
       alwaysFraudProofCatalogue: true,
@@ -90,8 +90,8 @@ const makeNoReferenceInputHarnessV1 = async () =>
     registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
   });
 
-type NoReferenceInputHarnessV1 = Awaited<
-  ReturnType<typeof makeNoReferenceInputHarnessV1>
+type NoReferenceInputHarness = Awaited<
+  ReturnType<typeof makeNoReferenceInputHarness>
 >;
 
 /**
@@ -102,13 +102,13 @@ type NoReferenceInputHarnessV1 = Awaited<
  * when its producer sits inside the same block. Only step-04 separates the two
  * cases, which is why the adversarial journey drives this same helper.
  */
-const driveNoReferenceInputToStep04V1 = async ({
+const driveNoReferenceInputToStep04 = async ({
   harness,
   fixture,
   publishRemoval = false,
 }: {
-  readonly harness: NoReferenceInputHarnessV1;
-  readonly fixture: NoReferenceInputFixtureV1;
+  readonly harness: NoReferenceInputHarness;
+  readonly fixture: NoReferenceInputFixture;
   readonly publishRemoval?: boolean;
 }) => {
   const {
@@ -122,8 +122,8 @@ const driveNoReferenceInputToStep04V1 = async ({
   } = harness;
   const steps = contracts.fraudProofContracts.noReferenceInput.steps;
   // The harness's one-shot nonce is the funder's first UTxO, so nothing may
-  // spend from the funder wallet before `setupFraudulentBlockV1` consumes it.
-  const setup = await setupFraudulentBlockV1({
+  // spend from the funder wallet before `setupFraudulentBlock` consumes it.
+  const setup = await setupFraudulentBlock({
     funderLucid,
     emulator,
     contracts,
@@ -141,7 +141,7 @@ const driveNoReferenceInputToStep04V1 = async ({
   const removalPublications = publishRemoval
     ? await publishRemovalReferenceScripts({ lucid: proverLucid, contracts })
     : undefined;
-  const stepReferences = await publishNoReferenceInputReferenceScriptsV1({
+  const stepReferences = await publishNoReferenceInputReferenceScripts({
     lucid: funderLucid,
     steps,
   });
@@ -250,9 +250,9 @@ const driveNoReferenceInputToStep04V1 = async ({
 const TIER2_REFERENCE_INPUT_COUNT = 365;
 const TIER2_BAD_REFERENCE_INPUT_INDEX = 200;
 
-const tier2ReferenceInputsV1 = (): readonly SDK.MidgardTxInput[] => {
+const tier2ReferenceInputs = (): readonly SDK.MidgardTxInput[] => {
   const decoy = (index: number): SDK.MidgardTxInput =>
-    noReferenceInputOutRefV1((index + 1).toString(16).padStart(64, "0"), 0);
+    noReferenceInputOutRef((index + 1).toString(16).padStart(64, "0"), 0);
   const items: SDK.MidgardTxInput[] = [];
   for (let index = 0; index < TIER2_REFERENCE_INPUT_COUNT - 1; index += 1) {
     items.push(decoy(index));
@@ -260,27 +260,24 @@ const tier2ReferenceInputsV1 = (): readonly SDK.MidgardTxInput[] => {
   items.splice(
     TIER2_BAD_REFERENCE_INPUT_INDEX,
     0,
-    noReferenceInputOutRefV1(NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1, 0),
+    noReferenceInputOutRef(NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID, 0),
   );
   return items;
 };
 
 describe("no-reference-input emulator lifecycle", () => {
   it("convicts a reference input that never existed, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
-    const harness = await makeNoReferenceInputHarnessV1();
+    const harness = await makeNoReferenceInputHarness();
     const { realBlueprint, emulator, funderLucid, proverLucid, proverSigner } =
       harness;
     // Two reference inputs; the challenged one is NOT first, so the step-02
     // index really is what selects it. Its producing transaction id is neither
     // the disputed transaction's nor the companion's, so it is absent from the
     // block's transactions trie as well as from its empty prev ledger.
-    const fixture = await buildNoReferenceInputFixtureV1({
+    const fixture = await buildNoReferenceInputFixture({
       buildReferenceInputs: () => [
-        noReferenceInputOutRefV1("bb".repeat(32), 1),
-        noReferenceInputOutRefV1(
-          NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1,
-          0,
-        ),
+        noReferenceInputOutRef("bb".repeat(32), 1),
+        noReferenceInputOutRef(NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID, 0),
       ],
       badReferenceInputIndex: 1,
     });
@@ -288,8 +285,8 @@ describe("no-reference-input emulator lifecycle", () => {
     // Tier selection is the data's, not a caller's: this field-1 preimage is
     // far inside the tier-1 bound, so the opening is carried inline.
     expect(
-      planFaultProofFieldOpeningV1({
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.referenceInputs,
+      planFaultProofFieldOpening({
+        fieldIndex: SDK.MIDGARD_FIELD_INDEX.referenceInputs,
         anchorTxId: fixture.subjectTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
         itemCbors: fixture.referenceInputItemCbors,
@@ -298,10 +295,10 @@ describe("no-reference-input emulator lifecycle", () => {
       }).plan.tier,
     ).toBe("Inline");
     expect(fixture.fieldPreimage.length).toBeLessThanOrEqual(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
 
-    const journey = await driveNoReferenceInputToStep04V1({
+    const journey = await driveNoReferenceInputToStep04({
       harness,
       fixture,
       publishRemoval: true,
@@ -317,12 +314,12 @@ describe("no-reference-input emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step03.nextThreadOutRef,
       txsNonMembershipProofCbor:
-        requireNoReferenceInputTxsNonMembershipProofV1(fixture),
+        requireNoReferenceInputTxsNonMembershipProof(fixture),
       referenceScriptUtxo: stepReferences[3],
       awaitConfirmation: true,
     });
     expect(step04.missingReferenceInputTxId).toBe(
-      NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1,
+      NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
     );
     expect(step04.fraudProofAssetName).toBe(init.computationThreadAssetName);
 
@@ -450,30 +447,30 @@ describe("no-reference-input emulator lifecycle", () => {
   }, 900_000);
 
   it("convicts a reference input buried in a 14,603-byte field-1 list through a size-selected RawUtxo publication", async () => {
-    const harness = await makeNoReferenceInputHarnessV1();
+    const harness = await makeNoReferenceInputHarness();
     const { realBlueprint, proverLucid, proverSigner } = harness;
-    const fixture = await buildNoReferenceInputFixtureV1({
-      buildReferenceInputs: tier2ReferenceInputsV1,
+    const fixture = await buildNoReferenceInputFixture({
+      buildReferenceInputs: tier2ReferenceInputs,
       badReferenceInputIndex: TIER2_BAD_REFERENCE_INPUT_INDEX,
     });
     expect(fixture.referenceInputs).toHaveLength(TIER2_REFERENCE_INPUT_COUNT);
     expect(fixture.missingReferenceInput.tx_id).toBe(
-      NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1,
+      NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
     );
     expect(fixture.missingProducerIsCommitted).toBe(false);
 
     // The size, not any flag, is what selects tier 2: past the tier-1 redeemer
     // bound, within one publication.
-    const preimage = encodeMidgardFieldPreimageV1(
+    const preimage = encodeMidgardFieldPreimage(
       fixture.referenceInputItemCbors,
     );
     expect(preimage.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
-    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K_V1);
+    expect(preimage.length).toBeLessThanOrEqual(MIDGARD_CHUNK_BYTES_K);
     expect(
-      planFaultProofFieldOpeningV1({
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.referenceInputs,
+      planFaultProofFieldOpening({
+        fieldIndex: SDK.MIDGARD_FIELD_INDEX.referenceInputs,
         anchorTxId: fixture.subjectTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
         itemCbors: fixture.referenceInputItemCbors,
@@ -483,15 +480,15 @@ describe("no-reference-input emulator lifecycle", () => {
     ).toBe("RawUtxo");
 
     const { deploymentInfo, stepReferences, init, step03 } =
-      await driveNoReferenceInputToStep04V1({ harness, fixture });
+      await driveNoReferenceInputToStep04({ harness, fixture });
     expect(step03.missingReferenceInputTxId).toBe(
-      NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1,
+      NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
     );
 
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
     // the prover's address as a bytes-only inline datum, referenced by the
     // step rather than carried in its redeemer.
-    const expectedDatum = SDK.fieldPreimagePublicationDatumCborV1(preimage);
+    const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await proverLucid.utxosAt(proverSigner.address)
     ).filter((utxo) => utxo.datum === expectedDatum);
@@ -506,7 +503,7 @@ describe("no-reference-input emulator lifecycle", () => {
       signer: proverSigner,
       threadOutRef: step03.nextThreadOutRef,
       txsNonMembershipProofCbor:
-        requireNoReferenceInputTxsNonMembershipProofV1(fixture),
+        requireNoReferenceInputTxsNonMembershipProof(fixture),
       referenceScriptUtxo: stepReferences[3],
       awaitConfirmation: true,
     });
@@ -520,15 +517,15 @@ describe("no-reference-input emulator lifecycle", () => {
   }, 900_000);
 
   it("refuses to convict an honest commitment whose reference input was produced in-block", async () => {
-    const harness = await makeNoReferenceInputHarnessV1();
+    const harness = await makeNoReferenceInputHarness();
     const { realBlueprint, funderLucid, proverLucid, proverSigner } = harness;
     // HONEST block: the disputed transaction's challenged reference input is
     // an output of the companion transaction the same block committed. The
     // reference input exists, so there is no fault.
-    const fixture = await buildNoReferenceInputFixtureV1({
+    const fixture = await buildNoReferenceInputFixture({
       buildReferenceInputs: (companionTxId) => [
-        noReferenceInputOutRefV1("bb".repeat(32), 1),
-        noReferenceInputOutRefV1(companionTxId, 0),
+        noReferenceInputOutRef("bb".repeat(32), 1),
+        noReferenceInputOutRef(companionTxId, 0),
       ],
       badReferenceInputIndex: 1,
     });
@@ -549,7 +546,7 @@ describe("no-reference-input emulator lifecycle", () => {
     // out-ref really is absent from the block's (empty) prev ledger, which is
     // all step-03 claims. The adversary reaches step-04 with a live thread.
     const { setup, deploymentInfo, stepReferences, init, step03 } =
-      await driveNoReferenceInputToStep04V1({ harness, fixture });
+      await driveNoReferenceInputToStep04({ harness, fixture });
     expect(step03.missingReferenceInputTxId).toBe(fixture.companionTxId);
 
     const step04Reference = stepReferences[3];
@@ -572,8 +569,8 @@ describe("no-reference-input emulator lifecycle", () => {
     // binds it as `mpf.insert(trie, key, "", proof)`, which asserts
     // `excluding(key, proof) == root` and fails outright for a key the trie
     // already holds: a membership witness cannot masquerade as its opposite.
-    const membershipRefusal = await expectOnchainRefusalV1(async () =>
-      forgeStep04(requireNoReferenceInputTxsMembershipProofV1(fixture)),
+    const membershipRefusal = await expectOnchainRefusal(async () =>
+      forgeStep04(requireNoReferenceInputTxsMembershipProof(fixture)),
     );
     expect(membershipRefusal).toMatch(/failed script execution/u);
 
@@ -583,7 +580,7 @@ describe("no-reference-input emulator lifecycle", () => {
       [],
       Buffer.from(fixture.companionTxId, "hex"),
     );
-    await expectOnchainRefusalV1(async () => forgeStep04(emptyProofCbor));
+    await expectOnchainRefusal(async () => forgeStep04(emptyProofCbor));
 
     // Both refusals were the validator's, not a spent thread's: the thread is
     // still at step 04, unspent, and no fraud-proof token was minted.

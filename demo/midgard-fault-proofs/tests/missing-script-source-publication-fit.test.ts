@@ -4,30 +4,30 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyMissingScriptSourceScriptsV1,
-  MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES_V1,
+  applyMissingScriptSourceScripts,
+  MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES,
 } from "../src/missing-script-source/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES_V1.every((title) =>
+const hasFamily = MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES.every((title) =>
   blueprint.validators.some((validator) => validator.title === title),
 );
 
 describe.runIf(hasFamily)("missingScriptSource signed publication fit", () => {
   it("publishes all six fully applied validators below the reliability reserve", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
     const addressData = await Effect.runPromise(
       addressDataFromBech32(
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = applyMissingScriptSourceScriptsV1({
+    const steps = applyMissingScriptSourceScripts({
       blueprint,
       network: "Preprod",
       computationThreadPolicyId: harness.contracts.computationThread.policyId,

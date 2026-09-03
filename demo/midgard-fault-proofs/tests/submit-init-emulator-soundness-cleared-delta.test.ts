@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildAcceptedClaimOverRejectingTransactionFixture,
-  buildNonEmptyClaimedLedgerDeltaRootV1,
-  EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1,
+  buildNonEmptyClaimedLedgerDeltaRoot,
+  EMPTY_CLAIMED_LEDGER_DELTA_ROOT,
   runForcedValidationDisputeScenario,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -14,11 +14,10 @@ import {
 // it as `EvaluatorError: unreachable`. See tests/support/uplc-heap-guard.ts.
 describe("validation-dispute soundness with a non-empty claimed ledger delta", () => {
   it("rejects the cleared-delta rejection successor the deleted VM-DEFECT-2 clause required", async () => {
-    const claimedLedgerDeltaRoot =
-      await buildNonEmptyClaimedLedgerDeltaRootV1();
-    expect(
-      claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
-    ).toBe(false);
+    const claimedLedgerDeltaRoot = await buildNonEmptyClaimedLedgerDeltaRoot();
+    expect(claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT)).toBe(
+      false,
+    );
 
     let removalReferenceScriptPublicationAttempts = 0;
     await expect(

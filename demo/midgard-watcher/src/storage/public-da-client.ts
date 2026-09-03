@@ -1,34 +1,34 @@
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
-  type DaCapabilitiesResponseV1,
+  DA_TRANSPORT_LIMITS,
+  type DaCapabilitiesResponse,
   daDeploymentFingerprintFromHex,
-  type DaPayloadChunkManifestV1,
+  type DaPayloadChunkManifest,
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
-  decodeDaCapabilitiesResponseV1Cbor,
-  decodeDaEventToStepByEventResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  decodeDaProofBundleByHeaderResponseV1Cbor,
-  decodeDaTraceStepByIndexResponseV1Cbor,
-  encodeDaCapabilitiesRequestV1Cbor,
-  encodeDaEventToStepByEventRequestV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadChunkRequestV1Cbor,
-  encodeDaProofBundleByHeaderRequestV1Cbor,
-  encodeDaTraceStepByIndexRequestV1Cbor,
+  decodeDaCapabilitiesResponseCbor,
+  decodeDaEventToStepByEventResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
+  decodeDaProofBundleByHeaderResponseCbor,
+  decodeDaTraceStepByIndexResponseCbor,
+  encodeDaCapabilitiesRequestCbor,
+  encodeDaEventToStepByEventRequestCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
+  encodeDaProofBundleByHeaderRequestCbor,
+  encodeDaTraceStepByIndexRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  assertDeploymentMarkerV1Matches,
-  makeDeploymentMarkerV1,
+  assertDeploymentMarkerMatches,
+  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  assertSecurityGradeEvidenceV1,
-  DA_PAYLOAD_V1_VERSION,
-  decodeDaPayloadV1,
-  type EvidenceProvenanceV1,
+  assertSecurityGradeEvidence,
+  DA_PAYLOAD_VERSION,
+  decodeDaPayload,
+  type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 
 import {
@@ -36,20 +36,20 @@ import {
   type WatcherConfig,
   type WatcherDaPeerConfig,
 } from "../runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentityV1 } from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
-  makeWatcherDurablePayloadV1,
-  type WatcherDaProofInputV1,
+  makeWatcherDurablePayload,
+  type WatcherDaProofInput,
 } from "./durable-store.js";
 
-export const WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION =
+export const WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION =
   "midgard-watcher-public-da-client-v1" as const;
 
 const LOWER_HEX_28 = /^[0-9a-f]{56}$/u;
 const LOWER_HEX_32 = /^[0-9a-f]{64}$/u;
 const MAX_EVENT_KEY_BYTES = 4_096;
 
-export type WatcherPublicDaRequestV1 = Readonly<{
+export type WatcherPublicDaRequest = Readonly<{
   peerIdentity: string;
   peerId: string;
   multiaddr: string;
@@ -65,10 +65,10 @@ export type WatcherPublicDaRequestV1 = Readonly<{
  * supplied public libp2p multiaddress and deployment-scoped protocol ID.
  */
 export interface WatcherPublicDaLibp2pTransportV1 {
-  request(request: WatcherPublicDaRequestV1): Promise<Uint8Array>;
+  request(request: WatcherPublicDaRequest): Promise<Uint8Array>;
 }
 
-export type WatcherPublicDaAttemptStatusV1 =
+export type WatcherPublicDaAttemptStatus =
   | "deadline_exceeded"
   | "invalid_content"
   | "not_found"
@@ -78,25 +78,25 @@ export type WatcherPublicDaAttemptStatusV1 =
   | "timeout"
   | "transport_error";
 
-export type WatcherPublicDaAttemptV1 = Readonly<{
+export type WatcherPublicDaAttempt = Readonly<{
   peerIdentity: string;
   protocol: DaRequestResponseProtocol;
-  status: WatcherPublicDaAttemptStatusV1;
+  status: WatcherPublicDaAttemptStatus;
 }>;
 
-export type WatcherPublicDaClientErrorCodeV1 =
+export type WatcherPublicDaClientErrorCode =
   | "all_peers_failed"
   | "deadline_exceeded"
   | "invalid_configuration"
   | "invalid_request";
 
-export class WatcherPublicDaClientErrorV1 extends Error {
-  readonly code: WatcherPublicDaClientErrorCodeV1;
-  readonly attempts: readonly WatcherPublicDaAttemptV1[];
+export class WatcherPublicDaClientError extends Error {
+  readonly code: WatcherPublicDaClientErrorCode;
+  readonly attempts: readonly WatcherPublicDaAttempt[];
 
   constructor(
-    code: WatcherPublicDaClientErrorCodeV1,
-    attempts: readonly WatcherPublicDaAttemptV1[] = [],
+    code: WatcherPublicDaClientErrorCode,
+    attempts: readonly WatcherPublicDaAttempt[] = [],
     options: { readonly cause?: unknown } = {},
   ) {
     super(
@@ -125,8 +125,8 @@ const describeCause = (cause: unknown): string => {
   return ` (caused by ${JSON.stringify(cause) ?? "undefined"})`;
 };
 
-export type WatcherPublicDaPayloadV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION;
+export type WatcherPublicDaPayload = Readonly<{
+  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION;
   deploymentFingerprint: string;
   headerHash: string;
   payloadHash: string;
@@ -134,26 +134,26 @@ export type WatcherPublicDaPayloadV1 = Readonly<{
   innerPayloadCbor: Buffer;
   sourcePeerIdentity: string;
   sourcePeerId: string;
-  provenance: EvidenceProvenanceV1;
-  durableInput: WatcherDaProofInputV1;
-  attempts: readonly WatcherPublicDaAttemptV1[];
+  provenance: EvidenceProvenance;
+  durableInput: WatcherDaProofInput;
+  attempts: readonly WatcherPublicDaAttempt[];
 }>;
 
-export type WatcherPublicDaProofBundleV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION;
+export type WatcherPublicDaProofBundle = Readonly<{
+  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION;
   deploymentFingerprint: string;
   headerHash: string;
   proofBundleHash: string;
   proofBundleBytes: Buffer;
   sourcePeerIdentity: string;
   sourcePeerId: string;
-  provenance: EvidenceProvenanceV1;
-  durableInput: WatcherDaProofInputV1;
-  attempts: readonly WatcherPublicDaAttemptV1[];
+  provenance: EvidenceProvenance;
+  durableInput: WatcherDaProofInput;
+  attempts: readonly WatcherPublicDaAttempt[];
 }>;
 
-export type WatcherPublicDaTraceStepV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION;
+export type WatcherPublicDaTraceStep = Readonly<{
+  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION;
   deploymentFingerprint: string;
   headerHash: string;
   stepIndex: number;
@@ -163,12 +163,12 @@ export type WatcherPublicDaTraceStepV1 = Readonly<{
   membershipProofSha256: string;
   sourcePeerIdentity: string;
   sourcePeerId: string;
-  provenance: EvidenceProvenanceV1;
-  attempts: readonly WatcherPublicDaAttemptV1[];
+  provenance: EvidenceProvenance;
+  attempts: readonly WatcherPublicDaAttempt[];
 }>;
 
-export type WatcherPublicDaEventToStepV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION;
+export type WatcherPublicDaEventToStep = Readonly<{
+  schemaVersion: typeof WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION;
   deploymentFingerprint: string;
   headerHash: string;
   eventKey: Buffer;
@@ -178,8 +178,8 @@ export type WatcherPublicDaEventToStepV1 = Readonly<{
   membershipOrNonmembershipProofSha256: string;
   sourcePeerIdentity: string;
   sourcePeerId: string;
-  provenance: EvidenceProvenanceV1;
-  attempts: readonly WatcherPublicDaAttemptV1[];
+  provenance: EvidenceProvenance;
+  attempts: readonly WatcherPublicDaAttempt[];
 }>;
 
 type NegotiatedLimits = Readonly<{
@@ -194,11 +194,11 @@ type PeerSuccess<T> = Readonly<{
 }>;
 
 class PeerFailure extends Error {
-  readonly status: Exclude<WatcherPublicDaAttemptStatusV1, "success">;
+  readonly status: Exclude<WatcherPublicDaAttemptStatus, "success">;
   readonly protocol: DaRequestResponseProtocol;
 
   constructor(
-    status: Exclude<WatcherPublicDaAttemptStatusV1, "success">,
+    status: Exclude<WatcherPublicDaAttemptStatus, "success">,
     protocol: DaRequestResponseProtocol,
   ) {
     super(status);
@@ -214,14 +214,14 @@ class PeerFailure extends Error {
  * behaviour can be exercised as state instead of as a race between wall-clock
  * timers, which is not decidable under load.
  */
-export type WatcherPublicDaClockV1 = Readonly<{
+export type WatcherPublicDaClock = Readonly<{
   /** Monotonic milliseconds. Must never move backwards. */
   now: () => number;
   setTimeout: (callback: () => void, delayMs: number) => unknown;
   clearTimeout: (handle: unknown) => void;
 }>;
 
-const REAL_PUBLIC_DA_CLOCK_V1: WatcherPublicDaClockV1 = Object.freeze({
+const REAL_PUBLIC_DA_CLOCK: WatcherPublicDaClock = Object.freeze({
   now: () => performance.now(),
   setTimeout: (callback: () => void, delayMs: number) =>
     setTimeout(callback, delayMs),
@@ -232,26 +232,26 @@ const REAL_PUBLIC_DA_CLOCK_V1: WatcherPublicDaClockV1 = Object.freeze({
 
 type PermitWaiter = {
   readonly resolve: () => void;
-  readonly reject: (error: WatcherPublicDaClientErrorV1) => void;
+  readonly reject: (error: WatcherPublicDaClientError) => void;
   timer: unknown;
 };
 
-export class WatcherPublicDaClientV1 {
+export class WatcherPublicDaClient {
   readonly deploymentFingerprint: string;
 
   private readonly config: WatcherConfig;
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly transport: WatcherPublicDaLibp2pTransportV1;
-  private readonly clock: WatcherPublicDaClockV1;
+  private readonly clock: WatcherPublicDaClock;
   private activeRequests = 0;
   private readonly permitWaiters: PermitWaiter[] = [];
 
   constructor(options: {
     readonly config: WatcherConfig;
-    readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
+    readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     readonly transport: WatcherPublicDaLibp2pTransportV1;
     /** Test seam. Omitted in production, where the real clock is used. */
-    readonly clock?: WatcherPublicDaClockV1;
+    readonly clock?: WatcherPublicDaClock;
   }) {
     try {
       this.config = parseWatcherConfig(options.config);
@@ -259,8 +259,8 @@ export class WatcherPublicDaClientV1 {
       this.deploymentFingerprintBytes = daDeploymentFingerprintFromHex(
         this.deploymentFingerprint,
       );
-      assertDeploymentMarkerV1Matches(
-        makeDeploymentMarkerV1(this.deploymentFingerprint),
+      assertDeploymentMarkerMatches(
+        makeDeploymentMarker(this.deploymentFingerprint),
         options.deploymentIdentity.durableMarker,
         "watcher public DA client",
       );
@@ -287,18 +287,18 @@ export class WatcherPublicDaClientV1 {
       // marker, an unusable transport, and an outright bug in this constructor
       // all collapse into `invalid_configuration`, and only the chained cause
       // keeps a real defect from being misread as operator misconfiguration.
-      throw new WatcherPublicDaClientErrorV1("invalid_configuration", [], {
+      throw new WatcherPublicDaClientError("invalid_configuration", [], {
         cause,
       });
     }
     this.transport = options.transport;
-    this.clock = options.clock ?? REAL_PUBLIC_DA_CLOCK_V1;
+    this.clock = options.clock ?? REAL_PUBLIC_DA_CLOCK;
   }
 
   async fetchPayloadByHeader(input: {
     readonly headerHash: string;
     readonly acceptedPayloadHashes?: readonly string[];
-  }): Promise<WatcherPublicDaPayloadV1> {
+  }): Promise<WatcherPublicDaPayload> {
     const headerHash = exactHex(input.headerHash, LOWER_HEX_28);
     const acceptedPayloadHashes =
       input.acceptedPayloadHashes === undefined
@@ -310,7 +310,7 @@ export class WatcherPublicDaClientV1 {
           await this.request(
             peer,
             DaRequestResponseProtocol.payloadByHeader,
-            encodeDaPayloadByHeaderRequestV1Cbor({
+            encodeDaPayloadByHeaderRequestCbor({
               deploymentFingerprint: this.deploymentFingerprintBytes,
               headerHash: Buffer.from(headerHash, "hex"),
               acceptedPayloadHashes:
@@ -323,7 +323,7 @@ export class WatcherPublicDaClientV1 {
             }),
             deadlineAt,
           ),
-          decodeDaPayloadByHeaderResponseV1Cbor,
+          decodeDaPayloadByHeaderResponseCbor,
           DaRequestResponseProtocol.payloadByHeader,
         );
         assertEqualBytes(
@@ -406,7 +406,7 @@ export class WatcherPublicDaClientV1 {
         return {
           protocol: DaRequestResponseProtocol.payloadByHeader,
           value: {
-            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION,
+            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             payloadHash: payloadHashHex,
@@ -428,7 +428,7 @@ export class WatcherPublicDaClientV1 {
 
   async fetchProofBundleByHeader(input: {
     readonly headerHash: string;
-  }): Promise<WatcherPublicDaProofBundleV1> {
+  }): Promise<WatcherPublicDaProofBundle> {
     const headerHash = exactHex(input.headerHash, LOWER_HEX_28);
     return this.withPermit(async (deadlineAt) =>
       this.fetchAcrossPeers(deadlineAt, async (peer, limits) => {
@@ -436,14 +436,14 @@ export class WatcherPublicDaClientV1 {
           await this.request(
             peer,
             DaRequestResponseProtocol.proofBundleByHeader,
-            encodeDaProofBundleByHeaderRequestV1Cbor({
+            encodeDaProofBundleByHeaderRequestCbor({
               deploymentFingerprint: this.deploymentFingerprintBytes,
               headerHash: Buffer.from(headerHash, "hex"),
               maxInlineBytes: limits.maxInlineResponseBytes,
             }),
             deadlineAt,
           ),
-          decodeDaProofBundleByHeaderResponseV1Cbor,
+          decodeDaProofBundleByHeaderResponseCbor,
           DaRequestResponseProtocol.proofBundleByHeader,
         );
         assertEqualBytes(
@@ -492,7 +492,7 @@ export class WatcherPublicDaClientV1 {
         return {
           protocol: DaRequestResponseProtocol.proofBundleByHeader,
           value: {
-            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION,
+            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             proofBundleHash: proofBundleHashHex,
@@ -514,7 +514,7 @@ export class WatcherPublicDaClientV1 {
   async fetchTraceStepByIndex(input: {
     readonly headerHash: string;
     readonly stepIndex: number;
-  }): Promise<WatcherPublicDaTraceStepV1> {
+  }): Promise<WatcherPublicDaTraceStep> {
     const headerHash = exactHex(input.headerHash, LOWER_HEX_28);
     const stepIndex = exactNatural(input.stepIndex);
     return this.withPermit(async (deadlineAt) =>
@@ -523,14 +523,14 @@ export class WatcherPublicDaClientV1 {
           await this.request(
             peer,
             DaRequestResponseProtocol.traceStepByIndex,
-            encodeDaTraceStepByIndexRequestV1Cbor({
+            encodeDaTraceStepByIndexRequestCbor({
               deploymentFingerprint: this.deploymentFingerprintBytes,
               headerHash: Buffer.from(headerHash, "hex"),
               stepIndex,
             }),
             deadlineAt,
           ),
-          decodeDaTraceStepByIndexResponseV1Cbor,
+          decodeDaTraceStepByIndexResponseCbor,
           DaRequestResponseProtocol.traceStepByIndex,
         );
         assertEqualBytes(
@@ -578,7 +578,7 @@ export class WatcherPublicDaClientV1 {
         return {
           protocol: DaRequestResponseProtocol.traceStepByIndex,
           value: {
-            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION,
+            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             stepIndex,
@@ -600,7 +600,7 @@ export class WatcherPublicDaClientV1 {
   async fetchEventToStepByEvent(input: {
     readonly headerHash: string;
     readonly eventKey: string | Uint8Array;
-  }): Promise<WatcherPublicDaEventToStepV1> {
+  }): Promise<WatcherPublicDaEventToStep> {
     const headerHash = exactHex(input.headerHash, LOWER_HEX_28);
     const eventKey = exactEventKey(input.eventKey);
     return this.withPermit(async (deadlineAt) =>
@@ -609,14 +609,14 @@ export class WatcherPublicDaClientV1 {
           await this.request(
             peer,
             DaRequestResponseProtocol.eventToStepByEvent,
-            encodeDaEventToStepByEventRequestV1Cbor({
+            encodeDaEventToStepByEventRequestCbor({
               deploymentFingerprint: this.deploymentFingerprintBytes,
               headerHash: Buffer.from(headerHash, "hex"),
               eventKey,
             }),
             deadlineAt,
           ),
-          decodeDaEventToStepByEventResponseV1Cbor,
+          decodeDaEventToStepByEventResponseCbor,
           DaRequestResponseProtocol.eventToStepByEvent,
         );
         assertEqualBytes(
@@ -663,7 +663,7 @@ export class WatcherPublicDaClientV1 {
         return {
           protocol: DaRequestResponseProtocol.eventToStepByEvent,
           value: {
-            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION,
+            schemaVersion: WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             eventKey: Buffer.from(eventKey),
@@ -691,7 +691,7 @@ export class WatcherPublicDaClientV1 {
       limits: NegotiatedLimits,
     ) => Promise<PeerSuccess<Omit<T, "attempts">>>,
   ): Promise<T> {
-    const attempts: WatcherPublicDaAttemptV1[] = [];
+    const attempts: WatcherPublicDaAttempt[] = [];
     for (const peer of this.config.da.peers) {
       try {
         const limits = await this.negotiate(peer, deadlineAt);
@@ -719,7 +719,7 @@ export class WatcherPublicDaClientV1 {
           status: failure.status,
         });
         if (failure.status === "deadline_exceeded") {
-          throw new WatcherPublicDaClientErrorV1("deadline_exceeded", attempts);
+          throw new WatcherPublicDaClientError("deadline_exceeded", attempts);
         }
       }
     }
@@ -731,9 +731,9 @@ export class WatcherPublicDaClientV1 {
     // list), whereas `all_peers_failed` would claim the peer set was fully and
     // fairly evaluated when the deadline is exactly what stopped it.
     if (this.clock.now() >= deadlineAt) {
-      throw new WatcherPublicDaClientErrorV1("deadline_exceeded", attempts);
+      throw new WatcherPublicDaClientError("deadline_exceeded", attempts);
     }
-    throw new WatcherPublicDaClientErrorV1("all_peers_failed", attempts);
+    throw new WatcherPublicDaClientError("all_peers_failed", attempts);
   }
 
   private async negotiate(
@@ -744,12 +744,12 @@ export class WatcherPublicDaClientV1 {
       await this.request(
         peer,
         DaRequestResponseProtocol.capabilities,
-        encodeDaCapabilitiesRequestV1Cbor({
+        encodeDaCapabilitiesRequestCbor({
           deploymentFingerprint: this.deploymentFingerprintBytes,
         }),
         deadlineAt,
       ),
-      decodeDaCapabilitiesResponseV1Cbor,
+      decodeDaCapabilitiesResponseCbor,
       DaRequestResponseProtocol.capabilities,
     );
     if (
@@ -761,15 +761,15 @@ export class WatcherPublicDaClientV1 {
     return {
       maxPayloadBytes: Math.min(
         response.maxPayloadBytes,
-        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        DA_TRANSPORT_LIMITS.maxPayloadBytes,
       ),
       maxInlineResponseBytes: Math.min(
         response.maxInlineResponseBytes,
-        DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+        DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
       ),
       maxChunkBytes: Math.min(
         response.maxChunkBytes,
-        DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+        DA_TRANSPORT_LIMITS.maxChunkBytes,
       ),
     };
   }
@@ -778,7 +778,7 @@ export class WatcherPublicDaClientV1 {
     peer: WatcherDaPeerConfig,
     headerHash: Buffer,
     payloadHash: Buffer,
-    manifest: DaPayloadChunkManifestV1,
+    manifest: DaPayloadChunkManifest,
     limits: NegotiatedLimits,
     deadlineAt: number,
   ): Promise<Buffer> {
@@ -793,7 +793,7 @@ export class WatcherPublicDaClientV1 {
         await this.request(
           peer,
           DaRequestResponseProtocol.payloadChunk,
-          encodeDaPayloadChunkRequestV1Cbor({
+          encodeDaPayloadChunkRequestCbor({
             deploymentFingerprint: this.deploymentFingerprintBytes,
             headerHash,
             payloadHash,
@@ -801,7 +801,7 @@ export class WatcherPublicDaClientV1 {
           }),
           deadlineAt,
         ),
-        decodeDaPayloadChunkResponseV1Cbor,
+        decodeDaPayloadChunkResponseCbor,
         DaRequestResponseProtocol.payloadChunk,
       );
       if (response.status === "not_found") {
@@ -878,7 +878,7 @@ export class WatcherPublicDaClientV1 {
         Math.min(
           remainingMs,
           this.config.da.requestTimeoutMs,
-          DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+          DA_TRANSPORT_LIMITS.requestTimeoutMs,
         ),
       ),
     );
@@ -913,7 +913,7 @@ export class WatcherPublicDaClientV1 {
       const bytes = Buffer.from(response);
       if (
         bytes.length === 0 ||
-        bytes.length > DA_TRANSPORT_LIMITS_V1.maxPayloadBytes
+        bytes.length > DA_TRANSPORT_LIMITS.maxPayloadBytes
       ) {
         throw new PeerFailure("invalid_content", protocol);
       }
@@ -940,7 +940,7 @@ export class WatcherPublicDaClientV1 {
     await this.acquirePermit(deadlineAt);
     try {
       if (this.clock.now() >= deadlineAt) {
-        throw new WatcherPublicDaClientErrorV1("deadline_exceeded");
+        throw new WatcherPublicDaClientError("deadline_exceeded");
       }
       return await task(deadlineAt);
     } finally {
@@ -955,7 +955,7 @@ export class WatcherPublicDaClientV1 {
     }
     const remainingMs = deadlineAt - this.clock.now();
     if (remainingMs <= 0) {
-      throw new WatcherPublicDaClientErrorV1("deadline_exceeded");
+      throw new WatcherPublicDaClientError("deadline_exceeded");
     }
     await new Promise<void>((resolve, reject) => {
       const waiter: PermitWaiter = {
@@ -966,7 +966,7 @@ export class WatcherPublicDaClientV1 {
           if (index >= 0) {
             this.permitWaiters.splice(index, 1);
           }
-          reject(new WatcherPublicDaClientErrorV1("deadline_exceeded"));
+          reject(new WatcherPublicDaClientError("deadline_exceeded"));
         }, remainingMs),
       };
       this.permitWaiters.push(waiter);
@@ -1013,8 +1013,8 @@ const requiredValue = <T>(
 /** Every successful wire result crosses Q03 before it becomes a caller input. */
 const admittedPublicDaProvenance = (
   peer: WatcherDaPeerConfig,
-): EvidenceProvenanceV1 =>
-  assertSecurityGradeEvidenceV1({
+): EvidenceProvenance =>
+  assertSecurityGradeEvidence({
     trustClass: "public_or_permissionless_da",
     sourceId: peer.peerId,
     grade: "security",
@@ -1027,11 +1027,11 @@ const strictInnerPayload = async (
 ): Promise<Buffer> => {
   try {
     const innerPayloadCbor = (
-      await unwrapDaPayloadV1(payloadEnvelopeCbor, { maxPayloadBytes })
+      await unwrapDaPayload(payloadEnvelopeCbor, { maxPayloadBytes })
     ).innerBytes;
-    const payload = decodeDaPayloadV1(innerPayloadCbor);
+    const payload = decodeDaPayload(innerPayloadCbor);
     if (
-      payload.version !== DA_PAYLOAD_V1_VERSION ||
+      payload.version !== DA_PAYLOAD_VERSION ||
       payload.block_body.header_hash !== headerHash
     ) {
       invalidContent(DaRequestResponseProtocol.payloadByHeader);
@@ -1045,7 +1045,7 @@ const strictInnerPayload = async (
   }
 };
 
-const validateCapabilities = (capabilities: DaCapabilitiesResponseV1): void => {
+const validateCapabilities = (capabilities: DaCapabilitiesResponse): void => {
   const positive = [
     capabilities.maxPayloadBytes,
     capabilities.maxInlineResponseBytes,
@@ -1063,7 +1063,7 @@ const validateCapabilities = (capabilities: DaCapabilitiesResponseV1): void => {
 };
 
 const validateChunkManifest = (
-  manifest: DaPayloadChunkManifestV1,
+  manifest: DaPayloadChunkManifest,
   payloadHash: Buffer,
   limits: NegotiatedLimits,
 ): void => {
@@ -1085,25 +1085,25 @@ const validateChunkManifest = (
 
 const exactHex = (value: string, pattern: RegExp): string => {
   if (typeof value !== "string" || !pattern.test(value)) {
-    throw new WatcherPublicDaClientErrorV1("invalid_request");
+    throw new WatcherPublicDaClientError("invalid_request");
   }
   return value;
 };
 
 const uniqueHashes = (values: readonly string[]): readonly string[] => {
   if (!Array.isArray(values) || values.length === 0 || values.length > 64) {
-    throw new WatcherPublicDaClientErrorV1("invalid_request");
+    throw new WatcherPublicDaClientError("invalid_request");
   }
   const normalized = values.map((value) => exactHex(value, LOWER_HEX_32));
   if (new Set(normalized).size !== normalized.length) {
-    throw new WatcherPublicDaClientErrorV1("invalid_request");
+    throw new WatcherPublicDaClientError("invalid_request");
   }
   return Object.freeze(normalized);
 };
 
 const exactNatural = (value: number): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
-    throw new WatcherPublicDaClientErrorV1("invalid_request");
+    throw new WatcherPublicDaClientError("invalid_request");
   }
   return value;
 };
@@ -1112,16 +1112,16 @@ const exactEventKey = (value: string | Uint8Array): Buffer => {
   let bytes: Buffer;
   if (typeof value === "string") {
     if (!/^(?:[0-9a-f]{2})+$/u.test(value)) {
-      throw new WatcherPublicDaClientErrorV1("invalid_request");
+      throw new WatcherPublicDaClientError("invalid_request");
     }
     bytes = Buffer.from(value, "hex");
   } else if (value instanceof Uint8Array) {
     bytes = Buffer.from(value);
   } else {
-    throw new WatcherPublicDaClientErrorV1("invalid_request");
+    throw new WatcherPublicDaClientError("invalid_request");
   }
   if (bytes.length === 0 || bytes.length > MAX_EVENT_KEY_BYTES) {
-    throw new WatcherPublicDaClientErrorV1("invalid_request");
+    throw new WatcherPublicDaClientError("invalid_request");
   }
   return bytes;
 };
@@ -1152,12 +1152,12 @@ const boundedBytes = (
 };
 
 const durableInput = (
-  kind: WatcherDaProofInputV1["kind"],
+  kind: WatcherDaProofInput["kind"],
   inputId: string,
   bytes: Buffer,
-): WatcherDaProofInputV1 =>
+): WatcherDaProofInput =>
   Object.freeze({
     inputId,
     kind,
-    payload: makeWatcherDurablePayloadV1(bytes.toString("hex")),
+    payload: makeWatcherDurablePayload(bytes.toString("hex")),
   });

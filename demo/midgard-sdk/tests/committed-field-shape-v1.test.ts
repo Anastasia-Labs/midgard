@@ -2,38 +2,38 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  MIDGARD_WALK_DERIVED_STRIDE_V1,
-  midgardFieldCommitmentV1,
-  midgardFieldStrideV1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  MIDGARD_WALK_DERIVED_STRIDE,
+  midgardFieldCommitment,
+  midgardFieldStride,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  CommittedFieldClaimV1,
-  MIDGARD_COMMITTED_FIELD_COUNT_V1,
-  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
-  midgardEnvelopeVerdictV1,
+  CommittedFieldClaim,
+  MIDGARD_COMMITTED_FIELD_COUNT,
+  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
+  midgardEnvelopeVerdict,
 } from "../src/fraud-proof/canonical-decodability-v1.js";
 import {
-  COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1,
-  committedFieldShapeEvidenceFromCommittedFieldV1,
+  COMMITTED_FIELD_SHAPE_VIOLATION_ID,
+  committedFieldShapeEvidenceFromCommittedField,
   CommittedFieldShapeStep02State,
-  committedFieldShapeStep02StateFromEvidenceV1,
+  committedFieldShapeStep02StateFromEvidence,
   CommittedFieldShapeStep02StateSchema,
-  isCommittedFieldShapeViolationV1,
-  MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1,
-  MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1,
-  midgardCommittedFieldShapeVerdictV1,
-  midgardMinimalArrayHeaderV1,
-  sizedMidgardFieldEnvelopeV1,
+  isCommittedFieldShapeViolation,
+  MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
+  MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
+  MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
+  MIDGARD_FIELD_SHAPE_VERDICT_NAMES,
+  MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
+  MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
+  MIDGARD_FIXED_STRIDE_FIELD_INDICES,
+  midgardCommittedFieldShapeVerdict,
+  midgardMinimalArrayHeader,
+  sizedMidgardFieldEnvelope,
 } from "../src/fraud-proof/committed-field-shape-v1.js";
 
 /**
@@ -103,14 +103,11 @@ const buildPreimage = (construction: Construction): Buffer => {
     return Buffer.from(construction.hex, "hex");
   }
   if (construction.kind === "envelope") {
-    return encodeMidgardFieldPreimageV1(
+    return encodeMidgardFieldPreimage(
       construction.items.map((item) => Buffer.from(item, "hex")),
     );
   }
-  return sizedMidgardFieldEnvelopeV1(
-    construction.totalLength,
-    construction.fill,
-  );
+  return sizedMidgardFieldEnvelope(construction.totalLength, construction.fill);
 };
 
 describe("§12.8 committed-field-shape golden channel", () => {
@@ -119,13 +116,11 @@ describe("§12.8 committed-field-shape golden channel", () => {
     expect(golden.version).toBe(1);
     expect(golden.specDocument).toBe("docs/spec/midgard-tx.md");
     expect(golden.verdictCodeCount).toBe(
-      MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1,
+      MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
     );
-    expect(golden.verdictNames).toEqual([
-      ...MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1,
-    ]);
+    expect(golden.verdictNames).toEqual([...MIDGARD_FIELD_SHAPE_VERDICT_NAMES]);
     expect(golden.fieldByteBound).toBe(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
     );
   });
 
@@ -136,15 +131,15 @@ describe("§12.8 committed-field-shape golden channel", () => {
       expect(preimage.length).toBe(vector.byteCount);
       // §4's own hash: the two sides built the same bytes, not merely the same
       // description of them.
-      expect(midgardFieldCommitmentV1(preimage).toString("hex")).toBe(
+      expect(midgardFieldCommitment(preimage).toString("hex")).toBe(
         vector.preimageCommitment,
       );
-      expect(midgardFieldStrideV1(vector.fieldIndex)).toBe(vector.fieldStride);
+      expect(midgardFieldStride(vector.fieldIndex)).toBe(vector.fieldStride);
       expect(
-        midgardCommittedFieldShapeVerdictV1(vector.fieldIndex, preimage),
+        midgardCommittedFieldShapeVerdict(vector.fieldIndex, preimage),
       ).toBe(vector.verdict);
-      expect(midgardEnvelopeVerdictV1(preimage)).toBe(vector.envelopeVerdict);
-      expect(MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1[vector.verdict]).toBe(
+      expect(midgardEnvelopeVerdict(preimage)).toBe(vector.envelopeVerdict);
+      expect(MIDGARD_FIELD_SHAPE_VERDICT_NAMES[vector.verdict]).toBe(
         vector.verdictName,
       );
     }
@@ -152,19 +147,19 @@ describe("§12.8 committed-field-shape golden channel", () => {
 
   it("reaches every verdict code, and no code outside the space", () => {
     const reached = new Set(golden.vectors.map((vector) => vector.verdict));
-    expect(reached.size).toBe(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1);
+    expect(reached.size).toBe(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT);
     for (const code of reached) {
       expect(code).toBeGreaterThanOrEqual(0);
-      expect(code).toBeLessThan(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1);
+      expect(code).toBeLessThan(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT);
     }
   });
 
   it("covers every fixed-stride slot §5.3 declares", () => {
     expect(golden.fixedStrideFieldIndices).toEqual([
-      ...MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1,
+      ...MIDGARD_FIXED_STRIDE_FIELD_INDICES,
     ]);
     const slots = new Set(golden.vectors.map((vector) => vector.fieldIndex));
-    for (const fieldIndex of MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1) {
+    for (const fieldIndex of MIDGARD_FIXED_STRIDE_FIELD_INDICES) {
       expect(slots.has(fieldIndex)).toBe(true);
     }
   });
@@ -172,24 +167,24 @@ describe("§12.8 committed-field-shape golden channel", () => {
   it("keeps the partition against §12.7 over the whole vector set", () => {
     for (const vector of golden.vectors) {
       const preimage = buildPreimage(vector.construction);
-      const verdict = midgardCommittedFieldShapeVerdictV1(
+      const verdict = midgardCommittedFieldShapeVerdict(
         vector.fieldIndex,
         preimage,
       );
-      const convicts = isCommittedFieldShapeViolationV1({
+      const convicts = isCommittedFieldShapeViolation({
         fieldIndex: vector.fieldIndex,
         verdict,
       });
       expect(convicts).toBe(vector.convicts);
-      const envelope = midgardEnvelopeVerdictV1(preimage);
+      const envelope = midgardEnvelopeVerdict(preimage);
       // Convicting here implies §12.7 does not convict…
       if (convicts) {
-        expect(envelope).toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1);
+        expect(envelope).toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL);
       }
       // …and §12.7 convicting implies this family renders the deferring code,
       // which its adjudication refuses.
-      if (envelope !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1) {
-        expect(verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1);
+      if (envelope !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL) {
+        expect(verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE);
         expect(convicts).toBe(false);
       }
     }
@@ -208,7 +203,7 @@ describe("§12.8 committed-field-shape golden channel", () => {
 
   it("uses §12.7's claim wire form rather than a second spelling", () => {
     // The Aiken `committed_field_shape/step_01.Args` names §12.7's
-    // `CommittedFieldClaimV1`, so the off-chain builder must emit exactly those
+    // `CommittedFieldClaim`, so the off-chain builder must emit exactly those
     // bytes for the same accusation. If this family ever grew its own claim
     // schema, the constructor tags below would be the first thing to drift.
     const claim = {
@@ -217,23 +212,23 @@ describe("§12.8 committed-field-shape golden channel", () => {
         carriage: { Inline: { preimage: "8044deadbeef" } },
       },
     };
-    const encoded = Data.to(claim, CommittedFieldClaimV1);
+    const encoded = Data.to(claim, CommittedFieldClaim);
     expect(encoded.startsWith("d8799f")).toBe(true);
-    expect(Data.from(encoded, CommittedFieldClaimV1)).toEqual(claim);
+    expect(Data.from(encoded, CommittedFieldClaim)).toEqual(claim);
   });
 });
 
 describe("§12.8 shape verdict", () => {
   it("reads §5.3's stride table as five fixed slots and four walked ones", () => {
-    expect([...MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1]).toEqual([0, 1, 3, 4, 7]);
+    expect([...MIDGARD_FIXED_STRIDE_FIELD_INDICES]).toEqual([0, 1, 3, 4, 7]);
     for (
       let fieldIndex = 0;
-      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT_V1;
+      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT;
       fieldIndex += 1
     ) {
       const fixed =
-        midgardFieldStrideV1(fieldIndex) !== MIDGARD_WALK_DERIVED_STRIDE_V1;
-      expect(MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1.includes(fieldIndex)).toBe(
+        midgardFieldStride(fieldIndex) !== MIDGARD_WALK_DERIVED_STRIDE;
+      expect(MIDGARD_FIXED_STRIDE_FIELD_INDICES.includes(fieldIndex)).toBe(
         fixed,
       );
     }
@@ -242,18 +237,18 @@ describe("§12.8 shape verdict", () => {
   it("gives the same bytes different answers at different slots", () => {
     // This is what "a function of (field_index, preimage)" means, and it is the
     // property §12.7's bytes-only verdict cannot express.
-    const preimage = encodeMidgardFieldPreimageV1([
+    const preimage = encodeMidgardFieldPreimage([
       Buffer.from([0xde, 0xad, 0xbe, 0xef]),
     ]);
     for (
       let fieldIndex = 0;
-      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT_V1;
+      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT;
       fieldIndex += 1
     ) {
-      expect(midgardCommittedFieldShapeVerdictV1(fieldIndex, preimage)).toBe(
-        MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1.includes(fieldIndex)
-          ? MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1
-          : MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
+      expect(midgardCommittedFieldShapeVerdict(fieldIndex, preimage)).toBe(
+        MIDGARD_FIXED_STRIDE_FIELD_INDICES.includes(fieldIndex)
+          ? MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE
+          : MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
       );
     }
   });
@@ -268,82 +263,77 @@ describe("§12.8 shape verdict", () => {
     // field to §12.7, never take one from it.
     const preimage = Buffer.concat([
       Buffer.from([0x81]),
-      Buffer.alloc(midgardFieldStrideV1(0), 0xff),
+      Buffer.alloc(midgardFieldStride(0), 0xff),
     ]);
-    expect(preimage.length).toBe(1 + midgardFieldStrideV1(0));
-    expect(midgardEnvelopeVerdictV1(preimage)).not.toBe(
-      MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
+    expect(preimage.length).toBe(1 + midgardFieldStride(0));
+    expect(midgardEnvelopeVerdict(preimage)).not.toBe(
+      MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
     );
-    const verdict = midgardCommittedFieldShapeVerdictV1(0, preimage);
-    expect(verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1);
-    expect(isCommittedFieldShapeViolationV1({ fieldIndex: 0, verdict })).toBe(
+    const verdict = midgardCommittedFieldShapeVerdict(0, preimage);
+    expect(verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE);
+    expect(isCommittedFieldShapeViolation({ fieldIndex: 0, verdict })).toBe(
       false,
     );
   });
 
   it("pins §7.4's arithmetic as an equality, refused in both directions", () => {
-    const stride = midgardFieldStrideV1(0);
-    const honest = encodeMidgardFieldPreimageV1([
-      Buffer.alloc(stride - 2, 0x00),
-    ]);
+    const stride = midgardFieldStride(0);
+    const honest = encodeMidgardFieldPreimage([Buffer.alloc(stride - 2, 0x00)]);
     expect(honest.length).toBe(1 + stride);
-    expect(midgardCommittedFieldShapeVerdictV1(0, honest)).toBe(
-      MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
+    expect(midgardCommittedFieldShapeVerdict(0, honest)).toBe(
+      MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
     );
     for (const delta of [-1, 1]) {
-      const off = encodeMidgardFieldPreimageV1([
+      const off = encodeMidgardFieldPreimage([
         Buffer.alloc(stride - 2 + delta, 0x00),
       ]);
       expect(off.length).toBe(1 + stride + delta);
-      expect(midgardCommittedFieldShapeVerdictV1(0, off)).toBe(
-        MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1,
+      expect(midgardCommittedFieldShapeVerdict(0, off)).toBe(
+        MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
       );
     }
   });
 
   it("holds the arithmetic across every §5.1 header width", () => {
-    const stride = midgardFieldStrideV1(0);
+    const stride = midgardFieldStride(0);
     for (const count of [0, 1, 23, 24, 255, 256]) {
       const items = Array.from({ length: count }, () =>
         Buffer.alloc(stride - 2, 0x00),
       );
       expect(
-        midgardCommittedFieldShapeVerdictV1(
-          0,
-          encodeMidgardFieldPreimageV1(items),
-        ),
-      ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1);
+        midgardCommittedFieldShapeVerdict(0, encodeMidgardFieldPreimage(items)),
+      ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE);
     }
   });
 
   it("pins §5.4's bound as a bound, not a clamp", () => {
-    const bound = MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1;
-    const at = sizedMidgardFieldEnvelopeV1(bound, 0x00);
-    const above = sizedMidgardFieldEnvelopeV1(bound + 1, 0x00);
+    const bound = MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES;
+    const at = sizedMidgardFieldEnvelope(bound, 0x00);
+    const above = sizedMidgardFieldEnvelope(bound + 1, 0x00);
     expect(at.length).toBe(bound);
     expect(above.length).toBe(bound + 1);
-    expect(midgardCommittedFieldShapeVerdictV1(2, at)).toBe(
-      MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
+    expect(midgardCommittedFieldShapeVerdict(2, at)).toBe(
+      MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
     );
-    expect(midgardCommittedFieldShapeVerdictV1(2, above)).toBe(
-      MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1,
+    expect(midgardCommittedFieldShapeVerdict(2, above)).toBe(
+      MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
     );
   });
 
   it("checks the byte bound before the stride, so one field earns one accusation", () => {
-    const above = sizedMidgardFieldEnvelopeV1(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 + 1,
+    const above = sizedMidgardFieldEnvelope(
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES + 1,
       0x00,
     );
     // The stride really does fail for these bytes, so the assertion below is an
     // ordering pin and not an accident of the fixture.
-    const header = midgardMinimalArrayHeaderV1(above);
+    const header = midgardMinimalArrayHeader(above);
     expect(header).toBeDefined();
-    expect(
-      header!.headerLen + midgardFieldStrideV1(0) * header!.count,
-    ).not.toBe(above.length);
-    expect(midgardCommittedFieldShapeVerdictV1(0, above)).toBe(
-      MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1,
+    expect(header!.headerLen + midgardFieldStride(0) * header!.count).not.toBe(
+      above.length,
+    );
+    expect(midgardCommittedFieldShapeVerdict(0, above)).toBe(
+      MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
     );
   });
 
@@ -362,18 +352,16 @@ describe("§12.8 shape verdict", () => {
       for (const length of lengths) {
         for (
           let fieldIndex = 0;
-          fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT_V1;
+          fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT;
           fieldIndex += 1
         ) {
-          const verdict = midgardCommittedFieldShapeVerdictV1(
+          const verdict = midgardCommittedFieldShapeVerdict(
             fieldIndex,
             preimage.subarray(0, length),
           );
           expect(Number.isInteger(verdict)).toBe(true);
           expect(verdict).toBeGreaterThanOrEqual(0);
-          expect(verdict).toBeLessThan(
-            MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1,
-          );
+          expect(verdict).toBeLessThan(MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT);
         }
       }
     }
@@ -383,19 +371,19 @@ describe("§12.8 shape verdict", () => {
     // The index is the *prover's* argument, so §7.3 says refusing is right —
     // the Aiken twin aborts in `field_stride` for the same reason.
     const preimage = Buffer.from([0x80]);
-    expect(() => midgardCommittedFieldShapeVerdictV1(-1, preimage)).toThrow();
+    expect(() => midgardCommittedFieldShapeVerdict(-1, preimage)).toThrow();
     expect(() =>
-      midgardCommittedFieldShapeVerdictV1(
-        MIDGARD_COMMITTED_FIELD_COUNT_V1,
+      midgardCommittedFieldShapeVerdict(
+        MIDGARD_COMMITTED_FIELD_COUNT,
         preimage,
       ),
     ).toThrow();
   });
 
   it("refuses a sized envelope whose payload §5.1 would spell more narrowly", () => {
-    expect(() => sizedMidgardFieldEnvelopeV1(4, 0x00)).toThrow();
-    expect(() => sizedMidgardFieldEnvelopeV1(259, 0x00)).toThrow();
-    expect(sizedMidgardFieldEnvelopeV1(260, 0x00).length).toBe(260);
+    expect(() => sizedMidgardFieldEnvelope(4, 0x00)).toThrow();
+    expect(() => sizedMidgardFieldEnvelope(259, 0x00)).toThrow();
+    expect(sizedMidgardFieldEnvelope(260, 0x00).length).toBe(260);
   });
 });
 
@@ -403,22 +391,22 @@ describe("§12.8 adjudication predicate", () => {
   it("convicts the two shape codes and neither non-convicting one", () => {
     for (
       let fieldIndex = 0;
-      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT_V1;
+      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT;
       fieldIndex += 1
     ) {
       for (const verdict of [
-        MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
-        MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1,
+        MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
+        MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
       ]) {
-        expect(isCommittedFieldShapeViolationV1({ fieldIndex, verdict })).toBe(
+        expect(isCommittedFieldShapeViolation({ fieldIndex, verdict })).toBe(
           false,
         );
       }
       for (const verdict of [
-        MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1,
-        MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1,
+        MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
+        MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
       ]) {
-        expect(isCommittedFieldShapeViolationV1({ fieldIndex, verdict })).toBe(
+        expect(isCommittedFieldShapeViolation({ fieldIndex, verdict })).toBe(
           true,
         );
       }
@@ -426,25 +414,25 @@ describe("§12.8 adjudication predicate", () => {
   });
 
   it("refuses a state no step 01 could have written", () => {
-    const verdict = MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1;
-    expect(isCommittedFieldShapeViolationV1({ fieldIndex: -1, verdict })).toBe(
+    const verdict = MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE;
+    expect(isCommittedFieldShapeViolation({ fieldIndex: -1, verdict })).toBe(
       false,
     );
     expect(
-      isCommittedFieldShapeViolationV1({
-        fieldIndex: MIDGARD_COMMITTED_FIELD_COUNT_V1,
+      isCommittedFieldShapeViolation({
+        fieldIndex: MIDGARD_COMMITTED_FIELD_COUNT,
         verdict,
       }),
     ).toBe(false);
     expect(
-      isCommittedFieldShapeViolationV1({
+      isCommittedFieldShapeViolation({
         fieldIndex: 0,
-        verdict: MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1,
+        verdict: MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT,
       }),
     ).toBe(false);
-    expect(
-      isCommittedFieldShapeViolationV1({ fieldIndex: 0, verdict: -1 }),
-    ).toBe(false);
+    expect(isCommittedFieldShapeViolation({ fieldIndex: 0, verdict: -1 })).toBe(
+      false,
+    );
   });
 });
 
@@ -452,26 +440,26 @@ describe("§12.8 evidence", () => {
   const badTxId = "22".repeat(32);
 
   it("builds the step-02 state the on-chain step 01 derives", () => {
-    const preimage = encodeMidgardFieldPreimageV1([
+    const preimage = encodeMidgardFieldPreimage([
       Buffer.from([0xde, 0xad, 0xbe, 0xef]),
     ]);
-    const evidence = committedFieldShapeEvidenceFromCommittedFieldV1({
+    const evidence = committedFieldShapeEvidenceFromCommittedField({
       badTxId,
       fieldIndex: 0,
       committedPreimage: preimage,
     });
-    expect(evidence.violationId).toBe(COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1);
-    expect(evidence.verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1);
+    expect(evidence.violationId).toBe(COMMITTED_FIELD_SHAPE_VIOLATION_ID);
+    expect(evidence.verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE);
     expect(evidence.verdictName).toBe("wrong_stride");
-    expect(evidence.fieldStride).toBe(midgardFieldStrideV1(0));
+    expect(evidence.fieldStride).toBe(midgardFieldStride(0));
     expect(evidence.isViolation).toBe(true);
     expect(evidence.committedPreimageByteCount).toBe(preimage.length);
 
-    const state = committedFieldShapeStep02StateFromEvidenceV1(evidence);
+    const state = committedFieldShapeStep02StateFromEvidence(evidence);
     expect(state).toEqual({
       bad_tx_id: badTxId,
       field_index: 0n,
-      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1),
+      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE),
     });
     // The state is a datum, so it has to survive the encoder a builder uses.
     expect(
@@ -484,27 +472,25 @@ describe("§12.8 evidence", () => {
   });
 
   it("never convicts an honest field", () => {
-    const evidence = committedFieldShapeEvidenceFromCommittedFieldV1({
+    const evidence = committedFieldShapeEvidenceFromCommittedField({
       badTxId,
       fieldIndex: 0,
-      committedPreimage: encodeMidgardFieldPreimageV1([
-        Buffer.alloc(midgardFieldStrideV1(0) - 2, 0x00),
+      committedPreimage: encodeMidgardFieldPreimage([
+        Buffer.alloc(midgardFieldStride(0) - 2, 0x00),
       ]),
     });
-    expect(evidence.verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1);
+    expect(evidence.verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE);
     expect(evidence.verdictName).toBe("admissible");
     expect(evidence.isViolation).toBe(false);
   });
 
   it("never convicts a field §12.7 owns", () => {
-    const evidence = committedFieldShapeEvidenceFromCommittedFieldV1({
+    const evidence = committedFieldShapeEvidenceFromCommittedField({
       badTxId,
       fieldIndex: 0,
       committedPreimage: Buffer.from([0x80, 0x41]),
     });
-    expect(evidence.verdict).toBe(
-      MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1,
-    );
+    expect(evidence.verdict).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE);
     expect(evidence.verdictName).toBe("not_an_envelope");
     expect(evidence.isViolation).toBe(false);
   });

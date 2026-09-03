@@ -1,12 +1,12 @@
 import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHashMatch } from "./hash.js";
-import type { MidgardNativeTxFullV1 } from "./native.js";
+import type { MidgardNativeTxFull } from "./native.js";
 import {
   deriveNativeTxBodyCompact,
   encodeNativeTxBodyCompactValue,
 } from "./native-body.js";
-import { MIDGARD_NATIVE_TX_V1_VERSION } from "./native-constants.js";
+import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
 import {
   deriveNativeTxWitnessSetCompact,
   encodeNativeTxWitnessSetCompactValue,
@@ -21,9 +21,9 @@ const schemaMismatch = (message: string, detail: string): never => {
 };
 
 export const verifyNativeTxFullConsistency = (
-  tx: MidgardNativeTxFullV1,
+  tx: MidgardNativeTxFull,
 ): void => {
-  if (tx.version !== MIDGARD_NATIVE_TX_V1_VERSION) {
+  if (tx.version !== MIDGARD_NATIVE_TX_VERSION) {
     schemaMismatch("Unsupported Midgard native tx version", `${tx.version}`);
   }
   if (tx.compact.version !== tx.version) {

@@ -1,27 +1,27 @@
-import { encodeMidgardNativeTxProofFieldLengthsV1 } from "@al-ft/midgard-core";
+import { encodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS_V1,
-  type FieldPreimageLengthJournalV1,
-  nextFieldPreimageLengthActionV1,
-  prepareFieldPreimageLengthWorkflowV1,
-  reconcileFieldPreimageLengthJournalV1,
-  runFieldPreimageLengthWorkflowV1,
+  FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS,
+  type FieldPreimageLengthJournal,
+  nextFieldPreimageLengthAction,
+  prepareFieldPreimageLengthWorkflow,
+  reconcileFieldPreimageLengthJournal,
+  runFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/workflow-v1.js";
 
-const prepared = prepareFieldPreimageLengthWorkflowV1({
+const prepared = prepareFieldPreimageLengthWorkflow({
   headerHash: "11".repeat(28),
   transactionId: "22".repeat(32),
   direction: "wrongfulAcceptance",
   fieldIndex: 2,
-  fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1([
+  fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
     1, 1, 2, 1, 1, 1, 1, 1, 1,
   ]),
   fieldPreimage: Buffer.from("80", "hex"),
 });
 
-const emptyJournal = (): FieldPreimageLengthJournalV1 => ({
+const emptyJournal = (): FieldPreimageLengthJournal => ({
   prepared,
   confirmed: [],
   transactionIds: {},
@@ -30,7 +30,7 @@ const emptyJournal = (): FieldPreimageLengthJournalV1 => ({
 describe("field-preimage-length durable workflow", () => {
   it("pins the ordered four-script deployment topology", () => {
     expect(
-      FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS_V1.map(({ role }) => role),
+      FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS.map(({ role }) => role),
     ).toEqual([
       "firstStep",
       "acceptedAuthenticator",
@@ -46,12 +46,12 @@ describe("field-preimage-length durable workflow", () => {
       "wrongfulRejection",
     ] as const) {
       const prepare = (bytes: number) =>
-        prepareFieldPreimageLengthWorkflowV1({
+        prepareFieldPreimageLengthWorkflow({
           headerHash: "11".repeat(28),
           transactionId: "22".repeat(32),
           direction,
           fieldIndex: 2,
-          fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1([
+          fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
             1,
             1,
             direction === "wrongfulAcceptance" ? bytes + 1 : bytes,
@@ -75,12 +75,12 @@ describe("field-preimage-length durable workflow", () => {
       expect(prepare(32_768).carriage).toBe("Certified");
     }
     expect(() =>
-      prepareFieldPreimageLengthWorkflowV1({
+      prepareFieldPreimageLengthWorkflow({
         headerHash: "11".repeat(28),
         transactionId: "22".repeat(32),
         direction: "wrongfulAcceptance",
         fieldIndex: 2,
-        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1([
+        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
           1, 1, 1, 1, 1, 1, 1, 1, 1,
         ]),
         fieldPreimage: Buffer.alloc(32_769),
@@ -94,13 +94,13 @@ describe("field-preimage-length durable workflow", () => {
       transactionId: "22".repeat(32),
       direction: "wrongfulRejection" as const,
       fieldIndex: 2,
-      fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1([
+      fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
         1, 1, 1, 1, 1, 1, 1, 1, 1,
       ]),
       fieldPreimage: Buffer.from("80", "hex"),
     };
     expect(
-      prepareFieldPreimageLengthWorkflowV1({
+      prepareFieldPreimageLengthWorkflow({
         ...common,
         forcedRejectionReason: {
           FieldPreimageLengthMismatch: { field_index: 2n },
@@ -108,13 +108,13 @@ describe("field-preimage-length durable workflow", () => {
       }).direction,
     ).toBe("wrongfulRejection");
     expect(() =>
-      prepareFieldPreimageLengthWorkflowV1({
+      prepareFieldPreimageLengthWorkflow({
         ...common,
         forcedRejectionReason: "EmptyInputs",
       }),
     ).toThrow(/carry only FieldPreimageLengthMismatch/u);
     expect(() =>
-      prepareFieldPreimageLengthWorkflowV1({
+      prepareFieldPreimageLengthWorkflow({
         ...common,
         forcedRejectionReason: {
           FieldPreimageLengthMismatch: { field_index: 3n },
@@ -124,14 +124,14 @@ describe("field-preimage-length durable workflow", () => {
   });
 
   it("restarts from a persisted transaction identity without resubmitting", async () => {
-    let journal = reconcileFieldPreimageLengthJournalV1({
+    let journal = reconcileFieldPreimageLengthJournal({
       journal: emptyJournal(),
       action: "init",
       transactionId: "33".repeat(32),
       confirmedOnChain: false,
     });
     let submits = 0;
-    journal = await runFieldPreimageLengthWorkflowV1({
+    journal = await runFieldPreimageLengthWorkflow({
       load: async () => journal,
       save: async (next) => {
         journal = next;
@@ -143,18 +143,18 @@ describe("field-preimage-length durable workflow", () => {
       observeConfirmed: async () => true,
     });
     expect(submits).toBe(4);
-    expect(nextFieldPreimageLengthActionV1(journal)).toBe("complete");
+    expect(nextFieldPreimageLengthAction(journal)).toBe("complete");
   });
 
   it("refuses transaction identity mutation during reconciliation", () => {
-    const journal = reconcileFieldPreimageLengthJournalV1({
+    const journal = reconcileFieldPreimageLengthJournal({
       journal: emptyJournal(),
       action: "init",
       transactionId: "33".repeat(32),
       confirmedOnChain: false,
     });
     expect(() =>
-      reconcileFieldPreimageLengthJournalV1({
+      reconcileFieldPreimageLengthJournal({
         journal,
         action: "init",
         transactionId: "44".repeat(32),

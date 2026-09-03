@@ -10,30 +10,30 @@
 import { readFileSync } from "node:fs";
 
 import {
-  budgetedMidgardNativeScriptDecodingScanV1,
-  buildMidgardNativeScriptDecodingTraceV1,
+  budgetedMidgardNativeScriptDecodingScan,
+  buildMidgardNativeScriptDecodingTrace,
   encodeMidgardNativeScript,
-  encodeMidgardNativeScriptStructureControlV1,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+  encodeMidgardNativeScriptStructureControl,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardNativeScript,
-  MidgardNativeScriptDecodingDirectionsV1,
-  MidgardNativeScriptDecodingRefusalClassesV1,
-  MidgardNativeScriptDecodingScanOutcomeKindsV1,
-  midgardNativeScriptDecodingScanWindowForCursorV1,
-  MidgardNativeScriptStructureStagesV1,
+  MidgardNativeScriptDecodingDirections,
+  MidgardNativeScriptDecodingRefusalClasses,
+  MidgardNativeScriptDecodingScanOutcomeKinds,
+  midgardNativeScriptDecodingScanWindowForCursor,
+  MidgardNativeScriptStructureStages,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX_V1,
-  NATIVE_SCRIPT_DECODING_EXEC_PINS_V1,
-  NativeScriptDecodingPlanRoutesV1,
-  type NativeScriptDecodingScanPlanV1,
+  buildNativeScriptDecodingScanPlan,
+  NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX,
+  NATIVE_SCRIPT_DECODING_EXEC_PINS,
+  NativeScriptDecodingPlanRoutes,
+  type NativeScriptDecodingScanPlan,
 } from "../src/native-script-decoding/scan-plan-v1.js";
 
-const DIRECTION_A = MidgardNativeScriptDecodingDirectionsV1.WrongfulAcceptance;
-const DIRECTION_B = MidgardNativeScriptDecodingDirectionsV1.WrongfulRejection;
+const DIRECTION_A = MidgardNativeScriptDecodingDirections.WrongfulAcceptance;
+const DIRECTION_B = MidgardNativeScriptDecodingDirections.WrongfulRejection;
 
 const signerKey = Buffer.alloc(28, 0x55);
 const signatureNodeHex = `8200581c${signerKey.toString("hex")}`;
@@ -71,38 +71,36 @@ const deepChainItem = (depth: number): Buffer =>
  * same inputs a Scan transaction carries.
  */
 const replayPlanAgainstItem = (
-  plan: NativeScriptDecodingScanPlanV1,
+  plan: NativeScriptDecodingScanPlan,
   itemBytes: Buffer,
 ): void => {
   for (const segment of plan.segments) {
-    const outcome = budgetedMidgardNativeScriptDecodingScanV1({
+    const outcome = budgetedMidgardNativeScriptDecodingScan({
       control: segment.controlBefore.control,
       window:
         segment.window === null
           ? null
-          : midgardNativeScriptDecodingScanWindowForCursorV1({
+          : midgardNativeScriptDecodingScanWindowForCursor({
               itemBytes,
               cursor:
-                segment.window.chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+                segment.window.chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
             }),
       frames: segment.frames,
       maxSteps: segment.stepBudget,
     });
-    if (
-      outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
-    ) {
+    if (outcome.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced) {
       throw new Error("segment replay refused");
     }
     expect(
       Buffer.from(
-        encodeMidgardNativeScriptStructureControlV1(outcome.control),
+        encodeMidgardNativeScriptStructureControl(outcome.control),
       ).toString("hex"),
     ).toStrictEqual(segment.controlAfter.cborHex);
     expect(outcome.framesConsumed).toStrictEqual(segment.frames.length);
   }
 };
 
-const chainIsContinuous = (plan: NativeScriptDecodingScanPlanV1): void => {
+const chainIsContinuous = (plan: NativeScriptDecodingScanPlan): void => {
   for (let index = 1; index < plan.segments.length; index += 1) {
     expect(plan.segments[index]!.controlBefore.cborHex).toStrictEqual(
       plan.segments[index - 1]!.controlAfter.cborHex,
@@ -146,7 +144,7 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
       }
       return { ...module.rows };
     };
-    const pins = NATIVE_SCRIPT_DECODING_EXEC_PINS_V1;
+    const pins = NATIVE_SCRIPT_DECODING_EXEC_PINS;
     expect(ledger.basis.memoryUnits).toStrictEqual(pins.basisMemoryUnits);
     expect(ledger.basis.cpuUnits).toStrictEqual(pins.basisCpuUnits);
 
@@ -196,27 +194,25 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
   });
 
   it("derives the default 16-step budget and refuses over-basis overrides", () => {
-    expect(NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX_V1).toStrictEqual(
-      16,
-    );
+    expect(NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX).toStrictEqual(16);
     // A deep chain with 26 primitive steps: 12 container tokens + the leaf
     // token + 12 frame pops + finalize.
     const item = deepChainItem(12);
     expect(() =>
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: item,
         direction: DIRECTION_B,
         maxStepsPerTx: 17,
       }),
     ).toThrow(/predicted over the execution basis/);
     expect(() =>
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: item,
         direction: DIRECTION_B,
         maxStepsPerTx: 0,
       }),
     ).toThrow(/positive integer/);
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: DIRECTION_B,
     });
@@ -226,22 +222,22 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     ]);
     for (const segment of plan.segments) {
       expect(segment.predictedMemoryUnits).toBeLessThanOrEqual(
-        NATIVE_SCRIPT_DECODING_EXEC_PINS_V1.basisMemoryUnits,
+        NATIVE_SCRIPT_DECODING_EXEC_PINS.basisMemoryUnits,
       );
       expect(segment.predictedCpuUnits).toBeLessThanOrEqual(
-        NATIVE_SCRIPT_DECODING_EXEC_PINS_V1.basisCpuUnits,
+        NATIVE_SCRIPT_DECODING_EXEC_PINS.basisCpuUnits,
       );
     }
   });
 
   it("plans direction B to the exact terminal with a windowless verdict", () => {
     const item = deepChainItem(3);
-    const trace = buildMidgardNativeScriptDecodingTraceV1(item);
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const trace = buildMidgardNativeScriptDecodingTrace(item);
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: DIRECTION_B,
     });
-    expect(plan.route).toStrictEqual(NativeScriptDecodingPlanRoutesV1.Machine);
+    expect(plan.route).toStrictEqual(NativeScriptDecodingPlanRoutes.Machine);
     expect(plan.chunkCount).toStrictEqual(1);
     expect(plan.segments).toHaveLength(1);
     const segment = plan.segments[0]!;
@@ -254,14 +250,14 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     }
     expect(segment.controlBefore.cborHex).toStrictEqual(
       Buffer.from(
-        encodeMidgardNativeScriptStructureControlV1(trace.bind.control),
+        encodeMidgardNativeScriptStructureControl(trace.bind.control),
       ).toString("hex"),
     );
     expect(plan.verdict.window).toBeNull();
     expect(plan.verdict.refusalClass).toBeNull();
     expect(plan.verdict.control).not.toBeNull();
     expect(plan.verdict.control!.control.stage).toStrictEqual(
-      MidgardNativeScriptStructureStagesV1.Terminal,
+      MidgardNativeScriptStructureStages.Terminal,
     );
     expect(plan.verdict.control!.hashHex).toMatch(/^[0-9a-f]{64}$/);
     chainIsContinuous(plan);
@@ -275,18 +271,18 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     const midScanItem = itemFromPayload(
       Buffer.from(`820182${signatureNodeHex}820700`, "hex"),
     );
-    const midScanPlan = buildNativeScriptDecodingScanPlanV1({
+    const midScanPlan = buildNativeScriptDecodingScanPlan({
       itemBytes: midScanItem,
       direction: DIRECTION_A,
     });
     expect(midScanPlan.route).toStrictEqual(
-      NativeScriptDecodingPlanRoutesV1.Machine,
+      NativeScriptDecodingPlanRoutes.Machine,
     );
     expect(midScanPlan.segments).toHaveLength(1);
     expect(midScanPlan.segments[0]!.stepBudget).toStrictEqual(3);
     expect(midScanPlan.segments[0]!.frames).toHaveLength(1);
     expect(midScanPlan.verdict.refusalClass).toStrictEqual(
-      MidgardNativeScriptDecodingRefusalClassesV1.Malformed,
+      MidgardNativeScriptDecodingRefusalClasses.Malformed,
     );
     // The refusing control is token-stage, so the verdict carries a window.
     expect(midScanPlan.verdict.window).toStrictEqual({
@@ -294,7 +290,7 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
       needNext: false,
     });
     expect(midScanPlan.verdict.control!.control.stage).toStrictEqual(
-      MidgardNativeScriptStructureStagesV1.Token,
+      MidgardNativeScriptStructureStages.Token,
     );
     chainIsContinuous(midScanPlan);
     replayPlanAgainstItem(midScanPlan, midScanItem);
@@ -303,24 +299,21 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     // all — the verdict transaction exhibits the refusal from the bind
     // control directly.
     const immediateItem = Buffer.from("820043820700", "hex");
-    const immediatePlan = buildNativeScriptDecodingScanPlanV1({
+    const immediatePlan = buildNativeScriptDecodingScanPlan({
       itemBytes: immediateItem,
       direction: DIRECTION_A,
     });
     expect(immediatePlan.segments).toHaveLength(0);
     expect(immediatePlan.verdict.refusalClass).toStrictEqual(
-      MidgardNativeScriptDecodingRefusalClassesV1.Malformed,
+      MidgardNativeScriptDecodingRefusalClasses.Malformed,
     );
-    const immediateTrace =
-      buildMidgardNativeScriptDecodingTraceV1(immediateItem);
+    const immediateTrace = buildMidgardNativeScriptDecodingTrace(immediateItem);
     if (immediateTrace.bind.kind !== "bound") {
       throw new Error("fixture failed to bind");
     }
     expect(immediatePlan.verdict.control!.cborHex).toStrictEqual(
       Buffer.from(
-        encodeMidgardNativeScriptStructureControlV1(
-          immediateTrace.bind.control,
-        ),
+        encodeMidgardNativeScriptStructureControl(immediateTrace.bind.control),
       ).toString("hex"),
     );
   });
@@ -334,10 +327,8 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
       })),
     });
     const item = itemFromPayload(payload);
-    expect(item.length).toBeGreaterThan(
-      2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-    );
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    expect(item.length).toBeGreaterThan(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: DIRECTION_B,
     });
@@ -375,7 +366,7 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     // misalignment with a 13-step policy: at least one cut must then be
     // caused by the window change alone — a short segment (under budget)
     // whose successor reads a different chunk.
-    const misaligned = buildNativeScriptDecodingScanPlanV1({
+    const misaligned = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: DIRECTION_B,
       maxStepsPerTx: 13,
@@ -397,12 +388,12 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
   it("refuses direction mismatches and routes bind short circuits", () => {
     // Undecodable wrapper (language tag outside {0, 3, 128}).
     const malformedWrapper = Buffer.from("8201410a", "hex");
-    const malformedPlan = buildNativeScriptDecodingScanPlanV1({
+    const malformedPlan = buildNativeScriptDecodingScanPlan({
       itemBytes: malformedWrapper,
       direction: DIRECTION_A,
     });
     expect(malformedPlan.route).toStrictEqual(
-      NativeScriptDecodingPlanRoutesV1.BindMalformed,
+      NativeScriptDecodingPlanRoutes.BindMalformed,
     );
     expect(malformedPlan.segments).toHaveLength(0);
     expect(malformedPlan.verdict.control).toBeNull();
@@ -411,7 +402,7 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
       needNext: false,
     });
     expect(() =>
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: malformedWrapper,
         direction: DIRECTION_B,
       }),
@@ -419,25 +410,25 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
 
     // Empty tag-0 payload is the same bind-level malformation.
     expect(
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: Buffer.from("820040", "hex"),
         direction: DIRECTION_A,
       }).route,
-    ).toStrictEqual(NativeScriptDecodingPlanRoutesV1.BindMalformed);
+    ).toStrictEqual(NativeScriptDecodingPlanRoutes.BindMalformed);
 
     // Plutus language tag: only the direction-B contradiction close.
     const plutusItem = Buffer.from("82034401020304", "hex");
-    const contradictionPlan = buildNativeScriptDecodingScanPlanV1({
+    const contradictionPlan = buildNativeScriptDecodingScanPlan({
       itemBytes: plutusItem,
       direction: DIRECTION_B,
     });
     expect(contradictionPlan.route).toStrictEqual(
-      NativeScriptDecodingPlanRoutesV1.DescriptorContradiction,
+      NativeScriptDecodingPlanRoutes.DescriptorContradiction,
     );
     expect(contradictionPlan.languageTag).toStrictEqual(3);
     expect(contradictionPlan.segments).toHaveLength(0);
     expect(() =>
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: plutusItem,
         direction: DIRECTION_A,
       }),
@@ -447,13 +438,13 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     // refusing item has no direction-B fault.
     const canonicalItem = itemFromPayload(Buffer.from(signatureNodeHex, "hex"));
     expect(() =>
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: canonicalItem,
         direction: DIRECTION_A,
       }),
     ).toThrow(/no wrongful acceptance/);
     expect(() =>
-      buildNativeScriptDecodingScanPlanV1({
+      buildNativeScriptDecodingScanPlan({
         itemBytes: itemFromPayload(
           Buffer.from(`820182${signatureNodeHex}820700`, "hex"),
         ),
@@ -464,7 +455,7 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
 
   it("honours a narrower policy budget", () => {
     const item = deepChainItem(3);
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: DIRECTION_B,
       maxStepsPerTx: 4,

@@ -7,7 +7,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const MISSING_REDEEMER_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const MISSING_REDEEMER_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/missing_redeemer/step_01.main.spend",
   "fraud_proofs/missing_redeemer/step_02.main.spend",
   "fraud_proofs/missing_redeemer/step_02a.main.spend",
@@ -16,22 +16,22 @@ export const MISSING_REDEEMER_BLUEPRINT_TITLES_V1 = Object.freeze([
   "fraud_proofs/missing_redeemer/step_04.main.spend",
   "fraud_proofs/missing_redeemer/step_05.main.spend",
 ] as const);
-export type MissingRedeemerStepContractV1 = Readonly<{
+export type MissingRedeemerStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type MissingRedeemerContractsV1 = Readonly<{
+export type MissingRedeemerContracts = Readonly<{
   steps: readonly [
-    MissingRedeemerStepContractV1,
-    MissingRedeemerStepContractV1,
-    MissingRedeemerStepContractV1,
-    MissingRedeemerStepContractV1,
-    MissingRedeemerStepContractV1,
-    MissingRedeemerStepContractV1,
-    MissingRedeemerStepContractV1,
+    MissingRedeemerStepContract,
+    MissingRedeemerStepContract,
+    MissingRedeemerStepContract,
+    MissingRedeemerStepContract,
+    MissingRedeemerStepContract,
+    MissingRedeemerStepContract,
+    MissingRedeemerStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -55,7 +55,7 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-export const applyMissingRedeemerScriptsV1 = ({
+export const applyMissingRedeemerScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -71,12 +71,12 @@ export const applyMissingRedeemerScriptsV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): MissingRedeemerContractsV1["steps"] => {
+}): MissingRedeemerContracts["steps"] => {
   const apply = (
     index: number,
     parameters: readonly Data[],
-  ): MissingRedeemerStepContractV1 => {
-    const title = MISSING_REDEEMER_BLUEPRINT_TITLES_V1[index]!;
+  ): MissingRedeemerStepContract => {
+    const title = MISSING_REDEEMER_BLUEPRINT_TITLES[index]!;
     const entry = blueprint.validators.find(
       (candidate) => candidate.title === title,
     );

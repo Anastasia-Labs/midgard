@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  assertWatcherProductionProtocolParameterRuntimeAuthorityV1,
-  unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1,
+  assertWatcherProtocolParameterRuntimeAuthority,
+  unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest,
 } from "../../src/funding/production-prover-funding-v1.js";
 import {
-  makeWatcherDeploymentAuthorityFixtureV1,
-  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+  makeWatcherDeploymentAuthorityFixture,
+  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
 } from "../support/deployment-authority-fixture.js";
 
 const ogmiosParameters = (minFeeCoefficient = 44) => ({
@@ -38,8 +38,8 @@ const response = (id: string, result: unknown): Response =>
 
 describe("production prover protocol-parameter authority V1", () => {
   it("isolates mutable deployment-authority fixture clones around one admitted base", () => {
-    const first = makeWatcherDeploymentAuthorityFixtureV1();
-    const second = makeWatcherDeploymentAuthorityFixtureV1();
+    const first = makeWatcherDeploymentAuthorityFixture();
+    const second = makeWatcherDeploymentAuthorityFixture();
     const firstManifest = first.signedIdentity.manifest as Record<
       string,
       unknown
@@ -66,7 +66,7 @@ describe("production prover protocol-parameter authority V1", () => {
   });
 
   it("binds the signed snapshot to an exact live loopback Ogmios response", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const fetchImpl = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
         const request = JSON.parse(String(init?.body)) as {
@@ -77,36 +77,34 @@ describe("production prover protocol-parameter authority V1", () => {
     ) as unknown as typeof fetch;
 
     const authority =
-      await unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1(
-        {
-          deploymentIdentity,
-          ogmiosUrl: "http://127.0.0.1:1337",
-          timeoutMs: 10_000,
-          fetchImpl,
-        },
-      );
+      await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+        deploymentIdentity,
+        ogmiosUrl: "http://127.0.0.1:1337",
+        timeoutMs: 10_000,
+        fetchImpl,
+      });
 
     expect(authority).toMatchObject({
       deploymentFingerprint: deploymentIdentity.manifestId,
       source: "local_ogmios",
       sourceEndpoint: "http://127.0.0.1:1337",
-      snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+      snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
       snapshotDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
       authorityDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     expect(Object.isFrozen(authority)).toBe(true);
     expect(() =>
-      assertWatcherProductionProtocolParameterRuntimeAuthorityV1(authority),
+      assertWatcherProtocolParameterRuntimeAuthority(authority),
     ).not.toThrow();
     expect(() =>
-      assertWatcherProductionProtocolParameterRuntimeAuthorityV1({
+      assertWatcherProtocolParameterRuntimeAuthority({
         ...authority,
       }),
     ).toThrow("not admitted");
   });
 
   it("rejects protocol drift, remote sources, and structural deployment identities", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const fetchImpl = vi.fn(
       async (_url: string | URL | Request, init?: RequestInit) => {
         const request = JSON.parse(String(init?.body)) as {
@@ -121,7 +119,7 @@ describe("production prover protocol-parameter authority V1", () => {
         ogmiosUrl: string;
       }> = {},
     ) =>
-      unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1({
+      unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
         deploymentIdentity: overrides.deploymentIdentity ?? deploymentIdentity,
         ogmiosUrl: overrides.ogmiosUrl ?? "http://127.0.0.1:1337",
         timeoutMs: 10_000,

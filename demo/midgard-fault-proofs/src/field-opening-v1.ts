@@ -4,7 +4,7 @@
  * committed fields of the transaction its computation thread is disputing.
  *
  * `@al-ft/midgard-sdk`'s `fraud-proof/field-opening-v1.ts` owns the *wire*
- * shapes (`NativeTxAnchorV1`, `FieldOpeningV1`, the §2.5 field table). This
+ * shapes (`NativeTxAnchorV1`, `FieldOpening`, the §2.5 field table). This
  * module owns the *transaction* half: deriving the §5.1 preimage from canonical
  * item bytes, planning its §8 carriage, publishing that carriage when the tier
  * calls for it, and resolving the positional reference-input indices against the
@@ -25,11 +25,11 @@
  *   * a witness-set field (§2.5 6–8) carries the transaction's own compact
  *     witness set, whose hash is the anchored `witness_set_hash`;
  *   * the §2.5 half pairs with the field (`field_pairs_with`, applied by the
- *     SDK's `fieldOpeningV1ForField`; the former fields-6–8 tier-3 refusal
+ *     SDK's `fieldOpeningForField`; the former fields-6–8 tier-3 refusal
  *     lifted with #606's welded-hash repair).
  *
  * **The tier is never a caller's argument.** §8.4 partitions on the preimage's
- * own length, and `planMidgardFieldCarriageV1` is the only thing here that
+ * own length, and `planMidgardFieldCarriage` is the only thing here that
  * decides it. `publish` is the single choice §8 leaves open — it demotes a
  * tier-1 preimage to a tier-2 publication so the step's own redeemer does not
  * have to carry the bytes — and it changes which transaction pays, never what
@@ -38,29 +38,29 @@
 
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxCompactV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  layOutMidgardFieldCarriageV1,
-  type MidgardFieldCarriagePlanV1,
-  midgardFieldCommitmentV1,
-  planMidgardFieldCarriageV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxWitnessSetCompact,
+  layOutMidgardFieldCarriage,
+  type MidgardFieldCarriagePlan,
+  midgardFieldCommitment,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import {
-  buildUnsignedFieldPreimageCertificationV1Program,
-  buildUnsignedFieldPreimagePublicationV1Program,
-  deriveFieldPreimageCertificationV1,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
-  type FieldCarriageV1,
-  type FieldOpeningV1,
-  fieldOpeningV1ForField,
-  fieldPreimagePublicationDatumCborV1,
-  isMidgardWitnessSetFieldV1,
-  MIDGARD_FIELD_INDEX_V1,
+  buildUnsignedFieldPreimageCertificationProgram,
+  buildUnsignedFieldPreimagePublicationProgram,
+  deriveFieldPreimageCertification,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  type FieldCarriage,
+  type FieldOpening,
+  fieldOpeningForField,
+  fieldPreimagePublicationDatumCbor,
+  isMidgardWitnessSetField,
+  MIDGARD_FIELD_INDEX,
   type NativeTxWitnessSetCompact,
-  resolveCertificateReferenceIndexV1,
-  resolveChunkReferenceIndicesV1,
+  resolveCertificateReferenceIndex,
+  resolveChunkReferenceIndices,
 } from "@al-ft/midgard-sdk";
 import {
   coreToTxOutput,
@@ -79,9 +79,9 @@ import {
   type ResolvedProverSigner,
 } from "./runtime.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /**
@@ -94,7 +94,7 @@ import {
  * shape. Nothing is trusted about it: the bytes are checked against the anchor
  * the on-chain thread datum carries before any redeemer is built.
  */
-export const parseNativeTxCompactCborV1 = (
+export const parseNativeTxCompactCbor = (
   value: unknown,
   label: string,
 ): string => {
@@ -117,7 +117,7 @@ export const parseNativeTxCompactCborV1 = (
  * built, and a builder that discovered that while assembling its redeemer would
  * have no way to act on it.
  */
-export type FaultProofFieldOpeningPlanV1 = {
+export type FaultProofFieldOpeningPlan = {
   readonly fieldIndex: number;
   /** The §2.5 anchor these bytes were checked against. */
   readonly nativeTxId: string;
@@ -127,7 +127,7 @@ export type FaultProofFieldOpeningPlanV1 = {
   readonly itemCount: number;
   /** §4's flat commitment — the value the door will re-derive. */
   readonly commitment: string;
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   /** Present for §2.5 fields 6–8 only, where the door reads the witness set. */
   readonly witnessSet?: NativeTxWitnessSetCompact;
   /**
@@ -155,16 +155,16 @@ const requireHash32 = (value: string, label: string): string => {
  * field index, so the index has to come from the structure rather than from the
  * hash.
  */
-const committedFieldCommitmentV1 = ({
+const committedFieldCommitment = ({
   fieldIndex,
   compact,
   witnessSet,
 }: {
   readonly fieldIndex: number;
-  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   readonly witnessSet?: NativeTxWitnessSetCompact;
 }): string => {
-  if (isMidgardWitnessSetFieldV1(fieldIndex)) {
+  if (isMidgardWitnessSetField(fieldIndex)) {
     if (witnessSet === undefined) {
       throw new Error(
         `§2.5 field ${fieldIndex.toString()} lives in the witness set, whose compact structure was not supplied.`,
@@ -175,9 +175,9 @@ const committedFieldCommitmentV1 = ({
     // Naming the indices off the shared table rather than writing 6/7/8 here is
     // what keeps the two spellings from drifting.
     const byFieldIndex: Readonly<Record<number, string>> = {
-      [MIDGARD_FIELD_INDEX_V1.scriptWitnesses]: witnessSet.script_tx_wits_hash,
-      [MIDGARD_FIELD_INDEX_V1.addressWitnesses]: witnessSet.addr_tx_wits_hash,
-      [MIDGARD_FIELD_INDEX_V1.redeemers]: witnessSet.redeemer_tx_wits_hash,
+      [MIDGARD_FIELD_INDEX.scriptWitnesses]: witnessSet.script_tx_wits_hash,
+      [MIDGARD_FIELD_INDEX.addressWitnesses]: witnessSet.addr_tx_wits_hash,
+      [MIDGARD_FIELD_INDEX.redeemers]: witnessSet.redeemer_tx_wits_hash,
     };
     const hash = byFieldIndex[fieldIndex];
     if (hash === undefined) {
@@ -216,7 +216,7 @@ const committedFieldCommitmentV1 = ({
  * a carriage tier instead of being reproduced as a typed list the validator
  * re-hashed.
  */
-export const planFaultProofFieldOpeningV1 = ({
+export const planFaultProofFieldOpening = ({
   fieldIndex,
   anchorTxId,
   nativeTxCompactCbor,
@@ -248,7 +248,7 @@ export const planFaultProofFieldOpeningV1 = ({
    */
   readonly anchorWitnessSetHash?: string;
   readonly label: string;
-}): FaultProofFieldOpeningPlanV1 => {
+}): FaultProofFieldOpeningPlan => {
   const anchoredTxId = requireHash32(anchorTxId, `${label} anchored tx id`);
   const compactCbor = nativeTxCompactCbor.toLowerCase();
   if (!/^([0-9a-f]{2})+$/u.test(compactCbor)) {
@@ -258,10 +258,10 @@ export const planFaultProofFieldOpeningV1 = ({
   // 1. `verify_native_tx_compact_cbor_v1`: the bytes the redeemer will carry
   //    must be the transaction the thread anchored, not a second transaction
   //    with a convenient field.
-  const compact = decodeMidgardNativeTxCompactV1(compactBytes);
+  const compact = decodeMidgardNativeTxCompact(compactBytes);
   // The id is derived from the compact structure alone (§3), which is why the
   // door can make this check from the same bytes the prover supplies.
-  const derivedTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
+  const derivedTxId = computeMidgardNativeTxId(compact).toString("hex");
   if (derivedTxId !== anchoredTxId) {
     throw new Error(
       `${label} compact transaction CBOR re-derives to ${derivedTxId}, which is not the anchored transaction id ${anchoredTxId}.`,
@@ -269,7 +269,7 @@ export const planFaultProofFieldOpeningV1 = ({
   }
 
   let witnessSetHash: string | undefined;
-  if (isMidgardWitnessSetFieldV1(fieldIndex)) {
+  if (isMidgardWitnessSetField(fieldIndex)) {
     if (witnessSet === undefined) {
       throw new Error(
         `${label} opens §2.5 field ${fieldIndex.toString()}, which lives in the witness set, so the transaction's compact witness set must be supplied.`,
@@ -279,7 +279,7 @@ export const planFaultProofFieldOpeningV1 = ({
     //    set must be the one the compact structure names. §3's id preimage is
     //    the body alone, so nothing above this point covers it.
     witnessSetHash = computeHash32(
-      encodeMidgardNativeTxWitnessSetCompactV1({
+      encodeMidgardNativeTxWitnessSetCompact({
         addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
         scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
         redeemerTxWitsHash: Buffer.from(
@@ -316,15 +316,15 @@ export const planFaultProofFieldOpeningV1 = ({
     );
   }
 
-  const preimage = encodeMidgardFieldPreimageV1(
+  const preimage = encodeMidgardFieldPreimage(
     itemCbors.map((item) => Buffer.from(item)),
   );
-  const commitment = midgardFieldCommitmentV1(preimage).toString("hex");
+  const commitment = midgardFieldCommitment(preimage).toString("hex");
   // 3. `field_commitment_at`: these items are this transaction's field
   //    `fieldIndex`, not some other field of the same transaction. Under §4 the
   //    two are indistinguishable by hash alone — fields 0/1 and 3/4 commit
   //    identically for identical items — so the slot has to be named.
-  const committed = committedFieldCommitmentV1({
+  const committed = committedFieldCommitment({
     fieldIndex,
     compact,
     ...(witnessSet === undefined ? {} : { witnessSet }),
@@ -342,7 +342,7 @@ export const planFaultProofFieldOpeningV1 = ({
     preimage,
     itemCount: itemCbors.length,
     commitment,
-    plan: planMidgardFieldCarriageV1({
+    plan: planMidgardFieldCarriage({
       owner: Buffer.from(owner, "hex"),
       txId: Buffer.from(anchoredTxId, "hex"),
       fieldIndex,
@@ -365,18 +365,18 @@ export const planFaultProofFieldOpeningV1 = ({
  * count into the ledger's canonically-sorted list, and a step references more
  * than its carriage.
  */
-export const faultProofFieldCarriageV1 = ({
+export const faultProofFieldCarriage = ({
   planned,
   referenceInputs = [],
   certificatePolicyId,
   label,
 }: {
-  readonly planned: FaultProofFieldOpeningPlanV1;
+  readonly planned: FaultProofFieldOpeningPlan;
   readonly referenceInputs?: readonly UTxO[];
   readonly certificatePolicyId?: string;
   readonly label: string;
-}): FieldCarriageV1 =>
-  faultProofRawFieldCarriageV1({
+}): FieldCarriage =>
+  faultProofRawFieldCarriage({
     plan: planned.plan,
     referenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -387,30 +387,30 @@ export const faultProofFieldCarriageV1 = ({
  * Resolves §8 carriage for arbitrary committed bytes.
  *
  * Most fraud families open a valid §5.1 field and therefore start from a
- * {@link FaultProofFieldOpeningPlanV1}. Canonical-decodability is deliberately
+ * {@link FaultProofFieldOpeningPlan}. Canonical-decodability is deliberately
  * different: the bytes it proves are malformed and cannot be manufactured by
  * the decoded-item planner. The carriage door authenticates only the raw
  * `(tx id, field index, commitment)` plan, so this narrower resolver is the
  * truthful shared seam for that family.
  */
-export const faultProofRawFieldCarriageV1 = ({
+export const faultProofRawFieldCarriage = ({
   plan,
   referenceInputs = [],
   certificatePolicyId,
   label,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly referenceInputs?: readonly UTxO[];
   readonly certificatePolicyId?: string;
   readonly label: string;
-}): FieldCarriageV1 => {
+}): FieldCarriage => {
   if (plan.tier === "Inline") {
     if (plan.inlinePreimage === null) {
       throw new Error(`${label} tier-1 plan carries no preimage.`);
     }
     return { Inline: { preimage: plan.inlinePreimage.toString("hex") } };
   }
-  const chunkIndices = resolveChunkReferenceIndicesV1({
+  const chunkIndices = resolveChunkReferenceIndices({
     plan,
     referenceInputs,
   });
@@ -434,7 +434,7 @@ export const faultProofRawFieldCarriageV1 = ({
   return {
     Certified: {
       cert_ref_input_index: BigInt(
-        resolveCertificateReferenceIndexV1({
+        resolveCertificateReferenceIndex({
           certificatePolicyId,
           txIdHex: plan.txId.toString("hex"),
           fieldIndex: plan.fieldIndex,
@@ -452,25 +452,25 @@ export const faultProofRawFieldCarriageV1 = ({
  * The whole opening a rebound step's redeemer carries: the compact bytes, the
  * §2.5-derived arm, and the resolved carriage.
  *
- * The arm is `fieldOpeningV1ForField`'s to choose, not this module's — a family
+ * The arm is `fieldOpeningForField`'s to choose, not this module's — a family
  * names its field and gets `BodyFieldOpening` or `WitnessFieldOpening`, which is
  * what keeps the §2.5 pairing off the caller's list of things to be right about.
  */
-export const faultProofFieldOpeningV1 = ({
+export const faultProofFieldOpening = ({
   planned,
   referenceInputs = [],
   certificatePolicyId,
   label,
 }: {
-  readonly planned: FaultProofFieldOpeningPlanV1;
+  readonly planned: FaultProofFieldOpeningPlan;
   readonly referenceInputs?: readonly UTxO[];
   readonly certificatePolicyId?: string;
   readonly label: string;
-}): FieldOpeningV1 =>
-  fieldOpeningV1ForField({
+}): FieldOpening =>
+  fieldOpeningForField({
     fieldIndex: planned.fieldIndex,
     nativeTxCompactCbor: planned.nativeTxCompactCbor,
-    carriage: faultProofFieldCarriageV1({
+    carriage: faultProofFieldCarriage({
       planned,
       referenceInputs,
       ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -488,14 +488,14 @@ export const faultProofFieldOpeningV1 = ({
  * Empty under tier 1 — the preimage rides in the step's own redeemer and
  * nothing is published. Under tier 2 this is the whole of the carriage; under
  * tier 3 it is the chunks, and the §8.6 certificate is a separate mint the
- * caller supplies (`buildUnsignedFieldPreimageCertificationV1Program`), because
+ * caller supplies (`buildUnsignedFieldPreimageCertificationProgram`), because
  * it needs the certificate minting policy from the deployment and a fault-proof
  * step builder holds no such role.
  *
  * §8.7: publication is permissionless and content-addressed, so a chunk that
  * already exists at the publisher's address is reused rather than republished.
  */
-export const publishFaultProofFieldCarriageV1 = async ({
+export const publishFaultProofFieldCarriage = async ({
   lucid,
   signer,
   planned,
@@ -505,11 +505,11 @@ export const publishFaultProofFieldCarriageV1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
-  readonly planned: FaultProofFieldOpeningPlanV1;
+  readonly planned: FaultProofFieldOpeningPlan;
   readonly publisherAddress: string;
   readonly label: string;
   /** Production workflow seam for each content publication transaction. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }): Promise<readonly UTxO[]> => {
   const publications = planned.plan.publications;
   if (publications.length === 0) {
@@ -518,9 +518,9 @@ export const publishFaultProofFieldCarriageV1 = async ({
   signer.selectWallet(lucid);
   const published: UTxO[] = [];
   for (const publication of publications) {
-    const datumCbor = fieldPreimagePublicationDatumCborV1(publication.bytes);
+    const datumCbor = fieldPreimagePublicationDatumCbor(publication.bytes);
     // Compared byte-for-byte against the datum, exactly as
-    // `resolveChunkReferenceIndicesV1` does when it locates the same UTxO at the
+    // `resolveChunkReferenceIndices` does when it locates the same UTxO at the
     // door. Matching on anything looser here would reuse a publication the
     // resolver then fails to find.
     const existing = (await lucid.utxosAt(publisherAddress)).find(
@@ -531,7 +531,7 @@ export const publishFaultProofFieldCarriageV1 = async ({
       continue;
     }
     const unsigned = await Effect.runPromise(
-      buildUnsignedFieldPreimagePublicationV1Program(lucid, {
+      buildUnsignedFieldPreimagePublicationProgram(lucid, {
         publication: {
           chunkIndex: publication.chunkIndex,
           datumCbor,
@@ -542,7 +542,7 @@ export const publishFaultProofFieldCarriageV1 = async ({
       }),
     );
     const signed = await unsigned.sign.withWallet().complete();
-    const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    const expectedTxHash = await reachFraudProofPreSubmitBoundary({
       signed,
       referenceScripts: [],
       boundary: preSubmitBoundary,
@@ -581,22 +581,20 @@ export const publishFaultProofFieldCarriageV1 = async ({
 };
 
 /** Resolves every publication in plan order from authenticated L1 UTxOs. */
-export const resolveFaultProofFieldCarriagePublicationsV1 = async ({
+export const resolveFaultProofFieldCarriagePublications = async ({
   lucid,
   publisherAddress,
   planned,
 }: {
   readonly lucid: LucidEvolution;
   readonly publisherAddress: string;
-  readonly planned: FaultProofFieldOpeningPlanV1;
+  readonly planned: FaultProofFieldOpeningPlan;
 }): Promise<readonly UTxO[] | undefined> => {
   const candidates = await lucid.utxosAt(publisherAddress);
   const claimed = new Set<string>();
   const resolved: UTxO[] = [];
   for (const publication of planned.plan.publications) {
-    const expectedDatum = fieldPreimagePublicationDatumCborV1(
-      publication.bytes,
-    );
+    const expectedDatum = fieldPreimagePublicationDatumCbor(publication.bytes);
     const match = candidates.find((candidate) => {
       const label = `${candidate.txHash}#${candidate.outputIndex.toString()}`;
       return !claimed.has(label) && candidate.datum === expectedDatum;
@@ -608,26 +606,26 @@ export const resolveFaultProofFieldCarriagePublicationsV1 = async ({
   return resolved;
 };
 
-export type MissingFaultProofFieldPublicationV1 = {
+export type MissingFaultProofFieldPublication = {
   readonly digest: string;
   readonly datumCbor: string;
   readonly chunkIndex: number;
 };
 
 /** Deterministically selects the first plan-ordered publication absent on L1. */
-export const findMissingFaultProofFieldPublicationV1 = async ({
+export const findMissingFaultProofFieldPublication = async ({
   lucid,
   publisherAddress,
   planned,
 }: {
   readonly lucid: LucidEvolution;
   readonly publisherAddress: string;
-  readonly planned: FaultProofFieldOpeningPlanV1;
-}): Promise<MissingFaultProofFieldPublicationV1 | undefined> => {
+  readonly planned: FaultProofFieldOpeningPlan;
+}): Promise<MissingFaultProofFieldPublication | undefined> => {
   const candidates = await lucid.utxosAt(publisherAddress);
   const claimed = new Set<string>();
   for (const publication of planned.plan.publications) {
-    const datumCbor = fieldPreimagePublicationDatumCborV1(publication.bytes);
+    const datumCbor = fieldPreimagePublicationDatumCbor(publication.bytes);
     const match = candidates.find((candidate) => {
       const label = `${candidate.txHash}#${candidate.outputIndex.toString()}`;
       return !claimed.has(label) && candidate.datum === datumCbor;
@@ -644,7 +642,7 @@ export const findMissingFaultProofFieldPublicationV1 = async ({
   return undefined;
 };
 
-export const fieldPreimageCertificateAddressV1 = ({
+export const fieldPreimageCertificateAddress = ({
   network,
   certificatePolicyId,
 }: {
@@ -657,7 +655,7 @@ export const fieldPreimageCertificateAddressV1 = ({
   });
 
 /** Finds the exact mint-welded tier-3 manifest, never a token-only match. */
-export const resolveFaultProofFieldPreimageCertificateV1 = async ({
+export const resolveFaultProofFieldPreimageCertificate = async ({
   lucid,
   network,
   planned,
@@ -665,14 +663,14 @@ export const resolveFaultProofFieldPreimageCertificateV1 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
-  readonly planned: FaultProofFieldOpeningPlanV1;
+  readonly planned: FaultProofFieldOpeningPlan;
   readonly certificatePolicyId: string;
 }): Promise<UTxO | undefined> => {
   if (planned.plan.tier !== "Certified") return undefined;
-  const certification = deriveFieldPreimageCertificationV1(planned.plan);
-  const unit = `${certificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`;
+  const certification = deriveFieldPreimageCertification(planned.plan);
+  const unit = `${certificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
   const candidates = await lucid.utxosAt(
-    fieldPreimageCertificateAddressV1({ network, certificatePolicyId }),
+    fieldPreimageCertificateAddress({ network, certificatePolicyId }),
   );
   return candidates
     .filter(
@@ -691,7 +689,7 @@ export const resolveFaultProofFieldPreimageCertificateV1 = async ({
     )[0];
 };
 
-export type CertifiedFaultProofFieldCarriageV1 = {
+export type CertifiedFaultProofFieldCarriage = {
   readonly txHash: string;
   readonly certificateUtxo: UTxO;
 };
@@ -701,7 +699,7 @@ export type CertifiedFaultProofFieldCarriageV1 = {
  * only by its hash-checked published reference script; inline attachment is
  * unavailable on this production path.
  */
-export const certifyFaultProofFieldCarriageV1 = async ({
+export const certifyFaultProofFieldCarriage = async ({
   lucid,
   network,
   signer,
@@ -718,27 +716,27 @@ export const certifyFaultProofFieldCarriageV1 = async ({
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly planned: Readonly<{ readonly plan: MidgardFieldCarriagePlanV1 }>;
+  readonly planned: Readonly<{ readonly plan: MidgardFieldCarriagePlan }>;
   readonly certificatePolicyId: string;
   readonly certificateMintingScript: MintingPolicy;
   readonly certificateReferenceScriptUtxo: UTxO;
   readonly chunkUtxos: readonly UTxO[];
   readonly compactCbor: string;
   readonly witnessSetCompactCbor?: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<CertifiedFaultProofFieldCarriageV1> => {
+}): Promise<CertifiedFaultProofFieldCarriage> => {
   if (planned.plan.tier !== "Certified") {
     throw new Error("field-preimage certification requires a tier-3 plan");
   }
-  const certificateAddress = fieldPreimageCertificateAddressV1({
+  const certificateAddress = fieldPreimageCertificateAddress({
     network,
     certificatePolicyId,
   });
-  const certification = deriveFieldPreimageCertificationV1(planned.plan);
+  const certification = deriveFieldPreimageCertification(planned.plan);
   signer.selectWallet(lucid);
   const unsigned = await Effect.runPromise(
-    buildUnsignedFieldPreimageCertificationV1Program(lucid, {
+    buildUnsignedFieldPreimageCertificationProgram(lucid, {
       plan: planned.plan,
       certificatePolicyId,
       certificateAddress,
@@ -752,10 +750,10 @@ export const certifyFaultProofFieldCarriageV1 = async ({
     }),
   );
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "field-preimage-certificate-mint",
         utxo: certificateReferenceScriptUtxo,
         expectedScript: certificateMintingScript,
@@ -797,11 +795,11 @@ export const certifyFaultProofFieldCarriageV1 = async ({
  * §8.4 order.
  *
  * Under tier 3 the certificate comes first and the chunks follow, which is the
- * order `layOutMidgardFieldCarriageV1` produces and the order a certificate's
+ * order `layOutMidgardFieldCarriage` produces and the order a certificate's
  * digest vector is written in. Deriving the ordering from the layout rather than
  * from a hand-written list is what keeps the two from drifting.
  */
-export const faultProofFieldCarriageReferenceOrderV1 = (
-  planned: FaultProofFieldOpeningPlanV1,
+export const faultProofFieldCarriageReferenceOrder = (
+  planned: FaultProofFieldOpeningPlan,
 ): readonly number[] =>
-  layOutMidgardFieldCarriageV1({ plan: planned.plan }).referenceInputIndices;
+  layOutMidgardFieldCarriage({ plan: planned.plan }).referenceInputIndices;

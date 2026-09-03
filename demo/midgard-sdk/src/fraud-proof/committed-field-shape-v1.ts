@@ -9,7 +9,7 @@
  * - **§7.4 fixed-stride arithmetic** at fields 0, 1, 3, 4 and 7 — an envelope
  *   whose items are not the slot's stride; and
  * - **§5.4's per-field byte bound** — an envelope above
- *   `MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1`.
+ *   `MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES`.
  *
  * Both leave the identical stall: no step is producible by anyone, the dispute
  * stalls rather than rejecting, and nothing is slashed. §12.8 closes them as a
@@ -18,10 +18,10 @@
  * and §12.7's whole boundary against §12.3 is that it applies no per-field rule.
  *
  * **The boundary is in the code, not only in the prose.**
- * {@link midgardCommittedFieldShapeVerdictV1} renders
- * {@link MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1} — a **non-convicting**
+ * {@link midgardCommittedFieldShapeVerdict} renders
+ * {@link MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE} — a **non-convicting**
  * code — for every byte string §12.7 convicts, and
- * {@link isCommittedFieldShapeViolationV1} refuses it. The two fault kinds
+ * {@link isCommittedFieldShapeViolation} refuses it. The two fault kinds
  * partition the committed byte strings a door refuses; no committed field is
  * faultable under both.
  *
@@ -34,19 +34,19 @@
  * and are recomputed on both sides.
  */
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  MIDGARD_WALK_DERIVED_STRIDE_V1,
-  midgardFieldStrideV1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  MIDGARD_WALK_DERIVED_STRIDE,
+  midgardFieldStride,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
 import {
-  CommittedFieldClaimV1Schema,
-  MIDGARD_COMMITTED_FIELD_COUNT_V1,
-  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
-  midgardEnvelopeVerdictV1,
+  CommittedFieldClaimSchema,
+  MIDGARD_COMMITTED_FIELD_COUNT,
+  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
+  midgardEnvelopeVerdict,
 } from "./canonical-decodability-v1.js";
 import {
   FaultProofStepCancel,
@@ -59,7 +59,7 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1 =
+export const COMMITTED_FIELD_SHAPE_VIOLATION_ID =
   "committed-field-shape" as const;
 
 // ## Verdict codes (byte-for-byte twin of `committed-field-shape/rule.ak`)
@@ -68,39 +68,39 @@ export const COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1 =
  * Slot `fieldIndex`'s door opens these bytes: the envelope is inside §5.4's byte
  * bound and, at a fixed-stride slot, its items are the slot's stride.
  */
-export const MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1 = 0;
+export const MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE = 0;
 
 /**
  * The bytes are not a §5.1 envelope — **§12.7's fault, not this one's**. Where
  * the two fault kinds are held apart: rendered rather than convicted, and
- * refused by {@link isCommittedFieldShapeViolationV1}.
+ * refused by {@link isCommittedFieldShapeViolation}.
  */
-export const MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1 = 1;
+export const MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE = 1;
 
 /**
- * §5.4. A §5.1 envelope above `MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1`.
+ * §5.4. A §5.1 envelope above `MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES`.
  * Checked before the stride, because that is the order the on-chain
  * `whole_view` refuses in and one committed field must earn one accusation
  * (§12.1).
  */
-export const MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1 = 2;
+export const MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND = 2;
 
 /**
  * §7.4. A §5.1 envelope at one of the five fixed-stride slots whose
  * `headerLen + stride·N` is not its `totalLength`.
  */
-export const MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1 = 3;
+export const MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE = 3;
 
 /**
  * One past the largest verdict code. Every value
- * {@link midgardCommittedFieldShapeVerdictV1} returns is in
- * `0 ..< MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1`, which is what lets a
+ * {@link midgardCommittedFieldShapeVerdict} returns is in
+ * `0 ..< MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT`, which is what lets a
  * step-02 refuse a state carrying a code no verdict produces.
  */
-export const MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1 = 4;
+export const MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT = 4;
 
 /** Every verdict code paired with the name the Aiken twin gives it. */
-export const MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1 = Object.freeze([
+export const MIDGARD_FIELD_SHAPE_VERDICT_NAMES = Object.freeze([
   "admissible",
   "not_an_envelope",
   "field_byte_bound",
@@ -111,10 +111,10 @@ export const MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1 = Object.freeze([
  * §5.3's five fixed-stride slots, derived from the shared stride table rather
  * than transcribed. A hard-coded list here would be a second reading of §5.3.
  */
-export const MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1 = Object.freeze(
-  Array.from({ length: MIDGARD_COMMITTED_FIELD_COUNT_V1 }, (_, i) => i).filter(
+export const MIDGARD_FIXED_STRIDE_FIELD_INDICES = Object.freeze(
+  Array.from({ length: MIDGARD_COMMITTED_FIELD_COUNT }, (_, i) => i).filter(
     (fieldIndex) =>
-      midgardFieldStrideV1(fieldIndex) !== MIDGARD_WALK_DERIVED_STRIDE_V1,
+      midgardFieldStride(fieldIndex) !== MIDGARD_WALK_DERIVED_STRIDE,
   ),
 );
 
@@ -126,10 +126,10 @@ export const MIDGARD_FIXED_STRIDE_FIELD_INDICES_V1 = Object.freeze(
  * are not a minimal §5.1 array header.
  *
  * Narrower than a grammar: it reads the three header widths and stops. Whether
- * the *items* satisfy §5.1 is {@link midgardEnvelopeVerdictV1}'s answer and is
+ * the *items* satisfy §5.1 is {@link midgardEnvelopeVerdict}'s answer and is
  * asked of it, so there is one §5.1 decision procedure per language and not two.
  */
-export const midgardMinimalArrayHeaderV1 = (
+export const midgardMinimalArrayHeader = (
   preimage: Uint8Array,
 ): { readonly headerLen: number; readonly count: number } | undefined => {
   const total = preimage.length;
@@ -163,7 +163,7 @@ export const midgardMinimalArrayHeaderV1 = (
  *
  * Total over the bytes and never throws for them: every index below is preceded
  * by the bound that makes it safe. The **field index** is a different matter and
- * the asymmetry is deliberate — `midgardFieldStrideV1` throws outside §2.5's
+ * the asymmetry is deliberate — `midgardFieldStride` throws outside §2.5's
  * nine slots, and that throw is this function's index bound. The preimage is the
  * operator's and a throw on it would be the stall under adjudication; the index
  * is the prover's, and §7.3 says refusing is the right answer to a prover
@@ -174,31 +174,30 @@ export const midgardMinimalArrayHeaderV1 = (
  * fixed-stride slot whose stride also fails is convicted as the byte-bound
  * violation alone.
  */
-export const midgardCommittedFieldShapeVerdictV1 = (
+export const midgardCommittedFieldShapeVerdict = (
   fieldIndex: number,
   preimage: Uint8Array,
 ): number => {
-  const stride = midgardFieldStrideV1(fieldIndex);
-  const header = midgardMinimalArrayHeaderV1(preimage);
+  const stride = midgardFieldStride(fieldIndex);
+  const header = midgardMinimalArrayHeader(preimage);
   if (header === undefined) {
-    return MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1;
+    return MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE;
   }
   if (
-    midgardEnvelopeVerdictV1(preimage) !==
-    MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1
+    midgardEnvelopeVerdict(preimage) !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL
   ) {
-    return MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1;
+    return MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE;
   }
   const totalLength = preimage.length;
-  if (totalLength > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1) {
-    return MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1;
+  if (totalLength > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) {
+    return MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND;
   }
-  if (stride === MIDGARD_WALK_DERIVED_STRIDE_V1) {
-    return MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1;
+  if (stride === MIDGARD_WALK_DERIVED_STRIDE) {
+    return MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE;
   }
   return header.headerLen + stride * header.count === totalLength
-    ? MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1
-    : MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1;
+    ? MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE
+    : MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE;
 };
 
 /**
@@ -212,7 +211,7 @@ export const midgardCommittedFieldShapeVerdictV1 = (
  * to a state that crosses a transaction boundary; they are refusals rather than
  * clamps (§7.3) — this returns `false`, and the on-chain twin aborts.
  */
-export const isCommittedFieldShapeViolationV1 = ({
+export const isCommittedFieldShapeViolation = ({
   fieldIndex,
   verdict,
 }: {
@@ -221,12 +220,12 @@ export const isCommittedFieldShapeViolationV1 = ({
 }): boolean =>
   Number.isInteger(fieldIndex) &&
   fieldIndex >= 0 &&
-  fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT_V1 &&
+  fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT &&
   Number.isInteger(verdict) &&
   verdict >= 0 &&
-  verdict < MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT_V1 &&
-  (verdict === MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1 ||
-    verdict === MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1);
+  verdict < MIDGARD_FIELD_SHAPE_VERDICT_CODE_COUNT &&
+  (verdict === MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND ||
+    verdict === MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE);
 
 // ## Producer side — the §5.1 envelope, built at a chosen length
 
@@ -240,7 +239,7 @@ export const isCommittedFieldShapeViolationV1 = ({
  * bytes; below that the minimal item header is narrower and the length would not
  * be the one asked for.
  */
-export const sizedMidgardFieldEnvelopeV1 = (
+export const sizedMidgardFieldEnvelope = (
   totalLength: number,
   fill: number,
 ): Buffer => {
@@ -250,7 +249,7 @@ export const sizedMidgardFieldEnvelopeV1 = (
       `sized field envelope needs a payload above 255 bytes; ${String(totalLength)} leaves ${String(payloadLength)}`,
     );
   }
-  return encodeMidgardFieldPreimageV1([Buffer.alloc(payloadLength, fill)]);
+  return encodeMidgardFieldPreimage([Buffer.alloc(payloadLength, fill)]);
 };
 
 // ## Evidence
@@ -260,8 +259,8 @@ export const sizedMidgardFieldEnvelopeV1 = (
  * pins into the computation thread, plus the authenticated bytes it was derived
  * from and the slot rule they left.
  */
-export type CommittedFieldShapeEvidenceV1 = {
-  readonly violationId: typeof COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1;
+export type CommittedFieldShapeEvidence = {
+  readonly violationId: typeof COMMITTED_FIELD_SHAPE_VIOLATION_ID;
   readonly badTxId: string;
   readonly fieldIndex: number;
   readonly fieldStride: number;
@@ -282,7 +281,7 @@ export type CommittedFieldShapeEvidenceV1 = {
  * I/O; it throws only for a `fieldIndex` outside §2.5's nine, which is the same
  * refusal the on-chain twin makes.
  */
-export const committedFieldShapeEvidenceFromCommittedFieldV1 = ({
+export const committedFieldShapeEvidenceFromCommittedField = ({
   badTxId,
   fieldIndex,
   committedPreimage,
@@ -290,21 +289,21 @@ export const committedFieldShapeEvidenceFromCommittedFieldV1 = ({
   readonly badTxId: string;
   readonly fieldIndex: number;
   readonly committedPreimage: Uint8Array;
-}): CommittedFieldShapeEvidenceV1 => {
-  const verdict = midgardCommittedFieldShapeVerdictV1(
+}): CommittedFieldShapeEvidence => {
+  const verdict = midgardCommittedFieldShapeVerdict(
     fieldIndex,
     committedPreimage,
   );
   return Object.freeze({
-    violationId: COMMITTED_FIELD_SHAPE_VIOLATION_ID_V1,
+    violationId: COMMITTED_FIELD_SHAPE_VIOLATION_ID,
     badTxId: badTxId.toLowerCase(),
     fieldIndex,
-    fieldStride: midgardFieldStrideV1(fieldIndex),
+    fieldStride: midgardFieldStride(fieldIndex),
     committedPreimage: Buffer.from(committedPreimage).toString("hex"),
     committedPreimageByteCount: committedPreimage.length,
     verdict,
-    verdictName: MIDGARD_FIELD_SHAPE_VERDICT_NAMES_V1[verdict] ?? "unknown",
-    isViolation: isCommittedFieldShapeViolationV1({ fieldIndex, verdict }),
+    verdictName: MIDGARD_FIELD_SHAPE_VERDICT_NAMES[verdict] ?? "unknown",
+    isViolation: isCommittedFieldShapeViolation({ fieldIndex, verdict }),
   });
 };
 
@@ -334,7 +333,7 @@ export const CommittedFieldShapeStep01Datum =
 /** Mirrors `midgard/fraud_proofs/committed_field_shape/step_01.Args`. */
 export const CommittedFieldShapeStep01ArgsSchema = Data.Object({
   inclusion: NativeTxInclusionCarriageSchema,
-  claim: CommittedFieldClaimV1Schema,
+  claim: CommittedFieldClaimSchema,
 });
 export type CommittedFieldShapeStep01Args = Data.Static<
   typeof CommittedFieldShapeStep01ArgsSchema
@@ -410,8 +409,8 @@ export const CommittedFieldShapeStepCancel = FaultProofStepCancel;
  * Builds the step-02 state exactly as the on-chain step-01 validator derives it,
  * so an off-chain builder and the L1 verifier cannot drift.
  */
-export const committedFieldShapeStep02StateFromEvidenceV1 = (
-  evidence: CommittedFieldShapeEvidenceV1,
+export const committedFieldShapeStep02StateFromEvidence = (
+  evidence: CommittedFieldShapeEvidence,
 ): CommittedFieldShapeStep02State => ({
   bad_tx_id: evidence.badTxId,
   field_index: BigInt(evidence.fieldIndex),

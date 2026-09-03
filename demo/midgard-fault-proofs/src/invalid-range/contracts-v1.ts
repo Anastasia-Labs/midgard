@@ -1,13 +1,13 @@
 import type { Script } from "@lucid-evolution/lucid";
-export type InvalidRangeStepContractV1 = Readonly<{
+export type InvalidRangeStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type InvalidRangeContractsV1 = Readonly<{
-  steps: readonly [InvalidRangeStepContractV1, InvalidRangeStepContractV1];
+export type InvalidRangeContracts = Readonly<{
+  steps: readonly [InvalidRangeStepContract, InvalidRangeStepContract];
   computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;

@@ -7,12 +7,12 @@ import {
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {
-  fundingRequirementsForRunnerIdentityV1,
-  isAdmittedProductionFundingRequirementsIdentityV1,
+  fundingRequirementsForRunnerIdentity,
+  isAdmittedFundingRequirementsIdentity,
 } from "./production-funding-requirements-admission-v1.js";
-import { isAdmittedProductionWorkflowRunnerV1 } from "./production-runner-admission-v1.js";
+import { isAdmittedWorkflowRunner } from "./production-runner-admission-v1.js";
 
-export const PRODUCTION_WORKFLOW_FUNDING_REQUIREMENTS_V1 =
+export const WORKFLOW_FUNDING_REQUIREMENTS =
   "midgard-production-workflow-funding-requirements-v1" as const;
 
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -24,7 +24,7 @@ const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u;
 const PAYMENT_KEY_HASH = /^[0-9a-f]{56}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-export type ProductionWorkflowFundingScopeV1 =
+export type WorkflowFundingScope =
   | Readonly<{
       kind: "fraud_proof_category";
       category: FraudProofCatalogueCategoryName;
@@ -34,19 +34,19 @@ export type ProductionWorkflowFundingScopeV1 =
       lifecycle: "challenge_response_timeout_correction";
     }>;
 
-export type ProductionWorkflowFundingAssetV1 = Readonly<{
+export type WorkflowFundingAsset = Readonly<{
   unit: string;
   quantity: string;
 }>;
 
-export type ProductionWorkflowFundingReferenceInputV1 = Readonly<{
+export type WorkflowFundingReferenceInput = Readonly<{
   role: string;
   outRef: string;
   scriptHash: string | null;
   scriptBytes: number | null;
 }>;
 
-export type ProductionWorkflowFundingControlledInputV1 = Readonly<{
+export type WorkflowFundingControlledInput = Readonly<{
   outRef: string;
   resolvedOutputCborHex: string;
   role: "wallet_funding" | "released_locked" | "protocol";
@@ -61,14 +61,14 @@ export type ProductionWorkflowFundingControlledInputV1 = Readonly<{
     | "availability_carrier"
     | "correction_lock";
   contractAddress: string;
-  identityAssets: readonly ProductionWorkflowFundingAssetV1[];
+  identityAssets: readonly WorkflowFundingAsset[];
   fundingLovelace: string;
-  fundingAssets: readonly ProductionWorkflowFundingAssetV1[];
+  fundingAssets: readonly WorkflowFundingAsset[];
   sourceActionKind: string | null;
   sourceOutputIndex: number | null;
 }>;
 
-export type ProductionWorkflowFundingControlledOutputV1 = Readonly<{
+export type WorkflowFundingControlledOutput = Readonly<{
   outputIndex: number;
   role: "wallet_change" | "locked_reusable" | "locked_permanent" | "protocol";
   custodyRole: "none" | "bond" | "reward" | "native_asset" | "carrier";
@@ -84,50 +84,49 @@ export type ProductionWorkflowFundingControlledOutputV1 = Readonly<{
     | "correction_lock";
   contractAddress: string;
   fundingLovelace: string;
-  fundingAssets: readonly ProductionWorkflowFundingAssetV1[];
+  fundingAssets: readonly WorkflowFundingAsset[];
 }>;
 
 /** Exact measured input emitted by the transaction measurement harness. */
-export type ProductionWorkflowFundingActionMeasurementV1 = Readonly<{
+export type WorkflowFundingActionMeasurement = Readonly<{
   /** Stable semantic action, never a run-specific transaction/out-ref ID. */
   actionKind: string;
   /** Exact canonical signed Cardano transaction used for the measurement. */
   signedTransactionCborHex: string;
   /** Exact resolved values for inputs whose capital belongs to the prover. */
-  fundingControlledInputs: readonly ProductionWorkflowFundingControlledInputV1[];
+  fundingControlledInputs: readonly WorkflowFundingControlledInput[];
   /** Exact roles for prover-controlled outputs in this measured transaction. */
-  fundingControlledOutputs: readonly ProductionWorkflowFundingControlledOutputV1[];
+  fundingControlledOutputs: readonly WorkflowFundingControlledOutput[];
   /** Every reference input, including its script identity when script-bearing. */
-  referenceInputs: readonly ProductionWorkflowFundingReferenceInputV1[];
+  referenceInputs: readonly WorkflowFundingReferenceInput[];
   /** Exact bytes of the resolved reference scripts read by this transaction. */
   referenceScriptBytes: number;
   requiredBondLovelace: string;
   requiredRewardCustodyLovelace: string;
-  requiredNativeAssets: readonly ProductionWorkflowFundingAssetV1[];
+  requiredNativeAssets: readonly WorkflowFundingAsset[];
   collateralRequired: boolean;
   conflictRetryCount: number;
 }>;
 
-export type ProductionWorkflowFundingActionV1 =
-  ProductionWorkflowFundingActionMeasurementV1 &
-    Readonly<{
-      transactionHash: string;
-      inputOutRefs: readonly string[];
-      referenceInputOutRefs: readonly string[];
-      txBodyCborHex: string;
-      txBodyBytes: number;
-      signedTransactionBytes: number;
-      signedTransactionSha256: string;
-      executionUnits: Readonly<{
-        memory: string;
-        steps: string;
-      }>;
-      /** Exact canonical outputs; consumers must use CML min_ada_required. */
-      outputCborHex: readonly string[];
+export type WorkflowFundingAction = WorkflowFundingActionMeasurement &
+  Readonly<{
+    transactionHash: string;
+    inputOutRefs: readonly string[];
+    referenceInputOutRefs: readonly string[];
+    txBodyCborHex: string;
+    txBodyBytes: number;
+    signedTransactionBytes: number;
+    signedTransactionSha256: string;
+    executionUnits: Readonly<{
+      memory: string;
+      steps: string;
     }>;
+    /** Exact canonical outputs; consumers must use CML min_ada_required. */
+    outputCborHex: readonly string[];
+  }>;
 
-export type ProductionWorkflowFundingRequirementsInputV1 = Readonly<{
-  scope: ProductionWorkflowFundingScopeV1;
+export type WorkflowFundingRequirementsInput = Readonly<{
+  scope: WorkflowFundingScope;
   deploymentFingerprint: string;
   blueprintSha256: string;
   protocolParametersDigest: string;
@@ -135,12 +134,12 @@ export type ProductionWorkflowFundingRequirementsInputV1 = Readonly<{
   fundingPaymentKeyHash: string;
   measurementToolVersion: string;
   measurementArtifactSha256: string;
-  actions: readonly ProductionWorkflowFundingActionMeasurementV1[];
+  actions: readonly WorkflowFundingActionMeasurement[];
 }>;
 
-export type ProductionWorkflowFundingRequirementsV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_WORKFLOW_FUNDING_REQUIREMENTS_V1;
-  scope: ProductionWorkflowFundingScopeV1;
+export type WorkflowFundingRequirements = Readonly<{
+  schemaVersion: typeof WORKFLOW_FUNDING_REQUIREMENTS;
+  scope: WorkflowFundingScope;
   deploymentFingerprint: string;
   blueprintSha256: string;
   protocolParametersDigest: string;
@@ -148,7 +147,7 @@ export type ProductionWorkflowFundingRequirementsV1 = Readonly<{
   fundingPaymentKeyHash: string;
   measurementToolVersion: string;
   measurementArtifactSha256: string;
-  actions: readonly ProductionWorkflowFundingActionV1[];
+  actions: readonly WorkflowFundingAction[];
   profileDigest: string;
 }>;
 
@@ -202,10 +201,7 @@ const digestField = (value: unknown, field: string): string => {
   return value;
 };
 
-const fundingAsset = (
-  value: unknown,
-  field: string,
-): ProductionWorkflowFundingAssetV1 => {
+const fundingAsset = (value: unknown, field: string): WorkflowFundingAsset => {
   const record = exact(value, ["unit", "quantity"], field);
   if (typeof record.unit !== "string" || !UNIT.test(record.unit)) {
     throw new Error(`${field}.unit is not a canonical Cardano asset unit`);
@@ -387,7 +383,7 @@ const fundingContribution = ({
   readonly outputCborHex: string;
 }): Readonly<{
   fundingLovelace: string;
-  fundingAssets: readonly ProductionWorkflowFundingAssetV1[];
+  fundingAssets: readonly WorkflowFundingAsset[];
 }> => {
   const fundingLovelace = natural(
     value.fundingLovelace,
@@ -428,7 +424,7 @@ const fundingControlledInput = (
   field: string,
   transactionInputOutRefs: readonly string[],
   fundingPaymentKeyHash: string,
-): ProductionWorkflowFundingControlledInputV1 => {
+): WorkflowFundingControlledInput => {
   const record = exact(
     value,
     [
@@ -542,7 +538,7 @@ const fundingControlledInput = (
     resolvedOutputCborHex,
     role: record.role,
     semanticRole:
-      record.semanticRole as ProductionWorkflowFundingControlledInputV1["semanticRole"],
+      record.semanticRole as WorkflowFundingControlledInput["semanticRole"],
     contractAddress: record.contractAddress,
     identityAssets: Object.freeze(identityAssets),
     ...contribution,
@@ -562,7 +558,7 @@ const fundingControlledOutput = (
   field: string,
   outputCborHex: readonly string[],
   fundingPaymentKeyHash: string,
-): ProductionWorkflowFundingControlledOutputV1 => {
+): WorkflowFundingControlledOutput => {
   const record = exact(
     value,
     [
@@ -659,7 +655,7 @@ const fundingControlledOutput = (
 const fundingReferenceInput = (
   value: unknown,
   field: string,
-): ProductionWorkflowFundingReferenceInputV1 => {
+): WorkflowFundingReferenceInput => {
   const record = exact(
     value,
     ["role", "outRef", "scriptHash", "scriptBytes"],
@@ -693,7 +689,7 @@ const fundingAction = (
   index: number,
   requireDerivedFields: boolean,
   fundingPaymentKeyHash: string,
-): ProductionWorkflowFundingActionV1 => {
+): WorkflowFundingAction => {
   const field = `funding requirements actions[${index.toString()}]`;
   const record = exact(
     value,
@@ -913,16 +909,16 @@ const fundingAction = (
   });
 };
 
-type NormalizedRequirementsV1 = Omit<
-  ProductionWorkflowFundingRequirementsV1,
+type NormalizedRequirements = Omit<
+  WorkflowFundingRequirements,
   "schemaVersion" | "profileDigest"
 > &
-  Partial<Pick<ProductionWorkflowFundingRequirementsV1, "profileDigest">>;
+  Partial<Pick<WorkflowFundingRequirements, "profileDigest">>;
 
 const normalizedRequirements = (
   value: unknown,
   requireDerivedFields: boolean,
-): NormalizedRequirementsV1 => {
+): NormalizedRequirements => {
   const record = exact(
     value,
     [
@@ -946,7 +942,7 @@ const normalizedRequirements = (
       : ["kind", "lifecycle"],
     "funding requirements scope",
   );
-  const scope: ProductionWorkflowFundingScopeV1 = (() => {
+  const scope: WorkflowFundingScope = (() => {
     if (scopeRecord.kind === "fraud_proof_category") {
       if (
         typeof scopeRecord.category !== "string" ||
@@ -1144,7 +1140,7 @@ const normalizedRequirements = (
   }
   if (
     requireDerivedFields &&
-    record.schemaVersion !== PRODUCTION_WORKFLOW_FUNDING_REQUIREMENTS_V1
+    record.schemaVersion !== WORKFLOW_FUNDING_REQUIREMENTS
   ) {
     throw new Error("funding requirements schema version is unsupported");
   }
@@ -1184,7 +1180,7 @@ const normalizedRequirements = (
   });
 };
 
-const digestInput = (value: NormalizedRequirementsV1): unknown => ({
+const digestInput = (value: NormalizedRequirements): unknown => ({
   scope: value.scope,
   deploymentFingerprint: value.deploymentFingerprint,
   blueprintSha256: value.blueprintSha256,
@@ -1196,16 +1192,16 @@ const digestInput = (value: NormalizedRequirementsV1): unknown => ({
   actions: value.actions,
 });
 
-export const computeProductionWorkflowFundingRequirementsDigestV1 = (
-  value: ProductionWorkflowFundingRequirementsInputV1,
+export const computeWorkflowFundingRequirementsDigest = (
+  value: WorkflowFundingRequirementsInput,
 ): string => digest(digestInput(normalizedRequirements(value, false)));
 
-export const createProductionWorkflowFundingRequirementsV1 = (
-  value: ProductionWorkflowFundingRequirementsInputV1,
-): ProductionWorkflowFundingRequirementsV1 => {
+export const createWorkflowFundingRequirements = (
+  value: WorkflowFundingRequirementsInput,
+): WorkflowFundingRequirements => {
   const normalized = normalizedRequirements(value, false);
   return Object.freeze({
-    schemaVersion: PRODUCTION_WORKFLOW_FUNDING_REQUIREMENTS_V1,
+    schemaVersion: WORKFLOW_FUNDING_REQUIREMENTS,
     scope: normalized.scope,
     deploymentFingerprint: normalized.deploymentFingerprint,
     blueprintSha256: normalized.blueprintSha256,
@@ -1224,15 +1220,15 @@ export const createProductionWorkflowFundingRequirementsV1 = (
  * profile production authority: a fixed category factory must separately bind
  * its exact admitted runner to the measured profile identity.
  */
-export const admitProductionWorkflowFundingRequirementsV1 = (
+export const admitWorkflowFundingRequirements = (
   value: unknown,
-): ProductionWorkflowFundingRequirementsV1 => {
+): WorkflowFundingRequirements => {
   const normalized = normalizedRequirements(value, true);
   if (normalized.profileDigest !== digest(digestInput(normalized))) {
     throw new Error("funding requirements profile digest mismatch");
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_WORKFLOW_FUNDING_REQUIREMENTS_V1,
+    schemaVersion: WORKFLOW_FUNDING_REQUIREMENTS,
     scope: normalized.scope,
     deploymentFingerprint: normalized.deploymentFingerprint,
     blueprintSha256: normalized.blueprintSha256,
@@ -1250,17 +1246,17 @@ export const admitProductionWorkflowFundingRequirementsV1 = (
  * Returns only a profile selected by the fixed module-admitted runner factory.
  * A structurally valid measurement profile is deliberately insufficient.
  */
-export const productionWorkflowFundingRequirementsForRunnerV1 = ({
+export const workflowFundingRequirementsForRunner = ({
   category,
   runner,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly runner: object;
-}): ProductionWorkflowFundingRequirementsV1 => {
-  if (!isAdmittedProductionWorkflowRunnerV1({ category, runner })) {
+}): WorkflowFundingRequirements => {
+  if (!isAdmittedWorkflowRunner({ category, runner })) {
     throw new Error("funding requirements runner is not category-admitted");
   }
-  const requirements = fundingRequirementsForRunnerIdentityV1(runner);
+  const requirements = fundingRequirementsForRunnerIdentity(runner);
   if (requirements === null) {
     throw new Error(
       `${category} production runner has no admitted measured funding profile`,
@@ -1270,10 +1266,10 @@ export const productionWorkflowFundingRequirementsForRunnerV1 = ({
 };
 
 /** Used by the Q58 application after its non-catalogue fixed factory admits it. */
-export const assertAdmittedProductionWorkflowFundingRequirementsV1 = (
-  requirements: ProductionWorkflowFundingRequirementsV1,
+export const assertAdmittedWorkflowFundingRequirements = (
+  requirements: WorkflowFundingRequirements,
 ): void => {
-  if (!isAdmittedProductionFundingRequirementsIdentityV1(requirements)) {
+  if (!isAdmittedFundingRequirementsIdentity(requirements)) {
     throw new Error("production funding requirements are not factory-admitted");
   }
 };

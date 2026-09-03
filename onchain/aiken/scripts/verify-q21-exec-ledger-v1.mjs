@@ -8,7 +8,7 @@
  * **Why this exists.** The Q21 rebind moves the family off the retired
  * proof-source idiom and onto the §8.8 door:
  * `validate_l2_transaction_transition` opens field 0 and field 2 through the
- * #575 `FieldOpeningV1` bridge instead of decoding each preimage and re-hashing
+ * #575 `FieldOpening` bridge instead of decoding each preimage and re-hashing
  * the reproduced item list, and `tx_order_compact_body` re-derives the compact
  * body from the transaction id instead of verifying a proof-source triple.
  * Neither introduces a walk whose cost grows faster than the one it replaced,

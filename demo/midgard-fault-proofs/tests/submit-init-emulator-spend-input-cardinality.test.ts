@@ -29,12 +29,12 @@
  * transaction may spend, and the smallest of them is the one a fraud proof must
  * survive. All three are read out of their source here rather than asserted:
  *
- * 1. `MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputCount` = 16,384, which is
+ * 1. `MIDGARD_CONSENSUS_LIMITS.maxSpendInputCount` = 16,384, which is
  *    `bounded_collection_v1.max_tx_size_derived_item_count`
  *    (onchain/aiken/lib/midgard/bounded-collection-v1.ak). Its own comment says
  *    it is a one-byte-per-item encoding FLOOR and can never reject a shape
  *    Cardano could fit, so it is a guardrail rather than the effective bound.
- * 2. `MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputsPreimageBytes` = 32,768, twice
+ * 2. `MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes` = 32,768, twice
  *    the preserved L1 envelope. A canonical `TransactionInput` costs 38 bytes
  *    in the preimage (a two-byte definite-bytes header over 36 bytes of
  *    canonical `TxOutRef` CBOR), so this field bound admits 862 inputs.
@@ -134,7 +134,7 @@
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -160,13 +160,13 @@ import {
   type CompleteSignedTransactionMeasurement,
   EMULATOR_PROTOCOL_PARAMETERS,
   EXECUTION_RESERVE_FRACTION,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
-  printProofFitV1,
+  printProofFit,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -257,7 +257,7 @@ const printCardinalityFit = (
   cardinality: number,
   stages: Record<string, CompleteSignedTransactionMeasurement>,
 ): void =>
-  printProofFitV1({
+  printProofFit({
     headline: `${label} spend-input cardinality ${String(cardinality)}`,
     stages,
   });
@@ -276,7 +276,7 @@ const runDoubleSpendCardinalityJourney = async (
   readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
   readonly carriageTiers: Record<string, string>;
 }> => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: { alwaysFraudProofCatalogue: true },
   });
   const {
@@ -471,7 +471,7 @@ const runNoInputCardinalityJourney = async (
   readonly stages: Record<string, CompleteSignedTransactionMeasurement>;
   readonly carriageTiers: Record<string, string>;
 }> => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realNonExistentInput: true,
       alwaysFraudProofCatalogue: true,
@@ -592,23 +592,23 @@ const runNoInputCardinalityJourney = async (
 describe("fault-proof spend-input preimage cardinality", () => {
   it("derives the admissible spend-input cardinality from the consensus profile", () => {
     // (1) The one-byte-per-item guardrail. Its own source calls it a floor.
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputCount).toBe(16_384);
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputCount).toBe(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+    expect(MIDGARD_CONSENSUS_LIMITS.maxSpendInputCount).toBe(16_384);
+    expect(MIDGARD_CONSENSUS_LIMITS.maxSpendInputCount).toBe(
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
 
     // (2) The field-bytes bound, which is the protocol's effective one.
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputsPreimageBytes).toBe(
+    expect(MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes).toBe(
       2 * L1_MAX_TX_SIZE,
     );
     const admissibleByPreimageBytes = Math.floor(
-      (MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputsPreimageBytes -
+      (MIDGARD_CONSENSUS_LIMITS.maxSpendInputsPreimageBytes -
         SPEND_INPUT_PREIMAGE_ARRAY_HEADER_BYTES) /
         SPEND_INPUT_PREIMAGE_ITEM_BYTES,
     );
     expect(admissibleByPreimageBytes).toBe(862);
     expect(admissibleByPreimageBytes).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSpendInputCount,
+      MIDGARD_CONSENSUS_LIMITS.maxSpendInputCount,
     );
 
     // (3) The Cardano script-spend shape, the smallest of the three and hence
@@ -625,7 +625,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     expect(EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem).toBe(16_500_000n);
     expect(executionCeilings().memory).toBe(11_200_000n);
     expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedTransactionExecutionMemoryUnits,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
     ).toBe(16_500_000);
 
     // The measured ceilings are an order of magnitude below all three. That is
@@ -649,7 +649,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
       DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
     );
     for (const [stage, measurement] of Object.entries(fitting)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `double-spend cardinality ${String(DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY)} ${stage}`,
         measurement,
         maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
@@ -699,7 +699,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
       NO_INPUT_LARGEST_FITTING_CARDINALITY,
     );
     for (const [stage, measurement] of Object.entries(fitting)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `no-input cardinality ${String(NO_INPUT_LARGEST_FITTING_CARDINALITY)} ${stage}`,
         measurement,
         maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
@@ -802,13 +802,13 @@ describe("fault-proof spend-input preimage cardinality", () => {
       ["no-input", noInput],
       ["double-spend", doubleSpend],
     ] as const) {
-      printProofFitV1({
+      printProofFit({
         headline: `${family} routed spend-input cardinality ${String(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY)}`,
         stages: journey.stages,
         extra: { carriageTiers: journey.carriageTiers },
       });
       for (const [stage, measurement] of Object.entries(journey.stages)) {
-        expectProofFitV1({
+        expectProofFit({
           stage: `${family} routed cardinality ${String(CARDANO_SCRIPT_SPEND_SHAPE_CARDINALITY)} ${stage}`,
           measurement,
           maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,
@@ -855,13 +855,13 @@ describe("fault-proof spend-input preimage cardinality", () => {
       ["no-input", noInput],
       ["double-spend", doubleSpend],
     ] as const) {
-      printProofFitV1({
+      printProofFit({
         headline: `${family} size-selected spend-input cardinality ${String(TIER2_SIZE_SELECTED_CARDINALITY)}`,
         stages: journey.stages,
         extra: { carriageTiers: journey.carriageTiers },
       });
       for (const [stage, measurement] of Object.entries(journey.stages)) {
-        expectProofFitV1({
+        expectProofFit({
           stage: `${family} size-selected cardinality ${String(TIER2_SIZE_SELECTED_CARDINALITY)} ${stage}`,
           measurement,
           maxTxExMem: EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem,

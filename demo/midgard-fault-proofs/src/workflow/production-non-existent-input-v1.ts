@@ -7,9 +7,9 @@ import {
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  type FaultProofFieldOpeningPlan,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import { neSubmitStep01 } from "../ne-submit-step-01.js";
 import { neSubmitStep02 } from "../ne-submit-step-02.js";
@@ -23,62 +23,62 @@ import {
 import { type ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  type CompleteCanonicalReplayContextV1,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  type CompleteCanonicalReplayContext,
+  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
-import type { FraudProofWorkflowJournalStoreV1 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofWorkflowJournalStore } from "./journal-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePortV1,
-  type ProductionFieldCarriageRequirementV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  type FieldCarriageRequirement,
+  withFieldCarriagePrerequisite,
 } from "./production-field-carriage-prerequisite-v1.js";
 import {
-  admitProductionLedgerAbsenceArtifactV1,
-  prepareProductionLedgerAbsenceArtifactV1,
+  admitLedgerAbsenceArtifact,
+  prepareLedgerAbsenceArtifact,
 } from "./production-ledger-absence-artifact-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
 import {
-  createAuthenticatedProofChunkPrerequisitePortV1,
-  resolveDirectFirstProofChunksV1,
-  withProductionProofChunkPrerequisiteV1,
+  createAuthenticatedProofChunkPrerequisitePort,
+  resolveDirectFirstProofChunks,
+  withProofChunkPrerequisite,
 } from "./production-proof-chunk-prerequisite-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export type NonExistentInputWorkflowReferenceScriptsV1 = Readonly<{
+export type NonExistentInputWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -88,15 +88,15 @@ export type NonExistentInputWorkflowReferenceScriptsV1 = Readonly<{
   fieldPreimageCertificateMint: UTxO;
 }>;
 
-type BoundConfigV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"nonExistentInput">;
+type BoundConfig = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"nonExistentInput">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: NonExistentInputWorkflowReferenceScriptsV1;
+  referenceScripts: NonExistentInputWorkflowReferenceScripts;
   certificate: NonNullable<
-    FraudProofWorkflowDeploymentBindingV1<"nonExistentInput">["fieldPreimageCertificate"]
+    FraudProofWorkflowDeploymentBinding<"nonExistentInput">["fieldPreimageCertificate"]
   >;
-  replayContext?: CompleteCanonicalReplayContextV1;
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -116,7 +116,7 @@ const record = (
 };
 
 const actionInput = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "non-existent-input workflow action");
   if (
@@ -141,10 +141,10 @@ const stringField = (
 };
 
 const resolveField = async (
-  config: BoundConfigV1,
-  planned: FaultProofFieldOpeningPlanV1,
+  config: BoundConfig,
+  planned: FaultProofFieldOpeningPlan,
 ) => {
-  const publications = await resolveFaultProofFieldCarriagePublicationsV1({
+  const publications = await resolveFaultProofFieldCarriagePublications({
     lucid: config.lucid,
     publisherAddress: config.signer.address,
     planned,
@@ -152,7 +152,7 @@ const resolveField = async (
   if (publications === undefined) {
     throw new Error("non-existent-input field publications disappeared");
   }
-  const certificate = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     lucid: config.lucid,
     network: config.binding.network,
     planned,
@@ -169,11 +169,11 @@ const resolveChunks = async ({
   config,
   proofCbor,
 }: {
-  readonly action: FraudProofWorkflowActionV1;
-  readonly config: BoundConfigV1;
+  readonly action: FraudProofWorkflowAction;
+  readonly config: BoundConfig;
   readonly proofCbor: string;
 }) => {
-  const chunks = await resolveDirectFirstProofChunksV1({
+  const chunks = await resolveDirectFirstProofChunks({
     action,
     lucid: config.lucid,
     address: config.signer.address,
@@ -186,7 +186,7 @@ const resolveChunks = async ({
 };
 
 const captureRemoval = async (
-  config: BoundConfigV1,
+  config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -200,7 +200,7 @@ const captureRemoval = async (
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -217,10 +217,10 @@ const captureRemoval = async (
         ),
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -240,12 +240,12 @@ const captureRemoval = async (
 };
 
 const createTransactionPort = (
-  config: BoundConfigV1,
-): ProductionLinearFamilyTransactionPortV1<"nonExistentInput"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"nonExistentInput"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "nonExistentInput",
   prepare: async ({ evidence, replayContext, classification }) =>
-    await prepareProductionLedgerAbsenceArtifactV1({
+    await prepareLedgerAbsenceArtifact({
       category: "nonExistentInput",
       evidence,
       replayContext,
@@ -253,7 +253,7 @@ const createTransactionPort = (
       owner: config.signer.paymentKeyHash,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitProductionLedgerAbsenceArtifactV1(
+    const admitted = admitLedgerAbsenceArtifact(
       artifact,
       config.signer.paymentKeyHash,
     );
@@ -266,7 +266,7 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInit({
               lucid: config.lucid,
@@ -295,7 +295,7 @@ const createTransactionPort = (
         proofCbor: admitted.artifact.badTx.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await neSubmitStep01({
               lucid: config.lucid,
@@ -322,7 +322,7 @@ const createTransactionPort = (
     if (input.stage === "step_02") {
       const carriage = await resolveField(config, admitted.fieldPlan);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await neSubmitStep02({
               lucid: config.lucid,
@@ -359,7 +359,7 @@ const createTransactionPort = (
         proofCbor: admitted.artifact.ledgerNonMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await neSubmitStep03({
               lucid: config.lucid,
@@ -387,7 +387,7 @@ const createTransactionPort = (
         proofCbor: admitted.artifact.txsNonMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await neSubmitStep04({
               lucid: config.lucid,
@@ -417,33 +417,33 @@ const createTransactionPort = (
   },
 });
 
-export type ManifestBoundNonExistentInputWorkflowConfigV1 = Readonly<{
+export type ManifestBoundNonExistentInputWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: NonExistentInputWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
-  replayContext?: CompleteCanonicalReplayContextV1;
+  referenceScripts: NonExistentInputWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundNonExistentInputWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"nonExistentInput">;
-  l1: FraudProofFamilyL1ObservationPortV1<"nonExistentInput">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"nonExistentInput">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
-  replayContext?: CompleteCanonicalReplayContextV1;
+export type ManifestBoundNonExistentInputWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"nonExistentInput">;
+  l1: FraudProofFamilyL1ObservationPort<"nonExistentInput">;
+  transactions: LinearFamilyTransactionPort<"nonExistentInput">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
+  replayContext?: CompleteCanonicalReplayContext;
 }>;
 
-export const createManifestBoundNonExistentInputWorkflowV1 = async (
-  config: ManifestBoundNonExistentInputWorkflowConfigV1,
-): Promise<ManifestBoundNonExistentInputWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundNonExistentInputWorkflow = async (
+  config: ManifestBoundNonExistentInputWorkflowConfig,
+): Promise<ManifestBoundNonExistentInputWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -457,7 +457,7 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
       NonExistentInputStep04Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -475,22 +475,22 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
     "fraudProofNonExistentInputStep04",
   ] as const;
   const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.steps[index]!,
     }),
   ) as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScriptsV1>(
+  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
     name: Name,
     contractName: string,
   ) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.witnesses[name]!,
     });
-  const references: NonExistentInputWorkflowReferenceScriptsV1 = Object.freeze({
+  const references: NonExistentInputWorkflowReferenceScripts = Object.freeze({
     steps: Object.freeze(steps),
     witnesses: Object.freeze({
       computationThreadMint: witness(
@@ -508,13 +508,13 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
       ),
       pexcludesWithdraw: witness("pexcludesWithdraw", "pexcludesWithdraw"),
     }),
-    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxoV1({
+    fieldPreimageCertificateMint: requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: "fieldPreimageCertificateMint",
       utxo: config.referenceScripts.fieldPreimageCertificateMint,
     }),
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -525,7 +525,7 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
       "non-existent-input requires authenticated raw L1 and publication authorities",
     );
   }
-  const bound: BoundConfigV1 = {
+  const bound: BoundConfig = {
     binding,
     lucid: config.lucid,
     signer: config.signer,
@@ -538,14 +538,14 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
       config.stateQueueMutationLeaseCoordinator,
   };
   const transactions = createTransactionPort(bound);
-  let adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  let adapter = createLinearFamilyWorkflowAdapter({
     category: "nonExistentInput",
     l1,
     transactions,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePortV1({
+  const fieldPrerequisite = createAuthenticatedFieldCarriagePrerequisitePort({
     category: "nonExistentInput",
     lucid: config.lucid,
     network: binding.network,
@@ -553,7 +553,7 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
     publications: l1.publications,
     requirementForAction: ({ action, artifact }) => {
       if (actionInput(action).stage !== "step_02") return null;
-      const admitted = admitProductionLedgerAbsenceArtifactV1(
+      const admitted = admitLedgerAbsenceArtifact(
         artifact,
         config.signer.paymentKeyHash,
       );
@@ -565,17 +565,17 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
           mintingScript: certificate.mintingScript,
           referenceScriptUtxo: references.fieldPreimageCertificateMint,
         },
-      } satisfies ProductionFieldCarriageRequirementV1;
+      } satisfies FieldCarriageRequirement;
     },
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
-  adapter = withProductionFieldCarriagePrerequisiteV1({
+  adapter = withFieldCarriagePrerequisite({
     category: "nonExistentInput",
     base: adapter,
     prerequisite: fieldPrerequisite,
   });
-  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePortV1({
+  const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
     category: "nonExistentInput",
     lucid: config.lucid,
     network: binding.network,
@@ -584,7 +584,7 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
     maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
     proofCborForAction: ({ action, artifact }) => {
       const stage = actionInput(action).stage;
-      const admitted = admitProductionLedgerAbsenceArtifactV1(
+      const admitted = admitLedgerAbsenceArtifact(
         artifact,
         config.signer.paymentKeyHash,
       );
@@ -599,7 +599,7 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
     transactionConfirmed: async ({ headerHash, txHash }) =>
       await l1.transactionConfirmed({ headerHash, txHash }),
   });
-  adapter = withProductionProofChunkPrerequisiteV1({
+  adapter = withProofChunkPrerequisite({
     category: "nonExistentInput",
     base: adapter,
     prerequisite: proofPrerequisite,
@@ -609,37 +609,36 @@ export const createManifestBoundNonExistentInputWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
     ...(config.replayContext === undefined
       ? {}
       : { replayContext: config.replayContext }),
   });
 };
 
-export const runOrResumeManifestBoundNonExistentInputWorkflowV1 = async ({
+export const runOrResumeManifestBoundNonExistentInputWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundNonExistentInputWorkflowV1;
+  readonly workflow: ManifestBoundNonExistentInputWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
-    replayer: NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+    replayer: NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
     ...(workflow.replayContext === undefined
       ? {}
       : { replayContext: workflow.replayContext }),
-    registry: createFraudProofWorkflowRegistryV1({
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["nonExistentInput"],
     }),

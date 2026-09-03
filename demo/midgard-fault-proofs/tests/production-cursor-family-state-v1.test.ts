@@ -1,26 +1,26 @@
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC_V1 } from "../src/execution-native-script-invalid/workflow-spec-v1.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec-v1.js";
 import {
-  MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
-  PRODUCTION_CURSOR_FAMILY_SPECS_V1,
+  CURSOR_FAMILY_SPECS,
+  MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC,
 } from "../src/workflow/production-cursor-family-spec-v1.js";
 import {
-  productionCursorFamilyObservationV1,
-  reconcileProductionCursorFamilyActionV1,
+  cursorFamilyObservation,
+  reconcileCursorFamilyAction,
 } from "../src/workflow/production-cursor-family-state-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
 };
 
-const spec = MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1;
+const spec = MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC;
 
 const step = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => ({
   kind: "step" as const,
@@ -30,7 +30,7 @@ const step = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => ({
 });
 
 const actionFor = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ref: string) => {
-  const observed = productionCursorFamilyObservationV1({
+  const observed = cursorFamilyObservation({
     spec,
     headerHash,
     provenance,
@@ -45,7 +45,7 @@ describe("production cursor-family authenticated state V1", () => {
     const step06Action = actionFor(6, outRef("60"));
     const directTx = hash("61");
     await expect(
-      reconcileProductionCursorFamilyActionV1({
+      reconcileCursorFamilyAction({
         spec,
         headerHash,
         action: step06Action,
@@ -63,7 +63,7 @@ describe("production cursor-family authenticated state V1", () => {
 
     const stagedTx = hash("62");
     await expect(
-      reconcileProductionCursorFamilyActionV1({
+      reconcileCursorFamilyAction({
         spec,
         headerHash,
         action: step06Action,
@@ -81,7 +81,7 @@ describe("production cursor-family authenticated state V1", () => {
       const txHash = hash(ordinal === 7 ? "71" : "81");
       const required = actionFor(ordinal, current);
       await expect(
-        reconcileProductionCursorFamilyActionV1({
+        reconcileCursorFamilyAction({
           spec,
           headerHash,
           action: required,
@@ -95,8 +95,8 @@ describe("production cursor-family authenticated state V1", () => {
   });
 
   it("preserves two-digit stage ordinals for the 13-script execution family", () => {
-    const observed = productionCursorFamilyObservationV1({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC_V1,
+    const observed = cursorFamilyObservation({
+      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
       headerHash,
       provenance,
       stage: {
@@ -118,7 +118,7 @@ describe("production cursor-family authenticated state V1", () => {
   it("rejects skipped, substituted, and unauthenticated successors", async () => {
     const action = actionFor(6, outRef("60"));
     await expect(
-      reconcileProductionCursorFamilyActionV1({
+      reconcileCursorFamilyAction({
         spec,
         headerHash,
         action,
@@ -129,7 +129,7 @@ describe("production cursor-family authenticated state V1", () => {
       }),
     ).resolves.toMatchObject({ kind: "conflict" });
     expect(() =>
-      productionCursorFamilyObservationV1({
+      cursorFamilyObservation({
         spec,
         headerHash,
         provenance: { ...provenance, trustClass: "operator_private_file" },
@@ -140,7 +140,7 @@ describe("production cursor-family authenticated state V1", () => {
 
   it("rejects incomplete successor tables and out-of-range chain steps", () => {
     expect(() =>
-      productionCursorFamilyObservationV1({
+      cursorFamilyObservation({
         spec: { ...spec, successors: { ...spec.successors, 8: [] } },
         headerHash,
         provenance,
@@ -148,7 +148,7 @@ describe("production cursor-family authenticated state V1", () => {
       }),
     ).toThrow("omits an exact legal successor");
     expect(() =>
-      productionCursorFamilyObservationV1({
+      cursorFamilyObservation({
         spec: { ...spec, stepCount: 7, successors: { ...spec.successors } },
         headerHash,
         provenance,
@@ -158,7 +158,7 @@ describe("production cursor-family authenticated state V1", () => {
   });
 
   it("admits every closed bespoke topology without implying readiness", () => {
-    expect(Object.keys(PRODUCTION_CURSOR_FAMILY_SPECS_V1)).toEqual([
+    expect(Object.keys(CURSOR_FAMILY_SPECS)).toEqual([
       "nativeScriptDecoding",
       "missingNativeScriptTx",
       "withdrawalMistag",
@@ -166,14 +166,14 @@ describe("production cursor-family authenticated state V1", () => {
       "valueNotPreserved",
       "mintAuthorization",
     ]);
-    for (const candidate of Object.values(PRODUCTION_CURSOR_FAMILY_SPECS_V1)) {
+    for (const candidate of Object.values(CURSOR_FAMILY_SPECS)) {
       expect(Object.isFrozen(candidate)).toBe(true);
       expect(Object.isFrozen(candidate.successors)).toBe(true);
       for (const successors of Object.values(candidate.successors)) {
         expect(Object.isFrozen(successors)).toBe(true);
       }
       expect(() =>
-        productionCursorFamilyObservationV1({
+        cursorFamilyObservation({
           spec: candidate,
           headerHash,
           provenance,

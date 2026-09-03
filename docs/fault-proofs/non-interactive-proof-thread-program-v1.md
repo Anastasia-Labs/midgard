@@ -17,7 +17,7 @@ deadline is required.
 
 When this program closes:
 
-1. Every `RejectionReasonV1` constructor except `PlutusExecutionFailed` has a
+1. Every `RejectionReason` constructor except `PlutusExecutionFailed` has a
    production-usable non-interactive proof in both applicable directions:
    wrongful acceptance and wrongful forced rejection.
 2. Each enabled family has complete on-chain validators, off-chain evidence and
@@ -69,7 +69,7 @@ Append the following 22 categories in the listed order. The IDs assume the
 current 32-entry catalogue remains the deployed source of truth; confirm the
 catalogue baseline before reserving them.
 
-| Proposed ID | Category                              | `RejectionReasonV1` coverage                                                                                                    |
+| Proposed ID | Category                              | `RejectionReason` coverage                                                                                                    |
 | ----------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `00000020`  | `fieldPreimageLengthMismatch`         | `FieldPreimageLengthMismatch`                                                                                                   |
 | `00000021`  | `fieldItemWidthIllegal`               | `FieldItemWidthIllegal`                                                                                                         |
@@ -203,7 +203,7 @@ test count and pass against the exact source module.
 
 ### 5.2 Off-chain deliverable
 
-- Finding and classification type with exact `RejectionReasonV1` coordinates.
+- Finding and classification type with exact `RejectionReason` coordinates.
 - Evidence preparation from retained DA and authenticated Cardano L1 state.
 - Direct, published, and certified/chunked carriage selection where the
   protocol permits those tiers.

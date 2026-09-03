@@ -16,9 +16,9 @@ import {
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec/native";
 import { decodeMidgardLedgerTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
@@ -3247,10 +3247,10 @@ const computeSignedNativeTxHash = (
   walletId: string,
 ): string => {
   try {
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(
       Buffer.from(signedTxCbor, "hex"),
     );
-    return computeMidgardNativeTxIdV1(decoded).toString("hex");
+    return computeMidgardNativeTxId(decoded).toString("hex");
   } catch (cause) {
     throw new Error(
       `Consolidation state signedTxCbor for ${walletId} is not canonical Midgard native transaction CBOR: ${String(cause)}`,
@@ -3335,11 +3335,11 @@ const assertConsolidationTransferIntent = ({
       `Consolidation transaction intent for ${entry.walletId} is incomplete.`,
     );
   }
-  let nativeTx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>;
+  let nativeTx: ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>;
   let tx: ReturnType<typeof decodeMidgardLedgerTxFromCanonicalCbor>;
   try {
     const signedTxCbor = Buffer.from(entry.signedTxCbor, "hex");
-    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(signedTxCbor);
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(signedTxCbor);
     tx = decodeMidgardLedgerTxFromCanonicalCbor(signedTxCbor);
   } catch (cause) {
     throw new Error(
@@ -3363,7 +3363,7 @@ const assertConsolidationTransferIntent = ({
     );
   }
   if (
-    nativeTx.version !== MIDGARD_NATIVE_TX_V1_VERSION ||
+    nativeTx.version !== MIDGARD_NATIVE_TX_VERSION ||
     nativeTx.body.validityIntervalStart !== MIDGARD_POSIX_TIME_NONE ||
     nativeTx.body.validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE ||
     tx.validityIntervalStart !== undefined ||
@@ -4850,8 +4850,8 @@ export const parseStressWalletTerminalDrainJournal = (
       );
     let computedTxHash: string;
     try {
-      computedTxHash = computeMidgardNativeTxIdV1(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(signedTxBytes),
+      computedTxHash = computeMidgardNativeTxId(
+        decodeMidgardNativeTxFullFromCanonicalCbor(signedTxBytes),
       ).toString("hex");
     } catch (cause) {
       throw new Error(
@@ -4951,17 +4951,17 @@ const assertTerminalDrainIntent = (
   )
     throw new Error("Terminal drain hash/CBOR encoding is malformed.");
   const bytes = Buffer.from(entry.signedTxCbor, "hex");
-  const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(bytes);
+  const native = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
   const tx = decodeMidgardLedgerTxFromCanonicalCbor(bytes);
   if (
     tx.txId.toString("hex") !== entry.txHash ||
-    computeMidgardNativeTxIdV1(native).toString("hex") !== entry.txHash
+    computeMidgardNativeTxId(native).toString("hex") !== entry.txHash
   )
     throw new Error("Terminal drain hash does not bind its exact signed CBOR.");
   if (
     tx.networkId !== (state.network === "Mainnet" ? 1n : 0n) ||
     tx.validity !== "TxIsValid" ||
-    native.version !== MIDGARD_NATIVE_TX_V1_VERSION ||
+    native.version !== MIDGARD_NATIVE_TX_VERSION ||
     native.body.validityIntervalStart !== MIDGARD_POSIX_TIME_NONE ||
     native.body.validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE ||
     tx.validityIntervalStart !== undefined ||

@@ -7,16 +7,16 @@
  * emitted as `todo`, never as a permissive default: an unimplemented scaffold
  * fails loudly instead of accepting anything.
  */
-import type { ScaffoldArtifactV1 } from "./permissive-dispatch-v1.js";
+import type { ScaffoldArtifact } from "./permissive-dispatch-v1.js";
 import {
-  familyScaffoldNamesV1,
-  type FraudProofFamilyScaffoldSpecV1,
-  type ScaffoldFieldTypeV1,
-  type ScaffoldFieldV1,
-  type ScaffoldStepV1,
-  stepFileNameV1,
-  stepModuleNameV1,
-  stepPascalNameV1,
+  familyScaffoldNames,
+  type FraudProofFamilyScaffoldSpec,
+  type ScaffoldField,
+  type ScaffoldFieldType,
+  type ScaffoldStep,
+  stepFileName,
+  stepModuleName,
+  stepPascalName,
 } from "./spec-v1.js";
 
 type FieldBinding = {
@@ -26,7 +26,7 @@ type FieldBinding = {
   readonly tsImport: "common" | "fieldOpeningV1" | null;
 };
 
-const FIELD_BINDINGS: Readonly<Record<ScaffoldFieldTypeV1, FieldBinding>> = {
+const FIELD_BINDINGS: Readonly<Record<ScaffoldFieldType, FieldBinding>> = {
   hash32: {
     aikenType: "ByteArray",
     aikenImport: null,
@@ -69,7 +69,7 @@ const FIELD_BINDINGS: Readonly<Record<ScaffoldFieldTypeV1, FieldBinding>> = {
 const sortedUses = (uses: readonly string[]): string =>
   [...new Set(uses)].sort((left, right) => (left < right ? -1 : 1)).join("\n");
 
-const aikenRecordBody = (fields: readonly ScaffoldFieldV1[]): string =>
+const aikenRecordBody = (fields: readonly ScaffoldField[]): string =>
   fields
     .map((field) => `  ${field.name}: ${FIELD_BINDINGS[field.type].aikenType},`)
     .join("\n");
@@ -81,9 +81,9 @@ const aikenRecordBody = (fields: readonly ScaffoldFieldV1[]): string =>
  * cannot be silently dropped by a future schema change.
  */
 const precedingOutputState = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-  step: ScaffoldStepV1,
-): readonly ScaffoldFieldV1[] => {
+  spec: FraudProofFamilyScaffoldSpec,
+  step: ScaffoldStep,
+): readonly ScaffoldField[] => {
   if (step.index === 1) {
     return [];
   }
@@ -97,7 +97,7 @@ const precedingOutputState = (
 };
 
 const moduleHeader = (
-  spec: FraudProofFamilyScaffoldSpecV1,
+  spec: FraudProofFamilyScaffoldSpec,
   title: string,
 ): string =>
   [
@@ -115,17 +115,17 @@ const moduleHeader = (
   ].join("\n");
 
 const terminalArgsFields = (
-  step: ScaffoldStepV1,
+  step: ScaffoldStep,
   isTerminal: boolean,
-): readonly ScaffoldFieldV1[] => {
-  const positional: ScaffoldFieldV1[] = [
+): readonly ScaffoldField[] => {
+  const positional: ScaffoldField[] = [
     { name: "input_index", type: "int", doc: "Own input index." },
     { name: "output_index", type: "int", doc: "Produced output index." },
   ];
   // Shipped terminal steps (`zero-input/step-02.ak`, `double-spend/step-04.ak`)
   // carry the mint-redeemer index immediately after the two positional
   // indices, with every family-specific field trailing it.
-  const mintRedeemerIndex: readonly ScaffoldFieldV1[] = isTerminal
+  const mintRedeemerIndex: readonly ScaffoldField[] = isTerminal
     ? [
         {
           name: "fraud_proof_mint_redeemer_index",
@@ -138,13 +138,13 @@ const terminalArgsFields = (
 };
 
 /** `lib/midgard/fraud-proofs/<family>/step-NN.ak` — explicit step types. */
-export const emitAikenStepTypesModuleV1 = ({
+export const emitAikenStepTypesModule = ({
   spec,
   step,
 }: {
-  readonly spec: FraudProofFamilyScaffoldSpecV1;
-  readonly step: ScaffoldStepV1;
-}): ScaffoldArtifactV1 => {
+  readonly spec: FraudProofFamilyScaffoldSpec;
+  readonly step: ScaffoldStep;
+}): ScaffoldArtifact => {
   const isFirst = step.index === 1;
   const isTerminal = step.index === spec.steps.length;
   const uses = ["use midgard/computation_thread as ct"];
@@ -182,7 +182,7 @@ export const emitAikenStepTypesModuleV1 = ({
   ].join("\n");
 
   return {
-    path: `onchain/aiken/lib/midgard/fraud-proofs/${spec.family}/${stepFileNameV1(
+    path: `onchain/aiken/lib/midgard/fraud-proofs/${spec.family}/${stepFileName(
       step.index,
     )}.ak`,
     language: "aiken",
@@ -201,11 +201,11 @@ const cancelArm = `      ct.Cancel { input_index, computation_thread_mint_redeem
         )`;
 
 const firstStepValidatorBody = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-  step: ScaffoldStepV1,
+  spec: FraudProofFamilyScaffoldSpec,
+  step: ScaffoldStep,
 ): string => {
-  const names = familyScaffoldNamesV1(spec.family);
-  const nextModule = stepModuleNameV1(step.index + 1);
+  const names = familyScaffoldNames(spec.family);
+  const nextModule = stepModuleName(step.index + 1);
   return `      ct.Continue(tx_inclusion_args) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
@@ -236,16 +236,16 @@ const firstStepValidatorBody = (
         //    \`_bad_tx_view\`, build the exact ${nextModule} input state from
         //    the verified native transaction, and keep the following equality as
         //    an executable check: \`expect output_state_data == expected_output_state\`.
-        todo @"${spec.taskId} ${names.aikenModule} ${stepModuleNameV1(step.index)}: rule check unimplemented"
+        todo @"${spec.taskId} ${names.aikenModule} ${stepModuleName(step.index)}: rule check unimplemented"
       }`;
 };
 
 const intermediateStepValidatorBody = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-  step: ScaffoldStepV1,
+  spec: FraudProofFamilyScaffoldSpec,
+  step: ScaffoldStep,
 ): string => {
-  const names = familyScaffoldNamesV1(spec.family);
-  const nextModule = stepModuleNameV1(step.index + 1);
+  const names = familyScaffoldNames(spec.family);
+  const nextModule = stepModuleName(step.index + 1);
   const stateFields = precedingOutputState(spec, step)
     .map((field) => `              ${field.name},`)
     .join("\n");
@@ -290,15 +290,15 @@ ${stateFields}
         //    TODO(${spec.taskId}): advance the carried state and keep the
         //    following equality as an executable check:
         //    \`expect output_state_data == expected_output_state\`.
-        todo @"${spec.taskId} ${names.aikenModule} ${stepModuleNameV1(step.index)}: rule check unimplemented"
+        todo @"${spec.taskId} ${names.aikenModule} ${stepModuleName(step.index)}: rule check unimplemented"
       }`;
 };
 
 const terminalStepValidatorBody = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-  step: ScaffoldStepV1,
+  spec: FraudProofFamilyScaffoldSpec,
+  step: ScaffoldStep,
 ): string => {
-  const names = familyScaffoldNamesV1(spec.family);
+  const names = familyScaffoldNames(spec.family);
   const stateFields = precedingOutputState(spec, step)
     .map((field) => `              ${field.name},`)
     .join("\n");
@@ -342,7 +342,7 @@ ${stateFields}
         // 2. Rule: ${step.rule}
         //    TODO(${spec.taskId}): assert the exact violation over the carried
         //    state. The proof must conclude only when the rule is broken.
-        todo @"${spec.taskId} ${names.aikenModule} ${stepModuleNameV1(step.index)}: rule check unimplemented"
+        todo @"${spec.taskId} ${names.aikenModule} ${stepModuleName(step.index)}: rule check unimplemented"
       }`;
 };
 
@@ -355,16 +355,16 @@ ${stateFields}
  * the family task replaces it.
  */
 const unimplementedAikenTest = (
-  spec: FraudProofFamilyScaffoldSpecV1,
+  spec: FraudProofFamilyScaffoldSpec,
   aikenModule: string,
   name: string,
 ): string => `  let unimplemented: Bool =
     todo @"${spec.taskId} ${aikenModule}: ${name} unimplemented"
   unimplemented`;
 
-const firstStepTests = (spec: FraudProofFamilyScaffoldSpecV1): string => {
-  const names = familyScaffoldNamesV1(spec.family);
-  const nextModule = stepModuleNameV1(2);
+const firstStepTests = (spec: FraudProofFamilyScaffoldSpec): string => {
+  const names = familyScaffoldNames(spec.family);
+  const nextModule = stepModuleName(2);
   const positive = spec.tests.positive[0] ?? `${names.aikenModule}_positive`;
   const negative =
     spec.tests.validBlockNegative[0] ?? `${names.aikenModule}_valid_block`;
@@ -461,11 +461,11 @@ ${extraTests}`;
 };
 
 const laterStepTests = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-  step: ScaffoldStepV1,
+  spec: FraudProofFamilyScaffoldSpec,
+  step: ScaffoldStep,
 ): string => {
-  const names = familyScaffoldNamesV1(spec.family);
-  const stepModule = stepModuleNameV1(step.index);
+  const names = familyScaffoldNames(spec.family);
+  const stepModule = stepModuleName(step.index);
   const selectors = [
     ...spec.tests.positive,
     ...spec.tests.validBlockNegative,
@@ -485,18 +485,18 @@ ${unimplementedAikenTest(spec, names.aikenModule, name)}
 };
 
 /** `validators/fraud-proofs/<family>/step-NN.ak` — step validator + selectors. */
-export const emitAikenStepValidatorV1 = ({
+export const emitAikenStepValidator = ({
   spec,
   step,
 }: {
-  readonly spec: FraudProofFamilyScaffoldSpecV1;
-  readonly step: ScaffoldStepV1;
-}): ScaffoldArtifactV1 => {
-  const names = familyScaffoldNamesV1(spec.family);
-  const stepModule = stepModuleNameV1(step.index);
+  readonly spec: FraudProofFamilyScaffoldSpec;
+  readonly step: ScaffoldStep;
+}): ScaffoldArtifact => {
+  const names = familyScaffoldNames(spec.family);
+  const stepModule = stepModuleName(step.index);
   const isFirst = step.index === 1;
   const isTerminal = step.index === spec.steps.length;
-  const nextModule = stepModuleNameV1(step.index + 1);
+  const nextModule = stepModuleName(step.index + 1);
 
   // Only the imports the emitted body actually uses: the first step drives the
   // shared native-binding fixture, later steps get their imports when the
@@ -574,7 +574,7 @@ ${tests}
 `;
 
   return {
-    path: `onchain/aiken/validators/fraud-proofs/${spec.family}/${stepFileNameV1(
+    path: `onchain/aiken/validators/fraud-proofs/${spec.family}/${stepFileName(
       step.index,
     )}.ak`,
     language: "aiken",
@@ -582,7 +582,7 @@ ${tests}
   };
 };
 
-const tsSchemaFields = (fields: readonly ScaffoldFieldV1[]): string =>
+const tsSchemaFields = (fields: readonly ScaffoldField[]): string =>
   fields
     .map(
       (field) =>
@@ -596,16 +596,16 @@ export type ${name} = Data.Static<typeof ${name}Schema>;
 export const ${name} = ${name}Schema as unknown as ${name};`;
 
 /** `demo/midgard-sdk/src/fraud-proof/<family>.ts` — explicit off-chain schemas. */
-export const emitSdkFamilyModuleV1 = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-): ScaffoldArtifactV1 => {
-  const names = familyScaffoldNamesV1(spec.family);
+export const emitSdkFamilyModule = (
+  spec: FraudProofFamilyScaffoldSpec,
+): ScaffoldArtifact => {
+  const names = familyScaffoldNames(spec.family);
   const usesCommonSchema = spec.steps.some((step) =>
     [...precedingOutputState(spec, step), ...(step.argsFields ?? [])].some(
       (field) => FIELD_BINDINGS[field.type].tsImport === "common",
     ),
   );
-  const usesFieldOpeningV1Schema = spec.steps.some((step) =>
+  const usesFieldOpeningSchema = spec.steps.some((step) =>
     [...precedingOutputState(spec, step), ...(step.argsFields ?? [])].some(
       (field) => FIELD_BINDINGS[field.type].tsImport === "fieldOpeningV1",
     ),
@@ -613,7 +613,7 @@ export const emitSdkFamilyModuleV1 = (
 
   const blocks: string[] = [];
   for (const step of spec.steps) {
-    const stepName = `${names.pascal}${stepPascalNameV1(step.index)}`;
+    const stepName = `${names.pascal}${stepPascalName(step.index)}`;
     const isFirst = step.index === 1;
     const isTerminal = step.index === spec.steps.length;
     if (isFirst) {
@@ -656,12 +656,12 @@ export const emitSdkFamilyModuleV1 = (
   }
 
   const stepNames = spec.steps
-    .map((step) => `"${stepModuleNameV1(step.index)}"`)
+    .map((step) => `"${stepModuleName(step.index)}"`)
     .join(", ");
   const resolverCases = spec.steps
     .map(
       (step) =>
-        `    case "${stepModuleNameV1(step.index)}":\n      return ${names.pascal}${stepPascalNameV1(
+        `    case "${stepModuleName(step.index)}":\n      return ${names.pascal}${stepPascalName(
           step.index,
         )}DatumSchema;`,
     )
@@ -675,7 +675,7 @@ export const emitSdkFamilyModuleV1 = (
     ? ['import { H32Schema } from "@/common.js";']
     : [];
   const relativeImportLines = [
-    ...(usesFieldOpeningV1Schema
+    ...(usesFieldOpeningSchema
       ? ['import { FieldOpeningV1Schema } from "./field-opening-v1.js";']
       : []),
     `import {
@@ -729,18 +729,18 @@ ${resolverCases}
 };
 
 /** `demo/midgard-sdk/tests/<family>-v1.test.ts` — codec-agreement stubs. */
-export const emitSdkFamilyTestModuleV1 = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-): ScaffoldArtifactV1 => {
-  const names = familyScaffoldNamesV1(spec.family);
+export const emitSdkFamilyTestModule = (
+  spec: FraudProofFamilyScaffoldSpec,
+): ScaffoldArtifact => {
+  const names = familyScaffoldNames(spec.family);
   const roundTrips = spec.steps
     .filter((step) => step.index > 1)
     .map(
-      (step) => `  it("${stepModuleNameV1(
+      (step) => `  it("${stepModuleName(
         step.index,
       )} state round-trips through the canonical codec", () => {
     throw new Error(
-      "SCAFFOLD_UNIMPLEMENTED ${spec.taskId} ${spec.family} ${stepModuleNameV1(
+      "SCAFFOLD_UNIMPLEMENTED ${spec.taskId} ${spec.family} ${stepModuleName(
         step.index,
       )}: assert Data.to/Data.from agreement against the Aiken vector",
     );
@@ -782,7 +782,7 @@ ${roundTrips}
  * family carries its own closure checklist instead of relying on the parent to
  * remember what a family owes.
  */
-export const FAMILY_CLOSURE_OUTPUTS_V1 = [
+export const FAMILY_CLOSURE_OUTPUTS = [
   "Normative rule and violation identifier.",
   "Canonical evidence schema and strict TypeScript/Aiken codec agreement.",
   "Correct native counted-root/typed-commitment binding.",
@@ -795,12 +795,12 @@ export const FAMILY_CLOSURE_OUTPUTS_V1 = [
   "Coverage and catalogue rows changed to `LOCAL_PASS` at integration.",
 ] as const;
 
-export const SCAFFOLD_CLOSURE_ROW_STATUS_V1 = "TODO" as const;
+export const SCAFFOLD_CLOSURE_ROW_STATUS = "TODO" as const;
 
 /** `<family>-closure-checklist-v1.json` — the §9.1 outputs, all unclaimed. */
-export const emitClosureChecklistV1 = (
-  spec: FraudProofFamilyScaffoldSpecV1,
-): ScaffoldArtifactV1 => {
+export const emitClosureChecklist = (
+  spec: FraudProofFamilyScaffoldSpec,
+): ScaffoldArtifact => {
   const contents = `${JSON.stringify(
     {
       schemaVersion: "midgard-family-closure-checklist-v1",
@@ -812,14 +812,14 @@ export const emitClosureChecklistV1 = (
       note: "Generated boilerplate. Every row is unclaimed: only the owning family task may change a status, and only with the evidence GOAL_SPEC.md §9.1 requires.",
       steps: spec.steps.map((step) => ({
         index: step.index,
-        module: stepModuleNameV1(step.index),
+        module: stepModuleName(step.index),
         rule: step.rule,
       })),
       declaredTests: spec.tests,
-      closureOutputs: FAMILY_CLOSURE_OUTPUTS_V1.map((output, index) => ({
+      closureOutputs: FAMILY_CLOSURE_OUTPUTS.map((output, index) => ({
         output: index + 1,
         requirement: output,
-        status: SCAFFOLD_CLOSURE_ROW_STATUS_V1,
+        status: SCAFFOLD_CLOSURE_ROW_STATUS,
       })),
     },
     null,

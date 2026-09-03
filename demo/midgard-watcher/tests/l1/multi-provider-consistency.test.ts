@@ -12,17 +12,17 @@ import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherL1TransportAttestationContextV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherL1TransportAttestationContext,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
 import {
-  evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw,
-  WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
+  evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw,
+  WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
 } from "../../src/l1/multi-provider-consistency.js";
 
 const canonicalJsonForTest = (
@@ -104,12 +104,12 @@ const reorderObjectKeysForTest = (value: unknown): unknown => {
 
 const observationAttestations = new WeakMap<
   object,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 const execFileAsync = promisify(execFile);
 const transportContexts = new Map<
   string,
-  WatcherL1TransportAttestationContextV1
+  WatcherL1TransportAttestationContext
 >();
 const tlsIdentities = new Map<string, string>();
 let transportFixtureDirectory = "";
@@ -193,7 +193,7 @@ beforeAll(async () => {
     );
     transportContexts.set(
       `external:${providerId}:${identityByte}:${operatorIdentityByte}`,
-      await establishWatcherExternalProviderTransportV1({
+      await establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId,
         operatorIdentitySha256: operatorIdentityByte.repeat(32),
@@ -208,7 +208,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const context of transportContexts.values()) {
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
   }
   for (const server of tlsServers) server.close();
   await rm(transportFixtureDirectory, { recursive: true, force: true });
@@ -277,11 +277,11 @@ const transaction = (bodySeedHex: string) => {
   const bodyHex = body.to_canonical_cbor_hex();
   return {
     txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
-    fullTransaction: makeWatcherL1PublicBytesV1(
+    fullTransaction: makeWatcherL1PublicBytes(
       fullTransaction.to_canonical_cbor_hex(),
     ),
-    body: makeWatcherL1PublicBytesV1(bodyHex),
-    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    body: makeWatcherL1PublicBytes(bodyHex),
+    witnessSet: makeWatcherL1PublicBytes(witnessSet.to_canonical_cbor_hex()),
     utxos: [],
     scripts: [],
     datums: [],
@@ -301,14 +301,14 @@ const observation = (
     bodyHex?: string;
     operatorIdentityByte?: string;
   } = {},
-): WatcherNormalizedL1BlockV1 => {
+): WatcherNormalizedL1Block => {
   const attestation = provider(
     providerId,
     identityByte,
     options.operatorIdentityByte ?? identityByte,
   );
-  const normalized = normalizeWatcherL1BlockV1(attestation, {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  const normalized = normalizeWatcherL1Block(attestation, {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId,
     chainPoint: {
@@ -325,10 +325,10 @@ const observation = (
   return normalized;
 };
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: unknown,
-  explicitAttestations?: readonly WatcherL1TransportAttestationContextV1[],
+  explicitAttestations?: readonly WatcherL1TransportAttestationContext[],
 ) => {
   const inferred = Array.isArray(observations)
     ? observations.flatMap((candidate) => {
@@ -339,7 +339,7 @@ const evaluateWatcherMultiProviderConsistencyV1 = (
         return context === undefined ? [] : [context];
       })
     : [];
-  return evaluateWatcherMultiProviderConsistencyV1Raw(
+  return evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     explicitAttestations ?? [...new Set(inferred)],
@@ -350,13 +350,13 @@ describe("fail-closed multi-provider consistency", () => {
   it("allows exact independently authenticated agreement with explicit minimum depth", () => {
     const first = observation("provider-a", "aa", { depth: "15" });
     const second = observation("provider-b", "bb", { depth: "12" });
-    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const result = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       first,
       second,
     ]);
 
     expect(result).toMatchObject({
-      schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
       status: "agreed",
       protocolDecision: "allowed",
       sourceMode: "external_providers",
@@ -419,7 +419,7 @@ describe("fail-closed multi-provider consistency", () => {
         },
       ],
     };
-    const aliasResult = evaluateWatcherMultiProviderConsistencyV1(aliases, []);
+    const aliasResult = evaluateWatcherMultiProviderConsistency(aliases, []);
     expect(aliasResult).toMatchObject({
       status: "quarantined",
       sourceMode: "external_providers",
@@ -432,7 +432,7 @@ describe("fail-closed multi-provider consistency", () => {
     const wrongEndpoint = externalConfig();
     wrongEndpoint.providers[0]!.endpoint =
       "https://localhost:65500/not-provider-a";
-    const mismatch = evaluateWatcherMultiProviderConsistencyV1(wrongEndpoint, [
+    const mismatch = evaluateWatcherMultiProviderConsistency(wrongEndpoint, [
       observation("provider-a", "aa"),
       observation("provider-b", "bb"),
     ]);
@@ -447,11 +447,11 @@ describe("fail-closed multi-provider consistency", () => {
     const first = observation("provider-a", "aa");
     const second = observation("provider-b", "bb");
 
-    const forward = evaluateWatcherMultiProviderConsistencyV1(
-      externalConfig(),
-      [first, second],
-    );
-    const reverse = evaluateWatcherMultiProviderConsistencyV1(
+    const forward = evaluateWatcherMultiProviderConsistency(externalConfig(), [
+      first,
+      second,
+    ]);
+    const reverse = evaluateWatcherMultiProviderConsistency(
       reorderObjectKeysForTest(externalConfig()),
       [reorderObjectKeysForTest(second), reorderObjectKeysForTest(first)],
       [
@@ -479,14 +479,14 @@ describe("fail-closed multi-provider consistency", () => {
     const first = observation("provider-a", "aa");
     const second = observation("provider-a", "bb");
 
-    const forward = evaluateWatcherMultiProviderConsistencyV1(
-      externalConfig(),
-      [first, second],
-    );
-    const reverse = evaluateWatcherMultiProviderConsistencyV1(
-      externalConfig(),
-      [second, first],
-    );
+    const forward = evaluateWatcherMultiProviderConsistency(externalConfig(), [
+      first,
+      second,
+    ]);
+    const reverse = evaluateWatcherMultiProviderConsistency(externalConfig(), [
+      second,
+      first,
+    ]);
 
     expect(forward).toMatchObject({
       status: "quarantined",
@@ -502,7 +502,7 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("quarantines a single provider as insufficient", () => {
-    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const result = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       observation("provider-a", "aa"),
     ]);
 
@@ -518,7 +518,7 @@ describe("fail-closed multi-provider consistency", () => {
 
   it("quarantines duplicate provider and trust identities", () => {
     const duplicated = observation("provider-a", "aa");
-    const exactDuplicate = evaluateWatcherMultiProviderConsistencyV1(
+    const exactDuplicate = evaluateWatcherMultiProviderConsistency(
       externalConfig(),
       [duplicated, duplicated],
     );
@@ -540,7 +540,7 @@ describe("fail-closed multi-provider consistency", () => {
     const sharedTrustConfig = externalConfig();
     sharedTrustConfig.providers[1]!.endpoint =
       externalEndpoints.get("provider-b:aa:bb")!;
-    const sharedTrust = evaluateWatcherMultiProviderConsistencyV1(
+    const sharedTrust = evaluateWatcherMultiProviderConsistency(
       sharedTrustConfig,
       [
         observation("provider-a", "aa"),
@@ -557,7 +557,7 @@ describe("fail-closed multi-provider consistency", () => {
       externalEndpoints.get("provider-a:aa:ee")!;
     sharedOperatorConfig.providers[1]!.endpoint =
       externalEndpoints.get("provider-b:bb:ee")!;
-    const sharedOperator = evaluateWatcherMultiProviderConsistencyV1(
+    const sharedOperator = evaluateWatcherMultiProviderConsistency(
       sharedOperatorConfig,
       [
         observation("provider-a", "aa", { operatorIdentityByte: "ee" }),
@@ -583,7 +583,7 @@ describe("fail-closed multi-provider consistency", () => {
         },
       },
     }));
-    const result = evaluateWatcherMultiProviderConsistencyV1Raw(
+    const result = evaluateWatcherMultiProviderConsistencyRaw(
       externalConfig(),
       forged,
       [
@@ -615,13 +615,13 @@ describe("fail-closed multi-provider consistency", () => {
       observationAttestations.get(second)!,
     ];
 
-    const accepted = evaluateWatcherMultiProviderConsistencyV1Raw(
+    const accepted = evaluateWatcherMultiProviderConsistencyRaw(
       externalConfig(),
       detached,
       contexts,
     );
     const serializedContexts = JSON.parse(JSON.stringify(contexts));
-    const forged = evaluateWatcherMultiProviderConsistencyV1Raw(
+    const forged = evaluateWatcherMultiProviderConsistencyRaw(
       externalConfig(),
       detached,
       serializedContexts,
@@ -646,7 +646,7 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("quarantines observations from the wrong configured network", () => {
-    const result = evaluateWatcherMultiProviderConsistencyV1(
+    const result = evaluateWatcherMultiProviderConsistency(
       externalConfig("Preview"),
       [observation("provider-a", "aa"), observation("provider-b", "bb")],
     );
@@ -665,7 +665,7 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("keeps bounded provider lag pending and never allows a protocol decision", () => {
-    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const result = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       observation("provider-a", "aa"),
       observation("provider-b", "bb", {
         blockHash: "22".repeat(32),
@@ -685,7 +685,7 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("deduplicates canonical points before checking three-provider bounded lag", () => {
-    const result = evaluateWatcherMultiProviderConsistencyV1(
+    const result = evaluateWatcherMultiProviderConsistency(
       threeProviderExternalConfig(),
       [
         observation("provider-a", "aa"),
@@ -708,7 +708,7 @@ describe("fail-closed multi-provider consistency", () => {
       agreement: null,
     });
 
-    const mismatchedContent = evaluateWatcherMultiProviderConsistencyV1(
+    const mismatchedContent = evaluateWatcherMultiProviderConsistency(
       threeProviderExternalConfig(),
       [
         observation("provider-a", "aa", { bodyHex: "a100" }),
@@ -734,7 +734,7 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("quarantines stale and forked provider points", () => {
-    const stale = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const stale = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       observation("provider-a", "aa"),
       observation("provider-b", "bb", {
         blockHash: "22".repeat(32),
@@ -748,7 +748,7 @@ describe("fail-closed multi-provider consistency", () => {
       alertCodes: ["watcher_provider_stale"],
     });
 
-    const fork = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const fork = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       observation("provider-a", "aa"),
       observation("provider-b", "bb", {
         blockHash: "22".repeat(32),
@@ -762,7 +762,7 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("quarantines different provider-neutral content at the same point", () => {
-    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const result = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       observation("provider-a", "aa", { bodyHex: "a100" }),
       observation("provider-b", "bb", { bodyHex: "a101" }),
     ]);
@@ -789,7 +789,7 @@ describe("fail-closed multi-provider consistency", () => {
         },
       ],
     };
-    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+    const result = evaluateWatcherMultiProviderConsistency(externalConfig(), [
       spoofed,
       observation("provider-b", "bb", { bodyHex: "01" }),
     ]);
@@ -825,19 +825,19 @@ describe("fail-closed multi-provider consistency", () => {
       },
     });
 
-    const malformedResult = evaluateWatcherMultiProviderConsistencyV1(
+    const malformedResult = evaluateWatcherMultiProviderConsistency(
       externalConfig(),
       [malformed, foreign],
     );
-    const foreignBoundary = evaluateWatcherMultiProviderConsistencyV1(
+    const foreignBoundary = evaluateWatcherMultiProviderConsistency(
       externalConfig(),
       new Error(secret),
     );
-    const unknownNetwork = evaluateWatcherMultiProviderConsistencyV1(secret, [
+    const unknownNetwork = evaluateWatcherMultiProviderConsistency(secret, [
       observation("provider-a", "aa"),
       observation("provider-b", "bb"),
     ]);
-    const missingDiscriminator = evaluateWatcherMultiProviderConsistencyV1(
+    const missingDiscriminator = evaluateWatcherMultiProviderConsistency(
       "Preprod",
       [observation("provider-a", "aa"), observation("provider-b", "bb")],
     );
@@ -856,11 +856,11 @@ describe("fail-closed multi-provider consistency", () => {
       unknown
     >;
     cycleConfig.providers = [cycleConfig];
-    const unsupportedResult = evaluateWatcherMultiProviderConsistencyV1(
+    const unsupportedResult = evaluateWatcherMultiProviderConsistency(
       unsupportedConfig,
       [observation("provider-a", "aa"), observation("provider-b", "bb")],
     );
-    const cycleResult = evaluateWatcherMultiProviderConsistencyV1(cycleConfig, [
+    const cycleResult = evaluateWatcherMultiProviderConsistency(cycleConfig, [
       observation("provider-a", "aa"),
       observation("provider-b", "bb"),
     ]);
@@ -900,10 +900,7 @@ describe("fail-closed multi-provider consistency", () => {
       ...localConfig(),
       genesisIdentitySha256: "not-a-digest",
     };
-    const result = evaluateWatcherMultiProviderConsistencyV1(
-      malformedLocal,
-      [],
-    );
+    const result = evaluateWatcherMultiProviderConsistency(malformedLocal, []);
 
     expect(result).toMatchObject({
       status: "quarantined",
@@ -921,11 +918,11 @@ describe("fail-closed multi-provider consistency", () => {
   });
 
   it("retains fail-closed local-mode semantics without manufacturing a live authority", () => {
-    const noAuthority = evaluateWatcherMultiProviderConsistencyV1(
+    const noAuthority = evaluateWatcherMultiProviderConsistency(
       localConfig(),
       [],
     );
-    const externalSubstitution = evaluateWatcherMultiProviderConsistencyV1(
+    const externalSubstitution = evaluateWatcherMultiProviderConsistency(
       localConfig(),
       [observation("provider-a", "aa"), observation("provider-b", "bb")],
     );
@@ -954,7 +951,7 @@ describe("fail-closed multi-provider consistency", () => {
       },
     );
 
-    const result = evaluateWatcherMultiProviderConsistencyV1(hostileConfig, [
+    const result = evaluateWatcherMultiProviderConsistency(hostileConfig, [
       observation("provider-a", "aa"),
       observation("provider-b", "bb"),
     ]);

@@ -21,7 +21,7 @@ export type PeerSignatureCoordinatorDeps = {
   readonly signer: DaSigner;
   readonly signerIndex: number;
   readonly signerValidation: DaSignerValidation;
-  readonly availabilityCommitmentAuthority: import("./signatures.js").DaAvailabilityCommitmentAuthorityV1;
+  readonly availabilityCommitmentAuthority: import("./signatures.js").DaAvailabilityCommitmentAuthority;
   readonly store: WatcherStore;
   readonly requestTimeoutMs?: number;
   readonly retryInitialDelayMs: number;

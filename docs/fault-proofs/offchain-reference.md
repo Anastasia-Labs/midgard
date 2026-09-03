@@ -47,7 +47,7 @@ and explicit submit modules.
 
 ## Production runner factories
 
-`PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1` currently exposes 25 categories:
+`WORKFLOW_RUNNER_FACTORIES` currently exposes 25 categories:
 
 ```text
 doubleSpend                 nonExistentInput
@@ -124,7 +124,7 @@ and cannot establish completion.
   and catalogue identity.
 - `demo/midgard-node/src/transactions/reference-scripts.ts` publishes the
   required family step scripts.
-- `demo/da-committee-node` serves and attests retained `DaPayloadV1` data.
+- `demo/da-committee-node` serves and attests retained `DaPayload` data.
 - `demo/midgard-fault-proofs/src/remove-fraudulent-block.ts` derives and
   submits structural correction.
 - Node correction services re-include removed transactions and L1 events after

@@ -8,7 +8,7 @@ import {
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  type WithdrawalMistagPreparedEvidenceV1,
+  type WithdrawalMistagPreparedEvidence,
   WithdrawalMistagStep05Datum,
   WithdrawalMistagStep05SpendRedeemer,
 } from "@al-ft/midgard-sdk";
@@ -27,22 +27,22 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawalMistagContractsV1 } from "./contracts-v1.js";
+import type { WithdrawalMistagContracts } from "./contracts-v1.js";
 import {
-  requireWithdrawalMistagReferenceScriptV1,
-  requireWithdrawalMistagThreadUtxoV1,
+  requireWithdrawalMistagReferenceScript,
+  requireWithdrawalMistagThreadUtxo,
   withdrawalMistagError,
-  withdrawalMistagStepLabelV1,
+  withdrawalMistagStepLabel,
 } from "./submit-common-v1.js";
-import { withdrawalMistagStatesV1 } from "./submit-withdrawal-mistag-steps.js";
+import { withdrawalMistagStates } from "./submit-withdrawal-mistag-steps.js";
 
 export const submitWithdrawalMistagStep05 = async ({
   lucid,
@@ -56,28 +56,26 @@ export const submitWithdrawalMistagStep05 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawalMistagContractsV1;
+  readonly contracts: WithdrawalMistagContracts;
   readonly signer: ResolvedProverSigner;
-  readonly prepared: WithdrawalMistagPreparedEvidenceV1;
+  readonly prepared: WithdrawalMistagPreparedEvidence;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const { threadUtxo, threadToken } = await requireWithdrawalMistagThreadUtxoV1(
-    {
-      lucid,
-      contracts,
-      stepIndex: 4,
-      threadOutRef,
-    },
-  );
+  const { threadUtxo, threadToken } = await requireWithdrawalMistagThreadUtxo({
+    lucid,
+    contracts,
+    stepIndex: 4,
+    threadOutRef,
+  });
   if (threadUtxo.datum == null)
     throw withdrawalMistagError("step 05 has no datum");
   const datum = Data.from(threadUtxo.datum, WithdrawalMistagStep05Datum);
-  const expected = withdrawalMistagStatesV1(prepared)[4];
+  const expected = withdrawalMistagStates(prepared)[4];
   if (
     datum.fraud_prover !== signer.paymentKeyHash ||
     datum.data === null ||
@@ -119,12 +117,12 @@ export const submitWithdrawalMistagStep05 = async ({
     | undefined;
   let threadMintIndex: bigint | undefined;
   const spendRedeemer = ((ctx) => {
-    requireOwnSpendPurpose(ctx, threadUtxo, withdrawalMistagStepLabelV1(4));
+    requireOwnSpendPurpose(ctx, threadUtxo, withdrawalMistagStepLabel(4));
     layout = {
       inputIndex: requireInputIndex(
         ctx,
         threadUtxo,
-        withdrawalMistagStepLabelV1(4),
+        withdrawalMistagStepLabel(4),
       ),
       outputIndex: requireUniqueOutputIndex(
         ctx.outputs,
@@ -176,18 +174,18 @@ export const submitWithdrawalMistagStep05 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "withdrawal-mistag step 05 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "withdrawal-mistag step 05 fraud-proof mint",
   });
   const referenceInputs = [
-    requireWithdrawalMistagReferenceScriptV1({
+    requireWithdrawalMistagReferenceScript({
       utxo: referenceScriptUtxo,
       contracts,
       stepIndex: 4,
@@ -217,9 +215,9 @@ export const submitWithdrawalMistagStep05 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

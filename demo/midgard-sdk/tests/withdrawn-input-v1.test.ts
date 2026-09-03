@@ -2,7 +2,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  isWithdrawnInputViolationV1,
+  isWithdrawnInputViolation,
   ROOT_DOMAINS,
   type WithdrawalInfo,
   WithdrawnInputStep02Datum,
@@ -71,17 +71,17 @@ describe("withdrawn-input V1 wire twin", () => {
   });
 
   it("convicts only a valid withdrawal of the selected spend input", () => {
+    expect(isWithdrawnInputViolation({ input, withdrawal: withdrawal() })).toBe(
+      true,
+    );
     expect(
-      isWithdrawnInputViolationV1({ input, withdrawal: withdrawal() }),
-    ).toBe(true);
-    expect(
-      isWithdrawnInputViolationV1({
+      isWithdrawnInputViolation({
         input,
         withdrawal: withdrawal({ SpentWithdrawalUtxo: { l2_tx_id: "ff" } }),
       }),
     ).toBe(false);
     expect(
-      isWithdrawnInputViolationV1({
+      isWithdrawnInputViolation({
         input,
         withdrawal: {
           ...withdrawal(),

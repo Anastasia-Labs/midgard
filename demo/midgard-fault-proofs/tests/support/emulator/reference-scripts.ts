@@ -20,7 +20,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { CrossBlockDuplicateEventContractsV1 } from "../../../src/cross-block-duplicate-event/index.js";
+import type { CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../../../src/ne-submit-step-03.js";
 import { chunkedVerifyWithdrawalScript } from "../../../src/proof-chunk-carriage.js";
 import {
@@ -28,7 +28,7 @@ import {
   getCompiledScript,
 } from "../../../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../../../src/submit-step-01.js";
-import { type FaultProofWitnessReferenceScriptsV1 } from "../../../src/witness-reference-scripts-v1.js";
+import { type FaultProofWitnessReferenceScripts } from "../../../src/witness-reference-scripts-v1.js";
 import { network } from "./blueprints.js";
 import {
   type CompleteSignedTransactionMeasurement,
@@ -166,7 +166,7 @@ export const publishValidationDisputeReferenceScript = async ({
   });
 };
 
-export const publishStateQueueYieldReferenceScriptV1 = async ({
+export const publishStateQueueYieldReferenceScript = async ({
   lucid,
   contracts,
   arm,
@@ -211,7 +211,7 @@ export const publishStateQueueYieldReferenceScriptV1 = async ({
   });
 };
 
-export const findStateQueueYieldReferenceScriptV1 = async ({
+export const findStateQueueYieldReferenceScript = async ({
   lucid,
   contracts,
   arm,
@@ -243,7 +243,7 @@ export const findStateQueueYieldReferenceScriptV1 = async ({
   return matches[0];
 };
 
-export type MinAdaYieldReferenceScriptsV1 = Readonly<{
+export type MinAdaYieldReferenceScripts = Readonly<{
   tx: ReferenceScriptPublication & {
     readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
   };
@@ -253,13 +253,13 @@ export type MinAdaYieldReferenceScriptsV1 = Readonly<{
 }>;
 
 /** Publishes the two authenticated rewarding validators delegated to by min-Ada step 02. */
-export const publishMinAdaYieldReferenceScriptsV1 = async ({
+export const publishMinAdaYieldReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly contracts: MidgardValidators;
-}): Promise<MinAdaYieldReferenceScriptsV1> => {
+}): Promise<MinAdaYieldReferenceScripts> => {
   const targets = [
     {
       key: "tx" as const,
@@ -276,7 +276,7 @@ export const publishMinAdaYieldReferenceScriptsV1 = async ({
   ];
   const publications = {} as Record<
     (typeof targets)[number]["key"],
-    MinAdaYieldReferenceScriptsV1[(typeof targets)[number]["key"]]
+    MinAdaYieldReferenceScripts[(typeof targets)[number]["key"]]
   >;
   for (const target of targets) {
     const published = await publishAuthenticatedValidationDisputeControl({
@@ -373,7 +373,7 @@ export const publishPlainReferenceScriptUtxo = async ({
   return { utxo: published[0]!, publicationMeasurement };
 };
 
-export type OperatorLifecycleReferenceScriptsV1 = {
+export type OperatorLifecycleReferenceScripts = {
   readonly registered: readonly ReferenceScriptPublication[];
   readonly active: readonly ReferenceScriptPublication[];
   readonly initial: readonly ReferenceScriptPublication[];
@@ -385,13 +385,13 @@ export type OperatorLifecycleReferenceScriptsV1 = {
  * placed in its own bounded transaction so a shared publication cannot hide
  * an individually unpublishable validator.
  */
-export const publishOperatorLifecycleReferenceScriptsV1 = async ({
+export const publishOperatorLifecycleReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly contracts: MidgardValidators;
-}): Promise<OperatorLifecycleReferenceScriptsV1> => {
+}): Promise<OperatorLifecycleReferenceScripts> => {
   const roster = [
     {
       group: "registered" as const,
@@ -522,7 +522,7 @@ export const publishFraudProofChainReferenceScripts = async ({
  * immutable UTxO. Most non-focused chains use the same tiny emulator script,
  * so hash de-duplication keeps the scenario preamble bounded.
  */
-export const publishHarnessFaultProofReferenceScriptsV1 = async ({
+export const publishHarnessFaultProofReferenceScripts = async ({
   lucid,
   contracts,
 }: {
@@ -577,7 +577,7 @@ export const publishHarnessFaultProofReferenceScriptsV1 = async ({
  * execute them. Submitters hash-check every returned UTxO against the exact
  * script they would otherwise inline-attach.
  */
-export const publishFaultProofWitnessReferenceScriptsV1 = async ({
+export const publishFaultProofWitnessReferenceScripts = async ({
   lucid,
   realBlueprint,
   computationThreadMintingScript,
@@ -591,13 +591,13 @@ export const publishFaultProofWitnessReferenceScriptsV1 = async ({
   readonly fraudProofMintingScript?: Script;
   readonly includeChunkedVerify?: boolean;
   readonly includePexcludes?: boolean;
-}): Promise<FaultProofWitnessReferenceScriptsV1> => {
+}): Promise<FaultProofWitnessReferenceScripts> => {
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(realBlueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const roster: readonly (readonly [
-    keyof FaultProofWitnessReferenceScriptsV1,
+    keyof FaultProofWitnessReferenceScripts,
     Script | undefined,
   ])[] = [
     ["computationThreadMint", computationThreadMintingScript],
@@ -623,7 +623,7 @@ export const publishFaultProofWitnessReferenceScriptsV1 = async ({
     ],
   ];
   const published: Partial<
-    Record<keyof FaultProofWitnessReferenceScriptsV1, UTxO>
+    Record<keyof FaultProofWitnessReferenceScripts, UTxO>
   > = {};
   // Sequential: each publication consumes wallet UTxOs the next one selects
   // from.
@@ -646,12 +646,12 @@ export const TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES = new Set([
   "fraudProofTransitionTraceDeposit",
 ]);
 
-export const publishCrossBlockDuplicateEventReferenceScriptsV1 = async ({
+export const publishCrossBlockDuplicateEventReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: CrossBlockDuplicateEventContractsV1;
+  readonly contracts: CrossBlockDuplicateEventContracts;
 }): Promise<readonly [UTxO, UTxO]> => {
   const first = await publishPlainReferenceScriptUtxo({
     lucid,
@@ -728,7 +728,7 @@ export const publishRemovalReferenceScripts = async ({
     published[name] = publication.utxo;
     measurements[name] = publication.publicationMeasurement;
   }
-  const fraudRemovalYield = await publishStateQueueYieldReferenceScriptV1({
+  const fraudRemovalYield = await publishStateQueueYieldReferenceScript({
     lucid,
     contracts,
     arm: "fraudRemoval",

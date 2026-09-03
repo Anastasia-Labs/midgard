@@ -2,42 +2,42 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  deriveCanonicalDecodeItemStageDataV1,
-  validationOneStepEvidenceHashV1,
+  deriveCanonicalDecodeItemStageData,
+  validationOneStepEvidenceHash,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  AuthenticatedCanonicalDecodeItemDatumV1,
-  buildUnsignedValidationProofItemPublicationV1Program,
+  AuthenticatedCanonicalDecodeItemDatum,
+  buildUnsignedValidationProofItemPublicationProgram,
   buildValidationTraceDisputeFaultProofContracts,
-  deriveValidationProofItemPublicationV1,
-  minimumLovelaceForValidationProofItemPublicationV1,
-  ObservedCanonicalDecodeItemDatumV1,
+  deriveValidationProofItemPublication,
+  minimumLovelaceForValidationProofItemPublication,
+  ObservedCanonicalDecodeItemDatum,
   parseFaultProofBlueprint,
-  PreparedCanonicalDecodeItemDatumV1,
-  PreparedValidationResolutionDatumV1,
-  type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
+  PreparedCanonicalDecodeItemDatum,
+  PreparedValidationResolutionDatum,
+  type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
   requireInputIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   validationMachineStateDataFromCore,
-  ValidationOneStepWitnessV1,
-  type ValidationOneStepWitnessV1 as ValidationOneStepWitnessV1Data,
-  ValidationProofItemDatumV1,
-  type ValidationProofItemPublicationV1,
+  ValidationOneStepWitness,
+  type ValidationOneStepWitness as ValidationOneStepWitnessData,
+  ValidationProofItemDatum,
+  type ValidationProofItemPublication,
   type ValidationTraceDisputeFaultProofContracts,
-  VerifiedCanonicalDecodeItemDatumV1,
+  VerifiedCanonicalDecodeItemDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -59,15 +59,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgumentV1,
+  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
-  type ValidationOneStepArgumentV1,
+  type ValidationOneStepArgument,
 } from "../src/index.js";
 import {
-  fundingLovelaceForOutputsV1,
-  makeMinAdaFundedExactSizeOutputItemV1,
+  fundingLovelaceForOutputs,
+  makeMinAdaFundedExactSizeOutputItem,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
@@ -91,13 +91,12 @@ const SIGNER_HASH = Buffer.from(
 // §3.3 execution reserve: at or below the compiled protocol floors with a
 // 20% reserve (docs/consensus-profile-v1.md §10).
 const RESERVED_MEMORY_UNITS = Math.floor(
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxMemoryUnits * 0.8,
+  MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits * 0.8,
 );
 const RESERVED_CPU_UNITS = Math.floor(
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8,
+  MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits * 0.8,
 );
-const MAX_L1_PROOF_TX_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const MAX_L1_PROOF_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /**
  * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). This file
@@ -107,7 +106,7 @@ const MAX_L1_PROOF_TX_BYTES =
  * floor without moving its length, so every carriage measurement below
  * measures the same number of bytes it did before the wiring.
  */
-const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
+const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItem;
 
 /** The §5.1 outputs field, which is the field every case here carries. */
 const OUTPUT_FIELD_INDEX = 2;
@@ -125,12 +124,12 @@ const NO_AUXILIARY_WITNESS_CBOR = Buffer.from("d87980", "hex");
  *
  * §8.4 partitions on the field's §5.1 preimage, and a single-item field-2
  * envelope is `81 ‖ 59 LLLL ‖ item` — four bytes — so the tier-1 ceiling of
- * `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` (14,336) admits an item of at
+ * `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES` (14,336) admits an item of at
  * most 14,332 bytes. Anything larger resolves as tier-2 `RawUtxo`, which
  * `buildCanonicalDecodeItemCase` refuses by design.
  *
  * **#580 NOTE — the 64-byte overhang.** The applied publication cap
- * `MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes` is 14,396,
+ * `MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes` is 14,396,
  * which is 64 bytes ABOVE this ceiling: items in (14,332, 14,396] are publishable
  * but cannot be carried inline. Before 2026-08-14 this suite hid that, because it
  * selected its complete-item witness by `(phase, kind)` alone and so measured
@@ -149,11 +148,10 @@ const NO_AUXILIARY_WITNESS_CBOR = Buffer.from("d87980", "hex");
 const SINGLE_ITEM_FIELD_ENVELOPE_BYTES = 4;
 
 const TIER1_MAX_COMPLETE_ITEM_BYTES =
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 -
-  SINGLE_ITEM_FIELD_ENVELOPE_BYTES;
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES - SINGLE_ITEM_FIELD_ENVELOPE_BYTES;
 
 const traceContext = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: Buffer.from("d8799f4100ff", "hex"),
   sourceKind: "normal" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -171,7 +169,7 @@ const buildTraceWithOutputs = async (
   // funded at its own minimum-Ada floor, or stage five would convict this
   // trace with `E_VALUE_NOT_PRESERVED` instead of accepting it. The fee is
   // zero, so the sum is exact.
-  const spentOutput = makeOutput(fundingLovelaceForOutputsV1(outputs));
+  const spentOutput = makeOutput(fundingLovelaceForOutputs(outputs));
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],
@@ -180,7 +178,7 @@ const buildTraceWithOutputs = async (
   const expectedLedgerOps = [
     { type: "delete" as const, key: spent },
     ...outputs.map((output, index) =>
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId, BigInt(index)),
         outputCbor: output,
       }),
@@ -210,7 +208,7 @@ type CanonicalDecodeItemCase = {
   readonly trace: DeterministicValidationMachineTrace;
   readonly stateIndex: number;
   readonly itemBytes: number;
-  readonly argument: ValidationOneStepArgumentV1;
+  readonly argument: ValidationOneStepArgument;
   readonly transitionData: Data;
   /**
    * #597. `TransactionFieldItemWitness` carries a `FieldCarriageV1` now, and the
@@ -226,7 +224,7 @@ type CanonicalDecodeItemCase = {
   readonly claimedSuccessorHash: string;
   /**
    * The four staged datums the chain hands on, derived by
-   * `deriveCanonicalDecodeItemStageDataV1` — the same producer
+   * `deriveCanonicalDecodeItemStageData` — the same producer
    * `submitValidationDisputeSemanticResolution` uses. Nothing in this file
    * hand-builds a stage datum any more: post-Option-B the observe stage is
    * the size-bearing one, and its datum is not a local restatement of the
@@ -244,7 +242,7 @@ const buildCanonicalDecodeItemCase = async (
 ): Promise<CanonicalDecodeItemCase> => {
   const item = makeExactSizeOutputItem(itemBytes);
   const trace = await buildTraceWithOutputs([item]);
-  const expectedPreimageBytes = encodeMidgardFieldPreimageV1([item]).length;
+  const expectedPreimageBytes = encodeMidgardFieldPreimage([item]).length;
   let stateIndex = -1;
   for (let index = 0; index < trace.witnesses.length; index += 1) {
     const witness = trace.witnesses[index]!;
@@ -278,7 +276,7 @@ const buildCanonicalDecodeItemCase = async (
       `trace has no canonicalDecode field-${OUTPUT_FIELD_INDEX.toString()} complete-item witness of ${expectedPreimageBytes.toString()} preimage bytes`,
     );
   }
-  const argument = buildValidationOneStepArgumentV1({ trace, stateIndex });
+  const argument = buildValidationOneStepArgument({ trace, stateIndex });
   if (argument.resolverIndex !== 0 || argument.semanticResolverIndex !== 1) {
     throw new Error("complete-item case selected an unexpected resolver");
   }
@@ -304,14 +302,14 @@ const buildCanonicalDecodeItemCase = async (
   // ALONE — `NoAuxiliaryWitness` is the auxiliary half of `evidence_hash`,
   // whatever carriage the auxiliary witness names, because the carriage is
   // dereferenced and content-checked only at the observe stage's §8.8 door.
-  const evidenceHash = validationOneStepEvidenceHashV1({
+  const evidenceHash = validationOneStepEvidenceHash({
     transitionCbor: argument.transitionCbor,
     auxiliaryCbor: NO_AUXILIARY_WITNESS_CBOR,
   });
   const preState = validationMachineStateDataFromCore(
     trace.states[stateIndex]!,
   );
-  const claimedSuccessorHash = hashMidgardValidationMachineStateV1(
+  const claimedSuccessorHash = hashMidgardValidationMachineState(
     trace.states[stateIndex + 1]!,
   ).toString("hex");
   const preparedThreadDatum = Data.to(
@@ -328,23 +326,23 @@ const buildCanonicalDecodeItemCase = async (
         evidence_hash: evidenceHash,
       },
     },
-    PreparedValidationResolutionDatumV1,
+    PreparedValidationResolutionDatum,
   );
   const preparedResolution = (
     Data.from(
       preparedThreadDatum,
-      PreparedValidationResolutionDatumV1,
-    ) as PreparedValidationResolutionDatumV1Data
+      PreparedValidationResolutionDatum,
+    ) as PreparedValidationResolutionDatumData
   ).data;
   if (preparedResolution === null) {
     throw new Error("prepared thread datum is missing its state");
   }
-  const stageData = deriveCanonicalDecodeItemStageDataV1({
+  const stageData = deriveCanonicalDecodeItemStageData({
     preparedResolution,
     transition: Data.from(
       argument.transitionCbor.toString("hex"),
-      ValidationOneStepWitnessV1,
-    ) as ValidationOneStepWitnessV1Data,
+      ValidationOneStepWitness,
+    ) as ValidationOneStepWitnessData,
     fieldPreimage: fieldPreimageHex,
   });
   return {
@@ -361,19 +359,19 @@ const buildCanonicalDecodeItemCase = async (
     preparedThreadDatum,
     authenticatedDatum: Data.to(
       { fraud_prover: SIGNER_HASH, data: stageData.authenticated },
-      AuthenticatedCanonicalDecodeItemDatumV1,
+      AuthenticatedCanonicalDecodeItemDatum,
     ),
     preparedDatum: Data.to(
       { fraud_prover: SIGNER_HASH, data: stageData.prepared },
-      PreparedCanonicalDecodeItemDatumV1,
+      PreparedCanonicalDecodeItemDatum,
     ),
     observedDatum: Data.to(
       { fraud_prover: SIGNER_HASH, data: stageData.observed },
-      ObservedCanonicalDecodeItemDatumV1,
+      ObservedCanonicalDecodeItemDatum,
     ),
     verifiedDatum: Data.to(
       { fraud_prover: SIGNER_HASH, data: stageData.verified },
-      VerifiedCanonicalDecodeItemDatumV1,
+      VerifiedCanonicalDecodeItemDatum,
     ),
   };
 };
@@ -842,15 +840,15 @@ const publishProofItemPublication = async ({
   publication,
 }: {
   readonly harness: EmulatorHarness;
-  readonly publication: ValidationProofItemPublicationV1;
+  readonly publication: ValidationProofItemPublication;
 }): Promise<PublishedProofItem> => {
-  const minAdaLovelace = minimumLovelaceForValidationProofItemPublicationV1({
+  const minAdaLovelace = minimumLovelaceForValidationProofItemPublication({
     contracts: harness.contracts,
     publication,
     coinsPerUtxoByte: BigInt(PROTOCOL_PARAMETERS_DEFAULT.coinsPerUtxoByte),
   });
   const unsigned = await Effect.runPromise(
-    buildUnsignedValidationProofItemPublicationV1Program(
+    buildUnsignedValidationProofItemPublicationProgram(
       harness.lucid,
       harness.contracts,
       publication,
@@ -891,7 +889,7 @@ const publishProofItem = async ({
   readonly fieldPreimageHexOverride?: string;
 }): Promise<PublishedProofItem> => {
   const preState = itemCase.preState;
-  const publication = deriveValidationProofItemPublicationV1({
+  const publication = deriveValidationProofItemPublication({
     transactionId: preState.transaction_id,
     transactionCommitment: preState.transaction_commitment,
     fieldPreimage: fieldPreimageHexOverride ?? itemCase.fieldPreimageHex,
@@ -905,8 +903,8 @@ const buildRawProofItemPublicationForNegativeControl = ({
 }: {
   readonly itemCase: CanonicalDecodeItemCase;
   readonly fieldPreimage: string;
-}): ValidationProofItemPublicationV1 => {
-  const datum: ValidationProofItemPublicationV1["datum"] = {
+}): ValidationProofItemPublication => {
+  const datum: ValidationProofItemPublication["datum"] = {
     version: 1n,
     transaction_id: itemCase.preState.transaction_id,
     transaction_commitment: itemCase.preState.transaction_commitment,
@@ -914,7 +912,7 @@ const buildRawProofItemPublicationForNegativeControl = ({
   };
   return {
     datum,
-    datumCbor: Data.to(datum, ValidationProofItemDatumV1),
+    datumCbor: Data.to(datum, ValidationProofItemDatum),
   };
 };
 
@@ -1007,7 +1005,7 @@ const measurePublicationFrontierAt = async (
       publication: await publishProofItem({
         harness,
         itemCase,
-        fieldPreimageHexOverride: encodeMidgardFieldPreimageV1([
+        fieldPreimageHexOverride: encodeMidgardFieldPreimage([
           makeExactSizeOutputItem(itemBytes),
         ]).toString("hex"),
       }),
@@ -1058,7 +1056,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // budget, that the door is the binder, and that the §3.3 execution
     // reserve holds — every one of which is falsifiable here.
     const reliableItemBytes =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const journey = await measureObserveAt(reliableItemBytes);
     const observe = journey.observe.measurement;
 
@@ -1068,7 +1066,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     expect(observe.referenceInputCount).toBe(1);
     expect(observe.completeSignedBytes).toBeLessThanOrEqual(
       MAX_L1_PROOF_TX_BYTES -
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
+        MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
     );
     expect(Number(observe.executionMemory)).toBeLessThanOrEqual(
       RESERVED_MEMORY_UNITS,
@@ -1159,7 +1157,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // The carried §5.1 preimage really is the whole tier-1 domain — cap
     // bytes, carried Inline (the case builder throws on any other carriage).
     expect(Buffer.from(atCap.itemCase.fieldPreimageHex, "hex").length).toBe(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
     expect(byReference.redeemerCount).toBe(1);
     expect(byReference.referenceInputCount).toBe(1);
@@ -1224,7 +1222,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       return undefined;
     };
     let fittingItemBytes: number =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     let overflowingItemBytes: number = TIER1_MAX_COMPLETE_ITEM_BYTES;
     const probes: Record<string, number> = {
       [TIER1_MAX_COMPLETE_ITEM_BYTES.toString()]:
@@ -1272,8 +1270,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
         JSON.stringify(
           {
             tier1CapSignedStepTransactionV1: {
-              tier1PreimageCapBytes:
-                MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+              tier1PreimageCapBytes: MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
               itemBytes: TIER1_MAX_COMPLETE_ITEM_BYTES,
               evidenceBytes: atCap.itemCase.argument.evidenceCbor.length,
               byReferenceObserveTransaction: byReference,
@@ -1295,9 +1292,9 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
 
   it("pins the exact applied publication frontiers and reliability reserve", async () => {
     const reliable =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes;
     const exact =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes;
     const [reliableFit, reliableOverflow, exactFit, exactOverflow] =
       await measurePublicationFrontierAt([
         reliable,
@@ -1307,13 +1304,13 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       ]);
     expect(reliableFit!.publication.measurement.completeSignedBytes).toBe(
       MAX_L1_PROOF_TX_BYTES -
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
+        MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
     );
     expect(
       reliableOverflow!.publication.measurement.completeSignedBytes,
     ).toBeGreaterThan(
       MAX_L1_PROOF_TX_BYTES -
-        MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
+        MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
     );
     expect(exactFit!.publication.measurement.completeSignedBytes).toBe(
       MAX_L1_PROOF_TX_BYTES,
@@ -1369,7 +1366,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // read the same reference scripts, the production basis since the #617
     // wiring.
     const itemBytes =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const itemCase = await buildCanonicalDecodeItemCase(itemBytes);
     const harness = await setupEmulator([
       itemCase.preparedThreadDatum,

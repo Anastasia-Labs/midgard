@@ -1,7 +1,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 /** Exact on-chain DA lifecycle carried by a state-queue node. */
-export const DaAvailabilityStateQueueStatusV1Schema = Data.Enum([
+export const DaAvailabilityStateQueueStatusSchema = Data.Enum([
   Data.Literal("Unattested"),
   Data.Object({
     Attested: Data.Object({
@@ -20,39 +20,39 @@ export const DaAvailabilityStateQueueStatusV1Schema = Data.Enum([
     }),
   }),
 ]);
-export type DaAvailabilityStateQueueStatusV1 = Data.Static<
-  typeof DaAvailabilityStateQueueStatusV1Schema
+export type DaAvailabilityStateQueueStatus = Data.Static<
+  typeof DaAvailabilityStateQueueStatusSchema
 >;
-export const DaAvailabilityStateQueueStatusV1 =
-  DaAvailabilityStateQueueStatusV1Schema as unknown as DaAvailabilityStateQueueStatusV1;
+export const DaAvailabilityStateQueueStatus =
+  DaAvailabilityStateQueueStatusSchema as unknown as DaAvailabilityStateQueueStatus;
 
-export const NO_DA_ATTESTATION: DaAvailabilityStateQueueStatusV1 = "Unattested";
+export const NO_DA_ATTESTATION: DaAvailabilityStateQueueStatus = "Unattested";
 
-export type DaAvailabilityStateQueueStatusKindV1 =
+export type DaAvailabilityStateQueueStatusKind =
   | "Unattested"
   | "Attested"
   | "Challenged"
   | "Published";
 
-export const daAvailabilityStateQueueStatusKindV1 = (
-  status: DaAvailabilityStateQueueStatusV1,
-): DaAvailabilityStateQueueStatusKindV1 => {
+export const daAvailabilityStateQueueStatusKind = (
+  status: DaAvailabilityStateQueueStatus,
+): DaAvailabilityStateQueueStatusKind => {
   if (status === "Unattested") return "Unattested";
   if ("Attested" in status) return "Attested";
   if ("Challenged" in status) return "Challenged";
   return "Published";
 };
 
-export const daAvailabilityStateQueueStatusPermitsMergeV1 = (
-  status: DaAvailabilityStateQueueStatusV1,
+export const daAvailabilityStateQueueStatusPermitsMerge = (
+  status: DaAvailabilityStateQueueStatus,
 ): boolean => {
-  const kind = daAvailabilityStateQueueStatusKindV1(status);
+  const kind = daAvailabilityStateQueueStatusKind(status);
   return kind === "Attested" || kind === "Published";
 };
 
 /** Canonical diagnostic/idempotency identity for a decoded status datum. */
-export const daAvailabilityStateQueueStatusIdentityV1 = (
-  status: DaAvailabilityStateQueueStatusV1,
+export const daAvailabilityStateQueueStatusIdentity = (
+  status: DaAvailabilityStateQueueStatus,
 ): string => {
   if (status === "Unattested") return status;
   if ("Attested" in status) {

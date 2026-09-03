@@ -24,13 +24,13 @@
  * burned when the withdrawal settles or refunds.
  */
 import {
-  type FabricatedWithdrawalEvidenceV1,
-  type FabricatedWithdrawalEvidenceVerdictV1,
+  type FabricatedWithdrawalEvidence,
+  type FabricatedWithdrawalEvidenceVerdict,
   FabricatedWithdrawalStep02Datum,
   FabricatedWithdrawalStep02SpendRedeemer,
   type FabricatedWithdrawalStep02State,
   FabricatedWithdrawalStep03Datum,
-  fabricatedWithdrawalStep03StateV1,
+  fabricatedWithdrawalStep03State,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   OutputReference,
@@ -38,8 +38,8 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  withdrawalEventDatumCommitmentV1,
-  withdrawalEventNonceV1,
+  withdrawalEventDatumCommitment,
+  withdrawalEventNonce,
   WithdrawalOrderDatum,
 } from "@al-ft/midgard-sdk";
 import {
@@ -54,7 +54,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -68,7 +68,7 @@ import {
 } from "./runtime.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
-  type FabricatedWithdrawalContractsV1,
+  type FabricatedWithdrawalContracts,
 } from "./submit-fabricated-withdrawal-step-01.js";
 import {
   requireComputationThreadToken,
@@ -76,13 +76,13 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Which L1 witness the prover intends to submit. */
-export type FabricatedWithdrawalEvidenceArmV1 =
+export type FabricatedWithdrawalEvidenceArm =
   | { readonly kind: "absent_identity" }
   | { readonly kind: "present_event"; readonly eventOutRef: string };
 
@@ -116,7 +116,7 @@ export const requireFabricatedWithdrawalStep02Datum = ({
  * Authenticates the withdrawal event UTxO a `PresentWithdrawalEvent` witness points
  * at, against the hub oracle's withdrawal policy and the committed identity's nonce.
  */
-export const authenticateFabricatedWithdrawalEventUtxoV1 = async ({
+export const authenticateFabricatedWithdrawalEventUtxo = async ({
   state,
   hubOracleUtxo,
   eventUtxo,
@@ -136,7 +136,7 @@ export const authenticateFabricatedWithdrawalEventUtxoV1 = async ({
   const hubDatum = Data.from(hubOracleUtxo.datum, HubOracleDatum);
   const withdrawalPolicyId = hubDatum.withdrawal;
   const expectedEventAssetName = await Effect.runPromise(
-    withdrawalEventNonceV1(state.committed_withdrawal_id),
+    withdrawalEventNonce(state.committed_withdrawal_id),
   );
   const expectedUnit = toUnit(withdrawalPolicyId, expectedEventAssetName);
   if ((eventUtxo.assets[expectedUnit] ?? 0n) !== 1n) {
@@ -159,7 +159,7 @@ export const authenticateFabricatedWithdrawalEventUtxoV1 = async ({
     );
   }
   const eventDatumHash = await Effect.runPromise(
-    withdrawalEventDatumCommitmentV1(eventDatum),
+    withdrawalEventDatumCommitment(eventDatum),
   );
   return {
     eventDatum,
@@ -190,8 +190,8 @@ export type SubmitFabricatedWithdrawalStep02Result = {
   readonly computationThreadUnit: string;
   readonly secondStepAddress: string;
   readonly thirdStepAddress: string;
-  readonly evidenceKind: FabricatedWithdrawalEvidenceArmV1["kind"];
-  readonly verdict: FabricatedWithdrawalEvidenceVerdictV1;
+  readonly evidenceKind: FabricatedWithdrawalEvidenceArm["kind"];
+  readonly verdict: FabricatedWithdrawalEvidenceVerdict;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -200,7 +200,7 @@ export type SubmitFabricatedWithdrawalStep02Result = {
 type FabricatedWithdrawalStep02Layout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
-  readonly evidence: FabricatedWithdrawalEvidenceV1;
+  readonly evidence: FabricatedWithdrawalEvidence;
 };
 
 export const submitFabricatedWithdrawalStep02 = async ({
@@ -215,13 +215,13 @@ export const submitFabricatedWithdrawalStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedWithdrawalContractsV1;
+  readonly contracts: FabricatedWithdrawalContracts;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: FabricatedWithdrawalEvidenceArmV1;
+  readonly evidence: FabricatedWithdrawalEvidenceArm;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep02Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -243,7 +243,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
   const state = requireFabricatedWithdrawalStep02Datum({ threadUtxo, signer });
 
   let referenceInputs: readonly UTxO[];
-  let verdict: FabricatedWithdrawalEvidenceVerdictV1;
+  let verdict: FabricatedWithdrawalEvidenceVerdict;
   let hubOracleUtxo: UTxO | undefined;
   let eventUtxo: UTxO | undefined;
   let unspentUtxo: UTxO | undefined;
@@ -274,7 +274,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
         label: "fabricated-withdrawal step-02 withdrawal event UTxO",
       }),
     ]);
-    const authenticated = await authenticateFabricatedWithdrawalEventUtxoV1({
+    const authenticated = await authenticateFabricatedWithdrawalEventUtxo({
       state,
       hubOracleUtxo,
       eventUtxo,
@@ -288,7 +288,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
     };
   }
 
-  const step03State = fabricatedWithdrawalStep03StateV1(state, verdict);
+  const step03State = fabricatedWithdrawalStep03State(state, verdict);
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const step03Datum = Data.to(
@@ -303,7 +303,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
   let resolvedLayout: FabricatedWithdrawalStep02Layout | undefined;
   const redeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "fabricated-withdrawal step 02");
-    const armEvidence: FabricatedWithdrawalEvidenceV1 =
+    const armEvidence: FabricatedWithdrawalEvidence =
       evidence.kind === "absent_identity"
         ? {
             AbsentWithdrawalIdentity: {
@@ -366,7 +366,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       ...referenceInputs,
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[1].spendingScriptHash,
         categoryLabel: FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
@@ -387,10 +387,10 @@ export const submitFabricatedWithdrawalStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-02",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[1].spendingScript,
@@ -429,7 +429,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
 
 export const submitFabricatedWithdrawalStep02FromFiles = async (
   config: SubmitFabricatedWithdrawalStep02CliConfig & {
-    readonly contracts: FabricatedWithdrawalContractsV1;
+    readonly contracts: FabricatedWithdrawalContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedWithdrawalStep02Result> => {

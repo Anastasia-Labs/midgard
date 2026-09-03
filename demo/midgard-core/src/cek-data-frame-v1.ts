@@ -1,25 +1,25 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
-  emptyMidgardCekDataListSummaryV1,
-  emptyMidgardCekDataPairSummaryV1,
-  type MidgardCekDataSequenceSummaryV1,
-  type MidgardCekDataSummaryV1,
-  prependMidgardCekDataListSummaryV1,
-  prependMidgardCekDataPairSummaryV1,
-  summarizeMidgardCekLargeConstrDataV1,
-  summarizeMidgardCekListDataV1,
-  summarizeMidgardCekMapDataV1,
-  summarizeMidgardCekSmallConstrDataV1,
+  emptyMidgardCekDataListSummary,
+  emptyMidgardCekDataPairSummary,
+  type MidgardCekDataSequenceSummary,
+  type MidgardCekDataSummary,
+  prependMidgardCekDataListSummary,
+  prependMidgardCekDataPairSummary,
+  summarizeMidgardCekLargeConstrData,
+  summarizeMidgardCekListData,
+  summarizeMidgardCekMapData,
+  summarizeMidgardCekSmallConstrData,
 } from "./cek-semantic.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  appendMidgardValidationMerkleLeafV1,
-  emptyMidgardValidationMerkleFrontierV1,
-  type MidgardValidationMerkleFrontierV1,
-  validateMidgardValidationMerkleFrontierV1,
-  verifyMidgardValidationMerkleMembershipV1,
+  appendMidgardValidationMerkleLeaf,
+  emptyMidgardValidationMerkleFrontier,
+  type MidgardValidationMerkleFrontier,
+  validateMidgardValidationMerkleFrontier,
+  verifyMidgardValidationMerkleMembership,
 } from "./validation-merkle.js";
 
 const FRAME_DOMAIN = Buffer.from("MidgardCekDataFrameV1", "ascii");
@@ -30,34 +30,34 @@ const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
 type Bytes = Uint8Array;
 
-type MidgardCekDataFrameBaseV1 = {
+type MidgardCekDataFrameBase = {
   readonly tail: Bytes;
   readonly expectedChildren: number;
   readonly childCount: number;
-  readonly childFrontier: MidgardValidationMerkleFrontierV1;
+  readonly childFrontier: MidgardValidationMerkleFrontier;
   readonly foldCursor: number;
-  readonly sequence: MidgardCekDataSequenceSummaryV1;
+  readonly sequence: MidgardCekDataSequenceSummary;
 };
 
-export type MidgardCekDataFrameV1 =
-  | (MidgardCekDataFrameBaseV1 & {
+export type MidgardCekDataFrame =
+  | (MidgardCekDataFrameBase & {
       readonly kind: "constrSmall";
       readonly constructor: bigint;
     })
-  | (MidgardCekDataFrameBaseV1 & {
+  | (MidgardCekDataFrameBase & {
       readonly kind: "constrLarge";
       readonly constructorCborRoot: Bytes;
       readonly constructorCborLength: bigint;
       readonly constructorMemory: bigint;
     })
-  | (MidgardCekDataFrameBaseV1 & {
+  | (MidgardCekDataFrameBase & {
       readonly kind: "list";
     })
-  | (MidgardCekDataFrameBaseV1 & {
+  | (MidgardCekDataFrameBase & {
       readonly kind: "map";
     });
 
-export const MidgardCekDataFrameTagsV1 = Object.freeze({
+export const MidgardCekDataFrameTags = Object.freeze({
   ConstrSmall: 0n,
   ConstrLarge: 1n,
   List: 2n,
@@ -98,7 +98,7 @@ const exactOptionalHash = (value: Bytes, fieldName: string): Buffer => {
 };
 
 const exactSummary = (
-  summary: MidgardCekDataSummaryV1,
+  summary: MidgardCekDataSummary,
   fieldName: string,
 ): void => {
   ensureHash32(summary.root, `${fieldName}.root`);
@@ -111,21 +111,21 @@ const exactSummary = (
   }
 };
 
-const frameTag = (frame: MidgardCekDataFrameV1): bigint => {
+const frameTag = (frame: MidgardCekDataFrame): bigint => {
   switch (frame.kind) {
     case "constrSmall":
-      return MidgardCekDataFrameTagsV1.ConstrSmall;
+      return MidgardCekDataFrameTags.ConstrSmall;
     case "constrLarge":
-      return MidgardCekDataFrameTagsV1.ConstrLarge;
+      return MidgardCekDataFrameTags.ConstrLarge;
     case "list":
-      return MidgardCekDataFrameTagsV1.List;
+      return MidgardCekDataFrameTags.List;
     case "map":
-      return MidgardCekDataFrameTagsV1.Map;
+      return MidgardCekDataFrameTags.Map;
   }
 };
 
 const constructorFields = (
-  frame: MidgardCekDataFrameV1,
+  frame: MidgardCekDataFrame,
 ): readonly [bigint, Buffer, bigint, bigint] => {
   switch (frame.kind) {
     case "constrSmall":
@@ -149,14 +149,14 @@ const constructorFields = (
 };
 
 const expectedEmptySequence = (
-  frame: MidgardCekDataFrameV1,
-): MidgardCekDataSequenceSummaryV1 =>
+  frame: MidgardCekDataFrame,
+): MidgardCekDataSequenceSummary =>
   frame.kind === "map"
-    ? emptyMidgardCekDataPairSummaryV1()
-    : emptyMidgardCekDataListSummaryV1();
+    ? emptyMidgardCekDataPairSummary()
+    : emptyMidgardCekDataListSummary();
 
-export const validateMidgardCekDataFrameV1 = (
-  frame: MidgardCekDataFrameV1,
+export const validateMidgardCekDataFrame = (
+  frame: MidgardCekDataFrame,
 ): void => {
   const expectedChildren = boundedCount(
     frame.expectedChildren,
@@ -209,7 +209,7 @@ export const validateMidgardCekDataFrameV1 = (
   if (frame.childFrontier.count !== childCount) {
     throw new Error("cek_data_frame frontier count does not match child_count");
   }
-  validateMidgardValidationMerkleFrontierV1(frame.childFrontier);
+  validateMidgardValidationMerkleFrontier(frame.childFrontier);
   const maximumFoldCursor =
     frame.kind === "map" ? expectedChildren / 2 : expectedChildren;
   if (foldCursor > maximumFoldCursor) {
@@ -256,10 +256,10 @@ export const validateMidgardCekDataFrameV1 = (
   }
 };
 
-export const encodeMidgardCekDataFrameV1 = (
-  frame: MidgardCekDataFrameV1,
+export const encodeMidgardCekDataFrame = (
+  frame: MidgardCekDataFrame,
 ): Buffer => {
-  validateMidgardCekDataFrameV1(frame);
+  validateMidgardCekDataFrame(frame);
   const [
     constructor,
     constructorCborRoot,
@@ -289,13 +289,12 @@ export const encodeMidgardCekDataFrameV1 = (
   ]);
 };
 
-export const hashMidgardCekDataFrameV1 = (
-  frame: MidgardCekDataFrameV1,
-): Hash32 => hash32(FRAME_DOMAIN, encodeMidgardCekDataFrameV1(frame));
+export const hashMidgardCekDataFrame = (frame: MidgardCekDataFrame): Hash32 =>
+  hash32(FRAME_DOMAIN, encodeMidgardCekDataFrame(frame));
 
-export const hashMidgardCekDataFrameChildV1 = (
+export const hashMidgardCekDataFrameChild = (
   childIndex: number,
-  child: MidgardCekDataSummaryV1,
+  child: MidgardCekDataSummary,
 ): Hash32 => {
   boundedCount(childIndex, "cek_data_frame_child.index");
   exactSummary(child, "cek_data_frame_child.summary");
@@ -317,20 +316,20 @@ const initialBase = ({
 }: {
   readonly tail: Bytes;
   readonly expectedChildren: number;
-  readonly sequence: MidgardCekDataSequenceSummaryV1;
-}): MidgardCekDataFrameBaseV1 => ({
+  readonly sequence: MidgardCekDataSequenceSummary;
+}): MidgardCekDataFrameBase => ({
   tail: exactOptionalHash(tail, "cek_data_frame.tail"),
   expectedChildren: boundedCount(
     expectedChildren,
     "cek_data_frame.expected_children",
   ),
   childCount: 0,
-  childFrontier: emptyMidgardValidationMerkleFrontierV1(),
+  childFrontier: emptyMidgardValidationMerkleFrontier(),
   foldCursor: 0,
   sequence,
 });
 
-export const initialMidgardCekDataSmallConstrFrameV1 = ({
+export const initialMidgardCekDataSmallConstrFrame = ({
   constructor,
   tail = Buffer.alloc(0),
   expectedChildren,
@@ -338,21 +337,21 @@ export const initialMidgardCekDataSmallConstrFrameV1 = ({
   readonly constructor: bigint;
   readonly tail?: Bytes;
   readonly expectedChildren: number;
-}): MidgardCekDataFrameV1 => {
+}): MidgardCekDataFrame => {
   const frame = {
     kind: "constrSmall",
     constructor,
     ...initialBase({
       tail,
       expectedChildren,
-      sequence: emptyMidgardCekDataListSummaryV1(),
+      sequence: emptyMidgardCekDataListSummary(),
     }),
   } as const;
-  validateMidgardCekDataFrameV1(frame);
+  validateMidgardCekDataFrame(frame);
   return frame;
 };
 
-export const initialMidgardCekDataLargeConstrFrameV1 = ({
+export const initialMidgardCekDataLargeConstrFrame = ({
   constructorCborRoot,
   constructorCborLength,
   constructorMemory,
@@ -364,7 +363,7 @@ export const initialMidgardCekDataLargeConstrFrameV1 = ({
   readonly constructorMemory: bigint;
   readonly tail?: Bytes;
   readonly expectedChildren: number;
-}): MidgardCekDataFrameV1 => {
+}): MidgardCekDataFrame => {
   const frame = {
     kind: "constrLarge",
     constructorCborRoot,
@@ -373,90 +372,90 @@ export const initialMidgardCekDataLargeConstrFrameV1 = ({
     ...initialBase({
       tail,
       expectedChildren,
-      sequence: emptyMidgardCekDataListSummaryV1(),
+      sequence: emptyMidgardCekDataListSummary(),
     }),
   } as const;
-  validateMidgardCekDataFrameV1(frame);
+  validateMidgardCekDataFrame(frame);
   return frame;
 };
 
-export const initialMidgardCekDataListFrameV1 = ({
+export const initialMidgardCekDataListFrame = ({
   tail = Buffer.alloc(0),
   expectedChildren,
 }: {
   readonly tail?: Bytes;
   readonly expectedChildren: number;
-}): MidgardCekDataFrameV1 => {
+}): MidgardCekDataFrame => {
   const frame = {
     kind: "list",
     ...initialBase({
       tail,
       expectedChildren,
-      sequence: emptyMidgardCekDataListSummaryV1(),
+      sequence: emptyMidgardCekDataListSummary(),
     }),
   } as const;
-  validateMidgardCekDataFrameV1(frame);
+  validateMidgardCekDataFrame(frame);
   return frame;
 };
 
-export const initialMidgardCekDataMapFrameV1 = ({
+export const initialMidgardCekDataMapFrame = ({
   tail = Buffer.alloc(0),
   expectedChildren,
 }: {
   readonly tail?: Bytes;
   readonly expectedChildren: number;
-}): MidgardCekDataFrameV1 => {
+}): MidgardCekDataFrame => {
   const frame = {
     kind: "map",
     ...initialBase({
       tail,
       expectedChildren,
-      sequence: emptyMidgardCekDataPairSummaryV1(),
+      sequence: emptyMidgardCekDataPairSummary(),
     }),
   } as const;
-  validateMidgardCekDataFrameV1(frame);
+  validateMidgardCekDataFrame(frame);
   return frame;
 };
 
-export const appendMidgardCekDataFrameChildV1 = (
-  frame: MidgardCekDataFrameV1,
-  child: MidgardCekDataSummaryV1,
-): MidgardCekDataFrameV1 | null => {
+export const appendMidgardCekDataFrameChild = (
+  frame: MidgardCekDataFrame,
+  child: MidgardCekDataSummary,
+): MidgardCekDataFrame | null => {
   try {
-    validateMidgardCekDataFrameV1(frame);
+    validateMidgardCekDataFrame(frame);
     exactSummary(child, "cek_data_frame_child.summary");
     if (frame.foldCursor !== 0 || frame.childCount >= frame.expectedChildren) {
       return null;
     }
-    const childFrontier = appendMidgardValidationMerkleLeafV1(
+    const childFrontier = appendMidgardValidationMerkleLeaf(
       frame.childFrontier,
-      hashMidgardCekDataFrameChildV1(frame.childCount, child),
+      hashMidgardCekDataFrameChild(frame.childCount, child),
     );
     const next = {
       ...frame,
       childCount: frame.childCount + 1,
       childFrontier,
     };
-    validateMidgardCekDataFrameV1(next);
+    validateMidgardCekDataFrame(next);
     return next;
   } catch {
     return null;
   }
 };
 
-export const foldMidgardCekDataFrameListChildV1 = ({
+export const foldMidgardCekDataFrameListChild = ({
   frame,
   childIndex,
   child,
   siblings,
 }: {
-  readonly frame: MidgardCekDataFrameV1;
+  readonly frame: MidgardCekDataFrame;
   readonly childIndex: number;
-  readonly child: MidgardCekDataSummaryV1;
+  readonly child: MidgardCekDataSummary;
   readonly siblings: readonly Bytes[];
-}): MidgardCekDataFrameV1 | null => {
+}): MidgardCekDataFrame | null => {
   try {
-    validateMidgardCekDataFrameV1(frame);
+    validateMidgardCekDataFrame(frame);
     if (
       frame.kind === "map" ||
       frame.childCount !== frame.expectedChildren ||
@@ -465,10 +464,10 @@ export const foldMidgardCekDataFrameListChildV1 = ({
       return null;
     }
     const expectedIndex = frame.expectedChildren - frame.foldCursor - 1;
-    const leafHash = hashMidgardCekDataFrameChildV1(childIndex, child);
+    const leafHash = hashMidgardCekDataFrameChild(childIndex, child);
     if (
       childIndex !== expectedIndex ||
-      !verifyMidgardValidationMerkleMembershipV1({
+      !verifyMidgardValidationMerkleMembership({
         frontier: frame.childFrontier,
         leafIndex: childIndex,
         leafHash,
@@ -482,16 +481,16 @@ export const foldMidgardCekDataFrameListChildV1 = ({
     const next = {
       ...frame,
       foldCursor: frame.foldCursor + 1,
-      sequence: prependMidgardCekDataListSummaryV1(child, frame.sequence),
+      sequence: prependMidgardCekDataListSummary(child, frame.sequence),
     };
-    validateMidgardCekDataFrameV1(next);
+    validateMidgardCekDataFrame(next);
     return next;
   } catch {
     return null;
   }
 };
 
-export const foldMidgardCekDataFrameMapPairV1 = ({
+export const foldMidgardCekDataFrameMapPair = ({
   frame,
   pairIndex,
   key,
@@ -499,15 +498,15 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
   keySiblings,
   valueSiblings,
 }: {
-  readonly frame: MidgardCekDataFrameV1;
+  readonly frame: MidgardCekDataFrame;
   readonly pairIndex: number;
-  readonly key: MidgardCekDataSummaryV1;
-  readonly value: MidgardCekDataSummaryV1;
+  readonly key: MidgardCekDataSummary;
+  readonly value: MidgardCekDataSummary;
   readonly keySiblings: readonly Bytes[];
   readonly valueSiblings: readonly Bytes[];
-}): MidgardCekDataFrameV1 | null => {
+}): MidgardCekDataFrame | null => {
   try {
-    validateMidgardCekDataFrameV1(frame);
+    validateMidgardCekDataFrame(frame);
     if (frame.kind !== "map" || frame.childCount !== frame.expectedChildren) {
       return null;
     }
@@ -516,11 +515,11 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
     const expectedPairIndex = pairCount - frame.foldCursor - 1;
     const keyIndex = pairIndex * 2;
     const valueIndex = keyIndex + 1;
-    const keyLeafHash = hashMidgardCekDataFrameChildV1(keyIndex, key);
-    const valueLeafHash = hashMidgardCekDataFrameChildV1(valueIndex, value);
+    const keyLeafHash = hashMidgardCekDataFrameChild(keyIndex, key);
+    const valueLeafHash = hashMidgardCekDataFrameChild(valueIndex, value);
     if (
       pairIndex !== expectedPairIndex ||
-      !verifyMidgardValidationMerkleMembershipV1({
+      !verifyMidgardValidationMerkleMembership({
         frontier: frame.childFrontier,
         leafIndex: keyIndex,
         leafHash: keyLeafHash,
@@ -528,7 +527,7 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
           ensureHash32(sibling, "cek_data_frame_map.key_sibling"),
         ),
       }) ||
-      !verifyMidgardValidationMerkleMembershipV1({
+      !verifyMidgardValidationMerkleMembership({
         frontier: frame.childFrontier,
         leafIndex: valueIndex,
         leafHash: valueLeafHash,
@@ -542,20 +541,20 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
     const next = {
       ...frame,
       foldCursor: frame.foldCursor + 1,
-      sequence: prependMidgardCekDataPairSummaryV1(key, value, frame.sequence),
+      sequence: prependMidgardCekDataPairSummary(key, value, frame.sequence),
     };
-    validateMidgardCekDataFrameV1(next);
+    validateMidgardCekDataFrame(next);
     return next;
   } catch {
     return null;
   }
 };
 
-export const finalizeMidgardCekDataFrameV1 = (
-  frame: MidgardCekDataFrameV1,
-): MidgardCekDataSummaryV1 | null => {
+export const finalizeMidgardCekDataFrame = (
+  frame: MidgardCekDataFrame,
+): MidgardCekDataSummary | null => {
   try {
-    validateMidgardCekDataFrameV1(frame);
+    validateMidgardCekDataFrame(frame);
     const expectedFoldCursor =
       frame.kind === "map"
         ? frame.expectedChildren / 2
@@ -568,21 +567,21 @@ export const finalizeMidgardCekDataFrameV1 = (
     }
     switch (frame.kind) {
       case "constrSmall":
-        return summarizeMidgardCekSmallConstrDataV1(
+        return summarizeMidgardCekSmallConstrData(
           frame.constructor,
           frame.sequence,
         );
       case "constrLarge":
-        return summarizeMidgardCekLargeConstrDataV1({
+        return summarizeMidgardCekLargeConstrData({
           constructorCborRoot: frame.constructorCborRoot,
           constructorCborLength: frame.constructorCborLength,
           constructorMemory: frame.constructorMemory,
           fields: frame.sequence,
         });
       case "list":
-        return summarizeMidgardCekListDataV1(frame.sequence);
+        return summarizeMidgardCekListData(frame.sequence);
       case "map":
-        return summarizeMidgardCekMapDataV1(frame.sequence);
+        return summarizeMidgardCekMapData(frame.sequence);
     }
   } catch {
     return null;

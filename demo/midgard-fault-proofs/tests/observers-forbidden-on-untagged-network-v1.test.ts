@@ -1,41 +1,41 @@
 import {
-  encodeMidgardFieldPreimageV1,
-  midgardFieldCommitmentV1,
+  encodeMidgardFieldPreimage,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyObserversForbiddenFindingV1,
-  MIDGARD_UNTAGGED_NETWORK_ID_V1,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID_V1,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1,
-  observersForbiddenEvidenceClosesV1,
-  prepareObserversForbiddenEvidenceV1,
+  classifyObserversForbiddenFinding,
+  MIDGARD_UNTAGGED_NETWORK_ID,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
+  observersForbiddenEvidenceCloses,
+  prepareObserversForbiddenEvidence,
 } from "../src/observers-forbidden-on-untagged-network/family-v1.js";
 import {
-  admitProductionObserversForbiddenArtifactV1,
-  buildProductionObserversForbiddenArtifactV1,
-  productionObserversForbiddenArtifactDigestV1,
+  admitObserversForbiddenArtifact,
+  buildObserversForbiddenArtifact,
+  observersForbiddenArtifactDigest,
 } from "../src/observers-forbidden-on-untagged-network/production-artifact-v1.js";
 import {
-  OBSERVERS_FORBIDDEN_VIOLATION_ID_V1,
-  type ObserversForbiddenReplayDetectionV1,
-  selectCanonicalObserversForbiddenDetectionV1,
+  OBSERVERS_FORBIDDEN_VIOLATION_ID,
+  type ObserversForbiddenReplayDetection,
+  selectCanonicalObserversForbiddenDetection,
 } from "../src/observers-forbidden-on-untagged-network/replay-v1.js";
 
 const transactionId = "01".repeat(32);
-const accepted = acceptedVerdictSubjectV1(transactionId);
-const forced = forcedVerdictSubjectV1({
+const accepted = acceptedVerdictSubject(transactionId);
+const forced = forcedVerdictSubject({
   transactionId,
   sourceKey: { transactionId: "02".repeat(32), outputIndex: 0n },
   rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
 });
 const observerField = (count: number) =>
-  encodeMidgardFieldPreimageV1(
+  encodeMidgardFieldPreimage(
     Array.from({ length: count }, (_, index) => Buffer.alloc(28, index + 1)),
   );
 const evidence = (
@@ -44,62 +44,60 @@ const evidence = (
   count: number,
 ) => {
   const field = observerField(count);
-  return prepareObserversForbiddenEvidenceV1({
+  return prepareObserversForbiddenEvidence({
     finding: { subject, networkId },
     observerFieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
 };
 
 describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
   it("freezes the authoritative family identity and network scalar", () => {
-    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1).toBe(
+    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY).toBe(
       "observersForbiddenOnUntaggedNetwork",
     );
-    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID_V1).toBe(
+    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID).toBe(
       "00000024",
     );
-    expect(MIDGARD_UNTAGGED_NETWORK_ID_V1).toBe(255);
+    expect(MIDGARD_UNTAGGED_NETWORK_ID).toBe(255);
   });
 
   it("closes wrongful acceptance only for a non-empty observer set on the untagged scalar", () => {
-    expect(observersForbiddenEvidenceClosesV1(evidence(accepted, 255, 1))).toBe(
+    expect(observersForbiddenEvidenceCloses(evidence(accepted, 255, 1))).toBe(
       true,
     );
-    expect(observersForbiddenEvidenceClosesV1(evidence(accepted, 255, 0))).toBe(
+    expect(observersForbiddenEvidenceCloses(evidence(accepted, 255, 0))).toBe(
       false,
     );
-    expect(observersForbiddenEvidenceClosesV1(evidence(accepted, 0, 1))).toBe(
+    expect(observersForbiddenEvidenceCloses(evidence(accepted, 0, 1))).toBe(
       false,
     );
   });
 
   it("closes both complete forced contradiction polarities", () => {
-    expect(observersForbiddenEvidenceClosesV1(evidence(forced, 255, 0))).toBe(
+    expect(observersForbiddenEvidenceCloses(evidence(forced, 255, 0))).toBe(
       true,
     );
-    expect(observersForbiddenEvidenceClosesV1(evidence(forced, 1, 1))).toBe(
-      true,
-    );
-    expect(observersForbiddenEvidenceClosesV1(evidence(forced, 255, 1))).toBe(
+    expect(observersForbiddenEvidenceCloses(evidence(forced, 1, 1))).toBe(true);
+    expect(observersForbiddenEvidenceCloses(evidence(forced, 255, 1))).toBe(
       false,
     );
   });
 
   it("binds the exact typed reason and refuses accepted reason injection", () => {
-    const wrongReason = forcedVerdictSubjectV1({
+    const wrongReason = forcedVerdictSubject({
       transactionId,
       sourceKey: { transactionId: "02".repeat(32), outputIndex: 0n },
       rejectionReason: { OutputNonCanonical: { output_index: 0n } },
     });
     expect(() =>
-      classifyObserversForbiddenFindingV1({
+      classifyObserversForbiddenFinding({
         subject: wrongReason,
         networkId: 255,
       }),
     ).toThrow(/typed rejection reason changed/u);
     expect(() =>
-      classifyObserversForbiddenFindingV1({
+      classifyObserversForbiddenFinding({
         subject: { ...accepted, rejection_reason: "EmptyInputs" },
         networkId: 255,
       }),
@@ -108,26 +106,26 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
 
   it("refuses network, commitment, and observer-width substitution", () => {
     expect(() =>
-      classifyObserversForbiddenFindingV1({
+      classifyObserversForbiddenFinding({
         subject: accepted,
         networkId: 2 as 0,
       }),
     ).toThrow(/network scalar changed/u);
     const field = observerField(1);
     expect(() =>
-      prepareObserversForbiddenEvidenceV1({
+      prepareObserversForbiddenEvidence({
         finding: { subject: accepted, networkId: 255 },
         observerFieldPreimage: field,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/changed commitment/u);
-    const malformed = encodeMidgardFieldPreimageV1([Buffer.alloc(27)]);
+    const malformed = encodeMidgardFieldPreimage([Buffer.alloc(27)]);
     expect(() =>
-      prepareObserversForbiddenEvidenceV1({
+      prepareObserversForbiddenEvidence({
         finding: { subject: accepted, networkId: 255 },
         observerFieldPreimage: malformed,
         committedFieldHashHex:
-          midgardFieldCommitmentV1(malformed).toString("hex"),
+          midgardFieldCommitment(malformed).toString("hex"),
       }),
     ).toThrow(/not a 28-byte hash/u);
   });
@@ -145,10 +143,10 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
     const detection = (
       position: bigint,
       detectionId: string,
-    ): ObserversForbiddenReplayDetectionV1 => ({
+    ): ObserversForbiddenReplayDetection => ({
       detectionId,
       headerHash: "03".repeat(28),
-      violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID_V1,
+      violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,
       position,
       transactionId,
       networkId: 255,
@@ -157,7 +155,7 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
       direction: "wrongfulAcceptance",
     });
     expect(
-      selectCanonicalObserversForbiddenDetectionV1([
+      selectCanonicalObserversForbiddenDetection([
         detection(9n, "z"),
         detection(2n, "b"),
         detection(2n, "a"),
@@ -167,7 +165,7 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
 
   it("reconstructs its artifact and refuses network/field substitution", () => {
     const prepared = evidence(accepted, 255, 1);
-    const artifact = buildProductionObserversForbiddenArtifactV1({
+    const artifact = buildObserversForbiddenArtifact({
       headerHash: "03".repeat(28),
       detectionId: "accepted:0",
       position: 0n,
@@ -178,20 +176,20 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
       transactionsPhasRoot: "04".repeat(32),
       transactionMembershipCbor: "80",
     });
-    expect(
-      admitProductionObserversForbiddenArtifactV1(artifact).evidence,
-    ).toEqual(prepared);
-    expect(productionObserversForbiddenArtifactDigestV1(artifact)).toMatch(
+    expect(admitObserversForbiddenArtifact(artifact).evidence).toEqual(
+      prepared,
+    );
+    expect(observersForbiddenArtifactDigest(artifact)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
     expect(() =>
-      admitProductionObserversForbiddenArtifactV1({
+      admitObserversForbiddenArtifact({
         ...artifact,
         networkId: 1,
       }),
     ).toThrow(/source payload|artifact|field|network|closes/u);
     expect(() =>
-      admitProductionObserversForbiddenArtifactV1({
+      admitObserversForbiddenArtifact({
         ...artifact,
         fieldPreimageCbor: `${artifact.fieldPreimageCbor.slice(0, -2)}ff`,
       }),

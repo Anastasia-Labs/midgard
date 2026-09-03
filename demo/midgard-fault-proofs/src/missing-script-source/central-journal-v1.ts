@@ -1,14 +1,14 @@
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
 import type {
-  MissingScriptSourceJournalEntryV1,
-  MissingScriptSourceJournalV1,
+  MissingScriptSourceJournal,
+  MissingScriptSourceJournalEntry,
 } from "./workflow-v1.js";
 
 const CATEGORY = "missingScriptSource";
@@ -18,27 +18,27 @@ const now = () => new Date().toISOString();
  * Family journal bridge. The serial catalogue pass makes CATEGORY a central
  * identity; until then tests may supply a structurally equivalent store.
  */
-export const createMissingScriptSourceCentralJournalV1 = ({
+export const createMissingScriptSourceCentralJournal = ({
   store,
   deploymentFingerprint,
   headerHash,
   decisionDigest,
 }: {
-  store: FraudProofWorkflowJournalStoreV1;
+  store: FraudProofWorkflowJournalStore;
   deploymentFingerprint: string;
   headerHash: string;
   decisionDigest: string;
-}): MissingScriptSourceJournalV1 => {
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+}): MissingScriptSourceJournal => {
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint,
     category: CATEGORY as never,
     target: { kind: "state_queue_header", headerHash },
     decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   const load = async (): Promise<
-    readonly MissingScriptSourceJournalEntryV1[]
+    readonly MissingScriptSourceJournalEntry[]
   > => {
     const central = await store.load(workflowId);
     return central
@@ -63,26 +63,26 @@ export const createMissingScriptSourceCentralJournalV1 = ({
             : undefined;
         const encoded = recovery?.familyEntry;
         if (typeof encoded !== "string") return [];
-        const entry = JSON.parse(encoded) as MissingScriptSourceJournalEntryV1;
-        const phase: MissingScriptSourceJournalEntryV1["phase"] =
+        const entry = JSON.parse(encoded) as MissingScriptSourceJournalEntry;
+        const phase: MissingScriptSourceJournalEntry["phase"] =
           event.kind === "submission_intent" ? "intent" : event.kind;
         return [
           {
             ...entry,
             phase,
           },
-        ] satisfies readonly MissingScriptSourceJournalEntryV1[];
+        ] satisfies readonly MissingScriptSourceJournalEntry[];
       })
       .map((entry, sequence) => ({ ...entry, sequence }));
   };
   return Object.freeze({
     load: async () => await load(),
-    append: async (entry: MissingScriptSourceJournalEntryV1) => {
+    append: async (entry: MissingScriptSourceJournalEntry) => {
       let current = await store.load(workflowId);
       if (current.length === 0) {
         await store.append(
           {
-            schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+            schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
             workflowId,
             identity,
             sequence: 0,
@@ -127,7 +127,7 @@ export const createMissingScriptSourceCentralJournalV1 = ({
       }
       await store.append(
         {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
           workflowId,
           identity,
           sequence: current.length,
@@ -140,14 +140,14 @@ export const createMissingScriptSourceCentralJournalV1 = ({
   });
 };
 
-export const createMissingScriptSourceDirectoryJournalV1 = (input: {
+export const createMissingScriptSourceDirectoryJournal = (input: {
   directory: string;
   deploymentFingerprint: string;
   headerHash: string;
   decisionDigest: string;
 }) =>
-  createMissingScriptSourceCentralJournalV1({
-    store: new DirectoryFraudProofWorkflowJournalStoreV1(input.directory),
+  createMissingScriptSourceCentralJournal({
+    store: new DirectoryFraudProofWorkflowJournalStore(input.directory),
     deploymentFingerprint: input.deploymentFingerprint,
     headerHash: input.headerHash,
     decisionDigest: input.decisionDigest,

@@ -6,7 +6,7 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { cardanoTxBytesToMidgardNativeTxCanonicalCborV1 } from "@al-ft/midgard-core/codec";
+import { cardanoTxBytesToMidgardNativeTxCanonicalCbor } from "@al-ft/midgard-core/codec";
 import {
   HttpIncomingMessage,
   HttpServerRequest,
@@ -343,7 +343,7 @@ describe("submit admission helpers", () => {
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
     const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
     const nativeBytes =
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(cardanoBytes);
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(cardanoBytes);
     const normalized = normalizeSubmitTxCanonicalCborToNative(nativeBytes);
     expect(normalized).toMatchObject({
       ok: true,

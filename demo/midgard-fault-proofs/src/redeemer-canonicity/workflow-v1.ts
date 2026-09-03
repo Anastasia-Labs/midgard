@@ -1,6 +1,6 @@
-import type { RedeemerCanonicityEvidenceV1 } from "./family-v1.js";
+import type { RedeemerCanonicityEvidence } from "./family-v1.js";
 
-export type RedeemerCanonicityDurableStateV1 = Readonly<{
+export type RedeemerCanonicityDurableState = Readonly<{
   stage:
     | "none"
     | "step01"
@@ -14,31 +14,31 @@ export type RedeemerCanonicityDurableStateV1 = Readonly<{
   outputReference: string | null;
 }>;
 
-export type RedeemerCanonicityJournalV1 = Readonly<{
+export type RedeemerCanonicityJournal = Readonly<{
   load: (
     identity: string,
-  ) => Promise<readonly RedeemerCanonicityDurableStateV1[]>;
+  ) => Promise<readonly RedeemerCanonicityDurableState[]>;
   append: (
     identity: string,
     expectedLength: number,
-    state: RedeemerCanonicityDurableStateV1,
+    state: RedeemerCanonicityDurableState,
   ) => Promise<void>;
 }>;
 
-export type RedeemerCanonicityActuatorV1 = Readonly<{
-  observe: (identity: string) => Promise<RedeemerCanonicityDurableStateV1>;
+export type RedeemerCanonicityActuator = Readonly<{
+  observe: (identity: string) => Promise<RedeemerCanonicityDurableState>;
   submit: (
     input: Readonly<{
       identity: string;
       action: "init" | "bind" | "decode" | "finalize" | "remove";
       decodeCursor: number;
-      evidence: RedeemerCanonicityEvidenceV1;
+      evidence: RedeemerCanonicityEvidence;
     }>,
-  ) => Promise<RedeemerCanonicityDurableStateV1>;
+  ) => Promise<RedeemerCanonicityDurableState>;
 }>;
 
-export const redeemerCanonicityEvidenceIdentityV1 = (
-  evidence: RedeemerCanonicityEvidenceV1,
+export const redeemerCanonicityEvidenceIdentity = (
+  evidence: RedeemerCanonicityEvidence,
 ): string =>
   [
     evidence.subject.transaction_id,
@@ -47,7 +47,7 @@ export const redeemerCanonicityEvidenceIdentityV1 = (
     evidence.fieldCommitmentHex,
   ].join(":");
 
-const rank = (stage: RedeemerCanonicityDurableStateV1["stage"]): number =>
+const rank = (stage: RedeemerCanonicityDurableState["stage"]): number =>
   [
     "none",
     "step01",
@@ -58,13 +58,13 @@ const rank = (stage: RedeemerCanonicityDurableStateV1["stage"]): number =>
     "cancelled",
   ].indexOf(stage);
 
-export const reconcileRedeemerCanonicityStateV1 = ({
+export const reconcileRedeemerCanonicityState = ({
   journal,
   observed,
 }: {
-  readonly journal: readonly RedeemerCanonicityDurableStateV1[];
-  readonly observed: RedeemerCanonicityDurableStateV1;
-}): RedeemerCanonicityDurableStateV1 => {
+  readonly journal: readonly RedeemerCanonicityDurableState[];
+  readonly observed: RedeemerCanonicityDurableState;
+}): RedeemerCanonicityDurableState => {
   const recorded = journal.at(-1);
   if (recorded === undefined) return observed;
   if (rank(observed.stage) < rank(recorded.stage))
@@ -80,19 +80,19 @@ export const reconcileRedeemerCanonicityStateV1 = ({
 };
 
 /** Restart-safe runner; authenticated chain observation is always authoritative. */
-export const runRedeemerCanonicityWorkflowV1 = async ({
+export const runRedeemerCanonicityWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  readonly evidence: RedeemerCanonicityEvidenceV1;
-  readonly journal: RedeemerCanonicityJournalV1;
-  readonly actuator: RedeemerCanonicityActuatorV1;
+  readonly evidence: RedeemerCanonicityEvidence;
+  readonly journal: RedeemerCanonicityJournal;
+  readonly actuator: RedeemerCanonicityActuator;
 }): Promise<"removed" | "cancelled"> => {
-  const identity = redeemerCanonicityEvidenceIdentityV1(evidence);
+  const identity = redeemerCanonicityEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
-    const state = reconcileRedeemerCanonicityStateV1({
+    const state = reconcileRedeemerCanonicityState({
       journal: entries,
       observed: await actuator.observe(identity),
     });

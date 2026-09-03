@@ -2,7 +2,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import type {
   CanonicalDecodabilityStep02State,
-  CommittedFieldClaimV1,
+  CommittedFieldClaim,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -12,20 +12,20 @@ import {
   submitCanonicalDecodabilityStep02,
 } from "../src/index.js";
 import {
-  buildCanonicalDecodabilityBodyFixtureV1,
-  makeCanonicalDecodabilityEmulatorHarnessV1,
+  buildCanonicalDecodabilityBodyFixture,
+  makeCanonicalDecodabilityEmulatorHarness,
   network,
-  publishCanonicalDecodabilityReferenceScriptsV1,
-  setupCanonicalDecodabilityScenarioV1,
-  submitCanonicalDecodabilityStep01RawV1,
-  submitCanonicalDecodabilityStep02RawV1,
+  publishCanonicalDecodabilityReferenceScripts,
+  setupCanonicalDecodabilityScenario,
+  submitCanonicalDecodabilityStep01Raw,
+  submitCanonicalDecodabilityStep02Raw,
 } from "./support/canonical-decodability-emulator-v1.js";
-import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 describe("canonical-decodability honest-commitment adversary", () => {
   it("binds verdict 0 but cannot fabricate or finalize a conviction", async () => {
-    const harness = await makeCanonicalDecodabilityEmulatorHarnessV1();
+    const harness = await makeCanonicalDecodabilityEmulatorHarness();
     const {
       realBlueprint,
       proverLucid,
@@ -37,15 +37,15 @@ describe("canonical-decodability honest-commitment adversary", () => {
       witnessReferenceScripts,
     } = harness;
     const [step01Ref, step02Ref] =
-      await publishCanonicalDecodabilityReferenceScriptsV1({
+      await publishCanonicalDecodabilityReferenceScripts({
         lucid: proverLucid,
         contracts: canonicalDecodability,
       });
-    const fixture = await buildCanonicalDecodabilityBodyFixtureV1({
+    const fixture = await buildCanonicalDecodabilityBodyFixture({
       grammatical: true,
     });
     expect(fixture.prepared).toBeNull();
-    const setup = await setupCanonicalDecodabilityScenarioV1({
+    const setup = await setupCanonicalDecodabilityScenario({
       harness,
       fixture,
     });
@@ -89,7 +89,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
       }),
     ).rejects.toThrow(/verdict 0.*valid block cannot be challenged/u);
 
-    const truthfulClaim: CommittedFieldClaimV1 = {
+    const truthfulClaim: CommittedFieldClaim = {
       BodyFieldClaim: {
         field_index: BigInt(fixture.fieldIndex),
         carriage: {
@@ -103,8 +103,8 @@ describe("canonical-decodability honest-commitment adversary", () => {
       verdict: 0n,
     };
 
-    await expectOnchainRefusalV1(() =>
-      submitCanonicalDecodabilityStep01RawV1({
+    await expectOnchainRefusal(() =>
+      submitCanonicalDecodabilityStep01Raw({
         lucid: proverLucid,
         blueprint: realBlueprint,
         contracts: canonicalDecodability,
@@ -119,8 +119,8 @@ describe("canonical-decodability honest-commitment adversary", () => {
         witnessReferenceScripts,
       }),
     );
-    await expectOnchainRefusalV1(() =>
-      submitCanonicalDecodabilityStep01RawV1({
+    await expectOnchainRefusal(() =>
+      submitCanonicalDecodabilityStep01Raw({
         lucid: proverLucid,
         blueprint: realBlueprint,
         contracts: canonicalDecodability,
@@ -140,8 +140,8 @@ describe("canonical-decodability honest-commitment adversary", () => {
         witnessReferenceScripts,
       }),
     );
-    await expectOnchainRefusalV1(() =>
-      submitCanonicalDecodabilityStep01RawV1({
+    await expectOnchainRefusal(() =>
+      submitCanonicalDecodabilityStep01Raw({
         lucid: proverLucid,
         blueprint: realBlueprint,
         contracts: canonicalDecodability,
@@ -166,7 +166,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
     );
     expect(outRefLabel(untouchedFirst)).toBe(outRefLabel(firstStep));
 
-    const bind = await submitCanonicalDecodabilityStep01RawV1({
+    const bind = await submitCanonicalDecodabilityStep01Raw({
       lucid: proverLucid,
       blueprint: realBlueprint,
       contracts: canonicalDecodability,
@@ -197,8 +197,8 @@ describe("canonical-decodability honest-commitment adversary", () => {
         witnessReferenceScripts,
       }),
     ).rejects.toThrow(/does not describe a violation/u);
-    await expectOnchainRefusalV1(() =>
-      submitCanonicalDecodabilityStep02RawV1({
+    await expectOnchainRefusal(() =>
+      submitCanonicalDecodabilityStep02Raw({
         lucid: proverLucid,
         contracts: canonicalDecodability,
         categoryId: category.categoryId,

@@ -1,22 +1,22 @@
 import {
-  hashMidgardValidationMachineStateV1,
-  type MidgardValidationDisputeV1,
-  type MidgardValidationTraceDescriptorV1,
-  type MidgardValidationTraceProofV1,
+  hashMidgardValidationMachineState,
+  type MidgardValidationDispute,
+  type MidgardValidationTraceDescriptor,
+  type MidgardValidationTraceProof,
   MidgardValidationVerdict,
 } from "@al-ft/midgard-core";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type { DeterministicValidationMachineTrace } from "./validation-machine/index.js";
-import { validationMachineStateDataV1 } from "./validation-machine-data.js";
+import { validationMachineStateData } from "./validation-machine-data.js";
 
 type PlutusData = unknown;
 
 const bytes = (value: Uint8Array): string => Buffer.from(value).toString("hex");
 const int = (value: number | bigint): bigint => BigInt(value);
 
-export const validationTraceDescriptorDataV1 = (
-  descriptor: MidgardValidationTraceDescriptorV1,
+export const validationTraceDescriptorData = (
+  descriptor: MidgardValidationTraceDescriptor,
 ): Constr<PlutusData> =>
   new Constr(0, [
     int(descriptor.schemaVersion),
@@ -29,8 +29,8 @@ export const validationTraceDescriptorDataV1 = (
     bytes(descriptor.rejectionCodeHash),
   ]);
 
-export const validationTraceProofDataV1 = (
-  proof: MidgardValidationTraceProofV1,
+export const validationTraceProofData = (
+  proof: MidgardValidationTraceProof,
 ): Constr<PlutusData> =>
   new Constr(0, [
     int(proof.stateIndex),
@@ -38,13 +38,13 @@ export const validationTraceProofDataV1 = (
     proof.siblings.map(bytes),
   ]);
 
-export const validationDisputeDataV1 = (
-  dispute: MidgardValidationDisputeV1,
+export const validationDisputeData = (
+  dispute: MidgardValidationDispute,
 ): Constr<PlutusData> =>
   new Constr(0, [
     int(dispute.version),
-    validationTraceDescriptorDataV1(dispute.operatorDescriptor),
-    validationTraceDescriptorDataV1(dispute.challengerDescriptor),
+    validationTraceDescriptorData(dispute.operatorDescriptor),
+    validationTraceDescriptorData(dispute.challengerDescriptor),
     int(dispute.lowIndex),
     int(dispute.highIndex),
     bytes(dispute.agreedLowHash),
@@ -62,12 +62,12 @@ export const validationDisputeDataV1 = (
         : new Constr(2, []),
   ]);
 
-export const buildValidationBoundaryEvidenceDataV1 = ({
+export const buildValidationBoundaryEvidenceData = ({
   dispute,
   operatorTrace,
   challengerTrace,
 }: {
-  readonly dispute: MidgardValidationDisputeV1;
+  readonly dispute: MidgardValidationDispute;
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
 }): Constr<PlutusData> => {
@@ -86,8 +86,8 @@ export const buildValidationBoundaryEvidenceDataV1 = ({
     challengerPre === undefined ||
     operatorPost === undefined ||
     challengerPost === undefined ||
-    !hashMidgardValidationMachineStateV1(pre).equals(dispute.agreedLowHash) ||
-    !hashMidgardValidationMachineStateV1(challengerPre).equals(
+    !hashMidgardValidationMachineState(pre).equals(dispute.agreedLowHash) ||
+    !hashMidgardValidationMachineState(challengerPre).equals(
       dispute.agreedLowHash,
     ) ||
     !operatorPost.stateHash.equals(dispute.operatorHighHash) ||
@@ -98,36 +98,36 @@ export const buildValidationBoundaryEvidenceDataV1 = ({
     );
   }
   return new Constr(0, [
-    validationMachineStateDataV1(pre),
-    validationTraceProofDataV1(operatorPost),
-    validationTraceProofDataV1(challengerPost),
+    validationMachineStateData(pre),
+    validationTraceProofData(operatorPost),
+    validationTraceProofData(challengerPost),
   ]);
 };
 
-export const encodeValidationTraceDescriptorDataCborV1 = (
-  descriptor: MidgardValidationTraceDescriptorV1,
+export const encodeValidationTraceDescriptorDataCbor = (
+  descriptor: MidgardValidationTraceDescriptor,
 ): Buffer =>
   Buffer.from(
-    Data.to(validationTraceDescriptorDataV1(descriptor) as never),
+    Data.to(validationTraceDescriptorData(descriptor) as never),
     "hex",
   );
 
-export const encodeValidationTraceProofDataCborV1 = (
-  proof: MidgardValidationTraceProofV1,
+export const encodeValidationTraceProofDataCbor = (
+  proof: MidgardValidationTraceProof,
 ): Buffer =>
-  Buffer.from(Data.to(validationTraceProofDataV1(proof) as never), "hex");
+  Buffer.from(Data.to(validationTraceProofData(proof) as never), "hex");
 
-export const encodeValidationDisputeDataCborV1 = (
-  dispute: MidgardValidationDisputeV1,
+export const encodeValidationDisputeDataCbor = (
+  dispute: MidgardValidationDispute,
 ): Buffer =>
-  Buffer.from(Data.to(validationDisputeDataV1(dispute) as never), "hex");
+  Buffer.from(Data.to(validationDisputeData(dispute) as never), "hex");
 
-export const encodeValidationBoundaryEvidenceCborV1 = (input: {
-  readonly dispute: MidgardValidationDisputeV1;
+export const encodeValidationBoundaryEvidenceCbor = (input: {
+  readonly dispute: MidgardValidationDispute;
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly challengerTrace: DeterministicValidationMachineTrace;
 }): Buffer =>
   Buffer.from(
-    Data.to(buildValidationBoundaryEvidenceDataV1(input) as never),
+    Data.to(buildValidationBoundaryEvidenceData(input) as never),
     "hex",
   );

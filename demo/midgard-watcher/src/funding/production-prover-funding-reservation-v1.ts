@@ -1,16 +1,16 @@
-import { computeDeploymentManifestV1JsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
 import {
-  assertWatcherProductionProverFundingCalculationV1,
-  type WatcherProductionProverFundingCalculationV1,
+  assertWatcherProverFundingCalculation,
+  type WatcherProverFundingCalculation,
 } from "./production-prover-funding-calculation-v1.js";
 
-export const WATCHER_PRODUCTION_PROVER_FUNDING_RESERVATION_PLAN_V1 =
+export const WATCHER_PROVER_FUNDING_RESERVATION_PLAN =
   "midgard-watcher-production-prover-funding-reservation-plan-v1" as const;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -20,38 +20,38 @@ const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const ACTION_KIND = /^[a-z][a-zA-Z0-9_.:-]{0,127}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-export type WatcherProductionProverFundingReservationInputV1 = Readonly<{
+export type WatcherProverFundingReservationInput = Readonly<{
   outRef: string;
   role: "funding" | "collateral";
   lovelace: string;
   assets: readonly Readonly<{ unit: string; quantity: string }>[];
 }>;
 
-export type WatcherProductionProverFundingReservationPlanV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_PROVER_FUNDING_RESERVATION_PLAN_V1;
+export type WatcherProverFundingReservationPlan = Readonly<{
+  schemaVersion: typeof WATCHER_PROVER_FUNDING_RESERVATION_PLAN;
   deploymentFingerprint: string;
   decisionDigest: string;
   profileDigest: string;
   calculationDigest: string;
   fundingPaymentKeyHash: string;
   walletAddress: string;
-  inputs: readonly WatcherProductionProverFundingReservationInputV1[];
+  inputs: readonly WatcherProverFundingReservationInput[];
   fundingLovelace: string;
   collateralLovelace: string;
   assets: readonly Readonly<{ unit: string; quantity: string }>[];
   reservationId: string;
 }>;
 
-export type WatcherProductionProverFundingReservationTransitionV1 = Readonly<{
+export type WatcherProverFundingReservationTransition = Readonly<{
   actionKind: string;
   transactionHash: string;
   transactionBodySha256: string;
   consumedOutRefs: readonly string[];
-  producedInputs: readonly WatcherProductionProverFundingReservationInputV1[];
+  producedInputs: readonly WatcherProverFundingReservationInput[];
   transitionDigest: string;
 }>;
 
-export type WatcherProductionProverFundingReservationRecordV1 = Readonly<{
+export type WatcherProverFundingReservationRecord = Readonly<{
   reservationId: string;
   deploymentFingerprint: string;
   decisionDigest: string;
@@ -59,14 +59,14 @@ export type WatcherProductionProverFundingReservationRecordV1 = Readonly<{
   calculationDigest: string;
   revision: string;
   state: "active" | "released" | "conflict";
-  activeInputs: readonly WatcherProductionProverFundingReservationInputV1[];
-  pendingTransition: WatcherProductionProverFundingReservationTransitionV1 | null;
+  activeInputs: readonly WatcherProverFundingReservationInput[];
+  pendingTransition: WatcherProverFundingReservationTransition | null;
   lastConfirmedTransitionDigest: string | null;
   conflictCode: "unexpected_spend" | "reservation_collision" | null;
   recordDigest: string;
 }>;
 
-export type WatcherProductionProverFundingReservationStoreV1 = Readonly<{
+export type WatcherProverFundingReservationStore = Readonly<{
   readAll(): Promise<readonly unknown[]>;
   readConfirmedActionOutput(input: {
     readonly reservationId: string;
@@ -74,43 +74,43 @@ export type WatcherProductionProverFundingReservationStoreV1 = Readonly<{
     readonly sourceOutputIndex: number;
   }): Promise<unknown>;
   reserve(
-    plan: WatcherProductionProverFundingReservationPlanV1,
+    plan: WatcherProverFundingReservationPlan,
   ): Promise<"reserved" | "unchanged">;
   prepareTransition(input: {
-    readonly plan: WatcherProductionProverFundingReservationPlanV1;
+    readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly actionKind: string;
     readonly signedTransactionCborHex: string;
     readonly transactionHash: string;
     readonly transactionBodySha256: string;
     readonly consumedOutRefs: readonly string[];
-    readonly producedInputs: readonly WatcherProductionProverFundingReservationInputV1[];
-  }): Promise<WatcherProductionProverFundingReservationRecordV1>;
+    readonly producedInputs: readonly WatcherProverFundingReservationInput[];
+  }): Promise<WatcherProverFundingReservationRecord>;
   confirmTransition(input: {
-    readonly plan: WatcherProductionProverFundingReservationPlanV1;
+    readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly transitionDigest: string;
-  }): Promise<WatcherProductionProverFundingReservationRecordV1>;
+  }): Promise<WatcherProverFundingReservationRecord>;
   abandonPendingTransition(input: {
-    readonly plan: WatcherProductionProverFundingReservationPlanV1;
+    readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly transitionDigest: string;
-  }): Promise<WatcherProductionProverFundingReservationRecordV1>;
+  }): Promise<WatcherProverFundingReservationRecord>;
   markConflict(input: {
-    readonly plan: WatcherProductionProverFundingReservationPlanV1;
+    readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
     readonly code: "unexpected_spend" | "reservation_collision";
-  }): Promise<WatcherProductionProverFundingReservationRecordV1>;
+  }): Promise<WatcherProverFundingReservationRecord>;
   release(input: {
-    readonly plan: WatcherProductionProverFundingReservationPlanV1;
+    readonly plan: WatcherProverFundingReservationPlan;
     readonly expectedRevision: string;
-  }): Promise<WatcherProductionProverFundingReservationRecordV1>;
+  }): Promise<WatcherProverFundingReservationRecord>;
 }>;
 
 const admittedPlans = new WeakSet<object>();
 
-export const assertWatcherProductionProverFundingReservationPlanV1 = (
-  plan: WatcherProductionProverFundingReservationPlanV1,
+export const assertWatcherProverFundingReservationPlan = (
+  plan: WatcherProverFundingReservationPlan,
 ): void => {
   if (!admittedPlans.has(plan)) {
     throw new Error("prover funding reservation plan is not admitted");
@@ -146,7 +146,7 @@ const exactRecord = (
 const parseReservationInput = (
   value: unknown,
   label: string,
-): WatcherProductionProverFundingReservationInputV1 => {
+): WatcherProverFundingReservationInput => {
   const record = exactRecord(
     value,
     ["outRef", "role", "lovelace", "assets"],
@@ -200,7 +200,7 @@ const parseReservationInput = (
 const parseReservationInputs = (
   value: unknown,
   label: string,
-): readonly WatcherProductionProverFundingReservationInputV1[] => {
+): readonly WatcherProverFundingReservationInput[] => {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   const inputs = value.map((entry, index) =>
     parseReservationInput(entry, `${label}[${index.toString()}]`),
@@ -219,7 +219,7 @@ const parseReservationInputs = (
 const parseTransition = (
   value: unknown,
   label: string,
-): WatcherProductionProverFundingReservationTransitionV1 => {
+): WatcherProverFundingReservationTransition => {
   const record = exactRecord(
     value,
     [
@@ -274,7 +274,7 @@ const parseTransition = (
     producedInputs,
   });
   if (
-    computeDeploymentManifestV1JsonDigest(transitionInput) !==
+    computeDeploymentManifestJsonDigest(transitionInput) !==
     record.transitionDigest
   ) {
     throw new Error(`${label} digest mismatch`);
@@ -285,9 +285,9 @@ const parseTransition = (
   });
 };
 
-export const parseWatcherProductionProverFundingReservationRecordV1 = (
+export const parseWatcherProverFundingReservationRecord = (
   value: unknown,
-): WatcherProductionProverFundingReservationRecordV1 => {
+): WatcherProverFundingReservationRecord => {
   const record = exactRecord(
     value,
     [
@@ -360,28 +360,27 @@ export const parseWatcherProductionProverFundingReservationRecordV1 = (
     profileDigest: record.profileDigest,
     calculationDigest: record.calculationDigest,
     revision: record.revision,
-    state:
-      record.state as WatcherProductionProverFundingReservationRecordV1["state"],
+    state: record.state as WatcherProverFundingReservationRecord["state"],
     activeInputs,
     pendingTransition,
     lastConfirmedTransitionDigest: record.lastConfirmedTransitionDigest as
       | string
       | null,
     conflictCode:
-      record.conflictCode as WatcherProductionProverFundingReservationRecordV1["conflictCode"],
+      record.conflictCode as WatcherProverFundingReservationRecord["conflictCode"],
   });
   if (
-    computeDeploymentManifestV1JsonDigest(recordInput) !== record.recordDigest
+    computeDeploymentManifestJsonDigest(recordInput) !== record.recordDigest
   ) {
     throw new Error("prover funding reservation record digest mismatch");
   }
   return Object.freeze({ ...recordInput, recordDigest: record.recordDigest });
 };
 
-export const makeWatcherProductionProverFundingReservationRecordV1 = (input: {
-  readonly plan: WatcherProductionProverFundingReservationPlanV1;
-}): WatcherProductionProverFundingReservationRecordV1 => {
-  assertWatcherProductionProverFundingReservationPlanV1(input.plan);
+export const makeWatcherProverFundingReservationRecord = (input: {
+  readonly plan: WatcherProverFundingReservationPlan;
+}): WatcherProverFundingReservationRecord => {
+  assertWatcherProverFundingReservationPlan(input.plan);
   const recordInput = Object.freeze({
     reservationId: input.plan.reservationId,
     deploymentFingerprint: input.plan.deploymentFingerprint,
@@ -397,11 +396,11 @@ export const makeWatcherProductionProverFundingReservationRecordV1 = (input: {
   });
   return Object.freeze({
     ...recordInput,
-    recordDigest: computeDeploymentManifestV1JsonDigest(recordInput),
+    recordDigest: computeDeploymentManifestJsonDigest(recordInput),
   });
 };
 
-type CandidateV1 = Readonly<{
+type Candidate = Readonly<{
   outRef: string;
   lovelace: bigint;
   assets: ReadonlyMap<string, bigint>;
@@ -418,10 +417,10 @@ const outRef = (utxo: UTxO): string => {
   return `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 };
 
-const compareOutRef = (left: CandidateV1, right: CandidateV1): number =>
+const compareOutRef = (left: Candidate, right: Candidate): number =>
   left.outRef.localeCompare(right.outRef);
 
-const compareLargestFirst = (left: CandidateV1, right: CandidateV1): number =>
+const compareLargestFirst = (left: Candidate, right: Candidate): number =>
   left.lovelace === right.lovelace
     ? compareOutRef(left, right)
     : left.lovelace > right.lovelace
@@ -431,7 +430,7 @@ const compareLargestFirst = (left: CandidateV1, right: CandidateV1): number =>
 const parseCandidate = (
   utxo: UTxO,
   expectedAddress: string,
-): CandidateV1 | null => {
+): Candidate | null => {
   const reference = outRef(utxo);
   if (
     utxo.address !== expectedAddress ||
@@ -472,10 +471,10 @@ const assetEntries = (
   );
 
 const selectCollateral = (input: {
-  readonly candidates: readonly CandidateV1[];
+  readonly candidates: readonly Candidate[];
   readonly required: bigint;
   readonly maximumInputs: number;
-}): readonly CandidateV1[] => {
+}): readonly Candidate[] => {
   if (input.required === 0n) return Object.freeze([]);
   const pureAda = input.candidates.filter(
     (candidate) => candidate.assets.size === 0,
@@ -505,7 +504,7 @@ const selectCollateral = (input: {
 
 const remainingAssetNeeds = (
   required: ReadonlyMap<string, bigint>,
-  selected: readonly CandidateV1[],
+  selected: readonly Candidate[],
 ): Map<string, bigint> => {
   const remaining = new Map(required);
   for (const candidate of selected) {
@@ -518,12 +517,12 @@ const remainingAssetNeeds = (
 };
 
 const selectFunding = (input: {
-  readonly candidates: readonly CandidateV1[];
+  readonly candidates: readonly Candidate[];
   readonly requiredLovelace: bigint;
   readonly requiredAssets: ReadonlyMap<string, bigint>;
   readonly maximumInputs: number;
-}): readonly CandidateV1[] => {
-  const selected: CandidateV1[] = [];
+}): readonly Candidate[] => {
+  const selected: Candidate[] = [];
   const selectedOutRefs = new Set<string>();
   let remainingAssets = new Map(input.requiredAssets);
   for (const candidate of [...input.candidates].sort(compareOutRef)) {
@@ -575,15 +574,15 @@ const selectFunding = (input: {
  * persist it and reauthenticate every out-ref before minting an actuation
  * permit for a runner.
  */
-export const planWatcherProductionProverFundingReservationV1 = (input: {
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  readonly calculation: WatcherProductionProverFundingCalculationV1;
+export const planWatcherProverFundingReservation = (input: {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly calculation: WatcherProverFundingCalculation;
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly utxos: readonly UTxO[];
-}): WatcherProductionProverFundingReservationPlanV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(input.deploymentIdentity);
-  assertWatcherProductionProverFundingCalculationV1(input.calculation);
+}): WatcherProverFundingReservationPlan => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  assertWatcherProverFundingCalculation(input.calculation);
   if (
     input.calculation.deploymentFingerprint !==
     input.deploymentIdentity.manifestId
@@ -612,7 +611,7 @@ export const planWatcherProductionProverFundingReservationV1 = (input: {
     throw new Error("prover wallet differs from measured funding key");
   }
   const seen = new Set<string>();
-  const candidates: CandidateV1[] = [];
+  const candidates: Candidate[] = [];
   for (const utxo of input.utxos) {
     const candidate = parseCandidate(utxo, input.walletAddress);
     if (candidate === null) continue;
@@ -659,7 +658,7 @@ export const planWatcherProductionProverFundingReservationV1 = (input: {
     maximumInputs: Number(input.calculation.totals.maximumFundingInputs),
   });
   const reservationInput = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_PROVER_FUNDING_RESERVATION_PLAN_V1,
+    schemaVersion: WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
     deploymentFingerprint: input.deploymentIdentity.manifestId,
     decisionDigest: input.decisionDigest,
     profileDigest: input.calculation.profileDigest,
@@ -696,7 +695,7 @@ export const planWatcherProductionProverFundingReservationV1 = (input: {
   });
   const plan = Object.freeze({
     ...reservationInput,
-    reservationId: computeDeploymentManifestV1JsonDigest(reservationInput),
+    reservationId: computeDeploymentManifestJsonDigest(reservationInput),
   });
   admittedPlans.add(plan);
   return plan;

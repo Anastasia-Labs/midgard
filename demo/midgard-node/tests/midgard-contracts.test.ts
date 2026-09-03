@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -19,14 +19,14 @@ import { describe, expect, it as unitIt } from "vitest";
 
 import {
   buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifestV1,
-  type DeploymentManifestV1IdentityContext,
+  buildDeploymentManifest,
+  type DeploymentManifestIdentityContext,
 } from "../src/commands/contract-deployment-info.js";
 import {
-  computeDeploymentManifestV1DaCommitteeSignersHash,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestV1JsonValue,
+  computeDeploymentManifestDaCommitteeSignersHash,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue,
 } from "../src/deployment-manifest-v1.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
@@ -51,45 +51,45 @@ import {
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
 import {
-  TEST_AVAILABILITY_CHALLENGE_V1,
-  TEST_AVAILABILITY_PARAMETERS_V1,
+  TEST_AVAILABILITY_CHALLENGE,
+  TEST_AVAILABILITY_PARAMETERS,
 } from "./helpers/availability-challenge-v1.js";
-import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./helpers/cardano-protocol-parameters-v1.js";
+import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters-v1.js";
 
 describe("midgard contracts registry", () => {
   const oneShotOutRef = {
     txHash: "00".repeat(32),
     outputIndex: 0,
   } as const;
-  const cardanoSnapshot = TEST_CARDANO_PROTOCOL_PARAMETERS_V1;
+  const cardanoSnapshot = TEST_CARDANO_PROTOCOL_PARAMETERS;
   const daVkey = "11".repeat(32);
-  const manifestIdentityContext: DeploymentManifestV1IdentityContext = {
-    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
+  const manifestIdentityContext: DeploymentManifestIdentityContext = {
+    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
     economics:
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
     cardanoProtocolParameters: {
       snapshot: cardanoSnapshot,
-      digest: computeDeploymentManifestV1JsonDigest(cardanoSnapshot),
+      digest: computeDeploymentManifestJsonDigest(cardanoSnapshot),
     },
     genesis: {
       headerHash: "00".repeat(28),
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest(
-        normalizeDeploymentManifestV1JsonValue([]),
+      utxoSetDigest: computeDeploymentManifestJsonDigest(
+        normalizeDeploymentManifestJsonValue([]),
       ),
     },
     da: {
       committeeVkeys: [daVkey],
-      committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+      committeeSignersHash: computeDeploymentManifestDaCommitteeSignersHash([
         daVkey,
       ]),
       threshold: 1,
       transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         envelopeEncoding: "identity" as const,
         zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS_V1,
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
     proofEvidence: {
@@ -107,7 +107,7 @@ describe("midgard contracts registry", () => {
         { ...oneShotOutRef },
         {
           referenceScriptAuth: placeholderContracts.referenceScriptAuth,
-          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
+          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
         },
       );
 
@@ -287,7 +287,7 @@ describe("midgard contracts registry", () => {
           },
           {
             referenceScriptAuth: placeholderContracts.referenceScriptAuth,
-            availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
+            availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
           },
         ),
       );
@@ -343,7 +343,7 @@ describe("midgard contracts registry", () => {
         };
         const referenceScriptOutRefs = new Map(
           Object.values(
-            DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+            DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
           ).map((contractName, outputIndex) => [
             contractName,
             { txHash: "33".repeat(32), outputIndex },
@@ -360,7 +360,7 @@ describe("midgard contracts registry", () => {
           referenceScriptOutRefs,
           fraudProofCatalogue,
         );
-        const manifest = buildDeploymentManifestV1(deploymentInfo, {
+        const manifest = buildDeploymentManifest(deploymentInfo, {
           network: "Preprod",
           ...manifestIdentityContext,
           referenceScriptDeployAddress: "addr_test1reference",
@@ -389,11 +389,11 @@ describe("midgard contracts registry", () => {
           /economics\.profile manifest=bounded-acceptance-v1 config=public-preprod-launch-v1; economics\.requiredBondLovelace manifest=900000000 config=100000000000; economics\.slashingPenaltyLovelace manifest=500000000 config=25000000000/u,
         );
 
-        const publicManifest = buildDeploymentManifestV1(deploymentInfo, {
+        const publicManifest = buildDeploymentManifest(deploymentInfo, {
           network: "Preprod",
           ...manifestIdentityContext,
           economics:
-            DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[
+            DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
               "public-preprod-launch-v1"
             ],
           referenceScriptDeployAddress: "addr_test1reference",

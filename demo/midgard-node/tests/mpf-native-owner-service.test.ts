@@ -11,7 +11,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { MidgardMpf } from "../src/mpf/index.js";
 import {
-  buildNativeProductionRootProbe,
+  buildNativeRootProbe,
   buildTransactionsSourceRoot,
   buildTransitionTraceResult,
   type NativeMpfBuildContext,
@@ -228,18 +228,18 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     const expectedTxRoot = await Effect.runPromise(
       buildTransactionsSourceRoot(transactionOps),
     );
-    const productionRoots = await Effect.runPromise(
-      buildNativeProductionRootProbe({
+    const roots = await Effect.runPromise(
+      buildNativeRootProbe({
         nativeMpf: nativeContext,
         sourceEvents,
         transactionOps,
       }),
     );
-    const trace = productionRoots.transitionTraceBuild;
+    const trace = roots.transitionTraceBuild;
     expect(nativeContext.eventRoots).toEqual(expectedRoots);
     expect(nativeContext.candidateRoot).toBe(expectedRoots.at(-1));
     expect(trace.finalUtxosRoot).toBe(expectedRoots.at(-1));
-    expect(productionRoots).toMatchObject({
+    expect(roots).toMatchObject({
       utxoRoot: expectedRoots.at(-1),
       rawTxRoot: expectedRawTxRoot,
       txRoot: expectedTxRoot,
@@ -249,12 +249,12 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     });
-    expect(productionRoots.rawTxRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.txRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.depositsRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.withdrawalsRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.forcedTransactionsRoot).toMatch(/^[0-9a-f]{64}$/);
-    expect(productionRoots.transitionRoots).toEqual(
+    expect(roots.rawTxRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.txRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.depositsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.withdrawalsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.forcedTransactionsRoot).toMatch(/^[0-9a-f]{64}$/);
+    expect(roots.transitionRoots).toEqual(
       trace.transitionTraceMembers.map((member) => ({
         pre: member.value.pre_utxos_root,
         post: member.value.post_utxos_root,

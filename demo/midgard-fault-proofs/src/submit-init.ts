@@ -26,7 +26,7 @@ import {
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
@@ -50,14 +50,14 @@ import {
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
@@ -232,9 +232,9 @@ export const submitInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Production workflow seam: invoked after local evaluation, before I/O. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInitResult> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
@@ -338,12 +338,12 @@ export const submitInit = async ({
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: computationThreadMintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${fraudCategoryLabel(fraudCategory)} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${fraudCategoryLabel(fraudCategory)} init PHAS membership`,
@@ -453,15 +453,15 @@ export const submitInit = async ({
     throw new Error("BuildTxWithRedeemer did not resolve init output index.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof computation-thread minting",
         utxo: witnessReferenceScripts?.computationThreadMint,
         expectedScript: computationThreadMintingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "membership proof withdrawal",
         utxo: witnessReferenceScripts?.phasMembershipWithdraw,
         expectedScript: phasMembershipScript,
@@ -502,7 +502,7 @@ export const submitInit = async ({
 export const submitInitFromFiles = async (
   config: SubmitInitCliConfig,
 ): Promise<SubmitInitResult> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-init",
     fraudCategory: config.fraudCategory,
   });

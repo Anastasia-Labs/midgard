@@ -50,8 +50,8 @@ import {
   buildTransactionInclusionFixture,
   countedTransactionsRoot,
   createRecordingLeaseCoordinator,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
   eventIndexes,
   expectRemovedFraudProofState,
   expectStateQueueHeaderOrder,
@@ -67,10 +67,10 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
   deploymentManifest,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishRemovalReferenceScripts,
@@ -91,7 +91,7 @@ describe("fault-proof emulator integration", () => {
       catalogue,
       witnessReferenceScripts,
       faultProofReferenceScripts,
-    } = await makeFaultProofEmulatorHarnessV1();
+    } = await makeFaultProofEmulatorHarness();
     const transactionInclusion = await buildTransactionInclusionFixture();
     // See `publishRemovalReferenceScripts`: removal must source these seven
     // validators from reference inputs to stay inside the 16,384-byte L1
@@ -120,7 +120,7 @@ describe("fault-proof emulator integration", () => {
       ...baseFraudulentHeader,
       endTime:
         baseFraudulentHeader.startTime +
-        BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1),
+        BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
     };
     const setup = await submitSetupTx({
       lucid: funderLucid,
@@ -130,7 +130,7 @@ describe("fault-proof emulator integration", () => {
       header: fraudulentHeader,
     });
     const { headerHash } = setup;
-    const successorStart = emulatorSuccessorHeaderStartV1({
+    const successorStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: fraudulentHeader.endTime,
       emulator,
     });
@@ -643,7 +643,7 @@ describe("fault-proof emulator integration", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `double-spend ${stage}`,
         measurement,
         maxTxExMem,
@@ -651,7 +651,7 @@ describe("fault-proof emulator integration", () => {
       });
     }
     for (const measurement of removeResultCapture.measurements) {
-      expectProofFitV1({
+      expectProofFit({
         stage: "double-spend removal transaction",
         measurement,
         maxTxExMem,

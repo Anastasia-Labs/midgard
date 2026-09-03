@@ -5,27 +5,27 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 import { encodeCbor } from "./codec/cbor.js";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
+  MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  MIDGARD_RELEASE_EVIDENCE_DIGEST,
 } from "./consensus-profile-v1.js";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "./da-transport.js";
 import {
-  buildMidgardMpfProofFoldTraceV1,
-  type MidgardMpfProofStepV1,
+  buildMidgardMpfProofFoldTrace,
+  type MidgardMpfProofStep,
 } from "./mpf-proof-fold-v1.js";
 import {
-  MIDGARD_RETENTION_WINDOW_V1,
-  retentionDaysCoverWindowV1,
+  MIDGARD_RETENTION_WINDOW,
+  retentionDaysCoverWindow,
 } from "./retention-window-v1.js";
 
-export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
+export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "referenceScriptAuthMint",
   "hubOracleMint",
   "daParamsGovernorSpend",
@@ -344,7 +344,7 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "stateQueueMergeWithdraw",
 ] as const);
 
-export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
+export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
   Object.freeze([
     "doubleSpend",
     "nonExistentInput",
@@ -402,11 +402,11 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "distinctAssetAccumulationLimit",
   ] as const);
 
-export type DeploymentManifestV1FraudProofCatalogueCategory =
-  (typeof DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+export type DeploymentManifestFraudProofCatalogueCategory =
+  (typeof DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
 
 /** Canonical first-step deployment contract for each catalogue category. */
-export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY =
+export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY =
   Object.freeze({
     doubleSpend: "fraudProofDoubleSpend",
     nonExistentInput: "fraudProofNonExistentInput",
@@ -464,12 +464,12 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY =
     scriptIntegrityHashMismatch: "fraudProofScriptIntegrityHashMismatch",
     distinctAssetAccumulationLimit: "fraudProofDistinctAssetAccumulationLimit",
   } as const satisfies Record<
-    DeploymentManifestV1FraudProofCatalogueCategory,
+    DeploymentManifestFraudProofCatalogueCategory,
     string
   >);
 
 /** Frozen wire identities; category array position is presentation only. */
-export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
+export const DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
   Object.freeze({
     doubleSpend: "00000000",
     nonExistentInput: "00000001",
@@ -526,26 +526,26 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
     scriptIntegrityHashMismatch: "00000033",
     distinctAssetAccumulationLimit: "00000035",
   } as const satisfies Readonly<
-    Record<DeploymentManifestV1FraudProofCatalogueCategory, string>
+    Record<DeploymentManifestFraudProofCatalogueCategory, string>
   >);
 
-export type DeploymentManifestV1FraudProofCatalogueCategoryIdentity = {
+export type DeploymentManifestFraudProofCatalogueCategoryIdentity = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
 };
 
-export type DeploymentManifestV1FraudProofCatalogueIdentity = {
+export type DeploymentManifestFraudProofCatalogueIdentity = {
   readonly root: string;
   readonly categories: Readonly<
     Record<
-      DeploymentManifestV1FraudProofCatalogueCategory,
-      DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+      DeploymentManifestFraudProofCatalogueCategory,
+      DeploymentManifestFraudProofCatalogueCategoryIdentity
     >
   >;
 };
 
-export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
   Object.freeze({
     "reference-script-auth minting": "referenceScriptAuthMint",
     "hub-oracle minting": "hubOracleMint",
@@ -1026,411 +1026,384 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "availability-challenge minting": "availabilityChallengeMint",
   } as const);
 
-export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
-  Object.freeze({
-    "reference-script-auth minting": "ReferenceScriptAuthMint",
-    "hub-oracle minting": "HubOracleMint",
-    "da-params-governor spending": "DaParamsGovernorSpend",
-    "da-params-governor minting": "DaParamsGovernorMint",
-    "da-attestation spending": "DaAttestationSpend",
-    "da-attestation minting": "DaAttestationMint",
-    "state-queue spending": "StateQueueSpend",
-    "state-queue minting": "StateQueueMint",
-    "state-queue commit withdrawal": "StateQueueCommitYield",
-    "state-queue unattested-timeout withdrawal": "StateQueueUnattestedYield",
-    "state-queue unavailable-timeout withdrawal": "StateQueueUnavailableYield",
-    "state-queue fraud-removal withdrawal": "StateQueueFraudRemovalYield",
-    "state-queue merge withdrawal": "StateQueueMergeYield",
-    "scheduler spending": "SchedulerSpend",
-    "scheduler minting": "SchedulerMint",
-    "registered-operators spending": "RegisteredOperatorsSpend",
-    "registered-operators minting": "RegisteredOperatorsMint",
-    "active-operators spending": "ActiveOperatorsSpend",
-    "active-operators minting": "ActiveOperatorsMint",
-    "retired-operators spending": "RetiredOperatorsSpend",
-    "retired-operators minting": "RetiredOperatorsMint",
-    "fraud-proof-catalogue minting": "FraudProofCatalogueMint",
-    "deposit spending": "DepositSpend",
-    "deposit minting": "DepositMint",
-    "withdrawal spending": "WithdrawalSpend",
-    "withdrawal minting": "WithdrawalMint",
-    "settlement minting": "SettlementMint",
-    "payout spending": "PayoutSpend",
-    "payout minting": "PayoutMint",
-    "reserve spending": "ReserveSpend",
-    "reserve observer": "ReserveObserver",
-    "membership proof withdrawal": "MembershipProofWithdraw",
-    // #579: `V1TxFieldPreimageSpend`, `V1TxFieldReceiptSpend` and
-    // `V1TxFieldReceiptMint` retired with their roles. Token names are minted
-    // per deployed reference script; a name with no script mints nothing.
-    "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
-    "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
-    "V1 immutable CEK program-material publication":
-      "V1CekProgramMaterialSpend",
-    "V1 validation-trace dispute": "V1ValidationTraceDispute",
-    "V1 validation-trace source": "V1ValidationTraceSource",
-    "V1 validation-trace game": "V1ValidationTraceGame",
-    "V1 validation-trace boundary": "V1ValidationTraceBoundary",
-    "V1 validation-trace timeout": "V1ValidationTraceTimeout",
-    "V1 validation-trace award": "V1ValidationTraceAward",
-    "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
-    "V1 fraud-proof fabricated-deposit step-01": "V1FpFabricatedDepositS01",
-    "V1 fraud-proof fabricated-deposit step-02": "V1FpFabricatedDepositS02",
-    "V1 fraud-proof fabricated-deposit step-03": "V1FpFabricatedDepositS03",
-    "V1 fraud-proof fabricated-deposit step-04": "V1FpFabricatedDepositS04",
-    "V1 fraud-proof fabricated-withdrawal step-01":
-      "V1FpFabricatedWithdrawalS01",
-    "V1 fraud-proof fabricated-withdrawal step-02":
-      "V1FpFabricatedWithdrawalS02",
-    "V1 fraud-proof fabricated-withdrawal step-03":
-      "V1FpFabricatedWithdrawalS03",
-    "V1 fraud-proof fabricated-withdrawal step-04":
-      "V1FpFabricatedWithdrawalS04",
-    "V1 fraud-proof native-script-decoding step-01":
-      "V1FpNativeScriptDecodingS01",
-    "V1 fraud-proof native-script-decoding step-02":
-      "V1FpNativeScriptDecodingS02",
-    "V1 fraud-proof native-script-decoding step-03 open-subject":
-      "V1FpNativeScriptDecodingS03Open",
-    "V1 fraud-proof native-script-decoding step-03 bind-descriptor":
-      "V1FpNativeScriptDecodingS03Bind",
-    "V1 fraud-proof native-script-decoding step-03 advance-or-close":
-      "V1FpNativeScriptDecodingS03Scan",
-    "V1 fraud-proof native-script-decoding step-04":
-      "V1FpNativeScriptDecodingS04",
-    "V1 fraud-proof missing-signature step-01": "V1FpMissingSignatureS01",
-    "V1 fraud-proof missing-signature step-02": "V1FpMissingSignatureS02",
-    "V1 fraud-proof missing-signature step-03": "V1FpMissingSignatureS03",
-    "V1 fraud-proof missing-signature step-04": "V1FpMissingSignatureS04",
-    "V1 fraud-proof missing-native-script-tx step-01":
-      "V1FpMissingNativeScriptTxS01",
-    "V1 fraud-proof missing-native-script-tx step-02":
-      "V1FpMissingNativeScriptTxS02",
-    "V1 fraud-proof missing-native-script-tx step-03":
-      "V1FpMissingNativeScriptTxS03",
-    "V1 fraud-proof missing-native-script-tx step-04":
-      "V1FpMissingNativeScriptTxS04",
-    "V1 fraud-proof missing-native-script-tx step-05":
-      "V1FpMissingNativeScriptTxS05",
-    "V1 fraud-proof missing-native-script-tx step-06":
-      "V1FpMissingNativeScriptTxS06",
-    "V1 fraud-proof withdrawn-reference-input step-01":
-      "V1FpWithdrawnReferenceInputS01",
-    "V1 fraud-proof withdrawn-reference-input step-02":
-      "V1FpWithdrawnReferenceInputS02",
-    "V1 fraud-proof withdrawn-reference-input step-03":
-      "V1FpWithdrawnReferenceInputS03",
-    "V1 fraud-proof canonical-decodability step-01":
-      "V1FpCanonicalDecodabilityS01",
-    "V1 fraud-proof canonical-decodability step-02":
-      "V1FpCanonicalDecodabilityS02",
-    "V1 fraud-proof committed-field-shape step-01":
-      "V1FpCommittedFieldShapeS01",
-    "V1 fraud-proof committed-field-shape step-02":
-      "V1FpCommittedFieldShapeS02",
-    "V1 fraud-proof min-fee step-01": "V1FpMinFeeS01",
-    "V1 fraud-proof min-fee step-02": "V1FpMinFeeS02",
-    "V1 fraud-proof withdrawal-mistag step-01": "V1FpWithdrawalMistagS01",
-    "V1 fraud-proof withdrawal-mistag step-02": "V1FpWithdrawalMistagS02",
-    "V1 fraud-proof withdrawal-mistag step-03": "V1FpWithdrawalMistagS03",
-    "V1 fraud-proof withdrawal-mistag step-04": "V1FpWithdrawalMistagS04",
-    "V1 fraud-proof withdrawal-mistag step-05": "V1FpWithdrawalMistagS05",
-    "V1 fraud-proof double-withdraw step-01": "V1FpDoubleWithdrawS01",
-    "V1 fraud-proof double-withdraw step-02": "V1FpDoubleWithdrawS02",
-    "V1 fraud-proof cross-block-duplicate-event step-01":
-      "V1FpCrossBlockDuplicateEventS01",
-    "V1 fraud-proof cross-block-duplicate-event step-02":
-      "V1FpCrossBlockDuplicateEventS02",
-    "V1 fraud-proof l2-tx-mistag step-01": "V1FpL2TxMistagS01",
-    "V1 fraud-proof l2-tx-mistag step-02": "V1FpL2TxMistagS02",
-    "V1 fraud-proof withdrawn-input step-01": "V1FpWithdrawnInputS01",
-    "V1 fraud-proof withdrawn-input step-02": "V1FpWithdrawnInputS02",
-    "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
-    "V1 fraud-proof value-not-preserved step-01": "V1FpValueNotPreservedS01",
-    "V1 fraud-proof value-not-preserved step-02": "V1FpValueNotPreservedS02",
-    "V1 fraud-proof value-not-preserved step-03": "V1FpValueNotPreservedS03",
-    "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
-    "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
-    "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
-    "V1 fraud-proof input-set-uniqueness step-03": "V1FpInputSetUniquenessS03",
-    "V1 fraud-proof input-set-uniqueness step-04": "V1FpInputSetUniquenessS04",
-    "V1 fraud-proof mint-authorization step-01": "V1FpMintAuthorizationS01",
-    "V1 fraud-proof mint-authorization step-02": "V1FpMintAuthorizationS02",
-    "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
-    "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
-    "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
-    "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
-    "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
-    "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
-    "V1 fraud-proof transition-trace final-2": "V1FpTransitionTraceFinal2",
-    "V1 fraud-proof transition-trace final-3": "V1FpTransitionTraceFinal3",
-    "V1 fraud-proof transition-trace final-4": "V1FpTransitionTraceFinal4",
-    "V1 fraud-proof transition-trace final-5": "V1FpTransitionTraceFinal5",
-    "V1 fraud-proof transition-trace final-6": "V1FpTransitionTraceFinal6",
-    "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
-    "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
-    "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
-    "V1 fraud-proof computation-thread minting": "V1FpComputationThreadMint",
-    "V1 fraud-proof token minting": "V1FpTokenMint",
-    "V1 MPF chunked-verify withdrawal": "V1MpfChunkedVerifyWithdraw",
-    "V1 MPF pexcludes withdrawal": "V1MpfPexcludesWithdraw",
-    "V1 fraud-proof double-spend step-01": "V1FpDoubleSpendS01",
-    "V1 fraud-proof double-spend step-02": "V1FpDoubleSpendS02",
-    "V1 fraud-proof double-spend step-03": "V1FpDoubleSpendS03",
-    "V1 fraud-proof double-spend step-04": "V1FpDoubleSpendS04",
-    "V1 fraud-proof non-existent-input step-01": "V1FpNonExistentInputS01",
-    "V1 fraud-proof non-existent-input step-02": "V1FpNonExistentInputS02",
-    "V1 fraud-proof non-existent-input step-03": "V1FpNonExistentInputS03",
-    "V1 fraud-proof non-existent-input step-04": "V1FpNonExistentInputS04",
-    "V1 fraud-proof non-existent-input-no-index step-01":
-      "V1FpNonExistentInputNoIdxS01",
-    "V1 fraud-proof non-existent-input-no-index step-02":
-      "V1FpNonExistentInputNoIdxS02",
-    "V1 fraud-proof non-existent-input-no-index step-03":
-      "V1FpNonExistentInputNoIdxS03",
-    "V1 fraud-proof non-existent-input-no-index step-04":
-      "V1FpNonExistentInputNoIdxS04",
-    "V1 fraud-proof invalid-range step-01": "V1FpInvalidRangeS01",
-    "V1 fraud-proof invalid-range step-02": "V1FpInvalidRangeS02",
-    "V1 fraud-proof zero-input step-01": "V1FpZeroInputS01",
-    "V1 fraud-proof zero-input step-02": "V1FpZeroInputS02",
-    "V1 fraud-proof da-hash-preimage step-01": "V1FpDaHashPreimageS01",
-    "V1 fraud-proof da-hash-preimage step-02": "V1FpDaHashPreimageS02",
-    "V1 fraud-proof no-reference-input step-01": "V1FpNoReferenceInputS01",
-    "V1 fraud-proof no-reference-input step-02": "V1FpNoReferenceInputS02",
-    "V1 fraud-proof no-reference-input step-03": "V1FpNoReferenceInputS03",
-    "V1 fraud-proof no-reference-input step-04": "V1FpNoReferenceInputS04",
-    "V1 fraud-proof reference-input-no-idx step-01":
-      "V1FpReferenceInputNoIdxS01",
-    "V1 fraud-proof reference-input-no-idx step-02":
-      "V1FpReferenceInputNoIdxS02",
-    "V1 fraud-proof reference-input-no-idx step-03":
-      "V1FpReferenceInputNoIdxS03",
-    "V1 fraud-proof reference-input-no-idx step-04":
-      "V1FpReferenceInputNoIdxS04",
-    "V1 fraud-proof invalid-signature step-01": "V1FpInvalidSignatureS01",
-    "V1 fraud-proof invalid-signature step-02": "V1FpInvalidSignatureS02",
-    "V1 fraud-proof missing-native-script-tx step-07":
-      "V1FpMissingNativeScriptTxS07",
-    "V1 fraud-proof missing-native-script-tx step-08":
-      "V1FpMissingNativeScriptTxS08",
-    "V1 fraud-proof missing-native-script-utxo step-01":
-      "V1FpMissingNativeScriptUtxoS01",
-    "V1 fraud-proof missing-native-script-utxo step-02":
-      "V1FpMissingNativeScriptUtxoS02",
-    "V1 fraud-proof missing-native-script-utxo step-03":
-      "V1FpMissingNativeScriptUtxoS03",
-    "V1 fraud-proof missing-native-script-utxo step-04":
-      "V1FpMissingNativeScriptUtxoS04",
-    "V1 fraud-proof missing-native-script-utxo step-05":
-      "V1FpMissingNativeScriptUtxoS05",
-    "V1 fraud-proof native-script-invalid step-01":
-      "V1FpNativeScriptInvalidS01",
-    "V1 fraud-proof native-script-invalid step-02":
-      "V1FpNativeScriptInvalidS02",
-    "V1 fraud-proof native-script-invalid step-03":
-      "V1FpNativeScriptInvalidS03",
-    "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
-    "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
-    "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
-    "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
-    "correction-lock spending": "CorrectionLockSpend",
-    "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
-    "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
-    "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
-    "V1 fraud-proof field-preimage-length-mismatch step-01": "V1FpFieldLenS01",
-    "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":
-      "V1FpFieldLenS02Accepted",
-    "V1 fraud-proof field-preimage-length-mismatch step-02 forced":
-      "V1FpFieldLenS02Forced",
-    "V1 fraud-proof field-preimage-length-mismatch step-03": "V1FpFieldLenS03",
-    "V1 fraud-proof field-item-width-illegal step-01": "V1FpItemWidthS01",
-    "V1 fraud-proof field-item-width-illegal step-02": "V1FpItemWidthS02",
-    "V1 fraud-proof field-item-width-illegal step-03": "V1FpItemWidthS03",
-    "V1 fraud-proof witness-script-decoding step-01": "V1FpWitnessDecodeS01",
-    "V1 fraud-proof witness-script-decoding step-02": "V1FpWitnessDecodeS02",
-    "V1 fraud-proof witness-script-decoding step-03": "V1FpWitnessDecodeS03",
-    "V1 fraud-proof witness-script-decoding step-04": "V1FpWitnessDecodeS04",
-    "V1 fraud-proof script-integrity-hash-missing step-01":
-      "V1FpIntegrityMissingS01",
-    "V1 fraud-proof script-integrity-hash-missing step-02":
-      "V1FpIntegrityMissingS02",
-    "V1 fraud-proof script-integrity-hash-missing step-03":
-      "V1FpIntegrityMissingS03",
-    "V1 fraud-proof script-integrity-hash-missing script-grammar":
-      "V1FpIntegrityMissingGrammar",
-    "V1 fraud-proof script-integrity-hash-missing script-scan":
-      "V1FpIntegrityMissingScan",
-    "V1 fraud-proof script-integrity-hash-missing redeemer-grammar":
-      "V1FpIntegrityMissingRedeemer",
-    "V1 fraud-proof script-integrity-hash-missing step-04":
-      "V1FpIntegrityMissingS04",
-    "V1 fraud-proof transaction-output-non-canonical step-01":
-      "V1FpTxOutputCanonicalS01",
-    "V1 fraud-proof transaction-output-non-canonical step-02":
-      "V1FpTxOutputCanonicalS02",
-    "V1 fraud-proof transaction-output-non-canonical step-03":
-      "V1FpTxOutputCanonicalS03",
-    "V1 fraud-proof transaction-output-non-canonical step-04":
-      "V1FpTxOutputCanonicalS04",
-    "V1 fraud-proof resolved-output-non-canonical step-01":
-      "V1FpResolvedOutputS01",
-    "V1 fraud-proof resolved-output-non-canonical step-02":
-      "V1FpResolvedOutputS02",
-    "V1 fraud-proof resolved-output-non-canonical step-03":
-      "V1FpResolvedOutputS03",
-    "V1 fraud-proof resolved-output-non-canonical step-04":
-      "V1FpResolvedOutputS04",
-    "V1 fraud-proof resolved-output-non-canonical step-05":
-      "V1FpResolvedOutputS05",
-    "V1 fraud-proof mint-declared-asset-limit step-01": "V1FpMintAssetLimitS01",
-    "V1 fraud-proof mint-declared-asset-limit step-02": "V1FpMintAssetLimitS02",
-    "V1 fraud-proof mint-declared-asset-limit step-03": "V1FpMintAssetLimitS03",
-    "V1 fraud-proof mint-declared-asset-limit step-04": "V1FpMintAssetLimitS04",
-    "V1 fraud-proof spend-input-signer-missing step-01": "V1FpSpendSignerS01",
-    "V1 fraud-proof spend-input-signer-missing step-02": "V1FpSpendSignerS02",
-    "V1 fraud-proof spend-input-signer-missing step-03": "V1FpSpendSignerS03",
-    "V1 fraud-proof spend-input-signer-missing step-04": "V1FpSpendSignerS04",
-    "V1 fraud-proof spend-input-signer-missing step-05": "V1FpSpendSignerS05",
-    "V1 fraud-proof protected-output-signer-missing step-01":
-      "V1FpProtectedSignerS01",
-    "V1 fraud-proof protected-output-signer-missing step-02":
-      "V1FpProtectedSignerS02",
-    "V1 fraud-proof protected-output-signer-missing step-03":
-      "V1FpProtectedSignerS03",
-    "V1 fraud-proof protected-output-signer-missing step-04":
-      "V1FpProtectedSignerS04",
-    "V1 fraud-proof protected-output-signer-missing step-05":
-      "V1FpProtectedSignerS05",
-    "V1 fraud-proof observers-forbidden-on-untagged-network step-01":
-      "V1FpObserversForbiddenS01",
-    "V1 fraud-proof observers-forbidden-on-untagged-network step-02":
-      "V1FpObserversForbiddenS02",
-    "V1 fraud-proof output-reference-script-decoding step-01":
-      "V1FpOutputRefDecodeS01",
-    "V1 fraud-proof output-reference-script-decoding step-02":
-      "V1FpOutputRefDecodeS02",
-    "V1 fraud-proof output-reference-script-decoding step-03":
-      "V1FpOutputRefDecodeS03",
-    "V1 fraud-proof output-reference-script-decoding step-04":
-      "V1FpOutputRefDecodeS04",
-    "V1 fraud-proof output-reference-script-decoding step-05":
-      "V1FpOutputRefDecodeS05",
-    "V1 fraud-proof output-reference-script-decoding step-06":
-      "V1FpOutputRefDecodeS06",
-    "V1 fraud-proof execution-source-script-decoding step-01":
-      "V1FpExecSourceDecodeS01",
-    "V1 fraud-proof execution-source-script-decoding step-02":
-      "V1FpExecSourceDecodeS02",
-    "V1 fraud-proof execution-source-script-decoding step-03":
-      "V1FpExecSourceDecodeS03",
-    "V1 fraud-proof execution-source-script-decoding step-04":
-      "V1FpExecSourceDecodeS04",
-    "V1 fraud-proof execution-source-script-decoding step-05":
-      "V1FpExecSourceDecodeS05",
-    "V1 fraud-proof observer-order-invalid step-01": "V1FpObserverOrderS01",
-    "V1 fraud-proof observer-order-invalid step-02": "V1FpObserverOrderS02",
-    "V1 fraud-proof observer-order-invalid step-03": "V1FpObserverOrderS03",
-    "V1 fraud-proof observer-order-invalid step-04": "V1FpObserverOrderS04",
-    "V1 fraud-proof redeemer-canonicity step-01": "V1FpRedeemerCanonS01",
-    "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
-    "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
-    "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
-    "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
-    "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
-    "V1 fraud-proof unused-script-witness step-01":
-      "V1FpUnusedScriptWitnessS01",
-    "V1 fraud-proof unused-script-witness step-02":
-      "V1FpUnusedScriptWitnessS02",
-    "V1 fraud-proof unused-script-witness step-03":
-      "V1FpUnusedScriptWitnessS03",
-    "V1 fraud-proof unused-script-witness step-04":
-      "V1FpUnusedScriptWitnessS04",
-    "V1 fraud-proof unused-script-witness step-05":
-      "V1FpUnusedScriptWitnessS05",
-    "V1 fraud-proof unused-script-witness step-06":
-      "V1FpUnusedScriptWitnessS06",
-    "V1 fraud-proof missing-script-source step-01":
-      "V1FpMissingScriptSourceS01",
-    "V1 fraud-proof missing-script-source step-02":
-      "V1FpMissingScriptSourceS02",
-    "V1 fraud-proof missing-script-source step-03":
-      "V1FpMissingScriptSourceS03",
-    "V1 fraud-proof missing-script-source step-04":
-      "V1FpMissingScriptSourceS04",
-    "V1 fraud-proof missing-script-source step-05":
-      "V1FpMissingScriptSourceS05",
-    "V1 fraud-proof missing-script-source step-06":
-      "V1FpMissingScriptSourceS06",
-    "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRedeemerS01",
-    "V1 fraud-proof missing-redeemer step-02": "V1FpMissingRedeemerS02",
-    "V1 fraud-proof missing-redeemer step-02a": "V1FpMissingRedeemerS02a",
-    "V1 fraud-proof missing-redeemer step-02b": "V1FpMissingRedeemerS02b",
-    "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRedeemerS03",
-    "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRedeemerS04",
-    "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRedeemerS05",
-    "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
-    "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
-    "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",
-    "V1 fraud-proof unused-redeemer step-02b": "V1FpUnusedRedeemerS02b",
-    "V1 fraud-proof unused-redeemer step-02c": "V1FpUnusedRedeemerS02c",
-    "V1 fraud-proof unused-redeemer step-03": "V1FpUnusedRedeemerS03",
-    "V1 fraud-proof unused-redeemer step-04": "V1FpUnusedRedeemerS04",
-    "V1 fraud-proof unused-redeemer step-05": "V1FpUnusedRedeemerS05",
-    "V1 fraud-proof unused-redeemer step-06": "V1FpUnusedRedeemerS06",
-    "V1 fraud-proof execution-native-script-invalid step-01":
-      "V1FpExecNativeInvalidS01",
-    "V1 fraud-proof execution-native-script-invalid step-02":
-      "V1FpExecNativeInvalidS02",
-    "V1 fraud-proof execution-native-script-invalid step-03":
-      "V1FpExecNativeInvalidS03",
-    "V1 fraud-proof execution-native-script-invalid step-04":
-      "V1FpExecNativeInvalidS04",
-    "V1 fraud-proof execution-native-script-invalid step-05":
-      "V1FpExecNativeInvalidS05",
-    "V1 fraud-proof execution-native-script-invalid step-06":
-      "V1FpExecNativeInvalidS06",
-    "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init":
-      "V1FpExecNativeInvAccInit",
-    "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix":
-      "V1FpExecNativeInvAccSpend",
-    "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix":
-      "V1FpExecNativeInvAccMint",
-    "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix":
-      "V1FpExecNativeInvAccObserver",
-    "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix":
-      "V1FpExecNativeInvAccReceive",
-    "V1 fraud-proof execution-native-script-invalid accepted-inline-source":
-      "V1FpExecNativeInvAccInline",
-    "V1 fraud-proof execution-native-script-invalid accepted-reference-source":
-      "V1FpExecNativeInvAccRef",
-    "V1 fraud-proof script-integrity-hash-mismatch step-01":
-      "V1FpIntegrityMismatchS01",
-    "V1 fraud-proof script-integrity-hash-mismatch step-02":
-      "V1FpIntegrityMismatchS02",
-    "V1 fraud-proof script-integrity-hash-mismatch step-03":
-      "V1FpIntegrityMismatchS03",
-    "V1 fraud-proof script-integrity-hash-mismatch step-04":
-      "V1FpIntegrityMismatchS04",
-    "V1 fraud-proof script-integrity-hash-mismatch step-05":
-      "V1FpIntegrityMismatchS05",
-    "V1 fraud-proof distinct-asset-accumulation-limit step-01":
-      "V1FpDistinctAssetLimitS01",
-    "V1 fraud-proof distinct-asset-accumulation-limit step-02":
-      "V1FpDistinctAssetLimitS02",
-    "V1 fraud-proof distinct-asset-accumulation-limit step-03":
-      "V1FpDistinctAssetLimitS03",
-    "V1 fraud-proof distinct-asset-accumulation-limit step-04":
-      "V1FpDistinctAssetLimitS04",
-    "V1 fraud-proof distinct-asset-accumulation-limit step-05":
-      "V1FpDistinctAssetLimitS05",
-    "V1 fraud-proof distinct-asset-accumulation-limit step-06":
-      "V1FpDistinctAssetLimitS06",
-    "availability-challenge spending": "AvailabilityChallengeSpend",
-    "availability-challenge minting": "AvailabilityChallengeMint",
-  } as const);
+export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
+  "reference-script-auth minting": "ReferenceScriptAuthMint",
+  "hub-oracle minting": "HubOracleMint",
+  "da-params-governor spending": "DaParamsGovernorSpend",
+  "da-params-governor minting": "DaParamsGovernorMint",
+  "da-attestation spending": "DaAttestationSpend",
+  "da-attestation minting": "DaAttestationMint",
+  "state-queue spending": "StateQueueSpend",
+  "state-queue minting": "StateQueueMint",
+  "state-queue commit withdrawal": "StateQueueCommitYield",
+  "state-queue unattested-timeout withdrawal": "StateQueueUnattestedYield",
+  "state-queue unavailable-timeout withdrawal": "StateQueueUnavailableYield",
+  "state-queue fraud-removal withdrawal": "StateQueueFraudRemovalYield",
+  "state-queue merge withdrawal": "StateQueueMergeYield",
+  "scheduler spending": "SchedulerSpend",
+  "scheduler minting": "SchedulerMint",
+  "registered-operators spending": "RegisteredOperatorsSpend",
+  "registered-operators minting": "RegisteredOperatorsMint",
+  "active-operators spending": "ActiveOperatorsSpend",
+  "active-operators minting": "ActiveOperatorsMint",
+  "retired-operators spending": "RetiredOperatorsSpend",
+  "retired-operators minting": "RetiredOperatorsMint",
+  "fraud-proof-catalogue minting": "FraudProofCatalogueMint",
+  "deposit spending": "DepositSpend",
+  "deposit minting": "DepositMint",
+  "withdrawal spending": "WithdrawalSpend",
+  "withdrawal minting": "WithdrawalMint",
+  "settlement minting": "SettlementMint",
+  "payout spending": "PayoutSpend",
+  "payout minting": "PayoutMint",
+  "reserve spending": "ReserveSpend",
+  "reserve observer": "ReserveObserver",
+  "membership proof withdrawal": "MembershipProofWithdraw",
+  // #579: `V1TxFieldPreimageSpend`, `V1TxFieldReceiptSpend` and
+  // `V1TxFieldReceiptMint` retired with their roles. Token names are minted
+  // per deployed reference script; a name with no script mints nothing.
+  "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
+  "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
+  "V1 immutable CEK program-material publication": "V1CekProgramMaterialSpend",
+  "V1 validation-trace dispute": "V1ValidationTraceDispute",
+  "V1 validation-trace source": "V1ValidationTraceSource",
+  "V1 validation-trace game": "V1ValidationTraceGame",
+  "V1 validation-trace boundary": "V1ValidationTraceBoundary",
+  "V1 validation-trace timeout": "V1ValidationTraceTimeout",
+  "V1 validation-trace award": "V1ValidationTraceAward",
+  "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
+  "V1 fraud-proof fabricated-deposit step-01": "V1FpFabricatedDepositS01",
+  "V1 fraud-proof fabricated-deposit step-02": "V1FpFabricatedDepositS02",
+  "V1 fraud-proof fabricated-deposit step-03": "V1FpFabricatedDepositS03",
+  "V1 fraud-proof fabricated-deposit step-04": "V1FpFabricatedDepositS04",
+  "V1 fraud-proof fabricated-withdrawal step-01": "V1FpFabricatedWithdrawalS01",
+  "V1 fraud-proof fabricated-withdrawal step-02": "V1FpFabricatedWithdrawalS02",
+  "V1 fraud-proof fabricated-withdrawal step-03": "V1FpFabricatedWithdrawalS03",
+  "V1 fraud-proof fabricated-withdrawal step-04": "V1FpFabricatedWithdrawalS04",
+  "V1 fraud-proof native-script-decoding step-01":
+    "V1FpNativeScriptDecodingS01",
+  "V1 fraud-proof native-script-decoding step-02":
+    "V1FpNativeScriptDecodingS02",
+  "V1 fraud-proof native-script-decoding step-03 open-subject":
+    "V1FpNativeScriptDecodingS03Open",
+  "V1 fraud-proof native-script-decoding step-03 bind-descriptor":
+    "V1FpNativeScriptDecodingS03Bind",
+  "V1 fraud-proof native-script-decoding step-03 advance-or-close":
+    "V1FpNativeScriptDecodingS03Scan",
+  "V1 fraud-proof native-script-decoding step-04":
+    "V1FpNativeScriptDecodingS04",
+  "V1 fraud-proof missing-signature step-01": "V1FpMissingSignatureS01",
+  "V1 fraud-proof missing-signature step-02": "V1FpMissingSignatureS02",
+  "V1 fraud-proof missing-signature step-03": "V1FpMissingSignatureS03",
+  "V1 fraud-proof missing-signature step-04": "V1FpMissingSignatureS04",
+  "V1 fraud-proof missing-native-script-tx step-01":
+    "V1FpMissingNativeScriptTxS01",
+  "V1 fraud-proof missing-native-script-tx step-02":
+    "V1FpMissingNativeScriptTxS02",
+  "V1 fraud-proof missing-native-script-tx step-03":
+    "V1FpMissingNativeScriptTxS03",
+  "V1 fraud-proof missing-native-script-tx step-04":
+    "V1FpMissingNativeScriptTxS04",
+  "V1 fraud-proof missing-native-script-tx step-05":
+    "V1FpMissingNativeScriptTxS05",
+  "V1 fraud-proof missing-native-script-tx step-06":
+    "V1FpMissingNativeScriptTxS06",
+  "V1 fraud-proof withdrawn-reference-input step-01":
+    "V1FpWithdrawnReferenceInputS01",
+  "V1 fraud-proof withdrawn-reference-input step-02":
+    "V1FpWithdrawnReferenceInputS02",
+  "V1 fraud-proof withdrawn-reference-input step-03":
+    "V1FpWithdrawnReferenceInputS03",
+  "V1 fraud-proof canonical-decodability step-01":
+    "V1FpCanonicalDecodabilityS01",
+  "V1 fraud-proof canonical-decodability step-02":
+    "V1FpCanonicalDecodabilityS02",
+  "V1 fraud-proof committed-field-shape step-01": "V1FpCommittedFieldShapeS01",
+  "V1 fraud-proof committed-field-shape step-02": "V1FpCommittedFieldShapeS02",
+  "V1 fraud-proof min-fee step-01": "V1FpMinFeeS01",
+  "V1 fraud-proof min-fee step-02": "V1FpMinFeeS02",
+  "V1 fraud-proof withdrawal-mistag step-01": "V1FpWithdrawalMistagS01",
+  "V1 fraud-proof withdrawal-mistag step-02": "V1FpWithdrawalMistagS02",
+  "V1 fraud-proof withdrawal-mistag step-03": "V1FpWithdrawalMistagS03",
+  "V1 fraud-proof withdrawal-mistag step-04": "V1FpWithdrawalMistagS04",
+  "V1 fraud-proof withdrawal-mistag step-05": "V1FpWithdrawalMistagS05",
+  "V1 fraud-proof double-withdraw step-01": "V1FpDoubleWithdrawS01",
+  "V1 fraud-proof double-withdraw step-02": "V1FpDoubleWithdrawS02",
+  "V1 fraud-proof cross-block-duplicate-event step-01":
+    "V1FpCrossBlockDuplicateEventS01",
+  "V1 fraud-proof cross-block-duplicate-event step-02":
+    "V1FpCrossBlockDuplicateEventS02",
+  "V1 fraud-proof l2-tx-mistag step-01": "V1FpL2TxMistagS01",
+  "V1 fraud-proof l2-tx-mistag step-02": "V1FpL2TxMistagS02",
+  "V1 fraud-proof withdrawn-input step-01": "V1FpWithdrawnInputS01",
+  "V1 fraud-proof withdrawn-input step-02": "V1FpWithdrawnInputS02",
+  "V1 fraud-proof withdrawn-input step-03": "V1FpWithdrawnInputS03",
+  "V1 fraud-proof value-not-preserved step-01": "V1FpValueNotPreservedS01",
+  "V1 fraud-proof value-not-preserved step-02": "V1FpValueNotPreservedS02",
+  "V1 fraud-proof value-not-preserved step-03": "V1FpValueNotPreservedS03",
+  "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
+  "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
+  "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
+  "V1 fraud-proof input-set-uniqueness step-03": "V1FpInputSetUniquenessS03",
+  "V1 fraud-proof input-set-uniqueness step-04": "V1FpInputSetUniquenessS04",
+  "V1 fraud-proof mint-authorization step-01": "V1FpMintAuthorizationS01",
+  "V1 fraud-proof mint-authorization step-02": "V1FpMintAuthorizationS02",
+  "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
+  "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
+  "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+  "V1 fraud-proof transition-trace route": "V1FpTransitionTraceRoute",
+  "V1 fraud-proof transition-trace final-0": "V1FpTransitionTraceFinal0",
+  "V1 fraud-proof transition-trace final-1": "V1FpTransitionTraceFinal1",
+  "V1 fraud-proof transition-trace final-2": "V1FpTransitionTraceFinal2",
+  "V1 fraud-proof transition-trace final-3": "V1FpTransitionTraceFinal3",
+  "V1 fraud-proof transition-trace final-4": "V1FpTransitionTraceFinal4",
+  "V1 fraud-proof transition-trace final-5": "V1FpTransitionTraceFinal5",
+  "V1 fraud-proof transition-trace final-6": "V1FpTransitionTraceFinal6",
+  "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
+  "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
+  "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
+  "V1 fraud-proof computation-thread minting": "V1FpComputationThreadMint",
+  "V1 fraud-proof token minting": "V1FpTokenMint",
+  "V1 MPF chunked-verify withdrawal": "V1MpfChunkedVerifyWithdraw",
+  "V1 MPF pexcludes withdrawal": "V1MpfPexcludesWithdraw",
+  "V1 fraud-proof double-spend step-01": "V1FpDoubleSpendS01",
+  "V1 fraud-proof double-spend step-02": "V1FpDoubleSpendS02",
+  "V1 fraud-proof double-spend step-03": "V1FpDoubleSpendS03",
+  "V1 fraud-proof double-spend step-04": "V1FpDoubleSpendS04",
+  "V1 fraud-proof non-existent-input step-01": "V1FpNonExistentInputS01",
+  "V1 fraud-proof non-existent-input step-02": "V1FpNonExistentInputS02",
+  "V1 fraud-proof non-existent-input step-03": "V1FpNonExistentInputS03",
+  "V1 fraud-proof non-existent-input step-04": "V1FpNonExistentInputS04",
+  "V1 fraud-proof non-existent-input-no-index step-01":
+    "V1FpNonExistentInputNoIdxS01",
+  "V1 fraud-proof non-existent-input-no-index step-02":
+    "V1FpNonExistentInputNoIdxS02",
+  "V1 fraud-proof non-existent-input-no-index step-03":
+    "V1FpNonExistentInputNoIdxS03",
+  "V1 fraud-proof non-existent-input-no-index step-04":
+    "V1FpNonExistentInputNoIdxS04",
+  "V1 fraud-proof invalid-range step-01": "V1FpInvalidRangeS01",
+  "V1 fraud-proof invalid-range step-02": "V1FpInvalidRangeS02",
+  "V1 fraud-proof zero-input step-01": "V1FpZeroInputS01",
+  "V1 fraud-proof zero-input step-02": "V1FpZeroInputS02",
+  "V1 fraud-proof da-hash-preimage step-01": "V1FpDaHashPreimageS01",
+  "V1 fraud-proof da-hash-preimage step-02": "V1FpDaHashPreimageS02",
+  "V1 fraud-proof no-reference-input step-01": "V1FpNoReferenceInputS01",
+  "V1 fraud-proof no-reference-input step-02": "V1FpNoReferenceInputS02",
+  "V1 fraud-proof no-reference-input step-03": "V1FpNoReferenceInputS03",
+  "V1 fraud-proof no-reference-input step-04": "V1FpNoReferenceInputS04",
+  "V1 fraud-proof reference-input-no-idx step-01": "V1FpReferenceInputNoIdxS01",
+  "V1 fraud-proof reference-input-no-idx step-02": "V1FpReferenceInputNoIdxS02",
+  "V1 fraud-proof reference-input-no-idx step-03": "V1FpReferenceInputNoIdxS03",
+  "V1 fraud-proof reference-input-no-idx step-04": "V1FpReferenceInputNoIdxS04",
+  "V1 fraud-proof invalid-signature step-01": "V1FpInvalidSignatureS01",
+  "V1 fraud-proof invalid-signature step-02": "V1FpInvalidSignatureS02",
+  "V1 fraud-proof missing-native-script-tx step-07":
+    "V1FpMissingNativeScriptTxS07",
+  "V1 fraud-proof missing-native-script-tx step-08":
+    "V1FpMissingNativeScriptTxS08",
+  "V1 fraud-proof missing-native-script-utxo step-01":
+    "V1FpMissingNativeScriptUtxoS01",
+  "V1 fraud-proof missing-native-script-utxo step-02":
+    "V1FpMissingNativeScriptUtxoS02",
+  "V1 fraud-proof missing-native-script-utxo step-03":
+    "V1FpMissingNativeScriptUtxoS03",
+  "V1 fraud-proof missing-native-script-utxo step-04":
+    "V1FpMissingNativeScriptUtxoS04",
+  "V1 fraud-proof missing-native-script-utxo step-05":
+    "V1FpMissingNativeScriptUtxoS05",
+  "V1 fraud-proof native-script-invalid step-01": "V1FpNativeScriptInvalidS01",
+  "V1 fraud-proof native-script-invalid step-02": "V1FpNativeScriptInvalidS02",
+  "V1 fraud-proof native-script-invalid step-03": "V1FpNativeScriptInvalidS03",
+  "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
+  "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
+  "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
+  "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
+  "correction-lock spending": "CorrectionLockSpend",
+  "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
+  "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
+  "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
+  "V1 fraud-proof field-preimage-length-mismatch step-01": "V1FpFieldLenS01",
+  "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":
+    "V1FpFieldLenS02Accepted",
+  "V1 fraud-proof field-preimage-length-mismatch step-02 forced":
+    "V1FpFieldLenS02Forced",
+  "V1 fraud-proof field-preimage-length-mismatch step-03": "V1FpFieldLenS03",
+  "V1 fraud-proof field-item-width-illegal step-01": "V1FpItemWidthS01",
+  "V1 fraud-proof field-item-width-illegal step-02": "V1FpItemWidthS02",
+  "V1 fraud-proof field-item-width-illegal step-03": "V1FpItemWidthS03",
+  "V1 fraud-proof witness-script-decoding step-01": "V1FpWitnessDecodeS01",
+  "V1 fraud-proof witness-script-decoding step-02": "V1FpWitnessDecodeS02",
+  "V1 fraud-proof witness-script-decoding step-03": "V1FpWitnessDecodeS03",
+  "V1 fraud-proof witness-script-decoding step-04": "V1FpWitnessDecodeS04",
+  "V1 fraud-proof script-integrity-hash-missing step-01":
+    "V1FpIntegrityMissingS01",
+  "V1 fraud-proof script-integrity-hash-missing step-02":
+    "V1FpIntegrityMissingS02",
+  "V1 fraud-proof script-integrity-hash-missing step-03":
+    "V1FpIntegrityMissingS03",
+  "V1 fraud-proof script-integrity-hash-missing script-grammar":
+    "V1FpIntegrityMissingGrammar",
+  "V1 fraud-proof script-integrity-hash-missing script-scan":
+    "V1FpIntegrityMissingScan",
+  "V1 fraud-proof script-integrity-hash-missing redeemer-grammar":
+    "V1FpIntegrityMissingRedeemer",
+  "V1 fraud-proof script-integrity-hash-missing step-04":
+    "V1FpIntegrityMissingS04",
+  "V1 fraud-proof transaction-output-non-canonical step-01":
+    "V1FpTxOutputCanonicalS01",
+  "V1 fraud-proof transaction-output-non-canonical step-02":
+    "V1FpTxOutputCanonicalS02",
+  "V1 fraud-proof transaction-output-non-canonical step-03":
+    "V1FpTxOutputCanonicalS03",
+  "V1 fraud-proof transaction-output-non-canonical step-04":
+    "V1FpTxOutputCanonicalS04",
+  "V1 fraud-proof resolved-output-non-canonical step-01":
+    "V1FpResolvedOutputS01",
+  "V1 fraud-proof resolved-output-non-canonical step-02":
+    "V1FpResolvedOutputS02",
+  "V1 fraud-proof resolved-output-non-canonical step-03":
+    "V1FpResolvedOutputS03",
+  "V1 fraud-proof resolved-output-non-canonical step-04":
+    "V1FpResolvedOutputS04",
+  "V1 fraud-proof resolved-output-non-canonical step-05":
+    "V1FpResolvedOutputS05",
+  "V1 fraud-proof mint-declared-asset-limit step-01": "V1FpMintAssetLimitS01",
+  "V1 fraud-proof mint-declared-asset-limit step-02": "V1FpMintAssetLimitS02",
+  "V1 fraud-proof mint-declared-asset-limit step-03": "V1FpMintAssetLimitS03",
+  "V1 fraud-proof mint-declared-asset-limit step-04": "V1FpMintAssetLimitS04",
+  "V1 fraud-proof spend-input-signer-missing step-01": "V1FpSpendSignerS01",
+  "V1 fraud-proof spend-input-signer-missing step-02": "V1FpSpendSignerS02",
+  "V1 fraud-proof spend-input-signer-missing step-03": "V1FpSpendSignerS03",
+  "V1 fraud-proof spend-input-signer-missing step-04": "V1FpSpendSignerS04",
+  "V1 fraud-proof spend-input-signer-missing step-05": "V1FpSpendSignerS05",
+  "V1 fraud-proof protected-output-signer-missing step-01":
+    "V1FpProtectedSignerS01",
+  "V1 fraud-proof protected-output-signer-missing step-02":
+    "V1FpProtectedSignerS02",
+  "V1 fraud-proof protected-output-signer-missing step-03":
+    "V1FpProtectedSignerS03",
+  "V1 fraud-proof protected-output-signer-missing step-04":
+    "V1FpProtectedSignerS04",
+  "V1 fraud-proof protected-output-signer-missing step-05":
+    "V1FpProtectedSignerS05",
+  "V1 fraud-proof observers-forbidden-on-untagged-network step-01":
+    "V1FpObserversForbiddenS01",
+  "V1 fraud-proof observers-forbidden-on-untagged-network step-02":
+    "V1FpObserversForbiddenS02",
+  "V1 fraud-proof output-reference-script-decoding step-01":
+    "V1FpOutputRefDecodeS01",
+  "V1 fraud-proof output-reference-script-decoding step-02":
+    "V1FpOutputRefDecodeS02",
+  "V1 fraud-proof output-reference-script-decoding step-03":
+    "V1FpOutputRefDecodeS03",
+  "V1 fraud-proof output-reference-script-decoding step-04":
+    "V1FpOutputRefDecodeS04",
+  "V1 fraud-proof output-reference-script-decoding step-05":
+    "V1FpOutputRefDecodeS05",
+  "V1 fraud-proof output-reference-script-decoding step-06":
+    "V1FpOutputRefDecodeS06",
+  "V1 fraud-proof execution-source-script-decoding step-01":
+    "V1FpExecSourceDecodeS01",
+  "V1 fraud-proof execution-source-script-decoding step-02":
+    "V1FpExecSourceDecodeS02",
+  "V1 fraud-proof execution-source-script-decoding step-03":
+    "V1FpExecSourceDecodeS03",
+  "V1 fraud-proof execution-source-script-decoding step-04":
+    "V1FpExecSourceDecodeS04",
+  "V1 fraud-proof execution-source-script-decoding step-05":
+    "V1FpExecSourceDecodeS05",
+  "V1 fraud-proof observer-order-invalid step-01": "V1FpObserverOrderS01",
+  "V1 fraud-proof observer-order-invalid step-02": "V1FpObserverOrderS02",
+  "V1 fraud-proof observer-order-invalid step-03": "V1FpObserverOrderS03",
+  "V1 fraud-proof observer-order-invalid step-04": "V1FpObserverOrderS04",
+  "V1 fraud-proof redeemer-canonicity step-01": "V1FpRedeemerCanonS01",
+  "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
+  "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
+  "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
+  "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
+  "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
+  "V1 fraud-proof unused-script-witness step-01": "V1FpUnusedScriptWitnessS01",
+  "V1 fraud-proof unused-script-witness step-02": "V1FpUnusedScriptWitnessS02",
+  "V1 fraud-proof unused-script-witness step-03": "V1FpUnusedScriptWitnessS03",
+  "V1 fraud-proof unused-script-witness step-04": "V1FpUnusedScriptWitnessS04",
+  "V1 fraud-proof unused-script-witness step-05": "V1FpUnusedScriptWitnessS05",
+  "V1 fraud-proof unused-script-witness step-06": "V1FpUnusedScriptWitnessS06",
+  "V1 fraud-proof missing-script-source step-01": "V1FpMissingScriptSourceS01",
+  "V1 fraud-proof missing-script-source step-02": "V1FpMissingScriptSourceS02",
+  "V1 fraud-proof missing-script-source step-03": "V1FpMissingScriptSourceS03",
+  "V1 fraud-proof missing-script-source step-04": "V1FpMissingScriptSourceS04",
+  "V1 fraud-proof missing-script-source step-05": "V1FpMissingScriptSourceS05",
+  "V1 fraud-proof missing-script-source step-06": "V1FpMissingScriptSourceS06",
+  "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRedeemerS01",
+  "V1 fraud-proof missing-redeemer step-02": "V1FpMissingRedeemerS02",
+  "V1 fraud-proof missing-redeemer step-02a": "V1FpMissingRedeemerS02a",
+  "V1 fraud-proof missing-redeemer step-02b": "V1FpMissingRedeemerS02b",
+  "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRedeemerS03",
+  "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRedeemerS04",
+  "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRedeemerS05",
+  "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
+  "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
+  "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",
+  "V1 fraud-proof unused-redeemer step-02b": "V1FpUnusedRedeemerS02b",
+  "V1 fraud-proof unused-redeemer step-02c": "V1FpUnusedRedeemerS02c",
+  "V1 fraud-proof unused-redeemer step-03": "V1FpUnusedRedeemerS03",
+  "V1 fraud-proof unused-redeemer step-04": "V1FpUnusedRedeemerS04",
+  "V1 fraud-proof unused-redeemer step-05": "V1FpUnusedRedeemerS05",
+  "V1 fraud-proof unused-redeemer step-06": "V1FpUnusedRedeemerS06",
+  "V1 fraud-proof execution-native-script-invalid step-01":
+    "V1FpExecNativeInvalidS01",
+  "V1 fraud-proof execution-native-script-invalid step-02":
+    "V1FpExecNativeInvalidS02",
+  "V1 fraud-proof execution-native-script-invalid step-03":
+    "V1FpExecNativeInvalidS03",
+  "V1 fraud-proof execution-native-script-invalid step-04":
+    "V1FpExecNativeInvalidS04",
+  "V1 fraud-proof execution-native-script-invalid step-05":
+    "V1FpExecNativeInvalidS05",
+  "V1 fraud-proof execution-native-script-invalid step-06":
+    "V1FpExecNativeInvalidS06",
+  "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init":
+    "V1FpExecNativeInvAccInit",
+  "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix":
+    "V1FpExecNativeInvAccSpend",
+  "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix":
+    "V1FpExecNativeInvAccMint",
+  "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix":
+    "V1FpExecNativeInvAccObserver",
+  "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix":
+    "V1FpExecNativeInvAccReceive",
+  "V1 fraud-proof execution-native-script-invalid accepted-inline-source":
+    "V1FpExecNativeInvAccInline",
+  "V1 fraud-proof execution-native-script-invalid accepted-reference-source":
+    "V1FpExecNativeInvAccRef",
+  "V1 fraud-proof script-integrity-hash-mismatch step-01":
+    "V1FpIntegrityMismatchS01",
+  "V1 fraud-proof script-integrity-hash-mismatch step-02":
+    "V1FpIntegrityMismatchS02",
+  "V1 fraud-proof script-integrity-hash-mismatch step-03":
+    "V1FpIntegrityMismatchS03",
+  "V1 fraud-proof script-integrity-hash-mismatch step-04":
+    "V1FpIntegrityMismatchS04",
+  "V1 fraud-proof script-integrity-hash-mismatch step-05":
+    "V1FpIntegrityMismatchS05",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-01":
+    "V1FpDistinctAssetLimitS01",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-02":
+    "V1FpDistinctAssetLimitS02",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-03":
+    "V1FpDistinctAssetLimitS03",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-04":
+    "V1FpDistinctAssetLimitS04",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-05":
+    "V1FpDistinctAssetLimitS05",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-06":
+    "V1FpDistinctAssetLimitS06",
+  "availability-challenge spending": "AvailabilityChallengeSpend",
+  "availability-challenge minting": "AvailabilityChallengeMint",
+} as const);
 
-export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([
+export const DEPLOYMENT_MANIFEST_STEP_NAMES = Object.freeze([
   "prepareHubOracleNonce",
   "deployNodeRuntimeReferenceScripts",
   "initProtocol",
@@ -1439,16 +1412,16 @@ export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([
   "operatorActivation",
 ] as const);
 
-export const DEPLOYMENT_MANIFEST_V1_L1_FINALITY = Object.freeze({
+export const DEPLOYMENT_MANIFEST_L1_FINALITY = Object.freeze({
   confirmationDepth: 30,
   automaticRecoveryMaxDepth: 2160,
   deepRollbackPolicy: "automated_rewind_replay_incident-v1",
 } as const);
 
-export type DeploymentManifestV1L1Finality =
-  typeof DEPLOYMENT_MANIFEST_V1_L1_FINALITY;
+export type DeploymentManifestL1Finality =
+  typeof DEPLOYMENT_MANIFEST_L1_FINALITY;
 
-export type DeploymentManifestV1CanonicalRational = Readonly<{
+export type DeploymentManifestCanonicalRational = Readonly<{
   numerator: string;
   denominator: string;
 }>;
@@ -1459,11 +1432,11 @@ export type DeploymentManifestV1CanonicalRational = Readonly<{
  * rationals retain numerator/denominator identity and never pass through a
  * JavaScript float.
  */
-export type DeploymentManifestV1CardanoProtocolParameters = Readonly<{
+export type DeploymentManifestCardanoProtocolParameters = Readonly<{
   minFeeA: string;
   minFeeB: string;
-  priceMemory: DeploymentManifestV1CanonicalRational;
-  priceSteps: DeploymentManifestV1CanonicalRational;
+  priceMemory: DeploymentManifestCanonicalRational;
+  priceSteps: DeploymentManifestCanonicalRational;
   coinsPerUtxoByte: string;
   collateralPercentage: string;
   maxCollateralInputs: string;
@@ -1471,14 +1444,14 @@ export type DeploymentManifestV1CardanoProtocolParameters = Readonly<{
   maxValueSize: string;
   maxTxExUnits: Readonly<{ memory: string; steps: string }>;
   referenceScriptFee: Readonly<{
-    base: DeploymentManifestV1CanonicalRational;
+    base: DeploymentManifestCanonicalRational;
     range: string;
-    multiplier: DeploymentManifestV1CanonicalRational;
+    multiplier: DeploymentManifestCanonicalRational;
     maximumSizeBytes: string;
   }>;
 }>;
 
-export const DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE = Object.freeze({
+export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = Object.freeze({
   "public-preprod-launch-v1": Object.freeze({
     profile: "public-preprod-launch-v1" as const,
     requiredBondLovelace: 100_000_000_000,
@@ -1497,13 +1470,13 @@ export const DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE = Object.freeze({
   }),
 } as const);
 
-export type DeploymentManifestV1EconomicsProfile =
-  keyof typeof DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE;
+export type DeploymentManifestEconomicsProfile =
+  keyof typeof DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE;
 
-export type DeploymentManifestV1Economics =
-  (typeof DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE)[DeploymentManifestV1EconomicsProfile];
+export type DeploymentManifestEconomics =
+  (typeof DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)[DeploymentManifestEconomicsProfile];
 
-export type DeploymentManifestV1AvailabilityChallenge = Readonly<{
+export type DeploymentManifestAvailabilityChallenge = Readonly<{
   responseClasses: Readonly<{
     smallPayloadMaxBytes: 65_536;
     smallResponseWindowMs: 3_600_000;
@@ -1526,7 +1499,7 @@ export type DeploymentManifestV1AvailabilityChallenge = Readonly<{
   bondOwnerCredential: string;
 }>;
 
-export const DEPLOYMENT_MANIFEST_V1_ROOT_KEYS = Object.freeze([
+export const DEPLOYMENT_MANIFEST_ROOT_KEYS = Object.freeze([
   "schemaVersion",
   "manifestId",
   "consensusProfile",
@@ -1550,19 +1523,19 @@ export const DEPLOYMENT_MANIFEST_V1_ROOT_KEYS = Object.freeze([
   "availabilityChallenge",
 ] as const);
 
-export type DeploymentManifestV1JsonValue =
+export type DeploymentManifestJsonValue =
   | null
   | boolean
   | number
   | string
-  | readonly DeploymentManifestV1JsonValue[]
-  | { readonly [key: string]: DeploymentManifestV1JsonValue };
+  | readonly DeploymentManifestJsonValue[]
+  | { readonly [key: string]: DeploymentManifestJsonValue };
 
-export const MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION =
+export const MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION =
   "midgard-deployment-marker-v1" as const;
 
-export type DeploymentMarkerV1 = {
-  readonly schemaVersion: typeof MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION;
+export type DeploymentMarker = {
+  readonly schemaVersion: typeof MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION;
   readonly manifestId: string;
 };
 
@@ -1583,10 +1556,7 @@ const requireRecord = (
   return value as Record<string, unknown>;
 };
 
-const requireDeploymentManifestIdV1 = (
-  value: unknown,
-  field: string,
-): string => {
+const requireDeploymentManifestId = (value: unknown, field: string): string => {
   if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
     throw new Error(`${field} must be lowercase SHA-256 hex`);
   }
@@ -1598,9 +1568,9 @@ const requireDeploymentManifestIdV1 = (
  * package dependency. Only the two compiled launch profiles and their exact
  * tuples are admissible; a network label is never consulted.
  */
-export const parseDeploymentManifestV1Economics = (
+export const parseDeploymentManifestEconomics = (
   value: unknown,
-): DeploymentManifestV1Economics => {
+): DeploymentManifestEconomics => {
   const candidate = requireRecord(value, "Deployment manifest economics");
   const required = [
     "profile",
@@ -1629,7 +1599,7 @@ export const parseDeploymentManifestV1Economics = (
     );
   }
   const profile = candidate.profile;
-  const expected = DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[profile];
+  const expected = DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[profile];
   for (const key of required.slice(1)) {
     const observed = candidate[key];
     if (!Number.isSafeInteger(observed) || observed !== expected[key]) {
@@ -1671,16 +1641,16 @@ const exactAvailabilityInteger = (value: unknown, field: string): number => {
  * activated DA response chunk length is release-authenticated and must be
  * justified by the signed transaction-size measurement artifact.
  */
-export const MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1 = 15_148;
+export const MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES = 15_148;
 
 /**
  * Parse the release-authenticated Q58 geometry, response classes and fee/bond
  * ceilings. These values are deployment identity: neither a network label nor
  * caller metadata may choose them after the scripts are applied.
  */
-export const parseDeploymentManifestV1AvailabilityChallenge = (
+export const parseDeploymentManifestAvailabilityChallenge = (
   value: unknown,
-): DeploymentManifestV1AvailabilityChallenge => {
+): DeploymentManifestAvailabilityChallenge => {
   const candidate = requireRecord(
     value,
     "Deployment manifest availabilityChallenge",
@@ -1765,11 +1735,10 @@ export const parseDeploymentManifestV1AvailabilityChallenge = (
     "Deployment manifest availabilityChallenge.responseGeometry.maxTrancheCount",
   );
   if (
-    chunkByteLength >
-      MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1 ||
+    chunkByteLength > MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES ||
     trancheByteLength < expectedClasses.smallPayloadMaxBytes ||
     trancheByteLength > expectedClasses.fullPayloadMaxBytes ||
-    maxTrancheCount > MIDGARD_CONSENSUS_PROFILE_V1.limits.maxOutputCount ||
+    maxTrancheCount > MIDGARD_CONSENSUS_PROFILE.limits.maxOutputCount ||
     Math.ceil(expectedClasses.fullPayloadMaxBytes / trancheByteLength) >
       maxTrancheCount
   ) {
@@ -1861,7 +1830,7 @@ export const parseDeploymentManifestV1AvailabilityChallenge = (
   });
 };
 
-export const parseDeploymentMarkerV1 = (value: unknown): DeploymentMarkerV1 => {
+export const parseDeploymentMarker = (value: unknown): DeploymentMarker => {
   const candidate = requireRecord(value, "Deployment marker V1");
   const keys = Object.keys(candidate);
   if (
@@ -1873,35 +1842,33 @@ export const parseDeploymentMarkerV1 = (value: unknown): DeploymentMarkerV1 => {
       "Deployment marker V1 must contain exactly schemaVersion and manifestId",
     );
   }
-  if (candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION) {
+  if (candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION) {
     throw new Error(
-      `Deployment marker V1 schemaVersion must be ${MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION}`,
+      `Deployment marker V1 schemaVersion must be ${MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION}`,
     );
   }
   return {
-    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-    manifestId: requireDeploymentManifestIdV1(
+    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
+    manifestId: requireDeploymentManifestId(
       candidate.manifestId,
       "Deployment marker V1 manifestId",
     ),
   };
 };
 
-export const makeDeploymentMarkerV1 = (
-  manifestId: string,
-): DeploymentMarkerV1 =>
-  parseDeploymentMarkerV1({
-    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+export const makeDeploymentMarker = (manifestId: string): DeploymentMarker =>
+  parseDeploymentMarker({
+    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
     manifestId,
   });
 
-export const assertDeploymentMarkerV1Matches = (
-  expected: DeploymentMarkerV1,
+export const assertDeploymentMarkerMatches = (
+  expected: DeploymentMarker,
   actual: unknown,
   boundary = "deployment boundary",
-): DeploymentMarkerV1 => {
-  const canonicalExpected = parseDeploymentMarkerV1(expected);
-  const canonicalActual = parseDeploymentMarkerV1(actual);
+): DeploymentMarker => {
+  const canonicalExpected = parseDeploymentMarker(expected);
+  const canonicalActual = parseDeploymentMarker(actual);
   if (canonicalActual.manifestId !== canonicalExpected.manifestId) {
     throw new Error(
       `${boundary} deployment marker mismatch: expected ${canonicalExpected.manifestId}, found ${canonicalActual.manifestId}`,
@@ -1910,11 +1877,11 @@ export const assertDeploymentMarkerV1Matches = (
   return canonicalActual;
 };
 
-const normalizeDeploymentManifestV1JsonValueInternal = (
+const normalizeDeploymentManifestJsonValueInternal = (
   value: unknown,
   field: string,
   stringifyBigInt: boolean,
-): DeploymentManifestV1JsonValue => {
+): DeploymentManifestJsonValue => {
   if (
     value === null ||
     typeof value === "boolean" ||
@@ -1936,7 +1903,7 @@ const normalizeDeploymentManifestV1JsonValueInternal = (
   }
   if (Array.isArray(value)) {
     return value.map((entry, index) =>
-      normalizeDeploymentManifestV1JsonValueInternal(
+      normalizeDeploymentManifestJsonValueInternal(
         entry,
         `${field}[${index.toString()}]`,
         stringifyBigInt,
@@ -1960,7 +1927,7 @@ const normalizeDeploymentManifestV1JsonValueInternal = (
       }
       return [
         key,
-        normalizeDeploymentManifestV1JsonValueInternal(
+        normalizeDeploymentManifestJsonValueInternal(
           entry,
           `${field}.${key}`,
           stringifyBigInt,
@@ -1970,17 +1937,17 @@ const normalizeDeploymentManifestV1JsonValueInternal = (
   );
 };
 
-export const normalizeDeploymentManifestV1JsonValue = (
+export const normalizeDeploymentManifestJsonValue = (
   value: unknown,
   field = "value",
-): DeploymentManifestV1JsonValue =>
-  normalizeDeploymentManifestV1JsonValueInternal(
+): DeploymentManifestJsonValue =>
+  normalizeDeploymentManifestJsonValueInternal(
     value,
     `Deployment manifest ${field}`,
     true,
   );
 
-const stableJson = (value: DeploymentManifestV1JsonValue): string => {
+const stableJson = (value: DeploymentManifestJsonValue): string => {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
@@ -1993,10 +1960,8 @@ const stableJson = (value: DeploymentManifestV1JsonValue): string => {
     .join(",")}}`;
 };
 
-export const computeDeploymentManifestV1JsonDigest = (
-  value: unknown,
-): string => {
-  const normalized = normalizeDeploymentManifestV1JsonValueInternal(
+export const computeDeploymentManifestJsonDigest = (value: unknown): string => {
+  const normalized = normalizeDeploymentManifestJsonValueInternal(
     value,
     "Deployment manifest JSON digest input",
     false,
@@ -2005,26 +1970,26 @@ export const computeDeploymentManifestV1JsonDigest = (
 };
 
 const exactRoot = (candidate: Record<string, unknown>): void => {
-  const expected = new Set<string>(DEPLOYMENT_MANIFEST_V1_ROOT_KEYS);
+  const expected = new Set<string>(DEPLOYMENT_MANIFEST_ROOT_KEYS);
   for (const key of Object.keys(candidate)) {
     if (!expected.has(key)) {
       throw new Error(`Deployment manifest value.${key} is unexpected`);
     }
   }
-  for (const key of DEPLOYMENT_MANIFEST_V1_ROOT_KEYS) {
+  for (const key of DEPLOYMENT_MANIFEST_ROOT_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(candidate, key)) {
       throw new Error(`Deployment manifest value.${key} is required`);
     }
   }
 };
 
-export const computeDeploymentManifestV1Id = (
+export const computeDeploymentManifestId = (
   identityInput: Record<string, unknown>,
 ): string => {
   if (Object.prototype.hasOwnProperty.call(identityInput, "manifestId")) {
     throw new Error("Deployment manifest identity input must omit manifestId");
   }
-  const normalized = normalizeDeploymentManifestV1JsonValueInternal(
+  const normalized = normalizeDeploymentManifestJsonValueInternal(
     identityInput,
     "Deployment manifest identity input",
     false,
@@ -2032,34 +1997,28 @@ export const computeDeploymentManifestV1Id = (
   return bytesToHex(sha256(new TextEncoder().encode(stableJson(normalized))));
 };
 
-export const verifyDeploymentManifestV1Identity = (
+export const verifyDeploymentManifestIdentity = (
   value: unknown,
 ): Record<string, unknown> => {
   const candidate = requireRecord(value, "Deployment manifest value");
-  if (
-    candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION
-  ) {
+  if (candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION) {
     throw new Error(
-      `Deployment manifest schemaVersion must be ${MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION}`,
+      `Deployment manifest schemaVersion must be ${MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION}`,
     );
   }
   exactRoot(candidate);
-  if (!isMidgardConsensusProfileV1(candidate.consensusProfile)) {
+  if (!isMidgardConsensusProfile(candidate.consensusProfile)) {
     throw new Error(
       "Deployment manifest consensusProfile must exactly match canonical V1",
     );
   }
-  if (
-    candidate.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_V1_DIGEST
-  ) {
+  if (candidate.consensusProfileDigest !== MIDGARD_CONSENSUS_PROFILE_DIGEST) {
     throw new Error(
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
-  parseDeploymentManifestV1Economics(candidate.economics);
-  parseDeploymentManifestV1AvailabilityChallenge(
-    candidate.availabilityChallenge,
-  );
+  parseDeploymentManifestEconomics(candidate.economics);
+  parseDeploymentManifestAvailabilityChallenge(candidate.availabilityChallenge);
   if (
     typeof candidate.manifestId !== "string" ||
     !/^[0-9a-f]{64}$/u.test(candidate.manifestId)
@@ -2069,7 +2028,7 @@ export const verifyDeploymentManifestV1Identity = (
     );
   }
   const { manifestId, ...identityInput } = candidate;
-  const expectedManifestId = computeDeploymentManifestV1Id(identityInput);
+  const expectedManifestId = computeDeploymentManifestId(identityInput);
   if (manifestId !== expectedManifestId) {
     throw new Error(
       `Deployment manifest id mismatch: expected ${expectedManifestId}, found ${manifestId}`,
@@ -2158,7 +2117,7 @@ const greatestCommonDivisor = (left: bigint, right: bigint): bigint => {
 const requireCanonicalRational = (
   value: unknown,
   field: string,
-): DeploymentManifestV1CanonicalRational => {
+): DeploymentManifestCanonicalRational => {
   const candidate = requireRecord(value, `Deployment manifest ${field}`);
   requireExactKeys(candidate, ["numerator", "denominator"], [], field);
   const numerator = requireCanonicalNatural(
@@ -2180,9 +2139,9 @@ const requireCanonicalRational = (
   return Object.freeze({ numerator, denominator });
 };
 
-export const parseDeploymentManifestV1CardanoProtocolParameters = (
+export const parseDeploymentManifestCardanoProtocolParameters = (
   value: unknown,
-): DeploymentManifestV1CardanoProtocolParameters => {
+): DeploymentManifestCardanoProtocolParameters => {
   const candidate = requireRecord(
     value,
     "Deployment manifest cardanoProtocolParameters.snapshot",
@@ -2290,7 +2249,7 @@ export const parseDeploymentManifestV1CardanoProtocolParameters = (
         "cardanoProtocolParameters.snapshot.referenceScriptFee.maximumSizeBytes",
       ),
     }),
-  } satisfies DeploymentManifestV1CardanoProtocolParameters;
+  } satisfies DeploymentManifestCardanoProtocolParameters;
   if (
     BigInt(parsed.maxTxSize) === 0n ||
     BigInt(parsed.maxValueSize) === 0n ||
@@ -2310,7 +2269,7 @@ export const parseDeploymentManifestV1CardanoProtocolParameters = (
   return Object.freeze(parsed);
 };
 
-const protocolParameterNaturalV1 = (value: unknown, field: string): string => {
+const protocolParameterNatural = (value: unknown, field: string): string => {
   if (typeof value === "bigint" && value >= 0n) return value.toString(10);
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return value.toString(10);
@@ -2321,10 +2280,10 @@ const protocolParameterNaturalV1 = (value: unknown, field: string): string => {
   throw new Error(`Ogmios protocol parameter ${field} must be a natural`);
 };
 
-const protocolParameterRationalV1 = (
+const protocolParameterRational = (
   value: unknown,
   field: string,
-): DeploymentManifestV1CanonicalRational => {
+): DeploymentManifestCanonicalRational => {
   let numerator: bigint;
   let denominator: bigint;
   if (typeof value === "string" && /^[0-9]+\/[1-9][0-9]*$/u.test(value)) {
@@ -2363,9 +2322,9 @@ const protocolParameterRationalV1 = (
  * signed deployment snapshot; a provider-normalized projection is never an
  * authority at runtime.
  */
-export const deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios = (
+export const deriveDeploymentManifestCardanoProtocolParametersFromOgmios = (
   value: unknown,
-): DeploymentManifestV1CardanoProtocolParameters => {
+): DeploymentManifestCardanoProtocolParameters => {
   const envelope = requireRecord(value, "Ogmios protocol parameters response");
   const raw = requireRecord(
     Object.prototype.hasOwnProperty.call(envelope, "result")
@@ -2412,81 +2371,81 @@ export const deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios = (
   if (
     canonicalMaximum !== undefined &&
     legacyMaximum !== undefined &&
-    protocolParameterNaturalV1(
+    protocolParameterNatural(
       requireRecord(
         canonicalMaximum,
         "Ogmios maxReferenceScriptsSizePerTransaction",
       ).bytes,
       "maxReferenceScriptsSizePerTransaction.bytes",
     ) !==
-      protocolParameterNaturalV1(
+      protocolParameterNatural(
         requireRecord(legacyMaximum, "Ogmios maxReferenceScriptsSize").bytes,
         "maxReferenceScriptsSize.bytes",
       )
   ) {
     throw new Error("Ogmios reference-script maximum aliases disagree");
   }
-  return parseDeploymentManifestV1CardanoProtocolParameters({
-    minFeeA: protocolParameterNaturalV1(
+  return parseDeploymentManifestCardanoProtocolParameters({
+    minFeeA: protocolParameterNatural(
       raw.minFeeCoefficient,
       "minFeeCoefficient",
     ),
-    minFeeB: protocolParameterNaturalV1(
+    minFeeB: protocolParameterNatural(
       minFeeAda.lovelace,
       "minFeeConstant.ada.lovelace",
     ),
-    priceMemory: protocolParameterRationalV1(
+    priceMemory: protocolParameterRational(
       prices.memory,
       "scriptExecutionPrices.memory",
     ),
-    priceSteps: protocolParameterRationalV1(
+    priceSteps: protocolParameterRational(
       prices.cpu,
       "scriptExecutionPrices.cpu",
     ),
-    coinsPerUtxoByte: protocolParameterNaturalV1(
+    coinsPerUtxoByte: protocolParameterNatural(
       raw.minUtxoDepositCoefficient,
       "minUtxoDepositCoefficient",
     ),
-    collateralPercentage: protocolParameterNaturalV1(
+    collateralPercentage: protocolParameterNatural(
       raw.collateralPercentage,
       "collateralPercentage",
     ),
-    maxCollateralInputs: protocolParameterNaturalV1(
+    maxCollateralInputs: protocolParameterNatural(
       raw.maxCollateralInputs,
       "maxCollateralInputs",
     ),
-    maxTxSize: protocolParameterNaturalV1(
+    maxTxSize: protocolParameterNatural(
       maxTransactionSize.bytes,
       "maxTransactionSize.bytes",
     ),
-    maxValueSize: protocolParameterNaturalV1(
+    maxValueSize: protocolParameterNatural(
       maxValueSize.bytes,
       "maxValueSize.bytes",
     ),
     maxTxExUnits: {
-      memory: protocolParameterNaturalV1(
+      memory: protocolParameterNatural(
         maxExecutionUnits.memory,
         "maxExecutionUnitsPerTransaction.memory",
       ),
-      steps: protocolParameterNaturalV1(
+      steps: protocolParameterNatural(
         maxExecutionUnits.cpu,
         "maxExecutionUnitsPerTransaction.cpu",
       ),
     },
     referenceScriptFee: {
-      base: protocolParameterRationalV1(
+      base: protocolParameterRational(
         referenceFee.base,
         "minFeeReferenceScripts.base",
       ),
-      range: protocolParameterNaturalV1(
+      range: protocolParameterNatural(
         referenceFee.range,
         "minFeeReferenceScripts.range",
       ),
-      multiplier: protocolParameterRationalV1(
+      multiplier: protocolParameterRational(
         referenceFee.multiplier,
         "minFeeReferenceScripts.multiplier",
       ),
-      maximumSizeBytes: protocolParameterNaturalV1(
+      maximumSizeBytes: protocolParameterNatural(
         maximum.bytes,
         "maxReferenceScriptsSizePerTransaction.bytes",
       ),
@@ -2693,7 +2652,7 @@ const encodeFraudProofCatalogueValue = (scriptHash: string): Buffer =>
 
 const proofDataToMpfSteps = (
   proof: FraudProofCatalogueProofData,
-): readonly MidgardMpfProofStepV1[] =>
+): readonly MidgardMpfProofStep[] =>
   proof.map((step) => {
     if ("Branch" in step) {
       return {
@@ -2721,9 +2680,9 @@ const proofDataToMpfSteps = (
     };
   });
 
-export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
-  catalogue: DeploymentManifestV1FraudProofCatalogueIdentity,
-): DeploymentManifestV1FraudProofCatalogueIdentity => {
+export const verifyDeploymentManifestFraudProofCatalogueIdentity = (
+  catalogue: DeploymentManifestFraudProofCatalogueIdentity,
+): DeploymentManifestFraudProofCatalogueIdentity => {
   requireExactKeys(
     catalogue as unknown as Record<string, unknown>,
     ["root", "categories"],
@@ -2732,7 +2691,7 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
   );
   requireExactKeys(
     catalogue.categories as unknown as Record<string, unknown>,
-    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
@@ -2743,15 +2702,15 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
   );
   const entries: FraudProofCatalogueMpfEntry[] = [];
   const encodedEntries = new Map<
-    DeploymentManifestV1FraudProofCatalogueCategory,
+    DeploymentManifestFraudProofCatalogueCategory,
     { readonly key: Buffer; readonly value: Buffer }
   >();
   const parsedCategories = {} as Record<
-    DeploymentManifestV1FraudProofCatalogueCategory,
-    DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+    DeploymentManifestFraudProofCatalogueCategory,
+    DeploymentManifestFraudProofCatalogueCategoryIdentity
   >;
 
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.forEach(
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.forEach(
     (categoryName) => {
       const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
       const candidate = requireRecord(
@@ -2774,10 +2733,10 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
           undefined,
           `${field}.membershipProofCbor`,
         ),
-      } satisfies DeploymentManifestV1FraudProofCatalogueCategoryIdentity;
+      } satisfies DeploymentManifestFraudProofCatalogueCategoryIdentity;
       parsedCategories[categoryName] = category;
       const expectedCategoryId =
-        DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
+        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
       if (category.categoryId !== expectedCategoryId) {
         throw new Error(
           `Deployment manifest ${field}.categoryId must be ${expectedCategoryId}`,
@@ -2803,7 +2762,7 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
     );
   }
 
-  for (const categoryName of DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const categoryName of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = parsedCategories[categoryName];
     const encoded = encodedEntries.get(categoryName)!;
@@ -2829,7 +2788,7 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
     }
     let proofRoot: string;
     try {
-      proofRoot = buildMidgardMpfProofFoldTraceV1({
+      proofRoot = buildMidgardMpfProofFoldTrace({
         key: encoded.key,
         value: encoded.value,
         steps: proofDataToMpfSteps(proof),
@@ -2854,27 +2813,25 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
 // every authority check, so uncached derivation is quadratic in practice.
 // A cache hit returns exactly what re-derivation would, including for
 // tampered manifests: a changed script changes the key.
-const SCRIPT_HASH_DERIVATION_CACHE_LIMIT_V1 = 4096;
-const scriptHashDerivationCacheV1 = new Map<string, string>();
-const deriveScriptHashCachedV1 = (
+const SCRIPT_HASH_DERIVATION_CACHE_LIMIT = 4096;
+const scriptHashDerivationCache = new Map<string, string>();
+const deriveScriptHashCached = (
   type: "Native" | "PlutusV1" | "PlutusV2" | "PlutusV3",
   cborHex: string,
 ): string => {
   const key = `${type}:${cborHex}`;
-  const cached = scriptHashDerivationCacheV1.get(key);
+  const cached = scriptHashDerivationCache.get(key);
   if (cached !== undefined) {
     return cached;
   }
   const derived = validatorToScriptHash({ type, script: cborHex });
-  if (
-    scriptHashDerivationCacheV1.size >= SCRIPT_HASH_DERIVATION_CACHE_LIMIT_V1
-  ) {
-    const oldest = scriptHashDerivationCacheV1.keys().next().value;
+  if (scriptHashDerivationCache.size >= SCRIPT_HASH_DERIVATION_CACHE_LIMIT) {
+    const oldest = scriptHashDerivationCache.keys().next().value;
     if (oldest !== undefined) {
-      scriptHashDerivationCacheV1.delete(oldest);
+      scriptHashDerivationCache.delete(oldest);
     }
   }
-  scriptHashDerivationCacheV1.set(key, derived);
+  scriptHashDerivationCache.set(key, derived);
   return derived;
 };
 
@@ -2883,15 +2840,15 @@ const validateFinalizedContracts = (
 ): void => {
   requireExactKeys(
     contracts,
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
     [],
     "contracts",
   );
   const referenceScriptContractNames = new Set<string>(
-    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
+    Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
   );
   const scriptHashByName = new Map<string, string>();
-  for (const contractName of DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES) {
+  for (const contractName of DEPLOYMENT_MANIFEST_CONTRACT_NAMES) {
     const field = `contracts.${contractName}`;
     const entry = requireRecord(contracts[contractName], field);
     requireExactKeys(
@@ -2927,7 +2884,7 @@ const validateFinalizedContracts = (
     const scriptHash = requireHex(entry.scriptHash, 28, `${field}.scriptHash`);
     let derivedScriptHash: string;
     try {
-      derivedScriptHash = deriveScriptHashCachedV1(contract.type, cborHex);
+      derivedScriptHash = deriveScriptHashCached(contract.type, cborHex);
     } catch (cause) {
       throw new Error(
         `Deployment manifest ${field}.contract.cborHex is invalid: ${String(cause)}`,
@@ -2966,17 +2923,17 @@ const validateFinalizedContracts = (
   );
   requireExactKeys(
     categories,
-    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
   const parsedCategories = {} as Record<
-    DeploymentManifestV1FraudProofCatalogueCategory,
-    DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+    DeploymentManifestFraudProofCatalogueCategory,
+    DeploymentManifestFraudProofCatalogueCategoryIdentity
   >;
-  for (const categoryName of DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const categoryName of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const contractName =
-      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = requireRecord(categories[categoryName], field);
     requireExactKeys(
@@ -3011,7 +2968,7 @@ const validateFinalizedContracts = (
       membershipProofCbor,
     };
   }
-  verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+  verifyDeploymentManifestFraudProofCatalogueIdentity({
     root: requireHex(
       catalogue.root,
       32,
@@ -3027,7 +2984,7 @@ const validateFinalizedReferenceScripts = (
   contracts: Record<string, unknown>,
 ): void => {
   const roles = Object.keys(
-    DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   );
   requireExactKeys(referenceScripts, roles, [], "referenceScripts");
   const policyId = requireHex(
@@ -3048,8 +3005,8 @@ const validateFinalizedReferenceScripts = (
       throw new Error(`Deployment manifest ${field}.status must be confirmed`);
     }
     const tokenName =
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-        role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+        role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
       ];
     const expectedRoleUnit =
       policyId + bytesToHex(new TextEncoder().encode(tokenName));
@@ -3059,8 +3016,8 @@ const validateFinalizedReferenceScripts = (
       );
     }
     const contractName =
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-        role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+        role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
       ];
     const contract = requireRecord(
       contracts[contractName],
@@ -3142,14 +3099,14 @@ const validateFinalizedDa = (value: unknown): void => {
     [],
     "da.transportProfile",
   );
-  if (transport.protocolVersion !== DA_TRANSPORT_V1_PROTOCOL_VERSION) {
+  if (transport.protocolVersion !== DA_TRANSPORT_PROTOCOL_VERSION) {
     throw new Error(
       "Deployment manifest da.transportProfile.protocolVersion is unsupported",
     );
   }
   if (
     transport.runtimeManifestSchemaVersion !==
-    DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION
+    DA_RUNTIME_MANIFEST_SCHEMA_VERSION
   ) {
     throw new Error(
       "Deployment manifest da.transportProfile.runtimeManifestSchemaVersion is unsupported",
@@ -3166,12 +3123,12 @@ const validateFinalizedDa = (value: unknown): void => {
   requireInteger(transport.zstdLevel, "da.transportProfile.zstdLevel", 1);
   if (
     stableJson(
-      normalizeDeploymentManifestV1JsonValueInternal(
+      normalizeDeploymentManifestJsonValueInternal(
         transport.limits,
         "Deployment manifest da.transportProfile.limits",
         false,
       ),
-    ) !== stableJson(DA_TRANSPORT_LIMITS_V1)
+    ) !== stableJson(DA_TRANSPORT_LIMITS)
   ) {
     throw new Error(
       "Deployment manifest da.transportProfile.limits must exactly match canonical V1",
@@ -3183,7 +3140,7 @@ const validateFinalizedDa = (value: unknown): void => {
     1,
   );
   // Existing >= 15-day transport-profile floor: never weakened.
-  if (retentionDays < DA_TRANSPORT_LIMITS_V1.minimumRetentionDays) {
+  if (retentionDays < DA_TRANSPORT_LIMITS.minimumRetentionDays) {
     throw new Error(
       "Deployment manifest da.transportProfile.retentionDays is too short",
     );
@@ -3192,35 +3149,35 @@ const validateFinalizedDa = (value: unknown): void => {
   // (block maturity + worst-case proof-time bound), so deployment identity -
   // not a literal - is what the DA and proof stores enforce against.
   if (
-    !retentionDaysCoverWindowV1(
+    !retentionDaysCoverWindow(
       retentionDays,
       "Deployment manifest da.transportProfile.retentionDays",
     )
   ) {
     throw new Error(
       `Deployment manifest da.transportProfile.retentionDays must cover the canonical V1 retention window (requiredRetentionMs=${String(
-        MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+        MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
       )})`,
     );
   }
 };
 
 // manifestIds whose deep finalized verification already succeeded in this
-// process. Reusing one is sound only because verifyDeploymentManifestV1Identity
+// process. Reusing one is sound only because verifyDeploymentManifestIdentity
 // runs uncached on every call: it re-hashes the manifest's full normalized
 // content and requires manifestId to equal that hash, so a mutated manifest
 // either fails identity verification outright or arrives under a new
 // manifestId and misses this cache. Everything the deep pass checks is a pure
 // function of that same content plus module constants.
-const VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT_V1 = 64;
-const verifiedFinalizedManifestIdsV1 = new Set<string>();
+const VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT = 64;
+const verifiedFinalizedManifestIds = new Set<string>();
 
-export const verifyFinalizedDeploymentManifestV1 = (
+export const verifyFinalizedDeploymentManifest = (
   value: unknown,
 ): Record<string, unknown> => {
-  const candidate = verifyDeploymentManifestV1Identity(value);
+  const candidate = verifyDeploymentManifestIdentity(value);
   const verifiedManifestId = candidate.manifestId as string;
-  if (verifiedFinalizedManifestIdsV1.has(verifiedManifestId)) {
+  if (verifiedFinalizedManifestIds.has(verifiedManifestId)) {
     return candidate;
   }
   if (
@@ -3256,8 +3213,8 @@ export const verifyFinalizedDeploymentManifestV1 = (
     32,
     "cardanoProtocolParameters.digest",
   );
-  parseDeploymentManifestV1CardanoProtocolParameters(cardano.snapshot);
-  const expectedCardanoDigest = computeDeploymentManifestV1JsonDigest(
+  parseDeploymentManifestCardanoProtocolParameters(cardano.snapshot);
+  const expectedCardanoDigest = computeDeploymentManifestJsonDigest(
     cardano.snapshot,
   );
   if (cardanoDigest !== expectedCardanoDigest) {
@@ -3359,7 +3316,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     "referenceScriptAuthPolicy.nativeScript.timelockDurationMs",
     1,
   );
-  const derivedPolicyId = deriveScriptHashCachedV1("Native", nativeScriptCbor);
+  const derivedPolicyId = deriveScriptHashCached("Native", nativeScriptCbor);
   if (derivedPolicyId !== policyId) {
     throw new Error(
       `Deployment manifest referenceScriptAuthPolicy.policyId mismatch: expected ${derivedPolicyId}`,
@@ -3369,9 +3326,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     authPolicy.tokenNames,
     "Deployment manifest referenceScriptAuthPolicy.tokenNames",
   );
-  const roles = Object.keys(
-    DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  );
+  const roles = Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES);
   requireExactKeys(
     tokenNames,
     roles,
@@ -3380,8 +3335,8 @@ export const verifyFinalizedDeploymentManifestV1 = (
   );
   for (const role of roles) {
     const expected =
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-        role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+      DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+        role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
       ];
     if (tokenNames[role] !== expected) {
       throw new Error(
@@ -3440,7 +3395,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     [],
     "proofEvidence",
   );
-  if (proofEvidence.digest !== MIDGARD_V1_RELEASE_EVIDENCE_DIGEST) {
+  if (proofEvidence.digest !== MIDGARD_RELEASE_EVIDENCE_DIGEST) {
     throw new Error(
       "Deployment manifest proofEvidence.digest must match compiled canonical V1 evidence",
     );
@@ -3448,7 +3403,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
   requireHex(proofEvidence.blueprintHash, 32, "proofEvidence.blueprintHash");
 
   const steps = requireRecord(candidate.steps, "Deployment manifest steps");
-  requireExactKeys(steps, DEPLOYMENT_MANIFEST_V1_STEP_NAMES, [], "steps");
+  requireExactKeys(steps, DEPLOYMENT_MANIFEST_STEP_NAMES, [], "steps");
   const supportedStepStatuses = new Set([
     "pending",
     "in_progress",
@@ -3458,7 +3413,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     "failed",
     "blocked_requires_fresh_redeploy",
   ]);
-  for (const stepName of DEPLOYMENT_MANIFEST_V1_STEP_NAMES) {
+  for (const stepName of DEPLOYMENT_MANIFEST_STEP_NAMES) {
     const field = `steps.${stepName}`;
     const step = requireRecord(steps[stepName], field);
     requireExactKeys(step, ["status"], ["txHash"], field);
@@ -3493,12 +3448,12 @@ export const verifyFinalizedDeploymentManifestV1 = (
     "validationDispute",
   );
   const expectedDispute = {
-    version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+    version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
     responseWindowMs:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+      MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
     maxBisectionRounds:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-    maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+      MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+    maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
   } as const;
   for (const [key, expected] of Object.entries(expectedDispute)) {
     if (dispute[key] !== expected) {
@@ -3519,7 +3474,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     "l1Finality",
   );
   for (const [key, expected] of Object.entries(
-    DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    DEPLOYMENT_MANIFEST_L1_FINALITY,
   )) {
     if (l1Finality[key] !== expected) {
       throw new Error(
@@ -3528,14 +3483,14 @@ export const verifyFinalizedDeploymentManifestV1 = (
     }
   }
   if (
-    verifiedFinalizedManifestIdsV1.size >=
-    VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT_V1
+    verifiedFinalizedManifestIds.size >=
+    VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT
   ) {
-    const oldest = verifiedFinalizedManifestIdsV1.values().next().value;
+    const oldest = verifiedFinalizedManifestIds.values().next().value;
     if (oldest !== undefined) {
-      verifiedFinalizedManifestIdsV1.delete(oldest);
+      verifiedFinalizedManifestIds.delete(oldest);
     }
   }
-  verifiedFinalizedManifestIdsV1.add(verifiedManifestId);
+  verifiedFinalizedManifestIds.add(verifiedManifestId);
   return candidate;
 };

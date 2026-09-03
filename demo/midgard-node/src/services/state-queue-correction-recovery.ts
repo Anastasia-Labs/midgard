@@ -1,6 +1,6 @@
 import {
-  parseStateQueueAuthenticatedTransitionV1,
-  type StateQueueAuthenticatedTransitionV1,
+  parseStateQueueAuthenticatedTransition,
+  type StateQueueAuthenticatedTransition,
 } from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
@@ -34,7 +34,7 @@ export type CorrectedBlockRollbackRestoreResult = Readonly<{
   restoredCanonicalBlock: boolean;
 }>;
 
-export type StateQueueCorrectionReinclusionAuthorityV1 = Readonly<{
+export type StateQueueCorrectionReinclusionAuthority = Readonly<{
   expectedDeploymentIdentityDigest: string;
   requiredFinalityDepth: bigint;
 }>;
@@ -47,11 +47,11 @@ export type StateQueueCorrectionReinclusionAuthorityV1 = Readonly<{
  * must never reopen them. A hash list or transaction-status response is never
  * sufficient authority to mutate the database.
  */
-export const authorizeStateQueueCorrectionReinclusionV1 = (
+export const authorizeStateQueueCorrectionReinclusion = (
   transitionInput: unknown,
-  authority: StateQueueCorrectionReinclusionAuthorityV1,
-): StateQueueAuthenticatedTransitionV1 => {
-  const transition = parseStateQueueAuthenticatedTransitionV1(transitionInput);
+  authority: StateQueueCorrectionReinclusionAuthority,
+): StateQueueAuthenticatedTransition => {
+  const transition = parseStateQueueAuthenticatedTransition(transitionInput);
   if (transition === null) {
     throw new Error(
       "State-queue correction reinclusion requires a canonical digest-bound authenticated transition V1.",
@@ -195,13 +195,13 @@ const reincludeStateQueueCorrectedBlockPayloadHashes = (
 
 export const reincludeFinalizedStateQueueCorrectionTransition = (
   transitionInput: unknown,
-  authority: StateQueueCorrectionReinclusionAuthorityV1,
+  authority: StateQueueCorrectionReinclusionAuthority,
 ): Effect.Effect<
   readonly CorrectedBlockReinclusionResult[],
   DatabaseError,
   Database
 > => {
-  const transition = authorizeStateQueueCorrectionReinclusionV1(
+  const transition = authorizeStateQueueCorrectionReinclusion(
     transitionInput,
     authority,
   );
@@ -218,13 +218,13 @@ export const reincludeFinalizedStateQueueCorrectionTransition = (
  */
 export const restoreRetractedStateQueueCorrectionTransition = (
   transitionInput: unknown,
-  authority: StateQueueCorrectionReinclusionAuthorityV1,
+  authority: StateQueueCorrectionReinclusionAuthority,
 ): Effect.Effect<
   readonly CorrectedBlockRollbackRestoreResult[],
   DatabaseError,
   Database
 > => {
-  const transition = authorizeStateQueueCorrectionReinclusionV1(
+  const transition = authorizeStateQueueCorrectionReinclusion(
     transitionInput,
     authority,
   );

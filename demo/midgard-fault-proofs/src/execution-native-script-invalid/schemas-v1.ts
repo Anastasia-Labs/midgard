@@ -1,31 +1,31 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  FrontierPeakV1Schema,
+  FieldOpeningSchema,
+  FrontierPeakSchema,
   H32Schema,
   MembershipCarriageSchema,
-  NativeScriptInvalidSignerQueryV1Schema,
+  NativeScriptInvalidSignerQuerySchema,
   NativeScriptInvalidStep03ArgsSchema,
   NativeScriptInvalidStep04ArgsSchema,
   NativeScriptInvalidStep05ArgsSchema,
-  NativeScriptInvalidStep05PhaseV1Schema,
+  NativeScriptInvalidStep05PhaseSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 export {
-  ExecutionSourceStep01RedeemerV1Schema as ExecutionNativeScriptInvalidStep01RedeemerV1Schema,
-  ExecutionSourceStep02RedeemerV1Schema as ExecutionNativeScriptInvalidStep02RedeemerV1Schema,
-  NativeScriptsControlV1Schema,
+  ExecutionSourceStep01RedeemerSchema as ExecutionNativeScriptInvalidStep01RedeemerSchema,
+  ExecutionSourceStep02RedeemerSchema as ExecutionNativeScriptInvalidStep02RedeemerSchema,
+  NativeScriptsControlSchema,
 } from "../execution-source-script-decoding/schemas-v1.js";
 import {
-  ExecutionSourceStep01RedeemerV1Schema,
-  ExecutionSourceStep02RedeemerV1Schema,
-  ExecutionSourceVerdictSubjectV1Schema,
+  ExecutionSourceStep01RedeemerSchema,
+  ExecutionSourceStep02RedeemerSchema,
+  ExecutionSourceVerdictSubjectSchema,
 } from "../execution-source-script-decoding/schemas-v1.js";
 
-export const ExecutionNativeScriptInvalidBoundV1Schema = Data.Object({
-  subject: ExecutionSourceVerdictSubjectV1Schema,
+export const ExecutionNativeScriptInvalidBoundSchema = Data.Object({
+  subject: ExecutionSourceVerdictSubjectSchema,
   validation_traces_root: H32Schema,
   validation_trace_count: Data.Integer(),
   execution_index: Data.Integer(),
@@ -34,16 +34,16 @@ export const ExecutionNativeScriptInvalidBoundV1Schema = Data.Object({
   compact_cbor: Data.Bytes(),
 });
 
-export const ExecutionNativeScriptInvalidStep02DatumV1Schema =
-  faultProofStepDatumSchema(ExecutionNativeScriptInvalidBoundV1Schema);
+export const ExecutionNativeScriptInvalidStep02DatumSchema =
+  faultProofStepDatumSchema(ExecutionNativeScriptInvalidBoundSchema);
 
-export const AcceptedSelectedPurposeV1Schema = Data.Object({
+export const AcceptedSelectedPurposeSchema = Data.Object({
   purpose_kind: Data.Integer(),
   purpose_index: Data.Integer(),
   script_hash: Data.Bytes(),
   subject: Data.Bytes(),
 });
-export const AcceptedSelectedSourceV1Schema = Data.Object({
+export const AcceptedSelectedSourceSchema = Data.Object({
   source_index: Data.Integer(),
   origin_kind: Data.Integer(),
   source_key: Data.Bytes(),
@@ -52,8 +52,8 @@ export const AcceptedSelectedSourceV1Schema = Data.Object({
   total_length: Data.Integer(),
   item_commitment: H32Schema,
 });
-export const ExecutionNativeScriptInvalidAcceptedStateV1Schema = Data.Object({
-  bound: ExecutionNativeScriptInvalidBoundV1Schema,
+export const ExecutionNativeScriptInvalidAcceptedStateSchema = Data.Object({
+  bound: ExecutionNativeScriptInvalidBoundSchema,
   phase: Data.Integer(),
   field_cursor: Data.Integer(),
   execution_cursor: Data.Integer(),
@@ -61,14 +61,14 @@ export const ExecutionNativeScriptInvalidAcceptedStateV1Schema = Data.Object({
   receive_candidate: Data.Bytes(),
   source_base_index: Data.Integer(),
   source_cursor: Data.Integer(),
-  selected_purpose: Data.Nullable(AcceptedSelectedPurposeV1Schema),
-  selected_source: Data.Nullable(AcceptedSelectedSourceV1Schema),
+  selected_purpose: Data.Nullable(AcceptedSelectedPurposeSchema),
+  selected_source: Data.Nullable(AcceptedSelectedSourceSchema),
   next_expected_script_hash: Data.Bytes(),
   checkpoint_hash: H32Schema,
 });
-export const ExecutionNativeScriptInvalidAcceptedDatumV1Schema =
-  faultProofStepDatumSchema(ExecutionNativeScriptInvalidAcceptedStateV1Schema);
-export const ExecutionNativeScriptInvalidAcceptedInitRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedDatumSchema =
+  faultProofStepDatumSchema(ExecutionNativeScriptInvalidAcceptedStateSchema);
+export const ExecutionNativeScriptInvalidAcceptedInitRedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({ input_index: Data.Integer(), output_index: Data.Integer() }),
   );
@@ -83,26 +83,26 @@ const acceptedFieldAction = (
         [scanName]: Data.Object({
           input_index: Data.Integer(),
           output_index: Data.Integer(),
-          [openingName]: FieldOpeningV1Schema,
+          [openingName]: FieldOpeningSchema,
         }),
       }),
       Data.Object({
         [finishName]: Data.Object({
           input_index: Data.Integer(),
           output_index: Data.Integer(),
-          [openingName]: FieldOpeningV1Schema,
+          [openingName]: FieldOpeningSchema,
         }),
       }),
     ]),
   );
-export const ExecutionNativeScriptInvalidAcceptedSpendRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedSpendRedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Enum([
       Data.Object({
         ScanSpend: Data.Object({
           input_index: Data.Integer(),
           output_index: Data.Integer(),
-          spend_inputs_opening: FieldOpeningV1Schema,
+          spend_inputs_opening: FieldOpeningSchema,
           descriptor_cbor: Data.Bytes(),
           membership: MembershipCarriageSchema,
         }),
@@ -111,31 +111,31 @@ export const ExecutionNativeScriptInvalidAcceptedSpendRedeemerV1Schema =
         FinishSpends: Data.Object({
           input_index: Data.Integer(),
           output_index: Data.Integer(),
-          spend_inputs_opening: FieldOpeningV1Schema,
+          spend_inputs_opening: FieldOpeningSchema,
         }),
       }),
     ]),
   );
-export const ExecutionNativeScriptInvalidAcceptedMintRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedMintRedeemerSchema =
   acceptedFieldAction("ScanMint", "FinishMint", "mint_opening");
-export const ExecutionNativeScriptInvalidAcceptedObserverRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedObserverRedeemerSchema =
   acceptedFieldAction("ScanObserver", "FinishObservers", "observer_opening");
-export const ExecutionNativeScriptInvalidAcceptedReceiveRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedReceiveRedeemerSchema =
   acceptedFieldAction("ScanOutput", "FinishOutputPass", "outputs_opening");
-export const ExecutionNativeScriptInvalidAcceptedInlineRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedInlineRedeemerSchema =
   acceptedFieldAction("ScanInline", "FinishInline", "scripts_opening");
-export const ExecutionNativeScriptInvalidAcceptedReferenceRedeemerV1Schema =
+export const ExecutionNativeScriptInvalidAcceptedReferenceRedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      reference_inputs_opening: FieldOpeningV1Schema,
+      reference_inputs_opening: FieldOpeningSchema,
       descriptor_cbor: Data.Bytes(),
       membership: MembershipCarriageSchema,
     }),
   );
-export const ExecutionNativeScriptInvalidSourceV1Schema = Data.Object({
-  bound: ExecutionNativeScriptInvalidBoundV1Schema,
+export const ExecutionNativeScriptInvalidSourceSchema = Data.Object({
+  bound: ExecutionNativeScriptInvalidBoundSchema,
   prior_ledger_root: H32Schema,
   source_index: Data.Integer(),
   origin_kind: Data.Integer(),
@@ -146,9 +146,9 @@ export const ExecutionNativeScriptInvalidSourceV1Schema = Data.Object({
   item_commitment: H32Schema,
   compact_cbor: Data.Bytes(),
 });
-export const ExecutionNativeScriptInvalidStep03DatumV1Schema =
-  faultProofStepDatumSchema(ExecutionNativeScriptInvalidSourceV1Schema);
-export const ExecutionNativeScriptInvalidStep03RedeemerV1Schema =
+export const ExecutionNativeScriptInvalidStep03DatumSchema =
+  faultProofStepDatumSchema(ExecutionNativeScriptInvalidSourceSchema);
+export const ExecutionNativeScriptInvalidStep03RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
@@ -164,7 +164,7 @@ const identity = {
   origin_kind: Data.Integer(),
   item_commitment: H32Schema,
 };
-export const ExecutionNativeScriptInvalidStep04StateV1Schema = Data.Object({
+export const ExecutionNativeScriptInvalidStep04StateSchema = Data.Object({
   ...identity,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
@@ -172,11 +172,11 @@ export const ExecutionNativeScriptInvalidStep04StateV1Schema = Data.Object({
   validity_interval_start: Data.Integer(),
   validity_interval_end: Data.Integer(),
 });
-export const ExecutionNativeScriptInvalidStep04DatumV1Schema =
-  faultProofStepDatumSchema(ExecutionNativeScriptInvalidStep04StateV1Schema);
-export const ExecutionNativeScriptInvalidStep04RedeemerV1Schema =
+export const ExecutionNativeScriptInvalidStep04DatumSchema =
+  faultProofStepDatumSchema(ExecutionNativeScriptInvalidStep04StateSchema);
+export const ExecutionNativeScriptInvalidStep04RedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep03ArgsSchema);
-export const ExecutionNativeScriptInvalidStep05StateV1Schema = Data.Object({
+export const ExecutionNativeScriptInvalidStep05StateSchema = Data.Object({
   ...identity,
   bad_tx_id: H32Schema,
   bad_tx_witness_set_hash: H32Schema,
@@ -186,27 +186,27 @@ export const ExecutionNativeScriptInvalidStep05StateV1Schema = Data.Object({
   signer_checkpoint_hash: H32Schema,
   previous_signer_hash: Data.Bytes(),
   signer_count: Data.Integer(),
-  signer_peaks: Data.Array(FrontierPeakV1Schema),
+  signer_peaks: Data.Array(FrontierPeakSchema),
 });
-export const ExecutionNativeScriptInvalidStep05DatumV1Schema =
-  faultProofStepDatumSchema(ExecutionNativeScriptInvalidStep05StateV1Schema);
-export const ExecutionNativeScriptInvalidStep05RedeemerV1Schema =
+export const ExecutionNativeScriptInvalidStep05DatumSchema =
+  faultProofStepDatumSchema(ExecutionNativeScriptInvalidStep05StateSchema);
+export const ExecutionNativeScriptInvalidStep05RedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep04ArgsSchema);
-export const ExecutionNativeScriptInvalidStep06StateV1Schema = Data.Object({
+export const ExecutionNativeScriptInvalidStep06StateSchema = Data.Object({
   ...identity,
   bad_tx_id: H32Schema,
   script_item_hash: H32Schema,
   validity_interval_start: Data.Integer(),
   validity_interval_end: Data.Integer(),
   signer_count: Data.Integer(),
-  signer_peaks: Data.Array(FrontierPeakV1Schema),
-  phase: NativeScriptInvalidStep05PhaseV1Schema,
+  signer_peaks: Data.Array(FrontierPeakSchema),
+  phase: NativeScriptInvalidStep05PhaseSchema,
 });
-export const ExecutionNativeScriptInvalidStep06DatumV1Schema =
-  faultProofStepDatumSchema(ExecutionNativeScriptInvalidStep06StateV1Schema);
-export const ExecutionNativeScriptInvalidStep06RedeemerV1Schema =
+export const ExecutionNativeScriptInvalidStep06DatumSchema =
+  faultProofStepDatumSchema(ExecutionNativeScriptInvalidStep06StateSchema);
+export const ExecutionNativeScriptInvalidStep06RedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep05ArgsSchema);
-export { NativeScriptInvalidSignerQueryV1Schema as ExecutionNativeScriptInvalidSignerQueryV1Schema };
+export { NativeScriptInvalidSignerQuerySchema as ExecutionNativeScriptInvalidSignerQueryV1Schema };
 
-void ExecutionSourceStep01RedeemerV1Schema;
-void ExecutionSourceStep02RedeemerV1Schema;
+void ExecutionSourceStep01RedeemerSchema;
+void ExecutionSourceStep02RedeemerSchema;

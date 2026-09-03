@@ -13,29 +13,29 @@
 import {
   computeDaSha256Hash,
   DaRequestResponseProtocol,
-  encodeDaEventToStepByEventResponseV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaProofBundleByHeaderResponseV1Cbor,
-  encodeDaTraceStepByIndexResponseV1Cbor,
+  encodeDaEventToStepByEventResponseCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaProofBundleByHeaderResponseCbor,
+  encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import { main as cliMain } from "../src/bin.js";
 import {
-  authenticateTransactionsInclusionRootsV1,
-  blockTransactionsFromCanonicalEvidenceV1,
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
-  type CanonicalBlockEvidenceV1,
-  diagnosticBlockTransactionsFromMidgardNodeV1,
-  diagnosticEvidenceBannerV1,
-  executeCanonicalPrepareCommandV1,
-  fetchCanonicalBlockEvidenceV1,
-  prepareDoubleSpendFromCanonicalEvidenceV1,
-  prepareInvalidRangeFromCanonicalEvidenceV1,
-  prepareMinFeeFromCanonicalEvidenceV1,
-  prepareNonExistentInputFromCanonicalEvidenceV1,
-  prepareZeroInputFromCanonicalEvidenceV1,
+  authenticateTransactionsInclusionRoots,
+  blockTransactionsFromCanonicalEvidence,
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
+  diagnosticBlockTransactionsFromMidgardNode,
+  diagnosticEvidenceBanner,
+  executeCanonicalPrepareCommand,
+  fetchCanonicalBlockEvidence,
+  prepareDoubleSpendFromCanonicalEvidence,
+  prepareInvalidRangeFromCanonicalEvidence,
+  prepareMinFeeFromCanonicalEvidence,
+  prepareNonExistentInputFromCanonicalEvidence,
+  prepareZeroInputFromCanonicalEvidence,
 } from "../src/evidence/index.js";
 import * as FaultProofs from "../src/index.js";
 import { decodeTransactionMaterial } from "../src/prepare-double-spend.js";
@@ -49,16 +49,16 @@ import {
   type RetainedDaLibp2pTransport,
 } from "../src/transition-trace/fetch.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
-  type CanonicalBlockFixtureV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  type CanonicalBlockFixture,
   h32,
   outRefCbor,
-  reencodeFixturePayloadV1,
+  reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "libp2p/peer-a",
   grade: "security",
@@ -66,32 +66,32 @@ const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
 
 const sharedInput = outRefCbor(0x11, 7n);
 
-const doubleSpendBlock = async (): Promise<CanonicalBlockFixtureV1> =>
-  await buildCanonicalBlockFixtureV1({
+const doubleSpendBlock = async (): Promise<CanonicalBlockFixture> =>
+  await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [sharedInput, outRefCbor(0x22, 0n)],
         fee: 1n,
       }),
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x33, 0n), sharedInput],
         fee: 2n,
       }),
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x44, 0n)],
         fee: 3n,
       }),
     ],
   });
 
-const validBlock = async (): Promise<CanonicalBlockFixtureV1> =>
-  await buildCanonicalBlockFixtureV1({
+const validBlock = async (): Promise<CanonicalBlockFixture> =>
+  await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x55, 0n)],
         fee: 1n,
       }),
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x66, 1n)],
         fee: 2n,
       }),
@@ -99,10 +99,10 @@ const validBlock = async (): Promise<CanonicalBlockFixtureV1> =>
   });
 
 const evidenceFor = async (
-  fixture: CanonicalBlockFixtureV1,
-): Promise<CanonicalBlockEvidenceV1> =>
-  await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  fixture: CanonicalBlockFixture,
+): Promise<CanonicalBlockEvidence> =>
+  await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: DA_PROVENANCE,
   });
@@ -126,7 +126,7 @@ class StubDaSource implements RetainedDaPayloadSource {
     }
     return Promise.resolve({
       ok: true,
-      provenance: SDK.assertSecurityGradeEvidenceV1({
+      provenance: SDK.assertSecurityGradeEvidence({
         trustClass: "public_or_permissionless_da",
         sourceId: `${this.sourceId}/peer-a`,
         grade: "security",
@@ -143,7 +143,7 @@ const rejectionCode = async (run: () => Promise<unknown>): Promise<string> => {
   try {
     await run();
   } catch (error) {
-    if (error instanceof SDK.CanonicalEvidenceRejectionV1) {
+    if (error instanceof SDK.CanonicalEvidenceRejection) {
       return error.code;
     }
     return `unexpected:${error instanceof Error ? error.message : String(error)}`;
@@ -153,22 +153,22 @@ const rejectionCode = async (run: () => Promise<unknown>): Promise<string> => {
 
 describe("Q03 provenance admission", () => {
   it("exports the W20 evidence API from both package roots", () => {
-    expect(SDK.admitEvidenceProvenanceV1).toBeTypeOf("function");
-    expect(SDK.assertSecurityGradeEvidenceV1).toBeTypeOf("function");
-    expect(SDK.admitAuthenticatedL1ObservationV1).toBeTypeOf("function");
-    expect(FaultProofs.fetchCanonicalBlockEvidenceV1).toBeTypeOf("function");
-    expect(FaultProofs.executeCanonicalPrepareCommandV1).toBeTypeOf("function");
-    expect(
-      FaultProofs.prepareNonExistentInputFromCanonicalEvidenceV1,
-    ).toBeTypeOf("function");
-    expect(FaultProofs.prepareMinFeeFromCanonicalEvidenceV1).toBeTypeOf(
+    expect(SDK.admitEvidenceProvenance).toBeTypeOf("function");
+    expect(SDK.assertSecurityGradeEvidence).toBeTypeOf("function");
+    expect(SDK.admitAuthenticatedL1Observation).toBeTypeOf("function");
+    expect(FaultProofs.fetchCanonicalBlockEvidence).toBeTypeOf("function");
+    expect(FaultProofs.executeCanonicalPrepareCommand).toBeTypeOf("function");
+    expect(FaultProofs.prepareNonExistentInputFromCanonicalEvidence).toBeTypeOf(
+      "function",
+    );
+    expect(FaultProofs.prepareMinFeeFromCanonicalEvidence).toBeTypeOf(
       "function",
     );
   });
 
   it("admits every enumerated public trust class at security grade", () => {
-    for (const trustClass of SDK.ADMITTED_EVIDENCE_TRUST_CLASSES_V1) {
-      const admitted = SDK.assertSecurityGradeEvidenceV1({
+    for (const trustClass of SDK.ADMITTED_EVIDENCE_TRUST_CLASSES) {
+      const admitted = SDK.assertSecurityGradeEvidence({
         trustClass,
         sourceId: "source",
         grade: "security",
@@ -179,9 +179,9 @@ describe("Q03 provenance admission", () => {
   });
 
   it("rejects every operator-private class as a security input", () => {
-    for (const trustClass of SDK.PROHIBITED_EVIDENCE_TRUST_CLASSES_V1) {
+    for (const trustClass of SDK.PROHIBITED_EVIDENCE_TRUST_CLASSES) {
       expect(() =>
-        SDK.assertSecurityGradeEvidenceV1({
+        SDK.assertSecurityGradeEvidence({
           trustClass,
           sourceId: "source",
           grade: "security",
@@ -191,25 +191,24 @@ describe("Q03 provenance admission", () => {
   });
 
   it("rejects an operator-private class even when labelled, unless diagnostics are opted into", () => {
-    const provenance: SDK.EvidenceProvenanceV1 = {
+    const provenance: SDK.EvidenceProvenance = {
       trustClass: "operator_private_database",
       sourceId: "midgard-node-db",
       grade: "diagnostic",
       diagnosticLabel: "operator db",
     };
-    expect(() => SDK.assertSecurityGradeEvidenceV1(provenance)).toThrowError(
+    expect(() => SDK.assertSecurityGradeEvidence(provenance)).toThrowError(
       /prohibited_trust_class/u,
     );
     expect(
-      SDK.admitEvidenceProvenanceV1({ provenance, allowDiagnostic: true })
-        .grade,
+      SDK.admitEvidenceProvenance({ provenance, allowDiagnostic: true }).grade,
     ).toBe("diagnostic");
   });
 
   it("fails closed on an unknown trust class instead of accepting it", () => {
     expect(() =>
-      SDK.assertSecurityGradeEvidenceV1({
-        trustClass: "some_new_source" as SDK.EvidenceTrustClassV1,
+      SDK.assertSecurityGradeEvidence({
+        trustClass: "some_new_source" as SDK.EvidenceTrustClass,
         sourceId: "source",
         grade: "security",
       }),
@@ -218,7 +217,7 @@ describe("Q03 provenance admission", () => {
 
   it("refuses unlabelled diagnostics and refuses labels on security records", () => {
     expect(() =>
-      SDK.admitEvidenceProvenanceV1({
+      SDK.admitEvidenceProvenance({
         provenance: {
           trustClass: "operator_admin_api",
           sourceId: "node",
@@ -228,7 +227,7 @@ describe("Q03 provenance admission", () => {
       }),
     ).toThrowError(/missing_diagnostic_label/u);
     expect(() =>
-      SDK.assertSecurityGradeEvidenceV1({
+      SDK.assertSecurityGradeEvidence({
         trustClass: "public_or_permissionless_da",
         sourceId: "peer",
         grade: "security",
@@ -239,7 +238,7 @@ describe("Q03 provenance admission", () => {
 
   it("degrades a bundle to diagnostic when any contributing record is diagnostic", () => {
     expect(
-      SDK.combineEvidenceGradeV1([
+      SDK.combineEvidenceGrade([
         {
           trustClass: "authenticated_cardano_l1",
           sourceId: "l1",
@@ -259,8 +258,8 @@ describe("Q03 provenance admission", () => {
 describe("Q03 authenticated L1 observation admission", () => {
   it("admits a well-formed local-node header observation", async () => {
     const fixture = await validBlock();
-    const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
-      observation: authenticatedHeaderObservationV1(fixture),
+    const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({
+      observation: authenticatedHeaderObservation(fixture),
     });
     expect(admitted.headerHash).toBe(fixture.headerHash);
     expect(admitted.provenance.trustClass).toBe("authenticated_cardano_l1");
@@ -270,9 +269,9 @@ describe("Q03 authenticated L1 observation admission", () => {
     const fixture = await validBlock();
     expect(
       await rejectionCode(async () =>
-        SDK.admitAuthenticatedStateQueueHeaderObservationV1({
-          observation: authenticatedHeaderObservationV1(fixture, {
-            sourceMode: "operator_rest" as SDK.L1SourceModeV1,
+        SDK.admitAuthenticatedStateQueueHeaderObservation({
+          observation: authenticatedHeaderObservation(fixture, {
+            sourceMode: "operator_rest" as SDK.L1SourceMode,
           }),
         }),
       ),
@@ -283,8 +282,8 @@ describe("Q03 authenticated L1 observation admission", () => {
     const fixture = await validBlock();
     expect(
       await rejectionCode(async () =>
-        SDK.admitAuthenticatedStateQueueHeaderObservationV1({
-          observation: authenticatedHeaderObservationV1(fixture, {
+        SDK.admitAuthenticatedStateQueueHeaderObservation({
+          observation: authenticatedHeaderObservation(fixture, {
             provenance: {
               trustClass: "operator_admin_api",
               sourceId: "node",
@@ -301,8 +300,8 @@ describe("Q03 authenticated L1 observation admission", () => {
     const fixture = await validBlock();
     expect(
       await rejectionCode(async () =>
-        SDK.admitAuthenticatedStateQueueHeaderObservationV1({
-          observation: authenticatedHeaderObservationV1(fixture, {
+        SDK.admitAuthenticatedStateQueueHeaderObservation({
+          observation: authenticatedHeaderObservation(fixture, {
             confirmationDepth: 3,
           }),
           minimumConfirmationDepth: 10,
@@ -316,8 +315,8 @@ describe("Q03 authenticated L1 observation admission", () => {
     const other = await doubleSpendBlock();
     expect(
       await rejectionCode(async () =>
-        SDK.admitAuthenticatedStateQueueHeaderObservationV1({
-          observation: authenticatedHeaderObservationV1(fixture, {
+        SDK.admitAuthenticatedStateQueueHeaderObservation({
+          observation: authenticatedHeaderObservation(fixture, {
             headerHash: other.headerHash,
           }),
         }),
@@ -350,8 +349,8 @@ describe("Q03 canonical block evidence", () => {
 
   it("fetches evidence over the public retained-DA source with peer fallback", async () => {
     const fixture = await doubleSpendBlock();
-    const evidence = await fetchCanonicalBlockEvidenceV1({
-      observation: authenticatedHeaderObservationV1(fixture),
+    const evidence = await fetchCanonicalBlockEvidence({
+      observation: authenticatedHeaderObservation(fixture),
       sources: [
         new StubDaSource("dead-peer"),
         new StubDaSource("live-peer", fixture.payloadEnvelopeCbor),
@@ -378,7 +377,7 @@ describe("Q03 canonical block evidence", () => {
         // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
         switch (protocol) {
           case DaRequestResponseProtocol.payloadByHeader:
-            return encodeDaPayloadByHeaderResponseV1Cbor({
+            return encodeDaPayloadByHeaderResponseCbor({
               status: "found_inline",
               headerHash: Buffer.from(fixture.headerHash, "hex"),
               payloadHash: computeDaSha256Hash(fixture.payloadEnvelopeCbor),
@@ -387,7 +386,7 @@ describe("Q03 canonical block evidence", () => {
               reasonCode: null,
             });
           case DaRequestResponseProtocol.proofBundleByHeader:
-            return encodeDaProofBundleByHeaderResponseV1Cbor({
+            return encodeDaProofBundleByHeaderResponseCbor({
               status: "found_inline",
               headerHash: Buffer.from(fixture.headerHash, "hex"),
               proofBundleHash: computeDaSha256Hash(proofBundleBytes),
@@ -396,7 +395,7 @@ describe("Q03 canonical block evidence", () => {
               reasonCode: null,
             });
           case DaRequestResponseProtocol.traceStepByIndex:
-            return encodeDaTraceStepByIndexResponseV1Cbor({
+            return encodeDaTraceStepByIndexResponseCbor({
               status: "found",
               headerHash: Buffer.from(fixture.headerHash, "hex"),
               stepIndex: 0,
@@ -404,7 +403,7 @@ describe("Q03 canonical block evidence", () => {
               membershipProofBytes,
             });
           case DaRequestResponseProtocol.eventToStepByEvent:
-            return encodeDaEventToStepByEventResponseV1Cbor({
+            return encodeDaEventToStepByEventResponseCbor({
               status: "found",
               headerHash: Buffer.from(fixture.headerHash, "hex"),
               eventKey,
@@ -448,7 +447,7 @@ describe("Q03 canonical block evidence", () => {
         grade: "security",
       });
       expect(() =>
-        SDK.assertSecurityGradeEvidenceV1(retained.provenance),
+        SDK.assertSecurityGradeEvidence(retained.provenance),
       ).not.toThrow();
     }
   });
@@ -457,8 +456,8 @@ describe("Q03 canonical block evidence", () => {
     const fixture = await doubleSpendBlock();
     const other = await validBlock();
     await expect(
-      canonicalBlockEvidenceFromVerifiedPayloadV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      canonicalBlockEvidenceFromVerifiedPayload({
+        observation: authenticatedHeaderObservation(fixture),
         payloadEnvelopeCbor: other.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
       }),
@@ -467,7 +466,7 @@ describe("Q03 canonical block evidence", () => {
 
   it("rejects a mutated payload whose roots no longer match the committed header", async () => {
     const fixture = await doubleSpendBlock();
-    const mutated = await reencodeFixturePayloadV1({
+    const mutated = await reencodeFixturePayload({
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -478,8 +477,8 @@ describe("Q03 canonical block evidence", () => {
       },
     });
     await expect(
-      canonicalBlockEvidenceFromVerifiedPayloadV1({
-        observation: authenticatedHeaderObservationV1(fixture),
+      canonicalBlockEvidenceFromVerifiedPayload({
+        observation: authenticatedHeaderObservation(fixture),
         payloadEnvelopeCbor: mutated,
         daProvenance: DA_PROVENANCE,
       }),
@@ -490,8 +489,8 @@ describe("Q03 canonical block evidence", () => {
     const fixture = await doubleSpendBlock();
     expect(
       await rejectionCode(async () =>
-        canonicalBlockEvidenceFromVerifiedPayloadV1({
-          observation: authenticatedHeaderObservationV1(fixture),
+        canonicalBlockEvidenceFromVerifiedPayload({
+          observation: authenticatedHeaderObservation(fixture),
           payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
           daProvenance: {
             trustClass: "operator_private_database",
@@ -507,8 +506,8 @@ describe("Q03 canonical block evidence", () => {
     const fixture = await doubleSpendBlock();
     expect(
       await rejectionCode(async () =>
-        canonicalBlockEvidenceFromVerifiedPayloadV1({
-          observation: authenticatedHeaderObservationV1(fixture),
+        canonicalBlockEvidenceFromVerifiedPayload({
+          observation: authenticatedHeaderObservation(fixture),
           payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
           daProvenance: {
             trustClass: "deterministic_local_computation",
@@ -538,7 +537,7 @@ describe("Q03 transactions-root inclusion authentication", () => {
   it("is recomputed from evidence, not trusted from the caller", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
-    const recomputed = await authenticateTransactionsInclusionRootsV1({
+    const recomputed = await authenticateTransactionsInclusionRoots({
       header: fixture.header,
       reconstruction: evidence.reconstruction,
       transactions: evidence.transactions,
@@ -547,7 +546,7 @@ describe("Q03 transactions-root inclusion authentication", () => {
   });
 
   it("accepts a source-value root that re-commits to the header", () => {
-    const authenticated: SDK.TransactionsInclusionRootAuthenticationV1 = {
+    const authenticated: SDK.TransactionsInclusionRootAuthentication = {
       headerTransactionsRoot: h32(0xab),
       l2TransactionCount: 2n,
       sourceValuePhasRoot: h32(0xcd),
@@ -556,7 +555,7 @@ describe("Q03 transactions-root inclusion authentication", () => {
       sourceInclusionAuthenticated: true,
     };
     expect(
-      SDK.assertTransactionSourceInclusionRootAuthenticatedV1(authenticated),
+      SDK.assertTransactionSourceInclusionRootAuthenticated(authenticated),
     ).toEqual(authenticated);
   });
 });
@@ -565,13 +564,13 @@ describe("Q03 canonical-evidence builders", () => {
   it("exposes authenticated transaction material for detection", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
-    expect(blockTransactionsFromCanonicalEvidenceV1(evidence)).toHaveLength(3);
+    expect(blockTransactionsFromCanonicalEvidence(evidence)).toHaveLength(3);
   });
 
   it("refuses to detect from evidence whose DA record was downgraded to diagnostic", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
-    const downgraded: CanonicalBlockEvidenceV1 = {
+    const downgraded: CanonicalBlockEvidence = {
       ...evidence,
       provenance: {
         ...evidence.provenance,
@@ -583,7 +582,7 @@ describe("Q03 canonical-evidence builders", () => {
         },
       },
     };
-    expect(() => blockTransactionsFromCanonicalEvidenceV1(downgraded)).toThrow(
+    expect(() => blockTransactionsFromCanonicalEvidence(downgraded)).toThrow(
       /prohibited_trust_class/u,
     );
   });
@@ -591,7 +590,7 @@ describe("Q03 canonical-evidence builders", () => {
   it("refuses every builder when transaction-source inclusion is not authenticated", async () => {
     const fixture = await doubleSpendBlock();
     const admitted = await evidenceFor(fixture);
-    const evidence: CanonicalBlockEvidenceV1 = {
+    const evidence: CanonicalBlockEvidence = {
       ...admitted,
       inclusionRootAuthentication: {
         ...admitted.inclusionRootAuthentication,
@@ -600,10 +599,10 @@ describe("Q03 canonical-evidence builders", () => {
       },
     };
     for (const build of [
-      async () => prepareDoubleSpendFromCanonicalEvidenceV1({ evidence }),
-      async () => prepareZeroInputFromCanonicalEvidenceV1({ evidence }),
-      async () => prepareInvalidRangeFromCanonicalEvidenceV1({ evidence }),
-      async () => prepareMinFeeFromCanonicalEvidenceV1({ evidence }),
+      async () => prepareDoubleSpendFromCanonicalEvidence({ evidence }),
+      async () => prepareZeroInputFromCanonicalEvidence({ evidence }),
+      async () => prepareInvalidRangeFromCanonicalEvidence({ evidence }),
+      async () => prepareMinFeeFromCanonicalEvidence({ evidence }),
     ]) {
       expect(await rejectionCode(build)).toBe(
         "transaction_source_inclusion_root_unauthenticated",
@@ -615,35 +614,35 @@ describe("Q03 canonical-evidence builders", () => {
     const doubleSpend = await evidenceFor(await doubleSpendBlock());
     expect(
       (
-        await executeCanonicalPrepareCommandV1({
+        await executeCanonicalPrepareCommand({
           request: { command: "prepare-double-spend" },
           evidence: doubleSpend,
         })
       ).txCount,
     ).toBe(3);
 
-    const zeroInputFixture = await buildCanonicalBlockFixtureV1({
-      transactions: [buildFixtureTransactionV1({ spendInputs: [], fee: 1n })],
+    const zeroInputFixture = await buildCanonicalBlockFixture({
+      transactions: [buildFixtureTransaction({ spendInputs: [], fee: 1n })],
     });
     expect(
       (
-        await executeCanonicalPrepareCommandV1({
+        await executeCanonicalPrepareCommand({
           request: { command: "prepare-zero-input" },
           evidence: await evidenceFor(zeroInputFixture),
         })
       ).txCount,
     ).toBe(1);
 
-    const minFeeFixture = await buildCanonicalBlockFixtureV1({
+    const minFeeFixture = await buildCanonicalBlockFixture({
       minFeeB: 2n,
       transactions: [
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [outRefCbor(0x79, 0n)],
           fee: 1n,
         }),
       ],
     });
-    const minFee = await executeCanonicalPrepareCommandV1({
+    const minFee = await executeCanonicalPrepareCommand({
       request: {
         command: "prepare-min-fee",
         categoryId: "00000013",
@@ -658,11 +657,11 @@ describe("Q03 canonical-evidence builders", () => {
       `00000013${minFeeFixture.headerHash}`,
     );
 
-    const invalidRangeFixture = await buildCanonicalBlockFixtureV1({
+    const invalidRangeFixture = await buildCanonicalBlockFixture({
       startTime: 10n,
       endTime: 20n,
       transactions: [
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [outRefCbor(0x77, 0n)],
           fee: 1n,
           validityIntervalStart: 30n,
@@ -672,16 +671,16 @@ describe("Q03 canonical-evidence builders", () => {
     });
     expect(
       (
-        await executeCanonicalPrepareCommandV1({
+        await executeCanonicalPrepareCommand({
           request: { command: "prepare-invalid-range" },
           evidence: await evidenceFor(invalidRangeFixture),
         })
       ).txCount,
     ).toBe(1);
 
-    const nonExistentInputFixture = await buildCanonicalBlockFixtureV1({
+    const nonExistentInputFixture = await buildCanonicalBlockFixture({
       transactions: [
-        buildFixtureTransactionV1({
+        buildFixtureTransaction({
           spendInputs: [outRefCbor(0x88, 0n)],
           fee: 1n,
         }),
@@ -689,7 +688,7 @@ describe("Q03 canonical-evidence builders", () => {
     });
     expect(
       (
-        await executeCanonicalPrepareCommandV1({
+        await executeCanonicalPrepareCommand({
           request: { command: "prepare-non-existent-input" },
           evidence: await evidenceFor(nonExistentInputFixture),
         })
@@ -700,7 +699,7 @@ describe("Q03 canonical-evidence builders", () => {
   it("rejects diagnostic grade before every gated builder can emit proof material", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
-    const downgraded: CanonicalBlockEvidenceV1 = {
+    const downgraded: CanonicalBlockEvidence = {
       ...evidence,
       provenance: {
         ...evidence.provenance,
@@ -714,19 +713,19 @@ describe("Q03 canonical-evidence builders", () => {
     };
     const builders = [
       async () =>
-        await prepareDoubleSpendFromCanonicalEvidenceV1({
+        await prepareDoubleSpendFromCanonicalEvidence({
           evidence: downgraded,
         }),
       async () =>
-        await prepareZeroInputFromCanonicalEvidenceV1({ evidence: downgraded }),
+        await prepareZeroInputFromCanonicalEvidence({ evidence: downgraded }),
       async () =>
-        await prepareInvalidRangeFromCanonicalEvidenceV1({
+        await prepareInvalidRangeFromCanonicalEvidence({
           evidence: downgraded,
         }),
       async () =>
-        await prepareMinFeeFromCanonicalEvidenceV1({ evidence: downgraded }),
+        await prepareMinFeeFromCanonicalEvidence({ evidence: downgraded }),
       async () =>
-        await prepareNonExistentInputFromCanonicalEvidenceV1({
+        await prepareNonExistentInputFromCanonicalEvidence({
           evidence: downgraded,
         }),
     ];
@@ -738,7 +737,7 @@ describe("Q03 canonical-evidence builders", () => {
   it("applies the provenance gate before the inclusion gate", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
-    const downgraded: CanonicalBlockEvidenceV1 = {
+    const downgraded: CanonicalBlockEvidence = {
       ...evidence,
       provenance: {
         ...evidence.provenance,
@@ -752,7 +751,7 @@ describe("Q03 canonical-evidence builders", () => {
     };
     expect(
       await rejectionCode(async () =>
-        prepareDoubleSpendFromCanonicalEvidenceV1({ evidence: downgraded }),
+        prepareDoubleSpendFromCanonicalEvidence({ evidence: downgraded }),
       ),
     ).toBe("prohibited_trust_class");
   });
@@ -776,7 +775,7 @@ describe("Q03 canonical-evidence builders", () => {
     );
     expect(new Set(inputs).size).toBe(inputs.length);
     await expect(
-      prepareDoubleSpendFromCanonicalEvidenceV1({ evidence }),
+      prepareDoubleSpendFromCanonicalEvidence({ evidence }),
     ).rejects.toThrow("No double spend found in the selected block.");
   });
 });
@@ -848,7 +847,7 @@ describe("Q03 labelled diagnostics", () => {
       );
     };
 
-    const diagnostic = await diagnosticBlockTransactionsFromMidgardNodeV1({
+    const diagnostic = await diagnosticBlockTransactionsFromMidgardNode({
       midgardNodeUrl: "http://operator.invalid",
       headerHash: fixture.headerHash,
       fetchImpl,
@@ -858,11 +857,11 @@ describe("Q03 labelled diagnostics", () => {
     expect(diagnostic.provenance.trustClass).toBe("operator_admin_api");
     expect(diagnostic.provenance.diagnosticLabel).toMatch(/never a security/u);
     expect(diagnostic.transactions).toHaveLength(3);
-    expect(diagnosticEvidenceBannerV1(diagnostic.provenance)).toMatch(
+    expect(diagnosticEvidenceBanner(diagnostic.provenance)).toMatch(
       /^DIAGNOSTIC EVIDENCE \(operator_admin_api\/midgard-node-url\)/u,
     );
     expect(() =>
-      SDK.assertSecurityGradeEvidenceV1(diagnostic.provenance),
+      SDK.assertSecurityGradeEvidence(diagnostic.provenance),
     ).toThrowError(/prohibited_trust_class/u);
   });
 });

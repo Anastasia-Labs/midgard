@@ -1,25 +1,25 @@
-import { missingSignatureFieldWalkCheckpointV1 } from "@al-ft/midgard-sdk";
+import { missingSignatureFieldWalkCheckpoint } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ProtectedOutputSignerMissingContractsV1 } from "./contracts-v1.js";
-import { actuateProtectedOutputSignerFieldOpeningV1 } from "./field-opening-actuation-v1.js";
-import { planProtectedOutputSignerWitnessOpeningV1 } from "./field-plans-v1.js";
-import type { ProtectedOutputSignerMissingEvidenceV1 } from "./protected-output-signer-missing-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ProtectedOutputSignerMissingContracts } from "./contracts-v1.js";
+import { actuateProtectedOutputSignerFieldOpening } from "./field-opening-actuation-v1.js";
+import { planProtectedOutputSignerWitnessOpening } from "./field-plans-v1.js";
+import type { ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing-v1.js";
 import {
-  ProtectedOutputSignerStep03DatumV1Schema,
-  ProtectedOutputSignerStep03RedeemerV1Schema,
-  ProtectedOutputSignerStep04DatumV1Schema,
+  ProtectedOutputSignerStep03DatumSchema,
+  ProtectedOutputSignerStep03RedeemerSchema,
+  ProtectedOutputSignerStep04DatumSchema,
 } from "./schemas-v1.js";
-import { submitProtectedOutputSignerOpeningTransitionV1 } from "./submit-opening-transition-v1.js";
+import { submitProtectedOutputSignerOpeningTransition } from "./submit-opening-transition-v1.js";
 
-export const submitProtectedOutputSignerMissingStep03V1 = async ({
+export const submitProtectedOutputSignerMissingStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -39,24 +39,24 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ProtectedOutputSignerMissingContractsV1;
+  readonly contracts: ProtectedOutputSignerMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ProtectedOutputSignerMissingEvidenceV1;
+  readonly evidence: ProtectedOutputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo: UTxO;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const current = await requireLinearFaultThreadUtxoV1({
+  const current = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,7 +64,7 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
     stepIndex: 2,
     threadOutRef,
   });
-  const protectedState = requireLinearFaultStepStateV1<{
+  const protectedState = requireLinearFaultStepState<{
     subject: unknown;
     transaction_id: string;
     witness_set_hash: string;
@@ -73,7 +73,7 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
   }>({
     threadUtxo: current.threadUtxo,
     signer,
-    schema: ProtectedOutputSignerStep03DatumV1Schema as never,
+    schema: ProtectedOutputSignerStep03DatumSchema as never,
     family: "protected-output-signer-missing",
     stepIndex: 2,
   });
@@ -86,19 +86,19 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
     throw new Error(
       "protected-output-signer-missing: protected credential checkpoint changed",
     );
-  const planned = planProtectedOutputSignerWitnessOpeningV1({
+  const planned = planProtectedOutputSignerWitnessOpening({
     evidence,
     nativeTxCompactCbor,
     witnessSetCompactCbor,
     owner: signer.paymentKeyHash,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "protected-output-signer-missing",
     stepIndex: 2,
   });
-  const actuated = await actuateProtectedOutputSignerFieldOpeningV1({
+  const actuated = await actuateProtectedOutputSignerFieldOpening({
     lucid,
     contracts,
     signer,
@@ -114,7 +114,7 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
     publishedCarriageUtxos,
     suppliedCertificateUtxo: certificateUtxo,
   });
-  const checkpoint = missingSignatureFieldWalkCheckpointV1({
+  const checkpoint = missingSignatureFieldWalkCheckpoint({
     txId: evidence.subject.transaction_id,
     itemCount: planned.itemCount,
     totalLength: planned.preimage.length,
@@ -129,9 +129,9 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
         signer_present: false,
       },
     } as never,
-    ProtectedOutputSignerStep04DatumV1Schema as never,
+    ProtectedOutputSignerStep04DatumSchema as never,
   );
-  const result = await submitProtectedOutputSignerOpeningTransitionV1({
+  const result = await submitProtectedOutputSignerOpeningTransition({
     lucid,
     contracts,
     categoryId,
@@ -143,7 +143,7 @@ export const submitProtectedOutputSignerMissingStep03V1 = async ({
     opening: actuated.opening,
     referenceScriptUtxo,
     carriageReferenceInputs: actuated.referenceInputs,
-    redeemerSchema: ProtectedOutputSignerStep03RedeemerV1Schema as never,
+    redeemerSchema: ProtectedOutputSignerStep03RedeemerSchema as never,
     preSubmitBoundary,
     awaitConfirmation,
   });

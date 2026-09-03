@@ -1,25 +1,25 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ReceivePurposeLanguageContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ReceivePurposeLanguageContracts } from "./contracts-v1.js";
 import {
-  receivePurposeLanguageEvidenceClosesV1,
-  type ReceivePurposeLanguageEvidenceV1,
+  type ReceivePurposeLanguageEvidence,
+  receivePurposeLanguageEvidenceCloses,
 } from "./family-v1.js";
 import {
-  AuthenticatedReceiveLanguageV1Schema,
-  ReceivePurposeStep03DatumV1Schema,
-  ReceivePurposeStep03RedeemerV1Schema,
+  AuthenticatedReceiveLanguageSchema,
+  ReceivePurposeStep03DatumSchema,
+  ReceivePurposeStep03RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitReceivePurposeLanguageStep03V1 = async ({
+export const submitReceivePurposeLanguageStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -32,19 +32,19 @@ export const submitReceivePurposeLanguageStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ReceivePurposeLanguageContractsV1;
+  contracts: ReceivePurposeLanguageContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: ReceivePurposeLanguageEvidenceV1;
+  evidence: ReceivePurposeLanguageEvidence;
   referenceScriptUtxo: UTxO;
-  witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const family = "receive-purpose-language";
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -52,17 +52,17 @@ export const submitReceivePurposeLanguageStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof AuthenticatedReceiveLanguageV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof AuthenticatedReceiveLanguageSchema>
   >({
     threadUtxo,
     signer,
-    schema: ReceivePurposeStep03DatumV1Schema as never,
+    schema: ReceivePurposeStep03DatumSchema as never,
     family,
     stepIndex,
   });
   if (
-    !receivePurposeLanguageEvidenceClosesV1(evidence) ||
+    !receivePurposeLanguageEvidenceCloses(evidence) ||
     state.bound.execution_index !== BigInt(evidence.finding.executionIndex) ||
     state.language_tag !== BigInt(evidence.descriptor.languageTag) ||
     state.purpose_kind !== 3n
@@ -70,7 +70,7 @@ export const submitReceivePurposeLanguageStep03V1 = async ({
     throw new Error(
       `${family}: terminal state is not the retained contradiction`,
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family,
     stepIndex,
@@ -80,7 +80,7 @@ export const submitReceivePurposeLanguageStep03V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ReceivePurposeStep03RedeemerV1Schema,
+    spendRedeemerSchema: ReceivePurposeStep03RedeemerSchema,
     buildFamilyArgs: (layout) => ({
       input_index: layout.inputIndex,
       output_index: layout.outputIndex,

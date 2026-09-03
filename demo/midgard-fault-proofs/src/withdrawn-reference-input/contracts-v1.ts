@@ -4,13 +4,13 @@ export const WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL =
   "withdrawn-reference-input";
 
 /** Blueprint titles for the three deployed validators. */
-export const WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1 = {
+export const WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/withdrawn_reference_input/step_01.main.spend",
   step02: "fraud_proofs/withdrawn_reference_input/step_02.main.spend",
   step03: "fraud_proofs/withdrawn_reference_input/step_03.main.spend",
 } as const;
 
-export type WithdrawnReferenceInputStepContractV1 = {
+export type WithdrawnReferenceInputStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -29,11 +29,11 @@ export type WithdrawnReferenceInputStepContractV1 = {
  *
  * There is deliberately no category id: catalogue registration owns it.
  */
-export type WithdrawnReferenceInputContractsV1 = {
+export type WithdrawnReferenceInputContracts = {
   readonly steps: readonly [
-    WithdrawnReferenceInputStepContractV1,
-    WithdrawnReferenceInputStepContractV1,
-    WithdrawnReferenceInputStepContractV1,
+    WithdrawnReferenceInputStepContract,
+    WithdrawnReferenceInputStepContract,
+    WithdrawnReferenceInputStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

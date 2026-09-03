@@ -2,7 +2,7 @@
  * Shared plumbing for the `input-set-uniqueness` step submitters.
  *
  * The family predates catalogue registration, so every submitter takes the
- * explicit `InputSetUniquenessContractsV1` record plus the category id the
+ * explicit `InputSetUniquenessContracts` record plus the category id the
  * thread NFT rides — see `contracts-v1.ts`. This module owns what the
  * submitters share: locating and validating the thread UTxO at a given step,
  * reading the step datum fail-closed, and reference-script sourcing (both
@@ -22,7 +22,7 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   INPUT_SET_UNIQUENESS_CATEGORY_LABEL,
-  type InputSetUniquenessContractsV1,
+  type InputSetUniquenessContracts,
 } from "./contracts-v1.js";
 
 /**
@@ -30,7 +30,7 @@ import {
  * `FraudProofCatalogueCategoryDeploymentInfo`, passed explicitly because the
  * family's catalogue entry is parent-owned and lands at registration.
  */
-export type InputSetUniquenessCatalogueCategoryV1 = {
+export type InputSetUniquenessCatalogueCategory = {
   /** 4-byte category id, hex. */
   readonly categoryId: string;
   /** The registered category script hash — must be the step-01 hash. */
@@ -43,14 +43,14 @@ export const inputSetUniquenessSubmitError = (message: string): Error =>
   new Error(`${INPUT_SET_UNIQUENESS_CATEGORY_LABEL}: ${message}`);
 
 /** One-based step number → human label used in failure messages. */
-export const inputSetUniquenessStepLabelV1 = (stepIndex: 0 | 1 | 2 | 3) =>
+export const inputSetUniquenessStepLabel = (stepIndex: 0 | 1 | 2 | 3) =>
   `${INPUT_SET_UNIQUENESS_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
 /**
  * Fetches the thread UTxO, requires it to sit at the expected step's address,
  * and validates the computation-thread NFT it must carry.
  */
-export const requireInputSetUniquenessThreadUtxoV1 = async ({
+export const requireInputSetUniquenessThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -58,7 +58,7 @@ export const requireInputSetUniquenessThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1 | 2 | 3;
   readonly threadOutRef: string;
@@ -66,7 +66,7 @@ export const requireInputSetUniquenessThreadUtxoV1 = async ({
   readonly threadUtxo: UTxO;
   readonly threadToken: ReturnType<typeof requireComputationThreadToken>;
 }> => {
-  const label = inputSetUniquenessStepLabelV1(stepIndex);
+  const label = inputSetUniquenessStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -92,7 +92,7 @@ export const requireInputSetUniquenessThreadUtxoV1 = async ({
  * carried script that does not hash to the step's own validator would make
  * the spend unexecutable, so it is refused before anything is built.
  */
-export const requireInputSetUniquenessReferenceScriptV1 = ({
+export const requireInputSetUniquenessReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
@@ -103,13 +103,13 @@ export const requireInputSetUniquenessReferenceScriptV1 = ({
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw inputSetUniquenessSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${inputSetUniquenessStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${inputSetUniquenessStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
   if (actual !== expectedScriptHash) {
     throw inputSetUniquenessSubmitError(
-      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not the ${inputSetUniquenessStepLabelV1(stepIndex)} validator ${expectedScriptHash}.`,
+      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not the ${inputSetUniquenessStepLabel(stepIndex)} validator ${expectedScriptHash}.`,
     );
   }
   return utxo;
@@ -120,7 +120,7 @@ export const requireInputSetUniquenessReferenceScriptV1 = ({
  * under the step's schema, must name the signing prover, and must carry a
  * populated state.
  */
-export const requireInputSetUniquenessStepStateV1 = <State>({
+export const requireInputSetUniquenessStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -131,7 +131,7 @@ export const requireInputSetUniquenessStepStateV1 = <State>({
   readonly schema: { fraud_prover: string; data: State | null };
   readonly stepIndex: 0 | 1 | 2 | 3;
 }): State => {
-  const label = inputSetUniquenessStepLabelV1(stepIndex);
+  const label = inputSetUniquenessStepLabel(stepIndex);
   if (threadUtxo.datum == null) {
     throw inputSetUniquenessSubmitError(
       `thread UTxO ${outRefLabel(threadUtxo)} at ${label} has no inline datum.`,

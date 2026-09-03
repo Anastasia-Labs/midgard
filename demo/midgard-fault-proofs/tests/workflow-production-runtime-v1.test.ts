@@ -11,65 +11,65 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  MemoryFraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
-  createProductionWorkflowActuationPermitControllerV1,
-  isProductionWorkflowActuationRevokedErrorV1,
-  type ProductionWorkflowActuationCheckpointV1,
-  productionWorkflowActuationDecisionDigestV1,
-  ProductionWorkflowActuationRevokedErrorV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
+  createWorkflowActuationPermitController,
+  isWorkflowActuationRevokedError,
+  type WorkflowActuationCheckpoint,
+  workflowActuationDecisionDigest,
+  WorkflowActuationRevokedError,
 } from "../src/workflow/production-actuation-permit-v1.js";
 import {
-  assertProductionWorkflowApplicationRegistryV1,
-  installProductionWorkflowApplicationRegistryV1,
-  PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1,
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  productionWorkflowAdapterRunnerV1,
-  validateProductionWorkflowAdapterCoverageV1,
+  assertWorkflowApplicationRegistry,
+  installWorkflowApplicationRegistry,
+  validateWorkflowAdapterCoverage,
+  WORKFLOW_ADAPTER_REGISTRATIONS,
+  WORKFLOW_ADAPTER_RUNNER,
+  workflowAdapterRunner,
 } from "../src/workflow/production-adapters-v1.js";
-import { unsafeCreateMeasuredProductionWorkflowRunnerForTestV1 } from "../src/workflow/production-funding-requirements-test-support-v1.js";
-import { createProductionWorkflowFundingRequirementsV1 } from "../src/workflow/production-funding-requirements-v1.js";
+import { unsafeCreateMeasuredWorkflowRunnerForTest } from "../src/workflow/production-funding-requirements-test-support-v1.js";
+import { createWorkflowFundingRequirements } from "../src/workflow/production-funding-requirements-v1.js";
 import {
-  assertProductionWorkflowFundingReservationReadyToSubmitV1,
-  beginProductionWorkflowFundingReservationActionV1,
-  bindProductionWorkflowFundingReservationJournalV1,
-  createProductionWorkflowFundingReservationPermitV1,
-  prepareProductionWorkflowFundingReservationTransactionV1,
-  type ProductionWorkflowFundingReservationSnapshotV1,
-  unsafeCreateProductionWorkflowFundingReservationPermitForTestV1,
-  unsafeProductionWorkflowFundingReservationSelectedOutRefsForTestV1,
+  assertWorkflowFundingReservationReadyToSubmit,
+  beginWorkflowFundingReservationAction,
+  bindWorkflowFundingReservationJournal,
+  createWorkflowFundingReservationPermit,
+  prepareWorkflowFundingReservationTransaction,
+  unsafeCreateWorkflowFundingReservationPermitForTest,
+  unsafeWorkflowFundingReservationSelectedOutRefsForTest,
+  type WorkflowFundingReservationSnapshot,
 } from "../src/workflow/production-funding-reservation-permit-v1.js";
 import {
-  authenticatedStateQueueObservationDigestV1,
-  classifyProductionHeaderV1,
-  createProductionHeaderClassifierV1,
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
 } from "../src/workflow/production-header-classifier-v1.js";
 import {
-  createDaHashPreimageProductionWorkflowRunnerV1,
-  createManifestBoundProductionWorkflowRunnerV1,
-  PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1,
-  PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
+  createDaHashPreimageWorkflowRunner,
+  createManifestBoundWorkflowRunner,
+  WORKFLOW_RUNNER_FACTORIES,
+  WORKFLOW_RUNTIME_CONFIG,
 } from "../src/workflow/production-runtime-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy-v1.js";
-import { bindProductionWorkflowPreflightTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
@@ -82,34 +82,34 @@ const RELEASE_FINALITY_POLICY = {
 
 const admittedActuation = async () => {
   const sharedInput = outRefCbor(91, 0n);
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({ spendInputs: [sharedInput], fee: 1n }),
-      buildFixtureTransactionV1({ spendInputs: [sharedInput], fee: 2n }),
+      buildFixtureTransaction({ spendInputs: [sharedInput], fee: 1n }),
+      buildFixtureTransaction({ spendInputs: [sharedInput], fee: 2n }),
     ],
   });
-  const observation = authenticatedHeaderObservationV1(fixture);
-  const classifier = await createProductionHeaderClassifierV1({
+  const observation = authenticatedHeaderObservation(fixture);
+  const classifier = await createHeaderClassifier({
     deploymentFingerprint: DEPLOYMENT,
-    replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+    replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: {
-      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => ({
-        schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
         deploymentIdentityDigest: DEPLOYMENT,
         releaseIdentityDigest: "f7".repeat(32),
-        policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(
+        policyDigest: computeFraudProofReleaseFinalityPolicyDigest(
           RELEASE_FINALITY_POLICY,
         ),
         policy: RELEASE_FINALITY_POLICY,
       }),
     },
   });
-  const decision = await classifyProductionHeaderV1({
+  const decision = await classifyHeader({
     classifier,
     observation,
     authenticatedObservationDigest:
-      await authenticatedStateQueueObservationDigestV1({
+      await authenticatedStateQueueObservationDigest({
         observation,
         minimumConfirmationDepth: 30,
       }),
@@ -134,12 +134,12 @@ const admittedActuation = async () => {
   if (decision.decision !== "fault_detected") {
     throw new Error("runtime test failed to classify its fault fixture");
   }
-  const controller = createProductionWorkflowActuationPermitControllerV1({
+  const controller = createWorkflowActuationPermitController({
     decision,
     rollbackGeneration: "7",
   });
   const fundingReservationPermit =
-    unsafeCreateProductionWorkflowFundingReservationPermitForTestV1({
+    unsafeCreateWorkflowFundingReservationPermitForTest({
       category: "doubleSpend",
       actuationPermit: controller.permit,
       deploymentFingerprint: DEPLOYMENT,
@@ -275,7 +275,7 @@ const measuredFundingRuntime = async (
   }> = {},
 ) => {
   const actuation = await admittedActuation();
-  const requirements = createProductionWorkflowFundingRequirementsV1({
+  const requirements = createWorkflowFundingRequirements({
     scope: { kind: "fraud_proof_category", category: "doubleSpend" },
     deploymentFingerprint: DEPLOYMENT,
     blueprintSha256: "a1".repeat(32),
@@ -289,7 +289,7 @@ const measuredFundingRuntime = async (
       measuredFundingAction("step-three", [10n, 3n, 2n]),
     ],
   });
-  const runner = unsafeCreateMeasuredProductionWorkflowRunnerForTestV1({
+  const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
     category: "doubleSpend",
     fundingRequirements: requirements,
   });
@@ -321,10 +321,9 @@ const measuredFundingRuntime = async (
     state: "active" as const,
     activeInputs,
   });
-  let currentSnapshot: ProductionWorkflowFundingReservationSnapshotV1 =
-    snapshot;
+  let currentSnapshot: WorkflowFundingReservationSnapshot = snapshot;
   const prepare = vi.fn(async () => snapshot);
-  const permit = await createProductionWorkflowFundingReservationPermitV1({
+  const permit = await createWorkflowFundingReservationPermit({
     category: "doubleSpend",
     runner,
     actuationPermit: actuation.actuationPermit,
@@ -364,8 +363,8 @@ const measuredFundingRuntime = async (
     },
   });
   const journal = Object.freeze({ actionKind });
-  bindProductionWorkflowFundingReservationJournalV1({ journal, permit });
-  await beginProductionWorkflowFundingReservationActionV1({
+  bindWorkflowFundingReservationJournal({ journal, permit });
+  await beginWorkflowFundingReservationAction({
     journal,
     action: { actionId: actionKind, input: { actionKind } },
   });
@@ -373,11 +372,8 @@ const measuredFundingRuntime = async (
     journal,
     permit,
     prepare,
-    selected:
-      unsafeProductionWorkflowFundingReservationSelectedOutRefsForTestV1(
-        permit,
-      ),
-    setSnapshot: (value: ProductionWorkflowFundingReservationSnapshotV1) => {
+    selected: unsafeWorkflowFundingReservationSelectedOutRefsForTest(permit),
+    setSnapshot: (value: WorkflowFundingReservationSnapshot) => {
       currentSnapshot = value;
     },
     snapshot,
@@ -457,13 +453,13 @@ describe("compiled manifest-bound production runtime V1", () => {
     const first = Object.freeze({ id: "first" });
     const second = Object.freeze({ id: "second" });
     expect(
-      bindProductionWorkflowFundingReservationJournalV1({
+      bindWorkflowFundingReservationJournal({
         journal: first,
         permit: authority.fundingReservationPermit,
       }),
     ).toBe(first);
     expect(() =>
-      bindProductionWorkflowFundingReservationJournalV1({
+      bindWorkflowFundingReservationJournal({
         journal: second,
         permit: authority.fundingReservationPermit,
       }),
@@ -488,7 +484,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   it("binds the actual signed body to the selected funding subset and measured shape", async () => {
     const runtime = await measuredFundingRuntime("step-one");
     const action = { actionId: "step-one", input: { actionKind: "step-one" } };
-    const validPreflight = bindProductionWorkflowPreflightTransactionV1(
+    const validPreflight = bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: "valid" }),
       signedFundingTransaction({
         inputOutRefs: runtime.selected.fundingOutRefs,
@@ -496,7 +492,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareProductionWorkflowFundingReservationTransactionV1({
+      prepareWorkflowFundingReservationTransaction({
         journal: runtime.journal,
         action,
         preflight: validPreflight,
@@ -505,7 +501,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     expect(runtime.prepare).toHaveBeenCalledTimes(1);
 
     const hostile = await measuredFundingRuntime("step-one");
-    const substitutedPreflight = bindProductionWorkflowPreflightTransactionV1(
+    const substitutedPreflight = bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: "substituted" }),
       signedFundingTransaction({
         inputOutRefs: [
@@ -516,7 +512,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareProductionWorkflowFundingReservationTransactionV1({
+      prepareWorkflowFundingReservationTransaction({
         journal: hostile.journal,
         action,
         preflight: substitutedPreflight,
@@ -534,7 +530,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       measuredReference: measuredReferenceScript,
       resolvedReference: substitutedScript,
     });
-    const preflight = bindProductionWorkflowPreflightTransactionV1(
+    const preflight = bindWorkflowPreflightTransaction(
       Object.freeze({ txHash: "reference-substitution" }),
       signedFundingTransaction({
         inputOutRefs: runtime.selected.fundingOutRefs,
@@ -543,7 +539,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      prepareProductionWorkflowFundingReservationTransactionV1({
+      prepareWorkflowFundingReservationTransaction({
         journal: runtime.journal,
         action: { actionId: "step-one", input: { actionKind: "step-one" } },
         preflight,
@@ -570,7 +566,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     );
     await expect(
-      assertProductionWorkflowFundingReservationReadyToSubmitV1({
+      assertWorkflowFundingReservationReadyToSubmit({
         journal: runtime.journal,
         transactionHash: "00".repeat(32),
       }),
@@ -578,7 +574,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   });
 
   it("registers only the families with complete shared workflow drivers", () => {
-    expect(Object.keys(PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1)).toEqual([
+    expect(Object.keys(WORKFLOW_RUNNER_FACTORIES)).toEqual([
       "doubleSpend",
       "nonExistentInput",
       "nonExistentInputNoIndex",
@@ -630,15 +626,13 @@ describe("compiled manifest-bound production runtime V1", () => {
 
   it("admits every fixed factory only for its exact application category", () => {
     const categories = Object.keys(
-      PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1,
-    ) as (keyof typeof PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1)[];
+      WORKFLOW_RUNNER_FACTORIES,
+    ) as (keyof typeof WORKFLOW_RUNNER_FACTORIES)[];
     for (const category of categories) {
-      const runner = PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1[category](
-        async () => {
-          throw new Error(`${category} loader is not invoked during admission`);
-        },
-      );
-      const registry = installProductionWorkflowApplicationRegistryV1({
+      const runner = WORKFLOW_RUNNER_FACTORIES[category](async () => {
+        throw new Error(`${category} loader is not invoked during admission`);
+      });
+      const registry = installWorkflowApplicationRegistry({
         deploymentFingerprint: DEPLOYMENT,
         requiredInstalledCategories: [category],
         installations: [
@@ -654,7 +648,7 @@ describe("compiled manifest-bound production runtime V1", () => {
         (candidate) => candidate !== category,
       )!;
       expect(() =>
-        installProductionWorkflowApplicationRegistryV1({
+        installWorkflowApplicationRegistry({
           deploymentFingerprint: DEPLOYMENT,
           requiredInstalledCategories: [otherCategory],
           installations: [
@@ -670,7 +664,7 @@ describe("compiled manifest-bound production runtime V1", () => {
   });
 
   it("does not admit the public generic constructor as a production family runner", () => {
-    const generic = createManifestBoundProductionWorkflowRunnerV1({
+    const generic = createManifestBoundWorkflowRunner({
       category: "doubleSpend",
       loadRuntimeConfig: async () => {
         throw new Error("generic runner is not invoked during admission");
@@ -683,8 +677,8 @@ describe("compiled manifest-bound production runtime V1", () => {
       },
     });
     expect(() =>
-      validateProductionWorkflowAdapterCoverageV1(
-        PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.map((registration) =>
+      validateWorkflowAdapterCoverage(
+        WORKFLOW_ADAPTER_REGISTRATIONS.map((registration) =>
           registration.category === "doubleSpend"
             ? { ...registration, status: "ready", runner: generic }
             : registration,
@@ -694,10 +688,10 @@ describe("compiled manifest-bound production runtime V1", () => {
   });
 
   it("installs an immutable deployment-bound application overlay without mutating the static catalogue", () => {
-    const runner = createDaHashPreimageProductionWorkflowRunnerV1(async () => {
+    const runner = createDaHashPreimageWorkflowRunner(async () => {
       throw new Error("installed Q44 loader reached");
     });
-    const registry = installProductionWorkflowApplicationRegistryV1({
+    const registry = installWorkflowApplicationRegistry({
       deploymentFingerprint: DEPLOYMENT,
       requiredInstalledCategories: ["daHashPreimage"],
       installations: [
@@ -708,14 +702,12 @@ describe("compiled manifest-bound production runtime V1", () => {
         },
       ],
     });
-    expect(() =>
-      assertProductionWorkflowApplicationRegistryV1(registry),
-    ).not.toThrow();
+    expect(() => assertWorkflowApplicationRegistry(registry)).not.toThrow();
     expect(Object.isFrozen(registry)).toBe(true);
     expect(Object.isFrozen(registry.installedCategories)).toBe(true);
     expect(Object.isFrozen(registry.registrations)).toBe(true);
     expect(registry.registrations).toHaveLength(
-      PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.length,
+      WORKFLOW_ADAPTER_REGISTRATIONS.length,
     );
     expect(
       registry.registrations.find(
@@ -723,30 +715,25 @@ describe("compiled manifest-bound production runtime V1", () => {
       ),
     ).toMatchObject({ status: "ready", runner });
     expect(
-      PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.find(
+      WORKFLOW_ADAPTER_REGISTRATIONS.find(
         (registration) => registration.category === "daHashPreimage",
       ),
     ).toMatchObject({ status: "missing" });
-    expect(productionWorkflowAdapterRunnerV1("daHashPreimage", registry)).toBe(
-      runner,
-    );
+    expect(workflowAdapterRunner("daHashPreimage", registry)).toBe(runner);
   });
 
   it("rejects incomplete, duplicate, unrecognized, forged, and cross-category application installations", () => {
-    const doubleSpend = PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1.doubleSpend(
+    const doubleSpend = WORKFLOW_RUNNER_FACTORIES.doubleSpend(async () => {
+      throw new Error("not invoked");
+    });
+    const daHashPreimage = WORKFLOW_RUNNER_FACTORIES.daHashPreimage(
       async () => {
         throw new Error("not invoked");
       },
     );
-    const daHashPreimage =
-      PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1.daHashPreimage(async () => {
-        throw new Error("not invoked");
-      });
     const install = (
-      input: Parameters<
-        typeof installProductionWorkflowApplicationRegistryV1
-      >[0],
-    ) => installProductionWorkflowApplicationRegistryV1(input);
+      input: Parameters<typeof installWorkflowApplicationRegistry>[0],
+    ) => installWorkflowApplicationRegistry(input);
 
     expect(() =>
       install({
@@ -814,7 +801,7 @@ describe("compiled manifest-bound production runtime V1", () => {
             category: "daHashPreimage",
             deploymentFingerprint: DEPLOYMENT,
             runner: {
-              runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+              runnerVersion: WORKFLOW_ADAPTER_RUNNER,
               runOrResume: async () => undefined,
             },
           },
@@ -822,11 +809,11 @@ describe("compiled manifest-bound production runtime V1", () => {
       }),
     ).toThrow("module-admitted category-bound runner");
     expect(() =>
-      assertProductionWorkflowApplicationRegistryV1({
+      assertWorkflowApplicationRegistry({
         schemaVersion: "midgard-production-fraud-proof-application-registry-v1",
         deploymentFingerprint: DEPLOYMENT,
         installedCategories: ["daHashPreimage"],
-        registrations: PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1,
+        registrations: WORKFLOW_ADAPTER_REGISTRATIONS,
       }),
     ).toThrow("not installed through the authenticated immutable boundary");
   });
@@ -837,7 +824,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     const journalDirectory = join(directory, "journal");
     const close = vi.fn(async () => undefined);
     const loadRuntimeConfig = vi.fn(async () => ({
-      schemaVersion: PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
+      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
       config: { releaseConfig: "manifest-bound" },
       retainedDaSources: [retainedDaSource()],
       close,
@@ -852,10 +839,10 @@ describe("compiled manifest-bound production runtime V1", () => {
       },
     }));
     const execute = vi.fn(async ({ journal, mode }) => {
-      expect(journal).toBeInstanceOf(DirectoryFraudProofWorkflowJournalStoreV1);
+      expect(journal).toBeInstanceOf(DirectoryFraudProofWorkflowJournalStore);
       expect(mode).toBe("resume");
-      const identity: FraudProofWorkflowIdentityV1 = {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+      const identity: FraudProofWorkflowIdentity = {
+        schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
         deploymentFingerprint: DEPLOYMENT,
         category: "doubleSpend",
         target: {
@@ -864,10 +851,10 @@ describe("compiled manifest-bound production runtime V1", () => {
         },
         decisionDigest: actuation.decisionDigest,
       };
-      const workflowId = computeFraudProofWorkflowIdV1(identity);
+      const workflowId = computeFraudProofWorkflowId(identity);
       await journal.append(
         {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
           workflowId,
           identity,
           sequence: 0,
@@ -879,13 +866,13 @@ describe("compiled manifest-bound production runtime V1", () => {
       return { workflowId };
     });
     try {
-      const runner = createManifestBoundProductionWorkflowRunnerV1({
+      const runner = createManifestBoundWorkflowRunner({
         category: "doubleSpend",
         loadRuntimeConfig,
         constructWorkflow,
         execute,
       });
-      expect(runner.runnerVersion).toBe(PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1);
+      expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
       const result = await runner.runOrResume({
         mode: "resume",
         category: "doubleSpend",
@@ -911,7 +898,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       expect(close).toHaveBeenCalledOnce();
       const workflowId = (result as { readonly workflowId: string }).workflowId;
       await expect(
-        new DirectoryFraudProofWorkflowJournalStoreV1(journalDirectory).load(
+        new DirectoryFraudProofWorkflowJournalStore(journalDirectory).load(
           workflowId,
         ),
       ).resolves.toHaveLength(1);
@@ -926,7 +913,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     const loadRuntimeConfig = vi.fn(async () => {
       throw new Error("revoked runner must not load infrastructure");
     });
-    const runner = createManifestBoundProductionWorkflowRunnerV1({
+    const runner = createManifestBoundWorkflowRunner({
       category: "doubleSpend",
       loadRuntimeConfig,
       constructWorkflow: async () => {
@@ -952,11 +939,11 @@ describe("compiled manifest-bound production runtime V1", () => {
     } catch (error) {
       rejected = error;
     }
-    expect(rejected).toBeInstanceOf(ProductionWorkflowActuationRevokedErrorV1);
-    expect(isProductionWorkflowActuationRevokedErrorV1(rejected)).toBe(true);
+    expect(rejected).toBeInstanceOf(WorkflowActuationRevokedError);
+    expect(isWorkflowActuationRevokedError(rejected)).toBe(true);
     expect(
-      isProductionWorkflowActuationRevokedErrorV1(
-        new ProductionWorkflowActuationRevokedErrorV1({
+      isWorkflowActuationRevokedError(
+        new WorkflowActuationRevokedError({
           decisionDigest: actuation.decisionDigest,
           rollbackGeneration: "7",
           checkpoint: "runner_start",
@@ -969,18 +956,18 @@ describe("compiled manifest-bound production runtime V1", () => {
 
   it("checks the live permit at every shared workflow actuation boundary", async () => {
     const actuation = await admittedActuation();
-    const journal = bindProductionWorkflowActuationJournalV1({
-      journal: new MemoryFraudProofWorkflowJournalStoreV1(),
+    const journal = bindWorkflowActuationJournal({
+      journal: new MemoryFraudProofWorkflowJournalStore(),
       permit: actuation.actuationPermit,
       decisionDigest: actuation.decisionDigest,
       deploymentFingerprint: DEPLOYMENT,
       category: "doubleSpend",
       headerHash: actuation.headerHash,
     });
-    expect(productionWorkflowActuationDecisionDigestV1(journal)).toBe(
+    expect(workflowActuationDecisionDigest(journal)).toBe(
       actuation.decisionDigest,
     );
-    const checkpoints: readonly ProductionWorkflowActuationCheckpointV1[] = [
+    const checkpoints: readonly WorkflowActuationCheckpoint[] = [
       "workflow_resume",
       "before_observe",
       "before_preflight",
@@ -990,7 +977,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     ];
     for (const checkpoint of checkpoints) {
       expect(() =>
-        assertProductionWorkflowJournalActuationV1({
+        assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint: DEPLOYMENT,
           category: "doubleSpend",
@@ -1003,7 +990,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     for (const checkpoint of checkpoints) {
       let rejected: unknown;
       try {
-        assertProductionWorkflowJournalActuationV1({
+        assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint: DEPLOYMENT,
           category: "doubleSpend",
@@ -1013,7 +1000,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       } catch (error) {
         rejected = error;
       }
-      expect(isProductionWorkflowActuationRevokedErrorV1(rejected)).toBe(true);
+      expect(isWorkflowActuationRevokedError(rejected)).toBe(true);
       expect(rejected).toMatchObject({
         decisionDigest: actuation.decisionDigest,
         rollbackGeneration: "7",
@@ -1026,10 +1013,10 @@ describe("compiled manifest-bound production runtime V1", () => {
     const actuation = await admittedActuation();
     const execute = vi.fn(async () => ({ kind: "unexpected" }));
     const identityClose = vi.fn(async () => undefined);
-    const runner = createManifestBoundProductionWorkflowRunnerV1({
+    const runner = createManifestBoundWorkflowRunner({
       category: "doubleSpend",
       loadRuntimeConfig: async () => ({
-        schemaVersion: PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
+        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
         config: undefined,
         retainedDaSources: [retainedDaSource()],
         close: identityClose,
@@ -1063,10 +1050,10 @@ describe("compiled manifest-bound production runtime V1", () => {
 
     const sourceActuation = await admittedActuation();
     const sourceClose = vi.fn(async () => undefined);
-    const forgedSourceRunner = createManifestBoundProductionWorkflowRunnerV1({
+    const forgedSourceRunner = createManifestBoundWorkflowRunner({
       category: "doubleSpend",
       loadRuntimeConfig: async () => ({
-        schemaVersion: PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
+        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
         config: undefined,
         retainedDaSources: [
           {

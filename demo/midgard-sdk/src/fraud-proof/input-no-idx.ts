@@ -42,13 +42,13 @@
  */
 import {
   encodeCbor,
-  encodeMidgardSpendInputItemV1,
-  midgardFieldCommitmentFromItemsV1,
+  encodeMidgardSpendInputItem,
+  midgardFieldCommitmentFromItems,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -62,21 +62,21 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const INPUT_NO_IDX_VIOLATION_ID_V1 = "input-no-idx" as const;
+export const INPUT_NO_IDX_VIOLATION_ID = "input-no-idx" as const;
 
 /**
  * Release-policy boundary for direct step-02 carriage. This does not restrict
  * the consensus-valid `Complete` constructor.
  */
-export const INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1 = 19;
+export const INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT = 19;
 
-export const inputNoIdxStep02ExecutionModeV1 = (
+export const inputNoIdxStep02ExecutionMode = (
   itemCount: number,
 ): "direct" | "fold" =>
-  itemCount <= INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1 ? "direct" : "fold";
+  itemCount <= INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT ? "direct" : "fold";
 
 /** Catalogue category name this family is registered under (§5.1 order). */
-export const INPUT_NO_IDX_CATALOGUE_CATEGORY_V1 =
+export const INPUT_NO_IDX_CATALOGUE_CATEGORY =
   "nonExistentInputNoIndex" as const;
 
 // ## Rule
@@ -90,7 +90,7 @@ export const INPUT_NO_IDX_CATALOGUE_CATEGORY_V1 =
  * This is exactly `bad_input_output_index >= list.length(outputs_preimage)`
  * in `validators/fraud-proofs/input-no-idx/step-04.ak`.
  */
-export const isInputNoIdxViolationV1 = ({
+export const isInputNoIdxViolation = ({
   badInputOutputIndex,
   producingTxOutputCount,
 }: {
@@ -99,8 +99,8 @@ export const isInputNoIdxViolationV1 = ({
 }): boolean => badInputOutputIndex >= BigInt(producingTxOutputCount);
 
 /** Canonical evidence record for one challenged spend input. */
-export type InputNoIdxEvidenceV1 = {
-  readonly violationId: typeof INPUT_NO_IDX_VIOLATION_ID_V1;
+export type InputNoIdxEvidence = {
+  readonly violationId: typeof INPUT_NO_IDX_VIOLATION_ID;
   /** Committed transaction that spends the non-existent output. */
   readonly badTxId: string;
   /** Position of the challenged input inside the bad tx's spend-inputs list. */
@@ -118,7 +118,7 @@ export type InputNoIdxEvidenceV1 = {
  * authenticated both transactions against the header's counted
  * `transactions_root`; this function performs no I/O and never throws.
  */
-export const inputNoIdxEvidenceFromCommittedTransactionsV1 = ({
+export const inputNoIdxEvidenceFromCommittedTransactions = ({
   badTxId,
   badInputsIndex,
   badInput,
@@ -128,9 +128,9 @@ export const inputNoIdxEvidenceFromCommittedTransactionsV1 = ({
   readonly badInputsIndex: number;
   readonly badInput: MidgardTxInputData;
   readonly producingTxOutputCount: number;
-}): InputNoIdxEvidenceV1 =>
+}): InputNoIdxEvidence =>
   Object.freeze({
-    violationId: INPUT_NO_IDX_VIOLATION_ID_V1,
+    violationId: INPUT_NO_IDX_VIOLATION_ID,
     badTxId: badTxId.toLowerCase(),
     badInputsIndex,
     badInput: {
@@ -139,7 +139,7 @@ export const inputNoIdxEvidenceFromCommittedTransactionsV1 = ({
     },
     producingTxId: badInput.tx_id.toLowerCase(),
     producingTxOutputCount,
-    isViolation: isInputNoIdxViolationV1({
+    isViolation: isInputNoIdxViolation({
       badInputOutputIndex: badInput.output_index,
       producingTxOutputCount,
     }),
@@ -267,7 +267,7 @@ export const InputNoIdxStep02Datum =
 export const InputNoIdxStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
   bad_inputs_index: Data.Integer(),
 });
 export type InputNoIdxStep02Args = Data.Static<
@@ -353,7 +353,7 @@ export const InputNoIdxStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  outputs_opening: FieldOpeningV1Schema,
+  outputs_opening: FieldOpeningSchema,
 });
 export type InputNoIdxStep04Args = Data.Static<
   typeof InputNoIdxStep04ArgsSchema
@@ -390,15 +390,15 @@ export {
  * which is the only provenance `BodyAnchor` accepts — anything a later redeemer
  * supplies is the prover's own and anchors nothing.
  */
-export const inputNoIdxStep02StateFromBadTxV1 = (
+export const inputNoIdxStep02StateFromBadTx = (
   badTxId: string,
 ): InputNoIdxStep02State => ({
   verified_tx_id: badTxId.toLowerCase(),
 });
 
 /** Exactly the state `step-02` writes for `step-03`. */
-export const inputNoIdxStep03StateFromEvidenceV1 = (
-  evidence: InputNoIdxEvidenceV1,
+export const inputNoIdxStep03StateFromEvidence = (
+  evidence: InputNoIdxEvidence,
 ): InputNoIdxStep03State => ({
   bad_input_tx_id: evidence.badInput.tx_id,
   bad_input_output_index: evidence.badInput.output_index,
@@ -408,11 +408,11 @@ export const inputNoIdxStep03StateFromEvidenceV1 = (
  * Exactly the state `step-03` writes for `step-04`: the §2.5 anchor of the
  * *producing* transaction, alongside the challenged output index.
  */
-export const inputNoIdxStep04StateFromEvidenceV1 = ({
+export const inputNoIdxStep04StateFromEvidence = ({
   evidence,
   producingTxId,
 }: {
-  readonly evidence: InputNoIdxEvidenceV1;
+  readonly evidence: InputNoIdxEvidence;
   readonly producingTxId: string;
 }): InputNoIdxStep04State => ({
   producing_tx_id: producingTxId.toLowerCase(),
@@ -429,10 +429,10 @@ export const inputNoIdxStep04StateFromEvidenceV1 = ({
 // off-chain builder and the L1 verifier cannot drift.
 
 /** Canonical spend-inputs field index of a native V1 transaction body. */
-export const INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1 = 0;
+export const INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX = 0;
 
 /** Canonical outputs field index of a native V1 transaction body. */
-export const INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1 = 2;
+export const INPUT_NO_IDX_OUTPUTS_FIELD_INDEX = 2;
 
 const definiteBytes = (bytes: Buffer): Buffer => {
   const length = bytes.length;
@@ -485,7 +485,7 @@ const credentialIsScript = (credential: MidgardCredential): boolean =>
   !("PubKeyCredential" in credential);
 
 /** Twin of `encode_midgard_address`. */
-export const encodeMidgardAddressCanonicalV1 = (
+export const encodeMidgardAddressCanonical = (
   address: MidgardAddress,
 ): Buffer => {
   const networkId = Number(address.network_id);
@@ -510,7 +510,7 @@ export const encodeMidgardAddressCanonicalV1 = (
 };
 
 /** Twin of `encode_midgard_value`; `assets` keys are `policy_id ++ name`. */
-export const encodeMidgardValueCanonicalV1 = (value: MidgardValue): Buffer => {
+export const encodeMidgardValueCanonical = (value: MidgardValue): Buffer => {
   if (value.lovelace < 0n) {
     throw new Error("Midgard value lovelace must not be negative");
   }
@@ -544,25 +544,24 @@ export const encodeMidgardValueCanonicalV1 = (value: MidgardValue): Buffer => {
   ]);
 };
 
-const SCRIPT_LANGUAGE_TAG_V1: Readonly<Record<MidgardScriptLanguage, number>> =
-  {
-    NativeCardanoScript: 0,
-    PlutusV3Script: 3,
-    MidgardV1Script: 128,
-  };
+const SCRIPT_LANGUAGE_TAG: Readonly<Record<MidgardScriptLanguage, number>> = {
+  NativeCardanoScript: 0,
+  PlutusV3Script: 3,
+  MidgardV1Script: 128,
+};
 
 /** Twin of `encode_midgard_versioned_script`. */
-export const encodeMidgardVersionedScriptCanonicalV1 = (
+export const encodeMidgardVersionedScriptCanonical = (
   script: MidgardVersionedScript,
 ): Buffer =>
   Buffer.concat([
     Buffer.from([0x82]),
-    encodeCbor(BigInt(SCRIPT_LANGUAGE_TAG_V1[script.language])),
+    encodeCbor(BigInt(SCRIPT_LANGUAGE_TAG[script.language])),
     definiteBytes(Buffer.from(script.script_bytes, "hex")),
   ]);
 
 /** Twin of `encode_midgard_tx_output`. */
-export const encodeMidgardTxOutputCanonicalV1 = (
+export const encodeMidgardTxOutputCanonical = (
   output: MidgardTxOutput,
 ): Buffer => {
   const entryCount =
@@ -571,9 +570,9 @@ export const encodeMidgardTxOutputCanonicalV1 = (
     (output.script_ref === null ? 0 : 1);
   return Buffer.concat([
     Buffer.from([0xa0 + entryCount, 0x00]),
-    definiteBytes(encodeMidgardAddressCanonicalV1(output.address)),
+    definiteBytes(encodeMidgardAddressCanonical(output.address)),
     Buffer.from([0x01]),
-    encodeMidgardValueCanonicalV1(output.value),
+    encodeMidgardValueCanonical(output.value),
     ...(output.datum_cbor === null
       ? []
       : [
@@ -584,7 +583,7 @@ export const encodeMidgardTxOutputCanonicalV1 = (
       ? []
       : [
           Buffer.from([0x03]),
-          encodeMidgardVersionedScriptCanonicalV1(output.script_ref),
+          encodeMidgardVersionedScriptCanonical(output.script_ref),
         ]),
   ]);
 };
@@ -596,10 +595,10 @@ export const encodeMidgardTxOutputCanonicalV1 = (
  * makes the item width constant, and `decode_midgard_tx_input_cbor` requires
  * the `0x19` head. Delegating to the core twin keeps the two in lockstep.
  */
-export const encodeMidgardTxInputCanonicalV1 = (
+export const encodeMidgardTxInputCanonical = (
   input: MidgardTxInputData,
 ): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(input.tx_id, "hex"),
     outputIndex: Number(input.output_index),
   });
@@ -616,11 +615,11 @@ export const encodeMidgardTxInputCanonicalV1 = (
  * the caller compares against `body.spend_inputs_hash` from the committed compact
  * structure, never against a free-standing argument.
  */
-export const inputNoIdxSpendInputsCommitmentV1 = (
+export const inputNoIdxSpendInputsCommitment = (
   inputs: readonly MidgardTxInputData[],
 ): string =>
-  midgardFieldCommitmentFromItemsV1(
-    inputs.map(encodeMidgardTxInputCanonicalV1),
+  midgardFieldCommitmentFromItems(
+    inputs.map(encodeMidgardTxInputCanonical),
   ).toString("hex");
 
 // ## The retired counted fold family
@@ -643,9 +642,9 @@ export const inputNoIdxSpendInputsCommitmentV1 = (
  * The `outputs_hash` a native transaction body commits for `outputs`: §4's flat
  * `blake2b_256` over the §5.1 preimage the items assemble into.
  */
-export const inputNoIdxOutputsCommitmentV1 = (
+export const inputNoIdxOutputsCommitment = (
   outputs: readonly MidgardTxOutput[],
 ): string =>
-  midgardFieldCommitmentFromItemsV1(
-    outputs.map(encodeMidgardTxOutputCanonicalV1),
+  midgardFieldCommitmentFromItems(
+    outputs.map(encodeMidgardTxOutputCanonical),
   ).toString("hex");

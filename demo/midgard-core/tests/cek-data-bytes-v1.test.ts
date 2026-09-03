@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardCekDataBytesV1,
-  buildMidgardCekDataBytesTraceV1,
-  commitMidgardCekBlobV1,
+  advanceMidgardCekDataBytes,
+  buildMidgardCekDataBytesTrace,
+  commitMidgardCekBlob,
   encodeCborBytes,
-  encodeMidgardCekDataBytesControlV1,
-  finalizeMidgardCekDataBytesV1,
-  hashMidgardCekDataNodeV1,
-  initialMidgardCekDataBytesControlV1,
+  encodeMidgardCekDataBytesControl,
+  finalizeMidgardCekDataBytes,
+  hashMidgardCekDataNode,
+  initialMidgardCekDataBytesControl,
   MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN,
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
-  MidgardCekDataBytesStagesV1,
-  nextMidgardCekDataBytesSpanV1,
-  parseMidgardCekDataBytesSyntaxV1,
+  MidgardCekDataBytesStages,
+  nextMidgardCekDataBytesSpan,
+  parseMidgardCekDataBytesSyntax,
 } from "../src/index.js";
 
 const encodeCardanoDataBytes = (content: Uint8Array): Buffer => {
@@ -32,17 +32,17 @@ describe("authenticated CEK Data bytes V1", () => {
     (length) => {
       const content = Buffer.alloc(length, 0x6a);
       const source = encodeCardanoDataBytes(content);
-      const trace = buildMidgardCekDataBytesTraceV1({
+      const trace = buildMidgardCekDataBytesTrace({
         sourceStart: 73,
         source,
       });
-      const summary = finalizeMidgardCekDataBytesV1(trace.terminal)!;
-      const bytesRoot = commitMidgardCekBlobV1(content).root;
+      const summary = finalizeMidgardCekDataBytes(trace.terminal)!;
+      const bytesRoot = commitMidgardCekBlob(content).root;
       const memory = 4n + (length === 0 ? 1n : BigInt(length));
 
       expect(summary).toStrictEqual({
         root: Buffer.from(
-          hashMidgardCekDataNodeV1({
+          hashMidgardCekDataNode({
             kind: "bytes",
             bytesRoot,
             bytesLength: BigInt(length),
@@ -54,7 +54,7 @@ describe("authenticated CEK Data bytes V1", () => {
         memory,
       });
       expect(
-        parseMidgardCekDataBytesSyntaxV1({
+        parseMidgardCekDataBytesSyntax({
           syntaxBytes: source.subarray(0, MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES),
           sourceLength: source.length,
         }),
@@ -68,7 +68,7 @@ describe("authenticated CEK Data bytes V1", () => {
       }
       expect(
         trace.steps.some(
-          ({ control }) => control.stage === MidgardCekDataBytesStagesV1.Break,
+          ({ control }) => control.stage === MidgardCekDataBytesStages.Break,
         ),
       ).toBe(length > 64);
     },
@@ -77,7 +77,7 @@ describe("authenticated CEK Data bytes V1", () => {
   it("fits the largest canonical byte leaf in a 16,384-byte transaction", () => {
     const content = Buffer.alloc(15_885, 0x7b);
     const source = encodeCardanoDataBytes(content);
-    const trace = buildMidgardCekDataBytesTraceV1({
+    const trace = buildMidgardCekDataBytesTrace({
       sourceStart: 17,
       source,
     });
@@ -89,7 +89,7 @@ describe("authenticated CEK Data bytes V1", () => {
     expect(maximumReveal).toBeLessThanOrEqual(
       MIDGARD_CEK_DATA_BYTES_MAX_SOURCE_SPAN,
     );
-    expect(finalizeMidgardCekDataBytesV1(trace.terminal)).toMatchObject({
+    expect(finalizeMidgardCekDataBytes(trace.terminal)).toMatchObject({
       cborLength: 16_384n,
       memory: 15_889n,
     });
@@ -98,7 +98,7 @@ describe("authenticated CEK Data bytes V1", () => {
   it("binds an Aiken terminal vector across virtual and raw coordinates", () => {
     const content = Buffer.alloc(65, 0x6a);
     const source = encodeCardanoDataBytes(content);
-    const trace = buildMidgardCekDataBytesTraceV1({
+    const trace = buildMidgardCekDataBytesTrace({
       sourceStart: 17,
       source,
     });
@@ -113,12 +113,12 @@ describe("authenticated CEK Data bytes V1", () => {
         ),
     ).toBe(true);
     expect(
-      encodeMidgardCekDataBytesControlV1(trace.terminal).toString("hex"),
+      encodeMidgardCekDataBytesControl(trace.terminal).toString("hex"),
     ).toBe(
       "8601031118461841d8799f86010100184184010118418183005820ebc3448dad1500c73547d17bd6e9e93387c20bc9422b3313e45b434bf26a967c1841d87a80ff",
     );
     expect(
-      finalizeMidgardCekDataBytesV1(trace.terminal)!.root.toString("hex"),
+      finalizeMidgardCekDataBytes(trace.terminal)!.root.toString("hex"),
     ).toBe("e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836");
   });
 
@@ -148,7 +148,7 @@ describe("authenticated CEK Data bytes V1", () => {
     Buffer.from([0x40, 0x00]),
   ])("rejects malformed or noncanonical byte Data CBOR %#", (source) => {
     expect(() =>
-      buildMidgardCekDataBytesTraceV1({
+      buildMidgardCekDataBytesTrace({
         sourceStart: 0,
         source,
       }),
@@ -156,30 +156,30 @@ describe("authenticated CEK Data bytes V1", () => {
   });
 
   it("fails closed for missing, short, and surplus authenticated windows", () => {
-    const initial = initialMidgardCekDataBytesControlV1({
+    const initial = initialMidgardCekDataBytesControl({
       sourceStart: 9,
       sourceLength: 70,
     });
-    const span = nextMidgardCekDataBytesSpanV1(initial)!;
+    const span = nextMidgardCekDataBytesSpan(initial)!;
 
     expect(span).toStrictEqual({
       absoluteStart: 9,
       length: 2,
     });
     expect(
-      advanceMidgardCekDataBytesV1({
+      advanceMidgardCekDataBytes({
         control: initial,
         sourceBytes: null,
       }),
     ).toBeNull();
     expect(
-      advanceMidgardCekDataBytesV1({
+      advanceMidgardCekDataBytes({
         control: initial,
         sourceBytes: Buffer.alloc(span.length - 1),
       }),
     ).toBeNull();
     expect(
-      advanceMidgardCekDataBytesV1({
+      advanceMidgardCekDataBytes({
         control: initial,
         sourceBytes: Buffer.alloc(span.length + 1),
       }),

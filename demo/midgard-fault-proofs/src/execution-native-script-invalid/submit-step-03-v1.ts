@@ -1,9 +1,9 @@
 import {
-  decodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxCompact,
   decodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
-  nativeScriptItemCommitmentV1,
+  nativeScriptItemCommitment,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -16,27 +16,27 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
-  type ExecutionNativeScriptInvalidContractsV1,
+  type ExecutionNativeScriptInvalidContracts,
 } from "./contracts-v1.js";
 import {
-  ExecutionNativeScriptInvalidStep03DatumV1Schema,
-  ExecutionNativeScriptInvalidStep03RedeemerV1Schema,
-  ExecutionNativeScriptInvalidStep04DatumV1Schema,
+  ExecutionNativeScriptInvalidStep03DatumSchema,
+  ExecutionNativeScriptInvalidStep03RedeemerSchema,
+  ExecutionNativeScriptInvalidStep04DatumSchema,
 } from "./schemas-v1.js";
 
 type State = NonNullable<
-  Data.Static<typeof ExecutionNativeScriptInvalidStep03DatumV1Schema>["data"]
+  Data.Static<typeof ExecutionNativeScriptInvalidStep03DatumSchema>["data"]
 >;
 
 /** Binds canonical source bytes against the trace-authenticated bounded-item
@@ -54,18 +54,18 @@ export const submitExecutionNativeScriptInvalidStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ExecutionNativeScriptInvalidContractsV1;
+  readonly contracts: ExecutionNativeScriptInvalidContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly scriptItemCbor: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -73,17 +73,17 @@ export const submitExecutionNativeScriptInvalidStep03 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidStep03DatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidStep03DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
   const script = decodeMidgardVersionedScript(scriptItemCbor);
   if (script.language !== "NativeCardano")
     throw new Error(`${label}: authenticated source is not a native script`);
-  const compact = decodeMidgardNativeTxCompactV1(
+  const compact = decodeMidgardNativeTxCompact(
     Buffer.from(state.compact_cbor, "hex"),
   );
   const nextDatum = Data.to(
@@ -99,14 +99,14 @@ export const submitExecutionNativeScriptInvalidStep03 = async ({
         bad_tx_witness_set_hash: Buffer.from(
           compact.transactionWitnessSetHash,
         ).toString("hex"),
-        script_item_hash: nativeScriptItemCommitmentV1(scriptItemCbor),
+        script_item_hash: nativeScriptItemCommitment(scriptItemCbor),
         validity_interval_start: compact.transactionBody.validityIntervalStart,
         validity_interval_end: compact.transactionBody.validityIntervalEnd,
       },
     } as never,
-    ExecutionNativeScriptInvalidStep04DatumV1Schema as never,
+    ExecutionNativeScriptInvalidStep04DatumSchema as never,
   );
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -132,11 +132,11 @@ export const submitExecutionNativeScriptInvalidStep03 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidStep03RedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

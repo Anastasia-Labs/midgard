@@ -40,7 +40,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -64,24 +64,24 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContractsV1 } from "./contracts-v1.js";
+import type { InputSetUniquenessContracts } from "./contracts-v1.js";
 import {
-  inputSetUniquenessStepLabelV1,
+  inputSetUniquenessStepLabel,
   inputSetUniquenessSubmitError,
-  requireInputSetUniquenessReferenceScriptV1,
-  requireInputSetUniquenessThreadUtxoV1,
+  requireInputSetUniquenessReferenceScript,
+  requireInputSetUniquenessThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = inputSetUniquenessStepLabelV1(0);
+const STEP_LABEL = inputSetUniquenessStepLabel(0);
 
 export type SubmitInputSetUniquenessStep01Result = {
   readonly txHash: string;
@@ -118,7 +118,7 @@ export const submitInputSetUniquenessStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: InputSetUniquenessContractsV1;
+  readonly contracts: InputSetUniquenessContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -126,22 +126,23 @@ export const submitInputSetUniquenessStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputSetUniquenessStep01Result> => {
-  const { threadUtxo, threadToken } =
-    await requireInputSetUniquenessThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
+    {
       lucid,
       contracts,
       categoryId,
       stepIndex: 0,
       threadOutRef,
-    });
+    },
+  );
   requireInitialStepDatum({ threadUtxo, signer });
   const stateQueueBlockUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -201,12 +202,12 @@ export const submitInputSetUniquenessStep01 = async ({
     chunkedVerifyScript,
   );
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: `${STEP_LABEL} chunked verify`,
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS membership`,
@@ -214,12 +215,12 @@ export const submitInputSetUniquenessStep01 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireInputSetUniquenessReferenceScriptV1({
+      : requireInputSetUniquenessReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[0].spendingScriptHash,
           stepIndex: 0,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[0].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -354,9 +355,9 @@ export const submitInputSetUniquenessStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -1,27 +1,27 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingScriptSourceContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingScriptSourceContracts } from "./contracts-v1.js";
 import {
-  missingScriptSourceEvidenceClosesV1,
-  type MissingScriptSourceEvidenceV1,
+  type MissingScriptSourceEvidence,
+  missingScriptSourceEvidenceCloses,
 } from "./family-v1.js";
 import {
-  ExecutionSourceScanStateV1Schema,
-  ExecutionSourceStep06DatumV1Schema,
-  ExecutionSourceStep06RedeemerV1Schema,
+  ExecutionSourceScanStateSchema,
+  ExecutionSourceStep06DatumSchema,
+  ExecutionSourceStep06RedeemerSchema,
 } from "./schemas-v1.js";
-import { missingScriptSourceOnchainCheckpointV1 } from "./universe-scan-v1.js";
+import { missingScriptSourceOnchainCheckpoint } from "./universe-scan-v1.js";
 
 const FAMILY = "missing-script-source";
-export const submitMissingScriptSourceStep06V1 = async ({
+export const submitMissingScriptSourceStep06 = async ({
   lucid,
   contracts,
   categoryId,
@@ -34,18 +34,18 @@ export const submitMissingScriptSourceStep06V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: MissingScriptSourceContractsV1;
+  contracts: MissingScriptSourceContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: MissingScriptSourceEvidenceV1;
+  evidence: MissingScriptSourceEvidence;
   referenceScriptUtxo: UTxO;
-  witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 5;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -53,22 +53,22 @@ export const submitMissingScriptSourceStep06V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof ExecutionSourceScanStateV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof ExecutionSourceScanStateSchema>
   >({
     threadUtxo,
     signer,
-    schema: ExecutionSourceStep06DatumV1Schema as never,
+    schema: ExecutionSourceStep06DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
   if (
-    !missingScriptSourceEvidenceClosesV1(evidence) ||
+    !missingScriptSourceEvidenceCloses(evidence) ||
     state.cursor !== state.authenticated.purpose.scan_limit ||
     state.cursor !== BigInt(evidence.sources.length) ||
     state.found !== (evidence.foundAtSourceIndex !== null) ||
     state.checkpoint_hash !==
-      missingScriptSourceOnchainCheckpointV1({
+      missingScriptSourceOnchainCheckpoint({
         sourceIdentityHex: state.authenticated.source_identity_hash,
         cursor: state.cursor,
         found: state.found,
@@ -78,7 +78,7 @@ export const submitMissingScriptSourceStep06V1 = async ({
     throw new Error(
       `${FAMILY}: terminal state is not the retained contradiction`,
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,
@@ -88,7 +88,7 @@ export const submitMissingScriptSourceStep06V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ExecutionSourceStep06RedeemerV1Schema,
+    spendRedeemerSchema: ExecutionSourceStep06RedeemerSchema,
     buildFamilyArgs: (layout) => ({
       input_index: layout.inputIndex,
       output_index: layout.outputIndex,

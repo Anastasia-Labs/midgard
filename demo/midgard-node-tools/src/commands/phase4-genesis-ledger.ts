@@ -73,7 +73,7 @@ export type Phase4GenesisLedgerReport = {
 const canonicalNatural = (value: unknown): value is string =>
   typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value);
 
-export const decodePhase4GenesisLedgerReportV1 = (
+export const decodePhase4GenesisLedgerReport = (
   value: unknown,
 ): Phase4GenesisLedgerReport => {
   if (
@@ -544,7 +544,7 @@ export const phase4GenesisLedgerProgram = ({
       minimumTransferLovelace:
         PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE.toString(),
     } satisfies Phase4GenesisLedgerReport;
-    return yield* attempt(() => decodePhase4GenesisLedgerReportV1(report));
+    return yield* attempt(() => decodePhase4GenesisLedgerReport(report));
   }).pipe(
     sqlErrorToDatabaseError(
       MempoolLedgerDB.tableName,

@@ -3,13 +3,13 @@ import type { MintingPolicy, Script } from "@lucid-evolution/lucid";
 export const NETWORK_ID_CATEGORY_LABEL = "network-id";
 
 /** Human-readable family label; the canonical SDK catalogue key is networkId. */
-export const NETWORK_ID_BLUEPRINT_TITLES_V1 = {
+export const NETWORK_ID_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/network_id/step_01.main.spend",
   forcedStep: "fraud_proofs/network_id/forced_step.main.spend",
   step02: "fraud_proofs/network_id/step_02.main.spend",
 } as const;
 
-export type NetworkIdStepContractV1 = {
+export type NetworkIdStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -20,9 +20,9 @@ export type NetworkIdStepContractV1 = {
  * production; transaction builders must supply the complete L1 reference
  * input set before resolving any positional field-opening indices.
  */
-export type NetworkIdContractsV1 = {
-  readonly steps: readonly [NetworkIdStepContractV1, NetworkIdStepContractV1];
-  readonly forcedStep?: NetworkIdStepContractV1;
+export type NetworkIdContracts = {
+  readonly steps: readonly [NetworkIdStepContract, NetworkIdStepContract];
+  readonly forcedStep?: NetworkIdStepContract;
   readonly expectedNetworkId: 0n | 1n;
   readonly computationThread: {
     readonly policyId: string;

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 
 describe("field-item-width-illegal real publication fit", () => {
   it("publishes every applied physical validator under Van Rossem limits", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realFieldItemWidthIllegal: true,
         alwaysFraudProofCatalogue: true,

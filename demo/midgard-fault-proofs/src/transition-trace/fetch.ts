@@ -1,28 +1,28 @@
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
   daDeploymentFingerprintFromHex,
-  type DaPayloadChunkManifestV1,
+  type DaPayloadChunkManifest,
   DaRequestResponseProtocol,
-  decodeDaEventToStepByEventResponseV1Cbor,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  decodeDaProofBundleByHeaderResponseV1Cbor,
-  decodeDaTraceStepByIndexResponseV1Cbor,
-  encodeDaEventToStepByEventRequestV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadChunkRequestV1Cbor,
-  encodeDaProofBundleByHeaderRequestV1Cbor,
-  encodeDaTraceStepByIndexRequestV1Cbor,
+  decodeDaEventToStepByEventResponseCbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
+  decodeDaProofBundleByHeaderResponseCbor,
+  decodeDaTraceStepByIndexResponseCbor,
+  encodeDaEventToStepByEventRequestCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
+  encodeDaProofBundleByHeaderRequestCbor,
+  encodeDaTraceStepByIndexRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import {
-  admitEvidenceProvenanceV1,
-  assertSecurityGradeEvidenceV1,
-  CanonicalEvidenceRejectionV1,
-  type EvidenceProvenanceV1,
-  requireEvidenceTrustClassV1,
+  admitEvidenceProvenance,
+  assertSecurityGradeEvidence,
+  CanonicalEvidenceRejection,
+  type EvidenceProvenance,
+  requireEvidenceTrustClass,
 } from "@al-ft/midgard-sdk";
 
 import { transitionTraceError } from "./errors.js";
@@ -59,7 +59,7 @@ export type RetainedDaFetchAttempt = {
 };
 
 export type RetainedDaPayloadFetchResult = {
-  readonly provenance: EvidenceProvenanceV1;
+  readonly provenance: EvidenceProvenance;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly payloadEnvelopeCbor: Buffer;
@@ -68,7 +68,7 @@ export type RetainedDaPayloadFetchResult = {
 };
 
 export type RetainedDaProofBundle = {
-  readonly provenance: EvidenceProvenanceV1;
+  readonly provenance: EvidenceProvenance;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly proofBundleHash: Buffer;
@@ -77,7 +77,7 @@ export type RetainedDaProofBundle = {
 };
 
 export type RetainedDaTraceStep = {
-  readonly provenance: EvidenceProvenanceV1;
+  readonly provenance: EvidenceProvenance;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly stepIndex: number;
@@ -87,7 +87,7 @@ export type RetainedDaTraceStep = {
 };
 
 export type RetainedDaEventToStep = {
-  readonly provenance: EvidenceProvenanceV1;
+  readonly provenance: EvidenceProvenance;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly eventKey: Buffer;
@@ -141,12 +141,12 @@ type SourceFailure = {
  * provenance at the transport boundary, before any payload or proof bytes can
  * leave this module.
  */
-const admitRetainedDaProvenanceV1 = (
+const admitRetainedDaProvenance = (
   sourceId: string,
   sourcePeerId: string,
-): EvidenceProvenanceV1 =>
-  assertSecurityGradeEvidenceV1(
-    admitEvidenceProvenanceV1({
+): EvidenceProvenance =>
+  assertSecurityGradeEvidence(
+    admitEvidenceProvenance({
       provenance: {
         trustClass: "public_or_permissionless_da",
         sourceId: `${sourceId}/${sourcePeerId}`,
@@ -172,13 +172,12 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
     );
     this.peers = options.peers;
     this.transport = options.transport;
-    this.timeoutMs =
-      options.timeoutMs ?? DA_TRANSPORT_LIMITS_V1.requestTimeoutMs;
+    this.timeoutMs = options.timeoutMs ?? DA_TRANSPORT_LIMITS.requestTimeoutMs;
     this.maxInlineResponseBytes =
       options.maxInlineResponseBytes ??
-      DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes;
+      DA_TRANSPORT_LIMITS.maxInlineResponseBytes;
     this.maxChunkBytes =
-      options.maxChunkBytes ?? DA_TRANSPORT_LIMITS_V1.maxChunkBytes;
+      options.maxChunkBytes ?? DA_TRANSPORT_LIMITS.maxChunkBytes;
   }
 
   async fetchPayloadByHeaderHash(
@@ -204,7 +203,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         }
         return {
           ok: true,
-          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
+          provenance: admitRetainedDaProvenance(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           payloadEnvelopeCbor: result.payloadEnvelopeCbor,
@@ -234,11 +233,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
 
     for (const peer of this.peers) {
       try {
-        const response = decodeDaProofBundleByHeaderResponseV1Cbor(
+        const response = decodeDaProofBundleByHeaderResponseCbor(
           await this.request(
             peer,
             DaRequestResponseProtocol.proofBundleByHeader,
-            encodeDaProofBundleByHeaderRequestV1Cbor({
+            encodeDaProofBundleByHeaderRequestCbor({
               deploymentFingerprint: this.deploymentFingerprint,
               headerHash: headerHashBytes,
               maxInlineBytes: this.maxInlineResponseBytes,
@@ -284,7 +283,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         );
         return {
           ok: true,
-          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
+          provenance: admitRetainedDaProvenance(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           proofBundleHash: Buffer.from(response.proofBundleHash),
@@ -318,11 +317,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
 
     for (const peer of this.peers) {
       try {
-        const response = decodeDaTraceStepByIndexResponseV1Cbor(
+        const response = decodeDaTraceStepByIndexResponseCbor(
           await this.request(
             peer,
             DaRequestResponseProtocol.traceStepByIndex,
-            encodeDaTraceStepByIndexRequestV1Cbor({
+            encodeDaTraceStepByIndexRequestCbor({
               deploymentFingerprint: this.deploymentFingerprint,
               headerHash: headerHashBytes,
               stepIndex,
@@ -355,7 +354,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         }
         return {
           ok: true,
-          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
+          provenance: admitRetainedDaProvenance(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           stepIndex,
@@ -391,11 +390,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
 
     for (const peer of this.peers) {
       try {
-        const response = decodeDaEventToStepByEventResponseV1Cbor(
+        const response = decodeDaEventToStepByEventResponseCbor(
           await this.request(
             peer,
             DaRequestResponseProtocol.eventToStepByEvent,
-            encodeDaEventToStepByEventRequestV1Cbor({
+            encodeDaEventToStepByEventRequestCbor({
               deploymentFingerprint: this.deploymentFingerprint,
               headerHash: headerHashBytes,
               eventKey: eventKeyBytes,
@@ -425,7 +424,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         }
         return {
           ok: true,
-          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
+          provenance: admitRetainedDaProvenance(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           eventKey: eventKeyBytes,
@@ -462,11 +461,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
       }
     | undefined
   > {
-    const response = decodeDaPayloadByHeaderResponseV1Cbor(
+    const response = decodeDaPayloadByHeaderResponseCbor(
       await this.request(
         peer,
         DaRequestResponseProtocol.payloadByHeader,
-        encodeDaPayloadByHeaderRequestV1Cbor({
+        encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: this.deploymentFingerprint,
           headerHash,
           acceptedPayloadHashes: null,
@@ -532,7 +531,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
     peer: RetainedDaLibp2pPeer,
     headerHash: Buffer,
     payloadHash: Buffer,
-    manifest: DaPayloadChunkManifestV1,
+    manifest: DaPayloadChunkManifest,
   ): Promise<Buffer> {
     if (manifest.chunkSize > this.maxChunkBytes) {
       throw new InvalidRetainedDaResponseError(
@@ -542,11 +541,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
 
     const chunks: Buffer[] = [];
     for (let index = 0; index < manifest.chunkHashes.length; index += 1) {
-      const response = decodeDaPayloadChunkResponseV1Cbor(
+      const response = decodeDaPayloadChunkResponseCbor(
         await this.request(
           peer,
           DaRequestResponseProtocol.payloadChunk,
-          encodeDaPayloadChunkRequestV1Cbor({
+          encodeDaPayloadChunkRequestCbor({
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             payloadHash,
@@ -591,11 +590,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
     headerHash: Buffer,
   ): Promise<unknown> {
     try {
-      const response = decodeDaMetadataByHeaderResponseV1Cbor(
+      const response = decodeDaMetadataByHeaderResponseCbor(
         await this.request(
           peer,
           DaRequestResponseProtocol.metadataByHeader,
-          encodeDaPayloadByHeaderRequestV1Cbor({
+          encodeDaPayloadByHeaderRequestCbor({
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             acceptedPayloadHashes: null,
@@ -670,14 +669,14 @@ export const fetchRetainedDaPayloadByHeaderHash = async ({
         await source.fetchPayloadByHeaderHash(normalizedHeaderHash);
       attempts.push(...result.attempts);
       if (result.ok) {
-        const provenance = requireEvidenceTrustClassV1({
-          provenance: assertSecurityGradeEvidenceV1(result.provenance),
+        const provenance = requireEvidenceTrustClass({
+          provenance: assertSecurityGradeEvidence(result.provenance),
           expected: "public_or_permissionless_da",
           code: "da_evidence_wrong_trust_class",
         });
         const expectedSourceId = `${result.sourceId}/${result.sourcePeerId}`;
         if (provenance.sourceId !== expectedSourceId) {
-          throw new CanonicalEvidenceRejectionV1(
+          throw new CanonicalEvidenceRejection(
             "da_evidence_wrong_trust_class",
             `provenance.sourceId=${provenance.sourceId} expected=${expectedSourceId}`,
           );

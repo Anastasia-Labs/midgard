@@ -4,18 +4,18 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyDistinctAssetAccumulationLimitScriptsV1,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1,
+  applyDistinctAssetAccumulationLimitScripts,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
 } from "../src/distinct-asset-accumulation-limit/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1.every(
+const hasFamily = DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES.every(
   (title) =>
     blueprint.validators.some((validator) => validator.title === title),
 );
@@ -24,13 +24,13 @@ describe.runIf(hasFamily)(
   "distinctAssetAccumulationLimit signed publication fit",
   () => {
     it("publishes all six applied scripts below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const proofAddressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyDistinctAssetAccumulationLimitScriptsV1({
+      const steps = applyDistinctAssetAccumulationLimitScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

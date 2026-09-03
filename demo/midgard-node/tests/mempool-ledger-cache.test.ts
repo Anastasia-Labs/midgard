@@ -3,7 +3,7 @@ import { Deferred, Effect, Fiber, Metric, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   makeOutput,
   makePhaseBCandidate,
   outRefFromByte,
@@ -691,13 +691,13 @@ describe("mempool ledger cache", () => {
     const spent = outRefFromByte(0x73);
     // Phase B now enforces MIN-ADA-TX on every PRODUCED output, so a candidate
     // paying 10 lovelace is rejected with `E_MIN_ADA` before the cache
-    // semantics under test are ever reached. `FUNDED_OUTPUT_LOVELACE_V1` is the
+    // semantics under test are ever reached. `FUNDED_OUTPUT_LOVELACE` is the
     // fixtures' clears-the-floor-with-headroom amount; the pre-state entry is
     // funded to the same value so the produced output is also conserved.
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const candidate = makePhaseBCandidate({
       spent: [spent],
-      outputLovelace: FUNDED_OUTPUT_LOVELACE_V1,
+      outputLovelace: FUNDED_OUTPUT_LOVELACE,
     });
     let retrieveSpendableRows: readonly MempoolLedgerDB.EntryWithTimeStamp[] =
       [];
@@ -752,11 +752,11 @@ describe("mempool ledger cache", () => {
 
   it("prevents a double accept across two concurrent drain-loop Phase B sections", async () => {
     const spent = outRefFromByte(0x74);
-    // `makePhaseBCandidate` produces a `FUNDED_OUTPUT_LOVELACE_V1` output by
+    // `makePhaseBCandidate` produces a `FUNDED_OUTPUT_LOVELACE` output by
     // default, so the pre-state entry it spends has to carry the same value:
     // a 10-lovelace input makes both candidates fail value conservation and
     // the double-accept guard would then pass vacuously.
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const candidates = [
       makePhaseBCandidate({ arrivalSeq: 0n, spent: [spent] }),
       makePhaseBCandidate({

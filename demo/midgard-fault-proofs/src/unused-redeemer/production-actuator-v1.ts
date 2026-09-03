@@ -1,6 +1,6 @@
 import type {
-  ForcedInclusionTxV1,
-  HeaderV1,
+  ForcedInclusionTx,
+  Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
@@ -10,45 +10,45 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { UnusedRedeemerContractsV1 } from "./contracts-v1.js";
-import type { UnusedRedeemerEvidenceV1 } from "./family-v1.js";
-import { submitUnusedRedeemerCancelV1 } from "./submit-cancel-v1.js";
-import { submitUnusedRedeemerStep01AcceptedV1 } from "./submit-step-01-v1.js";
-import { submitUnusedRedeemerStep01ForcedV1 } from "./submit-step-01-v1.js";
-import type { UnusedRedeemerAuthenticationV1 } from "./submit-step-02-v1.js";
-import { submitUnusedRedeemerStep02V1 } from "./submit-step-02-v1.js";
-import { submitUnusedRedeemerStep02aV1 } from "./submit-step-02a-v1.js";
-import { submitUnusedRedeemerStep02bV1 } from "./submit-step-02b-v1.js";
-import { submitUnusedRedeemerStep02cV1 } from "./submit-step-02c-v1.js";
-import { submitUnusedRedeemerStep03V1 } from "./submit-step-03-v1.js";
-import { submitUnusedRedeemerStep04V1 } from "./submit-step-04-v1.js";
-import { submitUnusedRedeemerStep05V1 } from "./submit-step-05-v1.js";
-import { submitUnusedRedeemerStep06V1 } from "./submit-step-06-v1.js";
+import type { UnusedRedeemerContracts } from "./contracts-v1.js";
+import type { UnusedRedeemerEvidence } from "./family-v1.js";
+import { submitUnusedRedeemerCancel } from "./submit-cancel-v1.js";
+import { submitUnusedRedeemerStep01Accepted } from "./submit-step-01-v1.js";
+import { submitUnusedRedeemerStep01Forced } from "./submit-step-01-v1.js";
+import type { UnusedRedeemerAuthentication } from "./submit-step-02-v1.js";
+import { submitUnusedRedeemerStep02 } from "./submit-step-02-v1.js";
+import { submitUnusedRedeemerStep02a } from "./submit-step-02a-v1.js";
+import { submitUnusedRedeemerStep02b } from "./submit-step-02b-v1.js";
+import { submitUnusedRedeemerStep02c } from "./submit-step-02c-v1.js";
+import { submitUnusedRedeemerStep03 } from "./submit-step-03-v1.js";
+import { submitUnusedRedeemerStep04 } from "./submit-step-04-v1.js";
+import { submitUnusedRedeemerStep05 } from "./submit-step-05-v1.js";
+import { submitUnusedRedeemerStep06 } from "./submit-step-06-v1.js";
 
-export type UnusedRedeemerProductionArtifactV1 = Readonly<{
+export type UnusedRedeemerArtifact = Readonly<{
   headerHash: string;
-  header: HeaderV1;
-  evidence: UnusedRedeemerEvidenceV1;
-  authentication: UnusedRedeemerAuthenticationV1;
+  header: Header;
+  evidence: UnusedRedeemerEvidence;
+  authentication: UnusedRedeemerAuthentication;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
 }>;
 
-export type UnusedRedeemerWorkflowReferencesV1 = Readonly<{
+export type UnusedRedeemerWorkflowReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
 
-export type UnusedRedeemerActuatorActionV1 =
+export type UnusedRedeemerActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step_01";
@@ -74,14 +74,14 @@ export type UnusedRedeemerActuatorActionV1 =
       fraudProofOutRef: string;
     }>;
 
-export type UnusedRedeemerCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type UnusedRedeemerCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
 
-export type BoundUnusedRedeemerActuatorConfigV1 = Readonly<{
+export type BoundUnusedRedeemerActuatorConfig = Readonly<{
   // Family-local structural binding until the protected catalogue serial pass.
   binding: Readonly<{
     blueprint: unknown;
@@ -100,30 +100,30 @@ export type BoundUnusedRedeemerActuatorConfigV1 = Readonly<{
   }>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: UnusedRedeemerContractsV1;
-  references: UnusedRedeemerWorkflowReferencesV1;
+  contracts: UnusedRedeemerContracts;
+  references: UnusedRedeemerWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
 const captured = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<UnusedRedeemerCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<UnusedRedeemerCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /** Package-owned locally evaluated transaction actuator. */
-export const createUnusedRedeemerActuatorV1 = (
-  config: BoundUnusedRedeemerActuatorConfigV1,
+export const createUnusedRedeemerActuator = (
+  config: BoundUnusedRedeemerActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      action: UnusedRedeemerActuatorActionV1;
-      artifact: UnusedRedeemerProductionArtifactV1;
-    }): Promise<UnusedRedeemerCapturedActionV1> => {
+      action: UnusedRedeemerActuatorAction;
+      artifact: UnusedRedeemerArtifact;
+    }): Promise<UnusedRedeemerCapturedAction> => {
       if (artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error("unusedRedeemer artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
@@ -158,7 +158,7 @@ export const createUnusedRedeemerActuatorV1 = (
             awaitConfirmation: false,
           } as const;
           if (artifact.acceptedInclusion !== undefined)
-            await submitUnusedRedeemerStep01AcceptedV1({
+            await submitUnusedRedeemerStep01Accepted({
               ...common,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -167,7 +167,7 @@ export const createUnusedRedeemerActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else if (artifact.forcedMembership !== undefined)
-            await submitUnusedRedeemerStep01ForcedV1({
+            await submitUnusedRedeemerStep01Forced({
               ...common,
               membership: artifact.forcedMembership,
             });
@@ -176,7 +176,7 @@ export const createUnusedRedeemerActuatorV1 = (
       const linear = async (
         operation: (
           preSubmitBoundary: Parameters<
-            typeof captureLocallyEvaluatedTransactionV1
+            typeof captureLocallyEvaluatedTransaction
           >[0] extends (boundary: infer T) => unknown
             ? T
             : never,
@@ -184,7 +184,7 @@ export const createUnusedRedeemerActuatorV1 = (
       ) => await captured(operation);
       if (action.stage === "step_02")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep02V1({
+          await submitUnusedRedeemerStep02({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -199,7 +199,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_02a")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep02aV1({
+          await submitUnusedRedeemerStep02a({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -213,7 +213,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_02b")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep02bV1({
+          await submitUnusedRedeemerStep02b({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -227,7 +227,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_02c")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep02cV1({
+          await submitUnusedRedeemerStep02c({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -241,7 +241,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_03")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep03V1({
+          await submitUnusedRedeemerStep03({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -255,7 +255,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_04")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep04V1({
+          await submitUnusedRedeemerStep04({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -270,7 +270,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_05")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep05V1({
+          await submitUnusedRedeemerStep05({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -284,7 +284,7 @@ export const createUnusedRedeemerActuatorV1 = (
         });
       if (action.stage === "step_06")
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerStep06V1({
+          await submitUnusedRedeemerStep06({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -305,7 +305,7 @@ export const createUnusedRedeemerActuatorV1 = (
         )
           throw new Error("unusedRedeemer cancellation step changed");
         return await linear(async (preSubmitBoundary) => {
-          await submitUnusedRedeemerCancelV1({
+          await submitUnusedRedeemerCancel({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -318,7 +318,7 @@ export const createUnusedRedeemerActuatorV1 = (
           });
         });
       }
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
           name: "unusedRedeemer",
           categoryId,
@@ -345,7 +345,7 @@ export const createUnusedRedeemerActuatorV1 = (
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

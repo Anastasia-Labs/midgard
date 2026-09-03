@@ -1,24 +1,24 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
-  decodeMidgardCekProgramMaterialSidecarV1,
-  verifyMidgardCekProgramMaterialBundleV1,
-  verifyMidgardCekProgramMaterialV1,
+  decodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterial,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   EMPTY_NULL_ROOT,
   MidgardTxCodecError,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  type MidgardConsensusV1ViolationCode,
-  validateMidgardConsensusV1TxCbor,
+  type MidgardConsensusViolationCode,
+  validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation-v1";
-import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -71,7 +71,7 @@ const codecErrorDetail = (error: unknown): string => {
 };
 
 const consensusProfileRejectCode = (
-  code: MidgardConsensusV1ViolationCode,
+  code: MidgardConsensusViolationCode,
 ): RejectCode => {
   switch (code) {
     case "E_TX_VERSION":
@@ -441,9 +441,8 @@ export const validatePhaseASingle = (
   // Consensus admission is intentionally independent of the configurable
   // validation strictness profile. Only the exact compiled V1 tuple may reach
   // Phase B, even if an operator relaxes local configuration.
-  const consensusProfile =
-    config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1;
-  if (!isMidgardConsensusProfileV1(consensusProfile)) {
+  const consensusProfile = config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
+  if (!isMidgardConsensusProfile(consensusProfile)) {
     return reject(
       ledgerTx.txId,
       RejectCodes.TxVersion,
@@ -457,7 +456,7 @@ export const validatePhaseASingle = (
       "V1 admission is missing its canonical program-material sidecar",
     );
   }
-  const consensusViolation = validateMidgardConsensusV1TxCbor(queuedTx.txCbor);
+  const consensusViolation = validateMidgardConsensusTxCbor(queuedTx.txCbor);
   if (consensusViolation !== null) {
     return reject(
       ledgerTx.txId,
@@ -466,24 +465,24 @@ export const validatePhaseASingle = (
     );
   }
   try {
-    const material = decodeMidgardCekProgramMaterialSidecarV1(
+    const material = decodeMidgardCekProgramMaterialSidecar(
       queuedTx.programMaterialSidecarCbor,
     );
-    const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
       queuedTx.txCbor,
     );
-    const envelopes = collectMidgardV1AttachedProgramEnvelopes(canonicalTx);
+    const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
     if (ledgerTx.referenceInputs.length > 0) {
       // Phase A has not resolved reference-input outputs yet. Require complete
       // attached programs now; Phase B checks the exact combined bundle once
       // the referenced program envelopes are authoritative.
       for (const envelope of envelopes) {
-        verifyMidgardCekProgramMaterialV1(envelope, material, {
+        verifyMidgardCekProgramMaterial(envelope, material, {
           allowUnreachable: true,
         });
       }
     } else {
-      verifyMidgardCekProgramMaterialBundleV1(envelopes, material);
+      verifyMidgardCekProgramMaterialBundle(envelopes, material);
     }
   } catch (cause) {
     return reject(

@@ -1,49 +1,49 @@
 import { Proof as MpfProof, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardNativeTxProofFieldLengths,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardSpendInputItemV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardSpendInputItem,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
   DaRequestResponseProtocol,
-  decodeDaEventToStepByEventRequestV1Cbor,
-  decodeDaPayloadByHeaderRequestV1Cbor,
-  decodeDaProofBundleByHeaderRequestV1Cbor,
-  decodeDaTraceStepByIndexRequestV1Cbor,
-  encodeDaEventToStepByEventResponseV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaProofBundleByHeaderResponseV1Cbor,
-  encodeDaTraceStepByIndexResponseV1Cbor,
+  decodeDaEventToStepByEventRequestCbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaProofBundleByHeaderRequestCbor,
+  decodeDaTraceStepByIndexRequestCbor,
+  encodeDaEventToStepByEventResponseCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaProofBundleByHeaderResponseCbor,
+  encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { fetchProductionFraudProofEvidenceV1 } from "../src/evidence/production-fraud-proof-evidence-v1.js";
-import { prepareAcceptedFieldPreimageLengthMismatchV1 } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
+import { fetchFraudProofEvidence } from "../src/evidence/production-fraud-proof-evidence-v1.js";
+import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
 import {
-  detectAuthenticatedFieldPreimageLengthProductionEvidenceV1,
-  detectFieldPreimageLengthCompleteReplayV1,
+  detectAuthenticatedFieldPreimageLengthEvidence,
+  detectFieldPreimageLengthCompleteReplay,
 } from "../src/field-preimage-length-mismatch/production-evidence-v1.js";
 import {
   buildCountedRoot,
@@ -64,7 +64,7 @@ import {
   keyValuePhasRootWithCount,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   type RetainedDaLibp2pTransport,
   type TransitionTraceReconstruction,
 } from "../src/transition-trace/index.js";
@@ -121,8 +121,8 @@ const withdrawalInfo = (
  */
 const canonicalPreimageByCommitment = new Map<string, Buffer>();
 
-const proofSourceCommitment = (source: SDK.NativeTxProofSourceV1): string =>
-  computeMidgardNativeTxProofCommitmentV1({
+const proofSourceCommitment = (source: SDK.NativeTxProofSource): string =>
+  computeMidgardNativeTxProofCommitment({
     compactCbor: Buffer.from(source.compact_cbor, "hex"),
     witnessSetCompactCbor: Buffer.from(source.witness_set_compact_cbor, "hex"),
     fieldPreimageLengthsCbor: Buffer.from(
@@ -138,8 +138,8 @@ const nativeMaterial = (
     readonly outputsPreimageCbor?: Buffer;
   } = {},
 ) => {
-  const canonical: MidgardNativeTxCanonicalV1 = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor:
@@ -162,13 +162,13 @@ const nativeMaterial = (
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   };
-  const full = materializeMidgardNativeTxFromCanonicalV1(canonical);
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+  const full = materializeMidgardNativeTxFromCanonical(canonical);
+  const canonicalCbor = encodeMidgardNativeTxCanonical(full);
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const txId = computeMidgardNativeTxIdV1(full).toString("hex");
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const txId = computeMidgardNativeTxId(full).toString("hex");
   canonicalPreimageByCommitment.set(
-    computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
+    computeMidgardNativeTxProofCommitment(source).toString("hex"),
     canonicalCbor,
   );
   return {
@@ -188,7 +188,7 @@ const nativeMaterial = (
  * forced transaction the operator rejected for a failed Plutus execution at
  * execution index 0.
  */
-const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
+const forcedTxInvalidPlutus: SDK.OperatorVerdict = {
   ForcedTxInvalid: {
     reason: { PlutusExecutionFailed: { execution_index: 0n } },
   },
@@ -196,8 +196,8 @@ const forcedTxInvalidPlutus: SDK.OperatorVerdictV1 = {
 
 const forcedTx = (
   byte: number,
-  verdict: SDK.OperatorVerdictV1 = forcedTxInvalidPlutus,
-): SDK.ForcedInclusionTxV1 => {
+  verdict: SDK.OperatorVerdict = forcedTxInvalidPlutus,
+): SDK.ForcedInclusionTx => {
   const material = nativeMaterial(byte);
   if (verdict === "ForcedTxValid") {
     return {
@@ -210,14 +210,14 @@ const forcedTx = (
   // (§2.4.3(e)): the fixture bytes stay `TxIsValid` as submitted, while the
   // leaf's triple carries the stamped `TxIsInvalid` scalar. The DA preimage
   // registered for the leaf remains the submitted canonical bytes.
-  const adjudicated = deriveMidgardNativeTxProofSourceV1(
-    adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(material.canonicalCbor),
+  const adjudicated = deriveMidgardNativeTxProofSource(
+    adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(material.canonicalCbor),
       "TxIsInvalid",
     ),
   );
   canonicalPreimageByCommitment.set(
-    computeMidgardNativeTxProofCommitmentV1(adjudicated).toString("hex"),
+    computeMidgardNativeTxProofCommitment(adjudicated).toString("hex"),
     material.canonicalCbor,
   );
   return {
@@ -296,7 +296,7 @@ const tag4OutputWithOpaqueNativeScript = (): Buffer =>
   ]);
 
 const spendInputItem = (txIdHex: string, outputIndex: number): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txIdHex, "hex"),
     outputIndex,
   });
@@ -316,7 +316,7 @@ const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
 const ledgerTrieValue = (outRef: Buffer, outputCbor: Buffer): Buffer => {
   try {
     return Buffer.from(
-      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef,
         outputCbor,
       }).descriptorCbor,
@@ -332,7 +332,7 @@ const utxoRootWithDescriptors = (
   keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
-      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: Buffer.from(key, "hex"),
         outputCbor: Buffer.from(value, "hex"),
       }).descriptorCbor,
@@ -402,17 +402,17 @@ const buildPayloadFixture = async ({
   transitionTraceEntries = steps.map(traceEntry),
   eventToStep = [],
 }: PayloadFixtureInput): Promise<{
-  readonly payload: SDK.DaPayloadV1;
+  readonly payload: SDK.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly headerHash: string;
 }> => {
   const forcedTransactionPreimages = forcedTransactions.map(
     ([key, value], index): SDK.DaPayloadEntry => {
       const forced = Data.from(
         value,
-        SDK.ForcedInclusionTxV1,
-      ) as SDK.ForcedInclusionTxV1;
+        SDK.ForcedInclusionTx,
+      ) as SDK.ForcedInclusionTx;
       const preimage = canonicalPreimageByCommitment.get(
         proofSourceCommitment(forced.source),
       );
@@ -448,8 +448,8 @@ const buildPayloadFixture = async ({
           terminal_state_hash: h32(160 + index),
           verdict: "Accepted",
           rejection_code_hash: h32(170 + index),
-        } satisfies SDK.ValidationTraceDescriptorV1,
-        valueSchema: SDK.ValidationTraceDescriptorV1Schema,
+        } satisfies SDK.ValidationTraceDescriptor,
+        valueSchema: SDK.ValidationTraceDescriptorSchema,
       }),
   );
   const utxoRoot = await utxoRootWithDescriptors(utxos);
@@ -517,7 +517,7 @@ const buildPayloadFixture = async ({
     transitionStepCount: BigInt(transitionTraceEntries.length),
     validationTraceCount: BigInt(validationTraces.length),
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
@@ -538,9 +538,9 @@ const buildPayloadFixture = async ({
     operatorVkey: h28(91),
     protocolVersion: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -561,7 +561,7 @@ const buildPayloadFixture = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,
@@ -572,7 +572,7 @@ const buildPayloadFixture = async ({
 const reconstruct = async (
   fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
 ): Promise<TransitionTraceReconstruction> =>
-  await reconstructDaPayloadV1({
+  await reconstructDaPayload({
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     expectedHeaderHash: fixture.headerHash,
     committedHeader: fixture.header,
@@ -580,8 +580,8 @@ const reconstruct = async (
 
 const authenticatedObservation = (
   fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
-): SDK.AuthenticatedStateQueueHeaderObservationV1 => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+): SDK.AuthenticatedStateQueueHeaderObservation => ({
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -690,7 +690,7 @@ const buildL2ReplayFixture = async ({
   const insertProof = await ledger.prove(producedKey);
   const replayedPostRoot = ledger.hash.toString("hex");
 
-  const source: SDK.L2TransactionSourceV1 = {
+  const source: SDK.L2TransactionSource = {
     tx_id: material.txId,
     source: material.source,
   };
@@ -715,7 +715,7 @@ const buildL2ReplayFixture = async ({
     transactions: [
       entry(
         Buffer.from(material.txId, "hex"),
-        Buffer.from(Data.to(source, SDK.L2TransactionSourceV1), "hex"),
+        Buffer.from(Data.to(source, SDK.L2TransactionSource), "hex"),
       ),
     ],
     transactionPreimages: [
@@ -804,7 +804,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forced,
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [step],
@@ -835,9 +835,9 @@ describe("transition-trace challenger tooling", () => {
       utxosRoot: h32(99),
     };
     const badHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeaderV1(badHeader),
+      SDK.hashBlockHeader(badHeader),
     );
-    const badPayload: SDK.DaPayloadV1 = {
+    const badPayload: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -846,9 +846,9 @@ describe("transition-trace challenger tooling", () => {
       },
     };
     await expect(
-      reconstructDaPayloadV1({
-        payloadEnvelopeCbor: await wrapDaPayloadV1(
-          SDK.encodeDaPayloadV1(badPayload),
+      reconstructDaPayload({
+        payloadEnvelopeCbor: await wrapDaPayload(
+          SDK.encodeDaPayload(badPayload),
           { mode: "identity" },
         ),
         expectedHeaderHash: badHeaderHash,
@@ -999,7 +999,7 @@ describe("transition-trace challenger tooling", () => {
                 key: outRef(3),
                 keySchema: SDK.OutputReference as never,
                 value: forcedTx(40, forcedTxInvalidPlutus),
-                valueSchema: SDK.ForcedInclusionTxV1Schema,
+                valueSchema: SDK.ForcedInclusionTxSchema,
               }),
             ],
             steps: [
@@ -1071,7 +1071,7 @@ describe("transition-trace challenger tooling", () => {
 
   it("reconstructs authenticated L2 preimages and builds the tag-4 replay witness", async () => {
     const material = nativeMaterial(70);
-    const source: SDK.L2TransactionSourceV1 = {
+    const source: SDK.L2TransactionSource = {
       tx_id: material.txId,
       source: material.source,
     };
@@ -1082,7 +1082,7 @@ describe("transition-trace challenger tooling", () => {
       transactions: [
         entry(
           Buffer.from(material.txId, "hex"),
-          Buffer.from(Data.to(source, SDK.L2TransactionSourceV1), "hex"),
+          Buffer.from(Data.to(source, SDK.L2TransactionSource), "hex"),
         ),
       ],
       transactionPreimages: [
@@ -1147,20 +1147,20 @@ describe("transition-trace challenger tooling", () => {
   it("rejects whole-block reconstruction but directly prepares an authenticated accepted length mismatch", async () => {
     const material = nativeMaterial(72);
     const lengths = [
-      ...decodeMidgardNativeTxProofFieldLengthsV1(
+      ...decodeMidgardNativeTxProofFieldLengths(
         Buffer.from(material.source.field_preimage_lengths_cbor, "hex"),
       ),
     ];
     lengths[0] = lengths[0]! + 1;
-    const source: SDK.L2TransactionSourceV1 = {
+    const source: SDK.L2TransactionSource = {
       tx_id: material.txId,
       source: {
         ...material.source,
         field_preimage_lengths_cbor:
-          encodeMidgardNativeTxProofFieldLengthsV1(lengths).toString("hex"),
+          encodeMidgardNativeTxProofFieldLengths(lengths).toString("hex"),
       },
     };
-    const sourceCbor = Data.to(source, SDK.L2TransactionSourceV1);
+    const sourceCbor = Data.to(source, SDK.L2TransactionSource);
     const eventKey: SDK.EventKey = {
       L2TransactionEventKey: { tx_id: material.txId },
     };
@@ -1192,7 +1192,7 @@ describe("transition-trace challenger tooling", () => {
     await expect(reconstruct(fixture)).rejects.toMatchObject({
       code: "malformedPayload",
     });
-    const direct = await prepareAcceptedFieldPreimageLengthMismatchV1({
+    const direct = await prepareAcceptedFieldPreimageLengthMismatch({
       headerHash: fixture.headerHash,
       committedTransactionsRoot: fixture.header.transactionsRoot,
       l2TransactionCount: fixture.header.l2TransactionCount,
@@ -1207,17 +1207,16 @@ describe("transition-trace challenger tooling", () => {
       actualLength: lengths[0]! - 1,
     });
     expect(direct.inclusion.l2TransactionSourceCbor).toBe(sourceCbor);
-    const production =
-      await detectAuthenticatedFieldPreimageLengthProductionEvidenceV1({
-        observation: authenticatedObservation(fixture),
-        sources: [retainedSource(fixture)],
-      });
+    const production = await detectAuthenticatedFieldPreimageLengthEvidence({
+      observation: authenticatedObservation(fixture),
+      sources: [retainedSource(fixture)],
+    });
     expect(production.prepared).toEqual(direct.prepared);
     expect(production.stageEvidence.acceptedInclusion).toMatchObject({
       nativeTxId: material.txId,
       l2TransactionSourceCbor: sourceCbor,
     });
-    const routed = await fetchProductionFraudProofEvidenceV1({
+    const routed = await fetchFraudProofEvidence({
       observation: authenticatedObservation(fixture),
       sources: [retainedSource(fixture)],
       minimumConfirmationDepth: 30,
@@ -1233,7 +1232,7 @@ describe("transition-trace challenger tooling", () => {
 
   it("derives an exact forced length-rejection finding and its membership from canonical retained DA", async () => {
     const txOrderId = outRef(73);
-    const reason: SDK.RejectionReasonV1 = {
+    const reason: SDK.RejectionReason = {
       FieldPreimageLengthMismatch: { field_index: 0n },
     };
     const forced = forcedTx(73, {
@@ -1246,7 +1245,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forced,
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [
@@ -1266,11 +1265,10 @@ describe("transition-trace challenger tooling", () => {
         }),
       ],
     });
-    const production =
-      await detectAuthenticatedFieldPreimageLengthProductionEvidenceV1({
-        observation: authenticatedObservation(fixture),
-        sources: [retainedSource(fixture)],
-      });
+    const production = await detectAuthenticatedFieldPreimageLengthEvidence({
+      observation: authenticatedObservation(fixture),
+      sources: [retainedSource(fixture)],
+    });
     expect(production.prepared).toMatchObject({
       direction: "wrongfulRejection",
       fieldIndex: 0,
@@ -1290,14 +1288,14 @@ describe("transition-trace challenger tooling", () => {
         reason: { FieldPreimageLengthMismatch: { field_index: 0n } },
       },
     });
-    const lengths = decodeMidgardNativeTxProofFieldLengthsV1(
+    const lengths = decodeMidgardNativeTxProofFieldLengths(
       Buffer.from(forced.source.field_preimage_lengths_cbor, "hex"),
     );
-    const honestForced: SDK.ForcedInclusionTxV1 = {
+    const honestForced: SDK.ForcedInclusionTx = {
       ...forced,
       source: {
         ...forced.source,
-        field_preimage_lengths_cbor: encodeMidgardNativeTxProofFieldLengthsV1([
+        field_preimage_lengths_cbor: encodeMidgardNativeTxProofFieldLengths([
           lengths[0]! + 1,
           ...lengths.slice(1),
         ]).toString("hex"),
@@ -1310,7 +1308,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forced,
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [
@@ -1347,7 +1345,7 @@ describe("transition-trace challenger tooling", () => {
       },
     } as never;
 
-    expect(detectFieldPreimageLengthCompleteReplayV1(block)).toEqual([]);
+    expect(detectFieldPreimageLengthCompleteReplay(block)).toEqual([]);
   });
 
   it("returns no tag-4 fault when verified delete/insert replay matches the committed post-root", async () => {
@@ -1801,7 +1799,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(50, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [
@@ -1969,7 +1967,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(70, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [
@@ -2036,7 +2034,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(60, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       deposits: [
@@ -2161,7 +2159,7 @@ describe("transition-trace challenger tooling", () => {
           key: outOfWindowForcedId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(73, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [
@@ -2245,7 +2243,7 @@ describe("transition-trace challenger tooling", () => {
   it("builds L2 source membership-mismatch witnesses against raw transaction roots", async () => {
     const material = nativeMaterial(12);
     const txId = material.txId;
-    const source: SDK.L2TransactionSourceV1 = {
+    const source: SDK.L2TransactionSource = {
       tx_id: txId,
       source: material.source,
     };
@@ -2254,7 +2252,7 @@ describe("transition-trace challenger tooling", () => {
       transactions: [
         entry(
           Buffer.from(txId, "hex"),
-          Buffer.from(Data.to(source, SDK.L2TransactionSourceV1), "hex"),
+          Buffer.from(Data.to(source, SDK.L2TransactionSource), "hex"),
         ),
       ],
       transactionPreimages: [
@@ -2318,7 +2316,7 @@ describe("transition-trace challenger tooling", () => {
           key: forcedId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(13, "ForcedTxValid"),
-          valueSchema: SDK.ForcedInclusionTxV1Schema,
+          valueSchema: SDK.ForcedInclusionTxSchema,
         }),
       ],
       steps: [
@@ -2339,7 +2337,7 @@ describe("transition-trace challenger tooling", () => {
       ],
     });
     const material = nativeMaterial(14);
-    const normalSource: SDK.L2TransactionSourceV1 = {
+    const normalSource: SDK.L2TransactionSource = {
       tx_id: material.txId,
       source: material.source,
     };
@@ -2350,7 +2348,7 @@ describe("transition-trace challenger tooling", () => {
       transactions: [
         entry(
           Buffer.from(material.txId, "hex"),
-          Buffer.from(Data.to(normalSource, SDK.L2TransactionSourceV1), "hex"),
+          Buffer.from(Data.to(normalSource, SDK.L2TransactionSource), "hex"),
         ),
       ],
       transactionPreimages: [
@@ -2418,9 +2416,9 @@ describe("transition-trace challenger tooling", () => {
         // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
         switch (protocol) {
           case DaRequestResponseProtocol.payloadByHeader: {
-            const request = decodeDaPayloadByHeaderRequestV1Cbor(payload);
+            const request = decodeDaPayloadByHeaderRequestCbor(payload);
             expect(request.headerHash.equals(headerHashBytes)).toBe(true);
-            return encodeDaPayloadByHeaderResponseV1Cbor({
+            return encodeDaPayloadByHeaderResponseCbor({
               status: "found_inline",
               headerHash: request.headerHash,
               payloadHash,
@@ -2430,9 +2428,9 @@ describe("transition-trace challenger tooling", () => {
             });
           }
           case DaRequestResponseProtocol.metadataByHeader: {
-            const request = decodeDaPayloadByHeaderRequestV1Cbor(payload);
+            const request = decodeDaPayloadByHeaderRequestCbor(payload);
             expect(request.headerHash.equals(headerHashBytes)).toBe(true);
-            return encodeDaMetadataByHeaderResponseV1Cbor({
+            return encodeDaMetadataByHeaderResponseCbor({
               status: "found",
               headerHash: request.headerHash,
               payloadHash,
@@ -2453,9 +2451,9 @@ describe("transition-trace challenger tooling", () => {
             });
           }
           case DaRequestResponseProtocol.proofBundleByHeader: {
-            const request = decodeDaProofBundleByHeaderRequestV1Cbor(payload);
+            const request = decodeDaProofBundleByHeaderRequestCbor(payload);
             expect(request.headerHash.equals(headerHashBytes)).toBe(true);
-            return encodeDaProofBundleByHeaderResponseV1Cbor({
+            return encodeDaProofBundleByHeaderResponseCbor({
               status: "found_inline",
               headerHash: request.headerHash,
               proofBundleHash,
@@ -2465,10 +2463,10 @@ describe("transition-trace challenger tooling", () => {
             });
           }
           case DaRequestResponseProtocol.traceStepByIndex: {
-            const request = decodeDaTraceStepByIndexRequestV1Cbor(payload);
+            const request = decodeDaTraceStepByIndexRequestCbor(payload);
             expect(request.headerHash.equals(headerHashBytes)).toBe(true);
             expect(request.stepIndex).toBe(0);
-            return encodeDaTraceStepByIndexResponseV1Cbor({
+            return encodeDaTraceStepByIndexResponseCbor({
               status: "found",
               headerHash: request.headerHash,
               stepIndex: request.stepIndex,
@@ -2477,10 +2475,10 @@ describe("transition-trace challenger tooling", () => {
             });
           }
           case DaRequestResponseProtocol.eventToStepByEvent: {
-            const request = decodeDaEventToStepByEventRequestV1Cbor(payload);
+            const request = decodeDaEventToStepByEventRequestCbor(payload);
             expect(request.headerHash.equals(headerHashBytes)).toBe(true);
             expect(request.eventKey.equals(eventKeyBytes)).toBe(true);
-            return encodeDaEventToStepByEventResponseV1Cbor({
+            return encodeDaEventToStepByEventResponseCbor({
               status: "found",
               headerHash: request.headerHash,
               eventKey: request.eventKey,

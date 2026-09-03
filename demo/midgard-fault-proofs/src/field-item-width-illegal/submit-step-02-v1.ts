@@ -1,6 +1,6 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,29 +13,29 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { FieldItemWidthIllegalContractsV1 } from "./contracts-v1.js";
-import type { FieldItemWidthEvidenceV1 } from "./field-item-width-illegal-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { FieldItemWidthIllegalContracts } from "./contracts-v1.js";
+import type { FieldItemWidthEvidence } from "./field-item-width-illegal-v1.js";
 import {
-  FieldItemWidthStep02DatumV1Schema,
-  FieldItemWidthStep02RedeemerV1Schema,
-  FieldItemWidthStep03DatumV1Schema,
+  FieldItemWidthStep02DatumSchema,
+  FieldItemWidthStep02RedeemerSchema,
+  FieldItemWidthStep03DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitFieldItemWidthIllegalStep02V1 = async ({
+export const submitFieldItemWidthIllegalStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -56,11 +56,11 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FieldItemWidthIllegalContractsV1;
+  readonly contracts: FieldItemWidthIllegalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: FieldItemWidthEvidenceV1;
+  readonly evidence: FieldItemWidthEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly publishCarriage?: boolean;
@@ -68,14 +68,14 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -83,14 +83,14 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     field_index: bigint;
     item_index: bigint;
   }>({
     threadUtxo,
     signer,
-    schema: FieldItemWidthStep02DatumV1Schema as never,
+    schema: FieldItemWidthStep02DatumSchema as never,
     family: "field-item-width-illegal",
     stepIndex,
   });
@@ -101,10 +101,10 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
     throw new Error(
       "field-item-width-illegal: opening coordinate differs from thread",
     );
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: evidence.fieldIndex,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
@@ -116,7 +116,7 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -128,7 +128,7 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network: lucid.config().network!,
             signer,
@@ -151,13 +151,13 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
         ).certificateUtxo
       : undefined);
   await onCarriageReady?.();
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "field-item-width-illegal",
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -177,7 +177,7 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
         item_width: BigInt(evidence.itemWidth),
       },
     } as never,
-    FieldItemWidthStep03DatumV1Schema as never,
+    FieldItemWidthStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
@@ -203,10 +203,10 @@ export const submitFieldItemWidthIllegalStep02V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, opening },
         ],
       } as never,
-      FieldItemWidthStep02RedeemerV1Schema as never,
+      FieldItemWidthStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

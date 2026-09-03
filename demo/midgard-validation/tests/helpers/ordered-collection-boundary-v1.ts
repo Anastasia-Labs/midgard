@@ -1,31 +1,31 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  buildMidgardBoundedItemV1,
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  commitMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  commitMidgardBoundedItem,
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  deriveMidgardV1TxFieldPreimages,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  deriveMidgardTxFieldPreimages,
   encodeCbor,
-  hashMidgardValidationWorkWitnessV1,
-  midgardBoundedItemChunkCountV1,
-  reconstructMidgardTransactionV1,
+  hashMidgardValidationWorkWitness,
+  midgardBoundedItemChunkCount,
+  reconstructMidgardTransaction,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardFieldPreimageV1,
-  type MidgardFieldCarriageV1,
-  selectMidgardFieldCarriageTierV1,
-  splitMidgardFieldPreimageIntoChunksV1,
+  encodeMidgardFieldPreimage,
+  type MidgardFieldCarriage,
+  selectMidgardFieldCarriageTier,
+  splitMidgardFieldPreimageIntoChunks,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { selectValidationCompleteItemCarriageV1 } from "@al-ft/midgard-fault-proofs";
-import { deriveValidationProofItemPublicationV1 } from "@al-ft/midgard-sdk";
+import { selectValidationCompleteItemCarriage } from "@al-ft/midgard-fault-proofs";
+import { deriveValidationProofItemPublication } from "@al-ft/midgard-sdk";
 import {
   CML,
   createCostModels,
@@ -33,20 +33,20 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine/index.js";
-import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-machine-data.js";
+import { countedMachineTransactionChunkSteps } from "../../src/validation-machine/index.js";
+import { encodeValidationAuxiliaryWitnessCbor } from "../../src/validation-machine-data.js";
 
-export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;
-export const CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 = 5_000;
-export const CARDANO_BOUNDARY_PROTOCOL_MAJOR_V1 = 11;
-export const CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1 = 1_592;
-export const CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1 = 30_000_000n;
-export const CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1 = Array.from(
+export const CARDANO_BOUNDARY_MAX_TX_SIZE = 16_384;
+export const CARDANO_BOUNDARY_MAX_VALUE_SIZE = 5_000;
+export const CARDANO_BOUNDARY_PROTOCOL_MAJOR = 11;
+export const CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT = 1_592;
+export const CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE = 30_000_000n;
+export const CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES = Array.from(
   { length: 7 },
   (_, policyIndex) =>
     (0x11 + policyIndex).toString(16).padStart(2, "0").repeat(28),
 );
-export const cardanoBoundaryNestedDataCborV1 = (
+export const cardanoBoundaryNestedDataCbor = (
   nestedLeafCount: number,
 ): string => {
   if (!Number.isSafeInteger(nestedLeafCount) || nestedLeafCount <= 0) {
@@ -72,20 +72,20 @@ export const cardanoBoundaryNestedDataCborV1 = (
     "ff",
   ].join("");
 };
-export const CARDANO_BOUNDARY_OBSERVER_TTL_V1 = 10_000n;
-export const CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 = 20_000n;
-export const CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1 = 100_000_000n;
-export const CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1 = 5_000_000n;
-export const CARDANO_BOUNDARY_MINT_ASSET_NAME_V1 = Buffer.from(
+export const CARDANO_BOUNDARY_OBSERVER_TTL = 10_000n;
+export const CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE = 20_000n;
+export const CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT = 100_000_000n;
+export const CARDANO_BOUNDARY_TOTAL_COLLATERAL = 5_000_000n;
+export const CARDANO_BOUNDARY_MINT_ASSET_NAME = Buffer.from(
   "MidgardV1",
   "utf8",
 );
-export const PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1 = {
+export const PREPROD_EPOCH_303_BOUNDARY_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   minFeeA: 44,
   minFeeB: 155_381,
-  maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  maxValSize: CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
+  maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE,
+  maxValSize: CARDANO_BOUNDARY_MAX_VALUE_SIZE,
   maxTxExMem: 16_500_000n,
   maxTxExSteps: 10_000_000_000n,
   priceMem: 0.0577,
@@ -96,12 +96,12 @@ export const PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1 = {
   minFeeRefScriptCostPerByte: 15,
 } as const;
 
-const CARDANO_BOUNDARY_SIGNER_KEY_DOMAIN_V1 = Buffer.from(
+const CARDANO_BOUNDARY_SIGNER_KEY_DOMAIN = Buffer.from(
   "CardanoBoundarySignerKeyV1",
   "utf8",
 );
 
-export const deterministicCardanoBoundaryPrivateKeyV1 = (
+export const deterministicCardanoBoundaryPrivateKey = (
   signerIndex: number,
 ): CML.PrivateKey => {
   if (
@@ -115,14 +115,12 @@ export const deterministicCardanoBoundaryPrivateKeyV1 = (
   encodedIndex.writeUInt32BE(signerIndex);
   return CML.PrivateKey.from_normal_bytes(
     computeHash32(
-      Buffer.concat([CARDANO_BOUNDARY_SIGNER_KEY_DOMAIN_V1, encodedIndex]),
+      Buffer.concat([CARDANO_BOUNDARY_SIGNER_KEY_DOMAIN, encodedIndex]),
     ),
   );
 };
 
-export const deriveCardanoGenesisInputSupplyV1 = (
-  maxTxSize: number,
-): number => {
+export const deriveCardanoGenesisInputSupply = (maxTxSize: number): number => {
   if (!Number.isSafeInteger(maxTxSize) || maxTxSize <= 0) {
     throw new Error("Cardano maxTxSize must be a positive safe integer");
   }
@@ -134,44 +132,44 @@ export const deriveCardanoGenesisInputSupplyV1 = (
   );
 };
 
-export type SignedCardanoCollectionCandidateV1 = {
+export type SignedCardanoCollectionCandidate = {
   readonly requestedItemCount: number;
   readonly cborHex: string;
   readonly signedBytes: number;
   readonly fee: bigint;
 };
 
-export type SignedCardanoCollectionBoundaryV1 = {
-  readonly accepted: SignedCardanoCollectionCandidateV1;
-  readonly adjacent: SignedCardanoCollectionCandidateV1;
+export type SignedCardanoCollectionBoundary = {
+  readonly accepted: SignedCardanoCollectionCandidate;
+  readonly adjacent: SignedCardanoCollectionCandidate;
   readonly adjacentFailure: string;
 };
 
-export type CardanoBoundaryNestedValueAssetV1 = {
+export type CardanoBoundaryNestedValueAsset = {
   readonly policyIdHex: string;
   readonly assetNameHex: string;
   readonly quantity: bigint;
 };
 
-export const cardanoBoundaryNestedValueAssetsV1 = (
+export const cardanoBoundaryNestedValueAssets = (
   requestedValueCborBytes: number,
-): readonly CardanoBoundaryNestedValueAssetV1[] => {
+): readonly CardanoBoundaryNestedValueAsset[] => {
   if (
-    requestedValueCborBytes !== CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 &&
-    requestedValueCborBytes !== CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1
+    requestedValueCborBytes !== CARDANO_BOUNDARY_MAX_VALUE_SIZE &&
+    requestedValueCborBytes !== CARDANO_BOUNDARY_MAX_VALUE_SIZE + 1
   ) {
     throw new Error(
       "Nested Cardano Value boundary shape only supports 5,000 or 5,001 bytes",
     );
   }
   const adjacent =
-    requestedValueCborBytes === CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1;
-  return CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1.flatMap(
+    requestedValueCborBytes === CARDANO_BOUNDARY_MAX_VALUE_SIZE + 1;
+  return CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES.flatMap(
     (policyIdHex, policyIndex) => {
       const assetCount = policyIndex < 3 ? 228 : 227;
       return Array.from(
         { length: assetCount },
-        (_, policyAssetIndex): CardanoBoundaryNestedValueAssetV1 => ({
+        (_, policyAssetIndex): CardanoBoundaryNestedValueAsset => ({
           policyIdHex,
           assetNameHex:
             policyAssetIndex === 0
@@ -180,7 +178,7 @@ export const cardanoBoundaryNestedValueAssetsV1 = (
           quantity:
             adjacent &&
             policyIndex + 1 ===
-              CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1.length &&
+              CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES.length &&
             policyAssetIndex + 1 === assetCount
               ? 24n
               : 1n,
@@ -190,7 +188,7 @@ export const cardanoBoundaryNestedValueAssetsV1 = (
   );
 };
 
-export type MidgardOrderedCollectionBoundaryMeasurementV1 = {
+export type MidgardOrderedCollectionBoundaryMeasurement = {
   readonly nativeCanonicalBytes: number;
   readonly fieldBytes: number;
   readonly fieldCommitmentHex: string;
@@ -242,10 +240,10 @@ export type MidgardOrderedCollectionBoundaryMeasurementV1 = {
   };
 };
 
-type FindSignedCardanoCollectionBoundaryV1Options = {
+type FindSignedCardanoCollectionBoundaryOptions = {
   readonly buildSignedCandidate: (
     requestedItemCount: number,
-  ) => Promise<SignedCardanoCollectionCandidateV1>;
+  ) => Promise<SignedCardanoCollectionCandidate>;
   readonly maxTxSize: number;
 };
 
@@ -256,17 +254,17 @@ type FindSignedCardanoCollectionBoundaryV1Options = {
  * boundary. Exact signed bytes are compared with the preserved maxTxSize;
  * provider behavior and a Midgard count are deliberately not gate inputs.
  */
-export const findSignedCardanoCollectionBoundaryV1 = async ({
+export const findSignedCardanoCollectionBoundary = async ({
   buildSignedCandidate,
   maxTxSize,
-}: FindSignedCardanoCollectionBoundaryV1Options): Promise<SignedCardanoCollectionBoundaryV1> => {
+}: FindSignedCardanoCollectionBoundaryOptions): Promise<SignedCardanoCollectionBoundary> => {
   if (!Number.isSafeInteger(maxTxSize) || maxTxSize <= 0) {
     throw new Error("Cardano maxTxSize must be a positive safe integer");
   }
 
   const buildMeasured = async (
     requestedItemCount: number,
-  ): Promise<SignedCardanoCollectionCandidateV1> => {
+  ): Promise<SignedCardanoCollectionCandidate> => {
     const candidate = await buildSignedCandidate(requestedItemCount);
     if (candidate.requestedItemCount !== requestedItemCount) {
       throw new Error(
@@ -321,7 +319,7 @@ export const findSignedCardanoCollectionBoundaryV1 = async ({
   };
 };
 
-export const buildSignedCardanoOutputsCandidateV1 = async ({
+export const buildSignedCardanoOutputsCandidate = async ({
   privateKeyBech32,
   inputTransactionId,
   inputOutputIndex,
@@ -343,7 +341,7 @@ export const buildSignedCardanoOutputsCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (
     !Number.isSafeInteger(requestedOutputCount) ||
     requestedOutputCount <= 0
@@ -419,7 +417,7 @@ export const buildSignedCardanoOutputsCandidateV1 = async ({
   );
 };
 
-const buildSignedCardanoInlineDataCandidateV1 = async ({
+const buildSignedCardanoInlineDataCandidate = async ({
   privateKeyBech32,
   inputTransactionId,
   inputOutputIndex,
@@ -443,7 +441,7 @@ const buildSignedCardanoInlineDataCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (!Number.isSafeInteger(requestedItemCount) || requestedItemCount <= 0) {
     throw new Error(
       `Requested Cardano ${diagnosticKind} count must be positive`,
@@ -519,7 +517,7 @@ const buildSignedCardanoInlineDataCandidateV1 = async ({
  * of the requested payload length. The shape isolates a single dynamic item
  * so the exact maxTxSize boundary also exercises multi-chunk item proofs.
  */
-export const buildSignedCardanoInlineDatumCandidateV1 = async ({
+export const buildSignedCardanoInlineDatumCandidate = async ({
   privateKeyBech32,
   inputTransactionId,
   inputOutputIndex,
@@ -539,8 +537,8 @@ export const buildSignedCardanoInlineDatumCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> =>
-  buildSignedCardanoInlineDataCandidateV1({
+}): Promise<SignedCardanoCollectionCandidate> =>
+  buildSignedCardanoInlineDataCandidate({
     privateKeyBech32,
     inputTransactionId,
     inputOutputIndex,
@@ -556,7 +554,7 @@ export const buildSignedCardanoInlineDatumCandidateV1 = async ({
     minFeeRefScriptCostPerByte,
   });
 
-export const buildSignedCardanoNestedDatumCandidateV1 = async ({
+export const buildSignedCardanoNestedDatumCandidate = async ({
   privateKeyBech32,
   inputTransactionId,
   inputOutputIndex,
@@ -578,7 +576,7 @@ export const buildSignedCardanoNestedDatumCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   const normalized =
     aikenSerialisedPlutusDataCborPreservingMapOrder(nestedDatumCborHex);
   if (normalized !== nestedDatumCborHex.toLowerCase()) {
@@ -586,7 +584,7 @@ export const buildSignedCardanoNestedDatumCandidateV1 = async ({
       "Cardano nested inline datum must use exact Aiken serialiseData CBOR",
     );
   }
-  return buildSignedCardanoInlineDataCandidateV1({
+  return buildSignedCardanoInlineDataCandidate({
     privateKeyBech32,
     inputTransactionId,
     inputOutputIndex,
@@ -606,7 +604,7 @@ export const buildSignedCardanoNestedDatumCandidateV1 = async ({
  * output whose CML Value CBOR is exactly 5,000 or 5,001 bytes. A separate
  * ADA-only change output keeps the measured Value independent of the fee.
  */
-export const buildSignedCardanoNestedValueCandidateV1 = async ({
+export const buildSignedCardanoNestedValueCandidate = async ({
   privateKeyBech32,
   inputTransactionId,
   inputOutputIndex,
@@ -626,10 +624,8 @@ export const buildSignedCardanoNestedValueCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
-  const valueAssets = cardanoBoundaryNestedValueAssetsV1(
-    requestedValueCborBytes,
-  );
+}): Promise<SignedCardanoCollectionCandidate> => {
+  const valueAssets = cardanoBoundaryNestedValueAssets(requestedValueCborBytes);
   const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
   const address = CML.Address.from_bech32(recipientAddress);
   const multiasset = CML.MultiAsset.new();
@@ -647,7 +643,7 @@ export const buildSignedCardanoNestedValueCandidateV1 = async ({
     multiasset.insert_assets(CML.ScriptHash.from_hex(policyIdHex), assets);
   }
   const boundaryValue = CML.Value.new(
-    CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1,
+    CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE,
     multiasset,
   );
   const actualValueCborBytes = boundaryValue.to_cbor_bytes().length;
@@ -665,7 +661,7 @@ export const buildSignedCardanoNestedValueCandidateV1 = async ({
     fee: bigint,
   ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
     const changeLovelace =
-      inputLovelace - CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1 - fee;
+      inputLovelace - CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE - fee;
     if (changeLovelace <= 0n) {
       throw new Error(
         `Nested Cardano Value candidate ${requestedValueCborBytes.toString()} exhausts its funding input`,
@@ -728,7 +724,7 @@ export const buildSignedCardanoNestedValueCandidateV1 = async ({
   );
 };
 
-export const buildSignedCardanoSignersCandidateV1 = async ({
+export const buildSignedCardanoSignersCandidate = async ({
   inputTransactionId,
   inputOutputIndex,
   inputLovelace,
@@ -746,7 +742,7 @@ export const buildSignedCardanoSignersCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (
     !Number.isSafeInteger(requestedSignerCount) ||
     requestedSignerCount <= 0
@@ -755,7 +751,7 @@ export const buildSignedCardanoSignersCandidateV1 = async ({
   }
   const privateKeys = Array.from(
     { length: requestedSignerCount },
-    (_, signerIndex) => deterministicCardanoBoundaryPrivateKeyV1(signerIndex),
+    (_, signerIndex) => deterministicCardanoBoundaryPrivateKey(signerIndex),
   );
   const address = CML.Address.from_bech32(recipientAddress);
   const linearFee = CML.LinearFee.new(
@@ -827,7 +823,7 @@ export const buildSignedCardanoSignersCandidateV1 = async ({
   );
 };
 
-export const buildSignedCardanoSpendInputsCandidateV1 = async ({
+export const buildSignedCardanoSpendInputsCandidate = async ({
   privateKeyBech32,
   availableInputs,
   recipientAddress,
@@ -843,7 +839,7 @@ export const buildSignedCardanoSpendInputsCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (!Number.isSafeInteger(requestedInputCount) || requestedInputCount <= 0) {
     throw new Error("Requested Cardano input count must be positive");
   }
@@ -924,7 +920,7 @@ export const buildSignedCardanoSpendInputsCandidateV1 = async ({
   );
 };
 
-export const buildSignedCardanoReferenceInputsCandidateV1 = async ({
+export const buildSignedCardanoReferenceInputsCandidate = async ({
   privateKeyBech32,
   availableInputs,
   recipientAddress,
@@ -940,7 +936,7 @@ export const buildSignedCardanoReferenceInputsCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (
     !Number.isSafeInteger(requestedReferenceInputCount) ||
     requestedReferenceInputCount <= 0
@@ -1026,7 +1022,7 @@ export const buildSignedCardanoReferenceInputsCandidateV1 = async ({
   );
 };
 
-const makeCardanoBoundaryNativeScriptV1 = ({
+const makeCardanoBoundaryNativeScript = ({
   signerHash,
   scriptIndex,
 }: {
@@ -1037,13 +1033,13 @@ const makeCardanoBoundaryNativeScriptV1 = ({
   clauses.add(CML.NativeScript.new_script_pubkey(signerHash));
   clauses.add(
     CML.NativeScript.new_script_invalid_hereafter(
-      CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 + BigInt(scriptIndex),
+      CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE + BigInt(scriptIndex),
     ),
   );
   return CML.NativeScript.new_script_all(clauses);
 };
 
-export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
+export const buildSignedCardanoObserverNativeScriptsCandidate = async ({
   privateKeyBech32,
   fundingInput,
   recipientAddress,
@@ -1059,7 +1055,7 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (
     !Number.isSafeInteger(requestedObserverCount) ||
     requestedObserverCount <= 0
@@ -1078,7 +1074,7 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
     BigInt(minFeeRefScriptCostPerByte),
   );
   const makeObserverScript = (observerIndex: number): CML.NativeScript =>
-    makeCardanoBoundaryNativeScriptV1({
+    makeCardanoBoundaryNativeScript({
       signerHash,
       scriptIndex: observerIndex,
     });
@@ -1126,7 +1122,7 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
       nativeScripts.add(script);
     }
     const body = CML.TransactionBody.new(inputs, outputs, fee);
-    body.set_ttl(CARDANO_BOUNDARY_OBSERVER_TTL_V1);
+    body.set_ttl(CARDANO_BOUNDARY_OBSERVER_TTL);
     body.set_withdrawals(withdrawals);
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
@@ -1161,7 +1157,7 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
   );
 };
 
-export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
+export const buildSignedCardanoMintNativePoliciesCandidate = async ({
   privateKeyBech32,
   fundingInput,
   recipientAddress,
@@ -1179,7 +1175,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (
     !Number.isSafeInteger(requestedPolicyCount) ||
     requestedPolicyCount <= 0
@@ -1202,7 +1198,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
     { length: requestedPolicyCount },
     (_, scriptIndex) => ({
       scriptIndex,
-      policyHashHex: makeCardanoBoundaryNativeScriptV1({
+      policyHashHex: makeCardanoBoundaryNativeScript({
         signerHash,
         scriptIndex,
       })
@@ -1221,7 +1217,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
     for (const entry of entries) {
       const assets = CML.MapAssetNameToCoin.new();
       assets.insert(
-        CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME_V1),
+        CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME),
         1n,
       );
       multiasset.insert_assets(
@@ -1243,7 +1239,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
         fundingLovelace -
         fee -
         BigInt(expectedOutputCount - 1) *
-          CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1;
+          CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT;
       if (firstOutputLovelace <= 0n) {
         throw new Error(
           `Cardano mint candidate ${requestedPolicyCount.toString()} exhausts its funding input while packing Values`,
@@ -1260,7 +1256,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
         const groupLovelace =
           groupIndex === 0
             ? firstOutputLovelace
-            : CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1;
+            : CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT;
         const candidateGroup = [...group, entry];
         if (
           makeValue(candidateGroup, groupLovelace).to_cbor_bytes().length <=
@@ -1272,7 +1268,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
         if (
           makeValue(
             [entry],
-            CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1,
+            CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT,
           ).to_cbor_bytes().length > maxValueSize
         ) {
           throw new Error("One Cardano mint policy entry exceeds maxValueSize");
@@ -1304,7 +1300,7 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
       const lovelace =
         outputIndex === 0
           ? packed.firstOutputLovelace
-          : CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1;
+          : CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT;
       const value = makeValue(entries, lovelace);
       if (value.to_cbor_bytes().length > maxValueSize) {
         throw new Error(
@@ -1323,20 +1319,20 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
     const mint = CML.Mint.new();
     const nativeScripts = CML.NativeScriptList.new();
     for (const entry of policyEntries) {
-      const script = makeCardanoBoundaryNativeScriptV1({
+      const script = makeCardanoBoundaryNativeScript({
         signerHash,
         scriptIndex: entry.scriptIndex,
       });
       const assets = CML.MapAssetNameToNonZeroInt64.new();
       assets.insert(
-        CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME_V1),
+        CML.AssetName.from_raw_bytes(CARDANO_BOUNDARY_MINT_ASSET_NAME),
         1n,
       );
       mint.insert_assets(script.hash(), assets);
       nativeScripts.add(script);
     }
     const body = CML.TransactionBody.new(inputs, outputs, fee);
-    body.set_ttl(CARDANO_BOUNDARY_OBSERVER_TTL_V1);
+    body.set_ttl(CARDANO_BOUNDARY_OBSERVER_TTL);
     body.set_mint(mint);
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
@@ -1371,21 +1367,21 @@ export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
   );
 };
 
-type CardanoRedeemerBoundaryInputV1 = {
+type CardanoRedeemerBoundaryInput = {
   readonly txHash: string;
   readonly outputIndex: number;
   readonly lovelace: bigint;
   readonly kind: "key" | "script";
 };
 
-const compareCardanoRedeemerBoundaryInputsV1 = (
-  left: CardanoRedeemerBoundaryInputV1,
-  right: CardanoRedeemerBoundaryInputV1,
+const compareCardanoRedeemerBoundaryInputs = (
+  left: CardanoRedeemerBoundaryInput,
+  right: CardanoRedeemerBoundaryInput,
 ): number =>
   left.txHash.localeCompare(right.txHash) ||
   left.outputIndex - right.outputIndex;
 
-export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
+export const buildSignedCardanoSpendRedeemersCandidate = async ({
   privateKeyBech32,
   feeFundingInput,
   collateralInput,
@@ -1421,7 +1417,7 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
   readonly priceStep: number;
   readonly collateralPercentage: number;
   readonly costModels: Parameters<typeof createCostModels>[0];
-}): Promise<SignedCardanoCollectionCandidateV1> => {
+}): Promise<SignedCardanoCollectionCandidate> => {
   if (
     !Number.isSafeInteger(requestedRedeemerCount) ||
     requestedRedeemerCount <= 0
@@ -1452,7 +1448,7 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
     0,
     requestedRedeemerCount,
   );
-  const selectedInputs: CardanoRedeemerBoundaryInputV1[] = [
+  const selectedInputs: CardanoRedeemerBoundaryInput[] = [
     {
       txHash: feeFundingInput.txHash,
       outputIndex: feeFundingInput.outputIndex,
@@ -1460,14 +1456,14 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
       kind: "key" as const,
     },
     ...selectedScriptInputs.map(
-      (input): CardanoRedeemerBoundaryInputV1 => ({
+      (input): CardanoRedeemerBoundaryInput => ({
         txHash: input.txHash,
         outputIndex: input.outputIndex,
         lovelace: input.assets.lovelace ?? 0n,
         kind: "script",
       }),
     ),
-  ].sort(compareCardanoRedeemerBoundaryInputsV1);
+  ].sort(compareCardanoRedeemerBoundaryInputs);
   const distinctSpendOutRefs = new Set(
     selectedInputs.map(
       (input) => `${input.txHash}#${input.outputIndex.toString()}`,
@@ -1490,7 +1486,7 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
     0n,
   );
   const collateralLovelace = collateralInput.assets.lovelace ?? 0n;
-  if (collateralLovelace <= CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1) {
+  if (collateralLovelace <= CARDANO_BOUNDARY_TOTAL_COLLATERAL) {
     throw new Error(
       "Cardano spend-redeemer collateral input cannot fund the fixed total collateral",
     );
@@ -1521,7 +1517,7 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
     CML.SubCoin.from_base10_f32(priceStep),
   );
   const cmlInput = (
-    input: Pick<CardanoRedeemerBoundaryInputV1, "txHash" | "outputIndex">,
+    input: Pick<CardanoRedeemerBoundaryInput, "txHash" | "outputIndex">,
   ): CML.TransactionInput =>
     CML.TransactionInput.new(
       CML.TransactionHash.from_hex(input.txHash),
@@ -1532,7 +1528,7 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
     fee: bigint,
   ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
     if (
-      CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1 * 100n <
+      CARDANO_BOUNDARY_TOTAL_COLLATERAL * 100n <
       fee * BigInt(collateralPercentage)
     ) {
       throw new Error(
@@ -1568,14 +1564,14 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
       }),
     );
     body.set_collateral_inputs(collateralInputs);
-    body.set_total_collateral(CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1);
+    body.set_total_collateral(CARDANO_BOUNDARY_TOTAL_COLLATERAL);
     body.set_collateral_return(
       CML.TransactionOutputBuilder.new()
         .with_address(address)
         .next()
         .with_value(
           CML.Value.from_coin(
-            collateralLovelace - CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
+            collateralLovelace - CARDANO_BOUNDARY_TOTAL_COLLATERAL,
           ),
         )
         .build()
@@ -1657,7 +1653,7 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
   );
 };
 
-export const buildCollateralFreeMidgardSchemaParallelCandidateV1 = ({
+export const buildCollateralFreeMidgardSchemaParallelCandidate = ({
   collateralizedCardanoCborHex,
   privateKeyBech32,
 }: {
@@ -1778,23 +1774,23 @@ export const buildCollateralFreeMidgardSchemaParallelCandidateV1 = ({
  * every reveal for one typed field, and then runs the complete canonical
  * transaction chunk sequence through the exact terminal reconstruction fold.
  */
-export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
+export const exerciseMidgardOrderedCollectionBoundary = ({
   signedCardanoCborHex,
   fieldIndex,
 }: {
   readonly signedCardanoCborHex: string;
   readonly fieldIndex: number;
-}): MidgardOrderedCollectionBoundaryMeasurementV1 => {
-  const nativeCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+}): MidgardOrderedCollectionBoundaryMeasurement => {
+  const nativeCanonicalCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
     Buffer.from(signedCardanoCborHex, "hex"),
   );
   const nativeTx =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeCanonicalCbor);
+    decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(nativeCanonicalCbor);
-  const transactionId = computeMidgardNativeTxIdV1(nativeTx);
-  const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
-  const field = deriveMidgardV1TxFieldPreimages(nativeCanonicalCbor).find(
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(nativeCanonicalCbor);
+  const transactionId = computeMidgardNativeTxId(nativeTx);
+  const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
+  const field = deriveMidgardTxFieldPreimages(nativeCanonicalCbor).find(
     (candidate) => candidate.fieldIndex === fieldIndex,
   );
   if (field === undefined) {
@@ -1803,7 +1799,7 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     );
   }
   const completeChunks =
-    countedMachineTransactionChunkStepsV1(nativeCanonicalCbor);
+    countedMachineTransactionChunkSteps(nativeCanonicalCbor);
   const fieldChunks = completeChunks.filter(
     (chunk) => chunk.fieldIndex === fieldIndex,
   );
@@ -1817,11 +1813,11 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
   // compact structure carries. The retired counted chain verified each chunk
   // opening here instead; under §4 a per-item opening has nothing to be checked
   // against, so the single whole-field check is the authentication.
-  const reconstructed = reconstructMidgardTransactionV1({
+  const reconstructed = reconstructMidgardTransaction({
     transactionId,
     transactionCommitment,
     source,
-    fieldPreimages: deriveMidgardV1TxFieldPreimages(nativeCanonicalCbor).map(
+    fieldPreimages: deriveMidgardTxFieldPreimages(nativeCanonicalCbor).map(
       (candidate) => candidate.preimageCbor,
     ),
   });
@@ -1910,7 +1906,7 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     revealStepCount: fieldChunks.length,
     completeFoldStepCount: completeChunks.length,
     // #597: a step's reveal is its §8 carriage, and which carriage is not a
-    // choice — `selectMidgardFieldCarriageTierV1` is §8.4's partition, so a
+    // choice — `selectMidgardFieldCarriageTier` is §8.4's partition, so a
     // preimage of this length has exactly one admissible tier. Measuring the
     // admitted tier is what makes this figure the reveal a prover actually
     // submits: tier 1 carries the preimage in the redeemer, tiers 2–3 carry
@@ -1920,21 +1916,21 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     // The indices below are representative, because this is a *size*
     // measurement and a positional index is a small integer whichever UTxO it
     // names. Since #600 that shape is supplied the same way production supplies
-    // a real one — as the carriage resolver `encodeValidationAuxiliaryWitnessCborV1`
+    // a real one — as the carriage resolver `encodeValidationAuxiliaryWitnessCbor`
     // takes — so this measurement sits on the production seam rather than beside
     // it. Resolving *real* indices needs a concrete transaction (§8.7 addresses
     // carriage by content), which a size measurement has no reason to build.
     maxRevealBytes: Math.max(
       ...fieldChunks.map(
         (chunk) =>
-          encodeValidationAuxiliaryWitnessCborV1(
+          encodeValidationAuxiliaryWitnessCbor(
             {
               kind: "transactionFieldChunk",
               fieldIndex: chunk.collectionProof.fieldIndex,
               itemIndex: chunk.collectionProof.itemIndex,
               fieldPreimage: field.preimageCbor,
             },
-            ({ fieldPreimage }) => admissibleFieldCarriageV1(fieldPreimage),
+            ({ fieldPreimage }) => admissibleFieldCarriage(fieldPreimage),
           ).length,
       ),
     ),
@@ -1953,12 +1949,12 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
       compactBindingWitnessCborHex: compactBindingWitnessCbor.toString("hex"),
       successorPhase,
       successorWitnessCborHex: successorWitnessCbor.toString("hex"),
-      preWorkRootHex: hashMidgardValidationWorkWitnessV1({
+      preWorkRootHex: hashMidgardValidationWorkWitness({
         phase: "canonicalDecode",
         programCounter: 40,
         witnessCbor: workWitnessCbor,
       }).toString("hex"),
-      postWorkRootHex: hashMidgardValidationWorkWitnessV1({
+      postWorkRootHex: hashMidgardValidationWorkWitness({
         phase: successorPhase,
         programCounter: 41,
         witnessCbor: successorWitnessCbor,
@@ -1999,7 +1995,7 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
   };
 };
 
-export const measureSignedCardanoOutputsV1 = (
+export const measureSignedCardanoOutputs = (
   signedCardanoCborHex: string,
 ): {
   readonly outputCount: number;
@@ -2012,7 +2008,7 @@ export const measureSignedCardanoOutputsV1 = (
   };
 };
 
-export const measureSignedCardanoInlineDatumV1 = (
+export const measureSignedCardanoInlineDatum = (
   signedCardanoCborHex: string,
 ): {
   readonly outputCount: number;
@@ -2047,7 +2043,7 @@ export const measureSignedCardanoInlineDatumV1 = (
   };
 };
 
-export const measureSignedCardanoNestedDatumV1 = (
+export const measureSignedCardanoNestedDatum = (
   signedCardanoCborHex: string,
 ): {
   readonly outputCount: number;
@@ -2091,7 +2087,7 @@ export const measureSignedCardanoNestedDatumV1 = (
   };
 };
 
-export const measureSignedCardanoNestedValueV1 = (
+export const measureSignedCardanoNestedValue = (
   signedCardanoCborHex: string,
 ): {
   readonly outputCount: number;
@@ -2171,7 +2167,7 @@ export const measureSignedCardanoNestedValueV1 = (
   };
 };
 
-export const measureSignedCardanoSignersV1 = (
+export const measureSignedCardanoSigners = (
   signedCardanoCborHex: string,
 ): {
   readonly requiredSignerCount: number;
@@ -2186,7 +2182,7 @@ export const measureSignedCardanoSignersV1 = (
   };
 };
 
-export const measureSignedCardanoSpendInputsV1 = (
+export const measureSignedCardanoSpendInputs = (
   signedCardanoCborHex: string,
 ): {
   readonly inputCount: number;
@@ -2201,7 +2197,7 @@ export const measureSignedCardanoSpendInputsV1 = (
   };
 };
 
-export const measureSignedCardanoReferenceInputsV1 = (
+export const measureSignedCardanoReferenceInputs = (
   signedCardanoCborHex: string,
 ): {
   readonly inputCount: number;
@@ -2218,7 +2214,7 @@ export const measureSignedCardanoReferenceInputsV1 = (
   };
 };
 
-export const measureSignedCardanoObserverNativeScriptsV1 = (
+export const measureSignedCardanoObserverNativeScripts = (
   signedCardanoCborHex: string,
 ): {
   readonly inputCount: number;
@@ -2292,7 +2288,7 @@ export const measureSignedCardanoObserverNativeScriptsV1 = (
   };
 };
 
-export const measureSignedCardanoMintNativePoliciesV1 = (
+export const measureSignedCardanoMintNativePolicies = (
   signedCardanoCborHex: string,
 ): {
   readonly inputCount: number;
@@ -2419,7 +2415,7 @@ export const measureSignedCardanoMintNativePoliciesV1 = (
   };
 };
 
-export type MidgardCompleteItemCarriageFitV1 = {
+export type MidgardCompleteItemCarriageFit = {
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly itemBytes: number;
@@ -2448,10 +2444,10 @@ export type MidgardCompleteItemCarriageFitV1 = {
  * chunk *count*, which is fixed by the preimage length, and not on which UTxOs
  * the indices name.
  */
-const admissibleFieldCarriageV1 = (
+const admissibleFieldCarriage = (
   preimageCbor: Buffer,
-): MidgardFieldCarriageV1 => {
-  const tier = selectMidgardFieldCarriageTierV1(preimageCbor.length);
+): MidgardFieldCarriage => {
+  const tier = selectMidgardFieldCarriageTier(preimageCbor.length);
   if (tier === "Inline") {
     return { carriage: "Inline", preimage: Buffer.from(preimageCbor) };
   }
@@ -2461,9 +2457,9 @@ const admissibleFieldCarriageV1 = (
   return {
     carriage: "Certified",
     certRefInputIndex: 0,
-    chunkRefInputIndices: splitMidgardFieldPreimageIntoChunksV1(
-      preimageCbor,
-    ).map((_chunk, index) => index + 1),
+    chunkRefInputIndices: splitMidgardFieldPreimageIntoChunks(preimageCbor).map(
+      (_chunk, index) => index + 1,
+    ),
   };
 };
 
@@ -2482,10 +2478,10 @@ const admissibleFieldCarriageV1 = (
  * lower bound on the publication transaction rather than an invented shape.
  *
  * Direct carriage is decided by the production selector
- * `selectValidationCompleteItemCarriageV1`, whose bound is the applied
- * deployed-validator measurement pinned in `MIDGARD_V1_ENVELOPE_MEASUREMENTS`.
+ * `selectValidationCompleteItemCarriage`, whose bound is the applied
+ * deployed-validator measurement pinned in `MIDGARD_ENVELOPE_MEASUREMENTS`.
  */
-export const measureMidgardCompleteItemCarriageFitV1 = ({
+export const measureMidgardCompleteItemCarriageFit = ({
   fieldIndex,
   itemIndex,
   itemCbor,
@@ -2493,19 +2489,19 @@ export const measureMidgardCompleteItemCarriageFitV1 = ({
   readonly fieldIndex: number;
   readonly itemIndex: number;
   readonly itemCbor: Buffer;
-}): MidgardCompleteItemCarriageFitV1 => {
+}): MidgardCompleteItemCarriageFit => {
   const maxL1TransactionBytes =
-    MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+    MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
   const maxSinglePublicationCompleteItemBytes =
-    MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
+    MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes;
   const maxReliableDirectCompleteItemBytes =
-    MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
-  const bounded = buildMidgardBoundedItemV1({
+    MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+  const bounded = buildMidgardBoundedItem({
     fieldIndex,
     itemIndex,
     bytes: itemCbor,
   });
-  const commitment = commitMidgardBoundedItemV1({
+  const commitment = commitMidgardBoundedItem({
     fieldIndex,
     itemIndex,
     totalLength: itemCbor.length,
@@ -2520,10 +2516,10 @@ export const measureMidgardCompleteItemCarriageFitV1 = ({
     itemCbor.length <= maxReliableDirectCompleteItemBytes;
   const fitsItemPublicationBound =
     itemCbor.length <= maxSinglePublicationCompleteItemBytes;
-  const publication = deriveValidationProofItemPublicationV1({
+  const publication = deriveValidationProofItemPublication({
     transactionId: "44".repeat(32),
     transactionCommitment: "55".repeat(32),
-    fieldPreimage: encodeMidgardFieldPreimageV1([itemCbor]).toString("hex"),
+    fieldPreimage: encodeMidgardFieldPreimage([itemCbor]).toString("hex"),
   });
   const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 4));
   const address = CML.Address.from_raw_bytes(
@@ -2585,9 +2581,9 @@ export const measureMidgardCompleteItemCarriageFitV1 = ({
     itemBytes: itemCbor.length,
     commitmentHex: commitment.toString("hex"),
     carriage: fitsItemPublicationBound
-      ? selectValidationCompleteItemCarriageV1(itemCbor.length)
+      ? selectValidationCompleteItemCarriage(itemCbor.length)
       : "reference",
-    boundedFallbackChunkCount: midgardBoundedItemChunkCountV1(itemCbor.length),
+    boundedFallbackChunkCount: midgardBoundedItemChunkCount(itemCbor.length),
     maxReliableDirectCompleteItemBytes,
     maxSinglePublicationCompleteItemBytes,
     maxL1TransactionBytes,
@@ -2600,7 +2596,7 @@ export const measureMidgardCompleteItemCarriageFitV1 = ({
   };
 };
 
-export const measureCollateralizedPlutusFeasibilityCandidateV1 = (
+export const measureCollateralizedPlutusFeasibilityCandidate = (
   signedCardanoCborHex: string,
 ): {
   readonly signedBytes: number;

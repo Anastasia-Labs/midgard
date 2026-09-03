@@ -1,6 +1,6 @@
 import {
-  decodeMidgardRedeemerWitnessFieldPreimageV1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+  decodeMidgardRedeemerWitnessFieldPreimage,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
@@ -73,10 +73,10 @@ const decodeRedeemerDataCborHex = (
 export const decodeMidgardRedeemers = (
   preimageCbor: Uint8Array,
 ): readonly DecodedMidgardRedeemer[] =>
-  decodeMidgardRedeemerWitnessFieldPreimageV1(preimageCbor).map(
+  decodeMidgardRedeemerWitnessFieldPreimage(preimageCbor).map(
     (witness, index) => {
       const fieldName = `redeemers[${index}]`;
-      const tag = MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose];
+      const tag = MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose];
       ensureSupportedTag(tag, `${fieldName}.tag`);
       return {
         tag,

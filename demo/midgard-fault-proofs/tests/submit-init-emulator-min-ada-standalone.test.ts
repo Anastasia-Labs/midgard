@@ -1,6 +1,6 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
-import { MIDGARD_COINS_PER_UTXO_BYTE_V1 } from "@al-ft/midgard-validation";
+import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -17,12 +17,12 @@ import {
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  buildMinAdaPostUtxoEmulatorFixtureV1,
-  buildMinAdaTxEmulatorFixtureV1,
-  makeMinAdaEmulatorHarnessV1,
-  publishFinalFamilyReferenceScriptsV1,
+  buildMinAdaPostUtxoEmulatorFixture,
+  buildMinAdaTxEmulatorFixture,
+  makeMinAdaEmulatorHarness,
+  publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator-v1.js";
-import { setupFraudulentBlockV1 } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -32,9 +32,9 @@ import {
 
 describe("min-ada standalone emulator lifecycle", () => {
   it("proves the transaction polarity, cancels and resumes, removes the header, and retains the permanent proof", async () => {
-    const harness = await makeMinAdaEmulatorHarnessV1();
+    const harness = await makeMinAdaEmulatorHarness();
     let dispatcherPublicationBytes: number | undefined;
-    const refs = await publishFinalFamilyReferenceScriptsV1({
+    const refs = await publishFinalFamilyReferenceScripts({
       lucid: harness.proverLucid,
       family: harness.family,
       label: "min-ada",
@@ -48,8 +48,8 @@ describe("min-ada standalone emulator lifecycle", () => {
     });
     expect(dispatcherPublicationBytes).toBeGreaterThan(0);
     expect(dispatcherPublicationBytes).toBeLessThanOrEqual(16_384);
-    const fixture = await buildMinAdaTxEmulatorFixtureV1();
-    const setup = await setupFraudulentBlockV1({
+    const fixture = await buildMinAdaTxEmulatorFixture();
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -123,7 +123,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step02.nextThreadOutRef,
-      coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE_V1,
+      coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE,
       referenceScriptUtxo: refs[2],
     });
     const proof = await submitMinAdaStep05({
@@ -184,17 +184,17 @@ describe("min-ada standalone emulator lifecycle", () => {
   }, 300_000);
 
   it("proves the post-UTxO polarity and removes the header without consuming permanent evidence", async () => {
-    const harness = await makeMinAdaEmulatorHarnessV1();
-    const refs = await publishFinalFamilyReferenceScriptsV1({
+    const harness = await makeMinAdaEmulatorHarness();
+    const refs = await publishFinalFamilyReferenceScripts({
       lucid: harness.proverLucid,
       family: harness.family,
       label: "min-ada",
       enforceL1Envelope: true,
     });
-    const fixture = await buildMinAdaPostUtxoEmulatorFixtureV1({
+    const fixture = await buildMinAdaPostUtxoEmulatorFixture({
       emptyPrevious: true,
     });
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -258,7 +258,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       categoryId: harness.category.categoryId,
       signer: harness.proverSigner,
       threadOutRef: step02.nextThreadOutRef,
-      coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE_V1,
+      coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE,
       referenceScriptUtxo: refs[2],
     });
     const step04 = await submitMinAdaUtxoStep04({

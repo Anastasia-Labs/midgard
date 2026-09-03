@@ -32,8 +32,8 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -43,21 +43,21 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
-import { planMissingSignatureRequiredSignersOpeningV1 } from "./evidence-v1.js";
+import type { MissingSignatureContracts } from "./contracts-v1.js";
+import { planMissingSignatureRequiredSignersOpening } from "./evidence-v1.js";
 import {
-  missingSignatureStepLabelV1,
+  missingSignatureStepLabel,
   missingSignatureSubmitError,
-  requireMissingSignatureReferenceScriptV1,
-  requireMissingSignatureStepStateV1,
-  requireMissingSignatureThreadUtxoV1,
+  requireMissingSignatureReferenceScript,
+  requireMissingSignatureStepState,
+  requireMissingSignatureThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = missingSignatureStepLabelV1(1);
+const STEP_LABEL = missingSignatureStepLabel(1);
 
 export type SubmitMissingSignatureStep02Result = {
   readonly txHash: string;
@@ -92,7 +92,7 @@ export const submitMissingSignatureStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingSignatureContractsV1;
+  readonly contracts: MissingSignatureContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -107,26 +107,22 @@ export const submitMissingSignatureStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** §2.3: the published step-02 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep02Result> => {
-  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
-    {
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 1,
-      threadOutRef,
-    },
-  );
-  const state: MissingSignatureStep02State = requireMissingSignatureStepStateV1(
-    {
-      threadUtxo,
-      signer,
-      schema: MissingSignatureStep02Datum,
-      stepIndex: 1,
-    },
-  );
+  const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 1,
+    threadOutRef,
+  });
+  const state: MissingSignatureStep02State = requireMissingSignatureStepState({
+    threadUtxo,
+    signer,
+    schema: MissingSignatureStep02Datum,
+    stepIndex: 1,
+  });
 
   // The validator's `field_item_at` aborts outside the domain; refuse the
   // same bound before paying for the attempt.
@@ -139,7 +135,7 @@ export const submitMissingSignatureStep02 = async ({
   }
 
   // The §8.8 door: plan, publish whatever the tier demands, open.
-  const planned = planMissingSignatureRequiredSignersOpeningV1({
+  const planned = planMissingSignatureRequiredSignersOpening({
     anchorTxId: state.verified_tx_id,
     nativeTxCompactCbor,
     requiredSignerHashes,
@@ -147,7 +143,7 @@ export const submitMissingSignatureStep02 = async ({
     publish: publishCarriage,
   });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
+  const carriageUtxos = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
@@ -160,13 +156,13 @@ export const submitMissingSignatureStep02 = async ({
   ];
   const referenceInputs = [
     ...fieldReferenceInputs,
-    requireMissingSignatureReferenceScriptV1({
+    requireMissingSignatureReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[1].spendingScriptHash,
       stepIndex: 1,
     }),
   ];
-  const requiredSignersOpening = faultProofFieldOpeningV1({
+  const requiredSignersOpening = faultProofFieldOpening({
     planned,
     // §8.7 indices are into the complete reference-input set, including the
     // step's own reference script; resolving against carriage alone is only
@@ -256,10 +252,10 @@ export const submitMissingSignatureStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof missing-signature step-02",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[1].spendingScript,

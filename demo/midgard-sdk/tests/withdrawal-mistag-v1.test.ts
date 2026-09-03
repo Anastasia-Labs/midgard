@@ -1,15 +1,15 @@
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1 } from "../src/fraud-proof/catalogue.js";
+import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID } from "../src/fraud-proof/catalogue.js";
 import {
-  withdrawalClaimsValidV1,
-  withdrawalMistagDirectionV1,
-  withdrawalMistagExactPayoutOutputBytesV1,
-  withdrawalMistagMinimumLovelaceV1,
-  withdrawalMistagPayableV1,
+  withdrawalClaimsValid,
+  withdrawalMistagDirection,
+  withdrawalMistagExactPayoutOutputBytes,
+  withdrawalMistagMinimumLovelace,
+  withdrawalMistagPayable,
   WithdrawalMistagStep04Datum,
-  withdrawalMistagThreadTokenAssetNameV1,
+  withdrawalMistagThreadTokenAssetName,
 } from "../src/fraud-proof/withdrawal-mistag-v1.js";
 import type { WithdrawalBody, WithdrawalInfo } from "../src/ledger-state.js";
 
@@ -38,21 +38,21 @@ const info = (
 
 describe("withdrawal-mistag V1", () => {
   it("pins the production category and token name", () => {
-    expect(WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1).toBe("00000014");
-    expect(withdrawalMistagThreadTokenAssetNameV1(HEADER_HASH)).toBe(
+    expect(WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID).toBe("00000014");
+    expect(withdrawalMistagThreadTokenAssetName(HEADER_HASH)).toBe(
       `00000014${HEADER_HASH}`,
     );
   });
 
   it("matches the Aiken no-datum, enterprise-address output-size vector", () => {
     expect(
-      withdrawalMistagExactPayoutOutputBytesV1({
+      withdrawalMistagExactPayoutOutputBytes({
         body: body(1_000_000n),
         cardanoValueSize: 5n,
       }),
     ).toBe(39n);
     expect(
-      withdrawalMistagMinimumLovelaceV1({
+      withdrawalMistagMinimumLovelace({
         body: body(1_000_000n),
         cardanoValueSize: 5n,
       }),
@@ -62,7 +62,7 @@ describe("withdrawal-mistag V1", () => {
   it("matches the Aiken stake, pointer, datum-hash and inline-datum vectors", () => {
     const base = body(1_000_000n);
     expect(
-      withdrawalMistagExactPayoutOutputBytesV1({
+      withdrawalMistagExactPayoutOutputBytes({
         body: {
           ...base,
           l1_address: {
@@ -77,7 +77,7 @@ describe("withdrawal-mistag V1", () => {
       }),
     ).toBe(104n);
     expect(
-      withdrawalMistagExactPayoutOutputBytesV1({
+      withdrawalMistagExactPayoutOutputBytes({
         body: {
           ...base,
           l1_address: {
@@ -97,7 +97,7 @@ describe("withdrawal-mistag V1", () => {
       }),
     ).toBe(45n);
     expect(
-      withdrawalMistagExactPayoutOutputBytesV1({
+      withdrawalMistagExactPayoutOutputBytes({
         body: {
           ...base,
           l1_datum: { InlineDatum: { data: 42n } },
@@ -106,7 +106,7 @@ describe("withdrawal-mistag V1", () => {
       }),
     ).toBe(47n);
     expect(
-      withdrawalMistagExactPayoutOutputBytesV1({
+      withdrawalMistagExactPayoutOutputBytes({
         body: {
           ...base,
           l1_datum: {
@@ -120,25 +120,25 @@ describe("withdrawal-mistag V1", () => {
 
   it("accepts exact minimum and refuses one lovelace below", () => {
     expect(
-      withdrawalMistagPayableV1({ body: body(857_690n), cardanoValueSize: 5n }),
+      withdrawalMistagPayable({ body: body(857_690n), cardanoValueSize: 5n }),
     ).toBe(true);
     expect(
-      withdrawalMistagPayableV1({ body: body(857_689n), cardanoValueSize: 5n }),
+      withdrawalMistagPayable({ body: body(857_689n), cardanoValueSize: 5n }),
     ).toBe(false);
   });
 
   it("recognises both consensus-relevant mistag directions", () => {
     expect(
-      withdrawalMistagDirectionV1({ claimedValid: false, actualValid: true }),
+      withdrawalMistagDirection({ claimedValid: false, actualValid: true }),
     ).toBe("valid-marked-invalid");
     expect(
-      withdrawalMistagDirectionV1({ claimedValid: true, actualValid: false }),
+      withdrawalMistagDirection({ claimedValid: true, actualValid: false }),
     ).toBe("invalid-marked-valid");
     expect(() =>
-      withdrawalMistagDirectionV1({ claimedValid: true, actualValid: true }),
+      withdrawalMistagDirection({ claimedValid: true, actualValid: true }),
     ).toThrow(/honestly tagged/u);
-    expect(withdrawalClaimsValidV1(info(1n, "WithdrawalIsValid"))).toBe(true);
-    expect(withdrawalClaimsValidV1(info(1n, "UnpayableWithdrawalValue"))).toBe(
+    expect(withdrawalClaimsValid(info(1n, "WithdrawalIsValid"))).toBe(true);
+    expect(withdrawalClaimsValid(info(1n, "UnpayableWithdrawalValue"))).toBe(
       false,
     );
   });

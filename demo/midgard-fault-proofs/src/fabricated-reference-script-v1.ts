@@ -2,7 +2,7 @@ import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { outRefLabel, requireMatchingScriptHash } from "./runtime.js";
 
-export const requireFabricatedReferenceScriptV1 = ({
+export const requireFabricatedReferenceScript = ({
   utxo,
   expectedScriptHash,
   categoryLabel,

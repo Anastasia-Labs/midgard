@@ -1,35 +1,35 @@
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardAddressWitnessItemV1,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
+  computeMidgardNativeTxId,
+  decodeMidgardAddressWitnessItem,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScript,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
-  encodeMidgardNativeTxCompactV1,
+  encodeMidgardNativeTxCompact,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  MIDGARD_CONSENSUS_PROFILE,
   protectMidgardAddress,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   EventKeySchema,
-  forcedVerdictSubjectV1,
-  missingSignatureVkeyHashV1,
+  forcedVerdictSubject,
+  missingSignatureVkeyHash,
   Proof,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerOutputMaterialV1,
+  buildCanonicalMidgardLedgerOutputMaterial,
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
 } from "@al-ft/midgard-validation";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
@@ -38,7 +38,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeMintPreimageCbor,
   makeNativeTx,
@@ -47,37 +47,37 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { reconstructExecutionNativeScriptPurposesV1 } from "../src/execution-native-script-invalid/canonical-reconstruction-v1.js";
-import { applyExecutionNativeScriptInvalidScriptsV1 } from "../src/execution-native-script-invalid/contracts-v1.js";
-import { prepareExecutionNativeScriptInvalidEvidenceV1 } from "../src/execution-native-script-invalid/family-v1.js";
+import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction-v1.js";
+import { applyExecutionNativeScriptInvalidScripts } from "../src/execution-native-script-invalid/contracts-v1.js";
+import { prepareExecutionNativeScriptInvalidEvidence } from "../src/execution-native-script-invalid/family-v1.js";
 import {
-  submitExecutionNativeScriptInvalidAcceptedFinishInlineV1,
-  submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1,
-  submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1,
-  submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1,
-  submitExecutionNativeScriptInvalidAcceptedInitV1,
-  submitExecutionNativeScriptInvalidAcceptedInlineSourceV1,
-  submitExecutionNativeScriptInvalidAcceptedMintV1,
-  submitExecutionNativeScriptInvalidAcceptedObserverV1,
-  submitExecutionNativeScriptInvalidAcceptedReceiveV1,
-  submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1,
-  submitExecutionNativeScriptInvalidAcceptedSpendV1,
+  submitExecutionNativeScriptInvalidAcceptedFinishInline,
+  submitExecutionNativeScriptInvalidAcceptedFinishPurpose,
+  submitExecutionNativeScriptInvalidAcceptedFinishReceivePass,
+  submitExecutionNativeScriptInvalidAcceptedFinishSpends,
+  submitExecutionNativeScriptInvalidAcceptedInit,
+  submitExecutionNativeScriptInvalidAcceptedInlineSource,
+  submitExecutionNativeScriptInvalidAcceptedMint,
+  submitExecutionNativeScriptInvalidAcceptedObserver,
+  submitExecutionNativeScriptInvalidAcceptedReceive,
+  submitExecutionNativeScriptInvalidAcceptedReferenceSource,
+  submitExecutionNativeScriptInvalidAcceptedSpend,
 } from "../src/execution-native-script-invalid/submit-accepted-reconstruction-v1.js";
 import {
-  submitExecutionNativeScriptInvalidAcceptedCancelV1,
+  submitExecutionNativeScriptInvalidAcceptedCancel,
   submitExecutionNativeScriptInvalidCancel,
 } from "../src/execution-native-script-invalid/submit-cancel-v1.js";
-import { submitExecutionNativeScriptInvalidInitV1 } from "../src/execution-native-script-invalid/submit-init-v1.js";
+import { submitExecutionNativeScriptInvalidInit } from "../src/execution-native-script-invalid/submit-init-v1.js";
 import {
-  submitExecutionNativeScriptInvalidStep01AcceptedV1,
-  submitExecutionNativeScriptInvalidStep01ForcedV1,
+  submitExecutionNativeScriptInvalidStep01Accepted,
+  submitExecutionNativeScriptInvalidStep01Forced,
 } from "../src/execution-native-script-invalid/submit-step-01-v1.js";
-import { submitExecutionNativeScriptInvalidStep02V1 } from "../src/execution-native-script-invalid/submit-step-02-v1.js";
+import { submitExecutionNativeScriptInvalidStep02 } from "../src/execution-native-script-invalid/submit-step-02-v1.js";
 import { submitExecutionNativeScriptInvalidStep03 } from "../src/execution-native-script-invalid/submit-step-03-v1.js";
 import { submitExecutionNativeScriptInvalidStep04StartSignerScan } from "../src/execution-native-script-invalid/submit-step-04-v1.js";
 import { submitExecutionNativeScriptInvalidStep05 } from "../src/execution-native-script-invalid/submit-step-05-v1.js";
 import { submitExecutionNativeScriptInvalidStep06 } from "../src/execution-native-script-invalid/submit-step-06-v1.js";
-import { buildExecutionSourceMachineAuthenticationV1 } from "../src/execution-source-script-decoding/machine-authentication-v1.js";
+import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
@@ -85,28 +85,28 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
-  submitSecondHeaderTxV1,
+  submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("executionNativeScriptInvalid genuine machine fixture", () => {
   it("reconstructs the authenticated nativeExecutionScan state and proof", async () => {
     const spent = outRefFromByte(0x71);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const script = nativeScriptWitness({ type: "all", scripts: [] });
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("31", "hex");
     const output = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
@@ -123,7 +123,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -136,7 +136,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
     );
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: encodeCbor([2n, transaction.txId]),
         sourceKind: "normal",
         blockEndTimeMs: 1_750_000_000_000,
@@ -169,7 +169,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
     expect(trace.tree.proofs[stateIndex]?.stateHash).toEqual(
       trace.tree.proofs[stateIndex]?.stateHash,
     );
-    const authenticated = await buildExecutionSourceMachineAuthenticationV1({
+    const authenticated = await buildExecutionSourceMachineAuthentication({
       trace,
       eventKey: {
         L2TransactionEventKey: { tx_id: transaction.txId.toString("hex") },
@@ -266,7 +266,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
   ])(
     "runs $direction/$sourceOrigin/$acceptedPurpose lifecycle (cancel=$cancelAt)",
     async ({ direction, sourceOrigin, acceptedPurpose = "mint", cancelAt }) => {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
       });
       const addressData = await Effect.runPromise(
@@ -276,7 +276,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           Effect.map((address) => Data.from(Data.to(address, AddressData))),
         ),
       );
-      const applied = applyExecutionNativeScriptInvalidScriptsV1({
+      const applied = applyExecutionNativeScriptInvalidScripts({
         blueprint: harness.realBlueprint,
         network,
         computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -327,7 +327,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         Buffer.from(hashScriptWitness(script), "hex"),
       ]);
       const spentOutput = makeOutput(
-        FUNDED_OUTPUT_LOVELACE_V1,
+        FUNDED_OUTPUT_LOVELACE,
         direction === "accepted" && acceptedPurpose === "spend"
           ? scriptAddress
           : undefined,
@@ -342,7 +342,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       const policyId = Buffer.from(hashScriptWitness(script), "hex");
       const assetName = Buffer.from("31", "hex");
       const output = makeOutput(
-        FUNDED_OUTPUT_LOVELACE_V1,
+        FUNDED_OUTPUT_LOVELACE,
         direction === "accepted" && acceptedPurpose === "receive"
           ? protectMidgardAddress(scriptAddress)
           : undefined,
@@ -373,21 +373,21 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               )
             : undefined,
       });
-      const signedBodyHash = computeMidgardNativeTxIdV1({
+      const signedBodyHash = computeMidgardNativeTxId({
         version: transaction.tx.version,
         transactionBody: transaction.tx.compact.transactionBody,
         transactionWitnessSetHash: Buffer.alloc(32),
         validity: transaction.tx.validity,
       });
-      const initialAddressWitnessItems = decodeMidgardFieldPreimageV1(
+      const initialAddressWitnessItems = decodeMidgardFieldPreimage(
         transaction.tx.witnessSet.addrTxWitsPreimageCbor,
       );
       const addressWitnessItems = [
         ...initialAddressWitnessItems.map((item) => ({
           signerHash: Buffer.from(
-            missingSignatureVkeyHashV1(
+            missingSignatureVkeyHash(
               Buffer.from(
-                decodeMidgardAddressWitnessItemV1(item).verificationKey,
+                decodeMidgardAddressWitnessItem(item).verificationKey,
               ).toString("hex"),
             ),
             "hex",
@@ -396,7 +396,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         })),
         ...witnessKeys.map((key) => ({
           signerHash: Buffer.from(
-            missingSignatureVkeyHashV1(
+            missingSignatureVkeyHash(
               Buffer.from(key.to_public().to_raw_bytes()).toString("hex"),
             ),
             "hex",
@@ -420,7 +420,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           addrTxWitsPreimageCbor: encodeCbor(addressWitnessItems),
         },
       });
-      const compactWitnessSet = deriveMidgardNativeTxWitnessSetCompactV1(
+      const compactWitnessSet = deriveMidgardNativeTxWitnessSetCompact(
         transaction.tx.witnessSet,
       );
       const witnessSet = {
@@ -436,16 +436,16 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       };
       const nativeTx =
         direction === "forced"
-          ? decodeMidgardNativeTxFullV1FromCanonicalCbor(transaction.txCbor)
+          ? decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor)
           : transaction.tx;
-      const nativeTxCompactCbor = encodeMidgardNativeTxCompactV1(
+      const nativeTxCompactCbor = encodeMidgardNativeTxCompact(
         nativeTx.compact,
       ).toString("hex");
       const allOperations = [
         ...(direction === "forced" || acceptedPurpose === "spend"
           ? [{ type: "delete" as const, key: spent }]
           : []),
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(transaction.txId),
           outputCbor: output,
         }),
@@ -475,7 +475,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         direction === "forced"
           ? await Effect.runPromise(
               buildDeterministicValidationMachineTrace({
-                consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
                 eventKeyCbor: Buffer.from(
                   Data.to(eventKey as never, EventKeySchema),
                   "hex",
@@ -506,7 +506,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           : undefined;
       const authentication =
         trace !== undefined
-          ? await buildExecutionSourceMachineAuthenticationV1({
+          ? await buildExecutionSourceMachineAuthentication({
               trace,
               eventKey,
               claimedVerdict: "rejected",
@@ -523,7 +523,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       const reason = {
         ExecutionNativeScriptFalse: { execution_index: 0n },
       } as const;
-      const block = await buildDecodingBlockFixtureV1({
+      const block = await buildDecodingBlockFixture({
         operatorVkey,
         startTime,
         priorLedgerRoot: mutations[0]!.preRoot.toString("hex"),
@@ -575,7 +575,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               startTime: firstHeader.endTime,
               endTime: firstHeader.endTime + 120_000n,
             };
-            const second = await submitSecondHeaderTxV1({
+            const second = await submitSecondHeaderTx({
               lucid: harness.funderLucid,
               contracts: harness.contracts,
               header,
@@ -636,12 +636,12 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       };
       const subject =
         direction === "forced"
-          ? forcedVerdictSubjectV1({
+          ? forcedVerdictSubject({
               transactionId: block.nativeTxId,
               sourceKey: orderKey,
               rejectionReason: reason,
             })
-          : acceptedVerdictSubjectV1(block.nativeTxId);
+          : acceptedVerdictSubject(block.nativeTxId);
       const forcedAuxiliary = trace?.witnesses.find(
         ({ phase, auxiliary }) =>
           phase === "nativeScripts" &&
@@ -649,7 +649,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       )?.auxiliary;
       const canonicalPurpose =
         direction === "accepted"
-          ? reconstructExecutionNativeScriptPurposesV1({
+          ? reconstructExecutionNativeScriptPurposes({
               canonicalTransactionCbor: transaction.txCbor,
               resolvedOutputsByOutRef: new Map([
                 ...(acceptedPurpose === "spend"
@@ -672,14 +672,14 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         if (canonicalPurpose !== undefined) {
           const source = canonicalPurpose.source;
           return source.originKind === 0
-            ? hashMidgardInlineScriptSourceLeafV1({
+            ? hashMidgardInlineScriptSourceLeaf({
                 sourceIndex: BigInt(source.sourceIndex),
                 scriptLanguageTag: 0,
                 scriptHash: Buffer.from(source.scriptHash, "hex"),
                 scriptTotalLength: source.totalLength,
                 itemCommitment: Buffer.from(source.itemCommitment, "hex"),
               })
-            : hashMidgardReferenceScriptSourceLeafV1({
+            : hashMidgardReferenceScriptSourceLeaf({
                 sourceKey: Buffer.from(source.sourceKey, "hex"),
                 scriptLanguageTag: 0,
                 scriptHash: Buffer.from(source.scriptHash, "hex"),
@@ -690,14 +690,14 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         if (forcedAuxiliary?.kind !== "nativeExecutionDescriptor")
           throw new Error("missing forced native descriptor");
         return forcedAuxiliary.source.originKind === "inline"
-          ? hashMidgardInlineScriptSourceLeafV1({
+          ? hashMidgardInlineScriptSourceLeaf({
               sourceIndex: BigInt(forcedAuxiliary.source.sourceIndex),
               scriptLanguageTag: 0,
               scriptHash: forcedAuxiliary.purpose.scriptHash,
               scriptTotalLength: forcedAuxiliary.source.scriptTotalLength,
               itemCommitment: forcedAuxiliary.source.scriptItemCommitment,
             })
-          : hashMidgardReferenceScriptSourceLeafV1({
+          : hashMidgardReferenceScriptSourceLeaf({
               sourceKey: forcedAuxiliary.source.sourceKey,
               scriptLanguageTag: 0,
               scriptHash: forcedAuxiliary.purpose.scriptHash,
@@ -705,7 +705,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               itemCommitment: forcedAuxiliary.source.scriptItemCommitment,
             });
       })();
-      const evidence = prepareExecutionNativeScriptInvalidEvidenceV1({
+      const evidence = prepareExecutionNativeScriptInvalidEvidence({
         finding: { subject, executionIndex: 0 },
         transactionIdHex: block.nativeTxId,
         sourceDescriptorHashHex: sourceLeaf.toString("hex"),
@@ -720,7 +720,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
       const init = await measured(
         "init",
         async () =>
-          await submitExecutionNativeScriptInvalidInitV1({
+          await submitExecutionNativeScriptInvalidInit({
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -749,7 +749,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           witnessReferenceScripts: harness.witnessReferenceScripts,
         });
         expect(result.txHash).toMatch(/^[0-9a-f]{64}$/u);
-        const restarted = await submitExecutionNativeScriptInvalidInitV1({
+        const restarted = await submitExecutionNativeScriptInvalidInit({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -772,19 +772,17 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         threadOutRef: string,
         stepIndex: number,
       ) => {
-        const result = await submitExecutionNativeScriptInvalidAcceptedCancelV1(
-          {
-            lucid: harness.proverLucid,
-            contracts,
-            categoryId: category.categoryId,
-            signer: harness.proverSigner,
-            threadOutRef,
-            referenceScriptUtxo: acceptedReferences[stepIndex]!,
-            witnessReferenceScripts: harness.witnessReferenceScripts,
-          },
-        );
+        const result = await submitExecutionNativeScriptInvalidAcceptedCancel({
+          lucid: harness.proverLucid,
+          contracts,
+          categoryId: category.categoryId,
+          signer: harness.proverSigner,
+          threadOutRef,
+          referenceScriptUtxo: acceptedReferences[stepIndex]!,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+        });
         expect(result.txHash).toMatch(/^[0-9a-f]{64}$/u);
-        const restarted = await submitExecutionNativeScriptInvalidInitV1({
+        const restarted = await submitExecutionNativeScriptInvalidInit({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -811,7 +809,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         if (direction === "accepted") {
           if (block.txInclusion === null)
             throw new Error("accepted malformed fixture omitted inclusion");
-          return await submitExecutionNativeScriptInvalidStep01AcceptedV1({
+          return await submitExecutionNativeScriptInvalidStep01Accepted({
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -831,7 +829,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           reconstruction: block.reconstruction,
           eventKey,
         });
-        return await submitExecutionNativeScriptInvalidStep01ForcedV1({
+        return await submitExecutionNativeScriptInvalidStep01Forced({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -856,7 +854,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         const acceptedInit = await measured(
           "accepted-reconstruction-init",
           async () =>
-            await submitExecutionNativeScriptInvalidAcceptedInitV1({
+            await submitExecutionNativeScriptInvalidAcceptedInit({
               lucid: harness.proverLucid,
               contracts,
               categoryId: category.categoryId,
@@ -871,8 +869,8 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         }
         let acceptedThreadOutRef = acceptedInit.nextThreadOutRef;
         if (acceptedPurpose === "spend") {
-          const material = buildCanonicalMidgardLedgerOutputMaterialV1({
-            outputIndex: decodeMidgardSpendInputItemV1(spent).outputIndex,
+          const material = buildCanonicalMidgardLedgerOutputMaterial({
+            outputIndex: decodeMidgardSpendInputItem(spent).outputIndex,
             outputCbor: spentOutput,
           });
           const store = new Store(undefined);
@@ -880,19 +878,19 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           const trie = new Trie(store);
           await trie.insert(spent, material.descriptorCbor);
           if (sourceOrigin === "reference") {
-            const referenceMaterial =
-              buildCanonicalMidgardLedgerOutputMaterialV1({
-                outputIndex:
-                  decodeMidgardSpendInputItemV1(reference).outputIndex,
+            const referenceMaterial = buildCanonicalMidgardLedgerOutputMaterial(
+              {
+                outputIndex: decodeMidgardSpendInputItem(reference).outputIndex,
                 outputCbor: referenceOutput,
-              });
+              },
+            );
             await trie.insert(reference, referenceMaterial.descriptorCbor);
           }
           const proof = await trie.prove(spent);
           const selected = await measured(
             "accepted-spend-prefix",
             async () =>
-              await submitExecutionNativeScriptInvalidAcceptedSpendV1({
+              await submitExecutionNativeScriptInvalidAcceptedSpend({
                 lucid: harness.proverLucid,
                 network,
                 contracts,
@@ -919,7 +917,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           const acceptedSpend = await measured(
             "accepted-spend-finish",
             async () =>
-              await submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1({
+              await submitExecutionNativeScriptInvalidAcceptedFinishSpends({
                 lucid: harness.proverLucid,
                 contracts,
                 categoryId: category.categoryId,
@@ -940,7 +938,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
             const acceptedMint = await measured(
               "accepted-mint-prefix",
               async () =>
-                await submitExecutionNativeScriptInvalidAcceptedMintV1({
+                await submitExecutionNativeScriptInvalidAcceptedMint({
                   lucid: harness.proverLucid,
                   contracts,
                   categoryId: category.categoryId,
@@ -958,20 +956,18 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
             const finishMint = await measured(
               "accepted-mint-finish",
               async () =>
-                await submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1(
-                  {
-                    lucid: harness.proverLucid,
-                    contracts,
-                    categoryId: category.categoryId,
-                    signer: harness.proverSigner,
-                    threadOutRef: acceptedThreadOutRef,
-                    phase: "mint",
-                    nativeTxCompactCbor,
-                    fieldPreimageCbor:
-                      transaction.tx.body.mintPreimageCbor.toString("hex"),
-                    referenceScriptUtxo: acceptedReferences[2]!,
-                  },
-                ),
+                await submitExecutionNativeScriptInvalidAcceptedFinishPurpose({
+                  lucid: harness.proverLucid,
+                  contracts,
+                  categoryId: category.categoryId,
+                  signer: harness.proverSigner,
+                  threadOutRef: acceptedThreadOutRef,
+                  phase: "mint",
+                  nativeTxCompactCbor,
+                  fieldPreimageCbor:
+                    transaction.tx.body.mintPreimageCbor.toString("hex"),
+                  referenceScriptUtxo: acceptedReferences[2]!,
+                }),
             );
             acceptedThreadOutRef = finishMint.nextThreadOutRef;
             if (cancelAt === "acceptedObserver") {
@@ -982,7 +978,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               const observer = await measured(
                 "accepted-observer-prefix",
                 async () =>
-                  await submitExecutionNativeScriptInvalidAcceptedObserverV1({
+                  await submitExecutionNativeScriptInvalidAcceptedObserver({
                     lucid: harness.proverLucid,
                     contracts,
                     categoryId: category.categoryId,
@@ -1002,7 +998,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               const finishObserver = await measured(
                 "accepted-observer-finish",
                 async () =>
-                  await submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1(
+                  await submitExecutionNativeScriptInvalidAcceptedFinishPurpose(
                     {
                       lucid: harness.proverLucid,
                       contracts,
@@ -1027,7 +1023,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               const receiveScan = await measured(
                 "accepted-receive-scan",
                 async () =>
-                  await submitExecutionNativeScriptInvalidAcceptedReceiveV1({
+                  await submitExecutionNativeScriptInvalidAcceptedReceive({
                     lucid: harness.proverLucid,
                     contracts,
                     categoryId: category.categoryId,
@@ -1042,7 +1038,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               const receive = await measured(
                 "accepted-receive-finish",
                 async () =>
-                  await submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1(
+                  await submitExecutionNativeScriptInvalidAcceptedFinishReceivePass(
                     {
                       lucid: harness.proverLucid,
                       contracts,
@@ -1071,7 +1067,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
             : "accepted-reference-source",
           async () => {
             if (sourceOrigin === "inline")
-              return await submitExecutionNativeScriptInvalidAcceptedInlineSourceV1(
+              return await submitExecutionNativeScriptInvalidAcceptedInlineSource(
                 {
                   lucid: harness.proverLucid,
                   contracts,
@@ -1088,7 +1084,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
                 },
               );
             const finished =
-              await submitExecutionNativeScriptInvalidAcceptedFinishInlineV1({
+              await submitExecutionNativeScriptInvalidAcceptedFinishInline({
                 lucid: harness.proverLucid,
                 contracts,
                 categoryId: category.categoryId,
@@ -1106,25 +1102,23 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               await cancelAccepted(finished.nextThreadOutRef, 6);
               return { ...finished, selected: false };
             }
-            const material = buildCanonicalMidgardLedgerOutputMaterialV1({
-              outputIndex: decodeMidgardSpendInputItemV1(reference).outputIndex,
+            const material = buildCanonicalMidgardLedgerOutputMaterial({
+              outputIndex: decodeMidgardSpendInputItem(reference).outputIndex,
               outputCbor: referenceOutput,
             });
             const store = new Store(undefined);
             await store.ready();
             const trie = new Trie(store);
             if (acceptedPurpose === "spend") {
-              const spentMaterial = buildCanonicalMidgardLedgerOutputMaterialV1(
-                {
-                  outputIndex: decodeMidgardSpendInputItemV1(spent).outputIndex,
-                  outputCbor: spentOutput,
-                },
-              );
+              const spentMaterial = buildCanonicalMidgardLedgerOutputMaterial({
+                outputIndex: decodeMidgardSpendInputItem(spent).outputIndex,
+                outputCbor: spentOutput,
+              });
               await trie.insert(spent, spentMaterial.descriptorCbor);
             }
             await trie.insert(reference, material.descriptorCbor);
             const proof = await trie.prove(reference);
-            return await submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1(
+            return await submitExecutionNativeScriptInvalidAcceptedReferenceSource(
               {
                 lucid: harness.proverLucid,
                 network,
@@ -1157,7 +1151,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         if (authentication === undefined)
           throw new Error("forced fixture omitted machine authentication");
         await expect(
-          submitExecutionNativeScriptInvalidStep02V1({
+          submitExecutionNativeScriptInvalidStep02({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -1172,7 +1166,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           }),
         ).rejects.toThrow();
         await expect(
-          submitExecutionNativeScriptInvalidStep02V1({
+          submitExecutionNativeScriptInvalidStep02({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -1187,7 +1181,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
           }),
         ).rejects.toThrow();
         await expect(
-          submitExecutionNativeScriptInvalidStep02V1({
+          submitExecutionNativeScriptInvalidStep02({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -1204,7 +1198,7 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
         step02 = await measured(
           "step02-authenticate",
           async () =>
-            await submitExecutionNativeScriptInvalidStep02V1({
+            await submitExecutionNativeScriptInvalidStep02({
               lucid: harness.proverLucid,
               contracts,
               categoryId: category.categoryId,

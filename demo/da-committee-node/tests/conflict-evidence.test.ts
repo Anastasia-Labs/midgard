@@ -2,10 +2,10 @@ import {
   computeDaSha256Hash,
   DaGossipTopic,
   daGossipTopic,
-  decodeDaConflictEvidenceV1Cbor,
-  decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
-  encodeDaConflictEvidenceV1Cbor,
-  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  decodeDaConflictEvidenceCbor,
+  decodeDaConflictingSignatureHeaderEvidenceCbor,
+  encodeDaConflictEvidenceCbor,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -16,7 +16,7 @@ import { StoreBackedDaAttestationProtocol } from "../src/da/libp2p/attestations.
 import { DaGossip, type DaPubsubMessage } from "../src/da/libp2p/DaGossip.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { createDaTopicAllowlist } from "../src/da/libp2p/DaTopics.js";
-import { classifyDaLocalSigningCommitmentV1 } from "../src/peer/signatures.js";
+import { classifyDaLocalSigningCommitment } from "../src/peer/signatures.js";
 import {
   loadDaSigner,
   signDaAttestation,
@@ -67,7 +67,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     const fixture = await conflictFixture();
     const store = await JsonFileWatcherStore.open(await tempDir());
     const gossip = conflictGossip(fixture.registry, store);
-    const conflict = decodeDaConflictEvidenceV1Cbor(fixture.encoded);
+    const conflict = decodeDaConflictEvidenceCbor(fixture.encoded);
 
     await expect(
       gossip.handleInboundMessage({
@@ -84,7 +84,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     await expect(
       gossip.handleInboundMessage(
         signedMessage(
-          encodeDaConflictEvidenceV1Cbor({
+          encodeDaConflictEvidenceCbor({
             ...conflict,
             deploymentFingerprint: Buffer.alloc(32, 0xcd),
           }),
@@ -94,7 +94,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     await expect(
       gossip.handleInboundMessage(
         signedMessage(
-          encodeDaConflictEvidenceV1Cbor({
+          encodeDaConflictEvidenceCbor({
             ...conflict,
             evidenceHash: Buffer.alloc(32, 0xee),
           }),
@@ -104,7 +104,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     await expect(
       gossip.handleInboundMessage(
         signedMessage(
-          encodeDaConflictEvidenceV1Cbor({
+          encodeDaConflictEvidenceCbor({
             ...conflict,
             headerHash: Buffer.alloc(28, 0x01),
           }),
@@ -112,10 +112,10 @@ describe("DA conflict evidence V1 lifecycle", () => {
       ),
     ).rejects.toThrow(/header does not match/u);
 
-    const equivocation = decodeDaConflictingSignatureHeaderEvidenceV1Cbor(
+    const equivocation = decodeDaConflictingSignatureHeaderEvidenceCbor(
       conflict.compactEvidence!,
     );
-    const forgedCompact = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+    const forgedCompact = encodeDaConflictingSignatureHeaderEvidenceCbor({
       ...equivocation,
       upperHeaderWitness: Buffer.concat([
         Buffer.from([equivocation.signerIndex]),
@@ -125,7 +125,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     await expect(
       gossip.handleInboundMessage(
         signedMessage(
-          encodeDaConflictEvidenceV1Cbor({
+          encodeDaConflictEvidenceCbor({
             ...conflict,
             evidenceHash: computeDaSha256Hash(forgedCompact),
             compactEvidence: forgedCompact,
@@ -232,7 +232,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     });
 
     expect(
-      classifyDaLocalSigningCommitmentV1({
+      classifyDaLocalSigningCommitment({
         records: [prior],
         signerIndex: 0,
         expectedCommitmentDigest: second.digest,
@@ -242,7 +242,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
       conflictingVariants: [prior],
     });
     expect(
-      classifyDaLocalSigningCommitmentV1({
+      classifyDaLocalSigningCommitment({
         records: [prior],
         signerIndex: 0,
         expectedCommitmentDigest: first.digest,
@@ -304,7 +304,7 @@ const conflictFixture = async () => {
   ].sort((left, right) => left.digest.localeCompare(right.digest));
   const lower = commitments[0]!;
   const upper = commitments[1]!;
-  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
     signerIndex: 0,
     daVkey: Buffer.from(signer.publicKeyHex, "hex"),
     lowerHeaderHash: Buffer.from(lower.commitment.header_hash, "hex"),
@@ -329,7 +329,7 @@ const conflictFixture = async () => {
     ),
   });
   const evidenceHash = computeDaSha256Hash(compactEvidence);
-  const encoded = encodeDaConflictEvidenceV1Cbor({
+  const encoded = encodeDaConflictEvidenceCbor({
     deploymentFingerprint: Buffer.from(DEPLOYMENT_FINGERPRINT, "hex"),
     headerHash: Buffer.from(lower.commitment.header_hash, "hex"),
     evidenceKind: "equivocation",
@@ -358,18 +358,18 @@ const conflictFixture = async () => {
 };
 
 const availabilityCommitment = (headerHash: string, bondOwner: string) => {
-  const commitment = SDK.buildDaAvailabilityCommitmentV1({
+  const commitment = SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash,
     payload: Buffer.from("public retained DA"),
     bondOwner,
-    responseGeometry: SDK.availabilityResponseGeometryV1({
+    responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 4_096,
       trancheByteLength: 4 * 1_024 * 1_024,
       maxTrancheCount: 16,
     }),
   });
-  const cbor = SDK.encodeDaAvailabilityCommitmentV1(commitment);
+  const cbor = SDK.encodeDaAvailabilityCommitment(commitment);
   return {
     commitment,
     cbor,
@@ -405,7 +405,7 @@ const signatureRecord = ({
   source: "local" as const,
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+    payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "aa".repeat(32) + "#0",
     headerHash: commitment.commitment.header_hash,

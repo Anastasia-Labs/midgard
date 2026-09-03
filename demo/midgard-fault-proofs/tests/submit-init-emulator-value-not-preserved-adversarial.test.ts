@@ -26,24 +26,24 @@
  * never reclaims wasm linear memory and vitest isolates per FILE. See
  * tests/support/uplc-heap-guard.ts.
  */
-import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { submitValueNotPreservedStep03 } from "../src/value-not-preserved/submit-value-not-preserved-step-03-v1.js";
 import { submitValueNotPreservedStep04 } from "../src/value-not-preserved/submit-value-not-preserved-step-04-v1.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import {
-  buildValueNotPreservedFixtureV1,
-  expectOnchainRefusalV1,
-  makeValueNotPreservedEmulatorHarnessV1,
-  publishTamperedFieldPreimagePublicationV1,
-  publishValueNotPreservedReferenceScriptsV1,
-  runValueNotPreservedThreadV1,
-  setupValueNotPreservedScenarioV1,
-  submitRawValueNotPreservedFinalizeV1,
-  vnpOutputV1,
-  vnpOutRefV1,
-  vnpValueV1,
+  buildValueNotPreservedFixture,
+  expectOnchainRefusal,
+  makeValueNotPreservedEmulatorHarness,
+  publishTamperedFieldPreimagePublication,
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+  submitRawValueNotPreservedFinalize,
+  vnpOutput,
+  vnpOutRef,
+  vnpValue,
 } from "./support/value-not-preserved-emulator-v1.js";
 
 const POLICY_ID_HEX = "cd".repeat(28);
@@ -51,7 +51,7 @@ const ASSET_NAME_HEX = "746f6b32"; // "tok2"
 
 describe("value-not-preserved adversarial scenarios", () => {
   it("never finalizes against a balanced honest commitment: step-04 refuses the zero delta locally and on-chain", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
+    const harness = await makeValueNotPreservedEmulatorHarness();
     const { proverLucid, proverSigner, family } = harness;
 
     // An HONEST leaf: sourced 40 (25 + 15), paid 40 (30 + 10), minted
@@ -60,34 +60,34 @@ describe("value-not-preserved adversarial scenarios", () => {
     const token = (quantity: bigint) => [
       { policyIdHex: POLICY_ID_HEX, assetNameHex: ASSET_NAME_HEX, quantity },
     ];
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
         {
-          input: vnpOutRefV1("11", 0),
-          spentValue: vnpValueV1(10_000_000n, token(25n)),
+          input: vnpOutRef("11", 0),
+          spentValue: vnpValue(10_000_000n, token(25n)),
         },
         {
-          input: vnpOutRefV1("22", 1),
-          spentValue: vnpValueV1(8_000_000n, token(15n)),
+          input: vnpOutRef("22", 1),
+          spentValue: vnpValue(8_000_000n, token(15n)),
         },
       ],
       outputs: [
-        vnpOutputV1({ value: vnpValueV1(2_000_000n, token(30n)) }),
-        vnpOutputV1({ value: vnpValueV1(2_000_000n, token(10n)) }),
+        vnpOutput({ value: vnpValue(2_000_000n, token(30n)) }),
+        vnpOutput({ value: vnpValue(2_000_000n, token(10n)) }),
       ],
       mintItems: [],
     });
 
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: harness.funderLucid,
       contracts: family,
     });
 
-    const run = await runValueNotPreservedThreadV1({
+    const run = await runValueNotPreservedThread({
       harness,
       fixture,
       setup,
@@ -122,8 +122,8 @@ describe("value-not-preserved adversarial scenarios", () => {
     // The raw finalize (no local twin) reaches the validator itself, which
     // refuses at `value_not_preserved_fault_is_established_v1`: Inflated
     // demands `final_delta < 0` and the fold produced exactly 0.
-    await expectOnchainRefusalV1(async () =>
-      submitRawValueNotPreservedFinalizeV1({
+    await expectOnchainRefusal(async () =>
+      submitRawValueNotPreservedFinalize({
         harness,
         threadOutRef: run.step03!.nextThreadOutRef,
         referenceScriptUtxo: refs[3],
@@ -141,22 +141,22 @@ describe("value-not-preserved adversarial scenarios", () => {
   }, 600_000);
 
   it("refuses a tampered tier-2 preimage publication at the door's field-commitment re-hash, then convicts honestly on the same thread", async () => {
-    const harness = await makeValueNotPreservedEmulatorHarnessV1();
+    const harness = await makeValueNotPreservedEmulatorHarness();
     const { proverLucid, proverSigner, family } = harness;
 
     // The same size-forced tier-2 shape the ADA lifecycle proves: sourced
     // 10 ADA, paid 19.5 ADA + 1 ADA fee across eleven outputs whose datums
     // push the outputs preimage past the tier-1 cap.
-    const fixture = await buildValueNotPreservedFixtureV1({
+    const fixture = await buildValueNotPreservedFixture({
       spentInputs: [
-        { input: vnpOutRefV1("31", 0), spentValue: vnpValueV1(6_000_000n) },
-        { input: vnpOutRefV1("42", 1), spentValue: vnpValueV1(4_000_000n) },
+        { input: vnpOutRef("31", 0), spentValue: vnpValue(6_000_000n) },
+        { input: vnpOutRef("42", 1), spentValue: vnpValue(4_000_000n) },
       ],
       outputs: [
-        vnpOutputV1({ value: vnpValueV1(9_500_000n) }),
+        vnpOutput({ value: vnpValue(9_500_000n) }),
         ...[23, 23, 23, 21, 21, 21, 21, 21, 21, 21].map((datumChunks, index) =>
-          vnpOutputV1({
-            value: vnpValueV1(1_000_000n),
+          vnpOutput({
+            value: vnpValue(1_000_000n),
             datumChunks,
             seed: index * 29,
           }),
@@ -165,19 +165,19 @@ describe("value-not-preserved adversarial scenarios", () => {
       fee: 1_000_000n,
     });
     expect(fixture.outputsPreimageCbor.length).toBeGreaterThan(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
 
-    const { setup } = await setupValueNotPreservedScenarioV1({
+    const { setup } = await setupValueNotPreservedScenario({
       harness,
       fixture,
     });
-    const refs = await publishValueNotPreservedReferenceScriptsV1({
+    const refs = await publishValueNotPreservedReferenceScripts({
       lucid: harness.funderLucid,
       contracts: family,
     });
 
-    const run = await runValueNotPreservedThreadV1({
+    const run = await runValueNotPreservedThread({
       harness,
       fixture,
       setup,
@@ -192,7 +192,7 @@ describe("value-not-preserved adversarial scenarios", () => {
     // wrong content.
     const tamperedBytes = Buffer.from(fixture.outputsPreimageCbor);
     tamperedBytes[5_000] = (tamperedBytes[5_000]! + 1) & 0xff;
-    const tamperedUtxo = await publishTamperedFieldPreimagePublicationV1({
+    const tamperedUtxo = await publishTamperedFieldPreimagePublication({
       harness,
       bytes: tamperedBytes,
     });
@@ -202,7 +202,7 @@ describe("value-not-preserved adversarial scenarios", () => {
     // The §8.8 door decodes the publication datum, re-hashes the bytes, and
     // refuses: `field_commitment(preimage) == expected_hash` fails in
     // `native_tx_field_access_v1`'s whole-field view.
-    await expectOnchainRefusalV1(async () =>
+    await expectOnchainRefusal(async () =>
       submitValueNotPreservedStep03({
         lucid: proverLucid,
         contracts: family,

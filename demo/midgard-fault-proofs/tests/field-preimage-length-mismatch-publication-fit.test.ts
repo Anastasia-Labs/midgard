@@ -1,13 +1,13 @@
 import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 
 describe("field-preimage-length-mismatch real publication fit", () => {
   it("publishes every applied physical validator under Van Rossem limits", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realFieldPreimageLengthMismatch: true,
         alwaysFraudProofCatalogue: true,

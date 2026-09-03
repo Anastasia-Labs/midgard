@@ -5,15 +5,15 @@ export type DaAttestationMarkerClassification =
   | {
       readonly kind: "already_attested_expected";
       readonly availabilityKind: Exclude<
-        SDK.DaAvailabilityStateQueueStatusKindV1,
+        SDK.DaAvailabilityStateQueueStatusKind,
         "Unattested"
       >;
     };
 
 export const classifyDaAttestationMarker = (
-  status: SDK.DaAvailabilityStateQueueStatusV1,
+  status: SDK.DaAvailabilityStateQueueStatus,
 ): DaAttestationMarkerClassification => {
-  const kind = SDK.daAvailabilityStateQueueStatusKindV1(status);
+  const kind = SDK.daAvailabilityStateQueueStatusKind(status);
   if (kind === "Unattested") {
     return { kind: "unattested" };
   }

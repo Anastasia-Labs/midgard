@@ -1,30 +1,29 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  assertMidgardPlutusDataWellFormedV1,
-  buildMidgardRedeemerItemProofTraceV1,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardRedeemerWitnessItemV1,
-  midgardFieldCommitmentV1,
-  MidgardRedeemerItemProofModesV1,
-  type MidgardRedeemerItemProofTraceV1,
-  selectMidgardFieldCarriageTierV1,
+  assertMidgardPlutusDataWellFormed,
+  buildMidgardRedeemerItemProofTrace,
+  decodeMidgardFieldPreimage,
+  decodeMidgardRedeemerWitnessItem,
+  midgardFieldCommitment,
+  MidgardRedeemerItemProofModes,
+  type MidgardRedeemerItemProofTrace,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  terminalVerdictContradictionV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  terminalVerdictContradiction,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const REDEEMER_CANONICITY_CATEGORY_V1 = "redeemerCanonicity" as const;
-export const REDEEMER_CANONICITY_CATEGORY_ID_V1 = "00000028" as const;
-export const REDEEMER_CANONICITY_FIELD_INDEX_V1 = 8 as const;
-export const REDEEMER_CANONICITY_VIOLATION_ID_V1 =
-  "redeemer-malformed" as const;
+export const REDEEMER_CANONICITY_CATEGORY = "redeemerCanonicity" as const;
+export const REDEEMER_CANONICITY_CATEGORY_ID = "00000028" as const;
+export const REDEEMER_CANONICITY_FIELD_INDEX = 8 as const;
+export const REDEEMER_CANONICITY_VIOLATION_ID = "redeemer-malformed" as const;
 
 const fail = (message: string): never => {
-  throw new Error(`${REDEEMER_CANONICITY_CATEGORY_V1}: ${message}`);
+  throw new Error(`${REDEEMER_CANONICITY_CATEGORY}: ${message}`);
 };
 
 const exactIndex = (value: number, label: string): number => {
@@ -33,20 +32,18 @@ const exactIndex = (value: number, label: string): number => {
   return value;
 };
 
-export type RedeemerCanonicityFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type RedeemerCanonicityFinding = Readonly<{
+  subject: VerdictSubject;
   redeemerIndex: number;
 }>;
 
-export const classifyRedeemerCanonicityFindingV1 = (
-  finding: RedeemerCanonicityFindingV1,
-): RedeemerCanonicityFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyRedeemerCanonicityFinding = (
+  finding: RedeemerCanonicityFinding,
+): RedeemerCanonicityFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   exactIndex(finding.redeemerIndex, "redeemer index");
-  if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
-  ) {
+  if (finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION) {
     const reason = finding.subject.rejection_reason;
     if (
       typeof reason === "string" ||
@@ -56,8 +53,7 @@ export const classifyRedeemerCanonicityFindingV1 = (
     )
       return fail("typed reason/redeemer coordinate changed");
   } else if (
-    finding.subject.direction !==
-      PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 ||
+    finding.subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE ||
     finding.subject.rejection_reason !== null
   ) {
     return fail("direction/rejection-reason polarity changed");
@@ -67,7 +63,7 @@ export const classifyRedeemerCanonicityFindingV1 = (
 
 const canonicalData = (bytes: Uint8Array): boolean => {
   try {
-    assertMidgardPlutusDataWellFormedV1(bytes);
+    assertMidgardPlutusDataWellFormed(bytes);
     return Buffer.from(
       aikenSerialisedPlutusDataCborPreservingMapOrder(
         Buffer.from(bytes).toString("hex"),
@@ -79,50 +75,50 @@ const canonicalData = (bytes: Uint8Array): boolean => {
   }
 };
 
-export type RedeemerCanonicityEvidenceV1 = RedeemerCanonicityFindingV1 &
+export type RedeemerCanonicityEvidence = RedeemerCanonicityFinding &
   Readonly<{
     fieldPreimageHex: string;
     fieldCommitmentHex: string;
     itemHex: string;
     itemCount: number;
     canonical: boolean;
-    trace: MidgardRedeemerItemProofTraceV1 | null;
+    trace: MidgardRedeemerItemProofTrace | null;
     carriage: "Inline" | "RawUtxo" | "Certified";
   }>;
 
 /** Evidence is derived from the exact retained field-8 preimage and commitment. */
-export const prepareRedeemerCanonicityEvidenceV1 = ({
+export const prepareRedeemerCanonicityEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: RedeemerCanonicityFindingV1;
+  readonly finding: RedeemerCanonicityFinding;
   readonly fieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): RedeemerCanonicityEvidenceV1 => {
-  const finding = classifyRedeemerCanonicityFindingV1(rawFinding);
-  const actual = midgardFieldCommitmentV1(fieldPreimage).toString("hex");
+}): RedeemerCanonicityEvidence => {
+  const finding = classifyRedeemerCanonicityFinding(rawFinding);
+  const actual = midgardFieldCommitment(fieldPreimage).toString("hex");
   if (actual !== committedFieldHashHex)
     return fail("retained field 8 changed commitment");
-  const items = decodeMidgardFieldPreimageV1(fieldPreimage);
+  const items = decodeMidgardFieldPreimage(fieldPreimage);
   const item = items[finding.redeemerIndex];
   if (item === undefined) return fail("redeemer coordinate is outside field 8");
   let canonical = false;
   try {
-    const decoded = decodeMidgardRedeemerWitnessItemV1(item);
+    const decoded = decodeMidgardRedeemerWitnessItem(item);
     canonical =
       ["Spend", "Mint", "Reward", "Receive"].includes(decoded.purpose) &&
       canonicalData(decoded.redeemerCbor);
   } catch {
     canonical = false;
   }
-  let trace: MidgardRedeemerItemProofTraceV1 | null = null;
+  let trace: MidgardRedeemerItemProofTrace | null = null;
   if (canonical) {
-    trace = buildMidgardRedeemerItemProofTraceV1({
+    trace = buildMidgardRedeemerItemProofTrace({
       itemIndex: finding.redeemerIndex,
       itemCount: items.length,
       itemBytes: item,
-      mode: MidgardRedeemerItemProofModesV1.Data,
+      mode: MidgardRedeemerItemProofModes.Data,
     });
   }
   return Object.freeze({
@@ -133,18 +129,18 @@ export const prepareRedeemerCanonicityEvidenceV1 = ({
     itemCount: items.length,
     canonical,
     trace,
-    carriage: selectMidgardFieldCarriageTierV1(fieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
   });
 };
 
-export const redeemerCanonicityEvidenceClosesV1 = (
-  evidence: RedeemerCanonicityEvidenceV1,
+export const redeemerCanonicityEvidenceCloses = (
+  evidence: RedeemerCanonicityEvidence,
 ): boolean =>
-  terminalVerdictContradictionV1(evidence.subject, !evidence.canonical);
+  terminalVerdictContradiction(evidence.subject, !evidence.canonical);
 
-export const selectCanonicalRedeemerCanonicityEvidenceV1 = (
-  values: readonly RedeemerCanonicityEvidenceV1[],
-): RedeemerCanonicityEvidenceV1 => {
+export const selectCanonicalRedeemerCanonicityEvidence = (
+  values: readonly RedeemerCanonicityEvidence[],
+): RedeemerCanonicityEvidence => {
   if (values.length === 0) return fail("no authenticated detection");
   return [...values].sort(
     (left, right) =>

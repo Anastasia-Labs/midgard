@@ -1,22 +1,22 @@
 import {
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
 } from "@al-ft/midgard-core";
 import { hashHexWithBlake2b } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { UnusedRedeemerEvidenceV1 } from "./family-v1.js";
+import type { UnusedRedeemerEvidence } from "./family-v1.js";
 import {
-  UnusedRedeemerAuthenticatedV1Schema,
-  UnusedRedeemerReverseScanV1Schema,
+  UnusedRedeemerAuthenticatedSchema,
+  UnusedRedeemerReverseScanSchema,
 } from "./schemas-v1.js";
 
-export type UnusedRedeemerAuthenticatedDatumV1 = Data.Static<
-  typeof UnusedRedeemerAuthenticatedV1Schema
+export type UnusedRedeemerAuthenticatedDatum = Data.Static<
+  typeof UnusedRedeemerAuthenticatedSchema
 >;
-export type UnusedRedeemerReverseScanDatumV1 = Data.Static<
-  typeof UnusedRedeemerReverseScanV1Schema
+export type UnusedRedeemerReverseScanDatum = Data.Static<
+  typeof UnusedRedeemerReverseScanSchema
 >;
 const hash = (value: Buffer): string =>
   Effect.runSync(hashHexWithBlake2b(value.toString("hex"), 32));
@@ -25,9 +25,9 @@ const integer = (value: bigint): Buffer =>
 const bool = (value: boolean): Buffer =>
   Buffer.from(Data.to(value as never, Data.Boolean()), "hex");
 
-export const initialUnusedRedeemerReverseScanV1 = (
-  authenticated: UnusedRedeemerAuthenticatedDatumV1,
-): UnusedRedeemerReverseScanDatumV1 => ({
+export const initialUnusedRedeemerReverseScan = (
+  authenticated: UnusedRedeemerAuthenticatedDatum,
+): UnusedRedeemerReverseScanDatum => ({
   authenticated,
   cursor: 0n,
   used: false,
@@ -42,15 +42,15 @@ export const initialUnusedRedeemerReverseScanV1 = (
   ),
 });
 
-export const advanceUnusedRedeemerSelectionsV1 = ({
+export const advanceUnusedRedeemerSelections = ({
   state,
   evidence,
   itemBudget = 16,
 }: {
-  state: UnusedRedeemerReverseScanDatumV1;
-  evidence: UnusedRedeemerEvidenceV1;
+  state: UnusedRedeemerReverseScanDatum;
+  evidence: UnusedRedeemerEvidence;
   itemBudget?: number;
-}): UnusedRedeemerReverseScanDatumV1 => {
+}): UnusedRedeemerReverseScanDatum => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget < 1 || itemBudget > 16)
     throw new Error("unusedRedeemer item budget changed");
   let next = state;
@@ -59,13 +59,13 @@ export const advanceUnusedRedeemerSelectionsV1 = ({
     Number(state.cursor) + itemBudget,
   )) {
     if (next.used || opening.frontierIndex !== Number(next.cursor)) break;
-    const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+    const purposeLeaf = hashMidgardScriptPurposeLeaf({
       purposeKind: opening.purposeKind,
       purposeIndex: BigInt(opening.purposeIndex),
       scriptHash: Buffer.from(opening.scriptHashHex, "hex"),
       subject: Buffer.from(opening.purposeSubjectHex, "hex"),
     });
-    const executionLeaf = hashMidgardScriptExecutionLeafV1({
+    const executionLeaf = hashMidgardScriptExecutionLeaf({
       languageTag: opening.languageTag,
       purposeLeaf,
       sourceLeaf: Buffer.from(opening.sourceLeafHex, "hex"),

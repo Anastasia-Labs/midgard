@@ -13,25 +13,20 @@ export const canonicalCborArgumentHeaderSize = (value: number): number => {
   return 9;
 };
 
-export const MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX = 6;
+export const MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX = 6;
 
-export const MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX = 7;
+export const MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX = 7;
 
 export const canonicalFieldItemEncodedLength = (
   fieldIndex: number,
   itemLength: number,
 ): number => {
   if (
-    [0, 1, 2, 3, 4, MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX].includes(
-      fieldIndex,
-    )
+    [0, 1, 2, 3, 4, MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX].includes(fieldIndex)
   ) {
     return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
   }
-  if (
-    fieldIndex === MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX ||
-    fieldIndex === 8
-  ) {
+  if (fieldIndex === MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX || fieldIndex === 8) {
     return itemLength;
   }
   if (fieldIndex !== 5 || itemLength === 0) {

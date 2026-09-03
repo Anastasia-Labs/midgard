@@ -1,19 +1,19 @@
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import type {
-  ProtectedOutputSignerActuatorV1,
-  ProtectedOutputSignerJournalEntryV1,
-  ProtectedOutputSignerJournalV1,
-  ProtectedOutputSignerStageV1,
+  ProtectedOutputSignerActuator,
+  ProtectedOutputSignerJournal,
+  ProtectedOutputSignerJournalEntry,
+  ProtectedOutputSignerStage,
 } from "../src/protected-output-signer-missing/index.js";
 import {
-  protectedOutputSignerEvidenceIdentityV1,
-  runProtectedOutputSignerMissingWorkflowV1,
+  protectedOutputSignerEvidenceIdentity,
+  runProtectedOutputSignerMissingWorkflow,
 } from "../src/protected-output-signer-missing/index.js";
 
 const evidence = Object.freeze({
-  subject: acceptedVerdictSubjectV1("11".repeat(32)),
+  subject: acceptedVerdictSubject("11".repeat(32)),
   outputIndex: 0,
   canonicalTransactionCborHex: "80",
   outputCborHex: "a0",
@@ -28,8 +28,8 @@ const evidence = Object.freeze({
 });
 
 const memoryJournal = () => {
-  const entries: ProtectedOutputSignerJournalEntryV1[] = [];
-  const journal: ProtectedOutputSignerJournalV1 = {
+  const entries: ProtectedOutputSignerJournalEntry[] = [];
+  const journal: ProtectedOutputSignerJournal = {
     load: async () => entries,
     append: async (entry) => {
       entries.push(entry);
@@ -40,7 +40,7 @@ const memoryJournal = () => {
 
 describe("protectedOutputSignerMissing durable workflow", () => {
   it("reconciles the exact pre-submit intent after restart", async () => {
-    const identity = protectedOutputSignerEvidenceIdentityV1(evidence);
+    const identity = protectedOutputSignerEvidenceIdentity(evidence);
     const { entries, journal } = memoryJournal();
     entries.push({
       sequence: 0,
@@ -51,8 +51,8 @@ describe("protectedOutputSignerMissing durable workflow", () => {
       phase: "intent",
       txHash: "44".repeat(32),
     });
-    let stage: ProtectedOutputSignerStageV1 = "scanning";
-    const actuator: ProtectedOutputSignerActuatorV1 = {
+    let stage: ProtectedOutputSignerStage = "scanning";
+    const actuator: ProtectedOutputSignerActuator = {
       observe: async () => stage,
       transactionConfirmed: async (hash) =>
         hash === "44".repeat(32) || hash === "55".repeat(32),
@@ -68,7 +68,7 @@ describe("protectedOutputSignerMissing durable workflow", () => {
       },
     };
     await expect(
-      runProtectedOutputSignerMissingWorkflowV1({
+      runProtectedOutputSignerMissingWorkflow({
         evidence,
         journal,
         actuator,
@@ -79,7 +79,7 @@ describe("protectedOutputSignerMissing durable workflow", () => {
   });
 
   it("refuses confirmed-hash stage substitution", async () => {
-    const identity = protectedOutputSignerEvidenceIdentityV1(evidence);
+    const identity = protectedOutputSignerEvidenceIdentity(evidence);
     const { entries, journal } = memoryJournal();
     entries.push({
       sequence: 0,
@@ -91,7 +91,7 @@ describe("protectedOutputSignerMissing durable workflow", () => {
       txHash: "66".repeat(32),
     });
     await expect(
-      runProtectedOutputSignerMissingWorkflowV1({
+      runProtectedOutputSignerMissingWorkflow({
         evidence,
         journal,
         actuator: {
@@ -108,7 +108,7 @@ describe("protectedOutputSignerMissing durable workflow", () => {
   it("records intent before submit and rejects submitter substitution", async () => {
     const { entries, journal } = memoryJournal();
     await expect(
-      runProtectedOutputSignerMissingWorkflowV1({
+      runProtectedOutputSignerMissingWorkflow({
         evidence,
         journal,
         actuator: {

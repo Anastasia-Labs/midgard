@@ -15,28 +15,28 @@
  *   * **The reference-input layout.** Tier-3 carriage names its manifest and
  *     its chunks by *position*, and a plan that produces indices separately
  *     from the reference-input list they index into is a plan with two places
- *     to get an off-by-one. {@link layOutMidgardFieldCarriageV1} emits both
+ *     to get an off-by-one. {@link layOutMidgardFieldCarriage} emits both
  *     from one traversal, so the carriage a step's redeemer carries and the
  *     reference inputs the step resolves cannot disagree.
  *   * **Healing (§8.7).** Content addressing is the whole mechanism: because
  *     the §8.4 split is a pure function of the preimage bytes, an unrelated
  *     party who obtains the same preimage produces byte-identical publications
- *     and an interchangeable certificate. {@link healMidgardFieldCarriageV1}
+ *     and an interchangeable certificate. {@link healMidgardFieldCarriage}
  *     is that re-derivation, and
- *     {@link midgardFieldCarriagePlansAreInterchangeableV1} is the predicate a
+ *     {@link midgardFieldCarriagePlansAreInterchangeable} is the predicate a
  *     caller checks it by rather than trusting it.
  *
  * **What a tier is, and is not, visible to.** The tier is branched on *inside
  * this module* — three times, and each one is a place where the three tiers
- * really are three different objects: {@link planMidgardFieldCarriageV1}
+ * really are three different objects: {@link planMidgardFieldCarriage}
  * (nothing, one UTxO or `n` UTxOs plus a certificate to publish),
- * {@link layOutMidgardFieldCarriageV1} (a different carriage constructor and a
+ * {@link layOutMidgardFieldCarriage} (a different carriage constructor and a
  * different reference-input layout) and
- * {@link midgardFieldCarriagePlansAreInterchangeableV1} (only tier 3 has a
+ * {@link midgardFieldCarriagePlansAreInterchangeable} (only tier 3 has a
  * certificate to compare). What the claim is really about is the boundary, not
  * the count: **no caller of this module branches on the tier**, because
- * {@link layOutMidgardFieldCarriageV1} hands back a
- * {@link MidgardFieldCarriageV1} and the reference inputs it indexes, and
+ * {@link layOutMidgardFieldCarriage} hands back a
+ * {@link MidgardFieldCarriage} and the reference inputs it indexes, and
  * `authenticatedMidgardFieldViewV1` turns any of the three into the same
  * {@link MidgardFieldViewV1}. That is §8's simplest-fitting-first mandate
  * expressed as a type: there is no tier-shaped argument anywhere downstream of
@@ -55,26 +55,26 @@
  * the certificate exist otherwise.
  */
 
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "../consensus-profile-v1.js";
+import { MIDGARD_CONSENSUS_LIMITS } from "../consensus-profile-v1.js";
 import {
   MidgardTxCodecError,
   type MidgardTxCodecErrorCode,
   MidgardTxCodecErrorCodes,
 } from "./errors.js";
 import {
-  deriveMidgardFieldPreimageCertificateV1,
-  exactMidgardFieldIndexV1,
-  MIDGARD_CHUNK_BYTES_K_V1,
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  type MidgardFieldCarriageV1,
-  midgardFieldCommitmentV1,
-  type MidgardFieldPreimageCertificateV1,
-  type ResolvedCarriageReferenceInputV1,
-  selectMidgardFieldCarriageTierV1,
-  splitMidgardFieldPreimageIntoChunksV1,
+  deriveMidgardFieldPreimageCertificate,
+  exactMidgardFieldIndex,
+  MIDGARD_CHUNK_BYTES_K,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  MIDGARD_MAX_TIER3_CHUNK_COUNT,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  type MidgardFieldCarriage,
+  midgardFieldCommitment,
+  type MidgardFieldPreimageCertificate,
+  type ResolvedCarriageReferenceInput,
+  selectMidgardFieldCarriageTier,
+  splitMidgardFieldPreimageIntoChunks,
 } from "./native-tx-field-access-v1.js";
 
 /**
@@ -96,7 +96,7 @@ const fail: (
 };
 
 /** The tier a plan carries its preimage under. */
-export type MidgardFieldCarriageTierV1 = MidgardFieldCarriageV1["carriage"];
+export type MidgardFieldCarriageTier = MidgardFieldCarriage["carriage"];
 
 /**
  * One raw carriage UTxO a publisher has to create: a §8.5 nothing-but-bytes
@@ -110,7 +110,7 @@ export type MidgardFieldCarriageTierV1 = MidgardFieldCarriageV1["carriage"];
  * carried here so a publisher can address a publication by content (§8.7)
  * without recomputing it.
  */
-export type MidgardFieldPublicationV1 = {
+export type MidgardFieldPublication = {
   readonly chunkIndex: number;
   readonly bytes: Buffer;
   readonly digest: Buffer;
@@ -123,10 +123,10 @@ export type MidgardFieldPublicationV1 = {
  * A plan is pure: two callers who hold the same preimage and name the same
  * `(txId, fieldIndex)` produce plans that differ in `certificate.owner` and in
  * nothing else. That is what §8.7's healing rests on, and it is checkable —
- * see {@link midgardFieldCarriagePlansAreInterchangeableV1}.
+ * see {@link midgardFieldCarriagePlansAreInterchangeable}.
  */
-export type MidgardFieldCarriagePlanV1 = {
-  readonly tier: MidgardFieldCarriageTierV1;
+export type MidgardFieldCarriagePlan = {
+  readonly tier: MidgardFieldCarriageTier;
   readonly fieldIndex: number;
   readonly txId: Buffer;
   readonly totalLength: number;
@@ -135,9 +135,9 @@ export type MidgardFieldCarriagePlanV1 = {
   /** Tier 1 carries the preimage in the step's redeemer; this is those bytes. */
   readonly inlinePreimage: Buffer | null;
   /** Empty under tier 1; one entry under tier 2; `n` chunks under tier 3. */
-  readonly publications: readonly MidgardFieldPublicationV1[];
+  readonly publications: readonly MidgardFieldPublication[];
   /** §8.6. Present under tier 3 only — the only tier that certifies. */
-  readonly certificate: MidgardFieldPreimageCertificateV1 | null;
+  readonly certificate: MidgardFieldPreimageCertificate | null;
   /**
    * §8.6's constant token name (#606) — the same for every certificate of the
    * policy; identity lives in the datum. Present under tier 3 only.
@@ -149,7 +149,7 @@ export type MidgardFieldCarriagePlanV1 = {
  * Plans the carriage for one field preimage — the entry point of the
  * publication half.
  *
- * The tier is chosen by {@link selectMidgardFieldCarriageTierV1}, which is a
+ * The tier is chosen by {@link selectMidgardFieldCarriageTier}, which is a
  * partition rather than a preference (§8.4): a preimage that fits tier 1 has
  * exactly one admissible carriage and cannot be re-carried under tier 3 to
  * side-step the structural checks tiers 1–2 run at view construction. An empty
@@ -173,7 +173,7 @@ export type MidgardFieldCarriagePlanV1 = {
  * `planTxOrderMaterialCarriageV1` in the SDK for the caller this exists for: a
  * forced order whose fields fit tier 1 individually but not all at once.
  */
-export const planMidgardFieldCarriageV1 = ({
+export const planMidgardFieldCarriage = ({
   owner,
   txId,
   fieldIndex,
@@ -185,7 +185,7 @@ export const planMidgardFieldCarriageV1 = ({
   readonly fieldIndex: number;
   readonly preimage: Uint8Array;
   readonly publish?: boolean;
-}): MidgardFieldCarriagePlanV1 => {
+}): MidgardFieldCarriagePlan => {
   const bytes = Buffer.from(preimage);
   if (bytes.length === 0) {
     fail(
@@ -198,14 +198,14 @@ export const planMidgardFieldCarriageV1 = ({
   // tier-2 plan naming field 42 would otherwise be constructible here and
   // refused much later, at the door, in a caller that had already built a
   // transaction around it.
-  const exactFieldIndex = exactMidgardFieldIndexV1(fieldIndex);
+  const exactFieldIndex = exactMidgardFieldIndex(fieldIndex);
   const exactTxId = Buffer.from(txId);
   if (exactTxId.length !== 32) {
     fail("a transaction id is 32 bytes", `length=${exactTxId.length}`);
   }
-  const selected = selectMidgardFieldCarriageTierV1(bytes.length);
+  const selected = selectMidgardFieldCarriageTier(bytes.length);
   const tier = publish && selected === "Inline" ? "RawUtxo" : selected;
-  const commitment = midgardFieldCommitmentV1(bytes);
+  const commitment = midgardFieldCommitment(bytes);
   const base = {
     tier,
     fieldIndex: exactFieldIndex,
@@ -234,14 +234,14 @@ export const planMidgardFieldCarriageV1 = ({
     };
   }
 
-  const certificate = deriveMidgardFieldPreimageCertificateV1({
+  const certificate = deriveMidgardFieldPreimageCertificate({
     owner,
     txId,
     fieldIndex,
     preimage: bytes,
   });
-  const chunks = splitMidgardFieldPreimageIntoChunksV1(bytes);
-  if (chunks.length > MIDGARD_MAX_TIER3_CHUNK_COUNT_V1) {
+  const chunks = splitMidgardFieldPreimageIntoChunks(bytes);
+  if (chunks.length > MIDGARD_MAX_TIER3_CHUNK_COUNT) {
     fail(
       "§8.3 bounds tier-3 carriage at three chunks",
       `chunks=${chunks.length}`,
@@ -266,7 +266,7 @@ export const planMidgardFieldCarriageV1 = ({
     }),
     certificate,
     certificateAssetName: Buffer.from(
-      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
+      MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
     ),
   };
 };
@@ -277,13 +277,13 @@ export const planMidgardFieldCarriageV1 = ({
  * binding alone, under a new owner.
  *
  * This is deliberately not a "repair" that consults the original plan — it
- * takes the preimage and re-runs {@link planMidgardFieldCarriageV1}. Healing
+ * takes the preimage and re-runs {@link planMidgardFieldCarriage}. Healing
  * works precisely because there is nothing to consult: the split is a pure
  * function of the bytes, so the healer's publications are byte-identical and
  * the yanked certificate still describes them. A function that copied anything
  * across from the original would hide the moment that stopped being true.
  */
-export const healMidgardFieldCarriageV1 = ({
+export const healMidgardFieldCarriage = ({
   healer,
   txId,
   fieldIndex,
@@ -300,8 +300,8 @@ export const healMidgardFieldCarriageV1 = ({
    * and produce a plan with no publications — nothing to heal with.
    */
   readonly publish?: boolean;
-}): MidgardFieldCarriagePlanV1 =>
-  planMidgardFieldCarriageV1({
+}): MidgardFieldCarriagePlan =>
+  planMidgardFieldCarriage({
     owner: healer,
     txId,
     fieldIndex,
@@ -323,9 +323,9 @@ export const healMidgardFieldCarriageV1 = ({
  * it. Two interchangeable plans mean either party's certificate verifies
  * against either party's chunks.
  */
-export const midgardFieldCarriagePlansAreInterchangeableV1 = (
-  left: MidgardFieldCarriagePlanV1,
-  right: MidgardFieldCarriagePlanV1,
+export const midgardFieldCarriagePlansAreInterchangeable = (
+  left: MidgardFieldCarriagePlan,
+  right: MidgardFieldCarriagePlan,
 ): boolean => {
   if (
     left.tier !== right.tier ||
@@ -386,13 +386,13 @@ export const midgardFieldCarriagePlansAreInterchangeableV1 = (
  * that assembled the list in one place and the indices in another would have
  * two chances to be off by one and no way to notice until a script refused.
  */
-export type MidgardFieldCarriageLayoutV1 = {
-  readonly carriage: MidgardFieldCarriageV1;
+export type MidgardFieldCarriageLayout = {
+  readonly carriage: MidgardFieldCarriage;
   /**
    * The carriage-bearing reference inputs, in the order this layout indexes
    * them. Empty under tier 1.
    */
-  readonly referenceInputs: readonly ResolvedCarriageReferenceInputV1[];
+  readonly referenceInputs: readonly ResolvedCarriageReferenceInput[];
   /**
    * Absolute reference-input index of each entry above, in the same order —
    * what a transaction builder needs in order to place them.
@@ -413,13 +413,13 @@ export type MidgardFieldCarriageLayoutV1 = {
  * back, a consumer passes `carriage` and `referenceInputs` to
  * `authenticatedMidgardFieldViewV1` and reads items off the view.
  */
-export const layOutMidgardFieldCarriageV1 = ({
+export const layOutMidgardFieldCarriage = ({
   plan,
   baseIndex = 0,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly baseIndex?: number;
-}): MidgardFieldCarriageLayoutV1 => {
+}): MidgardFieldCarriageLayout => {
   if (!Number.isSafeInteger(baseIndex) || baseIndex < 0) {
     fail(
       "reference-input base index must be a non-negative integer",
@@ -486,7 +486,7 @@ export const layOutMidgardFieldCarriageV1 = ({
  * rather than imported at each call site because a publication that does not
  * clear it is not a publication at all.
  */
-const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /**
  * The transaction-side allowance separating the *exact* frontier (a
@@ -496,7 +496,7 @@ const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
  * `proofItemEnvelopeReliabilityReserveBytes` so the flat frontier is
  * comparable to the counted bound it supersedes.
  */
-export const MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1 = 512;
+export const MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES = 512;
 
 /**
  * The genuinely payload-independent cost of a §8.5 publication transaction:
@@ -505,13 +505,13 @@ export const MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1 = 512;
  * Measured, not assumed. Note that this is **not** the whole non-datum cost:
  * an inline datum is carried in the output as a CBOR byte string wrapping the
  * serialised Plutus Data, and that wrapper's own head grows with the datum, so
- * the third term lives in {@link midgardCarriagePublicationFramingBytesV1}
+ * the third term lives in {@link midgardCarriagePublicationFramingBytes}
  * rather than here. An earlier revision folded a head of 3 into this constant
  * and published 248 as "fixed, payload-independent"; it is neither, and the
  * error ran in the unsafe direction above a 65,536-byte datum. See
- * {@link midgardCarriagePublicationFramingBytesV1}.
+ * {@link midgardCarriagePublicationFramingBytes}.
  */
-export const MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES_V1 = 245;
+export const MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES = 245;
 
 /** The Plutus Data byte-string chunk width; above it the encoding changes. */
 const DATA_BYTE_STRING_CHUNK_BYTES = 64;
@@ -542,10 +542,10 @@ const cborHeadBytes = (length: number): number =>
  * `demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts`,
  * which samples both sides of the 24-, 256- and 64-byte boundaries.
  */
-export const midgardCarriagePublicationFramingBytesV1 = (
+export const midgardCarriagePublicationFramingBytes = (
   encodedDatumBytes: number,
 ): number =>
-  MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES_V1 +
+  MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES +
   cborHeadBytes(encodedDatumBytes);
 
 /**
@@ -559,7 +559,7 @@ export const midgardCarriagePublicationFramingBytesV1 = (
  * framing of a publication a function of its payload rather than a constant,
  * and it is the cost §8.3's erratum E1 quantifies.
  */
-export const midgardCarriageDataByteStringBytesV1 = (
+export const midgardCarriageDataByteStringBytes = (
   payloadBytes: number,
 ): number => {
   if (!Number.isSafeInteger(payloadBytes) || payloadBytes < 0) {
@@ -585,11 +585,11 @@ export const midgardCarriageDataByteStringBytesV1 = (
  * `payloadBytes` bytes — the quantity `maxTxSize` is actually applied to.
  *
  * **Three terms.**
- * {@link MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES_V1} of genuinely
+ * {@link MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES} of genuinely
  * fixed transaction framing, the CBOR head of the inline datum's byte-string
  * wrapper, and the payload's own Plutus Data encoding. Only the first is a
  * constant; the middle term is a step function of the second
- * ({@link midgardCarriagePublicationFramingBytesV1}), and collapsing the two
+ * ({@link midgardCarriagePublicationFramingBytes}), and collapsing the two
  * into a single 248 is what an earlier revision did — exact across the ladder,
  * two bytes conservative at or below a 22-byte payload, and two bytes
  * *optimistic* above a 63,547-byte one.
@@ -600,16 +600,16 @@ export const midgardCarriageDataByteStringBytesV1 = (
  * emulator measurement asserts the exactness against real signed transactions
  * rather than this comment claiming it.
  */
-export const midgardCarriagePublicationBytesV1 = (
+export const midgardCarriagePublicationBytes = (
   payloadBytes: number,
 ): number => {
-  const datumBytes = midgardCarriageDataByteStringBytesV1(payloadBytes);
-  return midgardCarriagePublicationFramingBytesV1(datumBytes) + datumBytes;
+  const datumBytes = midgardCarriageDataByteStringBytes(payloadBytes);
+  return midgardCarriagePublicationFramingBytes(datumBytes) + datumBytes;
 };
 
 const largestPayloadWithin = (budget: number): number => {
   let payload = budget;
-  while (payload > 0 && midgardCarriagePublicationBytesV1(payload) > budget) {
+  while (payload > 0 && midgardCarriagePublicationBytes(payload) > budget) {
     payload -= 1;
   }
   return payload;
@@ -619,11 +619,11 @@ const largestPayloadWithin = (budget: number): number => {
  * §8.3 erratum E1. The largest payload whose signed publication lands **on**
  * `maxTxSize` — 15,644 bytes, in a 16,384-byte transaction.
  *
- * Derived from {@link midgardCarriagePublicationBytesV1} rather than written
+ * Derived from {@link midgardCarriagePublicationBytes} rather than written
  * down, so the frontier and the cost model can never disagree; the emulator
  * measurement pins both against real transactions.
  */
-export const MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 =
+export const MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES =
   largestPayloadWithin(MAX_L1_TX_BYTES);
 
 /**
@@ -632,7 +632,7 @@ export const MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 =
  * reliability reserve — 15,148 bytes, in a 15,872-byte transaction.
  *
  * This is the operative limit on §8.5 raw carriage, and since E1's repair landed
- * it is **exactly** `chunk_bytes_k` ({@link MIDGARD_CHUNK_BYTES_K_V1}): the
+ * it is **exactly** `chunk_bytes_k` ({@link MIDGARD_CHUNK_BYTES_K}): the
  * chunker cuts at the publishable frontier, so every chunk of every tier-3 plan
  * publishes, and a tier-2 preimage is admissible precisely when it fits one
  * publication. The two are asserted equal in
@@ -643,17 +643,17 @@ export const MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1 =
  * (264 over `maxTxSize`), and because the chunker cut at `K` the unpublishable
  * window was the whole of `(15,148, 32,768]` rather than a tier-2 sliver — tier 3
  * did not function at any preimage size. {@link
- * midgardFieldCarriagePublishabilityV1} is the guard that made that failure
+ * midgardFieldCarriagePublishability} is the guard that made that failure
  * visible at build time; it stays, because the frontier is a measurement and a
  * caller may still exceed it deliberately (a raised-limit measurement, or a
  * future `maxTxSize`).
  */
-export const MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1 = largestPayloadWithin(
-  MAX_L1_TX_BYTES - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1,
+export const MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES = largestPayloadWithin(
+  MAX_L1_TX_BYTES - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES,
 );
 
 /** One publication that a plan requires and `maxTxSize` will not accept. */
-export type MidgardUnpublishableChunkV1 = {
+export type MidgardUnpublishableChunk = {
   readonly chunkIndex: number;
   readonly byteLength: number;
   /** Size of the signed publication transaction these bytes would produce. */
@@ -669,7 +669,7 @@ export type MidgardUnpublishableChunkV1 = {
  * **Why this is a report and not an exception at plan time — and why §8.3 E1's
  * prohibition is worded against publication.** A plan is a statement about
  * bytes, and the §8.4 split is a pure function that healing and certification
- * both depend on reproducing; making {@link planMidgardFieldCarriageV1} refuse
+ * both depend on reproducing; making {@link planMidgardFieldCarriage} refuse
  * would take the erratum's diagnosis away from the caller who needs it and make
  * the measurement that found it unrunnable. E1 therefore prohibits
  * **publishing** carriage above the frontier, not planning it, and the refusal
@@ -687,19 +687,19 @@ export type MidgardUnpublishableChunkV1 = {
  * `budgetBytes` defaults to the reliable frontier's transaction budget. A
  * caller measuring the frontier itself passes a larger one deliberately.
  */
-export const midgardFieldCarriagePublishabilityV1 = ({
+export const midgardFieldCarriagePublishability = ({
   plan,
-  budgetBytes = MAX_L1_TX_BYTES - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES_V1,
+  budgetBytes = MAX_L1_TX_BYTES - MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly budgetBytes?: number;
 }): {
   readonly publishable: boolean;
   readonly budgetBytes: number;
-  readonly unpublishableChunks: readonly MidgardUnpublishableChunkV1[];
+  readonly unpublishableChunks: readonly MidgardUnpublishableChunk[];
 } => {
   const unpublishableChunks = plan.publications.flatMap((publication) => {
-    const publicationBytes = midgardCarriagePublicationBytesV1(
+    const publicationBytes = midgardCarriagePublicationBytes(
       publication.bytes.length,
     );
     return publicationBytes <= budgetBytes
@@ -730,12 +730,12 @@ export const midgardFieldCarriagePublishabilityV1 = ({
  * repair landed it **equals** `chunkBytesK`, which is what makes the ladder
  * publishable end to end, and the two are asserted equal in this module's tests.
  */
-export const midgardFieldCarriageBoundsV1 = Object.freeze({
-  maxTier1RedeemerPreimageBytes: MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  chunkBytesK: MIDGARD_CHUNK_BYTES_K_V1,
+export const midgardFieldCarriageBounds = Object.freeze({
+  maxTier1RedeemerPreimageBytes: MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  chunkBytesK: MIDGARD_CHUNK_BYTES_K,
   maxTransactionAggregateFieldBytes:
-    MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
-  maxPublishableCarriageBytes: MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
-  exactPublishableCarriageBytes: MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES_V1,
+    MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT,
+  maxPublishableCarriageBytes: MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
+  exactPublishableCarriageBytes: MIDGARD_EXACT_PUBLISHABLE_CARRIAGE_BYTES,
 });

@@ -1,11 +1,11 @@
 import {
-  encodeMidgardProofSubmissionV1,
-  type MidgardCekProgramMaterialEntryV1,
+  encodeMidgardProofSubmission,
+  type MidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardNativeTxCanonicalV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCanonical,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 
@@ -97,13 +97,13 @@ const submittedTxCanonicalCbor = (
     maxSubmitTxCborBytes,
   );
   try {
-    const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor);
-    if (!encodeMidgardNativeTxCanonicalV1(tx).equals(txCanonicalCbor)) {
+    const tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor);
+    if (!encodeMidgardNativeTxCanonical(tx).equals(txCanonicalCbor)) {
       throw new Error("transaction CBOR is not canonical");
     }
     return {
       txCanonicalCbor,
-      txId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+      txId: computeMidgardNativeTxId(tx).toString("hex"),
     };
   } catch (cause) {
     throw new ProviderPayloadError(
@@ -279,7 +279,7 @@ export class MidgardNodeProvider implements MidgardProvider {
 
   async submitTx(
     txCanonicalCborHex: string,
-    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
   ): Promise<SubmitTxResult> {
     const endpoint = "/submit";
     const protocolInfo = await this.getProtocolInfo();
@@ -288,7 +288,7 @@ export class MidgardNodeProvider implements MidgardProvider {
       endpoint,
       protocolInfo.submissionLimits.maxSubmitTxCborBytes,
     );
-    const body = encodeMidgardProofSubmissionV1({
+    const body = encodeMidgardProofSubmission({
       transactionCbor: submittedTx.txCanonicalCbor,
       programMaterial,
     });

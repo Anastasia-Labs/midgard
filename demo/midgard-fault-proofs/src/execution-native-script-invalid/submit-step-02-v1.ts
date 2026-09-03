@@ -11,34 +11,34 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ExecutionNativeScriptInvalidContractsV1 } from "./contracts-v1.js";
-import type { ExecutionNativeScriptInvalidEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ExecutionNativeScriptInvalidContracts } from "./contracts-v1.js";
+import type { ExecutionNativeScriptInvalidEvidence } from "./family-v1.js";
 import {
-  ExecutionNativeScriptInvalidBoundV1Schema,
-  ExecutionNativeScriptInvalidSourceV1Schema,
-  ExecutionNativeScriptInvalidStep02DatumV1Schema,
-  ExecutionNativeScriptInvalidStep02RedeemerV1Schema,
-  ExecutionNativeScriptInvalidStep03DatumV1Schema,
+  ExecutionNativeScriptInvalidBoundSchema,
+  ExecutionNativeScriptInvalidSourceSchema,
+  ExecutionNativeScriptInvalidStep02DatumSchema,
+  ExecutionNativeScriptInvalidStep02RedeemerSchema,
+  ExecutionNativeScriptInvalidStep03DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "execution-native-script-invalid";
-export type ExecutionSourceAuthenticationDataV1 = Omit<
+export type ExecutionSourceAuthenticationData = Omit<
   Extract<
-    Data.Static<typeof ExecutionNativeScriptInvalidStep02RedeemerV1Schema>,
+    Data.Static<typeof ExecutionNativeScriptInvalidStep02RedeemerSchema>,
     { Continue: unknown }
   >["Continue"][0],
   "input_index" | "output_index"
 >;
 
-export const submitExecutionNativeScriptInvalidStep02V1 = async ({
+export const submitExecutionNativeScriptInvalidStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -51,18 +51,18 @@ export const submitExecutionNativeScriptInvalidStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
+  contracts: ExecutionNativeScriptInvalidContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: ExecutionNativeScriptInvalidEvidenceV1;
-  authentication: ExecutionSourceAuthenticationDataV1;
+  evidence: ExecutionNativeScriptInvalidEvidence;
+  authentication: ExecutionSourceAuthenticationData;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -70,12 +70,12 @@ export const submitExecutionNativeScriptInvalidStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const bound = requireLinearFaultStepStateV1<
-    Data.Static<typeof ExecutionNativeScriptInvalidBoundV1Schema>
+  const bound = requireLinearFaultStepState<
+    Data.Static<typeof ExecutionNativeScriptInvalidBoundSchema>
   >({
     threadUtxo,
     signer,
-    schema: ExecutionNativeScriptInvalidStep02DatumV1Schema as never,
+    schema: ExecutionNativeScriptInvalidStep02DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -92,19 +92,18 @@ export const submitExecutionNativeScriptInvalidStep02V1 = async ({
     throw new Error(`${FAMILY}: authenticated prior-ledger root changed`);
   if (authentication.control.compact_cbor !== bound.compact_cbor)
     throw new Error(`${FAMILY}: authenticated compact transaction changed`);
-  const source: Data.Static<typeof ExecutionNativeScriptInvalidSourceV1Schema> =
-    {
-      bound,
-      prior_ledger_root: authentication.machine_state.prior_ledger_root,
-      source_index: authentication.source_index,
-      origin_kind: authentication.origin_kind,
-      source_key: authentication.source_key,
-      language_tag: authentication.language_tag,
-      script_hash: authentication.script_hash,
-      total_length: authentication.total_length,
-      item_commitment: authentication.item_commitment,
-      compact_cbor: authentication.control.compact_cbor,
-    };
+  const source: Data.Static<typeof ExecutionNativeScriptInvalidSourceSchema> = {
+    bound,
+    prior_ledger_root: authentication.machine_state.prior_ledger_root,
+    source_index: authentication.source_index,
+    origin_kind: authentication.origin_kind,
+    source_key: authentication.source_key,
+    language_tag: authentication.language_tag,
+    script_hash: authentication.script_hash,
+    total_length: authentication.total_length,
+    item_commitment: authentication.item_commitment,
+    compact_cbor: authentication.control.compact_cbor,
+  };
   if (
     source.bound.subject.transaction_id !==
     evidence.authenticated.transactionIdHex
@@ -114,14 +113,14 @@ export const submitExecutionNativeScriptInvalidStep02V1 = async ({
     );
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: source } as never,
-    ExecutionNativeScriptInvalidStep03DatumV1Schema as never,
+    ExecutionNativeScriptInvalidStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -146,11 +145,11 @@ export const submitExecutionNativeScriptInvalidStep02V1 = async ({
           },
         ],
       } as never,
-      ExecutionNativeScriptInvalidStep02RedeemerV1Schema as never,
+      ExecutionNativeScriptInvalidStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

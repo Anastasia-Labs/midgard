@@ -1,7 +1,7 @@
 import {
   decodeMidgardAddressBytes,
   encodeMidgardAddressText,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
@@ -98,7 +98,7 @@ const projectAddress = (address: Buffer): AddressProjection => {
  * `docs/spec/midgard-tx.md` §5.3.
  */
 export const midgardOutRefToCbor = (outRef: MidgardOutRef): Buffer =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: outRef.txId,
     outputIndex: Number(outRef.index),
   });

@@ -10,26 +10,26 @@ import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  planNetworkIdOutputsOpeningV1,
+  planNetworkIdOutputsOpening,
   submitNetworkIdCancel,
   submitNetworkIdInit,
   submitNetworkIdPostUtxoStep01,
   submitNetworkIdStep01,
   submitNetworkIdStep02,
 } from "../src/network-id/index.js";
-import { publishProofChunksV1 } from "../src/publish-proof-chunks.js";
+import { publishProofChunks } from "../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
-  buildNetworkIdFixtureV1,
-  buildNetworkIdPostUtxoFixtureV1,
-  makeNetworkIdEmulatorHarnessV1,
-  NETWORK_ID_EMULATOR_CATEGORY_ID_V1,
-  publishNetworkIdReferenceScriptsV1,
+  buildNetworkIdFixture,
+  buildNetworkIdPostUtxoFixture,
+  makeNetworkIdEmulatorHarness,
+  NETWORK_ID_EMULATOR_CATEGORY_ID,
+  publishNetworkIdReferenceScripts,
 } from "./support/network-id-emulator-v1.js";
 import {
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
-  setupFraudulentBlockV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -42,8 +42,8 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import {
   MAXIMUM_PROOF_STEP_COUNT,
-  syntheticDeepMembershipProofV1,
-  syntheticDeepSharedRootProofsV1,
+  syntheticDeepMembershipProof,
+  syntheticDeepSharedRootProofs,
 } from "./support/synthetic-deep-proof-v1.js";
 
 describe("Q35 network-id real-fault lifecycle", () => {
@@ -61,7 +61,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
   ])(
     "mints permanent evidence and removes $label",
     async ({ outputNetworkId, protectedAddress }) => {
-      const harness = await makeNetworkIdEmulatorHarnessV1();
+      const harness = await makeNetworkIdEmulatorHarness();
       const preSubmitStages: string[] = [];
       const preSubmitBoundary =
         (stage: string) =>
@@ -73,7 +73,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
           expect(transaction.referenceScripts.length).toBeGreaterThan(0);
           preSubmitStages.push(stage);
         };
-      const [step01Ref, step02Ref] = await publishNetworkIdReferenceScriptsV1({
+      const [step01Ref, step02Ref] = await publishNetworkIdReferenceScripts({
         lucid: harness.proverLucid,
         contracts: harness.networkId,
       });
@@ -81,11 +81,11 @@ describe("Q35 network-id real-fault lifecycle", () => {
         lucid: harness.proverLucid,
         contracts: harness.contracts,
       });
-      const fixture = await buildNetworkIdFixtureV1({
+      const fixture = await buildNetworkIdFixture({
         outputNetworkId,
         protectedAddress,
       });
-      const setup = await setupFraudulentBlockV1({
+      const setup = await setupFraudulentBlock({
         funderLucid: harness.funderLucid,
         emulator: harness.emulator,
         contracts: harness.contracts,
@@ -110,7 +110,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
         preSubmitBoundary: preSubmitBoundary("init"),
       });
-      expect(init.fraudCategoryId).toBe(NETWORK_ID_EMULATOR_CATEGORY_ID_V1);
+      expect(init.fraudCategoryId).toBe(NETWORK_ID_EMULATOR_CATEGORY_ID);
 
       const firstStep = await expectSingleUtxoWithUnit(
         harness.proverLucid,
@@ -141,7 +141,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         data: step01.state,
       });
 
-      const opening = planNetworkIdOutputsOpeningV1({
+      const opening = planNetworkIdOutputsOpening({
         prepared,
         owner: harness.proverSigner.paymentKeyHash,
       });
@@ -232,7 +232,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
   );
 
   it("proves a zero-transaction post-UTxO introduction and retains evidence through correction", async () => {
-    const harness = await makeNetworkIdEmulatorHarnessV1();
+    const harness = await makeNetworkIdEmulatorHarness();
     const preSubmitStages: string[] = [];
     const preSubmitBoundary =
       (stage: string) =>
@@ -244,7 +244,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         expect(transaction.referenceScripts.length).toBeGreaterThan(0);
         preSubmitStages.push(stage);
       };
-    const [step01Ref, step02Ref] = await publishNetworkIdReferenceScriptsV1({
+    const [step01Ref, step02Ref] = await publishNetworkIdReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.networkId,
     });
@@ -252,8 +252,8 @@ describe("Q35 network-id real-fault lifecycle", () => {
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const fixture = await buildNetworkIdPostUtxoFixtureV1();
-    const setup = await setupFraudulentBlockV1({
+    const fixture = await buildNetworkIdPostUtxoFixture();
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -383,17 +383,17 @@ describe("Q35 network-id real-fault lifecycle", () => {
   }, 240_000);
 
   it("fits both staged maximum-depth post-UTxO proofs through published chunks", async () => {
-    const harness = await makeNetworkIdEmulatorHarnessV1();
-    const [step01Ref, step02Ref] = await publishNetworkIdReferenceScriptsV1({
+    const harness = await makeNetworkIdEmulatorHarness();
+    const [step01Ref, step02Ref] = await publishNetworkIdReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.networkId,
     });
-    const base = await buildNetworkIdPostUtxoFixtureV1({
+    const base = await buildNetworkIdPostUtxoFixture({
       outputNetworkId: 7,
       protectedAddress: true,
     });
     const key = Buffer.from(base.prepared.outRefKeyCbor, "hex");
-    const post = syntheticDeepMembershipProofV1({
+    const post = syntheticDeepMembershipProof({
       key,
       value: Buffer.from(base.prepared.descriptorCbor, "hex"),
       branchLevels: MAXIMUM_PROOF_STEP_COUNT,
@@ -408,7 +408,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
         break;
       }
     }
-    const previous = syntheticDeepSharedRootProofsV1({
+    const previous = syntheticDeepSharedRootProofs({
       claims: [{ key }, { key: dummyKey }],
       branchLevels: MAXIMUM_PROOF_STEP_COUNT,
     });
@@ -425,7 +425,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
       predecessorProofCbor: predecessorOpening.proofCbor,
       predecessorProof: Data.from(predecessorOpening.proofCbor, Proof),
     };
-    const predecessorSetup = await setupFraudulentBlockV1({
+    const predecessorSetup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -435,10 +435,10 @@ describe("Q35 network-id real-fault lifecycle", () => {
         l2TransactionCount: base.l2TransactionCount,
         prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
         utxosRoot: previous.root,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
       },
     });
-    const targetStart = emulatorSuccessorHeaderStartV1({
+    const targetStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: predecessorSetup.header.endTime,
       emulator: harness.emulator,
     });
@@ -467,7 +467,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
     const postPublication = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,
@@ -477,7 +477,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
     const predecessorPublication = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        publishProofChunksV1({
+        publishProofChunks({
           lucid: harness.proverLucid,
           network,
           signer: harness.proverSigner,
@@ -569,13 +569,13 @@ describe("Q35 network-id real-fault lifecycle", () => {
   }, 240_000);
 
   it("refuses a protected matching-network output before submission", async () => {
-    const harness = await makeNetworkIdEmulatorHarnessV1();
-    const [step01Ref] = await publishNetworkIdReferenceScriptsV1({
+    const harness = await makeNetworkIdEmulatorHarness();
+    const [step01Ref] = await publishNetworkIdReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.networkId,
     });
-    const fixture = await buildNetworkIdFixtureV1({ outputNetworkId: 0 });
-    const setup = await setupFraudulentBlockV1({
+    const fixture = await buildNetworkIdFixture({ outputNetworkId: 0 });
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -628,13 +628,13 @@ describe("Q35 network-id real-fault lifecycle", () => {
   }, 180_000);
 
   it("cancels the reference-script-only thread without minting evidence", async () => {
-    const harness = await makeNetworkIdEmulatorHarnessV1();
-    const [step01Ref] = await publishNetworkIdReferenceScriptsV1({
+    const harness = await makeNetworkIdEmulatorHarness();
+    const [step01Ref] = await publishNetworkIdReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.networkId,
     });
-    const fixture = await buildNetworkIdFixtureV1();
-    const setup = await setupFraudulentBlockV1({
+    const fixture = await buildNetworkIdFixture();
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,

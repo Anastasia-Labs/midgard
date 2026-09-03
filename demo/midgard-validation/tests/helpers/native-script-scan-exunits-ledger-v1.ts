@@ -52,7 +52,7 @@ import { fileURLToPath } from "node:url";
  */
 
 /** The §3.3 per-transaction execution basis the #633 measurements are read against. */
-export const SCAN_BENCH_EXECUTION_BASIS_V1 = {
+export const SCAN_BENCH_EXECUTION_BASIS = {
   memoryUnits: 13_200_000n,
   cpuUnits: 8_000_000_000n,
   source:
@@ -62,20 +62,20 @@ export const SCAN_BENCH_EXECUTION_BASIS_V1 = {
     "as GOAL_SPEC_EXECUTION_BASIS_V1; never read out of the ledger it judges.",
 } as const;
 
-export const SCAN_BENCH_LEDGER_PATH_V1 = resolve(
+export const SCAN_BENCH_LEDGER_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../evidence/native-script-scan-fault-proof-exunits-v1.json",
 );
 
 /** The env vars that narrow what the benchmark measures. */
-export const SCAN_BENCH_FILTER_ENV_V1 = [
+export const SCAN_BENCH_FILTER_ENV = [
   "MIDGARD_SCAN_BENCH_SHAPES",
   "MIDGARD_SCAN_BENCH_NODES",
   "MIDGARD_SCAN_BENCH_STEPS",
   "MIDGARD_SCAN_BENCH_MAXFIT",
 ] as const;
 
-export type ScanBenchProofStepCountsV1 = {
+export type ScanBenchProofStepCounts = {
   readonly total: number;
   readonly nativeToken: number;
   readonly nativeFrame: number;
@@ -83,7 +83,7 @@ export type ScanBenchProofStepCountsV1 = {
 };
 
 /** One fresh reading, as the benchmark produces it. */
-export type ScanBenchStepReadingV1 = {
+export type ScanBenchStepReading = {
   readonly label: string;
   readonly stepIndex: number;
   readonly stage: number;
@@ -96,13 +96,13 @@ export type ScanBenchStepReadingV1 = {
 };
 
 /** One fresh curve point, as the benchmark produces it. */
-export type ScanBenchCurveReadingV1 = {
+export type ScanBenchCurveReading = {
   readonly shape: string;
   readonly nodes: number;
   readonly payloadBytes: number;
   readonly spentOutputBytes: number;
-  readonly proofStepCounts: ScanBenchProofStepCountsV1;
-  readonly measurements: readonly ScanBenchStepReadingV1[];
+  readonly proofStepCounts: ScanBenchProofStepCounts;
+  readonly measurements: readonly ScanBenchStepReading[];
 };
 
 type LedgerRow = {
@@ -127,11 +127,11 @@ type LedgerCurvePoint = {
   nodes: number;
   payloadBytes: number;
   spentOutputBytes: number;
-  proofStepCounts: ScanBenchProofStepCountsV1;
+  proofStepCounts: ScanBenchProofStepCounts;
   rows: Record<string, LedgerRow>;
 };
 
-export type ScanBenchLedgerV1 = {
+export type ScanBenchLedger = {
   measurement: string;
   issue: string;
   spec: string;
@@ -158,22 +158,22 @@ const curveKey = (shape: string, nodes: number): string =>
 const memBasisShareBasisPoints = (mem: bigint, basisMemory: bigint): number =>
   Number((mem * 10_000n) / basisMemory);
 
-export const readScanBenchLedgerV1 = (
-  ledgerPath: string = SCAN_BENCH_LEDGER_PATH_V1,
-): ScanBenchLedgerV1 | null => {
+export const readScanBenchLedger = (
+  ledgerPath: string = SCAN_BENCH_LEDGER_PATH,
+): ScanBenchLedger | null => {
   if (!existsSync(ledgerPath)) return null;
-  return JSON.parse(readFileSync(ledgerPath, "utf8")) as ScanBenchLedgerV1;
+  return JSON.parse(readFileSync(ledgerPath, "utf8")) as ScanBenchLedger;
 };
 
-export const writeScanBenchLedgerV1 = (
+export const writeScanBenchLedger = (
   ledgerPath: string,
-  ledger: ScanBenchLedgerV1,
+  ledger: ScanBenchLedger,
 ): void => {
   mkdirSync(dirname(ledgerPath), { recursive: true });
   writeFileSync(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
 };
 
-export type ScanBenchLedgerBasisV1 = {
+export type ScanBenchLedgerBasis = {
   readonly memoryUnits: bigint;
   readonly cpuUnits: bigint;
   readonly maxL1ProofTxBytes: number;
@@ -181,7 +181,7 @@ export type ScanBenchLedgerBasisV1 = {
   readonly source: string;
 };
 
-export type ScanBenchLedgerVerdictV1 = {
+export type ScanBenchLedgerVerdict = {
   /** Not re-takeable: resolve these in the source or in the ledger. */
   readonly failures: readonly string[];
   /** Re-takeable readings: what `MIDGARD_SCAN_BENCH_UPDATE=1` absorbs. */
@@ -189,14 +189,14 @@ export type ScanBenchLedgerVerdictV1 = {
   /** Rows compared (or written). Zero is itself a failure. */
   readonly rowCount: number;
   /** The ledger to write, in update/bootstrap mode; `null` otherwise. */
-  readonly updated: ScanBenchLedgerV1 | null;
+  readonly updated: ScanBenchLedger | null;
   /** True when there was no committed artifact and one was synthesised. */
   readonly bootstrapped: boolean;
 };
 
 const rowFromReading = (
-  reading: ScanBenchStepReadingV1,
-  basis: ScanBenchLedgerBasisV1,
+  reading: ScanBenchStepReading,
+  basis: ScanBenchLedgerBasis,
   judgements: Pick<LedgerRow, "basisFit" | "l1Fit"> &
     Partial<Pick<LedgerRow, "infeasibility" | "ruling">>,
 ): LedgerRow => ({
@@ -229,19 +229,19 @@ const rowFromReading = (
  * and in compare mode that is a single, explicit failure telling the reader
  * which lane to run.
  */
-export const checkScanBenchLedgerV1 = ({
+export const checkScanBenchLedger = ({
   ledger,
   readings,
   basis,
   update,
   filtersInEffect = [],
 }: {
-  readonly ledger: ScanBenchLedgerV1 | null;
-  readonly readings: readonly ScanBenchCurveReadingV1[];
-  readonly basis: ScanBenchLedgerBasisV1;
+  readonly ledger: ScanBenchLedger | null;
+  readonly readings: readonly ScanBenchCurveReading[];
+  readonly basis: ScanBenchLedgerBasis;
   readonly update: boolean;
   readonly filtersInEffect?: readonly string[];
-}): ScanBenchLedgerVerdictV1 => {
+}): ScanBenchLedgerVerdict => {
   const failures: string[] = [];
   const drifts: string[] = [];
   let rowCount = 0;
@@ -255,7 +255,7 @@ export const checkScanBenchLedgerV1 = ({
       return {
         failures: [
           "no committed artifact at " +
-            `${SCAN_BENCH_LEDGER_PATH_V1} — run the update lane ` +
+            `${SCAN_BENCH_LEDGER_PATH} — run the update lane ` +
             "(`pnpm --dir demo/midgard-validation run test:evidence:update`, i.e. " +
             "MIDGARD_VALIDATION_EVIDENCE=1 MIDGARD_SCAN_BENCH_UPDATE=1) to record " +
             "the readings, write the `infeasibility`/`ruling` prose for every row " +
@@ -668,9 +668,9 @@ export const checkScanBenchLedgerV1 = ({
 };
 
 /** The benchmark filter env vars that are actually set, for the bootstrap guard. */
-export const scanBenchFiltersInEffectV1 = (
+export const scanBenchFiltersInEffect = (
   environment: NodeJS.ProcessEnv = process.env,
 ): readonly string[] =>
-  SCAN_BENCH_FILTER_ENV_V1.filter(
+  SCAN_BENCH_FILTER_ENV.filter(
     (name) => environment[name] !== undefined && environment[name] !== "",
   );

@@ -1,26 +1,26 @@
 import {
   buildMidgardValidationTraceTree,
   encodeMidgardTxOutput,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationRejectionCode,
+  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import {
-  decodeRetainedValidationWitnessV1,
-  encodeRetainedValidationWitnessKeyV1,
-  encodeRetainedValidationWitnessV1,
+  decodeRetainedValidationWitness,
+  encodeRetainedValidationWitness,
+  encodeRetainedValidationWitnessKey,
   type EventKey,
   EventKeySchema,
   ROOT_DOMAINS,
-  ValidationAuxiliaryWitnessV1Schema,
+  ValidationAuxiliaryWitnessSchema,
   validationMachineStateDataFromCore,
-  ValidationTraceDescriptorV1Schema,
+  ValidationTraceDescriptorSchema,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
@@ -28,7 +28,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -36,23 +36,23 @@ import {
   nativeScriptWitness,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { applyMissingScriptSourceScriptsV1 } from "../src/missing-script-source/contracts-v1.js";
-import { missingScriptSourceEvidenceFromUniverseV1 } from "../src/missing-script-source/production-replay-v1.js";
+import { applyMissingScriptSourceScripts } from "../src/missing-script-source/contracts-v1.js";
+import { missingScriptSourceEvidenceFromUniverse } from "../src/missing-script-source/production-replay-v1.js";
 import {
-  buildRetainedMissingScriptSourceUniverseV1,
-  discoverRetainedMissingScriptSourceCoordinatesV1,
+  buildRetainedMissingScriptSourceUniverse,
+  discoverRetainedMissingScriptSourceCoordinates,
 } from "../src/missing-script-source/retained-script-universe-v1.js";
-import { submitMissingScriptSourceCancelV1 } from "../src/missing-script-source/submit-cancel-v1.js";
-import { submitMissingScriptSourceInitV1 } from "../src/missing-script-source/submit-init-v1.js";
+import { submitMissingScriptSourceCancel } from "../src/missing-script-source/submit-cancel-v1.js";
+import { submitMissingScriptSourceInit } from "../src/missing-script-source/submit-init-v1.js";
 import {
-  submitMissingScriptSourceStep01AcceptedV1,
-  submitMissingScriptSourceStep01ForcedV1,
+  submitMissingScriptSourceStep01Accepted,
+  submitMissingScriptSourceStep01Forced,
 } from "../src/missing-script-source/submit-step-01-v1.js";
-import { submitMissingScriptSourceStep02V1 } from "../src/missing-script-source/submit-step-02-v1.js";
-import { submitMissingScriptSourceStep03V1 } from "../src/missing-script-source/submit-step-03-v1.js";
-import { submitMissingScriptSourceStep04V1 } from "../src/missing-script-source/submit-step-04-v1.js";
-import { submitMissingScriptSourceStep05V1 } from "../src/missing-script-source/submit-step-05-v1.js";
-import { submitMissingScriptSourceStep06V1 } from "../src/missing-script-source/submit-step-06-v1.js";
+import { submitMissingScriptSourceStep02 } from "../src/missing-script-source/submit-step-02-v1.js";
+import { submitMissingScriptSourceStep03 } from "../src/missing-script-source/submit-step-03-v1.js";
+import { submitMissingScriptSourceStep04 } from "../src/missing-script-source/submit-step-04-v1.js";
+import { submitMissingScriptSourceStep05 } from "../src/missing-script-source/submit-step-05-v1.js";
+import { submitMissingScriptSourceStep06 } from "../src/missing-script-source/submit-step-06-v1.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
@@ -61,16 +61,16 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
-  emulatorSuccessorHeaderStartV1,
+  emulatorSuccessorHeaderStart,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -120,18 +120,18 @@ const retainedFixture = async (
   ];
   const spentOutput = makeProtectedScriptOutput(
     hashScriptWitness(required),
-    FUNDED_OUTPUT_LOVELACE_V1,
+    FUNDED_OUTPUT_LOVELACE,
   );
   const referenceOutput = encodeMidgardTxOutput({
     address: Buffer.alloc(29, 0x61),
-    value: { lovelace: FUNDED_OUTPUT_LOVELACE_V1, assets: new Map() },
+    value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
     script_ref: presentAt === "reference" ? required : referenced,
   });
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],
     referenceInputs: [reference],
-    outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+    outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
     scriptWitnesses:
       presentAt === null
         ? acceptedInlineSources
@@ -151,7 +151,7 @@ const retainedFixture = async (
   );
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor,
       sourceKind: presentAt === null ? "normal" : "forced",
       committedForcedVerdict: presentAt === null ? undefined : "rejected",
@@ -180,9 +180,9 @@ const retainedFixture = async (
   const committedRejectionHash =
     presentAt === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCodeV1("E_MISSING_REQUIRED_WITNESS");
+      : hashMidgardValidationRejectionCode("E_MISSING_REQUIRED_WITNESS");
   const tree = buildMidgardValidationTraceTree(
-    trace.states.map(hashMidgardValidationMachineStateV1),
+    trace.states.map(hashMidgardValidationMachineState),
     presentAt === null ? "accepted" : "rejected",
     committedRejectionHash,
   );
@@ -202,7 +202,7 @@ const retainedFixture = async (
       value: Buffer.from(
         Data.to(
           descriptorData as never,
-          ValidationTraceDescriptorV1Schema as never,
+          ValidationTraceDescriptorSchema as never,
         ),
         "hex",
       ),
@@ -216,15 +216,15 @@ const retainedFixture = async (
         witness.auxiliary.kind !== "scriptSourceScan")
     )
       return [];
-    const key = encodeRetainedValidationWitnessKeyV1({
+    const key = encodeRetainedValidationWitnessKey({
       event_key: eventKey,
       execution_index: BigInt(stateIndex) - BigInt(trace.witnesses.length),
     });
     const auxiliary = Data.from(
-      Data.to(validationAuxiliaryWitnessDataV1(witness.auxiliary) as never),
-      ValidationAuxiliaryWitnessV1Schema,
+      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
+      ValidationAuxiliaryWitnessSchema,
     );
-    const value = encodeRetainedValidationWitnessV1({
+    const value = encodeRetainedValidationWitness({
       machine_state: validationMachineStateDataFromCore(
         trace.states[stateIndex]!,
       ),
@@ -254,12 +254,12 @@ const retainedFixture = async (
 describe("missingScriptSource retained ScriptSources universe", () => {
   it("reconstructs the production purpose/source/no-auxiliary sequence in canonical location order", async () => {
     const fixture = await retainedFixture();
-    const coordinates = discoverRetainedMissingScriptSourceCoordinatesV1({
+    const coordinates = discoverRetainedMissingScriptSourceCoordinates({
       eventKey: fixture.eventKey,
       retainedValidationWitnessEntries: fixture.retainedEntries,
     });
     expect(coordinates).toHaveLength(1);
-    const universe = await buildRetainedMissingScriptSourceUniverseV1({
+    const universe = await buildRetainedMissingScriptSourceUniverse({
       eventKey: fixture.eventKey,
       ...coordinates[0]!,
       authenticatedValidationTraceEntries: fixture.descriptorEntries,
@@ -282,19 +282,19 @@ describe("missingScriptSource retained ScriptSources universe", () => {
 
   it("rejects omitted openings and normalizes retained transport order", async () => {
     const fixture = await retainedFixture();
-    const coordinates = discoverRetainedMissingScriptSourceCoordinatesV1({
+    const coordinates = discoverRetainedMissingScriptSourceCoordinates({
       eventKey: fixture.eventKey,
       retainedValidationWitnessEntries: fixture.retainedEntries,
     });
     const sourceEntryIndex = fixture.retainedEntries.findIndex(({ value }) => {
-      const auxiliary = decodeRetainedValidationWitnessV1(value).auxiliary;
+      const auxiliary = decodeRetainedValidationWitness(value).auxiliary;
       return (
         typeof auxiliary === "object" && "ScriptSourceScanWitness" in auxiliary
       );
     });
     expect(sourceEntryIndex).toBeGreaterThanOrEqual(0);
     await expect(
-      buildRetainedMissingScriptSourceUniverseV1({
+      buildRetainedMissingScriptSourceUniverse({
         eventKey: fixture.eventKey,
         ...coordinates[0]!,
         authenticatedValidationTraceEntries: fixture.descriptorEntries,
@@ -305,7 +305,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       }),
     ).rejects.toThrow(/absent|incomplete/u);
     await expect(
-      buildRetainedMissingScriptSourceUniverseV1({
+      buildRetainedMissingScriptSourceUniverse({
         eventKey: fixture.eventKey,
         ...coordinates[0]!,
         authenticatedValidationTraceEntries: fixture.descriptorEntries,
@@ -321,7 +321,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
     "reconstructs an authenticated production prefix when the matching source is %s",
     async (presentAt) => {
       const fixture = await retainedFixture(presentAt);
-      const universe = await buildRetainedMissingScriptSourceUniverseV1({
+      const universe = await buildRetainedMissingScriptSourceUniverse({
         eventKey: fixture.eventKey,
         purposeKind: 0,
         purposeIndex: 0,
@@ -351,7 +351,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
     "executes the real Lucid $presentAt contradiction (cancel=$cancel)",
     async ({ presentAt, cancel }) => {
       const fixture = await retainedFixture(presentAt);
-      const universe = await buildRetainedMissingScriptSourceUniverseV1({
+      const universe = await buildRetainedMissingScriptSourceUniverse({
         eventKey: fixture.eventKey,
         purposeKind: 0,
         purposeIndex: 0,
@@ -360,7 +360,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
         expectedValidationTracesRoot: fixture.expectedRoot,
         expectedPresence: presentAt !== null,
       });
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: { alwaysFraudProofCatalogue: true },
         lucidOptions: { evaluator: createScalusEvaluator() },
       });
@@ -379,7 +379,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
           AddressDataLocal as never,
         ),
       );
-      const steps = applyMissingScriptSourceScriptsV1({
+      const steps = applyMissingScriptSourceScripts({
         blueprint: harness.realBlueprint,
         network,
         computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -416,7 +416,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       const reason = {
         ScriptSourceMissing: { purpose_kind: 0n, purpose_index: 0n },
       } as const;
-      const block = await buildDecodingBlockFixtureV1({
+      const block = await buildDecodingBlockFixture({
         operatorVkey,
         startTime,
         priorLedgerRoot: "33".repeat(32),
@@ -443,7 +443,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
         catalogue,
         header,
       });
-      const successorStart = emulatorSuccessorHeaderStartV1({
+      const successorStart = emulatorSuccessorHeaderStart({
         predecessorEndTime: header.endTime,
         emulator: harness.emulator,
       });
@@ -513,12 +513,12 @@ describe("missingScriptSource retained ScriptSources universe", () => {
               ),
               rejection_reason: reason,
             } as const);
-      const evidence = missingScriptSourceEvidenceFromUniverseV1({
+      const evidence = missingScriptSourceEvidenceFromUniverse({
         subject,
         universe,
       });
       const init = await measured("init", () =>
-        submitMissingScriptSourceInitV1({
+        submitMissingScriptSourceInit({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -550,7 +550,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       const step01 =
         presentAt === null
           ? await measured("step01-accepted", () =>
-              submitMissingScriptSourceStep01AcceptedV1({
+              submitMissingScriptSourceStep01Accepted({
                 ...common,
                 blueprint: harness.realBlueprint,
                 network,
@@ -560,7 +560,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
               }),
             )
           : await measured("step01-forced", async () =>
-              submitMissingScriptSourceStep01ForcedV1({
+              submitMissingScriptSourceStep01Forced({
                 ...common,
                 membership: await buildForcedTransactionLeafMembershipProof({
                   reconstruction: block.reconstruction,
@@ -569,7 +569,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
               }),
             );
       const step02 = await measured("step02-authenticate", () =>
-        submitMissingScriptSourceStep02V1({
+        submitMissingScriptSourceStep02({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -582,7 +582,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       );
       if (cancel) {
         const cancelled = await measured("cancel", () =>
-          submitMissingScriptSourceCancelV1({
+          submitMissingScriptSourceCancel({
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -615,7 +615,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       const resumedThreadOutRef = `${resumedThread.txHash}#${resumedThread.outputIndex.toString()}`;
       expect(resumedThreadOutRef).toBe(step02.nextThreadOutRef);
       const step03 = await measured("step03-frontiers", () =>
-        submitMissingScriptSourceStep03V1({
+        submitMissingScriptSourceStep03({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -627,7 +627,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
         }),
       );
       const step04 = await measured("step04-open", () =>
-        submitMissingScriptSourceStep04V1({
+        submitMissingScriptSourceStep04({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -638,7 +638,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
         }),
       );
       const step05 = await measured("step05-scan", () =>
-        submitMissingScriptSourceStep05V1({
+        submitMissingScriptSourceStep05({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -650,7 +650,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
       );
       expect(step05.closed).toBe(true);
       const final = await measured("step06-mint", () =>
-        submitMissingScriptSourceStep06V1({
+        submitMissingScriptSourceStep06({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

@@ -17,11 +17,11 @@ import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { VAN_ROSSEM_TRANSACTION_LIMITS } from "./support/emulator/protocol-parameters.js";
 import {
-  buildNativeScriptInvalidEmulatorFixtureV1,
-  makeNativeScriptInvalidEmulatorHarnessV1,
-  publishFinalFamilyReferenceScriptsV1,
+  buildNativeScriptInvalidEmulatorFixture,
+  makeNativeScriptInvalidEmulatorHarness,
+  publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator-v1.js";
-import { setupFraudulentBlockV1 } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -31,7 +31,7 @@ import {
 
 describe("native-script-invalid standalone emulator lifecycle", () => {
   it("rejects a forced 29-signer direct submission before touching builder dependencies", async () => {
-    const fixture = await buildNativeScriptInvalidEmulatorFixtureV1({
+    const fixture = await buildNativeScriptInvalidEmulatorFixture({
       signerCount: 29,
     });
     const unreachable = null as never;
@@ -56,17 +56,17 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
   });
 
   it("proves a direct invalid native script, removes the header, and retains permanent evidence", async () => {
-    const harness = await makeNativeScriptInvalidEmulatorHarnessV1();
-    const refs = await publishFinalFamilyReferenceScriptsV1({
+    const harness = await makeNativeScriptInvalidEmulatorHarness();
+    const refs = await publishFinalFamilyReferenceScripts({
       lucid: harness.proverLucid,
       family: harness.family,
       label: "native-script-invalid",
     });
-    const fixture = await buildNativeScriptInvalidEmulatorFixtureV1({
+    const fixture = await buildNativeScriptInvalidEmulatorFixture({
       signerCount: 28,
     });
     harness.emulator.awaitSlot(1);
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,
@@ -179,17 +179,17 @@ describe("native-script-invalid standalone emulator lifecycle", () => {
   it.each([29, 33])(
     "routes %i signers through bounded staged transactions with Van Rossem headroom",
     async (signerCount) => {
-      const harness = await makeNativeScriptInvalidEmulatorHarnessV1();
-      const refs = await publishFinalFamilyReferenceScriptsV1({
+      const harness = await makeNativeScriptInvalidEmulatorHarness();
+      const refs = await publishFinalFamilyReferenceScripts({
         lucid: harness.proverLucid,
         family: harness.family,
         label: "native-script-invalid-staged",
       });
-      const fixture = await buildNativeScriptInvalidEmulatorFixtureV1({
+      const fixture = await buildNativeScriptInvalidEmulatorFixture({
         signerCount,
       });
       harness.emulator.awaitSlot(1);
-      const setup = await setupFraudulentBlockV1({
+      const setup = await setupFraudulentBlock({
         funderLucid: harness.funderLucid,
         emulator: harness.emulator,
         contracts: harness.contracts,

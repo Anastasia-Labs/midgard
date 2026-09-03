@@ -1,6 +1,6 @@
 # RejectionReasonV1 — current protocol reference
 
-`RejectionReasonV1` is the typed operator-rejection reason carried only by a
+`RejectionReason` is the typed operator-rejection reason carried only by a
 forced-inclusion verdict. The authoritative constructor order, fields, and
 legacy-code bridge are implemented in:
 
@@ -13,10 +13,10 @@ constructor table from source.
 
 ## 1. Verdict shape
 
-`OperatorVerdictV1` has two arms:
+`OperatorVerdict` has two arms:
 
 - `ForcedTxValid`
-- `ForcedTxInvalid { reason: RejectionReasonV1 }`
+- `ForcedTxInvalid { reason: RejectionReason }`
 
 Normal `transactions_root` leaves do not carry a rejection reason; they are
 acceptance claims and must use validity code zero. A malformed non-zero normal
@@ -24,7 +24,7 @@ leaf is covered by `l2TxMistag`.
 
 ## 2. Reason space
 
-`RejectionReasonV1` currently has 47 constructors. They name the smallest
+`RejectionReason` currently has 47 constructors. They name the smallest
 authenticated subject needed to adjudicate the fault, covering:
 
 - field size/type and transaction structure;

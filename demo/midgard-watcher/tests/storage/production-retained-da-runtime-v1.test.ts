@@ -3,27 +3,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DaRequestResponseProtocol } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  createManifestBoundProductionWorkflowRunnerV1,
-  PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1,
-  type ProductionWorkflowAdapterRunnerInputV1,
+  createManifestBoundWorkflowRunner,
+  WORKFLOW_RUNTIME_CONFIG,
+  type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentityV1 } from "../../src/runtime/deployment-identity.js";
-import type { WatcherProductionOperationsSinkV1 } from "../../src/runtime/production-operations-observability-v1.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
+import type { WatcherOperationsSink } from "../../src/runtime/production-operations-observability-v1.js";
 import {
-  bindWatcherProductionRetainedDaOperationsV1,
-  createWatcherProductionRetainedDaRuntimeV1,
-  createWatcherProductionWorkflowRuntimeLoaderV1,
-  WATCHER_PRODUCTION_RETAINED_DA_RUNTIME_V1,
+  bindWatcherRetainedDaOperations,
+  createWatcherRetainedDaRuntime,
+  createWatcherWorkflowRuntimeLoader,
+  WATCHER_RETAINED_DA_RUNTIME,
 } from "../../src/storage/production-retained-da-runtime-v1.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
-import { makeWatcherDeploymentAuthorityFixtureV1 } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
-const AUTHORITY = makeWatcherDeploymentAuthorityFixtureV1();
+const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
 const DEPLOYMENT = AUTHORITY.result.manifestId;
 const PEER_ID = "12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
 
@@ -96,7 +96,7 @@ const rawConfig = (multiaddr = `/dns4/da-a.example/tcp/443/p2p/${PEER_ID}`) =>
     },
   }) as const;
 
-const deploymentIdentity = (): VerifiedWatcherDeploymentIdentityV1 =>
+const deploymentIdentity = (): VerifiedWatcherDeploymentIdentity =>
   AUTHORITY.result;
 
 const transportFactory = () => {
@@ -113,8 +113,8 @@ const transportFactory = () => {
 };
 
 const invocation = (
-  overrides: Partial<ProductionWorkflowAdapterRunnerInputV1> = {},
-): ProductionWorkflowAdapterRunnerInputV1 => ({
+  overrides: Partial<WorkflowAdapterRunnerInput> = {},
+): WorkflowAdapterRunnerInput => ({
   mode: "run",
   category: "doubleSpend",
   deploymentFingerprint: DEPLOYMENT,
@@ -136,21 +136,19 @@ describe("production retained-DA runtime V1", () => {
     const fake = transportFactory();
     const recordDaFetch = vi.fn();
     const setAlert = vi.fn();
-    const operationsBinding = bindWatcherProductionRetainedDaOperationsV1({
+    const operationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity: deploymentIdentity(),
       sink: Object.freeze({
         recordDaFetch,
         setAlert,
-      }) as unknown as WatcherProductionOperationsSinkV1,
+      }) as unknown as WatcherOperationsSink,
     });
-    const runtime = await createWatcherProductionRetainedDaRuntimeV1({
+    const runtime = await createWatcherRetainedDaRuntime({
       watcherConfig: rawConfig(),
       deploymentIdentity: deploymentIdentity(),
       unsafeTransportFactoryForTest: fake.factory,
     });
-    expect(runtime.schemaVersion).toBe(
-      WATCHER_PRODUCTION_RETAINED_DA_RUNTIME_V1,
-    );
+    expect(runtime.schemaVersion).toBe(WATCHER_RETAINED_DA_RUNTIME);
     expect(runtime.deploymentFingerprint).toBe(DEPLOYMENT);
     expect(runtime.sources).toHaveLength(1);
     expect(runtime.sources[0]?.sourceId).toBe("watcher-public-da/da-peer-a");
@@ -188,7 +186,7 @@ describe("production retained-DA runtime V1", () => {
     async (multiaddr) => {
       const fake = transportFactory();
       await expect(
-        createWatcherProductionRetainedDaRuntimeV1({
+        createWatcherRetainedDaRuntime({
           watcherConfig: rawConfig(multiaddr),
           deploymentIdentity: deploymentIdentity(),
           unsafeTransportFactoryForTest: fake.factory,
@@ -201,7 +199,7 @@ describe("production retained-DA runtime V1", () => {
   it("rejects a foreign network or structurally forged deployment identity before transport startup", async () => {
     const wrongNetwork = transportFactory();
     await expect(
-      createWatcherProductionRetainedDaRuntimeV1({
+      createWatcherRetainedDaRuntime({
         watcherConfig: { ...rawConfig(), targetNetwork: "Mainnet" },
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: wrongNetwork.factory,
@@ -211,11 +209,11 @@ describe("production retained-DA runtime V1", () => {
 
     const wrongMarker = transportFactory();
     await expect(
-      createWatcherProductionRetainedDaRuntimeV1({
+      createWatcherRetainedDaRuntime({
         watcherConfig: rawConfig(),
         deploymentIdentity: {
           ...deploymentIdentity(),
-          durableMarker: makeDeploymentMarkerV1("ff".repeat(32)),
+          durableMarker: makeDeploymentMarker("ff".repeat(32)),
         },
         unsafeTransportFactoryForTest: wrongMarker.factory,
       }),
@@ -233,7 +231,7 @@ describe("production retained-DA runtime V1", () => {
     try {
       await writeFile(canonicalPath, JSON.stringify(rawConfig()));
       await symlink(canonicalPath, symlinkPath);
-      const loader = createWatcherProductionWorkflowRuntimeLoaderV1({
+      const loader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
         buildInfrastructureConfig: async () => ({ ok: true }),
@@ -253,7 +251,7 @@ describe("production retained-DA runtime V1", () => {
   it("rejects development mode before transport startup", async () => {
     const fake = transportFactory();
     await expect(
-      createWatcherProductionRetainedDaRuntimeV1({
+      createWatcherRetainedDaRuntime({
         watcherConfig: { ...rawConfig(), mode: "development" },
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
@@ -274,7 +272,7 @@ describe("production retained-DA runtime V1", () => {
       headerHash: call.headerHash,
     }));
     try {
-      const loader = createWatcherProductionWorkflowRuntimeLoaderV1({
+      const loader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: fake.factory,
         buildInfrastructureConfig,
@@ -284,7 +282,7 @@ describe("production retained-DA runtime V1", () => {
         runtimeConfigPath: configPath,
         invocation: call,
       });
-      expect(loaded.schemaVersion).toBe(PRODUCTION_WORKFLOW_RUNTIME_CONFIG_V1);
+      expect(loaded.schemaVersion).toBe(WORKFLOW_RUNTIME_CONFIG);
       expect(loaded.retainedDaSources).toHaveLength(1);
       expect(loaded.config).toEqual({
         category: "doubleSpend",
@@ -312,7 +310,7 @@ describe("production retained-DA runtime V1", () => {
     const substitutedBuilder = vi.fn(async () => ({
       authority: "substituted",
     }));
-    const substituteAuthority = makeWatcherDeploymentAuthorityFixtureV1({
+    const substituteAuthority = makeWatcherDeploymentAuthorityFixture({
       releaseDigest: "33".repeat(32),
     });
     const mutableOptions = {
@@ -321,8 +319,7 @@ describe("production retained-DA runtime V1", () => {
       buildInfrastructureConfig: originalBuilder,
     };
     try {
-      const loader =
-        createWatcherProductionWorkflowRuntimeLoaderV1(mutableOptions);
+      const loader = createWatcherWorkflowRuntimeLoader(mutableOptions);
       const pending = loader({
         runtimeConfigPath: configPath,
         invocation: invocation({ runtimeConfigPath: configPath }),
@@ -352,7 +349,7 @@ describe("production retained-DA runtime V1", () => {
     await writeFile(configPath, JSON.stringify(rawConfig()));
     try {
       const substituted = transportFactory();
-      const loader = createWatcherProductionWorkflowRuntimeLoaderV1({
+      const loader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: substituted.factory,
         buildInfrastructureConfig: async () => ({ ok: true }),
@@ -366,7 +363,7 @@ describe("production retained-DA runtime V1", () => {
       expect(substituted.factory).not.toHaveBeenCalled();
 
       const failed = transportFactory();
-      const failingLoader = createWatcherProductionWorkflowRuntimeLoaderV1({
+      const failingLoader = createWatcherWorkflowRuntimeLoader({
         deploymentIdentity: deploymentIdentity(),
         unsafeTransportFactoryForTest: failed.factory,
         buildInfrastructureConfig: async () => {
@@ -407,16 +404,14 @@ describe("production retained-DA runtime V1", () => {
           },
         }),
       );
-      const runner = createManifestBoundProductionWorkflowRunnerV1({
+      const runner = createManifestBoundWorkflowRunner({
         category: "doubleSpend",
         loadRuntimeConfig:
-          createWatcherProductionWorkflowRuntimeLoaderV1<TestDoubleSpendWorkflow>(
-            {
-              deploymentIdentity: deploymentIdentity(),
-              unsafeTransportFactoryForTest: transport.factory,
-              buildInfrastructureConfig: builder,
-            },
-          ),
+          createWatcherWorkflowRuntimeLoader<TestDoubleSpendWorkflow>({
+            deploymentIdentity: deploymentIdentity(),
+            unsafeTransportFactoryForTest: transport.factory,
+            buildInfrastructureConfig: builder,
+          }),
         constructWorkflow: async (config) => config,
         execute: async () => {
           throw new Error("structural permit reached execution");

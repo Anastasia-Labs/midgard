@@ -1,21 +1,21 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  midgardNativeTxProofFieldPreimageLengthsV1,
-  planMidgardFieldCarriageV1,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxWitnessSetCompact,
+  materializeMidgardNativeTxFromCanonical,
+  midgardNativeTxProofFieldPreimageLengths,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import {
   type FieldPreimageLengthMismatchFaultProofContracts,
-  type HeaderV1,
-  L2TransactionSourceV1Schema,
+  type Header,
+  L2TransactionSourceSchema,
   Proof,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -23,34 +23,34 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  type FaultProofFieldOpeningPlanV1,
-  faultProofRawFieldCarriageV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  type FaultProofFieldOpeningPlan,
+  faultProofRawFieldCarriage,
+  publishFaultProofFieldCarriage,
 } from "../src/field-opening-v1.js";
-import { prepareAcceptedFieldPreimageLengthMismatchV1 } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
-import type { ManifestBoundFieldPreimageLengthConfigV1 } from "../src/field-preimage-length-mismatch/production-config-v1.js";
+import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
+import type { ManifestBoundFieldPreimageLengthConfig } from "../src/field-preimage-length-mismatch/production-config-v1.js";
 import {
-  submitFieldPreimageLengthAcceptedAuthenticationV1,
-  submitFieldPreimageLengthAcceptedDispatchV1,
-  submitFieldPreimageLengthCancelV1,
-  submitFieldPreimageLengthForcedAuthenticationV1,
-  submitFieldPreimageLengthForcedDispatchV1,
-  submitFieldPreimageLengthInitV1,
-  submitFieldPreimageLengthTerminalV1,
+  submitFieldPreimageLengthAcceptedAuthentication,
+  submitFieldPreimageLengthAcceptedDispatch,
+  submitFieldPreimageLengthCancel,
+  submitFieldPreimageLengthForcedAuthentication,
+  submitFieldPreimageLengthForcedDispatch,
+  submitFieldPreimageLengthInit,
+  submitFieldPreimageLengthTerminal,
 } from "../src/field-preimage-length-mismatch/submit-lucid-v1.js";
-import { prepareFieldPreimageLengthWorkflowV1 } from "../src/field-preimage-length-mismatch/workflow-v1.js";
-import { encodeL2TransactionSourceValueV1 } from "../src/prepare-double-spend.js";
+import { prepareFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow-v1.js";
+import { encodeL2TransactionSourceValue } from "../src/prepare-double-spend.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../src/submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import { committedFieldShapeScenarioMaterialV1 } from "./support/committed-field-shape-emulator-v1.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator-v1.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -60,8 +60,8 @@ import {
   buildInvalidForcedTransitionTraceFixture,
   countedTransactionsRoot,
   createRecordingLeaseCoordinator,
-  emulatorSuccessorHeaderStartV1,
-  setupFraudulentBlockV1,
+  emulatorSuccessorHeaderStart,
+  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -87,7 +87,7 @@ const emitFit = (
 };
 
 const setup = async (forced = false, acceptedPreimageBytes?: number) => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realFieldPreimageLengthMismatch: true,
       alwaysFraudProofCatalogue: true,
@@ -116,7 +116,7 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
         });
       })()
     : undefined;
-  const baseMaterial = committedFieldShapeScenarioMaterialV1("honest");
+  const baseMaterial = committedFieldShapeScenarioMaterial("honest");
   if (baseMaterial.fullTx === null || baseMaterial.canonicalTx === null)
     throw new Error("missing canonical tx");
   const material =
@@ -129,13 +129,13 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
               ...baseMaterial.canonicalTx.body,
               spendInputsPreimageCbor:
                 acceptedPreimageBytes === 32_768
-                  ? encodeMidgardFieldPreimageV1([
+                  ? encodeMidgardFieldPreimage([
                       encodeCbor(Buffer.alloc(32_761, 0xa5)),
                     ])
                   : Buffer.alloc(acceptedPreimageBytes, 0xa5),
             },
           };
-          const fullTx = materializeMidgardNativeTxFromCanonicalV1(canonical);
+          const fullTx = materializeMidgardNativeTxFromCanonical(canonical);
           return {
             ...baseMaterial,
             canonicalTx: canonical,
@@ -146,25 +146,22 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
         })();
   const materialFullTx = material.fullTx;
   if (materialFullTx === null) throw new Error("missing material full tx");
-  const nativeTxId = computeMidgardNativeTxIdV1(material.compact).toString(
-    "hex",
-  );
+  const nativeTxId = computeMidgardNativeTxId(material.compact).toString("hex");
   const lengths = [
-    ...midgardNativeTxProofFieldPreimageLengthsV1({
+    ...midgardNativeTxProofFieldPreimageLengths({
       body: materialFullTx.body,
       witnessSet: materialFullTx.witnessSet,
     }),
   ];
   lengths[material.fieldIndex] = lengths[material.fieldIndex]! + 1;
-  const sourceCbor = encodeL2TransactionSourceValueV1({
+  const sourceCbor = encodeL2TransactionSourceValue({
     txId: nativeTxId,
     proofSource: {
-      compactCbor: encodeMidgardNativeTxCompactV1(material.compact),
-      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-        deriveMidgardNativeTxWitnessSetCompactV1(materialFullTx.witnessSet),
+      compactCbor: encodeMidgardNativeTxCompact(material.compact),
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+        deriveMidgardNativeTxWitnessSetCompact(materialFullTx.witnessSet),
       ),
-      fieldPreimageLengthsCbor:
-        encodeMidgardNativeTxProofFieldLengthsV1(lengths),
+      fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(lengths),
     },
   });
   const store = new Store(undefined);
@@ -178,7 +175,7 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
   const transactionsRoot = Buffer.from(trie.hash).toString("hex");
   const fraudulent =
     forcedFixture === undefined
-      ? await setupFraudulentBlockV1({
+      ? await setupFraudulentBlock({
           funderLucid: harness.funderLucid,
           emulator: harness.emulator,
           contracts: harness.contracts,
@@ -210,7 +207,7 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
   }
   const acceptedPrepared =
     forcedFixture === undefined && acceptedPreimageBytes === undefined
-      ? await prepareAcceptedFieldPreimageLengthMismatchV1({
+      ? await prepareAcceptedFieldPreimageLengthMismatch({
           headerHash: fraudulent.headerHash,
           committedTransactionsRoot: await countedTransactionsRoot(
             transactionsRoot,
@@ -220,7 +217,7 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
           entries: [[nativeTxId, sourceCbor]],
           transactionId: nativeTxId,
           canonicalTransactionCbor:
-            encodeMidgardNativeTxCanonicalV1(materialFullTx),
+            encodeMidgardNativeTxCanonical(materialFullTx),
           fieldIndex: material.fieldIndex,
         })
       : undefined;
@@ -233,7 +230,7 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
     inclusion: {
       nativeTxId,
       nativeTx: nativeTxFromCoreCompact(material.compact),
-      nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
         material.compact,
       ).toString("hex"),
       l2TransactionSourceCbor: sourceCbor,
@@ -283,7 +280,7 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
       step03: references[3],
       witnesses: harness.witnessReferenceScripts,
     },
-  } as unknown as ManifestBoundFieldPreimageLengthConfigV1;
+  } as unknown as ManifestBoundFieldPreimageLengthConfig;
   return {
     harness,
     config,
@@ -293,10 +290,10 @@ const setup = async (forced = false, acceptedPreimageBytes?: number) => {
     acceptedPrepared,
     sourceCbor,
     transactionsRoot,
-    canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(materialFullTx),
+    canonicalTransactionCbor: encodeMidgardNativeTxCanonical(materialFullTx),
     fraudulentHeader:
       forcedFixture === undefined
-        ? (fraudulent as unknown as { readonly header: HeaderV1 }).header
+        ? (fraudulent as unknown as { readonly header: Header }).header
         : forcedFixture.header,
   };
 };
@@ -308,13 +305,13 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       const fixture = await setup();
       if (fixture.acceptedPrepared === undefined)
         throw new Error("missing directly prepared accepted evidence");
-      const init = await submitFieldPreimageLengthInitV1({
+      const init = await submitFieldPreimageLengthInit({
         config: fixture.config,
         fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
       });
       let threadOutRef = init.nextThreadOutRef;
       if (stepIndex >= 1) {
-        const dispatch = await submitFieldPreimageLengthAcceptedDispatchV1({
+        const dispatch = await submitFieldPreimageLengthAcceptedDispatch({
           config: fixture.config,
           threadOutRef,
           stateQueueBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
@@ -327,7 +324,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       }
       if (stepIndex === 3) {
         const authentication =
-          await submitFieldPreimageLengthAcceptedAuthenticationV1({
+          await submitFieldPreimageLengthAcceptedAuthentication({
             config: fixture.config,
             threadOutRef,
             claim: fixture.acceptedPrepared.claim,
@@ -338,7 +335,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       const cancel = await captureEmulatorSubmission(
         fixture.harness.emulator,
         () =>
-          submitFieldPreimageLengthCancelV1({
+          submitFieldPreimageLengthCancel({
             config: fixture.config,
             threadOutRef,
             stepIndex,
@@ -355,7 +352,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
 
   it("executes certified maximum evidence and refuses the adjacent actual length", async () => {
     const fixture = await setup(false, 32_768);
-    const plan = planMidgardFieldCarriageV1({
+    const plan = planMidgardFieldCarriage({
       owner: Buffer.from(fixture.harness.proverSigner.paymentKeyHash, "hex"),
       txId: Buffer.from(fixture.scenario.nativeTxId, "hex"),
       fieldIndex: fixture.scenario.fieldIndex,
@@ -371,8 +368,8 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       itemCount: 0,
       commitment: Buffer.from(plan.commitment).toString("hex"),
       plan,
-    } as FaultProofFieldOpeningPlanV1;
-    const rawPlan = planMidgardFieldCarriageV1({
+    } as FaultProofFieldOpeningPlan;
+    const rawPlan = planMidgardFieldCarriage({
       owner: Buffer.from(fixture.harness.proverSigner.paymentKeyHash, "hex"),
       txId: Buffer.from(fixture.scenario.nativeTxId, "hex"),
       fieldIndex: fixture.scenario.fieldIndex,
@@ -383,7 +380,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const rawPublication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        publishFaultProofFieldCarriageV1({
+        publishFaultProofFieldCarriage({
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned: {
@@ -401,7 +398,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const chunkPublication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        publishFaultProofFieldCarriageV1({
+        publishFaultProofFieldCarriage({
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned,
@@ -426,7 +423,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const certificateMint = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        certifyFaultProofFieldCarriageV1({
+        certifyFaultProofFieldCarriage({
           lucid: fixture.harness.proverLucid,
           network,
           signer: fixture.harness.proverSigner,
@@ -441,7 +438,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
           witnessSetCompactCbor: (
             Data.from(
               fixture.sourceCbor,
-              L2TransactionSourceV1Schema as never,
+              L2TransactionSourceSchema as never,
             ) as {
               source: { witness_set_compact_cbor: string };
             }
@@ -458,14 +455,14 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       certificate.certificateUtxo,
       ...chunks,
     ];
-    const carriage = faultProofRawFieldCarriageV1({
+    const carriage = faultProofRawFieldCarriage({
       plan,
       referenceInputs: allAuthenticationReferences,
       certificatePolicyId:
         fixture.config.contracts.fieldPreimageCertificate.policyId,
       label: "field-preimage-length maximum",
     });
-    const direct = await prepareAcceptedFieldPreimageLengthMismatchV1({
+    const direct = await prepareAcceptedFieldPreimageLengthMismatch({
       headerHash: fixture.fraudulent.headerHash,
       committedTransactionsRoot: await countedTransactionsRoot(
         fixture.transactionsRoot,
@@ -481,7 +478,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     expect(direct.prepared.actualLength).toBe(32_768);
     expect(direct.prepared.carriage).toBe("Certified");
     const init = await captureEmulatorSubmission(fixture.harness.emulator, () =>
-      submitFieldPreimageLengthInitV1({
+      submitFieldPreimageLengthInit({
         config: fixture.config,
         fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
       }),
@@ -490,7 +487,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const dispatch = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        submitFieldPreimageLengthAcceptedDispatchV1({
+        submitFieldPreimageLengthAcceptedDispatch({
           config: fixture.config,
           threadOutRef: init.result.nextThreadOutRef,
           stateQueueBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
@@ -502,7 +499,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const authentication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        submitFieldPreimageLengthAcceptedAuthenticationV1({
+        submitFieldPreimageLengthAcceptedAuthentication({
           config: fixture.config,
           threadOutRef: dispatch.result.nextThreadOutRef,
           claim: direct.claim,
@@ -524,7 +521,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const terminal = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        submitFieldPreimageLengthTerminalV1({
+        submitFieldPreimageLengthTerminal({
           config: fixture.config,
           threadOutRef: authentication.result.nextThreadOutRef,
         }),
@@ -559,12 +556,12 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     );
     emitFit("accepted-certified-32768-remove", removal.measurement);
     expect(() =>
-      prepareFieldPreimageLengthWorkflowV1({
+      prepareFieldPreimageLengthWorkflow({
         headerHash: fixture.fraudulent.headerHash,
         transactionId: fixture.scenario.nativeTxId,
         direction: "wrongfulAcceptance",
         fieldIndex: fixture.scenario.fieldIndex,
-        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1([
+        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths([
           32_768, 0, 0, 0, 0, 0, 0, 0, 0,
         ]),
         fieldPreimage: Buffer.alloc(32_769),
@@ -590,7 +587,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
         Math.ceil(millisecondsToAdvance / 1_000),
       );
     }
-    const successorStart = emulatorSuccessorHeaderStartV1({
+    const successorStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: fixture.fraudulentHeader.endTime,
       emulator: fixture.harness.emulator,
     });
@@ -618,7 +615,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     });
     const targetOutRef = successor.continuedAnchorOutRef;
     const init = await captureEmulatorSubmission(fixture.harness.emulator, () =>
-      submitFieldPreimageLengthInitV1({
+      submitFieldPreimageLengthInit({
         config: fixture.config,
         fraudulentBlockOutRef: targetOutRef,
       }),
@@ -627,7 +624,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const dispatch = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        submitFieldPreimageLengthAcceptedDispatchV1({
+        submitFieldPreimageLengthAcceptedDispatch({
           config: fixture.config,
           threadOutRef: init.result.nextThreadOutRef,
           stateQueueBlockOutRef: targetOutRef,
@@ -643,7 +640,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const authentication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        submitFieldPreimageLengthAcceptedAuthenticationV1({
+        submitFieldPreimageLengthAcceptedAuthentication({
           config: fixture.config,
           threadOutRef: dispatch.result.nextThreadOutRef,
           claim,
@@ -655,7 +652,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
     const terminal = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        submitFieldPreimageLengthTerminalV1({
+        submitFieldPreimageLengthTerminal({
           config: fixture.config,
           threadOutRef: authentication.result.nextThreadOutRef,
         }),
@@ -698,7 +695,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       const init = await captureEmulatorSubmission(
         fixture.harness.emulator,
         () =>
-          submitFieldPreimageLengthInitV1({
+          submitFieldPreimageLengthInit({
             config: fixture.config,
             fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
           }),
@@ -708,7 +705,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       const dispatch = await captureEmulatorSubmission(
         fixture.harness.emulator,
         () =>
-          submitFieldPreimageLengthForcedDispatchV1({
+          submitFieldPreimageLengthForcedDispatch({
             config: fixture.config,
             threadOutRef: init.result.nextThreadOutRef,
             direction,
@@ -731,7 +728,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
         const authentication = await captureEmulatorSubmission(
           fixture.harness.emulator,
           () =>
-            submitFieldPreimageLengthForcedAuthenticationV1({
+            submitFieldPreimageLengthForcedAuthentication({
               config: fixture.config,
               threadOutRef: dispatch.result.nextThreadOutRef,
               header: forcedFixture.header,
@@ -764,7 +761,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
         const terminal = await captureEmulatorSubmission(
           fixture.harness.emulator,
           () =>
-            submitFieldPreimageLengthTerminalV1({
+            submitFieldPreimageLengthTerminal({
               config: fixture.config,
               threadOutRef: authentication.result.nextThreadOutRef,
             }),
@@ -808,7 +805,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       const honestPreimage =
         fixture.forcedFixture.forcedNativeTx.body.spendInputsPreimageCbor;
       await expect(
-        submitFieldPreimageLengthForcedAuthenticationV1({
+        submitFieldPreimageLengthForcedAuthentication({
           config: fixture.config,
           threadOutRef: dispatch.result.nextThreadOutRef,
           header: fixture.forcedFixture.header,
@@ -840,7 +837,7 @@ describe("field-preimage-length forced dispatch lifecycle", () => {
       const cancel = await captureEmulatorSubmission(
         fixture.harness.emulator,
         () =>
-          submitFieldPreimageLengthCancelV1({
+          submitFieldPreimageLengthCancel({
             config: fixture.config,
             threadOutRef: dispatch.result.nextThreadOutRef,
             stepIndex: 2,

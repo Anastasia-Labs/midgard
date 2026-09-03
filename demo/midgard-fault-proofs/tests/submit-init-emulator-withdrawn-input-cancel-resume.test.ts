@@ -6,11 +6,11 @@ import {
   submitWithdrawnInputStep02,
 } from "../src/index.js";
 import { network } from "./support/submit-init-emulator-shared.js";
-import { makeWithdrawnInputEmulatorScenarioV1 } from "./support/withdrawn-input-emulator-v1.js";
+import { makeWithdrawnInputEmulatorScenario } from "./support/withdrawn-input-emulator-v1.js";
 
 describe("withdrawn-input resume and cancellation", () => {
   it("refuses a wrong step reference, resumes, then cancels at step 03", async () => {
-    const scenario = await makeWithdrawnInputEmulatorScenarioV1("fault");
+    const scenario = await makeWithdrawnInputEmulatorScenario("fault");
     await expect(
       submitWithdrawnInputStep01({
         lucid: scenario.harness.proverLucid,

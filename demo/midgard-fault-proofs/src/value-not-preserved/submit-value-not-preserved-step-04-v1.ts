@@ -36,31 +36,31 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
+import type { ValueNotPreservedContracts } from "./contracts-v1.js";
 import {
-  valueNotPreservedFaultIsEstablishedV1,
+  valueNotPreservedFaultIsEstablished,
   ValueNotPreservedStep04Datum,
   ValueNotPreservedStep04SpendRedeemer,
   type ValueNotPreservedStep04State,
 } from "./schemas-v1.js";
 import {
-  requireValueNotPreservedReferenceScriptV1,
-  requireValueNotPreservedStepStateV1,
-  requireValueNotPreservedThreadUtxoV1,
-  valueNotPreservedStepLabelV1,
+  requireValueNotPreservedReferenceScript,
+  requireValueNotPreservedStepState,
+  requireValueNotPreservedThreadUtxo,
+  valueNotPreservedStepLabel,
   valueNotPreservedSubmitError,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = valueNotPreservedStepLabelV1(3);
+const STEP_LABEL = valueNotPreservedStepLabel(3);
 
 export type SubmitValueNotPreservedStep04Result = {
   readonly txHash: string;
@@ -102,34 +102,34 @@ export const submitValueNotPreservedStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep04Result> => {
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 3,
-      threadOutRef,
-    });
-  const state: ValueNotPreservedStep04State =
-    requireValueNotPreservedStepStateV1({
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 3,
+    threadOutRef,
+  });
+  const state: ValueNotPreservedStep04State = requireValueNotPreservedStepState(
+    {
       threadUtxo,
       signer,
       schema: ValueNotPreservedStep04Datum,
       stepIndex: 3,
-    });
+    },
+  );
   if (
-    !valueNotPreservedFaultIsEstablishedV1({
+    !valueNotPreservedFaultIsEstablished({
       claimedDirection: state.claimed_direction,
       finalDelta: state.final_delta,
     })
@@ -224,12 +224,12 @@ export const submitValueNotPreservedStep04 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -237,12 +237,12 @@ export const submitValueNotPreservedStep04 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireValueNotPreservedReferenceScriptV1({
+      : requireValueNotPreservedReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[3].spendingScriptHash,
           stepIndex: 3,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[3].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -283,9 +283,9 @@ export const submitValueNotPreservedStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

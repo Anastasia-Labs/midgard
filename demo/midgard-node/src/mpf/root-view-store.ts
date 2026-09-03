@@ -12,7 +12,7 @@ import {
   type MpfArenaLimits,
   type MpfEngine,
   type MpfStoreDiagnostics,
-  type ParkedMpfOverlayV1,
+  type ParkedMpfOverlay,
 } from "./engine-config.js";
 import { estimateMpfStoredValueBytes } from "./payload-size.js";
 import {
@@ -947,7 +947,7 @@ export class MidgardMpfRootViewStore extends Store {
   async parkCurrentOverlay(
     root: Buffer,
     trieName: string,
-  ): Promise<ParkedMpfOverlayV1> {
+  ): Promise<ParkedMpfOverlay> {
     this.assertUsable();
     if (
       this.overlay === undefined ||
@@ -1026,7 +1026,7 @@ export class MidgardMpfRootViewStore extends Store {
     if (this.levelBatchWrites !== writesBefore) {
       throw new Error("Parking an MPF overlay performed a Level write");
     }
-    const artifact: ParkedMpfOverlayV1 = {
+    const artifact: ParkedMpfOverlay = {
       schemaVersion: 1,
       trieName,
       baseRoot,
@@ -1045,7 +1045,7 @@ export class MidgardMpfRootViewStore extends Store {
     return artifact;
   }
 
-  async importParkedOverlay(artifact: ParkedMpfOverlayV1): Promise<Buffer> {
+  async importParkedOverlay(artifact: ParkedMpfOverlay): Promise<Buffer> {
     this.assertUsable();
     if (this.overlay === undefined || this.overlayBaseRoot === undefined) {
       throw new Error("Cannot import a parked MPF without an active overlay");

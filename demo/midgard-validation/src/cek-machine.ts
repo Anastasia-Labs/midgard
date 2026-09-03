@@ -1,30 +1,30 @@
 import {
-  commitMidgardCekBlobV1,
+  commitMidgardCekBlob,
   encodeCbor,
-  hashMidgardCekContinuationFrameV1,
-  hashMidgardCekDataListNodeV1,
-  hashMidgardCekDataNodeV1,
-  hashMidgardCekDataPairNodeV1,
-  hashMidgardCekEnvironmentNodeV1,
-  hashMidgardCekMachineStateV1,
-  hashMidgardCekSequenceNodeV1,
-  hashMidgardCekTermNodeV1,
-  hashMidgardCekValueNodeV1,
-  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
-  MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
-  MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
-  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+  hashMidgardCekContinuationFrame,
+  hashMidgardCekDataListNode,
+  hashMidgardCekDataNode,
+  hashMidgardCekDataPairNode,
+  hashMidgardCekEnvironmentNode,
+  hashMidgardCekMachineState,
+  hashMidgardCekSequenceNode,
+  hashMidgardCekTermNode,
+  hashMidgardCekValueNode,
+  MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
+  MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
+  MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
+  MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MIDGARD_CEK_MAX_BUILTIN_TAG,
-  midgardCekDataBytesCborLengthV1,
-  midgardCekDataConstrCborLengthV1,
-  midgardCekDataListCborLengthV1,
-  type MidgardCekDataListNodeV1,
-  midgardCekDataMapCborLengthV1,
-  type MidgardCekDataNodeV1,
-  type MidgardCekDataPairNodeV1,
-  type MidgardCekMachineStateV1,
-  type MidgardCekValueNodeV1,
+  midgardCekDataBytesCborLength,
+  midgardCekDataConstrCborLength,
+  midgardCekDataListCborLength,
+  type MidgardCekDataListNode,
+  midgardCekDataMapCborLength,
+  type MidgardCekDataNode,
+  type MidgardCekDataPairNode,
+  type MidgardCekMachineState,
+  type MidgardCekValueNode,
 } from "@al-ft/midgard-core";
 import {
   type Data,
@@ -37,29 +37,29 @@ import {
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import {
-  evaluateMidgardCekBlsFinalV1,
-  evaluateMidgardCekDirectBuiltinV1,
-  hashMidgardCekDirectArgumentsV1,
-  hashMidgardCekDirectValueWitnessV1,
-  type MidgardCekBlsExpressionWitnessV1,
-  midgardCekDirectBuiltinBudgetV1,
-  type MidgardCekDirectValueWitnessV1,
-  type MidgardCekRuntimeValueWitnessV1,
-  verifyMidgardCekBlsFinalV1,
-  verifyMidgardCekBuiltinTypeFailureV1,
-  verifyMidgardCekDirectBuiltinFailureV1,
-  verifyMidgardCekDirectBuiltinV1,
+  evaluateMidgardCekBlsFinal,
+  evaluateMidgardCekDirectBuiltin,
+  hashMidgardCekDirectArguments,
+  hashMidgardCekDirectValueWitness,
+  type MidgardCekBlsExpressionWitness,
+  midgardCekDirectBuiltinBudget,
+  type MidgardCekDirectValueWitness,
+  type MidgardCekRuntimeValueWitness,
+  verifyMidgardCekBlsFinal,
+  verifyMidgardCekBuiltinTypeFailure,
+  verifyMidgardCekDirectBuiltin,
+  verifyMidgardCekDirectBuiltinFailure,
 } from "./cek-builtin.js";
 import {
-  decodeMidgardCekConstantTypeCborV1,
-  decodeMidgardCekConstantWitnessV1,
-  encodeMidgardCekPlutusDataV1,
-  midgardCekConstantMemorySizeV1,
-  type MidgardCekConstantTypeV1,
-  type MidgardCekConstantWitnessV1,
-  midgardCekIntegerMemorySizeV1,
+  decodeMidgardCekConstantTypeCbor,
+  decodeMidgardCekConstantWitness,
+  encodeMidgardCekPlutusData,
+  midgardCekConstantMemorySize,
+  type MidgardCekConstantType,
+  type MidgardCekConstantWitness,
+  midgardCekIntegerMemorySize,
 } from "./cek-constant.js";
-import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 
 const MACHINE_STEP_CPU = 16_000n;
 const MACHINE_STEP_MEMORY = 100n;
@@ -82,7 +82,7 @@ export const MidgardCekErrorCodes = Object.freeze({
 
 type Bytes = Uint8Array;
 
-export type MidgardCekEnvironmentSummaryV1 =
+export type MidgardCekEnvironmentSummary =
   | { readonly kind: "empty" }
   | {
       readonly kind: "nonempty";
@@ -91,14 +91,14 @@ export type MidgardCekEnvironmentSummaryV1 =
       readonly length: bigint;
     };
 
-export type MidgardCekSemanticBuiltinWitnessV1 = {
-  readonly dataNodes: readonly MidgardCekDataNodeV1[];
-  readonly listNodes: readonly MidgardCekDataListNodeV1[];
-  readonly pairNodes: readonly MidgardCekDataPairNodeV1[];
+export type MidgardCekSemanticBuiltinWitness = {
+  readonly dataNodes: readonly MidgardCekDataNode[];
+  readonly listNodes: readonly MidgardCekDataListNode[];
+  readonly pairNodes: readonly MidgardCekDataPairNode[];
   readonly scalarPreimages: readonly Bytes[];
 };
 
-export type MidgardCekMapConversionControlV1 = {
+export type MidgardCekMapConversionControl = {
   readonly tag: bigint;
   readonly resultRoot: Bytes;
   readonly sourceRoot: Bytes;
@@ -113,20 +113,20 @@ export type MidgardCekMapConversionControlV1 = {
   readonly budgetMemory: bigint;
 };
 
-export type MidgardCekMapConversionStartWitnessV1 = {
-  readonly sourceNode: MidgardCekDataNodeV1;
-  readonly sourceList: MidgardCekDataListNodeV1 | null;
-  readonly sourcePairs: MidgardCekDataPairNodeV1 | null;
-  readonly resultNode: MidgardCekDataNodeV1;
-  readonly resultList: MidgardCekDataListNodeV1 | null;
-  readonly resultPairs: MidgardCekDataPairNodeV1 | null;
+export type MidgardCekMapConversionStartWitness = {
+  readonly sourceNode: MidgardCekDataNode;
+  readonly sourceList: MidgardCekDataListNode | null;
+  readonly sourcePairs: MidgardCekDataPairNode | null;
+  readonly resultNode: MidgardCekDataNode;
+  readonly resultList: MidgardCekDataListNode | null;
+  readonly resultPairs: MidgardCekDataPairNode | null;
 };
 
-export type MidgardCekCoreStepWitnessV1 =
+export type MidgardCekCoreStepWitness =
   | { readonly kind: "computeVariable"; readonly index: bigint }
   | {
       readonly kind: "computeConstant";
-      readonly value: MidgardCekConstantWitnessV1;
+      readonly value: MidgardCekConstantWitness;
     }
   | { readonly kind: "computeLambda"; readonly body: Bytes }
   | { readonly kind: "computeDelay"; readonly body: Bytes }
@@ -161,7 +161,7 @@ export type MidgardCekCoreStepWitnessV1 =
   | { readonly kind: "lookupEmptyEnvironment" }
   | {
       readonly kind: "returnEmptyContinuation";
-      readonly value: MidgardCekValueNodeV1;
+      readonly value: MidgardCekValueNode;
     }
   | {
       readonly kind: "returnApplyArgument";
@@ -173,7 +173,7 @@ export type MidgardCekCoreStepWitnessV1 =
       readonly kind: "returnApplyLambda";
       readonly body: Bytes;
       readonly closureEnvironment: Bytes;
-      readonly closureSummary: MidgardCekEnvironmentSummaryV1;
+      readonly closureSummary: MidgardCekEnvironmentSummary;
       readonly tail: Bytes;
     }
   | {
@@ -186,7 +186,7 @@ export type MidgardCekCoreStepWitnessV1 =
     }
   | {
       readonly kind: "returnApplyInvalid";
-      readonly function: MidgardCekValueNodeV1;
+      readonly function: MidgardCekValueNode;
       readonly tail: Bytes;
     }
   | {
@@ -194,7 +194,7 @@ export type MidgardCekCoreStepWitnessV1 =
       readonly argument: Bytes;
       readonly body: Bytes;
       readonly closureEnvironment: Bytes;
-      readonly closureSummary: MidgardCekEnvironmentSummaryV1;
+      readonly closureSummary: MidgardCekEnvironmentSummary;
       readonly tail: Bytes;
     }
   | {
@@ -209,7 +209,7 @@ export type MidgardCekCoreStepWitnessV1 =
   | {
       readonly kind: "returnApplyValueInvalid";
       readonly argument: Bytes;
-      readonly function: MidgardCekValueNodeV1;
+      readonly function: MidgardCekValueNode;
       readonly tail: Bytes;
     }
   | {
@@ -228,7 +228,7 @@ export type MidgardCekCoreStepWitnessV1 =
     }
   | {
       readonly kind: "returnForceInvalid";
-      readonly value: MidgardCekValueNodeV1;
+      readonly value: MidgardCekValueNode;
       readonly tail: Bytes;
     }
   | {
@@ -262,7 +262,7 @@ export type MidgardCekCoreStepWitnessV1 =
     }
   | {
       readonly kind: "returnCaseInvalid";
-      readonly value: MidgardCekValueNodeV1;
+      readonly value: MidgardCekValueNode;
       readonly branchesCount: bigint;
       readonly branchesRoot: Bytes;
       readonly capturedEnvironment: Bytes;
@@ -288,72 +288,72 @@ export type MidgardCekCoreStepWitnessV1 =
   | {
       readonly kind: "executeBuiltinTypeFailure";
       readonly tag: bigint;
-      readonly arguments: readonly MidgardCekRuntimeValueWitnessV1[];
+      readonly arguments: readonly MidgardCekRuntimeValueWitness[];
     }
   | {
       readonly kind: "executeBuiltinDirect";
       readonly tag: bigint;
-      readonly arguments: readonly MidgardCekDirectValueWitnessV1[];
-      readonly result: MidgardCekDirectValueWitnessV1;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
     }
   | {
       readonly kind: "executeBuiltinSemantic";
       readonly tag: bigint;
-      readonly arguments: readonly MidgardCekDirectValueWitnessV1[];
-      readonly result: MidgardCekDirectValueWitnessV1;
-      readonly material: MidgardCekSemanticBuiltinWitnessV1;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
+      readonly material: MidgardCekSemanticBuiltinWitness;
     }
   | {
       readonly kind: "startBuiltinMapConversion";
       readonly tag: bigint;
-      readonly arguments: readonly MidgardCekDirectValueWitnessV1[];
-      readonly result: MidgardCekDirectValueWitnessV1;
-      readonly material: MidgardCekMapConversionStartWitnessV1;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly result: MidgardCekDirectValueWitness;
+      readonly material: MidgardCekMapConversionStartWitness;
     }
   | {
       readonly kind: "stepBuiltinListToMap";
-      readonly control: MidgardCekMapConversionControlV1;
-      readonly source: MidgardCekDataListNodeV1;
-      readonly pair: MidgardCekDataNodeV1;
-      readonly first: MidgardCekDataListNodeV1;
-      readonly second: MidgardCekDataListNodeV1;
-      readonly key: MidgardCekDataNodeV1;
-      readonly value: MidgardCekDataNodeV1;
-      readonly destination: MidgardCekDataPairNodeV1;
+      readonly control: MidgardCekMapConversionControl;
+      readonly source: MidgardCekDataListNode;
+      readonly pair: MidgardCekDataNode;
+      readonly first: MidgardCekDataListNode;
+      readonly second: MidgardCekDataListNode;
+      readonly key: MidgardCekDataNode;
+      readonly value: MidgardCekDataNode;
+      readonly destination: MidgardCekDataPairNode;
     }
   | {
       readonly kind: "stepBuiltinMapToList";
-      readonly control: MidgardCekMapConversionControlV1;
-      readonly source: MidgardCekDataPairNodeV1;
-      readonly destination: MidgardCekDataListNodeV1;
-      readonly pair: MidgardCekDataNodeV1;
-      readonly first: MidgardCekDataListNodeV1;
-      readonly second: MidgardCekDataListNodeV1;
-      readonly key: MidgardCekDataNodeV1;
-      readonly value: MidgardCekDataNodeV1;
+      readonly control: MidgardCekMapConversionControl;
+      readonly source: MidgardCekDataPairNode;
+      readonly destination: MidgardCekDataListNode;
+      readonly pair: MidgardCekDataNode;
+      readonly first: MidgardCekDataListNode;
+      readonly second: MidgardCekDataListNode;
+      readonly key: MidgardCekDataNode;
+      readonly value: MidgardCekDataNode;
     }
   | {
       readonly kind: "finishBuiltinMapConversion";
-      readonly control: MidgardCekMapConversionControlV1;
+      readonly control: MidgardCekMapConversionControl;
     }
   | {
       readonly kind: "executeBuiltinSemanticFailure";
       readonly tag: bigint;
-      readonly arguments: readonly MidgardCekDirectValueWitnessV1[];
-      readonly material: MidgardCekSemanticBuiltinWitnessV1;
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
+      readonly material: MidgardCekSemanticBuiltinWitness;
     }
   | {
       readonly kind: "executeBuiltinFailure";
       readonly tag: bigint;
-      readonly arguments: readonly MidgardCekDirectValueWitnessV1[];
+      readonly arguments: readonly MidgardCekDirectValueWitness[];
     }
   | {
       readonly kind: "executeBuiltinBlsFinal";
       readonly leftRoot: Bytes;
       readonly rightRoot: Bytes;
-      readonly leftExpression: MidgardCekBlsExpressionWitnessV1;
-      readonly rightExpression: MidgardCekBlsExpressionWitnessV1;
-      readonly result: MidgardCekDirectValueWitnessV1;
+      readonly leftExpression: MidgardCekBlsExpressionWitness;
+      readonly rightExpression: MidgardCekBlsExpressionWitness;
+      readonly result: MidgardCekDirectValueWitness;
     }
   | { readonly kind: "computeContextConstant"; readonly valueRoot: Bytes };
 
@@ -361,8 +361,8 @@ const sameBytes = (left: Bytes, right: Bytes): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
 const sameState = (
-  left: MidgardCekMachineStateV1,
-  right: MidgardCekMachineStateV1,
+  left: MidgardCekMachineState,
+  right: MidgardCekMachineState,
 ): boolean =>
   left.mode === right.mode &&
   left.executionIndex === right.executionIndex &&
@@ -373,8 +373,8 @@ const sameState = (
   left.cpu === right.cpu &&
   left.memory === right.memory;
 
-export const encodeMidgardCekMapConversionControlV1 = (
-  control: MidgardCekMapConversionControlV1,
+export const encodeMidgardCekMapConversionControl = (
+  control: MidgardCekMapConversionControl,
 ): Buffer =>
   encodeCbor([
     control.tag,
@@ -392,7 +392,7 @@ export const encodeMidgardCekMapConversionControlV1 = (
   ]);
 
 const mapConversionControlIsWellFormed = (
-  control: MidgardCekMapConversionControlV1,
+  control: MidgardCekMapConversionControl,
 ): boolean => {
   if (
     (control.tag !== 38n && control.tag !== 43n) ||
@@ -417,15 +417,15 @@ const mapConversionControlIsWellFormed = (
     control.destinationPayloadCborLength === 0n &&
     control.destinationMemory === 0n &&
     (control.tag === 38n
-      ? sameBytes(control.sourceRoot, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1) &&
-        sameBytes(control.destinationRoot, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1)
-      : sameBytes(control.sourceRoot, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1) &&
-        sameBytes(control.destinationRoot, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1))
+      ? sameBytes(control.sourceRoot, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT) &&
+        sameBytes(control.destinationRoot, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT)
+      : sameBytes(control.sourceRoot, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT) &&
+        sameBytes(control.destinationRoot, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT))
   );
 };
 
-export const hashMidgardCekMapConversionControlV1 = (
-  control: MidgardCekMapConversionControlV1,
+export const hashMidgardCekMapConversionControl = (
+  control: MidgardCekMapConversionControl,
 ): Bytes => {
   if (!mapConversionControlIsWellFormed(control)) {
     throw new Error("invalid V1 CEK map-conversion control");
@@ -434,7 +434,7 @@ export const hashMidgardCekMapConversionControlV1 = (
     blake2b(
       Buffer.concat([
         MAP_CONVERSION_CONTROL_DOMAIN,
-        encodeMidgardCekMapConversionControlV1(control),
+        encodeMidgardCekMapConversionControl(control),
       ]),
       { dkLen: 32 },
     ),
@@ -442,9 +442,9 @@ export const hashMidgardCekMapConversionControlV1 = (
 };
 
 const exactState = (
-  pre: MidgardCekMachineStateV1,
+  pre: MidgardCekMachineState,
   update: {
-    readonly mode: MidgardCekMachineStateV1["mode"];
+    readonly mode: MidgardCekMachineState["mode"];
     readonly focusRoot: Bytes;
     readonly environmentRoot: Bytes;
     readonly continuationRoot: Bytes;
@@ -452,7 +452,7 @@ const exactState = (
     readonly cpuDelta?: bigint;
     readonly memoryDelta?: bigint;
   },
-): MidgardCekMachineStateV1 => ({
+): MidgardCekMachineState => ({
   mode: update.mode,
   executionIndex: pre.executionIndex,
   focusRoot: update.focusRoot,
@@ -464,9 +464,9 @@ const exactState = (
 });
 
 const exactComputeSuccessor = (
-  pre: MidgardCekMachineStateV1,
+  pre: MidgardCekMachineState,
   update: Omit<Parameters<typeof exactState>[1], "cpuDelta" | "memoryDelta">,
-): MidgardCekMachineStateV1 =>
+): MidgardCekMachineState =>
   exactState(pre, {
     ...update,
     cpuDelta: MACHINE_STEP_CPU,
@@ -474,14 +474,14 @@ const exactComputeSuccessor = (
   });
 
 const errorSuccessor = (
-  pre: MidgardCekMachineStateV1,
+  pre: MidgardCekMachineState,
   reason: bigint,
-): MidgardCekMachineStateV1 =>
+): MidgardCekMachineState =>
   exactState(pre, {
     mode: "haltError",
-    focusRoot: hashMidgardCekTermNodeV1({ kind: "error" }),
-    environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-    continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+    focusRoot: hashMidgardCekTermNode({ kind: "error" }),
+    environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+    continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
     auxiliary: reason,
   });
 
@@ -490,50 +490,50 @@ const nonNegativeUint32 = (value: bigint): boolean =>
 
 const linkedSequenceRootIsWellFormed = (root: Bytes, count: bigint): boolean =>
   nonNegativeUint32(count) &&
-  (count === 0n) === sameBytes(root, MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1);
+  (count === 0n) === sameBytes(root, MIDGARD_CEK_EMPTY_SEQUENCE_ROOT);
 
 const linkedSequenceTailIsWellFormed = (tail: Bytes, length: bigint): boolean =>
   length > 0n &&
   length <= UINT32_MAX &&
-  (length === 1n) === sameBytes(tail, MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1);
+  (length === 1n) === sameBytes(tail, MIDGARD_CEK_EMPTY_SEQUENCE_ROOT);
 
-const valueHash = (value: MidgardCekValueNodeV1): Bytes =>
-  hashMidgardCekValueNodeV1(value);
+const valueHash = (value: MidgardCekValueNode): Bytes =>
+  hashMidgardCekValueNode(value);
 
-const isConstant = (value: MidgardCekValueNodeV1): boolean =>
+const isConstant = (value: MidgardCekValueNode): boolean =>
   value.kind === "constant";
 
-const isLambdaOrBuiltin = (value: MidgardCekValueNodeV1): boolean =>
+const isLambdaOrBuiltin = (value: MidgardCekValueNode): boolean =>
   value.kind === "lambda" || value.kind === "builtin";
 
-const isDelayOrForceableBuiltin = (value: MidgardCekValueNodeV1): boolean =>
+const isDelayOrForceableBuiltin = (value: MidgardCekValueNode): boolean =>
   value.kind === "delay" ||
   (value.kind === "builtin" && value.forcesRemaining > 0n);
 
 const environmentSummaryLength = (
-  summary: MidgardCekEnvironmentSummaryV1,
+  summary: MidgardCekEnvironmentSummary,
 ): bigint => (summary.kind === "empty" ? 0n : summary.length);
 
 const environmentSummaryMatches = (
   root: Bytes,
-  summary: MidgardCekEnvironmentSummaryV1,
+  summary: MidgardCekEnvironmentSummary,
 ): boolean => {
   if (summary.kind === "empty") {
-    return sameBytes(root, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1);
+    return sameBytes(root, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT);
   }
   return (
     summary.length > 0n &&
     summary.length <= UINT32_MAX &&
     sameBytes(
       root,
-      hashMidgardCekEnvironmentNodeV1({
+      hashMidgardCekEnvironmentNode({
         value: summary.value,
         tail: summary.tail,
         length: summary.length,
       }),
     ) &&
     (summary.length === 1n) ===
-      sameBytes(summary.tail, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1)
+      sameBytes(summary.tail, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT)
   );
 };
 
@@ -595,9 +595,9 @@ export const midgardCekBuiltinArgumentCount = (tag: bigint): bigint => {
 };
 
 const verifyCompute = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   // This verifier handles compute witnesses; other phases fail closed below.
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
@@ -606,7 +606,7 @@ const verifyCompute = (
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "variable",
             index: witness.index,
           }),
@@ -628,11 +628,11 @@ const verifyCompute = (
           kind: "constant" as const,
           witness: witness.value,
         };
-        const valueRoot = hashMidgardCekDirectValueWitnessV1(direct);
+        const valueRoot = hashMidgardCekDirectValueWitness(direct);
         return (
           sameBytes(
             pre.focusRoot,
-            hashMidgardCekTermNodeV1({
+            hashMidgardCekTermNode({
               kind: "constant",
               value: valueRoot,
             }),
@@ -642,7 +642,7 @@ const verifyCompute = (
             exactComputeSuccessor(pre, {
               mode: "return",
               focusRoot: valueRoot,
-              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
               continuationRoot: pre.continuationRoot,
               auxiliary: 0n,
             }),
@@ -655,7 +655,7 @@ const verifyCompute = (
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "contextConstant",
             value: witness.valueRoot,
           }),
@@ -665,14 +665,14 @@ const verifyCompute = (
           exactComputeSuccessor(pre, {
             mode: "return",
             focusRoot: witness.valueRoot,
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: pre.continuationRoot,
             auxiliary: 0n,
           }),
         )
       );
     case "computeLambda": {
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "lambda",
         body: witness.body,
         environment: pre.environmentRoot,
@@ -680,7 +680,7 @@ const verifyCompute = (
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "lambda",
             body: witness.body,
           }),
@@ -690,7 +690,7 @@ const verifyCompute = (
           exactComputeSuccessor(pre, {
             mode: "return",
             focusRoot: value,
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: pre.continuationRoot,
             auxiliary: 0n,
           }),
@@ -698,7 +698,7 @@ const verifyCompute = (
       );
     }
     case "computeDelay": {
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "delay",
         body: witness.body,
         environment: pre.environmentRoot,
@@ -706,7 +706,7 @@ const verifyCompute = (
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "delay",
             body: witness.body,
           }),
@@ -716,7 +716,7 @@ const verifyCompute = (
           exactComputeSuccessor(pre, {
             mode: "return",
             focusRoot: value,
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: pre.continuationRoot,
             auxiliary: 0n,
           }),
@@ -724,7 +724,7 @@ const verifyCompute = (
       );
     }
     case "computeApplication": {
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "applyArgument",
         argument: witness.argument,
         environment: pre.environmentRoot,
@@ -733,7 +733,7 @@ const verifyCompute = (
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "application",
             function: witness.function,
             argument: witness.argument,
@@ -752,14 +752,14 @@ const verifyCompute = (
       );
     }
     case "computeForce": {
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "force",
         tail: pre.continuationRoot,
       });
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "force",
             term: witness.term,
           }),
@@ -778,21 +778,21 @@ const verifyCompute = (
     }
     case "computeError":
       return (
-        sameBytes(pre.focusRoot, hashMidgardCekTermNodeV1({ kind: "error" })) &&
+        sameBytes(pre.focusRoot, hashMidgardCekTermNode({ kind: "error" })) &&
         sameState(post, errorSuccessor(pre, MidgardCekErrorCodes.Explicit))
       );
     case "computeBuiltin": {
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "builtin",
         tag: witness.tag,
         forcesRemaining: midgardCekBuiltinForceCount(witness.tag),
         argumentsCount: 0n,
-        argumentsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+        argumentsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
       });
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "builtin",
             tag: witness.tag,
           }),
@@ -802,7 +802,7 @@ const verifyCompute = (
           exactComputeSuccessor(pre, {
             mode: "return",
             focusRoot: value,
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: pre.continuationRoot,
             auxiliary: 0n,
           }),
@@ -810,20 +810,20 @@ const verifyCompute = (
       );
     }
     case "computeConstrEmpty": {
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "constr",
         tag: witness.tag,
         valuesCount: 0n,
-        valuesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+        valuesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
       });
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "constr",
             tag: witness.tag,
             termsCount: 0n,
-            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
           }),
         ) &&
         sameState(
@@ -831,7 +831,7 @@ const verifyCompute = (
           exactComputeSuccessor(pre, {
             mode: "return",
             focusRoot: value,
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: pre.continuationRoot,
             auxiliary: 0n,
           }),
@@ -847,25 +847,25 @@ const verifyCompute = (
       ) {
         return false;
       }
-      const termsRoot = hashMidgardCekSequenceNodeV1({
+      const termsRoot = hashMidgardCekSequenceNode({
         head: witness.firstTerm,
         tail: witness.remainingTermsRoot,
         length: witness.termsCount,
       });
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "constr",
         tag: witness.tag,
         remainingTermsCount: witness.termsCount - 1n,
         remainingTermsRoot: witness.remainingTermsRoot,
         valuesCount: 0n,
-        valuesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+        valuesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
         environment: pre.environmentRoot,
         tail: pre.continuationRoot,
       });
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "constr",
             tag: witness.tag,
             termsCount: witness.termsCount,
@@ -893,7 +893,7 @@ const verifyCompute = (
       ) {
         return false;
       }
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "case",
         branchesCount: witness.branchesCount,
         branchesRoot: witness.branchesRoot,
@@ -903,7 +903,7 @@ const verifyCompute = (
       return (
         sameBytes(
           pre.focusRoot,
-          hashMidgardCekTermNodeV1({
+          hashMidgardCekTermNode({
             kind: "case",
             scrutinee: witness.scrutinee,
             branchesCount: witness.branchesCount,
@@ -928,14 +928,14 @@ const verifyCompute = (
 };
 
 const verifyLookup = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   if (witness.kind === "lookupEmptyEnvironment") {
     return (
-      sameBytes(pre.focusRoot, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1) &&
-      sameBytes(pre.environmentRoot, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1) &&
+      sameBytes(pre.focusRoot, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT) &&
+      sameBytes(pre.environmentRoot, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT) &&
       sameState(post, errorSuccessor(pre, MidgardCekErrorCodes.UnboundVariable))
     );
   }
@@ -944,11 +944,11 @@ const verifyLookup = (
     witness.length <= 0n ||
     !nonNegativeUint32(witness.length) ||
     (witness.length === 1n) !==
-      sameBytes(witness.tail, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1)
+      sameBytes(witness.tail, MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT)
   ) {
     return false;
   }
-  const root = hashMidgardCekEnvironmentNodeV1({
+  const root = hashMidgardCekEnvironmentNode({
     value: witness.value,
     tail: witness.tail,
     length: witness.length,
@@ -965,7 +965,7 @@ const verifyLookup = (
       ? exactState(pre, {
           mode: "return",
           focusRoot: witness.value,
-          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
           continuationRoot: pre.continuationRoot,
           auxiliary: 0n,
         })
@@ -980,7 +980,7 @@ const verifyLookup = (
 };
 
 const applyBuiltinResult = (
-  pre: MidgardCekMachineStateV1,
+  pre: MidgardCekMachineState,
   argument: Bytes,
   input: {
     readonly tag: bigint;
@@ -989,7 +989,7 @@ const applyBuiltinResult = (
     readonly argumentsRoot: Bytes;
     readonly tail: Bytes;
   },
-): MidgardCekMachineStateV1 | null => {
+): MidgardCekMachineState | null => {
   const requiredArguments = midgardCekBuiltinArgumentCount(input.tag);
   if (
     input.forcesRemaining !== 0n ||
@@ -999,40 +999,37 @@ const applyBuiltinResult = (
     return null;
   }
   const nextCount = input.argumentsCount + 1n;
-  const nextRoot = hashMidgardCekSequenceNodeV1({
+  const nextRoot = hashMidgardCekSequenceNode({
     head: argument,
     tail: input.argumentsRoot,
     length: nextCount,
   });
   return exactState(pre, {
     mode: nextCount === requiredArguments ? "builtin" : "return",
-    focusRoot: hashMidgardCekValueNodeV1({
+    focusRoot: hashMidgardCekValueNode({
       kind: "builtin",
       tag: input.tag,
       forcesRemaining: input.forcesRemaining,
       argumentsCount: nextCount,
       argumentsRoot: nextRoot,
     }),
-    environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+    environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
     continuationRoot: input.tail,
     auxiliary: 0n,
   });
 };
 
 const verifyReturn = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   // This verifier handles return witnesses; other phases fail closed below.
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (witness.kind) {
     case "returnEmptyContinuation":
       return (
-        sameBytes(
-          pre.continuationRoot,
-          MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
-        ) &&
+        sameBytes(pre.continuationRoot, MIDGARD_CEK_EMPTY_CONTINUATION_ROOT) &&
         sameBytes(pre.focusRoot, valueHash(witness.value)) &&
         sameState(
           post,
@@ -1040,15 +1037,15 @@ const verifyReturn = (
             ? exactState(pre, {
                 mode: "haltSuccess",
                 focusRoot: pre.focusRoot,
-                environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-                continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+                environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+                continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
                 auxiliary: 0n,
               })
             : errorSuccessor(pre, MidgardCekErrorCodes.NonconstantHalt),
         )
       );
     case "returnApplyArgument": {
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "applyArgument",
         argument: witness.argument,
         environment: witness.capturedEnvironment,
@@ -1062,7 +1059,7 @@ const verifyReturn = (
             mode: "compute",
             focusRoot: witness.argument,
             environmentRoot: witness.capturedEnvironment,
-            continuationRoot: hashMidgardCekContinuationFrameV1({
+            continuationRoot: hashMidgardCekContinuationFrame({
               kind: "applyFunction",
               functionValue: pre.focusRoot,
               tail: witness.tail,
@@ -1081,17 +1078,17 @@ const verifyReturn = (
       ) {
         return false;
       }
-      const functionValue = hashMidgardCekValueNodeV1({
+      const functionValue = hashMidgardCekValueNode({
         kind: "lambda",
         body: witness.body,
         environment: witness.closureEnvironment,
       });
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "applyFunction",
         functionValue,
         tail: witness.tail,
       });
-      const nextEnvironment = hashMidgardCekEnvironmentNodeV1({
+      const nextEnvironment = hashMidgardCekEnvironmentNode({
         value: pre.focusRoot,
         tail: witness.closureEnvironment,
         length: environmentSummaryLength(witness.closureSummary) + 1n,
@@ -1111,7 +1108,7 @@ const verifyReturn = (
       );
     }
     case "returnApplyBuiltin": {
-      const functionValue = hashMidgardCekValueNodeV1({
+      const functionValue = hashMidgardCekValueNode({
         kind: "builtin",
         tag: witness.tag,
         forcesRemaining: witness.forcesRemaining,
@@ -1121,7 +1118,7 @@ const verifyReturn = (
       if (
         !sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "applyFunction",
             functionValue,
             tail: witness.tail,
@@ -1139,7 +1136,7 @@ const verifyReturn = (
         !isLambdaOrBuiltin(witness.function) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "applyFunction",
             functionValue,
             tail: witness.tail,
@@ -1160,12 +1157,12 @@ const verifyReturn = (
       ) {
         return false;
       }
-      const functionValue = hashMidgardCekValueNodeV1({
+      const functionValue = hashMidgardCekValueNode({
         kind: "lambda",
         body: witness.body,
         environment: witness.closureEnvironment,
       });
-      const nextEnvironment = hashMidgardCekEnvironmentNodeV1({
+      const nextEnvironment = hashMidgardCekEnvironmentNode({
         value: witness.argument,
         tail: witness.closureEnvironment,
         length: environmentSummaryLength(witness.closureSummary) + 1n,
@@ -1174,7 +1171,7 @@ const verifyReturn = (
         sameBytes(pre.focusRoot, functionValue) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "applyValue",
             value: witness.argument,
             tail: witness.tail,
@@ -1193,7 +1190,7 @@ const verifyReturn = (
       );
     }
     case "returnApplyValueBuiltin": {
-      const functionValue = hashMidgardCekValueNodeV1({
+      const functionValue = hashMidgardCekValueNode({
         kind: "builtin",
         tag: witness.tag,
         forcesRemaining: witness.forcesRemaining,
@@ -1204,7 +1201,7 @@ const verifyReturn = (
         !sameBytes(pre.focusRoot, functionValue) ||
         !sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "applyValue",
             value: witness.argument,
             tail: witness.tail,
@@ -1222,7 +1219,7 @@ const verifyReturn = (
         sameBytes(pre.focusRoot, valueHash(witness.function)) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "applyValue",
             value: witness.argument,
             tail: witness.tail,
@@ -1234,7 +1231,7 @@ const verifyReturn = (
         )
       );
     case "returnForceDelay": {
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "delay",
         body: witness.body,
         environment: witness.closureEnvironment,
@@ -1243,7 +1240,7 @@ const verifyReturn = (
         sameBytes(pre.focusRoot, value) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "force",
             tail: witness.tail,
           }),
@@ -1267,14 +1264,14 @@ const verifyReturn = (
       ) {
         return false;
       }
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "builtin",
         tag: witness.tag,
         forcesRemaining: witness.forcesRemaining,
         argumentsCount: witness.argumentsCount,
         argumentsRoot: witness.argumentsRoot,
       });
-      const nextValue = hashMidgardCekValueNodeV1({
+      const nextValue = hashMidgardCekValueNode({
         kind: "builtin",
         tag: witness.tag,
         forcesRemaining: witness.forcesRemaining - 1n,
@@ -1285,7 +1282,7 @@ const verifyReturn = (
         sameBytes(pre.focusRoot, value) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "force",
             tail: witness.tail,
           }),
@@ -1295,7 +1292,7 @@ const verifyReturn = (
           exactState(pre, {
             mode: "return",
             focusRoot: nextValue,
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: witness.tail,
             auxiliary: 0n,
           }),
@@ -1308,7 +1305,7 @@ const verifyReturn = (
         sameBytes(pre.focusRoot, valueHash(witness.value)) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "force",
             tail: witness.tail,
           }),
@@ -1329,18 +1326,18 @@ const verifyReturn = (
       ) {
         return false;
       }
-      const remainingRoot = hashMidgardCekSequenceNodeV1({
+      const remainingRoot = hashMidgardCekSequenceNode({
         head: witness.nextTerm,
         tail: witness.remainingTermsTail,
         length: witness.remainingTermsCount,
       });
       const nextValuesCount = witness.valuesCount + 1n;
-      const nextValuesRoot = hashMidgardCekSequenceNodeV1({
+      const nextValuesRoot = hashMidgardCekSequenceNode({
         head: pre.focusRoot,
         tail: witness.valuesRoot,
         length: nextValuesCount,
       });
-      const currentContinuation = hashMidgardCekContinuationFrameV1({
+      const currentContinuation = hashMidgardCekContinuationFrame({
         kind: "constr",
         tag: witness.tag,
         remainingTermsCount: witness.remainingTermsCount,
@@ -1350,7 +1347,7 @@ const verifyReturn = (
         environment: witness.capturedEnvironment,
         tail: witness.tail,
       });
-      const nextContinuation = hashMidgardCekContinuationFrameV1({
+      const nextContinuation = hashMidgardCekContinuationFrame({
         kind: "constr",
         tag: witness.tag,
         remainingTermsCount: witness.remainingTermsCount - 1n,
@@ -1380,18 +1377,18 @@ const verifyReturn = (
       ) {
         return false;
       }
-      const currentContinuation = hashMidgardCekContinuationFrameV1({
+      const currentContinuation = hashMidgardCekContinuationFrame({
         kind: "constr",
         tag: witness.tag,
         remainingTermsCount: 0n,
-        remainingTermsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+        remainingTermsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
         valuesCount: witness.valuesCount,
         valuesRoot: witness.valuesRoot,
         environment: witness.capturedEnvironment,
         tail: witness.tail,
       });
       const nextValuesCount = witness.valuesCount + 1n;
-      const nextValuesRoot = hashMidgardCekSequenceNodeV1({
+      const nextValuesRoot = hashMidgardCekSequenceNode({
         head: pre.focusRoot,
         tail: witness.valuesRoot,
         length: nextValuesCount,
@@ -1402,13 +1399,13 @@ const verifyReturn = (
           post,
           exactState(pre, {
             mode: "return",
-            focusRoot: hashMidgardCekValueNodeV1({
+            focusRoot: hashMidgardCekValueNode({
               kind: "constr",
               tag: witness.tag,
               valuesCount: nextValuesCount,
               valuesRoot: nextValuesRoot,
             }),
-            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+            environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
             continuationRoot: witness.tail,
             auxiliary: 0n,
           }),
@@ -1428,13 +1425,13 @@ const verifyReturn = (
       ) {
         return false;
       }
-      const value = hashMidgardCekValueNodeV1({
+      const value = hashMidgardCekValueNode({
         kind: "constr",
         tag: witness.tag,
         valuesCount: witness.valuesCount,
         valuesRoot: witness.valuesRoot,
       });
-      const continuation = hashMidgardCekContinuationFrameV1({
+      const continuation = hashMidgardCekContinuationFrame({
         kind: "case",
         branchesCount: witness.branchesCount,
         branchesRoot: witness.branchesRoot,
@@ -1451,7 +1448,7 @@ const verifyReturn = (
                 mode: "caseSelect",
                 focusRoot: witness.branchesRoot,
                 environmentRoot: witness.valuesRoot,
-                continuationRoot: hashMidgardCekContinuationFrameV1({
+                continuationRoot: hashMidgardCekContinuationFrame({
                   kind: "caseSelect",
                   environment: witness.capturedEnvironment,
                   tail: witness.tail,
@@ -1473,7 +1470,7 @@ const verifyReturn = (
         sameBytes(pre.focusRoot, valueHash(witness.value)) &&
         sameBytes(
           pre.continuationRoot,
-          hashMidgardCekContinuationFrameV1({
+          hashMidgardCekContinuationFrame({
             kind: "case",
             branchesCount: witness.branchesCount,
             branchesRoot: witness.branchesRoot,
@@ -1492,9 +1489,9 @@ const verifyReturn = (
 };
 
 const verifyCaseSelect = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   if (witness.kind !== "selectCaseBranch") return false;
   if (
@@ -1509,7 +1506,7 @@ const verifyCaseSelect = (
   ) {
     return false;
   }
-  const work = hashMidgardCekContinuationFrameV1({
+  const work = hashMidgardCekContinuationFrame({
     kind: "caseSelect",
     environment: witness.capturedEnvironment,
     tail: witness.tail,
@@ -1518,7 +1515,7 @@ const verifyCaseSelect = (
   if (
     !sameBytes(
       pre.focusRoot,
-      hashMidgardCekSequenceNodeV1({
+      hashMidgardCekSequenceNode({
         head: witness.branch,
         tail: witness.remainingBranchesRoot,
         length: witness.length,
@@ -1549,7 +1546,7 @@ const verifyCaseSelect = (
             mode: "caseApply",
             focusRoot: pre.environmentRoot,
             environmentRoot: witness.branch,
-            continuationRoot: hashMidgardCekContinuationFrameV1({
+            continuationRoot: hashMidgardCekContinuationFrame({
               kind: "caseApply",
               environment: witness.capturedEnvironment,
               builtContinuation: witness.tail,
@@ -1560,9 +1557,9 @@ const verifyCaseSelect = (
 };
 
 const verifyCaseApply = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   if (
     witness.kind !== "applyCaseValue" ||
@@ -1575,7 +1572,7 @@ const verifyCaseApply = (
   if (
     !sameBytes(
       pre.focusRoot,
-      hashMidgardCekSequenceNodeV1({
+      hashMidgardCekSequenceNode({
         head: witness.value,
         tail: witness.remainingValuesRoot,
         length: witness.length,
@@ -1583,7 +1580,7 @@ const verifyCaseApply = (
     ) ||
     !sameBytes(
       pre.continuationRoot,
-      hashMidgardCekContinuationFrameV1({
+      hashMidgardCekContinuationFrame({
         kind: "caseApply",
         environment: witness.capturedEnvironment,
         builtContinuation: witness.builtContinuation,
@@ -1592,7 +1589,7 @@ const verifyCaseApply = (
   ) {
     return false;
   }
-  const nextContinuation = hashMidgardCekContinuationFrameV1({
+  const nextContinuation = hashMidgardCekContinuationFrame({
     kind: "applyValue",
     value: witness.value,
     tail: witness.builtContinuation,
@@ -1611,7 +1608,7 @@ const verifyCaseApply = (
           mode: "caseApply",
           focusRoot: witness.remainingValuesRoot,
           environmentRoot: pre.environmentRoot,
-          continuationRoot: hashMidgardCekContinuationFrameV1({
+          continuationRoot: hashMidgardCekContinuationFrame({
             kind: "caseApply",
             environment: witness.capturedEnvironment,
             builtContinuation: nextContinuation,
@@ -1621,28 +1618,28 @@ const verifyCaseApply = (
   );
 };
 
-type DataSummaryV1 = {
+type DataSummary = {
   readonly root: Bytes;
   readonly cborLength: bigint;
   readonly memory: bigint;
 };
 
-type DataSequenceSummaryV1 = {
+type DataSequenceSummary = {
   readonly root: Bytes;
   readonly length: bigint;
   readonly payloadCborLength: bigint;
   readonly memory: bigint;
 };
 
-const dataNodeSummary = (node: MidgardCekDataNodeV1): DataSummaryV1 => ({
-  root: hashMidgardCekDataNodeV1(node),
+const dataNodeSummary = (node: MidgardCekDataNode): DataSummary => ({
+  root: hashMidgardCekDataNode(node),
   cborLength: node.cborLength,
   memory: node.memory,
 });
 
 const listSequenceFromNode = (
-  node: MidgardCekDataNodeV1,
-): DataSequenceSummaryV1 | null => {
+  node: MidgardCekDataNode,
+): DataSequenceSummary | null => {
   if (node.kind !== "list") return null;
   return {
     root: node.itemsRoot,
@@ -1653,8 +1650,8 @@ const listSequenceFromNode = (
 };
 
 const mapSequenceFromNode = (
-  node: MidgardCekDataNodeV1,
-): DataSequenceSummaryV1 | null => {
+  node: MidgardCekDataNode,
+): DataSequenceSummary | null => {
   if (node.kind !== "map") return null;
   const header =
     node.entriesCount < 24n
@@ -1673,51 +1670,51 @@ const mapSequenceFromNode = (
 };
 
 const dataListSummaryMatches = (
-  sequence: DataSequenceSummaryV1,
-  node: MidgardCekDataListNodeV1 | null,
+  sequence: DataSequenceSummary,
+  node: MidgardCekDataListNode | null,
 ): boolean =>
   sequence.length === 0n
     ? node === null &&
-      sameBytes(sequence.root, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1) &&
+      sameBytes(sequence.root, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT) &&
       sequence.payloadCborLength === 0n &&
       sequence.memory === 0n
     : node !== null &&
-      sameBytes(sequence.root, hashMidgardCekDataListNodeV1(node)) &&
+      sameBytes(sequence.root, hashMidgardCekDataListNode(node)) &&
       node.length === sequence.length &&
       node.payloadCborLength === sequence.payloadCborLength &&
       node.memory === sequence.memory;
 
 const dataPairSummaryMatches = (
-  sequence: DataSequenceSummaryV1,
-  node: MidgardCekDataPairNodeV1 | null,
+  sequence: DataSequenceSummary,
+  node: MidgardCekDataPairNode | null,
 ): boolean =>
   sequence.length === 0n
     ? node === null &&
-      sameBytes(sequence.root, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1) &&
+      sameBytes(sequence.root, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT) &&
       sequence.payloadCborLength === 0n &&
       sequence.memory === 0n
     : node !== null &&
-      sameBytes(sequence.root, hashMidgardCekDataPairNodeV1(node)) &&
+      sameBytes(sequence.root, hashMidgardCekDataPairNode(node)) &&
       node.length === sequence.length &&
       node.payloadCborLength === sequence.payloadCborLength &&
       node.memory === sequence.memory;
 
 const semanticPayloadMatches = (
-  value: MidgardCekDirectValueWitnessV1,
-  node: MidgardCekDataNodeV1,
+  value: MidgardCekDirectValueWitness,
+  node: MidgardCekDataNode,
 ): boolean =>
   value.kind === "semanticConstant" &&
-  sameBytes(value.witness.payload.root, hashMidgardCekDataNodeV1(node)) &&
+  sameBytes(value.witness.payload.root, hashMidgardCekDataNode(node)) &&
   value.witness.payload.cborLength === node.cborLength &&
   value.witness.payload.memory === node.memory;
 
-const isDataType = (value: MidgardCekDirectValueWitnessV1): boolean =>
+const isDataType = (value: MidgardCekDirectValueWitness): boolean =>
   value.kind === "semanticConstant" &&
-  decodeMidgardCekConstantTypeCborV1(value.witness.typeCbor).kind === "data";
+  decodeMidgardCekConstantTypeCbor(value.witness.typeCbor).kind === "data";
 
-const isListDataPairType = (value: MidgardCekDirectValueWitnessV1): boolean => {
+const isListDataPairType = (value: MidgardCekDirectValueWitness): boolean => {
   if (value.kind !== "semanticConstant") return false;
-  const type = decodeMidgardCekConstantTypeCborV1(value.witness.typeCbor);
+  const type = decodeMidgardCekConstantTypeCbor(value.witness.typeCbor);
   return (
     type.kind === "list" &&
     type.element.kind === "pair" &&
@@ -1727,14 +1724,14 @@ const isListDataPairType = (value: MidgardCekDirectValueWitnessV1): boolean => {
 };
 
 const builtinRootMatches = (
-  pre: MidgardCekMachineStateV1,
+  pre: MidgardCekMachineState,
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
+  arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean => {
-  const committed = hashMidgardCekDirectArgumentsV1(arguments_);
+  const committed = hashMidgardCekDirectArguments(arguments_);
   return sameBytes(
     pre.focusRoot,
-    hashMidgardCekValueNodeV1({
+    hashMidgardCekValueNode({
       kind: "builtin",
       tag,
       forcesRemaining: 0n,
@@ -1745,10 +1742,10 @@ const builtinRootMatches = (
 };
 
 const verifyMapConversionStart = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
   witness: Extract<
-    MidgardCekCoreStepWitnessV1,
+    MidgardCekCoreStepWitness,
     { readonly kind: "startBuiltinMapConversion" }
   >,
 ): boolean => {
@@ -1817,13 +1814,10 @@ const verifyMapConversionStart = (
   ) {
     return false;
   }
-  const budget = midgardCekDirectBuiltinBudgetV1(
-    witness.tag,
-    witness.arguments,
-  );
-  const control: MidgardCekMapConversionControlV1 = {
+  const budget = midgardCekDirectBuiltinBudget(witness.tag, witness.arguments);
+  const control: MidgardCekMapConversionControl = {
     tag: witness.tag,
-    resultRoot: hashMidgardCekDirectValueWitnessV1(witness.result),
+    resultRoot: hashMidgardCekDirectValueWitness(witness.result),
     sourceRoot: sourceSequence.root,
     sourceRemaining: sourceSequence.length,
     sourcePayloadCborLength: sourceSequence.payloadCborLength,
@@ -1839,8 +1833,8 @@ const verifyMapConversionStart = (
     post,
     exactState(pre, {
       mode: "semanticBuiltin",
-      focusRoot: hashMidgardCekMapConversionControlV1(control),
-      environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+      focusRoot: hashMidgardCekMapConversionControl(control),
+      environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       continuationRoot: pre.continuationRoot,
       auxiliary: 0n,
     }),
@@ -1848,15 +1842,15 @@ const verifyMapConversionStart = (
 };
 
 const dataListLinkMatches = (
-  link: MidgardCekDataListNodeV1,
-  head: MidgardCekDataNodeV1,
-  tail: MidgardCekDataListNodeV1 | null,
+  link: MidgardCekDataListNode,
+  head: MidgardCekDataNode,
+  tail: MidgardCekDataListNode | null,
 ): boolean => {
   const headSummary = dataNodeSummary(head);
   const tailRoot =
     tail === null
-      ? MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1
-      : hashMidgardCekDataListNodeV1(tail);
+      ? MIDGARD_CEK_EMPTY_DATA_LIST_ROOT
+      : hashMidgardCekDataListNode(tail);
   const tailLength = tail?.length ?? 0n;
   const tailPayload = tail?.payloadCborLength ?? 0n;
   const tailMemory = tail?.memory ?? 0n;
@@ -1872,29 +1866,29 @@ const dataListLinkMatches = (
 };
 
 const pairWrapperMatches = (
-  pair: MidgardCekDataNodeV1,
-  first: MidgardCekDataListNodeV1,
-  second: MidgardCekDataListNodeV1,
-  key: MidgardCekDataNodeV1,
-  value: MidgardCekDataNodeV1,
+  pair: MidgardCekDataNode,
+  first: MidgardCekDataListNode,
+  second: MidgardCekDataListNode,
+  key: MidgardCekDataNode,
+  value: MidgardCekDataNode,
 ): boolean =>
   pair.kind === "constrSmall" &&
   pair.constructor === 0n &&
   pair.fieldsCount === 2n &&
-  sameBytes(pair.fieldsRoot, hashMidgardCekDataListNodeV1(first)) &&
+  sameBytes(pair.fieldsRoot, hashMidgardCekDataListNode(first)) &&
   pair.memory === 4n + first.memory &&
   dataListLinkMatches(first, key, second) &&
   dataListLinkMatches(second, value, null);
 
 const nextMapControl = (
-  control: MidgardCekMapConversionControlV1,
+  control: MidgardCekMapConversionControl,
   sourcePayload: bigint,
   sourceMemory: bigint,
   sourceTail: Bytes,
   destinationPayload: bigint,
   destinationMemory: bigint,
   destinationTail: Bytes,
-): MidgardCekMapConversionControlV1 => ({
+): MidgardCekMapConversionControl => ({
   ...control,
   sourceRoot: sourceTail,
   sourceRemaining: control.sourceRemaining - 1n,
@@ -1908,9 +1902,9 @@ const nextMapControl = (
 });
 
 const verifySemanticBuiltinControl = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   if (witness.kind === "finishBuiltinMapConversion") {
     return (
@@ -1918,14 +1912,14 @@ const verifySemanticBuiltinControl = (
       witness.control.sourceRemaining === 0n &&
       sameBytes(
         pre.focusRoot,
-        hashMidgardCekMapConversionControlV1(witness.control),
+        hashMidgardCekMapConversionControl(witness.control),
       ) &&
       sameState(
         post,
         exactState(pre, {
           mode: "return",
           focusRoot: witness.control.resultRoot,
-          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
           continuationRoot: pre.continuationRoot,
           auxiliary: 0n,
           cpuDelta: witness.control.budgetCpu,
@@ -1951,9 +1945,9 @@ const verifySemanticBuiltinControl = (
     return (
       control.tag === 38n &&
       control.sourceRemaining > 0n &&
-      sameBytes(pre.focusRoot, hashMidgardCekMapConversionControlV1(control)) &&
+      sameBytes(pre.focusRoot, hashMidgardCekMapConversionControl(control)) &&
       sameBytes(
-        hashMidgardCekDataListNodeV1(witness.source),
+        hashMidgardCekDataListNode(witness.source),
         control.sourceRoot,
       ) &&
       witness.source.length === control.sourceRemaining &&
@@ -1970,7 +1964,7 @@ const verifySemanticBuiltinControl = (
         witness.value,
       ) &&
       sameBytes(
-        hashMidgardCekDataPairNodeV1(witness.destination),
+        hashMidgardCekDataPairNode(witness.destination),
         control.destinationRoot,
       ) &&
       witness.destination.length === control.destinationRemaining &&
@@ -1987,7 +1981,7 @@ const verifySemanticBuiltinControl = (
         post,
         exactState(pre, {
           mode: "semanticBuiltin",
-          focusRoot: hashMidgardCekMapConversionControlV1(next),
+          focusRoot: hashMidgardCekMapConversionControl(next),
           environmentRoot: pre.environmentRoot,
           continuationRoot: pre.continuationRoot,
           auxiliary: 0n,
@@ -2012,9 +2006,9 @@ const verifySemanticBuiltinControl = (
     return (
       control.tag === 43n &&
       control.sourceRemaining > 0n &&
-      sameBytes(pre.focusRoot, hashMidgardCekMapConversionControlV1(control)) &&
+      sameBytes(pre.focusRoot, hashMidgardCekMapConversionControl(control)) &&
       sameBytes(
-        hashMidgardCekDataPairNodeV1(witness.source),
+        hashMidgardCekDataPairNode(witness.source),
         control.sourceRoot,
       ) &&
       witness.source.length === control.sourceRemaining &&
@@ -2034,7 +2028,7 @@ const verifySemanticBuiltinControl = (
         witness.value,
       ) &&
       sameBytes(
-        hashMidgardCekDataListNodeV1(witness.destination),
+        hashMidgardCekDataListNode(witness.destination),
         control.destinationRoot,
       ) &&
       witness.destination.length === control.destinationRemaining &&
@@ -2048,7 +2042,7 @@ const verifySemanticBuiltinControl = (
         post,
         exactState(pre, {
           mode: "semanticBuiltin",
-          focusRoot: hashMidgardCekMapConversionControlV1(next),
+          focusRoot: hashMidgardCekMapConversionControl(next),
           environmentRoot: pre.environmentRoot,
           continuationRoot: pre.continuationRoot,
           auxiliary: 0n,
@@ -2059,15 +2053,15 @@ const verifySemanticBuiltinControl = (
   return false;
 };
 
-type ConstantPartsV1 = {
-  readonly type: MidgardCekConstantTypeV1;
-  readonly payload: DataSummaryV1;
+type ConstantParts = {
+  readonly type: MidgardCekConstantType;
+  readonly payload: DataSummary;
   readonly memory: bigint;
 };
 
 const sameConstantType = (
-  left: MidgardCekConstantTypeV1,
-  right: MidgardCekConstantTypeV1,
+  left: MidgardCekConstantType,
+  right: MidgardCekConstantType,
 ): boolean => {
   if (left.kind !== right.kind) return false;
   if (left.kind === "list" && right.kind === "list") {
@@ -2083,11 +2077,11 @@ const sameConstantType = (
 };
 
 const constantParts = (
-  value: MidgardCekDirectValueWitnessV1,
-): ConstantPartsV1 | null => {
+  value: MidgardCekDirectValueWitness,
+): ConstantParts | null => {
   if (value.kind === "constant") {
-    const decoded = decodeMidgardCekConstantWitnessV1(value.witness);
-    const tree = commitMidgardCekDataTreeV1(decoded.payload);
+    const decoded = decodeMidgardCekConstantWitness(value.witness);
+    const tree = commitMidgardCekDataTree(decoded.payload);
     return {
       type: decoded.type,
       payload: {
@@ -2095,12 +2089,12 @@ const constantParts = (
         cborLength: tree.cborLength,
         memory: tree.memory,
       },
-      memory: midgardCekConstantMemorySizeV1(decoded.type, decoded.payload),
+      memory: midgardCekConstantMemorySize(decoded.type, decoded.payload),
     };
   }
   if (value.kind === "semanticConstant") {
     return {
-      type: decodeMidgardCekConstantTypeCborV1(value.witness.typeCbor),
+      type: decodeMidgardCekConstantTypeCbor(value.witness.typeCbor),
       payload: value.witness.payload,
       memory: value.witness.memory,
     };
@@ -2108,15 +2102,15 @@ const constantParts = (
   return null;
 };
 
-const sameDataSummary = (left: DataSummaryV1, right: DataSummaryV1): boolean =>
+const sameDataSummary = (left: DataSummary, right: DataSummary): boolean =>
   sameBytes(left.root, right.root) &&
   left.cborLength === right.cborLength &&
   left.memory === right.memory;
 
 const resultMatchesParts = (
-  result: MidgardCekDirectValueWitnessV1,
-  type: MidgardCekConstantTypeV1,
-  payload: DataSummaryV1,
+  result: MidgardCekDirectValueWitness,
+  type: MidgardCekConstantType,
+  payload: DataSummary,
   memory: bigint,
 ): boolean => {
   const actual = constantParts(result);
@@ -2128,8 +2122,8 @@ const resultMatchesParts = (
   );
 };
 
-const semanticSummary = (value: Data): DataSummaryV1 => {
-  const tree = commitMidgardCekDataTreeV1(value);
+const semanticSummary = (value: Data): DataSummary => {
+  const tree = commitMidgardCekDataTree(value);
   return {
     root: tree.root,
     cborLength: tree.cborLength,
@@ -2137,18 +2131,18 @@ const semanticSummary = (value: Data): DataSummaryV1 => {
   };
 };
 
-const emptyListSequence = (): DataSequenceSummaryV1 => ({
-  root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+const emptyListSequence = (): DataSequenceSummary => ({
+  root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
   length: 0n,
   payloadCborLength: 0n,
   memory: 0n,
 });
 
 const prependListSequence = (
-  head: DataSummaryV1,
-  tail: DataSequenceSummaryV1,
-): DataSequenceSummaryV1 => {
-  const node: MidgardCekDataListNodeV1 = {
+  head: DataSummary,
+  tail: DataSequenceSummary,
+): DataSequenceSummary => {
+  const node: MidgardCekDataListNode = {
     head: head.root,
     headCborLength: head.cborLength,
     headMemory: head.memory,
@@ -2158,19 +2152,19 @@ const prependListSequence = (
     memory: head.memory + tail.memory,
   };
   return {
-    root: hashMidgardCekDataListNodeV1(node),
+    root: hashMidgardCekDataListNode(node),
     length: node.length,
     payloadCborLength: node.payloadCborLength,
     memory: node.memory,
   };
 };
 
-const listDataSummary = (sequence: DataSequenceSummaryV1): DataSummaryV1 => {
-  const node: MidgardCekDataNodeV1 = {
+const listDataSummary = (sequence: DataSequenceSummary): DataSummary => {
+  const node: MidgardCekDataNode = {
     kind: "list",
     itemsCount: sequence.length,
     itemsRoot: sequence.root,
-    cborLength: midgardCekDataListCborLengthV1(
+    cborLength: midgardCekDataListCborLength(
       sequence.length,
       sequence.payloadCborLength,
     ),
@@ -2181,18 +2175,18 @@ const listDataSummary = (sequence: DataSequenceSummaryV1): DataSummaryV1 => {
 
 const constrDataSummary = (
   constructor: bigint,
-  fields: DataSequenceSummaryV1,
-): DataSummaryV1 => {
+  fields: DataSequenceSummary,
+): DataSummary => {
   if (constructor < 0n) {
     throw new Error("CEK Data constructor cannot be negative");
   }
-  const cborLength = midgardCekDataConstrCborLengthV1(
+  const cborLength = midgardCekDataConstrCborLength(
     constructor,
     fields.length,
     fields.payloadCborLength,
   );
   const memory = 4n + fields.memory;
-  const node: MidgardCekDataNodeV1 =
+  const node: MidgardCekDataNode =
     constructor <= 127n
       ? {
           kind: "constrSmall",
@@ -2204,13 +2198,13 @@ const constrDataSummary = (
         }
       : {
           kind: "constrLarge",
-          constructorCborRoot: commitMidgardCekBlobV1(
-            encodeMidgardCekPlutusDataV1(new DataI(constructor)),
+          constructorCborRoot: commitMidgardCekBlob(
+            encodeMidgardCekPlutusData(new DataI(constructor)),
           ).root,
           constructorCborLength: BigInt(
-            encodeMidgardCekPlutusDataV1(new DataI(constructor)).length,
+            encodeMidgardCekPlutusData(new DataI(constructor)).length,
           ),
-          constructorMemory: 4n + midgardCekIntegerMemorySizeV1(constructor),
+          constructorMemory: 4n + midgardCekIntegerMemorySize(constructor),
           fieldsCount: fields.length,
           fieldsRoot: fields.root,
           cborLength,
@@ -2220,9 +2214,9 @@ const constrDataSummary = (
 };
 
 const pairDataSummary = (
-  first: DataSummaryV1,
-  second: DataSummaryV1,
-): DataSummaryV1 =>
+  first: DataSummary,
+  second: DataSummary,
+): DataSummary =>
   constrDataSummary(
     0n,
     prependListSequence(
@@ -2232,9 +2226,9 @@ const pairDataSummary = (
   );
 
 const dataNodeTopologyMatches = (
-  node: MidgardCekDataNodeV1,
-  listNode: MidgardCekDataListNodeV1 | null,
-  pairNode: MidgardCekDataPairNodeV1 | null,
+  node: MidgardCekDataNode,
+  listNode: MidgardCekDataListNode | null,
+  pairNode: MidgardCekDataPairNode | null,
 ): boolean => {
   if (
     node.cborLength < 0n ||
@@ -2244,7 +2238,7 @@ const dataNodeTopologyMatches = (
     return false;
   }
   if (node.kind === "constrSmall" || node.kind === "constrLarge") {
-    const sequence: DataSequenceSummaryV1 = {
+    const sequence: DataSequenceSummary = {
       root: node.fieldsRoot,
       length: node.fieldsCount,
       payloadCborLength: listNode?.payloadCborLength ?? 0n,
@@ -2257,7 +2251,7 @@ const dataNodeTopologyMatches = (
         ? node.constructor >= 0n &&
           node.constructor <= 127n &&
           node.cborLength ===
-            midgardCekDataConstrCborLengthV1(
+            midgardCekDataConstrCborLength(
               node.constructor,
               sequence.length,
               sequence.payloadCborLength,
@@ -2281,7 +2275,7 @@ const dataNodeTopologyMatches = (
       pairNode === null &&
       dataListSummaryMatches(sequence, listNode) &&
       node.cborLength ===
-        midgardCekDataListCborLengthV1(
+        midgardCekDataListCborLength(
           sequence.length,
           sequence.payloadCborLength,
         ) &&
@@ -2295,7 +2289,7 @@ const dataNodeTopologyMatches = (
       listNode === null &&
       dataPairSummaryMatches(sequence, pairNode) &&
       node.cborLength ===
-        midgardCekDataMapCborLengthV1(
+        midgardCekDataMapCborLength(
           sequence.length,
           sequence.payloadCborLength,
         ) &&
@@ -2307,7 +2301,7 @@ const dataNodeTopologyMatches = (
     return (
       node.bytesRoot.length === 32 &&
       node.bytesLength >= 0n &&
-      node.cborLength === midgardCekDataBytesCborLengthV1(node.bytesLength) &&
+      node.cborLength === midgardCekDataBytesCborLength(node.bytesLength) &&
       node.memory === 4n + (node.bytesLength === 0n ? 1n : node.bytesLength)
     );
   }
@@ -2320,10 +2314,10 @@ const dataNodeTopologyMatches = (
 };
 
 const exactTopMaterial = (
-  summary: DataSummaryV1,
-  node: MidgardCekDataNodeV1,
-  lists: readonly MidgardCekDataListNodeV1[],
-  pairs: readonly MidgardCekDataPairNodeV1[],
+  summary: DataSummary,
+  node: MidgardCekDataNode,
+  lists: readonly MidgardCekDataListNode[],
+  pairs: readonly MidgardCekDataPairNode[],
 ): boolean => {
   const needsList =
     node.kind === "constrSmall" || node.kind === "constrLarge"
@@ -2345,8 +2339,8 @@ const exactTopMaterial = (
 };
 
 const constantMemoryFromPayloadNode = (
-  type: MidgardCekConstantTypeV1,
-  node: MidgardCekDataNodeV1,
+  type: MidgardCekConstantType,
+  node: MidgardCekDataNode,
 ): bigint | null => {
   if (type.kind === "integer" || type.kind === "bytes") {
     return node.memory - 4n;
@@ -2382,15 +2376,15 @@ const constantMemoryFromPayloadNode = (
 };
 
 const canonicalIntegerLeaf = (
-  summary: DataSummaryV1,
-  node: MidgardCekDataNodeV1,
+  summary: DataSummary,
+  node: MidgardCekDataNode,
   raw: Bytes,
 ): bigint | null => {
   if (
     node.kind !== "integer" ||
     raw.length === 0 ||
     raw.length > 9_215 ||
-    !sameBytes(node.cborRoot, commitMidgardCekBlobV1(raw).root) ||
+    !sameBytes(node.cborRoot, commitMidgardCekBlob(raw).root) ||
     node.cborLength !== BigInt(raw.length) ||
     !sameDataSummary(summary, dataNodeSummary(node))
   ) {
@@ -2398,25 +2392,25 @@ const canonicalIntegerLeaf = (
   }
   const decoded = dataFromCbor(raw);
   return decoded instanceof DataI &&
-    sameBytes(encodeMidgardCekPlutusDataV1(decoded), raw)
+    sameBytes(encodeMidgardCekPlutusData(decoded), raw)
     ? decoded.int
     : null;
 };
 
 const canonicalBytesLeaf = (
-  summary: DataSummaryV1,
-  node: MidgardCekDataNodeV1,
+  summary: DataSummary,
+  node: MidgardCekDataNode,
   raw: Bytes,
 ): boolean =>
   node.kind === "bytes" &&
   raw.length <= 9_215 &&
-  sameBytes(node.bytesRoot, commitMidgardCekBlobV1(raw).root) &&
+  sameBytes(node.bytesRoot, commitMidgardCekBlob(raw).root) &&
   node.bytesLength === BigInt(raw.length) &&
   sameDataSummary(summary, dataNodeSummary(node));
 
-const directUnit = (value: MidgardCekDirectValueWitnessV1): boolean => {
+const directUnit = (value: MidgardCekDirectValueWitness): boolean => {
   if (value.kind !== "constant") return false;
-  const decoded = decodeMidgardCekConstantWitnessV1(value.witness);
+  const decoded = decodeMidgardCekConstantWitness(value.witness);
   return (
     decoded.type.kind === "unit" &&
     decoded.payload instanceof DataConstr &&
@@ -2427,9 +2421,9 @@ const directUnit = (value: MidgardCekDirectValueWitnessV1): boolean => {
 
 const verifySemanticPair = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  result: MidgardCekDirectValueWitnessV1,
-  material: MidgardCekSemanticBuiltinWitnessV1,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
   if (
     arguments_.length !== 1 ||
@@ -2462,7 +2456,7 @@ const verifySemanticPair = (
   let firstMemory: bigint | null;
   let secondMemory: bigint | null;
   if (arguments_[0]?.kind === "constant") {
-    const decoded = decodeMidgardCekConstantWitnessV1(arguments_[0].witness);
+    const decoded = decodeMidgardCekConstantWitness(arguments_[0].witness);
     if (
       !(decoded.payload instanceof DataConstr) ||
       decoded.payload.constr !== 0n ||
@@ -2478,11 +2472,11 @@ const verifySemanticPair = (
     ) {
       return false;
     }
-    firstMemory = midgardCekConstantMemorySizeV1(
+    firstMemory = midgardCekConstantMemorySize(
       parts.type.first,
       decoded.payload.fields[0]!,
     );
-    secondMemory = midgardCekConstantMemorySizeV1(
+    secondMemory = midgardCekConstantMemorySize(
       parts.type.second,
       decoded.payload.fields[1]!,
     );
@@ -2514,12 +2508,12 @@ const verifySemanticPair = (
 };
 
 const semanticListSource = (
-  source: MidgardCekDirectValueWitnessV1,
-  node: MidgardCekDataNodeV1,
-  lists: readonly MidgardCekDataListNodeV1[],
+  source: MidgardCekDirectValueWitness,
+  node: MidgardCekDataNode,
+  lists: readonly MidgardCekDataListNode[],
 ): {
-  readonly element: MidgardCekConstantTypeV1;
-  readonly sequence: DataSequenceSummaryV1;
+  readonly element: MidgardCekConstantType;
+  readonly sequence: DataSequenceSummary;
   readonly memory: bigint;
 } | null => {
   const parts = constantParts(source);
@@ -2543,9 +2537,9 @@ const semanticListSource = (
 
 const verifySemanticList = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  result: MidgardCekDirectValueWitnessV1,
-  material: MidgardCekSemanticBuiltinWitnessV1,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
   if (
     material.pairNodes.length !== 0 ||
@@ -2566,8 +2560,8 @@ const verifySemanticList = (
       const selected =
         source.sequence.length === 0n ? arguments_[1]! : arguments_[2]!;
       return sameBytes(
-        hashMidgardCekDirectValueWitnessV1(result),
-        hashMidgardCekDirectValueWitnessV1(selected),
+        hashMidgardCekDirectValueWitness(result),
+        hashMidgardCekDirectValueWitness(selected),
       );
     }
     return (
@@ -2628,7 +2622,7 @@ const verifySemanticList = (
   const source = semanticListSource(arguments_[0]!, sourceNode, [firstLink]);
   let headMemory: bigint | null;
   if (arguments_[0]?.kind === "constant" && source !== null) {
-    const decoded = decodeMidgardCekConstantWitnessV1(arguments_[0].witness);
+    const decoded = decodeMidgardCekConstantWitness(arguments_[0].witness);
     if (
       !(decoded.payload instanceof DataList) ||
       decoded.payload.list.length === 0 ||
@@ -2639,7 +2633,7 @@ const verifySemanticList = (
     ) {
       return false;
     }
-    headMemory = midgardCekConstantMemorySizeV1(
+    headMemory = midgardCekConstantMemorySize(
       source.element,
       decoded.payload.list[0]!,
     );
@@ -2665,7 +2659,7 @@ const verifySemanticList = (
       headMemory,
     );
   }
-  const tail: DataSequenceSummaryV1 = {
+  const tail: DataSequenceSummary = {
     root: firstLink.tail,
     length: firstLink.length - 1n,
     payloadCborLength: firstLink.payloadCborLength - firstLink.headCborLength,
@@ -2680,9 +2674,9 @@ const verifySemanticList = (
 };
 
 const verifySemanticChooseData = (
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  result: MidgardCekDirectValueWitnessV1,
-  material: MidgardCekSemanticBuiltinWitnessV1,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
   if (
     arguments_.length !== 6 ||
@@ -2717,16 +2711,16 @@ const verifySemanticChooseData = (
             ? arguments_[4]!
             : arguments_[5]!;
   return sameBytes(
-    hashMidgardCekDirectValueWitnessV1(result),
-    hashMidgardCekDirectValueWitnessV1(selected),
+    hashMidgardCekDirectValueWitness(result),
+    hashMidgardCekDirectValueWitness(selected),
   );
 };
 
 const verifySemanticData = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  result: MidgardCekDirectValueWitnessV1,
-  material: MidgardCekSemanticBuiltinWitnessV1,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
   if (tag === 47n) {
     if (
@@ -2802,7 +2796,7 @@ const verifySemanticData = (
     ) {
       return false;
     }
-    const element: MidgardCekConstantTypeV1 =
+    const element: MidgardCekConstantType =
       tag === 49n
         ? { kind: "data" }
         : {
@@ -2838,10 +2832,10 @@ const verifySemanticData = (
       return false;
     }
     const decoded = dataFromCbor(raw);
-    if (!sameBytes(encodeMidgardCekPlutusDataV1(decoded), raw)) {
+    if (!sameBytes(encodeMidgardCekPlutusData(decoded), raw)) {
       return false;
     }
-    const tree = commitMidgardCekDataTreeV1(decoded);
+    const tree = commitMidgardCekDataTree(decoded);
     if (
       !sameDataSummary(source.payload, {
         root: tree.root,
@@ -2893,7 +2887,7 @@ const verifySemanticData = (
     if (arguments_.length !== 2) return false;
     let constructor: bigint | null = null;
     if (arguments_[0]?.kind === "constant") {
-      const index = decodeMidgardCekConstantWitnessV1(arguments_[0].witness);
+      const index = decodeMidgardCekConstantWitness(arguments_[0].witness);
       if (
         index.type.kind === "integer" &&
         index.payload instanceof DataI &&
@@ -3049,14 +3043,14 @@ const verifySemanticData = (
       const raw = material.scalarPreimages[0]!;
       if (
         raw.length <= 9_215 &&
-        sameBytes(node.constructorCborRoot, commitMidgardCekBlobV1(raw).root) &&
+        sameBytes(node.constructorCborRoot, commitMidgardCekBlob(raw).root) &&
         node.constructorCborLength === BigInt(raw.length)
       ) {
         const decoded = dataFromCbor(raw);
         if (
           decoded instanceof DataI &&
           decoded.int > 127n &&
-          sameBytes(encodeMidgardCekPlutusDataV1(decoded), raw)
+          sameBytes(encodeMidgardCekPlutusData(decoded), raw)
         ) {
           constructor = decoded.int;
         }
@@ -3068,7 +3062,7 @@ const verifySemanticData = (
     ) {
       return false;
     }
-    const fields: DataSequenceSummaryV1 = {
+    const fields: DataSequenceSummary = {
       root: node.fieldsRoot,
       length: node.fieldsCount,
       payloadCborLength: material.listNodes[0]?.payloadCborLength ?? 0n,
@@ -3095,10 +3089,10 @@ const verifySemanticData = (
 
 const verifySemanticBuiltin = (
   tag: bigint,
-  pre: MidgardCekMachineStateV1,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  result: MidgardCekDirectValueWitnessV1,
-  material: MidgardCekSemanticBuiltinWitnessV1,
+  pre: MidgardCekMachineState,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
   if (!builtinRootMatches(pre, tag, arguments_)) return false;
   if (tag === 29n || tag === 30n) {
@@ -3121,9 +3115,9 @@ const verifySemanticBuiltin = (
 
 const verifySemanticBuiltinFailure = (
   tag: bigint,
-  pre: MidgardCekMachineStateV1,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  material: MidgardCekSemanticBuiltinWitnessV1,
+  pre: MidgardCekMachineState,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
   if (
     !builtinRootMatches(pre, tag, arguments_) ||
@@ -3164,9 +3158,9 @@ const verifySemanticBuiltinFailure = (
 };
 
 const verifyBuiltin = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   if (witness.kind === "startBuiltinMapConversion") {
     return verifyMapConversionStart(pre, post, witness);
@@ -3183,7 +3177,7 @@ const verifyBuiltin = (
     ) {
       return false;
     }
-    const budget = midgardCekDirectBuiltinBudgetV1(
+    const budget = midgardCekDirectBuiltinBudget(
       witness.tag,
       witness.arguments,
     );
@@ -3191,8 +3185,8 @@ const verifyBuiltin = (
       post,
       exactState(pre, {
         mode: "return",
-        focusRoot: hashMidgardCekDirectValueWitnessV1(witness.result),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+        focusRoot: hashMidgardCekDirectValueWitness(witness.result),
+        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
         continuationRoot: pre.continuationRoot,
         auxiliary: 0n,
         cpuDelta: budget.cpu,
@@ -3212,9 +3206,9 @@ const verifyBuiltin = (
         post,
         exactState(pre, {
           mode: "haltError",
-          focusRoot: hashMidgardCekTermNodeV1({ kind: "error" }),
-          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-          continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+          focusRoot: hashMidgardCekTermNode({ kind: "error" }),
+          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+          continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
           auxiliary: MidgardCekErrorCodes.BuiltinFailure,
         }),
       )
@@ -3222,7 +3216,7 @@ const verifyBuiltin = (
   }
   if (witness.kind === "executeBuiltinTypeFailure") {
     return (
-      verifyMidgardCekBuiltinTypeFailureV1(
+      verifyMidgardCekBuiltinTypeFailure(
         witness.tag,
         pre.focusRoot,
         witness.arguments,
@@ -3232,7 +3226,7 @@ const verifyBuiltin = (
   }
   if (witness.kind === "executeBuiltinBlsFinal") {
     if (
-      !verifyMidgardCekBlsFinalV1(
+      !verifyMidgardCekBlsFinal(
         pre.focusRoot,
         witness.leftRoot,
         witness.rightRoot,
@@ -3243,7 +3237,7 @@ const verifyBuiltin = (
     ) {
       return false;
     }
-    const evaluated = evaluateMidgardCekBlsFinalV1(
+    const evaluated = evaluateMidgardCekBlsFinal(
       witness.leftRoot,
       witness.rightRoot,
       witness.leftExpression,
@@ -3253,8 +3247,8 @@ const verifyBuiltin = (
       post,
       exactState(pre, {
         mode: "return",
-        focusRoot: hashMidgardCekDirectValueWitnessV1(witness.result),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+        focusRoot: hashMidgardCekDirectValueWitness(witness.result),
+        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
         continuationRoot: pre.continuationRoot,
         auxiliary: 0n,
         cpuDelta: evaluated.budget.cpu,
@@ -3264,7 +3258,7 @@ const verifyBuiltin = (
   }
   if (witness.kind === "executeBuiltinDirect") {
     if (
-      !verifyMidgardCekDirectBuiltinV1(
+      !verifyMidgardCekDirectBuiltin(
         witness.tag,
         pre.focusRoot,
         witness.arguments,
@@ -3273,7 +3267,7 @@ const verifyBuiltin = (
     ) {
       return false;
     }
-    const budget = midgardCekDirectBuiltinBudgetV1(
+    const budget = midgardCekDirectBuiltinBudget(
       witness.tag,
       witness.arguments,
     );
@@ -3281,8 +3275,8 @@ const verifyBuiltin = (
       post,
       exactState(pre, {
         mode: "return",
-        focusRoot: hashMidgardCekDirectValueWitnessV1(witness.result),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
+        focusRoot: hashMidgardCekDirectValueWitness(witness.result),
+        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
         continuationRoot: pre.continuationRoot,
         auxiliary: 0n,
         cpuDelta: budget.cpu,
@@ -3292,7 +3286,7 @@ const verifyBuiltin = (
   }
   if (witness.kind === "executeBuiltinFailure") {
     if (
-      !verifyMidgardCekDirectBuiltinFailureV1(
+      !verifyMidgardCekDirectBuiltinFailure(
         witness.tag,
         pre.focusRoot,
         witness.arguments,
@@ -3300,7 +3294,7 @@ const verifyBuiltin = (
     ) {
       return false;
     }
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(
+    const evaluated = evaluateMidgardCekDirectBuiltin(
       witness.tag,
       witness.arguments,
     );
@@ -3309,9 +3303,9 @@ const verifyBuiltin = (
       post,
       exactState(pre, {
         mode: "haltError",
-        focusRoot: hashMidgardCekTermNodeV1({ kind: "error" }),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
-        continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
+        focusRoot: hashMidgardCekTermNode({ kind: "error" }),
+        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+        continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
         auxiliary: MidgardCekErrorCodes.BuiltinFailure,
         cpuDelta: evaluated.budget.cpu,
         memoryDelta: evaluated.budget.memory,
@@ -3327,15 +3321,15 @@ const verifyBuiltin = (
  * are active. BLS final verification retains its dedicated expression
  * witness path and remains separate from the direct evaluator.
  */
-export const verifyMidgardCekCoreStepV1 = (
-  pre: MidgardCekMachineStateV1,
-  post: MidgardCekMachineStateV1,
-  witness: MidgardCekCoreStepWitnessV1,
+export const verifyMidgardCekCoreStep = (
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+  witness: MidgardCekCoreStepWitness,
 ): boolean => {
   try {
     // Hashing validates every state field's exact width and numeric range.
-    hashMidgardCekMachineStateV1(pre);
-    hashMidgardCekMachineStateV1(post);
+    hashMidgardCekMachineState(pre);
+    hashMidgardCekMachineState(post);
     if (pre.executionIndex !== post.executionIndex) return false;
     switch (pre.mode) {
       case "compute":

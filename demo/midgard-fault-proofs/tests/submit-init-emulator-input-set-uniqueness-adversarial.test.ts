@@ -21,44 +21,44 @@
  * never reclaims wasm linear memory and vitest isolates per FILE. See
  * tests/support/uplc-heap-guard.ts.
  */
-import { MIDGARD_FIELD_INDEX_V1 } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  faultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
+  faultProofFieldCarriage,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
 } from "../src/field-opening-v1.js";
 import {
-  requireInputSetUniquenessClaimV1,
-  scanInputSetUniquenessV1,
+  requireInputSetUniquenessClaim,
+  scanInputSetUniqueness,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../src/witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts-v1.js";
 import {
-  buildInputSetUniquenessFixtureV1,
-  expectOnchainRefusalV1,
-  type InputSetUniquenessFixtureV1,
-  type InputSetUniquenessHarnessV1,
-  isuOutRefV1,
-  makeInputSetUniquenessEmulatorHarnessV1,
-  publishInputSetUniquenessReferenceScriptsV1,
-  setupInputSetUniquenessScenarioV1,
-  submitRawInputSetUniquenessBindV1,
-  submitRawInputSetUniquenessFinalizeV1,
+  buildInputSetUniquenessFixture,
+  expectOnchainRefusal,
+  type InputSetUniquenessFixture,
+  type InputSetUniquenessHarness,
+  isuOutRef,
+  makeInputSetUniquenessEmulatorHarness,
+  publishInputSetUniquenessReferenceScripts,
+  setupInputSetUniquenessScenario,
+  submitRawInputSetUniquenessBind,
+  submitRawInputSetUniquenessFinalize,
 } from "./support/input-set-uniqueness-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 /** Init + honest step-01 against the harness's committed header. */
 const bindHonestly = async (
-  harness: InputSetUniquenessHarnessV1,
-  fixture: InputSetUniquenessFixtureV1,
+  harness: InputSetUniquenessHarness,
+  fixture: InputSetUniquenessFixture,
   setup: {
     readonly fraudulentBlockOutRef: string;
-    readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+    readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   },
   step01Ref: UTxO,
 ) => {
@@ -96,22 +96,22 @@ const bindHonestly = async (
 
 describe("input-set-uniqueness emulator adversarial polarity", () => {
   it("refuses every fabricated claim against an honest all-unique commitment, at the exact on-chain check", async () => {
-    const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+    const harness = await makeInputSetUniquenessEmulatorHarness();
     const { proverLucid, proverSigner, family } = harness;
 
     // Unique spends, unique refs, fully disjoint: nothing to prove.
-    const fixture = await buildInputSetUniquenessFixtureV1({
-      spendInputs: [isuOutRefV1("11", 0), isuOutRefV1("22", 1)],
-      referenceInputs: [isuOutRefV1("33", 2)],
+    const fixture = await buildInputSetUniquenessFixture({
+      spendInputs: [isuOutRef("11", 0), isuOutRef("22", 1)],
+      referenceInputs: [isuOutRef("33", 2)],
     });
     expect(
-      scanInputSetUniquenessV1({
+      scanInputSetUniqueness({
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
       }),
     ).toStrictEqual([]);
     expect(() =>
-      requireInputSetUniquenessClaimV1({
+      requireInputSetUniquenessClaim({
         spendInputItemCbors: fixture.spendInputItemCbors,
         referenceInputItemCbors: fixture.referenceInputItemCbors,
       }),
@@ -121,12 +121,12 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
     // committed leaf reaches step-02 armed with nothing. (Reference scripts
     // publish only after setup — the harness's one-shot nonce is the
     // funder's first UTxO.)
-    const { setup } = await setupInputSetUniquenessScenarioV1({
+    const { setup } = await setupInputSetUniquenessScenario({
       harness,
       fixture,
     });
     const [step01Ref, step02Ref] =
-      await publishInputSetUniquenessReferenceScriptsV1({
+      await publishInputSetUniquenessReferenceScripts({
         lucid: harness.funderLucid,
         contracts: family,
       });
@@ -172,7 +172,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
     // openings themselves are genuine — honest bytes, honest anchor — so the
     // refusal can only come from the decisive comparison itself.
     const planField = (fieldIndex: number, items: readonly string[]) =>
-      planFaultProofFieldOpeningV1({
+      planFaultProofFieldOpening({
         fieldIndex,
         anchorTxId: fixture.nativeTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
@@ -181,11 +181,11 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         label: "adversarial input-set-uniqueness",
       });
     const plannedSpend = planField(
-      MIDGARD_FIELD_INDEX_V1.spendInputs,
+      MIDGARD_FIELD_INDEX.spendInputs,
       fixture.spendInputItemCbors,
     );
     const plannedReference = planField(
-      MIDGARD_FIELD_INDEX_V1.referenceInputs,
+      MIDGARD_FIELD_INDEX.referenceInputs,
       fixture.referenceInputItemCbors,
     );
     const finalizationReferenceInputs = [
@@ -195,7 +195,7 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
         setup.witnessReferenceScripts.fraudProofMint,
       ].filter((utxo): utxo is UTxO => utxo !== undefined),
     ];
-    const spendOpening = faultProofFieldOpeningV1({
+    const spendOpening = faultProofFieldOpening({
       planned: plannedSpend,
       referenceInputs: finalizationReferenceInputs,
       label: "adversarial spend-inputs opening",
@@ -203,8 +203,8 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
 
     // Fabricated duplicate over distinct items: dies at the byte-equality
     // conviction check.
-    await expectOnchainRefusalV1(() =>
-      submitRawInputSetUniquenessFinalizeV1({
+    await expectOnchainRefusal(() =>
+      submitRawInputSetUniquenessFinalize({
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
@@ -224,8 +224,8 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
 
     // A reflexive pair (i == j) is trivially "equal" — the `first < second`
     // gate refuses it before any comparison.
-    await expectOnchainRefusalV1(() =>
-      submitRawInputSetUniquenessFinalizeV1({
+    await expectOnchainRefusal(() =>
+      submitRawInputSetUniquenessFinalize({
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
@@ -245,8 +245,8 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
 
     // second_index == count: the §8.8 door's arithmetic item addressing
     // refuses anything outside `0 <= index < count`.
-    await expectOnchainRefusalV1(() =>
-      submitRawInputSetUniquenessFinalizeV1({
+    await expectOnchainRefusal(() =>
+      submitRawInputSetUniquenessFinalize({
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
@@ -266,8 +266,8 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
 
     // Fabricated overlap on disjoint sets: dies at the cross-list
     // byte-equality check.
-    await expectOnchainRefusalV1(() =>
-      submitRawInputSetUniquenessFinalizeV1({
+    await expectOnchainRefusal(() =>
+      submitRawInputSetUniquenessFinalize({
         harness,
         threadOutRef,
         referenceScriptUtxo: step02Ref,
@@ -280,12 +280,12 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
             spend_index: 0n,
             reference_index: 0n,
             native_tx_compact_cbor: plannedSpend.nativeTxCompactCbor,
-            spend_inputs_carriage: faultProofFieldCarriageV1({
+            spend_inputs_carriage: faultProofFieldCarriage({
               planned: plannedSpend,
               referenceInputs: finalizationReferenceInputs,
               label: "adversarial spend-inputs carriage",
             }),
-            reference_inputs_carriage: faultProofFieldCarriageV1({
+            reference_inputs_carriage: faultProofFieldCarriage({
               planned: plannedReference,
               referenceInputs: finalizationReferenceInputs,
               label: "adversarial reference-inputs carriage",
@@ -306,21 +306,21 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
   }, 600_000);
 
   it("never binds a committed leaf the operator honestly recorded as rejected", async () => {
-    const harness = await makeInputSetUniquenessEmulatorHarnessV1();
+    const harness = await makeInputSetUniquenessEmulatorHarness();
 
     // Degenerate input sets — but the operator marked the tx invalid, so the
     // committed leaf is a no-op, not an acceptance.
-    const duplicated = isuOutRefV1("bb", 5);
-    const fixture = await buildInputSetUniquenessFixtureV1({
+    const duplicated = isuOutRef("bb", 5);
+    const fixture = await buildInputSetUniquenessFixture({
       spendInputs: [duplicated, duplicated],
       referenceInputs: [],
       validity: "TxIsInvalid",
     });
-    const { setup } = await setupInputSetUniquenessScenarioV1({
+    const { setup } = await setupInputSetUniquenessScenario({
       harness,
       fixture,
     });
-    const [step01Ref] = await publishInputSetUniquenessReferenceScriptsV1({
+    const [step01Ref] = await publishInputSetUniquenessReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -360,8 +360,8 @@ describe("input-set-uniqueness emulator adversarial polarity", () => {
 
     // ... and a raw bind that skips the guard dies on the validator's own
     // `validity_code == 0` expect.
-    await expectOnchainRefusalV1(() =>
-      submitRawInputSetUniquenessBindV1({
+    await expectOnchainRefusal(() =>
+      submitRawInputSetUniquenessBind({
         harness,
         threadOutRef: initResult.nextThreadOutRef,
         stateQueueBlockOutRef: setup.fraudulentBlockOutRef,

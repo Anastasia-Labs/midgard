@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import { SqlClient } from "@effect/sql";
 import { Effect, ManagedRuntime } from "effect";
@@ -97,8 +97,8 @@ describe("Phase 1 exact killed-tx operator closure", () => {
       expect(txCanonicalCborHex).toMatch(/^[0-9a-fA-F]+$/u);
       expect(txCanonicalCborHex.length % 2).toBe(0);
       const txCanonicalCbor = Buffer.from(txCanonicalCborHex, "hex");
-      const txId = computeMidgardNativeTxIdV1(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
+      const txId = computeMidgardNativeTxId(
+        decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
       );
       const txIdHex = txId.toString("hex");
       const configuredTxId =
@@ -218,7 +218,7 @@ describe("Phase 1 exact killed-tx operator closure", () => {
             "content-type": "application/vnd.midgard.v1+cbor",
           },
           body: new Uint8Array(
-            encodeMidgardProofSubmissionV1({
+            encodeMidgardProofSubmission({
               transactionCbor: txCanonicalCbor,
               programMaterial: [],
             }),

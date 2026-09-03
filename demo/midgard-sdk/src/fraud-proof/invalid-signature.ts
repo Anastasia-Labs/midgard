@@ -35,13 +35,13 @@ import {
   computeHash32,
   decodeSingleCbor,
   encodeCbor,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  midgardFieldCommitmentFromItemsV1,
+  encodeMidgardNativeTxWitnessSetCompact,
+  midgardFieldCommitmentFromItems,
 } from "@al-ft/midgard-core";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -54,14 +54,14 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const INVALID_SIGNATURE_VIOLATION_ID_V1 = "invalid-signature" as const;
+export const INVALID_SIGNATURE_VIOLATION_ID = "invalid-signature" as const;
 
 /**
  * Canonical address-witness field index of a native V1 transaction witness set.
  * The commitment is `bounded_collection_v1.from_items(7, ...)`, so a preimage
  * built for any other field can never open it.
  */
-export const INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX_V1 = 7;
+export const INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX = 7;
 
 // ## Canonical encoders (twins of the on-chain component encoders)
 
@@ -70,7 +70,7 @@ export const INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX_V1 = 7;
  * `[verification_key, signature]`. Exact twin of the on-chain
  * `encode_midgard_address_witness`, including its 32/64-byte length checks.
  */
-export const encodeMidgardAddressWitnessCanonicalV1 = (
+export const encodeMidgardAddressWitnessCanonical = (
   witness: MidgardAddressWitnessData,
 ): Buffer => {
   const verificationKey = Buffer.from(witness.verification_key, "hex");
@@ -95,11 +95,11 @@ export const encodeMidgardAddressWitnessCanonicalV1 = (
  * matching this hash also fixes every witness's position — which is what makes
  * the accused index unambiguous on-chain.
  */
-export const invalidSignatureAddressWitnessesCommitmentV1 = (
+export const invalidSignatureAddressWitnessesCommitment = (
   witnesses: readonly MidgardAddressWitnessData[],
 ): string =>
-  midgardFieldCommitmentFromItemsV1(
-    witnesses.map(encodeMidgardAddressWitnessCanonicalV1),
+  midgardFieldCommitmentFromItems(
+    witnesses.map(encodeMidgardAddressWitnessCanonical),
   ).toString("hex");
 
 /**
@@ -110,7 +110,7 @@ export const invalidSignatureAddressWitnessesCommitmentV1 = (
  */
 export const encodeAddressWitnessPreimage = (
   witnesses: readonly MidgardAddressWitnessData[],
-): Buffer => encodeCbor(witnesses.map(encodeMidgardAddressWitnessCanonicalV1));
+): Buffer => encodeCbor(witnesses.map(encodeMidgardAddressWitnessCanonical));
 
 /**
  * Decode the node's address-witness preimage CBOR into the positional witness
@@ -165,11 +165,11 @@ export const decodeAddressWitnessPreimage = (
  * `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak` — because §3's
  * transaction-id preimage is the body alone and so does not cover it.
  */
-export const invalidSignatureWitnessSetCommitmentV1 = (
+export const invalidSignatureWitnessSetCommitment = (
   witnessSet: NativeTxWitnessSetCompactData,
 ): string =>
   computeHash32(
-    encodeMidgardNativeTxWitnessSetCompactV1({
+    encodeMidgardNativeTxWitnessSetCompact({
       addrTxWitsHash: Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
       scriptTxWitsHash: Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
       redeemerTxWitsHash: Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
@@ -345,7 +345,7 @@ export const InvalidSignatureStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  addr_tx_wits_opening: FieldOpeningV1Schema,
+  addr_tx_wits_opening: FieldOpeningSchema,
   bad_addr_tx_wit_index: Data.Integer(),
 });
 export type InvalidSignatureStep02Args = Data.Static<
@@ -365,7 +365,7 @@ export const InvalidSignatureStep02SpendRedeemer =
 // ## Step-state builder (twin of the on-chain forwarding rule)
 
 /** Exactly the state `step-01` writes for `step-02`. */
-export const invalidSignatureStep02StateFromBadTxV1 = ({
+export const invalidSignatureStep02StateFromBadTx = ({
   badTxId,
   badTxWitnessSetHash,
 }: {

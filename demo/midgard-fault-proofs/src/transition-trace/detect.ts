@@ -1,10 +1,10 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import { midgardFieldCommitmentFromItemsV1 } from "@al-ft/midgard-core";
+import { midgardFieldCommitmentFromItems } from "@al-ft/midgard-core";
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxCompactV1,
-  decodeMidgardSpendInputItemV1,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardSpendInputItem,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import {
   encodeCborBytes,
@@ -14,7 +14,7 @@ import {
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -832,8 +832,8 @@ const verifyProofRoot = ({
  */
 const canonicalNativeSpendInput = (bytes: Buffer, label: string): Buffer => {
   try {
-    const input = decodeMidgardSpendInputItemV1(bytes);
-    const canonical = encodeMidgardSpendInputItemV1(input);
+    const input = decodeMidgardSpendInputItem(bytes);
+    const canonical = encodeMidgardSpendInputItem(input);
     if (!canonical.equals(bytes)) {
       throw new Error("input CBOR is not the exact canonical encoding");
     }
@@ -1248,7 +1248,7 @@ const nativePreimageItems = (
 const authenticatedL2TransactionSource = (
   sourceMembership: SDK.L2TransactionSourceMembershipProof,
 ): {
-  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompactV1>;
+  readonly compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   readonly txId: Buffer;
 } => {
   try {
@@ -1264,7 +1264,7 @@ const authenticatedL2TransactionSource = (
         sourceMembership.value,
         "L2 transaction source value",
       ).toString("hex"),
-      SDK.L2TransactionSourceV1,
+      SDK.L2TransactionSource,
     );
     const sourceTxId = exactHexBytes(
       source.tx_id,
@@ -1273,7 +1273,7 @@ const authenticatedL2TransactionSource = (
     if (!sourceTxId.equals(txId)) {
       throw new Error("source value tx_id does not match its membership key");
     }
-    const compact = decodeMidgardNativeTxCompactV1(
+    const compact = decodeMidgardNativeTxCompact(
       exactHexBytes(
         source.source.compact_cbor,
         "L2 transaction source compact",
@@ -1311,7 +1311,7 @@ const requireCanonicalFieldCommitment = ({
   // it out of the authenticated compact structure, which is what §4's
   // positional-identity invariant requires and the only thing separating fields
   // 0 and 2 for identical content.
-  const actualCommitment = midgardFieldCommitmentFromItemsV1(items);
+  const actualCommitment = midgardFieldCommitmentFromItems(items);
   if (!actualCommitment.equals(expectedCommitment)) {
     throw transitionTraceError(
       "missingWitnessData",
@@ -1433,7 +1433,7 @@ const replayL2TransactionTransition = (
     // (`82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, 38 bytes), matching on-chain
     // `ledger_outref_key` / `encode_midgard_tx_input` — not CML's or
     // `encodeCbor`'s minimal-index shape.
-    const expectedKey = encodeMidgardSpendInputItemV1({
+    const expectedKey = encodeMidgardSpendInputItem({
       txId,
       outputIndex: index,
     });
@@ -1448,7 +1448,7 @@ const replayL2TransactionTransition = (
     let expectedValue: Buffer;
     try {
       expectedValue = Buffer.from(
-        buildCanonicalMidgardLedgerOutputMaterialV1({
+        buildCanonicalMidgardLedgerOutputMaterial({
           outputIndex: index,
           outputCbor: outputs[index]!,
         }).descriptorCbor,

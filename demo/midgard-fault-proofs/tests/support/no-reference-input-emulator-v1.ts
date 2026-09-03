@@ -26,10 +26,10 @@
  * list and `planMidgardFieldCarriageV1` selects `RawUtxo` on its own.
  */
 import {
-  computeMidgardNativeTxIdV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCompactV1,
-  type MidgardNativeTxFullV1,
+  computeMidgardNativeTxId,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCompact,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
@@ -47,8 +47,8 @@ import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
 } from "../../src/submit-step-01.js";
-import { l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
-import { decodingSubjectTransactionV1 } from "./native-script-decoding-emulator-v1.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
+import { decodingSubjectTransaction } from "./native-script-decoding-emulator-v1.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 
 /**
@@ -57,9 +57,9 @@ import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.j
  * so step-04's exclusion against the block's one-branch transactions trie is a
  * genuine absence rather than an artefact of the fixture.
  */
-export const NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID_V1 = "aa".repeat(32);
+export const NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID = "aa".repeat(32);
 
-export const noReferenceInputOutRefV1 = (
+export const noReferenceInputOutRef = (
   txId: string,
   outputIndex: number,
 ): SDK.MidgardTxInput => ({
@@ -72,22 +72,20 @@ export const noReferenceInputOutRefV1 = (
  * a caller can compute its id before building the subject transaction that
  * references it — which is exactly what an honest block looks like.
  */
-export const noReferenceInputCompanionTxV1 = (
-  fee: bigint,
-): MidgardNativeTxFullV1 =>
-  decodingSubjectTransactionV1({
+export const noReferenceInputCompanionTx = (fee: bigint): MidgardNativeTxFull =>
+  decodingSubjectTransaction({
     spendInputCbors: [
-      SDK.encodeMidgardTxInputCanonicalV1(
-        noReferenceInputOutRefV1("c1".repeat(32), 0),
+      SDK.encodeMidgardTxInputCanonical(
+        noReferenceInputOutRef("c1".repeat(32), 0),
       ),
     ],
     fee,
   });
 
-export const noReferenceInputTxIdV1 = (tx: MidgardNativeTxFullV1): string =>
-  computeMidgardNativeTxIdV1(tx).toString("hex");
+export const noReferenceInputTxId = (tx: MidgardNativeTxFull): string =>
+  computeMidgardNativeTxId(tx).toString("hex");
 
-export type NoReferenceInputFixtureV1 = {
+export type NoReferenceInputFixture = {
   /** The disputed transaction: the one the block committed with a bad field 1. */
   readonly subjectTxId: string;
   /** The block's other committed transaction. */
@@ -137,7 +135,7 @@ export type NoReferenceInputFixtureV1 = {
  * can decide whether the challenged reference input's producer is in-block (an
  * honest commitment) or nowhere (the real fault).
  */
-export const buildNoReferenceInputFixtureV1 = async ({
+export const buildNoReferenceInputFixture = async ({
   buildReferenceInputs,
   badReferenceInputIndex,
   subjectFee = 13n,
@@ -149,9 +147,9 @@ export const buildNoReferenceInputFixtureV1 = async ({
   readonly badReferenceInputIndex: number;
   readonly subjectFee?: bigint;
   readonly companionFee?: bigint;
-}): Promise<NoReferenceInputFixtureV1> => {
-  const companionTx = noReferenceInputCompanionTxV1(companionFee);
-  const companionTxId = noReferenceInputTxIdV1(companionTx);
+}): Promise<NoReferenceInputFixture> => {
+  const companionTx = noReferenceInputCompanionTx(companionFee);
+  const companionTxId = noReferenceInputTxId(companionTx);
   const referenceInputs = buildReferenceInputs(companionTxId);
   const missingReferenceInput = referenceInputs[badReferenceInputIndex];
   if (missingReferenceInput === undefined) {
@@ -160,19 +158,19 @@ export const buildNoReferenceInputFixtureV1 = async ({
     );
   }
   const referenceInputItemCbors = referenceInputs.map((input) =>
-    Buffer.from(SDK.encodeMidgardTxInputCanonicalV1(input)),
+    Buffer.from(SDK.encodeMidgardTxInputCanonical(input)),
   );
-  const subjectTx = decodingSubjectTransactionV1({
+  const subjectTx = decodingSubjectTransaction({
     spendInputCbors: [
-      SDK.encodeMidgardTxInputCanonicalV1(
-        noReferenceInputOutRefV1("d1".repeat(32), 0),
+      SDK.encodeMidgardTxInputCanonical(
+        noReferenceInputOutRef("d1".repeat(32), 0),
       ),
     ],
     referenceInputCbors: referenceInputItemCbors,
     fee: subjectFee,
   });
-  const subjectTxId = noReferenceInputTxIdV1(subjectTx);
-  const subjectCompactCbor = encodeMidgardNativeTxCompactV1(subjectTx.compact);
+  const subjectTxId = noReferenceInputTxId(subjectTx);
+  const subjectCompactCbor = encodeMidgardNativeTxCompact(subjectTx.compact);
   // The header's normative transactions MPF commits `Data(L2TransactionSourceV1)`
   // per transaction id, not the bare compact CBOR, so the trie this fixture
   // proves against must carry the same values step-01 authenticates.
@@ -228,7 +226,7 @@ export const buildNoReferenceInputFixtureV1 = async ({
       index: input.output_index,
     })),
     referenceInputItemCbors,
-    fieldPreimage: encodeMidgardFieldPreimageV1(referenceInputItemCbors),
+    fieldPreimage: encodeMidgardFieldPreimage(referenceInputItemCbors),
     badReferenceInputIndex: BigInt(badReferenceInputIndex),
     missingReferenceInput,
     ledgerNonMembershipProofCbor,
@@ -243,8 +241,8 @@ export const buildNoReferenceInputFixtureV1 = async ({
   };
 };
 
-export const requireNoReferenceInputTxsNonMembershipProofV1 = (
-  fixture: NoReferenceInputFixtureV1,
+export const requireNoReferenceInputTxsNonMembershipProof = (
+  fixture: NoReferenceInputFixture,
 ): string => {
   if (fixture.txsNonMembershipProofCbor === null) {
     throw new Error(
@@ -254,8 +252,8 @@ export const requireNoReferenceInputTxsNonMembershipProofV1 = (
   return fixture.txsNonMembershipProofCbor;
 };
 
-export const requireNoReferenceInputTxsMembershipProofV1 = (
-  fixture: NoReferenceInputFixtureV1,
+export const requireNoReferenceInputTxsMembershipProof = (
+  fixture: NoReferenceInputFixture,
 ): string => {
   if (fixture.txsMembershipProofCbor === null) {
     throw new Error(
@@ -272,7 +270,7 @@ export const requireNoReferenceInputTxsMembershipProofV1 = (
  * `0(i+1)`, which is the order every submitter's `referenceScriptUtxo`
  * argument expects.
  */
-export const publishNoReferenceInputReferenceScriptsV1 = async ({
+export const publishNoReferenceInputReferenceScripts = async ({
   lucid,
   steps,
 }: {

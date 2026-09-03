@@ -12,22 +12,22 @@
  */
 
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxCompactV1,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxCompact,
   formatUnknownError,
-  type MidgardNativeTxCompactV1 as CoreNativeTxCompact,
+  type MidgardNativeTxCompact as CoreNativeTxCompact,
   MidgardTxValidityCodes,
   normalizeHex,
-  verifyMidgardNativeTxProofSourceV1,
+  verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
-  type L2TransactionSourceV1,
-  L2TransactionSourceV1Schema,
+  type L2TransactionSource,
+  L2TransactionSourceSchema,
   NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
   type NativeTxInclusionCarriage,
@@ -56,12 +56,12 @@ import {
   parseSignedInteger,
   requireRecord,
 } from "./json-file.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
@@ -85,14 +85,14 @@ import {
 } from "./runtime.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
@@ -115,7 +115,7 @@ export type SubmitStep01TxInclusion = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
-  /** Exact canonical `Data(L2TransactionSourceV1)` committed by transactions_root. */
+  /** Exact canonical `Data(L2TransactionSource)` committed by transactions_root. */
   readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens. Authenticated on-chain
   // against the block header's counted `transactions_root`.
@@ -269,12 +269,12 @@ export const parseSubmitStep01TxInclusion = (
     record.l2TransactionSourceCbor,
     "--tx-inclusion.l2TransactionSourceCbor",
   );
-  let l2TransactionSource: L2TransactionSourceV1;
+  let l2TransactionSource: L2TransactionSource;
   try {
     l2TransactionSource = Data.from(
       l2TransactionSourceCbor,
-      L2TransactionSourceV1Schema as never,
-    ) as L2TransactionSourceV1;
+      L2TransactionSourceSchema as never,
+    ) as L2TransactionSource;
   } catch (cause) {
     throw new Error(
       `--tx-inclusion.l2TransactionSourceCbor is not Data(L2TransactionSourceV1): ${formatUnknownError(cause)}`,
@@ -283,7 +283,7 @@ export const parseSubmitStep01TxInclusion = (
   if (
     Data.to(
       l2TransactionSource as never,
-      L2TransactionSourceV1Schema as never,
+      L2TransactionSourceSchema as never,
     ) !== l2TransactionSourceCbor
   ) {
     throw new Error(
@@ -301,7 +301,7 @@ export const parseSubmitStep01TxInclusion = (
     );
   }
   try {
-    verifyMidgardNativeTxProofSourceV1({
+    verifyMidgardNativeTxProofSource({
       transactionId: Buffer.from(nativeTxId, "hex"),
       source: {
         compactCbor: Buffer.from(
@@ -348,7 +348,7 @@ export const requireNativeTxMatchesCompactCbor = (
 ): CoreNativeTxCompact => {
   let decoded: CoreNativeTxCompact;
   try {
-    decoded = decodeMidgardNativeTxCompactV1(
+    decoded = decodeMidgardNativeTxCompact(
       Buffer.from(inclusion.nativeTxCompactCbor, "hex"),
     );
   } catch (cause) {
@@ -356,7 +356,7 @@ export const requireNativeTxMatchesCompactCbor = (
       `--tx-inclusion.nativeTxCompactCbor is not a valid native compact transaction: ${formatUnknownError(cause)}`,
     );
   }
-  const canonicalCbor = encodeMidgardNativeTxCompactV1(decoded).toString("hex");
+  const canonicalCbor = encodeMidgardNativeTxCompact(decoded).toString("hex");
   if (canonicalCbor !== inclusion.nativeTxCompactCbor) {
     throw new Error(
       "--tx-inclusion.nativeTxCompactCbor is not canonical native compact CBOR.",
@@ -371,7 +371,7 @@ export const requireNativeTxMatchesCompactCbor = (
       "--tx-inclusion.nativeTx does not match nativeTxCompactCbor.",
     );
   }
-  const computedTxId = computeMidgardNativeTxIdV1(decoded).toString("hex");
+  const computedTxId = computeMidgardNativeTxId(decoded).toString("hex");
   if (computedTxId !== inclusion.nativeTxId) {
     throw new Error(
       `--tx-inclusion.nativeTxId mismatch: provided=${inclusion.nativeTxId}, computed=${computedTxId}.`,
@@ -517,13 +517,13 @@ export const submitStep01 = async ({
    * the membership proof reaches L1 through them and never enters this
    * transaction (issue #545).
    */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Production workflow seam: invoked after local evaluation, before I/O. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep01Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -612,18 +612,18 @@ export const submitStep01 = async ({
     network,
     chunkedVerifyScript,
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.doubleSpend.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "double-spend step 01 validator",
   });
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: "double-spend step 01 chunked verify",
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: "double-spend step 01 PHAS membership",
@@ -769,21 +769,21 @@ export const submitStep01 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 01 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-01",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.doubleSpend.steps[0].spendingScript,
       }),
       carriedByChunks
-        ? workflowReferenceScriptV1({
+        ? workflowReferenceScript({
             role: "V1 MPF chunked-verify withdrawal",
             utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
             expectedScript: chunkedVerifyScript,
           })
-        : workflowReferenceScriptV1({
+        : workflowReferenceScript({
             role: "membership proof withdrawal",
             utxo: witnessReferenceScripts?.phasMembershipWithdraw,
             expectedScript: phasMembershipScript,
@@ -831,7 +831,7 @@ export const submitStep01 = async ({
 export const submitStep01FromFiles = async (
   config: SubmitStep01CliConfig,
 ): Promise<SubmitStep01Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-step-01",
   });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(

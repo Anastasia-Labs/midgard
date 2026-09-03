@@ -243,8 +243,8 @@ const nodeHeaderHash = (
         return data.headerHash;
       })
     : Effect.gen(function* () {
-        const header = yield* SDK.getHeaderV1FromStateQueueDatum(node.datum);
-        return yield* SDK.hashBlockHeaderV1(header);
+        const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
+        return yield* SDK.hashBlockHeader(header);
       });
 
 const nodeEndTimeAndRoots = (
@@ -268,7 +268,7 @@ const nodeEndTimeAndRoots = (
         withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       };
     }
-    const header = yield* SDK.getHeaderV1FromStateQueueDatum(node.datum);
+    const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
     return {
       blockEndTimeMs: Number(header.endTime),
       utxosRoot: header.utxosRoot,

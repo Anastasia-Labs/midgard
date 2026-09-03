@@ -1,12 +1,12 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCompact,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import {
@@ -31,14 +31,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { L2TxMistagContractsV1 } from "../../src/l2-tx-mistag/contracts-v1.js";
+import type { L2TxMistagContracts } from "../../src/l2-tx-mistag/contracts-v1.js";
 import {
   L2TxMistagStep01SpendRedeemer,
   L2TxMistagStep02Datum,
 } from "../../src/l2-tx-mistag/schemas-v1.js";
 import {
-  requireL2TxMistagReferenceScriptV1,
-  requireL2TxMistagThreadUtxoV1,
+  requireL2TxMistagReferenceScript,
+  requireL2TxMistagThreadUtxo,
 } from "../../src/l2-tx-mistag/submit-common-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -61,15 +61,15 @@ import {
 } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
 import { trieRootHex } from "./emulator/catalogue.js";
-import type { FaultProofEmulatorHarnessV1 } from "./emulator/harness.js";
-import { l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
+import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
 
-export type L2TxMistagBlockFixtureV1 = {
+export type L2TxMistagBlockFixture = {
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly nativeTxId: string;
@@ -81,11 +81,11 @@ export type L2TxMistagBlockFixtureV1 = {
  * Per-family materializer. It deliberately does not call shared `makeNativeTx`,
  * whose invariant is `TxIsValid`.
  */
-export const buildL2TxMistagBlockFixtureV1 = async (
+export const buildL2TxMistagBlockFixture = async (
   validity: "TxIsValid" | "TxIsInvalid",
-): Promise<L2TxMistagBlockFixtureV1> => {
-  const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+): Promise<L2TxMistagBlockFixture> => {
+  const nativeTx = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity,
     body: {
       spendInputsPreimageCbor: encodeCbor([
@@ -109,8 +109,8 @@ export const buildL2TxMistagBlockFixtureV1 = async (
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   });
-  const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const store = new Store(undefined);
   await store.ready();
@@ -138,7 +138,7 @@ export const buildL2TxMistagBlockFixtureV1 = async (
   };
 };
 
-export const l2TxMistagCategoryV1 = (harness: FaultProofEmulatorHarnessV1) => {
+export const l2TxMistagCategory = (harness: FaultProofEmulatorHarness) => {
   const category = harness.catalogue.categories.l2TxMistag;
   if (category === undefined || harness.contracts.l2TxMistag === undefined) {
     throw new Error("l2-tx-mistag harness was not enabled");
@@ -149,10 +149,10 @@ export const l2TxMistagCategoryV1 = (harness: FaultProofEmulatorHarnessV1) => {
   return category;
 };
 
-export const publishL2TxMistagReferenceScriptsV1 = async ({
+export const publishL2TxMistagReferenceScripts = async ({
   harness,
 }: {
-  readonly harness: FaultProofEmulatorHarnessV1;
+  readonly harness: FaultProofEmulatorHarness;
 }): Promise<readonly [UTxO, UTxO]> => {
   const contracts = harness.contracts.l2TxMistag;
   if (contracts === undefined) {
@@ -179,7 +179,7 @@ export const publishL2TxMistagReferenceScriptsV1 = async ({
  * It retains every binding/layout/reference-script check and omits only the
  * `validity_code != 0` detection gate.
  */
-export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
+export const forceL2TxMistagStep01ForAdversarialTest = async ({
   lucid,
   blueprint,
   contracts,
@@ -192,9 +192,9 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
 }: {
-  readonly lucid: FaultProofEmulatorHarnessV1["proverLucid"];
+  readonly lucid: FaultProofEmulatorHarness["proverLucid"];
   readonly blueprint: unknown;
-  readonly contracts: L2TxMistagContractsV1;
+  readonly contracts: L2TxMistagContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -202,9 +202,9 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
-  const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -213,7 +213,7 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const reference = requireL2TxMistagReferenceScriptV1({
+  const reference = requireL2TxMistagReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -247,7 +247,7 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
   };
   const rewardAddress = phasMembershipRewardAddress(network, phasScript);
-  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasCarriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: "forced l2-tx-mistag PHAS membership",

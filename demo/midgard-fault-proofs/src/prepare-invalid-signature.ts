@@ -38,13 +38,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { deriveMidgardNativeTxWitnessSetCompactV1 } from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
   decodeAddressWitnessPreimage,
   findInvalidAddressWitnessIndex,
-  invalidSignatureAddressWitnessesCommitmentV1,
-  invalidSignatureWitnessSetCommitmentV1,
+  invalidSignatureAddressWitnessesCommitment,
+  invalidSignatureWitnessSetCommitment,
   type MidgardAddressWitness,
   type NativeTxCompact as NativeTxCompactData,
   type NativeTxWitnessSetCompact,
@@ -63,7 +63,7 @@ import {
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
 
 export type PrepareInvalidSignatureCliConfig = {
@@ -138,7 +138,7 @@ type InvalidSignatureCandidate = {
 const toCandidate = (
   material: DecodedTransactionMaterial,
 ): InvalidSignatureCandidate | undefined => {
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(
+  const compact = deriveMidgardNativeTxWitnessSetCompact(
     material.nativeTx.witnessSet,
   );
   const witnessSetCompact: NativeTxWitnessSetCompact = {
@@ -280,7 +280,7 @@ export const prepareInvalidSignatureFromTransactions = async ({
     selected.material.nativeTxCompact.witness_set_hash;
   // The preimages a prover supplies must reproduce exactly what the block
   // committed to, otherwise neither step could conclude on-chain.
-  const recomputedWitnessSetHash = invalidSignatureWitnessSetCommitmentV1(
+  const recomputedWitnessSetHash = invalidSignatureWitnessSetCommitment(
     selected.witnessSetCompact,
   );
   if (recomputedWitnessSetHash !== badTxWitnessSetHash) {
@@ -288,7 +288,7 @@ export const prepareInvalidSignatureFromTransactions = async ({
       `Derived witness set compact hashes to ${recomputedWitnessSetHash}, which does not match the witness set hash ${badTxWitnessSetHash} committed by transaction ${selected.material.nodeTxId}.`,
     );
   }
-  const recomputedAddrTxWitsHash = invalidSignatureAddressWitnessesCommitmentV1(
+  const recomputedAddrTxWitsHash = invalidSignatureAddressWitnessesCommitment(
     selected.addrTxWitsPreimage,
   );
   if (
@@ -300,11 +300,11 @@ export const prepareInvalidSignatureFromTransactions = async ({
   }
 
   const nativeTrie = await buildTrieView(
-    decoded.map(transactionSourceTrieItemV1),
+    decoded.map(transactionSourceTrieItem),
   );
   const proofCbor = requireProof(
     nativeTrie,
-    transactionSourceTrieItemV1(selected.material).key,
+    transactionSourceTrieItem(selected.material).key,
     "invalid-signature tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(

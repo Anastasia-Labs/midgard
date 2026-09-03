@@ -2,257 +2,257 @@ import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
 import {
-  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY_V1,
-  classifyProductionHeaderV1,
-  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY_V1,
-  type CompleteCanonicalReplayContextV1,
-  createCanonicalDecodabilityProductionWorkflowRunnerV1,
-  createCommittedFieldShapeProductionWorkflowRunnerV1,
-  createCompleteCanonicalReplayUnionV1,
-  createDaHashPreimageProductionWorkflowRunnerV1,
-  createDistinctAssetAccumulationProductionWorkflowRunnerV1,
-  createDoubleSpendProductionWorkflowRunnerV1,
-  createDoubleWithdrawProductionWorkflowRunnerV1,
-  createExecutionNativeScriptInvalidProductionWorkflowRunnerV1,
-  createExecutionSourceScriptDecodingProductionWorkflowRunnerV1,
-  createFabricatedDepositProductionWorkflowRunnerV1,
-  createFabricatedWithdrawalProductionWorkflowRunnerV1,
-  createFieldItemWidthIllegalProductionWorkflowRunnerV1,
-  createFieldPreimageLengthProductionWorkflowRunnerV1,
+  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
+  classifyHeader as classifyProductionHeaderV1,
+  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplayContext,
+  createCanonicalDecodabilityWorkflowRunner,
+  createCommittedFieldShapeWorkflowRunner,
+  createCompleteCanonicalReplayUnion,
+  createDaHashPreimageWorkflowRunner,
+  createDistinctAssetAccumulationWorkflowRunner,
+  createDoubleSpendWorkflowRunner,
+  createDoubleWithdrawWorkflowRunner,
+  createExecutionNativeScriptInvalidWorkflowRunner,
+  createExecutionSourceScriptDecodingWorkflowRunner,
+  createExternalHistoricalNativeScriptSourceRoster,
+  createFabricatedDepositWorkflowRunner,
+  createFabricatedWithdrawalWorkflowRunner,
+  createFieldItemWidthIllegalWorkflowRunner,
+  createFieldPreimageLengthWorkflowRunner,
+  createHeaderClassifier,
+  createHistoricalNativeScriptHistorySource,
+  createHistoricalNativeScriptProviderRoster,
   createHttpStateQueueMutationLeaseCoordinator,
-  createInputNoIdxProductionWorkflowRunnerV1,
-  createInputSetUniquenessProductionWorkflowRunnerV1,
-  createInvalidRangeProductionWorkflowRunnerV1,
-  createInvalidSignatureProductionWorkflowRunnerV1,
-  createL2TxMistagProductionWorkflowRunnerV1,
-  createManifestBoundCanonicalDecodabilityWorkflowV1,
-  createManifestBoundCommittedFieldShapeWorkflowV1,
-  createManifestBoundDaHashPreimageWorkflowV1,
-  createManifestBoundDistinctAssetAccumulationWorkflowV1,
-  createManifestBoundDoubleSpendWorkflowV1,
-  createManifestBoundDoubleWithdrawWorkflowV1,
-  createManifestBoundExecutionSourceScriptDecodingWorkflowV1,
-  createManifestBoundFabricatedDepositWorkflowV1,
-  createManifestBoundFabricatedWithdrawalWorkflowV1,
-  createManifestBoundFieldItemWidthIllegalWorkflowV1,
-  createManifestBoundFieldPreimageLengthWorkflowV1,
-  createManifestBoundInputNoIdxWorkflowV1,
-  createManifestBoundInputSetUniquenessWorkflowV1,
-  createManifestBoundInvalidRangeWorkflowV1,
-  createManifestBoundInvalidSignatureWorkflowV1,
-  createManifestBoundL2TxMistagWorkflowV1,
-  createManifestBoundMinAdaWorkflowV1,
-  createManifestBoundMinFeeWorkflowV1,
-  createManifestBoundMintDeclaredAssetLimitWorkflowV1,
-  createManifestBoundMissingNativeScriptTxWorkflowV1,
-  createManifestBoundMissingNativeScriptUtxoWorkflowV1,
-  createManifestBoundMissingRedeemerWorkflowV1,
-  createManifestBoundMissingScriptSourceWorkflowV1,
-  createManifestBoundMissingSignatureWorkflowV1,
-  createManifestBoundNativeScriptInvalidWorkflowV1,
-  createManifestBoundNetworkIdWorkflowV1,
-  createManifestBoundNonExistentInputWorkflowV1,
-  createManifestBoundNoReferenceInputWorkflowV1,
-  createManifestBoundObserverOrderInvalidWorkflowV1,
-  createManifestBoundObserversForbiddenWorkflowV1,
-  createManifestBoundOutputReferenceScriptDecodingWorkflowV1,
-  createManifestBoundProtectedOutputSignerMissingWorkflowV1,
-  createManifestBoundReceivePurposeLanguageWorkflowV1,
-  createManifestBoundRedeemerCanonicityWorkflowV1,
-  createManifestBoundReferenceInputNoIdxWorkflowV1,
-  createManifestBoundResolvedOutputNonCanonicalWorkflowV1,
-  createManifestBoundScriptIntegrityHashMismatchWorkflowV1,
-  createManifestBoundScriptIntegrityHashMissingWorkflowV1,
-  createManifestBoundSpendInputSignerMissingWorkflowV1,
-  createManifestBoundTransactionOutputNonCanonicalWorkflowV1,
-  createManifestBoundUnusedRedeemerWorkflowV1,
-  createManifestBoundUnusedScriptWitnessWorkflowV1,
-  createManifestBoundWithdrawnInputWorkflowV1,
-  createManifestBoundWithdrawnReferenceInputWorkflowV1,
-  createManifestBoundWitnessScriptDecodingWorkflowV1,
-  createManifestBoundZeroInputWorkflowV1,
-  createMinAdaProductionWorkflowRunnerV1,
-  createMinFeeProductionWorkflowRunnerV1,
-  createMintDeclaredAssetLimitProductionWorkflowRunnerV1,
-  createMissingNativeScriptTxProductionWorkflowRunnerV1,
-  createMissingNativeScriptUtxoProductionWorkflowRunnerV1,
-  createMissingRedeemerProductionWorkflowRunnerV1,
-  createMissingScriptSourceProductionWorkflowRunnerV1,
-  createMissingSignatureProductionWorkflowRunnerV1,
-  createNativeScriptInvalidProductionWorkflowRunnerV1,
-  createNetworkIdProductionWorkflowRunnerV1,
-  createNonExistentInputProductionWorkflowRunnerV1,
-  createNoReferenceInputProductionWorkflowRunnerV1,
-  createObserverOrderInvalidProductionWorkflowRunnerV1,
-  createObserversForbiddenOnUntaggedNetworkProductionWorkflowRunnerV1,
-  createOutputReferenceScriptDecodingProductionWorkflowRunnerV1,
-  createProductionExternalHistoricalNativeScriptSourceRosterV1,
-  createProductionHeaderClassifierV1,
-  createProductionHistoricalNativeScriptHistorySourceV1,
-  createProductionHistoricalNativeScriptProviderRosterV1,
-  createProtectedOutputSignerMissingProductionWorkflowRunnerV1,
-  createReceivePurposeLanguageProductionWorkflowRunnerV1,
-  createRedeemerCanonicityProductionWorkflowRunnerV1,
-  createReferenceInputNoIdxProductionWorkflowRunnerV1,
-  createResolvedOutputNonCanonicalProductionWorkflowRunnerV1,
-  createScriptIntegrityHashMismatchProductionWorkflowRunnerV1,
-  createScriptIntegrityHashMissingProductionWorkflowRunnerV1,
-  createSpendInputSignerMissingProductionWorkflowRunnerV1,
-  createTransactionOutputNonCanonicalProductionWorkflowRunnerV1,
-  createUnusedRedeemerProductionWorkflowRunnerV1,
-  createUnusedScriptWitnessProductionWorkflowRunnerV1,
-  createWithdrawnInputProductionWorkflowRunnerV1,
-  createWithdrawnReferenceInputProductionWorkflowRunnerV1,
-  createWitnessScriptDecodingProductionWorkflowRunnerV1,
-  createZeroInputProductionWorkflowRunnerV1,
-  DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY_V1,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY_V1,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
-  executionNativeScriptInvalidV1,
-  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY_V1,
-  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
-  type HistoricalNativeScriptSourceRosterV1,
-  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1,
-  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
-  installProductionWorkflowApplicationRegistryV1,
-  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
-  INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
-  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY_V1,
+  createInputNoIdxWorkflowRunner,
+  createInputSetUniquenessWorkflowRunner,
+  createInvalidRangeWorkflowRunner,
+  createInvalidSignatureWorkflowRunner,
+  createL2TxMistagWorkflowRunner,
+  createManifestBoundCanonicalDecodabilityWorkflow,
+  createManifestBoundCommittedFieldShapeWorkflow,
+  createManifestBoundDaHashPreimageWorkflow,
+  createManifestBoundDistinctAssetAccumulationWorkflow,
+  createManifestBoundDoubleSpendWorkflow,
+  createManifestBoundDoubleWithdrawWorkflow,
+  createManifestBoundExecutionSourceScriptDecodingWorkflow,
+  createManifestBoundFabricatedDepositWorkflow,
+  createManifestBoundFabricatedWithdrawalWorkflow,
+  createManifestBoundFieldItemWidthIllegalWorkflow,
+  createManifestBoundFieldPreimageLengthWorkflow,
+  createManifestBoundInputNoIdxWorkflow,
+  createManifestBoundInputSetUniquenessWorkflow,
+  createManifestBoundInvalidRangeWorkflow,
+  createManifestBoundInvalidSignatureWorkflow,
+  createManifestBoundL2TxMistagWorkflow,
+  createManifestBoundMinAdaWorkflow,
+  createManifestBoundMinFeeWorkflow,
+  createManifestBoundMintDeclaredAssetLimitWorkflow,
+  createManifestBoundMissingNativeScriptTxWorkflow,
+  createManifestBoundMissingNativeScriptUtxoWorkflow,
+  createManifestBoundMissingRedeemerWorkflow,
+  createManifestBoundMissingScriptSourceWorkflow,
+  createManifestBoundMissingSignatureWorkflow,
+  createManifestBoundNativeScriptInvalidWorkflow,
+  createManifestBoundNetworkIdWorkflow,
+  createManifestBoundNonExistentInputWorkflow,
+  createManifestBoundNoReferenceInputWorkflow,
+  createManifestBoundObserverOrderInvalidWorkflow,
+  createManifestBoundObserversForbiddenWorkflow,
+  createManifestBoundOutputReferenceScriptDecodingWorkflow,
+  createManifestBoundProtectedOutputSignerMissingWorkflow,
+  createManifestBoundReceivePurposeLanguageWorkflow,
+  createManifestBoundRedeemerCanonicityWorkflow,
+  createManifestBoundReferenceInputNoIdxWorkflow,
+  createManifestBoundResolvedOutputNonCanonicalWorkflow,
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  createManifestBoundScriptIntegrityHashMissingWorkflow,
+  createManifestBoundSpendInputSignerMissingWorkflow,
+  createManifestBoundTransactionOutputNonCanonicalWorkflow,
+  createManifestBoundUnusedRedeemerWorkflow,
+  createManifestBoundUnusedScriptWitnessWorkflow,
+  createManifestBoundWithdrawnInputWorkflow,
+  createManifestBoundWithdrawnReferenceInputWorkflow,
+  createManifestBoundWitnessScriptDecodingWorkflow,
+  createManifestBoundZeroInputWorkflow,
+  createMinAdaWorkflowRunner,
+  createMinFeeWorkflowRunner,
+  createMintDeclaredAssetLimitWorkflowRunner,
+  createMissingNativeScriptTxWorkflowRunner,
+  createMissingNativeScriptUtxoWorkflowRunner,
+  createMissingRedeemerWorkflowRunner,
+  createMissingScriptSourceWorkflowRunner,
+  createMissingSignatureWorkflowRunner,
+  createNativeScriptInvalidWorkflowRunner,
+  createNetworkIdWorkflowRunner,
+  createNonExistentInputWorkflowRunner,
+  createNoReferenceInputWorkflowRunner,
+  createObserverOrderInvalidWorkflowRunner,
+  createObserversForbiddenOnUntaggedNetworkWorkflowRunner,
+  createOutputReferenceScriptDecodingWorkflowRunner,
+  createProtectedOutputSignerMissingWorkflowRunner,
+  createReceivePurposeLanguageWorkflowRunner,
+  createRedeemerCanonicityWorkflowRunner,
+  createReferenceInputNoIdxWorkflowRunner,
+  createResolvedOutputNonCanonicalWorkflowRunner,
+  createScriptIntegrityHashMismatchWorkflowRunner,
+  createScriptIntegrityHashMissingWorkflowRunner,
+  createSpendInputSignerMissingWorkflowRunner,
+  createTransactionOutputNonCanonicalWorkflowRunner,
+  createUnusedRedeemerWorkflowRunner,
+  createUnusedScriptWitnessWorkflowRunner,
+  createWithdrawnInputWorkflowRunner,
+  createWithdrawnReferenceInputWorkflowRunner,
+  createWitnessScriptDecodingWorkflowRunner,
+  createZeroInputWorkflowRunner,
+  DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  executionNativeScriptInvalid as executionNativeScriptInvalidV1,
+  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  type HeaderDecision,
+  headerDecisionReplayContext,
+  type HistoricalNativeScriptCheckpointStore,
+  type HistoricalNativeScriptHistorySource,
+  type HistoricalNativeScriptProviderRoster,
+  type HistoricalNativeScriptSourceRoster,
+  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
+  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
+  installWorkflowApplicationRegistry,
+  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   makeLucidForSubmit,
-  type ManifestBoundCanonicalDecodabilityWorkflowConfigV1,
-  type ManifestBoundCommittedFieldShapeWorkflowConfigV1,
-  type ManifestBoundDaHashPreimageWorkflowConfigV1,
-  type ManifestBoundDistinctAssetAccumulationWorkflowConfigV1,
-  type ManifestBoundDoubleSpendWorkflowConfigV1,
-  type ManifestBoundDoubleWithdrawWorkflowConfigV1,
-  type ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1,
-  type ManifestBoundFabricatedDepositWorkflowConfigV1,
-  type ManifestBoundFabricatedWithdrawalWorkflowConfigV1,
-  type ManifestBoundFieldItemWidthIllegalWorkflowConfigV1,
-  type ManifestBoundFieldPreimageLengthWorkflowConfigV1,
-  type ManifestBoundInputNoIdxWorkflowConfigV1,
-  type ManifestBoundInputSetUniquenessWorkflowConfigV1,
-  type ManifestBoundInvalidRangeWorkflowConfigV1,
-  type ManifestBoundInvalidSignatureWorkflowConfigV1,
-  type ManifestBoundL2TxMistagWorkflowConfigV1,
-  type ManifestBoundMinAdaWorkflowConfigV1,
-  type ManifestBoundMinFeeWorkflowConfigV1,
-  type ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1,
-  type ManifestBoundMissingNativeScriptTxWorkflowConfigV1,
-  type ManifestBoundMissingNativeScriptUtxoWorkflowConfigV1,
-  type ManifestBoundMissingRedeemerWorkflowConfigV1,
-  type ManifestBoundMissingScriptSourceWorkflowConfigV1,
-  type ManifestBoundMissingSignatureWorkflowConfigV1,
-  type ManifestBoundNativeScriptInvalidWorkflowConfigV1,
-  type ManifestBoundNetworkIdWorkflowConfigV1,
-  type ManifestBoundNonExistentInputWorkflowConfigV1,
-  type ManifestBoundNoReferenceInputWorkflowConfigV1,
-  type ManifestBoundObserverOrderInvalidWorkflowConfigV1,
-  type ManifestBoundObserversForbiddenWorkflowConfigV1,
-  type ManifestBoundOutputReferenceScriptDecodingWorkflowConfigV1,
-  type ManifestBoundProtectedOutputSignerMissingWorkflowConfigV1,
-  type ManifestBoundReceivePurposeLanguageWorkflowConfigV1,
-  type ManifestBoundRedeemerCanonicityWorkflowConfigV1,
-  type ManifestBoundReferenceInputNoIdxWorkflowConfigV1,
-  type ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1,
-  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfigV1,
-  type ManifestBoundScriptIntegrityHashMissingWorkflowConfigV1,
-  type ManifestBoundSpendInputSignerMissingWorkflowConfigV1,
-  type ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1,
-  type ManifestBoundUnusedRedeemerWorkflowConfigV1,
-  type ManifestBoundUnusedScriptWitnessWorkflowConfigV1,
-  type ManifestBoundWithdrawnInputWorkflowConfigV1,
-  type ManifestBoundWithdrawnReferenceInputWorkflowConfigV1,
-  type ManifestBoundWitnessScriptDecodingWorkflowConfigV1,
-  type ManifestBoundZeroInputWorkflowConfigV1,
-  MIN_ADA_COMPLETE_CANONICAL_REPLAY_V1,
-  MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1,
-  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
-  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
-  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY_V1,
-  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
-  NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
+  type ManifestBoundCanonicalDecodabilityWorkflowConfig,
+  type ManifestBoundCommittedFieldShapeWorkflowConfig,
+  type ManifestBoundDaHashPreimageWorkflowConfig,
+  type ManifestBoundDistinctAssetAccumulationWorkflowConfig,
+  type ManifestBoundDoubleSpendWorkflowConfig,
+  type ManifestBoundDoubleWithdrawWorkflowConfig,
+  type ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
+  type ManifestBoundFabricatedDepositWorkflowConfig,
+  type ManifestBoundFabricatedWithdrawalWorkflowConfig,
+  type ManifestBoundFieldItemWidthIllegalWorkflowConfig,
+  type ManifestBoundFieldPreimageLengthWorkflowConfig,
+  type ManifestBoundInputNoIdxWorkflowConfig,
+  type ManifestBoundInputSetUniquenessWorkflowConfig,
+  type ManifestBoundInvalidRangeWorkflowConfig,
+  type ManifestBoundInvalidSignatureWorkflowConfig,
+  type ManifestBoundL2TxMistagWorkflowConfig,
+  type ManifestBoundMinAdaWorkflowConfig,
+  type ManifestBoundMinFeeWorkflowConfig,
+  type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
+  type ManifestBoundMissingNativeScriptTxWorkflowConfig,
+  type ManifestBoundMissingNativeScriptUtxoWorkflowConfig,
+  type ManifestBoundMissingRedeemerWorkflowConfig,
+  type ManifestBoundMissingScriptSourceWorkflowConfig,
+  type ManifestBoundMissingSignatureWorkflowConfig,
+  type ManifestBoundNativeScriptInvalidWorkflowConfig,
+  type ManifestBoundNetworkIdWorkflowConfig,
+  type ManifestBoundNonExistentInputWorkflowConfig,
+  type ManifestBoundNoReferenceInputWorkflowConfig,
+  type ManifestBoundObserverOrderInvalidWorkflowConfig,
+  type ManifestBoundObserversForbiddenWorkflowConfig,
+  type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
+  type ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
+  type ManifestBoundReceivePurposeLanguageWorkflowConfig,
+  type ManifestBoundRedeemerCanonicityWorkflowConfig,
+  type ManifestBoundReferenceInputNoIdxWorkflowConfig,
+  type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
+  type ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
+  type ManifestBoundSpendInputSignerMissingWorkflowConfig,
+  type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
+  type ManifestBoundUnusedRedeemerWorkflowConfig,
+  type ManifestBoundUnusedScriptWitnessWorkflowConfig,
+  type ManifestBoundWithdrawnInputWorkflowConfig,
+  type ManifestBoundWithdrawnReferenceInputWorkflowConfig,
+  type ManifestBoundWitnessScriptDecodingWorkflowConfig,
+  type ManifestBoundZeroInputWorkflowConfig,
+  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
+  MIN_FEE_COMPLETE_CANONICAL_REPLAY,
+  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
+  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
+  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
+  OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   parseContractDeploymentInfo,
-  productionHeaderDecisionReplayContextV1,
-  type ProductionHeaderDecisionV1,
-  type ProductionHistoricalNativeScriptCheckpointStoreV1,
-  type ProductionHistoricalNativeScriptHistorySourceV1,
-  type ProductionHistoricalNativeScriptProviderRosterV1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
-  type ProductionWorkflowApplicationRegistryV1,
-  type ProductionWorkflowRuntimeConfigLoaderV1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY_V1,
-  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY_V1,
-  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1,
+  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
+  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   requireDeploymentReferenceScript,
-  requireProductionHistoricalNativeScriptHistoryAuthorityV1,
-  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+  requireHistoricalNativeScriptHistoryAuthority,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   resolveProverSigner,
-  restrictProductionWorkflowFundingSignerV1,
-  runProductionFraudProofWorkflowCliV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
-  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
-  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+  restrictWorkflowFundingSigner,
+  runFraudProofWorkflowCli,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
   type StateQueueMutationLeaseCoordinator,
-  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
-  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
-  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY_V1,
-  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
-  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
+  type WorkflowAdapterRunnerInput,
+  type WorkflowApplicationRegistry,
+  type WorkflowRuntimeConfigLoader,
+  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  HeaderV1,
+  Header,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  assertWatcherProductionWorkflowFundingProfileOverlayV1,
-  productionWorkflowFundingProfileFromOverlayV1,
-  type WatcherProductionWorkflowFundingProfileOverlayV1,
+  assertWatcherWorkflowFundingProfileOverlay,
+  type WatcherWorkflowFundingProfileOverlay,
+  workflowFundingProfileFromOverlay,
 } from "../funding/production-workflow-funding-profile-overlay-v1.js";
 import {
-  assertWatcherProductionStateQueueHeaderObservationV1,
-  type WatcherProductionStateQueueHeaderObservationV1,
+  assertWatcherStateQueueHeaderObservation,
+  type WatcherStateQueueHeaderObservation,
 } from "../indexers/production-state-queue-observation-v1.js";
 import type {
   WatcherConfig,
   WatcherWalletKeySource,
 } from "../runtime/config.js";
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
-  watcherDeploymentReleaseFinalityAuthorityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
 import {
-  createWatcherProductionRetainedDaRuntimeV1,
-  createWatcherProductionWorkflowRuntimeLoaderV1,
-  type WatcherProductionRetainedDaRuntimeOptionsV1,
+  createWatcherRetainedDaRuntime,
+  createWatcherWorkflowRuntimeLoader,
+  type WatcherRetainedDaRuntimeOptions,
 } from "../storage/production-retained-da-runtime-v1.js";
 
-export const WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1 =
+export const WATCHER_FAULT_PROOF_APPLICATION =
   "midgard-watcher-fault-proof-production-application-v1" as const;
-export const WATCHER_FAULT_PROOF_STARTUP_READINESS_V1 =
+export const WATCHER_FAULT_PROOF_STARTUP_READINESS =
   "midgard-watcher-fault-proof-startup-readiness-v1" as const;
 
-export type WatcherHistoricalNativeScriptHistoryOverlayV1 = Readonly<{
+export type WatcherHistoricalNativeScriptHistoryOverlay = Readonly<{
   sourceMode: "external_provider_quorum";
   consistencyPolicy: "exact_bytes_all_providers_v1";
   providers: readonly Readonly<{
@@ -262,61 +262,60 @@ export type WatcherHistoricalNativeScriptHistoryOverlayV1 = Readonly<{
   }>[];
 }>;
 
-export const WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1 =
-  Object.freeze([
-    "doubleSpend",
-    "nonExistentInput",
-    "nonExistentInputNoIndex",
-    "invalidRange",
-    "zeroInput",
-    "daHashPreimage",
-    "noReferenceInput",
-    "referenceInputNoIdx",
-    "invalidSignature",
-    "fabricatedDeposit",
-    "fabricatedWithdrawal",
-    "missingSignature",
-    "missingNativeScriptTx",
-    "withdrawnReferenceInput",
-    "canonicalDecodability",
-    "committedFieldShape",
-    "minFee",
-    "doubleWithdraw",
-    "l2TxMistag",
-    "withdrawnInput",
-    "inputSetUniqueness",
-    "networkId",
-    "missingNativeScriptUtxo",
-    "nativeScriptInvalid",
-    "minAda",
-    "fieldPreimageLengthMismatch",
-    "fieldItemWidthIllegal",
-    "witnessScriptDecoding",
-    "scriptIntegrityHashMissing",
-    "transactionOutputNonCanonical",
-    "resolvedOutputNonCanonical",
-    "mintDeclaredAssetLimit",
-    "spendInputSignerMissing",
-    "protectedOutputSignerMissing",
-    "observersForbiddenOnUntaggedNetwork",
-    "observerOrderInvalid",
-    "redeemerCanonicity",
-    "outputReferenceScriptDecoding",
-    "executionSourceScriptDecoding",
-    "receivePurposeLanguage",
-    "unusedScriptWitness",
-    "missingScriptSource",
-    "missingRedeemer",
-    "unusedRedeemer",
-    "executionNativeScriptInvalid",
-    "scriptIntegrityHashMismatch",
-    "distinctAssetAccumulationLimit",
-  ] as const);
+export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES = Object.freeze([
+  "doubleSpend",
+  "nonExistentInput",
+  "nonExistentInputNoIndex",
+  "invalidRange",
+  "zeroInput",
+  "daHashPreimage",
+  "noReferenceInput",
+  "referenceInputNoIdx",
+  "invalidSignature",
+  "fabricatedDeposit",
+  "fabricatedWithdrawal",
+  "missingSignature",
+  "missingNativeScriptTx",
+  "withdrawnReferenceInput",
+  "canonicalDecodability",
+  "committedFieldShape",
+  "minFee",
+  "doubleWithdraw",
+  "l2TxMistag",
+  "withdrawnInput",
+  "inputSetUniqueness",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "missingScriptSource",
+  "missingRedeemer",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+] as const);
 
-export type WatcherInstalledProductionWorkflowCategoryV1 =
-  (typeof WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1)[number];
+export type WatcherInstalledWorkflowCategory =
+  (typeof WATCHER_INSTALLED_WORKFLOW_CATEGORIES)[number];
 
-export const WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1 = Object.freeze([
+export const WATCHER_MISSING_WORKFLOW_CATEGORIES = Object.freeze([
   "transitionTrace",
   "validationTraceDispute",
   "nativeScriptDecoding",
@@ -326,15 +325,15 @@ export const WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1 = Object.freeze([
   "mintAuthorization",
 ] as const);
 
-const watcherProductionWorkflowCoverageV1 = new Set<string>([
-  ...WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-  ...WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+const watcherWorkflowCoverage = new Set<string>([
+  ...WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  ...WATCHER_MISSING_WORKFLOW_CATEGORIES,
 ]);
 if (
-  watcherProductionWorkflowCoverageV1.size !==
+  watcherWorkflowCoverage.size !==
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.some(
-    (category) => !watcherProductionWorkflowCoverageV1.has(category),
+    (category) => !watcherWorkflowCoverage.has(category),
   )
 ) {
   throw new Error(
@@ -342,298 +341,291 @@ if (
   );
 }
 
-export type WatcherFaultProofInfrastructureAuthorityV1 = Readonly<{
+export type WatcherFaultProofInfrastructureAuthority = Readonly<{
   manifestPath: string;
   blueprintPath: string;
   deploymentInfoPath: string;
   midgardNodeUrl: string;
   midgardNodeAdminKeySource: WatcherWalletKeySource;
-  historicalNativeScriptHistory: WatcherHistoricalNativeScriptHistoryOverlayV1;
+  historicalNativeScriptHistory: WatcherHistoricalNativeScriptHistoryOverlay;
   stateQueueLeaseTtlMs?: number;
 }>;
 
-export type WatcherFaultProofProductionApplicationOptionsV1 = Readonly<{
-  deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  infrastructure: WatcherFaultProofInfrastructureAuthorityV1;
-  historicalNativeScriptCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  fundingProfileOverlay: WatcherProductionWorkflowFundingProfileOverlayV1;
+export type WatcherFaultProofApplicationOptions = Readonly<{
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  infrastructure: WatcherFaultProofInfrastructureAuthority;
+  historicalNativeScriptCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
 }>;
 
-type WatcherFaultProofApplicationConstructionOptionsV1 = Omit<
-  WatcherFaultProofProductionApplicationOptionsV1,
+type WatcherFaultProofApplicationConstructionOptions = Omit<
+  WatcherFaultProofApplicationOptions,
   "fundingProfileOverlay" | "historicalNativeScriptCheckpointStore"
 > &
   Readonly<{
-    historicalNativeScriptCheckpointStore?: ProductionHistoricalNativeScriptCheckpointStoreV1;
-    fundingProfileOverlay?: WatcherProductionWorkflowFundingProfileOverlayV1;
-    unsafeTransportOptionsForTest?: WatcherProductionRetainedDaRuntimeOptionsV1["unsafeTransportOptionsForTest"];
-    unsafeTransportFactoryForTest?: WatcherProductionRetainedDaRuntimeOptionsV1["unsafeTransportFactoryForTest"];
+    historicalNativeScriptCheckpointStore?: HistoricalNativeScriptCheckpointStore;
+    fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
+    unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];
+    unsafeTransportFactoryForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportFactoryForTest"];
   }>;
 
-export type WatcherFaultProofStartupReadinessV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FAULT_PROOF_STARTUP_READINESS_V1;
+export type WatcherFaultProofStartupReadiness = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_PROOF_STARTUP_READINESS;
   ready: true;
-  category: WatcherInstalledProductionWorkflowCategoryV1;
+  category: WatcherInstalledWorkflowCategory;
   deploymentFingerprint: string;
   headerHash: string;
   referenceScriptOutRefs: Readonly<Record<string, string>>;
 }>;
 
-export type WatcherFaultProofHeaderClassificationInputV1 = Readonly<{
+export type WatcherFaultProofHeaderClassificationInput = Readonly<{
   runtimeConfigPath: string;
-  observation: AuthenticatedStateQueueHeaderObservationV1;
+  observation: AuthenticatedStateQueueHeaderObservation;
   authenticatedObservationDigest: string;
   /** Opaque local-node predecessor; its public retained DA is fetched here. */
-  predecessor?: WatcherProductionStateQueueHeaderObservationV1;
+  predecessor?: WatcherStateQueueHeaderObservation;
   retries?: number;
 }>;
 
-export type WatcherFaultProofProductionApplicationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1;
+export type WatcherFaultProofApplication = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_PROOF_APPLICATION;
   deploymentFingerprint: string;
-  installedCategories: readonly WatcherInstalledProductionWorkflowCategoryV1[];
+  installedCategories: readonly WatcherInstalledWorkflowCategory[];
   runners: Readonly<
-    Record<
-      WatcherInstalledProductionWorkflowCategoryV1,
-      ProductionWorkflowAdapterRunnerV1
-    >
+    Record<WatcherInstalledWorkflowCategory, WorkflowAdapterRunner>
   >;
-  applicationRegistry: ProductionWorkflowApplicationRegistryV1;
+  applicationRegistry: WorkflowApplicationRegistry;
   classifyHeader(
-    input: WatcherFaultProofHeaderClassificationInputV1,
-  ): Promise<ProductionHeaderDecisionV1>;
+    input: WatcherFaultProofHeaderClassificationInput,
+  ): Promise<HeaderDecision>;
   assertStartupReady(
-    invocation: ProductionWorkflowAdapterReadinessInputV1,
-  ): Promise<WatcherFaultProofStartupReadinessV1>;
-  runOrResume(
-    invocation: ProductionWorkflowAdapterRunnerInputV1,
-  ): Promise<unknown>;
+    invocation: WorkflowAdapterReadinessInput,
+  ): Promise<WatcherFaultProofStartupReadiness>;
+  runOrResume(invocation: WorkflowAdapterRunnerInput): Promise<unknown>;
 }>;
 
-type TaggedWorkflowConfigV1 =
+type TaggedWorkflowConfig =
   | Readonly<{
       category: "doubleSpend";
-      config: ManifestBoundDoubleSpendWorkflowConfigV1;
+      config: ManifestBoundDoubleSpendWorkflowConfig;
     }>
   | Readonly<{
       category: "nonExistentInput";
-      config: ManifestBoundNonExistentInputWorkflowConfigV1;
+      config: ManifestBoundNonExistentInputWorkflowConfig;
     }>
   | Readonly<{
       category: "invalidRange";
-      config: ManifestBoundInvalidRangeWorkflowConfigV1;
+      config: ManifestBoundInvalidRangeWorkflowConfig;
     }>
   | Readonly<{
       category: "nonExistentInputNoIndex";
-      config: ManifestBoundInputNoIdxWorkflowConfigV1;
+      config: ManifestBoundInputNoIdxWorkflowConfig;
     }>
   | Readonly<{
       category: "zeroInput";
-      config: ManifestBoundZeroInputWorkflowConfigV1;
+      config: ManifestBoundZeroInputWorkflowConfig;
     }>
   | Readonly<{
       category: "daHashPreimage";
-      config: ManifestBoundDaHashPreimageWorkflowConfigV1;
+      config: ManifestBoundDaHashPreimageWorkflowConfig;
     }>
   | Readonly<{
       category: "noReferenceInput";
-      config: ManifestBoundNoReferenceInputWorkflowConfigV1;
+      config: ManifestBoundNoReferenceInputWorkflowConfig;
     }>
   | Readonly<{
       category: "referenceInputNoIdx";
-      config: ManifestBoundReferenceInputNoIdxWorkflowConfigV1;
+      config: ManifestBoundReferenceInputNoIdxWorkflowConfig;
     }>
   | Readonly<{
       category: "invalidSignature";
-      config: ManifestBoundInvalidSignatureWorkflowConfigV1;
+      config: ManifestBoundInvalidSignatureWorkflowConfig;
     }>
   | Readonly<{
       category: "fabricatedDeposit";
-      config: ManifestBoundFabricatedDepositWorkflowConfigV1;
+      config: ManifestBoundFabricatedDepositWorkflowConfig;
     }>
   | Readonly<{
       category: "fabricatedWithdrawal";
-      config: ManifestBoundFabricatedWithdrawalWorkflowConfigV1;
+      config: ManifestBoundFabricatedWithdrawalWorkflowConfig;
     }>
   | Readonly<{
       category: "canonicalDecodability";
-      config: ManifestBoundCanonicalDecodabilityWorkflowConfigV1;
+      config: ManifestBoundCanonicalDecodabilityWorkflowConfig;
     }>
   | Readonly<{
       category: "withdrawnReferenceInput";
-      config: ManifestBoundWithdrawnReferenceInputWorkflowConfigV1;
+      config: ManifestBoundWithdrawnReferenceInputWorkflowConfig;
     }>
   | Readonly<{
       category: "committedFieldShape";
-      config: ManifestBoundCommittedFieldShapeWorkflowConfigV1;
+      config: ManifestBoundCommittedFieldShapeWorkflowConfig;
     }>
   | Readonly<{
       category: "doubleWithdraw";
-      config: ManifestBoundDoubleWithdrawWorkflowConfigV1;
+      config: ManifestBoundDoubleWithdrawWorkflowConfig;
     }>
   | Readonly<{
       category: "minFee";
-      config: ManifestBoundMinFeeWorkflowConfigV1;
+      config: ManifestBoundMinFeeWorkflowConfig;
     }>
   | Readonly<{
       category: "missingSignature";
-      config: ManifestBoundMissingSignatureWorkflowConfigV1;
+      config: ManifestBoundMissingSignatureWorkflowConfig;
     }>
   | Readonly<{
       category: "missingNativeScriptTx";
-      config: ManifestBoundMissingNativeScriptTxWorkflowConfigV1;
+      config: ManifestBoundMissingNativeScriptTxWorkflowConfig;
     }>
   | Readonly<{
       category: "l2TxMistag";
-      config: ManifestBoundL2TxMistagWorkflowConfigV1;
+      config: ManifestBoundL2TxMistagWorkflowConfig;
     }>
   | Readonly<{
       category: "withdrawnInput";
-      config: ManifestBoundWithdrawnInputWorkflowConfigV1;
+      config: ManifestBoundWithdrawnInputWorkflowConfig;
     }>
   | Readonly<{
       category: "inputSetUniqueness";
-      config: ManifestBoundInputSetUniquenessWorkflowConfigV1;
+      config: ManifestBoundInputSetUniquenessWorkflowConfig;
     }>
   | Readonly<{
       category: "networkId";
-      config: ManifestBoundNetworkIdWorkflowConfigV1;
+      config: ManifestBoundNetworkIdWorkflowConfig;
     }>
   | Readonly<{
       category: "nativeScriptInvalid";
-      config: ManifestBoundNativeScriptInvalidWorkflowConfigV1;
+      config: ManifestBoundNativeScriptInvalidWorkflowConfig;
     }>
   | Readonly<{
       category: "missingNativeScriptUtxo";
-      config: ManifestBoundMissingNativeScriptUtxoWorkflowConfigV1;
+      config: ManifestBoundMissingNativeScriptUtxoWorkflowConfig;
     }>
   | Readonly<{
       category: "minAda";
-      config: ManifestBoundMinAdaWorkflowConfigV1;
+      config: ManifestBoundMinAdaWorkflowConfig;
     }>
   | Readonly<{
       category: "fieldPreimageLengthMismatch";
-      config: ManifestBoundFieldPreimageLengthWorkflowConfigV1;
+      config: ManifestBoundFieldPreimageLengthWorkflowConfig;
     }>
   | Readonly<{
       category: "fieldItemWidthIllegal";
-      config: ManifestBoundFieldItemWidthIllegalWorkflowConfigV1;
+      config: ManifestBoundFieldItemWidthIllegalWorkflowConfig;
     }>
   | Readonly<{
       category: "scriptIntegrityHashMissing";
-      config: ManifestBoundScriptIntegrityHashMissingWorkflowConfigV1;
+      config: ManifestBoundScriptIntegrityHashMissingWorkflowConfig;
     }>
   | Readonly<{
       category: "transactionOutputNonCanonical";
-      config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1;
+      config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfig;
     }>
   | Readonly<{
       category: "resolvedOutputNonCanonical";
-      config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1;
+      config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfig;
     }>
   | Readonly<{
       category: "mintDeclaredAssetLimit";
-      config: ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1;
+      config: ManifestBoundMintDeclaredAssetLimitWorkflowConfig;
     }>
   | Readonly<{
       category: "spendInputSignerMissing";
-      config: ManifestBoundSpendInputSignerMissingWorkflowConfigV1;
+      config: ManifestBoundSpendInputSignerMissingWorkflowConfig;
     }>
   | Readonly<{
       category: "protectedOutputSignerMissing";
-      config: ManifestBoundProtectedOutputSignerMissingWorkflowConfigV1;
+      config: ManifestBoundProtectedOutputSignerMissingWorkflowConfig;
     }>
   | Readonly<{
       category: "observersForbiddenOnUntaggedNetwork";
-      config: ManifestBoundObserversForbiddenWorkflowConfigV1;
+      config: ManifestBoundObserversForbiddenWorkflowConfig;
     }>
   | Readonly<{
       category: "witnessScriptDecoding";
-      config: ManifestBoundWitnessScriptDecodingWorkflowConfigV1;
+      config: ManifestBoundWitnessScriptDecodingWorkflowConfig;
     }>
   | Readonly<{
       category: "outputReferenceScriptDecoding";
-      config: ManifestBoundOutputReferenceScriptDecodingWorkflowConfigV1;
+      config: ManifestBoundOutputReferenceScriptDecodingWorkflowConfig;
     }>
   | Readonly<{
       category: "executionSourceScriptDecoding";
-      config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1;
+      config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfig;
     }>
   | Readonly<{
       category: "executionNativeScriptInvalid";
-      config: executionNativeScriptInvalidV1.ManifestBoundExecutionNativeScriptInvalidWorkflowConfigV1;
+      config: executionNativeScriptInvalidV1.ManifestBoundExecutionNativeScriptInvalidWorkflowConfig;
     }>
   | Readonly<{
       category: "observerOrderInvalid";
-      config: ManifestBoundObserverOrderInvalidWorkflowConfigV1;
+      config: ManifestBoundObserverOrderInvalidWorkflowConfig;
     }>
   | Readonly<{
       category: "redeemerCanonicity";
-      config: ManifestBoundRedeemerCanonicityWorkflowConfigV1;
+      config: ManifestBoundRedeemerCanonicityWorkflowConfig;
     }>
   | Readonly<{
       category: "receivePurposeLanguage";
-      config: ManifestBoundReceivePurposeLanguageWorkflowConfigV1;
+      config: ManifestBoundReceivePurposeLanguageWorkflowConfig;
     }>
   | Readonly<{
       category: "unusedScriptWitness";
-      config: ManifestBoundUnusedScriptWitnessWorkflowConfigV1;
+      config: ManifestBoundUnusedScriptWitnessWorkflowConfig;
     }>
   | Readonly<{
       category: "missingScriptSource";
-      config: ManifestBoundMissingScriptSourceWorkflowConfigV1;
+      config: ManifestBoundMissingScriptSourceWorkflowConfig;
     }>
   | Readonly<{
       category: "missingRedeemer";
-      config: ManifestBoundMissingRedeemerWorkflowConfigV1;
+      config: ManifestBoundMissingRedeemerWorkflowConfig;
     }>
   | Readonly<{
       category: "unusedRedeemer";
-      config: ManifestBoundUnusedRedeemerWorkflowConfigV1;
+      config: ManifestBoundUnusedRedeemerWorkflowConfig;
     }>
   | Readonly<{
       category: "scriptIntegrityHashMismatch";
-      config: ManifestBoundScriptIntegrityHashMismatchWorkflowConfigV1;
+      config: ManifestBoundScriptIntegrityHashMismatchWorkflowConfig;
     }>
   | Readonly<{
       category: "distinctAssetAccumulationLimit";
-      config: ManifestBoundDistinctAssetAccumulationWorkflowConfigV1;
+      config: ManifestBoundDistinctAssetAccumulationWorkflowConfig;
     }>;
 
-type TaggedWorkflowConfigForV1<
-  Category extends WatcherInstalledProductionWorkflowCategoryV1,
-> = Extract<TaggedWorkflowConfigV1, { readonly category: Category }>;
+type TaggedWorkflowConfigFor<
+  Category extends WatcherInstalledWorkflowCategory,
+> = Extract<TaggedWorkflowConfig, { readonly category: Category }>;
 
-type TaggedWorkflowLoaderForV1<
-  Category extends WatcherInstalledProductionWorkflowCategoryV1,
-> = ProductionWorkflowRuntimeConfigLoaderV1<
-  TaggedWorkflowConfigForV1<Category>
->;
+type TaggedWorkflowLoaderFor<
+  Category extends WatcherInstalledWorkflowCategory,
+> = WorkflowRuntimeConfigLoader<TaggedWorkflowConfigFor<Category>>;
 
-type ConstructedWorkflowIdentityV1 = Readonly<{
+type ConstructedWorkflowIdentity = Readonly<{
   binding: Readonly<{
     deploymentFingerprint: string;
     definition: Readonly<{
-      category: WatcherInstalledProductionWorkflowCategoryV1;
+      category: WatcherInstalledWorkflowCategory;
       headerHash: string;
     }>;
   }>;
 }>;
 
-type WatcherHistoricalNativeScriptAuthorityV1 = Readonly<{
-  checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  providerRoster: ProductionHistoricalNativeScriptProviderRosterV1;
-  historySource: ProductionHistoricalNativeScriptHistorySourceV1;
-  l1SourceRoster: Promise<HistoricalNativeScriptSourceRosterV1>;
+type WatcherHistoricalNativeScriptAuthority = Readonly<{
+  checkpointStore: HistoricalNativeScriptCheckpointStore;
+  providerRoster: HistoricalNativeScriptProviderRoster;
+  historySource: HistoricalNativeScriptHistorySource;
+  l1SourceRoster: Promise<HistoricalNativeScriptSourceRoster>;
 }>;
 
-type ResolvedWatcherHistoricalNativeScriptAuthorityV1 = Omit<
-  WatcherHistoricalNativeScriptAuthorityV1,
+type ResolvedWatcherHistoricalNativeScriptAuthority = Omit<
+  WatcherHistoricalNativeScriptAuthority,
   "l1SourceRoster"
 > &
-  Readonly<{ l1SourceRoster: HistoricalNativeScriptSourceRosterV1 }>;
+  Readonly<{ l1SourceRoster: HistoricalNativeScriptSourceRoster }>;
 
-export type WatcherFaultProofApplicationDependenciesV1 = Readonly<{
+export type WatcherFaultProofApplicationDependencies = Readonly<{
   readText(path: string): Promise<string>;
   canonicalPath(path: string): Promise<string>;
   makeLucid(input: {
@@ -656,170 +648,152 @@ export type WatcherFaultProofApplicationDependenciesV1 = Readonly<{
     readonly ttlMs?: number;
   }): StateQueueMutationLeaseCoordinator;
   constructWorkflow(
-    input: TaggedWorkflowConfigV1,
-  ): Promise<ConstructedWorkflowIdentityV1>;
+    input: TaggedWorkflowConfig,
+  ): Promise<ConstructedWorkflowIdentity>;
 }>;
 
 const constructProductionWorkflow = async (
-  input: TaggedWorkflowConfigV1,
-): Promise<ConstructedWorkflowIdentityV1> => {
+  input: TaggedWorkflowConfig,
+): Promise<ConstructedWorkflowIdentity> => {
   switch (input.category) {
     case "doubleSpend":
-      return await createManifestBoundDoubleSpendWorkflowV1(input.config);
+      return await createManifestBoundDoubleSpendWorkflow(input.config);
     case "nonExistentInput":
-      return await createManifestBoundNonExistentInputWorkflowV1(input.config);
+      return await createManifestBoundNonExistentInputWorkflow(input.config);
     case "nonExistentInputNoIndex":
-      return await createManifestBoundInputNoIdxWorkflowV1(input.config);
+      return await createManifestBoundInputNoIdxWorkflow(input.config);
     case "invalidRange":
-      return await createManifestBoundInvalidRangeWorkflowV1(input.config);
+      return await createManifestBoundInvalidRangeWorkflow(input.config);
     case "zeroInput":
-      return await createManifestBoundZeroInputWorkflowV1(input.config);
+      return await createManifestBoundZeroInputWorkflow(input.config);
     case "daHashPreimage":
-      return await createManifestBoundDaHashPreimageWorkflowV1(input.config);
+      return await createManifestBoundDaHashPreimageWorkflow(input.config);
     case "noReferenceInput":
-      return await createManifestBoundNoReferenceInputWorkflowV1(input.config);
+      return await createManifestBoundNoReferenceInputWorkflow(input.config);
     case "referenceInputNoIdx":
-      return await createManifestBoundReferenceInputNoIdxWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundReferenceInputNoIdxWorkflow(input.config);
     case "invalidSignature":
-      return await createManifestBoundInvalidSignatureWorkflowV1(input.config);
+      return await createManifestBoundInvalidSignatureWorkflow(input.config);
     case "fieldPreimageLengthMismatch":
-      return await createManifestBoundFieldPreimageLengthWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundFieldPreimageLengthWorkflow(input.config);
     case "fieldItemWidthIllegal":
-      return await createManifestBoundFieldItemWidthIllegalWorkflowV1(
+      return await createManifestBoundFieldItemWidthIllegalWorkflow(
         input.config,
       );
     case "scriptIntegrityHashMissing":
-      return await createManifestBoundScriptIntegrityHashMissingWorkflowV1(
+      return await createManifestBoundScriptIntegrityHashMissingWorkflow(
         input.config,
       );
     case "transactionOutputNonCanonical":
-      return await createManifestBoundTransactionOutputNonCanonicalWorkflowV1(
+      return await createManifestBoundTransactionOutputNonCanonicalWorkflow(
         input.config,
       );
     case "resolvedOutputNonCanonical":
-      return await createManifestBoundResolvedOutputNonCanonicalWorkflowV1(
+      return await createManifestBoundResolvedOutputNonCanonicalWorkflow(
         input.config,
       );
     case "mintDeclaredAssetLimit":
-      return await createManifestBoundMintDeclaredAssetLimitWorkflowV1(
+      return await createManifestBoundMintDeclaredAssetLimitWorkflow(
         input.config,
       );
     case "spendInputSignerMissing":
-      return await createManifestBoundSpendInputSignerMissingWorkflowV1(
+      return await createManifestBoundSpendInputSignerMissingWorkflow(
         input.config,
       );
     case "protectedOutputSignerMissing":
-      return await createManifestBoundProtectedOutputSignerMissingWorkflowV1(
+      return await createManifestBoundProtectedOutputSignerMissingWorkflow(
         input.config,
       );
     case "observersForbiddenOnUntaggedNetwork":
-      return await createManifestBoundObserversForbiddenWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundObserversForbiddenWorkflow(input.config);
     case "witnessScriptDecoding":
-      return await createManifestBoundWitnessScriptDecodingWorkflowV1(
+      return await createManifestBoundWitnessScriptDecodingWorkflow(
         input.config,
       );
     case "outputReferenceScriptDecoding":
-      return await createManifestBoundOutputReferenceScriptDecodingWorkflowV1(
+      return await createManifestBoundOutputReferenceScriptDecodingWorkflow(
         input.config,
       );
     case "executionSourceScriptDecoding":
-      return await createManifestBoundExecutionSourceScriptDecodingWorkflowV1(
+      return await createManifestBoundExecutionSourceScriptDecodingWorkflow(
         input.config,
       );
     case "executionNativeScriptInvalid":
-      return await executionNativeScriptInvalidV1.createManifestBoundExecutionNativeScriptInvalidWorkflowV1(
+      return await executionNativeScriptInvalidV1.createManifestBoundExecutionNativeScriptInvalidWorkflow(
         input.config,
       );
     case "observerOrderInvalid":
-      return await createManifestBoundObserverOrderInvalidWorkflowV1(
+      return await createManifestBoundObserverOrderInvalidWorkflow(
         input.config,
       );
     case "redeemerCanonicity":
-      return await createManifestBoundRedeemerCanonicityWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundRedeemerCanonicityWorkflow(input.config);
     case "receivePurposeLanguage":
-      return await createManifestBoundReceivePurposeLanguageWorkflowV1(
+      return await createManifestBoundReceivePurposeLanguageWorkflow(
         input.config,
       );
     case "unusedScriptWitness":
-      return await createManifestBoundUnusedScriptWitnessWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundUnusedScriptWitnessWorkflow(input.config);
     case "missingScriptSource":
-      return await createManifestBoundMissingScriptSourceWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundMissingScriptSourceWorkflow(input.config);
     case "missingRedeemer":
-      return await createManifestBoundMissingRedeemerWorkflowV1(input.config);
+      return await createManifestBoundMissingRedeemerWorkflow(input.config);
     case "unusedRedeemer":
-      return await createManifestBoundUnusedRedeemerWorkflowV1(input.config);
+      return await createManifestBoundUnusedRedeemerWorkflow(input.config);
     case "scriptIntegrityHashMismatch":
-      return await createManifestBoundScriptIntegrityHashMismatchWorkflowV1(
+      return await createManifestBoundScriptIntegrityHashMismatchWorkflow(
         input.config,
       );
     case "distinctAssetAccumulationLimit":
-      return await createManifestBoundDistinctAssetAccumulationWorkflowV1(
+      return await createManifestBoundDistinctAssetAccumulationWorkflow(
         input.config,
       );
     case "fabricatedDeposit":
-      return await createManifestBoundFabricatedDepositWorkflowV1(input.config);
+      return await createManifestBoundFabricatedDepositWorkflow(input.config);
     case "fabricatedWithdrawal":
-      return await createManifestBoundFabricatedWithdrawalWorkflowV1(
+      return await createManifestBoundFabricatedWithdrawalWorkflow(
         input.config,
       );
     case "withdrawnReferenceInput":
-      return await createManifestBoundWithdrawnReferenceInputWorkflowV1(
+      return await createManifestBoundWithdrawnReferenceInputWorkflow(
         input.config,
       );
     case "canonicalDecodability":
-      return await createManifestBoundCanonicalDecodabilityWorkflowV1(
+      return await createManifestBoundCanonicalDecodabilityWorkflow(
         input.config,
       );
     case "committedFieldShape":
-      return await createManifestBoundCommittedFieldShapeWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundCommittedFieldShapeWorkflow(input.config);
     case "doubleWithdraw":
-      return await createManifestBoundDoubleWithdrawWorkflowV1(input.config);
+      return await createManifestBoundDoubleWithdrawWorkflow(input.config);
     case "minFee":
-      return await createManifestBoundMinFeeWorkflowV1(input.config);
+      return await createManifestBoundMinFeeWorkflow(input.config);
     case "missingSignature":
-      return await createManifestBoundMissingSignatureWorkflowV1(input.config);
+      return await createManifestBoundMissingSignatureWorkflow(input.config);
     case "missingNativeScriptTx":
-      return await createManifestBoundMissingNativeScriptTxWorkflowV1(
+      return await createManifestBoundMissingNativeScriptTxWorkflow(
         input.config,
       );
     case "l2TxMistag":
-      return await createManifestBoundL2TxMistagWorkflowV1(input.config);
+      return await createManifestBoundL2TxMistagWorkflow(input.config);
     case "withdrawnInput":
-      return await createManifestBoundWithdrawnInputWorkflowV1(input.config);
+      return await createManifestBoundWithdrawnInputWorkflow(input.config);
     case "inputSetUniqueness":
-      return await createManifestBoundInputSetUniquenessWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundInputSetUniquenessWorkflow(input.config);
     case "networkId":
-      return await createManifestBoundNetworkIdWorkflowV1(input.config);
+      return await createManifestBoundNetworkIdWorkflow(input.config);
     case "nativeScriptInvalid":
-      return await createManifestBoundNativeScriptInvalidWorkflowV1(
-        input.config,
-      );
+      return await createManifestBoundNativeScriptInvalidWorkflow(input.config);
     case "missingNativeScriptUtxo":
-      return await createManifestBoundMissingNativeScriptUtxoWorkflowV1(
+      return await createManifestBoundMissingNativeScriptUtxoWorkflow(
         input.config,
       );
     case "minAda":
-      return await createManifestBoundMinAdaWorkflowV1(input.config);
+      return await createManifestBoundMinAdaWorkflow(input.config);
   }
 };
 
-const productionDependencies: WatcherFaultProofApplicationDependenciesV1 =
+const productionDependencies: WatcherFaultProofApplicationDependencies =
   Object.freeze({
     readText: async (path) => await readFile(path, "utf8"),
     canonicalPath: realpath,
@@ -959,7 +933,7 @@ const historicalProviderEndpoint = (value: unknown): string => {
 
 const admitHistoricalNativeScriptHistory = (
   value: unknown,
-): WatcherHistoricalNativeScriptHistoryOverlayV1 => {
+): WatcherHistoricalNativeScriptHistoryOverlay => {
   const input = plainRecord(value, "historical native-script history overlay");
   exactKeys(
     input,
@@ -1046,7 +1020,7 @@ const secretSource = (
 
 const admitInfrastructure = (
   value: unknown,
-): WatcherFaultProofInfrastructureAuthorityV1 => {
+): WatcherFaultProofInfrastructureAuthority => {
   const input = plainRecord(value, "fault-proof infrastructure authority");
   exactKeys(
     input,
@@ -1094,7 +1068,7 @@ const admitInfrastructure = (
 
 const requireCanonicalFile = async (
   path: string,
-  dependencies: WatcherFaultProofApplicationDependenciesV1,
+  dependencies: WatcherFaultProofApplicationDependencies,
 ): Promise<string> => {
   const canonical = await dependencies.canonicalPath(path);
   if (canonical !== path) {
@@ -1112,7 +1086,7 @@ const readSecret = async ({
   label,
 }: {
   readonly source: WatcherWalletKeySource;
-  readonly dependencies: WatcherFaultProofApplicationDependenciesV1;
+  readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
   readonly label: string;
 }): Promise<string> => {
@@ -1130,7 +1104,7 @@ const readSecret = async ({
 };
 
 const referenceContracts = (
-  category: WatcherInstalledProductionWorkflowCategoryV1,
+  category: WatcherInstalledWorkflowCategory,
 ): Readonly<Record<string, string>> => {
   const base = {
     computationThreadMint: "computationThreadMint",
@@ -1751,7 +1725,7 @@ const referenceContracts = (
   }
 };
 
-type CommonInfrastructureV1 = Readonly<{
+type CommonInfrastructure = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
@@ -1767,8 +1741,8 @@ type CommonInfrastructureV1 = Readonly<{
   }>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   references: Readonly<Record<string, UTxO>>;
-  historicalNativeScriptAuthority: ResolvedWatcherHistoricalNativeScriptAuthorityV1;
-  replayContext?: CompleteCanonicalReplayContextV1;
+  historicalNativeScriptAuthority: ResolvedWatcherHistoricalNativeScriptAuthority;
+  replayContext?: CompleteCanonicalReplayContext;
 }>;
 
 const buildCommonInfrastructure = async ({
@@ -1782,19 +1756,16 @@ const buildCommonInfrastructure = async ({
   dependencies,
   environment,
 }: {
-  readonly category: WatcherInstalledProductionWorkflowCategoryV1;
+  readonly category: WatcherInstalledWorkflowCategory;
   readonly watcherConfig: WatcherConfig;
-  readonly invocation: ProductionWorkflowAdapterReadinessInputV1;
-  readonly infrastructure: WatcherFaultProofInfrastructureAuthorityV1;
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  readonly historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthorityV1;
-  readonly replayContexts: ReadonlyMap<
-    string,
-    CompleteCanonicalReplayContextV1
-  >;
-  readonly dependencies: WatcherFaultProofApplicationDependenciesV1;
+  readonly invocation: WorkflowAdapterReadinessInput;
+  readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority;
+  readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
+  readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
-}): Promise<CommonInfrastructureV1> => {
+}): Promise<CommonInfrastructure> => {
   if (invocation.category !== category) {
     throw new Error(
       `watcher production workflow refuses category ${invocation.category}; expected ${category}`,
@@ -1879,8 +1850,7 @@ const buildCommonInfrastructure = async ({
     network: watcherConfig.targetNetwork,
     secret: proverSecret,
   });
-  const executionInvocation =
-    invocation as Partial<ProductionWorkflowAdapterRunnerInputV1>;
+  const executionInvocation = invocation as Partial<WorkflowAdapterRunnerInput>;
   const replayContext =
     executionInvocation.decisionDigest === undefined
       ? undefined
@@ -1897,7 +1867,7 @@ const buildCommonInfrastructure = async ({
   const signer =
     executionInvocation.fundingReservationPermit === undefined
       ? resolvedSigner
-      : restrictProductionWorkflowFundingSignerV1({
+      : restrictWorkflowFundingSigner({
           signer: resolvedSigner,
           permit: executionInvocation.fundingReservationPermit,
         });
@@ -1975,284 +1945,263 @@ const baseWitnesses = (references: Readonly<Record<string, UTxO>>) => ({
 
 function taggedConfig(
   category: "doubleSpend",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "doubleSpend" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "doubleSpend" }>;
 function taggedConfig(
   category: "nonExistentInput",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "nonExistentInput" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "nonExistentInput" }>;
 function taggedConfig(
   category: "nonExistentInputNoIndex",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "nonExistentInputNoIndex" }
 >;
 function taggedConfig(
   category: "invalidRange",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "invalidRange" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "invalidRange" }>;
 function taggedConfig(
   category: "zeroInput",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "zeroInput" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "zeroInput" }>;
 function taggedConfig(
   category: "daHashPreimage",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "daHashPreimage" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "daHashPreimage" }>;
 function taggedConfig(
   category: "noReferenceInput",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "noReferenceInput" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "noReferenceInput" }>;
 function taggedConfig(
   category: "referenceInputNoIdx",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "referenceInputNoIdx" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "referenceInputNoIdx" }>;
 function taggedConfig(
   category: "invalidSignature",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "invalidSignature" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "invalidSignature" }>;
 function taggedConfig(
   category: "fabricatedDeposit",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "fabricatedDeposit" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "fabricatedDeposit" }>;
 function taggedConfig(
   category: "fabricatedWithdrawal",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "fabricatedWithdrawal" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "fabricatedWithdrawal" }>;
 function taggedConfig(
   category: "withdrawnReferenceInput",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "withdrawnReferenceInput" }
 >;
 function taggedConfig(
   category: "canonicalDecodability",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "canonicalDecodability" }
 >;
 function taggedConfig(
   category: "committedFieldShape",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "committedFieldShape" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "committedFieldShape" }>;
 function taggedConfig(
   category: "minFee",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "minFee" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "minFee" }>;
 function taggedConfig(
   category: "doubleWithdraw",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "doubleWithdraw" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "doubleWithdraw" }>;
 function taggedConfig(
   category: "missingSignature",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "missingSignature" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "missingSignature" }>;
 function taggedConfig(
   category: "missingNativeScriptTx",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "missingNativeScriptTx" }
 >;
 function taggedConfig(
   category: "l2TxMistag",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "l2TxMistag" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "l2TxMistag" }>;
 function taggedConfig(
   category: "withdrawnInput",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "withdrawnInput" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "withdrawnInput" }>;
 function taggedConfig(
   category: "inputSetUniqueness",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "inputSetUniqueness" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "inputSetUniqueness" }>;
 function taggedConfig(
   category: "networkId",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "networkId" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "networkId" }>;
 function taggedConfig(
   category: "nativeScriptInvalid",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "nativeScriptInvalid" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "nativeScriptInvalid" }>;
 function taggedConfig(
   category: "missingNativeScriptUtxo",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "missingNativeScriptUtxo" }
 >;
 function taggedConfig(
   category: "minAda",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "minAda" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "minAda" }>;
 function taggedConfig(
   category: "fieldPreimageLengthMismatch",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "fieldPreimageLengthMismatch" }
 >;
 function taggedConfig(
   category: "fieldItemWidthIllegal",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "fieldItemWidthIllegal" }
 >;
 function taggedConfig(
   category: "scriptIntegrityHashMissing",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "scriptIntegrityHashMissing" }
 >;
 function taggedConfig(
   category: "transactionOutputNonCanonical",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "transactionOutputNonCanonical" }
 >;
 function taggedConfig(
   category: "resolvedOutputNonCanonical",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "resolvedOutputNonCanonical" }
 >;
 function taggedConfig(
   category: "mintDeclaredAssetLimit",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "mintDeclaredAssetLimit" }
 >;
 function taggedConfig(
   category: "spendInputSignerMissing",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "spendInputSignerMissing" }
 >;
 function taggedConfig(
   category: "protectedOutputSignerMissing",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "protectedOutputSignerMissing" }
 >;
 function taggedConfig(
   category: "observersForbiddenOnUntaggedNetwork",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "observersForbiddenOnUntaggedNetwork" }
 >;
 function taggedConfig(
   category: "witnessScriptDecoding",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "witnessScriptDecoding" }
 >;
 function taggedConfig(
   category: "outputReferenceScriptDecoding",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "outputReferenceScriptDecoding" }
 >;
 function taggedConfig(
   category: "executionSourceScriptDecoding",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "executionSourceScriptDecoding" }
 >;
 function taggedConfig(
   category: "executionNativeScriptInvalid",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "executionNativeScriptInvalid" }
 >;
 function taggedConfig(
   category: "observerOrderInvalid",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "observerOrderInvalid" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "observerOrderInvalid" }>;
 function taggedConfig(
   category: "redeemerCanonicity",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "redeemerCanonicity" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "redeemerCanonicity" }>;
 function taggedConfig(
   category: "receivePurposeLanguage",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "receivePurposeLanguage" }
 >;
 function taggedConfig(
   category: "unusedScriptWitness",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "unusedScriptWitness" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "unusedScriptWitness" }>;
 function taggedConfig(
   category: "missingScriptSource",
-  common: CommonInfrastructureV1,
-): Extract<
-  TaggedWorkflowConfigV1,
-  { readonly category: "missingScriptSource" }
->;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "missingScriptSource" }>;
 function taggedConfig(
   category: "missingRedeemer",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "missingRedeemer" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "missingRedeemer" }>;
 function taggedConfig(
   category: "unusedRedeemer",
-  common: CommonInfrastructureV1,
-): Extract<TaggedWorkflowConfigV1, { readonly category: "unusedRedeemer" }>;
+  common: CommonInfrastructure,
+): Extract<TaggedWorkflowConfig, { readonly category: "unusedRedeemer" }>;
 function taggedConfig(
   category: "scriptIntegrityHashMismatch",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "scriptIntegrityHashMismatch" }
 >;
 function taggedConfig(
   category: "distinctAssetAccumulationLimit",
-  common: CommonInfrastructureV1,
+  common: CommonInfrastructure,
 ): Extract<
-  TaggedWorkflowConfigV1,
+  TaggedWorkflowConfig,
   { readonly category: "distinctAssetAccumulationLimit" }
 >;
 function taggedConfig(
-  category: WatcherInstalledProductionWorkflowCategoryV1,
-  common: CommonInfrastructureV1,
-): TaggedWorkflowConfigV1;
+  category: WatcherInstalledWorkflowCategory,
+  common: CommonInfrastructure,
+): TaggedWorkflowConfig;
 function taggedConfig(
-  category: WatcherInstalledProductionWorkflowCategoryV1,
-  common: CommonInfrastructureV1,
-): TaggedWorkflowConfigV1 {
+  category: WatcherInstalledWorkflowCategory,
+  common: CommonInfrastructure,
+): TaggedWorkflowConfig {
   const base = {
     manifest: common.manifest,
     blueprintJson: common.blueprintJson,
@@ -3387,7 +3336,7 @@ const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 const taggedReferenceOutRefs = (
-  tagged: TaggedWorkflowConfigV1,
+  tagged: TaggedWorkflowConfig,
 ): Readonly<Record<string, string>> => {
   const references = referenceContracts(tagged.category);
   const utxos: readonly UTxO[] = (() => {
@@ -3611,8 +3560,8 @@ const taggedReferenceOutRefs = (
 const admittedApplications = new WeakSet<object>();
 
 /** Retains the exact runner/classifier authority captured by this module. */
-export const assertWatcherFaultProofProductionApplicationV1 = (
-  application: WatcherFaultProofProductionApplicationV1,
+export const assertWatcherFaultProofApplication = (
+  application: WatcherFaultProofApplication,
 ): void => {
   if (!admittedApplications.has(application)) {
     throw new Error(
@@ -3621,17 +3570,17 @@ export const assertWatcherFaultProofProductionApplicationV1 = (
   }
 };
 
-const predecessorObservationForClassifierV1 = ({
+const predecessorObservationForClassifier = ({
   current,
   predecessor,
 }: {
-  readonly current: AuthenticatedStateQueueHeaderObservationV1;
-  readonly predecessor: WatcherProductionStateQueueHeaderObservationV1;
-}): AuthenticatedStateQueueHeaderObservationV1 => {
-  assertWatcherProductionStateQueueHeaderObservationV1(predecessor);
-  const header = Data.from(predecessor.headerCborHex, HeaderV1);
+  readonly current: AuthenticatedStateQueueHeaderObservation;
+  readonly predecessor: WatcherStateQueueHeaderObservation;
+}): AuthenticatedStateQueueHeaderObservation => {
+  assertWatcherStateQueueHeaderObservation(predecessor);
+  const header = Data.from(predecessor.headerCborHex, Header);
   if (
-    Data.to(header, HeaderV1) !== predecessor.headerCborHex ||
+    Data.to(header, Header) !== predecessor.headerCborHex ||
     predecessor.headerHash !== current.header.prevHeaderHash
   ) {
     throw new Error(
@@ -3649,7 +3598,7 @@ const predecessorObservationForClassifierV1 = ({
     throw new Error("watcher predecessor finality depth exceeds safe range");
   }
   return Object.freeze({
-    schemaVersion: CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+    schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
     sourceMode: current.sourceMode,
     provenance: current.provenance,
     chainPoint: Object.freeze({
@@ -3662,53 +3611,52 @@ const predecessorObservationForClassifierV1 = ({
   });
 };
 
-const WATCHER_INSTALLED_COMPLETE_REPLAY_V1 =
-  createCompleteCanonicalReplayUnionV1([
-    DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
-    NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-    INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1,
-    INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
-    ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-    DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY_V1,
-    NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-    REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1,
-    INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
-    MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
-    MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1,
-    WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-    CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY_V1,
-    COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY_V1,
-    MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1,
-    DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY_V1,
-    L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY_V1,
-    WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-    INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
-    NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
-    NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
-    MIN_ADA_COMPLETE_CANONICAL_REPLAY_V1,
-    FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
-    FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY_V1,
-    WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
-    SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
-    TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
-    RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
-    MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
-    SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
-    PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
-    OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
-    OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
-    REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY_V1,
-    OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
-    EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
-    RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY_V1,
-    UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY_V1,
-    MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY_V1,
-    MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
-    UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
-    EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
-    SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
-    DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
-  ]);
+const WATCHER_INSTALLED_COMPLETE_REPLAY = createCompleteCanonicalReplayUnion([
+  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
+  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
+  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
+  DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY,
+  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
+  INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
+  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
+  MIN_FEE_COMPLETE_CANONICAL_REPLAY,
+  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
+  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
+  OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY,
+  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
+  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
+  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
+  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+]);
 
 const createApplication = ({
   options,
@@ -3716,13 +3664,13 @@ const createApplication = ({
   environment,
   allowExecution,
 }: {
-  readonly options: WatcherFaultProofApplicationConstructionOptionsV1;
-  readonly dependencies: WatcherFaultProofApplicationDependenciesV1;
+  readonly options: WatcherFaultProofApplicationConstructionOptions;
+  readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
   readonly allowExecution: boolean;
-}): WatcherFaultProofProductionApplicationV1 => {
+}): WatcherFaultProofApplication => {
   const deploymentIdentity = options.deploymentIdentity;
-  assertVerifiedWatcherDeploymentIdentityV1(deploymentIdentity);
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   const infrastructure = admitInfrastructure(options.infrastructure);
   if (options.historicalNativeScriptCheckpointStore === undefined) {
     throw new Error(
@@ -3735,9 +3683,7 @@ const createApplication = ({
     );
   }
   if (options.fundingProfileOverlay !== undefined) {
-    assertWatcherProductionWorkflowFundingProfileOverlayV1(
-      options.fundingProfileOverlay,
-    );
+    assertWatcherWorkflowFundingProfileOverlay(options.fundingProfileOverlay);
     if (
       options.fundingProfileOverlay.deploymentFingerprint !==
         deploymentIdentity.manifestId ||
@@ -3749,51 +3695,47 @@ const createApplication = ({
       );
     }
   }
-  const fundingProfile = (
-    category: WatcherInstalledProductionWorkflowCategoryV1,
-  ) =>
+  const fundingProfile = (category: WatcherInstalledWorkflowCategory) =>
     options.fundingProfileOverlay === undefined
       ? undefined
-      : productionWorkflowFundingProfileFromOverlayV1({
+      : workflowFundingProfileFromOverlay({
           overlay: options.fundingProfileOverlay,
           category,
         });
-  const providerRoster = createProductionHistoricalNativeScriptProviderRosterV1(
-    {
-      deploymentFingerprint: deploymentIdentity.manifestId,
-      providers: infrastructure.historicalNativeScriptHistory.providers,
-    },
-  );
-  const historySource = createProductionHistoricalNativeScriptHistorySourceV1({
+  const providerRoster = createHistoricalNativeScriptProviderRoster({
+    deploymentFingerprint: deploymentIdentity.manifestId,
+    providers: infrastructure.historicalNativeScriptHistory.providers,
+  });
+  const historySource = createHistoricalNativeScriptHistorySource({
     providerRoster,
   });
   if (allowExecution) {
-    requireProductionHistoricalNativeScriptHistoryAuthorityV1({
+    requireHistoricalNativeScriptHistoryAuthority({
       deploymentFingerprint: deploymentIdentity.manifestId,
       checkpointStore: options.historicalNativeScriptCheckpointStore,
       historySource,
     });
   }
-  const historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthorityV1 =
+  const historicalNativeScriptAuthority: WatcherHistoricalNativeScriptAuthority =
     Object.freeze({
       checkpointStore: options.historicalNativeScriptCheckpointStore,
       providerRoster,
       historySource,
-      l1SourceRoster: watcherDeploymentReleaseFinalityAuthorityV1(
+      l1SourceRoster: watcherDeploymentReleaseFinalityAuthority(
         deploymentIdentity,
       )
         .verifyForWorkflow({
           deploymentFingerprint: deploymentIdentity.manifestId,
         })
         .then((releaseFinality) =>
-          createProductionExternalHistoricalNativeScriptSourceRosterV1({
+          createExternalHistoricalNativeScriptSourceRoster({
             providerRoster,
             releaseFinality,
           }),
         ),
     });
   const environmentSnapshot = Object.freeze({ ...environment });
-  const replayContexts = new Map<string, CompleteCanonicalReplayContextV1>();
+  const replayContexts = new Map<string, CompleteCanonicalReplayContext>();
   const loaderOptions = {
     deploymentIdentity,
     ...(options.unsafeTransportOptionsForTest === undefined
@@ -3809,149 +3751,149 @@ const createApplication = ({
   };
   function makeTaggedLoader(
     category: "doubleSpend",
-  ): TaggedWorkflowLoaderForV1<"doubleSpend">;
+  ): TaggedWorkflowLoaderFor<"doubleSpend">;
   function makeTaggedLoader(
     category: "nonExistentInput",
-  ): TaggedWorkflowLoaderForV1<"nonExistentInput">;
+  ): TaggedWorkflowLoaderFor<"nonExistentInput">;
   function makeTaggedLoader(
     category: "nonExistentInputNoIndex",
-  ): TaggedWorkflowLoaderForV1<"nonExistentInputNoIndex">;
+  ): TaggedWorkflowLoaderFor<"nonExistentInputNoIndex">;
   function makeTaggedLoader(
     category: "invalidRange",
-  ): TaggedWorkflowLoaderForV1<"invalidRange">;
+  ): TaggedWorkflowLoaderFor<"invalidRange">;
   function makeTaggedLoader(
     category: "zeroInput",
-  ): TaggedWorkflowLoaderForV1<"zeroInput">;
+  ): TaggedWorkflowLoaderFor<"zeroInput">;
   function makeTaggedLoader(
     category: "daHashPreimage",
-  ): TaggedWorkflowLoaderForV1<"daHashPreimage">;
+  ): TaggedWorkflowLoaderFor<"daHashPreimage">;
   function makeTaggedLoader(
     category: "noReferenceInput",
-  ): TaggedWorkflowLoaderForV1<"noReferenceInput">;
+  ): TaggedWorkflowLoaderFor<"noReferenceInput">;
   function makeTaggedLoader(
     category: "referenceInputNoIdx",
-  ): TaggedWorkflowLoaderForV1<"referenceInputNoIdx">;
+  ): TaggedWorkflowLoaderFor<"referenceInputNoIdx">;
   function makeTaggedLoader(
     category: "invalidSignature",
-  ): TaggedWorkflowLoaderForV1<"invalidSignature">;
+  ): TaggedWorkflowLoaderFor<"invalidSignature">;
   function makeTaggedLoader(
     category: "fabricatedDeposit",
-  ): TaggedWorkflowLoaderForV1<"fabricatedDeposit">;
+  ): TaggedWorkflowLoaderFor<"fabricatedDeposit">;
   function makeTaggedLoader(
     category: "fabricatedWithdrawal",
-  ): TaggedWorkflowLoaderForV1<"fabricatedWithdrawal">;
+  ): TaggedWorkflowLoaderFor<"fabricatedWithdrawal">;
   function makeTaggedLoader(
     category: "withdrawnReferenceInput",
-  ): TaggedWorkflowLoaderForV1<"withdrawnReferenceInput">;
+  ): TaggedWorkflowLoaderFor<"withdrawnReferenceInput">;
   function makeTaggedLoader(
     category: "canonicalDecodability",
-  ): TaggedWorkflowLoaderForV1<"canonicalDecodability">;
+  ): TaggedWorkflowLoaderFor<"canonicalDecodability">;
   function makeTaggedLoader(
     category: "committedFieldShape",
-  ): TaggedWorkflowLoaderForV1<"committedFieldShape">;
+  ): TaggedWorkflowLoaderFor<"committedFieldShape">;
   function makeTaggedLoader(
     category: "minFee",
-  ): TaggedWorkflowLoaderForV1<"minFee">;
+  ): TaggedWorkflowLoaderFor<"minFee">;
   function makeTaggedLoader(
     category: "doubleWithdraw",
-  ): TaggedWorkflowLoaderForV1<"doubleWithdraw">;
+  ): TaggedWorkflowLoaderFor<"doubleWithdraw">;
   function makeTaggedLoader(
     category: "missingSignature",
-  ): TaggedWorkflowLoaderForV1<"missingSignature">;
+  ): TaggedWorkflowLoaderFor<"missingSignature">;
   function makeTaggedLoader(
     category: "missingNativeScriptTx",
-  ): TaggedWorkflowLoaderForV1<"missingNativeScriptTx">;
+  ): TaggedWorkflowLoaderFor<"missingNativeScriptTx">;
   function makeTaggedLoader(
     category: "l2TxMistag",
-  ): TaggedWorkflowLoaderForV1<"l2TxMistag">;
+  ): TaggedWorkflowLoaderFor<"l2TxMistag">;
   function makeTaggedLoader(
     category: "withdrawnInput",
-  ): TaggedWorkflowLoaderForV1<"withdrawnInput">;
+  ): TaggedWorkflowLoaderFor<"withdrawnInput">;
   function makeTaggedLoader(
     category: "inputSetUniqueness",
-  ): TaggedWorkflowLoaderForV1<"inputSetUniqueness">;
+  ): TaggedWorkflowLoaderFor<"inputSetUniqueness">;
   function makeTaggedLoader(
     category: "networkId",
-  ): TaggedWorkflowLoaderForV1<"networkId">;
+  ): TaggedWorkflowLoaderFor<"networkId">;
   function makeTaggedLoader(
     category: "nativeScriptInvalid",
-  ): TaggedWorkflowLoaderForV1<"nativeScriptInvalid">;
+  ): TaggedWorkflowLoaderFor<"nativeScriptInvalid">;
   function makeTaggedLoader(
     category: "missingNativeScriptUtxo",
-  ): TaggedWorkflowLoaderForV1<"missingNativeScriptUtxo">;
+  ): TaggedWorkflowLoaderFor<"missingNativeScriptUtxo">;
   function makeTaggedLoader(
     category: "minAda",
-  ): TaggedWorkflowLoaderForV1<"minAda">;
+  ): TaggedWorkflowLoaderFor<"minAda">;
   function makeTaggedLoader(
     category: "fieldPreimageLengthMismatch",
-  ): TaggedWorkflowLoaderForV1<"fieldPreimageLengthMismatch">;
+  ): TaggedWorkflowLoaderFor<"fieldPreimageLengthMismatch">;
   function makeTaggedLoader(
     category: "fieldItemWidthIllegal",
-  ): TaggedWorkflowLoaderForV1<"fieldItemWidthIllegal">;
+  ): TaggedWorkflowLoaderFor<"fieldItemWidthIllegal">;
   function makeTaggedLoader(
     category: "scriptIntegrityHashMissing",
-  ): TaggedWorkflowLoaderForV1<"scriptIntegrityHashMissing">;
+  ): TaggedWorkflowLoaderFor<"scriptIntegrityHashMissing">;
   function makeTaggedLoader(
     category: "transactionOutputNonCanonical",
-  ): TaggedWorkflowLoaderForV1<"transactionOutputNonCanonical">;
+  ): TaggedWorkflowLoaderFor<"transactionOutputNonCanonical">;
   function makeTaggedLoader(
     category: "resolvedOutputNonCanonical",
-  ): TaggedWorkflowLoaderForV1<"resolvedOutputNonCanonical">;
+  ): TaggedWorkflowLoaderFor<"resolvedOutputNonCanonical">;
   function makeTaggedLoader(
     category: "mintDeclaredAssetLimit",
-  ): TaggedWorkflowLoaderForV1<"mintDeclaredAssetLimit">;
+  ): TaggedWorkflowLoaderFor<"mintDeclaredAssetLimit">;
   function makeTaggedLoader(
     category: "spendInputSignerMissing",
-  ): TaggedWorkflowLoaderForV1<"spendInputSignerMissing">;
+  ): TaggedWorkflowLoaderFor<"spendInputSignerMissing">;
   function makeTaggedLoader(
     category: "protectedOutputSignerMissing",
-  ): TaggedWorkflowLoaderForV1<"protectedOutputSignerMissing">;
+  ): TaggedWorkflowLoaderFor<"protectedOutputSignerMissing">;
   function makeTaggedLoader(
     category: "observersForbiddenOnUntaggedNetwork",
-  ): TaggedWorkflowLoaderForV1<"observersForbiddenOnUntaggedNetwork">;
+  ): TaggedWorkflowLoaderFor<"observersForbiddenOnUntaggedNetwork">;
   function makeTaggedLoader(
     category: "witnessScriptDecoding",
-  ): TaggedWorkflowLoaderForV1<"witnessScriptDecoding">;
+  ): TaggedWorkflowLoaderFor<"witnessScriptDecoding">;
   function makeTaggedLoader(
     category: "outputReferenceScriptDecoding",
-  ): TaggedWorkflowLoaderForV1<"outputReferenceScriptDecoding">;
+  ): TaggedWorkflowLoaderFor<"outputReferenceScriptDecoding">;
   function makeTaggedLoader(
     category: "executionSourceScriptDecoding",
-  ): TaggedWorkflowLoaderForV1<"executionSourceScriptDecoding">;
+  ): TaggedWorkflowLoaderFor<"executionSourceScriptDecoding">;
   function makeTaggedLoader(
     category: "executionNativeScriptInvalid",
-  ): TaggedWorkflowLoaderForV1<"executionNativeScriptInvalid">;
+  ): TaggedWorkflowLoaderFor<"executionNativeScriptInvalid">;
   function makeTaggedLoader(
     category: "observerOrderInvalid",
-  ): TaggedWorkflowLoaderForV1<"observerOrderInvalid">;
+  ): TaggedWorkflowLoaderFor<"observerOrderInvalid">;
   function makeTaggedLoader(
     category: "redeemerCanonicity",
-  ): TaggedWorkflowLoaderForV1<"redeemerCanonicity">;
+  ): TaggedWorkflowLoaderFor<"redeemerCanonicity">;
   function makeTaggedLoader(
     category: "receivePurposeLanguage",
-  ): TaggedWorkflowLoaderForV1<"receivePurposeLanguage">;
+  ): TaggedWorkflowLoaderFor<"receivePurposeLanguage">;
   function makeTaggedLoader(
     category: "unusedScriptWitness",
-  ): TaggedWorkflowLoaderForV1<"unusedScriptWitness">;
+  ): TaggedWorkflowLoaderFor<"unusedScriptWitness">;
   function makeTaggedLoader(
     category: "missingScriptSource",
-  ): TaggedWorkflowLoaderForV1<"missingScriptSource">;
+  ): TaggedWorkflowLoaderFor<"missingScriptSource">;
   function makeTaggedLoader(
     category: "missingRedeemer",
-  ): TaggedWorkflowLoaderForV1<"missingRedeemer">;
+  ): TaggedWorkflowLoaderFor<"missingRedeemer">;
   function makeTaggedLoader(
     category: "unusedRedeemer",
-  ): TaggedWorkflowLoaderForV1<"unusedRedeemer">;
+  ): TaggedWorkflowLoaderFor<"unusedRedeemer">;
   function makeTaggedLoader(
     category: "scriptIntegrityHashMismatch",
-  ): TaggedWorkflowLoaderForV1<"scriptIntegrityHashMismatch">;
+  ): TaggedWorkflowLoaderFor<"scriptIntegrityHashMismatch">;
   function makeTaggedLoader(
     category: "distinctAssetAccumulationLimit",
-  ): TaggedWorkflowLoaderForV1<"distinctAssetAccumulationLimit">;
+  ): TaggedWorkflowLoaderFor<"distinctAssetAccumulationLimit">;
   function makeTaggedLoader(
-    category: WatcherInstalledProductionWorkflowCategoryV1,
-  ): ProductionWorkflowRuntimeConfigLoaderV1<TaggedWorkflowConfigV1> {
-    return createWatcherProductionWorkflowRuntimeLoaderV1({
+    category: WatcherInstalledWorkflowCategory,
+  ): WorkflowRuntimeConfigLoader<TaggedWorkflowConfig> {
+    return createWatcherWorkflowRuntimeLoader({
       ...loaderOptions,
       buildInfrastructureConfig: async ({ watcherConfig, invocation }) => {
         const common = await buildCommonInfrastructure({
@@ -4713,236 +4655,213 @@ const createApplication = ({
   };
 
   const runners = Object.freeze({
-    doubleSpend: createDoubleSpendProductionWorkflowRunnerV1(
+    doubleSpend: createDoubleSpendWorkflowRunner(
       doubleSpendLoader,
       fundingProfile("doubleSpend"),
     ),
-    nonExistentInput: createNonExistentInputProductionWorkflowRunnerV1(
+    nonExistentInput: createNonExistentInputWorkflowRunner(
       nonExistentInputLoader,
       fundingProfile("nonExistentInput"),
     ),
-    nonExistentInputNoIndex: createInputNoIdxProductionWorkflowRunnerV1(
+    nonExistentInputNoIndex: createInputNoIdxWorkflowRunner(
       inputNoIdxLoader,
       fundingProfile("nonExistentInputNoIndex"),
     ),
-    invalidRange: createInvalidRangeProductionWorkflowRunnerV1(
+    invalidRange: createInvalidRangeWorkflowRunner(
       invalidRangeLoader,
       fundingProfile("invalidRange"),
     ),
-    zeroInput: createZeroInputProductionWorkflowRunnerV1(
+    zeroInput: createZeroInputWorkflowRunner(
       zeroInputLoader,
       fundingProfile("zeroInput"),
     ),
-    daHashPreimage: createDaHashPreimageProductionWorkflowRunnerV1(
+    daHashPreimage: createDaHashPreimageWorkflowRunner(
       daHashPreimageLoader,
       fundingProfile("daHashPreimage"),
     ),
-    noReferenceInput: createNoReferenceInputProductionWorkflowRunnerV1(
+    noReferenceInput: createNoReferenceInputWorkflowRunner(
       noReferenceInputLoader,
       fundingProfile("noReferenceInput"),
     ),
-    referenceInputNoIdx: createReferenceInputNoIdxProductionWorkflowRunnerV1(
+    referenceInputNoIdx: createReferenceInputNoIdxWorkflowRunner(
       referenceInputNoIdxLoader,
       fundingProfile("referenceInputNoIdx"),
     ),
-    invalidSignature: createInvalidSignatureProductionWorkflowRunnerV1(
+    invalidSignature: createInvalidSignatureWorkflowRunner(
       invalidSignatureLoader,
       fundingProfile("invalidSignature"),
     ),
-    fabricatedDeposit: createFabricatedDepositProductionWorkflowRunnerV1(
+    fabricatedDeposit: createFabricatedDepositWorkflowRunner(
       fabricatedDepositLoader,
       fundingProfile("fabricatedDeposit"),
     ),
-    fabricatedWithdrawal: createFabricatedWithdrawalProductionWorkflowRunnerV1(
+    fabricatedWithdrawal: createFabricatedWithdrawalWorkflowRunner(
       fabricatedWithdrawalLoader,
       fundingProfile("fabricatedWithdrawal"),
     ),
-    withdrawnReferenceInput:
-      createWithdrawnReferenceInputProductionWorkflowRunnerV1(
-        withdrawnReferenceInputLoader,
-        fundingProfile("withdrawnReferenceInput"),
-      ),
-    canonicalDecodability:
-      createCanonicalDecodabilityProductionWorkflowRunnerV1(
-        canonicalDecodabilityLoader,
-        fundingProfile("canonicalDecodability"),
-      ),
-    committedFieldShape: createCommittedFieldShapeProductionWorkflowRunnerV1(
+    withdrawnReferenceInput: createWithdrawnReferenceInputWorkflowRunner(
+      withdrawnReferenceInputLoader,
+      fundingProfile("withdrawnReferenceInput"),
+    ),
+    canonicalDecodability: createCanonicalDecodabilityWorkflowRunner(
+      canonicalDecodabilityLoader,
+      fundingProfile("canonicalDecodability"),
+    ),
+    committedFieldShape: createCommittedFieldShapeWorkflowRunner(
       committedFieldShapeLoader,
       fundingProfile("committedFieldShape"),
     ),
-    minFee: createMinFeeProductionWorkflowRunnerV1(
-      minFeeLoader,
-      fundingProfile("minFee"),
-    ),
-    doubleWithdraw: createDoubleWithdrawProductionWorkflowRunnerV1(
+    minFee: createMinFeeWorkflowRunner(minFeeLoader, fundingProfile("minFee")),
+    doubleWithdraw: createDoubleWithdrawWorkflowRunner(
       doubleWithdrawLoader,
       fundingProfile("doubleWithdraw"),
     ),
-    missingSignature: createMissingSignatureProductionWorkflowRunnerV1(
+    missingSignature: createMissingSignatureWorkflowRunner(
       missingSignatureLoader,
       fundingProfile("missingSignature"),
     ),
-    missingNativeScriptTx:
-      createMissingNativeScriptTxProductionWorkflowRunnerV1(
-        missingNativeScriptTxLoader,
-        fundingProfile("missingNativeScriptTx"),
-      ),
-    l2TxMistag: createL2TxMistagProductionWorkflowRunnerV1(
+    missingNativeScriptTx: createMissingNativeScriptTxWorkflowRunner(
+      missingNativeScriptTxLoader,
+      fundingProfile("missingNativeScriptTx"),
+    ),
+    l2TxMistag: createL2TxMistagWorkflowRunner(
       l2TxMistagLoader,
       fundingProfile("l2TxMistag"),
     ),
-    withdrawnInput: createWithdrawnInputProductionWorkflowRunnerV1(
+    withdrawnInput: createWithdrawnInputWorkflowRunner(
       withdrawnInputLoader,
       fundingProfile("withdrawnInput"),
     ),
-    inputSetUniqueness: createInputSetUniquenessProductionWorkflowRunnerV1(
+    inputSetUniqueness: createInputSetUniquenessWorkflowRunner(
       inputSetUniquenessLoader,
       fundingProfile("inputSetUniqueness"),
     ),
-    networkId: createNetworkIdProductionWorkflowRunnerV1(
+    networkId: createNetworkIdWorkflowRunner(
       networkIdLoader,
       fundingProfile("networkId"),
     ),
-    missingNativeScriptUtxo:
-      createMissingNativeScriptUtxoProductionWorkflowRunnerV1(
-        missingNativeScriptUtxoLoader,
-        fundingProfile("missingNativeScriptUtxo"),
-      ),
-    nativeScriptInvalid: createNativeScriptInvalidProductionWorkflowRunnerV1(
+    missingNativeScriptUtxo: createMissingNativeScriptUtxoWorkflowRunner(
+      missingNativeScriptUtxoLoader,
+      fundingProfile("missingNativeScriptUtxo"),
+    ),
+    nativeScriptInvalid: createNativeScriptInvalidWorkflowRunner(
       nativeScriptInvalidLoader,
       fundingProfile("nativeScriptInvalid"),
     ),
-    minAda: createMinAdaProductionWorkflowRunnerV1(
-      minAdaLoader,
-      fundingProfile("minAda"),
+    minAda: createMinAdaWorkflowRunner(minAdaLoader, fundingProfile("minAda")),
+    fieldPreimageLengthMismatch: createFieldPreimageLengthWorkflowRunner(
+      fieldPreimageLengthMismatchLoader,
+      fundingProfile("fieldPreimageLengthMismatch"),
     ),
-    fieldPreimageLengthMismatch:
-      createFieldPreimageLengthProductionWorkflowRunnerV1(
-        fieldPreimageLengthMismatchLoader,
-        fundingProfile("fieldPreimageLengthMismatch"),
-      ),
-    fieldItemWidthIllegal:
-      createFieldItemWidthIllegalProductionWorkflowRunnerV1(
-        fieldItemWidthIllegalLoader,
-        fundingProfile("fieldItemWidthIllegal"),
-      ),
-    scriptIntegrityHashMissing:
-      createScriptIntegrityHashMissingProductionWorkflowRunnerV1(
-        scriptIntegrityHashMissingLoader,
-        fundingProfile("scriptIntegrityHashMissing"),
-      ),
+    fieldItemWidthIllegal: createFieldItemWidthIllegalWorkflowRunner(
+      fieldItemWidthIllegalLoader,
+      fundingProfile("fieldItemWidthIllegal"),
+    ),
+    scriptIntegrityHashMissing: createScriptIntegrityHashMissingWorkflowRunner(
+      scriptIntegrityHashMissingLoader,
+      fundingProfile("scriptIntegrityHashMissing"),
+    ),
     transactionOutputNonCanonical:
-      createTransactionOutputNonCanonicalProductionWorkflowRunnerV1(
+      createTransactionOutputNonCanonicalWorkflowRunner(
         transactionOutputNonCanonicalLoader,
         fundingProfile("transactionOutputNonCanonical"),
       ),
-    resolvedOutputNonCanonical:
-      createResolvedOutputNonCanonicalProductionWorkflowRunnerV1(
-        resolvedOutputNonCanonicalLoader,
-        fundingProfile("resolvedOutputNonCanonical"),
-      ),
-    mintDeclaredAssetLimit:
-      createMintDeclaredAssetLimitProductionWorkflowRunnerV1(
-        mintDeclaredAssetLimitLoader,
-        fundingProfile("mintDeclaredAssetLimit"),
-      ),
-    spendInputSignerMissing:
-      createSpendInputSignerMissingProductionWorkflowRunnerV1(
-        spendInputSignerMissingLoader,
-        fundingProfile("spendInputSignerMissing"),
-      ),
+    resolvedOutputNonCanonical: createResolvedOutputNonCanonicalWorkflowRunner(
+      resolvedOutputNonCanonicalLoader,
+      fundingProfile("resolvedOutputNonCanonical"),
+    ),
+    mintDeclaredAssetLimit: createMintDeclaredAssetLimitWorkflowRunner(
+      mintDeclaredAssetLimitLoader,
+      fundingProfile("mintDeclaredAssetLimit"),
+    ),
+    spendInputSignerMissing: createSpendInputSignerMissingWorkflowRunner(
+      spendInputSignerMissingLoader,
+      fundingProfile("spendInputSignerMissing"),
+    ),
     protectedOutputSignerMissing:
-      createProtectedOutputSignerMissingProductionWorkflowRunnerV1(
+      createProtectedOutputSignerMissingWorkflowRunner(
         protectedOutputSignerMissingLoader,
         fundingProfile("protectedOutputSignerMissing"),
       ),
     observersForbiddenOnUntaggedNetwork:
-      createObserversForbiddenOnUntaggedNetworkProductionWorkflowRunnerV1(
+      createObserversForbiddenOnUntaggedNetworkWorkflowRunner(
         observersForbiddenOnUntaggedNetworkLoader,
         fundingProfile("observersForbiddenOnUntaggedNetwork"),
       ),
-    witnessScriptDecoding:
-      createWitnessScriptDecodingProductionWorkflowRunnerV1(
-        witnessScriptDecodingLoader,
-        fundingProfile("witnessScriptDecoding"),
-      ),
+    witnessScriptDecoding: createWitnessScriptDecodingWorkflowRunner(
+      witnessScriptDecodingLoader,
+      fundingProfile("witnessScriptDecoding"),
+    ),
     outputReferenceScriptDecoding:
-      createOutputReferenceScriptDecodingProductionWorkflowRunnerV1(
+      createOutputReferenceScriptDecodingWorkflowRunner(
         outputReferenceScriptDecodingLoader,
         fundingProfile("outputReferenceScriptDecoding"),
       ),
     executionSourceScriptDecoding:
-      createExecutionSourceScriptDecodingProductionWorkflowRunnerV1(
+      createExecutionSourceScriptDecodingWorkflowRunner(
         executionSourceScriptDecodingLoader,
         fundingProfile("executionSourceScriptDecoding"),
       ),
     executionNativeScriptInvalid:
-      createExecutionNativeScriptInvalidProductionWorkflowRunnerV1(
+      createExecutionNativeScriptInvalidWorkflowRunner(
         executionNativeScriptInvalidLoader,
         fundingProfile("executionNativeScriptInvalid"),
       ),
-    observerOrderInvalid: createObserverOrderInvalidProductionWorkflowRunnerV1(
+    observerOrderInvalid: createObserverOrderInvalidWorkflowRunner(
       observerOrderInvalidLoader,
       fundingProfile("observerOrderInvalid"),
     ),
-    redeemerCanonicity: createRedeemerCanonicityProductionWorkflowRunnerV1(
+    redeemerCanonicity: createRedeemerCanonicityWorkflowRunner(
       redeemerCanonicityLoader,
       fundingProfile("redeemerCanonicity"),
     ),
-    receivePurposeLanguage:
-      createReceivePurposeLanguageProductionWorkflowRunnerV1(
-        receivePurposeLanguageLoader,
-        fundingProfile("receivePurposeLanguage"),
-      ),
-    unusedScriptWitness: createUnusedScriptWitnessProductionWorkflowRunnerV1(
+    receivePurposeLanguage: createReceivePurposeLanguageWorkflowRunner(
+      receivePurposeLanguageLoader,
+      fundingProfile("receivePurposeLanguage"),
+    ),
+    unusedScriptWitness: createUnusedScriptWitnessWorkflowRunner(
       unusedScriptWitnessLoader,
       fundingProfile("unusedScriptWitness"),
     ),
-    missingScriptSource: createMissingScriptSourceProductionWorkflowRunnerV1(
+    missingScriptSource: createMissingScriptSourceWorkflowRunner(
       missingScriptSourceLoader,
       fundingProfile("missingScriptSource"),
     ),
-    missingRedeemer: createMissingRedeemerProductionWorkflowRunnerV1(
+    missingRedeemer: createMissingRedeemerWorkflowRunner(
       missingRedeemerLoader,
       fundingProfile("missingRedeemer"),
     ),
-    unusedRedeemer: createUnusedRedeemerProductionWorkflowRunnerV1(
+    unusedRedeemer: createUnusedRedeemerWorkflowRunner(
       unusedRedeemerLoader,
       fundingProfile("unusedRedeemer"),
     ),
     scriptIntegrityHashMismatch:
-      createScriptIntegrityHashMismatchProductionWorkflowRunnerV1(
+      createScriptIntegrityHashMismatchWorkflowRunner(
         scriptIntegrityHashMismatchLoader,
         fundingProfile("scriptIntegrityHashMismatch"),
       ),
     distinctAssetAccumulationLimit:
-      createDistinctAssetAccumulationProductionWorkflowRunnerV1(
+      createDistinctAssetAccumulationWorkflowRunner(
         distinctAssetAccumulationLimitLoader,
         fundingProfile("distinctAssetAccumulationLimit"),
       ),
   });
-  const applicationRegistry = installProductionWorkflowApplicationRegistryV1({
+  const applicationRegistry = installWorkflowApplicationRegistry({
     deploymentFingerprint: deploymentIdentity.manifestId,
-    requiredInstalledCategories:
-      WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-    installations: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1.map(
-      (category) => ({
-        category,
-        deploymentFingerprint: deploymentIdentity.manifestId,
-        runner: runners[category],
-      }),
-    ),
-  });
-  let classifierPromise:
-    | ReturnType<typeof createProductionHeaderClassifierV1>
-    | undefined;
-  const loadClassifier = () => {
-    classifierPromise ??= createProductionHeaderClassifierV1({
+    requiredInstalledCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    installations: WATCHER_INSTALLED_WORKFLOW_CATEGORIES.map((category) => ({
+      category,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      replayer: WATCHER_INSTALLED_COMPLETE_REPLAY_V1,
+      runner: runners[category],
+    })),
+  });
+  let classifierPromise: ReturnType<typeof createHeaderClassifier> | undefined;
+  const loadClassifier = () => {
+    classifierPromise ??= createHeaderClassifier({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      replayer: WATCHER_INSTALLED_COMPLETE_REPLAY,
       releaseFinalityAuthority:
-        watcherDeploymentReleaseFinalityAuthorityV1(deploymentIdentity),
+        watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
       historicalReplayAuthority: Object.freeze({
         checkpointStore: historicalNativeScriptAuthority.checkpointStore,
         historySource: historicalNativeScriptAuthority.historySource,
@@ -4950,10 +4869,10 @@ const createApplication = ({
     });
     return classifierPromise;
   };
-  const application: WatcherFaultProofProductionApplicationV1 = Object.freeze({
-    schemaVersion: WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1,
+  const application: WatcherFaultProofApplication = Object.freeze({
+    schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    installedCategories: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+    installedCategories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     runners,
     applicationRegistry,
     classifyHeader: async (input) => {
@@ -4973,7 +4892,7 @@ const createApplication = ({
       } catch {
         throw new Error("watcher runtime configuration is not JSON");
       }
-      const retainedDa = await createWatcherProductionRetainedDaRuntimeV1({
+      const retainedDa = await createWatcherRetainedDaRuntime({
         watcherConfig,
         ...loaderOptions,
       });
@@ -4993,14 +4912,14 @@ const createApplication = ({
           ...(input.predecessor === undefined
             ? {}
             : {
-                predecessorObservation: predecessorObservationForClassifierV1({
+                predecessorObservation: predecessorObservationForClassifier({
                   current: input.observation,
                   predecessor: input.predecessor,
                 }),
               }),
           ...(input.retries === undefined ? {} : { retries: input.retries }),
         });
-        const replayContext = productionHeaderDecisionReplayContextV1(decision);
+        const replayContext = headerDecisionReplayContext(decision);
         if (
           decision.decision === "fault_detected" &&
           (decision.category === "nonExistentInput" ||
@@ -5021,16 +4940,15 @@ const createApplication = ({
     },
     assertStartupReady: async (invocation) => {
       if (
-        !WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1.includes(
-          invocation.category as WatcherInstalledProductionWorkflowCategoryV1,
+        !WATCHER_INSTALLED_WORKFLOW_CATEGORIES.includes(
+          invocation.category as WatcherInstalledWorkflowCategory,
         )
       ) {
         throw new Error(
           `watcher has no installed production workflow for ${invocation.category}`,
         );
       }
-      const category =
-        invocation.category as WatcherInstalledProductionWorkflowCategoryV1;
+      const category = invocation.category as WatcherInstalledWorkflowCategory;
       const loaded = await taggedLoaders[category]({
         runtimeConfigPath: invocation.runtimeConfigPath,
         invocation,
@@ -5048,7 +4966,7 @@ const createApplication = ({
           );
         }
         return Object.freeze({
-          schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS_V1,
+          schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
           ready: true,
           category,
           deploymentFingerprint: deploymentIdentity.manifestId,
@@ -5070,7 +4988,7 @@ const createApplication = ({
           "watcher fault-proof production application is not admitted",
         );
       }
-      return await runProductionFraudProofWorkflowCliV1({
+      return await runFraudProofWorkflowCli({
         ...invocation,
         applicationRegistry,
       });
@@ -5080,9 +4998,9 @@ const createApplication = ({
   return application;
 };
 
-export const createWatcherFaultProofProductionApplicationV1 = (
-  options: WatcherFaultProofProductionApplicationOptionsV1,
-): WatcherFaultProofProductionApplicationV1 =>
+export const createWatcherFaultProofApplication = (
+  options: WatcherFaultProofApplicationOptions,
+): WatcherFaultProofApplication =>
   createApplication({
     options: Object.freeze({
       deploymentIdentity: options.deploymentIdentity,
@@ -5097,11 +5015,11 @@ export const createWatcherFaultProofProductionApplicationV1 = (
   });
 
 /** Narrow test-only dependency seam. It cannot execute transactions. */
-export const unsafeCreateWatcherFaultProofProductionApplicationForTestV1 = (
-  options: WatcherFaultProofApplicationConstructionOptionsV1,
-  dependencies: WatcherFaultProofApplicationDependenciesV1,
+export const unsafeCreateWatcherFaultProofApplicationForTest = (
+  options: WatcherFaultProofApplicationConstructionOptions,
+  dependencies: WatcherFaultProofApplicationDependencies,
   environment: NodeJS.ProcessEnv = {},
-): WatcherFaultProofProductionApplicationV1 =>
+): WatcherFaultProofApplication =>
   createApplication({
     options,
     dependencies,

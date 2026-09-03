@@ -1,48 +1,48 @@
 import {
-  budgetedMidgardNativeScriptDecodingScanV1,
-  encodeMidgardFieldPreimageV1,
-  hashMidgardNativeScriptScanFrameV1,
-  isExactMidgardNativeScriptStructureTerminalV1,
-  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1,
-  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1,
-  midgardFieldCommitmentV1,
-  MidgardNativeScriptDecodingRefusalClassesV1,
-  MidgardNativeScriptDecodingScanOutcomeKindsV1,
-  MidgardNativeScriptKindsV1,
-  type MidgardNativeScriptScanFrameV1,
-  type MidgardNativeScriptStructureControlV1,
-  MidgardNativeScriptStructureStagesV1,
+  budgetedMidgardNativeScriptDecodingScan,
+  encodeMidgardFieldPreimage,
+  hashMidgardNativeScriptScanFrame,
+  isExactMidgardNativeScriptStructureTerminal,
+  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
+  MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
+  midgardFieldCommitment,
+  MidgardNativeScriptDecodingRefusalClasses,
+  MidgardNativeScriptDecodingScanOutcomeKinds,
+  MidgardNativeScriptKinds,
+  type MidgardNativeScriptScanFrame,
+  type MidgardNativeScriptStructureControl,
+  MidgardNativeScriptStructureStages,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyWitnessScriptDecodingFindingV1,
-  createWitnessScriptDecodingProductionWorkflowRunnerSurfaceV1,
-  nextWitnessScriptDecodingActionV1,
-  prepareWitnessScriptDecodingEvidenceV1,
-  reconcileWitnessScriptDecodingJournalV1,
-  runOrResumeManifestBoundWitnessScriptDecodingWorkflowV1,
-  runWitnessScriptDecodingProofV1,
-  witnessScriptDecodingCheckpointV1,
-  witnessScriptDecodingEvidenceClosesV1,
-  witnessScriptDecodingEvidenceIdentityV1,
-  type WitnessScriptDecodingJournalEntryV1,
-  WitnessScriptDecodingResultClassesV1,
-  type WitnessScriptDecodingStageV1,
-  type WitnessScriptDecodingSubmissionV1,
-  witnessScriptDecodingViolationIdV1,
+  classifyWitnessScriptDecodingFinding,
+  createWitnessScriptDecodingWorkflowRunnerSurface,
+  nextWitnessScriptDecodingAction,
+  prepareWitnessScriptDecodingEvidence,
+  reconcileWitnessScriptDecodingJournal,
+  runOrResumeManifestBoundWitnessScriptDecodingWorkflow,
+  runWitnessScriptDecodingProof,
+  witnessScriptDecodingCheckpoint,
+  witnessScriptDecodingEvidenceCloses,
+  witnessScriptDecodingEvidenceIdentity,
+  type WitnessScriptDecodingJournalEntry,
+  WitnessScriptDecodingResultClasses,
+  type WitnessScriptDecodingStage,
+  type WitnessScriptDecodingSubmission,
+  witnessScriptDecodingViolationId,
 } from "../src/witness-script-decoding/index.js";
 
 const txId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const witnessSetHash = "11".repeat(32);
 const scanHash = "22".repeat(28);
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const forced = (reason: unknown) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "33".repeat(32), outputIndex: 0n },
     rejectionReason: reason as never,
@@ -66,11 +66,11 @@ const evidence = ({
   readonly item?: Buffer;
   readonly scriptIndex?: number;
 } = {}) => {
-  const preimage = encodeMidgardFieldPreimageV1([item]);
-  return prepareWitnessScriptDecodingEvidenceV1({
+  const preimage = encodeMidgardFieldPreimage([item]);
+  return prepareWitnessScriptDecodingEvidence({
     finding: { subject, witnessSetHash, scriptIndex },
     fieldPreimage: preimage,
-    committedFieldHashHex: midgardFieldCommitmentV1(preimage).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
   });
 };
 
@@ -78,11 +78,11 @@ describe("witnessScriptDecoding V1 evidence", () => {
   it("maps every terminal class to the exact central classifier identity", () => {
     expect(
       [
-        WitnessScriptDecodingResultClassesV1.HeaderMalformed,
-        WitnessScriptDecodingResultClassesV1.NativeMalformed,
-        WitnessScriptDecodingResultClassesV1.NodeLimit,
-        WitnessScriptDecodingResultClassesV1.DepthLimit,
-      ].map(witnessScriptDecodingViolationIdV1),
+        WitnessScriptDecodingResultClasses.HeaderMalformed,
+        WitnessScriptDecodingResultClasses.NativeMalformed,
+        WitnessScriptDecodingResultClasses.NodeLimit,
+        WitnessScriptDecodingResultClasses.DepthLimit,
+      ].map(witnessScriptDecodingViolationId),
     ).toEqual([
       "witness-script-header-malformed",
       "witness-native-script-malformed",
@@ -93,37 +93,37 @@ describe("witnessScriptDecoding V1 evidence", () => {
 
   it("distinguishes malformed header, malformed native payload, and valid languages", () => {
     expect(evidence().resultClass).toBe(
-      WitnessScriptDecodingResultClassesV1.HeaderMalformed,
+      WitnessScriptDecodingResultClasses.HeaderMalformed,
     );
     expect(evidence({ item: malformedNativeItem }).resultClass).toBe(
-      WitnessScriptDecodingResultClassesV1.NativeMalformed,
+      WitnessScriptDecodingResultClasses.NativeMalformed,
     );
     expect(evidence({ item: signatureItem }).resultClass).toBe(
-      WitnessScriptDecodingResultClassesV1.NoFault,
+      WitnessScriptDecodingResultClasses.NoFault,
     );
     expect(evidence({ item: plutusItem }).resultClass).toBe(
-      WitnessScriptDecodingResultClassesV1.NoFault,
+      WitnessScriptDecodingResultClasses.NoFault,
     );
     expect(evidence({ item: Buffer.from("820040", "hex") }).resultClass).toBe(
-      WitnessScriptDecodingResultClassesV1.NativeMalformed,
+      WitnessScriptDecodingResultClasses.NativeMalformed,
     );
   });
 
   it("proves both directions and refuses their honest polarities", () => {
-    expect(witnessScriptDecodingEvidenceClosesV1(evidence())).toBe(true);
+    expect(witnessScriptDecodingEvidenceCloses(evidence())).toBe(true);
     expect(
-      witnessScriptDecodingEvidenceClosesV1(evidence({ item: signatureItem })),
+      witnessScriptDecodingEvidenceCloses(evidence({ item: signatureItem })),
     ).toBe(false);
     const rejectedHeader = forced({
       WitnessScriptHeaderMalformed: { script_index: 0n },
     });
     expect(
-      witnessScriptDecodingEvidenceClosesV1(
+      witnessScriptDecodingEvidenceCloses(
         evidence({ subject: rejectedHeader, item: signatureItem }),
       ),
     ).toBe(true);
     expect(
-      witnessScriptDecodingEvidenceClosesV1(
+      witnessScriptDecodingEvidenceCloses(
         evidence({ subject: rejectedHeader, item: malformedHeaderItem }),
       ),
     ).toBe(false);
@@ -136,7 +136,7 @@ describe("witnessScriptDecoding V1 evidence", () => {
       ["WitnessNativeScriptNodeLimit", 2],
       ["WitnessNativeScriptDepthLimit", 3],
     ] as const) {
-      const finding = classifyWitnessScriptDecodingFindingV1({
+      const finding = classifyWitnessScriptDecodingFinding({
         subject: forced({ [constructor]: { script_index: 0n } }),
         witnessSetHash,
         scriptIndex: 0,
@@ -144,14 +144,14 @@ describe("witnessScriptDecoding V1 evidence", () => {
       expect(finding.accusedClass).toBe(expected);
     }
     expect(() =>
-      classifyWitnessScriptDecodingFindingV1({
+      classifyWitnessScriptDecodingFinding({
         subject: forced({ WitnessScriptHeaderMalformed: { script_index: 1n } }),
         witnessSetHash,
         scriptIndex: 0,
       }),
     ).toThrow(/coordinate differs/u);
     expect(() =>
-      classifyWitnessScriptDecodingFindingV1({
+      classifyWitnessScriptDecodingFinding({
         subject: forced({ ScriptIntegrityHashMissing: null }),
         witnessSetHash,
         scriptIndex: 0,
@@ -160,24 +160,23 @@ describe("witnessScriptDecoding V1 evidence", () => {
   });
 
   it("refuses retained-byte, root, and coordinate substitutions", () => {
-    const preimage = encodeMidgardFieldPreimageV1([signatureItem]);
+    const preimage = encodeMidgardFieldPreimage([signatureItem]);
     expect(() =>
-      prepareWitnessScriptDecodingEvidenceV1({
+      prepareWitnessScriptDecodingEvidence({
         finding: { subject: accepted, witnessSetHash, scriptIndex: 0 },
         fieldPreimage: preimage,
         committedFieldHashHex: "ff".repeat(32),
       }),
     ).toThrow(/differs/u);
     expect(() =>
-      prepareWitnessScriptDecodingEvidenceV1({
+      prepareWitnessScriptDecodingEvidence({
         finding: { subject: accepted, witnessSetHash, scriptIndex: 1 },
         fieldPreimage: preimage,
-        committedFieldHashHex:
-          midgardFieldCommitmentV1(preimage).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
       }),
     ).toThrow(/outside field 6/u);
     expect(() =>
-      classifyWitnessScriptDecodingFindingV1({
+      classifyWitnessScriptDecodingFinding({
         subject: accepted,
         witnessSetHash: "aa",
         scriptIndex: 0,
@@ -200,56 +199,54 @@ describe("witnessScriptDecoding V1 evidence", () => {
     const signatureNode = signatureItem.subarray(4);
     const atNodeBoundary = {
       version: 1,
-      stage: MidgardNativeScriptStructureStagesV1.Token,
+      stage: MidgardNativeScriptStructureStages.Token,
       startOffset: 0,
       cursor: 0,
       endOffset: signatureNode.length,
       stackRoot: Buffer.alloc(0),
       stackDepth: 0,
-      nodeCount: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1 - 1,
-    } satisfies MidgardNativeScriptStructureControlV1;
-    const exactNode = budgetedMidgardNativeScriptDecodingScanV1({
+      nodeCount: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES - 1,
+    } satisfies MidgardNativeScriptStructureControl;
+    const exactNode = budgetedMidgardNativeScriptDecodingScan({
       control: atNodeBoundary,
       window: { bytes: signatureNode, startOffset: 0 },
       frames: [],
       maxSteps: 2,
     });
     expect(exactNode.kind).toBe(
-      MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced,
+      MidgardNativeScriptDecodingScanOutcomeKinds.Advanced,
     );
-    if (
-      exactNode.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
-    )
+    if (exactNode.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced)
       throw new Error("exact node edge did not advance");
     expect(exactNode.control.nodeCount).toBe(
-      MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1,
+      MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
+    );
+    expect(isExactMidgardNativeScriptStructureTerminal(exactNode.control)).toBe(
+      true,
     );
     expect(
-      isExactMidgardNativeScriptStructureTerminalV1(exactNode.control),
-    ).toBe(true);
-    expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control: {
           ...atNodeBoundary,
-          nodeCount: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES_V1,
+          nodeCount: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_NODES,
         },
         window: { bytes: signatureNode, startOffset: 0 },
         frames: [],
         maxSteps: 1,
       }),
     ).toMatchObject({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Refused,
-      refusalClass: MidgardNativeScriptDecodingRefusalClassesV1.NodeLimit,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Refused,
+      refusalClass: MidgardNativeScriptDecodingRefusalClasses.NodeLimit,
     });
 
     const frame = {
       tail: Buffer.alloc(0),
-      kind: MidgardNativeScriptKindsV1.All,
+      kind: MidgardNativeScriptKinds.All,
       childCount: 2,
       remaining: 2,
       validCount: 0,
       required: 0n,
-    } satisfies MidgardNativeScriptScanFrameV1;
+    } satisfies MidgardNativeScriptScanFrame;
     const payload = Buffer.concat([
       Buffer.from("820182", "hex"),
       signatureNode,
@@ -257,63 +254,63 @@ describe("witnessScriptDecoding V1 evidence", () => {
     ]);
     const atDepthBoundary = {
       version: 1,
-      stage: MidgardNativeScriptStructureStagesV1.Token,
+      stage: MidgardNativeScriptStructureStages.Token,
       startOffset: 0,
       cursor: 0,
       endOffset: payload.length,
-      stackRoot: hashMidgardNativeScriptScanFrameV1(frame),
-      stackDepth: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1 - 1,
+      stackRoot: hashMidgardNativeScriptScanFrame(frame),
+      stackDepth: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH - 1,
       nodeCount: 1,
-    } satisfies MidgardNativeScriptStructureControlV1;
-    const exactDepth = budgetedMidgardNativeScriptDecodingScanV1({
+    } satisfies MidgardNativeScriptStructureControl;
+    const exactDepth = budgetedMidgardNativeScriptDecodingScan({
       control: atDepthBoundary,
       window: { bytes: payload, startOffset: 0 },
       frames: [],
       maxSteps: 1,
     });
     expect(exactDepth.kind).toBe(
-      MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced,
+      MidgardNativeScriptDecodingScanOutcomeKinds.Advanced,
     );
     if (
-      exactDepth.kind !== MidgardNativeScriptDecodingScanOutcomeKindsV1.Advanced
+      exactDepth.kind !== MidgardNativeScriptDecodingScanOutcomeKinds.Advanced
     )
       throw new Error("exact depth edge did not advance");
     expect(exactDepth.control.stackDepth).toBe(
-      MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1,
+      MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
     );
     expect(
-      budgetedMidgardNativeScriptDecodingScanV1({
+      budgetedMidgardNativeScriptDecodingScan({
         control: {
           ...atDepthBoundary,
-          stackDepth: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH_V1,
+          stackDepth: MIDGARD_NATIVE_SCRIPT_SCAN_MAX_DEPTH,
         },
         window: { bytes: payload, startOffset: 0 },
         frames: [],
         maxSteps: 1,
       }),
     ).toMatchObject({
-      kind: MidgardNativeScriptDecodingScanOutcomeKindsV1.Refused,
-      refusalClass: MidgardNativeScriptDecodingRefusalClassesV1.DepthLimit,
+      kind: MidgardNativeScriptDecodingScanOutcomeKinds.Refused,
+      refusalClass: MidgardNativeScriptDecodingRefusalClasses.DepthLimit,
     });
   });
 
   it("reproduces a domain-separated checkpoint and detects every seam mutation", () => {
     const prepared = evidence({ item: signatureItem });
-    const checkpoint = witnessScriptDecodingCheckpointV1({
+    const checkpoint = witnessScriptDecodingCheckpoint({
       evidence: prepared,
       controlCbor: prepared.initialControlCbor,
       nextExpectedScriptHash: scanHash,
     });
     expect(checkpoint).toMatch(/^[0-9a-f]{64}$/u);
     expect(
-      witnessScriptDecodingCheckpointV1({
+      witnessScriptDecodingCheckpoint({
         evidence: prepared,
         controlCbor: `${prepared.initialControlCbor}00`,
         nextExpectedScriptHash: scanHash,
       }),
     ).not.toBe(checkpoint);
     expect(
-      witnessScriptDecodingCheckpointV1({
+      witnessScriptDecodingCheckpoint({
         evidence: prepared,
         controlCbor: prepared.initialControlCbor,
         nextExpectedScriptHash: "44".repeat(28),
@@ -325,14 +322,12 @@ describe("witnessScriptDecoding V1 evidence", () => {
 describe("witnessScriptDecoding V1 durable workflow", () => {
   it("exports a strict production runner that refuses another category before loading config", async () => {
     let loaded = false;
-    const runner = createWitnessScriptDecodingProductionWorkflowRunnerSurfaceV1(
-      {
-        loadRuntimeConfig: async () => {
-          loaded = true;
-          throw new Error("unexpected loader call");
-        },
+    const runner = createWitnessScriptDecodingWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        loaded = true;
+        throw new Error("unexpected loader call");
       },
-    );
+    });
     await expect(
       runner.runOrResume({ category: "missingSignature" } as never),
     ).rejects.toThrow(/category mismatch/u);
@@ -341,7 +336,7 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
 
   it("refuses caller-authored evidence at the manifest-bound production boundary", async () => {
     await expect(
-      runOrResumeManifestBoundWitnessScriptDecodingWorkflowV1({
+      runOrResumeManifestBoundWitnessScriptDecodingWorkflow({
         workflow: {},
         sources: [],
         journal: {},
@@ -362,7 +357,7 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
           "proven",
           "removed",
         ] as const
-      ).map(nextWitnessScriptDecodingActionV1),
+      ).map(nextWitnessScriptDecodingAction),
     ).toEqual([
       "submitInit",
       "submitStep01",
@@ -376,10 +371,10 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
 
   it("reconstructs from journal and authenticated chain identity", async () => {
     const prepared = evidence();
-    const identity = witnessScriptDecodingEvidenceIdentityV1(prepared);
-    const entries: WitnessScriptDecodingJournalEntryV1[] = [];
-    let stage: WitnessScriptDecodingStageV1 = "none";
-    const next: Record<string, WitnessScriptDecodingStageV1> = {
+    const identity = witnessScriptDecodingEvidenceIdentity(prepared);
+    const entries: WitnessScriptDecodingJournalEntry[] = [];
+    let stage: WitnessScriptDecodingStage = "none";
+    const next: Record<string, WitnessScriptDecodingStage> = {
       submitInit: "step01",
       submitStep01: "step02",
       submitStep02: "scan",
@@ -389,14 +384,14 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
     };
     let nonce = 0;
     let observed: Awaited<
-      ReturnType<WitnessScriptDecodingSubmissionV1["observe"]>
+      ReturnType<WitnessScriptDecodingSubmission["observe"]>
     > = {
       stage,
       transactionId: "00".repeat(32),
       outputReference: null as string | null,
       checkpointHash: null as string | null,
     };
-    const submission: WitnessScriptDecodingSubmissionV1 = {
+    const submission: WitnessScriptDecodingSubmission = {
       observe: async (seen) => {
         expect(seen).toBe(identity);
         return observed;
@@ -423,7 +418,7 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
       }),
     };
     expect(
-      await runWitnessScriptDecodingProofV1({
+      await runWitnessScriptDecodingProof({
         evidence: prepared,
         load: async () => entries,
         append: async (entry) => {
@@ -444,7 +439,7 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
 
   it("supports cancellation from every nonterminal physical step", async () => {
     const prepared = evidence();
-    const submission: Pick<WitnessScriptDecodingSubmissionV1, "cancel"> = {
+    const submission: Pick<WitnessScriptDecodingSubmission, "cancel"> = {
       cancel: async () => ({
         stage: "cancelled" as const,
         transactionId: "77".repeat(32),
@@ -460,7 +455,7 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
   });
 
   it("refuses journal identity and transaction replacement mutations", () => {
-    const entry: WitnessScriptDecodingJournalEntryV1 = {
+    const entry: WitnessScriptDecodingJournalEntry = {
       sequence: 0,
       identity: "expected",
       stage: "scan",
@@ -469,14 +464,14 @@ describe("witnessScriptDecoding V1 durable workflow", () => {
       checkpointHash: "99".repeat(32),
     };
     expect(() =>
-      reconcileWitnessScriptDecodingJournalV1({
+      reconcileWitnessScriptDecodingJournal({
         identity: "different",
         entries: [entry],
         observed: entry,
       }),
     ).toThrow(/identity/u);
     expect(() =>
-      reconcileWitnessScriptDecodingJournalV1({
+      reconcileWitnessScriptDecodingJournal({
         identity: "expected",
         entries: [entry],
         observed: { ...entry, transactionId: "aa".repeat(32) },

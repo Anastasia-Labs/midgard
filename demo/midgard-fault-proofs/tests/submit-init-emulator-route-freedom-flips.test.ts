@@ -21,18 +21,18 @@
  * tests/support/uplc-heap-guard.ts.
  */
 
-import { MIDGARD_V1_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
+import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
 import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   OPTION_B_SKIP_REASON,
-  prepareRouteFreedomJourneyV1,
+  prepareRouteFreedomJourney,
   realBlueprintSpeaksOptionBV1,
 } from "./support/route-freedom-journey.js";
 
 const RELIABLE_DIRECT_PIN =
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+  MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
 const NEVER_EXISTED_OUT_REF = `${"0".repeat(64)}#0`;
 
@@ -51,7 +51,7 @@ describe.skipIf(!optionB)(
   "route freedom: build-time delivery flips (#621)",
   () => {
     it("flips a heuristically-inline item onto the reference route on request, refusing the contradictory inline+out-ref pairing first", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: 7_976,
         minimumCompleteItemBytes: 0,
       });
@@ -118,7 +118,7 @@ describe.skipIf(!optionB)(
     }, 900_000);
 
     it("flips a heuristically-reference item onto the inline route on request, recovering from a missing publication out-ref", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: 13_100,
         minimumCompleteItemBytes: RELIABLE_DIRECT_PIN,
       });

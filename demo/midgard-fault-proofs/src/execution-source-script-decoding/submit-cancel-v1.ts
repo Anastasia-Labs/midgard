@@ -1,17 +1,17 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
-import type { ExecutionSourceScriptDecodingContractsV1 } from "./contracts-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
+import type { ExecutionSourceScriptDecodingContracts } from "./contracts-v1.js";
 
 const FAMILY = "execution-source-script-decoding";
-export const submitExecutionSourceScriptDecodingCancelV1 = async (
+export const submitExecutionSourceScriptDecodingCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
   > & {
-    readonly contracts: ExecutionSourceScriptDecodingContractsV1;
+    readonly contracts: ExecutionSourceScriptDecodingContracts;
   },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: FAMILY,
     steps: contracts.steps,

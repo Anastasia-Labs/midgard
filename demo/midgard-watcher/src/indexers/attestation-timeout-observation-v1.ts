@@ -1,11 +1,11 @@
 import { DA_ATTESTATION_TIMEOUT_MS } from "@al-ft/midgard-sdk";
 
 import {
-  parseWatcherStateQueueSnapshotV1,
-  type WatcherStateQueueSnapshotV1,
+  parseWatcherStateQueueSnapshot,
+  type WatcherStateQueueSnapshot,
 } from "./state-queue-indexer.js";
 
-export type WatcherAttestationTimeoutObservationV1 = Readonly<
+export type WatcherAttestationTimeoutObservation = Readonly<
   | {
       status: "queue_empty";
       snapshotDigest: string;
@@ -33,7 +33,7 @@ export type WatcherAttestationTimeoutObservationV1 = Readonly<
  * indexer's digest-bound snapshot. This module intentionally exposes no
  * transaction builder, signer, wallet, provider submitter, or mutation hook.
  */
-export const deriveWatcherAttestationTimeoutObservationV1 = ({
+export const deriveWatcherAttestationTimeoutObservation = ({
   snapshot: rawSnapshot,
   nowMs,
   alertLeadMs,
@@ -41,7 +41,7 @@ export const deriveWatcherAttestationTimeoutObservationV1 = ({
   readonly snapshot: unknown;
   readonly nowMs: bigint;
   readonly alertLeadMs: bigint;
-}): WatcherAttestationTimeoutObservationV1 | null => {
+}): WatcherAttestationTimeoutObservation | null => {
   if (
     nowMs < 0n ||
     alertLeadMs <= 0n ||
@@ -49,8 +49,8 @@ export const deriveWatcherAttestationTimeoutObservationV1 = ({
   ) {
     return null;
   }
-  const snapshot: WatcherStateQueueSnapshotV1 | null =
-    parseWatcherStateQueueSnapshotV1(rawSnapshot);
+  const snapshot: WatcherStateQueueSnapshot | null =
+    parseWatcherStateQueueSnapshot(rawSnapshot);
   if (snapshot === null) return null;
   const head = snapshot.queue[0];
   if (head === undefined) {

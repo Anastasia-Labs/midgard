@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("invalidRange direction-complete signed publication fit", () => {
   it("publishes both applied scripts below the reliability reserve", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realInvalidRange: true },
     });
     const steps = harness.contracts.fraudProofContracts.invalidRange.steps;

@@ -7,12 +7,12 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/observers_forbidden_on_untagged_network/step_01.main.spend",
   "fraud_proofs/observers_forbidden_on_untagged_network/step_02.main.spend",
 ] as const);
 
-export type ObserversForbiddenStepContractV1 = Readonly<{
+export type ObserversForbiddenStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
@@ -20,10 +20,10 @@ export type ObserversForbiddenStepContractV1 = Readonly<{
   referenceOutRef: string;
 }>;
 
-export type ObserversForbiddenContractsV1 = Readonly<{
+export type ObserversForbiddenContracts = Readonly<{
   steps: readonly [
-    ObserversForbiddenStepContractV1,
-    ObserversForbiddenStepContractV1,
+    ObserversForbiddenStepContract,
+    ObserversForbiddenStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -64,7 +64,7 @@ const applyExact = (
   };
 };
 
-export const applyObserversForbiddenScriptsV1 = ({
+export const applyObserversForbiddenScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -80,9 +80,9 @@ export const applyObserversForbiddenScriptsV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOracleScriptHash: string;
-}): ObserversForbiddenContractsV1["steps"] => {
+}): ObserversForbiddenContracts["steps"] => {
   const applied = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES_V1[index]!;
+    const blueprintTitle = OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES[index]!;
     const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
     return Object.freeze({
       blueprintTitle,

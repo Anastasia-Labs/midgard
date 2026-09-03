@@ -1,15 +1,15 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
-import type { UnusedScriptWitnessContractsV1 } from "./contracts-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
+import type { UnusedScriptWitnessContracts } from "./contracts-v1.js";
 
 const FAMILY = "unused-script-witness";
-export const submitUnusedScriptWitnessCancelV1 = async (
+export const submitUnusedScriptWitnessCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
-  > & { readonly contracts: UnusedScriptWitnessContractsV1 },
+  > & { readonly contracts: UnusedScriptWitnessContracts },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: FAMILY,
     steps: contracts.steps,

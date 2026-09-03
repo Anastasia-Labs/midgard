@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
@@ -259,7 +259,7 @@ describe("initialization emulator", () => {
       const initTx = await Effect.runPromise(
         SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
-          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
           daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,

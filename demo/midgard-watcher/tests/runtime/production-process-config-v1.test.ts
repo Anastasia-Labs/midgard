@@ -1,11 +1,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
   parseWatcherConfig,
@@ -13,16 +13,16 @@ import {
   type WatcherConfig,
 } from "../../src/runtime/config.js";
 import {
-  parseWatcherProductionProcessConfigV1,
-  parseWatcherTrustedHeadAuthorityProcessConfigV1,
-  WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION,
-  WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION,
-  type WatcherProductionProcessConfigV1,
-  type WatcherTrustedHeadAuthorityProcessConfigV1,
+  parseWatcherProcessConfig,
+  parseWatcherTrustedHeadAuthorityProcessConfig,
+  WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
+  WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
+  type WatcherProcessConfig,
+  type WatcherTrustedHeadAuthorityProcessConfig,
 } from "../../src/runtime/production-process-config-v1.js";
 import {
-  createWatcherProductionTrustedHeadClientRuntimeV1,
-  startWatcherTrustedHeadAuthorityProcessV1,
+  createWatcherTrustedHeadClientRuntime,
+  startWatcherTrustedHeadAuthorityProcess,
 } from "../../src/runtime/production-trusted-head-runtime-v1.js";
 
 const directories: string[] = [];
@@ -104,23 +104,23 @@ const watcherConfigValue = () => ({
 const watcherConfig = (): WatcherConfig =>
   parseWatcherConfig(watcherConfigValue());
 
-const policy = (): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(watcherConfig(), {
+const policy = (): WatcherFinalityPolicy => {
+  const value = makeWatcherFinalityPolicy(watcherConfig(), {
     manifestId: h32("11"),
     network: "Preprod",
     trustRootId: h32("33"),
     releaseEvidenceDigest: h32("22"),
     ruleBundleCommitment: h32("44"),
     programCommitments: { validation: h32("55") },
-    durableMarker: makeDeploymentMarkerV1(h32("11")),
+    durableMarker: makeDeploymentMarker(h32("11")),
   });
   if (value === null) throw new Error("test finality policy is invalid");
   return value;
 };
 
-const productionConfig = (): WatcherProductionProcessConfigV1 =>
-  parseWatcherProductionProcessConfigV1({
-    schemaVersion: WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+const productionConfig = (): WatcherProcessConfig =>
+  parseWatcherProcessConfig({
+    schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
     watcherConfig: watcherConfig(),
     watcherRuntimeConfigPath: "/etc/midgard/watcher.json",
     deploymentAuthorityPath: "/etc/midgard/deployment-authority.json",
@@ -179,30 +179,30 @@ describe("production process authority separation", () => {
     );
     const base = productionConfig();
     expect(() =>
-      parseWatcherProductionProcessConfigV1({
+      parseWatcherProcessConfig({
         ...base,
         watcherConfig: { ...watcherConfigValue(), mode: "development" },
       }),
     ).toThrow("requires acceptance Preprod local_node authority");
     expect(() =>
-      parseWatcherProductionProcessConfigV1({
+      parseWatcherProcessConfig({
         ...base,
         watcherRollbackKeySource:
           base.watcherConfig.storage.rollbackAuthorityKeySource,
       }),
     ).toThrow("unknown or missing fields");
     expect(() =>
-      parseWatcherProductionProcessConfigV1({
+      parseWatcherProcessConfig({
         ...base,
         readinessHeaderHash: h32("77"),
       }),
     ).toThrow("readiness header hash is invalid");
     expect(() => {
       const { fundingProfileBundlePath: _omitted, ...withoutBundle } = base;
-      return parseWatcherProductionProcessConfigV1(withoutBundle);
+      return parseWatcherProcessConfig(withoutBundle);
     }).toThrow("unknown or missing fields");
     expect(() =>
-      parseWatcherProductionProcessConfigV1({
+      parseWatcherProcessConfig({
         ...base,
         fundingProfileBundlePath: "etc/midgard/funding-profiles.json",
       }),
@@ -210,7 +210,7 @@ describe("production process authority separation", () => {
       "watcher funding profile bundle is not a canonical production path",
     );
     expect(() =>
-      parseWatcherProductionProcessConfigV1({
+      parseWatcherProcessConfig({
         ...base,
         faultProofInfrastructure: {
           ...base.faultProofInfrastructure,
@@ -236,7 +236,7 @@ describe("production process authority separation", () => {
   it("keeps authority config structurally unable to receive watcher rollback or proof signer sources", () => {
     const input = {
       schemaVersion:
-        WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+        WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
       policy: policy(),
       directory: "/var/lib/midgard-trusted-head",
       endpoint: "http://127.0.0.1:43123",
@@ -249,11 +249,9 @@ describe("production process authority separation", () => {
         variable: "MIDGARD_SIDECAR_BEARER",
       },
     };
-    expect(parseWatcherTrustedHeadAuthorityProcessConfigV1(input)).toEqual(
-      input,
-    );
+    expect(parseWatcherTrustedHeadAuthorityProcessConfig(input)).toEqual(input);
     expect(() =>
-      parseWatcherTrustedHeadAuthorityProcessConfigV1({
+      parseWatcherTrustedHeadAuthorityProcessConfig({
         ...input,
         proofSignerKeySource: {
           kind: "environment",
@@ -266,9 +264,9 @@ describe("production process authority separation", () => {
   it("rejects equal authority record and HTTP bearer values before opening the server", async () => {
     const directory = await mkdtemp("/var/tmp/midgard-process-secrets-");
     directories.push(directory);
-    const authorityConfig: WatcherTrustedHeadAuthorityProcessConfigV1 = {
+    const authorityConfig: WatcherTrustedHeadAuthorityProcessConfig = {
       schemaVersion:
-        WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+        WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
       policy: policy(),
       directory,
       endpoint: "http://127.0.0.1:0",
@@ -282,7 +280,7 @@ describe("production process authority separation", () => {
       },
     };
     await expect(
-      startWatcherTrustedHeadAuthorityProcessV1({
+      startWatcherTrustedHeadAuthorityProcess({
         config: authorityConfig,
         unsafeEnvironmentForTest: {
           RECORD_KEY: "11".repeat(32),
@@ -298,10 +296,10 @@ describe("production process authority separation", () => {
     directories.push(directory);
     const rollbackAndRecordKey = "12".repeat(32);
     const bearer = "watcher-sidecar-bearer-secret-0001";
-    const authority = await startWatcherTrustedHeadAuthorityProcessV1({
+    const authority = await startWatcherTrustedHeadAuthorityProcess({
       config: {
         schemaVersion:
-          WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+          WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
         policy: policy(),
         directory,
         endpoint: "http://127.0.0.1:0",
@@ -323,7 +321,7 @@ describe("production process authority separation", () => {
     try {
       const base = productionConfig();
       await expect(
-        createWatcherProductionTrustedHeadClientRuntimeV1({
+        createWatcherTrustedHeadClientRuntime({
           config: {
             ...base,
             trustedHeadAuthorityEndpoint: authority.server.endpoint,

@@ -1,70 +1,70 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPortV1 } from "../workflow/family-l1-observation-v1.js";
+import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import { bindProductionWorkflowActuationJournalV1 } from "../workflow/production-actuation-permit-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import { bindWorkflowActuationJournal } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { submitCapturedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { submitCapturedTransaction } from "../workflow/transaction-boundary-v1.js";
 import {
-  MISSING_REDEEMER_BLUEPRINT_TITLES_V1,
-  type MissingRedeemerContractsV1,
+  MISSING_REDEEMER_BLUEPRINT_TITLES,
+  type MissingRedeemerContracts,
 } from "./contracts-v1.js";
-import { createMissingRedeemerDirectoryJournalV1 } from "./directory-journal-v1.js";
+import { createMissingRedeemerDirectoryJournal } from "./directory-journal-v1.js";
 import {
-  MISSING_REDEEMER_CATEGORY_V1,
-  missingRedeemerEvidenceIdentityV1,
+  MISSING_REDEEMER_CATEGORY,
+  missingRedeemerEvidenceIdentity,
 } from "./family-v1.js";
 import {
-  createMissingRedeemerActuatorV1,
-  type MissingRedeemerActuatorActionV1,
-  type MissingRedeemerWorkflowReferencesV1,
+  createMissingRedeemerActuator,
+  type MissingRedeemerActuatorAction,
+  type MissingRedeemerWorkflowReferences,
 } from "./production-actuator-v1.js";
 import {
-  type MissingRedeemerProductionArtifactV1,
-  replayMissingRedeemerProductionV1,
+  type MissingRedeemerArtifact,
+  replayMissingRedeemer,
 } from "./production-replay-v1.js";
 import {
-  MissingRedeemerStep02aDatumV1Schema,
-  MissingRedeemerStep02bDatumV1Schema,
-  MissingRedeemerStep02DatumV1Schema,
-  MissingRedeemerStep03DatumV1Schema,
-  MissingRedeemerStep04DatumV1Schema,
-  MissingRedeemerStep05DatumV1Schema,
+  MissingRedeemerStep02aDatumSchema,
+  MissingRedeemerStep02bDatumSchema,
+  MissingRedeemerStep02DatumSchema,
+  MissingRedeemerStep03DatumSchema,
+  MissingRedeemerStep04DatumSchema,
+  MissingRedeemerStep05DatumSchema,
 } from "./schemas-v1.js";
-import { planMissingRedeemerStagedWalkV1 } from "./staged-plan-v1.js";
-import type { MissingRedeemerDurableStateV1 } from "./workflow-v1.js";
-import { runMissingRedeemerWorkflowV1 } from "./workflow-v1.js";
+import { planMissingRedeemerStagedWalk } from "./staged-plan-v1.js";
+import type { MissingRedeemerDurableState } from "./workflow-v1.js";
+import { runMissingRedeemerWorkflow } from "./workflow-v1.js";
 
-export const MISSING_REDEEMER_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze([
+export const MISSING_REDEEMER_CONFIG_KEYS = Object.freeze([
   "manifest",
   "blueprintJson",
   "deploymentInfo",
@@ -77,17 +77,17 @@ export const MISSING_REDEEMER_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze([
   "referenceScripts",
 ] as const);
 
-export const MISSING_REDEEMER_STEP_DATUM_SCHEMAS_V1 = Object.freeze([
+export const MISSING_REDEEMER_STEP_DATUM_SCHEMAS = Object.freeze([
   FraudProofComputationThreadStepDatum,
-  MissingRedeemerStep02DatumV1Schema,
-  MissingRedeemerStep02aDatumV1Schema,
-  MissingRedeemerStep02bDatumV1Schema,
-  MissingRedeemerStep03DatumV1Schema,
-  MissingRedeemerStep04DatumV1Schema,
-  MissingRedeemerStep05DatumV1Schema,
+  MissingRedeemerStep02DatumSchema,
+  MissingRedeemerStep02aDatumSchema,
+  MissingRedeemerStep02bDatumSchema,
+  MissingRedeemerStep03DatumSchema,
+  MissingRedeemerStep04DatumSchema,
+  MissingRedeemerStep05DatumSchema,
 ] as const);
 
-export type MissingRedeemerRemovalReferenceScriptsV1 = Readonly<{
+export type MissingRedeemerRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -99,33 +99,33 @@ export type MissingRedeemerRemovalReferenceScriptsV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type MissingRedeemerWorkflowReferenceScriptsV1 = Readonly<{
-  steps: MissingRedeemerWorkflowReferencesV1["steps"];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+export type MissingRedeemerWorkflowReferenceScripts = Readonly<{
+  steps: MissingRedeemerWorkflowReferences["steps"];
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
-  removal: MissingRedeemerRemovalReferenceScriptsV1;
+  removal: MissingRedeemerRemovalReferenceScripts;
 }>;
 
-export type ManifestBoundMissingRedeemerWorkflowConfigV1 = Readonly<{
+export type ManifestBoundMissingRedeemerWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: MissingRedeemerWorkflowReferenceScriptsV1;
+  referenceScripts: MissingRedeemerWorkflowReferenceScripts;
 }>;
 
-export type ManifestBoundMissingRedeemerWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"missingRedeemer">;
+export type ManifestBoundMissingRedeemerWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"missingRedeemer">;
   lucid: LucidEvolution;
   decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPortV1>;
+  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  actuator: ReturnType<typeof createMissingRedeemerActuatorV1>;
+  actuator: ReturnType<typeof createMissingRedeemerActuator>;
 }>;
 
 const manifestContracts = Object.freeze({
@@ -159,28 +159,28 @@ const manifestContracts = Object.freeze({
 } as const);
 
 /** Strict manifest-bound construction; proof evidence is never configurable. */
-export const createManifestBoundMissingRedeemerWorkflowV1 = async (
-  config: ManifestBoundMissingRedeemerWorkflowConfigV1,
-): Promise<ManifestBoundMissingRedeemerWorkflowV1> => {
+export const createManifestBoundMissingRedeemerWorkflow = async (
+  config: ManifestBoundMissingRedeemerWorkflowConfig,
+): Promise<ManifestBoundMissingRedeemerWorkflow> => {
   if (
     Object.keys(config).sort().join("\0") !==
-    [...MISSING_REDEEMER_PRODUCTION_CONFIG_KEYS_V1].sort().join("\0")
+    [...MISSING_REDEEMER_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
       "missingRedeemer production config contains callback authority",
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("missingRedeemer decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
-    category: MISSING_REDEEMER_CATEGORY_V1,
+    category: MISSING_REDEEMER_CATEGORY,
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: MISSING_REDEEMER_STEP_DATUM_SCHEMAS_V1,
+    stepDatumSchemas: MISSING_REDEEMER_STEP_DATUM_SCHEMAS,
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -196,42 +196,42 @@ export const createManifestBoundMissingRedeemerWorkflowV1 = async (
   )
     throw new Error("missingRedeemer manifest omitted required contracts");
   const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
     });
   const steps = manifestContracts.steps.map((name, index) =>
     bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as MissingRedeemerWorkflowReferencesV1["steps"];
+  ) as unknown as MissingRedeemerWorkflowReferences["steps"];
   const witnesses = Object.fromEntries(
     Object.entries(manifestContracts.witnesses).map(([role, name]) => [
       role,
       bind(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ]!,
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   for (const [role, name] of Object.entries(manifestContracts.removal))
     bind(
       name,
       config.referenceScripts.removal[
-        role as keyof MissingRedeemerRemovalReferenceScriptsV1
+        role as keyof MissingRedeemerRemovalReferenceScripts
       ],
     );
   bind(
     "fieldPreimageCertificateMint",
     config.referenceScripts.fieldPreimageCertificateMint,
   );
-  const contracts: MissingRedeemerContractsV1 = Object.freeze({
+  const contracts: MissingRedeemerContracts = Object.freeze({
     steps: chain.steps.map((step, index) => ({
       ...step,
-      blueprintTitle: MISSING_REDEEMER_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: MISSING_REDEEMER_BLUEPRINT_TITLES[index]!,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as MissingRedeemerContractsV1["steps"],
+    })) as unknown as MissingRedeemerContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
       policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
@@ -245,7 +245,7 @@ export const createManifestBoundMissingRedeemerWorkflowV1 = async (
     fieldPreimageCertificatePolicyId: certificate.policyId,
     fieldPreimageCertificateMintingScript: certificate.mintingScript,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -258,7 +258,7 @@ export const createManifestBoundMissingRedeemerWorkflowV1 = async (
     l1,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
-    actuator: createMissingRedeemerActuatorV1({
+    actuator: createMissingRedeemerActuator({
       binding,
       lucid: config.lucid,
       signer: config.signer,
@@ -270,28 +270,28 @@ export const createManifestBoundMissingRedeemerWorkflowV1 = async (
   });
 };
 
-export type LoadedMissingRedeemerProductionWorkflowV1 = Readonly<{
+export type LoadedMissingRedeemerWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundMissingRedeemerWorkflowConfigV1;
+  config: ManifestBoundMissingRedeemerWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadMissingRedeemerProductionWorkflowV1 = (input: {
+export type LoadMissingRedeemerWorkflow = (input: {
   runtimeConfigPath: string;
-  invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedMissingRedeemerProductionWorkflowV1>;
+  invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedMissingRedeemerWorkflow>;
 
-const appendProductionEvent = async (
-  journal: FraudProofWorkflowJournalStoreV1,
+const appendEvent = async (
+  journal: FraudProofWorkflowJournalStore,
   workflowId: string,
-  identity: FraudProofWorkflowIdentityV1,
-  event: FraudProofWorkflowJournalEventV1,
+  identity: FraudProofWorkflowIdentity,
+  event: FraudProofWorkflowJournalEvent,
 ) => {
   const sequence = (await journal.load(workflowId)).length;
   await journal.append(
     {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence,
@@ -303,7 +303,7 @@ const appendProductionEvent = async (
 };
 
 const countConfirmedActions = (
-  entries: readonly Readonly<{ event: FraudProofWorkflowJournalEventV1 }>[],
+  entries: readonly Readonly<{ event: FraudProofWorkflowJournalEvent }>[],
   prefix: string,
 ) =>
   entries.filter(
@@ -311,16 +311,16 @@ const countConfirmedActions = (
       event.kind === "confirmed" && event.actionId.startsWith(prefix),
   ).length;
 
-const productionActionFor = async ({
+const actionFor = async ({
   workflow,
   artifact,
   entries,
 }: {
-  workflow: ManifestBoundMissingRedeemerWorkflowV1;
-  artifact: MissingRedeemerProductionArtifactV1;
-  entries: readonly Readonly<{ event: FraudProofWorkflowJournalEventV1 }>[];
+  workflow: ManifestBoundMissingRedeemerWorkflow;
+  artifact: MissingRedeemerArtifact;
+  entries: readonly Readonly<{ event: FraudProofWorkflowJournalEvent }>[];
 }): Promise<
-  | Readonly<{ action: MissingRedeemerActuatorActionV1; actionId: string }>
+  | Readonly<{ action: MissingRedeemerActuatorAction; actionId: string }>
   | "removed"
 > => {
   const stage = (
@@ -369,7 +369,7 @@ const productionActionFor = async ({
         action: { stage: "field", threadOutRef, action: { kind: "direct" } },
         actionId: "missingRedeemer:field:direct",
       };
-    const staged = planMissingRedeemerStagedWalkV1({
+    const staged = planMissingRedeemerStagedWalk({
       transactionId: artifact.evidence.subject.transaction_id,
       fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
     });
@@ -404,37 +404,37 @@ const productionActionFor = async ({
 };
 
 /** One retained-DA-derived, locally evaluated, intent-journaled action. */
-export const executeManifestBoundMissingRedeemerWorkflowV1 = async ({
+export const executeManifestBoundMissingRedeemerWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  workflow: ManifestBoundMissingRedeemerWorkflowV1;
+  workflow: ManifestBoundMissingRedeemerWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStoreV1;
+  journal: FraudProofWorkflowJournalStore;
 }) => {
   const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidenceV1({
+  const block = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
-  const candidate = (await replayMissingRedeemerProductionV1(block))[0];
+  const candidate = (await replayMissingRedeemer(block))[0];
   if (candidate === undefined)
     throw new Error(
       "missingRedeemer complete replay found no canonical violation",
     );
   const artifact = candidate.artifact;
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    category: MISSING_REDEEMER_CATEGORY_V1,
+    category: MISSING_REDEEMER_CATEGORY,
     target: { kind: "state_queue_header", headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
-    await appendProductionEvent(journal, workflowId, identity, {
+    await appendEvent(journal, workflowId, identity, {
       kind: "started",
     });
     entries = await journal.load(workflowId);
@@ -458,41 +458,41 @@ export const executeManifestBoundMissingRedeemerWorkflowV1 = async ({
       }))
     )
       return { kind: "pending" as const, workflowId, txHash: intent.txHash };
-    await appendProductionEvent(journal, workflowId, identity, {
+    await appendEvent(journal, workflowId, identity, {
       kind: "confirmed",
       actionId: intent.actionId,
       txHash: intent.txHash,
     });
     entries = await journal.load(workflowId);
   }
-  const selected = await productionActionFor({ workflow, artifact, entries });
+  const selected = await actionFor({ workflow, artifact, entries });
   if (selected === "removed") return { kind: "completed" as const, workflowId };
   const captured = await workflow.actuator.capture({
     action: selected.action,
     artifact,
   });
-  await appendProductionEvent(journal, workflowId, identity, {
+  await appendEvent(journal, workflowId, identity, {
     kind: "preflight_passed",
     actionId: selected.actionId,
     txHash: captured.transaction.txHash,
     localEvaluator: "lucid-evolution-local-uplc-v1",
     referenceScripts: captured.transaction.referenceScripts,
   });
-  await appendProductionEvent(journal, workflowId, identity, {
+  await appendEvent(journal, workflowId, identity, {
     kind: "submission_intent",
     actionId: selected.actionId,
     actionInput: {
       schemaVersion: "midgard-production-cursor-family-action-v1",
-      category: MISSING_REDEEMER_CATEGORY_V1,
+      category: MISSING_REDEEMER_CATEGORY,
       stage: selected.action.stage,
     },
     attempt: 1,
     txHash: captured.transaction.txHash,
   });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error("missingRedeemer provider substituted transaction");
-  await appendProductionEvent(journal, workflowId, identity, {
+  await appendEvent(journal, workflowId, identity, {
     kind: "submitted",
     actionId: selected.actionId,
     attempt: 1,
@@ -501,26 +501,26 @@ export const executeManifestBoundMissingRedeemerWorkflowV1 = async ({
   return { kind: "pending" as const, workflowId, txHash: submitted };
 };
 
-export const runOrResumeManifestBoundMissingRedeemerWorkflowV1 = async (input: {
-  workflow: ManifestBoundMissingRedeemerWorkflowV1;
+export const runOrResumeManifestBoundMissingRedeemerWorkflow = async (input: {
+  workflow: ManifestBoundMissingRedeemerWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStoreV1;
+  journal: FraudProofWorkflowJournalStore;
 }) => {
   if (Object.keys(input).sort().join(",") !== "journal,sources,workflow")
     throw new Error("missingRedeemer runner rejects caller-authored evidence");
-  return await executeManifestBoundMissingRedeemerWorkflowV1(input);
+  return await executeManifestBoundMissingRedeemerWorkflow(input);
 };
 
 /** Loader-compatible surface; central admission remains fixed-category only. */
-export const createMissingRedeemerProductionWorkflowRunnerSurfaceV1 = ({
+export const createMissingRedeemerWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  loadRuntimeConfig: LoadMissingRedeemerProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  loadRuntimeConfig: LoadMissingRedeemerWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
-      if (invocation.category !== MISSING_REDEEMER_CATEGORY_V1)
+      if (invocation.category !== MISSING_REDEEMER_CATEGORY)
         throw new Error("missingRedeemer runner category changed");
       const loaded = await loadRuntimeConfig({
         runtimeConfigPath: invocation.runtimeConfigPath,
@@ -536,7 +536,7 @@ export const createMissingRedeemerProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "missingRedeemer requires concrete public retained DA",
           );
-        const workflow = await createManifestBoundMissingRedeemerWorkflowV1(
+        const workflow = await createManifestBoundMissingRedeemerWorkflow(
           loaded.config,
         );
         if (
@@ -546,20 +546,20 @@ export const createMissingRedeemerProductionWorkflowRunnerSurfaceV1 = ({
           workflow.decisionDigest !== invocation.decisionDigest
         )
           throw new Error("missingRedeemer runtime binding changed invocation");
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
+        const journal = bindWorkflowFundingReservationJournal({
           permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+          journal: bindWorkflowActuationJournal({
+            journal: new DirectoryFraudProofWorkflowJournalStore(
               invocation.journalDirectory,
             ),
             permit: invocation.actuationPermit,
             decisionDigest: invocation.decisionDigest,
             deploymentFingerprint: invocation.deploymentFingerprint,
-            category: MISSING_REDEEMER_CATEGORY_V1,
+            category: MISSING_REDEEMER_CATEGORY,
             headerHash: invocation.headerHash,
           }),
         });
-        return await executeManifestBoundMissingRedeemerWorkflowV1({
+        return await executeManifestBoundMissingRedeemerWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,
@@ -570,18 +570,18 @@ export const createMissingRedeemerProductionWorkflowRunnerSurfaceV1 = ({
     },
   });
 
-export interface MissingRedeemerProductionObservationPortV1 {
-  observe(identity: string): Promise<MissingRedeemerDurableStateV1>;
+export interface MissingRedeemerObservationPort {
+  observe(identity: string): Promise<MissingRedeemerDurableState>;
   stateQueueBlockOutRef(headerHash: string): Promise<string>;
   removalOutRefs(
     headerHash: string,
   ): Promise<Readonly<{ nextRemovalOutRef: string; fraudProofOutRef: string }>>;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
-export type MissingRedeemerProductionRunnerConfigV1 = Readonly<{
+export type MissingRedeemerRunnerConfig = Readonly<{
   journalDirectory: string;
-  actuator: ReturnType<typeof createMissingRedeemerActuatorV1>;
-  observation: MissingRedeemerProductionObservationPortV1;
+  actuator: ReturnType<typeof createMissingRedeemerActuator>;
+  observation: MissingRedeemerObservationPort;
 }>;
 
 /**
@@ -589,21 +589,21 @@ export type MissingRedeemerProductionRunnerConfigV1 = Readonly<{
  * retained-DA artifact emitted by production replay; runtime configuration is
  * limited to durable storage and chain infrastructure.
  */
-export const createMissingRedeemerProductionRunnerV1 = async (
-  config: MissingRedeemerProductionRunnerConfigV1,
+export const createMissingRedeemerRunner = async (
+  config: MissingRedeemerRunnerConfig,
 ) => {
-  const journal = await createMissingRedeemerDirectoryJournalV1(
+  const journal = await createMissingRedeemerDirectoryJournal(
     config.journalDirectory,
   );
   return Object.freeze({
     run: async (
-      artifact: MissingRedeemerProductionArtifactV1,
+      artifact: MissingRedeemerArtifact,
     ): Promise<"removed" | "cancelled"> => {
-      const staged = planMissingRedeemerStagedWalkV1({
+      const staged = planMissingRedeemerStagedWalk({
         transactionId: artifact.evidence.subject.transaction_id,
         fieldPreimageCbor: artifact.evidence.fieldPreimageHex,
       });
-      return await runMissingRedeemerWorkflowV1({
+      return await runMissingRedeemerWorkflow({
         evidence: artifact.evidence,
         journal,
         actuator: {
@@ -611,7 +611,7 @@ export const createMissingRedeemerProductionRunnerV1 = async (
             await config.observation.observe(identity),
           submit: async ({ identity, action, scanCursor }) => {
             const observed = await config.observation.observe(identity);
-            let concrete: MissingRedeemerActuatorActionV1;
+            let concrete: MissingRedeemerActuatorAction;
             if (action === "init")
               concrete = {
                 stage: "init",
@@ -685,7 +685,7 @@ export const createMissingRedeemerProductionRunnerV1 = async (
               action: concrete,
               artifact,
             });
-            const submitted = await submitCapturedTransactionV1(
+            const submitted = await submitCapturedTransaction(
               captured.transaction,
             );
             if (submitted !== captured.transaction.txHash)
@@ -706,10 +706,8 @@ export const createMissingRedeemerProductionRunnerV1 = async (
         },
       });
     },
-    cancel: async (
-      artifact: MissingRedeemerProductionArtifactV1,
-    ): Promise<"cancelled"> => {
-      const identity = missingRedeemerEvidenceIdentityV1(artifact.evidence);
+    cancel: async (artifact: MissingRedeemerArtifact): Promise<"cancelled"> => {
+      const identity = missingRedeemerEvidenceIdentity(artifact.evidence);
       const observed = await config.observation.observe(identity);
       const stepIndex = [
         "step01",
@@ -730,7 +728,7 @@ export const createMissingRedeemerProductionRunnerV1 = async (
         },
         artifact,
       });
-      const submitted = await submitCapturedTransactionV1(captured.transaction);
+      const submitted = await submitCapturedTransaction(captured.transaction);
       if (
         submitted !== captured.transaction.txHash ||
         !(await config.observation.transactionConfirmed(submitted))

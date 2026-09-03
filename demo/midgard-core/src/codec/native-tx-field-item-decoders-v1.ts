@@ -18,8 +18,8 @@
  *
  * Everything here reads a *single item's* `enc_i` bytes. Splitting a preimage
  * into items is not this module's job — that is §5.1's one uniform byte-list
- * decode, `decodeMidgardFieldPreimageV1`, which all nine fields share. The
- * per-field entry point {@link decodeMidgardFieldItemsV1} composes the two.
+ * decode, `decodeMidgardFieldPreimage`, which all nine fields share. The
+ * per-field entry point {@link decodeMidgardFieldItems} composes the two.
  */
 
 import {
@@ -30,21 +30,21 @@ import {
 } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
-  decodeMidgardFieldPreimageV1,
-  exactMidgardFieldIndexV1,
-  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
-  MIDGARD_HASH28_ITEM_BYTES_V1,
-  MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
+  decodeMidgardFieldPreimage,
+  exactMidgardFieldIndex,
+  MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
+  MIDGARD_HASH28_ITEM_BYTES,
+  MIDGARD_SPEND_INPUT_ITEM_BYTES,
 } from "./native-tx-field-access-v1.js";
 import {
-  compareMidgardCanonicalKeyBytesV1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
-  type MidgardAddressWitnessV1,
-  type MidgardMintAssetV1,
-  type MidgardMintPolicyItemV1,
-  type MidgardRedeemerPurposeV1,
-  type MidgardRedeemerWitnessV1,
-  type MidgardTxInputV1,
+  compareMidgardCanonicalKeyBytes,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
+  type MidgardAddressWitness,
+  type MidgardMintAsset,
+  type MidgardMintPolicyItem,
+  type MidgardRedeemerPurpose,
+  type MidgardRedeemerWitness,
+  type MidgardTxInput,
 } from "./native-tx-field-items-v1.js";
 import { decodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import {
@@ -121,7 +121,7 @@ const expectExactLength = (
  *
  * Twin of `decode_fixed_output_index_at`.
  */
-const decodeMidgardFixedOutputIndexV1At = (
+const decodeMidgardFixedOutputIndexAt = (
   item: Uint8Array,
   offset: number,
 ): { readonly outputIndex: number; readonly nextOffset: number } => {
@@ -138,12 +138,12 @@ const decodeMidgardFixedOutputIndexV1At = (
  * §5.3 fields 0/1: `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — fixed 38 bytes.
  * Twin of `decode_midgard_tx_input_cbor`.
  */
-export const decodeMidgardSpendInputItemV1 = (
+export const decodeMidgardSpendInputItem = (
   item: Uint8Array,
-): MidgardTxInputV1 => {
+): MidgardTxInput => {
   expectExactLength(
     item,
-    MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
+    MIDGARD_SPEND_INPUT_ITEM_BYTES,
     "§5.3 spend/reference input item",
   );
   let offset = expectByte(item, 0, 0x82, "§5.3 spend/reference input item");
@@ -152,7 +152,7 @@ export const decodeMidgardSpendInputItemV1 = (
     return fail("§5.3 input tx_id must be 32 bytes", `${txId.value.length}`);
   }
   offset = txId.nextOffset;
-  const index = decodeMidgardFixedOutputIndexV1At(item, offset);
+  const index = decodeMidgardFixedOutputIndexAt(item, offset);
   expectFullyConsumed(
     index.nextOffset,
     item,
@@ -170,10 +170,10 @@ export const decodeMidgardSpendInputItemV1 = (
  * asserted width is what fixes stride 30, so it is checked rather than assumed.
  * Twin of `expect_hash28`.
  */
-export const decodeMidgardHash28ItemV1 = (item: Uint8Array): Buffer => {
+export const decodeMidgardHash28Item = (item: Uint8Array): Buffer => {
   expectExactLength(
     item,
-    MIDGARD_HASH28_ITEM_BYTES_V1,
+    MIDGARD_HASH28_ITEM_BYTES,
     "§5.3 observer/signer item",
   );
   return Buffer.from(item);
@@ -183,19 +183,19 @@ export const decodeMidgardHash28ItemV1 = (item: Uint8Array): Buffer => {
 // §5.6 field 5 — mint policy items
 // ---------------------------------------------------------------------------
 
-const MIDGARD_MAX_ASSET_NAME_BYTES_V1 = 32;
+const MIDGARD_MAX_ASSET_NAME_BYTES = 32;
 
 /**
  * §5.6's ordering rule on one run of keys: strictly ascending, so "out of
  * order" and "duplicated" both reject. Applied at both levels the spec names —
  * asset names inside a policy item, policy ids across the field.
  */
-const expectCanonicalKeyOrderV1 = (
+const expectCanonicalKeyOrder = (
   keys: readonly Uint8Array[],
   label: string,
 ): void => {
   for (let index = 1; index < keys.length; index += 1) {
-    const order = compareMidgardCanonicalKeyBytesV1(
+    const order = compareMidgardCanonicalKeyBytes(
       keys[index - 1]!,
       keys[index]!,
     );
@@ -217,9 +217,9 @@ const expectCanonicalKeyOrderV1 = (
  *
  * Twin of `decode_mint_policy_item_cbor`.
  */
-export const decodeMidgardMintPolicyItemV1 = (
+export const decodeMidgardMintPolicyItem = (
   item: Uint8Array,
-): MidgardMintPolicyItemV1 => {
+): MidgardMintPolicyItem => {
   let offset = expectByte(item, 0, 0x82, "§5.6 mint policy item");
   const policyId = readCborBytes(item, offset, "mint policy id");
   if (policyId.value.length !== 28) {
@@ -234,10 +234,10 @@ export const decodeMidgardMintPolicyItemV1 = (
     return fail("§5.6 mint policy item must carry at least one asset");
   }
   offset = assetHeader.nextOffset;
-  const assets: MidgardMintAssetV1[] = [];
+  const assets: MidgardMintAsset[] = [];
   for (let index = 0; index < assetHeader.length; index += 1) {
     const assetName = readCborBytes(item, offset, "mint asset name");
-    if (assetName.value.length > MIDGARD_MAX_ASSET_NAME_BYTES_V1) {
+    if (assetName.value.length > MIDGARD_MAX_ASSET_NAME_BYTES) {
       return fail(
         "§5.6 mint asset name exceeds 32 bytes",
         `index=${index},length=${assetName.value.length}`,
@@ -254,7 +254,7 @@ export const decodeMidgardMintPolicyItemV1 = (
     assets.push({ assetName: assetName.value, quantity: quantity.value });
     offset = quantity.nextOffset;
   }
-  expectCanonicalKeyOrderV1(
+  expectCanonicalKeyOrder(
     assets.map((asset) => asset.assetName),
     "mint asset names",
   );
@@ -268,11 +268,11 @@ export const decodeMidgardMintPolicyItemV1 = (
  * `decode_mint_policy_items_at`, which makes the same split between the run and
  * the item.
  */
-const decodeMidgardMintFieldItemsV1 = (
+const decodeMidgardMintFieldItems = (
   items: readonly Uint8Array[],
-): readonly MidgardMintPolicyItemV1[] => {
-  const decoded = items.map(decodeMidgardMintPolicyItemV1);
-  expectCanonicalKeyOrderV1(
+): readonly MidgardMintPolicyItem[] => {
+  const decoded = items.map(decodeMidgardMintPolicyItem);
+  expectCanonicalKeyOrder(
     decoded.map((item) => item.policyId),
     "mint policy ids",
   );
@@ -287,12 +287,12 @@ const decodeMidgardMintFieldItemsV1 = (
  * §5.3 field 7: `82 ‖ 58 20 vkey(32) ‖ 58 40 signature(64)` — fixed 101 bytes.
  * Twin of `decode_midgard_address_witness_cbor`.
  */
-export const decodeMidgardAddressWitnessItemV1 = (
+export const decodeMidgardAddressWitnessItem = (
   item: Uint8Array,
-): MidgardAddressWitnessV1 => {
+): MidgardAddressWitness => {
   expectExactLength(
     item,
-    MIDGARD_ADDRESS_WITNESS_ITEM_BYTES_V1,
+    MIDGARD_ADDRESS_WITNESS_ITEM_BYTES,
     "§5.3 address witness item",
   );
   let offset = expectByte(item, 0, 0x82, "§5.3 address witness item");
@@ -326,23 +326,22 @@ export const decodeMidgardAddressWitnessItemV1 = (
 // §5.3 field 8 — redeemer witnesses
 // ---------------------------------------------------------------------------
 
-const MIDGARD_REDEEMER_PURPOSES_BY_TAG_V1: readonly MidgardRedeemerPurposeV1[] =
-  (
-    Object.keys(MIDGARD_REDEEMER_PURPOSE_TAGS_V1) as MidgardRedeemerPurposeV1[]
-  ).reduce<MidgardRedeemerPurposeV1[]>((byTag, purpose) => {
-    byTag[MIDGARD_REDEEMER_PURPOSE_TAGS_V1[purpose]] = purpose;
-    return byTag;
-  }, []);
+const MIDGARD_REDEEMER_PURPOSES_BY_TAG: readonly MidgardRedeemerPurpose[] = (
+  Object.keys(MIDGARD_REDEEMER_PURPOSE_TAGS) as MidgardRedeemerPurpose[]
+).reduce<MidgardRedeemerPurpose[]>((byTag, purpose) => {
+  byTag[MIDGARD_REDEEMER_PURPOSE_TAGS[purpose]] = purpose;
+  return byTag;
+}, []);
 
 /**
  * §5.3's `purpose_tag` value set, read back. Exactly seven values are
  * admissible and every one is ≤ 23, so the tag occupies one byte equal to its
  * value; any other value rejects. Twin of `midgard_redeemer_purpose_from_tag`.
  */
-export const midgardRedeemerPurposeFromTagV1 = (
+export const midgardRedeemerPurposeFromTag = (
   tag: number,
-): MidgardRedeemerPurposeV1 =>
-  MIDGARD_REDEEMER_PURPOSES_BY_TAG_V1[tag] ??
+): MidgardRedeemerPurpose =>
+  MIDGARD_REDEEMER_PURPOSES_BY_TAG[tag] ??
   fail("§5.3 redeemer purpose tag is out of set", `purpose_tag=${tag}`);
 
 /**
@@ -351,9 +350,9 @@ export const midgardRedeemerPurposeFromTagV1 = (
  *
  * Twin of `decode_midgard_redeemer_witness_at`.
  */
-export const decodeMidgardRedeemerWitnessItemV1 = (
+export const decodeMidgardRedeemerWitnessItem = (
   item: Uint8Array,
-): MidgardRedeemerWitnessV1 => {
+): MidgardRedeemerWitness => {
   let offset = expectByte(item, 0, 0x84, "§5.3 redeemer witness item");
   const purposeTag = readCborUnsigned(item, offset, "redeemer purpose tag");
   offset = purposeTag.nextOffset;
@@ -370,7 +369,7 @@ export const decodeMidgardRedeemerWitnessItemV1 = (
   const steps = readCborUnsigned(item, memory.nextOffset, "ex_steps");
   expectFullyConsumed(steps.nextOffset, item, "§5.3 redeemer witness item");
   return {
-    purpose: midgardRedeemerPurposeFromTagV1(Number(purposeTag.value)),
+    purpose: midgardRedeemerPurposeFromTag(Number(purposeTag.value)),
     index: index.value,
     redeemerCbor: redeemerCbor.value,
     executionUnits: { memory: memory.value, steps: steps.value },
@@ -386,13 +385,13 @@ export const decodeMidgardRedeemerWitnessItemV1 = (
  * counterpart of `MidgardFieldItemsV1`. The tag is the index rather than a name
  * because §4 makes field identity positional.
  */
-export type MidgardDecodedFieldItemsV1 =
-  | { readonly fieldIndex: 0 | 1; readonly items: readonly MidgardTxInputV1[] }
+export type MidgardDecodedFieldItems =
+  | { readonly fieldIndex: 0 | 1; readonly items: readonly MidgardTxInput[] }
   | { readonly fieldIndex: 2; readonly items: readonly MidgardTxOutput[] }
   | { readonly fieldIndex: 3 | 4; readonly items: readonly Buffer[] }
   | {
       readonly fieldIndex: 5;
-      readonly items: readonly MidgardMintPolicyItemV1[];
+      readonly items: readonly MidgardMintPolicyItem[];
     }
   | {
       readonly fieldIndex: 6;
@@ -400,11 +399,11 @@ export type MidgardDecodedFieldItemsV1 =
     }
   | {
       readonly fieldIndex: 7;
-      readonly items: readonly MidgardAddressWitnessV1[];
+      readonly items: readonly MidgardAddressWitness[];
     }
   | {
       readonly fieldIndex: 8;
-      readonly items: readonly MidgardRedeemerWitnessV1[];
+      readonly items: readonly MidgardRedeemerWitness[];
     };
 
 /**
@@ -413,42 +412,40 @@ export type MidgardDecodedFieldItemsV1 =
  * decode followed by that field's `enc_i` reader; fields 0/1 and 3/4 share an
  * encoder, so they share a decoder too, exactly as §5.3's table does.
  */
-export const decodeMidgardInputFieldPreimageV1 = (
+export const decodeMidgardInputFieldPreimage = (
   preimage: Uint8Array,
-): readonly MidgardTxInputV1[] =>
-  decodeMidgardFieldPreimageV1(preimage).map(decodeMidgardSpendInputItemV1);
+): readonly MidgardTxInput[] =>
+  decodeMidgardFieldPreimage(preimage).map(decodeMidgardSpendInputItem);
 
-export const decodeMidgardOutputFieldPreimageV1 = (
+export const decodeMidgardOutputFieldPreimage = (
   preimage: Uint8Array,
 ): readonly MidgardTxOutput[] =>
-  decodeMidgardFieldPreimageV1(preimage).map(decodeMidgardTxOutput);
+  decodeMidgardFieldPreimage(preimage).map(decodeMidgardTxOutput);
 
-export const decodeMidgardHash28FieldPreimageV1 = (
+export const decodeMidgardHash28FieldPreimage = (
   preimage: Uint8Array,
 ): readonly Buffer[] =>
-  decodeMidgardFieldPreimageV1(preimage).map(decodeMidgardHash28ItemV1);
+  decodeMidgardFieldPreimage(preimage).map(decodeMidgardHash28Item);
 
-export const decodeMidgardMintFieldPreimageV1 = (
+export const decodeMidgardMintFieldPreimage = (
   preimage: Uint8Array,
-): readonly MidgardMintPolicyItemV1[] =>
-  decodeMidgardMintFieldItemsV1(decodeMidgardFieldPreimageV1(preimage));
+): readonly MidgardMintPolicyItem[] =>
+  decodeMidgardMintFieldItems(decodeMidgardFieldPreimage(preimage));
 
-export const decodeMidgardScriptWitnessFieldPreimageV1 = (
+export const decodeMidgardScriptWitnessFieldPreimage = (
   preimage: Uint8Array,
 ): readonly MidgardVersionedScript[] =>
-  decodeMidgardFieldPreimageV1(preimage).map(decodeMidgardVersionedScript);
+  decodeMidgardFieldPreimage(preimage).map(decodeMidgardVersionedScript);
 
-export const decodeMidgardAddressWitnessFieldPreimageV1 = (
+export const decodeMidgardAddressWitnessFieldPreimage = (
   preimage: Uint8Array,
-): readonly MidgardAddressWitnessV1[] =>
-  decodeMidgardFieldPreimageV1(preimage).map(decodeMidgardAddressWitnessItemV1);
+): readonly MidgardAddressWitness[] =>
+  decodeMidgardFieldPreimage(preimage).map(decodeMidgardAddressWitnessItem);
 
-export const decodeMidgardRedeemerWitnessFieldPreimageV1 = (
+export const decodeMidgardRedeemerWitnessFieldPreimage = (
   preimage: Uint8Array,
-): readonly MidgardRedeemerWitnessV1[] =>
-  decodeMidgardFieldPreimageV1(preimage).map(
-    decodeMidgardRedeemerWitnessItemV1,
-  );
+): readonly MidgardRedeemerWitness[] =>
+  decodeMidgardFieldPreimage(preimage).map(decodeMidgardRedeemerWitnessItem);
 
 /**
  * §5.1 then §5.3: split the preimage into items with the one uniform byte-list
@@ -465,70 +462,70 @@ export const decodeMidgardRedeemerWitnessFieldPreimageV1 = (
  * The `number` signature stays for the genuinely field-generic callers, which
  * discriminate on `fieldIndex`.
  */
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: 0 | 1,
   preimage: Uint8Array,
-): { readonly fieldIndex: 0 | 1; readonly items: readonly MidgardTxInputV1[] };
-export function decodeMidgardFieldItemsV1(
+): { readonly fieldIndex: 0 | 1; readonly items: readonly MidgardTxInput[] };
+export function decodeMidgardFieldItems(
   fieldIndex: 2,
   preimage: Uint8Array,
 ): { readonly fieldIndex: 2; readonly items: readonly MidgardTxOutput[] };
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: 3 | 4,
   preimage: Uint8Array,
 ): { readonly fieldIndex: 3 | 4; readonly items: readonly Buffer[] };
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: 5,
   preimage: Uint8Array,
 ): {
   readonly fieldIndex: 5;
-  readonly items: readonly MidgardMintPolicyItemV1[];
+  readonly items: readonly MidgardMintPolicyItem[];
 };
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: 6,
   preimage: Uint8Array,
 ): {
   readonly fieldIndex: 6;
   readonly items: readonly MidgardVersionedScript[];
 };
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: 7,
   preimage: Uint8Array,
 ): {
   readonly fieldIndex: 7;
-  readonly items: readonly MidgardAddressWitnessV1[];
+  readonly items: readonly MidgardAddressWitness[];
 };
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: 8,
   preimage: Uint8Array,
 ): {
   readonly fieldIndex: 8;
-  readonly items: readonly MidgardRedeemerWitnessV1[];
+  readonly items: readonly MidgardRedeemerWitness[];
 };
-export function decodeMidgardFieldItemsV1(
+export function decodeMidgardFieldItems(
   fieldIndex: number,
   preimage: Uint8Array,
-): MidgardDecodedFieldItemsV1;
-export function decodeMidgardFieldItemsV1(
+): MidgardDecodedFieldItems;
+export function decodeMidgardFieldItems(
   fieldIndex: number,
   preimage: Uint8Array,
-): MidgardDecodedFieldItemsV1 {
-  const exact = exactMidgardFieldIndexV1(fieldIndex);
-  const items = decodeMidgardFieldPreimageV1(preimage);
+): MidgardDecodedFieldItems {
+  const exact = exactMidgardFieldIndex(fieldIndex);
+  const items = decodeMidgardFieldPreimage(preimage);
   switch (exact) {
     case 0:
     case 1:
       return {
         fieldIndex: exact,
-        items: items.map(decodeMidgardSpendInputItemV1),
+        items: items.map(decodeMidgardSpendInputItem),
       };
     case 2:
       return { fieldIndex: 2, items: items.map(decodeMidgardTxOutput) };
     case 3:
     case 4:
-      return { fieldIndex: exact, items: items.map(decodeMidgardHash28ItemV1) };
+      return { fieldIndex: exact, items: items.map(decodeMidgardHash28Item) };
     case 5:
-      return { fieldIndex: 5, items: decodeMidgardMintFieldItemsV1(items) };
+      return { fieldIndex: 5, items: decodeMidgardMintFieldItems(items) };
     case 6:
       return {
         fieldIndex: 6,
@@ -537,12 +534,12 @@ export function decodeMidgardFieldItemsV1(
     case 7:
       return {
         fieldIndex: 7,
-        items: items.map(decodeMidgardAddressWitnessItemV1),
+        items: items.map(decodeMidgardAddressWitnessItem),
       };
     default:
       return {
         fieldIndex: 8,
-        items: items.map(decodeMidgardRedeemerWitnessItemV1),
+        items: items.map(decodeMidgardRedeemerWitnessItem),
       };
   }
 }
@@ -550,9 +547,9 @@ export function decodeMidgardFieldItemsV1(
 /**
  * §5.1's array header is the **only** place a field's item count exists (§5.2),
  * so a count-consuming rule reads it back from the preimage rather than from a
- * mirrored field. This is the cheap form of {@link decodeMidgardFieldItemsV1}
+ * mirrored field. This is the cheap form of {@link decodeMidgardFieldItems}
  * for callers that need the count and the raw item spans but not typed items.
  */
-export const decodeMidgardFieldItemBytesV1 = (
+export const decodeMidgardFieldItemBytes = (
   preimage: Uint8Array,
-): readonly Buffer[] => decodeMidgardFieldPreimageV1(preimage);
+): readonly Buffer[] => decodeMidgardFieldPreimage(preimage);

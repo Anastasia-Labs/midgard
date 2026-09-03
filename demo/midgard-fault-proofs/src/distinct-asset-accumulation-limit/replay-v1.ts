@@ -1,8 +1,8 @@
-import type { DistinctAssetAccumulationEvidenceV1 } from "./family-v1.js";
+import type { DistinctAssetAccumulationEvidence } from "./family-v1.js";
 
-export const DISTINCT_ASSET_ACCUMULATION_COMPLETE_REPLAY_TOKEN_V1 =
+export const DISTINCT_ASSET_ACCUMULATION_COMPLETE_REPLAY_TOKEN =
   "distinct-asset-accumulation-complete-replay-v1" as const;
-export type DistinctAssetAccumulationStageV1 =
+export type DistinctAssetAccumulationStage =
   | "step01"
   | "step02"
   | "step03"
@@ -13,13 +13,13 @@ export type DistinctAssetAccumulationStageV1 =
   | "removeDescendant"
   | "complete"
   | "cancelled";
-export type DistinctAssetAccumulationJournalEntryV1 = Readonly<{
+export type DistinctAssetAccumulationJournalEntry = Readonly<{
   sequence: number;
-  stage: DistinctAssetAccumulationStageV1;
+  stage: DistinctAssetAccumulationStage;
   txId: string;
   evidenceIdentity: string;
 }>;
-const order: readonly DistinctAssetAccumulationStageV1[] = [
+const order: readonly DistinctAssetAccumulationStage[] = [
   "step01",
   "step02",
   "step03",
@@ -30,10 +30,10 @@ const order: readonly DistinctAssetAccumulationStageV1[] = [
   "removeDescendant",
   "complete",
 ];
-export const nextDistinctAssetAccumulationStageV1 = (
-  entries: readonly DistinctAssetAccumulationJournalEntryV1[],
+export const nextDistinctAssetAccumulationStage = (
+  entries: readonly DistinctAssetAccumulationJournalEntry[],
   expectedEvidenceIdentity?: string,
-): DistinctAssetAccumulationStageV1 => {
+): DistinctAssetAccumulationStage => {
   const transactionIds = new Set<string>();
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
@@ -65,14 +65,14 @@ export const nextDistinctAssetAccumulationStageV1 = (
   }
   return order[entries.length] ?? "complete";
 };
-export type DistinctAssetAccumulationReplayArtifactV1 = Readonly<{
-  evidence: DistinctAssetAccumulationEvidenceV1;
+export type DistinctAssetAccumulationReplayArtifact = Readonly<{
+  evidence: DistinctAssetAccumulationEvidence;
   retainedWitnessCborHex: string;
   authenticatedHeaderHash: string;
 }>;
-export const admitDistinctAssetAccumulationReplayArtifactV1 = (
-  artifact: DistinctAssetAccumulationReplayArtifactV1,
-): DistinctAssetAccumulationReplayArtifactV1 => {
+export const admitDistinctAssetAccumulationReplayArtifact = (
+  artifact: DistinctAssetAccumulationReplayArtifact,
+): DistinctAssetAccumulationReplayArtifact => {
   if (!/^(?:[0-9a-f]{2})+$/u.test(artifact.retainedWitnessCborHex))
     throw new Error(
       "distinctAssetAccumulationLimit: retained witness is not canonical hex",

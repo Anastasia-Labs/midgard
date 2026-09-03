@@ -8,9 +8,9 @@
  */
 
 import {
-  decodeMidgardSpendInputItemV1,
-  encodeMidgardSpendInputItemV1,
-  type MidgardTxInputV1,
+  decodeMidgardSpendInputItem,
+  encodeMidgardSpendInputItem,
+  type MidgardTxInput as MidgardTxInputV1,
 } from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type MidgardTxInput } from "@al-ft/midgard-sdk";
@@ -97,13 +97,13 @@ const requireCanonicalInputCbor = (
   let input: MidgardTxInputV1;
   const inputCbor = Buffer.from(inputCborHex, "hex");
   try {
-    input = decodeMidgardSpendInputItemV1(inputCbor);
+    input = decodeMidgardSpendInputItem(inputCbor);
   } catch (cause) {
     throw new Error(
       `${label} is not valid Midgard §5.3 TxOutRef CBOR: ${formatUnknownError(cause)}`,
     );
   }
-  const canonical = encodeMidgardSpendInputItemV1(input);
+  const canonical = encodeMidgardSpendInputItem(input);
   if (!canonical.equals(inputCbor)) {
     throw new Error(`${label} must be canonical Midgard §5.3 TxOutRef CBOR.`);
   }

@@ -1,35 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import { INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
-import { completeCanonicalReplayDecisionDigestV1 } from "../src/workflow/complete-replay-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
+import { INVALID_RANGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
+import { completeCanonicalReplayDecisionDigest } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionAuthenticatedReplayCaptureIdentityV1,
-  admitProductionRawPredecessorContextV1,
-  PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_PORT_V1,
-  PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_V1,
-  requireProductionAuthenticatedReplayCapturePortV1,
+  admitAuthenticatedReplayCaptureIdentity,
+  admitRawPredecessorContext,
+  AUTHENTICATED_REPLAY_CAPTURE,
+  AUTHENTICATED_REPLAY_CAPTURE_PORT,
+  requireAuthenticatedReplayCapturePort,
 } from "../src/workflow/production-authenticated-replay-artifact-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const h32 = (byte: string): string => byte.repeat(32);
 const context = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(12, 0n)],
         fee: 1n,
         validityIntervalStart: 1n,
       }),
     ],
   });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -38,30 +38,30 @@ const context = async () => {
     },
   });
   const replayDecision =
-    await INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
+    await INVALID_RANGE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
   const detection = replayDecision.detections[0];
   if (detection === undefined) throw new Error("fixture did not detect fault");
   const identity = {
-    schemaVersion: PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_V1,
+    schemaVersion: AUTHENTICATED_REPLAY_CAPTURE,
     deploymentFingerprint: h32("44"),
     headerHash: evidence.headerHash,
     stateQueueObservationDigest: h32("55"),
     payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
     payloadSha256: evidence.payloadSha256,
     replayVersion: replayDecision.replayVersion,
-    replayDigest: completeCanonicalReplayDecisionDigestV1({
+    replayDigest: completeCanonicalReplayDecisionDigest({
       evidence,
-      replayer: INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
       decision: replayDecision,
     }),
     position: detection.position.toString(),
     detectionId: detection.detectionId,
   } as const;
   const admit = (value: unknown, selected = detection) =>
-    admitProductionAuthenticatedReplayCaptureIdentityV1({
+    admitAuthenticatedReplayCaptureIdentity({
       value,
       evidence,
-      replayer: INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
+      replayer: INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
       replayDecision,
       detection: selected,
       deploymentFingerprint: identity.deploymentFingerprint,
@@ -72,11 +72,11 @@ const context = async () => {
 
 describe("production authenticated replay capture boundary V1", () => {
   it("re-admits exact predecessor bytes and both challenged-header links", async () => {
-    const predecessorFixture = await buildCanonicalBlockFixtureV1({
+    const predecessorFixture = await buildCanonicalBlockFixture({
       transactions: [],
     });
-    const predecessor = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(predecessorFixture),
+    const predecessor = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(predecessorFixture),
       payloadEnvelopeCbor: predecessorFixture.payloadEnvelopeCbor,
       daProvenance: {
         trustClass: "public_or_permissionless_da",
@@ -94,7 +94,7 @@ describe("production authenticated replay capture boundary V1", () => {
       },
     };
     const raw = {
-      observation: authenticatedHeaderObservationV1(predecessorFixture),
+      observation: authenticatedHeaderObservation(predecessorFixture),
       payloadEnvelopeCborHex:
         predecessorFixture.payloadEnvelopeCbor.toString("hex"),
       daProvenance: {
@@ -104,14 +104,14 @@ describe("production authenticated replay capture boundary V1", () => {
       },
     } as const;
     await expect(
-      admitProductionRawPredecessorContextV1({
+      admitRawPredecessorContext({
         value: raw,
         currentEvidence: current,
         minimumConfirmationDepth: 30,
       }),
     ).resolves.toMatchObject({ headerHash: predecessor.headerHash });
     await expect(
-      admitProductionRawPredecessorContextV1({
+      admitRawPredecessorContext({
         value: raw,
         currentEvidence: {
           ...current,
@@ -121,7 +121,7 @@ describe("production authenticated replay capture boundary V1", () => {
       }),
     ).rejects.toThrow("prev_header_hash and prev_utxos_root");
     await expect(
-      admitProductionRawPredecessorContextV1({
+      admitRawPredecessorContext({
         value: { ...raw, payloadEnvelopeCborHex: "0" },
         currentEvidence: current,
         minimumConfirmationDepth: 30,
@@ -167,16 +167,16 @@ describe("production authenticated replay capture boundary V1", () => {
 
   it("rejects missing and category-substituted capture ports before I/O", () => {
     expect(() =>
-      requireProductionAuthenticatedReplayCapturePortV1({
+      requireAuthenticatedReplayCapturePort({
         category: "valueNotPreserved",
         port: null,
       }),
     ).toThrow("requires its exact authenticated replay capture port");
     expect(() =>
-      requireProductionAuthenticatedReplayCapturePortV1({
+      requireAuthenticatedReplayCapturePort({
         category: "valueNotPreserved",
         port: {
-          portVersion: PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_PORT_V1,
+          portVersion: AUTHENTICATED_REPLAY_CAPTURE_PORT,
           category: "mintAuthorization",
           capture: async () => ({}),
         } as never,

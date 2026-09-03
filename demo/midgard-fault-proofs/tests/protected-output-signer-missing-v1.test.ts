@@ -1,25 +1,25 @@
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   encodeCbor,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
-  missingSignatureVkeyHashV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
+  missingSignatureVkeyHash,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyProtectedOutputSignerMissingFindingV1,
-  detectProtectedOutputSignerMissingCompleteReplayV1,
-  prepareProtectedOutputSignerMissingEvidenceV1,
-  PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1,
-  PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1,
+  classifyProtectedOutputSignerMissingFinding,
+  detectProtectedOutputSignerMissingCompleteReplay,
+  prepareProtectedOutputSignerMissingEvidence,
+  PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
+  PROTECTED_OUTPUT_SIGNER_MISSING_ID,
 } from "../src/protected-output-signer-missing/index.js";
 import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
@@ -36,7 +36,7 @@ const privateKey = createPrivateKey({
 const verificationKey = createPublicKey(privateKey)
   .export({ format: "der", type: "spki" })
   .subarray(-32);
-const paymentCredential = missingSignatureVkeyHashV1(
+const paymentCredential = missingSignatureVkeyHash(
   verificationKey.toString("hex"),
 );
 const protectedOutput = encodeMidgardTxOutput({
@@ -53,7 +53,7 @@ const transactionWithWitness = (kind: "empty" | "valid" | "invalid") => {
     fee: 7n,
     outputCbor: protectedOutput,
   });
-  const id = computeMidgardNativeTxIdV1(empty);
+  const id = computeMidgardNativeTxId(empty);
   const signature =
     kind === "valid" ? sign(null, id, privateKey) : Buffer.alloc(64, 0xff);
   return makeNativeTx({
@@ -64,7 +64,7 @@ const transactionWithWitness = (kind: "empty" | "valid" | "invalid") => {
       kind === "empty"
         ? encodeCbor([])
         : encodeCbor([
-            encodeMidgardAddressWitnessItemV1({
+            encodeMidgardAddressWitnessItem({
               verificationKey,
               signature,
             }),
@@ -81,7 +81,7 @@ const transactionWithWitnessCount = (count: number) =>
       Array.from({ length: count }, (_unused, index) => {
         const key = Buffer.alloc(32);
         key.writeUInt32BE(index + 1, 28);
-        return encodeMidgardAddressWitnessItemV1({
+        return encodeMidgardAddressWitnessItem({
           verificationKey: key,
           signature: Buffer.alloc(64, 0xff),
         });
@@ -91,17 +91,17 @@ const transactionWithWitnessCount = (count: number) =>
 
 describe("protectedOutputSignerMissing V1 binding", () => {
   it("freezes the plan identity and accepts the accepted coordinate", () => {
-    expect(PROTECTED_OUTPUT_SIGNER_MISSING_ID_V1).toBe("0000002b");
+    expect(PROTECTED_OUTPUT_SIGNER_MISSING_ID).toBe("0000002b");
     expect(() =>
-      classifyProtectedOutputSignerMissingFindingV1({
-        subject: acceptedVerdictSubjectV1(txId),
+      classifyProtectedOutputSignerMissingFinding({
+        subject: acceptedVerdictSubject(txId),
         outputIndex: 3,
       }),
     ).not.toThrow();
   });
 
   it("binds the exact forced reason and output coordinate", () => {
-    const subject = forcedVerdictSubjectV1({
+    const subject = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
       rejectionReason: {
@@ -109,13 +109,13 @@ describe("protectedOutputSignerMissing V1 binding", () => {
       },
     });
     expect(() =>
-      classifyProtectedOutputSignerMissingFindingV1({
+      classifyProtectedOutputSignerMissingFinding({
         subject,
         outputIndex: 3,
       }),
     ).not.toThrow();
     expect(() =>
-      classifyProtectedOutputSignerMissingFindingV1({
+      classifyProtectedOutputSignerMissingFinding({
         subject,
         outputIndex: 2,
       }),
@@ -123,13 +123,13 @@ describe("protectedOutputSignerMissing V1 binding", () => {
   });
 
   it("refuses another missing-witness reason", () => {
-    const subject = forcedVerdictSubjectV1({
+    const subject = forcedVerdictSubject({
       transactionId: txId,
       sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
       rejectionReason: { RequiredSignerUnsigned: { signer_index: 3n } },
     });
     expect(() =>
-      classifyProtectedOutputSignerMissingFindingV1({
+      classifyProtectedOutputSignerMissingFinding({
         subject,
         outputIndex: 3,
       }),
@@ -139,27 +139,27 @@ describe("protectedOutputSignerMissing V1 binding", () => {
   it("admits only Ed25519-valid witnesses to the signer frontier in both directions", () => {
     for (const kind of ["empty", "invalid"] as const) {
       const transaction = transactionWithWitness(kind);
-      const id = computeMidgardNativeTxIdV1(transaction).toString("hex");
-      const evidence = prepareProtectedOutputSignerMissingEvidenceV1({
-        subject: acceptedVerdictSubjectV1(id),
+      const id = computeMidgardNativeTxId(transaction).toString("hex");
+      const evidence = prepareProtectedOutputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(id),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(transaction),
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
       });
       expect(evidence.signerPresent).toBe(false);
       expect(evidence.validSignerHashes).toEqual([]);
     }
 
     const valid = transactionWithWitness("valid");
-    const validId = computeMidgardNativeTxIdV1(valid).toString("hex");
+    const validId = computeMidgardNativeTxId(valid).toString("hex");
     expect(() =>
-      prepareProtectedOutputSignerMissingEvidenceV1({
-        subject: acceptedVerdictSubjectV1(validId),
+      prepareProtectedOutputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(validId),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(valid),
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(valid),
       }),
     ).toThrow(/agrees with the operator verdict/u);
-    const forced = prepareProtectedOutputSignerMissingEvidenceV1({
-      subject: forcedVerdictSubjectV1({
+    const forced = prepareProtectedOutputSignerMissingEvidence({
+      subject: forcedVerdictSubject({
         transactionId: validId,
         sourceKey: { transactionId: "55".repeat(32), outputIndex: 0n },
         rejectionReason: {
@@ -167,16 +167,16 @@ describe("protectedOutputSignerMissing V1 binding", () => {
         },
       }),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(valid),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(valid),
     });
     expect(forced.signerPresent).toBe(true);
     expect(forced.validSignerHashes).toEqual([paymentCredential]);
 
     const missing = transactionWithWitness("empty");
-    const missingId = computeMidgardNativeTxIdV1(missing).toString("hex");
+    const missingId = computeMidgardNativeTxId(missing).toString("hex");
     expect(() =>
-      prepareProtectedOutputSignerMissingEvidenceV1({
-        subject: forcedVerdictSubjectV1({
+      prepareProtectedOutputSignerMissingEvidence({
+        subject: forcedVerdictSubject({
           transactionId: missingId,
           sourceKey: { transactionId: "66".repeat(32), outputIndex: 0n },
           rejectionReason: {
@@ -184,19 +184,19 @@ describe("protectedOutputSignerMissing V1 binding", () => {
           },
         }),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(missing),
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(missing),
       }),
     ).toThrow(/agrees with the operator verdict/u);
   });
 
   it("accepts the maximum witness frontier and refuses its adjacent overflow", () => {
-    expect(PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES_V1).toBe(318);
+    expect(PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES).toBe(318);
     const maximum = transactionWithWitnessCount(318);
-    const maximumId = computeMidgardNativeTxIdV1(maximum).toString("hex");
-    const evidence = prepareProtectedOutputSignerMissingEvidenceV1({
-      subject: acceptedVerdictSubjectV1(maximumId),
+    const maximumId = computeMidgardNativeTxId(maximum).toString("hex");
+    const evidence = prepareProtectedOutputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(maximumId),
       outputIndex: 0,
-      canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(maximum),
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(maximum),
     });
     expect(evidence.checkpoints.at(-1)).toEqual({
       cursor: 318,
@@ -205,12 +205,12 @@ describe("protectedOutputSignerMissing V1 binding", () => {
     expect(evidence.witnessCarriage).toBe("Certified");
 
     const overflow = transactionWithWitnessCount(319);
-    const overflowId = computeMidgardNativeTxIdV1(overflow).toString("hex");
+    const overflowId = computeMidgardNativeTxId(overflow).toString("hex");
     expect(() =>
-      prepareProtectedOutputSignerMissingEvidenceV1({
-        subject: acceptedVerdictSubjectV1(overflowId),
+      prepareProtectedOutputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(overflowId),
         outputIndex: 0,
-        canonicalTransactionCbor: encodeMidgardNativeTxCanonicalV1(overflow),
+        canonicalTransactionCbor: encodeMidgardNativeTxCanonical(overflow),
       }),
     ).toThrow(/frontier exceeds the canonical maximum/u);
   });
@@ -224,19 +224,19 @@ describe("protectedOutputSignerMissing V1 binding", () => {
         reconstruction: { forcedTransactions: [] },
       }) as never;
     expect(
-      detectProtectedOutputSignerMissingCompleteReplayV1(
+      detectProtectedOutputSignerMissingCompleteReplay(
         block([
           {
-            txCbor: encodeMidgardNativeTxCanonicalV1(missing).toString("hex"),
+            txCbor: encodeMidgardNativeTxCanonical(missing).toString("hex"),
           },
         ]),
       ),
     ).toHaveLength(1);
     expect(
-      detectProtectedOutputSignerMissingCompleteReplayV1(
+      detectProtectedOutputSignerMissingCompleteReplay(
         block([
           {
-            txCbor: encodeMidgardNativeTxCanonicalV1(valid).toString("hex"),
+            txCbor: encodeMidgardNativeTxCanonical(valid).toString("hex"),
           },
         ]),
       ),

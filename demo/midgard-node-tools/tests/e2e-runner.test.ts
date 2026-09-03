@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   E2E_STEP_SCHEMA_VERSION,
-  parseE2EStepV1,
+  parseE2EStep,
   redactArg,
   redactEnvKeys,
   runCommandStep,
@@ -30,33 +30,33 @@ describe("e2e step runner", () => {
       rawLogPath: join(dir, "logs", "exact.log"),
     });
 
-    expect(parseE2EStepV1(summary)).toEqual(summary);
+    expect(parseE2EStep(summary)).toEqual(summary);
     const { id: _id, ...missingId } = summary;
-    expect(() => parseE2EStepV1(missingId)).toThrow("missing required field");
-    expect(() => parseE2EStepV1({ ...summary, unexpected: true })).toThrow(
+    expect(() => parseE2EStep(missingId)).toThrow("missing required field");
+    expect(() => parseE2EStep({ ...summary, unexpected: true })).toThrow(
       "unknown field",
     );
     expect(() =>
-      parseE2EStepV1({ ...summary, schemaVersion: "midgard-e2e-step-v0" }),
+      parseE2EStep({ ...summary, schemaVersion: "midgard-e2e-step-v0" }),
     ).toThrow(E2E_STEP_SCHEMA_VERSION);
     expect(() =>
-      parseE2EStepV1({
+      parseE2EStep({
         ...summary,
         command: { ...summary.command, unexpected: true },
       }),
     ).toThrow("unknown field");
     const { cwd: _cwd, ...missingCommandCwd } = summary.command;
     expect(() =>
-      parseE2EStepV1({ ...summary, command: missingCommandCwd }),
+      parseE2EStep({ ...summary, command: missingCommandCwd }),
     ).toThrow("missing required field");
     expect(() =>
-      parseE2EStepV1({
+      parseE2EStep({
         ...summary,
         durationMs: summary.durationMs + 1,
       }),
     ).toThrow("timing or observation identity is inconsistent");
     expect(() =>
-      parseE2EStepV1({
+      parseE2EStep({
         ...summary,
         status: "success",
         exitCode: 1,
@@ -64,7 +64,7 @@ describe("e2e step runner", () => {
       }),
     ).toThrow("status and process outcome are inconsistent");
     expect(() =>
-      parseE2EStepV1({
+      parseE2EStep({
         ...summary,
         hashObservations: [
           {

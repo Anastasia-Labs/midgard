@@ -1,25 +1,25 @@
 import {
   DaPayloadEnvelopeError,
-  unwrapDaPayloadV1,
+  unwrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
   daDeploymentFingerprintFromHex,
-  type DaMetadataByHeaderResponseV1,
-  type DaPayloadByHeaderResponseV1,
-  type DaPayloadChunkManifestV1,
-  type DaPayloadSubmitRequestV1,
-  decodeDaCapabilitiesRequestV1Cbor,
-  decodeDaPayloadByHeaderRequestV1Cbor,
-  decodeDaPayloadChunkRequestV1Cbor,
-  decodeDaPayloadSubmitRequestV1Cbor,
-  encodeDaCapabilitiesResponseV1Cbor,
-  encodeDaMetadataByHeaderResponseV1Cbor,
-  encodeDaPayloadByHeaderResponseV1Cbor,
-  encodeDaPayloadChunkResponseV1Cbor,
-  encodeDaPayloadSubmitResponseV1Cbor,
+  type DaMetadataByHeaderResponse,
+  type DaPayloadByHeaderResponse,
+  type DaPayloadChunkManifest,
+  type DaPayloadSubmitRequest,
+  decodeDaCapabilitiesRequestCbor,
+  decodeDaPayloadByHeaderRequestCbor,
+  decodeDaPayloadChunkRequestCbor,
+  decodeDaPayloadSubmitRequestCbor,
+  encodeDaCapabilitiesResponseCbor,
+  encodeDaMetadataByHeaderResponseCbor,
+  encodeDaPayloadByHeaderResponseCbor,
+  encodeDaPayloadChunkResponseCbor,
+  encodeDaPayloadSubmitResponseCbor,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -70,7 +70,7 @@ export type DaLibp2pPayloadProtocolHandlersOptions<
  * proof-artifact eligibility signal.  The watcher owns the sole strict inner
  * payload validation step.
  */
-type RetainedDaPayloadAdmissionV1 = {
+type RetainedDaPayloadAdmission = {
   readonly payloadSchemaVersion: 1;
   readonly rawEnvelopeSha256: Buffer;
 };
@@ -102,19 +102,18 @@ export class DaLibp2pPayloadProtocolHandlers<
     this.store = options.store;
     this.limits = {
       maxPayloadBytes:
-        options.limits?.maxPayloadBytes ??
-        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        options.limits?.maxPayloadBytes ?? DA_TRANSPORT_LIMITS.maxPayloadBytes,
       maxInlineResponseBytes:
         options.limits?.maxInlineResponseBytes ??
-        DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+        DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
       maxChunkBytes:
-        options.limits?.maxChunkBytes ?? DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+        options.limits?.maxChunkBytes ?? DA_TRANSPORT_LIMITS.maxChunkBytes,
       maxStreamsPerPeer:
         options.limits?.maxStreamsPerPeer ??
-        DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+        DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
       requestTimeoutMs:
         options.limits?.requestTimeoutMs ??
-        DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+        DA_TRANSPORT_LIMITS.requestTimeoutMs,
     };
     this.now = options.now ?? (() => new Date());
     validateLimits(this.limits);
@@ -122,7 +121,7 @@ export class DaLibp2pPayloadProtocolHandlers<
 
   async handleCapabilities(requestCbor: Uint8Array): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaCapabilitiesRequestV1Cbor(requestCbor),
+      () => decodeDaCapabilitiesRequestCbor(requestCbor),
       "capabilities request",
     );
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
@@ -130,9 +129,9 @@ export class DaLibp2pPayloadProtocolHandlers<
         "capabilities request deployment fingerprint mismatch",
       );
     }
-    return encodeDaCapabilitiesResponseV1Cbor({
+    return encodeDaCapabilitiesResponseCbor({
       deploymentFingerprint: this.deploymentFingerprintBytes,
-      transportProtocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
+      transportProtocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
       payloadSchemaVersions: [1],
       envelopeContentEncodings: [0, 1],
       maxPayloadBytes: this.limits.maxPayloadBytes,
@@ -148,13 +147,13 @@ export class DaLibp2pPayloadProtocolHandlers<
     requestCbor: Uint8Array,
   ): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaPayloadSubmitRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadSubmitRequestCbor(requestCbor),
       "payload-submit request",
     );
     const headerHash = request.headerHash;
     const payloadHash = request.payloadHash;
     const rejected = (reasonCode: string): Buffer =>
-      encodeDaPayloadSubmitResponseV1Cbor({
+      encodeDaPayloadSubmitResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash,
@@ -167,7 +166,7 @@ export class DaLibp2pPayloadProtocolHandlers<
     }
     if (request.mode === "chunked") {
       const manifestResult = this.validateSubmitManifest(request);
-      return encodeDaPayloadSubmitResponseV1Cbor({
+      return encodeDaPayloadSubmitResponseCbor({
         status: manifestResult.ok ? "deferred" : "rejected",
         headerHash,
         payloadHash,
@@ -198,7 +197,7 @@ export class DaLibp2pPayloadProtocolHandlers<
     }
     if (existing !== undefined && hasPayloadBytes(existing)) {
       if (sameStoredPayload(existing, payloadBytes, payloadHashHex)) {
-        return encodeDaPayloadSubmitResponseV1Cbor({
+        return encodeDaPayloadSubmitResponseCbor({
           status: "duplicate",
           headerHash,
           payloadHash,
@@ -238,12 +237,12 @@ export class DaLibp2pPayloadProtocolHandlers<
 
   async handlePayloadByHeader(requestCbor: Uint8Array): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadByHeaderRequestCbor(requestCbor),
       "payload-by-header request",
     );
     const headerHash = request.headerHash;
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash: null,
@@ -255,7 +254,7 @@ export class DaLibp2pPayloadProtocolHandlers<
 
     const resolved = await this.resolveStoredPayload(headerHash);
     if (resolved.kind !== "found") {
-      return encodeDaPayloadByHeaderResponseV1Cbor(
+      return encodeDaPayloadByHeaderResponseCbor(
         payloadByHeaderAbsentResponse(headerHash, resolved),
       );
     }
@@ -263,7 +262,7 @@ export class DaLibp2pPayloadProtocolHandlers<
       request.acceptedPayloadHashes !== null &&
       !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
     ) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "conflict",
         headerHash,
         payloadHash: resolved.payloadHash,
@@ -278,7 +277,7 @@ export class DaLibp2pPayloadProtocolHandlers<
       this.limits.maxInlineResponseBytes,
     );
     if (resolved.payloadBytes.length <= inlineLimit) {
-      return encodeDaPayloadByHeaderResponseV1Cbor({
+      return encodeDaPayloadByHeaderResponseCbor({
         status: "found_inline",
         headerHash,
         payloadHash: resolved.payloadHash,
@@ -288,7 +287,7 @@ export class DaLibp2pPayloadProtocolHandlers<
       });
     }
 
-    return encodeDaPayloadByHeaderResponseV1Cbor({
+    return encodeDaPayloadByHeaderResponseCbor({
       status: "found_chunked",
       headerHash,
       payloadHash: resolved.payloadHash,
@@ -300,13 +299,13 @@ export class DaLibp2pPayloadProtocolHandlers<
 
   async handlePayloadChunk(requestCbor: Uint8Array): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaPayloadChunkRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadChunkRequestCbor(requestCbor),
       "payload-chunk request",
     );
     const headerHash = request.headerHash;
     const payloadHash = request.payloadHash;
     const rejected = (): Buffer =>
-      encodeDaPayloadChunkResponseV1Cbor({
+      encodeDaPayloadChunkResponseCbor({
         status: "rejected",
         headerHash,
         payloadHash,
@@ -350,7 +349,7 @@ export class DaLibp2pPayloadProtocolHandlers<
       ),
     );
     const chunkHash = computeDaSha256Hash(chunkBytes);
-    return encodeDaPayloadChunkResponseV1Cbor({
+    return encodeDaPayloadChunkResponseCbor({
       status: "found",
       headerHash,
       payloadHash,
@@ -362,12 +361,12 @@ export class DaLibp2pPayloadProtocolHandlers<
 
   async handleMetadataByHeader(requestCbor: Uint8Array): Promise<Buffer> {
     const request = decodeRequest(
-      () => decodeDaPayloadByHeaderRequestV1Cbor(requestCbor),
+      () => decodeDaPayloadByHeaderRequestCbor(requestCbor),
       "metadata-by-header request",
     );
     const headerHash = request.headerHash;
     if (!this.matchesDeployment(request.deploymentFingerprint)) {
-      return encodeDaMetadataByHeaderResponseV1Cbor({
+      return encodeDaMetadataByHeaderResponseCbor({
         ...emptyMetadataResponse(headerHash),
         status: "rejected",
       });
@@ -375,7 +374,7 @@ export class DaLibp2pPayloadProtocolHandlers<
 
     const resolved = await this.resolveStoredPayload(headerHash);
     if (resolved.kind !== "found") {
-      return encodeDaMetadataByHeaderResponseV1Cbor(
+      return encodeDaMetadataByHeaderResponseCbor(
         metadataAbsentResponse(headerHash, resolved),
       );
     }
@@ -383,7 +382,7 @@ export class DaLibp2pPayloadProtocolHandlers<
       request.acceptedPayloadHashes !== null &&
       !containsHash(request.acceptedPayloadHashes, resolved.payloadHash)
     ) {
-      return encodeDaMetadataByHeaderResponseV1Cbor({
+      return encodeDaMetadataByHeaderResponseCbor({
         ...emptyMetadataResponse(headerHash),
         status: "conflict",
         payloadHash: resolved.payloadHash,
@@ -396,10 +395,10 @@ export class DaLibp2pPayloadProtocolHandlers<
       resolved.payloadBytes,
       resolved.record,
     );
-    return encodeDaMetadataByHeaderResponseV1Cbor(metadata);
+    return encodeDaMetadataByHeaderResponseCbor(metadata);
   }
 
-  private validateSubmitManifest(request: DaPayloadSubmitRequestV1):
+  private validateSubmitManifest(request: DaPayloadSubmitRequest):
     | { readonly ok: true; readonly reasonCode: "chunked_submit_deferred" }
     | {
         readonly ok: false;
@@ -425,10 +424,10 @@ export class DaLibp2pPayloadProtocolHandlers<
   }
 
   private async checkInlineRetainedPayload(
-    request: DaPayloadSubmitRequestV1,
+    request: DaPayloadSubmitRequest,
     payloadBytes: Buffer,
   ): Promise<
-    | { readonly ok: true; readonly admission: RetainedDaPayloadAdmissionV1 }
+    | { readonly ok: true; readonly admission: RetainedDaPayloadAdmission }
     | { readonly ok: false; readonly reasonCode: string }
   > {
     if (payloadBytes.length === 0) {
@@ -437,7 +436,7 @@ export class DaLibp2pPayloadProtocolHandlers<
     if (payloadBytes.length > this.limits.maxPayloadBytes) {
       return { ok: false, reasonCode: "payload_too_large" };
     }
-    if (request.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)) {
+    if (request.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)) {
       return { ok: false, reasonCode: "payload_schema_version_mismatch" };
     }
     const actualPayloadHash = computeDaSha256Hash(payloadBytes);
@@ -449,7 +448,7 @@ export class DaLibp2pPayloadProtocolHandlers<
       // decompression, and the envelope's inner-byte hash.  Deliberately do
       // not decode, traverse, or compare the inner DA transaction body here:
       // the watcher is the sole semantic gate before any protocol eligibility.
-      await unwrapDaPayloadV1(payloadBytes, {
+      await unwrapDaPayload(payloadBytes, {
         maxPayloadBytes: this.limits.maxPayloadBytes,
       });
     } catch (cause) {
@@ -523,7 +522,7 @@ export class DaLibp2pPayloadProtocolHandlers<
     };
   }
 
-  private chunkManifestFor(payloadBytes: Buffer): DaPayloadChunkManifestV1 {
+  private chunkManifestFor(payloadBytes: Buffer): DaPayloadChunkManifest {
     const manifest = chunkManifestFor(payloadBytes, this.limits.maxChunkBytes);
     const check = validateChunkManifest(manifest, this.limits);
     if (!check.ok) {
@@ -597,7 +596,7 @@ const validateLimits = (limits: DaLibp2pPayloadProtocolLimits): void => {
 };
 
 const validateChunkManifest = (
-  manifest: DaPayloadChunkManifestV1,
+  manifest: DaPayloadChunkManifest,
   limits: DaLibp2pPayloadProtocolLimits,
 ):
   | { readonly ok: true }
@@ -627,7 +626,7 @@ const encodeSubmitAccepted = (
   headerHash: Buffer,
   payloadHash: Buffer,
 ): Buffer =>
-  encodeDaPayloadSubmitResponseV1Cbor({
+  encodeDaPayloadSubmitResponseCbor({
     status: "accepted",
     headerHash,
     payloadHash,
@@ -640,7 +639,7 @@ const encodeSubmitConflict = (
   payloadHash: Buffer,
   reasonCode: string,
 ): Buffer =>
-  encodeDaPayloadSubmitResponseV1Cbor({
+  encodeDaPayloadSubmitResponseCbor({
     status: "conflict",
     headerHash,
     payloadHash,
@@ -667,7 +666,7 @@ const payloadBytesFromRecord = (record: DaPayloadRecord): Buffer | null => {
 const payloadByHeaderAbsentResponse = (
   headerHash: Buffer,
   resolution: Exclude<StoredPayloadResolution, { readonly kind: "found" }>,
-): DaPayloadByHeaderResponseV1 => {
+): DaPayloadByHeaderResponse => {
   switch (resolution.kind) {
     case "missing":
       return {
@@ -704,7 +703,7 @@ const encodePayloadChunkNotFound = (
   payloadHash: Buffer,
   chunkIndex: number,
 ): Buffer =>
-  encodeDaPayloadChunkResponseV1Cbor({
+  encodeDaPayloadChunkResponseCbor({
     status: "not_found",
     headerHash,
     payloadHash,
@@ -715,7 +714,7 @@ const encodePayloadChunkNotFound = (
 
 const emptyMetadataResponse = (
   headerHash: Buffer,
-): Omit<DaMetadataByHeaderResponseV1, "status"> => ({
+): Omit<DaMetadataByHeaderResponse, "status"> => ({
   headerHash,
   payloadHash: null,
   payloadSchemaVersion: null,
@@ -731,7 +730,7 @@ const emptyMetadataResponse = (
 const metadataAbsentResponse = (
   headerHash: Buffer,
   resolution: Exclude<StoredPayloadResolution, { readonly kind: "found" }>,
-): DaMetadataByHeaderResponseV1 => {
+): DaMetadataByHeaderResponse => {
   switch (resolution.kind) {
     case "missing":
       return {
@@ -757,14 +756,14 @@ const metadataForPayload = async (
   payloadHash: Buffer,
   payloadBytes: Buffer,
   record: DaPayloadRecord,
-): Promise<DaMetadataByHeaderResponseV1> => {
-  if (record.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)) {
+): Promise<DaMetadataByHeaderResponse> => {
+  if (record.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)) {
     throw new DaLibp2pPayloadProtocolError(
       "stored payload schema version is not canonical V1",
     );
   }
-  await unwrapDaPayloadV1(payloadBytes, {
-    maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+  await unwrapDaPayload(payloadBytes, {
+    maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
   });
   // Metadata establishes only that the retained bytes are a valid bounded
   // outer envelope.  Inner DA parsing and header/root validation stay in the
@@ -803,7 +802,7 @@ const metadataForPayload = async (
 
 const localPayloadStatus = (
   record: DaPayloadRecord,
-): DaMetadataByHeaderResponseV1["localStatus"] => {
+): DaMetadataByHeaderResponse["localStatus"] => {
   switch (record.validationStatus) {
     case "verified":
       return "verified";
@@ -820,7 +819,7 @@ const localPayloadStatus = (
 const chunkManifestFor = (
   payloadBytes: Buffer,
   chunkSize: number,
-): DaPayloadChunkManifestV1 => {
+): DaPayloadChunkManifest => {
   const chunkHashes: Buffer[] = [];
   for (let offset = 0; offset < payloadBytes.length; offset += chunkSize) {
     chunkHashes.push(

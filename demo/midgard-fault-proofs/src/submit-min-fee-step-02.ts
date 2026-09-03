@@ -1,19 +1,19 @@
 /** Authenticate all nine field lengths and finalize a strict min-fee fault. */
 import {
-  encodeMidgardNativeTxProofFieldLengthsV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
+  encodeMidgardNativeTxProofFieldLengths,
+  encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
-  type FieldCarriageV1,
+  type FieldCarriage,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  hasMinFeeViolationV1,
+  hasMinFeeViolation,
   type MinFeeStep02Args,
   MinFeeStep02Datum,
   MinFeeStep02SpendRedeemer,
   type MinFeeStep02State,
-  minimumFeeFromProofSourceV1,
+  minimumFeeFromProofSource,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -30,18 +30,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldCarriageV1,
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldCarriage,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
-import type { MinFeeContractsV1 } from "./min-fee-contracts-v1.js";
+import type { MinFeeContracts } from "./min-fee-contracts-v1.js";
 import {
-  minFeeStepLabelV1,
+  minFeeStepLabel,
   minFeeSubmitError,
-  requireMinFeeReferenceScriptV1,
-  requireMinFeeStepStateV1,
-  requireMinFeeThreadUtxoV1,
+  requireMinFeeReferenceScript,
+  requireMinFeeStepState,
+  requireMinFeeThreadUtxo,
 } from "./min-fee-submit-common-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -51,19 +51,19 @@ import { excludeUtxo } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
-const STEP_LABEL = minFeeStepLabelV1(1);
+const STEP_LABEL = minFeeStepLabel(1);
 const FIELD_COUNT = 9;
 
-export type MinFeeFieldItemCborsV1 = readonly [
+export type MinFeeFieldItemCbors = readonly [
   readonly Uint8Array[],
   readonly Uint8Array[],
   readonly Uint8Array[],
@@ -102,12 +102,12 @@ const planFields = ({
   readonly state: MinFeeStep02State;
   readonly nativeTxCompactCbor: string;
   readonly witnessSet: NativeTxWitnessSetCompact;
-  readonly fieldItemCbors: MinFeeFieldItemCborsV1;
+  readonly fieldItemCbors: MinFeeFieldItemCbors;
   readonly signer: ResolvedProverSigner;
   readonly publishCarriages: boolean;
-}): readonly FaultProofFieldOpeningPlanV1[] =>
+}): readonly FaultProofFieldOpeningPlan[] =>
   fieldItemCbors.map((itemCbors, fieldIndex) =>
-    planFaultProofFieldOpeningV1({
+    planFaultProofFieldOpening({
       fieldIndex,
       anchorTxId: state.bad_tx_id,
       nativeTxCompactCbor,
@@ -160,17 +160,17 @@ export const submitMinFeeStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MinFeeContractsV1;
+  readonly contracts: MinFeeContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly nativeTxCompactCbor: string;
   readonly witnessSet: NativeTxWitnessSetCompact;
-  readonly fieldItemCbors: MinFeeFieldItemCborsV1;
+  readonly fieldItemCbors: MinFeeFieldItemCbors;
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   /** Existing §8.6 certificates, needed only when a field selects tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
   /** Existing authenticated tier-2/tier-3 publication outputs. */
@@ -184,20 +184,20 @@ export const submitMinFeeStep02 = async ({
   readonly publishCarriages?: boolean;
   /** Emulator negative only: submit an honest boundary to the real validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeStep02Result> => {
   if (fieldItemCbors.length !== FIELD_COUNT) {
     throw minFeeSubmitError("step-02 requires exactly nine field preimages.");
   }
-  const { threadUtxo, threadToken } = await requireMinFeeThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireMinFeeThreadUtxo({
     lucid,
     contracts,
     categoryId,
     stepIndex: 1,
     threadOutRef,
   });
-  const state = requireMinFeeStepStateV1({
+  const state = requireMinFeeStepState({
     threadUtxo,
     signer,
     schema: MinFeeStep02Datum,
@@ -217,19 +217,19 @@ export const submitMinFeeStep02 = async ({
   });
   const source = {
     compactCbor: Buffer.from(nativeTxCompactCbor, "hex"),
-    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
+    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
       witnessSetCore(witnessSet),
     ),
-    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengths(
       plans.map((plan) => plan.preimage.length),
     ),
   };
-  const boundary = minimumFeeFromProofSourceV1({
+  const boundary = minimumFeeFromProofSource({
     source,
     minFeeA: state.min_fee_a,
     minFeeB: state.min_fee_b,
   });
-  const violation = hasMinFeeViolationV1({
+  const violation = hasMinFeeViolation({
     fee: state.bad_tx_body_fee,
     minFeeA: state.min_fee_a,
     minFeeB: state.min_fee_b,
@@ -249,7 +249,7 @@ export const submitMinFeeStep02 = async ({
     // durable, authenticated action before this proof step is captured.
     for (const [fieldIndex, planned] of plans.entries()) {
       published.push(
-        ...(await publishFaultProofFieldCarriageV1({
+        ...(await publishFaultProofFieldCarriage({
           lucid,
           signer,
           planned,
@@ -259,17 +259,17 @@ export const submitMinFeeStep02 = async ({
       );
     }
   }
-  const stepReference = requireMinFeeReferenceScriptV1({
+  const stepReference = requireMinFeeReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -284,8 +284,8 @@ export const submitMinFeeStep02 = async ({
     ...fraudProofMintCarriage.referenceInputs,
   ]);
   const fieldCarriages = plans.map(
-    (planned, fieldIndex): FieldCarriageV1 =>
-      faultProofFieldCarriageV1({
+    (planned, fieldIndex): FieldCarriage =>
+      faultProofFieldCarriage({
         planned,
         referenceInputs,
         certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -412,9 +412,9 @@ export const submitMinFeeStep02 = async ({
     throw minFeeSubmitError("step-02 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

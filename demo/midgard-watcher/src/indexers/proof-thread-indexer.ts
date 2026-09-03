@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  type DeploymentManifestV1FraudProofCatalogueCategory,
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type DeploymentManifestFraudProofCatalogueCategory,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   DA_ATTESTATION_ASSET_NAME_PREFIX,
@@ -18,64 +18,64 @@ import {
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
 
 import {
-  evaluateWatcherFinalityV1,
-  parseWatcherFinalityPolicyV1,
-  watcherFinalityConfiguredSourceV1,
-  type WatcherFinalityResultV1,
+  evaluateWatcherFinality,
+  parseWatcherFinalityPolicy,
+  watcherFinalityConfiguredSource,
+  type WatcherFinalityResult,
 } from "../l1/finality-engine.js";
 import {
-  encodeWatcherNormalizedL1BlockV1,
-  normalizeWatcherL1BlockV1,
-  type WatcherL1RedeemerV1,
-  type WatcherL1TransactionV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherNormalizedL1BlockV1,
+  encodeWatcherNormalizedL1Block,
+  normalizeWatcherL1Block,
+  type WatcherL1Redeemer,
+  type WatcherL1Transaction,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+  type WatcherNormalizedL1Block,
 } from "../l1/l1-adapter.js";
 import {
-  evaluateWatcherMultiProviderConsistencyV1,
-  type WatcherMultiProviderConsistencyV1,
+  evaluateWatcherMultiProviderConsistency,
+  type WatcherMultiProviderConsistency,
 } from "../l1/multi-provider-consistency.js";
 import {
-  parseWatcherPostFinalityRecoveryResultV1,
-  parseWatcherRollbackResultV1,
-  type WatcherPostFinalityRecoveryInputV1,
-  type WatcherPostFinalityRecoveryResultV1,
-  type WatcherRollbackResultV1,
-  type WatcherRollbackVerificationContextV1,
+  parseWatcherPostFinalityRecoveryResult,
+  parseWatcherRollbackResult,
+  type WatcherPostFinalityRecoveryInput,
+  type WatcherPostFinalityRecoveryResult,
+  type WatcherRollbackResult,
+  type WatcherRollbackVerificationContext,
 } from "../l1/rollback-engine.js";
 import {
-  type VerifiedWatcherDeploymentIdentityV1,
-  verifyWatcherDeploymentIdentityV1,
-  type WatcherDeploymentIdentityPolicyV1,
-  type WatcherDeploymentTrustRootV1,
+  type VerifiedWatcherDeploymentIdentity,
+  verifyWatcherDeploymentIdentity,
+  type WatcherDeploymentIdentityPolicy,
+  type WatcherDeploymentTrustRoot,
 } from "../runtime/deployment-identity.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  parseWatcherDurableStoreV1,
-  type WatcherConfirmationV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  parseWatcherDurableStore,
+  type WatcherConfirmation,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  type WatcherProtocolUtxoV1,
+  type WatcherProtocolUtxo,
 } from "../storage/durable-store.js";
 
-export const WATCHER_PROOF_THREAD_POLICY_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-policy-v1" as const;
-export const WATCHER_PROOF_THREAD_JOURNAL_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_JOURNAL_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-journal-v1" as const;
-export const WATCHER_PROOF_THREAD_LAYOUT_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_LAYOUT_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-layout-v1" as const;
-export const WATCHER_PROOF_THREAD_OBSERVATION_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-observation-v1" as const;
-export const WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-public-context-v1" as const;
-export const WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-state-v1" as const;
-export const WATCHER_PROOF_THREAD_RESULT_V1_SCHEMA_VERSION =
+export const WATCHER_PROOF_THREAD_RESULT_SCHEMA_VERSION =
   "midgard-watcher-proof-thread-result-v1" as const;
 
-export const WATCHER_PROOF_THREAD_V1_BOUNDS = Object.freeze({
+export const WATCHER_PROOF_THREAD_BOUNDS = Object.freeze({
   families: 128,
   stepsPerFamily: 512,
   historyEntries: 256,
@@ -95,7 +95,7 @@ export const WATCHER_PROOF_THREAD_V1_BOUNDS = Object.freeze({
  * These counts describe deployed validator topology only; they do not claim
  * that an autonomous watcher detector exists for the corresponding fault.
  */
-export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
+export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY = Object.freeze({
   doubleSpend: {
     familyId: "double-spend",
     stepCount: 4,
@@ -616,7 +616,7 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
   },
 } as const satisfies Readonly<
   Record<
-    DeploymentManifestV1FraudProofCatalogueCategory,
+    DeploymentManifestFraudProofCatalogueCategory,
     Readonly<{
       familyId: string;
       stepCount: number;
@@ -625,7 +625,7 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
   >
 >);
 
-export const WATCHER_PROOF_THREAD_REASON_CODES_V1 = [
+export const WATCHER_PROOF_THREAD_REASON_CODES = [
   "init_pending",
   "init_confirmed",
   "step_pending",
@@ -655,7 +655,7 @@ export const WATCHER_PROOF_THREAD_REASON_CODES_V1 = [
   "history_limit_exceeded",
 ] as const;
 
-export const WATCHER_PROOF_THREAD_ALERT_CODES_V1 = [
+export const WATCHER_PROOF_THREAD_ALERT_CODES = [
   "watcher_proof_thread_input_rejected",
   "watcher_proof_thread_binding_rejected",
   "watcher_proof_thread_state_rejected",
@@ -663,26 +663,26 @@ export const WATCHER_PROOF_THREAD_ALERT_CODES_V1 = [
   "watcher_proof_thread_post_finality_incident",
 ] as const;
 
-export type WatcherProofThreadReasonCodeV1 =
-  (typeof WATCHER_PROOF_THREAD_REASON_CODES_V1)[number];
-export type WatcherProofThreadAlertCodeV1 =
-  (typeof WATCHER_PROOF_THREAD_ALERT_CODES_V1)[number];
-export type WatcherProofThreadNetworkV1 = "Mainnet" | "Preprod" | "Preview";
-export type WatcherProofThreadTransitionKindV1 =
+export type WatcherProofThreadReasonCode =
+  (typeof WATCHER_PROOF_THREAD_REASON_CODES)[number];
+export type WatcherProofThreadAlertCode =
+  (typeof WATCHER_PROOF_THREAD_ALERT_CODES)[number];
+export type WatcherProofThreadNetwork = "Mainnet" | "Preprod" | "Preview";
+export type WatcherProofThreadTransitionKind =
   | "init"
   | "step"
   | "success"
   | "cancel"
   | "removal"
   | "rollback";
-export type WatcherProofThreadJournalPhaseV1 =
+export type WatcherProofThreadJournalPhase =
   | "active"
   | "proven"
   | "cancelled"
   | "removed";
-export type WatcherProofThreadConfirmationPhaseV1 = "pending" | "final";
+export type WatcherProofThreadConfirmationPhase = "pending" | "final";
 
-export type WatcherProofThreadFamilyV1 = Readonly<{
+export type WatcherProofThreadFamily = Readonly<{
   familyId: string;
   catalogueCategory: string;
   categoryId: string;
@@ -702,24 +702,24 @@ export type WatcherProofThreadFamilyV1 = Readonly<{
   nextStepIndexes: readonly (readonly string[])[];
 }>;
 
-export type WatcherProofThreadPolicyV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_POLICY_V1_SCHEMA_VERSION;
-  network: WatcherProofThreadNetworkV1;
+export type WatcherProofThreadPolicy = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION;
+  network: WatcherProofThreadNetwork;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   deploymentTrustRootId: string;
   requiredFinalityDepth: string;
   computationThreadPolicyId: string;
   fraudProofPolicyId: string;
   fraudProofSpendScriptHash: string;
   fraudProofAddressHex: string;
-  families: readonly WatcherProofThreadFamilyV1[];
+  families: readonly WatcherProofThreadFamily[];
   maximumHistoryEntries: string;
   policyDigest: string;
 }>;
 
-export type WatcherProofThreadJournalV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_JOURNAL_V1_SCHEMA_VERSION;
+export type WatcherProofThreadJournal = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_JOURNAL_SCHEMA_VERSION;
   journalId: string;
   faultId: string;
   familyId: string;
@@ -727,7 +727,7 @@ export type WatcherProofThreadJournalV1 = Readonly<{
   fraudulentHeaderHash: string;
   fraudProver: string;
   computationThreadAssetName: string;
-  phase: WatcherProofThreadJournalPhaseV1;
+  phase: WatcherProofThreadJournalPhase;
   stepIndex: string | null;
   threadOutRef: string | null;
   proofTokenOutRef: string | null;
@@ -743,8 +743,8 @@ export type WatcherProofThreadJournalV1 = Readonly<{
  * globally ordered W10 redeemer vector. Inapplicable positions are null, so a
  * constructor cannot smuggle an extra role through an ignored numeric field.
  */
-export type WatcherProofThreadLayoutV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_LAYOUT_V1_SCHEMA_VERSION;
+export type WatcherProofThreadLayout = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_LAYOUT_SCHEMA_VERSION;
   threadInputIndex: string | null;
   threadOutputIndex: string | null;
   proofTokenOutputIndex: string | null;
@@ -754,14 +754,14 @@ export type WatcherProofThreadLayoutV1 = Readonly<{
   fraudProofMintRedeemerGlobalIndex: string | null;
 }>;
 
-export type WatcherProofThreadObservationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_OBSERVATION_V1_SCHEMA_VERSION;
+export type WatcherProofThreadObservation = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION;
   policyDigest: string;
-  network: WatcherProofThreadNetworkV1;
+  network: WatcherProofThreadNetwork;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
-  transitionKind: WatcherProofThreadTransitionKindV1;
-  confirmationPhase: WatcherProofThreadConfirmationPhaseV1 | null;
+  deploymentMarker: DeploymentMarker;
+  transitionKind: WatcherProofThreadTransitionKind;
+  confirmationPhase: WatcherProofThreadConfirmationPhase | null;
   pointDigest: string;
   blockHash: string;
   slot: string;
@@ -778,22 +778,22 @@ export type WatcherProofThreadObservationV1 = Readonly<{
   submissionId: string | null;
   confirmationId: string | null;
   rollbackTargetStateDigest: string | null;
-  layout: WatcherProofThreadLayoutV1 | null;
-  journal: WatcherProofThreadJournalV1 | null;
+  layout: WatcherProofThreadLayout | null;
+  journal: WatcherProofThreadJournal | null;
   observationDigest: string;
 }>;
 
-export type WatcherProofThreadPublicContextV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION;
+export type WatcherProofThreadPublicContext = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION;
   authenticatedProvider: unknown | null;
   l1Observation: unknown | null;
   sourceDurableStore: unknown;
   durableStore: unknown;
   deploymentAuthority: Readonly<{
     signedIdentity: unknown;
-    policy: WatcherDeploymentIdentityPolicyV1;
-    trustRoots: readonly WatcherDeploymentTrustRootV1[];
-    result: VerifiedWatcherDeploymentIdentityV1;
+    policy: WatcherDeploymentIdentityPolicy;
+    trustRoots: readonly WatcherDeploymentTrustRoot[];
+    result: VerifiedWatcherDeploymentIdentity;
   }>;
   finalityAuthority: Readonly<{
     policy: unknown;
@@ -810,72 +810,72 @@ export type WatcherProofThreadPublicContextV1 = Readonly<{
   rollbackAuthority: Readonly<{
     result: unknown;
     context:
-      | WatcherRollbackVerificationContextV1
-      | WatcherPostFinalityRecoveryInputV1;
+      | WatcherRollbackVerificationContext
+      | WatcherPostFinalityRecoveryInput;
   }> | null;
   sourceJournal: unknown;
   durableJournal: unknown;
 }>;
 
-export type WatcherProofThreadHistoryEntryV1 = Readonly<{
+export type WatcherProofThreadHistoryEntry = Readonly<{
   predecessorStateDigest: string | null;
-  transitionKind: WatcherProofThreadTransitionKindV1;
-  confirmationPhase: WatcherProofThreadConfirmationPhaseV1 | null;
+  transitionKind: WatcherProofThreadTransitionKind;
+  confirmationPhase: WatcherProofThreadConfirmationPhase | null;
   chainPointId: string;
   transactionHash: string | null;
   submissionId: string | null;
   confirmationId: string | null;
   sourceJournalDigest: string | null;
-  journal: WatcherProofThreadJournalV1 | null;
-  observation: WatcherProofThreadObservationV1;
-  publicContext: WatcherProofThreadPublicContextV1;
+  journal: WatcherProofThreadJournal | null;
+  observation: WatcherProofThreadObservation;
+  publicContext: WatcherProofThreadPublicContext;
   rollbackResult:
-    | WatcherRollbackResultV1
-    | WatcherPostFinalityRecoveryResultV1
+    | WatcherRollbackResult
+    | WatcherPostFinalityRecoveryResult
     | null;
   entryDigest: string;
 }>;
 
-export type WatcherProofThreadAuditEntryV1 = Readonly<{
+export type WatcherProofThreadAuditEntry = Readonly<{
   status: "orphaned" | "rollback";
-  entry: WatcherProofThreadHistoryEntryV1;
+  entry: WatcherProofThreadHistoryEntry;
   auditDigest: string;
 }>;
 
-export type WatcherProofThreadPendingV1 = Readonly<{
-  transitionKind: Exclude<WatcherProofThreadTransitionKindV1, "rollback">;
+export type WatcherProofThreadPending = Readonly<{
+  transitionKind: Exclude<WatcherProofThreadTransitionKind, "rollback">;
   transactionHash: string;
   submissionId: string;
   confirmationId: string;
   sourceJournalDigest: string | null;
-  journal: WatcherProofThreadJournalV1;
+  journal: WatcherProofThreadJournal;
   pendingEntryDigest: string;
 }>;
 
-export type WatcherProofThreadStateV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION;
+export type WatcherProofThreadState = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION;
   policyDigest: string;
-  network: WatcherProofThreadNetworkV1;
+  network: WatcherProofThreadNetwork;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   pointDigest: string;
   durableStoreDigest: string;
-  journal: WatcherProofThreadJournalV1 | null;
-  pending: WatcherProofThreadPendingV1 | null;
-  history: readonly WatcherProofThreadHistoryEntryV1[];
-  auditHistory: readonly WatcherProofThreadAuditEntryV1[];
+  journal: WatcherProofThreadJournal | null;
+  pending: WatcherProofThreadPending | null;
+  history: readonly WatcherProofThreadHistoryEntry[];
+  auditHistory: readonly WatcherProofThreadAuditEntry[];
   /** Append-only accepted transitions; restart derives history/audit/head. */
-  transitionHistory: readonly WatcherProofThreadHistoryEntryV1[];
+  transitionHistory: readonly WatcherProofThreadHistoryEntry[];
   stateDigest: string;
 }>;
 
-export type WatcherProofThreadResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PROOF_THREAD_RESULT_V1_SCHEMA_VERSION;
+export type WatcherProofThreadResult = Readonly<{
+  schemaVersion: typeof WATCHER_PROOF_THREAD_RESULT_SCHEMA_VERSION;
   action: "accept" | "duplicate" | "reject";
   protocolDecision: "indexed" | "hold" | "quarantined";
-  reasonCodes: readonly WatcherProofThreadReasonCodeV1[];
-  alertCodes: readonly WatcherProofThreadAlertCodeV1[];
-  state: WatcherProofThreadStateV1 | null;
+  reasonCodes: readonly WatcherProofThreadReasonCode[];
+  alertCodes: readonly WatcherProofThreadAlertCode[];
+  state: WatcherProofThreadState | null;
   resultDigest: string;
 }>;
 
@@ -974,8 +974,8 @@ const evidenceWithinBounds = (value: unknown): boolean => {
   let bytes = typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0;
   let nodes = 1;
   if (
-    bytes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceBytes ||
-    nodes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceNodes
+    bytes > WATCHER_PROOF_THREAD_BOUNDS.cumulativeEvidenceBytes ||
+    nodes > WATCHER_PROOF_THREAD_BOUNDS.cumulativeEvidenceNodes
   ) {
     return false;
   }
@@ -1001,8 +1001,7 @@ const evidenceWithinBounds = (value: unknown): boolean => {
       }
       if (
         Array.isArray(candidate) &&
-        candidate.length >
-          WATCHER_PROOF_THREAD_V1_BOUNDS.evidenceContainerEntries
+        candidate.length > WATCHER_PROOF_THREAD_BOUNDS.evidenceContainerEntries
       ) {
         return false;
       }
@@ -1013,9 +1012,7 @@ const evidenceWithinBounds = (value: unknown): boolean => {
           continue;
         }
         entryCount += 1;
-        if (
-          entryCount > WATCHER_PROOF_THREAD_V1_BOUNDS.evidenceContainerEntries
-        ) {
+        if (entryCount > WATCHER_PROOF_THREAD_BOUNDS.evidenceContainerEntries) {
           return false;
         }
         const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
@@ -1033,8 +1030,8 @@ const evidenceWithinBounds = (value: unknown): boolean => {
           bytes += Buffer.byteLength(descriptor.value, "utf8");
         }
         if (
-          bytes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceBytes ||
-          nodes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceNodes
+          bytes > WATCHER_PROOF_THREAD_BOUNDS.cumulativeEvidenceBytes ||
+          nodes > WATCHER_PROOF_THREAD_BOUNDS.cumulativeEvidenceNodes
         ) {
           return false;
         }
@@ -1086,45 +1083,42 @@ const isNatural = (value: unknown): value is string =>
   typeof value === "string" &&
   NATURAL.test(value) &&
   value.length <= 20 &&
-  BigInt(value) <= WATCHER_PROOF_THREAD_V1_BOUNDS.uint64Maximum;
+  BigInt(value) <= WATCHER_PROOF_THREAD_BOUNDS.uint64Maximum;
 const isNullableNatural = (value: unknown): value is string | null =>
   value === null || isNatural(value);
 const isNullableHex32 = (value: unknown): value is string | null =>
   value === null || isHex32(value);
 const isNullableOutRef = (value: unknown): value is string | null =>
   value === null || isOutRef(value);
-const isNetwork = (value: unknown): value is WatcherProofThreadNetworkV1 =>
+const isNetwork = (value: unknown): value is WatcherProofThreadNetwork =>
   typeof value === "string" &&
-  NETWORKS.includes(value as WatcherProofThreadNetworkV1);
+  NETWORKS.includes(value as WatcherProofThreadNetwork);
 const isStableName = (value: unknown): value is string =>
   typeof value === "string" && STABLE_NAME.test(value);
 
-const parseMarker = (value: unknown): DeploymentMarkerV1 | null => {
+const parseMarker = (value: unknown): DeploymentMarker | null => {
   const record = exactRecord(value, ["schemaVersion", "manifestId"]);
   return record !== null &&
-    record.schemaVersion === MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION &&
+    record.schemaVersion === MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION &&
     isHex32(record.manifestId)
     ? Object.freeze({
-        schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+        schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
         manifestId: record.manifestId,
       })
     : null;
 };
 
-const sameMarker = (
-  left: DeploymentMarkerV1,
-  right: DeploymentMarkerV1,
-): boolean =>
+const sameMarker = (left: DeploymentMarker, right: DeploymentMarker): boolean =>
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
 
-const expectedNetworkId = (network: WatcherProofThreadNetworkV1): number =>
+const expectedNetworkId = (network: WatcherProofThreadNetwork): number =>
   network === "Mainnet" ? 1 : 0;
 
 const addressMatchesScript = (
   addressHex: string,
   scriptHash: string,
-  network: WatcherProofThreadNetworkV1,
+  network: WatcherProofThreadNetwork,
 ): boolean => {
   try {
     const address = CML.Address.from_hex(addressHex);
@@ -1138,7 +1132,7 @@ const addressMatchesScript = (
   }
 };
 
-const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
+const parseFamily = (value: unknown): WatcherProofThreadFamily | null => {
   const record = exactRecord(value, [
     "familyId",
     "catalogueCategory",
@@ -1152,18 +1146,18 @@ const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
       ? null
       : exactArray(
           record.stepScriptHashes,
-          WATCHER_PROOF_THREAD_V1_BOUNDS.stepsPerFamily,
+          WATCHER_PROOF_THREAD_BOUNDS.stepsPerFamily,
         );
   const nextStepIndexesValue =
     record === null
       ? null
       : exactArray(
           record.nextStepIndexes,
-          WATCHER_PROOF_THREAD_V1_BOUNDS.stepsPerFamily,
+          WATCHER_PROOF_THREAD_BOUNDS.stepsPerFamily,
         );
   const nextStepIndexes =
     nextStepIndexesValue?.map((next) =>
-      exactArray(next, WATCHER_PROOF_THREAD_V1_BOUNDS.stepsPerFamily),
+      exactArray(next, WATCHER_PROOF_THREAD_BOUNDS.stepsPerFamily),
     ) ?? null;
   if (
     record === null ||
@@ -1228,19 +1222,19 @@ const parseFamily = (value: unknown): WatcherProofThreadFamilyV1 | null => {
 };
 
 const familyMatchesRegisteredAuthority = (
-  family: WatcherProofThreadFamilyV1,
+  family: WatcherProofThreadFamily,
 ): boolean => {
   if (
     !Object.prototype.hasOwnProperty.call(
-      WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1,
+      WATCHER_PROOF_THREAD_FAMILY_AUTHORITY,
       family.catalogueCategory,
     )
   ) {
     return false;
   }
   const category =
-    family.catalogueCategory as DeploymentManifestV1FraudProofCatalogueCategory;
-  const authority = WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[category];
+    family.catalogueCategory as DeploymentManifestFraudProofCatalogueCategory;
+  const authority = WATCHER_PROOF_THREAD_FAMILY_AUTHORITY[category];
   if (
     family.familyId !== authority.familyId ||
     family.categoryId !== FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category] ||
@@ -1267,22 +1261,22 @@ const familyMatchesRegisteredAuthority = (
   );
 };
 
-export const makeWatcherProofThreadPolicyV1 = (
-  value: Omit<WatcherProofThreadPolicyV1, "schemaVersion" | "policyDigest">,
-): WatcherProofThreadPolicyV1 | null => {
+export const makeWatcherProofThreadPolicy = (
+  value: Omit<WatcherProofThreadPolicy, "schemaVersion" | "policyDigest">,
+): WatcherProofThreadPolicy | null => {
   const canonical = {
-    schemaVersion: WATCHER_PROOF_THREAD_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION,
     ...value,
   };
-  return parseWatcherProofThreadPolicyV1({
+  return parseWatcherProofThreadPolicy({
     ...canonical,
     policyDigest: sha256Canonical(canonical),
   });
 };
 
-export const parseWatcherProofThreadPolicyV1 = (
+export const parseWatcherProofThreadPolicy = (
   value: unknown,
-): WatcherProofThreadPolicyV1 | null => {
+): WatcherProofThreadPolicy | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "network",
@@ -1302,7 +1296,7 @@ export const parseWatcherProofThreadPolicyV1 = (
   const familiesValue =
     record === null
       ? null
-      : exactArray(record.families, WATCHER_PROOF_THREAD_V1_BOUNDS.families);
+      : exactArray(record.families, WATCHER_PROOF_THREAD_BOUNDS.families);
   const families = familiesValue?.map(parseFamily) ?? null;
   if (
     record === null ||
@@ -1311,7 +1305,7 @@ export const parseWatcherProofThreadPolicyV1 = (
     families === null ||
     families.length === 0 ||
     families.some((family) => family === null) ||
-    record.schemaVersion !== WATCHER_PROOF_THREAD_POLICY_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION ||
     !isNetwork(record.network) ||
     !isHex32(record.releaseEvidenceDigest) ||
     !isHex32(record.deploymentTrustRootId) ||
@@ -1325,12 +1319,12 @@ export const parseWatcherProofThreadPolicyV1 = (
     !isNatural(record.maximumHistoryEntries) ||
     record.maximumHistoryEntries === "0" ||
     BigInt(record.maximumHistoryEntries) >
-      BigInt(WATCHER_PROOF_THREAD_V1_BOUNDS.historyEntries) ||
+      BigInt(WATCHER_PROOF_THREAD_BOUNDS.historyEntries) ||
     !isHex32(record.policyDigest)
   ) {
     return null;
   }
-  const parsedFamilies = families as WatcherProofThreadFamilyV1[];
+  const parsedFamilies = families as WatcherProofThreadFamily[];
   const familyByCategory = new Map(
     parsedFamilies.map((family) => [family.catalogueCategory, family]),
   );
@@ -1344,8 +1338,8 @@ export const parseWatcherProofThreadPolicyV1 = (
     new Set(parsedFamilies.map(({ catalogueCategory }) => catalogueCategory))
       .size !== parsedFamilies.length ||
     parsedFamilies.length !==
-      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
-    !DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
+    !DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
       (category) => {
         const family = familyByCategory.get(category);
         return family !== undefined && familyMatchesRegisteredAuthority(family);
@@ -1360,7 +1354,7 @@ export const parseWatcherProofThreadPolicyV1 = (
     return null;
   }
   const canonical = Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_POLICY_SCHEMA_VERSION,
     network: record.network,
     releaseEvidenceDigest: record.releaseEvidenceDigest,
     deploymentMarker: marker,
@@ -1379,25 +1373,25 @@ export const parseWatcherProofThreadPolicyV1 = (
 };
 
 const journalWithoutDigest = (
-  value: Omit<WatcherProofThreadJournalV1, "journalDigest">,
+  value: Omit<WatcherProofThreadJournal, "journalDigest">,
 ) => ({ ...value });
 
-export const makeWatcherProofThreadJournalV1 = (
-  value: Omit<WatcherProofThreadJournalV1, "schemaVersion" | "journalDigest">,
-): WatcherProofThreadJournalV1 | null => {
+export const makeWatcherProofThreadJournal = (
+  value: Omit<WatcherProofThreadJournal, "schemaVersion" | "journalDigest">,
+): WatcherProofThreadJournal | null => {
   const canonical = {
-    schemaVersion: WATCHER_PROOF_THREAD_JOURNAL_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_JOURNAL_SCHEMA_VERSION,
     ...value,
   };
-  return parseWatcherProofThreadJournalV1({
+  return parseWatcherProofThreadJournal({
     ...canonical,
     journalDigest: sha256Canonical(canonical),
   });
 };
 
-export const parseWatcherProofThreadJournalV1 = (
+export const parseWatcherProofThreadJournal = (
   value: unknown,
-): WatcherProofThreadJournalV1 | null => {
+): WatcherProofThreadJournal | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "journalId",
@@ -1422,9 +1416,9 @@ export const parseWatcherProofThreadJournalV1 = (
       ? null
       : exactArray(
           record.confirmedTransactionHashes,
-          WATCHER_PROOF_THREAD_V1_BOUNDS.historyEntries,
+          WATCHER_PROOF_THREAD_BOUNDS.historyEntries,
         );
-  const phases: readonly WatcherProofThreadJournalPhaseV1[] = [
+  const phases: readonly WatcherProofThreadJournalPhase[] = [
     "active",
     "proven",
     "cancelled",
@@ -1433,7 +1427,7 @@ export const parseWatcherProofThreadJournalV1 = (
   if (
     record === null ||
     hashes === null ||
-    record.schemaVersion !== WATCHER_PROOF_THREAD_JOURNAL_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_PROOF_THREAD_JOURNAL_SCHEMA_VERSION ||
     !isHex32(record.journalId) ||
     !isHex32(record.faultId) ||
     !isStableName(record.familyId) ||
@@ -1442,7 +1436,7 @@ export const parseWatcherProofThreadJournalV1 = (
     !isHex28(record.fraudProver) ||
     !isHex32(record.computationThreadAssetName) ||
     typeof record.phase !== "string" ||
-    !phases.includes(record.phase as WatcherProofThreadJournalPhaseV1) ||
+    !phases.includes(record.phase as WatcherProofThreadJournalPhase) ||
     !isNullableNatural(record.stepIndex) ||
     !isNullableOutRef(record.threadOutRef) ||
     !isNullableOutRef(record.proofTokenOutRef) ||
@@ -1455,7 +1449,7 @@ export const parseWatcherProofThreadJournalV1 = (
   ) {
     return null;
   }
-  const phase = record.phase as WatcherProofThreadJournalPhaseV1;
+  const phase = record.phase as WatcherProofThreadJournalPhase;
   if (
     (phase === "active") !==
       (record.stepIndex !== null &&
@@ -1481,7 +1475,7 @@ export const parseWatcherProofThreadJournalV1 = (
     return null;
   }
   const canonical = Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_JOURNAL_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_JOURNAL_SCHEMA_VERSION,
     journalId: record.journalId,
     faultId: record.faultId,
     familyId: record.familyId,
@@ -1504,7 +1498,7 @@ export const parseWatcherProofThreadJournalV1 = (
     : null;
 };
 
-const parseLayout = (value: unknown): WatcherProofThreadLayoutV1 | null => {
+const parseLayout = (value: unknown): WatcherProofThreadLayout | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "threadInputIndex",
@@ -1517,7 +1511,7 @@ const parseLayout = (value: unknown): WatcherProofThreadLayoutV1 | null => {
   ]);
   if (
     record === null ||
-    record.schemaVersion !== WATCHER_PROOF_THREAD_LAYOUT_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_PROOF_THREAD_LAYOUT_SCHEMA_VERSION ||
     !isNullableNatural(record.threadInputIndex) ||
     !isNullableNatural(record.threadOutputIndex) ||
     !isNullableNatural(record.proofTokenOutputIndex) ||
@@ -1529,7 +1523,7 @@ const parseLayout = (value: unknown): WatcherProofThreadLayoutV1 | null => {
     return null;
   }
   return Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_LAYOUT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_LAYOUT_SCHEMA_VERSION,
     threadInputIndex: record.threadInputIndex,
     threadOutputIndex: record.threadOutputIndex,
     proofTokenOutputIndex: record.proofTokenOutputIndex,
@@ -1541,33 +1535,33 @@ const parseLayout = (value: unknown): WatcherProofThreadLayoutV1 | null => {
   });
 };
 
-export const makeWatcherProofThreadLayoutV1 = (
-  value: Omit<WatcherProofThreadLayoutV1, "schemaVersion">,
-): WatcherProofThreadLayoutV1 | null =>
+export const makeWatcherProofThreadLayout = (
+  value: Omit<WatcherProofThreadLayout, "schemaVersion">,
+): WatcherProofThreadLayout | null =>
   parseLayout({
-    schemaVersion: WATCHER_PROOF_THREAD_LAYOUT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_LAYOUT_SCHEMA_VERSION,
     ...value,
   });
 
-export const makeWatcherProofThreadObservationV1 = (
+export const makeWatcherProofThreadObservation = (
   value: Omit<
-    WatcherProofThreadObservationV1,
+    WatcherProofThreadObservation,
     "schemaVersion" | "observationDigest"
   >,
-): WatcherProofThreadObservationV1 | null => {
+): WatcherProofThreadObservation | null => {
   const canonical = {
-    schemaVersion: WATCHER_PROOF_THREAD_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION,
     ...value,
   };
-  return parseWatcherProofThreadObservationV1({
+  return parseWatcherProofThreadObservation({
     ...canonical,
     observationDigest: sha256Canonical(canonical),
   });
 };
 
-export const parseWatcherProofThreadObservationV1 = (
+export const parseWatcherProofThreadObservation = (
   value: unknown,
-): WatcherProofThreadObservationV1 | null => {
+): WatcherProofThreadObservation | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "policyDigest",
@@ -1602,8 +1596,8 @@ export const parseWatcherProofThreadObservationV1 = (
   const journal =
     record?.journal === null
       ? null
-      : parseWatcherProofThreadJournalV1(record?.journal);
-  const kinds: readonly WatcherProofThreadTransitionKindV1[] = [
+      : parseWatcherProofThreadJournal(record?.journal);
+  const kinds: readonly WatcherProofThreadTransitionKind[] = [
     "init",
     "step",
     "success",
@@ -1614,14 +1608,13 @@ export const parseWatcherProofThreadObservationV1 = (
   if (
     record === null ||
     marker === null ||
-    record.schemaVersion !==
-      WATCHER_PROOF_THREAD_OBSERVATION_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION ||
     !isHex32(record.policyDigest) ||
     !isNetwork(record.network) ||
     !isHex32(record.releaseEvidenceDigest) ||
     typeof record.transitionKind !== "string" ||
     !kinds.includes(
-      record.transitionKind as WatcherProofThreadTransitionKindV1,
+      record.transitionKind as WatcherProofThreadTransitionKind,
     ) ||
     !(
       record.confirmationPhase === null ||
@@ -1650,7 +1643,7 @@ export const parseWatcherProofThreadObservationV1 = (
   ) {
     return null;
   }
-  const kind = record.transitionKind as WatcherProofThreadTransitionKindV1;
+  const kind = record.transitionKind as WatcherProofThreadTransitionKind;
   const rollback = kind === "rollback";
   if (
     rollback !== (record.confirmationPhase === null) ||
@@ -1665,14 +1658,14 @@ export const parseWatcherProofThreadObservationV1 = (
     return null;
   }
   const canonical = Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_OBSERVATION_SCHEMA_VERSION,
     policyDigest: record.policyDigest,
     network: record.network,
     releaseEvidenceDigest: record.releaseEvidenceDigest,
     deploymentMarker: marker,
     transitionKind: kind,
     confirmationPhase:
-      record.confirmationPhase as WatcherProofThreadConfirmationPhaseV1 | null,
+      record.confirmationPhase as WatcherProofThreadConfirmationPhase | null,
     pointDigest: record.pointDigest,
     blockHash: record.blockHash,
     slot: record.slot,
@@ -1701,31 +1694,31 @@ export const parseWatcherProofThreadObservationV1 = (
 };
 
 type VerifiedPublicContext = Readonly<{
-  context: WatcherProofThreadPublicContextV1;
-  block: WatcherNormalizedL1BlockV1;
-  lineageBlocks: readonly WatcherNormalizedL1BlockV1[];
-  transaction: WatcherL1TransactionV1 | null;
-  sourceStore: WatcherDurableStoreV1;
-  store: WatcherDurableStoreV1;
-  deploymentPolicy: WatcherDeploymentIdentityPolicyV1;
-  finalityResult: WatcherFinalityResultV1 | null;
-  sourceJournal: WatcherProofThreadJournalV1 | null;
-  journal: WatcherProofThreadJournalV1 | null;
+  context: WatcherProofThreadPublicContext;
+  block: WatcherNormalizedL1Block;
+  lineageBlocks: readonly WatcherNormalizedL1Block[];
+  transaction: WatcherL1Transaction | null;
+  sourceStore: WatcherDurableStore;
+  store: WatcherDurableStore;
+  deploymentPolicy: WatcherDeploymentIdentityPolicy;
+  finalityResult: WatcherFinalityResult | null;
+  sourceJournal: WatcherProofThreadJournal | null;
+  journal: WatcherProofThreadJournal | null;
 }>;
 
 const transportAttestationForProvider = (
   provider: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherL1TransportAttestationContextV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherL1TransportAttestationContext | null => {
   if (
     !Array.isArray(transportAttestations) ||
     transportAttestations.length >
-      WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep
+      WATCHER_PROOF_THREAD_BOUNDS.observationsPerFinalityStep
   ) {
     return null;
   }
   const matches = transportAttestations.filter((candidate) => {
-    const details = watcherL1TransportAttestationDetailsV1(candidate);
+    const details = watcherL1TransportAttestationDetails(candidate);
     return details !== null && same(details.provider, provider);
   });
   return matches.length === 1 ? matches[0]! : null;
@@ -1734,10 +1727,10 @@ const transportAttestationForProvider = (
 const normalizeTransportAttestedBlock = (
   provider: unknown,
   observation: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
 ): Readonly<{
-  block: WatcherNormalizedL1BlockV1;
-  transportAttestation: WatcherL1TransportAttestationContextV1;
+  block: WatcherNormalizedL1Block;
+  transportAttestation: WatcherL1TransportAttestationContext;
 }> | null => {
   const transportAttestation = transportAttestationForProvider(
     provider,
@@ -1747,19 +1740,19 @@ const normalizeTransportAttestedBlock = (
     return null;
   }
   return Object.freeze({
-    block: normalizeWatcherL1BlockV1(transportAttestation, observation),
+    block: normalizeWatcherL1Block(transportAttestation, observation),
     transportAttestation,
   });
 };
 
-const storeDigest = (store: WatcherDurableStoreV1): string =>
-  watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
+const storeDigest = (store: WatcherDurableStore): string =>
+  watcherDurableStoreBytesSha256(encodeWatcherDurableStore(store));
 
 const canonicalSuccessor = (
-  prior: WatcherProofThreadObservationV1,
-  current: WatcherProofThreadObservationV1,
-  next: WatcherNormalizedL1BlockV1,
-  lineage: readonly WatcherNormalizedL1BlockV1[],
+  prior: WatcherProofThreadObservation,
+  current: WatcherProofThreadObservation,
+  next: WatcherNormalizedL1Block,
+  lineage: readonly WatcherNormalizedL1Block[],
   allowSameTransaction: boolean,
 ): boolean => {
   if (next.chainPoint.pointDigest === prior.pointDigest) {
@@ -1802,7 +1795,7 @@ const canonicalSuccessor = (
   ) {
     return false;
   }
-  const ancestors = new Map<string, WatcherNormalizedL1BlockV1>();
+  const ancestors = new Map<string, WatcherNormalizedL1Block>();
   for (const candidate of lineage) {
     const existing = ancestors.get(candidate.chainPoint.blockHash);
     if (
@@ -1844,8 +1837,8 @@ const canonicalSuccessor = (
 };
 
 const durableStoreExtends = (
-  prior: WatcherDurableStoreV1,
-  source: WatcherDurableStoreV1,
+  prior: WatcherDurableStore,
+  source: WatcherDurableStore,
 ): boolean => {
   const priorRevision = BigInt(prior.revision);
   const sourceRevision = BigInt(source.revision);
@@ -2004,9 +1997,9 @@ const outputDatumHex = (output: CML.TransactionOutput): string | null =>
 type ProofThreadRoleClassification = "owned" | "foreign" | "invalid";
 
 const classifyProofThreadRole = (
-  policy: WatcherProofThreadPolicyV1,
-  deploymentPolicy: WatcherDeploymentIdentityPolicyV1,
-  durable: WatcherProtocolUtxoV1,
+  policy: WatcherProofThreadPolicy,
+  deploymentPolicy: WatcherDeploymentIdentityPolicy,
+  durable: WatcherProtocolUtxo,
 ): ProofThreadRoleClassification => {
   try {
     const output = CML.TransactionOutput.from_cbor_hex(durable.output.cborHex);
@@ -2081,9 +2074,9 @@ const classifyProofThreadRole = (
 };
 
 const proofThreadRolesMatchOutputs = (
-  policy: WatcherProofThreadPolicyV1,
-  deploymentPolicy: WatcherDeploymentIdentityPolicyV1,
-  store: WatcherDurableStoreV1,
+  policy: WatcherProofThreadPolicy,
+  deploymentPolicy: WatcherDeploymentIdentityPolicy,
+  store: WatcherDurableStore,
 ): boolean =>
   [...store.protocolUtxos, ...store.spentProtocolUtxos].every(
     (durable) =>
@@ -2091,12 +2084,12 @@ const proofThreadRolesMatchOutputs = (
   );
 
 const proofThreadForeignRecordsPreserved = (
-  policy: WatcherProofThreadPolicyV1,
-  deploymentPolicy: WatcherDeploymentIdentityPolicyV1,
-  source: WatcherDurableStoreV1,
-  next: WatcherDurableStoreV1,
+  policy: WatcherProofThreadPolicy,
+  deploymentPolicy: WatcherDeploymentIdentityPolicy,
+  source: WatcherDurableStore,
+  next: WatcherDurableStore,
 ): boolean => {
-  const foreign = (records: readonly WatcherProtocolUtxoV1[]) =>
+  const foreign = (records: readonly WatcherProtocolUtxo[]) =>
     records.filter(
       (durable) =>
         classifyProofThreadRole(policy, deploymentPolicy, durable) ===
@@ -2109,7 +2102,7 @@ const proofThreadForeignRecordsPreserved = (
 };
 
 const canonicalTransaction = (
-  transaction: WatcherL1TransactionV1,
+  transaction: WatcherL1Transaction,
 ): Readonly<{
   body: CML.TransactionBody;
   outputs: readonly CML.TransactionOutput[];
@@ -2148,11 +2141,11 @@ const canonicalTransaction = (
 };
 
 const redeemerAtGlobal = (
-  transaction: WatcherL1TransactionV1,
+  transaction: WatcherL1Transaction,
   globalIndex: string | null,
   purpose: "spend" | "mint",
   localIndex: number,
-): WatcherL1RedeemerV1 | null => {
+): WatcherL1Redeemer | null => {
   if (
     globalIndex === null ||
     BigInt(globalIndex) >= BigInt(transaction.redeemers.length)
@@ -2256,10 +2249,10 @@ const proofTokenDatum = (
 };
 
 const protocolUtxo = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
   outRef: string,
-  role: WatcherProtocolUtxoV1["role"],
-): WatcherProtocolUtxoV1 | null => {
+  role: WatcherProtocolUtxo["role"],
+): WatcherProtocolUtxo | null => {
   const matches = store.protocolUtxos.filter(
     (candidate) => candidate.outRef === outRef && candidate.role === role,
   );
@@ -2267,7 +2260,7 @@ const protocolUtxo = (
 };
 
 const durableOutputMatches = (
-  durable: WatcherProtocolUtxoV1,
+  durable: WatcherProtocolUtxo,
   output: CML.TransactionOutput,
   chainPointId?: string,
 ): boolean =>
@@ -2277,10 +2270,10 @@ const durableOutputMatches = (
   (chainPointId === undefined || durable.chainPointId === chainPointId);
 
 const durableOutputMatchesLifecycle = (
-  durable: WatcherProtocolUtxoV1,
+  durable: WatcherProtocolUtxo,
   output: CML.TransactionOutput,
-  observation: WatcherProofThreadObservationV1,
-  sourceStore: WatcherDurableStoreV1,
+  observation: WatcherProofThreadObservation,
+  sourceStore: WatcherDurableStore,
 ): boolean =>
   durableOutputMatches(durable, output) &&
   (durable.chainPointId === observation.chainPointId ||
@@ -2288,11 +2281,11 @@ const durableOutputMatchesLifecycle = (
       sourceStore.protocolUtxos.some((candidate) => same(candidate, durable))));
 
 const verifyDeploymentAuthority = (
-  policy: WatcherProofThreadPolicyV1,
-  authority: WatcherProofThreadPublicContextV1["deploymentAuthority"],
-): WatcherDeploymentIdentityPolicyV1 | null => {
+  policy: WatcherProofThreadPolicy,
+  authority: WatcherProofThreadPublicContext["deploymentAuthority"],
+): WatcherDeploymentIdentityPolicy | null => {
   try {
-    const verified = verifyWatcherDeploymentIdentityV1({
+    const verified = verifyWatcherDeploymentIdentity({
       signedIdentity: authority.signedIdentity,
       policy: authority.policy,
       trustRoots: authority.trustRoots,
@@ -2312,8 +2305,8 @@ const verifyDeploymentAuthority = (
       });
     const deployedStepsMatch = policy.families.every((family) => {
       const category =
-        family.catalogueCategory as DeploymentManifestV1FraudProofCatalogueCategory;
-      return WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[
+        family.catalogueCategory as DeploymentManifestFraudProofCatalogueCategory;
+      return WATCHER_PROOF_THREAD_FAMILY_AUTHORITY[
         category
       ].deployedStepContractNames.every(
         (contractName, stepIndex) =>
@@ -2369,8 +2362,8 @@ const replaceSortedBy = <T>(
   );
 
 const sameUnaffectedStoreRecords = (
-  source: WatcherDurableStoreV1,
-  next: WatcherDurableStoreV1,
+  source: WatcherDurableStore,
+  next: WatcherDurableStore,
 ): boolean =>
   same(source.daProofInputs, next.daProofInputs) &&
   same(source.reconstructedStates, next.reconstructedStates) &&
@@ -2381,12 +2374,12 @@ const sameUnaffectedStoreRecords = (
   same(source.deadlines, next.deadlines);
 
 const expectedProtocolUtxosAfterTransaction = (
-  source: WatcherDurableStoreV1,
-  transaction: WatcherL1TransactionV1,
+  source: WatcherDurableStore,
+  transaction: WatcherL1Transaction,
   body: CML.TransactionBody,
   chainPointId: string,
-  next: WatcherDurableStoreV1,
-): readonly WatcherProtocolUtxoV1[] | null => {
+  next: WatcherDurableStore,
+): readonly WatcherProtocolUtxo[] | null => {
   const consumed = new Set(bodyInputs(body));
   const retained = source.protocolUtxos.filter(
     ({ outRef }) => !consumed.has(outRef),
@@ -2419,11 +2412,11 @@ const expectedProtocolUtxosAfterTransaction = (
 };
 
 const storeTransitionMatches = (
-  source: WatcherDurableStoreV1,
-  next: WatcherDurableStoreV1,
-  block: WatcherNormalizedL1BlockV1,
-  transaction: WatcherL1TransactionV1,
-  observation: WatcherProofThreadObservationV1,
+  source: WatcherDurableStore,
+  next: WatcherDurableStore,
+  block: WatcherNormalizedL1Block,
+  transaction: WatcherL1Transaction,
+  observation: WatcherProofThreadObservation,
   applyTransactionEffects: boolean,
 ): boolean => {
   if (
@@ -2433,7 +2426,7 @@ const storeTransitionMatches = (
   ) {
     return false;
   }
-  const encodedBlock = encodeWatcherNormalizedL1BlockV1(block).toString("hex");
+  const encodedBlock = encodeWatcherNormalizedL1Block(block).toString("hex");
   const observationRecord = {
     observationId: block.observationDigest,
     providerId: block.provider.providerId,
@@ -2472,7 +2465,7 @@ const storeTransitionMatches = (
   ) {
     return false;
   }
-  const confirmation: WatcherConfirmationV1 = {
+  const confirmation: WatcherConfirmation = {
     confirmationId: observation.confirmationId!,
     submissionId: submission.submissionId,
     txHash: transaction.txHash,
@@ -2541,7 +2534,7 @@ const storeTransitionMatches = (
   let expectedSpent = source.spentProtocolUtxos;
   if (applyTransactionEffects && expectedProtocol !== null) {
     try {
-      expectedSpent = journalWatcherProtocolUtxoTransitionV1({
+      expectedSpent = journalWatcherProtocolUtxoTransition({
         sourceStore: source,
         nextChainPoints: expectedPoints,
         nextProtocolUtxos: expectedProtocol,
@@ -2563,10 +2556,10 @@ const storeTransitionMatches = (
 };
 
 const decodePersistedRollbackObservation = (
-  sourceStore: WatcherDurableStoreV1,
+  sourceStore: WatcherDurableStore,
   observationDigest: string,
-): WatcherNormalizedL1BlockV1 | null => {
-  const matches: WatcherNormalizedL1BlockV1[] = [];
+): WatcherNormalizedL1Block | null => {
+  const matches: WatcherNormalizedL1Block[] = [];
   for (const durable of sourceStore.l1Observations) {
     try {
       const bytes = Buffer.from(durable.payload.cborHex, "hex");
@@ -2586,10 +2579,10 @@ const decodePersistedRollbackObservation = (
       ) {
         continue;
       }
-      const block = decoded as WatcherNormalizedL1BlockV1;
+      const block = decoded as WatcherNormalizedL1Block;
       if (
         block.observationDigest !== observationDigest ||
-        !bytes.equals(encodeWatcherNormalizedL1BlockV1(block)) ||
+        !bytes.equals(encodeWatcherNormalizedL1Block(block)) ||
         durable.providerId !== block.provider.providerId ||
         durable.chainPointId !== block.chainPoint.chainPointId
       ) {
@@ -2618,11 +2611,11 @@ const decodePersistedRollbackObservation = (
 };
 
 const rollbackReplacementBlock = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
-  sourceStore: WatcherDurableStoreV1,
-  rollback: WatcherRollbackResultV1,
-): WatcherNormalizedL1BlockV1 | null => {
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
+  sourceStore: WatcherDurableStore,
+  rollback: WatcherRollbackResult,
+): WatcherNormalizedL1Block | null => {
   const transition = rollback.rollbackState?.transitions.at(-1);
   const finality = transition?.finalityResult;
   const consistency = transition?.consistency;
@@ -2667,7 +2660,7 @@ const rollbackReplacementBlock = (
     block.chainPoint.slot !== observation.slot ||
     block.chainPoint.blockNo !== observation.blockNo ||
     block.observationDigest !== observation.sourceObservationDigest ||
-    sha256Bytes(encodeWatcherNormalizedL1BlockV1(block)) !==
+    sha256Bytes(encodeWatcherNormalizedL1Block(block)) !==
       observation.publicInputDigest
   ) {
     return null;
@@ -2676,19 +2669,19 @@ const rollbackReplacementBlock = (
 };
 
 const postFinalityRecoveryCommonAncestorBlock = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
-  sourceStore: WatcherDurableStoreV1,
-  recovery: WatcherPostFinalityRecoveryResultV1,
-  input: WatcherPostFinalityRecoveryInputV1,
-): WatcherNormalizedL1BlockV1 | null => {
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
+  sourceStore: WatcherDurableStore,
+  recovery: WatcherPostFinalityRecoveryResult,
+  input: WatcherPostFinalityRecoveryInput,
+): WatcherNormalizedL1Block | null => {
   const replacementPath = Array.isArray(input.replacementCanonicalPath)
     ? (input.replacementCanonicalPath as readonly unknown[])
     : [];
   const consistency =
     replacementPath.length === 0
       ? null
-      : (replacementPath[0] as WatcherMultiProviderConsistencyV1);
+      : (replacementPath[0] as WatcherMultiProviderConsistency);
   const path = recovery.recoveryState?.path;
   const block = decodePersistedRollbackObservation(
     sourceStore,
@@ -2730,7 +2723,7 @@ const postFinalityRecoveryCommonAncestorBlock = (
     block.chainPoint.slot !== observation.slot ||
     block.chainPoint.blockNo !== observation.blockNo ||
     block.observationDigest !== observation.sourceObservationDigest ||
-    sha256Bytes(encodeWatcherNormalizedL1BlockV1(block)) !==
+    sha256Bytes(encodeWatcherNormalizedL1Block(block)) !==
       observation.publicInputDigest
   ) {
     return null;
@@ -2739,11 +2732,11 @@ const postFinalityRecoveryCommonAncestorBlock = (
 };
 
 const parsePublicContext = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   value: unknown,
   applyTransactionEffects: boolean,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
 ): VerifiedPublicContext | null => {
   if (!evidenceWithinBounds(value)) {
     return null;
@@ -2773,17 +2766,15 @@ const parsePublicContext = (
     record === null ||
     deployment === null ||
     !Array.isArray(deployment.trustRoots) ||
-    record.schemaVersion !==
-      WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION
+    record.schemaVersion !== WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION
   ) {
     return null;
   }
   const deploymentAuthority = Object.freeze({
     signedIdentity: deployment.signedIdentity,
-    policy: deployment.policy as WatcherDeploymentIdentityPolicyV1,
-    trustRoots:
-      deployment.trustRoots as readonly WatcherDeploymentTrustRootV1[],
-    result: deployment.result as VerifiedWatcherDeploymentIdentityV1,
+    policy: deployment.policy as WatcherDeploymentIdentityPolicy,
+    trustRoots: deployment.trustRoots as readonly WatcherDeploymentTrustRoot[],
+    result: deployment.result as VerifiedWatcherDeploymentIdentity,
   });
   const deploymentPolicy = verifyDeploymentAuthority(
     policy,
@@ -2792,22 +2783,22 @@ const parsePublicContext = (
   if (deploymentPolicy === null) {
     return null;
   }
-  let sourceStore: WatcherDurableStoreV1;
-  let store: WatcherDurableStoreV1;
+  let sourceStore: WatcherDurableStore;
+  let store: WatcherDurableStore;
   try {
-    sourceStore = parseWatcherDurableStoreV1(record.sourceDurableStore);
-    store = parseWatcherDurableStoreV1(record.durableStore);
+    sourceStore = parseWatcherDurableStore(record.sourceDurableStore);
+    store = parseWatcherDurableStore(record.durableStore);
   } catch {
     return null;
   }
   const sourceJournal =
     record.sourceJournal === null
       ? null
-      : parseWatcherProofThreadJournalV1(record.sourceJournal);
+      : parseWatcherProofThreadJournal(record.sourceJournal);
   const journal =
     record.durableJournal === null
       ? null
-      : parseWatcherProofThreadJournalV1(record.durableJournal);
+      : parseWatcherProofThreadJournal(record.durableJournal);
   if (
     (record.sourceJournal !== null && sourceJournal === null) ||
     (record.durableJournal !== null && journal === null) ||
@@ -2838,7 +2829,7 @@ const parsePublicContext = (
       : rollbackRecord === null
         ? undefined
         : (record.rollbackAuthority as NonNullable<
-            WatcherProofThreadPublicContextV1["rollbackAuthority"]
+            WatcherProofThreadPublicContext["rollbackAuthority"]
           >);
   if (rollbackAuthority === undefined) {
     return null;
@@ -2852,17 +2843,17 @@ const parsePublicContext = (
     ) {
       return null;
     }
-    const rollbackResult = parseWatcherRollbackResultV1(
+    const rollbackResult = parseWatcherRollbackResult(
       rollbackAuthority.result,
       {
-        ...(rollbackAuthority.context as WatcherRollbackVerificationContextV1),
+        ...(rollbackAuthority.context as WatcherRollbackVerificationContext),
         transportAttestations,
       },
     );
     const recoveryResult =
       rollbackResult === null
-        ? parseWatcherPostFinalityRecoveryResultV1(rollbackAuthority.result, {
-            ...(rollbackAuthority.context as WatcherPostFinalityRecoveryInputV1),
+        ? parseWatcherPostFinalityRecoveryResult(rollbackAuthority.result, {
+            ...(rollbackAuthority.context as WatcherPostFinalityRecoveryInput),
             transportAttestations,
           })
         : null;
@@ -2905,14 +2896,14 @@ const parsePublicContext = (
             observation,
             sourceStore,
             recoveryResult!,
-            rollbackAuthority.context as WatcherPostFinalityRecoveryInputV1,
+            rollbackAuthority.context as WatcherPostFinalityRecoveryInput,
           );
     if (replacementBlock === null) {
       return null;
     }
     return Object.freeze({
       context: {
-        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
         authenticatedProvider: null,
         l1Observation: null,
         sourceDurableStore: sourceStore,
@@ -2951,18 +2942,18 @@ const parsePublicContext = (
     finality === null ||
     !Array.isArray(finality.lineage) ||
     finality.lineage.length >
-      WATCHER_PROOF_THREAD_V1_BOUNDS.finalityLineageSteps ||
+      WATCHER_PROOF_THREAD_BOUNDS.finalityLineageSteps ||
     !Array.isArray(finality.observations) ||
     finality.observations.length >
-      WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep ||
+      WATCHER_PROOF_THREAD_BOUNDS.observationsPerFinalityStep ||
     rollbackAuthority !== null
   ) {
     return null;
   }
-  let block: WatcherNormalizedL1BlockV1;
-  let transaction: WatcherL1TransactionV1 | undefined;
-  let finalityResult: WatcherFinalityResultV1;
-  let verifiedLineageBlocks: readonly WatcherNormalizedL1BlockV1[] = [];
+  let block: WatcherNormalizedL1Block;
+  let transaction: WatcherL1Transaction | undefined;
+  let finalityResult: WatcherFinalityResult;
+  let verifiedLineageBlocks: readonly WatcherNormalizedL1Block[] = [];
   try {
     const normalizedBlock = normalizeTransportAttestedBlock(
       record.authenticatedProvider,
@@ -2995,7 +2986,7 @@ const parsePublicContext = (
     const observations = observationsWithAttestations.map(
       (entry) => entry!.block,
     );
-    const finalityPolicy = parseWatcherFinalityPolicyV1(finality.policy);
+    const finalityPolicy = parseWatcherFinalityPolicy(finality.policy);
     if (
       finalityPolicy === null ||
       finalityPolicy.network !== policy.network ||
@@ -3010,7 +3001,7 @@ const parsePublicContext = (
       consistency: unknown;
       result: unknown;
     }[] = [];
-    const lineageBlocks: WatcherNormalizedL1BlockV1[] = [];
+    const lineageBlocks: WatcherNormalizedL1Block[] = [];
     let replayedState: unknown = null;
     for (const candidate of finality.lineage as readonly unknown[]) {
       const step = exactRecord(candidate, [
@@ -3022,7 +3013,7 @@ const parsePublicContext = (
         step === null ||
         !Array.isArray(step.observations) ||
         step.observations.length >
-          WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep
+          WATCHER_PROOF_THREAD_BOUNDS.observationsPerFinalityStep
       ) {
         return null;
       }
@@ -3049,14 +3040,14 @@ const parsePublicContext = (
         (entry) => entry!.block,
       );
       lineageBlocks.push(...stepObservations);
-      const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
-        watcherFinalityConfiguredSourceV1(finalityPolicy),
+      const stepConsistency = evaluateWatcherMultiProviderConsistency(
+        watcherFinalityConfiguredSource(finalityPolicy),
         stepObservations,
         stepObservationsWithAttestations.map(
           (entry) => entry!.transportAttestation,
         ),
       );
-      const stepResult = evaluateWatcherFinalityV1(
+      const stepResult = evaluateWatcherFinality(
         finalityPolicy,
         replayedState,
         stepConsistency,
@@ -3078,12 +3069,12 @@ const parsePublicContext = (
     if (!same(replayedState, finality.previousState)) {
       return null;
     }
-    const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      watcherFinalityConfiguredSourceV1(finalityPolicy),
+    const consistency = evaluateWatcherMultiProviderConsistency(
+      watcherFinalityConfiguredSource(finalityPolicy),
       observations,
       observationsWithAttestations.map((entry) => entry!.transportAttestation),
     );
-    finalityResult = evaluateWatcherFinalityV1(
+    finalityResult = evaluateWatcherFinality(
       finalityPolicy,
       finality.previousState,
       consistency,
@@ -3122,7 +3113,7 @@ const parsePublicContext = (
     block.chainPoint.slot !== observation.slot ||
     block.chainPoint.blockNo !== observation.blockNo ||
     block.observationDigest !== observation.sourceObservationDigest ||
-    sha256Bytes(encodeWatcherNormalizedL1BlockV1(block)) !==
+    sha256Bytes(encodeWatcherNormalizedL1Block(block)) !==
       observation.publicInputDigest ||
     (observation.confirmationPhase === "final"
       ? finalityResult.protocolDecision !== "finality_granted" ||
@@ -3146,7 +3137,7 @@ const parsePublicContext = (
   }
   return Object.freeze({
     context: {
-      schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION,
       authenticatedProvider: record.authenticatedProvider,
       l1Observation: record.l1Observation,
       sourceDurableStore: sourceStore,
@@ -3181,28 +3172,25 @@ const parsePublicContext = (
 };
 
 const layoutEquals = (
-  layout: WatcherProofThreadLayoutV1,
-  expected: Omit<WatcherProofThreadLayoutV1, "schemaVersion">,
+  layout: WatcherProofThreadLayout,
+  expected: Omit<WatcherProofThreadLayout, "schemaVersion">,
 ): boolean =>
   same(layout, {
-    schemaVersion: WATCHER_PROOF_THREAD_LAYOUT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_LAYOUT_SCHEMA_VERSION,
     ...expected,
   });
 
 const familyForJournal = (
-  policy: WatcherProofThreadPolicyV1,
-  journal: WatcherProofThreadJournalV1,
-): WatcherProofThreadFamilyV1 | null => {
+  policy: WatcherProofThreadPolicy,
+  journal: WatcherProofThreadJournal,
+): WatcherProofThreadFamily | null => {
   const matches = policy.families.filter(
     ({ familyId }) => familyId === journal.familyId,
   );
   return matches.length === 1 ? matches[0]! : null;
 };
 
-const journalId = (
-  policy: WatcherProofThreadPolicyV1,
-  faultId: string,
-): string =>
+const journalId = (policy: WatcherProofThreadPolicy, faultId: string): string =>
   sha256Canonical({
     domain: "midgard-watcher-proof-thread-journal-identity-v1",
     manifestId: policy.deploymentMarker.manifestId,
@@ -3210,7 +3198,7 @@ const journalId = (
   });
 
 const indexedOutput = (
-  transaction: WatcherL1TransactionV1,
+  transaction: WatcherL1Transaction,
   canonical: NonNullable<ReturnType<typeof canonicalTransaction>>,
   indexText: string | null,
 ): Readonly<{
@@ -3233,10 +3221,10 @@ const indexedOutput = (
 };
 
 const sourceThreadOutput = (
-  store: WatcherDurableStoreV1,
-  journal: WatcherProofThreadJournalV1,
+  store: WatcherDurableStore,
+  journal: WatcherProofThreadJournal,
 ): Readonly<{
-  durable: WatcherProtocolUtxoV1;
+  durable: WatcherProtocolUtxo;
   output: CML.TransactionOutput;
 }> | null => {
   if (journal.threadOutRef === null) {
@@ -3262,10 +3250,10 @@ const sourceThreadOutput = (
 };
 
 const sourceProofTokenOutput = (
-  store: WatcherDurableStoreV1,
-  journal: WatcherProofThreadJournalV1,
+  store: WatcherDurableStore,
+  journal: WatcherProofThreadJournal,
 ): Readonly<{
-  durable: WatcherProtocolUtxoV1;
+  durable: WatcherProtocolUtxo;
   output: CML.TransactionOutput;
 }> | null => {
   if (journal.proofTokenOutRef === null) {
@@ -3286,10 +3274,10 @@ const sourceProofTokenOutput = (
 };
 
 const baseJournalIdentityMatches = (
-  policy: WatcherProofThreadPolicyV1,
-  journal: WatcherProofThreadJournalV1,
-  store: WatcherDurableStoreV1,
-): WatcherProofThreadFamilyV1 | null => {
+  policy: WatcherProofThreadPolicy,
+  journal: WatcherProofThreadJournal,
+  store: WatcherDurableStore,
+): WatcherProofThreadFamily | null => {
   const family = familyForJournal(policy, journal);
   const fault = store.faults.find(({ faultId }) => faultId === journal.faultId);
   return family !== null &&
@@ -3303,24 +3291,24 @@ const baseJournalIdentityMatches = (
 };
 
 const expectedJournal = (
-  source: WatcherProofThreadJournalV1 | null,
-  proposed: WatcherProofThreadJournalV1,
+  source: WatcherProofThreadJournal | null,
+  proposed: WatcherProofThreadJournal,
   transactionHash: string,
   submissionId: string,
   confirmationId: string,
   changes: Readonly<{
-    phase: WatcherProofThreadJournalPhaseV1;
+    phase: WatcherProofThreadJournalPhase;
     stepIndex: string | null;
     threadOutRef: string | null;
     proofTokenOutRef: string | null;
     correctionId: string | null;
   }>,
-): WatcherProofThreadJournalV1 | null => {
+): WatcherProofThreadJournal | null => {
   const hashes = [
     ...(source?.confirmedTransactionHashes ?? []),
     transactionHash,
   ];
-  const value = makeWatcherProofThreadJournalV1({
+  const value = makeWatcherProofThreadJournal({
     journalId: proposed.journalId,
     faultId: proposed.faultId,
     familyId: proposed.familyId,
@@ -3341,10 +3329,10 @@ const expectedJournal = (
 };
 
 const verifyInitTransaction = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   verified: VerifiedPublicContext,
-  family: WatcherProofThreadFamilyV1,
+  family: WatcherProofThreadFamily,
 ): boolean => {
   const transaction = verified.transaction!;
   const canonical = canonicalTransaction(transaction);
@@ -3462,8 +3450,8 @@ const verifyInitTransaction = (
 };
 
 const verifyThreadInput = (
-  policy: WatcherProofThreadPolicyV1,
-  source: WatcherProofThreadJournalV1,
+  policy: WatcherProofThreadPolicy,
+  source: WatcherProofThreadJournal,
   verified: VerifiedPublicContext,
   body: CML.TransactionBody,
   inputIndexText: string | null,
@@ -3493,11 +3481,11 @@ const verifyThreadInput = (
 };
 
 const verifyStepTransaction = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   verified: VerifiedPublicContext,
-  source: WatcherProofThreadJournalV1,
-  family: WatcherProofThreadFamilyV1,
+  source: WatcherProofThreadJournal,
+  family: WatcherProofThreadFamily,
 ): boolean => {
   const transaction = verified.transaction!;
   const canonical = canonicalTransaction(transaction);
@@ -3574,11 +3562,11 @@ const verifyStepTransaction = (
 };
 
 const verifySuccessTransaction = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   verified: VerifiedPublicContext,
-  source: WatcherProofThreadJournalV1,
-  family: WatcherProofThreadFamilyV1,
+  source: WatcherProofThreadJournal,
+  family: WatcherProofThreadFamily,
 ): boolean => {
   const transaction = verified.transaction!;
   const canonical = canonicalTransaction(transaction);
@@ -3705,10 +3693,10 @@ const verifySuccessTransaction = (
 };
 
 const verifyCancelTransaction = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   verified: VerifiedPublicContext,
-  source: WatcherProofThreadJournalV1,
+  source: WatcherProofThreadJournal,
 ): boolean => {
   const transaction = verified.transaction!;
   const canonical = canonicalTransaction(transaction);
@@ -3786,10 +3774,10 @@ const verifyCancelTransaction = (
 };
 
 const verifyRemovalTransaction = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   verified: VerifiedPublicContext,
-  source: WatcherProofThreadJournalV1,
+  source: WatcherProofThreadJournal,
 ): boolean => {
   const transaction = verified.transaction!;
   const canonical = canonicalTransaction(transaction);
@@ -3833,15 +3821,15 @@ const verifyRemovalTransaction = (
 };
 
 type LifecycleVerification = Readonly<{
-  journal: WatcherProofThreadJournalV1;
-  sourceJournal: WatcherProofThreadJournalV1 | null;
+  journal: WatcherProofThreadJournal;
+  sourceJournal: WatcherProofThreadJournal | null;
 }>;
 
 const verifyLifecycle = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
   verified: VerifiedPublicContext,
-  expectedSourceJournal: WatcherProofThreadJournalV1 | null,
+  expectedSourceJournal: WatcherProofThreadJournal | null,
 ): LifecycleVerification | null => {
   if (
     verified.transaction === null ||
@@ -3885,7 +3873,7 @@ const verifyLifecycle = (
   ) {
     return null;
   }
-  let expected: WatcherProofThreadJournalV1 | null = null;
+  let expected: WatcherProofThreadJournal | null = null;
   let transactionValid = false;
   switch (observation.transitionKind) {
     case "init": {
@@ -4033,7 +4021,7 @@ const verifyLifecycle = (
 
 const contextStructural = (
   value: unknown,
-): WatcherProofThreadPublicContextV1 | null => {
+): WatcherProofThreadPublicContext | null => {
   if (!evidenceWithinBounds(value)) {
     return null;
   }
@@ -4078,15 +4066,15 @@ const contextStructural = (
     deployment === null ||
     !Array.isArray(deployment.trustRoots) ||
     record.schemaVersion !==
-      WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION ||
+      WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_SCHEMA_VERSION ||
     (record.finalityAuthority !== null &&
       (finality === null ||
         !Array.isArray(finality.lineage) ||
         finality.lineage.length >
-          WATCHER_PROOF_THREAD_V1_BOUNDS.finalityLineageSteps ||
+          WATCHER_PROOF_THREAD_BOUNDS.finalityLineageSteps ||
         !Array.isArray(finality.observations) ||
         finality.observations.length >
-          WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep ||
+          WATCHER_PROOF_THREAD_BOUNDS.observationsPerFinalityStep ||
         finality.lineage.some((candidate) => {
           const step = exactRecord(candidate, [
             "observations",
@@ -4097,30 +4085,30 @@ const contextStructural = (
             step === null ||
             !Array.isArray(step.observations) ||
             step.observations.length >
-              WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep
+              WATCHER_PROOF_THREAD_BOUNDS.observationsPerFinalityStep
           );
         }))) ||
     (record.rollbackAuthority !== null && rollback === null)
   ) {
     return null;
   }
-  return value as WatcherProofThreadPublicContextV1;
+  return value as WatcherProofThreadPublicContext;
 };
 
 const entryWithoutDigest = (
-  value: Omit<WatcherProofThreadHistoryEntryV1, "entryDigest">,
+  value: Omit<WatcherProofThreadHistoryEntry, "entryDigest">,
 ) => ({ ...value });
 
 const makeEntry = (
-  observation: WatcherProofThreadObservationV1,
-  context: WatcherProofThreadPublicContextV1,
-  journal: WatcherProofThreadJournalV1 | null,
-  sourceJournal: WatcherProofThreadJournalV1 | null,
+  observation: WatcherProofThreadObservation,
+  context: WatcherProofThreadPublicContext,
+  journal: WatcherProofThreadJournal | null,
+  sourceJournal: WatcherProofThreadJournal | null,
   rollbackResult:
-    | WatcherRollbackResultV1
-    | WatcherPostFinalityRecoveryResultV1
+    | WatcherRollbackResult
+    | WatcherPostFinalityRecoveryResult
     | null,
-): WatcherProofThreadHistoryEntryV1 => {
+): WatcherProofThreadHistoryEntry => {
   const canonical = Object.freeze({
     predecessorStateDigest: observation.predecessorStateDigest,
     transitionKind: observation.transitionKind,
@@ -4143,7 +4131,7 @@ const makeEntry = (
 
 const parseEntryStructural = (
   value: unknown,
-): WatcherProofThreadHistoryEntryV1 | null => {
+): WatcherProofThreadHistoryEntry | null => {
   const record = exactRecord(value, [
     "predecessorStateDigest",
     "transitionKind",
@@ -4162,13 +4150,13 @@ const parseEntryStructural = (
   const observation =
     record === null
       ? null
-      : parseWatcherProofThreadObservationV1(record.observation);
+      : parseWatcherProofThreadObservation(record.observation);
   const context =
     record === null ? null : contextStructural(record.publicContext);
   const journal =
     record?.journal === null
       ? null
-      : parseWatcherProofThreadJournalV1(record?.journal);
+      : parseWatcherProofThreadJournal(record?.journal);
   if (
     record === null ||
     observation === null ||
@@ -4208,8 +4196,8 @@ const parseEntryStructural = (
     observation,
     publicContext: context,
     rollbackResult: record.rollbackResult as
-      | WatcherRollbackResultV1
-      | WatcherPostFinalityRecoveryResultV1
+      | WatcherRollbackResult
+      | WatcherPostFinalityRecoveryResult
       | null,
   });
   return sha256Canonical(entryWithoutDigest(canonical)) === record.entryDigest
@@ -4218,13 +4206,13 @@ const parseEntryStructural = (
 };
 
 const auditWithoutDigest = (
-  value: Omit<WatcherProofThreadAuditEntryV1, "auditDigest">,
+  value: Omit<WatcherProofThreadAuditEntry, "auditDigest">,
 ) => ({ ...value });
 
 const makeAudit = (
-  status: WatcherProofThreadAuditEntryV1["status"],
-  entry: WatcherProofThreadHistoryEntryV1,
-): WatcherProofThreadAuditEntryV1 => {
+  status: WatcherProofThreadAuditEntry["status"],
+  entry: WatcherProofThreadHistoryEntry,
+): WatcherProofThreadAuditEntry => {
   const canonical = Object.freeze({ status, entry });
   return Object.freeze({
     ...canonical,
@@ -4234,7 +4222,7 @@ const makeAudit = (
 
 const parseAuditStructural = (
   value: unknown,
-): WatcherProofThreadAuditEntryV1 | null => {
+): WatcherProofThreadAuditEntry | null => {
   const record = exactRecord(value, ["status", "entry", "auditDigest"]);
   const entry = record === null ? null : parseEntryStructural(record.entry);
   if (
@@ -4253,7 +4241,7 @@ const parseAuditStructural = (
 
 const pendingStructural = (
   value: unknown,
-): WatcherProofThreadPendingV1 | null => {
+): WatcherProofThreadPending | null => {
   const record = exactRecord(value, [
     "transitionKind",
     "transactionHash",
@@ -4264,7 +4252,7 @@ const pendingStructural = (
     "pendingEntryDigest",
   ]);
   const journal =
-    record === null ? null : parseWatcherProofThreadJournalV1(record.journal);
+    record === null ? null : parseWatcherProofThreadJournal(record.journal);
   if (
     record === null ||
     journal === null ||
@@ -4281,7 +4269,7 @@ const pendingStructural = (
   }
   return Object.freeze({
     transitionKind: record.transitionKind as Exclude<
-      WatcherProofThreadTransitionKindV1,
+      WatcherProofThreadTransitionKind,
       "rollback"
     >,
     transactionHash: record.transactionHash,
@@ -4294,11 +4282,11 @@ const pendingStructural = (
 };
 
 const pendingFromEntry = (
-  entry: WatcherProofThreadHistoryEntryV1,
-): WatcherProofThreadPendingV1 =>
+  entry: WatcherProofThreadHistoryEntry,
+): WatcherProofThreadPending =>
   Object.freeze({
     transitionKind: entry.transitionKind as Exclude<
-      WatcherProofThreadTransitionKindV1,
+      WatcherProofThreadTransitionKind,
       "rollback"
     >,
     transactionHash: entry.transactionHash!,
@@ -4310,8 +4298,8 @@ const pendingFromEntry = (
   });
 
 const pendingMatchesFinal = (
-  pending: WatcherProofThreadPendingV1,
-  entry: WatcherProofThreadHistoryEntryV1,
+  pending: WatcherProofThreadPending,
+  entry: WatcherProofThreadHistoryEntry,
 ): boolean =>
   pending.transitionKind === entry.transitionKind &&
   pending.transactionHash === entry.transactionHash &&
@@ -4321,18 +4309,18 @@ const pendingMatchesFinal = (
   same(pending.journal, entry.journal);
 
 type ReplayedHistory = Readonly<{
-  journal: WatcherProofThreadJournalV1 | null;
-  pending: WatcherProofThreadPendingV1 | null;
+  journal: WatcherProofThreadJournal | null;
+  pending: WatcherProofThreadPending | null;
   verified: readonly VerifiedPublicContext[];
 }>;
 
 const verifyHistory = (
-  policy: WatcherProofThreadPolicyV1,
-  entries: readonly WatcherProofThreadHistoryEntryV1[],
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+  policy: WatcherProofThreadPolicy,
+  entries: readonly WatcherProofThreadHistoryEntry[],
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
 ): ReplayedHistory | null => {
-  let journal: WatcherProofThreadJournalV1 | null = null;
-  let pending: WatcherProofThreadPendingV1 | null = null;
+  let journal: WatcherProofThreadJournal | null = null;
+  let pending: WatcherProofThreadPending | null = null;
   const verifiedContexts: VerifiedPublicContext[] = [];
   for (const entry of entries) {
     if (entry.transitionKind === "rollback") {
@@ -4383,26 +4371,24 @@ const verifyHistory = (
 };
 
 const stateWithoutDigest = (
-  value:
-    | WatcherProofThreadStateV1
-    | Omit<WatcherProofThreadStateV1, "stateDigest">,
+  value: WatcherProofThreadState | Omit<WatcherProofThreadState, "stateDigest">,
 ) => {
   const { stateDigest: _stateDigest, ...canonical } =
-    value as WatcherProofThreadStateV1;
+    value as WatcherProofThreadState;
   return canonical;
 };
 
 const makeState = (
-  policy: WatcherProofThreadPolicyV1,
-  observation: WatcherProofThreadObservationV1,
-  journal: WatcherProofThreadJournalV1 | null,
-  pending: WatcherProofThreadPendingV1 | null,
-  history: readonly WatcherProofThreadHistoryEntryV1[],
-  auditHistory: readonly WatcherProofThreadAuditEntryV1[],
-  transitionHistory: readonly WatcherProofThreadHistoryEntryV1[],
-): WatcherProofThreadStateV1 => {
+  policy: WatcherProofThreadPolicy,
+  observation: WatcherProofThreadObservation,
+  journal: WatcherProofThreadJournal | null,
+  pending: WatcherProofThreadPending | null,
+  history: readonly WatcherProofThreadHistoryEntry[],
+  auditHistory: readonly WatcherProofThreadAuditEntry[],
+  transitionHistory: readonly WatcherProofThreadHistoryEntry[],
+): WatcherProofThreadState => {
   const canonical = Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -4424,9 +4410,9 @@ const makeState = (
 const currentStateAnchorEntry = (
   pointDigest: string,
   durableStoreDigest: string,
-  history: readonly WatcherProofThreadHistoryEntryV1[],
-  auditHistory: readonly WatcherProofThreadAuditEntryV1[],
-): WatcherProofThreadHistoryEntryV1 | null => {
+  history: readonly WatcherProofThreadHistoryEntry[],
+  auditHistory: readonly WatcherProofThreadAuditEntry[],
+): WatcherProofThreadHistoryEntry | null => {
   const historyEntry = history.at(-1);
   if (
     historyEntry !== undefined &&
@@ -4444,10 +4430,10 @@ const currentStateAnchorEntry = (
 };
 
 const authenticatedStateStore = (
-  state: WatcherProofThreadStateV1,
+  state: WatcherProofThreadState,
 ): Readonly<{
-  anchor: WatcherProofThreadHistoryEntryV1;
-  store: WatcherDurableStoreV1;
+  anchor: WatcherProofThreadHistoryEntry;
+  store: WatcherDurableStore;
 }> | null => {
   const anchor = currentStateAnchorEntry(
     state.pointDigest,
@@ -4459,7 +4445,7 @@ const authenticatedStateStore = (
     return null;
   }
   try {
-    const store = parseWatcherDurableStoreV1(anchor.publicContext.durableStore);
+    const store = parseWatcherDurableStore(anchor.publicContext.durableStore);
     return storeDigest(store) === state.durableStoreDigest
       ? Object.freeze({ anchor, store })
       : null;
@@ -4468,15 +4454,15 @@ const authenticatedStateStore = (
   }
 };
 
-export const parseWatcherProofThreadStateV1 = (
+export const parseWatcherProofThreadState = (
   value: unknown,
   policyInput: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherProofThreadStateV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherProofThreadState | null => {
   if (!evidenceWithinBounds({ policy: policyInput, state: value })) {
     return null;
   }
-  const policy = parseWatcherProofThreadPolicyV1(policyInput);
+  const policy = parseWatcherProofThreadPolicy(policyInput);
   const record = exactRecord(value, [
     "schemaVersion",
     "policyDigest",
@@ -4496,29 +4482,26 @@ export const parseWatcherProofThreadStateV1 = (
   const journal =
     record?.journal === null
       ? null
-      : parseWatcherProofThreadJournalV1(record?.journal);
+      : parseWatcherProofThreadJournal(record?.journal);
   const pending =
     record?.pending === null ? null : pendingStructural(record?.pending);
   const historyValues =
     record === null
       ? null
-      : exactArray(
-          record.history,
-          WATCHER_PROOF_THREAD_V1_BOUNDS.historyEntries,
-        );
+      : exactArray(record.history, WATCHER_PROOF_THREAD_BOUNDS.historyEntries);
   const auditValues =
     record === null
       ? null
       : exactArray(
           record.auditHistory,
-          WATCHER_PROOF_THREAD_V1_BOUNDS.auditEntries,
+          WATCHER_PROOF_THREAD_BOUNDS.auditEntries,
         );
   const transitionValues =
     record === null
       ? null
       : exactArray(
           record.transitionHistory,
-          WATCHER_PROOF_THREAD_V1_BOUNDS.transitionEntries,
+          WATCHER_PROOF_THREAD_BOUNDS.transitionEntries,
         );
   const history = historyValues?.map(parseEntryStructural) ?? null;
   const audit = auditValues?.map(parseAuditStructural) ?? null;
@@ -4538,7 +4521,7 @@ export const parseWatcherProofThreadStateV1 = (
     transitions.some((entry) => entry === null) ||
     (record.journal !== null && journal === null) ||
     (record.pending !== null && pending === null) ||
-    record.schemaVersion !== WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION ||
     record.policyDigest !== policy.policyDigest ||
     record.network !== policy.network ||
     record.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
@@ -4556,12 +4539,11 @@ export const parseWatcherProofThreadStateV1 = (
   ) {
     return null;
   }
-  const canonicalHistory = history as WatcherProofThreadHistoryEntryV1[];
-  const canonicalAudit = audit as WatcherProofThreadAuditEntryV1[];
-  const canonicalTransitions =
-    transitions as WatcherProofThreadHistoryEntryV1[];
+  const canonicalHistory = history as WatcherProofThreadHistoryEntry[];
+  const canonicalAudit = audit as WatcherProofThreadAuditEntry[];
+  const canonicalTransitions = transitions as WatcherProofThreadHistoryEntry[];
   const claimed = Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -4578,9 +4560,9 @@ export const parseWatcherProofThreadStateV1 = (
   if (sha256Canonical(stateWithoutDigest(claimed)) !== record.stateDigest) {
     return null;
   }
-  let replayedState: WatcherProofThreadStateV1 | null = null;
+  let replayedState: WatcherProofThreadState | null = null;
   for (const transition of canonicalTransitions) {
-    const replayed = applyWatcherProofThreadTransitionV1(
+    const replayed = applyWatcherProofThreadTransition(
       policy,
       replayedState,
       transition.observation,
@@ -4603,14 +4585,14 @@ export const parseWatcherProofThreadStateV1 = (
 };
 
 const resultWithoutDigest = (
-  value: Omit<WatcherProofThreadResultV1, "resultDigest">,
+  value: Omit<WatcherProofThreadResult, "resultDigest">,
 ) => ({ ...value });
 
 const makeResult = (
-  value: Omit<WatcherProofThreadResultV1, "schemaVersion" | "resultDigest">,
-): WatcherProofThreadResultV1 => {
+  value: Omit<WatcherProofThreadResult, "schemaVersion" | "resultDigest">,
+): WatcherProofThreadResult => {
   const canonical = Object.freeze({
-    schemaVersion: WATCHER_PROOF_THREAD_RESULT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROOF_THREAD_RESULT_SCHEMA_VERSION,
     ...value,
   });
   return Object.freeze({
@@ -4620,10 +4602,10 @@ const makeResult = (
 };
 
 const rejected = (
-  reason: WatcherProofThreadReasonCodeV1,
-  alert: WatcherProofThreadAlertCodeV1 = "watcher_proof_thread_input_rejected",
+  reason: WatcherProofThreadReasonCode,
+  alert: WatcherProofThreadAlertCode = "watcher_proof_thread_input_rejected",
   quarantined = false,
-): WatcherProofThreadResultV1 =>
+): WatcherProofThreadResult =>
   makeResult({
     action: "reject",
     protocolDecision: quarantined ? "quarantined" : "hold",
@@ -4633,15 +4615,15 @@ const rejected = (
   });
 
 const transitionReason = (
-  kind: Exclude<WatcherProofThreadTransitionKindV1, "rollback">,
-  phase: WatcherProofThreadConfirmationPhaseV1,
-): WatcherProofThreadReasonCodeV1 =>
-  `${kind}_${phase === "final" ? "confirmed" : "pending"}` as WatcherProofThreadReasonCodeV1;
+  kind: Exclude<WatcherProofThreadTransitionKind, "rollback">,
+  phase: WatcherProofThreadConfirmationPhase,
+): WatcherProofThreadReasonCode =>
+  `${kind}_${phase === "final" ? "confirmed" : "pending"}` as WatcherProofThreadReasonCode;
 
 const relevantRemovedSetMatchesSuffix = (
-  previous: WatcherProofThreadStateV1,
-  suffix: readonly WatcherProofThreadHistoryEntryV1[],
-  rollback: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1,
+  previous: WatcherProofThreadState,
+  suffix: readonly WatcherProofThreadHistoryEntry[],
+  rollback: WatcherRollbackResult | WatcherPostFinalityRecoveryResult,
 ): boolean => {
   const suffixSubmissions = new Set(
     suffix.flatMap(({ submissionId }) =>
@@ -4686,13 +4668,13 @@ const relevantRemovedSetMatchesSuffix = (
   );
 };
 
-const applyWatcherProofThreadTransitionV1 = (
-  policy: WatcherProofThreadPolicyV1,
-  previous: WatcherProofThreadStateV1 | null,
-  observation: WatcherProofThreadObservationV1,
+const applyWatcherProofThreadTransition = (
+  policy: WatcherProofThreadPolicy,
+  previous: WatcherProofThreadState | null,
+  observation: WatcherProofThreadObservation,
   publicContextInput: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherProofThreadResultV1 => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherProofThreadResult => {
   if (
     observation.policyDigest !== policy.policyDigest ||
     observation.network !== policy.network ||
@@ -4727,7 +4709,7 @@ const applyWatcherProofThreadTransitionV1 = (
   if (
     previous !== null &&
     previous.transitionHistory.length >=
-      WATCHER_PROOF_THREAD_V1_BOUNDS.transitionEntries
+      WATCHER_PROOF_THREAD_BOUNDS.transitionEntries
   ) {
     return rejected("history_limit_exceeded");
   }
@@ -4746,14 +4728,14 @@ const applyWatcherProofThreadTransitionV1 = (
     const rollbackResult =
       authority === null || authority === undefined
         ? null
-        : parseWatcherRollbackResultV1(authority.result, {
-            ...(authority.context as WatcherRollbackVerificationContextV1),
+        : parseWatcherRollbackResult(authority.result, {
+            ...(authority.context as WatcherRollbackVerificationContext),
             transportAttestations,
           });
     const recoveryResult =
       rollbackResult === null && authority !== null && authority !== undefined
-        ? parseWatcherPostFinalityRecoveryResultV1(authority.result, {
-            ...(authority.context as WatcherPostFinalityRecoveryInputV1),
+        ? parseWatcherPostFinalityRecoveryResult(authority.result, {
+            ...(authority.context as WatcherPostFinalityRecoveryInput),
             transportAttestations,
           })
         : null;
@@ -4829,13 +4811,13 @@ const applyWatcherProofThreadTransitionV1 = (
       retainedHistory,
       transportAttestations,
     );
-    let targetStore: WatcherDurableStoreV1 | null = null;
+    let targetStore: WatcherDurableStore | null = null;
     const targetAnchor = retainedHistory.at(-1);
     try {
       targetStore =
         targetAnchor === undefined
           ? null
-          : parseWatcherDurableStoreV1(targetAnchor.publicContext.durableStore);
+          : parseWatcherDurableStore(targetAnchor.publicContext.durableStore);
     } catch {
       return rejected("rollback_mismatch");
     }
@@ -4894,7 +4876,7 @@ const applyWatcherProofThreadTransitionV1 = (
       ...orphaned.map((entry) => makeAudit("orphaned", entry)),
       makeAudit("rollback", rollbackEntry),
     ];
-    if (audit.length > WATCHER_PROOF_THREAD_V1_BOUNDS.auditEntries) {
+    if (audit.length > WATCHER_PROOF_THREAD_BOUNDS.auditEntries) {
       return rejected("history_limit_exceeded");
     }
     const state = makeState(
@@ -4949,7 +4931,7 @@ const applyWatcherProofThreadTransitionV1 = (
       "watcher_proof_thread_binding_rejected",
     );
   }
-  let previousStore: WatcherDurableStoreV1 | null = null;
+  let previousStore: WatcherDurableStore | null = null;
   const previousAnchor =
     previous === null
       ? null
@@ -4963,9 +4945,7 @@ const applyWatcherProofThreadTransitionV1 = (
     previousStore =
       previous === null
         ? null
-        : parseWatcherDurableStoreV1(
-            previousAnchor?.publicContext.durableStore,
-          );
+        : parseWatcherDurableStore(previousAnchor?.publicContext.durableStore);
   } catch {
     return rejected("stale_state", "watcher_proof_thread_binding_rejected");
   }
@@ -5034,25 +5014,25 @@ const applyWatcherProofThreadTransitionV1 = (
   });
 };
 
-export const evaluateWatcherProofThreadIndexerV1 = (
+export const evaluateWatcherProofThreadIndexer = (
   policyInput: unknown,
   previousStateInput: unknown,
   observationInput: unknown,
   publicContextInput: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherProofThreadResultV1 => {
-  const policy = parseWatcherProofThreadPolicyV1(policyInput);
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherProofThreadResult => {
+  const policy = parseWatcherProofThreadPolicy(policyInput);
   if (policy === null) {
     return rejected("malformed_policy");
   }
-  const observation = parseWatcherProofThreadObservationV1(observationInput);
+  const observation = parseWatcherProofThreadObservation(observationInput);
   if (observation === null) {
     return rejected("malformed_observation");
   }
   const previous =
     previousStateInput === null
       ? null
-      : parseWatcherProofThreadStateV1(
+      : parseWatcherProofThreadState(
           previousStateInput,
           policy,
           transportAttestations,
@@ -5060,7 +5040,7 @@ export const evaluateWatcherProofThreadIndexerV1 = (
   if (previousStateInput !== null && previous === null) {
     return rejected("malformed_state", "watcher_proof_thread_state_rejected");
   }
-  return applyWatcherProofThreadTransitionV1(
+  return applyWatcherProofThreadTransition(
     policy,
     previous,
     observation,
@@ -5069,19 +5049,19 @@ export const evaluateWatcherProofThreadIndexerV1 = (
   );
 };
 
-export type WatcherProofThreadResultVerificationContextV1 = Readonly<{
+export type WatcherProofThreadResultVerificationContext = Readonly<{
   policy: unknown;
   previousState: unknown;
   observation: unknown;
   publicContext: unknown;
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+  transportAttestations: readonly WatcherL1TransportAttestationContext[];
 }>;
 
-export const parseWatcherProofThreadResultV1 = (
+export const parseWatcherProofThreadResult = (
   value: unknown,
-  context: WatcherProofThreadResultVerificationContextV1,
-): WatcherProofThreadResultV1 | null => {
-  const expected = evaluateWatcherProofThreadIndexerV1(
+  context: WatcherProofThreadResultVerificationContext,
+): WatcherProofThreadResult | null => {
+  const expected = evaluateWatcherProofThreadIndexer(
     context.policy,
     context.previousState,
     context.observation,

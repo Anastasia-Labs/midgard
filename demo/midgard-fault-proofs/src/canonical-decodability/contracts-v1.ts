@@ -22,13 +22,13 @@ import type { Script } from "@lucid-evolution/lucid";
 export const CANONICAL_DECODABILITY_CATEGORY_LABEL = "canonical-decodability";
 
 /** Blueprint titles of the two parameterized step validators. */
-export const CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1 = {
+export const CANONICAL_DECODABILITY_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/canonical_decodability/step_01.main.spend",
   step02: "fraud_proofs/canonical_decodability/step_02.main.spend",
 } as const;
 
 /** One deployed step of the `canonical-decodability` chain. */
-export type CanonicalDecodabilityStepContractV1 = {
+export type CanonicalDecodabilityStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -42,11 +42,11 @@ export type CanonicalDecodabilityStepContractV1 = {
  * callers that need one — thread-token asset names, catalogue lookups — take
  * it separately from the deployment they are actually talking to.
  */
-export type CanonicalDecodabilityContractsV1 = {
+export type CanonicalDecodabilityContracts = {
   /** Steps 01..02, in order. */
   readonly steps: readonly [
-    CanonicalDecodabilityStepContractV1,
-    CanonicalDecodabilityStepContractV1,
+    CanonicalDecodabilityStepContract,
+    CanonicalDecodabilityStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

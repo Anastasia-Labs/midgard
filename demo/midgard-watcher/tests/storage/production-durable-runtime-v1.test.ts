@@ -1,27 +1,27 @@
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
 import {
-  makeWatcherFinalityBootstrapStateV1,
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
+  makeWatcherFinalityBootstrapState,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
-  initializeWatcherRollbackDurableAuthorityV1,
-  type WatcherRollbackDurableTrustedHeadV1,
+  initializeWatcherRollbackDurableAuthority,
+  type WatcherRollbackDurableTrustedHead,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
-import type { WatcherTrustedHeadAuthorityClientV1 } from "../../src/runtime/trusted-head-authority-v1.js";
+import type { WatcherTrustedHeadAuthorityClient } from "../../src/runtime/trusted-head-authority-v1.js";
 import type { WatcherDurableAtomicBackend } from "../../src/storage/durable-store.js";
-import { makeEmptyWatcherDurableStoreV1 } from "../../src/storage/durable-store.js";
-import { createWatcherProductionDurableRuntimeV1 } from "../../src/storage/production-durable-runtime-v1.js";
+import { makeEmptyWatcherDurableStore } from "../../src/storage/durable-store.js";
+import { createWatcherDurableRuntime } from "../../src/storage/production-durable-runtime-v1.js";
 
 const h32 = (byte: string) => byte.repeat(32);
 const key = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
 
-const policy = (): WatcherFinalityPolicyV1 => {
-  const marker = makeDeploymentMarkerV1(h32("11"));
-  const result = makeWatcherFinalityPolicyV1(
+const policy = (): WatcherFinalityPolicy => {
+  const marker = makeDeploymentMarker(h32("11"));
+  const result = makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "acceptance",
@@ -120,13 +120,13 @@ class MemoryBackend implements WatcherDurableAtomicBackend {
 }
 
 const client = (options: {
-  initial?: WatcherRollbackDurableTrustedHeadV1 | null;
+  initial?: WatcherRollbackDurableTrustedHead | null;
   refuseCas?: boolean;
   poisonReadBack?: boolean;
 }) => {
   let current = options.initial ?? null;
   let casCount = 0;
-  const value: WatcherTrustedHeadAuthorityClientV1 = Object.freeze({
+  const value: WatcherTrustedHeadAuthorityClient = Object.freeze({
     readRecordAuthenticationKeyId: async () => h32("99"),
     readCurrent: async () =>
       options.poisonReadBack && current !== null
@@ -151,7 +151,7 @@ describe("production durable watcher runtime", () => {
   it("publishes and reads back epoch zero before returning an authority", async () => {
     const backend = new MemoryBackend();
     const sidecar = client({});
-    const runtime = await createWatcherProductionDurableRuntimeV1({
+    const runtime = await createWatcherDurableRuntime({
       backend,
       policy: policy(),
       authenticationKey: key,
@@ -170,20 +170,20 @@ describe("production durable watcher runtime", () => {
   it("recovers a crash after epoch-zero SQLite commit and before sidecar publication", async () => {
     const backend = new MemoryBackend();
     const finalityPolicy = policy();
-    const bootstrap = makeWatcherFinalityBootstrapStateV1(finalityPolicy)!;
-    await initializeWatcherRollbackDurableAuthorityV1({
+    const bootstrap = makeWatcherFinalityBootstrapState(finalityPolicy)!;
+    await initializeWatcherRollbackDurableAuthority({
       backend,
       policy: finalityPolicy,
       authenticationKey: key,
       trustedHead: null,
-      bootstrapStore: makeEmptyWatcherDurableStoreV1(
+      bootstrapStore: makeEmptyWatcherDurableStore(
         finalityPolicy.deploymentMarker,
       ),
       bootstrapFinalityState: bootstrap,
     });
     const sidecar = client({});
 
-    const runtime = await createWatcherProductionDurableRuntimeV1({
+    const runtime = await createWatcherDurableRuntime({
       backend,
       policy: finalityPolicy,
       authenticationKey: key,
@@ -195,7 +195,7 @@ describe("production durable watcher runtime", () => {
 
   it("fails closed on CAS conflict or a poisoned read-back", async () => {
     await expect(
-      createWatcherProductionDurableRuntimeV1({
+      createWatcherDurableRuntime({
         backend: new MemoryBackend(),
         policy: policy(),
         authenticationKey: key,
@@ -203,7 +203,7 @@ describe("production durable watcher runtime", () => {
       }),
     ).rejects.toThrow("trusted-head direct-successor CAS conflicted");
     await expect(
-      createWatcherProductionDurableRuntimeV1({
+      createWatcherDurableRuntime({
         backend: new MemoryBackend(),
         policy: policy(),
         authenticationKey: key,

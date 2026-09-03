@@ -4,23 +4,23 @@ import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardV1TxFieldPreimages,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardTxFieldPreimages,
   encodeCbor,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
-  reconstructMidgardTransactionV1,
-  validateMidgardConsensusV1Tx,
-  verifyMidgardV1TxFieldPreimage,
+  materializeMidgardNativeTxFromCanonical,
+  reconstructMidgardTransaction,
+  validateMidgardConsensusTx,
+  verifyMidgardTxFieldPreimage,
 } from "../src/index.js";
 
 /**
@@ -155,10 +155,10 @@ const buildSignedUnaryCandidate = (datumDepth: number): Buffer => {
  * the output datum is replaced through the repo's own codecs.
  */
 const canonicalWithSubstitutedDatum = (datumDepth: number): Buffer => {
-  const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+  const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
     buildSignedUnaryCandidate(1),
   );
-  const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(shallowCanonical);
+  const native = decodeMidgardNativeTxFullFromCanonicalCbor(shallowCanonical);
   const outputsBytes = decodeMidgardNativeByteListPreimage(
     native.body.outputsPreimageCbor,
     "native.outputs",
@@ -175,7 +175,7 @@ const canonicalWithSubstitutedDatum = (datumDepth: number): Buffer => {
       cbor: Buffer.from(unaryConstructorDataCborHex(datumDepth), "hex"),
     },
   });
-  const deepNative = materializeMidgardNativeTxFromCanonicalV1({
+  const deepNative = materializeMidgardNativeTxFromCanonical({
     version: native.version,
     validity: native.validity,
     body: {
@@ -184,15 +184,15 @@ const canonicalWithSubstitutedDatum = (datumDepth: number): Buffer => {
     },
     witnessSet: native.witnessSet,
   });
-  return encodeMidgardNativeTxCanonicalV1(deepNative);
+  return encodeMidgardNativeTxCanonical(deepNative);
 };
 
 const exerciseRetainedReconstruction = (
   canonical: Buffer,
   datumDepth: number,
 ): { readonly revealStepCount: number } => {
-  const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-  expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+  const native = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
+  expect(validateMidgardConsensusTx(native, canonical.length)).toBeNull();
   const outputs = decodeMidgardNativeByteListPreimage(
     native.body.outputsPreimageCbor,
     "native.outputs",
@@ -201,12 +201,12 @@ const exerciseRetainedReconstruction = (
   expect(decodeMidgardTxOutput(outputs[0]!).datum?.cbor.toString("hex")).toBe(
     unaryConstructorDataCborHex(datumDepth),
   );
-  const transactionId = computeMidgardNativeTxIdV1(native);
-  const source = deriveMidgardNativeTxProofSourceV1(native);
-  const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
-  const fields = deriveMidgardV1TxFieldPreimages(canonical);
+  const transactionId = computeMidgardNativeTxId(native);
+  const source = deriveMidgardNativeTxProofSource(native);
+  const transactionCommitment = computeMidgardNativeTxProofCommitment(source);
+  const fields = deriveMidgardTxFieldPreimages(canonical);
   for (const field of fields) {
-    verifyMidgardV1TxFieldPreimage({
+    verifyMidgardTxFieldPreimage({
       transactionId,
       transactionCommitment,
       source,
@@ -214,7 +214,7 @@ const exerciseRetainedReconstruction = (
       preimageCbor: field.preimageCbor,
     });
   }
-  const reconstructed = reconstructMidgardTransactionV1({
+  const reconstructed = reconstructMidgardTransaction({
     transactionId,
     transactionCommitment,
     source,
@@ -224,7 +224,7 @@ const exerciseRetainedReconstruction = (
   // §4 is authenticate-once per field, so a reveal is one step per field that
   // carries material — not one step per item chunk, which is what the retired
   // counted publication chain counted here. An empty field is exactly `80`.
-  const emptyPreimage = encodeMidgardFieldPreimageV1([]);
+  const emptyPreimage = encodeMidgardFieldPreimage([]);
   return {
     revealStepCount: fields.filter(
       (field) => !field.preimageCbor.equals(emptyPreimage),
@@ -237,7 +237,7 @@ const sha256Hex = (bytes: Uint8Array): string =>
 
 describe("canonical V1 deep unary datum with stock CML", () => {
   it("converts the production depth-1,024 candidate byte-identically to the recursive-probe era", () => {
-    const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
       buildSignedUnaryCandidate(1_024),
     );
     // Re-pinned for §5.3 fields 0/1: the single spend-input item is now the

@@ -60,7 +60,7 @@ header absent and the permanent proof token retained.
 ## P1 — Production watcher coverage
 
 Install manifest-bound runners for the seven categories absent from
-`WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1`:
+`WATCHER_INSTALLED_WORKFLOW_CATEGORIES`:
 
 - `transitionTrace`
 - `validationTraceDispute`

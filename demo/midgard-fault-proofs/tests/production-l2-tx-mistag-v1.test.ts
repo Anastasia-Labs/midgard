@@ -1,40 +1,40 @@
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import {
-  type L2TransactionSourceV1,
-  L2TransactionSourceV1 as L2TransactionSourceV1Codec,
+  type L2TransactionSource,
+  L2TransactionSource as L2TransactionSourceCodec,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
-import type { CanonicalBlockClassificationV1 } from "../src/workflow/classification-v1.js";
-import { classifyCanonicalBlockViolationsV1 } from "../src/workflow/classification-v1.js";
-import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockClassification } from "../src/workflow/classification-v1.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification-v1.js";
+import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionL2TxMistagArtifactV1,
-  prepareProductionL2TxMistagArtifactV1,
+  admitL2TxMistagArtifact,
+  prepareL2TxMistagArtifact,
 } from "../src/workflow/production-l2-tx-mistag-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
-  type FixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  type FixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
-const mistaggedTransaction = (): FixtureTransactionV1 => {
-  const full = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+const mistaggedTransaction = (): FixtureTransaction => {
+  const full = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsInvalid",
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -56,11 +56,11 @@ const mistaggedTransaction = (): FixtureTransactionV1 => {
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   });
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+  const canonicalCbor = encodeMidgardNativeTxCanonical(full);
   const proofSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const txId = computeMidgardNativeTxIdV1(full).toString("hex");
-  const source: L2TransactionSourceV1 = {
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const txId = computeMidgardNativeTxId(full).toString("hex");
+  const source: L2TransactionSource = {
     tx_id: txId,
     source: {
       compact_cbor: proofSource.compactCbor.toString("hex"),
@@ -76,33 +76,33 @@ const mistaggedTransaction = (): FixtureTransactionV1 => {
     compactCbor: proofSource.compactCbor,
     source,
     sourceValueBytes: Buffer.from(
-      Data.to(source, L2TransactionSourceV1Codec),
+      Data.to(source, L2TransactionSourceCodec),
       "hex",
     ),
   };
 };
 
 const isL2TxMistagClassification = (
-  classification: CanonicalBlockClassificationV1,
+  classification: CanonicalBlockClassification,
 ): classification is Extract<
-  CanonicalBlockClassificationV1,
+  CanonicalBlockClassification,
   { readonly decision: "fault_detected" }
 > & { readonly category: "l2TxMistag" } =>
   classification.decision === "fault_detected" &&
   classification.category === "l2TxMistag";
 
 const fixtureEvidence = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(4, 0n)],
         fee: 1n,
       }),
       mistaggedTransaction(),
     ],
   });
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  return await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -116,15 +116,15 @@ describe("production l2-tx-mistag public-evidence workflow V1", () => {
   it("selects the exact code-1 source leaf and replays its counted-root proof", async () => {
     const evidence = await fixtureEvidence();
     const replay =
-      await L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
-    const classification = await classifyCanonicalBlockViolationsV1({
+      await L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
     if (!isL2TxMistagClassification(classification)) {
       throw new Error("fixture did not classify as l2TxMistag");
     }
-    const artifact = await prepareProductionL2TxMistagArtifactV1({
+    const artifact = await prepareL2TxMistagArtifact({
       evidence,
       classification,
     });
@@ -132,46 +132,46 @@ describe("production l2-tx-mistag public-evidence workflow V1", () => {
       transactionIndex: Number(classification.selected.position),
       detectionId: `l2-tx-mistag:${classification.selected.position.toString()}:${artifact.nativeTxId}:1`,
     });
-    await expect(
-      admitProductionL2TxMistagArtifactV1(artifact),
-    ).resolves.toEqual(expect.objectContaining({ artifact }));
+    await expect(admitL2TxMistagArtifact(artifact)).resolves.toEqual(
+      expect.objectContaining({ artifact }),
+    );
   });
 
   it("rejects forged roots, proof bytes, detection positions, and transaction counts", async () => {
     const evidence = await fixtureEvidence();
     const replay =
-      await L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
-    const classification = await classifyCanonicalBlockViolationsV1({
+      await L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
     if (!isL2TxMistagClassification(classification)) {
       throw new Error("fixture did not classify as l2TxMistag");
     }
-    const artifact = await prepareProductionL2TxMistagArtifactV1({
+    const artifact = await prepareL2TxMistagArtifact({
       evidence,
       classification,
     });
     await expect(
-      admitProductionL2TxMistagArtifactV1({
+      admitL2TxMistagArtifact({
         ...artifact,
         transactionsPhasRoot: "ff".repeat(32),
       }),
     ).rejects.toThrow("does not open its PHAS root");
     await expect(
-      admitProductionL2TxMistagArtifactV1({
+      admitL2TxMistagArtifact({
         ...artifact,
         txMembershipProofCbor: "d87980",
       }),
     ).rejects.toThrow();
     await expect(
-      admitProductionL2TxMistagArtifactV1({
+      admitL2TxMistagArtifact({
         ...artifact,
         transactionIndex: artifact.transactionIndex === 0 ? 1 : 0,
       }),
     ).rejects.toThrow("changed its detection identity");
     await expect(
-      admitProductionL2TxMistagArtifactV1({
+      admitL2TxMistagArtifact({
         ...artifact,
         transactionCount: artifact.transactionCount + 1,
       }),

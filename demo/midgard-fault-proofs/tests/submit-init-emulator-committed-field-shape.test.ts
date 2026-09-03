@@ -11,16 +11,16 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  prepareCommittedFieldShapeFromCanonicalTxV1,
+  prepareCommittedFieldShapeFromCanonicalTx,
   submitCommittedFieldShapeInit,
   submitCommittedFieldShapeStep01,
   submitCommittedFieldShapeStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
-  makeCommittedFieldShapeEmulatorHarnessV1,
-  publishCommittedFieldShapeReferenceScriptsV1,
-  setupCommittedFieldShapeScenarioV1,
+  makeCommittedFieldShapeEmulatorHarness,
+  publishCommittedFieldShapeReferenceScripts,
+  setupCommittedFieldShapeScenario,
 } from "./support/committed-field-shape-emulator-v1.js";
 import {
   buildRemovalDeploymentInfo,
@@ -32,15 +32,15 @@ import {
 
 describe("committed-field-shape emulator lifecycle", () => {
   it("proves a real wrong-stride commitment through mint and removes its block", async () => {
-    const harness = await makeCommittedFieldShapeEmulatorHarnessV1();
-    const scenario = await setupCommittedFieldShapeScenarioV1({
+    const harness = await makeCommittedFieldShapeEmulatorHarness();
+    const scenario = await setupCommittedFieldShapeScenario({
       harness,
       kind: "wrong-stride",
     });
     if (scenario.canonicalTx === null) {
       throw new Error("wrong-stride scenario must be canonical-grammar valid");
     }
-    const prepared = prepareCommittedFieldShapeFromCanonicalTxV1({
+    const prepared = prepareCommittedFieldShapeFromCanonicalTx({
       tx: scenario.canonicalTx,
       fieldIndex: 0,
     });
@@ -49,7 +49,7 @@ describe("committed-field-shape emulator lifecycle", () => {
     expect(prepared.evidence.isViolation).toBe(true);
 
     const [step01Reference, step02Reference] =
-      await publishCommittedFieldShapeReferenceScriptsV1({
+      await publishCommittedFieldShapeReferenceScripts({
         lucid: harness.funderLucid,
         contracts: harness.committedFieldShape,
       });

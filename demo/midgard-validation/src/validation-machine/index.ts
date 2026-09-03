@@ -1,36 +1,36 @@
 export {
-  encodeScriptDiscoveryControlCborV1,
-  type ScriptDiscoveryTraceControlV1,
+  encodeScriptDiscoveryControlCbor,
+  type ScriptDiscoveryTraceControl,
 } from "./control-encoding.js";
 export {
-  countedMachineFieldChunkStepsV1,
-  countedMachineFieldTraceV1,
-  countedMachineTransactionChunkStepsV1,
-  type MachineFieldChunkStepV1,
-  type ValidationMachineFieldCarriagePlanInputV1,
+  countedMachineFieldChunkSteps,
+  countedMachineFieldTrace,
+  countedMachineTransactionChunkSteps,
+  type MachineFieldChunkStep,
+  type ValidationMachineFieldCarriagePlanInput,
 } from "./field-carriage.js";
 export {
-  advanceMidgardResolvedInputsAccumulatorV1,
-  emptyMidgardInputResolutionScheduleV1,
-  initialMidgardResolvedInputsAccumulatorV1,
-  prependMidgardInputResolutionScheduleV1,
+  advanceMidgardResolvedInputsAccumulator,
+  emptyMidgardInputResolutionSchedule,
+  initialMidgardResolvedInputsAccumulator,
+  prependMidgardInputResolutionSchedule,
 } from "./input-resolution.js";
 export {
-  applyValidationMachineLedgerMutationStepV1,
-  buildValidationMachineLedgerInsertOpV1,
+  applyValidationMachineLedgerMutationStep,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
   type ValidationMachineLedgerOp,
   type ValidationMachineValueMutationStep,
 } from "./ledger-mutation.js";
-export { type ValidationMachineNativeScriptFrameV1 } from "./native-script-frame.js";
+export { type ValidationMachineNativeScriptFrame } from "./native-script-frame.js";
 export {
-  type MidgardPurposeKindV1,
-  type MidgardRedeemerPurposeTagV1,
-  purposeKindForRedeemerTagV1,
-  redeemerPointerMatchesPurposeV1,
-  redeemerTagForPurposeKindV1,
+  type MidgardPurposeKind,
+  type MidgardRedeemerPurposeTag,
+  purposeKindForRedeemerTag,
+  redeemerPointerMatchesPurpose,
+  redeemerTagForPurposeKind,
 } from "./redeemer-purpose.js";
 export { buildDeterministicValidationMachineTrace } from "./trace-builder.js";
 export {

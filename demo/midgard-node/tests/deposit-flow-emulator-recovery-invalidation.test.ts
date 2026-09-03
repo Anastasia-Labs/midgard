@@ -6,7 +6,7 @@ import {
   alignCommitSchedulerBeforeTestWorker,
   assertSpeculativeDepositSnapshotIsMemoryOnly,
   canonicalSlotConfigForLucid,
-  COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   commitExplicitBlockHeaderProgram,
   commitTimingBudget,
   countDaPayloadRows,
@@ -26,7 +26,7 @@ import {
   makeLucid,
   makeLucidRuntimeService,
   makeNodeConfigForFixture,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_CONSENSUS_PROFILE,
   MidgardContracts,
   MidgardMpf,
   NodeConfig,
@@ -238,7 +238,7 @@ describe.sequential("deposit flow emulator", () => {
       });
 
       const daPayloadCountBeforeCandidate = await countDaPayloadRows();
-      const resumeV1Spy = vi.spyOn(MidgardMpf, "resumeParkedOverlay");
+      const resumeSpy = vi.spyOn(MidgardMpf, "resumeParkedOverlay");
       const resumeEventFlatSpy = vi.spyOn(
         MidgardMpf,
         "resumeParkedEventFlatOverlayV1",
@@ -251,7 +251,7 @@ describe.sequential("deposit flow emulator", () => {
       let independentlySubmittedHeaderHash = "";
       let independentlySubmittedBlockEndTimeMs = 0;
       let daPayloadCountBeforeT2Decision = -1;
-      let resumeV1Calls = 0;
+      let resumeCalls = 0;
       let resumeEventFlatCalls = 0;
       let discardInstances: readonly MidgardMpf[] = [];
       let closeInstances: readonly MidgardMpf[] = [];
@@ -288,7 +288,7 @@ describe.sequential("deposit flow emulator", () => {
                     fixture.contracts,
                   );
                   return Effect.runPromise(
-                    SDK.getHeaderV1FromStateQueueDatum(confirmedN.datum),
+                    SDK.getHeaderFromStateQueueDatum(confirmedN.datum),
                   );
                 });
                 daPayloadCountBeforeT2Decision =
@@ -305,7 +305,7 @@ describe.sequential("deposit flow emulator", () => {
                     );
                     independentEndTimeMs =
                       beforeAlignment.observedAtMs +
-                      COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS +
+                      COMMIT_MINIMUM_FUTURE_BUFFER_MS +
                       30_000;
                     await alignCommitSchedulerBeforeTestWorker({
                       fixture,
@@ -374,7 +374,7 @@ describe.sequential("deposit flow emulator", () => {
                       decideSpeculativeInstructionForLiveTip({
                         expectedHeaderHash: candidate.baseHeaderHash,
                         liveTail: snapshot.tailCommitBase.utxo,
-                        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+                        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
                         submitInstruction: {
                           type: "SubmitSpeculativeCandidate",
                           confirmedBlock: snapshot.tailCommitBase.utxo,
@@ -399,7 +399,7 @@ describe.sequential("deposit flow emulator", () => {
               }),
           });
         } finally {
-          resumeV1Calls = resumeV1Spy.mock.calls.length;
+          resumeCalls = resumeSpy.mock.calls.length;
           resumeEventFlatCalls = resumeEventFlatSpy.mock.calls.length;
           discardInstances = [
             ...(discardSpy.mock.contexts as readonly MidgardMpf[]),
@@ -407,13 +407,13 @@ describe.sequential("deposit flow emulator", () => {
           closeInstances = [
             ...(closeSpy.mock.contexts as readonly MidgardMpf[]),
           ];
-          resumeV1Spy.mockRestore();
+          resumeSpy.mockRestore();
           resumeEventFlatSpy.mockRestore();
           discardSpy.mockRestore();
           closeSpy.mockRestore();
         }
       })();
-      expect(resumeV1Calls).toBe(0);
+      expect(resumeCalls).toBe(0);
       expect(resumeEventFlatCalls).toBe(0);
       expect(discardInstances).toHaveLength(1);
       expect(discardInstances[0]?.trieName).toBe("ledger");
@@ -457,10 +457,10 @@ describe.sequential("deposit flow emulator", () => {
         fixture.contracts,
       );
       const foreignTipHeader = await Effect.runPromise(
-        SDK.getHeaderV1FromStateQueueDatum(foreignTip.datum),
+        SDK.getHeaderFromStateQueueDatum(foreignTip.datum),
       );
       expect(
-        await Effect.runPromise(SDK.hashBlockHeaderV1(foreignTipHeader)),
+        await Effect.runPromise(SDK.hashBlockHeader(foreignTipHeader)),
       ).toBe(independentlySubmittedHeaderHash);
       await advanceEmulatorPastUnixTime(
         fixture,

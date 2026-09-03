@@ -12,31 +12,31 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   requireInitialStepDatum,
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { RedeemerCanonicityContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { RedeemerCanonicityContracts } from "./contracts-v1.js";
 import {
-  classifyRedeemerCanonicityFindingV1,
-  type RedeemerCanonicityFindingV1,
+  classifyRedeemerCanonicityFinding,
+  type RedeemerCanonicityFinding,
 } from "./family-v1.js";
 import {
-  RedeemerCanonicityStep01RedeemerV1Schema,
-  RedeemerCanonicityStep02DatumV1Schema,
+  RedeemerCanonicityStep01RedeemerSchema,
+  RedeemerCanonicityStep02DatumSchema,
 } from "./schemas-v1.js";
 
 const nextDatum = (
-  finding: RedeemerCanonicityFindingV1,
+  finding: RedeemerCanonicityFinding,
   signer: ResolvedProverSigner,
   witnessSetHash: string,
 ) => {
@@ -50,14 +50,14 @@ const nextDatum = (
           redeemer_index: BigInt(finding.redeemerIndex),
         },
       } as never,
-      RedeemerCanonicityStep02DatumV1Schema as never,
+      RedeemerCanonicityStep02DatumSchema as never,
     );
   } catch {
     throw new Error("redeemer-canonicity: failed to encode step-02 datum");
   }
 };
 
-export const submitRedeemerCanonicityStep01AcceptedV1 = async ({
+export const submitRedeemerCanonicityStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -76,9 +76,9 @@ export const submitRedeemerCanonicityStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: RedeemerCanonicityContractsV1;
+  readonly contracts: RedeemerCanonicityContracts;
   readonly signer: ResolvedProverSigner;
-  readonly finding: RedeemerCanonicityFindingV1;
+  readonly finding: RedeemerCanonicityFinding;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -87,12 +87,12 @@ export const submitRedeemerCanonicityStep01AcceptedV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const finding = classifyRedeemerCanonicityFindingV1(rawFinding);
-  return await submitMissingNativeScriptTxBindingV1({
+  const finding = classifyRedeemerCanonicityFinding(rawFinding);
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -108,7 +108,7 @@ export const submitRedeemerCanonicityStep01AcceptedV1 = async ({
       signer,
       txInclusion.nativeTx.witness_set_hash,
     ),
-    spendRedeemerSchema: RedeemerCanonicityStep01RedeemerV1Schema,
+    spendRedeemerSchema: RedeemerCanonicityStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {
@@ -124,7 +124,7 @@ export const submitRedeemerCanonicityStep01AcceptedV1 = async ({
   });
 };
 
-export const submitRedeemerCanonicityStep01ForcedV1 = async ({
+export const submitRedeemerCanonicityStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -138,20 +138,20 @@ export const submitRedeemerCanonicityStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: RedeemerCanonicityContractsV1;
+  readonly contracts: RedeemerCanonicityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: RedeemerCanonicityFindingV1;
+  readonly finding: RedeemerCanonicityFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly witnessSetHash: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const finding = classifyRedeemerCanonicityFindingV1(rawFinding);
+  const finding = classifyRedeemerCanonicityFinding(rawFinding);
   const stepIndex = 0;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -161,7 +161,7 @@ export const submitRedeemerCanonicityStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "redeemer-canonicity",
@@ -205,10 +205,10 @@ export const submitRedeemerCanonicityStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      RedeemerCanonicityStep01RedeemerV1Schema as never,
+      RedeemerCanonicityStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

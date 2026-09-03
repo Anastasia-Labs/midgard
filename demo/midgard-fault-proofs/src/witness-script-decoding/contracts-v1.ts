@@ -2,26 +2,26 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const WITNESS_SCRIPT_DECODING_CATEGORY_LABEL = "witness-script-decoding";
 
-export const WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 = {
+export const WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/witness_script_decoding/step_01.main.spend",
   step02: "fraud_proofs/witness_script_decoding/step_02.main.spend",
   step03: "fraud_proofs/witness_script_decoding/step_03.main.spend",
   step04: "fraud_proofs/witness_script_decoding/step_04.main.spend",
 } as const;
 
-export type WitnessScriptDecodingStepContractV1 = {
+export type WitnessScriptDecodingStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
 /** Manifest-bound contracts consumed by every concrete family submitter. */
-export type WitnessScriptDecodingContractsV1 = {
+export type WitnessScriptDecodingContracts = {
   readonly steps: readonly [
-    WitnessScriptDecodingStepContractV1,
-    WitnessScriptDecodingStepContractV1,
-    WitnessScriptDecodingStepContractV1,
-    WitnessScriptDecodingStepContractV1,
+    WitnessScriptDecodingStepContract,
+    WitnessScriptDecodingStepContract,
+    WitnessScriptDecodingStepContract,
+    WitnessScriptDecodingStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

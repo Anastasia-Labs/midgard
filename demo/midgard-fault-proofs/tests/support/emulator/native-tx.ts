@@ -2,15 +2,15 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 
-import { deriveL2TransactionSourceCborV1 } from "../../../src/prepare-double-spend.js";
+import { deriveL2TransactionSourceCbor } from "../../../src/prepare-double-spend.js";
 import { h32 } from "./header-fixtures.js";
 
 export const makeNativeTx = ({
@@ -41,9 +41,9 @@ export const makeNativeTx = ({
   readonly redeemerTxWitsPreimageCbor?: Buffer;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputCbors),
@@ -55,7 +55,7 @@ export const makeNativeTx = ({
         referenceByte === undefined
           ? EMPTY_CBOR_LIST
           : encodeCbor([
-              encodeMidgardSpendInputItemV1({
+              encodeMidgardSpendInputItem({
                 txId: Buffer.from(h32(referenceByte), "hex"),
                 outputIndex: 0,
               }),
@@ -99,9 +99,7 @@ export const makeNativeTx = ({
   });
 
 /** Exact transactions-root leaf value for a canonical full native transaction. */
-export const l2TransactionSourceCborV1 = (
-  transaction: MidgardNativeTxFullV1,
+export const l2TransactionSourceCbor = (
+  transaction: MidgardNativeTxFull,
 ): string =>
-  deriveL2TransactionSourceCborV1(
-    encodeMidgardNativeTxCanonicalV1(transaction),
-  );
+  deriveL2TransactionSourceCbor(encodeMidgardNativeTxCanonical(transaction));

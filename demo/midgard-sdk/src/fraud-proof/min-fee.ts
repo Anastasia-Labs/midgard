@@ -10,13 +10,13 @@
  * declaration order of the corresponding Aiken record.
  */
 import {
-  computeMidgardNativeTxCanonicalSizeFromProofSourceV1,
-  type MidgardNativeTxProofSourceV1,
+  computeMidgardNativeTxCanonicalSizeFromProofSource,
+  type MidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldCarriageV1Schema } from "../native-tx-field-access-v1.js";
+import { FieldCarriageSchema } from "../native-tx-field-access-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -28,13 +28,13 @@ import {
   NativeTxWitnessSetCompactSchema,
 } from "./native.js";
 
-export const MIN_FEE_VIOLATION_ID_V1 = "min-fee" as const;
+export const MIN_FEE_VIOLATION_ID = "min-fee" as const;
 
 /**
  * A pre-registration computation-thread asset name. The category id remains a
  * caller argument until the immutable catalogue registration wave allocates it.
  */
-export const minFeeThreadTokenAssetNameV1 = (
+export const minFeeThreadTokenAssetName = (
   categoryId: string,
   challengedHeaderHash: string,
 ): string => {
@@ -91,15 +91,15 @@ export const MinFeeStep02ArgsSchema = Data.Object({
   witness_set: NativeTxWitnessSetCompactSchema,
   /** Exactly nine values in §2.5 wire order. */
   field_carriages: Data.Tuple([
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
-    FieldCarriageV1Schema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
+    FieldCarriageSchema,
   ]),
 });
 export type MinFeeStep02Args = Data.Static<typeof MinFeeStep02ArgsSchema>;
@@ -130,7 +130,7 @@ const requireNonNegative = (value: bigint, label: string): bigint => {
 };
 
 /** Exact twin of `compact.min_fee_lovelace_v1`. */
-export const minFeeLovelaceV1 = ({
+export const minFeeLovelace = ({
   minFeeA,
   minFeeB,
   canonicalTxSize,
@@ -147,21 +147,21 @@ export const minFeeLovelaceV1 = ({
  * Derives the exact full-transaction size through the canonical core codec and
  * applies the header's fee schedule without Number arithmetic.
  */
-export const minimumFeeFromProofSourceV1 = ({
+export const minimumFeeFromProofSource = ({
   source,
   minFeeA,
   minFeeB,
 }: {
-  readonly source: MidgardNativeTxProofSourceV1;
+  readonly source: MidgardNativeTxProofSource;
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
 }): { readonly canonicalTxSize: bigint; readonly minimumFee: bigint } => {
   const canonicalTxSize = BigInt(
-    computeMidgardNativeTxCanonicalSizeFromProofSourceV1(source),
+    computeMidgardNativeTxCanonicalSizeFromProofSource(source),
   );
   return {
     canonicalTxSize,
-    minimumFee: minFeeLovelaceV1({
+    minimumFee: minFeeLovelace({
       minFeeA,
       minFeeB,
       canonicalTxSize,
@@ -169,7 +169,7 @@ export const minimumFeeFromProofSourceV1 = ({
   };
 };
 
-export const hasMinFeeViolationV1 = ({
+export const hasMinFeeViolation = ({
   fee,
   minFeeA,
   minFeeB,
@@ -181,4 +181,4 @@ export const hasMinFeeViolationV1 = ({
   readonly canonicalTxSize: bigint;
 }): boolean =>
   requireNonNegative(fee, "fee") <
-  minFeeLovelaceV1({ minFeeA, minFeeB, canonicalTxSize });
+  minFeeLovelace({ minFeeA, minFeeB, canonicalTxSize });

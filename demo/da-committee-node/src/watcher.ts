@@ -1,12 +1,12 @@
 import {
   computeDaSha256Hash,
   DaGossipTopic,
-  decodeDaConflictEvidenceV1Cbor,
-  decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
-  encodeDaConflictEvidenceV1Cbor,
-  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  decodeDaConflictEvidenceCbor,
+  decodeDaConflictingSignatureHeaderEvidenceCbor,
+  encodeDaConflictEvidenceCbor,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { l1SourceAuthorityDigest, type WatcherConfig } from "./config.js";
@@ -21,8 +21,8 @@ import type { DaPeerRegistry } from "./da/libp2p/DaPeerRegistry.js";
 import {
   daPayloadSha256,
   DaPayloadValidationError,
-  type VerifiedDaPayloadV1,
-  verifyDaPayloadV1AgainstHeader,
+  type VerifiedDaPayload,
+  verifyDaPayloadAgainstHeader,
 } from "./da/payload.js";
 import type {
   DaPayloadCandidate,
@@ -32,7 +32,7 @@ import type {
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
-  DaStoredConflictEvidenceRecordV1,
+  DaStoredConflictEvidenceRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
@@ -43,12 +43,12 @@ import type {
 import {
   scanStateQueue,
   type StateQueueProvider,
-  type StateQueueReplayAnchorV1,
+  type StateQueueReplayAnchor,
 } from "./l1/state-queue-scanner.js";
 import {
-  buildDaSignatureConflictEvidenceV1,
-  classifyDaLocalSigningCommitmentV1,
-  deriveExpectedDaAvailabilityCommitmentV1,
+  buildDaSignatureConflictEvidence,
+  classifyDaLocalSigningCommitment,
+  deriveExpectedDaAvailabilityCommitment,
   validateDaSignatureRecord,
 } from "./peer/signatures.js";
 import {
@@ -232,7 +232,7 @@ export class WatcherService {
 
   async initialize(): Promise<void> {
     await this.deps.store.initDeployment({
-      marker: makeDeploymentMarkerV1(this.deps.config.deploymentFingerprint),
+      marker: makeDeploymentMarker(this.deps.config.deploymentFingerprint),
       manifestSha256: this.deps.config.deploymentManifestSha256,
       contractDeploymentInfoSha256:
         this.deps.config.contractDeploymentInfoSha256,
@@ -552,7 +552,7 @@ export class WatcherService {
       return quarantinedTickResult(priorL1State);
     }
     let records: Awaited<ReturnType<typeof scanStateQueue>>;
-    let replayAnchor: StateQueueReplayAnchorV1 | undefined;
+    let replayAnchor: StateQueueReplayAnchor | undefined;
     try {
       const previousHeaders = await this.deps.store.listStateQueueHeaders();
       records = await scanStateQueue(this.deps.stateQueueProvider, {
@@ -653,7 +653,7 @@ export class WatcherService {
       );
       const expectedCommitment =
         retainedPayload?.validationStatus === "verified"
-          ? deriveExpectedDaAvailabilityCommitmentV1({
+          ? deriveExpectedDaAvailabilityCommitment({
               authority: {
                 deploymentIdentity: this.deps.config.hubOraclePolicyId,
                 bondOwnerCredential:
@@ -680,13 +680,13 @@ export class WatcherService {
       const localCommitment =
         expectedCommitment === undefined
           ? undefined
-          : classifyDaLocalSigningCommitmentV1({
+          : classifyDaLocalSigningCommitment({
               records: signerVariants,
               signerIndex: this.deps.config.signerIndex,
               expectedCommitmentDigest: expectedCommitment.commitmentDigest,
             });
       if (signerVariants.length > 1) {
-        const conflict = buildDaSignatureConflictEvidenceV1({
+        const conflict = buildDaSignatureConflictEvidence({
           first: signerVariants[0]!,
           second: signerVariants[1]!,
           daVkey: this.deps.signerValidation.signerPublicKeyHex,
@@ -860,7 +860,7 @@ export class WatcherService {
 
   private async persistHealthyL1SourceState(
     records: Awaited<ReturnType<typeof scanStateQueue>>,
-    stateQueueReplayAnchor: StateQueueReplayAnchorV1 | undefined,
+    stateQueueReplayAnchor: StateQueueReplayAnchor | undefined,
   ): Promise<void> {
     const submissions = await this.deps.store.listL1Submissions();
     const submittedHeaders = new Set(
@@ -919,7 +919,7 @@ export class WatcherService {
     ) {
       throw new Error("DA signer is not configured");
     }
-    const expectedCommitment = deriveExpectedDaAvailabilityCommitmentV1({
+    const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
       authority: {
         deploymentIdentity: this.deps.config.hubOraclePolicyId,
         bondOwnerCredential:
@@ -957,7 +957,7 @@ export class WatcherService {
   private async fetchVerifyPayload(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
     payloadFetches: WatcherPayloadFetchObservation[],
-  ): Promise<VerifiedDaPayloadV1 | undefined> {
+  ): Promise<VerifiedDaPayload | undefined> {
     const existing = await this.deps.store.getDaPayload(record.headerHash);
     if (existing !== undefined && hasPayloadBytes(existing)) {
       return this.verifyStoredPayload(record, existing);
@@ -1032,7 +1032,7 @@ export class WatcherService {
   private async verifyStoredPayload(
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
     payloadRecord: DaPayloadRecord,
-  ): Promise<VerifiedDaPayloadV1> {
+  ): Promise<VerifiedDaPayload> {
     if (payloadRecord.validationStatus === "conflicted") {
       throw new Error(payloadRecord.validationError ?? "payload conflict");
     }
@@ -1143,13 +1143,13 @@ export class WatcherService {
     payloadCbor: Buffer,
     record: Awaited<ReturnType<typeof scanStateQueue>>[number],
     payloadRecord: DaPayloadRecord,
-  ): Promise<VerifiedDaPayloadV1> {
+  ): Promise<VerifiedDaPayload> {
     try {
       const verificationOptions = {
         payloadSchemaVersion: 1,
         stateQueueOutRef: record.stateQueueOutRef,
       } as const;
-      const verified = await verifyDaPayloadV1AgainstHeader(
+      const verified = await verifyDaPayloadAgainstHeader(
         payloadCbor,
         record.headerHash,
         record.header,
@@ -1439,7 +1439,7 @@ export const createDaConflictEvidenceGossipHandler = (args: {
 }): DaGossipMessageHandler => {
   const now = args.now ?? (() => new Date());
   return async (context) => {
-    await ingestDaConflictEvidenceV1({
+    await ingestDaConflictEvidence({
       ...args,
       context,
       receivedAt: now(),
@@ -1447,7 +1447,7 @@ export const createDaConflictEvidenceGossipHandler = (args: {
   };
 };
 
-export const ingestDaConflictEvidenceV1 = async (args: {
+export const ingestDaConflictEvidence = async (args: {
   readonly deploymentFingerprint: string;
   readonly registry: DaPeerRegistry;
   readonly store: Pick<WatcherStore, "saveDaConflictEvidence">;
@@ -1458,8 +1458,8 @@ export const ingestDaConflictEvidenceV1 = async (args: {
     throw new Error("DA conflict evidence arrived on the wrong gossip topic");
   }
   args.registry.requireKnownPeer(args.context.remotePeerId);
-  const conflict = decodeDaConflictEvidenceV1Cbor(args.context.data);
-  if (!encodeDaConflictEvidenceV1Cbor(conflict).equals(args.context.data)) {
+  const conflict = decodeDaConflictEvidenceCbor(args.context.data);
+  if (!encodeDaConflictEvidenceCbor(conflict).equals(args.context.data)) {
     throw new Error("DA conflict evidence must use canonical CBOR");
   }
   const deploymentFingerprint = conflict.deploymentFingerprint.toString("hex");
@@ -1483,11 +1483,11 @@ export const ingestDaConflictEvidenceV1 = async (args: {
       "DA conflict evidence hash does not match compact evidence",
     );
   }
-  const equivocation = decodeDaConflictingSignatureHeaderEvidenceV1Cbor(
+  const equivocation = decodeDaConflictingSignatureHeaderEvidenceCbor(
     conflict.compactEvidence,
   );
   if (
-    !encodeDaConflictingSignatureHeaderEvidenceV1Cbor(equivocation).equals(
+    !encodeDaConflictingSignatureHeaderEvidenceCbor(equivocation).equals(
       conflict.compactEvidence,
     )
   ) {
@@ -1511,10 +1511,10 @@ export const ingestDaConflictEvidenceV1 = async (args: {
   }
   const lowerHeaderHash = equivocation.lowerHeaderHash.toString("hex");
   const upperHeaderHash = equivocation.upperHeaderHash.toString("hex");
-  const lowerCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const lowerCommitment = SDK.parseDaAvailabilityCommitmentCbor(
     equivocation.lowerCommitmentCbor.toString("hex"),
   );
-  const upperCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+  const upperCommitment = SDK.parseDaAvailabilityCommitmentCbor(
     equivocation.upperCommitmentCbor.toString("hex"),
   );
   if (
@@ -1541,7 +1541,7 @@ export const ingestDaConflictEvidenceV1 = async (args: {
       "DA conflict evidence contains an invalid attestation signature",
     );
   }
-  const record: DaStoredConflictEvidenceRecordV1 = {
+  const record: DaStoredConflictEvidenceRecord = {
     conflictSchemaVersion: 1,
     deploymentFingerprint,
     headerHash: lowerHeaderHash,

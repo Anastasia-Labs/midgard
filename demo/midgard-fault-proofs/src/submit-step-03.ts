@@ -20,8 +20,8 @@ import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -37,13 +37,13 @@ import {
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
 import { parseHex } from "./json-file.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -65,11 +65,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitStep03CliConfig = SubmitProviderConfig & {
@@ -211,7 +211,7 @@ export const submitStep03 = async ({
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Production workflow seam for carriage and proof-step submissions. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep03Result> => {
   const { doubleSpendCategory, contracts } =
@@ -244,8 +244,8 @@ export const submitStep03 = async ({
   // The door's own checks, run before a transaction is built: tx1's compact
   // bytes re-derive to the anchor the thread carries, and these items are the
   // §5.1 preimage that transaction commits at field 0.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: inputDatum.data.verified_tx1_id,
     nativeTxCompactCbor,
     itemCbors: tx1SpendInputCbors.map((inputCbor) =>
@@ -278,7 +278,7 @@ export const submitStep03 = async ({
   // transaction can reference it. Tier 1 publishes nothing and the list is empty.
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -286,7 +286,7 @@ export const submitStep03 = async ({
       label: "Double-spend step 03 tx1 spend-inputs",
       preSubmitBoundary,
     }));
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.doubleSpend.steps[2].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "double-spend step 03 validator",
@@ -303,7 +303,7 @@ export const submitStep03 = async ({
       walletUtxos,
     ),
   );
-  const tx1SpendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const tx1SpendInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -395,10 +395,10 @@ export const submitStep03 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 03 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-03",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.doubleSpend.steps[2].spendingScript,
@@ -445,7 +445,7 @@ export const submitStep03 = async ({
 export const submitStep03FromFiles = async (
   config: SubmitStep03CliConfig,
 ): Promise<SubmitStep03Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-step-03",
   });
   const [blueprint, deploymentInfo, tx1InputsJson, nativeTxCompactJson, lucid] =
@@ -469,7 +469,7 @@ export const submitStep03FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     tx1SpendInputCbors,
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

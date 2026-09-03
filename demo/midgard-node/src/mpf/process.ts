@@ -6,13 +6,13 @@ import { dirname } from "node:path";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  canonicalCommittedWithdrawalTransitionEffectV1,
-  canonicalDepositTransitionEffectV1,
+  canonicalCommittedWithdrawalTransitionEffect,
+  canonicalDepositTransitionEffect,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   type ValidationMachineLedgerEntry,
@@ -53,8 +53,8 @@ import {
 import { MpfError } from "./errors.js";
 import {
   applyValidationLedgerMutations,
-  type ClassifiedForcedTransactionV1,
-  classifyForcedTransactionsV1,
+  type ClassifiedForcedTransaction,
+  classifyForcedTransactions,
   programMaterialSidecarForEnvelopes,
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedForcedTransactionEntriesForWindow,
@@ -65,8 +65,8 @@ import {
   collapseLedgerDelta,
   type LedgerDelta,
   ledgerEntryToInsertBatchOp,
-  ledgerOutputToInsertBatchOpV1,
-  transitionEffectToLedgerOpsV1,
+  ledgerOutputToInsertBatchOp,
+  transitionEffectToLedgerOps,
 } from "./ledger-delta.js";
 import { encodeTransactionRootValue } from "./ledger-hydration.js";
 import {
@@ -480,8 +480,8 @@ export const processMpfs = (
       yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
 
     const consensusProfile =
-      config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1;
-    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+      config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE;
+    if (!isMidgardConsensusProfile(consensusProfile)) {
       return yield* Effect.fail(
         new DatabaseError({
           table: ForcedTransactionsDB.tableName,
@@ -513,10 +513,10 @@ export const processMpfs = (
     for (const classifiedWithdrawal of validWithdrawalClassifications) {
       forcedPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
     }
-    const classifiedForcedTransactionsV1: readonly ClassifiedForcedTransactionV1[] =
+    const classifiedForcedTransactions: readonly ClassifiedForcedTransaction[] =
       includedForcedTransactionEntries.length === 0
         ? []
-        : yield* classifyForcedTransactionsV1({
+        : yield* classifyForcedTransactions({
             entries: includedForcedTransactionEntries,
             initialState: forcedPreState,
             effectiveEndTime: effectiveEndTime!,
@@ -524,10 +524,10 @@ export const processMpfs = (
             validation: config!.forcedValidation!,
             resolveProgramMaterialSidecar: programMaterialSidecarForEnvelopes,
           });
-    includedForcedTransactionEntries = classifiedForcedTransactionsV1.map(
+    includedForcedTransactionEntries = classifiedForcedTransactions.map(
       ({ entry }) => entry,
     );
-    for (const classified of classifiedForcedTransactionsV1) {
+    for (const classified of classifiedForcedTransactions) {
       for (const operation of classified.rawLedgerOps) {
         if (operation.type === "insert") {
           rawInsertedLedgerOutputsByOutRef.set(
@@ -539,10 +539,10 @@ export const processMpfs = (
     }
     if (
       config?.deferDatabaseWrites !== true &&
-      classifiedForcedTransactionsV1.length > 0
+      classifiedForcedTransactions.length > 0
     ) {
       yield* ForcedTransactionsDB.setProofClassifications(
-        classifiedForcedTransactionsV1.map(({ entry }) => ({
+        classifiedForcedTransactions.map(({ entry }) => ({
           txOrderId: entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
           operatorValidity:
             entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
@@ -556,13 +556,13 @@ export const processMpfs = (
       );
     }
     const forcedLedgerOpsByEventId = new Map(
-      classifiedForcedTransactionsV1.map(({ entry, ledgerOps }) => [
+      classifiedForcedTransactions.map(({ entry, ledgerOps }) => [
         entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
         ledgerOps,
       ]),
     );
     const forcedTransitionEffectsByEventId = new Map(
-      classifiedForcedTransactionsV1.map(({ entry, transitionEffect }) => [
+      classifiedForcedTransactions.map(({ entry, transitionEffect }) => [
         entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
         transitionEffect,
       ]),
@@ -654,7 +654,7 @@ export const processMpfs = (
           key: decoded.txHash,
           value: encodeTransactionRootValue(
             decoded.txCbor,
-            config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE_V1,
+            config?.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
           ),
         } as const satisfies MpfInsertBatchOp;
         transactionOps.push(transactionInsertOp);
@@ -701,7 +701,7 @@ export const processMpfs = (
       for (const classifiedWithdrawal of validWithdrawalClassifications) {
         proofPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
       }
-      for (const classified of classifiedForcedTransactionsV1) {
+      for (const classified of classifiedForcedTransactions) {
         for (const op of classified.rawLedgerOps) {
           if (op.type === "delete") {
             proofPreState.delete(op.key.toString("hex"));
@@ -785,7 +785,7 @@ export const processMpfs = (
         try: () =>
           Trie.fromList(
             [...proofNormalReplayState.entries()].map(([key, value]) =>
-              ledgerOutputToInsertBatchOpV1({
+              ledgerOutputToInsertBatchOp({
                 outRef: Buffer.from(key, "hex"),
                 outputCbor: value,
               }),
@@ -815,7 +815,7 @@ export const processMpfs = (
             key: Buffer.from(outRef, "hex"),
           })),
           ...accepted.graph.produced.map((produced) =>
-            ledgerOutputToInsertBatchOpV1({
+            ledgerOutputToInsertBatchOp({
               outRef: produced[Ledger.Columns.OUTREF],
               outputCbor: produced[Ledger.Columns.OUTPUT],
             }),
@@ -927,14 +927,14 @@ export const processMpfs = (
         Effect.gen(function* () {
           const eventKey = yield* withdrawalTraceEventKey(entry);
           const valid = entry[WithdrawalsDB.Columns.VALIDITY];
-          const effect = canonicalCommittedWithdrawalTransitionEffectV1({
+          const effect = canonicalCommittedWithdrawalTransitionEffect({
             committedValid: valid === WithdrawalsDB.Validity.WithdrawalIsValid,
             outRefCbor: yield* WithdrawalsDB.toLedgerOutRef(entry),
           });
           return {
             eventKey,
             phase: "Withdrawal" as const,
-            ledgerOps: transitionEffectToLedgerOpsV1(effect),
+            ledgerOps: transitionEffectToLedgerOps(effect),
           } satisfies TransitionTraceSourceEvent;
         }),
     );
@@ -970,7 +970,7 @@ export const processMpfs = (
             ledgerOps:
               effect === undefined
                 ? (ledgerOps ?? [])
-                : transitionEffectToLedgerOpsV1(effect),
+                : transitionEffectToLedgerOps(effect),
           } satisfies TransitionTraceSourceEvent;
         }),
     );
@@ -1025,14 +1025,14 @@ export const processMpfs = (
       (entry) =>
         Effect.gen(function* () {
           const ledgerEntry = yield* DepositsDB.toLedgerEntry(entry);
-          const effect = canonicalDepositTransitionEffectV1({
+          const effect = canonicalDepositTransitionEffect({
             outRefCbor: ledgerEntry[Ledger.Columns.OUTREF],
             outputCbor: ledgerEntry[Ledger.Columns.OUTPUT],
           });
           return {
             eventKey: yield* depositTraceEventKey(entry),
             phase: "Deposit" as const,
-            ledgerOps: transitionEffectToLedgerOpsV1(effect),
+            ledgerOps: transitionEffectToLedgerOps(effect),
           } satisfies TransitionTraceSourceEvent;
         }),
     );
@@ -1264,7 +1264,7 @@ export const processMpfs = (
           traceByEventKey.set(keyHex, member);
         }
         const forcedByOrderId = new Map(
-          classifiedForcedTransactionsV1.map((classified) => [
+          classifiedForcedTransactions.map((classified) => [
             classified.entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
               "hex",
             ),
@@ -1512,7 +1512,7 @@ export const processMpfs = (
         forcedTransactions: forcedTransactions.map(encodeEntry),
         finalUtxoEntries: finalUtxoEntries.map((entry) =>
           encodeEntry(
-            ledgerOutputToInsertBatchOpV1({
+            ledgerOutputToInsertBatchOp({
               outRef: entry.outref,
               outputCbor: entry.output,
             }),

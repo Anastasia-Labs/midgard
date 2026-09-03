@@ -26,14 +26,14 @@ import {
   selectFeeInput,
 } from "../submit-step-01.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { DoubleWithdrawContractsV1 } from "./contracts-v1.js";
+import type { DoubleWithdrawContracts } from "./contracts-v1.js";
 import {
-  doubleWithdrawStepLabelV1,
+  doubleWithdrawStepLabel,
   doubleWithdrawSubmitError,
-  requireDoubleWithdrawReferenceScriptV1,
+  requireDoubleWithdrawReferenceScript,
 } from "./submit-common-v1.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
@@ -46,7 +46,7 @@ const locateStepIndex = ({
   contracts,
 }: {
   readonly threadUtxo: UTxO;
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
 }): 0 | 1 => {
   if (threadUtxo.address === contracts.steps[0].spendingScriptAddress) return 0;
   if (threadUtxo.address === contracts.steps[1].spendingScriptAddress) return 1;
@@ -76,13 +76,13 @@ export const submitDoubleWithdrawCancel = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -91,7 +91,7 @@ export const submitDoubleWithdrawCancel = async ({
     label: "double-withdraw computation-thread UTxO",
   });
   const stepIndex = locateStepIndex({ threadUtxo, contracts });
-  const stepLabel = doubleWithdrawStepLabelV1(stepIndex);
+  const stepLabel = doubleWithdrawStepLabel(stepIndex);
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -149,13 +149,13 @@ export const submitDoubleWithdrawCancel = async ({
       FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${stepLabel} cancel computation-thread mint`,
   });
   const referenceInputs = [
-    requireDoubleWithdrawReferenceScriptV1({
+    requireDoubleWithdrawReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
       stepIndex,

@@ -22,7 +22,7 @@ import {
   providerFromUrl,
   stateQueueUtxosToObservedNodes,
 } from "../src/l1/provider.js";
-import { hashBlockHeaderV1 } from "../src/l1/state-queue-scanner.js";
+import { hashBlockHeader } from "../src/l1/state-queue-scanner.js";
 import {
   makeObservedNode,
   makePayloadFixture,
@@ -45,13 +45,13 @@ describe("L1 provider adapters", () => {
 
   it("normalizes SDK StateQueueUTxOs into scanner observations", async () => {
     const { header } = await makePayloadFixture();
-    const headerHash = hashBlockHeaderV1(header);
+    const headerHash = hashBlockHeader(header);
     const datum: SDK.LinkedListNodeView = {
       key: { Key: { key: headerHash } },
       next: "Empty",
       data: Data.castTo(
         { header, da_attestation: SDK.NO_DA_ATTESTATION },
-        SDK.StateQueueNodeV1,
+        SDK.StateQueueNode,
       ) as SDK.LinkedListNodeView["data"],
     };
     const stateQueueUtxo: SDK.StateQueueUTxO = {

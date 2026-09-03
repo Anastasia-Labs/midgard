@@ -1,28 +1,28 @@
 import {
   computeHash32,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   decodeMidgardVersionedScript,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxCompact,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
 } from "@al-ft/midgard-core";
 import {
-  forcedVerdictSubjectV1,
+  forcedVerdictSubject,
   FraudProofComputationThreadStepDatum,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, type LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import { buildExecutionSourceMachineAuthenticationFromRetainedDaV1 } from "../execution-source-script-decoding/retained-witness-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import { buildExecutionSourceMachineAuthenticationFromRetainedDa } from "../execution-source-script-decoding/retained-witness-v1.js";
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
@@ -36,117 +36,117 @@ import {
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPortV1 } from "../workflow/family-l1-observation-v1.js";
+import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  bindProductionWorkflowActuationJournalV1,
+  assertWorkflowJournalActuation,
+  bindWorkflowActuationJournal,
 } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { captureProductionCursorRemovalV1 } from "../workflow/production-cursor-family-runtime-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
+import { captureCursorRemoval } from "../workflow/production-cursor-family-runtime-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
 import type {
-  ProductionHistoricalNativeScriptCheckpointStoreV1,
-  ProductionHistoricalNativeScriptHistorySourceV1,
+  HistoricalNativeScriptCheckpointStore,
+  HistoricalNativeScriptHistorySource,
 } from "../workflow/production-historical-native-script-corpus-v1.js";
-import { resolveProductionHistoricalNativeScriptCorpusV1 } from "../workflow/production-historical-native-script-corpus-v1.js";
-import { submitCapturedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
-import type { AcceptedReconstructionStateV1 } from "./accepted-reconstruction-machine-v1.js";
-import { reconstructExecutionNativeScriptPurposesV1 } from "./canonical-reconstruction-v1.js";
+import { resolveHistoricalNativeScriptCorpus } from "../workflow/production-historical-native-script-corpus-v1.js";
+import { submitCapturedTransaction } from "../workflow/transaction-boundary-v1.js";
+import type { AcceptedReconstructionState } from "./accepted-reconstruction-machine-v1.js";
+import { reconstructExecutionNativeScriptPurposes } from "./canonical-reconstruction-v1.js";
 import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1,
-  EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES_V1,
-  type ExecutionNativeScriptInvalidContractsV1,
+  EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES,
+  EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES,
+  type ExecutionNativeScriptInvalidContracts,
 } from "./contracts-v1.js";
-import { prepareExecutionNativeScriptInvalidEvidenceV1 } from "./family-v1.js";
-import { detectExecutionNativeScriptInvalidCanonicalViolationsV1 } from "./production-replay-v1.js";
+import { prepareExecutionNativeScriptInvalidEvidence } from "./family-v1.js";
+import { detectExecutionNativeScriptInvalidCanonicalViolations } from "./production-replay-v1.js";
 import {
-  ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-  ExecutionNativeScriptInvalidStep02DatumV1Schema,
-  ExecutionNativeScriptInvalidStep03DatumV1Schema,
-  ExecutionNativeScriptInvalidStep04DatumV1Schema,
-  ExecutionNativeScriptInvalidStep05DatumV1Schema,
-  ExecutionNativeScriptInvalidStep06DatumV1Schema,
+  ExecutionNativeScriptInvalidAcceptedDatumSchema,
+  ExecutionNativeScriptInvalidStep02DatumSchema,
+  ExecutionNativeScriptInvalidStep03DatumSchema,
+  ExecutionNativeScriptInvalidStep04DatumSchema,
+  ExecutionNativeScriptInvalidStep05DatumSchema,
+  ExecutionNativeScriptInvalidStep06DatumSchema,
 } from "./schemas-v1.js";
 import {
-  submitExecutionNativeScriptInvalidAcceptedFinishInlineV1,
-  submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1,
-  submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1,
-  submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1,
-  submitExecutionNativeScriptInvalidAcceptedInitV1,
-  submitExecutionNativeScriptInvalidAcceptedInlineSourceV1,
-  submitExecutionNativeScriptInvalidAcceptedMintV1,
-  submitExecutionNativeScriptInvalidAcceptedObserverV1,
-  submitExecutionNativeScriptInvalidAcceptedReceiveV1,
-  submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1,
-  submitExecutionNativeScriptInvalidAcceptedSpendV1,
+  submitExecutionNativeScriptInvalidAcceptedFinishInline,
+  submitExecutionNativeScriptInvalidAcceptedFinishPurpose,
+  submitExecutionNativeScriptInvalidAcceptedFinishReceivePass,
+  submitExecutionNativeScriptInvalidAcceptedFinishSpends,
+  submitExecutionNativeScriptInvalidAcceptedInit,
+  submitExecutionNativeScriptInvalidAcceptedInlineSource,
+  submitExecutionNativeScriptInvalidAcceptedMint,
+  submitExecutionNativeScriptInvalidAcceptedObserver,
+  submitExecutionNativeScriptInvalidAcceptedReceive,
+  submitExecutionNativeScriptInvalidAcceptedReferenceSource,
+  submitExecutionNativeScriptInvalidAcceptedSpend,
 } from "./submit-accepted-reconstruction-v1.js";
-import { submitExecutionNativeScriptInvalidInitV1 } from "./submit-init-v1.js";
+import { submitExecutionNativeScriptInvalidInit } from "./submit-init-v1.js";
 import {
-  submitExecutionNativeScriptInvalidStep01AcceptedV1,
-  submitExecutionNativeScriptInvalidStep01ForcedV1,
+  submitExecutionNativeScriptInvalidStep01Accepted,
+  submitExecutionNativeScriptInvalidStep01Forced,
 } from "./submit-step-01-v1.js";
-import { submitExecutionNativeScriptInvalidStep02V1 } from "./submit-step-02-v1.js";
+import { submitExecutionNativeScriptInvalidStep02 } from "./submit-step-02-v1.js";
 import { submitExecutionNativeScriptInvalidStep03 } from "./submit-step-03-v1.js";
 import { submitExecutionNativeScriptInvalidStep04StartSignerScan } from "./submit-step-04-v1.js";
 import { submitExecutionNativeScriptInvalidStep05 } from "./submit-step-05-v1.js";
 import { submitExecutionNativeScriptInvalidStep06 } from "./submit-step-06-v1.js";
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_PRODUCTION_WORKFLOW_V1 =
+export const EXECUTION_NATIVE_SCRIPT_INVALID_WORKFLOW =
   "midgard-execution-native-script-invalid-production-workflow-v1" as const;
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_PRODUCTION_CONFIG_KEYS_V1 =
-  Object.freeze([
-    "manifest",
-    "blueprintJson",
-    "deploymentInfo",
-    "headerHash",
-    "lucid",
-    "signer",
-    "source",
-    "historicalCheckpointStore",
-    "historicalSource",
-    "stateQueueMutationLeaseCoordinator",
-    "referenceScripts",
-  ] as const);
+export const EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS = Object.freeze([
+  "manifest",
+  "blueprintJson",
+  "deploymentInfo",
+  "headerHash",
+  "lucid",
+  "signer",
+  "source",
+  "historicalCheckpointStore",
+  "historicalSource",
+  "stateQueueMutationLeaseCoordinator",
+  "referenceScripts",
+] as const);
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS_V1 =
-  Object.freeze([
+export const EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS = Object.freeze(
+  [
     FraudProofComputationThreadStepDatum,
-    ExecutionNativeScriptInvalidStep02DatumV1Schema,
-    ExecutionNativeScriptInvalidStep03DatumV1Schema,
-    ExecutionNativeScriptInvalidStep04DatumV1Schema,
-    ExecutionNativeScriptInvalidStep05DatumV1Schema,
-    ExecutionNativeScriptInvalidStep06DatumV1Schema,
-    ExecutionNativeScriptInvalidStep02DatumV1Schema,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-    ExecutionNativeScriptInvalidAcceptedDatumV1Schema,
-  ] as const);
+    ExecutionNativeScriptInvalidStep02DatumSchema,
+    ExecutionNativeScriptInvalidStep03DatumSchema,
+    ExecutionNativeScriptInvalidStep04DatumSchema,
+    ExecutionNativeScriptInvalidStep05DatumSchema,
+    ExecutionNativeScriptInvalidStep06DatumSchema,
+    ExecutionNativeScriptInvalidStep02DatumSchema,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema,
+    ExecutionNativeScriptInvalidAcceptedDatumSchema,
+  ] as const,
+);
 
-export type ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1 = Readonly<{
+export type ExecutionNativeScriptInvalidWorkflowReferenceScripts = Readonly<{
   steps: readonly [
     UTxO,
     UTxO,
@@ -162,7 +162,7 @@ export type ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1 = Readonly<{
     UTxO,
     UTxO,
   ];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
   removal: Readonly<{
     correctionLockSpend: UTxO;
@@ -177,32 +177,31 @@ export type ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1 = Readonly<{
   }>;
 }>;
 
-export type ManifestBoundExecutionNativeScriptInvalidWorkflowConfigV1 =
-  Readonly<{
-    manifest: unknown;
-    blueprintJson: string;
-    deploymentInfo: unknown;
-    headerHash: string;
-    lucid: LucidEvolution;
-    signer: ResolvedProverSigner;
-    source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
-    historicalCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-    historicalSource: ProductionHistoricalNativeScriptHistorySourceV1;
-    stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-    referenceScripts: ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1;
-  }>;
-
-export type ManifestBoundExecutionNativeScriptInvalidWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"executionNativeScriptInvalid">;
+export type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig = Readonly<{
+  manifest: unknown;
+  blueprintJson: string;
+  deploymentInfo: unknown;
+  headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
-  historicalCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
-  historicalSource: ProductionHistoricalNativeScriptHistorySourceV1;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalSource: HistoricalNativeScriptHistorySource;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  contracts: ExecutionNativeScriptInvalidContractsV1;
-  references: ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPortV1>;
+  referenceScripts: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
+}>;
+
+export type ManifestBoundExecutionNativeScriptInvalidWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"executionNativeScriptInvalid">;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
+  historicalCheckpointStore: HistoricalNativeScriptCheckpointStore;
+  historicalSource: HistoricalNativeScriptHistorySource;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  contracts: ExecutionNativeScriptInvalidContracts;
+  references: ExecutionNativeScriptInvalidWorkflowReferenceScripts;
+  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
 }>;
 
 const contractNames = Object.freeze([
@@ -222,28 +221,26 @@ const contractNames = Object.freeze([
 ] as const);
 
 /** Strict manifest/reference construction; no proof inputs or callbacks. */
-export const createManifestBoundExecutionNativeScriptInvalidWorkflowV1 = async (
-  config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfigV1,
-): Promise<ManifestBoundExecutionNativeScriptInvalidWorkflowV1> => {
+export const createManifestBoundExecutionNativeScriptInvalidWorkflow = async (
+  config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
+): Promise<ManifestBoundExecutionNativeScriptInvalidWorkflow> => {
   if (
     Object.keys(config).sort().join("\0") !==
-    [...EXECUTION_NATIVE_SCRIPT_INVALID_PRODUCTION_CONFIG_KEYS_V1]
-      .sort()
-      .join("\0")
+    [...EXECUTION_NATIVE_SCRIPT_INVALID_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
       "executionNativeScriptInvalid production config contains callback authority",
     );
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
     category: "executionNativeScriptInvalid",
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS_V1,
+    stepDatumSchemas: EXECUTION_NATIVE_SCRIPT_INVALID_STEP_DATUM_SCHEMAS,
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -262,14 +259,14 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflowV1 = async (
       "executionNativeScriptInvalid manifest omitted thirteen-step chain",
     );
   const steps = contractNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.steps[index]!,
     }),
-  ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1["steps"];
+  ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScripts["steps"];
   const bindReference = (contractName: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo,
@@ -302,7 +299,7 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflowV1 = async (
         role,
         bindReference(role, utxo),
       ]),
-    ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScriptsV1["removal"],
+    ) as unknown as ExecutionNativeScriptInvalidWorkflowReferenceScripts["removal"],
   );
   const references = Object.freeze({
     steps,
@@ -313,17 +310,16 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflowV1 = async (
     ),
     removal,
   });
-  const contracts: ExecutionNativeScriptInvalidContractsV1 = Object.freeze({
+  const contracts: ExecutionNativeScriptInvalidContracts = Object.freeze({
     steps: chain.steps.slice(0, 6).map((step, index) => ({
       ...step,
-      blueprintTitle:
-        EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES[index]!,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
     })),
     acceptedPrelude: chain.steps.slice(6).map((step, index) => ({
       ...step,
       blueprintTitle:
-        EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1[index]!,
+        EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES[index]!,
       referenceOutRef: `${steps[index + 6]!.txHash}#${steps[index + 6]!.outputIndex.toString()}`,
     })),
     computationThread: binding.resolvedContracts.contracts.computationThread,
@@ -343,7 +339,7 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflowV1 = async (
       config.stateQueueMutationLeaseCoordinator,
     contracts,
     references,
-    l1: createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+    l1: createFraudProofFamilyLocalKupmiosL1ObservationPort({
       source: config.source,
       releaseFinality: binding.releaseFinality,
       releaseEconomics: binding.releaseEconomics,
@@ -353,9 +349,9 @@ export const createManifestBoundExecutionNativeScriptInvalidWorkflowV1 = async (
 };
 
 /** Rebuild the one actionable ID32 decision solely from L1 and retained DA. */
-export const prepareManifestBoundExecutionNativeScriptInvalidReplayV1 =
+export const prepareManifestBoundExecutionNativeScriptInvalidReplay =
   async (input: {
-    workflow: ManifestBoundExecutionNativeScriptInvalidWorkflowV1;
+    workflow: ManifestBoundExecutionNativeScriptInvalidWorkflow;
     sources: readonly import("../transition-trace/fetch.js").RetainedDaPayloadSource[];
   }) => {
     if (Object.keys(input).sort().join(",") !== "sources,workflow")
@@ -363,20 +359,20 @@ export const prepareManifestBoundExecutionNativeScriptInvalidReplayV1 =
         "executionNativeScriptInvalid replay rejects caller-authored evidence",
       );
     const { workflow, sources } = input;
-    const block = await fetchCanonicalBlockEvidenceV1({
+    const block = await fetchCanonicalBlockEvidence({
       observation: await workflow.l1.observeHeader({
         headerHash: workflow.binding.definition.headerHash,
       }),
       sources,
     });
-    const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+    const corpus = await resolveHistoricalNativeScriptCorpus({
       deploymentFingerprint: workflow.binding.deploymentFingerprint,
       checkpointStore: workflow.historicalCheckpointStore,
       historySource: workflow.historicalSource,
       currentEvidence: block,
       sources,
     });
-    const detections = detectExecutionNativeScriptInvalidCanonicalViolationsV1({
+    const detections = detectExecutionNativeScriptInvalidCanonicalViolations({
       block,
       corpus,
     });
@@ -387,7 +383,7 @@ export const prepareManifestBoundExecutionNativeScriptInvalidReplayV1 =
     return Object.freeze({ block, corpus, detection: detections[0]! });
   };
 
-export type ExecutionNativeScriptInvalidProductionRunResultV1 = Readonly<{
+export type ExecutionNativeScriptInvalidRunResult = Readonly<{
   kind: "pending" | "completed";
   headerHash: string;
   detectionId: string;
@@ -399,18 +395,18 @@ export type ExecutionNativeScriptInvalidProductionRunResultV1 = Readonly<{
  * transaction driver is deliberately kept in the workflow value constructed
  * from the exact manifest; callers cannot inject evidence or an actuator.
  */
-export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
+export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow =
   async ({
     workflow,
     sources,
     journal,
     decisionDigest,
   }: {
-    workflow: ManifestBoundExecutionNativeScriptInvalidWorkflowV1;
+    workflow: ManifestBoundExecutionNativeScriptInvalidWorkflow;
     sources: readonly RetainedDaPayloadSource[];
-    journal: FraudProofWorkflowJournalStoreV1;
+    journal: FraudProofWorkflowJournalStore;
     decisionDigest: string;
-  }): Promise<ExecutionNativeScriptInvalidProductionRunResultV1> => {
+  }): Promise<ExecutionNativeScriptInvalidRunResult> => {
     if (
       Object.keys({ workflow, sources, journal }).sort().join(",") !==
       "journal,sources,workflow"
@@ -419,7 +415,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
         "executionNativeScriptInvalid runner rejects caller-authored evidence",
       );
     const prepared =
-      await prepareManifestBoundExecutionNativeScriptInvalidReplayV1({
+      await prepareManifestBoundExecutionNativeScriptInvalidReplay({
         workflow,
         sources,
       });
@@ -433,8 +429,8 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
         detectionId: prepared.detection.detectionId,
         direction: prepared.detection.direction,
       });
-    const identity: FraudProofWorkflowIdentityV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+    const identity: FraudProofWorkflowIdentity = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
       deploymentFingerprint: workflow.binding.deploymentFingerprint,
       category: "executionNativeScriptInvalid",
       target: {
@@ -443,14 +439,14 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
       },
       decisionDigest,
     };
-    const workflowId = computeFraudProofWorkflowIdV1(identity);
+    const workflowId = computeFraudProofWorkflowId(identity);
     const append = async (
-      event: Parameters<FraudProofWorkflowJournalStoreV1["append"]>[0]["event"],
+      event: Parameters<FraudProofWorkflowJournalStore["append"]>[0]["event"],
     ) => {
       const sequence = (await journal.load(workflowId)).length;
       await journal.append(
         {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
           workflowId,
           identity,
           sequence,
@@ -494,7 +490,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
     }
     if (observed.stage.kind === "proof_token") {
       const actionId = "executionNativeScriptInvalid:remove";
-      const captured = await captureProductionCursorRemovalV1({
+      const captured = await captureCursorRemoval({
         category: "executionNativeScriptInvalid",
         lucid: workflow.lucid,
         blueprint: workflow.binding.blueprint,
@@ -549,17 +545,17 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
         attempt: 1,
         txHash: captured.transaction.txHash,
       });
-      const txHash = await submitCapturedTransactionV1(captured.transaction);
+      const txHash = await submitCapturedTransaction(captured.transaction);
       await append({ kind: "submitted", actionId, attempt: 1, txHash });
       await workflow.lucid.awaitTx(txHash);
       await append({ kind: "confirmed", actionId, txHash });
       await captured.mutationLease?.release();
     } else if (observed.stage.kind === "not_started") {
       const actionId = "executionNativeScriptInvalid:init";
-      const result = await submitExecutionNativeScriptInvalidInitV1({
+      const result = await submitExecutionNativeScriptInvalidInit({
         lucid: workflow.lucid,
         blueprint: workflow.binding.blueprint as Parameters<
-          typeof submitExecutionNativeScriptInvalidInitV1
+          typeof submitExecutionNativeScriptInvalidInit
         >[0]["blueprint"],
         network: workflow.binding.network,
         contracts: workflow.contracts,
@@ -620,11 +616,11 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
         throw new Error(
           "executionNativeScriptInvalid selected transaction disappeared",
         );
-      const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor);
-      const compactCbor = encodeMidgardNativeTxCompactV1(tx.compact).toString(
+      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
+      const compactCbor = encodeMidgardNativeTxCompact(tx.compact).toString(
         "hex",
       );
-      const compactWitness = deriveMidgardNativeTxWitnessSetCompactV1(
+      const compactWitness = deriveMidgardNativeTxWitnessSetCompact(
         tx.witnessSet,
       );
       const witnessSet = {
@@ -638,7 +634,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           compactWitness.redeemerTxWitsHash,
         ).toString("hex"),
       };
-      const addressWitnessItems = decodeMidgardFieldPreimageV1(
+      const addressWitnessItems = decodeMidgardFieldPreimage(
         tx.witnessSet.addrTxWitsPreimageCbor,
       );
       const history = prepared.corpus as unknown as {
@@ -654,7 +650,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           Buffer.from(value),
         ]),
       );
-      const reconstruction = reconstructExecutionNativeScriptPurposesV1({
+      const reconstruction = reconstructExecutionNativeScriptPurposes({
         canonicalTransactionCbor: txCbor,
         resolvedOutputsByOutRef: priorOutputs,
       });
@@ -705,17 +701,17 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
       let result: { txHash: string };
       if (activeStage.step === 1) {
         if (transactionEntry !== undefined) {
-          const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(txCbor);
+          const material = deriveMidgardNativeTxFaultEvidenceMaterial(txCbor);
           const trie = await buildTrieView(
             prepared.block.transactions.map((entry) => ({
               key: Buffer.from(entry.nodeTxId, "hex"),
               value: Buffer.from(entry.l2TransactionSourceCbor, "hex"),
             })),
           );
-          result = await submitExecutionNativeScriptInvalidStep01AcceptedV1({
+          result = await submitExecutionNativeScriptInvalidStep01Accepted({
             ...common,
             blueprint: workflow.binding.blueprint as Parameters<
-              typeof submitExecutionNativeScriptInvalidStep01AcceptedV1
+              typeof submitExecutionNativeScriptInvalidStep01Accepted
             >[0]["blueprint"],
             network: workflow.binding.network,
             stateQueueBlockOutRef: activeStage.stateQueueBlockOutRef,
@@ -741,7 +737,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           const eventKey = {
             ForcedTransactionEventKey: { tx_order_id: forcedEntry!.key },
           } as const;
-          result = await submitExecutionNativeScriptInvalidStep01ForcedV1({
+          result = await submitExecutionNativeScriptInvalidStep01Forced({
             ...common,
             header: prepared.block.header,
             membership: await buildForcedTransactionLeafMembershipProof({
@@ -762,7 +758,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           ForcedTransactionEventKey: { tx_order_id: forcedEntry.key },
         } as const;
         const authentication =
-          await buildExecutionSourceMachineAuthenticationFromRetainedDaV1({
+          await buildExecutionSourceMachineAuthenticationFromRetainedDa({
             eventKey,
             executionIndex: prepared.detection.executionIndex,
             authenticatedValidationTraceEntries:
@@ -783,9 +779,9 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
               prepared.block.header.validationTracesRoot,
             expectedPurposeKind: purpose.purposeKindTag,
           });
-        const evidence = prepareExecutionNativeScriptInvalidEvidenceV1({
+        const evidence = prepareExecutionNativeScriptInvalidEvidence({
           finding: {
-            subject: forcedVerdictSubjectV1({
+            subject: forcedVerdictSubject({
               transactionId: forcedEntry.value.tx_id,
               sourceKey: forcedEntry.key,
               rejectionReason: forcedEntry.value.verdict.ForcedTxInvalid.reason,
@@ -794,7 +790,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           },
           transactionIdHex: forcedEntry.value.tx_id,
           sourceDescriptorHashHex: (purpose.source.originKind === 0
-            ? hashMidgardInlineScriptSourceLeafV1({
+            ? hashMidgardInlineScriptSourceLeaf({
                 sourceIndex: BigInt(purpose.source.sourceIndex),
                 scriptLanguageTag: purpose.source.languageTag,
                 scriptHash: Buffer.from(purpose.source.scriptHash, "hex"),
@@ -804,7 +800,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
                   "hex",
                 ),
               })
-            : hashMidgardReferenceScriptSourceLeafV1({
+            : hashMidgardReferenceScriptSourceLeaf({
                 sourceKey: Buffer.from(purpose.source.sourceKey, "hex"),
                 scriptLanguageTag: purpose.source.languageTag,
                 scriptHash: Buffer.from(purpose.source.scriptHash, "hex"),
@@ -827,7 +823,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           validityIntervalStart: tx.body.validityIntervalStart,
           validityIntervalEnd: tx.body.validityIntervalEnd,
         });
-        result = await submitExecutionNativeScriptInvalidStep02V1({
+        result = await submitExecutionNativeScriptInvalidStep02({
           ...common,
           evidence,
           authentication: authentication.authentication,
@@ -865,7 +861,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           witnessReferenceScripts: workflow.references.witnesses,
         });
       } else if (activeStage.step === 7) {
-        result = await submitExecutionNativeScriptInvalidAcceptedInitV1({
+        result = await submitExecutionNativeScriptInvalidAcceptedInit({
           ...common,
           referenceScriptUtxo: workflow.references.steps[6],
         });
@@ -880,7 +876,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
             "executionNativeScriptInvalid accepted chain disappeared",
           );
         const acceptedStepIndex = activeStage.step - 7;
-        const { threadUtxo } = await requireLinearFaultThreadUtxoV1({
+        const { threadUtxo } = await requireLinearFaultThreadUtxo({
           lucid: workflow.lucid,
           contracts: { ...workflow.contracts, steps: accepted },
           categoryId: workflow.binding.definition.categoryId,
@@ -888,28 +884,26 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           stepIndex: acceptedStepIndex,
           threadOutRef: activeStage.threadOutRef,
         });
-        const state =
-          requireLinearFaultStepStateV1<AcceptedReconstructionStateV1>({
-            threadUtxo,
-            signer: workflow.signer,
-            schema: ExecutionNativeScriptInvalidAcceptedDatumV1Schema as never,
-            family: "execution-native-script-invalid",
-            stepIndex: acceptedStepIndex,
-          });
+        const state = requireLinearFaultStepState<AcceptedReconstructionState>({
+          threadUtxo,
+          signer: workflow.signer,
+          schema: ExecutionNativeScriptInvalidAcceptedDatumSchema as never,
+          family: "execution-native-script-invalid",
+          stepIndex: acceptedStepIndex,
+        });
         const membership = async (key: Buffer, output: Buffer) => {
           const entries = (predecessor?.utxos ?? []).map(
             ({ key: candidate, value }) => ({
               key: Buffer.from(candidate),
-              value: buildCanonicalMidgardLedgerOutputMaterialV1({
-                outputIndex:
-                  decodeMidgardSpendInputItemV1(candidate).outputIndex,
+              value: buildCanonicalMidgardLedgerOutputMaterial({
+                outputIndex: decodeMidgardSpendInputItem(candidate).outputIndex,
                 outputCbor: value,
               }).descriptorCbor,
             }),
           );
           const trie = await buildTrieView(entries);
-          const descriptor = buildCanonicalMidgardLedgerOutputMaterialV1({
-            outputIndex: decodeMidgardSpendInputItemV1(key).outputIndex,
+          const descriptor = buildCanonicalMidgardLedgerOutputMaterial({
+            outputIndex: decodeMidgardSpendInputItem(key).outputIndex,
             outputCbor: output,
           }).descriptorCbor;
           const proofCbor = requireProof(
@@ -924,13 +918,13 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
           };
         };
         if (activeStage.step === 8) {
-          const items = decodeMidgardFieldPreimageV1(
+          const items = decodeMidgardFieldPreimage(
             tx.body.spendInputsPreimageCbor,
           );
           const item = items[Number(state.field_cursor)];
           if (item === undefined) {
             result =
-              await submitExecutionNativeScriptInvalidAcceptedFinishSpendsV1({
+              await submitExecutionNativeScriptInvalidAcceptedFinishSpends({
                 ...common,
                 nativeTxCompactCbor: compactCbor,
                 spendInputsPreimageCbor:
@@ -943,7 +937,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
               throw new Error(
                 "executionNativeScriptInvalid spend output disappeared",
               );
-            result = await submitExecutionNativeScriptInvalidAcceptedSpendV1({
+            result = await submitExecutionNativeScriptInvalidAcceptedSpend({
               ...common,
               network: workflow.binding.network,
               nativeTxCompactCbor: compactCbor,
@@ -956,41 +950,37 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
             });
           }
         } else if (activeStage.step === 9) {
-          const items = decodeMidgardFieldPreimageV1(tx.body.mintPreimageCbor);
+          const items = decodeMidgardFieldPreimage(tx.body.mintPreimageCbor);
           result =
             items[Number(state.field_cursor)] === undefined
-              ? await submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1(
-                  {
-                    ...common,
-                    phase: "mint",
-                    nativeTxCompactCbor: compactCbor,
-                    fieldPreimageCbor: tx.body.mintPreimageCbor.toString("hex"),
-                    referenceScriptUtxo: workflow.references.steps[8],
-                  },
-                )
-              : await submitExecutionNativeScriptInvalidAcceptedMintV1({
+              ? await submitExecutionNativeScriptInvalidAcceptedFinishPurpose({
+                  ...common,
+                  phase: "mint",
+                  nativeTxCompactCbor: compactCbor,
+                  fieldPreimageCbor: tx.body.mintPreimageCbor.toString("hex"),
+                  referenceScriptUtxo: workflow.references.steps[8],
+                })
+              : await submitExecutionNativeScriptInvalidAcceptedMint({
                   ...common,
                   nativeTxCompactCbor: compactCbor,
                   mintPreimageCbor: tx.body.mintPreimageCbor.toString("hex"),
                   referenceScriptUtxo: workflow.references.steps[8],
                 });
         } else if (activeStage.step === 10) {
-          const items = decodeMidgardFieldPreimageV1(
+          const items = decodeMidgardFieldPreimage(
             tx.body.requiredObserversPreimageCbor,
           );
           result =
             items[Number(state.field_cursor)] === undefined
-              ? await submitExecutionNativeScriptInvalidAcceptedFinishPurposeV1(
-                  {
-                    ...common,
-                    phase: "observer",
-                    nativeTxCompactCbor: compactCbor,
-                    fieldPreimageCbor:
-                      tx.body.requiredObserversPreimageCbor.toString("hex"),
-                    referenceScriptUtxo: workflow.references.steps[9],
-                  },
-                )
-              : await submitExecutionNativeScriptInvalidAcceptedObserverV1({
+              ? await submitExecutionNativeScriptInvalidAcceptedFinishPurpose({
+                  ...common,
+                  phase: "observer",
+                  nativeTxCompactCbor: compactCbor,
+                  fieldPreimageCbor:
+                    tx.body.requiredObserversPreimageCbor.toString("hex"),
+                  referenceScriptUtxo: workflow.references.steps[9],
+                })
+              : await submitExecutionNativeScriptInvalidAcceptedObserver({
                   ...common,
                   nativeTxCompactCbor: compactCbor,
                   observersPreimageCbor:
@@ -998,12 +988,10 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
                   referenceScriptUtxo: workflow.references.steps[9],
                 });
         } else if (activeStage.step === 11) {
-          const items = decodeMidgardFieldPreimageV1(
-            tx.body.outputsPreimageCbor,
-          );
+          const items = decodeMidgardFieldPreimage(tx.body.outputsPreimageCbor);
           result =
             items[Number(state.field_cursor)] === undefined
-              ? await submitExecutionNativeScriptInvalidAcceptedFinishReceivePassV1(
+              ? await submitExecutionNativeScriptInvalidAcceptedFinishReceivePass(
                   {
                     ...common,
                     nativeTxCompactCbor: compactCbor,
@@ -1012,7 +1000,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
                     referenceScriptUtxo: workflow.references.steps[10],
                   },
                 )
-              : await submitExecutionNativeScriptInvalidAcceptedReceiveV1({
+              : await submitExecutionNativeScriptInvalidAcceptedReceive({
                   ...common,
                   nativeTxCompactCbor: compactCbor,
                   outputsPreimageCbor:
@@ -1020,12 +1008,12 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
                   referenceScriptUtxo: workflow.references.steps[10],
                 });
         } else if (activeStage.step === 12) {
-          const items = decodeMidgardFieldPreimageV1(
+          const items = decodeMidgardFieldPreimage(
             tx.witnessSet.scriptTxWitsPreimageCbor,
           );
           result =
             items[Number(state.field_cursor)] === undefined
-              ? await submitExecutionNativeScriptInvalidAcceptedFinishInlineV1({
+              ? await submitExecutionNativeScriptInvalidAcceptedFinishInline({
                   ...common,
                   nativeTxCompactCbor: compactCbor,
                   witnessSet,
@@ -1033,7 +1021,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
                     tx.witnessSet.scriptTxWitsPreimageCbor.toString("hex"),
                   referenceScriptUtxo: workflow.references.steps[11],
                 })
-              : await submitExecutionNativeScriptInvalidAcceptedInlineSourceV1({
+              : await submitExecutionNativeScriptInvalidAcceptedInlineSource({
                   ...common,
                   nativeTxCompactCbor: compactCbor,
                   witnessSet,
@@ -1042,7 +1030,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
                   referenceScriptUtxo: workflow.references.steps[11],
                 });
         } else if (activeStage.step === 13) {
-          const items = decodeMidgardFieldPreimageV1(
+          const items = decodeMidgardFieldPreimage(
             tx.body.referenceInputsPreimageCbor,
           );
           const item = items[Number(state.field_cursor)];
@@ -1056,7 +1044,7 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
               "executionNativeScriptInvalid reference output disappeared",
             );
           result =
-            await submitExecutionNativeScriptInvalidAcceptedReferenceSourceV1({
+            await submitExecutionNativeScriptInvalidAcceptedReferenceSource({
               ...common,
               network: workflow.binding.network,
               nativeTxCompactCbor: compactCbor,
@@ -1092,92 +1080,89 @@ export const runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1 =
     });
   };
 
-export type LoadedExecutionNativeScriptInvalidProductionWorkflowV1 = Readonly<{
+export type LoadedExecutionNativeScriptInvalidWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfigV1;
+  config: ManifestBoundExecutionNativeScriptInvalidWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadExecutionNativeScriptInvalidProductionWorkflowV1 = (input: {
+export type LoadExecutionNativeScriptInvalidWorkflow = (input: {
   runtimeConfigPath: string;
-  invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedExecutionNativeScriptInvalidProductionWorkflowV1>;
+  invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedExecutionNativeScriptInvalidWorkflow>;
 
-export const createExecutionNativeScriptInvalidProductionWorkflowRunnerSurfaceV1 =
-  ({
-    loadRuntimeConfig,
-  }: {
-    loadRuntimeConfig: LoadExecutionNativeScriptInvalidProductionWorkflowV1;
-  }): ProductionWorkflowAdapterRunnerV1 =>
-    Object.freeze({
-      runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-      runOrResume: async (invocation) => {
-        if (invocation.category !== "executionNativeScriptInvalid")
-          throw new Error(
-            "executionNativeScriptInvalid runner category changed",
-          );
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
-          permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
-              invocation.journalDirectory,
-            ),
-            permit: invocation.actuationPermit,
-            decisionDigest: invocation.decisionDigest,
-            deploymentFingerprint: invocation.deploymentFingerprint,
-            category: "executionNativeScriptInvalid",
-            headerHash: invocation.headerHash,
-          }),
-        });
-        assertProductionWorkflowJournalActuationV1({
-          journal,
+export const createExecutionNativeScriptInvalidWorkflowRunnerSurface = ({
+  loadRuntimeConfig,
+}: {
+  loadRuntimeConfig: LoadExecutionNativeScriptInvalidWorkflow;
+}): WorkflowAdapterRunner =>
+  Object.freeze({
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
+    runOrResume: async (invocation) => {
+      if (invocation.category !== "executionNativeScriptInvalid")
+        throw new Error("executionNativeScriptInvalid runner category changed");
+      const journal = bindWorkflowFundingReservationJournal({
+        permit: invocation.fundingReservationPermit,
+        journal: bindWorkflowActuationJournal({
+          journal: new DirectoryFraudProofWorkflowJournalStore(
+            invocation.journalDirectory,
+          ),
+          permit: invocation.actuationPermit,
+          decisionDigest: invocation.decisionDigest,
           deploymentFingerprint: invocation.deploymentFingerprint,
           category: "executionNativeScriptInvalid",
           headerHash: invocation.headerHash,
-          checkpoint: "runner_start",
-        });
-        const loaded = await loadRuntimeConfig({
-          runtimeConfigPath: invocation.runtimeConfigPath,
-          invocation,
-        });
-        try {
-          if (
-            loaded.schemaVersion !==
-              "midgard-production-fraud-proof-runtime-config-v1" ||
-            loaded.retainedDaSources.length === 0 ||
-            loaded.retainedDaSources.some(
-              (source) => !(source instanceof DaLibp2pRetainedDaSource),
-            )
+        }),
+      });
+      assertWorkflowJournalActuation({
+        journal,
+        deploymentFingerprint: invocation.deploymentFingerprint,
+        category: "executionNativeScriptInvalid",
+        headerHash: invocation.headerHash,
+        checkpoint: "runner_start",
+      });
+      const loaded = await loadRuntimeConfig({
+        runtimeConfigPath: invocation.runtimeConfigPath,
+        invocation,
+      });
+      try {
+        if (
+          loaded.schemaVersion !==
+            "midgard-production-fraud-proof-runtime-config-v1" ||
+          loaded.retainedDaSources.length === 0 ||
+          loaded.retainedDaSources.some(
+            (source) => !(source instanceof DaLibp2pRetainedDaSource),
           )
-            throw new Error(
-              "executionNativeScriptInvalid requires concrete public retained DA",
-            );
-          const workflow =
-            await createManifestBoundExecutionNativeScriptInvalidWorkflowV1(
-              loaded.config,
-            );
-          if (
-            workflow.binding.deploymentFingerprint !==
-              invocation.deploymentFingerprint ||
-            workflow.binding.definition.headerHash !== invocation.headerHash
-          )
-            throw new Error(
-              "executionNativeScriptInvalid runtime binding changed invocation",
-            );
-          return await runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflowV1(
-            {
-              workflow,
-              sources: loaded.retainedDaSources,
-              journal,
-              decisionDigest: invocation.decisionDigest,
-            },
+        )
+          throw new Error(
+            "executionNativeScriptInvalid requires concrete public retained DA",
           );
-        } finally {
-          await loaded.close();
-        }
-      },
-    });
+        const workflow =
+          await createManifestBoundExecutionNativeScriptInvalidWorkflow(
+            loaded.config,
+          );
+        if (
+          workflow.binding.deploymentFingerprint !==
+            invocation.deploymentFingerprint ||
+          workflow.binding.definition.headerHash !== invocation.headerHash
+        )
+          throw new Error(
+            "executionNativeScriptInvalid runtime binding changed invocation",
+          );
+        return await runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow(
+          {
+            workflow,
+            sources: loaded.retainedDaSources,
+            journal,
+            decisionDigest: invocation.decisionDigest,
+          },
+        );
+      } finally {
+        await loaded.close();
+      }
+    },
+  });
 
-export const createExecutionNativeScriptInvalidProductionWorkflowRunnerFactoryV1 =
-  createExecutionNativeScriptInvalidProductionWorkflowRunnerSurfaceV1;
+export const createExecutionNativeScriptInvalidWorkflowRunnerFactory =
+  createExecutionNativeScriptInvalidWorkflowRunnerSurface;

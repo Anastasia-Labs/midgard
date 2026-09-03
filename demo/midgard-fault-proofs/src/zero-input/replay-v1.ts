@@ -1,37 +1,37 @@
 import {
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  midgardFieldCommitmentV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  prepareZeroInputEvidenceV1,
-  ZERO_INPUT_FIELD_INDEX_V1,
-  zeroInputEvidenceClosesV1,
-  type ZeroInputEvidenceV1,
+  prepareZeroInputEvidence,
+  ZERO_INPUT_FIELD_INDEX,
+  type ZeroInputEvidence,
+  zeroInputEvidenceCloses,
 } from "./family-v1.js";
 
-export const ZERO_INPUT_VIOLATION_ID_V1 = "zero-input" as const;
+export const ZERO_INPUT_VIOLATION_ID = "zero-input" as const;
 
-export type ZeroInputForcedReplayDetectionV1 = Readonly<{
+export type ZeroInputForcedReplayDetection = Readonly<{
   detectionId: string;
   headerHash: string;
-  violationId: typeof ZERO_INPUT_VIOLATION_ID_V1;
+  violationId: typeof ZERO_INPUT_VIOLATION_ID;
   position: bigint;
   forcedIndex: number;
   transactionId: string;
-  evidence: ZeroInputEvidenceV1;
+  evidence: ZeroInputEvidence;
 }>;
 
 /**
  * Derives direction, reason, transaction identity, and decisive input count
  * exclusively from an already-authenticated canonical block reconstruction.
  */
-export const detectZeroInputForcedReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly ZeroInputForcedReplayDetectionV1[] => {
-  const detections: ZeroInputForcedReplayDetectionV1[] = [];
+export const detectZeroInputForcedReplay = (
+  block: CanonicalBlockEvidence,
+): readonly ZeroInputForcedReplayDetection[] => {
+  const detections: ZeroInputForcedReplayDetection[] = [];
   block.reconstruction.forcedTransactions.forEach(
     (transaction, forcedIndex) => {
       const verdict = transaction.value.verdict;
@@ -40,7 +40,7 @@ export const detectZeroInputForcedReplayV1 = (
         verdict.ForcedTxInvalid.reason !== "EmptyInputs"
       )
         return;
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (
@@ -55,25 +55,25 @@ export const detectZeroInputForcedReplayV1 = (
         throw new Error(
           "zeroInput: forced preimage differs from authenticated leaf",
         );
-      const field = material.fieldPreimages[ZERO_INPUT_FIELD_INDEX_V1];
+      const field = material.fieldPreimages[ZERO_INPUT_FIELD_INDEX];
       if (field === undefined) return;
-      const evidence = prepareZeroInputEvidenceV1({
+      const evidence = prepareZeroInputEvidence({
         finding: {
-          subject: SDK.forcedVerdictSubjectV1({
+          subject: SDK.forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: verdict.ForcedTxInvalid.reason,
           }),
         },
         inputFieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       });
-      if (!zeroInputEvidenceClosesV1(evidence)) return;
+      if (!zeroInputEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
-          detectionId: `${ZERO_INPUT_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
+          detectionId: `${ZERO_INPUT_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
-          violationId: ZERO_INPUT_VIOLATION_ID_V1,
+          violationId: ZERO_INPUT_VIOLATION_ID,
           position: BigInt(forcedIndex),
           forcedIndex,
           transactionId: transaction.value.tx_id,
@@ -85,9 +85,9 @@ export const detectZeroInputForcedReplayV1 = (
   return Object.freeze(detections);
 };
 
-export const selectCanonicalZeroInputForcedDetectionV1 = (
-  detections: readonly ZeroInputForcedReplayDetectionV1[],
-): ZeroInputForcedReplayDetectionV1 => {
+export const selectCanonicalZeroInputForcedDetection = (
+  detections: readonly ZeroInputForcedReplayDetection[],
+): ZeroInputForcedReplayDetection => {
   if (detections.length === 0)
     throw new Error("zeroInput: no authenticated wrongful rejection");
   return [...detections].sort((left, right) =>

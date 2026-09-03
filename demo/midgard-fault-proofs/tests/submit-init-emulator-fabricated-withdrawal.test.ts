@@ -25,21 +25,21 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1,
-  prepareFabricatedWithdrawalFromCommittedLeavesV1,
+  fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
+  prepareFabricatedWithdrawalFromCommittedLeaves,
 } from "../src/prepare-fabricated-withdrawal.js";
 import {
-  deriveFabricatedWithdrawalStep01HandoffV1,
+  deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
   submitFabricatedWithdrawalStep01,
 } from "../src/submit-fabricated-withdrawal-step-01.js";
 import { submitFabricatedWithdrawalStep02 } from "../src/submit-fabricated-withdrawal-step-02.js";
 import {
-  deriveFabricatedWithdrawalStep03HandoffV1,
+  deriveFabricatedWithdrawalStep03Handoff,
   submitFabricatedWithdrawalStep03,
 } from "../src/submit-fabricated-withdrawal-step-03.js";
 import {
-  assertFabricatedWithdrawalStep04FinalizableV1,
+  assertFabricatedWithdrawalStep04Finalizable,
   submitFabricatedWithdrawalStep04,
 } from "../src/submit-fabricated-withdrawal-step-04.js";
 import {
@@ -47,12 +47,12 @@ import {
   keyValuePhasProof,
 } from "../src/transition-trace/phas.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h28,
   outRefCbor,
-  reencodeFixturePayloadV1,
+  reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -60,12 +60,12 @@ import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
-  submitFabricatedFamilyInitV1,
+  submitFabricatedFamilyInit,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
@@ -96,14 +96,14 @@ const HEADER_END_TIME = 20n;
 /** Stands in for the emulator prover's payment key hash. */
 const FRAUD_PROVER = h28(0x77);
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
 };
 
-const L1_OBSERVATION: SDK.AuthenticatedL1ObservationV1 = {
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+const L1_OBSERVATION: SDK.AuthenticatedL1Observation = {
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -115,10 +115,10 @@ const L1_OBSERVATION: SDK.AuthenticatedL1ObservationV1 = {
 };
 
 /** Commits the challenged block's single fabricated withdrawal leaf. */
-const buildChallengedBlockV1 = async () => {
-  const base = await buildCanonicalBlockFixtureV1({
+const buildChallengedBlock = async () => {
+  const base = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x21, 0n)],
         fee: 1_000_000n,
       }),
@@ -133,16 +133,16 @@ const buildChallengedBlockV1 = async () => {
       value: Buffer.from(VALUE_DIVERTED_WITHDRAWAL_INFO, "hex"),
     },
   ]);
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...base.header,
     withdrawalsRoot: counted.root,
     withdrawalCount: counted.count,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const withdrawals: SDK.DaPayloadEntry[] = [
     [KEY_AUTHENTIC_WITHDRAWAL_ID, VALUE_DIVERTED_WITHDRAWAL_INFO],
   ];
-  const payload: SDK.DaPayloadV1 = {
+  const payload: SDK.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -159,8 +159,8 @@ const buildChallengedBlockV1 = async () => {
     header,
     headerHash,
     withdrawalsRoot: counted.root,
-    payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
-    observation: authenticatedHeaderObservationV1({
+    payloadEnvelopeCbor: await reencodeFixturePayload(payload),
+    observation: authenticatedHeaderObservation({
       ...base,
       header,
       headerHash,
@@ -174,7 +174,7 @@ const buildChallengedBlockV1 = async () => {
  * registered in the canonical production catalogue.
  */
 const makeEmulatorHarness = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realFabricatedWithdrawal: true,
       alwaysFraudProofCatalogue: true,
@@ -187,9 +187,7 @@ const makeEmulatorHarness = async () => {
       "Harness did not build the fabricated-withdrawal contracts/category",
     );
   }
-  expect(category.categoryId).toBe(
-    SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
-  );
+  expect(category.categoryId).toBe(SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID);
   expect(category.scriptHash).toBe(
     fabricatedWithdrawal.steps[0].spendingScriptHash,
   );
@@ -230,7 +228,7 @@ const setupChallengedBlockOnEmulator = async (
   // whenever that count is non-zero. Reusing the withdrawals counted root
   // keeps the header committable without touching validation traces (no
   // forced or L2 transactions in this block).
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(funderKeyHash, headerStartTime),
     withdrawalsRoot: counted.root,
     withdrawalCount: counted.count,
@@ -283,9 +281,9 @@ const setupChallengedBlockOnEmulator = async (
   };
   // Canonical (`serialiseData`-normalised) bytes: the datum carries token
   // maps, so plain `Data.to` output is not the classifier's canonical form.
-  const eventDatumCbor = SDK.withdrawalEventDatumBytesV1(authenticEventDatum);
+  const eventDatumCbor = SDK.withdrawalEventDatumBytes(authenticEventDatum);
   const observedEventAssetName = await Effect.runPromise(
-    SDK.withdrawalEventNonceV1(authenticEventDatum.event.id),
+    SDK.withdrawalEventNonce(authenticEventDatum.event.id),
   );
   return {
     counted,
@@ -307,19 +305,20 @@ const setupChallengedBlockOnEmulator = async (
 describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
   it("admits retained-DA evidence and derives every thread handoff off-chain", async () => {
     // ## 1. Evidence admission over real retained-DA bytes.
-    const block = await buildChallengedBlockV1();
+    const block = await buildChallengedBlock();
     expect(block.withdrawalsRoot).toBe(MM_WITHDRAWALS_ROOT);
-    const evidence =
-      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload(
+      {
         observation: block.observation,
         payloadEnvelopeCbor: block.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
-      });
+      },
+    );
     expect(evidence.grade).toBe("security");
     expect(evidence.headerHash).toBe(block.headerHash);
 
     // ## 2. The proof plan the prover would submit.
-    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
       withdrawalCount: evidence.withdrawalCount,
@@ -335,7 +334,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       },
     });
     expect(plan.threadTokenAssetName).toBe(
-      `${SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1}${block.headerHash}`,
+      `${SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID}${block.headerHash}`,
     );
 
     // ## 3. Every thread datum an emulator lifecycle places on chain.
@@ -343,7 +342,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: null },
       SDK.FabricatedWithdrawalStep01Datum,
     );
-    const step01Handoff = await deriveFabricatedWithdrawalStep01HandoffV1({
+    const step01Handoff = await deriveFabricatedWithdrawalStep01Handoff({
       header: block.header,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedWithdrawalInclusion(
@@ -354,7 +353,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: step01Handoff.step02State },
       SDK.FabricatedWithdrawalStep02Datum,
     );
-    const step03State = SDK.fabricatedWithdrawalStep03StateV1(
+    const step03State = SDK.fabricatedWithdrawalStep03State(
       step01Handoff.step02State,
       {
         WithdrawalEventObserved: {
@@ -367,7 +366,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: step03State },
       SDK.FabricatedWithdrawalStep03Datum,
     );
-    const step03Handoff = await deriveFabricatedWithdrawalStep03HandoffV1({
+    const step03Handoff = await deriveFabricatedWithdrawalStep03Handoff({
       state: step03State,
       eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
     });
@@ -375,7 +374,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       { fraud_prover: FRAUD_PROVER, data: step03Handoff.step04State },
       SDK.FabricatedWithdrawalStep04Datum,
     );
-    assertFabricatedWithdrawalStep04FinalizableV1({
+    assertFabricatedWithdrawalStep04Finalizable({
       state: step03Handoff.step04State,
       fraudulentHeaderHash: block.headerHash,
     });
@@ -458,8 +457,8 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     );
 
     // ## Evidence admission over the emulator block's retained-DA bytes.
-    const base = await buildCanonicalBlockFixtureV1({ transactions: [] });
-    const payload: SDK.DaPayloadV1 = {
+    const base = await buildCanonicalBlockFixture({ transactions: [] });
+    const payload: SDK.DaPayload = {
       ...base.payload,
       block_body: {
         ...base.payload.block_body,
@@ -474,21 +473,22 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
         },
       },
     };
-    const evidence =
-      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
-        observation: authenticatedHeaderObservationV1({
+    const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload(
+      {
+        observation: authenticatedHeaderObservation({
           ...base,
           header,
           headerHash,
         }),
-        payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
+        payloadEnvelopeCbor: await reencodeFixturePayload(payload),
         daProvenance: DA_PROVENANCE,
-      });
+      },
+    );
     expect(evidence.headerHash).toBe(headerHash);
     expect(evidence.committedWithdrawalsRoot).toBe(counted.root);
 
     // ## The proof plan, classified against the authentic event.
-    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
       withdrawalCount: evidence.withdrawalCount,
@@ -504,7 +504,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       },
     });
     expect(plan.threadTokenAssetName).toBe(
-      `${SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1}${headerHash}`,
+      `${SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID}${headerHash}`,
     );
     expect(plan.classification.fault).toEqual({
       MismatchedWithdrawalContent: {
@@ -515,7 +515,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     });
 
     // ## init
-    const initResult = await submitFabricatedFamilyInitV1({
+    const initResult = await submitFabricatedFamilyInit({
       lucid: proverLucid,
       realBlueprint,
       contracts,
@@ -546,7 +546,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     const inclusion = parseSubmitFabricatedWithdrawalInclusion(
       plan.withdrawalInclusion,
     );
-    const expectedHandoff = await deriveFabricatedWithdrawalStep01HandoffV1({
+    const expectedHandoff = await deriveFabricatedWithdrawalStep01Handoff({
       header,
       headerHash,
       inclusion,
@@ -617,7 +617,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       initResult.computationThreadUnit,
     );
     expect(outRefLabel(thirdStepUtxo)).toBe(step02Result.nextThreadOutRef);
-    const step03State = SDK.fabricatedWithdrawalStep03StateV1(
+    const step03State = SDK.fabricatedWithdrawalStep03State(
       expectedHandoff.step02State,
       step02Result.verdict,
     );
@@ -651,7 +651,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       initResult.computationThreadUnit,
     );
     expect(outRefLabel(fourthStepUtxo)).toBe(step03Result.nextThreadOutRef);
-    const step03Handoff = await deriveFabricatedWithdrawalStep03HandoffV1({
+    const step03Handoff = await deriveFabricatedWithdrawalStep03Handoff({
       state: step03State,
       eventDatumCbor,
     });
@@ -741,7 +741,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     } = harness;
 
     // An honest block: the committed leaf's content IS the authentic event's.
-    const authenticInfoCbor = SDK.committedWithdrawalValueBytesV1(
+    const authenticInfoCbor = SDK.committedWithdrawalValueBytes(
       Data.from(DATUM_AUTHENTIC_WITHDRAWAL_EVENT, SDK.WithdrawalOrderDatum)
         .event.info,
     );
@@ -754,7 +754,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       referenceScriptUtxos,
     } = await setupChallengedBlockOnEmulator(harness, authenticInfoCbor);
 
-    const initResult = await submitFabricatedFamilyInitV1({
+    const initResult = await submitFabricatedFamilyInit({
       lucid: proverLucid,
       realBlueprint,
       contracts,
@@ -775,7 +775,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     // Plane 1 — off-chain fail-closed: the committed content hash equals the
     // authentic event's, so the classifier refuses to build a plan at all.
     await expect(
-      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: setup.headerHash,
         committedWithdrawalsRoot: counted.root,
         withdrawalCount: counted.count,

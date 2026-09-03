@@ -2,12 +2,12 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  deriveStateQueueAuthenticatedReplayCheckpointV1,
-  parseStateQueueAuthenticatedReplayCheckpointV1,
-  replayStateQueueAuthenticatedCheckpointsV1,
+  deriveStateQueueAuthenticatedReplayCheckpoint,
+  parseStateQueueAuthenticatedReplayCheckpoint,
+  replayStateQueueAuthenticatedCheckpoints,
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerType,
-  type StateQueueTransitionNodeV1,
+  type StateQueueTransitionNode,
 } from "../src/index.js";
 
 const h28 = (byte: string): string => byte.repeat(56);
@@ -35,8 +35,8 @@ const derive = ({
   withPolicy = true,
 }: {
   sequence: number;
-  previousQueue: readonly StateQueueTransitionNodeV1[];
-  nextQueue: readonly StateQueueTransitionNodeV1[];
+  previousQueue: readonly StateQueueTransitionNode[];
+  nextQueue: readonly StateQueueTransitionNode[];
   value?: StateQueueRedeemerType;
   spentInputOutRefs: readonly string[];
   withPolicy?: boolean;
@@ -142,7 +142,7 @@ const derive = ({
     lock.kind === "correction_transition" || lock.kind === "deinit"
       ? [...spentInputOutRefs, lock.consumedOutRef]
       : spentInputOutRefs;
-  const checkpoint = deriveStateQueueAuthenticatedReplayCheckpointV1({
+  const checkpoint = deriveStateQueueAuthenticatedReplayCheckpoint({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     transactionHash,
@@ -256,11 +256,9 @@ describe("authenticated state-queue replay checkpoint V1", () => {
     expect(timeout.terminalTransition?.correctionTransition).not.toBeNull();
     expect(fraud.terminalTransition?.correctionTransition).toBeNull();
     expect(fraud.terminalTransition?.removedHeaderHashes).toEqual([header2]);
-    expect(parseStateQueueAuthenticatedReplayCheckpointV1(fraud)).toEqual(
-      fraud,
-    );
+    expect(parseStateQueueAuthenticatedReplayCheckpoint(fraud)).toEqual(fraud);
     expect(
-      replayStateQueueAuthenticatedCheckpointsV1({
+      replayStateQueueAuthenticatedCheckpoints({
         deploymentIdentityDigest: deployment,
         stateQueuePolicyId: policy,
         minimumFinalityDepth: 30n,
@@ -345,9 +343,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
     ).toEqual(["init", "append", "datum_update", "merge", "deinit"]);
     expect(merge.terminalTransition?.transitionKind).toBe("merge");
     for (const item of [init, append, update, merge, deinit]) {
-      expect(parseStateQueueAuthenticatedReplayCheckpointV1(item)).toEqual(
-        item,
-      );
+      expect(parseStateQueueAuthenticatedReplayCheckpoint(item)).toEqual(item);
     }
   });
 
@@ -399,7 +395,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       anchor: { queue: anchor, blockNo: "0", transactionIndex: "0" },
     } as const;
     expect(
-      replayStateQueueAuthenticatedCheckpointsV1({
+      replayStateQueueAuthenticatedCheckpoints({
         ...input,
         checkpoints: [append, merge],
       }),
@@ -408,19 +404,19 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       terminals: [merge.terminalTransition],
     });
     expect(
-      replayStateQueueAuthenticatedCheckpointsV1({
+      replayStateQueueAuthenticatedCheckpoints({
         ...input,
         checkpoints: [merge],
       }),
     ).toBeNull();
     expect(
-      replayStateQueueAuthenticatedCheckpointsV1({
+      replayStateQueueAuthenticatedCheckpoints({
         ...input,
         checkpoints: [merge, append],
       }),
     ).toBeNull();
     expect(
-      replayStateQueueAuthenticatedCheckpointsV1({
+      replayStateQueueAuthenticatedCheckpoints({
         ...input,
         minimumFinalityDepth: 31n,
         checkpoints: [append, merge],
@@ -441,19 +437,19 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       spentInputOutRefs: [root, outRef("1")],
     });
     expect(
-      parseStateQueueAuthenticatedReplayCheckpointV1({
+      parseStateQueueAuthenticatedReplayCheckpoint({
         ...checkpoint,
         terminalTransition: null,
       }),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedReplayCheckpointV1({
+      parseStateQueueAuthenticatedReplayCheckpoint({
         ...checkpoint,
         previousQueue: [...checkpoint.previousQueue].reverse(),
       }),
     ).toBeNull();
     expect(
-      parseStateQueueAuthenticatedReplayCheckpointV1({
+      parseStateQueueAuthenticatedReplayCheckpoint({
         ...checkpoint,
         trusted: true,
       }),

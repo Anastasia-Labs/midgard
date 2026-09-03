@@ -1,44 +1,44 @@
 import {
-  computeFraudProofWorkflowIdV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalStoreV1,
-  journalJsonDigestV1,
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalStore,
+  journalJsonDigest,
 } from "../workflow/journal-v1.js";
-import type { FraudProofWorkflowActionV1 } from "../workflow/orchestrator-v1.js";
-import { assertProductionWorkflowJournalActuationV1 } from "../workflow/production-actuation-permit-v1.js";
+import type { FraudProofWorkflowAction } from "../workflow/orchestrator-v1.js";
+import { assertWorkflowJournalActuation } from "../workflow/production-actuation-permit-v1.js";
 import {
-  abandonProductionWorkflowFundingReservationTransactionV1,
-  assertProductionWorkflowFundingReservationReadyToSubmitV1,
-  beginProductionWorkflowFundingReservationActionV1,
-  confirmProductionWorkflowFundingReservationTransactionV1,
-  conflictProductionWorkflowFundingReservationTransactionV1,
-  prepareProductionWorkflowFundingReservationTransactionV1,
+  abandonWorkflowFundingReservationTransaction,
+  assertWorkflowFundingReservationReadyToSubmit,
+  beginWorkflowFundingReservationAction,
+  confirmWorkflowFundingReservationTransaction,
+  conflictWorkflowFundingReservationTransaction,
+  prepareWorkflowFundingReservationTransaction,
 } from "../workflow/production-funding-reservation-permit-v1.js";
 import {
-  bindProductionWorkflowPreflightTransactionV1,
-  type FraudProofPreSubmitBoundaryV1,
-  LOCAL_UPLC_EVALUATOR_V1,
+  bindWorkflowPreflightTransaction,
+  type FraudProofPreSubmitBoundary,
+  LOCAL_UPLC_EVALUATOR,
 } from "../workflow/transaction-boundary-v1.js";
 import type {
-  FieldItemWidthActionV1,
-  FieldItemWidthJournalEntryV1,
-  FieldItemWidthJournalV1,
-  FieldItemWidthStageV1,
+  FieldItemWidthAction,
+  FieldItemWidthJournal,
+  FieldItemWidthJournalEntry,
+  FieldItemWidthStage,
 } from "./field-item-width-illegal-v1.js";
 
-type SubmitAction = Exclude<FieldItemWidthActionV1, "done">;
+type SubmitAction = Exclude<FieldItemWidthAction, "done">;
 type DurableRecovery = Readonly<{
   familyIdentity: string;
-  sourceStage: FieldItemWidthStageV1;
-  targetStage: FieldItemWidthStageV1;
+  sourceStage: FieldItemWidthStage;
+  targetStage: FieldItemWidthStage;
   auxiliary?: boolean;
 }>;
 
 const TX_HASH = /^[0-9a-f]{64}$/u;
-const stages: readonly FieldItemWidthStageV1[] = [
+const stages: readonly FieldItemWidthStage[] = [
   "none",
   "step01",
   "step02",
@@ -52,7 +52,7 @@ const actionId = (action: SubmitAction): string =>
 const now = (): string => new Date().toISOString();
 
 const recoveryFrom = (
-  entry: FraudProofWorkflowJournalEntryV1,
+  entry: FraudProofWorkflowJournalEntry,
 ): DurableRecovery => {
   if (entry.event.kind !== "submission_intent") {
     throw new Error("fieldItemWidthIllegal journal entry is not an intent");
@@ -65,21 +65,21 @@ const recoveryFrom = (
     typeof familyIdentity !== "string" ||
     typeof sourceStage !== "string" ||
     typeof targetStage !== "string" ||
-    !stages.includes(sourceStage as FieldItemWidthStageV1) ||
-    !stages.includes(targetStage as FieldItemWidthStageV1)
+    !stages.includes(sourceStage as FieldItemWidthStage) ||
+    !stages.includes(targetStage as FieldItemWidthStage)
   ) {
     throw new Error("fieldItemWidthIllegal durable intent is incomplete");
   }
   return {
     familyIdentity,
-    sourceStage: sourceStage as FieldItemWidthStageV1,
-    targetStage: targetStage as FieldItemWidthStageV1,
+    sourceStage: sourceStage as FieldItemWidthStage,
+    targetStage: targetStage as FieldItemWidthStage,
     ...(value?.auxiliary === true ? { auxiliary: true } : {}),
   };
 };
 
 const actionFinishedAfter = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   sequence: number,
   wantedActionId: string,
 ): boolean =>
@@ -94,8 +94,8 @@ const actionFinishedAfter = (
   });
 
 const unresolvedIntent = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
-): FraudProofWorkflowJournalEntryV1 | undefined =>
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): FraudProofWorkflowJournalEntry | undefined =>
   [...entries].reverse().find((entry) => {
     const event = entry.event;
     return (
@@ -105,36 +105,36 @@ const unresolvedIntent = (
   });
 
 /** Central-journal bridge with exact post-restart raw-L1 reconciliation. */
-export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
+export const createFieldItemWidthIllegalCentralJournalAdapter = ({
   store,
   deploymentFingerprint,
   headerHash,
   decisionDigest,
   transactionConfirmed,
 }: {
-  readonly store: FraudProofWorkflowJournalStoreV1;
+  readonly store: FraudProofWorkflowJournalStore;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
   readonly decisionDigest: string;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
 }) => {
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint,
     category: "fieldItemWidthIllegal",
     target: { kind: "state_queue_header", headerHash },
     decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   const entries = async () => await store.load(workflowId);
   const appendEvent = async (
-    event: FraudProofWorkflowJournalEntryV1["event"],
+    event: FraudProofWorkflowJournalEntry["event"],
   ): Promise<void> => {
     let current = await entries();
     if (current.length === 0) {
       await store.append(
         {
-          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+          schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
           workflowId,
           identity,
           sequence: 0,
@@ -147,7 +147,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
     }
     await store.append(
       {
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
         workflowId,
         identity,
         sequence: current.length,
@@ -160,14 +160,14 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
   const workflowAction = (
     kind: SubmitAction,
     recovery: DurableRecovery,
-  ): FraudProofWorkflowActionV1 => ({
+  ): FraudProofWorkflowAction => ({
     actionId: actionId(kind),
     input: { actionKind: actionId(kind), ...recovery },
   });
   const assertActuation = (
     checkpoint: "before_preflight" | "before_submit" | "before_reconcile",
   ): void =>
-    assertProductionWorkflowJournalActuationV1({
+    assertWorkflowJournalActuation({
       journal: store,
       deploymentFingerprint,
       category: "fieldItemWidthIllegal",
@@ -179,7 +179,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
     const current = await entries();
     const prepared = current.find(({ event }) => event.kind === "prepared");
     const artifact = { category: "fieldItemWidthIllegal", familyIdentity };
-    const artifactDigest = journalJsonDigestV1(artifact);
+    const artifactDigest = journalJsonDigest(artifact);
     if (prepared?.event.kind === "prepared") {
       if (prepared.event.artifactDigest !== artifactDigest) {
         throw new Error(
@@ -194,8 +194,8 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
   const begin = async (
     kind: SubmitAction,
     familyIdentity: string,
-    sourceStage: FieldItemWidthStageV1,
-    targetStage: FieldItemWidthStageV1,
+    sourceStage: FieldItemWidthStage,
+    targetStage: FieldItemWidthStage,
   ): Promise<void> => {
     await ensurePrepared(familyIdentity);
     if (unresolvedIntent(await entries()) !== undefined) {
@@ -204,7 +204,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
       );
     }
     assertActuation("before_preflight");
-    await beginProductionWorkflowFundingReservationActionV1({
+    await beginWorkflowFundingReservationAction({
       journal: store,
       action: workflowAction(kind, {
         familyIdentity,
@@ -218,9 +218,9 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
     (
       kind: SubmitAction,
       familyIdentity: string,
-      sourceStage: FieldItemWidthStageV1,
-      targetStage: FieldItemWidthStageV1,
-    ): FraudProofPreSubmitBoundaryV1 =>
+      sourceStage: FieldItemWidthStage,
+      targetStage: FieldItemWidthStage,
+    ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       if (!TX_HASH.test(transaction.txHash)) {
         throw new Error(
@@ -248,25 +248,25 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
             event.kind === "submission_intent" &&
             event.actionId === action.actionId,
         ).length + 1;
-      const preflight = bindProductionWorkflowPreflightTransactionV1(
+      const preflight = bindWorkflowPreflightTransaction(
         {
           actionId: action.actionId,
           txHash: transaction.txHash,
           scriptExecution: "reference_scripts" as const,
           localUplcEvaluation: {
             status: "passed" as const,
-            evaluator: LOCAL_UPLC_EVALUATOR_V1,
+            evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: transaction.referenceScripts,
           durableRecovery: recovery,
         },
         transaction.signed,
       );
-      await beginProductionWorkflowFundingReservationActionV1({
+      await beginWorkflowFundingReservationAction({
         journal: store,
         action,
       });
-      await prepareProductionWorkflowFundingReservationTransactionV1({
+      await prepareWorkflowFundingReservationTransaction({
         journal: store,
         action,
         preflight,
@@ -275,7 +275,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
         kind: "preflight_passed",
         actionId: action.actionId,
         txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR_V1,
+        localEvaluator: LOCAL_UPLC_EVALUATOR,
         referenceScripts: transaction.referenceScripts,
       });
       await appendEvent({
@@ -287,14 +287,14 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
         txHash: transaction.txHash,
       });
       assertActuation("before_submit");
-      await assertProductionWorkflowFundingReservationReadyToSubmitV1({
+      await assertWorkflowFundingReservationReadyToSubmit({
         journal: store,
         transactionHash: transaction.txHash,
       });
     };
 
   const reconcile = async (
-    observedStage: FieldItemWidthStageV1,
+    observedStage: FieldItemWidthStage,
   ): Promise<void> => {
     const intent = unresolvedIntent(await entries());
     if (intent?.event.kind !== "submission_intent") return;
@@ -302,7 +302,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
     const recovery = recoveryFrom(intent);
     const confirmed = await transactionConfirmed(intent.event.txHash);
     if (confirmed && observedStage === recovery.targetStage) {
-      await confirmProductionWorkflowFundingReservationTransactionV1({
+      await confirmWorkflowFundingReservationTransaction({
         journal: store,
         transactionHash: intent.event.txHash,
       });
@@ -320,7 +320,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
       return;
     }
     if (!confirmed && observedStage === recovery.sourceStage) {
-      await abandonProductionWorkflowFundingReservationTransactionV1({
+      await abandonWorkflowFundingReservationTransaction({
         journal: store,
         transactionHash: intent.event.txHash,
       });
@@ -331,7 +331,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
       });
       return;
     }
-    await conflictProductionWorkflowFundingReservationTransactionV1({
+    await conflictWorkflowFundingReservationTransaction({
       journal: store,
       transactionHash: intent.event.txHash,
     });
@@ -344,9 +344,9 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
     (
       kind: "publication" | "certificate",
       familyIdentity: string,
-      stage: FieldItemWidthStageV1,
+      stage: FieldItemWidthStage,
       captured: string[],
-    ): FraudProofPreSubmitBoundaryV1 =>
+    ): FraudProofPreSubmitBoundary =>
     async (transaction) => {
       await ensurePrepared(familyIdentity);
       const pending = unresolvedIntent(await entries());
@@ -365,7 +365,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
         targetStage: stage,
         auxiliary: true,
       } as const;
-      const action: FraudProofWorkflowActionV1 = {
+      const action: FraudProofWorkflowAction = {
         actionId: id,
         input: {
           actionKind:
@@ -375,25 +375,25 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
           kind,
         },
       };
-      const preflight = bindProductionWorkflowPreflightTransactionV1(
+      const preflight = bindWorkflowPreflightTransaction(
         {
           actionId: id,
           txHash: transaction.txHash,
           scriptExecution: "reference_scripts" as const,
           localUplcEvaluation: {
             status: "passed" as const,
-            evaluator: LOCAL_UPLC_EVALUATOR_V1,
+            evaluator: LOCAL_UPLC_EVALUATOR,
           },
           referenceScripts: transaction.referenceScripts,
           durableRecovery: recovery,
         },
         transaction.signed,
       );
-      await beginProductionWorkflowFundingReservationActionV1({
+      await beginWorkflowFundingReservationAction({
         journal: store,
         action,
       });
-      await prepareProductionWorkflowFundingReservationTransactionV1({
+      await prepareWorkflowFundingReservationTransaction({
         journal: store,
         action,
         preflight,
@@ -402,7 +402,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
         kind: "preflight_passed",
         actionId: id,
         txHash: transaction.txHash,
-        localEvaluator: LOCAL_UPLC_EVALUATOR_V1,
+        localEvaluator: LOCAL_UPLC_EVALUATOR,
         referenceScripts: transaction.referenceScripts,
       });
       await appendEvent({
@@ -415,7 +415,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
       });
       captured.push(transaction.txHash);
       assertActuation("before_submit");
-      await assertProductionWorkflowFundingReservationReadyToSubmitV1({
+      await assertWorkflowFundingReservationReadyToSubmit({
         journal: store,
         transactionHash: transaction.txHash,
       });
@@ -445,7 +445,7 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
         "fieldItemWidthIllegal auxiliary transaction is not authenticated on L1",
       );
     }
-    await confirmProductionWorkflowFundingReservationTransactionV1({
+    await confirmWorkflowFundingReservationTransaction({
       journal: store,
       transactionHash: txHash,
     });
@@ -468,10 +468,10 @@ export const createFieldItemWidthIllegalCentralJournalAdapterV1 = ({
     });
   };
 
-  const familyJournal: FieldItemWidthJournalV1 = {
+  const familyJournal: FieldItemWidthJournal = {
     load: async (familyIdentity) => {
       const current = await entries();
-      const result: FieldItemWidthJournalEntryV1[] = [];
+      const result: FieldItemWidthJournalEntry[] = [];
       for (const entry of current) {
         const confirmedEvent = entry.event;
         if (confirmedEvent.kind !== "confirmed") continue;

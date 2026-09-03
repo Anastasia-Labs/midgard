@@ -4,16 +4,16 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createFieldItemWidthIllegalCentralJournalAdapterV1 } from "../src/field-item-width-illegal/central-journal-v1.js";
+import { createFieldItemWidthIllegalCentralJournalAdapter } from "../src/field-item-width-illegal/central-journal-v1.js";
 import type {
-  FraudProofWorkflowJournalEntryV1,
-  FraudProofWorkflowJournalStoreV1,
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalStore,
 } from "../src/workflow/journal-v1.js";
-import { DirectoryFraudProofWorkflowJournalStoreV1 } from "../src/workflow/journal-v1.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal-v1.js";
 
 const store = () => {
-  const entries: FraudProofWorkflowJournalEntryV1[] = [];
-  const value: FraudProofWorkflowJournalStoreV1 = {
+  const entries: FraudProofWorkflowJournalEntry[] = [];
+  const value: FraudProofWorkflowJournalStore = {
     load: async () => entries,
     append: async (entry, expectedSequence) => {
       if (expectedSequence !== entries.length)
@@ -25,10 +25,10 @@ const store = () => {
 };
 
 const adapter = (
-  value: FraudProofWorkflowJournalStoreV1,
+  value: FraudProofWorkflowJournalStore,
   transactionConfirmed: (txHash: string) => Promise<boolean> = async () => true,
 ) =>
-  createFieldItemWidthIllegalCentralJournalAdapterV1({
+  createFieldItemWidthIllegalCentralJournalAdapter({
     store: value,
     deploymentFingerprint: "1".repeat(64),
     headerHash: "2".repeat(56),
@@ -158,7 +158,7 @@ describe("fieldItemWidthIllegal central journal adapter", () => {
     );
     try {
       const first = adapter(
-        new DirectoryFraudProofWorkflowJournalStoreV1(directory),
+        new DirectoryFraudProofWorkflowJournalStore(directory),
       );
       const txHash = "a".repeat(64);
       await first.begin("submitInit", "family-evidence", "none", "step01");
@@ -177,7 +177,7 @@ describe("fieldItemWidthIllegal central journal adapter", () => {
       });
 
       const restarted = adapter(
-        new DirectoryFraudProofWorkflowJournalStoreV1(directory),
+        new DirectoryFraudProofWorkflowJournalStore(directory),
       );
       await restarted.reconcile("step01");
       await expect(

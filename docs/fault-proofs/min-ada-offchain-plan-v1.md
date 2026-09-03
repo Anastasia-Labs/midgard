@@ -21,7 +21,7 @@ post-state route rejects inherited underfunding and forged predecessor proofs.
 
 - Aiken validators: `onchain/aiken/validators/fraud-proofs/min-ada/`
 - off-chain family: `demo/midgard-fault-proofs/src/min-ada/`
-- production runner factory: `createMinAdaProductionWorkflowRunnerV1`
+- production runner factory: `createMinAdaWorkflowRunner`
 - Aiken tests: `family-v1.test.ak`
 
 The family uses the same canonical minimum-Ada formula and production parameter

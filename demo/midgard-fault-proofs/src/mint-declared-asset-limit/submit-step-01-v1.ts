@@ -12,32 +12,32 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MintDeclaredAssetLimitContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MintDeclaredAssetLimitContracts } from "./contracts-v1.js";
 import {
-  classifyMintDeclaredAssetLimitFindingV1,
-  type MintDeclaredAssetLimitFindingV1,
+  classifyMintDeclaredAssetLimitFinding,
+  type MintDeclaredAssetLimitFinding,
 } from "./family-v1.js";
 import {
-  MintDeclaredAssetLimitStep01RedeemerV1Schema,
-  MintDeclaredAssetLimitStep02DatumV1Schema,
+  MintDeclaredAssetLimitStep01RedeemerSchema,
+  MintDeclaredAssetLimitStep02DatumSchema,
 } from "./schemas-v1.js";
 
 const nextDatum = (
-  finding: MintDeclaredAssetLimitFindingV1,
+  finding: MintDeclaredAssetLimitFinding,
   signer: ResolvedProverSigner,
 ): string => {
-  const exact = classifyMintDeclaredAssetLimitFindingV1(finding);
+  const exact = classifyMintDeclaredAssetLimitFinding(finding);
   return Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -50,11 +50,11 @@ const nextDatum = (
         },
       },
     } as never,
-    MintDeclaredAssetLimitStep02DatumV1Schema as never,
+    MintDeclaredAssetLimitStep02DatumSchema as never,
   );
 };
 
-export const submitMintDeclaredAssetLimitStep01AcceptedV1 = async ({
+export const submitMintDeclaredAssetLimitStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -73,9 +73,9 @@ export const submitMintDeclaredAssetLimitStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MintDeclaredAssetLimitContractsV1;
+  readonly contracts: MintDeclaredAssetLimitContracts;
   readonly signer: ResolvedProverSigner;
-  readonly finding: MintDeclaredAssetLimitFindingV1;
+  readonly finding: MintDeclaredAssetLimitFinding;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -84,11 +84,11 @@ export const submitMintDeclaredAssetLimitStep01AcceptedV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) =>
-  await submitMissingNativeScriptTxBindingV1({
+  await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -100,7 +100,7 @@ export const submitMintDeclaredAssetLimitStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum: nextDatum(finding, signer),
-    spendRedeemerSchema: MintDeclaredAssetLimitStep01RedeemerV1Schema,
+    spendRedeemerSchema: MintDeclaredAssetLimitStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {
@@ -115,7 +115,7 @@ export const submitMintDeclaredAssetLimitStep01AcceptedV1 = async ({
     awaitConfirmation,
   });
 
-export const submitMintDeclaredAssetLimitStep01ForcedV1 = async ({
+export const submitMintDeclaredAssetLimitStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -128,18 +128,18 @@ export const submitMintDeclaredAssetLimitStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintDeclaredAssetLimitContractsV1;
+  readonly contracts: MintDeclaredAssetLimitContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: MintDeclaredAssetLimitFindingV1;
+  readonly finding: MintDeclaredAssetLimitFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyMintDeclaredAssetLimitFindingV1(finding);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const exact = classifyMintDeclaredAssetLimitFinding(finding);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -149,7 +149,7 @@ export const submitMintDeclaredAssetLimitStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "mint-declared-asset-limit",
@@ -193,10 +193,10 @@ export const submitMintDeclaredAssetLimitStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      MintDeclaredAssetLimitStep01RedeemerV1Schema as never,
+      MintDeclaredAssetLimitStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

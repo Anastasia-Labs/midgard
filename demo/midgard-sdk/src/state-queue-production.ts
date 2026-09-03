@@ -1,5 +1,5 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
@@ -35,12 +35,12 @@ import {
 } from "./correction-lock.js";
 import {
   castConfirmedStateToData,
-  castStateQueueNodeV1ToData,
+  castStateQueueNodeToData,
   type ConfirmedState,
-  confirmedStateNextHeaderProtocolVersionV1,
-  getHeaderV1FromStateQueueDatum,
-  hashBlockHeaderV1,
-  type HeaderV1,
+  confirmedStateNextHeaderProtocolVersion,
+  getHeaderFromStateQueueDatum,
+  hashBlockHeader,
+  type Header,
   NO_DA_ATTESTATION,
 } from "./ledger-state.js";
 import {
@@ -57,7 +57,7 @@ import {
   type SettlementMintRedeemer as SettlementMintRedeemerType,
 } from "./settlement.js";
 import {
-  encodeStateQueueYieldRedeemerV1,
+  encodeStateQueueYieldRedeemer,
   getConfirmedStateFromStateQueueDatum,
   StateQueueError,
   type StateQueueFetchConfig,
@@ -79,13 +79,13 @@ import { outputDatumCborMatches } from "./tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(
-  MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+  MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
 );
 const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
 // Aiken's sole fieldless constructor is represented by Plutus `Constr 0 []`.
-export const PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS = 8 * 60 * 1_000;
+export const COMMIT_MAX_VALIDITY_RANGE_MS = 8 * 60 * 1_000;
 
-export const isProductionCommitValidityInterval = ({
+export const isCommitValidityInterval = ({
   validFrom,
   validTo,
 }: {
@@ -95,9 +95,9 @@ export const isProductionCommitValidityInterval = ({
   Number.isSafeInteger(validFrom) &&
   Number.isSafeInteger(validTo) &&
   validFrom < validTo &&
-  validTo - validFrom <= PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+  validTo - validFrom <= COMMIT_MAX_VALIDITY_RANGE_MS;
 
-export const productionCommitHeaderMatchesValidityUpperBound = ({
+export const commitHeaderMatchesValidityUpperBound = ({
   headerEndTime,
   validTo,
 }: {
@@ -534,7 +534,7 @@ export const buildDeterministicCommitTxBuilder = ({
         .addSignerKey(witness.operatorKeyHash)
         .mintAssets(commitMintAssets, stateQueueCommitMintRedeemer)
         .withdraw(yieldRewardAddress, 0n, (() =>
-          encodeStateQueueYieldRedeemerV1()) satisfies BuildTxWithRedeemer);
+          encodeStateQueueYieldRedeemer()) satisfies BuildTxWithRedeemer);
       const withActiveOperatorsScript =
         witness.activeOperatorsSpendingScriptRef === undefined
           ? tx.attach.Script(witness.activeOperatorsSpendingScript)
@@ -581,12 +581,12 @@ export const buildDeterministicCommitTxBuilder = ({
     return builtCommitTx;
   });
 
-export type ProductionCommitBlockHeaderParams = {
+export type CommitBlockHeaderParams = {
   readonly lucid: LucidEvolution;
   readonly contracts: MidgardValidators;
   readonly latestBlock: StateQueueUTxO;
   readonly updatedNodeDatum: LinkedListNodeView;
-  readonly newHeader: HeaderV1;
+  readonly newHeader: Header;
   readonly validFrom: number;
   readonly validTo: number;
   readonly witness: StateQueueCommitWitnessContext;
@@ -594,12 +594,12 @@ export type ProductionCommitBlockHeaderParams = {
   readonly activeOperatorMaturityDurationMs?: bigint;
 };
 
-export type ProductionCommitBlockHeaderResult = {
+export type CommitBlockHeaderResult = {
   readonly tx: TxSignBuilder;
   readonly newHeaderHash: string;
 };
 
-export const buildProductionCommitBlockHeaderTxProgram = ({
+export const buildCommitBlockHeaderTxProgram = ({
   lucid,
   contracts,
   latestBlock,
@@ -610,8 +610,8 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
   witness,
   headerNodeLovelace = STATE_QUEUE_HEADER_NODE_LOVELACE,
   activeOperatorMaturityDurationMs = ACTIVE_OPERATOR_MATURITY_DURATION_MS,
-}: ProductionCommitBlockHeaderParams): Effect.Effect<
-  ProductionCommitBlockHeaderResult,
+}: CommitBlockHeaderParams): Effect.Effect<
+  CommitBlockHeaderResult,
   StateQueueError | HashingError
 > =>
   Effect.gen(function* () {
@@ -640,17 +640,17 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
       );
     }
     const inclusiveValidityUpperBound = validTo - 1;
-    if (!isProductionCommitValidityInterval({ validFrom, validTo })) {
+    if (!isCommitValidityInterval({ validFrom, validTo })) {
       return yield* Effect.fail(
         new StateQueueError({
           message:
             "Refusing to build a commit transaction with an invalid bounded validity interval",
-          cause: `valid_from_ms=${String(validFrom)},valid_to_ms=${String(validTo)},max_range_ms=${PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS.toString()}`,
+          cause: `valid_from_ms=${String(validFrom)},valid_to_ms=${String(validTo)},max_range_ms=${COMMIT_MAX_VALIDITY_RANGE_MS.toString()}`,
         }),
       );
     }
     if (
-      !productionCommitHeaderMatchesValidityUpperBound({
+      !commitHeaderMatchesValidityUpperBound({
         headerEndTime: newHeader.endTime,
         validTo,
       })
@@ -663,7 +663,7 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
         }),
       );
     }
-    const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
+    const newHeaderHash = yield* hashBlockHeader(newHeader);
     const headerNodeUnit = toUnit(
       contracts.stateQueue.policyId,
       STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
@@ -677,11 +677,11 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
       key: updatedNodeDatum.next,
       next: "Empty",
       data: ("validationTracesRoot" in newHeader
-        ? castStateQueueNodeV1ToData({
+        ? castStateQueueNodeToData({
             header: newHeader,
             da_attestation: NO_DA_ATTESTATION,
           })
-        : castStateQueueNodeV1ToData({
+        : castStateQueueNodeToData({
             header: newHeader,
             da_attestation: NO_DA_ATTESTATION,
           })) as LinkedListNodeView["data"],
@@ -777,7 +777,7 @@ export type StateQueueMergeReferenceScripts = {
   readonly settlementMinting?: UTxO;
 };
 
-export type ProductionMergeToConfirmedStateParams = {
+export type MergeToConfirmedStateParams = {
   readonly lucid: LucidEvolution;
   readonly fetchConfig: StateQueueFetchConfig;
   readonly contracts: MidgardValidators;
@@ -809,10 +809,10 @@ export type MergeLayoutDiagnostics = {
   readonly settlementRedeemerCbor: string;
 };
 
-export type ProductionMergeToConfirmedStateResult = {
+export type MergeToConfirmedStateResult = {
   readonly tx: TxSignBuilder;
   readonly headerNodeKey: string;
-  readonly blockHeader: HeaderV1;
+  readonly blockHeader: Header;
   readonly layout: MergeRedeemerLayout;
   readonly diagnostics: MergeLayoutDiagnostics;
 };
@@ -850,7 +850,7 @@ const makeStateQueueMergeRedeemer = ({
 }: {
   readonly layout: MergeRedeemerLayout;
   readonly headerNodeKey: string;
-  readonly blockHeader: HeaderV1;
+  readonly blockHeader: Header;
   readonly confirmedStateInputOutRef: OutputReference;
 }): StateQueueRedeemerType => {
   const common = {
@@ -977,7 +977,7 @@ const assertMergeRedeemerInvariants = ({
 }: {
   readonly layout: MergeRedeemerLayout;
   readonly headerNodeKey: string;
-  readonly blockHeader: HeaderV1;
+  readonly blockHeader: Header;
   readonly confirmedStateInputOutRef: OutputReference;
   readonly encodedStateQueueMergeRedeemer: string;
   readonly encodedSettlementSpawnRedeemer: string;
@@ -1149,7 +1149,7 @@ const assertMergeRedeemerInvariants = ({
   }
 };
 
-export const buildProductionMergeToConfirmedStateTxProgram = ({
+export const buildMergeToConfirmedStateTxProgram = ({
   lucid,
   fetchConfig,
   contracts,
@@ -1162,8 +1162,8 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   stateQueueMergeYieldRefInput,
   referenceScripts,
   settlementOutputLovelace = MIN_SETTLEMENT_OUTPUT_LOVELACE,
-}: ProductionMergeToConfirmedStateParams): Effect.Effect<
-  ProductionMergeToConfirmedStateResult,
+}: MergeToConfirmedStateParams): Effect.Effect<
+  MergeToConfirmedStateResult,
   StateQueueError | DataCoercionError | HashingError
 > =>
   Effect.gen(function* () {
@@ -1177,9 +1177,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     }
     const { data: confirmedStateData } =
       yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
-    if (
-      confirmedStateNextHeaderProtocolVersionV1(confirmedStateData) === null
-    ) {
+    if (confirmedStateNextHeaderProtocolVersion(confirmedStateData) === null) {
       return yield* Effect.fail(
         new StateQueueError({
           message: "Failed to build merge transaction",
@@ -1187,7 +1185,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         }),
       );
     }
-    const blockHeader = yield* getHeaderV1FromStateQueueDatum(
+    const blockHeader = yield* getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
     if (firstBlockUTxO.datum.key === "Empty") {
@@ -1199,7 +1197,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
       );
     }
     const headerNodeKey = firstBlockUTxO.datum.key.Key.key;
-    const recomputedHeaderHash = yield* hashBlockHeaderV1(blockHeader);
+    const recomputedHeaderHash = yield* hashBlockHeader(blockHeader);
     if (recomputedHeaderHash !== headerNodeKey) {
       return yield* Effect.fail(
         new StateQueueError({
@@ -1301,7 +1299,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
             contracts.stateQueue.yields.merge.withdrawalScript,
           ),
           0n,
-          encodeStateQueueYieldRedeemerV1(),
+          encodeStateQueueYieldRedeemer(),
         );
 
     const makeMergeTxWithScripts = (

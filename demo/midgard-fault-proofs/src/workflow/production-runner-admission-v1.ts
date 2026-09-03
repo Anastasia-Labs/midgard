@@ -1,13 +1,13 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import { bindProductionWorkflowFundingRequirementsToRunnerV1 } from "./production-funding-requirements-admission-v1.js";
-import type { ProductionWorkflowFundingRequirementsV1 } from "./production-funding-requirements-v1.js";
+import { bindWorkflowFundingRequirementsToRunner } from "./production-funding-requirements-admission-v1.js";
+import type { WorkflowFundingRequirements } from "./production-funding-requirements-v1.js";
 
-export const PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1 =
+export const WORKFLOW_ADAPTER_RUNNER =
   "midgard-production-fraud-proof-workflow-runner-v1" as const;
 
-type AdmittedRunnerV1<Input> = Readonly<{
-  runnerVersion: typeof PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1;
+type AdmittedRunner<Input> = Readonly<{
+  runnerVersion: typeof WORKFLOW_ADAPTER_RUNNER;
   runOrResume(input: Input): Promise<unknown>;
 }>;
 
@@ -18,7 +18,7 @@ const categoryByRunner = new WeakMap<object, FraudProofCatalogueCategoryName>();
  * part of the package barrel, so callers cannot mint the runtime identity by
  * copying the public version string onto an arbitrary function.
  */
-export const createAdmittedProductionWorkflowRunnerV1 = <Input>({
+export const createAdmittedWorkflowRunner = <Input>({
   category,
   runOrResume,
   fundingRequirements,
@@ -26,15 +26,15 @@ export const createAdmittedProductionWorkflowRunnerV1 = <Input>({
   readonly category: FraudProofCatalogueCategoryName;
   readonly runOrResume: (input: Input) => Promise<unknown>;
   /** Fixed measured profile; omission keeps W31 readiness fail-closed. */
-  readonly fundingRequirements?: ProductionWorkflowFundingRequirementsV1;
-}): AdmittedRunnerV1<Input> => {
+  readonly fundingRequirements?: WorkflowFundingRequirements;
+}): AdmittedRunner<Input> => {
   const runner = Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume,
   });
   categoryByRunner.set(runner, category);
   if (fundingRequirements !== undefined) {
-    bindProductionWorkflowFundingRequirementsToRunnerV1({
+    bindWorkflowFundingRequirementsToRunner({
       category,
       runner,
       requirements: fundingRequirements,
@@ -43,7 +43,7 @@ export const createAdmittedProductionWorkflowRunnerV1 = <Input>({
   return runner;
 };
 
-export const isAdmittedProductionWorkflowRunnerV1 = ({
+export const isAdmittedWorkflowRunner = ({
   category,
   runner,
 }: {

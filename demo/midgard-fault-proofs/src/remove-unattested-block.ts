@@ -5,7 +5,7 @@ import {
   DA_ATTESTATION_TIMEOUT_MS,
   fetchCorrectionLockUTxOProgram,
   fetchSortedStateQueueUTxOsProgram,
-  getStateQueueNodeV1FromStateQueueDatum,
+  getStateQueueNodeFromStateQueueDatum,
   HUB_ORACLE_ASSET_NAME,
   incompletePruneTimedOutBlockDescendantTxProgram,
   incompleteRemoveUnattestedHeadAfterTimeoutTxProgram,
@@ -60,7 +60,7 @@ export type TimeoutCorrectionTxStatus =
   | "confirmed"
   | "superseded";
 
-export type TimeoutCorrectionJournalStepV1 = {
+export type TimeoutCorrectionJournalStep = {
   readonly kind: TimeoutCorrectionTxKind;
   readonly removedHeaderHash: string;
   readonly inputOutRefs: readonly string[];
@@ -68,17 +68,17 @@ export type TimeoutCorrectionJournalStepV1 = {
   readonly status: TimeoutCorrectionTxStatus;
 };
 
-export type TimeoutCorrectionJournalV1 = {
+export type TimeoutCorrectionJournal = {
   readonly version: 1;
   readonly targetHeaderHash: string;
   readonly targetDeadlineMs: string;
-  readonly steps: readonly TimeoutCorrectionJournalStepV1[];
+  readonly steps: readonly TimeoutCorrectionJournalStep[];
   readonly completed: boolean;
 };
 
-export interface TimeoutCorrectionJournalStoreV1 {
-  readonly load: () => Promise<TimeoutCorrectionJournalV1 | undefined>;
-  readonly save: (journal: TimeoutCorrectionJournalV1) => Promise<void>;
+export interface TimeoutCorrectionJournalStore {
+  readonly load: () => Promise<TimeoutCorrectionJournal | undefined>;
+  readonly save: (journal: TimeoutCorrectionJournal) => Promise<void>;
 }
 
 const HEADER_HASH_PATTERN = /^[0-9a-f]{56}$/;
@@ -98,9 +98,9 @@ const hasExactKeys = (
   );
 };
 
-export const parseTimeoutCorrectionJournalV1 = (
+export const parseTimeoutCorrectionJournal = (
   value: unknown,
-): TimeoutCorrectionJournalV1 => {
+): TimeoutCorrectionJournal => {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -150,7 +150,7 @@ export const parseTimeoutCorrectionJournalV1 = (
     ) {
       throw new Error(`Timeout-correction journal step ${index} is invalid.`);
     }
-    const step = rawStep as Partial<TimeoutCorrectionJournalStepV1>;
+    const step = rawStep as Partial<TimeoutCorrectionJournalStep>;
     if (
       (step.kind !== "prune-descendant" && step.kind !== "remove-head") ||
       !HEADER_HASH_PATTERN.test(step.removedHeaderHash ?? "") ||
@@ -192,7 +192,7 @@ export const parseTimeoutCorrectionJournalV1 = (
         "Only the final timeout-correction journal step may be non-terminal.",
       );
     }
-    return step as TimeoutCorrectionJournalStepV1;
+    return step as TimeoutCorrectionJournalStep;
   });
   if (
     candidate.completed &&
@@ -213,24 +213,24 @@ export const parseTimeoutCorrectionJournalV1 = (
   };
 };
 
-export type TimeoutCorrectionTransactionStatusV1 =
+export type TimeoutCorrectionTransactionStatus =
   | "pending"
   | "confirmed"
   | "failed"
   | "not_found";
 
-export type TimeoutCorrectionStepReconciliationV1 = {
+export type TimeoutCorrectionStepReconciliation = {
   readonly disposition: "none" | "pending" | "confirmed" | "superseded";
-  readonly journal: TimeoutCorrectionJournalV1;
+  readonly journal: TimeoutCorrectionJournal;
 };
 
 /** Durable single-file journal. Rename makes each state transition atomic. */
-export const createFileTimeoutCorrectionJournalStoreV1 = (
+export const createFileTimeoutCorrectionJournalStore = (
   journalPath: string,
-): TimeoutCorrectionJournalStoreV1 => ({
+): TimeoutCorrectionJournalStore => ({
   load: async () => {
     try {
-      return parseTimeoutCorrectionJournalV1(
+      return parseTimeoutCorrectionJournal(
         JSON.parse(await readFile(journalPath, "utf8")),
       );
     } catch (error) {
@@ -277,14 +277,14 @@ const outRefsOf = (nodes: readonly StateQueueUTxO[]): readonly string[] =>
   nodes.map((node) => outRefLabel(node.utxo)).sort();
 
 const replaceLastJournalStepStatus = (
-  journal: TimeoutCorrectionJournalV1,
+  journal: TimeoutCorrectionJournal,
   status: "confirmed" | "superseded",
-): TimeoutCorrectionJournalV1 => {
+): TimeoutCorrectionJournal => {
   const lastStepIndex = journal.steps.length - 1;
   return {
     ...journal,
     steps: journal.steps.map(
-      (step, index): TimeoutCorrectionJournalStepV1 =>
+      (step, index): TimeoutCorrectionJournalStep =>
         index === lastStepIndex ? { ...step, status } : step,
     ),
   };
@@ -296,11 +296,11 @@ const replaceLastJournalStepStatus = (
  * confirmed transaction is not journal-confirmed until its exact spent
  * outrefs and removed header have disappeared from the canonical queue.
  */
-export const reconcileLastTimeoutCorrectionStepV1 = (
-  journal: TimeoutCorrectionJournalV1,
+export const reconcileLastTimeoutCorrectionStep = (
+  journal: TimeoutCorrectionJournal,
   queue: readonly StateQueueUTxO[],
-  transactionStatus: TimeoutCorrectionTransactionStatusV1,
-): TimeoutCorrectionStepReconciliationV1 => {
+  transactionStatus: TimeoutCorrectionTransactionStatus,
+): TimeoutCorrectionStepReconciliation => {
   const lastStep = journal.steps[journal.steps.length - 1];
   if (
     lastStep === undefined ||
@@ -335,7 +335,7 @@ export const reconcileLastTimeoutCorrectionStepV1 = (
   };
 };
 
-export type TimeoutCorrectionPlanV1 = {
+export type TimeoutCorrectionPlan = {
   readonly kind: TimeoutCorrectionTxKind;
   readonly root: StateQueueUTxO;
   readonly head: StateQueueUTxO;
@@ -344,10 +344,10 @@ export type TimeoutCorrectionPlanV1 = {
 };
 
 /** Pure topology decision used both by the command and stale/race tests. */
-export const planNextTimeoutCorrectionV1 = (
+export const planNextTimeoutCorrection = (
   queue: readonly StateQueueUTxO[],
   targetHeaderHash: string,
-): TimeoutCorrectionPlanV1 | undefined => {
+): TimeoutCorrectionPlan | undefined => {
   const root = queue[0];
   const head = queue[1];
   if (root === undefined || root.datum.key !== "Empty") {
@@ -382,10 +382,10 @@ export const planNextTimeoutCorrectionV1 = (
  * authenticated queue: reopen on rollback, rotate only after target absence,
  * and fail if a restored target is no longer the head it originally was.
  */
-export const reconcileCompletedTimeoutCorrectionJournalV1 = (
-  journal: TimeoutCorrectionJournalV1,
+export const reconcileCompletedTimeoutCorrectionJournal = (
+  journal: TimeoutCorrectionJournal,
   queue: readonly StateQueueUTxO[],
-): TimeoutCorrectionJournalV1 | undefined => {
+): TimeoutCorrectionJournal | undefined => {
   if (!journal.completed) {
     return journal;
   }
@@ -411,7 +411,7 @@ export const reconcileCompletedTimeoutCorrectionJournalV1 = (
   return queue[1] === undefined ? journal : undefined;
 };
 
-export const releaseTimeoutCorrectionLeaseBeforeYieldV1 = async (
+export const releaseTimeoutCorrectionLeaseBeforeYield = async (
   lease: { readonly release: () => Promise<void> } | undefined,
 ): Promise<boolean> => {
   if (lease === undefined) {
@@ -452,7 +452,7 @@ export type SubmitUnattestedTimeoutCorrectionParams = {
   readonly deploymentInfo: unknown;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly journalStore: TimeoutCorrectionJournalStoreV1;
+  readonly journalStore: TimeoutCorrectionJournalStore;
   readonly awaitConfirmation?: boolean;
   readonly nowMs?: () => number;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
@@ -568,7 +568,7 @@ export const submitUnattestedTimeoutCorrection = async ({
   const initialHead = queue[1];
   let journal = await journalStore.load();
   if (journal?.completed === true) {
-    journal = reconcileCompletedTimeoutCorrectionJournalV1(journal, queue);
+    journal = reconcileCompletedTimeoutCorrectionJournal(journal, queue);
     if (journal?.completed === true) {
       const correctionLock = await loadCorrectionLock();
       if (correctionLock.datum !== "Idle") {
@@ -600,7 +600,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       };
     }
     const headNode = await Effect.runPromise(
-      getStateQueueNodeV1FromStateQueueDatum(initialHead.datum),
+      getStateQueueNodeFromStateQueueDatum(initialHead.datum),
     );
     if (headNode.da_attestation !== NO_DA_ATTESTATION) {
       return {
@@ -647,7 +647,7 @@ export const submitUnattestedTimeoutCorrection = async ({
         (lastStep.status === "prepared" || lastStep.status === "submitted")
       ) {
         const txStatus = await lucid.transactionStatus(lastStep.txHash);
-        const reconciliation = reconcileLastTimeoutCorrectionStepV1(
+        const reconciliation = reconcileLastTimeoutCorrectionStep(
           journal,
           queue,
           txStatus.status,
@@ -656,7 +656,7 @@ export const submitUnattestedTimeoutCorrection = async ({
         if (reconciliation.disposition === "pending") {
           if (!awaitConfirmation) {
             leaseReleased =
-              await releaseTimeoutCorrectionLeaseBeforeYieldV1(lease);
+              await releaseTimeoutCorrectionLeaseBeforeYield(lease);
             return {
               status: "pending",
               targetHeaderHash: journal.targetHeaderHash,
@@ -682,7 +682,7 @@ export const submitUnattestedTimeoutCorrection = async ({
         await journalStore.save(journal);
       }
 
-      const plan = planNextTimeoutCorrectionV1(queue, journal.targetHeaderHash);
+      const plan = planNextTimeoutCorrection(queue, journal.targetHeaderHash);
       if (plan === undefined) {
         const correctionLock = await loadCorrectionLock();
         if (correctionLock.datum !== "Idle") {
@@ -753,7 +753,7 @@ export const submitUnattestedTimeoutCorrection = async ({
         .complete({ localUPLCEval: true });
       const signed = await unsigned.sign.withWallet().complete();
       const txHash = signed.toHash();
-      const step: TimeoutCorrectionJournalStepV1 = {
+      const step: TimeoutCorrectionJournalStep = {
         kind: plan.kind,
         removedHeaderHash: headerHashOf(plan.removed),
         inputOutRefs: [
@@ -795,7 +795,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       journal = {
         ...journal,
         steps: journal.steps.map(
-          (entry, index): TimeoutCorrectionJournalStepV1 =>
+          (entry, index): TimeoutCorrectionJournalStep =>
             index === submittedStepIndex
               ? { ...entry, status: "submitted" }
               : entry,
@@ -804,7 +804,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       await journalStore.save(journal);
       await lease?.renew();
       if (!awaitConfirmation) {
-        leaseReleased = await releaseTimeoutCorrectionLeaseBeforeYieldV1(lease);
+        leaseReleased = await releaseTimeoutCorrectionLeaseBeforeYield(lease);
         return {
           status: "pending",
           targetHeaderHash: journal.targetHeaderHash,
@@ -863,7 +863,7 @@ export const submitUnattestedTimeoutCorrectionFromFiles = async (
     deploymentInfo,
     network: config.network,
     signer: resolveProverSigner(config),
-    journalStore: createFileTimeoutCorrectionJournalStoreV1(config.journalPath),
+    journalStore: createFileTimeoutCorrectionJournalStore(config.journalPath),
     awaitConfirmation: config.awaitConfirmation,
     stateQueueMutationLeaseCoordinator,
   });

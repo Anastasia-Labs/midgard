@@ -95,15 +95,15 @@ test("agrees with the real Aiken blueprint and the real SDK runtime schema", asy
   const realBlueprint = JSON.parse(readFileSync(realBlueprintPath, "utf8"));
   const realSdk = await import(pathToFileURL(realSdkModulePath).href);
   assert.ok(
-    realSdk.HeaderV1Schema !== undefined,
-    "the built SDK must export HeaderV1Schema",
+    realSdk.HeaderSchema !== undefined,
+    "the built SDK must export HeaderSchema",
   );
 
   assert.doesNotThrow(() =>
     verifyHeaderV1Abi({
       contract,
       blueprint: realBlueprint,
-      sdkSchema: realSdk.HeaderV1Schema,
+      sdkSchema: realSdk.HeaderSchema,
     }),
   );
 
@@ -111,7 +111,7 @@ test("agrees with the real Aiken blueprint and the real SDK runtime schema", asy
   // the full 25-field constructor 0, so a projection that degraded to an empty
   // field list could not pass the loop above by having nothing to compare.
   const blueprintProjection = extractHeaderV1Blueprint(realBlueprint);
-  const sdkProjection = extractHeaderV1SdkSchema(realSdk.HeaderV1Schema);
+  const sdkProjection = extractHeaderV1SdkSchema(realSdk.HeaderSchema);
   assert.equal(blueprintProjection.constructorTag, 0);
   assert.equal(blueprintProjection.fields.length, contract.fields.length);
   assert.equal(sdkProjection.constructorTag, 0);

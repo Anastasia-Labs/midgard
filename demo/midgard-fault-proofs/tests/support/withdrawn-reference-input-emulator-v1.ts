@@ -1,7 +1,7 @@
 import {
-  computeMidgardNativeTxIdV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
+  computeMidgardNativeTxId,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -27,37 +27,37 @@ import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
-import type { WithdrawnReferenceInputContractsV1 } from "../../src/withdrawn-reference-input/contracts-v1.js";
+import type { WithdrawnReferenceInputContracts } from "../../src/withdrawn-reference-input/contracts-v1.js";
 import {
-  type PreparedWithdrawnReferenceInputV1,
-  prepareWithdrawnReferenceInputV1,
+  type PreparedWithdrawnReferenceInput,
+  prepareWithdrawnReferenceInput,
 } from "../../src/withdrawn-reference-input/prepare-withdrawn-reference-input-v1.js";
 import {
-  requireWithdrawnReferenceInputReferenceScriptV1,
-  requireWithdrawnReferenceInputThreadUtxoV1,
+  requireWithdrawnReferenceInputReferenceScript,
+  requireWithdrawnReferenceInputThreadUtxo,
 } from "../../src/withdrawn-reference-input/submit-common-v1.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
-import { decodingSubjectTransactionV1 } from "./native-script-decoding-emulator-v1.js";
+import { decodingSubjectTransaction } from "./native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 
-export const WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1: SDK.MidgardTxInput = {
+export const WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF: SDK.MidgardTxInput = {
   tx_id: "ab".repeat(32),
   output_index: 0n,
 };
 
-export const withdrawnReferenceInputInfoV1 = ({
-  outRef = WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1,
+export const withdrawnReferenceInputInfo = ({
+  outRef = WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF,
   validity = "WithdrawalIsValid",
 }: {
   readonly outRef?: SDK.MidgardTxInput;
@@ -80,12 +80,12 @@ export const withdrawnReferenceInputInfoV1 = ({
   validity,
 });
 
-export type WithdrawnReferenceInputEmulatorHarnessV1 = Awaited<
-  ReturnType<typeof makeWithdrawnReferenceInputEmulatorHarnessV1>
+export type WithdrawnReferenceInputEmulatorHarness = Awaited<
+  ReturnType<typeof makeWithdrawnReferenceInputEmulatorHarness>
 >;
 
-export const makeWithdrawnReferenceInputEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeWithdrawnReferenceInputEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realWithdrawnReferenceInput: true,
       alwaysFraudProofCatalogue: true,
@@ -107,14 +107,14 @@ export const makeWithdrawnReferenceInputEmulatorHarnessV1 = async () => {
   return { ...harness, family, category };
 };
 
-export const publishWithdrawnReferenceInputReferenceScriptsV1 = async ({
+export const publishWithdrawnReferenceInputReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
 }): Promise<readonly [UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -129,23 +129,23 @@ export const publishWithdrawnReferenceInputReferenceScriptsV1 = async ({
   return published as unknown as readonly [UTxO, UTxO, UTxO];
 };
 
-export type WithdrawnReferenceInputScenarioV1 = {
-  readonly header: SDK.HeaderV1;
+export type WithdrawnReferenceInputScenario = {
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
   readonly blockTxs: readonly [
     { readonly nodeTxId: string; readonly txCbor: string },
   ];
   readonly withdrawals: readonly [SDK.WithdrawalEvent];
-  readonly prepared: PreparedWithdrawnReferenceInputV1;
+  readonly prepared: PreparedWithdrawnReferenceInput;
 };
 
-export const setupWithdrawnReferenceInputScenarioV1 = async ({
+export const setupWithdrawnReferenceInputScenario = async ({
   harness,
-  withdrawalInfo = withdrawnReferenceInputInfoV1(),
+  withdrawalInfo = withdrawnReferenceInputInfo(),
   decoyReferenceInputCount = 0,
 }: {
-  readonly harness: WithdrawnReferenceInputEmulatorHarnessV1;
+  readonly harness: WithdrawnReferenceInputEmulatorHarness;
   readonly withdrawalInfo?: SDK.WithdrawalInfo;
   /**
    * Pads the committed field-1 preimage (each item a constant 40 §5.1 bytes)
@@ -153,9 +153,9 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
    * in the withdrawals set, so the accused reference input stays the fault.
    */
   readonly decoyReferenceInputCount?: number;
-}): Promise<WithdrawnReferenceInputScenarioV1> => {
+}): Promise<WithdrawnReferenceInputScenario> => {
   const referenceInputCbors = [
-    WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1,
+    WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF,
     ...Array.from(
       { length: decoyReferenceInputCount },
       (_unused, index): SDK.MidgardTxInput => ({
@@ -164,14 +164,14 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
       }),
     ),
   ]
-    .map(SDK.encodeMidgardTxInputCanonicalV1)
+    .map(SDK.encodeMidgardTxInputCanonical)
     .sort(Buffer.compare);
-  const nativeTx = decodingSubjectTransactionV1({
+  const nativeTx = decodingSubjectTransaction({
     referenceInputCbors,
     fee: 1_000n,
   });
-  const txId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-  const fullCbor = encodeMidgardNativeTxCanonicalV1(nativeTx);
+  const txId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const fullCbor = encodeMidgardNativeTxCanonical(nativeTx);
   // The header's normative transactions MPF commits
   // `Data(L2TransactionSourceV1)` per transaction id, which is the value the
   // preparer recounts, so the committed leaf is the source value rather than
@@ -193,12 +193,9 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
     SDK.ROOT_DOMAINS.withdrawals,
     [
       {
-        key: Buffer.from(
-          SDK.committedWithdrawalKeyBytesV1(withdrawal.id),
-          "hex",
-        ),
+        key: Buffer.from(SDK.committedWithdrawalKeyBytes(withdrawal.id), "hex"),
         value: Buffer.from(
-          SDK.committedWithdrawalValueBytesV1(withdrawal.info),
+          SDK.committedWithdrawalValueBytes(withdrawal.info),
           "hex",
         ),
       },
@@ -210,7 +207,7 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(funderKeyHash, startTime, countedTransactions.root, 1n),
     withdrawalsRoot: countedWithdrawals.root,
     withdrawalCount: 1n,
@@ -218,12 +215,12 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
     transitionStepCount: 2n,
     validationTraceCount: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const blockTxs = [
     { nodeTxId: txId, txCbor: fullCbor.toString("hex") },
   ] as const;
   const withdrawals = [withdrawal] as const;
-  const prepared = await prepareWithdrawnReferenceInputV1({
+  const prepared = await prepareWithdrawnReferenceInput({
     header,
     blockTxs,
     withdrawals,
@@ -244,24 +241,22 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
  * membership material. Adversarial tests use this to bypass the honest
  * classifier and reach the validator's exact refusal checks.
  */
-export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
+export const setupWithdrawnReferenceInputUncheckedScenario = async ({
   harness,
   withdrawalInfo,
 }: {
-  readonly harness: WithdrawnReferenceInputEmulatorHarnessV1;
+  readonly harness: WithdrawnReferenceInputEmulatorHarness;
   readonly withdrawalInfo: SDK.WithdrawalInfo;
 }) => {
-  const referenceInputs = [
-    WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF_V1,
-  ] as const;
-  const nativeTx = decodingSubjectTransactionV1({
+  const referenceInputs = [WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF] as const;
+  const nativeTx = decodingSubjectTransaction({
     referenceInputCbors: [
-      SDK.encodeMidgardTxInputCanonicalV1(referenceInputs[0]),
+      SDK.encodeMidgardTxInputCanonical(referenceInputs[0]),
     ],
     fee: 1_000n,
   });
-  const txId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const txId = computeMidgardNativeTxId(nativeTx).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
   const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const countedTransactions = await buildCountedRoot(
     SDK.ROOT_DOMAINS.transactionsV1,
@@ -282,11 +277,11 @@ export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
     info: withdrawalInfo,
   };
   const withdrawalKey = Buffer.from(
-    SDK.committedWithdrawalKeyBytesV1(withdrawal.id),
+    SDK.committedWithdrawalKeyBytes(withdrawal.id),
     "hex",
   );
   const withdrawalValue = Buffer.from(
-    SDK.committedWithdrawalValueBytesV1(withdrawal.info),
+    SDK.committedWithdrawalValueBytes(withdrawal.info),
     "hex",
   );
   const countedWithdrawals = await buildCountedRoot(
@@ -304,7 +299,7 @@ export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...makeHeader(funderKeyHash, startTime, countedTransactions.root, 1n),
     withdrawalsRoot: countedWithdrawals.root,
     withdrawalCount: 1n,
@@ -322,7 +317,7 @@ export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
   const blockTxs = [
     {
       nodeTxId: txId,
-      txCbor: encodeMidgardNativeTxCanonicalV1(nativeTx).toString("hex"),
+      txCbor: encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
     },
   ] as const;
   const withdrawals = [withdrawal] as const;
@@ -354,7 +349,7 @@ export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
   };
 };
 
-export type RawWithdrawnReferenceInputStepLayoutV1 = {
+export type RawWithdrawnReferenceInputStepLayout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
 };
@@ -369,7 +364,7 @@ const RawWithdrawnCancelRedeemer =
   RawWithdrawnCancelRedeemerSchema as unknown as RawWithdrawnCancelRedeemer;
 
 /** Test-only advancement that bypasses the honest step-02 guards. */
-export const submitRawWithdrawnReferenceInputStep02V1 = async ({
+export const submitRawWithdrawnReferenceInputStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -380,18 +375,18 @@ export const submitRawWithdrawnReferenceInputStep02V1 = async ({
   referenceScriptUtxo,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly nextDatumCbor: string;
   readonly buildRedeemer: (
-    layout: RawWithdrawnReferenceInputStepLayoutV1,
+    layout: RawWithdrawnReferenceInputStepLayout,
   ) => string;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireWithdrawnReferenceInputThreadUtxoV1({
+    await requireWithdrawnReferenceInputThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -420,7 +415,7 @@ export const submitRawWithdrawnReferenceInputStep02V1 = async ({
     });
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const reference = requireWithdrawnReferenceInputReferenceScriptV1({
+  const reference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
@@ -447,7 +442,7 @@ export const submitRawWithdrawnReferenceInputStep02V1 = async ({
 };
 
 /** Test-only finalizer that sends an arbitrary membership proof on-chain. */
-export const submitRawWithdrawnReferenceInputStep03V1 = async ({
+export const submitRawWithdrawnReferenceInputStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -458,16 +453,16 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
   witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly withdrawalMembership: SDK.WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireWithdrawnReferenceInputThreadUtxoV1({
+    await requireWithdrawnReferenceInputThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -540,17 +535,17 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
       },
       SDK.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
-  const reference = requireWithdrawnReferenceInputReferenceScriptV1({
+  const reference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     stepIndex: 2,
   });
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw withdrawn-reference-input step-03 computation-thread mint",
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: "raw withdrawn-reference-input step-03 fraud-proof mint",
@@ -585,7 +580,7 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
 };
 
 /** Test-only cancellation signed by an arbitrary wallet. */
-export const submitRawWithdrawnReferenceInputCancelV1 = async ({
+export const submitRawWithdrawnReferenceInputCancel = async ({
   lucid,
   contracts,
   categoryId,
@@ -596,16 +591,16 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
   witnessReferenceScripts,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly stepIndex: 0 | 1 | 2;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const { threadUtxo, threadToken } =
-    await requireWithdrawnReferenceInputThreadUtxoV1({
+    await requireWithdrawnReferenceInputThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -649,12 +644,12 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
       SDK.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const reference = requireWithdrawnReferenceInputReferenceScriptV1({
+  const reference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     stepIndex,
   });
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw withdrawn-reference-input cancel computation-thread mint",

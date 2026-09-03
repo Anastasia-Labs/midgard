@@ -1,87 +1,87 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
 import {
-  type AuthenticatedStateQueueHeaderObservationV1,
+  type AuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-import { type CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import { canonicalDecodabilityArtifactFromRawEvidenceV1 } from "../evidence/canonical-decodability-raw-evidence-v1.js";
+import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import { canonicalDecodabilityArtifactFromRawEvidence } from "../evidence/canonical-decodability-raw-evidence-v1.js";
 import {
-  fetchProductionFraudProofEvidenceV1,
-  PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+  fetchFraudProofEvidence,
+  FRAUD_PROOF_EVIDENCE_ROUTE,
 } from "../evidence/production-fraud-proof-evidence-v1.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  type CanonicalBlockClassificationV1,
-  type CanonicalViolationDetectionV1,
-  classifyCanonicalBlockViolationsV1,
+  type CanonicalBlockClassification,
+  type CanonicalViolationDetection,
+  classifyCanonicalBlockViolations,
 } from "./classification-v1.js";
 import {
-  type CompleteCanonicalReplayContextV1,
-  type CompleteCanonicalReplayV1,
-  requireCompleteCanonicalReplayDecisionV1,
+  type CompleteCanonicalReplay,
+  type CompleteCanonicalReplayContext,
+  requireCompleteCanonicalReplayDecision,
 } from "./complete-replay-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEntryV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
-  type FraudProofWorkflowTerminalV1,
-  journalJsonDigestV1,
-  type JournalJsonObjectV1,
-  normalizeFraudProofWorkflowIdentityV1,
-  normalizeJournalJsonV1,
-  validateFraudProofWorkflowJournalV1,
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
+  type FraudProofWorkflowTerminal,
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeFraudProofWorkflowIdentity,
+  normalizeJournalJson,
+  validateFraudProofWorkflowJournal,
 } from "./journal-v1.js";
 import {
-  assertProductionWorkflowJournalActuationV1,
-  productionWorkflowActuationDecisionDigestV1,
+  assertWorkflowJournalActuation,
+  workflowActuationDecisionDigest,
 } from "./production-actuation-permit-v1.js";
 import {
-  abandonProductionWorkflowFundingReservationTransactionV1,
-  assertProductionWorkflowFundingReservationReadyToSubmitV1,
-  beginProductionWorkflowFundingReservationActionV1,
-  confirmProductionWorkflowFundingReservationTransactionV1,
-  conflictProductionWorkflowFundingReservationTransactionV1,
-  prepareProductionWorkflowFundingReservationTransactionV1,
-  releaseProductionWorkflowFundingReservationV1,
+  abandonWorkflowFundingReservationTransaction,
+  assertWorkflowFundingReservationReadyToSubmit,
+  beginWorkflowFundingReservationAction,
+  confirmWorkflowFundingReservationTransaction,
+  conflictWorkflowFundingReservationTransaction,
+  prepareWorkflowFundingReservationTransaction,
+  releaseWorkflowFundingReservation,
 } from "./production-funding-reservation-permit-v1.js";
 import {
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  type FraudProofReleaseFinalityAuthorityV1,
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  type FraudProofReleaseFinalityAuthority,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy-v1.js";
-import { copyProductionWorkflowPreflightTransactionV1 } from "./transaction-boundary-v1.js";
+import { copyWorkflowPreflightTransaction } from "./transaction-boundary-v1.js";
 
-export const FRAUD_PROOF_WORKFLOW_ADAPTER_V1 =
+export const FRAUD_PROOF_WORKFLOW_ADAPTER =
   "midgard-fraud-proof-workflow-adapter-v1" as const;
-export const FRAUD_PROOF_WORKFLOW_SAFETY_V1 = Object.freeze({
+export const FRAUD_PROOF_WORKFLOW_SAFETY = Object.freeze({
   evidenceSource: "authenticated-l1-public-retained-da-v1",
   scriptCarriage: "reference-script-only",
   localEvaluation: "required-before-submit",
 } as const);
 
-export type FraudProofWorkflowActionV1 = {
+export type FraudProofWorkflowAction = {
   /** Stable within a workflow; changing action data requires a new id. */
   readonly actionId: string;
   /** Public, journal-safe inputs needed to reconstruct this transaction. */
-  readonly input: JournalJsonObjectV1;
+  readonly input: JournalJsonObject;
 };
 
-export type FraudProofWorkflowReferenceScriptV1 = {
+export type FraudProofWorkflowReferenceScript = {
   readonly role: string;
   readonly outRef: string;
   readonly scriptHash: string;
 };
 
-export type FraudProofWorkflowPreflightV1 = {
+export type FraudProofWorkflowPreflight = {
   readonly actionId: string;
   /** Hash of the exact transaction body that passed local evaluation. */
   readonly txHash: string;
@@ -90,31 +90,31 @@ export type FraudProofWorkflowPreflightV1 = {
     readonly status: "passed";
     readonly evaluator: string;
   };
-  readonly referenceScripts: readonly FraudProofWorkflowReferenceScriptV1[];
+  readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
   /**
    * Public, journal-safe coordinator state needed to recover this exact
    * action after process loss. It is copied into the durable intent before
    * any network submission.
    */
-  readonly durableRecovery?: JournalJsonObjectV1;
+  readonly durableRecovery?: JournalJsonObject;
 };
 
-export type FraudProofWorkflowObservationV1 =
+export type FraudProofWorkflowObservation =
   | {
       readonly kind: "action_required";
-      readonly action: FraudProofWorkflowActionV1;
+      readonly action: FraudProofWorkflowAction;
     }
   | {
       readonly kind: "completed";
       /** Candidate facts; the adapter cannot authenticate these itself. */
-      readonly terminal: FraudProofWorkflowTerminalV1;
+      readonly terminal: FraudProofWorkflowTerminal;
     }
   | {
       readonly kind: "conflict";
       readonly reason: string;
     };
 
-export type FraudProofWorkflowSubmitResultV1 =
+export type FraudProofWorkflowSubmitResult =
   | { readonly kind: "submitted"; readonly txHash: string }
   | {
       readonly kind: "ambiguous";
@@ -122,13 +122,13 @@ export type FraudProofWorkflowSubmitResultV1 =
       readonly detail: string;
     };
 
-export type FraudProofWorkflowReconcileResultV1 =
+export type FraudProofWorkflowReconcileResult =
   | { readonly kind: "confirmed"; readonly txHash: string }
   | { readonly kind: "pending"; readonly txHash?: string }
   | { readonly kind: "not_found" }
   | { readonly kind: "conflict"; readonly reason: string };
 
-export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1 =
+export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER =
   "midgard-authenticated-l1-workflow-terminal-verifier-v1" as const;
 
 /**
@@ -136,24 +136,24 @@ export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1 =
  * inspect authenticated Cardano L1 state; a family adapter's own observation
  * is deliberately insufficient to mark a workflow complete.
  */
-export interface FraudProofWorkflowTerminalVerifierV1 {
-  readonly verifierVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1;
+export interface FraudProofWorkflowTerminalVerifier {
+  readonly verifierVersion: typeof FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER;
   verify(input: {
-    readonly identity: FraudProofWorkflowIdentityV1;
+    readonly identity: FraudProofWorkflowIdentity;
     readonly workflowId: string;
     /** Deployment-manifest-bound finality identity this terminal must meet. */
-    readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-    readonly candidate: FraudProofWorkflowTerminalV1;
-    readonly artifact: JournalJsonObjectV1;
-    readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
-  }): Promise<FraudProofWorkflowTerminalV1>;
+    readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+    readonly candidate: FraudProofWorkflowTerminal;
+    readonly artifact: JournalJsonObject;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<FraudProofWorkflowTerminal>;
 }
 
-type FraudProofWorkflowAdapterContextV1 = {
-  readonly identity: FraudProofWorkflowIdentityV1;
+type FraudProofWorkflowAdapterContext = {
+  readonly identity: FraudProofWorkflowIdentity;
   readonly workflowId: string;
-  readonly artifact: JournalJsonObjectV1;
-  readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+  readonly artifact: JournalJsonObject;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
 };
 
 /**
@@ -161,55 +161,55 @@ type FraudProofWorkflowAdapterContextV1 = {
  * Implementations must call the current family submitters; those retain local
  * UPLC evaluation and authenticated reference-script-only semantics.
  */
-export interface FraudProofFamilyWorkflowAdapterV1 {
-  readonly adapterVersion: typeof FRAUD_PROOF_WORKFLOW_ADAPTER_V1;
+export interface FraudProofFamilyWorkflowAdapter {
+  readonly adapterVersion: typeof FRAUD_PROOF_WORKFLOW_ADAPTER;
   readonly category: FraudProofCatalogueCategoryName;
-  readonly safety: typeof FRAUD_PROOF_WORKFLOW_SAFETY_V1;
+  readonly safety: typeof FRAUD_PROOF_WORKFLOW_SAFETY;
   prepare(input: {
-    readonly evidence: CanonicalBlockEvidenceV1;
+    readonly evidence: CanonicalBlockEvidence;
     /** Opaque, admitted predecessor authority for ledger-relative families. */
-    readonly replayContext?: CompleteCanonicalReplayContextV1;
+    readonly replayContext?: CompleteCanonicalReplayContext;
     readonly classification: Extract<
-      CanonicalBlockClassificationV1,
+      CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     >;
-  }): Promise<JournalJsonObjectV1>;
+  }): Promise<JournalJsonObject>;
   observe(
-    context: FraudProofWorkflowAdapterContextV1,
-  ): Promise<FraudProofWorkflowObservationV1>;
+    context: FraudProofWorkflowAdapterContext,
+  ): Promise<FraudProofWorkflowObservation>;
   preflight(
-    context: FraudProofWorkflowAdapterContextV1 & {
-      readonly action: FraudProofWorkflowActionV1;
+    context: FraudProofWorkflowAdapterContext & {
+      readonly action: FraudProofWorkflowAction;
     },
-  ): Promise<FraudProofWorkflowPreflightV1>;
+  ): Promise<FraudProofWorkflowPreflight>;
   /** Called only after a durable `submission_intent` journal entry exists. */
   submit(
-    context: FraudProofWorkflowAdapterContextV1 & {
-      readonly action: FraudProofWorkflowActionV1;
-      readonly preflight: FraudProofWorkflowPreflightV1;
+    context: FraudProofWorkflowAdapterContext & {
+      readonly action: FraudProofWorkflowAction;
+      readonly preflight: FraudProofWorkflowPreflight;
     },
-  ): Promise<FraudProofWorkflowSubmitResultV1>;
+  ): Promise<FraudProofWorkflowSubmitResult>;
   /**
    * Must inspect authenticated L1 state. It is called before every retry when
    * an intent/submission has an uncertain or merely submitted outcome.
    */
   reconcile(
-    context: FraudProofWorkflowAdapterContextV1 & {
-      readonly action: FraudProofWorkflowActionV1;
+    context: FraudProofWorkflowAdapterContext & {
+      readonly action: FraudProofWorkflowAction;
       readonly txHash?: string;
-      readonly durableRecovery?: JournalJsonObjectV1;
+      readonly durableRecovery?: JournalJsonObject;
     },
-  ): Promise<FraudProofWorkflowReconcileResultV1>;
+  ): Promise<FraudProofWorkflowReconcileResult>;
 }
 
-export type FraudProofWorkflowRegistryV1 = ReadonlyMap<
+export type FraudProofWorkflowRegistry = ReadonlyMap<
   FraudProofCatalogueCategoryName,
-  FraudProofFamilyWorkflowAdapterV1
+  FraudProofFamilyWorkflowAdapter
 >;
 
-const freezeWorkflowAdapterV1 = (
-  adapter: FraudProofFamilyWorkflowAdapterV1,
-): FraudProofFamilyWorkflowAdapterV1 => {
+const freezeWorkflowAdapter = (
+  adapter: FraudProofFamilyWorkflowAdapter,
+): FraudProofFamilyWorkflowAdapter => {
   const prepare = adapter.prepare;
   const observe = adapter.observe;
   const preflight = adapter.preflight;
@@ -237,18 +237,18 @@ const freezeWorkflowAdapterV1 = (
   });
 };
 
-class ImmutableFraudProofWorkflowRegistryV1
-  implements FraudProofWorkflowRegistryV1
+class ImmutableFraudProofWorkflowRegistry
+  implements FraudProofWorkflowRegistry
 {
   readonly #entries: ReadonlyMap<
     FraudProofCatalogueCategoryName,
-    FraudProofFamilyWorkflowAdapterV1
+    FraudProofFamilyWorkflowAdapter
   >;
 
   constructor(
     entries: readonly (readonly [
       FraudProofCatalogueCategoryName,
-      FraudProofFamilyWorkflowAdapterV1,
+      FraudProofFamilyWorkflowAdapter,
     ])[],
   ) {
     this.#entries = new Map(entries);
@@ -285,9 +285,9 @@ class ImmutableFraudProofWorkflowRegistryV1
 
   forEach(
     callbackfn: (
-      value: FraudProofFamilyWorkflowAdapterV1,
+      value: FraudProofFamilyWorkflowAdapter,
       key: FraudProofCatalogueCategoryName,
-      map: FraudProofWorkflowRegistryV1,
+      map: FraudProofWorkflowRegistry,
     ) => void,
     thisArg?: unknown,
   ): void {
@@ -302,24 +302,24 @@ class ImmutableFraudProofWorkflowRegistryV1
 }
 
 const sameSafety = (
-  safety: FraudProofFamilyWorkflowAdapterV1["safety"],
+  safety: FraudProofFamilyWorkflowAdapter["safety"],
 ): boolean =>
-  safety.evidenceSource === FRAUD_PROOF_WORKFLOW_SAFETY_V1.evidenceSource &&
-  safety.scriptCarriage === FRAUD_PROOF_WORKFLOW_SAFETY_V1.scriptCarriage &&
-  safety.localEvaluation === FRAUD_PROOF_WORKFLOW_SAFETY_V1.localEvaluation;
+  safety.evidenceSource === FRAUD_PROOF_WORKFLOW_SAFETY.evidenceSource &&
+  safety.scriptCarriage === FRAUD_PROOF_WORKFLOW_SAFETY.scriptCarriage &&
+  safety.localEvaluation === FRAUD_PROOF_WORKFLOW_SAFETY.localEvaluation;
 
 /**
  * Creates a closed, versioned registry for the supplied launch scope. Missing,
  * duplicate, extra, legacy-inline-script, or non-local-evaluation adapters fail
  * startup instead of becoming a runtime fallback.
  */
-export const createFraudProofWorkflowRegistryV1 = ({
+export const createFraudProofWorkflowRegistry = ({
   adapters,
   launchScope = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
 }: {
-  readonly adapters: readonly FraudProofFamilyWorkflowAdapterV1[];
+  readonly adapters: readonly FraudProofFamilyWorkflowAdapter[];
   readonly launchScope?: readonly FraudProofCatalogueCategoryName[];
-}): FraudProofWorkflowRegistryV1 => {
+}): FraudProofWorkflowRegistry => {
   const scope = new Set<FraudProofCatalogueCategoryName>();
   for (const category of launchScope) {
     if (scope.has(category)) {
@@ -329,10 +329,10 @@ export const createFraudProofWorkflowRegistryV1 = ({
   }
   const registry = new Map<
     FraudProofCatalogueCategoryName,
-    FraudProofFamilyWorkflowAdapterV1
+    FraudProofFamilyWorkflowAdapter
   >();
   for (const adapter of adapters) {
-    if (adapter.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER_V1) {
+    if (adapter.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER) {
       throw new Error(`adapter ${adapter.category} has an unsupported version`);
     }
     if (!scope.has(adapter.category)) {
@@ -346,7 +346,7 @@ export const createFraudProofWorkflowRegistryV1 = ({
     if (registry.has(adapter.category)) {
       throw new Error(`duplicate workflow adapter: ${adapter.category}`);
     }
-    registry.set(adapter.category, freezeWorkflowAdapterV1(adapter));
+    registry.set(adapter.category, freezeWorkflowAdapter(adapter));
   }
   const missing = [...scope].filter((category) => !registry.has(category));
   if (missing.length > 0) {
@@ -354,10 +354,10 @@ export const createFraudProofWorkflowRegistryV1 = ({
       `missing launch-scope workflow adapters: ${missing.join(", ")}`,
     );
   }
-  return new ImmutableFraudProofWorkflowRegistryV1([...registry]);
+  return new ImmutableFraudProofWorkflowRegistry([...registry]);
 };
 
-type WorkflowEvidenceBindingV1 = JournalJsonObjectV1 &
+type WorkflowEvidenceBinding = JournalJsonObject &
   (
     | {
         readonly route: "canonical_block";
@@ -380,10 +380,10 @@ type WorkflowEvidenceBindingV1 = JournalJsonObjectV1 &
       }
   );
 
-type PersistedArtifactEnvelopeV1 = JournalJsonObjectV1 & {
-  readonly evidenceBinding: WorkflowEvidenceBindingV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly familyArtifact: JournalJsonObjectV1;
+type PersistedArtifactEnvelope = JournalJsonObject & {
+  readonly evidenceBinding: WorkflowEvidenceBinding;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly familyArtifact: JournalJsonObject;
 };
 
 const persistedArtifact = ({
@@ -391,36 +391,35 @@ const persistedArtifact = ({
   releaseFinality,
   familyArtifact,
 }: {
-  readonly evidenceBinding: WorkflowEvidenceBindingV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly familyArtifact: JournalJsonObjectV1;
-}): PersistedArtifactEnvelopeV1 =>
-  normalizeJournalJsonV1({
+  readonly evidenceBinding: WorkflowEvidenceBinding;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly familyArtifact: JournalJsonObject;
+}): PersistedArtifactEnvelope =>
+  normalizeJournalJson({
     evidenceBinding,
     releaseFinality,
     familyArtifact,
-  }) as PersistedArtifactEnvelopeV1;
+  }) as PersistedArtifactEnvelope;
 
 const requirePreparedArtifact = ({
   entries,
   evidenceBinding,
   releaseFinality,
 }: {
-  readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
-  readonly evidenceBinding: WorkflowEvidenceBindingV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): PersistedArtifactEnvelopeV1 | undefined => {
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly evidenceBinding: WorkflowEvidenceBinding;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): PersistedArtifactEnvelope | undefined => {
   const prepared = entries.find((entry) => entry.event.kind === "prepared");
   if (prepared === undefined || prepared.event.kind !== "prepared") {
     return undefined;
   }
   if (
-    journalJsonDigestV1(prepared.event.artifact) !==
-    prepared.event.artifactDigest
+    journalJsonDigest(prepared.event.artifact) !== prepared.event.artifactDigest
   ) {
     throw new Error("journaled prepared artifact digest mismatch");
   }
-  const envelope = prepared.event.artifact as PersistedArtifactEnvelopeV1;
+  const envelope = prepared.event.artifact as PersistedArtifactEnvelope;
   if (
     JSON.stringify(envelope.evidenceBinding) !==
       JSON.stringify(evidenceBinding) ||
@@ -437,37 +436,35 @@ const requirePreparedArtifact = ({
   return envelope;
 };
 
-const canonicalEvidenceBindingV1 = (
-  evidence: CanonicalBlockEvidenceV1,
-): WorkflowEvidenceBindingV1 =>
-  normalizeJournalJsonV1({
+const canonicalEvidenceBinding = (
+  evidence: CanonicalBlockEvidence,
+): WorkflowEvidenceBinding =>
+  normalizeJournalJson({
     route: "canonical_block",
     headerHash: evidence.headerHash,
     payloadEnvelopeSha256: evidence.payloadEnvelopeSha256,
     payloadSha256: evidence.payloadSha256,
     l1BlockHash: evidence.observation.chainPoint.blockHash,
     l1Slot: evidence.observation.chainPoint.slot.toString(),
-  }) as WorkflowEvidenceBindingV1;
+  }) as WorkflowEvidenceBinding;
 
-const verifiedReleaseFinalityV1 = async ({
+const verifiedReleaseFinality = async ({
   deploymentFingerprint,
   authority,
 }: {
   readonly deploymentFingerprint: string;
-  readonly authority: FraudProofReleaseFinalityAuthorityV1;
+  readonly authority: FraudProofReleaseFinalityAuthority;
 }): Promise<{
   readonly deploymentFingerprint: string;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
 }> => {
-  if (
-    authority.authorityVersion !== FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1
-  ) {
+  if (authority.authorityVersion !== FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY) {
     throw new Error(
       "workflow requires the deployment-manifest release finality authority",
     );
   }
   const normalized = normalizeDaDeploymentFingerprintHex(deploymentFingerprint);
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1(
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     await authority.verifyForWorkflow({ deploymentFingerprint: normalized }),
   );
   if (releaseFinality.deploymentIdentityDigest !== normalized) {
@@ -498,8 +495,8 @@ const normalizeOutRef = (value: string, field: string): string => {
 };
 
 const validateAction = (
-  action: FraudProofWorkflowActionV1,
-): FraudProofWorkflowActionV1 => {
+  action: FraudProofWorkflowAction,
+): FraudProofWorkflowAction => {
   if (
     action.actionId.length === 0 ||
     action.actionId.trim() !== action.actionId
@@ -508,10 +505,10 @@ const validateAction = (
   }
   return {
     actionId: action.actionId,
-    input: normalizeJournalJsonV1(
+    input: normalizeJournalJson(
       action.input,
       `workflow action ${action.actionId}`,
-    ) as JournalJsonObjectV1,
+    ) as JournalJsonObject,
   };
 };
 
@@ -519,9 +516,9 @@ const validatePreflight = ({
   action,
   preflight,
 }: {
-  readonly action: FraudProofWorkflowActionV1;
-  readonly preflight: FraudProofWorkflowPreflightV1;
-}): FraudProofWorkflowPreflightV1 => {
+  readonly action: FraudProofWorkflowAction;
+  readonly preflight: FraudProofWorkflowPreflight;
+}): FraudProofWorkflowPreflight => {
   if (preflight.actionId !== action.actionId) {
     throw new Error("workflow preflight returned a different actionId");
   }
@@ -566,7 +563,7 @@ const validatePreflight = ({
       throw new Error("workflow reference-script hash must be 28-byte hex");
     }
   }
-  return copyProductionWorkflowPreflightTransactionV1({
+  return copyWorkflowPreflightTransaction({
     from: preflight,
     to: {
       ...preflight,
@@ -574,10 +571,10 @@ const validatePreflight = ({
       ...(preflight.durableRecovery === undefined
         ? {}
         : {
-            durableRecovery: normalizeJournalJsonV1(
+            durableRecovery: normalizeJournalJson(
               preflight.durableRecovery,
               `workflow preflight ${action.actionId} durable recovery`,
-            ) as JournalJsonObjectV1,
+            ) as JournalJsonObject,
           }),
     },
   });
@@ -596,14 +593,12 @@ const normalizeTerminal = ({
   entries,
   releaseFinality,
 }: {
-  readonly identity: FraudProofWorkflowIdentityV1;
-  readonly terminal: FraudProofWorkflowTerminalV1;
-  readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): FraudProofWorkflowTerminalV1 => {
-  if (
-    terminal.schemaVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION
-  ) {
+  readonly identity: FraudProofWorkflowIdentity;
+  readonly terminal: FraudProofWorkflowTerminal;
+  readonly entries: readonly FraudProofWorkflowJournalEntry[];
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): FraudProofWorkflowTerminal => {
+  if (terminal.schemaVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION) {
     throw new Error("workflow terminal has an unsupported schema");
   }
   if (
@@ -631,9 +626,9 @@ const normalizeTerminal = ({
       .filter(
         (
           entry,
-        ): entry is FraudProofWorkflowJournalEntryV1 & {
+        ): entry is FraudProofWorkflowJournalEntry & {
           readonly event: Extract<
-            FraudProofWorkflowJournalEventV1,
+            FraudProofWorkflowJournalEvent,
             { readonly kind: "confirmed" }
           >;
         } => entry.event.kind === "confirmed",
@@ -755,16 +750,16 @@ const normalizeTerminal = ({
 };
 
 const lastActionEvent = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   actionId: string,
-): FraudProofWorkflowJournalEventV1 | undefined =>
+): FraudProofWorkflowJournalEvent | undefined =>
   [...entries]
     .reverse()
     .map((entry) => entry.event)
     .find((event) => "actionId" in event && event.actionId === actionId);
 
 const lastKnownTxHash = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   actionId: string,
 ): string | undefined => {
   let latestIntentIndex = -1;
@@ -792,7 +787,7 @@ const lastKnownTxHash = (
 };
 
 const attemptCount = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   actionId: string,
 ): number =>
   entries.filter(
@@ -802,11 +797,11 @@ const attemptCount = (
   ).length;
 
 const latestSubmissionIntent = (
-  entries: readonly FraudProofWorkflowJournalEntryV1[],
+  entries: readonly FraudProofWorkflowJournalEntry[],
   actionId: string,
 ):
   | Extract<
-      FraudProofWorkflowJournalEventV1,
+      FraudProofWorkflowJournalEvent,
       { readonly kind: "submission_intent" }
     >
   | undefined =>
@@ -817,29 +812,29 @@ const latestSubmissionIntent = (
       (
         event,
       ): event is Extract<
-        FraudProofWorkflowJournalEventV1,
+        FraudProofWorkflowJournalEvent,
         { readonly kind: "submission_intent" }
       > => event.kind === "submission_intent" && event.actionId === actionId,
     );
 
-export type FraudProofWorkflowRunResultV1 =
+export type FraudProofWorkflowRunResult =
   | {
       readonly kind: "no_fault_detected" | "unprovable_gap";
-      readonly classification: CanonicalBlockClassificationV1;
+      readonly classification: CanonicalBlockClassification;
     }
   | {
       readonly kind: "completed";
       readonly workflowId: string;
-      readonly identity: FraudProofWorkflowIdentityV1;
-      readonly terminal: FraudProofWorkflowTerminalV1;
-      readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+      readonly identity: FraudProofWorkflowIdentity;
+      readonly terminal: FraudProofWorkflowTerminal;
+      readonly entries: readonly FraudProofWorkflowJournalEntry[];
     }
   | {
       readonly kind: "pending" | "stalled";
       readonly workflowId: string;
-      readonly identity: FraudProofWorkflowIdentityV1;
+      readonly identity: FraudProofWorkflowIdentity;
       readonly reason: string;
-      readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+      readonly entries: readonly FraudProofWorkflowJournalEntry[];
     };
 
 /**
@@ -848,7 +843,7 @@ export type FraudProofWorkflowRunResultV1 =
  * durable. An unresolved submission is always reconciled against authenticated
  * L1 state before any retry.
  */
-const runAdmittedFraudProofWorkflowV1 = async ({
+const runAdmittedFraudProofWorkflow = async ({
   deploymentFingerprint,
   category,
   headerHash,
@@ -865,18 +860,18 @@ const runAdmittedFraudProofWorkflowV1 = async ({
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
   readonly headerHash: string;
-  readonly evidenceBinding: WorkflowEvidenceBindingV1;
+  readonly evidenceBinding: WorkflowEvidenceBinding;
   readonly prepareFamilyArtifact: (
-    adapter: FraudProofFamilyWorkflowAdapterV1,
-  ) => Promise<JournalJsonObjectV1>;
-  readonly registry: FraudProofWorkflowRegistryV1;
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-  readonly terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
+    adapter: FraudProofFamilyWorkflowAdapter,
+  ) => Promise<JournalJsonObject>;
+  readonly registry: FraudProofWorkflowRegistry;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+}): Promise<FraudProofWorkflowRunResult> => {
   if (
     !Number.isSafeInteger(maxSubmissionAttempts) ||
     maxSubmissionAttempts < 1
@@ -887,8 +882,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
     throw new Error("maxActions must be a positive safe integer");
   }
   if (
-    terminalVerifier.verifierVersion !==
-    FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1
+    terminalVerifier.verifierVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER
   ) {
     throw new Error("workflow requires the authenticated L1 terminal verifier");
   }
@@ -901,34 +895,34 @@ const runAdmittedFraudProofWorkflowV1 = async ({
   if (adapter === undefined) {
     throw new Error(`classified family ${category} has no workflow adapter`);
   }
-  assertProductionWorkflowJournalActuationV1({
+  assertWorkflowJournalActuation({
     journal,
     deploymentFingerprint,
     category,
     headerHash,
     checkpoint: "workflow_resume",
   });
-  const decisionDigest = productionWorkflowActuationDecisionDigestV1(journal);
-  const identity = normalizeFraudProofWorkflowIdentityV1({
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const decisionDigest = workflowActuationDecisionDigest(journal);
+  const identity = normalizeFraudProofWorkflowIdentity({
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint,
     category,
     target: { kind: "state_queue_header", headerHash },
     ...(decisionDigest === undefined ? {} : { decisionDigest }),
   });
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = [
     ...(await journal.load(workflowId)),
-  ] as FraudProofWorkflowJournalEntryV1[];
-  validateFraudProofWorkflowJournalV1({
+  ] as FraudProofWorkflowJournalEntry[];
+  validateFraudProofWorkflowJournal({
     workflowId,
     entries,
     expectedIdentity: identity,
   });
 
-  const append = async (event: FraudProofWorkflowJournalEventV1) => {
-    const entry: FraudProofWorkflowJournalEntryV1 = {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+  const append = async (event: FraudProofWorkflowJournalEvent) => {
+    const entry: FraudProofWorkflowJournalEntry = {
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence: entries.length,
@@ -940,7 +934,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
   };
   const stalled = async (
     reason: string,
-  ): Promise<FraudProofWorkflowRunResultV1> => {
+  ): Promise<FraudProofWorkflowRunResult> => {
     await append({ kind: "stalled", reason });
     return { kind: "stalled", workflowId, identity, reason, entries };
   };
@@ -954,10 +948,10 @@ const runAdmittedFraudProofWorkflowV1 = async ({
     releaseFinality,
   });
   if (envelope === undefined) {
-    const familyArtifact = normalizeJournalJsonV1(
+    const familyArtifact = normalizeJournalJson(
       await prepareFamilyArtifact(adapter),
       `${category} prepared artifact`,
-    ) as JournalJsonObjectV1;
+    ) as JournalJsonObject;
     envelope = persistedArtifact({
       evidenceBinding,
       releaseFinality,
@@ -966,12 +960,12 @@ const runAdmittedFraudProofWorkflowV1 = async ({
     await append({
       kind: "prepared",
       artifact: envelope,
-      artifactDigest: journalJsonDigestV1(envelope),
+      artifactDigest: journalJsonDigest(envelope),
     });
   }
 
   for (let actionNumber = 0; actionNumber < maxActions; actionNumber += 1) {
-    let context: FraudProofWorkflowAdapterContextV1 = {
+    let context: FraudProofWorkflowAdapterContext = {
       identity,
       workflowId,
       artifact: envelope.familyArtifact,
@@ -1024,9 +1018,9 @@ const runAdmittedFraudProofWorkflowV1 = async ({
         input: intent.actionInput,
       });
       const priorTxHash = lastKnownTxHash(entries, action.actionId);
-      let reconciled: FraudProofWorkflowReconcileResultV1;
+      let reconciled: FraudProofWorkflowReconcileResult;
       try {
-        assertProductionWorkflowJournalActuationV1({
+        assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint,
           category,
@@ -1047,7 +1041,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
         );
       }
       if (reconciled.kind === "conflict") {
-        await conflictProductionWorkflowFundingReservationTransactionV1({
+        await conflictWorkflowFundingReservationTransaction({
           journal,
           transactionHash: priorTxHash ?? intent.txHash,
         });
@@ -1065,7 +1059,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
             `reconciliation for ${action.actionId} returned ${txHash}, expected ${priorTxHash}`,
           );
         }
-        await confirmProductionWorkflowFundingReservationTransactionV1({
+        await confirmWorkflowFundingReservationTransaction({
           journal,
           transactionHash: txHash,
         });
@@ -1106,7 +1100,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
           entries,
         };
       }
-      await abandonProductionWorkflowFundingReservationTransactionV1({
+      await abandonWorkflowFundingReservationTransaction({
         journal,
         transactionHash: priorTxHash ?? intent.txHash,
       });
@@ -1118,7 +1112,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
       context = { ...context, entries };
     }
 
-    assertProductionWorkflowJournalActuationV1({
+    assertWorkflowJournalActuation({
       journal,
       deploymentFingerprint,
       category,
@@ -1127,9 +1121,9 @@ const runAdmittedFraudProofWorkflowV1 = async ({
     });
     const observation = await adapter.observe(context);
     if (observation.kind === "completed") {
-      let terminal: FraudProofWorkflowTerminalV1;
+      let terminal: FraudProofWorkflowTerminal;
       try {
-        assertProductionWorkflowJournalActuationV1({
+        assertWorkflowJournalActuation({
           journal,
           deploymentFingerprint,
           category,
@@ -1154,11 +1148,11 @@ const runAdmittedFraudProofWorkflowV1 = async ({
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
       }
-      const terminalDigest = journalJsonDigestV1(
-        normalizeJournalJsonV1(terminal, "workflow terminal"),
+      const terminalDigest = journalJsonDigest(
+        normalizeJournalJson(terminal, "workflow terminal"),
       );
       if (entries.at(-1)?.event.kind !== "completed") {
-        await releaseProductionWorkflowFundingReservationV1({ journal });
+        await releaseWorkflowFundingReservation({ journal });
         await append({ kind: "completed", terminal, terminalDigest });
       }
       return {
@@ -1186,16 +1180,16 @@ const runAdmittedFraudProofWorkflowV1 = async ({
         `submission attempts exhausted for ${action.actionId}`,
       );
     }
-    let preflight: FraudProofWorkflowPreflightV1;
+    let preflight: FraudProofWorkflowPreflight;
     try {
-      assertProductionWorkflowJournalActuationV1({
+      assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint,
         category,
         headerHash,
         checkpoint: "before_preflight",
       });
-      await beginProductionWorkflowFundingReservationActionV1({
+      await beginWorkflowFundingReservationAction({
         journal,
         action,
       });
@@ -1209,7 +1203,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
       );
     }
     try {
-      await prepareProductionWorkflowFundingReservationTransactionV1({
+      await prepareWorkflowFundingReservationTransaction({
         journal,
         action,
         preflight,
@@ -1237,15 +1231,15 @@ const runAdmittedFraudProofWorkflowV1 = async ({
       attempt,
       txHash: preflight.txHash,
     });
-    let submitted: FraudProofWorkflowSubmitResultV1;
-    assertProductionWorkflowJournalActuationV1({
+    let submitted: FraudProofWorkflowSubmitResult;
+    assertWorkflowJournalActuation({
       journal,
       deploymentFingerprint,
       category,
       headerHash,
       checkpoint: "before_submit",
     });
-    await assertProductionWorkflowFundingReservationReadyToSubmitV1({
+    await assertWorkflowFundingReservationReadyToSubmit({
       journal,
       transactionHash: preflight.txHash,
     });
@@ -1303,7 +1297,7 @@ const runAdmittedFraudProofWorkflowV1 = async ({
 };
 
 /** Canonical-block classified workflow entry retained for all ordinary families. */
-export const runFraudProofWorkflowV1 = async ({
+export const runFraudProofWorkflow = async ({
   deploymentFingerprint,
   evidence,
   detections,
@@ -1317,22 +1311,22 @@ export const runFraudProofWorkflowV1 = async ({
   now,
 }: {
   readonly deploymentFingerprint: string;
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly detections: readonly CanonicalViolationDetectionV1[];
-  readonly replayContext?: CompleteCanonicalReplayContextV1;
-  readonly registry: FraudProofWorkflowRegistryV1;
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-  readonly terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly detections: readonly CanonicalViolationDetection[];
+  readonly replayContext?: CompleteCanonicalReplayContext;
+  readonly registry: FraudProofWorkflowRegistry;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
-}): Promise<FraudProofWorkflowRunResultV1> => {
-  const verified = await verifiedReleaseFinalityV1({
+}): Promise<FraudProofWorkflowRunResult> => {
+  const verified = await verifiedReleaseFinality({
     deploymentFingerprint,
     authority: releaseFinalityAuthority,
   });
-  const classification = await classifyCanonicalBlockViolationsV1({
+  const classification = await classifyCanonicalBlockViolations({
     evidence,
     detections,
     minimumConfirmationDepth: verified.releaseFinality.policy.confirmationDepth,
@@ -1340,11 +1334,11 @@ export const runFraudProofWorkflowV1 = async ({
   if (classification.decision !== "fault_detected") {
     return { kind: classification.decision, classification };
   }
-  return await runAdmittedFraudProofWorkflowV1({
+  return await runAdmittedFraudProofWorkflow({
     deploymentFingerprint: verified.deploymentFingerprint,
     category: classification.category,
     headerHash: evidence.headerHash,
-    evidenceBinding: canonicalEvidenceBindingV1(evidence),
+    evidenceBinding: canonicalEvidenceBinding(evidence),
     prepareFamilyArtifact: async (adapter) =>
       await adapter.prepare({
         evidence,
@@ -1366,7 +1360,7 @@ export const runFraudProofWorkflowV1 = async ({
  * so no caller-authored classification or durable proof artifact can enter the
  * shared lifecycle. A canonical payload is not silently treated as Q44.
  */
-export const runDaHashPreimageWorkflowFromRetainedDaV1 = async ({
+export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   deploymentFingerprint,
   observation,
   sources,
@@ -1380,50 +1374,50 @@ export const runDaHashPreimageWorkflowFromRetainedDaV1 = async ({
   now,
 }: {
   readonly deploymentFingerprint: string;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly registry: FraudProofWorkflowRegistryV1;
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-  readonly terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  readonly registry: FraudProofWorkflowRegistry;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly retries?: number;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+}): Promise<FraudProofWorkflowRunResult> => {
   const scope = [...registry.keys()];
   if (scope.length !== 1 || scope[0] !== "daHashPreimage") {
     throw new Error(
       `dedicated Q44 workflow requires the exact daHashPreimage registry; found=${scope.join(",")}`,
     );
   }
-  const verified = await verifiedReleaseFinalityV1({
+  const verified = await verifiedReleaseFinality({
     deploymentFingerprint,
     authority: releaseFinalityAuthority,
   });
-  const routed = await fetchProductionFraudProofEvidenceV1({
+  const routed = await fetchFraudProofEvidence({
     observation,
     sources,
     ...(retries === undefined ? {} : { retries }),
     minimumConfirmationDepth: verified.releaseFinality.policy.confirmationDepth,
   });
   if (
-    routed.schemaVersion !== PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1 ||
+    routed.schemaVersion !== FRAUD_PROOF_EVIDENCE_ROUTE ||
     routed.kind !== "da_hash_preimage"
   ) {
     throw new Error(
       "dedicated Q44 workflow found no authenticated raw source-leaf defect",
     );
   }
-  const familyArtifact = normalizeJournalJsonV1({
+  const familyArtifact = normalizeJournalJson({
     schemaVersion: "midgard-production-da-hash-preimage-artifact-v1",
     headerHash: routed.plan.headerHash,
     committedTransactionsRoot: routed.plan.committedTransactionsRoot,
     l2TransactionCount: routed.plan.l2TransactionCount,
     committedTxId: routed.plan.violation.committedTxId,
     entries: routed.evidence.entries,
-  }) as JournalJsonObjectV1;
-  const evidenceBinding = normalizeJournalJsonV1({
+  }) as JournalJsonObject;
+  const evidenceBinding = normalizeJournalJson({
     route: "authenticated_source_leaf",
     headerHash: routed.evidence.headerHash,
     payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
@@ -1433,8 +1427,8 @@ export const runDaHashPreimageWorkflowFromRetainedDaV1 = async ({
     committedTxId: routed.plan.violation.committedTxId,
     l1BlockHash: routed.evidence.l1ChainPoint.blockHash,
     l1Slot: routed.evidence.l1ChainPoint.slot.toString(),
-  }) as WorkflowEvidenceBindingV1;
-  return await runAdmittedFraudProofWorkflowV1({
+  }) as WorkflowEvidenceBinding;
+  return await runAdmittedFraudProofWorkflow({
     deploymentFingerprint: verified.deploymentFingerprint,
     category: "daHashPreimage",
     headerHash: routed.evidence.headerHash,
@@ -1456,7 +1450,7 @@ export const runDaHashPreimageWorkflowFromRetainedDaV1 = async ({
  * then enter the journaled workflow. There is intentionally no REST, database,
  * or local-file evidence option in this API.
  */
-export const runFraudProofWorkflowFromRetainedDaV1 = async ({
+export const runFraudProofWorkflowFromRetainedDa = async ({
   deploymentFingerprint,
   observation,
   sources,
@@ -1472,21 +1466,21 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
   now,
 }: {
   readonly deploymentFingerprint: string;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   /** Exact closed replay bundle; arbitrary partial detectors are forbidden. */
-  readonly replayer: CompleteCanonicalReplayV1;
+  readonly replayer: CompleteCanonicalReplay;
   /** Opaque L1/public-DA-admitted predecessor context, when required. */
-  readonly replayContext?: CompleteCanonicalReplayContextV1;
-  readonly registry: FraudProofWorkflowRegistryV1;
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-  readonly terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  readonly replayContext?: CompleteCanonicalReplayContext;
+  readonly registry: FraudProofWorkflowRegistry;
+  readonly journal: FraudProofWorkflowJournalStore;
+  readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly retries?: number;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+}): Promise<FraudProofWorkflowRunResult> => {
   const registryScope = [...registry.keys()];
   if (
     registryScope.length !== replayer.launchScope.length ||
@@ -1500,7 +1494,7 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
   }
   if (
     releaseFinalityAuthority.authorityVersion !==
-    FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1
+    FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY
   ) {
     throw new Error(
       "workflow requires the deployment-manifest release finality authority",
@@ -1509,7 +1503,7 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
-  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1(
+  const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy(
     await releaseFinalityAuthority.verifyForWorkflow({
       deploymentFingerprint: normalizedDeploymentFingerprint,
     }),
@@ -1521,7 +1515,7 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
       "release finality authority returned a different deployment identity",
     );
   }
-  const routed = await fetchProductionFraudProofEvidenceV1({
+  const routed = await fetchFraudProofEvidence({
     observation,
     sources,
     ...(retries === undefined ? {} : { retries }),
@@ -1536,10 +1530,10 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
         `authenticated Q17 committed-field defect requires the exact canonicalDecodability registry; found=${registryScope.join(",")}`,
       );
     }
-    const familyArtifact = normalizeJournalJsonV1(
-      canonicalDecodabilityArtifactFromRawEvidenceV1(routed.evidence),
-    ) as JournalJsonObjectV1;
-    const evidenceBinding = normalizeJournalJsonV1({
+    const familyArtifact = normalizeJournalJson(
+      canonicalDecodabilityArtifactFromRawEvidence(routed.evidence),
+    ) as JournalJsonObject;
+    const evidenceBinding = normalizeJournalJson({
       route: "authenticated_committed_field_defect",
       headerHash: routed.evidence.headerHash,
       payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
@@ -1553,8 +1547,8 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
       selectedVerdict: routed.evidence.selected.verdict.toString(),
       l1BlockHash: routed.evidence.l1ChainPoint.blockHash,
       l1Slot: routed.evidence.l1ChainPoint.slot.toString(),
-    }) as WorkflowEvidenceBindingV1;
-    return await runAdmittedFraudProofWorkflowV1({
+    }) as WorkflowEvidenceBinding;
+    return await runAdmittedFraudProofWorkflow({
       deploymentFingerprint: normalizedDeploymentFingerprint,
       category: "canonicalDecodability",
       headerHash: routed.evidence.headerHash,
@@ -1591,13 +1585,13 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
   }
   const evidence = routed.evidence;
   const replayDecision = await replayer.replay(evidence, replayContext);
-  const detections = requireCompleteCanonicalReplayDecisionV1({
+  const detections = requireCompleteCanonicalReplayDecision({
     evidence,
     replayer,
     decision: replayDecision,
     ...(replayContext === undefined ? {} : { context: replayContext }),
   });
-  return await runFraudProofWorkflowV1({
+  return await runFraudProofWorkflow({
     deploymentFingerprint: normalizedDeploymentFingerprint,
     evidence,
     detections,
@@ -1606,7 +1600,7 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
     journal,
     terminalVerifier,
     releaseFinalityAuthority: {
-      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
       verifyForWorkflow: async () => releaseFinality,
     },
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),

@@ -24,9 +24,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  faultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  type FaultProofFieldOpeningPlan,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../ne-submit-step-03.js";
 import {
@@ -34,7 +34,7 @@ import {
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
 } from "../proof-chunk-carriage.js";
 import {
@@ -52,47 +52,47 @@ import {
 } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
 import type {
-  PreparedNetworkIdPostUtxoProofV1,
-  PreparedNetworkIdProofV1,
+  PreparedNetworkIdPostUtxoProof,
+  PreparedNetworkIdProof,
 } from "./prepare-v1.js";
 import {
-  networkIdStepLabelV1,
+  networkIdStepLabel,
   networkIdSubmitError,
-  requireNetworkIdReferenceScriptV1,
-  requireNetworkIdStepStateV1,
-  requireNetworkIdThreadUtxoV1,
+  requireNetworkIdReferenceScript,
+  requireNetworkIdStepState,
+  requireNetworkIdThreadUtxo,
 } from "./submit-common-v1.js";
 import {
-  networkIdWrongfulRejectionClosesV1,
-  type PreparedNetworkIdWrongfulRejectionV1,
+  networkIdWrongfulRejectionCloses,
+  type PreparedNetworkIdWrongfulRejection,
 } from "./wrongful-rejection-v1.js";
 
-const STEP_LABEL = networkIdStepLabelV1(1);
+const STEP_LABEL = networkIdStepLabel(1);
 
-type PreparedNetworkIdFinalProofV1 =
-  | PreparedNetworkIdProofV1
-  | PreparedNetworkIdPostUtxoProofV1
-  | PreparedNetworkIdWrongfulRejectionV1;
+type PreparedNetworkIdFinalProof =
+  | PreparedNetworkIdProof
+  | PreparedNetworkIdPostUtxoProof
+  | PreparedNetworkIdWrongfulRejection;
 
 const isPostUtxoPrepared = (
-  prepared: PreparedNetworkIdFinalProofV1,
-): prepared is PreparedNetworkIdPostUtxoProofV1 =>
+  prepared: PreparedNetworkIdFinalProof,
+): prepared is PreparedNetworkIdPostUtxoProof =>
   prepared.faultClaim.kind === "post-utxo-network";
 
 const isForcedPrepared = (
-  prepared: PreparedNetworkIdFinalProofV1,
-): prepared is PreparedNetworkIdWrongfulRejectionV1 =>
+  prepared: PreparedNetworkIdFinalProof,
+): prepared is PreparedNetworkIdWrongfulRejection =>
   prepared.faultClaim.kind === "forced-network-mismatch";
 
 const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
@@ -170,33 +170,33 @@ export const submitNetworkIdStep02 = async ({
   readonly lucid: LucidEvolution;
   /** Required for the post-UTxO predecessor proof route. */
   readonly blueprint?: unknown;
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
   /** Required for the post-UTxO predecessor proof route. */
   readonly network?: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedNetworkIdFinalProofV1;
+  readonly prepared: PreparedNetworkIdFinalProof;
   /** Required exactly for an OutputNetwork claim. */
-  readonly outputsOpeningPlan?: FaultProofFieldOpeningPlanV1;
+  readonly outputsOpeningPlan?: FaultProofFieldOpeningPlan;
   /** Mandatory published Q35 step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   /** Optional published carriage for the predecessor proof. */
-  readonly publishedPredecessorProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedPredecessorProofChunks?: readonly PublishedProofChunk[];
   /** Existing §8.6 certificate UTxOs, required only for tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNetworkIdStep02Result> => {
-  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
     contracts,
     categoryId,
     stepIndex: 1,
     threadOutRef,
   });
-  const state = requireNetworkIdStepStateV1({
+  const state = requireNetworkIdStepState({
     threadUtxo,
     signer,
     schema: NetworkIdStep02Datum,
@@ -212,7 +212,7 @@ export const submitNetworkIdStep02 = async ({
     ? 255n
     : forced
       ? forcedPrepared!.evidence.committedNetworkId
-      : (prepared as PreparedNetworkIdProofV1).txInclusion.nativeTx.body
+      : (prepared as PreparedNetworkIdProof).txInclusion.nativeTx.body
           .network_id;
   if (
     state.bad_tx_id !== preparedBadTxId ||
@@ -225,7 +225,7 @@ export const submitNetworkIdStep02 = async ({
     );
   }
 
-  let planned: FaultProofFieldOpeningPlanV1 | undefined;
+  let planned: FaultProofFieldOpeningPlan | undefined;
   if (postUtxo) {
     if (outputsOpeningPlan !== undefined) {
       throw networkIdSubmitError(
@@ -270,7 +270,7 @@ export const submitNetworkIdStep02 = async ({
       state.fault !== "ForcedNetworkIdMismatch" ||
       state.forced_source_key === null ||
       state.forced_source_key !== forcedPrepared!.subject.source_key ||
-      !networkIdWrongfulRejectionClosesV1(forcedPrepared!.evidence)
+      !networkIdWrongfulRejectionCloses(forcedPrepared!.evidence)
     ) {
       throw networkIdSubmitError(
         "forced step state or retained evidence does not contradict NetworkIdMismatch",
@@ -372,7 +372,7 @@ export const submitNetworkIdStep02 = async ({
   const predecessorCarriage =
     predecessorProofScript === undefined
       ? undefined
-      : witnessWithdrawalValidatorCarriageV1({
+      : witnessWithdrawalValidatorCarriage({
           script: predecessorProofScript,
           referenceUtxo: predecessorCarriedByChunks
             ? witnessReferenceScripts.chunkedVerifyWithdraw
@@ -390,7 +390,7 @@ export const submitNetworkIdStep02 = async ({
   const published =
     planned === undefined
       ? []
-      : await publishFaultProofFieldCarriageV1({
+      : await publishFaultProofFieldCarriage({
           lucid,
           signer,
           planned,
@@ -398,17 +398,17 @@ export const submitNetworkIdStep02 = async ({
           label: `${STEP_LABEL} outputs`,
           preSubmitBoundary,
         });
-  const stepReference = requireNetworkIdReferenceScriptV1({
+  const stepReference = requireNetworkIdReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -432,7 +432,7 @@ export const submitNetworkIdStep02 = async ({
   const outputsOpening =
     planned === undefined
       ? null
-      : faultProofFieldOpeningV1({
+      : faultProofFieldOpening({
           planned,
           referenceInputs,
           certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -655,10 +655,10 @@ export const submitNetworkIdStep02 = async ({
     throw networkIdSubmitError("step-02 transaction layout was not resolved");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof network-id step-02",
         utxo: stepReference,
         expectedScript: contracts.steps[1].spendingScript,
@@ -667,7 +667,7 @@ export const submitNetworkIdStep02 = async ({
       predecessorCarriage === undefined
         ? []
         : [
-            workflowReferenceScriptV1({
+            workflowReferenceScript({
               role: predecessorCarriedByChunks
                 ? "network-id-predecessor-chunked-verify"
                 : postUtxo && prepared.predecessor === "Introduced"
@@ -677,12 +677,12 @@ export const submitNetworkIdStep02 = async ({
               expectedScript: predecessorProofScript,
             }),
           ]),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof computation-thread minting",
         utxo: witnessReferenceScripts.computationThreadMint,
         expectedScript: contracts.computationThread.mintingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof token minting",
         utxo: witnessReferenceScripts.fraudProofMint,
         expectedScript: contracts.fraudProof.mintingScript,

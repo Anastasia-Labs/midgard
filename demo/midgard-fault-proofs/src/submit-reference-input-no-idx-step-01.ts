@@ -12,12 +12,12 @@
  */
 import {
   commitCountedRootProgram,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   ReferenceInputNoIdxStep01SpendRedeemer,
   ReferenceInputNoIdxStep02Datum,
-  referenceInputNoIdxStep02StateFromBadTxV1,
+  referenceInputNoIdxStep02StateFromBadTx,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -36,9 +36,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareNativeTxInclusionCarriageV1 } from "./native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage-v1.js";
 import {
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
 import {
@@ -65,13 +65,13 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitReferenceInputNoIdxStep01CliConfig = SubmitProviderConfig & {
@@ -146,12 +146,12 @@ export const submitReferenceInputNoIdxStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep01Result> => {
   const resolvedDeployment =
@@ -218,7 +218,7 @@ export const submitReferenceInputNoIdxStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
   const countedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
@@ -246,12 +246,12 @@ export const submitReferenceInputNoIdxStep01 = async ({
       chunks,
     }),
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "reference-input-no-idx step 01 validator",
   });
-  const inclusionCarriage = prepareNativeTxInclusionCarriageV1({
+  const inclusionCarriage = prepareNativeTxInclusionCarriage({
     blueprint,
     network,
     txInclusion,
@@ -267,7 +267,7 @@ export const submitReferenceInputNoIdxStep01 = async ({
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: referenceInputNoIdxStep02StateFromBadTxV1(verifiedTxId),
+      data: referenceInputNoIdxStep02StateFromBadTx(verifiedTxId),
     },
     ReferenceInputNoIdxStep02Datum,
   );
@@ -344,9 +344,9 @@ export const submitReferenceInputNoIdxStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

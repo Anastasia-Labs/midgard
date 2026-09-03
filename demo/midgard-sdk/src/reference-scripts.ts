@@ -459,16 +459,16 @@ export type ReferenceScriptTarget = {
  * publication. A script body at or above this size cannot possibly fit once
  * the output, funding input, auth mint and signature are added.
  */
-export const REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES_V1 = 16_384;
+export const REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES = 16_384;
 
 /**
  * Fail-fast lower-bound admission for production reference-script
  * publication. This deliberately does not claim that a smaller raw body fits:
  * the completed, signed transaction remains the authoritative fit check.
  */
-export const assertReferenceScriptRawBodiesFitL1EnvelopeV1 = (
+export const assertReferenceScriptRawBodiesFitL1Envelope = (
   targets: readonly ReferenceScriptTarget[],
-  maxTxBytes = REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES_V1,
+  maxTxBytes = REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES,
 ): void => {
   for (const target of targets) {
     const rawScriptBytes = target.script.script.length / 2;

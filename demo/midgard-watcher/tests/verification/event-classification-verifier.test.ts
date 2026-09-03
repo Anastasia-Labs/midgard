@@ -1,59 +1,59 @@
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalTransitionEffectV1,
-  canonicalCommittedWithdrawalTransitionEffectV1,
+  buildCanonicalTransitionEffect,
+  canonicalCommittedWithdrawalTransitionEffect,
 } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   makeNativeTx,
   makeOutput,
   nativeScriptWitness,
   outRefFromByte,
   outRefFromTxId,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
-import { makeWatcherStateQueueHeaderV1 } from "../../src/indexers/state-queue-indexer.js";
-import { watcherSha256CanonicalJsonV1 } from "../../src/storage/durable-store.js";
+import { makeWatcherStateQueueHeader } from "../../src/indexers/state-queue-indexer.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
-  evaluateWatcherBlockReplayV1,
-  WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION,
-  WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1,
-  WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION,
-  type WatcherBlockReplayPriorUtxoV1,
+  evaluateWatcherBlockReplay,
+  WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
+  WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
+  WATCHER_BLOCK_REPLAY_SCHEMA_VERSION,
+  type WatcherBlockReplayPriorUtxo,
 } from "../../src/verification/block-replay.js";
 import {
-  evaluateWatcherEventClassificationRulesV1,
-  evaluateWatcherEventClassificationV1,
-  WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1,
-  watcherForcedIntervalIsDueV1,
-  watcherTimedL1EventIsDueV1,
+  evaluateWatcherEventClassification,
+  evaluateWatcherEventClassificationRules,
+  WATCHER_EVENT_CLASSIFICATION_REASON_CODES,
+  watcherForcedIntervalIsDue,
+  watcherTimedL1EventIsDue,
 } from "../../src/verification/event-classification-verifier.js";
-import { WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION } from "../../src/verification/phase-a-verifier.js";
+import { WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION } from "../../src/verification/phase-a-verifier.js";
 import {
-  createGenuineW15DepositWithdrawalAuthoritiesV1,
-  type GenuineW15AuthorityFixtureSetV1,
-  genuineW15ForcedPayloadForCanonicalTxV1,
-  type W15AcceptedAuthorityScenarioV1,
-  w15ForcedOperatorVerdictForClassificationV1,
+  createGenuineUserEventDepositWithdrawalAuthorities,
+  type GenuineUserEventAuthorityFixtureSet,
+  genuineUserEventForcedPayloadForCanonicalTx,
+  type UserEventAcceptedAuthorityScenario,
+  userEventForcedOperatorVerdictForClassification,
 } from "../support/w15-authority-scenarios.js";
 import {
-  createGenuineW16SettlementAuthoritiesV1,
-  type GenuineW16SettlementAuthorityFixtureSetV1,
-  type GenuineW16SettlementAuthorityV1,
+  createGenuineSettlementAuthorities,
+  type GenuineSettlementAuthority,
+  type GenuineSettlementAuthorityFixtureSet,
 } from "../support/w16-authority-scenarios.js";
 import {
-  type GenuineW25PublicReplayFixtureV1,
-  makeGenuineW25PublicReplayFixtureV1,
+  type GenuineReplayPublicReplayFixture,
+  makeGenuineReplayPublicReplayFixture,
 } from "../support/w25-authority-fixtures.js";
 
 const source = (
   overrides: Partial<
     Parameters<
-      typeof evaluateWatcherEventClassificationRulesV1
+      typeof evaluateWatcherEventClassificationRules
     >[0]["sources"][number]
   > = {},
 ) => ({
@@ -71,7 +71,7 @@ const source = (
 const trace = (
   overrides: Partial<
     Parameters<
-      typeof evaluateWatcherEventClassificationRulesV1
+      typeof evaluateWatcherEventClassificationRules
     >[0]["trace"][number]
   > = {},
 ) => ({
@@ -86,7 +86,7 @@ const trace = (
 });
 
 const rules = (sources = [source()], entries = [trace()]) =>
-  evaluateWatcherEventClassificationRulesV1({
+  evaluateWatcherEventClassificationRules({
     startTime: "10",
     endTime: "20",
     sources,
@@ -96,7 +96,7 @@ const rules = (sources = [source()], entries = [trace()]) =>
 const hex32 = "a".repeat(64);
 const emptyRoot =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
-const header = makeWatcherStateQueueHeaderV1({
+const header = makeWatcherStateQueueHeader({
   nextHeaderHash: null,
   datumSha256: hex32,
   prevUtxosRoot: emptyRoot,
@@ -131,7 +131,7 @@ if (header === null) throw new Error("W26 test header did not parse");
 
 const acceptedW25 = () => {
   const phaseACore = {
-    schemaVersion: WATCHER_PHASE_A_VERIFIER_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION,
     action: "accept",
     reasonCodes: [],
     rejectionSelection: "first_rejection_by_phase_then_program_counter_v1",
@@ -149,7 +149,7 @@ const acceptedW25 = () => {
   };
   const phaseA = {
     ...phaseACore,
-    resultDigest: watcherSha256CanonicalJsonV1(phaseACore),
+    resultDigest: watcherSha256CanonicalJson(phaseACore),
   };
   const binding = {
     headerHash: header.headerHash,
@@ -165,14 +165,13 @@ const acceptedW25 = () => {
     postStateRoot: hex32,
   };
   const prerequisite = {
-    schemaVersion:
-      WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_SCHEMA_VERSION,
     requiredVerifier: "W26",
-    inputDigest: watcherSha256CanonicalJsonV1(binding),
+    inputDigest: watcherSha256CanonicalJson(binding),
     w29Eligibility: "requires_w26_accept",
   };
   const core = {
-    schemaVersion: WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_BLOCK_REPLAY_SCHEMA_VERSION,
     action: "accept",
     reasonCodes: [],
     verifiedRequires: "w26 required",
@@ -203,7 +202,7 @@ const acceptedW25 = () => {
     selectedRejection: null,
     forcedValidationFacts: [],
   };
-  const receipt = { ...core, resultDigest: watcherSha256CanonicalJsonV1(core) };
+  const receipt = { ...core, resultDigest: watcherSha256CanonicalJson(core) };
   return { receipt, phaseA };
 };
 
@@ -216,7 +215,7 @@ const FIXED_ADDRESS = Buffer.from(
     .to_address()
     .to_raw_bytes(),
 );
-const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, FIXED_ADDRESS);
+const FLOW_OUTPUT = makeOutput(FUNDED_OUTPUT_LOVELACE, FIXED_ADDRESS);
 const FORCED_VALID_INPUT = outRefFromByte(0x71);
 const FORCED_VALID_NATIVE = makeNativeTx({
   spendInputs: [FORCED_VALID_INPUT],
@@ -272,7 +271,7 @@ const FORCED_INVALID_CASES = Object.freeze({
     input: outRefFromByte(0x76),
     native: makeNativeTx({
       spendInputs: [outRefFromByte(0x76)],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1 - 1n, FIXED_ADDRESS)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE - 1n, FIXED_ADDRESS)],
       privateKey: FIXED_KEY,
     }),
     operatorValidity: "ValueNotPreserved" as const,
@@ -284,23 +283,23 @@ const FORCED_INVALID_CASES = Object.freeze({
 // hand-rolled copies of that pairing would be two chances to get the vector wrong
 // in a way the fixture cannot detect.
 const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) =>
-  genuineW15ForcedPayloadForCanonicalTxV1(native.txCbor);
+  genuineUserEventForcedPayloadForCanonicalTx(native.txCbor);
 
-const genuineW15Input = () => ({
+const genuineUserEventInput = () => ({
   forcedPayloadOverride: forcedPayloadForNative(FORCED_VALID_NATIVE),
   forcedVariants: Object.entries(FORCED_INVALID_CASES).map(
     ([key, invalidCase], index) => ({
       key,
       nonceByte: ["9d", "9e", "9f", "aa", "ab"][index]!,
       payload: forcedPayloadForNative(invalidCase.native),
-      operatorValidity: w15ForcedOperatorVerdictForClassificationV1(
+      operatorValidity: userEventForcedOperatorVerdictForClassification(
         invalidCase.operatorValidity,
       ),
     }),
   ),
 });
 
-const settlementRecord = (authority: W15AcceptedAuthorityScenarioV1) => ({
+const settlementRecord = (authority: UserEventAcceptedAuthorityScenario) => ({
   outRef: authority.event.outRef,
   outputCborHex: authority.event.outputCborHex,
   datumCborHex: authority.event.datumCborHex,
@@ -308,8 +307,8 @@ const settlementRecord = (authority: W15AcceptedAuthorityScenarioV1) => ({
   policyId: authority.event.policyId,
 });
 
-let genuineW15: GenuineW15AuthorityFixtureSetV1;
-let genuineW16: GenuineW16SettlementAuthorityFixtureSetV1;
+let genuineW15: GenuineUserEventAuthorityFixtureSet;
+let genuineW16: GenuineSettlementAuthorityFixtureSet;
 let repeatIsolationEvidence: Readonly<{
   w15DuplicateDisposeSharedPromise: boolean;
   w15FreshReferences: boolean;
@@ -318,32 +317,40 @@ let repeatIsolationEvidence: Readonly<{
 }>;
 
 beforeAll(async () => {
-  const firstW15 =
-    await createGenuineW15DepositWithdrawalAuthoritiesV1(genuineW15Input());
-  const firstW15Transports = firstW15.forced.context.transportAttestations;
-  const firstW15Dispose = firstW15.dispose();
-  const duplicateW15Dispose = firstW15.dispose();
-  await firstW15Dispose;
-  genuineW15 =
-    await createGenuineW15DepositWithdrawalAuthoritiesV1(genuineW15Input());
-  const w16Input = {
+  const firstW15 = await createGenuineUserEventDepositWithdrawalAuthorities(
+    genuineUserEventInput(),
+  );
+  const firstUserEventTransports =
+    firstW15.forced.context.transportAttestations;
+  const firstUserEventDispose = firstW15.dispose();
+  const duplicateUserEventDispose = firstW15.dispose();
+  await firstUserEventDispose;
+  genuineW15 = await createGenuineUserEventDepositWithdrawalAuthorities(
+    genuineUserEventInput(),
+  );
+  const settlementInput = {
     deposit: settlementRecord(genuineW15.deposit),
     withdrawal: settlementRecord(genuineW15.withdrawal),
   };
-  const firstW16 = await createGenuineW16SettlementAuthoritiesV1(w16Input);
-  const firstW16Transports = firstW16.spawn.context.transportAttestations;
-  const firstW16Dispose = firstW16.dispose();
-  const duplicateW16Dispose = firstW16.dispose();
-  await firstW16Dispose;
-  genuineW16 = await createGenuineW16SettlementAuthoritiesV1(w16Input);
+  const firstW16 = await createGenuineSettlementAuthorities(settlementInput);
+  const firstSettlementTransports =
+    firstW16.spawn.context.transportAttestations;
+  const firstSettlementDispose = firstW16.dispose();
+  const duplicateSettlementDispose = firstW16.dispose();
+  await firstSettlementDispose;
+  genuineW16 = await createGenuineSettlementAuthorities(settlementInput);
   repeatIsolationEvidence = Object.freeze({
-    w15DuplicateDisposeSharedPromise: firstW15Dispose === duplicateW15Dispose,
+    w15DuplicateDisposeSharedPromise:
+      firstUserEventDispose === duplicateUserEventDispose,
     w15FreshReferences:
-      firstW15Transports !== genuineW15.forced.context.transportAttestations &&
+      firstUserEventTransports !==
+        genuineW15.forced.context.transportAttestations &&
       firstW15.forced.result !== genuineW15.forced.result,
-    w16DuplicateDisposeSharedPromise: firstW16Dispose === duplicateW16Dispose,
+    w16DuplicateDisposeSharedPromise:
+      firstSettlementDispose === duplicateSettlementDispose,
     w16FreshReferences:
-      firstW16Transports !== genuineW16.spawn.context.transportAttestations &&
+      firstSettlementTransports !==
+        genuineW16.spawn.context.transportAttestations &&
       firstW16.spawn.result !== genuineW16.spawn.result,
   });
 }, 120_000);
@@ -353,18 +360,18 @@ afterAll(async () => {
   await genuineW15?.dispose();
 }, 120_000);
 
-const userEventAuthority = (authority: W15AcceptedAuthorityScenarioV1) => ({
+const userEventAuthority = (authority: UserEventAcceptedAuthorityScenario) => ({
   result: authority.result,
   context: authority.context,
 });
 
-const settlementAuthority = (authority: GenuineW16SettlementAuthorityV1) => ({
+const settlementAuthority = (authority: GenuineSettlementAuthority) => ({
   result: authority.result,
   context: authority.context,
 });
 
 const forcedNativeAuthority = (
-  authority: W15AcceptedAuthorityScenarioV1,
+  authority: UserEventAcceptedAuthorityScenario,
   native: ReturnType<typeof makeNativeTx>,
 ) => ({
   eventOutRef: authority.event.outRef,
@@ -373,21 +380,21 @@ const forcedNativeAuthority = (
 
 const ledgerEntries = (
   values: readonly (readonly [Buffer, Buffer])[],
-): readonly WatcherBlockReplayPriorUtxoV1[] =>
+): readonly WatcherBlockReplayPriorUtxo[] =>
   values.map(([outRef, output]) => ({
     outRef: outRef.toString("hex"),
     outputCbor: output.toString("hex"),
   }));
 
 const withdrawalTransitionEffect = (
-  authority: W15AcceptedAuthorityScenarioV1,
+  authority: UserEventAcceptedAuthorityScenario,
   committedValid: boolean,
 ) => {
   const decoded = Data.from(
     authority.event.eventCborHex,
     SDK.WithdrawalEvent,
   ) as { readonly info: SDK.WithdrawalInfo };
-  return canonicalCommittedWithdrawalTransitionEffectV1({
+  return canonicalCommittedWithdrawalTransitionEffect({
     committedValid,
     // The Plutus-Data `OutputReference` in the event datum is a *different*
     // encoding from the ledger out-ref; going from one to the other means
@@ -400,26 +407,26 @@ const withdrawalTransitionEffect = (
   });
 };
 
-const acceptedPublicW25 = async (fixture: GenuineW25PublicReplayFixtureV1) => {
-  const receipt = await evaluateWatcherBlockReplayV1(fixture.replayInput);
+const acceptedPublicW25 = async (fixture: GenuineReplayPublicReplayFixture) => {
+  const receipt = await evaluateWatcherBlockReplay(fixture.replayInput);
   expect(receipt).toMatchObject({ action: "accept", reasonCodes: [] });
   return receipt;
 };
 
 describe("W26 canonical event classification rules", () => {
   it("uses the on-chain timed-event boundaries exactly", () => {
-    expect(watcherTimedL1EventIsDueV1(10n, 20n, 10n)).toBe(false);
-    expect(watcherTimedL1EventIsDueV1(10n, 20n, 11n)).toBe(true);
-    expect(watcherTimedL1EventIsDueV1(10n, 20n, 20n)).toBe(true);
-    expect(watcherTimedL1EventIsDueV1(10n, 20n, 21n)).toBe(false);
+    expect(watcherTimedL1EventIsDue(10n, 20n, 10n)).toBe(false);
+    expect(watcherTimedL1EventIsDue(10n, 20n, 11n)).toBe(true);
+    expect(watcherTimedL1EventIsDue(10n, 20n, 20n)).toBe(true);
+    expect(watcherTimedL1EventIsDue(10n, 20n, 21n)).toBe(false);
   });
 
   it("uses the forced validity interval intersection, including open ends", () => {
-    expect(watcherForcedIntervalIsDueV1(10n, 20n, -1n, -1n)).toBe(true);
-    expect(watcherForcedIntervalIsDueV1(10n, 20n, -1n, 10n)).toBe(true);
-    expect(watcherForcedIntervalIsDueV1(10n, 20n, 21n, -1n)).toBe(false);
-    expect(watcherForcedIntervalIsDueV1(10n, 20n, 21n, 20n)).toBe(false);
-    expect(watcherForcedIntervalIsDueV1(10n, 20n, 20n, 10n)).toBe(false);
+    expect(watcherForcedIntervalIsDue(10n, 20n, -1n, -1n)).toBe(true);
+    expect(watcherForcedIntervalIsDue(10n, 20n, -1n, 10n)).toBe(true);
+    expect(watcherForcedIntervalIsDue(10n, 20n, 21n, -1n)).toBe(false);
+    expect(watcherForcedIntervalIsDue(10n, 20n, 21n, 20n)).toBe(false);
+    expect(watcherForcedIntervalIsDue(10n, 20n, 20n, 10n)).toBe(false);
   });
 
   it("flags a due source omitted from the trace and an included late source", () => {
@@ -596,11 +603,11 @@ describe("W26 canonical event classification rules", () => {
 
   it("keeps W26 diagnostics outside W24/W25 validation reject-code ownership", () => {
     const priorOwners = new Set<string>([
-      ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1,
-      ...WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1,
+      ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES,
+      ...WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
     ]);
     expect(
-      WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1.every(
+      WATCHER_EVENT_CLASSIFICATION_REASON_CODES.every(
         (code) => !priorOwners.has(code),
       ),
     ).toBe(true);
@@ -609,7 +616,7 @@ describe("W26 canonical event classification rules", () => {
   it("binds W25's W26 prerequisite and rejects tampered or substituted receipts", () => {
     const { receipt, phaseA } = acceptedW25();
     expect(
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header,
         blockReplay: receipt,
         phaseA,
@@ -627,7 +634,7 @@ describe("W26 canonical event classification rules", () => {
       },
     });
     expect(
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header,
         blockReplay: { ...receipt, sourceManifestDigest: "d".repeat(64) },
         phaseA,
@@ -648,10 +655,10 @@ describe("W26 canonical event classification rules", () => {
     };
     const replacement = {
       ...substituted,
-      resultDigest: watcherSha256CanonicalJsonV1(substituted),
+      resultDigest: watcherSha256CanonicalJson(substituted),
     };
     expect(
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header,
         blockReplay: replacement,
         phaseA,
@@ -705,14 +712,14 @@ describe("W26 canonical event classification rules", () => {
     };
     const interleaved = {
       ...core,
-      resultDigest: watcherSha256CanonicalJsonV1(
+      resultDigest: watcherSha256CanonicalJson(
         Object.fromEntries(
           Object.entries(core).filter(([key]) => key !== "resultDigest"),
         ),
       ),
     };
     expect(
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header,
         blockReplay: interleaved,
         phaseA,
@@ -729,7 +736,7 @@ describe("W26 canonical event classification rules", () => {
   it("emits distinct schema, W25-action, prerequisite, and digest diagnostics", () => {
     const { receipt, phaseA } = acceptedW25();
     const evaluate = (blockReplay: unknown) =>
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header,
         blockReplay,
         phaseA,
@@ -773,7 +780,7 @@ describe("W26 canonical event classification rules", () => {
       w16FreshReferences: true,
     });
     const validAuthority = genuineW15.forced;
-    const validEffect = buildCanonicalTransitionEffectV1([
+    const validEffect = buildCanonicalTransitionEffect([
       { type: "delete", outRefCbor: FORCED_VALID_INPUT },
       {
         type: "insert",
@@ -781,7 +788,7 @@ describe("W26 canonical event classification rules", () => {
         outputCbor: FLOW_OUTPUT,
       },
     ]);
-    const validFixture = await makeGenuineW25PublicReplayFixtureV1({
+    const validFixture = await makeGenuineReplayPublicReplayFixture({
       userEvent: validAuthority,
       canonicalNativeTxCbor: FORCED_VALID_NATIVE.txCbor,
       transitionEffect: validEffect,
@@ -802,11 +809,11 @@ describe("W26 canonical event classification rules", () => {
       },
     ]);
     expect(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(FORCED_VALID_NATIVE.txCbor)
+      decodeMidgardNativeTxFullFromCanonicalCbor(FORCED_VALID_NATIVE.txCbor)
         .validity,
     ).toBe("TxIsValid");
     expect(
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header: validFixture.header,
         blockReplay: validReceipt,
         phaseA: validFixture.phaseA,
@@ -818,7 +825,7 @@ describe("W26 canonical event classification rules", () => {
       }),
     ).toMatchObject({ action: "accept", reasonCodes: [], findings: [] });
 
-    const noOpEffect = buildCanonicalTransitionEffectV1([]);
+    const noOpEffect = buildCanonicalTransitionEffect([]);
     const exercisedCategories: string[] = [];
     for (const [category, invalidCase] of Object.entries(
       FORCED_INVALID_CASES,
@@ -837,14 +844,14 @@ describe("W26 canonical event classification rules", () => {
         invalidCase.operatorValidity,
       );
       expect(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(invalidCase.native.txCbor)
+        decodeMidgardNativeTxFullFromCanonicalCbor(invalidCase.native.txCbor)
           .validity,
       ).toBe("TxIsValid");
       const priorState =
         category === "InputNotFound"
           ? []
           : ledgerEntries([[invalidCase.input, FLOW_OUTPUT]]);
-      const fixture = await makeGenuineW25PublicReplayFixtureV1({
+      const fixture = await makeGenuineReplayPublicReplayFixture({
         userEvent: authority,
         canonicalNativeTxCbor: invalidCase.native.txCbor,
         transitionEffect: noOpEffect,
@@ -861,7 +868,7 @@ describe("W26 canonical event classification rules", () => {
         canonicalEffectMutationCount: 0,
       });
       expect(
-        evaluateWatcherEventClassificationV1({
+        evaluateWatcherEventClassification({
           header: fixture.header,
           blockReplay: receipt,
           phaseA: fixture.phaseA,
@@ -888,10 +895,10 @@ describe("W26 canonical event classification rules", () => {
     const authority = genuineW15.forcedVariants.ValueNotPreserved!;
     const invalidCase = FORCED_INVALID_CASES.ValueNotPreserved;
     const priorState = ledgerEntries([[invalidCase.input, FLOW_OUTPUT]]);
-    const fixture = await makeGenuineW25PublicReplayFixtureV1({
+    const fixture = await makeGenuineReplayPublicReplayFixture({
       userEvent: authority,
       canonicalNativeTxCbor: invalidCase.native.txCbor,
-      transitionEffect: buildCanonicalTransitionEffectV1([]),
+      transitionEffect: buildCanonicalTransitionEffect([]),
       priorState,
       postState: priorState,
     });
@@ -901,14 +908,14 @@ describe("W26 canonical event classification rules", () => {
       overrides: {
         readonly receipt?: unknown;
         readonly userAuthorities?: Parameters<
-          typeof evaluateWatcherEventClassificationV1
+          typeof evaluateWatcherEventClassification
         >[0]["userEventAuthorities"];
         readonly nativeAuthorities?: Parameters<
-          typeof evaluateWatcherEventClassificationV1
+          typeof evaluateWatcherEventClassification
         >[0]["forcedNativeTransactions"];
       } = {},
     ) =>
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header: fixture.header,
         blockReplay: overrides.receipt ?? receipt,
         phaseA: fixture.phaseA,
@@ -1064,7 +1071,7 @@ describe("W26 canonical event classification rules", () => {
     if (deleted?.type !== "delete")
       throw new Error("valid withdrawal effect did not delete its L2 input");
     const priorState = ledgerEntries([[deleted.outRefCbor, FLOW_OUTPUT]]);
-    const validFixture = await makeGenuineW25PublicReplayFixtureV1({
+    const validFixture = await makeGenuineReplayPublicReplayFixture({
       userEvent: authority,
       settlement: genuineW16.initializePayout,
       transitionEffect: validEffect,
@@ -1072,7 +1079,7 @@ describe("W26 canonical event classification rules", () => {
       postState: [],
     });
     const validReceipt = await acceptedPublicW25(validFixture);
-    const invalidFixture = await makeGenuineW25PublicReplayFixtureV1({
+    const invalidFixture = await makeGenuineReplayPublicReplayFixture({
       userEvent: authority,
       settlement: genuineW16.refundWithdrawal,
       transitionEffect: withdrawalTransitionEffect(authority, false),
@@ -1081,13 +1088,13 @@ describe("W26 canonical event classification rules", () => {
     });
     const invalidReceipt = await acceptedPublicW25(invalidFixture);
     const evaluate = (input: {
-      readonly fixture: GenuineW25PublicReplayFixtureV1;
+      readonly fixture: GenuineReplayPublicReplayFixture;
       readonly receipt: unknown;
       readonly settlementAuthorities: readonly ReturnType<
         typeof settlementAuthority
       >[];
     }) =>
-      evaluateWatcherEventClassificationV1({
+      evaluateWatcherEventClassification({
         header: input.fixture.header,
         blockReplay: input.receipt,
         phaseA: input.fixture.phaseA,

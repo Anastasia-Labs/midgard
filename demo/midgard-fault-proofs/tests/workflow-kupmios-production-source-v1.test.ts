@@ -9,24 +9,24 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  admitKupoMatchAgainstTransactionOutputV1,
-  computeFraudProofRawL1PointIdV1,
-  computeFraudProofReleaseEconomicsPolicyDigestV1,
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  createLocalKupmiosHttpOgmiosRawSourceV1,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofRawL1WebSocketLikeV1,
-  LocalKupmiosExactPointNotCanonicalV1Error,
-  OGMIOS_RAW_TRANSACTION_CBOR_FLAG_V1,
-  readAdmittedLocalKupmiosAddressUtxosAtPointV1,
-  readAdmittedLocalKupmiosBoundaryV1,
-  readAdmittedLocalKupmiosRawBlockAtPointV1,
-  readAdmittedLocalKupmiosRawTransactionV1,
-  readAdmittedLocalKupmiosUnitHistoryAtPointV1,
-  requireOgmiosRawTransactionCborV1,
-  validateVerifiedFraudProofReleaseEconomicsPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  admitKupoMatchAgainstTransactionOutput,
+  computeFraudProofRawL1PointId,
+  computeFraudProofReleaseEconomicsPolicyDigest,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  createLocalKupmiosHttpOgmiosRawSource,
+  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofRawL1WebSocketLike,
+  LocalKupmiosExactPointNotCanonicalError,
+  OGMIOS_RAW_TRANSACTION_CBOR_FLAG,
+  readAdmittedLocalKupmiosAddressUtxosAtPoint,
+  readAdmittedLocalKupmiosBoundary,
+  readAdmittedLocalKupmiosRawBlockAtPoint,
+  readAdmittedLocalKupmiosRawTransaction,
+  readAdmittedLocalKupmiosUnitHistoryAtPoint,
+  requireOgmiosRawTransactionCbor,
+  validateVerifiedFraudProofReleaseEconomicsPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../src/workflow/index.js";
 
 const hash = (byte: number): string =>
@@ -38,11 +38,11 @@ const TARGET = hash(4);
 const ANCESTOR = hash(5);
 const TIP = hash(6);
 
-const releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1 = {
-  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
+  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
   releaseIdentityDigest: RELEASE,
-  policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1({
+  policyDigest: computeFraudProofReleaseFinalityPolicyDigest({
     confirmationDepth: 30,
     automaticRecoveryMaxDepth: 2160,
     deepRollbackPolicy: "automated_rewind_replay_incident-v1",
@@ -54,7 +54,7 @@ const releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1 = {
   },
 };
 
-class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLikeV1 {
+class OgmiosBoundarySocket implements FraudProofRawL1WebSocketLike {
   readonly listeners = new Map<string, ((event: never) => void)[]>();
   nextCount = 0;
 
@@ -186,7 +186,7 @@ const sourceFixture = ({
     }
     throw new Error(`unexpected request ${url}`);
   };
-  const source = createLocalKupmiosHttpOgmiosRawSourceV1({
+  const source = createLocalKupmiosHttpOgmiosRawSource({
     sourceId: "local-release-test",
     kupoHttpUrl: "http://127.0.0.1:1442",
     ogmiosUrl: "http://127.0.0.1:1337",
@@ -200,14 +200,14 @@ const sourceFixture = ({
 describe("production local Kupmios raw source V1", () => {
   it("pins real Kupo checkpoint headers and requests string asset quantities", async () => {
     const fixture = sourceFixture();
-    const boundary = await readAdmittedLocalKupmiosBoundaryV1({
+    const boundary = await readAdmittedLocalKupmiosBoundary({
       source: fixture.source,
     });
     expect(boundary.kupoCheckpoint).toEqual({
       slot: "400",
       blockHash: TARGET,
       blockNo: "71",
-      pointId: computeFraudProofRawL1PointIdV1({
+      pointId: computeFraudProofRawL1PointId({
         slot: "400",
         blockHash: TARGET,
         blockNo: "71",
@@ -215,7 +215,7 @@ describe("production local Kupmios raw source V1", () => {
     });
     expect(boundary.confirmationDepth).toBe(30);
     await expect(
-      readAdmittedLocalKupmiosBoundaryV1({ source: { ...fixture.source } }),
+      readAdmittedLocalKupmiosBoundary({ source: { ...fixture.source } }),
     ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
     await expect(
       fixture.source.scanAddressPage({
@@ -283,19 +283,19 @@ describe("production local Kupmios raw source V1", () => {
       script: outputScript.to_canonical_cbor_hex(),
     };
     expect(() =>
-      admitKupoMatchAgainstTransactionOutputV1({
+      admitKupoMatchAgainstTransactionOutput({
         match,
         outputCbor: output.to_canonical_cbor_hex(),
       }),
     ).not.toThrow();
     expect(() =>
-      admitKupoMatchAgainstTransactionOutputV1({
+      admitKupoMatchAgainstTransactionOutput({
         match: { ...match, value: { coins: "2999999", assets: {} } },
         outputCbor: output.to_canonical_cbor_hex(),
       }),
     ).toThrow(/value disagrees/u);
     expect(() =>
-      admitKupoMatchAgainstTransactionOutputV1({
+      admitKupoMatchAgainstTransactionOutput({
         match: {
           ...match,
           script: CML.Script.new_plutus_v3(
@@ -309,12 +309,12 @@ describe("production local Kupmios raw source V1", () => {
 
   it("fails closed when Ogmios omits raw transaction CBOR", () => {
     expect(() =>
-      requireOgmiosRawTransactionCborV1({
+      requireOgmiosRawTransactionCbor({
         value: { id: hash(9) },
         expectedTxHash: hash(9),
         label: "transaction",
       }),
-    ).toThrow(new RegExp(OGMIOS_RAW_TRANSACTION_CBOR_FLAG_V1, "u"));
+    ).toThrow(new RegExp(OGMIOS_RAW_TRANSACTION_CBOR_FLAG, "u"));
   });
 
   it("rejects an oversized provider response before buffering it", async () => {
@@ -337,7 +337,7 @@ describe("production local Kupmios raw source V1", () => {
     );
     const txHash = CML.hash_transaction(body).to_hex();
     expect(
-      requireOgmiosRawTransactionCborV1({
+      requireOgmiosRawTransactionCbor({
         value: { id: txHash, cbor: transaction.to_canonical_cbor_hex() },
         expectedTxHash: txHash,
         label: "transaction",
@@ -376,7 +376,7 @@ describe("production local Kupmios raw source V1", () => {
       };
     };
     await expect(
-      readAdmittedLocalKupmiosRawBlockAtPointV1({
+      readAdmittedLocalKupmiosRawBlockAtPoint({
         source: fixture.source,
         point: boundary.kupoCheckpoint,
       }),
@@ -391,20 +391,20 @@ describe("production local Kupmios raw source V1", () => {
     });
     const rolledBackBlockHash = hash(0xec);
     await expect(
-      readAdmittedLocalKupmiosRawBlockAtPointV1({
+      readAdmittedLocalKupmiosRawBlockAtPoint({
         source: fixture.source,
         point: {
           ...boundary.kupoCheckpoint,
           blockHash: rolledBackBlockHash,
-          pointId: computeFraudProofRawL1PointIdV1({
+          pointId: computeFraudProofRawL1PointId({
             ...boundary.kupoCheckpoint,
             blockHash: rolledBackBlockHash,
           }),
         },
       }),
-    ).rejects.toBeInstanceOf(LocalKupmiosExactPointNotCanonicalV1Error);
+    ).rejects.toBeInstanceOf(LocalKupmiosExactPointNotCanonicalError);
     await expect(
-      readAdmittedLocalKupmiosRawBlockAtPointV1({
+      readAdmittedLocalKupmiosRawBlockAtPoint({
         source: { ...fixture.source },
         point: boundary.kupoCheckpoint,
       }),
@@ -461,7 +461,7 @@ describe("production local Kupmios raw source V1", () => {
       };
     };
     await expect(
-      readAdmittedLocalKupmiosRawTransactionV1({
+      readAdmittedLocalKupmiosRawTransaction({
         source: fixture.source,
         txHash,
         expectedInclusionPoint: boundary.kupoCheckpoint,
@@ -475,7 +475,7 @@ describe("production local Kupmios raw source V1", () => {
       resolvedReferenceInputs: [],
     });
     await expect(
-      readAdmittedLocalKupmiosAddressUtxosAtPointV1({
+      readAdmittedLocalKupmiosAddressUtxosAtPoint({
         source: fixture.source,
         address,
         point: boundary.kupoCheckpoint,
@@ -489,7 +489,7 @@ describe("production local Kupmios raw source V1", () => {
       },
     ]);
     await expect(
-      readAdmittedLocalKupmiosUnitHistoryAtPointV1({
+      readAdmittedLocalKupmiosUnitHistoryAtPoint({
         source: fixture.source,
         unit: `${"12".repeat(28)}aa`,
         point: boundary.kupoCheckpoint,
@@ -499,14 +499,14 @@ describe("production local Kupmios raw source V1", () => {
       transactions: [{ txHash, inclusionPoint: boundary.kupoCheckpoint }],
     });
     await expect(
-      readAdmittedLocalKupmiosUnitHistoryAtPointV1({
+      readAdmittedLocalKupmiosUnitHistoryAtPoint({
         source: { ...fixture.source },
         unit: `${"12".repeat(28)}aa`,
         point: boundary.kupoCheckpoint,
       }),
     ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
     await expect(
-      readAdmittedLocalKupmiosRawTransactionV1({
+      readAdmittedLocalKupmiosRawTransaction({
         source: { ...fixture.source },
         txHash,
         expectedInclusionPoint: boundary.kupoCheckpoint,
@@ -514,7 +514,7 @@ describe("production local Kupmios raw source V1", () => {
       }),
     ).rejects.toThrow(/requires the admitted local Kupo\/Ogmios source/u);
     await expect(
-      readAdmittedLocalKupmiosRawTransactionV1({
+      readAdmittedLocalKupmiosRawTransaction({
         source: fixture.source,
         txHash,
         expectedInclusionPoint: boundary.kupoCheckpoint,
@@ -533,7 +533,7 @@ describe("production local Kupmios raw source V1", () => {
     for (const path of paths) {
       await expect(
         readFile(resolve(repository, path), "utf8"),
-      ).resolves.toContain(OGMIOS_RAW_TRANSACTION_CBOR_FLAG_V1);
+      ).resolves.toContain(OGMIOS_RAW_TRANSACTION_CBOR_FLAG);
     }
   });
 });
@@ -550,12 +550,12 @@ describe("release-bound fraud-proof economics V1", () => {
 
   it("admits the manifest-bound testnet profile", () => {
     expect(
-      validateVerifiedFraudProofReleaseEconomicsPolicyV1({
-        schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+      validateVerifiedFraudProofReleaseEconomicsPolicy({
+        schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
         deploymentIdentityDigest: DEPLOYMENT,
         releaseIdentityDigest: RELEASE,
         policyDigest:
-          computeFraudProofReleaseEconomicsPolicyDigestV1(testnetPolicy),
+          computeFraudProofReleaseEconomicsPolicyDigest(testnetPolicy),
         policy: testnetPolicy,
       }),
     ).toMatchObject({ policy: testnetPolicy });
@@ -564,11 +564,11 @@ describe("release-bound fraud-proof economics V1", () => {
   it("rejects a caller-selected reward or substituted policy digest", () => {
     const policy = { ...testnetPolicy, fraudProverRewardLovelace: "1" };
     expect(() =>
-      validateVerifiedFraudProofReleaseEconomicsPolicyV1({
-        schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+      validateVerifiedFraudProofReleaseEconomicsPolicy({
+        schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
         deploymentIdentityDigest: DEPLOYMENT,
         releaseIdentityDigest: RELEASE,
-        policyDigest: computeFraudProofReleaseEconomicsPolicyDigestV1(policy),
+        policyDigest: computeFraudProofReleaseEconomicsPolicyDigest(policy),
         policy,
       }),
     ).toThrow(/must equal|canonical launch profile/u);
@@ -582,8 +582,8 @@ describe("release-bound fraud-proof economics V1", () => {
       { ...testnetPolicy, extra: "forged" },
     ]) {
       expect(() =>
-        validateVerifiedFraudProofReleaseEconomicsPolicyV1({
-          schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+        validateVerifiedFraudProofReleaseEconomicsPolicy({
+          schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
           deploymentIdentityDigest: DEPLOYMENT,
           releaseIdentityDigest: RELEASE,
           policyDigest: "00".repeat(32),

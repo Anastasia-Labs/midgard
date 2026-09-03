@@ -1,14 +1,14 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardNativeTxCanonicalV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardFieldPreimage,
+  encodeMidgardNativeTxCanonical,
+  materializeMidgardNativeTxFromCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import {
   type Script,
   type UTxO,
@@ -17,30 +17,30 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  fieldItemWidthEvidenceIdentityV1,
-  prepareFieldItemWidthEvidenceV1,
+  fieldItemWidthEvidenceIdentity,
+  prepareFieldItemWidthEvidence,
 } from "../src/field-item-width-illegal/field-item-width-illegal-v1.js";
 import {
-  bindFieldItemWidthIllegalReferenceScriptsV1,
-  createFieldItemWidthIllegalProductionWorkflowRunnerSurfaceV1,
-  createFieldItemWidthIllegalRawL1StageResolverV1,
-  createManifestBoundFieldItemWidthIllegalProductionRuntimeV1,
-  deriveFieldItemWidthIllegalAuthenticatedSourceV1,
-  deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1,
-  detectFieldItemWidthIllegalCompleteReplayV1,
-  FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS_V1,
-  FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1,
-  type FieldItemWidthIllegalProductionReferenceScriptsV1,
-  type ManifestBoundFieldItemWidthIllegalConfigV1,
-  runOrResumeManifestBoundFieldItemWidthIllegalWorkflowV1,
+  bindFieldItemWidthIllegalReferenceScripts,
+  createFieldItemWidthIllegalRawL1StageResolver,
+  createFieldItemWidthIllegalWorkflowRunnerSurface,
+  createManifestBoundFieldItemWidthIllegalRuntime,
+  deriveFieldItemWidthIllegalAuthenticatedSource,
+  deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
+  detectFieldItemWidthIllegalCompleteReplay,
+  FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
+  FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
+  type FieldItemWidthIllegalReferenceScripts,
+  type ManifestBoundFieldItemWidthIllegalConfig,
+  runOrResumeManifestBoundFieldItemWidthIllegalWorkflow,
 } from "../src/field-item-width-illegal/production-workflow-v1.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  transactionSourceTrieItemV1,
+  transactionSourceTrieItem,
 } from "../src/prepare-double-spend.js";
-import type { FraudProofWorkflowDeploymentBindingV1 } from "../src/workflow/deployment-manifest-binding-v1.js";
-import { committedFieldShapeScenarioMaterialV1 } from "./support/committed-field-shape-emulator-v1.js";
+import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding-v1.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator-v1.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 
 const script = (byte: string): Script => ({
@@ -56,7 +56,7 @@ const utxo = (byte: string, outputIndex: number): UTxO => ({
   scriptRef: script(byte),
 });
 
-const references = (): FieldItemWidthIllegalProductionReferenceScriptsV1 => ({
+const references = (): FieldItemWidthIllegalReferenceScripts => ({
   step01: utxo("1", 0),
   step02: utxo("2", 1),
   step03: utxo("3", 2),
@@ -69,9 +69,9 @@ const references = (): FieldItemWidthIllegalProductionReferenceScriptsV1 => ({
 });
 
 const bindingFor = (
-  value: FieldItemWidthIllegalProductionReferenceScriptsV1,
-): FraudProofWorkflowDeploymentBindingV1<"fieldItemWidthIllegal"> => {
-  const names = FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS_V1;
+  value: FieldItemWidthIllegalReferenceScripts,
+): FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal"> => {
+  const names = FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS;
   const entries = [
     [names.step01, value.step01],
     [names.step02, value.step02],
@@ -91,31 +91,29 @@ const bindingFor = (
         },
       ]),
     ),
-  } as unknown as FraudProofWorkflowDeploymentBindingV1<"fieldItemWidthIllegal">;
+  } as unknown as FraudProofWorkflowDeploymentBinding<"fieldItemWidthIllegal">;
 };
 
 const evidence = (() => {
-  const preimage = encodeMidgardFieldPreimageV1([Buffer.alloc(16_385, 7)]);
-  return prepareFieldItemWidthEvidenceV1({
+  const preimage = encodeMidgardFieldPreimage([Buffer.alloc(16_385, 7)]);
+  return prepareFieldItemWidthEvidence({
     finding: {
-      subject: acceptedVerdictSubjectV1("8".repeat(64)),
+      subject: acceptedVerdictSubject("8".repeat(64)),
       fieldIndex: 2,
       itemIndex: 0,
     },
     fieldPreimage: preimage,
-    committedFieldHashHex: midgardFieldCommitmentV1(preimage).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(preimage).toString("hex"),
   });
 })();
 
 describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
   it("exposes the standard manifest/public-DA runner surface", () => {
-    const runner = createFieldItemWidthIllegalProductionWorkflowRunnerSurfaceV1(
-      {
-        loadRuntimeConfig: async () => {
-          throw new Error("not reached");
-        },
+    const runner = createFieldItemWidthIllegalWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        throw new Error("not reached");
       },
-    );
+    });
     expect(Object.keys(runner).sort()).toEqual([
       "runOrResume",
       "runnerVersion",
@@ -123,9 +121,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
   });
 
   it("names and binds every family/shared reference role", () => {
-    expect(
-      Object.values(FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS_V1),
-    ).toEqual([
+    expect(Object.values(FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS)).toEqual([
       "fraudProofFieldItemWidthIllegal",
       "fraudProofFieldItemWidthIllegalStep02",
       "fraudProofFieldItemWidthIllegalStep03",
@@ -136,7 +132,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     ]);
     const supplied = references();
     expect(
-      bindFieldItemWidthIllegalReferenceScriptsV1({
+      bindFieldItemWidthIllegalReferenceScripts({
         binding: bindingFor(supplied),
         referenceScripts: supplied,
       }),
@@ -147,7 +143,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     const supplied = references();
     const binding = bindingFor(supplied);
     expect(() =>
-      bindFieldItemWidthIllegalReferenceScriptsV1({
+      bindFieldItemWidthIllegalReferenceScripts({
         binding,
         referenceScripts: {
           ...supplied,
@@ -156,7 +152,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       }),
     ).toThrow(/differs from finalized manifest identity/u);
     expect(() =>
-      bindFieldItemWidthIllegalReferenceScriptsV1({
+      bindFieldItemWidthIllegalReferenceScripts({
         binding,
         referenceScripts: {
           ...supplied,
@@ -167,14 +163,14 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
   });
 
   it("constructs the finding only from canonical retained-DA transaction bytes", () => {
-    const material = committedFieldShapeScenarioMaterialV1(
+    const material = committedFieldShapeScenarioMaterial(
       "field-item-width-illegal",
     );
     if (material.fullTx === null) throw new Error("missing canonical fixture");
-    const derived = deriveFieldItemWidthIllegalEvidenceFromCanonicalBlockV1({
+    const derived = deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock({
       transactions: [
         {
-          txCbor: encodeMidgardNativeTxCanonicalV1(material.fullTx).toString(
+          txCbor: encodeMidgardNativeTxCanonical(material.fullTx).toString(
             "hex",
           ),
         },
@@ -187,26 +183,24 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
   });
 
   it("derives accepted inclusion and compact source only from authenticated retained DA", async () => {
-    const fixture = committedFieldShapeScenarioMaterialV1(
+    const fixture = committedFieldShapeScenarioMaterial(
       "field-item-width-illegal",
     );
     if (fixture.fullTx === null) throw new Error("missing canonical fixture");
-    const txCbor = encodeMidgardNativeTxCanonicalV1(fixture.fullTx).toString(
+    const txCbor = encodeMidgardNativeTxCanonical(fixture.fullTx).toString(
       "hex",
     );
-    const nodeTxId = computeMidgardNativeTxIdV1(fixture.fullTx).toString("hex");
+    const nodeTxId = computeMidgardNativeTxId(fixture.fullTx).toString("hex");
     const transaction = await decodeTransactionMaterial({ nodeTxId, txCbor });
-    const trie = await buildTrieView([
-      transactionSourceTrieItemV1(transaction),
-    ]);
-    const exactEvidence = prepareFieldItemWidthEvidenceV1({
+    const trie = await buildTrieView([transactionSourceTrieItem(transaction)]);
+    const exactEvidence = prepareFieldItemWidthEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(nodeTxId),
+        subject: acceptedVerdictSubject(nodeTxId),
         fieldIndex: 2,
         itemIndex: 0,
       },
       fieldPreimage: fixture.fullTx.body.outputsPreimageCbor,
-      committedFieldHashHex: midgardFieldCommitmentV1(
+      committedFieldHashHex: midgardFieldCommitment(
         fixture.fullTx.body.outputsPreimageCbor,
       ).toString("hex"),
     });
@@ -223,14 +217,14 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       },
       inclusionRootAuthentication: { sourceValuePhasRoot: trie.root },
     };
-    const source = await deriveFieldItemWidthIllegalAuthenticatedSourceV1({
+    const source = await deriveFieldItemWidthIllegalAuthenticatedSource({
       block: block as never,
       evidence: exactEvidence,
     });
     expect(source.acceptedInclusion?.nativeTxId).toBe(nodeTxId);
     expect(source.nativeTxCompactCbor).toBe(transaction.nativeCompactCbor);
     await expect(
-      deriveFieldItemWidthIllegalAuthenticatedSourceV1({
+      deriveFieldItemWidthIllegalAuthenticatedSource({
         block: {
           ...block,
           inclusionRootAuthentication: {
@@ -249,7 +243,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       threadOutRef: `${"e".repeat(64)}#1`,
       stateQueueBlockOutRef: `${"f".repeat(64)}#0`,
     };
-    const resolver = createFieldItemWidthIllegalRawL1StageResolverV1({
+    const resolver = createFieldItemWidthIllegalRawL1StageResolver({
       config: {
         binding: { definition: { headerHash: "1".repeat(56) } },
       } as never,
@@ -275,25 +269,25 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
   });
 
   it("complete replay scans every output and mint coordinate", () => {
-    const material = committedFieldShapeScenarioMaterialV1(
+    const material = committedFieldShapeScenarioMaterial(
       "field-item-width-illegal",
     );
     if (material.fullTx === null) throw new Error("missing canonical fixture");
-    const output = decodeMidgardFieldPreimageV1(material.committedPreimage)[0]!;
-    const fullTx = materializeMidgardNativeTxFromCanonicalV1({
+    const output = decodeMidgardFieldPreimage(material.committedPreimage)[0]!;
+    const fullTx = materializeMidgardNativeTxFromCanonical({
       ...material.fullTx,
       body: {
         ...material.fullTx.body,
-        outputsPreimageCbor: encodeMidgardFieldPreimageV1([output, output]),
-        mintPreimageCbor: encodeMidgardFieldPreimageV1([Buffer.alloc(0)]),
+        outputsPreimageCbor: encodeMidgardFieldPreimage([output, output]),
+        mintPreimageCbor: encodeMidgardFieldPreimage([Buffer.alloc(0)]),
       },
     });
-    const detections = detectFieldItemWidthIllegalCompleteReplayV1({
+    const detections = detectFieldItemWidthIllegalCompleteReplay({
       headerHash: "a".repeat(56),
       transactions: [
         {
-          nodeTxId: computeMidgardNativeTxIdV1(fullTx).toString("hex"),
-          txCbor: encodeMidgardNativeTxCanonicalV1(fullTx).toString("hex"),
+          nodeTxId: computeMidgardNativeTxId(fullTx).toString("hex"),
+          txCbor: encodeMidgardNativeTxCanonical(fullTx).toString("hex"),
         },
       ],
       reconstruction: { forcedTransactions: [] },
@@ -311,7 +305,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       now: 1_900_000_000_000,
       fieldItemWidthIllegalCoordinate: { fieldIndex: 2, itemIndex: 0 },
     });
-    const wrongful = detectFieldItemWidthIllegalCompleteReplayV1({
+    const wrongful = detectFieldItemWidthIllegalCompleteReplay({
       headerHash: forced.reconstruction.headerHash,
       transactions: [],
       reconstruction: forced.reconstruction,
@@ -319,13 +313,13 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
     expect(wrongful).toHaveLength(1);
     expect(wrongful[0]?.detectionId).toContain(":forced:0:");
 
-    const illegal = committedFieldShapeScenarioMaterialV1(
+    const illegal = committedFieldShapeScenarioMaterial(
       "field-item-width-illegal",
     ).fullTx!;
-    const illegalCbor = encodeMidgardNativeTxCanonicalV1(illegal);
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-      encodeMidgardNativeTxCanonicalV1(
-        adjudicateMidgardNativeTxFullV1Validity(illegal, "TxIsInvalid"),
+    const illegalCbor = encodeMidgardNativeTxCanonical(illegal);
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      encodeMidgardNativeTxCanonical(
+        adjudicateMidgardNativeTxFullValidity(illegal, "TxIsInvalid"),
       ),
     );
     const original = forced.reconstruction.forcedTransactions[0]!;
@@ -353,10 +347,10 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
       },
     };
     expect(
-      detectFieldItemWidthIllegalCompleteReplayV1(honestBlock as never),
+      detectFieldItemWidthIllegalCompleteReplay(honestBlock as never),
     ).toEqual([]);
     expect(() =>
-      detectFieldItemWidthIllegalCompleteReplayV1({
+      detectFieldItemWidthIllegalCompleteReplay({
         ...honestBlock,
         reconstruction: {
           ...honestBlock.reconstruction,
@@ -379,7 +373,7 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
 
   it("rejects a caller-authored evidence substitution before reading sources", async () => {
     await expect(
-      runOrResumeManifestBoundFieldItemWidthIllegalWorkflowV1({
+      runOrResumeManifestBoundFieldItemWidthIllegalWorkflow({
         workflow: {} as never,
         sources: [],
         journal: {} as never,
@@ -389,32 +383,28 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
   });
 
   it("resumes from authenticated terminal removal without replaying a builder", async () => {
-    const identity = fieldItemWidthEvidenceIdentityV1(evidence);
+    const identity = fieldItemWidthEvidenceIdentity(evidence);
     const resolveStage = vi.fn();
     const append = vi.fn();
-    const runtime = createManifestBoundFieldItemWidthIllegalProductionRuntimeV1(
-      {
-        config: {} as ManifestBoundFieldItemWidthIllegalConfigV1,
-        journal: {
-          load: async () => [
-            {
-              sequence: 0,
-              identity,
-              stage: "step01",
-              txHash: "9".repeat(64),
-              outputReference: `${"9".repeat(64)}#0`,
-            },
-          ],
-          append,
-        },
-        observe: async () => "removed",
-        resolveStage,
+    const runtime = createManifestBoundFieldItemWidthIllegalRuntime({
+      config: {} as ManifestBoundFieldItemWidthIllegalConfig,
+      journal: {
+        load: async () => [
+          {
+            sequence: 0,
+            identity,
+            stage: "step01",
+            txHash: "9".repeat(64),
+            outputReference: `${"9".repeat(64)}#0`,
+          },
+        ],
+        append,
       },
-    );
+      observe: async () => "removed",
+      resolveStage,
+    });
     await expect(runtime.runOrResume(evidence)).resolves.toBe("removed");
-    expect(runtime.runtimeVersion).toBe(
-      FIELD_ITEM_WIDTH_ILLEGAL_PRODUCTION_WORKFLOW_V1,
-    );
+    expect(runtime.runtimeVersion).toBe(FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW);
     expect(resolveStage).not.toHaveBeenCalled();
     expect(append).not.toHaveBeenCalled();
   });

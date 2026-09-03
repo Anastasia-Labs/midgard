@@ -1,6 +1,6 @@
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  type MidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Effect, Option } from "effect";
 
@@ -56,7 +56,7 @@ export const resolveWithdrawalsRoot = (
 
 export const resolveForcedTransactionsRoot = (
   forcedTransactionEntries: readonly ForcedTransactionsDB.Entry[],
-  _consensusProfile: MidgardConsensusProfileV1 = MIDGARD_CONSENSUS_PROFILE_V1,
+  _consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
 ): Effect.Effect<Option.Option<string>, MpfError, never> =>
   Effect.gen(function* () {
     if (forcedTransactionEntries.length <= 0) {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { ValidationTraceProofV1 } from "@al-ft/midgard-sdk";
+import { ValidationTraceProof } from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -24,7 +24,7 @@ describe("exact Aiken blueprint data validation", () => {
         state_hash: "11".repeat(32),
         siblings: ["22".repeat(32), "33".repeat(32)],
       },
-      ValidationTraceProofV1,
+      ValidationTraceProof,
     );
 
     expect(
@@ -54,7 +54,7 @@ describe("exact Aiken blueprint data validation", () => {
         state_hash: "44".repeat(32),
         siblings: [],
       },
-      ValidationTraceProofV1,
+      ValidationTraceProof,
     );
     expect(() =>
       parseExactAikenDataCbor({

@@ -1,9 +1,9 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningV1Schema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  FieldOpeningSchema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
   rootMembershipProofSchema,
@@ -11,12 +11,12 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  ObserverOrderInvalidAuthenticationStateV1Schema,
-  ObserverOrderInvalidDecisionStateV1Schema,
-  ObserverOrderInvalidScanStateV1Schema,
+  ObserverOrderInvalidAuthenticationStateSchema,
+  ObserverOrderInvalidDecisionStateSchema,
+  ObserverOrderInvalidScanStateSchema,
 } from "./family-v1.js";
 
-export const ObserverOrderInvalidStep01SourceV1Schema = Data.Enum([
+export const ObserverOrderInvalidStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -24,56 +24,59 @@ export const ObserverOrderInvalidStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
 
-export const ObserverOrderInvalidStep01ArgsV1Schema = Data.Object({
-  source: ObserverOrderInvalidStep01SourceV1Schema,
+export const ObserverOrderInvalidStep01ArgsSchema = Data.Object({
+  source: ObserverOrderInvalidStep01SourceSchema,
   observer_index: Data.Integer(),
 });
-export const ObserverOrderInvalidStep01RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ObserverOrderInvalidStep01ArgsV1Schema);
+export const ObserverOrderInvalidStep01RedeemerSchema =
+  faultProofStepRedeemerSchema(ObserverOrderInvalidStep01ArgsSchema);
 
-export const ObserverOrderInvalidStep02DatumV1Schema =
-  faultProofStepDatumSchema(ObserverOrderInvalidAuthenticationStateV1Schema);
-export const ObserverOrderInvalidStep02ActionV1Schema = Data.Enum([
+export const ObserverOrderInvalidStep02DatumSchema = faultProofStepDatumSchema(
+  ObserverOrderInvalidAuthenticationStateSchema,
+);
+export const ObserverOrderInvalidStep02ActionSchema = Data.Enum([
   Data.Object({
     Authenticate: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      opening: FieldOpeningV1Schema,
+      opening: FieldOpeningSchema,
     }),
   }),
   Data.Literal("Reserved"),
 ]);
-export const ObserverOrderInvalidStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ObserverOrderInvalidStep02ActionV1Schema);
+export const ObserverOrderInvalidStep02RedeemerSchema =
+  faultProofStepRedeemerSchema(ObserverOrderInvalidStep02ActionSchema);
 
-export const ObserverOrderInvalidStep03DatumV1Schema =
-  faultProofStepDatumSchema(ObserverOrderInvalidScanStateV1Schema);
-export const ObserverOrderInvalidStep03ArgsV1Schema = Data.Object({
+export const ObserverOrderInvalidStep03DatumSchema = faultProofStepDatumSchema(
+  ObserverOrderInvalidScanStateSchema,
+);
+export const ObserverOrderInvalidStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  opening: FieldOpeningV1Schema,
+  opening: FieldOpeningSchema,
   checkpoint_bytes: Data.Bytes(),
   item_budget: Data.Integer(),
 });
-export const ObserverOrderInvalidStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ObserverOrderInvalidStep03ArgsV1Schema);
+export const ObserverOrderInvalidStep03RedeemerSchema =
+  faultProofStepRedeemerSchema(ObserverOrderInvalidStep03ArgsSchema);
 
-export const ObserverOrderInvalidStep04DatumV1Schema =
-  faultProofStepDatumSchema(ObserverOrderInvalidDecisionStateV1Schema);
-export const ObserverOrderInvalidStep04ArgsV1Schema = Data.Object({
+export const ObserverOrderInvalidStep04DatumSchema = faultProofStepDatumSchema(
+  ObserverOrderInvalidDecisionStateSchema,
+);
+export const ObserverOrderInvalidStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
 });
-export const ObserverOrderInvalidStep04RedeemerV1Schema =
-  faultProofStepRedeemerSchema(ObserverOrderInvalidStep04ArgsV1Schema);
+export const ObserverOrderInvalidStep04RedeemerSchema =
+  faultProofStepRedeemerSchema(ObserverOrderInvalidStep04ArgsSchema);

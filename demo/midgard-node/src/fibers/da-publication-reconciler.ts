@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { Effect, Metric, Option, Schedule } from "effect";
 
 import { readDaHardeningConfig } from "../da/hardening-config.js";
@@ -65,7 +65,7 @@ export const reconcileDaPublicationsOnce = ({
         backlog: 0,
       };
     }
-    const retentionDays = DA_TRANSPORT_LIMITS_V1.minimumRetentionDays;
+    const retentionDays = DA_TRANSPORT_LIMITS.minimumRetentionDays;
     const hardeningConfig = readDaHardeningConfig();
     const concurrency = Math.max(
       1,

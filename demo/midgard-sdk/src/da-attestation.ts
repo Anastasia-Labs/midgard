@@ -11,13 +11,13 @@ import {
 import { Data as EffectData, Effect } from "effect";
 
 import {
-  assertCanonicalDaAvailabilityCommitmentV1,
-  daAvailabilityBondAssetNameV1,
-  type DaAvailabilityCommitmentV1,
-  DaAvailabilityCommitmentV1Schema,
-  type DaAvailabilityMintRedeemerV1,
-  DaAvailabilityMintRedeemerV1Schema,
-  encodeDaAvailabilityBondDatumV1,
+  assertCanonicalDaAvailabilityCommitment,
+  daAvailabilityBondAssetName,
+  type DaAvailabilityCommitment,
+  DaAvailabilityCommitmentSchema,
+  type DaAvailabilityMintRedeemer,
+  DaAvailabilityMintRedeemerSchema,
+  encodeDaAvailabilityBondDatum,
 } from "./availability-challenge-v1.js";
 import {
   type AddressData,
@@ -29,10 +29,10 @@ import {
   outputReferenceFromUTxO,
 } from "./common.js";
 import {
-  castStateQueueNodeV1ToData,
+  castStateQueueNodeToData,
   type HeaderHash,
   HeaderHashSchema,
-  type StateQueueNodeV1,
+  type StateQueueNode,
 } from "./ledger-state.js";
 import {
   encodeLinkedListNodeView,
@@ -196,7 +196,7 @@ export const daParamsFloorViolations = (params: {
 
 export const DaAttestationDatumSchema = Data.Object({
   header_hash: HeaderHashSchema,
-  availability_commitment: DaAvailabilityCommitmentV1Schema,
+  availability_commitment: DaAvailabilityCommitmentSchema,
   da_threshold: Data.Integer(),
   committee_signers_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
   rescue_beneficiary: AddressSchema,
@@ -342,7 +342,7 @@ export type DaAttestationReferenceScripts = {
 
 export type DaAttestationStateQueueTarget = {
   readonly stateQueueUtxo: StateQueueUTxO;
-  readonly stateQueueNode: StateQueueNodeV1;
+  readonly stateQueueNode: StateQueueNode;
   readonly headerHash: HeaderHash;
 };
 
@@ -548,11 +548,11 @@ export const incompleteInitDaAttestationTxProgram = (
     >;
     readonly attestationOutputLovelace: bigint;
     readonly rescueBeneficiary: AddressData;
-    readonly availabilityCommitment: DaAvailabilityCommitmentV1;
+    readonly availabilityCommitment: DaAvailabilityCommitment;
   },
 ): Effect.Effect<TxBuilder, DaAttestationBuildError> =>
   Effect.gen(function* () {
-    assertCanonicalDaAvailabilityCommitmentV1(config.availabilityCommitment);
+    assertCanonicalDaAvailabilityCommitment(config.availabilityCommitment);
     if (
       config.availabilityCommitment.header_hash !== config.target.headerHash
     ) {
@@ -808,14 +808,14 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       contracts.daAttestation,
       config.target.headerHash,
     );
-    const bondAssetName = daAvailabilityBondAssetNameV1(
+    const bondAssetName = daAvailabilityBondAssetName(
       outputReferenceFromUTxO(config.attestation.utxo),
     );
     const bondUnit = toUnit(
       contracts.availabilityChallenge.policyId,
       bondAssetName,
     );
-    const encodedBondDatum = encodeDaAvailabilityBondDatumV1({
+    const encodedBondDatum = encodeDaAvailabilityBondDatum({
       Available: {
         commitment: config.attestation.datum.availability_commitment,
         da_bond_asset_name: bondAssetName,
@@ -825,7 +825,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
     });
     const updatedStateQueueDatum = encodeLinkedListNodeView({
       ...config.target.stateQueueUtxo.datum,
-      data: castStateQueueNodeV1ToData({
+      data: castStateQueueNodeToData({
         header: config.target.stateQueueNode.header,
         da_attestation: {
           Attested: { da_bond_asset_name: bondAssetName },
@@ -947,8 +947,8 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
               "DA attestation apply state queue",
             ),
           },
-        } satisfies DaAvailabilityMintRedeemerV1 as never,
-        DaAvailabilityMintRedeemerV1Schema as never,
+        } satisfies DaAvailabilityMintRedeemer as never,
+        DaAvailabilityMintRedeemerSchema as never,
       );
     }) satisfies BuildTxWithRedeemer;
     const stateQueueSpendRedeemer = ((ctx) =>

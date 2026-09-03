@@ -1,5 +1,5 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -7,12 +7,12 @@ import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 
 const ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const CANDIDATE_ROOT = "11".repeat(32);
-const MARKER = makeDeploymentMarkerV1("ab".repeat(32));
+const MARKER = makeDeploymentMarker("ab".repeat(32));
 
 const metadata =
   (): PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata => ({
     deploymentMarker: MARKER,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     stateQueueLeaseToken: "lease-v1",
     baseSnapshotId: "snapshot-v1",
     baseTailOutRef: `${"12".repeat(32)}#0`,
@@ -64,22 +64,22 @@ const ledgerDelta = (): PendingBlockFinalizationsDB.LedgerDeltaInput => ({
 });
 
 const deltaEnvelope =
-  (): PendingBlockFinalizationsDB.PendingBlockFinalizationV1 => ({
-    version: PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+  (): PendingBlockFinalizationsDB.PendingBlockFinalization => ({
+    version: PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
     metadata: metadata(),
     replay: {
-      kind: PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
+      kind: PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
         .LedgerDelta,
       ledgerDelta: ledgerDelta(),
     },
   });
 
 const nativeEnvelope =
-  (): PendingBlockFinalizationsDB.PendingBlockFinalizationV1 => ({
-    version: PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+  (): PendingBlockFinalizationsDB.PendingBlockFinalization => ({
+    version: PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_VERSION,
     metadata: metadata(),
     replay: {
-      kind: PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
+      kind: PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKind
         .LedgerDeltaWithNativeMpf,
       ledgerDelta: ledgerDelta(),
       nativeMpfReplay: {
@@ -98,7 +98,7 @@ const nativeEnvelope =
 describe("PendingBlockFinalizationV1 exact envelope", () => {
   it("accepts the sole delta-only V1 replay shape", () => {
     const parsed =
-      PendingBlockFinalizationsDB.parsePendingBlockFinalizationV1(
+      PendingBlockFinalizationsDB.parsePendingBlockFinalization(
         deltaEnvelope(),
       );
 
@@ -110,7 +110,7 @@ describe("PendingBlockFinalizationV1 exact envelope", () => {
 
   it("accepts the sole native-MPF V1 replay shape bound to metadata roots", () => {
     const parsed =
-      PendingBlockFinalizationsDB.parsePendingBlockFinalizationV1(
+      PendingBlockFinalizationsDB.parsePendingBlockFinalization(
         nativeEnvelope(),
       );
 
@@ -293,7 +293,7 @@ describe("PendingBlockFinalizationV1 exact envelope", () => {
     ],
   ])("rejects %s", (_label, candidate) => {
     expect(() =>
-      PendingBlockFinalizationsDB.parsePendingBlockFinalizationV1(candidate()),
+      PendingBlockFinalizationsDB.parsePendingBlockFinalization(candidate()),
     ).toThrow();
   });
 });

@@ -28,7 +28,7 @@
  */
 import {
   commitCountedRootProgram,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
@@ -74,18 +74,18 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
+import type { WithdrawnReferenceInputContracts } from "./contracts-v1.js";
 import {
-  requireWithdrawnReferenceInputReferenceScriptV1,
-  requireWithdrawnReferenceInputThreadUtxoV1,
+  requireWithdrawnReferenceInputReferenceScript,
+  requireWithdrawnReferenceInputThreadUtxo,
   withdrawnReferenceInputSubmitError,
 } from "./submit-common-v1.js";
 
@@ -151,7 +151,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -159,14 +159,14 @@ export const submitWithdrawnReferenceInputStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: WithdrawnReferenceInputStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputStep01Result> => {
   const steps = contracts.steps;
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
     await Promise.all([
-      requireWithdrawnReferenceInputThreadUtxoV1({
+      requireWithdrawnReferenceInputThreadUtxo({
         lucid,
         contracts,
         categoryId,
@@ -206,7 +206,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
   const countedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
@@ -237,7 +237,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     network,
     phasMembershipScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: "withdrawn-reference-input step 01 PHAS membership",
@@ -318,7 +318,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     [threadToken.unit]: 1n,
   };
 
-  const stepReference = requireWithdrawnReferenceInputReferenceScriptV1({
+  const stepReference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: steps[0].spendingScriptHash,
     stepIndex: 0,
@@ -357,9 +357,9 @@ export const submitWithdrawnReferenceInputStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

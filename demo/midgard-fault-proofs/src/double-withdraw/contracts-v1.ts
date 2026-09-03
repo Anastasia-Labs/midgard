@@ -2,22 +2,22 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const DOUBLE_WITHDRAW_CATEGORY_LABEL = "double-withdraw";
 
-export const DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1 = {
+export const DOUBLE_WITHDRAW_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/double_withdraw/step_01.main.spend",
   step02: "fraud_proofs/double_withdraw/step_02.main.spend",
 } as const;
 
-export type DoubleWithdrawStepContractV1 = {
+export type DoubleWithdrawStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
 /** Explicit pre-registration deployment record; the category id is separate. */
-export type DoubleWithdrawContractsV1 = {
+export type DoubleWithdrawContracts = {
   readonly steps: readonly [
-    DoubleWithdrawStepContractV1,
-    DoubleWithdrawStepContractV1,
+    DoubleWithdrawStepContract,
+    DoubleWithdrawStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;

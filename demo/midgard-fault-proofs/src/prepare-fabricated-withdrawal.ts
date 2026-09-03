@@ -51,10 +51,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -71,10 +71,10 @@ import {
   keyValuePhasRootWithCount,
 } from "./transition-trace/phas.js";
 
-export const FABRICATED_WITHDRAWAL_EVIDENCE_V1_SCHEMA_VERSION =
+export const FABRICATED_WITHDRAWAL_EVIDENCE_SCHEMA_VERSION =
   "midgard-fabricated-withdrawal-evidence-v1" as const;
 
-export type FabricatedWithdrawalRejectionCodeV1 =
+export type FabricatedWithdrawalRejectionCode =
   | "malformed_da_payload"
   | "non_canonical_da_payload"
   | "wrong_da_payload_version"
@@ -90,10 +90,10 @@ export type FabricatedWithdrawalRejectionCodeV1 =
   | "event_not_due_for_block";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
-export class FabricatedWithdrawalRejectionV1 extends Error {
-  readonly code: FabricatedWithdrawalRejectionCodeV1;
+export class FabricatedWithdrawalRejection extends Error {
+  readonly code: FabricatedWithdrawalRejectionCode;
 
-  constructor(code: FabricatedWithdrawalRejectionCodeV1, detail: string) {
+  constructor(code: FabricatedWithdrawalRejectionCode, detail: string) {
     super(`${code}: ${detail}`);
     this.name = "FabricatedWithdrawalRejectionV1";
     this.code = code;
@@ -103,7 +103,7 @@ export class FabricatedWithdrawalRejectionV1 extends Error {
 const hexOf = (value: string, label: string): Buffer => {
   const normalized = value.toLowerCase();
   if (!/^(?:[0-9a-f]{2})*$/u.test(normalized)) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "malformed_da_payload",
       `${label} is not even-length hexadecimal`,
     );
@@ -112,7 +112,7 @@ const hexOf = (value: string, label: string): Buffer => {
 };
 
 /** One committed `withdrawals_root` leaf, decoded and committed to. */
-export type CommittedWithdrawalLeafV1 = {
+export type CommittedWithdrawalLeaf = {
   readonly index: number;
   /** Canonical CBOR of the leaf key — a `WithdrawalId` output reference. */
   readonly committedWithdrawalIdCbor: string;
@@ -125,11 +125,11 @@ export type CommittedWithdrawalLeafV1 = {
   readonly committedLeafByteCount: number;
 };
 
-const decodeCommittedWithdrawalLeafV1 = async (
+const decodeCommittedWithdrawalLeaf = async (
   keyHex: string,
   valueHex: string,
   index: number,
-): Promise<CommittedWithdrawalLeafV1> => {
+): Promise<CommittedWithdrawalLeaf> => {
   const label = `withdrawals[${index.toString()}]`;
   const key = hexOf(keyHex, `${label}.key`);
   const value = hexOf(valueHex, `${label}.value`);
@@ -147,24 +147,24 @@ const decodeCommittedWithdrawalLeafV1 = async (
       SDK.WithdrawalInfo,
     );
   } catch (cause) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "malformed_da_payload",
       `${label} does not decode as (WithdrawalId, WithdrawalInfo): ${String(cause)}`,
     );
   }
   if (
-    SDK.committedWithdrawalKeyBytesV1(committedWithdrawalId) !==
+    SDK.committedWithdrawalKeyBytes(committedWithdrawalId) !==
       committedWithdrawalIdCbor ||
-    SDK.committedWithdrawalValueBytesV1(committedWithdrawalInfo) !==
+    SDK.committedWithdrawalValueBytes(committedWithdrawalInfo) !==
       committedWithdrawalInfoCbor
   ) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "non_canonical_da_payload",
       `${label} leaf bytes are not canonical for (WithdrawalId, WithdrawalInfo)`,
     );
   }
   const committedWithdrawalInfoHash = await Effect.runPromise(
-    SDK.withdrawalInfoCommitmentV1(committedWithdrawalInfo),
+    SDK.withdrawalInfoCommitment(committedWithdrawalInfo),
   );
   return {
     index,
@@ -178,7 +178,7 @@ const decodeCommittedWithdrawalLeafV1 = async (
 };
 
 /** A live (unspent) L1 output reference at an authenticated chain point. */
-export type LiveOutputReferenceV1 = {
+export type LiveOutputReference = {
   readonly transactionId: string;
   readonly outputIndex: bigint;
 };
@@ -197,15 +197,15 @@ export type LiveOutputReferenceV1 = {
  * policy and the asset name observed carrying the event, so the observation is
  * bound to the committed identity by `out_ref_to_nonce` rather than by trust.
  */
-export type FabricatedWithdrawalL1WitnessV1 =
+export type FabricatedWithdrawalL1Witness =
   | {
       readonly kind: "absent_identity";
-      readonly observation: SDK.AuthenticatedL1ObservationV1;
-      readonly liveOutputReferences: readonly LiveOutputReferenceV1[];
+      readonly observation: SDK.AuthenticatedL1Observation;
+      readonly liveOutputReferences: readonly LiveOutputReference[];
     }
   | {
       readonly kind: "present_event";
-      readonly observation: SDK.AuthenticatedL1ObservationV1;
+      readonly observation: SDK.AuthenticatedL1Observation;
       /**
        * Withdrawal event NFT policy id, read from the authentic hub oracle's
        * `withdrawal` field — not its `deposit` field, which registers a different
@@ -219,9 +219,9 @@ export type FabricatedWithdrawalL1WitnessV1 =
     };
 
 /** The classified fault, plus the two authenticated intermediates it rests on. */
-export type ClassifiedFabricatedWithdrawalFaultV1 = {
-  readonly verdict: SDK.FabricatedWithdrawalEvidenceVerdictV1;
-  readonly fault: SDK.FabricatedWithdrawalFaultV1;
+export type ClassifiedFabricatedWithdrawalFault = {
+  readonly verdict: SDK.FabricatedWithdrawalEvidenceVerdict;
+  readonly fault: SDK.FabricatedWithdrawalFault;
   /** Present only for the content-mismatch shape. */
   readonly authenticWithdrawalInfoHash?: string;
   /** Present only for the content-mismatch shape. */
@@ -230,20 +230,20 @@ export type ClassifiedFabricatedWithdrawalFaultV1 = {
   readonly eventDatumHash?: string;
 };
 
-const admitWitnessObservationV1 = ({
+const admitWitnessObservation = ({
   witness,
   minimumConfirmationDepth,
 }: {
-  readonly witness: FabricatedWithdrawalL1WitnessV1;
+  readonly witness: FabricatedWithdrawalL1Witness;
   readonly minimumConfirmationDepth?: number;
-}): SDK.EvidenceProvenanceV1 => {
-  const admitted = SDK.admitAuthenticatedL1ObservationV1({
+}): SDK.EvidenceProvenance => {
+  const admitted = SDK.admitAuthenticatedL1Observation({
     observation: witness.observation,
     ...(minimumConfirmationDepth === undefined
       ? {}
       : { minimumConfirmationDepth }),
   });
-  return SDK.assertSecurityGradeEvidenceV1(admitted.provenance);
+  return SDK.assertSecurityGradeEvidence(admitted.provenance);
 };
 
 /**
@@ -256,20 +256,20 @@ const admitWitnessObservationV1 = ({
  * is a single 32-byte inequality over the whole `WithdrawalInfo`, so a diverted
  * body, a forged signature and an overridden validity are all caught by it.
  */
-export const classifyFabricatedWithdrawalFaultV1 = async ({
+export const classifyFabricatedWithdrawalFault = async ({
   leaf,
   headerStartTime,
   headerEndTime,
   witness,
   minimumConfirmationDepth,
 }: {
-  readonly leaf: CommittedWithdrawalLeafV1;
+  readonly leaf: CommittedWithdrawalLeaf;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
-  readonly witness: FabricatedWithdrawalL1WitnessV1;
+  readonly witness: FabricatedWithdrawalL1Witness;
   readonly minimumConfirmationDepth?: number;
-}): Promise<ClassifiedFabricatedWithdrawalFaultV1> => {
-  admitWitnessObservationV1({
+}): Promise<ClassifiedFabricatedWithdrawalFault> => {
+  admitWitnessObservation({
     witness,
     ...(minimumConfirmationDepth === undefined
       ? {}
@@ -283,7 +283,7 @@ export const classifyFabricatedWithdrawalFaultV1 = async ({
         candidate.outputIndex === leaf.committedWithdrawalId.outputIndex,
     );
     if (!live) {
-      throw new FabricatedWithdrawalRejectionV1(
+      throw new FabricatedWithdrawalRejection(
         "consumed_live_utxo_fallback_refused",
         `committed_withdrawal_id=${leaf.committedWithdrawalIdCbor} is not in the authenticated live output-reference set, so its absence cannot be established from a consumed UTxO`,
       );
@@ -295,10 +295,10 @@ export const classifyFabricatedWithdrawalFaultV1 = async ({
   }
 
   const expectedAssetName = await Effect.runPromise(
-    SDK.withdrawalEventNonceV1(leaf.committedWithdrawalId),
+    SDK.withdrawalEventNonce(leaf.committedWithdrawalId),
   );
   if (witness.observedEventAssetName.toLowerCase() !== expectedAssetName) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "withdrawal_identity_observation_mismatch",
       `observed_asset_name=${witness.observedEventAssetName.toLowerCase()} expected=${expectedAssetName} policy=${witness.withdrawalEventPolicyId.toLowerCase()}`,
     );
@@ -314,42 +314,41 @@ export const classifyFabricatedWithdrawalFaultV1 = async ({
       SDK.WithdrawalOrderDatum,
     );
   } catch (cause) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "event_datum_not_canonical",
       `witness.eventDatumCbor does not decode as a withdrawal event datum: ${String(cause)}`,
     );
   }
   if (
-    SDK.withdrawalEventDatumBytesV1(eventDatum) !==
-    eventDatumCbor.toString("hex")
+    SDK.withdrawalEventDatumBytes(eventDatum) !== eventDatumCbor.toString("hex")
   ) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "event_datum_not_canonical",
       "witness.eventDatumCbor is not canonical for a withdrawal event datum",
     );
   }
   if (
-    SDK.committedWithdrawalKeyBytesV1(eventDatum.event.id) !==
+    SDK.committedWithdrawalKeyBytes(eventDatum.event.id) !==
     leaf.committedWithdrawalIdCbor
   ) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "event_identity_mismatch",
-      `event_id=${SDK.committedWithdrawalKeyBytesV1(eventDatum.event.id)} committed_withdrawal_id=${leaf.committedWithdrawalIdCbor}`,
+      `event_id=${SDK.committedWithdrawalKeyBytes(eventDatum.event.id)} committed_withdrawal_id=${leaf.committedWithdrawalIdCbor}`,
     );
   }
   const [authenticWithdrawalInfoHash, eventDatumHash] = await Promise.all([
-    Effect.runPromise(SDK.withdrawalInfoCommitmentV1(eventDatum.event.info)),
-    Effect.runPromise(SDK.withdrawalEventDatumCommitmentV1(eventDatum)),
+    Effect.runPromise(SDK.withdrawalInfoCommitment(eventDatum.event.info)),
+    Effect.runPromise(SDK.withdrawalEventDatumCommitment(eventDatum)),
   ]);
   if (authenticWithdrawalInfoHash === leaf.committedWithdrawalInfoHash) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "authentic_content_matches_commitment",
       `committed_withdrawal_info_hash=${leaf.committedWithdrawalInfoHash} equals the authentic event's content; a valid block cannot be challenged`,
     );
   }
   const inclusionTime = eventDatum.inclusion_time;
   if (!(headerStartTime < inclusionTime && inclusionTime <= headerEndTime)) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "event_not_due_for_block",
       `inclusion_time=${inclusionTime.toString()} is outside the challenged block's window (${headerStartTime.toString()}, ${headerEndTime.toString()}]`,
     );
@@ -398,9 +397,9 @@ export type PreparedFabricatedWithdrawalStateJson = {
 };
 
 export type PreparedFabricatedWithdrawalOutput = {
-  readonly schemaVersion: typeof FABRICATED_WITHDRAWAL_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.FABRICATED_WITHDRAWAL_VIOLATION_ID_V1;
-  readonly fraudCategoryId: typeof SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1;
+  readonly schemaVersion: typeof FABRICATED_WITHDRAWAL_EVIDENCE_SCHEMA_VERSION;
+  readonly violationId: typeof SDK.FABRICATED_WITHDRAWAL_VIOLATION_ID;
+  readonly fraudCategoryId: typeof SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID;
   readonly headerHash: string;
   readonly threadTokenAssetName: string;
   readonly withdrawalCount: number;
@@ -410,9 +409,9 @@ export type PreparedFabricatedWithdrawalOutput = {
   readonly committedWithdrawalsRoot: string;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
-  readonly leaves: readonly CommittedWithdrawalLeafV1[];
-  readonly challengedLeaf: CommittedWithdrawalLeafV1;
-  readonly classification: ClassifiedFabricatedWithdrawalFaultV1;
+  readonly leaves: readonly CommittedWithdrawalLeaf[];
+  readonly challengedLeaf: CommittedWithdrawalLeaf;
+  readonly classification: ClassifiedFabricatedWithdrawalFault;
   readonly withdrawalInclusion: PreparedFabricatedWithdrawalInclusionJson;
   readonly authenticContent: PreparedFabricatedWithdrawalContentJson;
   readonly step02State: PreparedFabricatedWithdrawalStateJson;
@@ -430,7 +429,7 @@ export type PrepareFabricatedWithdrawalFromCommittedLeavesOptions = {
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
   readonly entries: readonly (readonly [string, string])[];
-  readonly witness: FabricatedWithdrawalL1WitnessV1;
+  readonly witness: FabricatedWithdrawalL1Witness;
   /** Pin a specific committed leaf key; otherwise the sole leaf is used. */
   readonly committedWithdrawalIdCbor?: string;
   readonly minimumConfirmationDepth?: number;
@@ -443,7 +442,7 @@ export type PrepareFabricatedWithdrawalFromCommittedLeavesOptions = {
  * leaf against the authenticated L1 witness, then emits the membership proof, the
  * retained content opening, and the exact step-02 state.
  */
-export const prepareFabricatedWithdrawalFromCommittedLeavesV1 = async ({
+export const prepareFabricatedWithdrawalFromCommittedLeaves = async ({
   headerHash,
   committedWithdrawalsRoot,
   withdrawalCount,
@@ -469,7 +468,7 @@ export const prepareFabricatedWithdrawalFromCommittedLeavesV1 = async ({
     countedRoot !== committedWithdrawalsRoot.toLowerCase() ||
     phas.count !== withdrawalCount
   ) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "withdrawals_root_mismatch",
       `header_withdrawals_root=${committedWithdrawalsRoot.toLowerCase()} derived=${countedRoot} header_count=${withdrawalCount.toString()} derived_count=${phas.count.toString()}`,
     );
@@ -477,11 +476,11 @@ export const prepareFabricatedWithdrawalFromCommittedLeavesV1 = async ({
 
   const leaves = await Promise.all(
     entries.map(async ([keyHex, valueHex], index) =>
-      decodeCommittedWithdrawalLeafV1(keyHex, valueHex, index),
+      decodeCommittedWithdrawalLeaf(keyHex, valueHex, index),
     ),
   );
   if (leaves.length === 0) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "no_committed_withdrawal_leaf",
       `header_hash=${headerHash.toLowerCase()} commits an empty withdrawal source set`,
     );
@@ -495,13 +494,13 @@ export const prepareFabricatedWithdrawalFromCommittedLeavesV1 = async ({
             committedWithdrawalIdCbor.toLowerCase(),
         );
   if (challengedLeaf === undefined) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "leaf_not_committed",
       `committed_withdrawal_id=${committedWithdrawalIdCbor?.toLowerCase() ?? ""} is not a committed leaf of header_hash=${headerHash.toLowerCase()} (leaf_count=${leaves.length.toString()})`,
     );
   }
 
-  const classification = await classifyFabricatedWithdrawalFaultV1({
+  const classification = await classifyFabricatedWithdrawalFault({
     leaf: challengedLeaf,
     headerStartTime,
     headerEndTime,
@@ -523,11 +522,11 @@ export const prepareFabricatedWithdrawalFromCommittedLeavesV1 = async ({
     ),
   };
   const output: PreparedFabricatedWithdrawalOutput = {
-    schemaVersion: FABRICATED_WITHDRAWAL_EVIDENCE_V1_SCHEMA_VERSION,
-    violationId: SDK.FABRICATED_WITHDRAWAL_VIOLATION_ID_V1,
-    fraudCategoryId: SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+    schemaVersion: FABRICATED_WITHDRAWAL_EVIDENCE_SCHEMA_VERSION,
+    violationId: SDK.FABRICATED_WITHDRAWAL_VIOLATION_ID,
+    fraudCategoryId: SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
     headerHash: headerHash.toLowerCase(),
-    threadTokenAssetName: SDK.fabricatedWithdrawalThreadTokenAssetNameV1(
+    threadTokenAssetName: SDK.fabricatedWithdrawalThreadTokenAssetName(
       headerHash.toLowerCase(),
     ),
     withdrawalCount: Number(withdrawalCount),
@@ -589,11 +588,11 @@ export const prepareFabricatedWithdrawalFromCommittedLeavesV1 = async ({
   return { ...output, files: paths };
 };
 
-export type FabricatedWithdrawalBlockEvidenceV1 = {
-  readonly grade: SDK.EvidenceGradeV1;
+export type FabricatedWithdrawalBlockEvidence = {
+  readonly grade: SDK.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenanceV1;
-    readonly da: SDK.EvidenceProvenanceV1;
+    readonly l1: SDK.EvidenceProvenance;
+    readonly da: SDK.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -608,30 +607,30 @@ export type FabricatedWithdrawalBlockEvidenceV1 = {
 /**
  * Extracts the committed `withdrawals` leaves from public retained-DA bytes
  * without requiring the block to be well-formed. Only the payload envelope,
- * canonical `DaPayloadV1` framing and the embedded-header identity are enforced
+ * canonical `DaPayload` framing and the embedded-header identity are enforced
  * here; leaf authenticity is what the family adjudicates.
  */
-export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1 = async ({
+export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenanceV1;
+  readonly daProvenance: SDK.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<FabricatedWithdrawalBlockEvidenceV1> => {
+}): Promise<FabricatedWithdrawalBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidenceV1(daProvenance);
+  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -641,54 +640,54 @@ export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1 = async ({
   try {
     payloadCbor = Buffer.from(
       (
-        await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        await unwrapDaPayload(payloadEnvelopeCbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         })
       ).innerBytes,
     );
   } catch (cause) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "malformed_da_payload",
       `failed to decode the mandatory DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayloadV1;
+  let payload: SDK.DaPayload;
   try {
-    payload = SDK.decodeDaPayloadV1(payloadCbor);
+    payload = SDK.decodeDaPayload(payloadCbor);
   } catch (cause) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1 canonical CBOR: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor)) {
-    throw new FabricatedWithdrawalRejectionV1(
+  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+    throw new FabricatedWithdrawalRejection(
       "non_canonical_da_payload",
       "DA payload CBOR is not canonical for DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
-    throw new FabricatedWithdrawalRejectionV1(
+  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+    throw new FabricatedWithdrawalRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_V1_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
   const embeddedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(body.header),
+    SDK.hashBlockHeader(body.header),
   );
   if (
     embeddedHeaderHash !== body.header_hash.toLowerCase() ||
     embeddedHeaderHash !== admittedObservation.headerHash
   ) {
-    throw new FabricatedWithdrawalRejectionV1(
+    throw new FabricatedWithdrawalRejection(
       "header_hash_mismatch",
       `embedded=${embeddedHeaderHash} payload=${body.header_hash.toLowerCase()} observed=${admittedObservation.headerHash}`,
     );
   }
 
   return {
-    grade: SDK.combineEvidenceGradeV1([
+    grade: SDK.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),
@@ -713,7 +712,7 @@ export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1 = async ({
  * retained-DA payload + an authenticated L1 withdrawal-identity witness -> a
  * submittable `fabricated-withdrawal` proof plan.
  */
-export const prepareFabricatedWithdrawalFromRetainedDaV1 = async ({
+export const prepareFabricatedWithdrawalFromRetainedDa = async ({
   observation,
   sources,
   witness,
@@ -722,22 +721,22 @@ export const prepareFabricatedWithdrawalFromRetainedDaV1 = async ({
   committedWithdrawalIdCbor,
   outputDir,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly witness: FabricatedWithdrawalL1WitnessV1;
+  readonly witness: FabricatedWithdrawalL1Witness;
   readonly retries?: number;
   readonly minimumConfirmationDepth?: number;
   readonly committedWithdrawalIdCbor?: string;
   readonly outputDir?: string;
 }): Promise<PreparedFabricatedWithdrawalOutput> => {
   if (sources.length === 0) {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
@@ -748,19 +747,17 @@ export const prepareFabricatedWithdrawalFromRetainedDaV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1(
-    {
-      observation: admittedObservation,
-      payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-      daProvenance: SDK.assertSecurityGradeEvidenceV1(
-        SDK.admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
-      ),
-      ...(minimumConfirmationDepth === undefined
-        ? {}
-        : { minimumConfirmationDepth }),
-    },
-  );
-  return await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+  const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload({
+    observation: admittedObservation,
+    payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+    daProvenance: SDK.assertSecurityGradeEvidence(
+      SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
+    ),
+    ...(minimumConfirmationDepth === undefined
+      ? {}
+      : { minimumConfirmationDepth }),
+  });
+  return await prepareFabricatedWithdrawalFromCommittedLeaves({
     headerHash: evidence.headerHash,
     committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
     withdrawalCount: evidence.withdrawalCount,

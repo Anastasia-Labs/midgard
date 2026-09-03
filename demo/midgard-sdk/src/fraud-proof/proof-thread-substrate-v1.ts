@@ -1,22 +1,22 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { type OutputReference, OutputReferenceSchema } from "../common.js";
-import type { RejectionReasonV1 } from "../rejection-reason-v1.js";
-import { RejectionReasonV1 as RejectionReasonV1Schema } from "../rejection-reason-v1.js";
+import type { RejectionReason } from "../rejection-reason-v1.js";
+import { RejectionReason as RejectionReasonSchema } from "../rejection-reason-v1.js";
 
-export const PROOF_THREAD_SUBJECT_V1_VERSION = 1n;
-export const PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 = 0n;
-export const PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1 = 1n;
-export const PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1 = 0n;
-export const PROOF_THREAD_SOURCE_KIND_FORCED_V1 = 1n;
+export const PROOF_THREAD_SUBJECT_VERSION = 1n;
+export const PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE = 0n;
+export const PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION = 1n;
+export const PROOF_THREAD_SOURCE_KIND_ACCEPTED = 0n;
+export const PROOF_THREAD_SOURCE_KIND_FORCED = 1n;
 
-export type VerdictSubjectV1 = {
+export type VerdictSubject = {
   readonly version: bigint;
   readonly direction: bigint;
   readonly source_kind: bigint;
   readonly transaction_id: string;
   readonly source_key: string;
-  readonly rejection_reason: RejectionReasonV1 | null;
+  readonly rejection_reason: RejectionReason | null;
 };
 
 const canonicalHex = (
@@ -76,26 +76,23 @@ const cborUnsigned = (value: bigint): Buffer => {
 const cborBytes = (value: Buffer): Buffer =>
   Buffer.concat([cborHeader(2, value.length), value]);
 
-export const verdictSubjectIsCanonicalV1 = (
-  subject: VerdictSubjectV1,
-): boolean => {
+export const verdictSubjectIsCanonical = (subject: VerdictSubject): boolean => {
   try {
     canonicalHex(subject.transaction_id, "transaction_id", 32);
     const sourceKey = canonicalHex(subject.source_key, "source_key");
-    if (subject.version !== PROOF_THREAD_SUBJECT_V1_VERSION) return false;
-    if (subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1) {
+    if (subject.version !== PROOF_THREAD_SUBJECT_VERSION) return false;
+    if (subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
       return (
-        subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 &&
+        subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE &&
         sourceKey.length === 0 &&
         subject.rejection_reason === null
       );
     }
-    if (subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED_V1)
-      return false;
+    if (subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED) return false;
     if (sourceKey.length === 0) return false;
-    return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
       ? subject.rejection_reason === null
-      : subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1 &&
+      : subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION &&
           subject.rejection_reason !== null;
   } catch {
     return false;
@@ -103,8 +100,8 @@ export const verdictSubjectIsCanonicalV1 = (
 };
 
 /** Exact twin of Aiken `encode_verdict_subject_v1`. */
-export const encodeVerdictSubjectV1 = (subject: VerdictSubjectV1): Buffer => {
-  if (!verdictSubjectIsCanonicalV1(subject)) {
+export const encodeVerdictSubject = (subject: VerdictSubject): Buffer => {
+  if (!verdictSubjectIsCanonical(subject)) {
     throw new Error("VerdictSubjectV1 is not canonical");
   }
   const reason =
@@ -113,7 +110,7 @@ export const encodeVerdictSubjectV1 = (subject: VerdictSubjectV1): Buffer => {
       : Buffer.concat([
           cborHeader(4, 1),
           Buffer.from(
-            Data.to(subject.rejection_reason, RejectionReasonV1Schema),
+            Data.to(subject.rejection_reason, RejectionReasonSchema),
             "hex",
           ),
         ]);
@@ -128,13 +125,11 @@ export const encodeVerdictSubjectV1 = (subject: VerdictSubjectV1): Buffer => {
   ]);
 };
 
-export const acceptedVerdictSubjectV1 = (
-  transactionId: string,
-): VerdictSubjectV1 =>
+export const acceptedVerdictSubject = (transactionId: string): VerdictSubject =>
   Object.freeze({
-    version: PROOF_THREAD_SUBJECT_V1_VERSION,
-    direction: PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-    source_kind: PROOF_THREAD_SOURCE_KIND_ACCEPTED_V1,
+    version: PROOF_THREAD_SUBJECT_VERSION,
+    direction: PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+    source_kind: PROOF_THREAD_SOURCE_KIND_ACCEPTED,
     transaction_id: canonicalHex(transactionId, "transaction_id", 32).toString(
       "hex",
     ),
@@ -143,7 +138,7 @@ export const acceptedVerdictSubjectV1 = (
   });
 
 /** Exact twin of Aiken `cbor.serialise(membership.key)`. */
-export const encodeProofThreadForcedSourceKeyV1 = (
+export const encodeProofThreadForcedSourceKey = (
   sourceKey: OutputReference,
 ): Buffer =>
   Buffer.from(
@@ -151,56 +146,56 @@ export const encodeProofThreadForcedSourceKeyV1 = (
     "hex",
   );
 
-export const forcedVerdictSubjectV1 = ({
+export const forcedVerdictSubject = ({
   transactionId,
   sourceKey,
   rejectionReason,
 }: {
   readonly transactionId: string;
   readonly sourceKey: OutputReference;
-  readonly rejectionReason: RejectionReasonV1 | null;
-}): VerdictSubjectV1 =>
+  readonly rejectionReason: RejectionReason | null;
+}): VerdictSubject =>
   Object.freeze({
-    version: PROOF_THREAD_SUBJECT_V1_VERSION,
+    version: PROOF_THREAD_SUBJECT_VERSION,
     direction:
       rejectionReason === null
-        ? PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
-        : PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-    source_kind: PROOF_THREAD_SOURCE_KIND_FORCED_V1,
+        ? PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
+        : PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+    source_kind: PROOF_THREAD_SOURCE_KIND_FORCED,
     transaction_id: canonicalHex(transactionId, "transaction_id", 32).toString(
       "hex",
     ),
-    source_key: encodeProofThreadForcedSourceKeyV1(sourceKey).toString("hex"),
+    source_key: encodeProofThreadForcedSourceKey(sourceKey).toString("hex"),
     rejection_reason: rejectionReason,
   });
 
-export const bindExactVerdictSubjectReasonV1 = (
-  subject: VerdictSubjectV1,
-  expected: RejectionReasonV1,
-): RejectionReasonV1 => {
+export const bindExactVerdictSubjectReason = (
+  subject: VerdictSubject,
+  expected: RejectionReason,
+): RejectionReason => {
   if (
-    !verdictSubjectIsCanonicalV1(subject) ||
+    !verdictSubjectIsCanonical(subject) ||
     subject.rejection_reason === null
   ) {
     throw new Error("VerdictSubjectV1 carries no canonical rejection reason");
   }
   if (
-    Data.to(subject.rejection_reason, RejectionReasonV1Schema) !==
-    Data.to(expected, RejectionReasonV1Schema)
+    Data.to(subject.rejection_reason, RejectionReasonSchema) !==
+    Data.to(expected, RejectionReasonSchema)
   ) {
     throw new Error("VerdictSubjectV1 typed reason or coordinate differs");
   }
   return subject.rejection_reason;
 };
 
-export const terminalVerdictContradictionV1 = (
-  subject: VerdictSubjectV1,
+export const terminalVerdictContradiction = (
+  subject: VerdictSubject,
   decisiveFaultHolds: boolean,
 ): boolean => {
-  if (!verdictSubjectIsCanonicalV1(subject)) {
+  if (!verdictSubjectIsCanonical(subject)) {
     throw new Error("VerdictSubjectV1 is not canonical");
   }
-  return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+  return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
     ? decisiveFaultHolds
     : !decisiveFaultHolds;
 };

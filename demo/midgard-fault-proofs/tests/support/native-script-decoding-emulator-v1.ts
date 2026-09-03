@@ -9,12 +9,12 @@
  *    `tests/helpers/canonical-block-evidence-fixture-v1.ts` emits an empty
  *    transition trace, but this family's step-02 opens the event→step leaf
  *    AND the transition step whose `pre_utxos_root` becomes the thread's
- *    `prior_ledger_root`. {@link buildDecodingBlockFixtureV1} assembles the
- *    whole `DaPayloadV1` — counted roots, dense trace, forced leaf and its
+ *    `prior_ledger_root`. {@link buildDecodingBlockFixture} assembles the
+ *    whole `DaPayload` — counted roots, dense trace, forced leaf and its
  *    DA preimage — the way `tests/transition-trace-challenger.test.ts` does,
  *    but under an emulator-committable header.
  * 2. **A pre-state ledger trie holding the accused outpoint's descriptor.**
- *    {@link buildDecodingLedgerFixtureV1} files a
+ *    {@link buildDecodingLedgerFixture} files a
  *    `MidgardLedgerOutputCommitmentV1` under the §5.3 38-byte out-ref key.
  *    The reference-script facts are supplied rather than derived, because the
  *    whole premise of a direction-A decoding fault is a descriptor the
@@ -31,36 +31,36 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardBoundedItemV1,
-  buildMidgardLedgerOutputMaterialV1,
+  buildMidgardBoundedItem,
+  buildMidgardLedgerOutputMaterial,
   encodeMidgardNativeScript,
   encodeMidgardTxOutput,
-  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
-  MIDGARD_PROTOCOL_V1_VERSION,
-  type MidgardLedgerOutputCommitmentFactsV1,
-  type MidgardLedgerOutputReferenceScriptLanguageV1,
+  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
+  MIDGARD_PROTOCOL_VERSION,
+  type MidgardLedgerOutputCommitmentFacts,
+  type MidgardLedgerOutputReferenceScriptLanguage,
 } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  encodeMidgardTxInputCanonicalV1,
+  encodeMidgardTxInputCanonical,
   faultProofStepRedeemerSchema,
   FraudProofComputationThreadRedeemer,
   type MidgardTxInput,
@@ -70,7 +70,7 @@ import {
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -82,18 +82,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { NativeScriptDecodingContractsV1 } from "../../src/native-script-decoding/contracts-v1.js";
-import type { NativeScriptDecodingLedgerTrieHandleV1 } from "../../src/native-script-decoding/evidence-v1.js";
-import { nativeScriptDecodingOutpointKeyV1 } from "../../src/native-script-decoding/evidence-v1.js";
+import type { NativeScriptDecodingContracts } from "../../src/native-script-decoding/contracts-v1.js";
+import type { NativeScriptDecodingLedgerTrieHandle } from "../../src/native-script-decoding/evidence-v1.js";
+import { nativeScriptDecodingOutpointKey } from "../../src/native-script-decoding/evidence-v1.js";
 import {
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
-  type NativeScriptDecodingProverDepsV1,
-  type NativeScriptDecodingProverEventV1,
-  type NativeScriptDecodingProverPolicyV1,
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingProverDeps,
+  type NativeScriptDecodingProverEvent,
+  type NativeScriptDecodingProverPolicy,
 } from "../../src/native-script-decoding/prover-v1.js";
 import {
-  type NativeScriptDecodingStepIndexV1,
-  requireNativeScriptDecodingReferenceScriptV1,
+  type NativeScriptDecodingStepIndex,
+  requireNativeScriptDecodingReferenceScript,
 } from "../../src/native-script-decoding/submit-common-v1.js";
 import {
   type ResolvedProverSigner,
@@ -112,16 +112,16 @@ import {
 } from "../../src/transition-trace/phas.js";
 import {
   encodeData,
-  reconstructDaPayloadV1,
+  reconstructDaPayload,
   type TransitionTraceReconstruction,
 } from "../../src/transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
+import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
-  network as emulatorNetworkV1,
+  makeFaultProofEmulatorHarness,
+  network as emulatorNetwork,
   publishPlainReferenceScriptUtxo,
   registerChunkedVerifyRewardAccount,
   submitSetupTx,
@@ -132,12 +132,12 @@ import {
 // ---------------------------------------------------------------------------
 
 /** The single key hash every fixture native script signs under. */
-export const DECODING_SIGNER_KEY_V1 = Buffer.alloc(28, 0x55);
+export const DECODING_SIGNER_KEY = Buffer.alloc(28, 0x55);
 
-const SIGNATURE_NODE_HEX = `8200581c${DECODING_SIGNER_KEY_V1.toString("hex")}`;
+const SIGNATURE_NODE_HEX = `8200581c${DECODING_SIGNER_KEY.toString("hex")}`;
 
 /** Wrap a payload as the §5.3 versioned tag-0 item (`[0, payload-bytes]`). */
-export const decodingItemFromPayloadV1 = (payload: Buffer): Buffer => {
+export const decodingItemFromPayload = (payload: Buffer): Buffer => {
   const head =
     payload.length <= 23
       ? Buffer.from([0x40 + payload.length])
@@ -157,43 +157,43 @@ export const decodingItemFromPayloadV1 = (payload: Buffer): Buffer => {
  * refuses the fourth token. Two chunks, so every window the plan carries is
  * the mandatory chunk-plus-next shape.
  */
-export const decodingMalformedMultiChunkItemV1 = (): Buffer => {
+export const decodingMalformedMultiChunkItem = (): Buffer => {
   const core = Buffer.from(`820182${SIGNATURE_NODE_HEX}820700`, "hex");
-  return decodingItemFromPayloadV1(
+  return decodingItemFromPayload(
     Buffer.concat([core, Buffer.alloc(4_100 - core.length, 0)]),
   );
 };
 
 /** Maximum field-6 shape: `[item]` is exactly 32,768 bytes. */
-export const decodingMalformedMaximumItemV1 = (): Buffer => {
+export const decodingMalformedMaximumItem = (): Buffer => {
   const core = Buffer.from(`820182${SIGNATURE_NODE_HEX}820700`, "hex");
-  return decodingItemFromPayloadV1(
+  return decodingItemFromPayload(
     Buffer.concat([core, Buffer.alloc(32_759 - core.length, 0)]),
   );
 };
 
 /** `all(sig)`: canonical, four primitive steps, one chunk. */
-export const decodingCanonicalItemV1 = (): Buffer =>
-  decodingItemFromPayloadV1(
+export const decodingCanonicalItem = (): Buffer =>
+  decodingItemFromPayload(
     encodeMidgardNativeScript({
       type: "all",
-      scripts: [{ type: "sig", keyHash: DECODING_SIGNER_KEY_V1 }],
+      scripts: [{ type: "sig", keyHash: DECODING_SIGNER_KEY }],
     }),
   );
 
 /** A wrapper whose language tag is outside {0, 3, 128}: malformed at bind. */
-export const decodingMalformedWrapperItemV1 = (): Buffer =>
+export const decodingMalformedWrapperItem = (): Buffer =>
   Buffer.from("8201410a", "hex");
 
 /** A tag-3 (Plutus) item: the direction-B descriptor contradiction. */
-export const decodingPlutusItemV1 = (): Buffer =>
+export const decodingPlutusItem = (): Buffer =>
   Buffer.from("82034401020304", "hex");
 
 // ---------------------------------------------------------------------------
 // Pre-state ledger trie
 // ---------------------------------------------------------------------------
 
-const LEDGER_OUTPUT_ADDRESS_V1 = Buffer.concat([
+const LEDGER_OUTPUT_ADDRESS = Buffer.concat([
   Buffer.from([0x60]),
   Buffer.alloc(28, 0x99),
 ]);
@@ -201,14 +201,14 @@ const LEDGER_OUTPUT_ADDRESS_V1 = Buffer.concat([
 /** A plain key-hash output, the descriptor's carrier for every fixture. */
 const fixtureOutputCbor = (): Buffer =>
   encodeMidgardTxOutput({
-    address: LEDGER_OUTPUT_ADDRESS_V1,
+    address: LEDGER_OUTPUT_ADDRESS,
     value: { lovelace: 5_000_000n, assets: new Map() },
   });
 
-export type DecodingLedgerFixtureV1 = {
+export type DecodingLedgerFixture = {
   readonly descriptorCbor: string;
   readonly rootHex: string;
-  readonly trie: NativeScriptDecodingLedgerTrieHandleV1;
+  readonly trie: NativeScriptDecodingLedgerTrieHandle;
   readonly outpointKey: Buffer;
 };
 
@@ -218,7 +218,7 @@ export type DecodingLedgerFixtureV1 = {
  * precisely a descriptor whose committed reference-script item the canonical
  * builder would refuse to decode.
  */
-export const buildDecodingLedgerFixtureV1 = async ({
+export const buildDecodingLedgerFixture = async ({
   txIdHex,
   outputIndex,
   referenceScriptItemBytes,
@@ -229,18 +229,18 @@ export const buildDecodingLedgerFixtureV1 = async ({
   readonly outputIndex: number;
   readonly referenceScriptItemBytes: Uint8Array;
   readonly referenceScriptLanguage: Exclude<
-    MidgardLedgerOutputReferenceScriptLanguageV1,
+    MidgardLedgerOutputReferenceScriptLanguage,
     -1
   >;
   readonly siblings?: number;
-}): Promise<DecodingLedgerFixtureV1> => {
+}): Promise<DecodingLedgerFixture> => {
   const outputCbor = fixtureOutputCbor();
-  const base = buildCanonicalMidgardLedgerOutputMaterialV1({
+  const base = buildCanonicalMidgardLedgerOutputMaterial({
     outputIndex,
     outputCbor,
   });
-  const item = buildMidgardBoundedItemV1({
-    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+  const item = buildMidgardBoundedItem({
+    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
     itemIndex: outputIndex,
     bytes: referenceScriptItemBytes,
   });
@@ -251,19 +251,19 @@ export const buildDecodingLedgerFixtureV1 = async ({
     itemCommitment: _itemCommitment,
     ...baseFacts
   } = base.descriptor;
-  const facts: MidgardLedgerOutputCommitmentFactsV1 = {
+  const facts: MidgardLedgerOutputCommitmentFacts = {
     ...baseFacts,
     referenceScriptLanguage,
     referenceScriptHash: Buffer.alloc(28, 0x5a),
     referenceScriptTotalLength: referenceScriptItemBytes.length,
     referenceScriptItemCommitment: item.commitment,
   };
-  const material = buildMidgardLedgerOutputMaterialV1({
+  const material = buildMidgardLedgerOutputMaterial({
     outputIndex,
     outputCbor,
     facts,
   });
-  const outpointKey = nativeScriptDecodingOutpointKeyV1({
+  const outpointKey = nativeScriptDecodingOutpointKey({
     txIdHex,
     outputIndex,
   });
@@ -295,7 +295,7 @@ export const buildDecodingLedgerFixtureV1 = async ({
 // ---------------------------------------------------------------------------
 
 /** A minimal native transaction with the named spend/reference input items. */
-export const decodingSubjectTransactionV1 = ({
+export const decodingSubjectTransaction = ({
   spendInputCbors = [],
   referenceInputCbors = [],
   fee = 0n,
@@ -303,9 +303,9 @@ export const decodingSubjectTransactionV1 = ({
   readonly spendInputCbors?: readonly Buffer[];
   readonly referenceInputCbors?: readonly Buffer[];
   readonly fee?: bigint;
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([...spendInputCbors]),
@@ -344,17 +344,17 @@ const bufferEntries = (entries: readonly SDK.DaPayloadEntry[]) =>
     value: Buffer.from(value, "hex"),
   }));
 
-export type DecodingSubjectSourceV1 =
-  | { readonly kind: "normal"; readonly nativeTx: MidgardNativeTxFullV1 }
+export type DecodingSubjectSource =
+  | { readonly kind: "normal"; readonly nativeTx: MidgardNativeTxFull }
   | {
       readonly kind: "forced";
-      readonly nativeTx: MidgardNativeTxFullV1;
+      readonly nativeTx: MidgardNativeTxFull;
       readonly orderKey: SDK.OutputReference;
-      readonly verdict: SDK.OperatorVerdictV1;
+      readonly verdict: SDK.OperatorVerdict;
     };
 
-export type DecodingBlockFixtureV1 = {
-  readonly header: SDK.HeaderV1;
+export type DecodingBlockFixture = {
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly payloadEnvelopeCbor: Buffer;
   readonly reconstruction: TransitionTraceReconstruction;
@@ -374,7 +374,7 @@ export type DecodingBlockFixtureV1 = {
  * `priorLedgerRoot` as its `pre_utxos_root`, and the matching event→step and
  * validation-trace leaves so `header_v1_is_valid` admits the header.
  */
-export const buildDecodingBlockFixtureV1 = async ({
+export const buildDecodingBlockFixture = async ({
   operatorVkey,
   startTime,
   priorLedgerRoot,
@@ -385,7 +385,7 @@ export const buildDecodingBlockFixtureV1 = async ({
   readonly operatorVkey: string;
   readonly startTime: bigint;
   readonly priorLedgerRoot: string;
-  readonly subject: DecodingSubjectSourceV1;
+  readonly subject: DecodingSubjectSource;
   /**
    * Extra committed L2 transactions, present only to give the header's
    * `transactions_root` more than one leaf: a single-leaf MPF proof has zero
@@ -393,13 +393,11 @@ export const buildDecodingBlockFixtureV1 = async ({
    */
   readonly decoyTransactionCount?: number;
   /** Caller-supplied normal transactions committed beside the subject. */
-  readonly additionalTransactions?: readonly MidgardNativeTxFullV1[];
-}): Promise<DecodingBlockFixtureV1> => {
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(subject.nativeTx);
-  const nativeTxId = computeMidgardNativeTxIdV1(subject.nativeTx).toString(
-    "hex",
-  );
-  const compactCbor = encodeMidgardNativeTxCompactV1(subject.nativeTx.compact);
+  readonly additionalTransactions?: readonly MidgardNativeTxFull[];
+}): Promise<DecodingBlockFixture> => {
+  const canonicalCbor = encodeMidgardNativeTxCanonical(subject.nativeTx);
+  const nativeTxId = computeMidgardNativeTxId(subject.nativeTx).toString("hex");
+  const compactCbor = encodeMidgardNativeTxCompact(subject.nativeTx.compact);
 
   let transactions: SDK.DaPayloadEntry[] = [];
   let transactionPreimages: SDK.DaPayloadEntry[] = [];
@@ -411,10 +409,10 @@ export const buildDecodingBlockFixtureV1 = async ({
 
   if (subject.kind === "normal") {
     // The DA payload and header commit the same exact canonical
-    // `Data(L2TransactionSourceV1)` leaf value.
+    // `Data(L2TransactionSource)` leaf value.
     const source =
-      deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-    const sourceValue: SDK.L2TransactionSourceV1 = {
+      deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+    const sourceValue: SDK.L2TransactionSource = {
       tx_id: nativeTxId,
       source: {
         compact_cbor: source.compactCbor.toString("hex"),
@@ -428,7 +426,7 @@ export const buildDecodingBlockFixtureV1 = async ({
         nativeTxId,
         encodeData(
           sourceValue,
-          SDK.L2TransactionSourceV1Schema as never,
+          SDK.L2TransactionSourceSchema as never,
         ).toString("hex"),
       ],
     ];
@@ -441,14 +439,14 @@ export const buildDecodingBlockFixtureV1 = async ({
     // downstream replay must key off — never the submitted one.
     const source =
       subject.verdict === "ForcedTxValid"
-        ? deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor)
-        : deriveMidgardNativeTxProofSourceV1(
-            adjudicateMidgardNativeTxFullV1Validity(
-              decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor),
+        ? deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor)
+        : deriveMidgardNativeTxProofSource(
+            adjudicateMidgardNativeTxFullValidity(
+              decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor),
               "TxIsInvalid",
             ),
           );
-    const leaf: SDK.ForcedInclusionTxV1 = {
+    const leaf: SDK.ForcedInclusionTx = {
       tx_id: nativeTxId,
       source: {
         compact_cbor: source.compactCbor.toString("hex"),
@@ -460,13 +458,13 @@ export const buildDecodingBlockFixtureV1 = async ({
     };
     const key = encodeData(subject.orderKey, SDK.OutputReference as never);
     forcedTransactions = [
-      entry(key, encodeData(leaf, SDK.ForcedInclusionTxV1 as never)),
+      entry(key, encodeData(leaf, SDK.ForcedInclusionTx as never)),
     ];
     forcedTransactionPreimages = [entry(key, canonicalCbor)];
     eventKey = { ForcedTransactionEventKey: { tx_order_id: subject.orderKey } };
   }
 
-  const normalTransactionsForInclusion: MidgardNativeTxFullV1[] =
+  const normalTransactionsForInclusion: MidgardNativeTxFull[] =
     subject.kind === "normal" ? [subject.nativeTx] : [];
 
   // Decoys are ordinary committed L2 transactions. They exist only so the
@@ -493,14 +491,14 @@ export const buildDecodingBlockFixtureV1 = async ({
   const decoys = [
     ...additionalTransactions,
     ...Array.from({ length: decoyTransactionCount }, (_, index) =>
-      decodingSubjectTransactionV1({ fee: BigInt(5_000 + index) }),
+      decodingSubjectTransaction({ fee: BigInt(5_000 + index) }),
     ),
   ];
   for (const decoy of decoys) {
-    const decoyCanonical = encodeMidgardNativeTxCanonicalV1(decoy);
-    const decoyId = computeMidgardNativeTxIdV1(decoy).toString("hex");
+    const decoyCanonical = encodeMidgardNativeTxCanonical(decoy);
+    const decoyId = computeMidgardNativeTxId(decoy).toString("hex");
     const decoySource =
-      deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(decoyCanonical);
+      deriveMidgardNativeTxProofSourceFromCanonicalCbor(decoyCanonical);
     transactions = [
       ...transactions,
       [
@@ -515,8 +513,8 @@ export const buildDecodingBlockFixtureV1 = async ({
               field_preimage_lengths_cbor:
                 decoySource.fieldPreimageLengthsCbor.toString("hex"),
             },
-          } satisfies SDK.L2TransactionSourceV1,
-          SDK.L2TransactionSourceV1Schema as never,
+          } satisfies SDK.L2TransactionSource,
+          SDK.L2TransactionSourceSchema as never,
         ).toString("hex"),
       ],
     ];
@@ -537,7 +535,7 @@ export const buildDecodingBlockFixtureV1 = async ({
   const validationTraces: SDK.DaPayloadEntry[] = [];
   for (const [stepIndex, event] of events.entries()) {
     const step: SDK.TransitionStep = {
-      schema_version: SDK.TRANSITION_STEP_V1_SCHEMA_VERSION,
+      schema_version: SDK.TRANSITION_STEP_SCHEMA_VERSION,
       step_index: BigInt(stepIndex),
       event_key: event.eventKey,
       phase: event.phase,
@@ -575,8 +573,8 @@ export const buildDecodingBlockFixtureV1 = async ({
             terminal_state_hash: "1c".repeat(32),
             verdict: event.verdict,
             rejection_code_hash: "1d".repeat(32),
-          } satisfies SDK.ValidationTraceDescriptorV1,
-          SDK.ValidationTraceDescriptorV1Schema as never,
+          } satisfies SDK.ValidationTraceDescriptor,
+          SDK.ValidationTraceDescriptorSchema as never,
         ),
       ),
     );
@@ -616,7 +614,7 @@ export const buildDecodingBlockFixtureV1 = async ({
     transitionStepCount: BigInt(events.length),
     validationTraceCount: BigInt(events.length),
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
@@ -635,11 +633,11 @@ export const buildDecodingBlockFixtureV1 = async ({
     minFeeB: 0n,
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
     operatorVkey,
-    protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
+    protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -658,11 +656,11 @@ export const buildDecodingBlockFixtureV1 = async ({
       counts,
     },
   };
-  const payloadEnvelopeCbor = await wrapDaPayloadV1(
-    SDK.encodeDaPayloadV1(payload),
+  const payloadEnvelopeCbor = await wrapDaPayload(
+    SDK.encodeDaPayload(payload),
     { mode: "identity" },
   );
-  const reconstruction = await reconstructDaPayloadV1({
+  const reconstruction = await reconstructDaPayload({
     payloadEnvelopeCbor,
     expectedHeaderHash: headerHash,
     committedHeader: header,
@@ -670,8 +668,8 @@ export const buildDecodingBlockFixtureV1 = async ({
 
   const txInclusions = new Map<string, SubmitStep01TxInclusion>();
   for (const nativeTx of normalTransactionsForInclusion) {
-    const includedId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-    const includedCompact = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const includedId = computeMidgardNativeTxId(nativeTx).toString("hex");
+    const includedCompact = encodeMidgardNativeTxCompact(nativeTx.compact);
     const transactionEntry = transactions.find(([key]) => key === includedId);
     if (transactionEntry === undefined) {
       throw new Error(`Missing retained transaction source for ${includedId}`);
@@ -719,8 +717,8 @@ export const buildDecodingBlockFixtureV1 = async ({
  * regenerated blueprint and registered in its canonical production catalogue
  * category.
  */
-export const makeDecodingEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeDecodingEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realNativeScriptDecoding: true,
       alwaysFraudProofCatalogue: true,
@@ -745,13 +743,13 @@ export const makeDecodingEmulatorHarnessV1 = async () => {
   }
   // The adversarial suite needs a THIRD party — a wallet that is neither the
   // funder nor the prover, and that must never be able to drive or cancel
-  // somebody else's thread. It starts empty; `fundDecodingOutsiderV1` fills
+  // somebody else's thread. It starts empty; `fundDecodingOutsider` fills
   // it once the setup transaction has consumed the harness nonce UTxO.
   const outsider = generateEmulatorAccount({ lovelace: 0n });
   const outsiderLucid = await Lucid(harness.emulator, "Custom");
   outsiderLucid.selectWallet.fromSeed(outsider.seedPhrase);
   const outsiderSigner = resolveProverSigner({
-    network: emulatorNetworkV1,
+    network: emulatorNetwork,
     walletSeedPhrase: outsider.seedPhrase,
   });
   return { ...harness, decoding, category, outsiderLucid, outsiderSigner };
@@ -760,14 +758,14 @@ export const makeDecodingEmulatorHarnessV1 = async () => {
 /**
  * Publishes all six custody validators as reference scripts.
  */
-export const publishDecodingReferenceScriptsV1 = async ({
+export const publishDecodingReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -788,19 +786,19 @@ export const publishDecodingReferenceScriptsV1 = async ({
 // ---------------------------------------------------------------------------
 
 /** The accused outpoint every scenario files, fixed so ids stay readable. */
-export const DECODING_ACCUSED_TX_ID_V1 = "ab".repeat(32);
+export const DECODING_ACCUSED_TX_ID = "ab".repeat(32);
 
-export type DecodingScenarioSourceV1 =
+export type DecodingScenarioSource =
   | { readonly kind: "normal" }
   | {
       readonly kind: "forced";
-      readonly verdict: SDK.OperatorVerdictV1;
+      readonly verdict: SDK.OperatorVerdict;
       readonly orderKey?: SDK.OutputReference;
     };
 
-export type DecodingScenarioV1 = {
-  readonly ledger: DecodingLedgerFixtureV1;
-  readonly block: DecodingBlockFixtureV1;
+export type DecodingScenario = {
+  readonly ledger: DecodingLedgerFixture;
+  readonly block: DecodingBlockFixture;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
   readonly subjectFieldInputs: readonly MidgardTxInput[];
   /** Where the accused outpoint landed after the canonical §5.3 sort. */
@@ -816,7 +814,7 @@ export type DecodingScenarioV1 = {
  * no decoys the accused outpoint sits at ordinal 0 of that field; decoys are
  * sorted in canonically, and `accusedOrdinal` reports where it landed.
  */
-export const setupDecodingScenarioV1 = async ({
+export const setupDecodingScenario = async ({
   harness,
   referenceScriptItemBytes,
   referenceScriptLanguage = 0,
@@ -826,13 +824,13 @@ export const setupDecodingScenarioV1 = async ({
   decoyTransactionCount = 0,
   decoySubjectInputCount = 0,
 }: {
-  readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
+  readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
   readonly referenceScriptItemBytes: Buffer;
   readonly referenceScriptLanguage?: Exclude<
-    MidgardLedgerOutputReferenceScriptLanguageV1,
+    MidgardLedgerOutputReferenceScriptLanguage,
     -1
   >;
-  readonly source: DecodingScenarioSourceV1;
+  readonly source: DecodingScenarioSource;
   readonly accusedSourceKind?: bigint;
   readonly accusedOutputIndex?: number;
   /** Extra committed L2 transactions, so the transactions trie proves in steps. */
@@ -843,16 +841,16 @@ export const setupDecodingScenarioV1 = async ({
    * tier-1 bound and let size alone select tier-2 carriage.
    */
   readonly decoySubjectInputCount?: number;
-}): Promise<DecodingScenarioV1> => {
+}): Promise<DecodingScenario> => {
   const { emulator, funderLucid, contracts, catalogue, nonceUtxo } = harness;
-  const ledger = await buildDecodingLedgerFixtureV1({
-    txIdHex: DECODING_ACCUSED_TX_ID_V1,
+  const ledger = await buildDecodingLedgerFixture({
+    txIdHex: DECODING_ACCUSED_TX_ID,
     outputIndex: accusedOutputIndex,
     referenceScriptItemBytes,
     referenceScriptLanguage,
   });
   const accused: MidgardTxInput = {
-    tx_id: DECODING_ACCUSED_TX_ID_V1,
+    tx_id: DECODING_ACCUSED_TX_ID,
     output_index: BigInt(accusedOutputIndex),
   };
   const subjectFieldInputs = [
@@ -866,8 +864,8 @@ export const setupDecodingScenarioV1 = async ({
     ),
   ].sort((left, right) =>
     Buffer.compare(
-      encodeMidgardTxInputCanonicalV1(left),
-      encodeMidgardTxInputCanonicalV1(right),
+      encodeMidgardTxInputCanonical(left),
+      encodeMidgardTxInputCanonical(right),
     ),
   );
   const accusedOrdinal = subjectFieldInputs.findIndex(
@@ -876,9 +874,9 @@ export const setupDecodingScenarioV1 = async ({
       input.output_index === accused.output_index,
   );
   const subjectFieldCbors = subjectFieldInputs.map(
-    encodeMidgardTxInputCanonicalV1,
+    encodeMidgardTxInputCanonical,
   );
-  const nativeTx = decodingSubjectTransactionV1(
+  const nativeTx = decodingSubjectTransaction(
     accusedSourceKind === 0n
       ? { spendInputCbors: subjectFieldCbors, fee: 1_000n }
       : { referenceInputCbors: subjectFieldCbors, fee: 1_000n },
@@ -888,7 +886,7 @@ export const setupDecodingScenarioV1 = async ({
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
       1,
   );
-  const block = await buildDecodingBlockFixtureV1({
+  const block = await buildDecodingBlockFixture({
     operatorVkey: funderKeyHash,
     startTime,
     priorLedgerRoot: ledger.rootHex,
@@ -929,9 +927,9 @@ export const setupDecodingScenarioV1 = async ({
 // ---------------------------------------------------------------------------
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
-export const DECODING_EMULATOR_PROVER_POLICY_V1: NativeScriptDecodingProverPolicyV1 =
+export const DECODING_EMULATOR_PROVER_POLICY: NativeScriptDecodingProverPolicy =
   {
-    ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS_V1,
+    ...NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
     minSettlementDepth: 0n,
     maturityGuardFactor: 0,
     maxThreadBudgetLovelace: null,
@@ -942,23 +940,23 @@ export const DECODING_EMULATOR_PROVER_POLICY_V1: NativeScriptDecodingProverPolic
  * callback is answered from the fixture, so what the core drives on chain is
  * exactly the committed material.
  */
-export const decodingProverDepsV1 = ({
+export const decodingProverDeps = ({
   harness,
   scenario,
   referenceScriptItemBytes,
   referenceScriptUtxos,
   journal,
 }: {
-  readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>;
-  readonly scenario: DecodingScenarioV1;
+  readonly harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
+  readonly scenario: DecodingScenario;
   /** `null` for the routes that never scan an item (§7.2, contradiction). */
   readonly referenceScriptItemBytes: Uint8Array | null;
-  readonly referenceScriptUtxos?: NativeScriptDecodingProverDepsV1["referenceScriptUtxos"];
-  readonly journal?: (event: NativeScriptDecodingProverEventV1) => void;
-}): NativeScriptDecodingProverDepsV1 => ({
+  readonly referenceScriptUtxos?: NativeScriptDecodingProverDeps["referenceScriptUtxos"];
+  readonly journal?: (event: NativeScriptDecodingProverEvent) => void;
+}): NativeScriptDecodingProverDeps => ({
   lucid: harness.proverLucid,
   blueprint: harness.realBlueprint,
-  network: emulatorNetworkV1,
+  network: emulatorNetwork,
   contracts: harness.decoding,
   category: harness.category,
   catalogue: {
@@ -989,7 +987,7 @@ export const decodingProverDepsV1 = ({
   },
   observations: {},
   journal: journal ?? (() => undefined),
-  policy: DECODING_EMULATOR_PROVER_POLICY_V1,
+  policy: DECODING_EMULATOR_PROVER_POLICY,
   referenceScriptUtxos,
   witnessReferenceScripts: harness.witnessReferenceScripts,
 });
@@ -1005,7 +1003,7 @@ const RawCancelSpendRedeemer =
   RawCancelSpendRedeemerSchema as unknown as RawCancelSpendRedeemer;
 
 /** The thread layout a raw redeemer builder is handed. */
-export type RawDecodingStepLayoutV1 = {
+export type RawDecodingStepLayout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
 };
@@ -1022,7 +1020,7 @@ export type RawDecodingStepLayoutV1 = {
  * operator against a prover who patched their own tooling — the transaction
  * has to be built past those guards. Production code never takes this path.
  */
-export const submitRawDecodingStepV1 = async ({
+export const submitRawDecodingStep = async ({
   lucid,
   contracts,
   signer,
@@ -1036,14 +1034,14 @@ export const submitRawDecodingStepV1 = async ({
   referenceScriptUtxo,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly signer: ResolvedProverSigner;
   readonly stepIndex: number;
   readonly threadUtxo: UTxO;
   readonly threadUnit: string;
   readonly destinationAddress: string;
   readonly nextDatumCbor: string;
-  readonly buildRedeemer: (layout: RawDecodingStepLayoutV1) => string;
+  readonly buildRedeemer: (layout: RawDecodingStepLayout) => string;
   readonly carriageUtxos?: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
@@ -1076,10 +1074,10 @@ export const submitRawDecodingStepV1 = async ({
       `raw decoding step index ${stepIndex.toString()} is invalid`,
     );
   }
-  const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+  const stepReference = requireNativeScriptDecodingReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: stepContract.spendingScriptHash,
-    stepIndex: stepIndex as NativeScriptDecodingStepIndexV1,
+    stepIndex: stepIndex as NativeScriptDecodingStepIndex,
   });
 
   const withReferences = (() => {
@@ -1116,7 +1114,7 @@ export const submitRawDecodingStepV1 = async ({
  * its "only the named prover can cancel" pre-check, so a third party's
  * attempt reaches the validator's own signature demand.
  */
-export const submitRawDecodingCancelV1 = async ({
+export const submitRawDecodingCancel = async ({
   lucid,
   contracts,
   signer,
@@ -1128,7 +1126,7 @@ export const submitRawDecodingCancelV1 = async ({
   computationThreadReferenceUtxo,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly signer: ResolvedProverSigner;
   readonly stepIndex: number;
   readonly threadUtxo: UTxO;
@@ -1176,12 +1174,12 @@ export const submitRawDecodingCancelV1 = async ({
       `raw decoding cancel step index ${stepIndex.toString()} is invalid`,
     );
   }
-  const stepReference = requireNativeScriptDecodingReferenceScriptV1({
+  const stepReference = requireNativeScriptDecodingReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: stepContract.spendingScriptHash,
-    stepIndex: stepIndex as NativeScriptDecodingStepIndexV1,
+    stepIndex: stepIndex as NativeScriptDecodingStepIndex,
   });
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: computationThreadReferenceUtxo,
     label: "raw decoding cancel computation-thread mint",
@@ -1210,8 +1208,8 @@ export const submitRawDecodingCancelV1 = async ({
  * one-shot nonce the contracts are parameterised by, and the setup
  * transaction has to be the one that spends it.
  */
-export const fundDecodingOutsiderV1 = async (
-  harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>,
+export const fundDecodingOutsider = async (
+  harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>,
 ): Promise<void> => {
   // Both of the outsider's addresses are funded. `selectWallet.fromSeed`
   // derives the seed's base address while `resolveProverSigner` derives its
@@ -1240,4 +1238,4 @@ export const fundDecodingOutsiderV1 = async (
  * error — a missing fee input, an unresolvable layout — would otherwise read
  * as a passing security assertion.
  */
-export { expectOnchainRefusalV1 } from "./emulator/expect-onchain-refusal-v1.js";
+export { expectOnchainRefusal } from "./emulator/expect-onchain-refusal-v1.js";

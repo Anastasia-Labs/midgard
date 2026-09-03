@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
@@ -99,9 +99,7 @@ const requestForLane = (
       return {
         txId,
         txCanonicalCbor: deterministicBytes(`${label}:canonical`, 96),
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
-          [],
-        ),
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
         submitSource: "native",
       };
     }

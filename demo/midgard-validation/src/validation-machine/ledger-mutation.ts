@@ -4,12 +4,12 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardMpfProofFoldTraceV1,
-  type MidgardMpfProofFoldTraceV1,
-  parseMidgardMpfProofJsonV1,
+  buildMidgardMpfProofFoldTrace,
+  type MidgardMpfProofFoldTrace,
+  parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
 
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "../ledger-output-descriptor.js";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "../ledger-output-descriptor.js";
 
 export type ValidationMachineLedgerEntry = {
   readonly outRef: Buffer;
@@ -26,7 +26,7 @@ export type ValidationMachineLedgerMutationStep = {
   readonly preRoot: Buffer;
   readonly postRoot: Buffer;
   /** Canonical bounded-frame form consumed by the deployed resolver chain. */
-  readonly proofFoldTrace: MidgardMpfProofFoldTraceV1;
+  readonly proofFoldTrace: MidgardMpfProofFoldTrace;
 };
 
 export type ValidationMachineValueMutationStep = {
@@ -44,7 +44,7 @@ export type ValidationMachineValueMutationStep = {
 export const exactTrieRoot = (trie: Trie): Buffer =>
   trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
 
-export const buildValidationMachineLedgerInsertOpV1 = ({
+export const buildValidationMachineLedgerInsertOp = ({
   key,
   outputCbor,
 }: {
@@ -53,7 +53,7 @@ export const buildValidationMachineLedgerInsertOpV1 = ({
 }): Extract<ValidationMachineLedgerOp, { readonly type: "insert" }> => ({
   type: "insert",
   key: Buffer.from(key),
-  value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  value: buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: key,
     outputCbor,
   }).descriptorCbor,
@@ -71,7 +71,7 @@ export const buildValidationMachineLedgerMutationSteps = async (input: {
   )) {
     await trie.insert(
       entry.outRef,
-      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: entry.outRef,
         outputCbor: entry.output,
       }).descriptorCbor,
@@ -79,14 +79,12 @@ export const buildValidationMachineLedgerMutationSteps = async (input: {
   }
   const steps: ValidationMachineLedgerMutationStep[] = [];
   for (const operation of input.operations) {
-    steps.push(
-      await applyValidationMachineLedgerMutationStepV1(trie, operation),
-    );
+    steps.push(await applyValidationMachineLedgerMutationStep(trie, operation));
   }
   return steps;
 };
 
-export const applyValidationMachineLedgerMutationStepV1 = async (
+export const applyValidationMachineLedgerMutationStep = async (
   trie: Trie,
   operation: ValidationMachineLedgerOp,
 ): Promise<ValidationMachineLedgerMutationStep> => {
@@ -101,10 +99,10 @@ export const applyValidationMachineLedgerMutationStepV1 = async (
     );
   }
   const proof = await trie.prove(operation.key, operation.type === "insert");
-  const proofFoldTrace = buildMidgardMpfProofFoldTraceV1({
+  const proofFoldTrace = buildMidgardMpfProofFoldTrace({
     key: operation.key,
     value: mutationValue,
-    steps: parseMidgardMpfProofJsonV1(proof.toJSON()),
+    steps: parseMidgardMpfProofJson(proof.toJSON()),
   });
   if (operation.type === "delete") {
     await trie.delete(operation.key);

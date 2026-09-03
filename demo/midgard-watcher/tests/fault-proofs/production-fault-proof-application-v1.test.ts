@@ -3,30 +3,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerInputV1,
-  productionWorkflowReadinessReportV1,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1,
+  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunnerInput,
+  workflowReadinessReport,
 } from "@al-ft/midgard-fault-proofs";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  unsafeCreateWatcherFaultProofProductionApplicationForTestV1,
-  WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1,
-  WATCHER_FAULT_PROOF_STARTUP_READINESS_V1,
-  WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-  WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-  type WatcherFaultProofApplicationDependenciesV1,
-  type WatcherFaultProofInfrastructureAuthorityV1,
+  unsafeCreateWatcherFaultProofApplicationForTest,
+  WATCHER_FAULT_PROOF_APPLICATION,
+  WATCHER_FAULT_PROOF_STARTUP_READINESS,
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  WATCHER_MISSING_WORKFLOW_CATEGORIES,
+  type WatcherFaultProofApplicationDependencies,
+  type WatcherFaultProofInfrastructureAuthority,
 } from "../../src/fault-proofs/production-fault-proof-application-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
-import { makeWatcherDeploymentAuthorityFixtureV1 } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
-const AUTHORITY = makeWatcherDeploymentAuthorityFixtureV1();
+const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
 const DEPLOYMENT = AUTHORITY.result.manifestId;
 const HEADER = "ab".repeat(28);
 const PEER_ID = "12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
@@ -40,7 +40,7 @@ const ADDITIONAL_REFERENCE_CONTRACTS = [
   "fraudProofMissingNativeScriptUtxoStep07",
 ] as const;
 const TEST_HISTORY_STORE =
-  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1();
+  unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTest();
 
 const rawConfig = () => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -113,7 +113,7 @@ const rawConfig = () => ({
   },
 });
 
-const infrastructure = (): WatcherFaultProofInfrastructureAuthorityV1 => ({
+const infrastructure = (): WatcherFaultProofInfrastructureAuthority => ({
   manifestPath: MANIFEST_PATH,
   blueprintPath: BLUEPRINT_PATH,
   deploymentInfoPath: DEPLOYMENT_INFO_PATH,
@@ -143,9 +143,9 @@ const infrastructure = (): WatcherFaultProofInfrastructureAuthorityV1 => ({
 
 const invocation = (
   configPath: string,
-  category: ProductionWorkflowAdapterReadinessInputV1["category"],
-  overrides: Partial<ProductionWorkflowAdapterReadinessInputV1> = {},
-): ProductionWorkflowAdapterReadinessInputV1 => ({
+  category: WorkflowAdapterReadinessInput["category"],
+  overrides: Partial<WorkflowAdapterReadinessInput> = {},
+): WorkflowAdapterReadinessInput => ({
   mode: "run",
   category,
   deploymentFingerprint: DEPLOYMENT,
@@ -157,15 +157,15 @@ const invocation = (
 
 const hostileStructuralExecutionInvocation = (
   configPath: string,
-  category: ProductionWorkflowAdapterRunnerInputV1["category"],
-): ProductionWorkflowAdapterRunnerInputV1 =>
+  category: WorkflowAdapterRunnerInput["category"],
+): WorkflowAdapterRunnerInput =>
   ({
     ...invocation(configPath, category),
     decisionDigest: "cd".repeat(32),
     actuationPermit: Object.freeze({
       permitVersion: "midgard-production-workflow-actuation-permit-v1",
     }),
-  }) as unknown as ProductionWorkflowAdapterRunnerInputV1;
+  }) as unknown as WorkflowAdapterRunnerInput;
 
 const transportFactory = () => {
   const stop = vi.fn(async () => undefined);
@@ -179,7 +179,7 @@ const transportFactory = () => {
   return { stop, factory: vi.fn(async () => transport) };
 };
 
-const dependencies = (): WatcherFaultProofApplicationDependenciesV1 => {
+const dependencies = (): WatcherFaultProofApplicationDependencies => {
   const signer: ResolvedProverSigner = {
     source: "test",
     address: "addr_test1vqpzry9x8gf2tvdw0s3jn54khce6mua7l0yp4rx3z9g4zpq0j52c7",
@@ -244,26 +244,23 @@ describe("watcher production fault-proof application V1", () => {
     const transport = transportFactory();
     const deps = dependencies();
     try {
-      const application =
-        unsafeCreateWatcherFaultProofProductionApplicationForTestV1(
-          {
-            deploymentIdentity: AUTHORITY.result,
-            infrastructure: infrastructure(),
-            historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
-            unsafeTransportFactoryForTest: transport.factory,
-          },
-          deps,
-          {
-            MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-            MIDGARD_NODE_ADMIN_KEY: "admin-key",
-          },
-        );
-
-      expect(application.schemaVersion).toBe(
-        WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1,
+      const application = unsafeCreateWatcherFaultProofApplicationForTest(
+        {
+          deploymentIdentity: AUTHORITY.result,
+          infrastructure: infrastructure(),
+          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+          unsafeTransportFactoryForTest: transport.factory,
+        },
+        deps,
+        {
+          MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+          MIDGARD_NODE_ADMIN_KEY: "admin-key",
+        },
       );
+
+      expect(application.schemaVersion).toBe(WATCHER_FAULT_PROOF_APPLICATION);
       expect(application.installedCategories).toEqual(
-        WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+        WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       );
       expect(application.installedCategories).toEqual([
         "doubleSpend",
@@ -314,7 +311,7 @@ describe("watcher production fault-proof application V1", () => {
         "scriptIntegrityHashMismatch",
         "distinctAssetAccumulationLimit",
       ]);
-      expect(WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1).toEqual([
+      expect(WATCHER_MISSING_WORKFLOW_CATEGORIES).toEqual([
         "transitionTrace",
         "validationTraceDispute",
         "nativeScriptDecoding",
@@ -324,8 +321,8 @@ describe("watcher production fault-proof application V1", () => {
         "mintAuthorization",
       ]);
       expect(
-        productionWorkflowReadinessReportV1(
-          WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+        workflowReadinessReport(
+          WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
           application.applicationRegistry,
         ),
       ).toMatchObject({
@@ -336,13 +333,13 @@ describe("watcher production fault-proof application V1", () => {
         missingCategoryCount: 0,
       });
 
-      for (const category of WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1) {
+      for (const category of WATCHER_INSTALLED_WORKFLOW_CATEGORIES) {
         const readiness = await application.assertStartupReady(
           invocation(configPath, category),
         );
         expect(readiness).toEqual(
           expect.objectContaining({
-            schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS_V1,
+            schemaVersion: WATCHER_FAULT_PROOF_STARTUP_READINESS,
             ready: true,
             category,
             deploymentFingerprint: DEPLOYMENT,
@@ -1081,7 +1078,7 @@ describe("watcher production fault-proof application V1", () => {
           ),
         );
       }
-      for (const category of WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1) {
+      for (const category of WATCHER_MISSING_WORKFLOW_CATEGORIES) {
         await expect(
           application.assertStartupReady(invocation(configPath, category)),
         ).rejects.toThrow(
@@ -1105,7 +1102,7 @@ describe("watcher production fault-proof application V1", () => {
 
   it("fails closed on application/category, deployment, authority, and secret substitution", async () => {
     expect(() =>
-      unsafeCreateWatcherFaultProofProductionApplicationForTestV1(
+      unsafeCreateWatcherFaultProofApplicationForTest(
         {
           deploymentIdentity: AUTHORITY.result,
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
@@ -1119,7 +1116,7 @@ describe("watcher production fault-proof application V1", () => {
     ).toThrow("unknown or missing fields");
 
     expect(() =>
-      unsafeCreateWatcherFaultProofProductionApplicationForTestV1(
+      unsafeCreateWatcherFaultProofApplicationForTest(
         {
           deploymentIdentity: AUTHORITY.result,
           historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
@@ -1150,17 +1147,16 @@ describe("watcher production fault-proof application V1", () => {
     const configPath = join(directory, "watcher.json");
     await writeFile(configPath, JSON.stringify(rawConfig()));
     try {
-      const noSecrets =
-        unsafeCreateWatcherFaultProofProductionApplicationForTestV1(
-          {
-            deploymentIdentity: AUTHORITY.result,
-            historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
-            infrastructure: infrastructure(),
-            unsafeTransportFactoryForTest: transportFactory().factory,
-          },
-          dependencies(),
-          {},
-        );
+      const noSecrets = unsafeCreateWatcherFaultProofApplicationForTest(
+        {
+          deploymentIdentity: AUTHORITY.result,
+          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+          infrastructure: infrastructure(),
+          unsafeTransportFactoryForTest: transportFactory().factory,
+        },
+        dependencies(),
+        {},
+      );
       await expect(
         noSecrets.assertStartupReady(
           invocation(configPath, "doubleSpend", {
@@ -1169,20 +1165,19 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).rejects.toThrow("watcher prover wallet secret source is empty");
 
-      const admitted =
-        unsafeCreateWatcherFaultProofProductionApplicationForTestV1(
-          {
-            deploymentIdentity: AUTHORITY.result,
-            historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
-            infrastructure: infrastructure(),
-            unsafeTransportFactoryForTest: transportFactory().factory,
-          },
-          dependencies(),
-          {
-            MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
-            MIDGARD_NODE_ADMIN_KEY: "admin-key",
-          },
-        );
+      const admitted = unsafeCreateWatcherFaultProofApplicationForTest(
+        {
+          deploymentIdentity: AUTHORITY.result,
+          historicalNativeScriptCheckpointStore: TEST_HISTORY_STORE,
+          infrastructure: infrastructure(),
+          unsafeTransportFactoryForTest: transportFactory().factory,
+        },
+        dependencies(),
+        {
+          MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
+          MIDGARD_NODE_ADMIN_KEY: "admin-key",
+        },
+      );
       await expect(
         admitted.assertStartupReady(
           invocation(configPath, "doubleSpend", {

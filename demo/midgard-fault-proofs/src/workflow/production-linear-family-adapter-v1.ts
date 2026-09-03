@@ -1,72 +1,72 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type {
   StateQueueMutationLease,
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
-import type { CompleteCanonicalReplayContextV1 } from "./complete-replay-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
+import type { CompleteCanonicalReplayContext } from "./complete-replay-v1.js";
 import {
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
-  type FraudProofFamilyL1ObservationPortV1,
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
-import type { JournalJsonObjectV1 } from "./journal-v1.js";
+import type { JournalJsonObject } from "./journal-v1.js";
 import type {
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowPreflightV1,
-  FraudProofWorkflowReferenceScriptV1,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowReferenceScript,
 } from "./orchestrator-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
 } from "./orchestrator-v1.js";
-import type { ProductionLinearFamilyCategoryV1 } from "./production-linear-family-spec-v1.js";
+import type { LinearFamilyCategory } from "./production-linear-family-spec-v1.js";
 import {
-  productionLinearFamilyObservationV1,
-  reconcileProductionLinearFamilyActionV1,
+  linearFamilyObservation,
+  reconcileLinearFamilyAction,
 } from "./production-linear-family-state-v1.js";
 import {
-  bindProductionWorkflowPreflightTransactionV1,
-  LOCAL_UPLC_EVALUATOR_V1,
-  type LocallyEvaluatedTransactionV1,
-  requireReferenceOnlyScriptWitnessesV1,
-  submitCapturedTransactionV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  bindWorkflowPreflightTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1 =
+export const LINEAR_FAMILY_TRANSACTION_PORT =
   "midgard-production-linear-family-transaction-port-v1" as const;
 
-export type ProductionLinearFamilyCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type LinearFamilyCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   /** Present only when descendant removal acquired the shared queue fence. */
   mutationLease?: StateQueueMutationLease;
 }>;
 
-export interface ProductionLinearFamilyTransactionPortV1<
-  Category extends ProductionLinearFamilyCategoryV1,
+export interface LinearFamilyTransactionPort<
+  Category extends LinearFamilyCategory,
 > {
-  readonly portVersion: typeof PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1;
+  readonly portVersion: typeof LINEAR_FAMILY_TRANSACTION_PORT;
   readonly category: Category;
   /** Pure public-evidence preparation; no operator file/API input. */
   prepare(input: {
-    readonly evidence: CanonicalBlockEvidenceV1;
-    readonly replayContext?: CompleteCanonicalReplayContextV1;
+    readonly evidence: CanonicalBlockEvidence;
+    readonly replayContext?: CompleteCanonicalReplayContext;
     readonly classification: Extract<
-      CanonicalBlockClassificationV1,
+      CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     > & { readonly category: Category };
-  }): Promise<JournalJsonObjectV1>;
+  }): Promise<JournalJsonObject>;
   /**
    * Invokes the exact family builder through its pre-submit boundary. The
    * returned body has passed local UPLC and has not reached provider I/O.
    */
   capture(input: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-  }): Promise<ProductionLinearFamilyCapturedActionV1>;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<LinearFamilyCapturedAction>;
 }
 
 const TX_HASH = /^[0-9a-f]{64}$/u;
@@ -81,8 +81,8 @@ const assertExactCurrentAction = ({
   requested,
   category,
 }: {
-  readonly expected: ReturnType<typeof productionLinearFamilyObservationV1>;
-  readonly requested: FraudProofWorkflowActionV1;
+  readonly expected: ReturnType<typeof linearFamilyObservation>;
+  readonly requested: FraudProofWorkflowAction;
   readonly category: FraudProofCatalogueCategoryName;
 }): void => {
   if (
@@ -99,9 +99,9 @@ const admitReferenceScripts = ({
   transaction,
   category,
 }: {
-  readonly transaction: LocallyEvaluatedTransactionV1;
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly category: FraudProofCatalogueCategoryName;
-}): readonly FraudProofWorkflowReferenceScriptV1[] => {
+}): readonly FraudProofWorkflowReferenceScript[] => {
   if (!TX_HASH.test(transaction.txHash)) {
     throw new Error(`${category} preflight returned a malformed body hash`);
   }
@@ -113,12 +113,12 @@ const admitReferenceScripts = ({
       `${category} production transaction did not use published reference scripts`,
     );
   }
-  requireReferenceOnlyScriptWitnessesV1({
+  requireReferenceOnlyScriptWitnesses({
     transaction,
     label: `${category} production transaction`,
   });
   const referenceInputs = new Set(
-    workflowTransactionReferenceInputOutRefsV1(transaction.signed),
+    workflowTransactionReferenceInputOutRefs(transaction.signed),
   );
   const roles = new Set<string>();
   const outRefs = new Set<string>();
@@ -156,18 +156,18 @@ const preflightOf = ({
   transaction,
   category,
 }: {
-  readonly action: FraudProofWorkflowActionV1;
-  readonly transaction: LocallyEvaluatedTransactionV1;
+  readonly action: FraudProofWorkflowAction;
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly category: FraudProofCatalogueCategoryName;
-}): FraudProofWorkflowPreflightV1 =>
-  bindProductionWorkflowPreflightTransactionV1(
+}): FraudProofWorkflowPreflight =>
+  bindWorkflowPreflightTransaction(
     {
       actionId: action.actionId,
       txHash: transaction.txHash,
       scriptExecution: "reference_scripts",
       localUplcEvaluation: {
         status: "passed",
-        evaluator: LOCAL_UPLC_EVALUATOR_V1,
+        evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: admitReferenceScripts({ transaction, category }),
     },
@@ -179,12 +179,12 @@ const cacheKey = (workflowId: string, actionId: string): string =>
 
 const mutationLeaseRecovery = (
   lease: StateQueueMutationLease,
-): JournalJsonObjectV1 => ({
+): JournalJsonObject => ({
   stateQueueMutationLease: { token: lease.token, source: lease.source },
 });
 
 const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObjectV1 | undefined,
+  recovery: JournalJsonObject | undefined,
 ): { readonly token: string; readonly source: string } | undefined => {
   if (recovery === undefined) return undefined;
   const value = recovery.stateQueueMutationLease;
@@ -211,7 +211,7 @@ const parseMutationLeaseRecovery = (
   return { token: record.token, source: record.source };
 };
 
-const requiresMutationLease = (action: FraudProofWorkflowActionV1): boolean =>
+const requiresMutationLease = (action: FraudProofWorkflowAction): boolean =>
   action.input.stage === "remove" &&
   action.input.requiresMutationLease === true;
 
@@ -220,8 +220,8 @@ const requiresMutationLease = (action: FraudProofWorkflowActionV1): boolean =>
  * factory is intentionally not a production-runner admission boundary: a
  * fixed-category manifest-bound factory must supply the actual builder port.
  */
-export const createProductionLinearFamilyWorkflowAdapterV1 = <
-  Category extends ProductionLinearFamilyCategoryV1,
+export const createLinearFamilyWorkflowAdapter = <
+  Category extends LinearFamilyCategory,
 >({
   category,
   l1,
@@ -229,25 +229,25 @@ export const createProductionLinearFamilyWorkflowAdapterV1 = <
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly category: Category;
-  readonly l1: FraudProofFamilyL1ObservationPortV1<Category>;
-  readonly transactions: ProductionLinearFamilyTransactionPortV1<Category>;
+  readonly l1: FraudProofFamilyL1ObservationPort<Category>;
+  readonly transactions: LinearFamilyTransactionPort<Category>;
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}): FraudProofFamilyWorkflowAdapterV1 => {
+}): FraudProofFamilyWorkflowAdapter => {
   if (
-    l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1 ||
+    l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT ||
     l1.category !== category ||
-    transactions.portVersion !== PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1 ||
+    transactions.portVersion !== LINEAR_FAMILY_TRANSACTION_PORT ||
     transactions.category !== category
   ) {
     throw new Error(`${category} linear workflow ports changed identity`);
   }
-  const prepared = new Map<string, ProductionLinearFamilyCapturedActionV1>();
+  const prepared = new Map<string, LinearFamilyCapturedAction>();
   const leaseByTxHash = new Map<string, StateQueueMutationLease>();
   const current = async (headerHash: string) => {
     const observed = await l1.observe({ headerHash });
     return {
       observed,
-      workflow: productionLinearFamilyObservationV1({
+      workflow: linearFamilyObservation({
         category,
         headerHash,
         provenance: observed.provenance,
@@ -256,10 +256,10 @@ export const createProductionLinearFamilyWorkflowAdapterV1 = <
     };
   };
 
-  const adapter: FraudProofFamilyWorkflowAdapterV1 = {
-    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category,
-    safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async ({ evidence, replayContext, classification }) => {
       if (classification.category !== category) {
         throw new Error(
@@ -270,7 +270,7 @@ export const createProductionLinearFamilyWorkflowAdapterV1 = <
         evidence,
         ...(replayContext === undefined ? {} : { replayContext }),
         classification: classification as Extract<
-          CanonicalBlockClassificationV1,
+          CanonicalBlockClassification,
           { readonly decision: "fault_detected" }
         > & { readonly category: Category },
       });
@@ -367,7 +367,7 @@ export const createProductionLinearFamilyWorkflowAdapterV1 = <
         }
         return {
           kind: "submitted",
-          txHash: await submitCapturedTransactionV1(captured.transaction),
+          txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);
@@ -409,7 +409,7 @@ export const createProductionLinearFamilyWorkflowAdapterV1 = <
       const observed = await l1.observe({
         headerHash,
       });
-      const result = await reconcileProductionLinearFamilyActionV1({
+      const result = await reconcileLinearFamilyAction({
         category,
         headerHash,
         action,

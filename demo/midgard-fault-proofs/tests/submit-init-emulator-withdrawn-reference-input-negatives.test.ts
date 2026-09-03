@@ -1,4 +1,4 @@
-import { encodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -16,21 +16,21 @@ import {
   submitWithdrawnReferenceInputStep02,
   submitWithdrawnReferenceInputStep03,
 } from "../src/withdrawn-reference-input/index.js";
-import { expectOnchainRefusalV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
-  makeWithdrawnReferenceInputEmulatorHarnessV1,
-  publishWithdrawnReferenceInputReferenceScriptsV1,
-  setupWithdrawnReferenceInputScenarioV1,
-  submitRawWithdrawnReferenceInputCancelV1,
-  submitRawWithdrawnReferenceInputStep02V1,
+  makeWithdrawnReferenceInputEmulatorHarness,
+  publishWithdrawnReferenceInputReferenceScripts,
+  setupWithdrawnReferenceInputScenario,
+  submitRawWithdrawnReferenceInputCancel,
+  submitRawWithdrawnReferenceInputStep02,
 } from "./support/withdrawn-reference-input-emulator-v1.js";
 
 describe("withdrawn-reference-input cancel, restart, resume and outsider negatives", () => {
   it("cancels at every step, restarts after each cancel, and resumes mid-thread", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const scenario = await setupWithdrawnReferenceInputScenarioV1({ harness });
-    const refs = await publishWithdrawnReferenceInputReferenceScriptsV1({
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const scenario = await setupWithdrawnReferenceInputScenario({ harness });
+    const refs = await publishWithdrawnReferenceInputReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -134,9 +134,9 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
   }, 600_000);
 
   it("prevents an outsider from taking over or cancelling the prover's thread", async () => {
-    const harness = await makeWithdrawnReferenceInputEmulatorHarnessV1();
-    const scenario = await setupWithdrawnReferenceInputScenarioV1({ harness });
-    const refs = await publishWithdrawnReferenceInputReferenceScriptsV1({
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const scenario = await setupWithdrawnReferenceInputScenario({ harness });
+    const refs = await publishWithdrawnReferenceInputReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
@@ -228,23 +228,23 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       },
       SDK.WithdrawnReferenceInputStep03Datum,
     );
-    const opening: SDK.FieldOpeningV1 = {
+    const opening: SDK.FieldOpening = {
       BodyFieldOpening: {
         native_tx_compact_cbor:
           scenario.prepared.txInclusion.nativeTxCompactCbor,
         carriage: {
           Inline: {
-            preimage: encodeMidgardFieldPreimageV1(
+            preimage: encodeMidgardFieldPreimage(
               scenario.prepared.referenceInputs.map((input) =>
-                SDK.encodeMidgardTxInputCanonicalV1(input),
+                SDK.encodeMidgardTxInputCanonical(input),
               ),
             ).toString("hex"),
           },
         },
       },
     };
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputStep02V1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputStep02({
         lucid: outsiderLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -268,8 +268,8 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         referenceScriptUtxo: refs[1],
       }),
     );
-    await expectOnchainRefusalV1(() =>
-      submitRawWithdrawnReferenceInputCancelV1({
+    await expectOnchainRefusal(() =>
+      submitRawWithdrawnReferenceInputCancel({
         lucid: outsiderLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,

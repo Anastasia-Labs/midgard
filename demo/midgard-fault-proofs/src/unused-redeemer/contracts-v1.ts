@@ -7,7 +7,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const UNUSED_REDEEMER_BLUEPRINT_TITLES_V1 = Object.freeze([
+export const UNUSED_REDEEMER_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/unused_redeemer/step_01.main.spend",
   "fraud_proofs/unused_redeemer/step_02.main.spend",
   "fraud_proofs/unused_redeemer/step_02a.main.spend",
@@ -18,24 +18,24 @@ export const UNUSED_REDEEMER_BLUEPRINT_TITLES_V1 = Object.freeze([
   "fraud_proofs/unused_redeemer/step_05.main.spend",
   "fraud_proofs/unused_redeemer/step_06.main.spend",
 ] as const);
-export type UnusedRedeemerStepContractV1 = Readonly<{
+export type UnusedRedeemerStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type UnusedRedeemerContractsV1 = Readonly<{
+export type UnusedRedeemerContracts = Readonly<{
   steps: readonly [
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
-    UnusedRedeemerStepContractV1,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
+    UnusedRedeemerStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -56,7 +56,7 @@ type Blueprint = Readonly<{
     parameters?: readonly unknown[];
   }>[];
 }>;
-export const applyUnusedRedeemerScriptsV1 = ({
+export const applyUnusedRedeemerScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -70,9 +70,9 @@ export const applyUnusedRedeemerScriptsV1 = ({
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
-}): UnusedRedeemerContractsV1["steps"] => {
+}): UnusedRedeemerContracts["steps"] => {
   const apply = (index: number, parameters: readonly Data[]) => {
-    const blueprintTitle = UNUSED_REDEEMER_BLUEPRINT_TITLES_V1[index]!;
+    const blueprintTitle = UNUSED_REDEEMER_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import type { SpendInputSignerMissingEvidenceV1 } from "./spend-input-signer-missing-v1.js";
+import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing-v1.js";
 
-export const SPEND_INPUT_SIGNER_STAGES_V1 = [
+export const SPEND_INPUT_SIGNER_STAGES = [
   "none",
   "step01",
   "step02",
@@ -14,9 +14,8 @@ export const SPEND_INPUT_SIGNER_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type SpendInputSignerStageV1 =
-  (typeof SPEND_INPUT_SIGNER_STAGES_V1)[number];
-export type SpendInputSignerActionV1 =
+export type SpendInputSignerStage = (typeof SPEND_INPUT_SIGNER_STAGES)[number];
+export type SpendInputSignerAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -26,39 +25,39 @@ export type SpendInputSignerActionV1 =
   | "cancel"
   | "removeDescendants"
   | "done";
-type SubmitAction = Exclude<SpendInputSignerActionV1, "done">;
+type SubmitAction = Exclude<SpendInputSignerAction, "done">;
 
-export type SpendInputSignerJournalEntryV1 = Readonly<{
+export type SpendInputSignerJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  sourceStage: SpendInputSignerStageV1;
-  targetStage: SpendInputSignerStageV1;
+  sourceStage: SpendInputSignerStage;
+  targetStage: SpendInputSignerStage;
   action: SubmitAction;
   phase: "intent" | "submitted" | "confirmed";
   txHash: string;
 }>;
-export interface SpendInputSignerJournalV1 {
-  load(identity: string): Promise<readonly SpendInputSignerJournalEntryV1[]>;
-  append(entry: SpendInputSignerJournalEntryV1): Promise<void>;
+export interface SpendInputSignerJournal {
+  load(identity: string): Promise<readonly SpendInputSignerJournalEntry[]>;
+  append(entry: SpendInputSignerJournalEntry): Promise<void>;
 }
-export interface SpendInputSignerActuatorV1 {
-  observe(identity: string): Promise<SpendInputSignerStageV1>;
+export interface SpendInputSignerActuator {
+  observe(identity: string): Promise<SpendInputSignerStage>;
   build(input: {
     readonly action: SubmitAction;
-    readonly evidence: SpendInputSignerMissingEvidenceV1;
+    readonly evidence: SpendInputSignerMissingEvidence;
     readonly lease?: StateQueueMutationLeaseCoordinator;
   }): Promise<
     Readonly<{
       txHash: string;
-      targetStage: SpendInputSignerStageV1;
+      targetStage: SpendInputSignerStage;
       submit(): Promise<string>;
     }>
   >;
   transactionConfirmed(txHash: string): Promise<boolean>;
 }
 
-export const spendInputSignerWorkflowEvidenceIdentityV1 = (
-  evidence: SpendInputSignerMissingEvidenceV1,
+export const spendInputSignerWorkflowEvidenceIdentity = (
+  evidence: SpendInputSignerMissingEvidence,
 ): string =>
   createHash("sha256")
     .update(
@@ -82,9 +81,9 @@ export const spendInputSignerWorkflowEvidenceIdentityV1 = (
     )
     .digest("hex");
 
-export const nextSpendInputSignerActionV1 = (
-  stage: SpendInputSignerStageV1,
-): SpendInputSignerActionV1 => {
+export const nextSpendInputSignerAction = (
+  stage: SpendInputSignerStage,
+): SpendInputSignerAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -108,8 +107,8 @@ export const nextSpendInputSignerActionV1 = (
 
 const targetFor = (
   action: SubmitAction,
-  claimed: SpendInputSignerStageV1,
-): SpendInputSignerStageV1 => {
+  claimed: SpendInputSignerStage,
+): SpendInputSignerStage => {
   switch (action) {
     case "submitInit":
       return "step01";
@@ -133,8 +132,8 @@ const targetFor = (
 };
 
 const pendingIntent = (
-  entries: readonly SpendInputSignerJournalEntryV1[],
-): SpendInputSignerJournalEntryV1 | undefined =>
+  entries: readonly SpendInputSignerJournalEntry[],
+): SpendInputSignerJournalEntry | undefined =>
   [...entries]
     .reverse()
     .find(
@@ -151,18 +150,18 @@ const pendingIntent = (
 
 /** Exact-signed-hash durable transition loop. The concrete production actuator
  * is package-owned; this narrow port exists only to test crash boundaries. */
-export const runSpendInputSignerMissingWorkflowV1 = async ({
+export const runSpendInputSignerMissingWorkflow = async ({
   evidence,
   journal,
   actuator,
   removalLease,
 }: {
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
-  readonly journal: SpendInputSignerJournalV1;
-  readonly actuator: SpendInputSignerActuatorV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
+  readonly journal: SpendInputSignerJournal;
+  readonly actuator: SpendInputSignerActuator;
   readonly removalLease?: StateQueueMutationLeaseCoordinator;
-}): Promise<SpendInputSignerStageV1> => {
-  const identity = spendInputSignerWorkflowEvidenceIdentityV1(evidence);
+}): Promise<SpendInputSignerStage> => {
+  const identity = spendInputSignerWorkflowEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     if (
@@ -193,7 +192,7 @@ export const runSpendInputSignerMissingWorkflowV1 = async ({
       continue;
     }
     const observed = await actuator.observe(identity);
-    const action = nextSpendInputSignerActionV1(observed);
+    const action = nextSpendInputSignerAction(observed);
     if (action === "done") return observed;
     if (action === "removeDescendants" && removalLease === undefined)
       throw new Error(
@@ -208,7 +207,7 @@ export const runSpendInputSignerMissingWorkflowV1 = async ({
       throw new Error(
         "spendInputSignerMissing signed transaction hash is invalid",
       );
-    const intent: SpendInputSignerJournalEntryV1 = {
+    const intent: SpendInputSignerJournalEntry = {
       sequence: entries.length,
       identity,
       sourceStage: observed,

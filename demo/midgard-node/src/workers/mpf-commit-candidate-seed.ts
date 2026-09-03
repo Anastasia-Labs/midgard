@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { inspect } from "node:util";
 
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { Effect } from "effect";
 
@@ -19,10 +19,10 @@ import { sha256Hex } from "../sha256.js";
 import { batchProgram, breakDownTx } from "../utils.js";
 import { decodeCanonicalProbeRow } from "./mpf-engine-probe-corpus.js";
 import {
-  decodeArchitectureGCommitCandidateSeedInputV1,
-  decodeArchitectureGCorpusFundingV1,
+  decodeArchitectureGCommitCandidateSeedInput,
+  decodeArchitectureGCorpusFunding,
   toJsonSafeCount,
-  validateArchitectureGCommitCandidateSeedResultV1,
+  validateArchitectureGCommitCandidateSeedResult,
 } from "./utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
@@ -37,7 +37,7 @@ const outrefCbor = (label: string): Buffer => {
   // The §5.3 field-0/1 item encoding — `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`,
   // fixed 38 bytes — matching on-chain `ledger_outref_key`, not CML's
   // minimal-index `TransactionInput` CBOR.
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: hexToBytes(match[1]!, { fieldName: "funding outref txHash" }),
     outputIndex: Number(match[2]!),
   });
@@ -45,13 +45,13 @@ const outrefCbor = (label: string): Buffer => {
 
 const loadInput = async (): Promise<{
   readonly input: ReturnType<
-    typeof decodeArchitectureGCommitCandidateSeedInputV1
+    typeof decodeArchitectureGCommitCandidateSeedInput
   >;
   readonly rows: readonly { readonly txHash: string; readonly cbor: Buffer }[];
   readonly funding: readonly MempoolLedgerDB.EntryNoTimeStamp[];
 }> => {
   if (inputPath.length === 0) throw new Error("Missing candidate seed input");
-  const input = decodeArchitectureGCommitCandidateSeedInputV1(
+  const input = decodeArchitectureGCommitCandidateSeedInput(
     JSON.parse(await readFile(inputPath, "utf8")),
   );
   const corpusBytes = await readFile(input.corpusSlicePath);
@@ -78,7 +78,7 @@ const loadInput = async (): Promise<{
       `Candidate seed expected ${input.expectedTransactionCount.toString()} rows, got ${rows.length.toString()}`,
     );
   }
-  const fundingMap = decodeArchitectureGCorpusFundingV1({
+  const fundingMap = decodeArchitectureGCorpusFunding({
     value: JSON.parse(fundingBytes.toString("utf8")),
     expectedCorpusSha256: input.phase1FormalBinding.corpus.corpusSha256,
     expectedSliceSha256: input.corpusSliceSha256,
@@ -207,7 +207,7 @@ void (async () => {
     Effect.provide(NodeConfig.layer),
   );
   const result = await Effect.runPromise(program);
-  const artifact = validateArchitectureGCommitCandidateSeedResultV1({
+  const artifact = validateArchitectureGCommitCandidateSeedResult({
     value: {
       schemaVersion: "midgard-architecture-g-commit-candidate-seed-result-v1",
       databaseName,

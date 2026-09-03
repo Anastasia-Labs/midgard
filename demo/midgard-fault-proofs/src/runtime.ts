@@ -419,7 +419,7 @@ export const requireMatchingScriptHash = ({
  * step's own deployed spending-script hash — a divergence would read a witness
  * that does not authorize the spend.
  */
-export const requireFaultProofStepReferenceScriptV1 = ({
+export const requireFaultProofStepReferenceScript = ({
   utxo,
   expectedScriptHash,
   label,

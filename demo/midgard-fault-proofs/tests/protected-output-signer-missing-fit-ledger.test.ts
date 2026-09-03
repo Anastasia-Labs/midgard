@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const lifecycle = "318 address witnesses; three-chunk Certified field 7";
 const measurements = [
@@ -42,7 +42,7 @@ const measurements = [
 
 describe("protectedOutputSignerMissing signed Van Rossem fit ledger", () => {
   it("reproduces positive byte, memory, CPU and publication-reserve margins", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "protectedOutputSignerMissing:0000002b:testnet",
       blueprintSha256:
         "61ec67157434a1904ddac0a355337a1656d1ef62448744fa2856d0a1aa1602cb",

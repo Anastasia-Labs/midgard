@@ -1,14 +1,14 @@
 import {
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import type { DeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {
@@ -73,8 +73,8 @@ export type LucidMidgardConfigSnapshot = {
   readonly apiVersion: number;
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
-  readonly consensusProfile: MidgardConsensusProfileV1;
-  readonly deploymentMarker?: DeploymentMarkerV1;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly deploymentMarker?: DeploymentMarker;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
@@ -195,7 +195,7 @@ export const cloneProtocolInfo = (
   return {
     ...common,
     apiVersion: 1,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     ...(info.deploymentMarker === undefined
       ? {}
       : { deploymentMarker: { ...info.deploymentMarker } }),
@@ -320,7 +320,7 @@ export const validateProtocolInfo = (
       "currentSlot must be a non-negative bigint",
     );
   }
-  if (!isMidgardConsensusProfileV1(info.consensusProfile)) {
+  if (!isMidgardConsensusProfile(info.consensusProfile)) {
     throw new ProviderCapabilityError(
       "/protocol-info",
       "Provider consensus profile does not match the compiled V1 profile",
@@ -392,11 +392,11 @@ export const validateProtocolInfo = (
     !Number.isSafeInteger(info.submissionLimits.maxSubmitTxCborBytes) ||
     info.submissionLimits.maxSubmitTxCborBytes <= 0 ||
     info.submissionLimits.maxSubmitTxCborBytes >
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+      MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes
   ) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      `submissionLimits.maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString()}`,
+      `submissionLimits.maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes.toString()}`,
     );
   }
   if (
@@ -411,7 +411,7 @@ export const validateProtocolInfo = (
       "validation profile must be explicit and non-authoritative locally",
     );
   }
-  if (info.midgardNativeTxVersion !== Number(MIDGARD_NATIVE_TX_V1_VERSION)) {
+  if (info.midgardNativeTxVersion !== Number(MIDGARD_NATIVE_TX_VERSION)) {
     throw new ProviderCapabilityError(
       "/protocol-info",
       "Provider Midgard native transaction version mismatch",

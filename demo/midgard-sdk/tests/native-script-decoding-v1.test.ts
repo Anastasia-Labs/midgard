@@ -19,19 +19,19 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-  NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND_V1,
-  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
-  NativeScriptDecodingBindStateV1,
-  nativeScriptDecodingBoundDescriptorStateV1,
-  nativeScriptDecodingOpenedSubjectStateV1,
-  nativeScriptDecodingPreBindScanStateV1,
-  type NativeScriptDecodingScanThreadStateV1,
-  NativeScriptDecodingScanThreadStateV1 as ScanThreadStateV1Type,
+  NATIVE_SCRIPT_DECODING_CLASS_PENDING,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+  NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND,
+  NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
+  NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
+  NativeScriptDecodingBindState,
+  nativeScriptDecodingBoundDescriptorState,
+  nativeScriptDecodingOpenedSubjectState,
+  nativeScriptDecodingPreBindScanState,
+  type NativeScriptDecodingScanThreadState,
+  NativeScriptDecodingScanThreadState as ScanThreadStateType,
   NativeScriptDecodingStep01Args,
   NativeScriptDecodingStep02Args,
   NativeScriptDecodingStep03AdvanceOrCloseArgs,
@@ -39,9 +39,9 @@ import {
   NativeScriptDecodingStep03BindDescriptorArgs,
   NativeScriptDecodingStep03OpenSubjectArgs,
   NativeScriptDecodingStep04Args,
-  nativeScriptDecodingThreadTokenAssetNameV1,
+  nativeScriptDecodingThreadTokenAssetName,
 } from "../src/fraud-proof/native-script-decoding-v1.js";
-import type { EventKey, HeaderV1 } from "../src/ledger-state.js";
+import type { EventKey, Header } from "../src/ledger-state.js";
 
 // ## Fixture constants (twins of `thread_fixture_v1.ak`)
 
@@ -73,25 +73,25 @@ const eventToStepPhasRoot =
 const transitionStepPhasRoot =
   "388fc3299df4f11afdf6101679c3e07625cd874e4566bbea1fc8fe14e4119f45";
 
-const preBindState = nativeScriptDecodingPreBindScanStateV1({
-  direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  sourceKind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL_V1,
+const preBindState = nativeScriptDecodingPreBindScanState({
+  direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
+  sourceKind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
   verifiedTxId: h32C,
   txOrderId: "",
-  scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING_V1,
+  scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING,
   priorLedgerRoot: h32C,
-  outpointSourceKind: NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1,
+  outpointSourceKind: NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND,
   outpointCursor: 0n,
 });
 
-const openedState: NativeScriptDecodingScanThreadStateV1 = Effect.runSync(
-  nativeScriptDecodingOpenedSubjectStateV1({
+const openedState: NativeScriptDecodingScanThreadState = Effect.runSync(
+  nativeScriptDecodingOpenedSubjectState({
     state: preBindState,
     outpointKeyBytes: "8258205555",
     outputIndex: 0n,
   }),
 );
-const boundState = nativeScriptDecodingBoundDescriptorStateV1({
+const boundState = nativeScriptDecodingBoundDescriptorState({
   state: openedState,
   referenceScriptLanguage: 0n,
   referenceScriptTotalLength: 36n,
@@ -100,20 +100,20 @@ const boundState = nativeScriptDecodingBoundDescriptorStateV1({
 
 describe("native-script-decoding thread token", () => {
   it("concatenates category id and challenged header hash", () => {
-    expect(nativeScriptDecodingThreadTokenAssetNameV1("0000000d", h28Y)).toBe(
+    expect(nativeScriptDecodingThreadTokenAssetName("0000000d", h28Y)).toBe(
       `0000000d${h28Y}`,
     );
   });
 
   it("rejects malformed category ids and header hashes", () => {
     expect(() =>
-      nativeScriptDecodingThreadTokenAssetNameV1("0000d", h28Y),
+      nativeScriptDecodingThreadTokenAssetName("0000d", h28Y),
     ).toThrow(/category id/);
     expect(() =>
-      nativeScriptDecodingThreadTokenAssetNameV1("0000000D", h28Y),
+      nativeScriptDecodingThreadTokenAssetName("0000000D", h28Y),
     ).toThrow(/category id/);
     expect(() =>
-      nativeScriptDecodingThreadTokenAssetNameV1("0000000d", h32C),
+      nativeScriptDecodingThreadTokenAssetName("0000000d", h32C),
     ).toThrow(/header hash/);
   });
 });
@@ -122,9 +122,9 @@ describe("native-script-decoding thread states", () => {
   it("pre-bind scan state matches engine.pre_bind_scan_state_v1 bytes (v1)", () => {
     expect(preBindState.outpoint_key_hash).toBe("");
     expect(preBindState.reference_script_language).toBe(
-      NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND_V1,
+      NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND,
     );
-    expect(Data.to(preBindState, ScanThreadStateV1Type)).toBe(
+    expect(Data.to(preBindState, ScanThreadStateType)).toBe(
       `d8799f00005820${h32C}40205820${h32C}000040212020404020ff`,
     );
   });
@@ -133,18 +133,18 @@ describe("native-script-decoding thread states", () => {
     expect(openedState.outpoint_key_hash).toBe(outpointKeyHash);
     expect(openedState.output_index).toBe(0n);
     expect(boundState.outpoint_key_hash).toBe(outpointKeyHash);
-    expect(Data.to(boundState, ScanThreadStateV1Type)).toBe(
+    expect(Data.to(boundState, ScanThreadStateType)).toBe(
       `d8799f00005820${h32C}40205820${h32C}00005820${outpointKeyHash}000018245820${itemCommitment}4020ff`,
     );
   });
 
   it("bind state matches step-01's BindStateV1 bytes (v3)", () => {
-    const bindState: NativeScriptDecodingBindStateV1 = {
-      direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
-      source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED_V1,
+    const bindState: NativeScriptDecodingBindState = {
+      direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
+      source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
       verified_tx_id: "",
     };
-    expect(Data.to(bindState, NativeScriptDecodingBindStateV1)).toBe(
+    expect(Data.to(bindState, NativeScriptDecodingBindState)).toBe(
       "d8799f010140ff",
     );
   });
@@ -154,7 +154,7 @@ describe("native-script-decoding step arguments", () => {
   it("step-01 RecordForcedSource matches Aiken constructor 1 (v4)", () => {
     const args: NativeScriptDecodingStep01Args = {
       RecordForcedSource: {
-        direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION_V1,
+        direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
         input_index: 0n,
         output_index: 0n,
       },
@@ -166,7 +166,7 @@ describe("native-script-decoding step arguments", () => {
 
   it("step-02 args match the full Aiken wire shape (v9)", () => {
     const eventKey: EventKey = { L2TransactionEventKey: { tx_id: h32C } };
-    const header: HeaderV1 = {
+    const header: Header = {
       prevUtxosRoot: h32C,
       utxosRoot: h32D,
       withdrawalsRoot: emptyRoot,
@@ -223,8 +223,7 @@ describe("native-script-decoding step arguments", () => {
         proof: [],
       },
       forced_membership: null,
-      chosen_outpoint_source_kind:
-        NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND_V1,
+      chosen_outpoint_source_kind: NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND,
       chosen_outpoint_cursor: 3n,
     };
     expect(Data.to(args, NativeScriptDecodingStep02Args)).toBe(

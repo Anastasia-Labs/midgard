@@ -10,19 +10,19 @@ import {
 import { isAbsolute, join, normalize } from "node:path";
 
 import {
-  COMPLETE_CANONICAL_REPLAY_V1,
-  PRODUCTION_HEADER_CLASSIFIER_V1,
-  PRODUCTION_HEADER_DECISION_V1,
-  productionHeaderDecisionEnvelopeV1,
-  type ProductionHeaderDecisionV1,
+  COMPLETE_CANONICAL_REPLAY,
+  HEADER_CLASSIFIER,
+  HEADER_DECISION,
+  type HeaderDecision,
+  headerDecisionEnvelope,
 } from "@al-ft/midgard-fault-proofs";
 
-import { watcherCanonicalJsonV1 } from "../storage/durable-store.js";
-import type { WatcherInstalledProductionWorkflowCategoryV1 } from "./production-fault-proof-application-v1.js";
+import { watcherCanonicalJson } from "../storage/durable-store.js";
+import type { WatcherInstalledWorkflowCategory } from "./production-fault-proof-application-v1.js";
 
-export const WATCHER_PRODUCTION_FAULT_DECISION_JOURNAL_V1_SCHEMA_VERSION =
+export const WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION =
   "midgard-watcher-production-fault-decision-journal-v1" as const;
-export const WATCHER_PRODUCTION_FAULT_DECISION_RECORD_V1_SCHEMA_VERSION =
+export const WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION =
   "midgard-watcher-production-fault-decision-record-v1" as const;
 
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -33,34 +33,32 @@ const RECORD_FILE = /^([0-9]{20})\.json$/u;
 const MAX_RECORD_BYTES = 64 * 1024;
 const MAX_RECORDS = 65_536;
 
-export type WatcherPersistedProductionFaultDecisionRecordV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_FAULT_DECISION_RECORD_V1_SCHEMA_VERSION;
+export type WatcherPersistedFaultDecisionRecord = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION;
   revision: string;
   priorRecordSha256: string | null;
-  decision: ProductionHeaderDecisionV1;
+  decision: HeaderDecision;
 }>;
 
-export type WatcherProductionFaultDecisionJournalV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_FAULT_DECISION_JOURNAL_V1_SCHEMA_VERSION;
-  readAll(): Promise<
-    readonly WatcherPersistedProductionFaultDecisionRecordV1[]
-  >;
+export type WatcherFaultDecisionJournal = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION;
+  readAll(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
   /** Explicit bounded disk-chain audit; ordinary reads use the admitted cache. */
-  audit(): Promise<readonly WatcherPersistedProductionFaultDecisionRecordV1[]>;
+  audit(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
   appendLiveDecision(
-    decision: ProductionHeaderDecisionV1,
-  ): Promise<WatcherPersistedProductionFaultDecisionRecordV1>;
+    decision: HeaderDecision,
+  ): Promise<WatcherPersistedFaultDecisionRecord>;
 }>;
 
-export type UnsafeWatcherProductionFaultDecisionJournalForTestV1 =
-  WatcherProductionFaultDecisionJournalV1 &
+export type UnsafeWatcherFaultDecisionJournalForTest =
+  WatcherFaultDecisionJournal &
     Readonly<{
       unsafeAppendDecisionEnvelopeForTest(
         decision: unknown,
-      ): Promise<WatcherPersistedProductionFaultDecisionRecordV1>;
+      ): Promise<WatcherPersistedFaultDecisionRecord>;
     }>;
 
-export type UnsafeWatcherProductionFaultDecisionJournalStorageV1 = Readonly<{
+export type UnsafeWatcherFaultDecisionJournalStorage = Readonly<{
   prepare(parent: string, directory: string): Promise<void>;
   list(
     directory: string,
@@ -121,7 +119,7 @@ const sha256 = (value: Uint8Array | string): string =>
   createHash("sha256").update(value).digest("hex");
 
 const canonicalDigest = (value: unknown): string =>
-  sha256(watcherCanonicalJsonV1(value));
+  sha256(watcherCanonicalJson(value));
 
 const canonicalDirectory = (value: unknown): string => {
   if (
@@ -142,8 +140,8 @@ const canonicalDirectory = (value: unknown): string => {
 
 const exactLaunchScope = (
   value: unknown,
-  expected: readonly WatcherInstalledProductionWorkflowCategoryV1[],
-): readonly WatcherInstalledProductionWorkflowCategoryV1[] => {
+  expected: readonly WatcherInstalledWorkflowCategory[],
+): readonly WatcherInstalledWorkflowCategory[] => {
   if (
     !Array.isArray(value) ||
     value.length !== expected.length ||
@@ -159,8 +157,8 @@ const exactLaunchScope = (
 const parseDecision = (
   value: unknown,
   deploymentFingerprint: string,
-  launchScope: readonly WatcherInstalledProductionWorkflowCategoryV1[],
-): ProductionHeaderDecisionV1 => {
+  launchScope: readonly WatcherInstalledWorkflowCategory[],
+): HeaderDecision => {
   const common = [
     "schemaVersion",
     "classifierVersion",
@@ -199,9 +197,9 @@ const parseDecision = (
     "persisted production decision",
   );
   if (
-    candidate.schemaVersion !== PRODUCTION_HEADER_DECISION_V1 ||
-    candidate.classifierVersion !== PRODUCTION_HEADER_CLASSIFIER_V1 ||
-    candidate.replayVersion !== COMPLETE_CANONICAL_REPLAY_V1 ||
+    candidate.schemaVersion !== HEADER_DECISION ||
+    candidate.classifierVersion !== HEADER_CLASSIFIER ||
+    candidate.replayVersion !== COMPLETE_CANONICAL_REPLAY ||
     candidate.deploymentFingerprint !== deploymentFingerprint
   ) {
     throw new Error("persisted production decision identity is invalid");
@@ -219,8 +217,8 @@ const parseDecision = (
     );
   }
   const base = {
-    schemaVersion: PRODUCTION_HEADER_DECISION_V1,
-    classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+    schemaVersion: HEADER_DECISION,
+    classifierVersion: HEADER_CLASSIFIER,
     deploymentFingerprint,
     headerHash: exactString(
       candidate.headerHash,
@@ -242,7 +240,7 @@ const parseDecision = (
       DIGEST,
       "persisted production decision payload digest",
     ),
-    replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+    replayVersion: COMPLETE_CANONICAL_REPLAY,
     replayDigest: exactString(
       candidate.replayDigest,
       DIGEST,
@@ -295,7 +293,7 @@ const parseDecision = (
     if (
       candidate.decision !== "fault_detected" ||
       !launchScope.includes(
-        candidate.category as WatcherInstalledProductionWorkflowCategoryV1,
+        candidate.category as WatcherInstalledWorkflowCategory,
       )
     ) {
       throw new Error(
@@ -305,8 +303,7 @@ const parseDecision = (
     return Object.freeze({
       ...base,
       decision: "fault_detected" as const,
-      category:
-        candidate.category as WatcherInstalledProductionWorkflowCategoryV1,
+      category: candidate.category as WatcherInstalledWorkflowCategory,
       violationId,
       detectionId,
       position,
@@ -324,7 +321,7 @@ const parseDecision = (
 };
 
 const readBounded = async (
-  storage: UnsafeWatcherProductionFaultDecisionJournalStorageV1,
+  storage: UnsafeWatcherFaultDecisionJournalStorage,
   path: string,
 ): Promise<Uint8Array> => {
   const bytes = await storage.read(path);
@@ -344,7 +341,7 @@ const syncDirectory = async (directory: string): Promise<void> => {
   }
 };
 
-const productionStorage: UnsafeWatcherProductionFaultDecisionJournalStorageV1 =
+const productionStorage: UnsafeWatcherFaultDecisionJournalStorage =
   Object.freeze({
     prepare: async (parent, directory) => {
       await mkdir(parent, { recursive: true, mode: 0o700 });
@@ -379,12 +376,11 @@ const productionStorage: UnsafeWatcherProductionFaultDecisionJournalStorageV1 =
 const createJournal = async (input: {
   readonly directory: string;
   readonly deploymentFingerprint: string;
-  readonly launchScope: readonly WatcherInstalledProductionWorkflowCategoryV1[];
+  readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   readonly exposeUnsafeAppendForTest: boolean;
-  readonly storage: UnsafeWatcherProductionFaultDecisionJournalStorageV1;
+  readonly storage: UnsafeWatcherFaultDecisionJournalStorage;
 }): Promise<
-  | WatcherProductionFaultDecisionJournalV1
-  | UnsafeWatcherProductionFaultDecisionJournalForTestV1
+  WatcherFaultDecisionJournal | UnsafeWatcherFaultDecisionJournalForTest
 > => {
   const parent = canonicalDirectory(input.directory);
   const deploymentFingerprint = exactString(
@@ -400,7 +396,7 @@ const createJournal = async (input: {
     bytes: Uint8Array,
     index: number,
     priorSha256: string | null,
-  ): WatcherPersistedProductionFaultDecisionRecordV1 => {
+  ): WatcherPersistedFaultDecisionRecord => {
     let value: unknown;
     try {
       value = JSON.parse(
@@ -415,15 +411,14 @@ const createJournal = async (input: {
       "watcher fault decision record",
     );
     if (
-      record.schemaVersion !==
-        WATCHER_PRODUCTION_FAULT_DECISION_RECORD_V1_SCHEMA_VERSION ||
+      record.schemaVersion !== WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION ||
       record.revision !== index.toString() ||
       record.priorRecordSha256 !== priorSha256
     ) {
       throw new Error("watcher fault decision journal chain is invalid");
     }
     const parsed = Object.freeze({
-      schemaVersion: WATCHER_PRODUCTION_FAULT_DECISION_RECORD_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
       revision: index.toString(),
       priorRecordSha256: priorSha256,
       decision: parseDecision(
@@ -433,7 +428,7 @@ const createJournal = async (input: {
       ),
     });
     const canonicalBytes = Buffer.from(
-      `${watcherCanonicalJsonV1(parsed)}\n`,
+      `${watcherCanonicalJson(parsed)}\n`,
       "utf8",
     );
     if (!Buffer.from(bytes).equals(canonicalBytes)) {
@@ -443,7 +438,7 @@ const createJournal = async (input: {
   };
 
   const scan = async (): Promise<
-    readonly WatcherPersistedProductionFaultDecisionRecordV1[]
+    readonly WatcherPersistedFaultDecisionRecord[]
   > => {
     const entries = await input.storage.list(directory);
     const names = entries
@@ -461,7 +456,7 @@ const createJournal = async (input: {
         "watcher fault decision journal exceeds its record bound",
       );
     }
-    const records: WatcherPersistedProductionFaultDecisionRecordV1[] = [];
+    const records: WatcherPersistedFaultDecisionRecord[] = [];
     let priorSha256: string | null = null;
     for (let index = 0; index < names.length; index += 1) {
       const name = names[index]!;
@@ -488,7 +483,7 @@ const createJournal = async (input: {
     const prior = cachedRecords.at(-1);
     return prior === undefined
       ? null
-      : sha256(`${watcherCanonicalJsonV1(prior)}\n`);
+      : sha256(`${watcherCanonicalJson(prior)}\n`);
   })();
 
   let serial = Promise.resolve();
@@ -508,7 +503,7 @@ const createJournal = async (input: {
 
   const appendEnvelope = async (
     value: unknown,
-  ): Promise<WatcherPersistedProductionFaultDecisionRecordV1> =>
+  ): Promise<WatcherPersistedFaultDecisionRecord> =>
     await serialized(async () => {
       const decision = parseDecision(value, deploymentFingerprint, launchScope);
       const existing = decisionByDigest.get(decision.decisionDigest);
@@ -517,13 +512,12 @@ const createJournal = async (input: {
         throw new Error("watcher fault decision journal is full");
       }
       const record = Object.freeze({
-        schemaVersion:
-          WATCHER_PRODUCTION_FAULT_DECISION_RECORD_V1_SCHEMA_VERSION,
+        schemaVersion: WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
         revision: cachedRecords.length.toString(),
         priorRecordSha256: lastRecordSha256,
         decision,
       });
-      const bytes = Buffer.from(`${watcherCanonicalJsonV1(record)}\n`, "utf8");
+      const bytes = Buffer.from(`${watcherCanonicalJson(record)}\n`, "utf8");
       const path = join(
         directory,
         `${cachedRecords.length.toString().padStart(20, "0")}.json`,
@@ -547,15 +541,14 @@ const createJournal = async (input: {
       return appended;
     });
 
-  const journal: WatcherProductionFaultDecisionJournalV1 = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_FAULT_DECISION_JOURNAL_V1_SCHEMA_VERSION,
+  const journal: WatcherFaultDecisionJournal = Object.freeze({
+    schemaVersion: WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION,
     readAll: async () => Object.freeze([...cachedRecords]),
     audit: async () =>
       await serialized(async () => {
         const audited = await scan();
         if (
-          watcherCanonicalJsonV1(audited) !==
-          watcherCanonicalJsonV1(cachedRecords)
+          watcherCanonicalJson(audited) !== watcherCanonicalJson(cachedRecords)
         ) {
           throw new Error(
             "watcher fault decision journal changed outside the admitted writer",
@@ -564,7 +557,7 @@ const createJournal = async (input: {
         return audited;
       }),
     appendLiveDecision: async (decision) =>
-      await appendEnvelope(productionHeaderDecisionEnvelopeV1(decision)),
+      await appendEnvelope(headerDecisionEnvelope(decision)),
   });
   return input.exposeUnsafeAppendForTest
     ? Object.freeze({
@@ -574,28 +567,28 @@ const createJournal = async (input: {
     : journal;
 };
 
-export const openWatcherProductionFaultDecisionJournalV1 = async (input: {
+export const openWatcherFaultDecisionJournal = async (input: {
   readonly directory: string;
   readonly deploymentFingerprint: string;
-  readonly launchScope: readonly WatcherInstalledProductionWorkflowCategoryV1[];
-}): Promise<WatcherProductionFaultDecisionJournalV1> =>
+  readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
+}): Promise<WatcherFaultDecisionJournal> =>
   (await createJournal({
     ...input,
     exposeUnsafeAppendForTest: false,
     storage: productionStorage,
-  })) as WatcherProductionFaultDecisionJournalV1;
+  })) as WatcherFaultDecisionJournal;
 
 /** Test-only structural seeding seam; production append still requires admission. */
-export const unsafeOpenWatcherProductionFaultDecisionJournalForTestV1 = async (
+export const unsafeOpenWatcherFaultDecisionJournalForTest = async (
   input: {
     readonly directory: string;
     readonly deploymentFingerprint: string;
-    readonly launchScope: readonly WatcherInstalledProductionWorkflowCategoryV1[];
+    readonly launchScope: readonly WatcherInstalledWorkflowCategory[];
   },
-  storage: UnsafeWatcherProductionFaultDecisionJournalStorageV1 = productionStorage,
-): Promise<UnsafeWatcherProductionFaultDecisionJournalForTestV1> =>
+  storage: UnsafeWatcherFaultDecisionJournalStorage = productionStorage,
+): Promise<UnsafeWatcherFaultDecisionJournalForTest> =>
   (await createJournal({
     ...input,
     exposeUnsafeAppendForTest: true,
     storage,
-  })) as UnsafeWatcherProductionFaultDecisionJournalForTestV1;
+  })) as UnsafeWatcherFaultDecisionJournalForTest;

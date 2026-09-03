@@ -59,12 +59,12 @@ describe("Scalus DA add-signatures evaluation", () => {
       owners: ["22".repeat(28), "33".repeat(28)],
       update_threshold: 2n,
     };
-    const availabilityCommitment = SDK.buildDaAvailabilityCommitmentV1({
+    const availabilityCommitment = SDK.buildDaAvailabilityCommitment({
       deploymentIdentity: deployment.hubOraclePolicyId,
       headerHash,
       payload: Buffer.from("public retained DA"),
       bondOwner: "76".repeat(28),
-      responseGeometry: SDK.availabilityResponseGeometryV1({
+      responseGeometry: SDK.availabilityResponseGeometry({
         chunkByteLength: 14_020,
         trancheByteLength: 4 * 1_024 * 1_024,
         maxTrancheCount: 16,

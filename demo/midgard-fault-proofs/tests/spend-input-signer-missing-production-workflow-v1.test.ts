@@ -6,12 +6,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  bindSpendInputSignerMissingReferenceScriptsV1,
-  createSpendInputSignerMissingProductionWorkflowRunnerSurfaceV1,
-  createSpendInputSignerMissingRawL1StageResolverV1,
-  SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1,
-  type SpendInputSignerMissingDeploymentBindingV1,
-  type SpendInputSignerMissingProductionReferenceScriptsV1,
+  bindSpendInputSignerMissingReferenceScripts,
+  createSpendInputSignerMissingRawL1StageResolver,
+  createSpendInputSignerMissingWorkflowRunnerSurface,
+  SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
+  type SpendInputSignerMissingDeploymentBinding,
+  type SpendInputSignerMissingReferenceScripts,
 } from "../src/spend-input-signer-missing/index.js";
 
 const script = (byte: string): Script => ({
@@ -25,7 +25,7 @@ const utxo = (byte: string, outputIndex: number): UTxO => ({
   assets: { lovelace: 2_000_000n },
   scriptRef: script(byte),
 });
-const references = (): SpendInputSignerMissingProductionReferenceScriptsV1 => ({
+const references = (): SpendInputSignerMissingReferenceScripts => ({
   step01: utxo("1", 0),
   step02: utxo("2", 1),
   step03: utxo("3", 2),
@@ -41,18 +41,17 @@ const references = (): SpendInputSignerMissingProductionReferenceScriptsV1 => ({
 
 describe("spendInputSignerMissing production workflow", () => {
   it("exposes the standard callback-free runner and complete manifest roles", () => {
-    const runner =
-      createSpendInputSignerMissingProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig: async () => {
-          throw new Error("not reached");
-        },
-      });
+    const runner = createSpendInputSignerMissingWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => {
+        throw new Error("not reached");
+      },
+    });
     expect(Object.keys(runner).sort()).toEqual([
       "runOrResume",
       "runnerVersion",
     ]);
     expect(
-      Object.values(SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1),
+      Object.values(SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS),
     ).toEqual([
       "fraudProofSpendInputSignerMissing",
       "fraudProofSpendInputSignerMissingStep02",
@@ -68,9 +67,7 @@ describe("spendInputSignerMissing production workflow", () => {
 
   it("authenticates every reference out-ref and refuses substitution", () => {
     const supplied = references();
-    const names = Object.values(
-      SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS_V1,
-    );
+    const names = Object.values(SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS);
     const values = [
       supplied.step01,
       supplied.step02,
@@ -92,15 +89,15 @@ describe("spendInputSignerMissing production workflow", () => {
           },
         ]),
       ),
-    } as unknown as SpendInputSignerMissingDeploymentBindingV1;
+    } as unknown as SpendInputSignerMissingDeploymentBinding;
     expect(
-      bindSpendInputSignerMissingReferenceScriptsV1({
+      bindSpendInputSignerMissingReferenceScripts({
         binding,
         referenceScripts: supplied,
       }),
     ).toStrictEqual(supplied);
     expect(() =>
-      bindSpendInputSignerMissingReferenceScriptsV1({
+      bindSpendInputSignerMissingReferenceScripts({
         binding,
         referenceScripts: {
           ...supplied,
@@ -117,7 +114,7 @@ describe("spendInputSignerMissing production workflow", () => {
       threadOutRef: `${"a".repeat(64)}#0`,
       stateQueueBlockOutRef: `${"b".repeat(64)}#0`,
     };
-    const resolver = createSpendInputSignerMissingRawL1StageResolverV1({
+    const resolver = createSpendInputSignerMissingRawL1StageResolver({
       config: {
         binding: { definition: { headerHash: "c".repeat(56) } },
       } as never,

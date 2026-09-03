@@ -80,7 +80,7 @@ type WireLedgerTx = {
   readonly requiresPlutusEvaluation: boolean;
 };
 
-export type WirePhaseACandidateV1 = {
+export type WirePhaseACandidate = {
   readonly ledgerTx: WireLedgerTx;
   readonly submission: {
     readonly txCbor: Bytes;
@@ -251,7 +251,7 @@ const deserializeLedgerEntry = (entry: WireLedgerEntry): LedgerEntry => ({
 
 export const serializePhaseACandidate = (
   candidate: PhaseAValidatedTx,
-): WirePhaseACandidateV1 => {
+): WirePhaseACandidate => {
   const tx = candidate.ledgerTx;
   return {
     ledgerTx: {
@@ -325,11 +325,11 @@ export const serializePhaseACandidate = (
       requiresLocalScriptDiscovery:
         candidate.derived.requiresLocalScriptDiscovery,
     },
-  } satisfies WirePhaseACandidateV1;
+  } satisfies WirePhaseACandidate;
 };
 
 export const deserializePhaseACandidate = (
-  candidate: WirePhaseACandidateV1,
+  candidate: WirePhaseACandidate,
 ): PhaseAValidatedTx => ({
   ledgerTx: {
     txId: bufferView(candidate.ledgerTx.txId),

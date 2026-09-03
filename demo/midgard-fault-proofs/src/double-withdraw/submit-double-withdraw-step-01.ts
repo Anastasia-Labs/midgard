@@ -1,16 +1,16 @@
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
   DoubleWithdrawStep01SpendRedeemer,
   DoubleWithdrawStep02Datum,
   type DoubleWithdrawStep02State,
-  doubleWithdrawStep02StateV1,
-  getHeaderV1FromStateQueueDatum,
+  doubleWithdrawStep02State,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  type HeaderV1,
+  type Header,
   HUB_ORACLE_ASSET_NAME,
-  isPayableWithdrawalLeafV1,
+  isPayableWithdrawalLeaf,
   OutputReference,
   Proof,
   requireInputIndex,
@@ -34,7 +34,7 @@ import {
 import { Effect } from "effect";
 
 import { parseHex, requireRecord } from "../json-file.js";
-import type { PreparedDoubleWithdrawInclusionV1 } from "../prepare-double-withdraw.js";
+import type { PreparedDoubleWithdrawInclusion } from "../prepare-double-withdraw.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -45,26 +45,25 @@ import {
 } from "../runtime.js";
 import { requireInitialStepDatum, selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { DoubleWithdrawContractsV1 } from "./contracts-v1.js";
+import type { DoubleWithdrawContracts } from "./contracts-v1.js";
 import {
   doubleWithdrawSubmitError,
-  requireDoubleWithdrawReferenceScriptV1,
-  requireDoubleWithdrawThreadUtxoV1,
+  requireDoubleWithdrawReferenceScript,
+  requireDoubleWithdrawThreadUtxo,
 } from "./submit-common-v1.js";
 
-export type SubmitDoubleWithdrawInclusionV1 =
-  PreparedDoubleWithdrawInclusionV1 & {
-    readonly withdrawalMembershipProof: Proof;
-  };
+export type SubmitDoubleWithdrawInclusion = PreparedDoubleWithdrawInclusion & {
+  readonly withdrawalMembershipProof: Proof;
+};
 
-export const parseSubmitDoubleWithdrawInclusionV1 = (
+export const parseSubmitDoubleWithdrawInclusion = (
   value: unknown,
-): SubmitDoubleWithdrawInclusionV1 => {
+): SubmitDoubleWithdrawInclusion => {
   const record = requireRecord(value, "--withdrawal-inclusion");
   const withdrawalIdCbor = parseHex(
     record.withdrawalIdCbor,
@@ -92,20 +91,20 @@ export const parseSubmitDoubleWithdrawInclusionV1 = (
   };
 };
 
-export type DerivedDoubleWithdrawMembershipV1 = {
+export type DerivedDoubleWithdrawMembership = {
   readonly committedWithdrawal: RootMembershipProof<
     OutputReference,
     WithdrawalInfo
   >;
 };
 
-export const deriveDoubleWithdrawMembershipV1 = async ({
+export const deriveDoubleWithdrawMembership = async ({
   header,
   inclusion,
 }: {
-  readonly header: HeaderV1;
-  readonly inclusion: SubmitDoubleWithdrawInclusionV1;
-}): Promise<DerivedDoubleWithdrawMembershipV1> => {
+  readonly header: Header;
+  readonly inclusion: SubmitDoubleWithdrawInclusion;
+}): Promise<DerivedDoubleWithdrawMembership> => {
   const root = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.withdrawals,
@@ -120,12 +119,12 @@ export const deriveDoubleWithdrawMembershipV1 = async ({
   }
   const key = Data.from(inclusion.withdrawalIdCbor, OutputReference);
   const value = Data.from(inclusion.withdrawalInfoCbor, WithdrawalInfo);
-  if (committedWithdrawalKeyBytesV1(key) !== inclusion.withdrawalIdCbor) {
+  if (committedWithdrawalKeyBytes(key) !== inclusion.withdrawalIdCbor) {
     throw doubleWithdrawSubmitError(
       "withdrawal id bytes are not in canonical serialiseData form.",
     );
   }
-  if (committedWithdrawalValueBytesV1(value) !== inclusion.withdrawalInfoCbor) {
+  if (committedWithdrawalValueBytes(value) !== inclusion.withdrawalInfoCbor) {
     throw doubleWithdrawSubmitError(
       "withdrawal info bytes are not in canonical serialiseData form.",
     );
@@ -171,20 +170,20 @@ export const submitDoubleWithdrawStep01 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly inclusion: SubmitDoubleWithdrawInclusionV1;
+  readonly inclusion: SubmitDoubleWithdrawInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawStep01Result> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
     await Promise.all([
-      requireDoubleWithdrawThreadUtxoV1({
+      requireDoubleWithdrawThreadUtxo({
         lucid,
         contracts,
         categoryId,
@@ -222,17 +221,17 @@ export const submitDoubleWithdrawStep01 = async ({
   const node = await Effect.runPromise(
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
-  const header = await Effect.runPromise(getHeaderV1FromStateQueueDatum(node));
-  const { committedWithdrawal } = await deriveDoubleWithdrawMembershipV1({
+  const header = await Effect.runPromise(getHeaderFromStateQueueDatum(node));
+  const { committedWithdrawal } = await deriveDoubleWithdrawMembership({
     header,
     inclusion,
   });
-  if (!isPayableWithdrawalLeafV1(committedWithdrawal.value)) {
+  if (!isPayableWithdrawalLeaf(committedWithdrawal.value)) {
     throw doubleWithdrawSubmitError(
       "step-01 refuses a non-payable first leaf; expected WithdrawalIsValid.",
     );
   }
-  const step02State = doubleWithdrawStep02StateV1({
+  const step02State = doubleWithdrawStep02State({
     challengedHeaderHash: stateQueueHeaderHash,
     committedWithdrawal,
   });
@@ -307,7 +306,7 @@ export const submitDoubleWithdrawStep01 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = base.readFrom([
-    requireDoubleWithdrawReferenceScriptV1({
+    requireDoubleWithdrawReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[0].spendingScriptHash,
       stepIndex: 0,
@@ -318,10 +317,10 @@ export const submitDoubleWithdrawStep01 = async ({
     throw doubleWithdrawSubmitError("step-01 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof double-withdraw step-01",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[0].spendingScript,

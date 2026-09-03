@@ -8,15 +8,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MidgardMpf,
   MpfError,
-  type ParkedEventFlatOverlayV1,
-  type ParkedMpfOverlayV1,
+  type ParkedEventFlatOverlay,
+  type ParkedMpfOverlay,
 } from "../src/mpf/index.js";
 import {
   parkSpeculativeMpfsForConfirmationWait,
   resumeSpeculativeMpfsForSubmission,
 } from "../src/workers/commit-block-header.js";
 
-const artifact = (trieName: string): ParkedMpfOverlayV1 => ({
+const artifact = (trieName: string): ParkedMpfOverlay => ({
   schemaVersion: 1,
   trieName,
   baseRoot: new ArrayBuffer(32),
@@ -29,7 +29,7 @@ const artifact = (trieName: string): ParkedMpfOverlayV1 => ({
   encodedBytes: 0,
 });
 
-const eventFlatArtifact = (trieName: string): ParkedEventFlatOverlayV1 => ({
+const eventFlatArtifact = (trieName: string): ParkedEventFlatOverlay => ({
   schemaVersion: 1,
   trieName,
   baseRoot: new ArrayBuffer(32),
@@ -61,8 +61,8 @@ const fakeMpf = ({
 }: {
   readonly name: string;
   readonly events: string[];
-  readonly parkedArtifact?: ParkedMpfOverlayV1;
-  readonly parkedEventFlatArtifact?: ParkedEventFlatOverlayV1;
+  readonly parkedArtifact?: ParkedMpfOverlay;
+  readonly parkedEventFlatArtifact?: ParkedEventFlatOverlay;
   readonly eventFlat?: boolean;
   readonly parkFailure?: MpfError;
 }): MidgardMpf =>

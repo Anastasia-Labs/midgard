@@ -1,11 +1,11 @@
 import {
-  parseStateQueueAuthenticatedTransitionV1,
-  type StateQueueAuthenticatedTransitionV1,
+  parseStateQueueAuthenticatedTransition,
+  type StateQueueAuthenticatedTransition,
 } from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { parseDeploymentManifestV1Value } from "../deployment-manifest-v1.js";
+import { parseDeploymentManifestValue } from "../deployment-manifest-v1.js";
 import { Database } from "../services/database.js";
 import {
   clearTable,
@@ -17,7 +17,7 @@ export const tableName = "da_payload_terminal_outcomes";
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 
-export type DaPayloadRetentionReleaseAuthorityV1 = Readonly<{
+export type DaPayloadRetentionReleaseAuthority = Readonly<{
   deploymentIdentityDigest: Buffer;
   stateQueuePolicyId: Buffer;
   minimumFinalityDepth: bigint;
@@ -31,7 +31,7 @@ export type DaPayloadRetentionReleaseAuthorityV1 = Readonly<{
  * geometry, bond and fee ceilings) — never a liveness observation:
  * `verifyDeploymentManifestV1Identity` runs
  * `parseDeploymentManifestV1AvailabilityChallenge` before
- * `parseDeploymentManifestV1Value` returns, and that parser rejects any key
+ * `parseDeploymentManifestValue` returns, and that parser rejects any key
  * outside that parameters vocabulary. So a caller still cannot smuggle a
  * challenge-state claim in through this field, and the capability stays
  * `missing`: deliberately not an assertion that no challenge is active.
@@ -40,11 +40,11 @@ export type DaPayloadRetentionReleaseAuthorityV1 = Readonly<{
  * observation. The `availabilityChallenges` guard below is retained as
  * defence in depth against a caller-authored plural sibling.
  */
-export const admitDaPayloadRetentionReleaseAuthorityV1 = (
+export const admitDaPayloadRetentionReleaseAuthority = (
   manifestInput: unknown,
-): DaPayloadRetentionReleaseAuthorityV1 | null => {
+): DaPayloadRetentionReleaseAuthority | null => {
   try {
-    const manifest = parseDeploymentManifestV1Value(manifestInput);
+    const manifest = parseDeploymentManifestValue(manifestInput);
     const stateQueueMint = manifest.contracts.stateQueueMint;
     const stateQueuePolicyId = stateQueueMint?.scriptHash;
     if (
@@ -66,14 +66,13 @@ export const admitDaPayloadRetentionReleaseAuthorityV1 = (
   }
 };
 
-export const recordAuthenticatedTransitionV1 = (
+export const recordAuthenticatedTransition = (
   transitionInput: unknown,
   manifestInput: unknown,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const authority = admitDaPayloadRetentionReleaseAuthorityV1(manifestInput);
-    const transition =
-      parseStateQueueAuthenticatedTransitionV1(transitionInput);
+    const authority = admitDaPayloadRetentionReleaseAuthority(manifestInput);
+    const transition = parseStateQueueAuthenticatedTransition(transitionInput);
     if (
       authority === null ||
       transition === null ||
@@ -119,7 +118,7 @@ export const recordAuthenticatedTransitionV1 = (
       finality_depth: transition.finalityDepth,
       transition_digest: Buffer.from(transition.transitionDigest, "hex"),
       transition_record: JSON.stringify(
-        transition as StateQueueAuthenticatedTransitionV1,
+        transition as StateQueueAuthenticatedTransition,
       ),
     } as const;
     const rows = yield* sql<{ readonly header_hash: Buffer }>`
@@ -158,14 +157,13 @@ export const recordAuthenticatedTransitionV1 = (
   );
 
 /** Revokes exactly one previously admitted outcome after authenticated rollback. */
-export const revokeAuthenticatedTransitionV1 = (
+export const revokeAuthenticatedTransition = (
   transitionInput: unknown,
   manifestInput: unknown,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const authority = admitDaPayloadRetentionReleaseAuthorityV1(manifestInput);
-    const transition =
-      parseStateQueueAuthenticatedTransitionV1(transitionInput);
+    const authority = admitDaPayloadRetentionReleaseAuthority(manifestInput);
+    const transition = parseStateQueueAuthenticatedTransition(transitionInput);
     if (
       authority === null ||
       transition === null ||

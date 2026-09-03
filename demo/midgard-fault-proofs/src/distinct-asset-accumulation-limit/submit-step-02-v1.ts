@@ -11,22 +11,22 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { DistinctAssetAccumulationContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { DistinctAssetAccumulationContracts } from "./contracts-v1.js";
 import {
-  DistinctAssetStep02DatumV1Schema,
-  DistinctAssetStep02RedeemerV1Schema,
-  DistinctAssetStep03DatumV1Schema,
+  DistinctAssetStep02DatumSchema,
+  DistinctAssetStep02RedeemerSchema,
+  DistinctAssetStep03DatumSchema,
 } from "./schemas-v1.js";
 
-export type DistinctAssetAccumulatorAuthenticationV1 = Readonly<{
+export type DistinctAssetAccumulatorAuthentication = Readonly<{
   trace_membership: Readonly<Record<string, unknown>>;
   pre: Readonly<Record<string, unknown>>;
   trace_proof: Readonly<Record<string, unknown>>;
@@ -34,7 +34,7 @@ export type DistinctAssetAccumulatorAuthenticationV1 = Readonly<{
 }>;
 
 /** Advances the authenticated retained ValueAndMint state into the fold chain. */
-export const submitDistinctAssetAccumulationStep02V1 = async ({
+export const submitDistinctAssetAccumulationStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -46,17 +46,17 @@ export const submitDistinctAssetAccumulationStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: DistinctAssetAccumulationContractsV1;
+  readonly contracts: DistinctAssetAccumulationContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly authentication: DistinctAssetAccumulatorAuthenticationV1;
+  readonly authentication: DistinctAssetAccumulatorAuthentication;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,14 +64,14 @@ export const submitDistinctAssetAccumulationStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const bound = requireLinearFaultStepStateV1<Record<string, unknown>>({
+  const bound = requireLinearFaultStepState<Record<string, unknown>>({
     threadUtxo,
     signer,
-    schema: DistinctAssetStep02DatumV1Schema as never,
+    schema: DistinctAssetStep02DatumSchema as never,
     family: "distinct-asset-accumulation-limit",
     stepIndex,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "distinct-asset-accumulation-limit",
@@ -87,7 +87,7 @@ export const submitDistinctAssetAccumulationStep02V1 = async ({
         decisive_fault_holds: null,
       },
     } as never,
-    DistinctAssetStep03DatumV1Schema as never,
+    DistinctAssetStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
@@ -121,10 +121,10 @@ export const submitDistinctAssetAccumulationStep02V1 = async ({
           },
         ],
       } as never,
-      DistinctAssetStep02RedeemerV1Schema as never,
+      DistinctAssetStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

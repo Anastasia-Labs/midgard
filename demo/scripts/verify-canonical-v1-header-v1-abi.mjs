@@ -36,7 +36,7 @@ const isRecord = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 const contractError = (message) =>
-  new Error(`HeaderV1 ABI contract: ${message}`);
+  new Error(`Header ABI contract: ${message}`);
 
 const requireRecord = (value, label) => {
   if (!isRecord(value)) throw contractError(`${label} must be an object`);
@@ -75,15 +75,15 @@ export const assertHeaderV1AbiContract = (value) => {
   if (contract.schema !== "midgard-header-v1-abi-v1") {
     throw contractError("contract.schema must be midgard-header-v1-abi-v1");
   }
-  if (contract.name !== "HeaderV1") {
-    throw contractError("contract.name must be HeaderV1");
+  if (contract.name !== "Header") {
+    throw contractError("contract.name must be Header");
   }
   if (contract.version !== 1) {
     throw contractError("contract.version must be 1");
   }
-  if (contract.blueprintDefinition !== "midgard/ledger_state/HeaderV1") {
+  if (contract.blueprintDefinition !== "midgard/ledger_state/Header") {
     throw contractError(
-      "contract.blueprintDefinition must be midgard/ledger_state/HeaderV1",
+      "contract.blueprintDefinition must be midgard/ledger_state/Header",
     );
   }
 
@@ -246,37 +246,37 @@ const blueprintSchemaKind = (schema, definitions, resolving = new Set()) => {
   );
 };
 
-/** Extract HeaderV1's constructor shape from the generated Aiken blueprint. */
+/** Extract Header's constructor shape from the generated Aiken blueprint. */
 export const extractHeaderV1Blueprint = (blueprint) => {
   const value = requireRecord(blueprint, "blueprint");
   const definitions = requireRecord(value.definitions, "blueprint.definitions");
   const definition = requireRecord(
-    definitions["midgard/ledger_state/HeaderV1"],
-    "blueprint HeaderV1 definition",
+    definitions["midgard/ledger_state/Header"],
+    "blueprint Header definition",
   );
   const variants = requireArray(
     definition.anyOf,
-    "blueprint HeaderV1 variants",
+    "blueprint Header variants",
   );
   const constructor = variants.find((candidate) => candidate?.index === 0);
   if (constructor === undefined) {
-    throw new Error("blueprint HeaderV1 constructor 0 is missing");
+    throw new Error("blueprint Header constructor 0 is missing");
   }
-  const fields = requireArray(constructor.fields, "blueprint HeaderV1 fields");
+  const fields = requireArray(constructor.fields, "blueprint Header fields");
   return {
-    definition: "midgard/ledger_state/HeaderV1",
+    definition: "midgard/ledger_state/Header",
     constructorTag: constructor.index,
     constructorArity: fields.length,
     fields: fields.map((field, index) => {
       const entry = requireRecord(
         field,
-        `blueprint HeaderV1 field ${index.toString()}`,
+        `blueprint Header field ${index.toString()}`,
       );
       return {
         index,
         name: requireString(
           entry.title,
-          `blueprint HeaderV1 field ${index.toString()}.title`,
+          `blueprint Header field ${index.toString()}.title`,
         ),
         aikenRef:
           entry.$ref === undefined
@@ -308,9 +308,9 @@ const schemaKind = (schema) => {
   return "data";
 };
 
-/** Extract HeaderV1's constructor shape from the SDK's runtime Data schema. */
+/** Extract Header's constructor shape from the SDK's runtime Data schema. */
 export const extractHeaderV1SdkSchema = (schema) => {
-  const value = requireRecord(schema, "SDK HeaderV1Schema");
+  const value = requireRecord(schema, "SDK HeaderSchema");
   const variants =
     value.anyOf ?? (value.dataType === "constructor" ? [value] : null);
   if (variants === null && isRecord(value.fields)) {
@@ -322,31 +322,31 @@ export const extractHeaderV1SdkSchema = (schema) => {
         index,
         name: requireString(
           name,
-          `SDK HeaderV1 field ${index.toString()}.name`,
+          `SDK Header field ${index.toString()}.name`,
         ),
         type: schemaKind(field),
       })),
     };
   }
-  const constructors = requireArray(variants, "SDK HeaderV1 constructors");
+  const constructors = requireArray(variants, "SDK Header constructors");
   const constructor = constructors.find((candidate) => candidate?.index === 0);
   if (constructor === undefined) {
-    throw new Error("SDK HeaderV1 constructor 0 is missing");
+    throw new Error("SDK Header constructor 0 is missing");
   }
-  const fields = requireArray(constructor.fields, "SDK HeaderV1 fields");
+  const fields = requireArray(constructor.fields, "SDK Header fields");
   return {
     constructorTag: constructor.index,
     constructorArity: fields.length,
     fields: fields.map((field, index) => {
       const entry = requireRecord(
         field,
-        `SDK HeaderV1 field ${index.toString()}`,
+        `SDK Header field ${index.toString()}`,
       );
       return {
         index,
         name: requireString(
           entry.title,
-          `SDK HeaderV1 field ${index.toString()}.title`,
+          `SDK Header field ${index.toString()}.title`,
         ),
         type: schemaKind(entry),
       };
@@ -357,7 +357,7 @@ export const extractHeaderV1SdkSchema = (schema) => {
 const compare = (actual, expected, label) => {
   if (actual !== expected) {
     throw new Error(
-      `HeaderV1 ABI ${label} mismatch: expected ${expected}, got ${actual}`,
+      `Header ABI ${label} mismatch: expected ${expected}, got ${actual}`,
     );
   }
 };
@@ -478,7 +478,7 @@ export const run = async () => {
   const normalized = verifyHeaderV1Abi({
     contract,
     blueprint: loadJson(blueprintPath, "Aiken blueprint"),
-    sdkSchema: sdk.HeaderV1Schema,
+    sdkSchema: sdk.HeaderSchema,
   });
   // Provenance, not evidence: this line names the three inputs that were
   // actually read so a passing run can be attributed. It is not a test name
@@ -504,7 +504,7 @@ if (invokedDirectly) {
     await run();
   } catch (error) {
     process.stderr.write(
-      `HeaderV1 ABI verification failed: ${error.message}\n`,
+      `Header ABI verification failed: ${error.message}\n`,
     );
     process.exitCode = 1;
   }

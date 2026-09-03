@@ -23,7 +23,7 @@ import {
   validationDisputeValidityRange,
 } from "../../../src/index.js";
 import { network } from "./blueprints.js";
-import { seedDualAddressPartyAccountsV1 } from "./emulator-context.js";
+import { seedDualAddressPartyAccounts } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
   publishAuthenticatedValidationDisputeControl,
@@ -39,7 +39,7 @@ import {
  * to the same emulator clock for each party.
  *
  * Both parties are seeded at both addresses their seed phrase resolves to; see
- * `seedDualAddressPartyAccountsV1`.
+ * `seedDualAddressPartyAccounts`.
  */
 export const createValidationDisputeParties = async () => {
   const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
@@ -48,12 +48,12 @@ export const createValidationDisputeParties = async () => {
   const feeUtxoLovelace = 100_000_000n;
   const emulator = new Emulator(
     [
-      ...seedDualAddressPartyAccountsV1({
+      ...seedDualAddressPartyAccounts({
         account: operator,
         feeUtxoCount,
         feeUtxoLovelace,
       }),
-      ...seedDualAddressPartyAccountsV1({
+      ...seedDualAddressPartyAccounts({
         account: challenger,
         feeUtxoCount,
         feeUtxoLovelace,

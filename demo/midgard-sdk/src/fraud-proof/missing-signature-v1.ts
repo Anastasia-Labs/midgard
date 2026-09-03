@@ -40,7 +40,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import { H32Schema, VerificationKeyHashSchema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -52,7 +52,7 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const MISSING_SIGNATURE_VIOLATION_ID_V1 = "missing-signature" as const;
+export const MISSING_SIGNATURE_VIOLATION_ID = "missing-signature" as const;
 
 // ## Thread NFT asset name
 
@@ -60,7 +60,7 @@ export const MISSING_SIGNATURE_VIOLATION_ID_V1 = "missing-signature" as const;
  * A missing-signature computation-thread token's asset name: the family's
  * deployed category id (4 bytes) followed by the challenged block's header hash.
  */
-export const missingSignatureThreadTokenAssetNameV1 = (
+export const missingSignatureThreadTokenAssetName = (
   categoryId: string,
   challengedHeaderHash: string,
 ): string => {
@@ -86,7 +86,7 @@ export const missingSignatureThreadTokenAssetNameV1 = (
  * it as an Ed25519 point: the on-chain twin hashes raw bytes, and a committed
  * garbage key must classify identically on both sides.
  */
-export const missingSignatureVkeyHashV1 = (verificationKey: string): string => {
+export const missingSignatureVkeyHash = (verificationKey: string): string => {
   const bytes = Buffer.from(verificationKey, "hex");
   if (
     bytes.length !== 32 ||
@@ -106,7 +106,7 @@ export const missingSignatureVkeyHashV1 = (verificationKey: string): string => {
  * verification — a *present but invalid* witness is `invalid-signature`'s
  * fault (Q15), not this family's.
  */
-export const missingSignatureRequiredSignerIsPresentV1 = ({
+export const missingSignatureRequiredSignerIsPresent = ({
   verificationKey,
   addrTxWits,
 }: {
@@ -125,7 +125,7 @@ export const missingSignatureRequiredSignerIsPresentV1 = ({
  * classification — where the fold above is presence-by-key over an already
  * lifted accusation.
  */
-export const findMissingRequiredSignerIndexV1 = ({
+export const findMissingRequiredSignerIndex = ({
   requiredSignerHashes,
   addrTxWits,
 }: {
@@ -134,7 +134,7 @@ export const findMissingRequiredSignerIndexV1 = ({
 }): number | null => {
   const witnessKeyHashes = new Set(
     addrTxWits.map((witness) =>
-      missingSignatureVkeyHashV1(witness.verification_key),
+      missingSignatureVkeyHash(witness.verification_key),
     ),
   );
   const index = requiredSignerHashes.findIndex(
@@ -148,15 +148,14 @@ export const findMissingRequiredSignerIndexV1 = ({
  * required signer of the committed transaction has no witness whose key
  * hashes to it.
  */
-export const nativeTxHasMissingSignatureViolationV1 = ({
+export const nativeTxHasMissingSignatureViolation = ({
   requiredSignerHashes,
   addrTxWits,
 }: {
   readonly requiredSignerHashes: readonly string[];
   readonly addrTxWits: readonly MidgardAddressWitnessData[];
 }): boolean =>
-  findMissingRequiredSignerIndexV1({ requiredSignerHashes, addrTxWits }) !==
-  null;
+  findMissingRequiredSignerIndex({ requiredSignerHashes, addrTxWits }) !== null;
 
 // ## Shared step aliases
 
@@ -232,7 +231,7 @@ export const MissingSignatureStep02Datum =
 export const MissingSignatureStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  required_signers_opening: FieldOpeningV1Schema,
+  required_signers_opening: FieldOpeningSchema,
   bad_required_signer_hash_index: Data.Integer(),
 });
 export type MissingSignatureStep02Args = Data.Static<
@@ -332,7 +331,7 @@ export const MissingSignatureStep04ArgsSchema = Data.Enum([
     Scan: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      addr_tx_wits_opening: FieldOpeningV1Schema,
+      addr_tx_wits_opening: FieldOpeningSchema,
       checkpoint_cbor: Data.Nullable(Data.Bytes()),
     }),
   }),
@@ -341,7 +340,7 @@ export const MissingSignatureStep04ArgsSchema = Data.Enum([
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
-      addr_tx_wits_opening: FieldOpeningV1Schema,
+      addr_tx_wits_opening: FieldOpeningSchema,
       checkpoint_cbor: Data.Nullable(Data.Bytes()),
     }),
   }),
@@ -363,18 +362,18 @@ export const MissingSignatureStep04SpendRedeemer =
 // ## Step-04 deterministic field-7 checkpoint
 
 /** Fixed-width §5.3 item size: 32-byte key + 64-byte signature, CBOR-wrapped. */
-export const MISSING_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1 = 103;
+export const MISSING_SIGNATURE_ADDRESS_WITNESS_STRIDE = 103;
 
 /** Number of authenticated witnesses consumed by every non-terminal scan. */
-export const MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1 = 32;
+export const MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE = 32;
 
 /** ASCII `MidgardFieldWalkCheckpointV1`, matching the Aiken walk core. */
-const FIELD_WALK_CHECKPOINT_DOMAIN_V1 = Buffer.from(
+const FIELD_WALK_CHECKPOINT_DOMAIN = Buffer.from(
   "MidgardFieldWalkCheckpointV1",
   "ascii",
 );
 
-export type MissingSignatureFieldWalkCheckpointV1 = {
+export type MissingSignatureFieldWalkCheckpoint = {
   readonly checkpointCbor: string;
   readonly checkpointHash: string;
   readonly nextItemIndex: number;
@@ -392,7 +391,7 @@ const requireU24 = (value: number, label: string): Buffer => {
   return encoded;
 };
 
-const fieldArrayHeaderLengthV1 = (itemCount: number): number => {
+const fieldArrayHeaderLength = (itemCount: number): number => {
   if (!Number.isSafeInteger(itemCount) || itemCount < 0 || itemCount > 0xffff) {
     throw new Error(
       "missing-signature witness count is outside the §5.1 array domain",
@@ -406,7 +405,7 @@ const fieldArrayHeaderLengthV1 = (itemCount: number): number => {
  * Field 7 has a fixed stride, so its byte offset is an O(1) function of the
  * authenticated count and cursor; no prover-supplied arithmetic is trusted.
  */
-export const missingSignatureFieldWalkCheckpointV1 = ({
+export const missingSignatureFieldWalkCheckpoint = ({
   txId,
   itemCount,
   totalLength,
@@ -416,7 +415,7 @@ export const missingSignatureFieldWalkCheckpointV1 = ({
   readonly itemCount: number;
   readonly totalLength: number;
   readonly nextItemIndex: number;
-}): MissingSignatureFieldWalkCheckpointV1 => {
+}): MissingSignatureFieldWalkCheckpoint => {
   if (!/^[0-9a-f]{64}$/u.test(txId)) {
     throw new Error(
       "missing-signature checkpoint transaction id must be 32-byte lowercase hex",
@@ -431,9 +430,9 @@ export const missingSignatureFieldWalkCheckpointV1 = ({
       "missing-signature checkpoint cursor is outside the witness collection",
     );
   }
-  const headerLength = fieldArrayHeaderLengthV1(itemCount);
+  const headerLength = fieldArrayHeaderLength(itemCount);
   const expectedLength =
-    headerLength + itemCount * MISSING_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1;
+    headerLength + itemCount * MISSING_SIGNATURE_ADDRESS_WITNESS_STRIDE;
   if (
     totalLength !== expectedLength ||
     totalLength <= 0 ||
@@ -444,7 +443,7 @@ export const missingSignatureFieldWalkCheckpointV1 = ({
     );
   }
   const nextOffset =
-    headerLength + nextItemIndex * MISSING_SIGNATURE_ADDRESS_WITNESS_STRIDE_V1;
+    headerLength + nextItemIndex * MISSING_SIGNATURE_ADDRESS_WITNESS_STRIDE;
   const checkpoint = Buffer.concat([
     Buffer.from([0x86, 0x58, 0x20]),
     Buffer.from(txId, "hex"),
@@ -465,7 +464,7 @@ export const missingSignatureFieldWalkCheckpointV1 = ({
   return {
     checkpointCbor: checkpoint.toString("hex"),
     checkpointHash: Buffer.from(
-      blake2b(Buffer.concat([FIELD_WALK_CHECKPOINT_DOMAIN_V1, checkpoint]), {
+      blake2b(Buffer.concat([FIELD_WALK_CHECKPOINT_DOMAIN, checkpoint]), {
         dkLen: 32,
       }),
     ).toString("hex"),
@@ -480,7 +479,7 @@ export const missingSignatureFieldWalkCheckpointV1 = ({
  * Resolve a thread-carried checkpoint digest to the only cursor the fixed
  * batch schedule can have produced. Empty means the initial position.
  */
-export const resolveMissingSignatureFieldWalkCheckpointV1 = ({
+export const resolveMissingSignatureFieldWalkCheckpoint = ({
   txId,
   itemCount,
   totalLength,
@@ -490,9 +489,9 @@ export const resolveMissingSignatureFieldWalkCheckpointV1 = ({
   readonly itemCount: number;
   readonly totalLength: number;
   readonly committedHash: string;
-}): MissingSignatureFieldWalkCheckpointV1 | null => {
+}): MissingSignatureFieldWalkCheckpoint | null => {
   // Validate the authenticated field shape even at the initial position.
-  missingSignatureFieldWalkCheckpointV1({
+  missingSignatureFieldWalkCheckpoint({
     txId,
     itemCount,
     totalLength,
@@ -505,11 +504,11 @@ export const resolveMissingSignatureFieldWalkCheckpointV1 = ({
     );
   }
   for (
-    let cursor = MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1;
+    let cursor = MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE;
     cursor < itemCount;
-    cursor += MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE_V1
+    cursor += MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE
   ) {
-    const candidate = missingSignatureFieldWalkCheckpointV1({
+    const candidate = missingSignatureFieldWalkCheckpoint({
       txId,
       itemCount,
       totalLength,
@@ -525,7 +524,7 @@ export const resolveMissingSignatureFieldWalkCheckpointV1 = ({
 // ## Step-state builder (twin of the on-chain forwarding rule)
 
 /** Exactly the state `step-01` writes for `step-02`: the §2.5 anchor. */
-export const missingSignatureStep02StateFromVerifiedTxV1 = ({
+export const missingSignatureStep02StateFromVerifiedTx = ({
   verifiedTxId,
   verifiedWitnessSetHash,
 }: {

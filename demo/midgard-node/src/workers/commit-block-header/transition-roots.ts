@@ -377,11 +377,11 @@ const transitionTraceEntries = (
       return 0;
     });
     for (const [index, step] of ordered.entries()) {
-      if (step.schema_version !== SDK.TRANSITION_STEP_V1_SCHEMA_VERSION) {
+      if (step.schema_version !== SDK.TRANSITION_STEP_SCHEMA_VERSION) {
         return yield* Effect.fail(
           MpfError.phasRoot(
             new Error(
-              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_V1_SCHEMA_VERSION.toString()} at sorted index ${index.toString()}; got=${step.schema_version.toString()}`,
+              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_SCHEMA_VERSION.toString()} at sorted index ${index.toString()}; got=${step.schema_version.toString()}`,
             ),
           ),
         );
@@ -470,13 +470,11 @@ export const verifyIndexedTraceProof = (
   options: Omit<RootProofVerificationOptions, "expectedDomain">,
 ): Effect.Effect<void, MpfError, never> =>
   Effect.gen(function* () {
-    if (
-      witness.value.schema_version !== SDK.TRANSITION_STEP_V1_SCHEMA_VERSION
-    ) {
+    if (witness.value.schema_version !== SDK.TRANSITION_STEP_SCHEMA_VERSION) {
       return yield* Effect.fail(
         MpfError.phasRoot(
           new Error(
-            `Indexed trace proof TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_V1_SCHEMA_VERSION.toString()}; got=${witness.value.schema_version.toString()}`,
+            `Indexed trace proof TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_SCHEMA_VERSION.toString()}; got=${witness.value.schema_version.toString()}`,
           ),
         ),
       );

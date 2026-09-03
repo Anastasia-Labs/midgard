@@ -14,14 +14,14 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import {
-  advanceWithdrawnInputToStep03V1,
-  makeWithdrawnInputEmulatorScenarioV1,
+  advanceWithdrawnInputToStep03,
+  makeWithdrawnInputEmulatorScenario,
 } from "./support/withdrawn-input-emulator-v1.js";
 
 describe("withdrawn-input emulator lifecycle", () => {
   it("mints the permanent fault token and removes the fraudulent block", async () => {
-    const scenario = await makeWithdrawnInputEmulatorScenarioV1("fault");
-    const { step02 } = await advanceWithdrawnInputToStep03V1(scenario);
+    const scenario = await makeWithdrawnInputEmulatorScenario("fault");
+    const { step02 } = await advanceWithdrawnInputToStep03(scenario);
     const final = await submitWithdrawnInputStep03({
       lucid: scenario.harness.proverLucid,
       contracts: scenario.contracts,

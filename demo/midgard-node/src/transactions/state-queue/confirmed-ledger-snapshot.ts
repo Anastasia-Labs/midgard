@@ -1,5 +1,5 @@
 import {
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
@@ -42,7 +42,7 @@ export const pendingUtxoMemberToConfirmedLedgerEntry = (
       // Snapshot `outref` bytes are the §5.3 field-0/1 item form — 38 bytes,
       // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` — matching on-chain
       // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
-      const input = decodeMidgardSpendInputItemV1(
+      const input = decodeMidgardSpendInputItem(
         member[PendingBlockFinalizationsDB.UtxoColumns.OUTREF],
       );
       const output = decodeMidgardTxOutput(
@@ -252,7 +252,7 @@ const materializeFromBase = <R>({
     };
   });
 
-export const materializeConfirmedLedgerDeltaChainV1 = <R>({
+export const materializeConfirmedLedgerDeltaChain = <R>({
   record,
   confirmedEntries,
   retrieveParent,
@@ -283,7 +283,7 @@ export const materializeConfirmedLedgerSnapshot = (
 ): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
   Effect.gen(function* () {
     const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
-    return yield* materializeConfirmedLedgerDeltaChainV1({
+    return yield* materializeConfirmedLedgerDeltaChain({
       record,
       confirmedEntries,
       retrieveParent: PendingBlockFinalizationsDB.retrieveByHeaderHash,

@@ -6,7 +6,7 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  isCanonicalDecodabilityViolationV1,
+  isCanonicalDecodabilityViolation,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -28,24 +28,24 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { CanonicalDecodabilityContractsV1 } from "./contracts-v1.js";
+import type { CanonicalDecodabilityContracts } from "./contracts-v1.js";
 import {
-  canonicalDecodabilityStepLabelV1,
+  canonicalDecodabilityStepLabel,
   canonicalDecodabilitySubmitError,
-  requireCanonicalDecodabilityReferenceScriptV1,
-  requireCanonicalDecodabilityStepStateV1,
-  requireCanonicalDecodabilityThreadUtxoV1,
+  requireCanonicalDecodabilityReferenceScript,
+  requireCanonicalDecodabilityStepState,
+  requireCanonicalDecodabilityThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = canonicalDecodabilityStepLabelV1(1);
+const STEP_LABEL = canonicalDecodabilityStepLabel(1);
 
 export type SubmitCanonicalDecodabilityStep02Result = {
   readonly txHash: string;
@@ -86,33 +86,33 @@ export const submitCanonicalDecodabilityStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: CanonicalDecodabilityContractsV1;
+  readonly contracts: CanonicalDecodabilityContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** Published step-02 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep02Result> => {
   const { threadUtxo, threadToken } =
-    await requireCanonicalDecodabilityThreadUtxoV1({
+    await requireCanonicalDecodabilityThreadUtxo({
       lucid,
       contracts,
       categoryId,
       stepIndex: 1,
       threadOutRef,
     });
-  const state = requireCanonicalDecodabilityStepStateV1({
+  const state = requireCanonicalDecodabilityStepState({
     threadUtxo,
     signer,
     schema: CanonicalDecodabilityStep02Datum,
     stepIndex: 1,
   });
   if (
-    !isCanonicalDecodabilityViolationV1({
+    !isCanonicalDecodabilityViolation({
       fieldIndex: Number(state.field_index),
       verdict: Number(state.verdict),
     })
@@ -121,17 +121,17 @@ export const submitCanonicalDecodabilityStep02 = async ({
       `step-02 datum does not describe a violation (field=${state.field_index.toString()}, verdict=${state.verdict.toString()}).`,
     );
   }
-  const stepReference = requireCanonicalDecodabilityReferenceScriptV1({
+  const stepReference = requireCanonicalDecodabilityReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     stepIndex: 1,
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -249,9 +249,9 @@ export const submitCanonicalDecodabilityStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

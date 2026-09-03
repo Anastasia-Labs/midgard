@@ -11,15 +11,15 @@ import {
 } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardSpendInputItemV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  decodeMidgardSpendInputItem,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { type Assets, CML, type Network } from "@lucid-evolution/lucid";
 
@@ -27,7 +27,7 @@ import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import { type NodeUtxo, walletNetworkFromId } from "./command-utils.js";
 
 export type TransferNetworkName = Network;
-export type TransferConsensusProfile = MidgardConsensusProfileV1;
+export type TransferConsensusProfile = MidgardConsensusProfile;
 export type PrivateKeyInput =
   | ReturnType<typeof CML.PrivateKey.from_bech32>
   | string;
@@ -100,7 +100,7 @@ export const makeStaticMidgardProvider = ({
   minFeeA,
   minFeeB,
   maxSubmitTxCborBytes,
-  consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly address: string;
   readonly utxos: readonly NodeUtxo[];
@@ -122,24 +122,24 @@ export const makeStaticMidgardProvider = ({
       )
       .map(toMidgardUtxo)[0],
   getProtocolInfo: async () => {
-    if (!isMidgardConsensusProfileV1(consensusProfile)) {
+    if (!isMidgardConsensusProfile(consensusProfile)) {
       throw new Error("Unsupported consensus profile");
     }
     if (
       !Number.isSafeInteger(maxSubmitTxCborBytes) ||
       maxSubmitTxCborBytes <= 0 ||
-      maxSubmitTxCborBytes > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+      maxSubmitTxCborBytes > MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes
     ) {
       throw new Error(
-        `maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString()}`,
+        `maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes.toString()}`,
       );
     }
     return {
       apiVersion: 1,
       network,
-      midgardNativeTxVersion: Number(MIDGARD_NATIVE_TX_V1_VERSION) as 1,
+      midgardNativeTxVersion: Number(MIDGARD_NATIVE_TX_VERSION) as 1,
       currentSlot: 0n,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
       codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
       protocolFeeParameters: { minFeeA, minFeeB },
@@ -176,8 +176,8 @@ export const makeTransferMidgard = async ({
   networkId,
   minFeeA,
   minFeeB,
-  maxSubmitTxCborBytes = MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
-  consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
+  maxSubmitTxCborBytes = MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly senderAddress: string;
   readonly signer: PrivateKeyInput;
@@ -219,7 +219,7 @@ const selectedInputsFromCompletedTx = (
     // Each field-0 preimage item is the §5.3 field-0/1 item form (38 bytes,
     // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`) matching on-chain
     // `ledger_outref_key`, not CML's minimal-index `TransactionInput` CBOR.
-    const input = decodeMidgardSpendInputItemV1(bytes);
+    const input = decodeMidgardSpendInputItem(bytes);
     const label = `${Buffer.from(input.txId).toString("hex")}#${input.outputIndex.toString()}`;
     const utxo = byLabel.get(label);
     if (utxo === undefined) {
@@ -273,7 +273,7 @@ export const buildTransferTx = async ({
   network,
   networkId,
   fee = 0n,
-  consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly senderAddress: string;
   readonly destinationAddress: string;
@@ -346,7 +346,7 @@ export const buildTransferTxWithMinFee = async ({
   minFeeA,
   minFeeB,
   maxSubmitTxCborBytes,
-  consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly senderAddress: string;
   readonly destinationAddress: string;
@@ -410,7 +410,7 @@ export const buildTerminalDrainTx = async ({
   minFeeB,
   feeCap = DEFAULT_TERMINAL_DRAIN_FEE_CAP_LOVELACE,
   maxFeeIterations = DEFAULT_TERMINAL_DRAIN_MAX_FEE_ITERATIONS,
-  consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly senderAddress: string;
   readonly destinationAddress: string;

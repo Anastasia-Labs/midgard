@@ -26,7 +26,7 @@ export type MpfArenaLimits = {
   readonly liveArenaMaxBytes: number;
 };
 
-export type ParkedMpfOverlayV1 = {
+export type ParkedMpfOverlay = {
   readonly schemaVersion: 1;
   readonly trieName: string;
   readonly baseRoot: ArrayBuffer;

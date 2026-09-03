@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  type MidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_PROFILE_ID,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  assertDeploymentMarkerV1Matches,
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-  parseDeploymentMarkerV1,
+  assertDeploymentMarkerMatches,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -25,7 +25,7 @@ import {
 import { exactRecord } from "./utils/exact-record.js";
 
 export const tableName = "foreign_tip_reconciliations";
-export const FOREIGN_TIP_RECONCILIATION_V1_VERSION = 1 as const;
+export const FOREIGN_TIP_RECONCILIATION_VERSION = 1 as const;
 
 export const EvidenceKind = {
   Pending: "pending_v1",
@@ -69,10 +69,10 @@ export enum Columns {
 
 export type Entry = {
   [Columns.FOREIGN_HEADER_HASH]: Buffer;
-  [Columns.FORMAT_VERSION]: typeof FOREIGN_TIP_RECONCILIATION_V1_VERSION;
-  [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION;
+  [Columns.FORMAT_VERSION]: typeof FOREIGN_TIP_RECONCILIATION_VERSION;
+  [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION;
   [Columns.DEPLOYMENT_MANIFEST_ID]: string;
-  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   [Columns.REPLACED_BASE_HEADER_HASH]: Buffer;
   [Columns.FOREIGN_HEADER_CBOR]: Buffer;
   [Columns.BLOCK_START_TIME]: Date;
@@ -107,10 +107,10 @@ type RawEntry = Omit<
   [Columns.WITHDRAWAL_COUNT]: PgBigInt;
 };
 
-export type ForeignTipReconciliationV1 = {
-  readonly version: typeof FOREIGN_TIP_RECONCILIATION_V1_VERSION;
-  readonly deploymentMarker: DeploymentMarkerV1;
-  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+export type ForeignTipReconciliation = {
+  readonly version: typeof FOREIGN_TIP_RECONCILIATION_VERSION;
+  readonly deploymentMarker: DeploymentMarker;
+  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   readonly foreignHeaderHash: Buffer;
   readonly replacedBaseHeaderHash: Buffer;
   readonly foreignHeaderCbor: Buffer;
@@ -138,24 +138,24 @@ export type ForeignTipReconciliationV1 = {
     | { readonly kind: typeof Status.Resolved };
 };
 
-export type ForeignTipDaIdentityV1 = {
+export type ForeignTipDaIdentity = {
   readonly headerHash: Buffer;
   readonly schemaVersion: 1;
-  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
+  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_ID;
   readonly payloadCbor: Buffer;
   readonly payloadSha256: Buffer;
 };
 
-export type ResolvedForeignTipEvidenceV1 = Exclude<
-  ForeignTipReconciliationV1["evidence"],
+export type ResolvedForeignTipEvidence = Exclude<
+  ForeignTipReconciliation["evidence"],
   { readonly kind: typeof EvidenceKind.Pending }
 >;
 
-export type ResolveForeignTipEvidenceV1 =
+export type ResolveForeignTipEvidence =
   | { readonly kind: typeof EvidenceKind.VerifiedEmpty }
   | {
       readonly kind: typeof EvidenceKind.VerifiedDa;
-      readonly daIdentity: ForeignTipDaIdentityV1;
+      readonly daIdentity: ForeignTipDaIdentity;
     };
 
 const exactBytes = (value: unknown, label: string, bytes?: number): Buffer => {
@@ -195,7 +195,7 @@ const exactCount = (value: unknown, label: string): bigint => {
 
 const parseEvidence = (
   value: unknown,
-): ForeignTipReconciliationV1["evidence"] => {
+): ForeignTipReconciliation["evidence"] => {
   const kind =
     typeof value === "object" && value !== null && "kind" in value
       ? value.kind
@@ -243,9 +243,9 @@ const parseEvidence = (
   };
 };
 
-export const parseForeignTipReconciliationV1 = (
+export const parseForeignTipReconciliation = (
   value: unknown,
-): ForeignTipReconciliationV1 => {
+): ForeignTipReconciliation => {
   const candidate = exactRecord(
     value,
     [
@@ -263,14 +263,14 @@ export const parseForeignTipReconciliationV1 = (
     ],
     "ForeignTipReconciliationV1",
   );
-  if (candidate.version !== FOREIGN_TIP_RECONCILIATION_V1_VERSION) {
+  if (candidate.version !== FOREIGN_TIP_RECONCILIATION_VERSION) {
     throw new Error(
-      `ForeignTipReconciliationV1 version must equal ${FOREIGN_TIP_RECONCILIATION_V1_VERSION.toString()}`,
+      `ForeignTipReconciliationV1 version must equal ${FOREIGN_TIP_RECONCILIATION_VERSION.toString()}`,
     );
   }
-  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID) {
+  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID) {
     throw new Error(
-      `ForeignTipReconciliationV1 consensusProfileId must equal ${MIDGARD_CONSENSUS_PROFILE_V1_ID}`,
+      `ForeignTipReconciliationV1 consensusProfileId must equal ${MIDGARD_CONSENSUS_PROFILE_ID}`,
     );
   }
   const commitments = exactRecord(
@@ -296,7 +296,7 @@ export const parseForeignTipReconciliationV1 = (
     resolutionKind === Status.Awaiting ? ["kind", "reason"] : ["kind"],
     "ForeignTipReconciliationV1 resolution",
   );
-  const resolution: ForeignTipReconciliationV1["resolution"] =
+  const resolution: ForeignTipReconciliation["resolution"] =
     resolutionCandidate.kind === Status.Awaiting
       ? {
           kind: Status.Awaiting,
@@ -375,9 +375,9 @@ export const parseForeignTipReconciliationV1 = (
     );
   }
   return {
-    version: FOREIGN_TIP_RECONCILIATION_V1_VERSION,
-    deploymentMarker: parseDeploymentMarkerV1(candidate.deploymentMarker),
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    version: FOREIGN_TIP_RECONCILIATION_VERSION,
+    deploymentMarker: parseDeploymentMarker(candidate.deploymentMarker),
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     foreignHeaderHash: exactBytes(
       candidate.foreignHeaderHash,
       "ForeignTipReconciliationV1 foreignHeaderHash",
@@ -402,8 +402,8 @@ export const parseForeignTipReconciliationV1 = (
 
 const foreignTipReconciliationFromEntry = (
   entry: Entry,
-): ForeignTipReconciliationV1 =>
-  parseForeignTipReconciliationV1({
+): ForeignTipReconciliation =>
+  parseForeignTipReconciliation({
     version: entry[Columns.FORMAT_VERSION],
     deploymentMarker: {
       schemaVersion: entry[Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION],
@@ -438,9 +438,9 @@ const foreignTipReconciliationFromEntry = (
         : { kind: Status.Resolved },
   });
 
-export const decodeForeignTipReconciliationV1 = (
+export const decodeForeignTipReconciliation = (
   entry: Entry,
-): ForeignTipReconciliationV1 => foreignTipReconciliationFromEntry(entry);
+): ForeignTipReconciliation => foreignTipReconciliationFromEntry(entry);
 
 const normalizeEntry = (entry: RawEntry): Entry => {
   const normalized: Entry = {
@@ -498,7 +498,7 @@ const decodeForeignHeaderHashKey = (
       }),
   });
 
-const parseDaIdentity = (value: unknown): ForeignTipDaIdentityV1 => {
+const parseDaIdentity = (value: unknown): ForeignTipDaIdentity => {
   const candidate = exactRecord(
     value,
     [
@@ -515,7 +515,7 @@ const parseDaIdentity = (value: unknown): ForeignTipDaIdentityV1 => {
       "ForeignTipReconciliationV1 DA identity schemaVersion must equal 1",
     );
   }
-  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID) {
+  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_ID) {
     throw new Error(
       "ForeignTipReconciliationV1 DA identity consensus profile is unsupported",
     );
@@ -541,24 +541,23 @@ const parseDaIdentity = (value: unknown): ForeignTipDaIdentityV1 => {
       28,
     ),
     schemaVersion: 1,
-    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
     payloadCbor,
     payloadSha256,
   };
 };
 
-export const authenticateForeignTipDaEvidenceV1 = ({
+export const authenticateForeignTipDaEvidence = ({
   reconciliation,
   deploymentMarker,
   evidence,
 }: {
-  readonly reconciliation: ForeignTipReconciliationV1;
+  readonly reconciliation: ForeignTipReconciliation;
   readonly deploymentMarker: unknown;
   readonly evidence: unknown;
-}): ForeignTipDaIdentityV1 => {
-  const canonicalReconciliation =
-    parseForeignTipReconciliationV1(reconciliation);
-  assertDeploymentMarkerV1Matches(
+}): ForeignTipDaIdentity => {
+  const canonicalReconciliation = parseForeignTipReconciliation(reconciliation);
+  assertDeploymentMarkerMatches(
     canonicalReconciliation.deploymentMarker,
     deploymentMarker,
     "ForeignTipReconciliationV1 recovery",
@@ -605,14 +604,12 @@ export const recordMismatch = ({
 }: {
   readonly foreignHeaderHash: string;
   readonly replacedBaseHeaderHash: string;
-  readonly foreignHeader: SDK.HeaderV1;
-  readonly consensusProfile: MidgardConsensusProfileV1;
-  readonly deploymentMarker: DeploymentMarkerV1;
+  readonly foreignHeader: SDK.Header;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly deploymentMarker: DeploymentMarker;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(
-      foreignHeader,
-    ).pipe(
+    const recomputedHeaderHash = yield* SDK.hashBlockHeader(foreignHeader).pipe(
       Effect.mapError(
         (cause) =>
           new DatabaseError({
@@ -632,7 +629,7 @@ export const recordMismatch = ({
       );
     }
     const foreignHeaderCbor = Buffer.from(
-      LucidData.to(foreignHeader, SDK.HeaderV1),
+      LucidData.to(foreignHeader, SDK.Header),
       "hex",
     );
     const startTimeMs = Number(foreignHeader.startTime);
@@ -664,8 +661,8 @@ export const recordMismatch = ({
             "foreign and replaced header hashes must be exact lowercase 28-byte hex",
           );
         }
-        return parseForeignTipReconciliationV1({
-          version: FOREIGN_TIP_RECONCILIATION_V1_VERSION,
+        return parseForeignTipReconciliation({
+          version: FOREIGN_TIP_RECONCILIATION_VERSION,
           deploymentMarker,
           consensusProfileId: consensusProfile.profileId,
           foreignHeaderHash: Buffer.from(foreignHeaderHash, "hex"),
@@ -855,8 +852,8 @@ export const markResolved = ({
   evidence,
 }: {
   readonly foreignHeaderHash: string;
-  readonly deploymentMarker: DeploymentMarkerV1;
-  readonly evidence: ResolveForeignTipEvidenceV1;
+  readonly deploymentMarker: DeploymentMarker;
+  readonly evidence: ResolveForeignTipEvidence;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (!/^[0-9a-f]{56}$/u.test(foreignHeaderHash)) {
@@ -870,7 +867,7 @@ export const markResolved = ({
     }
     const requestedResolution = yield* Effect.try({
       try: () => {
-        const marker = parseDeploymentMarkerV1(deploymentMarker);
+        const marker = parseDeploymentMarker(deploymentMarker);
         const candidate = exactRecord(
           evidence,
           evidence.kind === EvidenceKind.VerifiedDa
@@ -919,8 +916,8 @@ export const markResolved = ({
         const currentEntry = yield* decodeEntry(raw);
         const current = foreignTipReconciliationFromEntry(currentEntry);
         const canonicalEvidence = yield* Effect.try({
-          try: (): ResolvedForeignTipEvidenceV1 => {
-            assertDeploymentMarkerV1Matches(
+          try: (): ResolvedForeignTipEvidence => {
+            assertDeploymentMarkerMatches(
               current.deploymentMarker,
               requestedResolution.deploymentMarker,
               "ForeignTipReconciliationV1 resolution",
@@ -930,7 +927,7 @@ export const markResolved = ({
             ) {
               return { kind: EvidenceKind.VerifiedEmpty };
             }
-            const authenticated = authenticateForeignTipDaEvidenceV1({
+            const authenticated = authenticateForeignTipDaEvidence({
               reconciliation: current,
               deploymentMarker: requestedResolution.deploymentMarker,
               evidence: requestedResolution.evidence.daIdentity,
@@ -952,7 +949,7 @@ export const markResolved = ({
         });
         const next = yield* Effect.try({
           try: () =>
-            parseForeignTipReconciliationV1({
+            parseForeignTipReconciliation({
               ...current,
               evidence: canonicalEvidence,
               resolution: { kind: Status.Resolved },

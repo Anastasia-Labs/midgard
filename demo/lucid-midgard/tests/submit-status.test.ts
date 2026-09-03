@@ -1,11 +1,11 @@
 import {
   computeHash32,
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -66,14 +66,14 @@ const makeProvider = (opts?: {
     network: "Preview",
     midgardNativeTxVersion: 1,
     currentSlot: 0n,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
       maxSubmitTxCborBytes:
         opts?.maxSubmitTxCborBytes ??
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -91,18 +91,18 @@ const makeProvider = (opts?: {
       : {
           maxSubmitTxCborBytes:
             opts?.maxSubmitTxCborBytes ??
-            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+            MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
         }),
   }),
   getCurrentSlot: async () => 0n,
   submitTx:
     opts?.submit ??
     (async (txCborHex) => {
-      const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.from(txCborHex, "hex"),
       );
       return {
-        txId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+        txId: computeMidgardNativeTxId(tx).toString("hex"),
         status: "queued",
         httpStatus: 202,
         duplicate: false,
@@ -157,7 +157,7 @@ describe("submit/status chaining", () => {
     expect(signed.metadata.addrWitnessCount).toBe(1);
     expect(signed.metadata.signedBy).toEqual([keyHash.to_hex()]);
 
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(signed.txCbor);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(signed.txCbor);
     const witnessBytes = decodeMidgardNativeByteListPreimage(
       decoded.witnessSet.addrTxWitsPreimageCbor,
       "native.addr_tx_wits",
@@ -176,11 +176,11 @@ describe("submit/status chaining", () => {
     const provider = makeProvider({
       submit: async (txCborHex) => {
         submittedHex = txCborHex;
-        const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
           Buffer.from(txCborHex, "hex"),
         );
         return {
-          txId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+          txId: computeMidgardNativeTxId(tx).toString("hex"),
           status: "queued",
           httpStatus: 202,
           duplicate: false,
@@ -214,11 +214,11 @@ describe("submit/status chaining", () => {
     const provider = makeProvider({
       submit: async (txCborHex) => {
         submitCalls += 1;
-        const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
           Buffer.from(txCborHex, "hex"),
         );
         return {
-          txId: computeMidgardNativeTxIdV1(tx).toString("hex"),
+          txId: computeMidgardNativeTxId(tx).toString("hex"),
           status: "queued",
           httpStatus: 202,
           duplicate: false,

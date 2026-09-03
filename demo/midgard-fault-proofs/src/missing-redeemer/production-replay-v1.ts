@@ -1,20 +1,20 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  decodeRetainedValidationWitnessKeyV1,
-  decodeRetainedValidationWitnessV1,
+  acceptedVerdictSubject,
+  decodeRetainedValidationWitness,
+  decodeRetainedValidationWitnessKey,
   EventKeySchema,
-  forcedVerdictSubjectV1,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
@@ -23,40 +23,40 @@ import {
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
-  type AuthenticatedScriptPurposeV1,
-  MISSING_REDEEMER_VIOLATION_ID_V1,
-  missingRedeemerEvidenceClosesV1,
-  type MissingRedeemerEvidenceV1,
-  type MissingRedeemerPurposeKindV1,
-  prepareMissingRedeemerEvidenceV1,
+  type AuthenticatedScriptPurpose,
+  MISSING_REDEEMER_VIOLATION_ID,
+  type MissingRedeemerEvidence,
+  missingRedeemerEvidenceCloses,
+  type MissingRedeemerPurposeKind,
+  prepareMissingRedeemerEvidence,
 } from "./family-v1.js";
 import {
-  buildMissingRedeemerStageTenAuthenticationFromRetainedDaV1,
-  decodeMissingRedeemerStageTenControlV1,
-  type MissingRedeemerStageTenAuthenticationV1,
+  buildMissingRedeemerStageTenAuthenticationFromRetainedDa,
+  decodeMissingRedeemerStageTenControl,
+  type MissingRedeemerStageTenAuthentication,
 } from "./retained-stage-ten-v1.js";
 
-export type MissingRedeemerProductionArtifactV1 = Readonly<{
+export type MissingRedeemerArtifact = Readonly<{
   schemaVersion: "midgard-missing-redeemer-production-artifact-v1";
   headerHash: string;
-  header: CanonicalBlockEvidenceV1["header"];
+  header: CanonicalBlockEvidence["header"];
   nativeTxCompactCbor: string;
-  evidence: MissingRedeemerEvidenceV1;
-  authentication: MissingRedeemerStageTenAuthenticationV1;
+  evidence: MissingRedeemerEvidence;
+  authentication: MissingRedeemerStageTenAuthentication;
   acceptedInclusion?: SubmitStep01TxInclusion;
   forcedMembership?: NonNullable<
     Awaited<ReturnType<typeof buildForcedTransactionLeafMembershipProof>>
   >;
 }>;
-export type MissingRedeemerProductionCandidateV1 = Readonly<{
+export type MissingRedeemerCandidate = Readonly<{
   detection: Readonly<{
     detectionId: string;
     headerHash: string;
-    violationId: typeof MISSING_REDEEMER_VIOLATION_ID_V1;
+    violationId: typeof MISSING_REDEEMER_VIOLATION_ID;
     position: bigint;
     diagnostic: string;
   }>;
-  artifact: MissingRedeemerProductionArtifactV1;
+  artifact: MissingRedeemerArtifact;
 }>;
 
 const exact = (value: bigint, label: string): number => {
@@ -65,10 +65,10 @@ const exact = (value: bigint, label: string): number => {
     throw new Error(`missingRedeemer ${label} changed`);
   return result;
 };
-export const admitMissingRedeemerProductionArtifactV1 = (
+export const admitMissingRedeemerArtifact = (
   value: unknown,
-): MissingRedeemerProductionArtifactV1 => {
-  const artifact = value as MissingRedeemerProductionArtifactV1;
+): MissingRedeemerArtifact => {
+  const artifact = value as MissingRedeemerArtifact;
   if (
     typeof artifact !== "object" ||
     artifact === null ||
@@ -91,7 +91,7 @@ export const admitMissingRedeemerProductionArtifactV1 = (
       Number(artifact.authentication.sourceLanguageTag) ||
     (artifact.acceptedInclusion === undefined) ===
       (artifact.forcedMembership === undefined) ||
-    !missingRedeemerEvidenceClosesV1(artifact.evidence)
+    !missingRedeemerEvidenceCloses(artifact.evidence)
   )
     throw new Error("missingRedeemer production artifact is not admitted");
   return artifact;
@@ -103,20 +103,20 @@ const terminalCoordinates = (
 ) => {
   const coordinates = new Map<
     string,
-    { purposeKind: MissingRedeemerPurposeKindV1; purposeIndex: number }
+    { purposeKind: MissingRedeemerPurposeKind; purposeIndex: number }
   >();
   for (const entry of retainedEntries) {
-    const key = decodeRetainedValidationWitnessKeyV1(entry.key);
+    const key = decodeRetainedValidationWitnessKey(entry.key);
     if (Data.to(key.event_key as never, EventKeySchema) !== eventKeyCbor)
       continue;
-    const retained = decodeRetainedValidationWitnessV1(entry.value);
+    const retained = decodeRetainedValidationWitness(entry.value);
     if (
       retained.phase !== 8n ||
       retained.machine_state.phase !== "ScriptSources"
     )
       continue;
     try {
-      const control = decodeMissingRedeemerStageTenControlV1(
+      const control = decodeMissingRedeemerStageTenControl(
         Buffer.from(retained.witness_cbor, "hex"),
       );
       const kind = exact(
@@ -129,7 +129,7 @@ const terminalCoordinates = (
         "purpose index",
       );
       coordinates.set(`${kind.toString()}:${index.toString()}`, {
-        purposeKind: kind as MissingRedeemerPurposeKindV1,
+        purposeKind: kind as MissingRedeemerPurposeKind,
         purposeIndex: index,
       });
     } catch {
@@ -140,11 +140,11 @@ const terminalCoordinates = (
 };
 
 const retainedPurpose = (
-  authentication: MissingRedeemerStageTenAuthenticationV1,
-): AuthenticatedScriptPurposeV1 => ({
+  authentication: MissingRedeemerStageTenAuthentication,
+): AuthenticatedScriptPurpose => ({
   purposeKind: Number(
     authentication.control.discovery.current_purpose_kind,
-  ) as MissingRedeemerPurposeKindV1,
+  ) as MissingRedeemerPurposeKind,
   purposeIndex: exact(
     authentication.control.discovery.current_purpose_index,
     "purpose index",
@@ -168,9 +168,9 @@ const retainedPurpose = (
 });
 
 /** Complete accepted/forced replay over every retained terminal stage-10 coordinate. */
-export const replayMissingRedeemerProductionV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly MissingRedeemerProductionCandidateV1[]> => {
+export const replayMissingRedeemer = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly MissingRedeemerCandidate[]> => {
   const descriptorEntries =
     block.reconstruction.payload.block_body.validation_traces.map(
       ([key, value]) => ({
@@ -200,7 +200,7 @@ export const replayMissingRedeemerProductionV1 = async (
       return terminalCoordinates(retainedEntries, eventKeyCbor).map(
         async (coordinate) => {
           const authentication =
-            await buildMissingRedeemerStageTenAuthenticationFromRetainedDaV1({
+            await buildMissingRedeemerStageTenAuthenticationFromRetainedDa({
               eventKey,
               transactionId: transaction.nodeTxId,
               ...coordinate,
@@ -208,7 +208,7 @@ export const replayMissingRedeemerProductionV1 = async (
               retainedValidationWitnessEntries: retainedEntries,
               expectedValidationTracesRoot: block.header.validationTracesRoot,
             });
-          const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+          const material = deriveMidgardNativeTxFaultEvidenceMaterial(
             Buffer.from(transaction.txCbor, "hex"),
           );
           const field = material.fieldPreimages[8];
@@ -216,17 +216,17 @@ export const replayMissingRedeemerProductionV1 = async (
             throw new Error(
               "missingRedeemer retained transaction omitted field 8",
             );
-          const evidence = prepareMissingRedeemerEvidenceV1({
+          const evidence = prepareMissingRedeemerEvidence({
             finding: {
-              subject: acceptedVerdictSubjectV1(transaction.nodeTxId),
+              subject: acceptedVerdictSubject(transaction.nodeTxId),
               ...coordinate,
             },
             authenticatedPurpose: retainedPurpose(authentication),
             redeemerFieldPreimage: field,
             committedFieldHashHex:
-              midgardFieldCommitmentV1(field).toString("hex"),
+              midgardFieldCommitment(field).toString("hex"),
           });
-          if (!missingRedeemerEvidenceClosesV1(evidence)) return null;
+          if (!missingRedeemerEvidenceCloses(evidence)) return null;
           const proofCbor = requireProof(
             trie,
             Buffer.from(transaction.nodeTxId, "hex"),
@@ -243,9 +243,9 @@ export const replayMissingRedeemerProductionV1 = async (
           });
           return {
             detection: {
-              detectionId: `${MISSING_REDEEMER_VIOLATION_ID_V1}:accepted:${position.toString()}:${transaction.nodeTxId}:${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
+              detectionId: `${MISSING_REDEEMER_VIOLATION_ID}:accepted:${position.toString()}:${transaction.nodeTxId}:${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
               headerHash: block.headerHash,
-              violationId: MISSING_REDEEMER_VIOLATION_ID_V1,
+              violationId: MISSING_REDEEMER_VIOLATION_ID,
               position: BigInt(position),
               diagnostic: `accepted transaction lacks redeemer ${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
             },
@@ -259,7 +259,7 @@ export const replayMissingRedeemerProductionV1 = async (
               authentication,
               acceptedInclusion,
             },
-          } satisfies MissingRedeemerProductionCandidateV1;
+          } satisfies MissingRedeemerCandidate;
         },
       );
     }),
@@ -279,7 +279,7 @@ export const replayMissingRedeemerProductionV1 = async (
           purposeKind: exact(
             reason.RedeemerMissing.purpose_kind,
             "forced purpose kind",
-          ) as MissingRedeemerPurposeKindV1,
+          ) as MissingRedeemerPurposeKind,
           purposeIndex: exact(
             reason.RedeemerMissing.purpose_index,
             "forced purpose index",
@@ -291,7 +291,7 @@ export const replayMissingRedeemerProductionV1 = async (
           ForcedTransactionEventKey: { tx_order_id: transaction.key },
         } as const;
         const authentication =
-          await buildMissingRedeemerStageTenAuthenticationFromRetainedDaV1({
+          await buildMissingRedeemerStageTenAuthenticationFromRetainedDa({
             eventKey,
             transactionId: transaction.value.tx_id,
             ...coordinate,
@@ -299,10 +299,10 @@ export const replayMissingRedeemerProductionV1 = async (
             retainedValidationWitnessEntries: retainedEntries,
             expectedValidationTracesRoot: block.header.validationTracesRoot,
           });
-        const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-          encodeMidgardNativeTxCanonicalV1(
-            adjudicateMidgardNativeTxFullV1Validity(
-              decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+          encodeMidgardNativeTxCanonical(
+            adjudicateMidgardNativeTxFullValidity(
+              decodeMidgardNativeTxFullFromCanonicalCbor(
                 transaction.fullTransactionCbor,
               ),
               "TxIsInvalid",
@@ -324,9 +324,9 @@ export const replayMissingRedeemerProductionV1 = async (
         const field = material.fieldPreimages[8];
         if (field === undefined)
           throw new Error("missingRedeemer forced transaction omitted field 8");
-        const evidence = prepareMissingRedeemerEvidenceV1({
+        const evidence = prepareMissingRedeemerEvidence({
           finding: {
-            subject: forcedVerdictSubjectV1({
+            subject: forcedVerdictSubject({
               transactionId: transaction.value.tx_id,
               sourceKey: transaction.key,
               rejectionReason: reason,
@@ -335,15 +335,14 @@ export const replayMissingRedeemerProductionV1 = async (
           },
           authenticatedPurpose: retainedPurpose(authentication),
           redeemerFieldPreimage: field,
-          committedFieldHashHex:
-            midgardFieldCommitmentV1(field).toString("hex"),
+          committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
         });
-        if (!missingRedeemerEvidenceClosesV1(evidence)) return null;
+        if (!missingRedeemerEvidenceCloses(evidence)) return null;
         return {
           detection: {
-            detectionId: `${MISSING_REDEEMER_VIOLATION_ID_V1}:forced:${position.toString()}:${transaction.value.tx_id}:${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
+            detectionId: `${MISSING_REDEEMER_VIOLATION_ID}:forced:${position.toString()}:${transaction.value.tx_id}:${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
             headerHash: block.headerHash,
-            violationId: MISSING_REDEEMER_VIOLATION_ID_V1,
+            violationId: MISSING_REDEEMER_VIOLATION_ID,
             position: BigInt(position),
             diagnostic: `forced transaction has redeemer ${coordinate.purposeKind.toString()}:${coordinate.purposeIndex.toString()}`,
           },
@@ -360,11 +359,11 @@ export const replayMissingRedeemerProductionV1 = async (
               eventKey,
             }))!,
           },
-        } satisfies MissingRedeemerProductionCandidateV1;
+        } satisfies MissingRedeemerCandidate;
       },
     ),
   );
-  const available: MissingRedeemerProductionCandidateV1[] = [];
+  const available: MissingRedeemerCandidate[] = [];
   for (const candidate of [...accepted, ...forced])
     if (candidate !== null) available.push(candidate);
   return available.sort((left, right) =>
@@ -373,11 +372,9 @@ export const replayMissingRedeemerProductionV1 = async (
 };
 
 /** Closed complete-replay adapter consumed by the central replay token. */
-export const detectMissingRedeemerCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
+export const detectMissingRedeemerCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
 ) =>
   Object.freeze(
-    (await replayMissingRedeemerProductionV1(block)).map(
-      ({ detection }) => detection,
-    ),
+    (await replayMissingRedeemer(block)).map(({ detection }) => detection),
   );

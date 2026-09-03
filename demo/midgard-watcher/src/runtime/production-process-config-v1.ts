@@ -2,19 +2,19 @@ import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
 import {
-  parseWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
+  parseWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
 import {
   parseWatcherConfig,
-  parseWatcherStrictJsonValueV1,
+  parseWatcherStrictJsonValue,
   type WatcherConfig,
   type WatcherWalletKeySource,
 } from "./config.js";
 
-export const WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION =
+export const WATCHER_PROCESS_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-production-process-config-v1" as const;
-export const WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION =
+export const WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-trusted-head-authority-process-config-v1" as const;
 
 const ENVIRONMENT_VARIABLE = /^[A-Z][A-Z0-9_]{0,127}$/u;
@@ -116,7 +116,7 @@ const secretSource = (
   throw new Error(`${label} kind is invalid`);
 };
 
-export const watcherSecretSourceIdentityV1 = (
+export const watcherSecretSourceIdentity = (
   source: WatcherWalletKeySource,
 ): string =>
   source.kind === "environment"
@@ -126,14 +126,14 @@ export const watcherSecretSourceIdentityV1 = (
 const assertDistinctSources = (
   sources: readonly WatcherWalletKeySource[],
 ): void => {
-  const identities = sources.map(watcherSecretSourceIdentityV1);
+  const identities = sources.map(watcherSecretSourceIdentity);
   if (new Set(identities).size !== identities.length) {
     throw new Error("production secret sources must be pairwise distinct");
   }
 };
 
-export type WatcherProductionProcessConfigV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION;
+export type WatcherProcessConfig = Readonly<{
+  schemaVersion: typeof WATCHER_PROCESS_CONFIG_SCHEMA_VERSION;
   watcherConfig: WatcherConfig;
   watcherRuntimeConfigPath: string;
   deploymentAuthorityPath: string;
@@ -191,7 +191,7 @@ const externalHistoryEndpoint = (value: unknown): string => {
 
 const historicalNativeScriptHistory = (
   value: unknown,
-): WatcherProductionProcessConfigV1["faultProofInfrastructure"]["historicalNativeScriptHistory"] => {
+): WatcherProcessConfig["faultProofInfrastructure"]["historicalNativeScriptHistory"] => {
   const input = exactRecord(
     value,
     ["sourceMode", "consistencyPolicy", "providers"],
@@ -269,7 +269,7 @@ const loopbackServiceUrl = (value: unknown, label: string): string => {
 
 const faultProofInfrastructure = (
   value: unknown,
-): WatcherProductionProcessConfigV1["faultProofInfrastructure"] => {
+): WatcherProcessConfig["faultProofInfrastructure"] => {
   const candidate = value as { readonly stateQueueLeaseTtlMs?: unknown };
   const input = exactRecord(
     value,
@@ -317,9 +317,9 @@ const faultProofInfrastructure = (
   });
 };
 
-export const parseWatcherProductionProcessConfigV1 = (
+export const parseWatcherProcessConfig = (
   value: unknown,
-): WatcherProductionProcessConfigV1 => {
+): WatcherProcessConfig => {
   const input = exactRecord(
     value,
     [
@@ -338,9 +338,7 @@ export const parseWatcherProductionProcessConfigV1 = (
     ],
     "watcher production process config",
   );
-  if (
-    input.schemaVersion !== WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION
-  ) {
+  if (input.schemaVersion !== WATCHER_PROCESS_CONFIG_SCHEMA_VERSION) {
     throw new Error("watcher production process config schema changed");
   }
   const watcherConfig = parseWatcherConfig(input.watcherConfig);
@@ -389,7 +387,7 @@ export const parseWatcherProductionProcessConfigV1 = (
     );
   }
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
     watcherConfig,
     watcherRuntimeConfigPath: canonicalPath(
       input.watcherRuntimeConfigPath,
@@ -419,18 +417,18 @@ export const parseWatcherProductionProcessConfigV1 = (
   });
 };
 
-export type WatcherTrustedHeadAuthorityProcessConfigV1 = Readonly<{
-  schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION;
-  policy: WatcherFinalityPolicyV1;
+export type WatcherTrustedHeadAuthorityProcessConfig = Readonly<{
+  schemaVersion: typeof WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION;
+  policy: WatcherFinalityPolicy;
   directory: string;
   endpoint: string;
   recordAuthenticationKeySource: WatcherWalletKeySource;
   httpBearerSecretSource: WatcherWalletKeySource;
 }>;
 
-export const parseWatcherTrustedHeadAuthorityProcessConfigV1 = (
+export const parseWatcherTrustedHeadAuthorityProcessConfig = (
   value: unknown,
-): WatcherTrustedHeadAuthorityProcessConfigV1 => {
+): WatcherTrustedHeadAuthorityProcessConfig => {
   const input = exactRecord(
     value,
     [
@@ -445,11 +443,11 @@ export const parseWatcherTrustedHeadAuthorityProcessConfigV1 = (
   );
   if (
     input.schemaVersion !==
-    WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION
+    WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION
   ) {
     throw new Error("trusted-head authority process config schema changed");
   }
-  const policy = parseWatcherFinalityPolicyV1(input.policy);
+  const policy = parseWatcherFinalityPolicy(input.policy);
   if (policy === null)
     throw new Error("trusted-head authority policy is invalid");
   if (
@@ -479,8 +477,7 @@ export const parseWatcherTrustedHeadAuthorityProcessConfigV1 = (
     httpBearerSecretSource,
   ]);
   return Object.freeze({
-    schemaVersion:
-      WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_SCHEMA_VERSION,
     policy,
     directory: canonicalPath(input.directory, "trusted-head durable directory"),
     endpoint: loopbackEndpoint(input.endpoint, "trusted-head endpoint"),
@@ -489,7 +486,7 @@ export const parseWatcherTrustedHeadAuthorityProcessConfigV1 = (
   });
 };
 
-export const loadWatcherSecretTextV1 = async (
+export const loadWatcherSecretText = async (
   source: WatcherWalletKeySource,
   unsafeEnvironmentForTest?: Readonly<Record<string, string | undefined>>,
 ): Promise<string> => {
@@ -518,9 +515,7 @@ export const loadWatcherSecretTextV1 = async (
   return value;
 };
 
-export const decodeWatcherAuthenticationKey32V1 = (
-  value: string,
-): Uint8Array => {
+export const decodeWatcherAuthenticationKey32 = (value: string): Uint8Array => {
   if (!HEX_32.test(value)) {
     throw new Error(
       "production authentication key must be 32-byte lowercase hex",
@@ -529,14 +524,14 @@ export const decodeWatcherAuthenticationKey32V1 = (
   return Uint8Array.from(Buffer.from(value, "hex"));
 };
 
-export const decodeWatcherHttpBearerSecretV1 = (value: string): string => {
+export const decodeWatcherHttpBearerSecret = (value: string): string => {
   if (value.length < 32 || value.length > 256) {
     throw new Error("production HTTP bearer secret length is invalid");
   }
   return value;
 };
 
-const productionConfigFile = async (path: string): Promise<unknown> => {
+const configFile = async (path: string): Promise<unknown> => {
   const admitted = canonicalPath(path, "production process config");
   if ((await realpath(admitted)) !== admitted) {
     throw new Error("production process config path traverses a symlink");
@@ -545,19 +540,17 @@ const productionConfigFile = async (path: string): Promise<unknown> => {
   if (bytes.byteLength === 0 || bytes.byteLength > 16 * 1024 * 1024) {
     throw new Error("production process config file size is invalid");
   }
-  return parseWatcherStrictJsonValueV1(
+  return parseWatcherStrictJsonValue(
     new TextDecoder("utf-8", { fatal: true }).decode(bytes),
   );
 };
 
-export const loadWatcherProductionProcessConfigFileV1 = async (
+export const loadWatcherProcessConfigFile = async (
   path: string,
-): Promise<WatcherProductionProcessConfigV1> =>
-  parseWatcherProductionProcessConfigV1(await productionConfigFile(path));
+): Promise<WatcherProcessConfig> =>
+  parseWatcherProcessConfig(await configFile(path));
 
-export const loadWatcherTrustedHeadAuthorityProcessConfigFileV1 = async (
+export const loadWatcherTrustedHeadAuthorityProcessConfigFile = async (
   path: string,
-): Promise<WatcherTrustedHeadAuthorityProcessConfigV1> =>
-  parseWatcherTrustedHeadAuthorityProcessConfigV1(
-    await productionConfigFile(path),
-  );
+): Promise<WatcherTrustedHeadAuthorityProcessConfig> =>
+  parseWatcherTrustedHeadAuthorityProcessConfig(await configFile(path));

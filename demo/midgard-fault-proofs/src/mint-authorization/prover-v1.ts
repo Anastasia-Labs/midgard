@@ -24,10 +24,10 @@
  * mempool or an operator's account of the transaction.
  */
 import {
-  decodeMidgardAddressWitnessFieldPreimageV1,
-  decodeMidgardMintFieldPreimageV1,
+  decodeMidgardAddressWitnessFieldPreimage,
+  decodeMidgardMintFieldPreimage,
   decodeMidgardNativeScript,
-  decodeMidgardScriptWitnessFieldPreimageV1,
+  decodeMidgardScriptWitnessFieldPreimage,
   encodeMidgardNativeScript,
   hashMidgardVersionedScript,
   MIDGARD_POSIX_TIME_NONE,
@@ -36,8 +36,8 @@ import {
 } from "@al-ft/midgard-core";
 import {
   hashHexWithBlake2b,
-  MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
-  MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
+  MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
+  MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -51,13 +51,13 @@ const proverError = (message: string): Error =>
  * order. `referenceScriptLanguage === -1n` means the resolved output
  * carries no reference script (`referenceScriptHashHex` is then ignored).
  */
-export type MintAuthorizationResolvedReferenceScriptV1 = {
+export type MintAuthorizationResolvedReferenceScript = {
   readonly referenceScriptLanguage: bigint;
   readonly referenceScriptHashHex: string;
 };
 
 /** One convictable mint policy. */
-export type MintAuthorizationFindingV1 = {
+export type MintAuthorizationFinding = {
   /** Ordinal of the policy's item in the committed field 5. */
   readonly policyIndex: bigint;
   readonly policyIdHex: string;
@@ -80,7 +80,7 @@ const keyHashOfVerificationKeyHex = (verificationKeyHex: string): string =>
  * machine could not have decoded is another family's dispute, never a
  * silent skip.
  */
-export const scanMintAuthorizationV1 = ({
+export const scanMintAuthorization = ({
   mintPreimageCbor,
   scriptTxWitsPreimageCbor,
   addrTxWitsPreimageCbor,
@@ -95,7 +95,7 @@ export const scanMintAuthorizationV1 = ({
   readonly validityIntervalStart: bigint;
   readonly validityIntervalEnd: bigint;
   /** One anchor per committed field-1 reference input, in field order. */
-  readonly resolvedReferenceScripts: readonly MintAuthorizationResolvedReferenceScriptV1[];
+  readonly resolvedReferenceScripts: readonly MintAuthorizationResolvedReferenceScript[];
   /**
    * Optional side table for direction B when the policy's native script is
    * sourced through a reference input rather than inline: canonical native
@@ -103,14 +103,14 @@ export const scanMintAuthorizationV1 = ({
    * re-hash before use, so a wrong table cannot fabricate a finding.
    */
   readonly nativeScriptBytesByHashHex?: Readonly<Record<string, string>>;
-}): readonly MintAuthorizationFindingV1[] => {
-  const mintItems = decodeMidgardMintFieldPreimageV1(
+}): readonly MintAuthorizationFinding[] => {
+  const mintItems = decodeMidgardMintFieldPreimage(
     Buffer.from(mintPreimageCbor),
   );
-  const inlineScripts = decodeMidgardScriptWitnessFieldPreimageV1(
+  const inlineScripts = decodeMidgardScriptWitnessFieldPreimage(
     Buffer.from(scriptTxWitsPreimageCbor),
   );
-  const addressWitnesses = decodeMidgardAddressWitnessFieldPreimageV1(
+  const addressWitnesses = decodeMidgardAddressWitnessFieldPreimage(
     Buffer.from(addrTxWitsPreimageCbor),
   );
 
@@ -150,7 +150,7 @@ export const scanMintAuthorizationV1 = ({
     bytesHex: encodeMidgardNativeScript(nativeScript).toString("hex"),
   });
 
-  const findings: MintAuthorizationFindingV1[] = [];
+  const findings: MintAuthorizationFinding[] = [];
   mintItems.forEach((item, index) => {
     const policyIdHex = Buffer.from(item.policyId).toString("hex");
     const inline = inlineByHash.get(policyIdHex);
@@ -159,7 +159,7 @@ export const scanMintAuthorizationV1 = ({
       findings.push({
         policyIndex: BigInt(index),
         policyIdHex,
-        direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+        direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
         scriptBytesHex: null,
       });
       return;
@@ -171,7 +171,7 @@ export const scanMintAuthorizationV1 = ({
         findings.push({
           policyIndex: BigInt(index),
           policyIdHex,
-          direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
+          direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
           scriptBytesHex: verdict.bytesHex,
         });
       }
@@ -201,7 +201,7 @@ export const scanMintAuthorizationV1 = ({
         findings.push({
           policyIndex: BigInt(index),
           policyIdHex,
-          direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
+          direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
           scriptBytesHex: verdict.bytesHex,
         });
       }

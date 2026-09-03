@@ -27,17 +27,17 @@
 
 import {
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 
 import {
-  deriveNativeTxFixtureFacetsV1,
+  deriveNativeTxFixtureFacets,
   type NativeTxFixtureEnvelope,
 } from "./native-tx-fixture-shape.js";
 
@@ -85,18 +85,18 @@ const EMPTY_FIELD_PREIMAGE_CBOR = encodeCbor([]);
 
 export const buildOrdinaryNativeTxFixture = (): OrdinaryNativeTxFixture => {
   const parameters = ORDINARY_PARAMETERS;
-  const canonical: MidgardNativeTxCanonicalV1 = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([
-        encodeMidgardSpendInputItemV1({
+        encodeMidgardSpendInputItem({
           txId: repeated(parameters.spendInputTxIdByte, 32),
           outputIndex: parameters.spendInputOutputIndex,
         }),
       ]),
       referenceInputsPreimageCbor: encodeCbor([
-        encodeMidgardSpendInputItemV1({
+        encodeMidgardSpendInputItem({
           txId: repeated(parameters.referenceInputTxIdByte, 32),
           outputIndex: parameters.referenceInputOutputIndex,
         }),
@@ -142,9 +142,9 @@ export const buildOrdinaryNativeTxFixture = (): OrdinaryNativeTxFixture => {
     },
   };
 
-  const facets = deriveNativeTxFixtureFacetsV1(
-    encodeMidgardNativeTxCanonicalV1(
-      materializeMidgardNativeTxFromCanonicalV1(canonical),
+  const facets = deriveNativeTxFixtureFacets(
+    encodeMidgardNativeTxCanonical(
+      materializeMidgardNativeTxFromCanonical(canonical),
     ),
   );
   if (

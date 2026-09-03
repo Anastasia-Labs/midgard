@@ -2,16 +2,16 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 
-export const VAN_ROSSEM_MAX_SIGNED_TX_BYTES_V1 = 16_384;
-export const VAN_ROSSEM_PUBLICATION_RESERVE_BYTES_V1 = 512;
-export const VAN_ROSSEM_PUBLICATION_TARGET_BYTES_V1 =
-  VAN_ROSSEM_MAX_SIGNED_TX_BYTES_V1 - VAN_ROSSEM_PUBLICATION_RESERVE_BYTES_V1;
-export const VAN_ROSSEM_MAX_MEMORY_UNITS_V1 = 16_500_000n;
-export const VAN_ROSSEM_MAX_CPU_UNITS_V1 = 10_000_000_000n;
-export const VAN_ROSSEM_FIT_LEDGER_V1_SCHEMA_VERSION =
+export const VAN_ROSSEM_MAX_SIGNED_TX_BYTES = 16_384;
+export const VAN_ROSSEM_PUBLICATION_RESERVE_BYTES = 512;
+export const VAN_ROSSEM_PUBLICATION_TARGET_BYTES =
+  VAN_ROSSEM_MAX_SIGNED_TX_BYTES - VAN_ROSSEM_PUBLICATION_RESERVE_BYTES;
+export const VAN_ROSSEM_MAX_MEMORY_UNITS = 16_500_000n;
+export const VAN_ROSSEM_MAX_CPU_UNITS = 10_000_000_000n;
+export const VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION =
   "midgard-van-rossem-fit-ledger-v1" as const;
 
-export type VanRossemFitMeasurementV1 = {
+export type VanRossemFitMeasurement = {
   readonly name: string;
   readonly kind: "publication" | "lifecycle";
   readonly maximumShape: string;
@@ -20,7 +20,7 @@ export type VanRossemFitMeasurementV1 = {
   readonly cpuUnits: bigint;
 };
 
-export type VanRossemFitLedgerEntryV1 = {
+export type VanRossemFitLedgerEntry = {
   readonly name: string;
   readonly kind: "publication" | "lifecycle";
   readonly maximumShape: string;
@@ -33,17 +33,17 @@ export type VanRossemFitLedgerEntryV1 = {
   readonly publicationReserveMargin: number | null;
 };
 
-export type VanRossemFitLedgerV1 = {
-  readonly schemaVersion: typeof VAN_ROSSEM_FIT_LEDGER_V1_SCHEMA_VERSION;
+export type VanRossemFitLedger = {
+  readonly schemaVersion: typeof VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION;
   readonly category: string;
   readonly blueprintSha256: string;
   readonly compilerVersion: string;
-  readonly entries: readonly VanRossemFitLedgerEntryV1[];
+  readonly entries: readonly VanRossemFitLedgerEntry[];
   readonly ledgerSha256: string;
 };
 
 const canonicalBody = (
-  ledger: Omit<VanRossemFitLedgerV1, "ledgerSha256">,
+  ledger: Omit<VanRossemFitLedger, "ledgerSha256">,
 ): string => `${JSON.stringify(ledger, null, 2)}\n`;
 
 const requireCanonicalLabel = (value: string, field: string): string => {
@@ -54,8 +54,8 @@ const requireCanonicalLabel = (value: string, field: string): string => {
 };
 
 const entryFromMeasurement = (
-  measurement: VanRossemFitMeasurementV1,
-): VanRossemFitLedgerEntryV1 => {
+  measurement: VanRossemFitMeasurement,
+): VanRossemFitLedgerEntry => {
   requireCanonicalLabel(measurement.name, "fit measurement name");
   requireCanonicalLabel(measurement.maximumShape, "maximum evidence shape");
   if (
@@ -69,13 +69,13 @@ const entryFromMeasurement = (
     );
   }
   const signedByteMargin =
-    VAN_ROSSEM_MAX_SIGNED_TX_BYTES_V1 - measurement.signedBytes;
+    VAN_ROSSEM_MAX_SIGNED_TX_BYTES - measurement.signedBytes;
   const memoryUnitMargin =
-    VAN_ROSSEM_MAX_MEMORY_UNITS_V1 - measurement.memoryUnits;
-  const cpuUnitMargin = VAN_ROSSEM_MAX_CPU_UNITS_V1 - measurement.cpuUnits;
+    VAN_ROSSEM_MAX_MEMORY_UNITS - measurement.memoryUnits;
+  const cpuUnitMargin = VAN_ROSSEM_MAX_CPU_UNITS - measurement.cpuUnits;
   const publicationReserveMargin =
     measurement.kind === "publication"
-      ? VAN_ROSSEM_PUBLICATION_TARGET_BYTES_V1 - measurement.signedBytes
+      ? VAN_ROSSEM_PUBLICATION_TARGET_BYTES - measurement.signedBytes
       : null;
   if (signedByteMargin <= 0 || memoryUnitMargin <= 0n || cpuUnitMargin <= 0n) {
     throw new Error(
@@ -101,7 +101,7 @@ const entryFromMeasurement = (
   });
 };
 
-export const buildVanRossemFitLedgerV1 = ({
+export const buildVanRossemFitLedger = ({
   category,
   blueprintSha256,
   compilerVersion,
@@ -110,8 +110,8 @@ export const buildVanRossemFitLedgerV1 = ({
   readonly category: string;
   readonly blueprintSha256: string;
   readonly compilerVersion: string;
-  readonly measurements: readonly VanRossemFitMeasurementV1[];
-}): VanRossemFitLedgerV1 => {
+  readonly measurements: readonly VanRossemFitMeasurement[];
+}): VanRossemFitLedger => {
   requireCanonicalLabel(category, "fit ledger category");
   requireCanonicalLabel(compilerVersion, "fit ledger compiler version");
   if (!/^[0-9a-f]{64}$/u.test(blueprintSha256)) {
@@ -138,7 +138,7 @@ export const buildVanRossemFitLedgerV1 = ({
     throw new Error("fit ledger measurement names must be unique");
   }
   const body = Object.freeze({
-    schemaVersion: VAN_ROSSEM_FIT_LEDGER_V1_SCHEMA_VERSION,
+    schemaVersion: VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION,
     category,
     blueprintSha256,
     compilerVersion,
@@ -152,9 +152,9 @@ export const buildVanRossemFitLedgerV1 = ({
   });
 };
 
-export const writeVanRossemFitLedgerV1 = async (
+export const writeVanRossemFitLedger = async (
   path: string,
-  ledger: VanRossemFitLedgerV1,
+  ledger: VanRossemFitLedger,
 ): Promise<void> => {
   const { ledgerSha256: suppliedDigest, ...body } = ledger;
   const serializedBody = canonicalBody(body);

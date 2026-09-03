@@ -18,28 +18,22 @@
  *   pre-state-membership evidence model — the search says so explicitly
  *   instead of accusing on partial sums.
  */
-import type {
-  MidgardMintPolicyItemV1,
-  MidgardValue,
-} from "@al-ft/midgard-core";
+import type { MidgardMintPolicyItem, MidgardValue } from "@al-ft/midgard-core";
 
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "./contracts-v1.js";
-import type {
-  ClaimedAssetV1,
-  ClaimedImbalanceDirectionV1,
-} from "./schemas-v1.js";
+import type { ClaimedAsset, ClaimedImbalanceDirection } from "./schemas-v1.js";
 
 /** A spend input's resolved pre-state value, or the §7.4 gap. */
-export type ResolvedSpentValueV1 =
+export type ResolvedSpentValue =
   | { readonly kind: "resolved"; readonly value: MidgardValue }
   | { readonly kind: "unknown"; readonly reason: string };
 
 /** The search's verdict over one committed transaction. */
-export type ValueNotPreservedFindingV1 =
+export type ValueNotPreservedFinding =
   | {
       readonly kind: "fault";
-      readonly claimedAsset: ClaimedAssetV1;
-      readonly claimedDirection: ClaimedImbalanceDirectionV1;
+      readonly claimedAsset: ClaimedAsset;
+      readonly claimedDirection: ClaimedImbalanceDirection;
       /** The signed conservation delta (negative = inflated). */
       readonly delta: bigint;
     }
@@ -74,7 +68,7 @@ const unitOrder = (left: UnitTotals, right: UnitTotals): number => {
  * one entry per input, resolved against the challenged header's pre-state
  * ledger (the same source the step-02 witnesses will authenticate).
  */
-export const findValueNotPreservedV1 = ({
+export const findValueNotPreserved = ({
   validity,
   fee,
   spentValues,
@@ -83,17 +77,17 @@ export const findValueNotPreservedV1 = ({
 }: {
   readonly validity: "TxIsValid" | "TxIsInvalid";
   readonly fee: bigint;
-  readonly spentValues: readonly ResolvedSpentValueV1[];
+  readonly spentValues: readonly ResolvedSpentValue[];
   readonly outputValues: readonly MidgardValue[];
-  readonly mintItems: readonly MidgardMintPolicyItemV1[] | null;
-}): ValueNotPreservedFindingV1 => {
+  readonly mintItems: readonly MidgardMintPolicyItem[] | null;
+}): ValueNotPreservedFinding => {
   if (validity !== "TxIsValid") {
     throw new Error(
       `${VALUE_NOT_PRESERVED_CATEGORY_LABEL} finding: refusing to search a rejected commitment — an honest no-op recording never convicts (§1.4)`,
     );
   }
   const gaps = spentValues.filter(
-    (entry): entry is Extract<ResolvedSpentValueV1, { kind: "unknown" }> =>
+    (entry): entry is Extract<ResolvedSpentValue, { kind: "unknown" }> =>
       entry.kind === "unknown",
   );
   if (gaps.length > 0) {

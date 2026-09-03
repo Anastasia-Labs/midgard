@@ -1,8 +1,8 @@
-import { computeDeploymentManifestV1JsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
-  assertAdmittedProductionWorkflowFundingRequirementsV1,
-  type ProductionWorkflowFundingRequirementsV1,
-  type ProductionWorkflowFundingScopeV1,
+  assertAdmittedWorkflowFundingRequirements,
+  type WorkflowFundingRequirements,
+  type WorkflowFundingScope,
 } from "@al-ft/midgard-fault-proofs";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -11,19 +11,19 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
-  watcherDeploymentReleaseEconomicsAuthorityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentReleaseEconomicsAuthority,
 } from "../runtime/deployment-identity.js";
 import {
-  assertWatcherProductionProtocolParameterRuntimeAuthorityV1,
-  type WatcherProductionProtocolParameterRuntimeAuthorityV1,
+  assertWatcherProtocolParameterRuntimeAuthority,
+  type WatcherProtocolParameterRuntimeAuthority,
 } from "./production-prover-funding-v1.js";
 
-export const WATCHER_PRODUCTION_PROVER_FUNDING_CALCULATION_V1 =
+export const WATCHER_PROVER_FUNDING_CALCULATION =
   "midgard-watcher-production-prover-funding-calculation-v1" as const;
 
-export type WatcherProductionProverFundingActionCalculationV1 = Readonly<{
+export type WatcherProverFundingActionCalculation = Readonly<{
   actionKind: string;
   transactionFeeLovelace: string;
   minimumProtocolFeeLovelace: string;
@@ -48,15 +48,15 @@ export type WatcherProductionProverFundingActionCalculationV1 = Readonly<{
   feeHeadroomLovelace: string;
 }>;
 
-export type WatcherProductionProverFundingCalculationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_PROVER_FUNDING_CALCULATION_V1;
-  scope: ProductionWorkflowFundingScopeV1;
+export type WatcherProverFundingCalculation = Readonly<{
+  schemaVersion: typeof WATCHER_PROVER_FUNDING_CALCULATION;
+  scope: WorkflowFundingScope;
   deploymentFingerprint: string;
   profileDigest: string;
   protocolParametersDigest: string;
   economicsPolicyDigest: string;
   fundingPaymentKeyHash: string;
-  actions: readonly WatcherProductionProverFundingActionCalculationV1[];
+  actions: readonly WatcherProverFundingActionCalculation[];
   totals: Readonly<{
     feeHeadroomLovelace: string;
     outputMinAdaLovelace: string;
@@ -79,52 +79,52 @@ export type WatcherProductionProverFundingCalculationV1 = Readonly<{
 
 const admittedCalculations = new WeakSet<object>();
 
-export const assertWatcherProductionProverFundingCalculationV1 = (
-  calculation: WatcherProductionProverFundingCalculationV1,
+export const assertWatcherProverFundingCalculation = (
+  calculation: WatcherProverFundingCalculation,
 ): void => {
   if (!admittedCalculations.has(calculation)) {
     throw new Error("prover funding calculation is not admitted");
   }
 };
 
-type RationalV1 = Readonly<{ numerator: bigint; denominator: bigint }>;
+type Rational = Readonly<{ numerator: bigint; denominator: bigint }>;
 
 const rational = (value: {
   readonly numerator: string;
   readonly denominator: string;
-}): RationalV1 => ({
+}): Rational => ({
   numerator: BigInt(value.numerator),
   denominator: BigInt(value.denominator),
 });
 
-const add = (left: RationalV1, right: RationalV1): RationalV1 => ({
+const add = (left: Rational, right: Rational): Rational => ({
   numerator:
     left.numerator * right.denominator + right.numerator * left.denominator,
   denominator: left.denominator * right.denominator,
 });
 
-const multiply = (left: RationalV1, right: RationalV1): RationalV1 => ({
+const multiply = (left: Rational, right: Rational): Rational => ({
   numerator: left.numerator * right.numerator,
   denominator: left.denominator * right.denominator,
 });
 
-const multiplyNatural = (value: RationalV1, natural: bigint): RationalV1 => ({
+const multiplyNatural = (value: Rational, natural: bigint): Rational => ({
   numerator: value.numerator * natural,
   denominator: value.denominator,
 });
 
-const ceil = (value: RationalV1): bigint =>
+const ceil = (value: Rational): bigint =>
   (value.numerator + value.denominator - 1n) / value.denominator;
 
 const tieredReferenceScriptFee = (input: {
   readonly bytes: bigint;
-  readonly base: RationalV1;
+  readonly base: Rational;
   readonly range: bigint;
-  readonly multiplier: RationalV1;
+  readonly multiplier: Rational;
 }): bigint => {
   let remaining = input.bytes;
   let price = input.base;
-  let total: RationalV1 = { numerator: 0n, denominator: 1n };
+  let total: Rational = { numerator: 0n, denominator: 1n };
   while (remaining > 0n) {
     const tierBytes = remaining < input.range ? remaining : input.range;
     total = add(total, multiplyNatural(price, tierBytes));
@@ -140,11 +140,11 @@ const ceilPercentage = (value: bigint, percentage: bigint): bigint =>
 const sum = (values: readonly bigint[]): bigint =>
   values.reduce((total, value) => total + value, 0n);
 
-type AssetQuantityV1 = Readonly<{ unit: string; quantity: string }>;
+type AssetQuantity = Readonly<{ unit: string; quantity: string }>;
 
 const assetEntries = (
   values: ReadonlyMap<string, bigint>,
-): readonly AssetQuantityV1[] =>
+): readonly AssetQuantity[] =>
   Object.freeze(
     [...values]
       .filter(([, quantity]) => quantity > 0n)
@@ -156,8 +156,8 @@ const assetEntries = (
 
 const applyAssetDelta = (
   current: Map<string, bigint>,
-  added: readonly AssetQuantityV1[],
-  released: readonly AssetQuantityV1[],
+  added: readonly AssetQuantity[],
+  released: readonly AssetQuantity[],
 ): void => {
   for (const { unit, quantity } of added) {
     current.set(unit, (current.get(unit) ?? 0n) + BigInt(quantity));
@@ -174,11 +174,11 @@ const applyAssetDelta = (
 };
 
 const capitalFlow = (
-  actions: readonly WatcherProductionProverFundingActionCalculationV1[],
+  actions: readonly WatcherProverFundingActionCalculation[],
 ): Readonly<{
   peakLovelace: bigint;
   endingLovelace: bigint;
-  peakNativeAssets: readonly AssetQuantityV1[];
+  peakNativeAssets: readonly AssetQuantity[];
 }> => {
   let currentLovelace = 0n;
   let peakLovelace = 0n;
@@ -216,16 +216,14 @@ const capitalFlow = (
  * The measured profile must have been bound by a fixed admitted workflow
  * factory; a digest-valid caller-authored profile is insufficient.
  */
-export const calculateWatcherProductionProverFundingV1 = async (input: {
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  readonly protocolParameters: WatcherProductionProtocolParameterRuntimeAuthorityV1;
-  readonly requirements: ProductionWorkflowFundingRequirementsV1;
-}): Promise<WatcherProductionProverFundingCalculationV1> => {
-  assertVerifiedWatcherDeploymentIdentityV1(input.deploymentIdentity);
-  assertWatcherProductionProtocolParameterRuntimeAuthorityV1(
-    input.protocolParameters,
-  );
-  assertAdmittedProductionWorkflowFundingRequirementsV1(input.requirements);
+export const calculateWatcherProverFunding = async (input: {
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  readonly protocolParameters: WatcherProtocolParameterRuntimeAuthority;
+  readonly requirements: WorkflowFundingRequirements;
+}): Promise<WatcherProverFundingCalculation> => {
+  assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
+  assertWatcherProtocolParameterRuntimeAuthority(input.protocolParameters);
+  assertAdmittedWorkflowFundingRequirements(input.requirements);
   if (input.requirements.scope.kind === "da_availability_lifecycle") {
     throw new Error(
       "DA availability funding requires signed availability-challenge authority",
@@ -245,7 +243,7 @@ export const calculateWatcherProductionProverFundingV1 = async (input: {
   ) {
     throw new Error("prover funding protocol-parameters digest mismatch");
   }
-  const economics = await watcherDeploymentReleaseEconomicsAuthorityV1(
+  const economics = await watcherDeploymentReleaseEconomicsAuthority(
     input.deploymentIdentity,
   ).verifyForWorkflow({
     deploymentFingerprint: input.deploymentIdentity.manifestId,
@@ -457,7 +455,7 @@ export const calculateWatcherProductionProverFundingV1 = async (input: {
   }, 0n);
   const flow = capitalFlow(actions);
   const calculationInput = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_PROVER_FUNDING_CALCULATION_V1,
+    schemaVersion: WATCHER_PROVER_FUNDING_CALCULATION,
     scope: input.requirements.scope,
     deploymentFingerprint: input.deploymentIdentity.manifestId,
     profileDigest: input.requirements.profileDigest,
@@ -492,17 +490,17 @@ export const calculateWatcherProductionProverFundingV1 = async (input: {
   });
   const calculation = Object.freeze({
     ...calculationInput,
-    calculationDigest: computeDeploymentManifestV1JsonDigest(calculationInput),
+    calculationDigest: computeDeploymentManifestJsonDigest(calculationInput),
   });
   admittedCalculations.add(calculation);
   return calculation;
 };
 
-export const WATCHER_PRODUCTION_PROVER_FUNDING_SWEEP_V1 =
+export const WATCHER_PROVER_FUNDING_SWEEP =
   "midgard-watcher-production-prover-funding-sweep-v1" as const;
 
-export type WatcherProductionProverFundingSweepV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_PROVER_FUNDING_SWEEP_V1;
+export type WatcherProverFundingSweep = Readonly<{
+  schemaVersion: typeof WATCHER_PROVER_FUNDING_SWEEP;
   deploymentFingerprint: string;
   protocolParametersDigest: string;
   economicsPolicyDigest: string;
@@ -530,8 +528,8 @@ export type WatcherProductionProverFundingSweepV1 = Readonly<{
 
 const admittedSweeps = new WeakSet<object>();
 
-export const assertWatcherProductionProverFundingSweepV1 = (
-  sweep: WatcherProductionProverFundingSweepV1,
+export const assertWatcherProverFundingSweep = (
+  sweep: WatcherProverFundingSweep,
 ): void => {
   if (!admittedSweeps.has(sweep)) {
     throw new Error("prover funding sweep is not admitted");
@@ -544,11 +542,11 @@ export const assertWatcherProductionProverFundingSweepV1 = (
  * assets are summed because no cross-workflow custody-reuse proof is currently
  * authenticated, which is the conservative complete-sweep requirement.
  */
-export const aggregateWatcherProductionProverFundingSweepV1 = (
-  calculations: readonly WatcherProductionProverFundingCalculationV1[],
-): WatcherProductionProverFundingSweepV1 => {
+export const aggregateWatcherProverFundingSweep = (
+  calculations: readonly WatcherProverFundingCalculation[],
+): WatcherProverFundingSweep => {
   for (const calculation of calculations) {
-    assertWatcherProductionProverFundingCalculationV1(calculation);
+    assertWatcherProverFundingCalculation(calculation);
   }
   if (
     calculations.length !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length + 1 ||
@@ -565,9 +563,9 @@ export const aggregateWatcherProductionProverFundingSweepV1 = (
   }
   const categoryCalculations = new Map<
     FraudProofCatalogueCategoryName,
-    WatcherProductionProverFundingCalculationV1
+    WatcherProverFundingCalculation
   >();
-  let availability: WatcherProductionProverFundingCalculationV1 | undefined;
+  let availability: WatcherProverFundingCalculation | undefined;
   for (const calculation of calculations) {
     if (calculation.scope.kind === "fraud_proof_category") {
       if (categoryCalculations.has(calculation.scope.category)) {
@@ -629,7 +627,7 @@ export const aggregateWatcherProductionProverFundingSweepV1 = (
   const requiredBond = sumField("requiredBondLovelace");
   const rewardCustody = sumField("requiredRewardCustodyLovelace");
   const sweepInput = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_PROVER_FUNDING_SWEEP_V1,
+    schemaVersion: WATCHER_PROVER_FUNDING_SWEEP,
     deploymentFingerprint: first.deploymentFingerprint,
     protocolParametersDigest: first.protocolParametersDigest,
     economicsPolicyDigest: first.economicsPolicyDigest,
@@ -657,7 +655,7 @@ export const aggregateWatcherProductionProverFundingSweepV1 = (
   });
   const sweep = Object.freeze({
     ...sweepInput,
-    sweepDigest: computeDeploymentManifestV1JsonDigest(sweepInput),
+    sweepDigest: computeDeploymentManifestJsonDigest(sweepInput),
   });
   admittedSweeps.add(sweep);
   return sweep;

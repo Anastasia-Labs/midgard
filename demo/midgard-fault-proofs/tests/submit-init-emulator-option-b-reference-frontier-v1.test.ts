@@ -34,28 +34,28 @@
  */
 
 import {
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
 import {
-  expectExecutionWithinBandV1,
+  expectExecutionWithinBand,
   OPTION_B_SKIP_REASON,
-  prepareRouteFreedomJourneyV1,
-  printRouteFreedomCampaignTableV1,
+  prepareRouteFreedomJourney,
+  printRouteFreedomCampaignTable,
   realBlueprintSpeaksOptionBV1,
-  type RouteFreedomJourneyV1,
+  type RouteFreedomJourney,
 } from "./support/route-freedom-journey.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
   type CompleteSignedTransactionMeasurement,
-  expectProofFitV1,
+  expectProofFit,
 } from "./support/submit-init-emulator-shared.js";
 
 const RELIABLE_DIRECT_PIN =
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+  MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 
 /** Payload staging exactly the tier-1 ceiling preimage of 14,336 bytes. */
 const MAX_TIER1_PAYLOAD_BYTES = 13_851;
@@ -80,7 +80,7 @@ const PRE_CHANGE_SWEEP_ROWS = {
 } as const;
 
 /** Files 1-2's item-size-independent six-stage rows, re-pinned here. */
-const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
+const SIX_STAGE_CONSTANT_ROW_BYTES = {
   prepareSelected: 1_808,
   authenticate: 2_600,
   source: 1_855,
@@ -103,7 +103,7 @@ const stageBytesByKind = (
 };
 
 const lastLifecycleMeasurement = (
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   label: string,
 ): CompleteSignedTransactionMeasurement => {
   const stage = journey.lifecycleMeasurements.find(
@@ -117,7 +117,7 @@ const lastLifecycleMeasurement = (
 };
 
 const expectItemIndependentRows = (
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   stageTransactions: readonly {
     readonly kind: string;
     readonly completeSignedBytes: number;
@@ -125,18 +125,18 @@ const expectItemIndependentRows = (
 ): void => {
   expect(
     lastLifecycleMeasurement(journey, "prepare-selected").completeSignedBytes,
-  ).toBe(SIX_STAGE_CONSTANT_ROW_BYTES_V1.prepareSelected);
+  ).toBe(SIX_STAGE_CONSTANT_ROW_BYTES.prepareSelected);
   expect(stageBytesByKind(stageTransactions, "authenticate")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.authenticate,
+    SIX_STAGE_CONSTANT_ROW_BYTES.authenticate,
   );
   expect(stageBytesByKind(stageTransactions, "source")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.source,
+    SIX_STAGE_CONSTANT_ROW_BYTES.source,
   );
   expect(stageBytesByKind(stageTransactions, "proof")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.proof,
+    SIX_STAGE_CONSTANT_ROW_BYTES.proof,
   );
   expect(stageBytesByKind(stageTransactions, "settle")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.settle,
+    SIX_STAGE_CONSTANT_ROW_BYTES.settle,
   );
 };
 
@@ -159,7 +159,7 @@ const semanticMeasurementAt = (
  */
 const expectWholeJourneyProofFit = (
   headline: string,
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   semanticMeasurements: readonly CompleteSignedTransactionMeasurement[],
   awardMeasurement: CompleteSignedTransactionMeasurement,
 ): void => {
@@ -178,7 +178,7 @@ const expectWholeJourneyProofFit = (
   }
   stages.push(["award", awardMeasurement]);
   for (const [stage, measurement] of stages) {
-    expectProofFitV1({
+    expectProofFit({
       stage: `${headline} ${stage}`,
       measurement,
       maxTxExMem,
@@ -194,7 +194,7 @@ const expectWholeJourneyProofFit = (
  * excluded for the same reason the fit policy excludes it.
  */
 const totalJourneyBytes = (
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   semanticMeasurements: readonly CompleteSignedTransactionMeasurement[],
   awardMeasurement: CompleteSignedTransactionMeasurement,
 ): number => {
@@ -222,25 +222,24 @@ describe.skipIf(!optionB)(
   "post-Option-B reference-route frontier and sweep-shape baseline (#622)",
   () => {
     it("measures the full reference journey at the tier-1 ceiling item 14,336 — the reference route's own frontier", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: MAX_TIER1_PAYLOAD_BYTES,
-        minimumCompleteItemBytes:
-          MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 - 1,
+        minimumCompleteItemBytes: MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES - 1,
       });
       expect(journey.completeItemBytes).toBe(
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       );
       // The route is open at this size only because the tier-1 ceiling sits
       // under the owner-signed single-publication ceiling (60 bytes apart).
       expect(journey.completeItemBytes).toBeLessThanOrEqual(
-        MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+        MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
       );
 
       // No routing input: the build-time heuristic itself carries anything
       // past the owner-signed direct frontier — re-pinned 12,810 -> 13,522 at
       // the #617 wave sign-off (#622 ruling (b)) — by reference.
       const semantic = await journey.submitSemanticResolution();
-      printRouteFreedomCampaignTableV1(
+      printRouteFreedomCampaignTable(
         "#622 reference-frontier item 14,336",
         journey,
         semantic,
@@ -286,7 +285,7 @@ describe.skipIf(!optionB)(
         3,
         "observe",
       );
-      expectExecutionWithinBandV1(
+      expectExecutionWithinBand(
         "#622 reference-frontier observe-by-reference",
         observeMeasurement,
         { memoryUnits: 931_806n, stepUnits: 325_654_977n },
@@ -313,7 +312,7 @@ describe.skipIf(!optionB)(
     }, 900_000);
 
     it("bills strictly below the pre-change sweep rows at the sweep's own shape and records the removed claim-registry witness headroom", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: SWEEP_PAYLOAD_BYTES,
         minimumCompleteItemBytes: 0,
       });
@@ -324,7 +323,7 @@ describe.skipIf(!optionB)(
 
       // No routing input: the heuristic rides a sweep-shaped item inline.
       const semantic = await journey.submitSemanticResolution();
-      printRouteFreedomCampaignTableV1(
+      printRouteFreedomCampaignTable(
         "#622 sweep-shape item 8,277",
         journey,
         semantic,
@@ -350,28 +349,28 @@ describe.skipIf(!optionB)(
           CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES,
       );
       expect(stageBytesByKind(stageTransactions, "source")).toBe(
-        SIX_STAGE_CONSTANT_ROW_BYTES_V1.source,
+        SIX_STAGE_CONSTANT_ROW_BYTES.source,
       );
       expect(stageBytesByKind(stageTransactions, "proof")).toBe(
-        SIX_STAGE_CONSTANT_ROW_BYTES_V1.proof,
+        SIX_STAGE_CONSTANT_ROW_BYTES.proof,
       );
       expect(stageBytesByKind(stageTransactions, "settle")).toBe(
-        SIX_STAGE_CONSTANT_ROW_BYTES_V1.settle,
+        SIX_STAGE_CONSTANT_ROW_BYTES.settle,
       );
-      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.source).toBeLessThan(
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES.source).toBeLessThan(
         PRE_CHANGE_SWEEP_ROWS.source.bytes,
       );
-      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.proof).toBeLessThan(
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES.proof).toBeLessThan(
         PRE_CHANGE_SWEEP_ROWS.proof.bytes,
       );
-      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.settle).toBeLessThan(
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES.settle).toBeLessThan(
         PRE_CHANGE_SWEEP_ROWS.settle.bytes,
       );
       // ... and the two collapsed stages against their pre-change rows.
       expect(stageBytesByKind(stageTransactions, "authenticate")).toBe(
-        SIX_STAGE_CONSTANT_ROW_BYTES_V1.authenticate,
+        SIX_STAGE_CONSTANT_ROW_BYTES.authenticate,
       );
-      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.authenticate).toBeLessThan(
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES.authenticate).toBeLessThan(
         PRE_CHANGE_SWEEP_ROWS.authenticate.bytes,
       );
       const prepareSelected = lastLifecycleMeasurement(
@@ -379,9 +378,9 @@ describe.skipIf(!optionB)(
         "prepare-selected",
       );
       expect(prepareSelected.completeSignedBytes).toBe(
-        SIX_STAGE_CONSTANT_ROW_BYTES_V1.prepareSelected,
+        SIX_STAGE_CONSTANT_ROW_BYTES.prepareSelected,
       );
-      expect(SIX_STAGE_CONSTANT_ROW_BYTES_V1.prepareSelected).toBeLessThan(
+      expect(SIX_STAGE_CONSTANT_ROW_BYTES.prepareSelected).toBeLessThan(
         PRE_CHANGE_SWEEP_ROWS.prepare.bytes,
       );
 
@@ -478,7 +477,7 @@ describe.skipIf(!optionB)(
         minimumCompleteItemBytes: 0,
       });
       expect(atCeiling.completeItemBytes).toBe(
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       );
       // ... and one payload byte further the §8.4 partition says RawUtxo,
       // which the evidence bundle's inline-only carriage resolution cannot

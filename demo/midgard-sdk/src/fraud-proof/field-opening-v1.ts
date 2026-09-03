@@ -8,12 +8,12 @@
  * Every rebound Q1x family step speaks exactly two shapes, and they are the
  * whole of what #575 changed off-chain:
  *
- *   * **thread state carries an anchor** ({@link NativeTxAnchorV1Schema}) — the
+ *   * **thread state carries an anchor** ({@link NativeTxAnchorSchema}) — the
  *     §2.5 transaction id, plus the `witness_set_hash` for a family whose later
  *     step reads a witness-set field. It is *not* the retired per-field
  *     collection commitment (`..._spend_inputs_hash` and its siblings), which no
  *     validator reads any more.
- *   * **the step redeemer carries an opening** ({@link FieldOpeningV1Schema}) —
+ *   * **the step redeemer carries an opening** ({@link FieldOpeningSchema}) —
  *     the compact transaction bytes plus one §8 carriage tier. It is *not* a
  *     reproduced `..._preimage: List<…>` argument; that argument is gone from
  *     every rebound step, and a builder still emitting one produces a redeemer
@@ -42,15 +42,15 @@
  * to arrive from somewhere the prover does not choose, and thread state is the
  * only such place. Fields 0–5 use `BodyAnchor`; fields 6–8 use `WitnessAnchor`.
  * The door refuses the mismatch in both directions, so the choice is not a
- * stylistic one — see {@link nativeTxAnchorV1ForField}.
+ * stylistic one — see {@link nativeTxAnchorForField}.
  */
 
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
 import {
-  type FieldCarriageV1,
-  FieldCarriageV1Schema,
+  type FieldCarriage,
+  FieldCarriageSchema,
 } from "../native-tx-field-access-v1.js";
 import {
   type NativeTxWitnessSetCompact,
@@ -69,7 +69,7 @@ import {
  * the index is the *only* thing distinguishing a reference-input opening from a
  * spend-input one.
  */
-export const MIDGARD_FIELD_INDEX_V1 = Object.freeze({
+export const MIDGARD_FIELD_INDEX = Object.freeze({
   spendInputs: 0,
   referenceInputs: 1,
   outputs: 2,
@@ -86,66 +86,65 @@ export const MIDGARD_FIELD_INDEX_V1 = Object.freeze({
  * off the table rather than restated as its own literal, so the boundary and the
  * indices cannot drift apart — the same construction the Aiken module uses.
  */
-export const MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1 =
-  MIDGARD_FIELD_INDEX_V1.scriptWitnesses;
+export const MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX =
+  MIDGARD_FIELD_INDEX.scriptWitnesses;
 
 /** Whether `fieldIndex` lives in the witness set (§2.5 fields 6–8). */
-export const isMidgardWitnessSetFieldV1 = (fieldIndex: number): boolean =>
-  fieldIndex >= MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1;
+export const isMidgardWitnessSetField = (fieldIndex: number): boolean =>
+  fieldIndex >= MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX;
 
 // ---------------------------------------------------------------------------
-// NativeTxAnchorV1 — what a family's step-01 writes into thread state
+// NativeTxAnchor — what a family's step-01 writes into thread state
 // ---------------------------------------------------------------------------
 
 /** Fields 0–5. 32 bytes of thread state. */
-export const BodyAnchorV1Schema = Data.Object({
+export const BodyAnchorSchema = Data.Object({
   tx_id: H32Schema,
 });
-export type BodyAnchorV1 = Data.Static<typeof BodyAnchorV1Schema>;
-export const BodyAnchorV1 = BodyAnchorV1Schema as unknown as BodyAnchorV1;
+export type BodyAnchorV1 = Data.Static<typeof BodyAnchorSchema>;
+export const BodyAnchorV1 = BodyAnchorSchema as unknown as BodyAnchorV1;
 
 /**
  * Fields 6–8. 64 bytes of thread state — the same width the retired
  * per-collection-hash idiom cost, spent on a value that covers all three
  * witness-set fields instead of one.
  */
-export const WitnessAnchorV1Schema = Data.Object({
+export const WitnessAnchorSchema = Data.Object({
   tx_id: H32Schema,
   witness_set_hash: H32Schema,
 });
-export type WitnessAnchorV1 = Data.Static<typeof WitnessAnchorV1Schema>;
+export type WitnessAnchorV1 = Data.Static<typeof WitnessAnchorSchema>;
 export const WitnessAnchorV1 =
-  WitnessAnchorV1Schema as unknown as WitnessAnchorV1;
+  WitnessAnchorSchema as unknown as WitnessAnchorV1;
 
 /**
- * `midgard/fraud_proofs/field_opening_v1.NativeTxAnchorV1` — what a family's own
+ * `midgard/fraud_proofs/field_opening_v1.NativeTxAnchor` — what a family's own
  * step-01 must put in thread state for a downstream step to re-open a field.
  *
  * Constructor order is wire format: `BodyAnchor` 0, `WitnessAnchor` 1.
  */
-export const NativeTxAnchorV1Schema = Data.Enum([
-  Data.Object({ BodyAnchor: BodyAnchorV1Schema }),
-  Data.Object({ WitnessAnchor: WitnessAnchorV1Schema }),
+export const NativeTxAnchorSchema = Data.Enum([
+  Data.Object({ BodyAnchor: BodyAnchorSchema }),
+  Data.Object({ WitnessAnchor: WitnessAnchorSchema }),
 ]);
-export type NativeTxAnchorV1 = Data.Static<typeof NativeTxAnchorV1Schema>;
-export const NativeTxAnchorV1 =
-  NativeTxAnchorV1Schema as unknown as NativeTxAnchorV1;
+export type NativeTxAnchor = Data.Static<typeof NativeTxAnchorSchema>;
+export const NativeTxAnchor = NativeTxAnchorSchema as unknown as NativeTxAnchor;
 
 // ---------------------------------------------------------------------------
-// FieldOpeningV1 — what a downstream step's redeemer carries
+// FieldOpening — what a downstream step's redeemer carries
 // ---------------------------------------------------------------------------
 
 /**
  * Fields 0–5. No witness set is consulted, so none is carried — a step reading
  * the body cannot be handed one to ignore.
  */
-export const BodyFieldOpeningV1Schema = Data.Object({
+export const BodyFieldOpeningSchema = Data.Object({
   native_tx_compact_cbor: Data.Bytes(),
-  carriage: FieldCarriageV1Schema,
+  carriage: FieldCarriageSchema,
 });
-export type BodyFieldOpeningV1 = Data.Static<typeof BodyFieldOpeningV1Schema>;
+export type BodyFieldOpeningV1 = Data.Static<typeof BodyFieldOpeningSchema>;
 export const BodyFieldOpeningV1 =
-  BodyFieldOpeningV1Schema as unknown as BodyFieldOpeningV1;
+  BodyFieldOpeningSchema as unknown as BodyFieldOpeningV1;
 
 /**
  * Fields 6–8. Both `witness_set` and `native_tx_compact_cbor`'s trailing
@@ -153,30 +152,30 @@ export const BodyFieldOpeningV1 =
  * body alone — and are checked against the thread's `WitnessAnchor` before
  * anything is read.
  */
-export const WitnessFieldOpeningV1Schema = Data.Object({
+export const WitnessFieldOpeningSchema = Data.Object({
   native_tx_compact_cbor: Data.Bytes(),
   witness_set: NativeTxWitnessSetCompactSchema,
-  carriage: FieldCarriageV1Schema,
+  carriage: FieldCarriageSchema,
 });
 export type WitnessFieldOpeningV1 = Data.Static<
-  typeof WitnessFieldOpeningV1Schema
+  typeof WitnessFieldOpeningSchema
 >;
 export const WitnessFieldOpeningV1 =
-  WitnessFieldOpeningV1Schema as unknown as WitnessFieldOpeningV1;
+  WitnessFieldOpeningSchema as unknown as WitnessFieldOpeningV1;
 
 /**
- * `midgard/fraud_proofs/field_opening_v1.FieldOpeningV1` — everything a
+ * `midgard/fraud_proofs/field_opening_v1.FieldOpening` — everything a
  * downstream step needs to re-open one field, and nothing it does not.
  *
  * Constructor order is wire format: `BodyFieldOpening` 0, `WitnessFieldOpening`
  * 1.
  */
-export const FieldOpeningV1Schema = Data.Enum([
-  Data.Object({ BodyFieldOpening: BodyFieldOpeningV1Schema }),
-  Data.Object({ WitnessFieldOpening: WitnessFieldOpeningV1Schema }),
+export const FieldOpeningSchema = Data.Enum([
+  Data.Object({ BodyFieldOpening: BodyFieldOpeningSchema }),
+  Data.Object({ WitnessFieldOpening: WitnessFieldOpeningSchema }),
 ]);
-export type FieldOpeningV1 = Data.Static<typeof FieldOpeningV1Schema>;
-export const FieldOpeningV1 = FieldOpeningV1Schema as unknown as FieldOpeningV1;
+export type FieldOpening = Data.Static<typeof FieldOpeningSchema>;
+export const FieldOpening = FieldOpeningSchema as unknown as FieldOpening;
 
 // ---------------------------------------------------------------------------
 // Constructors — the only supported way to build either shape
@@ -205,7 +204,7 @@ const exactFieldIndex = (fieldIndex: number): number => {
   if (
     !Number.isSafeInteger(fieldIndex) ||
     fieldIndex < 0 ||
-    fieldIndex > MIDGARD_FIELD_INDEX_V1.redeemers
+    fieldIndex > MIDGARD_FIELD_INDEX.redeemers
   ) {
     throw new MidgardFieldOpeningError(
       "§2.5 names exactly nine committed fields",
@@ -229,7 +228,7 @@ const exactFieldIndex = (fieldIndex: number): number => {
  * carries no field for it on the body arm, so supplying one would be a value
  * that silently does nothing.
  */
-export const nativeTxAnchorV1ForField = ({
+export const nativeTxAnchorForField = ({
   fieldIndex,
   txId,
   witnessSetHash,
@@ -237,9 +236,9 @@ export const nativeTxAnchorV1ForField = ({
   readonly fieldIndex: number;
   readonly txId: string;
   readonly witnessSetHash?: string;
-}): NativeTxAnchorV1 => {
+}): NativeTxAnchor => {
   const field = exactFieldIndex(fieldIndex);
-  if (isMidgardWitnessSetFieldV1(field)) {
+  if (isMidgardWitnessSetField(field)) {
     if (witnessSetHash === undefined) {
       throw new MidgardFieldOpeningError(
         "a witness-set field (§2.5 6–8) anchors on `WitnessAnchor`, which needs the block-committed `witness_set_hash`",
@@ -277,7 +276,7 @@ export const nativeTxAnchorV1ForField = ({
  * `carriage_reaches_the_anchor`) lifted with the repair, keeping door parity:
  * this module emits exactly what the door accepts.
  */
-export const fieldOpeningV1ForField = ({
+export const fieldOpeningForField = ({
   fieldIndex,
   nativeTxCompactCbor,
   carriage,
@@ -285,11 +284,11 @@ export const fieldOpeningV1ForField = ({
 }: {
   readonly fieldIndex: number;
   readonly nativeTxCompactCbor: string;
-  readonly carriage: FieldCarriageV1;
+  readonly carriage: FieldCarriage;
   readonly witnessSet?: NativeTxWitnessSetCompact;
-}): FieldOpeningV1 => {
+}): FieldOpening => {
   const field = exactFieldIndex(fieldIndex);
-  if (isMidgardWitnessSetFieldV1(field)) {
+  if (isMidgardWitnessSetField(field)) {
     if (witnessSet === undefined) {
       throw new MidgardFieldOpeningError(
         "a witness-set field (§2.5 6–8) opens on `WitnessFieldOpening`, which carries the transaction's `NativeTxWitnessSetCompact`",

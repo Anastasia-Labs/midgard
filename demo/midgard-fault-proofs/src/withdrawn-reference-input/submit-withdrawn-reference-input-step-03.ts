@@ -39,25 +39,25 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
-import { verifyWithdrawnReferenceInputMembershipV1 } from "./prepare-withdrawn-reference-input-v1.js";
+import type { WithdrawnReferenceInputContracts } from "./contracts-v1.js";
+import { verifyWithdrawnReferenceInputMembership } from "./prepare-withdrawn-reference-input-v1.js";
 import {
-  requireWithdrawnReferenceInputReferenceScriptV1,
-  requireWithdrawnReferenceInputStepStateV1,
-  requireWithdrawnReferenceInputThreadUtxoV1,
-  withdrawnReferenceInputStepLabelV1,
+  requireWithdrawnReferenceInputReferenceScript,
+  requireWithdrawnReferenceInputStepState,
+  requireWithdrawnReferenceInputThreadUtxo,
+  withdrawnReferenceInputStepLabel,
   withdrawnReferenceInputSubmitError,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = withdrawnReferenceInputStepLabelV1(2);
+const STEP_LABEL = withdrawnReferenceInputStepLabel(2);
 
 export type SubmitWithdrawnReferenceInputStep03Result = {
   readonly txHash: string;
@@ -101,18 +101,18 @@ export const submitWithdrawnReferenceInputStep03 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly withdrawalMembership: WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputStep03Result> => {
   const { threadUtxo, threadToken } =
-    await requireWithdrawnReferenceInputThreadUtxoV1({
+    await requireWithdrawnReferenceInputThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -120,7 +120,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       threadOutRef,
     });
   const state: WithdrawnReferenceInputStep03State =
-    requireWithdrawnReferenceInputStepStateV1({
+    requireWithdrawnReferenceInputStepState({
       threadUtxo,
       signer,
       schema: WithdrawnReferenceInputStep03Datum,
@@ -163,14 +163,14 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       "withdrawal membership phas_root/count do not derive the committed counted root.",
     );
   }
-  verifyWithdrawnReferenceInputMembershipV1(withdrawalMembership);
+  verifyWithdrawnReferenceInputMembership(withdrawalMembership);
 
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -273,7 +273,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const stepReference = requireWithdrawnReferenceInputReferenceScriptV1({
+  const stepReference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     stepIndex: 2,
@@ -297,9 +297,9 @@ export const submitWithdrawnReferenceInputStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

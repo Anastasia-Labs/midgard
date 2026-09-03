@@ -3,27 +3,27 @@ import { resolve } from "node:path";
 
 import {
   buildMidgardValidationTraceTree,
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardV1TxFieldPreimages,
+  computeMidgardNativeTxId,
+  computeMidgardNativeTxProofCommitment,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
+  deriveMidgardTxFieldPreimages,
   encodeCbor,
-  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardTxOutput,
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
-  verifyMidgardValidationTraceProofV1,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_VALIDATION_DISPUTE_VERSION,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
+  adjudicateMidgardNativeTxFullValidity,
   decodeSingleCbor,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  encodeValidationSemanticResolutionRedeemerV1,
+  encodeValidationSemanticResolutionRedeemer,
   parseExactAikenDataCbor,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -38,31 +38,31 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardResolvedInputsAccumulatorV1,
+  advanceMidgardResolvedInputsAccumulator,
   buildDeterministicValidationMachineTrace,
-  buildMidgardCanonicalCekProgramV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildMidgardCanonicalCekProgram,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgumentV1,
-  cekKindV1,
+  buildValidationOneStepArgument,
+  cekKind,
   type DeterministicValidationMachineTrace,
-  encodeValidationAuxiliaryWitnessCborV1,
-  encodeValidationBoundaryEvidenceCborV1,
-  initialMidgardResolvedInputsAccumulatorV1,
+  encodeValidationAuxiliaryWitnessCbor,
+  encodeValidationBoundaryEvidenceCbor,
+  initialMidgardResolvedInputsAccumulator,
   MidgardRedeemerTag,
-  purposeKindForRedeemerTagV1,
-  redeemerPointerMatchesPurposeV1,
-  redeemerTagForPurposeKindV1,
+  purposeKindForRedeemerTag,
+  redeemerPointerMatchesPurpose,
+  redeemerTagForPurposeKind,
   RejectCodes,
-  validateCekRouteMaterialV1,
-  type ValidationMachineFieldCarriagePlanInputV1,
+  validateCekRouteMaterial,
+  type ValidationMachineFieldCarriagePlanInput,
   type ValidationMachineWorkWitness,
-  validationSemanticResolverIndexV1,
-  valueAndMintKindV1,
+  validationSemanticResolverIndex,
+  valueAndMintKind,
 } from "../src/index.js";
-import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary-v1.js";
 import {
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeMintPreimageCbor,
   makeNativeTx,
@@ -84,7 +84,7 @@ const validationBlueprintPath =
 const validationDisputeBlueprint = JSON.parse(
   readFileSync(validationBlueprintPath, "utf8"),
 ) as unknown;
-const semanticResolverDefinitionsV1 = [
+const semanticResolverDefinitions = [
   "canonical_decode_empty_semantic_v1",
   "canonical_decode_item_semantic_v1",
   "compact_binding_semantic_v1",
@@ -176,7 +176,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_finalize_semantic_v1",
   "ledger_delta_terminal_semantic_v1",
 ] as const;
-const semanticResolverOffsetsV1 = [
+const semanticResolverOffsets = [
   0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71, 82,
 ] as const;
 // R5 item 1: the cek and ValueAndMint indices decompose into semantic kinds
@@ -184,13 +184,13 @@ const semanticResolverOffsetsV1 = [
 // over every witness a deterministic trace emits; these tables pin the
 // kind → semantic-resolver-index map the builders and the totality verifier
 // both read.
-const cekSemanticIndexByKindV1 = {
+const cekSemanticIndexByKind = {
   finish: 0,
   selection: 1,
   context: 2,
   core: 3,
 } as const;
-const valueAndMintSemanticIndexByKindV1 = {
+const valueAndMintSemanticIndexByKind = {
   begin: 0,
   replayBegin: 1,
   replayInput: 2,
@@ -203,15 +203,15 @@ const valueAndMintSemanticIndexByKindV1 = {
   mintFinish: 9,
   finalize: 10,
 } as const;
-const expectCekAndValueAndMintTotalityV1 = (
+const expectCekAndValueAndMintTotality = (
   trace: DeterministicValidationMachineTrace,
 ) => {
   const cekWitnesses = trace.witnesses.filter(
     (witness) => witness.phase === "cek",
   );
-  const cekKinds = cekWitnesses.map(cekKindV1);
-  expect(cekWitnesses.map(validationSemanticResolverIndexV1)).toEqual(
-    cekKinds.map((kind) => cekSemanticIndexByKindV1[kind]),
+  const cekKinds = cekWitnesses.map(cekKind);
+  expect(cekWitnesses.map(validationSemanticResolverIndex)).toEqual(
+    cekKinds.map((kind) => cekSemanticIndexByKind[kind]),
   );
   for (const [index, witness] of cekWitnesses.entries()) {
     const kind = cekKinds[index];
@@ -234,9 +234,9 @@ const expectCekAndValueAndMintTotalityV1 = (
   const valueAndMintWitnesses = trace.witnesses.filter(
     (witness) => witness.phase === "valueAndMint",
   );
-  const valueAndMintKinds = valueAndMintWitnesses.map(valueAndMintKindV1);
-  expect(valueAndMintWitnesses.map(validationSemanticResolverIndexV1)).toEqual(
-    valueAndMintKinds.map((kind) => valueAndMintSemanticIndexByKindV1[kind]),
+  const valueAndMintKinds = valueAndMintWitnesses.map(valueAndMintKind);
+  expect(valueAndMintWitnesses.map(validationSemanticResolverIndex)).toEqual(
+    valueAndMintKinds.map((kind) => valueAndMintSemanticIndexByKind[kind]),
   );
   expect(valueAndMintKinds[0]).toBe("begin");
   expect(valueAndMintKinds[1]).toBe("replayBegin");
@@ -266,7 +266,7 @@ const expectCekAndValueAndMintTotalityV1 = (
   for (const oneStep of trace.states
     .slice(0, -1)
     .map((_state, stateIndex) =>
-      buildValidationOneStepArgumentV1({ trace, stateIndex }),
+      buildValidationOneStepArgument({ trace, stateIndex }),
     )) {
     expect(oneStep.semanticResolverIndex).toBeGreaterThanOrEqual(0);
     expect(oneStep.semanticResolverIndex).toBeLessThan(
@@ -286,10 +286,10 @@ describe("V1 purpose-kind to redeemer-pointer mapping", () => {
     ] as const;
 
     for (const { purposeKind, redeemerTag } of canonical) {
-      expect(redeemerTagForPurposeKindV1(purposeKind)).toBe(redeemerTag);
-      expect(purposeKindForRedeemerTagV1(redeemerTag)).toBe(purposeKind);
+      expect(redeemerTagForPurposeKind(purposeKind)).toBe(redeemerTag);
+      expect(purposeKindForRedeemerTag(redeemerTag)).toBe(purposeKind);
       expect(
-        redeemerPointerMatchesPurposeV1({
+        redeemerPointerMatchesPurpose({
           purposeKind,
           purposeIndex: 7n,
           redeemerTag,
@@ -297,7 +297,7 @@ describe("V1 purpose-kind to redeemer-pointer mapping", () => {
         }),
       ).toBe(true);
       expect(
-        redeemerPointerMatchesPurposeV1({
+        redeemerPointerMatchesPurpose({
           purposeKind,
           purposeIndex: 7n,
           redeemerTag,
@@ -307,9 +307,9 @@ describe("V1 purpose-kind to redeemer-pointer mapping", () => {
     }
 
     for (const purposeKind of [-1, 4]) {
-      expect(redeemerTagForPurposeKindV1(purposeKind)).toBeNull();
+      expect(redeemerTagForPurposeKind(purposeKind)).toBeNull();
       expect(
-        redeemerPointerMatchesPurposeV1({
+        redeemerPointerMatchesPurpose({
           purposeKind,
           purposeIndex: 7n,
           redeemerTag: 0,
@@ -318,9 +318,9 @@ describe("V1 purpose-kind to redeemer-pointer mapping", () => {
       ).toBe(false);
     }
     for (const redeemerTag of [-1, 2, 4, 5, 7]) {
-      expect(purposeKindForRedeemerTagV1(redeemerTag)).toBeNull();
+      expect(purposeKindForRedeemerTag(redeemerTag)).toBeNull();
       expect(
-        redeemerPointerMatchesPurposeV1({
+        redeemerPointerMatchesPurpose({
           purposeKind: 0,
           purposeIndex: 7n,
           redeemerTag,
@@ -368,7 +368,7 @@ describe("C21 challenged auxiliary carrier policy", () => {
  * work-witness array, which is where the machine writes it, so reading it here
  * asks the same question the on-chain step does.
  */
-const canonicalDecodeFieldIndexV1 = (
+const canonicalDecodeFieldIndex = (
   witness: ValidationMachineWorkWitness,
 ): number => {
   const control = decodeSingleCbor(witness.cbor);
@@ -389,13 +389,13 @@ const canonicalDecodeFieldIndexV1 = (
  * pinning is the thing the arm now means: the step read the **real** field, byte
  * for byte, out of the transaction under test.
  */
-const expectedFieldPlanInputV1 = (
+const expectedFieldPlanInput = (
   txCbor: Buffer,
   fieldIndex: number,
 ): { readonly fieldIndex: number; readonly fieldPreimage: Buffer } => ({
   fieldIndex,
   fieldPreimage:
-    deriveMidgardV1TxFieldPreimages(txCbor)[fieldIndex]!.preimageCbor,
+    deriveMidgardTxFieldPreimages(txCbor)[fieldIndex]!.preimageCbor,
 });
 
 /**
@@ -405,25 +405,25 @@ const expectedFieldPlanInputV1 = (
  * rather than a tier assertion: the tier is chosen later, at evidence
  * commitment, and these rows are about which bytes a step named.
  */
-const stepFieldPreimageV1 = (
-  planInput: ValidationMachineFieldCarriagePlanInputV1,
+const stepFieldPreimage = (
+  planInput: ValidationMachineFieldCarriagePlanInput,
 ): Buffer => planInput.fieldPreimage;
 
-type MintFoldWitnessV1 = Extract<
+type MintFoldWitness = Extract<
   NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
   {
     readonly kind: "transactionFieldChunk" | "mintFoldAsset";
   }
 >;
 
-const collectMintFoldWitnessesV1 = (
+const collectMintFoldWitnesses = (
   trace: DeterministicValidationMachineTrace,
-): readonly MintFoldWitnessV1[] =>
+): readonly MintFoldWitness[] =>
   trace.witnesses
     .filter((witness) => witness.phase === "scriptSources")
     .map((witness) => witness.auxiliary)
     .filter(
-      (auxiliary): auxiliary is MintFoldWitnessV1 =>
+      (auxiliary): auxiliary is MintFoldWitness =>
         auxiliary?.kind === "mintFoldAsset" ||
         (auxiliary?.kind === "transactionFieldChunk" &&
           auxiliary.fieldIndex === 5),
@@ -449,18 +449,18 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       return { ...state, workRoot };
     });
     const challengerTree = buildMidgardValidationTraceTree(
-      challengerStates.map(hashMidgardValidationMachineStateV1),
+      challengerStates.map(hashMidgardValidationMachineState),
       trace.verdict,
       trace.tree.descriptor.rejectionCodeHash,
     );
-    const argumentsCbor = encodeValidationBoundaryEvidenceCborV1({
+    const argumentsCbor = encodeValidationBoundaryEvidenceCbor({
       dispute: {
-        version: MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+        version: MIDGARD_VALIDATION_DISPUTE_VERSION,
         operatorDescriptor: trace.tree.descriptor,
         challengerDescriptor: challengerTree.descriptor,
         lowIndex,
         highIndex,
-        agreedLowHash: hashMidgardValidationMachineStateV1(
+        agreedLowHash: hashMidgardValidationMachineState(
           trace.states[lowIndex]!,
         ),
         operatorHighHash: trace.tree.proofs[highIndex]!.stateHash,
@@ -483,7 +483,7 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       cbor: argumentsCbor.toString("hex"),
       maxBytes: 16 * 1024 - 1,
     });
-    const oneStepArgument = buildValidationOneStepArgumentV1({
+    const oneStepArgument = buildValidationOneStepArgument({
       trace,
       stateIndex: lowIndex,
     });
@@ -540,9 +540,9 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
     );
     if (!auxiliaryIsFrozenStale) {
       const globalIndex =
-        semanticResolverOffsetsV1[oneStepArgument.resolverIndex]! +
+        semanticResolverOffsets[oneStepArgument.resolverIndex]! +
         oneStepArgument.semanticResolverIndex;
-      const moduleName = semanticResolverDefinitionsV1[globalIndex];
+      const moduleName = semanticResolverDefinitions[globalIndex];
       if (moduleName === undefined) {
         throw new Error(
           `semantic resolver ${globalIndex.toString()} has no ABI definition`,
@@ -570,7 +570,7 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
                 },
               }
           : undefined;
-      const semanticRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+      const semanticRedeemer = encodeValidationSemanticResolutionRedeemer({
         oneStepArgument,
         inputIndex: 0n,
         outputIndex: 0n,
@@ -591,7 +591,7 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
 };
 
 const context = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
   sourceKind: "normal" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -603,7 +603,7 @@ const context = {
 };
 
 const buildAcceptingIdentityProgram = () =>
-  buildMidgardCanonicalCekProgramV1(
+  buildMidgardCanonicalCekProgram(
     Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
@@ -615,7 +615,7 @@ const buildNonterminatingSelfApplicationProgram = () => {
   const selfApplication = new Lambda(
     new Application(new UPLCVar(0), new UPLCVar(0)),
   );
-  return buildMidgardCanonicalCekProgramV1(
+  return buildMidgardCanonicalCekProgram(
     Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram(
@@ -630,7 +630,7 @@ const buildNonterminatingSelfApplicationProgram = () => {
 describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("replays an accepted transaction through bounded field-reveal instructions", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -638,7 +638,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -699,8 +699,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           witness.auxiliary.kind === "transactionFieldChunk"
         ) {
           return (
-            witness.cbor.length +
-              stepFieldPreimageV1(witness.auxiliary).length <
+            witness.cbor.length + stepFieldPreimage(witness.auxiliary).length <
             16 * 1024
           );
         }
@@ -772,7 +771,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(valueAndMintWitnesses[0]?.auxiliary).toBeNull();
     // A native-only transaction still walks the cek index: the single
     // finish step hands off to ValueAndMint, which then runs every stage.
-    expect(expectCekAndValueAndMintTotalityV1(trace)).toEqual({
+    expect(expectCekAndValueAndMintTotality(trace)).toEqual({
       cekKinds: ["finish"],
       valueAndMintKinds: [
         "begin",
@@ -830,13 +829,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(scriptSourceWitnesses[19]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[20]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[21]?.auxiliary).toBeNull();
-    expect(
-      scriptSourceWitnesses.map(validationSemanticResolverIndexV1),
-    ).toEqual([
+    expect(scriptSourceWitnesses.map(validationSemanticResolverIndex)).toEqual([
       6, 14, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 3, 4, 0, 27, 23, 16, 18,
     ]);
     expect(() =>
-      validationSemanticResolverIndexV1({
+      validationSemanticResolverIndex({
         ...scriptSourceWitnesses[7]!,
         auxiliary: scriptSourceWitnesses[3]!.auxiliary,
       }),
@@ -849,7 +846,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           witness.auxiliary.kind === "transactionFieldItem" ||
           witness.auxiliary.kind === "transactionFieldChunk"
         ) {
-          return !stepFieldPreimageV1(witness.auxiliary).includes(
+          return !stepFieldPreimage(witness.auxiliary).includes(
             transaction.txCbor,
           );
         }
@@ -870,13 +867,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(staticRulesWitness!.cbor.includes(transaction.txCbor)).toBe(false);
     expect(trace.tree.descriptor.verdict).toBe("accepted");
     expect(trace.states[0]!.transactionCommitment).toEqual(
-      computeMidgardNativeTxProofCommitmentV1(
-        deriveMidgardNativeTxProofSourceV1(transaction.tx),
+      computeMidgardNativeTxProofCommitment(
+        deriveMidgardNativeTxProofSource(transaction.tx),
       ),
     );
     expect(
       trace.tree.proofs.every((proof) =>
-        verifyMidgardValidationTraceProofV1({
+        verifyMidgardValidationTraceProof({
           descriptor: trace.tree.descriptor,
           proof,
         }),
@@ -894,10 +891,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     "rejects a $label at the authenticated output-finalize instruction",
     async ({ rawNibble }) => {
       const spent = outRefFromByte(0x7d);
-      const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+      const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
       const foreignAddress = Buffer.from(TEST_ADDRESS_BYTES);
       foreignAddress[0] = (foreignAddress[0]! & 0xf0) | rawNibble;
-      const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, foreignAddress);
+      const output = makeOutput(FUNDED_OUTPUT_LOVELACE, foreignAddress);
       const transaction = makeNativeTx({
         version: 1n,
         spendInputs: [spent],
@@ -934,12 +931,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   );
 
   it("matches the L1 resolved-input accumulator vector", () => {
-    const initial = initialMidgardResolvedInputsAccumulatorV1();
+    const initial = initialMidgardResolvedInputsAccumulator();
     expect(initial.toString("hex")).toBe(
       "07eb401e2f7e5de17444414ec48a5d9dca455dea72f4675cc2b08bf5b4e39979",
     );
     expect(
-      advanceMidgardResolvedInputsAccumulatorV1({
+      advanceMidgardResolvedInputsAccumulator({
         accumulator: initial,
         sourceKind: "spend",
         key: Buffer.from("010203", "hex"),
@@ -955,9 +952,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
     );
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -974,7 +971,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -990,7 +987,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
           ...program.material.values(),
         ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
@@ -1006,7 +1003,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const cekWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "cek",
     );
-    const totality = expectCekAndValueAndMintTotalityV1(trace);
+    const totality = expectCekAndValueAndMintTotality(trace);
     expect(totality.cekKinds[0]).toBe("selection");
     expect(totality.cekKinds).toContain("context");
     expect(totality.cekKinds).toContain("core");
@@ -1021,7 +1018,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(scriptSourceWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
       itemIndex: 0,
-      ...expectedFieldPlanInputV1(transaction.txCbor, 6),
+      ...expectedFieldPlanInput(transaction.txCbor, 6),
     });
     const sourceHashBlocks = scriptSourceWitnesses.filter(
       (witness) => witness.auxiliary?.kind === "scriptSourceHashBlock",
@@ -1041,47 +1038,47 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(redeemerSourceWitness?.auxiliary).toMatchObject({
       kind: "transactionRedeemerItemBegin",
-      ...expectedFieldPlanInputV1(transaction.txCbor, 8),
+      ...expectedFieldPlanInput(transaction.txCbor, 8),
     });
-    expect(validationSemanticResolverIndexV1(redeemerSourceWitness!)).toBe(15);
+    expect(validationSemanticResolverIndex(redeemerSourceWitness!)).toBe(15);
     expect(
       scriptSourceWitnesses.some(
-        (witness) => validationSemanticResolverIndexV1(witness) === 14,
+        (witness) => validationSemanticResolverIndex(witness) === 14,
       ),
     ).toBe(true);
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
           witness.auxiliary?.kind === "scriptSourceScan" &&
-          validationSemanticResolverIndexV1(witness) === 17,
+          validationSemanticResolverIndex(witness) === 17,
       ),
     ).toBe(true);
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
           witness.auxiliary?.kind === "redeemerScanBegin" &&
-          validationSemanticResolverIndexV1(witness) === 19,
+          validationSemanticResolverIndex(witness) === 19,
       ),
     ).toBe(true);
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
           witness.auxiliary?.kind === "redeemerScanBegin" &&
-          validationSemanticResolverIndexV1(witness) === 21,
+          validationSemanticResolverIndex(witness) === 21,
       ),
     ).toBe(true);
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
           witness.auxiliary?.kind === "redeemerItemStep" &&
-          validationSemanticResolverIndexV1(witness) === 22,
+          validationSemanticResolverIndex(witness) === 22,
       ),
     ).toBe(true);
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
           witness.auxiliary?.kind === "scriptPurposeScan" &&
-          validationSemanticResolverIndexV1(witness) === 24,
+          validationSemanticResolverIndex(witness) === 24,
       ),
     ).toBe(true);
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
@@ -1156,7 +1153,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const selectionStateIndex = trace.witnesses.findIndex(
       (witness) => witness.auxiliary === nativeExecutionWitness,
     );
-    const selectionArgument = buildValidationOneStepArgumentV1({
+    const selectionArgument = buildValidationOneStepArgument({
       trace,
       stateIndex: selectionStateIndex,
     });
@@ -1172,7 +1169,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         witness.auxiliary?.kind !== "nativeExecutionScan",
     );
     expect(
-      buildValidationOneStepArgumentV1({
+      buildValidationOneStepArgument({
         trace,
         stateIndex: laterCekStateIndex,
       }).cekRouteMaterial,
@@ -1181,7 +1178,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       (witness) => witness.phase !== "cek",
     );
     expect(
-      buildValidationOneStepArgumentV1({
+      buildValidationOneStepArgument({
         trace,
         stateIndex: nonCekStateIndex,
       }).cekRouteMaterial,
@@ -1189,7 +1186,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     const routeMaterial = selectionArgument.cekRouteMaterial!;
     const validateRouteMaterial = (value: unknown) =>
-      validateCekRouteMaterialV1({
+      validateCekRouteMaterial({
         value,
         firstSourceChunk: nativeExecutionWitness.firstChunkProof.chunk,
         languageTag: nativeExecutionWitness.languageTag as 3 | 128,
@@ -1215,9 +1212,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(() =>
       validateRouteMaterial({
         ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
-          [],
-        ),
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       }),
     ).toThrow(/program material is missing root/u);
     const retainedRoots = new Set(
@@ -1232,7 +1227,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(() =>
       validateRouteMaterial({
         ...routeMaterial,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
           ...program.material.values(),
           unrelatedEntry,
         ]),
@@ -1265,7 +1260,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       [nativeExecutionWitness, ...challengedDescriptorWitnesses].every(
         (auxiliary) =>
-          encodeValidationAuxiliaryWitnessCborV1(auxiliary).length < 16 * 1024,
+          encodeValidationAuxiliaryWitnessCbor(auxiliary).length < 16 * 1024,
       ),
     ).toBe(true);
     const cekStates = trace.states.filter((state) => state.phase === "cek");
@@ -1284,9 +1279,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
     );
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1305,7 +1300,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: [
         { type: "delete", key: spent },
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(transaction.txId),
           outputCbor: output,
         }),
@@ -1318,7 +1313,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
           ...program.material.values(),
         ]),
         priorUtxosRoot: unchangedRoot,
@@ -1361,14 +1356,14 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
       scriptHash,
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
     );
     const referenceOutput = encodeMidgardTxOutput({
       address: TEST_ADDRESS_BYTES,
       value: { lovelace: 1n, assets: new Map() },
       script_ref: script,
     });
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -1385,7 +1380,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -1404,7 +1399,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
           ...program.material.values(),
         ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
@@ -1437,7 +1432,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(referenceSource.auxiliary.scriptTotalLength).toBeGreaterThan(0);
     expect(referenceSource.auxiliary.scriptItemCommitment).toHaveLength(32);
     expect("script" in referenceSource.auxiliary).toBe(false);
-    expect(validationSemanticResolverIndexV1(referenceSource)).toBe(12);
+    expect(validationSemanticResolverIndex(referenceSource)).toBe(12);
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "inputSets")
@@ -1487,12 +1482,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ]);
       const spentOutput =
         quantity > 0n
-          ? makeOutput(FUNDED_OUTPUT_LOVELACE_V1)
-          : makeOutput(FUNDED_OUTPUT_LOVELACE_V1, undefined, assets);
+          ? makeOutput(FUNDED_OUTPUT_LOVELACE)
+          : makeOutput(FUNDED_OUTPUT_LOVELACE, undefined, assets);
       const output =
         quantity > 0n
-          ? makeOutput(FUNDED_OUTPUT_LOVELACE_V1, undefined, assets)
-          : makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+          ? makeOutput(FUNDED_OUTPUT_LOVELACE, undefined, assets)
+          : makeOutput(FUNDED_OUTPUT_LOVELACE);
       const mintPreimageCbor = makeMintPreimageCbor(
         new Map([[policyId, new Map([[assetName, quantity]])]]),
       );
@@ -1513,7 +1508,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       });
       const expectedLedgerOps = [
         { type: "delete" as const, key: spent },
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(transaction.txId),
           outputCbor: output,
         }),
@@ -1528,7 +1523,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           ...context,
           transactionId: transaction.txId,
           canonicalTransactionCbor: transaction.txCbor,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
             ...program.material.values(),
           ]),
           priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
@@ -1574,7 +1569,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("executes a MidgardV1 protected-output receiving script", async () => {
     const spent = outRefFromByte(0x33);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const program = buildAcceptingIdentityProgram();
     const script = {
       language: "MidgardV1" as const,
@@ -1583,7 +1578,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const scriptHash = hashScriptWitness(script);
     const output = makeProtectedScriptOutput(
       scriptHash,
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
     );
     const transaction = makeNativeTx({
       version: 1n,
@@ -1601,7 +1596,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -1617,7 +1612,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
           ...program.material.values(),
         ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
@@ -1651,14 +1646,14 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         (witness) =>
           witness.phase === "scriptSources" &&
           witness.auxiliary?.kind === "scriptPurposeScan" &&
-          validationSemanticResolverIndexV1(witness) === 26,
+          validationSemanticResolverIndex(witness) === 26,
       ),
     ).toBe(true);
     expect(
       trace.witnesses.some(
         (witness) =>
           witness.phase === "scriptSources" &&
-          validationSemanticResolverIndexV1(witness) === 27,
+          validationSemanticResolverIndex(witness) === 27,
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
@@ -1676,8 +1671,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("executes an authenticated PlutusV3 observer", async () => {
     const spent = outRefFromByte(0x34);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const program = buildAcceptingIdentityProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const observerHash = Buffer.from(hashScriptWitness(script), "hex");
@@ -1699,7 +1694,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -1715,7 +1710,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         ...context,
         transactionId: transaction.txId,
         canonicalTransactionCbor: transaction.txCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([
           ...program.material.values(),
         ]),
         priorUtxosRoot: ledgerMutationSteps[0]!.preRoot.toString("hex"),
@@ -1754,7 +1749,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(cekObserverWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
       itemIndex: 0,
-      ...expectedFieldPlanInputV1(transaction.txCbor, 3),
+      ...expectedFieldPlanInput(transaction.txCbor, 3),
     });
     const cekObserverWitnessIndex = trace.witnesses.indexOf(
       cekObserverWitnesses[0]!,
@@ -1769,23 +1764,23 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       preconditionWitnesses.map((witness) => witness.auxiliary?.kind ?? "none"),
     ).toEqual(["transactionFieldChunk", "none"]);
-    expect(
-      preconditionWitnesses.map(validationSemanticResolverIndexV1),
-    ).toEqual([1, 0]);
+    expect(preconditionWitnesses.map(validationSemanticResolverIndex)).toEqual([
+      1, 0,
+    ]);
     expect(
       trace.witnesses.some(
         (witness) =>
           witness.phase === "scriptSources" &&
           witness.auxiliary?.kind === "transactionFieldChunk" &&
           witness.auxiliary.fieldIndex === 3 &&
-          validationSemanticResolverIndexV1(witness) === 25,
+          validationSemanticResolverIndex(witness) === 25,
       ),
     ).toBe(true);
     expect(
       trace.witnesses.some(
         (witness) =>
           witness.phase === "scriptSources" &&
-          validationSemanticResolverIndexV1(witness) === 27,
+          validationSemanticResolverIndex(witness) === 27,
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("accepted");
@@ -1806,7 +1801,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
       requiredObserverItems: [observerHash, observerHash],
     });
     const unchangedRoot = root(0x35);
@@ -1831,9 +1826,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       preconditionWitnesses.map((witness) => witness.auxiliary?.kind),
     ).toEqual(["transactionFieldChunk", "transactionFieldChunk"]);
-    expect(
-      preconditionWitnesses.map(validationSemanticResolverIndexV1),
-    ).toEqual([1, 1]);
+    expect(preconditionWitnesses.map(validationSemanticResolverIndex)).toEqual([
+      1, 1,
+    ]);
     expect(trace.states.at(-1)).toMatchObject({
       phase: "terminal",
       verdict: "rejected",
@@ -1845,7 +1840,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("replays signed mint through an authenticated mint leaf", async () => {
     const spent = outRefFromByte(0x21);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const script = nativeScriptWitness({
       type: "all",
       scripts: [
@@ -1858,7 +1853,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("cafe", "hex");
     const mintedOutput = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
@@ -1875,7 +1870,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: mintedOutput,
       }),
@@ -1901,7 +1896,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     );
 
-    const mintFoldWitnesses = collectMintFoldWitnessesV1(trace);
+    const mintFoldWitnesses = collectMintFoldWitnesses(trace);
     expect(mintFoldWitnesses.map(({ kind }) => kind)).toEqual([
       "transactionFieldChunk",
       "mintFoldAsset",
@@ -1913,8 +1908,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           // refuses above; the 4,095-byte chunk bound was the retired
           // `ChunkProofV1`'s and has no wire surface left.
           return (
-            stepFieldPreimageV1(witness).length <=
-            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
+            stepFieldPreimage(witness).length <=
+            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
           );
         }
         return (
@@ -1955,12 +1950,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       )?.auxiliary,
     ).toMatchObject({
       kind: "transactionFieldChunk",
-      ...expectedFieldPlanInputV1(transaction.txCbor, 6),
+      ...expectedFieldPlanInput(transaction.txCbor, 6),
     });
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "phaseANativeScripts")
-        .map(validationSemanticResolverIndexV1),
+        .map(validationSemanticResolverIndex),
     ).toEqual([1, 2, 3, 2, 8, 13, 0, 2, 3, 2, 8, 13, 0]);
     const nativeSource = trace.witnesses.find(
       (witness) =>
@@ -1968,7 +1963,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         witness.auxiliary.scriptLanguageTag === 0,
     );
     expect(nativeSource).toBeDefined();
-    expect(validationSemanticResolverIndexV1(nativeSource!)).toBe(11);
+    expect(validationSemanticResolverIndex(nativeSource!)).toBe(11);
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
@@ -1990,13 +1985,13 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const policyId = Buffer.from(hashScriptWitness(script), "hex");
     const assetName = Buffer.from("beef", "hex");
     const spentOutput = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 5n]])],
       ]),
     );
-    const burnedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const burnedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -2008,7 +2003,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: burnedOutput,
       }),
@@ -2034,7 +2029,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     );
 
-    const burnFoldWitnesses = collectMintFoldWitnessesV1(trace);
+    const burnFoldWitnesses = collectMintFoldWitnesses(trace);
     expect(burnFoldWitnesses.map(({ kind }) => kind)).toEqual([
       "transactionFieldChunk",
       "mintFoldAsset",
@@ -2061,7 +2056,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("constructs bounded mint proofs across an authenticated chunk boundary", async () => {
     const spent = outRefFromByte(0x23);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const policyId = Buffer.alloc(28, 0xaa);
     const assets = new Map<Buffer, bigint>();
     for (let assetIndex = 0; assetIndex < 128; assetIndex += 1) {
@@ -2072,7 +2067,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
       mintPreimageCbor: makeMintPreimageCbor(new Map([[policyId, assets]])),
     });
     const unchangedRoot = root(0x23);
@@ -2091,7 +2086,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     );
 
-    const mintFoldWitnesses = collectMintFoldWitnessesV1(trace);
+    const mintFoldWitnesses = collectMintFoldWitnesses(trace);
     expect(mintFoldWitnesses).toHaveLength(129);
     const crossingWitness = mintFoldWitnesses[117];
     expect(crossingWitness).toMatchObject({
@@ -2106,8 +2101,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           // refuses above; the 4,095-byte chunk bound was the retired
           // `ChunkProofV1`'s and has no wire surface left.
           return (
-            stepFieldPreimageV1(witness).length <=
-            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
+            stepFieldPreimage(witness).length <=
+            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
           );
         }
         return (
@@ -2124,7 +2119,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("commits an invalid forced transaction as a proved no-op", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       invalidVkeyWitness: true,
@@ -2166,7 +2161,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("authenticates a required signer against the streamed signer frontier", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -2175,7 +2170,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId),
         outputCbor: output,
       }),
@@ -2209,7 +2204,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      ...expectedFieldPlanInputV1(transaction.txCbor, 7),
+      ...expectedFieldPlanInput(transaction.txCbor, 7),
     });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
@@ -2224,7 +2219,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("proves a missing required signer before an invalid-signature rejection", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       invalidVkeyWitness: true,
@@ -2255,7 +2250,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
-      ...expectedFieldPlanInputV1(transaction.txCbor, 7),
+      ...expectedFieldPlanInput(transaction.txCbor, 7),
     });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
@@ -2277,7 +2272,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         makeNativeTx({
           version: 1n,
           spendInputs: [],
-          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
         }),
       rejectionCode: RejectCodes.EmptyInputs,
       expectedInputSteps: 1,
@@ -2291,7 +2286,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           version: 1n,
           spendInputs: [input],
           referenceInputs: [input],
-          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
         });
       },
       rejectionCode: RejectCodes.DuplicateInputInTx,
@@ -2304,7 +2299,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         makeNativeTx({
           version: 1n,
           spendInputs: [outRefFromByte(0x22)],
-          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+          outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
           validityIntervalStart: 10n,
           validityIntervalEnd: 9n,
         }),
@@ -2359,7 +2354,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("carries an aggregate field above 8 KiB as ordered complete-item proofs", async () => {
     const spent = outRefFromByte(0x12);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
     protectedRecipient[1] = protectedRecipient[1]! ^ 0x01;
     const outputs = [
@@ -2401,7 +2396,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         (witness) =>
           witness.phase === "canonicalDecode" &&
           witness.auxiliary?.kind === "transactionFieldItem" &&
-          canonicalDecodeFieldIndexV1(witness) === 2,
+          canonicalDecodeFieldIndex(witness) === 2,
       )
       .map((witness) => witness.auxiliary!);
     expect(canonicalOutputItems).toHaveLength(outputs.length);
@@ -2409,7 +2404,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       canonicalOutputItems.every(
         (auxiliary) =>
           auxiliary.kind === "transactionFieldItem" &&
-          stepFieldPreimageV1(auxiliary).equals(outputsPreimage),
+          stepFieldPreimage(auxiliary).equals(outputsPreimage),
       ),
     ).toBe(true);
     // C21-STAGE4 Option A: stage-4 emits the carriage-only witness. The stage-1
@@ -2420,7 +2415,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       .filter((witness) => witness.phase === "scriptSources")
       .flatMap((witness) =>
         witness.auxiliary?.kind === "transactionRedeemerItemBegin" &&
-        stepFieldPreimageV1(witness.auxiliary).equals(outputsPreimage)
+        stepFieldPreimage(witness.auxiliary).equals(outputsPreimage)
           ? [witness.auxiliary]
           : [],
       );
@@ -2477,8 +2472,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const convicting = trace.witnesses.at(-2)!;
     expect(trace.witnesses.at(-1)!.phase).toBe("terminal");
     expect(convicting.phase).toBe("valueAndMint");
-    expect(valueAndMintKindV1(convicting)).toBe("outputDescriptor");
-    expect(validationSemanticResolverIndexV1(convicting)).toBe(5);
+    expect(valueAndMintKind(convicting)).toBe("outputDescriptor");
+    expect(validationSemanticResolverIndex(convicting)).toBe(5);
     expect(convicting.auxiliary).toMatchObject({
       kind: "valueOutputDescriptor",
       outputIndex: 0,
@@ -2489,7 +2484,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     // takes the very output-descriptor step that convicted above. Without this
     // leg the assertions above would also hold for a wiring that rejected
     // every output.
-    const fundedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const fundedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const fundedTransaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -2497,7 +2492,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     });
     const fundedLedgerOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(fundedTransaction.txId),
         outputCbor: fundedOutput,
       }),
@@ -2528,7 +2523,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       fundedTrace.witnesses.some(
         (witness) =>
           witness.phase === "valueAndMint" &&
-          valueAndMintKindV1(witness) === "outputDescriptor",
+          valueAndMintKind(witness) === "outputDescriptor",
       ),
     ).toBe(true);
   });
@@ -2538,7 +2533,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1)],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
     });
     const unchangedRoot = root(6);
     await expect(
@@ -2563,7 +2558,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("fails closed when the claimed verdict or delta disagrees with replay", async () => {
     const spent = outRefFromByte(0x11);
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,
       spendInputs: [spent],
@@ -2611,9 +2606,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   // an incremental scan.
   // ==========================================================================
 
-  const buildMaximumRetainedCanonicalSourceV1 = () => {
+  const buildMaximumRetainedCanonicalSource = () => {
     const spent = outRefFromByte(0x12);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
     protectedRecipient[1] = protectedRecipient[1]! ^ 0x01;
     const outputs = [
@@ -2657,11 +2652,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       );
 
   it("reaches one byte-identical canonical decode terminal from normal and forced retained sources", async () => {
-    const fixture = buildMaximumRetainedCanonicalSourceV1();
+    const fixture = buildMaximumRetainedCanonicalSource();
 
     // Both retained DA classifications carry the same canonical bytes, and
     // each independently folds back to them.
-    const retained = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+    const retained = await exerciseMidgardRetainedDaCanonicalBoundary({
       canonicalTransactionCbor: fixture.transaction.txCbor,
     });
     expect(retained.normal.retainedPreimageBytes).toBeGreaterThan(8 * 1024);
@@ -2733,21 +2728,21 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(normalTrace.validationContextCbor.toString("hex")).toBe(
       forcedTrace.validationContextCbor.toString("hex"),
     );
-    const adjudicatedTx = adjudicateMidgardNativeTxFullV1Validity(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(fixture.transaction.txCbor),
+    const adjudicatedTx = adjudicateMidgardNativeTxFullValidity(
+      decodeMidgardNativeTxFullFromCanonicalCbor(fixture.transaction.txCbor),
       "TxIsInvalid",
     );
     // The forced states bind the adjudicated triple's commitment; the normal
     // states bind the submitted one.
     expect(forcedTrace.states[0]!.transactionCommitment.toString("hex")).toBe(
-      computeMidgardNativeTxProofCommitmentV1(
-        deriveMidgardNativeTxProofSourceV1(adjudicatedTx),
+      computeMidgardNativeTxProofCommitment(
+        deriveMidgardNativeTxProofSource(adjudicatedTx),
       ).toString("hex"),
     );
     expect(normalTrace.states[0]!.transactionCommitment.toString("hex")).toBe(
-      computeMidgardNativeTxProofCommitmentV1(
-        deriveMidgardNativeTxProofSourceV1(
-          decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      computeMidgardNativeTxProofCommitment(
+        deriveMidgardNativeTxProofSource(
+          decodeMidgardNativeTxFullFromCanonicalCbor(
             fixture.transaction.txCbor,
           ),
         ),
@@ -2774,7 +2769,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const completeItems = normalTrace.witnesses.flatMap((witness) =>
       witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldItem" &&
-      canonicalDecodeFieldIndexV1(witness) === 2
+      canonicalDecodeFieldIndex(witness) === 2
         ? [witness.auxiliary]
         : [],
     );
@@ -2789,23 +2784,23 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   }, 120_000);
 
   it("rejects malformed, trailing, and noncanonical retained transaction CBOR at the exact decode terminal", () => {
-    const fixture = buildMaximumRetainedCanonicalSourceV1();
+    const fixture = buildMaximumRetainedCanonicalSource();
     const canonical = Buffer.from(fixture.transaction.txCbor);
 
     // The pristine canonical source decodes to the authenticated identity.
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-    expect(computeMidgardNativeTxIdV1(decoded).toString("hex")).toBe(
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(canonical);
+    expect(computeMidgardNativeTxId(decoded).toString("hex")).toBe(
       Buffer.from(fixture.transaction.txId).toString("hex"),
     );
 
     // Malformed: the last byte of the definite-length encoding is missing.
     expect(() =>
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical.subarray(0, -1)),
+      decodeMidgardNativeTxFullFromCanonicalCbor(canonical.subarray(0, -1)),
     ).toThrow();
 
     // Trailing: one extra byte after the complete top-level item.
     expect(() =>
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.concat([canonical, Buffer.from([0x00])]),
       ),
     ).toThrow();
@@ -2815,7 +2810,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(head).toBeGreaterThanOrEqual(0x80);
     expect(head).toBeLessThan(0x98);
     expect(() =>
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.concat([
           Buffer.from([0x98, head - 0x80]),
           canonical.subarray(1),
@@ -2825,7 +2820,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
     // Indefinite-length top-level array is not a canonical V1 source either.
     expect(() =>
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      decodeMidgardNativeTxFullFromCanonicalCbor(
         Buffer.concat([
           Buffer.from([0x9f]),
           canonical.subarray(1),

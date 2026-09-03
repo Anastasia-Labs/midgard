@@ -3,11 +3,11 @@ import {
   computeDaSha256Hash,
   daDeploymentFingerprintFromHex,
   DaRequestResponseProtocol,
-  decodeDaMetadataByHeaderResponseV1Cbor,
-  decodeDaPayloadByHeaderResponseV1Cbor,
-  decodeDaPayloadChunkResponseV1Cbor,
-  encodeDaPayloadByHeaderRequestV1Cbor,
-  encodeDaPayloadChunkRequestV1Cbor,
+  decodeDaMetadataByHeaderResponseCbor,
+  decodeDaPayloadByHeaderResponseCbor,
+  decodeDaPayloadChunkResponseCbor,
+  encodeDaPayloadByHeaderRequestCbor,
+  encodeDaPayloadChunkRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
 
 import type { Libp2pDaTransportLimits } from "../../config.js";
@@ -99,12 +99,12 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
     peer: DaPeerRegistryEntry,
     headerHash: Buffer,
   ): Promise<DaPayloadCandidate | undefined> {
-    const byHeaderResponse = decodeDaPayloadByHeaderResponseV1Cbor(
+    const byHeaderResponse = decodeDaPayloadByHeaderResponseCbor(
       await this.node.request({
         peer,
         protocolId: this.protocolId(DaRequestResponseProtocol.payloadByHeader),
         timeoutMs: this.limits.requestTimeoutMs,
-        payload: encodeDaPayloadByHeaderRequestV1Cbor({
+        payload: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: this.deploymentFingerprint,
           headerHash,
           acceptedPayloadHashes: null,
@@ -186,12 +186,12 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
   ): Promise<Buffer> {
     const chunks: Buffer[] = [];
     for (let index = 0; index < chunkHashes.length; index += 1) {
-      const response = decodeDaPayloadChunkResponseV1Cbor(
+      const response = decodeDaPayloadChunkResponseCbor(
         await this.node.request({
           peer,
           protocolId: this.protocolId(DaRequestResponseProtocol.payloadChunk),
           timeoutMs: this.limits.requestTimeoutMs,
-          payload: encodeDaPayloadChunkRequestV1Cbor({
+          payload: encodeDaPayloadChunkRequestCbor({
             deploymentFingerprint: this.deploymentFingerprint,
             headerHash,
             payloadHash,
@@ -228,14 +228,14 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
     peer: DaPeerRegistryEntry,
     headerHash: Buffer,
   ): Promise<
-    ReturnType<typeof decodeDaMetadataByHeaderResponseV1Cbor> | undefined
+    ReturnType<typeof decodeDaMetadataByHeaderResponseCbor> | undefined
   > {
-    const response = decodeDaMetadataByHeaderResponseV1Cbor(
+    const response = decodeDaMetadataByHeaderResponseCbor(
       await this.node.request({
         peer,
         protocolId: this.protocolId(DaRequestResponseProtocol.metadataByHeader),
         timeoutMs: this.limits.requestTimeoutMs,
-        payload: encodeDaPayloadByHeaderRequestV1Cbor({
+        payload: encodeDaPayloadByHeaderRequestCbor({
           deploymentFingerprint: this.deploymentFingerprint,
           headerHash,
           acceptedPayloadHashes: null,
@@ -252,9 +252,7 @@ export class DaLibp2pPayloadSource implements DaPayloadSource {
 }
 
 const assertCanonicalPayloadMetadata = (
-  metadata:
-    | ReturnType<typeof decodeDaMetadataByHeaderResponseV1Cbor>
-    | undefined,
+  metadata: ReturnType<typeof decodeDaMetadataByHeaderResponseCbor> | undefined,
 ): void => {
   if (metadata?.payloadSchemaVersion !== 1) {
     throw new InvalidDaPayloadSourceResponseError(

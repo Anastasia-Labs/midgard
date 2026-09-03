@@ -7,7 +7,7 @@
  *
  * 1. `assertSecurityGradeEvidenceV1` — no diagnostic or operator-private record
  *    can reach a submittable proof; and
- * 2. `assertTransactionSourceInclusionRootAuthenticatedV1` — the exact
+ * 2. `assertTransactionSourceInclusionRootAuthenticated` — the exact
  *    `L2TransactionSourceV1` MPF root the inclusion argument carries must re-commit to the
  *    L1-committed `transactions_root` under `TransactionsV1RootDomain`.
  *
@@ -15,13 +15,13 @@
  * length material. Compact-only membership is not admitted as an alternate
  * convention.
  */
-import { assertTransactionSourceInclusionRootAuthenticatedV1 } from "@al-ft/midgard-sdk";
+import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk";
 
 import {
   type PreparedDoubleSpendOutput,
   prepareDoubleSpendFromTransactions,
 } from "../prepare-double-spend.js";
-import { prepareInputNoIdxFromCanonicalEvidenceV1 } from "../prepare-input-no-idx.js";
+import { prepareInputNoIdxFromCanonicalEvidence } from "../prepare-input-no-idx.js";
 import {
   type PreparedInvalidRangeOutput,
   prepareInvalidRangeFromTransactions,
@@ -47,12 +47,12 @@ import {
   prepareZeroInputFromTransactions,
 } from "../prepare-zero-input.js";
 import {
-  blockTransactionsFromCanonicalEvidenceV1,
-  type CanonicalBlockEvidenceV1,
+  blockTransactionsFromCanonicalEvidence,
+  type CanonicalBlockEvidence,
 } from "./canonical-block-evidence-v1.js";
 
-export type CanonicalEvidenceBuilderInputV1 = {
-  readonly evidence: CanonicalBlockEvidenceV1;
+export type CanonicalEvidenceBuilderInput = {
+  readonly evidence: CanonicalBlockEvidence;
   readonly outputDir?: string;
 };
 
@@ -61,11 +61,11 @@ export type CanonicalEvidenceBuilderInputV1 = {
  * authenticated transaction material and the L1-committed transactions root the
  * prepared proof must match.
  */
-export const admitCanonicalEvidenceForProofBuildV1 = (
-  evidence: CanonicalBlockEvidenceV1,
+export const admitCanonicalEvidenceForProofBuild = (
+  evidence: CanonicalBlockEvidence,
 ) => {
-  const transactions = blockTransactionsFromCanonicalEvidenceV1(evidence);
-  assertTransactionSourceInclusionRootAuthenticatedV1(
+  const transactions = blockTransactionsFromCanonicalEvidence(evidence);
+  assertTransactionSourceInclusionRootAuthenticated(
     evidence.inclusionRootAuthentication,
   );
   return {
@@ -75,16 +75,16 @@ export const admitCanonicalEvidenceForProofBuildV1 = (
   };
 };
 
-export const prepareDoubleSpendFromCanonicalEvidenceV1 = async ({
+export const prepareDoubleSpendFromCanonicalEvidence = async ({
   evidence,
   tx1Id,
   tx2Id,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly tx1Id?: string;
   readonly tx2Id?: string;
 }): Promise<PreparedDoubleSpendOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   return await prepareDoubleSpendFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
@@ -95,14 +95,14 @@ export const prepareDoubleSpendFromCanonicalEvidenceV1 = async ({
   });
 };
 
-export const prepareZeroInputFromCanonicalEvidenceV1 = async ({
+export const prepareZeroInputFromCanonicalEvidence = async ({
   evidence,
   txId,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly txId?: string;
 }): Promise<PreparedZeroInputOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   return await prepareZeroInputFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
@@ -112,14 +112,14 @@ export const prepareZeroInputFromCanonicalEvidenceV1 = async ({
   });
 };
 
-export const prepareInvalidRangeFromCanonicalEvidenceV1 = async ({
+export const prepareInvalidRangeFromCanonicalEvidence = async ({
   evidence,
   txId,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly txId?: string;
 }): Promise<PreparedInvalidRangeOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   // Phase B's evaluation slot is header-bound evidence, never an operator
   // parameter: it comes from the same authenticated header the roots do.
   return await prepareInvalidRangeFromTransactions({
@@ -132,14 +132,14 @@ export const prepareInvalidRangeFromCanonicalEvidenceV1 = async ({
   });
 };
 
-export const prepareInvalidSignatureFromCanonicalEvidenceV1 = async ({
+export const prepareInvalidSignatureFromCanonicalEvidence = async ({
   evidence,
   txId,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly txId?: string;
 }): Promise<PreparedInvalidSignatureOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   return await prepareInvalidSignatureFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
@@ -149,16 +149,16 @@ export const prepareInvalidSignatureFromCanonicalEvidenceV1 = async ({
   });
 };
 
-export const prepareMinFeeFromCanonicalEvidenceV1 = async ({
+export const prepareMinFeeFromCanonicalEvidence = async ({
   evidence,
   txId,
   categoryId,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
+}: CanonicalEvidenceBuilderInput & {
   readonly txId?: string;
   readonly categoryId?: string;
 }): Promise<PreparedMinFeeOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   return await prepareMinFeeFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
@@ -176,24 +176,24 @@ export const prepareMinFeeFromCanonicalEvidenceV1 = async ({
  * non-genesis predecessor ledger must be supplied as its own verified
  * DA/L1-bound block evidence; an operator file is never accepted here.
  */
-export const prepareNonExistentInputFromCanonicalEvidenceV1 = async ({
+export const prepareNonExistentInputFromCanonicalEvidence = async ({
   evidence,
   previousBlockEvidence,
   badTxId,
   badInputIndex,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+}: CanonicalEvidenceBuilderInput & {
+  readonly previousBlockEvidence?: CanonicalBlockEvidence;
   readonly badTxId?: string;
   readonly badInputIndex?: string | number;
 }): Promise<PreparedNonExistentInputOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   let previousBlockPayloadEnvelopeCbor: Uint8Array | undefined;
   if (previousBlockEvidence !== undefined) {
     // The predecessor contributes an authenticated ledger snapshot, not a
     // native transaction-inclusion argument. Admit both provenances without
     // incorrectly requiring its transaction leaf convention to be native.
-    blockTransactionsFromCanonicalEvidenceV1(previousBlockEvidence);
+    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
     if (evidence.header.prevHeaderHash !== previousBlockEvidence.headerHash) {
       throw new Error(
         "Previous canonical block evidence is not the predecessor committed by this header.",
@@ -227,21 +227,21 @@ export const prepareNonExistentInputFromCanonicalEvidenceV1 = async ({
  * Builds a no-reference-input proof from the same exact authenticated current
  * and predecessor evidence boundary as non-existent-input.
  */
-export const prepareNoReferenceInputFromCanonicalEvidenceV1 = async ({
+export const prepareNoReferenceInputFromCanonicalEvidence = async ({
   evidence,
   previousBlockEvidence,
   badTxId,
   badReferenceInputIndex,
   outputDir,
-}: CanonicalEvidenceBuilderInputV1 & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+}: CanonicalEvidenceBuilderInput & {
+  readonly previousBlockEvidence?: CanonicalBlockEvidence;
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
 }): Promise<PreparedNoReferenceInputOutput> => {
-  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  const admitted = admitCanonicalEvidenceForProofBuild(evidence);
   let previousBlockPayloadEnvelopeCbor: Uint8Array | undefined;
   if (previousBlockEvidence !== undefined) {
-    blockTransactionsFromCanonicalEvidenceV1(previousBlockEvidence);
+    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
     if (evidence.header.prevHeaderHash !== previousBlockEvidence.headerHash) {
       throw new Error(
         "Previous canonical block evidence is not the predecessor committed by this header.",
@@ -271,9 +271,9 @@ export const prepareNoReferenceInputFromCanonicalEvidenceV1 = async ({
   });
 };
 
-export { prepareInputNoIdxFromCanonicalEvidenceV1 };
+export { prepareInputNoIdxFromCanonicalEvidence };
 
-export type CanonicalPrepareCommandV1 =
+export type CanonicalPrepareCommand =
   | {
       readonly command: "prepare-double-spend";
       readonly tx1Id?: string;
@@ -315,18 +315,18 @@ export type CanonicalPrepareCommandV1 =
     };
 
 /** Package-root-reachable canonical router for every prepare CLI verb. */
-export const executeCanonicalPrepareCommandV1 = async ({
+export const executeCanonicalPrepareCommand = async ({
   request,
   evidence,
   previousBlockEvidence,
 }: {
-  readonly request: CanonicalPrepareCommandV1;
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+  readonly request: CanonicalPrepareCommand;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly previousBlockEvidence?: CanonicalBlockEvidence;
 }) => {
   switch (request.command) {
     case "prepare-double-spend":
-      return await prepareDoubleSpendFromCanonicalEvidenceV1({
+      return await prepareDoubleSpendFromCanonicalEvidence({
         evidence,
         ...(request.tx1Id === undefined ? {} : { tx1Id: request.tx1Id }),
         ...(request.tx2Id === undefined ? {} : { tx2Id: request.tx2Id }),
@@ -335,7 +335,7 @@ export const executeCanonicalPrepareCommandV1 = async ({
           : { outputDir: request.outputDir }),
       });
     case "prepare-invalid-range":
-      return await prepareInvalidRangeFromCanonicalEvidenceV1({
+      return await prepareInvalidRangeFromCanonicalEvidence({
         evidence,
         ...(request.txId === undefined ? {} : { txId: request.txId }),
         ...(request.outputDir === undefined
@@ -343,7 +343,7 @@ export const executeCanonicalPrepareCommandV1 = async ({
           : { outputDir: request.outputDir }),
       });
     case "prepare-min-fee":
-      return await prepareMinFeeFromCanonicalEvidenceV1({
+      return await prepareMinFeeFromCanonicalEvidence({
         evidence,
         ...(request.txId === undefined ? {} : { txId: request.txId }),
         ...(request.categoryId === undefined
@@ -354,7 +354,7 @@ export const executeCanonicalPrepareCommandV1 = async ({
           : { outputDir: request.outputDir }),
       });
     case "prepare-invalid-signature":
-      return await prepareInvalidSignatureFromCanonicalEvidenceV1({
+      return await prepareInvalidSignatureFromCanonicalEvidence({
         evidence,
         ...(request.txId === undefined ? {} : { txId: request.txId }),
         ...(request.outputDir === undefined
@@ -362,7 +362,7 @@ export const executeCanonicalPrepareCommandV1 = async ({
           : { outputDir: request.outputDir }),
       });
     case "prepare-non-existent-input":
-      return await prepareNonExistentInputFromCanonicalEvidenceV1({
+      return await prepareNonExistentInputFromCanonicalEvidence({
         evidence,
         ...(previousBlockEvidence === undefined
           ? {}
@@ -376,7 +376,7 @@ export const executeCanonicalPrepareCommandV1 = async ({
           : { outputDir: request.outputDir }),
       });
     case "prepare-input-no-idx":
-      return await prepareInputNoIdxFromCanonicalEvidenceV1({
+      return await prepareInputNoIdxFromCanonicalEvidence({
         evidence,
         ...(request.badTxId === undefined ? {} : { badTxId: request.badTxId }),
         ...(request.badInputsIndex === undefined
@@ -387,7 +387,7 @@ export const executeCanonicalPrepareCommandV1 = async ({
           : { outputDir: request.outputDir }),
       });
     case "prepare-zero-input":
-      return await prepareZeroInputFromCanonicalEvidenceV1({
+      return await prepareZeroInputFromCanonicalEvidence({
         evidence,
         ...(request.txId === undefined ? {} : { txId: request.txId }),
         ...(request.outputDir === undefined

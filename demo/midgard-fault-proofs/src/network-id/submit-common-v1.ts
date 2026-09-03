@@ -2,14 +2,14 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireCanonicalDecodabilityReferenceScriptV1,
-  requireCanonicalDecodabilityStepStateV1,
-  requireCanonicalDecodabilityThreadUtxoV1,
+  requireCanonicalDecodabilityReferenceScript,
+  requireCanonicalDecodabilityStepState,
+  requireCanonicalDecodabilityThreadUtxo,
 } from "../canonical-decodability/submit-common-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { NetworkIdContractsV1 } from "./contracts-v1.js";
+import type { NetworkIdContracts } from "./contracts-v1.js";
 
-export type NetworkIdCatalogueCategoryV1 = {
+export type NetworkIdCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -18,28 +18,28 @@ export type NetworkIdCatalogueCategoryV1 = {
 export const networkIdSubmitError = (message: string): Error =>
   new Error(`network-id: ${message}`);
 
-export const networkIdStepLabelV1 = (stepIndex: 0 | 1): string =>
+export const networkIdStepLabel = (stepIndex: 0 | 1): string =>
   `network-id step 0${(stepIndex + 1).toString()}`;
 
-export const requireNetworkIdThreadUtxoV1 = async (params: {
+export const requireNetworkIdThreadUtxo = async (params: {
   readonly lucid: Parameters<
-    typeof requireCanonicalDecodabilityThreadUtxoV1
+    typeof requireCanonicalDecodabilityThreadUtxo
   >[0]["lucid"];
-  readonly contracts: NetworkIdContractsV1;
+  readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1;
   readonly threadOutRef: string;
-}) => await requireCanonicalDecodabilityThreadUtxoV1(params);
+}) => await requireCanonicalDecodabilityThreadUtxo(params);
 
-export const requireNetworkIdReferenceScriptV1 = (params: {
+export const requireNetworkIdReferenceScript = (params: {
   readonly utxo: UTxO;
   readonly expectedScriptHash: string;
   readonly stepIndex: 0 | 1;
-}): UTxO => requireCanonicalDecodabilityReferenceScriptV1(params);
+}): UTxO => requireCanonicalDecodabilityReferenceScript(params);
 
-export const requireNetworkIdStepStateV1 = <State>(params: {
+export const requireNetworkIdStepState = <State>(params: {
   readonly threadUtxo: UTxO;
   readonly signer: ResolvedProverSigner;
   readonly schema: { fraud_prover: string; data: State | null };
   readonly stepIndex: 0 | 1;
-}): State => requireCanonicalDecodabilityStepStateV1(params);
+}): State => requireCanonicalDecodabilityStepState(params);

@@ -1,40 +1,40 @@
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  type MidgardNativeTxCanonicalV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxWitnessSetCompact,
+  materializeMidgardNativeTxFromCanonical,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
-  type CommittedFieldClaimV1,
-  committedFieldShapeEvidenceFromCommittedFieldV1,
-  type CommittedFieldShapeEvidenceV1,
+  type CommittedFieldClaim,
+  type CommittedFieldShapeEvidence,
+  committedFieldShapeEvidenceFromCommittedField,
   type CommittedFieldShapeStep02State,
-  committedFieldShapeStep02StateFromEvidenceV1,
-  isCommittedFieldShapeViolationV1,
-  MIDGARD_COMMITTED_FIELD_COUNT_V1,
-  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1,
+  committedFieldShapeStep02StateFromEvidence,
+  isCommittedFieldShapeViolation,
+  MIDGARD_COMMITTED_FIELD_COUNT,
+  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
 } from "@al-ft/midgard-sdk";
 
-export const COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1 = {
+export const COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES = {
   FieldIndexOutOfRange: "fieldIndexOutOfRange",
   NonConvictingField: "nonConvictingField",
   NoViolation: "noViolation",
 } as const;
 
-export type CommittedFieldShapePrepareErrorCodeV1 =
-  (typeof COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1)[keyof typeof COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1];
+export type CommittedFieldShapePrepareErrorCode =
+  (typeof COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES)[keyof typeof COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES];
 
-export class CommittedFieldShapePrepareErrorV1 extends Error {
-  readonly code: CommittedFieldShapePrepareErrorCodeV1;
+export class CommittedFieldShapePrepareError extends Error {
+  readonly code: CommittedFieldShapePrepareErrorCode;
 
-  constructor(code: CommittedFieldShapePrepareErrorCodeV1, message: string) {
+  constructor(code: CommittedFieldShapePrepareErrorCode, message: string) {
     super(`committed-field-shape prepare [${code}]: ${message}`);
     this.name = "CommittedFieldShapePrepareErrorV1";
     this.code = code;
   }
 }
 
-export type CommittedFieldShapeClassifiedFieldV1 = {
+export type CommittedFieldShapeClassifiedField = {
   readonly fieldIndex: number;
   readonly fieldName:
     | "spendInputs"
@@ -48,13 +48,13 @@ export type CommittedFieldShapeClassifiedFieldV1 = {
     | "redeemerTxWits";
   readonly claimKind: "body" | "witness";
   readonly preimage: Buffer;
-  readonly evidence: CommittedFieldShapeEvidenceV1;
+  readonly evidence: CommittedFieldShapeEvidence;
 };
 
-const canonicalFieldsV1 = (
-  tx: MidgardNativeTxCanonicalV1,
+const canonicalFields = (
+  tx: MidgardNativeTxCanonical,
 ): readonly (readonly [
-  CommittedFieldShapeClassifiedFieldV1["fieldName"],
+  CommittedFieldShapeClassifiedField["fieldName"],
   "body" | "witness",
   Buffer,
 ])[] => [
@@ -82,19 +82,19 @@ const canonicalFieldsV1 = (
 ];
 
 /** Classifies all nine §2.5 committed fields in positional order. */
-export const classifyCommittedFieldShapeFieldsV1 = (
-  tx: MidgardNativeTxCanonicalV1,
-): readonly CommittedFieldShapeClassifiedFieldV1[] => {
-  const full = materializeMidgardNativeTxFromCanonicalV1(tx);
-  const badTxId = computeMidgardNativeTxIdV1(full).toString("hex");
+export const classifyCommittedFieldShapeFields = (
+  tx: MidgardNativeTxCanonical,
+): readonly CommittedFieldShapeClassifiedField[] => {
+  const full = materializeMidgardNativeTxFromCanonical(tx);
+  const badTxId = computeMidgardNativeTxId(full).toString("hex");
   return Object.freeze(
-    canonicalFieldsV1(tx).map(([fieldName, claimKind, preimage], fieldIndex) =>
+    canonicalFields(tx).map(([fieldName, claimKind, preimage], fieldIndex) =>
       Object.freeze({
         fieldIndex,
         fieldName,
         claimKind,
         preimage,
-        evidence: committedFieldShapeEvidenceFromCommittedFieldV1({
+        evidence: committedFieldShapeEvidenceFromCommittedField({
           badTxId,
           fieldIndex,
           committedPreimage: preimage,
@@ -104,57 +104,57 @@ export const classifyCommittedFieldShapeFieldsV1 = (
   );
 };
 
-export type PreparedCommittedFieldShapeV1 = {
-  readonly evidence: CommittedFieldShapeEvidenceV1;
-  readonly claim: CommittedFieldClaimV1;
+export type PreparedCommittedFieldShape = {
+  readonly evidence: CommittedFieldShapeEvidence;
+  readonly claim: CommittedFieldClaim;
   readonly step02State: CommittedFieldShapeStep02State;
-  readonly classifiedFields: readonly CommittedFieldShapeClassifiedFieldV1[];
+  readonly classifiedFields: readonly CommittedFieldShapeClassifiedField[];
 };
 
 /**
  * Selects one convicting field (caller-pinned or first in positional order)
  * and emits the exact claim/state the two validators speak.
  */
-export const prepareCommittedFieldShapeFromCanonicalTxV1 = ({
+export const prepareCommittedFieldShapeFromCanonicalTx = ({
   tx,
   fieldIndex,
 }: {
-  readonly tx: MidgardNativeTxCanonicalV1;
+  readonly tx: MidgardNativeTxCanonical;
   readonly fieldIndex?: number;
-}): PreparedCommittedFieldShapeV1 => {
+}): PreparedCommittedFieldShape => {
   if (
     fieldIndex !== undefined &&
     (!Number.isInteger(fieldIndex) ||
       fieldIndex < 0 ||
-      fieldIndex >= MIDGARD_COMMITTED_FIELD_COUNT_V1)
+      fieldIndex >= MIDGARD_COMMITTED_FIELD_COUNT)
   ) {
-    throw new CommittedFieldShapePrepareErrorV1(
-      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1.FieldIndexOutOfRange,
-      `field index ${String(fieldIndex)} is outside 0..${(MIDGARD_COMMITTED_FIELD_COUNT_V1 - 1).toString()}`,
+    throw new CommittedFieldShapePrepareError(
+      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES.FieldIndexOutOfRange,
+      `field index ${String(fieldIndex)} is outside 0..${(MIDGARD_COMMITTED_FIELD_COUNT - 1).toString()}`,
     );
   }
-  const classifiedFields = classifyCommittedFieldShapeFieldsV1(tx);
+  const classifiedFields = classifyCommittedFieldShapeFields(tx);
   const selected =
     fieldIndex === undefined
       ? classifiedFields.find(({ evidence }) => evidence.isViolation)
       : classifiedFields[fieldIndex];
   if (selected === undefined) {
-    throw new CommittedFieldShapePrepareErrorV1(
-      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1.NoViolation,
+    throw new CommittedFieldShapePrepareError(
+      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES.NoViolation,
       "none of the transaction's nine committed fields violates the shape rule",
     );
   }
   if (!selected.evidence.isViolation) {
-    throw new CommittedFieldShapePrepareErrorV1(
-      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1.NonConvictingField,
+    throw new CommittedFieldShapePrepareError(
+      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES.NonConvictingField,
       `field ${selected.fieldIndex.toString()} earns non-convicting verdict ${selected.evidence.verdictName}`,
     );
   }
   const carriage = {
     Inline: { preimage: selected.evidence.committedPreimage },
   } as const;
-  const claim: CommittedFieldClaimV1 =
-    selected.fieldIndex < MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX_V1
+  const claim: CommittedFieldClaim =
+    selected.fieldIndex < MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX
       ? {
           BodyFieldClaim: {
             field_index: BigInt(selected.fieldIndex),
@@ -162,9 +162,7 @@ export const prepareCommittedFieldShapeFromCanonicalTxV1 = ({
           },
         }
       : (() => {
-          const witness = deriveMidgardNativeTxWitnessSetCompactV1(
-            tx.witnessSet,
-          );
+          const witness = deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet);
           return {
             WitnessFieldClaim: {
               field_index: BigInt(selected.fieldIndex),
@@ -183,17 +181,17 @@ export const prepareCommittedFieldShapeFromCanonicalTxV1 = ({
             },
           };
         })();
-  const step02State = committedFieldShapeStep02StateFromEvidenceV1(
+  const step02State = committedFieldShapeStep02StateFromEvidence(
     selected.evidence,
   );
   if (
-    !isCommittedFieldShapeViolationV1({
+    !isCommittedFieldShapeViolation({
       fieldIndex: Number(step02State.field_index),
       verdict: Number(step02State.verdict),
     })
   ) {
-    throw new CommittedFieldShapePrepareErrorV1(
-      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES_V1.NonConvictingField,
+    throw new CommittedFieldShapePrepareError(
+      COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES.NonConvictingField,
       "derived step-02 state is not finalizable",
     );
   }

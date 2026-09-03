@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import {
-  createFileTimeoutCorrectionJournalStoreV1,
+  createFileTimeoutCorrectionJournalStore,
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   submitUnattestedTimeoutCorrection,
 } from "@al-ft/midgard-fault-proofs";
@@ -17,13 +17,13 @@ import {
 } from "../database/index.js";
 import {
   ContractDeploymentIdentity,
-  createDatabaseStateQueueCorrectionObserverStoreV1,
+  createDatabaseStateQueueCorrectionObserverStore,
   Database,
   Lucid,
-  makeLocalKupmiosStateQueueCorrectionSourceV1,
+  makeLocalKupmiosStateQueueCorrectionSource,
   MidgardContracts,
   NodeConfig,
-  reconcileStateQueueCorrectionObserverV1,
+  reconcileStateQueueCorrectionObserver,
   reincludeFinalizedStateQueueCorrectionTransition,
   restoreRetractedStateQueueCorrectionTransition,
 } from "../services/index.js";
@@ -51,7 +51,7 @@ export const observeAttestationTimeoutHead = (
     if (head === undefined) {
       return { status: "queue-empty" } as const;
     }
-    const node = yield* SDK.getStateQueueNodeV1FromStateQueueDatum(head.datum);
+    const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(head.datum);
     if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
       return { status: "head-attested" } as const;
     }
@@ -118,7 +118,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
     }
     const queueNodes = async (
       sorted: readonly SDK.StateQueueUTxO[],
-    ): Promise<readonly SDK.StateQueueTransitionNodeV1[]> => {
+    ): Promise<readonly SDK.StateQueueTransitionNode[]> => {
       if (
         sorted.some(
           ({ utxo }) => utxo.address !== fetchConfig.stateQueueAddress,
@@ -138,7 +138,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
         })),
       );
     };
-    const source = makeLocalKupmiosStateQueueCorrectionSourceV1({
+    const source = makeLocalKupmiosStateQueueCorrectionSource({
       deploymentIdentityDigest: deploymentIdentity.manifestId,
       stateQueuePolicyId: contracts.stateQueue.policyId,
       stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
@@ -157,12 +157,12 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
     });
     const observerResult = yield* Effect.tryPromise({
       try: () =>
-        reconcileStateQueueCorrectionObserverV1({
+        reconcileStateQueueCorrectionObserver({
           deploymentIdentityDigest: deploymentIdentity.manifestId!,
           stateQueuePolicyId: contracts.stateQueue.policyId,
           requiredFinalityDepth: BigInt(manifestFinalityDepth),
           source,
-          store: createDatabaseStateQueueCorrectionObserverStoreV1({
+          store: createDatabaseStateQueueCorrectionObserverStore({
             sql,
             deploymentManifest: deploymentIdentity.manifest,
           }),
@@ -186,7 +186,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
           },
           revokeTerminal: async (transition) => {
             await Effect.runPromise(
-              DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransitionV1(
+              DaPayloadTerminalOutcomesDB.revokeAuthenticatedTransition(
                 transition,
                 deploymentIdentity.manifest,
               ).pipe(Effect.provideService(SqlClient.SqlClient, sql)),
@@ -273,7 +273,7 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                   selectWallet: () => undefined,
                 },
                 journalStore:
-                  createFileTimeoutCorrectionJournalStoreV1(journalPath),
+                  createFileTimeoutCorrectionJournalStore(journalPath),
                 awaitConfirmation: true,
               }),
             catch: (cause) => cause,

@@ -12,7 +12,7 @@
  * That sameness used to be spelled three times, which is how a fixture ends up
  * advertising a hash its own `fullTxCborHex` no longer implies. Here it is
  * spelled once: a construction decides the bytes, and
- * `deriveNativeTxFixtureFacetsV1` decides everything a reader is allowed to
+ * `deriveNativeTxFixtureFacets` decides everything a reader is allowed to
  * believe about them.
  *
  * `fullTxCborHex` is the only load-bearing field in any of these JSON files;
@@ -22,14 +22,14 @@
  */
 
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardMintFieldPreimageV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardRedeemerWitnessFieldPreimageV1,
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxBodyCompactV1,
-  encodeMidgardNativeTxCompactV1,
-  MIDGARD_REDEEMER_PURPOSE_TAGS_V1,
+  computeMidgardNativeTxId,
+  decodeMidgardMintFieldPreimage,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardRedeemerWitnessFieldPreimage,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxCompact,
+  MIDGARD_REDEEMER_PURPOSE_TAGS,
 } from "@al-ft/midgard-core/codec";
 
 export type NativeTxFixtureSizes = {
@@ -108,7 +108,7 @@ const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
  * empty mint field is `80` and yields no policies.
  */
 const mintPolicyIds = (mintPreimageCbor: Uint8Array): readonly string[] =>
-  decodeMidgardMintFieldPreimageV1(mintPreimageCbor).map((item) =>
+  decodeMidgardMintFieldPreimage(mintPreimageCbor).map((item) =>
     hex(item.policyId),
   );
 
@@ -116,9 +116,9 @@ const mintPolicyIds = (mintPreimageCbor: Uint8Array): readonly string[] =>
 const redeemerPointers = (
   redeemerPreimageCbor: Uint8Array,
 ): readonly string[] =>
-  decodeMidgardRedeemerWitnessFieldPreimageV1(redeemerPreimageCbor).map(
+  decodeMidgardRedeemerWitnessFieldPreimage(redeemerPreimageCbor).map(
     (witness) =>
-      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS_V1[witness.purpose])}:${witness.index.toString(10)}`,
+      `${String(MIDGARD_REDEEMER_PURPOSE_TAGS[witness.purpose])}:${witness.index.toString(10)}`,
   );
 
 /**
@@ -129,19 +129,19 @@ const redeemerPointers = (
  * item the canonical producers emitted but the canonical decoder rejects is a
  * bug, and this is where it surfaces rather than three artifacts later.
  */
-export const deriveNativeTxFixtureFacetsV1 = (
+export const deriveNativeTxFixtureFacets = (
   fullTxCbor: Uint8Array,
 ): NativeTxFixtureFacets => {
-  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(fullTxCbor);
-  const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompactV1(
+  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(fullTxCbor);
+  const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompact(
     tx.witnessSet,
   );
-  const compactTxCbor = encodeMidgardNativeTxCompactV1(tx.compact);
-  const compactBodyCbor = encodeMidgardNativeTxBodyCompactV1(
+  const compactTxCbor = encodeMidgardNativeTxCompact(tx.compact);
+  const compactBodyCbor = encodeMidgardNativeTxBodyCompact(
     tx.compact.transactionBody,
   );
   return {
-    txIdHex: hex(computeMidgardNativeTxIdV1(tx)),
+    txIdHex: hex(computeMidgardNativeTxId(tx)),
     fullTxCborHex: hex(fullTxCbor),
     compactTxCborHex: hex(compactTxCbor),
     compactBodyCborHex: hex(compactBodyCbor),

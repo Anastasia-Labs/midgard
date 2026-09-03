@@ -1,24 +1,24 @@
 import type {
-  AuthenticatedStateQueueHeaderObservationV1,
-  EvidenceProvenanceV1,
+  AuthenticatedStateQueueHeaderObservation,
+  EvidenceProvenance,
   FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
-import type { CanonicalViolationDetectionV1 } from "./classification-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalViolationDetection } from "./classification-v1.js";
 import {
-  admitCompleteCanonicalReplayPredecessorV1,
-  type CompleteCanonicalReplayContextV1,
-  completeCanonicalReplayDecisionDigestV1,
-  type CompleteCanonicalReplayDecisionV1,
-  type CompleteCanonicalReplayPredecessorV1,
-  type CompleteCanonicalReplayV1,
-  requireCompleteCanonicalReplayDecisionV1,
+  admitCompleteCanonicalReplayPredecessor,
+  type CompleteCanonicalReplay,
+  type CompleteCanonicalReplayContext,
+  type CompleteCanonicalReplayDecision,
+  completeCanonicalReplayDecisionDigest,
+  type CompleteCanonicalReplayPredecessor,
+  requireCompleteCanonicalReplayDecision,
 } from "./complete-replay-v1.js";
 
-export const PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_V1 =
+export const AUTHENTICATED_REPLAY_CAPTURE =
   "midgard-production-authenticated-replay-capture-v1" as const;
-export const PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_PORT_V1 =
+export const AUTHENTICATED_REPLAY_CAPTURE_PORT =
   "midgard-production-authenticated-replay-capture-port-v1" as const;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -30,8 +30,8 @@ const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
  * `category`, `violationId`, findings, trie roots, and `decisionDigest` are
  * intentionally absent: fault-proofs derives those after local re-admission.
  */
-export type ProductionAuthenticatedReplayCaptureIdentityV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_V1;
+export type AuthenticatedReplayCaptureIdentity = Readonly<{
+  schemaVersion: typeof AUTHENTICATED_REPLAY_CAPTURE;
   deploymentFingerprint: string;
   headerHash: string;
   stateQueueObservationDigest: string;
@@ -44,10 +44,10 @@ export type ProductionAuthenticatedReplayCaptureIdentityV1 = Readonly<{
 }>;
 
 /** Exact predecessor bytes; fault-proofs independently re-admits both legs. */
-export type ProductionRawPredecessorContextV1 = Readonly<{
-  observation: AuthenticatedStateQueueHeaderObservationV1;
+export type RawPredecessorContext = Readonly<{
+  observation: AuthenticatedStateQueueHeaderObservation;
   payloadEnvelopeCborHex: string;
-  daProvenance: EvidenceProvenanceV1;
+  daProvenance: EvidenceProvenance;
 }>;
 
 /**
@@ -55,39 +55,39 @@ export type ProductionRawPredecessorContextV1 = Readonly<{
  * evidence constructor as the challenged block, then verifies the two exact
  * header links. No structural predecessor object is replay authority.
  */
-export const admitProductionRawPredecessorContextV1 = async ({
+export const admitRawPredecessorContext = async ({
   value,
   currentEvidence,
   minimumConfirmationDepth,
 }: {
   readonly value: unknown;
-  readonly currentEvidence: CanonicalBlockEvidenceV1;
+  readonly currentEvidence: CanonicalBlockEvidence;
   readonly minimumConfirmationDepth: number;
-}): Promise<CompleteCanonicalReplayPredecessorV1> =>
-  await admitCompleteCanonicalReplayPredecessorV1({
+}): Promise<CompleteCanonicalReplayPredecessor> =>
+  await admitCompleteCanonicalReplayPredecessor({
     value,
     currentEvidence,
     minimumConfirmationDepth,
   });
 
-export type ProductionNativeScriptDecodingReplayCaptureV1 = Readonly<{
-  identity: ProductionAuthenticatedReplayCaptureIdentityV1;
-  predecessor: ProductionRawPredecessorContextV1;
+export type NativeScriptDecodingReplayCapture = Readonly<{
+  identity: AuthenticatedReplayCaptureIdentity;
+  predecessor: RawPredecessorContext;
   replayTranscriptCborHex: string;
   descriptorOutputCborHex: string;
   referenceScriptBytesHex: string | null;
 }>;
 
-export type ProductionIntermediateLedgerReplayCaptureV1 = Readonly<{
-  identity: ProductionAuthenticatedReplayCaptureIdentityV1;
-  predecessor: ProductionRawPredecessorContextV1;
+export type IntermediateLedgerReplayCapture = Readonly<{
+  identity: AuthenticatedReplayCaptureIdentity;
+  predecessor: RawPredecessorContext;
   replayTranscriptCborHex: string;
   transitionIndex: string;
 }>;
 
-export type ProductionCrossBlockReplayCaptureV1 = Readonly<{
-  identity: ProductionAuthenticatedReplayCaptureIdentityV1;
-  settled: ProductionRawPredecessorContextV1;
+export type CrossBlockReplayCapture = Readonly<{
+  identity: AuthenticatedReplayCaptureIdentity;
+  settled: RawPredecessorContext;
   settlementOutputCborHex: string;
   settlementOutRef: string;
   settlementTransactionBodyCborHex: string;
@@ -95,8 +95,8 @@ export type ProductionCrossBlockReplayCaptureV1 = Readonly<{
   settlementFinalityPolicyDigest: string;
 }>;
 
-export type ProductionHistoricalNativeScriptReplayCaptureV1 = Readonly<{
-  identity: ProductionAuthenticatedReplayCaptureIdentityV1;
+export type HistoricalNativeScriptReplayCapture = Readonly<{
+  identity: AuthenticatedReplayCaptureIdentity;
   /** Exact response bytes from the dedicated public retained-DA protocol. */
   retainedDaHistoricalPreimageEnvelopeCborHex: string;
   retainedDaProtocol: string;
@@ -105,28 +105,28 @@ export type ProductionHistoricalNativeScriptReplayCaptureV1 = Readonly<{
   historicalL1Corroboration: unknown;
 }>;
 
-export type ProductionAuthenticatedReplayCaptureV1 =
-  | ProductionNativeScriptDecodingReplayCaptureV1
-  | ProductionIntermediateLedgerReplayCaptureV1
-  | ProductionCrossBlockReplayCaptureV1
-  | ProductionHistoricalNativeScriptReplayCaptureV1;
+export type AuthenticatedReplayCapture =
+  | NativeScriptDecodingReplayCapture
+  | IntermediateLedgerReplayCapture
+  | CrossBlockReplayCapture
+  | HistoricalNativeScriptReplayCapture;
 
 /**
  * Source-neutral watcher/application capture port. Returned values are always
  * untrusted. A fixed family factory must call its own exact parser/replayer;
  * the port version is not an evidence admission token.
  */
-export interface ProductionAuthenticatedReplayCapturePortV1<
+export interface AuthenticatedReplayCapturePort<
   Category extends FraudProofCatalogueCategoryName,
 > {
-  readonly portVersion: typeof PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_PORT_V1;
+  readonly portVersion: typeof AUTHENTICATED_REPLAY_CAPTURE_PORT;
   readonly category: Category;
   capture(input: {
-    readonly evidence: CanonicalBlockEvidenceV1;
-    readonly replayer: CompleteCanonicalReplayV1;
-    readonly replayDecision: CompleteCanonicalReplayDecisionV1;
-    readonly replayContext?: CompleteCanonicalReplayContextV1;
-    readonly detection: CanonicalViolationDetectionV1;
+    readonly evidence: CanonicalBlockEvidence;
+    readonly replayer: CompleteCanonicalReplay;
+    readonly replayDecision: CompleteCanonicalReplayDecision;
+    readonly replayContext?: CompleteCanonicalReplayContext;
+    readonly detection: CanonicalViolationDetection;
     readonly stateQueueObservationDigest: string;
   }): Promise<unknown>;
 }
@@ -176,7 +176,7 @@ const canonicalString = (value: unknown, label: string): string => {
 };
 
 /** Exact common parser used before any family-specific replay begins. */
-export const admitProductionAuthenticatedReplayCaptureIdentityV1 = ({
+export const admitAuthenticatedReplayCaptureIdentity = ({
   value,
   evidence,
   replayer,
@@ -187,15 +187,15 @@ export const admitProductionAuthenticatedReplayCaptureIdentityV1 = ({
   stateQueueObservationDigest,
 }: {
   readonly value: unknown;
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly replayer: CompleteCanonicalReplayV1;
-  readonly replayDecision: CompleteCanonicalReplayDecisionV1;
-  readonly replayContext?: CompleteCanonicalReplayContextV1;
-  readonly detection: CanonicalViolationDetectionV1;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly replayer: CompleteCanonicalReplay;
+  readonly replayDecision: CompleteCanonicalReplayDecision;
+  readonly replayContext?: CompleteCanonicalReplayContext;
+  readonly detection: CanonicalViolationDetection;
   readonly deploymentFingerprint: string;
   readonly stateQueueObservationDigest: string;
-}): ProductionAuthenticatedReplayCaptureIdentityV1 => {
-  const admittedDetections = requireCompleteCanonicalReplayDecisionV1({
+}): AuthenticatedReplayCaptureIdentity => {
+  const admittedDetections = requireCompleteCanonicalReplayDecision({
     evidence,
     replayer,
     decision: replayDecision,
@@ -206,7 +206,7 @@ export const admitProductionAuthenticatedReplayCaptureIdentityV1 = ({
       "capture detection was not selected from the admitted replay decision",
     );
   }
-  const replayDigest = completeCanonicalReplayDecisionDigestV1({
+  const replayDigest = completeCanonicalReplayDecisionDigest({
     evidence,
     replayer,
     decision: replayDecision,
@@ -241,8 +241,8 @@ export const admitProductionAuthenticatedReplayCaptureIdentityV1 = ({
   if (!NATURAL.test(position) || BigInt(position) !== detection.position) {
     throw new Error("capture position differs from canonical replay detection");
   }
-  const admitted: ProductionAuthenticatedReplayCaptureIdentityV1 = {
-    schemaVersion: PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_V1,
+  const admitted: AuthenticatedReplayCaptureIdentity = {
+    schemaVersion: AUTHENTICATED_REPLAY_CAPTURE,
     deploymentFingerprint: hex32(
       parsed.deploymentFingerprint,
       "capture deploymentFingerprint",
@@ -266,7 +266,7 @@ export const admitProductionAuthenticatedReplayCaptureIdentityV1 = ({
     detectionId: canonicalString(parsed.detectionId, "capture detectionId"),
   };
   if (
-    parsed.schemaVersion !== PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_V1 ||
+    parsed.schemaVersion !== AUTHENTICATED_REPLAY_CAPTURE ||
     admitted.deploymentFingerprint !== deploymentFingerprint ||
     admitted.headerHash !== evidence.headerHash ||
     admitted.stateQueueObservationDigest !== stateQueueObservationDigest ||
@@ -285,18 +285,18 @@ export const admitProductionAuthenticatedReplayCaptureIdentityV1 = ({
 };
 
 /** Fail closed before invoking a missing or category-substituted capture port. */
-export const requireProductionAuthenticatedReplayCapturePortV1 = <
+export const requireAuthenticatedReplayCapturePort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
   port,
 }: {
   readonly category: Category;
-  readonly port: ProductionAuthenticatedReplayCapturePortV1<Category> | null;
-}): ProductionAuthenticatedReplayCapturePortV1<Category> => {
+  readonly port: AuthenticatedReplayCapturePort<Category> | null;
+}): AuthenticatedReplayCapturePort<Category> => {
   if (
     port === null ||
-    port.portVersion !== PRODUCTION_AUTHENTICATED_REPLAY_CAPTURE_PORT_V1 ||
+    port.portVersion !== AUTHENTICATED_REPLAY_CAPTURE_PORT ||
     port.category !== category ||
     typeof port.capture !== "function"
   ) {

@@ -41,14 +41,14 @@
  * the PlutusData encoding is positional, so re-ordering here would silently
  * produce redeemers the validators reject.
  */
-import { midgardFieldCommitmentFromItemsV1 } from "@al-ft/midgard-core";
+import { midgardFieldCommitmentFromItems } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
-  encodeMidgardTxInputCanonicalV1,
-  encodeMidgardTxOutputCanonicalV1,
+  encodeMidgardTxInputCanonical,
+  encodeMidgardTxOutputCanonical,
   type MidgardTxOutput,
 } from "./input-no-idx.js";
 import {
@@ -62,14 +62,14 @@ import {
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
-export const REFERENCE_INPUT_NO_IDX_VIOLATION_ID_V1 =
+export const REFERENCE_INPUT_NO_IDX_VIOLATION_ID =
   "reference-input-no-idx" as const;
 
 /** Canonical reference-inputs field index of a native V1 transaction body. */
-export const REFERENCE_INPUT_NO_IDX_REFERENCE_INPUTS_FIELD_INDEX_V1 = 1;
+export const REFERENCE_INPUT_NO_IDX_REFERENCE_INPUTS_FIELD_INDEX = 1;
 
 /** Canonical outputs field index of a native V1 transaction body. */
-export const REFERENCE_INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1 = 2;
+export const REFERENCE_INPUT_NO_IDX_OUTPUTS_FIELD_INDEX = 2;
 
 // ## Rule
 
@@ -79,7 +79,7 @@ export const REFERENCE_INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1 = 2;
  * `bad_reference_input_output_index >= list.length(outputs_preimage)` in
  * `validators/fraud-proofs/reference-input-no-idx/step-04.ak`.
  */
-export const isReferenceInputNoIdxViolationV1 = ({
+export const isReferenceInputNoIdxViolation = ({
   badReferenceInputOutputIndex,
   producingTxOutputCount,
 }: {
@@ -98,22 +98,22 @@ export const isReferenceInputNoIdxViolationV1 = ({
  * the two apart now is positional: the caller reads
  * `body.reference_inputs_hash` out of the committed compact structure.
  */
-export const referenceInputNoIdxReferenceInputsCommitmentV1 = (
+export const referenceInputNoIdxReferenceInputsCommitment = (
   inputs: readonly MidgardTxInputData[],
 ): string =>
-  midgardFieldCommitmentFromItemsV1(
-    inputs.map(encodeMidgardTxInputCanonicalV1),
+  midgardFieldCommitmentFromItems(
+    inputs.map(encodeMidgardTxInputCanonical),
   ).toString("hex");
 
 /**
  * The `outputs_hash` a native transaction body commits for `outputs`: §4's flat
  * `blake2b_256` over the §5.1 preimage the items assemble into.
  */
-export const referenceInputNoIdxOutputsCommitmentV1 = (
+export const referenceInputNoIdxOutputsCommitment = (
   outputs: readonly MidgardTxOutput[],
 ): string =>
-  midgardFieldCommitmentFromItemsV1(
-    outputs.map(encodeMidgardTxOutputCanonicalV1),
+  midgardFieldCommitmentFromItems(
+    outputs.map(encodeMidgardTxOutputCanonical),
   ).toString("hex");
 
 // ## Shared step aliases
@@ -183,7 +183,7 @@ export const ReferenceInputNoIdxStep02Datum =
 export const ReferenceInputNoIdxStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  reference_inputs_opening: FieldOpeningV1Schema,
+  reference_inputs_opening: FieldOpeningSchema,
   bad_reference_input_index: Data.Integer(),
 });
 export type ReferenceInputNoIdxStep02Args = Data.Static<
@@ -267,7 +267,7 @@ export const ReferenceInputNoIdxStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  outputs_opening: FieldOpeningV1Schema,
+  outputs_opening: FieldOpeningSchema,
 });
 export type ReferenceInputNoIdxStep04Args = Data.Static<
   typeof ReferenceInputNoIdxStep04ArgsSchema
@@ -286,14 +286,14 @@ export const ReferenceInputNoIdxStep04SpendRedeemer =
 // ## Step-state builders (twins of the on-chain forwarding rules)
 
 /** Exactly the state `step-01` writes for `step-02`. */
-export const referenceInputNoIdxStep02StateFromBadTxV1 = (
+export const referenceInputNoIdxStep02StateFromBadTx = (
   badTxId: string,
 ): ReferenceInputNoIdxStep02State => ({
   verified_tx_id: badTxId.toLowerCase(),
 });
 
 /** Exactly the state `step-02` writes for `step-03`. */
-export const referenceInputNoIdxStep03StateFromBadInputV1 = (
+export const referenceInputNoIdxStep03StateFromBadInput = (
   badReferenceInput: MidgardTxInputData,
 ): ReferenceInputNoIdxStep03State => ({
   bad_reference_input_tx_id: badReferenceInput.tx_id.toLowerCase(),
@@ -301,7 +301,7 @@ export const referenceInputNoIdxStep03StateFromBadInputV1 = (
 });
 
 /** Exactly the state `step-03` writes for `step-04`. */
-export const referenceInputNoIdxStep04StateFromBadInputV1 = ({
+export const referenceInputNoIdxStep04StateFromBadInput = ({
   badReferenceInput,
   producingTxId,
 }: {

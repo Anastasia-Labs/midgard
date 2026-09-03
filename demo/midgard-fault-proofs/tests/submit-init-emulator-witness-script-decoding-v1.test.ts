@@ -1,13 +1,13 @@
 import {
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
@@ -18,28 +18,28 @@ import { describe, expect, it } from "vitest";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
-  deriveWitnessScriptDecodingEvidenceFromCanonicalBlockV1,
-  detectWitnessScriptDecodingCompleteReplayV1,
-  prepareWitnessScriptDecodingEvidenceV1,
-  submitWitnessScriptDecodingCancelV1,
-  submitWitnessScriptDecodingInitV1,
-  submitWitnessScriptDecodingStep01AcceptedV1,
-  submitWitnessScriptDecodingStep01ForcedV1,
-  submitWitnessScriptDecodingStep02V1,
-  submitWitnessScriptDecodingStep03V1,
-  submitWitnessScriptDecodingStep04V1,
+  deriveWitnessScriptDecodingEvidenceFromCanonicalBlock,
+  detectWitnessScriptDecodingCompleteReplay,
+  prepareWitnessScriptDecodingEvidence,
+  submitWitnessScriptDecodingCancel,
+  submitWitnessScriptDecodingInit,
+  submitWitnessScriptDecodingStep01Accepted,
+  submitWitnessScriptDecodingStep01Forced,
+  submitWitnessScriptDecodingStep02,
+  submitWitnessScriptDecodingStep03,
+  submitWitnessScriptDecodingStep04,
 } from "../src/witness-script-decoding/index.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
-  buildDecodingBlockFixtureV1,
-  decodingCanonicalItemV1,
-  decodingMalformedMaximumItemV1,
+  buildDecodingBlockFixture,
+  decodingCanonicalItem,
+  decodingMalformedMaximumItem,
 } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
@@ -59,7 +59,7 @@ const stage = async <T>(
 
 describe("witness-script-decoding real lifecycle", () => {
   it("binds field 6, resumes the native scan, and mints the proof token", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realWitnessScriptDecoding: true,
         alwaysFraudProofCatalogue: true,
@@ -81,11 +81,11 @@ describe("witness-script-decoding real lifecycle", () => {
     if (category === undefined) {
       throw new Error("harness omitted witness-script-decoding");
     }
-    const item = decodingMalformedMaximumItemV1();
+    const item = decodingMalformedMaximumItem();
     const fieldPreimage = encodeCbor([item]);
     expect(fieldPreimage).toHaveLength(32_768);
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -113,7 +113,7 @@ describe("witness-script-decoding real lifecycle", () => {
         harness.emulator.now() + 120_000,
       ) - 1,
     );
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime,
       priorLedgerRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -128,9 +128,7 @@ describe("witness-script-decoding real lifecycle", () => {
         header: block.header,
       }),
     );
-    const compact = deriveMidgardNativeTxWitnessSetCompactV1(
-      nativeTx.witnessSet,
-    );
+    const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
     const witnessSet: SDK.NativeTxWitnessSetCompact = {
       addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
       script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString(
@@ -140,9 +138,9 @@ describe("witness-script-decoding real lifecycle", () => {
         "hex",
       ),
     };
-    const evidence = prepareWitnessScriptDecodingEvidenceV1({
+    const evidence = prepareWitnessScriptDecodingEvidence({
       finding: {
-        subject: SDK.acceptedVerdictSubjectV1(block.nativeTxId),
+        subject: SDK.acceptedVerdictSubject(block.nativeTxId),
         witnessSetHash:
           nativeTx.compact.transactionWitnessSetHash.toString("hex"),
         scriptIndex: 0,
@@ -151,12 +149,12 @@ describe("witness-script-decoding real lifecycle", () => {
       committedFieldHashHex: witnessSet.script_tx_wits_hash,
     });
     expect(
-      detectWitnessScriptDecodingCompleteReplayV1({
+      detectWitnessScriptDecodingCompleteReplay({
         headerHash: block.headerHash,
         transactions: [
           {
             nodeTxId: block.nativeTxId,
-            txCbor: encodeMidgardNativeTxCanonicalV1(nativeTx).toString("hex"),
+            txCbor: encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
           },
         ],
         reconstruction: block.reconstruction,
@@ -167,19 +165,19 @@ describe("witness-script-decoding real lifecycle", () => {
       }),
     ]);
     expect(
-      deriveWitnessScriptDecodingEvidenceFromCanonicalBlockV1({
+      deriveWitnessScriptDecodingEvidenceFromCanonicalBlock({
         headerHash: block.headerHash,
         transactions: [
           {
             nodeTxId: block.nativeTxId,
-            txCbor: encodeMidgardNativeTxCanonicalV1(nativeTx).toString("hex"),
+            txCbor: encodeMidgardNativeTxCanonical(nativeTx).toString("hex"),
           },
         ],
         reconstruction: block.reconstruction,
       } as never).itemCommitmentHex,
     ).toBe(evidence.itemCommitmentHex);
     expect(
-      detectWitnessScriptDecodingCompleteReplayV1({
+      detectWitnessScriptDecodingCompleteReplay({
         headerHash: block.headerHash,
         transactions: [],
         reconstruction: {
@@ -244,7 +242,7 @@ describe("witness-script-decoding real lifecycle", () => {
     if (block.txInclusion === null) throw new Error("missing normal inclusion");
     const txInclusion = block.txInclusion;
     const initialize = () =>
-      submitWitnessScriptDecodingInitV1({
+      submitWitnessScriptDecodingInit({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -261,7 +259,7 @@ describe("witness-script-decoding real lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const cancel = (threadOutRef: string, referenceScriptUtxo: UTxO) =>
-      submitWitnessScriptDecodingCancelV1({
+      submitWitnessScriptDecodingCancel({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -275,28 +273,26 @@ describe("witness-script-decoding real lifecycle", () => {
       cancel(cancelledAtStep01.nextThreadOutRef, stepRefs[0]!),
     );
     const cancelledAtStep02Init = await initialize();
-    const cancelledAtStep02 = await submitWitnessScriptDecodingStep01AcceptedV1(
-      {
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts: family,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: cancelledAtStep02Init.nextThreadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion,
-        scriptIndex: 0n,
-        referenceScriptUtxo: stepRefs[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      },
-    );
+    const cancelledAtStep02 = await submitWitnessScriptDecodingStep01Accepted({
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: family,
+      categoryId: category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: cancelledAtStep02Init.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion,
+      scriptIndex: 0n,
+      referenceScriptUtxo: stepRefs[0]!,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
     await measured("cancel-step02", () =>
       cancel(cancelledAtStep02.nextThreadOutRef, stepRefs[1]!),
     );
     const cancelledAtScanInit = await initialize();
     const cancelledAtScanBound =
-      await submitWitnessScriptDecodingStep01AcceptedV1({
+      await submitWitnessScriptDecodingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -310,7 +306,7 @@ describe("witness-script-decoding real lifecycle", () => {
         referenceScriptUtxo: stepRefs[0]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
-    const cancelledAtScan = await submitWitnessScriptDecodingStep02V1({
+    const cancelledAtScan = await submitWitnessScriptDecodingStep02({
       lucid: harness.proverLucid,
       network,
       contracts: family,
@@ -318,12 +314,12 @@ describe("witness-script-decoding real lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: cancelledAtScanBound.nextThreadOutRef,
       evidence,
-      nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
         nativeTx.compact,
       ).toString("hex"),
       witnessSet,
       witnessSetCompactCbor:
-        encodeMidgardNativeTxWitnessSetCompactV1(compact).toString("hex"),
+        encodeMidgardNativeTxWitnessSetCompact(compact).toString("hex"),
       publishCarriage: true,
       certificateReferenceScriptUtxo: certificateReference,
       scriptWitnessItems: [item],
@@ -334,7 +330,7 @@ describe("witness-script-decoding real lifecycle", () => {
     );
     const cancelledAtStep04Init = await initialize();
     const cancelledAtStep04Bound =
-      await submitWitnessScriptDecodingStep01AcceptedV1({
+      await submitWitnessScriptDecodingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -348,7 +344,7 @@ describe("witness-script-decoding real lifecycle", () => {
         referenceScriptUtxo: stepRefs[0]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
-    const cancelledAtStep04Scan = await submitWitnessScriptDecodingStep02V1({
+    const cancelledAtStep04Scan = await submitWitnessScriptDecodingStep02({
       lucid: harness.proverLucid,
       network,
       contracts: family,
@@ -356,12 +352,12 @@ describe("witness-script-decoding real lifecycle", () => {
       signer: harness.proverSigner,
       threadOutRef: cancelledAtStep04Bound.nextThreadOutRef,
       evidence,
-      nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
         nativeTx.compact,
       ).toString("hex"),
       witnessSet,
       witnessSetCompactCbor:
-        encodeMidgardNativeTxWitnessSetCompactV1(compact).toString("hex"),
+        encodeMidgardNativeTxWitnessSetCompact(compact).toString("hex"),
       publishCarriage: true,
       certificateReferenceScriptUtxo: certificateReference,
       scriptWitnessItems: [item],
@@ -369,7 +365,7 @@ describe("witness-script-decoding real lifecycle", () => {
     });
     let cancelledAtStep04OutRef = cancelledAtStep04Scan.nextThreadOutRef;
     for (;;) {
-      const scan = await submitWitnessScriptDecodingStep03V1({
+      const scan = await submitWitnessScriptDecodingStep03({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -386,7 +382,7 @@ describe("witness-script-decoding real lifecycle", () => {
     );
     const init = await measured("init", () => initialize());
     const step01 = await measured("step01", () =>
-      submitWitnessScriptDecodingStep01AcceptedV1({
+      submitWitnessScriptDecodingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -402,7 +398,7 @@ describe("witness-script-decoding real lifecycle", () => {
       }),
     );
     const step02 = await measured("step02", () =>
-      submitWitnessScriptDecodingStep02V1({
+      submitWitnessScriptDecodingStep02({
         lucid: harness.proverLucid,
         network,
         contracts: family,
@@ -410,12 +406,12 @@ describe("witness-script-decoding real lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: step01.nextThreadOutRef,
         evidence,
-        nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+        nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           nativeTx.compact,
         ).toString("hex"),
         witnessSet,
         witnessSetCompactCbor:
-          encodeMidgardNativeTxWitnessSetCompactV1(compact).toString("hex"),
+          encodeMidgardNativeTxWitnessSetCompact(compact).toString("hex"),
         publishCarriage: true,
         certificateReferenceScriptUtxo: certificateReference,
         scriptWitnessItems: [item],
@@ -426,7 +422,7 @@ describe("witness-script-decoding real lifecycle", () => {
     let scanTransactions = 0;
     for (;;) {
       const step03 = await measured(`step03-${scanTransactions}`, () =>
-        submitWitnessScriptDecodingStep03V1({
+        submitWitnessScriptDecodingStep03({
           lucid: harness.proverLucid,
           contracts: family,
           categoryId: category.categoryId,
@@ -442,7 +438,7 @@ describe("witness-script-decoding real lifecycle", () => {
     }
     expect(scanTransactions).toBeGreaterThan(1);
     const finalized = await measured("step04", () =>
-      submitWitnessScriptDecodingStep04V1({
+      submitWitnessScriptDecodingStep04({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -510,7 +506,7 @@ describe("witness-script-decoding real lifecycle", () => {
   }, 600_000);
 
   it("proves a forced wrongful rejection through the exact-reason contradiction", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realWitnessScriptDecoding: true,
         alwaysFraudProofCatalogue: true,
@@ -547,10 +543,10 @@ describe("witness-script-decoding real lifecycle", () => {
       });
       return captured.result;
     };
-    const item = decodingCanonicalItemV1();
+    const item = decodingCanonicalItem();
     const fieldPreimage = encodeCbor([item]);
-    const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+    const nativeTx = materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -573,10 +569,10 @@ describe("witness-script-decoding real lifecycle", () => {
       },
     });
     const orderKey = { transactionId: "cd".repeat(32), outputIndex: 0n };
-    const reason: SDK.RejectionReasonV1 = {
+    const reason: SDK.RejectionReason = {
       WitnessScriptHeaderMalformed: { script_index: 0n },
     };
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -601,9 +597,7 @@ describe("witness-script-decoding real lifecycle", () => {
         header: block.header,
       }),
     );
-    const compact = deriveMidgardNativeTxWitnessSetCompactV1(
-      nativeTx.witnessSet,
-    );
+    const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
     const witnessSet: SDK.NativeTxWitnessSetCompact = {
       addr_tx_wits_hash: Buffer.from(compact.addrTxWitsHash).toString("hex"),
       script_tx_wits_hash: Buffer.from(compact.scriptTxWitsHash).toString(
@@ -613,9 +607,9 @@ describe("witness-script-decoding real lifecycle", () => {
         "hex",
       ),
     };
-    const evidence = prepareWitnessScriptDecodingEvidenceV1({
+    const evidence = prepareWitnessScriptDecodingEvidence({
       finding: {
-        subject: SDK.forcedVerdictSubjectV1({
+        subject: SDK.forcedVerdictSubject({
           transactionId: block.nativeTxId,
           sourceKey: orderKey,
           rejectionReason: reason,
@@ -628,7 +622,7 @@ describe("witness-script-decoding real lifecycle", () => {
       committedFieldHashHex: witnessSet.script_tx_wits_hash,
     });
     expect(
-      detectWitnessScriptDecodingCompleteReplayV1({
+      detectWitnessScriptDecodingCompleteReplay({
         headerHash: block.headerHash,
         transactions: [],
         reconstruction: block.reconstruction,
@@ -639,14 +633,14 @@ describe("witness-script-decoding real lifecycle", () => {
       }),
     ]);
     expect(
-      deriveWitnessScriptDecodingEvidenceFromCanonicalBlockV1({
+      deriveWitnessScriptDecodingEvidenceFromCanonicalBlock({
         headerHash: block.headerHash,
         transactions: [],
         reconstruction: block.reconstruction,
       } as never).itemCommitmentHex,
     ).toBe(evidence.itemCommitmentHex);
     expect(
-      detectWitnessScriptDecodingCompleteReplayV1({
+      detectWitnessScriptDecodingCompleteReplay({
         headerHash: block.headerHash,
         transactions: [],
         reconstruction: {
@@ -675,7 +669,7 @@ describe("witness-script-decoding real lifecycle", () => {
       );
     }
     const init = await measured("forced-init", () =>
-      submitWitnessScriptDecodingInitV1({
+      submitWitnessScriptDecodingInit({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -697,7 +691,7 @@ describe("witness-script-decoding real lifecycle", () => {
       eventKey: { ForcedTransactionEventKey: { tx_order_id: orderKey } },
     });
     const step01 = await measured("forced-step01", () =>
-      submitWitnessScriptDecodingStep01ForcedV1({
+      submitWitnessScriptDecodingStep01Forced({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -712,7 +706,7 @@ describe("witness-script-decoding real lifecycle", () => {
       }),
     );
     const step02 = await measured("forced-step02", () =>
-      submitWitnessScriptDecodingStep02V1({
+      submitWitnessScriptDecodingStep02({
         lucid: harness.proverLucid,
         network,
         contracts: family,
@@ -720,12 +714,12 @@ describe("witness-script-decoding real lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: step01.nextThreadOutRef,
         evidence,
-        nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
+        nativeTxCompactCbor: encodeMidgardNativeTxCompact(
           nativeTx.compact,
         ).toString("hex"),
         witnessSet,
         witnessSetCompactCbor:
-          encodeMidgardNativeTxWitnessSetCompactV1(compact).toString("hex"),
+          encodeMidgardNativeTxWitnessSetCompact(compact).toString("hex"),
         scriptWitnessItems: [item],
         referenceScriptUtxo: stepRefs[1]!,
       }),
@@ -733,7 +727,7 @@ describe("witness-script-decoding real lifecycle", () => {
     let outRef = step02.nextThreadOutRef;
     for (;;) {
       const scan = await measured("forced-step03", () =>
-        submitWitnessScriptDecodingStep03V1({
+        submitWitnessScriptDecodingStep03({
           lucid: harness.proverLucid,
           contracts: family,
           categoryId: category.categoryId,
@@ -747,7 +741,7 @@ describe("witness-script-decoding real lifecycle", () => {
       if (scan.closed) break;
     }
     const final = await measured("forced-step04", () =>
-      submitWitnessScriptDecodingStep04V1({
+      submitWitnessScriptDecodingStep04({
         lucid: harness.proverLucid,
         contracts: family,
         categoryId: category.categoryId,

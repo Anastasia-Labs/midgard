@@ -70,7 +70,7 @@ const dist = await import(
   pathToFileURL(resolve(coreRoot, "dist/consensus-profile-v1.js")).href
 );
 const distValue =
-  dist.MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+  dist.MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 if (distValue !== sourceValue) {
   fail(
     `maxReliableDirectCompleteItemBytes: dist exports ${distValue}, src declares ${sourceValue}`,

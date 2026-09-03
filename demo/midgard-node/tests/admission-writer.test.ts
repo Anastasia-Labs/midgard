@@ -2,7 +2,7 @@ import "./utils.js";
 
 import { createHash } from "node:crypto";
 
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import { Cause, Deferred, Effect, Exit, Fiber, Ref, Scope } from "effect";
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ const request = (
 ): TxAdmissionsDB.ReservedAdmissionRequest => ({
   txId,
   txCanonicalCbor: Buffer.from(`canonical:${label}`),
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   submitSource: "native",
 });
 

@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -43,7 +43,7 @@ describe("state queue scanner", () => {
       stateQueuePolicyId: "22".repeat(28),
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 30,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     } as const;
     await scanStateQueue(provider, {
       ...common,
@@ -102,7 +102,7 @@ describe("state queue scanner", () => {
       stateQueuePolicyId: "22".repeat(28),
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 2,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
     expect(records).toHaveLength(1);
     expect(records[0]!.status).toBe("unattested");
@@ -136,7 +136,7 @@ describe("state queue scanner", () => {
       stateQueuePolicyId: "22".repeat(28),
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 0,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
     // The third node carries an attestation marker, which is now a
     // legitimate StateQueueStatusV1 state rather than a conflict
@@ -168,7 +168,7 @@ describe("state queue scanner", () => {
       stateQueuePolicyId: "22".repeat(28),
       daAttestationPolicyId: "33".repeat(28),
       finalityDepth: 0,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
 
     expect(records).toHaveLength(1);

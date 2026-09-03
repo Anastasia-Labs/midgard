@@ -50,7 +50,7 @@ export type WaitForDaGateResult = DaGateObservation & {
   readonly timedOut: boolean;
 };
 
-export type DaGateResultV1 = DaGateProbeResult | WaitForDaGateResult;
+export type DaGateResult = DaGateProbeResult | WaitForDaGateResult;
 
 export type ProbeDaGateOptions = {
   readonly headerHash: string;
@@ -86,7 +86,7 @@ const parseLowerHex = (
   return parsed;
 };
 
-const parseDaProducerPeerResultV1 = (
+const parseDaProducerPeerResult = (
   value: unknown,
   label: string,
 ): DaProducerPeerResult => {
@@ -121,9 +121,9 @@ const parseDaProducerPeerResultV1 = (
 
 const parseDaGateResultWithKind = (
   value: unknown,
-  expectedKind: DaGateResultV1["kind"],
+  expectedKind: DaGateResult["kind"],
   label: string,
-): DaGateResultV1 => {
+): DaGateResult => {
   const commonKeys = [
     "schemaVersion",
     "kind",
@@ -195,7 +195,7 @@ const parseDaGateResultWithKind = (
     peerResults: arrayOf(
       input.peerResults,
       `${label}.peerResults`,
-      parseDaProducerPeerResultV1,
+      parseDaProducerPeerResult,
     ),
     reason: nonEmptyString(input.reason, `${label}.reason`),
   };
@@ -261,23 +261,21 @@ const parseDaGateResultWithKind = (
   return parsed;
 };
 
-export const parseDaGateProbeResultV1 = (value: unknown): DaGateProbeResult =>
+export const parseDaGateProbeResult = (value: unknown): DaGateProbeResult =>
   parseDaGateResultWithKind(
     value,
     "probe",
     "DA gate probe",
   ) as DaGateProbeResult;
 
-export const parseWaitForDaGateResultV1 = (
-  value: unknown,
-): WaitForDaGateResult =>
+export const parseWaitForDaGateResult = (value: unknown): WaitForDaGateResult =>
   parseDaGateResultWithKind(
     value,
     "wait",
     "DA gate wait",
   ) as WaitForDaGateResult;
 
-export const parseDaGateResultV1 = (value: unknown): DaGateResultV1 => {
+export const parseDaGateResult = (value: unknown): DaGateResult => {
   const input = exactRecord(
     value,
     "DA gate result",
@@ -300,9 +298,9 @@ export const parseDaGateResultV1 = (value: unknown): DaGateResultV1 => {
     ],
   );
   return input.kind === "probe"
-    ? parseDaGateProbeResultV1(value)
+    ? parseDaGateProbeResult(value)
     : input.kind === "wait"
-      ? parseWaitForDaGateResultV1(value)
+      ? parseWaitForDaGateResult(value)
       : (() => {
           throw new Error("DA gate result.kind must be probe or wait");
         })();
@@ -371,7 +369,7 @@ export const probeDaGate = async ({
     normalizedHeaderHash,
     publicationReport,
   });
-  return parseDaGateProbeResultV1({
+  return parseDaGateProbeResult({
     schemaVersion: E2E_DA_GATE_SCHEMA_VERSION,
     kind: "probe",
     headerHash: normalizedHeaderHash,
@@ -407,7 +405,7 @@ export const waitForDaGate = async ({
       publicationReport: await probePublication(),
     });
     if (latest.status !== "pending") {
-      return parseWaitForDaGateResultV1({
+      return parseWaitForDaGateResult({
         ...latest,
         kind: "wait",
         attempts,
@@ -415,7 +413,7 @@ export const waitForDaGate = async ({
       });
     }
     if (Date.now() - startedAt >= timeoutMs) {
-      return parseWaitForDaGateResultV1({
+      return parseWaitForDaGateResult({
         ...latest,
         kind: "wait",
         attempts,

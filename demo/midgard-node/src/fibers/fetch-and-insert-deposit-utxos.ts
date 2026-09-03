@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalDepositTransitionEffectV1 } from "@al-ft/midgard-validation";
+import { deriveCanonicalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import {
   Data as LucidData,
   LucidEvolution,
@@ -51,7 +51,7 @@ const depositUTxOToEntry = (
   Effect.try({
     try: () => {
       const l2Datum = depositUTxO.datum.event.info.l2_datum;
-      const effect = deriveCanonicalDepositTransitionEffectV1({
+      const effect = deriveCanonicalDepositTransitionEffect({
         configuredNetwork: network,
         eventId: depositUTxO.datum.event.id,
         l2NetworkId: depositUTxO.datum.event.info.l2_network_id,

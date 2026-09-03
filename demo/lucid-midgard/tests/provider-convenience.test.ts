@@ -1,6 +1,6 @@
 import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -37,14 +37,14 @@ const protocolInfo: MidgardProtocolInfo = {
   network: "Preview",
   midgardNativeTxVersion: 1,
   currentSlot: 123n,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-  deploymentMarker: makeDeploymentMarkerV1("ab".repeat(32)),
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+  deploymentMarker: makeDeploymentMarker("ab".repeat(32)),
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
   submissionLimits: {
     maxSubmitTxCborBytes:
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",

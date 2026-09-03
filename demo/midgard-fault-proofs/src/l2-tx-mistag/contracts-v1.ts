@@ -18,19 +18,19 @@ import { applyBlueprintParamsExact } from "../runtime.js";
 
 export const L2_TX_MISTAG_CATEGORY_LABEL = "l2-tx-mistag";
 
-export const L2_TX_MISTAG_BLUEPRINT_TITLES_V1 = {
+export const L2_TX_MISTAG_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/l2_tx_mistag/step_01.main.spend",
   step02: "fraud_proofs/l2_tx_mistag/step_02.main.spend",
 } as const;
 
-export type L2TxMistagStepContractV1 = {
+export type L2TxMistagStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
 };
 
-export type L2TxMistagContractsV1 = {
-  readonly steps: readonly [L2TxMistagStepContractV1, L2TxMistagStepContractV1];
+export type L2TxMistagContracts = {
+  readonly steps: readonly [L2TxMistagStepContract, L2TxMistagStepContract];
   readonly computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;
@@ -44,10 +44,10 @@ export type L2TxMistagContractsV1 = {
   readonly stateQueuePolicyId: string;
 };
 
-export type L2TxMistagBlueprintV1 = unknown;
+export type L2TxMistagBlueprint = unknown;
 
 const applyExact = (
-  blueprint: L2TxMistagBlueprintV1,
+  blueprint: L2TxMistagBlueprint,
   title: string,
   params: readonly Data[],
 ): string => {
@@ -57,7 +57,7 @@ const applyExact = (
 const spendingContract = (
   network: Network,
   scriptCbor: string,
-): L2TxMistagStepContractV1 => {
+): L2TxMistagStepContract => {
   const spendingScript: Script = { type: "PlutusV3", script: scriptCbor };
   return {
     spendingScript,
@@ -66,7 +66,7 @@ const spendingContract = (
   };
 };
 
-export const buildL2TxMistagChainV1 = ({
+export const buildL2TxMistagChain = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -74,16 +74,16 @@ export const buildL2TxMistagChainV1 = ({
   fraudProofTokenAddressData,
   hubOraclePolicyId,
 }: {
-  readonly blueprint: L2TxMistagBlueprintV1;
+  readonly blueprint: L2TxMistagBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly hubOraclePolicyId: string;
-}): readonly [L2TxMistagStepContractV1, L2TxMistagStepContractV1] => {
+}): readonly [L2TxMistagStepContract, L2TxMistagStepContract] => {
   const step02 = spendingContract(
     network,
-    applyExact(blueprint, L2_TX_MISTAG_BLUEPRINT_TITLES_V1.step02, [
+    applyExact(blueprint, L2_TX_MISTAG_BLUEPRINT_TITLES.step02, [
       fraudProofPolicyId,
       fraudProofTokenAddressData,
       computationThreadPolicyId,
@@ -91,7 +91,7 @@ export const buildL2TxMistagChainV1 = ({
   );
   const step01 = spendingContract(
     network,
-    applyExact(blueprint, L2_TX_MISTAG_BLUEPRINT_TITLES_V1.step01, [
+    applyExact(blueprint, L2_TX_MISTAG_BLUEPRINT_TITLES.step01, [
       step02.spendingScriptHash,
       computationThreadPolicyId,
       hubOraclePolicyId,

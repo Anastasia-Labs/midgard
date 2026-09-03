@@ -25,7 +25,7 @@
  * - **AU** (`authentic_withdrawal_block_v1`) commits the authentic pair, and is the
  *   valid block this family must refuse to convict.
  *
- * All three are re-committed into a real `DaPayloadV1` here, because
+ * All three are re-committed into a real `DaPayload` here, because
  * `tests/helpers/canonical-block-evidence-fixture-v1.ts` hard-wires an empty
  * withdrawal source set (`withdrawals: []`, `withdrawalCount: 0n`).
  *
@@ -50,34 +50,34 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
-  classifyFabricatedWithdrawalFaultV1,
-  fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1,
-  type FabricatedWithdrawalL1WitnessV1,
-  FabricatedWithdrawalRejectionV1,
-  prepareFabricatedWithdrawalFromCommittedLeavesV1,
+  classifyFabricatedWithdrawalFault,
+  fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
+  type FabricatedWithdrawalL1Witness,
+  FabricatedWithdrawalRejection,
+  prepareFabricatedWithdrawalFromCommittedLeaves,
 } from "../src/prepare-fabricated-withdrawal.js";
 import {
-  deriveFabricatedWithdrawalStep01HandoffV1,
+  deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
 } from "../src/submit-fabricated-withdrawal-step-01.js";
-import { authenticateFabricatedWithdrawalEventUtxoV1 } from "../src/submit-fabricated-withdrawal-step-02.js";
-import { deriveFabricatedWithdrawalStep03HandoffV1 } from "../src/submit-fabricated-withdrawal-step-03.js";
-import { assertFabricatedWithdrawalStep04FinalizableV1 } from "../src/submit-fabricated-withdrawal-step-04.js";
+import { authenticateFabricatedWithdrawalEventUtxo } from "../src/submit-fabricated-withdrawal-step-02.js";
+import { deriveFabricatedWithdrawalStep03Handoff } from "../src/submit-fabricated-withdrawal-step-03.js";
+import { assertFabricatedWithdrawalStep04Finalizable } from "../src/submit-fabricated-withdrawal-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  createProductionFabricatedWithdrawalEvidenceAuthorityV1,
-  requireProductionFabricatedWithdrawalArtifactV1,
+  createFabricatedWithdrawalEvidenceAuthority,
+  requireFabricatedWithdrawalArtifact,
 } from "../src/workflow/production-fabricated-withdrawal-evidence-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h28,
   h32,
   outRefCbor,
-  reencodeFixturePayloadV1,
+  reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 // ## Aiken-measured fixture twins
@@ -155,7 +155,7 @@ const FI_STEP_04_STATE_CBOR =
 const MM_STEP_04_STATE_CBOR =
   "d8799f581c44201f07972dae5999a6a5f5b8659c0ac65fb96168f3035dd47281820a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58206d8fd0959a65127c274f31b291d1ed97899bba0866c6945473ca7102a30de9735820f6b65e77ecfcfcaccba6fc17cf30e124829e93d60ef0e7259200316869ef38a00fffff";
 
-const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
@@ -173,30 +173,30 @@ const DEPOSIT_POLICY_ID = h28(0x18);
 
 // ## Challenged-block fixtures
 
-type WithdrawalLeafEntryV1 = { readonly key: string; readonly value: string };
+type WithdrawalLeafEntry = { readonly key: string; readonly value: string };
 
-const FI_LEAF: WithdrawalLeafEntryV1 = {
+const FI_LEAF: WithdrawalLeafEntry = {
   key: KEY_FABRICATED_WITHDRAWAL_ID,
   value: VALUE_AUTHENTIC_WITHDRAWAL_INFO,
 };
-const MM_LEAF: WithdrawalLeafEntryV1 = {
+const MM_LEAF: WithdrawalLeafEntry = {
   key: KEY_AUTHENTIC_WITHDRAWAL_ID,
   value: VALUE_DIVERTED_WITHDRAWAL_INFO,
 };
-const AU_LEAF: WithdrawalLeafEntryV1 = {
+const AU_LEAF: WithdrawalLeafEntry = {
   key: KEY_AUTHENTIC_WITHDRAWAL_ID,
   value: VALUE_AUTHENTIC_WITHDRAWAL_INFO,
 };
 
-type WithdrawalsBlockFixtureV1 = {
-  readonly header: SDK.HeaderV1;
+type WithdrawalsBlockFixture = {
+  readonly header: SDK.Header;
   readonly headerHash: string;
   readonly withdrawalsRoot: string;
   readonly withdrawalsPhasRoot: string;
   readonly withdrawalCount: bigint;
   readonly entries: readonly SDK.DaPayloadEntry[];
   readonly payloadEnvelopeCbor: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
 };
 
 /**
@@ -205,16 +205,16 @@ type WithdrawalsBlockFixtureV1 = {
  * the shape a faulty operator actually publishes. `withdrawalCountOverride` lies
  * about the cardinality only, leaving the committed root honest.
  */
-const buildWithdrawalsBlockFixtureV1 = async ({
+const buildWithdrawalsBlockFixture = async ({
   leaves,
   withdrawalCountOverride,
 }: {
-  readonly leaves: readonly WithdrawalLeafEntryV1[];
+  readonly leaves: readonly WithdrawalLeafEntry[];
   readonly withdrawalCountOverride?: bigint;
-}): Promise<WithdrawalsBlockFixtureV1> => {
-  const base = await buildCanonicalBlockFixtureV1({
+}): Promise<WithdrawalsBlockFixture> => {
+  const base = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x21, 0n)],
         fee: 1_000_000n,
       }),
@@ -231,16 +231,16 @@ const buildWithdrawalsBlockFixtureV1 = async ({
     })),
   );
   const withdrawalCount = withdrawalCountOverride ?? counted.count;
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...base.header,
     withdrawalsRoot: counted.root,
     withdrawalCount,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const entries: SDK.DaPayloadEntry[] = leaves
     .map(({ key, value }): SDK.DaPayloadEntry => [key, value])
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  const payload: SDK.DaPayloadV1 = {
+  const payload: SDK.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -257,8 +257,8 @@ const buildWithdrawalsBlockFixtureV1 = async ({
     withdrawalsPhasRoot: counted.phasRoot,
     withdrawalCount,
     entries,
-    payloadEnvelopeCbor: await reencodeFixturePayloadV1(payload),
-    observation: authenticatedHeaderObservationV1({
+    payloadEnvelopeCbor: await reencodeFixturePayload(payload),
+    observation: authenticatedHeaderObservation({
       ...base,
       header,
       headerHash,
@@ -267,9 +267,9 @@ const buildWithdrawalsBlockFixtureV1 = async ({
 };
 
 const l1Observation = (
-  overrides: Partial<SDK.AuthenticatedL1ObservationV1> = {},
-): SDK.AuthenticatedL1ObservationV1 => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  overrides: Partial<SDK.AuthenticatedL1Observation> = {},
+): SDK.AuthenticatedL1Observation => ({
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -285,7 +285,7 @@ const absentIdentityWitness = (
   liveOutputReferences: readonly SDK.OutputReference[] = [
     FABRICATED_WITHDRAWAL_ID,
   ],
-): FabricatedWithdrawalL1WitnessV1 => ({
+): FabricatedWithdrawalL1Witness => ({
   kind: "absent_identity",
   observation: l1Observation(),
   liveOutputReferences,
@@ -297,7 +297,7 @@ const presentEventWitness = ({
 }: {
   readonly observedEventAssetName?: string;
   readonly eventDatumCbor?: string;
-} = {}): FabricatedWithdrawalL1WitnessV1 => ({
+} = {}): FabricatedWithdrawalL1Witness => ({
   kind: "present_event",
   observation: l1Observation(),
   withdrawalEventPolicyId: WITHDRAWAL_POLICY_ID,
@@ -344,11 +344,11 @@ const withdrawalEventDatum = ({
 
 /** The `serialise_data` bytes of a withdrawal event datum — what both steps hash. */
 const eventDatumBytes = (datum: SDK.WithdrawalOrderDatum): string =>
-  SDK.withdrawalEventDatumBytesV1(datum);
+  SDK.withdrawalEventDatumBytes(datum);
 
 // ## Step-02 UTxO fixtures
 //
-// `authenticateFabricatedWithdrawalEventUtxoV1` reads the withdrawal policy out of
+// `authenticateFabricatedWithdrawalEventUtxo` reads the withdrawal policy out of
 // the **authentic hub oracle datum**, so the policy is never a caller's claim;
 // these literals exist to exercise exactly that read, with the deposit policy set
 // to a different value so reading the wrong field cannot pass.
@@ -466,13 +466,14 @@ const mmStep03State: SDK.FabricatedWithdrawalStep03State = {
 
 describe("Q40 fabricated-withdrawal evidence admission", () => {
   it("admits a withdrawals-bearing block and extracts its committed leaves", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [MM_LEAF] });
-    const evidence =
-      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
+    const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload(
+      {
         observation: fixture.observation,
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
-      });
+      },
+    );
     expect(evidence.grade).toBe("security");
     expect(evidence.provenance.l1.trustClass).toBe("authenticated_cardano_l1");
     expect(evidence.provenance.da.trustClass).toBe(
@@ -490,9 +491,9 @@ describe("Q40 fabricated-withdrawal evidence admission", () => {
   });
 
   it("refuses operator-private DA provenance", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
     await expect(
-      fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+      fabricatedWithdrawalBlockEvidenceFromVerifiedPayload({
         observation: fixture.observation,
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         daProvenance: {
@@ -502,17 +503,17 @@ describe("Q40 fabricated-withdrawal evidence admission", () => {
           diagnosticLabel: "operator diagnostic",
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejectionV1);
+    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
   });
 
   it("refuses a payload whose embedded header is not the observed one", async () => {
-    const observed = await buildWithdrawalsBlockFixtureV1({
+    const observed = await buildWithdrawalsBlockFixture({
       leaves: [MM_LEAF],
     });
-    const other = await buildWithdrawalsBlockFixtureV1({ leaves: [FI_LEAF] });
+    const other = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });
     expect(other.headerHash).not.toBe(observed.headerHash);
     await expect(
-      fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+      fabricatedWithdrawalBlockEvidenceFromVerifiedPayload({
         observation: observed.observation,
         payloadEnvelopeCbor: other.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
@@ -523,15 +524,16 @@ describe("Q40 fabricated-withdrawal evidence admission", () => {
 
 describe("fabricated-withdrawal production evidence authority", () => {
   const canonicalEvidence = async (
-    fixture: WithdrawalsBlockFixtureV1,
-  ): Promise<CanonicalBlockEvidenceV1> => {
-    const evidence =
-      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+    fixture: WithdrawalsBlockFixture,
+  ): Promise<CanonicalBlockEvidence> => {
+    const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload(
+      {
         observation: fixture.observation,
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
         minimumConfirmationDepth: 1,
-      });
+      },
+    );
     const withdrawals = evidence.entries.map(([keyCbor, valueCbor]) => ({
       key: Data.from(keyCbor, SDK.OutputReference),
       value: Data.from(valueCbor, SDK.WithdrawalInfo),
@@ -543,12 +545,12 @@ describe("fabricated-withdrawal production evidence authority", () => {
       observation: fixture.observation,
       header: fixture.header,
       reconstruction: { withdrawals },
-    } as unknown as CanonicalBlockEvidenceV1;
+    } as unknown as CanonicalBlockEvidence;
   };
 
   it("derives and re-admits an authenticated live-identity fault", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [FI_LEAF] });
-    const authority = createProductionFabricatedWithdrawalEvidenceAuthorityV1({
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });
+    const authority = createFabricatedWithdrawalEvidenceAuthority({
       lucid: {
         utxosByOutRef: async () => [
           syntheticUtxo({
@@ -575,7 +577,7 @@ describe("fabricated-withdrawal production evidence authority", () => {
     });
     const readmitted = await authority.readmit(detections[0]!.artifact);
     expect(
-      requireProductionFabricatedWithdrawalArtifactV1(
+      requireFabricatedWithdrawalArtifact(
         readmitted,
         h28(0x44),
         fixture.headerHash,
@@ -585,7 +587,7 @@ describe("fabricated-withdrawal production evidence authority", () => {
       authority.readmit({ ...readmitted, withdrawalIndex: 1 }),
     ).rejects.toThrow(/digest mismatch/u);
     expect(() =>
-      requireProductionFabricatedWithdrawalArtifactV1(
+      requireFabricatedWithdrawalArtifact(
         { ...readmitted },
         h28(0x44),
         fixture.headerHash,
@@ -596,21 +598,22 @@ describe("fabricated-withdrawal production evidence authority", () => {
 
 describe("Q40 fabricated-withdrawal proof plan", () => {
   it("builds a nonexistent-identity plan from an authenticated absence witness", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [FI_LEAF] });
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [FI_LEAF] });
     // The Aiken-measured roots of `fabricated_identity_block_v1`.
     expect(fixture.withdrawalsPhasRoot).toBe(FI_WITHDRAWALS_PHAS_ROOT);
     expect(fixture.withdrawalsRoot).toBe(FI_WITHDRAWALS_ROOT);
 
-    const evidence =
-      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await fabricatedWithdrawalBlockEvidenceFromVerifiedPayload(
+      {
         observation: fixture.observation,
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
         daProvenance: DA_PROVENANCE,
-      });
+      },
+    );
     const outputDir = await mkdtemp(
       join(tmpdir(), "q40-fabricated-withdrawal-"),
     );
-    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,
       withdrawalCount: evidence.withdrawalCount,
@@ -647,12 +650,12 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
   });
 
   it("builds a content-mismatch plan from an authenticated present-event witness", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
     // The Aiken-measured roots of `mismatched_content_block_v1`.
     expect(fixture.withdrawalsPhasRoot).toBe(MM_WITHDRAWALS_PHAS_ROOT);
     expect(fixture.withdrawalsRoot).toBe(MM_WITHDRAWALS_ROOT);
 
-    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedWithdrawalsRoot: fixture.withdrawalsRoot,
       withdrawalCount: fixture.withdrawalCount,
@@ -685,10 +688,10 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
   });
 
   it("refuses leaves that do not open the committed counted withdrawals_root, in the root or in the cardinality", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
     // Root arm: the supplied leaf is not the one the header committed.
     await expect(
-      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedWithdrawalsRoot: fixture.withdrawalsRoot,
         withdrawalCount: fixture.withdrawalCount,
@@ -704,12 +707,12 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
     // Cardinality arm: the header's own `withdrawal_count` disagrees with the
     // rebuilt leaf count, which is the half of the counted-root check a
     // root-only comparison would miss.
-    const lied = await buildWithdrawalsBlockFixtureV1({
+    const lied = await buildWithdrawalsBlockFixture({
       leaves: [MM_LEAF],
       withdrawalCountOverride: 7n,
     });
     await expect(
-      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: lied.headerHash,
         committedWithdrawalsRoot: MM_WITHDRAWALS_ROOT,
         withdrawalCount: lied.withdrawalCount,
@@ -722,9 +725,9 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
   });
 
   it("refuses an empty withdrawal source set and a pinned leaf the header never committed", async () => {
-    const empty = await buildWithdrawalsBlockFixtureV1({ leaves: [] });
+    const empty = await buildWithdrawalsBlockFixture({ leaves: [] });
     await expect(
-      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: empty.headerHash,
         committedWithdrawalsRoot: empty.withdrawalsRoot,
         withdrawalCount: empty.withdrawalCount,
@@ -735,9 +738,9 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
       }),
     ).rejects.toMatchObject({ code: "no_committed_withdrawal_leaf" });
 
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [MM_LEAF] });
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
     await expect(
-      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedWithdrawalsRoot: fixture.withdrawalsRoot,
         withdrawalCount: fixture.withdrawalCount,
@@ -766,14 +769,14 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
       SDK.WithdrawalInfo,
     );
     expect(rawLucidValue).not.toBe(VALUE_DIVERTED_WITHDRAWAL_INFO);
-    const fixture = await buildWithdrawalsBlockFixtureV1({
+    const fixture = await buildWithdrawalsBlockFixture({
       leaves: [{ key: KEY_AUTHENTIC_WITHDRAWAL_ID, value: rawLucidValue }],
     });
     // The counted root is honest about the bytes the operator published, so the
     // refusal has to come from the leaf decoder, not from the root gate.
     expect(fixture.withdrawalsRoot).not.toBe(MM_WITHDRAWALS_ROOT);
     await expect(
-      prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedWithdrawalsRoot: fixture.withdrawalsRoot,
         withdrawalCount: fixture.withdrawalCount,
@@ -788,11 +791,11 @@ describe("Q40 fabricated-withdrawal proof plan", () => {
 
 describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
   const leafOf = async (
-    leaf: WithdrawalLeafEntryV1,
-    witness: FabricatedWithdrawalL1WitnessV1,
+    leaf: WithdrawalLeafEntry,
+    witness: FabricatedWithdrawalL1Witness,
   ) => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [leaf] });
-    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [leaf] });
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedWithdrawalsRoot: fixture.withdrawalsRoot,
       withdrawalCount: fixture.withdrawalCount,
@@ -809,7 +812,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     // The committed identity is absent from the authenticated live set, so its
     // absence cannot be established: no fallback, no downgrade.
     await expect(
-      classifyFabricatedWithdrawalFaultV1({
+      classifyFabricatedWithdrawalFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -817,7 +820,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
       }),
     ).rejects.toMatchObject({ code: "consumed_live_utxo_fallback_refused" });
     await expect(
-      classifyFabricatedWithdrawalFaultV1({
+      classifyFabricatedWithdrawalFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -833,14 +836,14 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
           }),
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejectionV1);
+    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
   });
 
   it("refuses a present-event witness that is not bound to the committed identity", async () => {
     const leaf = await leafOf(MM_LEAF, presentEventWitness());
     // The observed asset name is not `out_ref_to_nonce(committed_withdrawal_id)`.
     await expect(
-      classifyFabricatedWithdrawalFaultV1({
+      classifyFabricatedWithdrawalFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -851,7 +854,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     });
     // The retained datum names a different withdrawal identity.
     await expect(
-      classifyFabricatedWithdrawalFaultV1({
+      classifyFabricatedWithdrawalFault({
         leaf,
         headerStartTime: HEADER_START_TIME,
         headerEndTime: HEADER_END_TIME,
@@ -865,12 +868,12 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
   });
 
   it("refuses to challenge the authentic block, whose header committed exactly the authentic order", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [AU_LEAF] });
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [AU_LEAF] });
     // The Aiken-measured roots of `authentic_withdrawal_block_v1`.
     expect(fixture.withdrawalsPhasRoot).toBe(AU_WITHDRAWALS_PHAS_ROOT);
     expect(fixture.withdrawalsRoot).toBe(AU_WITHDRAWALS_ROOT);
     const attempt = async () =>
-      await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+      await prepareFabricatedWithdrawalFromCommittedLeaves({
         headerHash: fixture.headerHash,
         committedWithdrawalsRoot: fixture.withdrawalsRoot,
         withdrawalCount: fixture.withdrawalCount,
@@ -880,7 +883,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
         witness: presentEventWitness(),
       });
     await expect(attempt()).rejects.toBeInstanceOf(
-      FabricatedWithdrawalRejectionV1,
+      FabricatedWithdrawalRejection,
     );
     await expect(attempt()).rejects.toMatchObject({
       code: "authentic_content_matches_commitment",
@@ -891,7 +894,7 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     const leaf = await leafOf(MM_LEAF, presentEventWitness());
     for (const inclusionTime of [HEADER_START_TIME, HEADER_END_TIME + 1n]) {
       await expect(
-        classifyFabricatedWithdrawalFaultV1({
+        classifyFabricatedWithdrawalFault({
           leaf,
           headerStartTime: HEADER_START_TIME,
           headerEndTime: HEADER_END_TIME,
@@ -911,8 +914,8 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
 
 describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
   it("re-derives the step-01 handoff from the on-chain header and refuses a PHAS root or leaf encoding that does not open it", async () => {
-    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [MM_LEAF] });
-    const plan = await prepareFabricatedWithdrawalFromCommittedLeavesV1({
+    const fixture = await buildWithdrawalsBlockFixture({ leaves: [MM_LEAF] });
+    const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: fixture.headerHash,
       committedWithdrawalsRoot: fixture.withdrawalsRoot,
       withdrawalCount: fixture.withdrawalCount,
@@ -924,7 +927,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     const inclusion = parseSubmitFabricatedWithdrawalInclusion(
       plan.withdrawalInclusion,
     );
-    const handoff = await deriveFabricatedWithdrawalStep01HandoffV1({
+    const handoff = await deriveFabricatedWithdrawalStep01Handoff({
       header: fixture.header,
       headerHash: fixture.headerHash,
       inclusion,
@@ -946,7 +949,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     });
 
     await expect(
-      deriveFabricatedWithdrawalStep01HandoffV1({
+      deriveFabricatedWithdrawalStep01Handoff({
         header: fixture.header,
         headerHash: fixture.headerHash,
         inclusion: {
@@ -959,7 +962,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // The submit side refuses leaf bytes in Lucid's indefinite-map form too: the
     // membership check on chain hashes the `serialise_data` bytes.
     await expect(
-      deriveFabricatedWithdrawalStep01HandoffV1({
+      deriveFabricatedWithdrawalStep01Handoff({
         header: fixture.header,
         headerHash: fixture.headerHash,
         inclusion: {
@@ -987,7 +990,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
       committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
     };
-    const authenticated = await authenticateFabricatedWithdrawalEventUtxoV1({
+    const authenticated = await authenticateFabricatedWithdrawalEventUtxo({
       state,
       hubOracleUtxo: hubOracleUtxoFixture(),
       eventUtxo: withdrawalEventUtxoFixture(),
@@ -1004,7 +1007,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // an event NFT minted under it is not an authentic withdrawal event even
     // though the asset name is the authentic nonce.
     await expect(
-      authenticateFabricatedWithdrawalEventUtxoV1({
+      authenticateFabricatedWithdrawalEventUtxo({
         state,
         hubOracleUtxo: hubOracleUtxoFixture(),
         eventUtxo: withdrawalEventUtxoFixture({ policyId: DEPOSIT_POLICY_ID }),
@@ -1012,7 +1015,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     ).rejects.toThrow(/does not carry the authentic withdrawal event NFT/u);
     // The authentic policy and nonce, but a datum for another identity.
     await expect(
-      authenticateFabricatedWithdrawalEventUtxoV1({
+      authenticateFabricatedWithdrawalEventUtxo({
         state,
         hubOracleUtxo: hubOracleUtxoFixture(),
         eventUtxo: withdrawalEventUtxoFixture({
@@ -1023,7 +1026,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
   });
 
   it("opens step-02's retained commitment into the Aiken scenarios' exact step-04 handoffs, for all three fidelity fabrications", async () => {
-    const absent = await deriveFabricatedWithdrawalStep03HandoffV1({
+    const absent = await deriveFabricatedWithdrawalStep03Handoff({
       state: fiStep03State,
     });
     expect(absent.opening).toBe("NoAuthenticContent");
@@ -1032,7 +1035,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       Data.to(absent.step04State, SDK.FabricatedWithdrawalStep04State),
     ).toBe(FI_STEP_04_STATE_CBOR);
 
-    const present = await deriveFabricatedWithdrawalStep03HandoffV1({
+    const present = await deriveFabricatedWithdrawalStep03Handoff({
       state: mmStep03State,
       eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
     });
@@ -1054,7 +1057,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       HASH_FORGED_SIGNATURE_WITHDRAWAL_INFO,
       HASH_OVERRIDDEN_VALIDITY_WITHDRAWAL_INFO,
     ]) {
-      const handoff = await deriveFabricatedWithdrawalStep03HandoffV1({
+      const handoff = await deriveFabricatedWithdrawalStep03Handoff({
         state: {
           ...mmStep03State,
           committed_withdrawal_info_hash: committedHash,
@@ -1078,7 +1081,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       SDK.WithdrawalOrderDatum,
     );
     expect(rawLucidDatum).not.toBe(DATUM_AUTHENTIC_WITHDRAWAL_EVENT);
-    const normalized = await deriveFabricatedWithdrawalStep03HandoffV1({
+    const normalized = await deriveFabricatedWithdrawalStep03Handoff({
       state: mmStep03State,
       eventDatumCbor: rawLucidDatum,
     });
@@ -1089,17 +1092,17 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // A present-event verdict opened as an absence would convert a content
     // dispute into the strictly stronger non-existence conviction.
     await expect(
-      deriveFabricatedWithdrawalStep03HandoffV1({ state: mmStep03State }),
+      deriveFabricatedWithdrawalStep03Handoff({ state: mmStep03State }),
     ).rejects.toThrow(/does not pair|non-existence conviction/u);
     await expect(
-      deriveFabricatedWithdrawalStep03HandoffV1({
+      deriveFabricatedWithdrawalStep03Handoff({
         state: fiStep03State,
         eventDatumCbor: DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
       }),
     ).rejects.toThrow(/does not pair with the L1 verdict/u);
     // Only the hash equality makes supplied bytes authentic.
     await expect(
-      deriveFabricatedWithdrawalStep03HandoffV1({
+      deriveFabricatedWithdrawalStep03Handoff({
         state: mmStep03State,
         eventDatumCbor: eventDatumBytes(
           withdrawalEventDatum({ inclusionTime: 16n }),
@@ -1107,7 +1110,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       }),
     ).rejects.toThrow(/not the commitment/u);
 
-    const established = SDK.fabricatedWithdrawalStep04StateV1(mmStep03State, {
+    const established = SDK.fabricatedWithdrawalStep04State(mmStep03State, {
       MismatchedWithdrawalContent: {
         committed_withdrawal_info_hash: HASH_DIVERTED_WITHDRAWAL_INFO,
         authentic_withdrawal_info_hash: HASH_AUTHENTIC_WITHDRAWAL_INFO,
@@ -1115,14 +1118,14 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       },
     });
     expect(() =>
-      assertFabricatedWithdrawalStep04FinalizableV1({
+      assertFabricatedWithdrawalStep04Finalizable({
         state: established,
         fraudulentHeaderHash: MM_HEADER_HASH,
       }),
     ).not.toThrow();
     // Filed against a header the thread token does not name.
     expect(() =>
-      assertFabricatedWithdrawalStep04FinalizableV1({
+      assertFabricatedWithdrawalStep04Finalizable({
         state: established,
         fraudulentHeaderHash: FI_HEADER_HASH,
       }),
@@ -1130,7 +1133,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // An authentic event outside the challenged block's window is not this
     // block's fault, so it can never become a permanent conviction.
     expect(() =>
-      assertFabricatedWithdrawalStep04FinalizableV1({
+      assertFabricatedWithdrawalStep04Finalizable({
         state: {
           ...established,
           fault: {

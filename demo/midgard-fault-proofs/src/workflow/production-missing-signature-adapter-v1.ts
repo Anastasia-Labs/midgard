@@ -1,66 +1,66 @@
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type {
   StateQueueMutationLease,
   StateQueueMutationLeaseCoordinator,
 } from "../remove-fraudulent-block.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
 import {
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
-  type FraudProofFamilyL1ObservationPortV1,
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
-import type { JournalJsonObjectV1 } from "./journal-v1.js";
+import type { JournalJsonObject } from "./journal-v1.js";
 import type {
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowPreflightV1,
-  FraudProofWorkflowReferenceScriptV1,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowReferenceScript,
 } from "./orchestrator-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
 } from "./orchestrator-v1.js";
 import {
-  productionMissingSignatureObservationV1,
-  reconcileProductionMissingSignatureActionV1,
+  missingSignatureObservation,
+  reconcileMissingSignatureAction,
 } from "./production-missing-signature-state-v1.js";
 import {
-  bindProductionWorkflowPreflightTransactionV1,
-  LOCAL_UPLC_EVALUATOR_V1,
-  type LocallyEvaluatedTransactionV1,
-  requireReferenceOnlyScriptWitnessesV1,
-  submitCapturedTransactionV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  bindWorkflowPreflightTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1 =
+export const MISSING_SIGNATURE_TRANSACTION_PORT =
   "midgard-production-missing-signature-transaction-port-v1" as const;
 
-export type ProductionMissingSignatureCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type MissingSignatureCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   /** Present only when descendant removal acquired the shared queue fence. */
   mutationLease?: StateQueueMutationLease;
 }>;
 
-export interface ProductionMissingSignatureTransactionPortV1 {
-  readonly portVersion: typeof PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1;
+export interface MissingSignatureTransactionPort {
+  readonly portVersion: typeof MISSING_SIGNATURE_TRANSACTION_PORT;
   readonly category: "missingSignature";
   /** Pure public-evidence preparation; no operator file/API input. */
   prepare(input: {
-    readonly evidence: CanonicalBlockEvidenceV1;
+    readonly evidence: CanonicalBlockEvidence;
     readonly classification: Extract<
-      CanonicalBlockClassificationV1,
+      CanonicalBlockClassification,
       { readonly decision: "fault_detected" }
     > & { readonly category: "missingSignature" };
-  }): Promise<JournalJsonObjectV1>;
+  }): Promise<JournalJsonObject>;
   /**
    * Builds exactly one authenticated cursor action to the common pre-submit
    * boundary. A step-04 scan batch and step-04 finalization use the same port;
    * the current on-chain thread datum decides which transaction is valid.
    */
   capture(input: {
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-  }): Promise<ProductionMissingSignatureCapturedActionV1>;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<MissingSignatureCapturedAction>;
 }
 
 const CATEGORY = "missingSignature" as const;
@@ -72,8 +72,8 @@ const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
 const admitReferenceScripts = (
-  transaction: LocallyEvaluatedTransactionV1,
-): readonly FraudProofWorkflowReferenceScriptV1[] => {
+  transaction: LocallyEvaluatedTransaction,
+): readonly FraudProofWorkflowReferenceScript[] => {
   if (!TX_HASH.test(transaction.txHash)) {
     throw new Error(
       "missingSignature preflight returned a malformed body hash",
@@ -89,12 +89,12 @@ const admitReferenceScripts = (
       "missingSignature production transaction did not use published reference scripts",
     );
   }
-  requireReferenceOnlyScriptWitnessesV1({
+  requireReferenceOnlyScriptWitnesses({
     transaction,
     label: "missingSignature production transaction",
   });
   const referenceInputs = new Set(
-    workflowTransactionReferenceInputOutRefsV1(transaction.signed),
+    workflowTransactionReferenceInputOutRefs(transaction.signed),
   );
   const roles = new Set<string>();
   const outRefs = new Set<string>();
@@ -133,17 +133,17 @@ const preflightOf = ({
   action,
   transaction,
 }: {
-  readonly action: FraudProofWorkflowActionV1;
-  readonly transaction: LocallyEvaluatedTransactionV1;
-}): FraudProofWorkflowPreflightV1 =>
-  bindProductionWorkflowPreflightTransactionV1(
+  readonly action: FraudProofWorkflowAction;
+  readonly transaction: LocallyEvaluatedTransaction;
+}): FraudProofWorkflowPreflight =>
+  bindWorkflowPreflightTransaction(
     {
       actionId: action.actionId,
       txHash: transaction.txHash,
       scriptExecution: "reference_scripts",
       localUplcEvaluation: {
         status: "passed",
-        evaluator: LOCAL_UPLC_EVALUATOR_V1,
+        evaluator: LOCAL_UPLC_EVALUATOR,
       },
       referenceScripts: admitReferenceScripts(transaction),
     },
@@ -155,12 +155,12 @@ const cacheKey = (workflowId: string, actionId: string): string =>
 
 const mutationLeaseRecovery = (
   lease: StateQueueMutationLease,
-): JournalJsonObjectV1 => ({
+): JournalJsonObject => ({
   stateQueueMutationLease: { token: lease.token, source: lease.source },
 });
 
 const parseMutationLeaseRecovery = (
-  recovery: JournalJsonObjectV1 | undefined,
+  recovery: JournalJsonObject | undefined,
 ): { readonly token: string; readonly source: string } | undefined => {
   if (recovery === undefined) return undefined;
   const value = recovery.stateQueueMutationLease;
@@ -187,7 +187,7 @@ const parseMutationLeaseRecovery = (
   return { token: record.token, source: record.source };
 };
 
-const requiresMutationLease = (action: FraudProofWorkflowActionV1): boolean =>
+const requiresMutationLease = (action: FraudProofWorkflowAction): boolean =>
   action.input.stage === "remove" &&
   action.input.requiresMutationLease === true;
 
@@ -195,34 +195,30 @@ const requiresMutationLease = (action: FraudProofWorkflowActionV1): boolean =>
  * Crash-safe workflow adapter for missing-signature's cursor-driven step 04.
  * Chain state is authoritative on every action and reconciliation boundary.
  */
-export const createProductionMissingSignatureWorkflowAdapterV1 = ({
+export const createMissingSignatureWorkflowAdapter = ({
   l1,
   transactions,
   stateQueueMutationLeaseCoordinator,
 }: {
-  readonly l1: FraudProofFamilyL1ObservationPortV1<"missingSignature">;
-  readonly transactions: ProductionMissingSignatureTransactionPortV1;
+  readonly l1: FraudProofFamilyL1ObservationPort<"missingSignature">;
+  readonly transactions: MissingSignatureTransactionPort;
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-}): FraudProofFamilyWorkflowAdapterV1 => {
+}): FraudProofFamilyWorkflowAdapter => {
   if (
-    l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1 ||
+    l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT ||
     l1.category !== CATEGORY ||
-    transactions.portVersion !==
-      PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1 ||
+    transactions.portVersion !== MISSING_SIGNATURE_TRANSACTION_PORT ||
     transactions.category !== CATEGORY
   ) {
     throw new Error("missingSignature workflow ports changed identity");
   }
-  const prepared = new Map<
-    string,
-    ProductionMissingSignatureCapturedActionV1
-  >();
+  const prepared = new Map<string, MissingSignatureCapturedAction>();
   const leaseByTxHash = new Map<string, StateQueueMutationLease>();
   const current = async (headerHash: string) => {
     const observed = await l1.observe({ headerHash });
     return {
       observed,
-      workflow: productionMissingSignatureObservationV1({
+      workflow: missingSignatureObservation({
         headerHash,
         provenance: observed.provenance,
         stage: observed.stage,
@@ -230,10 +226,10 @@ export const createProductionMissingSignatureWorkflowAdapterV1 = ({
     };
   };
 
-  const adapter: FraudProofFamilyWorkflowAdapterV1 = {
-    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category: CATEGORY,
-    safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async ({ evidence, classification }) => {
       if (classification.category !== CATEGORY) {
         throw new Error(
@@ -243,7 +239,7 @@ export const createProductionMissingSignatureWorkflowAdapterV1 = ({
       return await transactions.prepare({
         evidence,
         classification: classification as Extract<
-          CanonicalBlockClassificationV1,
+          CanonicalBlockClassification,
           { readonly decision: "fault_detected" }
         > & { readonly category: "missingSignature" },
       });
@@ -342,7 +338,7 @@ export const createProductionMissingSignatureWorkflowAdapterV1 = ({
         }
         return {
           kind: "submitted",
-          txHash: await submitCapturedTransactionV1(captured.transaction),
+          txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);
@@ -386,7 +382,7 @@ export const createProductionMissingSignatureWorkflowAdapterV1 = ({
       const observed = await l1.observe({
         headerHash,
       });
-      const result = await reconcileProductionMissingSignatureActionV1({
+      const result = await reconcileMissingSignatureAction({
         headerHash,
         action,
         ...(txHash === undefined ? {} : { txHash }),

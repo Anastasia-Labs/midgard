@@ -6,44 +6,44 @@ import {
 } from "node:crypto";
 
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestV1Id,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
-  DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
-  makeDeploymentMarkerV1,
+  computeDeploymentManifestId,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+  DEPLOYMENT_MANIFEST_STEP_NAMES,
+  makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertWatcherDeploymentAvailabilityChallengeAuthorityV1,
-  assertWatcherDeploymentProtocolParameterAuthorityV1,
-  assertWatcherDeploymentProtocolScriptAuthorityV1,
-  makeWatcherDeploymentIdentitySignaturePayloadV1,
-  verifyWatcherDeploymentIdentityV1,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
-  watcherDeploymentAvailabilityChallengeAuthorityV1,
+  assertWatcherDeploymentAvailabilityChallengeAuthority,
+  assertWatcherDeploymentProtocolParameterAuthority,
+  assertWatcherDeploymentProtocolScriptAuthority,
+  makeWatcherDeploymentIdentitySignaturePayload,
+  verifyWatcherDeploymentIdentity,
+  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+  watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentIdentityDiagnostic,
   WatcherDeploymentIdentityError,
-  type WatcherDeploymentIdentityPolicyV1,
-  watcherDeploymentProtocolParameterAuthorityV1,
-  watcherDeploymentProtocolScriptAuthorityV1,
-  watcherDeploymentReleaseEconomicsAuthorityV1,
-  watcherDeploymentReleaseFinalityAuthorityV1,
+  type WatcherDeploymentIdentityPolicy,
+  watcherDeploymentProtocolParameterAuthority,
+  watcherDeploymentProtocolScriptAuthority,
+  watcherDeploymentReleaseEconomicsAuthority,
+  watcherDeploymentReleaseFinalityAuthority,
 } from "../../src/runtime/deployment-identity.js";
 import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
 
@@ -63,7 +63,7 @@ const referenceOutRefByContract = new Map<
   string,
   { txHash: string; outputIndex: number }
 >(
-  Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+  Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
     (contractName, outputIndex) => [
       contractName,
       { txHash: "22".repeat(32), outputIndex },
@@ -73,7 +73,7 @@ const referenceOutRefByContract = new Map<
 
 const canonicalIdentity = (): MutableRecord => {
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName, index) => {
       const contractScriptCbor = (index + 1).toString(16).padStart(2, "0");
       return [
         contractName,
@@ -103,28 +103,29 @@ const canonicalIdentity = (): MutableRecord => {
   contracts.fraudProofCatalogueMint.fraudProofCatalogue =
     canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
-    Object.entries(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map(([role, contractName]) => {
-      const outRef = referenceOutRefByContract.get(contractName);
-      if (outRef === undefined) {
-        throw new Error("Missing test reference outref");
-      }
-      const tokenName =
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+    Object.entries(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      ([role, contractName]) => {
+        const outRef = referenceOutRefByContract.get(contractName);
+        if (outRef === undefined) {
+          throw new Error("Missing test reference outref");
+        }
+        const tokenName =
+          DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES[
+            role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES
+          ];
+        return [
+          role,
+          {
+            status: "confirmed",
+            roleUnit:
+              NATIVE_SCRIPT_HASH +
+              Buffer.from(tokenName, "utf8").toString("hex"),
+            scriptHash: contracts[contractName].scriptHash,
+            outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
+          },
         ];
-      return [
-        role,
-        {
-          status: "confirmed",
-          roleUnit:
-            NATIVE_SCRIPT_HASH + Buffer.from(tokenName, "utf8").toString("hex"),
-          scriptHash: contracts[contractName].scriptHash,
-          outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-        },
-      ];
-    }),
+      },
+    ),
   );
   const parameters = {
     minFeeA: "44",
@@ -146,16 +147,16 @@ const canonicalIdentity = (): MutableRecord => {
   };
   return {
     schemaVersion: "midgard-deployment-manifest-v1",
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preprod",
     cardanoProtocolParameters: {
       snapshot: parameters,
-      digest: computeDeploymentManifestV1JsonDigest(parameters),
+      digest: computeDeploymentManifestJsonDigest(parameters),
     },
     genesis: {
       headerHash: "00".repeat(28),
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest([]),
+      utxoSetDigest: computeDeploymentManifestJsonDigest([]),
     },
     createdAt: "2026-07-28T00:00:00.000Z",
     updatedAt: "2026-07-28T00:00:00.000Z",
@@ -175,7 +176,7 @@ const canonicalIdentity = (): MutableRecord => {
         expiresAtUnixTime: 1,
         timelockDurationMs: 1,
       },
-      tokenNames: DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
+      tokenNames: DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
       postTimelockAudit: {
         required: true,
         rule: "No authenticated reference-script output may change.",
@@ -188,12 +189,12 @@ const canonicalIdentity = (): MutableRecord => {
       committeeSignersHash: DA_SIGNERS_HASH,
       threshold: 1,
       transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         envelopeEncoding: "identity",
         zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS_V1,
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
     proofEvidence: {
@@ -201,7 +202,7 @@ const canonicalIdentity = (): MutableRecord => {
       blueprintHash: BLUEPRINT_HASH,
     },
     steps: Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_STEP_NAMES.map((stepName) => [
+      DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
         stepName,
         {
           status:
@@ -214,16 +215,16 @@ const canonicalIdentity = (): MutableRecord => {
       ]),
     ),
     validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
     economics:
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
-    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     availabilityChallenge: {
       responseClasses: {
         smallPayloadMaxBytes: 65_536,
@@ -250,7 +251,7 @@ const canonicalIdentity = (): MutableRecord => {
 
 const withManifestId = (identity: MutableRecord): MutableRecord => ({
   ...identity,
-  manifestId: computeDeploymentManifestV1Id(identity),
+  manifestId: computeDeploymentManifestId(identity),
 });
 
 const makeTrustRoot = () => {
@@ -271,7 +272,7 @@ const makeTrustRoot = () => {
 
 const appliedScriptHashes = (manifest: MutableRecord): Record<string, string> =>
   Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => [
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => [
       contractName,
       manifest.contracts[contractName].scriptHash,
     ]),
@@ -281,7 +282,7 @@ const referenceScriptPolicy = (
   manifest: MutableRecord,
 ): Record<string, { scriptHash: string; outRef: string }> =>
   Object.fromEntries(
-    Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+    Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
       (role) => [
         role,
         {
@@ -308,7 +309,7 @@ const cataloguePolicy = (manifest: MutableRecord) => {
         ],
       ),
     ),
-  } as WatcherDeploymentIdentityPolicyV1["fraudProofCatalogue"];
+  } as WatcherDeploymentIdentityPolicy["fraudProofCatalogue"];
 };
 
 const makeFixture = () => {
@@ -318,12 +319,12 @@ const makeFixture = () => {
     "transition-order-v1": "99".repeat(32),
   };
   const releaseBindings = {
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
     ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
     programCommitments,
     da: {
       mode: "authenticated_committee_v1",
-      identityDigest: computeDeploymentManifestV1JsonDigest(manifest.da),
+      identityDigest: computeDeploymentManifestJsonDigest(manifest.da),
     },
     releaseEvidence: {
       digest: RELEASE_DIGEST,
@@ -332,7 +333,7 @@ const makeFixture = () => {
   };
   const { privateKey, trustRoot } = makeTrustRoot();
   const signedIdentity: MutableRecord = {
-    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
     manifest,
     releaseBindings,
     attestation: {
@@ -341,7 +342,7 @@ const makeFixture = () => {
       signature: "",
     },
   };
-  const policy: WatcherDeploymentIdentityPolicyV1 = {
+  const policy: WatcherDeploymentIdentityPolicy = {
     network: "Preprod",
     hubOracleOneShotOutRef: manifest.hubOracleOneShot.outRef,
     appliedScriptHashes: appliedScriptHashes(manifest),
@@ -360,7 +361,7 @@ const makeFixture = () => {
   ): void => {
     identity.attestation.signature = sign(
       null,
-      makeWatcherDeploymentIdentitySignaturePayloadV1(
+      makeWatcherDeploymentIdentitySignaturePayload(
         identity.manifest.manifestId,
         identity.releaseBindings,
       ),
@@ -374,7 +375,7 @@ const makeFixture = () => {
     trustRoot,
     privateKey,
     resign,
-    durableMarker: makeDeploymentMarkerV1(manifest.manifestId),
+    durableMarker: makeDeploymentMarker(manifest.manifestId),
   };
 };
 
@@ -404,7 +405,7 @@ describe("watcher deployment identity", () => {
     const fixture = makeFixture();
 
     expect(
-      verifyWatcherDeploymentIdentityV1({
+      verifyWatcherDeploymentIdentity({
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
@@ -424,13 +425,13 @@ describe("watcher deployment identity", () => {
 
   it("mints an opaque deployment-bound state-queue and CorrectionLock script authority", () => {
     const fixture = makeFixture();
-    const identity = verifyWatcherDeploymentIdentityV1({
+    const identity = verifyWatcherDeploymentIdentity({
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
       durableMarker: fixture.durableMarker,
     });
-    const authority = watcherDeploymentProtocolScriptAuthorityV1(identity);
+    const authority = watcherDeploymentProtocolScriptAuthority(identity);
 
     expect(authority).toMatchObject({
       deploymentFingerprint: identity.manifestId,
@@ -450,27 +451,27 @@ describe("watcher deployment identity", () => {
     expect(Object.isFrozen(authority.protocolScriptHashes)).toBe(true);
     expect(Object.isFrozen(authority.referenceScripts)).toBe(true);
     expect(() =>
-      assertWatcherDeploymentProtocolScriptAuthorityV1(authority),
+      assertWatcherDeploymentProtocolScriptAuthority(authority),
     ).not.toThrow();
     expect(() =>
-      assertWatcherDeploymentProtocolScriptAuthorityV1({
+      assertWatcherDeploymentProtocolScriptAuthority({
         ...authority,
       }),
     ).toThrow("invalid_field");
     expect(() =>
-      watcherDeploymentProtocolScriptAuthorityV1({ ...identity }),
+      watcherDeploymentProtocolScriptAuthority({ ...identity }),
     ).toThrow("invalid_field");
   });
 
   it("mints exact protocol parameters only from the signed deployment identity", () => {
     const fixture = makeFixture();
-    const identity = verifyWatcherDeploymentIdentityV1({
+    const identity = verifyWatcherDeploymentIdentity({
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
       durableMarker: fixture.durableMarker,
     });
-    const authority = watcherDeploymentProtocolParameterAuthorityV1(identity);
+    const authority = watcherDeploymentProtocolParameterAuthority(identity);
 
     expect(authority).toEqual({
       schemaVersion:
@@ -485,26 +486,25 @@ describe("watcher deployment identity", () => {
     expect(Object.isFrozen(authority)).toBe(true);
     expect(Object.isFrozen(authority.snapshot)).toBe(true);
     expect(() =>
-      assertWatcherDeploymentProtocolParameterAuthorityV1(authority),
+      assertWatcherDeploymentProtocolParameterAuthority(authority),
     ).not.toThrow();
     expect(() =>
-      assertWatcherDeploymentProtocolParameterAuthorityV1({ ...authority }),
+      assertWatcherDeploymentProtocolParameterAuthority({ ...authority }),
     ).toThrow("invalid_field");
     expect(() =>
-      watcherDeploymentProtocolParameterAuthorityV1({ ...identity }),
+      watcherDeploymentProtocolParameterAuthority({ ...identity }),
     ).toThrow("invalid_field");
   });
 
   it("mints exact Q58 availability parameters only from the signed deployment identity", () => {
     const fixture = makeFixture();
-    const identity = verifyWatcherDeploymentIdentityV1({
+    const identity = verifyWatcherDeploymentIdentity({
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
       durableMarker: fixture.durableMarker,
     });
-    const authority =
-      watcherDeploymentAvailabilityChallengeAuthorityV1(identity);
+    const authority = watcherDeploymentAvailabilityChallengeAuthority(identity);
 
     expect(authority).toEqual({
       schemaVersion:
@@ -531,27 +531,27 @@ describe("watcher deployment identity", () => {
     expect(Object.isFrozen(authority)).toBe(true);
     expect(Object.isFrozen(authority.parameters)).toBe(true);
     expect(() =>
-      assertWatcherDeploymentAvailabilityChallengeAuthorityV1(authority),
+      assertWatcherDeploymentAvailabilityChallengeAuthority(authority),
     ).not.toThrow();
     expect(() =>
-      assertWatcherDeploymentAvailabilityChallengeAuthorityV1({
+      assertWatcherDeploymentAvailabilityChallengeAuthority({
         ...authority,
       }),
     ).toThrow("invalid_field");
     expect(() =>
-      watcherDeploymentAvailabilityChallengeAuthorityV1({ ...identity }),
+      watcherDeploymentAvailabilityChallengeAuthority({ ...identity }),
     ).toThrow("invalid_field");
   });
 
   it("mints release finality only from the exact signed deployment identity", async () => {
     const fixture = makeFixture();
-    const identity = verifyWatcherDeploymentIdentityV1({
+    const identity = verifyWatcherDeploymentIdentity({
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
       durableMarker: fixture.durableMarker,
     });
-    const authority = watcherDeploymentReleaseFinalityAuthorityV1(identity);
+    const authority = watcherDeploymentReleaseFinalityAuthority(identity);
 
     await expect(
       authority.verifyForWorkflow({
@@ -560,7 +560,7 @@ describe("watcher deployment identity", () => {
     ).resolves.toMatchObject({
       deploymentIdentityDigest: identity.manifestId,
       releaseIdentityDigest: RELEASE_DIGEST,
-      policy: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+      policy: DEPLOYMENT_MANIFEST_L1_FINALITY,
       policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     await expect(
@@ -574,19 +574,19 @@ describe("watcher deployment identity", () => {
       clone.verifyForWorkflow({ deploymentFingerprint: identity.manifestId }),
     ).rejects.toThrow("invalid_field");
     expect(() =>
-      watcherDeploymentReleaseFinalityAuthorityV1({ ...identity }),
+      watcherDeploymentReleaseFinalityAuthority({ ...identity }),
     ).toThrow("invalid_field");
   });
 
   it("mints exact release economics only from the signed deployment identity", async () => {
     const fixture = makeFixture();
-    const identity = verifyWatcherDeploymentIdentityV1({
+    const identity = verifyWatcherDeploymentIdentity({
       signedIdentity: fixture.signedIdentity,
       policy: fixture.policy,
       trustRoots: [fixture.trustRoot],
       durableMarker: fixture.durableMarker,
     });
-    const authority = watcherDeploymentReleaseEconomicsAuthorityV1(identity);
+    const authority = watcherDeploymentReleaseEconomicsAuthority(identity);
 
     await expect(
       authority.verifyForWorkflow({
@@ -612,7 +612,7 @@ describe("watcher deployment identity", () => {
       clone.verifyForWorkflow({ deploymentFingerprint: identity.manifestId }),
     ).rejects.toThrow("invalid_field");
     expect(() =>
-      watcherDeploymentReleaseEconomicsAuthorityV1({ ...identity }),
+      watcherDeploymentReleaseEconomicsAuthority({ ...identity }),
     ).toThrow("invalid_field");
   });
 
@@ -723,7 +723,7 @@ describe("watcher deployment identity", () => {
     };
     rejection(
       () =>
-        verifyWatcherDeploymentIdentityV1({
+        verifyWatcherDeploymentIdentity({
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
@@ -737,7 +737,7 @@ describe("watcher deployment identity", () => {
   it("requires the exact durable deployment marker", () => {
     const fixture = makeFixture();
     const verify = (durableMarker: unknown) =>
-      verifyWatcherDeploymentIdentityV1({
+      verifyWatcherDeploymentIdentity({
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
@@ -746,7 +746,7 @@ describe("watcher deployment identity", () => {
 
     rejection(() => verify(null), "missing_durable_marker", "$.durableMarker");
     rejection(
-      () => verify(makeDeploymentMarkerV1("aa".repeat(32))),
+      () => verify(makeDeploymentMarker("aa".repeat(32))),
       "durable_marker_mismatch",
       "$.durableMarker",
     );
@@ -756,7 +756,7 @@ describe("watcher deployment identity", () => {
     const fixture = makeFixture();
     const other = makeTrustRoot();
     const verify = () =>
-      verifyWatcherDeploymentIdentityV1({
+      verifyWatcherDeploymentIdentity({
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
@@ -776,7 +776,7 @@ describe("watcher deployment identity", () => {
   it("rejects unknown, missing, and malformed signed-identity fields", () => {
     const fixture = makeFixture();
     const verify = () =>
-      verifyWatcherDeploymentIdentityV1({
+      verifyWatcherDeploymentIdentity({
         signedIdentity: fixture.signedIdentity,
         policy: fixture.policy,
         trustRoots: [fixture.trustRoot],
@@ -821,13 +821,12 @@ describe("watcher deployment identity", () => {
     const signedIdentity = structuredClone(fixture.signedIdentity);
     mutate(signedIdentity.manifest);
     const { manifestId: _manifestId, ...identity } = signedIdentity.manifest;
-    signedIdentity.manifest.manifestId =
-      computeDeploymentManifestV1Id(identity);
+    signedIdentity.manifest.manifestId = computeDeploymentManifestId(identity);
     fixture.resign(signedIdentity);
 
     rejection(
       () =>
-        verifyWatcherDeploymentIdentityV1({
+        verifyWatcherDeploymentIdentity({
           signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
@@ -846,7 +845,7 @@ describe("watcher deployment identity", () => {
         const { manifestId: _manifestId, ...identity } =
           fixture.signedIdentity.manifest;
         fixture.signedIdentity.manifest.manifestId =
-          computeDeploymentManifestV1Id(identity);
+          computeDeploymentManifestId(identity);
         fixture.resign();
       },
       "$.manifest.network",
@@ -953,7 +952,7 @@ describe("watcher deployment identity", () => {
 
     const error = rejection(
       () =>
-        verifyWatcherDeploymentIdentityV1({
+        verifyWatcherDeploymentIdentity({
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],
@@ -970,7 +969,7 @@ describe("watcher deployment identity", () => {
     fixture.signedIdentity.attestation.signature = "00".repeat(64);
     const error = rejection(
       () =>
-        verifyWatcherDeploymentIdentityV1({
+        verifyWatcherDeploymentIdentity({
           signedIdentity: fixture.signedIdentity,
           policy: fixture.policy,
           trustRoots: [fixture.trustRoot],

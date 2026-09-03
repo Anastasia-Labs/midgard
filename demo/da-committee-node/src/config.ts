@@ -1,21 +1,21 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { assertRetentionWindowCoversDeploymentV1 } from "@al-ft/midgard-core";
+import { assertRetentionWindowCoversDeployment } from "@al-ft/midgard-core";
 import {
-  assertMidgardConsensusV1ReleaseReady,
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  type MidgardConsensusProfileV1,
+  assertMidgardConsensusReleaseReady,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   type DaLibp2pRuntimeManifest,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  type DeploymentManifestV1AvailabilityChallenge,
-  parseDeploymentManifestV1AvailabilityChallenge,
-  verifyFinalizedDeploymentManifestV1,
+  type DeploymentManifestAvailabilityChallenge,
+  parseDeploymentManifestAvailabilityChallenge,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -107,8 +107,8 @@ export type WatcherConfig = {
   readonly deploymentManifestRaw: string;
   readonly deploymentManifest: Record<string, unknown>;
   readonly contractDeploymentInfo: Record<string, unknown>;
-  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly midgardNodeDeployment: MidgardNodeDeployment;
   readonly l1Source: L1SourceConfig;
   readonly cardanoProviderUrls: readonly string[];
@@ -246,7 +246,7 @@ export const DEFAULT_L1_SUBMITTER_PREFLIGHT = {
 } as const;
 
 export const LIBP2P_DA_TRANSPORT_LIMITS = {
-  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
   maxInlineResponseBytes: 1_048_576,
   maxChunkBytes: 1_048_576,
   maxStreamsPerPeer: 16,
@@ -317,7 +317,7 @@ export const loadWatcherConfig = async (
     runtimeManifest,
     deploymentFingerprint,
   });
-  assertLibp2pDaRetentionDaysV1({
+  assertLibp2pDaRetentionDays({
     runtimeRetentionDays: libp2pDaTransport.retentionDays,
     manifestRetentionDays: manifestDaRetentionDays,
   });
@@ -1259,18 +1259,18 @@ const contractDeploymentManifestConfig = (
   path: string,
 ): {
   readonly manifestId: string;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly network: string;
   readonly daRetentionDays: number;
   readonly finalityDepth: number;
-  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
+  readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;
 } => {
-  const verified = verifyFinalizedDeploymentManifestV1(contractDeploymentInfo);
+  const verified = verifyFinalizedDeploymentManifest(contractDeploymentInfo);
   const exactProfile = verified.consensusProfile;
-  if (!isMidgardConsensusProfileV1(exactProfile)) {
+  if (!isMidgardConsensusProfile(exactProfile)) {
     throw new Error(`${path} does not contain the exact V1 consensus profile`);
   }
-  assertMidgardConsensusV1ReleaseReady();
+  assertMidgardConsensusReleaseReady();
   const manifestId = verified.manifestId as string;
   const network = verified.network;
   if (typeof network !== "string" || network.length === 0) {
@@ -1278,7 +1278,7 @@ const contractDeploymentManifestConfig = (
   }
   // Q54: the retention window is part of deployment identity, so read it from
   // the *verified* deployment manifest rather than from the runtime manifest.
-  const daRetentionDays = assertRetentionWindowCoversDeploymentV1(verified);
+  const daRetentionDays = assertRetentionWindowCoversDeployment(verified);
   const l1Finality = verified.l1Finality as Record<string, unknown>;
   const finalityDepth = l1Finality.confirmationDepth;
   if (
@@ -1286,7 +1286,7 @@ const contractDeploymentManifestConfig = (
     !Number.isSafeInteger(finalityDepth) ||
     finalityDepth < 0
   ) {
-    // `verifyFinalizedDeploymentManifestV1` already establishes this shape.
+    // `verifyFinalizedDeploymentManifest` already establishes this shape.
     // Keep the local assertion at the boundary so a future parser change
     // cannot silently turn release finality back into caller configuration.
     throw new Error(`${path} has invalid l1Finality.confirmationDepth`);
@@ -1300,7 +1300,7 @@ const contractDeploymentManifestConfig = (
     network,
     daRetentionDays,
     finalityDepth,
-    availabilityChallenge: parseDeploymentManifestV1AvailabilityChallenge(
+    availabilityChallenge: parseDeploymentManifestAvailabilityChallenge(
       verified.availabilityChallenge,
     ),
   };
@@ -1316,7 +1316,7 @@ export class DaRetentionWindowConfigError extends Error {
  * must both clear the canonical floor and exactly equal the verified deployment
  * manifest's `da.transportProfile.retentionDays`.
  */
-export const assertLibp2pDaRetentionDaysV1 = (args: {
+export const assertLibp2pDaRetentionDays = (args: {
   readonly runtimeRetentionDays: number;
   readonly manifestRetentionDays: number;
 }): number => {

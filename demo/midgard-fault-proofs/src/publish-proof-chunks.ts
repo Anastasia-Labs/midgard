@@ -35,7 +35,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   splitProofIntoChunkDatums,
 } from "./proof-chunk-carriage.js";
 import {
@@ -50,21 +50,21 @@ import {
 } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
 } from "./workflow/transaction-boundary-v1.js";
 
 export * from "./proof-chunk-carriage.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };
 
-export type PublishedProofV1 = {
+export type PublishedProof = {
   readonly txHash: string;
-  readonly chunks: readonly PublishedProofChunkV1[];
+  readonly chunks: readonly PublishedProofChunk[];
   readonly proofStepCount: number;
   readonly spentFeeInput: UTxO;
 };
 
-export const resolvePublishedProofChunksV1 = async ({
+export const resolvePublishedProofChunks = async ({
   lucid,
   address,
   proofCbor,
@@ -72,12 +72,12 @@ export const resolvePublishedProofChunksV1 = async ({
   readonly lucid: LucidEvolution;
   readonly address: string;
   readonly proofCbor: string;
-}): Promise<readonly PublishedProofChunkV1[] | undefined> => {
+}): Promise<readonly PublishedProofChunk[] | undefined> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
   if (datums.length === 0) return [];
   const candidates = await lucid.utxosAt(address);
   const claimed = new Set<string>();
-  const chunks: PublishedProofChunkV1[] = [];
+  const chunks: PublishedProofChunk[] = [];
   for (const datum of datums) {
     const match = candidates.find((utxo) => {
       const label = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -112,7 +112,7 @@ export const resolvePublishedProofChunksV1 = async ({
  * the step that references them — a step builder must keep them out of both its
  * inputs and its collateral.
  */
-export const publishProofChunksV1 = async ({
+export const publishProofChunks = async ({
   lucid,
   network,
   signer,
@@ -125,9 +125,9 @@ export const publishProofChunksV1 = async ({
   readonly signer: ResolvedProverSigner;
   readonly proofCbor: string;
   /** Production workflow seam for the chunk publication transaction. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<PublishedProofV1> => {
+}): Promise<PublishedProof> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
   if (datums.length === 0) {
     throw new Error(
@@ -161,7 +161,7 @@ export const publishProofChunksV1 = async ({
     .complete({ localUPLCEval: true });
 
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [],
     boundary: preSubmitBoundary,
@@ -177,7 +177,7 @@ export const publishProofChunksV1 = async ({
   }
 
   const claimed = new Set<number>();
-  const chunks: PublishedProofChunkV1[] = [];
+  const chunks: PublishedProofChunk[] = [];
   const candidates = await lucid.utxosAt(address);
   for (const datum of datums) {
     const match = candidates.find(

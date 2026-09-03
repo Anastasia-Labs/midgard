@@ -4,16 +4,16 @@
 
 import { encodeMidgardTxOutput, outRefToCbor } from "@al-ft/lucid-midgard";
 import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  type MidgardConsensusProfileV1,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
@@ -33,30 +33,30 @@ import { configureCommitMpfRuntime } from "./engine-config.js";
 import { MpfError } from "./errors.js";
 import {
   ledgerEntryToInsertBatchOp,
-  ledgerOutputToInsertBatchOpV1,
+  ledgerOutputToInsertBatchOp,
 } from "./ledger-delta.js";
 import { MidgardMpf } from "./store.js";
 import { type MpfInsertBatchOp } from "./types.js";
 
 export const encodeTransactionRootValue = (
   txCanonicalCbor: Buffer,
-  consensusProfile: MidgardConsensusProfileV1 = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
 ): Buffer => {
-  if (!isMidgardConsensusProfileV1(consensusProfile)) {
+  if (!isMidgardConsensusProfile(consensusProfile)) {
     throw new Error("Refusing transaction under a non-V1 consensus profile");
   }
-  const violation = validateMidgardConsensusV1TxCbor(txCanonicalCbor);
+  const violation = validateMidgardConsensusTxCbor(txCanonicalCbor);
   if (violation !== null) {
     throw new Error(
       `Refusing transaction outside the exact canonical V1 consensus profile: ${violation.code} ${violation.featureId} ${violation.detail}`,
     );
   }
   const source =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(txCanonicalCbor);
-  const transactionId = computeMidgardNativeTxIdV1(
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(txCanonicalCbor),
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(txCanonicalCbor);
+  const transactionId = computeMidgardNativeTxId(
+    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
   );
-  const value: SDK.L2TransactionSourceV1 = {
+  const value: SDK.L2TransactionSource = {
     tx_id: transactionId.toString("hex"),
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
@@ -66,9 +66,7 @@ export const encodeTransactionRootValue = (
     },
   };
   return Buffer.from(
-    aikenSerialisedPlutusDataCbor(
-      LucidData.to(value, SDK.L2TransactionSourceV1),
-    ),
+    aikenSerialisedPlutusDataCbor(LucidData.to(value, SDK.L2TransactionSource)),
     "hex",
   );
 };
@@ -114,7 +112,7 @@ export const makeMpfs: Effect.Effect<
     const genesisEntries = yield* Effect.forEach(
       nodeConfig.GENESIS_UTXOS,
       (u: UTxO) =>
-        utxoToLedgerInsertMaterialV1(u).pipe(
+        utxoToLedgerInsertMaterial(u).pipe(
           Effect.mapError((e) => MpfError.rootBuild("ledger genesis", e)),
           Effect.map(({ ledgerOp, outputCbor }) => ({
             op: ledgerOp,
@@ -244,7 +242,7 @@ export const synchronizeCommitMpfStoresFromConfirmedLedger: Effect.Effect<
   return yield* synchronizeCommitMpfStoresFromLedgerEntries(confirmedEntries);
 });
 
-export const utxoToLedgerInsertMaterialV1 = (
+export const utxoToLedgerInsertMaterial = (
   utxo: UTxO,
 ): Effect.Effect<
   {
@@ -280,7 +278,7 @@ export const utxoToLedgerInsertMaterialV1 = (
         }),
     });
     const ledgerOp = yield* Effect.try({
-      try: () => ledgerOutputToInsertBatchOpV1({ outRef, outputCbor: output }),
+      try: () => ledgerOutputToInsertBatchOp({ outRef, outputCbor: output }),
       catch: (e) =>
         new SDK.CmlDeserializationError({
           message: "Failed to derive the canonical V1 genesis descriptor",

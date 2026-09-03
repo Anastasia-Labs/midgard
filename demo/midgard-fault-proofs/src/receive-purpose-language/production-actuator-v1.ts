@@ -1,6 +1,6 @@
 import type {
-  ForcedInclusionTxV1,
-  HeaderV1,
+  ForcedInclusionTx,
+  Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
@@ -10,38 +10,38 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  captureProductionCursorRemovalV1,
-  type ProductionCursorFamilyActionInputV1,
+  captureCursorRemoval,
+  type CursorFamilyActionInput,
 } from "../workflow/production-cursor-family-runtime-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  type LocallyEvaluatedTransactionV1,
+  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ReceivePurposeLanguageContractsV1 } from "./contracts-v1.js";
-import type { ReceivePurposeLanguageEvidenceV1 } from "./family-v1.js";
+import type { ReceivePurposeLanguageContracts } from "./contracts-v1.js";
+import type { ReceivePurposeLanguageEvidence } from "./family-v1.js";
 import {
-  submitReceivePurposeLanguageStep01AcceptedV1,
-  submitReceivePurposeLanguageStep01ForcedV1,
+  submitReceivePurposeLanguageStep01Accepted,
+  submitReceivePurposeLanguageStep01Forced,
 } from "./submit-step-01-v1.js";
-import type { ReceivePurposeLanguageAuthenticationV1 } from "./submit-step-02-v1.js";
-import { submitReceivePurposeLanguageStep02V1 } from "./submit-step-02-v1.js";
-import { submitReceivePurposeLanguageStep03V1 } from "./submit-step-03-v1.js";
+import type { ReceivePurposeLanguageAuthentication } from "./submit-step-02-v1.js";
+import { submitReceivePurposeLanguageStep02 } from "./submit-step-02-v1.js";
+import { submitReceivePurposeLanguageStep03 } from "./submit-step-03-v1.js";
 
-export type ReceivePurposeLanguageProductionArtifactV1 = Readonly<{
+export type ReceivePurposeLanguageArtifact = Readonly<{
   headerHash: string;
-  header: HeaderV1;
-  evidence: ReceivePurposeLanguageEvidenceV1;
-  authentication: ReceivePurposeLanguageAuthenticationV1;
+  header: Header;
+  evidence: ReceivePurposeLanguageEvidence;
+  authentication: ReceivePurposeLanguageAuthentication;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
+  forcedMembership?: RootMembershipProof<OutputReference, ForcedInclusionTx>;
 }>;
-export type ReceivePurposeLanguageWorkflowReferencesV1 = Readonly<{
+export type ReceivePurposeLanguageWorkflowReferences = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
 }>;
-export type ReceivePurposeLanguageActuatorActionV1 =
+export type ReceivePurposeLanguageActuatorAction =
   | Readonly<{ stage: "init"; stateQueueBlockOutRef: string }>
   | Readonly<{
       stage: "step_01";
@@ -55,13 +55,13 @@ export type ReceivePurposeLanguageActuatorActionV1 =
       nextRemovalOutRef: string;
       fraudProofOutRef: string;
     }>;
-export type ReceivePurposeLanguageCapturedActionV1 = Readonly<{
-  transaction: LocallyEvaluatedTransactionV1;
+export type ReceivePurposeLanguageCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   mutationLease?: Awaited<
     ReturnType<StateQueueMutationLeaseCoordinator["acquire"]>
   >;
 }>;
-export type BoundReceivePurposeLanguageActuatorConfigV1 = Readonly<{
+export type BoundReceivePurposeLanguageActuatorConfig = Readonly<{
   binding: Readonly<{
     blueprint: unknown;
     deploymentInfo: unknown;
@@ -79,29 +79,29 @@ export type BoundReceivePurposeLanguageActuatorConfigV1 = Readonly<{
   }>;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: ReceivePurposeLanguageContractsV1;
-  references: ReceivePurposeLanguageWorkflowReferencesV1;
+  contracts: ReceivePurposeLanguageContracts;
+  references: ReceivePurposeLanguageWorkflowReferences;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 const captured = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransactionV1>[0],
-): Promise<ReceivePurposeLanguageCapturedActionV1> =>
+  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+): Promise<ReceivePurposeLanguageCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransactionV1(submit),
+    transaction: await captureLocallyEvaluatedTransaction(submit),
   });
 
 /** Family-owned local-evaluation boundary; callers cannot submit around intent journaling. */
-export const createReceivePurposeLanguageActuatorV1 = (
-  config: BoundReceivePurposeLanguageActuatorConfigV1,
+export const createReceivePurposeLanguageActuator = (
+  config: BoundReceivePurposeLanguageActuatorConfig,
 ) =>
   Object.freeze({
     capture: async ({
       action,
       artifact,
     }: {
-      action: ReceivePurposeLanguageActuatorActionV1;
-      artifact: ReceivePurposeLanguageProductionArtifactV1;
-    }): Promise<ReceivePurposeLanguageCapturedActionV1> => {
+      action: ReceivePurposeLanguageActuatorAction;
+      artifact: ReceivePurposeLanguageArtifact;
+    }): Promise<ReceivePurposeLanguageCapturedAction> => {
       if (artifact.headerHash !== config.binding.definition.headerHash)
         throw new Error("receivePurposeLanguage artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
@@ -136,7 +136,7 @@ export const createReceivePurposeLanguageActuatorV1 = (
             awaitConfirmation: false,
           } as const;
           if (artifact.acceptedInclusion !== undefined)
-            await submitReceivePurposeLanguageStep01AcceptedV1({
+            await submitReceivePurposeLanguageStep01Accepted({
               ...common,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -145,7 +145,7 @@ export const createReceivePurposeLanguageActuatorV1 = (
               witnessReferenceScripts: config.references.witnesses,
             });
           else if (artifact.forcedMembership !== undefined)
-            await submitReceivePurposeLanguageStep01ForcedV1({
+            await submitReceivePurposeLanguageStep01Forced({
               ...common,
               membership: artifact.forcedMembership,
             });
@@ -156,7 +156,7 @@ export const createReceivePurposeLanguageActuatorV1 = (
         });
       if (action.stage === "step_02")
         return await captured(async (preSubmitBoundary) => {
-          await submitReceivePurposeLanguageStep02V1({
+          await submitReceivePurposeLanguageStep02({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -171,7 +171,7 @@ export const createReceivePurposeLanguageActuatorV1 = (
         });
       if (action.stage === "step_03")
         return await captured(async (preSubmitBoundary) => {
-          await submitReceivePurposeLanguageStep03V1({
+          await submitReceivePurposeLanguageStep03({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -184,7 +184,7 @@ export const createReceivePurposeLanguageActuatorV1 = (
             awaitConfirmation: false,
           });
         });
-      return await captureProductionCursorRemovalV1({
+      return await captureCursorRemoval({
         category: {
           name: "receivePurposeLanguage",
           categoryId,
@@ -211,7 +211,7 @@ export const createReceivePurposeLanguageActuatorV1 = (
           stage: "remove",
           nextRemovalOutRef: action.nextRemovalOutRef,
           fraudProofOutRef: action.fraudProofOutRef,
-        } as ProductionCursorFamilyActionInputV1,
+        } as CursorFamilyActionInput,
         stateQueueMutationLeaseCoordinator:
           config.stateQueueMutationLeaseCoordinator,
         fraudProverRewardLovelace: BigInt(

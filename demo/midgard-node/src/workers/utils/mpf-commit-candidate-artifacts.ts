@@ -19,7 +19,7 @@ import {
 
 type JsonRecord = Record<string, unknown>;
 
-export type ArchitectureGPhase1FormalBindingIdentityV1 = {
+export type ArchitectureGPhase1FormalBindingIdentity = {
   readonly schemaVersion: "midgard-architecture-g-phase1-formal-binding-identity-v1";
   readonly path: string;
   readonly sha256: string;
@@ -48,17 +48,17 @@ export type ArchitectureGPhase1FormalBindingIdentityV1 = {
   };
 };
 
-export type ArchitectureGRuntimeIdentityV1 = {
+export type ArchitectureGRuntimeIdentity = {
   readonly schemaVersion: "midgard-architecture-g-runtime-identity-v1";
   readonly version: string;
   readonly execPath: string;
   readonly executableSha256: string;
 };
 
-export type ArchitectureGCommitCandidateSeedInputV1 = {
+export type ArchitectureGCommitCandidateSeedInput = {
   readonly schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1";
-  readonly phase1FormalBinding: ArchitectureGPhase1FormalBindingIdentityV1;
-  readonly runtimeIdentity: ArchitectureGRuntimeIdentityV1;
+  readonly phase1FormalBinding: ArchitectureGPhase1FormalBindingIdentity;
+  readonly runtimeIdentity: ArchitectureGRuntimeIdentity;
   readonly corpusSlicePath: string;
   readonly corpusSliceSha256: string;
   readonly fundingMapPath: string;
@@ -67,7 +67,7 @@ export type ArchitectureGCommitCandidateSeedInputV1 = {
   readonly firstTimestampIso: string;
 };
 
-export type ArchitectureGCorpusFundingV1 = {
+export type ArchitectureGCorpusFunding = {
   readonly schemaVersion: "midgard-architecture-g-corpus-funding-v1";
   readonly corpusSha256: string;
   readonly sliceSha256: string;
@@ -78,7 +78,7 @@ export type ArchitectureGCorpusFundingV1 = {
   }[];
 };
 
-export type ArchitectureGCommitCandidateSeedResultV1 = {
+export type ArchitectureGCommitCandidateSeedResult = {
   readonly schemaVersion: "midgard-architecture-g-commit-candidate-seed-result-v1";
   readonly databaseName: string;
   readonly corpusSliceSha256: string;
@@ -88,10 +88,10 @@ export type ArchitectureGCommitCandidateSeedResultV1 = {
   readonly deltaCount: number;
 };
 
-export type ArchitectureGCommitCandidateInputV1 = {
+export type ArchitectureGCommitCandidateInput = {
   readonly schemaVersion: "midgard-architecture-g-commit-candidate-input-v1";
-  readonly phase1FormalBinding: ArchitectureGPhase1FormalBindingIdentityV1;
-  readonly runtimeIdentity: ArchitectureGRuntimeIdentityV1;
+  readonly phase1FormalBinding: ArchitectureGPhase1FormalBindingIdentity;
+  readonly runtimeIdentity: ArchitectureGRuntimeIdentity;
   readonly levelPath: string;
   readonly binaryPath: string;
   readonly binarySha256: string;
@@ -169,7 +169,7 @@ export type ArchitectureGCommitCandidateInputV1 = {
   };
 };
 
-export type ArchitectureGFixtureCreationV1 = {
+export type ArchitectureGFixtureCreation = {
   readonly fixtureCreated: true;
   readonly fixturePath: string;
   readonly initialUtxoCount: number;
@@ -289,7 +289,7 @@ const decodeArchitectureGOwnerDiagnostics = (
 
 const decodePhase1FormalBindingIdentity = (
   value: unknown,
-): ArchitectureGPhase1FormalBindingIdentityV1 => {
+): ArchitectureGPhase1FormalBindingIdentity => {
   const identity = exactKeysRecord(
     value,
     "Architecture G Phase 1 formal-binding identity",
@@ -370,12 +370,12 @@ const decodePhase1FormalBindingIdentity = (
   );
   sha256Digest(harness.scenarioId, "formalBinding.harness.scenarioId");
   sha256Digest(harness.engineId, "formalBinding.harness.engineId");
-  return identity as ArchitectureGPhase1FormalBindingIdentityV1;
+  return identity as ArchitectureGPhase1FormalBindingIdentity;
 };
 
 const decodeRuntimeIdentity = (
   value: unknown,
-): ArchitectureGRuntimeIdentityV1 => {
+): ArchitectureGRuntimeIdentity => {
   const identity = exactKeysRecord(value, "Architecture G runtime identity", [
     "schemaVersion",
     "version",
@@ -388,12 +388,12 @@ const decodeRuntimeIdentity = (
   boundedNonEmptyString(identity.version, "runtimeIdentity.version");
   canonicalAbsolutePath(identity.execPath, "runtimeIdentity.execPath");
   sha256Digest(identity.executableSha256, "runtimeIdentity.executableSha256");
-  return identity as ArchitectureGRuntimeIdentityV1;
+  return identity as ArchitectureGRuntimeIdentity;
 };
 
-export const decodeArchitectureGCommitCandidateSeedInputV1 = (
+export const decodeArchitectureGCommitCandidateSeedInput = (
   value: unknown,
-): ArchitectureGCommitCandidateSeedInputV1 => {
+): ArchitectureGCommitCandidateSeedInput => {
   const input = exactKeysRecord(
     value,
     "Architecture G commit-candidate seed input",
@@ -425,12 +425,12 @@ export const decodeArchitectureGCommitCandidateSeedInputV1 = (
     "seedInput.expectedTransactionCount",
   );
   canonicalUtcTimestamp(input.firstTimestampIso, "seedInput.firstTimestampIso");
-  return input as ArchitectureGCommitCandidateSeedInputV1;
+  return input as ArchitectureGCommitCandidateSeedInput;
 };
 
-export const decodeArchitectureGCommitCandidateInputV1 = (
+export const decodeArchitectureGCommitCandidateInput = (
   value: unknown,
-): ArchitectureGCommitCandidateInputV1 => {
+): ArchitectureGCommitCandidateInput => {
   const input = exactKeysRecord(
     value,
     "Architecture G commit-candidate input",
@@ -749,16 +749,16 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       );
     }
   }
-  return input as ArchitectureGCommitCandidateInputV1;
+  return input as ArchitectureGCommitCandidateInput;
 };
 
-export const assertArchitectureGCandidateSlotRuntimeIdentityV1 = ({
+export const assertArchitectureGCandidateSlotRuntimeIdentity = ({
   input,
   runtimeNetwork,
   ogmiosUrl,
   customGenesis,
 }: {
-  readonly input: ArchitectureGCommitCandidateInputV1;
+  readonly input: ArchitectureGCommitCandidateInput;
   readonly runtimeNetwork: "Mainnet" | "Preview" | "Preprod" | "Custom";
   readonly ogmiosUrl?: string;
   readonly customGenesis?: ShelleyGenesisSlotEvidence;
@@ -790,7 +790,7 @@ export const assertArchitectureGCandidateSlotRuntimeIdentityV1 = ({
   }
 };
 
-export const decodeArchitectureGFixtureCreationV1 = ({
+export const decodeArchitectureGFixtureCreation = ({
   value,
   expectedFixturePath,
   expectedMarker,
@@ -807,7 +807,7 @@ export const decodeArchitectureGFixtureCreationV1 = ({
     readonly encodedTupleBytes: number;
   };
   readonly expectedFundingMapSha256: string | null;
-}): ArchitectureGFixtureCreationV1 => {
+}): ArchitectureGFixtureCreation => {
   const artifact = exactKeysRecord(
     value,
     "Architecture G fixture-creation artifact",
@@ -925,10 +925,10 @@ export const decodeArchitectureGFixtureCreationV1 = ({
       "Architecture G fixture creation does not bind the candidate path, root, cardinality, payload aggregate, and canonical funding",
     );
   }
-  return artifact as ArchitectureGFixtureCreationV1;
+  return artifact as ArchitectureGFixtureCreation;
 };
 
-export const decodeArchitectureGCorpusFundingV1 = ({
+export const decodeArchitectureGCorpusFunding = ({
   value,
   expectedCorpusSha256,
   expectedSliceSha256,
@@ -941,7 +941,7 @@ export const decodeArchitectureGCorpusFundingV1 = ({
     readonly walletId: string;
     readonly outref: string;
   }[];
-}): ArchitectureGCorpusFundingV1 => {
+}): ArchitectureGCorpusFunding => {
   sha256Digest(expectedCorpusSha256, "expectedCorpusSha256");
   sha256Digest(expectedSliceSha256, "expectedSliceSha256");
   const funding = exactKeysRecord(value, "Architecture G corpus funding", [
@@ -1030,10 +1030,10 @@ export const decodeArchitectureGCorpusFundingV1 = ({
       }
     }
   }
-  return funding as ArchitectureGCorpusFundingV1;
+  return funding as ArchitectureGCorpusFunding;
 };
 
-export const validateArchitectureGCommitCandidateProbeResultV1 = ({
+export const validateArchitectureGCommitCandidateProbeResult = ({
   value,
   expectedInput,
   expectedInputPath,
@@ -1043,14 +1043,14 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
   expectedCpuAffinity,
 }: {
   readonly value: unknown;
-  readonly expectedInput: ArchitectureGCommitCandidateInputV1;
+  readonly expectedInput: ArchitectureGCommitCandidateInput;
   readonly expectedInputPath: string;
   readonly expectedInputSha256: string;
   readonly expectedProbePath: string;
   readonly expectedProbeSha256: string;
   readonly expectedCpuAffinity: string;
 }): JsonRecord => {
-  const input = decodeArchitectureGCommitCandidateInputV1(expectedInput);
+  const input = decodeArchitectureGCommitCandidateInput(expectedInput);
   const result = exactKeysRecord(
     JSON.parse(JSON.stringify(value)) as unknown,
     "Architecture G commit-candidate probe result",
@@ -1258,7 +1258,7 @@ export const validateArchitectureGCommitCandidateProbeResultV1 = ({
   return result;
 };
 
-export const validateArchitectureGRootProbeResultV1 = ({
+export const validateArchitectureGRootProbeResult = ({
   value,
   expectedTransactionCount,
   expectedInitialUtxoCount,
@@ -1519,7 +1519,7 @@ export const validateArchitectureGRootProbeResultV1 = ({
   return result;
 };
 
-export const validateArchitectureGCommitCandidateSeedResultV1 = ({
+export const validateArchitectureGCommitCandidateSeedResult = ({
   value,
   expectedDatabaseName,
   expectedCorpusSliceSha256,
@@ -1529,7 +1529,7 @@ export const validateArchitectureGCommitCandidateSeedResultV1 = ({
   readonly expectedDatabaseName: string;
   readonly expectedCorpusSliceSha256: string;
   readonly expectedTransactionCount: number;
-}): ArchitectureGCommitCandidateSeedResultV1 => {
+}): ArchitectureGCommitCandidateSeedResult => {
   const result = exactKeysRecord(
     value,
     "Architecture G commit-candidate seed result",
@@ -1570,5 +1570,5 @@ export const validateArchitectureGCommitCandidateSeedResultV1 = ({
   ) {
     throw new Error("Architecture G commit-candidate seed result is invalid");
   }
-  return result as ArchitectureGCommitCandidateSeedResultV1;
+  return result as ArchitectureGCommitCandidateSeedResult;
 };

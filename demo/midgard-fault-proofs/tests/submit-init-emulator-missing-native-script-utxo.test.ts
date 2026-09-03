@@ -1,7 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
   FraudProofTokenDatum,
-  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1,
+  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -14,22 +14,22 @@ import {
   submitMissingNativeScriptUtxoStep03,
   submitMissingNativeScriptUtxoStep04,
   submitMissingNativeScriptUtxoStep05,
-  submitMissingNativeScriptUtxoStep05StartGrammarV1,
-  submitMissingNativeScriptUtxoStep06V1,
-  submitMissingNativeScriptUtxoStep07V1,
+  submitMissingNativeScriptUtxoStep05StartGrammar,
+  submitMissingNativeScriptUtxoStep06,
+  submitMissingNativeScriptUtxoStep07,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import { parseSubmitStep01TxInclusion } from "../src/submit-step-01.js";
 import {
-  buildMissingNativeScriptUtxoEmulatorFixtureV1,
-  makeMissingNativeScriptUtxoEmulatorHarnessV1,
-  publishFinalFamilyReferenceScriptsV1,
+  buildMissingNativeScriptUtxoEmulatorFixture,
+  makeMissingNativeScriptUtxoEmulatorHarness,
+  publishFinalFamilyReferenceScripts,
 } from "./support/final-catalogue-emulator-v1.js";
 import {
   countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
-  setupFraudulentBlockV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  setupFraudulentBlock,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -45,21 +45,21 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
     { terminalPath: "direct", decoyWitnessCount: 0 },
     {
       terminalPath: "staged step-05→06→07",
-      decoyWitnessCount: MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1 + 1,
+      decoyWitnessCount: MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT + 1,
     },
   ] as const)(
     "authenticates predecessor material through the $terminalPath path, cancels and resumes, removes the header, and retains permanent evidence",
     async ({ terminalPath, decoyWitnessCount }) => {
-      const harness = await makeMissingNativeScriptUtxoEmulatorHarnessV1();
-      const refs = await publishFinalFamilyReferenceScriptsV1({
+      const harness = await makeMissingNativeScriptUtxoEmulatorHarness();
+      const refs = await publishFinalFamilyReferenceScripts({
         lucid: harness.proverLucid,
         family: harness.family,
         label: "missing-native-script-utxo",
       });
-      const fixture = await buildMissingNativeScriptUtxoEmulatorFixtureV1({
+      const fixture = await buildMissingNativeScriptUtxoEmulatorFixture({
         decoyWitnessCount,
       });
-      const predecessor = await setupFraudulentBlockV1({
+      const predecessor = await setupFraudulentBlock({
         funderLucid: harness.funderLucid,
         emulator: harness.emulator,
         contracts: harness.contracts,
@@ -71,10 +71,10 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
           // The four-transaction setup journey advances by about twenty seconds;
           // keep its predecessor window live after setup so strict successor
           // contiguity remains satisfiable.
-          headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+          headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
         },
       });
-      const targetStart = emulatorSuccessorHeaderStartV1({
+      const targetStart = emulatorSuccessorHeaderStart({
         predecessorEndTime: predecessor.header.endTime,
         emulator: harness.emulator,
       });
@@ -216,10 +216,10 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
         fraudProofUnit = proof.fraudProofUnit;
       } else {
         expect(fixture.scriptWitnessItems).toHaveLength(
-          MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1 + 1,
+          MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT + 1,
         );
         const grammarStart =
-          await submitMissingNativeScriptUtxoStep05StartGrammarV1({
+          await submitMissingNativeScriptUtxoStep05StartGrammar({
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -237,7 +237,7 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
         );
         let semanticCheckpointBytes: Uint8Array | undefined;
         for (let resume = 0; resume < 4; resume += 1) {
-          const grammar = await submitMissingNativeScriptUtxoStep06V1({
+          const grammar = await submitMissingNativeScriptUtxoStep06({
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -264,7 +264,7 @@ describe("missing-native-script-utxo standalone emulator lifecycle", () => {
         }
         let stagedFraudProofUnit: string | undefined;
         for (let resume = 0; resume < 4; resume += 1) {
-          const semantic = await submitMissingNativeScriptUtxoStep07V1({
+          const semantic = await submitMissingNativeScriptUtxoStep07({
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,

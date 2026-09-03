@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { main } from "../src/bin.js";
 import {
-  isRetiredUnauthenticatedSubmissionRouteV1,
-  rejectRetiredUnauthenticatedSubmissionRouteV1,
-  RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1,
+  isRetiredUnauthenticatedSubmissionRoute,
+  rejectRetiredUnauthenticatedSubmissionRoute,
+  RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX,
 } from "../src/legacy-submission-boundary-v1.js";
 import { neSubmitStep01FromFiles } from "../src/ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "../src/ne-submit-step-02.js";
@@ -46,38 +46,38 @@ const retiredInitCategories = [
 describe("RF-043 legacy submission boundary", () => {
   it("covers every retired command and leaves canonical controls available", () => {
     for (const command of retiredCommands) {
-      expect(isRetiredUnauthenticatedSubmissionRouteV1({ command })).toBe(true);
+      expect(isRetiredUnauthenticatedSubmissionRoute({ command })).toBe(true);
     }
     for (const fraudCategory of retiredInitCategories) {
       expect(
-        isRetiredUnauthenticatedSubmissionRouteV1({
+        isRetiredUnauthenticatedSubmissionRoute({
           command: "submit-init",
           fraudCategory,
         }),
       ).toBe(true);
     }
     expect(
-      isRetiredUnauthenticatedSubmissionRouteV1({ command: "submit-init" }),
+      isRetiredUnauthenticatedSubmissionRoute({ command: "submit-init" }),
     ).toBe(true);
     expect(
-      isRetiredUnauthenticatedSubmissionRouteV1({
+      isRetiredUnauthenticatedSubmissionRoute({
         command: "submit-init",
         fraudCategory: "transitionTrace",
       }),
     ).toBe(false);
     expect(
-      isRetiredUnauthenticatedSubmissionRouteV1({
+      isRetiredUnauthenticatedSubmissionRoute({
         command: "submit-init",
         fraudCategory: "validationTraceDispute",
       }),
     ).toBe(false);
     expect(
-      isRetiredUnauthenticatedSubmissionRouteV1({
+      isRetiredUnauthenticatedSubmissionRoute({
         command: "prepare-transition-trace",
       }),
     ).toBe(false);
     expect(
-      isRetiredUnauthenticatedSubmissionRouteV1({
+      isRetiredUnauthenticatedSubmissionRoute({
         command: "submit-transition-trace-proof",
       }),
     ).toBe(false);
@@ -85,16 +85,16 @@ describe("RF-043 legacy submission boundary", () => {
 
   it("uses one deterministic error for the retired command surface", () => {
     expect(() =>
-      rejectRetiredUnauthenticatedSubmissionRouteV1({
+      rejectRetiredUnauthenticatedSubmissionRoute({
         command: "submit-step-01",
       }),
     ).toThrow(
-      `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1}: submit-step-01`,
+      `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX}: submit-step-01`,
     );
   });
 
   it("does not publish retired submit-init/submit-step functions from the package barrel", async () => {
-    const productionExports = await import("../src/index.js");
+    const exports = await import("../src/index.js");
     for (const name of [
       "neSubmitStep01",
       "neSubmitStep01FromFiles",
@@ -123,25 +123,23 @@ describe("RF-043 legacy submission boundary", () => {
       "submitZeroInputStep02",
       "submitZeroInputStep02FromFiles",
     ]) {
-      expect(
-        Object.prototype.hasOwnProperty.call(productionExports, name),
-      ).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(exports, name)).toBe(false);
     }
     expect(
       Object.prototype.hasOwnProperty.call(
-        productionExports,
+        exports,
         "prepareDoubleSpendFromFile",
       ),
     ).toBe(true);
     expect(
       Object.prototype.hasOwnProperty.call(
-        productionExports,
+        exports,
         "submitTransitionTraceProof",
       ),
     ).toBe(true);
     expect(
       Object.prototype.hasOwnProperty.call(
-        productionExports,
+        exports,
         "submitRemoveFraudulentBlock",
       ),
     ).toBe(true);
@@ -190,7 +188,7 @@ describe("RF-043 legacy submission boundary", () => {
 
     for (const [command, invoke] of fileEntrypoints) {
       await expect(invoke()).rejects.toThrow(
-        `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1}: ${command}`,
+        `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX}: ${command}`,
       );
     }
   });
@@ -201,7 +199,7 @@ describe("RF-043 legacy submission boundary", () => {
       for (const command of retiredCommands) {
         process.argv = ["node", "midgard-fault-proofs", command];
         await expect(main()).rejects.toThrow(
-          `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1}: ${command}`,
+          `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX}: ${command}`,
         );
       }
       for (const fraudCategory of retiredInitCategories) {
@@ -213,12 +211,12 @@ describe("RF-043 legacy submission boundary", () => {
           fraudCategory,
         ];
         await expect(main()).rejects.toThrow(
-          `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1}: submit-init fraudCategory=${fraudCategory}`,
+          `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX}: submit-init fraudCategory=${fraudCategory}`,
         );
       }
       process.argv = ["node", "midgard-fault-proofs", "submit-init"];
       await expect(main()).rejects.toThrow(
-        `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX_V1}: submit-init`,
+        `${RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX}: submit-init`,
       );
 
       process.argv = [

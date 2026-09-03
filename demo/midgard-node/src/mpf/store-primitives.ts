@@ -7,7 +7,7 @@ import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { type ParkedMpfOverlayV1 } from "./engine-config.js";
+import { type ParkedMpfOverlay } from "./engine-config.js";
 import { type MpfReadableValue, type MpfStoredValue } from "./types.js";
 
 export const consumeMpfMutationProof =
@@ -40,7 +40,7 @@ export const parkedOverlayDigest = ({
   nodeValues,
   nodeValueOffsets,
 }: Omit<
-  ParkedMpfOverlayV1,
+  ParkedMpfOverlay,
   "schemaVersion" | "closureDigest" | "encodedBytes"
 >): Buffer => {
   const trieNameBytes = Buffer.from(trieName);

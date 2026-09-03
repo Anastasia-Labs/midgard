@@ -1090,14 +1090,12 @@ const rawArtifactConfig = (config: E2EL2StressConfig) => ({
           ],
 });
 
-export type E2EL2StressConfigArtifactV1 = ReturnType<typeof rawArtifactConfig>;
+export type E2EL2StressConfigArtifact = ReturnType<typeof rawArtifactConfig>;
 
-const artifactConfig = (
-  config: E2EL2StressConfig,
-): E2EL2StressConfigArtifactV1 =>
-  parseE2EL2StressConfigArtifactV1(rawArtifactConfig(config));
+const artifactConfig = (config: E2EL2StressConfig): E2EL2StressConfigArtifact =>
+  parseE2EL2StressConfigArtifact(rawArtifactConfig(config));
 
-const assertMeasurementPolicyV1 = (value: unknown, label: string): void => {
+const assertMeasurementPolicy = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "loadModel",
     "workloadProfile",
@@ -1152,15 +1150,15 @@ const parseDecimalString = (value: unknown, label: string): string => {
   return parsed;
 };
 
-const assertStressWalletArtifactV1 = (value: unknown, label: string): void => {
+const assertStressWalletArtifact = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, ["seedSource", "address"]);
   nonEmptyString(input.seedSource, `${label}.seedSource`);
   nonEmptyString(input.address, `${label}.address`);
 };
 
-export function parseE2EL2StressConfigArtifactV1(
+export function parseE2EL2StressConfigArtifact(
   value: unknown,
-): E2EL2StressConfigArtifactV1 {
+): E2EL2StressConfigArtifact {
   const label = "E2E L2 stress config";
   const input = exactRecord(
     value,
@@ -1223,7 +1221,7 @@ export function parseE2EL2StressConfigArtifactV1(
     "mixed",
   ]);
   oneOf(input.mode, `${label}.mode`, ["serial-chain", "parallel-fanout"]);
-  assertMeasurementPolicyV1(
+  assertMeasurementPolicy(
     input.measurementPolicy,
     `${label}.measurementPolicy`,
   );
@@ -1308,10 +1306,10 @@ export function parseE2EL2StressConfigArtifactV1(
   ]);
   booleanValue(input.allowUnsafeBounds, `${label}.allowUnsafeBounds`);
   arrayOf(input.wallets, `${label}.wallets`, (entry, entryLabel) => {
-    assertStressWalletArtifactV1(entry, entryLabel);
+    assertStressWalletArtifact(entry, entryLabel);
     return entry;
   });
-  return value as E2EL2StressConfigArtifactV1;
+  return value as E2EL2StressConfigArtifact;
 }
 
 const parseLowerHex64 = (value: unknown, label: string): string => {
@@ -1322,7 +1320,7 @@ const parseLowerHex64 = (value: unknown, label: string): string => {
   return parsed;
 };
 
-const assertStressMetricWindowV1 = (value: unknown, label: string): void => {
+const assertStressMetricWindow = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "status",
     "count",
@@ -1403,7 +1401,7 @@ const assertStressMetricWindowV1 = (value: unknown, label: string): void => {
   }
 };
 
-const assertStressMetricsV1 = (value: unknown, label: string): void => {
+const assertStressMetrics = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "clientSubmission",
     "durableAdmission",
@@ -1412,32 +1410,26 @@ const assertStressMetricsV1 = (value: unknown, label: string): void => {
     "immutableObservation",
     "fullFinality",
   ]);
-  assertStressMetricWindowV1(
-    input.clientSubmission,
-    `${label}.clientSubmission`,
-  );
-  assertStressMetricWindowV1(
-    input.durableAdmission,
-    `${label}.durableAdmission`,
-  );
-  assertStressMetricWindowV1(input.l2Admission, `${label}.l2Admission`);
+  assertStressMetricWindow(input.clientSubmission, `${label}.clientSubmission`);
+  assertStressMetricWindow(input.durableAdmission, `${label}.durableAdmission`);
+  assertStressMetricWindow(input.l2Admission, `${label}.l2Admission`);
   const l1Commit = exactRecord(input.l1Commit, `${label}.l1Commit`, [
     "headers",
     "l2Transactions",
   ]);
-  assertStressMetricWindowV1(l1Commit.headers, `${label}.l1Commit.headers`);
-  assertStressMetricWindowV1(
+  assertStressMetricWindow(l1Commit.headers, `${label}.l1Commit.headers`);
+  assertStressMetricWindow(
     l1Commit.l2Transactions,
     `${label}.l1Commit.l2Transactions`,
   );
-  assertStressMetricWindowV1(
+  assertStressMetricWindow(
     input.immutableObservation,
     `${label}.immutableObservation`,
   );
-  assertStressMetricWindowV1(input.fullFinality, `${label}.fullFinality`);
+  assertStressMetricWindow(input.fullFinality, `${label}.fullFinality`);
 };
 
-const assertStagePercentilesV1 = (value: unknown, label: string): void => {
+const assertStagePercentiles = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "p50Ms",
     "p95Ms",
@@ -1450,7 +1442,7 @@ const assertStagePercentilesV1 = (value: unknown, label: string): void => {
   nonNegativeInteger(input.sampleCount, `${label}.sampleCount`);
 };
 
-const assertSteadyStateStageV1 = (value: unknown, label: string): void => {
+const assertSteadyStateStage = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "stage",
     "offeredCount",
@@ -1472,7 +1464,7 @@ const assertSteadyStateStageV1 = (value: unknown, label: string): void => {
     input.steadyStatePerSecond,
     `${label}.steadyStatePerSecond`,
   );
-  assertStagePercentilesV1(input.latency, `${label}.latency`);
+  assertStagePercentiles(input.latency, `${label}.latency`);
   const windowTrim = exactRecord(input.windowTrim, `${label}.windowTrim`, [
     "discardedHeadMs",
     "discardedTailMs",
@@ -1489,10 +1481,7 @@ const assertSteadyStateStageV1 = (value: unknown, label: string): void => {
   stringArray(input.notes, `${label}.notes`);
 };
 
-const assertEnvironmentFingerprintV1 = (
-  value: unknown,
-  label: string,
-): void => {
+const assertEnvironmentFingerprint = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "schemaVersion",
     "gitSha",
@@ -1577,7 +1566,7 @@ const assertEnvironmentFingerprintV1 = (
   stringArray(input.notes, `${label}.notes`);
 };
 
-const assertGroundTruthMetricsV1 = (value: unknown, label: string): void => {
+const assertGroundTruthMetrics = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "schemaVersion",
     "window",
@@ -1613,12 +1602,12 @@ const assertGroundTruthMetricsV1 = (value: unknown, label: string): void => {
     "immutableObservation",
     "fullFinality",
   ] as const) {
-    assertSteadyStateStageV1(stages[stage], `${label}.stages.${stage}`);
+    assertSteadyStateStage(stages[stage], `${label}.stages.${stage}`);
   }
-  assertEnvironmentFingerprintV1(input.fingerprint, `${label}.fingerprint`);
+  assertEnvironmentFingerprint(input.fingerprint, `${label}.fingerprint`);
 };
 
-const assertCorpusRowV1 = (value: unknown, label: string): void => {
+const assertCorpusRow = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "txHash",
     "canonicalCborHex",
@@ -1654,7 +1643,7 @@ const assertCorpusRowV1 = (value: unknown, label: string): void => {
   nonEmptyString(input.corpusSliceId, `${label}.corpusSliceId`);
 };
 
-const assertCorpusPlanV1 = (value: unknown, label: string): void => {
+const assertCorpusPlan = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "rows",
     "requiredTransactionCount",
@@ -1663,7 +1652,7 @@ const assertCorpusPlanV1 = (value: unknown, label: string): void => {
     "corpusSliceId",
   ]);
   arrayOf(input.rows, `${label}.rows`, (entry, entryLabel) => {
-    assertCorpusRowV1(entry, entryLabel);
+    assertCorpusRow(entry, entryLabel);
     return entry;
   });
   nonNegativeInteger(
@@ -1682,7 +1671,7 @@ const assertCorpusPlanV1 = (value: unknown, label: string): void => {
   nonEmptyString(input.corpusSliceId, `${label}.corpusSliceId`);
 };
 
-const assertScheduleSlipV1 = (value: unknown, label: string): void => {
+const assertScheduleSlip = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, ["p50", "p95", "p99", "max"]);
   nonNegativeNumber(input.p50, `${label}.p50`);
   nonNegativeNumber(input.p95, `${label}.p95`);
@@ -1690,7 +1679,7 @@ const assertScheduleSlipV1 = (value: unknown, label: string): void => {
   nonNegativeNumber(input.max, `${label}.max`);
 };
 
-const assertOpenLoopSubmitSummaryV1 = (
+const assertOpenLoopSubmitSummary = (
   value: unknown,
   label: string,
   calibration: boolean,
@@ -1739,7 +1728,7 @@ const assertOpenLoopSubmitSummaryV1 = (
     input.submittedOfferedRatio,
     `${label}.submittedOfferedRatio`,
   );
-  assertScheduleSlipV1(input.scheduleSlipMs, `${label}.scheduleSlipMs`);
+  assertScheduleSlip(input.scheduleSlipMs, `${label}.scheduleSlipMs`);
   if (calibration) {
     nonEmptyString(input.endpoint, `${label}.endpoint`);
     nonNegativeNumber(input.minRequiredRateTps, `${label}.minRequiredRateTps`);
@@ -1764,7 +1753,7 @@ const assertOpenLoopSubmitSummaryV1 = (
   }
 };
 
-const assertOpenLoopPlacementV1 = (value: unknown, label: string): void => {
+const assertOpenLoopPlacement = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "processPid",
     "cwd",
@@ -1790,7 +1779,7 @@ const assertOpenLoopPlacementV1 = (value: unknown, label: string): void => {
   stringArray(input.notes, `${label}.notes`);
 };
 
-const assertOpenLoopSummaryV1 = (value: unknown, label: string): void => {
+const assertOpenLoopSummary = (value: unknown, label: string): void => {
   const input = exactRecord(
     value,
     label,
@@ -1807,19 +1796,19 @@ const assertOpenLoopSummaryV1 = (value: unknown, label: string): void => {
   nonNegativeNumber(input.targetRateTps, `${label}.targetRateTps`);
   positiveInteger(input.durationMs, `${label}.durationMs`);
   positiveInteger(input.maxInFlight, `${label}.maxInFlight`);
-  assertCorpusPlanV1(input.corpus, `${label}.corpus`);
-  assertOpenLoopSubmitSummaryV1(input.submission, `${label}.submission`, false);
+  assertCorpusPlan(input.corpus, `${label}.corpus`);
+  assertOpenLoopSubmitSummary(input.submission, `${label}.submission`, false);
   if (input.calibration !== undefined) {
-    assertOpenLoopSubmitSummaryV1(
+    assertOpenLoopSubmitSummary(
       input.calibration,
       `${label}.calibration`,
       true,
     );
   }
-  assertOpenLoopPlacementV1(input.placement, `${label}.placement`);
+  assertOpenLoopPlacement(input.placement, `${label}.placement`);
 };
 
-const assertStressTransactionV1 = (value: unknown, label: string): void => {
+const assertStressTransaction = (value: unknown, label: string): void => {
   const input = exactRecord(value, label, [
     "index",
     "phase",
@@ -1907,7 +1896,7 @@ const assertStressTransactionV1 = (value: unknown, label: string): void => {
   nonEmptyString(input.walletSeedSource, `${label}.walletSeedSource`);
 };
 
-export function parseE2EL2StressSummaryV1(value: unknown): E2EL2StressSummary {
+export function parseE2EL2StressSummary(value: unknown): E2EL2StressSummary {
   const label = "E2E L2 stress summary";
   const input = exactRecord(
     value,
@@ -2003,12 +1992,12 @@ export function parseE2EL2StressSummaryV1(value: unknown): E2EL2StressSummary {
     `${label}.burstCycleRatePerSecond`,
   );
   oneOf(input.mode, `${label}.mode`, ["serial-chain", "parallel-fanout"]);
-  assertMeasurementPolicyV1(
+  assertMeasurementPolicy(
     input.measurementPolicy,
     `${label}.measurementPolicy`,
   );
   if (input.openLoop !== undefined) {
-    assertOpenLoopSummaryV1(input.openLoop, `${label}.openLoop`);
+    assertOpenLoopSummary(input.openLoop, `${label}.openLoop`);
   }
   for (const countKey of [
     "requestedCount",
@@ -2064,12 +2053,12 @@ export function parseE2EL2StressSummaryV1(value: unknown): E2EL2StressSummary {
     `${label}.submissionDurationMs`,
   );
   nonNegativeNumber(input.durationMs, `${label}.durationMs`);
-  assertStressMetricsV1(input.metrics, `${label}.metrics`);
+  assertStressMetrics(input.metrics, `${label}.metrics`);
   if (input.groundTruth !== undefined) {
-    assertGroundTruthMetricsV1(input.groundTruth, `${label}.groundTruth`);
+    assertGroundTruthMetrics(input.groundTruth, `${label}.groundTruth`);
   }
   if (input.fingerprint !== undefined) {
-    assertEnvironmentFingerprintV1(input.fingerprint, `${label}.fingerprint`);
+    assertEnvironmentFingerprint(input.fingerprint, `${label}.fingerprint`);
   }
   const latency = exactRecord(input.latencyMs, `${label}.latencyMs`, [
     "submitP50",
@@ -2119,7 +2108,7 @@ export function parseE2EL2StressSummaryV1(value: unknown): E2EL2StressSummary {
     }
   }
   arrayOf(input.transactions, `${label}.transactions`, (entry, entryLabel) => {
-    assertStressTransactionV1(entry, entryLabel);
+    assertStressTransaction(entry, entryLabel);
     return entry;
   });
   const parsed = value as E2EL2StressSummary;
@@ -3493,7 +3482,7 @@ const runOpenLoopUpperBoundStress = async (
         JSON.stringify(engineReport).includes("corpus_exhausted")
       ? "corpus_exhausted"
       : baseClassification;
-  const summary = parseE2EL2StressSummaryV1({
+  const summary = parseE2EL2StressSummary({
     schemaVersion: E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
     runId: config.runId,
     status: signalWasAborted(signal) ? "interrupted" : "completed",
@@ -4077,7 +4066,7 @@ export const runE2EL2StressThroughput = async (
       : await runtime.collectEnvironmentFingerprint({
           calibrationProofRef: null,
         }));
-  const summary = parseE2EL2StressSummaryV1({
+  const summary = parseE2EL2StressSummary({
     schemaVersion: E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
     runId: config.runId,
     status: interruptedReason === undefined ? "completed" : "interrupted",

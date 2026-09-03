@@ -1,7 +1,7 @@
 import {
   encodeCbor,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  verifyMidgardValidationTraceProofV1,
+  MIDGARD_CONSENSUS_PROFILE,
+  verifyMidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -9,12 +9,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
 } from "../src/index.js";
 import {
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
@@ -26,7 +26,7 @@ import {
 describe("raw-envelope execution-source validation trace", () => {
   it("retains malformed field-6 bytes and deterministically proves the NativeScripts state", async () => {
     const spent = outRefFromByte(0x79);
-    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const payload = Buffer.from("820700", "hex");
     const item = Buffer.from("820043820700", "hex");
     const policyId = Buffer.from(
@@ -34,7 +34,7 @@ describe("raw-envelope execution-source validation trace", () => {
     );
     const assetName = Buffer.from("31", "hex");
     const output = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
@@ -57,7 +57,7 @@ describe("raw-envelope execution-source validation trace", () => {
     });
     const acceptedOps = [
       { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(malformed.txId),
         outputCbor: output,
       }),
@@ -68,7 +68,7 @@ describe("raw-envelope execution-source validation trace", () => {
     });
     const root = mutations[0]!.preRoot.toString("hex");
     const input = {
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, malformed.txId]),
       sourceKind: "normal" as const,
       blockEndTimeMs: 1_750_000_000_000,
@@ -111,7 +111,7 @@ describe("raw-envelope execution-source validation trace", () => {
     expect(first.tree.descriptor).toEqual(second.tree.descriptor);
     expect(first.tree.proofs[index]).toEqual(second.tree.proofs[index]);
     expect(
-      verifyMidgardValidationTraceProofV1({
+      verifyMidgardValidationTraceProof({
         descriptor: first.tree.descriptor,
         proof: first.tree.proofs[index]!,
       }),

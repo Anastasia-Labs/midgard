@@ -1,30 +1,30 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardNativeTxWitnessSetCompactV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
 } from "../field-opening-v1.js";
-import type { SpendInputSignerMissingEvidenceV1 } from "./spend-input-signer-missing-v1.js";
+import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing-v1.js";
 
-export const planSpendInputSignerInputOpeningV1 = ({
+export const planSpendInputSignerInputOpening = ({
   evidence,
   nativeTxCompactCbor,
   owner,
   publish,
 }: {
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 =>
-  planFaultProofFieldOpeningV1({
+}): FaultProofFieldOpeningPlan =>
+  planFaultProofFieldOpening({
     fieldIndex: 0,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: decodeMidgardFieldPreimageV1(
+    itemCbors: decodeMidgardFieldPreimage(
       Buffer.from(evidence.inputFieldPreimageHex, "hex"),
     ),
     owner,
@@ -32,27 +32,27 @@ export const planSpendInputSignerInputOpeningV1 = ({
     label: "spend-input-signer-missing spend inputs",
   });
 
-export const planSpendInputSignerWitnessOpeningV1 = ({
+export const planSpendInputSignerWitnessOpening = ({
   evidence,
   nativeTxCompactCbor,
   witnessSetCompactCbor,
   owner,
   publish,
 }: {
-  readonly evidence: SpendInputSignerMissingEvidenceV1;
+  readonly evidence: SpendInputSignerMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 => {
-  const compact = decodeMidgardNativeTxWitnessSetCompactV1(
+}): FaultProofFieldOpeningPlan => {
+  const compact = decodeMidgardNativeTxWitnessSetCompact(
     Buffer.from(witnessSetCompactCbor, "hex"),
   );
-  return planFaultProofFieldOpeningV1({
+  return planFaultProofFieldOpening({
     fieldIndex: 7,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: decodeMidgardFieldPreimageV1(
+    itemCbors: decodeMidgardFieldPreimage(
       Buffer.from(evidence.addressWitnessFieldPreimageHex, "hex"),
     ),
     owner,

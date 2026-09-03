@@ -44,21 +44,21 @@ import {
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
-  type MissingSignatureContractsV1,
+  type MissingSignatureContracts,
 } from "./contracts-v1.js";
 import {
-  type MissingSignatureCatalogueCategoryV1,
+  type MissingSignatureCatalogueCategory,
   missingSignatureSubmitError,
 } from "./submit-common-v1.js";
 
@@ -99,8 +99,8 @@ export const submitMissingSignatureInit = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingSignatureContractsV1;
-  readonly category: MissingSignatureCatalogueCategoryV1;
+  readonly contracts: MissingSignatureContracts;
+  readonly category: MissingSignatureCatalogueCategory;
   /** The deployed fraud-proof catalogue: its NFT policy, spend address, and MPF root. */
   readonly catalogue: {
     readonly policyId: string;
@@ -111,8 +111,8 @@ export const submitMissingSignatureInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureInitResult> => {
   // The registered category must be the very step-01 this chain deploys —
@@ -168,12 +168,12 @@ export const submitMissingSignatureInit = async ({
     network,
     phasMembershipScript,
   );
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${MISSING_SIGNATURE_CATEGORY_LABEL} init computation-thread mint`,
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${MISSING_SIGNATURE_CATEGORY_LABEL} init PHAS membership`,
@@ -287,9 +287,9 @@ export const submitMissingSignatureInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

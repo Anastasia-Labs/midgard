@@ -1,33 +1,33 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { applyScriptIntegrityHashMismatchScriptsV1 } from "../src/script-integrity-hash-mismatch/contracts-v1.js";
+import { applyScriptIntegrityHashMismatchScripts } from "../src/script-integrity-hash-mismatch/contracts-v1.js";
 import {
-  languagesForIntegrityBitmapV1,
-  prepareScriptIntegrityHashMismatchEvidenceV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID_V1,
-  scriptIntegrityHashMismatchEvidenceClosesV1,
+  languagesForIntegrityBitmap,
+  prepareScriptIntegrityHashMismatchEvidence,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID,
+  scriptIntegrityHashMismatchEvidenceCloses,
 } from "../src/script-integrity-hash-mismatch/family-v1.js";
-import { scriptIntegrityHashMismatchDetectionFromEvidenceV1 } from "../src/script-integrity-hash-mismatch/production-replay-v1.js";
+import { scriptIntegrityHashMismatchDetectionFromEvidence } from "../src/script-integrity-hash-mismatch/production-replay-v1.js";
 import {
-  createManifestBoundScriptIntegrityHashMismatchWorkflowV1,
-  createScriptIntegrityHashMismatchProductionWorkflowRunnerSurfaceV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_PRODUCTION_CONFIG_KEYS_V1,
-  type ScriptIntegrityHashMismatchProductionActuatorV1,
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  createScriptIntegrityHashMismatchWorkflowRunnerSurface,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS,
+  type ScriptIntegrityHashMismatchActuator,
 } from "../src/script-integrity-hash-mismatch/production-v1.js";
 import {
-  cancelScriptIntegrityHashMismatchWorkflowV1,
-  runScriptIntegrityHashMismatchWorkflowV1,
-  type ScriptIntegrityHashMismatchCursorV1,
-  type ScriptIntegrityHashMismatchJournalEntryV1,
+  cancelScriptIntegrityHashMismatchWorkflow,
+  runScriptIntegrityHashMismatchWorkflow,
+  type ScriptIntegrityHashMismatchCursor,
+  type ScriptIntegrityHashMismatchJournalEntry,
 } from "../src/script-integrity-hash-mismatch/workflow-v1.js";
-import { PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1 } from "../src/workflow/production-adapters-v1.js";
+import { WORKFLOW_ADAPTER_RUNNER } from "../src/workflow/production-adapters-v1.js";
 
 const txId = "00".repeat(32);
 const redeemerHash = "11".repeat(32);
@@ -37,8 +37,8 @@ const expected = [
   "71201d25ea11e4104eda108782a7d67b37b4ae97df6dc3258b06d9c98e58bbcb",
   "6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8",
 ] as const;
-const accepted = acceptedVerdictSubjectV1(txId);
-const forced = forcedVerdictSubjectV1({
+const accepted = acceptedVerdictSubject(txId);
+const forced = forcedVerdictSubject({
   transactionId: txId,
   sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
   rejectionReason: "ScriptIntegrityHashMismatch",
@@ -48,7 +48,7 @@ const evidence = (
   subject = accepted,
   committed = "ff".repeat(32),
 ) =>
-  prepareScriptIntegrityHashMismatchEvidenceV1({
+  prepareScriptIntegrityHashMismatchEvidence({
     finding: { subject },
     scriptIntegrityHash: committed,
     redeemerWitnessHash: redeemerHash,
@@ -58,34 +58,34 @@ const evidence = (
 
 describe("scriptIntegrityHashMismatch V1", () => {
   it("freezes ID 33 and the canonical two-bit language order", () => {
-    expect(SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID_V1).toBe("00000033");
-    expect(languagesForIntegrityBitmapV1(0)).toEqual([]);
-    expect(languagesForIntegrityBitmapV1(1)).toEqual(["PlutusV3"]);
-    expect(languagesForIntegrityBitmapV1(2)).toEqual(["MidgardV1"]);
-    expect(languagesForIntegrityBitmapV1(3)).toEqual(["PlutusV3", "MidgardV1"]);
+    expect(SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID).toBe("00000033");
+    expect(languagesForIntegrityBitmap(0)).toEqual([]);
+    expect(languagesForIntegrityBitmap(1)).toEqual(["PlutusV3"]);
+    expect(languagesForIntegrityBitmap(2)).toEqual(["MidgardV1"]);
+    expect(languagesForIntegrityBitmap(3)).toEqual(["PlutusV3", "MidgardV1"]);
   });
   it("matches authoritative Cardano language-view vectors", () => {
     for (const bitmap of [0, 1, 2, 3] as const)
       expect(evidence(bitmap).expectedHash).toBe(expected[bitmap]);
   });
   it("closes both direction polarities and refuses equality/mismatch inversions", () => {
-    expect(scriptIntegrityHashMismatchEvidenceClosesV1(evidence(3))).toBe(true);
+    expect(scriptIntegrityHashMismatchEvidenceCloses(evidence(3))).toBe(true);
     expect(
-      scriptIntegrityHashMismatchEvidenceClosesV1(
+      scriptIntegrityHashMismatchEvidenceCloses(
         evidence(3, accepted, expected[3]),
       ),
     ).toBe(false);
     expect(
-      scriptIntegrityHashMismatchEvidenceClosesV1(
+      scriptIntegrityHashMismatchEvidenceCloses(
         evidence(2, forced, expected[2]),
       ),
     ).toBe(true);
-    expect(
-      scriptIntegrityHashMismatchEvidenceClosesV1(evidence(2, forced)),
-    ).toBe(false);
+    expect(scriptIntegrityHashMismatchEvidenceCloses(evidence(2, forced))).toBe(
+      false,
+    );
   });
   it("detects only honest accepted/forced integrity contradictions", () => {
-    const acceptedFault = scriptIntegrityHashMismatchDetectionFromEvidenceV1({
+    const acceptedFault = scriptIntegrityHashMismatchDetectionFromEvidence({
       headerHash: "77".repeat(32),
       position: 2n,
       source: "accepted",
@@ -96,7 +96,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
       position: 2n,
     });
     expect(
-      scriptIntegrityHashMismatchDetectionFromEvidenceV1({
+      scriptIntegrityHashMismatchDetectionFromEvidence({
         headerHash: "77".repeat(32),
         position: 2n,
         source: "accepted",
@@ -104,7 +104,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
       }),
     ).toBeNull();
     expect(
-      scriptIntegrityHashMismatchDetectionFromEvidenceV1({
+      scriptIntegrityHashMismatchDetectionFromEvidence({
         headerHash: "77".repeat(32),
         position: 3n,
         source: "forced",
@@ -112,7 +112,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
       }),
     ).toMatchObject({ violationId: "script-integrity-hash-mismatch" });
     expect(
-      scriptIntegrityHashMismatchDetectionFromEvidenceV1({
+      scriptIntegrityHashMismatchDetectionFromEvidence({
         headerHash: "77".repeat(32),
         position: 3n,
         source: "forced",
@@ -129,15 +129,15 @@ describe("scriptIntegrityHashMismatch V1", () => {
     ).toThrow(/reason/u);
   });
   it("journals a captured signed identity before submission and resumes exactly", async () => {
-    const rows: ScriptIntegrityHashMismatchJournalEntryV1[] = [];
-    let cursor: ScriptIntegrityHashMismatchCursorV1 = {
+    const rows: ScriptIntegrityHashMismatchJournalEntry[] = [];
+    let cursor: ScriptIntegrityHashMismatchCursor = {
       stage: "none",
       threadOutRef: "",
     };
     const txHash = "aa".repeat(32);
     const journal = {
       load: async () => rows,
-      append: async (row: ScriptIntegrityHashMismatchJournalEntryV1) => {
+      append: async (row: ScriptIntegrityHashMismatchJournalEntry) => {
         rows.push(row);
       },
     };
@@ -154,7 +154,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
       transactionConfirmed: async () => true,
     };
     expect(
-      await runScriptIntegrityHashMismatchWorkflowV1({
+      await runScriptIntegrityHashMismatchWorkflow({
         evidence: evidence(3),
         journal,
         transactions,
@@ -162,7 +162,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
     ).toBe("none");
     expect(rows.map(({ phase }) => phase)).toEqual(["intent", "submitted"]);
     expect(
-      await runScriptIntegrityHashMismatchWorkflowV1({
+      await runScriptIntegrityHashMismatchWorkflow({
         evidence: evidence(3),
         journal,
         transactions,
@@ -179,10 +179,10 @@ describe("scriptIntegrityHashMismatch V1", () => {
       "step04:1",
       "step05",
     ] as const) {
-      const rows: ScriptIntegrityHashMismatchJournalEntryV1[] = [];
+      const rows: ScriptIntegrityHashMismatchJournalEntry[] = [];
       const cursor = { stage, threadOutRef: `${"bb".repeat(32)}#0` };
       await expect(
-        cancelScriptIntegrityHashMismatchWorkflowV1({
+        cancelScriptIntegrityHashMismatchWorkflow({
           evidence: evidence(3),
           journal: {
             load: async () => rows,
@@ -204,25 +204,22 @@ describe("scriptIntegrityHashMismatch V1", () => {
     }
   });
   it("exposes no caller verdict callback on the production actuator", () => {
-    const keys: readonly (keyof ScriptIntegrityHashMismatchProductionActuatorV1)[] =
-      [
-        "observe",
-        "captureSignedTransaction",
-        "submitSignedTransaction",
-        "transactionConfirmed",
-        "acquireRemovalLease",
-      ];
+    const keys: readonly (keyof ScriptIntegrityHashMismatchActuator)[] = [
+      "observe",
+      "captureSignedTransaction",
+      "submitSignedTransaction",
+      "transactionConfirmed",
+      "acquireRemovalLease",
+    ];
     expect(keys).not.toContain("verdict");
     expect(keys).not.toContain("evidence");
   });
   it("exposes a strict shared-runtime loader and refuses category substitution", async () => {
-    expect(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_PRODUCTION_CONFIG_KEYS_V1,
-    ).not.toEqual(
+    expect(SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS).not.toEqual(
       expect.arrayContaining(["evidence", "actuator", "verdict", "submit"]),
     );
     await expect(
-      createManifestBoundScriptIntegrityHashMismatchWorkflowV1({
+      createManifestBoundScriptIntegrityHashMismatchWorkflow({
         manifest: {},
         blueprintJson: "{}",
         deploymentInfo: {},
@@ -237,11 +234,10 @@ describe("scriptIntegrityHashMismatch V1", () => {
       } as never),
     ).rejects.toThrow(/callback authority/u);
     const loadRuntimeConfig = vi.fn();
-    const runner =
-      createScriptIntegrityHashMismatchProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig,
-      });
-    expect(runner.runnerVersion).toBe(PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1);
+    const runner = createScriptIntegrityHashMismatchWorkflowRunnerSurface({
+      loadRuntimeConfig,
+    });
+    expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
     await expect(
       runner.runOrResume({ category: "unusedRedeemer" } as never),
     ).rejects.toThrow(/category mismatch/u);
@@ -254,7 +250,7 @@ describe("scriptIntegrityHashMismatch V1", () => {
         "utf8",
       ),
     ) as never;
-    const steps = applyScriptIntegrityHashMismatchScriptsV1({
+    const steps = applyScriptIntegrityHashMismatchScripts({
       blueprint,
       network: "Preview",
       computationThreadPolicyId: "11".repeat(28),

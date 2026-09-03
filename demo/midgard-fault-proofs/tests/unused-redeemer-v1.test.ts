@@ -1,26 +1,26 @@
 import {
-  buildMidgardBoundedItemV1,
-  buildMidgardValidationMerkleMembershipV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  hashMidgardRedeemerItemLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
-  type MidgardRedeemerPurposeV1,
+  buildMidgardBoundedItem,
+  buildMidgardValidationMerkleMembership,
+  encodeMidgardFieldPreimage,
+  encodeMidgardRedeemerWitnessItem,
+  hashMidgardRedeemerItemLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
+  type MidgardRedeemerPurpose,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyUnusedRedeemerFindingV1,
-  prepareUnusedRedeemerEvidenceV1,
-  unusedRedeemerAccountabilityRouteV1,
-  unusedRedeemerEvidenceClosesV1,
-  type UnusedRedeemerFindingV1,
-  type UnusedRedeemerSelectionOpeningV1,
+  classifyUnusedRedeemerFinding,
+  prepareUnusedRedeemerEvidence,
+  unusedRedeemerAccountabilityRoute,
+  unusedRedeemerEvidenceCloses,
+  type UnusedRedeemerFinding,
+  type UnusedRedeemerSelectionOpening,
 } from "../src/unused-redeemer/family-v1.js";
 
 const txId = "11".repeat(32);
@@ -29,21 +29,21 @@ const sourceLeaf = "33".repeat(32);
 const subjectHex = "aa";
 const purposeKinds = { Spend: 0, Mint: 1, Reward: 2, Receive: 3 } as const;
 
-const item = (purpose: MidgardRedeemerPurposeV1, pointer = 0n) => ({
+const item = (purpose: MidgardRedeemerPurpose, pointer = 0n) => ({
   purpose,
   index: pointer,
   redeemerCbor: Buffer.from("01", "hex"),
   executionUnits: { memory: 1n, steps: 1n },
 });
-const preimage = (purpose: MidgardRedeemerPurposeV1, pointer = 0n) =>
-  encodeMidgardFieldPreimageV1([
-    encodeMidgardRedeemerWitnessItemV1(item(purpose, pointer)),
+const preimage = (purpose: MidgardRedeemerPurpose, pointer = 0n) =>
+  encodeMidgardFieldPreimage([
+    encodeMidgardRedeemerWitnessItem(item(purpose, pointer)),
   ]);
-const targetLeaf = (purpose: MidgardRedeemerPurposeV1, pointer = 0n) => {
-  const bytes = encodeMidgardRedeemerWitnessItemV1(item(purpose, pointer));
-  return hashMidgardRedeemerItemLeafV1({
+const targetLeaf = (purpose: MidgardRedeemerPurpose, pointer = 0n) => {
+  const bytes = encodeMidgardRedeemerWitnessItem(item(purpose, pointer));
+  return hashMidgardRedeemerItemLeaf({
     redeemerIndex: 0,
-    itemCommitment: buildMidgardBoundedItemV1({
+    itemCommitment: buildMidgardBoundedItem({
       fieldIndex: 8,
       itemIndex: 0,
       bytes,
@@ -58,9 +58,9 @@ const selection = ({
   purpose: keyof typeof purposeKinds;
   pointer?: number;
   selected: boolean;
-}): UnusedRedeemerSelectionOpeningV1 => {
+}): UnusedRedeemerSelectionOpening => {
   const purposeKind = purposeKinds[purpose];
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind,
     purposeIndex: BigInt(pointer),
     scriptHash: Buffer.from(scriptHash, "hex"),
@@ -69,7 +69,7 @@ const selection = ({
   const redeemerLeaf = selected
     ? targetLeaf(purpose, BigInt(pointer))
     : Buffer.alloc(0);
-  const executionLeaf = hashMidgardScriptExecutionLeafV1({
+  const executionLeaf = hashMidgardScriptExecutionLeaf({
     languageTag: selected ? 3 : 0,
     purposeLeaf,
     sourceLeaf: Buffer.from(sourceLeaf, "hex"),
@@ -81,27 +81,24 @@ const selection = ({
     purposeIndex: pointer,
     scriptHashHex: scriptHash,
     purposeSubjectHex: subjectHex,
-    purposeMembership: buildMidgardValidationMerkleMembershipV1(
-      [purposeLeaf],
-      0,
-    ),
+    purposeMembership: buildMidgardValidationMerkleMembership([purposeLeaf], 0),
     languageTag: selected ? 3 : 0,
     sourceLeafHex: sourceLeaf,
     redeemerLeafHex: redeemerLeaf.toString("hex"),
-    executionMembership: buildMidgardValidationMerkleMembershipV1(
+    executionMembership: buildMidgardValidationMerkleMembership(
       [executionLeaf],
       0,
     ),
   };
 };
-const finding = (forced: boolean): UnusedRedeemerFindingV1 => ({
+const finding = (forced: boolean): UnusedRedeemerFinding => ({
   subject: forced
-    ? forcedVerdictSubjectV1({
+    ? forcedVerdictSubject({
         transactionId: txId,
         sourceKey: { transactionId: "44".repeat(32), outputIndex: 0n },
         rejectionReason: { UnusedRedeemer: { redeemer_index: 0n } },
       })
-    : acceptedVerdictSubjectV1(txId),
+    : acceptedVerdictSubject(txId),
   redeemerIndex: 0,
 });
 const prepare = (
@@ -109,7 +106,7 @@ const prepare = (
   forced: boolean,
   selected: boolean,
 ) =>
-  prepareUnusedRedeemerEvidenceV1({
+  prepareUnusedRedeemerEvidence({
     finding: finding(forced),
     fieldPreimage: preimage(purpose),
     universe: {
@@ -126,8 +123,8 @@ describe("unusedRedeemer V1", () => {
     const used = prepare("Spend", true, true);
     expect(unused.unused).toBe(true);
     expect(used.unused).toBe(false);
-    expect(unusedRedeemerEvidenceClosesV1(unused)).toBe(true);
-    expect(unusedRedeemerEvidenceClosesV1(used)).toBe(true);
+    expect(unusedRedeemerEvidenceCloses(unused)).toBe(true);
+    expect(unusedRedeemerEvidenceCloses(used)).toBe(true);
   });
 
   it.each(["Spend", "Mint", "Reward", "Receive"] as const)(
@@ -139,14 +136,14 @@ describe("unusedRedeemer V1", () => {
 
   it("refuses another reason and coordinate", () => {
     expect(() =>
-      classifyUnusedRedeemerFindingV1({ ...finding(true), redeemerIndex: 1 }),
+      classifyUnusedRedeemerFinding({ ...finding(true), redeemerIndex: 1 }),
     ).toThrow(/reason|coordinate/u);
   });
 
   it("refuses substituted execution membership", () => {
     const opening = selection({ purpose: "Spend", selected: false });
     expect(() =>
-      prepareUnusedRedeemerEvidenceV1({
+      prepareUnusedRedeemerEvidence({
         finding: finding(false),
         fieldPreimage: preimage("Spend"),
         universe: {
@@ -161,7 +158,7 @@ describe("unusedRedeemer V1", () => {
 
   it("routes a fabricated committed frontier to trace invalidity", () => {
     expect(
-      unusedRedeemerAccountabilityRouteV1({
+      unusedRedeemerAccountabilityRoute({
         committedFrontierIsCanonical: false,
         evidence: prepare("Spend", false, false),
       }),

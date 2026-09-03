@@ -10,10 +10,10 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   L2_TX_MISTAG_CATEGORY_LABEL,
-  type L2TxMistagContractsV1,
+  type L2TxMistagContracts,
 } from "./contracts-v1.js";
 
-export type L2TxMistagCatalogueCategoryV1 = {
+export type L2TxMistagCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -22,10 +22,10 @@ export type L2TxMistagCatalogueCategoryV1 = {
 export const l2TxMistagSubmitError = (message: string): Error =>
   new Error(`${L2_TX_MISTAG_CATEGORY_LABEL}: ${message}`);
 
-export const l2TxMistagStepLabelV1 = (stepIndex: 0 | 1) =>
+export const l2TxMistagStepLabel = (stepIndex: 0 | 1) =>
   `${L2_TX_MISTAG_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
-export const requireL2TxMistagThreadUtxoV1 = async ({
+export const requireL2TxMistagThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -33,12 +33,12 @@ export const requireL2TxMistagThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: L2TxMistagContractsV1;
+  readonly contracts: L2TxMistagContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1;
   readonly threadOutRef: string;
 }) => {
-  const label = l2TxMistagStepLabelV1(stepIndex);
+  const label = l2TxMistagStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -61,7 +61,7 @@ export const requireL2TxMistagThreadUtxoV1 = async ({
 };
 
 /** Reference scripts are mandatory for this family; there is no inline path. */
-export const requireL2TxMistagReferenceScriptV1 = ({
+export const requireL2TxMistagReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
@@ -72,7 +72,7 @@ export const requireL2TxMistagReferenceScriptV1 = ({
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw l2TxMistagSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${l2TxMistagStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${l2TxMistagStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
@@ -84,7 +84,7 @@ export const requireL2TxMistagReferenceScriptV1 = ({
   return utxo;
 };
 
-export const requireL2TxMistagStepStateV1 = <State>({
+export const requireL2TxMistagStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -103,7 +103,7 @@ export const requireL2TxMistagStepStateV1 = <State>({
   const datum = Data.from(threadUtxo.datum, schema);
   if (datum.fraud_prover !== signer.paymentKeyHash || datum.data === null) {
     throw l2TxMistagSubmitError(
-      `${l2TxMistagStepLabelV1(stepIndex)} datum does not carry state for the signing fraud prover.`,
+      `${l2TxMistagStepLabel(stepIndex)} datum does not carry state for the signing fraud prover.`,
     );
   }
   return datum.data;

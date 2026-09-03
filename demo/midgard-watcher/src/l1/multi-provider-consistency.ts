@@ -1,25 +1,25 @@
 import { isAbsolute, normalize as normalizePath } from "node:path";
 
-import { watcherSha256CanonicalJsonV1 } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
-  encodeWatcherNormalizedL1BlockV1,
-  isWatcherL1BlockAttestedByV1,
-  normalizeWatcherL1BlockV1,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
-  type WatcherL1NetworkV1,
+  encodeWatcherNormalizedL1Block,
+  isWatcherL1BlockAttestedBy,
+  normalizeWatcherL1Block,
+  WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION,
+  type WatcherL1Network,
   type WatcherL1SourceModeV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherLocalNodeSurfaceV1,
-  type WatcherNormalizedL1BlockV1,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+  type WatcherLocalNodeSurface,
+  type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
 
-export const WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION =
+export const WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION =
   "midgard-watcher-multi-provider-consistency-v1" as const;
 
-export const WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS = Object.freeze({
+export const WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS = Object.freeze({
   observations: 16,
   compatibleBlockLag: 64,
 });
@@ -28,7 +28,7 @@ const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
-export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
+export const WATCHER_MULTI_PROVIDER_REASON_CODES = [
   "local_node_consistent",
   "providers_consistent",
   "insufficient_independent_providers",
@@ -55,7 +55,7 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
   "observation_limit_exceeded",
 ] as const;
 
-export const WATCHER_MULTI_PROVIDER_ALERT_CODES_V1 = [
+export const WATCHER_MULTI_PROVIDER_ALERT_CODES = [
   "watcher_provider_quorum_unavailable",
   "watcher_provider_identity_collision",
   "watcher_provider_not_configured",
@@ -73,43 +73,43 @@ export const WATCHER_MULTI_PROVIDER_ALERT_CODES_V1 = [
   "watcher_provider_observation_rejected",
 ] as const;
 
-export type WatcherMultiProviderReasonCodeV1 =
-  (typeof WATCHER_MULTI_PROVIDER_REASON_CODES_V1)[number];
-export type WatcherMultiProviderAlertCodeV1 =
-  (typeof WATCHER_MULTI_PROVIDER_ALERT_CODES_V1)[number];
-export type WatcherMultiProviderConsistencyStatusV1 =
+export type WatcherMultiProviderReasonCode =
+  (typeof WATCHER_MULTI_PROVIDER_REASON_CODES)[number];
+export type WatcherMultiProviderAlertCode =
+  (typeof WATCHER_MULTI_PROVIDER_ALERT_CODES)[number];
+export type WatcherMultiProviderConsistencyStatus =
   | "agreed"
   | "pending"
   | "quarantined";
 
-export type WatcherL1SourceConsistencyConfigV1 =
+export type WatcherL1SourceConsistencyConfig =
   | Readonly<{
       sourceMode: "local_node";
-      network: WatcherL1NetworkV1;
+      network: WatcherL1Network;
       authorityNodeId: string;
       genesisIdentitySha256: string;
       chainSyncSocketPath: string;
-      queryServices: readonly WatcherConfiguredLocalQueryServiceV1[];
+      queryServices: readonly WatcherConfiguredLocalQueryService[];
     }>
   | Readonly<{
       sourceMode: "external_providers";
-      network: WatcherL1NetworkV1;
-      providers: readonly WatcherConfiguredExternalProviderV1[];
+      network: WatcherL1Network;
+      providers: readonly WatcherConfiguredExternalProvider[];
     }>;
 
-export type WatcherConfiguredLocalQueryServiceV1 = Readonly<{
-  kind: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+export type WatcherConfiguredLocalQueryService = Readonly<{
+  kind: Exclude<WatcherLocalNodeSurface, "chain_sync">;
   providerId: string;
   endpoint: string;
 }>;
 
-export type WatcherConfiguredExternalProviderV1 = Readonly<{
+export type WatcherConfiguredExternalProvider = Readonly<{
   providerId: string;
   operatorIdentitySha256: string;
   endpoint: string;
 }>;
 
-export type WatcherMultiProviderAgreementV1 = Readonly<{
+export type WatcherMultiProviderAgreement = Readonly<{
   pointDigest: string;
   blockHash: string;
   slot: string;
@@ -118,7 +118,7 @@ export type WatcherMultiProviderAgreementV1 = Readonly<{
   blockContentDigest: string;
 }>;
 
-export type WatcherExternalProviderBindingV1 = Readonly<{
+export type WatcherExternalProviderBinding = Readonly<{
   providerId: string;
   operatorIdentitySha256: string;
   authenticationKind: "https_tls_identity_v1";
@@ -126,8 +126,8 @@ export type WatcherExternalProviderBindingV1 = Readonly<{
   endpoint: string;
 }>;
 
-export type WatcherLocalQueryServiceBindingV1 = Readonly<{
-  kind: WatcherConfiguredLocalQueryServiceV1["kind"];
+export type WatcherLocalQueryServiceBinding = Readonly<{
+  kind: WatcherConfiguredLocalQueryService["kind"];
   providerId: string;
   endpoint: string;
   observationStatus:
@@ -140,12 +140,12 @@ export type WatcherLocalQueryServiceBindingV1 = Readonly<{
   observationDigest: string | null;
 }>;
 
-export type WatcherMultiProviderConsistencyV1 = Readonly<{
-  schemaVersion: typeof WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION;
-  status: WatcherMultiProviderConsistencyStatusV1;
+export type WatcherMultiProviderConsistency = Readonly<{
+  schemaVersion: typeof WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION;
+  status: WatcherMultiProviderConsistencyStatus;
   protocolDecision: "allowed" | "quarantined";
   sourceMode: WatcherL1SourceModeV1 | null;
-  configuredNetwork: WatcherL1NetworkV1 | null;
+  configuredNetwork: WatcherL1Network | null;
   configuredSourceDigest: string | null;
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
@@ -154,20 +154,20 @@ export type WatcherMultiProviderConsistencyV1 = Readonly<{
   queryObservationCount: number;
   observationCount: number;
   independentProviderCount: number;
-  externalProviderBindings: readonly WatcherExternalProviderBindingV1[];
-  localQueryServiceBindings: readonly WatcherLocalQueryServiceBindingV1[];
-  reasonCodes: readonly WatcherMultiProviderReasonCodeV1[];
-  alertCodes: readonly WatcherMultiProviderAlertCodeV1[];
+  externalProviderBindings: readonly WatcherExternalProviderBinding[];
+  localQueryServiceBindings: readonly WatcherLocalQueryServiceBinding[];
+  reasonCodes: readonly WatcherMultiProviderReasonCode[];
+  alertCodes: readonly WatcherMultiProviderAlertCode[];
   observationEvidenceDigests: readonly string[];
   rejectedObservationCount: number;
-  agreement: WatcherMultiProviderAgreementV1 | null;
+  agreement: WatcherMultiProviderAgreement | null;
   consistencyDigest: string;
 }>;
 
 type PlainRecord = Record<string, unknown>;
 
 type ConsistencyResultWithoutDigest = Omit<
-  WatcherMultiProviderConsistencyV1,
+  WatcherMultiProviderConsistency,
   "consistencyDigest"
 >;
 
@@ -237,8 +237,8 @@ const exactObservationArray = (value: unknown): readonly unknown[] | null => {
   return value as readonly unknown[];
 };
 
-const isNetwork = (value: unknown): value is WatcherL1NetworkV1 =>
-  typeof value === "string" && NETWORKS.includes(value as WatcherL1NetworkV1);
+const isNetwork = (value: unknown): value is WatcherL1Network =>
+  typeof value === "string" && NETWORKS.includes(value as WatcherL1Network);
 
 const isHex32 = (value: unknown): value is string =>
   typeof value === "string" && HEX_32.test(value);
@@ -352,11 +352,11 @@ const rawTransactionsFromNormalized = (
  */
 const parseNormalizedObservation = (
   value: unknown,
-  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherNormalizedL1BlockV1 | null => {
+  transportAttestations: readonly WatcherL1TransportAttestationContext[],
+): WatcherNormalizedL1Block | null => {
   for (const attestation of transportAttestations) {
-    if (isWatcherL1BlockAttestedByV1(value, attestation)) {
-      return value as WatcherNormalizedL1BlockV1;
+    if (isWatcherL1BlockAttestedBy(value, attestation)) {
+      return value as WatcherNormalizedL1Block;
     }
   }
   const block = exactPlainRecord(value, [
@@ -370,7 +370,7 @@ const parseNormalizedObservation = (
   ]);
   if (
     block === null ||
-    block.schemaVersion !== WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION ||
+    block.schemaVersion !== WATCHER_NORMALIZED_L1_BLOCK_SCHEMA_VERSION ||
     !isNetwork(block.network) ||
     !isHex32(block.blockContentDigest) ||
     !isHex32(block.observationDigest)
@@ -407,8 +407,7 @@ const parseNormalizedObservation = (
   ]);
   if (
     provider === null ||
-    provider.schemaVersion !==
-      WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION
+    provider.schemaVersion !== WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION
   ) {
     return null;
   }
@@ -418,7 +417,7 @@ const parseNormalizedObservation = (
   }
 
   for (const attestation of transportAttestations) {
-    const details = watcherL1TransportAttestationDetailsV1(attestation);
+    const details = watcherL1TransportAttestationDetails(attestation);
     if (
       details === null ||
       details.provider.providerId !== provider.providerId ||
@@ -426,8 +425,8 @@ const parseNormalizedObservation = (
     ) {
       continue;
     }
-    const normalized = normalizeWatcherL1BlockV1(attestation, {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    const normalized = normalizeWatcherL1Block(attestation, {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
       network: block.network,
       providerId: provider.providerId,
       chainPoint: {
@@ -445,9 +444,9 @@ const parseNormalizedObservation = (
       normalized.blockContentDigest === block.blockContentDigest &&
       normalized.observationDigest === block.observationDigest &&
       sameBytes(
-        encodeWatcherNormalizedL1BlockV1(normalized),
-        encodeWatcherNormalizedL1BlockV1(
-          block as unknown as WatcherNormalizedL1BlockV1,
+        encodeWatcherNormalizedL1Block(normalized),
+        encodeWatcherNormalizedL1Block(
+          block as unknown as WatcherNormalizedL1Block,
         ),
       )
     ) {
@@ -457,7 +456,7 @@ const parseNormalizedObservation = (
   return null;
 };
 
-const sha256Canonical = watcherSha256CanonicalJsonV1;
+const sha256Canonical = watcherSha256CanonicalJson;
 
 const sortCodes = <T extends string>(
   values: ReadonlySet<T>,
@@ -474,8 +473,8 @@ const duplicateValues = (values: readonly string[]): boolean =>
   new Set(values).size !== values.length;
 
 const compareExternalProviderBindings = (
-  left: WatcherExternalProviderBindingV1,
-  right: WatcherExternalProviderBindingV1,
+  left: WatcherExternalProviderBinding,
+  right: WatcherExternalProviderBinding,
 ): number => {
   for (const key of [
     "providerId",
@@ -496,7 +495,7 @@ const compareExternalProviderBindings = (
 
 const makeResult = (
   value: ConsistencyResultWithoutDigest,
-): WatcherMultiProviderConsistencyV1 => {
+): WatcherMultiProviderConsistency => {
   const consistencyDigest = sha256Canonical(value);
   return Object.freeze({
     ...value,
@@ -505,13 +504,13 @@ const makeResult = (
 };
 
 const rejectedBoundaryResult = (
-  configuredSource: WatcherL1SourceConsistencyConfigV1 | null,
-  reason: WatcherMultiProviderReasonCodeV1,
+  configuredSource: WatcherL1SourceConsistencyConfig | null,
+  reason: WatcherMultiProviderReasonCode,
   recognizedSourceMode: WatcherL1SourceModeV1 | null = configuredSource?.sourceMode ??
     null,
-): WatcherMultiProviderConsistencyV1 => {
-  const reasons = new Set<WatcherMultiProviderReasonCodeV1>([reason]);
-  const alerts = new Set<WatcherMultiProviderAlertCodeV1>([
+): WatcherMultiProviderConsistency => {
+  const reasons = new Set<WatcherMultiProviderReasonCode>([reason]);
+  const alerts = new Set<WatcherMultiProviderAlertCode>([
     "watcher_provider_observation_rejected",
   ]);
   if (recognizedSourceMode === "external_providers") {
@@ -519,7 +518,7 @@ const rejectedBoundaryResult = (
     alerts.add("watcher_provider_quorum_unavailable");
   }
   return makeResult({
-    schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
     status: "quarantined",
     protocolDecision: "quarantined",
     sourceMode: recognizedSourceMode,
@@ -544,8 +543,8 @@ const rejectedBoundaryResult = (
     independentProviderCount: 0,
     externalProviderBindings: Object.freeze([]),
     localQueryServiceBindings: Object.freeze([]),
-    reasonCodes: sortCodes(reasons, WATCHER_MULTI_PROVIDER_REASON_CODES_V1),
-    alertCodes: sortCodes(alerts, WATCHER_MULTI_PROVIDER_ALERT_CODES_V1),
+    reasonCodes: sortCodes(reasons, WATCHER_MULTI_PROVIDER_REASON_CODES),
+    alertCodes: sortCodes(alerts, WATCHER_MULTI_PROVIDER_ALERT_CODES),
     observationEvidenceDigests: Object.freeze([]),
     rejectedObservationCount: 1,
     agreement: null,
@@ -574,7 +573,7 @@ const recognizedConfiguredSourceMode = (
 
 const parseConfiguredSource = (
   input: unknown,
-): WatcherL1SourceConsistencyConfigV1 | null => {
+): WatcherL1SourceConsistencyConfig | null => {
   const candidate = exactPlainRecord(input, [
     "sourceMode",
     "network",
@@ -587,11 +586,11 @@ const parseConfiguredSource = (
       providerInputs === null ||
       providerInputs.length < 2 ||
       providerInputs.length >
-        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations
+        WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.observations
     ) {
       return null;
     }
-    const providers: WatcherConfiguredExternalProviderV1[] = [];
+    const providers: WatcherConfiguredExternalProvider[] = [];
     for (const input of providerInputs) {
       const provider = exactPlainRecord(input, [
         "providerId",
@@ -657,7 +656,7 @@ const parseConfiguredSource = (
   ) {
     return null;
   }
-  const queryServices: WatcherConfiguredLocalQueryServiceV1[] = [];
+  const queryServices: WatcherConfiguredLocalQueryService[] = [];
   for (const input of queryInputs) {
     const query = exactPlainRecord(input, ["kind", "providerId", "endpoint"]);
     if (
@@ -682,7 +681,7 @@ const parseConfiguredSource = (
     }
     queryServices.push(
       Object.freeze({
-        kind: query.kind as WatcherConfiguredLocalQueryServiceV1["kind"],
+        kind: query.kind as WatcherConfiguredLocalQueryService["kind"],
         providerId: query.providerId,
         endpoint: query.endpoint,
       }),
@@ -720,13 +719,13 @@ const parseConfiguredSource = (
  * independently authenticated provider observations. No endpoint, credential,
  * operator database, or administration value is accepted as an input.
  */
-export const evaluateWatcherMultiProviderConsistencyV1 = (
+export const evaluateWatcherMultiProviderConsistency = (
   configuredSourceInput: unknown,
   observationsInput: unknown,
-  transportAttestationsInput: readonly WatcherL1TransportAttestationContextV1[],
-): WatcherMultiProviderConsistencyV1 => {
+  transportAttestationsInput: readonly WatcherL1TransportAttestationContext[],
+): WatcherMultiProviderConsistency => {
   const sourceMode = recognizedConfiguredSourceMode(configuredSourceInput);
-  let configuredSource: WatcherL1SourceConsistencyConfigV1 | null;
+  let configuredSource: WatcherL1SourceConsistencyConfig | null;
   try {
     configuredSource = parseConfiguredSource(configuredSourceInput);
   } catch {
@@ -745,22 +744,20 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   }
   const configuredNetwork = configuredSource.network;
 
-  let transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+  let transportAttestations: readonly WatcherL1TransportAttestationContext[];
   try {
     const parsed = exactObservationArray(transportAttestationsInput);
     if (
       parsed === null ||
-      parsed.length >
-        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations ||
+      parsed.length > WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.observations ||
       parsed.some(
-        (candidate) =>
-          watcherL1TransportAttestationDetailsV1(candidate) === null,
+        (candidate) => watcherL1TransportAttestationDetails(candidate) === null,
       )
     ) {
       return rejectedBoundaryResult(configuredSource, "malformed_observation");
     }
     transportAttestations =
-      parsed as readonly WatcherL1TransportAttestationContextV1[];
+      parsed as readonly WatcherL1TransportAttestationContext[];
   } catch {
     return rejectedBoundaryResult(configuredSource, "malformed_observation");
   }
@@ -772,7 +769,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       return rejectedBoundaryResult(configuredSource, "malformed_observation");
     }
     if (
-      parsed.length > WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations
+      parsed.length > WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.observations
     ) {
       return rejectedBoundaryResult(
         configuredSource,
@@ -784,7 +781,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     return rejectedBoundaryResult(configuredSource, "malformed_observation");
   }
 
-  const valid: WatcherNormalizedL1BlockV1[] = [];
+  const valid: WatcherNormalizedL1Block[] = [];
   let rejectedObservationCount = 0;
   for (const input of inputs) {
     try {
@@ -802,8 +799,8 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     }
   }
 
-  const reasons = new Set<WatcherMultiProviderReasonCodeV1>();
-  const alerts = new Set<WatcherMultiProviderAlertCodeV1>();
+  const reasons = new Set<WatcherMultiProviderReasonCode>();
+  const alerts = new Set<WatcherMultiProviderAlertCode>();
   if (rejectedObservationCount > 0) {
     reasons.add("malformed_observation");
     alerts.add("watcher_provider_observation_rejected");
@@ -831,24 +828,24 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   const providerIds = eligible.map(
     (observation) => observation.provider.providerId,
   );
-  let agreement: WatcherMultiProviderAgreementV1 | null = null;
+  let agreement: WatcherMultiProviderAgreement | null = null;
   let hasPendingLag = false;
   let independentProviderCount = 0;
   let chainAuthorityObservationDigest: string | null = null;
   let queryObservationCount = 0;
-  let externalProviderBindings: readonly WatcherExternalProviderBindingV1[] =
+  let externalProviderBindings: readonly WatcherExternalProviderBinding[] =
     Object.freeze([]);
-  let localQueryServiceBindings: readonly WatcherLocalQueryServiceBindingV1[] =
+  let localQueryServiceBindings: readonly WatcherLocalQueryServiceBinding[] =
     Object.freeze([]);
 
   if (configuredSource.sourceMode === "local_node") {
     const local = eligible.filter(
       (
         observation,
-      ): observation is WatcherNormalizedL1BlockV1 & {
-        readonly provider: WatcherNormalizedL1BlockV1["provider"] & {
+      ): observation is WatcherNormalizedL1Block & {
+        readonly provider: WatcherNormalizedL1Block["provider"] & {
           readonly source: Extract<
-            WatcherNormalizedL1BlockV1["provider"]["source"],
+            WatcherNormalizedL1Block["provider"]["source"],
             { readonly sourceMode: "local_node" }
           >;
         };
@@ -896,17 +893,17 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       authority === null
         ? null
         : (transportAttestations.find((attestation) =>
-            isWatcherL1BlockAttestedByV1(authority, attestation),
+            isWatcherL1BlockAttestedBy(authority, attestation),
           ) ?? null);
     const authorityBinding =
       authorityTransport === null
         ? null
-        : (watcherL1TransportAttestationDetailsV1(authorityTransport)
+        : (watcherL1TransportAttestationDetails(authorityTransport)
             ?.authorityBindingSha256 ?? null);
     const authorityTransportEndpoint =
       authorityTransport === null
         ? null
-        : (watcherL1TransportAttestationDetailsV1(authorityTransport)
+        : (watcherL1TransportAttestationDetails(authorityTransport)
             ?.transportEndpoint ?? null);
     if (
       authorityTransportEndpoint !== null &&
@@ -923,12 +920,12 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
         ({ providerId }) => providerId === observation.provider.providerId,
       );
       const transport = transportAttestations.find((attestation) =>
-        isWatcherL1BlockAttestedByV1(observation, attestation),
+        isWatcherL1BlockAttestedBy(observation, attestation),
       );
       const endpoint =
         transport === undefined
           ? null
-          : (watcherL1TransportAttestationDetailsV1(transport)
+          : (watcherL1TransportAttestationDetails(transport)
               ?.transportEndpoint ?? null);
       return configured !== undefined && endpoint !== configured.endpoint;
     });
@@ -938,12 +935,12 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     }
     const queriesBoundToAuthority = queries.filter((observation) => {
       const transport = transportAttestations.find((attestation) =>
-        isWatcherL1BlockAttestedByV1(observation, attestation),
+        isWatcherL1BlockAttestedBy(observation, attestation),
       );
       const binding =
         transport === undefined
           ? null
-          : (watcherL1TransportAttestationDetailsV1(transport)
+          : (watcherL1TransportAttestationDetails(transport)
               ?.authorityBindingSha256 ?? null);
       const configured = configuredSource.queryServices.find(
         ({ providerId }) => providerId === observation.provider.providerId,
@@ -951,7 +948,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       const transportEndpoint =
         transport === undefined
           ? null
-          : (watcherL1TransportAttestationDetailsV1(transport)
+          : (watcherL1TransportAttestationDetails(transport)
               ?.transportEndpoint ?? null);
       return (
         authorityBinding !== null &&
@@ -994,7 +991,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
             (query) => query.provider.providerId === configured.providerId,
           );
           const query = matching.length === 1 ? matching[0]! : null;
-          let observationStatus: WatcherLocalQueryServiceBindingV1["observationStatus"];
+          let observationStatus: WatcherLocalQueryServiceBinding["observationStatus"];
           if (query === null) {
             observationStatus = "unavailable";
             reasons.add("missing_local_query_evidence");
@@ -1071,12 +1068,12 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
         observation.provider.providerId,
       );
       const transport = transportAttestations.find((attestation) =>
-        isWatcherL1BlockAttestedByV1(observation, attestation),
+        isWatcherL1BlockAttestedBy(observation, attestation),
       );
       const transportEndpoint =
         transport === undefined
           ? null
-          : (watcherL1TransportAttestationDetailsV1(transport)
+          : (watcherL1TransportAttestationDetails(transport)
               ?.transportEndpoint ?? null);
       return (
         source.sourceMode === "external_providers" &&
@@ -1096,10 +1093,10 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
         return false;
       }
       const transport = transportAttestations.find((attestation) =>
-        isWatcherL1BlockAttestedByV1(observation, attestation),
+        isWatcherL1BlockAttestedBy(observation, attestation),
       );
       return (
-        watcherL1TransportAttestationDetailsV1(transport)?.transportEndpoint !==
+        watcherL1TransportAttestationDetails(transport)?.transportEndpoint !==
         configured.endpoint
       );
     });
@@ -1188,7 +1185,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       const observationsByPoint = new Map<
         string,
         {
-          readonly observation: WatcherNormalizedL1BlockV1;
+          readonly observation: WatcherNormalizedL1Block;
           readonly contentDigests: Set<string>;
         }
       >();
@@ -1216,7 +1213,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
         alerts.add("watcher_provider_fork");
       } else if (pointDigests.size === 1) {
         if (!hasPointContentMismatch) {
-          const first = eligible[0] as WatcherNormalizedL1BlockV1;
+          const first = eligible[0] as WatcherNormalizedL1Block;
           agreement = Object.freeze({
             pointDigest: first.chainPoint.pointDigest,
             blockHash: first.chainPoint.blockHash,
@@ -1242,7 +1239,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
             index > 0 &&
             BigInt(observation.chainPoint.slot) <=
               BigInt(
-                (ordered[index - 1] as WatcherNormalizedL1BlockV1).chainPoint
+                (ordered[index - 1] as WatcherNormalizedL1Block).chainPoint
                   .slot,
               ),
         );
@@ -1254,17 +1251,15 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
           alerts.add("watcher_provider_fork");
         } else {
           const lowest = BigInt(
-            (ordered[0] as WatcherNormalizedL1BlockV1).chainPoint.blockNo,
+            (ordered[0] as WatcherNormalizedL1Block).chainPoint.blockNo,
           );
           const highest = BigInt(
-            (ordered[ordered.length - 1] as WatcherNormalizedL1BlockV1)
-              .chainPoint.blockNo,
+            (ordered[ordered.length - 1] as WatcherNormalizedL1Block).chainPoint
+              .blockNo,
           );
           if (
             highest - lowest <=
-            BigInt(
-              WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.compatibleBlockLag,
-            )
+            BigInt(WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.compatibleBlockLag)
           ) {
             hasPendingLag = true;
             reasons.add("bounded_provider_lag");
@@ -1278,7 +1273,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     }
   }
 
-  const quarantineReasons: ReadonlySet<WatcherMultiProviderReasonCodeV1> =
+  const quarantineReasons: ReadonlySet<WatcherMultiProviderReasonCode> =
     new Set([
       "insufficient_independent_providers",
       "duplicate_provider_id",
@@ -1305,7 +1300,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   const mustQuarantine = [...reasons].some((reason) =>
     quarantineReasons.has(reason),
   );
-  const status: WatcherMultiProviderConsistencyStatusV1 = mustQuarantine
+  const status: WatcherMultiProviderConsistencyStatus = mustQuarantine
     ? "quarantined"
     : hasPendingLag
       ? "pending"
@@ -1322,17 +1317,14 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     agreement = null;
   }
 
-  const reasonCodes = sortCodes(
-    reasons,
-    WATCHER_MULTI_PROVIDER_REASON_CODES_V1,
-  );
-  const alertCodes = sortCodes(alerts, WATCHER_MULTI_PROVIDER_ALERT_CODES_V1);
+  const reasonCodes = sortCodes(reasons, WATCHER_MULTI_PROVIDER_REASON_CODES);
+  const alertCodes = sortCodes(alerts, WATCHER_MULTI_PROVIDER_ALERT_CODES);
   const observationEvidenceDigests = Object.freeze(
     valid.map(({ observationDigest }) => observationDigest).sort(),
   );
 
   return makeResult({
-    schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
     status,
     protocolDecision: status === "agreed" ? "allowed" : "quarantined",
     sourceMode: configuredSource.sourceMode,

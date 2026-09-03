@@ -1,11 +1,11 @@
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   type FraudProofCatalogueCategoryName,
   FraudProofTokenDatum,
-  getHeaderV1FromStateQueueDatum,
-  hashBlockHeaderV1,
+  getHeaderFromStateQueueDatum,
+  hashBlockHeader,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   sortStateQueueUTxOs,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
@@ -23,26 +23,26 @@ import {
 import { Effect } from "effect";
 
 import {
-  FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowTerminalV1,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
+  type FraudProofWorkflowTerminal,
 } from "./journal-v1.js";
 import type {
-  FraudProofRawL1ComputationStepRoleV1,
-  FraudProofRawL1ScopeRoleV1,
-  FraudProofRawL1SnapshotRequestV1,
-  FraudProofRawL1SnapshotV1,
-  FraudProofRawL1TransactionV1,
-  FraudProofRawL1UtxoV1,
+  FraudProofRawL1ComputationStepRole,
+  FraudProofRawL1ScopeRole,
+  FraudProofRawL1Snapshot,
+  FraudProofRawL1SnapshotRequest,
+  FraudProofRawL1Transaction,
+  FraudProofRawL1Utxo,
 } from "./raw-l1-snapshot-v1.js";
 import {
-  validateVerifiedFraudProofReleaseEconomicsPolicyV1,
-  type VerifiedFraudProofReleaseEconomicsPolicyV1,
+  validateVerifiedFraudProofReleaseEconomicsPolicy,
+  type VerifiedFraudProofReleaseEconomicsPolicy,
 } from "./release-economics-policy-v1.js";
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy-v1.js";
 
 type LucidDataSchema = Parameters<typeof Data.from>[1];
 
-export type FraudProofRawL1FamilyDefinitionV1 = {
+export type FraudProofRawL1FamilyDefinition = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly categoryId: string;
   readonly headerHash: string;
@@ -54,7 +54,7 @@ export type FraudProofRawL1FamilyDefinitionV1 = {
   readonly computationThread: {
     readonly policyId: string;
     readonly steps: readonly {
-      readonly role: FraudProofRawL1ComputationStepRoleV1;
+      readonly role: FraudProofRawL1ComputationStepRole;
       readonly address: string;
       readonly datumSchema: LucidDataSchema;
     }[];
@@ -72,7 +72,7 @@ export type FraudProofRawL1FamilyDefinitionV1 = {
   readonly schedulerAddress: string;
 };
 
-export type FraudProofRawL1FamilyStageV1 =
+export type FraudProofRawL1FamilyStage =
   | {
       readonly kind: "not_started";
       readonly stateQueueBlockOutRef: string;
@@ -91,7 +91,7 @@ export type FraudProofRawL1FamilyStageV1 =
     }
   | {
       readonly kind: "removed";
-      readonly terminal: FraudProofWorkflowTerminalV1;
+      readonly terminal: FraudProofWorkflowTerminal;
     };
 
 const HEX_4 = /^[0-9a-f]{8}$/u;
@@ -106,10 +106,10 @@ const COMPUTATION_STEP_ROLES = Object.freeze([
   "computation_thread_step_07",
   "computation_thread_step_08",
   "computation_thread_step_09",
-] as const satisfies readonly FraudProofRawL1ComputationStepRoleV1[]);
+] as const satisfies readonly FraudProofRawL1ComputationStepRole[]);
 
 const assertCanonicalComputationSteps = (
-  definition: FraudProofRawL1FamilyDefinitionV1,
+  definition: FraudProofRawL1FamilyDefinition,
 ): void => {
   const steps = definition.computationThread.steps;
   if (
@@ -123,7 +123,7 @@ const assertCanonicalComputationSteps = (
   }
 };
 
-const rawToUtxo = (raw: FraudProofRawL1UtxoV1): UTxO => {
+const rawToUtxo = (raw: FraudProofRawL1Utxo): UTxO => {
   const [txHash, outputIndex] = raw.outRef.split("#");
   return {
     txHash: txHash!,
@@ -136,9 +136,9 @@ const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 
 const scope = (
-  snapshot: FraudProofRawL1SnapshotV1,
-  role: FraudProofRawL1ScopeRoleV1,
-): FraudProofRawL1SnapshotV1["scopes"][number] => {
+  snapshot: FraudProofRawL1Snapshot,
+  role: FraudProofRawL1ScopeRole,
+): FraudProofRawL1Snapshot["scopes"][number] => {
   const matches = snapshot.scopes.filter(
     (candidate) => candidate.role === role,
   );
@@ -150,7 +150,7 @@ const scope = (
   return matches[0]!;
 };
 
-const outputQuantity = (raw: FraudProofRawL1UtxoV1, unit: string): bigint =>
+const outputQuantity = (raw: FraudProofRawL1Utxo, unit: string): bigint =>
   coreToTxOutput(CML.TransactionOutput.from_cbor_hex(raw.outputCbor)).assets[
     unit
   ] ?? 0n;
@@ -160,10 +160,10 @@ const currentUnit = ({
   role,
   unit,
 }: {
-  readonly snapshot: FraudProofRawL1SnapshotV1;
-  readonly role: FraudProofRawL1ScopeRoleV1;
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly role: FraudProofRawL1ScopeRole;
   readonly unit: string;
-}): FraudProofRawL1UtxoV1 | undefined => {
+}): FraudProofRawL1Utxo | undefined => {
   const matches = scope(snapshot, role).utxos.filter(
     (candidate) => outputQuantity(candidate, unit) !== 0n,
   );
@@ -183,7 +183,7 @@ const requireThreadDatum = ({
   proverCredential,
   label,
 }: {
-  readonly raw: FraudProofRawL1UtxoV1;
+  readonly raw: FraudProofRawL1Utxo;
   readonly schema: LucidDataSchema;
   readonly proverCredential: string;
   readonly label: string;
@@ -203,7 +203,7 @@ const requireProofDatum = ({
   raw,
   proverCredential,
 }: {
-  readonly raw: FraudProofRawL1UtxoV1;
+  readonly raw: FraudProofRawL1Utxo;
   readonly proverCredential: string;
 }): void => {
   if (raw.datumCbor === null) {
@@ -229,9 +229,9 @@ const stateQueueHeaderHash = async (
     throw new Error("state-queue block token and linked-list key disagree");
   }
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(candidate.datum),
+    getHeaderFromStateQueueDatum(candidate.datum),
   );
-  const computedHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const computedHash = await Effect.runPromise(hashBlockHeader(header));
   if (computedHash !== assetHash) {
     throw new Error(
       "state-queue block datum and authentication token disagree",
@@ -244,8 +244,8 @@ const stateQueueTopology = async ({
   snapshot,
   definition,
 }: {
-  readonly snapshot: FraudProofRawL1SnapshotV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1;
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
 }): Promise<{
   readonly ordered: readonly StateQueueUTxO[];
   readonly target: StateQueueUTxO | undefined;
@@ -289,50 +289,49 @@ const stateQueueTopology = async ({
  * state-queue bytes used by the live family state machine. Production callers
  * therefore never assert their own `authenticated_cardano_l1` provenance.
  */
-export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1V1 =
-  async ({
-    snapshot,
-    definition,
-  }: {
-    readonly snapshot: FraudProofRawL1SnapshotV1;
-    readonly definition: FraudProofRawL1FamilyDefinitionV1;
-  }): Promise<AuthenticatedStateQueueHeaderObservationV1> => {
-    const topology = await stateQueueTopology({ snapshot, definition });
-    if (topology.target === undefined) {
-      throw new Error(
-        "authenticated state-queue header observation requires a live target",
-      );
-    }
-    const header = await Effect.runPromise(
-      getHeaderV1FromStateQueueDatum(topology.target.datum),
+export const deriveAuthenticatedStateQueueHeaderObservationFromRawL1 = async ({
+  snapshot,
+  definition,
+}: {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+}): Promise<AuthenticatedStateQueueHeaderObservation> => {
+  const topology = await stateQueueTopology({ snapshot, definition });
+  if (topology.target === undefined) {
+    throw new Error(
+      "authenticated state-queue header observation requires a live target",
     );
-    const targetOutRef = outRef(topology.target.utxo);
-    const creatingTxHash = targetOutRef.split("#")[0]!;
-    const creatingTransaction = snapshot.transactions.find(
-      (transaction) => transaction.txHash === creatingTxHash,
+  }
+  const header = await Effect.runPromise(
+    getHeaderFromStateQueueDatum(topology.target.datum),
+  );
+  const targetOutRef = outRef(topology.target.utxo);
+  const creatingTxHash = targetOutRef.split("#")[0]!;
+  const creatingTransaction = snapshot.transactions.find(
+    (transaction) => transaction.txHash === creatingTxHash,
+  );
+  if (creatingTransaction === undefined) {
+    throw new Error(
+      "raw L1 snapshot omitted the state-queue header creation transaction",
     );
-    if (creatingTransaction === undefined) {
-      throw new Error(
-        "raw L1 snapshot omitted the state-queue header creation transaction",
-      );
-    }
-    return {
-      schemaVersion: CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
-      sourceMode: "local_node",
-      provenance: {
-        trustClass: "authenticated_cardano_l1",
-        sourceId: snapshot.provenance.sourceId,
-        grade: "security",
-      },
-      chainPoint: {
-        slot: BigInt(creatingTransaction.inclusionPoint.slot),
-        blockHash: creatingTransaction.inclusionPoint.blockHash,
-      },
-      confirmationDepth: creatingTransaction.confirmationDepth,
-      headerHash: definition.headerHash,
-      header,
-    };
+  }
+  return {
+    schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+    sourceMode: "local_node",
+    provenance: {
+      trustClass: "authenticated_cardano_l1",
+      sourceId: snapshot.provenance.sourceId,
+      grade: "security",
+    },
+    chainPoint: {
+      slot: BigInt(creatingTransaction.inclusionPoint.slot),
+      blockHash: creatingTransaction.inclusionPoint.blockHash,
+    },
+    confirmationDepth: creatingTransaction.confirmationDepth,
+    headerHash: definition.headerHash,
+    header,
   };
+};
 
 const bodyOutputsContainUnit = (
   body: CML.TransactionBody,
@@ -358,9 +357,9 @@ const historicalTransactions = ({
   snapshot,
   unit,
 }: {
-  readonly snapshot: FraudProofRawL1SnapshotV1;
+  readonly snapshot: FraudProofRawL1Snapshot;
   readonly unit: string;
-}): readonly FraudProofRawL1TransactionV1[] => {
+}): readonly FraudProofRawL1Transaction[] => {
   const history = snapshot.history.find((candidate) => candidate.unit === unit);
   if (history === undefined) {
     throw new Error(`raw L1 family snapshot omitted history for ${unit}`);
@@ -384,12 +383,12 @@ const exactRemoval = ({
   stateUnit,
   proofOutRef,
 }: {
-  readonly snapshot: FraudProofRawL1SnapshotV1;
+  readonly snapshot: FraudProofRawL1Snapshot;
   readonly stateUnit: string;
   readonly proofOutRef: string;
 }): {
-  readonly transaction: FraudProofRawL1TransactionV1;
-  readonly removed: FraudProofRawL1UtxoV1;
+  readonly transaction: FraudProofRawL1Transaction;
+  readonly removed: FraudProofRawL1Utxo;
 } => {
   const matches = historicalTransactions({ snapshot, unit: stateUnit }).flatMap(
     (transaction) => {
@@ -419,8 +418,8 @@ const operatorFromRemovedState = async ({
   removed,
   definition,
 }: {
-  readonly removed: FraudProofRawL1UtxoV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1;
+  readonly removed: FraudProofRawL1Utxo;
+  readonly definition: FraudProofRawL1FamilyDefinition;
 }): Promise<string> => {
   if (rawToUtxo(removed).address !== definition.stateQueue.address) {
     throw new Error("removed state-queue input came from another address");
@@ -432,13 +431,13 @@ const operatorFromRemovedState = async ({
     throw new Error("removal consumed a different state-queue header");
   }
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(decoded.datum),
+    getHeaderFromStateQueueDatum(decoded.datum),
   );
   return header.operatorVkey;
 };
 
 const transactionOutputs = (
-  transaction: FraudProofRawL1TransactionV1,
+  transaction: FraudProofRawL1Transaction,
 ): readonly {
   readonly outRef: string;
   readonly output: CML.TransactionOutput;
@@ -498,11 +497,11 @@ const operatorBondInputs = ({
   activeUnit,
   retiredUnit,
 }: {
-  readonly transaction: FraudProofRawL1TransactionV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1;
+  readonly transaction: FraudProofRawL1Transaction;
+  readonly definition: FraudProofRawL1FamilyDefinition;
   readonly activeUnit: string;
   readonly retiredUnit: string;
-}): readonly FraudProofRawL1UtxoV1[] =>
+}): readonly FraudProofRawL1Utxo[] =>
   transaction.resolvedInputs.filter((candidate) => {
     const output = coreToTxOutput(
       CML.TransactionOutput.from_cbor_hex(candidate.outputCbor),
@@ -523,15 +522,15 @@ const deriveTerminal = async ({
   proof,
   releaseEconomics,
 }: {
-  readonly snapshot: FraudProofRawL1SnapshotV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1;
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
   readonly stateUnit: string;
   readonly proofUnit: string;
-  readonly proof: FraudProofRawL1UtxoV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-}): Promise<FraudProofWorkflowTerminalV1> => {
+  readonly proof: FraudProofRawL1Utxo;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+}): Promise<FraudProofWorkflowTerminal> => {
   const verifiedEconomics =
-    validateVerifiedFraudProofReleaseEconomicsPolicyV1(releaseEconomics);
+    validateVerifiedFraudProofReleaseEconomicsPolicy(releaseEconomics);
   if (
     verifiedEconomics.deploymentIdentityDigest !==
       snapshot.deploymentIdentityDigest ||
@@ -658,7 +657,7 @@ const deriveTerminal = async ({
   }
   const proofTxHash = proof.outRef.split("#")[0]!;
   return {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_V1_SCHEMA_VERSION,
+    schemaVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
     category: definition.category,
     headerHash: definition.headerHash,
     proofToken: {
@@ -692,13 +691,13 @@ const deriveTerminal = async ({
   };
 };
 
-export const fraudProofRawL1SnapshotRequestForFamilyV1 = ({
+export const fraudProofRawL1SnapshotRequestForFamily = ({
   definition,
   releaseFinality,
 }: {
-  readonly definition: FraudProofRawL1FamilyDefinitionV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): FraudProofRawL1SnapshotRequestV1 => {
+  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): FraudProofRawL1SnapshotRequest => {
   assertCanonicalComputationSteps(definition);
   if (
     !HEX_4.test(definition.categoryId) ||
@@ -746,15 +745,15 @@ export const fraudProofRawL1SnapshotRequestForFamilyV1 = ({
   };
 };
 
-export const deriveFraudProofRawL1FamilyStageV1 = async ({
+export const deriveFraudProofRawL1FamilyStage = async ({
   snapshot,
   definition,
   releaseEconomics,
 }: {
-  readonly snapshot: FraudProofRawL1SnapshotV1;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-}): Promise<FraudProofRawL1FamilyStageV1> => {
+  readonly snapshot: FraudProofRawL1Snapshot;
+  readonly definition: FraudProofRawL1FamilyDefinition;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+}): Promise<FraudProofRawL1FamilyStage> => {
   assertCanonicalComputationSteps(definition);
   if (
     snapshot.headerHash !== definition.headerHash ||

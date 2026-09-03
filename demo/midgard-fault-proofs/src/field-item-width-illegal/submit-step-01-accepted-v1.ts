@@ -5,22 +5,22 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { FieldItemWidthIllegalContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { FieldItemWidthIllegalContracts } from "./contracts-v1.js";
 import {
-  classifyFieldItemWidthFindingV1,
-  type FieldItemWidthFindingV1,
+  classifyFieldItemWidthFinding,
+  type FieldItemWidthFinding,
 } from "./field-item-width-illegal-v1.js";
 import {
-  FieldItemWidthStep01RedeemerV1Schema,
-  FieldItemWidthStep02DatumV1Schema,
+  FieldItemWidthStep01RedeemerSchema,
+  FieldItemWidthStep02DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitFieldItemWidthIllegalStep01AcceptedV1 = async ({
+export const submitFieldItemWidthIllegalStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -39,9 +39,9 @@ export const submitFieldItemWidthIllegalStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: FieldItemWidthIllegalContractsV1;
+  readonly contracts: FieldItemWidthIllegalContracts;
   readonly signer: ResolvedProverSigner;
-  readonly finding: FieldItemWidthFindingV1;
+  readonly finding: FieldItemWidthFinding;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -50,11 +50,11 @@ export const submitFieldItemWidthIllegalStep01AcceptedV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyFieldItemWidthFindingV1(finding);
+  const exact = classifyFieldItemWidthFinding(finding);
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -64,9 +64,9 @@ export const submitFieldItemWidthIllegalStep01AcceptedV1 = async ({
         item_index: BigInt(exact.itemIndex),
       },
     } as never,
-    FieldItemWidthStep02DatumV1Schema as never,
+    FieldItemWidthStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -78,7 +78,7 @@ export const submitFieldItemWidthIllegalStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum,
-    spendRedeemerSchema: FieldItemWidthStep01RedeemerV1Schema,
+    spendRedeemerSchema: FieldItemWidthStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {

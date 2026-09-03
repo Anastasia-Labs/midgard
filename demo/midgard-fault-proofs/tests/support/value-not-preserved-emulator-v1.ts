@@ -18,19 +18,19 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardFieldItemsV1,
-  encodeMidgardNativeTxCompactV1,
+  encodeMidgardFieldItems,
+  encodeMidgardNativeTxCompact,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardMintPolicyItemV1,
-  type MidgardNativeTxFullV1,
+  type MidgardMintPolicyItem,
+  type MidgardNativeTxFull,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
@@ -40,14 +40,14 @@ import {
   ActiveOperatorSpendRedeemer,
   CORRECTION_LOCK_ASSET_NAME,
   encodeLinkedListNodeView,
-  encodeMidgardTxInputCanonicalV1,
-  fieldPreimagePublicationDatumCborV1,
+  encodeMidgardTxInputCanonical,
+  fieldPreimagePublicationDatumCbor,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  hashBlockHeaderV1,
-  type HeaderV1,
+  hashBlockHeader,
+  type Header,
   HUB_ORACLE_ASSET_NAME,
   incompleteEmulatorCommitBlockHeaderTxProgram,
   type MidgardTxInput,
@@ -64,7 +64,7 @@ import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   utxoToStateQueueUTxO,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,
@@ -91,21 +91,21 @@ import {
   type SubmitStep01TxInclusion,
 } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import type { ValueNotPreservedContractsV1 } from "../../src/value-not-preserved/contracts-v1.js";
+import type { ValueNotPreservedContracts } from "../../src/value-not-preserved/contracts-v1.js";
 import {
-  buildSpentInputValueWitnessV1,
-  spendInputsOpeningV1,
-  type ValueNotPreservedLedgerTrieHandleV1,
+  buildSpentInputValueWitness,
+  spendInputsOpening as spendInputsOpeningV1,
+  type ValueNotPreservedLedgerTrieHandle,
 } from "../../src/value-not-preserved/evidence-v1.js";
 import {
-  type ClaimedAssetV1,
-  type ClaimedImbalanceDirectionV1,
+  type ClaimedAsset,
+  type ClaimedImbalanceDirection,
   ValueNotPreservedStep01SpendRedeemer,
   ValueNotPreservedStep02Datum,
   type ValueNotPreservedStep02State,
   ValueNotPreservedStep04SpendRedeemer,
 } from "../../src/value-not-preserved/schemas-v1.js";
-import { requireValueNotPreservedThreadUtxoV1 } from "../../src/value-not-preserved/submit-common-v1.js";
+import { requireValueNotPreservedThreadUtxo } from "../../src/value-not-preserved/submit-common-v1.js";
 import { submitValueNotPreservedInit } from "../../src/value-not-preserved/submit-value-not-preserved-init-v1.js";
 import { submitValueNotPreservedStep01 } from "../../src/value-not-preserved/submit-value-not-preserved-step-01-v1.js";
 import {
@@ -115,43 +115,43 @@ import {
 import { submitValueNotPreservedStep03 } from "../../src/value-not-preserved/submit-value-not-preserved-step-03-v1.js";
 import { submitValueNotPreservedStep04 } from "../../src/value-not-preserved/submit-value-not-preserved-step-04-v1.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
 import {
-  findStateQueueYieldReferenceScriptV1,
-  publishFaultProofWitnessReferenceScriptsV1,
+  findStateQueueYieldReferenceScript,
+  publishFaultProofWitnessReferenceScripts,
 } from "./emulator/reference-scripts.js";
 import {
   countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
-  emulatorSuccessorHeaderStartV1,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
 } from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
   funderPaymentKeyHash,
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   makeNativeTx,
-  network as emulatorNetworkV1,
+  network as emulatorNetwork,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export { expectOnchainRefusalV1 } from "./submit-init-emulator-shared.js";
+export { expectOnchainRefusal } from "./submit-init-emulator-shared.js";
 
 // ---------------------------------------------------------------------------
 // Building blocks: out-refs, values, outputs
 // ---------------------------------------------------------------------------
 
 /** A readable fixture out-ref: `tx_id` is one byte repeated 32 times. */
-export const vnpOutRefV1 = (
+export const vnpOutRef = (
   txIdByte: string,
   outputIndex: number,
 ): MidgardTxInput => ({
@@ -160,7 +160,7 @@ export const vnpOutRefV1 = (
 });
 
 /** A `MidgardValue` from lovelace plus optional single-policy token entries. */
-export const vnpValueV1 = (
+export const vnpValue = (
   lovelace: bigint,
   tokens: readonly {
     readonly policyIdHex: string;
@@ -181,13 +181,13 @@ export const vnpValueV1 = (
 };
 
 /** The fixture payment credential every committed output pays. */
-const VNP_OUTPUT_ADDRESS_V1 = Buffer.concat([
+const VNP_OUTPUT_ADDRESS = Buffer.concat([
   Buffer.from([0x60]),
   Buffer.alloc(28, 0x42),
 ]);
 
 /** The fixture payment credential every SPENT (pre-state) output pays. */
-const VNP_LEDGER_OUTPUT_ADDRESS_V1 = Buffer.concat([
+const VNP_LEDGER_OUTPUT_ADDRESS = Buffer.concat([
   Buffer.from([0x60]),
   Buffer.alloc(28, 0x99),
 ]);
@@ -200,7 +200,7 @@ const VNP_LEDGER_OUTPUT_ADDRESS_V1 = Buffer.concat([
  * datum without walking it, so a datum-heavy outputs field crosses the
  * 14,336-byte tier-1 cap without inflating the fold's execution cost.
  */
-export const vnpLargeDatumCborV1 = (chunkCount: number, seed: number): Buffer =>
+export const vnpLargeDatumCbor = (chunkCount: number, seed: number): Buffer =>
   Buffer.concat([
     Buffer.from([0x9f]),
     ...Array.from({ length: chunkCount }, (_, index) =>
@@ -213,7 +213,7 @@ export const vnpLargeDatumCborV1 = (chunkCount: number, seed: number): Buffer =>
   ]);
 
 /** One committed output, optionally padded with a large inline datum. */
-export const vnpOutputV1 = ({
+export const vnpOutput = ({
   value,
   datumChunks = 0,
   seed = 0,
@@ -222,13 +222,13 @@ export const vnpOutputV1 = ({
   readonly datumChunks?: number;
   readonly seed?: number;
 }): MidgardTxOutput => ({
-  address: VNP_OUTPUT_ADDRESS_V1,
+  address: VNP_OUTPUT_ADDRESS,
   value,
   ...(datumChunks > 0
     ? {
         datum: {
           kind: "inline" as const,
-          cbor: vnpLargeDatumCborV1(datumChunks, seed),
+          cbor: vnpLargeDatumCbor(datumChunks, seed),
         },
       }
     : {}),
@@ -239,12 +239,12 @@ export const vnpOutputV1 = ({
 // ---------------------------------------------------------------------------
 
 /** One spend input of the fixture transaction with its pre-state value. */
-export type ValueNotPreservedFixtureSpentInputV1 = {
+export type ValueNotPreservedFixtureSpentInput = {
   readonly input: MidgardTxInput;
   readonly spentValue: MidgardValue;
 };
 
-export type ValueNotPreservedFixtureV1 = {
+export type ValueNotPreservedFixture = {
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly nativeTxId: string;
@@ -254,10 +254,10 @@ export type ValueNotPreservedFixtureV1 = {
   /** The committed §5.1 outputs-field preimage — the §8.4 tier decider. */
   readonly outputsPreimageCbor: Buffer;
   readonly outputs: readonly MidgardTxOutput[];
-  readonly mintItems: readonly MidgardMintPolicyItemV1[];
+  readonly mintItems: readonly MidgardMintPolicyItem[];
   readonly ledger: {
     readonly rootHex: string;
-    readonly trie: ValueNotPreservedLedgerTrieHandleV1;
+    readonly trie: ValueNotPreservedLedgerTrieHandle;
     /** Per spend input, in field-0 order: the facts step-02 folds. */
     readonly spentInputs: readonly {
       readonly input: MidgardTxInput;
@@ -279,75 +279,72 @@ export type ValueNotPreservedFixtureV1 = {
  * operator honestly recorded as a no-op, which the family must never convict
  * however unbalanced its value equation looks.
  */
-export const buildValueNotPreservedFixtureV1 = async ({
+export const buildValueNotPreservedFixture = async ({
   spentInputs,
   outputs,
   mintItems = [],
   fee = 1_000_000n,
   validity = "TxIsValid",
 }: {
-  readonly spentInputs: readonly ValueNotPreservedFixtureSpentInputV1[];
+  readonly spentInputs: readonly ValueNotPreservedFixtureSpentInput[];
   readonly outputs: readonly MidgardTxOutput[];
-  readonly mintItems?: readonly MidgardMintPolicyItemV1[];
+  readonly mintItems?: readonly MidgardMintPolicyItem[];
   readonly fee?: bigint;
   readonly validity?: "TxIsValid" | "TxIsInvalid";
-}): Promise<ValueNotPreservedFixtureV1> => {
+}): Promise<ValueNotPreservedFixture> => {
   const spendItems = spentInputs.map(({ input }) =>
-    Buffer.from(encodeMidgardTxInputCanonicalV1(input)),
+    Buffer.from(encodeMidgardTxInputCanonical(input)),
   );
-  const outputItems = encodeMidgardFieldItemsV1({
+  const outputItems = encodeMidgardFieldItems({
     fieldIndex: 2,
     items: outputs,
   });
-  const mintItemBuffers = encodeMidgardFieldItemsV1({
+  const mintItemBuffers = encodeMidgardFieldItems({
     fieldIndex: 5,
     items: mintItems,
   });
   const spendInputsPreimageCbor = encodeCbor(spendItems);
   const outputsPreimageCbor = encodeCbor([...outputItems]);
-  const badTx: MidgardNativeTxFullV1 =
-    materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
-      validity,
-      body: {
-        spendInputsPreimageCbor,
-        referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-        outputsPreimageCbor,
-        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-        mintPreimageCbor:
-          mintItemBuffers.length === 0
-            ? EMPTY_CBOR_LIST
-            : encodeCbor([...mintItemBuffers]),
-        scriptIntegrityHash: EMPTY_NULL_ROOT,
-        auxiliaryDataHash: EMPTY_NULL_ROOT,
-        fee,
-        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-        networkId: 0n,
-      },
-      witnessSet: {
-        addrTxWitsPreimageCbor: encodeCbor([
-          Buffer.from("f1".repeat(32), "hex"),
-        ]),
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      },
-    });
+  const badTx: MidgardNativeTxFull = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity,
+    body: {
+      spendInputsPreimageCbor,
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor:
+        mintItemBuffers.length === 0
+          ? EMPTY_CBOR_LIST
+          : encodeCbor([...mintItemBuffers]),
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      fee,
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      networkId: 0n,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: encodeCbor([Buffer.from("f1".repeat(32), "hex")]),
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  });
   // One honest decoy leaf, so the membership proof has at least one step.
   const decoyTx = makeNativeTx({
     spendInputCbors: [
-      Buffer.from(encodeMidgardTxInputCanonicalV1(vnpOutRefV1("dd", 0))),
+      Buffer.from(encodeMidgardTxInputCanonical(vnpOutRef("dd", 0))),
     ],
     fee: 5n,
   });
-  const badTxId = computeMidgardNativeTxIdV1(badTx).toString("hex");
+  const badTxId = computeMidgardNativeTxId(badTx).toString("hex");
   const badTxCompactCbor = Buffer.from(
-    encodeMidgardNativeTxCompactV1(badTx.compact),
+    encodeMidgardNativeTxCompact(badTx.compact),
   ).toString("hex");
   const badTxSourceCbor = l2TransactionSourceCborV1(badTx);
   const decoyTxSourceCbor = l2TransactionSourceCborV1(decoyTx);
-  const decoyTxId = computeMidgardNativeTxIdV1(decoyTx).toString("hex");
+  const decoyTxId = computeMidgardNativeTxId(decoyTx).toString("hex");
   if (decoyTxId === badTxId) {
     throw new Error("fixture decoy collides with the disputed transaction");
   }
@@ -377,15 +374,15 @@ export const buildValueNotPreservedFixtureV1 = async ({
     readonly spentValue: MidgardValue;
   }[] = [];
   for (const { input, spentValue } of spentInputs) {
-    const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const material = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: Number(input.output_index),
       outputCbor: encodeMidgardTxOutput({
-        address: VNP_LEDGER_OUTPUT_ADDRESS_V1,
+        address: VNP_LEDGER_OUTPUT_ADDRESS,
         value: spentValue,
       }),
     });
     await ledgerTrie.insert(
-      encodeMidgardTxInputCanonicalV1(input),
+      encodeMidgardTxInputCanonical(input),
       material.descriptorCbor,
     );
     ledgerSpentInputs.push({
@@ -437,8 +434,8 @@ export const buildValueNotPreservedFixtureV1 = async ({
 // Harness, committed header, reference scripts, removal category
 // ---------------------------------------------------------------------------
 
-export const makeValueNotPreservedEmulatorHarnessV1 = async () => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+export const makeValueNotPreservedEmulatorHarness = async () => {
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realValueNotPreserved: true,
       alwaysFraudProofCatalogue: true,
@@ -459,8 +456,8 @@ export const makeValueNotPreservedEmulatorHarnessV1 = async () => {
   return { ...harness, family, category };
 };
 
-export type ValueNotPreservedHarnessV1 = Awaited<
-  ReturnType<typeof makeValueNotPreservedEmulatorHarnessV1>
+export type ValueNotPreservedHarness = Awaited<
+  ReturnType<typeof makeValueNotPreservedEmulatorHarness>
 >;
 
 /**
@@ -480,12 +477,12 @@ export type ValueNotPreservedHarnessV1 = Awaited<
  *   time exactly as `commit_block_header_carries_previous_block_v1`
  *   demands.
  */
-export const setupValueNotPreservedScenarioV1 = async ({
+export const setupValueNotPreservedScenario = async ({
   harness,
   fixture,
 }: {
-  readonly harness: ValueNotPreservedHarnessV1;
-  readonly fixture: ValueNotPreservedFixtureV1;
+  readonly harness: ValueNotPreservedHarness;
+  readonly fixture: ValueNotPreservedFixture;
 }) => {
   const {
     emulator,
@@ -498,7 +495,7 @@ export const setupValueNotPreservedScenarioV1 = async ({
     nonceUtxo,
   } = harness;
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: proverLucid,
       realBlueprint,
       computationThreadMintingScript: family.computationThread.mintingScript,
@@ -512,7 +509,7 @@ export const setupValueNotPreservedScenarioV1 = async ({
   const anchorHeader = {
     ...baseAnchorHeader,
     endTime:
-      baseAnchorHeader.startTime + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1),
+      baseAnchorHeader.startTime + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
     utxosRoot: fixture.ledger.rootHex,
   };
   const anchorSetup = await submitSetupTx({
@@ -522,7 +519,7 @@ export const setupValueNotPreservedScenarioV1 = async ({
     catalogue,
     header: anchorHeader,
   });
-  const successorStart = emulatorSuccessorHeaderStartV1({
+  const successorStart = emulatorSuccessorHeaderStart({
     predecessorEndTime: anchorHeader.endTime,
     emulator,
   });
@@ -539,7 +536,7 @@ export const setupValueNotPreservedScenarioV1 = async ({
     prevHeaderHash: anchorSetup.headerHash,
     prevUtxosRoot: fixture.ledger.rootHex,
   };
-  const commit = await commitHeaderAfterAnchorBlockV1({
+  const commit = await commitHeaderAfterAnchorBlock({
     harness,
     anchorBlockOutRef: anchorSetup.fraudulentBlockOutRef,
     header,
@@ -562,14 +559,14 @@ export const setupValueNotPreservedScenarioV1 = async ({
  * production-shaped commit transaction the harness setup submits for its
  * first block, re-anchored at a node instead of the confirmed-state root.
  */
-const commitHeaderAfterAnchorBlockV1 = async ({
+const commitHeaderAfterAnchorBlock = async ({
   harness,
   anchorBlockOutRef,
   header,
 }: {
-  readonly harness: ValueNotPreservedHarnessV1;
+  readonly harness: ValueNotPreservedHarness;
   readonly anchorBlockOutRef: string;
-  readonly header: HeaderV1;
+  readonly header: Header;
 }): Promise<{
   readonly headerHash: string;
   readonly blockOutRef: string;
@@ -577,7 +574,7 @@ const commitHeaderAfterAnchorBlockV1 = async ({
 }> => {
   const lucid = harness.funderLucid;
   const { contracts } = harness;
-  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const anchorUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(anchorBlockOutRef, "--anchor-block-out-ref"),
@@ -589,7 +586,7 @@ const commitHeaderAfterAnchorBlockV1 = async ({
   const hubOracleUtxo = await requireSingletonUtxo({
     lucid,
     address: credentialToAddress(
-      emulatorNetworkV1,
+      emulatorNetwork,
       scriptHashToCredential(contracts.hubOracle.policyId),
     ),
     unit: toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME),
@@ -632,7 +629,7 @@ const commitHeaderAfterAnchorBlockV1 = async ({
         bond_unlock_time:
           commitValidTo -
           1n +
-          BigInt(MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs),
+          BigInt(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs),
         inactivity_strikes: 0n,
       },
       ActiveOperatorDatum,
@@ -691,7 +688,7 @@ const commitHeaderAfterAnchorBlockV1 = async ({
       "value-not-preserved second commit found no confirmed-state root witness",
     );
   }
-  const commitYieldRef = await findStateQueueYieldReferenceScriptV1({
+  const commitYieldRef = await findStateQueueYieldReferenceScript({
     lucid,
     contracts,
     arm: "commit",
@@ -763,14 +760,14 @@ const commitHeaderAfterAnchorBlockV1 = async ({
  * deployment shape per the standing reference-script ruling). Every emulator
  * transaction that spends a step sources its witness from these.
  */
-export const publishValueNotPreservedReferenceScriptsV1 = async ({
+export const publishValueNotPreservedReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -789,8 +786,8 @@ export const publishValueNotPreservedReferenceScriptsV1 = async ({
 // The honest thread, one call: init → bind → fold* → finish [→ 03 [→ 04]]
 // ---------------------------------------------------------------------------
 
-export type ValueNotPreservedThreadRunV1 = Awaited<
-  ReturnType<typeof runValueNotPreservedThreadV1>
+export type ValueNotPreservedThreadRun = Awaited<
+  ReturnType<typeof runValueNotPreservedThread>
 >;
 
 /**
@@ -798,7 +795,7 @@ export type ValueNotPreservedThreadRunV1 = Awaited<
  * emulator measurements. `through` picks the stopping point so adversarial
  * suites can park the thread mid-chain and attack from there.
  */
-export const runValueNotPreservedThreadV1 = async ({
+export const runValueNotPreservedThread = async ({
   harness,
   fixture,
   setup,
@@ -807,15 +804,15 @@ export const runValueNotPreservedThreadV1 = async ({
   claimedDirection,
   through = "step04",
 }: {
-  readonly harness: ValueNotPreservedHarnessV1;
-  readonly fixture: ValueNotPreservedFixtureV1;
+  readonly harness: ValueNotPreservedHarness;
+  readonly fixture: ValueNotPreservedFixture;
   readonly setup: {
     readonly fraudulentBlockOutRef: string;
-    readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+    readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   };
   readonly refs: readonly [UTxO, UTxO, UTxO, UTxO];
-  readonly claimedAsset: ClaimedAssetV1;
-  readonly claimedDirection: ClaimedImbalanceDirectionV1;
+  readonly claimedAsset: ClaimedAsset;
+  readonly claimedDirection: ClaimedImbalanceDirection;
   readonly through?: "finish" | "step03" | "step04";
 }) => {
   const { emulator, proverLucid, proverSigner, family, category } = harness;
@@ -831,7 +828,7 @@ export const runValueNotPreservedThreadV1 = async ({
     submitValueNotPreservedInit({
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
-      network: emulatorNetworkV1,
+      network: emulatorNetwork,
       contracts: family,
       category,
       catalogue,
@@ -849,7 +846,7 @@ export const runValueNotPreservedThreadV1 = async ({
       blueprint: harness.realBlueprint,
       contracts: family,
       categoryId: category.categoryId,
-      network: emulatorNetworkV1,
+      network: emulatorNetwork,
       signer: proverSigner,
       threadOutRef: init.nextThreadOutRef,
       stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
@@ -870,7 +867,7 @@ export const runValueNotPreservedThreadV1 = async ({
   });
   let threadOutRef = step01.nextThreadOutRef;
   for (const [index, spent] of fixture.ledger.spentInputs.entries()) {
-    const valueWitness = await buildSpentInputValueWitnessV1({
+    const valueWitness = await buildSpentInputValueWitness({
       claim: claimedAsset,
       descriptorCbor: spent.descriptorCbor,
       spentValue: spent.spentValue,
@@ -967,17 +964,17 @@ export const runValueNotPreservedThreadV1 = async ({
  * test-only escape hatch and watches the §8.8 door's
  * `field_commitment(preimage) == expected_hash` re-hash refuse it.
  */
-export const publishTamperedFieldPreimagePublicationV1 = async ({
+export const publishTamperedFieldPreimagePublication = async ({
   harness,
   bytes,
 }: {
-  readonly harness: ValueNotPreservedHarnessV1;
+  readonly harness: ValueNotPreservedHarness;
   readonly bytes: Uint8Array;
 }): Promise<UTxO> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   signer.selectWallet(lucid);
-  const datum = fieldPreimagePublicationDatumCborV1(bytes);
+  const datum = fieldPreimagePublicationDatumCbor(bytes);
   const tx = await lucid
     .newTx()
     .pay.ToAddressWithData(
@@ -1005,7 +1002,7 @@ export const publishTamperedFieldPreimagePublicationV1 = async ({
 // ---------------------------------------------------------------------------
 // Raw builders — the honest submitters' transactions WITHOUT their local
 // fail-closed guards, so the adversarial suite can watch the VALIDATOR refuse
-// (see `expectOnchainRefusalV1`). Production code never takes these paths.
+// (see `expectOnchainRefusal`). Production code never takes these paths.
 // ---------------------------------------------------------------------------
 
 /**
@@ -1013,7 +1010,7 @@ export const publishTamperedFieldPreimagePublicationV1 = async ({
  * §1.4 acceptance-gate re-check, so an honestly-rejected committed leaf
  * reaches the validator's own `validity_code == 0` refusal.
  */
-export const submitRawValueNotPreservedBindV1 = async ({
+export const submitRawValueNotPreservedBind = async ({
   harness,
   threadOutRef,
   stateQueueBlockOutRef,
@@ -1024,27 +1021,26 @@ export const submitRawValueNotPreservedBindV1 = async ({
   referenceScriptUtxo,
   witnessReferenceScripts,
 }: {
-  readonly harness: ValueNotPreservedHarnessV1;
+  readonly harness: ValueNotPreservedHarness;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly claimedAsset: ClaimedAssetV1;
-  readonly claimedDirection: ClaimedImbalanceDirectionV1;
+  readonly claimedAsset: ClaimedAsset;
+  readonly claimedDirection: ClaimedImbalanceDirection;
   readonly prevUtxosRoot: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const contracts = harness.family;
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId: harness.category.categoryId,
-      stepIndex: 0,
-      threadOutRef,
-    });
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId: harness.category.categoryId,
+    stepIndex: 0,
+    threadOutRef,
+  });
   const stateQueueBlockUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(stateQueueBlockOutRef, "--state-queue-block-out-ref"),
@@ -1053,7 +1049,7 @@ export const submitRawValueNotPreservedBindV1 = async ({
   const hubOracleUtxo = await requireSingletonUtxo({
     lucid,
     address: credentialToAddress(
-      emulatorNetworkV1,
+      emulatorNetwork,
       scriptHashToCredential(contracts.hubOraclePolicyId),
     ),
     unit: toUnit(contracts.hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
@@ -1067,15 +1063,15 @@ export const submitRawValueNotPreservedBindV1 = async ({
     ),
   };
   const phasRewardAddress = phasMembershipRewardAddress(
-    emulatorNetworkV1,
+    emulatorNetwork,
     phasMembershipScript,
   );
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts.phasMembershipWithdraw,
     label: "raw value-not-preserved PHAS membership",
   });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "raw value-not-preserved step-01",
@@ -1191,28 +1187,27 @@ export const submitRawValueNotPreservedBindV1 = async ({
  * claimed direction — reaches the exact
  * `value_not_preserved_fault_is_established_v1` check on-chain.
  */
-export const submitRawValueNotPreservedFinalizeV1 = async ({
+export const submitRawValueNotPreservedFinalize = async ({
   harness,
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
 }: {
-  readonly harness: ValueNotPreservedHarnessV1;
+  readonly harness: ValueNotPreservedHarness;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const contracts = harness.family;
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId: harness.category.categoryId,
-      stepIndex: 3,
-      threadOutRef,
-    });
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId: harness.category.categoryId,
+    stepIndex: 3,
+    threadOutRef,
+  });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
@@ -1282,17 +1277,17 @@ export const submitRawValueNotPreservedFinalizeV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw value-not-preserved computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: "raw value-not-preserved fraud-proof mint",
   });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "raw value-not-preserved step-04",

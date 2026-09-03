@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   createReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
@@ -19,16 +19,16 @@ import {
   resolveReferenceScriptAuthPolicyProgram,
 } from "../src/commands/deployment-run-state.js";
 import {
-  bindDeploymentRunStateToMarkerV1,
+  bindDeploymentRunStateToMarker,
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
   DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
   loadDeploymentRunState,
   mutateDeploymentRunState,
-  parseDeploymentRunEventV1,
-  parseDeploymentRunIdentityV1,
+  parseDeploymentRunEvent,
+  parseDeploymentRunIdentity,
   parseDeploymentRunState,
-  parseDeploymentStepStateV1,
+  parseDeploymentStepState,
   RunStateError,
   sha256File,
   transitionDeploymentStep,
@@ -144,25 +144,25 @@ describe("deployment run state", () => {
     ).toThrow("must be created or step_transition");
 
     expect(() =>
-      parseDeploymentRunIdentityV1({
+      parseDeploymentRunIdentity({
         ...state.identity,
         unexpected: true,
       }),
     ).toThrow("unknown field");
     expect(() =>
-      parseDeploymentRunIdentityV1({
+      parseDeploymentRunIdentity({
         hubOracleOneShot: { txHash: "AA".repeat(32), outputIndex: 0 },
       }),
     ).toThrow("lowercase hexadecimal");
     const step = state.steps.init!;
-    expect(parseDeploymentStepStateV1(step)).toEqual(step);
+    expect(parseDeploymentStepState(step)).toEqual(step);
     expect(() =>
-      parseDeploymentStepStateV1({ ...step, unexpected: true }),
+      parseDeploymentStepState({ ...step, unexpected: true }),
     ).toThrow("unknown field");
     const event = state.events[0]!;
-    expect(parseDeploymentRunEventV1(event)).toEqual(event);
+    expect(parseDeploymentRunEvent(event)).toEqual(event);
     expect(() =>
-      parseDeploymentRunEventV1({ ...event, unexpected: true }),
+      parseDeploymentRunEvent({ ...event, unexpected: true }),
     ).toThrow("unknown field");
   });
 
@@ -219,8 +219,8 @@ describe("deployment run state", () => {
       now: new Date("2026-01-01T00:00:00.000Z"),
       identity: { network: "Preprod" },
     });
-    const marker = makeDeploymentMarkerV1("ab".repeat(32));
-    const bound = bindDeploymentRunStateToMarkerV1(initial, {
+    const marker = makeDeploymentMarker("ab".repeat(32));
+    const bound = bindDeploymentRunStateToMarker(initial, {
       marker,
       manifestPath: "/deployment/contract-deployment-info.json",
       manifestSha256: "cd".repeat(32),
@@ -231,15 +231,15 @@ describe("deployment run state", () => {
       manifestSha256: "cd".repeat(32),
     });
     expect(() =>
-      bindDeploymentRunStateToMarkerV1(bound, {
-        marker: makeDeploymentMarkerV1("ef".repeat(32)),
+      bindDeploymentRunStateToMarker(bound, {
+        marker: makeDeploymentMarker("ef".repeat(32)),
         manifestPath: "/deployment/contract-deployment-info.json",
         manifestSha256: "01".repeat(32),
         now: new Date("2026-01-01T00:00:02.000Z"),
       }),
     ).toThrow("Deployment run state marker mismatch");
     expect(() =>
-      parseDeploymentRunIdentityV1({
+      parseDeploymentRunIdentity({
         deploymentMarker: {
           schemaVersion: "midgard-deployment-marker-v1",
           manifestId: "ab".repeat(32),
@@ -420,7 +420,7 @@ describe("deployment run-state command identity guards", () => {
     readonly policyInfo: ReturnType<
       typeof referenceScriptAuthPolicyDeploymentInfo
     >;
-  }): ContractDeploymentInfo.DeploymentManifestV1 =>
+  }): ContractDeploymentInfo.DeploymentManifest =>
     ({
       network,
       hubOracleOneShot: {
@@ -428,7 +428,7 @@ describe("deployment run-state command identity guards", () => {
         outputIndex: 0,
       },
       referenceScriptAuthPolicy: policyInfo,
-    }) as ContractDeploymentInfo.DeploymentManifestV1;
+    }) as ContractDeploymentInfo.DeploymentManifest;
 
   const resolveAuthPolicy = ({
     runStatePath,
@@ -507,7 +507,7 @@ describe("deployment run-state command identity guards", () => {
     const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
     await writeFile(manifestPath, "{}\n", "utf8");
     const readManifest = vi
-      .spyOn(ContractDeploymentInfo, "readDeploymentManifestV1File")
+      .spyOn(ContractDeploymentInfo, "readDeploymentManifestFile")
       .mockReturnValue(manifestWithIdentity({ oneShotTxHash, policyInfo }));
 
     await expect(
@@ -551,7 +551,7 @@ describe("deployment run-state command identity guards", () => {
     await writeFile(manifestPath, "{}\n", "utf8");
     vi.spyOn(
       ContractDeploymentInfo,
-      "readDeploymentManifestV1File",
+      "readDeploymentManifestFile",
     ).mockReturnValue(
       manifestWithIdentity({
         network: "Preview",
@@ -629,7 +629,7 @@ describe("deployment run-state command identity guards", () => {
           // Run state stores only the two fields
           // `resolveReferenceScriptAuthPolicyProgram` persists; the wider
           // deployment-info record (`tokenNames`, `postTimelockAudit`) is
-          // manifest-only and `parseDeploymentRunIdentityV1` fails closed on it.
+          // manifest-only and `parseDeploymentRunIdentity` fails closed on it.
           referenceScriptAuthPolicy: {
             policyId: runStatePolicyInfo.policyId,
             nativeScript: runStatePolicyInfo.nativeScript,
@@ -640,7 +640,7 @@ describe("deployment run-state command identity guards", () => {
     await writeFile(manifestPath, "{}\n", "utf8");
     vi.spyOn(
       ContractDeploymentInfo,
-      "readDeploymentManifestV1File",
+      "readDeploymentManifestFile",
     ).mockReturnValue(
       manifestWithIdentity({
         oneShotTxHash,

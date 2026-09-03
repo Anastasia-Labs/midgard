@@ -43,10 +43,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
-  DA_TRANSPORT_LIMITS_V1,
+  DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -63,10 +63,10 @@ import {
   keyValuePhasRootWithCount,
 } from "./transition-trace/phas.js";
 
-export const FABRICATED_DEPOSIT_EVIDENCE_V1_SCHEMA_VERSION =
+export const FABRICATED_DEPOSIT_EVIDENCE_SCHEMA_VERSION =
   "midgard-fabricated-deposit-evidence-v1" as const;
 
-export type FabricatedDepositRejectionCodeV1 =
+export type FabricatedDepositRejectionCode =
   | "malformed_da_payload"
   | "non_canonical_da_payload"
   | "wrong_da_payload_version"
@@ -82,10 +82,10 @@ export type FabricatedDepositRejectionCodeV1 =
   | "event_not_due_for_block";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
-export class FabricatedDepositRejectionV1 extends Error {
-  readonly code: FabricatedDepositRejectionCodeV1;
+export class FabricatedDepositRejection extends Error {
+  readonly code: FabricatedDepositRejectionCode;
 
-  constructor(code: FabricatedDepositRejectionCodeV1, detail: string) {
+  constructor(code: FabricatedDepositRejectionCode, detail: string) {
     super(`${code}: ${detail}`);
     this.name = "FabricatedDepositRejectionV1";
     this.code = code;
@@ -95,7 +95,7 @@ export class FabricatedDepositRejectionV1 extends Error {
 const hexOf = (value: string, label: string): Buffer => {
   const normalized = value.toLowerCase();
   if (!/^(?:[0-9a-f]{2})*$/u.test(normalized)) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "malformed_da_payload",
       `${label} is not even-length hexadecimal`,
     );
@@ -104,7 +104,7 @@ const hexOf = (value: string, label: string): Buffer => {
 };
 
 /** One committed `deposits_root` leaf, decoded and committed to. */
-export type CommittedDepositLeafV1 = {
+export type CommittedDepositLeaf = {
   readonly index: number;
   /** Canonical CBOR of the leaf key — a `DepositId` output reference. */
   readonly committedDepositIdCbor: string;
@@ -117,11 +117,11 @@ export type CommittedDepositLeafV1 = {
   readonly committedLeafByteCount: number;
 };
 
-const decodeCommittedDepositLeafV1 = async (
+const decodeCommittedDepositLeaf = async (
   keyHex: string,
   valueHex: string,
   index: number,
-): Promise<CommittedDepositLeafV1> => {
+): Promise<CommittedDepositLeaf> => {
   const label = `deposits[${index.toString()}]`;
   const key = hexOf(keyHex, `${label}.key`);
   const value = hexOf(valueHex, `${label}.value`);
@@ -133,24 +133,24 @@ const decodeCommittedDepositLeafV1 = async (
     committedDepositId = Data.from(committedDepositIdCbor, SDK.OutputReference);
     committedDepositInfo = Data.from(committedDepositInfoCbor, SDK.DepositInfo);
   } catch (cause) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "malformed_da_payload",
       `${label} does not decode as (DepositId, DepositInfo): ${String(cause)}`,
     );
   }
   if (
-    SDK.committedDepositKeyBytesV1(committedDepositId) !==
+    SDK.committedDepositKeyBytes(committedDepositId) !==
       committedDepositIdCbor ||
-    SDK.committedDepositValueBytesV1(committedDepositInfo) !==
+    SDK.committedDepositValueBytes(committedDepositInfo) !==
       committedDepositInfoCbor
   ) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "non_canonical_da_payload",
       `${label} leaf bytes are not canonical for (DepositId, DepositInfo)`,
     );
   }
   const committedDepositInfoHash = await Effect.runPromise(
-    SDK.depositInfoCommitmentV1(committedDepositInfo),
+    SDK.depositInfoCommitment(committedDepositInfo),
   );
   return {
     index,
@@ -164,7 +164,7 @@ const decodeCommittedDepositLeafV1 = async (
 };
 
 /** A live (unspent) L1 output reference at an authenticated chain point. */
-export type LiveOutputReferenceV1 = {
+export type LiveOutputReference = {
   readonly transactionId: string;
   readonly outputIndex: bigint;
 };
@@ -184,15 +184,15 @@ export type LiveOutputReferenceV1 = {
  * policy and the asset name observed carrying the event, so the observation is
  * bound to the committed identity by `out_ref_to_nonce` rather than by trust.
  */
-export type FabricatedDepositL1WitnessV1 =
+export type FabricatedDepositL1Witness =
   | {
       readonly kind: "absent_identity";
-      readonly observation: SDK.AuthenticatedL1ObservationV1;
-      readonly liveOutputReferences: readonly LiveOutputReferenceV1[];
+      readonly observation: SDK.AuthenticatedL1Observation;
+      readonly liveOutputReferences: readonly LiveOutputReference[];
     }
   | {
       readonly kind: "present_event";
-      readonly observation: SDK.AuthenticatedL1ObservationV1;
+      readonly observation: SDK.AuthenticatedL1Observation;
       /** Deposit event NFT policy id, read from the authentic hub oracle. */
       readonly depositEventPolicyId: string;
       /** Asset name observed carrying the deposit event. */
@@ -202,9 +202,9 @@ export type FabricatedDepositL1WitnessV1 =
     };
 
 /** The classified fault, plus the two authenticated intermediates it rests on. */
-export type ClassifiedFabricatedDepositFaultV1 = {
-  readonly verdict: SDK.FabricatedDepositEvidenceVerdictV1;
-  readonly fault: SDK.FabricatedDepositFaultV1;
+export type ClassifiedFabricatedDepositFault = {
+  readonly verdict: SDK.FabricatedDepositEvidenceVerdict;
+  readonly fault: SDK.FabricatedDepositFault;
   /** Present only for the content-mismatch shape. */
   readonly authenticDepositInfoHash?: string;
   /** Present only for the content-mismatch shape. */
@@ -213,20 +213,20 @@ export type ClassifiedFabricatedDepositFaultV1 = {
   readonly eventDatumHash?: string;
 };
 
-const admitWitnessObservationV1 = ({
+const admitWitnessObservation = ({
   witness,
   minimumConfirmationDepth,
 }: {
-  readonly witness: FabricatedDepositL1WitnessV1;
+  readonly witness: FabricatedDepositL1Witness;
   readonly minimumConfirmationDepth?: number;
-}): SDK.EvidenceProvenanceV1 => {
-  const admitted = SDK.admitAuthenticatedL1ObservationV1({
+}): SDK.EvidenceProvenance => {
+  const admitted = SDK.admitAuthenticatedL1Observation({
     observation: witness.observation,
     ...(minimumConfirmationDepth === undefined
       ? {}
       : { minimumConfirmationDepth }),
   });
-  return SDK.assertSecurityGradeEvidenceV1(admitted.provenance);
+  return SDK.assertSecurityGradeEvidence(admitted.provenance);
 };
 
 /**
@@ -237,20 +237,20 @@ const admitWitnessObservationV1 = ({
  * asset name the committed identity derives, and mismatch by comparing two
  * commitments over canonical bytes inside the block's own event window.
  */
-export const classifyFabricatedDepositFaultV1 = async ({
+export const classifyFabricatedDepositFault = async ({
   leaf,
   headerStartTime,
   headerEndTime,
   witness,
   minimumConfirmationDepth,
 }: {
-  readonly leaf: CommittedDepositLeafV1;
+  readonly leaf: CommittedDepositLeaf;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
-  readonly witness: FabricatedDepositL1WitnessV1;
+  readonly witness: FabricatedDepositL1Witness;
   readonly minimumConfirmationDepth?: number;
-}): Promise<ClassifiedFabricatedDepositFaultV1> => {
-  admitWitnessObservationV1({
+}): Promise<ClassifiedFabricatedDepositFault> => {
+  admitWitnessObservation({
     witness,
     ...(minimumConfirmationDepth === undefined
       ? {}
@@ -264,7 +264,7 @@ export const classifyFabricatedDepositFaultV1 = async ({
         candidate.outputIndex === leaf.committedDepositId.outputIndex,
     );
     if (!live) {
-      throw new FabricatedDepositRejectionV1(
+      throw new FabricatedDepositRejection(
         "consumed_live_utxo_fallback_refused",
         `committed_deposit_id=${leaf.committedDepositIdCbor} is not in the authenticated live output-reference set, so its absence cannot be established from a consumed UTxO`,
       );
@@ -276,10 +276,10 @@ export const classifyFabricatedDepositFaultV1 = async ({
   }
 
   const expectedAssetName = await Effect.runPromise(
-    SDK.depositEventNonceV1(leaf.committedDepositId),
+    SDK.depositEventNonce(leaf.committedDepositId),
   );
   if (witness.observedEventAssetName.toLowerCase() !== expectedAssetName) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "deposit_identity_observation_mismatch",
       `observed_asset_name=${witness.observedEventAssetName.toLowerCase()} expected=${expectedAssetName} policy=${witness.depositEventPolicyId.toLowerCase()}`,
     );
@@ -292,7 +292,7 @@ export const classifyFabricatedDepositFaultV1 = async ({
   try {
     eventDatum = Data.from(eventDatumCbor.toString("hex"), SDK.DepositDatum);
   } catch (cause) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "event_datum_not_canonical",
       `witness.eventDatumCbor does not decode as DepositDatum: ${String(cause)}`,
     );
@@ -300,33 +300,33 @@ export const classifyFabricatedDepositFaultV1 = async ({
   if (
     Data.to(eventDatum, SDK.DepositDatum) !== eventDatumCbor.toString("hex")
   ) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "event_datum_not_canonical",
       "witness.eventDatumCbor is not canonical for DepositDatum",
     );
   }
   if (
-    SDK.committedDepositKeyBytesV1(eventDatum.event.id) !==
+    SDK.committedDepositKeyBytes(eventDatum.event.id) !==
     leaf.committedDepositIdCbor
   ) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "event_identity_mismatch",
-      `event_id=${SDK.committedDepositKeyBytesV1(eventDatum.event.id)} committed_deposit_id=${leaf.committedDepositIdCbor}`,
+      `event_id=${SDK.committedDepositKeyBytes(eventDatum.event.id)} committed_deposit_id=${leaf.committedDepositIdCbor}`,
     );
   }
   const [authenticDepositInfoHash, eventDatumHash] = await Promise.all([
-    Effect.runPromise(SDK.depositInfoCommitmentV1(eventDatum.event.info)),
-    Effect.runPromise(SDK.depositEventDatumCommitmentV1(eventDatum)),
+    Effect.runPromise(SDK.depositInfoCommitment(eventDatum.event.info)),
+    Effect.runPromise(SDK.depositEventDatumCommitment(eventDatum)),
   ]);
   if (authenticDepositInfoHash === leaf.committedDepositInfoHash) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "authentic_content_matches_commitment",
       `committed_deposit_info_hash=${leaf.committedDepositInfoHash} equals the authentic event's content; a valid block cannot be challenged`,
     );
   }
   const inclusionTime = eventDatum.inclusion_time;
   if (!(headerStartTime < inclusionTime && inclusionTime <= headerEndTime)) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "event_not_due_for_block",
       `inclusion_time=${inclusionTime.toString()} is outside the challenged block's window (${headerStartTime.toString()}, ${headerEndTime.toString()}]`,
     );
@@ -375,9 +375,9 @@ export type PreparedFabricatedDepositStateJson = {
 };
 
 export type PreparedFabricatedDepositOutput = {
-  readonly schemaVersion: typeof FABRICATED_DEPOSIT_EVIDENCE_V1_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.FABRICATED_DEPOSIT_VIOLATION_ID_V1;
-  readonly fraudCategoryId: typeof SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1;
+  readonly schemaVersion: typeof FABRICATED_DEPOSIT_EVIDENCE_SCHEMA_VERSION;
+  readonly violationId: typeof SDK.FABRICATED_DEPOSIT_VIOLATION_ID;
+  readonly fraudCategoryId: typeof SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID;
   readonly headerHash: string;
   readonly threadTokenAssetName: string;
   readonly depositCount: number;
@@ -387,9 +387,9 @@ export type PreparedFabricatedDepositOutput = {
   readonly committedDepositsRoot: string;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
-  readonly leaves: readonly CommittedDepositLeafV1[];
-  readonly challengedLeaf: CommittedDepositLeafV1;
-  readonly classification: ClassifiedFabricatedDepositFaultV1;
+  readonly leaves: readonly CommittedDepositLeaf[];
+  readonly challengedLeaf: CommittedDepositLeaf;
+  readonly classification: ClassifiedFabricatedDepositFault;
   readonly depositInclusion: PreparedFabricatedDepositInclusionJson;
   readonly authenticContent: PreparedFabricatedDepositContentJson;
   readonly step02State: PreparedFabricatedDepositStateJson;
@@ -407,7 +407,7 @@ export type PrepareFabricatedDepositFromCommittedLeavesOptions = {
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
   readonly entries: readonly (readonly [string, string])[];
-  readonly witness: FabricatedDepositL1WitnessV1;
+  readonly witness: FabricatedDepositL1Witness;
   /** Pin a specific committed leaf key; otherwise the sole leaf is used. */
   readonly committedDepositIdCbor?: string;
   readonly minimumConfirmationDepth?: number;
@@ -420,7 +420,7 @@ export type PrepareFabricatedDepositFromCommittedLeavesOptions = {
  * against the authenticated L1 witness, then emits the membership proof, the
  * retained content opening, and the exact step-02 state.
  */
-export const prepareFabricatedDepositFromCommittedLeavesV1 = async ({
+export const prepareFabricatedDepositFromCommittedLeaves = async ({
   headerHash,
   committedDepositsRoot,
   depositCount,
@@ -446,7 +446,7 @@ export const prepareFabricatedDepositFromCommittedLeavesV1 = async ({
     countedRoot !== committedDepositsRoot.toLowerCase() ||
     phas.count !== depositCount
   ) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "deposits_root_mismatch",
       `header_deposits_root=${committedDepositsRoot.toLowerCase()} derived=${countedRoot} header_count=${depositCount.toString()} derived_count=${phas.count.toString()}`,
     );
@@ -454,11 +454,11 @@ export const prepareFabricatedDepositFromCommittedLeavesV1 = async ({
 
   const leaves = await Promise.all(
     entries.map(async ([keyHex, valueHex], index) =>
-      decodeCommittedDepositLeafV1(keyHex, valueHex, index),
+      decodeCommittedDepositLeaf(keyHex, valueHex, index),
     ),
   );
   if (leaves.length === 0) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "no_committed_deposit_leaf",
       `header_hash=${headerHash.toLowerCase()} commits an empty deposit source set`,
     );
@@ -472,13 +472,13 @@ export const prepareFabricatedDepositFromCommittedLeavesV1 = async ({
             committedDepositIdCbor.toLowerCase(),
         );
   if (challengedLeaf === undefined) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "leaf_not_committed",
       `committed_deposit_id=${committedDepositIdCbor?.toLowerCase() ?? ""} is not a committed leaf of header_hash=${headerHash.toLowerCase()} (leaf_count=${leaves.length.toString()})`,
     );
   }
 
-  const classification = await classifyFabricatedDepositFaultV1({
+  const classification = await classifyFabricatedDepositFault({
     leaf: challengedLeaf,
     headerStartTime,
     headerEndTime,
@@ -500,11 +500,11 @@ export const prepareFabricatedDepositFromCommittedLeavesV1 = async ({
     ),
   };
   const output: PreparedFabricatedDepositOutput = {
-    schemaVersion: FABRICATED_DEPOSIT_EVIDENCE_V1_SCHEMA_VERSION,
-    violationId: SDK.FABRICATED_DEPOSIT_VIOLATION_ID_V1,
-    fraudCategoryId: SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
+    schemaVersion: FABRICATED_DEPOSIT_EVIDENCE_SCHEMA_VERSION,
+    violationId: SDK.FABRICATED_DEPOSIT_VIOLATION_ID,
+    fraudCategoryId: SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
     headerHash: headerHash.toLowerCase(),
-    threadTokenAssetName: SDK.fabricatedDepositThreadTokenAssetNameV1(
+    threadTokenAssetName: SDK.fabricatedDepositThreadTokenAssetName(
       headerHash.toLowerCase(),
     ),
     depositCount: Number(depositCount),
@@ -566,11 +566,11 @@ export const prepareFabricatedDepositFromCommittedLeavesV1 = async ({
   return { ...output, files: paths };
 };
 
-export type FabricatedDepositBlockEvidenceV1 = {
-  readonly grade: SDK.EvidenceGradeV1;
+export type FabricatedDepositBlockEvidence = {
+  readonly grade: SDK.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenanceV1;
-    readonly da: SDK.EvidenceProvenanceV1;
+    readonly l1: SDK.EvidenceProvenance;
+    readonly da: SDK.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -585,30 +585,30 @@ export type FabricatedDepositBlockEvidenceV1 = {
 /**
  * Extracts the committed `deposits` leaves from public retained-DA bytes without
  * requiring the block to be well-formed. Only the payload envelope, canonical
- * `DaPayloadV1` framing and the embedded-header identity are enforced here; leaf
+ * `DaPayload` framing and the embedded-header identity are enforced here; leaf
  * authenticity is what the family adjudicates.
  */
-export const fabricatedDepositBlockEvidenceFromVerifiedPayloadV1 = async ({
+export const fabricatedDepositBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenanceV1;
+  readonly daProvenance: SDK.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<FabricatedDepositBlockEvidenceV1> => {
+}): Promise<FabricatedDepositBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidenceV1(daProvenance);
+  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -618,54 +618,54 @@ export const fabricatedDepositBlockEvidenceFromVerifiedPayloadV1 = async ({
   try {
     payloadCbor = Buffer.from(
       (
-        await unwrapDaPayloadV1(payloadEnvelopeCbor, {
-          maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        await unwrapDaPayload(payloadEnvelopeCbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
         })
       ).innerBytes,
     );
   } catch (cause) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "malformed_da_payload",
       `failed to decode the mandatory DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayloadV1;
+  let payload: SDK.DaPayload;
   try {
-    payload = SDK.decodeDaPayloadV1(payloadCbor);
+    payload = SDK.decodeDaPayload(payloadCbor);
   } catch (cause) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1 canonical CBOR: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayloadV1(payload).equals(payloadCbor)) {
-    throw new FabricatedDepositRejectionV1(
+  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+    throw new FabricatedDepositRejection(
       "non_canonical_da_payload",
       "DA payload CBOR is not canonical for DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
-    throw new FabricatedDepositRejectionV1(
+  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+    throw new FabricatedDepositRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_V1_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
   const embeddedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(body.header),
+    SDK.hashBlockHeader(body.header),
   );
   if (
     embeddedHeaderHash !== body.header_hash.toLowerCase() ||
     embeddedHeaderHash !== admittedObservation.headerHash
   ) {
-    throw new FabricatedDepositRejectionV1(
+    throw new FabricatedDepositRejection(
       "header_hash_mismatch",
       `embedded=${embeddedHeaderHash} payload=${body.header_hash.toLowerCase()} observed=${admittedObservation.headerHash}`,
     );
   }
 
   return {
-    grade: SDK.combineEvidenceGradeV1([
+    grade: SDK.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),
@@ -690,7 +690,7 @@ export const fabricatedDepositBlockEvidenceFromVerifiedPayloadV1 = async ({
  * retained-DA payload + an authenticated L1 deposit-identity witness -> a
  * submittable `fabricated-deposit` proof plan.
  */
-export const prepareFabricatedDepositFromRetainedDaV1 = async ({
+export const prepareFabricatedDepositFromRetainedDa = async ({
   observation,
   sources,
   witness,
@@ -699,22 +699,22 @@ export const prepareFabricatedDepositFromRetainedDaV1 = async ({
   committedDepositIdCbor,
   outputDir,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly witness: FabricatedDepositL1WitnessV1;
+  readonly witness: FabricatedDepositL1Witness;
   readonly retries?: number;
   readonly minimumConfirmationDepth?: number;
   readonly committedDepositIdCbor?: string;
   readonly outputDir?: string;
 }): Promise<PreparedFabricatedDepositOutput> => {
   if (sources.length === 0) {
-    throw new SDK.CanonicalEvidenceRejectionV1(
+    throw new SDK.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservationV1({
+    await SDK.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
@@ -725,17 +725,17 @@ export const prepareFabricatedDepositFromRetainedDaV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+  const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayload({
     observation: admittedObservation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-    daProvenance: SDK.assertSecurityGradeEvidenceV1(
-      SDK.admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
+    daProvenance: SDK.assertSecurityGradeEvidence(
+      SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
     ),
     ...(minimumConfirmationDepth === undefined
       ? {}
       : { minimumConfirmationDepth }),
   });
-  return await prepareFabricatedDepositFromCommittedLeavesV1({
+  return await prepareFabricatedDepositFromCommittedLeaves({
     headerHash: evidence.headerHash,
     committedDepositsRoot: evidence.committedDepositsRoot,
     depositCount: evidence.depositCount,

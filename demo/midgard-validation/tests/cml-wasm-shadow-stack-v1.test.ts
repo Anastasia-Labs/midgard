@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  MAX_DEPTH_V8_STACK_SIZE_KB_V1,
-  runMaxDepthCmlOperationV1,
+  MAX_DEPTH_V8_STACK_SIZE_KB,
+  runMaxDepthCmlOperation,
 } from "./helpers/cml-max-depth-runner-v1.js";
 
 /**
@@ -47,8 +47,8 @@ const PINNED_VERSION = "6.2.0-2";
 const PUBLISHED_WASM_SHA256 =
   "47e566383ca7b8f945377b149af83eb32c6d185e5e9e1b58eea19f85043d2b3c";
 const PUBLISHED_WASM_BYTES = 2_904_467;
-const SHADOW_STACK_POINTER_V1 = 16_777_216;
-const MAXIMUM_UNARY_DEPTH_V1 = 4_043;
+const SHADOW_STACK_POINTER = 16_777_216;
+const MAXIMUM_UNARY_DEPTH = 4_043;
 const OLD_STOCK_TRAP_DEPTH = 1_523;
 const BEYOND_MAXIMUM_CONTROL_DEPTH = 4_044;
 // Below the measured 1,400 KB machine-stack floor at depth 4,043, so the
@@ -160,17 +160,17 @@ describe("C26 CML wasm shadow stack (source-fixed 6.2.0-2)", () => {
     const wasm = readFileSync(
       join(installedCmlDir, "cardano_multiplatform_lib_bg.wasm"),
     );
-    expect(readStackPointerGlobal(wasm)).toBe(SHADOW_STACK_POINTER_V1);
+    expect(readStackPointerGlobal(wasm)).toBe(SHADOW_STACK_POINTER);
   });
 
   it("parses through the old ceiling, the derived maximum, and beyond", () => {
     for (const depth of [
       OLD_STOCK_TRAP_DEPTH,
-      MAXIMUM_UNARY_DEPTH_V1,
+      MAXIMUM_UNARY_DEPTH,
       BEYOND_MAXIMUM_CONTROL_DEPTH,
     ]) {
       expect(
-        runMaxDepthCmlOperationV1({
+        runMaxDepthCmlOperation({
           operation: "plutusDataParse",
           cmlMainPath: installedCmlMainPath,
           depth,
@@ -184,15 +184,15 @@ describe("C26 CML wasm shadow stack (source-fixed 6.2.0-2)", () => {
     // The wasm shadow stack is only one of the two budgets the C26
     // investigation isolated; V8 executes wasm frames on the machine stack
     // (measured floor 1,400 KB at depth 4,043 on the pinned Node; the runner
-    // uses MAX_DEPTH_V8_STACK_SIZE_KB_V1 = 2,000 for headroom). Whether the
+    // uses MAX_DEPTH_V8_STACK_SIZE_KB = 2,000 for headroom). Whether the
     // *default* stack suffices varies by Node version, so the control forces
     // a below-floor stack, which must fail on every Node. This is why
     // max-depth operations run in short-lived child processes.
-    const withBelowFloorStack = runMaxDepthCmlOperationV1(
+    const withBelowFloorStack = runMaxDepthCmlOperation(
       {
         operation: "plutusDataParse",
         cmlMainPath: installedCmlMainPath,
-        depth: MAXIMUM_UNARY_DEPTH_V1,
+        depth: MAXIMUM_UNARY_DEPTH,
       },
       { stackSizeKb: BELOW_FLOOR_V8_STACK_SIZE_KB },
     );
@@ -201,6 +201,6 @@ describe("C26 CML wasm shadow stack (source-fixed 6.2.0-2)", () => {
     expect(withBelowFloorStack.message).toContain(
       "Maximum call stack size exceeded",
     );
-    expect(MAX_DEPTH_V8_STACK_SIZE_KB_V1).toBeGreaterThanOrEqual(1_400);
+    expect(MAX_DEPTH_V8_STACK_SIZE_KB).toBeGreaterThanOrEqual(1_400);
   }, 300_000);
 });

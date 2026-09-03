@@ -1,125 +1,120 @@
 import {
   computeHash32,
-  decodeMidgardFieldPreimageV1,
-  decodeMidgardMintPolicyItemV1,
+  decodeMidgardFieldPreimage,
+  decodeMidgardMintPolicyItem,
 } from "@al-ft/midgard-core";
 
 import {
-  advanceMissingNativeScriptTxGrammarCheckpointV1,
-  advanceMissingNativeScriptTxSemanticCheckpointV1,
-  encodeMissingNativeScriptTxGrammarCheckpointV1,
-  encodeMissingNativeScriptTxSemanticCheckpointV1,
-  initialMissingNativeScriptTxGrammarCheckpointV1,
-  initialMissingNativeScriptTxSemanticCheckpointV1,
-  type MissingNativeScriptTxGrammarCheckpointV1,
-  type MissingNativeScriptTxSemanticCheckpointV1,
+  advanceMissingNativeScriptTxGrammarCheckpoint,
+  advanceMissingNativeScriptTxSemanticCheckpoint,
+  encodeMissingNativeScriptTxGrammarCheckpoint,
+  encodeMissingNativeScriptTxSemanticCheckpoint,
+  initialMissingNativeScriptTxGrammarCheckpoint,
+  initialMissingNativeScriptTxSemanticCheckpoint,
+  type MissingNativeScriptTxGrammarCheckpoint,
+  type MissingNativeScriptTxSemanticCheckpoint,
 } from "../missing-native-script-tx/staged-walk-v1.js";
 import {
-  decodeMintDeclaredPolicyHeaderV1,
-  foldMintDeclaredAssetLimitV1,
-  MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS_V1,
-  MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET_V1,
+  decodeMintDeclaredPolicyHeader,
+  foldMintDeclaredAssetLimit,
+  MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS,
+  MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
 } from "./family-v1.js";
 
 const GRAMMAR_DOMAIN = Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii");
 const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");
 
-export type MintDeclaredGrammarCheckpointV1 =
-  MissingNativeScriptTxGrammarCheckpointV1 & { readonly fieldIndex: 5 };
-export type MintDeclaredWalkCheckpointV1 =
-  MissingNativeScriptTxSemanticCheckpointV1 & { readonly fieldIndex: 5 };
+export type MintDeclaredGrammarCheckpoint =
+  MissingNativeScriptTxGrammarCheckpoint & { readonly fieldIndex: 5 };
+export type MintDeclaredWalkCheckpoint =
+  MissingNativeScriptTxSemanticCheckpoint & { readonly fieldIndex: 5 };
 
 const grammar5 = (
-  value: MissingNativeScriptTxGrammarCheckpointV1,
-): MintDeclaredGrammarCheckpointV1 =>
-  ({ ...value, fieldIndex: 5 }) as MintDeclaredGrammarCheckpointV1;
+  value: MissingNativeScriptTxGrammarCheckpoint,
+): MintDeclaredGrammarCheckpoint =>
+  ({ ...value, fieldIndex: 5 }) as MintDeclaredGrammarCheckpoint;
 const walk5 = (
-  value: MissingNativeScriptTxSemanticCheckpointV1,
-): MintDeclaredWalkCheckpointV1 =>
-  ({ ...value, fieldIndex: 5 }) as MintDeclaredWalkCheckpointV1;
-const grammar6 = (value: MintDeclaredGrammarCheckpointV1) => ({
+  value: MissingNativeScriptTxSemanticCheckpoint,
+): MintDeclaredWalkCheckpoint =>
+  ({ ...value, fieldIndex: 5 }) as MintDeclaredWalkCheckpoint;
+const grammar6 = (value: MintDeclaredGrammarCheckpoint) => ({
   ...value,
   fieldIndex: 6,
 });
-const walk6 = (value: MintDeclaredWalkCheckpointV1) => ({
+const walk6 = (value: MintDeclaredWalkCheckpoint) => ({
   ...value,
   fieldIndex: 6,
 });
 
-export const encodeMintDeclaredGrammarCheckpointV1 = (
-  value: MintDeclaredGrammarCheckpointV1,
+export const encodeMintDeclaredGrammarCheckpoint = (
+  value: MintDeclaredGrammarCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxGrammarCheckpointV1(
-    grammar6(value),
-  );
+  const encoded = encodeMissingNativeScriptTxGrammarCheckpoint(grammar6(value));
   encoded[36] = 5;
   return encoded;
 };
 
-export const encodeMintDeclaredWalkCheckpointV1 = (
-  value: MintDeclaredWalkCheckpointV1,
+export const encodeMintDeclaredWalkCheckpoint = (
+  value: MintDeclaredWalkCheckpoint,
 ): Buffer => {
-  const encoded = encodeMissingNativeScriptTxSemanticCheckpointV1(walk6(value));
+  const encoded = encodeMissingNativeScriptTxSemanticCheckpoint(walk6(value));
   encoded[36] = 5;
   return encoded;
 };
 
-export const hashMintDeclaredGrammarCheckpointV1 = (
-  value: MintDeclaredGrammarCheckpointV1,
+export const hashMintDeclaredGrammarCheckpoint = (
+  value: MintDeclaredGrammarCheckpoint,
 ): string =>
   computeHash32(
-    Buffer.concat([
-      GRAMMAR_DOMAIN,
-      encodeMintDeclaredGrammarCheckpointV1(value),
-    ]),
+    Buffer.concat([GRAMMAR_DOMAIN, encodeMintDeclaredGrammarCheckpoint(value)]),
   ).toString("hex");
 
-export const hashMintDeclaredWalkCheckpointV1 = (
-  value: MintDeclaredWalkCheckpointV1,
+export const hashMintDeclaredWalkCheckpoint = (
+  value: MintDeclaredWalkCheckpoint,
 ): string =>
   computeHash32(
-    Buffer.concat([WALK_DOMAIN, encodeMintDeclaredWalkCheckpointV1(value)]),
+    Buffer.concat([WALK_DOMAIN, encodeMintDeclaredWalkCheckpoint(value)]),
   ).toString("hex");
 
-export type MintDeclaredAssetLimitStagedPlanV1 = Readonly<{
+export type MintDeclaredAssetLimitStagedPlan = Readonly<{
   items: readonly Buffer[];
-  initialGrammar: MintDeclaredGrammarCheckpointV1;
-  initialWalk: MintDeclaredWalkCheckpointV1;
-  grammar: readonly MintDeclaredGrammarCheckpointV1[];
-  walk: readonly MintDeclaredWalkCheckpointV1[];
+  initialGrammar: MintDeclaredGrammarCheckpoint;
+  initialWalk: MintDeclaredWalkCheckpoint;
+  grammar: readonly MintDeclaredGrammarCheckpoint[];
+  walk: readonly MintDeclaredWalkCheckpoint[];
   crossing: boolean;
   targetPolicyId: string;
   targetDeclaredCount: number;
   accumulatedCount: number;
 }>;
 
-export const planMintDeclaredAssetLimitStagedWalkV1 = ({
+export const planMintDeclaredAssetLimitStagedWalk = ({
   transactionId,
   fieldPreimageCbor,
   policyIndex,
-  itemBudget = MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET_V1,
+  itemBudget = MINT_DECLARED_ASSET_LIMIT_POLICY_BUDGET,
 }: {
   readonly transactionId: string;
   readonly fieldPreimageCbor: string;
   readonly policyIndex: number;
   readonly itemBudget?: number;
-}): MintDeclaredAssetLimitStagedPlanV1 => {
+}): MintDeclaredAssetLimitStagedPlan => {
   if (!Number.isSafeInteger(itemBudget) || itemBudget <= 0 || itemBudget > 24)
     throw new Error("mintDeclaredAssetLimit item budget must be in 1..24");
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(fieldPreimageCbor, "hex"),
   ).map(Buffer.from);
   const initialGrammar = grammar5(
-    initialMissingNativeScriptTxGrammarCheckpointV1({
+    initialMissingNativeScriptTxGrammarCheckpoint({
       txId: transactionId,
       items,
     }),
   );
-  const grammar: MintDeclaredGrammarCheckpointV1[] = [];
+  const grammar: MintDeclaredGrammarCheckpoint[] = [];
   let grammarCursor = initialGrammar;
   do {
     grammarCursor = grammar5(
-      advanceMissingNativeScriptTxGrammarCheckpointV1({
+      advanceMissingNativeScriptTxGrammarCheckpoint({
         checkpoint: grammar6(grammarCursor),
         items,
         budget: itemBudget,
@@ -128,17 +123,17 @@ export const planMintDeclaredAssetLimitStagedWalkV1 = ({
     grammar.push(grammarCursor);
   } while (grammarCursor.nextItemIndex < items.length);
   const initialWalk = walk5(
-    initialMissingNativeScriptTxSemanticCheckpointV1({
+    initialMissingNativeScriptTxSemanticCheckpoint({
       grammar: grammar6(grammarCursor),
       items,
     }),
   );
-  const walk: MintDeclaredWalkCheckpointV1[] = [];
+  const walk: MintDeclaredWalkCheckpoint[] = [];
   let walkCursor = initialWalk;
   while (walkCursor.nextItemIndex <= policyIndex) {
     const remaining = policyIndex + 1 - walkCursor.nextItemIndex;
     walkCursor = walk5(
-      advanceMissingNativeScriptTxSemanticCheckpointV1({
+      advanceMissingNativeScriptTxSemanticCheckpoint({
         checkpoint: walk6(walkCursor),
         txId: transactionId,
         items,
@@ -147,7 +142,7 @@ export const planMintDeclaredAssetLimitStagedWalkV1 = ({
     );
     walk.push(walkCursor);
   }
-  const decision = foldMintDeclaredAssetLimitV1(items, policyIndex);
+  const decision = foldMintDeclaredAssetLimit(items, policyIndex);
   return Object.freeze({
     items: Object.freeze(items),
     initialGrammar,
@@ -158,7 +153,7 @@ export const planMintDeclaredAssetLimitStagedWalkV1 = ({
   });
 };
 
-export const mintDeclaredFoldPrefixV1 = ({
+export const mintDeclaredFoldPrefix = ({
   items,
   nextItemIndex,
   policyIndex,
@@ -179,15 +174,15 @@ export const mintDeclaredFoldPrefixV1 = ({
     const item = items[index];
     if (item === undefined)
       throw new Error("mintDeclaredAssetLimit prefix exceeds field");
-    const header = decodeMintDeclaredPolicyHeaderV1(item);
+    const header = decodeMintDeclaredPolicyHeader(item);
     if (
       previousPolicy !== "" &&
       Buffer.compare(Buffer.from(previousPolicy, "hex"), header.policyId) >= 0
     )
       throw new Error("mintDeclaredAssetLimit prefix policy order changed");
-    const decoded = decodeMidgardMintPolicyItemV1(item);
+    const decoded = decodeMidgardMintPolicyItem(item);
     accumulatedCount += decoded.assets.length;
-    if (accumulatedCount > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS_V1)
+    if (accumulatedCount > MINT_DECLARED_ASSET_LIMIT_MAX_ASSETS)
       throw new Error("mintDeclaredAssetLimit prefix crossed before target");
     previousPolicy = header.policyId.toString("hex");
   }

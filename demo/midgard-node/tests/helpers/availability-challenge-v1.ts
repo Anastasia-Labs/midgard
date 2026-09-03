@@ -1,8 +1,8 @@
-import type { DeploymentManifestV1AvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import type { DeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 
 /** Explicit bounded-acceptance Q58 release candidate used by node tests. */
-export const TEST_AVAILABILITY_CHALLENGE_V1 = Object.freeze({
+export const TEST_AVAILABILITY_CHALLENGE = Object.freeze({
   responseClasses: Object.freeze({
     smallPayloadMaxBytes: 65_536,
     smallResponseWindowMs: 3_600_000,
@@ -22,27 +22,25 @@ export const TEST_AVAILABILITY_CHALLENGE_V1 = Object.freeze({
   maxCloseFeeLovelace: 1_000_000,
   maxTimeoutFeeLovelace: 1_200_000,
   bondOwnerCredential: "77".repeat(28),
-}) satisfies DeploymentManifestV1AvailabilityChallenge;
+}) satisfies DeploymentManifestAvailabilityChallenge;
 
-export const TEST_AVAILABILITY_PARAMETERS_V1 = SDK.daAvailabilityParametersV1({
-  responseGeometry: SDK.availabilityResponseGeometryV1(
-    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry,
+export const TEST_AVAILABILITY_PARAMETERS = SDK.daAvailabilityParameters({
+  responseGeometry: SDK.availabilityResponseGeometry(
+    TEST_AVAILABILITY_CHALLENGE.responseGeometry,
   ),
-  daBondLovelace: BigInt(TEST_AVAILABILITY_CHALLENGE_V1.daBondLovelace),
+  daBondLovelace: BigInt(TEST_AVAILABILITY_CHALLENGE.daBondLovelace),
   challengerBondLovelace: BigInt(
-    TEST_AVAILABILITY_CHALLENGE_V1.challengerBondLovelace,
+    TEST_AVAILABILITY_CHALLENGE.challengerBondLovelace,
   ),
-  maxOpenFeeLovelace: BigInt(TEST_AVAILABILITY_CHALLENGE_V1.maxOpenFeeLovelace),
+  maxOpenFeeLovelace: BigInt(TEST_AVAILABILITY_CHALLENGE.maxOpenFeeLovelace),
   maxPublicationFeeLovelace: BigInt(
-    TEST_AVAILABILITY_CHALLENGE_V1.maxPublicationFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxPublicationFeeLovelace,
   ),
   maxSettlementFeeLovelace: BigInt(
-    TEST_AVAILABILITY_CHALLENGE_V1.maxSettlementFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxSettlementFeeLovelace,
   ),
-  maxCloseFeeLovelace: BigInt(
-    TEST_AVAILABILITY_CHALLENGE_V1.maxCloseFeeLovelace,
-  ),
+  maxCloseFeeLovelace: BigInt(TEST_AVAILABILITY_CHALLENGE.maxCloseFeeLovelace),
   maxTimeoutFeeLovelace: BigInt(
-    TEST_AVAILABILITY_CHALLENGE_V1.maxTimeoutFeeLovelace,
+    TEST_AVAILABILITY_CHALLENGE.maxTimeoutFeeLovelace,
   ),
 });

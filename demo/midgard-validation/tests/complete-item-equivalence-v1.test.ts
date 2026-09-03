@@ -1,16 +1,16 @@
 import {
-  buildMidgardBoundedCollectionItemProofV1,
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
-  encodeMidgardFieldPreimageV1,
-  midgardBoundedItemChunkCountV1,
-  verifyMidgardBoundedCollectionItemProofV1,
-  verifyMidgardBoundedItemChunkProofV1,
+  buildMidgardBoundedCollectionItemProof,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
+  encodeMidgardFieldPreimage,
+  midgardBoundedItemChunkCount,
+  verifyMidgardBoundedCollectionItemProof,
+  verifyMidgardBoundedItemChunkProof,
 } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
-import { countedMachineFieldTraceV1 } from "../src/validation-machine/index.js";
+import { countedMachineFieldTrace } from "../src/validation-machine/index.js";
 
 /**
  * §3.2 semantic equivalence for the transaction-field family: the complete
@@ -28,10 +28,10 @@ const buildFieldFixture = (itemBytes: number) => {
   const sibling = Buffer.from("d87980", "hex");
   // The machine's own counted per-item trace, built the way the machine builds
   // it: §5.1's uniform item split folded into a bounded collection. It is not a
-  // §4 field commitment — see `countedMachineFieldTraceV1`'s note.
-  const collection = countedMachineFieldTraceV1(
+  // §4 field commitment — see `countedMachineFieldTrace`'s note.
+  const collection = countedMachineFieldTrace(
     FIELD_INDEX,
-    encodeMidgardFieldPreimageV1([probeItem, sibling]),
+    encodeMidgardFieldPreimage([probeItem, sibling]),
   );
   expect(collection.items).toHaveLength(2);
   const item = collection.items[0]!;
@@ -42,16 +42,16 @@ const buildFieldFixture = (itemBytes: number) => {
 describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
   it("authenticates the identical canonical commitment through both representations", () => {
     const itemBytes =
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes;
     const { collection, item } = buildFieldFixture(itemBytes);
 
     // Complete representation: the collection proof binds the exact item
     // commitment, recomputable from the complete bytes alone.
-    const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+    const collectionProof = buildMidgardBoundedCollectionItemProof(
       collection,
       0,
     );
-    const recomputed = buildMidgardBoundedItemV1({
+    const recomputed = buildMidgardBoundedItem({
       fieldIndex: FIELD_INDEX,
       itemIndex: 0,
       bytes: item.bytes,
@@ -60,7 +60,7 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
       true,
     );
     expect(
-      verifyMidgardBoundedCollectionItemProofV1({
+      verifyMidgardBoundedCollectionItemProof({
         expectedCommitment: collection.commitment,
         proof: collectionProof,
       }),
@@ -68,13 +68,13 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
 
     // Chunked representation: every chunk proof authenticates against the
     // same item commitment — no separate chunk-level commitment exists.
-    const chunkCount = midgardBoundedItemChunkCountV1(itemBytes);
+    const chunkCount = midgardBoundedItemChunkCount(itemBytes);
     expect(chunkCount).toBe(4);
     const reassembled: Buffer[] = [];
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
-      const chunkProof = buildMidgardBoundedItemChunkProofV1(item, chunkIndex);
+      const chunkProof = buildMidgardBoundedItemChunkProof(item, chunkIndex);
       expect(
-        verifyMidgardBoundedItemChunkProofV1({
+        verifyMidgardBoundedItemChunkProof({
           expectedCommitment: collectionProof.itemCommitment,
           proof: chunkProof,
         }),
@@ -89,13 +89,13 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
   it("rejects omission, duplication, reorder, substitution, and trailing data in both representations", () => {
     const itemBytes = 9_000; // three chunks: 4,095 + 4,095 + 810
     const { collection, item } = buildFieldFixture(itemBytes);
-    const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+    const collectionProof = buildMidgardBoundedCollectionItemProof(
       collection,
       0,
     );
     const commitment = collectionProof.itemCommitment;
     const completeCommitmentMatches = (bytes: Buffer): boolean =>
-      buildMidgardBoundedItemV1({
+      buildMidgardBoundedItem({
         fieldIndex: FIELD_INDEX,
         itemIndex: 0,
         bytes,
@@ -109,9 +109,9 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
       completeCommitmentMatches(item.bytes.subarray(0, itemBytes - 1)),
     ).toBe(false);
     expect(completeCommitmentMatches(Buffer.alloc(0))).toBe(false);
-    const lastChunk = buildMidgardBoundedItemChunkProofV1(item, 2);
+    const lastChunk = buildMidgardBoundedItemChunkProof(item, 2);
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: commitment,
         proof: { ...lastChunk, chunk: lastChunk.chunk.subarray(0, 809) },
       }),
@@ -121,18 +121,18 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
     expect(
       completeCommitmentMatches(Buffer.concat([item.bytes, item.bytes])),
     ).toBe(false);
-    const firstChunk = buildMidgardBoundedItemChunkProofV1(item, 0);
+    const firstChunk = buildMidgardBoundedItemChunkProof(item, 0);
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: commitment,
         proof: { ...firstChunk, chunkIndex: 1 },
       }),
     ).toBe(false);
 
     // Reorder: second chunk presented at the first position and vice versa.
-    const secondChunk = buildMidgardBoundedItemChunkProofV1(item, 1);
+    const secondChunk = buildMidgardBoundedItemChunkProof(item, 1);
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: commitment,
         proof: { ...secondChunk, chunkIndex: 0, siblings: firstChunk.siblings },
       }),
@@ -144,12 +144,9 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
     ]);
     expect(completeCommitmentMatches(reordered)).toBe(false);
     // Cross-item reorder: the sibling item cannot claim the probe's slot.
-    const siblingProof = buildMidgardBoundedCollectionItemProofV1(
-      collection,
-      1,
-    );
+    const siblingProof = buildMidgardBoundedCollectionItemProof(collection, 1);
     expect(
-      verifyMidgardBoundedCollectionItemProofV1({
+      verifyMidgardBoundedCollectionItemProof({
         expectedCommitment: collection.commitment,
         proof: {
           ...siblingProof,
@@ -166,7 +163,7 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
     const substitutedChunk = Buffer.from(secondChunk.chunk);
     substitutedChunk[905] = substitutedChunk[905]! ^ 0x01;
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: commitment,
         proof: { ...secondChunk, chunk: substitutedChunk },
       }),
@@ -177,7 +174,7 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
       completeCommitmentMatches(Buffer.concat([item.bytes, Buffer.from([0])])),
     ).toBe(false);
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: commitment,
         proof: {
           ...lastChunk,
@@ -187,7 +184,7 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
     ).toBe(false);
     // Trailing full extra chunk claimed beyond the committed length.
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: commitment,
         proof: { ...lastChunk, chunkIndex: 3 },
       }),

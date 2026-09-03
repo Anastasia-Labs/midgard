@@ -16,7 +16,7 @@ import { type CompleteSignedTransactionMeasurement } from "./measurement.js";
  */
 export const EXECUTION_RESERVE_FRACTION = 20n;
 
-export const expectProofFitV1 = ({
+export const expectProofFit = ({
   stage,
   measurement,
   maxTxExMem,
@@ -54,7 +54,7 @@ export const expectProofFitV1 = ({
  * produces, and `includeReferenceInputs` adds the reference-input count the
  * published-chunk carriage suite reports.
  */
-export const printProofFitV1 = ({
+export const printProofFit = ({
   headline,
   stages,
   extra,

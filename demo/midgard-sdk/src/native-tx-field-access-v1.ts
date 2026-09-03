@@ -1,8 +1,8 @@
 import {
-  MIDGARD_EMPTY_FIELD_COMMITMENT_V1,
-  MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1,
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
-  MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1,
+  MIDGARD_EMPTY_FIELD_COMMITMENT,
+  MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS,
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
+  MIDGARD_FIELD_VIEW_CONSTRUCTORS,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -36,27 +36,25 @@ import { H32Schema, VerificationKeyHashSchema } from "./common.js";
  */
 
 /** §8.1. Tier 1 — the step's own redeemer carries the preimage. */
-export const InlineFieldCarriageV1Schema = Data.Object({
+export const InlineFieldCarriageSchema = Data.Object({
   preimage: Data.Bytes(),
 });
-export type InlineFieldCarriageV1 = Data.Static<
-  typeof InlineFieldCarriageV1Schema
->;
-export const InlineFieldCarriageV1 =
-  InlineFieldCarriageV1Schema as unknown as InlineFieldCarriageV1;
+export type InlineFieldCarriage = Data.Static<typeof InlineFieldCarriageSchema>;
+export const InlineFieldCarriage =
+  InlineFieldCarriageSchema as unknown as InlineFieldCarriage;
 
 /**
  * §8.2. Tier 2 — one nothing-but-bytes inline datum at the prover's key
  * address, named by its positional reference-input index.
  */
-export const RawUtxoFieldCarriageV1Schema = Data.Object({
+export const RawUtxoFieldCarriageSchema = Data.Object({
   ref_input_index: Data.Integer(),
 });
-export type RawUtxoFieldCarriageV1 = Data.Static<
-  typeof RawUtxoFieldCarriageV1Schema
+export type RawUtxoFieldCarriage = Data.Static<
+  typeof RawUtxoFieldCarriageSchema
 >;
-export const RawUtxoFieldCarriageV1 =
-  RawUtxoFieldCarriageV1Schema as unknown as RawUtxoFieldCarriageV1;
+export const RawUtxoFieldCarriage =
+  RawUtxoFieldCarriageSchema as unknown as RawUtxoFieldCarriage;
 
 /**
  * §8.4. Tier 3 — deterministic fixed-K chunks plus one certified
@@ -64,73 +62,71 @@ export const RawUtxoFieldCarriageV1 =
  * `k` is the reference-input index of chunk `k` (at most three chunks under
  * §8.3). Reference-input indexing is positional and redeemer-supplied.
  */
-export const CertifiedFieldCarriageV1Schema = Data.Object({
+export const CertifiedFieldCarriageSchema = Data.Object({
   cert_ref_input_index: Data.Integer(),
   chunk_ref_input_indices: Data.Array(Data.Integer()),
 });
-export type CertifiedFieldCarriageV1 = Data.Static<
-  typeof CertifiedFieldCarriageV1Schema
+export type CertifiedFieldCarriage = Data.Static<
+  typeof CertifiedFieldCarriageSchema
 >;
-export const CertifiedFieldCarriageV1 =
-  CertifiedFieldCarriageV1Schema as unknown as CertifiedFieldCarriageV1;
+export const CertifiedFieldCarriage =
+  CertifiedFieldCarriageSchema as unknown as CertifiedFieldCarriage;
 
 /**
- * §8.8 `FieldCarriageV1` — how a field's preimage bytes reach the consuming
+ * §8.8 `FieldCarriage` — how a field's preimage bytes reach the consuming
  * transaction. Constructor order mirrors the aiken sum exactly.
  */
-export const FieldCarriageV1Schema = Data.Enum([
-  Data.Object({ Inline: InlineFieldCarriageV1Schema }),
-  Data.Object({ RawUtxo: RawUtxoFieldCarriageV1Schema }),
-  Data.Object({ Certified: CertifiedFieldCarriageV1Schema }),
+export const FieldCarriageSchema = Data.Enum([
+  Data.Object({ Inline: InlineFieldCarriageSchema }),
+  Data.Object({ RawUtxo: RawUtxoFieldCarriageSchema }),
+  Data.Object({ Certified: CertifiedFieldCarriageSchema }),
 ]);
-export type FieldCarriageV1 = Data.Static<typeof FieldCarriageV1Schema>;
-export const FieldCarriageV1 =
-  FieldCarriageV1Schema as unknown as FieldCarriageV1;
+export type FieldCarriage = Data.Static<typeof FieldCarriageSchema>;
+export const FieldCarriage = FieldCarriageSchema as unknown as FieldCarriage;
 
 /** Tiers 1–2: the whole preimage is present and hash-checked. */
-export const WholeFieldViewV1Schema = Data.Object({
+export const WholeFieldViewSchema = Data.Object({
   bytes: Data.Bytes(),
   count: Data.Integer(),
   stride: Data.Integer(),
 });
-export type WholeFieldViewV1 = Data.Static<typeof WholeFieldViewV1Schema>;
-export const WholeFieldViewV1 =
-  WholeFieldViewV1Schema as unknown as WholeFieldViewV1;
+export type WholeFieldView = Data.Static<typeof WholeFieldViewSchema>;
+export const WholeFieldView = WholeFieldViewSchema as unknown as WholeFieldView;
 
 /**
  * Tier 3: chunks are present but unhashed until touched; the digest vector and
  * the item count come from the mint-verified certificate.
  */
-export const ChunkedFieldViewV1Schema = Data.Object({
+export const ChunkedFieldViewSchema = Data.Object({
   chunks: Data.Array(Data.Bytes()),
   chunk_digests: Data.Array(H32Schema),
   count: Data.Integer(),
   stride: Data.Integer(),
 });
-export type ChunkedFieldViewV1 = Data.Static<typeof ChunkedFieldViewV1Schema>;
-export const ChunkedFieldViewV1 =
-  ChunkedFieldViewV1Schema as unknown as ChunkedFieldViewV1;
+export type ChunkedFieldView = Data.Static<typeof ChunkedFieldViewSchema>;
+export const ChunkedFieldView =
+  ChunkedFieldViewSchema as unknown as ChunkedFieldView;
 
 /**
- * §8.8 `FieldViewV1` — an authenticated field, ready to slice. Carriage tier is
+ * §8.8 `FieldView` — an authenticated field, ready to slice. Carriage tier is
  * an encoding detail validator logic never branches on; the view is what the
  * door hands back, so a builder that reconstructs a step's expected state needs
  * the same two tags in the same order.
  */
-export const FieldViewV1Schema = Data.Enum([
-  Data.Object({ Whole: WholeFieldViewV1Schema }),
-  Data.Object({ Chunked: ChunkedFieldViewV1Schema }),
+export const FieldViewSchema = Data.Enum([
+  Data.Object({ Whole: WholeFieldViewSchema }),
+  Data.Object({ Chunked: ChunkedFieldViewSchema }),
 ]);
-export type FieldViewV1 = Data.Static<typeof FieldViewV1Schema>;
-export const FieldViewV1 = FieldViewV1Schema as unknown as FieldViewV1;
+export type FieldView = Data.Static<typeof FieldViewSchema>;
+export const FieldView = FieldViewSchema as unknown as FieldView;
 
 /**
- * §8.6 `FieldPreimageCertificateV1` — the tier-3 digest manifest, minted by the
+ * §8.6 `FieldPreimageCertificate` — the tier-3 digest manifest, minted by the
  * permissionless multi-handler certificate validator and carried as the
  * manifest UTxO's inline datum. Field order is the aiken record's declaration
  * order.
  */
-export const FieldPreimageCertificateV1Schema = Data.Object({
+export const FieldPreimageCertificateSchema = Data.Object({
   owner: VerificationKeyHashSchema,
   tx_id: H32Schema,
   field_index: Data.Integer(),
@@ -142,11 +138,11 @@ export const FieldPreimageCertificateV1Schema = Data.Object({
   total_length: Data.Integer(),
   chunk_digests: Data.Array(H32Schema),
 });
-export type FieldPreimageCertificateV1 = Data.Static<
-  typeof FieldPreimageCertificateV1Schema
+export type FieldPreimageCertificate = Data.Static<
+  typeof FieldPreimageCertificateSchema
 >;
-export const FieldPreimageCertificateV1 =
-  FieldPreimageCertificateV1Schema as unknown as FieldPreimageCertificateV1;
+export const FieldPreimageCertificate =
+  FieldPreimageCertificateSchema as unknown as FieldPreimageCertificate;
 
 /**
  * §8.6. The `Certify` arm of the certification redeemer — the committed
@@ -166,20 +162,20 @@ export const FieldPreimageCertificateV1 =
  * code path is worth more than one saved hash. `chunk_ref_input_indices` is
  * all-chunks-positional and bounded at three by §8.3.
  */
-export const CertifyFieldPreimageCertificateMintRedeemerV1Schema = Data.Object({
+export const CertifyFieldPreimageCertificateMintRedeemerSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   chunk_ref_input_indices: Data.Array(Data.Integer()),
   output_index: Data.Integer(),
 });
-export type CertifyFieldPreimageCertificateMintRedeemerV1 = Data.Static<
-  typeof CertifyFieldPreimageCertificateMintRedeemerV1Schema
+export type CertifyFieldPreimageCertificateMintRedeemer = Data.Static<
+  typeof CertifyFieldPreimageCertificateMintRedeemerSchema
 >;
-export const CertifyFieldPreimageCertificateMintRedeemerV1 =
-  CertifyFieldPreimageCertificateMintRedeemerV1Schema as unknown as CertifyFieldPreimageCertificateMintRedeemerV1;
+export const CertifyFieldPreimageCertificateMintRedeemer =
+  CertifyFieldPreimageCertificateMintRedeemerSchema as unknown as CertifyFieldPreimageCertificateMintRedeemer;
 
 /**
- * §8.6 `FieldPreimageCertificateMintRedeemerV1` — the frozen mint-redeemer wire
+ * §8.6 `FieldPreimageCertificateMintRedeemer` — the frozen mint-redeemer wire
  * format of the permissionless certificate validator.
  *
  * **Constructor order is frozen consensus wire format**: `Certify` is Constr 0
@@ -194,35 +190,35 @@ export const CertifyFieldPreimageCertificateMintRedeemerV1 =
  * validator's `spend` handler, and all this arm owes is that a burn redeemer
  * cannot mint.
  */
-export const FieldPreimageCertificateMintRedeemerV1Schema = Data.Enum([
+export const FieldPreimageCertificateMintRedeemerSchema = Data.Enum([
   Data.Object({
-    Certify: CertifyFieldPreimageCertificateMintRedeemerV1Schema,
+    Certify: CertifyFieldPreimageCertificateMintRedeemerSchema,
   }),
   Data.Literal("Retire"),
 ]);
-export type FieldPreimageCertificateMintRedeemerV1 = Data.Static<
-  typeof FieldPreimageCertificateMintRedeemerV1Schema
+export type FieldPreimageCertificateMintRedeemer = Data.Static<
+  typeof FieldPreimageCertificateMintRedeemerSchema
 >;
-export const FieldPreimageCertificateMintRedeemerV1 =
-  FieldPreimageCertificateMintRedeemerV1Schema as unknown as FieldPreimageCertificateMintRedeemerV1;
+export const FieldPreimageCertificateMintRedeemer =
+  FieldPreimageCertificateMintRedeemerSchema as unknown as FieldPreimageCertificateMintRedeemer;
 
 /**
  * The frozen §8.8 Constr indexes, exported so a test can pin them rather than
  * trusting that nobody reorders the `Data.Enum` arrays above.
  */
-export const FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES: Readonly<
-  Record<(typeof MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1)[number], number>
+export const FIELD_CARRIAGE_CONSTRUCTOR_INDEXES: Readonly<
+  Record<(typeof MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS)[number], number>
 > = Object.freeze({ Inline: 0, RawUtxo: 1, Certified: 2 });
 
-export const FIELD_VIEW_V1_CONSTRUCTOR_INDEXES: Readonly<
-  Record<(typeof MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1)[number], number>
+export const FIELD_VIEW_CONSTRUCTOR_INDEXES: Readonly<
+  Record<(typeof MIDGARD_FIELD_VIEW_CONSTRUCTORS)[number], number>
 > = Object.freeze({ Whole: 0, Chunked: 1, ProvisionalWhole: 2 });
 
 /**
  * The frozen §8.6 mint-redeemer Constr indexes. Same reason as the two above:
  * the tag is positional, and a reorder is a change no type checker sees.
  */
-export const FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES: Readonly<
+export const FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES: Readonly<
   Record<"Certify" | "Retire", number>
 > = Object.freeze({ Certify: 0, Retire: 1 });
 
@@ -232,8 +228,8 @@ export const FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES: Re
  * Re-exported as hex because on-chain datum comparisons in this package are
  * hex strings.
  */
-export const EMPTY_FIELD_COMMITMENT_HEX_V1: string =
-  MIDGARD_EMPTY_FIELD_COMMITMENT_V1.toString("hex");
+export const EMPTY_FIELD_COMMITMENT_HEX: string =
+  MIDGARD_EMPTY_FIELD_COMMITMENT.toString("hex");
 
 /**
  * §8.6's constant certificate asset name (#606, owner ruling 2026-08-16), as
@@ -242,5 +238,5 @@ export const EMPTY_FIELD_COMMITMENT_HEX_V1: string =
  * information lives in the datum, and discovery is by enumerating the single
  * certificate address and filtering by datum.
  */
-export const FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1: string =
-  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1.toString("hex");
+export const FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX: string =
+  MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("hex");

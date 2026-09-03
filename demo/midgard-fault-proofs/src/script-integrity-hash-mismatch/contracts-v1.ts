@@ -7,30 +7,28 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES_V1 = Object.freeze(
-  [
-    "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
-    "fraud_proofs/script_integrity_hash_mismatch/step_02.main.spend",
-    "fraud_proofs/script_integrity_hash_mismatch/step_03.main.spend",
-    "fraud_proofs/script_integrity_hash_mismatch/step_04.main.spend",
-    "fraud_proofs/script_integrity_hash_mismatch/step_05.main.spend",
-  ] as const,
-);
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES = Object.freeze([
+  "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
+  "fraud_proofs/script_integrity_hash_mismatch/step_02.main.spend",
+  "fraud_proofs/script_integrity_hash_mismatch/step_03.main.spend",
+  "fraud_proofs/script_integrity_hash_mismatch/step_04.main.spend",
+  "fraud_proofs/script_integrity_hash_mismatch/step_05.main.spend",
+] as const);
 
-export type ScriptIntegrityHashMismatchStepContractV1 = Readonly<{
+export type ScriptIntegrityHashMismatchStepContract = Readonly<{
   blueprintTitle: string;
   spendingScript: Script;
   spendingScriptHash: string;
   spendingScriptAddress: string;
   referenceOutRef: string;
 }>;
-export type ScriptIntegrityHashMismatchContractsV1 = Readonly<{
+export type ScriptIntegrityHashMismatchContracts = Readonly<{
   steps: readonly [
-    ScriptIntegrityHashMismatchStepContractV1,
-    ScriptIntegrityHashMismatchStepContractV1,
-    ScriptIntegrityHashMismatchStepContractV1,
-    ScriptIntegrityHashMismatchStepContractV1,
-    ScriptIntegrityHashMismatchStepContractV1,
+    ScriptIntegrityHashMismatchStepContract,
+    ScriptIntegrityHashMismatchStepContract,
+    ScriptIntegrityHashMismatchStepContract,
+    ScriptIntegrityHashMismatchStepContract,
+    ScriptIntegrityHashMismatchStepContract,
   ];
   computationThread: {
     readonly policyId: string;
@@ -52,7 +50,7 @@ type Blueprint = Readonly<{
   }>[];
 }>;
 
-export const applyScriptIntegrityHashMismatchScriptsV1 = ({
+export const applyScriptIntegrityHashMismatchScripts = ({
   blueprint,
   network,
   computationThreadPolicyId,
@@ -66,10 +64,10 @@ export const applyScriptIntegrityHashMismatchScriptsV1 = ({
   fraudProofPolicyId: string;
   fraudProofTokenAddressData: Data;
   hubOracleScriptHash: string;
-}): ScriptIntegrityHashMismatchContractsV1["steps"] => {
+}): ScriptIntegrityHashMismatchContracts["steps"] => {
   const apply = (index: number, parameters: readonly Data[]) => {
     const blueprintTitle =
-      SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES_V1[index]!;
+      SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES[index]!;
     const validator = blueprint.validators.find(
       ({ title }) => title === blueprintTitle,
     );

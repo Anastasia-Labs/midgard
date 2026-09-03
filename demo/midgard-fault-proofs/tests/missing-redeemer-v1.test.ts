@@ -1,37 +1,37 @@
 import {
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardRedeemerWitnessItemV1,
-  encodeMidgardSpendInputItemV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardReferenceScriptSourceLeafV1,
-  midgardFieldCommitmentV1,
-  type MidgardRedeemerPurposeV1,
+  encodeMidgardFieldPreimage,
+  encodeMidgardRedeemerWitnessItem,
+  encodeMidgardSpendInputItem,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardReferenceScriptSourceLeaf,
+  midgardFieldCommitment,
+  type MidgardRedeemerPurpose,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { createMissingRedeemerDirectoryJournalV1 } from "../src/missing-redeemer/directory-journal-v1.js";
+import { createMissingRedeemerDirectoryJournal } from "../src/missing-redeemer/directory-journal-v1.js";
 import {
-  type AuthenticatedScriptPurposeV1,
-  classifyMissingRedeemerFindingV1,
-  missingRedeemerEvidenceClosesV1,
-  type MissingRedeemerPurposeKindV1,
-  prepareMissingRedeemerEvidenceV1,
+  type AuthenticatedScriptPurpose,
+  classifyMissingRedeemerFinding,
+  missingRedeemerEvidenceCloses,
+  type MissingRedeemerPurposeKind,
+  prepareMissingRedeemerEvidence,
 } from "../src/missing-redeemer/family-v1.js";
-import { decodeMissingRedeemerStageTenControlV1 } from "../src/missing-redeemer/retained-stage-ten-v1.js";
+import { decodeMissingRedeemerStageTenControl } from "../src/missing-redeemer/retained-stage-ten-v1.js";
 import {
-  encodeMissingRedeemerWalkCheckpointV1,
-  hashMissingRedeemerWalkCheckpointV1,
-  planMissingRedeemerStagedWalkV1,
+  encodeMissingRedeemerWalkCheckpoint,
+  hashMissingRedeemerWalkCheckpoint,
+  planMissingRedeemerStagedWalk,
 } from "../src/missing-redeemer/staged-plan-v1.js";
 import {
-  type MissingRedeemerDurableStateV1,
-  reconcileMissingRedeemerStateV1,
-  runMissingRedeemerWorkflowV1,
+  type MissingRedeemerDurableState,
+  reconcileMissingRedeemerState,
+  runMissingRedeemerWorkflow,
 } from "../src/missing-redeemer/workflow-v1.js";
 
 const txId = "00".repeat(32);
@@ -42,7 +42,7 @@ const sourceByKind = [
   "witness",
   "resolved-reference",
 ] as const;
-const frontier = (): readonly AuthenticatedScriptPurposeV1[] =>
+const frontier = (): readonly AuthenticatedScriptPurpose[] =>
   ([0, 1, 2, 3] as const).map((purposeKind) => {
     const source = sourceByKind[purposeKind];
     const sourceIndex = purposeKind;
@@ -50,7 +50,7 @@ const frontier = (): readonly AuthenticatedScriptPurposeV1[] =>
     const sourceKey =
       sourceOriginKind === 0
         ? encodeCbor(BigInt(sourceIndex))
-        : encodeMidgardSpendInputItemV1({
+        : encodeMidgardSpendInputItem({
             txId: Buffer.alloc(32, purposeKind + 20),
             outputIndex: purposeKind,
           });
@@ -64,14 +64,14 @@ const frontier = (): readonly AuthenticatedScriptPurposeV1[] =>
       .repeat(32);
     const sourceLeaf =
       sourceOriginKind === 0
-        ? hashMidgardInlineScriptSourceLeafV1({
+        ? hashMidgardInlineScriptSourceLeaf({
             sourceIndex: BigInt(sourceIndex),
             scriptLanguageTag: 3,
             scriptHash: Buffer.from(scriptHashHex, "hex"),
             scriptTotalLength: 17,
             itemCommitment: Buffer.from(sourceItemCommitmentHex, "hex"),
           })
-        : hashMidgardReferenceScriptSourceLeafV1({
+        : hashMidgardReferenceScriptSourceLeaf({
             sourceKey,
             scriptLanguageTag: 3,
             scriptHash: Buffer.from(scriptHashHex, "hex"),
@@ -97,12 +97,12 @@ const frontier = (): readonly AuthenticatedScriptPurposeV1[] =>
   });
 const purposeName = ["Spend", "Mint", "Reward", "Receive"] as const;
 const field = (
-  entries: readonly (readonly [MissingRedeemerPurposeKindV1, number])[],
+  entries: readonly (readonly [MissingRedeemerPurposeKind, number])[],
 ) =>
-  encodeMidgardFieldPreimageV1(
+  encodeMidgardFieldPreimage(
     entries.map(([kind, index]) =>
-      encodeMidgardRedeemerWitnessItemV1({
-        purpose: purposeName[kind] satisfies MidgardRedeemerPurposeV1,
+      encodeMidgardRedeemerWitnessItem({
+        purpose: purposeName[kind] satisfies MidgardRedeemerPurpose,
         index: BigInt(index),
         redeemerCbor: Buffer.from("00", "hex"),
         executionUnits: { memory: 1n, steps: 2n },
@@ -110,15 +110,15 @@ const field = (
     ),
   );
 const evidence = (
-  kind: MissingRedeemerPurposeKindV1,
-  entries: readonly (readonly [MissingRedeemerPurposeKindV1, number])[],
+  kind: MissingRedeemerPurposeKind,
+  entries: readonly (readonly [MissingRedeemerPurposeKind, number])[],
   forced = false,
 ) => {
   const bytes = field(entries);
-  return prepareMissingRedeemerEvidenceV1({
+  return prepareMissingRedeemerEvidence({
     finding: {
       subject: forced
-        ? forcedVerdictSubjectV1({
+        ? forcedVerdictSubject({
             transactionId: txId,
             sourceKey,
             rejectionReason: {
@@ -128,13 +128,13 @@ const evidence = (
               },
             },
           })
-        : acceptedVerdictSubjectV1(txId),
+        : acceptedVerdictSubject(txId),
       purposeKind: kind,
       purposeIndex: 0,
     },
     authenticatedPurpose: frontier()[kind]!,
     redeemerFieldPreimage: bytes,
-    committedFieldHashHex: midgardFieldCommitmentV1(bytes).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(bytes).toString("hex"),
   });
 };
 
@@ -203,18 +203,18 @@ describe("missingRedeemer V1", () => {
       Buffer.alloc(32),
       discovery,
     ]);
-    const decoded = decodeMissingRedeemerStageTenControlV1(control);
+    const decoded = decodeMissingRedeemerStageTenControl(control);
     expect(decoded.stage).toBe(10n);
     expect(decoded.discovery.matched_language_tag).toBe(3n);
     expect(() =>
-      decodeMissingRedeemerStageTenControlV1(encodeCbor([10n])),
+      decodeMissingRedeemerStageTenControl(encodeCbor([10n])),
     ).toThrow(/exact stage 10/u);
   });
   it("builds canonical field-8 grammar/walk checkpoints through every batch", () => {
     const bytes = field(
       Array.from({ length: 33 }, (_, index) => [0, index + 1] as const),
     );
-    const staged = planMissingRedeemerStagedWalkV1({
+    const staged = planMissingRedeemerStagedWalk({
       transactionId: txId,
       fieldPreimageCbor: bytes.toString("hex"),
     });
@@ -224,18 +224,18 @@ describe("missingRedeemer V1", () => {
     expect(staged.walk.map(({ nextItemIndex }) => nextItemIndex)).toEqual([
       16, 32, 33,
     ]);
-    expect(encodeMissingRedeemerWalkCheckpointV1(staged.walk[0]!)[36]).toBe(8);
-    expect(hashMissingRedeemerWalkCheckpointV1(staged.walk[0]!)).toMatch(
+    expect(encodeMissingRedeemerWalkCheckpoint(staged.walk[0]!)[36]).toBe(8);
+    expect(hashMissingRedeemerWalkCheckpoint(staged.walk[0]!)).toMatch(
       /^[0-9a-f]{64}$/u,
     );
   });
   it("proves complete absence for every accepted purpose kind", () => {
     for (const kind of [0, 1, 2, 3] as const) {
-      const other = ((kind + 1) % 4) as MissingRedeemerPurposeKindV1;
+      const other = ((kind + 1) % 4) as MissingRedeemerPurposeKind;
       const value = evidence(kind, [[other, 0]]);
       expect(value.redeemerMissing).toBe(true);
       expect(value.checkpoints.at(-1)?.cursor).toBe(value.itemCount);
-      expect(missingRedeemerEvidenceClosesV1(value)).toBe(true);
+      expect(missingRedeemerEvidenceCloses(value)).toBe(true);
     }
   });
 
@@ -243,7 +243,7 @@ describe("missingRedeemer V1", () => {
     for (const kind of [0, 1, 2, 3] as const) {
       const value = evidence(kind, [[kind, 0]], true);
       expect(value.redeemerMissing).toBe(false);
-      expect(missingRedeemerEvidenceClosesV1(value)).toBe(true);
+      expect(missingRedeemerEvidenceCloses(value)).toBe(true);
     }
   });
 
@@ -262,7 +262,7 @@ describe("missingRedeemer V1", () => {
   });
 
   it("refuses reason, purpose-frontier, and field substitutions", () => {
-    const wrong = forcedVerdictSubjectV1({
+    const wrong = forcedVerdictSubject({
       transactionId: txId,
       sourceKey,
       rejectionReason: {
@@ -270,7 +270,7 @@ describe("missingRedeemer V1", () => {
       },
     });
     expect(() =>
-      classifyMissingRedeemerFindingV1({
+      classifyMissingRedeemerFinding({
         subject: wrong,
         purposeKind: 0,
         purposeIndex: 0,
@@ -278,21 +278,21 @@ describe("missingRedeemer V1", () => {
     ).toThrow(/coordinate/u);
     const bytes = field([]);
     expect(() =>
-      prepareMissingRedeemerEvidenceV1({
+      prepareMissingRedeemerEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(txId),
+          subject: acceptedVerdictSubject(txId),
           purposeKind: 0,
           purposeIndex: 0,
         },
         authenticatedPurpose: frontier()[1]!,
         redeemerFieldPreimage: bytes,
-        committedFieldHashHex: midgardFieldCommitmentV1(bytes).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(bytes).toString("hex"),
       }),
     ).toThrow(/differs from/u);
     expect(() =>
-      prepareMissingRedeemerEvidenceV1({
+      prepareMissingRedeemerEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(txId),
+          subject: acceptedVerdictSubject(txId),
           purposeKind: 0,
           purposeIndex: 0,
         },
@@ -306,16 +306,16 @@ describe("missingRedeemer V1", () => {
   it("rejects alternate source and native-language substitutions", () => {
     const bytes = field([]);
     const base = frontier();
-    const prepare = (authenticatedPurpose: AuthenticatedScriptPurposeV1) =>
-      prepareMissingRedeemerEvidenceV1({
+    const prepare = (authenticatedPurpose: AuthenticatedScriptPurpose) =>
+      prepareMissingRedeemerEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(txId),
+          subject: acceptedVerdictSubject(txId),
           purposeKind: 0,
           purposeIndex: 0,
         },
         authenticatedPurpose,
         redeemerFieldPreimage: bytes,
-        committedFieldHashHex: midgardFieldCommitmentV1(bytes).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(bytes).toString("hex"),
       });
     expect(() =>
       prepare({
@@ -339,15 +339,15 @@ describe("missingRedeemer durable workflow", () => {
   it("persists compare-and-append journal state across instances", async () => {
     const directory = await mkdtemp(join(tmpdir(), "missing-redeemer-"));
     try {
-      const state: MissingRedeemerDurableStateV1 = {
+      const state: MissingRedeemerDurableState = {
         stage: "step02a",
         scanCursor: 0,
         txHash: "ee".repeat(32),
         outputReference: `${"ee".repeat(32)}#0`,
       };
-      const first = await createMissingRedeemerDirectoryJournalV1(directory);
+      const first = await createMissingRedeemerDirectoryJournal(directory);
       await first.append("identity", 0, state);
-      const reopened = await createMissingRedeemerDirectoryJournalV1(directory);
+      const reopened = await createMissingRedeemerDirectoryJournal(directory);
       expect(await reopened.load("identity")).toEqual([state]);
       await expect(reopened.append("identity", 0, state)).rejects.toThrow(
         /compare-and-append conflict/u,
@@ -362,7 +362,7 @@ describe("missingRedeemer durable workflow", () => {
       0,
       Array.from({ length: 33 }, (_, index) => [1, index] as const),
     );
-    const entries: MissingRedeemerDurableStateV1[] = [];
+    const entries: MissingRedeemerDurableState[] = [];
     const stages = [
       "step01",
       "step02",
@@ -377,13 +377,13 @@ describe("missingRedeemer durable workflow", () => {
       "removed",
     ] as const;
     let submitted = 0;
-    let observed: MissingRedeemerDurableStateV1 = {
+    let observed: MissingRedeemerDurableState = {
       stage: "none",
       scanCursor: 0,
       txHash: "00".repeat(32),
       outputReference: null,
     };
-    const result = await runMissingRedeemerWorkflowV1({
+    const result = await runMissingRedeemerWorkflow({
       evidence: prepared,
       journal: {
         load: async () => entries,
@@ -432,20 +432,20 @@ describe("missingRedeemer durable workflow", () => {
   });
 
   it("fails closed on journal stage or scan regression", () => {
-    const recorded: MissingRedeemerDurableStateV1 = {
+    const recorded: MissingRedeemerDurableState = {
       stage: "step04",
       scanCursor: 16,
       txHash: "11".repeat(32),
       outputReference: `${"11".repeat(32)}#0`,
     };
     expect(() =>
-      reconcileMissingRedeemerStateV1([recorded], {
+      reconcileMissingRedeemerState([recorded], {
         ...recorded,
         stage: "step03",
       }),
     ).toThrow(/chain regressed/u);
     expect(() =>
-      reconcileMissingRedeemerStateV1([recorded], {
+      reconcileMissingRedeemerState([recorded], {
         ...recorded,
         scanCursor: 15,
       }),
@@ -453,7 +453,7 @@ describe("missingRedeemer durable workflow", () => {
   });
 
   it("treats an observed on-chain cancellation as terminal", async () => {
-    const result = await runMissingRedeemerWorkflowV1({
+    const result = await runMissingRedeemerWorkflow({
       evidence: evidence(0, []),
       journal: {
         load: async () => [],

@@ -7,7 +7,7 @@
  *   carries the pre-state value witness for the input at the thread's
  *   cursor, and self-loops with the cursor advanced and the claimed asset's
  *   quantity accumulated. The expected next state is computed locally with
- *   the same fold the validator runs (`witnessClaimedQuantityV1`), so a
+ *   the same fold the validator runs (`witnessClaimedQuantity`), so a
  *   witness that would not verify on-chain fails here first.
  * - `submitValueNotPreservedStep02Finish` — the `FinishInputs` arm: the
  *   cursor must equal the field's item count, and the accumulated inflow
@@ -17,7 +17,7 @@
  * independent, resumable L1 transaction, so a fold interrupted at any depth
  * continues from the thread UTxO it left behind.
  */
-import type { FieldOpeningV1 } from "@al-ft/midgard-sdk";
+import type { FieldOpening } from "@al-ft/midgard-sdk";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -36,16 +36,16 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
-import { witnessClaimedQuantityV1 } from "./evidence-v1.js";
+import type { ValueNotPreservedContracts } from "./contracts-v1.js";
+import { witnessClaimedQuantity } from "./evidence-v1.js";
 import {
-  type SpentInputValueWitnessV1,
+  type SpentInputValueWitness,
   ValueNotPreservedStep02Datum,
   ValueNotPreservedStep02SpendRedeemer,
   type ValueNotPreservedStep02State,
@@ -53,14 +53,14 @@ import {
   type ValueNotPreservedStep03State,
 } from "./schemas-v1.js";
 import {
-  requireValueNotPreservedReferenceScriptV1,
-  requireValueNotPreservedStepStateV1,
-  requireValueNotPreservedThreadUtxoV1,
-  valueNotPreservedStepLabelV1,
+  requireValueNotPreservedReferenceScript,
+  requireValueNotPreservedStepState,
+  requireValueNotPreservedThreadUtxo,
+  valueNotPreservedStepLabel,
   valueNotPreservedSubmitError,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = valueNotPreservedStepLabelV1(1);
+const STEP_LABEL = valueNotPreservedStepLabel(1);
 
 export type SubmitValueNotPreservedStep02FoldResult = {
   readonly txHash: string;
@@ -93,39 +93,39 @@ export const submitValueNotPreservedStep02Fold = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** The §8.8 field-0 opening (see `spendInputsOpeningV1`). */
-  readonly spendInputsOpening: FieldOpeningV1;
+  readonly spendInputsOpening: FieldOpening;
   /** The pre-state value witness for the input at the thread's cursor. */
-  readonly valueWitness: SpentInputValueWitnessV1;
+  readonly valueWitness: SpentInputValueWitness;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep02FoldResult> => {
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 1,
-      threadOutRef,
-    });
-  const state: ValueNotPreservedStep02State =
-    requireValueNotPreservedStepStateV1({
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 1,
+    threadOutRef,
+  });
+  const state: ValueNotPreservedStep02State = requireValueNotPreservedStepState(
+    {
       threadUtxo,
       signer,
       schema: ValueNotPreservedStep02Datum,
       stepIndex: 1,
-    });
+    },
+  );
 
   // The validator's own fold, run locally: the descriptor's claimed-asset
   // quantity, ADA from the descriptor scalar or tokens from the full
   // authenticated leaf walk.
-  const claimedQuantity = witnessClaimedQuantityV1({
+  const claimedQuantity = witnessClaimedQuantity({
     claim: state.claimed_asset,
     witness: valueWitness,
   });
@@ -186,12 +186,12 @@ export const submitValueNotPreservedStep02Fold = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireValueNotPreservedReferenceScriptV1({
+      : requireValueNotPreservedReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[1].spendingScriptHash,
           stepIndex: 1,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[1].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} fold spending validator`,
@@ -217,9 +217,9 @@ export const submitValueNotPreservedStep02Fold = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -288,34 +288,34 @@ export const submitValueNotPreservedStep02Finish = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** The §8.8 field-0 opening; the validator reads the item count off it. */
-  readonly spendInputsOpening: FieldOpeningV1;
+  readonly spendInputsOpening: FieldOpening;
   /** The transaction's spend-input count, for the local cursor check. */
   readonly spendInputCount: bigint;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep02FinishResult> => {
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 1,
-      threadOutRef,
-    });
-  const state: ValueNotPreservedStep02State =
-    requireValueNotPreservedStepStateV1({
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 1,
+    threadOutRef,
+  });
+  const state: ValueNotPreservedStep02State = requireValueNotPreservedStepState(
+    {
       threadUtxo,
       signer,
       schema: ValueNotPreservedStep02Datum,
       stepIndex: 1,
-    });
+    },
+  );
   // A premature finish would hide inflow; the validator compares against the
   // authenticated item count, so refuse the doomed transaction here.
   if (state.input_cursor !== spendInputCount) {
@@ -379,12 +379,12 @@ export const submitValueNotPreservedStep02Finish = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireValueNotPreservedReferenceScriptV1({
+      : requireValueNotPreservedReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[1].spendingScriptHash,
           stepIndex: 1,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[1].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} finish spending validator`,
@@ -410,9 +410,9 @@ export const submitValueNotPreservedStep02Finish = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

@@ -1,29 +1,29 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekBlobChunkV1,
-  encodeMidgardCekProgramEnvelopeV1,
-  encodeMidgardCekProgramMaterialDaValueV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardCekBlobChunk,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialDaValue,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  hashMidgardCekProgramEnvelopeV1,
-  hashMidgardCekProgramMaterialPreimageV1,
-  hashMidgardCekTermNodeV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
+  hashMidgardCekProgramEnvelope,
+  hashMidgardCekProgramMaterialPreimage,
+  hashMidgardCekTermNode,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core";
 import {
-  midgardFieldCommitmentV1,
-  selectMidgardFieldCarriageTierV1,
+  midgardFieldCommitment,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { CML, Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -31,9 +31,9 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "../src/index.js";
 
 const transactionCbor = (): Buffer =>
-  encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -87,11 +87,11 @@ const cekProgramMaterialContracts = {
 } as Pick<SDK.MidgardValidators, "cekProgramMaterial">;
 
 const cekProgramMaterialPublication = (bytes: number) => {
-  const preimage = encodeMidgardCekBlobChunkV1(Buffer.alloc(bytes, 0x5a));
-  return SDK.deriveCekProgramMaterialPublicationsV1([
+  const preimage = encodeMidgardCekBlobChunk(Buffer.alloc(bytes, 0x5a));
+  return SDK.deriveCekProgramMaterialPublications([
     {
       kind: "blobChunk",
-      root: hashMidgardCekProgramMaterialPreimageV1("blobChunk", preimage),
+      root: hashMidgardCekProgramMaterialPreimage("blobChunk", preimage),
       preimage,
     },
   ])[0]!;
@@ -99,10 +99,10 @@ const cekProgramMaterialPublication = (bytes: number) => {
 
 const completeCekPublicationInput = () => {
   const term = { kind: "error" } as const;
-  const preimage = encodeMidgardCekTermNodeV1(term);
-  const root = hashMidgardCekTermNodeV1(term);
+  const preimage = encodeMidgardCekTermNode(term);
+  const root = hashMidgardCekTermNode(term);
   const entry = { kind: "term" as const, root, preimage };
-  const envelopeCbor = encodeMidgardCekProgramEnvelopeV1({
+  const envelopeCbor = encodeMidgardCekProgramEnvelope({
     uplcVersion: [1n, 1n, 0n],
     termRoot: root,
     nodeCount: 1n,
@@ -111,7 +111,7 @@ const completeCekPublicationInput = () => {
   return {
     envelopeCbor,
     entry,
-    sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([entry]),
+    sidecarCbor: encodeMidgardCekProgramMaterialSidecar([entry]),
   };
 };
 
@@ -154,18 +154,18 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       transactionId: "33".repeat(32),
       outputIndex: 4n,
     };
-    const source: SDK.NativeTxProofSourceV1 = {
+    const source: SDK.NativeTxProofSource = {
       compact_cbor: "01",
       witness_set_compact_cbor: "0203",
       field_preimage_lengths_cbor: "04",
     };
-    const payload: SDK.TxOrderPayloadV1 = {
+    const payload: SDK.TxOrderPayload = {
       tx_id: "44".repeat(32),
       transaction_commitment: "55".repeat(32),
       source,
     };
-    const event: SDK.TxOrderEventV1 = { id: txOrderId, tx: payload };
-    const datum: SDK.TxOrderDatumV1 = {
+    const event: SDK.TxOrderEvent = { id: txOrderId, tx: payload };
+    const datum: SDK.TxOrderDatum = {
       event,
       inclusion_time: 123n,
       witness: "66".repeat(28),
@@ -177,7 +177,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       },
       refund_datum: "NoDatum",
     };
-    const forced: SDK.ForcedInclusionTxV1 = {
+    const forced: SDK.ForcedInclusionTx = {
       tx_id: payload.tx_id,
       source,
       verdict: {
@@ -186,7 +186,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
         },
       },
     };
-    const spend: SDK.TxOrderSpendRedeemerV1 = {
+    const spend: SDK.TxOrderSpendRedeemer = {
       input_index: 0n,
       output_index: 1n,
       hub_ref_input_index: 2n,
@@ -198,7 +198,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
         phas_root: "11".repeat(32),
         count: 1n,
         key: Data.to(txOrderId, SDK.OutputReference),
-        value: Data.to(forced, SDK.ForcedInclusionTxV1),
+        value: Data.to(forced, SDK.ForcedInclusionTx),
         proof: [],
       },
       inclusion_proof_script_withdraw_redeemer_index: 5n,
@@ -209,27 +209,27 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       },
     };
 
-    const datumCbor = Data.to(datum, SDK.TxOrderDatumV1);
+    const datumCbor = Data.to(datum, SDK.TxOrderDatum);
     expect(Data.to(txOrderId, SDK.OutputReference)).toBe(
       `d8799f5820${"33".repeat(32)}04ff`,
     );
-    expect(Data.to(payload, SDK.TxOrderPayloadV1)).toBe(
+    expect(Data.to(payload, SDK.TxOrderPayload)).toBe(
       `d8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffff`,
     );
-    expect(Data.to(event, SDK.TxOrderEventV1)).toBe(
+    expect(Data.to(event, SDK.TxOrderEvent)).toBe(
       `d8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffffff`,
     );
     expect(datumCbor).toBe(
       `d8799fd8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffffff187b581c${"66".repeat(28)}d8799fd8799f581c${"77".repeat(28)}ffd87a80ffd87980ff`,
     );
-    expect(Data.to(forced, SDK.ForcedInclusionTxV1)).toBe(
+    expect(Data.to(forced, SDK.ForcedInclusionTx)).toBe(
       `d8799f5820${"44".repeat(32)}d8799f41014202034104ffd87a9fd905229f00ffffff`,
     );
-    expect(Data.to(spend, SDK.TxOrderSpendRedeemerV1)).toBe(
+    expect(Data.to(spend, SDK.TxOrderSpendRedeemer)).toBe(
       "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff583bd8799f58204444444444444444444444444444444444444444444444444444444444444444d8799f41014202034104ffd87a9fd905229f00ffffff80ff05d87a9fd905229f00ffffff",
     );
     expect(
-      SDK.decodeTxOrderDatumV1Cbor(SDK.encodeTxOrderDatumV1Cbor(datum)),
+      SDK.decodeTxOrderDatumCbor(SDK.encodeTxOrderDatumCbor(datum)),
     ).toEqual(datum);
 
     const overlongInclusionTime = datumCbor.replace(
@@ -237,16 +237,16 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       "1a0000007b581c",
     );
     expect(() =>
-      SDK.decodeTxOrderDatumV1Cbor(Buffer.from(overlongInclusionTime, "hex")),
+      SDK.decodeTxOrderDatumCbor(Buffer.from(overlongInclusionTime, "hex")),
     ).toThrow(/exact canonical encoding/u);
     expect(() =>
-      Data.from(`d87a${datumCbor.slice(4)}`, SDK.TxOrderDatumV1),
+      Data.from(`d87a${datumCbor.slice(4)}`, SDK.TxOrderDatum),
     ).toThrow();
     expect(() =>
-      Data.from(`${datumCbor.slice(0, -2)}00ff`, SDK.TxOrderDatumV1),
+      Data.from(`${datumCbor.slice(0, -2)}00ff`, SDK.TxOrderDatum),
     ).toThrow();
 
-    const pointerDatum: SDK.TxOrderDatumV1 = {
+    const pointerDatum: SDK.TxOrderDatum = {
       ...datum,
       refund_address: {
         paymentCredential: datum.refund_address.paymentCredential,
@@ -260,7 +260,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       },
     };
     expect(
-      Data.from(Data.to(pointerDatum, SDK.TxOrderDatumV1), SDK.TxOrderDatumV1),
+      Data.from(Data.to(pointerDatum, SDK.TxOrderDatum), SDK.TxOrderDatum),
     ).toEqual(pointerDatum);
     expect(() =>
       Data.to(
@@ -279,21 +279,21 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
             },
           },
         } as never,
-        SDK.TxOrderDatumV1,
+        SDK.TxOrderDatum,
       ),
     ).toThrow();
   });
 
   it("derives the §8 carriage of every non-empty field and nothing for the empty ones", () => {
     const cbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterialV1({
+    const material = SDK.deriveTxOrderMaterial({
       nativeTxCbor: cbor,
       owner: Buffer.alloc(28, 0x44),
     });
 
     expect(cbor.length).toBeGreaterThan(8 * 1024);
     expect(cbor.length).toBeLessThanOrEqual(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
     );
     // Only field 2 (outputs) carries anything in this fixture, so the carriage
     // list is exactly one entry: the counted scheme published four per-item
@@ -303,16 +303,15 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     const outputs = material.carriage[0]!;
     expect(outputs.fieldName).toBe("outputs");
     expect(outputs.preimage).toEqual(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor).body
-        .outputsPreimageCbor,
+      decodeMidgardNativeTxFullFromCanonicalCbor(cbor).body.outputsPreimageCbor,
     );
     expect(outputs.commitment).toBe(
-      midgardFieldCommitmentV1(outputs.preimage).toString("hex"),
+      midgardFieldCommitment(outputs.preimage).toString("hex"),
     );
     // §8.4 is a partition, so the tier is a fact about the byte length and not a
     // choice this module makes.
     expect(outputs.plan.tier).toBe(
-      selectMidgardFieldCarriageTierV1(outputs.preimage.length),
+      selectMidgardFieldCarriageTier(outputs.preimage.length),
     );
     expect(outputs.plan.totalLength).toBe(outputs.preimage.length);
     expect(outputs.plan.commitment.toString("hex")).toBe(outputs.commitment);
@@ -322,25 +321,25 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
   it("plans inline carriage under the order reserve and publishes what will not fit", () => {
     const cbor = transactionCbor();
     const owner = Buffer.alloc(28, 0x44);
-    const material = SDK.deriveTxOrderMaterialV1({ nativeTxCbor: cbor, owner });
+    const material = SDK.deriveTxOrderMaterial({ nativeTxCbor: cbor, owner });
     const [outputs] = material.carriage;
     expect(outputs).toBeDefined();
 
     // Under the default reserve the one field fits the order transaction's own
     // redeemer, so nothing has to be published first.
-    const inline = SDK.planTxOrderMaterialCarriageV1({ material, owner });
+    const inline = SDK.planTxOrderMaterialCarriage({ material, owner });
     expect(inline.carriage.map((field) => field.plan.tier)).toEqual(["Inline"]);
     expect(inline.referenced).toEqual([]);
     expect(inline.inlineBytes).toBe(outputs!.preimage.length);
     expect(inline.inlineReserveBytes).toBe(
-      SDK.MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES_V1,
+      SDK.MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES,
     );
 
     // One byte short of the field's own length is the whole decision: there is no
     // consensus threshold here, only this transaction's budget (§8.11), so the
     // same field is demoted to tier 2 and gets one publication at the creator's
     // own wallet address.
-    const published = SDK.planTxOrderMaterialCarriageV1({
+    const published = SDK.planTxOrderMaterialCarriage({
       material,
       owner,
       inlineReserveBytes: outputs!.preimage.length - 1,
@@ -377,8 +376,8 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
     expect(
       Data.to(
-        { event, material_carriage: [] } satisfies SDK.TxOrderMintRedeemerV1,
-        SDK.TxOrderMintRedeemerV1,
+        { event, material_carriage: [] } satisfies SDK.TxOrderMintRedeemer,
+        SDK.TxOrderMintRedeemer,
       ),
     ).toBe("d8799fd8799f00010203ff80ff");
     expect(
@@ -391,8 +390,8 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
             },
           },
           material_carriage: [],
-        } satisfies SDK.TxOrderMintRedeemerV1,
-        SDK.TxOrderMintRedeemerV1,
+        } satisfies SDK.TxOrderMintRedeemer,
+        SDK.TxOrderMintRedeemer,
       ),
     ).toBe("d8799fd87a9f42aabb04ff80ff");
     expect(
@@ -409,8 +408,8 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
               },
             },
           ],
-        } satisfies SDK.TxOrderMintRedeemerV1,
-        SDK.TxOrderMintRedeemerV1,
+        } satisfies SDK.TxOrderMintRedeemer,
+        SDK.TxOrderMintRedeemer,
       ),
     ).toBe(
       "d8799fd8799f00010203ff9fd8799f4180ffd87a9f05ffd87b9f069f0708ffffffff",
@@ -419,7 +418,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("refuses material it cannot bind to a canonical transaction", () => {
     expect(() =>
-      SDK.deriveTxOrderMaterialV1({
+      SDK.deriveTxOrderMaterial({
         nativeTxCbor: Buffer.from("00", "hex"),
         owner: Buffer.alloc(28, 0x44),
       }),
@@ -427,21 +426,21 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
   });
 
   it("encodes immutable content-addressed L1 program material below the independent field bound", () => {
-    const preimage = encodeMidgardCekBlobChunkV1(Buffer.alloc(4_095, 0x5a));
-    const root = hashMidgardCekProgramMaterialPreimageV1("blobChunk", preimage);
-    const [publication] = SDK.deriveCekProgramMaterialPublicationsV1([
+    const preimage = encodeMidgardCekBlobChunk(Buffer.alloc(4_095, 0x5a));
+    const root = hashMidgardCekProgramMaterialPreimage("blobChunk", preimage);
+    const [publication] = SDK.deriveCekProgramMaterialPublications([
       { kind: "blobChunk", root, preimage },
     ]);
 
     expect(
-      Data.from(publication!.datumCbor, SDK.CekProgramMaterialDatumV1),
+      Data.from(publication!.datumCbor, SDK.CekProgramMaterialDatum),
     ).toEqual(publication!.datum);
     expect(publication!.datum.root).toBe(Buffer.from(root).toString("hex"));
     expect(Buffer.byteLength(publication!.datumCbor, "hex")).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxProgramMaterialPublicationDatumBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxProgramMaterialPublicationDatumBytes,
     );
     expect(Buffer.byteLength(publication!.datumCbor, "hex")).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
     const inputs = CML.TransactionInputList.new();
     inputs.add(
@@ -471,19 +470,19 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       undefined,
     );
     expect(tx.to_cbor_bytes().length).toBe(
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxProgramMaterialPublicationUnsignedTransactionBytes,
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxProgramMaterialPublicationUnsignedTransactionBytes,
     );
     expect(tx.to_cbor_bytes().length).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
     expect(() =>
-      SDK.deriveCekProgramMaterialPublicationsV1([
+      SDK.deriveCekProgramMaterialPublications([
         { kind: "blobChunk", root, preimage },
         { kind: "blobChunk", root, preimage },
       ]),
     ).toThrow(/duplicate/u);
     expect(() =>
-      SDK.deriveCekProgramMaterialPublicationsV1([
+      SDK.deriveCekProgramMaterialPublications([
         {
           kind: "blobChunk",
           root: Buffer.alloc(32) as never,
@@ -492,12 +491,12 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       ]),
     ).toThrow(/root does not match/u);
     expect(() =>
-      SDK.deriveCekProgramMaterialPublicationsV1([
+      SDK.deriveCekProgramMaterialPublications([
         { kind: "blobBranch", root, preimage },
       ]),
     ).toThrow(/root does not match/u);
     expect(() =>
-      SDK.deriveCekProgramMaterialPublicationsV1([
+      SDK.deriveCekProgramMaterialPublications([
         { kind: "unknown", root, preimage } as never,
       ]),
     ).toThrow();
@@ -505,12 +504,13 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("derives the exact stabilized min-Ada vector for CEK material at its actual script address", () => {
     const publication = cekProgramMaterialPublication(4_095);
-    const minimumLovelace =
-      SDK.minimumLovelaceForCekProgramMaterialPublicationV1({
+    const minimumLovelace = SDK.minimumLovelaceForCekProgramMaterialPublication(
+      {
         contracts: cekProgramMaterialContracts,
         publication,
         coinsPerUtxoByte: 4_310n,
-      });
+      },
+    );
 
     expect(Buffer.byteLength(publication.datumCbor, "hex")).toBe(4_268);
     expect(minimumLovelace).toBe(19_287_250n);
@@ -518,12 +518,13 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("raises adjacent underfunded CEK material publication funding to exact min-Ada", async () => {
     const publication = cekProgramMaterialPublication(64);
-    const minimumLovelace =
-      SDK.minimumLovelaceForCekProgramMaterialPublicationV1({
+    const minimumLovelace = SDK.minimumLovelaceForCekProgramMaterialPublication(
+      {
         contracts: cekProgramMaterialContracts,
         publication,
         coinsPerUtxoByte: 4_310n,
-      });
+      },
+    );
     expect(Buffer.byteLength(publication.datumCbor, "hex")).toBe(110);
     expect(minimumLovelace).toBe(1_361_960n);
     const fundedLovelace: bigint[] = [];
@@ -532,7 +533,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       fundedLovelace,
     });
 
-    await SDK.unsignedCekProgramMaterialV1(
+    await SDK.unsignedCekProgramMaterial(
       lucid,
       cekProgramMaterialContracts as SDK.MidgardValidators,
       {
@@ -540,7 +541,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
         lovelacePerEntry: minimumLovelace - 1n,
       },
     );
-    await SDK.unsignedCekProgramMaterialV1(
+    await SDK.unsignedCekProgramMaterial(
       lucid,
       cekProgramMaterialContracts as SDK.MidgardValidators,
       {
@@ -556,7 +557,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     const small = cekProgramMaterialPublication(0);
     const maximum = cekProgramMaterialPublication(4_095);
     const minimum = (publication: typeof small) =>
-      SDK.minimumLovelaceForCekProgramMaterialPublicationV1({
+      SDK.minimumLovelaceForCekProgramMaterialPublication({
         contracts: cekProgramMaterialContracts,
         publication,
         coinsPerUtxoByte: 4_310n,
@@ -570,12 +571,12 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("pins the immutable complete CEK publication datum ABI, hash, and caller copies", () => {
     const { envelopeCbor, entry, sidecarCbor } = completeCekPublicationInput();
-    const publication = SDK.deriveCekSinglePublicationV1({
+    const publication = SDK.deriveCekSinglePublication({
       envelopeCbor,
       sidecarCbor,
     });
     const expectedHash = Buffer.from(
-      hashMidgardCekProgramEnvelopeV1({
+      hashMidgardCekProgramEnvelope({
         uplcVersion: [1n, 1n, 0n],
         termRoot: entry.root,
         nodeCount: 1n,
@@ -590,7 +591,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     expect(publication.datum).toEqual({
       version: 1n,
       program_envelope_hash: expectedHash,
-      sidecar_cbor: encodeMidgardCekProgramMaterialSidecarV1([entry]).toString(
+      sidecar_cbor: encodeMidgardCekProgramMaterialSidecar([entry]).toString(
         "hex",
       ),
     });
@@ -598,12 +599,12 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       "d8799f015820598a113063682ad2a899e44099a9e1e1b4440603eee17f2a860bab65c10cb0a9582d8201818258204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d46830100428106ff",
     );
     expect(
-      SDK.decodeCekSinglePublicationDatumV1Cbor(
+      SDK.decodeCekSinglePublicationDatumCbor(
         Buffer.from(publication.datumCbor, "hex"),
       ),
     ).toEqual(publication.datum);
     expect(
-      SDK.encodeCekSinglePublicationDatumV1Cbor(publication.datum).toString(
+      SDK.encodeCekSinglePublicationDatumCbor(publication.datum).toString(
         "hex",
       ),
     ).toBe(publication.datumCbor);
@@ -611,34 +612,34 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("rejects noncanonical, malformed, and oversized complete-publication datum bytes", () => {
     const { envelopeCbor, sidecarCbor } = completeCekPublicationInput();
-    const publication = SDK.deriveCekSinglePublicationV1({
+    const publication = SDK.deriveCekSinglePublication({
       envelopeCbor,
       sidecarCbor,
     });
     const datumCbor = Buffer.from(publication.datumCbor, "hex");
 
     expect(() =>
-      SDK.decodeCekSinglePublicationDatumV1Cbor(
+      SDK.decodeCekSinglePublicationDatumCbor(
         Buffer.concat([datumCbor, Buffer.from([0])]),
       ),
     ).toThrow(/canonical encoding/u);
     expect(() =>
-      SDK.encodeCekSinglePublicationDatumV1Cbor({
+      SDK.encodeCekSinglePublicationDatumCbor({
         ...publication.datum,
         version: 2n,
       }),
     ).toThrow(/version 1/u);
     expect(() =>
-      SDK.encodeCekSinglePublicationDatumV1Cbor({
+      SDK.encodeCekSinglePublicationDatumCbor({
         ...publication.datum,
         program_envelope_hash: "00".repeat(31),
       }),
     ).toThrow();
     expect(() =>
-      SDK.encodeCekSinglePublicationDatumV1Cbor({
+      SDK.encodeCekSinglePublicationDatumCbor({
         ...publication.datum,
         sidecar_cbor: "00".repeat(
-          MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes,
+          MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes,
         ),
       }),
     ).toThrow(/datum envelope/u);
@@ -646,10 +647,10 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("rejects incomplete, extra, substituted, unordered, count, byte-length, and trailing complete graph inputs", () => {
     const { envelopeCbor, entry, sidecarCbor } = completeCekPublicationInput();
-    const extraPreimage = encodeMidgardCekBlobChunkV1(Buffer.from([0x99]));
+    const extraPreimage = encodeMidgardCekBlobChunk(Buffer.from([0x99]));
     const extra = {
       kind: "blobChunk" as const,
-      root: hashMidgardCekProgramMaterialPreimageV1("blobChunk", extraPreimage),
+      root: hashMidgardCekProgramMaterialPreimage("blobChunk", extraPreimage),
       preimage: extraPreimage,
     };
     const reordered = [entry, extra].sort((left, right) =>
@@ -659,7 +660,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       1n,
       reordered.map((item) => [
         Buffer.from(item.root),
-        encodeMidgardCekProgramMaterialDaValueV1(item),
+        encodeMidgardCekProgramMaterialDaValue(item),
       ]),
     ]);
     const decodedEnvelope = {
@@ -670,32 +671,32 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     };
 
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
+      SDK.deriveCekSinglePublication({
         envelopeCbor,
-        sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+        sidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       }),
     ).toThrow(/missing/i);
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
+      SDK.deriveCekSinglePublication({
         envelopeCbor,
-        sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([entry, extra]),
+        sidecarCbor: encodeMidgardCekProgramMaterialSidecar([entry, extra]),
       }),
     ).toThrow(/unreachable/i);
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
+      SDK.deriveCekSinglePublication({
         envelopeCbor,
         sidecarCbor: Buffer.concat([sidecarCbor, Buffer.from([0])]),
       }),
     ).toThrow(/trailing/i);
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
+      SDK.deriveCekSinglePublication({
         envelopeCbor,
         sidecarCbor: unorderedSidecar,
       }),
     ).toThrow(/sorted|canonical/i);
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
-        envelopeCbor: encodeMidgardCekProgramEnvelopeV1({
+      SDK.deriveCekSinglePublication({
+        envelopeCbor: encodeMidgardCekProgramEnvelope({
           ...decodedEnvelope,
           nodeCount: 2n,
         }),
@@ -703,8 +704,8 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       }),
     ).toThrow(/material nodes.*declares 2/i);
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
-        envelopeCbor: encodeMidgardCekProgramEnvelopeV1({
+      SDK.deriveCekSinglePublication({
+        envelopeCbor: encodeMidgardCekProgramEnvelope({
           ...decodedEnvelope,
           materialByteLength: decodedEnvelope.materialByteLength + 1n,
         }),
@@ -714,13 +715,13 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     const substituted = Buffer.from(sidecarCbor);
     substituted[substituted.length - 1] = substituted.at(-1)! ^ 0x01;
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
+      SDK.deriveCekSinglePublication({
         envelopeCbor,
         sidecarCbor: substituted,
       }),
     ).toThrow();
     expect(() =>
-      SDK.deriveCekSinglePublicationV1({
+      SDK.deriveCekSinglePublication({
         envelopeCbor: Buffer.concat([envelopeCbor, Buffer.from([0])]),
         sidecarCbor,
       }),
@@ -729,11 +730,11 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
 
   it("publishes one immutable complete graph output at exact min-Ada", async () => {
     const { envelopeCbor, sidecarCbor } = completeCekPublicationInput();
-    const publication = SDK.deriveCekSinglePublicationV1({
+    const publication = SDK.deriveCekSinglePublication({
       envelopeCbor,
       sidecarCbor,
     });
-    const minimumLovelace = SDK.minimumLovelaceForCekSinglePublicationV1({
+    const minimumLovelace = SDK.minimumLovelaceForCekSinglePublication({
       contracts: cekProgramMaterialContracts,
       publication,
       coinsPerUtxoByte: 4_310n,
@@ -747,7 +748,7 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       outputs,
     });
 
-    await SDK.unsignedCekSinglePublicationV1(
+    await SDK.unsignedCekSinglePublication(
       lucid,
       cekProgramMaterialContracts as SDK.MidgardValidators,
       {

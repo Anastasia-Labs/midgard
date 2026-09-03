@@ -1,32 +1,32 @@
-import { deriveMidgardNativeTxFaultEvidenceMaterialV1 } from "@al-ft/midgard-core";
+import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   type EventKey,
-  forcedVerdictSubjectV1,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1,
-  distinctAssetAccumulationEvidenceClosesV1,
-  type DistinctAssetAccumulationEvidenceV1,
-  type DistinctAssetAccumulationFindingV1,
-  prepareDistinctAssetAccumulationEvidenceV1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
+  type DistinctAssetAccumulationEvidence,
+  distinctAssetAccumulationEvidenceCloses,
+  type DistinctAssetAccumulationFinding,
+  prepareDistinctAssetAccumulationEvidence,
 } from "./family-v1.js";
-import type { DistinctAssetAccumulationActuationArtifactV1 } from "./production-actuator-v1.js";
+import type { DistinctAssetAccumulationActuationArtifact } from "./production-actuator-v1.js";
 import {
-  buildDistinctAssetAuthenticationFromRetainedDaV1,
-  discoverDistinctAssetRetainedMutationCandidatesV1,
+  buildDistinctAssetAuthenticationFromRetainedDa,
+  discoverDistinctAssetRetainedMutationCandidates,
 } from "./retained-value-and-mint-v1.js";
 
-const entries = (block: CanonicalBlockEvidenceV1) => ({
+const entries = (block: CanonicalBlockEvidence) => ({
   traces: block.reconstruction.payload.block_body.validation_traces.map(
     ([key, value]) => ({
       key: Buffer.from(key, "hex"),
@@ -52,9 +52,7 @@ const eventIsForced = (
 ): eventKey is Extract<EventKey, { ForcedTransactionEventKey: unknown }> =>
   "ForcedTransactionEventKey" in eventKey;
 
-const coordinateLabel = (
-  finding: DistinctAssetAccumulationFindingV1,
-): string => {
+const coordinateLabel = (finding: DistinctAssetAccumulationFinding): string => {
   const coordinate = finding.coordinate;
   return coordinate.kind === "input"
     ? `input:${coordinate.inputIndex.toString()}:${coordinate.assetIndex.toString()}`
@@ -64,7 +62,7 @@ const coordinateLabel = (
 };
 
 const rejectionReasonMatches = (
-  finding: DistinctAssetAccumulationFindingV1,
+  finding: DistinctAssetAccumulationFinding,
 ): boolean => {
   const reason = finding.subject.rejection_reason;
   const coordinate = finding.coordinate;
@@ -93,11 +91,11 @@ const rejectionReasonMatches = (
 };
 
 const evidenceFromCandidate = (
-  finding: DistinctAssetAccumulationFindingV1,
+  finding: DistinctAssetAccumulationFinding,
   candidate: ReturnType<
-    typeof discoverDistinctAssetRetainedMutationCandidatesV1
+    typeof discoverDistinctAssetRetainedMutationCandidates
   >[number],
-): DistinctAssetAccumulationEvidenceV1 => {
+): DistinctAssetAccumulationEvidence => {
   const accumulator = candidate.control.value_accumulator;
   const mutation = candidate.action.evidence.mutation;
   const seen = Number(accumulator.seen_asset_count);
@@ -106,7 +104,7 @@ const evidenceFromCandidate = (
     throw new Error("distinctAssetAccumulationLimit accumulator changed");
   const fault = !mutation.delta_was_present && seen >= 16_384;
   const nextSeen = seen + (mutation.delta_was_present ? 0 : 1);
-  return prepareDistinctAssetAccumulationEvidenceV1({
+  return prepareDistinctAssetAccumulationEvidence({
     finding,
     traceStateHashHex: candidate.traceStateHashHex,
     workRootHex: candidate.workRootHex,
@@ -141,15 +139,15 @@ const evidenceFromCandidate = (
 };
 
 type Candidate = Readonly<{
-  detection: CanonicalViolationDetectionV1;
-  artifact: DistinctAssetAccumulationActuationArtifactV1;
+  detection: CanonicalViolationDetection;
+  artifact: DistinctAssetAccumulationActuationArtifact;
 }>;
 
-const replayCandidatesV1 = async (
-  block: CanonicalBlockEvidenceV1,
+const replayCandidates = async (
+  block: CanonicalBlockEvidence,
 ): Promise<readonly Candidate[]> => {
   const retained = entries(block);
-  const discovered = discoverDistinctAssetRetainedMutationCandidatesV1(
+  const discovered = discoverDistinctAssetRetainedMutationCandidates(
     retained.witnesses,
   );
   const acceptedTrie = await buildTrieView(
@@ -160,12 +158,12 @@ const replayCandidatesV1 = async (
   );
   const candidates: Candidate[] = [];
   for (const candidate of discovered) {
-    let finding: DistinctAssetAccumulationFindingV1;
+    let finding: DistinctAssetAccumulationFinding;
     let accepted:
-      | DistinctAssetAccumulationActuationArtifactV1["accepted"]
+      | DistinctAssetAccumulationActuationArtifact["accepted"]
       | undefined;
     let forcedSource:
-      | DistinctAssetAccumulationActuationArtifactV1["forcedSource"]
+      | DistinctAssetAccumulationActuationArtifact["forcedSource"]
       | undefined;
     let position: number;
     if (eventIsAccepted(candidate.eventKey)) {
@@ -176,10 +174,10 @@ const replayCandidatesV1 = async (
       const transaction = block.transactions[position];
       if (position < 0 || transaction === undefined) continue;
       finding = {
-        subject: acceptedVerdictSubjectV1(txId),
+        subject: acceptedVerdictSubject(txId),
         coordinate: candidate.coordinate,
       };
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         Buffer.from(transaction.txCbor, "hex"),
       );
       accepted = {
@@ -212,7 +210,7 @@ const replayCandidatesV1 = async (
       const verdict = transaction.value.verdict;
       if (verdict === "ForcedTxValid") continue;
       finding = {
-        subject: forcedVerdictSubjectV1({
+        subject: forcedVerdictSubject({
           transactionId: transaction.value.tx_id,
           sourceKey: transaction.key,
           rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -235,20 +233,21 @@ const replayCandidatesV1 = async (
       };
     } else continue;
     const evidence = evidenceFromCandidate(finding, candidate);
-    if (!distinctAssetAccumulationEvidenceClosesV1(evidence)) continue;
-    const authentication =
-      await buildDistinctAssetAuthenticationFromRetainedDaV1({
+    if (!distinctAssetAccumulationEvidenceCloses(evidence)) continue;
+    const authentication = await buildDistinctAssetAuthenticationFromRetainedDa(
+      {
         eventKey: candidate.eventKey,
         finding,
         authenticatedValidationTraceEntries: retained.traces,
         retainedValidationWitnessEntries: retained.witnesses,
         expectedValidationTracesRoot: block.header.validationTracesRoot,
-      });
+      },
+    );
     const label = coordinateLabel(finding);
-    const detection: CanonicalViolationDetectionV1 = {
-      detectionId: `${DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1}:${position.toString()}:${finding.subject.transaction_id}:${label}`,
+    const detection: CanonicalViolationDetection = {
+      detectionId: `${DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID}:${position.toString()}:${finding.subject.transaction_id}:${label}`,
       headerHash: block.headerHash,
-      violationId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID_V1,
+      violationId: DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
       position: BigInt(position),
       diagnostic: `${finding.subject.source_kind === 0n ? "accepted" : "forced"} distinct-asset accumulation contradiction at ${label}`,
     };
@@ -275,18 +274,18 @@ const replayCandidatesV1 = async (
 };
 
 /** Complete canonical accepted/forced category-35 detector. */
-export const detectDistinctAssetAccumulationCanonicalViolationsV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<readonly CanonicalViolationDetectionV1[]> =>
+export const detectDistinctAssetAccumulationCanonicalViolations = async (
+  block: CanonicalBlockEvidence,
+): Promise<readonly CanonicalViolationDetection[]> =>
   Object.freeze(
-    (await replayCandidatesV1(block)).map(({ detection }) => detection),
+    (await replayCandidates(block)).map(({ detection }) => detection),
   );
 
 /** First deterministic production artifact, wholly reconstructed from L1+DA. */
-export const prepareProductionDistinctAssetAccumulationArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<DistinctAssetAccumulationActuationArtifactV1> => {
-  const candidate = (await replayCandidatesV1(block))[0];
+export const prepareDistinctAssetAccumulationArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<DistinctAssetAccumulationActuationArtifact> => {
+  const candidate = (await replayCandidates(block))[0];
   if (candidate === undefined)
     throw new Error(
       "distinctAssetAccumulationLimit complete replay found no canonical violation",

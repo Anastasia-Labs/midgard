@@ -13,7 +13,7 @@ import {
 } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import {
-  type FabricatedWithdrawalContractsV1,
+  type FabricatedWithdrawalContracts,
   parseSubmitFabricatedWithdrawalInclusion,
   submitFabricatedWithdrawalStep01,
 } from "../submit-fabricated-withdrawal-step-01.js";
@@ -22,62 +22,62 @@ import { submitFabricatedWithdrawalStep03 } from "../submit-fabricated-withdrawa
 import { submitFabricatedWithdrawalStep04 } from "../submit-fabricated-withdrawal-step-04.js";
 import { submitInit } from "../submit-init.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import { createFabricatedWithdrawalCompleteCanonicalReplayV1 } from "./complete-replay-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import { createFabricatedWithdrawalCompleteCanonicalReplay } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
-import type { FraudProofWorkflowJournalStoreV1 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { FraudProofWorkflowJournalStore } from "./journal-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createProductionFabricatedWithdrawalEvidenceAuthorityV1,
-  type ProductionFabricatedWithdrawalEvidenceAuthorityV1,
-  requireProductionFabricatedWithdrawalArtifactV1,
+  createFabricatedWithdrawalEvidenceAuthority,
+  type FabricatedWithdrawalEvidenceAuthority,
+  requireFabricatedWithdrawalArtifact,
 } from "./production-fabricated-withdrawal-evidence-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export type FabricatedWithdrawalWorkflowReferenceScriptsV1 = Readonly<{
+export type FabricatedWithdrawalWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
   };
 }>;
 
-type BoundConfigV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"fabricatedWithdrawal">;
+type BoundConfig = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"fabricatedWithdrawal">;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  contracts: FabricatedWithdrawalContractsV1;
-  references: FabricatedWithdrawalWorkflowReferenceScriptsV1;
-  evidence: ProductionFabricatedWithdrawalEvidenceAuthorityV1;
+  contracts: FabricatedWithdrawalContracts;
+  references: FabricatedWithdrawalWorkflowReferenceScripts;
+  evidence: FabricatedWithdrawalEvidenceAuthority;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -97,7 +97,7 @@ const record = (
 };
 
 const actionInput = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<Record<string, unknown>> => {
   const input = record(action.input, "fabricated-withdrawal workflow action");
   if (
@@ -122,7 +122,7 @@ const stringField = (
 };
 
 const captureRemoval = async (
-  config: BoundConfigV1,
+  config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -136,7 +136,7 @@ const captureRemoval = async (
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -153,10 +153,10 @@ const captureRemoval = async (
         ),
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             ) ||
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -176,9 +176,9 @@ const captureRemoval = async (
 };
 
 const transactionPort = (
-  config: BoundConfigV1,
-): ProductionLinearFamilyTransactionPortV1<"fabricatedWithdrawal"> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+  config: BoundConfig,
+): LinearFamilyTransactionPort<"fabricatedWithdrawal"> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: "fabricatedWithdrawal",
   prepare: async ({ evidence, classification }) => {
     if (
@@ -197,7 +197,7 @@ const transactionPort = (
     );
   },
   capture: async ({ action, artifact }) => {
-    const admitted = requireProductionFabricatedWithdrawalArtifactV1(
+    const admitted = requireFabricatedWithdrawalArtifact(
       await config.evidence.readmit(artifact),
       config.signer.paymentKeyHash,
       config.binding.definition.headerHash,
@@ -205,7 +205,7 @@ const transactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInit({
               lucid: config.lucid,
@@ -232,7 +232,7 @@ const transactionPort = (
         admitted.withdrawalInclusion,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitFabricatedWithdrawalStep01({
               lucid: config.lucid,
@@ -262,7 +262,7 @@ const transactionPort = (
               eventOutRef: admitted.l1Evidence.eventOutRef,
             } as const);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitFabricatedWithdrawalStep02({
               lucid: config.lucid,
@@ -281,7 +281,7 @@ const transactionPort = (
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitFabricatedWithdrawalStep03({
               lucid: config.lucid,
@@ -303,7 +303,7 @@ const transactionPort = (
     }
     if (input.stage === "step_04") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitFabricatedWithdrawalStep04({
               lucid: config.lucid,
@@ -328,34 +328,34 @@ const transactionPort = (
   },
 });
 
-export type ManifestBoundFabricatedWithdrawalWorkflowConfigV1 = Readonly<{
+export type ManifestBoundFabricatedWithdrawalWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: FabricatedWithdrawalWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: FabricatedWithdrawalWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundFabricatedWithdrawalWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"fabricatedWithdrawal">;
-  l1: FraudProofFamilyL1ObservationPortV1<"fabricatedWithdrawal">;
-  transactions: ProductionLinearFamilyTransactionPortV1<"fabricatedWithdrawal">;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+export type ManifestBoundFabricatedWithdrawalWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"fabricatedWithdrawal">;
+  l1: FraudProofFamilyL1ObservationPort<"fabricatedWithdrawal">;
+  transactions: LinearFamilyTransactionPort<"fabricatedWithdrawal">;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   replayer: ReturnType<
-    typeof createFabricatedWithdrawalCompleteCanonicalReplayV1
+    typeof createFabricatedWithdrawalCompleteCanonicalReplay
   >;
 }>;
 
-export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
-  config: ManifestBoundFabricatedWithdrawalWorkflowConfigV1,
-): Promise<ManifestBoundFabricatedWithdrawalWorkflowV1> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+export const createManifestBoundFabricatedWithdrawalWorkflow = async (
+  config: ManifestBoundFabricatedWithdrawalWorkflowConfig,
+): Promise<ManifestBoundFabricatedWithdrawalWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -369,7 +369,7 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
       FabricatedWithdrawalStep04Datum,
     ],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -388,22 +388,22 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
     "fraudProofFabricatedWithdrawalStep04",
   ] as const;
   const steps = stepNames.map((contractName, index) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.steps[index]!,
     }),
-  ) as unknown as FabricatedWithdrawalWorkflowReferenceScriptsV1["steps"];
-  const witness = <Name extends keyof FaultProofWitnessReferenceScriptsV1>(
+  ) as unknown as FabricatedWithdrawalWorkflowReferenceScripts["steps"];
+  const witness = <Name extends keyof FaultProofWitnessReferenceScripts>(
     name: Name,
     contractName: string,
   ) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName,
       utxo: config.referenceScripts.witnesses[name]!,
     });
-  const references: FabricatedWithdrawalWorkflowReferenceScriptsV1 =
+  const references: FabricatedWithdrawalWorkflowReferenceScripts =
     Object.freeze({
       steps: Object.freeze(steps),
       witnesses: Object.freeze({
@@ -414,7 +414,7 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
         fraudProofMint: witness("fraudProofMint", "fraudProofMint"),
       }),
     });
-  const contracts: FabricatedWithdrawalContractsV1 = Object.freeze({
+  const contracts: FabricatedWithdrawalContracts = Object.freeze({
     steps: chain.steps,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
@@ -428,7 +428,7 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
     stateQueuePolicyId,
     categoryId: binding.resolvedContracts.category.categoryId,
   });
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -439,7 +439,7 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
       "fabricated-withdrawal requires authenticated raw L1 and publication authorities",
     );
   }
-  const evidence = createProductionFabricatedWithdrawalEvidenceAuthorityV1({
+  const evidence = createFabricatedWithdrawalEvidenceAuthority({
     lucid: config.lucid,
     network: binding.network,
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
@@ -455,7 +455,7 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  const adapter = createLinearFamilyWorkflowAdapter({
     category: "fabricatedWithdrawal",
     l1,
     transactions,
@@ -467,34 +467,33 @@ export const createManifestBoundFabricatedWithdrawalWorkflowV1 = async (
     l1,
     transactions,
     adapter,
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
-    replayer: createFabricatedWithdrawalCompleteCanonicalReplayV1({
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
+    replayer: createFabricatedWithdrawalCompleteCanonicalReplay({
       authority: evidence,
       owner: config.signer.paymentKeyHash,
     }),
   });
 };
 
-export const runOrResumeManifestBoundFabricatedWithdrawalWorkflowV1 = async ({
+export const runOrResumeManifestBoundFabricatedWithdrawalWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundFabricatedWithdrawalWorkflowV1;
+  readonly workflow: ManifestBoundFabricatedWithdrawalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> =>
-  await runFraudProofWorkflowFromRetainedDaV1({
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> =>
+  await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation: await workflow.l1.observeHeader({
       headerHash: workflow.binding.definition.headerHash,
     }),
     sources,
     replayer: workflow.replayer,
-    registry: createFraudProofWorkflowRegistryV1({
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["fabricatedWithdrawal"],
     }),

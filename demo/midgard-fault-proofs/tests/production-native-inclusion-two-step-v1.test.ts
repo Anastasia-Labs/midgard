@@ -1,60 +1,60 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
-import { classifyCanonicalBlockViolationsV1 } from "../src/workflow/classification-v1.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification-v1.js";
 import {
-  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
-  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionNativeInclusionTwoStepArtifactV1,
-  prepareProductionNativeInclusionTwoStepArtifactV1,
-  PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1,
+  admitNativeInclusionTwoStepArtifact,
+  NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
+  prepareNativeInclusionTwoStepArtifact,
 } from "../src/workflow/production-native-inclusion-two-step-v1.js";
 import {
-  prepareZeroInputEvidenceV1,
-  ZeroInputVerdictSubjectV1Schema,
+  prepareZeroInputEvidence,
+  ZeroInputVerdictSubjectSchema,
 } from "../src/zero-input/family-v1.js";
-import { ZeroInputForcedSourcePayloadV1Schema } from "../src/zero-input/schemas-v1.js";
+import { ZeroInputForcedSourcePayloadSchema } from "../src/zero-input/schemas-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const evidenceFor = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(12, 0n)],
         fee: 1n,
       }),
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(13, 0n)],
         fee: 2n,
         validityIntervalStart: 1n,
       }),
-      buildFixtureTransactionV1({ spendInputs: [], fee: 3n }),
+      buildFixtureTransaction({ spendInputs: [], fee: 3n }),
     ],
   });
-  return await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  return await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -68,8 +68,8 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
   it("prepares the exact classified invalid-range transaction and replays its MPF proof", async () => {
     const evidence = await evidenceFor();
     const replay =
-      await INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
-    const classification = await classifyCanonicalBlockViolationsV1({
+      await INVALID_RANGE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
@@ -79,7 +79,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
     ) {
       throw new Error("fixture did not classify as invalidRange");
     }
-    const artifact = await prepareProductionNativeInclusionTwoStepArtifactV1({
+    const artifact = await prepareNativeInclusionTwoStepArtifact({
       category: "invalidRange",
       evidence,
       classification,
@@ -90,16 +90,15 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       blockSlot: "0",
       violationReason: "starts-after-block-slot",
     });
-    expect(admitProductionNativeInclusionTwoStepArtifactV1(artifact)).toEqual(
+    expect(admitNativeInclusionTwoStepArtifact(artifact)).toEqual(
       expect.objectContaining({ artifact }),
     );
   });
 
   it("prepares the exact classified zero-input transaction", async () => {
     const evidence = await evidenceFor();
-    const replay =
-      await ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
-    const classification = await classifyCanonicalBlockViolationsV1({
+    const replay = await ZERO_INPUT_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
@@ -109,7 +108,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
     ) {
       throw new Error("fixture did not classify as zeroInput");
     }
-    const artifact = await prepareProductionNativeInclusionTwoStepArtifactV1({
+    const artifact = await prepareNativeInclusionTwoStepArtifact({
       category: "zeroInput",
       evidence,
       classification,
@@ -120,7 +119,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       blockSlot: null,
       violationReason: null,
     });
-    expect(admitProductionNativeInclusionTwoStepArtifactV1(artifact)).toEqual(
+    expect(admitNativeInclusionTwoStepArtifact(artifact)).toEqual(
       expect.objectContaining({ artifact }),
     );
   });
@@ -128,8 +127,8 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
   it("rejects substituted roots, proofs, detection identities, and family fields", async () => {
     const evidence = await evidenceFor();
     const replay =
-      await INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1.replay(evidence);
-    const classification = await classifyCanonicalBlockViolationsV1({
+      await INVALID_RANGE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
@@ -139,31 +138,31 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
     ) {
       throw new Error("fixture did not classify as invalidRange");
     }
-    const artifact = await prepareProductionNativeInclusionTwoStepArtifactV1({
+    const artifact = await prepareNativeInclusionTwoStepArtifact({
       category: "invalidRange",
       evidence,
       classification,
     });
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         transactionsPhasRoot: "ff".repeat(32),
       }),
     ).toThrow("does not open its PHAS root");
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         txMembershipProofCbor: "d87980",
       }),
     ).toThrow();
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         detectionId: `${artifact.detectionId}-substituted`,
       }),
     ).toThrow("does not re-derive its selected violation");
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         category: "zeroInput",
         blockSlot: null,
@@ -173,18 +172,18 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
   });
 
   it("admits only a re-derived forced EmptyInputs subject and rejects caller authority", async () => {
-    const input = encodeMidgardSpendInputItemV1({
+    const input = encodeMidgardSpendInputItem({
       txId: Buffer.from("71".repeat(32), "hex"),
       outputIndex: 0,
     });
-    const invalid = adjudicateMidgardNativeTxFullV1Validity(
+    const invalid = adjudicateMidgardNativeTxFullValidity(
       makeNativeTx({ spendInputCbors: [input], fee: 0n }),
       "TxIsInvalid",
     );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-      encodeMidgardNativeTxCanonicalV1(invalid),
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+      encodeMidgardNativeTxCanonical(invalid),
     );
-    const transactionId = computeMidgardNativeTxIdV1(invalid).toString("hex");
+    const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
     const key = { transactionId: "72".repeat(32), outputIndex: 0n };
     const leaf = {
       tx_id: transactionId,
@@ -202,7 +201,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       "hex",
     );
     const valueBytes = Buffer.from(
-      Data.to(leaf as never, SDK.ForcedInclusionTxV1Schema as never),
+      Data.to(leaf as never, SDK.ForcedInclusionTxSchema as never),
       "hex",
     );
     const root = await buildCountedRoot(SDK.ROOT_DOMAINS.forcedTransactionsV1, [
@@ -222,28 +221,28 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       value: leaf,
       proof: Data.from(proof.toCBOR().toString("hex"), SDK.ProofSchema),
     };
-    const base = await buildCanonicalBlockFixtureV1({ transactions: [] });
+    const base = await buildCanonicalBlockFixture({ transactions: [] });
     const header = {
       ...base.header,
       forcedTransactionsRoot: root.root,
       forcedTransactionCount: 1n,
     };
     const boundHeaderHash = await Effect.runPromise(
-      SDK.hashBlockHeaderV1(header),
+      SDK.hashBlockHeader(header),
     );
-    const subject = SDK.forcedVerdictSubjectV1({
+    const subject = SDK.forcedVerdictSubject({
       transactionId,
       sourceKey: key,
       rejectionReason: "EmptyInputs",
     });
     const field = material.fieldPreimages[0]!;
-    const evidence = prepareZeroInputEvidenceV1({
+    const evidence = prepareZeroInputEvidence({
       finding: { subject },
       inputFieldPreimage: field,
-      committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
     });
     const artifact = {
-      schemaVersion: PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1,
+      schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
       category: "zeroInput",
       headerHash: boundHeaderHash,
       detectionId: `zero-input:forced:0:${transactionId}`,
@@ -254,23 +253,23 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       nativeTxCompactCbor: leaf.source.compact_cbor,
       l2TransactionSourceCbor: Data.to(
         { tx_id: transactionId, source: leaf.source } as never,
-        SDK.L2TransactionSourceV1 as never,
+        SDK.L2TransactionSource as never,
       ),
       transactionsPhasRoot: "00".repeat(32),
       txMembershipProofCbor: "",
       sourceKind: "forced",
       subjectCbor: Data.to(
         subject as never,
-        ZeroInputVerdictSubjectV1Schema as never,
+        ZeroInputVerdictSubjectSchema as never,
       ),
       inputFieldPreimageCbor: evidence.inputFieldPreimageCbor,
       inputFieldCommitment: evidence.inputFieldCommitment,
       forcedSourceCbor: Data.to(
         { header, membership, direction: 1n } as never,
-        ZeroInputForcedSourcePayloadV1Schema as never,
+        ZeroInputForcedSourcePayloadSchema as never,
       ),
     } as const;
-    expect(admitProductionNativeInclusionTwoStepArtifactV1(artifact)).toEqual(
+    expect(admitNativeInclusionTwoStepArtifact(artifact)).toEqual(
       expect.objectContaining({
         artifact,
         inclusion: null,
@@ -278,30 +277,30 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       }),
     );
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         verdict: "caller-supplied",
       }),
     ).toThrow("missing or unknown fields");
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         subjectCbor: Data.to(
-          SDK.acceptedVerdictSubjectV1(transactionId) as never,
-          ZeroInputVerdictSubjectV1Schema as never,
+          SDK.acceptedVerdictSubject(transactionId) as never,
+          ZeroInputVerdictSubjectSchema as never,
         ),
       }),
     ).toThrow(/injected its verdict subject|source changed/u);
     const forcedSource = Data.from(
       artifact.forcedSourceCbor,
-      ZeroInputForcedSourcePayloadV1Schema as never,
+      ZeroInputForcedSourcePayloadSchema as never,
     ) as {
       membership: typeof membership;
       header: typeof header;
       direction: bigint;
     };
     expect(() =>
-      admitProductionNativeInclusionTwoStepArtifactV1({
+      admitNativeInclusionTwoStepArtifact({
         ...artifact,
         forcedSourceCbor: Data.to(
           {
@@ -314,13 +313,13 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
               },
             },
           } as never,
-          ZeroInputForcedSourcePayloadV1Schema as never,
+          ZeroInputForcedSourcePayloadSchema as never,
         ),
       }),
     ).toThrow("changed authenticated leaf");
 
-    const canonical = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-      observation: authenticatedHeaderObservationV1(base),
+    const canonical = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(base),
       payloadEnvelopeCbor: base.payloadEnvelopeCbor,
       daProvenance: {
         trustClass: "public_or_permissionless_da",
@@ -337,7 +336,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       value: leaf,
       keyBytes,
       valueBytes,
-      fullTransactionCbor: encodeMidgardNativeTxCanonicalV1(invalid),
+      fullTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
     };
     const block = {
       ...canonical,
@@ -380,7 +379,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       position: 0n,
       diagnostic: "authenticated wrongful EmptyInputs rejection",
     };
-    const prepared = await prepareProductionNativeInclusionTwoStepArtifactV1({
+    const prepared = await prepareNativeInclusionTwoStepArtifact({
       category: "zeroInput",
       evidence: block,
       classification: {
@@ -399,7 +398,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       subjectCbor: artifact.subjectCbor,
       inputFieldCommitment: artifact.inputFieldCommitment,
     });
-    expect(admitProductionNativeInclusionTwoStepArtifactV1(prepared)).toEqual(
+    expect(admitNativeInclusionTwoStepArtifact(prepared)).toEqual(
       expect.objectContaining({
         inclusion: null,
         zeroInputEvidence: expect.objectContaining({ inputCount: 1 }),

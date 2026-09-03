@@ -2,9 +2,9 @@
 
 /**
  * Produces the cross-language golden vectors for the **wire encodings** of
- * `docs/spec/midgard-tx.md` §8.6 and §8.8 — the frozen `FieldCarriageV1` /
- * `FieldViewV1` sum types, the `FieldPreimageCertificateV1` manifest datum, and
- * the `FieldPreimageCertificateMintRedeemerV1` an off-chain minter emits.
+ * `docs/spec/midgard-tx.md` §8.6 and §8.8 — the frozen `FieldCarriage` /
+ * `FieldView` sum types, the `FieldPreimageCertificate` manifest datum, and
+ * the `FieldPreimageCertificateMintRedeemer` an off-chain minter emits.
  *
  * **Why this channel lives in the SDK and not in midgard-core.** The other two
  * channels (#568, #569) pin *byte-level derivations* — preimages, commitments,
@@ -73,13 +73,13 @@ import {
   parseGoldenChannelArguments,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import {
-  FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES,
-  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
-  FIELD_VIEW_V1_CONSTRUCTOR_INDEXES,
-  FieldCarriageV1,
-  FieldPreimageCertificateMintRedeemerV1,
-  FieldPreimageCertificateV1,
-  FieldViewV1,
+  FIELD_CARRIAGE_CONSTRUCTOR_INDEXES,
+  FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES,
+  FIELD_VIEW_CONSTRUCTOR_INDEXES,
+  FieldCarriage,
+  FieldPreimageCertificateMintRedeemer,
+  FieldPreimageCertificate,
+  FieldView,
 } from "../dist/index.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -159,16 +159,16 @@ const certificateFieldHash = repeatedByte(0x66, 32);
 const vectors = [
   {
     label: "carriage_inline_chunked_preimage",
-    aikenType: "FieldCarriageV1",
-    schema: FieldCarriageV1,
+    aikenType: "FieldCarriage",
+    schema: FieldCarriage,
     value: { Inline: { preimage: hex(inlinePreimage) } },
     aiken: `Inline { preimage: ${aikenBytes(hex(inlinePreimage))} }`,
   },
   {
     // 63 bytes: one below the boundary, still a definite `583f …` string.
     label: "carriage_inline_63_byte_preimage",
-    aikenType: "FieldCarriageV1",
-    schema: FieldCarriageV1,
+    aikenType: "FieldCarriage",
+    schema: FieldCarriage,
     value: { Inline: { preimage: hex(inlinePreimageBelowBoundary) } },
     aiken: `Inline { preimage: ${aikenBytes(hex(inlinePreimageBelowBoundary))} }`,
   },
@@ -177,29 +177,29 @@ const vectors = [
     // `5840 …` string. An encoder that chunks at `>= 64` rather than `> 64`
     // diverges here and nowhere else.
     label: "carriage_inline_64_byte_preimage",
-    aikenType: "FieldCarriageV1",
-    schema: FieldCarriageV1,
+    aikenType: "FieldCarriage",
+    schema: FieldCarriage,
     value: { Inline: { preimage: hex(inlinePreimageAtBoundary) } },
     aiken: `Inline { preimage: ${aikenBytes(hex(inlinePreimageAtBoundary))} }`,
   },
   {
     label: "carriage_inline_empty_field",
-    aikenType: "FieldCarriageV1",
-    schema: FieldCarriageV1,
+    aikenType: "FieldCarriage",
+    schema: FieldCarriage,
     value: { Inline: { preimage: hex(emptyFieldPreimage) } },
     aiken: `Inline { preimage: ${aikenBytes(hex(emptyFieldPreimage))} }`,
   },
   {
     label: "carriage_raw_utxo",
-    aikenType: "FieldCarriageV1",
-    schema: FieldCarriageV1,
+    aikenType: "FieldCarriage",
+    schema: FieldCarriage,
     value: { RawUtxo: { ref_input_index: 3n } },
     aiken: "RawUtxo { ref_input_index: 3 }",
   },
   {
     label: "carriage_certified_three_chunks",
-    aikenType: "FieldCarriageV1",
-    schema: FieldCarriageV1,
+    aikenType: "FieldCarriage",
+    schema: FieldCarriage,
     value: {
       Certified: {
         cert_ref_input_index: 0n,
@@ -211,8 +211,8 @@ const vectors = [
   },
   {
     label: "view_whole_empty_field",
-    aikenType: "FieldViewV1",
-    schema: FieldViewV1,
+    aikenType: "FieldView",
+    schema: FieldView,
     value: {
       Whole: { bytes: hex(emptyFieldPreimage), count: 0n, stride: 40n },
     },
@@ -220,8 +220,8 @@ const vectors = [
   },
   {
     label: "view_chunked_three_chunk_corner",
-    aikenType: "FieldViewV1",
-    schema: FieldViewV1,
+    aikenType: "FieldView",
+    schema: FieldView,
     value: {
       Chunked: {
         chunks: [hex(chunkedViewChunkA), hex(chunkedViewChunkB)],
@@ -241,8 +241,8 @@ const vectors = [
   },
   {
     label: "certificate_three_chunk_corner",
-    aikenType: "FieldPreimageCertificateV1",
-    schema: FieldPreimageCertificateV1,
+    aikenType: "FieldPreimageCertificate",
+    schema: FieldPreimageCertificate,
     value: {
       owner: hex(certificateOwner),
       tx_id: hex(certificateTxId),
@@ -252,7 +252,7 @@ const vectors = [
       chunk_digests: [hex(digestA), hex(digestB), hex(digestC)],
     },
     aiken: [
-      "FieldPreimageCertificateV1 {",
+      "FieldPreimageCertificate {",
       `  owner: ${aikenBytes(hex(certificateOwner))},`,
       `  tx_id: ${aikenBytes(hex(certificateTxId))},`,
       "  field_index: 5,",
@@ -264,8 +264,8 @@ const vectors = [
   },
   {
     label: "mint_redeemer_certify_chunked_arguments",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
-    schema: FieldPreimageCertificateMintRedeemerV1,
+    aikenType: "FieldPreimageCertificateMintRedeemer",
+    schema: FieldPreimageCertificateMintRedeemer,
     value: {
       Certify: {
         compact_cbor: hex(compactCbor),
@@ -285,8 +285,8 @@ const vectors = [
   },
   {
     label: "mint_redeemer_certify_short_arguments",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
-    schema: FieldPreimageCertificateMintRedeemerV1,
+    aikenType: "FieldPreimageCertificateMintRedeemer",
+    schema: FieldPreimageCertificateMintRedeemer,
     value: {
       Certify: {
         compact_cbor: hex(smallCompactCbor),
@@ -306,8 +306,8 @@ const vectors = [
   },
   {
     label: "mint_redeemer_retire",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
-    schema: FieldPreimageCertificateMintRedeemerV1,
+    aikenType: "FieldPreimageCertificateMintRedeemer",
+    schema: FieldPreimageCertificateMintRedeemer,
     value: "Retire",
     aiken: "Retire",
   },
@@ -366,7 +366,7 @@ const withTrailingItem = (label) => `${encodedVector(label)}00`;
 const negativeVectors = [
   {
     label: "carriage_trailing_bytes",
-    aikenType: "FieldCarriageV1",
+    aikenType: "FieldCarriage",
     cborHex: withTrailingItem("carriage_inline_empty_field"),
     reason:
       "a valid `Inline` encoding followed by a complete extra CBOR item; a fail-closed decoder consumes the whole payload or refuses it",
@@ -374,15 +374,15 @@ const negativeVectors = [
   },
   {
     label: "carriage_constructor_index_out_of_range",
-    aikenType: "FieldCarriageV1",
+    aikenType: "FieldCarriage",
     cborHex: Data.to(new Constr(3, [hex(emptyFieldPreimage)])),
     reason:
-      "constructor index 3; FieldCarriageV1 declares exactly Inline/RawUtxo/Certified at 0/1/2",
+      "constructor index 3; FieldCarriage declares exactly Inline/RawUtxo/Certified at 0/1/2",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {
     label: "carriage_inline_preimage_as_integer",
-    aikenType: "FieldCarriageV1",
+    aikenType: "FieldCarriage",
     cborHex: Data.to(new Constr(0, [5n])),
     reason:
       "`Inline.preimage` is a ByteArray; this vector puts an Integer there",
@@ -390,7 +390,7 @@ const negativeVectors = [
   },
   {
     label: "carriage_inline_extra_field",
-    aikenType: "FieldCarriageV1",
+    aikenType: "FieldCarriage",
     cborHex: Data.to(
       new Constr(0, [hex(emptyFieldPreimage), hex(chunkedViewChunkB)]),
     ),
@@ -400,29 +400,29 @@ const negativeVectors = [
   },
   {
     label: "view_trailing_bytes",
-    aikenType: "FieldViewV1",
+    aikenType: "FieldView",
     cborHex: withTrailingItem("view_whole_empty_field"),
     reason: "a valid `Whole` encoding followed by a complete extra CBOR item",
     rejectedBy: { aiken: "cbor-parse", typescript: "tolerates-trailing-bytes" },
   },
   {
     label: "view_constructor_index_out_of_range",
-    aikenType: "FieldViewV1",
+    aikenType: "FieldView",
     cborHex: Data.to(new Constr(3, [hex(emptyFieldPreimage), 0n, 40n])),
     reason:
-      "constructor index 3; FieldViewV1 declares exactly Whole/Chunked/ProvisionalWhole at 0/1/2",
+      "constructor index 3; FieldView declares exactly Whole/Chunked/ProvisionalWhole at 0/1/2",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {
     label: "view_whole_missing_stride",
-    aikenType: "FieldViewV1",
+    aikenType: "FieldView",
     cborHex: Data.to(new Constr(0, [hex(emptyFieldPreimage), 0n])),
     reason: "`Whole` has arity 3 (bytes, count, stride); this vector carries 2",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {
     label: "view_whole_count_as_bytes",
-    aikenType: "FieldViewV1",
+    aikenType: "FieldView",
     cborHex: Data.to(
       new Constr(0, [hex(emptyFieldPreimage), hex(chunkedViewChunkB), 40n]),
     ),
@@ -431,7 +431,7 @@ const negativeVectors = [
   },
   {
     label: "view_chunked_chunks_as_bytes",
-    aikenType: "FieldViewV1",
+    aikenType: "FieldView",
     cborHex: Data.to(
       new Constr(1, [hex(chunkedViewChunkB), [hex(digestA)], 1n, 40n]),
     ),
@@ -441,7 +441,7 @@ const negativeVectors = [
   },
   {
     label: "certificate_trailing_bytes",
-    aikenType: "FieldPreimageCertificateV1",
+    aikenType: "FieldPreimageCertificate",
     cborHex: withTrailingItem("certificate_three_chunk_corner"),
     reason:
       "a valid certificate datum followed by a complete extra CBOR item; a datum is one value and a manifest that decodes past its own end is not one",
@@ -449,7 +449,7 @@ const negativeVectors = [
   },
   {
     label: "certificate_missing_chunk_digests",
-    aikenType: "FieldPreimageCertificateV1",
+    aikenType: "FieldPreimageCertificate",
     cborHex: Data.to(
       new Constr(0, [
         hex(certificateOwner),
@@ -465,7 +465,7 @@ const negativeVectors = [
   },
   {
     label: "certificate_missing_field_hash",
-    aikenType: "FieldPreimageCertificateV1",
+    aikenType: "FieldPreimageCertificate",
     cborHex: Data.to(
       new Constr(0, [
         hex(certificateOwner),
@@ -481,7 +481,7 @@ const negativeVectors = [
   },
   {
     label: "certificate_field_index_as_bytes",
-    aikenType: "FieldPreimageCertificateV1",
+    aikenType: "FieldPreimageCertificate",
     cborHex: Data.to(
       new Constr(0, [
         hex(certificateOwner),
@@ -498,14 +498,14 @@ const negativeVectors = [
   },
   {
     label: "mint_redeemer_trailing_bytes",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
+    aikenType: "FieldPreimageCertificateMintRedeemer",
     cborHex: withTrailingItem("mint_redeemer_retire"),
     reason: "a valid `Retire` encoding followed by a complete extra CBOR item",
     rejectedBy: { aiken: "cbor-parse", typescript: "tolerates-trailing-bytes" },
   },
   {
     label: "mint_redeemer_constructor_index_out_of_range",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
+    aikenType: "FieldPreimageCertificateMintRedeemer",
     cborHex: Data.to(new Constr(2, [])),
     reason:
       "constructor index 2; the mint redeemer declares exactly Certify/Retire at 0/1, and a third arm is how a burn-only policy would be talked into minting",
@@ -513,7 +513,7 @@ const negativeVectors = [
   },
   {
     label: "mint_redeemer_certify_indices_as_bytes",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
+    aikenType: "FieldPreimageCertificateMintRedeemer",
     cborHex: Data.to(
       new Constr(0, [
         hex(smallCompactCbor),
@@ -528,7 +528,7 @@ const negativeVectors = [
   },
   {
     label: "mint_redeemer_certify_missing_output_index",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
+    aikenType: "FieldPreimageCertificateMintRedeemer",
     cborHex: Data.to(
       new Constr(0, [
         hex(smallCompactCbor),
@@ -542,7 +542,7 @@ const negativeVectors = [
   },
   {
     label: "mint_redeemer_retire_extra_field",
-    aikenType: "FieldPreimageCertificateMintRedeemerV1",
+    aikenType: "FieldPreimageCertificateMintRedeemer",
     cborHex: Data.to(new Constr(1, [0n])),
     reason:
       "`Retire` has arity 0; a decoder that only checks the constructor index accepts this",
@@ -561,10 +561,10 @@ const buildGolden = () => ({
   generator:
     "demo/midgard-sdk/scripts/generate-native-tx-carriage-wire-v1-goldens.mjs",
   constructorIndexes: {
-    FieldCarriageV1: FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES,
-    FieldViewV1: FIELD_VIEW_V1_CONSTRUCTOR_INDEXES,
-    FieldPreimageCertificateMintRedeemerV1:
-      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_V1_CONSTRUCTOR_INDEXES,
+    FieldCarriage: FIELD_CARRIAGE_CONSTRUCTOR_INDEXES,
+    FieldView: FIELD_VIEW_CONSTRUCTOR_INDEXES,
+    FieldPreimageCertificateMintRedeemer:
+      FIELD_PREIMAGE_CERTIFICATE_MINT_REDEEMER_CONSTRUCTOR_INDEXES,
   },
   vectors: vectors.map((vector) => ({
     label: vector.label,
@@ -640,14 +640,14 @@ const renderAiken = (golden) =>
     "//// string up to and including 64 bytes and becomes an indefinite-length",
     "//// string of 64-byte definite chunks strictly above it, so the divergence to",
     "//// fear is a `>=` written where the rule says `>`. Every type whose shape can",
-    "//// reach that width carries a crossing vector — `FieldCarriageV1` via",
-    "//// `carriage_inline_chunked_preimage`, `FieldViewV1` via",
+    "//// reach that width carries a crossing vector — `FieldCarriage` via",
+    "//// `carriage_inline_chunked_preimage`, `FieldView` via",
     "//// `view_chunked_three_chunk_corner`, and",
-    "//// `FieldPreimageCertificateMintRedeemerV1` via",
-    "//// `mint_redeemer_certify_chunked_arguments` — and `FieldCarriageV1` also",
+    "//// `FieldPreimageCertificateMintRedeemer` via",
+    "//// `mint_redeemer_certify_chunked_arguments` — and `FieldCarriage` also",
     "//// pins the boundary itself from below and at it, with the 63-byte (`583f…`)",
     "//// and 64-byte (`5840…`) vectors that must stay definite.",
-    "//// `FieldPreimageCertificateV1` is the one exception and is so structurally:",
+    "//// `FieldPreimageCertificate` is the one exception and is so structurally:",
     "//// every field it declares is fixed-width and at most 32 bytes (owner 28,",
     "//// tx-id 32, each digest 32), so no value of that type can carry a byte",
     "//// string wide enough to chunk and there is no vector to write.",
@@ -664,10 +664,10 @@ const renderAiken = (golden) =>
     "",
     "use aiken/cbor",
     "use midgard/native_tx_carriage_v1.{",
-    "  Certify, FieldPreimageCertificateMintRedeemerV1, Retire,",
+    "  Certify, FieldPreimageCertificateMintRedeemer, Retire,",
     "}",
     "use midgard/native_tx_field_access_v1.{",
-    "  Certified, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1, Inline,",
+    "  Certified, FieldCarriage, FieldPreimageCertificate, FieldView, Inline,",
     "  RawUtxo, Whole, Chunked,",
     "}",
     "",

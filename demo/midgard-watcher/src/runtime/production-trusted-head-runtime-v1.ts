@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
 
-import type { WatcherFinalityPolicyV1 } from "../l1/finality-engine.js";
+import type { WatcherFinalityPolicy } from "../l1/finality-engine.js";
 import type { WatcherWalletKeySource } from "./config.js";
 import {
-  decodeWatcherAuthenticationKey32V1,
-  decodeWatcherHttpBearerSecretV1,
-  loadWatcherSecretTextV1,
-  type WatcherProductionProcessConfigV1,
-  type WatcherTrustedHeadAuthorityProcessConfigV1,
+  decodeWatcherAuthenticationKey32,
+  decodeWatcherHttpBearerSecret,
+  loadWatcherSecretText,
+  type WatcherProcessConfig,
+  type WatcherTrustedHeadAuthorityProcessConfig,
 } from "./production-process-config-v1.js";
 import {
-  createWatcherTrustedHeadAuthorityClientV1,
-  openWatcherTrustedHeadAuthorityStoreV1,
-  startWatcherTrustedHeadAuthorityServerV1,
-  type WatcherTrustedHeadAuthorityClientV1,
-  type WatcherTrustedHeadAuthorityServerV1,
+  createWatcherTrustedHeadAuthorityClient,
+  openWatcherTrustedHeadAuthorityStore,
+  startWatcherTrustedHeadAuthorityServer,
+  type WatcherTrustedHeadAuthorityClient,
+  type WatcherTrustedHeadAuthorityServer,
 } from "./trusted-head-authority-v1.js";
 
 const sha256 = (value: Uint8Array | string): string =>
@@ -42,8 +42,8 @@ const assertDistinctSecretCandidates = (
   }
 };
 
-export type WatcherTrustedHeadAuthorityProcessRuntimeV1 = Readonly<{
-  server: WatcherTrustedHeadAuthorityServerV1;
+export type WatcherTrustedHeadAuthorityProcessRuntime = Readonly<{
+  server: WatcherTrustedHeadAuthorityServer;
   close(): Promise<void>;
 }>;
 
@@ -52,36 +52,35 @@ export type WatcherTrustedHeadAuthorityProcessRuntimeV1 = Readonly<{
  * loads the record key and bearer only; it has no field or loader for the
  * watcher rollback HMAC key or proof signer.
  */
-export const startWatcherTrustedHeadAuthorityProcessV1 = async (input: {
-  readonly config: WatcherTrustedHeadAuthorityProcessConfigV1;
+export const startWatcherTrustedHeadAuthorityProcess = async (input: {
+  readonly config: WatcherTrustedHeadAuthorityProcessConfig;
   readonly unsafeEnvironmentForTest?: Readonly<
     Record<string, string | undefined>
   >;
   readonly unsafeAllowEphemeralPortForTest?: true;
-}): Promise<WatcherTrustedHeadAuthorityProcessRuntimeV1> => {
+}): Promise<WatcherTrustedHeadAuthorityProcessRuntime> => {
   const [recordText, bearerText] = await Promise.all([
-    loadWatcherSecretTextV1(
+    loadWatcherSecretText(
       input.config.recordAuthenticationKeySource,
       input.unsafeEnvironmentForTest,
     ),
-    loadWatcherSecretTextV1(
+    loadWatcherSecretText(
       input.config.httpBearerSecretSource,
       input.unsafeEnvironmentForTest,
     ),
   ]);
-  const recordAuthenticationKey =
-    decodeWatcherAuthenticationKey32V1(recordText);
-  const httpSecret = decodeWatcherHttpBearerSecretV1(bearerText);
+  const recordAuthenticationKey = decodeWatcherAuthenticationKey32(recordText);
+  const httpSecret = decodeWatcherHttpBearerSecret(bearerText);
   assertDistinctSecretCandidates([
     secretCandidateIds(recordText),
     secretCandidateIds(bearerText),
   ]);
-  const store = await openWatcherTrustedHeadAuthorityStoreV1({
+  const store = await openWatcherTrustedHeadAuthorityStore({
     directory: input.config.directory,
     policy: input.config.policy,
     recordAuthenticationKey,
   });
-  const server = await startWatcherTrustedHeadAuthorityServerV1({
+  const server = await startWatcherTrustedHeadAuthorityServer({
     endpoint: input.config.endpoint,
     httpSecret,
     store,
@@ -92,8 +91,8 @@ export const startWatcherTrustedHeadAuthorityProcessV1 = async (input: {
   return Object.freeze({ server, close: async () => await server.close() });
 };
 
-export type WatcherProductionTrustedHeadClientRuntimeV1 = Readonly<{
-  client: WatcherTrustedHeadAuthorityClientV1;
+export type WatcherTrustedHeadClientRuntime = Readonly<{
+  client: WatcherTrustedHeadAuthorityClient;
   rollbackAuthenticationKey: Uint8Array;
   rollbackAuthenticationKeyId: string;
   recordAuthenticationKeyId: string;
@@ -105,43 +104,40 @@ export type WatcherProductionTrustedHeadClientRuntimeV1 = Readonly<{
  * record key, so all three derived values can be collision-checked before any
  * chain event is admitted.
  */
-export const createWatcherProductionTrustedHeadClientRuntimeV1 = async (input: {
-  readonly config: WatcherProductionProcessConfigV1;
-  readonly policy: WatcherFinalityPolicyV1;
+export const createWatcherTrustedHeadClientRuntime = async (input: {
+  readonly config: WatcherProcessConfig;
+  readonly policy: WatcherFinalityPolicy;
   readonly additionalSecretSources?: readonly WatcherWalletKeySource[];
   readonly unsafeEnvironmentForTest?: Readonly<
     Record<string, string | undefined>
   >;
-}): Promise<WatcherProductionTrustedHeadClientRuntimeV1> => {
+}): Promise<WatcherTrustedHeadClientRuntime> => {
   const [rollbackText, bearerText, proofSignerText, additionalSecretTexts] =
     await Promise.all([
-      loadWatcherSecretTextV1(
+      loadWatcherSecretText(
         input.config.watcherConfig.storage.rollbackAuthorityKeySource,
         input.unsafeEnvironmentForTest,
       ),
-      loadWatcherSecretTextV1(
+      loadWatcherSecretText(
         input.config.httpBearerSecretSource,
         input.unsafeEnvironmentForTest,
       ),
-      loadWatcherSecretTextV1(
+      loadWatcherSecretText(
         input.config.watcherConfig.proverWallet.keySource,
         input.unsafeEnvironmentForTest,
       ),
       Promise.all(
         (input.additionalSecretSources ?? []).map(
           async (source) =>
-            await loadWatcherSecretTextV1(
-              source,
-              input.unsafeEnvironmentForTest,
-            ),
+            await loadWatcherSecretText(source, input.unsafeEnvironmentForTest),
         ),
       ),
     ]);
   const rollbackAuthenticationKey =
-    decodeWatcherAuthenticationKey32V1(rollbackText);
-  const httpSecret = decodeWatcherHttpBearerSecretV1(bearerText);
+    decodeWatcherAuthenticationKey32(rollbackText);
+  const httpSecret = decodeWatcherHttpBearerSecret(bearerText);
   const rollbackAuthenticationKeyId = sha256(rollbackAuthenticationKey);
-  const client = createWatcherTrustedHeadAuthorityClientV1({
+  const client = createWatcherTrustedHeadAuthorityClient({
     endpoint: input.config.trustedHeadAuthorityEndpoint,
     httpSecret,
     policy: input.policy,

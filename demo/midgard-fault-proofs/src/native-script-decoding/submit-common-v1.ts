@@ -3,7 +3,7 @@
  * plan §4.2, Q3).
  *
  * The family predates catalogue registration, so every submitter takes the
- * explicit `NativeScriptDecodingContractsV1` record plus the category id the
+ * explicit `NativeScriptDecodingContracts` record plus the category id the
  * thread NFT rides — see `contracts-v1.ts`. This module owns what all five
  * submitters share: locating and validating the thread UTxO at a given step,
  * reading the step datum fail-closed, and reference-script sourcing.
@@ -20,7 +20,7 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
-  type NativeScriptDecodingContractsV1,
+  type NativeScriptDecodingContracts,
 } from "./contracts-v1.js";
 
 /**
@@ -28,7 +28,7 @@ import {
  * `FraudProofCatalogueCategoryDeploymentInfo`, passed explicitly because the
  * family's catalogue entry is parent-owned and lands at registration.
  */
-export type NativeScriptDecodingCatalogueCategoryV1 = {
+export type NativeScriptDecodingCatalogueCategory = {
   /** 4-byte category id, hex. */
   readonly categoryId: string;
   /** The registered category script hash — must be the step-01 hash. */
@@ -40,7 +40,7 @@ export type NativeScriptDecodingCatalogueCategoryV1 = {
 export const nativeScriptDecodingSubmitError = (message: string): Error =>
   new Error(`${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL}: ${message}`);
 
-export type NativeScriptDecodingStepIndexV1 = 0 | 1 | 2 | 3 | 4 | 5;
+export type NativeScriptDecodingStepIndex = 0 | 1 | 2 | 3 | 4 | 5;
 
 const STEP_LABELS = [
   "step 01",
@@ -52,15 +52,15 @@ const STEP_LABELS = [
 ] as const;
 
 /** Physical chain index → human label used in failure messages. */
-export const nativeScriptDecodingStepLabelV1 = (
-  stepIndex: NativeScriptDecodingStepIndexV1,
+export const nativeScriptDecodingStepLabel = (
+  stepIndex: NativeScriptDecodingStepIndex,
 ) => `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} ${STEP_LABELS[stepIndex]}`;
 
 /**
  * Fetches the thread UTxO, requires it to sit at the expected step's address,
  * and validates the computation-thread NFT it must carry.
  */
-export const requireNativeScriptDecodingThreadUtxoV1 = async ({
+export const requireNativeScriptDecodingThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -68,15 +68,15 @@ export const requireNativeScriptDecodingThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: NativeScriptDecodingContractsV1;
+  readonly contracts: NativeScriptDecodingContracts;
   readonly categoryId: string;
-  readonly stepIndex: NativeScriptDecodingStepIndexV1;
+  readonly stepIndex: NativeScriptDecodingStepIndex;
   readonly threadOutRef: string;
 }): Promise<{
   readonly threadUtxo: UTxO;
   readonly threadToken: ReturnType<typeof requireComputationThreadToken>;
 }> => {
-  const label = nativeScriptDecodingStepLabelV1(stepIndex);
+  const label = nativeScriptDecodingStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -103,24 +103,24 @@ export const requireNativeScriptDecodingThreadUtxoV1 = async ({
  * would make the spend unexecutable, so it is refused before anything is
  * built.
  */
-export const requireNativeScriptDecodingReferenceScriptV1 = ({
+export const requireNativeScriptDecodingReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
 }: {
   readonly utxo: UTxO;
   readonly expectedScriptHash: string;
-  readonly stepIndex: NativeScriptDecodingStepIndexV1;
+  readonly stepIndex: NativeScriptDecodingStepIndex;
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw nativeScriptDecodingSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${nativeScriptDecodingStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${nativeScriptDecodingStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
   if (actual !== expectedScriptHash) {
     throw nativeScriptDecodingSubmitError(
-      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not the ${nativeScriptDecodingStepLabelV1(stepIndex)} validator ${expectedScriptHash}.`,
+      `reference script at ${outRefLabel(utxo)} hashes to ${actual}, not the ${nativeScriptDecodingStepLabel(stepIndex)} validator ${expectedScriptHash}.`,
     );
   }
   return utxo;
@@ -131,7 +131,7 @@ export const requireNativeScriptDecodingReferenceScriptV1 = ({
  * under the step's schema, must name the signing prover, and must carry a
  * populated state.
  */
-export const requireNativeScriptDecodingStepStateV1 = <State>({
+export const requireNativeScriptDecodingStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -140,9 +140,9 @@ export const requireNativeScriptDecodingStepStateV1 = <State>({
   readonly threadUtxo: UTxO;
   readonly signer: ResolvedProverSigner;
   readonly schema: { fraud_prover: string; data: State | null };
-  readonly stepIndex: NativeScriptDecodingStepIndexV1;
+  readonly stepIndex: NativeScriptDecodingStepIndex;
 }): State => {
-  const label = nativeScriptDecodingStepLabelV1(stepIndex);
+  const label = nativeScriptDecodingStepLabel(stepIndex);
   if (threadUtxo.datum == null) {
     throw nativeScriptDecodingSubmitError(
       `thread UTxO ${outRefLabel(threadUtxo)} at ${label} has no inline datum.`,

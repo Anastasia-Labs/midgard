@@ -292,7 +292,7 @@ export const makeAlwaysSucceedsContracts = (
     distinctAssetAccumulationLimit: scaffoldChain(appendedFamilyFallback, 6),
   };
   const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
-  const fieldPreimageV1 = makeSpendingValidator(
+  const fieldPreimage = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
   );
   // #579 ruling A: this always-succeeds spend+mint pair used to stand in for the
@@ -300,7 +300,7 @@ export const makeAlwaysSucceedsContracts = (
   // field-preimage certificate, which is the role the emulator set actually has
   // to fill — the tx-order mint is parameterized by the certificate policy id.
   const fieldPreimageCertificateV1 = {
-    ...fieldPreimageV1,
+    ...fieldPreimage,
     ...makeMintingValidator(
       alwaysScript(blueprint, "midgard", "state_queue", "mint"),
     ),
@@ -361,7 +361,7 @@ export const makeAlwaysSucceedsContracts = (
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),
     fieldPreimageCertificate: fieldPreimageCertificateV1,
-    cekProgramMaterial: fieldPreimageV1,
+    cekProgramMaterial: fieldPreimage,
     settlement: alwaysAuthenticated(blueprint, "settlement"),
     reserve,
     payout: alwaysAuthenticated(blueprint, "payout"),

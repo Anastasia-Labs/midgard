@@ -1,8 +1,8 @@
 import {
-  hashMidgardCekBlsExpressionNodeV1,
-  hashMidgardCekSequenceNodeV1,
-  hashMidgardCekValueNodeV1,
-  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+  hashMidgardCekBlsExpressionNode,
+  hashMidgardCekSequenceNode,
+  hashMidgardCekValueNode,
+  MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 import {
@@ -21,37 +21,37 @@ import {
 import { ConstTyTag, type UPLCBuiltinTag, UPLCConst } from "@harmoniclabs/uplc";
 
 import {
-  decodeMidgardCekConstantTypeCborV1,
-  decodeMidgardCekConstantWitnessV1,
-  encodeMidgardCekCanonicalConstantV1,
-  hashMidgardCekConstantWitnessV1,
-  hashMidgardCekSemanticConstantWitnessV1,
-  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
-  midgardCekConstantMemorySizeV1,
-  type MidgardCekConstantTypeV1,
-  midgardCekConstantWitnessFromUplcV1,
-  midgardCekConstantWitnessToUplcV1,
-  type MidgardCekConstantWitnessV1,
-  type MidgardCekSemanticConstantWitnessV1,
+  decodeMidgardCekConstantTypeCbor,
+  decodeMidgardCekConstantWitness,
+  encodeMidgardCekCanonicalConstant,
+  hashMidgardCekConstantWitness,
+  hashMidgardCekSemanticConstantWitness,
+  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
+  midgardCekConstantMemorySize,
+  type MidgardCekConstantType,
+  type MidgardCekConstantWitness,
+  midgardCekConstantWitnessFromUplc,
+  midgardCekConstantWitnessToUplc,
+  type MidgardCekSemanticConstantWitness,
 } from "./cek-constant.js";
 import {
-  computeMidgardCekBuiltinBudgetV1,
-  MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS_V1,
-  type MidgardCekBuiltinBudgetV1,
-  normalizeMidgardCekBitwiseCostSizesV1,
+  computeMidgardCekBuiltinBudget,
+  MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS,
+  type MidgardCekBuiltinBudget,
+  normalizeMidgardCekBitwiseCostSizes,
 } from "./cek-cost.js";
-import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
+import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 
 type Bytes = Uint8Array;
 
-export type MidgardCekRuntimeValueWitnessV1 =
+export type MidgardCekRuntimeValueWitness =
   | {
       readonly kind: "constant";
-      readonly witness: MidgardCekConstantWitnessV1;
+      readonly witness: MidgardCekConstantWitness;
     }
   | {
       readonly kind: "semanticConstant";
-      readonly witness: MidgardCekSemanticConstantWitnessV1;
+      readonly witness: MidgardCekSemanticConstantWitness;
     }
   | {
       readonly kind: "lambda";
@@ -81,8 +81,8 @@ export type MidgardCekRuntimeValueWitnessV1 =
       readonly expressionRoot: Bytes;
     };
 
-export type MidgardCekConstantValueWitnessV1 = Extract<
-  MidgardCekRuntimeValueWitnessV1,
+export type MidgardCekConstantValueWitness = Extract<
+  MidgardCekRuntimeValueWitness,
   { readonly kind: "constant" | "semanticConstant" }
 >;
 
@@ -106,35 +106,35 @@ type RuntimeValueKind =
 const sameBytes = (left: Bytes, right: Bytes): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
-export const hashMidgardCekRuntimeValueWitnessV1 = (
-  value: MidgardCekRuntimeValueWitnessV1,
+export const hashMidgardCekRuntimeValueWitness = (
+  value: MidgardCekRuntimeValueWitness,
 ): Bytes => {
   switch (value.kind) {
     case "constant":
-      return hashMidgardCekConstantWitnessV1(value.witness);
+      return hashMidgardCekConstantWitness(value.witness);
     case "semanticConstant":
-      return hashMidgardCekSemanticConstantWitnessV1(value.witness);
+      return hashMidgardCekSemanticConstantWitness(value.witness);
     case "lambda":
-      return hashMidgardCekValueNodeV1({
+      return hashMidgardCekValueNode({
         kind: "lambda",
         body: value.body,
         environment: value.environment,
       });
     case "delay":
-      return hashMidgardCekValueNodeV1({
+      return hashMidgardCekValueNode({
         kind: "delay",
         body: value.body,
         environment: value.environment,
       });
     case "constr":
-      return hashMidgardCekValueNodeV1({
+      return hashMidgardCekValueNode({
         kind: "constr",
         tag: value.tag,
         valuesCount: value.valuesCount,
         valuesRoot: value.valuesRoot,
       });
     case "builtin":
-      return hashMidgardCekValueNodeV1({
+      return hashMidgardCekValueNode({
         kind: "builtin",
         tag: value.tag,
         forcesRemaining: value.forcesRemaining,
@@ -142,22 +142,22 @@ export const hashMidgardCekRuntimeValueWitnessV1 = (
         argumentsRoot: value.argumentsRoot,
       });
     case "blsMillerLoop":
-      return hashMidgardCekValueNodeV1({
+      return hashMidgardCekValueNode({
         kind: "blsMillerLoop",
         expressionRoot: value.expressionRoot,
       });
   }
 };
 
-export const hashMidgardCekRuntimeArgumentsV1 = (
-  arguments_: readonly MidgardCekRuntimeValueWitnessV1[],
+export const hashMidgardCekRuntimeArguments = (
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
 ): { readonly root: Bytes; readonly count: bigint } => {
-  let root: Bytes = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1;
+  let root: Bytes = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
   let count = 0n;
   for (const argument of arguments_) {
     count += 1n;
-    root = hashMidgardCekSequenceNodeV1({
-      head: hashMidgardCekRuntimeValueWitnessV1(argument),
+    root = hashMidgardCekSequenceNode({
+      head: hashMidgardCekRuntimeValueWitness(argument),
       tail: root,
       length: count,
     });
@@ -166,8 +166,8 @@ export const hashMidgardCekRuntimeArgumentsV1 = (
 };
 
 const sameConstantType = (
-  left: MidgardCekConstantTypeV1,
-  right: MidgardCekConstantTypeV1,
+  left: MidgardCekConstantType,
+  right: MidgardCekConstantType,
 ): boolean => {
   if (left.kind !== right.kind) return false;
   if (left.kind === "list" && right.kind === "list") {
@@ -183,16 +183,16 @@ const sameConstantType = (
 };
 
 const constantType = (
-  value: MidgardCekRuntimeValueWitnessV1,
-): MidgardCekConstantTypeV1 | null =>
+  value: MidgardCekRuntimeValueWitness,
+): MidgardCekConstantType | null =>
   value.kind === "constant"
-    ? decodeMidgardCekConstantWitnessV1(value.witness).type
+    ? decodeMidgardCekConstantWitness(value.witness).type
     : value.kind === "semanticConstant"
-      ? decodeMidgardCekConstantTypeCborV1(value.witness.typeCbor)
+      ? decodeMidgardCekConstantTypeCbor(value.witness.typeCbor)
       : null;
 
 const matchesKind = (
-  value: MidgardCekRuntimeValueWitnessV1,
+  value: MidgardCekRuntimeValueWitness,
   kind: RuntimeValueKind,
 ): boolean => {
   if (kind === "any") return true;
@@ -290,7 +290,7 @@ const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
 };
 
 const mkConsIsWellTyped = (
-  arguments_: readonly MidgardCekRuntimeValueWitnessV1[],
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
 ): boolean => {
   if (arguments_.length !== 2) return false;
   const elementType = constantType(arguments_[0]);
@@ -302,10 +302,10 @@ const mkConsIsWellTyped = (
   );
 };
 
-export const verifyMidgardCekBuiltinTypeFailureV1 = (
+export const verifyMidgardCekBuiltinTypeFailure = (
   tag: bigint,
   builtinValueRoot: Bytes,
-  arguments_: readonly MidgardCekRuntimeValueWitnessV1[],
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
 ): boolean => {
   try {
     if (
@@ -320,15 +320,15 @@ export const verifyMidgardCekBuiltinTypeFailureV1 = (
     if (arguments_.length !== kinds.length) return false;
     if (
       directWitnessPayloadBytes(arguments_) >
-      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
     ) {
       return false;
     }
-    const { root, count } = hashMidgardCekRuntimeArgumentsV1(arguments_);
+    const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
     if (
       !sameBytes(
         builtinValueRoot,
-        hashMidgardCekValueNodeV1({
+        hashMidgardCekValueNode({
           kind: "builtin",
           tag,
           forcesRemaining: 0n,
@@ -351,59 +351,59 @@ export const verifyMidgardCekBuiltinTypeFailureV1 = (
   }
 };
 
-export type MidgardCekDirectValueWitnessV1 =
+export type MidgardCekDirectValueWitness =
   | {
       readonly kind: "constant";
-      readonly witness: MidgardCekConstantWitnessV1;
+      readonly witness: MidgardCekConstantWitness;
     }
   | {
       readonly kind: "semanticConstant";
-      readonly witness: MidgardCekSemanticConstantWitnessV1;
+      readonly witness: MidgardCekSemanticConstantWitness;
     }
   | { readonly kind: "opaque"; readonly root: Bytes }
   | { readonly kind: "blsMillerLoop"; readonly expressionRoot: Bytes };
 
-export type MidgardCekDirectBuiltinEvaluationV1 =
+export type MidgardCekDirectBuiltinEvaluation =
   | {
       readonly kind: "success";
-      readonly result: MidgardCekDirectValueWitnessV1;
-      readonly budget: MidgardCekBuiltinBudgetV1;
+      readonly result: MidgardCekDirectValueWitness;
+      readonly budget: MidgardCekBuiltinBudget;
     }
   | {
       readonly kind: "failure";
-      readonly budget: MidgardCekBuiltinBudgetV1;
+      readonly budget: MidgardCekBuiltinBudget;
     };
 
-export const hashMidgardCekDirectValueWitnessV1 = (
-  value: MidgardCekDirectValueWitnessV1,
+export const hashMidgardCekDirectValueWitness = (
+  value: MidgardCekDirectValueWitness,
 ): Bytes => {
   switch (value.kind) {
     case "constant":
-      return hashMidgardCekConstantWitnessV1(value.witness);
+      return hashMidgardCekConstantWitness(value.witness);
     case "semanticConstant":
-      return hashMidgardCekSemanticConstantWitnessV1(value.witness);
+      return hashMidgardCekSemanticConstantWitness(value.witness);
     case "opaque":
       if (value.root.length !== 32) {
         throw new Error("V1 opaque CEK value root must be bytes32");
       }
       return value.root;
     case "blsMillerLoop":
-      return hashMidgardCekValueNodeV1({
+      return hashMidgardCekValueNode({
         kind: "blsMillerLoop",
         expressionRoot: value.expressionRoot,
       });
   }
 };
 
-export const hashMidgardCekDirectArgumentsV1 = (
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
+export const hashMidgardCekDirectArguments = (
+  arguments_: readonly MidgardCekDirectValueWitness[],
 ): { readonly root: Bytes; readonly count: bigint } => {
-  let root: Bytes = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1;
+  let root: Bytes = MIDGARD_CEK_EMPTY_SEQUENCE_ROOT;
   let count = 0n;
   for (const argument of arguments_) {
     count += 1n;
-    root = hashMidgardCekSequenceNodeV1({
-      head: hashMidgardCekDirectValueWitnessV1(argument),
+    root = hashMidgardCekSequenceNode({
+      head: hashMidgardCekDirectValueWitness(argument),
       tail: root,
       length: count,
     });
@@ -413,8 +413,8 @@ export const hashMidgardCekDirectArgumentsV1 = (
 
 const directWitnessPayloadBytes = (
   values: readonly (
-    | MidgardCekRuntimeValueWitnessV1
-    | MidgardCekDirectValueWitnessV1
+    | MidgardCekRuntimeValueWitness
+    | MidgardCekDirectValueWitness
   )[],
 ): bigint =>
   values.reduce(
@@ -426,16 +426,14 @@ const directWitnessPayloadBytes = (
     0n,
   );
 
-const decodedDirectConstant = (value: MidgardCekDirectValueWitnessV1) => {
+const decodedDirectConstant = (value: MidgardCekDirectValueWitness) => {
   if (value.kind !== "constant") {
     throw new Error("V1 builtin requires a revealed constant");
   }
-  return decodeMidgardCekConstantWitnessV1(value.witness);
+  return decodeMidgardCekConstantWitness(value.witness);
 };
 
-const directValueMemorySize = (
-  value: MidgardCekDirectValueWitnessV1,
-): bigint => {
+const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
   if (value.kind === "opaque") {
     if (value.root.length !== 32) {
       throw new Error("V1 opaque CEK value root must be bytes32");
@@ -451,11 +449,11 @@ const directValueMemorySize = (
   if (value.kind === "semanticConstant") {
     return value.witness.memory;
   }
-  const decoded = decodeMidgardCekConstantWitnessV1(value.witness);
-  return midgardCekConstantMemorySizeV1(decoded.type, decoded.payload);
+  const decoded = decodeMidgardCekConstantWitness(value.witness);
+  return midgardCekConstantMemorySize(decoded.type, decoded.payload);
 };
 
-const directBoolean = (value: MidgardCekDirectValueWitnessV1): boolean => {
+const directBoolean = (value: MidgardCekDirectValueWitness): boolean => {
   const decoded = decodedDirectConstant(value);
   if (
     decoded.type.kind !== "boolean" ||
@@ -466,7 +464,7 @@ const directBoolean = (value: MidgardCekDirectValueWitnessV1): boolean => {
   return decoded.payload.constr === 1n;
 };
 
-const directByteLength = (value: MidgardCekDirectValueWitnessV1): number => {
+const directByteLength = (value: MidgardCekDirectValueWitness): number => {
   const decoded = decodedDirectConstant(value);
   if (decoded.type.kind !== "bytes" || !(decoded.payload instanceof DataB)) {
     throw new Error("V1 builtin requires a byte string");
@@ -474,9 +472,9 @@ const directByteLength = (value: MidgardCekDirectValueWitnessV1): number => {
   return decoded.payload.bytes.toBuffer().length;
 };
 
-export const midgardCekDirectBuiltinCostSizesV1 = (
+export const midgardCekDirectBuiltinCostSizes = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
+  arguments_: readonly MidgardCekDirectValueWitness[],
 ): readonly bigint[] => {
   if (tag === 26n) {
     if (arguments_.length !== 3) {
@@ -528,7 +526,7 @@ export const midgardCekDirectBuiltinCostSizesV1 = (
     if (arguments_.length !== 3) {
       throw new Error("bitwise builtin requires three arguments");
     }
-    return normalizeMidgardCekBitwiseCostSizesV1(
+    return normalizeMidgardCekBitwiseCostSizes(
       directBoolean(arguments_[0]!),
       directValueMemorySize(arguments_[1]!),
       directValueMemorySize(arguments_[2]!),
@@ -537,10 +535,10 @@ export const midgardCekDirectBuiltinCostSizesV1 = (
   return Object.freeze(arguments_.map(directValueMemorySize));
 };
 
-export const midgardCekDirectBuiltinBudgetV1 = (
+export const midgardCekDirectBuiltinBudget = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-): MidgardCekBuiltinBudgetV1 => {
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): MidgardCekBuiltinBudget => {
   if (
     tag < 0n ||
     tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
@@ -548,16 +546,16 @@ export const midgardCekDirectBuiltinBudgetV1 = (
   ) {
     throw new Error("V1 builtin tag is outside Plutus V3");
   }
-  return computeMidgardCekBuiltinBudgetV1(
+  return computeMidgardCekBuiltinBudget(
     Number(tag),
-    midgardCekDirectBuiltinCostSizesV1(tag, arguments_),
+    midgardCekDirectBuiltinCostSizes(tag, arguments_),
   );
 };
 
 const selectedControlResult = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-): MidgardCekDirectValueWitnessV1 | null => {
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): MidgardCekDirectValueWitness | null => {
   if (tag === 26n) {
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");
@@ -632,16 +630,16 @@ const runPinnedReferenceBuiltin = (
     throw new Error("V1 builtin argument count is incomplete");
   }
   return new BnCEK(
-    MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS_V1,
+    MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS,
     new ExBudget({ cpu: 0, mem: 0 }),
     [],
   ).eval(builtin);
 };
 
 const directConstantToReferenceValue = (
-  witness: MidgardCekConstantWitnessV1,
+  witness: MidgardCekConstantWitness,
 ): CEKConst => {
-  const decoded = decodeMidgardCekConstantWitnessV1(witness);
+  const decoded = decodeMidgardCekConstantWitness(witness);
   if (decoded.type.kind === "bytes") {
     if (!(decoded.payload instanceof DataB)) {
       throw new Error("V1 byte-string payload is not bytes");
@@ -657,7 +655,7 @@ const directConstantToReferenceValue = (
     );
   }
   if (decoded.type.kind !== "blsG1" && decoded.type.kind !== "blsG2") {
-    return CEKConst.fromUplc(midgardCekConstantWitnessToUplcV1(witness));
+    return CEKConst.fromUplc(midgardCekConstantWitnessToUplc(witness));
   }
   if (!(decoded.payload instanceof DataB)) {
     throw new Error("V1 BLS payload is not bytes");
@@ -687,10 +685,10 @@ const directConstantToReferenceValue = (
 };
 
 const semanticConstantFromCanonical = (
-  canonical: ReturnType<typeof encodeMidgardCekCanonicalConstantV1>,
-): MidgardCekDirectValueWitnessV1 => {
+  canonical: ReturnType<typeof encodeMidgardCekCanonicalConstant>,
+): MidgardCekDirectValueWitness => {
   const payload = dataFromCbor(canonical.payloadCbor);
-  const tree = commitMidgardCekDataTreeV1(payload);
+  const tree = commitMidgardCekDataTree(payload);
   return Object.freeze({
     kind: "semanticConstant" as const,
     witness: Object.freeze({
@@ -700,17 +698,17 @@ const semanticConstantFromCanonical = (
         cborLength: tree.cborLength,
         memory: tree.memory,
       }),
-      memory: midgardCekConstantMemorySizeV1(canonical.type, payload),
+      memory: midgardCekConstantMemorySize(canonical.type, payload),
     }),
   });
 };
 
 const semanticizeDirectConstant = (
-  value: MidgardCekDirectValueWitnessV1,
-): MidgardCekDirectValueWitnessV1 => {
+  value: MidgardCekDirectValueWitness,
+): MidgardCekDirectValueWitness => {
   if (value.kind !== "constant") return value;
-  const decoded = decodeMidgardCekConstantWitnessV1(value.witness);
-  const tree = commitMidgardCekDataTreeV1(decoded.payload);
+  const decoded = decodeMidgardCekConstantWitness(value.witness);
+  const tree = commitMidgardCekDataTree(decoded.payload);
   return Object.freeze({
     kind: "semanticConstant" as const,
     witness: Object.freeze({
@@ -720,7 +718,7 @@ const semanticizeDirectConstant = (
         cborLength: tree.cborLength,
         memory: tree.memory,
       }),
-      memory: midgardCekConstantMemorySizeV1(decoded.type, decoded.payload),
+      memory: midgardCekConstantMemorySize(decoded.type, decoded.payload),
     }),
   });
 };
@@ -728,13 +726,13 @@ const semanticizeDirectConstant = (
 const referenceConstantToDirectWitness = (
   result: CEKConst,
   allowSemantic: boolean = false,
-): MidgardCekDirectValueWitnessV1 => {
+): MidgardCekDirectValueWitness => {
   const tag = result.type[0];
   if (
     tag !== ConstTyTag.bls12_381_G1_element &&
     tag !== ConstTyTag.bls12_381_G2_element
   ) {
-    const canonical = encodeMidgardCekCanonicalConstantV1(
+    const canonical = encodeMidgardCekCanonicalConstant(
       new UPLCConst(result.type, result.value as never),
     );
     const witness = Object.freeze({
@@ -743,13 +741,13 @@ const referenceConstantToDirectWitness = (
     });
     if (
       canonical.payloadCbor.length >
-      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES
     ) {
       if (allowSemantic) {
         return semanticConstantFromCanonical(canonical);
       }
     }
-    decodeMidgardCekConstantWitnessV1(witness);
+    decodeMidgardCekConstantWitness(witness);
     return { kind: "constant", witness };
   }
   const compressed = runPinnedReferenceBuiltin(
@@ -759,7 +757,7 @@ const referenceConstantToDirectWitness = (
   if (compressed instanceof CEKError) {
     throw new Error("reference evaluator could not compress a BLS result");
   }
-  const bytesWitness = midgardCekConstantWitnessFromUplcV1(compressed);
+  const bytesWitness = midgardCekConstantWitnessFromUplc(compressed);
   const witness = Object.freeze({
     typeCbor: Buffer.from(
       tag === ConstTyTag.bls12_381_G1_element ? "9f09ff" : "9f0aff",
@@ -767,14 +765,14 @@ const referenceConstantToDirectWitness = (
     ),
     payloadCbor: bytesWitness.payloadCbor,
   });
-  decodeMidgardCekConstantWitnessV1(witness);
+  decodeMidgardCekConstantWitness(witness);
   return { kind: "constant", witness };
 };
 
 const evaluateReferenceBuiltin = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-): MidgardCekDirectValueWitnessV1 | "failure" => {
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): MidgardCekDirectValueWitness | "failure" => {
   const control = selectedControlResult(tag, arguments_);
   if (control !== null) return control;
   if (tag === 68n) {
@@ -787,12 +785,8 @@ const evaluateReferenceBuiltin = (
     ) {
       throw new Error("BLS millerLoop requires G1 and G2 constants");
     }
-    const leftDecoded = decodeMidgardCekConstantWitnessV1(
-      arguments_[0].witness,
-    );
-    const rightDecoded = decodeMidgardCekConstantWitnessV1(
-      arguments_[1].witness,
-    );
+    const leftDecoded = decodeMidgardCekConstantWitness(arguments_[0].witness);
+    const rightDecoded = decodeMidgardCekConstantWitness(arguments_[1].witness);
     if (
       leftDecoded.type.kind !== "blsG1" ||
       rightDecoded.type.kind !== "blsG2"
@@ -803,11 +797,11 @@ const evaluateReferenceBuiltin = (
     // admitting their expression commitment, matching the L1 rule.
     directConstantToReferenceValue(arguments_[0].witness);
     directConstantToReferenceValue(arguments_[1].witness);
-    const left = hashMidgardCekDirectValueWitnessV1(arguments_[0]);
-    const right = hashMidgardCekDirectValueWitnessV1(arguments_[1]);
+    const left = hashMidgardCekDirectValueWitness(arguments_[0]);
+    const right = hashMidgardCekDirectValueWitness(arguments_[1]);
     return {
       kind: "blsMillerLoop",
-      expressionRoot: hashMidgardCekBlsExpressionNodeV1({
+      expressionRoot: hashMidgardCekBlsExpressionNode({
         kind: "millerLoop",
         g1Value: left,
         g2Value: right,
@@ -824,7 +818,7 @@ const evaluateReferenceBuiltin = (
     }
     return {
       kind: "blsMillerLoop",
-      expressionRoot: hashMidgardCekBlsExpressionNodeV1({
+      expressionRoot: hashMidgardCekBlsExpressionNode({
         kind: "multiply",
         left: arguments_[0].expressionRoot,
         right: arguments_[1].expressionRoot,
@@ -853,16 +847,16 @@ const evaluateReferenceBuiltin = (
 
 const directFailureIsCharged = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
+  arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
   [4n, 5n, 6n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
   (tag === 60n && directByteLength(arguments_[0]!) === 48) ||
   (tag === 67n && directByteLength(arguments_[0]!) === 96);
 
-export const evaluateMidgardCekDirectBuiltinV1 = (
+export const evaluateMidgardCekDirectBuiltin = (
   tag: bigint,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-): MidgardCekDirectBuiltinEvaluationV1 => {
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): MidgardCekDirectBuiltinEvaluation => {
   if (
     tag < 0n ||
     tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
@@ -879,13 +873,13 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
   }
   if (
     directWitnessPayloadBytes(arguments_) >
-    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
   ) {
     throw new Error(
       "V1 builtin arguments exceed the aggregate direct payload bound",
     );
   }
-  const budget = midgardCekDirectBuiltinBudgetV1(tag, arguments_);
+  const budget = midgardCekDirectBuiltinBudget(tag, arguments_);
   const result = evaluateReferenceBuiltin(tag, arguments_);
   if (result === "failure") {
     return Object.freeze({
@@ -897,7 +891,7 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
   }
   if (
     directWitnessPayloadBytes([...arguments_, result]) >
-    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
   ) {
     if (tag !== 51n) {
       throw new Error(
@@ -917,24 +911,24 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
   });
 };
 
-export const verifyMidgardCekDirectBuiltinV1 = (
+export const verifyMidgardCekDirectBuiltin = (
   tag: bigint,
   builtinValueRoot: Bytes,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
-  result: MidgardCekDirectValueWitnessV1,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  result: MidgardCekDirectValueWitness,
 ): boolean => {
   try {
     if (
       directWitnessPayloadBytes([...arguments_, result]) >
-      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
     ) {
       return false;
     }
-    const committed = hashMidgardCekDirectArgumentsV1(arguments_);
+    const committed = hashMidgardCekDirectArguments(arguments_);
     if (
       !sameBytes(
         builtinValueRoot,
-        hashMidgardCekValueNodeV1({
+        hashMidgardCekValueNode({
           kind: "builtin",
           tag,
           forcesRemaining: 0n,
@@ -945,12 +939,12 @@ export const verifyMidgardCekDirectBuiltinV1 = (
     ) {
       return false;
     }
-    const evaluated = evaluateMidgardCekDirectBuiltinV1(tag, arguments_);
+    const evaluated = evaluateMidgardCekDirectBuiltin(tag, arguments_);
     return (
       evaluated.kind === "success" &&
       sameBytes(
-        hashMidgardCekDirectValueWitnessV1(evaluated.result),
-        hashMidgardCekDirectValueWitnessV1(result),
+        hashMidgardCekDirectValueWitness(evaluated.result),
+        hashMidgardCekDirectValueWitness(result),
       )
     );
   } catch {
@@ -958,23 +952,23 @@ export const verifyMidgardCekDirectBuiltinV1 = (
   }
 };
 
-export const verifyMidgardCekDirectBuiltinFailureV1 = (
+export const verifyMidgardCekDirectBuiltinFailure = (
   tag: bigint,
   builtinValueRoot: Bytes,
-  arguments_: readonly MidgardCekDirectValueWitnessV1[],
+  arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean => {
   try {
     if (
       directWitnessPayloadBytes(arguments_) >
-      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
     ) {
       return false;
     }
-    const committed = hashMidgardCekDirectArgumentsV1(arguments_);
+    const committed = hashMidgardCekDirectArguments(arguments_);
     if (
       !sameBytes(
         builtinValueRoot,
-        hashMidgardCekValueNodeV1({
+        hashMidgardCekValueNode({
           kind: "builtin",
           tag,
           forcesRemaining: 0n,
@@ -985,39 +979,37 @@ export const verifyMidgardCekDirectBuiltinFailureV1 = (
     ) {
       return false;
     }
-    return (
-      evaluateMidgardCekDirectBuiltinV1(tag, arguments_).kind === "failure"
-    );
+    return evaluateMidgardCekDirectBuiltin(tag, arguments_).kind === "failure";
   } catch {
     return false;
   }
 };
 
-export type MidgardCekBlsExpressionWitnessV1 =
+export type MidgardCekBlsExpressionWitness =
   | {
       readonly kind: "millerLoop";
-      readonly g1: MidgardCekConstantWitnessV1;
-      readonly g2: MidgardCekConstantWitnessV1;
+      readonly g1: MidgardCekConstantWitness;
+      readonly g2: MidgardCekConstantWitness;
     }
   | {
       readonly kind: "multiply";
-      readonly left: MidgardCekBlsExpressionWitnessV1;
-      readonly right: MidgardCekBlsExpressionWitnessV1;
+      readonly left: MidgardCekBlsExpressionWitness;
+      readonly right: MidgardCekBlsExpressionWitness;
     };
 
-type EvaluatedBlsExpressionV1 = {
+type EvaluatedBlsExpression = {
   readonly root: Bytes;
   readonly value: CEKConst;
   readonly leaves: number;
   readonly depth: number;
 };
 
-const evaluateBlsExpressionV1 = (
-  expression: MidgardCekBlsExpressionWitnessV1,
-): EvaluatedBlsExpressionV1 => {
+const evaluateBlsExpression = (
+  expression: MidgardCekBlsExpressionWitness,
+): EvaluatedBlsExpression => {
   if (expression.kind === "millerLoop") {
-    const g1Decoded = decodeMidgardCekConstantWitnessV1(expression.g1);
-    const g2Decoded = decodeMidgardCekConstantWitnessV1(expression.g2);
+    const g1Decoded = decodeMidgardCekConstantWitness(expression.g1);
+    const g2Decoded = decodeMidgardCekConstantWitness(expression.g2);
     if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
       throw new Error("BLS expression leaf requires G1 and G2 constants");
     }
@@ -1028,24 +1020,24 @@ const evaluateBlsExpressionV1 = (
       throw new Error("reference evaluator rejected a BLS expression leaf");
     }
     return Object.freeze({
-      root: hashMidgardCekBlsExpressionNodeV1({
+      root: hashMidgardCekBlsExpressionNode({
         kind: "millerLoop",
-        g1Value: hashMidgardCekConstantWitnessV1(expression.g1),
-        g2Value: hashMidgardCekConstantWitnessV1(expression.g2),
+        g1Value: hashMidgardCekConstantWitness(expression.g1),
+        g2Value: hashMidgardCekConstantWitness(expression.g2),
       }),
       value,
       leaves: 1,
       depth: 1,
     });
   }
-  const left = evaluateBlsExpressionV1(expression.left);
-  const right = evaluateBlsExpressionV1(expression.right);
+  const left = evaluateBlsExpression(expression.left);
+  const right = evaluateBlsExpression(expression.right);
   const value = runPinnedReferenceBuiltin(69, [left.value, right.value]);
   if (value instanceof CEKError) {
     throw new Error("reference evaluator rejected a BLS expression product");
   }
   return Object.freeze({
-    root: hashMidgardCekBlsExpressionNodeV1({
+    root: hashMidgardCekBlsExpressionNode({
       kind: "multiply",
       left: left.root,
       right: right.root,
@@ -1056,24 +1048,24 @@ const evaluateBlsExpressionV1 = (
   });
 };
 
-export type MidgardCekBlsFinalEvaluationV1 = {
+export type MidgardCekBlsFinalEvaluation = {
   readonly leftRoot: Bytes;
   readonly rightRoot: Bytes;
-  readonly result: MidgardCekDirectValueWitnessV1;
-  readonly budget: MidgardCekBuiltinBudgetV1;
+  readonly result: MidgardCekDirectValueWitness;
+  readonly budget: MidgardCekBuiltinBudget;
 };
 
-export const evaluateMidgardCekBlsFinalV1 = (
+export const evaluateMidgardCekBlsFinal = (
   expectedLeftRoot: Bytes,
   expectedRightRoot: Bytes,
-  leftExpression: MidgardCekBlsExpressionWitnessV1,
-  rightExpression: MidgardCekBlsExpressionWitnessV1,
-): MidgardCekBlsFinalEvaluationV1 => {
+  leftExpression: MidgardCekBlsExpressionWitness,
+  rightExpression: MidgardCekBlsExpressionWitness,
+): MidgardCekBlsFinalEvaluation => {
   if (expectedLeftRoot.length !== 32 || expectedRightRoot.length !== 32) {
     throw new Error("BLS finalVerify expected roots must be bytes32");
   }
-  const left = evaluateBlsExpressionV1(leftExpression);
-  const right = evaluateBlsExpressionV1(rightExpression);
+  const left = evaluateBlsExpression(leftExpression);
+  const right = evaluateBlsExpression(rightExpression);
   if (
     !sameBytes(left.root, expectedLeftRoot) ||
     !sameBytes(right.root, expectedRightRoot)
@@ -1089,7 +1081,7 @@ export const evaluateMidgardCekBlsFinalV1 = (
   if (result instanceof CEKError) {
     throw new Error("reference evaluator rejected BLS finalVerify");
   }
-  const arguments_: readonly MidgardCekDirectValueWitnessV1[] = [
+  const arguments_: readonly MidgardCekDirectValueWitness[] = [
     { kind: "blsMillerLoop", expressionRoot: left.root },
     { kind: "blsMillerLoop", expressionRoot: right.root },
   ];
@@ -1097,20 +1089,20 @@ export const evaluateMidgardCekBlsFinalV1 = (
     leftRoot: left.root,
     rightRoot: right.root,
     result: referenceConstantToDirectWitness(result, false),
-    budget: midgardCekDirectBuiltinBudgetV1(70n, arguments_),
+    budget: midgardCekDirectBuiltinBudget(70n, arguments_),
   });
 };
 
-export const verifyMidgardCekBlsFinalV1 = (
+export const verifyMidgardCekBlsFinal = (
   builtinValueRoot: Bytes,
   expectedLeftRoot: Bytes,
   expectedRightRoot: Bytes,
-  leftExpression: MidgardCekBlsExpressionWitnessV1,
-  rightExpression: MidgardCekBlsExpressionWitnessV1,
-  result: MidgardCekDirectValueWitnessV1,
+  leftExpression: MidgardCekBlsExpressionWitness,
+  rightExpression: MidgardCekBlsExpressionWitness,
+  result: MidgardCekDirectValueWitness,
 ): boolean => {
   try {
-    const arguments_: readonly MidgardCekDirectValueWitnessV1[] = [
+    const arguments_: readonly MidgardCekDirectValueWitness[] = [
       {
         kind: "blsMillerLoop",
         expressionRoot: expectedLeftRoot,
@@ -1120,11 +1112,11 @@ export const verifyMidgardCekBlsFinalV1 = (
         expressionRoot: expectedRightRoot,
       },
     ];
-    const committed = hashMidgardCekDirectArgumentsV1(arguments_);
+    const committed = hashMidgardCekDirectArguments(arguments_);
     if (
       !sameBytes(
         builtinValueRoot,
-        hashMidgardCekValueNodeV1({
+        hashMidgardCekValueNode({
           kind: "builtin",
           tag: 70n,
           forcesRemaining: 0n,
@@ -1135,15 +1127,15 @@ export const verifyMidgardCekBlsFinalV1 = (
     ) {
       return false;
     }
-    const evaluated = evaluateMidgardCekBlsFinalV1(
+    const evaluated = evaluateMidgardCekBlsFinal(
       expectedLeftRoot,
       expectedRightRoot,
       leftExpression,
       rightExpression,
     );
     return sameBytes(
-      hashMidgardCekDirectValueWitnessV1(evaluated.result),
-      hashMidgardCekDirectValueWitnessV1(result),
+      hashMidgardCekDirectValueWitness(evaluated.result),
+      hashMidgardCekDirectValueWitness(result),
     );
   } catch {
     return false;

@@ -1,24 +1,24 @@
 import { computeHash32 } from "@al-ft/midgard-core";
 import {
-  encodeVerdictSubjectV1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  encodeVerdictSubject,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
 import {
-  type ExecutionNativeScriptInvalidPushdownStepV1,
-  executionNativeScriptInvalidPushdownStepV1,
-  executionNativeScriptInvalidSignerSetV1,
+  type ExecutionNativeScriptInvalidPushdownStep,
+  executionNativeScriptInvalidPushdownStep,
+  executionNativeScriptInvalidSignerSet,
 } from "./evidence-machine-v1.js";
 
-export const EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_V1 =
+export const EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY =
   "executionNativeScriptInvalid" as const;
-export const EXECUTION_NATIVE_SCRIPT_INVALID_ID_V1 = "00000032" as const;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_ID = "00000032" as const;
 
 const fail = (message: string): never => {
-  throw new Error(`${EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_V1}: ${message}`);
+  throw new Error(`${EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY}: ${message}`);
 };
 
 const canonicalHex = (value: string, bytes: number, label: string): Buffer => {
@@ -28,15 +28,15 @@ const canonicalHex = (value: string, bytes: number, label: string): Buffer => {
   return Buffer.from(value, "hex");
 };
 
-export type ExecutionNativeScriptInvalidFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type ExecutionNativeScriptInvalidFinding = Readonly<{
+  subject: VerdictSubject;
   executionIndex: number;
 }>;
 
-export const classifyExecutionNativeScriptInvalidFindingV1 = (
-  finding: ExecutionNativeScriptInvalidFindingV1,
-): ExecutionNativeScriptInvalidFindingV1 => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject))
+export const classifyExecutionNativeScriptInvalidFinding = (
+  finding: ExecutionNativeScriptInvalidFinding,
+): ExecutionNativeScriptInvalidFinding => {
+  if (!verdictSubjectIsCanonical(finding.subject))
     return fail("verdict subject is not canonical");
   if (
     !Number.isSafeInteger(finding.executionIndex) ||
@@ -44,12 +44,12 @@ export const classifyExecutionNativeScriptInvalidFindingV1 = (
   )
     return fail("execution index must be a non-negative safe integer");
   if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
   ) {
     if (finding.subject.rejection_reason !== null)
       return fail("wrongful acceptance must not carry a rejection reason");
   } else if (
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
+    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
   ) {
     const reason = finding.subject.rejection_reason;
     if (
@@ -66,8 +66,8 @@ export const classifyExecutionNativeScriptInvalidFindingV1 = (
   return Object.freeze({ ...finding });
 };
 
-export type ExecutionNativeScriptInvalidAuthenticatedInputV1 = Readonly<{
-  finding: ExecutionNativeScriptInvalidFindingV1;
+export type ExecutionNativeScriptInvalidAuthenticatedInput = Readonly<{
+  finding: ExecutionNativeScriptInvalidFinding;
   transactionIdHex: string;
   sourceDescriptorHashHex: string;
   scriptItemHashHex: string;
@@ -77,11 +77,11 @@ export type ExecutionNativeScriptInvalidAuthenticatedInputV1 = Readonly<{
   validityIntervalEnd: bigint;
 }>;
 
-export type ExecutionNativeScriptInvalidEvidenceV1 = Readonly<{
-  finding: ExecutionNativeScriptInvalidFindingV1;
-  authenticated: ExecutionNativeScriptInvalidAuthenticatedInputV1;
+export type ExecutionNativeScriptInvalidEvidence = Readonly<{
+  finding: ExecutionNativeScriptInvalidFinding;
+  authenticated: ExecutionNativeScriptInvalidAuthenticatedInput;
   bindingHash: string;
-  terminal: ExecutionNativeScriptInvalidPushdownStepV1;
+  terminal: ExecutionNativeScriptInvalidPushdownStep;
   contradiction: boolean;
 }>;
 
@@ -91,10 +91,10 @@ const i64 = (value: bigint): Buffer => {
   return result;
 };
 
-export const prepareExecutionNativeScriptInvalidEvidenceV1 = (
-  input: ExecutionNativeScriptInvalidAuthenticatedInputV1,
-): ExecutionNativeScriptInvalidEvidenceV1 => {
-  const finding = classifyExecutionNativeScriptInvalidFindingV1(input.finding);
+export const prepareExecutionNativeScriptInvalidEvidence = (
+  input: ExecutionNativeScriptInvalidAuthenticatedInput,
+): ExecutionNativeScriptInvalidEvidence => {
+  const finding = classifyExecutionNativeScriptInvalidFinding(input.finding);
   const transactionId = canonicalHex(
     input.transactionIdHex,
     32,
@@ -117,17 +117,17 @@ export const prepareExecutionNativeScriptInvalidEvidenceV1 = (
   const actualScriptHash = computeHash32(input.scriptBytes);
   if (!actualScriptHash.equals(scriptItemHash))
     return fail("script bytes differ from the authenticated item hash");
-  const signerSet = executionNativeScriptInvalidSignerSetV1(
+  const signerSet = executionNativeScriptInvalidSignerSet(
     input.addressWitnessItems,
   );
-  let terminal = executionNativeScriptInvalidPushdownStepV1({
+  let terminal = executionNativeScriptInvalidPushdownStep({
     scriptBytes: input.scriptBytes,
     validityIntervalStart: input.validityIntervalStart,
     validityIntervalEnd: input.validityIntervalEnd,
     signerSet,
   });
   while (!terminal.complete) {
-    terminal = executionNativeScriptInvalidPushdownStepV1({
+    terminal = executionNativeScriptInvalidPushdownStep({
       scriptBytes: input.scriptBytes,
       validityIntervalStart: input.validityIntervalStart,
       validityIntervalEnd: input.validityIntervalEnd,
@@ -138,7 +138,7 @@ export const prepareExecutionNativeScriptInvalidEvidenceV1 = (
     });
   }
   const accepted =
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1;
+    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE;
   const contradiction = accepted
     ? terminal.satisfied === false
     : terminal.satisfied === true;
@@ -149,7 +149,7 @@ export const prepareExecutionNativeScriptInvalidEvidenceV1 = (
   const bindingHash = computeHash32(
     Buffer.concat([
       Buffer.from("MidgardExecutionNativeScriptInvalidV1", "ascii"),
-      Buffer.from(encodeVerdictSubjectV1(finding.subject)),
+      Buffer.from(encodeVerdictSubject(finding.subject)),
       transactionId,
       sourceDescriptorHash,
       scriptItemHash,

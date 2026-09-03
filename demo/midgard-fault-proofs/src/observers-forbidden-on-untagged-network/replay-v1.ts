@@ -1,39 +1,39 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  encodeMidgardNativeTxCanonicalV1,
-  midgardFieldCommitmentV1,
+  adjudicateMidgardNativeTxFullValidity,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  encodeMidgardNativeTxCanonical,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import {
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX_V1,
-  observersForbiddenEvidenceClosesV1,
-  prepareObserversForbiddenEvidenceV1,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX,
+  observersForbiddenEvidenceCloses,
+  prepareObserversForbiddenEvidence,
 } from "./family-v1.js";
 import {
-  buildProductionObserversForbiddenArtifactV1,
-  ObserversForbiddenForcedSourcePayloadV1Schema,
-  type ProductionObserversForbiddenArtifactV1,
+  buildObserversForbiddenArtifact,
+  type ObserversForbiddenArtifact,
+  ObserversForbiddenForcedSourcePayloadSchema,
 } from "./production-artifact-v1.js";
 import {
-  observersForbiddenAcceptedMembershipV1,
-  observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1,
-  type ObserversForbiddenRawBlockEvidenceV1,
+  observersForbiddenAcceptedMembership,
+  type ObserversForbiddenRawBlockEvidence,
+  observersForbiddenRawBlockEvidenceFromVerifiedPayload,
 } from "./raw-evidence-v1.js";
 
-export const OBSERVERS_FORBIDDEN_VIOLATION_ID_V1 =
+export const OBSERVERS_FORBIDDEN_VIOLATION_ID =
   "observers-forbidden-on-untagged-network" as const;
 
-export type ObserversForbiddenReplayDetectionV1 = Readonly<{
+export type ObserversForbiddenReplayDetection = Readonly<{
   detectionId: string;
   headerHash: string;
-  violationId: typeof OBSERVERS_FORBIDDEN_VIOLATION_ID_V1;
+  violationId: typeof OBSERVERS_FORBIDDEN_VIOLATION_ID;
   position: bigint;
   transactionId: string;
   networkId: 0 | 1 | 255;
@@ -49,42 +49,42 @@ export type ObserversForbiddenReplayDetectionV1 = Readonly<{
  * a non-empty observer field on scalar 255 must be classified here first.
  */
 export {
-  observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1,
-  type ObserversForbiddenRawBlockEvidenceV1,
+  type ObserversForbiddenRawBlockEvidence,
+  observersForbiddenRawBlockEvidenceFromVerifiedPayload,
 };
 
 const exactNetwork = (value: bigint): 0 | 1 | 255 | null =>
   value === 0n ? 0 : value === 1n ? 1 : value === 255n ? 255 : null;
 
-export const detectObserversForbiddenAcceptedRawReplayV1 = (
-  block: ObserversForbiddenRawBlockEvidenceV1,
-): readonly ObserversForbiddenReplayDetectionV1[] => {
-  const detections: ObserversForbiddenReplayDetectionV1[] = [];
+export const detectObserversForbiddenAcceptedRawReplay = (
+  block: ObserversForbiddenRawBlockEvidence,
+): readonly ObserversForbiddenReplayDetection[] => {
+  const detections: ObserversForbiddenReplayDetection[] = [];
   for (const transaction of block.transactions) {
     if (transaction.material.canonical.validity !== "TxIsValid") continue;
     const field =
       transaction.material.fieldPreimages[
-        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX_V1
+        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX
       ];
     const networkId = exactNetwork(
       transaction.material.canonical.body.networkId,
     );
     if (field === undefined || networkId === null) continue;
     try {
-      const evidence = prepareObserversForbiddenEvidenceV1({
+      const evidence = prepareObserversForbiddenEvidence({
         finding: {
-          subject: SDK.acceptedVerdictSubjectV1(transaction.nodeTxId),
+          subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
           networkId,
         },
         observerFieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       });
-      if (!observersForbiddenEvidenceClosesV1(evidence)) continue;
+      if (!observersForbiddenEvidenceCloses(evidence)) continue;
       detections.push(
         Object.freeze({
-          detectionId: `${OBSERVERS_FORBIDDEN_VIOLATION_ID_V1}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}`,
+          detectionId: `${OBSERVERS_FORBIDDEN_VIOLATION_ID}:accepted:${transaction.index.toString()}:${transaction.nodeTxId}`,
           headerHash: block.headerHash,
-          violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID_V1,
+          violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,
           position: BigInt(transaction.index),
           transactionId: transaction.nodeTxId,
           networkId,
@@ -100,10 +100,10 @@ export const detectObserversForbiddenAcceptedRawReplayV1 = (
   return Object.freeze(detections);
 };
 
-export const detectObserversForbiddenForcedReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly ObserversForbiddenReplayDetectionV1[] => {
-  const detections: ObserversForbiddenReplayDetectionV1[] = [];
+export const detectObserversForbiddenForcedReplay = (
+  block: CanonicalBlockEvidence,
+): readonly ObserversForbiddenReplayDetection[] => {
+  const detections: ObserversForbiddenReplayDetection[] = [];
   block.reconstruction.forcedTransactions.forEach(
     (transaction, forcedIndex) => {
       const verdict = transaction.value.verdict;
@@ -112,7 +112,7 @@ export const detectObserversForbiddenForcedReplayV1 = (
         verdict.ForcedTxInvalid.reason !== "ObserversForbiddenOnUntaggedNetwork"
       )
         return;
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       if (
@@ -129,13 +129,13 @@ export const detectObserversForbiddenForcedReplayV1 = (
         );
       const field =
         material.fieldPreimages[
-          OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX_V1
+          OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX
         ];
       const networkId = exactNetwork(material.canonical.body.networkId);
       if (field === undefined || networkId === null) return;
-      const evidence = prepareObserversForbiddenEvidenceV1({
+      const evidence = prepareObserversForbiddenEvidence({
         finding: {
-          subject: SDK.forcedVerdictSubjectV1({
+          subject: SDK.forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -143,14 +143,14 @@ export const detectObserversForbiddenForcedReplayV1 = (
           networkId,
         },
         observerFieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       });
-      if (!observersForbiddenEvidenceClosesV1(evidence)) return;
+      if (!observersForbiddenEvidenceCloses(evidence)) return;
       detections.push(
         Object.freeze({
-          detectionId: `${OBSERVERS_FORBIDDEN_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
+          detectionId: `${OBSERVERS_FORBIDDEN_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
-          violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID_V1,
+          violationId: OBSERVERS_FORBIDDEN_VIOLATION_ID,
           position: BigInt(forcedIndex),
           transactionId: transaction.value.tx_id,
           networkId,
@@ -165,12 +165,12 @@ export const detectObserversForbiddenForcedReplayV1 = (
   return Object.freeze(detections);
 };
 
-export const selectCanonicalObserversForbiddenDetectionV1 = (
-  detections: readonly ObserversForbiddenReplayDetectionV1[],
+export const selectCanonicalObserversForbiddenDetection = (
+  detections: readonly ObserversForbiddenReplayDetection[],
 ) => {
   if (detections.length === 0)
     throw new Error(
-      `${OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_V1}: no authenticated detection`,
+      `${OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY}: no authenticated detection`,
     );
   return [...detections].sort((left, right) =>
     left.position === right.position
@@ -181,11 +181,11 @@ export const selectCanonicalObserversForbiddenDetectionV1 = (
   )[0]!;
 };
 
-export const prepareProductionObserversForbiddenAcceptedArtifactV1 = async (
-  block: ObserversForbiddenRawBlockEvidenceV1,
-): Promise<ProductionObserversForbiddenArtifactV1> => {
-  const detection = selectCanonicalObserversForbiddenDetectionV1(
-    detectObserversForbiddenAcceptedRawReplayV1(block),
+export const prepareObserversForbiddenAcceptedArtifact = async (
+  block: ObserversForbiddenRawBlockEvidence,
+): Promise<ObserversForbiddenArtifact> => {
+  const detection = selectCanonicalObserversForbiddenDetection(
+    detectObserversForbiddenAcceptedRawReplay(block),
   );
   const transaction = block.transactions[Number(detection.position)];
   if (transaction?.nodeTxId !== detection.transactionId)
@@ -194,19 +194,19 @@ export const prepareProductionObserversForbiddenAcceptedArtifactV1 = async (
     );
   const field =
     transaction.material.fieldPreimages[
-      OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX_V1
+      OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX
     ];
   if (field === undefined)
     throw new Error("observersForbidden selected field 3 disappeared");
-  const evidence = prepareObserversForbiddenEvidenceV1({
+  const evidence = prepareObserversForbiddenEvidence({
     finding: {
-      subject: SDK.acceptedVerdictSubjectV1(transaction.nodeTxId),
+      subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
       networkId: detection.networkId,
     },
     observerFieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
-  return buildProductionObserversForbiddenArtifactV1({
+  return buildObserversForbiddenArtifact({
     headerHash: block.headerHash,
     detectionId: detection.detectionId,
     position: detection.position,
@@ -217,18 +217,18 @@ export const prepareProductionObserversForbiddenAcceptedArtifactV1 = async (
       transaction.material.proofSource.witnessSetCompactCbor.toString("hex"),
     l2TransactionSourceCbor: transaction.l2TransactionSourceCbor,
     transactionsPhasRoot: block.transactionsPhasRoot,
-    transactionMembershipCbor: await observersForbiddenAcceptedMembershipV1({
+    transactionMembershipCbor: await observersForbiddenAcceptedMembership({
       block,
       transactionId: transaction.nodeTxId,
     }),
   });
 };
 
-export const prepareProductionObserversForbiddenForcedArtifactV1 = async (
-  block: CanonicalBlockEvidenceV1,
-): Promise<ProductionObserversForbiddenArtifactV1> => {
-  const detection = selectCanonicalObserversForbiddenDetectionV1(
-    detectObserversForbiddenForcedReplayV1(block),
+export const prepareObserversForbiddenForcedArtifact = async (
+  block: CanonicalBlockEvidence,
+): Promise<ObserversForbiddenArtifact> => {
+  const detection = selectCanonicalObserversForbiddenDetection(
+    detectObserversForbiddenForcedReplay(block),
   );
   const transaction =
     block.reconstruction.forcedTransactions[detection.forcedIndex!];
@@ -240,10 +240,10 @@ export const prepareProductionObserversForbiddenForcedArtifactV1 = async (
       "observersForbidden selected forced transaction disappeared",
     );
   const reason = transaction.value.verdict.ForcedTxInvalid.reason;
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
-    encodeMidgardNativeTxCanonicalV1(
-      adjudicateMidgardNativeTxFullV1Validity(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
+    encodeMidgardNativeTxCanonical(
+      adjudicateMidgardNativeTxFullValidity(
+        decodeMidgardNativeTxFullFromCanonicalCbor(
           transaction.fullTransactionCbor,
         ),
         "TxIsInvalid",
@@ -252,7 +252,7 @@ export const prepareProductionObserversForbiddenForcedArtifactV1 = async (
   );
   const field =
     material.fieldPreimages[
-      OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX_V1
+      OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX
     ];
   const networkId = exactNetwork(material.canonical.body.networkId);
   if (field === undefined || networkId === null)
@@ -264,9 +264,9 @@ export const prepareProductionObserversForbiddenForcedArtifactV1 = async (
     reconstruction: block.reconstruction,
     eventKey,
   });
-  const evidence = prepareObserversForbiddenEvidenceV1({
+  const evidence = prepareObserversForbiddenEvidence({
     finding: {
-      subject: SDK.forcedVerdictSubjectV1({
+      subject: SDK.forcedVerdictSubject({
         transactionId: transaction.value.tx_id,
         sourceKey: transaction.key,
         rejectionReason: reason,
@@ -274,13 +274,13 @@ export const prepareProductionObserversForbiddenForcedArtifactV1 = async (
       networkId,
     },
     observerFieldPreimage: field,
-    committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
   });
   const forcedSourceCbor = Data.to(
     { header: block.header, membership, direction: 1n } as never,
-    ObserversForbiddenForcedSourcePayloadV1Schema as never,
+    ObserversForbiddenForcedSourcePayloadSchema as never,
   );
-  return buildProductionObserversForbiddenArtifactV1({
+  return buildObserversForbiddenArtifact({
     headerHash: block.headerHash,
     detectionId: detection.detectionId,
     position: detection.position,
@@ -294,7 +294,7 @@ export const prepareProductionObserversForbiddenForcedArtifactV1 = async (
         tx_id: transaction.value.tx_id,
         source: transaction.value.source,
       } as never,
-      SDK.L2TransactionSourceV1 as never,
+      SDK.L2TransactionSource as never,
     ),
     transactionsPhasRoot: "00".repeat(32),
     transactionMembershipCbor: Data.to(

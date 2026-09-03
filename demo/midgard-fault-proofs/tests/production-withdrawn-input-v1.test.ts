@@ -3,40 +3,40 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "../src/evidence/canonical-block-evidence-v1.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence-v1.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
-  type CanonicalBlockClassificationV1,
-  classifyCanonicalBlockViolationsV1,
+  type CanonicalBlockClassification,
+  classifyCanonicalBlockViolations,
 } from "../src/workflow/classification-v1.js";
 import {
-  requireCompleteCanonicalReplayDecisionV1,
-  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  requireCompleteCanonicalReplayDecision,
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "../src/workflow/complete-replay-v1.js";
 import {
-  admitProductionWithdrawnInputArtifactV1,
-  prepareProductionWithdrawnInputArtifactV1,
+  admitWithdrawnInputArtifact,
+  prepareWithdrawnInputArtifact,
 } from "../src/workflow/production-withdrawn-input-v1.js";
 import {
-  admitProductionWithdrawnReferenceInputArtifactV1,
-  prepareProductionWithdrawnReferenceInputArtifactV1,
+  admitWithdrawnReferenceInputArtifact,
+  prepareWithdrawnReferenceInputArtifact,
 } from "../src/workflow/production-withdrawn-reference-input-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   h28,
   h32,
   outRefCbor,
-  reencodeFixturePayloadV1,
+  reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const fault = (
-  classification: CanonicalBlockClassificationV1,
+  classification: CanonicalBlockClassification,
 ): Extract<
-  CanonicalBlockClassificationV1,
+  CanonicalBlockClassification,
   { readonly decision: "fault_detected" }
 > => {
   if (classification.decision !== "fault_detected") {
@@ -49,13 +49,13 @@ const evidenceWithWithdrawnInput = async (
   field: "spend" | "reference" = "spend",
 ) => {
   const spent = { tx_id: h32(31), output_index: 3n };
-  const transaction = buildFixtureTransactionV1({
+  const transaction = buildFixtureTransaction({
     spendInputs:
       field === "spend" ? [outRefCbor(31, 3n)] : [outRefCbor(30, 0n)],
     referenceInputs: field === "reference" ? [outRefCbor(31, 3n)] : undefined,
     fee: 1n,
   });
-  const base = await buildCanonicalBlockFixtureV1({
+  const base = await buildCanonicalBlockFixture({
     transactions: [transaction],
   });
   const withdrawalId: SDK.OutputReference = {
@@ -80,8 +80,8 @@ const evidenceWithWithdrawnInput = async (
     validity: "WithdrawalIsValid",
   };
   const withdrawalEntry: SDK.DaPayloadEntry = [
-    SDK.committedWithdrawalKeyBytesV1(withdrawalId),
-    SDK.committedWithdrawalValueBytesV1(withdrawal),
+    SDK.committedWithdrawalKeyBytes(withdrawalId),
+    SDK.committedWithdrawalValueBytes(withdrawal),
   ];
   const withdrawalEvent: SDK.DaPayloadEntry = [
     encodeData(
@@ -115,15 +115,15 @@ const evidenceWithWithdrawnInput = async (
     withdrawalCount: 1n,
     totalEventCount: 2n,
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...base.header,
     withdrawalsRoot: withdrawalsRoot.root,
     eventToStepRoot: eventToStepRoot.root,
     withdrawalCount: 1n,
     totalEventCount: 2n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -134,9 +134,9 @@ const evidenceWithWithdrawnInput = async (
       counts,
     },
   };
-  const payloadEnvelopeCbor = await reencodeFixturePayloadV1(payload);
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1({
+  const payloadEnvelopeCbor = await reencodeFixturePayload(payload);
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation({
       ...base,
       payload,
       payloadEnvelopeCbor,
@@ -152,15 +152,15 @@ const evidenceWithWithdrawnInput = async (
   });
   const replayer =
     field === "spend"
-      ? WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY_V1
-      : WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1;
+      ? WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY
+      : WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY;
   const replay = await replayer.replay(evidence);
-  const detections = requireCompleteCanonicalReplayDecisionV1({
+  const detections = requireCompleteCanonicalReplayDecision({
     evidence,
     replayer,
     decision: replay,
   });
-  const classification = await classifyCanonicalBlockViolationsV1({
+  const classification = await classifyCanonicalBlockViolations({
     evidence,
     detections,
   });
@@ -172,14 +172,14 @@ describe("production withdrawn-input workflow V1", () => {
     const fixture = await evidenceWithWithdrawnInput();
     expect(fixture.replay.detections).toHaveLength(1);
     expect(fixture.replay.detections[0]).toMatchObject({
-      violationId: SDK.WITHDRAWN_INPUT_VIOLATION_ID_V1,
+      violationId: SDK.WITHDRAWN_INPUT_VIOLATION_ID,
       position: 0n,
     });
-    const artifact = await prepareProductionWithdrawnInputArtifactV1({
+    const artifact = await prepareWithdrawnInputArtifact({
       evidence: fixture.evidence,
       classification: fault(fixture.classification),
     });
-    const admitted = await admitProductionWithdrawnInputArtifactV1(artifact);
+    const admitted = await admitWithdrawnInputArtifact(artifact);
     expect(admitted.spendInputs[artifact.badInputIndex]).toEqual({
       tx_id: h32(31),
       output_index: 3n,
@@ -192,7 +192,7 @@ describe("production withdrawn-input workflow V1", () => {
   it("rejects a substituted membership root and an unsafe detection index", async () => {
     const fixture = await evidenceWithWithdrawnInput();
     const classification = fault(fixture.classification);
-    const artifact = await prepareProductionWithdrawnInputArtifactV1({
+    const artifact = await prepareWithdrawnInputArtifact({
       evidence: fixture.evidence,
       classification,
     });
@@ -201,7 +201,7 @@ describe("production withdrawn-input workflow V1", () => {
       SDK.WithdrawalSourceMembershipProof,
     );
     await expect(
-      admitProductionWithdrawnInputArtifactV1({
+      admitWithdrawnInputArtifact({
         ...artifact,
         withdrawalMembershipCbor: Data.to(
           { ...membership, root: h32(99) },
@@ -212,7 +212,7 @@ describe("production withdrawn-input workflow V1", () => {
 
     const huge = "9007199254740993";
     await expect(
-      prepareProductionWithdrawnInputArtifactV1({
+      prepareWithdrawnInputArtifact({
         evidence: fixture.evidence,
         classification: {
           ...classification,
@@ -235,15 +235,14 @@ describe("production withdrawn-reference-input workflow V1", () => {
     const fixture = await evidenceWithWithdrawnInput("reference");
     expect(fixture.replay.detections).toHaveLength(1);
     expect(fixture.replay.detections[0]).toMatchObject({
-      violationId: SDK.WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1,
+      violationId: SDK.WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
       position: 0n,
     });
-    const artifact = await prepareProductionWithdrawnReferenceInputArtifactV1({
+    const artifact = await prepareWithdrawnReferenceInputArtifact({
       evidence: fixture.evidence,
       classification: fault(fixture.classification),
     });
-    const admitted =
-      await admitProductionWithdrawnReferenceInputArtifactV1(artifact);
+    const admitted = await admitWithdrawnReferenceInputArtifact(artifact);
     expect(admitted.referenceInputs[artifact.badReferenceInputIndex]).toEqual({
       tx_id: h32(31),
       output_index: 3n,
@@ -255,12 +254,12 @@ describe("production withdrawn-reference-input workflow V1", () => {
 
   it("rejects a substituted reference-input preimage", async () => {
     const fixture = await evidenceWithWithdrawnInput("reference");
-    const artifact = await prepareProductionWithdrawnReferenceInputArtifactV1({
+    const artifact = await prepareWithdrawnReferenceInputArtifact({
       evidence: fixture.evidence,
       classification: fault(fixture.classification),
     });
     await expect(
-      admitProductionWithdrawnReferenceInputArtifactV1({
+      admitWithdrawnReferenceInputArtifact({
         ...artifact,
         referenceInputs: [{ tx_id: h32(98), output_index: "0" }],
       }),

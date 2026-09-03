@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedgerV1 } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
 
 const measurements = [
   [
@@ -481,7 +481,7 @@ const measurements = [
 
 describe("scriptIntegrityHashMissing signed Van Rossem fit ledger", () => {
   it("reproduces every maximum publication and lifecycle row", async () => {
-    const ledger = buildVanRossemFitLedgerV1({
+    const ledger = buildVanRossemFitLedger({
       category: "scriptIntegrityHashMissing",
       blueprintSha256:
         "99c8108c2fb404035c10aec076ab37493804b967fa347f6b31428c102feb5a7d",

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
-  type DeploymentManifestV1CardanoProtocolParameters,
-  type DeploymentManifestV1Economics,
-  type DeploymentManifestV1L1Finality,
-  parseDeploymentManifestV1Economics,
-  verifyFinalizedDeploymentManifestV1,
+  type DeploymentManifestCardanoProtocolParameters,
+  type DeploymentManifestEconomics,
+  type DeploymentManifestL1Finality,
+  parseDeploymentManifestEconomics,
+  verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
@@ -22,25 +22,25 @@ import {
   parseContractDeploymentInfo,
 } from "../inspect-contracts.js";
 import { resolveFaultProofDeploymentContracts } from "../runtime.js";
-import type { FraudProofRawL1FamilyDefinitionV1 } from "./raw-l1-family-derivation-v1.js";
+import type { FraudProofRawL1FamilyDefinition } from "./raw-l1-family-derivation-v1.js";
 import {
-  computeFraudProofReleaseEconomicsPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
-  type VerifiedFraudProofReleaseEconomicsPolicyV1,
+  computeFraudProofReleaseEconomicsPolicyDigest,
+  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  type VerifiedFraudProofReleaseEconomicsPolicy,
 } from "./release-economics-policy-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofReleaseFinalityAuthorityV1,
-  type ReleaseL1FinalityPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseFinalityAuthority,
+  type ReleaseL1FinalityPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy-v1.js";
 
-export const FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING_V1 =
+export const FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING =
   "midgard-fraud-proof-workflow-deployment-binding-v1" as const;
 
-type ManifestContractV1 = {
+type ManifestContract = {
   readonly scriptHash: string;
   readonly contract: {
     readonly type: Script["type"];
@@ -65,36 +65,36 @@ type ManifestContractV1 = {
   };
 };
 
-type FinalizedWorkflowManifestV1 = {
+type FinalizedWorkflowManifest = {
   readonly manifestId: string;
   readonly network: Network;
   readonly proofEvidence: {
     readonly digest: string;
     readonly blueprintHash: string;
   };
-  readonly l1Finality: DeploymentManifestV1L1Finality;
-  readonly economics: DeploymentManifestV1Economics;
+  readonly l1Finality: DeploymentManifestL1Finality;
+  readonly economics: DeploymentManifestEconomics;
   readonly cardanoProtocolParameters: {
-    readonly snapshot: DeploymentManifestV1CardanoProtocolParameters;
+    readonly snapshot: DeploymentManifestCardanoProtocolParameters;
   };
-  readonly contracts: Readonly<Record<string, ManifestContractV1>>;
+  readonly contracts: Readonly<Record<string, ManifestContract>>;
 };
 
 type LucidDataSchema =
-  FraudProofRawL1FamilyDefinitionV1["computationThread"]["steps"][number]["datumSchema"];
+  FraudProofRawL1FamilyDefinition["computationThread"]["steps"][number]["datumSchema"];
 
-export type FraudProofWorkflowDeploymentBindingV1<
+export type FraudProofWorkflowDeploymentBinding<
   Category extends FraudProofCatalogueCategoryName,
 > = {
-  readonly bindingVersion: typeof FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING_V1;
+  readonly bindingVersion: typeof FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING;
   readonly deploymentFingerprint: string;
   readonly releaseIdentityDigest: string;
   readonly network: Network;
   readonly blueprint: unknown;
   readonly deploymentInfo: ContractDeploymentInfo;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
-  readonly cardanoProtocolParameters: DeploymentManifestV1CardanoProtocolParameters;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly cardanoProtocolParameters: DeploymentManifestCardanoProtocolParameters;
   readonly catalogue: {
     readonly policyId: string;
     readonly spendingScriptAddress: string;
@@ -113,7 +113,7 @@ export type FraudProofWorkflowDeploymentBindingV1<
       }
     >
   >;
-  readonly definition: FraudProofRawL1FamilyDefinitionV1 & {
+  readonly definition: FraudProofRawL1FamilyDefinition & {
     readonly category: Category;
   };
   readonly resolvedContracts: Awaited<
@@ -122,10 +122,10 @@ export type FraudProofWorkflowDeploymentBindingV1<
 };
 
 /** Closed authority view over the already verified finalized manifest. */
-export const releaseFinalityAuthorityFromDeploymentBindingV1 = (
-  binding: FraudProofWorkflowDeploymentBindingV1<FraudProofCatalogueCategoryName>,
-): FraudProofReleaseFinalityAuthorityV1 => ({
-  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+export const releaseFinalityAuthorityFromDeploymentBinding = (
+  binding: FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
+): FraudProofReleaseFinalityAuthority => ({
+  authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   verifyForWorkflow: async ({ deploymentFingerprint }) => {
     if (deploymentFingerprint !== binding.deploymentFingerprint) {
       throw new Error(
@@ -139,7 +139,7 @@ export const releaseFinalityAuthorityFromDeploymentBindingV1 = (
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 
-export const assertManifestBoundWorkflowSignerV1 = ({
+export const assertManifestBoundWorkflowSigner = ({
   network,
   address,
   paymentKeyHash,
@@ -162,13 +162,13 @@ export const assertManifestBoundWorkflowSignerV1 = ({
   }
 };
 
-export const requireManifestBoundReferenceScriptUtxoV1 = ({
+export const requireManifestBoundReferenceScriptUtxo = ({
   binding,
   contractName,
   utxo,
 }: {
   readonly binding: Pick<
-    FraudProofWorkflowDeploymentBindingV1<FraudProofCatalogueCategoryName>,
+    FraudProofWorkflowDeploymentBinding<FraudProofCatalogueCategoryName>,
     "referenceScriptsByContract"
   >;
   readonly contractName: string;
@@ -222,9 +222,9 @@ const isFieldPreimageCertificateContract = (
 };
 
 const manifestContract = (
-  manifest: FinalizedWorkflowManifestV1,
+  manifest: FinalizedWorkflowManifest,
   name: string,
-): ManifestContractV1 => {
+): ManifestContract => {
   const entry = manifest.contracts[name];
   if (entry === undefined) {
     throw new Error(`deployment manifest omitted ${name}`);
@@ -232,14 +232,14 @@ const manifestContract = (
   return entry;
 };
 
-const scriptOf = (entry: ManifestContractV1): Script => ({
+const scriptOf = (entry: ManifestContract): Script => ({
   type: entry.contract.type,
   script: entry.contract.cborHex,
 });
 
 const sameOutRef = (
-  left: ManifestContractV1["refScriptUTxO"] | undefined,
-  right: ManifestContractV1["refScriptUTxO"] | undefined,
+  left: ManifestContract["refScriptUTxO"] | undefined,
+  right: ManifestContract["refScriptUTxO"] | undefined,
 ): boolean =>
   left === right ||
   (left !== null &&
@@ -253,7 +253,7 @@ const assertDeploymentInfoMatchesManifest = ({
   manifest,
   deploymentInfo,
 }: {
-  readonly manifest: FinalizedWorkflowManifestV1;
+  readonly manifest: FinalizedWorkflowManifest;
   readonly deploymentInfo: ContractDeploymentInfo;
 }): void => {
   const manifestNames = Object.keys(manifest.contracts).sort();
@@ -297,9 +297,9 @@ const assertDeploymentInfoMatchesManifest = ({
   }
 };
 
-const finalizedManifest = (value: unknown): FinalizedWorkflowManifestV1 => {
-  const verified = verifyFinalizedDeploymentManifestV1(value);
-  const manifest = verified as unknown as FinalizedWorkflowManifestV1;
+const finalizedManifest = (value: unknown): FinalizedWorkflowManifest => {
+  const verified = verifyFinalizedDeploymentManifest(value);
+  const manifest = verified as unknown as FinalizedWorkflowManifest;
   if (
     !HEX_32.test(manifest.manifestId) ||
     !HEX_32.test(manifest.proofEvidence.digest) ||
@@ -313,21 +313,20 @@ const finalizedManifest = (value: unknown): FinalizedWorkflowManifestV1 => {
 };
 
 const releasePolicies = (
-  manifest: FinalizedWorkflowManifestV1,
+  manifest: FinalizedWorkflowManifest,
 ): {
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
 } => {
-  const finalityPolicy = manifest.l1Finality as ReleaseL1FinalityPolicyV1;
-  const releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1 = {
-    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+  const finalityPolicy = manifest.l1Finality as ReleaseL1FinalityPolicy;
+  const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
+    schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
     releaseIdentityDigest: manifest.proofEvidence.digest,
-    policyDigest:
-      computeFraudProofReleaseFinalityPolicyDigestV1(finalityPolicy),
+    policyDigest: computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
     policy: finalityPolicy,
   };
-  const compiled = parseDeploymentManifestV1Economics(manifest.economics);
+  const compiled = parseDeploymentManifestEconomics(manifest.economics);
   const economicsPolicy = {
     profile: compiled.profile,
     requiredBondLovelace: compiled.requiredBondLovelace.toString(),
@@ -338,12 +337,12 @@ const releasePolicies = (
     proverCollateralFloorLovelace:
       compiled.proverCollateralFloorLovelace.toString(),
   };
-  const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicyV1 = {
-    schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+  const releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy = {
+    schemaVersion: FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
     deploymentIdentityDigest: manifest.manifestId,
     releaseIdentityDigest: manifest.proofEvidence.digest,
     policyDigest:
-      computeFraudProofReleaseEconomicsPolicyDigestV1(economicsPolicy),
+      computeFraudProofReleaseEconomicsPolicyDigest(economicsPolicy),
     policy: economicsPolicy,
   };
   return { releaseFinality, releaseEconomics };
@@ -355,7 +354,7 @@ const releasePolicies = (
  * parsed blueprint/deployment-info pair is returned for transaction builders,
  * preventing a caller-selected network or parallel contract identity.
  */
-export const bindFraudProofWorkflowDeploymentV1 = async <
+export const bindFraudProofWorkflowDeployment = async <
   Category extends FraudProofCatalogueCategoryName,
 >({
   manifest: manifestValue,
@@ -373,7 +372,7 @@ export const bindFraudProofWorkflowDeploymentV1 = async <
   readonly headerHash: string;
   readonly proverCredential: string;
   readonly stepDatumSchemas: readonly LucidDataSchema[];
-}): Promise<FraudProofWorkflowDeploymentBindingV1<Category>> => {
+}): Promise<FraudProofWorkflowDeploymentBinding<Category>> => {
   const manifest = finalizedManifest(manifestValue);
   const blueprintHash = createHash("sha256")
     .update(blueprintJson)
@@ -470,7 +469,7 @@ export const bindFraudProofWorkflowDeploymentV1 = async <
     }
   }
   return {
-    bindingVersion: FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING_V1,
+    bindingVersion: FRAUD_PROOF_WORKFLOW_DEPLOYMENT_BINDING,
     deploymentFingerprint: manifest.manifestId,
     releaseIdentityDigest: manifest.proofEvidence.digest,
     network: manifest.network,

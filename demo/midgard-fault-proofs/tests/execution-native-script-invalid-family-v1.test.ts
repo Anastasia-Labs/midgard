@@ -1,14 +1,14 @@
 import { computeHash32, encodeMidgardNativeScript } from "@al-ft/midgard-core";
 import {
-  forcedVerdictSubjectV1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  type RejectionReasonV1,
+  forcedVerdictSubject,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  type RejectionReason,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyExecutionNativeScriptInvalidFindingV1,
-  prepareExecutionNativeScriptInvalidEvidenceV1,
+  classifyExecutionNativeScriptInvalidFinding,
+  prepareExecutionNativeScriptInvalidEvidence,
 } from "../src/execution-native-script-invalid/family-v1.js";
 
 const txId = "11".repeat(32);
@@ -25,7 +25,7 @@ const script = (keyHash: number) =>
   });
 const input = (
   direction: bigint,
-  rejection_reason: RejectionReasonV1 | null,
+  rejection_reason: RejectionReason | null,
   bytes: Buffer,
 ) => ({
   finding: {
@@ -43,8 +43,8 @@ const input = (
 
 describe("executionNativeScriptInvalid authenticated family", () => {
   it("convicts accepted false and binds a deterministic terminal", () => {
-    const evidence = prepareExecutionNativeScriptInvalidEvidenceV1(
-      input(PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1, null, script(7)),
+    const evidence = prepareExecutionNativeScriptInvalidEvidence(
+      input(PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE, null, script(7)),
     );
     expect(evidence.terminal.satisfied).toBe(false);
     expect(evidence.bindingHash).toMatch(/^[0-9a-f]{64}$/u);
@@ -52,8 +52,8 @@ describe("executionNativeScriptInvalid authenticated family", () => {
 
   it("refuses another typed reason and a changed execution coordinate", () => {
     expect(() =>
-      classifyExecutionNativeScriptInvalidFindingV1({
-        subject: forcedVerdictSubjectV1({
+      classifyExecutionNativeScriptInvalidFinding({
+        subject: forcedVerdictSubject({
           transactionId: txId,
           sourceKey: { transactionId: "33".repeat(32), outputIndex: 0n },
           rejectionReason: {
@@ -68,19 +68,19 @@ describe("executionNativeScriptInvalid authenticated family", () => {
   it("refuses substituted transaction, source item, and malformed interval", () => {
     const bytes = script(7);
     expect(() =>
-      prepareExecutionNativeScriptInvalidEvidenceV1({
+      prepareExecutionNativeScriptInvalidEvidence({
         ...input(0n, null, bytes),
         transactionIdHex: "33".repeat(32),
       }),
     ).toThrow(/transaction identity/u);
     expect(() =>
-      prepareExecutionNativeScriptInvalidEvidenceV1({
+      prepareExecutionNativeScriptInvalidEvidence({
         ...input(0n, null, bytes),
         scriptItemHashHex: "44".repeat(32),
       }),
     ).toThrow(/script bytes/u);
     expect(() =>
-      prepareExecutionNativeScriptInvalidEvidenceV1({
+      prepareExecutionNativeScriptInvalidEvidence({
         ...input(0n, null, bytes),
         validityIntervalStart: 10n,
       }),

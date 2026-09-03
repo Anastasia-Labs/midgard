@@ -1,20 +1,20 @@
 import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_CONSENSUS_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
-  DA_TRANSPORT_LIMITS_V1,
-  DA_TRANSPORT_V1_PROTOCOL_VERSION,
+  DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
+  DA_TRANSPORT_LIMITS,
+  DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
-  computeDeploymentManifestV1JsonDigest as computeSharedDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS as SHARED_DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
+  computeDeploymentManifestJsonDigest as computeSharedDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS as SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  DEPLOYMENT_MANIFEST_L1_FINALITY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  normalizeDeploymentManifestJsonValue as normalizeSharedDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -28,20 +28,20 @@ import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
-  computeDeploymentManifestV1DaCommitteeSignersHash,
-  computeDeploymentManifestV1JsonDigest,
-  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-  DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES,
-  DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
-  type DeploymentManifestV1Value,
-  normalizeDeploymentManifestV1JsonValue,
-  parseDeploymentManifestV1Value,
+  computeDeploymentManifestJsonDigest,
+  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES,
+  DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  DEPLOYMENT_MANIFEST_STEP_NAMES,
+  type DeploymentManifestValue,
+  normalizeDeploymentManifestJsonValue,
+  parseDeploymentManifestValue,
 } from "../src/deployment-manifest-v1.js";
 import { buildFraudProofCatalogueDeploymentInfo } from "../src/transactions/initialization.js";
-import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
+import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge-v1.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH = validatorToScriptHash({
@@ -91,12 +91,12 @@ const CARDANO_PARAMETERS = {
   },
 } as const;
 
-const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
+const canonicalIdentity = (): Omit<DeploymentManifestValue, "manifestId"> => {
   const referenceOutRefByContract = new Map<
     string,
     { readonly txHash: string; readonly outputIndex: number }
   >(
-    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+    Object.values(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
       (contractName, outputIndex) => [
         contractName,
         { txHash: "22".repeat(32), outputIndex },
@@ -105,9 +105,9 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
   );
   const contracts: Record<
     string,
-    DeploymentManifestV1Value["contracts"][string]
+    DeploymentManifestValue["contracts"][string]
   > = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => [
+    DEPLOYMENT_MANIFEST_CONTRACT_NAMES.map((contractName) => [
       contractName,
       {
         refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
@@ -133,10 +133,10 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
     fraudProofCatalogue: CANONICAL_FRAUD_PROOF_CATALOGUE,
   };
   const referenceScripts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES.map((role) => {
+    DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES.map((role) => {
       const contractName =
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
+        DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+          role as keyof typeof DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE
         ];
       return [
         role,
@@ -153,7 +153,7 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
     }),
   );
   const steps = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_STEP_NAMES.map((stepName) => [
+    DEPLOYMENT_MANIFEST_STEP_NAMES.map((stepName) => [
       stepName,
       {
         status:
@@ -166,18 +166,18 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
     ]),
   );
   return {
-    schemaVersion: DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+    schemaVersion: DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_DIGEST,
     network: "Preview",
     cardanoProtocolParameters: {
       snapshot: CARDANO_PARAMETERS,
-      digest: computeDeploymentManifestV1JsonDigest(CARDANO_PARAMETERS),
+      digest: computeDeploymentManifestJsonDigest(CARDANO_PARAMETERS),
     },
     genesis: {
       headerHash: "00".repeat(28),
-      utxoSetDigest: computeDeploymentManifestV1JsonDigest(
-        normalizeDeploymentManifestV1JsonValue([]),
+      utxoSetDigest: computeDeploymentManifestJsonDigest(
+        normalizeDeploymentManifestJsonValue([]),
       ),
     },
     createdAt: "2026-07-24T00:00:00.000Z",
@@ -208,17 +208,17 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
     referenceScripts,
     da: {
       committeeVkeys: [DA_VKEY],
-      committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+      committeeSignersHash: computeDeploymentManifestDaCommitteeSignersHash([
         DA_VKEY,
       ]),
       threshold: 1,
       transportProfile: {
-        protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
-        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+        protocolVersion: DA_TRANSPORT_PROTOCOL_VERSION,
+        runtimeManifestSchemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
         envelopeEncoding: "identity",
         zstdLevel: 3,
-        limits: DA_TRANSPORT_LIMITS_V1,
-        retentionDays: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+        limits: DA_TRANSPORT_LIMITS,
+        retentionDays: DA_TRANSPORT_LIMITS.minimumRetentionDays,
       },
     },
     proofEvidence: {
@@ -226,59 +226,59 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
       blueprintHash: "55".repeat(32),
     },
     validationDispute: {
-      version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
+      version: MIDGARD_CONSENSUS_PROFILE.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
-      maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+        MIDGARD_CONSENSUS_PROFILE.limits.maxValidationBisectionRounds,
+      maturityMs: MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs,
     },
-    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    l1Finality: DEPLOYMENT_MANIFEST_L1_FINALITY,
     economics:
-      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
-    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
+      DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
     steps,
   };
 };
 
 const withId = (
-  identity: Omit<DeploymentManifestV1Value, "manifestId">,
-): DeploymentManifestV1Value => ({
+  identity: Omit<DeploymentManifestValue, "manifestId">,
+): DeploymentManifestValue => ({
   ...identity,
   manifestId: computeDeploymentManifestId(identity),
 });
 
-const canonicalManifest = (): DeploymentManifestV1Value =>
+const canonicalManifest = (): DeploymentManifestValue =>
   withId(canonicalIdentity());
 
 describe("V1 deployment manifest", () => {
   it("delegates canonical JSON normalization and digesting to core", () => {
-    expect(normalizeDeploymentManifestV1JsonValue).toBe(
-      normalizeSharedDeploymentManifestV1JsonValue,
+    expect(normalizeDeploymentManifestJsonValue).toBe(
+      normalizeSharedDeploymentManifestJsonValue,
     );
-    expect(computeDeploymentManifestV1JsonDigest).toBe(
-      computeSharedDeploymentManifestV1JsonDigest,
+    expect(computeDeploymentManifestJsonDigest).toBe(
+      computeSharedDeploymentManifestJsonDigest,
     );
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toEqual(
-      SHARED_DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toEqual(
+      SHARED_DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
     );
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
-      SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
+      SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     );
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS).toEqual(
-      SHARED_DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+      SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
     );
     // Re-derived from the wave-current `midgard-core` roster. The shared test
     // pins the same three numbers and this package fails closed against the
     // complete ordered copies above.
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(287);
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(280);
+    expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toHaveLength(287);
+    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_ROLES).toHaveLength(280);
     expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(281);
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(54);
   });
 
   it("accepts a canonical authenticated V1 manifest", () => {
-    expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
+    expect(parseDeploymentManifestValue(canonicalManifest())).toEqual(
       canonicalManifest(),
     );
   });
@@ -289,7 +289,7 @@ describe("V1 deployment manifest", () => {
       identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
     const withCatalogue = (
       fraudProofCatalogue: typeof catalogue,
-    ): Omit<DeploymentManifestV1Value, "manifestId"> => ({
+    ): Omit<DeploymentManifestValue, "manifestId"> => ({
       ...identity,
       contracts: {
         ...identity.contracts,
@@ -301,7 +301,7 @@ describe("V1 deployment manifest", () => {
     });
 
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId(
           withCatalogue({
             ...catalogue,
@@ -312,7 +312,7 @@ describe("V1 deployment manifest", () => {
     ).toThrow(/catalogue root mismatch/u);
 
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId(
           withCatalogue({
             ...catalogue,
@@ -329,7 +329,7 @@ describe("V1 deployment manifest", () => {
     ).toThrow(/nonExistentInputNoIndex\.categoryId must be 00000002/u);
 
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId(
           withCatalogue({
             ...catalogue,
@@ -353,16 +353,16 @@ describe("V1 deployment manifest", () => {
       ...missingDa
     } = canonicalManifest();
     expect(() =>
-      parseDeploymentManifestV1Value({
+      parseDeploymentManifestValue({
         ...missingDa,
         manifestId: computeDeploymentManifestId(
-          missingDa as Omit<DeploymentManifestV1Value, "manifestId">,
+          missingDa as Omit<DeploymentManifestValue, "manifestId">,
         ),
       }),
     ).toThrow(/value\.da is required/u);
 
     expect(() =>
-      parseDeploymentManifestV1Value({
+      parseDeploymentManifestValue({
         ...canonicalManifest(),
         historicalSchemaVersion: 9,
       }),
@@ -376,10 +376,10 @@ describe("V1 deployment manifest", () => {
     const missingContract = {
       ...identity,
       contracts: withoutZeroInput,
-    } as Omit<DeploymentManifestV1Value, "manifestId">;
-    expect(() =>
-      parseDeploymentManifestV1Value(withId(missingContract)),
-    ).toThrow(/contracts\.fraudProofZeroInput is required/u);
+    } as Omit<DeploymentManifestValue, "manifestId">;
+    expect(() => parseDeploymentManifestValue(withId(missingContract))).toThrow(
+      /contracts\.fraudProofZeroInput is required/u,
+    );
   });
 
   it("rejects a manifest missing a validation-dispute control contract", () => {
@@ -391,10 +391,10 @@ describe("V1 deployment manifest", () => {
     const missingContract = {
       ...identity,
       contracts: withoutSource,
-    } as Omit<DeploymentManifestV1Value, "manifestId">;
-    expect(() =>
-      parseDeploymentManifestV1Value(withId(missingContract)),
-    ).toThrow(/contracts\.validationTraceDisputeSource is required/u);
+    } as Omit<DeploymentManifestValue, "manifestId">;
+    expect(() => parseDeploymentManifestValue(withId(missingContract))).toThrow(
+      /contracts\.validationTraceDisputeSource is required/u,
+    );
   });
 
   it("rejects tampered script bytes even with a recomputed manifest ID", () => {
@@ -413,8 +413,8 @@ describe("V1 deployment manifest", () => {
       },
     };
     expect(() =>
-      parseDeploymentManifestV1Value(
-        withId(tampered as Omit<DeploymentManifestV1Value, "manifestId">),
+      parseDeploymentManifestValue(
+        withId(tampered as Omit<DeploymentManifestValue, "manifestId">),
       ),
     ).toThrow(/contracts\.txOrderSpend\.scriptHash mismatch/u);
   });
@@ -422,7 +422,7 @@ describe("V1 deployment manifest", () => {
   it("rejects tampered Cardano and DA identity fields", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId({
           ...identity,
           cardanoProtocolParameters: {
@@ -434,7 +434,7 @@ describe("V1 deployment manifest", () => {
     ).toThrow(/cardanoProtocolParameters\.digest mismatch/u);
 
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId({
           ...identity,
           da: {
@@ -449,7 +449,7 @@ describe("V1 deployment manifest", () => {
   it("rejects a noncanonical dispute schedule", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId({
           ...identity,
           validationDispute: {
@@ -470,10 +470,10 @@ describe("V1 deployment manifest", () => {
     ]) {
       const tampered = { ...identity, l1Finality };
       expect(() =>
-        parseDeploymentManifestV1Value({
+        parseDeploymentManifestValue({
           ...tampered,
           manifestId: computeDeploymentManifestId(
-            tampered as Omit<DeploymentManifestV1Value, "manifestId">,
+            tampered as Omit<DeploymentManifestValue, "manifestId">,
           ),
         }),
       ).toThrow(/l1Finality/u);
@@ -495,10 +495,10 @@ describe("V1 deployment manifest", () => {
     ]) {
       const tampered = { ...identity, economics };
       expect(() =>
-        parseDeploymentManifestV1Value({
+        parseDeploymentManifestValue({
           ...tampered,
           manifestId: computeDeploymentManifestId(
-            tampered as Omit<DeploymentManifestV1Value, "manifestId">,
+            tampered as Omit<DeploymentManifestValue, "manifestId">,
           ),
         }),
       ).toThrow(/economics/u);
@@ -508,11 +508,11 @@ describe("V1 deployment manifest", () => {
   it("rejects an unsupported profile and tuple digest", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     expect(() =>
-      parseDeploymentManifestV1Value({
+      parseDeploymentManifestValue({
         ...withId({
           ...identity,
           consensusProfile: {
-            ...MIDGARD_CONSENSUS_PROFILE_V1,
+            ...MIDGARD_CONSENSUS_PROFILE,
             profileId: "unsupported-profile-99",
           } as never,
         }),
@@ -520,7 +520,7 @@ describe("V1 deployment manifest", () => {
     ).toThrow(/consensusProfile must exactly match canonical V1/u);
 
     expect(() =>
-      parseDeploymentManifestV1Value(
+      parseDeploymentManifestValue(
         withId({
           ...identity,
           consensusProfileDigest: "77".repeat(32),

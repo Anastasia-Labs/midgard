@@ -3,24 +3,24 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
-import type { FraudProofWorkflowIdentityV1 } from "../src/workflow/journal-v1.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/journal-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator-v1.js";
 import {
-  PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1,
-  type ProductionProofChunkPrerequisitePortV1,
-  resolveDirectFirstProofChunksV1,
-  withProductionProofChunkPrerequisiteV1,
+  PROOF_CHUNK_PREREQUISITE,
+  type ProofChunkPrerequisitePort,
+  resolveDirectFirstProofChunks,
+  withProofChunkPrerequisite,
 } from "../src/workflow/production-proof-chunk-prerequisite-v1.js";
-import type { LocallyEvaluatedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 
 const txHash = "11".repeat(32);
 const headerHash = "22".repeat(28);
-const baseAction: FraudProofWorkflowActionV1 = Object.freeze({
+const baseAction: FraudProofWorkflowAction = Object.freeze({
   actionId: `step_01:${"33".repeat(32)}#0:${"44".repeat(32)}#0`,
   input: Object.freeze({
     schemaVersion: "midgard-production-linear-family-action-v1",
@@ -31,10 +31,10 @@ const baseAction: FraudProofWorkflowActionV1 = Object.freeze({
     stateQueueBlockOutRef: `${"44".repeat(32)}#0`,
   }),
 });
-const publicationAction: FraudProofWorkflowActionV1 = Object.freeze({
+const publicationAction: FraudProofWorkflowAction = Object.freeze({
   actionId: `publish-proof-chunks:${baseAction.actionId}:${"55".repeat(32)}`,
   input: Object.freeze({
-    schemaVersion: PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1,
+    schemaVersion: PROOF_CHUNK_PREREQUISITE,
     category: "invalidRange",
     stage: "direct_or_publish_proof",
     forAction: baseAction,
@@ -43,7 +43,7 @@ const publicationAction: FraudProofWorkflowActionV1 = Object.freeze({
   }),
 });
 
-const identity: FraudProofWorkflowIdentityV1 = {
+const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: "77".repeat(32),
   category: "invalidRange",
@@ -56,7 +56,7 @@ const context = {
   entries: [],
 } as const;
 
-const signed = (): LocallyEvaluatedTransactionV1["signed"] =>
+const signed = (): LocallyEvaluatedTransaction["signed"] =>
   ({
     toHash: () => txHash,
     submit: async () => txHash,
@@ -68,9 +68,9 @@ const signed = (): LocallyEvaluatedTransactionV1["signed"] =>
         plutus_v3_scripts: () => undefined,
       }),
     }),
-  }) as unknown as LocallyEvaluatedTransactionV1["signed"];
+  }) as unknown as LocallyEvaluatedTransaction["signed"];
 
-const transaction = (): LocallyEvaluatedTransactionV1 => ({
+const transaction = (): LocallyEvaluatedTransaction => ({
   txHash,
   signed: signed(),
   referenceScripts: [],
@@ -80,10 +80,10 @@ const base = ({
   preflightFailure,
 }: {
   readonly preflightFailure?: Error;
-} = {}): FraudProofFamilyWorkflowAdapterV1 => ({
-  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+} = {}): FraudProofFamilyWorkflowAdapter => ({
+  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
   category: "invalidRange",
-  safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+  safety: FRAUD_PROOF_WORKFLOW_SAFETY,
   prepare: vi.fn(async () => ({ proofCbor: "proof-from-public-da" })),
   observe: vi.fn(async () => ({
     kind: "action_required" as const,
@@ -123,9 +123,9 @@ const prerequisite = ({
   reconcile = async () => ({ kind: "confirmed" as const, txHash }),
 }: {
   readonly satisfied?: boolean;
-  readonly reconcile?: ProductionProofChunkPrerequisitePortV1<"invalidRange">["reconcile"];
-} = {}): ProductionProofChunkPrerequisitePortV1<"invalidRange"> => ({
-  portVersion: PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1,
+  readonly reconcile?: ProofChunkPrerequisitePort<"invalidRange">["reconcile"];
+} = {}): ProofChunkPrerequisitePort<"invalidRange"> => ({
+  portVersion: PROOF_CHUNK_PREREQUISITE,
   category: "invalidRange",
   classifyDirectCapacityFailure: vi.fn((cause: unknown) => {
     if (
@@ -172,7 +172,7 @@ describe("production proof-chunk prerequisite V1", () => {
       ),
     });
     const publication = prerequisite();
-    const adapter = withProductionProofChunkPrerequisiteV1({
+    const adapter = withProofChunkPrerequisite({
       category: "invalidRange",
       base: underlying,
       prerequisite: publication,
@@ -214,7 +214,7 @@ describe("production proof-chunk prerequisite V1", () => {
   it("keeps a fitting proof on the exact direct transaction without publishing", async () => {
     const underlying = base();
     const publication = prerequisite();
-    const adapter = withProductionProofChunkPrerequisiteV1({
+    const adapter = withProofChunkPrerequisite({
       category: "invalidRange",
       base: underlying,
       prerequisite: publication,
@@ -247,7 +247,7 @@ describe("production proof-chunk prerequisite V1", () => {
       preflightFailure: new Error("validator identity changed"),
     });
     const publication = prerequisite();
-    const adapter = withProductionProofChunkPrerequisiteV1({
+    const adapter = withProofChunkPrerequisite({
       category: "invalidRange",
       base: underlying,
       prerequisite: publication,
@@ -260,7 +260,7 @@ describe("production proof-chunk prerequisite V1", () => {
 
   it("allows the exact base step only after authenticated publication", async () => {
     const underlying = base();
-    const adapter = withProductionProofChunkPrerequisiteV1({
+    const adapter = withProofChunkPrerequisite({
       category: "invalidRange",
       base: underlying,
       prerequisite: prerequisite({ satisfied: true }),
@@ -279,7 +279,7 @@ describe("production proof-chunk prerequisite V1", () => {
       txHash,
     }));
     const publication = prerequisite({ reconcile });
-    const original = withProductionProofChunkPrerequisiteV1({
+    const original = withProofChunkPrerequisite({
       category: "invalidRange",
       base: base({
         preflightFailure: new Error(
@@ -292,7 +292,7 @@ describe("production proof-chunk prerequisite V1", () => {
       ...context,
       action: publicationAction,
     });
-    const fresh = withProductionProofChunkPrerequisiteV1({
+    const fresh = withProofChunkPrerequisite({
       category: "invalidRange",
       base: base(),
       prerequisite: publication,
@@ -318,7 +318,7 @@ describe("production proof-chunk prerequisite V1", () => {
 
   it("rejects duplicate or substituted publication captures", async () => {
     const publication = prerequisite();
-    const adapter = withProductionProofChunkPrerequisiteV1({
+    const adapter = withProofChunkPrerequisite({
       category: "invalidRange",
       base: base({
         preflightFailure: new Error(
@@ -360,7 +360,7 @@ describe("production proof-chunk prerequisite V1", () => {
     const lucid = {
       utxosAt: vi.fn(async () => [preexistingChunk]),
     } as unknown as LucidEvolution;
-    const directAction: FraudProofWorkflowActionV1 = Object.freeze({
+    const directAction: FraudProofWorkflowAction = Object.freeze({
       actionId: `step_03:${"ab".repeat(32)}#0`,
       input: Object.freeze({
         schemaVersion: "midgard-production-linear-family-action-v1",
@@ -370,10 +370,10 @@ describe("production proof-chunk prerequisite V1", () => {
         threadOutRef: `${"ab".repeat(32)}#0`,
       }),
     });
-    const routeAction: FraudProofWorkflowActionV1 = Object.freeze({
+    const routeAction: FraudProofWorkflowAction = Object.freeze({
       actionId: `publish-proof-chunks:${directAction.actionId}:${"55".repeat(32)}`,
       input: Object.freeze({
-        schemaVersion: PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1,
+        schemaVersion: PROOF_CHUNK_PREREQUISITE,
         category: "noReferenceInput",
         stage: "direct_or_publish_proof",
         forAction: directAction,
@@ -389,7 +389,7 @@ describe("production proof-chunk prerequisite V1", () => {
       },
     };
     const observedChunkCounts: number[] = [];
-    const makeBase = (failure?: Error): FraudProofFamilyWorkflowAdapterV1 => ({
+    const makeBase = (failure?: Error): FraudProofFamilyWorkflowAdapter => ({
       ...base(),
       category: "noReferenceInput",
       observe: vi.fn(async () => ({
@@ -397,7 +397,7 @@ describe("production proof-chunk prerequisite V1", () => {
         action: directAction,
       })),
       preflight: vi.fn(async ({ action }) => {
-        const chunks = await resolveDirectFirstProofChunksV1({
+        const chunks = await resolveDirectFirstProofChunks({
           action,
           lucid,
           address: preexistingChunk.address,
@@ -419,7 +419,7 @@ describe("production proof-chunk prerequisite V1", () => {
     });
     const makePrerequisite = (
       satisfied = false,
-    ): ProductionProofChunkPrerequisitePortV1<"noReferenceInput"> => ({
+    ): ProofChunkPrerequisitePort<"noReferenceInput"> => ({
       ...prerequisite(),
       category: "noReferenceInput",
       inspect: vi.fn(async () =>
@@ -430,7 +430,7 @@ describe("production proof-chunk prerequisite V1", () => {
     });
 
     const fittingPort = makePrerequisite();
-    const fitting = withProductionProofChunkPrerequisiteV1({
+    const fitting = withProofChunkPrerequisite({
       category: "noReferenceInput",
       base: makeBase(),
       prerequisite: fittingPort,
@@ -448,7 +448,7 @@ describe("production proof-chunk prerequisite V1", () => {
     expect(observedChunkCounts).toEqual([0]);
 
     const maximumPort = makePrerequisite();
-    const maximum = withProductionProofChunkPrerequisiteV1({
+    const maximum = withProofChunkPrerequisite({
       category: "noReferenceInput",
       base: makeBase(
         new Error("Max transaction size of 16384 exceeded. Found: 16385"),
@@ -475,7 +475,7 @@ describe("production proof-chunk prerequisite V1", () => {
     expect(maximumPort.capture).toHaveBeenCalledOnce();
     expect(observedChunkCounts).toEqual([0, 0]);
 
-    const published = withProductionProofChunkPrerequisiteV1({
+    const published = withProofChunkPrerequisite({
       category: "noReferenceInput",
       base: makeBase(),
       prerequisite: makePrerequisite(true),

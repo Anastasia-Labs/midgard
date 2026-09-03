@@ -40,7 +40,7 @@ export const listen = async (
     }
   });
 
-export type WatcherTlsTransportFixtureV1 = Readonly<{
+export type WatcherTlsTransportFixture = Readonly<{
   certificate: string;
   identitySha256: string;
   port: number;
@@ -53,11 +53,11 @@ export type WatcherTlsTransportFixtureV1 = Readonly<{
  * The started server is pushed onto `servers` so the caller's `afterAll` can
  * close it.
  */
-export const makeWatcherTlsTransportFixtureV1 = async (
+export const makeWatcherTlsTransportFixture = async (
   directory: string,
   servers: Server[],
   name: string,
-): Promise<WatcherTlsTransportFixtureV1> => {
+): Promise<WatcherTlsTransportFixture> => {
   const keyPath = join(directory, `${name}.key`);
   const certificatePath = join(directory, `${name}.crt`);
   await execFileAsync("openssl", [

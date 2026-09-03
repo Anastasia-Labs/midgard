@@ -22,9 +22,9 @@ import type { LoadedWatcherConfig } from "../config.js";
 import type {
   ChainPoint,
   ObservedStateQueueNode,
-  ObservedStateQueueSnapshotV1,
+  ObservedStateQueueSnapshot,
 } from "../domain.js";
-import { createLocalKupmiosStateQueueReplayProviderV1 } from "./state-queue-replay-provider-v1.js";
+import { createLocalKupmiosStateQueueReplayProvider } from "./state-queue-replay-provider-v1.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
@@ -678,12 +678,12 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     return (await this.fetchStateQueueSnapshot()).nodes;
   }
 
-  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshotV1> {
+  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshot> {
     const stateQueueUtxos = await SDK.fetchSortedStateQueueUTxOs(this.lucid, {
       stateQueueAddress: this.stateQueueAddress,
       stateQueuePolicyId: this.stateQueuePolicyId,
     });
-    return stateQueueUtxosToObservedSnapshotV1(
+    return stateQueueUtxosToObservedSnapshot(
       stateQueueUtxos,
       this.providerSource,
       this.chainPointResolver,
@@ -695,9 +695,9 @@ export class LucidStateQueueProvider implements StateQueueProvider {
   }
 
   async fetchStateQueueReplayCheckpoints(
-    anchor: readonly SDK.StateQueueTransitionNodeV1[],
-    current: readonly SDK.StateQueueTransitionNodeV1[],
-  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]> {
+    anchor: readonly SDK.StateQueueTransitionNode[],
+    current: readonly SDK.StateQueueTransitionNode[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]> {
     if (this.replayCheckpoints === undefined) {
       throw new Error(
         "state-queue provider has no authenticated ordered history source",
@@ -819,7 +819,7 @@ export class MultiStateQueueProvider implements StateQueueProvider {
     return mergeAgreedObservedNodes(sortedResults, this.mergedIdentities);
   }
 
-  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshotV1> {
+  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshot> {
     const snapshots = await Promise.all(
       this.providers.map(async (provider, index) => {
         if (provider.fetchStateQueueSnapshot === undefined) {
@@ -905,9 +905,9 @@ export class MultiStateQueueProvider implements StateQueueProvider {
   }
 
   async fetchStateQueueReplayCheckpoints(
-    anchor: readonly SDK.StateQueueTransitionNodeV1[],
-    current: readonly SDK.StateQueueTransitionNodeV1[],
-  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]> {
+    anchor: readonly SDK.StateQueueTransitionNode[],
+    current: readonly SDK.StateQueueTransitionNode[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]> {
     const histories = await Promise.all(
       this.providers.map(async (provider, index) => {
         if (provider.fetchStateQueueReplayCheckpoints === undefined) {
@@ -958,7 +958,7 @@ export class LocalNodeStateQueueProvider
     return (await this.fetchStateQueueSnapshot()).nodes;
   }
 
-  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshotV1> {
+  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshot> {
     const canonicalBefore = await this.authority.synchronizeToTip();
     const results = await Promise.all(
       this.queryProviders.map(async (provider, index) => {
@@ -1066,9 +1066,9 @@ export class LocalNodeStateQueueProvider
   }
 
   async fetchStateQueueReplayCheckpoints(
-    anchor: readonly SDK.StateQueueTransitionNodeV1[],
-    current: readonly SDK.StateQueueTransitionNodeV1[],
-  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]> {
+    anchor: readonly SDK.StateQueueTransitionNode[],
+    current: readonly SDK.StateQueueTransitionNode[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpoint[]> {
     const histories = await Promise.all(
       this.queryProviders.map(async (provider, index) => {
         if (provider.fetchStateQueueReplayCheckpoints === undefined) {
@@ -1116,7 +1116,7 @@ export const stateQueueUtxosToObservedNodes = async (
       continue;
     }
     const stateQueueNode = await Effect.runPromise(
-      SDK.getStateQueueNodeV1FromStateQueueDatum(stateQueueUtxo.datum),
+      SDK.getStateQueueNodeFromStateQueueDatum(stateQueueUtxo.datum),
     );
     const chainPoint = {
       providerSource,
@@ -1138,11 +1138,11 @@ export const stateQueueUtxosToObservedNodes = async (
   return observed;
 };
 
-export const stateQueueUtxosToObservedSnapshotV1 = async (
+export const stateQueueUtxosToObservedSnapshot = async (
   stateQueueUtxos: readonly SDK.StateQueueUTxO[],
   providerSource: string,
   chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>,
-): Promise<ObservedStateQueueSnapshotV1> => {
+): Promise<ObservedStateQueueSnapshot> => {
   const confirmed = stateQueueUtxos[0];
   if (confirmed === undefined || confirmed.datum.key !== "Empty") {
     throw new Error("state queue snapshot has no confirmed root node");
@@ -1447,7 +1447,7 @@ export const providerFromUrl = async (
         kupoUrl,
         ogmiosUrl,
       ),
-      replayCheckpoints: createLocalKupmiosStateQueueReplayProviderV1({
+      replayCheckpoints: createLocalKupmiosStateQueueReplayProvider({
         deploymentIdentityDigest: config.deploymentFingerprint,
         stateQueuePolicyId: config.stateQueuePolicyId,
         stateQueueAddress: config.stateQueueAddress,

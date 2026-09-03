@@ -1,34 +1,34 @@
 import {
-  deriveMidgardNativeTxWitnessSetCompactV1,
-  encodeMidgardNativeTxWitnessSetCompactV1,
-  midgardFieldCommitmentV1,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import type { FieldItemWidthIllegalContractsV1 } from "../src/field-item-width-illegal/contracts-v1.js";
+import type { FieldItemWidthIllegalContracts } from "../src/field-item-width-illegal/contracts-v1.js";
 import {
-  prepareFieldItemWidthEvidenceV1,
-  submitFieldItemWidthIllegalCancelV1,
-  submitFieldItemWidthIllegalStep01AcceptedV1,
-  submitFieldItemWidthIllegalStep01ForcedV1,
-  submitFieldItemWidthIllegalStep02V1,
-  submitFieldItemWidthIllegalStep03V1,
+  prepareFieldItemWidthEvidence,
+  submitFieldItemWidthIllegalCancel,
+  submitFieldItemWidthIllegalStep01Accepted,
+  submitFieldItemWidthIllegalStep01Forced,
+  submitFieldItemWidthIllegalStep02,
+  submitFieldItemWidthIllegalStep03,
 } from "../src/field-item-width-illegal/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
-  type CommittedFieldShapeEmulatorHarnessV1,
-  setupCommittedFieldShapeScenarioV1,
+  type CommittedFieldShapeEmulatorHarness,
+  setupCommittedFieldShapeScenario,
 } from "./support/committed-field-shape-emulator-v1.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -38,7 +38,7 @@ import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-s
 
 describe("field-item-width-illegal accepted lifecycle", () => {
   it("runs real Init through proof mint for a maximum-width output", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realFieldItemWidthIllegal: true,
         alwaysFraudProofCatalogue: true,
@@ -47,7 +47,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
     const chain = harness.contracts.fraudProofContracts.fieldItemWidthIllegal;
     const category = harness.catalogue.categories.fieldItemWidthIllegal;
     if (category === undefined) throw new Error("width category absent");
-    const contracts: FieldItemWidthIllegalContractsV1 = {
+    const contracts: FieldItemWidthIllegalContracts = {
       steps: chain.steps as never,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -58,8 +58,8 @@ describe("field-item-width-illegal accepted lifecycle", () => {
       fieldPreimageCertificateMintingScript:
         harness.contracts.fieldPreimageCertificate.mintingScript,
     };
-    const scenario = await setupCommittedFieldShapeScenarioV1({
-      harness: harness as unknown as CommittedFieldShapeEmulatorHarnessV1,
+    const scenario = await setupCommittedFieldShapeScenario({
+      harness: harness as unknown as CommittedFieldShapeEmulatorHarness,
       kind: "field-item-width-illegal",
     });
     const references: UTxO[] = [];
@@ -80,14 +80,14 @@ describe("field-item-width-illegal accepted lifecycle", () => {
         label: "width-certificate",
       })
     ).utxo;
-    const evidence = prepareFieldItemWidthEvidenceV1({
+    const evidence = prepareFieldItemWidthEvidence({
       finding: {
-        subject: acceptedVerdictSubjectV1(scenario.nativeTxId),
+        subject: acceptedVerdictSubject(scenario.nativeTxId),
         fieldIndex: 2,
         itemIndex: 0,
       },
       fieldPreimage: scenario.committedPreimage,
-      committedFieldHashHex: midgardFieldCommitmentV1(
+      committedFieldHashHex: midgardFieldCommitment(
         scenario.committedPreimage,
       ).toString("hex"),
     });
@@ -117,7 +117,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep01AcceptedV1({
+      submitFieldItemWidthIllegalStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -136,7 +136,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
       }),
     );
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep02V1({
+      submitFieldItemWidthIllegalStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -144,15 +144,15 @@ describe("field-item-width-illegal accepted lifecycle", () => {
         threadOutRef: step01.result.nextThreadOutRef,
         evidence,
         nativeTxCompactCbor: scenario.compactCbor,
-        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-          deriveMidgardNativeTxWitnessSetCompactV1(scenario.fullTx!.witnessSet),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+          deriveMidgardNativeTxWitnessSetCompact(scenario.fullTx!.witnessSet),
         ).toString("hex"),
         referenceScriptUtxo: references[1]!,
         certificateReferenceScriptUtxo: certificateReference,
       }),
     );
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep03V1({
+      submitFieldItemWidthIllegalStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -201,7 +201,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
   it.each([0, 1, 2] as const)(
     "cancels the real computation thread at physical step %s",
     async (targetStep) => {
-      const harness = await makeFaultProofEmulatorHarnessV1({
+      const harness = await makeFaultProofEmulatorHarness({
         contractOptions: {
           realFieldItemWidthIllegal: true,
           alwaysFraudProofCatalogue: true,
@@ -210,7 +210,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
       const chain = harness.contracts.fraudProofContracts.fieldItemWidthIllegal;
       const category = harness.catalogue.categories.fieldItemWidthIllegal;
       if (category === undefined) throw new Error("width category absent");
-      const contracts: FieldItemWidthIllegalContractsV1 = {
+      const contracts: FieldItemWidthIllegalContracts = {
         steps: chain.steps as never,
         computationThread: harness.contracts.computationThread,
         fraudProof: harness.contracts.fraudProof,
@@ -221,8 +221,8 @@ describe("field-item-width-illegal accepted lifecycle", () => {
         fieldPreimageCertificateMintingScript:
           harness.contracts.fieldPreimageCertificate.mintingScript,
       };
-      const scenario = await setupCommittedFieldShapeScenarioV1({
-        harness: harness as unknown as CommittedFieldShapeEmulatorHarnessV1,
+      const scenario = await setupCommittedFieldShapeScenario({
+        harness: harness as unknown as CommittedFieldShapeEmulatorHarness,
         kind: "field-item-width-illegal",
       });
       const references: UTxO[] = [];
@@ -244,14 +244,14 @@ describe("field-item-width-illegal accepted lifecycle", () => {
           label: `width-cancel-certificate-${targetStep.toString()}`,
         })
       ).utxo;
-      const evidence = prepareFieldItemWidthEvidenceV1({
+      const evidence = prepareFieldItemWidthEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(scenario.nativeTxId),
+          subject: acceptedVerdictSubject(scenario.nativeTxId),
           fieldIndex: 2,
           itemIndex: 0,
         },
         fieldPreimage: scenario.committedPreimage,
-        committedFieldHashHex: midgardFieldCommitmentV1(
+        committedFieldHashHex: midgardFieldCommitment(
           scenario.committedPreimage,
         ).toString("hex"),
       });
@@ -280,7 +280,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
           },
         ]);
         if (threadUtxo === undefined) throw new Error("init thread absent");
-        const step01 = await submitFieldItemWidthIllegalStep01AcceptedV1({
+        const step01 = await submitFieldItemWidthIllegalStep01Accepted({
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -300,7 +300,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
         threadOutRef = step01.nextThreadOutRef;
       }
       if (targetStep > 1) {
-        const step02 = await submitFieldItemWidthIllegalStep02V1({
+        const step02 = await submitFieldItemWidthIllegalStep02({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -308,10 +308,8 @@ describe("field-item-width-illegal accepted lifecycle", () => {
           threadOutRef,
           evidence,
           nativeTxCompactCbor: scenario.compactCbor,
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
-            deriveMidgardNativeTxWitnessSetCompactV1(
-              scenario.fullTx!.witnessSet,
-            ),
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+            deriveMidgardNativeTxWitnessSetCompact(scenario.fullTx!.witnessSet),
           ).toString("hex"),
           referenceScriptUtxo: references[1]!,
           certificateReferenceScriptUtxo: certificateReference,
@@ -319,7 +317,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
         threadOutRef = step02.nextThreadOutRef;
       }
       const cancel = await captureEmulatorSubmission(harness.emulator, () =>
-        submitFieldItemWidthIllegalCancelV1({
+        submitFieldItemWidthIllegalCancel({
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -338,7 +336,7 @@ describe("field-item-width-illegal accepted lifecycle", () => {
 
 describe("field-item-width-illegal forced lifecycle", () => {
   it("authenticates an exact forced rejection and removes the block", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realFieldItemWidthIllegal: true,
         alwaysFraudProofCatalogue: true,
@@ -367,7 +365,7 @@ describe("field-item-width-illegal forced lifecycle", () => {
       catalogue: harness.catalogue,
       header: forced.header,
     });
-    const contracts: FieldItemWidthIllegalContractsV1 = {
+    const contracts: FieldItemWidthIllegalContracts = {
       steps: chain.steps as never,
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
@@ -396,9 +394,9 @@ describe("field-item-width-illegal forced lifecycle", () => {
     const rejectionReason = {
       FieldItemWidthIllegal: { field_index: 2n, item_index: 0n },
     } as const;
-    const evidence = prepareFieldItemWidthEvidenceV1({
+    const evidence = prepareFieldItemWidthEvidence({
       finding: {
-        subject: forcedVerdictSubjectV1({
+        subject: forcedVerdictSubject({
           transactionId: forced.forcedTransaction.tx_id,
           sourceKey: membership.key,
           rejectionReason,
@@ -407,7 +405,7 @@ describe("field-item-width-illegal forced lifecycle", () => {
         itemIndex: 0,
       },
       fieldPreimage: forced.forcedNativeTx.body.outputsPreimageCbor,
-      committedFieldHashHex: midgardFieldCommitmentV1(
+      committedFieldHashHex: midgardFieldCommitment(
         forced.forcedNativeTx.body.outputsPreimageCbor,
       ).toString("hex"),
     });
@@ -429,7 +427,7 @@ describe("field-item-width-illegal forced lifecycle", () => {
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep01ForcedV1({
+      submitFieldItemWidthIllegalStep01Forced({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -441,7 +439,7 @@ describe("field-item-width-illegal forced lifecycle", () => {
       }),
     );
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep02V1({
+      submitFieldItemWidthIllegalStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -455,7 +453,7 @@ describe("field-item-width-illegal forced lifecycle", () => {
       }),
     );
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep03V1({
+      submitFieldItemWidthIllegalStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

@@ -4,8 +4,8 @@
  */
 
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Fiber, Option } from "effect";
@@ -291,19 +291,19 @@ const validateTransitionTraceSourceEvents = ({
       [
         "withdrawal",
         withdrawalCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount,
+        MIDGARD_CONSENSUS_LIMITS.maxWithdrawalCount,
       ],
       [
         "forced transaction",
         forcedTransactionCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxForcedTransactionCount,
+        MIDGARD_CONSENSUS_LIMITS.maxForcedTransactionCount,
       ],
       [
         "L2 transaction",
         l2TransactionCount,
-        MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+        MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
       ],
-      ["deposit", depositCount, MIDGARD_CONSENSUS_LIMITS_V1.maxDepositCount],
+      ["deposit", depositCount, MIDGARD_CONSENSUS_LIMITS.maxDepositCount],
     ] as const;
     for (const [label, count, maximum] of sourceCountBounds) {
       if (!Number.isSafeInteger(count) || count < 0 || count > maximum) {
@@ -323,8 +323,8 @@ const validateTransitionTraceSourceEvents = ({
       l2TransactionCount +
       depositCount;
     if (
-      totalEventCount > MIDGARD_CONSENSUS_LIMITS_V1.maxTotalEventCount ||
-      totalEventCount > MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount
+      totalEventCount > MIDGARD_CONSENSUS_LIMITS.maxTotalEventCount ||
+      totalEventCount > MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount
     ) {
       return yield* Effect.fail(
         MpfError.rootBuild(
@@ -340,13 +340,13 @@ const validateTransitionTraceSourceEvents = ({
       0,
     );
     if (
-      ledgerOperationCount > MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount
+      ledgerOperationCount > MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount
     ) {
       return yield* Effect.fail(
         MpfError.rootBuild(
           "transition trace",
           new Error(
-            `Ledger operation count ${ledgerOperationCount.toString()} exceeds the V1 consensus maximum ${MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount.toString()}`,
+            `Ledger operation count ${ledgerOperationCount.toString()} exceeds the V1 consensus maximum ${MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount.toString()}`,
           ),
         ),
       );
@@ -675,7 +675,7 @@ export const buildTransitionTraceResult = ({
           runningUtxosRoot = postUtxosRoot;
         }
         const value: SDK.TransitionStep = {
-          schema_version: BigInt(MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION),
+          schema_version: BigInt(MIDGARD_TRANSITION_STEP_SCHEMA_VERSION),
           step_index: BigInt(index),
           event_key: sourceEvent.eventKey,
           phase: sourceEvent.phase,
@@ -833,7 +833,7 @@ export const buildNativeTransitionTraceResult = ({
       const preUtxosRoot = runningUtxosRoot;
       runningUtxosRoot = applied.eventRoots[index]!;
       const value: SDK.TransitionStep = {
-        schema_version: BigInt(MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION),
+        schema_version: BigInt(MIDGARD_TRANSITION_STEP_SCHEMA_VERSION),
         step_index: BigInt(index),
         event_key: sourceEvent.eventKey,
         phase: sourceEvent.phase,
@@ -930,7 +930,7 @@ export const buildNativeTransitionTraceResult = ({
     };
   });
 
-export type NativeProductionRootProbeResult = {
+export type NativeRootProbeResult = {
   readonly utxoRoot: string;
   readonly rawTxRoot: string;
   readonly txRoot: string;
@@ -960,7 +960,7 @@ export type NativeProductionRootProbeResult = {
  * This is intentionally colocated with processMpfs so benchmarks cannot replace
  * production root algorithms with harness-specific approximations.
  */
-export const buildNativeProductionRootProbe = ({
+export const buildNativeRootProbe = ({
   nativeMpf,
   sourceEvents,
   transactionOps,
@@ -974,7 +974,7 @@ export const buildNativeProductionRootProbe = ({
   readonly deposits?: readonly MpfInsertBatchOp[];
   readonly withdrawals?: readonly MpfInsertBatchOp[];
   readonly forcedTransactions?: readonly MpfInsertBatchOp[];
-}): Effect.Effect<NativeProductionRootProbeResult, MpfError> =>
+}): Effect.Effect<NativeRootProbeResult, MpfError> =>
   Effect.acquireUseRelease(
     MidgardMpf.createScratch("architecture-g-production-probe-transactions"),
     (transactionsMpf) =>
@@ -1014,7 +1014,7 @@ export const buildNativeProductionRootProbe = ({
         );
 
         const auxiliaryRootsStartedAt = performance.now();
-        const productionEventRoot = (
+        const eventRoot = (
           domain: SDK.RootDomain,
           entries: readonly MpfInsertBatchOp[],
         ): Effect.Effect<string, MpfError> =>
@@ -1024,9 +1024,9 @@ export const buildNativeProductionRootProbe = ({
         const [depositsRoot, withdrawalsRoot, forcedTransactionsRoot] =
           yield* Effect.all(
             [
-              productionEventRoot(SDK.ROOT_DOMAINS.deposits, deposits),
-              productionEventRoot(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
-              productionEventRoot(
+              eventRoot(SDK.ROOT_DOMAINS.deposits, deposits),
+              eventRoot(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
+              eventRoot(
                 SDK.ROOT_DOMAINS.forcedTransactionsV1,
                 forcedTransactions,
               ),

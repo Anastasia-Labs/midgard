@@ -1,4 +1,4 @@
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import {
   MissingNativeScriptUtxoStep03DatumSchema,
   MissingNativeScriptUtxoStep03SpendRedeemerSchema,
@@ -18,16 +18,16 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -44,19 +44,19 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_UTXO_CATEGORY_LABEL as FAMILY,
-  type MissingNativeScriptUtxoContractsV1,
+  type MissingNativeScriptUtxoContracts,
 } from "./contracts-v1.js";
-import type { PreparedMissingNativeScriptUtxoV1 } from "./prepare-v1.js";
+import type { PreparedMissingNativeScriptUtxo } from "./prepare-v1.js";
 
 type Step03State = NonNullable<
   Data.Static<typeof MissingNativeScriptUtxoStep03DatumSchema>["data"]
@@ -91,20 +91,20 @@ export const submitMissingNativeScriptUtxoStep03 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingNativeScriptUtxoContractsV1;
+  readonly contracts: MissingNativeScriptUtxoContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedMissingNativeScriptUtxoV1;
+  readonly prepared: PreparedMissingNativeScriptUtxo;
   readonly referenceScriptUtxo: UTxO;
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -112,7 +112,7 @@ export const submitMissingNativeScriptUtxoStep03 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<Step03State>({
+  const state = requireLinearFaultStepState<Step03State>({
     threadUtxo,
     signer,
     schema: Step03Datum,
@@ -127,14 +127,14 @@ export const submitMissingNativeScriptUtxoStep03 = async ({
     throw new Error(`${label}: prepared member does not match thread state`);
   }
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
   const carriedByChunks = publishedProofChunks.length > 0;
-  const memberKeyCbor = encodeMidgardSpendInputItemV1({
+  const memberKeyCbor = encodeMidgardSpendInputItem({
     txId: Buffer.from(prepared.outRef.transactionId, "hex"),
     outputIndex: Number(prepared.outRef.outputIndex),
   }).toString("hex");
@@ -148,7 +148,7 @@ export const submitMissingNativeScriptUtxoStep03 = async ({
     network,
     membershipScript,
   );
-  const membershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const membershipCarriage = witnessWithdrawalValidatorCarriage({
     script: membershipScript,
     referenceUtxo: carriedByChunks
       ? witnessReferenceScripts?.chunkedVerifyWithdraw
@@ -269,15 +269,15 @@ export const submitMissingNativeScriptUtxoStep03 = async ({
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: label,
         utxo: stepReference,
         expectedScript: contracts.steps[stepIndex].spendingScript,
       }),
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: `${label}-membership`,
         utxo: membershipCarriage.referenceInputs[0],
         expectedScript: membershipScript,

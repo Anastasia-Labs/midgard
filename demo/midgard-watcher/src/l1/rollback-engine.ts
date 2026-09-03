@@ -2,73 +2,73 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { isProxy } from "node:util/types";
 
 import {
-  type DeploymentMarkerV1,
-  parseDeploymentMarkerV1,
+  type DeploymentMarker,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import {
-  compareAndSwapWatcherDurableAtomicSnapshotV1,
-  decodeWatcherDurableStoreV1,
-  encodeWatcherDurableStoreV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  parseWatcherDurableStoreV1,
-  readWatcherDurableAtomicSnapshotV1,
-  watcherCanonicalJsonV1,
+  compareAndSwapWatcherDurableAtomicSnapshot,
+  decodeWatcherDurableStore,
+  encodeWatcherDurableStore,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  parseWatcherDurableStore,
+  readWatcherDurableAtomicSnapshot,
+  watcherCanonicalJson,
   type WatcherDurableAtomicBackend,
-  type WatcherDurableRecordsV1,
+  type WatcherDurableRecords,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  watcherSameCanonicalJsonV1,
-  watcherSha256CanonicalJsonV1,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityBootstrapStateV1,
-  parseWatcherFinalityPolicyV1,
-  parseWatcherFinalityStateV1,
-  WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
-  WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION,
-  type WatcherFinalityBoundObservationV1,
-  watcherFinalityConfiguredSourceV1,
-  type WatcherFinalityIncidentV1,
-  type WatcherFinalityPolicyV1,
-  type WatcherFinalityResultV1,
-  type WatcherFinalityRewindInstructionV1,
-  type WatcherFinalityStateV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityBootstrapState,
+  parseWatcherFinalityPolicy,
+  parseWatcherFinalityState,
+  WATCHER_FINALITY_RESULT_SCHEMA_VERSION,
+  WATCHER_FINALITY_REWIND_INSTRUCTION_SCHEMA_VERSION,
+  type WatcherFinalityBoundObservation,
+  watcherFinalityConfiguredSource,
+  type WatcherFinalityIncident,
+  type WatcherFinalityPolicy,
+  type WatcherFinalityResult,
+  type WatcherFinalityRewindInstruction,
+  type WatcherFinalityState,
 } from "./finality-engine.js";
 import {
-  encodeWatcherNormalizedL1BlockV1,
-  isWatcherL1BlockAttestedByV1,
-  type WatcherL1TransportAttestationContextV1,
-  type WatcherNormalizedL1BlockV1,
+  encodeWatcherNormalizedL1Block,
+  isWatcherL1BlockAttestedBy,
+  type WatcherL1TransportAttestationContext,
+  type WatcherNormalizedL1Block,
 } from "./l1-adapter.js";
 import {
-  evaluateWatcherMultiProviderConsistencyV1,
-  type WatcherMultiProviderConsistencyV1,
+  evaluateWatcherMultiProviderConsistency,
+  type WatcherMultiProviderConsistency,
 } from "./multi-provider-consistency.js";
 
-export const WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_STATE_SCHEMA_VERSION =
   "midgard-watcher-rollback-state-v1" as const;
-export const WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION =
   "midgard-watcher-rollback-incident-v1" as const;
-export const WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION =
   "midgard-watcher-rollback-result-v1" as const;
-export const WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_TRANSITION_SCHEMA_VERSION =
   "midgard-watcher-rollback-transition-v1" as const;
-export const WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_EPOCH_CHECKPOINT_SCHEMA_VERSION =
   "midgard-watcher-rollback-epoch-checkpoint-v1" as const;
-export const WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_DURABLE_AUTHORITY_SCHEMA_VERSION =
   "midgard-watcher-rollback-durable-authority-v1" as const;
-export const WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_SCHEMA_VERSION =
   "midgard-watcher-rollback-durable-authority-handle-v1" as const;
-export const WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION =
+export const WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION =
   "midgard-watcher-rollback-durable-trusted-head-v1" as const;
-export const WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION =
+export const WATCHER_POST_FINALITY_RECOVERY_STATE_SCHEMA_VERSION =
   "midgard-watcher-post-finality-recovery-state-v1" as const;
-export const WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION =
+export const WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION =
   "midgard-watcher-post-finality-recovery-result-v1" as const;
-export const WATCHER_ROLLBACK_V1_BOUNDS = Object.freeze({
+export const WATCHER_ROLLBACK_BOUNDS = Object.freeze({
   transitionHistory: 128,
   postFinalityRecoveryDepth: 2_160n,
 });
@@ -81,7 +81,7 @@ const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
   typeof value === "string" &&
   NETWORKS.includes(value as (typeof NETWORKS)[number]);
 
-export const WATCHER_ROLLBACK_REASON_CODES_V1 = [
+export const WATCHER_ROLLBACK_REASON_CODES = [
   "rewind_applied",
   "duplicate_instruction",
   "post_finality_incident",
@@ -105,7 +105,7 @@ export const WATCHER_ROLLBACK_REASON_CODES_V1 = [
   "state_quarantined",
 ] as const;
 
-export const WATCHER_ROLLBACK_ALERT_CODES_V1 = [
+export const WATCHER_ROLLBACK_ALERT_CODES = [
   "watcher_rollback_rewind_applied",
   "watcher_rollback_input_rejected",
   "watcher_rollback_configuration_mismatch",
@@ -114,12 +114,12 @@ export const WATCHER_ROLLBACK_ALERT_CODES_V1 = [
   "watcher_rollback_quarantined",
 ] as const;
 
-export type WatcherRollbackReasonCodeV1 =
-  (typeof WATCHER_ROLLBACK_REASON_CODES_V1)[number];
-export type WatcherRollbackAlertCodeV1 =
-  (typeof WATCHER_ROLLBACK_ALERT_CODES_V1)[number];
+export type WatcherRollbackReasonCode =
+  (typeof WATCHER_ROLLBACK_REASON_CODES)[number];
+export type WatcherRollbackAlertCode =
+  (typeof WATCHER_ROLLBACK_ALERT_CODES)[number];
 
-export type WatcherRollbackRemovedRecordsV1 = Readonly<{
+export type WatcherRollbackRemovedRecords = Readonly<{
   l1ObservationIds: readonly string[];
   chainPointIds: readonly string[];
   protocolUtxoOutRefs: readonly string[];
@@ -134,16 +134,16 @@ export type WatcherRollbackRemovedRecordsV1 = Readonly<{
   correctionResultIds: readonly string[];
 }>;
 
-export type WatcherRollbackIncidentV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION;
-  reasonCode: WatcherFinalityIncidentV1["reasonCode"];
+export type WatcherRollbackIncident = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION;
+  reasonCode: WatcherFinalityIncident["reasonCode"];
   policyDigest: string;
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   finalityStateDigest: string;
   finalityIncidentDigest: string;
   triggerConsistencyDigest: string | null;
-  finalizedBinding: WatcherFinalityBoundObservationV1;
+  finalizedBinding: WatcherFinalityBoundObservation;
   sourceStoreDigest: string;
   nextStoreDigest: string;
   transitionCount: string;
@@ -153,8 +153,8 @@ export type WatcherRollbackIncidentV1 = Readonly<{
   incidentDigest: string;
 }>;
 
-export type WatcherRollbackEpochCheckpointV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION;
+export type WatcherRollbackEpochCheckpoint = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_EPOCH_CHECKPOINT_SCHEMA_VERSION;
   epoch: string;
   rootBootstrapStateDigest: string;
   priorCheckpointDigest: string | null;
@@ -171,17 +171,17 @@ export type WatcherRollbackEpochCheckpointV1 = Readonly<{
   checkpointDigest: string;
 }>;
 
-export type WatcherRollbackStateV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION;
+export type WatcherRollbackState = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: (typeof NETWORKS)[number];
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
-  bootstrapStore: WatcherDurableStoreV1;
-  bootstrapFinalityState: WatcherFinalityStateV1;
+  deploymentMarker: DeploymentMarker;
+  bootstrapStore: WatcherDurableStore;
+  bootstrapFinalityState: WatcherFinalityState;
   epoch: string;
-  epochCheckpoint: WatcherRollbackEpochCheckpointV1 | null;
-  transitions: readonly WatcherRollbackTransitionV1[];
+  epochCheckpoint: WatcherRollbackEpochCheckpoint | null;
+  transitions: readonly WatcherRollbackTransition[];
   storeDigest: string;
   transitionCount: string;
   currentFinalityStateDigest: string | null;
@@ -190,19 +190,19 @@ export type WatcherRollbackStateV1 = Readonly<{
   lastFinalityResultDigest: string | null;
   lastInstructionDigest: string | null;
   transitionLineageDigest: string;
-  incident: WatcherRollbackIncidentV1 | null;
+  incident: WatcherRollbackIncident | null;
   stateDigest: string;
 }>;
 
-export type WatcherRollbackTransitionV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION;
-  previousFinalityState: WatcherFinalityStateV1;
-  consistency: WatcherMultiProviderConsistencyV1;
-  finalityResult: WatcherFinalityResultV1;
+export type WatcherRollbackTransition = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_TRANSITION_SCHEMA_VERSION;
+  previousFinalityState: WatcherFinalityState;
+  consistency: WatcherMultiProviderConsistency;
+  finalityResult: WatcherFinalityResult;
   transitionDigest: string;
 }>;
 
-export type WatcherRollbackStateVerificationContextV1 = Readonly<{
+export type WatcherRollbackStateVerificationContext = Readonly<{
   policy: unknown;
   rollbackBootstrapState: unknown;
   trustedCheckpointAuthority?: unknown;
@@ -210,7 +210,7 @@ export type WatcherRollbackStateVerificationContextV1 = Readonly<{
   transportAttestations?: unknown;
 }>;
 
-export type WatcherRollbackVerificationContextV1 = Readonly<{
+export type WatcherRollbackVerificationContext = Readonly<{
   policy: unknown;
   sourceStore: unknown;
   previousFinalityState: unknown;
@@ -222,30 +222,30 @@ export type WatcherRollbackVerificationContextV1 = Readonly<{
   transportAttestations?: unknown;
 }>;
 
-export type WatcherRollbackResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION;
+export type WatcherRollbackResult = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION;
   action:
     | "apply_rewind"
     | "duplicate_rewind"
     | "quarantine_incident"
     | "reject";
   protocolDecision: "resume_pending" | "hold" | "quarantined";
-  reasonCodes: readonly WatcherRollbackReasonCodeV1[];
-  alertCodes: readonly WatcherRollbackAlertCodeV1[];
+  reasonCodes: readonly WatcherRollbackReasonCode[];
+  alertCodes: readonly WatcherRollbackAlertCode[];
   sourceRevision: string | null;
   nextRevision: string | null;
   instructionDigest: string | null;
   sourceStoreDigest: string | null;
   nextStoreDigest: string | null;
-  removedRecords: WatcherRollbackRemovedRecordsV1;
-  nextStore: WatcherDurableStoreV1 | null;
-  rollbackState: WatcherRollbackStateV1 | null;
-  rollbackBootstrapState: WatcherRollbackStateV1 | null;
+  removedRecords: WatcherRollbackRemovedRecords;
+  nextStore: WatcherDurableStore | null;
+  rollbackState: WatcherRollbackState | null;
+  rollbackBootstrapState: WatcherRollbackState | null;
   trustedCheckpointStateDigest: string | null;
   resultDigest: string;
 }>;
 
-export const WATCHER_POST_FINALITY_RECOVERY_REASON_CODES_V1 = [
+export const WATCHER_POST_FINALITY_RECOVERY_REASON_CODES = [
   "recovery_applied",
   "duplicate_recovery",
   "malformed_policy",
@@ -265,10 +265,10 @@ export const WATCHER_POST_FINALITY_RECOVERY_REASON_CODES_V1 = [
   "unknown_recovery_target",
 ] as const;
 
-export type WatcherPostFinalityRecoveryReasonCodeV1 =
-  (typeof WATCHER_POST_FINALITY_RECOVERY_REASON_CODES_V1)[number];
+export type WatcherPostFinalityRecoveryReasonCode =
+  (typeof WATCHER_POST_FINALITY_RECOVERY_REASON_CODES)[number];
 
-export type WatcherPostFinalityRecoveryPathV1 = Readonly<{
+export type WatcherPostFinalityRecoveryPath = Readonly<{
   commonAncestorPointDigest: string;
   commonAncestorBlockHash: string;
   commonAncestorBlockNo: string;
@@ -283,9 +283,9 @@ export type WatcherPostFinalityRecoveryPathV1 = Readonly<{
   pathDigest: string;
 }>;
 
-export type WatcherPostFinalityRecoveryIncidentLifecycleV1 = Readonly<{
+export type WatcherPostFinalityRecoveryIncidentLifecycle = Readonly<{
   detectedIncidentDigest: string;
-  detectedReasonCode: WatcherFinalityIncidentV1["reasonCode"];
+  detectedReasonCode: WatcherFinalityIncident["reasonCode"];
   detectedTriggerConsistencyDigest: string | null;
   detectedFinalityStateDigest: string;
   detectedStoreDigest: string;
@@ -296,42 +296,42 @@ export type WatcherPostFinalityRecoveryIncidentLifecycleV1 = Readonly<{
   lifecycleDigest: string;
 }>;
 
-export type WatcherPostFinalityRecoveryStateV1 = Readonly<{
-  schemaVersion: typeof WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION;
+export type WatcherPostFinalityRecoveryState = Readonly<{
+  schemaVersion: typeof WATCHER_POST_FINALITY_RECOVERY_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: (typeof NETWORKS)[number];
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   sourceRollbackStateDigest: string;
   sourceStoreDigest: string;
   nextStoreDigest: string;
-  path: WatcherPostFinalityRecoveryPathV1;
-  removedRecords: WatcherRollbackRemovedRecordsV1;
-  resumableFinalityState: WatcherFinalityStateV1;
-  incidentLifecycle: WatcherPostFinalityRecoveryIncidentLifecycleV1;
+  path: WatcherPostFinalityRecoveryPath;
+  removedRecords: WatcherRollbackRemovedRecords;
+  resumableFinalityState: WatcherFinalityState;
+  incidentLifecycle: WatcherPostFinalityRecoveryIncidentLifecycle;
   stateDigest: string;
 }>;
 
-export type WatcherPostFinalityRecoveryResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION;
+export type WatcherPostFinalityRecoveryResult = Readonly<{
+  schemaVersion: typeof WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION;
   action: "rewind_and_replay" | "duplicate_recovery" | "reject";
   protocolDecision: "resume_replay" | "hold" | "quarantined";
-  reasonCodes: readonly WatcherPostFinalityRecoveryReasonCodeV1[];
+  reasonCodes: readonly WatcherPostFinalityRecoveryReasonCode[];
   sourceRevision: string | null;
   nextRevision: string | null;
   sourceStoreDigest: string | null;
   nextStoreDigest: string | null;
-  removedRecords: WatcherRollbackRemovedRecordsV1;
-  nextStore: WatcherDurableStoreV1 | null;
-  resumableFinalityState: WatcherFinalityStateV1 | null;
-  resumableRollbackState: WatcherRollbackStateV1 | null;
-  resumableRollbackBootstrapState: WatcherRollbackStateV1 | null;
+  removedRecords: WatcherRollbackRemovedRecords;
+  nextStore: WatcherDurableStore | null;
+  resumableFinalityState: WatcherFinalityState | null;
+  resumableRollbackState: WatcherRollbackState | null;
+  resumableRollbackBootstrapState: WatcherRollbackState | null;
   resumableTrustedCheckpointStateDigest: string | null;
-  recoveryState: WatcherPostFinalityRecoveryStateV1 | null;
+  recoveryState: WatcherPostFinalityRecoveryState | null;
   resultDigest: string;
 }>;
 
-export type WatcherPostFinalityRecoveryInputV1 = Readonly<{
+export type WatcherPostFinalityRecoveryInput = Readonly<{
   policy: unknown;
   sourceStore: unknown;
   currentStore: unknown;
@@ -344,14 +344,14 @@ export type WatcherPostFinalityRecoveryInputV1 = Readonly<{
   transportAttestations?: unknown;
 }>;
 
-export type WatcherRollbackDurableAuthorityV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_V1_SCHEMA_VERSION;
+export type WatcherRollbackDurableAuthority = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_SCHEMA_VERSION;
   revision: string;
   snapshotSha256: string;
   authorityDigest: string;
 }>;
 
-export type WatcherRollbackDurableAuthorityStatusV1 = Readonly<{
+export type WatcherRollbackDurableAuthorityStatus = Readonly<{
   revision: string;
   snapshotSha256: string;
   authorityDigest: string;
@@ -366,10 +366,10 @@ export type WatcherRollbackDurableAuthorityStatusV1 = Readonly<{
   incidentDigest: string | null;
 }>;
 
-export type WatcherRollbackDurableAuthorityReadV1 = Readonly<{
-  currentStore: WatcherDurableStoreV1;
-  currentFinalityState: WatcherFinalityStateV1;
-  authenticatedConsistencyHistory: readonly WatcherMultiProviderConsistencyV1[];
+export type WatcherRollbackDurableAuthorityRead = Readonly<{
+  currentStore: WatcherDurableStore;
+  currentFinalityState: WatcherFinalityState;
+  authenticatedConsistencyHistory: readonly WatcherMultiProviderConsistency[];
 }>;
 
 /**
@@ -378,10 +378,10 @@ export type WatcherRollbackDurableAuthorityReadV1 = Readonly<{
  * even in another table, cannot establish freshness when that database can be
  * restored from an older backup.
  */
-export type WatcherRollbackDurableTrustedHeadV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION;
+export type WatcherRollbackDurableTrustedHead = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION;
   policyDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   authenticationKeyId: string;
   revision: string;
   snapshotSha256: string;
@@ -389,90 +389,90 @@ export type WatcherRollbackDurableTrustedHeadV1 = Readonly<{
   headMac: string;
 }>;
 
-export type WatcherRollbackDurableAuthorityOpenResultV1 = Readonly<{
+export type WatcherRollbackDurableAuthorityOpenResult = Readonly<{
   initialized: boolean;
-  authority: WatcherRollbackDurableAuthorityV1;
-  trustedHead: WatcherRollbackDurableTrustedHeadV1;
+  authority: WatcherRollbackDurableAuthority;
+  trustedHead: WatcherRollbackDurableTrustedHead;
 }>;
 
-export type WatcherRollbackDurableTrustedHeadReconciliationV1 =
+export type WatcherRollbackDurableTrustedHeadReconciliation =
   | Readonly<{
       action: "already_aligned";
-      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+      trustedHead: WatcherRollbackDurableTrustedHead;
     }>
   | Readonly<{
       action: "publish_direct_successor";
-      expectedTrustedHead: WatcherRollbackDurableTrustedHeadV1 | null;
-      nextTrustedHead: WatcherRollbackDurableTrustedHeadV1;
+      expectedTrustedHead: WatcherRollbackDurableTrustedHead | null;
+      nextTrustedHead: WatcherRollbackDurableTrustedHead;
     }>;
 
-type WatcherRollbackDurablePersistenceConflictV1 = Readonly<{
+type WatcherRollbackDurablePersistenceConflict = Readonly<{
   persistence: "conflict";
 }>;
 
-export type WatcherRollbackDurableEvaluationResultV1 =
+export type WatcherRollbackDurableEvaluationResult =
   | Readonly<{
       persistence: "committed" | "unchanged";
-      authority: WatcherRollbackDurableAuthorityV1;
-      trustedHead: WatcherRollbackDurableTrustedHeadV1;
-      result: WatcherRollbackResultV1;
+      authority: WatcherRollbackDurableAuthority;
+      trustedHead: WatcherRollbackDurableTrustedHead;
+      result: WatcherRollbackResult;
     }>
-  | WatcherRollbackDurablePersistenceConflictV1;
+  | WatcherRollbackDurablePersistenceConflict;
 
-export type WatcherRollbackDurableRecoveryResultV1 =
+export type WatcherRollbackDurableRecoveryResult =
   | Readonly<{
       persistence: "committed" | "unchanged";
-      authority: WatcherRollbackDurableAuthorityV1;
-      trustedHead: WatcherRollbackDurableTrustedHeadV1;
-      result: WatcherPostFinalityRecoveryResultV1;
+      authority: WatcherRollbackDurableAuthority;
+      trustedHead: WatcherRollbackDurableTrustedHead;
+      result: WatcherPostFinalityRecoveryResult;
     }>
-  | WatcherRollbackDurablePersistenceConflictV1;
+  | WatcherRollbackDurablePersistenceConflict;
 
-export type WatcherRollbackDurableCanonicalProgressResultV1 =
+export type WatcherRollbackDurableCanonicalProgressResult =
   | Readonly<{
       persistence: "committed" | "unchanged";
-      authority: WatcherRollbackDurableAuthorityV1;
-      trustedHead: WatcherRollbackDurableTrustedHeadV1;
-      finalityResult: WatcherFinalityResultV1;
+      authority: WatcherRollbackDurableAuthority;
+      trustedHead: WatcherRollbackDurableTrustedHead;
+      finalityResult: WatcherFinalityResult;
     }>
-  | WatcherRollbackDurablePersistenceConflictV1;
+  | WatcherRollbackDurablePersistenceConflict;
 
-export type WatcherRollbackDurableObservationResultV1 =
+export type WatcherRollbackDurableObservationResult =
   | Readonly<{
       persistence: "committed" | "unchanged";
-      authority: WatcherRollbackDurableAuthorityV1;
-      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+      authority: WatcherRollbackDurableAuthority;
+      trustedHead: WatcherRollbackDurableTrustedHead;
     }>
-  | WatcherRollbackDurablePersistenceConflictV1;
+  | WatcherRollbackDurablePersistenceConflict;
 
-type WatcherRollbackDurableAuthoritySnapshotV1 = Readonly<{
-  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION;
+type WatcherRollbackDurableAuthoritySnapshot = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_SCHEMA_VERSION;
   revision: string;
   priorSnapshotSha256: string | null;
   policyDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
-  currentStore: WatcherDurableStoreV1;
-  consistencyHistory: readonly WatcherMultiProviderConsistencyV1[];
-  rollbackState: WatcherRollbackStateV1;
-  rollbackBootstrapState: WatcherRollbackStateV1;
+  deploymentMarker: DeploymentMarker;
+  currentStore: WatcherDurableStore;
+  consistencyHistory: readonly WatcherMultiProviderConsistency[];
+  rollbackState: WatcherRollbackState;
+  rollbackBootstrapState: WatcherRollbackState;
   trustedCheckpointStateDigest: string;
   authenticationKeyId: string;
   authorityDigest: string;
   authorityMac: string;
 }>;
 
-type WatcherRollbackDurableAuthorityRuntimeV1 = Readonly<{
+type WatcherRollbackDurableAuthorityRuntime = Readonly<{
   backend: WatcherDurableAtomicBackend;
-  policy: WatcherFinalityPolicyV1;
-  snapshot: WatcherRollbackDurableAuthoritySnapshotV1;
+  policy: WatcherFinalityPolicy;
+  snapshot: WatcherRollbackDurableAuthoritySnapshot;
   encoded: Uint8Array;
   snapshotSha256: string;
   authenticationKey: Uint8Array;
 }>;
 
 const rollbackDurableAuthorityRuntime = new WeakMap<
-  WatcherRollbackDurableAuthorityV1,
-  WatcherRollbackDurableAuthorityRuntimeV1
+  WatcherRollbackDurableAuthority,
+  WatcherRollbackDurableAuthorityRuntime
 >();
 
 type PlainRecord = Record<string, unknown>;
@@ -480,21 +480,21 @@ type PlainRecord = Record<string, unknown>;
 type ParsedFinalityTransition =
   | Readonly<{
       kind: "rewind";
-      previous: WatcherFinalityStateV1;
-      next: WatcherFinalityStateV1;
-      instruction: WatcherFinalityRewindInstructionV1;
-      consistency: WatcherMultiProviderConsistencyV1;
-      finalityResult: WatcherFinalityResultV1;
+      previous: WatcherFinalityState;
+      next: WatcherFinalityState;
+      instruction: WatcherFinalityRewindInstruction;
+      consistency: WatcherMultiProviderConsistency;
+      finalityResult: WatcherFinalityResult;
     }>
   | Readonly<{
       kind: "incident";
-      previous: WatcherFinalityStateV1;
-      next: WatcherFinalityStateV1;
-      consistency: WatcherMultiProviderConsistencyV1;
-      finalityResult: WatcherFinalityResultV1;
+      previous: WatcherFinalityState;
+      next: WatcherFinalityState;
+      consistency: WatcherMultiProviderConsistency;
+      finalityResult: WatcherFinalityResult;
     }>;
 
-const sha256Canonical = watcherSha256CanonicalJsonV1;
+const sha256Canonical = watcherSha256CanonicalJson;
 
 const exactPlainRecord = (
   value: unknown,
@@ -623,27 +623,24 @@ const sameStrings = (
   left.length === right.length &&
   left.every((member, index) => member === right[index]);
 
-const marker = (value: unknown): DeploymentMarkerV1 | null => {
+const marker = (value: unknown): DeploymentMarker | null => {
   try {
-    return parseDeploymentMarkerV1(value);
+    return parseDeploymentMarker(value);
   } catch {
     return null;
   }
 };
 
-const sameMarker = (
-  left: DeploymentMarkerV1,
-  right: DeploymentMarkerV1,
-): boolean =>
+const sameMarker = (left: DeploymentMarker, right: DeploymentMarker): boolean =>
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
 
 const sameBinding = (
-  left: WatcherFinalityBoundObservationV1,
-  right: WatcherFinalityBoundObservationV1,
-): boolean => watcherSameCanonicalJsonV1(left, right);
+  left: WatcherFinalityBoundObservation,
+  right: WatcherFinalityBoundObservation,
+): boolean => watcherSameCanonicalJson(left, right);
 
-const emptyRemovedRecords = (): WatcherRollbackRemovedRecordsV1 =>
+const emptyRemovedRecords = (): WatcherRollbackRemovedRecords =>
   Object.freeze({
     l1ObservationIds: Object.freeze([]),
     chainPointIds: Object.freeze([]),
@@ -660,10 +657,10 @@ const emptyRemovedRecords = (): WatcherRollbackRemovedRecordsV1 =>
   });
 
 const makeResult = (
-  value: Omit<WatcherRollbackResultV1, "schemaVersion" | "resultDigest">,
-): WatcherRollbackResultV1 => {
+  value: Omit<WatcherRollbackResult, "schemaVersion" | "resultDigest">,
+): WatcherRollbackResult => {
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION,
     action: value.action,
     protocolDecision: value.protocolDecision,
     reasonCodes: Object.freeze([...value.reasonCodes]),
@@ -686,9 +683,9 @@ const makeResult = (
 };
 
 const reject = (
-  reason: WatcherRollbackReasonCodeV1,
-  alert: WatcherRollbackAlertCodeV1 = "watcher_rollback_input_rejected",
-): WatcherRollbackResultV1 =>
+  reason: WatcherRollbackReasonCode,
+  alert: WatcherRollbackAlertCode = "watcher_rollback_input_rejected",
+): WatcherRollbackResult =>
   makeResult({
     action: "reject",
     protocolDecision: "quarantined",
@@ -708,7 +705,7 @@ const reject = (
 
 const parseInstruction = (
   value: unknown,
-): WatcherFinalityRewindInstructionV1 | null => {
+): WatcherFinalityRewindInstruction | null => {
   const instruction = exactPlainRecord(value, [
     "schemaVersion",
     "kind",
@@ -721,7 +718,7 @@ const parseInstruction = (
   if (
     instruction === null ||
     instruction.schemaVersion !==
-      WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION ||
+      WATCHER_FINALITY_REWIND_INSTRUCTION_SCHEMA_VERSION ||
     ![
       "pending_depth_regression",
       "pending_point_changed",
@@ -741,8 +738,8 @@ const parseInstruction = (
     return null;
   }
   const canonical = {
-    schemaVersion: WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION,
-    kind: instruction.kind as WatcherFinalityRewindInstructionV1["kind"],
+    schemaVersion: WATCHER_FINALITY_REWIND_INSTRUCTION_SCHEMA_VERSION,
+    kind: instruction.kind as WatcherFinalityRewindInstruction["kind"],
     discardedStateDigest: instruction.discardedStateDigest,
     replacementPointDigest: instruction.replacementPointDigest,
     replacementContentDigest: instruction.replacementContentDigest,
@@ -758,9 +755,9 @@ const parseInstruction = (
 };
 
 const stateBindingFailure = (
-  policy: WatcherFinalityPolicyV1,
-  state: WatcherFinalityStateV1,
-): WatcherRollbackReasonCodeV1 | null => {
+  policy: WatcherFinalityPolicy,
+  state: WatcherFinalityState,
+): WatcherRollbackReasonCode | null => {
   if (state.network !== policy.network) {
     return "network_mismatch";
   }
@@ -774,12 +771,12 @@ const stateBindingFailure = (
 };
 
 const parseFinalityTransition = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   previousInput: unknown,
   consistencyInput: unknown,
   resultInput: unknown,
-): ParsedFinalityTransition | WatcherRollbackReasonCodeV1 => {
-  const previous = parseWatcherFinalityStateV1(previousInput);
+): ParsedFinalityTransition | WatcherRollbackReasonCode => {
+  const previous = parseWatcherFinalityState(previousInput);
   if (previous === null) {
     return "malformed_previous_finality_state";
   }
@@ -787,7 +784,7 @@ const parseFinalityTransition = (
   if (previousBindingFailure !== null) {
     return previousBindingFailure;
   }
-  if (parseWatcherFinalityStateV1(previous, policy) === null) {
+  if (parseWatcherFinalityState(previous, policy) === null) {
     return "malformed_previous_finality_state";
   }
   const consistencyRecord = exactPlainRecord(consistencyInput, [
@@ -822,15 +819,15 @@ const parseFinalityTransition = (
   ) {
     return "finality_provenance_mismatch";
   }
-  const recomputed = evaluateWatcherFinalityV1(
+  const recomputed = evaluateWatcherFinality(
     policy,
     previous,
     consistencyInput,
   );
-  if (!watcherSameCanonicalJsonV1(recomputed, resultInput)) {
+  if (!watcherSameCanonicalJson(recomputed, resultInput)) {
     return "finality_provenance_mismatch";
   }
-  const consistency = consistencyInput as WatcherMultiProviderConsistencyV1;
+  const consistency = consistencyInput as WatcherMultiProviderConsistency;
 
   const result = exactPlainRecord(resultInput, [
     "schemaVersion",
@@ -844,7 +841,7 @@ const parseFinalityTransition = (
   ]);
   if (
     result === null ||
-    result.schemaVersion !== WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION ||
+    result.schemaVersion !== WATCHER_FINALITY_RESULT_SCHEMA_VERSION ||
     typeof result.resultDigest !== "string" ||
     !HEX_32.test(result.resultDigest)
   ) {
@@ -863,7 +860,7 @@ const parseFinalityTransition = (
     "watcher_finality_pending",
     "watcher_finality_post_finality_incident",
   ]);
-  const next = parseWatcherFinalityStateV1(result.state);
+  const next = parseWatcherFinalityState(result.state);
   if (reasons === null || alerts === null || next === null) {
     return "malformed_finality_result";
   }
@@ -871,7 +868,7 @@ const parseFinalityTransition = (
   if (nextBindingFailure !== null) {
     return nextBindingFailure;
   }
-  if (parseWatcherFinalityStateV1(next, policy) === null) {
+  if (parseWatcherFinalityState(next, policy) === null) {
     return "malformed_finality_result";
   }
   const instruction =
@@ -882,7 +879,7 @@ const parseFinalityTransition = (
     return "malformed_finality_result";
   }
   const canonical = {
-    schemaVersion: WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_RESULT_SCHEMA_VERSION,
     action: result.action,
     protocolDecision: result.protocolDecision,
     reasonCodes: reasons,
@@ -960,18 +957,17 @@ const parseFinalityTransition = (
 };
 
 const makeIncident = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   transition: Extract<ParsedFinalityTransition, { readonly kind: "incident" }>,
   sourceStoreDigest: string,
   nextStoreDigest: string,
   transitionCount: string,
-): WatcherRollbackIncidentV1 => {
-  const finalityIncident = transition.next
-    .incident as WatcherFinalityIncidentV1;
+): WatcherRollbackIncident => {
+  const finalityIncident = transition.next.incident as WatcherFinalityIncident;
   const finalizedBinding = transition.next
-    .finalized as WatcherFinalityBoundObservationV1;
+    .finalized as WatcherFinalityBoundObservation;
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION,
     reasonCode: finalityIncident.reasonCode,
     policyDigest: policy.policyDigest,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -994,13 +990,13 @@ const makeIncident = (
 };
 
 const makeRollbackState = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   value: Readonly<{
-    bootstrapStore: WatcherDurableStoreV1;
-    bootstrapFinalityState: WatcherFinalityStateV1;
+    bootstrapStore: WatcherDurableStore;
+    bootstrapFinalityState: WatcherFinalityState;
     epoch: string;
-    epochCheckpoint: WatcherRollbackEpochCheckpointV1 | null;
-    transitions: readonly WatcherRollbackTransitionV1[];
+    epochCheckpoint: WatcherRollbackEpochCheckpoint | null;
+    transitions: readonly WatcherRollbackTransition[];
     storeDigest: string;
     transitionCount: string;
     currentFinalityStateDigest: string | null;
@@ -1009,11 +1005,11 @@ const makeRollbackState = (
     lastFinalityResultDigest: string | null;
     lastInstructionDigest: string | null;
     transitionLineageDigest: string;
-    incident: WatcherRollbackIncidentV1 | null;
+    incident: WatcherRollbackIncident | null;
   }>,
-): WatcherRollbackStateV1 => {
+): WatcherRollbackState => {
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1039,9 +1035,9 @@ const makeRollbackState = (
   });
 };
 
-const genesisLineageDigest = (policy: WatcherFinalityPolicyV1): string =>
+const genesisLineageDigest = (policy: WatcherFinalityPolicy): string =>
   sha256Canonical({
-    schemaVersion: WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
     kind: "genesis",
     policyDigest: policy.policyDigest,
     network: policy.network,
@@ -1050,10 +1046,10 @@ const genesisLineageDigest = (policy: WatcherFinalityPolicyV1): string =>
   });
 
 const initialRollbackState = (
-  policy: WatcherFinalityPolicyV1,
-  bootstrapStore: WatcherDurableStoreV1,
-  bootstrapFinalityState: WatcherFinalityStateV1,
-): WatcherRollbackStateV1 =>
+  policy: WatcherFinalityPolicy,
+  bootstrapStore: WatcherDurableStore,
+  bootstrapFinalityState: WatcherFinalityState,
+): WatcherRollbackState =>
   makeRollbackState(policy, {
     bootstrapStore,
     bootstrapFinalityState,
@@ -1072,8 +1068,8 @@ const initialRollbackState = (
   });
 
 const rootBootstrapStateDigest = (
-  policy: WatcherFinalityPolicyV1,
-  state: WatcherRollbackStateV1,
+  policy: WatcherFinalityPolicy,
+  state: WatcherRollbackState,
 ): string =>
   state.epochCheckpoint?.rootBootstrapStateDigest ??
   initialRollbackState(
@@ -1083,17 +1079,17 @@ const rootBootstrapStateDigest = (
   ).stateDigest;
 
 const makeEpochCheckpoint = (
-  policy: WatcherFinalityPolicyV1,
-  prior: WatcherRollbackStateV1,
-  checkpointStore: WatcherDurableStoreV1,
-  checkpointFinalityState: WatcherFinalityStateV1,
+  policy: WatcherFinalityPolicy,
+  prior: WatcherRollbackState,
+  checkpointStore: WatcherDurableStore,
+  checkpointFinalityState: WatcherFinalityState,
   recovery: Readonly<{
     stateDigest: string;
     lifecycleDigest: string;
   }> | null = null,
-): WatcherRollbackEpochCheckpointV1 => {
+): WatcherRollbackEpochCheckpoint => {
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_EPOCH_CHECKPOINT_SCHEMA_VERSION,
     epoch: (BigInt(prior.epoch) + 1n).toString(),
     rootBootstrapStateDigest: rootBootstrapStateDigest(policy, prior),
     priorCheckpointDigest: prior.epochCheckpoint?.checkpointDigest ?? null,
@@ -1117,15 +1113,15 @@ const makeEpochCheckpoint = (
 };
 
 const makeEpochBootstrapState = (
-  policy: WatcherFinalityPolicyV1,
-  prior: WatcherRollbackStateV1,
-  checkpointStore: WatcherDurableStoreV1,
-  checkpointFinalityState: WatcherFinalityStateV1,
+  policy: WatcherFinalityPolicy,
+  prior: WatcherRollbackState,
+  checkpointStore: WatcherDurableStore,
+  checkpointFinalityState: WatcherFinalityState,
   recovery: Readonly<{
     stateDigest: string;
     lifecycleDigest: string;
   }> | null = null,
-): WatcherRollbackStateV1 => {
+): WatcherRollbackState => {
   const epochCheckpoint = makeEpochCheckpoint(
     policy,
     prior,
@@ -1154,9 +1150,9 @@ const makeEpochBootstrapState = (
 
 const makeTransitionRecord = (
   transition: ParsedFinalityTransition,
-): WatcherRollbackTransitionV1 => {
+): WatcherRollbackTransition => {
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_TRANSITION_SCHEMA_VERSION,
     previousFinalityState: transition.previous,
     consistency: transition.consistency,
     finalityResult: transition.finalityResult,
@@ -1168,19 +1164,19 @@ const makeTransitionRecord = (
 };
 
 const advanceRollbackState = (
-  policy: WatcherFinalityPolicyV1,
-  previous: WatcherRollbackStateV1,
-  activeBootstrapState: WatcherRollbackStateV1,
+  policy: WatcherFinalityPolicy,
+  previous: WatcherRollbackState,
+  activeBootstrapState: WatcherRollbackState,
   transition: ParsedFinalityTransition,
-  sourceStore: WatcherDurableStoreV1,
+  sourceStore: WatcherDurableStore,
   durableStoreDigest: string,
-  incident: WatcherRollbackIncidentV1 | null,
+  incident: WatcherRollbackIncident | null,
 ): Readonly<{
-  state: WatcherRollbackStateV1;
-  bootstrapState: WatcherRollbackStateV1;
+  state: WatcherRollbackState;
+  bootstrapState: WatcherRollbackState;
 }> => {
   const epochState =
-    previous.transitions.length >= WATCHER_ROLLBACK_V1_BOUNDS.transitionHistory
+    previous.transitions.length >= WATCHER_ROLLBACK_BOUNDS.transitionHistory
       ? makeEpochBootstrapState(
           policy,
           previous,
@@ -1231,7 +1227,7 @@ const advanceRollbackState = (
 
 const parseBoundObservation = (
   value: unknown,
-): WatcherFinalityBoundObservationV1 | null => {
+): WatcherFinalityBoundObservation | null => {
   const record = exactPlainRecord(value, [
     "pointDigest",
     "blockHash",
@@ -1282,7 +1278,7 @@ const parseBoundObservation = (
 
 const parseRollbackIncident = (
   value: unknown,
-): WatcherRollbackIncidentV1 | null => {
+): WatcherRollbackIncident | null => {
   const record = exactPlainRecord(value, [
     "schemaVersion",
     "reasonCode",
@@ -1303,7 +1299,7 @@ const parseRollbackIncident = (
   ]);
   if (
     record === null ||
-    record.schemaVersion !== WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION ||
     record.reasonCode !== "post_finality_point_changed"
   ) {
     return null;
@@ -1336,8 +1332,8 @@ const parseRollbackIncident = (
     return null;
   }
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION,
-    reasonCode: record.reasonCode as WatcherFinalityIncidentV1["reasonCode"],
+    schemaVersion: WATCHER_ROLLBACK_INCIDENT_SCHEMA_VERSION,
+    reasonCode: record.reasonCode as WatcherFinalityIncident["reasonCode"],
     policyDigest: record.policyDigest as string,
     releaseEvidenceDigest: record.releaseEvidenceDigest as string,
     deploymentMarker,
@@ -1372,7 +1368,7 @@ const parseRollbackIncident = (
 
 const parseTransitionRecord = (
   value: unknown,
-): WatcherRollbackTransitionV1 | null => {
+): WatcherRollbackTransition | null => {
   const record = exactPlainRecord(value, [
     "schemaVersion",
     "previousFinalityState",
@@ -1382,13 +1378,13 @@ const parseTransitionRecord = (
   ]);
   if (
     record === null ||
-    record.schemaVersion !== WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_ROLLBACK_TRANSITION_SCHEMA_VERSION ||
     typeof record.transitionDigest !== "string" ||
     !HEX_32.test(record.transitionDigest)
   ) {
     return null;
   }
-  const previousFinalityState = parseWatcherFinalityStateV1(
+  const previousFinalityState = parseWatcherFinalityState(
     record.previousFinalityState,
   );
   const consistency = exactPlainRecord(record.consistency, [
@@ -1432,10 +1428,10 @@ const parseTransitionRecord = (
     return null;
   }
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_TRANSITION_SCHEMA_VERSION,
     previousFinalityState,
-    consistency: consistency as WatcherMultiProviderConsistencyV1,
-    finalityResult: finalityResult as unknown as WatcherFinalityResultV1,
+    consistency: consistency as WatcherMultiProviderConsistency,
+    finalityResult: finalityResult as unknown as WatcherFinalityResult,
   };
   if (sha256Canonical(canonical) !== record.transitionDigest) {
     return null;
@@ -1448,7 +1444,7 @@ const parseTransitionRecord = (
 
 const parseEpochCheckpoint = (
   value: unknown,
-): WatcherRollbackEpochCheckpointV1 | null => {
+): WatcherRollbackEpochCheckpoint | null => {
   const record = exactPlainRecord(value, [
     "schemaVersion",
     "epoch",
@@ -1468,8 +1464,7 @@ const parseEpochCheckpoint = (
   ]);
   if (
     record === null ||
-    record.schemaVersion !==
-      WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== WATCHER_ROLLBACK_EPOCH_CHECKPOINT_SCHEMA_VERSION ||
     typeof record.epoch !== "string" ||
     !/^[1-9][0-9]*$/u.test(record.epoch) ||
     typeof record.priorTerminalTransitionCount !== "string" ||
@@ -1506,7 +1501,7 @@ const parseEpochCheckpoint = (
     return null;
   }
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_EPOCH_CHECKPOINT_SCHEMA_VERSION,
     epoch: record.epoch,
     rootBootstrapStateDigest: record.rootBootstrapStateDigest as string,
     priorCheckpointDigest: record.priorCheckpointDigest as string | null,
@@ -1534,9 +1529,9 @@ const parseEpochCheckpoint = (
     : null;
 };
 
-const decodeWatcherRollbackStateV1Structural = (
+const decodeWatcherRollbackStateStructural = (
   value: unknown,
-): WatcherRollbackStateV1 | null => {
+): WatcherRollbackState | null => {
   try {
     const record = exactPlainRecord(value, [
       "schemaVersion",
@@ -1562,7 +1557,7 @@ const decodeWatcherRollbackStateV1Structural = (
     ]);
     if (
       record === null ||
-      record.schemaVersion !== WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION ||
+      record.schemaVersion !== WATCHER_ROLLBACK_STATE_SCHEMA_VERSION ||
       typeof record.policyDigest !== "string" ||
       !HEX_32.test(record.policyDigest) ||
       !NETWORKS.includes(record.network as (typeof NETWORKS)[number]) ||
@@ -1593,13 +1588,13 @@ const decodeWatcherRollbackStateV1Structural = (
       return null;
     }
     const deploymentMarker = marker(record.deploymentMarker);
-    let bootstrapStore: WatcherDurableStoreV1;
+    let bootstrapStore: WatcherDurableStore;
     try {
-      bootstrapStore = parseWatcherDurableStoreV1(record.bootstrapStore);
+      bootstrapStore = parseWatcherDurableStore(record.bootstrapStore);
     } catch {
       return null;
     }
-    const bootstrapFinalityState = parseWatcherFinalityStateV1(
+    const bootstrapFinalityState = parseWatcherFinalityState(
       record.bootstrapFinalityState,
     );
     const epochCheckpoint =
@@ -1610,7 +1605,7 @@ const decodeWatcherRollbackStateV1Structural = (
     if (
       bootstrapFinalityState === null ||
       transitionInputs === null ||
-      transitionInputs.length > WATCHER_ROLLBACK_V1_BOUNDS.transitionHistory
+      transitionInputs.length > WATCHER_ROLLBACK_BOUNDS.transitionHistory
     ) {
       return null;
     }
@@ -1627,7 +1622,7 @@ const decodeWatcherRollbackStateV1Structural = (
       return null;
     }
     const canonical = {
-      schemaVersion: WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
       policyDigest: record.policyDigest,
       network: record.network as (typeof NETWORKS)[number],
       releaseEvidenceDigest: record.releaseEvidenceDigest,
@@ -1637,7 +1632,7 @@ const decodeWatcherRollbackStateV1Structural = (
       epoch: record.epoch,
       epochCheckpoint,
       transitions: Object.freeze(
-        transitions as readonly WatcherRollbackTransitionV1[],
+        transitions as readonly WatcherRollbackTransition[],
       ),
       storeDigest: record.storeDigest,
       transitionCount: record.transitionCount,
@@ -1683,7 +1678,7 @@ const decodeWatcherRollbackStateV1Structural = (
       canonical.incident === null &&
       canonical.transitionLineageDigest ===
         sha256Canonical({
-          schemaVersion: WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
+          schemaVersion: WATCHER_ROLLBACK_STATE_SCHEMA_VERSION,
           kind: "genesis",
           policyDigest: canonical.policyDigest,
           network: canonical.network,
@@ -1742,7 +1737,7 @@ const decodeWatcherRollbackStateV1Structural = (
     const state = Object.freeze({
       ...canonical,
       stateDigest: record.stateDigest,
-    }) as WatcherRollbackStateV1;
+    }) as WatcherRollbackState;
     return state;
   } catch {
     return null;
@@ -1751,7 +1746,7 @@ const decodeWatcherRollbackStateV1Structural = (
 
 const parseRemovedRecords = (
   value: unknown,
-): WatcherRollbackRemovedRecordsV1 | null => {
+): WatcherRollbackRemovedRecords | null => {
   const keys = [
     "l1ObservationIds",
     "chainPointIds",
@@ -1794,7 +1789,7 @@ const parseRemovedRecords = (
     }
     parsed[key] = Object.freeze([...strings]);
   }
-  return Object.freeze(parsed) as WatcherRollbackRemovedRecordsV1;
+  return Object.freeze(parsed) as WatcherRollbackRemovedRecords;
 };
 
 const nullableNatural = (value: unknown): value is string | null =>
@@ -1804,9 +1799,9 @@ const nullableNatural = (value: unknown): value is string | null =>
 const nullableDigest = (value: unknown): value is string | null =>
   value === null || (typeof value === "string" && HEX_32.test(value));
 
-const decodeWatcherRollbackResultV1Structural = (
+const decodeWatcherRollbackResultStructural = (
   value: unknown,
-): WatcherRollbackResultV1 | null => {
+): WatcherRollbackResult | null => {
   try {
     const record = exactPlainRecord(value, [
       "schemaVersion",
@@ -1828,7 +1823,7 @@ const decodeWatcherRollbackResultV1Structural = (
     ]);
     if (
       record === null ||
-      record.schemaVersion !== WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION ||
+      record.schemaVersion !== WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION ||
       ![
         "apply_rewind",
         "duplicate_rewind",
@@ -1851,17 +1846,17 @@ const decodeWatcherRollbackResultV1Structural = (
     }
     const reasonCodes = exactStringArray(
       record.reasonCodes,
-      WATCHER_ROLLBACK_REASON_CODES_V1,
-    ) as readonly WatcherRollbackReasonCodeV1[] | null;
+      WATCHER_ROLLBACK_REASON_CODES,
+    ) as readonly WatcherRollbackReasonCode[] | null;
     const alertCodes = exactStringArray(
       record.alertCodes,
-      WATCHER_ROLLBACK_ALERT_CODES_V1,
-    ) as readonly WatcherRollbackAlertCodeV1[] | null;
+      WATCHER_ROLLBACK_ALERT_CODES,
+    ) as readonly WatcherRollbackAlertCode[] | null;
     const removedRecords = parseRemovedRecords(record.removedRecords);
-    let nextStore: WatcherDurableStoreV1 | null = null;
+    let nextStore: WatcherDurableStore | null = null;
     if (record.nextStore !== null) {
       try {
-        nextStore = parseWatcherDurableStoreV1(record.nextStore);
+        nextStore = parseWatcherDurableStore(record.nextStore);
       } catch {
         return null;
       }
@@ -1869,11 +1864,11 @@ const decodeWatcherRollbackResultV1Structural = (
     const rollbackState =
       record.rollbackState === null
         ? null
-        : decodeWatcherRollbackStateV1Structural(record.rollbackState);
+        : decodeWatcherRollbackStateStructural(record.rollbackState);
     const rollbackBootstrapState =
       record.rollbackBootstrapState === null
         ? null
-        : decodeWatcherRollbackStateV1Structural(record.rollbackBootstrapState);
+        : decodeWatcherRollbackStateStructural(record.rollbackBootstrapState);
     if (
       reasonCodes === null ||
       alertCodes === null ||
@@ -1904,9 +1899,9 @@ const decodeWatcherRollbackResultV1Structural = (
     ) {
       return null;
     }
-    const action = record.action as WatcherRollbackResultV1["action"];
+    const action = record.action as WatcherRollbackResult["action"];
     const protocolDecision =
-      record.protocolDecision as WatcherRollbackResultV1["protocolDecision"];
+      record.protocolDecision as WatcherRollbackResult["protocolDecision"];
     const hasRemovedRecords = removedRecordCount(removedRecords) > 0;
     const validSemantics =
       (action === "apply_rewind" &&
@@ -1976,7 +1971,7 @@ const decodeWatcherRollbackResultV1Structural = (
       return null;
     }
     const canonical = {
-      schemaVersion: WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_ROLLBACK_RESULT_SCHEMA_VERSION,
       action,
       protocolDecision,
       reasonCodes,
@@ -2006,7 +2001,7 @@ const decodeWatcherRollbackResultV1Structural = (
   }
 };
 
-const removedRecordCount = (removed: WatcherRollbackRemovedRecordsV1): number =>
+const removedRecordCount = (removed: WatcherRollbackRemovedRecords): number =>
   Object.values(removed).reduce((total, values) => total + values.length, 0);
 
 const sorted = (values: Iterable<string>): readonly string[] =>
@@ -2015,14 +2010,14 @@ const sorted = (values: Iterable<string>): readonly string[] =>
 type PersistedConsistencyEvidence = Readonly<{
   observationIds: ReadonlySet<string>;
   chainPointIds: ReadonlySet<string>;
-  observations: readonly WatcherNormalizedL1BlockV1[];
-  consistency: WatcherMultiProviderConsistencyV1;
+  observations: readonly WatcherNormalizedL1Block[];
+  consistency: WatcherMultiProviderConsistency;
 }>;
 
 type PersistedObservationIndexEntry = Readonly<{
-  durable: WatcherDurableStoreV1["l1Observations"][number];
-  point: WatcherDurableStoreV1["chainPoints"][number] | null;
-  observation: WatcherNormalizedL1BlockV1;
+  durable: WatcherDurableStore["l1Observations"][number];
+  point: WatcherDurableStore["chainPoints"][number] | null;
+  observation: WatcherNormalizedL1Block;
 }>;
 
 type PersistedObservationIndex = ReadonlyMap<
@@ -2032,7 +2027,7 @@ type PersistedObservationIndex = ReadonlyMap<
 
 const decodePersistedObservation = (
   cborHex: string,
-): WatcherNormalizedL1BlockV1 | null => {
+): WatcherNormalizedL1Block | null => {
   try {
     const bytes = Buffer.from(cborHex, "hex");
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -2053,8 +2048,8 @@ const decodePersistedObservation = (
     ) {
       return null;
     }
-    const observation = decoded as WatcherNormalizedL1BlockV1;
-    if (!bytes.equals(encodeWatcherNormalizedL1BlockV1(observation))) {
+    const observation = decoded as WatcherNormalizedL1Block;
+    if (!bytes.equals(encodeWatcherNormalizedL1Block(observation))) {
       return null;
     }
     return observation;
@@ -2064,7 +2059,7 @@ const decodePersistedObservation = (
 };
 
 const indexPersistedObservations = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
 ): PersistedObservationIndex => {
   const points = new Map(
     store.chainPoints.map((point) => [point.chainPointId, point] as const),
@@ -2097,16 +2092,16 @@ const AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE = Symbol(
 );
 
 const verifyPersistedConsistencyEvidence = (
-  policy: WatcherFinalityPolicyV1,
-  store: WatcherDurableStoreV1,
-  consistency: WatcherMultiProviderConsistencyV1,
+  policy: WatcherFinalityPolicy,
+  store: WatcherDurableStore,
+  consistency: WatcherMultiProviderConsistency,
   transportAttestationsInput: unknown,
   persistedIndex: PersistedObservationIndex = indexPersistedObservations(store),
   authenticatedSnapshotEvidence:
     | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
     | null = null,
 ): PersistedConsistencyEvidence | null => {
-  const structuralVerification = evaluateWatcherFinalityV1(
+  const structuralVerification = evaluateWatcherFinality(
     policy,
     null,
     consistency,
@@ -2127,14 +2122,14 @@ const verifyPersistedConsistencyEvidence = (
     consistency.authorityGenesisIdentitySha256 !==
       policy.authorityGenesisIdentitySha256 ||
     consistency.configuredSourceDigest !==
-      sha256Canonical(watcherFinalityConfiguredSourceV1(policy)) ||
+      sha256Canonical(watcherFinalityConfiguredSource(policy)) ||
     consistency.rejectedObservationCount !== 0 ||
     evidenceDigests.length === 0 ||
     consistency.observationCount !== evidenceDigests.length
   ) {
     return null;
   }
-  const decoded: WatcherNormalizedL1BlockV1[] = [];
+  const decoded: WatcherNormalizedL1Block[] = [];
   const observationIds = new Set<string>();
   const chainPointIds = new Set<string>();
   for (const evidenceDigest of evidenceDigests) {
@@ -2171,12 +2166,12 @@ const verifyPersistedConsistencyEvidence = (
   const recomputed =
     authenticatedSnapshotEvidence === AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
       ? consistency
-      : evaluateWatcherMultiProviderConsistencyV1(
-          watcherFinalityConfiguredSourceV1(policy),
+      : evaluateWatcherMultiProviderConsistency(
+          watcherFinalityConfiguredSource(policy),
           decoded,
-          transportAttestationsInput as readonly WatcherL1TransportAttestationContextV1[],
+          transportAttestationsInput as readonly WatcherL1TransportAttestationContext[],
         );
-  return watcherSameCanonicalJsonV1(recomputed, consistency)
+  return watcherSameCanonicalJson(recomputed, consistency)
     ? Object.freeze({
         observationIds,
         chainPointIds,
@@ -2187,8 +2182,8 @@ const verifyPersistedConsistencyEvidence = (
 };
 
 const verifyPersistedReplacementEvidence = (
-  policy: WatcherFinalityPolicyV1,
-  store: WatcherDurableStoreV1,
+  policy: WatcherFinalityPolicy,
+  store: WatcherDurableStore,
   transition: Extract<ParsedFinalityTransition, { readonly kind: "rewind" }>,
   transportAttestationsInput: unknown,
   authenticatedSnapshotEvidence:
@@ -2205,7 +2200,7 @@ const verifyPersistedReplacementEvidence = (
   );
   const agreement = transition.consistency.agreement;
   const replacement = transition.next
-    .pending as WatcherFinalityBoundObservationV1;
+    .pending as WatcherFinalityBoundObservation;
   return evidence !== null &&
     transition.consistency.status === "agreed" &&
     transition.consistency.protocolDecision === "allowed" &&
@@ -2221,17 +2216,16 @@ const verifyPersistedReplacementEvidence = (
 };
 
 const planRewind = (
-  store: WatcherDurableStoreV1,
+  store: WatcherDurableStore,
   transition: Extract<ParsedFinalityTransition, { readonly kind: "rewind" }>,
   replacementEvidence: PersistedConsistencyEvidence,
 ): Readonly<{
-  records: WatcherDurableRecordsV1;
-  removed: WatcherRollbackRemovedRecordsV1;
+  records: WatcherDurableRecords;
+  removed: WatcherRollbackRemovedRecords;
 }> => {
-  const prior = transition.previous
-    .pending as WatcherFinalityBoundObservationV1;
+  const prior = transition.previous.pending as WatcherFinalityBoundObservation;
   const replacement = transition.next
-    .pending as WatcherFinalityBoundObservationV1;
+    .pending as WatcherFinalityBoundObservation;
   const kind = transition.instruction.kind;
   const directInvalidPointIds = new Set<string>();
   const removedPointIds = new Set<string>();
@@ -2436,13 +2430,13 @@ const planRewind = (
   });
 };
 
-const storeDigest = (store: WatcherDurableStoreV1): string =>
-  watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
+const storeDigest = (store: WatcherDurableStore): string =>
+  watcherDurableStoreBytesSha256(encodeWatcherDurableStore(store));
 
 const rollbackStateBindingFailure = (
-  policy: WatcherFinalityPolicyV1,
-  state: WatcherRollbackStateV1,
-): WatcherRollbackReasonCodeV1 | null => {
+  policy: WatcherFinalityPolicy,
+  state: WatcherRollbackState,
+): WatcherRollbackReasonCode | null => {
   if (state.network !== policy.network) {
     return "network_mismatch";
   }
@@ -2456,15 +2450,15 @@ const rollbackStateBindingFailure = (
 };
 
 const trustedCheckpointStateDigest = (
-  bootstrapState: WatcherRollbackStateV1,
+  bootstrapState: WatcherRollbackState,
 ): string | null =>
   bootstrapState.epoch === "0" ? null : bootstrapState.stateDigest;
 
 const evaluateWatcherRollbackStep = (
-  policy: WatcherFinalityPolicyV1,
-  store: WatcherDurableStoreV1,
-  rollbackState: WatcherRollbackStateV1,
-  rollbackBootstrapState: WatcherRollbackStateV1,
+  policy: WatcherFinalityPolicy,
+  store: WatcherDurableStore,
+  rollbackState: WatcherRollbackState,
+  rollbackBootstrapState: WatcherRollbackState,
   previousFinalityStateInput: unknown,
   consistencyInput: unknown,
   finalityResultInput: unknown,
@@ -2472,7 +2466,7 @@ const evaluateWatcherRollbackStep = (
   authenticatedSnapshotEvidence:
     | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
     | null = null,
-): WatcherRollbackResultV1 => {
+): WatcherRollbackResult => {
   const sourceStoreDigest = storeDigest(store);
   if (rollbackState.incident !== null) {
     return makeResult({
@@ -2502,7 +2496,7 @@ const evaluateWatcherRollbackStep = (
     finalityResultInput,
   );
   if (typeof transition === "string") {
-    const bindingReasons: readonly WatcherRollbackReasonCodeV1[] = [
+    const bindingReasons: readonly WatcherRollbackReasonCode[] = [
       "deployment_mismatch",
       "release_evidence_mismatch",
       "network_mismatch",
@@ -2557,7 +2551,7 @@ const evaluateWatcherRollbackStep = (
     const transitionCount = (
       BigInt(rollbackState.transitionCount) + 1n
     ).toString();
-    const nextStore = makeWatcherDurableStoreV1({
+    const nextStore = makeWatcherDurableStore({
       deploymentMarker: store.deploymentMarker,
       revision: (BigInt(store.revision) + 1n).toString(),
       records: store,
@@ -2649,7 +2643,7 @@ const evaluateWatcherRollbackStep = (
   if (removedRecordCount(plan.removed) === 0) {
     return reject("unknown_rewind_target");
   }
-  const nextStore = makeWatcherDurableStoreV1({
+  const nextStore = makeWatcherDurableStore({
     deploymentMarker: store.deploymentMarker,
     revision: (BigInt(store.revision) + 1n).toString(),
     records: plan.records,
@@ -2685,15 +2679,15 @@ const evaluateWatcherRollbackStep = (
 };
 
 const replayWatcherRollbackState = (
-  policy: WatcherFinalityPolicyV1,
-  bootstrapState: WatcherRollbackStateV1,
-  candidate: WatcherRollbackStateV1,
-  currentStore: WatcherDurableStoreV1,
+  policy: WatcherFinalityPolicy,
+  bootstrapState: WatcherRollbackState,
+  candidate: WatcherRollbackState,
+  currentStore: WatcherDurableStore,
   transportAttestationsInput: unknown,
   authenticatedSnapshotEvidence:
     | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
     | null = null,
-): WatcherRollbackStateV1 | null => {
+): WatcherRollbackState | null => {
   if (
     rollbackStateBindingFailure(policy, candidate) !== null ||
     !sameMarker(
@@ -2705,15 +2699,15 @@ const replayWatcherRollbackState = (
   }
   if (
     candidate.epoch !== bootstrapState.epoch ||
-    !watcherSameCanonicalJsonV1(
+    !watcherSameCanonicalJson(
       candidate.epochCheckpoint,
       bootstrapState.epochCheckpoint,
     ) ||
-    !watcherSameCanonicalJsonV1(
+    !watcherSameCanonicalJson(
       candidate.bootstrapStore,
       bootstrapState.bootstrapStore,
     ) ||
-    !watcherSameCanonicalJsonV1(
+    !watcherSameCanonicalJson(
       candidate.bootstrapFinalityState,
       bootstrapState.bootstrapFinalityState,
     )
@@ -2744,8 +2738,8 @@ const replayWatcherRollbackState = (
     derivedStore = result.nextStore;
     derivedState = result.rollbackState;
   }
-  return watcherSameCanonicalJsonV1(derivedStore, currentStore) &&
-    watcherSameCanonicalJsonV1(derivedState, candidate)
+  return watcherSameCanonicalJson(derivedStore, currentStore) &&
+    watcherSameCanonicalJson(derivedState, candidate)
     ? derivedState
     : null;
 };
@@ -2755,18 +2749,18 @@ const replayWatcherRollbackState = (
  * this explicit bootstrap and subsequently persist each returned state; the
  * evaluator never treats null or a compact self-hash as a fresh installation.
  */
-export const makeWatcherRollbackBootstrapStateV1 = (
+export const makeWatcherRollbackBootstrapState = (
   policyInput: unknown,
   bootstrapStoreInput: unknown,
   bootstrapFinalityStateInput: unknown,
-): WatcherRollbackStateV1 | null => {
-  const policy = parseWatcherFinalityPolicyV1(policyInput);
+): WatcherRollbackState | null => {
+  const policy = parseWatcherFinalityPolicy(policyInput);
   if (policy === null) {
     return null;
   }
   try {
-    const bootstrapStore = parseWatcherDurableStoreV1(bootstrapStoreInput);
-    const bootstrapFinalityState = parseWatcherFinalityStateV1(
+    const bootstrapStore = parseWatcherDurableStore(bootstrapStoreInput);
+    const bootstrapFinalityState = parseWatcherFinalityState(
       bootstrapFinalityStateInput,
       policy,
     );
@@ -2782,16 +2776,15 @@ export const makeWatcherRollbackBootstrapStateV1 = (
 };
 
 const parseRollbackBootstrapStateWithTrustedDigest = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   value: unknown,
   trustedCheckpointStateDigest: string | null,
-): WatcherRollbackStateV1 | null => {
-  const candidate = decodeWatcherRollbackStateV1Structural(value);
+): WatcherRollbackState | null => {
+  const candidate = decodeWatcherRollbackStateStructural(value);
   if (
     candidate === null ||
     rollbackStateBindingFailure(policy, candidate) !== null ||
-    parseWatcherFinalityStateV1(candidate.bootstrapFinalityState, policy) ===
-      null
+    parseWatcherFinalityState(candidate.bootstrapFinalityState, policy) === null
   ) {
     return null;
   }
@@ -2801,7 +2794,7 @@ const parseRollbackBootstrapStateWithTrustedDigest = (
     candidate.bootstrapFinalityState,
   );
   return candidate.epoch === "0"
-    ? watcherSameCanonicalJsonV1(candidate, expected)
+    ? watcherSameCanonicalJson(candidate, expected)
       ? candidate
       : null
     : candidate.epochCheckpoint !== null &&
@@ -2813,15 +2806,15 @@ const parseRollbackBootstrapStateWithTrustedDigest = (
 };
 
 const parseRollbackBootstrapState = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   value: unknown,
   trustedCheckpointAuthorityInput: unknown = undefined,
-): WatcherRollbackStateV1 | null => {
+): WatcherRollbackState | null => {
   const trustedAuthority =
     typeof trustedCheckpointAuthorityInput === "object" &&
     trustedCheckpointAuthorityInput !== null
       ? rollbackDurableAuthorityRuntime.get(
-          trustedCheckpointAuthorityInput as WatcherRollbackDurableAuthorityV1,
+          trustedCheckpointAuthorityInput as WatcherRollbackDurableAuthority,
         )
       : undefined;
   return parseRollbackBootstrapStateWithTrustedDigest(
@@ -2840,12 +2833,12 @@ const parseRollbackBootstrapState = (
  * bootstrap state and requires every derived intermediate store to lead to
  * `currentStore`.
  */
-export const parseWatcherRollbackStateV1 = (
+export const parseWatcherRollbackState = (
   value: unknown,
-  context: WatcherRollbackStateVerificationContextV1,
-): WatcherRollbackStateV1 | null => {
-  const candidate = decodeWatcherRollbackStateV1Structural(value);
-  const policy = parseWatcherFinalityPolicyV1(context.policy);
+  context: WatcherRollbackStateVerificationContext,
+): WatcherRollbackState | null => {
+  const candidate = decodeWatcherRollbackStateStructural(value);
+  const policy = parseWatcherFinalityPolicy(context.policy);
   if (candidate === null || policy === null) {
     return null;
   }
@@ -2855,7 +2848,7 @@ export const parseWatcherRollbackStateV1 = (
       context.rollbackBootstrapState,
       context.trustedCheckpointAuthority,
     );
-    const currentStore = parseWatcherDurableStoreV1(context.currentStore);
+    const currentStore = parseWatcherDurableStore(context.currentStore);
     return bootstrapState === null
       ? null
       : replayWatcherRollbackState(
@@ -2875,7 +2868,7 @@ export const parseWatcherRollbackStateV1 = (
  * The explicit prior rollback state is fully replayed from bootstrap before
  * use; null cannot reset the journal after restart.
  */
-export const evaluateWatcherRollbackV1 = (
+export const evaluateWatcherRollback = (
   policyInput: unknown,
   storeInput: unknown,
   previousFinalityStateInput: unknown,
@@ -2885,17 +2878,17 @@ export const evaluateWatcherRollbackV1 = (
   rollbackBootstrapStateInput: unknown,
   trustedCheckpointAuthorityInput: unknown = undefined,
   transportAttestationsInput: unknown = [],
-): WatcherRollbackResultV1 => {
-  const policy = parseWatcherFinalityPolicyV1(policyInput);
+): WatcherRollbackResult => {
+  const policy = parseWatcherFinalityPolicy(policyInput);
   if (policy === null) {
     return reject(
       "malformed_policy",
       "watcher_rollback_configuration_mismatch",
     );
   }
-  let store: WatcherDurableStoreV1;
+  let store: WatcherDurableStore;
   try {
-    store = parseWatcherDurableStoreV1(storeInput);
+    store = parseWatcherDurableStore(storeInput);
   } catch {
     return reject("malformed_store");
   }
@@ -2905,7 +2898,7 @@ export const evaluateWatcherRollbackV1 = (
       "watcher_rollback_configuration_mismatch",
     );
   }
-  const rollbackStateCandidate = decodeWatcherRollbackStateV1Structural(
+  const rollbackStateCandidate = decodeWatcherRollbackStateStructural(
     previousRollbackStateInput,
   );
   if (rollbackStateCandidate === null) {
@@ -2969,19 +2962,19 @@ export const evaluateWatcherRollbackV1 = (
  * policy, source store, prior W12 state, W11 decision, W12 result, and prior
  * rollback lineage reproduces every byte of the candidate result.
  */
-export const parseWatcherRollbackResultV1 = (
+export const parseWatcherRollbackResult = (
   value: unknown,
-  context: WatcherRollbackVerificationContextV1,
-): WatcherRollbackResultV1 | null => {
+  context: WatcherRollbackVerificationContext,
+): WatcherRollbackResult | null => {
   if (typeof value === "object" && value !== null && isProxy(value)) {
     return null;
   }
-  const parsed = decodeWatcherRollbackResultV1Structural(value);
+  const parsed = decodeWatcherRollbackResultStructural(value);
   if (parsed === null) {
     return null;
   }
   try {
-    const expected = evaluateWatcherRollbackV1(
+    const expected = evaluateWatcherRollback(
       context.policy,
       context.sourceStore,
       context.previousFinalityState,
@@ -2992,7 +2985,7 @@ export const parseWatcherRollbackResultV1 = (
       context.trustedCheckpointAuthority,
       context.transportAttestations,
     );
-    return watcherSameCanonicalJsonV1(parsed, expected) ? parsed : null;
+    return watcherSameCanonicalJson(parsed, expected) ? parsed : null;
   } catch {
     return null;
   }
@@ -3000,7 +2993,7 @@ export const parseWatcherRollbackResultV1 = (
 
 type VerifiedPostFinalityPath = Readonly<{
   agreements: readonly NonNullable<
-    WatcherMultiProviderConsistencyV1["agreement"]
+    WatcherMultiProviderConsistency["agreement"]
   >[];
   evidence: readonly PersistedConsistencyEvidence[];
   consistencyDigests: readonly string[];
@@ -3010,12 +3003,12 @@ type VerifiedPostFinalityPath = Readonly<{
 
 const makePostFinalityRecoveryResult = (
   value: Omit<
-    WatcherPostFinalityRecoveryResultV1,
+    WatcherPostFinalityRecoveryResult,
     "schemaVersion" | "resultDigest"
   >,
-): WatcherPostFinalityRecoveryResultV1 => {
+): WatcherPostFinalityRecoveryResult => {
   const canonical = {
-    schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_SCHEMA_VERSION,
     action: value.action,
     protocolDecision: value.protocolDecision,
     reasonCodes: Object.freeze([...value.reasonCodes]),
@@ -3039,8 +3032,8 @@ const makePostFinalityRecoveryResult = (
 };
 
 const rejectPostFinalityRecovery = (
-  reason: WatcherPostFinalityRecoveryReasonCodeV1,
-): WatcherPostFinalityRecoveryResultV1 =>
+  reason: WatcherPostFinalityRecoveryReasonCode,
+): WatcherPostFinalityRecoveryResult =>
   makePostFinalityRecoveryResult({
     action: "reject",
     protocolDecision: "quarantined",
@@ -3059,28 +3052,28 @@ const rejectPostFinalityRecovery = (
   });
 
 const verifyPostFinalityPath = (
-  policy: WatcherFinalityPolicyV1,
-  store: WatcherDurableStoreV1,
+  policy: WatcherFinalityPolicy,
+  store: WatcherDurableStore,
   value: unknown,
   persistedIndex: PersistedObservationIndex,
   transportAttestationsInput: unknown,
   authenticatedSnapshotEvidence:
     | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
     | null = null,
-): VerifiedPostFinalityPath | WatcherPostFinalityRecoveryReasonCodeV1 => {
+): VerifiedPostFinalityPath | WatcherPostFinalityRecoveryReasonCode => {
   const inputs = exactArray(value);
   if (inputs === null || inputs.length < 2) {
     return "recovery_path_malformed";
   }
   if (
     inputs.length >
-    Number(WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth) + 1
+    Number(WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth) + 1
   ) {
     return "recovery_depth_exceeded";
   }
   const evidence: PersistedConsistencyEvidence[] = [];
   const agreements: NonNullable<
-    WatcherMultiProviderConsistencyV1["agreement"]
+    WatcherMultiProviderConsistency["agreement"]
   >[] = [];
   for (const input of inputs) {
     if (
@@ -3113,7 +3106,7 @@ const verifyPostFinalityPath = (
     const persisted = verifyPersistedConsistencyEvidence(
       policy,
       store,
-      input as WatcherMultiProviderConsistencyV1,
+      input as WatcherMultiProviderConsistency,
       transportAttestationsInput,
       persistedIndex,
       authenticatedSnapshotEvidence,
@@ -3180,8 +3173,8 @@ const verifyPostFinalityPath = (
 };
 
 const sameAgreementPoint = (
-  left: NonNullable<WatcherMultiProviderConsistencyV1["agreement"]>,
-  right: NonNullable<WatcherMultiProviderConsistencyV1["agreement"]>,
+  left: NonNullable<WatcherMultiProviderConsistency["agreement"]>,
+  right: NonNullable<WatcherMultiProviderConsistency["agreement"]>,
 ): boolean =>
   left.pointDigest === right.pointDigest &&
   left.blockHash === right.blockHash &&
@@ -3192,7 +3185,7 @@ const sameAgreementPoint = (
 const makeRecoveryPath = (
   previous: VerifiedPostFinalityPath,
   replacement: VerifiedPostFinalityPath,
-): WatcherPostFinalityRecoveryPathV1 => {
+): WatcherPostFinalityRecoveryPath => {
   const commonAncestor = previous.agreements[0]!;
   const orphanedFinalized = previous.agreements.at(-1)!;
   const replacementTip = replacement.agreements.at(-1)!;
@@ -3218,8 +3211,8 @@ const makeRecoveryPath = (
 };
 
 const makeResumableFinalityState = (
-  policy: WatcherFinalityPolicyV1,
-): WatcherFinalityStateV1 => {
+  policy: WatcherFinalityPolicy,
+): WatcherFinalityState => {
   const canonical = {
     schemaVersion: "midgard-watcher-finality-state-v1" as const,
     policyDigest: policy.policyDigest,
@@ -3238,14 +3231,14 @@ const makeResumableFinalityState = (
 };
 
 const makePostFinalityRecoveryState = (
-  policy: WatcherFinalityPolicyV1,
-  sourceRollbackState: WatcherRollbackStateV1,
+  policy: WatcherFinalityPolicy,
+  sourceRollbackState: WatcherRollbackState,
   sourceStoreDigest: string,
   nextStoreDigest: string,
-  path: WatcherPostFinalityRecoveryPathV1,
-  removedRecords: WatcherRollbackRemovedRecordsV1,
-  resumableFinalityState: WatcherFinalityStateV1,
-): WatcherPostFinalityRecoveryStateV1 => {
+  path: WatcherPostFinalityRecoveryPath,
+  removedRecords: WatcherRollbackRemovedRecords,
+  resumableFinalityState: WatcherFinalityState,
+): WatcherPostFinalityRecoveryState => {
   const detectedIncident = sourceRollbackState.incident!;
   const lifecycleCanonical = {
     detectedIncidentDigest: detectedIncident.incidentDigest,
@@ -3263,7 +3256,7 @@ const makePostFinalityRecoveryState = (
     lifecycleDigest: sha256Canonical(lifecycleCanonical),
   });
   const canonical = {
-    schemaVersion: WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_POST_FINALITY_RECOVERY_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -3284,7 +3277,7 @@ const makePostFinalityRecoveryState = (
 
 const parseRecoveryPath = (
   value: unknown,
-): WatcherPostFinalityRecoveryPathV1 | null => {
+): WatcherPostFinalityRecoveryPath | null => {
   const path = exactPlainRecord(value, [
     "commonAncestorPointDigest",
     "commonAncestorBlockHash",
@@ -3360,7 +3353,7 @@ const parseRecoveryPath = (
 
 const decodePostFinalityRecoveryState = (
   value: unknown,
-): WatcherPostFinalityRecoveryStateV1 | null => {
+): WatcherPostFinalityRecoveryState | null => {
   try {
     const state = exactPlainRecord(value, [
       "schemaVersion",
@@ -3380,7 +3373,7 @@ const decodePostFinalityRecoveryState = (
     if (
       state === null ||
       state.schemaVersion !==
-        WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION ||
+        WATCHER_POST_FINALITY_RECOVERY_STATE_SCHEMA_VERSION ||
       !isNetwork(state.network) ||
       ![
         state.policyDigest,
@@ -3396,7 +3389,7 @@ const decodePostFinalityRecoveryState = (
     const deploymentMarker = marker(state.deploymentMarker);
     const path = parseRecoveryPath(state.path);
     const removedRecords = parseRemovedRecords(state.removedRecords);
-    const resumableFinalityState = parseWatcherFinalityStateV1(
+    const resumableFinalityState = parseWatcherFinalityState(
       state.resumableFinalityState,
     );
     const lifecycle = exactPlainRecord(state.incidentLifecycle, [
@@ -3439,7 +3432,7 @@ const decodePostFinalityRecoveryState = (
     const lifecycleCanonical = {
       detectedIncidentDigest: lifecycle.detectedIncidentDigest as string,
       detectedReasonCode:
-        lifecycle.detectedReasonCode as WatcherFinalityIncidentV1["reasonCode"],
+        lifecycle.detectedReasonCode as WatcherFinalityIncident["reasonCode"],
       detectedTriggerConsistencyDigest:
         lifecycle.detectedTriggerConsistencyDigest as string | null,
       detectedFinalityStateDigest:
@@ -3462,9 +3455,9 @@ const decodePostFinalityRecoveryState = (
       return null;
     }
     const canonical = {
-      schemaVersion: WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_POST_FINALITY_RECOVERY_STATE_SCHEMA_VERSION,
       policyDigest: state.policyDigest as string,
-      network: state.network as WatcherPostFinalityRecoveryStateV1["network"],
+      network: state.network as WatcherPostFinalityRecoveryState["network"],
       releaseEvidenceDigest: state.releaseEvidenceDigest as string,
       deploymentMarker,
       sourceRollbackStateDigest: state.sourceRollbackStateDigest as string,
@@ -3495,9 +3488,9 @@ const decodePostFinalityRecoveryState = (
  * one W03 revision: every dependent orphan record is removed together while
  * canonical replacement evidence remains available for deterministic replay.
  */
-const evaluateWatcherPostFinalityRecoveryInternalV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
-): WatcherPostFinalityRecoveryResultV1 => {
+const evaluateWatcherPostFinalityRecoveryInternal = (
+  input: WatcherPostFinalityRecoveryInput,
+): WatcherPostFinalityRecoveryResult => {
   const recoveryInputKeys = [
     "policy",
     "sourceStore",
@@ -3527,21 +3520,21 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
   ) {
     return rejectPostFinalityRecovery("recovery_path_malformed");
   }
-  const policy = parseWatcherFinalityPolicyV1(input.policy);
+  const policy = parseWatcherFinalityPolicy(input.policy);
   if (policy === null) {
     return rejectPostFinalityRecovery("malformed_policy");
   }
   if (
     BigInt(policy.maximumPostFinalityRecoveryDepth) >
-    WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth
+    WATCHER_ROLLBACK_BOUNDS.postFinalityRecoveryDepth
   ) {
     return rejectPostFinalityRecovery("malformed_policy");
   }
-  let sourceStore: WatcherDurableStoreV1;
-  let currentStore: WatcherDurableStoreV1;
+  let sourceStore: WatcherDurableStore;
+  let currentStore: WatcherDurableStore;
   try {
-    sourceStore = parseWatcherDurableStoreV1(input.sourceStore);
-    currentStore = parseWatcherDurableStoreV1(input.currentStore);
+    sourceStore = parseWatcherDurableStore(input.sourceStore);
+    currentStore = parseWatcherDurableStore(input.currentStore);
   } catch {
     return rejectPostFinalityRecovery("malformed_store");
   }
@@ -3552,7 +3545,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     return rejectPostFinalityRecovery("malformed_store");
   }
   const sourceStoreDigest = storeDigest(sourceStore);
-  const rollbackState = parseWatcherRollbackStateV1(
+  const rollbackState = parseWatcherRollbackState(
     input.quarantinedRollbackState,
     {
       policy,
@@ -3584,10 +3577,10 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
       return null;
     }
     const runtime = rollbackDurableAuthorityRuntime.get(
-      input.trustedCheckpointAuthority as WatcherRollbackDurableAuthorityV1,
+      input.trustedCheckpointAuthority as WatcherRollbackDurableAuthority,
     );
     return runtime !== undefined &&
-      watcherSameCanonicalJsonV1(runtime.snapshot.currentStore, sourceStore)
+      watcherSameCanonicalJson(runtime.snapshot.currentStore, sourceStore)
       ? AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
       : null;
   })();
@@ -3669,7 +3662,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
   }
   if (
     previousRecoveryState === null &&
-    !watcherSameCanonicalJsonV1(currentStore, sourceStore)
+    !watcherSameCanonicalJson(currentStore, sourceStore)
   ) {
     return rejectPostFinalityRecovery("recovery_state_mismatch");
   }
@@ -3726,14 +3719,14 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
   if (removedRecordCount(plan.removed) === 0) {
     return rejectPostFinalityRecovery("unknown_recovery_target");
   }
-  const nextStore = makeWatcherDurableStoreV1({
+  const nextStore = makeWatcherDurableStore({
     deploymentMarker: sourceStore.deploymentMarker,
     revision: (BigInt(sourceStore.revision) + 1n).toString(),
     records: plan.records,
   });
   const nextStoreDigest = storeDigest(nextStore);
   const resumableFinalityState = makeResumableFinalityState(policy);
-  if (parseWatcherFinalityStateV1(resumableFinalityState, policy) === null) {
+  if (parseWatcherFinalityState(resumableFinalityState, policy) === null) {
     return rejectPostFinalityRecovery("malformed_policy");
   }
   const recoveryState = makePostFinalityRecoveryState(
@@ -3759,8 +3752,8 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     const currentStoreDigest = storeDigest(currentStore);
     if (
       currentStoreDigest !== nextStoreDigest ||
-      !watcherSameCanonicalJsonV1(currentStore, nextStore) ||
-      !watcherSameCanonicalJsonV1(previousRecoveryState, recoveryState)
+      !watcherSameCanonicalJson(currentStore, nextStore) ||
+      !watcherSameCanonicalJson(previousRecoveryState, recoveryState)
     ) {
       return rejectPostFinalityRecovery("recovery_state_mismatch");
     }
@@ -3799,11 +3792,11 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
   });
 };
 
-export const evaluateWatcherPostFinalityRecoveryV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
-): WatcherPostFinalityRecoveryResultV1 => {
+export const evaluateWatcherPostFinalityRecovery = (
+  input: WatcherPostFinalityRecoveryInput,
+): WatcherPostFinalityRecoveryResult => {
   try {
-    return evaluateWatcherPostFinalityRecoveryInternalV1(input);
+    return evaluateWatcherPostFinalityRecoveryInternal(input);
   } catch {
     return rejectPostFinalityRecovery("recovery_path_malformed");
   }
@@ -3864,12 +3857,12 @@ const sameCanonicalStructure = (
  * authority: the exact recovery input is replayed and only a safe,
  * byte-equivalent canonical result shape is accepted.
  */
-export const parseWatcherPostFinalityRecoveryResultV1 = (
+export const parseWatcherPostFinalityRecoveryResult = (
   value: unknown,
-  input: WatcherPostFinalityRecoveryInputV1,
-): WatcherPostFinalityRecoveryResultV1 | null => {
+  input: WatcherPostFinalityRecoveryInput,
+): WatcherPostFinalityRecoveryResult | null => {
   try {
-    const expected = evaluateWatcherPostFinalityRecoveryV1(input);
+    const expected = evaluateWatcherPostFinalityRecovery(input);
     return sameCanonicalStructure(value, expected) ? expected : null;
   } catch {
     return null;
@@ -3879,14 +3872,14 @@ export const parseWatcherPostFinalityRecoveryResultV1 = (
 const rollbackAuthorityEncoder = new TextEncoder();
 const rollbackAuthorityDecoder = new TextDecoder("utf-8", { fatal: true });
 
-type WatcherRollbackDurableAuthorityContentV1 = Omit<
-  WatcherRollbackDurableAuthoritySnapshotV1,
+type WatcherRollbackDurableAuthorityContent = Omit<
+  WatcherRollbackDurableAuthoritySnapshot,
   "authorityDigest" | "authorityMac"
 >;
 
 const rollbackAuthorityCanonical = (
-  value: WatcherRollbackDurableAuthorityContentV1,
-): WatcherRollbackDurableAuthorityContentV1 => ({
+  value: WatcherRollbackDurableAuthorityContent,
+): WatcherRollbackDurableAuthorityContent => ({
   schemaVersion: value.schemaVersion,
   revision: value.revision,
   priorSnapshotSha256: value.priorSnapshotSha256,
@@ -3918,24 +3911,24 @@ const rollbackAuthorityKeyId = (key: Uint8Array): string =>
 const rollbackAuthorityMac = (
   key: Uint8Array,
   canonical: Readonly<
-    WatcherRollbackDurableAuthorityContentV1 & {
+    WatcherRollbackDurableAuthorityContent & {
       authorityDigest: string;
     }
   >,
 ): string =>
   createHmac("sha256", key)
-    .update(watcherCanonicalJsonV1(canonical), "utf8")
+    .update(watcherCanonicalJson(canonical), "utf8")
     .digest("hex");
 
 const encodeRollbackDurableAuthoritySnapshot = (
-  value: WatcherRollbackDurableAuthoritySnapshotV1,
-): Uint8Array => rollbackAuthorityEncoder.encode(watcherCanonicalJsonV1(value));
+  value: WatcherRollbackDurableAuthoritySnapshot,
+): Uint8Array => rollbackAuthorityEncoder.encode(watcherCanonicalJson(value));
 
 const decodeRollbackDurableAuthoritySnapshot = (
   bytes: Uint8Array,
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   authenticationKeyInput: unknown,
-): WatcherRollbackDurableAuthoritySnapshotV1 | null => {
+): WatcherRollbackDurableAuthoritySnapshot | null => {
   try {
     const authenticationKey = parseRollbackAuthorityAuthenticationKey(
       authenticationKeyInput,
@@ -3960,7 +3953,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
     if (
       record === null ||
       record.schemaVersion !==
-        WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION ||
+        WATCHER_ROLLBACK_DURABLE_AUTHORITY_SCHEMA_VERSION ||
       typeof record.revision !== "string" ||
       !CANONICAL_NATURAL.test(record.revision) ||
       (record.priorSnapshotSha256 !== null &&
@@ -3980,17 +3973,17 @@ const decodeRollbackDurableAuthoritySnapshot = (
       return null;
     }
     const untrustedCanonical = rollbackAuthorityCanonical({
-      schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_SCHEMA_VERSION,
       revision: record.revision,
       priorSnapshotSha256: record.priorSnapshotSha256 as string | null,
       policyDigest: record.policyDigest as string,
-      deploymentMarker: record.deploymentMarker as DeploymentMarkerV1,
-      currentStore: record.currentStore as WatcherDurableStoreV1,
+      deploymentMarker: record.deploymentMarker as DeploymentMarker,
+      currentStore: record.currentStore as WatcherDurableStore,
       consistencyHistory:
-        record.consistencyHistory as readonly WatcherMultiProviderConsistencyV1[],
-      rollbackState: record.rollbackState as WatcherRollbackStateV1,
+        record.consistencyHistory as readonly WatcherMultiProviderConsistency[],
+      rollbackState: record.rollbackState as WatcherRollbackState,
       rollbackBootstrapState:
-        record.rollbackBootstrapState as WatcherRollbackStateV1,
+        record.rollbackBootstrapState as WatcherRollbackState,
       trustedCheckpointStateDigest:
         record.trustedCheckpointStateDigest as string,
       authenticationKeyId: record.authenticationKeyId as string,
@@ -4007,15 +4000,15 @@ const decodeRollbackDurableAuthoritySnapshot = (
     ) {
       return null;
     }
-    const deploymentMarker = parseDeploymentMarkerV1(record.deploymentMarker);
+    const deploymentMarker = parseDeploymentMarker(record.deploymentMarker);
     if (!sameMarker(deploymentMarker, policy.deploymentMarker)) {
       return null;
     }
-    const currentStore = parseWatcherDurableStoreV1(record.currentStore);
+    const currentStore = parseWatcherDurableStore(record.currentStore);
     if (!sameMarker(currentStore.deploymentMarker, policy.deploymentMarker)) {
       return null;
     }
-    const rollbackState = decodeWatcherRollbackStateV1Structural(
+    const rollbackState = decodeWatcherRollbackStateStructural(
       record.rollbackState,
     );
     const consistencyInputs = exactArray(record.consistencyHistory);
@@ -4023,7 +4016,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
       return null;
     }
     const consistencyHistory =
-      consistencyInputs as readonly WatcherMultiProviderConsistencyV1[];
+      consistencyInputs as readonly WatcherMultiProviderConsistency[];
     const persistedIndex = indexPersistedObservations(currentStore);
     if (
       consistencyHistory.some(
@@ -4066,7 +4059,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
       return null;
     }
     const canonicalWithoutDigest = rollbackAuthorityCanonical({
-      schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_SCHEMA_VERSION,
       revision: record.revision,
       priorSnapshotSha256: record.priorSnapshotSha256 as string | null,
       policyDigest: policy.policyDigest,
@@ -4085,7 +4078,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
       authorityMac: record.authorityMac as string,
     });
     return sha256Canonical(canonicalWithoutDigest) ===
-      snapshot.authorityDigest && text === watcherCanonicalJsonV1(snapshot)
+      snapshot.authorityDigest && text === watcherCanonicalJson(snapshot)
       ? snapshot
       : null;
   } catch {
@@ -4094,24 +4087,24 @@ const decodeRollbackDurableAuthoritySnapshot = (
 };
 
 const makeRollbackDurableAuthoritySnapshot = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   revision: string,
   priorSnapshotSha256: string | null,
-  currentStore: WatcherDurableStoreV1,
-  consistencyHistory: readonly WatcherMultiProviderConsistencyV1[],
-  rollbackState: WatcherRollbackStateV1,
-  rollbackBootstrapState: WatcherRollbackStateV1,
+  currentStore: WatcherDurableStore,
+  consistencyHistory: readonly WatcherMultiProviderConsistency[],
+  rollbackState: WatcherRollbackState,
+  rollbackBootstrapState: WatcherRollbackState,
   trustedCheckpointStateDigest: string,
   authenticationKeyInput: unknown,
 ): Readonly<{
-  snapshot: WatcherRollbackDurableAuthoritySnapshotV1;
+  snapshot: WatcherRollbackDurableAuthoritySnapshot;
   encoded: Uint8Array;
 }> => {
   const authenticationKey = parseRollbackAuthorityAuthenticationKey(
     authenticationKeyInput,
   );
   const canonical = rollbackAuthorityCanonical({
-    schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_SCHEMA_VERSION,
     revision,
     priorSnapshotSha256,
     policyDigest: policy.policyDigest,
@@ -4137,10 +4130,10 @@ const makeRollbackDurableAuthoritySnapshot = (
 };
 
 const makeRollbackDurableAuthorityHandle = (
-  runtime: WatcherRollbackDurableAuthorityRuntimeV1,
-): WatcherRollbackDurableAuthorityV1 => {
+  runtime: WatcherRollbackDurableAuthorityRuntime,
+): WatcherRollbackDurableAuthority => {
   const authority = Object.freeze({
-    schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_SCHEMA_VERSION,
     revision: runtime.snapshot.revision,
     snapshotSha256: runtime.snapshotSha256,
     authorityDigest: runtime.snapshot.authorityDigest,
@@ -4149,14 +4142,14 @@ const makeRollbackDurableAuthorityHandle = (
   return authority;
 };
 
-type WatcherRollbackDurableTrustedHeadContentV1 = Omit<
-  WatcherRollbackDurableTrustedHeadV1,
+type WatcherRollbackDurableTrustedHeadContent = Omit<
+  WatcherRollbackDurableTrustedHead,
   "headMac"
 >;
 
 const rollbackDurableTrustedHeadCanonical = (
-  value: WatcherRollbackDurableTrustedHeadContentV1,
-): WatcherRollbackDurableTrustedHeadContentV1 => ({
+  value: WatcherRollbackDurableTrustedHeadContent,
+): WatcherRollbackDurableTrustedHeadContent => ({
   schemaVersion: value.schemaVersion,
   policyDigest: value.policyDigest,
   deploymentMarker: value.deploymentMarker,
@@ -4168,23 +4161,23 @@ const rollbackDurableTrustedHeadCanonical = (
 
 const rollbackDurableTrustedHeadMac = (
   authenticationKey: Uint8Array,
-  value: WatcherRollbackDurableTrustedHeadContentV1,
+  value: WatcherRollbackDurableTrustedHeadContent,
 ): string =>
   createHmac("sha256", authenticationKey)
     .update(
-      `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION}:${watcherCanonicalJsonV1(value)}`,
+      `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION}:${watcherCanonicalJson(value)}`,
       "utf8",
     )
     .digest("hex");
 
 const makeRollbackDurableTrustedHead = (
-  policy: WatcherFinalityPolicyV1,
-  snapshot: WatcherRollbackDurableAuthoritySnapshotV1,
+  policy: WatcherFinalityPolicy,
+  snapshot: WatcherRollbackDurableAuthoritySnapshot,
   snapshotSha256: string,
   authenticationKey: Uint8Array,
-): WatcherRollbackDurableTrustedHeadV1 => {
+): WatcherRollbackDurableTrustedHead => {
   const canonical = rollbackDurableTrustedHeadCanonical({
-    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     deploymentMarker: policy.deploymentMarker,
     authenticationKeyId: snapshot.authenticationKeyId,
@@ -4200,9 +4193,9 @@ const makeRollbackDurableTrustedHead = (
 
 const parseRollbackDurableTrustedHead = (
   value: unknown,
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   authenticationKey: Uint8Array,
-): WatcherRollbackDurableTrustedHeadV1 => {
+): WatcherRollbackDurableTrustedHead => {
   const record = exactPlainRecord(value, [
     "schemaVersion",
     "policyDigest",
@@ -4216,7 +4209,7 @@ const parseRollbackDurableTrustedHead = (
   if (
     record === null ||
     record.schemaVersion !==
-      WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION ||
+      WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION ||
     record.policyDigest !== policy.policyDigest ||
     record.authenticationKeyId !== rollbackAuthorityKeyId(authenticationKey) ||
     typeof record.revision !== "string" ||
@@ -4230,9 +4223,9 @@ const parseRollbackDurableTrustedHead = (
   ) {
     throw new Error("invalid watcher rollback durable trusted head");
   }
-  let deploymentMarker: DeploymentMarkerV1;
+  let deploymentMarker: DeploymentMarker;
   try {
-    deploymentMarker = parseDeploymentMarkerV1(record.deploymentMarker);
+    deploymentMarker = parseDeploymentMarker(record.deploymentMarker);
   } catch {
     throw new Error("invalid watcher rollback durable trusted head");
   }
@@ -4240,14 +4233,14 @@ const parseRollbackDurableTrustedHead = (
     throw new Error("invalid watcher rollback durable trusted head");
   }
   const canonical = rollbackDurableTrustedHeadCanonical({
-    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     deploymentMarker,
     authenticationKeyId: record.authenticationKeyId,
     revision: record.revision,
     snapshotSha256: record.snapshotSha256,
     authorityDigest: record.authorityDigest,
-  }) as WatcherRollbackDurableTrustedHeadContentV1;
+  }) as WatcherRollbackDurableTrustedHeadContent;
   const expectedMac = rollbackDurableTrustedHeadMac(
     authenticationKey,
     canonical,
@@ -4263,7 +4256,7 @@ const parseRollbackDurableTrustedHead = (
   return Object.freeze({
     ...canonical,
     headMac: record.headMac,
-  }) as WatcherRollbackDurableTrustedHeadV1;
+  }) as WatcherRollbackDurableTrustedHead;
 };
 
 /**
@@ -4272,13 +4265,13 @@ const parseRollbackDurableTrustedHead = (
  * rollback-authority key; a structurally plausible caller-authored head is not
  * authority.
  */
-export const admitWatcherRollbackDurableTrustedHeadV1 = (input: {
+export const admitWatcherRollbackDurableTrustedHead = (input: {
   readonly head: unknown;
   readonly policy: unknown;
   readonly authenticationKey: Uint8Array;
-}): WatcherRollbackDurableTrustedHeadV1 | null => {
+}): WatcherRollbackDurableTrustedHead | null => {
   try {
-    const policy = parseWatcherFinalityPolicyV1(input.policy);
+    const policy = parseWatcherFinalityPolicy(input.policy);
     if (policy === null) return null;
     const authenticationKey = parseRollbackAuthorityAuthenticationKey(
       input.authenticationKey,
@@ -4294,8 +4287,8 @@ export const admitWatcherRollbackDurableTrustedHeadV1 = (input: {
 };
 
 const assertRollbackDurableTrustedHeadMatches = (
-  trustedHead: WatcherRollbackDurableTrustedHeadV1,
-  snapshot: WatcherRollbackDurableAuthoritySnapshotV1,
+  trustedHead: WatcherRollbackDurableTrustedHead,
+  snapshot: WatcherRollbackDurableAuthoritySnapshot,
   snapshotSha256: string,
 ): void => {
   if (
@@ -4309,8 +4302,8 @@ const assertRollbackDurableTrustedHeadMatches = (
 };
 
 const runtimeForRollbackDurableAuthority = (
-  authority: WatcherRollbackDurableAuthorityV1,
-): WatcherRollbackDurableAuthorityRuntimeV1 => {
+  authority: WatcherRollbackDurableAuthority,
+): WatcherRollbackDurableAuthorityRuntime => {
   const runtime = rollbackDurableAuthorityRuntime.get(authority);
   if (runtime === undefined) {
     throw new Error("unknown watcher rollback durable authority");
@@ -4320,12 +4313,12 @@ const runtimeForRollbackDurableAuthority = (
 
 const authorityFromEncodedSnapshot = (
   backend: WatcherDurableAtomicBackend,
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   encoded: Uint8Array,
   snapshotSha256: string,
   authenticationKeyInput: unknown,
   trustedHeadInput: unknown,
-): WatcherRollbackDurableAuthorityV1 => {
+): WatcherRollbackDurableAuthority => {
   const authenticationKey = parseRollbackAuthorityAuthenticationKey(
     authenticationKeyInput,
   );
@@ -4372,17 +4365,17 @@ const authorityFromEncodedSnapshot = (
  * returned handle is an in-process capability; a copied plain object cannot
  * authorize an epoch restart.
  */
-export const loadWatcherRollbackDurableAuthorityV1 = async (input: {
+export const loadWatcherRollbackDurableAuthority = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
   readonly policy: unknown;
   readonly authenticationKey: Uint8Array;
   readonly trustedHead: unknown;
-}): Promise<WatcherRollbackDurableAuthorityV1> => {
-  const policy = parseWatcherFinalityPolicyV1(input.policy);
+}): Promise<WatcherRollbackDurableAuthority> => {
+  const policy = parseWatcherFinalityPolicy(input.policy);
   if (policy === null) {
     throw new Error("invalid watcher rollback durable authority policy");
   }
-  const stored = await readWatcherDurableAtomicSnapshotV1(input.backend);
+  const stored = await readWatcherDurableAtomicSnapshot(input.backend);
   if (stored === null) {
     throw new Error("watcher rollback durable authority missing");
   }
@@ -4401,7 +4394,7 @@ export const loadWatcherRollbackDurableAuthorityV1 = async (input: {
  * external trusted-head publication. The result contains no authority and no
  * protocol decision. The operator must atomically compare-and-swap the
  * independent monotonic authority from `expectedTrustedHead` to
- * `nextTrustedHead`, then call `loadWatcherRollbackDurableAuthorityV1` with
+ * `nextTrustedHead`, then call `loadWatcherRollbackDurableAuthority` with
  * the externally read-back head.
  *
  * Recovery is deliberately bounded to an authenticated revision-zero snapshot
@@ -4411,21 +4404,21 @@ export const loadWatcherRollbackDurableAuthorityV1 = async (input: {
  * cannot produce a publication proposal. Re-running after external
  * publication returns `already_aligned`.
  */
-export const prepareWatcherRollbackDurableTrustedHeadReconciliationV1 =
+export const prepareWatcherRollbackDurableTrustedHeadReconciliation =
   async (input: {
     readonly backend: WatcherDurableAtomicBackend;
     readonly policy: unknown;
     readonly authenticationKey: Uint8Array;
     readonly trustedHead: unknown | null;
-  }): Promise<WatcherRollbackDurableTrustedHeadReconciliationV1> => {
-    const policy = parseWatcherFinalityPolicyV1(input.policy);
+  }): Promise<WatcherRollbackDurableTrustedHeadReconciliation> => {
+    const policy = parseWatcherFinalityPolicy(input.policy);
     if (policy === null) {
       throw new Error("invalid watcher rollback durable authority policy");
     }
     const authenticationKey = parseRollbackAuthorityAuthenticationKey(
       input.authenticationKey,
     );
-    const stored = await readWatcherDurableAtomicSnapshotV1(input.backend);
+    const stored = await readWatcherDurableAtomicSnapshot(input.backend);
     if (stored === null) {
       throw new Error("watcher rollback durable authority missing");
     }
@@ -4492,19 +4485,19 @@ export const prepareWatcherRollbackDurableTrustedHeadReconciliationV1 =
  * capability or any resulting protocol decision is used. A same-database row
  * does not satisfy that contract.
  */
-export const initializeWatcherRollbackDurableAuthorityV1 = async (input: {
+export const initializeWatcherRollbackDurableAuthority = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
   readonly policy: unknown;
   readonly bootstrapStore: unknown;
   readonly bootstrapFinalityState: unknown;
   readonly authenticationKey: Uint8Array;
   readonly trustedHead: unknown | null;
-}): Promise<WatcherRollbackDurableAuthorityOpenResultV1> => {
-  const policy = parseWatcherFinalityPolicyV1(input.policy);
+}): Promise<WatcherRollbackDurableAuthorityOpenResult> => {
+  const policy = parseWatcherFinalityPolicy(input.policy);
   if (policy === null) {
     throw new Error("invalid watcher rollback durable authority policy");
   }
-  const bootstrapState = makeWatcherRollbackBootstrapStateV1(
+  const bootstrapState = makeWatcherRollbackBootstrapState(
     policy,
     input.bootstrapStore,
     input.bootstrapFinalityState,
@@ -4512,11 +4505,11 @@ export const initializeWatcherRollbackDurableAuthorityV1 = async (input: {
   if (bootstrapState === null) {
     throw new Error("invalid watcher rollback durable authority bootstrap");
   }
-  const bootstrapStore = parseWatcherDurableStoreV1(input.bootstrapStore);
+  const bootstrapStore = parseWatcherDurableStore(input.bootstrapStore);
   const authenticationKey = parseRollbackAuthorityAuthenticationKey(
     input.authenticationKey,
   );
-  const existing = await readWatcherDurableAtomicSnapshotV1(input.backend);
+  const existing = await readWatcherDurableAtomicSnapshot(input.backend);
   if (existing !== null) {
     if (input.trustedHead === null) {
       throw new Error("watcher rollback durable trusted head required");
@@ -4555,7 +4548,7 @@ export const initializeWatcherRollbackDurableAuthorityV1 = async (input: {
     bootstrapState.stateDigest,
     authenticationKey,
   );
-  const commit = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+  const commit = await compareAndSwapWatcherDurableAtomicSnapshot({
     backend: input.backend,
     expectedSha256: null,
     next: encoded,
@@ -4585,9 +4578,9 @@ export const initializeWatcherRollbackDurableAuthorityV1 = async (input: {
   });
 };
 
-export const watcherRollbackDurableAuthorityStatusV1 = (
-  authority: WatcherRollbackDurableAuthorityV1,
-): WatcherRollbackDurableAuthorityStatusV1 => {
+export const watcherRollbackDurableAuthorityStatus = (
+  authority: WatcherRollbackDurableAuthority,
+): WatcherRollbackDurableAuthorityStatus => {
   const runtime = runtimeForRollbackDurableAuthority(authority);
   const { snapshot } = runtime;
   return Object.freeze({
@@ -4612,19 +4605,19 @@ export const watcherRollbackDurableAuthorityStatusV1 = (
  * CAS snapshot; every subsequent transition still requires the WeakMap-backed
  * authority handle.
  */
-export const readWatcherRollbackDurableAuthorityV1 = (
-  authority: WatcherRollbackDurableAuthorityV1,
-): WatcherRollbackDurableAuthorityReadV1 => {
+export const readWatcherRollbackDurableAuthority = (
+  authority: WatcherRollbackDurableAuthority,
+): WatcherRollbackDurableAuthorityRead => {
   const runtime = runtimeForRollbackDurableAuthority(authority);
-  const store = decodeWatcherDurableStoreV1(
-    encodeWatcherDurableStoreV1(runtime.snapshot.currentStore),
+  const store = decodeWatcherDurableStore(
+    encodeWatcherDurableStore(runtime.snapshot.currentStore),
   );
   const lastTransition = runtime.snapshot.rollbackState.transitions.at(-1);
   const currentInput =
     lastTransition?.finalityResult.state ??
     runtime.snapshot.rollbackState.bootstrapFinalityState;
-  const currentFinalityState = parseWatcherFinalityStateV1(
-    JSON.parse(watcherCanonicalJsonV1(currentInput)) as unknown,
+  const currentFinalityState = parseWatcherFinalityState(
+    JSON.parse(watcherCanonicalJson(currentInput)) as unknown,
     runtime.policy,
   );
   if (currentFinalityState === null) {
@@ -4635,22 +4628,22 @@ export const readWatcherRollbackDurableAuthorityV1 = (
     currentFinalityState,
     authenticatedConsistencyHistory: Object.freeze(
       JSON.parse(
-        watcherCanonicalJsonV1(runtime.snapshot.consistencyHistory),
-      ) as WatcherMultiProviderConsistencyV1[],
+        watcherCanonicalJson(runtime.snapshot.consistencyHistory),
+      ) as WatcherMultiProviderConsistency[],
     ),
   });
 };
 
 const commitRollbackDurableAuthority = async (
-  authority: WatcherRollbackDurableAuthorityV1,
-  currentStore: WatcherDurableStoreV1,
-  rollbackState: WatcherRollbackStateV1,
-  rollbackBootstrapState: WatcherRollbackStateV1,
+  authority: WatcherRollbackDurableAuthority,
+  currentStore: WatcherDurableStore,
+  rollbackState: WatcherRollbackState,
+  rollbackBootstrapState: WatcherRollbackState,
   trustedCheckpointStateDigest: string,
-  consistencyHistory?: readonly WatcherMultiProviderConsistencyV1[],
+  consistencyHistory?: readonly WatcherMultiProviderConsistency[],
 ): Promise<Readonly<{
-  authority: WatcherRollbackDurableAuthorityV1;
-  trustedHead: WatcherRollbackDurableTrustedHeadV1;
+  authority: WatcherRollbackDurableAuthority;
+  trustedHead: WatcherRollbackDurableTrustedHead;
 }> | null> => {
   const runtime = runtimeForRollbackDurableAuthority(authority);
   const observationIds = new Set(
@@ -4675,7 +4668,7 @@ const commitRollbackDurableAuthority = async (
     trustedCheckpointStateDigest,
     runtime.authenticationKey,
   );
-  const commit = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+  const commit = await compareAndSwapWatcherDurableAtomicSnapshot({
     backend: runtime.backend,
     expectedSha256: runtime.snapshotSha256,
     next: encoded,
@@ -4704,12 +4697,12 @@ const commitRollbackDurableAuthority = async (
 };
 
 const currentRollbackFinalityState = (
-  runtime: WatcherRollbackDurableAuthorityRuntimeV1,
-): WatcherFinalityStateV1 => {
+  runtime: WatcherRollbackDurableAuthorityRuntime,
+): WatcherFinalityState => {
   const input =
     runtime.snapshot.rollbackState.transitions.at(-1)?.finalityResult.state ??
     runtime.snapshot.rollbackState.bootstrapFinalityState;
-  const parsed = parseWatcherFinalityStateV1(input, runtime.policy);
+  const parsed = parseWatcherFinalityState(input, runtime.policy);
   if (parsed === null) {
     throw new Error("watcher rollback durable current finality state invalid");
   }
@@ -4717,9 +4710,9 @@ const currentRollbackFinalityState = (
 };
 
 const storeWithAuthenticatedObservations = (
-  source: WatcherDurableStoreV1,
-  blocks: readonly WatcherNormalizedL1BlockV1[],
-): WatcherDurableStoreV1 => {
+  source: WatcherDurableStore,
+  blocks: readonly WatcherNormalizedL1Block[],
+): WatcherDurableStore => {
   const chainPoints = blocks.map((block) =>
     Object.freeze({
       chainPointId: block.chainPoint.chainPointId,
@@ -4735,8 +4728,8 @@ const storeWithAuthenticatedObservations = (
       observationId: block.observationDigest,
       providerId: block.provider.providerId,
       chainPointId: block.chainPoint.chainPointId,
-      payload: makeWatcherDurablePayloadV1(
-        encodeWatcherNormalizedL1BlockV1(block).toString("hex"),
+      payload: makeWatcherDurablePayload(
+        encodeWatcherNormalizedL1Block(block).toString("hex"),
       ),
     }),
   );
@@ -4746,7 +4739,7 @@ const storeWithAuthenticatedObservations = (
   const chainPointIds = new Set(
     chainPoints.map(({ chainPointId }) => chainPointId),
   );
-  return makeWatcherDurableStoreV1({
+  return makeWatcherDurableStore({
     deploymentMarker: source.deploymentMarker,
     revision: (BigInt(source.revision) + 1n).toString(),
     records: {
@@ -4778,10 +4771,10 @@ const storeWithAuthenticatedObservations = (
 };
 
 const authenticatesCanonicalBlock = (input: {
-  readonly block: WatcherNormalizedL1BlockV1;
-  readonly observations: readonly WatcherNormalizedL1BlockV1[];
-  readonly consistency: WatcherMultiProviderConsistencyV1;
-  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+  readonly block: WatcherNormalizedL1Block;
+  readonly observations: readonly WatcherNormalizedL1Block[];
+  readonly consistency: WatcherMultiProviderConsistency;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
 }): boolean =>
   input.observations.length === input.consistency.observationCount &&
   input.observations.some(
@@ -4790,7 +4783,7 @@ const authenticatesCanonicalBlock = (input: {
   ) &&
   input.observations.every((observation) =>
     input.transportAttestations.some((context) =>
-      isWatcherL1BlockAttestedByV1(observation, context),
+      isWatcherL1BlockAttestedBy(observation, context),
     ),
   ) &&
   sameStrings(
@@ -4813,13 +4806,13 @@ const authenticatesCanonicalBlock = (input: {
  * evaluated. This operation changes no finality or rollback decision and its
  * emitted head still requires external CAS publication before use.
  */
-export const persistWatcherRollbackDurableObservationV1 = async (input: {
-  readonly authority: WatcherRollbackDurableAuthorityV1;
-  readonly block: WatcherNormalizedL1BlockV1;
-  readonly observations: readonly WatcherNormalizedL1BlockV1[];
-  readonly consistency: WatcherMultiProviderConsistencyV1;
-  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-}): Promise<WatcherRollbackDurableObservationResultV1> => {
+export const persistWatcherRollbackDurableObservation = async (input: {
+  readonly authority: WatcherRollbackDurableAuthority;
+  readonly block: WatcherNormalizedL1Block;
+  readonly observations: readonly WatcherNormalizedL1Block[];
+  readonly consistency: WatcherMultiProviderConsistency;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+}): Promise<WatcherRollbackDurableObservationResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
   if (!authenticatesCanonicalBlock(input)) {
     throw new Error(
@@ -4839,7 +4832,7 @@ export const persistWatcherRollbackDurableObservationV1 = async (input: {
       existing.providerId === observation.provider.providerId &&
       existing.chainPointId === observation.chainPoint.chainPointId &&
       existing.payload.cborHex ===
-        encodeWatcherNormalizedL1BlockV1(observation).toString("hex")
+        encodeWatcherNormalizedL1Block(observation).toString("hex")
     );
   });
   if (
@@ -4868,7 +4861,7 @@ export const persistWatcherRollbackDurableObservationV1 = async (input: {
         (existing.providerId !== observation.provider.providerId ||
           existing.chainPointId !== observation.chainPoint.chainPointId ||
           existing.payload.cborHex !==
-            encodeWatcherNormalizedL1BlockV1(observation).toString("hex"))
+            encodeWatcherNormalizedL1Block(observation).toString("hex"))
       );
     })
   ) {
@@ -4913,13 +4906,13 @@ export const persistWatcherRollbackDurableObservationV1 = async (input: {
  * admitted by the live chain-sync transport and selected by the independently
  * reconciled local Kupo/Ogmios consistency result.
  */
-export const persistWatcherRollbackDurableCanonicalProgressV1 = async (input: {
-  readonly authority: WatcherRollbackDurableAuthorityV1;
-  readonly block: WatcherNormalizedL1BlockV1;
-  readonly observations: readonly WatcherNormalizedL1BlockV1[];
-  readonly consistency: WatcherMultiProviderConsistencyV1;
-  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-}): Promise<WatcherRollbackDurableCanonicalProgressResultV1> => {
+export const persistWatcherRollbackDurableCanonicalProgress = async (input: {
+  readonly authority: WatcherRollbackDurableAuthority;
+  readonly block: WatcherNormalizedL1Block;
+  readonly observations: readonly WatcherNormalizedL1Block[];
+  readonly consistency: WatcherMultiProviderConsistency;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+}): Promise<WatcherRollbackDurableCanonicalProgressResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
   if (!authenticatesCanonicalBlock(input)) {
     throw new Error(
@@ -4946,12 +4939,12 @@ export const persistWatcherRollbackDurableCanonicalProgressV1 = async (input: {
       );
     }
     evaluationState =
-      makeWatcherFinalityBootstrapStateV1(runtime.policy) ??
+      makeWatcherFinalityBootstrapState(runtime.policy) ??
       (() => {
         throw new Error("watcher canonical progress bootstrap is invalid");
       })();
   }
-  const finalityResult = evaluateWatcherFinalityV1(
+  const finalityResult = evaluateWatcherFinality(
     runtime.policy,
     evaluationState,
     input.consistency,
@@ -5026,13 +5019,13 @@ export const persistWatcherRollbackDurableCanonicalProgressV1 = async (input: {
  * A committed result is not actionable until its emitted `trustedHead` has
  * been atomically published to the independent monotonic authority.
  */
-export const evaluateAndPersistWatcherRollbackV1 = async (input: {
-  readonly authority: WatcherRollbackDurableAuthorityV1;
+export const evaluateAndPersistWatcherRollback = async (input: {
+  readonly authority: WatcherRollbackDurableAuthority;
   readonly previousFinalityState: unknown;
   readonly consistency: unknown;
   readonly finalityResult: unknown;
-  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-}): Promise<WatcherRollbackDurableEvaluationResultV1> => {
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+}): Promise<WatcherRollbackDurableEvaluationResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
   const verified = evaluateWatcherRollbackStep(
     runtime.policy,
@@ -5087,14 +5080,14 @@ export const evaluateAndPersistWatcherRollbackV1 = async (input: {
  * A committed recovery is not actionable until its emitted `trustedHead` has
  * been atomically published to the independent monotonic authority.
  */
-export const evaluateAndPersistWatcherPostFinalityRecoveryV1 = async (input: {
-  readonly authority: WatcherRollbackDurableAuthorityV1;
+export const evaluateAndPersistWatcherPostFinalityRecovery = async (input: {
+  readonly authority: WatcherRollbackDurableAuthority;
   readonly previousCanonicalPath: unknown;
   readonly replacementCanonicalPath: unknown;
-  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-}): Promise<WatcherRollbackDurableRecoveryResultV1> => {
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+}): Promise<WatcherRollbackDurableRecoveryResult> => {
   const runtime = runtimeForRollbackDurableAuthority(input.authority);
-  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+  const recoveryInput: WatcherPostFinalityRecoveryInput = {
     policy: runtime.policy,
     sourceStore: runtime.snapshot.currentStore,
     currentStore: runtime.snapshot.currentStore,
@@ -5106,8 +5099,8 @@ export const evaluateAndPersistWatcherPostFinalityRecoveryV1 = async (input: {
     previousRecoveryState: null,
     transportAttestations: input.transportAttestations,
   };
-  const result = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
-  const verified = parseWatcherPostFinalityRecoveryResultV1(
+  const result = evaluateWatcherPostFinalityRecovery(recoveryInput);
+  const verified = parseWatcherPostFinalityRecoveryResult(
     result,
     recoveryInput,
   );

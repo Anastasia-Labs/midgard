@@ -2,24 +2,24 @@ import { createHash, createHmac } from "node:crypto";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  makeWatcherFinalityPolicyV1,
-  type WatcherFinalityPolicyV1,
+  makeWatcherFinalityPolicy,
+  type WatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
-  WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
-  type WatcherRollbackDurableTrustedHeadV1,
+  WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION,
+  type WatcherRollbackDurableTrustedHead,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  createWatcherTrustedHeadAuthorityClientV1,
-  openWatcherTrustedHeadAuthorityStoreV1,
-  startWatcherTrustedHeadAuthorityServerV1,
+  createWatcherTrustedHeadAuthorityClient,
+  openWatcherTrustedHeadAuthorityStore,
+  startWatcherTrustedHeadAuthorityServer,
 } from "../../src/runtime/trusted-head-authority-v1.js";
-import { watcherCanonicalJsonV1 } from "../../src/storage/durable-store.js";
+import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
 const authenticationKey = Uint8Array.from({ length: 32 }, (_, index) => index);
@@ -28,8 +28,8 @@ const recordAuthenticationKey = Uint8Array.from(
   (_, index) => 255 - index,
 );
 
-const policy = (): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(
+const policy = (): WatcherFinalityPolicy => {
+  const value = makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "acceptance",
@@ -100,7 +100,7 @@ const policy = (): WatcherFinalityPolicyV1 => {
       releaseEvidenceDigest: hex32("55"),
       ruleBundleCommitment: hex32("66"),
       programCommitments: { validation: hex32("77") },
-      durableMarker: makeDeploymentMarkerV1(hex32("33")),
+      durableMarker: makeDeploymentMarker(hex32("33")),
     },
   );
   if (value === null) throw new Error("test finality policy was rejected");
@@ -108,12 +108,12 @@ const policy = (): WatcherFinalityPolicyV1 => {
 };
 
 const head = (
-  finalityPolicy: WatcherFinalityPolicyV1,
+  finalityPolicy: WatcherFinalityPolicy,
   revision: number,
   byte: string,
-): WatcherRollbackDurableTrustedHeadV1 => {
+): WatcherRollbackDurableTrustedHead => {
   const canonical = {
-    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION,
     policyDigest: finalityPolicy.policyDigest,
     deploymentMarker: finalityPolicy.deploymentMarker,
     authenticationKeyId: createHash("sha256")
@@ -129,7 +129,7 @@ const head = (
     ...canonical,
     headMac: createHmac("sha256", authenticationKey)
       .update(
-        `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION}:${watcherCanonicalJsonV1(canonical)}`,
+        `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_SCHEMA_VERSION}:${watcherCanonicalJson(canonical)}`,
         "utf8",
       )
       .digest("hex"),
@@ -155,7 +155,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
   it("persists one authenticated contiguous chain and rejects stale/concurrent writes", async () => {
     const finalityPolicy = policy();
     const path = await directory();
-    const store = await openWatcherTrustedHeadAuthorityStoreV1({
+    const store = await openWatcherTrustedHeadAuthorityStore({
       directory: path,
       policy: finalityPolicy,
       recordAuthenticationKey,
@@ -189,7 +189,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
     ).toEqual(expect.arrayContaining([true, false]));
     expect(await store.readCurrent()).toEqual(second);
 
-    const restarted = await openWatcherTrustedHeadAuthorityStoreV1({
+    const restarted = await openWatcherTrustedHeadAuthorityStore({
       directory: path,
       policy: finalityPolicy,
       recordAuthenticationKey,
@@ -200,7 +200,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
   it("fails closed on forged, skipped, foreign-key and unknown directory records", async () => {
     const finalityPolicy = policy();
     const path = await directory();
-    const store = await openWatcherTrustedHeadAuthorityStoreV1({
+    const store = await openWatcherTrustedHeadAuthorityStore({
       directory: path,
       policy: finalityPolicy,
       recordAuthenticationKey,
@@ -220,7 +220,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
     ).toBe(true);
     await writeFile(join(path, "operator-note"), "not authority", "utf8");
     await expect(
-      openWatcherTrustedHeadAuthorityStoreV1({
+      openWatcherTrustedHeadAuthorityStore({
         directory: path,
         policy: finalityPolicy,
         recordAuthenticationKey,
@@ -232,7 +232,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
     const finalityPolicy = policy();
     const makeChain = async () => {
       const path = await directory();
-      const store = await openWatcherTrustedHeadAuthorityStoreV1({
+      const store = await openWatcherTrustedHeadAuthorityStore({
         directory: path,
         policy: finalityPolicy,
         recordAuthenticationKey,
@@ -263,7 +263,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
 
     const wrongKey = await makeChain();
     await expect(
-      openWatcherTrustedHeadAuthorityStoreV1({
+      openWatcherTrustedHeadAuthorityStore({
         directory: wrongKey.path,
         policy: finalityPolicy,
         recordAuthenticationKey: Uint8Array.from(
@@ -279,9 +279,9 @@ describe("independent monotonic watcher trusted-head authority", () => {
       head: unknown;
     };
     middleRecord.head = head(finalityPolicy, 1, "a0");
-    await writeFile(middlePath, watcherCanonicalJsonV1(middleRecord), "utf8");
+    await writeFile(middlePath, watcherCanonicalJson(middleRecord), "utf8");
     await expect(
-      openWatcherTrustedHeadAuthorityStoreV1({
+      openWatcherTrustedHeadAuthorityStore({
         directory: middle.path,
         policy: finalityPolicy,
         recordAuthenticationKey,
@@ -293,7 +293,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
     const tailBytes = await readFile(tailPath, "utf8");
     await writeFile(tailPath, tailBytes.slice(0, -1), "utf8");
     await expect(
-      openWatcherTrustedHeadAuthorityStoreV1({
+      openWatcherTrustedHeadAuthorityStore({
         directory: tail.path,
         policy: finalityPolicy,
         recordAuthenticationKey,
@@ -306,7 +306,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
       join(gap.path, "00000000000000000004.json"),
     );
     await expect(
-      openWatcherTrustedHeadAuthorityStoreV1({
+      openWatcherTrustedHeadAuthorityStore({
         directory: gap.path,
         policy: finalityPolicy,
         recordAuthenticationKey,
@@ -316,19 +316,19 @@ describe("independent monotonic watcher trusted-head authority", () => {
 
   it("exposes only authenticated loopback read and expected-prior CAS with read-back", async () => {
     const finalityPolicy = policy();
-    const store = await openWatcherTrustedHeadAuthorityStoreV1({
+    const store = await openWatcherTrustedHeadAuthorityStore({
       directory: await directory(),
       policy: finalityPolicy,
       recordAuthenticationKey,
     });
-    const server = await startWatcherTrustedHeadAuthorityServerV1({
+    const server = await startWatcherTrustedHeadAuthorityServer({
       endpoint: "http://127.0.0.1:0",
       httpSecret: "authority-http-secret-with-sufficient-entropy",
       store,
       unsafeAllowEphemeralPortForTest: true,
     });
     try {
-      const client = createWatcherTrustedHeadAuthorityClientV1({
+      const client = createWatcherTrustedHeadAuthorityClient({
         endpoint: server.endpoint,
         httpSecret: "authority-http-secret-with-sufficient-entropy",
         policy: finalityPolicy,
@@ -360,7 +360,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
               "Bearer authority-http-secret-with-sufficient-entropy",
             "content-type": "application/json",
           },
-          body: watcherCanonicalJsonV1({
+          body: watcherCanonicalJson({
             expectedTrustedHead: first,
             nextTrustedHead: poisoned,
           }),
@@ -388,7 +388,7 @@ describe("independent monotonic watcher trusted-head authority", () => {
   });
 
   it("reports persistence failures as 500 without returning internal details", async () => {
-    const server = await startWatcherTrustedHeadAuthorityServerV1({
+    const server = await startWatcherTrustedHeadAuthorityServer({
       endpoint: "http://127.0.0.1:0",
       httpSecret: "authority-http-secret-with-sufficient-entropy",
       store: {

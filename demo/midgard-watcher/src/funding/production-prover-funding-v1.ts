@@ -1,33 +1,33 @@
 import {
-  computeDeploymentManifestV1JsonDigest,
-  type DeploymentManifestV1CardanoProtocolParameters,
-  deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios,
+  computeDeploymentManifestJsonDigest,
+  type DeploymentManifestCardanoProtocolParameters,
+  deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  assertWatcherDeploymentProtocolParameterAuthorityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
-  watcherDeploymentProtocolParameterAuthorityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  assertWatcherDeploymentProtocolParameterAuthority,
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentProtocolParameterAuthority,
 } from "../runtime/deployment-identity.js";
 
-export const WATCHER_PRODUCTION_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY_V1 =
+export const WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY =
   "midgard-watcher-production-protocol-parameter-runtime-authority-v1" as const;
 
-export type WatcherProductionProtocolParameterRuntimeAuthorityV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY_V1;
+export type WatcherProtocolParameterRuntimeAuthority = Readonly<{
+  schemaVersion: typeof WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY;
   deploymentFingerprint: string;
   source: "local_ogmios";
   sourceEndpoint: string;
-  snapshot: DeploymentManifestV1CardanoProtocolParameters;
+  snapshot: DeploymentManifestCardanoProtocolParameters;
   snapshotDigest: string;
   authorityDigest: string;
 }>;
 
 const admittedRuntimeAuthorities = new WeakSet<object>();
 
-export const assertWatcherProductionProtocolParameterRuntimeAuthorityV1 = (
-  authority: WatcherProductionProtocolParameterRuntimeAuthorityV1,
+export const assertWatcherProtocolParameterRuntimeAuthority = (
+  authority: WatcherProtocolParameterRuntimeAuthority,
 ): void => {
   if (!admittedRuntimeAuthorities.has(authority)) {
     throw new Error(
@@ -127,30 +127,30 @@ const createRuntimeAuthority = async ({
   timeoutMs,
   fetchImpl,
 }: {
-  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
+  readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly ogmiosUrl: string;
   readonly timeoutMs: number;
   readonly fetchImpl: typeof fetch;
-}): Promise<WatcherProductionProtocolParameterRuntimeAuthorityV1> => {
-  assertVerifiedWatcherDeploymentIdentityV1(deploymentIdentity);
+}): Promise<WatcherProtocolParameterRuntimeAuthority> => {
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   const signed =
-    watcherDeploymentProtocolParameterAuthorityV1(deploymentIdentity);
-  assertWatcherDeploymentProtocolParameterAuthorityV1(signed);
+    watcherDeploymentProtocolParameterAuthority(deploymentIdentity);
+  assertWatcherDeploymentProtocolParameterAuthority(signed);
   const endpoint = canonicalLoopbackOgmiosUrl(ogmiosUrl);
-  const live = deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios(
+  const live = deriveDeploymentManifestCardanoProtocolParametersFromOgmios(
     await queryLiveProtocolParameters({ endpoint, timeoutMs, fetchImpl }),
   );
-  const liveDigest = computeDeploymentManifestV1JsonDigest(live);
+  const liveDigest = computeDeploymentManifestJsonDigest(live);
   if (
     liveDigest !== signed.snapshotDigest ||
-    computeDeploymentManifestV1JsonDigest(signed.snapshot) !== liveDigest
+    computeDeploymentManifestJsonDigest(signed.snapshot) !== liveDigest
   ) {
     throw new Error(
       "live local-node protocol parameters differ from the signed deployment",
     );
   }
   const identity = Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY_V1,
+    schemaVersion: WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
     deploymentFingerprint: deploymentIdentity.manifestId,
     source: "local_ogmios" as const,
     sourceEndpoint: endpoint,
@@ -159,30 +159,29 @@ const createRuntimeAuthority = async ({
   });
   const authority = Object.freeze({
     ...identity,
-    authorityDigest: computeDeploymentManifestV1JsonDigest(identity),
+    authorityDigest: computeDeploymentManifestJsonDigest(identity),
   });
   admittedRuntimeAuthorities.add(authority);
   return authority;
 };
 
-export const createWatcherProductionProtocolParameterRuntimeAuthorityV1 =
-  async (
-    input: Readonly<{
-      deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-      ogmiosUrl: string;
-      timeoutMs: number;
-    }>,
-  ): Promise<WatcherProductionProtocolParameterRuntimeAuthorityV1> =>
-    await createRuntimeAuthority({ ...input, fetchImpl: fetch });
+export const createWatcherProtocolParameterRuntimeAuthority = async (
+  input: Readonly<{
+    deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    ogmiosUrl: string;
+    timeoutMs: number;
+  }>,
+): Promise<WatcherProtocolParameterRuntimeAuthority> =>
+  await createRuntimeAuthority({ ...input, fetchImpl: fetch });
 
 /** Narrow transport seam. It cannot admit a structural deployment identity. */
-export const unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1 =
+export const unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest =
   async (
     input: Readonly<{
-      deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
+      deploymentIdentity: VerifiedWatcherDeploymentIdentity;
       ogmiosUrl: string;
       timeoutMs: number;
       fetchImpl: typeof fetch;
     }>,
-  ): Promise<WatcherProductionProtocolParameterRuntimeAuthorityV1> =>
+  ): Promise<WatcherProtocolParameterRuntimeAuthority> =>
     await createRuntimeAuthority(input);

@@ -11,34 +11,34 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ExecutionSourceScriptDecodingContractsV1 } from "./contracts-v1.js";
-import type { ExecutionSourceScriptDecodingEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ExecutionSourceScriptDecodingContracts } from "./contracts-v1.js";
+import type { ExecutionSourceScriptDecodingEvidence } from "./family-v1.js";
 import {
-  AuthenticatedExecutionSourceV1Schema,
-  ExecutionSourceBoundV1Schema,
-  ExecutionSourceStep02DatumV1Schema,
-  ExecutionSourceStep02RedeemerV1Schema,
-  ExecutionSourceStep03DatumV1Schema,
+  AuthenticatedExecutionSourceSchema,
+  ExecutionSourceBoundSchema,
+  ExecutionSourceStep02DatumSchema,
+  ExecutionSourceStep02RedeemerSchema,
+  ExecutionSourceStep03DatumSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "execution-source-script-decoding";
-export type ExecutionSourceAuthenticationDataV1 = Omit<
+export type ExecutionSourceAuthenticationData = Omit<
   Extract<
-    Data.Static<typeof ExecutionSourceStep02RedeemerV1Schema>,
+    Data.Static<typeof ExecutionSourceStep02RedeemerSchema>,
     { Continue: unknown }
   >["Continue"][0],
   "input_index" | "output_index"
 >;
 
-export const submitExecutionSourceScriptDecodingStep02V1 = async ({
+export const submitExecutionSourceScriptDecodingStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -51,18 +51,18 @@ export const submitExecutionSourceScriptDecodingStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: ExecutionSourceScriptDecodingContractsV1;
+  contracts: ExecutionSourceScriptDecodingContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: ExecutionSourceScriptDecodingEvidenceV1;
-  authentication: ExecutionSourceAuthenticationDataV1;
+  evidence: ExecutionSourceScriptDecodingEvidence;
+  authentication: ExecutionSourceAuthenticationData;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -70,12 +70,12 @@ export const submitExecutionSourceScriptDecodingStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const bound = requireLinearFaultStepStateV1<
-    Data.Static<typeof ExecutionSourceBoundV1Schema>
+  const bound = requireLinearFaultStepState<
+    Data.Static<typeof ExecutionSourceBoundSchema>
   >({
     threadUtxo,
     signer,
-    schema: ExecutionSourceStep02DatumV1Schema as never,
+    schema: ExecutionSourceStep02DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -88,7 +88,7 @@ export const submitExecutionSourceScriptDecodingStep02V1 = async ({
     throw new Error(
       `${FAMILY}: retained execution authentication differs from bound subject`,
     );
-  const source: Data.Static<typeof AuthenticatedExecutionSourceV1Schema> = {
+  const source: Data.Static<typeof AuthenticatedExecutionSourceSchema> = {
     bound,
     prior_ledger_root: authentication.machine_state.prior_ledger_root,
     source_index: authentication.source_index,
@@ -109,14 +109,14 @@ export const submitExecutionSourceScriptDecodingStep02V1 = async ({
     );
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: source } as never,
-    ExecutionSourceStep03DatumV1Schema as never,
+    ExecutionSourceStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -141,11 +141,11 @@ export const submitExecutionSourceScriptDecodingStep02V1 = async ({
           },
         ],
       } as never,
-      ExecutionSourceStep02RedeemerV1Schema as never,
+      ExecutionSourceStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

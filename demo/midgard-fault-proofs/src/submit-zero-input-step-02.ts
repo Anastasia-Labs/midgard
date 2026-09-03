@@ -12,15 +12,15 @@
  * The pre-flight below is the same strengthening off-chain. It no longer asks
  * "is this hash the empty one" but "does field 0 of *this anchored transaction*
  * open to no items", and it is
- * {@link planFaultProofFieldOpeningV1} that ties the bytes to the slot.
+ * {@link planFaultProofFieldOpening} that ties the bytes to the slot.
  */
 
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -40,11 +40,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
 } from "./field-opening-v1.js";
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -63,14 +63,14 @@ import {
 } from "./submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
@@ -187,7 +187,7 @@ const makeZeroInputStep02SpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
-  readonly spendInputsOpening: FieldOpeningV1;
+  readonly spendInputsOpening: FieldOpening;
   readonly onLayout: (layout: ZeroInputStep02SpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -279,7 +279,7 @@ const makeComputationThreadSuccessRedeemer = ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-export const submitZeroInputStep02 = async ({
+export const submitZeroInputStep02V1 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -303,8 +303,8 @@ export const submitZeroInputStep02 = async ({
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitZeroInputStep02Result> => {
   const { zeroInputCategory, contracts } =
@@ -339,11 +339,11 @@ export const submitZeroInputStep02 = async ({
   // The family's whole claim is that field 0 holds nothing, so the §5.1
   // preimage is the empty envelope and the prover supplies no items. Planning
   // it against the anchored transaction is what proves the claim off-chain:
-  // `planFaultProofFieldOpeningV1` refuses unless these bytes re-derive to
+  // `planFaultProofFieldOpening` refuses unless these bytes re-derive to
   // `badTxId` *and* the empty preimage matches the commitment that transaction
   // carries at field 0 specifically.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: badTxId,
     nativeTxCompactCbor,
     itemCbors: [],
@@ -360,17 +360,17 @@ export const submitZeroInputStep02 = async ({
       `Zero-input step 02 opens field 0 to ${planned.itemCount.toString()} items, so the challenged transaction does spend inputs.`,
     );
   }
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.zeroInput.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "zero-input step 02 validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "zero-input step 02 computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "zero-input step 02 fraud-proof mint",
@@ -380,7 +380,7 @@ export const submitZeroInputStep02 = async ({
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ];
-  const spendInputsOpening = faultProofFieldOpeningV1({
+  const spendInputsOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     label: "Zero-input step 02 spend-inputs",
@@ -468,9 +468,9 @@ export const submitZeroInputStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -535,7 +535,7 @@ export const submitZeroInputStep02 = async ({
 export const submitZeroInputStep02FromFiles = async (
   config: SubmitZeroInputStep02CliConfig,
 ): Promise<SubmitZeroInputStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-zero-input-step-02",
   });
   const [blueprint, deploymentInfo, nativeTxCompactJson, lucid] =
@@ -546,14 +546,14 @@ export const submitZeroInputStep02FromFiles = async (
       makeLucidForSubmit(config),
     ]);
   const signer = resolveProverSigner(config);
-  return await submitZeroInputStep02({
+  return await submitZeroInputStep02V1({
     lucid,
     blueprint,
     deploymentInfo,
     network: config.network,
     signer,
     threadOutRef: config.threadOutRef,
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

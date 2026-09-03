@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMidgardValidationTraceTree,
   canOpenMidgardValidationDisputeBeforeMaturity,
-  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   openMidgardValidationDispute,
@@ -118,7 +118,7 @@ describe("validation dispute orchestration", () => {
 
   it("matches the inclusive L1 maturity boundary", () => {
     const blockEnd = 1_000_000;
-    const maturity = MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs;
+    const maturity = MIDGARD_CONSENSUS_LIMITS.blockMaturityMs;
     const finalOpen =
       blockEnd + maturity - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
     expect(

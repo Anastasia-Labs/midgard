@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 
 import {
   buildNativeSignedOneToOne,
@@ -292,7 +292,7 @@ const fetchUtxos = async (address) => {
 const submitTxHex = async (txHex) => {
   let attempt = 0;
   while (attempt <= retry503) {
-    const body = encodeMidgardProofSubmissionV1({
+    const body = encodeMidgardProofSubmission({
       transactionCbor: Buffer.from(txHex, "hex"),
       programMaterial: [],
     });

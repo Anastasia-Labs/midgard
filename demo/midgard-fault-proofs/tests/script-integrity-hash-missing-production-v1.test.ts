@@ -1,26 +1,26 @@
 import { encodeMidgardVersionedScript } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import type { ManifestBoundScriptIntegrityHashMissingWorkflowConfigV1 } from "../src/script-integrity-hash-missing/production-v1.js";
-import { SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC_V1 } from "../src/script-integrity-hash-missing/production-v1.js";
+import type { ManifestBoundScriptIntegrityHashMissingWorkflowConfig } from "../src/script-integrity-hash-missing/production-v1.js";
+import { SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC } from "../src/script-integrity-hash-missing/production-v1.js";
 import {
-  encodeScriptIntegrityField8CheckpointV1,
-  hashScriptIntegrityField8CheckpointV1,
-  planScriptIntegrityHashMissingStagedWalkV1,
-  scriptIntegrityGrammarHashV1,
-  scriptIntegritySemanticHashV1,
+  encodeScriptIntegrityField8Checkpoint,
+  hashScriptIntegrityField8Checkpoint,
+  planScriptIntegrityHashMissingStagedWalk,
+  scriptIntegrityGrammarHash,
+  scriptIntegritySemanticHash,
 } from "../src/script-integrity-hash-missing/staged-plan-v1.js";
 import {
-  productionCursorFamilyObservationV1,
-  reconcileProductionCursorFamilyActionV1,
+  cursorFamilyObservation,
+  reconcileCursorFamilyAction,
 } from "../src/workflow/production-cursor-family-state-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string): string => `${hash(byte)}#0`;
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
@@ -33,8 +33,8 @@ const step = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7, ref: string) => ({
 });
 
 const actionFor = (ordinal: 1 | 2 | 3 | 4 | 5 | 6 | 7, ref: string) => {
-  const observed = productionCursorFamilyObservationV1({
-    spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC_V1,
+  const observed = cursorFamilyObservation({
+    spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
     headerHash,
     provenance,
     stage: step(ordinal, ref),
@@ -56,7 +56,7 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
       "decisionDigest",
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
-    ] as const satisfies readonly (keyof ManifestBoundScriptIntegrityHashMissingWorkflowConfigV1)[];
+    ] as const satisfies readonly (keyof ManifestBoundScriptIntegrityHashMissingWorkflowConfig)[];
     expect(exactKeys).not.toContain("loadJournal" as never);
     expect(exactKeys).not.toContain("appendJournal" as never);
     expect(exactKeys).not.toContain("submit" as never);
@@ -68,8 +68,8 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
     const first = actionFor(4, outRef("40"));
     const intended = hash("41");
     await expect(
-      reconcileProductionCursorFamilyActionV1({
-        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC_V1,
+      reconcileCursorFamilyAction({
+        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
         headerHash,
         action: first,
         txHash: intended,
@@ -81,8 +81,8 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
     const resumed = actionFor(4, `${intended}#0`);
     expect(resumed.actionId).not.toBe(first.actionId);
     await expect(
-      reconcileProductionCursorFamilyActionV1({
-        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC_V1,
+      reconcileCursorFamilyAction({
+        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
         headerHash,
         action: first,
         txHash: intended,
@@ -97,8 +97,8 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
     const action = actionFor(7, outRef("70"));
     const txHash = hash("71");
     await expect(
-      reconcileProductionCursorFamilyActionV1({
-        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC_V1,
+      reconcileCursorFamilyAction({
+        spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
         headerHash,
         action,
         txHash,
@@ -124,7 +124,7 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
     const redeemers = Array.from({ length: 224 }, (_, index) =>
       Buffer.alloc(70, (index % 250) + 1),
     );
-    const plan = planScriptIntegrityHashMissingStagedWalkV1({
+    const plan = planScriptIntegrityHashMissingStagedWalk({
       transactionId: hash("99"),
       scriptWitnessesPreimageCbor: encodeCbor(scripts).toString("hex"),
       redeemersPreimageCbor: encodeCbor(redeemers).toString("hex"),
@@ -132,17 +132,15 @@ describe("scriptIntegrityHashMissing package-owned production V1", () => {
     expect(plan.grammar).toHaveLength(10);
     expect(plan.semantic).toHaveLength(10);
     expect(plan.redeemerGrammar).toHaveLength(10);
-    expect(new Set(plan.grammar.map(scriptIntegrityGrammarHashV1)).size).toBe(
-      10,
-    );
-    expect(new Set(plan.semantic.map(scriptIntegritySemanticHashV1)).size).toBe(
+    expect(new Set(plan.grammar.map(scriptIntegrityGrammarHash)).size).toBe(10);
+    expect(new Set(plan.semantic.map(scriptIntegritySemanticHash)).size).toBe(
       10,
     );
     expect(
-      new Set(plan.redeemerGrammar.map(hashScriptIntegrityField8CheckpointV1))
+      new Set(plan.redeemerGrammar.map(hashScriptIntegrityField8Checkpoint))
         .size,
     ).toBe(10);
-    const encoded = encodeScriptIntegrityField8CheckpointV1(
+    const encoded = encodeScriptIntegrityField8Checkpoint(
       plan.redeemerGrammar[0]!,
     );
     expect(encoded[36]).toBe(8);

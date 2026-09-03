@@ -4,18 +4,18 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyResolvedOutputNonCanonicalScriptsV1,
-  RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1,
+  applyResolvedOutputNonCanonicalScripts,
+  RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
 } from "../src/resolved-output-non-canonical/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES_V1.every(
+const hasFamily = RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES.every(
   (title) =>
     blueprint.validators.some((validator) => validator.title === title),
 );
@@ -24,13 +24,13 @@ describe.runIf(hasFamily)(
   "resolvedOutputNonCanonical signed publication fit",
   () => {
     it("publishes every applied script below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const proofAddressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyResolvedOutputNonCanonicalScriptsV1({
+      const steps = applyResolvedOutputNonCanonicalScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

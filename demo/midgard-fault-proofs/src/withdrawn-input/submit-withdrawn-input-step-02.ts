@@ -1,7 +1,7 @@
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -9,7 +9,7 @@ import {
   WithdrawnInputStep02Datum,
   WithdrawnInputStep02SpendRedeemer,
   WithdrawnInputStep03Datum,
-  withdrawnInputStep03StateV1,
+  withdrawnInputStep03State,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -19,9 +19,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -31,22 +31,22 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
-  type WithdrawnInputContractsV1,
+  type WithdrawnInputContracts,
 } from "./contracts-v1.js";
 import {
-  requireWithdrawnInputReferenceScriptV1,
-  requireWithdrawnInputStepStateV1,
-  requireWithdrawnInputThreadUtxoV1,
+  requireWithdrawnInputReferenceScript,
+  requireWithdrawnInputStepState,
+  requireWithdrawnInputThreadUtxo,
   withdrawnInputSubmitError,
 } from "./submit-common-v1.js";
 
-export type WithdrawnInputSpendInputsEvidenceV1 = {
+export type WithdrawnInputSpendInputsEvidence = {
   readonly inputs: readonly MidgardTxInput[];
   readonly badInputIndex: number;
   readonly nativeTxCompactCbor: string;
@@ -77,11 +77,11 @@ export const submitWithdrawnInputStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnInputContractsV1;
+  readonly contracts: WithdrawnInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: WithdrawnInputSpendInputsEvidenceV1;
+  readonly evidence: WithdrawnInputSpendInputsEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly publishCarriage?: boolean;
   /** Pre-authenticated §8 field-carriage UTxOs for production workflows. */
@@ -90,23 +90,23 @@ export const submitWithdrawnInputStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** Diagnostic/emulator fallback only. Production workflows set false. */
   readonly publishMissingCarriage?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputStep02Result> => {
-  const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
     contracts,
     categoryId,
     stepIndex: 1,
     threadOutRef,
   });
-  const state = requireWithdrawnInputStepStateV1({
+  const state = requireWithdrawnInputStepState({
     threadUtxo,
     signer,
     schema: WithdrawnInputStep02Datum,
     stepIndex: 1,
   });
-  const stepReference = requireWithdrawnInputReferenceScriptV1({
+  const stepReference = requireWithdrawnInputReferenceScript({
     utxo: referenceScriptUtxo,
     contracts,
     stepIndex: 1,
@@ -117,11 +117,11 @@ export const submitWithdrawnInputStep02 = async ({
       `badInputIndex ${evidence.badInputIndex.toString()} is out of range for ${evidence.inputs.length.toString()} spend inputs.`,
     );
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: evidence.nativeTxCompactCbor,
-    itemCbors: evidence.inputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: evidence.inputs.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     publish: publishCarriage,
     label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
@@ -132,7 +132,7 @@ export const submitWithdrawnInputStep02 = async ({
     (planned.plan.publications.length === 0
       ? []
       : publishMissingCarriage
-        ? await publishFaultProofFieldCarriageV1({
+        ? await publishFaultProofFieldCarriage({
             lucid,
             signer,
             planned,
@@ -154,7 +154,7 @@ export const submitWithdrawnInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -169,7 +169,7 @@ export const submitWithdrawnInputStep02 = async ({
   const outputDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: withdrawnInputStep03StateV1({
+      data: withdrawnInputStep03State({
         input: withdrawnInput,
         withdrawalsRoot: state.blocks_withdrawals_root,
         withdrawalCount: state.blocks_withdrawal_count,
@@ -240,10 +240,10 @@ export const submitWithdrawnInputStep02 = async ({
     throw withdrawnInputSubmitError("step-02 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-input step-02",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[1].spendingScript,

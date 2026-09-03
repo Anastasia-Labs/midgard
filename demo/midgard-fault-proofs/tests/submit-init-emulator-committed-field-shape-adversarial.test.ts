@@ -1,44 +1,44 @@
 import {
   encodeCbor,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  type MidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
 import {
-  committedFieldShapeEvidenceFromCommittedFieldV1,
-  committedFieldShapeStep02StateFromEvidenceV1,
-  isCommittedFieldShapeViolationV1,
-  MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1,
-  MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1,
-  midgardCommittedFieldShapeVerdictV1,
-  sizedMidgardFieldEnvelopeV1,
+  committedFieldShapeEvidenceFromCommittedField,
+  committedFieldShapeStep02StateFromEvidence,
+  isCommittedFieldShapeViolation,
+  MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
+  MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
+  MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
+  MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
+  midgardCommittedFieldShapeVerdict,
+  sizedMidgardFieldEnvelope,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyCommittedFieldShapeFieldsV1,
-  committedFieldShapeInlineClaimDetailsV1,
-  prepareCommittedFieldShapeFromCanonicalTxV1,
+  classifyCommittedFieldShapeFields,
+  committedFieldShapeInlineClaimDetails,
+  prepareCommittedFieldShapeFromCanonicalTx,
   submitCommittedFieldShapeCancel,
   submitCommittedFieldShapeInit,
   submitCommittedFieldShapeStep01,
   submitCommittedFieldShapeStep02,
 } from "../src/committed-field-shape/index.js";
 import {
-  type CommittedFieldShapeEmulatorHarnessV1,
-  committedFieldShapeInlineClaimV1,
-  type CommittedFieldShapeScenarioV1,
-  expectCommittedFieldShapeOnchainRefusalV1,
-  fundCommittedFieldShapeOutsiderV1,
-  makeCommittedFieldShapeEmulatorHarnessV1,
-  publishCommittedFieldShapeReferenceScriptsV1,
-  setupCommittedFieldShapeScenarioV1,
-  submitRawCommittedFieldShapeCancelV1,
-  submitRawCommittedFieldShapeStep01V1,
-  submitRawCommittedFieldShapeStep02V1,
+  type CommittedFieldShapeEmulatorHarness,
+  committedFieldShapeInlineClaim,
+  type CommittedFieldShapeScenario,
+  expectCommittedFieldShapeOnchainRefusal,
+  fundCommittedFieldShapeOutsider,
+  makeCommittedFieldShapeEmulatorHarness,
+  publishCommittedFieldShapeReferenceScripts,
+  setupCommittedFieldShapeScenario,
+  submitRawCommittedFieldShapeCancel,
+  submitRawCommittedFieldShapeStep01,
+  submitRawCommittedFieldShapeStep02,
 } from "./support/committed-field-shape-emulator-v1.js";
 import {
   expectSingleUtxoWithUnit,
@@ -47,8 +47,8 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 const initThread = async (
-  harness: CommittedFieldShapeEmulatorHarnessV1,
-  scenario: CommittedFieldShapeScenarioV1,
+  harness: CommittedFieldShapeEmulatorHarness,
+  scenario: CommittedFieldShapeScenario,
 ) =>
   await submitCommittedFieldShapeInit({
     lucid: harness.proverLucid,
@@ -71,7 +71,7 @@ describe("committed-field-shape constraint space", () => {
   it("classifies all nine slots, both shape rules, and the disjointness frontier", () => {
     const base = makeNativeTx({ spendInputCbors: [], fee: 0n });
     const wrong = encodeCbor([Buffer.from([0x01])]);
-    const canonical: MidgardNativeTxCanonicalV1 = {
+    const canonical: MidgardNativeTxCanonical = {
       ...base,
       body: {
         ...base.body,
@@ -85,7 +85,7 @@ describe("committed-field-shape constraint space", () => {
         addrTxWitsPreimageCbor: wrong,
       },
     };
-    const fields = classifyCommittedFieldShapeFieldsV1(canonical);
+    const fields = classifyCommittedFieldShapeFields(canonical);
     expect(fields).toHaveLength(9);
     expect(
       fields
@@ -94,79 +94,78 @@ describe("committed-field-shape constraint space", () => {
     ).toStrictEqual([0, 1, 3, 4, 7]);
     for (const fieldIndex of [0, 1, 3, 4, 7]) {
       expect(fields[fieldIndex]!.evidence.verdict).toBe(
-        MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1,
+        MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
       );
     }
     for (const fieldIndex of [2, 5, 6, 8]) {
       expect(fields[fieldIndex]!.evidence.verdict).toBe(
-        MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE_V1,
+        MIDGARD_FIELD_SHAPE_VERDICT_ADMISSIBLE,
       );
     }
-    const witness = prepareCommittedFieldShapeFromCanonicalTxV1({
+    const witness = prepareCommittedFieldShapeFromCanonicalTx({
       tx: canonical,
       fieldIndex: 7,
     });
     expect("WitnessFieldClaim" in witness.claim).toBe(true);
     expect(witness.step02State).toMatchObject({
       field_index: 7n,
-      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1),
+      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE),
     });
 
-    const oversize = sizedMidgardFieldEnvelopeV1(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1 + 1,
+    const oversize = sizedMidgardFieldEnvelope(
+      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES + 1,
       0x5a,
     );
-    const oversizeVariable: MidgardNativeTxCanonicalV1 = {
+    const oversizeVariable: MidgardNativeTxCanonical = {
       ...base,
       body: { ...base.body, outputsPreimageCbor: oversize },
     };
     expect(
-      classifyCommittedFieldShapeFieldsV1(oversizeVariable)[2]!.evidence
-        .verdict,
-    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1);
-    const oversizeFixed: MidgardNativeTxCanonicalV1 = {
+      classifyCommittedFieldShapeFields(oversizeVariable)[2]!.evidence.verdict,
+    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND);
+    const oversizeFixed: MidgardNativeTxCanonical = {
       ...base,
       body: { ...base.body, spendInputsPreimageCbor: oversize },
     };
     // Byte-bound precedes stride at their overlap.
     expect(
-      classifyCommittedFieldShapeFieldsV1(oversizeFixed)[0]!.evidence.verdict,
-    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND_V1);
+      classifyCommittedFieldShapeFields(oversizeFixed)[0]!.evidence.verdict,
+    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND);
 
     expect(
-      midgardCommittedFieldShapeVerdictV1(2, Buffer.from("8041", "hex")),
-    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1);
+      midgardCommittedFieldShapeVerdict(2, Buffer.from("8041", "hex")),
+    ).toBe(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE);
     expect(
-      isCommittedFieldShapeViolationV1({
+      isCommittedFieldShapeViolation({
         fieldIndex: 2,
-        verdict: MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1,
+        verdict: MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
       }),
     ).toBe(false);
-    expect(
-      isCommittedFieldShapeViolationV1({ fieldIndex: 9, verdict: 3 }),
-    ).toBe(false);
-    expect(
-      isCommittedFieldShapeViolationV1({ fieldIndex: 0, verdict: 4 }),
-    ).toBe(false);
+    expect(isCommittedFieldShapeViolation({ fieldIndex: 9, verdict: 3 })).toBe(
+      false,
+    );
+    expect(isCommittedFieldShapeViolation({ fieldIndex: 0, verdict: 4 })).toBe(
+      false,
+    );
 
-    const tier1Frontier = sizedMidgardFieldEnvelopeV1(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+    const tier1Frontier = sizedMidgardFieldEnvelope(
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       0x6a,
     );
     expect(
-      committedFieldShapeInlineClaimDetailsV1(
-        committedFieldShapeInlineClaimV1({
+      committedFieldShapeInlineClaimDetails(
+        committedFieldShapeInlineClaim({
           fieldIndex: 0,
           preimage: tier1Frontier,
         }),
       ).preimage,
-    ).toHaveLength(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1);
+    ).toHaveLength(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES);
     expect(() =>
-      committedFieldShapeInlineClaimDetailsV1(
-        committedFieldShapeInlineClaimV1({
+      committedFieldShapeInlineClaimDetails(
+        committedFieldShapeInlineClaim({
           fieldIndex: 0,
-          preimage: sizedMidgardFieldEnvelopeV1(
-            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 + 1,
+          preimage: sizedMidgardFieldEnvelope(
+            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES + 1,
             0x6b,
           ),
         }),
@@ -180,16 +179,16 @@ describe("committed-field-shape constraint space", () => {
       fee: 0n,
     });
     expect(() =>
-      prepareCommittedFieldShapeFromCanonicalTxV1({
+      prepareCommittedFieldShapeFromCanonicalTx({
         tx: honest,
         fieldIndex: 0,
       }),
     ).toThrow(/nonConvictingField/u);
     expect(() =>
-      prepareCommittedFieldShapeFromCanonicalTxV1({ tx: honest }),
+      prepareCommittedFieldShapeFromCanonicalTx({ tx: honest }),
     ).toThrow(/noViolation/u);
 
-    const wrongAtOne = materializeMidgardNativeTxFromCanonicalV1({
+    const wrongAtOne = materializeMidgardNativeTxFromCanonical({
       ...honest,
       body: {
         ...honest.body,
@@ -197,11 +196,11 @@ describe("committed-field-shape constraint space", () => {
       },
     });
     expect(
-      prepareCommittedFieldShapeFromCanonicalTxV1({ tx: wrongAtOne }).evidence
+      prepareCommittedFieldShapeFromCanonicalTx({ tx: wrongAtOne }).evidence
         .fieldIndex,
     ).toBe(1);
     expect(() =>
-      prepareCommittedFieldShapeFromCanonicalTxV1({
+      prepareCommittedFieldShapeFromCanonicalTx({
         tx: wrongAtOne,
         fieldIndex: 9,
       }),
@@ -211,28 +210,28 @@ describe("committed-field-shape constraint space", () => {
 
 describe("committed-field-shape adversarial prover and recovery", () => {
   it("refuses fabricated verdict and uncommitted bytes against an honest commitment at step-01", async () => {
-    const harness = await makeCommittedFieldShapeEmulatorHarnessV1();
-    const scenario = await setupCommittedFieldShapeScenarioV1({
+    const harness = await makeCommittedFieldShapeEmulatorHarness();
+    const scenario = await setupCommittedFieldShapeScenario({
       harness,
       kind: "honest",
     });
-    const refs = await publishCommittedFieldShapeReferenceScriptsV1({
+    const refs = await publishCommittedFieldShapeReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.committedFieldShape,
     });
     const init = await initThread(harness, scenario);
-    const honestEvidence = committedFieldShapeEvidenceFromCommittedFieldV1({
+    const honestEvidence = committedFieldShapeEvidenceFromCommittedField({
       badTxId: scenario.nativeTxId,
       fieldIndex: 0,
       committedPreimage: scenario.committedPreimage,
     });
     const honestPrepared = {
       evidence: honestEvidence,
-      claim: committedFieldShapeInlineClaimV1({
+      claim: committedFieldShapeInlineClaim({
         fieldIndex: 0,
         preimage: scenario.committedPreimage,
       }),
-      step02State: committedFieldShapeStep02StateFromEvidenceV1(honestEvidence),
+      step02State: committedFieldShapeStep02StateFromEvidence(honestEvidence),
     };
     await expect(
       submitCommittedFieldShapeStep01({
@@ -254,11 +253,11 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     const fabricated = {
       bad_tx_id: scenario.nativeTxId,
       field_index: 0n,
-      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE_V1),
+      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE),
     };
-    const fabricatedMessage = await expectCommittedFieldShapeOnchainRefusalV1(
+    const fabricatedMessage = await expectCommittedFieldShapeOnchainRefusal(
       () =>
-        submitRawCommittedFieldShapeStep01V1({
+        submitRawCommittedFieldShapeStep01({
           harness,
           threadOutRef: init.nextThreadOutRef,
           scenario,
@@ -270,13 +269,13 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     expect(fabricatedMessage.length).toBeGreaterThan(0);
 
     const wrongPreimage = Buffer.from("8144deadbeef", "hex");
-    const uncommittedMessage = await expectCommittedFieldShapeOnchainRefusalV1(
+    const uncommittedMessage = await expectCommittedFieldShapeOnchainRefusal(
       () =>
-        submitRawCommittedFieldShapeStep01V1({
+        submitRawCommittedFieldShapeStep01({
           harness,
           threadOutRef: init.nextThreadOutRef,
           scenario,
-          claim: committedFieldShapeInlineClaimV1({
+          claim: committedFieldShapeInlineClaim({
             fieldIndex: 0,
             preimage: wrongPreimage,
           }),
@@ -294,12 +293,12 @@ describe("committed-field-shape adversarial prover and recovery", () => {
   }, 600_000);
 
   it("binds a committed non-envelope but refuses it at the exact step-02 predicate", async () => {
-    const harness = await makeCommittedFieldShapeEmulatorHarnessV1();
-    const scenario = await setupCommittedFieldShapeScenarioV1({
+    const harness = await makeCommittedFieldShapeEmulatorHarness();
+    const scenario = await setupCommittedFieldShapeScenario({
       harness,
       kind: "non-envelope",
     });
-    const refs = await publishCommittedFieldShapeReferenceScriptsV1({
+    const refs = await publishCommittedFieldShapeReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.committedFieldShape,
     });
@@ -307,13 +306,13 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     const state = {
       bad_tx_id: scenario.nativeTxId,
       field_index: 2n,
-      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE_V1),
+      verdict: BigInt(MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE),
     };
-    const step01 = await submitRawCommittedFieldShapeStep01V1({
+    const step01 = await submitRawCommittedFieldShapeStep01({
       harness,
       threadOutRef: init.nextThreadOutRef,
       scenario,
-      claim: committedFieldShapeInlineClaimV1({
+      claim: committedFieldShapeInlineClaim({
         fieldIndex: 2,
         preimage: scenario.committedPreimage,
       }),
@@ -340,8 +339,8 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/is not a committed-field-shape violation/u);
-    const refusal = await expectCommittedFieldShapeOnchainRefusalV1(() =>
-      submitRawCommittedFieldShapeStep02V1({
+    const refusal = await expectCommittedFieldShapeOnchainRefusal(() =>
+      submitRawCommittedFieldShapeStep02({
         harness,
         threadOutRef: step01.nextThreadOutRef,
         referenceScriptUtxo: refs[1],
@@ -357,19 +356,19 @@ describe("committed-field-shape adversarial prover and recovery", () => {
   }, 600_000);
 
   it("cancels explicitly at both steps, refuses outsiders on both planes, and resumes only from live state", async () => {
-    const harness = await makeCommittedFieldShapeEmulatorHarnessV1();
-    const scenario = await setupCommittedFieldShapeScenarioV1({
+    const harness = await makeCommittedFieldShapeEmulatorHarness();
+    const scenario = await setupCommittedFieldShapeScenario({
       harness,
       kind: "wrong-stride",
     });
     if (scenario.canonicalTx === null) {
       throw new Error("wrong-stride scenario must be canonical");
     }
-    const prepared = prepareCommittedFieldShapeFromCanonicalTxV1({
+    const prepared = prepareCommittedFieldShapeFromCanonicalTx({
       tx: scenario.canonicalTx,
       fieldIndex: 0,
     });
-    const refs = await publishCommittedFieldShapeReferenceScriptsV1({
+    const refs = await publishCommittedFieldShapeReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.committedFieldShape,
     });
@@ -429,7 +428,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     expect(cancelledAt02.cancelledStepIndex).toBe(1);
 
     const outsiderTarget = await initThread(harness, scenario);
-    await fundCommittedFieldShapeOutsiderV1(harness);
+    await fundCommittedFieldShapeOutsider(harness);
     await expect(
       submitCommittedFieldShapeCancel({
         lucid: harness.outsiderLucid,
@@ -443,8 +442,8 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     ).rejects.toThrow(/only the prover can cancel/u);
     const { threadUtxo, threadToken } = await import(
       "../src/committed-field-shape/submit-common-v1.js"
-    ).then(({ requireCommittedFieldShapeThreadUtxoV1 }) =>
-      requireCommittedFieldShapeThreadUtxoV1({
+    ).then(({ requireCommittedFieldShapeThreadUtxo }) =>
+      requireCommittedFieldShapeThreadUtxo({
         lucid: harness.proverLucid,
         contracts: harness.committedFieldShape,
         categoryId: harness.category.categoryId,
@@ -452,19 +451,18 @@ describe("committed-field-shape adversarial prover and recovery", () => {
         threadOutRef: outsiderTarget.nextThreadOutRef,
       }),
     );
-    const outsiderRefusal = await expectCommittedFieldShapeOnchainRefusalV1(
-      () =>
-        submitRawCommittedFieldShapeCancelV1({
-          lucid: harness.outsiderLucid,
-          contracts: harness.committedFieldShape,
-          signer: harness.outsiderSigner,
-          stepIndex: 0,
-          threadUtxo,
-          threadUnit: threadToken.unit,
-          threadAssetName: threadToken.assetName,
-          referenceScriptUtxo: refs[0],
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
+    const outsiderRefusal = await expectCommittedFieldShapeOnchainRefusal(() =>
+      submitRawCommittedFieldShapeCancel({
+        lucid: harness.outsiderLucid,
+        contracts: harness.committedFieldShape,
+        signer: harness.outsiderSigner,
+        stepIndex: 0,
+        threadUtxo,
+        threadUnit: threadToken.unit,
+        threadAssetName: threadToken.assetName,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      }),
     );
     expect(outsiderRefusal.length).toBeGreaterThan(0);
     await submitCommittedFieldShapeCancel({

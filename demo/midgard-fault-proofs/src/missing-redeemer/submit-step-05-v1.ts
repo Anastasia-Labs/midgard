@@ -1,25 +1,25 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingRedeemerContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingRedeemerContracts } from "./contracts-v1.js";
 import {
-  missingRedeemerEvidenceClosesV1,
-  type MissingRedeemerEvidenceV1,
+  type MissingRedeemerEvidence,
+  missingRedeemerEvidenceCloses,
 } from "./family-v1.js";
 import {
-  MissingRedeemerDecisionV1Schema,
-  MissingRedeemerStep05DatumV1Schema,
-  MissingRedeemerStep05RedeemerV1Schema,
+  MissingRedeemerDecisionSchema,
+  MissingRedeemerStep05DatumSchema,
+  MissingRedeemerStep05RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitMissingRedeemerStep05V1 = async ({
+export const submitMissingRedeemerStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -32,18 +32,18 @@ export const submitMissingRedeemerStep05V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: MissingRedeemerContractsV1;
+  contracts: MissingRedeemerContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: MissingRedeemerEvidenceV1;
+  evidence: MissingRedeemerEvidence;
   referenceScriptUtxo: UTxO;
-  witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 6;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -51,17 +51,17 @@ export const submitMissingRedeemerStep05V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const decision = requireLinearFaultStepStateV1<
-    Data.Static<typeof MissingRedeemerDecisionV1Schema>
+  const decision = requireLinearFaultStepState<
+    Data.Static<typeof MissingRedeemerDecisionSchema>
   >({
     threadUtxo,
     signer,
-    schema: MissingRedeemerStep05DatumV1Schema as never,
+    schema: MissingRedeemerStep05DatumSchema as never,
     family: "missing-redeemer",
     stepIndex,
   });
   if (
-    !missingRedeemerEvidenceClosesV1(evidence) ||
+    !missingRedeemerEvidenceCloses(evidence) ||
     decision.redeemer_missing !== evidence.redeemerMissing ||
     decision.bound.purpose_kind !== BigInt(evidence.purposeKind) ||
     decision.bound.purpose_index !== BigInt(evidence.purposeIndex)
@@ -69,7 +69,7 @@ export const submitMissingRedeemerStep05V1 = async ({
     throw new Error(
       "missingRedeemer: terminal decision differs from retained contradiction",
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "missing-redeemer",
     stepIndex,
@@ -79,7 +79,7 @@ export const submitMissingRedeemerStep05V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: MissingRedeemerStep05RedeemerV1Schema,
+    spendRedeemerSchema: MissingRedeemerStep05RedeemerSchema,
     buildFamilyArgs: (layout) => ({
       input_index: layout.inputIndex,
       output_index: layout.outputIndex,

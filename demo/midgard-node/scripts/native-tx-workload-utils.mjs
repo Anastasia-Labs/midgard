@@ -1,14 +1,14 @@
 import fs from "node:fs";
 
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxCompactV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
@@ -52,7 +52,7 @@ const encodeByteListPreimage = (items) =>
 // fixed 38-byte `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16` form — never CML's
 // minimal-index `TransactionInput` CBOR.
 export const toOutRefCbor = (txId, outputIndex) =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(txId),
     outputIndex: Number(outputIndex),
   });
@@ -121,8 +121,8 @@ const buildNativeSignedOutputs = ({
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
-  const transactionId = computeMidgardNativeTxIdV1(
-    deriveMidgardNativeTxCompactV1(body, emptyWitnessSet, "TxIsValid"),
+  const transactionId = computeMidgardNativeTxId(
+    deriveMidgardNativeTxCompact(body, emptyWitnessSet, "TxIsValid"),
   );
   const witness = CML.make_vkey_witness(
     CML.TransactionHash.from_raw_bytes(transactionId),
@@ -136,8 +136,8 @@ const buildNativeSignedOutputs = ({
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
-  const txCbor = encodeMidgardNativeTxCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const txCbor = encodeMidgardNativeTxCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     body,
     witnessSet,
     validity: "TxIsValid",

@@ -1,18 +1,18 @@
 import {
-  MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
-  MIDGARD_CEK_PROGRAM_ENVELOPE_V1_VERSION,
-  MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION,
-  MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION,
-  MIDGARD_MAX_DA_PAYLOAD_BYTES_V1,
-  MIDGARD_PROOF_SUBMISSION_ENVELOPE_V1_VERSION,
+  MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
+  MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION,
+  MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_VERSION,
+  MIDGARD_CEK_PROGRAM_MATERIAL_VERSION,
+  MIDGARD_MAX_DA_PAYLOAD_BYTES,
+  MIDGARD_PROOF_SUBMISSION_ENVELOPE_VERSION,
 } from "./cek-proof.js";
 import { computeHash32 } from "./codec/hash.js";
-import { MIDGARD_NATIVE_TX_V1_VERSION } from "./codec/native-constants.js";
+import { MIDGARD_NATIVE_TX_VERSION } from "./codec/native-constants.js";
 import {
-  MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1,
-  MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1,
+  MIDGARD_NATIVE_SCRIPT_MAX_DEPTH,
+  MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT,
 } from "./codec/native-script.js";
 
 /**
@@ -22,21 +22,21 @@ import {
  * deployment-manifest, validator-hash, and release-evidence matches at every
  * trust boundary.
  */
-export const MIDGARD_PROTOCOL_V1_VERSION = 1 as const;
-export const MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION = 1 as const;
+export const MIDGARD_PROTOCOL_VERSION = 1 as const;
+export const MIDGARD_TRANSITION_STEP_SCHEMA_VERSION = 1 as const;
 // V1 retains the newest machine semantics: every source constant is
 // authenticated through its exact bounded direct witness, context constants
 // are separated from source-program terms, and ByteArray work witnesses use
 // Aiken's exact chunked cbor.serialise representation.
-export const MIDGARD_VALIDATION_MACHINE_V1_VERSION = 1 as const;
-export const MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION = 1 as const;
-export const MIDGARD_VALIDATION_DISPUTE_V1_VERSION = 1 as const;
-export const MIDGARD_DA_INNER_V1_SCHEMA_VERSION = 1 as const;
-export const MIDGARD_CEK_VALUE_V1_SCHEMA_VERSION = 1 as const;
-export const MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION =
+export const MIDGARD_VALIDATION_MACHINE_VERSION = 1 as const;
+export const MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION = 1 as const;
+export const MIDGARD_VALIDATION_DISPUTE_VERSION = 1 as const;
+export const MIDGARD_DA_INNER_SCHEMA_VERSION = 1 as const;
+export const MIDGARD_CEK_VALUE_SCHEMA_VERSION = 1 as const;
+export const MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION =
   "midgard-deployment-manifest-v1" as const;
-export const MIDGARD_PROTOCOL_INFO_V1_API_VERSION = 1 as const;
-export const MIDGARD_CONSENSUS_PROFILE_V1_ID = "midgard-consensus-v1" as const;
+export const MIDGARD_PROTOCOL_INFO_API_VERSION = 1 as const;
+export const MIDGARD_CONSENSUS_PROFILE_ID = "midgard-consensus-v1" as const;
 
 const cborByteStringSize = (payloadBytes: number): number => {
   if (payloadBytes < 24) return 1 + payloadBytes;
@@ -69,11 +69,9 @@ const MAX_OUTPUT_VALUE_CBOR_BYTES = 5_000;
 // Raw Flat is a local authoring input, not an L1-revealed script preimage.
 // Consensus script bytes are the compact program envelope below; graph
 // material is admitted separately and checked against its exact DA encoding.
-const MAX_CEK_PROGRAM_NODE_COUNT = Number(
-  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
-);
+const MAX_CEK_PROGRAM_NODE_COUNT = Number(MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT);
 const MAX_CEK_PROGRAM_MATERIAL_BYTES = Number(
-  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
 );
 
 /**
@@ -81,7 +79,7 @@ const MAX_CEK_PROGRAM_MATERIAL_BYTES = Number(
  * envelope reservations. These are evidence, not independently configurable
  * consensus limits.
  */
-export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
+export const MIDGARD_ENVELOPE_MEASUREMENTS = Object.freeze({
   proofItemEnvelopeReliabilityReserveBytes: 512,
   // Corrected 2026-08-14 (owner ruling, #579 lane): these two counted-era
   // item-size frontiers had drifted ~80 bytes below the shape they describe.
@@ -287,7 +285,7 @@ const MAX_EFFECTIVE_TRANSACTION_CBOR_BYTES = (() => {
   return 1 + 1 + bodyBytes + witnessSetBytes + 1;
 })();
 
-export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
+export const MIDGARD_CONSENSUS_LIMITS = Object.freeze({
   minSupportedL1MaxTxBytes: MAX_L1_FAULT_PROOF_TX_BYTES,
   maxSinglePublicationCompleteItemBytes:
     MAX_SINGLE_PUBLICATION_COMPLETE_ITEM_BYTES,
@@ -306,7 +304,7 @@ export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
     MAX_LEDGER_MEMBERSHIP_PROOF_OVERHEAD_BYTES,
   maxLedgerOutputPreimageBytes: MAX_LEDGER_OUTPUT_PREIMAGE_BYTES,
   maxOutputValueCborBytes: MAX_OUTPUT_VALUE_CBOR_BYTES,
-  maxCekProgramEnvelopeBytes: MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES_V1,
+  maxCekProgramEnvelopeBytes: MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES,
   maxCekProgramNodeCount: MAX_CEK_PROGRAM_NODE_COUNT,
   maxCekProgramMaterialBytes: MAX_CEK_PROGRAM_MATERIAL_BYTES,
   maxCekBlobChunkBytes: 4_095,
@@ -328,8 +326,8 @@ export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
   maxScriptWitnessesPreimageBytes: MAX_SCRIPT_WITNESSES_PREIMAGE_BYTES,
   maxRedeemersPreimageBytes: MAX_REDEEMERS_PREIMAGE_BYTES,
   maxTxCanonicalCborBytes: MAX_EFFECTIVE_TRANSACTION_CBOR_BYTES,
-  maxNativeScriptDepth: MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1,
-  maxNativeScriptNodeCount: MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1,
+  maxNativeScriptDepth: MIDGARD_NATIVE_SCRIPT_MAX_DEPTH,
+  maxNativeScriptNodeCount: MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT,
   maxSpendInputCount: MAX_SPEND_INPUT_COUNT,
   maxReferenceInputCount: MAX_REFERENCE_INPUT_COUNT,
   maxOutputCount: MAX_OUTPUT_COUNT,
@@ -353,10 +351,10 @@ export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
   minValidationDisputeMaturityMs: MIN_VALIDATION_DISPUTE_MATURITY_MS,
   blockMaturityMs: PROOF_BLOCK_MATURITY_MS,
   maxCanonicalTransactionBytesPerBlock: 16 * 1024 * 1024,
-  maxDaPayloadBytes: MIDGARD_MAX_DA_PAYLOAD_BYTES_V1,
+  maxDaPayloadBytes: MIDGARD_MAX_DA_PAYLOAD_BYTES,
 });
 
-export const MIDGARD_CONSENSUS_FEATURES_V1 = Object.freeze([
+export const MIDGARD_CONSENSUS_FEATURES = Object.freeze([
   "mint_burn",
   "reference_inputs",
   "native_cardano_scripts",
@@ -373,7 +371,7 @@ export const MIDGARD_CONSENSUS_FEATURES_V1 = Object.freeze([
   "invalid_forced_transactions",
 ] as const);
 
-export const MIDGARD_V1_REQUIRED_PROOF_FAMILIES = Object.freeze([
+export const MIDGARD_REQUIRED_PROOF_FAMILIES = Object.freeze([
   "validation-trace-endpoint",
   "validation-trace-bisection",
   "validation-machine-one-step",
@@ -389,65 +387,59 @@ export const MIDGARD_V1_REQUIRED_PROOF_FAMILIES = Object.freeze([
  * this compiled value only after the validator-hash-bound evidence bundle for
  * every required proof family has passed the proof-fit gate.
  */
-export const MIDGARD_V1_RELEASE_EVIDENCE_DIGEST: string | null = null;
+export const MIDGARD_RELEASE_EVIDENCE_DIGEST: string | null = null;
 
-export const assertMidgardConsensusV1ReleaseReady = (): void => {
-  if (MIDGARD_V1_RELEASE_EVIDENCE_DIGEST === null) {
+export const assertMidgardConsensusReleaseReady = (): void => {
+  if (MIDGARD_RELEASE_EVIDENCE_DIGEST === null) {
     throw new Error(
       "midgard-consensus-v1 is not activated: the compiled L1 verifier and validator-hash-bound release evidence are incomplete",
     );
   }
-  if (!/^[0-9a-f]{64}$/u.test(MIDGARD_V1_RELEASE_EVIDENCE_DIGEST)) {
+  if (!/^[0-9a-f]{64}$/u.test(MIDGARD_RELEASE_EVIDENCE_DIGEST)) {
     throw new Error(
       "midgard-consensus-v1 has an invalid compiled release evidence digest",
     );
   }
 };
 
-export const MIDGARD_CONSENSUS_PROFILE_V1 = Object.freeze({
-  profileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  protocolVersion: MIDGARD_PROTOCOL_V1_VERSION,
-  nativeTransactionVersion: Number(MIDGARD_NATIVE_TX_V1_VERSION) as 1,
+export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({
+  profileId: MIDGARD_CONSENSUS_PROFILE_ID,
+  protocolVersion: MIDGARD_PROTOCOL_VERSION,
+  nativeTransactionVersion: Number(MIDGARD_NATIVE_TX_VERSION) as 1,
   nativeTransactionProofSourceVersion: 1,
-  transitionStepSchemaVersion: MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+  transitionStepSchemaVersion: MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
   headerSchemaVersion: 1,
   stateQueueSchemaVersion: 1,
   transactionOrderSchemaVersion: 1,
   transactionFieldPublicationSchemaVersion: 1,
   forcedTransactionJournalVersion: 1,
-  daPayloadVersion: MIDGARD_DA_INNER_V1_SCHEMA_VERSION,
+  daPayloadVersion: MIDGARD_DA_INNER_SCHEMA_VERSION,
   daEnvelopeVersion: 1,
   daTransportProtocolVersion: 1,
   daRuntimeManifestSchemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
-  validationMachineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
-  validationTraceDescriptorVersion:
-    MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-  validationDisputeVersion: MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
-  cekProgramEnvelopeVersion: Number(
-    MIDGARD_CEK_PROGRAM_ENVELOPE_V1_VERSION,
-  ) as 1,
-  cekValueSchemaVersion: MIDGARD_CEK_VALUE_V1_SCHEMA_VERSION,
-  cekProgramMaterialVersion: Number(
-    MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION,
-  ) as 1,
+  validationMachineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
+  validationTraceDescriptorVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+  validationDisputeVersion: MIDGARD_VALIDATION_DISPUTE_VERSION,
+  cekProgramEnvelopeVersion: Number(MIDGARD_CEK_PROGRAM_ENVELOPE_VERSION) as 1,
+  cekValueSchemaVersion: MIDGARD_CEK_VALUE_SCHEMA_VERSION,
+  cekProgramMaterialVersion: Number(MIDGARD_CEK_PROGRAM_MATERIAL_VERSION) as 1,
   cekProgramMaterialSidecarVersion: Number(
-    MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION,
+    MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_VERSION,
   ) as 1,
   proofSubmissionEnvelopeVersion: Number(
-    MIDGARD_PROOF_SUBMISSION_ENVELOPE_V1_VERSION,
+    MIDGARD_PROOF_SUBMISSION_ENVELOPE_VERSION,
   ) as 1,
   scriptProofSchemaVersion: 1,
   ledgerOutputSchemaVersion: 1,
   mpfProofSchemaVersion: 1,
-  deploymentManifestSchemaVersion:
-    MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
-  protocolInfoApiVersion: MIDGARD_PROTOCOL_INFO_V1_API_VERSION,
-  limits: MIDGARD_CONSENSUS_LIMITS_V1,
-  features: MIDGARD_CONSENSUS_FEATURES_V1,
-  requiredProofFamilies: MIDGARD_V1_REQUIRED_PROOF_FAMILIES,
+  deploymentManifestSchemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
+  protocolInfoApiVersion: MIDGARD_PROTOCOL_INFO_API_VERSION,
+  limits: MIDGARD_CONSENSUS_LIMITS,
+  features: MIDGARD_CONSENSUS_FEATURES,
+  requiredProofFamilies: MIDGARD_REQUIRED_PROOF_FAMILIES,
 });
 
-export type MidgardConsensusProfileV1 = typeof MIDGARD_CONSENSUS_PROFILE_V1;
+export type MidgardConsensusProfile = typeof MIDGARD_CONSENSUS_PROFILE;
 
 const stableJsonValue = (value: unknown): unknown => {
   if (
@@ -486,24 +478,23 @@ const stableJsonValue = (value: unknown): unknown => {
   );
 };
 
-const CONSENSUS_PROFILE_V1_STABLE_JSON = JSON.stringify(
-  stableJsonValue(MIDGARD_CONSENSUS_PROFILE_V1),
+const CONSENSUS_PROFILE_STABLE_JSON = JSON.stringify(
+  stableJsonValue(MIDGARD_CONSENSUS_PROFILE),
 );
 
-export const encodeMidgardConsensusProfileV1 = (): Buffer =>
-  Buffer.from(CONSENSUS_PROFILE_V1_STABLE_JSON, "utf8");
+export const encodeMidgardConsensusProfile = (): Buffer =>
+  Buffer.from(CONSENSUS_PROFILE_STABLE_JSON, "utf8");
 
-export const MIDGARD_CONSENSUS_PROFILE_V1_DIGEST = computeHash32(
-  encodeMidgardConsensusProfileV1(),
+export const MIDGARD_CONSENSUS_PROFILE_DIGEST = computeHash32(
+  encodeMidgardConsensusProfile(),
 ).toString("hex");
 
-export const isMidgardConsensusProfileV1 = (
+export const isMidgardConsensusProfile = (
   value: unknown,
-): value is MidgardConsensusProfileV1 => {
+): value is MidgardConsensusProfile => {
   try {
     return (
-      JSON.stringify(stableJsonValue(value)) ===
-      CONSENSUS_PROFILE_V1_STABLE_JSON
+      JSON.stringify(stableJsonValue(value)) === CONSENSUS_PROFILE_STABLE_JSON
     );
   } catch {
     return false;

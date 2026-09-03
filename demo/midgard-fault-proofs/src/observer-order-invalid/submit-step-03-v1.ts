@@ -1,6 +1,6 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,35 +13,35 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ObserverOrderInvalidContractsV1 } from "./contracts-v1.js";
-import type { ObserverOrderInvalidEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ObserverOrderInvalidContracts } from "./contracts-v1.js";
+import type { ObserverOrderInvalidEvidence } from "./family-v1.js";
 import {
-  ObserverOrderInvalidStep03DatumV1Schema,
-  ObserverOrderInvalidStep03RedeemerV1Schema,
-  ObserverOrderInvalidStep04DatumV1Schema,
+  ObserverOrderInvalidStep03DatumSchema,
+  ObserverOrderInvalidStep03RedeemerSchema,
+  ObserverOrderInvalidStep04DatumSchema,
 } from "./schemas-v1.js";
 import {
-  encodeObserverOrderWalkCheckpointV1,
-  hashObserverOrderWalkCheckpointV1,
-  type ObserverOrderInvalidStagedPlanV1,
-  observerOrderPrefixV1,
+  encodeObserverOrderWalkCheckpoint,
+  hashObserverOrderWalkCheckpoint,
+  type ObserverOrderInvalidStagedPlan,
+  observerOrderPrefix,
 } from "./staged-plan-v1.js";
 
-export const submitObserverOrderInvalidStep03V1 = async ({
+export const submitObserverOrderInvalidStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -56,16 +56,16 @@ export const submitObserverOrderInvalidStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ObserverOrderInvalidContractsV1;
+  readonly contracts: ObserverOrderInvalidContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ObserverOrderInvalidEvidenceV1;
+  readonly evidence: ObserverOrderInvalidEvidence;
   readonly nativeTxCompactCbor: string;
-  readonly staged: ObserverOrderInvalidStagedPlanV1;
+  readonly staged: ObserverOrderInvalidStagedPlan;
   readonly walkOrdinal: number;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const nextCheckpoint = staged.walk[walkOrdinal];
@@ -74,7 +74,7 @@ export const submitObserverOrderInvalidStep03V1 = async ({
   const priorCheckpoint =
     walkOrdinal === 0 ? staged.initialWalk : staged.walk[walkOrdinal - 1]!;
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -82,7 +82,7 @@ export const submitObserverOrderInvalidStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     observer_index: bigint;
     checkpoint_hash: string;
@@ -92,18 +92,18 @@ export const submitObserverOrderInvalidStep03V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: ObserverOrderInvalidStep03DatumV1Schema as never,
+    schema: ObserverOrderInvalidStep03DatumSchema as never,
     family: "observer-order-invalid",
     stepIndex,
   });
   if (
     state.observer_index !== BigInt(evidence.observerIndex) ||
     state.checkpoint_hash !==
-      hashObserverOrderWalkCheckpointV1(priorCheckpoint) ||
+      hashObserverOrderWalkCheckpoint(priorCheckpoint) ||
     state.outcome !== 0n
   )
     throw new Error("observerOrderInvalid: scan datum/checkpoint changed");
-  const prefix = observerOrderPrefixV1({
+  const prefix = observerOrderPrefix({
     items: staged.items,
     nextItemIndex: priorCheckpoint.nextItemIndex,
     observerIndex: evidence.observerIndex,
@@ -113,10 +113,10 @@ export const submitObserverOrderInvalidStep03V1 = async ({
     state.previous_observer !== prefix.previousObserver
   )
     throw new Error("observerOrderInvalid: scan accumulator changed");
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.fieldPreimageHex, "hex"),
   );
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 3,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
@@ -125,14 +125,14 @@ export const submitObserverOrderInvalidStep03V1 = async ({
     publish: true,
     label: "observerOrderInvalid scan field 3",
   });
-  const carriageUtxos = await resolveFaultProofFieldCarriagePublicationsV1({
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid,
     publisherAddress: signer.address,
     planned,
   });
   if (carriageUtxos === undefined)
     throw new Error("observerOrderInvalid: field carriage disappeared");
-  const certificateUtxo = await resolveFaultProofFieldPreimageCertificateV1({
+  const certificateUtxo = await resolveFaultProofFieldPreimageCertificate({
     lucid,
     network: lucid.config().network!,
     planned,
@@ -140,13 +140,13 @@ export const submitObserverOrderInvalidStep03V1 = async ({
   });
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("observerOrderInvalid: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "observer-order-invalid",
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -159,7 +159,7 @@ export const submitObserverOrderInvalidStep03V1 = async ({
   const terminal = walkOrdinal === staged.walk.length - 1;
   const nextPrefix = terminal
     ? null
-    : observerOrderPrefixV1({
+    : observerOrderPrefix({
         items: staged.items,
         nextItemIndex: nextCheckpoint.nextItemIndex,
         observerIndex: evidence.observerIndex,
@@ -173,7 +173,7 @@ export const submitObserverOrderInvalidStep03V1 = async ({
     : {
         subject: evidence.subject,
         observer_index: BigInt(evidence.observerIndex),
-        checkpoint_hash: hashObserverOrderWalkCheckpointV1(nextCheckpoint),
+        checkpoint_hash: hashObserverOrderWalkCheckpoint(nextCheckpoint),
         seen: BigInt(nextPrefix!.seen),
         previous_observer: nextPrefix!.previousObserver,
         outcome: 0n,
@@ -181,8 +181,8 @@ export const submitObserverOrderInvalidStep03V1 = async ({
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
     (terminal
-      ? ObserverOrderInvalidStep04DatumV1Schema
-      : ObserverOrderInvalidStep03DatumV1Schema) as never,
+      ? ObserverOrderInvalidStep04DatumSchema
+      : ObserverOrderInvalidStep03DatumSchema) as never,
   );
   const nextStep = terminal ? contracts.steps[3] : contracts.steps[2];
   const outputMatches = computationThreadOutputPredicate({
@@ -211,7 +211,7 @@ export const submitObserverOrderInvalidStep03V1 = async ({
             output_index: outputIndex,
             opening,
             checkpoint_bytes:
-              encodeObserverOrderWalkCheckpointV1(priorCheckpoint).toString(
+              encodeObserverOrderWalkCheckpoint(priorCheckpoint).toString(
                 "hex",
               ),
             item_budget: BigInt(
@@ -220,10 +220,10 @@ export const submitObserverOrderInvalidStep03V1 = async ({
           },
         ],
       } as never,
-      ObserverOrderInvalidStep03RedeemerV1Schema as never,
+      ObserverOrderInvalidStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

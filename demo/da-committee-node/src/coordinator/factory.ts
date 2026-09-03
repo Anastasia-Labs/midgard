@@ -84,8 +84,8 @@ export const onChainCoordinatorFromConfig = async (
     lucid,
     contracts,
     referenceScripts,
-    availabilityParameters: SDK.daAvailabilityParametersV1({
-      responseGeometry: SDK.availabilityResponseGeometryV1(
+    availabilityParameters: SDK.daAvailabilityParameters({
+      responseGeometry: SDK.availabilityResponseGeometry(
         config.availabilityChallenge.responseGeometry,
       ),
       daBondLovelace: BigInt(config.availabilityChallenge.daBondLovelace),

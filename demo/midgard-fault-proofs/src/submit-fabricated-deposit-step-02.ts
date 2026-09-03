@@ -21,15 +21,15 @@
  */
 import {
   DepositDatum,
-  depositEventDatumCommitmentV1,
-  depositEventNonceV1,
-  type FabricatedDepositEvidenceV1,
-  type FabricatedDepositEvidenceVerdictV1,
+  depositEventDatumCommitment,
+  depositEventNonce,
+  type FabricatedDepositEvidence,
+  type FabricatedDepositEvidenceVerdict,
   FabricatedDepositStep02Datum,
   FabricatedDepositStep02SpendRedeemer,
   type FabricatedDepositStep02State,
   FabricatedDepositStep03Datum,
-  fabricatedDepositStep03StateV1,
+  fabricatedDepositStep03State,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   OutputReference,
@@ -50,7 +50,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -64,7 +64,7 @@ import {
 } from "./runtime.js";
 import {
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
-  type FabricatedDepositContractsV1,
+  type FabricatedDepositContracts,
 } from "./submit-fabricated-deposit-step-01.js";
 import {
   requireComputationThreadToken,
@@ -72,13 +72,13 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Which L1 witness the prover intends to submit. */
-export type FabricatedDepositEvidenceArmV1 =
+export type FabricatedDepositEvidenceArm =
   | { readonly kind: "absent_identity" }
   | { readonly kind: "present_event"; readonly eventOutRef: string };
 
@@ -112,7 +112,7 @@ export const requireFabricatedDepositStep02Datum = ({
  * Authenticates the deposit event UTxO a `PresentDepositEvent` witness points at,
  * against the hub oracle's deposit policy and the committed identity's nonce.
  */
-export const authenticateFabricatedDepositEventUtxoV1 = async ({
+export const authenticateFabricatedDepositEventUtxo = async ({
   state,
   hubOracleUtxo,
   eventUtxo,
@@ -132,7 +132,7 @@ export const authenticateFabricatedDepositEventUtxoV1 = async ({
   const hubDatum = Data.from(hubOracleUtxo.datum, HubOracleDatum);
   const depositPolicyId = hubDatum.deposit;
   const expectedEventAssetName = await Effect.runPromise(
-    depositEventNonceV1(state.committed_deposit_id),
+    depositEventNonce(state.committed_deposit_id),
   );
   const expectedUnit = toUnit(depositPolicyId, expectedEventAssetName);
   if ((eventUtxo.assets[expectedUnit] ?? 0n) !== 1n) {
@@ -155,7 +155,7 @@ export const authenticateFabricatedDepositEventUtxoV1 = async ({
     );
   }
   const eventDatumHash = await Effect.runPromise(
-    depositEventDatumCommitmentV1(eventDatum),
+    depositEventDatumCommitment(eventDatum),
   );
   return {
     eventDatum,
@@ -186,8 +186,8 @@ export type SubmitFabricatedDepositStep02Result = {
   readonly computationThreadUnit: string;
   readonly secondStepAddress: string;
   readonly thirdStepAddress: string;
-  readonly evidenceKind: FabricatedDepositEvidenceArmV1["kind"];
-  readonly verdict: FabricatedDepositEvidenceVerdictV1;
+  readonly evidenceKind: FabricatedDepositEvidenceArm["kind"];
+  readonly verdict: FabricatedDepositEvidenceVerdict;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -196,7 +196,7 @@ export type SubmitFabricatedDepositStep02Result = {
 type FabricatedDepositStep02Layout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
-  readonly evidence: FabricatedDepositEvidenceV1;
+  readonly evidence: FabricatedDepositEvidence;
 };
 
 export const submitFabricatedDepositStep02 = async ({
@@ -211,13 +211,13 @@ export const submitFabricatedDepositStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedDepositContractsV1;
+  readonly contracts: FabricatedDepositContracts;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: FabricatedDepositEvidenceArmV1;
+  readonly evidence: FabricatedDepositEvidenceArm;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep02Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -239,7 +239,7 @@ export const submitFabricatedDepositStep02 = async ({
   const state = requireFabricatedDepositStep02Datum({ threadUtxo, signer });
 
   let referenceInputs: readonly UTxO[];
-  let verdict: FabricatedDepositEvidenceVerdictV1;
+  let verdict: FabricatedDepositEvidenceVerdict;
   let hubOracleUtxo: UTxO | undefined;
   let eventUtxo: UTxO | undefined;
   let unspentUtxo: UTxO | undefined;
@@ -270,7 +270,7 @@ export const submitFabricatedDepositStep02 = async ({
         label: "fabricated-deposit step-02 deposit event UTxO",
       }),
     ]);
-    const authenticated = await authenticateFabricatedDepositEventUtxoV1({
+    const authenticated = await authenticateFabricatedDepositEventUtxo({
       state,
       hubOracleUtxo,
       eventUtxo,
@@ -284,7 +284,7 @@ export const submitFabricatedDepositStep02 = async ({
     };
   }
 
-  const step03State = fabricatedDepositStep03StateV1(state, verdict);
+  const step03State = fabricatedDepositStep03State(state, verdict);
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const step03Datum = Data.to(
@@ -299,7 +299,7 @@ export const submitFabricatedDepositStep02 = async ({
   let resolvedLayout: FabricatedDepositStep02Layout | undefined;
   const redeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "fabricated-deposit step 02");
-    const armEvidence: FabricatedDepositEvidenceV1 =
+    const armEvidence: FabricatedDepositEvidence =
       evidence.kind === "absent_identity"
         ? {
             AbsentDepositIdentity: {
@@ -362,7 +362,7 @@ export const submitFabricatedDepositStep02 = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       ...referenceInputs,
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[1].spendingScriptHash,
         categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
@@ -383,10 +383,10 @@ export const submitFabricatedDepositStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof fabricated-deposit step-02",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[1].spendingScript,
@@ -425,7 +425,7 @@ export const submitFabricatedDepositStep02 = async ({
 
 export const submitFabricatedDepositStep02FromFiles = async (
   config: SubmitFabricatedDepositStep02CliConfig & {
-    readonly contracts: FabricatedDepositContractsV1;
+    readonly contracts: FabricatedDepositContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep02Result> => {

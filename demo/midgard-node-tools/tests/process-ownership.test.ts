@@ -10,7 +10,7 @@ import {
   generateOwnedProcessRunToken,
   OWNED_PROCESS_GROUP_SCHEMA_VERSION,
   ownedProcessCommandSha256,
-  parseOwnedProcessGroupRecordV1,
+  parseOwnedProcessGroupRecord,
   terminateOwnedProcessGroup,
   validateOwnedProcessGroupRecord,
   writeOwnedProcessGroupRecord,
@@ -100,46 +100,46 @@ describe.skipIf(process.platform !== "linux")("owned process groups", () => {
       args: [script],
       cwd: dir,
     });
-    expect(parseOwnedProcessGroupRecordV1(record)).toEqual(record);
+    expect(parseOwnedProcessGroupRecord(record)).toEqual(record);
     const { cwd: _cwd, ...missingCwd } = record;
-    expect(() => parseOwnedProcessGroupRecordV1(missingCwd)).toThrow(
+    expect(() => parseOwnedProcessGroupRecord(missingCwd)).toThrow(
       "missing required field",
     );
     expect(() =>
-      parseOwnedProcessGroupRecordV1({ ...record, unexpected: true }),
+      parseOwnedProcessGroupRecord({ ...record, unexpected: true }),
     ).toThrow("unknown field");
     expect(() =>
-      parseOwnedProcessGroupRecordV1({
+      parseOwnedProcessGroupRecord({
         ...record,
         schemaVersion: "midgard-owned-process-group-v0",
       }),
     ).toThrow(OWNED_PROCESS_GROUP_SCHEMA_VERSION);
     expect(() =>
-      parseOwnedProcessGroupRecordV1({
+      parseOwnedProcessGroupRecord({
         ...record,
         commandSha256: "00".repeat(32),
       }),
     ).toThrow("command hash mismatch");
     expect(() =>
-      parseOwnedProcessGroupRecordV1({
+      parseOwnedProcessGroupRecord({
         ...record,
         pgid: record.pgid + 1,
       }),
     ).toThrow("process-group leader");
     expect(() =>
-      parseOwnedProcessGroupRecordV1({
+      parseOwnedProcessGroupRecord({
         ...record,
         startTicks: `0${record.startTicks}`,
       }),
     ).toThrow("canonical positive decimal");
     expect(() =>
-      parseOwnedProcessGroupRecordV1({
+      parseOwnedProcessGroupRecord({
         ...record,
         bootId: record.bootId.toUpperCase(),
       }),
     ).toThrow("lowercase UUID");
     expect(() =>
-      parseOwnedProcessGroupRecordV1({
+      parseOwnedProcessGroupRecord({
         ...record,
         cwd: `${record.cwd}/.`,
       }),

@@ -9,9 +9,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyDaAttestationSignatureWitnesses,
-  availabilityResponseGeometryV1,
-  buildDaAvailabilityCommitmentV1,
-  castStateQueueNodeV1ToData,
+  availabilityResponseGeometry,
+  buildDaAvailabilityCommitment,
+  castStateQueueNodeToData,
   type DaAttestationBuildError,
   DaAttestationDatum,
   type DaAttestationReferenceScripts,
@@ -21,7 +21,7 @@ import {
   type DaAttestationUtxo,
   type DaParamsDatum,
   EMPTY_ATTESTED_SIGNER_BITMAP,
-  EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+  EMPTY_HEADER_TRANSITION_COMMITMENTS,
   encodeDaAttestationSignatureWitnesses,
   encodeLinkedListNodeView,
   incompleteAddDaAttestationSignaturesTxProgram,
@@ -33,7 +33,7 @@ import {
   NO_DA_ATTESTATION,
   signerIndexIsDaAttested,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  StateQueueNodeV1,
+  StateQueueNode,
   type StateQueueUTxO,
 } from "../src/index.js";
 
@@ -41,12 +41,12 @@ const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 const signature = (byte: string): string => byte.repeat(64);
 const availabilityCommitment = (headerHash: string) =>
-  buildDaAvailabilityCommitmentV1({
+  buildDaAvailabilityCommitment({
     deploymentIdentity: h28("71"),
     headerHash,
     payload: Uint8Array.of(1),
     bondOwner: h28("72"),
-    responseGeometry: availabilityResponseGeometryV1({
+    responseGeometry: availabilityResponseGeometry({
       chunkByteLength: 4096,
       trancheByteLength: 4 * 1024 * 1024,
       maxTrancheCount: 16,
@@ -168,12 +168,12 @@ const makeFixture = () => {
     "availabilityChallenge" | "daAttestation" | "stateQueue"
   >;
   const headerHash = h28("10");
-  const stateQueueNode: StateQueueNodeV1 = {
+  const stateQueueNode: StateQueueNode = {
     header: {
       prevUtxosRoot: h32("01"),
       utxosRoot: h32("02"),
       withdrawalsRoot: h32("05"),
-      ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
       transactionsRoot: h32("03"),
       depositsRoot: h32("04"),
       startTime: 1n,
@@ -191,7 +191,7 @@ const makeFixture = () => {
   const linkedListNode: LinkedListNodeView = {
     key: { Key: { key: headerHash } },
     next: "Empty",
-    data: castStateQueueNodeV1ToData(
+    data: castStateQueueNodeToData(
       stateQueueNode,
     ) as LinkedListNodeView["data"],
   };
@@ -522,7 +522,7 @@ describe("DA attestation SDK builders", () => {
     if ("Node" in linkedListDatum.data) {
       const stateQueueNode = Data.castFrom(
         linkedListDatum.data.Node.data,
-        StateQueueNodeV1,
+        StateQueueNode,
       );
       expect(stateQueueNode.header).toEqual(
         fixture.target.stateQueueNode.header,

@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Option } from "effect";
 
 import {
@@ -69,12 +69,12 @@ export type PlannedCommitBatchSelection = {
 };
 
 export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
-  maxL2TxCount: MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+  maxL2TxCount: MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
   maxCanonicalTxBytes:
-    MIDGARD_CONSENSUS_LIMITS_V1.maxCanonicalTransactionBytesPerBlock,
-  maxLedgerOpCount: MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOperationCount,
-  maxTransitionStepCount: MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount,
-  maxDaPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+    MIDGARD_CONSENSUS_LIMITS.maxCanonicalTransactionBytesPerBlock,
+  maxLedgerOpCount: MIDGARD_CONSENSUS_LIMITS.maxLedgerOperationCount,
+  maxTransitionStepCount: MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
+  maxDaPayloadBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
   maxCommitTxBytes: 128 * 1024,
   maxEstimatedCommitBuildMs: 30_000,
   estimatedLedgerOpsPerTx: 2,
@@ -525,7 +525,7 @@ export const planSchedulerAwareCommitSelection = ({
   currentBlockStartTimeMs,
   nowMs,
   minimumCurrentWindowBudgetMs,
-  productionMinimumFutureBufferMs,
+  productionMinimumFutureBufferMs: minimumFutureBufferMs,
   currentWindowCommitEndTimeFit,
 }: {
   readonly candidateSelection: CommitTxCandidateSelection;
@@ -602,7 +602,7 @@ export const planSchedulerAwareCommitSelection = ({
       status: "current_scheduler_end_time_floor_exceeds_window",
       prunedTxCount: 0,
       originalTxCount: candidateSelection.candidateTxs.length,
-      reason: `resolved_valid_to_ms=${resolvedEndTimeMs.toString()},resolved_inclusive_end_time_ms=${typeof resolvedEndTimeMs === "number" ? (resolvedEndTimeMs - 1).toString() : "missing"},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(productionMinimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
+      reason: `resolved_valid_to_ms=${resolvedEndTimeMs.toString()},resolved_inclusive_end_time_ms=${typeof resolvedEndTimeMs === "number" ? (resolvedEndTimeMs - 1).toString() : "missing"},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(minimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
     };
   }
 

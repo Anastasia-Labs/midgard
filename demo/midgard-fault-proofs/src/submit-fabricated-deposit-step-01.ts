@@ -24,10 +24,10 @@ import {
   FabricatedDepositStep01SpendRedeemer,
   FabricatedDepositStep02Datum,
   type FabricatedDepositStep02State,
-  fabricatedDepositStep02StateV1,
-  getHeaderV1FromStateQueueDatum,
+  fabricatedDepositStep02State,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  type HeaderV1,
+  type Header,
   HUB_ORACLE_ASSET_NAME,
   OutputReference,
   Proof,
@@ -51,7 +51,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -72,16 +72,16 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Human-readable family label used in every local failure message. */
 export const FABRICATED_DEPOSIT_CATEGORY_LABEL = "fabricated-deposit";
 
 /** One deployed step of the `fabricated-deposit` chain. */
-export type FabricatedDepositStepContractV1 = {
+export type FabricatedDepositStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -94,13 +94,13 @@ export type FabricatedDepositStepContractV1 = {
  * #609 arity guard in `applyBlueprintParams` the single place where scripts are
  * parameterized.
  */
-export type FabricatedDepositContractsV1 = {
+export type FabricatedDepositContracts = {
   /** Steps 01..04, in order. */
   readonly steps: readonly [
-    FabricatedDepositStepContractV1,
-    FabricatedDepositStepContractV1,
-    FabricatedDepositStepContractV1,
-    FabricatedDepositStepContractV1,
+    FabricatedDepositStepContract,
+    FabricatedDepositStepContract,
+    FabricatedDepositStepContract,
+    FabricatedDepositStepContract,
   ];
   readonly computationThread: {
     readonly policyId: string;
@@ -157,7 +157,7 @@ export const parseSubmitFabricatedDepositInclusion = (
 };
 
 /** The membership witness the step-01 redeemer carries, plus its handoff state. */
-export type FabricatedDepositStep01HandoffV1 = {
+export type FabricatedDepositStep01Handoff = {
   readonly committedDeposit: RootMembershipProof<OutputReference, DepositInfo>;
   readonly step02State: FabricatedDepositStep02State;
 };
@@ -170,15 +170,15 @@ export type FabricatedDepositStep01HandoffV1 = {
  * counted-root equality the L1 step re-establishes, so a witness that cannot
  * satisfy it locally can never satisfy it on chain.
  */
-export const deriveFabricatedDepositStep01HandoffV1 = async ({
+export const deriveFabricatedDepositStep01Handoff = async ({
   header,
   headerHash,
   inclusion,
 }: {
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly headerHash: string;
   readonly inclusion: SubmitFabricatedDepositInclusion;
-}): Promise<FabricatedDepositStep01HandoffV1> => {
+}): Promise<FabricatedDepositStep01Handoff> => {
   const countedDepositsRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.deposits,
@@ -203,7 +203,7 @@ export const deriveFabricatedDepositStep01HandoffV1 = async ({
     proof: inclusion.depositMembershipProof,
   };
   const step02State = await Effect.runPromise(
-    fabricatedDepositStep02StateV1({
+    fabricatedDepositStep02State({
       challengedHeaderHash: headerHash,
       headerStartTime: header.startTime,
       headerEndTime: header.endTime,
@@ -271,14 +271,14 @@ export const submitFabricatedDepositStep01 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: FabricatedDepositContractsV1;
+  readonly contracts: FabricatedDepositContracts;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly depositInclusion: SubmitFabricatedDepositInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep01Result> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
@@ -333,10 +333,10 @@ export const submitFabricatedDepositStep01 = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
   const { committedDeposit, step02State } =
-    await deriveFabricatedDepositStep01HandoffV1({
+    await deriveFabricatedDepositStep01Handoff({
       header,
       headerHash: stateQueueHeaderHash,
       inclusion: depositInclusion,
@@ -407,7 +407,7 @@ export const submitFabricatedDepositStep01 = async ({
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
       ...referenceInputs,
-      requireFabricatedReferenceScriptV1({
+      requireFabricatedReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[0].spendingScriptHash,
         categoryLabel: FABRICATED_DEPOSIT_CATEGORY_LABEL,
@@ -428,10 +428,10 @@ export const submitFabricatedDepositStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof fabricated-deposit step-01",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[0].spendingScript,
@@ -479,7 +479,7 @@ export const submitFabricatedDepositStep01 = async ({
 
 export const submitFabricatedDepositStep01FromFiles = async (
   config: SubmitFabricatedDepositStep01CliConfig & {
-    readonly contracts: FabricatedDepositContractsV1;
+    readonly contracts: FabricatedDepositContracts;
     readonly referenceScriptUtxo: UTxO;
   },
 ): Promise<SubmitFabricatedDepositStep01Result> => {

@@ -103,7 +103,7 @@ const canonicalString = (value: unknown, label: string): string => {
   return parsed;
 };
 
-export const parseOwnedProcessGroupRecordV1 = (
+export const parseOwnedProcessGroupRecord = (
   value: unknown,
 ): OwnedProcessGroupRecord => {
   const input = exactRecord(value, "owned process-group record", [
@@ -256,7 +256,7 @@ const processGroupHasLiveMembers = (pgid: number): boolean =>
   });
 
 const parseRecord = (recordPath: string): OwnedProcessGroupRecord => {
-  return parseOwnedProcessGroupRecordV1(
+  return parseOwnedProcessGroupRecord(
     JSON.parse(readFileSync(recordPath, "utf8")),
   );
 };
@@ -286,7 +286,7 @@ export const writeOwnedProcessGroupRecord = ({
       `refusing to record pid ${pid.toString()}: process cwd ${proc.cwd} does not match requested cwd ${resolve(cwd)}`,
     );
   }
-  const record = parseOwnedProcessGroupRecordV1({
+  const record = parseOwnedProcessGroupRecord({
     schemaVersion: OWNED_PROCESS_GROUP_SCHEMA_VERSION,
     runToken: spec.runToken,
     bootId: readBootId(),

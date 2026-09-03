@@ -1,37 +1,37 @@
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  MIDGARD_CONSENSUS_LIMITS,
   midgardNativeTxFullToCardanoTxEncoding,
 } from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishAikenVectorV1 } from "./helpers/aiken-vector-channel.js";
+import { publishAikenVector } from "./helpers/aiken-vector-channel.js";
 import {
-  buildSignedCardanoInlineDatumCandidateV1,
-  CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  deterministicCardanoBoundaryPrivateKeyV1,
-  exerciseMidgardOrderedCollectionBoundaryV1,
-  findSignedCardanoCollectionBoundaryV1,
-  measureSignedCardanoInlineDatumV1,
-  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+  buildSignedCardanoInlineDatumCandidate,
+  CARDANO_BOUNDARY_MAX_TX_SIZE,
+  deterministicCardanoBoundaryPrivateKey,
+  exerciseMidgardOrderedCollectionBoundary,
+  findSignedCardanoCollectionBoundary,
+  measureSignedCardanoInlineDatum,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundary-v1.js";
 
 // The exact genuine signed-Cardano inline-datum blob boundary. The terminal
 // vector below is the Aiken-replayed half; these four numbers pin the payload
 // size and byte count the search must land on, so a silently shrunk blob can no
 // longer satisfy the relative bounds alone.
-const MAXIMUM_INLINE_DATUM_ACCEPTED_PAYLOAD_BYTES_V1 = 15_680;
-const MAXIMUM_INLINE_DATUM_ACCEPTED_SIGNED_BYTES_V1 = 16_383;
-const MAXIMUM_INLINE_DATUM_ADJACENT_PAYLOAD_BYTES_V1 = 15_681;
-const MAXIMUM_INLINE_DATUM_ADJACENT_SIGNED_BYTES_V1 = 16_385;
-const MAXIMUM_INLINE_DATUM_ACCEPTED_DATUM_CBOR_BYTES_V1 = 16_172;
-const MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES_V1 = 16_174;
+const MAXIMUM_INLINE_DATUM_ACCEPTED_PAYLOAD_BYTES = 15_680;
+const MAXIMUM_INLINE_DATUM_ACCEPTED_SIGNED_BYTES = 16_383;
+const MAXIMUM_INLINE_DATUM_ADJACENT_PAYLOAD_BYTES = 15_681;
+const MAXIMUM_INLINE_DATUM_ADJACENT_SIGNED_BYTES = 16_385;
+const MAXIMUM_INLINE_DATUM_ACCEPTED_DATUM_CBOR_BYTES = 16_172;
+const MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES = 16_174;
 
-const maximumInlineDatumBlobTerminalVectorV1 = {
+const maximumInlineDatumBlobTerminalVector = {
   transactionIdHex:
     "46001b1343578d758a9b543c9d673e65a517038007b8943d223fb795f58844ac",
   transactionCommitmentHex:
@@ -61,7 +61,7 @@ const maximumInlineDatumBlobTerminalVectorV1 = {
 
 describe("canonical V1 byte-blob Cardano boundary", () => {
   it("reveals one maximum inline-datum output through bounded chunks in both DA classifications", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const privateKey = deterministicCardanoBoundaryPrivateKey(0);
     const funder = {
       seedPhrase: "",
       privateKey: privateKey.to_bech32(),
@@ -75,37 +75,33 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     };
     const emulator = new Emulator(
       [funder],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
     );
 
-    const boundary = await findSignedCardanoCollectionBoundaryV1({
+    const boundary = await findSignedCardanoCollectionBoundary({
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: (requestedDatumPayloadBytes) =>
-        buildSignedCardanoInlineDatumCandidateV1({
+        buildSignedCardanoInlineDatumCandidate({
           privateKeyBech32: funder.privateKey,
           inputTransactionId: "00".repeat(32),
           inputOutputIndex: 0n,
           inputLovelace: funder.assets.lovelace,
           recipientAddress: funder.address,
           requestedDatumPayloadBytes,
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
         }),
     });
-    const accepted = measureSignedCardanoInlineDatumV1(
-      boundary.accepted.cborHex,
-    );
-    const adjacent = measureSignedCardanoInlineDatumV1(
-      boundary.adjacent.cborHex,
-    );
+    const accepted = measureSignedCardanoInlineDatum(boundary.accepted.cborHex);
+    const adjacent = measureSignedCardanoInlineDatum(boundary.adjacent.cborHex);
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.adjacent.signedBytes).toBeGreaterThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+      CARDANO_BOUNDARY_MAX_TX_SIZE,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
       boundary.accepted.requestedItemCount + 1,
@@ -129,45 +125,43 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     // The genuine maximum and its immediately adjacent control are exact, not
     // merely "whatever the search returned".
     expect(boundary.accepted.requestedItemCount).toBe(
-      MAXIMUM_INLINE_DATUM_ACCEPTED_PAYLOAD_BYTES_V1,
+      MAXIMUM_INLINE_DATUM_ACCEPTED_PAYLOAD_BYTES,
     );
     expect(boundary.accepted.signedBytes).toBe(
-      MAXIMUM_INLINE_DATUM_ACCEPTED_SIGNED_BYTES_V1,
+      MAXIMUM_INLINE_DATUM_ACCEPTED_SIGNED_BYTES,
     );
     expect(boundary.adjacent.requestedItemCount).toBe(
-      MAXIMUM_INLINE_DATUM_ADJACENT_PAYLOAD_BYTES_V1,
+      MAXIMUM_INLINE_DATUM_ADJACENT_PAYLOAD_BYTES,
     );
     expect(boundary.adjacent.signedBytes).toBe(
-      MAXIMUM_INLINE_DATUM_ADJACENT_SIGNED_BYTES_V1,
+      MAXIMUM_INLINE_DATUM_ADJACENT_SIGNED_BYTES,
     );
     expect(accepted.datumCborBytes).toBe(
-      MAXIMUM_INLINE_DATUM_ACCEPTED_DATUM_CBOR_BYTES_V1,
+      MAXIMUM_INLINE_DATUM_ACCEPTED_DATUM_CBOR_BYTES,
     );
     expect(adjacent.datumCborBytes).toBe(
-      MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES_V1,
+      MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES,
     );
 
-    const midgard = exerciseMidgardOrderedCollectionBoundaryV1({
+    const midgard = exerciseMidgardOrderedCollectionBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 2,
     });
     expect(midgard.itemCount).toBe(1);
     expect(midgard.fieldBytes).toBeLessThanOrEqual(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxOutputsPreimageBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxOutputsPreimageBytes,
     );
     expect(
       midgard.terminalFoldVector.collectionProof.itemLength,
-    ).toBeGreaterThan(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
-    expect(midgard.maxChunkBytes).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
+    ).toBeGreaterThan(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    expect(midgard.maxChunkBytes).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
     expect(midgard.revealStepCount).toBe(
       Math.ceil(
         midgard.terminalFoldVector.collectionProof.itemLength /
-          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
       ),
     );
-    expect(midgard.maxRevealBytes).toBeLessThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-    );
+    expect(midgard.maxRevealBytes).toBeLessThan(CARDANO_BOUNDARY_MAX_TX_SIZE);
     const terminal = midgard.terminalFoldVector;
     expect({
       transactionIdHex: terminal.transactionIdHex,
@@ -183,7 +177,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
       collectionFrontierHashHex: terminal.collectionProof.frontier[0]?.hashHex,
       chunkFrontierHashHex: terminal.chunkProof.frontier[0]?.hashHex,
       chunkSiblingHexes: terminal.chunkProof.siblingHexes,
-    }).toEqual(maximumInlineDatumBlobTerminalVectorV1);
+    }).toEqual(maximumInlineDatumBlobTerminalVector);
     expect(terminal.collectionProof).toMatchObject({
       fieldIndex: 2,
       itemCount: 1,
@@ -195,7 +189,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     expect(terminal.chunkProof).toMatchObject({
       fieldIndex: 2,
       itemIndex: 0,
-      totalLength: maximumInlineDatumBlobTerminalVectorV1.itemLength,
+      totalLength: maximumInlineDatumBlobTerminalVector.itemLength,
       chunkIndex: 3,
       frontier: [{ height: 2 }],
     });
@@ -210,7 +204,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
       ]),
     );
 
-    const retained = await exerciseMidgardRetainedDaBoundaryV1({
+    const retained = await exerciseMidgardRetainedDaBoundary({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-inline-datum-blob",
     });
@@ -223,12 +217,12 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     expect(retained.normal.revealStepCount).toBe(midgard.completeFoldStepCount);
     expect(retained.forced.revealStepCount).toBe(midgard.completeFoldStepCount);
 
-    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+    const native = decodeMidgardNativeTxFullFromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         Buffer.from(boundary.accepted.cborHex, "hex"),
       ),
     );
-    const roundtrip = measureSignedCardanoInlineDatumV1(
+    const roundtrip = measureSignedCardanoInlineDatum(
       Buffer.from(midgardNativeTxFullToCardanoTxEncoding(native)).toString(
         "hex",
       ),
@@ -261,7 +255,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     // constants instead of a human retyping them out of a terminal (#588) — which
     // is how that module came to still pin retired counted field commitments
     // after this suite's own expectations had already moved.
-    publishAikenVectorV1("blob-chunk-boundary-v1", {
+    publishAikenVector("blob-chunk-boundary-v1", {
       maxTxSize: emulator.protocolParameters.maxTxSize,
       requestedDatumPayloadBytes: boundary.accepted.requestedItemCount,
       datumCborBytes: accepted.datumCborBytes,

@@ -10,10 +10,10 @@ import {
 import { requireComputationThreadToken } from "../submit-step-01.js";
 import {
   DOUBLE_WITHDRAW_CATEGORY_LABEL,
-  type DoubleWithdrawContractsV1,
+  type DoubleWithdrawContracts,
 } from "./contracts-v1.js";
 
-export type DoubleWithdrawCatalogueCategoryV1 = {
+export type DoubleWithdrawCatalogueCategory = {
   readonly categoryId: string;
   readonly scriptHash: string;
   readonly membershipProofCbor: string;
@@ -22,10 +22,10 @@ export type DoubleWithdrawCatalogueCategoryV1 = {
 export const doubleWithdrawSubmitError = (message: string): Error =>
   new Error(`${DOUBLE_WITHDRAW_CATEGORY_LABEL}: ${message}`);
 
-export const doubleWithdrawStepLabelV1 = (stepIndex: 0 | 1): string =>
+export const doubleWithdrawStepLabel = (stepIndex: 0 | 1): string =>
   `${DOUBLE_WITHDRAW_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
-export const requireDoubleWithdrawThreadUtxoV1 = async ({
+export const requireDoubleWithdrawThreadUtxo = async ({
   lucid,
   contracts,
   categoryId,
@@ -33,7 +33,7 @@ export const requireDoubleWithdrawThreadUtxoV1 = async ({
   threadOutRef,
 }: {
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
-  readonly contracts: DoubleWithdrawContractsV1;
+  readonly contracts: DoubleWithdrawContracts;
   readonly categoryId: string;
   readonly stepIndex: 0 | 1;
   readonly threadOutRef: string;
@@ -41,7 +41,7 @@ export const requireDoubleWithdrawThreadUtxoV1 = async ({
   readonly threadUtxo: UTxO;
   readonly threadToken: ReturnType<typeof requireComputationThreadToken>;
 }> => {
-  const label = doubleWithdrawStepLabelV1(stepIndex);
+  const label = doubleWithdrawStepLabel(stepIndex);
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -63,7 +63,7 @@ export const requireDoubleWithdrawThreadUtxoV1 = async ({
   };
 };
 
-export const requireDoubleWithdrawReferenceScriptV1 = ({
+export const requireDoubleWithdrawReferenceScript = ({
   utxo,
   expectedScriptHash,
   stepIndex,
@@ -74,7 +74,7 @@ export const requireDoubleWithdrawReferenceScriptV1 = ({
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw doubleWithdrawSubmitError(
-      `reference UTxO ${outRefLabel(utxo)} for ${doubleWithdrawStepLabelV1(stepIndex)} carries no reference script.`,
+      `reference UTxO ${outRefLabel(utxo)} for ${doubleWithdrawStepLabel(stepIndex)} carries no reference script.`,
     );
   }
   const actual = validatorToScriptHash(utxo.scriptRef);
@@ -86,7 +86,7 @@ export const requireDoubleWithdrawReferenceScriptV1 = ({
   return utxo;
 };
 
-export const requireDoubleWithdrawStepStateV1 = <State>({
+export const requireDoubleWithdrawStepState = <State>({
   threadUtxo,
   signer,
   schema,
@@ -97,7 +97,7 @@ export const requireDoubleWithdrawStepStateV1 = <State>({
   readonly schema: { fraud_prover: string; data: State | null };
   readonly stepIndex: 0 | 1;
 }): State => {
-  const label = doubleWithdrawStepLabelV1(stepIndex);
+  const label = doubleWithdrawStepLabel(stepIndex);
   if (threadUtxo.datum == null) {
     throw doubleWithdrawSubmitError(
       `thread UTxO ${outRefLabel(threadUtxo)} at ${label} has no inline datum.`,

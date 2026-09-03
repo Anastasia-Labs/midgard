@@ -1,8 +1,8 @@
 import { isAbsolute, normalize as normalizePath } from "node:path";
 
 import {
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  type DeploymentMarker,
+  MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 
 import {
@@ -10,25 +10,25 @@ import {
   WATCHER_CARDANO_SECURITY_PARAMETER_K,
   type WatcherConfig,
 } from "../runtime/config.js";
-import type { VerifiedWatcherDeploymentIdentityV1 } from "../runtime/deployment-identity.js";
-import { watcherSha256CanonicalJsonV1 } from "../storage/durable-store.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import {
-  WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
-  WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
-  WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
-  WATCHER_MULTI_PROVIDER_REASON_CODES_V1,
+  WATCHER_MULTI_PROVIDER_ALERT_CODES,
+  WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS,
+  WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
+  WATCHER_MULTI_PROVIDER_REASON_CODES,
 } from "./multi-provider-consistency.js";
 
-export const WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION =
+export const WATCHER_FINALITY_POLICY_SCHEMA_VERSION =
   "midgard-watcher-finality-policy-v1" as const;
-export const WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION =
+export const WATCHER_FINALITY_STATE_SCHEMA_VERSION =
   "midgard-watcher-finality-state-v1" as const;
-export const WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION =
+export const WATCHER_FINALITY_REWIND_INSTRUCTION_SCHEMA_VERSION =
   "midgard-watcher-finality-rewind-instruction-v1" as const;
-export const WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION =
+export const WATCHER_FINALITY_RESULT_SCHEMA_VERSION =
   "midgard-watcher-finality-result-v1" as const;
 
-export const WATCHER_FINALITY_V1_BOUNDS = Object.freeze({
+export const WATCHER_FINALITY_BOUNDS = Object.freeze({
   confirmationDepth: 2_160n,
   postFinalityRecoveryDepth: BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K),
   uint64Maximum: 18_446_744_073_709_551_615n,
@@ -39,20 +39,20 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const SOURCE_AUTHORITY_ID = /^[a-z][a-z0-9-]{0,62}$/u;
 
-export type WatcherFinalityExternalProviderV1 = Readonly<{
+export type WatcherFinalityExternalProvider = Readonly<{
   providerId: string;
   operatorIdentitySha256: string;
   endpoint: string;
   authenticationKind: "https_tls_identity_v1";
 }>;
 
-export type WatcherFinalityLocalQueryServiceV1 = Readonly<{
+export type WatcherFinalityLocalQueryService = Readonly<{
   kind: "ogmios" | "kupo" | "kupmios" | "db_sync";
   providerId: string;
   endpoint: string;
 }>;
 
-export const WATCHER_FINALITY_REASON_CODES_V1 = [
+export const WATCHER_FINALITY_REASON_CODES = [
   "first_visibility_pending",
   "confirmation_depth_pending",
   "confirmation_depth_reached",
@@ -85,7 +85,7 @@ export const WATCHER_FINALITY_REASON_CODES_V1 = [
   "state_quarantined",
 ] as const;
 
-export const WATCHER_FINALITY_ALERT_CODES_V1 = [
+export const WATCHER_FINALITY_ALERT_CODES = [
   "watcher_finality_pending",
   "watcher_finality_input_rejected",
   "watcher_finality_rewind_required",
@@ -95,16 +95,16 @@ export const WATCHER_FINALITY_ALERT_CODES_V1 = [
   "watcher_finality_post_finality_incident",
 ] as const;
 
-export type WatcherFinalityReasonCodeV1 =
-  (typeof WATCHER_FINALITY_REASON_CODES_V1)[number];
-export type WatcherFinalityAlertCodeV1 =
-  (typeof WATCHER_FINALITY_ALERT_CODES_V1)[number];
-export type WatcherFinalityPhaseV1 =
+export type WatcherFinalityReasonCode =
+  (typeof WATCHER_FINALITY_REASON_CODES)[number];
+export type WatcherFinalityAlertCode =
+  (typeof WATCHER_FINALITY_ALERT_CODES)[number];
+export type WatcherFinalityPhase =
   | "unobserved"
   | "pending"
   | "finalized"
   | "quarantined";
-export type WatcherFinalityActionV1 =
+export type WatcherFinalityAction =
   | "observe_pending"
   | "advance_pending"
   | "finalize"
@@ -113,26 +113,26 @@ export type WatcherFinalityActionV1 =
   | "reject"
   | "quarantine_incident";
 
-export type WatcherFinalityPolicyV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION;
+export type WatcherFinalityPolicy = Readonly<{
+  schemaVersion: typeof WATCHER_FINALITY_POLICY_SCHEMA_VERSION;
   network: (typeof NETWORKS)[number];
   sourceMode: "local_node" | "external_providers";
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
   authorityChainSyncSocketPath: string | null;
-  localQueryServices: readonly WatcherFinalityLocalQueryServiceV1[];
-  externalProviders: readonly WatcherFinalityExternalProviderV1[] | null;
+  localQueryServices: readonly WatcherFinalityLocalQueryService[];
+  externalProviders: readonly WatcherFinalityExternalProvider[] | null;
   confirmationDepth: string;
   maximumPreFinalityRollbackDepth: string;
   maximumPostFinalityRecoveryDepth: string;
   beforeFinalityRollback: "rewind";
   afterFinalityRollback: "quarantine";
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
+  deploymentMarker: DeploymentMarker;
   policyDigest: string;
 }>;
 
-export type WatcherFinalityBoundObservationV1 = Readonly<{
+export type WatcherFinalityBoundObservation = Readonly<{
   pointDigest: string;
   blockHash: string;
   slot: string;
@@ -145,27 +145,27 @@ export type WatcherFinalityBoundObservationV1 = Readonly<{
   visibilityCount: string;
 }>;
 
-export type WatcherFinalityIncidentV1 = Readonly<{
+export type WatcherFinalityIncident = Readonly<{
   reasonCode: "post_finality_point_changed";
   triggerConsistencyDigest: string | null;
   incidentDigest: string;
 }>;
 
-export type WatcherFinalityStateV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION;
+export type WatcherFinalityState = Readonly<{
+  schemaVersion: typeof WATCHER_FINALITY_STATE_SCHEMA_VERSION;
   policyDigest: string;
   network: (typeof NETWORKS)[number];
   releaseEvidenceDigest: string;
-  deploymentMarker: DeploymentMarkerV1;
-  phase: WatcherFinalityPhaseV1;
-  pending: WatcherFinalityBoundObservationV1 | null;
-  finalized: WatcherFinalityBoundObservationV1 | null;
-  incident: WatcherFinalityIncidentV1 | null;
+  deploymentMarker: DeploymentMarker;
+  phase: WatcherFinalityPhase;
+  pending: WatcherFinalityBoundObservation | null;
+  finalized: WatcherFinalityBoundObservation | null;
+  incident: WatcherFinalityIncident | null;
   stateDigest: string;
 }>;
 
-export type WatcherFinalityRewindInstructionV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION;
+export type WatcherFinalityRewindInstruction = Readonly<{
+  schemaVersion: typeof WATCHER_FINALITY_REWIND_INSTRUCTION_SCHEMA_VERSION;
   kind:
     | "pending_depth_regression"
     | "pending_point_changed"
@@ -177,18 +177,18 @@ export type WatcherFinalityRewindInstructionV1 = Readonly<{
   instructionDigest: string;
 }>;
 
-export type WatcherFinalityResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION;
-  action: WatcherFinalityActionV1;
+export type WatcherFinalityResult = Readonly<{
+  schemaVersion: typeof WATCHER_FINALITY_RESULT_SCHEMA_VERSION;
+  action: WatcherFinalityAction;
   protocolDecision:
     | "hold"
     | "finality_granted"
     | "rewind_required"
     | "quarantined";
-  reasonCodes: readonly WatcherFinalityReasonCodeV1[];
-  alertCodes: readonly WatcherFinalityAlertCodeV1[];
-  state: WatcherFinalityStateV1 | null;
-  rewindInstruction: WatcherFinalityRewindInstructionV1 | null;
+  reasonCodes: readonly WatcherFinalityReasonCode[];
+  alertCodes: readonly WatcherFinalityAlertCode[];
+  state: WatcherFinalityState | null;
+  rewindInstruction: WatcherFinalityRewindInstruction | null;
   resultDigest: string;
 }>;
 
@@ -238,7 +238,7 @@ type ExternalProviderBinding = Readonly<{
 }>;
 
 type LocalQueryServiceBinding = Readonly<{
-  kind: WatcherFinalityLocalQueryServiceV1["kind"];
+  kind: WatcherFinalityLocalQueryService["kind"];
   providerId: string;
   endpoint: string;
   observationStatus:
@@ -356,46 +356,43 @@ const isUint64 = (value: unknown): value is string =>
   typeof value === "string" &&
   CANONICAL_NATURAL.test(value) &&
   value.length <= 20 &&
-  BigInt(value) <= WATCHER_FINALITY_V1_BOUNDS.uint64Maximum;
+  BigInt(value) <= WATCHER_FINALITY_BOUNDS.uint64Maximum;
 
 const isPositiveUint64 = (value: unknown): value is string =>
   isUint64(value) && value !== "0";
 
-const sha256Canonical = watcherSha256CanonicalJsonV1;
+const sha256Canonical = watcherSha256CanonicalJson;
 
 const freezeStrings = <T extends string>(values: readonly T[]): readonly T[] =>
   Object.freeze([...values]);
 
-const cloneMarker = (value: unknown): DeploymentMarkerV1 | null => {
+const cloneMarker = (value: unknown): DeploymentMarker | null => {
   const marker = exactPlainRecord(value, ["schemaVersion", "manifestId"]);
   if (
     marker === null ||
-    marker.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION ||
+    marker.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION ||
     !isHex32(marker.manifestId)
   ) {
     return null;
   }
   return Object.freeze({
-    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
     manifestId: marker.manifestId,
   });
 };
 
-const sameMarker = (
-  left: DeploymentMarkerV1,
-  right: DeploymentMarkerV1,
-): boolean =>
+const sameMarker = (left: DeploymentMarker, right: DeploymentMarker): boolean =>
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
 
 const cloneExternalProviders = (
   value: unknown,
-): readonly WatcherFinalityExternalProviderV1[] | null => {
+): readonly WatcherFinalityExternalProvider[] | null => {
   const providers = exactArray(value);
   if (providers === null || providers.length < 2 || providers.length > 4) {
     return null;
   }
-  const normalized: WatcherFinalityExternalProviderV1[] = [];
+  const normalized: WatcherFinalityExternalProvider[] = [];
   const providerIds = new Set<string>();
   const operatorIdentities = new Set<string>();
   const endpoints = new Set<string>();
@@ -449,12 +446,12 @@ const cloneExternalProviders = (
 
 const cloneLocalQueryServices = (
   value: unknown,
-): readonly WatcherFinalityLocalQueryServiceV1[] | null => {
+): readonly WatcherFinalityLocalQueryService[] | null => {
   const inputs = exactArray(value);
   if (inputs === null || inputs.length > 8) {
     return null;
   }
-  const services: WatcherFinalityLocalQueryServiceV1[] = [];
+  const services: WatcherFinalityLocalQueryService[] = [];
   const providerIds = new Set<string>();
   const endpoints = new Set<string>();
   for (const input of inputs) {
@@ -488,7 +485,7 @@ const cloneLocalQueryServices = (
     endpoints.add(alias);
     services.push(
       Object.freeze({
-        kind: service.kind as WatcherFinalityLocalQueryServiceV1["kind"],
+        kind: service.kind as WatcherFinalityLocalQueryService["kind"],
         providerId: service.providerId,
         endpoint: service.endpoint,
       }),
@@ -502,8 +499,8 @@ const cloneLocalQueryServices = (
 };
 
 const makePolicy = (
-  value: Omit<WatcherFinalityPolicyV1, "policyDigest">,
-): WatcherFinalityPolicyV1 => {
+  value: Omit<WatcherFinalityPolicy, "policyDigest">,
+): WatcherFinalityPolicy => {
   const deploymentMarker = cloneMarker(value.deploymentMarker);
   if (deploymentMarker === null) {
     throw new Error("invalid deployment marker");
@@ -523,7 +520,7 @@ const makePolicy = (
     throw new Error("invalid external provider allowlist");
   }
   const canonical = {
-    schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
     network: value.network,
     sourceMode: value.sourceMode,
     authorityNodeId: value.authorityNodeId,
@@ -545,9 +542,9 @@ const makePolicy = (
   });
 };
 
-export const parseWatcherFinalityPolicyV1 = (
+export const parseWatcherFinalityPolicy = (
   value: unknown,
-): WatcherFinalityPolicyV1 | null => {
+): WatcherFinalityPolicy | null => {
   try {
     const policy = exactPlainRecord(value, [
       "schemaVersion",
@@ -579,7 +576,7 @@ export const parseWatcherFinalityPolicyV1 = (
         : cloneLocalQueryServices(policy.localQueryServices);
     if (
       policy === null ||
-      policy.schemaVersion !== WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION ||
+      policy.schemaVersion !== WATCHER_FINALITY_POLICY_SCHEMA_VERSION ||
       !isNetwork(policy.network) ||
       !["local_node", "external_providers"].includes(
         policy.sourceMode as string,
@@ -601,7 +598,7 @@ export const parseWatcherFinalityPolicyV1 = (
       ) ||
       !isPositiveUint64(policy.confirmationDepth) ||
       BigInt(policy.confirmationDepth) >
-        WATCHER_FINALITY_V1_BOUNDS.confirmationDepth ||
+        WATCHER_FINALITY_BOUNDS.confirmationDepth ||
       !isPositiveUint64(policy.maximumPreFinalityRollbackDepth) ||
       BigInt(policy.maximumPreFinalityRollbackDepth) >
         BigInt(policy.confirmationDepth) ||
@@ -617,9 +614,9 @@ export const parseWatcherFinalityPolicyV1 = (
       return null;
     }
     const canonical = makePolicy({
-      schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
       network: policy.network,
-      sourceMode: policy.sourceMode as WatcherFinalityPolicyV1["sourceMode"],
+      sourceMode: policy.sourceMode as WatcherFinalityPolicy["sourceMode"],
       authorityNodeId: policy.authorityNodeId as string | null,
       authorityGenesisIdentitySha256: policy.authorityGenesisIdentitySha256 as
         | string
@@ -628,7 +625,7 @@ export const parseWatcherFinalityPolicyV1 = (
         | string
         | null,
       localQueryServices:
-        localQueryServices as WatcherFinalityPolicyV1["localQueryServices"],
+        localQueryServices as WatcherFinalityPolicy["localQueryServices"],
       externalProviders,
       confirmationDepth: policy.confirmationDepth,
       maximumPreFinalityRollbackDepth: policy.maximumPreFinalityRollbackDepth,
@@ -646,7 +643,7 @@ export const parseWatcherFinalityPolicyV1 = (
 
 const parseVerifiedDeploymentIdentity = (
   value: unknown,
-): VerifiedWatcherDeploymentIdentityV1 | null => {
+): VerifiedWatcherDeploymentIdentity | null => {
   try {
     const identity = exactPlainRecord(value, [
       "manifestId",
@@ -684,7 +681,7 @@ const parseVerifiedDeploymentIdentity = (
     if (marker === null || marker.manifestId !== identity.manifestId) {
       return null;
     }
-    return value as VerifiedWatcherDeploymentIdentityV1;
+    return value as VerifiedWatcherDeploymentIdentity;
   } catch {
     return null;
   }
@@ -695,10 +692,10 @@ const parseVerifiedDeploymentIdentity = (
  * durable deployment identity. The returned policy is the only policy shape
  * accepted by the transition engine.
  */
-export const makeWatcherFinalityPolicyV1 = (
+export const makeWatcherFinalityPolicy = (
   configInput: unknown,
   deploymentIdentityInput: unknown,
-): WatcherFinalityPolicyV1 | null => {
+): WatcherFinalityPolicy | null => {
   try {
     const config: WatcherConfig = parseWatcherConfig(configInput);
     const identity = parseVerifiedDeploymentIdentity(deploymentIdentityInput);
@@ -741,7 +738,7 @@ export const makeWatcherFinalityPolicyV1 = (
             ),
           };
     return makePolicy({
-      schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_POLICY_SCHEMA_VERSION,
       network: config.targetNetwork,
       sourceMode: source.sourceMode,
       ...sourceAuthority,
@@ -762,7 +759,7 @@ export const makeWatcherFinalityPolicyV1 = (
 
 const parseBoundObservation = (
   value: unknown,
-): WatcherFinalityBoundObservationV1 | null => {
+): WatcherFinalityBoundObservation | null => {
   const bound = exactPlainRecord(value, [
     "pointDigest",
     "blockHash",
@@ -806,7 +803,7 @@ const parseBoundObservation = (
 
 const INCIDENT_REASONS = ["post_finality_point_changed"] as const;
 
-const parseIncident = (value: unknown): WatcherFinalityIncidentV1 | null => {
+const parseIncident = (value: unknown): WatcherFinalityIncident | null => {
   const incident = exactPlainRecord(value, [
     "reasonCode",
     "triggerConsistencyDigest",
@@ -816,7 +813,7 @@ const parseIncident = (value: unknown): WatcherFinalityIncidentV1 | null => {
     incident === null ||
     typeof incident.reasonCode !== "string" ||
     !INCIDENT_REASONS.includes(
-      incident.reasonCode as WatcherFinalityIncidentV1["reasonCode"],
+      incident.reasonCode as WatcherFinalityIncident["reasonCode"],
     ) ||
     !(
       incident.triggerConsistencyDigest === null ||
@@ -827,17 +824,17 @@ const parseIncident = (value: unknown): WatcherFinalityIncidentV1 | null => {
     return null;
   }
   return Object.freeze({
-    reasonCode: incident.reasonCode as WatcherFinalityIncidentV1["reasonCode"],
+    reasonCode: incident.reasonCode as WatcherFinalityIncident["reasonCode"],
     triggerConsistencyDigest: incident.triggerConsistencyDigest,
     incidentDigest: incident.incidentDigest,
   });
 };
 
 const makeState = (
-  value: Omit<WatcherFinalityStateV1, "stateDigest">,
-): WatcherFinalityStateV1 => {
+  value: Omit<WatcherFinalityState, "stateDigest">,
+): WatcherFinalityState => {
   const canonical = {
-    schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: value.policyDigest,
     network: value.network,
     releaseEvidenceDigest: value.releaseEvidenceDigest,
@@ -854,8 +851,8 @@ const makeState = (
 };
 
 const stateMatchesPolicy = (
-  state: WatcherFinalityStateV1,
-  policy: WatcherFinalityPolicyV1,
+  state: WatcherFinalityState,
+  policy: WatcherFinalityPolicy,
 ): boolean =>
   state.policyDigest === policy.policyDigest &&
   state.network === policy.network &&
@@ -863,8 +860,8 @@ const stateMatchesPolicy = (
   sameMarker(state.deploymentMarker, policy.deploymentMarker);
 
 const stateSemanticsAreValid = (
-  state: WatcherFinalityStateV1,
-  policy: WatcherFinalityPolicyV1,
+  state: WatcherFinalityState,
+  policy: WatcherFinalityPolicy,
 ): boolean => {
   if (state.phase === "unobserved") {
     return true;
@@ -893,10 +890,10 @@ const stateSemanticsAreValid = (
   );
 };
 
-export const parseWatcherFinalityStateV1 = (
+export const parseWatcherFinalityState = (
   value: unknown,
   policyInput?: unknown,
-): WatcherFinalityStateV1 | null => {
+): WatcherFinalityState | null => {
   try {
     const state = exactPlainRecord(value, [
       "schemaVersion",
@@ -912,7 +909,7 @@ export const parseWatcherFinalityStateV1 = (
     ]);
     if (
       state === null ||
-      state.schemaVersion !== WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION ||
+      state.schemaVersion !== WATCHER_FINALITY_STATE_SCHEMA_VERSION ||
       !isHex32(state.policyDigest) ||
       !isNetwork(state.network) ||
       !isHex32(state.releaseEvidenceDigest) ||
@@ -950,12 +947,12 @@ export const parseWatcherFinalityStateV1 = (
       return null;
     }
     const canonical = makeState({
-      schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: state.policyDigest,
       network: state.network,
       releaseEvidenceDigest: state.releaseEvidenceDigest,
       deploymentMarker: marker,
-      phase: phase as WatcherFinalityPhaseV1,
+      phase: phase as WatcherFinalityPhase,
       pending,
       finalized,
       incident,
@@ -964,7 +961,7 @@ export const parseWatcherFinalityStateV1 = (
       return null;
     }
     if (policyInput !== undefined) {
-      const policy = parseWatcherFinalityPolicyV1(policyInput);
+      const policy = parseWatcherFinalityPolicy(policyInput);
       if (
         policy === null ||
         !stateMatchesPolicy(canonical, policy) ||
@@ -979,11 +976,9 @@ export const parseWatcherFinalityStateV1 = (
   }
 };
 
-const initialState = (
-  policy: WatcherFinalityPolicyV1,
-): WatcherFinalityStateV1 =>
+const initialState = (policy: WatcherFinalityPolicy): WatcherFinalityState =>
   makeState({
-    schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -994,10 +989,10 @@ const initialState = (
     incident: null,
   });
 
-export const makeWatcherFinalityBootstrapStateV1 = (
+export const makeWatcherFinalityBootstrapState = (
   policyInput: unknown,
-): WatcherFinalityStateV1 | null => {
-  const policy = parseWatcherFinalityPolicyV1(policyInput);
+): WatcherFinalityState | null => {
+  const policy = parseWatcherFinalityPolicy(policyInput);
   return policy === null ? null : initialState(policy);
 };
 
@@ -1032,8 +1027,7 @@ const parseExternalProviderBindings = (
   const candidates = exactArray(value);
   if (
     candidates === null ||
-    candidates.length >
-      WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations
+    candidates.length > WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.observations
   ) {
     return null;
   }
@@ -1181,7 +1175,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
     if (
       result === null ||
       result.schemaVersion !==
-        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION ||
+        WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION ||
       !["agreed", "pending", "quarantined"].includes(result.status as string) ||
       !["local_node", "external_providers"].includes(
         result.sourceMode as string,
@@ -1195,7 +1189,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       !Number.isSafeInteger(result.observationCount) ||
       (result.observationCount as number) < 0 ||
       (result.observationCount as number) >
-        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations ||
+        WATCHER_MULTI_PROVIDER_CONSISTENCY_BOUNDS.observations ||
       !Number.isSafeInteger(result.independentProviderCount) ||
       (result.independentProviderCount as number) < 0 ||
       (result.independentProviderCount as number) >
@@ -1210,11 +1204,11 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
     }
     const reasons = parseStringArray(
       result.reasonCodes,
-      WATCHER_MULTI_PROVIDER_REASON_CODES_V1,
+      WATCHER_MULTI_PROVIDER_REASON_CODES,
     );
     const alerts = parseStringArray(
       result.alertCodes,
-      WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
+      WATCHER_MULTI_PROVIDER_ALERT_CODES,
     );
     const externalProviderBindings = parseExternalProviderBindings(
       result.externalProviderBindings,
@@ -1237,13 +1231,13 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       new Set(evidenceArray).size !== evidenceArray.length ||
       !sameStringArray(
         reasons,
-        WATCHER_MULTI_PROVIDER_REASON_CODES_V1.filter((code) =>
+        WATCHER_MULTI_PROVIDER_REASON_CODES.filter((code) =>
           reasons.includes(code),
         ),
       ) ||
       !sameStringArray(
         alerts,
-        WATCHER_MULTI_PROVIDER_ALERT_CODES_V1.filter((code) =>
+        WATCHER_MULTI_PROVIDER_ALERT_CODES.filter((code) =>
           alerts.includes(code),
         ),
       ) ||
@@ -1323,7 +1317,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       }) as Agreement;
     }
     const canonicalWithoutDigest = {
-      schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_SCHEMA_VERSION,
       status: result.status,
       protocolDecision: result.protocolDecision,
       sourceMode,
@@ -1414,8 +1408,8 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
 
 const makeBoundObservation = (
   agreement: Agreement,
-  existing: WatcherFinalityBoundObservationV1 | null,
-): WatcherFinalityBoundObservationV1 =>
+  existing: WatcherFinalityBoundObservation | null,
+): WatcherFinalityBoundObservation =>
   Object.freeze({
     pointDigest: agreement.pointDigest,
     blockHash: agreement.blockHash,
@@ -1434,15 +1428,15 @@ const makeBoundObservation = (
   });
 
 const result = (
-  action: WatcherFinalityActionV1,
-  protocolDecision: WatcherFinalityResultV1["protocolDecision"],
-  reasonCodes: readonly WatcherFinalityReasonCodeV1[],
-  alertCodes: readonly WatcherFinalityAlertCodeV1[],
-  state: WatcherFinalityStateV1 | null,
-  rewindInstruction: WatcherFinalityRewindInstructionV1 | null = null,
-): WatcherFinalityResultV1 => {
+  action: WatcherFinalityAction,
+  protocolDecision: WatcherFinalityResult["protocolDecision"],
+  reasonCodes: readonly WatcherFinalityReasonCode[],
+  alertCodes: readonly WatcherFinalityAlertCode[],
+  state: WatcherFinalityState | null,
+  rewindInstruction: WatcherFinalityRewindInstruction | null = null,
+): WatcherFinalityResult => {
   const canonical = {
-    schemaVersion: WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_RESULT_SCHEMA_VERSION,
     action,
     protocolDecision,
     reasonCodes: freezeStrings(reasonCodes),
@@ -1457,12 +1451,12 @@ const result = (
 };
 
 const rewind = (
-  kind: WatcherFinalityRewindInstructionV1["kind"],
+  kind: WatcherFinalityRewindInstruction["kind"],
   discardedStateDigest: string,
   agreement: Agreement,
-): WatcherFinalityRewindInstructionV1 => {
+): WatcherFinalityRewindInstruction => {
   const canonical = {
-    schemaVersion: WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_REWIND_INSTRUCTION_SCHEMA_VERSION,
     kind,
     discardedStateDigest,
     replacementPointDigest: agreement.pointDigest,
@@ -1476,9 +1470,9 @@ const rewind = (
 };
 
 const requiredPreFinalityRollbackDepth = (
-  pending: WatcherFinalityBoundObservationV1,
+  pending: WatcherFinalityBoundObservation,
   agreement: Agreement,
-  kind: WatcherFinalityRewindInstructionV1["kind"],
+  kind: WatcherFinalityRewindInstruction["kind"],
 ): bigint => {
   if (kind === "pending_depth_regression") {
     return BigInt(pending.currentDepth) - BigInt(agreement.minimumDepth);
@@ -1490,10 +1484,10 @@ const requiredPreFinalityRollbackDepth = (
 };
 
 const incident = (
-  priorState: WatcherFinalityStateV1,
-  reasonCode: WatcherFinalityIncidentV1["reasonCode"],
+  priorState: WatcherFinalityState,
+  reasonCode: WatcherFinalityIncident["reasonCode"],
   triggerConsistencyDigest: string | null,
-): WatcherFinalityIncidentV1 => {
+): WatcherFinalityIncident => {
   const canonical = {
     reasonCode,
     triggerConsistencyDigest,
@@ -1507,12 +1501,12 @@ const incident = (
 };
 
 const quarantineFinalized = (
-  state: WatcherFinalityStateV1,
-  reasonCode: WatcherFinalityIncidentV1["reasonCode"],
+  state: WatcherFinalityState,
+  reasonCode: WatcherFinalityIncident["reasonCode"],
   triggerConsistencyDigest: string | null,
-): WatcherFinalityResultV1 => {
+): WatcherFinalityResult => {
   const next = makeState({
-    schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: state.policyDigest,
     network: state.network,
     releaseEvidenceDigest: state.releaseEvidenceDigest,
@@ -1532,9 +1526,9 @@ const quarantineFinalized = (
 };
 
 const bindingFailure = (
-  policy: WatcherFinalityPolicyV1,
-  state: WatcherFinalityStateV1,
-): WatcherFinalityReasonCodeV1 | null => {
+  policy: WatcherFinalityPolicy,
+  state: WatcherFinalityState,
+): WatcherFinalityReasonCode | null => {
   if (state.network !== policy.network) {
     return "configured_network_mismatch";
   }
@@ -1567,7 +1561,7 @@ const bindingFailure = (
  * own configured order.
  */
 const externalProviderBindingsMatchPolicy = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   bindings: readonly ExternalProviderBinding[],
   requireEveryConfiguredProvider: boolean,
 ): "matched" | "identity_mismatch" | "binding_unrun" => {
@@ -1607,7 +1601,7 @@ const externalProviderBindingsMatchPolicy = (
 };
 
 const localQueryServiceBindingsMatchPolicy = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   bindings: readonly LocalQueryServiceBinding[],
 ): boolean =>
   policy.sourceMode === "local_node"
@@ -1624,19 +1618,19 @@ const localQueryServiceBindingsMatchPolicy = (
     : bindings.length === 0;
 
 const configuredSourceForPolicy = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
 ):
   | Readonly<{
       sourceMode: "local_node";
-      network: WatcherFinalityPolicyV1["network"];
+      network: WatcherFinalityPolicy["network"];
       authorityNodeId: string;
       genesisIdentitySha256: string;
       chainSyncSocketPath: string;
-      queryServices: readonly WatcherFinalityLocalQueryServiceV1[];
+      queryServices: readonly WatcherFinalityLocalQueryService[];
     }>
   | Readonly<{
       sourceMode: "external_providers";
-      network: WatcherFinalityPolicyV1["network"];
+      network: WatcherFinalityPolicy["network"];
       providers: readonly Readonly<{
         providerId: string;
         operatorIdentitySha256: string;
@@ -1674,9 +1668,9 @@ const configuredSourceForPolicy = (
  * unavailable, and is refused a line later by its own kind.
  */
 const sourceBindingFailureFor = (
-  policy: WatcherFinalityPolicyV1,
+  policy: WatcherFinalityPolicy,
   consistency: ParsedConsistency,
-): WatcherFinalityReasonCodeV1 | null => {
+): WatcherFinalityReasonCode | null => {
   if (consistency.sourceMode !== policy.sourceMode) {
     return "source_mode_mismatch";
   }
@@ -1714,19 +1708,19 @@ const sourceBindingFailureFor = (
     : null;
 };
 
-export const watcherFinalityConfiguredSourceV1 = configuredSourceForPolicy;
+export const watcherFinalityConfiguredSource = configuredSourceForPolicy;
 
 /**
  * Advances canonical finality from one exact W11 decision. It never grants
  * finality on first visibility, never advances from W11 pending/quarantine,
  * and never removes a finalized binding when later evidence contradicts it.
  */
-export const evaluateWatcherFinalityV1 = (
+export const evaluateWatcherFinality = (
   policyInput: unknown,
   previousStateInput: unknown,
   consistencyInput: unknown,
-): WatcherFinalityResultV1 => {
-  const policy = parseWatcherFinalityPolicyV1(policyInput);
+): WatcherFinalityResult => {
+  const policy = parseWatcherFinalityPolicy(policyInput);
   if (policy === null) {
     return result(
       "reject",
@@ -1743,7 +1737,7 @@ export const evaluateWatcherFinalityV1 = (
   const state =
     previousStateInput === null
       ? initialState(policy)
-      : parseWatcherFinalityStateV1(previousStateInput);
+      : parseWatcherFinalityState(previousStateInput);
   if (state === null) {
     return result(
       "reject",
@@ -1840,7 +1834,7 @@ export const evaluateWatcherFinalityV1 = (
 
   if (state.phase === "unobserved") {
     const next = makeState({
-      schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: policy.policyDigest,
       network: policy.network,
       releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1860,7 +1854,7 @@ export const evaluateWatcherFinalityV1 = (
   }
 
   if (state.phase === "finalized") {
-    const finalized = state.finalized as WatcherFinalityBoundObservationV1;
+    const finalized = state.finalized as WatcherFinalityBoundObservation;
     if (
       agreement.pointDigest !== finalized.pointDigest ||
       agreement.blockHash !== finalized.blockHash ||
@@ -1904,8 +1898,8 @@ export const evaluateWatcherFinalityV1 = (
     );
   }
 
-  const pending = state.pending as WatcherFinalityBoundObservationV1;
-  let rewindReason: WatcherFinalityRewindInstructionV1["kind"] | null = null;
+  const pending = state.pending as WatcherFinalityBoundObservation;
+  let rewindReason: WatcherFinalityRewindInstruction["kind"] | null = null;
   if (
     agreement.pointDigest !== pending.pointDigest ||
     agreement.blockHash !== pending.blockHash ||
@@ -1938,7 +1932,7 @@ export const evaluateWatcherFinalityV1 = (
     }
     const replacement = makeBoundObservation(agreement, null);
     const next = makeState({
-      schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: policy.policyDigest,
       network: policy.network,
       releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1979,7 +1973,7 @@ export const evaluateWatcherFinalityV1 = (
   const nextBound = makeBoundObservation(agreement, pending);
   if (BigInt(agreement.minimumDepth) >= BigInt(policy.confirmationDepth)) {
     const next = makeState({
-      schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
       policyDigest: policy.policyDigest,
       network: policy.network,
       releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -1998,7 +1992,7 @@ export const evaluateWatcherFinalityV1 = (
     );
   }
   const next = makeState({
-    schemaVersion: WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FINALITY_STATE_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
     releaseEvidenceDigest: policy.releaseEvidenceDigest,

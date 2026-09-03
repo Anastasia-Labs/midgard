@@ -1,50 +1,50 @@
 import {
-  buildMidgardValidationMerkleMembershipV1,
-  hashMidgardInlineScriptSourceLeafV1,
-  hashMidgardScriptExecutionLeafV1,
-  hashMidgardScriptPurposeLeafV1,
+  buildMidgardValidationMerkleMembership,
+  hashMidgardInlineScriptSourceLeaf,
+  hashMidgardScriptExecutionLeaf,
+  hashMidgardScriptPurposeLeaf,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  classifyReceivePurposeLanguageFindingV1,
-  prepareReceivePurposeLanguageEvidenceV1,
-  RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID_V1,
-  type ReceivePurposeLanguageDescriptorV1,
-  receivePurposeLanguageEvidenceClosesV1,
+  classifyReceivePurposeLanguageFinding,
+  prepareReceivePurposeLanguageEvidence,
+  RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID,
+  type ReceivePurposeLanguageDescriptor,
+  receivePurposeLanguageEvidenceCloses,
 } from "../src/receive-purpose-language/family-v1.js";
 import {
-  createManifestBoundReceivePurposeLanguageWorkflowV1,
-  createReceivePurposeLanguageProductionWorkflowRunnerSurfaceV1,
-  RECEIVE_PURPOSE_LANGUAGE_PRODUCTION_CONFIG_KEYS_V1,
-  RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS_V1,
-  runOrResumeManifestBoundReceivePurposeLanguageWorkflowV1,
+  createManifestBoundReceivePurposeLanguageWorkflow,
+  createReceivePurposeLanguageWorkflowRunnerSurface,
+  RECEIVE_PURPOSE_LANGUAGE_CONFIG_KEYS,
+  RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS,
+  runOrResumeManifestBoundReceivePurposeLanguageWorkflow,
 } from "../src/receive-purpose-language/manifest-workflow-v1.js";
-import { createReceivePurposeLanguageActuatorV1 } from "../src/receive-purpose-language/production-actuator-v1.js";
+import { createReceivePurposeLanguageActuator } from "../src/receive-purpose-language/production-actuator-v1.js";
 import {
-  createReceivePurposeLanguageProductionWorkflowV1,
-  RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS_V1,
+  createReceivePurposeLanguageWorkflow,
+  RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS,
 } from "../src/receive-purpose-language/production-v1.js";
-import { detectReceivePurposeLanguageAcceptedReplayV1 } from "../src/receive-purpose-language/replay-v1.js";
-import { AuthenticatedReceiveLanguageV1Schema } from "../src/receive-purpose-language/schemas-v1.js";
+import { detectReceivePurposeLanguageAcceptedReplay } from "../src/receive-purpose-language/replay-v1.js";
+import { AuthenticatedReceiveLanguageSchema } from "../src/receive-purpose-language/schemas-v1.js";
 import {
-  cancelReceivePurposeLanguageWorkflowV1,
-  type ReceivePurposeLanguageCursorV1,
-  type ReceivePurposeLanguageJournalEntryV1,
-  runReceivePurposeLanguageWorkflowV1,
+  cancelReceivePurposeLanguageWorkflow,
+  type ReceivePurposeLanguageCursor,
+  type ReceivePurposeLanguageJournalEntry,
+  runReceivePurposeLanguageWorkflow,
 } from "../src/receive-purpose-language/workflow-v1.js";
 
 const txId = "00".repeat(32);
 const scriptHash = Buffer.from("22".repeat(28), "hex");
 const commitment = Buffer.from("33".repeat(32), "hex");
-const accepted = acceptedVerdictSubjectV1(txId);
+const accepted = acceptedVerdictSubject(txId);
 const forced = (executionIndex = 0) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: txId,
     sourceKey: { transactionId: "44".repeat(32), outputIndex: 0n },
     rejectionReason: {
@@ -56,14 +56,14 @@ const forced = (executionIndex = 0) =>
 
 const descriptor = (
   languageTag: 0 | 3 | 128,
-): ReceivePurposeLanguageDescriptorV1 => {
-  const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+): ReceivePurposeLanguageDescriptor => {
+  const purposeLeaf = hashMidgardScriptPurposeLeaf({
     purposeKind: 3,
     purposeIndex: 0n,
     scriptHash,
     subject: Buffer.from("aa", "hex"),
   });
-  const sourceLeaf = hashMidgardInlineScriptSourceLeafV1({
+  const sourceLeaf = hashMidgardInlineScriptSourceLeaf({
     sourceIndex: 0n,
     scriptLanguageTag: languageTag,
     scriptHash,
@@ -71,7 +71,7 @@ const descriptor = (
     itemCommitment: commitment,
   });
   const redeemerLeaf = Buffer.from("55".repeat(32), "hex");
-  const executionLeaf = hashMidgardScriptExecutionLeafV1({
+  const executionLeaf = hashMidgardScriptExecutionLeaf({
     languageTag,
     purposeLeaf,
     sourceLeaf,
@@ -89,48 +89,41 @@ const descriptor = (
     purposeIndex: 0,
     purposeSubjectHex: "aa",
     redeemerLeafHex: redeemerLeaf.toString("hex"),
-    purposeMembership: buildMidgardValidationMerkleMembershipV1(
-      [purposeLeaf],
-      0,
-    ),
-    sourceMembership: buildMidgardValidationMerkleMembershipV1([sourceLeaf], 0),
-    executionMembership: buildMidgardValidationMerkleMembershipV1(
+    purposeMembership: buildMidgardValidationMerkleMembership([purposeLeaf], 0),
+    sourceMembership: buildMidgardValidationMerkleMembership([sourceLeaf], 0),
+    executionMembership: buildMidgardValidationMerkleMembership(
       [executionLeaf],
       0,
     ),
   };
 };
 const evidence = (languageTag: 0 | 3 | 128, subject = accepted) =>
-  prepareReceivePurposeLanguageEvidenceV1({
+  prepareReceivePurposeLanguageEvidence({
     finding: { subject, executionIndex: 0 },
     descriptor: descriptor(languageTag),
   });
 
 describe("receivePurposeLanguage V1", () => {
   it("freezes ID 34 and binds the exact typed execution coordinate", () => {
-    expect(RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID_V1).toBe("00000034");
+    expect(RECEIVE_PURPOSE_LANGUAGE_CATEGORY_ID).toBe("00000034");
     expect(
-      classifyReceivePurposeLanguageFindingV1({
+      classifyReceivePurposeLanguageFinding({
         subject: forced(),
         executionIndex: 0,
       }),
     ).toBeTruthy();
     expect(() =>
-      classifyReceivePurposeLanguageFindingV1({
+      classifyReceivePurposeLanguageFinding({
         subject: forced(1),
         executionIndex: 0,
       }),
     ).toThrow(/coordinate changed/u);
   });
   it("has a callback-free package-owned real Lucid lifecycle surface", () => {
-    expect(RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS_V1).not.toContain(
-      "submit",
-    );
-    const workflow = createReceivePurposeLanguageProductionWorkflowV1(
-      {} as never,
-    );
+    expect(RECEIVE_PURPOSE_LANGUAGE_DIRECT_CONFIG_KEYS).not.toContain("submit");
+    const workflow = createReceivePurposeLanguageWorkflow({} as never);
     expect(Object.keys(workflow)).toEqual(["run"]);
-    expect(RECEIVE_PURPOSE_LANGUAGE_PRODUCTION_CONFIG_KEYS_V1).toEqual([
+    expect(RECEIVE_PURPOSE_LANGUAGE_CONFIG_KEYS).toEqual([
       "manifest",
       "blueprintJson",
       "deploymentInfo",
@@ -142,29 +135,28 @@ describe("receivePurposeLanguage V1", () => {
       "stateQueueMutationLeaseCoordinator",
       "referenceScripts",
     ]);
-    expect(RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS_V1).toHaveLength(3);
+    expect(RECEIVE_PURPOSE_LANGUAGE_STEP_DATUM_SCHEMAS).toHaveLength(3);
     expect(
-      Object.keys(createReceivePurposeLanguageActuatorV1({} as never)),
+      Object.keys(createReceivePurposeLanguageActuator({} as never)),
     ).toEqual(["capture"]);
   });
   it("rejects callback/evidence authority at manifest and runner boundaries", async () => {
     await expect(
-      createManifestBoundReceivePurposeLanguageWorkflowV1({
+      createManifestBoundReceivePurposeLanguageWorkflow({
         submit: async () => "00".repeat(32),
       } as never),
     ).rejects.toThrow(/callback authority/u);
     await expect(
-      runOrResumeManifestBoundReceivePurposeLanguageWorkflowV1({
+      runOrResumeManifestBoundReceivePurposeLanguageWorkflow({
         workflow: {} as never,
         sources: [],
         journal: {} as never,
         evidence: evidence(3),
       } as never),
     ).rejects.toThrow(/caller-authored evidence/u);
-    const runner =
-      createReceivePurposeLanguageProductionWorkflowRunnerSurfaceV1({
-        loadRuntimeConfig: async () => ({}) as never,
-      });
+    const runner = createReceivePurposeLanguageWorkflowRunnerSurface({
+      loadRuntimeConfig: async () => ({}) as never,
+    });
     expect(runner.runnerVersion).toBe(
       "midgard-production-fraud-proof-workflow-runner-v1",
     );
@@ -191,35 +183,35 @@ describe("receivePurposeLanguage V1", () => {
     };
     const encoded = Data.to(
       value as never,
-      AuthenticatedReceiveLanguageV1Schema as never,
+      AuthenticatedReceiveLanguageSchema as never,
     );
     expect(
       Data.to(
         Data.from(
           encoded,
-          AuthenticatedReceiveLanguageV1Schema as never,
+          AuthenticatedReceiveLanguageSchema as never,
         ) as never,
-        AuthenticatedReceiveLanguageV1Schema as never,
+        AuthenticatedReceiveLanguageSchema as never,
       ),
     ).toBe(encoded);
   });
   it("convicts only accepted receive PlutusV3 and contradicts allowed languages", () => {
-    expect(receivePurposeLanguageEvidenceClosesV1(evidence(3))).toBe(true);
-    expect(receivePurposeLanguageEvidenceClosesV1(evidence(0))).toBe(false);
-    expect(receivePurposeLanguageEvidenceClosesV1(evidence(0, forced()))).toBe(
+    expect(receivePurposeLanguageEvidenceCloses(evidence(3))).toBe(true);
+    expect(receivePurposeLanguageEvidenceCloses(evidence(0))).toBe(false);
+    expect(receivePurposeLanguageEvidenceCloses(evidence(0, forced()))).toBe(
       true,
     );
-    expect(
-      receivePurposeLanguageEvidenceClosesV1(evidence(128, forced())),
-    ).toBe(true);
-    expect(receivePurposeLanguageEvidenceClosesV1(evidence(3, forced()))).toBe(
+    expect(receivePurposeLanguageEvidenceCloses(evidence(128, forced()))).toBe(
+      true,
+    );
+    expect(receivePurposeLanguageEvidenceCloses(evidence(3, forced()))).toBe(
       false,
     );
   });
   it("rejects purpose, source, execution, language and coordinate substitution", () => {
     const exact = descriptor(3);
     expect(() =>
-      prepareReceivePurposeLanguageEvidenceV1({
+      prepareReceivePurposeLanguageEvidence({
         finding: { subject: accepted, executionIndex: 0 },
         descriptor: { ...exact, purposeKind: 2 } as never,
       }),
@@ -230,7 +222,7 @@ describe("receivePurposeLanguage V1", () => {
       "executionMembership",
     ] as const)
       expect(() =>
-        prepareReceivePurposeLanguageEvidenceV1({
+        prepareReceivePurposeLanguageEvidence({
           finding: { subject: accepted, executionIndex: 0 },
           descriptor: {
             ...exact,
@@ -248,14 +240,14 @@ describe("receivePurposeLanguage V1", () => {
         }),
       ).toThrow(/membership is invalid/u);
     expect(() =>
-      prepareReceivePurposeLanguageEvidenceV1({
+      prepareReceivePurposeLanguageEvidence({
         finding: { subject: accepted, executionIndex: 1 },
         descriptor: exact,
       }),
     ).toThrow(/coordinate changed/u);
   });
   it("replays authenticated descriptors deterministically", () => {
-    const findings = detectReceivePurposeLanguageAcceptedReplayV1({
+    const findings = detectReceivePurposeLanguageAcceptedReplay({
       headerHash: "ab".repeat(28),
       descriptors: [
         {
@@ -279,15 +271,15 @@ describe("receivePurposeLanguage V1", () => {
     });
   });
   it("journals exact transaction identity, resumes and cancels", async () => {
-    const rows: ReceivePurposeLanguageJournalEntryV1[] = [];
-    let cursor: ReceivePurposeLanguageCursorV1 = {
+    const rows: ReceivePurposeLanguageJournalEntry[] = [];
+    let cursor: ReceivePurposeLanguageCursor = {
       stage: "none",
       threadOutRef: "",
     };
     const txHash = "aa".repeat(32);
     const journal = {
       load: async () => rows,
-      append: async (row: ReceivePurposeLanguageJournalEntryV1) => {
+      append: async (row: ReceivePurposeLanguageJournalEntry) => {
         rows.push(row);
       },
     };
@@ -311,14 +303,14 @@ describe("receivePurposeLanguage V1", () => {
       transactionConfirmed: async () => true,
     };
     expect(
-      await runReceivePurposeLanguageWorkflowV1({
+      await runReceivePurposeLanguageWorkflow({
         evidence: evidence(3),
         journal,
         transactions,
       }),
     ).toBe("none");
     expect(
-      await runReceivePurposeLanguageWorkflowV1({
+      await runReceivePurposeLanguageWorkflow({
         evidence: evidence(3),
         journal,
         transactions,
@@ -327,7 +319,7 @@ describe("receivePurposeLanguage V1", () => {
     rows.length = 0;
     cursor = { stage: "step01", threadOutRef: `${txHash}#0` };
     expect(
-      await cancelReceivePurposeLanguageWorkflowV1({
+      await cancelReceivePurposeLanguageWorkflow({
         evidence: evidence(3),
         journal,
         transactions,

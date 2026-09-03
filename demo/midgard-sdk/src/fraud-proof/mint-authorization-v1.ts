@@ -25,12 +25,12 @@ import { MerkleRootSchema, ProofSchema } from "../common.js";
 import {
   EventKeySchema,
   EventToStepValueSchema,
-  HeaderV1Schema,
+  HeaderSchema,
   TransitionStepSchema,
 } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { type ChallengedHeaderHash } from "./fabricated-deposit-v1.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -38,14 +38,14 @@ import {
 } from "./native.js";
 
 /** Normative violation identifier. */
-export const MINT_AUTHORIZATION_VIOLATION_ID_V1 = "mint-authorization" as const;
+export const MINT_AUTHORIZATION_VIOLATION_ID = "mint-authorization" as const;
 
 // ## Engine constants (twin of `engine.ak`), as `Data` integers
 
 /** Direction A: no script source with the claimed policy hash. */
-export const MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1 = 0n;
+export const MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT = 0n;
 /** Direction B: the policy's native script evaluates unsatisfied. */
-export const MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1 = 1n;
+export const MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED = 1n;
 
 // ## Thread NFT asset name
 
@@ -54,7 +54,7 @@ export const MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1 = 1n;
  * category id (4 bytes, allocated at registration) followed by the
  * challenged header hash.
  */
-export const mintAuthorizationThreadTokenAssetNameV1 = (
+export const mintAuthorizationThreadTokenAssetName = (
   categoryId: string,
   challengedHeaderHash: ChallengedHeaderHash,
 ): string => {
@@ -76,20 +76,20 @@ export const mintAuthorizationThreadTokenAssetNameV1 = (
  * transaction plus its committed validity interval. Twin of
  * `step_02.State`.
  */
-export const MintAuthorizationStep02StateV1Schema = Data.Object({
+export const MintAuthorizationStep02StateSchema = Data.Object({
   bad_tx_id: Data.Bytes(),
   bad_tx_witness_set_hash: Data.Bytes(),
   validity_interval_start: Data.Integer(),
   validity_interval_end: Data.Integer(),
 });
-export type MintAuthorizationStep02StateV1 = Data.Static<
-  typeof MintAuthorizationStep02StateV1Schema
+export type MintAuthorizationStep02State = Data.Static<
+  typeof MintAuthorizationStep02StateSchema
 >;
-export const MintAuthorizationStep02StateV1 =
-  MintAuthorizationStep02StateV1Schema as unknown as MintAuthorizationStep02StateV1;
+export const MintAuthorizationStep02State =
+  MintAuthorizationStep02StateSchema as unknown as MintAuthorizationStep02State;
 
 /** Step-03's input state (step-02's output). Twin of `step_03.State`. */
-export const MintAuthorizationStep03StateV1Schema = Data.Object({
+export const MintAuthorizationStep03StateSchema = Data.Object({
   /** The claimed policy id, read off the committed field-5 item by step-02. */
   policy_id: Data.Bytes(),
   direction: Data.Integer(),
@@ -100,39 +100,39 @@ export const MintAuthorizationStep03StateV1Schema = Data.Object({
   /** The transition step's `pre_utxos_root`. */
   prior_ledger_root: MerkleRootSchema,
 });
-export type MintAuthorizationStep03StateV1 = Data.Static<
-  typeof MintAuthorizationStep03StateV1Schema
+export type MintAuthorizationStep03State = Data.Static<
+  typeof MintAuthorizationStep03StateSchema
 >;
-export const MintAuthorizationStep03StateV1 =
-  MintAuthorizationStep03StateV1Schema as unknown as MintAuthorizationStep03StateV1;
+export const MintAuthorizationStep03State =
+  MintAuthorizationStep03StateSchema as unknown as MintAuthorizationStep03State;
 
 /**
  * Step-04's input state (also its self-loop output). Twin of
  * `step_04.State`.
  */
-export const MintAuthorizationStep04StateV1Schema = Data.Object({
+export const MintAuthorizationStep04StateSchema = Data.Object({
   policy_id: Data.Bytes(),
   bad_tx_id: Data.Bytes(),
   prior_ledger_root: MerkleRootSchema,
   /** Next field-1 ordinal to resolve; step-03's direction-A arm writes 0. */
   ref_cursor: Data.Integer(),
 });
-export type MintAuthorizationStep04StateV1 = Data.Static<
-  typeof MintAuthorizationStep04StateV1Schema
+export type MintAuthorizationStep04State = Data.Static<
+  typeof MintAuthorizationStep04StateSchema
 >;
-export const MintAuthorizationStep04StateV1 =
-  MintAuthorizationStep04StateV1Schema as unknown as MintAuthorizationStep04StateV1;
+export const MintAuthorizationStep04State =
+  MintAuthorizationStep04StateSchema as unknown as MintAuthorizationStep04State;
 
 /** Step-05's input state — the closed verdict. Twin of `step_05.State`. */
-export const MintAuthorizationStep05StateV1Schema = Data.Object({
+export const MintAuthorizationStep05StateSchema = Data.Object({
   policy_id: Data.Bytes(),
   direction: Data.Integer(),
 });
-export type MintAuthorizationStep05StateV1 = Data.Static<
-  typeof MintAuthorizationStep05StateV1Schema
+export type MintAuthorizationStep05State = Data.Static<
+  typeof MintAuthorizationStep05StateSchema
 >;
-export const MintAuthorizationStep05StateV1 =
-  MintAuthorizationStep05StateV1Schema as unknown as MintAuthorizationStep05StateV1;
+export const MintAuthorizationStep05State =
+  MintAuthorizationStep05StateSchema as unknown as MintAuthorizationStep05State;
 
 // ## Step 01 — bind the accepted committed transaction
 
@@ -166,7 +166,7 @@ export const MintAuthorizationStep01SpendRedeemer =
 // ## Step 02 — committed-claim openings
 
 export const MintAuthorizationStep02DatumSchema = faultProofStepDatumSchema(
-  MintAuthorizationStep02StateV1Schema,
+  MintAuthorizationStep02StateSchema,
 );
 export type MintAuthorizationStep02Datum = Data.Static<
   typeof MintAuthorizationStep02DatumSchema
@@ -184,7 +184,7 @@ export const MintAuthorizationStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   /** The disputed block's header, bound to the thread NFT's asset name. */
-  header: HeaderV1Schema,
+  header: HeaderSchema,
   event_to_step_membership: MintAuthorizationEventToStepMembershipSchema,
   transition_step_membership: MintAuthorizationTransitionStepMembershipSchema,
   /**
@@ -193,7 +193,7 @@ export const MintAuthorizationStep02ArgsSchema = Data.Object({
    */
   policy_index: Data.Integer(),
   direction: Data.Integer(),
-  mint_opening: FieldOpeningV1Schema,
+  mint_opening: FieldOpeningSchema,
 });
 export type MintAuthorizationStep02Args = Data.Static<
   typeof MintAuthorizationStep02ArgsSchema
@@ -212,7 +212,7 @@ export const MintAuthorizationStep02SpendRedeemer =
 // ## Step 03 — direction dispatch
 
 export const MintAuthorizationStep03DatumSchema = faultProofStepDatumSchema(
-  MintAuthorizationStep03StateV1Schema,
+  MintAuthorizationStep03StateSchema,
 );
 export type MintAuthorizationStep03Datum = Data.Static<
   typeof MintAuthorizationStep03DatumSchema
@@ -230,7 +230,7 @@ export const MintAuthorizationStep03ArgsSchema = Data.Enum([
     WitnessAbsence: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      script_tx_wits_opening: FieldOpeningV1Schema,
+      script_tx_wits_opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({
@@ -239,7 +239,7 @@ export const MintAuthorizationStep03ArgsSchema = Data.Enum([
       output_index: Data.Integer(),
       /** The policy's native payload, pinned by hash to the policy id. */
       script_bytes: Data.Bytes(),
-      addr_tx_wits_opening: FieldOpeningV1Schema,
+      addr_tx_wits_opening: FieldOpeningSchema,
     }),
   }),
 ]);
@@ -260,7 +260,7 @@ export const MintAuthorizationStep03SpendRedeemer =
 // ## Step 04 — direction-A reference-input scan (self-loop)
 
 export const MintAuthorizationStep04DatumSchema = faultProofStepDatumSchema(
-  MintAuthorizationStep04StateV1Schema,
+  MintAuthorizationStep04StateSchema,
 );
 export type MintAuthorizationStep04Datum = Data.Static<
   typeof MintAuthorizationStep04DatumSchema
@@ -278,7 +278,7 @@ export const MintAuthorizationStep04ArgsSchema = Data.Enum([
     ResolveNext: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      reference_inputs_opening: FieldOpeningV1Schema,
+      reference_inputs_opening: FieldOpeningSchema,
       descriptor_cbor: Data.Bytes(),
       ledger_membership_proof: ProofSchema,
     }),
@@ -287,7 +287,7 @@ export const MintAuthorizationStep04ArgsSchema = Data.Enum([
     AdvanceComplete: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      reference_inputs_opening: FieldOpeningV1Schema,
+      reference_inputs_opening: FieldOpeningSchema,
     }),
   }),
 ]);
@@ -308,7 +308,7 @@ export const MintAuthorizationStep04SpendRedeemer =
 // ## Step 05 — finalize
 
 export const MintAuthorizationStep05DatumSchema = faultProofStepDatumSchema(
-  MintAuthorizationStep05StateV1Schema,
+  MintAuthorizationStep05StateSchema,
 );
 export type MintAuthorizationStep05Datum = Data.Static<
   typeof MintAuthorizationStep05DatumSchema
@@ -338,22 +338,22 @@ export const MintAuthorizationStep05SpendRedeemer =
 
 // ## Step resolver
 
-export const MINT_AUTHORIZATION_STEP_NAMES_V1 = [
+export const MINT_AUTHORIZATION_STEP_NAMES = [
   "step_01",
   "step_02",
   "step_03",
   "step_04",
   "step_05",
 ] as const;
-export type MintAuthorizationStepNameV1 =
-  (typeof MINT_AUTHORIZATION_STEP_NAMES_V1)[number];
+export type MintAuthorizationStepName =
+  (typeof MINT_AUTHORIZATION_STEP_NAMES)[number];
 
 /**
  * Explicit, exhaustive step-datum resolver. There is no fallback branch:
  * adding a step without adding its schema fails to compile.
  */
-export const mintAuthorizationStepDatumSchemaV1 = (
-  step: MintAuthorizationStepNameV1,
+export const mintAuthorizationStepDatumSchema = (
+  step: MintAuthorizationStepName,
 ) => {
   switch (step) {
     case "step_01":

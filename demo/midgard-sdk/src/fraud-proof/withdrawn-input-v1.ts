@@ -15,7 +15,7 @@ import {
   type RootMembershipProof,
   WithdrawalSourceMembershipProofSchema,
 } from "../transition-trace.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -27,7 +27,7 @@ import {
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
-export const WITHDRAWN_INPUT_VIOLATION_ID_V1 = "withdrawn-input" as const;
+export const WITHDRAWN_INPUT_VIOLATION_ID = "withdrawn-input" as const;
 
 export const WithdrawnInputStepCancelSchema = FaultProofStepCancelSchema;
 export type WithdrawnInputStepCancel = FaultProofStepCancel;
@@ -81,7 +81,7 @@ export const WithdrawnInputStep02Datum =
 export const WithdrawnInputStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  spend_inputs_opening: FieldOpeningV1Schema,
+  spend_inputs_opening: FieldOpeningSchema,
   bad_input_index: Data.Integer(),
 });
 export type WithdrawnInputStep02Args = Data.Static<
@@ -139,12 +139,12 @@ export type WithdrawnInputStep03SpendRedeemer = Data.Static<
 export const WithdrawnInputStep03SpendRedeemer =
   WithdrawnInputStep03SpendRedeemerSchema as unknown as WithdrawnInputStep03SpendRedeemer;
 
-export type WithdrawnInputWithdrawalMembershipV1 = RootMembershipProof<
+export type WithdrawnInputWithdrawalMembership = RootMembershipProof<
   Data.Static<typeof WithdrawalSourceMembershipProofSchema>["key"],
   WithdrawalInfo
 >;
 
-export const withdrawnInputStep03StateV1 = ({
+export const withdrawnInputStep03State = ({
   input,
   withdrawalsRoot,
   withdrawalCount,
@@ -159,7 +159,7 @@ export const withdrawnInputStep03StateV1 = ({
 });
 
 /** Pure predicate twin of step-03's semantic checks (membership is separate). */
-export const isWithdrawnInputViolationV1 = ({
+export const isWithdrawnInputViolation = ({
   input,
   withdrawal,
 }: {

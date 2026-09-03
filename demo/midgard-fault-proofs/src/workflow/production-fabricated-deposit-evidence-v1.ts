@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 import {
-  type AuthenticatedStateQueueHeaderObservationV1,
-  depositEventNonceV1,
-  FABRICATED_DEPOSIT_VIOLATION_ID_V1,
+  type AuthenticatedStateQueueHeaderObservation,
+  depositEventNonce,
+  FABRICATED_DEPOSIT_VIOLATION_ID,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   OutputReference,
@@ -19,22 +19,22 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  type FabricatedDepositL1WitnessV1,
-  FabricatedDepositRejectionV1,
-  prepareFabricatedDepositFromCommittedLeavesV1,
+  type FabricatedDepositL1Witness,
+  FabricatedDepositRejection,
+  prepareFabricatedDepositFromCommittedLeaves,
 } from "../prepare-fabricated-deposit.js";
 import { requireSingletonUtxo } from "../runtime.js";
-import type { CanonicalViolationDetectionV1 } from "./classification-v1.js";
+import type { CanonicalViolationDetection } from "./classification-v1.js";
 
-export const PRODUCTION_FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY_V1 =
+export const FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY =
   "midgard-production-fabricated-deposit-evidence-authority-v1" as const;
-export const PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1 =
+export const FABRICATED_DEPOSIT_ARTIFACT =
   "midgard-production-fabricated-deposit-artifact-v1" as const;
 
-export type ProductionFabricatedDepositArtifactV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1;
+export type FabricatedDepositArtifact = Readonly<{
+  schemaVersion: typeof FABRICATED_DEPOSIT_ARTIFACT;
   headerHash: string;
   owner: string;
   depositIndex: number;
@@ -51,24 +51,24 @@ export type ProductionFabricatedDepositArtifactV1 = Readonly<{
   artifactDigest: string;
 }>;
 
-export type ProductionFabricatedDepositDetectionV1 = Readonly<{
-  detection: CanonicalViolationDetectionV1;
-  artifact: ProductionFabricatedDepositArtifactV1;
+export type FabricatedDepositDetection = Readonly<{
+  detection: CanonicalViolationDetection;
+  artifact: FabricatedDepositArtifact;
 }>;
 
-export interface ProductionFabricatedDepositEvidenceAuthorityV1 {
-  readonly authorityVersion: typeof PRODUCTION_FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY_V1;
+export interface FabricatedDepositEvidenceAuthority {
+  readonly authorityVersion: typeof FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY;
   detect(
-    evidence: CanonicalBlockEvidenceV1,
+    evidence: CanonicalBlockEvidence,
     owner: string,
-  ): Promise<readonly ProductionFabricatedDepositDetectionV1[]>;
+  ): Promise<readonly FabricatedDepositDetection[]>;
   prepare(
-    evidence: CanonicalBlockEvidenceV1,
+    evidence: CanonicalBlockEvidence,
     owner: string,
     depositIndex: number,
-  ): Promise<ProductionFabricatedDepositArtifactV1>;
+  ): Promise<FabricatedDepositArtifact>;
   /** Re-authenticates a journal-restored artifact against current public L1. */
-  readmit(value: unknown): Promise<ProductionFabricatedDepositArtifactV1>;
+  readmit(value: unknown): Promise<FabricatedDepositArtifact>;
 }
 
 const admittedAuthorities = new WeakSet<object>();
@@ -97,10 +97,10 @@ const plainRecord = (
 };
 
 const artifactDigest = (
-  value: Omit<ProductionFabricatedDepositArtifactV1, "artifactDigest">,
+  value: Omit<FabricatedDepositArtifact, "artifactDigest">,
 ): string =>
   createHash("sha256")
-    .update(PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1)
+    .update(FABRICATED_DEPOSIT_ARTIFACT)
     .update("\0")
     .update(value.headerHash)
     .update("\0")
@@ -135,14 +135,14 @@ const discoverWitness = async ({
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly depositId: Readonly<{
     transactionId: string;
     outputIndex: bigint;
   }>;
 }): Promise<{
-  readonly witness: FabricatedDepositL1WitnessV1;
-  readonly l1Evidence: ProductionFabricatedDepositArtifactV1["l1Evidence"];
+  readonly witness: FabricatedDepositL1Witness;
+  readonly l1Evidence: FabricatedDepositArtifact["l1Evidence"];
 }> => {
   const candidateOutRef = `${depositId.transactionId}#${depositId.outputIndex.toString()}`;
   const live = await lucid.utxosByOutRef([
@@ -179,7 +179,7 @@ const discoverWitness = async ({
     throw new Error("fabricated-deposit hub oracle has no inline datum");
   }
   const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
-  const nonce = await Effect.runPromise(depositEventNonceV1(depositId));
+  const nonce = await Effect.runPromise(depositEventNonce(depositId));
   const eventUnit = toUnit(hub.deposit, nonce);
   const depositAddress = credentialToAddress(
     network,
@@ -217,10 +217,10 @@ const prepareAt = async ({
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly evidence: CanonicalBlockEvidence;
   readonly owner: string;
   readonly depositIndex: number;
-}): Promise<ProductionFabricatedDepositArtifactV1> => {
+}): Promise<FabricatedDepositArtifact> => {
   if (
     !HEX_28.test(owner) ||
     !Number.isSafeInteger(depositIndex) ||
@@ -241,7 +241,7 @@ const prepareAt = async ({
     observation: evidence.observation,
     depositId: selected.key,
   });
-  const prepared = await prepareFabricatedDepositFromCommittedLeavesV1({
+  const prepared = await prepareFabricatedDepositFromCommittedLeaves({
     headerHash: evidence.headerHash,
     committedDepositsRoot: evidence.header.depositsRoot,
     depositCount: evidence.header.depositCount,
@@ -259,7 +259,7 @@ const prepareAt = async ({
     minimumConfirmationDepth,
   });
   const body = {
-    schemaVersion: PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1,
+    schemaVersion: FABRICATED_DEPOSIT_ARTIFACT,
     headerHash: prepared.headerHash,
     owner,
     depositIndex,
@@ -280,7 +280,7 @@ const prepareAt = async ({
  * re-authenticates the exact live outref or hub-bound event NFT and the family
  * adapter captures a locally evaluated transaction before any submit.
  */
-export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
+export const createFabricatedDepositEvidenceAuthority = ({
   lucid,
   network,
   hubOraclePolicyId,
@@ -290,7 +290,7 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
-}): ProductionFabricatedDepositEvidenceAuthorityV1 => {
+}): FabricatedDepositEvidenceAuthority => {
   if (
     !HEX_28.test(hubOraclePolicyId) ||
     !Number.isSafeInteger(minimumConfirmationDepth) ||
@@ -298,8 +298,8 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
   ) {
     throw new Error("fabricated-deposit evidence authority config is invalid");
   }
-  const authority: ProductionFabricatedDepositEvidenceAuthorityV1 = {
-    authorityVersion: PRODUCTION_FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY_V1,
+  const authority: FabricatedDepositEvidenceAuthority = {
+    authorityVersion: FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY,
     prepare: async (evidence, owner, depositIndex) =>
       await prepareAt({
         lucid,
@@ -311,7 +311,7 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
         depositIndex,
       }),
     detect: async (evidence, owner) => {
-      const detections: ProductionFabricatedDepositDetectionV1[] = [];
+      const detections: FabricatedDepositDetection[] = [];
       for (
         let index = 0;
         index < evidence.reconstruction.deposits.length;
@@ -331,9 +331,9 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
             Object.freeze({
               artifact,
               detection: Object.freeze({
-                detectionId: `${FABRICATED_DEPOSIT_VIOLATION_ID_V1}:${index.toString()}:${artifact.depositInclusion.committedDepositIdCbor}`,
+                detectionId: `${FABRICATED_DEPOSIT_VIOLATION_ID}:${index.toString()}:${artifact.depositInclusion.committedDepositIdCbor}`,
                 headerHash: evidence.headerHash,
-                violationId: FABRICATED_DEPOSIT_VIOLATION_ID_V1,
+                violationId: FABRICATED_DEPOSIT_VIOLATION_ID,
                 position: BigInt(index),
                 diagnostic: `committed deposit ${index.toString()} is absent from authentic L1 or differs from its authentic event`,
               }),
@@ -341,7 +341,7 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
           );
         } catch (cause) {
           if (
-            cause instanceof FabricatedDepositRejectionV1 &&
+            cause instanceof FabricatedDepositRejection &&
             (cause.code === "authentic_content_matches_commitment" ||
               cause.code === "event_not_due_for_block")
           ) {
@@ -400,7 +400,7 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
           throw new Error("fabricated-deposit hub oracle has no inline datum");
         }
         const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
-        const nonce = await Effect.runPromise(depositEventNonceV1(depositId));
+        const nonce = await Effect.runPromise(depositEventNonce(depositId));
         const eventUtxos = await lucid.utxosAtWithUnit(
           credentialToAddress(network, scriptHashToCredential(hub.deposit)),
           toUnit(hub.deposit, nonce),
@@ -424,13 +424,12 @@ export const createProductionFabricatedDepositEvidenceAuthorityV1 = ({
   return Object.freeze(authority);
 };
 
-export const requireProductionFabricatedDepositEvidenceAuthorityV1 = (
-  authority: ProductionFabricatedDepositEvidenceAuthorityV1,
-): ProductionFabricatedDepositEvidenceAuthorityV1 => {
+export const requireFabricatedDepositEvidenceAuthority = (
+  authority: FabricatedDepositEvidenceAuthority,
+): FabricatedDepositEvidenceAuthority => {
   if (
     !admittedAuthorities.has(authority) ||
-    authority.authorityVersion !==
-      PRODUCTION_FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY_V1
+    authority.authorityVersion !== FABRICATED_DEPOSIT_EVIDENCE_AUTHORITY
   ) {
     throw new Error(
       "fabricated-deposit production evidence authority is not admitted",
@@ -439,9 +438,7 @@ export const requireProductionFabricatedDepositEvidenceAuthorityV1 = (
   return authority;
 };
 
-const parseArtifact = (
-  value: unknown,
-): ProductionFabricatedDepositArtifactV1 => {
+const parseArtifact = (value: unknown): FabricatedDepositArtifact => {
   const outer = plainRecord(
     value,
     [
@@ -488,9 +485,9 @@ const parseArtifact = (
     authenticContent: authentic,
     l1Evidence: l1,
     artifactDigest: outer.artifactDigest,
-  } as unknown as ProductionFabricatedDepositArtifactV1;
+  } as unknown as FabricatedDepositArtifact;
   if (
-    artifact.schemaVersion !== PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1 ||
+    artifact.schemaVersion !== FABRICATED_DEPOSIT_ARTIFACT ||
     !HEX_28.test(artifact.owner) ||
     !HEX_28.test(artifact.headerHash) ||
     !HEX_32.test(artifact.artifactDigest) ||
@@ -518,12 +515,12 @@ const parseArtifact = (
   return Object.freeze({ ...artifact });
 };
 
-export const requireProductionFabricatedDepositArtifactV1 = (
+export const requireFabricatedDepositArtifact = (
   value: unknown,
   owner: string,
   headerHash: string,
-): ProductionFabricatedDepositArtifactV1 => {
-  const artifact = value as ProductionFabricatedDepositArtifactV1;
+): FabricatedDepositArtifact => {
+  const artifact = value as FabricatedDepositArtifact;
   if (
     !admittedArtifacts.has(artifact) ||
     artifact.owner !== owner ||

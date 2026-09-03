@@ -1,26 +1,26 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 
-import type { CanonicalViolationDetectionV1 } from "../workflow/classification-v1.js";
+import type { CanonicalViolationDetection } from "../workflow/classification-v1.js";
 import {
-  type ExecutionSourceDescriptorV1,
-  missingScriptSourceEvidenceClosesV1,
-  type MissingScriptSourceEvidenceV1,
-  missingScriptSourceViolationIdV1,
-  prepareMissingScriptSourceEvidenceV1,
+  type ExecutionSourceDescriptor,
+  type MissingScriptSourceEvidence,
+  missingScriptSourceEvidenceCloses,
+  missingScriptSourceViolationId,
+  prepareMissingScriptSourceEvidence,
 } from "./family-v1.js";
 
-export type ExecutionSourceAuthenticatedDescriptorV1 = Readonly<{
+export type ExecutionSourceAuthenticatedDescriptor = Readonly<{
   executionIndex: number;
-  descriptor: ExecutionSourceDescriptorV1;
+  descriptor: ExecutionSourceDescriptor;
 }>;
 
-export type MissingScriptSourceReplayFindingV1 = Readonly<{
-  detection: CanonicalViolationDetectionV1;
-  evidence: MissingScriptSourceEvidenceV1;
+export type MissingScriptSourceReplayFinding = Readonly<{
+  detection: CanonicalViolationDetection;
+  evidence: MissingScriptSourceEvidence;
 }>;
 
 /**
@@ -29,10 +29,10 @@ export type MissingScriptSourceReplayFindingV1 = Readonly<{
  * are the evidence, and must survive until the frozen structural scan.
  *
  * The descriptors are accepted only after their purpose/source/execution
- * memberships verify in `prepareMissingScriptSourceEvidenceV1` and
+ * memberships verify in `prepareMissingScriptSourceEvidence` and
  * the selected field-6 item is byte-identical to the retained envelope.
  */
-export const detectMissingScriptSourceAcceptedRawReplayV1 = ({
+export const detectMissingScriptSourceAcceptedRawReplay = ({
   headerHash,
   position,
   canonicalTransactionCbor,
@@ -41,13 +41,13 @@ export const detectMissingScriptSourceAcceptedRawReplayV1 = ({
   readonly headerHash: string;
   readonly position: bigint;
   readonly canonicalTransactionCbor: Uint8Array;
-  readonly authenticatedDescriptors: readonly ExecutionSourceAuthenticatedDescriptorV1[];
-}): readonly MissingScriptSourceReplayFindingV1[] => {
-  const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+  readonly authenticatedDescriptors: readonly ExecutionSourceAuthenticatedDescriptor[];
+}): readonly MissingScriptSourceReplayFinding[] => {
+  const material = deriveMidgardNativeTxFaultEvidenceMaterial(
     canonicalTransactionCbor,
   );
   const transactionId = material.transactionId.toString("hex");
-  const items = decodeMidgardFieldPreimageV1(material.fieldPreimages[6]!);
+  const items = decodeMidgardFieldPreimage(material.fieldPreimages[6]!);
   const findings = authenticatedDescriptors.flatMap(
     ({ executionIndex, descriptor }) => {
       if (descriptor.originKind !== 0) return [];
@@ -57,17 +57,17 @@ export const detectMissingScriptSourceAcceptedRawReplayV1 = ({
         item.toString("hex") !== descriptor.scriptItemHex
       )
         throw new Error("missingScriptSource raw field-6 source item changed");
-      const evidence = prepareMissingScriptSourceEvidenceV1({
+      const evidence = prepareMissingScriptSourceEvidence({
         finding: {
-          subject: acceptedVerdictSubjectV1(transactionId),
+          subject: acceptedVerdictSubject(transactionId),
           purposeKind: descriptor.purposeKind,
           purposeIndex: descriptor.purposeIndex,
           executionIndex,
         },
         descriptor,
       });
-      if (!missingScriptSourceEvidenceClosesV1(evidence)) return [];
-      const violationId = missingScriptSourceViolationIdV1(
+      if (!missingScriptSourceEvidenceCloses(evidence)) return [];
+      const violationId = missingScriptSourceViolationId(
         evidence.resultClass as 0 | 1 | 2,
       );
       return [
@@ -94,9 +94,9 @@ export const detectMissingScriptSourceAcceptedRawReplayV1 = ({
   );
 };
 
-export const selectMissingScriptSourceCanonicalFindingV1 = (
-  findings: readonly MissingScriptSourceReplayFindingV1[],
-): MissingScriptSourceReplayFindingV1 => {
+export const selectMissingScriptSourceCanonicalFinding = (
+  findings: readonly MissingScriptSourceReplayFinding[],
+): MissingScriptSourceReplayFinding => {
   const ordered = [...findings].sort((left, right) => {
     const position = Number(left.detection.position - right.detection.position);
     return (

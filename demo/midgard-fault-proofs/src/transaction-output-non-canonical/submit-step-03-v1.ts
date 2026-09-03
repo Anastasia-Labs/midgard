@@ -11,26 +11,26 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { TransactionOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { TransactionOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  TransactionOutputScanControlV1Schema,
-  TransactionOutputStep03DatumV1Schema,
-  TransactionOutputStep03RedeemerV1Schema,
+  TransactionOutputScanControlSchema,
+  TransactionOutputStep03DatumSchema,
+  TransactionOutputStep03RedeemerSchema,
 } from "./schemas-v1.js";
 import {
-  type TransactionOutputEvidenceV1,
-  transactionOutputScanControlDataV1,
+  type TransactionOutputEvidence,
+  transactionOutputScanControlData,
 } from "./transaction-output-non-canonical-v1.js";
 
-export const submitTransactionOutputNonCanonicalStep03V1 = async ({
+export const submitTransactionOutputNonCanonicalStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -42,11 +42,11 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: TransactionOutputNonCanonicalContractsV1;
+  readonly contracts: TransactionOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: TransactionOutputEvidenceV1;
+  readonly evidence: TransactionOutputEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
   readonly publishCarriage?: boolean;
@@ -54,14 +54,14 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly onCarriageReady?: () => Promise<void>;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -69,7 +69,7 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     output_index: bigint;
     item_length: bigint;
@@ -80,7 +80,7 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: TransactionOutputStep03DatumV1Schema as never,
+    schema: TransactionOutputStep03DatumSchema as never,
     family: "transaction-output-non-canonical",
     stepIndex,
   });
@@ -97,13 +97,13 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
   }
   const stateControl = Data.to(
     state.control as never,
-    TransactionOutputScanControlV1Schema as never,
+    TransactionOutputScanControlSchema as never,
   );
   const controlIndex = evidence.scanControls.findIndex(
     (control) =>
       Data.to(
-        transactionOutputScanControlDataV1(control) as never,
-        TransactionOutputScanControlV1Schema as never,
+        transactionOutputScanControlData(control) as never,
+        TransactionOutputScanControlSchema as never,
       ) === stateControl,
   );
   if (controlIndex < 0)
@@ -125,7 +125,7 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
       "transaction-output-non-canonical: canonical scan trace ended without terminal control",
     );
   const selectedControl = nextControl ?? evidence.scanControls[controlIndex]!;
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[2].spendingScriptHash,
     family: "transaction-output-non-canonical",
@@ -140,11 +140,11 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
         item_length: BigInt(evidence.itemLength),
         item_hash: evidence.itemHash,
         chunk_hashes: evidence.chunkHashes,
-        control: transactionOutputScanControlDataV1(selectedControl),
+        control: transactionOutputScanControlData(selectedControl),
         outcome,
       },
     } as never,
-    TransactionOutputStep03DatumV1Schema as never,
+    TransactionOutputStep03DatumSchema as never,
   );
   const nextStepIndex = outcome === 0n ? 2 : 3;
   const outputMatches = computationThreadOutputPredicate({
@@ -183,10 +183,10 @@ export const submitTransactionOutputNonCanonicalStep03V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, window },
         ],
       } as never,
-      TransactionOutputStep03RedeemerV1Schema as never,
+      TransactionOutputStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

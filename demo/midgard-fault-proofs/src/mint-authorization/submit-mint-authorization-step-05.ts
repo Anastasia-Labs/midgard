@@ -7,13 +7,13 @@
  * The validator's closed-verdict shape gate is re-checked locally first:
  * the thread state must carry a direction in the family's {0, 1} domain.
  */
-import type { MintAuthorizationStep05StateV1 } from "@al-ft/midgard-sdk";
+import type { MintAuthorizationStep05State } from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
-  MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
+  MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
+  MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
   MintAuthorizationStep05Datum,
   MintAuthorizationStep05SpendRedeemer,
   requireInputIndex,
@@ -37,33 +37,33 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
+import type { MintAuthorizationContracts } from "./contracts-v1.js";
 import {
-  mintAuthorizationStepLabelV1,
+  mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
-  requireMintAuthorizationReferenceScriptV1,
-  requireMintAuthorizationStepStateV1,
-  requireMintAuthorizationThreadUtxoV1,
+  requireMintAuthorizationReferenceScript,
+  requireMintAuthorizationStepState,
+  requireMintAuthorizationThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = mintAuthorizationStepLabelV1(4);
+const STEP_LABEL = mintAuthorizationStepLabel(4);
 
 /** Twin of the validator's closed-verdict shape gate. */
-export const assertMintAuthorizationStep05FinalizableV1 = (
-  state: MintAuthorizationStep05StateV1,
+export const assertMintAuthorizationStep05Finalizable = (
+  state: MintAuthorizationStep05State,
 ): void => {
   if (
-    state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1 &&
-    state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1
+    state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT &&
+    state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED
   ) {
     throw mintAuthorizationSubmitError(
       `thread state carries direction ${state.direction.toString()}, outside {0, 1}.`,
@@ -85,7 +85,7 @@ export type SubmitMintAuthorizationStep05Result = {
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   /** The closed verdict the token finalized. */
-  readonly verdictState: MintAuthorizationStep05StateV1;
+  readonly verdictState: MintAuthorizationStep05State;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -111,33 +111,33 @@ export const submitMintAuthorizationStep05 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MintAuthorizationContractsV1;
+  readonly contracts: MintAuthorizationContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** The mandatory published step-05 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep05Result> => {
-  const { threadUtxo, threadToken } =
-    await requireMintAuthorizationThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 4,
-      threadOutRef,
-    });
-  const state: MintAuthorizationStep05StateV1 =
-    requireMintAuthorizationStepStateV1({
+  const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 4,
+    threadOutRef,
+  });
+  const state: MintAuthorizationStep05State = requireMintAuthorizationStepState(
+    {
       threadUtxo,
       signer,
       schema: MintAuthorizationStep05Datum,
       stepIndex: 4,
-    });
-  assertMintAuthorizationStep05FinalizableV1(state);
+    },
+  );
+  assertMintAuthorizationStep05Finalizable(state);
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -220,12 +220,12 @@ export const submitMintAuthorizationStep05 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${STEP_LABEL} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
@@ -233,12 +233,12 @@ export const submitMintAuthorizationStep05 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireMintAuthorizationReferenceScriptV1({
+      : requireMintAuthorizationReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[4].spendingScriptHash,
           stepIndex: 4,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[4].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -279,9 +279,9 @@ export const submitMintAuthorizationStep05 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

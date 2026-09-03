@@ -1,24 +1,24 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ResolvedOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ResolvedOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  resolvedOutputEvidenceClosesV1,
-  type ResolvedOutputEvidenceV1,
+  type ResolvedOutputEvidence,
+  resolvedOutputEvidenceCloses,
 } from "./resolved-output-non-canonical-v1.js";
 import {
-  ResolvedOutputStep05DatumV1Schema,
-  ResolvedOutputStep05RedeemerV1Schema,
+  ResolvedOutputStep05DatumSchema,
+  ResolvedOutputStep05RedeemerSchema,
 } from "./schemas-v1.js";
 
-export const submitResolvedOutputNonCanonicalStep05V1 = async ({
+export const submitResolvedOutputNonCanonicalStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -31,22 +31,22 @@ export const submitResolvedOutputNonCanonicalStep05V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ResolvedOutputNonCanonicalContractsV1;
+  readonly contracts: ResolvedOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ResolvedOutputEvidenceV1;
+  readonly evidence: ResolvedOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!resolvedOutputEvidenceClosesV1(evidence))
+  if (!resolvedOutputEvidenceCloses(evidence))
     throw new Error(
       "resolved-output-non-canonical: terminal state does not contradict verdict",
     );
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -54,19 +54,19 @@ export const submitResolvedOutputNonCanonicalStep05V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: unknown;
     output_is_non_canonical: boolean;
   }>({
     threadUtxo,
     signer,
-    schema: ResolvedOutputStep05DatumV1Schema as never,
+    schema: ResolvedOutputStep05DatumSchema as never,
     family: "resolved-output-non-canonical",
     stepIndex,
   });
   if (state.output_is_non_canonical !== evidence.outputIsNonCanonical)
     throw new Error("resolved-output-non-canonical: terminal verdict changed");
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "resolved-output-non-canonical",
     stepIndex,
@@ -76,7 +76,7 @@ export const submitResolvedOutputNonCanonicalStep05V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ResolvedOutputStep05RedeemerV1Schema,
+    spendRedeemerSchema: ResolvedOutputStep05RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

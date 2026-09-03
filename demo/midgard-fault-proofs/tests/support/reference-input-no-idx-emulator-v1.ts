@@ -23,32 +23,32 @@
  */
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCompact,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  midgardFieldCarriageBoundsV1,
-  type MidgardNativeTxFullV1,
+  midgardFieldCarriageBounds,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardTxInputCanonicalV1,
-  encodeMidgardTxOutputCanonicalV1,
-  type FieldOpeningV1,
+  encodeMidgardTxInputCanonical,
+  encodeMidgardTxOutputCanonical,
+  type FieldOpening,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  MIDGARD_FIELD_INDEX_V1,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   type MidgardTxOutput,
   Proof,
   ReferenceInputNoIdxStep02Datum,
   ReferenceInputNoIdxStep02SpendRedeemer,
   ReferenceInputNoIdxStep03Datum,
-  referenceInputNoIdxStep03StateFromBadInputV1,
+  referenceInputNoIdxStep03StateFromBadInput,
   ReferenceInputNoIdxStep04Datum,
   ReferenceInputNoIdxStep04SpendRedeemer,
   requireInputIndex,
@@ -67,16 +67,16 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../../src/field-opening-v1.js";
-import { midgardTxOutputFromCanonicalCborV1 } from "../../src/prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "../../src/prepare-input-no-idx.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
-  requireFaultProofStepReferenceScriptV1,
+  requireFaultProofStepReferenceScript,
   type ResolvedProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "../../src/runtime.js";
@@ -91,18 +91,18 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../../src/tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../../src/witness-reference-scripts-v1.js";
 import {
-  l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarnessV1,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
 
-export { expectOnchainRefusalV1 } from "./emulator/expect-onchain-refusal-v1.js";
+export { expectOnchainRefusal } from "./emulator/expect-onchain-refusal-v1.js";
 
 // ---------------------------------------------------------------------------
 // §8.4 tier selection arithmetic — the counts below are DERIVED from the
@@ -114,21 +114,21 @@ export { expectOnchainRefusalV1 } from "./emulator/expect-onchain-refusal-v1.js"
  * 38 bytes (`82 ‖ 58 20 tx_id ‖ 19 index_be16`), so its wrapped stride is
  * `2 + 38 = 40`.
  */
-export const REFERENCE_INPUT_ITEM_STRIDE_BYTES_V1 = 40;
+export const REFERENCE_INPUT_ITEM_STRIDE_BYTES = 40;
 
 /**
- * One canonical lovelace-only enterprise output (see `nativeOutputCborV1`) is
+ * One canonical lovelace-only enterprise output (see `nativeOutputCbor`) is
  * 41 bytes, so its wrapped §5.1 stride is `2 + 41 = 43`.
  */
-export const PRODUCING_OUTPUT_ITEM_STRIDE_BYTES_V1 = 43;
+export const PRODUCING_OUTPUT_ITEM_STRIDE_BYTES = 43;
 
 /** `definite_array_header(N)` for the 256..65,535 range these counts land in. */
-const FIELD_PREIMAGE_ARRAY_HEADER_BYTES_V1 = 3;
+const FIELD_PREIMAGE_ARRAY_HEADER_BYTES = 3;
 
 const firstCountAboveTier1 = (strideBytes: number): number =>
   Math.floor(
-    (midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes -
-      FIELD_PREIMAGE_ARRAY_HEADER_BYTES_V1) /
+    (midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes -
+      FIELD_PREIMAGE_ARRAY_HEADER_BYTES) /
       strideBytes,
   ) + 1;
 
@@ -137,22 +137,22 @@ const firstCountAboveTier1 = (strideBytes: number): number =>
  * tier-1 redeemer bound: `3 + 40n > 14,336` first holds at `n = 359`
  * (14,363 bytes), which is inside the single-publication tier-2 window.
  */
-export const REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT_V1 =
-  firstCountAboveTier1(REFERENCE_INPUT_ITEM_STRIDE_BYTES_V1);
+export const REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT =
+  firstCountAboveTier1(REFERENCE_INPUT_ITEM_STRIDE_BYTES);
 
 /**
  * The first field-2 output count whose §5.1 preimage exceeds the same bound:
  * `3 + 43n > 14,336` first holds at `n = 334` (14,365 bytes).
  */
-export const REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT_V1 =
-  firstCountAboveTier1(PRODUCING_OUTPUT_ITEM_STRIDE_BYTES_V1);
+export const REFERENCE_INPUT_NO_IDX_TIER2_PRODUCING_OUTPUT_COUNT =
+  firstCountAboveTier1(PRODUCING_OUTPUT_ITEM_STRIDE_BYTES);
 
 // ---------------------------------------------------------------------------
 // The committed two-transaction block
 // ---------------------------------------------------------------------------
 
 /** One canonical native output: enterprise pubkey address, lovelace only. */
-export const nativeOutputCborV1 = (
+export const nativeOutputCbor = (
   paymentByte: number,
   lovelace: bigint,
 ): Buffer =>
@@ -165,14 +165,14 @@ export const nativeOutputCborV1 = (
   ]);
 
 const outRefItem = (outRef: MidgardTxInput): Buffer =>
-  Buffer.from(encodeMidgardTxInputCanonicalV1(outRef));
+  Buffer.from(encodeMidgardTxInputCanonical(outRef));
 
 /**
  * Materializes a native-V1 transaction with caller-chosen §2.5 fields 0, 1 and
  * 2. `makeNativeTx` cannot express a canonical reference-input list, which is
  * the whole subject of this family.
  */
-const makeReferenceInputNoIdxNativeTxV1 = ({
+const makeReferenceInputNoIdxNativeTx = ({
   spendInputs,
   referenceInputs,
   outputCbors,
@@ -182,9 +182,9 @@ const makeReferenceInputNoIdxNativeTxV1 = ({
   readonly referenceInputs: readonly MidgardTxInput[];
   readonly outputCbors: readonly Buffer[];
   readonly fee: bigint;
-}): MidgardNativeTxFullV1 =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MidgardNativeTxFull =>
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor:
@@ -216,7 +216,7 @@ const makeReferenceInputNoIdxNativeTxV1 = ({
     },
   });
 
-export type ReferenceInputNoIdxBlockFixtureV1 = {
+export type ReferenceInputNoIdxBlockFixture = {
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly producingTxId: string;
@@ -251,7 +251,7 @@ export type ReferenceInputNoIdxBlockFixtureV1 = {
  * displaces the challenged item: the list is sorted canonically and the
  * challenged position is looked up afterwards.
  */
-export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
+export const buildReferenceInputNoIdxBlockFixture = async ({
   producingOutputCount,
   challengedOutputIndex = 7n,
   referenceInputCount = 1,
@@ -259,22 +259,22 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
   readonly producingOutputCount: number;
   readonly challengedOutputIndex?: bigint;
   readonly referenceInputCount?: number;
-}): Promise<ReferenceInputNoIdxBlockFixtureV1> => {
+}): Promise<ReferenceInputNoIdxBlockFixture> => {
   if (!Number.isSafeInteger(referenceInputCount) || referenceInputCount <= 0) {
     throw new Error("referenceInputCount must be a positive safe integer");
   }
   const producingOutputsCbor = Array.from(
     { length: producingOutputCount },
     (_unused, index) =>
-      nativeOutputCborV1((0x40 + index) % 0x100, 5_000_000n + BigInt(index)),
+      nativeOutputCbor((0x40 + index) % 0x100, 5_000_000n + BigInt(index)),
   );
-  const producingTx = makeReferenceInputNoIdxNativeTxV1({
+  const producingTx = makeReferenceInputNoIdxNativeTx({
     spendInputs: [{ tx_id: "99".repeat(32), output_index: 0n }],
     referenceInputs: [],
     outputCbors: producingOutputsCbor,
     fee: 7n,
   });
-  const producingTxId = computeMidgardNativeTxIdV1(producingTx).toString("hex");
+  const producingTxId = computeMidgardNativeTxId(producingTx).toString("hex");
 
   const challengedReferenceInput: MidgardTxInput = {
     tx_id: producingTxId,
@@ -298,21 +298,21 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
     );
   }
 
-  const badTx = makeReferenceInputNoIdxNativeTxV1({
+  const badTx = makeReferenceInputNoIdxNativeTx({
     spendInputs: [{ tx_id: "33".repeat(32), output_index: 0n }],
     referenceInputs,
-    outputCbors: [nativeOutputCborV1(0x11, 4_000_000n)],
+    outputCbors: [nativeOutputCbor(0x11, 4_000_000n)],
     fee: 11n,
   });
-  const badTxId = computeMidgardNativeTxIdV1(badTx).toString("hex");
+  const badTxId = computeMidgardNativeTxId(badTx).toString("hex");
   if (badTxId === producingTxId) {
     throw new Error("fixture producer collides with the disputed transaction");
   }
 
-  const producingCompactCbor = encodeMidgardNativeTxCompactV1(
+  const producingCompactCbor = encodeMidgardNativeTxCompact(
     producingTx.compact,
   );
-  const badCompactCbor = encodeMidgardNativeTxCompactV1(badTx.compact);
+  const badCompactCbor = encodeMidgardNativeTxCompact(badTx.compact);
   const producingSourceCbor = l2TransactionSourceCborV1(producingTx);
   const badSourceCbor = l2TransactionSourceCborV1(badTx);
 
@@ -357,7 +357,7 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
       item.toString("hex"),
     ),
     producingOutputs: producingOutputsCbor.map(
-      midgardTxOutputFromCanonicalCborV1,
+      midgardTxOutputFromCanonicalCbor,
     ),
     producingTxOutputsHash: producingCompact.body.outputs_hash,
     badTxId,
@@ -386,16 +386,16 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
 // Harness and reference-script publication
 // ---------------------------------------------------------------------------
 
-export const makeReferenceInputNoIdxEmulatorHarnessV1 = async () =>
-  await makeFaultProofEmulatorHarnessV1({
+export const makeReferenceInputNoIdxEmulatorHarness = async () =>
+  await makeFaultProofEmulatorHarness({
     contractOptions: {
       realReferenceInputNoIdx: true,
       alwaysFraudProofCatalogue: true,
     },
   });
 
-export type ReferenceInputNoIdxHarnessV1 = Awaited<
-  ReturnType<typeof makeReferenceInputNoIdxEmulatorHarnessV1>
+export type ReferenceInputNoIdxHarness = Awaited<
+  ReturnType<typeof makeReferenceInputNoIdxEmulatorHarness>
 >;
 
 /**
@@ -403,14 +403,14 @@ export type ReferenceInputNoIdxHarnessV1 = Awaited<
  * shape the standing owner ruling requires: a fault proof is always read from
  * a published reference script, never inline-attached.
  */
-export const publishReferenceInputNoIdxReferenceScriptsV1 = async ({
+export const publishReferenceInputNoIdxReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: ReferenceInputNoIdxHarnessV1["contracts"]["fraudProofContracts"]["referenceInputNoIdx"];
+  readonly contracts: ReferenceInputNoIdxHarness["contracts"]["fraudProofContracts"]["referenceInputNoIdx"];
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -443,7 +443,7 @@ export const publishReferenceInputNoIdxReferenceScriptsV1 = async ({
 // Production code never takes these paths.
 // ---------------------------------------------------------------------------
 
-type RawStepConfigV1 = {
+type RawStepConfig = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
@@ -467,7 +467,7 @@ type RawStepConfigV1 = {
  * thing a refusal can be attributed to is the on-chain selection rule
  * (`spend_input_at`'s §7.3 abort-never-clamp range guard).
  */
-export const submitRawReferenceInputNoIdxStep02V1 = async ({
+export const submitRawReferenceInputNoIdxStep02 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -478,7 +478,7 @@ export const submitRawReferenceInputNoIdxStep02V1 = async ({
   forwardedReferenceInput,
   nativeTxCompactCbor,
   referenceScriptUtxo,
-}: RawStepConfigV1 & {
+}: RawStepConfig & {
   readonly referenceInputsPreimage: readonly MidgardTxInput[];
   readonly badReferenceInputIndex: number;
   readonly forwardedReferenceInput: MidgardTxInput;
@@ -514,29 +514,29 @@ export const submitRawReferenceInputNoIdxStep02V1 = async ({
   if (inputDatum.data === null) {
     throw new Error("raw step-02 thread carries no §2.5 anchor");
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: inputDatum.data.verified_tx_id,
     nativeTxCompactCbor,
-    itemCbors: referenceInputsPreimage.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: referenceInputsPreimage.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     label: "Raw reference-input-no-idx step 02 reference-inputs",
   });
   signer.selectWallet(lucid);
-  const published = await publishFaultProofFieldCarriageV1({
+  const published = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
     publisherAddress: signer.address,
     label: "Raw reference-input-no-idx step 02 reference-inputs field",
   });
-  const stepReference = requireFaultProofStepReferenceScriptV1({
+  const stepReference = requireFaultProofStepReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: chain.steps[1].spendingScriptHash,
     label: "raw reference-input-no-idx step 02",
   });
   const referenceInputs = [...published, stepReference];
-  const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     label: "Raw reference-input-no-idx step 02 reference-inputs",
@@ -549,9 +549,7 @@ export const submitRawReferenceInputNoIdxStep02V1 = async ({
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: referenceInputNoIdxStep03StateFromBadInputV1(
-        forwardedReferenceInput,
-      ),
+      data: referenceInputNoIdxStep03StateFromBadInput(forwardedReferenceInput),
     },
     ReferenceInputNoIdxStep03Datum,
   );
@@ -617,7 +615,7 @@ export const submitRawReferenceInputNoIdxStep02V1 = async ({
  * reaches the validator's own
  * `bad_reference_input_output_index >= field_item_count(outputs_view)`.
  */
-export const submitRawReferenceInputNoIdxStep04V1 = async ({
+export const submitRawReferenceInputNoIdxStep04 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -627,10 +625,10 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
   nativeTxCompactCbor,
   referenceScriptUtxo,
   witnessReferenceScripts,
-}: RawStepConfigV1 & {
+}: RawStepConfig & {
   readonly outputsPreimage: readonly MidgardTxOutput[];
   readonly nativeTxCompactCbor: string;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }): Promise<string> => {
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
@@ -663,29 +661,29 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
   if (inputDatum.data === null) {
     throw new Error("raw step-04 thread carries no producing-tx anchor");
   }
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.outputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: inputDatum.data.producing_tx_id,
     nativeTxCompactCbor,
-    itemCbors: outputsPreimage.map(encodeMidgardTxOutputCanonicalV1),
+    itemCbors: outputsPreimage.map(encodeMidgardTxOutputCanonical),
     owner: signer.paymentKeyHash,
     label: "Raw reference-input-no-idx step 04 outputs",
   });
   signer.selectWallet(lucid);
-  const published = await publishFaultProofFieldCarriageV1({
+  const published = await publishFaultProofFieldCarriage({
     lucid,
     signer,
     planned,
     publisherAddress: signer.address,
     label: "Raw reference-input-no-idx step 04 outputs field",
   });
-  const stepReference = requireFaultProofStepReferenceScriptV1({
+  const stepReference = requireFaultProofStepReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: chain.steps[3].spendingScriptHash,
     label: "raw reference-input-no-idx step 04",
   });
   const referenceInputs = [...published, stepReference];
-  const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const outputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     label: "Raw reference-input-no-idx step 04 outputs",
@@ -770,12 +768,12 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const computationThreadCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts.computationThreadMint,
     label: "raw reference-input-no-idx step 04 computation-thread mint",
   });
-  const fraudProofCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: "raw reference-input-no-idx step 04 fraud-proof mint",

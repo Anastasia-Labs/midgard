@@ -9,7 +9,7 @@
  *
  * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
  * whole `reference_inputs_preimage: List<MidgardTxInput>`; it now carries a
- * `FieldOpeningV1`, and the validator reads item `bad_reference_input_index`
+ * `FieldOpening`, and the validator reads item `bad_reference_input_index`
  * off the authenticated view.
  *
  * **What distinguishes field 1 from field 0 is position, not encoding.** The
@@ -17,7 +17,7 @@
  * items were committed "under `bounded_collection_v1.from_items(1, ...)`"; §4
  * removed field-index domain separation, so identical items in fields 0 and 1
  * commit to identical hashes and only the slot the door reads tells them apart.
- * {@link planFaultProofFieldOpeningV1} names the slot explicitly and checks the
+ * {@link planFaultProofFieldOpening} names the slot explicitly and checks the
  * preimage against the commitment the compact body carries *there*, which is the
  * off-chain twin of `field_commitment_at`.
  *
@@ -26,9 +26,9 @@
  * step-01 output datum, never from the file.
  */
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -45,9 +45,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -57,15 +57,15 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
+import type { WithdrawnReferenceInputContracts } from "./contracts-v1.js";
 import {
-  requireWithdrawnReferenceInputReferenceScriptV1,
-  requireWithdrawnReferenceInputStepStateV1,
-  requireWithdrawnReferenceInputThreadUtxoV1,
+  requireWithdrawnReferenceInputReferenceScript,
+  requireWithdrawnReferenceInputStepState,
+  requireWithdrawnReferenceInputThreadUtxo,
   withdrawnReferenceInputSubmitError,
 } from "./submit-common-v1.js";
 
@@ -111,7 +111,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: WithdrawnReferenceInputContractsV1;
+  readonly contracts: WithdrawnReferenceInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -126,19 +126,19 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** Diagnostic/emulator fallback only. Production workflows set false. */
   readonly publishMissingCarriage?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputStep02Result> => {
   const steps = contracts.steps;
   const { threadUtxo, threadToken } =
-    await requireWithdrawnReferenceInputThreadUtxoV1({
+    await requireWithdrawnReferenceInputThreadUtxo({
       lucid,
       contracts,
       categoryId,
       stepIndex: 1,
       threadOutRef,
     });
-  const inputState = requireWithdrawnReferenceInputStepStateV1({
+  const inputState = requireWithdrawnReferenceInputStepState({
     threadUtxo,
     signer,
     schema: WithdrawnReferenceInputStep02Datum,
@@ -159,16 +159,16 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   // removed domain separation, the resulting commitment, so it is the field
   // index named here — never the encoding — that stops a spend-inputs preimage
   // from opening this slot.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: inputState.bad_tx_id,
     nativeTxCompactCbor,
-    itemCbors: referenceInputs.map(encodeMidgardTxInputCanonicalV1),
+    itemCbors: referenceInputs.map(encodeMidgardTxInputCanonical),
     owner: signer.paymentKeyHash,
     label: "Withdrawn-reference-input step 02 reference-inputs",
   });
   const verifiedTxReferenceInputsHash = planned.commitment;
-  const stepReference = requireWithdrawnReferenceInputReferenceScriptV1({
+  const stepReference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: steps[1].spendingScriptHash,
     stepIndex: 1,
@@ -183,7 +183,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     (planned.plan.publications.length === 0
       ? []
       : publishMissingCarriage
-        ? await publishFaultProofFieldCarriageV1({
+        ? await publishFaultProofFieldCarriage({
             lucid,
             signer,
             planned,
@@ -205,7 +205,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
   ];
-  const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: transactionReferenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
@@ -295,10 +295,10 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
     referenceScripts: [
-      workflowReferenceScriptV1({
+      workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-reference-input step-02",
         utxo: referenceScriptUtxo,
         expectedScript: contracts.steps[1].spendingScript,

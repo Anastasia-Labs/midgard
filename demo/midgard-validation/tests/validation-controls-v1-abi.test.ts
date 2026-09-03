@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
   encodeCbor,
-  verifyMidgardBoundedItemChunkProofV1,
+  verifyMidgardBoundedItemChunkProof,
 } from "@al-ft/midgard-core";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -12,14 +12,14 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import {
-  encodeMidgardCekContextPartsControlV1,
-  encodeMidgardCekFinalContextControlV1,
-  encodeMidgardCekRedeemerContextControlV1,
-  encodeMidgardCekTxInfoAssemblyControlV1,
-  hashMidgardCekContextPartsControlV1,
-  hashMidgardCekFinalContextControlV1,
-  hashMidgardCekRedeemerContextControlV1,
-  hashMidgardCekTxInfoAssemblyControlV1,
+  encodeMidgardCekContextPartsControl,
+  encodeMidgardCekFinalContextControl,
+  encodeMidgardCekRedeemerContextControl,
+  encodeMidgardCekTxInfoAssemblyControl,
+  hashMidgardCekContextPartsControl,
+  hashMidgardCekFinalContextControl,
+  hashMidgardCekRedeemerContextControl,
+  hashMidgardCekTxInfoAssemblyControl,
 } from "../src/cek-context.js";
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
@@ -265,17 +265,14 @@ describe("canonical validation controls V1 ABI", () => {
     if (!(nativeExecution instanceof Constr)) {
       throw new Error("canonical tag 11 must be a constructor");
     }
-    const maximumItem = buildMidgardBoundedItemV1({
+    const maximumItem = buildMidgardBoundedItem({
       fieldIndex: 0,
       itemIndex: 0,
       bytes: Buffer.alloc(4_095, 0x5a),
     });
-    const maximumChunkProof = buildMidgardBoundedItemChunkProofV1(
-      maximumItem,
-      0,
-    );
+    const maximumChunkProof = buildMidgardBoundedItemChunkProof(maximumItem, 0);
     expect(
-      verifyMidgardBoundedItemChunkProofV1({
+      verifyMidgardBoundedItemChunkProof({
         expectedCommitment: maximumItem.commitment,
         proof: maximumChunkProof,
       }),
@@ -346,16 +343,16 @@ describe("canonical validation controls V1 ABI", () => {
 
   it("matches every exported V14 encoder and domain-separated hash", () => {
     const encodings = [
-      encodeMidgardCekRedeemerContextControlV1(v14RedeemerControl),
-      encodeMidgardCekFinalContextControlV1(v14FinalControl),
-      encodeMidgardCekContextPartsControlV1(v14PartsControl),
-      encodeMidgardCekTxInfoAssemblyControlV1(v14AssemblyControl),
+      encodeMidgardCekRedeemerContextControl(v14RedeemerControl),
+      encodeMidgardCekFinalContextControl(v14FinalControl),
+      encodeMidgardCekContextPartsControl(v14PartsControl),
+      encodeMidgardCekTxInfoAssemblyControl(v14AssemblyControl),
     ];
     const hashes = [
-      hashMidgardCekRedeemerContextControlV1(v14RedeemerControl),
-      hashMidgardCekFinalContextControlV1(v14FinalControl),
-      hashMidgardCekContextPartsControlV1(v14PartsControl),
-      hashMidgardCekTxInfoAssemblyControlV1(v14AssemblyControl),
+      hashMidgardCekRedeemerContextControl(v14RedeemerControl),
+      hashMidgardCekFinalContextControl(v14FinalControl),
+      hashMidgardCekContextPartsControl(v14PartsControl),
+      hashMidgardCekTxInfoAssemblyControl(v14AssemblyControl),
     ];
 
     expect(encodings.map((value) => value.toString("hex"))).toEqual(

@@ -7,39 +7,39 @@ import { fileURLToPath } from "node:url";
 import {
   buildMidgardValidationTraceTree,
   computeHash32,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxBodyCompactV1,
-  deriveMidgardNativeTxCompactV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxCompact,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  hashMidgardValidationMachineStateV1,
+  hashMidgardValidationMachineState,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "@al-ft/midgard-core";
-import { planMidgardFieldCarriageV1 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
-import { selectMidgardFieldCarriageTierV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  deriveFieldPreimageCertificationV1,
-  fieldPreimagePublicationDatumCborV1,
-  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
+  deriveFieldPreimageCertification,
+  fieldPreimagePublicationDatumCbor,
+  resolveMidgardFieldCarriageAgainstReferenceInputs,
 } from "@al-ft/midgard-sdk";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationOneStepArgumentV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationOneStepArgument,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  encodeValidationBoundaryEvidenceCborV1,
-  encodeValidationDisputeDataCborV1,
-  encodeScriptDiscoveryControlCborV1,
+  encodeValidationBoundaryEvidenceCbor,
+  encodeValidationDisputeDataCbor,
+  encodeScriptDiscoveryControlCbor,
 } from "../dist/index.js";
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -78,7 +78,7 @@ const address = Buffer.from(
 // trie key. This is both here — the field-0 preimage item and the ledger delete
 // key — so it must come from that one encoder, not from CML's minimal-index
 // `TransactionInput` CBOR, which is 36 bytes and no longer decodes anywhere.
-const spent = encodeMidgardSpendInputItemV1({
+const spent = encodeMidgardSpendInputItem({
   txId: Buffer.alloc(32, 0x11),
   outputIndex: 0,
 });
@@ -101,9 +101,9 @@ const body = {
   auxiliaryDataHash: EMPTY_NULL_ROOT,
   networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
 };
-const bodyHash = computeMidgardNativeTxIdV1({
-  version: MIDGARD_NATIVE_TX_V1_VERSION,
-  transactionBody: deriveMidgardNativeTxBodyCompactV1(body),
+const bodyHash = computeMidgardNativeTxId({
+  version: MIDGARD_NATIVE_TX_VERSION,
+  transactionBody: deriveMidgardNativeTxBodyCompact(body),
   transactionWitnessSetHash: Buffer.alloc(32),
   validity: "TxIsValid",
 });
@@ -120,29 +120,29 @@ const witnessSet = {
   redeemerTxWitsPreimageCbor: encodeByteList([]),
 };
 const transaction = {
-  version: MIDGARD_NATIVE_TX_V1_VERSION,
+  version: MIDGARD_NATIVE_TX_VERSION,
   validity: "TxIsValid",
-  compact: deriveMidgardNativeTxCompactV1(
+  compact: deriveMidgardNativeTxCompact(
     body,
     witnessSet,
     "TxIsValid",
-    MIDGARD_NATIVE_TX_V1_VERSION,
+    MIDGARD_NATIVE_TX_VERSION,
   ),
   body,
   witnessSet,
 };
-const transactionId = computeMidgardNativeTxIdV1(transaction);
-const canonicalTransactionCbor = encodeMidgardNativeTxCanonicalV1(transaction);
+const transactionId = computeMidgardNativeTxId(transaction);
+const canonicalTransactionCbor = encodeMidgardNativeTxCanonical(transaction);
 // The ledger insert key, so the same §5.3 encoder as `spent` above: on-chain
 // `ledger_outref_key` is a direct call to `encode_midgard_tx_input`, and a key
 // built any other way would not be the one the validator derives.
-const createdOutRef = encodeMidgardSpendInputItemV1({
+const createdOutRef = encodeMidgardSpendInputItem({
   txId: transactionId,
   outputIndex: 0,
 });
 const expectedLedgerOps = [
   { type: "delete", key: spent },
-  buildValidationMachineLedgerInsertOpV1({
+  buildValidationMachineLedgerInsertOp({
     key: createdOutRef,
     outputCbor: output,
   }),
@@ -153,7 +153,7 @@ const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
 });
 const trace = await Effect.runPromise(
   buildDeterministicValidationMachineTrace({
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
     sourceKind: "forced",
     blockEndTimeMs: 1_750_000_000_000,
@@ -220,9 +220,9 @@ const buildTraceForOutputItem = async (itemBytes) => {
     ...body,
     outputsPreimageCbor: encodeByteList([sizedOutput]),
   };
-  const vectorBodyHash = computeMidgardNativeTxIdV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
-    transactionBody: deriveMidgardNativeTxBodyCompactV1(vectorBody),
+  const vectorBodyHash = computeMidgardNativeTxId({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    transactionBody: deriveMidgardNativeTxBodyCompact(vectorBody),
     transactionWitnessSetHash: Buffer.alloc(32),
     validity: "TxIsValid",
   });
@@ -238,22 +238,22 @@ const buildTraceForOutputItem = async (itemBytes) => {
     ]),
   };
   const vectorTransaction = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
-    compact: deriveMidgardNativeTxCompactV1(
+    compact: deriveMidgardNativeTxCompact(
       vectorBody,
       vectorWitnessSet,
       "TxIsValid",
-      MIDGARD_NATIVE_TX_V1_VERSION,
+      MIDGARD_NATIVE_TX_VERSION,
     ),
     body: vectorBody,
     witnessSet: vectorWitnessSet,
   };
-  const vectorTransactionId = computeMidgardNativeTxIdV1(vectorTransaction);
+  const vectorTransactionId = computeMidgardNativeTxId(vectorTransaction);
   const vectorOps = [
     { type: "delete", key: spent },
-    buildValidationMachineLedgerInsertOpV1({
-      key: encodeMidgardSpendInputItemV1({
+    buildValidationMachineLedgerInsertOp({
+      key: encodeMidgardSpendInputItem({
         txId: vectorTransactionId,
         outputIndex: 0,
       }),
@@ -266,7 +266,7 @@ const buildTraceForOutputItem = async (itemBytes) => {
   });
   return Effect.runPromise(
     buildDeterministicValidationMachineTrace({
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
       sourceKind: "forced",
       blockEndTimeMs: 1_750_000_000_000,
@@ -276,7 +276,7 @@ const buildTraceForOutputItem = async (itemBytes) => {
       blockSlot: 100n,
       transactionId: vectorTransactionId,
       canonicalTransactionCbor:
-        encodeMidgardNativeTxCanonicalV1(vectorTransaction),
+        encodeMidgardNativeTxCanonical(vectorTransaction),
       priorUtxosRoot: vectorSteps[0].preRoot.toString("hex"),
       postUtxosRoot: vectorSteps.at(-1).postRoot.toString("hex"),
       ledgerWitnessEntries: [{ outRef: spent, output }],
@@ -297,7 +297,7 @@ if (lowIndex < 0) {
 }
 const highIndex = lowIndex + 1;
 // #597 AC4. The four §8-door constructors are the half of #592's wire change no
-// blueprint gate can measure: `ValidationAuxiliaryWitnessV1` reaches a recursive
+// blueprint gate can measure: `ValidationAuxiliaryWitness` reaches a recursive
 // Aiken definition through its CEK arm, so `sdk-aiken-schema-parity` cannot
 // normalize it (see the note at its `ABI_MAPPINGS`). Publishing one *emitted*
 // `transactionFieldChunk` auxiliary here checks the two language halves against
@@ -311,14 +311,14 @@ if (fieldChunkIndex < 0) {
   throw new Error("generated trace has no transactionFieldChunk transition");
 }
 const fieldChunkWitness = trace.witnesses[fieldChunkIndex];
-const fieldChunkArgument = buildValidationOneStepArgumentV1({
+const fieldChunkArgument = buildValidationOneStepArgument({
   trace,
   stateIndex: fieldChunkIndex,
 });
 const fieldChunkFieldIndex = fieldChunkWitness.auxiliary.fieldIndex;
 const fieldChunkItemIndex = fieldChunkWitness.auxiliary.itemIndex;
 const fieldChunkPreimage = fieldChunkWitness.auxiliary.fieldPreimage;
-if (selectMidgardFieldCarriageTierV1(fieldChunkPreimage.length) !== "Inline") {
+if (selectMidgardFieldCarriageTier(fieldChunkPreimage.length) !== "Inline") {
   throw new Error(
     "generated transactionFieldChunk preimage is not in the tier-1 domain",
   );
@@ -331,11 +331,11 @@ if (selectMidgardFieldCarriageTierV1(fieldChunkPreimage.length) !== "Inline") {
 // the preimage, and it is those bytes the Aiken door has to decode.
 //
 // Everything is producer-emitted. The preimage is a real field-2 §5.1 envelope
-// out of a real trace; `planMidgardFieldCarriageV1` picks the tier by §8.4's
+// out of a real trace; `planMidgardFieldCarriage` picks the tier by §8.4's
 // partition over its length; the publication datums are
-// `fieldPreimagePublicationDatumCborV1`'s bytes and the manifest is
-// `deriveFieldPreimageCertificationV1`'s; and every index comes back from
-// `resolveMidgardFieldCarriageAgainstReferenceInputsV1`, which locates each one
+// `fieldPreimagePublicationDatumCbor`'s bytes and the manifest is
+// `deriveFieldPreimageCertification`'s; and every index comes back from
+// `resolveMidgardFieldCarriageAgainstReferenceInputs`, which locates each one
 // **by content** in the canonically-sorted list (§8.7). No index is written down
 // in this file.
 //
@@ -366,7 +366,7 @@ const tierVector = async (itemBytes, expectedTier) => {
     );
   }
   const planInput = vectorTrace.witnesses[stateIndex].auxiliary;
-  const plan = planMidgardFieldCarriageV1({
+  const plan = planMidgardFieldCarriage({
     owner: carriageOwner,
     txId: vectorTrace.states[0].transactionId,
     fieldIndex: planInput.fieldIndex,
@@ -384,7 +384,7 @@ const tierVector = async (itemBytes, expectedTier) => {
       outputIndex: offset,
       address: "addr_test1_prover_key_address",
       assets: { lovelace: 5_000_000n },
-      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     })),
     ...(plan.tier === "Certified"
       ? [
@@ -394,17 +394,17 @@ const tierVector = async (itemBytes, expectedTier) => {
             address: "addr_test1_field_preimage_certificate",
             assets: {
               lovelace: 5_000_000n,
-              [`${certificatePolicyId}${deriveFieldPreimageCertificationV1(plan).assetNameHex}`]:
+              [`${certificatePolicyId}${deriveFieldPreimageCertification(plan).assetNameHex}`]:
                 1n,
             },
-            datum: deriveFieldPreimageCertificationV1(plan).datumCbor,
+            datum: deriveFieldPreimageCertification(plan).datumCbor,
           },
         ]
       : []),
   ];
   const resolveFieldCarriage = ({ fieldIndex, fieldPreimage }) =>
-    resolveMidgardFieldCarriageAgainstReferenceInputsV1({
-      plan: planMidgardFieldCarriageV1({
+    resolveMidgardFieldCarriageAgainstReferenceInputs({
+      plan: planMidgardFieldCarriage({
         owner: carriageOwner,
         txId: vectorTrace.states[0].transactionId,
         fieldIndex,
@@ -414,7 +414,7 @@ const tierVector = async (itemBytes, expectedTier) => {
       certificatePolicyId,
     });
   const carriage = resolveFieldCarriage(planInput);
-  const argument = buildValidationOneStepArgumentV1({
+  const argument = buildValidationOneStepArgument({
     trace: vectorTrace,
     stateIndex,
     resolveFieldCarriage,
@@ -441,24 +441,24 @@ const challengerStates = trace.states.map((state, index) => {
   return { ...state, workRoot };
 });
 const challengerTree = buildMidgardValidationTraceTree(
-  challengerStates.map(hashMidgardValidationMachineStateV1),
+  challengerStates.map(hashMidgardValidationMachineState),
   trace.verdict,
   trace.tree.descriptor.rejectionCodeHash,
 );
 const dispute = {
-  version: MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+  version: MIDGARD_VALIDATION_DISPUTE_VERSION,
   operatorDescriptor: trace.tree.descriptor,
   challengerDescriptor: challengerTree.descriptor,
   lowIndex,
   highIndex,
-  agreedLowHash: hashMidgardValidationMachineStateV1(trace.states[lowIndex]),
+  agreedLowHash: hashMidgardValidationMachineState(trace.states[lowIndex]),
   operatorHighHash: trace.tree.proofs[highIndex].stateHash,
   challengerHighHash: challengerTree.proofs[highIndex].stateHash,
   round: 1,
   responseDeadline: 1_800_000_000_000,
   turn: { type: "readyForOneStep" },
 };
-const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCborV1({
+const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCbor({
   dispute,
   operatorTrace: trace,
   challengerTrace: {
@@ -467,8 +467,8 @@ const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCborV1({
     tree: challengerTree,
   },
 });
-const disputeCbor = encodeValidationDisputeDataCborV1(dispute);
-const oneStepArgument = buildValidationOneStepArgumentV1({
+const disputeCbor = encodeValidationDisputeDataCbor(dispute);
+const oneStepArgument = buildValidationOneStepArgument({
   trace,
   stateIndex: lowIndex,
 });
@@ -529,7 +529,7 @@ if (retiredItemEvidenceHash.equals(evidenceHash)) {
     "retired carriage-committed evidence hash collided with the transition-only commitment",
   );
 }
-const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCborV1({
+const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCbor({
   purposeCursor: 1,
   sourceCursor: 2,
   redeemerCursor: 3,
@@ -579,7 +579,7 @@ use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_dispute_v1
 use midgard/validation_machine_v1.{
   TransactionFieldChunkWitness, TransactionFieldItemWitness,
-  ValidationAuxiliaryWitnessV1,
+  ValidationAuxiliaryWitness,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
@@ -619,10 +619,10 @@ const script_discovery_control_cbor =
 
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
-  expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
+  expect dispute: validation_dispute_v1.ValidationDispute = dispute_data
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
-      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidence
     = boundary_evidence_data
   and {
     bytearray.length(boundary_evidence_cbor) == ${boundaryEvidenceCbor.length.toString()},
@@ -639,12 +639,12 @@ test typescript_generated_one_step_boundary_is_authenticated() {
 test typescript_generated_canonical_decode_step_is_exact() {
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
-      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidence
     = boundary_evidence_data
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
-  expect transition: validation_machine_v1.ValidationOneStepWitnessV1 = transition_data
+  expect transition: validation_machine_v1.ValidationOneStepWitness = transition_data
   expect Some(auxiliary_data) = cbor.deserialise(auxiliary_cbor)
-  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitness = auxiliary_data
   and {
     bytearray.length(transition_cbor) == ${oneStepArgument.transitionCbor.length.toString()},
     bytearray.length(auxiliary_cbor) == ${oneStepArgument.auxiliaryCbor.length.toString()},
@@ -667,7 +667,7 @@ test typescript_generated_canonical_decode_step_is_exact() {
 ///
 /// This is the cross-language pin for #592's four moved door constructors. It
 /// checks three things a blueprint comparison cannot: that the emitted bytes
-/// deserialise as \`ValidationAuxiliaryWitnessV1\` at all, that they land on
+/// deserialise as \`ValidationAuxiliaryWitness\` at all, that they land on
 /// \`TransactionFieldChunkWitness\` — Constr 1, whose *index* is unchanged while
 /// its shape moved, so a mis-tagged emission decodes as the wrong constructor
 /// rather than failing — and that the three fields carry exactly the values the
@@ -678,7 +678,7 @@ test typescript_generated_canonical_decode_step_is_exact() {
 /// below (#600).
 test typescript_generated_field_chunk_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect auxiliary: ValidationAuxiliaryWitness = auxiliary_data
   expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
   and {
     bytearray.length(field_chunk_auxiliary_cbor) == ${fieldChunkArgument.auxiliaryCbor.length.toString()},
@@ -710,7 +710,7 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
 /// transaction's *whole* reference-input list and not just its carriage.
 test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(raw_utxo_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect auxiliary: ValidationAuxiliaryWitness = auxiliary_data
   expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
   and {
     // O(1) in field size: a tier-2 carriage is one integer.
@@ -733,7 +733,7 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
 /// just the shape.
 test typescript_generated_certified_carriage_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(certified_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
+  expect auxiliary: ValidationAuxiliaryWitness = auxiliary_data
   expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
   and {
     // O(1) in field size at the top of the ladder too: at most three indices
@@ -761,7 +761,7 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
 /// commitment arithmetic, not delivery.
 test typescript_generated_complete_item_commitment_is_transition_only() {
   expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
-  expect item_auxiliary: ValidationAuxiliaryWitnessV1 = item_auxiliary_data
+  expect item_auxiliary: ValidationAuxiliaryWitness = item_auxiliary_data
   expect TransactionFieldItemWitness { carriage } = item_auxiliary
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
   let no_auxiliary_data: Data = validation_machine_v1.NoAuxiliaryWitness

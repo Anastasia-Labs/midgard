@@ -5,14 +5,14 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import {
@@ -34,16 +34,16 @@ import {
   MigrationRunner,
 } from "../src/database/index.js";
 import {
-  observeVisibleTxOrderCarriageV1,
+  observeVisibleTxOrderCarriage,
   reconcileVisibleTxOrderUTxOs,
-  reconstructTxOrderMaterialV1,
+  reconstructTxOrderMaterial,
 } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 import {
-  fetchKupoAncestorPointV1,
-  fetchKupoCreationPointV1,
-  readOgmiosBlockTransactionV1,
-  resolveCarriageReferenceInputsV1,
-  txOrderMintRedeemerV1,
+  fetchKupoAncestorPoint,
+  fetchKupoCreationPoint,
+  readOgmiosBlockTransaction,
+  resolveCarriageReferenceInputs,
+  txOrderMintRedeemer,
 } from "../src/l1-tx-order-carriage-v1.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
@@ -54,8 +54,8 @@ import {
   NodeConfig,
 } from "../src/services/index.js";
 import {
-  type LocalL1V1,
-  startLocalL1ObservationV1,
+  type LocalL1,
+  startLocalL1Observation,
 } from "./helpers/local-l1-observation.js";
 
 /**
@@ -71,8 +71,8 @@ import {
  *
  * **What is real here.** The order transaction is built on the Lucid emulator and
  * really submitted, so its bytes are a ledger's. Its mint redeemer is produced by
- * the SDK's own `txOrderMaterialCarriageVectorV1` against the transaction's actual
- * reference-input set, its datum by the SDK's `TxOrderDatumV1`, and its carriage
+ * the SDK's own `txOrderMaterialCarriageVector` against the transaction's actual
+ * reference-input set, its datum by the SDK's `TxOrderDatum`, and its carriage
  * by the SDK's publication and certification builders — no §8 value in the
  * observation is written by this file. The observation surfaces
  * (`helpers/local-l1-observation.ts`) implement Ogmios chain-sync over a real
@@ -102,9 +102,9 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
  * §8.4's partition rather than this file's preference.
  */
 const nativeTransactionCbor = (outputFills: readonly number[]): Buffer =>
-  encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1({
-      version: MIDGARD_NATIVE_TX_V1_VERSION,
+  encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
       validity: "TxIsValid",
       body: {
         spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -153,7 +153,7 @@ type Harness = {
   readonly contracts: SDK.MidgardValidators;
   readonly creatorAddress: string;
   readonly creatorKeyHash: Buffer;
-  readonly l1: LocalL1V1;
+  readonly l1: LocalL1;
 };
 
 const loadAlwaysSucceedsContracts = (): Promise<SDK.MidgardValidators> =>
@@ -181,7 +181,7 @@ const makeHarness = async (): Promise<Harness> => {
     contracts,
     creatorAddress,
     creatorKeyHash: Buffer.from(credential.hash, "hex"),
-    l1: await startLocalL1ObservationV1(),
+    l1: await startLocalL1Observation(),
   };
   // One self-payment, so the creator always holds a second UTxO for the order to
   // reference. It is observed like every other transaction, because the reader
@@ -215,15 +215,13 @@ const submitAndObserve = async (
 
 const publishCarriage = async (
   harness: Harness,
-  plan: SDK.TxOrderCarriagePlanV1,
+  plan: SDK.TxOrderCarriagePlan,
 ): Promise<readonly UTxO[]> => {
   const published: UTxO[] = [];
   for (const field of plan.referenced) {
-    for (const publication of SDK.fieldPreimagePublicationOutputsV1(
-      field.plan,
-    )) {
+    for (const publication of SDK.fieldPreimagePublicationOutputs(field.plan)) {
       const tx = await Effect.runPromise(
-        SDK.buildUnsignedFieldPreimagePublicationV1Program(harness.lucid, {
+        SDK.buildUnsignedFieldPreimagePublicationProgram(harness.lucid, {
           publication,
           publisherAddress: harness.creatorAddress,
         }),
@@ -238,7 +236,7 @@ const publishCarriage = async (
     }
     const chunkUtxos = published.slice(-field.plan.publications.length);
     const tx = await Effect.runPromise(
-      SDK.buildUnsignedFieldPreimageCertificationV1Program(harness.lucid, {
+      SDK.buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
         plan: field.plan,
         certificatePolicyId:
           harness.contracts.fieldPreimageCertificate.policyId,
@@ -275,14 +273,14 @@ const submitForcedOrder = async ({
   readonly nativeTxCbor: Buffer;
   readonly inlineReserveBytes?: number;
 }): Promise<{
-  readonly plan: SDK.TxOrderCarriagePlanV1;
+  readonly plan: SDK.TxOrderCarriagePlan;
   readonly orderUtxo: SDK.TxOrderUTxOV1;
 }> => {
-  const material = SDK.deriveTxOrderMaterialV1({
+  const material = SDK.deriveTxOrderMaterial({
     nativeTxCbor,
     owner: harness.creatorKeyHash,
   });
-  const plan = SDK.planTxOrderMaterialCarriageV1({
+  const plan = SDK.planTxOrderMaterialCarriage({
     material,
     owner: harness.creatorKeyHash,
     ...(inlineReserveBytes === undefined ? {} : { inlineReserveBytes }),
@@ -309,7 +307,7 @@ const submitForcedOrder = async ({
   // it lands.
   const referenceInputs = [...carriageUtxos, unrelatedReference];
   const unit = `${harness.contracts.txOrder.policyId}${Buffer.from("order").toString("hex")}`;
-  const datum: SDK.TxOrderDatumV1 = {
+  const datum: SDK.TxOrderDatum = {
     event: {
       id: SDK.outputReferenceFromUTxO(nonceInput),
       tx: {
@@ -339,15 +337,15 @@ const submitForcedOrder = async ({
         },
       },
       material_carriage: [
-        ...SDK.txOrderMaterialCarriageVectorV1({
+        ...SDK.txOrderMaterialCarriageVector({
           plan,
           certificatePolicyId:
             harness.contracts.fieldPreimageCertificate.policyId,
           referenceInputs,
         }),
       ],
-    } satisfies SDK.TxOrderMintRedeemerV1,
-    SDK.TxOrderMintRedeemerV1,
+    } satisfies SDK.TxOrderMintRedeemer,
+    SDK.TxOrderMintRedeemer,
   );
   const tx = await harness.lucid
     .newTx()
@@ -357,7 +355,7 @@ const submitForcedOrder = async ({
     .attach.MintingPolicy(harness.contracts.txOrder.mintingScript)
     .pay.ToAddressWithData(
       harness.contracts.txOrder.spendingScriptAddress,
-      { kind: "inline", value: Data.to(datum, SDK.TxOrderDatumV1) },
+      { kind: "inline", value: Data.to(datum, SDK.TxOrderDatum) },
       { lovelace: 3_000_000n, [unit]: 1n },
     )
     .complete({ localUPLCEval: true });
@@ -369,7 +367,7 @@ const submitForcedOrder = async ({
     harness.contracts.txOrder.spendingScriptAddress,
   );
   const [orderUtxo] = await Effect.runPromise(
-    SDK.utxosToTxOrderUTxOsV1(orderUtxos, harness.contracts.txOrder.policyId),
+    SDK.utxosToTxOrderUTxOs(orderUtxos, harness.contracts.txOrder.policyId),
   );
   if (orderUtxo === undefined) {
     throw new Error("the submitted forced order is not visible on the ledger");
@@ -378,11 +376,9 @@ const submitForcedOrder = async ({
 };
 
 const carriageEffect = (harness: Harness, orderUtxo: SDK.TxOrderUTxOV1) =>
-  observeVisibleTxOrderCarriageV1(
-    orderUtxo,
-    harness.contracts.txOrder.policyId,
-    { timeoutMs: 10_000 },
-  ).pipe(
+  observeVisibleTxOrderCarriage(orderUtxo, harness.contracts.txOrder.policyId, {
+    timeoutMs: 10_000,
+  }).pipe(
     Effect.provideService(NodeConfig, {
       L1_OGMIOS_KEY: harness.l1.ogmiosUrl,
       L1_KUPO_KEY: harness.l1.kupoUrl,
@@ -448,16 +444,16 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     // one policy, so the pointer here is 0; the multi-policy case, where that
     // distinction has teeth, is pinned in the selection suite at the foot of this
     // file (the Lucid builder cannot put a second policy in this transaction).
-    const createdAt = await fetchKupoCreationPointV1({
+    const createdAt = await fetchKupoCreationPoint({
       kupoUrl: harness.l1.kupoUrl,
       outRef: {
         txHash: orderUtxo.utxo.txHash,
         outputIndex: orderUtxo.utxo.outputIndex,
       },
     });
-    const observed = await readOgmiosBlockTransactionV1({
+    const observed = await readOgmiosBlockTransaction({
       ogmiosUrl: harness.l1.ogmiosUrl,
-      intersection: await fetchKupoAncestorPointV1({
+      intersection: await fetchKupoAncestorPoint({
         kupoUrl: harness.l1.kupoUrl,
         slot: createdAt.slot,
       }),
@@ -468,7 +464,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
       harness.contracts.txOrder.policyId,
     ]);
     expect(
-      txOrderMintRedeemerV1(observed, harness.contracts.txOrder.policyId),
+      txOrderMintRedeemer(observed, harness.contracts.txOrder.policyId),
     ).toBe(
       observed.redeemers.find((redeemer) => redeemer.purpose === "mint")
         ?.redeemer,
@@ -480,7 +476,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     ]);
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: orderUtxo.datum.event.tx,
           material,
         }),
@@ -494,7 +490,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     // The same preimage as tier 1. §8.4's partition puts it inside `K`, so which
     // of tiers 1–2 carries it is the creator's budget decision: an order with no
     // inline reserve publishes it instead, which is the demotion
-    // `planTxOrderMaterialCarriageV1` exists for.
+    // `planTxOrderMaterialCarriage` exists for.
     const { plan, orderUtxo } = await submitForcedOrder({
       harness,
       nativeTxCbor,
@@ -508,7 +504,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     ]);
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: orderUtxo.datum.event.tx,
           material,
         }),
@@ -536,7 +532,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     expect(entry?.carriage).toBe("Certified");
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: orderUtxo.datum.event.tx,
           material,
         }),
@@ -575,16 +571,16 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     // *transaction's own CBOR order*, which this builder writes in insertion
     // order, so the two already differ above; reversing it changes nothing, which
     // is what "the wire order is not trusted" means operationally.
-    const createdAt = await fetchKupoCreationPointV1({
+    const createdAt = await fetchKupoCreationPoint({
       kupoUrl: harness.l1.kupoUrl,
       outRef: {
         txHash: orderUtxo.utxo.txHash,
         outputIndex: orderUtxo.utxo.outputIndex,
       },
     });
-    const observed = await readOgmiosBlockTransactionV1({
+    const observed = await readOgmiosBlockTransaction({
       ogmiosUrl: harness.l1.ogmiosUrl,
-      intersection: await fetchKupoAncestorPointV1({
+      intersection: await fetchKupoAncestorPoint({
         kupoUrl: harness.l1.kupoUrl,
         slot: createdAt.slot,
       }),
@@ -592,7 +588,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
       txHash: orderUtxo.utxo.txHash,
     });
     expect(
-      await resolveCarriageReferenceInputsV1({
+      await resolveCarriageReferenceInputs({
         kupoUrl: harness.l1.kupoUrl,
         referenceInputs: [...observed.referenceInputs].reverse(),
       }),
@@ -612,7 +608,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     // finding something else's redeemer.
     await expect(
       Effect.runPromise(
-        observeVisibleTxOrderCarriageV1(orderUtxo, "ab".repeat(28), {
+        observeVisibleTxOrderCarriage(orderUtxo, "ab".repeat(28), {
           timeoutMs: 10_000,
         }).pipe(
           Effect.provideService(NodeConfig, {
@@ -636,7 +632,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
 
     await expect(
       Effect.runPromise(
-        observeVisibleTxOrderCarriageV1(
+        observeVisibleTxOrderCarriage(
           {
             ...orderUtxo,
             utxo: { ...orderUtxo.utxo, txHash: "cd".repeat(32) },
@@ -720,7 +716,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
 
     // And bytes that arrive but are not the committed ones get no further: they
     // are still structurally raw carriage, so the read itself succeeds, and it is
-    // the §4 hash door in `reconstructTxOrderMaterialV1` that refuses them. That
+    // the §4 hash door in `reconstructTxOrderMaterial` that refuses them. That
     // is the invariant this whole module rests on — the source is never trusted.
     harness.l1.rewriteDatums(
       (datum) => `${datum.slice(0, -2)}${datum.endsWith("ff") ? "ee" : "ff"}`,
@@ -731,7 +727,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     ]);
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: orderUtxo.datum.event.tx,
           material: corrupted,
         }),
@@ -743,7 +739,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     harness.l1.rewriteDatums(null);
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: orderUtxo.datum.event.tx,
           material: await readCarriage(harness, orderUtxo),
         }),
@@ -767,7 +763,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
     expect(material).toBeUndefined();
     await expect(
       Effect.runPromise(
-        reconstructTxOrderMaterialV1({
+        reconstructTxOrderMaterial({
           payload: orderUtxo.datum.event.tx,
           material,
         }),
@@ -779,7 +775,7 @@ describe("V1 forced-order §8 carriage, read off L1", () => {
 /**
  * The same read, reached the way production reaches it.
  *
- * Everything above calls {@link observeVisibleTxOrderCarriageV1} directly, which
+ * Everything above calls {@link observeVisibleTxOrderCarriage} directly, which
  * leaves the wiring between it and the fiber's own entry point proved only by the
  * type-checker: `reconcileVisibleTxOrderUTxOs` threads the tx-order policy id and
  * the transport overrides down through `txOrderUTxOToEntry`, and a wrong thread
@@ -865,13 +861,13 @@ describe.skipIf(!dbEnabled)(
               ...harness.contracts.cekProgramMaterial,
               spendingScriptAddress: unusedAddress,
             },
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           } as never),
           Effect.provideService(
             ContractDeploymentIdentity,
             ContractDeploymentIdentity.make({
               kind: "derived",
-              consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
             }),
           ),
           Effect.provideService(NodeConfig, nodeConfig as never),
@@ -942,7 +938,7 @@ describe("tx-order mint redeemer selection", () => {
 
   it("selects by the policy's position in the ascending mint list", () => {
     expect(
-      txOrderMintRedeemerV1(
+      txOrderMintRedeemer(
         transaction(
           [below, target],
           [
@@ -958,7 +954,7 @@ describe("tx-order mint redeemer selection", () => {
 
   it("refuses a transaction that mints nothing under the policy", () => {
     expect(() =>
-      txOrderMintRedeemerV1(
+      txOrderMintRedeemer(
         transaction(
           [below],
           [{ purpose: "mint", index: 0, redeemer: "d87980" }],
@@ -973,7 +969,7 @@ describe("tx-order mint redeemer selection", () => {
     // and it belongs to the policy at index 0. Taking it would authenticate an
     // order against a vector the tx-order validator never saw.
     expect(() =>
-      txOrderMintRedeemerV1(
+      txOrderMintRedeemer(
         transaction(
           [below, target],
           [{ purpose: "mint", index: 0, redeemer: "d87980" }],

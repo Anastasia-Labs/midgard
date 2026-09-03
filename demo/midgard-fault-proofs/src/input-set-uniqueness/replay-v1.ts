@@ -1,36 +1,36 @@
 import {
   decodeMidgardNativeByteListPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
-import { forcedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
-  bindForcedDuplicateInputV1,
-  type BoundDuplicateInputV1,
-  inputSetUnionIsStrictlyIncreasingV1,
+  bindForcedDuplicateInput,
+  type BoundDuplicateInput,
+  inputSetUnionIsStrictlyIncreasing,
 } from "./wrongful-rejection-v1.js";
 
-export const INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1 =
+export const INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID =
   "input-set-uniqueness-wrongful-rejection" as const;
 
-export type InputSetUniquenessForcedReplayDetectionV1 = Readonly<{
+export type InputSetUniquenessForcedReplayDetection = Readonly<{
   detectionId: string;
   headerHash: string;
-  violationId: typeof INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1;
+  violationId: typeof INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID;
   position: bigint;
   forcedIndex: number;
   transactionId: string;
-  bound: BoundDuplicateInputV1;
+  bound: BoundDuplicateInput;
   spendInputItemCbors: readonly string[];
   referenceInputItemCbors: readonly string[];
 }>;
 
 /** Complete retained-DA scan; no verdict/evidence callback crosses this API. */
-export const detectInputSetUniquenessForcedReplayV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly InputSetUniquenessForcedReplayDetectionV1[] => {
-  const detections: InputSetUniquenessForcedReplayDetectionV1[] = [];
+export const detectInputSetUniquenessForcedReplay = (
+  block: CanonicalBlockEvidence,
+): readonly InputSetUniquenessForcedReplayDetection[] => {
+  const detections: InputSetUniquenessForcedReplayDetection[] = [];
   block.reconstruction.forcedTransactions.forEach(
     (transaction, forcedIndex) => {
       const verdict = transaction.value.verdict;
@@ -41,7 +41,7 @@ export const detectInputSetUniquenessForcedReplayV1 = (
       ) {
         return;
       }
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
       const source = transaction.value.source;
@@ -73,15 +73,15 @@ export const detectInputSetUniquenessForcedReplayV1 = (
       const spendInputItemCbors = items(0);
       const referenceInputItemCbors = items(1);
       if (
-        !inputSetUnionIsStrictlyIncreasingV1({
+        !inputSetUnionIsStrictlyIncreasing({
           spendInputItemCbors,
           referenceInputItemCbors,
         })
       ) {
         return;
       }
-      const bound = bindForcedDuplicateInputV1(
-        forcedVerdictSubjectV1({
+      const bound = bindForcedDuplicateInput(
+        forcedVerdictSubject({
           transactionId: transaction.value.tx_id,
           sourceKey: transaction.key,
           rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -106,9 +106,9 @@ export const detectInputSetUniquenessForcedReplayV1 = (
       }
       detections.push(
         Object.freeze({
-          detectionId: `${INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
+          detectionId: `${INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}`,
           headerHash: block.headerHash,
-          violationId: INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID_V1,
+          violationId: INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID,
           position: BigInt(forcedIndex),
           forcedIndex,
           transactionId: transaction.value.tx_id,
@@ -122,9 +122,9 @@ export const detectInputSetUniquenessForcedReplayV1 = (
   return Object.freeze(detections);
 };
 
-export const selectCanonicalInputSetUniquenessForcedDetectionV1 = (
-  detections: readonly InputSetUniquenessForcedReplayDetectionV1[],
-): InputSetUniquenessForcedReplayDetectionV1 => {
+export const selectCanonicalInputSetUniquenessForcedDetection = (
+  detections: readonly InputSetUniquenessForcedReplayDetection[],
+): InputSetUniquenessForcedReplayDetection => {
   if (detections.length === 0) {
     throw new Error("inputSetUniqueness: no authenticated wrongful rejection");
   }

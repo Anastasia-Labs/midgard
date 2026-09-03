@@ -38,26 +38,26 @@
  * the #621 route-freedom split; see tests/support/uplc-heap-guard.ts.
  */
 
-import { MIDGARD_V1_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
+import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
 import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   OPTION_B_SKIP_REASON,
-  prepareRouteFreedomJourneyV1,
-  printRouteFreedomCampaignTableV1,
+  prepareRouteFreedomJourney,
+  printRouteFreedomCampaignTable,
   realBlueprintSpeaksOptionBV1,
-  type RouteFreedomJourneyV1,
+  type RouteFreedomJourney,
 } from "./support/route-freedom-journey.js";
 import {
   type CompleteSignedTransactionMeasurement,
-  expectProofFitV1,
+  expectProofFit,
 } from "./support/submit-init-emulator-shared.js";
 
 const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
 const RELIABILITY_BUDGET_BYTES =
   MAX_L1_TX_BYTES -
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
+  MIDGARD_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
 const CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES = 56;
 
 /**
@@ -77,7 +77,7 @@ const RESERVE_FRONTIER_PAYLOAD_BYTES = 13_062;
  * and authenticate become item-size-independent". Observe, the sole
  * item-bound stage, is pinned per journey.
  */
-const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
+const SIX_STAGE_CONSTANT_ROW_BYTES = {
   prepareSelected: 1_808,
   authenticate: 2_600,
   source: 1_855,
@@ -100,7 +100,7 @@ const stageBytesByKind = (
 };
 
 const lastLifecycleMeasurement = (
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   label: string,
 ): CompleteSignedTransactionMeasurement => {
   const stage = journey.lifecycleMeasurements.find(
@@ -114,7 +114,7 @@ const lastLifecycleMeasurement = (
 };
 
 const expectItemIndependentRows = (
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   stageTransactions: readonly {
     readonly kind: string;
     readonly completeSignedBytes: number;
@@ -122,18 +122,18 @@ const expectItemIndependentRows = (
 ): void => {
   expect(
     lastLifecycleMeasurement(journey, "prepare-selected").completeSignedBytes,
-  ).toBe(SIX_STAGE_CONSTANT_ROW_BYTES_V1.prepareSelected);
+  ).toBe(SIX_STAGE_CONSTANT_ROW_BYTES.prepareSelected);
   expect(stageBytesByKind(stageTransactions, "authenticate")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.authenticate,
+    SIX_STAGE_CONSTANT_ROW_BYTES.authenticate,
   );
   expect(stageBytesByKind(stageTransactions, "source")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.source,
+    SIX_STAGE_CONSTANT_ROW_BYTES.source,
   );
   expect(stageBytesByKind(stageTransactions, "proof")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.proof,
+    SIX_STAGE_CONSTANT_ROW_BYTES.proof,
   );
   expect(stageBytesByKind(stageTransactions, "settle")).toBe(
-    SIX_STAGE_CONSTANT_ROW_BYTES_V1.settle,
+    SIX_STAGE_CONSTANT_ROW_BYTES.settle,
   );
 };
 
@@ -160,7 +160,7 @@ const semanticMeasurementAt = (
  */
 const expectWholeJourneyProofFit = (
   headline: string,
-  journey: RouteFreedomJourneyV1,
+  journey: RouteFreedomJourney,
   semanticMeasurements: readonly CompleteSignedTransactionMeasurement[],
   awardMeasurement: CompleteSignedTransactionMeasurement,
 ): void => {
@@ -179,7 +179,7 @@ const expectWholeJourneyProofFit = (
   }
   stages.push(["award", awardMeasurement]);
   for (const [stage, measurement] of stages) {
-    expectProofFitV1({
+    expectProofFit({
       stage: `${headline} ${stage}`,
       measurement,
       maxTxExMem,
@@ -197,7 +197,7 @@ describe.skipIf(!optionB)(
   "post-Option-B direct-route reserve frontier (#622)",
   () => {
     it("keeps 56 bytes of added headroom at the owner-signed 13,522-byte direct threshold", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: RESERVE_FRONTIER_PAYLOAD_BYTES,
         minimumCompleteItemBytes: RESERVE_FRONTIER_ITEM_BYTES - 1,
       });
@@ -206,7 +206,7 @@ describe.skipIf(!optionB)(
       const semantic = await journey.submitSemanticResolution({
         proofItemDelivery: "inline",
       });
-      printRouteFreedomCampaignTableV1(
+      printRouteFreedomCampaignTable(
         "#622 reserve-frontier item 13,522",
         journey,
         semantic,
@@ -272,7 +272,7 @@ describe.skipIf(!optionB)(
     }, 900_000);
 
     it("measures the adjacent 13,523-byte direct probe one byte larger and still completes", async () => {
-      const journey = await prepareRouteFreedomJourneyV1({
+      const journey = await prepareRouteFreedomJourney({
         inlineDatumPayloadBytes: RESERVE_FRONTIER_PAYLOAD_BYTES + 1,
         minimumCompleteItemBytes: RESERVE_FRONTIER_ITEM_BYTES,
       });
@@ -281,7 +281,7 @@ describe.skipIf(!optionB)(
       const semantic = await journey.submitSemanticResolution({
         proofItemDelivery: "inline",
       });
-      printRouteFreedomCampaignTableV1(
+      printRouteFreedomCampaignTable(
         "#622 reserve-frontier+1 item 13,523",
         journey,
         semantic,

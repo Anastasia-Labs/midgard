@@ -1,6 +1,6 @@
 import {
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   NativeScriptInvalidStep04DatumSchema,
   NativeScriptInvalidStep04SpendRedeemerSchema,
   NativeScriptInvalidStep05DatumSchema,
@@ -17,29 +17,29 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  linearFaultStepLabelV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
-  type NativeScriptInvalidContractsV1,
+  type NativeScriptInvalidContracts,
 } from "./contracts-v1.js";
 import {
-  NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1,
-  NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1,
-  nativeScriptInvalidSignerScanStateV1,
-  resolveNativeScriptInvalidSignerCheckpointV1,
+  NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH,
+  NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH,
+  nativeScriptInvalidSignerScanState,
+  resolveNativeScriptInvalidSignerCheckpoint,
 } from "./evidence-machine-v1.js";
 
 type State = NonNullable<
@@ -75,7 +75,7 @@ export const submitNativeScriptInvalidStep04 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: NativeScriptInvalidContractsV1;
+  readonly contracts: NativeScriptInvalidContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -86,13 +86,13 @@ export const submitNativeScriptInvalidStep04 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
-  const label = linearFaultStepLabelV1(FAMILY, stepIndex);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const label = linearFaultStepLabel(FAMILY, stepIndex);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -100,15 +100,15 @@ export const submitNativeScriptInvalidStep04 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer,
     schema: Step04Datum,
     family: FAMILY,
     stepIndex,
   });
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor,
     itemCbors: addressWitnessItems,
@@ -118,7 +118,7 @@ export const submitNativeScriptInvalidStep04 = async ({
     anchorWitnessSetHash: state.bad_tx_witness_set_hash,
     label: `${label} field 7`,
   });
-  const current = resolveNativeScriptInvalidSignerCheckpointV1({
+  const current = resolveNativeScriptInvalidSignerCheckpoint({
     txId: state.bad_tx_id,
     itemCount: addressWitnessItems.length,
     totalLength: planned.preimage.length,
@@ -129,10 +129,10 @@ export const submitNativeScriptInvalidStep04 = async ({
   }
   const remainingItems = addressWitnessItems.length - current.nextItemIndex;
   const batchSize =
-    remainingItems <= NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1
+    remainingItems <= NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH
       ? remainingItems
-      : NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1;
-  const next = nativeScriptInvalidSignerScanStateV1({
+      : NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH;
+  const next = nativeScriptInvalidSignerScanState({
     txId: state.bad_tx_id,
     addressWitnessItems,
     totalLength: planned.preimage.length,
@@ -143,7 +143,7 @@ export const submitNativeScriptInvalidStep04 = async ({
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -151,13 +151,13 @@ export const submitNativeScriptInvalidStep04 = async ({
       label: `${label} field 7`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
     stepIndex,
   });
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -234,7 +234,7 @@ export const submitNativeScriptInvalidStep04 = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

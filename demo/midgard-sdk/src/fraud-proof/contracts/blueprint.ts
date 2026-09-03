@@ -51,7 +51,7 @@ export type FaultProofBlueprint = {
   readonly validators: readonly FaultProofBlueprintValidator[];
 };
 
-export const deriveValidationTraceDeploymentIdV1 = (
+export const deriveValidationTraceDeploymentId = (
   fraudProofCataloguePolicyId: string,
 ): string => {
   if (!/^[0-9a-fA-F]{56}$/u.test(fraudProofCataloguePolicyId)) {

@@ -1,8 +1,8 @@
 import {
-  acceptedVerdictSubjectV1,
-  type ForcedInclusionTxV1,
-  forcedVerdictSubjectV1,
-  type HeaderV1,
+  acceptedVerdictSubject,
+  type ForcedInclusionTx,
+  forcedVerdictSubject,
+  type Header,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -16,59 +16,59 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import {
-  requireLinearFaultInitialDatumV1,
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultInitialDatum,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "../missing-native-script-tx/contracts-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import type { MissingNativeScriptTxContracts } from "../missing-native-script-tx/contracts-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ScriptIntegrityHashMismatchContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ScriptIntegrityHashMismatchContracts } from "./contracts-v1.js";
 import {
-  scriptIntegrityHashMismatchEvidenceClosesV1,
-  type ScriptIntegrityHashMismatchEvidenceV1,
+  type ScriptIntegrityHashMismatchEvidence,
+  scriptIntegrityHashMismatchEvidenceCloses,
 } from "./family-v1.js";
-import type { ScriptIntegrityStageThreeAuthenticationV1 } from "./retained-stage-three-v1.js";
+import type { ScriptIntegrityStageThreeAuthentication } from "./retained-stage-three-v1.js";
 import {
-  AuthenticatedIntegrityV1Schema,
-  BoundIntegrityV1Schema,
-  IntegrityDecisionV1Schema,
-  IntegrityLanguageFoldV1Schema,
-  IntegrityStep01RedeemerV1Schema,
-  IntegrityStep02DatumV1Schema,
-  IntegrityStep02RedeemerV1Schema,
-  IntegrityStep03DatumV1Schema,
-  IntegrityStep03RedeemerV1Schema,
-  IntegrityStep04DatumV1Schema,
-  IntegrityStep04RedeemerV1Schema,
-  IntegrityStep05DatumV1Schema,
-  IntegrityStep05RedeemerV1Schema,
+  AuthenticatedIntegritySchema,
+  BoundIntegritySchema,
+  IntegrityDecisionSchema,
+  IntegrityLanguageFoldSchema,
+  IntegrityStep01RedeemerSchema,
+  IntegrityStep02DatumSchema,
+  IntegrityStep02RedeemerSchema,
+  IntegrityStep03DatumSchema,
+  IntegrityStep03RedeemerSchema,
+  IntegrityStep04DatumSchema,
+  IntegrityStep04RedeemerSchema,
+  IntegrityStep05DatumSchema,
+  IntegrityStep05RedeemerSchema,
 } from "./schemas-v1.js";
 
 const FAMILY = "script-integrity-hash-mismatch";
 type Common = Readonly<{
   lucid: LucidEvolution;
-  contracts: ScriptIntegrityHashMismatchContractsV1;
+  contracts: ScriptIntegrityHashMismatchContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }>;
 
 const boundState = (
-  subject: ReturnType<typeof acceptedVerdictSubjectV1>,
-  header: HeaderV1,
+  subject: ReturnType<typeof acceptedVerdictSubject>,
+  header: Header,
   scriptIntegrityHash: string,
 ) => ({
   subject,
@@ -77,31 +77,31 @@ const boundState = (
   script_integrity_hash: scriptIntegrityHash,
 });
 
-export const submitScriptIntegrityHashMismatchStep01AcceptedV1 = async (
+export const submitScriptIntegrityHashMismatchStep01Accepted = async (
   args: Common & {
     blueprint: unknown;
     network: Parameters<
-      typeof submitMissingNativeScriptTxBindingV1
+      typeof submitMissingNativeScriptTxBinding
     >[0]["network"];
     stateQueueBlockOutRef: string;
     txInclusion: SubmitStep01TxInclusion;
-    header: HeaderV1;
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
-    witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+    header: Header;
+    evidence: ScriptIntegrityHashMismatchEvidence;
+    witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   },
 ) => {
-  const subject = acceptedVerdictSubjectV1(args.txInclusion.nativeTxId);
+  const subject = acceptedVerdictSubject(args.txInclusion.nativeTxId);
   if (
     subject.transaction_id !== args.evidence.finding.subject.transaction_id ||
     args.evidence.finding.subject.direction !== subject.direction
   )
     throw new Error(`${FAMILY}: accepted source differs from evidence`);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     ...args,
     family: FAMILY,
     stepIndex: 0,
   });
-  requireLinearFaultInitialDatumV1({
+  requireLinearFaultInitialDatum({
     threadUtxo,
     signer: args.signer,
     family: FAMILY,
@@ -111,13 +111,13 @@ export const submitScriptIntegrityHashMismatchStep01AcceptedV1 = async (
       fraud_prover: args.signer.paymentKeyHash,
       data: boundState(subject, args.header, args.evidence.scriptIntegrityHash),
     } as never,
-    IntegrityStep02DatumV1Schema as never,
+    IntegrityStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid: args.lucid,
     blueprint: args.blueprint,
     network: args.network,
-    contracts: args.contracts as unknown as MissingNativeScriptTxContractsV1,
+    contracts: args.contracts as unknown as MissingNativeScriptTxContracts,
     signer: args.signer,
     stepIndex: 0,
     threadUtxo,
@@ -125,7 +125,7 @@ export const submitScriptIntegrityHashMismatchStep01AcceptedV1 = async (
     stateQueueBlockOutRef: args.stateQueueBlockOutRef,
     txInclusion: args.txInclusion,
     nextDatum,
-    spendRedeemerSchema: IntegrityStep01RedeemerV1Schema,
+    spendRedeemerSchema: IntegrityStep01RedeemerSchema,
     wrapInclusionArgs: (sourceArgs) => ({
       source: {
         AcceptedSource: {
@@ -140,17 +140,17 @@ export const submitScriptIntegrityHashMismatchStep01AcceptedV1 = async (
   });
 };
 
-export const submitScriptIntegrityHashMismatchStep01ForcedV1 = async (
+export const submitScriptIntegrityHashMismatchStep01Forced = async (
   args: Common & {
-    header: HeaderV1;
-    membership: RootMembershipProof<OutputReference, ForcedInclusionTxV1>;
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
+    header: Header;
+    membership: RootMembershipProof<OutputReference, ForcedInclusionTx>;
+    evidence: ScriptIntegrityHashMismatchEvidence;
   },
 ) => {
   const verdict = args.membership.value.verdict;
   if (verdict === "ForcedTxValid")
     throw new Error(`${FAMILY}: forced-valid source`);
-  const subject = forcedVerdictSubjectV1({
+  const subject = forcedVerdictSubject({
     transactionId: args.membership.value.tx_id,
     sourceKey: args.membership.key,
     rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -161,12 +161,12 @@ export const submitScriptIntegrityHashMismatchStep01ForcedV1 = async (
     subject.direction !== args.evidence.finding.subject.direction
   )
     throw new Error(`${FAMILY}: forced source differs from evidence`);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     ...args,
     family: FAMILY,
     stepIndex: 0,
   });
-  requireLinearFaultInitialDatumV1({
+  requireLinearFaultInitialDatum({
     threadUtxo,
     signer: args.signer,
     family: FAMILY,
@@ -180,9 +180,9 @@ export const submitScriptIntegrityHashMismatchStep01ForcedV1 = async (
         args.evidence.scriptIntegrityHash,
       ),
     } as never,
-    IntegrityStep02DatumV1Schema as never,
+    IntegrityStep02DatumSchema as never,
   );
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: args.referenceScriptUtxo,
     expectedScriptHash: args.contracts.steps[0].spendingScriptHash,
     family: FAMILY,
@@ -218,11 +218,11 @@ export const submitScriptIntegrityHashMismatchStep01ForcedV1 = async (
           },
         ],
       } as never,
-      IntegrityStep01RedeemerV1Schema as never,
+      IntegrityStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   args.signer.selectWallet(args.lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid: args.lucid,
     signerPaymentKeyHash: args.signer.paymentKeyHash,
     threadUtxo,
@@ -258,12 +258,12 @@ const continueState = async <State>({
   redeemerSchema: unknown;
   nextStepIndex: number;
 }) => {
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     ...args,
     family: FAMILY,
     stepIndex,
   });
-  const state = requireLinearFaultStepStateV1<State>({
+  const state = requireLinearFaultStepState<State>({
     threadUtxo,
     signer: args.signer,
     schema: currentSchema as never,
@@ -277,7 +277,7 @@ const continueState = async <State>({
     } as never,
     nextSchema as never,
   );
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: args.referenceScriptUtxo,
     expectedScriptHash: args.contracts.steps[stepIndex]!.spendingScriptHash,
     family: FAMILY,
@@ -309,7 +309,7 @@ const continueState = async <State>({
     );
   }) satisfies BuildTxWithRedeemer;
   args.signer.selectWallet(args.lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid: args.lucid,
     signerPaymentKeyHash: args.signer.paymentKeyHash,
     threadUtxo,
@@ -328,24 +328,24 @@ const continueState = async <State>({
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex}` };
 };
 
-export const submitScriptIntegrityHashMismatchStep02V1 = async (
+export const submitScriptIntegrityHashMismatchStep02 = async (
   args: Common & {
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
-    authentication: ScriptIntegrityStageThreeAuthenticationV1;
+    evidence: ScriptIntegrityHashMismatchEvidence;
+    authentication: ScriptIntegrityStageThreeAuthentication;
   },
 ) => {
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     ...args,
     family: FAMILY,
     stepIndex,
   });
-  const bound = requireLinearFaultStepStateV1<
-    Data.Static<typeof BoundIntegrityV1Schema>
+  const bound = requireLinearFaultStepState<
+    Data.Static<typeof BoundIntegritySchema>
   >({
     threadUtxo,
     signer: args.signer,
-    schema: IntegrityStep02DatumV1Schema as never,
+    schema: IntegrityStep02DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -371,9 +371,9 @@ export const submitScriptIntegrityHashMismatchStep02V1 = async (
   };
   const nextDatum = Data.to(
     { fraud_prover: args.signer.paymentKeyHash, data: authenticated } as never,
-    IntegrityStep03DatumV1Schema as never,
+    IntegrityStep03DatumSchema as never,
   );
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: args.referenceScriptUtxo,
     expectedScriptHash: args.contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -407,11 +407,11 @@ export const submitScriptIntegrityHashMismatchStep02V1 = async (
           },
         ],
       } as never,
-      IntegrityStep02RedeemerV1Schema as never,
+      IntegrityStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   args.signer.selectWallet(args.lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid: args.lucid,
     signerPaymentKeyHash: args.signer.paymentKeyHash,
     threadUtxo,
@@ -430,16 +430,16 @@ export const submitScriptIntegrityHashMismatchStep02V1 = async (
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex}` };
 };
 
-export const submitScriptIntegrityHashMismatchStep03V1 = async (args: Common) =>
+export const submitScriptIntegrityHashMismatchStep03 = async (args: Common) =>
   await continueState({
     args,
     stepIndex: 2,
-    currentSchema: IntegrityStep03DatumV1Schema,
-    nextSchema: IntegrityStep04DatumV1Schema,
-    redeemerSchema: IntegrityStep03RedeemerV1Schema,
+    currentSchema: IntegrityStep03DatumSchema,
+    nextSchema: IntegrityStep04DatumSchema,
+    redeemerSchema: IntegrityStep03RedeemerSchema,
     nextStepIndex: 3,
     nextState: (
-      authenticated: Data.Static<typeof AuthenticatedIntegrityV1Schema>,
+      authenticated: Data.Static<typeof AuthenticatedIntegritySchema>,
     ) => ({
       authenticated,
       cursor: 0n,
@@ -448,20 +448,20 @@ export const submitScriptIntegrityHashMismatchStep03V1 = async (args: Common) =>
     }),
   });
 
-export const submitScriptIntegrityHashMismatchStep04V1 = async (
-  args: Common & { evidence: ScriptIntegrityHashMismatchEvidenceV1 },
+export const submitScriptIntegrityHashMismatchStep04 = async (
+  args: Common & { evidence: ScriptIntegrityHashMismatchEvidence },
 ) => {
-  const { threadUtxo } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo } = await requireLinearFaultThreadUtxo({
     ...args,
     family: FAMILY,
     stepIndex: 3,
   });
-  const fold = requireLinearFaultStepStateV1<
-    Data.Static<typeof IntegrityLanguageFoldV1Schema>
+  const fold = requireLinearFaultStepState<
+    Data.Static<typeof IntegrityLanguageFoldSchema>
   >({
     threadUtxo,
     signer: args.signer,
-    schema: IntegrityStep04DatumV1Schema as never,
+    schema: IntegrityStep04DatumSchema as never,
     family: FAMILY,
     stepIndex: 3,
   });
@@ -494,11 +494,11 @@ export const submitScriptIntegrityHashMismatchStep04V1 = async (
     ...(await continueState({
       args,
       stepIndex: 3,
-      currentSchema: IntegrityStep04DatumV1Schema,
+      currentSchema: IntegrityStep04DatumSchema,
       nextSchema: terminal
-        ? IntegrityStep05DatumV1Schema
-        : IntegrityStep04DatumV1Schema,
-      redeemerSchema: IntegrityStep04RedeemerV1Schema,
+        ? IntegrityStep05DatumSchema
+        : IntegrityStep04DatumSchema,
+      redeemerSchema: IntegrityStep04RedeemerSchema,
       nextStepIndex: terminal ? 4 : 3,
       nextState: () =>
         terminal
@@ -512,29 +512,29 @@ export const submitScriptIntegrityHashMismatchStep04V1 = async (
   };
 };
 
-export const submitScriptIntegrityHashMismatchStep05V1 = async (
+export const submitScriptIntegrityHashMismatchStep05 = async (
   args: Common & {
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
-    witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+    evidence: ScriptIntegrityHashMismatchEvidence;
+    witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   },
 ) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     ...args,
     family: FAMILY,
     stepIndex,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof IntegrityDecisionV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof IntegrityDecisionSchema>
   >({
     threadUtxo,
     signer: args.signer,
-    schema: IntegrityStep05DatumV1Schema as never,
+    schema: IntegrityStep05DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
   if (
-    !scriptIntegrityHashMismatchEvidenceClosesV1(args.evidence) ||
+    !scriptIntegrityHashMismatchEvidenceCloses(args.evidence) ||
     state.expected_hash !== args.evidence.expectedHash ||
     state.authenticated.bound.script_integrity_hash !==
       args.evidence.scriptIntegrityHash
@@ -542,7 +542,7 @@ export const submitScriptIntegrityHashMismatchStep05V1 = async (
     throw new Error(
       `${FAMILY}: terminal state is not the retained contradiction`,
     );
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid: args.lucid,
     family: FAMILY,
     stepIndex,
@@ -552,7 +552,7 @@ export const submitScriptIntegrityHashMismatchStep05V1 = async (
     signer: args.signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: IntegrityStep05RedeemerV1Schema,
+    spendRedeemerSchema: IntegrityStep05RedeemerSchema,
     buildFamilyArgs: (layout) => ({
       input_index: layout.inputIndex,
       output_index: layout.outputIndex,
@@ -565,14 +565,14 @@ export const submitScriptIntegrityHashMismatchStep05V1 = async (
   });
 };
 
-export const submitScriptIntegrityHashMismatchCancelV1 = async (
+export const submitScriptIntegrityHashMismatchCancel = async (
   args: Omit<
-    Parameters<typeof submitLinearFaultCancelV1>[0],
+    Parameters<typeof submitLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
-  > & { contracts: ScriptIntegrityHashMismatchContractsV1 },
+  > & { contracts: ScriptIntegrityHashMismatchContracts },
 ) => {
   const { contracts, ...rest } = args;
-  return await submitLinearFaultCancelV1({
+  return await submitLinearFaultCancel({
     ...rest,
     family: FAMILY,
     steps: contracts.steps,

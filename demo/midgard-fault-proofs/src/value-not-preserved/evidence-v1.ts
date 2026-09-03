@@ -19,18 +19,18 @@
  * step.
  */
 import {
-  buildMidgardLedgerOutputAssetFrontierV1,
-  decodeMidgardLedgerOutputCommitmentV1,
-  type MidgardLedgerOutputAssetV1,
+  buildMidgardLedgerOutputAssetFrontier,
+  decodeMidgardLedgerOutputCommitment,
+  type MidgardLedgerOutputAsset,
 } from "@al-ft/midgard-core";
-import { buildMidgardValidationMerkleMembershipV1 } from "@al-ft/midgard-core";
+import { buildMidgardValidationMerkleMembership } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldCarriageV1,
-  type FieldOpeningV1,
-  fieldOpeningV1ForField,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldCarriage,
+  type FieldOpening,
+  fieldOpeningForField,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   Proof,
 } from "@al-ft/midgard-sdk";
@@ -38,10 +38,10 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "./contracts-v1.js";
 import type {
-  AssetLeafOpeningV1,
-  ClaimedAssetV1,
-  FrontierPeakV1,
-  SpentInputValueWitnessV1,
+  AssetLeafOpening,
+  ClaimedAsset,
+  FrontierPeak,
+  SpentInputValueWitness,
 } from "./schemas-v1.js";
 
 const evidenceError = (message: string): Error =>
@@ -56,10 +56,10 @@ const evidenceError = (message: string): Error =>
  * bytewise, then asset name length-first bytewise) — the exact leaf order of
  * the descriptor's asset frontier and of a canonical mint field.
  */
-export const flattenMidgardValueAssetsV1 = (
+export const flattenMidgardValueAssets = (
   value: MidgardValue,
-): readonly MidgardLedgerOutputAssetV1[] => {
-  const flattened: MidgardLedgerOutputAssetV1[] = [];
+): readonly MidgardLedgerOutputAsset[] => {
+  const flattened: MidgardLedgerOutputAsset[] = [];
   const policies = [...value.assets.keys()].sort((left, right) =>
     Buffer.compare(Buffer.from(left, "hex"), Buffer.from(right, "hex")),
   );
@@ -88,9 +88,9 @@ export const flattenMidgardValueAssetsV1 = (
 };
 
 /** Whether one flattened asset is the claimed unit. */
-export const assetMatchesClaimV1 = (
-  claim: ClaimedAssetV1,
-  asset: MidgardLedgerOutputAssetV1,
+export const assetMatchesClaim = (
+  claim: ClaimedAsset,
+  asset: MidgardLedgerOutputAsset,
 ): boolean =>
   claim !== "AdaAsset" &&
   asset.policyId.toString("hex") === claim.TokenAsset.policy_id &&
@@ -100,14 +100,14 @@ export const assetMatchesClaimV1 = (
  * The claimed asset's quantity in one `MidgardValue` — the machine's
  * per-value contribution restricted to the claimed unit.
  */
-export const claimedQuantityOfValueV1 = (
-  claim: ClaimedAssetV1,
+export const claimedQuantityOfValue = (
+  claim: ClaimedAsset,
   value: MidgardValue,
 ): bigint => {
   if (claim === "AdaAsset") return value.lovelace;
-  return flattenMidgardValueAssetsV1(value).reduce(
+  return flattenMidgardValueAssets(value).reduce(
     (total, asset) =>
-      assetMatchesClaimV1(claim, asset) ? total + asset.quantity : total,
+      assetMatchesClaim(claim, asset) ? total + asset.quantity : total,
     0n,
   );
 };
@@ -120,14 +120,14 @@ export const claimedQuantityOfValueV1 = (
  * Twin of `encode_midgard_tx_input` — the §5.3 fixed 38-byte spend-input
  * item IS the pre-state ledger trie's key for the out-ref.
  */
-export const valueNotPreservedOutpointKeyV1 = (input: MidgardTxInput): Buffer =>
-  encodeMidgardTxInputCanonicalV1(input);
+export const valueNotPreservedOutpointKey = (input: MidgardTxInput): Buffer =>
+  encodeMidgardTxInputCanonical(input);
 
 /**
  * A handle over the pre-state ledger MPF — the same minimal shape the
  * decoding family's evidence takes, so a fixture trie serves both.
  */
-export type ValueNotPreservedLedgerTrieHandleV1 = {
+export type ValueNotPreservedLedgerTrieHandle = {
   readonly rootHex: string;
   readonly prove: (key: Buffer) => Promise<Buffer>;
 };
@@ -138,12 +138,12 @@ export type ValueNotPreservedLedgerTrieHandleV1 = {
  * Refuses a trie whose root is not that commitment — a proof from any other
  * tree would abort on-chain after the thread's unrepeatable bind.
  */
-export const buildValueNotPreservedLedgerMembershipV1 = async ({
+export const buildValueNotPreservedLedgerMembership = async ({
   trie,
   outpointKey,
   prevUtxosRootHex,
 }: {
-  readonly trie: ValueNotPreservedLedgerTrieHandleV1;
+  readonly trie: ValueNotPreservedLedgerTrieHandle;
   readonly outpointKey: Buffer;
   readonly prevUtxosRootHex: string;
 }): Promise<Proof> => {
@@ -163,7 +163,7 @@ export const buildValueNotPreservedLedgerMembershipV1 = async ({
 // ---------------------------------------------------------------------------
 
 /**
- * Builds one `SpentInputValueWitnessV1`.
+ * Builds one `SpentInputValueWitness`.
  *
  * For an ADA claim the walk is empty by requirement — the value is the
  * descriptor's own `lovelace` scalar. For a token claim the witness opens
@@ -173,7 +173,7 @@ export const buildValueNotPreservedLedgerMembershipV1 = async ({
  * descriptor bytes, which is exactly the mismatch the on-chain walk would
  * refuse.
  */
-export const buildSpentInputValueWitnessV1 = async ({
+export const buildSpentInputValueWitness = async ({
   claim,
   descriptorCbor,
   spentValue,
@@ -181,21 +181,21 @@ export const buildSpentInputValueWitnessV1 = async ({
   input,
   prevUtxosRootHex,
 }: {
-  readonly claim: ClaimedAssetV1;
+  readonly claim: ClaimedAsset;
   /** The exact committed `LedgerOutputCommitmentV1` bytes, hex. */
   readonly descriptorCbor: string;
   /** The spent output's value — the source of the asset-leaf walk. */
   readonly spentValue: MidgardValue;
-  readonly trie: ValueNotPreservedLedgerTrieHandleV1;
+  readonly trie: ValueNotPreservedLedgerTrieHandle;
   readonly input: MidgardTxInput;
   readonly prevUtxosRootHex: string;
-}): Promise<SpentInputValueWitnessV1> => {
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+}): Promise<SpentInputValueWitness> => {
+  const descriptor = decodeMidgardLedgerOutputCommitment(
     Buffer.from(descriptorCbor, "hex"),
   );
-  const ledgerMembershipProof = await buildValueNotPreservedLedgerMembershipV1({
+  const ledgerMembershipProof = await buildValueNotPreservedLedgerMembership({
     trie,
-    outpointKey: valueNotPreservedOutpointKeyV1(input),
+    outpointKey: valueNotPreservedOutpointKey(input),
     prevUtxosRootHex,
   });
   if (claim === "AdaAsset") {
@@ -206,8 +206,8 @@ export const buildSpentInputValueWitnessV1 = async ({
       asset_openings: [],
     };
   }
-  const assets = flattenMidgardValueAssetsV1(spentValue);
-  const frontier = buildMidgardLedgerOutputAssetFrontierV1(assets);
+  const assets = flattenMidgardValueAssets(spentValue);
+  const frontier = buildMidgardLedgerOutputAssetFrontier(assets);
   if (frontier.count !== descriptor.assetCount) {
     throw evidenceError(
       `spent value flattens to ${frontier.count.toString()} asset leaves, but the descriptor commits ${descriptor.assetCount.toString()}`,
@@ -221,12 +221,12 @@ export const buildSpentInputValueWitnessV1 = async ({
       "spent value's asset frontier does not re-derive the descriptor's asset_frontier_commitment",
     );
   }
-  const peaks: FrontierPeakV1[] = frontier.frontier.peaks.map((peak) => ({
+  const peaks: FrontierPeak[] = frontier.frontier.peaks.map((peak) => ({
     height: BigInt(peak.height),
     hash: Buffer.from(peak.hash).toString("hex"),
   }));
-  const openings: AssetLeafOpeningV1[] = assets.map((asset, index) => {
-    const membership = buildMidgardValidationMerkleMembershipV1(
+  const openings: AssetLeafOpening[] = assets.map((asset, index) => {
+    const membership = buildMidgardValidationMerkleMembership(
       frontier.leaves,
       index,
     );
@@ -252,15 +252,15 @@ export const buildSpentInputValueWitnessV1 = async ({
  * `spent_input_claimed_quantity_v1` performs, used by the step-02 submitter
  * to pre-compute the advanced thread state.
  */
-export const witnessClaimedQuantityV1 = ({
+export const witnessClaimedQuantity = ({
   claim,
   witness,
 }: {
-  readonly claim: ClaimedAssetV1;
-  readonly witness: SpentInputValueWitnessV1;
+  readonly claim: ClaimedAsset;
+  readonly witness: SpentInputValueWitness;
 }): bigint => {
   if (claim === "AdaAsset") {
-    const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+    const descriptor = decodeMidgardLedgerOutputCommitment(
       Buffer.from(witness.descriptor_cbor, "hex"),
     );
     return descriptor.lovelace;
@@ -280,20 +280,20 @@ export const witnessClaimedQuantityV1 = ({
 // ---------------------------------------------------------------------------
 
 /** The v1 carriage: the step's own redeemer carries the preimage inline. */
-export const inlineFieldCarriageV1 = (preimage: Buffer): FieldCarriageV1 => ({
+export const inlineFieldCarriage = (preimage: Buffer): FieldCarriage => ({
   Inline: { preimage: preimage.toString("hex") },
 });
 
 /** The field-0 (spend inputs) opening both step-02 arms carry. */
-export const spendInputsOpeningV1 = ({
+export const spendInputsOpening = ({
   nativeTxCompactCbor,
   spendInputsPreimageCbor,
 }: {
   readonly nativeTxCompactCbor: string;
   readonly spendInputsPreimageCbor: Buffer;
-}): FieldOpeningV1 =>
-  fieldOpeningV1ForField({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.spendInputs,
+}): FieldOpening =>
+  fieldOpeningForField({
+    fieldIndex: MIDGARD_FIELD_INDEX.spendInputs,
     nativeTxCompactCbor,
-    carriage: inlineFieldCarriageV1(spendInputsPreimageCbor),
+    carriage: inlineFieldCarriage(spendInputsPreimageCbor),
   });

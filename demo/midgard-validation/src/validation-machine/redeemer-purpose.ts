@@ -2,21 +2,21 @@
  * Purpose kinds, redeemer purpose tags, and the pointer/purpose match.
  */
 
-export type MidgardPurposeKindV1 = 0 | 1 | 2 | 3;
+export type MidgardPurposeKind = 0 | 1 | 2 | 3;
 
-export type MidgardRedeemerPurposeTagV1 = 0 | 1 | 3 | 6;
+export type MidgardRedeemerPurposeTag = 0 | 1 | 3 | 6;
 
-export function redeemerTagForPurposeKindV1(
-  purposeKind: MidgardPurposeKindV1,
-): MidgardRedeemerPurposeTagV1;
+export function redeemerTagForPurposeKind(
+  purposeKind: MidgardPurposeKind,
+): MidgardRedeemerPurposeTag;
 
-export function redeemerTagForPurposeKindV1(
+export function redeemerTagForPurposeKind(
   purposeKind: number,
-): MidgardRedeemerPurposeTagV1 | null;
+): MidgardRedeemerPurposeTag | null;
 
-export function redeemerTagForPurposeKindV1(
+export function redeemerTagForPurposeKind(
   purposeKind: number,
-): MidgardRedeemerPurposeTagV1 | null {
+): MidgardRedeemerPurposeTag | null {
   switch (purposeKind) {
     case 0:
       return 0;
@@ -31,9 +31,9 @@ export function redeemerTagForPurposeKindV1(
   }
 }
 
-export const purposeKindForRedeemerTagV1 = (
+export const purposeKindForRedeemerTag = (
   redeemerTag: number,
-): MidgardPurposeKindV1 | null => {
+): MidgardPurposeKind | null => {
   switch (redeemerTag) {
     case 0:
       return 0;
@@ -48,13 +48,13 @@ export const purposeKindForRedeemerTagV1 = (
   }
 };
 
-export const redeemerPointerMatchesPurposeV1 = (input: {
+export const redeemerPointerMatchesPurpose = (input: {
   readonly purposeKind: number;
   readonly purposeIndex: bigint;
   readonly redeemerTag: number;
   readonly redeemerIndex: bigint;
 }): boolean => {
-  const expectedTag = redeemerTagForPurposeKindV1(input.purposeKind);
+  const expectedTag = redeemerTagForPurposeKind(input.purposeKind);
   return (
     expectedTag !== null &&
     input.redeemerTag === expectedTag &&

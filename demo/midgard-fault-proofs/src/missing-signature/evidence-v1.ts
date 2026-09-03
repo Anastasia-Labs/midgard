@@ -21,16 +21,16 @@
  * submitters cannot diverge from them.
  */
 import {
-  encodeMidgardAddressWitnessCanonicalV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardAddressWitnessCanonical,
+  MIDGARD_FIELD_INDEX,
   type MidgardAddressWitness,
-  missingSignatureVkeyHashV1,
+  missingSignatureVkeyHash,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 
 import {
-  type FaultProofFieldOpeningPlanV1,
-  planFaultProofFieldOpeningV1,
+  type FaultProofFieldOpeningPlan,
+  planFaultProofFieldOpening,
 } from "../field-opening-v1.js";
 import { MISSING_SIGNATURE_CATEGORY_LABEL } from "./contracts-v1.js";
 import { missingSignatureSubmitError } from "./submit-common-v1.js";
@@ -48,7 +48,7 @@ import { missingSignatureSubmitError } from "./submit-common-v1.js";
  * witness whose key hashes to the accused signer counts as present even if
  * its signature is garbage — that is `invalid-signature`'s fault (§7.3, D6).
  */
-export const selectMissingSignatureAccusationV1 = ({
+export const selectMissingSignatureAccusation = ({
   requiredSignerHashes,
   addrTxWits,
 }: {
@@ -57,7 +57,7 @@ export const selectMissingSignatureAccusationV1 = ({
 }): { readonly index: bigint; readonly hash: string } | null => {
   const witnessKeyHashes = new Set(
     addrTxWits.map((witness) =>
-      missingSignatureVkeyHashV1(witness.verification_key),
+      missingSignatureVkeyHash(witness.verification_key),
     ),
   );
   const index = requiredSignerHashes.findIndex(
@@ -83,7 +83,7 @@ export const selectMissingSignatureAccusationV1 = ({
  * thread's `verified_tx_id` alone. Item CBOR for field 4 is the raw 28-byte
  * hash (the fixed stride the validator indexes by).
  */
-export const planMissingSignatureRequiredSignersOpeningV1 = ({
+export const planMissingSignatureRequiredSignersOpening = ({
   anchorTxId,
   nativeTxCompactCbor,
   requiredSignerHashes,
@@ -95,9 +95,9 @@ export const planMissingSignatureRequiredSignersOpeningV1 = ({
   readonly requiredSignerHashes: readonly string[];
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 =>
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.requiredSigners,
+}): FaultProofFieldOpeningPlan =>
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.requiredSigners,
     anchorTxId,
     nativeTxCompactCbor,
     itemCbors: requiredSignerHashes.map((hash) => {
@@ -122,7 +122,7 @@ export const planMissingSignatureRequiredSignersOpeningV1 = ({
  * locally re-derived hash would let a stale preimage slip past the §2.5
  * anchor, so callers hand this function the datum's value verbatim.
  */
-export const planMissingSignatureAddressWitnessesOpeningV1 = ({
+export const planMissingSignatureAddressWitnessesOpening = ({
   anchorTxId,
   nativeTxCompactCbor,
   addrTxWits,
@@ -139,12 +139,12 @@ export const planMissingSignatureAddressWitnessesOpeningV1 = ({
   readonly anchorWitnessSetHash: string;
   readonly owner: string;
   readonly publish?: boolean;
-}): FaultProofFieldOpeningPlanV1 =>
-  planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+}): FaultProofFieldOpeningPlan =>
+  planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId,
     nativeTxCompactCbor,
-    itemCbors: addrTxWits.map(encodeMidgardAddressWitnessCanonicalV1),
+    itemCbors: addrTxWits.map(encodeMidgardAddressWitnessCanonical),
     owner,
     witnessSet,
     anchorWitnessSetHash,

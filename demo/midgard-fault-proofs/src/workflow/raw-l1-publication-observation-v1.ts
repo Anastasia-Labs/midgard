@@ -1,21 +1,21 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {
-  admitFraudProofRawL1SnapshotV1,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1,
-  type FraudProofRawL1SnapshotAuthorityV1,
+  admitFraudProofRawL1Snapshot,
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofRawL1SnapshotAuthority,
 } from "./raw-l1-snapshot-v1.js";
-import type { VerifiedFraudProofReleaseFinalityPolicyV1 } from "./release-finality-policy-v1.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy-v1.js";
 
-export const FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1 =
+export const FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER =
   "midgard-fraud-proof-authenticated-publication-observer-v1" as const;
 
-export type FraudProofAuthenticatedPublicationObservationV1 =
+export type FraudProofAuthenticatedPublicationObservation =
   | { readonly kind: "confirmed"; readonly outRef: string }
   | { readonly kind: "not_found" };
 
-export interface FraudProofAuthenticatedPublicationObserverV1 {
-  readonly observerVersion: typeof FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1;
+export interface FraudProofAuthenticatedPublicationObserver {
+  readonly observerVersion: typeof FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER;
   observeExact(input: {
     readonly headerHash: string;
     readonly kind: "proof_chunk" | "field_publication" | "field_certificate";
@@ -24,7 +24,7 @@ export interface FraudProofAuthenticatedPublicationObserverV1 {
     readonly expectedDatumCbor: string;
     /** Required for certificates; omitted for ADA-only field publications. */
     readonly expectedUnit?: string;
-  }): Promise<FraudProofAuthenticatedPublicationObservationV1>;
+  }): Promise<FraudProofAuthenticatedPublicationObservation>;
 }
 
 const mintQuantity = (body: CML.TransactionBody, unit: string): bigint => {
@@ -39,20 +39,20 @@ const mintQuantity = (body: CML.TransactionBody, unit: string): bigint => {
  * The expected out-ref is the hash journaled before network submission, so a
  * third party's same-content output cannot confirm an ambiguous local submit.
  */
-export const createFraudProofAuthenticatedPublicationObserverV1 = ({
+export const createFraudProofAuthenticatedPublicationObserver = ({
   authority,
   releaseFinality,
 }: {
-  readonly authority: FraudProofRawL1SnapshotAuthorityV1;
-  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1;
-}): FraudProofAuthenticatedPublicationObserverV1 => {
-  if (authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY_V1) {
+  readonly authority: FraudProofRawL1SnapshotAuthority;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+}): FraudProofAuthenticatedPublicationObserver => {
+  if (authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY) {
     throw new Error(
       "publication observer requires a raw L1 snapshot authority",
     );
   }
   return {
-    observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1,
+    observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
     observeExact: async (input) => {
       const historyUnits =
         input.expectedUnit === undefined ? [] : [input.expectedUnit];
@@ -64,7 +64,7 @@ export const createFraudProofAuthenticatedPublicationObserverV1 = ({
         scopes: [{ role: input.kind, address: input.address }],
         historyUnits,
       } as const;
-      const snapshot = admitFraudProofRawL1SnapshotV1({
+      const snapshot = admitFraudProofRawL1Snapshot({
         value: await authority.capture(request),
         request,
         releaseFinality,

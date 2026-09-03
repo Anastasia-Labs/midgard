@@ -1,13 +1,13 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
-  computeFraudProofRawL1PointIdV1,
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  createLocalKupmiosHttpOgmiosRawSourceV1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofRawL1PointV1,
-  type FraudProofRawL1TransactionV1,
-  LocalKupmiosExactPointNotCanonicalV1Error,
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
+  computeFraudProofRawL1PointId,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  createLocalKupmiosHttpOgmiosRawSource,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type FraudProofRawL1Point,
+  type FraudProofRawL1Transaction,
+  LocalKupmiosExactPointNotCanonicalError,
+  validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -19,22 +19,22 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  assertWatcherProductionStateQueueHeaderObservationV1,
-  assertWatcherProductionStateQueueObservationV1,
-  createWatcherProductionStateQueueObservationSourceV1,
+  assertWatcherStateQueueHeaderObservation,
+  assertWatcherStateQueueObservation,
+  createWatcherStateQueueObservationSource,
   unsafeDeriveFraudProofCorrectionIdentityForTest,
-  unsafeDeriveWatcherProductionStateQueueObservationForTest,
+  unsafeDeriveWatcherStateQueueObservationForTest,
   unsafeResolveRetainedWatcherStateQueueHeaderForTest,
-  unsafeRestoreLongestWatcherProductionStateQueuePrefixForTest,
-  unsafeRestorePersistedWatcherProductionStateQueueObservationForTest,
+  unsafeRestoreLongestWatcherStateQueuePrefixForTest,
+  unsafeRestorePersistedWatcherStateQueueObservationForTest,
   unsafeSelectWatcherStateQueueRawCandidatesForTest,
-  unsafeSnapshotWatcherProductionStateQueueAtBoundaryForTest,
-  type WatcherProductionStateQueueObservationV1,
+  unsafeSnapshotWatcherStateQueueAtBoundaryForTest,
+  type WatcherAuthenticatedStateQueueObservation,
 } from "../../src/indexers/production-state-queue-observation-v1.js";
-import type { WatcherLocalKupmiosNativeObservationV1 } from "../../src/l1/local-kupmios-native-observation-v1.js";
-import type { WatcherNativeBlockAdmissionV1 } from "../../src/l1/native-block-admission-v1.js";
-import { watcherDeploymentProtocolScriptAuthorityV1 } from "../../src/runtime/deployment-identity.js";
-import { watcherSha256CanonicalJsonV1 } from "../../src/storage/durable-store.js";
+import type { WatcherLocalKupmiosNativeObservation } from "../../src/l1/local-kupmios-native-observation-v1.js";
+import type { WatcherNativeBlockAdmission } from "../../src/l1/native-block-admission-v1.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 import {
   h28,
   h32,
@@ -45,7 +45,7 @@ const point = Object.freeze({
   blockHash: h32("a1"),
   blockNo: "100",
   slot: "1000",
-  pointId: computeFraudProofRawL1PointIdV1({
+  pointId: computeFraudProofRawL1PointId({
     blockHash: h32("a1"),
     blockNo: "100",
     slot: "1000",
@@ -53,17 +53,17 @@ const point = Object.freeze({
 });
 
 const deploymentFixture = makeDeploymentAuthority();
-const protocolAuthority = watcherDeploymentProtocolScriptAuthorityV1(
+const protocolAuthority = watcherDeploymentProtocolScriptAuthority(
   deploymentFixture.result,
 );
 
 const rehashObservation = (
-  observation: WatcherProductionStateQueueObservationV1,
-): WatcherProductionStateQueueObservationV1 => {
+  observation: WatcherAuthenticatedStateQueueObservation,
+): WatcherAuthenticatedStateQueueObservation => {
   const { observationDigest: _ignored, ...body } = observation;
   return {
     ...body,
-    observationDigest: watcherSha256CanonicalJsonV1(body),
+    observationDigest: watcherSha256CanonicalJson(body),
   };
 };
 
@@ -184,7 +184,7 @@ const fixture = (omitLock = false) => {
     slot: point.slot,
     transactionIds: Object.freeze([txHash]),
     transactionCbors: Object.freeze([transaction.to_canonical_cbor_hex()]),
-  }) as WatcherNativeBlockAdmissionV1;
+  }) as WatcherNativeBlockAdmission;
   const localObservation = {
     block: {
       chainPoint: {
@@ -211,7 +211,7 @@ const fixture = (omitLock = false) => {
         },
       ],
     },
-  } as unknown as WatcherLocalKupmiosNativeObservationV1;
+  } as unknown as WatcherLocalKupmiosNativeObservation;
   const raw = Object.freeze({
     txHash,
     bodyCbor,
@@ -222,11 +222,11 @@ const fixture = (omitLock = false) => {
     confirmationDepth: 30,
     resolvedInputs: Object.freeze([]),
     resolvedReferenceInputs: Object.freeze([]),
-  }) satisfies FraudProofRawL1TransactionV1;
+  }) satisfies FraudProofRawL1Transaction;
   return { deployment, authority, nativeBlock, localObservation, raw };
 };
 
-const headerFixture = (): SDK.HeaderV1 => ({
+const headerFixture = (): SDK.Header => ({
   prevUtxosRoot: h32("01"),
   utxosRoot: h32("02"),
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -262,10 +262,10 @@ const appendFixture = ({
   daAvailability = "Unattested",
 }: {
   initial: ReturnType<typeof fixture>;
-  previous: WatcherProductionStateQueueObservationV1;
-  nodeHeader?: SDK.HeaderV1;
+  previous: WatcherAuthenticatedStateQueueObservation;
+  nodeHeader?: SDK.Header;
   assetHeaderHash?: string;
-  daAvailability?: SDK.DaAvailabilityStateQueueStatusV1;
+  daAvailability?: SDK.DaAvailabilityStateQueueStatus;
 }) => {
   const stateQueueAddress = credentialToAddress(
     initial.authority.network,
@@ -273,12 +273,12 @@ const appendFixture = ({
       initial.authority.protocolScriptHashes.stateQueueSpend,
     ),
   );
-  const headerCborHex = Data.to(nodeHeader, SDK.HeaderV1);
+  const headerCborHex = Data.to(nodeHeader, SDK.Header);
   const computedHeaderHash = computeHash28(
     Buffer.from(headerCborHex, "hex"),
   ).toString("hex");
   const nodeAssetHeaderHash = assetHeaderHash ?? computedHeaderHash;
-  const stateQueueNode: SDK.StateQueueNodeV1 = {
+  const stateQueueNode: SDK.StateQueueNode = {
     header: nodeHeader,
     da_attestation: daAvailability,
   };
@@ -294,7 +294,7 @@ const appendFixture = ({
     SDK.nodeViewToLinkedListDatum({
       key: { Key: { key: nodeAssetHeaderHash } },
       next: "Empty",
-      data: Data.castTo(stateQueueNode, SDK.StateQueueNodeV1),
+      data: Data.castTo(stateQueueNode, SDK.StateQueueNode),
     }),
     SDK.LinkedListDatum,
   );
@@ -388,7 +388,7 @@ const appendFixture = ({
     blockHash,
     blockNo: "101",
     slot: "1001",
-    pointId: computeFraudProofRawL1PointIdV1({
+    pointId: computeFraudProofRawL1PointId({
       blockHash,
       blockNo: "101",
       slot: "1001",
@@ -406,7 +406,7 @@ const appendFixture = ({
     slot: appendPoint.slot,
     transactionIds: Object.freeze([txHash]),
     transactionCbors: Object.freeze([transaction.to_canonical_cbor_hex()]),
-  }) as WatcherNativeBlockAdmissionV1;
+  }) as WatcherNativeBlockAdmission;
   const localObservation = {
     block: {
       chainPoint: {
@@ -433,7 +433,7 @@ const appendFixture = ({
         },
       ],
     },
-  } as unknown as WatcherLocalKupmiosNativeObservationV1;
+  } as unknown as WatcherLocalKupmiosNativeObservation;
   const initialBody = CML.TransactionBody.from_cbor_hex(initial.raw.bodyCbor);
   const raw = Object.freeze({
     txHash,
@@ -469,13 +469,13 @@ const appendFixture = ({
         referenceScriptCbor: null,
       },
     ]),
-  }) satisfies FraudProofRawL1TransactionV1;
+  }) satisfies FraudProofRawL1Transaction;
   return {
     nativeBlock,
     localObservation,
     raw,
     previous,
-    stateQueueNodeCborHex: Data.to(stateQueueNode, SDK.StateQueueNodeV1),
+    stateQueueNodeCborHex: Data.to(stateQueueNode, SDK.StateQueueNode),
     linkedListDatumCborHex: body
       .outputs()
       .get(1)
@@ -615,7 +615,7 @@ describe("production state-queue observation source", () => {
 
   it("derives the exact finalized Init queue and CorrectionLock genesis witness", () => {
     const current = fixture();
-    const result = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const result = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: current.nativeBlock,
       localObservation: current.localObservation,
       authority: current.authority,
@@ -644,9 +644,9 @@ describe("production state-queue observation source", () => {
         finalityDepth: "30",
       },
     });
-    expect(() =>
-      assertWatcherProductionStateQueueObservationV1(result),
-    ).toThrow("was not admitted");
+    expect(() => assertWatcherStateQueueObservation(result)).toThrow(
+      "was not admitted",
+    );
   });
 
   it("bootstraps an empty durable store from the exact live queue and CorrectionLock snapshot", async () => {
@@ -664,8 +664,8 @@ describe("production state-queue observation source", () => {
         current.authority.protocolScriptHashes.correctionLockSpend,
       ),
     );
-    const bootstrapped =
-      await unsafeSnapshotWatcherProductionStateQueueAtBoundaryForTest({
+    const bootstrapped = await unsafeSnapshotWatcherStateQueueAtBoundaryForTest(
+      {
         intersection: {
           blockHash: current.raw.inclusionPoint.blockHash,
           blockNo: current.raw.inclusionPoint.blockNo,
@@ -720,7 +720,8 @@ describe("production state-queue observation source", () => {
             ];
           },
         },
-      });
+      },
+    );
     expect(bootstrapped).toMatchObject({
       previousObservationDigest: null,
       checkpoints: [],
@@ -730,9 +731,9 @@ describe("production state-queue observation source", () => {
         datum: "Idle",
       },
     });
-    expect(() =>
-      assertWatcherProductionStateQueueObservationV1(bootstrapped),
-    ).toThrow("was not admitted");
+    expect(() => assertWatcherStateQueueObservation(bootstrapped)).toThrow(
+      "was not admitted",
+    );
 
     const restoreReaders = {
       readBlock: async () => ({
@@ -766,7 +767,7 @@ describe("production state-queue observation source", () => {
       }),
     };
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [JSON.parse(JSON.stringify(bootstrapped))],
         intersection: {
           blockHash: current.raw.inclusionPoint.blockHash,
@@ -788,10 +789,10 @@ describe("production state-queue observation source", () => {
     const { observationDigest: _digest, ...forgedBody } = forgedCanonical;
     const forged = {
       ...forgedBody,
-      observationDigest: watcherSha256CanonicalJsonV1(forgedBody),
+      observationDigest: watcherSha256CanonicalJson(forgedBody),
     };
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [forged],
         intersection: {
           blockHash: current.raw.inclusionPoint.blockHash,
@@ -814,7 +815,7 @@ describe("production state-queue observation source", () => {
       },
     });
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [forgedNativePoint],
         intersection: {
           blockHash: current.raw.inclusionPoint.blockHash,
@@ -837,7 +838,7 @@ describe("production state-queue observation source", () => {
       },
     });
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [forgedLock],
         intersection: {
           blockHash: current.raw.inclusionPoint.blockHash,
@@ -855,7 +856,7 @@ describe("production state-queue observation source", () => {
 
   it("preserves the exact finalized CommitBlockHeader datum, HeaderV1, and lock provenance", () => {
     const initial = fixture();
-    const previous = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const previous = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: initial.nativeBlock,
       localObservation: initial.localObservation,
       authority: initial.authority,
@@ -864,7 +865,7 @@ describe("production state-queue observation source", () => {
       rawTransactions: [initial.raw],
     });
     const append = appendFixture({ initial, previous });
-    const result = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const result = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: append.nativeBlock,
       localObservation: append.localObservation,
       authority: initial.authority,
@@ -907,7 +908,7 @@ describe("production state-queue observation source", () => {
 
   it("re-authenticates a merged predecessor HeaderV1 only from retained public-DA unit history", async () => {
     const initial = fixture();
-    const previous = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const previous = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: initial.nativeBlock,
       localObservation: initial.localObservation,
       authority: initial.authority,
@@ -968,9 +969,9 @@ describe("production state-queue observation source", () => {
       observedChainPointId: attached.raw.inclusionPoint.pointId,
       finalityDepth: "30",
     });
-    expect(() =>
-      assertWatcherProductionStateQueueHeaderObservationV1(retained),
-    ).toThrow("was not admitted");
+    expect(() => assertWatcherStateQueueHeaderObservation(retained)).toThrow(
+      "was not admitted",
+    );
 
     const unattested = appendFixture({ initial, previous });
     await expect(
@@ -996,7 +997,7 @@ describe("production state-queue observation source", () => {
 
   it("rejects a CommitBlockHeader whose node asset does not commit its exact HeaderV1", () => {
     const initial = fixture();
-    const previous = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const previous = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: initial.nativeBlock,
       localObservation: initial.localObservation,
       authority: initial.authority,
@@ -1010,7 +1011,7 @@ describe("production state-queue observation source", () => {
       assetHeaderHash: h28("fe"),
     });
     expect(() =>
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
+      unsafeDeriveWatcherStateQueueObservationForTest({
         nativeBlock: assetMismatch.nativeBlock,
         localObservation: assetMismatch.localObservation,
         authority: initial.authority,
@@ -1029,7 +1030,7 @@ describe("production state-queue observation source", () => {
       assetHeaderHash: appendFixture({ initial, previous }).headerHash,
     });
     expect(() =>
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
+      unsafeDeriveWatcherStateQueueObservationForTest({
         nativeBlock: datumMismatch.nativeBlock,
         localObservation: datumMismatch.localObservation,
         authority: initial.authority,
@@ -1042,33 +1043,31 @@ describe("production state-queue observation source", () => {
 
   it("re-admits the cached intersection and replays an offline queue mutation before the catch-up boundary", async () => {
     const initial = fixture();
-    const initialResult =
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
-        nativeBlock: initial.nativeBlock,
-        localObservation: initial.localObservation,
-        authority: initial.authority,
-        sourceId: "test-source",
-        previous: null,
-        rawTransactions: [initial.raw],
-      });
+    const initialResult = unsafeDeriveWatcherStateQueueObservationForTest({
+      nativeBlock: initial.nativeBlock,
+      localObservation: initial.localObservation,
+      authority: initial.authority,
+      sourceId: "test-source",
+      previous: null,
+      rawTransactions: [initial.raw],
+    });
     const append = appendFixture({ initial, previous: initialResult });
-    const appendResult =
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
-        nativeBlock: append.nativeBlock,
-        localObservation: append.localObservation,
-        authority: initial.authority,
-        sourceId: "test-source",
-        previous: initialResult,
-        rawTransactions: [append.raw],
-      });
+    const appendResult = unsafeDeriveWatcherStateQueueObservationForTest({
+      nativeBlock: append.nativeBlock,
+      localObservation: append.localObservation,
+      authority: initial.authority,
+      sourceId: "test-source",
+      previous: initialResult,
+      rawTransactions: [append.raw],
+    });
     const intersection = {
       blockHash: h32("a3"),
       blockNo: "105",
       slot: "1005",
     };
-    const pointId = computeFraudProofRawL1PointIdV1(intersection);
+    const pointId = computeFraudProofRawL1PointId(intersection);
     let transactionReads = 0;
-    const readBlock = async (requested: FraudProofRawL1PointV1) => {
+    const readBlock = async (requested: FraudProofRawL1Point) => {
       const entry =
         requested.pointId === initial.raw.inclusionPoint.pointId
           ? {
@@ -1122,34 +1121,32 @@ describe("production state-queue observation source", () => {
       throw new Error("unexpected raw transaction");
     };
     const restored =
-      await unsafeRestorePersistedWatcherProductionStateQueueObservationForTest(
-        {
-          persistedObservations: [JSON.parse(JSON.stringify(initialResult))],
-          intersection,
-          ogmiosTipBlockNo: "130",
-          authority: initial.authority,
-          sourceId: "test-source",
-          maximumObservations: 64,
-          readers: {
-            readBlock,
-            readTransaction,
-            readUnitHistory: async () => ({
-              checkpoint: initial.raw.inclusionPoint,
-              transactions: [
-                {
-                  txHash: initial.raw.txHash,
-                  inclusionPoint: initial.raw.inclusionPoint,
-                },
-              ],
-            }),
-            readAddress: async (): Promise<never> => {
-              throw new Error(
-                "offline catch-up must not require latest topology equality",
-              );
-            },
+      await unsafeRestorePersistedWatcherStateQueueObservationForTest({
+        persistedObservations: [JSON.parse(JSON.stringify(initialResult))],
+        intersection,
+        ogmiosTipBlockNo: "130",
+        authority: initial.authority,
+        sourceId: "test-source",
+        maximumObservations: 64,
+        readers: {
+          readBlock,
+          readTransaction,
+          readUnitHistory: async () => ({
+            checkpoint: initial.raw.inclusionPoint,
+            transactions: [
+              {
+                txHash: initial.raw.txHash,
+                inclusionPoint: initial.raw.inclusionPoint,
+              },
+            ],
+          }),
+          readAddress: async (): Promise<never> => {
+            throw new Error(
+              "offline catch-up must not require latest topology equality",
+            );
           },
         },
-      );
+      });
 
     expect(transactionReads).toBe(2);
     expect(restored.replayIntersection).toEqual({
@@ -1167,11 +1164,11 @@ describe("production state-queue observation source", () => {
       ogmiosTipBlockNo: "130",
     });
     expect(restored.previous).toEqual(initialResult);
-    expect(() =>
-      assertWatcherProductionStateQueueObservationV1(restored.previous),
-    ).toThrow("was not admitted");
+    expect(() => assertWatcherStateQueueObservation(restored.previous)).toThrow(
+      "was not admitted",
+    );
 
-    const caughtUp = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const caughtUp = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: append.nativeBlock,
       localObservation: append.localObservation,
       authority: initial.authority,
@@ -1183,36 +1180,34 @@ describe("production state-queue observation source", () => {
     expect(caughtUp.finalizedHeaders).toEqual(appendResult.finalizedHeaders);
 
     const compacted =
-      await unsafeRestorePersistedWatcherProductionStateQueueObservationForTest(
-        {
-          persistedObservations: [JSON.parse(JSON.stringify(appendResult))],
-          intersection,
-          ogmiosTipBlockNo: "130",
-          authority: initial.authority,
-          sourceId: "test-source",
-          maximumObservations: 64,
-          readers: {
-            readBlock,
-            readTransaction,
-            readUnitHistory: async () => ({
-              checkpoint: append.raw.inclusionPoint,
-              transactions: [
-                {
-                  txHash: initial.raw.txHash,
-                  inclusionPoint: initial.raw.inclusionPoint,
-                },
-                {
-                  txHash: append.raw.txHash,
-                  inclusionPoint: append.raw.inclusionPoint,
-                },
-              ],
-            }),
-            readAddress: async (): Promise<never> => {
-              throw new Error("compacted restore must use unit history");
-            },
+      await unsafeRestorePersistedWatcherStateQueueObservationForTest({
+        persistedObservations: [JSON.parse(JSON.stringify(appendResult))],
+        intersection,
+        ogmiosTipBlockNo: "130",
+        authority: initial.authority,
+        sourceId: "test-source",
+        maximumObservations: 64,
+        readers: {
+          readBlock,
+          readTransaction,
+          readUnitHistory: async () => ({
+            checkpoint: append.raw.inclusionPoint,
+            transactions: [
+              {
+                txHash: initial.raw.txHash,
+                inclusionPoint: initial.raw.inclusionPoint,
+              },
+              {
+                txHash: append.raw.txHash,
+                inclusionPoint: append.raw.inclusionPoint,
+              },
+            ],
+          }),
+          readAddress: async (): Promise<never> => {
+            throw new Error("compacted restore must use unit history");
           },
         },
-      );
+      });
     expect(compacted.previous).toEqual(appendResult);
     expect(compacted.previous.previousObservationDigest).toBe(
       initialResult.observationDigest,
@@ -1229,7 +1224,7 @@ describe("production state-queue observation source", () => {
       ],
     });
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [forgedCompactedHeader],
         intersection,
         ogmiosTipBlockNo: "130",
@@ -1259,8 +1254,8 @@ describe("production state-queue observation source", () => {
       }),
     ).rejects.toThrow("HeaderV1 bytes were substituted");
 
-    const rolledBack =
-      await unsafeRestoreLongestWatcherProductionStateQueuePrefixForTest({
+    const rolledBack = await unsafeRestoreLongestWatcherStateQueuePrefixForTest(
+      {
         persistedObservations: [
           JSON.parse(JSON.stringify(initialResult)),
           JSON.parse(JSON.stringify(appendResult)),
@@ -1273,7 +1268,7 @@ describe("production state-queue observation source", () => {
         readers: {
           readBlock: async (requested) => {
             if (requested.pointId === append.raw.inclusionPoint.pointId) {
-              throw new LocalKupmiosExactPointNotCanonicalV1Error(
+              throw new LocalKupmiosExactPointNotCanonicalError(
                 "Kupo exact checkpoint rolled back",
               );
             }
@@ -1293,14 +1288,15 @@ describe("production state-queue observation source", () => {
             throw new Error("rollback prefix must use unit history");
           },
         },
-      });
+      },
+    );
     expect(rolledBack.previous).toEqual(initialResult);
     expect(rolledBack.discardedObservationCount).toBe(1);
     expect(rolledBack.replayIntersection.chainPointId).toBe(
       initialResult.nativePoint.chainPointId,
     );
     await expect(
-      unsafeRestoreLongestWatcherProductionStateQueuePrefixForTest({
+      unsafeRestoreLongestWatcherStateQueuePrefixForTest({
         persistedObservations: [
           JSON.parse(JSON.stringify(initialResult)),
           JSON.parse(JSON.stringify(appendResult)),
@@ -1337,7 +1333,7 @@ describe("production state-queue observation source", () => {
 
   it("rejects forged rehashed durable cursors and caps restore before raw reads", async () => {
     const initial = fixture();
-    const result = unsafeDeriveWatcherProductionStateQueueObservationForTest({
+    const result = unsafeDeriveWatcherStateQueueObservationForTest({
       nativeBlock: initial.nativeBlock,
       localObservation: initial.localObservation,
       authority: initial.authority,
@@ -1352,7 +1348,7 @@ describe("production state-queue observation source", () => {
     const { observationDigest: _ignored, ...forgedBody } = forgedCanonical;
     const forged = {
       ...forgedBody,
-      observationDigest: watcherSha256CanonicalJsonV1(forgedBody),
+      observationDigest: watcherSha256CanonicalJson(forgedBody),
     };
     let reads = 0;
     const neverReaders = {
@@ -1370,7 +1366,7 @@ describe("production state-queue observation source", () => {
       },
     };
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [forged, forged],
         intersection: {
           blockHash: initial.nativeBlock.blockHash,
@@ -1386,7 +1382,7 @@ describe("production state-queue observation source", () => {
     ).rejects.toThrow("release bound");
     expect(reads).toBe(0);
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [JSON.parse(JSON.stringify(result))],
         intersection: {
           blockHash: initial.nativeBlock.blockHash,
@@ -1434,7 +1430,7 @@ describe("production state-queue observation source", () => {
       catchupBoundary: { ogmiosTipBlockNo: "2260" },
     });
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [JSON.parse(JSON.stringify(result))],
         intersection: {
           blockHash: initial.nativeBlock.blockHash,
@@ -1450,7 +1446,7 @@ describe("production state-queue observation source", () => {
     ).rejects.toThrow("catch-up block distance exceeds its release bound");
     expect(reads).toBe(0);
     await expect(
-      unsafeRestorePersistedWatcherProductionStateQueueObservationForTest({
+      unsafeRestorePersistedWatcherStateQueueObservationForTest({
         persistedObservations: [forged],
         intersection: {
           blockHash: initial.nativeBlock.blockHash,
@@ -1499,7 +1495,7 @@ describe("production state-queue observation source", () => {
   it("rejects missing lock, substituted tx identity, and mismatched chain point", () => {
     const missing = fixture(true);
     expect(() =>
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
+      unsafeDeriveWatcherStateQueueObservationForTest({
         nativeBlock: missing.nativeBlock,
         localObservation: missing.localObservation,
         authority: missing.authority,
@@ -1511,7 +1507,7 @@ describe("production state-queue observation source", () => {
 
     const current = fixture();
     expect(() =>
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
+      unsafeDeriveWatcherStateQueueObservationForTest({
         nativeBlock: current.nativeBlock,
         localObservation: current.localObservation,
         authority: current.authority,
@@ -1521,7 +1517,7 @@ describe("production state-queue observation source", () => {
       }),
     ).toThrow("substituted across the native chain point");
     expect(() =>
-      unsafeDeriveWatcherProductionStateQueueObservationForTest({
+      unsafeDeriveWatcherStateQueueObservationForTest({
         nativeBlock: current.nativeBlock,
         localObservation: {
           ...current.localObservation,
@@ -1544,7 +1540,7 @@ describe("production state-queue observation source", () => {
   it("rejects structural deployment/local-observation authority and release mismatch", async () => {
     const current = fixture();
     expect(() =>
-      createWatcherProductionStateQueueObservationSourceV1({
+      createWatcherStateQueueObservationSource({
         deploymentIdentity: { ...current.deployment.result },
         rawSource: {} as never,
       }),
@@ -1555,20 +1551,20 @@ describe("production state-queue observation source", () => {
       automaticRecoveryMaxDepth: 2160 as const,
       deepRollbackPolicy: "automated_rewind_replay_incident-v1" as const,
     });
-    const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1({
-      schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+    const releaseFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
+      schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: current.deployment.result.manifestId,
       releaseIdentityDigest: current.deployment.result.releaseEvidenceDigest,
-      policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(policy),
+      policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
       policy,
     });
-    const rawSource = createLocalKupmiosHttpOgmiosRawSourceV1({
+    const rawSource = createLocalKupmiosHttpOgmiosRawSource({
       sourceId: "watcher-production-state-queue-test",
       kupoHttpUrl: "http://127.0.0.1:1442",
       ogmiosUrl: "ws://127.0.0.1:1337",
       releaseFinality,
     });
-    const source = createWatcherProductionStateQueueObservationSourceV1({
+    const source = createWatcherStateQueueObservationSource({
       deploymentIdentity: current.deployment.result,
       rawSource,
     });
@@ -1580,21 +1576,21 @@ describe("production state-queue observation source", () => {
       }),
     ).rejects.toThrow("not admitted for the native block");
 
-    const foreignFinality = validateVerifiedFraudProofReleaseFinalityPolicyV1({
-      schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+    const foreignFinality = validateVerifiedFraudProofReleaseFinalityPolicy({
+      schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
       deploymentIdentityDigest: h32("cd"),
       releaseIdentityDigest: current.deployment.result.releaseEvidenceDigest,
-      policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(policy),
+      policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
       policy,
     });
-    const foreignSource = createLocalKupmiosHttpOgmiosRawSourceV1({
+    const foreignSource = createLocalKupmiosHttpOgmiosRawSource({
       sourceId: "watcher-production-state-queue-foreign",
       kupoHttpUrl: "http://127.0.0.1:1442",
       ogmiosUrl: "ws://127.0.0.1:1337",
       releaseFinality: foreignFinality,
     });
     expect(() =>
-      createWatcherProductionStateQueueObservationSourceV1({
+      createWatcherStateQueueObservationSource({
         deploymentIdentity: current.deployment.result,
         rawSource: foreignSource,
       }),
@@ -1603,8 +1599,8 @@ describe("production state-queue observation source", () => {
 
   it("rejects structural observations at the durable admission boundary", () => {
     expect(() =>
-      assertWatcherProductionStateQueueObservationV1(
-        Object.freeze({}) as WatcherProductionStateQueueObservationV1,
+      assertWatcherStateQueueObservation(
+        Object.freeze({}) as WatcherAuthenticatedStateQueueObservation,
       ),
     ).toThrow("was not admitted");
   });

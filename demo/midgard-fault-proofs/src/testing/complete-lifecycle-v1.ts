@@ -1,4 +1,4 @@
-export const COMPLETE_LIFECYCLE_BASE_SCENARIOS_V1 = Object.freeze([
+export const COMPLETE_LIFECYCLE_BASE_SCENARIOS = Object.freeze([
   "wrongful_acceptance_success",
   "wrongful_forced_rejection_success",
   "honest_accepted_block_refusal",
@@ -8,15 +8,15 @@ export const COMPLETE_LIFECYCLE_BASE_SCENARIOS_V1 = Object.freeze([
   "maximum_supported_evidence",
 ] as const);
 
-export type CompleteLifecycleBaseScenarioV1 =
-  (typeof COMPLETE_LIFECYCLE_BASE_SCENARIOS_V1)[number];
+export type CompleteLifecycleBaseScenario =
+  (typeof COMPLETE_LIFECYCLE_BASE_SCENARIOS)[number];
 
-export type CompleteLifecycleCoverageV1 = {
+export type CompleteLifecycleCoverage = {
   readonly reasonArms: readonly string[];
   readonly successfulDirectionByReason: Readonly<
     Record<string, readonly ("accepted_invalid" | "forced_rejection_wrong")[]>
   >;
-  readonly scenarios: readonly CompleteLifecycleBaseScenarioV1[];
+  readonly scenarios: readonly CompleteLifecycleBaseScenario[];
   readonly authenticatedSeamsMutated: readonly string[];
   readonly cancelledPhysicalSteps: readonly string[];
   readonly resumedAfterCheckpoint: boolean;
@@ -32,7 +32,7 @@ const missingFrom = (
 };
 
 /** Shared gate used by family lifecycle suites; throws with every omission. */
-export const assertCompleteLifecycleCoverageV1 = ({
+export const assertCompleteLifecycleCoverage = ({
   coverage,
   expectedReasonArms,
   authenticationSeams,
@@ -40,7 +40,7 @@ export const assertCompleteLifecycleCoverageV1 = ({
   resumable,
   hasAdjacentConsensusBound,
 }: {
-  readonly coverage: CompleteLifecycleCoverageV1;
+  readonly coverage: CompleteLifecycleCoverage;
   readonly expectedReasonArms: readonly string[];
   readonly authenticationSeams: readonly string[];
   readonly cancellablePhysicalSteps: readonly string[];
@@ -64,7 +64,7 @@ export const assertCompleteLifecycleCoverageV1 = ({
     }
   }
   const missingScenarios = missingFrom(
-    COMPLETE_LIFECYCLE_BASE_SCENARIOS_V1,
+    COMPLETE_LIFECYCLE_BASE_SCENARIOS,
     coverage.scenarios,
   );
   if (missingScenarios.length > 0)

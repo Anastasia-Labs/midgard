@@ -1,36 +1,36 @@
 import { mkdir } from "node:fs/promises";
 
-import { createScriptIntegrityHashMismatchDirectoryJournalV1 } from "./directory-journal-v1.js";
+import { createScriptIntegrityHashMismatchDirectoryJournal } from "./directory-journal-v1.js";
 import {
-  scriptIntegrityHashMismatchEvidenceIdentityV1,
-  type ScriptIntegrityHashMismatchEvidenceV1,
+  type ScriptIntegrityHashMismatchEvidence,
+  scriptIntegrityHashMismatchEvidenceIdentity,
 } from "./family-v1.js";
 import {
-  cancelScriptIntegrityHashMismatchWorkflowV1,
-  runScriptIntegrityHashMismatchWorkflowV1,
-  type ScriptIntegrityHashMismatchCursorV1,
-  type ScriptIntegrityHashMismatchTransactionPortV1,
-  type ScriptIntegrityHashMismatchWorkflowActionV1,
-  type ScriptIntegrityHashMismatchWorkflowStageV1,
+  cancelScriptIntegrityHashMismatchWorkflow,
+  runScriptIntegrityHashMismatchWorkflow,
+  type ScriptIntegrityHashMismatchCursor,
+  type ScriptIntegrityHashMismatchTransactionPort,
+  type ScriptIntegrityHashMismatchWorkflowAction,
+  type ScriptIntegrityHashMismatchWorkflowStage,
 } from "./workflow-v1.js";
 
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_PRODUCTION_RUNNER_V1 =
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_RUNNER =
   "script-integrity-hash-mismatch-production-v1" as const;
 
-export type ScriptIntegrityHashMismatchCapturedTransactionV1 = Readonly<{
+export type ScriptIntegrityHashMismatchCapturedTransaction = Readonly<{
   txHash: string;
-  target: ScriptIntegrityHashMismatchCursorV1;
+  target: ScriptIntegrityHashMismatchCursor;
   signedBytes: Uint8Array;
 }>;
-export interface ScriptIntegrityHashMismatchProductionActuatorV1 {
-  observe(identity: string): Promise<ScriptIntegrityHashMismatchCursorV1>;
+export interface ScriptIntegrityHashMismatchActuator {
+  observe(identity: string): Promise<ScriptIntegrityHashMismatchCursor>;
   captureSignedTransaction(input: {
-    action: ScriptIntegrityHashMismatchWorkflowActionV1;
-    evidence: ScriptIntegrityHashMismatchEvidenceV1;
-    source: ScriptIntegrityHashMismatchCursorV1;
-  }): Promise<ScriptIntegrityHashMismatchCapturedTransactionV1>;
+    action: ScriptIntegrityHashMismatchWorkflowAction;
+    evidence: ScriptIntegrityHashMismatchEvidence;
+    source: ScriptIntegrityHashMismatchCursor;
+  }): Promise<ScriptIntegrityHashMismatchCapturedTransaction>;
   submitSignedTransaction(
-    transaction: ScriptIntegrityHashMismatchCapturedTransactionV1,
+    transaction: ScriptIntegrityHashMismatchCapturedTransaction,
   ): Promise<string>;
   transactionConfirmed(txHash: string): Promise<boolean>;
   acquireRemovalLease(identity: string): Promise<
@@ -42,15 +42,15 @@ export interface ScriptIntegrityHashMismatchProductionActuatorV1 {
   >;
 }
 
-const productionPort = (
-  actuator: ScriptIntegrityHashMismatchProductionActuatorV1,
-): ScriptIntegrityHashMismatchTransactionPortV1 =>
+const port = (
+  actuator: ScriptIntegrityHashMismatchActuator,
+): ScriptIntegrityHashMismatchTransactionPort =>
   Object.freeze({
     observe: actuator.observe.bind(actuator),
     transactionConfirmed: actuator.transactionConfirmed.bind(actuator),
     capture: async (
       input: Parameters<
-        ScriptIntegrityHashMismatchTransactionPortV1["capture"]
+        ScriptIntegrityHashMismatchTransactionPort["capture"]
       >[0],
     ) => {
       const captured = await actuator.captureSignedTransaction(input);
@@ -67,33 +67,31 @@ const productionPort = (
   });
 
 /** Callback-free production driver with durable restart and leased removal. */
-export const runScriptIntegrityHashMismatchProductionV1 = async ({
+export const runScriptIntegrityHashMismatch = async ({
   evidence,
   journalDirectory,
   actuator,
 }: {
-  evidence: ScriptIntegrityHashMismatchEvidenceV1;
+  evidence: ScriptIntegrityHashMismatchEvidence;
   journalDirectory: string;
-  actuator: ScriptIntegrityHashMismatchProductionActuatorV1;
+  actuator: ScriptIntegrityHashMismatchActuator;
 }): Promise<"removed" | "cancelled"> => {
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
   const journal =
-    createScriptIntegrityHashMismatchDirectoryJournalV1(journalDirectory);
-  const transactions = productionPort(actuator);
-  const identity = scriptIntegrityHashMismatchEvidenceIdentityV1(evidence);
+    createScriptIntegrityHashMismatchDirectoryJournal(journalDirectory);
+  const transactions = port(actuator);
+  const identity = scriptIntegrityHashMismatchEvidenceIdentity(evidence);
   for (;;) {
     const observed = await actuator.observe(identity);
     let lease:
       | Awaited<
-          ReturnType<
-            ScriptIntegrityHashMismatchProductionActuatorV1["acquireRemovalLease"]
-          >
+          ReturnType<ScriptIntegrityHashMismatchActuator["acquireRemovalLease"]>
         >
       | undefined;
     if (observed.stage === "proven")
       lease = await actuator.acquireRemovalLease(identity);
     try {
-      const stage = await runScriptIntegrityHashMismatchWorkflowV1({
+      const stage = await runScriptIntegrityHashMismatchWorkflow({
         evidence,
         journal,
         transactions,
@@ -114,35 +112,35 @@ export const runScriptIntegrityHashMismatchProductionV1 = async ({
   }
 };
 
-export const cancelScriptIntegrityHashMismatchProductionV1 = async ({
+export const cancelScriptIntegrityHashMismatch = async ({
   evidence,
   journalDirectory,
   actuator,
 }: {
-  evidence: ScriptIntegrityHashMismatchEvidenceV1;
+  evidence: ScriptIntegrityHashMismatchEvidence;
   journalDirectory: string;
-  actuator: ScriptIntegrityHashMismatchProductionActuatorV1;
+  actuator: ScriptIntegrityHashMismatchActuator;
 }): Promise<"cancelled"> => {
   await mkdir(journalDirectory, { recursive: true, mode: 0o700 });
-  return await cancelScriptIntegrityHashMismatchWorkflowV1({
+  return await cancelScriptIntegrityHashMismatchWorkflow({
     evidence,
     journal:
-      createScriptIntegrityHashMismatchDirectoryJournalV1(journalDirectory),
-    transactions: productionPort(actuator),
+      createScriptIntegrityHashMismatchDirectoryJournal(journalDirectory),
+    transactions: port(actuator),
   });
 };
 
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_TERMINAL_STAGES_V1 = Object.freeze([
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_TERMINAL_STAGES = Object.freeze([
   "removed",
   "cancelled",
-] satisfies readonly ScriptIntegrityHashMismatchWorkflowStageV1[]);
+] satisfies readonly ScriptIntegrityHashMismatchWorkflowStage[]);
 
 export {
-  createManifestBoundScriptIntegrityHashMismatchWorkflowV1,
-  createScriptIntegrityHashMismatchProductionWorkflowRunnerSurfaceV1,
-  type LoadedScriptIntegrityHashMismatchProductionWorkflowV1,
-  type LoadScriptIntegrityHashMismatchProductionWorkflowV1,
-  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfigV1,
-  type ManifestBoundScriptIntegrityHashMismatchWorkflowV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_PRODUCTION_CONFIG_KEYS_V1,
+  createManifestBoundScriptIntegrityHashMismatchWorkflow,
+  createScriptIntegrityHashMismatchWorkflowRunnerSurface,
+  type LoadedScriptIntegrityHashMismatchWorkflow,
+  type LoadScriptIntegrityHashMismatchWorkflow,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflow,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_CONFIG_KEYS,
 } from "./manifest-workflow-v1.js";

@@ -1,11 +1,11 @@
 import { decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
 import type {
-  MidgardNativeTxBodyCanonicalV1,
-  MidgardNativeTxBodyCompactV1,
+  MidgardNativeTxBodyCanonical,
+  MidgardNativeTxBodyCompact,
 } from "./native.js";
 import { MIDGARD_NATIVE_NETWORK_ID_NONE } from "./native-constants.js";
-import { midgardFieldCommitmentV1 } from "./native-tx-field-access-v1.js";
+import { midgardFieldCommitment } from "./native-tx-field-access-v1.js";
 import {
   asFixedArray,
   asSigned,
@@ -59,7 +59,7 @@ const asNativeNetworkId = (value: unknown, fieldName: string): bigint => {
 };
 
 export const encodeNativeTxBodyCompactValue = (
-  body: MidgardNativeTxBodyCompactV1,
+  body: MidgardNativeTxBodyCompact,
 ): NativeTxBodyCompactValue => [
   ensureHash32(
     body.spendInputsHash,
@@ -102,7 +102,7 @@ export const encodeNativeTxBodyCompactValue = (
 export const decodeNativeTxBodyCompactValue = (
   value: unknown,
   fieldName: string,
-): MidgardNativeTxBodyCompactV1 => {
+): MidgardNativeTxBodyCompact => {
   const v = asFixedArray(value, 12, fieldName);
   return {
     spendInputsHash: hashItem(v, 0, fieldName),
@@ -121,7 +121,7 @@ export const decodeNativeTxBodyCompactValue = (
 };
 
 export const encodeNativeTxBodyCanonicalValue = (
-  body: MidgardNativeTxBodyCanonicalV1,
+  body: MidgardNativeTxBodyCanonical,
 ): NativeTxBodyCanonicalValue => [
   Buffer.from(body.spendInputsPreimageCbor),
   Buffer.from(body.referenceInputsPreimageCbor),
@@ -146,7 +146,7 @@ export const encodeNativeTxBodyCanonicalValue = (
 export const decodeNativeTxBodyCanonicalValue = (
   value: unknown,
   fieldName: string,
-): MidgardNativeTxBodyCanonicalV1 => {
+): MidgardNativeTxBodyCanonical => {
   const v = asFixedArray(value, 12, fieldName);
   return {
     spendInputsPreimageCbor: bytesItem(v, 0, fieldName),
@@ -169,7 +169,7 @@ export const decodeNativeTxBodyCanonicalValue = (
  *
  * Each one is a plain `blake2b_256` over the field's §5.1 preimage bytes: no
  * domain tag, no version prefix, no field index in the hash input. That is the
- * whole derivation — {@link midgardFieldCommitmentV1} is `computeHash32`, and a
+ * whole derivation — {@link midgardFieldCommitment} is `computeHash32`, and a
  * watcher recomputing these needs the raw bytes and nothing else.
  *
  * **The preimage is not re-validated here, deliberately.** §4's commitment is
@@ -189,42 +189,38 @@ export const decodeNativeTxBodyCanonicalValue = (
  * enforced at the verification entry points, not here.
  */
 export const deriveNativeTxBodyCompact = (
-  body: MidgardNativeTxBodyCanonicalV1,
-): MidgardNativeTxBodyCompactV1 => ({
-  spendInputsHash: midgardFieldCommitmentV1(body.spendInputsPreimageCbor),
-  referenceInputsHash: midgardFieldCommitmentV1(
-    body.referenceInputsPreimageCbor,
-  ),
-  outputsHash: midgardFieldCommitmentV1(body.outputsPreimageCbor),
+  body: MidgardNativeTxBodyCanonical,
+): MidgardNativeTxBodyCompact => ({
+  spendInputsHash: midgardFieldCommitment(body.spendInputsPreimageCbor),
+  referenceInputsHash: midgardFieldCommitment(body.referenceInputsPreimageCbor),
+  outputsHash: midgardFieldCommitment(body.outputsPreimageCbor),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversHash: midgardFieldCommitmentV1(
+  requiredObserversHash: midgardFieldCommitment(
     body.requiredObserversPreimageCbor,
   ),
-  requiredSignersHash: midgardFieldCommitmentV1(
-    body.requiredSignersPreimageCbor,
-  ),
-  mintHash: midgardFieldCommitmentV1(body.mintPreimageCbor),
+  requiredSignersHash: midgardFieldCommitment(body.requiredSignersPreimageCbor),
+  mintHash: midgardFieldCommitment(body.mintPreimageCbor),
   scriptIntegrityHash: body.scriptIntegrityHash,
   auxiliaryDataHash: body.auxiliaryDataHash,
   networkId: body.networkId,
 });
 
 export const encodeNativeTxBodyCompactCbor = (
-  body: MidgardNativeTxBodyCompactV1,
+  body: MidgardNativeTxBodyCompact,
 ): Buffer => encodeCbor(encodeNativeTxBodyCompactValue(body));
 
 export const decodeNativeTxBodyCompactCbor = (
   bytes: Uint8Array,
-): MidgardNativeTxBodyCompactV1 =>
+): MidgardNativeTxBodyCompact =>
   decodeNativeTxBodyCompactValue(decodeSingleCbor(bytes), "transaction_body");
 
 export const encodeNativeTxBodyCanonicalCbor = (
-  body: MidgardNativeTxBodyCanonicalV1,
+  body: MidgardNativeTxBodyCanonical,
 ): Buffer => encodeCbor(encodeNativeTxBodyCanonicalValue(body));
 
 export const decodeNativeTxBodyCanonicalCbor = (
   bytes: Uint8Array,
-): MidgardNativeTxBodyCanonicalV1 =>
+): MidgardNativeTxBodyCanonical =>
   decodeNativeTxBodyCanonicalValue(decodeSingleCbor(bytes), "transaction_body");

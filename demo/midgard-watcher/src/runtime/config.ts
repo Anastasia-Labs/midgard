@@ -143,7 +143,7 @@ export class WatcherConfigError extends Error {
   }
 }
 
-const admittedWatcherConfigsV1 = new WeakSet<object>();
+const admittedWatcherConfigs = new WeakSet<object>();
 
 function fail(code: WatcherConfigErrorCode, path: string): never {
   throw new WatcherConfigError(code, path);
@@ -698,7 +698,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
   if (
     typeof value === "object" &&
     value !== null &&
-    admittedWatcherConfigsV1.has(value)
+    admittedWatcherConfigs.has(value)
   ) {
     return value as WatcherConfig;
   }
@@ -901,7 +901,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
       proofSubmitMs,
     }),
   });
-  admittedWatcherConfigsV1.add(admitted);
+  admittedWatcherConfigs.add(admitted);
   return admitted;
 };
 
@@ -1095,5 +1095,5 @@ export const parseWatcherConfigJson = (source: string): WatcherConfig => {
 };
 
 /** Duplicate-key rejecting JSON admission shared by production identity files. */
-export const parseWatcherStrictJsonValueV1 = (source: string): unknown =>
+export const parseWatcherStrictJsonValue = (source: string): unknown =>
   new StrictJsonReader(source).parse();

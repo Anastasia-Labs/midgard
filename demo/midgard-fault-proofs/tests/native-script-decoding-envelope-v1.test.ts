@@ -28,18 +28,18 @@
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
-  deriveMidgardNativeTxProofSourceV1,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  type MidgardBoundedItemChunkProofV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
+  deriveMidgardNativeTxProofSource,
+  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
+  MIDGARD_CONSENSUS_LIMITS,
+  type MidgardBoundedItemChunkProof,
 } from "@al-ft/midgard-core";
 import {
   AddressData,
   addressDataFromBech32,
-  type BoundedItemChunkProofV1,
-  type FieldCarriageV1,
+  type BoundedItemChunkProof,
+  type FieldCarriage,
   NativeScriptDecodingStep01SpendRedeemer,
   NativeScriptDecodingStep02SpendRedeemer,
   NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
@@ -56,7 +56,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1 } from "../src/native-script-decoding/contracts-v1.js";
+import { NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES } from "../src/native-script-decoding/contracts-v1.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
   buildTransactionInclusionFixture,
@@ -66,7 +66,7 @@ import {
   PROOF_TRANSACTION_BRANCH_LEVEL_BYTES,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
-  buildNativeScriptDecodingChainV1,
+  buildNativeScriptDecodingChain,
   h32,
   makeHeader,
   makeNativeTx,
@@ -76,7 +76,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 /** The consensus floor every fault-proof step transaction must fit. */
-const L1_ENVELOPE_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const L1_ENVELOPE_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /**
  * Redeemer-to-transaction gap: everything a step transaction carries besides
@@ -114,7 +114,7 @@ const EXPECTED_UNAPPLIED_SIZES_BYTES = {
 const dataBytes = (hex: string): number => hex.length / 2;
 
 /** Same opt-in measurement printing convention as `printProofFitV1`. */
-const printChartV1 = (headline: string, values: Record<string, number>) => {
+const printChart = (headline: string, values: Record<string, number>) => {
   if (process.env["MIDGARD_PRINT_PROOF_FIT"] !== "1") {
     return;
   }
@@ -133,8 +133,8 @@ type FixtureInclusion = {
 };
 
 const chunkProofToData = (
-  proof: MidgardBoundedItemChunkProofV1,
-): BoundedItemChunkProofV1 => ({
+  proof: MidgardBoundedItemChunkProof,
+): BoundedItemChunkProof => ({
   version: BigInt(proof.version),
   field_index: BigInt(proof.fieldIndex),
   item_index: BigInt(proof.itemIndex),
@@ -155,7 +155,7 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
 
   it("pins all six unapplied validator sizes", () => {
     for (const [step, title] of Object.entries(
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES,
     )) {
       const validator = blueprint.validators.find(
         (candidate) => candidate.title === title,
@@ -193,7 +193,7 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
         ),
       ),
     );
-    const steps = buildNativeScriptDecodingChainV1({
+    const steps = buildNativeScriptDecodingChain({
       realBlueprint: blueprint,
       computationThreadPolicyId: "11".repeat(28),
       fraudProofPolicyId: "33".repeat(28),
@@ -213,10 +213,7 @@ describe("native-script-decoding compiled sizes and deployability (Q3)", () => {
         step.spendingScriptCBOR.length / 2,
       ]),
     );
-    printChartV1(
-      "native-script-decoding applied validator sizes",
-      appliedSizes,
-    );
+    printChart("native-script-decoding applied validator sizes", appliedSizes);
 
     for (const [index, step] of steps.entries()) {
       const appliedBytes = step.spendingScriptCBOR.length / 2;
@@ -273,7 +270,7 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
       1,
       Math.ceil(
         dataBytes(inclusion.txMembershipProofCbor) /
-          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+          MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
       ),
     );
     const publishedChunk: NativeScriptDecodingStep01SpendRedeemer = {
@@ -346,7 +343,7 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
           deepBytes.redeemerCarried) /
           perLevelBytes,
       );
-    printChartV1("native-script-decoding step-01 chart", {
+    printChart("native-script-decoding step-01 chart", {
       shallowRedeemerCarriedBytes: shallowBytes.redeemerCarried,
       deepRedeemerCarriedBytes: deepBytes.redeemerCarried,
       deepPublishedChunkBytes: deepBytes.publishedChunk,
@@ -458,7 +455,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
       outputByte: "c7",
       witnessByte: "c8",
     });
-    const source = deriveMidgardNativeTxProofSourceV1(forcedNativeTx);
+    const source = deriveMidgardNativeTxProofSource(forcedNativeTx);
 
     const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
     const header = makeHeader(
@@ -574,7 +571,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
         (L1_ENVELOPE_BYTES - STEP_TX_OVERHEAD_ALLOWANCE_BYTES - deepBytes) /
           perLevelBytes,
       );
-    printChartV1("native-script-decoding step-02 chart", {
+    printChart("native-script-decoding step-02 chart", {
       shallowBytes,
       deepBytes,
       perLevelBytes,
@@ -607,7 +604,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
   // output field — and so any single item inside it — can commit to. Chunked
   // at the §8.4 stride this is 8 full windows.
   const ADVERSARIAL_ITEM_BYTES = 32_000;
-  const item = buildMidgardBoundedItemV1({
+  const item = buildMidgardBoundedItem({
     fieldIndex: 4,
     itemIndex: 0,
     bytes: Buffer.alloc(ADVERSARIAL_ITEM_BYTES, 0x82),
@@ -637,15 +634,13 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
 
   it("fits the worst AdvanceOrClose window and its small closing form", () => {
     const midChunk = chunkProofToData(
-      buildMidgardBoundedItemChunkProofV1(item, 3),
+      buildMidgardBoundedItemChunkProof(item, 3),
     );
     const nextChunk = chunkProofToData(
-      buildMidgardBoundedItemChunkProofV1(item, 4),
+      buildMidgardBoundedItemChunkProof(item, 4),
     );
-    expect(dataBytes(midChunk.chunk)).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
-    expect(dataBytes(nextChunk.chunk)).toBe(
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-    );
+    expect(dataBytes(midChunk.chunk)).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
+    expect(dataBytes(nextChunk.chunk)).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
 
     const scanRedeemer: NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer =
       {
@@ -717,7 +712,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
       Buffer.from((await trie.prove(accusedKey)).toCBOR()).toString("hex"),
     );
     const firstChunk = chunkProofToData(
-      buildMidgardBoundedItemChunkProofV1(item, 0),
+      buildMidgardBoundedItemChunkProof(item, 0),
     );
     const compactTx = makeNativeTx({
       spendInputCbors: [
@@ -730,10 +725,10 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
       witnessByte: "e6",
     });
     const compactCborHex = Buffer.from(
-      deriveMidgardNativeTxProofSourceV1(compactTx).compactCbor,
+      deriveMidgardNativeTxProofSource(compactTx).compactCbor,
     ).toString("hex");
 
-    const openWithCarriage = (carriage: FieldCarriageV1): number => {
+    const openWithCarriage = (carriage: FieldCarriage): number => {
       const redeemer: NativeScriptDecodingStep03OpenSubjectSpendRedeemer = {
         Continue: [
           {
@@ -810,7 +805,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
     expect(
       tier1FrontierBytes,
       "the tier-1 inline-opening frontier fell below two §8.4 chunks; the planner would lose its small-field fast path",
-    ).toBeGreaterThanOrEqual(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
+    ).toBeGreaterThanOrEqual(2 * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES);
   }, 600_000);
 });
 

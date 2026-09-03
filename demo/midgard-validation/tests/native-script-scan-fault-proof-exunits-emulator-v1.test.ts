@@ -3,29 +3,29 @@ import { dirname, resolve } from "node:path";
 import { inspect } from "node:util";
 
 import {
-  buildMidgardLedgerOutputProofTraceV1,
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MidgardLedgerOutputProofStagesV1,
-  type MidgardLedgerOutputProofTraceV1,
-  MidgardNativeScriptStructureStagesV1,
+  buildMidgardLedgerOutputProofTrace,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
+  MidgardLedgerOutputProofStages,
+  type MidgardLedgerOutputProofTrace,
+  MidgardNativeScriptStructureStages,
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardNativeScript,
   encodeMidgardTxOutput,
   type MidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { validationOneStepEvidenceHashV1 } from "@al-ft/midgard-fault-proofs";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { validationOneStepEvidenceHash } from "@al-ft/midgard-fault-proofs";
 import {
   buildValidationTraceDisputeFaultProofContracts,
   parseFaultProofBlueprint,
-  PreparedValidationResolutionDatumV1,
+  PreparedValidationResolutionDatum,
   requireInputIndex,
   requireUniqueOutputIndex,
   validationMachineStateDataFromCore,
   type ValidationTraceDisputeFaultProofContracts,
-  WinningValidationResolutionDatumV1,
+  WinningValidationResolutionDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -46,23 +46,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgumentV1,
+  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
 } from "../src/index.js";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "../src/ledger-output-descriptor.js";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "../src/ledger-output-descriptor.js";
 import {
-  checkScanBenchLedgerV1,
-  readScanBenchLedgerV1,
-  SCAN_BENCH_EXECUTION_BASIS_V1,
-  SCAN_BENCH_LEDGER_PATH_V1,
-  scanBenchFiltersInEffectV1,
-  writeScanBenchLedgerV1,
+  checkScanBenchLedger,
+  readScanBenchLedger,
+  SCAN_BENCH_EXECUTION_BASIS,
+  SCAN_BENCH_LEDGER_PATH,
+  scanBenchFiltersInEffect,
+  writeScanBenchLedger,
 } from "./helpers/native-script-scan-exunits-ledger-v1.js";
 import {
-  fundingLovelaceForOutputsV1,
-  makeMinAdaFundedExactSizeOutputItemV1,
+  fundingLovelaceForOutputs,
+  makeMinAdaFundedExactSizeOutputItem,
   makeNativeTx,
   outRefFromByte,
   outRefFromTxId,
@@ -150,9 +150,8 @@ const SIGNER_HASH = Buffer.from(
  * `memBasisShareBasisPoints`, `cpuUnits` in the ledger's `basisFit` judgement,
  * which a row may not cross in either direction without going red.
  */
-const BASIS_MEMORY_UNITS = SCAN_BENCH_EXECUTION_BASIS_V1.memoryUnits;
-const MAX_L1_PROOF_TX_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const BASIS_MEMORY_UNITS = SCAN_BENCH_EXECUTION_BASIS.memoryUnits;
+const MAX_L1_PROOF_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /**
  * The whole-output canonical CBOR cap (`ledger_output_v1.
@@ -166,12 +165,12 @@ const MAX_OUTPUT_CBOR_BYTES = 16_384;
  * constants above and handed to the verifier — never read back out of the
  * ledger whose verdicts it decides.
  */
-const SCAN_BENCH_LEDGER_BASIS_V1 = {
+const SCAN_BENCH_LEDGER_BASIS = {
   memoryUnits: BASIS_MEMORY_UNITS,
-  cpuUnits: SCAN_BENCH_EXECUTION_BASIS_V1.cpuUnits,
+  cpuUnits: SCAN_BENCH_EXECUTION_BASIS.cpuUnits,
   maxL1ProofTxBytes: MAX_L1_PROOF_TX_BYTES,
   maxOutputCanonicalCborBytes: MAX_OUTPUT_CBOR_BYTES,
-  source: SCAN_BENCH_EXECUTION_BASIS_V1.source,
+  source: SCAN_BENCH_EXECUTION_BASIS.source,
 } as const;
 
 /** Flat semantic-resolver index of `resolve_inputs_membership_step_semantic_v1`. */
@@ -180,7 +179,7 @@ const RESOLVE_INPUTS_MEMBERSHIP_STEP_RESOLVER = 29;
 const LEDGER_OUTPUT_PROOF_STEP_AUX_SHAPE = [32, 1] as const;
 
 const traceContext = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: Buffer.from("d8799f4100ff", "hex"),
   sourceKind: "normal" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -262,7 +261,7 @@ const maxFitNodes = (shape: PayloadShape, lovelace: bigint): number => {
 
 type BenchmarkCase = {
   readonly trace: DeterministicValidationMachineTrace;
-  readonly proofTrace: MidgardLedgerOutputProofTraceV1;
+  readonly proofTrace: MidgardLedgerOutputProofTrace;
   /** trace state index of the k-th ledger-output-proof step witness. */
   readonly stepStateIndices: readonly number[];
   readonly spentOutputBytes: number;
@@ -273,8 +272,8 @@ const buildBenchmarkCase = async (
   shape: PayloadShape,
   nodes: number,
 ): Promise<BenchmarkCase> => {
-  const producedItem = makeMinAdaFundedExactSizeOutputItemV1(160);
-  const funding = fundingLovelaceForOutputsV1([producedItem]);
+  const producedItem = makeMinAdaFundedExactSizeOutputItem(160);
+  const funding = fundingLovelaceForOutputs([producedItem]);
   const script = nativeScriptForShape(shape, nodes);
   const payloadBytes = encodeMidgardNativeScript(script).length;
   const spentOutput = makeReferenceScriptOutput(funding, script);
@@ -288,7 +287,7 @@ const buildBenchmarkCase = async (
   });
   const expectedLedgerOps = [
     { type: "delete" as const, key: spent },
-    buildValidationMachineLedgerInsertOpV1({
+    buildValidationMachineLedgerInsertOp({
       key: outRefFromTxId(transaction.txId, 0n),
       outputCbor: producedItem,
     }),
@@ -314,11 +313,11 @@ const buildBenchmarkCase = async (
     }),
   );
 
-  const material = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: spent,
     outputCbor: spentOutput,
   });
-  const proofTrace = buildMidgardLedgerOutputProofTraceV1({
+  const proofTrace = buildMidgardLedgerOutputProofTrace({
     outputIndex: material.descriptor.outputIndex,
     outputCbor: spentOutput,
   });
@@ -382,8 +381,8 @@ const describeStep = (
  */
 const selectSteps = (benchmarkCase: BenchmarkCase): StepDescriptor[] => {
   const { proofTrace } = benchmarkCase;
-  const stages = MidgardLedgerOutputProofStagesV1;
-  const nativeStages = MidgardNativeScriptStructureStagesV1;
+  const stages = MidgardLedgerOutputProofStages;
+  const nativeStages = MidgardNativeScriptStructureStages;
   const selected: StepDescriptor[] = [];
   const firstOfStage = new Map<number, number>();
   proofTrace.steps.forEach((step, index) => {
@@ -496,7 +495,7 @@ const preparedThreadDatumCbor = (
   stateIndex: number,
   evidenceHash: string,
 ): string => {
-  const successorHash = hashMidgardValidationMachineStateV1(
+  const successorHash = hashMidgardValidationMachineState(
     benchmarkCase.trace.states[stateIndex + 1]!,
   ).toString("hex");
   // A well-formed prepared resolution requires the two successor hashes to
@@ -520,14 +519,14 @@ const preparedThreadDatumCbor = (
         evidence_hash: evidenceHash,
       },
     },
-    PreparedValidationResolutionDatumV1,
+    PreparedValidationResolutionDatum,
   );
 };
 
 const winningDatumCbor = (): string =>
   Data.to(
     { fraud_prover: SIGNER_HASH, data: { version: 1n } },
-    WinningValidationResolutionDatumV1,
+    WinningValidationResolutionDatum,
   );
 
 const measureStep = async (
@@ -544,7 +543,7 @@ const measureStep = async (
   }
   const award = contracts.validationTraceDispute.award;
   const stateIndex = benchmarkCase.stepStateIndices[descriptor.stepIndex]!;
-  const argument = buildValidationOneStepArgumentV1({
+  const argument = buildValidationOneStepArgument({
     trace: benchmarkCase.trace,
     stateIndex,
   });
@@ -563,7 +562,7 @@ const measureStep = async (
     throw new Error("ledger-output-proof step auxiliary has unexpected shape");
   }
   const proofWitnessData = auxiliary.fields[0]!;
-  const evidenceHash = validationOneStepEvidenceHashV1({
+  const evidenceHash = validationOneStepEvidenceHash({
     transitionCbor: argument.transitionCbor,
     auxiliaryCbor: argument.auxiliaryCbor,
   });
@@ -760,8 +759,8 @@ const runCurvePoint = async (
   nodes: number,
 ): Promise<CurvePointReport> => {
   const benchmarkCase = await buildBenchmarkCase(shape, nodes);
-  const stages = MidgardLedgerOutputProofStagesV1;
-  const nativeStages = MidgardNativeScriptStructureStagesV1;
+  const stages = MidgardLedgerOutputProofStages;
+  const nativeStages = MidgardNativeScriptStructureStages;
   const nativeSteps = benchmarkCase.proofTrace.steps.filter(
     (step) => step.control.stage === stages.NativeScript,
   );
@@ -911,8 +910,8 @@ describe.skipIf(!EVIDENCE)(
       { timeout: 14_400_000 },
       async () => {
         const resolveCurvePoints = (shape: PayloadShape): number[] => {
-          const producedItem = makeMinAdaFundedExactSizeOutputItemV1(160);
-          const funding = fundingLovelaceForOutputsV1([producedItem]);
+          const producedItem = makeMinAdaFundedExactSizeOutputItem(160);
+          const funding = fundingLovelaceForOutputs([producedItem]);
           const tokens =
             INCLUDE_MAX_FIT && !CURVE_NODE_TOKENS.includes("maxfit")
               ? [...CURVE_NODE_TOKENS, "maxfit"]
@@ -1008,7 +1007,7 @@ describe.skipIf(!EVIDENCE)(
 
         // A measure-mode child is env-narrowed by construction, and a narrowed
         // run must never judge (or bootstrap) the ledger — that is exactly the
-        // truncated-pin shape checkScanBenchLedgerV1 refuses. Its readings are
+        // truncated-pin shape checkScanBenchLedger refuses. Its readings are
         // judged once, merged, by the orchestrator's check phase.
         if (BENCH_MODE === "measure") {
           expect(reports.length).toBeGreaterThan(0);
@@ -1018,12 +1017,12 @@ describe.skipIf(!EVIDENCE)(
         // The pin. Exact per-row equality against the committed artifact, with
         // each row's side of the §3.3 basis and of the L1 cap recorded as a
         // judgement that fails on movement in EITHER direction.
-        const verdict = checkScanBenchLedgerV1({
-          ledger: readScanBenchLedgerV1(SCAN_BENCH_LEDGER_PATH_V1),
+        const verdict = checkScanBenchLedger({
+          ledger: readScanBenchLedger(SCAN_BENCH_LEDGER_PATH),
           readings: reports,
-          basis: SCAN_BENCH_LEDGER_BASIS_V1,
+          basis: SCAN_BENCH_LEDGER_BASIS,
           update: UPDATE_LEDGER,
-          filtersInEffect: scanBenchFiltersInEffectV1(),
+          filtersInEffect: scanBenchFiltersInEffect(),
         });
 
         // A re-take over an existing ledger follows the aiken verifier exactly:
@@ -1037,9 +1036,9 @@ describe.skipIf(!EVIDENCE)(
           verdict.updated !== null &&
           (verdict.bootstrapped || verdict.failures.length === 0)
         ) {
-          writeScanBenchLedgerV1(SCAN_BENCH_LEDGER_PATH_V1, verdict.updated);
+          writeScanBenchLedger(SCAN_BENCH_LEDGER_PATH, verdict.updated);
           console.log(
-            `[bench] ${verdict.bootstrapped ? "bootstrapped" : "updated"} ${SCAN_BENCH_LEDGER_PATH_V1} ` +
+            `[bench] ${verdict.bootstrapped ? "bootstrapped" : "updated"} ${SCAN_BENCH_LEDGER_PATH} ` +
               `with ${verdict.rowCount.toString()} row(s)`,
           );
         }

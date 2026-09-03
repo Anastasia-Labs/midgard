@@ -1,4 +1,4 @@
-import { missingNativeScriptTxVersionedScriptHashV1 } from "@al-ft/midgard-sdk";
+import { missingNativeScriptTxVersionedScriptHash } from "@al-ft/midgard-sdk";
 import {
   CML,
   credentialToAddress,
@@ -7,25 +7,25 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  admitHistoricalNativeScriptEvidenceV1,
-  createProductionExternalHistoricalNativeScriptSourceRosterV1,
-  HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION,
-  HISTORICAL_NATIVE_SCRIPT_SOURCE_V1,
-  historicalNativeScriptBytesV1,
-  type HistoricalNativeScriptSourceV1,
-  requireProductionHistoricalNativeScriptSourceRosterV1,
-  resolveHistoricalNativeScriptEvidenceV1,
-  unsafeCreateHistoricalNativeScriptSourceRosterForTestV1,
+  admitHistoricalNativeScriptEvidence,
+  createExternalHistoricalNativeScriptSourceRoster,
+  HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
+  HISTORICAL_NATIVE_SCRIPT_SOURCE,
+  historicalNativeScriptBytes,
+  type HistoricalNativeScriptSource,
+  requireHistoricalNativeScriptSourceRoster,
+  resolveHistoricalNativeScriptEvidence,
+  unsafeCreateHistoricalNativeScriptSourceRosterForTest,
 } from "../src/missing-native-script-tx/historical-script-v1.js";
-import { createProductionHistoricalNativeScriptProviderRosterV1 } from "../src/workflow/production-historical-native-script-corpus-v1.js";
+import { createHistoricalNativeScriptProviderRoster } from "../src/workflow/production-historical-native-script-corpus-v1.js";
 import {
-  computeFraudProofRawL1PointIdV1,
-  type FraudProofRawL1PointV1,
+  computeFraudProofRawL1PointId,
+  type FraudProofRawL1Point,
 } from "../src/workflow/raw-l1-snapshot-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type VerifiedFraudProofReleaseFinalityPolicy,
 } from "../src/workflow/release-finality-policy-v1.js";
 
 const DEPLOYMENT = "11".repeat(32);
@@ -36,11 +36,11 @@ const policy = {
   automaticRecoveryMaxDepth: 2160,
   deepRollbackPolicy: "automated_rewind_replay_incident-v1",
 } as const;
-const releaseFinality: VerifiedFraudProofReleaseFinalityPolicyV1 = {
-  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+const releaseFinality: VerifiedFraudProofReleaseFinalityPolicy = {
+  schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   deploymentIdentityDigest: DEPLOYMENT,
   releaseIdentityDigest: RELEASE,
-  policyDigest: computeFraudProofReleaseFinalityPolicyDigestV1(policy),
+  policyDigest: computeFraudProofReleaseFinalityPolicyDigest(policy),
   policy,
 };
 
@@ -48,11 +48,11 @@ const point = (
   slot: string,
   blockNo: string,
   blockHash: string,
-): FraudProofRawL1PointV1 => ({
+): FraudProofRawL1Point => ({
   slot,
   blockNo,
   blockHash,
-  pointId: computeFraudProofRawL1PointIdV1({ slot, blockNo, blockHash }),
+  pointId: computeFraudProofRawL1PointId({ slot, blockNo, blockHash }),
 });
 
 const inclusionPoint = point("100", "10", "31".repeat(32));
@@ -61,7 +61,7 @@ const throughPoint = point("200", "39", "32".repeat(32));
 const fixture = () => {
   const native = CML.NativeScript.new_script_all(CML.NativeScriptList.new());
   const scriptBytesHex = native.to_canonical_cbor_hex();
-  const expectedScriptHash = missingNativeScriptTxVersionedScriptHashV1(
+  const expectedScriptHash = missingNativeScriptTxVersionedScriptHash(
     Buffer.from(scriptBytesHex, "hex"),
   );
   const output = CML.TransactionOutput.new(
@@ -81,7 +81,7 @@ const fixture = () => {
   );
   const txHash = CML.hash_transaction(body).to_hex();
   const response = {
-    schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION,
+    schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
     deploymentIdentityDigest: DEPLOYMENT,
     releaseIdentityDigest: RELEASE,
     finalityPolicyDigest: releaseFinality.policyDigest,
@@ -111,8 +111,8 @@ const source = ({
   readonly sourceId?: string;
   readonly operatorIdentitySha256?: string | null;
   readonly response?: Readonly<Record<string, unknown>>;
-} = {}): HistoricalNativeScriptSourceV1 => ({
-  sourceVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE_V1,
+} = {}): HistoricalNativeScriptSource => ({
+  sourceVersion: HISTORICAL_NATIVE_SCRIPT_SOURCE,
   sourceMode,
   sourceId,
   operatorIdentitySha256,
@@ -141,9 +141,9 @@ const source = ({
 
 const roster = (
   sourceMode: "local_node" | "external_providers",
-  sources: readonly HistoricalNativeScriptSourceV1[],
+  sources: readonly HistoricalNativeScriptSource[],
 ) =>
-  unsafeCreateHistoricalNativeScriptSourceRosterForTestV1({
+  unsafeCreateHistoricalNativeScriptSourceRosterForTest({
     sourceMode,
     sources,
     applicationOverlayDigest: APPLICATION_OVERLAY,
@@ -155,7 +155,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
     const { expectedScriptHash, response } = fixture();
     const history = source({ response });
     const installedRoster = roster("local_node", [history]);
-    const evidence = await resolveHistoricalNativeScriptEvidenceV1({
+    const evidence = await resolveHistoricalNativeScriptEvidence({
       roster: installedRoster,
       expectedScriptHash,
       throughPoint,
@@ -166,7 +166,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       ),
     });
     expect(evidence).toMatchObject({
-      schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_V1_SCHEMA_VERSION,
+      schemaVersion: HISTORICAL_NATIVE_SCRIPT_EVIDENCE_SCHEMA_VERSION,
       deploymentIdentityDigest: DEPLOYMENT,
       expectedScriptHash,
       sourceMode: "local_node",
@@ -179,21 +179,21 @@ describe("missing-native-script authenticated historical resolver V1", () => {
         },
       ],
     });
-    expect(Buffer.from(historicalNativeScriptBytesV1(evidence))).toEqual(
+    expect(Buffer.from(historicalNativeScriptBytes(evidence))).toEqual(
       Buffer.from(response.scriptBytesHex, "hex"),
     );
     const persisted: unknown = JSON.parse(JSON.stringify(evidence));
-    expect(() => historicalNativeScriptBytesV1(persisted as never)).toThrow(
+    expect(() => historicalNativeScriptBytes(persisted as never)).toThrow(
       "was not admitted",
     );
-    const readmitted = await admitHistoricalNativeScriptEvidenceV1({
+    const readmitted = await admitHistoricalNativeScriptEvidence({
       value: persisted,
       roster: installedRoster,
       expectedScriptHash,
       throughPoint,
       releaseFinality,
     });
-    expect(Buffer.from(historicalNativeScriptBytesV1(readmitted))).toEqual(
+    expect(Buffer.from(historicalNativeScriptBytes(readmitted))).toEqual(
       Buffer.from(response.scriptBytesHex, "hex"),
     );
     expect(evidence.evidenceDigest).toMatch(/^[0-9a-f]{64}$/u);
@@ -204,7 +204,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
     const { expectedScriptHash, response } = fixture();
     const history = source({ response });
     const installedRoster = roster("local_node", [history]);
-    const evidence = await resolveHistoricalNativeScriptEvidenceV1({
+    const evidence = await resolveHistoricalNativeScriptEvidence({
       roster: installedRoster,
       expectedScriptHash,
       throughPoint,
@@ -227,7 +227,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
     ];
     for (const value of cases) {
       await expect(
-        admitHistoricalNativeScriptEvidenceV1({
+        admitHistoricalNativeScriptEvidence({
           value,
           roster: installedRoster,
           expectedScriptHash,
@@ -237,7 +237,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       ).rejects.toThrow();
     }
     await expect(
-      admitHistoricalNativeScriptEvidenceV1({
+      admitHistoricalNativeScriptEvidence({
         value: evidence,
         roster: roster("external_providers", [
           source({
@@ -259,7 +259,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       }),
     ).rejects.toThrow("schema/source mode mismatch");
     await expect(
-      admitHistoricalNativeScriptEvidenceV1({
+      admitHistoricalNativeScriptEvidence({
         value: evidence,
         roster: installedRoster,
         expectedScriptHash,
@@ -279,7 +279,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
     ];
     for (const candidate of cases) {
       await expect(
-        resolveHistoricalNativeScriptEvidenceV1({
+        resolveHistoricalNativeScriptEvidence({
           roster: roster("local_node", [source({ response: candidate })]),
           expectedScriptHash,
           throughPoint,
@@ -288,7 +288,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       ).rejects.toThrow();
     }
     await expect(
-      resolveHistoricalNativeScriptEvidenceV1({
+      resolveHistoricalNativeScriptEvidence({
         roster: roster("local_node", [source({ response })]),
         expectedScriptHash,
         throughPoint,
@@ -313,7 +313,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       response,
     });
     await expect(
-      resolveHistoricalNativeScriptEvidenceV1({
+      resolveHistoricalNativeScriptEvidence({
         roster: roster("external_providers", [providerA, providerB]),
         expectedScriptHash,
         throughPoint,
@@ -337,7 +337,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
     ).toThrow("providers are not independent");
 
     await expect(
-      resolveHistoricalNativeScriptEvidenceV1({
+      resolveHistoricalNativeScriptEvidence({
         roster: roster("external_providers", [
           providerA,
           source({
@@ -359,22 +359,21 @@ describe("missing-native-script authenticated historical resolver V1", () => {
 
   it("admits only the immutable concrete provider roster and revalidates it on restart", async () => {
     const { expectedScriptHash, response } = fixture();
-    const providerRoster =
-      createProductionHistoricalNativeScriptProviderRosterV1({
-        deploymentFingerprint: DEPLOYMENT,
-        providers: [
-          {
-            sourceId: "provider-a",
-            operatorIdentitySha256: "51".repeat(32),
-            authorityEndpoint: "https://provider-a.example.test",
-          },
-          {
-            sourceId: "provider-b",
-            operatorIdentitySha256: "52".repeat(32),
-            authorityEndpoint: "https://provider-b.example.test",
-          },
-        ],
-      });
+    const providerRoster = createHistoricalNativeScriptProviderRoster({
+      deploymentFingerprint: DEPLOYMENT,
+      providers: [
+        {
+          sourceId: "provider-a",
+          operatorIdentitySha256: "51".repeat(32),
+          authorityEndpoint: "https://provider-a.example.test",
+        },
+        {
+          sourceId: "provider-b",
+          operatorIdentitySha256: "52".repeat(32),
+          authorityEndpoint: "https://provider-b.example.test",
+        },
+      ],
+    });
     let substituteOnRestart = false;
     vi.stubGlobal(
       "fetch",
@@ -424,25 +423,24 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       }),
     );
     try {
-      const installedRoster =
-        createProductionExternalHistoricalNativeScriptSourceRosterV1({
-          providerRoster,
-          releaseFinality,
-        });
+      const installedRoster = createExternalHistoricalNativeScriptSourceRoster({
+        providerRoster,
+        releaseFinality,
+      });
       expect(
-        requireProductionHistoricalNativeScriptSourceRosterV1(
+        requireHistoricalNativeScriptSourceRoster(
           installedRoster,
           releaseFinality,
         ),
       ).toBe(installedRoster);
       expect(() =>
-        createProductionExternalHistoricalNativeScriptSourceRosterV1({
+        createExternalHistoricalNativeScriptSourceRoster({
           providerRoster: { ...providerRoster },
           releaseFinality,
         }),
       ).toThrow(/admitted immutable provider roster/u);
       expect(() =>
-        requireProductionHistoricalNativeScriptSourceRosterV1(
+        requireHistoricalNativeScriptSourceRoster(
           roster("external_providers", [
             source({
               sourceMode: "external_providers",
@@ -461,7 +459,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
         ),
       ).toThrow(/not a concrete production authority/u);
 
-      const evidence = await resolveHistoricalNativeScriptEvidenceV1({
+      const evidence = await resolveHistoricalNativeScriptEvidence({
         roster: installedRoster,
         expectedScriptHash,
         throughPoint,
@@ -469,7 +467,7 @@ describe("missing-native-script authenticated historical resolver V1", () => {
       });
       substituteOnRestart = true;
       await expect(
-        admitHistoricalNativeScriptEvidenceV1({
+        admitHistoricalNativeScriptEvidence({
           value: JSON.parse(JSON.stringify(evidence)),
           roster: installedRoster,
           expectedScriptHash,

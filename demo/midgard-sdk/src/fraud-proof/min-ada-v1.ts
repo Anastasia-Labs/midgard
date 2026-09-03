@@ -2,7 +2,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -11,16 +11,16 @@ import {
   NonMembershipCarriageSchema,
 } from "./native.js";
 
-export const MIN_ADA_VIOLATION_ID_V1 = "min-ada" as const;
+export const MIN_ADA_VIOLATION_ID = "min-ada" as const;
 
-export const MinAdaFaultV1Schema = Data.Enum([
+export const MinAdaFaultSchema = Data.Enum([
   Data.Object({ MinAdaTx: Data.Object({ output_index: Data.Integer() }) }),
   Data.Literal("MinAdaUtxo"),
 ]);
-export type MinAdaFaultV1 = Data.Static<typeof MinAdaFaultV1Schema>;
-export const MinAdaFaultV1 = MinAdaFaultV1Schema as unknown as MinAdaFaultV1;
+export type MinAdaFault = Data.Static<typeof MinAdaFaultSchema>;
+export const MinAdaFault = MinAdaFaultSchema as unknown as MinAdaFault;
 
-export const MinAdaPostUtxoMembershipV1Schema = Data.Object({
+export const MinAdaPostUtxoMembershipSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
@@ -28,23 +28,23 @@ export const MinAdaPostUtxoMembershipV1Schema = Data.Object({
   out_ref: OutputReferenceSchema,
   descriptor_cbor: Data.Bytes(),
 });
-export type MinAdaPostUtxoMembershipV1 = Data.Static<
-  typeof MinAdaPostUtxoMembershipV1Schema
+export type MinAdaPostUtxoMembership = Data.Static<
+  typeof MinAdaPostUtxoMembershipSchema
 >;
-export const MinAdaPostUtxoMembershipV1 =
-  MinAdaPostUtxoMembershipV1Schema as unknown as MinAdaPostUtxoMembershipV1;
+export const MinAdaPostUtxoMembership =
+  MinAdaPostUtxoMembershipSchema as unknown as MinAdaPostUtxoMembership;
 
 export const MinAdaStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export const MinAdaStep01ArgsSchema = Data.Object({
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),
-  post_utxo_membership: Data.Nullable(MinAdaPostUtxoMembershipV1Schema),
-  fault: MinAdaFaultV1Schema,
+  post_utxo_membership: Data.Nullable(MinAdaPostUtxoMembershipSchema),
+  fault: MinAdaFaultSchema,
 });
 export const MinAdaStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinAdaStep01ArgsSchema,
 );
 
-export const MinAdaPostUtxoStateV1Schema = Data.Object({
+export const MinAdaPostUtxoStateSchema = Data.Object({
   out_ref: OutputReferenceSchema,
   descriptor_cbor: Data.Bytes(),
   post_utxos_root: H32Schema,
@@ -52,8 +52,8 @@ export const MinAdaPostUtxoStateV1Schema = Data.Object({
 });
 export const MinAdaStep02StateSchema = Data.Object({
   bad_tx_id: H32Schema,
-  fault: MinAdaFaultV1Schema,
-  post_utxo: Data.Nullable(MinAdaPostUtxoStateV1Schema),
+  fault: MinAdaFaultSchema,
+  post_utxo: Data.Nullable(MinAdaPostUtxoStateSchema),
 });
 export type MinAdaStep02State = Data.Static<typeof MinAdaStep02StateSchema>;
 export const MinAdaStep02State =
@@ -66,7 +66,7 @@ export const MinAdaStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   yield_to_ref_input_index: Data.Integer(),
-  outputs_opening: Data.Nullable(FieldOpeningV1Schema),
+  outputs_opening: Data.Nullable(FieldOpeningSchema),
   post_membership: Data.Nullable(MembershipCarriageSchema),
 });
 export const MinAdaStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
@@ -135,7 +135,7 @@ export const MinAdaStep05SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinAdaStep05ArgsSchema,
 );
 
-export const MIN_ADA_STEP_NAMES_V1 = [
+export const MIN_ADA_STEP_NAMES = [
   "step_01",
   "step_02",
   "step_03",

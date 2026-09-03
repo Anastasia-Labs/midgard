@@ -1,22 +1,19 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import type { ProductionWorkflowFundingRequirementsV1 } from "./production-funding-requirements-v1.js";
+import type { WorkflowFundingRequirements } from "./production-funding-requirements-v1.js";
 
-const fundingByRunner = new WeakMap<
-  object,
-  ProductionWorkflowFundingRequirementsV1
->();
+const fundingByRunner = new WeakMap<object, WorkflowFundingRequirements>();
 const admittedFundingRequirements = new WeakSet<object>();
 
 /** Internal-only fixed-factory admission. Not exported from the package barrel. */
-export const bindProductionWorkflowFundingRequirementsToRunnerV1 = ({
+export const bindWorkflowFundingRequirementsToRunner = ({
   category,
   runner,
   requirements,
 }: {
   readonly category: FraudProofCatalogueCategoryName;
   readonly runner: object;
-  readonly requirements: ProductionWorkflowFundingRequirementsV1;
+  readonly requirements: WorkflowFundingRequirements;
 }): void => {
   if (
     requirements.scope.kind !== "fraud_proof_category" ||
@@ -34,8 +31,8 @@ export const bindProductionWorkflowFundingRequirementsToRunnerV1 = ({
 };
 
 /** Internal-only fixed Q58 application admission. */
-export const admitProductionAvailabilityFundingRequirementsV1 = (
-  requirements: ProductionWorkflowFundingRequirementsV1,
+export const admitAvailabilityFundingRequirements = (
+  requirements: WorkflowFundingRequirements,
 ): void => {
   if (requirements.scope.kind !== "da_availability_lifecycle") {
     throw new Error("availability funding requirements have another scope");
@@ -43,11 +40,10 @@ export const admitProductionAvailabilityFundingRequirementsV1 = (
   admittedFundingRequirements.add(requirements);
 };
 
-export const fundingRequirementsForRunnerIdentityV1 = (
+export const fundingRequirementsForRunnerIdentity = (
   runner: object,
-): ProductionWorkflowFundingRequirementsV1 | null =>
-  fundingByRunner.get(runner) ?? null;
+): WorkflowFundingRequirements | null => fundingByRunner.get(runner) ?? null;
 
-export const isAdmittedProductionFundingRequirementsIdentityV1 = (
+export const isAdmittedFundingRequirementsIdentity = (
   requirements: object,
 ): boolean => admittedFundingRequirements.has(requirements);

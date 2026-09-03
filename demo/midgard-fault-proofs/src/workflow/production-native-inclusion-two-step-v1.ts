@@ -1,9 +1,9 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeHash28,
-  decodeMidgardNativeTxCompactV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  midgardFieldCommitmentV1,
+  decodeMidgardNativeTxCompact,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -16,21 +16,21 @@ import {
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  prepareInvalidRangeFromCanonicalEvidenceV1,
-  prepareZeroInputFromCanonicalEvidenceV1,
+  prepareInvalidRangeFromCanonicalEvidence,
+  prepareZeroInputFromCanonicalEvidence,
 } from "../evidence/prepare-from-evidence-v1.js";
-import type { InvalidRangeContractsV1 } from "../invalid-range/contracts-v1.js";
+import type { InvalidRangeContracts } from "../invalid-range/contracts-v1.js";
 import {
-  invalidRangeEvidenceClosesV1,
-  type InvalidRangeEvidenceV1,
-  prepareInvalidRangeEvidenceV1,
+  type InvalidRangeEvidence,
+  invalidRangeEvidenceCloses,
+  prepareInvalidRangeEvidence,
 } from "../invalid-range/family-v1.js";
-import { prepareInvalidRangeForcedProductionPlanV1 } from "../invalid-range/production-v1.js";
+import { prepareInvalidRangeForcedPlan } from "../invalid-range/production-v1.js";
 import {
-  submitInvalidRangeStep01ForcedV1,
+  submitInvalidRangeStep01Forced,
   submitInvalidRangeStep02V1,
 } from "../invalid-range/submit-v1.js";
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
 import type { PreparedTxInclusionJson } from "../prepare-double-spend.js";
 import {
   type StateQueueMutationLease,
@@ -45,82 +45,80 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { ZeroInputContractsV1 } from "../zero-input/contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { ZeroInputContracts } from "../zero-input/contracts-v1.js";
 import {
-  prepareZeroInputEvidenceV1,
-  type ZeroInputEvidenceV1,
-  ZeroInputVerdictSubjectV1Schema,
+  prepareZeroInputEvidence,
+  type ZeroInputEvidence,
+  ZeroInputVerdictSubjectSchema,
 } from "../zero-input/family-v1.js";
-import { prepareZeroInputForcedProductionPlanV1 } from "../zero-input/production-v1.js";
+import { prepareZeroInputForcedPlan } from "../zero-input/production-v1.js";
 import {
-  ZeroInputForcedSourcePayloadV1Schema,
-  ZeroInputStep02DatumV1Schema,
+  ZeroInputForcedSourcePayloadSchema,
+  ZeroInputStep02DatumSchema,
 } from "../zero-input/schemas-v1.js";
 import {
-  submitZeroInputStep01AcceptedV1,
-  submitZeroInputStep01ForcedV1,
+  submitZeroInputStep01Accepted,
+  submitZeroInputStep01Forced,
 } from "../zero-input/submit-step-01-v1.js";
 import { submitZeroInputStep02V1 } from "../zero-input/submit-step-02-v1.js";
-import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
+import type { CanonicalBlockClassification } from "./classification-v1.js";
 import {
-  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
-  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
+  ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "./complete-replay-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  releaseFinalityAuthorityFromDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  releaseFinalityAuthorityFromDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding-v1.js";
 import {
-  createFraudProofFamilyAuthenticatedL1TerminalVerifierV1,
-  createFraudProofFamilyLocalKupmiosL1ObservationPortV1,
-  type FraudProofFamilyL1ObservationPortV1,
+  createFraudProofFamilyAuthenticatedL1TerminalVerifier,
+  createFraudProofFamilyLocalKupmiosL1ObservationPort,
+  type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowJournalStoreV1,
-  type JournalJsonObjectV1,
-  normalizeJournalJsonV1,
+  type FraudProofWorkflowJournalStore,
+  type JournalJsonObject,
+  normalizeJournalJson,
 } from "./journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "./local-kupmios-http-ogmios-source-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "./local-kupmios-http-ogmios-source-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
-  type FraudProofWorkflowRunResultV1,
-  type FraudProofWorkflowTerminalVerifierV1,
-  runFraudProofWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
+  type FraudProofWorkflowRunResult,
+  type FraudProofWorkflowTerminalVerifier,
+  runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator-v1.js";
 import {
-  createProductionLinearFamilyWorkflowAdapterV1,
-  PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
-  type ProductionLinearFamilyTransactionPortV1,
+  createLinearFamilyWorkflowAdapter,
+  LINEAR_FAMILY_TRANSACTION_PORT,
+  type LinearFamilyTransactionPort,
 } from "./production-linear-family-adapter-v1.js";
 import {
-  createAuthenticatedProofChunkPrerequisitePortV1,
-  resolveDirectFirstProofChunksV1,
-  withProductionProofChunkPrerequisiteV1,
+  createAuthenticatedProofChunkPrerequisitePort,
+  resolveDirectFirstProofChunks,
+  withProofChunkPrerequisite,
 } from "./production-proof-chunk-prerequisite-v1.js";
-import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy-v1.js";
 import {
-  captureLocallyEvaluatedTransactionV1,
-  workflowTransactionInputOutRefsV1,
-  workflowTransactionReferenceInputOutRefsV1,
+  captureLocallyEvaluatedTransaction,
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1 =
+export const NATIVE_INCLUSION_TWO_STEP_ARTIFACT =
   "midgard-production-native-inclusion-two-step-artifact-v1" as const;
 
-export type ProductionNativeInclusionTwoStepCategoryV1 =
-  | "invalidRange"
-  | "zeroInput";
+export type NativeInclusionTwoStepCategory = "invalidRange" | "zeroInput";
 
-export type ProductionNativeInclusionTwoStepArtifactV1 = JournalJsonObjectV1 &
+export type NativeInclusionTwoStepArtifact = JournalJsonObject &
   Readonly<{
-    schemaVersion: typeof PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1;
-    category: ProductionNativeInclusionTwoStepCategoryV1;
+    schemaVersion: typeof NATIVE_INCLUSION_TWO_STEP_ARTIFACT;
+    category: NativeInclusionTwoStepCategory;
     headerHash: string;
     detectionId: string;
     position: number;
@@ -224,9 +222,7 @@ const proofSteps = (
     };
   });
 
-const parseArtifact = (
-  value: unknown,
-): ProductionNativeInclusionTwoStepArtifactV1 => {
+const parseArtifact = (value: unknown): NativeInclusionTwoStepArtifact => {
   const parsed = exact(
     value,
     [
@@ -251,7 +247,7 @@ const parseArtifact = (
     "native-inclusion two-step artifact",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1 ||
+    parsed.schemaVersion !== NATIVE_INCLUSION_TWO_STEP_ARTIFACT ||
     (parsed.category !== "invalidRange" && parsed.category !== "zeroInput") ||
     (parsed.sourceKind !== "accepted" && parsed.sourceKind !== "forced") ||
     typeof parsed.detectionId !== "string" ||
@@ -283,7 +279,7 @@ const parseArtifact = (
     violationReason = null;
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1,
+    schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
     category: parsed.category,
     headerHash: canonicalHex(parsed.headerHash, HEX_28, "artifact header"),
     detectionId: parsed.detectionId,
@@ -335,17 +331,17 @@ const parseArtifact = (
   });
 };
 
-export const admitProductionNativeInclusionTwoStepArtifactV1 = (
+export const admitNativeInclusionTwoStepArtifact = (
   value: unknown,
 ): Readonly<{
-  artifact: ProductionNativeInclusionTwoStepArtifactV1;
+  artifact: NativeInclusionTwoStepArtifact;
   inclusion: ReturnType<typeof parseSubmitStep01TxInclusion> | null;
-  zeroInputEvidence: ZeroInputEvidenceV1 | null;
-  invalidRangeEvidence: InvalidRangeEvidenceV1 | null;
+  zeroInputEvidence: ZeroInputEvidence | null;
+  invalidRangeEvidence: InvalidRangeEvidence | null;
   forcedSource: Readonly<Record<string, unknown>> | null;
 }> => {
   const artifact = parseArtifact(value);
-  const compact = decodeMidgardNativeTxCompactV1(
+  const compact = decodeMidgardNativeTxCompact(
     Buffer.from(artifact.nativeTxCompactCbor, "hex"),
   );
   const inclusion =
@@ -383,7 +379,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
       "native-inclusion artifact membership proof does not open its PHAS root",
     );
   }
-  let invalidRangeEvidence: InvalidRangeEvidenceV1 | null = null;
+  let invalidRangeEvidence: InvalidRangeEvidence | null = null;
   if (
     artifact.category === "invalidRange" &&
     artifact.sourceKind === "accepted"
@@ -404,16 +400,16 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
     }
     const subject = Data.from(
       artifact.subjectCbor,
-      SDK.InvalidRangeVerdictSubjectV1Schema as never,
-    ) as SDK.VerdictSubjectV1;
-    invalidRangeEvidence = prepareInvalidRangeEvidenceV1({
+      SDK.InvalidRangeVerdictSubjectSchema as never,
+    ) as SDK.VerdictSubject;
+    invalidRangeEvidence = prepareInvalidRangeEvidence({
       subject,
       blockSlot: BigInt(artifact.blockSlot!),
       txBody: inclusion!.nativeTx.body,
     });
     if (
       subject.direction !== 0n ||
-      !invalidRangeEvidenceClosesV1(invalidRangeEvidence) ||
+      !invalidRangeEvidenceCloses(invalidRangeEvidence) ||
       artifact.forcedSourceCbor !== ""
     )
       throw new Error("invalid-range accepted artifact source changed");
@@ -431,14 +427,14 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
       );
     }
   }
-  let zeroInputEvidence: ZeroInputEvidenceV1 | null = null;
+  let zeroInputEvidence: ZeroInputEvidence | null = null;
   let forcedSource: Readonly<Record<string, unknown>> | null = null;
   if (artifact.category === "zeroInput") {
     const subject = Data.from(
       artifact.subjectCbor,
-      ZeroInputVerdictSubjectV1Schema as never,
-    ) as SDK.VerdictSubjectV1;
-    zeroInputEvidence = prepareZeroInputEvidenceV1({
+      ZeroInputVerdictSubjectSchema as never,
+    ) as SDK.VerdictSubject;
+    zeroInputEvidence = prepareZeroInputEvidence({
       finding: { subject },
       inputFieldPreimage: Buffer.from(artifact.inputFieldPreimageCbor, "hex"),
       committedFieldHashHex: artifact.inputFieldCommitment,
@@ -461,16 +457,16 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
         throw new Error("zero-input forced artifact carried accepted evidence");
       forcedSource = Data.from(
         artifact.forcedSourceCbor,
-        ZeroInputForcedSourcePayloadV1Schema as never,
+        ZeroInputForcedSourcePayloadSchema as never,
       ) as Readonly<Record<string, unknown>>;
       const source = forcedSource as {
-        readonly header: SDK.HeaderV1;
+        readonly header: SDK.Header;
         readonly membership: SDK.ForcedTransactionSourceMembershipProof;
         readonly direction: bigint;
       };
       const leaf = source.membership.value;
       if (
-        computeHash28(SDK.encodeHeaderV1Cbor(source.header)).toString("hex") !==
+        computeHash28(SDK.encodeHeaderCbor(source.header)).toString("hex") !==
           artifact.headerHash ||
         source.direction !== 1n ||
         source.membership.root !== source.header.forcedTransactionsRoot ||
@@ -479,7 +475,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
         leaf.source.compact_cbor !== artifact.nativeTxCompactCbor ||
         Data.to(
           { tx_id: leaf.tx_id, source: leaf.source } as never,
-          SDK.L2TransactionSourceV1 as never,
+          SDK.L2TransactionSource as never,
         ) !== artifact.l2TransactionSourceCbor ||
         leaf.verdict === "ForcedTxValid" ||
         leaf.verdict.ForcedTxInvalid.reason !== "EmptyInputs"
@@ -487,7 +483,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
         throw new Error(
           "zero-input forced artifact changed authenticated leaf",
         );
-      const derivedSubject = SDK.forcedVerdictSubjectV1({
+      const derivedSubject = SDK.forcedVerdictSubject({
         transactionId: leaf.tx_id,
         sourceKey: source.membership.key,
         rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
@@ -495,7 +491,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
       if (
         Data.to(
           derivedSubject as never,
-          ZeroInputVerdictSubjectV1Schema as never,
+          ZeroInputVerdictSubjectSchema as never,
         ) !== artifact.subjectCbor
       )
         throw new Error(
@@ -512,7 +508,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
             "hex",
           ),
           Buffer.from(
-            Data.to(leaf as never, SDK.ForcedInclusionTxV1Schema as never),
+            Data.to(leaf as never, SDK.ForcedInclusionTxSchema as never),
             "hex",
           ),
           proofSteps(source.membership.proof as never),
@@ -528,19 +524,19 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
   } else if (artifact.sourceKind === "forced") {
     const subject = Data.from(
       artifact.subjectCbor,
-      SDK.InvalidRangeVerdictSubjectV1Schema as never,
-    ) as SDK.VerdictSubjectV1;
+      SDK.InvalidRangeVerdictSubjectSchema as never,
+    ) as SDK.VerdictSubject;
     const source = Data.from(
       artifact.forcedSourceCbor,
-      SDK.InvalidRangeForcedSourcePayloadV1Schema as never,
+      SDK.InvalidRangeForcedSourcePayloadSchema as never,
     ) as {
-      header: SDK.HeaderV1;
+      header: SDK.Header;
       membership: SDK.ForcedTransactionSourceMembershipProof;
       direction: bigint;
     };
     const leaf = source.membership.value;
     if (
-      computeHash28(SDK.encodeHeaderV1Cbor(source.header)).toString("hex") !==
+      computeHash28(SDK.encodeHeaderCbor(source.header)).toString("hex") !==
         artifact.headerHash ||
       source.direction !== 1n ||
       source.membership.root !== source.header.forcedTransactionsRoot ||
@@ -549,7 +545,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
       leaf.source.compact_cbor !== artifact.nativeTxCompactCbor ||
       Data.to(
         { tx_id: leaf.tx_id, source: leaf.source } as never,
-        SDK.L2TransactionSourceV1 as never,
+        SDK.L2TransactionSource as never,
       ) !== artifact.l2TransactionSourceCbor ||
       artifact.txMembershipProofCbor !== "" ||
       artifact.transactionsPhasRoot !== "00".repeat(32) ||
@@ -561,7 +557,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
       throw new Error(
         "invalid-range forced artifact changed authenticated leaf",
       );
-    const derived = SDK.forcedVerdictSubjectV1({
+    const derived = SDK.forcedVerdictSubject({
       transactionId: leaf.tx_id,
       sourceKey: source.membership.key,
       rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
@@ -569,7 +565,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
     if (
       Data.to(
         derived as never,
-        SDK.InvalidRangeVerdictSubjectV1Schema as never,
+        SDK.InvalidRangeVerdictSubjectSchema as never,
       ) !== artifact.subjectCbor
     )
       throw new Error(
@@ -586,7 +582,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
           "hex",
         ),
         Buffer.from(
-          Data.to(leaf as never, SDK.ForcedInclusionTxV1Schema as never),
+          Data.to(leaf as never, SDK.ForcedInclusionTxSchema as never),
           "hex",
         ),
         proofSteps(source.membership.proof as never),
@@ -598,13 +594,13 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
     }
     if (root?.toString("hex") !== source.membership.phas_root)
       throw new Error("invalid-range forced artifact membership root changed");
-    invalidRangeEvidence = prepareInvalidRangeEvidenceV1({
+    invalidRangeEvidence = prepareInvalidRangeEvidence({
       subject,
       blockSlot: source.header.blockSlot,
       txBody: nativeTxFromCoreCompact(compact).body,
     });
     if (
-      !invalidRangeEvidenceClosesV1(invalidRangeEvidence) ||
+      !invalidRangeEvidenceCloses(invalidRangeEvidence) ||
       artifact.blockSlot !== source.header.blockSlot.toString() ||
       artifact.violationReason !== leaf.verdict.ForcedTxInvalid.reason ||
       artifact.detectionId !==
@@ -632,7 +628,7 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
 
 const selectedTxId = (
   classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >,
 ): string => {
@@ -680,8 +676,8 @@ const selectedTxId = (
   return fields[2]!;
 };
 
-export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
+export const prepareNativeInclusionTwoStepArtifact = async <
+  Category extends NativeInclusionTwoStepCategory,
 >({
   category,
   evidence,
@@ -689,13 +685,13 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
 }: {
   readonly category: Category;
   readonly evidence: Parameters<
-    typeof prepareInvalidRangeFromCanonicalEvidenceV1
+    typeof prepareInvalidRangeFromCanonicalEvidence
   >[0]["evidence"];
   readonly classification: Extract<
-    CanonicalBlockClassificationV1,
+    CanonicalBlockClassification,
     { readonly decision: "fault_detected" }
   >;
-}): Promise<ProductionNativeInclusionTwoStepArtifactV1> => {
+}): Promise<NativeInclusionTwoStepArtifact> => {
   if (
     classification.category !== category ||
     classification.headerHash !== evidence.headerHash
@@ -719,7 +715,7 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     category === "invalidRange" &&
     !classification.selected.detectionId.startsWith("invalid-range:forced:")
   ) {
-    const prepared = await prepareInvalidRangeFromCanonicalEvidenceV1({
+    const prepared = await prepareInvalidRangeFromCanonicalEvidence({
       evidence,
       txId,
     });
@@ -729,11 +725,11 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     violationReason = prepared.tx.violationReason;
     blockSlot = prepared.blockSlot.toString();
     subjectCbor = Data.to(
-      SDK.acceptedVerdictSubjectV1(preparedNodeTxId) as never,
-      SDK.InvalidRangeVerdictSubjectV1Schema as never,
+      SDK.acceptedVerdictSubject(preparedNodeTxId) as never,
+      SDK.InvalidRangeVerdictSubjectSchema as never,
     );
   } else if (category === "invalidRange") {
-    const forced = await prepareInvalidRangeForcedProductionPlanV1({
+    const forced = await prepareInvalidRangeForcedPlan({
       block: evidence,
     });
     if (
@@ -755,7 +751,7 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     preparedInclusion = {
       nativeTxId: txId,
       nativeTx: nativeTxFromCoreCompact(
-        decodeMidgardNativeTxCompactV1(
+        decodeMidgardNativeTxCompact(
           Buffer.from(forced.nativeTxCompactCbor, "hex"),
         ),
       ),
@@ -765,7 +761,7 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
           tx_id: transaction.value.tx_id,
           source: transaction.value.source,
         } as never,
-        SDK.L2TransactionSourceV1 as never,
+        SDK.L2TransactionSource as never,
       ),
       transactionsPhasRoot: "00".repeat(32),
       txMembershipProofCbor: "",
@@ -774,16 +770,16 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     blockSlot = forced.evidence.blockSlot.toString();
     subjectCbor = Data.to(
       forced.evidence.subject as never,
-      SDK.InvalidRangeVerdictSubjectV1Schema as never,
+      SDK.InvalidRangeVerdictSubjectSchema as never,
     );
     forcedSourceCbor = Data.to(
       forced.forcedSource as never,
-      SDK.InvalidRangeForcedSourcePayloadV1Schema as never,
+      SDK.InvalidRangeForcedSourcePayloadSchema as never,
     );
   } else if (
     !classification.selected.detectionId.startsWith("zero-input:forced:")
   ) {
-    const prepared = await prepareZeroInputFromCanonicalEvidenceV1({
+    const prepared = await prepareZeroInputFromCanonicalEvidence({
       evidence,
       txId,
     });
@@ -799,25 +795,25 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
       throw new Error(
         "zeroInput accepted transaction disappeared from retained DA",
       );
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(retained.txCbor, "hex"),
     );
     const field = material.fieldPreimages[0];
     if (field === undefined)
       throw new Error("zeroInput accepted field 0 disappeared");
-    const acceptedEvidence = prepareZeroInputEvidenceV1({
-      finding: { subject: SDK.acceptedVerdictSubjectV1(preparedNodeTxId) },
+    const acceptedEvidence = prepareZeroInputEvidence({
+      finding: { subject: SDK.acceptedVerdictSubject(preparedNodeTxId) },
       inputFieldPreimage: field,
-      committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
     });
     subjectCbor = Data.to(
       acceptedEvidence.subject as never,
-      ZeroInputVerdictSubjectV1Schema as never,
+      ZeroInputVerdictSubjectSchema as never,
     );
     inputFieldPreimageCbor = acceptedEvidence.inputFieldPreimageCbor;
     inputFieldCommitment = acceptedEvidence.inputFieldCommitment;
   } else {
-    const forced = await prepareZeroInputForcedProductionPlanV1({
+    const forced = await prepareZeroInputForcedPlan({
       block: evidence,
     });
     if (
@@ -839,7 +835,7 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     preparedInclusion = {
       nativeTxId: preparedNodeTxId,
       nativeTx: nativeTxFromCoreCompact(
-        decodeMidgardNativeTxCompactV1(
+        decodeMidgardNativeTxCompact(
           Buffer.from(forced.nativeTxCompactCbor, "hex"),
         ),
       ),
@@ -849,7 +845,7 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
           tx_id: transaction.value.tx_id,
           source: transaction.value.source,
         } as never,
-        SDK.L2TransactionSourceV1 as never,
+        SDK.L2TransactionSource as never,
       ),
       transactionsPhasRoot: "00".repeat(32),
       txMembershipProofCbor: "",
@@ -858,13 +854,13 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     blockSlot = null;
     subjectCbor = Data.to(
       forced.evidence.subject as never,
-      ZeroInputVerdictSubjectV1Schema as never,
+      ZeroInputVerdictSubjectSchema as never,
     );
     inputFieldPreimageCbor = forced.evidence.inputFieldPreimageCbor;
     inputFieldCommitment = forced.evidence.inputFieldCommitment;
     forcedSourceCbor = Data.to(
       forced.forcedSource as never,
-      ZeroInputForcedSourcePayloadV1Schema as never,
+      ZeroInputForcedSourcePayloadSchema as never,
     );
   }
   if (
@@ -882,8 +878,8 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
   if (classification.selected.position > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error(`${category} detection position exceeds journal encoding`);
   }
-  const artifact = normalizeJournalJsonV1({
-    schemaVersion: PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1,
+  const artifact = normalizeJournalJson({
+    schemaVersion: NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
     category,
     headerHash: preparedHeaderHash,
     detectionId: classification.selected.detectionId,
@@ -900,14 +896,14 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     inputFieldPreimageCbor,
     inputFieldCommitment,
     forcedSourceCbor,
-  }) as ProductionNativeInclusionTwoStepArtifactV1;
-  admitProductionNativeInclusionTwoStepArtifactV1(artifact);
+  }) as NativeInclusionTwoStepArtifact;
+  admitNativeInclusionTwoStepArtifact(artifact);
   return Object.freeze(artifact);
 };
 
-export type NativeInclusionTwoStepWorkflowReferenceScriptsV1 = Readonly<{
+export type NativeInclusionTwoStepWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
-  witnesses: FaultProofWitnessReferenceScriptsV1 & {
+  witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -915,21 +911,19 @@ export type NativeInclusionTwoStepWorkflowReferenceScriptsV1 = Readonly<{
   };
 }>;
 
-type BoundConfigV1<
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
-> = Readonly<{
+type BoundConfig<Category extends NativeInclusionTwoStepCategory> = Readonly<{
   category: Category;
   lucid: LucidEvolution;
   blueprint: unknown;
   deploymentInfo: unknown;
-  network: FraudProofWorkflowDeploymentBindingV1<Category>["network"];
+  network: FraudProofWorkflowDeploymentBinding<Category>["network"];
   signer: ResolvedProverSigner;
   headerHash: string;
-  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScriptsV1;
+  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScripts;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
-  zeroInputContracts: ZeroInputContractsV1 | null;
-  invalidRangeContracts: InvalidRangeContractsV1 | null;
+  zeroInputContracts: ZeroInputContracts | null;
+  invalidRangeContracts: InvalidRangeContracts | null;
   categoryId: string;
 }>;
 
@@ -937,8 +931,8 @@ const actionInput = ({
   category,
   action,
 }: {
-  readonly category: ProductionNativeInclusionTwoStepCategoryV1;
-  readonly action: FraudProofWorkflowActionV1;
+  readonly category: NativeInclusionTwoStepCategory;
+  readonly action: FraudProofWorkflowAction;
 }): Readonly<Record<string, unknown>> => {
   const input = record(action.input, `${category} workflow action`);
   if (
@@ -961,13 +955,11 @@ const stringField = (
   return value;
 };
 
-const captureRemoval = async <
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
->({
+const captureRemoval = async <Category extends NativeInclusionTwoStepCategory>({
   config,
   input,
 }: {
-  readonly config: BoundConfigV1<Category>;
+  readonly config: BoundConfig<Category>;
   readonly input: Readonly<Record<string, unknown>>;
 }) => {
   let mutationLease: StateQueueMutationLease | undefined;
@@ -981,7 +973,7 @@ const captureRemoval = async <
   };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransactionV1(
+  const transaction = await captureLocallyEvaluatedTransaction(
     async (boundary) => {
       await submitRemoveFraudulentBlock({
         lucid: config.lucid,
@@ -996,7 +988,7 @@ const captureRemoval = async <
         fraudProverRewardLovelace: config.fraudProverRewardLovelace,
         preSubmitBoundary: async (built) => {
           if (
-            !workflowTransactionInputOutRefsV1(built.signed).includes(
+            !workflowTransactionInputOutRefs(built.signed).includes(
               nextRemovalOutRef,
             )
           ) {
@@ -1005,7 +997,7 @@ const captureRemoval = async <
             );
           }
           if (
-            !workflowTransactionReferenceInputOutRefsV1(built.signed).includes(
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
               fraudProofOutRef,
             )
           ) {
@@ -1024,21 +1016,19 @@ const captureRemoval = async <
   });
 };
 
-const createTransactionPort = <
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
->(
-  config: BoundConfigV1<Category>,
-): ProductionLinearFamilyTransactionPortV1<Category> => ({
-  portVersion: PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
+const createTransactionPort = <Category extends NativeInclusionTwoStepCategory>(
+  config: BoundConfig<Category>,
+): LinearFamilyTransactionPort<Category> => ({
+  portVersion: LINEAR_FAMILY_TRANSACTION_PORT,
   category: config.category,
   prepare: async ({ evidence, classification }) =>
-    await prepareProductionNativeInclusionTwoStepArtifactV1({
+    await prepareNativeInclusionTwoStepArtifact({
       category: config.category,
       evidence,
       classification,
     }),
   capture: async ({ action, artifact }) => {
-    const admitted = admitProductionNativeInclusionTwoStepArtifactV1(artifact);
+    const admitted = admitNativeInclusionTwoStepArtifact(artifact);
     if (
       admitted.artifact.category !== config.category ||
       admitted.artifact.headerHash !== config.headerHash
@@ -1048,7 +1038,7 @@ const createTransactionPort = <
     const input = actionInput({ category: config.category, action });
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             await submitInit({
               lucid: config.lucid,
@@ -1073,7 +1063,7 @@ const createTransactionPort = <
     if (input.stage === "step_01") {
       const chunks =
         admitted.artifact.sourceKind === "accepted"
-          ? await resolveDirectFirstProofChunksV1({
+          ? await resolveDirectFirstProofChunks({
               action,
               lucid: config.lucid,
               address: config.signer.address,
@@ -1081,7 +1071,7 @@ const createTransactionPort = <
             })
           : undefined;
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             const common = {
               lucid: config.lucid,
@@ -1110,7 +1100,7 @@ const createTransactionPort = <
                   admitted.forcedSource === null
                 )
                   throw new Error("invalidRange forced authority disappeared");
-                await submitInvalidRangeStep01ForcedV1({
+                await submitInvalidRangeStep01Forced({
                   lucid: config.lucid,
                   contracts: config.invalidRangeContracts,
                   categoryId: config.categoryId,
@@ -1140,7 +1130,7 @@ const createTransactionPort = <
               if (admitted.artifact.sourceKind === "forced") {
                 if (admitted.forcedSource === null)
                   throw new Error("zeroInput forced source disappeared");
-                await submitZeroInputStep01ForcedV1({
+                await submitZeroInputStep01Forced({
                   lucid: config.lucid,
                   contracts,
                   categoryId: config.categoryId,
@@ -1155,7 +1145,7 @@ const createTransactionPort = <
               } else {
                 if (admitted.inclusion === null)
                   throw new Error("zeroInput accepted inclusion disappeared");
-                const thread = await requireLinearFaultThreadUtxoV1({
+                const thread = await requireLinearFaultThreadUtxo({
                   lucid: config.lucid,
                   contracts,
                   categoryId: config.categoryId,
@@ -1163,7 +1153,7 @@ const createTransactionPort = <
                   stepIndex: 0,
                   threadOutRef: stringField(input, "threadOutRef"),
                 });
-                await submitZeroInputStep01AcceptedV1({
+                await submitZeroInputStep01Accepted({
                   lucid: config.lucid,
                   blueprint: config.blueprint,
                   network: config.network,
@@ -1190,7 +1180,7 @@ const createTransactionPort = <
     }
     if (input.stage === "step_02") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransactionV1(
+        transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
             const common = {
               lucid: config.lucid,
@@ -1258,80 +1248,78 @@ const createTransactionPort = <
   },
 });
 
-type ManifestConfigV1 = Readonly<{
+type ManifestConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScriptsV1;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  referenceScripts: NativeInclusionTwoStepWorkflowReferenceScripts;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
-export type ManifestBoundInvalidRangeWorkflowConfigV1 = ManifestConfigV1;
-export type ManifestBoundZeroInputWorkflowConfigV1 = ManifestConfigV1;
+export type ManifestBoundInvalidRangeWorkflowConfig = ManifestConfig;
+export type ManifestBoundZeroInputWorkflowConfig = ManifestConfig;
 
-export type ManifestBoundNativeInclusionTwoStepWorkflowV1<
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
+export type ManifestBoundNativeInclusionTwoStepWorkflow<
+  Category extends NativeInclusionTwoStepCategory,
 > = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<Category>;
-  l1: FraudProofFamilyL1ObservationPortV1<Category>;
-  transactions: ProductionLinearFamilyTransactionPortV1<Category>;
-  adapter: FraudProofFamilyWorkflowAdapterV1;
-  terminalVerifier: FraudProofWorkflowTerminalVerifierV1;
-  releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  binding: FraudProofWorkflowDeploymentBinding<Category>;
+  l1: FraudProofFamilyL1ObservationPort<Category>;
+  transactions: LinearFamilyTransactionPort<Category>;
+  adapter: FraudProofFamilyWorkflowAdapter;
+  terminalVerifier: FraudProofWorkflowTerminalVerifier;
+  releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
 }>;
 
-export type ManifestBoundInvalidRangeWorkflowV1 =
-  ManifestBoundNativeInclusionTwoStepWorkflowV1<"invalidRange">;
-export type ManifestBoundZeroInputWorkflowV1 =
-  ManifestBoundNativeInclusionTwoStepWorkflowV1<"zeroInput">;
+export type ManifestBoundInvalidRangeWorkflow =
+  ManifestBoundNativeInclusionTwoStepWorkflow<"invalidRange">;
+export type ManifestBoundZeroInputWorkflow =
+  ManifestBoundNativeInclusionTwoStepWorkflow<"zeroInput">;
 
-const bindReferences = <
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
->({
+const bindReferences = <Category extends NativeInclusionTwoStepCategory>({
   binding,
   supplied,
 }: {
-  readonly binding: FraudProofWorkflowDeploymentBindingV1<Category>;
-  readonly supplied: NativeInclusionTwoStepWorkflowReferenceScriptsV1;
-}): NativeInclusionTwoStepWorkflowReferenceScriptsV1 => {
+  readonly binding: FraudProofWorkflowDeploymentBinding<Category>;
+  readonly supplied: NativeInclusionTwoStepWorkflowReferenceScripts;
+}): NativeInclusionTwoStepWorkflowReferenceScripts => {
   const prefix =
     binding.definition.category === "invalidRange"
       ? "fraudProofInvalidRange"
       : "fraudProofZeroInput";
   return Object.freeze({
     steps: Object.freeze([
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: prefix,
         utxo: supplied.steps[0],
       }),
-      requireManifestBoundReferenceScriptUtxoV1({
+      requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: `${prefix}Step02`,
         utxo: supplied.steps[1],
       }),
     ] as const),
     witnesses: Object.freeze({
-      computationThreadMint: requireManifestBoundReferenceScriptUtxoV1({
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "computationThreadMint",
         utxo: supplied.witnesses.computationThreadMint,
       }),
-      fraudProofMint: requireManifestBoundReferenceScriptUtxoV1({
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "fraudProofMint",
         utxo: supplied.witnesses.fraudProofMint,
       }),
-      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "phasMembershipWithdraw",
         utxo: supplied.witnesses.phasMembershipWithdraw,
       }),
-      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxoV1({
+      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
         binding,
         contractName: "chunkedVerifyWithdraw",
         utxo: supplied.witnesses.chunkedVerifyWithdraw,
@@ -1340,16 +1328,14 @@ const bindReferences = <
   });
 };
 
-const createWorkflow = async <
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
->({
+const createWorkflow = async <Category extends NativeInclusionTwoStepCategory>({
   category,
   config,
 }: {
   readonly category: Category;
-  readonly config: ManifestConfigV1;
-}): Promise<ManifestBoundNativeInclusionTwoStepWorkflowV1<Category>> => {
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  readonly config: ManifestConfig;
+}): Promise<ManifestBoundNativeInclusionTwoStepWorkflow<Category>> => {
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
@@ -1359,9 +1345,9 @@ const createWorkflow = async <
     stepDatumSchemas:
       category === "invalidRange"
         ? [FraudProofComputationThreadStepDatum, InvalidRangeStep02Datum]
-        : [FraudProofComputationThreadStepDatum, ZeroInputStep02DatumV1Schema],
+        : [FraudProofComputationThreadStepDatum, ZeroInputStep02DatumSchema],
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -1376,7 +1362,7 @@ const createWorkflow = async <
   const certificatePolicyId =
     binding.fieldPreimageCertificate?.policyId ??
     binding.deploymentInfo.fieldPreimageCertificateMint?.scriptHash;
-  const zeroInputContracts: ZeroInputContractsV1 | null =
+  const zeroInputContracts: ZeroInputContracts | null =
     category !== "zeroInput"
       ? null
       : zeroInputChain === undefined ||
@@ -1393,7 +1379,7 @@ const createWorkflow = async <
                 "fraud_proofs/zero_input/step_02.main.spend",
               ][index]!,
               referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
-            })) as unknown as ZeroInputContractsV1["steps"],
+            })) as unknown as ZeroInputContracts["steps"],
             computationThread:
               binding.resolvedContracts.contracts.computationThread,
             fraudProof: {
@@ -1408,7 +1394,7 @@ const createWorkflow = async <
             stateQueuePolicyId,
             fieldPreimageCertificatePolicyId: certificatePolicyId,
           };
-  const invalidRangeContracts: InvalidRangeContractsV1 | null =
+  const invalidRangeContracts: InvalidRangeContracts | null =
     category !== "invalidRange"
       ? null
       : invalidRangeChain === undefined || stateQueuePolicyId === undefined
@@ -1423,7 +1409,7 @@ const createWorkflow = async <
                 "fraud_proofs/invalid_range/step_02.main.spend",
               ][index]!,
               referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
-            })) as unknown as InvalidRangeContractsV1["steps"],
+            })) as unknown as InvalidRangeContracts["steps"],
             computationThread:
               binding.resolvedContracts.contracts.computationThread,
             fraudProof: {
@@ -1437,7 +1423,7 @@ const createWorkflow = async <
             hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
             stateQueuePolicyId,
           };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -1466,14 +1452,14 @@ const createWorkflow = async <
     invalidRangeContracts,
     categoryId: binding.resolvedContracts.category.categoryId,
   });
-  const linear = createProductionLinearFamilyWorkflowAdapterV1({
+  const linear = createLinearFamilyWorkflowAdapter({
     category,
     l1,
     transactions,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  const prerequisite = createAuthenticatedProofChunkPrerequisitePortV1({
+  const prerequisite = createAuthenticatedProofChunkPrerequisitePort({
     category,
     lucid: config.lucid,
     network: binding.network,
@@ -1481,8 +1467,7 @@ const createWorkflow = async <
     publications: l1.publications,
     maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
     proofCborForAction: ({ action, artifact }) => {
-      const admitted =
-        admitProductionNativeInclusionTwoStepArtifactV1(artifact);
+      const admitted = admitNativeInclusionTwoStepArtifact(artifact);
       return action.input.stage === "step_01" &&
         admitted.artifact.sourceKind === "accepted"
         ? admitted.artifact.txMembershipProofCbor
@@ -1495,52 +1480,49 @@ const createWorkflow = async <
     binding,
     l1,
     transactions,
-    adapter: withProductionProofChunkPrerequisiteV1({
+    adapter: withProofChunkPrerequisite({
       category,
       base: linear,
       prerequisite,
     }),
-    terminalVerifier:
-      createFraudProofFamilyAuthenticatedL1TerminalVerifierV1(l1),
+    terminalVerifier: createFraudProofFamilyAuthenticatedL1TerminalVerifier(l1),
     releaseFinalityAuthority:
-      releaseFinalityAuthorityFromDeploymentBindingV1(binding),
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
   });
 };
 
-export const createManifestBoundInvalidRangeWorkflowV1 = async (
-  config: ManifestBoundInvalidRangeWorkflowConfigV1,
-): Promise<ManifestBoundInvalidRangeWorkflowV1> =>
+export const createManifestBoundInvalidRangeWorkflow = async (
+  config: ManifestBoundInvalidRangeWorkflowConfig,
+): Promise<ManifestBoundInvalidRangeWorkflow> =>
   await createWorkflow({ category: "invalidRange", config });
 
-export const createManifestBoundZeroInputWorkflowV1 = async (
-  config: ManifestBoundZeroInputWorkflowConfigV1,
-): Promise<ManifestBoundZeroInputWorkflowV1> =>
+export const createManifestBoundZeroInputWorkflow = async (
+  config: ManifestBoundZeroInputWorkflowConfig,
+): Promise<ManifestBoundZeroInputWorkflow> =>
   await createWorkflow({ category: "zeroInput", config });
 
-const runWorkflow = async <
-  Category extends ProductionNativeInclusionTwoStepCategoryV1,
->({
+const runWorkflow = async <Category extends NativeInclusionTwoStepCategory>({
   workflow,
   sources,
   journal,
 }: {
-  readonly workflow: ManifestBoundNativeInclusionTwoStepWorkflowV1<Category>;
+  readonly workflow: ManifestBoundNativeInclusionTwoStepWorkflow<Category>;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => {
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => {
   const observation = await workflow.l1.observeHeader({
     headerHash: workflow.binding.definition.headerHash,
   });
   const category = workflow.binding.definition.category;
-  return await runFraudProofWorkflowFromRetainedDaV1({
+  return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     observation,
     sources,
     replayer:
       category === "invalidRange"
-        ? INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1
-        : ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
-    registry: createFraudProofWorkflowRegistryV1({
+        ? INVALID_RANGE_COMPLETE_CANONICAL_REPLAY
+        : ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: [category],
     }),
@@ -1550,14 +1532,14 @@ const runWorkflow = async <
   });
 };
 
-export const runOrResumeManifestBoundInvalidRangeWorkflowV1 = async (input: {
-  readonly workflow: ManifestBoundInvalidRangeWorkflowV1;
+export const runOrResumeManifestBoundInvalidRangeWorkflow = async (input: {
+  readonly workflow: ManifestBoundInvalidRangeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => await runWorkflow(input);
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => await runWorkflow(input);
 
-export const runOrResumeManifestBoundZeroInputWorkflowV1 = async (input: {
-  readonly workflow: ManifestBoundZeroInputWorkflowV1;
+export const runOrResumeManifestBoundZeroInputWorkflow = async (input: {
+  readonly workflow: ManifestBoundZeroInputWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
-  readonly journal: FraudProofWorkflowJournalStoreV1;
-}): Promise<FraudProofWorkflowRunResultV1> => await runWorkflow(input);
+  readonly journal: FraudProofWorkflowJournalStore;
+}): Promise<FraudProofWorkflowRunResult> => await runWorkflow(input);

@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
@@ -8,10 +8,10 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1 } from "../src/missing-native-script-tx/contracts-v1.js";
+import { MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES } from "../src/missing-native-script-tx/contracts-v1.js";
 import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
-  buildMissingNativeScriptTxChainV1,
+  buildMissingNativeScriptTxChain,
   EMULATOR_PROTOCOL_PARAMETERS,
   network,
   readBlueprint,
@@ -53,7 +53,7 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
   it("pins all eight nonzero unapplied sizes to the audited blueprint", () => {
     let found = 0;
     for (const [step, title] of Object.entries(
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES,
     )) {
       expect(
         measureBlueprintValidatorBytes({
@@ -81,7 +81,7 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
         credentialToAddress(network, scriptHashToCredential("22".repeat(28))),
       ).pipe(Effect.map((address) => Data.from(Data.to(address, AddressData)))),
     );
-    const steps = buildMissingNativeScriptTxChainV1({
+    const steps = buildMissingNativeScriptTxChain({
       realBlueprint: blueprint,
       computationThreadPolicyId: "11".repeat(28),
       fraudProofPolicyId: "33".repeat(28),
@@ -104,6 +104,6 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
     // individual validator body is below the 16,384-byte L1 envelope.
     expect(
       Math.max(...Object.values(EXPECTED_UNAPPLIED_SIZES_BYTES)),
-    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes);
+    ).toBeLessThan(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
   });
 });

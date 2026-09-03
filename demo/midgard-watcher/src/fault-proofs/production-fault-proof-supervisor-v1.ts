@@ -1,32 +1,32 @@
 import { mkdir, readdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
-import { MIDGARD_RETENTION_WINDOW_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
-  isProductionWorkflowActuationRevokedErrorV1,
-  type ProductionHeaderDecisionV1,
-  type ProductionWorkflowActuationPermitV1,
-  type ProductionWorkflowActuationRevokedErrorV1,
-  requireRunnableProductionHeaderFaultV1,
+  type HeaderDecision,
+  isWorkflowActuationRevokedError,
+  requireRunnableHeaderFault,
+  type WorkflowActuationPermit,
+  type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
-import { HeaderV1 } from "@al-ft/midgard-sdk";
+import { Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  assertWatcherProductionStateQueueHeaderObservationV1,
-  type WatcherProductionStateQueueHeaderObservationV1,
+  assertWatcherStateQueueHeaderObservation,
+  type WatcherStateQueueHeaderObservation,
 } from "../indexers/production-state-queue-observation-v1.js";
 import {
-  WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-  type WatcherInstalledProductionWorkflowCategoryV1,
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  type WatcherInstalledWorkflowCategory,
 } from "./production-fault-proof-application-v1.js";
 import {
-  openWatcherProductionFaultProofQueueJournalV1,
-  watcherProductionFaultProofQueueIdentityDigestV1,
-  type WatcherProductionFaultProofQueueJournalV1,
+  openWatcherFaultProofQueueJournal,
+  watcherFaultProofQueueIdentityDigest,
+  type WatcherFaultProofQueueJournal,
 } from "./production-fault-proof-queue-journal-v1.js";
 
-export const WATCHER_PRODUCTION_FAULT_PROOF_SUPERVISOR_V1_SCHEMA_VERSION =
+export const WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION =
   "midgard-watcher-production-fault-proof-supervisor-v1" as const;
 
 const HEADER_HASH = /^[0-9a-f]{56}$/u;
@@ -34,80 +34,79 @@ const DEPLOYMENT_FINGERPRINT = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const MAX_RECOVERABLE_WORKFLOWS = 2_048;
 
-export type WatcherProductionFaultProofDeadlineV1 = Readonly<{
+export type WatcherFaultProofDeadline = Readonly<{
   headerHash: string;
   headerEndTimeMs: string;
   maturityAtMs: string;
   latestSafeStartAtMs: string;
 }>;
 
-const admittedDeadlinesV1 = new WeakSet<object>();
+const admittedDeadlines = new WeakSet<object>();
 
 /**
- * Derives W04/W34 timing authority from an authenticated HeaderV1. The
+ * Derives W04/W34 timing authority from an authenticated Header. The
  * complete correction path owns the canonical half-maturity budget, so the
  * latest safe start is exactly maturity minus that bound.
  */
-export const watcherProductionFaultProofDeadlineV1 = (
-  header: WatcherProductionStateQueueHeaderObservationV1,
-): WatcherProductionFaultProofDeadlineV1 => {
-  assertWatcherProductionStateQueueHeaderObservationV1(header);
-  const decoded = Data.from(header.headerCborHex, HeaderV1);
-  if (Data.to(decoded, HeaderV1) !== header.headerCborHex) {
+export const watcherFaultProofDeadline = (
+  header: WatcherStateQueueHeaderObservation,
+): WatcherFaultProofDeadline => {
+  assertWatcherStateQueueHeaderObservation(header);
+  const decoded = Data.from(header.headerCborHex, Header);
+  if (Data.to(decoded, Header) !== header.headerCborHex) {
     throw new Error("fault-proof deadline HeaderV1 CBOR is noncanonical");
   }
   const headerEndTimeMs = decoded.endTime;
   const maturityAtMs =
-    headerEndTimeMs + BigInt(MIDGARD_RETENTION_WINDOW_V1.maturityMs);
+    headerEndTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs);
   const latestSafeStartAtMs =
-    maturityAtMs -
-    BigInt(MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs);
+    maturityAtMs - BigInt(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs);
   const deadline = Object.freeze({
     headerHash: header.headerHash,
     headerEndTimeMs: headerEndTimeMs.toString(),
     maturityAtMs: maturityAtMs.toString(),
     latestSafeStartAtMs: latestSafeStartAtMs.toString(),
   });
-  admittedDeadlinesV1.add(deadline);
+  admittedDeadlines.add(deadline);
   return deadline;
 };
 
-export type WatcherProductionFaultProofJobV1 = Readonly<{
+export type WatcherFaultProofJob = Readonly<{
   mode: "run" | "resume";
-  category: WatcherInstalledProductionWorkflowCategoryV1;
+  category: WatcherInstalledWorkflowCategory;
   headerHash: string;
   decisionDigest: string;
   rollbackGeneration: string;
-  deadline: WatcherProductionFaultProofDeadlineV1;
+  deadline: WatcherFaultProofDeadline;
 }>;
 
-type UnsafeWatcherProductionFaultProofJobForTestV1 = Omit<
-  WatcherProductionFaultProofJobV1,
+type UnsafeWatcherFaultProofJobForTest = Omit<
+  WatcherFaultProofJob,
   "deadline"
 > &
-  Readonly<{ deadline?: WatcherProductionFaultProofDeadlineV1 }>;
+  Readonly<{ deadline?: WatcherFaultProofDeadline }>;
 
-export type WatcherProductionFaultProofSupervisorStatusV1 = Readonly<{
+export type WatcherFaultProofSupervisorStatus = Readonly<{
   phase: "accepting" | "blocked" | "closing" | "closed";
   recovered: boolean;
   queuedJobCount: number;
-  activeJob: WatcherProductionFaultProofJobV1 | null;
-  blockedJob: WatcherProductionFaultProofJobV1 | null;
+  activeJob: WatcherFaultProofJob | null;
+  blockedJob: WatcherFaultProofJob | null;
   deadlineHealth: "safe" | "at_risk" | "unsafe";
-  earliestDeadlineJob: WatcherProductionFaultProofJobV1 | null;
+  earliestDeadlineJob: WatcherFaultProofJob | null;
   remainingSafeStartMs: string | null;
 }>;
 
-export type WatcherProductionFaultProofSupervisorV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_FAULT_PROOF_SUPERVISOR_V1_SCHEMA_VERSION;
+export type WatcherFaultProofSupervisor = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION;
   done: Promise<void>;
   recoverExisting(
-    decision: ProductionHeaderDecisionV1 | null,
-    actuationPermit?: ProductionWorkflowActuationPermitV1,
-    deadline?: WatcherProductionFaultProofDeadlineV1,
+    decision: HeaderDecision | null,
+    actuationPermit?: WorkflowActuationPermit,
+    deadline?: WatcherFaultProofDeadline,
     rollbackGeneration?: string,
   ): Promise<number>;
-  status(): WatcherProductionFaultProofSupervisorStatusV1;
+  status(): WatcherFaultProofSupervisorStatus;
   durableQueueStatus(): Readonly<{
     queuedJobCount: number;
     oldestQueuedAtMs: string | null;
@@ -115,47 +114,47 @@ export type WatcherProductionFaultProofSupervisorV1 = Readonly<{
   close(): Promise<void>;
 }>;
 
-export type UnsafeWatcherProductionFaultProofSupervisorForTestV1 =
-  WatcherProductionFaultProofSupervisorV1 &
+export type UnsafeWatcherFaultProofSupervisorForTest =
+  WatcherFaultProofSupervisor &
     Readonly<{
       unsafeRunOrResumeForTest(
-        job: UnsafeWatcherProductionFaultProofJobForTestV1,
+        job: UnsafeWatcherFaultProofJobForTest,
       ): Promise<unknown>;
       unsafeScheduleForTest(
-        job: UnsafeWatcherProductionFaultProofJobForTestV1,
+        job: UnsafeWatcherFaultProofJobForTest,
       ): Promise<void>;
     }>;
 
-type SupervisorDependenciesV1 = Readonly<{
-  categories: readonly WatcherInstalledProductionWorkflowCategoryV1[];
+type SupervisorDependencies = Readonly<{
+  categories: readonly WatcherInstalledWorkflowCategory[];
   run(
     input: Readonly<{
-      job: WatcherProductionFaultProofJobV1;
-      actuationPermit: ProductionWorkflowActuationPermitV1 | null;
+      job: WatcherFaultProofJob;
+      actuationPermit: WorkflowActuationPermit | null;
     }>,
   ): Promise<unknown>;
   isActuationRevokedError(
     error: unknown,
-  ): error is ProductionWorkflowActuationRevokedErrorV1;
+  ): error is WorkflowActuationRevokedError;
 }>;
 
-const admittedDecisionEnqueueBySupervisorV1 = new WeakMap<
+const admittedDecisionEnqueueBySupervisor = new WeakMap<
   object,
   (
-    decision: ProductionHeaderDecisionV1,
-    actuationPermit: ProductionWorkflowActuationPermitV1,
-    deadline: WatcherProductionFaultProofDeadlineV1,
+    decision: HeaderDecision,
+    actuationPermit: WorkflowActuationPermit,
+    deadline: WatcherFaultProofDeadline,
     rollbackGeneration: string,
   ) => Promise<void>
 >();
 
 const exactWorkflowDirectories = async (
   journalRoot: string,
-  categories: readonly WatcherInstalledProductionWorkflowCategoryV1[],
+  categories: readonly WatcherInstalledWorkflowCategory[],
 ): Promise<
   readonly Readonly<{
     mode: "resume";
-    category: WatcherInstalledProductionWorkflowCategoryV1;
+    category: WatcherInstalledWorkflowCategory;
     headerHash: string;
   }>[]
 > => {
@@ -175,7 +174,7 @@ const exactWorkflowDirectories = async (
   }
   const jobs: Readonly<{
     mode: "resume";
-    category: WatcherInstalledProductionWorkflowCategoryV1;
+    category: WatcherInstalledWorkflowCategory;
     headerHash: string;
   }>[] = [];
   for (const category of categories) {
@@ -219,20 +218,18 @@ const exactWorkflowDirectories = async (
 };
 
 const validateJob = (
-  job:
-    | WatcherProductionFaultProofJobV1
-    | UnsafeWatcherProductionFaultProofJobForTestV1,
-  categories: readonly WatcherInstalledProductionWorkflowCategoryV1[],
+  job: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
+  categories: readonly WatcherInstalledWorkflowCategory[],
   requireAdmittedDeadline: boolean,
-): WatcherProductionFaultProofJobV1 => {
+): WatcherFaultProofJob => {
   const deadline =
     job.deadline ??
     Object.freeze({
       headerHash: job.headerHash,
       headerEndTimeMs: "0",
-      maturityAtMs: MIDGARD_RETENTION_WINDOW_V1.maturityMs.toString(),
+      maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
       latestSafeStartAtMs:
-        MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs.toString(),
+        MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs.toString(),
     });
   if (
     (job.mode !== "run" && job.mode !== "resume") ||
@@ -244,7 +241,7 @@ const validateJob = (
     !CANONICAL_NATURAL.test(deadline.headerEndTimeMs) ||
     !CANONICAL_NATURAL.test(deadline.maturityAtMs) ||
     !CANONICAL_NATURAL.test(deadline.latestSafeStartAtMs) ||
-    (requireAdmittedDeadline && !admittedDeadlinesV1.has(deadline))
+    (requireAdmittedDeadline && !admittedDeadlines.has(deadline))
   ) {
     throw new Error("watcher fault-proof supervisor job is invalid");
   }
@@ -253,10 +250,9 @@ const validateJob = (
   const latestSafeStartAtMs = BigInt(deadline.latestSafeStartAtMs);
   if (
     maturityAtMs !==
-      headerEndTimeMs + BigInt(MIDGARD_RETENTION_WINDOW_V1.maturityMs) ||
+      headerEndTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs) ||
     latestSafeStartAtMs !==
-      maturityAtMs -
-        BigInt(MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs)
+      maturityAtMs - BigInt(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs)
   ) {
     throw new Error("watcher fault-proof supervisor job is invalid");
   }
@@ -276,11 +272,9 @@ const createSupervisor = (input: {
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
   readonly nowMs: () => number;
-  readonly dependencies: SupervisorDependenciesV1;
+  readonly dependencies: SupervisorDependencies;
   readonly exposeUnsafeRunnerForTest: boolean;
-}):
-  | WatcherProductionFaultProofSupervisorV1
-  | UnsafeWatcherProductionFaultProofSupervisorForTestV1 => {
+}): WatcherFaultProofSupervisor | UnsafeWatcherFaultProofSupervisorForTest => {
   if (!DEPLOYMENT_FINGERPRINT.test(input.deploymentFingerprint)) {
     throw new Error(
       "watcher fault-proof supervisor deployment fingerprint is invalid",
@@ -290,7 +284,7 @@ const createSupervisor = (input: {
     !Number.isSafeInteger(input.deadlineAlertHeadroomMs) ||
     input.deadlineAlertHeadroomMs < 1 ||
     input.deadlineAlertHeadroomMs >
-      MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs
+      MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs
   ) {
     throw new Error(
       "watcher fault-proof supervisor deadline alert headroom is invalid",
@@ -301,10 +295,9 @@ const createSupervisor = (input: {
       "watcher fault-proof supervisor queue authentication key is invalid",
     );
   }
-  let openedQueueJournal: WatcherProductionFaultProofQueueJournalV1 | null =
-    null;
-  const queueJournal: Promise<WatcherProductionFaultProofQueueJournalV1> =
-    openWatcherProductionFaultProofQueueJournalV1({
+  let openedQueueJournal: WatcherFaultProofQueueJournal | null = null;
+  const queueJournal: Promise<WatcherFaultProofQueueJournal> =
+    openWatcherFaultProofQueueJournal({
       journalRoot: input.journalRoot,
       deploymentFingerprint: input.deploymentFingerprint,
       authenticationKey: input.queueAuthenticationKey,
@@ -314,37 +307,35 @@ const createSupervisor = (input: {
     });
   const categories = Object.freeze([...input.dependencies.categories]);
   if (
-    categories.length !==
-      WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1.length ||
+    categories.length !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
     categories.some(
       (category, index) =>
-        category !== WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1[index],
+        category !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES[index],
     )
   ) {
     throw new Error(
       "watcher fault-proof supervisor categories differ from the installed application",
     );
   }
-  let phase: WatcherProductionFaultProofSupervisorStatusV1["phase"] =
-    "accepting";
+  let phase: WatcherFaultProofSupervisorStatus["phase"] = "accepting";
   let recovered = false;
   let recovery: Promise<number> | undefined;
   let queuedJobCount = 0;
-  let activeJob: WatcherProductionFaultProofJobV1 | null = null;
-  let blockedJob: WatcherProductionFaultProofJobV1 | null = null;
-  type PendingJobV1 = Readonly<{
-    job: WatcherProductionFaultProofJobV1;
+  let activeJob: WatcherFaultProofJob | null = null;
+  let blockedJob: WatcherFaultProofJob | null = null;
+  type PendingJob = Readonly<{
+    job: WatcherFaultProofJob;
     jobIdentityDigest: string;
     queuedAtMs: string;
-    actuationPermit: ProductionWorkflowActuationPermitV1 | null;
+    actuationPermit: WorkflowActuationPermit | null;
     completion: Promise<unknown>;
     resolve(value: unknown): void;
     reject(error: Error): void;
   }>;
-  const queue: PendingJobV1[] = [];
+  const queue: PendingJob[] = [];
   let pump: Promise<void> = Promise.resolve();
   let pumping = false;
-  const jobs = new Map<string, PendingJobV1>();
+  const jobs = new Map<string, PendingJob>();
   const seenTargets = new Set<string>();
   let resolveDone!: () => void;
   let rejectDone!: (reason: Error) => void;
@@ -356,10 +347,7 @@ const createSupervisor = (input: {
   // validation failure from becoming an unhandled rejection before mounting.
   void done.catch(() => undefined);
 
-  const block = (
-    error: unknown,
-    job: WatcherProductionFaultProofJobV1 | null,
-  ): Error => {
+  const block = (error: unknown, job: WatcherFaultProofJob | null): Error => {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
     if (phase !== "blocked" && phase !== "closed") {
@@ -378,13 +366,12 @@ const createSupervisor = (input: {
     return value;
   };
 
-  const remainingSafeStartMs = (
-    job: WatcherProductionFaultProofJobV1,
-  ): bigint => BigInt(job.deadline.latestSafeStartAtMs) - BigInt(now());
+  const remainingSafeStartMs = (job: WatcherFaultProofJob): bigint =>
+    BigInt(job.deadline.latestSafeStartAtMs) - BigInt(now());
 
   const compareJobs = (
-    left: WatcherProductionFaultProofJobV1,
-    right: WatcherProductionFaultProofJobV1,
+    left: WatcherFaultProofJob,
+    right: WatcherFaultProofJob,
   ): number => {
     const leftDeadline = BigInt(left.deadline.latestSafeStartAtMs);
     const rightDeadline = BigInt(right.deadline.latestSafeStartAtMs);
@@ -402,10 +389,10 @@ const createSupervisor = (input: {
     return left.headerHash.localeCompare(right.headerHash);
   };
 
-  const comparePending = (left: PendingJobV1, right: PendingJobV1): number =>
+  const comparePending = (left: PendingJob, right: PendingJob): number =>
     compareJobs(left.job, right.job);
 
-  const runPending = async (entry: PendingJobV1): Promise<void> => {
+  const runPending = async (entry: PendingJob): Promise<void> => {
     const { job, actuationPermit } = entry;
     if (phase === "blocked") {
       entry.reject(new Error("watcher fault-proof supervisor is blocked"));
@@ -490,10 +477,8 @@ const createSupervisor = (input: {
   };
 
   const scheduleImpl = async (
-    rawJob:
-      | WatcherProductionFaultProofJobV1
-      | UnsafeWatcherProductionFaultProofJobForTestV1,
-    actuationPermit: ProductionWorkflowActuationPermitV1 | null,
+    rawJob: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
+    actuationPermit: WorkflowActuationPermit | null,
   ): Promise<Readonly<{ completion: Promise<unknown> }>> => {
     if (phase !== "accepting") {
       throw new Error(`watcher fault-proof supervisor is ${phase}`);
@@ -534,7 +519,7 @@ const createSupervisor = (input: {
       decisionDigest: job.decisionDigest,
       rollbackGeneration: job.rollbackGeneration,
     });
-    const jobIdentityDigest = watcherProductionFaultProofQueueIdentityDigestV1({
+    const jobIdentityDigest = watcherFaultProofQueueIdentityDigest({
       deploymentFingerprint: input.deploymentFingerprint,
       identity,
     });
@@ -552,7 +537,7 @@ const createSupervisor = (input: {
       resolve = resolvePromise;
       reject = rejectPromise;
     });
-    const entry: PendingJobV1 = Object.freeze({
+    const entry: PendingJob = Object.freeze({
       job,
       jobIdentityDigest,
       queuedAtMs: registration.queuedAtMs,
@@ -570,10 +555,8 @@ const createSupervisor = (input: {
 
   let scheduleSerial = Promise.resolve();
   const schedule = (
-    rawJob:
-      | WatcherProductionFaultProofJobV1
-      | UnsafeWatcherProductionFaultProofJobForTestV1,
-    actuationPermit: ProductionWorkflowActuationPermitV1 | null,
+    rawJob: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
+    actuationPermit: WorkflowActuationPermit | null,
   ): Promise<Readonly<{ completion: Promise<unknown> }>> => {
     const operation = scheduleSerial.then(
       async () => await scheduleImpl(rawJob, actuationPermit),
@@ -586,12 +569,12 @@ const createSupervisor = (input: {
   };
 
   const runOrResume = (
-    rawJob: UnsafeWatcherProductionFaultProofJobForTestV1,
+    rawJob: UnsafeWatcherFaultProofJobForTest,
   ): Promise<unknown> =>
     schedule(rawJob, null).then(({ completion }) => completion);
 
-  const supervisor: WatcherProductionFaultProofSupervisorV1 = {
-    schemaVersion: WATCHER_PRODUCTION_FAULT_PROOF_SUPERVISOR_V1_SCHEMA_VERSION,
+  const supervisor: WatcherFaultProofSupervisor = {
+    schemaVersion: WATCHER_FAULT_PROOF_SUPERVISOR_SCHEMA_VERSION,
     done,
     recoverExisting: async (
       decision,
@@ -619,9 +602,9 @@ const createSupervisor = (input: {
               const unsafeDeadline = Object.freeze({
                 headerHash: "",
                 headerEndTimeMs: "0",
-                maturityAtMs: MIDGARD_RETENTION_WINDOW_V1.maturityMs.toString(),
+                maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
                 latestSafeStartAtMs:
-                  MIDGARD_RETENTION_WINDOW_V1.worstCaseProofTimeBoundMs.toString(),
+                  MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs.toString(),
               });
               return input.exposeUnsafeRunnerForTest
                 ? existing.map((job) => ({
@@ -640,7 +623,7 @@ const createSupervisor = (input: {
                 "fault-proof recovery omitted live actuation or deadline authority",
               );
             }
-            const fault = requireRunnableProductionHeaderFaultV1(decision);
+            const fault = requireRunnableHeaderFault(decision);
             if (
               fault.deploymentFingerprint !== input.deploymentFingerprint ||
               fault.launchScope.length !== categories.length ||
@@ -733,13 +716,13 @@ const createSupervisor = (input: {
         ...supervisor,
         unsafeRunOrResumeForTest: runOrResume,
         unsafeScheduleForTest: async (
-          job: UnsafeWatcherProductionFaultProofJobForTestV1,
+          job: UnsafeWatcherFaultProofJobForTest,
         ) => {
           await schedule(job, null);
         },
       })
     : Object.freeze(supervisor);
-  admittedDecisionEnqueueBySupervisorV1.set(
+  admittedDecisionEnqueueBySupervisor.set(
     exposed,
     async (decision, actuationPermit, deadline, rollbackGeneration) => {
       if (!recovered) {
@@ -750,7 +733,7 @@ const createSupervisor = (input: {
       if (!CANONICAL_NATURAL.test(rollbackGeneration)) {
         throw new Error("fault-proof enqueue rollback generation is malformed");
       }
-      const fault = requireRunnableProductionHeaderFaultV1(decision);
+      const fault = requireRunnableHeaderFault(decision);
       if (
         fault.deploymentFingerprint !== input.deploymentFingerprint ||
         fault.launchScope.length !== categories.length ||
@@ -766,8 +749,7 @@ const createSupervisor = (input: {
       await schedule(
         {
           mode: seenTargets.has(targetKey) ? "resume" : "run",
-          category:
-            fault.category as WatcherInstalledProductionWorkflowCategoryV1,
+          category: fault.category as WatcherInstalledWorkflowCategory,
           headerHash: fault.headerHash,
           decisionDigest: fault.decisionDigest,
           rollbackGeneration,
@@ -785,14 +767,14 @@ const createSupervisor = (input: {
  * target are derived from the fault-proofs module's live opaque admission;
  * persisted envelopes and caller-authored jobs cannot pass this boundary.
  */
-export const enqueueWatcherProductionFaultDecisionV1 = async (input: {
-  readonly supervisor: WatcherProductionFaultProofSupervisorV1;
-  readonly decision: ProductionHeaderDecisionV1;
-  readonly actuationPermit: ProductionWorkflowActuationPermitV1;
-  readonly deadline: WatcherProductionFaultProofDeadlineV1;
+export const enqueueWatcherFaultDecision = async (input: {
+  readonly supervisor: WatcherFaultProofSupervisor;
+  readonly decision: HeaderDecision;
+  readonly actuationPermit: WorkflowActuationPermit;
+  readonly deadline: WatcherFaultProofDeadline;
   readonly rollbackGeneration: string;
 }): Promise<void> => {
-  const enqueue = admittedDecisionEnqueueBySupervisorV1.get(input.supervisor);
+  const enqueue = admittedDecisionEnqueueBySupervisor.get(input.supervisor);
   if (enqueue === undefined) {
     throw new Error("watcher fault-proof supervisor is not module-admitted");
   }
@@ -804,18 +786,18 @@ export const enqueueWatcherProductionFaultDecisionV1 = async (input: {
   );
 };
 
-export const createWatcherProductionFaultProofSupervisorV1 = (input: {
+export const createWatcherFaultProofSupervisor = (input: {
   readonly journalRoot: string;
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
   readonly run: (
     input: Readonly<{
-      job: WatcherProductionFaultProofJobV1;
-      actuationPermit: ProductionWorkflowActuationPermitV1;
+      job: WatcherFaultProofJob;
+      actuationPermit: WorkflowActuationPermit;
     }>,
   ) => Promise<unknown>;
-}): WatcherProductionFaultProofSupervisorV1 =>
+}): WatcherFaultProofSupervisor =>
   createSupervisor({
     journalRoot: input.journalRoot,
     deploymentFingerprint: input.deploymentFingerprint,
@@ -824,7 +806,7 @@ export const createWatcherProductionFaultProofSupervisorV1 = (input: {
     nowMs: Date.now,
     exposeUnsafeRunnerForTest: false,
     dependencies: Object.freeze({
-      categories: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+      categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
       run: async ({ job, actuationPermit }) => {
         if (actuationPermit === null) {
           throw new Error(
@@ -833,37 +815,36 @@ export const createWatcherProductionFaultProofSupervisorV1 = (input: {
         }
         return await input.run({ job, actuationPermit });
       },
-      isActuationRevokedError: isProductionWorkflowActuationRevokedErrorV1,
+      isActuationRevokedError: isWorkflowActuationRevokedError,
     }),
-  }) as WatcherProductionFaultProofSupervisorV1;
+  }) as WatcherFaultProofSupervisor;
 
 /** Test-only dependency seam; production category admission cannot be changed. */
-export const unsafeCreateWatcherProductionFaultProofSupervisorForTestV1 =
-  (input: {
-    readonly journalRoot: string;
-    readonly deploymentFingerprint: string;
-    readonly deadlineAlertHeadroomMs?: number;
-    readonly unsafeNowMsForTest?: () => number;
-    readonly unsafeQueueAuthenticationKeyForTest?: Uint8Array;
-    readonly run: (job: WatcherProductionFaultProofJobV1) => Promise<unknown>;
-    readonly unsafeIsActuationRevokedErrorForTest?: (
-      error: unknown,
-    ) => error is ProductionWorkflowActuationRevokedErrorV1;
-  }): UnsafeWatcherProductionFaultProofSupervisorForTestV1 =>
-    createSupervisor({
-      journalRoot: input.journalRoot,
-      deploymentFingerprint: input.deploymentFingerprint,
-      deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs ?? 3_600_000,
-      queueAuthenticationKey:
-        input.unsafeQueueAuthenticationKeyForTest ??
-        Uint8Array.from({ length: 32 }, () => 0xa5),
-      nowMs: input.unsafeNowMsForTest ?? (() => 0),
-      exposeUnsafeRunnerForTest: true,
-      dependencies: Object.freeze({
-        categories: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-        run: async ({ job }) => await input.run(job),
-        isActuationRevokedError:
-          input.unsafeIsActuationRevokedErrorForTest ??
-          isProductionWorkflowActuationRevokedErrorV1,
-      }),
-    }) as UnsafeWatcherProductionFaultProofSupervisorForTestV1;
+export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
+  readonly journalRoot: string;
+  readonly deploymentFingerprint: string;
+  readonly deadlineAlertHeadroomMs?: number;
+  readonly unsafeNowMsForTest?: () => number;
+  readonly unsafeQueueAuthenticationKeyForTest?: Uint8Array;
+  readonly run: (job: WatcherFaultProofJob) => Promise<unknown>;
+  readonly unsafeIsActuationRevokedErrorForTest?: (
+    error: unknown,
+  ) => error is WorkflowActuationRevokedError;
+}): UnsafeWatcherFaultProofSupervisorForTest =>
+  createSupervisor({
+    journalRoot: input.journalRoot,
+    deploymentFingerprint: input.deploymentFingerprint,
+    deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs ?? 3_600_000,
+    queueAuthenticationKey:
+      input.unsafeQueueAuthenticationKeyForTest ??
+      Uint8Array.from({ length: 32 }, () => 0xa5),
+    nowMs: input.unsafeNowMsForTest ?? (() => 0),
+    exposeUnsafeRunnerForTest: true,
+    dependencies: Object.freeze({
+      categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      run: async ({ job }) => await input.run(job),
+      isActuationRevokedError:
+        input.unsafeIsActuationRevokedErrorForTest ??
+        isWorkflowActuationRevokedError,
+    }),
+  }) as UnsafeWatcherFaultProofSupervisorForTest;

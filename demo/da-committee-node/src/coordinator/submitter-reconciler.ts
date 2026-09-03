@@ -3,16 +3,16 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
-  DaStoredPayloadCountSetV1,
-  DaStoredPayloadRootSetV1,
-  DaStoredValidationSummaryV1,
+  DaStoredPayloadCountSet,
+  DaStoredPayloadRootSet,
+  DaStoredValidationSummary,
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../domain.js";
 import { classifyDaAttestationMarker } from "../l1/attestation-marker.js";
 import {
-  type DaAvailabilityCommitmentAuthorityV1,
-  deriveExpectedDaAvailabilityCommitmentV1,
+  type DaAvailabilityCommitmentAuthority,
+  deriveExpectedDaAvailabilityCommitment,
   validateDaSignatureRecord,
 } from "../peer/signatures.js";
 import type { DaCommitteeValidation } from "../signer.js";
@@ -32,7 +32,7 @@ export type SubmitterReconcileResult = {
 export type SubmitterReconcilerDeps = {
   readonly deploymentFingerprint: string;
   readonly committeeValidation: DaCommitteeValidation;
-  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1;
+  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority;
   readonly store: Pick<WatcherStore, "getDaPayload" | "listDaSignatures">;
   readonly coordinator: {
     readonly reconcileAttestation: (
@@ -74,7 +74,7 @@ export class SubmitterReconciler {
       return { status: "skipped", reason: "verified payload is not available" };
     }
     await this.deps.peerPoller?.pollPeerSignatures(header.headerHash);
-    const expectedCommitment = deriveExpectedDaAvailabilityCommitmentV1({
+    const expectedCommitment = deriveExpectedDaAvailabilityCommitment({
       authority: this.deps.availabilityCommitmentAuthority,
       headerHash: header.headerHash,
       payloadCborHex: payload.payloadCborHex,
@@ -181,9 +181,9 @@ const contextFromHeader = ({
 
 const validationSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-  rootSummary: DaStoredPayloadRootSetV1,
-): DaStoredValidationSummaryV1 => ({
-  payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
+  rootSummary: DaStoredPayloadRootSet,
+): DaStoredValidationSummary => ({
+  payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
   rootsMatch: true,
   stateQueueOutRef: header.stateQueueOutRef,
   headerHash: header.headerHash,
@@ -201,7 +201,7 @@ const validationSummaryFromHeader = (
 const rootSummaryFromHeader = (
   header: StateQueueHeaderRecord,
   rootSummary?: PayloadRootSet,
-): DaStoredPayloadRootSetV1 => ({
+): DaStoredPayloadRootSet => ({
   ...(rootSummary ?? {
     utxosRoot: header.header.utxosRoot,
     transactionsRoot: header.header.transactionsRoot,
@@ -216,7 +216,7 @@ const rootSummaryFromHeader = (
 
 const countSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-): DaStoredPayloadCountSetV1 => ({
+): DaStoredPayloadCountSet => ({
   withdrawalCount: header.header.withdrawalCount,
   forcedTransactionCount: header.header.forcedTransactionCount,
   l2TransactionCount: header.header.l2TransactionCount,

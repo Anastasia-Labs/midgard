@@ -28,7 +28,7 @@ type RedeemerContextLike = {
 
 export type DaAttestationTarget = {
   readonly stateQueueUtxo: SDK.StateQueueUTxO;
-  readonly stateQueueNode: SDK.StateQueueNodeV1;
+  readonly stateQueueNode: SDK.StateQueueNode;
   readonly headerHash: string;
 };
 
@@ -55,7 +55,7 @@ export const buildInitDaAttestationTx = async ({
   readonly target: DaAttestationTarget;
   readonly referenceScripts: DaAttestationReferenceScripts;
   readonly rescueBeneficiary: SDK.AddressData;
-  readonly availabilityCommitment: SDK.DaAvailabilityCommitmentV1;
+  readonly availabilityCommitment: SDK.DaAvailabilityCommitment;
   readonly attestationOutputLovelace: bigint;
 }): Promise<TxSignBuilder> => {
   const attestationUnit = SDK.daAttestationUnit(

@@ -2,30 +2,30 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMidgardValidationTraceTree,
-  decodeMidgardValidationMachineStateV1,
-  decodeMidgardValidationTraceDescriptorV1,
+  decodeMidgardValidationMachineState,
+  decodeMidgardValidationTraceDescriptor,
   encodeCbor,
-  encodeMidgardValidationMachineStateV1,
-  encodeMidgardValidationTraceDescriptorV1,
-  hashMidgardValidationLedgerDeltaOperationV1,
-  hashMidgardValidationLedgerDeltaV1,
-  hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
-  hashMidgardValidationWorkWitnessV1,
-  MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+  encodeMidgardValidationMachineState,
+  encodeMidgardValidationTraceDescriptor,
+  hashMidgardValidationLedgerDelta,
+  hashMidgardValidationLedgerDeltaOperation,
+  hashMidgardValidationMachineState,
+  hashMidgardValidationRejectionCode,
+  hashMidgardValidationWorkWitness,
+  MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-  type MidgardValidationMachineStateV1,
+  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+  type MidgardValidationMachineState,
   validationTraceDepthForStepCount,
-  verifyMidgardValidationTraceProofV1,
+  verifyMidgardValidationTraceProof,
 } from "../src/index.js";
 
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
 
 const state = (
-  overrides: Partial<MidgardValidationMachineStateV1> = {},
-): MidgardValidationMachineStateV1 => ({
-  machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+  overrides: Partial<MidgardValidationMachineState> = {},
+): MidgardValidationMachineState => ({
+  machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
   eventKeyHash: hash(1),
   transactionId: hash(2),
   transactionCommitment: hash(3),
@@ -46,14 +46,14 @@ const state = (
 describe("validation trace commitments", () => {
   it("matches Aiken's long-byte witness serialization exactly", () => {
     expect(
-      hashMidgardValidationWorkWitnessV1({
+      hashMidgardValidationWorkWitness({
         phase: "cek",
         programCounter: 17,
         witnessCbor: Buffer.from("820142abcd", "hex"),
       }).toString("hex"),
     ).toBe("36d4e5e57f9cbcca2fc621a5f9411251be1c31a39378089dff8d44e2caa8e2bc");
     expect(
-      hashMidgardValidationWorkWitnessV1({
+      hashMidgardValidationWorkWitness({
         phase: "canonicalDecode",
         programCounter: 0,
         witnessCbor: Buffer.alloc(200, 0xab),
@@ -80,13 +80,13 @@ describe("validation trace commitments", () => {
       proofDescriptor,
     };
     expect(
-      hashMidgardValidationLedgerDeltaOperationV1(deletion).toString("hex"),
+      hashMidgardValidationLedgerDeltaOperation(deletion).toString("hex"),
     ).toBe("d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589");
     expect(
-      hashMidgardValidationLedgerDeltaOperationV1(insertion).toString("hex"),
+      hashMidgardValidationLedgerDeltaOperation(insertion).toString("hex"),
     ).toBe("f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db");
     expect(
-      hashMidgardValidationLedgerDeltaV1([deletion, insertion]).toString("hex"),
+      hashMidgardValidationLedgerDelta([deletion, insertion]).toString("hex"),
     ).toBe("b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2");
   });
 
@@ -98,25 +98,25 @@ describe("validation trace commitments", () => {
       executionCpu: 123n,
       executionMemory: 45n,
     });
-    const encoded = encodeMidgardValidationMachineStateV1(expected);
+    const encoded = encodeMidgardValidationMachineState(expected);
     expect(encoded.toString("hex")).toBe(
       "8f015820010101010101010101010101010101010101010101010101010101010101010158200202020202020202020202020202020202020202020202020202020202020202582003030303030303030303030303030303030303030303030303030303030303035820040404040404040404040404040404040404040404040404040404040404040401582005050505050505050505050505050505050505050505050505050505050505050b1158200606060606060606060606060606060606060606060606060606060606060606187b182d005820000000000000000000000000000000000000000000000000000000000000000058200707070707070707070707070707070707070707070707070707070707070707",
     );
-    expect(decodeMidgardValidationMachineStateV1(encoded)).toEqual(expected);
-    expect(hashMidgardValidationMachineStateV1(expected).toString("hex")).toBe(
+    expect(decodeMidgardValidationMachineState(encoded)).toEqual(expected);
+    expect(hashMidgardValidationMachineState(expected).toString("hex")).toBe(
       "fa9598fae21355bd529770b1c2c750ace65d721ada641bec6bd5f87a22c18088",
     );
     expect(
-      hashMidgardValidationMachineStateV1({
+      hashMidgardValidationMachineState({
         ...expected,
         programCounter: 18,
       }),
-    ).not.toEqual(hashMidgardValidationMachineStateV1(expected));
+    ).not.toEqual(hashMidgardValidationMachineState(expected));
   });
 
   it("commits every state, pads with the terminal state, and verifies paths", () => {
     const stateHashes = [0, 1, 2, 3, 4].map((index) =>
-      hashMidgardValidationMachineStateV1(
+      hashMidgardValidationMachineState(
         state({
           phase: index === 4 ? "terminal" : "canonicalDecode",
           programCounter: index,
@@ -130,7 +130,7 @@ describe("validation trace commitments", () => {
     expect(validationTraceDepthForStepCount(4)).toBe(3);
     expect(
       tree.proofs.every((proof) =>
-        verifyMidgardValidationTraceProofV1({
+        verifyMidgardValidationTraceProof({
           descriptor: tree.descriptor,
           proof,
         }),
@@ -138,13 +138,13 @@ describe("validation trace commitments", () => {
     ).toBe(true);
 
     expect(
-      verifyMidgardValidationTraceProofV1({
+      verifyMidgardValidationTraceProof({
         descriptor: tree.descriptor,
         proof: { ...tree.proofs[2]!, stateHash: hash(99) },
       }),
     ).toBe(false);
     expect(
-      verifyMidgardValidationTraceProofV1({
+      verifyMidgardValidationTraceProof({
         descriptor: tree.descriptor,
         proof: {
           ...tree.proofs[2]!,
@@ -156,22 +156,22 @@ describe("validation trace commitments", () => {
 
   it("round-trips exact terminal descriptors", () => {
     const rejectionCodeHash =
-      hashMidgardValidationRejectionCodeV1("E_FEE_TOO_LOW");
+      hashMidgardValidationRejectionCode("E_FEE_TOO_LOW");
     const tree = buildMidgardValidationTraceTree(
       [hash(10), hash(11)],
       "rejected",
       rejectionCodeHash,
     );
     expect(
-      decodeMidgardValidationTraceDescriptorV1(
-        encodeMidgardValidationTraceDescriptorV1(tree.descriptor),
+      decodeMidgardValidationTraceDescriptor(
+        encodeMidgardValidationTraceDescriptor(tree.descriptor),
       ),
     ).toEqual(tree.descriptor);
 
     expect(
-      encodeMidgardValidationTraceDescriptorV1({
-        schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-        machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+      encodeMidgardValidationTraceDescriptor({
+        schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
+        machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
         traceRoot: Buffer.from(
           "c6760a9266746c67578026b6d44e533ae8390264d227a9649e6558a3d70970eb",
           "hex",
@@ -192,7 +192,7 @@ describe("validation trace commitments", () => {
 
   it("fails closed for unknown versions, phases, verdicts, and malformed roots", () => {
     const encodedState = [
-      BigInt(MIDGARD_VALIDATION_MACHINE_V1_VERSION),
+      BigInt(MIDGARD_VALIDATION_MACHINE_VERSION),
       hash(1),
       hash(2),
       hash(3),
@@ -209,15 +209,15 @@ describe("validation trace commitments", () => {
       hash(7),
     ];
     expect(() =>
-      decodeMidgardValidationMachineStateV1(encodeCbor(encodedState)),
+      decodeMidgardValidationMachineState(encodeCbor(encodedState)),
     ).toThrow(/Unknown validation phase/u);
     expect(() =>
-      decodeMidgardValidationMachineStateV1(
+      decodeMidgardValidationMachineState(
         encodeCbor([2n, ...encodedState.slice(1)]),
       ),
     ).toThrow(/Unsupported validation machine version/u);
     expect(() =>
-      decodeMidgardValidationMachineStateV1(
+      decodeMidgardValidationMachineState(
         encodeCbor(encodedState.slice(0, -1)),
       ),
     ).toThrow(/exactly 15 fields/u);
@@ -225,7 +225,7 @@ describe("validation trace commitments", () => {
     const tree = buildMidgardValidationTraceTree([hash(1)], "accepted");
     const descriptor = [
       1n,
-      BigInt(MIDGARD_VALIDATION_MACHINE_V1_VERSION),
+      BigInt(MIDGARD_VALIDATION_MACHINE_VERSION),
       tree.descriptor.traceRoot,
       0n,
       tree.descriptor.initialStateHash,
@@ -234,18 +234,18 @@ describe("validation trace commitments", () => {
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     ];
     expect(() =>
-      decodeMidgardValidationTraceDescriptorV1(encodeCbor(descriptor)),
+      decodeMidgardValidationTraceDescriptor(encodeCbor(descriptor)),
     ).toThrow(/verdict must be terminal/u);
     expect(() =>
-      decodeMidgardValidationTraceDescriptorV1(
+      decodeMidgardValidationTraceDescriptor(
         encodeCbor([2n, ...descriptor.slice(1)]),
       ),
     ).toThrow(/Unsupported validation trace descriptor version/u);
     expect(() =>
-      decodeMidgardValidationTraceDescriptorV1(
+      decodeMidgardValidationTraceDescriptor(
         encodeCbor([
           1n,
-          BigInt(MIDGARD_VALIDATION_MACHINE_V1_VERSION),
+          BigInt(MIDGARD_VALIDATION_MACHINE_VERSION),
           Buffer.alloc(31),
           0n,
           tree.descriptor.initialStateHash,
@@ -259,7 +259,7 @@ describe("validation trace commitments", () => {
 
   it("binds terminal rejection codes to rejected verdicts", () => {
     const rejectionCodeHash =
-      hashMidgardValidationRejectionCodeV1("E_FAILED_SCRIPT");
+      hashMidgardValidationRejectionCode("E_FAILED_SCRIPT");
     expect(rejectionCodeHash).toHaveLength(32);
     expect(() =>
       buildMidgardValidationTraceTree(

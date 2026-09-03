@@ -1,15 +1,15 @@
 import {
-  hashMidgardCekBlobBranchV1,
-  hashMidgardCekBlobChunkV1,
+  hashMidgardCekBlobBranch,
+  hashMidgardCekBlobChunk,
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
 } from "./cek-proof.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import { MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT } from "./validation-merkle.js";
 
-export const MIDGARD_CEK_BLOB_FRONTIER_V1_VERSION = 1 as const;
+export const MIDGARD_CEK_BLOB_FRONTIER_VERSION = 1 as const;
 
-export type MidgardCekBlobFrontierPeakV1 = {
+export type MidgardCekBlobFrontierPeak = {
   readonly height: number;
   readonly root: Hash32;
   readonly byteLength: bigint;
@@ -20,10 +20,10 @@ export type MidgardCekBlobFrontierPeakV1 = {
  * leftmost/largest subtree. This makes append deterministic and permits the
  * rightmost peak alone to contain the final partial CEK blob leaf.
  */
-export type MidgardCekBlobFrontierV1 = {
+export type MidgardCekBlobFrontier = {
   readonly count: number;
   readonly byteLength: bigint;
-  readonly peaks: readonly MidgardCekBlobFrontierPeakV1[];
+  readonly peaks: readonly MidgardCekBlobFrontierPeak[];
 };
 
 const exactUint32 = (value: number, field: string): number => {
@@ -52,8 +52,8 @@ const powerOfTwo = (height: number): bigint => {
   return 1n << BigInt(exact);
 };
 
-export const validateMidgardCekBlobFrontierV1 = (
-  frontier: MidgardCekBlobFrontierV1,
+export const validateMidgardCekBlobFrontier = (
+  frontier: MidgardCekBlobFrontier,
 ): void => {
   const count = exactUint32(frontier.count, "count");
   const byteLength = exactUint64(frontier.byteLength, "byte length");
@@ -99,21 +99,21 @@ export const validateMidgardCekBlobFrontierV1 = (
   }
 };
 
-export const emptyMidgardCekBlobFrontierV1 = (): MidgardCekBlobFrontierV1 =>
+export const emptyMidgardCekBlobFrontier = (): MidgardCekBlobFrontier =>
   Object.freeze({
     count: 0,
     byteLength: 0n,
     peaks: Object.freeze([]),
   });
 
-export const appendMidgardCekBlobFrontierChunkRootV1 = (
-  frontier: MidgardCekBlobFrontierV1,
+export const appendMidgardCekBlobFrontierChunkRoot = (
+  frontier: MidgardCekBlobFrontier,
   chunk: {
     readonly root: Uint8Array;
     readonly byteLength: number;
   },
-): MidgardCekBlobFrontierV1 => {
-  validateMidgardCekBlobFrontierV1(frontier);
+): MidgardCekBlobFrontier => {
+  validateMidgardCekBlobFrontier(frontier);
   if (
     frontier.count >= MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
     (frontier.count > 0 &&
@@ -131,7 +131,7 @@ export const appendMidgardCekBlobFrontierChunkRootV1 = (
   }
 
   const peaks = [...frontier.peaks];
-  let peak: MidgardCekBlobFrontierPeakV1 = {
+  let peak: MidgardCekBlobFrontierPeak = {
     height: 0,
     root: ensureHash32(chunk.root, "cek_blob_frontier_v1.appended_chunk.root"),
     byteLength: BigInt(chunk.byteLength),
@@ -141,7 +141,7 @@ export const appendMidgardCekBlobFrontierChunkRootV1 = (
     const byteLength = left.byteLength + peak.byteLength;
     peak = {
       height: peak.height + 1,
-      root: hashMidgardCekBlobBranchV1({
+      root: hashMidgardCekBlobBranch({
         left: left.root,
         right: peak.root,
         byteLength,
@@ -154,25 +154,25 @@ export const appendMidgardCekBlobFrontierChunkRootV1 = (
     byteLength: frontier.byteLength + BigInt(chunk.byteLength),
     peaks: Object.freeze([peak, ...peaks]),
   });
-  validateMidgardCekBlobFrontierV1(next);
+  validateMidgardCekBlobFrontier(next);
   return next;
 };
 
-export const appendMidgardCekBlobFrontierChunkV1 = (
-  frontier: MidgardCekBlobFrontierV1,
+export const appendMidgardCekBlobFrontierChunk = (
+  frontier: MidgardCekBlobFrontier,
   chunk: Uint8Array,
-): MidgardCekBlobFrontierV1 => {
+): MidgardCekBlobFrontier => {
   const bytes = Buffer.from(chunk);
-  return appendMidgardCekBlobFrontierChunkRootV1(frontier, {
-    root: hashMidgardCekBlobChunkV1(bytes),
+  return appendMidgardCekBlobFrontierChunkRoot(frontier, {
+    root: hashMidgardCekBlobChunk(bytes),
     byteLength: bytes.length,
   });
 };
 
-export const finalizeMidgardCekBlobFrontierV1 = (
-  frontier: MidgardCekBlobFrontierV1,
+export const finalizeMidgardCekBlobFrontier = (
+  frontier: MidgardCekBlobFrontier,
 ): Hash32 | null => {
-  validateMidgardCekBlobFrontierV1(frontier);
+  validateMidgardCekBlobFrontier(frontier);
   if (frontier.count === 0) return null;
   let aggregate = frontier.peaks[0]!;
   for (let index = 1; index < frontier.peaks.length; index += 1) {
@@ -180,7 +180,7 @@ export const finalizeMidgardCekBlobFrontierV1 = (
     const byteLength = left.byteLength + aggregate.byteLength;
     aggregate = {
       height: left.height + 1,
-      root: hashMidgardCekBlobBranchV1({
+      root: hashMidgardCekBlobBranch({
         left: left.root,
         right: aggregate.root,
         byteLength,
@@ -191,12 +191,12 @@ export const finalizeMidgardCekBlobFrontierV1 = (
   return aggregate.root;
 };
 
-export const encodeMidgardCekBlobFrontierV1 = (
-  frontier: MidgardCekBlobFrontierV1,
+export const encodeMidgardCekBlobFrontier = (
+  frontier: MidgardCekBlobFrontier,
 ): Buffer => {
-  validateMidgardCekBlobFrontierV1(frontier);
+  validateMidgardCekBlobFrontier(frontier);
   return encodeCbor([
-    BigInt(MIDGARD_CEK_BLOB_FRONTIER_V1_VERSION),
+    BigInt(MIDGARD_CEK_BLOB_FRONTIER_VERSION),
     BigInt(frontier.count),
     frontier.byteLength,
     frontier.peaks.map(({ height, root, byteLength }) => [

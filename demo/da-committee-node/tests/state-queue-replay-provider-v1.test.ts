@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { createLocalKupmiosStateQueueReplayProviderV1 } from "../src/l1/state-queue-replay-provider-v1.js";
+import { createLocalKupmiosStateQueueReplayProvider } from "../src/l1/state-queue-replay-provider-v1.js";
 
 const h28 = (byte: string): string => byte.repeat(56);
 const h32 = (byte: string): string => byte.repeat(64);
@@ -16,12 +16,12 @@ const hubPolicy = h28("a");
 const fraudPolicy = h28("e");
 const correctionLockAddress = "addr_test_correction_lock";
 const fraudProofAddress = "addr_test_fraud_proof";
-const before: readonly SDK.StateQueueTransitionNodeV1[] = [
+const before: readonly SDK.StateQueueTransitionNode[] = [
   { headerHash: null, outRef: outRef("0") },
   { headerHash: target, outRef: outRef("1") },
   { headerHash: descendant, outRef: outRef("2") },
 ];
-const after: readonly SDK.StateQueueTransitionNodeV1[] = [
+const after: readonly SDK.StateQueueTransitionNode[] = [
   { headerHash: null, outRef: outRef("0") },
   { headerHash: target, outRef: `${transactionHash}#0` },
 ];
@@ -201,7 +201,7 @@ const harness = ({ rollback = false, tipHeight = 119 } = {}) => {
       },
     };
   };
-  return createLocalKupmiosStateQueueReplayProviderV1({
+  return createLocalKupmiosStateQueueReplayProvider({
     deploymentIdentityDigest: deployment,
     stateQueuePolicyId: policy,
     stateQueueAddress: "addr_test_state_queue",
@@ -237,7 +237,7 @@ describe("committee local Kupmios state-queue replay", () => {
     const checkpoints = await harness({ tipHeight: 90 })(before, after);
     expect(checkpoints[0]?.finalityDepth).toBe("1");
     expect(
-      SDK.replayStateQueueAuthenticatedCheckpointsV1({
+      SDK.replayStateQueueAuthenticatedCheckpoints({
         deploymentIdentityDigest: deployment,
         stateQueuePolicyId: policy,
         minimumFinalityDepth: 30n,

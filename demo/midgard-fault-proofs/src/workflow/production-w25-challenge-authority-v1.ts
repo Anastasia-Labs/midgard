@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import {
   TransitionFaultProof,
   type TransitionFaultProof as TransitionFaultProofData,
-  type ValidationClaimWitnessV1,
-  ValidationClaimWitnessV1 as ValidationClaimWitnessV1Schema,
+  type ValidationClaimWitness,
+  ValidationClaimWitness as ValidationClaimWitnessSchema,
+  ValidationTraceDescriptor,
   validationTraceDescriptorDataFromCore,
-  ValidationTraceDescriptorV1,
 } from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
@@ -16,22 +16,22 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import {
   detectTransitionTraceFaults,
   type TransitionTraceDetectionEvidence,
   transitionTraceFinalIndex,
 } from "../transition-trace/index.js";
 
-export const PRODUCTION_W25_CHALLENGE_COORDINATE_V1 =
+export const W25_CHALLENGE_COORDINATE =
   "midgard-production-w25-challenge-coordinate-v1" as const;
-export const PRODUCTION_TRANSITION_TRACE_CHALLENGE_V1 =
+export const TRANSITION_TRACE_CHALLENGE =
   "midgard-production-transition-trace-challenge-v1" as const;
-export const PRODUCTION_VALIDATION_TRACE_CHALLENGE_V1 =
+export const VALIDATION_TRACE_CHALLENGE =
   "midgard-production-validation-trace-challenge-v1" as const;
 
-export type ProductionW25ChallengeCoordinateV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_W25_CHALLENGE_COORDINATE_V1;
+export type ReplayChallengeCoordinate = Readonly<{
+  schemaVersion: typeof W25_CHALLENGE_COORDINATE;
   deploymentFingerprint: string;
   stateQueueObservationDigest: string;
   headerHash: string;
@@ -45,9 +45,9 @@ export type ProductionW25ChallengeCoordinateV1 = Readonly<{
   }>;
 }>;
 
-export type ProductionTransitionTraceChallengeV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_TRANSITION_TRACE_CHALLENGE_V1;
-  coordinate: ProductionW25ChallengeCoordinateV1;
+export type TransitionTraceChallenge = Readonly<{
+  schemaVersion: typeof TRANSITION_TRACE_CHALLENGE;
+  coordinate: ReplayChallengeCoordinate;
   detectionIndex: number;
   kind: string;
   invariant: string;
@@ -58,9 +58,9 @@ export type ProductionTransitionTraceChallengeV1 = Readonly<{
   challengeDigest: string;
 }>;
 
-export type ProductionValidationTraceChallengeV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_VALIDATION_TRACE_CHALLENGE_V1;
-  coordinate: ProductionW25ChallengeCoordinateV1;
+export type ValidationTraceChallenge = Readonly<{
+  schemaVersion: typeof VALIDATION_TRACE_CHALLENGE;
+  coordinate: ReplayChallengeCoordinate;
   claimCbor: string;
   challengerDescriptorCbor: string;
   exactL1ReferenceOutRefs: readonly string[];
@@ -79,7 +79,7 @@ const validationTraceByChallenge = new WeakMap<
 >();
 const validationClaimByChallenge = new WeakMap<
   object,
-  ValidationClaimWitnessV1
+  ValidationClaimWitness
 >();
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
@@ -99,11 +99,11 @@ const requireCoordinate = ({
   coordinate,
   evidence,
 }: {
-  readonly coordinate: ProductionW25ChallengeCoordinateV1;
-  readonly evidence: CanonicalBlockEvidenceV1;
-}): ProductionW25ChallengeCoordinateV1 => {
+  readonly coordinate: ReplayChallengeCoordinate;
+  readonly evidence: CanonicalBlockEvidence;
+}): ReplayChallengeCoordinate => {
   if (
-    coordinate.schemaVersion !== PRODUCTION_W25_CHALLENGE_COORDINATE_V1 ||
+    coordinate.schemaVersion !== W25_CHALLENGE_COORDINATE ||
     !HEX_32.test(coordinate.deploymentFingerprint) ||
     !HEX_32.test(coordinate.stateQueueObservationDigest) ||
     !HEX_28.test(coordinate.headerHash) ||
@@ -144,19 +144,19 @@ const exactOutRefs = (values: readonly string[]): readonly string[] => {
  * W21/W15/W16/W22/W24/W25 transcript. The complete evidence is replayed here;
  * a caller cannot supply a prebuilt proof or revive a journal copy.
  */
-export const admitProductionTransitionTraceChallengeV1 = async ({
+export const admitTransitionTraceChallenge = async ({
   coordinate,
   evidence,
   completeEvidence,
   detectionIndex,
   exactL1ReferenceOutRefs,
 }: {
-  readonly coordinate: ProductionW25ChallengeCoordinateV1;
-  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly coordinate: ReplayChallengeCoordinate;
+  readonly evidence: CanonicalBlockEvidence;
   readonly completeEvidence: TransitionTraceDetectionEvidence;
   readonly detectionIndex: number;
   readonly exactL1ReferenceOutRefs: readonly string[];
-}): Promise<ProductionTransitionTraceChallengeV1> => {
+}): Promise<TransitionTraceChallenge> => {
   const boundCoordinate = requireCoordinate({ coordinate, evidence });
   if (!Number.isSafeInteger(detectionIndex) || detectionIndex < 0) {
     throw new Error("transition-trace W25 detection index is invalid");
@@ -180,7 +180,7 @@ export const admitProductionTransitionTraceChallengeV1 = async ({
   const references = exactOutRefs(exactL1ReferenceOutRefs);
   const finalIndex = transitionTraceFinalIndex(selected.proof);
   const challengeInput = Object.freeze({
-    schemaVersion: PRODUCTION_TRANSITION_TRACE_CHALLENGE_V1,
+    schemaVersion: TRANSITION_TRACE_CHALLENGE,
     coordinate: boundCoordinate,
     detectionIndex,
     kind: selected.kind,
@@ -190,7 +190,7 @@ export const admitProductionTransitionTraceChallengeV1 = async ({
     proofCbor,
     exactL1ReferenceOutRefs: references,
   });
-  const challenge: ProductionTransitionTraceChallengeV1 = Object.freeze({
+  const challenge: TransitionTraceChallenge = Object.freeze({
     ...challengeInput,
     challengeDigest: sha256(
       challengeInput.schemaVersion,
@@ -208,12 +208,12 @@ export const admitProductionTransitionTraceChallengeV1 = async ({
   return challenge;
 };
 
-export const requireProductionTransitionTraceChallengeV1 = (
-  challenge: ProductionTransitionTraceChallengeV1,
-): ProductionTransitionTraceChallengeV1 => {
+export const requireTransitionTraceChallenge = (
+  challenge: TransitionTraceChallenge,
+): TransitionTraceChallenge => {
   if (
     !admittedTransitionChallenges.has(challenge) ||
-    challenge.schemaVersion !== PRODUCTION_TRANSITION_TRACE_CHALLENGE_V1 ||
+    challenge.schemaVersion !== TRANSITION_TRACE_CHALLENGE ||
     transitionProofByChallenge.get(challenge) === undefined
   ) {
     throw new Error("production transition-trace challenge is not admitted");
@@ -221,10 +221,10 @@ export const requireProductionTransitionTraceChallengeV1 = (
   return challenge;
 };
 
-export const productionTransitionTraceProofV1 = (
-  challenge: ProductionTransitionTraceChallengeV1,
+export const transitionTraceProof = (
+  challenge: TransitionTraceChallenge,
 ): TransitionFaultProofData => {
-  requireProductionTransitionTraceChallengeV1(challenge);
+  requireTransitionTraceChallenge(challenge);
   return transitionProofByChallenge.get(challenge)!;
 };
 
@@ -233,34 +233,34 @@ export const productionTransitionTraceProofV1 = (
  * claim is canonical Data and root-bound by the validation-dispute contract;
  * admission additionally refuses a trace descriptor identical to the claim.
  */
-export const admitProductionValidationTraceChallengeV1 = async ({
+export const admitValidationTraceChallenge = async ({
   coordinate,
   evidence,
   claim,
   challengerReplayInput,
   exactL1ReferenceOutRefs,
 }: {
-  readonly coordinate: ProductionW25ChallengeCoordinateV1;
-  readonly evidence: CanonicalBlockEvidenceV1;
-  readonly claim: ValidationClaimWitnessV1;
+  readonly coordinate: ReplayChallengeCoordinate;
+  readonly evidence: CanonicalBlockEvidence;
+  readonly claim: ValidationClaimWitness;
   readonly challengerReplayInput: ValidationMachineReplayInput;
   readonly exactL1ReferenceOutRefs: readonly string[];
-}): Promise<ProductionValidationTraceChallengeV1> => {
+}): Promise<ValidationTraceChallenge> => {
   const boundCoordinate = requireCoordinate({ coordinate, evidence });
   const trace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace(challengerReplayInput),
   );
-  const claimCbor = Data.to(claim, ValidationClaimWitnessV1Schema);
+  const claimCbor = Data.to(claim, ValidationClaimWitnessSchema);
   const challengerDescriptor = validationTraceDescriptorDataFromCore(
     trace.tree.descriptor,
   );
   const challengerDescriptorCbor = Data.to(
     challengerDescriptor,
-    ValidationTraceDescriptorV1,
+    ValidationTraceDescriptor,
   );
   const operatorDescriptorCbor = Data.to(
     claim.descriptor_membership.value,
-    ValidationTraceDescriptorV1,
+    ValidationTraceDescriptor,
   );
   if (operatorDescriptorCbor === challengerDescriptorCbor) {
     throw new Error(
@@ -279,13 +279,13 @@ export const admitProductionValidationTraceChallengeV1 = async ({
   }
   const references = exactOutRefs(exactL1ReferenceOutRefs);
   const challengeInput = Object.freeze({
-    schemaVersion: PRODUCTION_VALIDATION_TRACE_CHALLENGE_V1,
+    schemaVersion: VALIDATION_TRACE_CHALLENGE,
     coordinate: boundCoordinate,
     claimCbor,
     challengerDescriptorCbor,
     exactL1ReferenceOutRefs: references,
   });
-  const challenge: ProductionValidationTraceChallengeV1 = Object.freeze({
+  const challenge: ValidationTraceChallenge = Object.freeze({
     ...challengeInput,
     challengeDigest: sha256(
       challengeInput.schemaVersion,
@@ -302,12 +302,12 @@ export const admitProductionValidationTraceChallengeV1 = async ({
   return challenge;
 };
 
-export const requireProductionValidationTraceChallengeV1 = (
-  challenge: ProductionValidationTraceChallengeV1,
-): ProductionValidationTraceChallengeV1 => {
+export const requireValidationTraceChallenge = (
+  challenge: ValidationTraceChallenge,
+): ValidationTraceChallenge => {
   if (
     !admittedValidationChallenges.has(challenge) ||
-    challenge.schemaVersion !== PRODUCTION_VALIDATION_TRACE_CHALLENGE_V1 ||
+    challenge.schemaVersion !== VALIDATION_TRACE_CHALLENGE ||
     validationTraceByChallenge.get(challenge) === undefined ||
     validationClaimByChallenge.get(challenge) === undefined
   ) {
@@ -316,14 +316,14 @@ export const requireProductionValidationTraceChallengeV1 = (
   return challenge;
 };
 
-export const productionValidationTraceMaterialV1 = (
-  challenge: ProductionValidationTraceChallengeV1,
+export const validationTraceMaterial = (
+  challenge: ValidationTraceChallenge,
 ): Readonly<{
-  claim: ValidationClaimWitnessV1;
+  claim: ValidationClaimWitness;
   challengerTrace: DeterministicValidationMachineTrace;
-  challengerDescriptor: ValidationTraceDescriptorV1;
+  challengerDescriptor: ValidationTraceDescriptor;
 }> => {
-  requireProductionValidationTraceChallengeV1(challenge);
+  requireValidationTraceChallenge(challenge);
   const challengerTrace = validationTraceByChallenge.get(challenge)!;
   return Object.freeze({
     claim: validationClaimByChallenge.get(challenge)!,

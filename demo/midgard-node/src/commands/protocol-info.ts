@@ -1,24 +1,24 @@
 import {
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import {
-  assertMidgardConsensusV1ReleaseReady,
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_PROTOCOL_INFO_V1_API_VERSION,
-  type MidgardConsensusProfileV1,
+  assertMidgardConsensusReleaseReady,
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_PROTOCOL_INFO_API_VERSION,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  type DeploymentMarkerV1,
-  parseDeploymentMarkerV1,
+  type DeploymentMarker,
+  parseDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
 import { positiveSafeInteger } from "../artifact-schema.js";
 
-export const PROTOCOL_INFO_API_VERSION = MIDGARD_PROTOCOL_INFO_V1_API_VERSION;
+export const PROTOCOL_INFO_API_VERSION = MIDGARD_PROTOCOL_INFO_API_VERSION;
 
 type ProtocolInfoConfig = {
   readonly NETWORK: Network;
@@ -29,7 +29,7 @@ type ProtocolInfoConfig = {
 };
 
 type ProtocolInfoCommon = {
-  readonly deploymentMarker: DeploymentMarkerV1;
+  readonly deploymentMarker: DeploymentMarker;
   readonly network: Network;
   readonly currentSlot: string;
   readonly codecSupportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
@@ -49,7 +49,7 @@ type ProtocolInfoCommon = {
 export type ProtocolInfo = ProtocolInfoCommon & {
   readonly apiVersion: typeof PROTOCOL_INFO_API_VERSION;
   readonly midgardNativeTxVersion: 1;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly supportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
 };
 
@@ -77,27 +77,27 @@ export const encodeProtocolInfo = ({
   nodeConfig,
   currentSlot,
   deploymentMarker,
-  consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly nodeConfig: ProtocolInfoConfig;
   readonly currentSlot: number | bigint;
   readonly deploymentMarker: unknown;
-  readonly consensusProfile?: MidgardConsensusProfileV1;
+  readonly consensusProfile?: MidgardConsensusProfile;
 }): ProtocolInfo => {
-  if (!isMidgardConsensusProfileV1(consensusProfile)) {
+  if (!isMidgardConsensusProfile(consensusProfile)) {
     throw new Error("Unsupported consensus profile");
   }
   const configuredMax = positiveSafeInteger(
     nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
     "MAX_SUBMIT_TX_CBOR_BYTES",
   );
-  if (configuredMax > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes) {
+  if (configuredMax > MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes) {
     throw new Error(
       "MAX_SUBMIT_TX_CBOR_BYTES must not exceed the canonical V1 transaction bound",
     );
   }
   const common: ProtocolInfoCommon = {
-    deploymentMarker: parseDeploymentMarkerV1(deploymentMarker),
+    deploymentMarker: parseDeploymentMarker(deploymentMarker),
     network: nodeConfig.NETWORK,
     currentSlot: stringifyCurrentSlot(currentSlot),
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -113,12 +113,12 @@ export const encodeProtocolInfo = ({
       localValidationIsAuthoritative: false,
     },
   };
-  assertMidgardConsensusV1ReleaseReady();
+  assertMidgardConsensusReleaseReady();
   return {
     ...common,
     apiVersion: PROTOCOL_INFO_API_VERSION,
-    midgardNativeTxVersion: Number(MIDGARD_NATIVE_TX_V1_VERSION) as 1,
-    consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    midgardNativeTxVersion: Number(MIDGARD_NATIVE_TX_VERSION) as 1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   };
 };

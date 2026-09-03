@@ -21,10 +21,10 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
     ...actual,
     fetchConfirmedStateAndItsLinkProgram:
       fetchConfirmedStateAndItsLinkProgramMock,
-    getStateQueueNodeV1FromStateQueueDatum:
+    getStateQueueNodeFromStateQueueDatum:
       getStateQueueNodeFromStateQueueDatumMock,
-    getHeaderV1FromStateQueueDatum: getHeaderFromStateQueueDatumMock,
-    hashBlockHeaderV1: hashBlockHeaderMock,
+    getHeaderFromStateQueueDatum: getHeaderFromStateQueueDatumMock,
+    hashBlockHeader: hashBlockHeaderMock,
   };
 });
 
@@ -111,12 +111,12 @@ const configureCandidate = ({
   daAttestation,
   endTime,
 }: {
-  readonly daAttestation: SDK.DaAvailabilityStateQueueStatusV1;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;
   readonly endTime: bigint;
 }) => {
   const blockHeader = {
     endTime,
-  } as SDK.HeaderV1;
+  } as SDK.Header;
   fetchConfirmedStateAndItsLinkProgramMock.mockImplementation(() =>
     Effect.succeed({
       confirmed: {} as SDK.StateQueueUTxO,
@@ -127,7 +127,7 @@ const configureCandidate = ({
     Effect.succeed({
       header: blockHeader,
       da_attestation: daAttestation,
-    } as SDK.StateQueueNodeV1),
+    } as SDK.StateQueueNode),
   );
   getHeaderFromStateQueueDatumMock.mockImplementation(() =>
     Effect.succeed(blockHeader),
@@ -167,7 +167,7 @@ describe("merge builder maturity preflight", () => {
 
     configureCandidate({
       // A state-queue node's `da_attestation` is the
-      // `DaAvailabilityStateQueueStatusV1` enum, not a raw policy-id string;
+      // `DaAvailabilityStateQueueStatus` enum, not a raw policy-id string;
       // `Attested` is one of the two merge-permitting kinds, so the maturity
       // window (not availability) is what this default exercises.
       daAttestation: { Attested: { da_bond_asset_name: "22".repeat(32) } },

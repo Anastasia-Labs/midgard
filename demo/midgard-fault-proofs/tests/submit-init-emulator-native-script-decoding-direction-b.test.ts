@@ -28,21 +28,21 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlanV1,
-  type NativeScriptDecodingFindingV1,
-  NativeScriptDecodingPlanRoutesV1,
-  NativeScriptDecodingProvabilityV1,
-  proveNativeScriptDecodingFaultV1,
+  buildNativeScriptDecodingScanPlan,
+  type NativeScriptDecodingFinding,
+  NativeScriptDecodingPlanRoutes,
+  NativeScriptDecodingProvability,
+  proveNativeScriptDecodingFault,
 } from "../src/native-script-decoding/index.js";
 import {
-  decodingCanonicalItemV1,
-  decodingMalformedMultiChunkItemV1,
-  decodingPlutusItemV1,
-  decodingProverDepsV1,
-  type DecodingScenarioV1,
-  makeDecodingEmulatorHarnessV1,
-  publishDecodingReferenceScriptsV1,
-  setupDecodingScenarioV1,
+  decodingCanonicalItem,
+  decodingMalformedMultiChunkItem,
+  decodingPlutusItem,
+  decodingProverDeps,
+  type DecodingScenario,
+  makeDecodingEmulatorHarness,
+  publishDecodingReferenceScripts,
+  setupDecodingScenario,
 } from "./support/native-script-decoding-emulator-v1.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
@@ -52,7 +52,7 @@ const FORCED_ORDER_KEY: SDK.OutputReference = {
 };
 
 /** The §2.4.3(e) rejection this family disputes, accusing (reference, 0). */
-const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdictV1 = {
+const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdict = {
   ForcedTxInvalid: {
     reason: {
       ResolvedReferenceScriptMalformed: { source_kind: 1n, input_index: 0n },
@@ -62,8 +62,8 @@ const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdictV1 = {
 
 /** Asserts the thread NFT is gone from all six validators and the token is live. */
 const expectProvenAndBurned = async (
-  harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>,
-  scenario: DecodingScenarioV1,
+  harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>,
+  scenario: DecodingScenario,
   fraudProofUnit: string,
 ) => {
   const { proverLucid, decoding, category } = harness;
@@ -86,18 +86,18 @@ const expectProvenAndBurned = async (
 
 describe("native-script-decoding forced-source emulator lifecycles", () => {
   it("proves a wrongful rejection at the exact canonical terminal", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
-    const item = decodingCanonicalItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const harness = await makeDecodingEmulatorHarness();
+    const item = decodingCanonicalItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "forced", verdict: MALFORMED_REJECTION_VERDICT },
     });
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 1,
     });
-    expect(plan.route).toBe(NativeScriptDecodingPlanRoutesV1.Machine);
+    expect(plan.route).toBe(NativeScriptDecodingPlanRoutes.Machine);
     // Direction B's terminal is the whole item, so the verdict reads nothing.
     expect(plan.verdict.window).toBeNull();
 
@@ -108,11 +108,11 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       step03BindDescriptor,
       step03AdvanceOrClose,
       step04,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.decoding,
     });
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 1n,
       sourceKind: 1n,
       event: {
@@ -124,7 +124,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       accusedOutpointSourceKind: 1n,
       accusedOutpointCursor: 0n,
       scanReasonClass: 0n,
-      provability: NativeScriptDecodingProvabilityV1.MachineRoute,
+      provability: NativeScriptDecodingProvability.MachineRoute,
       descriptor: {
         referenceScriptLanguage: 0,
         outputIndex: 0,
@@ -133,9 +133,9 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       estimatedThreadTxCount: 6 + plan.segments.length,
     };
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(
+      proveNativeScriptDecodingFault(
         finding,
-        decodingProverDepsV1({
+        decodingProverDeps({
           harness,
           scenario,
           referenceScriptItemBytes: item,
@@ -160,9 +160,9 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
   }, 600_000);
 
   it("closes a wrongful rejection at bind when the descriptor names a non-native language", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
-    const item = decodingPlutusItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const harness = await makeDecodingEmulatorHarness();
+    const item = decodingPlutusItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       referenceScriptLanguage: 3,
@@ -175,11 +175,11 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       step03BindDescriptor,
       step03AdvanceOrClose,
       step04,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.decoding,
     });
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 1n,
       sourceKind: 1n,
       event: {
@@ -191,7 +191,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       accusedOutpointSourceKind: 1n,
       accusedOutpointCursor: 0n,
       scanReasonClass: 0n,
-      provability: NativeScriptDecodingProvabilityV1.DescriptorContradiction,
+      provability: NativeScriptDecodingProvability.DescriptorContradiction,
       descriptor: {
         referenceScriptLanguage: 3,
         outputIndex: 0,
@@ -200,9 +200,9 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       estimatedThreadTxCount: 6,
     };
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(
+      proveNativeScriptDecodingFault(
         finding,
-        decodingProverDepsV1({
+        decodingProverDeps({
           harness,
           scenario,
           // The contradiction is the descriptor's own; no item is scanned.
@@ -229,14 +229,14 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
   }, 600_000);
 
   it("proves a wrongful acceptance recorded as an explicit forced verdict", async () => {
-    const harness = await makeDecodingEmulatorHarnessV1();
-    const item = decodingMalformedMultiChunkItemV1();
-    const scenario = await setupDecodingScenarioV1({
+    const harness = await makeDecodingEmulatorHarness();
+    const item = decodingMalformedMultiChunkItem();
+    const scenario = await setupDecodingScenario({
       harness,
       referenceScriptItemBytes: item,
       source: { kind: "forced", verdict: "ForcedTxValid" },
     });
-    const plan = buildNativeScriptDecodingScanPlanV1({
+    const plan = buildNativeScriptDecodingScanPlan({
       itemBytes: item,
       direction: 0,
     });
@@ -247,11 +247,11 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       step03BindDescriptor,
       step03AdvanceOrClose,
       step04,
-    ] = await publishDecodingReferenceScriptsV1({
+    ] = await publishDecodingReferenceScripts({
       lucid: harness.funderLucid,
       contracts: harness.decoding,
     });
-    const finding: NativeScriptDecodingFindingV1 = {
+    const finding: NativeScriptDecodingFinding = {
       direction: 0n,
       sourceKind: 1n,
       event: {
@@ -263,7 +263,7 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       accusedOutpointSourceKind: 1n,
       accusedOutpointCursor: 0n,
       scanReasonClass: null,
-      provability: NativeScriptDecodingProvabilityV1.MachineRoute,
+      provability: NativeScriptDecodingProvability.MachineRoute,
       descriptor: {
         referenceScriptLanguage: 0,
         outputIndex: 0,
@@ -272,9 +272,9 @@ describe("native-script-decoding forced-source emulator lifecycles", () => {
       estimatedThreadTxCount: 7 + plan.segments.length,
     };
     const outcome = await Effect.runPromise(
-      proveNativeScriptDecodingFaultV1(
+      proveNativeScriptDecodingFault(
         finding,
-        decodingProverDepsV1({
+        decodingProverDeps({
           harness,
           scenario,
           referenceScriptItemBytes: item,

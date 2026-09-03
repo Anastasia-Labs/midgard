@@ -18,7 +18,7 @@ import {
   HUB_ORACLE_ASSET_NAME,
   MintAuthorizationStep01SpendRedeemer,
   MintAuthorizationStep02Datum,
-  type MintAuthorizationStep02StateV1,
+  type MintAuthorizationStep02State,
   type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -42,7 +42,7 @@ import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "../proof-chunk-carriage.js";
@@ -66,24 +66,24 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
+import type { MintAuthorizationContracts } from "./contracts-v1.js";
 import {
-  mintAuthorizationStepLabelV1,
+  mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
-  requireMintAuthorizationReferenceScriptV1,
-  requireMintAuthorizationThreadUtxoV1,
+  requireMintAuthorizationReferenceScript,
+  requireMintAuthorizationThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = mintAuthorizationStepLabelV1(0);
+const STEP_LABEL = mintAuthorizationStepLabel(0);
 
 export type SubmitMintAuthorizationStep01Result = {
   readonly txHash: string;
@@ -96,7 +96,7 @@ export type SubmitMintAuthorizationStep01Result = {
   readonly computationThreadUnit: string;
   readonly secondStepAddress: string;
   /** The step-02 state the thread now carries. */
-  readonly step02State: MintAuthorizationStep02StateV1;
+  readonly step02State: MintAuthorizationStep02State;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -120,7 +120,7 @@ export const submitMintAuthorizationStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: MintAuthorizationContractsV1;
+  readonly contracts: MintAuthorizationContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -128,22 +128,21 @@ export const submitMintAuthorizationStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep01Result> => {
-  const { threadUtxo, threadToken } =
-    await requireMintAuthorizationThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 0,
-      threadOutRef,
-    });
+  const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 0,
+    threadOutRef,
+  });
   requireInitialStepDatum({ threadUtxo, signer });
   const stateQueueBlockUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -177,7 +176,7 @@ export const submitMintAuthorizationStep01 = async ({
       `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is not an acceptance and this family cannot bind it.`,
     );
   }
-  const step02State: MintAuthorizationStep02StateV1 = {
+  const step02State: MintAuthorizationStep02State = {
     bad_tx_id: txInclusion.nativeTxId,
     bad_tx_witness_set_hash: txInclusion.nativeTx.witness_set_hash,
     validity_interval_start: txInclusion.nativeTx.body.validity_interval_start,
@@ -205,12 +204,12 @@ export const submitMintAuthorizationStep01 = async ({
     chunkedVerifyScript,
   );
   const inclusionCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: `${STEP_LABEL} chunked verify`,
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: phasMembershipScript,
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS membership`,
@@ -218,12 +217,12 @@ export const submitMintAuthorizationStep01 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireMintAuthorizationReferenceScriptV1({
+      : requireMintAuthorizationReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[0].spendingScriptHash,
           stepIndex: 0,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[0].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -358,9 +357,9 @@ export const submitMintAuthorizationStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

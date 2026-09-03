@@ -12,32 +12,31 @@ import {
   MidgardTxCodecErrorCodes,
 } from "./codec/errors.js";
 import { ensureHash32 } from "./codec/hash.js";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "./consensus-profile-v1.js";
+import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile-v1.js";
 import {
-  DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
+  DA_PAYLOAD_INNER_SCHEMA_VERSION,
   DaPayloadContentEncoding,
 } from "./da-payload-envelope.js";
 
-export const DA_TRANSPORT_V1_PROTOCOL_VERSION = 1 as const;
+export const DA_TRANSPORT_PROTOCOL_VERSION = 1 as const;
 export const DA_DEPLOYMENT_FINGERPRINT_LENGTH = 32;
 export const DA_HEADER_HASH_LENGTH = 28;
 export const DA_HASH_LENGTH = 32;
 export const DA_GOSSIP_SIGNATURE_LENGTH = 64;
 export const DA_ON_CHAIN_WITNESS_LENGTH = 65;
-export const DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION =
+export const DA_RUNTIME_MANIFEST_SCHEMA_VERSION =
   "midgard-da-libp2p-runtime-manifest-v1";
 export const DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE =
   "contract_deployment_manifest_id";
-export const DA_PUBLIC_RETAINED_DA_PROFILE_V1 =
-  "public-retained-da-v1" as const;
-export const DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1 =
+export const DA_PUBLIC_RETAINED_DA_PROFILE = "public-retained-da-v1" as const;
+export const DA_PUBLIC_RETAINED_DA_ACCESS_POLICY =
   "any_noise_authenticated_peer" as const;
 
 /**
  * This is deliberately a positive list.  The public profile is a one-way
  * retained-data service; it must never grow into the committee control plane.
  */
-export const DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1 = [
+export const DA_PUBLIC_RETAINED_DA_PROTOCOLS = [
   "capabilities",
   "payload-by-header",
   "payload-chunk",
@@ -47,8 +46,8 @@ export const DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1 = [
   "event-to-step-by-event",
 ] as const;
 
-export const DA_TRANSPORT_LIMITS_V1 = {
-  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+export const DA_TRANSPORT_LIMITS = {
+  maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
   maxInlineResponseBytes: 1_048_576,
   maxChunkBytes: 1_048_576,
   maxGossipMessageBytes: 65_536,
@@ -57,7 +56,7 @@ export const DA_TRANSPORT_LIMITS_V1 = {
   minimumRetentionDays: 15,
 } as const;
 
-export const DA_ON_CHAIN_ATTESTATION_V1_DOMAIN = "MidgardDAAttestationV1";
+export const DA_ON_CHAIN_ATTESTATION_DOMAIN = "MidgardDAAttestationV1";
 
 export type DaTransportTimingOptions = {
   readonly monotonicNow?: () => number;
@@ -85,7 +84,7 @@ export const DaGossipTopic = {
 export type DaGossipTopic = (typeof DaGossipTopic)[keyof typeof DaGossipTopic];
 
 export type DaLibp2pRuntimeManifest = {
-  readonly schemaVersion: typeof DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION;
+  readonly schemaVersion: typeof DA_RUNTIME_MANIFEST_SCHEMA_VERSION;
   readonly network: string;
   readonly deployment: {
     readonly fingerprint: string;
@@ -127,13 +126,13 @@ export type DaLibp2pRuntimeManifest = {
     readonly retention_days: number;
   };
   readonly public_retained_da: {
-    readonly profile: typeof DA_PUBLIC_RETAINED_DA_PROFILE_V1;
-    readonly access_policy: typeof DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1;
+    readonly profile: typeof DA_PUBLIC_RETAINED_DA_PROFILE;
+    readonly access_policy: typeof DA_PUBLIC_RETAINED_DA_ACCESS_POLICY;
     /** A dedicated, non-committee Noise identity. */
     readonly peer_id: string;
     readonly listen_multiaddrs: readonly string[];
     readonly announce_multiaddrs: readonly string[];
-    readonly protocols: readonly (typeof DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1)[number][];
+    readonly protocols: readonly (typeof DA_PUBLIC_RETAINED_DA_PROTOCOLS)[number][];
     readonly limits: {
       readonly max_streams_per_peer: number;
       readonly max_inflight_requests: number;
@@ -241,18 +240,18 @@ export const DaConflictEvidenceKind = {
 
 export type DaConflictEvidenceKind = keyof typeof DaConflictEvidenceKind;
 
-export type DaPayloadChunkManifestV1 = {
+export type DaPayloadChunkManifest = {
   readonly payloadHash: Buffer;
   readonly totalBytes: number;
   readonly chunkSize: number;
   readonly chunkHashes: readonly Buffer[];
 };
 
-export type DaPayloadAnnouncementV1 = {
+export type DaPayloadAnnouncement = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
+  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_SCHEMA_VERSION;
   readonly payloadBytes: number;
   readonly chunkSize: number;
   readonly chunkCount: number;
@@ -262,17 +261,17 @@ export type DaPayloadAnnouncementV1 = {
   readonly signature: Buffer;
 };
 
-export type DaPayloadSubmitRequestV1 = {
+export type DaPayloadSubmitRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
+  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_SCHEMA_VERSION;
   readonly mode: DaPayloadSubmitMode;
   readonly payloadBytes: Buffer | null;
-  readonly chunkManifest: DaPayloadChunkManifestV1 | null;
+  readonly chunkManifest: DaPayloadChunkManifest | null;
 };
 
-export type DaPayloadSubmitResponseV1 = {
+export type DaPayloadSubmitResponse = {
   readonly status: DaPayloadSubmitStatus;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
@@ -280,15 +279,15 @@ export type DaPayloadSubmitResponseV1 = {
   readonly retryAfterMs: number | null;
 };
 
-export type DaCapabilitiesRequestV1 = {
+export type DaCapabilitiesRequest = {
   readonly deploymentFingerprint: Buffer;
 };
 
-export type DaCapabilitiesResponseV1 = {
+export type DaCapabilitiesResponse = {
   readonly deploymentFingerprint: Buffer;
-  readonly transportProtocolVersion: typeof DA_TRANSPORT_V1_PROTOCOL_VERSION;
+  readonly transportProtocolVersion: typeof DA_TRANSPORT_PROTOCOL_VERSION;
   readonly payloadSchemaVersions: readonly [
-    typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
+    typeof DA_PAYLOAD_INNER_SCHEMA_VERSION,
   ];
   readonly envelopeContentEncodings: readonly number[];
   readonly maxPayloadBytes: number;
@@ -298,30 +297,30 @@ export type DaCapabilitiesResponseV1 = {
   readonly requestTimeoutMs: number;
 };
 
-export type DaPayloadByHeaderRequestV1 = {
+export type DaPayloadByHeaderRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly acceptedPayloadHashes: readonly Buffer[] | null;
   readonly maxInlineBytes: number;
 };
 
-export type DaPayloadByHeaderResponseV1 = {
+export type DaPayloadByHeaderResponse = {
   readonly status: DaPayloadByHeaderStatus;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer | null;
   readonly payloadBytes: Buffer | null;
-  readonly chunkManifest: DaPayloadChunkManifestV1 | null;
+  readonly chunkManifest: DaPayloadChunkManifest | null;
   readonly reasonCode: string | null;
 };
 
-export type DaPayloadChunkRequestV1 = {
+export type DaPayloadChunkRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
   readonly chunkIndex: number;
 };
 
-export type DaPayloadChunkResponseV1 = {
+export type DaPayloadChunkResponse = {
   readonly status: DaGenericFoundStatus;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
@@ -330,13 +329,11 @@ export type DaPayloadChunkResponseV1 = {
   readonly chunkHash: Buffer | null;
 };
 
-export type DaMetadataByHeaderResponseV1 = {
+export type DaMetadataByHeaderResponse = {
   readonly status: DaMetadataStatus;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer | null;
-  readonly payloadSchemaVersion:
-    | typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION
-    | null;
+  readonly payloadSchemaVersion: typeof DA_PAYLOAD_INNER_SCHEMA_VERSION | null;
   readonly payloadBytes: number | null;
   readonly rootSummaryHash: Buffer | null;
   readonly proofBundleHash: Buffer | null;
@@ -346,28 +343,28 @@ export type DaMetadataByHeaderResponseV1 = {
   readonly localStatus: DaLocalPayloadStatus | null;
 };
 
-export type DaProofBundleByHeaderRequestV1 = {
+export type DaProofBundleByHeaderRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly maxInlineBytes: number;
 };
 
-export type DaProofBundleByHeaderResponseV1 = {
+export type DaProofBundleByHeaderResponse = {
   readonly status: DaProofBundleStatus;
   readonly headerHash: Buffer;
   readonly proofBundleHash: Buffer | null;
   readonly proofBundleBytes: Buffer | null;
-  readonly chunkManifest: DaPayloadChunkManifestV1 | null;
+  readonly chunkManifest: DaPayloadChunkManifest | null;
   readonly reasonCode: string | null;
 };
 
-export type DaTraceStepByIndexRequestV1 = {
+export type DaTraceStepByIndexRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly stepIndex: number;
 };
 
-export type DaTraceStepByIndexResponseV1 = {
+export type DaTraceStepByIndexResponse = {
   readonly status: DaGenericFoundStatus;
   readonly headerHash: Buffer;
   readonly stepIndex: number;
@@ -375,13 +372,13 @@ export type DaTraceStepByIndexResponseV1 = {
   readonly membershipProofBytes: Buffer | null;
 };
 
-export type DaEventToStepByEventRequestV1 = {
+export type DaEventToStepByEventRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly eventKey: Buffer;
 };
 
-export type DaEventToStepByEventResponseV1 = {
+export type DaEventToStepByEventResponse = {
   readonly status: DaGenericFoundStatus;
   readonly headerHash: Buffer;
   readonly eventKey: Buffer;
@@ -389,7 +386,7 @@ export type DaEventToStepByEventResponseV1 = {
   readonly membershipOrNonmembershipProofBytes: Buffer | null;
 };
 
-export type DaAttestationGossipV1 = {
+export type DaAttestationGossip = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
@@ -402,21 +399,21 @@ export type DaAttestationGossipV1 = {
   readonly announcedByPeerId: string;
 };
 
-export type DaAttestationsByHeaderRequestV1 = {
+export type DaAttestationsByHeaderRequest = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly acceptedSignerIndexes: readonly number[] | null;
   readonly maxAttestations: number | null;
 };
 
-export type DaAttestationsByHeaderResponseV1 = {
+export type DaAttestationsByHeaderResponse = {
   readonly status: DaGenericFoundStatus;
   readonly headerHash: Buffer;
-  readonly attestations: readonly DaAttestationGossipV1[];
+  readonly attestations: readonly DaAttestationGossip[];
   readonly reasonCode: string | null;
 };
 
-export type DaConflictEvidenceV1 = {
+export type DaConflictEvidence = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly evidenceKind: DaConflictEvidenceKind;
@@ -424,7 +421,7 @@ export type DaConflictEvidenceV1 = {
   readonly compactEvidence: Buffer | null;
 };
 
-export type DaConflictingSignatureHeaderEvidenceV1 = {
+export type DaConflictingSignatureHeaderEvidence = {
   readonly signerIndex: number;
   readonly daVkey: Buffer;
   readonly lowerHeaderHash: Buffer;
@@ -494,34 +491,34 @@ const ensureUint = (value: unknown, fieldName: string): number => {
   return Number(int);
 };
 
-const ensureDaPayloadSchemaV1 = (
+const ensureDaPayloadSchema = (
   value: unknown,
   fieldName: string,
-): typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION => {
+): typeof DA_PAYLOAD_INNER_SCHEMA_VERSION => {
   const version = ensureUint(value, fieldName);
-  if (version !== DA_PAYLOAD_INNER_V1_SCHEMA_VERSION) {
+  if (version !== DA_PAYLOAD_INNER_SCHEMA_VERSION) {
     fail(
       MidgardTxCodecErrorCodes.SchemaMismatch,
-      `${fieldName} must equal ${DA_PAYLOAD_INNER_V1_SCHEMA_VERSION.toString()}`,
+      `${fieldName} must equal ${DA_PAYLOAD_INNER_SCHEMA_VERSION.toString()}`,
       `actual=${version.toString()}`,
     );
   }
-  return DA_PAYLOAD_INNER_V1_SCHEMA_VERSION;
+  return DA_PAYLOAD_INNER_SCHEMA_VERSION;
 };
 
-const ensureDaTransportV1 = (
+const ensureDaTransport = (
   value: unknown,
   fieldName: string,
-): typeof DA_TRANSPORT_V1_PROTOCOL_VERSION => {
+): typeof DA_TRANSPORT_PROTOCOL_VERSION => {
   const version = ensureUint(value, fieldName);
-  if (version !== DA_TRANSPORT_V1_PROTOCOL_VERSION) {
+  if (version !== DA_TRANSPORT_PROTOCOL_VERSION) {
     fail(
       MidgardTxCodecErrorCodes.SchemaMismatch,
-      `${fieldName} must equal ${DA_TRANSPORT_V1_PROTOCOL_VERSION.toString()}`,
+      `${fieldName} must equal ${DA_TRANSPORT_PROTOCOL_VERSION.toString()}`,
       `actual=${version.toString()}`,
     );
   }
-  return DA_TRANSPORT_V1_PROTOCOL_VERSION;
+  return DA_TRANSPORT_PROTOCOL_VERSION;
 };
 
 const ensureUint8 = (value: unknown, fieldName: string): number => {
@@ -915,11 +912,11 @@ const parseDaLibp2pRuntimeTransport = (
   }
   if (
     gossip.max_gossip_message_bytes !==
-    DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes
+    DA_TRANSPORT_LIMITS.maxGossipMessageBytes
   ) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${gossipFieldName}.max_gossip_message_bytes must be ${DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes.toString()}`,
+      `${gossipFieldName}.max_gossip_message_bytes must be ${DA_TRANSPORT_LIMITS.maxGossipMessageBytes.toString()}`,
       String(gossip.max_gossip_message_bytes),
     );
   }
@@ -937,11 +934,11 @@ const parseDaLibp2pRuntimeTransport = (
     limitsFieldName,
   );
   const expectedLimits = {
-    max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
-    max_inline_response_bytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
-    max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
-    max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
-    request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    max_payload_bytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+    max_inline_response_bytes: DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
+    max_chunk_bytes: DA_TRANSPORT_LIMITS.maxChunkBytes,
+    max_streams_per_peer: DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+    request_timeout_ms: DA_TRANSPORT_LIMITS.requestTimeoutMs,
   } as const;
   for (const [key, expected] of Object.entries(expectedLimits)) {
     if (limits[key] !== expected) {
@@ -955,7 +952,7 @@ const parseDaLibp2pRuntimeTransport = (
   const retentionDays = safeIntegerValue(
     transport.retention_days,
     `${fieldName}.retention_days`,
-    DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+    DA_TRANSPORT_LIMITS.minimumRetentionDays,
   );
   return {
     kind: "libp2p",
@@ -977,7 +974,7 @@ const parseDaLibp2pRuntimeTransport = (
       strict_sign: true,
       emit_self: false,
       allowed_topics_only: true,
-      max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+      max_gossip_message_bytes: DA_TRANSPORT_LIMITS.maxGossipMessageBytes,
     },
     limits: expectedLimits,
     retention_days: retentionDays,
@@ -1065,17 +1062,17 @@ const parsePublicRetainedDaProfile = (
     ],
     fieldName,
   );
-  if (profile.profile !== DA_PUBLIC_RETAINED_DA_PROFILE_V1) {
+  if (profile.profile !== DA_PUBLIC_RETAINED_DA_PROFILE) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.profile must be ${DA_PUBLIC_RETAINED_DA_PROFILE_V1}`,
+      `${fieldName}.profile must be ${DA_PUBLIC_RETAINED_DA_PROFILE}`,
       String(profile.profile),
     );
   }
-  if (profile.access_policy !== DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1) {
+  if (profile.access_policy !== DA_PUBLIC_RETAINED_DA_ACCESS_POLICY) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.access_policy must be ${DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1}`,
+      `${fieldName}.access_policy must be ${DA_PUBLIC_RETAINED_DA_ACCESS_POLICY}`,
       String(profile.access_policy),
     );
   }
@@ -1084,10 +1081,9 @@ const parsePublicRetainedDaProfile = (
     `${fieldName}.protocols`,
   );
   if (
-    protocols.length !== DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1.length ||
+    protocols.length !== DA_PUBLIC_RETAINED_DA_PROTOCOLS.length ||
     protocols.some(
-      (protocol, index) =>
-        protocol !== DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1[index],
+      (protocol, index) => protocol !== DA_PUBLIC_RETAINED_DA_PROTOCOLS[index],
     )
   ) {
     fail(
@@ -1112,7 +1108,7 @@ const parsePublicRetainedDaProfile = (
     limits.max_streams_per_peer,
     `${limitsFieldName}.max_streams_per_peer`,
     1,
-    DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+    DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
   );
   const maxInflightRequests = safeIntegerValue(
     limits.max_inflight_requests,
@@ -1136,7 +1132,7 @@ const parsePublicRetainedDaProfile = (
     limits.request_timeout_ms,
     `${limitsFieldName}.request_timeout_ms`,
     100,
-    DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    DA_TRANSPORT_LIMITS.requestTimeoutMs,
   );
   const peerId = nonEmptyStringValue(profile.peer_id, `${fieldName}.peer_id`);
   const announceMultiaddrs = stringArrayValue(
@@ -1152,15 +1148,15 @@ const parsePublicRetainedDaProfile = (
     );
   }
   return {
-    profile: DA_PUBLIC_RETAINED_DA_PROFILE_V1,
-    access_policy: DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1,
+    profile: DA_PUBLIC_RETAINED_DA_PROFILE,
+    access_policy: DA_PUBLIC_RETAINED_DA_ACCESS_POLICY,
     peer_id: peerId,
     listen_multiaddrs: stringArrayValue(
       profile.listen_multiaddrs,
       `${fieldName}.listen_multiaddrs`,
     ),
     announce_multiaddrs: announceMultiaddrs,
-    protocols: [...DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1],
+    protocols: [...DA_PUBLIC_RETAINED_DA_PROTOCOLS],
     limits: {
       max_streams_per_peer: maxStreamsPerPeer,
       max_inflight_requests: maxInflightRequests,
@@ -1189,10 +1185,10 @@ export const parseDaLibp2pRuntimeManifest = (
     ],
     fieldName,
   );
-  if (manifest.schemaVersion !== DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION) {
+  if (manifest.schemaVersion !== DA_RUNTIME_MANIFEST_SCHEMA_VERSION) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.schemaVersion must be ${DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION}`,
+      `${fieldName}.schemaVersion must be ${DA_RUNTIME_MANIFEST_SCHEMA_VERSION}`,
       String(manifest.schemaVersion),
     );
   }
@@ -1220,7 +1216,7 @@ export const parseDaLibp2pRuntimeManifest = (
     );
   }
   return {
-    schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+    schemaVersion: DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
     network: nonEmptyStringValue(manifest.network, `${fieldName}.network`),
     deployment: parseDaLibp2pRuntimeManifestDeployment(
       manifest.deployment,
@@ -1239,9 +1235,9 @@ export const parseDaLibp2pRuntimeManifest = (
 export const computeDaSha256Hash = (value: Uint8Array): Buffer =>
   Buffer.from(sha256(value));
 
-export const encodeDaAttestationV1Preimage = (headerHash: Uint8Array): Buffer =>
+export const encodeDaAttestationPreimage = (headerHash: Uint8Array): Buffer =>
   Buffer.concat([
-    Buffer.from(DA_ON_CHAIN_ATTESTATION_V1_DOMAIN, "utf8"),
+    Buffer.from(DA_ON_CHAIN_ATTESTATION_DOMAIN, "utf8"),
     ensureDaHeaderHash(headerHash),
   ]);
 
@@ -1255,7 +1251,7 @@ export const daGossipTopic = (
     DaGossipTopic,
     topic,
     "gossip_topic",
-  )}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
+  )}/${DA_TRANSPORT_PROTOCOL_VERSION}`;
 
 export const daRequestResponseProtocolId = (
   deploymentFingerprint: string | Uint8Array,
@@ -1267,7 +1263,7 @@ export const daRequestResponseProtocolId = (
     DaRequestResponseProtocol,
     protocol,
     "request_response_protocol",
-  )}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
+  )}/${DA_TRANSPORT_PROTOCOL_VERSION}`;
 
 const hashValue = (value: unknown, fieldName: string): Buffer =>
   ensureDaHash32(asBytes(value, fieldName), fieldName);
@@ -1378,24 +1374,24 @@ const cborSignerIndexArray = (
   fieldName: string,
 ): bigint[] => signerIndexArrayValue(value, fieldName).map(BigInt);
 
-const exactDaPayloadSchemaVersionsV1 = (
+const exactDaPayloadSchemaVersions = (
   value: unknown,
   fieldName: string,
-): readonly [typeof DA_PAYLOAD_INNER_V1_SCHEMA_VERSION] => {
+): readonly [typeof DA_PAYLOAD_INNER_SCHEMA_VERSION] => {
   const versions = sortedUintArrayValue(value, fieldName);
   if (
     versions.length !== 1 ||
-    versions[0] !== DA_PAYLOAD_INNER_V1_SCHEMA_VERSION
+    versions[0] !== DA_PAYLOAD_INNER_SCHEMA_VERSION
   ) {
     fail(
       MidgardTxCodecErrorCodes.SchemaMismatch,
       `${fieldName} must contain exactly DA payload schema V1`,
     );
   }
-  return [DA_PAYLOAD_INNER_V1_SCHEMA_VERSION];
+  return [DA_PAYLOAD_INNER_SCHEMA_VERSION];
 };
 
-const exactDaEnvelopeContentEncodingsV1 = (
+const exactDaEnvelopeContentEncodings = (
   value: unknown,
   fieldName: string,
 ): readonly number[] => {
@@ -1431,7 +1427,7 @@ const payloadAnnouncementSignatureValue = (
 };
 
 const encodePayloadChunkManifestValue = (
-  manifest: DaPayloadChunkManifestV1,
+  manifest: DaPayloadChunkManifest,
 ): unknown[] => [
   ensureDaPayloadHash(manifest.payloadHash, "chunk_manifest.payload_hash"),
   cborUint(manifest.totalBytes, "chunk_manifest.total_bytes"),
@@ -1444,7 +1440,7 @@ const encodePayloadChunkManifestValue = (
 const decodePayloadChunkManifestValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadChunkManifestV1 => {
+): DaPayloadChunkManifest => {
   const v = fixedArray(value, 4, fieldName);
   return {
     payloadHash: payloadHashValue(v[0], `${fieldName}.payload_hash`),
@@ -1457,11 +1453,11 @@ const decodePayloadChunkManifestValue = (
 const optionalPayloadChunkManifestValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadChunkManifestV1 | null =>
+): DaPayloadChunkManifest | null =>
   value == null ? null : decodePayloadChunkManifestValue(value, fieldName);
 
 const cborOptionalPayloadChunkManifest = (
-  value: DaPayloadChunkManifestV1 | null,
+  value: DaPayloadChunkManifest | null,
 ): unknown[] | null =>
   value == null ? null : encodePayloadChunkManifestValue(value);
 
@@ -1477,12 +1473,12 @@ const decodeTupleCbor = <T>(
 };
 
 export const encodeDaPayloadChunkManifestCbor = (
-  manifest: DaPayloadChunkManifestV1,
+  manifest: DaPayloadChunkManifest,
 ): Buffer => encodeCbor(encodePayloadChunkManifestValue(manifest));
 
 export const decodeDaPayloadChunkManifestCbor = (
   bytes: Uint8Array,
-): DaPayloadChunkManifestV1 =>
+): DaPayloadChunkManifest =>
   decodeTupleCbor(
     bytes,
     "PayloadChunkManifestV1",
@@ -1490,13 +1486,13 @@ export const decodeDaPayloadChunkManifestCbor = (
   );
 
 const encodePayloadAnnouncementValue = (
-  message: DaPayloadAnnouncementV1,
+  message: DaPayloadAnnouncement,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
   ensureDaPayloadHash(message.payloadHash),
   BigInt(
-    ensureDaPayloadSchemaV1(
+    ensureDaPayloadSchema(
       message.payloadSchemaVersion,
       "payload_schema_version",
     ),
@@ -1513,7 +1509,7 @@ const encodePayloadAnnouncementValue = (
 const decodePayloadAnnouncementValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadAnnouncementV1 => {
+): DaPayloadAnnouncement => {
   const v = fixedArray(value, 11, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -1522,7 +1518,7 @@ const decodePayloadAnnouncementValue = (
     ),
     headerHash: headerHashValue(v[1], `${fieldName}.header_hash`),
     payloadHash: payloadHashValue(v[2], `${fieldName}.payload_hash`),
-    payloadSchemaVersion: ensureDaPayloadSchemaV1(
+    payloadSchemaVersion: ensureDaPayloadSchema(
       v[3],
       `${fieldName}.payload_schema_version`,
     ),
@@ -1543,13 +1539,13 @@ const decodePayloadAnnouncementValue = (
   };
 };
 
-export const encodeDaPayloadAnnouncementV1Cbor = (
-  message: DaPayloadAnnouncementV1,
+export const encodeDaPayloadAnnouncementCbor = (
+  message: DaPayloadAnnouncement,
 ): Buffer => encodeCbor(encodePayloadAnnouncementValue(message));
 
-export const decodeDaPayloadAnnouncementV1Cbor = (
+export const decodeDaPayloadAnnouncementCbor = (
   bytes: Uint8Array,
-): DaPayloadAnnouncementV1 =>
+): DaPayloadAnnouncement =>
   decodeTupleCbor(
     bytes,
     "DaPayloadAnnouncementV1",
@@ -1557,13 +1553,13 @@ export const decodeDaPayloadAnnouncementV1Cbor = (
   );
 
 const encodePayloadSubmitRequestValue = (
-  message: DaPayloadSubmitRequestV1,
+  message: DaPayloadSubmitRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
   ensureDaPayloadHash(message.payloadHash),
   BigInt(
-    ensureDaPayloadSchemaV1(
+    ensureDaPayloadSchema(
       message.payloadSchemaVersion,
       "payload_schema_version",
     ),
@@ -1578,7 +1574,7 @@ const encodePayloadSubmitRequestValue = (
 const decodePayloadSubmitRequestValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadSubmitRequestV1 => {
+): DaPayloadSubmitRequest => {
   const v = fixedArray(value, 7, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -1587,7 +1583,7 @@ const decodePayloadSubmitRequestValue = (
     ),
     headerHash: headerHashValue(v[1], `${fieldName}.header_hash`),
     payloadHash: payloadHashValue(v[2], `${fieldName}.payload_hash`),
-    payloadSchemaVersion: ensureDaPayloadSchemaV1(
+    payloadSchemaVersion: ensureDaPayloadSchema(
       v[3],
       `${fieldName}.payload_schema_version`,
     ),
@@ -1600,14 +1596,14 @@ const decodePayloadSubmitRequestValue = (
   };
 };
 
-export const encodeDaPayloadSubmitRequestV1Cbor = (
-  message: DaPayloadSubmitRequestV1,
+export const encodeDaPayloadSubmitRequestCbor = (
+  message: DaPayloadSubmitRequest,
 ): Buffer => encodeCbor(encodePayloadSubmitRequestValue(message));
 
-export const decodeDaPayloadSubmitRequestV1Cbor = (
+export const decodeDaPayloadSubmitRequestCbor = (
   bytes: Uint8Array,
   timing: DaTransportTimingOptions = {},
-): DaPayloadSubmitRequestV1 => {
+): DaPayloadSubmitRequest => {
   const startedAt = readTransportTimingNow(timing);
   try {
     return decodeTupleCbor(
@@ -1641,7 +1637,7 @@ const readTransportTimingNow = (
 };
 
 const encodePayloadSubmitResponseValue = (
-  message: DaPayloadSubmitResponseV1,
+  message: DaPayloadSubmitResponse,
 ): unknown[] => [
   cborEnum(DaPayloadSubmitStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -1655,7 +1651,7 @@ const encodePayloadSubmitResponseValue = (
 const decodePayloadSubmitResponseValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadSubmitResponseV1 => {
+): DaPayloadSubmitResponse => {
   const v = fixedArray(value, 5, fieldName);
   return {
     status: decodedEnum(DaPayloadSubmitStatus, v[0], `${fieldName}.status`),
@@ -1667,13 +1663,13 @@ const decodePayloadSubmitResponseValue = (
   };
 };
 
-export const encodeDaPayloadSubmitResponseV1Cbor = (
-  message: DaPayloadSubmitResponseV1,
+export const encodeDaPayloadSubmitResponseCbor = (
+  message: DaPayloadSubmitResponse,
 ): Buffer => encodeCbor(encodePayloadSubmitResponseValue(message));
 
-export const decodeDaPayloadSubmitResponseV1Cbor = (
+export const decodeDaPayloadSubmitResponseCbor = (
   bytes: Uint8Array,
-): DaPayloadSubmitResponseV1 =>
+): DaPayloadSubmitResponse =>
   decodeTupleCbor(
     bytes,
     "PayloadSubmitResponseV1",
@@ -1681,7 +1677,7 @@ export const decodeDaPayloadSubmitResponseV1Cbor = (
   );
 
 const encodePayloadByHeaderRequestValue = (
-  message: DaPayloadByHeaderRequestV1,
+  message: DaPayloadByHeaderRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -1696,7 +1692,7 @@ const encodePayloadByHeaderRequestValue = (
 const decodePayloadByHeaderRequestValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadByHeaderRequestV1 => {
+): DaPayloadByHeaderRequest => {
   const v = fixedArray(value, 4, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -1712,13 +1708,13 @@ const decodePayloadByHeaderRequestValue = (
   };
 };
 
-export const encodeDaPayloadByHeaderRequestV1Cbor = (
-  message: DaPayloadByHeaderRequestV1,
+export const encodeDaPayloadByHeaderRequestCbor = (
+  message: DaPayloadByHeaderRequest,
 ): Buffer => encodeCbor(encodePayloadByHeaderRequestValue(message));
 
-export const decodeDaPayloadByHeaderRequestV1Cbor = (
+export const decodeDaPayloadByHeaderRequestCbor = (
   bytes: Uint8Array,
-): DaPayloadByHeaderRequestV1 =>
+): DaPayloadByHeaderRequest =>
   decodeTupleCbor(
     bytes,
     "PayloadByHeaderRequestV1",
@@ -1726,7 +1722,7 @@ export const decodeDaPayloadByHeaderRequestV1Cbor = (
   );
 
 const encodePayloadByHeaderResponseValue = (
-  message: DaPayloadByHeaderResponseV1,
+  message: DaPayloadByHeaderResponse,
 ): unknown[] => [
   cborEnum(DaPayloadByHeaderStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -1745,7 +1741,7 @@ const encodePayloadByHeaderResponseValue = (
 const decodePayloadByHeaderResponseValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadByHeaderResponseV1 => {
+): DaPayloadByHeaderResponse => {
   const v = fixedArray(value, 6, fieldName);
   return {
     status: decodedEnum(DaPayloadByHeaderStatus, v[0], `${fieldName}.status`),
@@ -1760,13 +1756,13 @@ const decodePayloadByHeaderResponseValue = (
   };
 };
 
-export const encodeDaPayloadByHeaderResponseV1Cbor = (
-  message: DaPayloadByHeaderResponseV1,
+export const encodeDaPayloadByHeaderResponseCbor = (
+  message: DaPayloadByHeaderResponse,
 ): Buffer => encodeCbor(encodePayloadByHeaderResponseValue(message));
 
-export const decodeDaPayloadByHeaderResponseV1Cbor = (
+export const decodeDaPayloadByHeaderResponseCbor = (
   bytes: Uint8Array,
-): DaPayloadByHeaderResponseV1 =>
+): DaPayloadByHeaderResponse =>
   decodeTupleCbor(
     bytes,
     "PayloadByHeaderResponseV1",
@@ -1774,7 +1770,7 @@ export const decodeDaPayloadByHeaderResponseV1Cbor = (
   );
 
 const encodePayloadChunkRequestValue = (
-  message: DaPayloadChunkRequestV1,
+  message: DaPayloadChunkRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -1785,7 +1781,7 @@ const encodePayloadChunkRequestValue = (
 const decodePayloadChunkRequestValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadChunkRequestV1 => {
+): DaPayloadChunkRequest => {
   const v = fixedArray(value, 4, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -1798,13 +1794,13 @@ const decodePayloadChunkRequestValue = (
   };
 };
 
-export const encodeDaPayloadChunkRequestV1Cbor = (
-  message: DaPayloadChunkRequestV1,
+export const encodeDaPayloadChunkRequestCbor = (
+  message: DaPayloadChunkRequest,
 ): Buffer => encodeCbor(encodePayloadChunkRequestValue(message));
 
-export const decodeDaPayloadChunkRequestV1Cbor = (
+export const decodeDaPayloadChunkRequestCbor = (
   bytes: Uint8Array,
-): DaPayloadChunkRequestV1 =>
+): DaPayloadChunkRequest =>
   decodeTupleCbor(
     bytes,
     "PayloadChunkRequestV1",
@@ -1812,7 +1808,7 @@ export const decodeDaPayloadChunkRequestV1Cbor = (
   );
 
 const encodePayloadChunkResponseValue = (
-  message: DaPayloadChunkResponseV1,
+  message: DaPayloadChunkResponse,
 ): unknown[] => [
   cborEnum(DaGenericFoundStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -1829,7 +1825,7 @@ const encodePayloadChunkResponseValue = (
 const decodePayloadChunkResponseValue = (
   value: unknown,
   fieldName: string,
-): DaPayloadChunkResponseV1 => {
+): DaPayloadChunkResponse => {
   const v = fixedArray(value, 6, fieldName);
   return {
     status: decodedEnum(DaGenericFoundStatus, v[0], `${fieldName}.status`),
@@ -1841,13 +1837,13 @@ const decodePayloadChunkResponseValue = (
   };
 };
 
-export const encodeDaPayloadChunkResponseV1Cbor = (
-  message: DaPayloadChunkResponseV1,
+export const encodeDaPayloadChunkResponseCbor = (
+  message: DaPayloadChunkResponse,
 ): Buffer => encodeCbor(encodePayloadChunkResponseValue(message));
 
-export const decodeDaPayloadChunkResponseV1Cbor = (
+export const decodeDaPayloadChunkResponseCbor = (
   bytes: Uint8Array,
-): DaPayloadChunkResponseV1 =>
+): DaPayloadChunkResponse =>
   decodeTupleCbor(
     bytes,
     "PayloadChunkResponseV1",
@@ -1855,7 +1851,7 @@ export const decodeDaPayloadChunkResponseV1Cbor = (
   );
 
 const encodeMetadataByHeaderResponseValue = (
-  message: DaMetadataByHeaderResponseV1,
+  message: DaMetadataByHeaderResponse,
 ): unknown[] => [
   cborEnum(DaMetadataStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -1865,7 +1861,7 @@ const encodeMetadataByHeaderResponseValue = (
   message.payloadSchemaVersion == null
     ? null
     : BigInt(
-        ensureDaPayloadSchemaV1(
+        ensureDaPayloadSchema(
           message.payloadSchemaVersion,
           "payload_schema_version",
         ),
@@ -1890,7 +1886,7 @@ const encodeMetadataByHeaderResponseValue = (
 const decodeMetadataByHeaderResponseValue = (
   value: unknown,
   fieldName: string,
-): DaMetadataByHeaderResponseV1 => {
+): DaMetadataByHeaderResponse => {
   const v = fixedArray(value, 11, fieldName);
   return {
     status: decodedEnum(DaMetadataStatus, v[0], `${fieldName}.status`),
@@ -1899,7 +1895,7 @@ const decodeMetadataByHeaderResponseValue = (
     payloadSchemaVersion:
       v[3] == null
         ? null
-        : ensureDaPayloadSchemaV1(v[3], `${fieldName}.payload_schema_version`),
+        : ensureDaPayloadSchema(v[3], `${fieldName}.payload_schema_version`),
     payloadBytes:
       v[4] == null ? null : ensureUint(v[4], `${fieldName}.payload_bytes`),
     rootSummaryHash:
@@ -1926,13 +1922,13 @@ const decodeMetadataByHeaderResponseValue = (
   };
 };
 
-export const encodeDaMetadataByHeaderResponseV1Cbor = (
-  message: DaMetadataByHeaderResponseV1,
+export const encodeDaMetadataByHeaderResponseCbor = (
+  message: DaMetadataByHeaderResponse,
 ): Buffer => encodeCbor(encodeMetadataByHeaderResponseValue(message));
 
-export const decodeDaMetadataByHeaderResponseV1Cbor = (
+export const decodeDaMetadataByHeaderResponseCbor = (
   bytes: Uint8Array,
-): DaMetadataByHeaderResponseV1 =>
+): DaMetadataByHeaderResponse =>
   decodeTupleCbor(
     bytes,
     "MetadataByHeaderResponseV1",
@@ -1940,7 +1936,7 @@ export const decodeDaMetadataByHeaderResponseV1Cbor = (
   );
 
 const encodeProofBundleByHeaderRequestValue = (
-  message: DaProofBundleByHeaderRequestV1,
+  message: DaProofBundleByHeaderRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -1950,7 +1946,7 @@ const encodeProofBundleByHeaderRequestValue = (
 const decodeProofBundleByHeaderRequestValue = (
   value: unknown,
   fieldName: string,
-): DaProofBundleByHeaderRequestV1 => {
+): DaProofBundleByHeaderRequest => {
   const v = fixedArray(value, 3, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -1962,13 +1958,13 @@ const decodeProofBundleByHeaderRequestValue = (
   };
 };
 
-export const encodeDaProofBundleByHeaderRequestV1Cbor = (
-  message: DaProofBundleByHeaderRequestV1,
+export const encodeDaProofBundleByHeaderRequestCbor = (
+  message: DaProofBundleByHeaderRequest,
 ): Buffer => encodeCbor(encodeProofBundleByHeaderRequestValue(message));
 
-export const decodeDaProofBundleByHeaderRequestV1Cbor = (
+export const decodeDaProofBundleByHeaderRequestCbor = (
   bytes: Uint8Array,
-): DaProofBundleByHeaderRequestV1 =>
+): DaProofBundleByHeaderRequest =>
   decodeTupleCbor(
     bytes,
     "ProofBundleByHeaderRequestV1",
@@ -1976,7 +1972,7 @@ export const decodeDaProofBundleByHeaderRequestV1Cbor = (
   );
 
 const encodeProofBundleByHeaderResponseValue = (
-  message: DaProofBundleByHeaderResponseV1,
+  message: DaProofBundleByHeaderResponse,
 ): unknown[] => [
   cborEnum(DaProofBundleStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -1995,7 +1991,7 @@ const encodeProofBundleByHeaderResponseValue = (
 const decodeProofBundleByHeaderResponseValue = (
   value: unknown,
   fieldName: string,
-): DaProofBundleByHeaderResponseV1 => {
+): DaProofBundleByHeaderResponse => {
   const v = fixedArray(value, 6, fieldName);
   return {
     status: decodedEnum(DaProofBundleStatus, v[0], `${fieldName}.status`),
@@ -2014,13 +2010,13 @@ const decodeProofBundleByHeaderResponseValue = (
   };
 };
 
-export const encodeDaProofBundleByHeaderResponseV1Cbor = (
-  message: DaProofBundleByHeaderResponseV1,
+export const encodeDaProofBundleByHeaderResponseCbor = (
+  message: DaProofBundleByHeaderResponse,
 ): Buffer => encodeCbor(encodeProofBundleByHeaderResponseValue(message));
 
-export const decodeDaProofBundleByHeaderResponseV1Cbor = (
+export const decodeDaProofBundleByHeaderResponseCbor = (
   bytes: Uint8Array,
-): DaProofBundleByHeaderResponseV1 =>
+): DaProofBundleByHeaderResponse =>
   decodeTupleCbor(
     bytes,
     "ProofBundleByHeaderResponseV1",
@@ -2028,7 +2024,7 @@ export const decodeDaProofBundleByHeaderResponseV1Cbor = (
   );
 
 const encodeTraceStepByIndexRequestValue = (
-  message: DaTraceStepByIndexRequestV1,
+  message: DaTraceStepByIndexRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -2038,7 +2034,7 @@ const encodeTraceStepByIndexRequestValue = (
 const decodeTraceStepByIndexRequestValue = (
   value: unknown,
   fieldName: string,
-): DaTraceStepByIndexRequestV1 => {
+): DaTraceStepByIndexRequest => {
   const v = fixedArray(value, 3, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -2050,13 +2046,13 @@ const decodeTraceStepByIndexRequestValue = (
   };
 };
 
-export const encodeDaTraceStepByIndexRequestV1Cbor = (
-  message: DaTraceStepByIndexRequestV1,
+export const encodeDaTraceStepByIndexRequestCbor = (
+  message: DaTraceStepByIndexRequest,
 ): Buffer => encodeCbor(encodeTraceStepByIndexRequestValue(message));
 
-export const decodeDaTraceStepByIndexRequestV1Cbor = (
+export const decodeDaTraceStepByIndexRequestCbor = (
   bytes: Uint8Array,
-): DaTraceStepByIndexRequestV1 =>
+): DaTraceStepByIndexRequest =>
   decodeTupleCbor(
     bytes,
     "TraceStepByIndexRequestV1",
@@ -2064,7 +2060,7 @@ export const decodeDaTraceStepByIndexRequestV1Cbor = (
   );
 
 const encodeTraceStepByIndexResponseValue = (
-  message: DaTraceStepByIndexResponseV1,
+  message: DaTraceStepByIndexResponse,
 ): unknown[] => [
   cborEnum(DaGenericFoundStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -2080,7 +2076,7 @@ const encodeTraceStepByIndexResponseValue = (
 const decodeTraceStepByIndexResponseValue = (
   value: unknown,
   fieldName: string,
-): DaTraceStepByIndexResponseV1 => {
+): DaTraceStepByIndexResponse => {
   const v = fixedArray(value, 5, fieldName);
   return {
     status: decodedEnum(DaGenericFoundStatus, v[0], `${fieldName}.status`),
@@ -2097,13 +2093,13 @@ const decodeTraceStepByIndexResponseValue = (
   };
 };
 
-export const encodeDaTraceStepByIndexResponseV1Cbor = (
-  message: DaTraceStepByIndexResponseV1,
+export const encodeDaTraceStepByIndexResponseCbor = (
+  message: DaTraceStepByIndexResponse,
 ): Buffer => encodeCbor(encodeTraceStepByIndexResponseValue(message));
 
-export const decodeDaTraceStepByIndexResponseV1Cbor = (
+export const decodeDaTraceStepByIndexResponseCbor = (
   bytes: Uint8Array,
-): DaTraceStepByIndexResponseV1 =>
+): DaTraceStepByIndexResponse =>
   decodeTupleCbor(
     bytes,
     "TraceStepByIndexResponseV1",
@@ -2111,7 +2107,7 @@ export const decodeDaTraceStepByIndexResponseV1Cbor = (
   );
 
 const encodeEventToStepByEventRequestValue = (
-  message: DaEventToStepByEventRequestV1,
+  message: DaEventToStepByEventRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -2121,7 +2117,7 @@ const encodeEventToStepByEventRequestValue = (
 const decodeEventToStepByEventRequestValue = (
   value: unknown,
   fieldName: string,
-): DaEventToStepByEventRequestV1 => {
+): DaEventToStepByEventRequest => {
   const v = fixedArray(value, 3, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -2133,13 +2129,13 @@ const decodeEventToStepByEventRequestValue = (
   };
 };
 
-export const encodeDaEventToStepByEventRequestV1Cbor = (
-  message: DaEventToStepByEventRequestV1,
+export const encodeDaEventToStepByEventRequestCbor = (
+  message: DaEventToStepByEventRequest,
 ): Buffer => encodeCbor(encodeEventToStepByEventRequestValue(message));
 
-export const decodeDaEventToStepByEventRequestV1Cbor = (
+export const decodeDaEventToStepByEventRequestCbor = (
   bytes: Uint8Array,
-): DaEventToStepByEventRequestV1 =>
+): DaEventToStepByEventRequest =>
   decodeTupleCbor(
     bytes,
     "EventToStepByEventRequestV1",
@@ -2147,7 +2143,7 @@ export const decodeDaEventToStepByEventRequestV1Cbor = (
   );
 
 const encodeEventToStepByEventResponseValue = (
-  message: DaEventToStepByEventResponseV1,
+  message: DaEventToStepByEventResponse,
 ): unknown[] => [
   cborEnum(DaGenericFoundStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -2166,7 +2162,7 @@ const encodeEventToStepByEventResponseValue = (
 const decodeEventToStepByEventResponseValue = (
   value: unknown,
   fieldName: string,
-): DaEventToStepByEventResponseV1 => {
+): DaEventToStepByEventResponse => {
   const v = fixedArray(value, 5, fieldName);
   return {
     status: decodedEnum(DaGenericFoundStatus, v[0], `${fieldName}.status`),
@@ -2183,13 +2179,13 @@ const decodeEventToStepByEventResponseValue = (
   };
 };
 
-export const encodeDaEventToStepByEventResponseV1Cbor = (
-  message: DaEventToStepByEventResponseV1,
+export const encodeDaEventToStepByEventResponseCbor = (
+  message: DaEventToStepByEventResponse,
 ): Buffer => encodeCbor(encodeEventToStepByEventResponseValue(message));
 
-export const decodeDaEventToStepByEventResponseV1Cbor = (
+export const decodeDaEventToStepByEventResponseCbor = (
   bytes: Uint8Array,
-): DaEventToStepByEventResponseV1 =>
+): DaEventToStepByEventResponse =>
   decodeTupleCbor(
     bytes,
     "EventToStepByEventResponseV1",
@@ -2197,7 +2193,7 @@ export const decodeDaEventToStepByEventResponseV1Cbor = (
   );
 
 const encodeAttestationGossipValue = (
-  message: DaAttestationGossipV1,
+  message: DaAttestationGossip,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -2224,7 +2220,7 @@ const encodeAttestationGossipValue = (
 const decodeAttestationGossipValue = (
   value: unknown,
   fieldName: string,
-): DaAttestationGossipV1 => {
+): DaAttestationGossip => {
   const v = fixedArray(value, 10, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -2256,17 +2252,17 @@ const decodeAttestationGossipValue = (
   };
 };
 
-export const encodeDaAttestationGossipV1Cbor = (
-  message: DaAttestationGossipV1,
+export const encodeDaAttestationGossipCbor = (
+  message: DaAttestationGossip,
 ): Buffer => encodeCbor(encodeAttestationGossipValue(message));
 
-export const decodeDaAttestationGossipV1Cbor = (
+export const decodeDaAttestationGossipCbor = (
   bytes: Uint8Array,
-): DaAttestationGossipV1 =>
+): DaAttestationGossip =>
   decodeTupleCbor(bytes, "DaAttestationGossipV1", decodeAttestationGossipValue);
 
 const encodeAttestationsByHeaderRequestValue = (
-  message: DaAttestationsByHeaderRequestV1,
+  message: DaAttestationsByHeaderRequest,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -2282,7 +2278,7 @@ const encodeAttestationsByHeaderRequestValue = (
 const decodeAttestationsByHeaderRequestValue = (
   value: unknown,
   fieldName: string,
-): DaAttestationsByHeaderRequestV1 => {
+): DaAttestationsByHeaderRequest => {
   const v = fixedArray(value, 4, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -2299,13 +2295,13 @@ const decodeAttestationsByHeaderRequestValue = (
   };
 };
 
-export const encodeDaAttestationsByHeaderRequestV1Cbor = (
-  message: DaAttestationsByHeaderRequestV1,
+export const encodeDaAttestationsByHeaderRequestCbor = (
+  message: DaAttestationsByHeaderRequest,
 ): Buffer => encodeCbor(encodeAttestationsByHeaderRequestValue(message));
 
-export const decodeDaAttestationsByHeaderRequestV1Cbor = (
+export const decodeDaAttestationsByHeaderRequestCbor = (
   bytes: Uint8Array,
-): DaAttestationsByHeaderRequestV1 =>
+): DaAttestationsByHeaderRequest =>
   decodeTupleCbor(
     bytes,
     "AttestationsByHeaderRequestV1",
@@ -2313,7 +2309,7 @@ export const decodeDaAttestationsByHeaderRequestV1Cbor = (
   );
 
 const encodeAttestationsByHeaderResponseValue = (
-  message: DaAttestationsByHeaderResponseV1,
+  message: DaAttestationsByHeaderResponse,
 ): unknown[] => [
   cborEnum(DaGenericFoundStatus, message.status, "status"),
   ensureDaHeaderHash(message.headerHash),
@@ -2326,7 +2322,7 @@ const encodeAttestationsByHeaderResponseValue = (
 const decodeAttestationsByHeaderResponseValue = (
   value: unknown,
   fieldName: string,
-): DaAttestationsByHeaderResponseV1 => {
+): DaAttestationsByHeaderResponse => {
   const v = fixedArray(value, 4, fieldName);
   return {
     status: decodedEnum(DaGenericFoundStatus, v[0], `${fieldName}.status`),
@@ -2342,22 +2338,22 @@ const decodeAttestationsByHeaderResponseValue = (
   };
 };
 
-export const encodeDaAttestationsByHeaderResponseV1Cbor = (
-  message: DaAttestationsByHeaderResponseV1,
+export const encodeDaAttestationsByHeaderResponseCbor = (
+  message: DaAttestationsByHeaderResponse,
 ): Buffer => encodeCbor(encodeAttestationsByHeaderResponseValue(message));
 
-export const decodeDaAttestationsByHeaderResponseV1Cbor = (
+export const decodeDaAttestationsByHeaderResponseCbor = (
   bytes: Uint8Array,
-): DaAttestationsByHeaderResponseV1 =>
+): DaAttestationsByHeaderResponse =>
   decodeTupleCbor(
     bytes,
     "AttestationsByHeaderResponseV1",
     decodeAttestationsByHeaderResponseValue,
   );
 
-const validateConflictingSignatureHeaderEvidenceV1 = (
-  evidence: DaConflictingSignatureHeaderEvidenceV1,
-): DaConflictingSignatureHeaderEvidenceV1 => {
+const validateConflictingSignatureHeaderEvidence = (
+  evidence: DaConflictingSignatureHeaderEvidence,
+): DaConflictingSignatureHeaderEvidence => {
   const signerIndex = ensureUint8(evidence.signerIndex, "signer_index");
   const daVkey = ensureDaHash32(evidence.daVkey, "da_vkey");
   const lowerHeaderHash = ensureDaHeaderHash(evidence.lowerHeaderHash);
@@ -2416,9 +2412,9 @@ const validateConflictingSignatureHeaderEvidenceV1 = (
 };
 
 const encodeConflictingSignatureHeaderEvidenceValue = (
-  evidence: DaConflictingSignatureHeaderEvidenceV1,
+  evidence: DaConflictingSignatureHeaderEvidence,
 ): unknown[] => {
-  const canonical = validateConflictingSignatureHeaderEvidenceV1(evidence);
+  const canonical = validateConflictingSignatureHeaderEvidence(evidence);
   return [
     cborUint(canonical.signerIndex, "signer_index"),
     canonical.daVkey,
@@ -2434,9 +2430,9 @@ const encodeConflictingSignatureHeaderEvidenceValue = (
 const decodeConflictingSignatureHeaderEvidenceValue = (
   value: unknown,
   fieldName: string,
-): DaConflictingSignatureHeaderEvidenceV1 => {
+): DaConflictingSignatureHeaderEvidence => {
   const tuple = fixedArray(value, 8, fieldName);
-  return validateConflictingSignatureHeaderEvidenceV1({
+  return validateConflictingSignatureHeaderEvidence({
     signerIndex: ensureUint8(tuple[0], `${fieldName}.signer_index`),
     daVkey: hashValue(tuple[1], `${fieldName}.da_vkey`),
     lowerHeaderHash: headerHashValue(
@@ -2468,14 +2464,14 @@ const decodeConflictingSignatureHeaderEvidenceValue = (
   });
 };
 
-export const encodeDaConflictingSignatureHeaderEvidenceV1Cbor = (
-  evidence: DaConflictingSignatureHeaderEvidenceV1,
+export const encodeDaConflictingSignatureHeaderEvidenceCbor = (
+  evidence: DaConflictingSignatureHeaderEvidence,
 ): Buffer =>
   encodeCbor(encodeConflictingSignatureHeaderEvidenceValue(evidence));
 
-export const decodeDaConflictingSignatureHeaderEvidenceV1Cbor = (
+export const decodeDaConflictingSignatureHeaderEvidenceCbor = (
   bytes: Uint8Array,
-): DaConflictingSignatureHeaderEvidenceV1 =>
+): DaConflictingSignatureHeaderEvidence =>
   decodeTupleCbor(
     bytes,
     "DaConflictingSignatureHeaderEvidenceV1",
@@ -2483,7 +2479,7 @@ export const decodeDaConflictingSignatureHeaderEvidenceV1Cbor = (
   );
 
 const encodeConflictEvidenceValue = (
-  message: DaConflictEvidenceV1,
+  message: DaConflictEvidence,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
@@ -2497,7 +2493,7 @@ const encodeConflictEvidenceValue = (
 const decodeConflictEvidenceValue = (
   value: unknown,
   fieldName: string,
-): DaConflictEvidenceV1 => {
+): DaConflictEvidence => {
   const v = fixedArray(value, 5, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -2515,23 +2511,23 @@ const decodeConflictEvidenceValue = (
   };
 };
 
-export const encodeDaConflictEvidenceV1Cbor = (
-  message: DaConflictEvidenceV1,
+export const encodeDaConflictEvidenceCbor = (
+  message: DaConflictEvidence,
 ): Buffer => encodeCbor(encodeConflictEvidenceValue(message));
 
-export const decodeDaConflictEvidenceV1Cbor = (
+export const decodeDaConflictEvidenceCbor = (
   bytes: Uint8Array,
-): DaConflictEvidenceV1 =>
+): DaConflictEvidence =>
   decodeTupleCbor(bytes, "ConflictEvidenceV1", decodeConflictEvidenceValue);
 
 const encodeCapabilitiesRequestValue = (
-  message: DaCapabilitiesRequestV1,
+  message: DaCapabilitiesRequest,
 ): unknown[] => [ensureDaDeploymentFingerprint(message.deploymentFingerprint)];
 
 const decodeCapabilitiesRequestValue = (
   value: unknown,
   fieldName: string,
-): DaCapabilitiesRequestV1 => {
+): DaCapabilitiesRequest => {
   const fields = fixedArray(value, 1, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
@@ -2541,13 +2537,13 @@ const decodeCapabilitiesRequestValue = (
   };
 };
 
-export const encodeDaCapabilitiesRequestV1Cbor = (
-  message: DaCapabilitiesRequestV1,
+export const encodeDaCapabilitiesRequestCbor = (
+  message: DaCapabilitiesRequest,
 ): Buffer => encodeCbor(encodeCapabilitiesRequestValue(message));
 
-export const decodeDaCapabilitiesRequestV1Cbor = (
+export const decodeDaCapabilitiesRequestCbor = (
   bytes: Uint8Array,
-): DaCapabilitiesRequestV1 =>
+): DaCapabilitiesRequest =>
   decodeTupleCbor(
     bytes,
     "DaCapabilitiesRequestV1",
@@ -2555,24 +2551,24 @@ export const decodeDaCapabilitiesRequestV1Cbor = (
   );
 
 const encodeCapabilitiesResponseValue = (
-  message: DaCapabilitiesResponseV1,
+  message: DaCapabilitiesResponse,
 ): unknown[] => [
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   BigInt(
-    ensureDaTransportV1(
+    ensureDaTransport(
       message.transportProtocolVersion,
       "transport_protocol_version",
     ),
   ),
   cborSortedUintArray(
-    exactDaPayloadSchemaVersionsV1(
+    exactDaPayloadSchemaVersions(
       message.payloadSchemaVersions,
       "payload_schema_versions",
     ),
     "payload_schema_versions",
   ),
   cborSortedUintArray(
-    exactDaEnvelopeContentEncodingsV1(
+    exactDaEnvelopeContentEncodings(
       message.envelopeContentEncodings,
       "envelope_content_encodings",
     ),
@@ -2588,22 +2584,22 @@ const encodeCapabilitiesResponseValue = (
 const decodeCapabilitiesResponseValue = (
   value: unknown,
   fieldName: string,
-): DaCapabilitiesResponseV1 => {
+): DaCapabilitiesResponse => {
   const fields = fixedArray(value, 9, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
       fields[0],
       `${fieldName}.deployment_fingerprint`,
     ),
-    transportProtocolVersion: ensureDaTransportV1(
+    transportProtocolVersion: ensureDaTransport(
       fields[1],
       `${fieldName}.transport_protocol_version`,
     ),
-    payloadSchemaVersions: exactDaPayloadSchemaVersionsV1(
+    payloadSchemaVersions: exactDaPayloadSchemaVersions(
       fields[2],
       `${fieldName}.payload_schema_versions`,
     ),
-    envelopeContentEncodings: exactDaEnvelopeContentEncodingsV1(
+    envelopeContentEncodings: exactDaEnvelopeContentEncodings(
       fields[3],
       `${fieldName}.envelope_content_encodings`,
     ),
@@ -2621,13 +2617,13 @@ const decodeCapabilitiesResponseValue = (
   };
 };
 
-export const encodeDaCapabilitiesResponseV1Cbor = (
-  message: DaCapabilitiesResponseV1,
+export const encodeDaCapabilitiesResponseCbor = (
+  message: DaCapabilitiesResponse,
 ): Buffer => encodeCbor(encodeCapabilitiesResponseValue(message));
 
-export const decodeDaCapabilitiesResponseV1Cbor = (
+export const decodeDaCapabilitiesResponseCbor = (
   bytes: Uint8Array,
-): DaCapabilitiesResponseV1 =>
+): DaCapabilitiesResponse =>
   decodeTupleCbor(
     bytes,
     "DaCapabilitiesResponseV1",

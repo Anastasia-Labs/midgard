@@ -685,7 +685,7 @@ ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 ## DA Payload Hardening and Rollout
 
 DA payload storage and transport accept one durable format:
-`DaPayloadEnvelopeV1`. It contains exact `DaPayloadV1` bytes, their decoded
+`DaPayloadEnvelope`. It contains exact `DaPayload` bytes, their decoded
 length and SHA-256, and an explicit `identity` or `zstd` content encoding.
 Raw payload storage, an `off` mode, and format inference are rejected.
 
@@ -698,8 +698,8 @@ therefore require Node.js 22.15 or newer.
 Retained-payload and fault-proof consumers preserve the stored artifact as the
 hash identity. They carry `payloadSchemaVersion` from retained metadata, verify
 the stored-byte SHA-256, and then use the pinned-bound envelope unwrap before
-strictly decoding the inner `DaPayloadV1`. Fault-proof callers should use
-`fetchRetainedDaPayloadByHeaderHash` followed by `reconstructDaPayloadV1`;
+strictly decoding the inner `DaPayload`. Fault-proof callers should use
+`fetchRetainedDaPayloadByHeaderHash` followed by `reconstructDaPayload`;
 unsupported or malformed envelope and payload versions fail closed.
 
 Publication returns once the manifest threshold accepts. Slow peers continue

@@ -2,12 +2,12 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const MIN_FEE_CATEGORY_LABEL = "min-fee";
 
-export const MIN_FEE_BLUEPRINT_TITLES_V1 = {
+export const MIN_FEE_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/min_fee/step_01.main.spend",
   step02: "fraud_proofs/min_fee/step_02.main.spend",
 } as const;
 
-export type MinFeeStepContractV1 = {
+export type MinFeeStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;
   readonly spendingScriptAddress: string;
@@ -20,8 +20,8 @@ export type MinFeeStepContractV1 = {
  * - step-02: fraud-proof policy, fraud-proof address, computation-thread
  *   policy, field-preimage certificate policy.
  */
-export type MinFeeContractsV1 = {
-  readonly steps: readonly [MinFeeStepContractV1, MinFeeStepContractV1];
+export type MinFeeContracts = {
+  readonly steps: readonly [MinFeeStepContract, MinFeeStepContract];
   readonly computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;

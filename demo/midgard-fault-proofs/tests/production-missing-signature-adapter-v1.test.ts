@@ -1,30 +1,30 @@
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
-  type FraudProofFamilyL1ObservationPortV1,
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation-v1.js";
-import type { FraudProofWorkflowIdentityV1 } from "../src/workflow/journal-v1.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/journal-v1.js";
 import {
-  createProductionMissingSignatureWorkflowAdapterV1,
-  PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1,
-  type ProductionMissingSignatureTransactionPortV1,
+  createMissingSignatureWorkflowAdapter,
+  MISSING_SIGNATURE_TRANSACTION_PORT,
+  type MissingSignatureTransactionPort,
 } from "../src/workflow/production-missing-signature-adapter-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "../src/workflow/raw-l1-family-derivation-v1.js";
-import type { LocallyEvaluatedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation-v1.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
 const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
 const referenceOutRef = outRef("55");
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
 };
 
-const identity: FraudProofWorkflowIdentityV1 = {
+const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: hash("aa"),
   category: "missingSignature",
@@ -41,7 +41,7 @@ const signed = ({
   readonly submittedHash?: string;
   readonly includedReferenceOutRef?: string;
   readonly inlineScript?: boolean;
-}): LocallyEvaluatedTransactionV1["signed"] => {
+}): LocallyEvaluatedTransaction["signed"] => {
   const [referenceTxHash, referenceIndex] = includedReferenceOutRef.split("#");
   return {
     toHash: () => txHash,
@@ -63,13 +63,13 @@ const signed = ({
         }),
       }),
     }),
-  } as unknown as LocallyEvaluatedTransactionV1["signed"];
+  } as unknown as LocallyEvaluatedTransaction["signed"];
 };
 
 const transaction = (
   txHash: string,
-  overrides: Partial<LocallyEvaluatedTransactionV1> = {},
-): LocallyEvaluatedTransactionV1 => ({
+  overrides: Partial<LocallyEvaluatedTransaction> = {},
+): LocallyEvaluatedTransaction => ({
   txHash,
   signed: signed({ txHash }),
   referenceScripts: [
@@ -83,10 +83,10 @@ const transaction = (
 });
 
 const l1 = (
-  stageRef: { value: FraudProofRawL1FamilyStageV1 },
+  stageRef: { value: FraudProofRawL1FamilyStage },
   confirmed: Set<string>,
-): FraudProofFamilyL1ObservationPortV1<"missingSignature"> => ({
-  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
+): FraudProofFamilyL1ObservationPort<"missingSignature"> => ({
+  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   category: "missingSignature",
   publications: {} as never,
   observeHeader: async () => {
@@ -97,9 +97,9 @@ const l1 = (
 });
 
 const port = (
-  capture: ProductionMissingSignatureTransactionPortV1["capture"],
-): ProductionMissingSignatureTransactionPortV1 => ({
-  portVersion: PRODUCTION_MISSING_SIGNATURE_TRANSACTION_PORT_V1,
+  capture: MissingSignatureTransactionPort["capture"],
+): MissingSignatureTransactionPort => ({
+  portVersion: MISSING_SIGNATURE_TRANSACTION_PORT,
   category: "missingSignature",
   prepare: async () => ({ prepared: true }),
   capture,
@@ -118,7 +118,7 @@ const context = {
   entries: [],
 } as const;
 
-const step04 = (threadOutRef: string): FraudProofRawL1FamilyStageV1 => ({
+const step04 = (threadOutRef: string): FraudProofRawL1FamilyStage => ({
   kind: "step",
   step: 4,
   threadOutRef,
@@ -135,7 +135,7 @@ describe("production missing-signature adapter V1", () => {
       transaction: transaction(txHashes[captureIndex++]!),
     }));
 
-    const firstProcess = createProductionMissingSignatureWorkflowAdapterV1({
+    const firstProcess = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -159,7 +159,7 @@ describe("production missing-signature adapter V1", () => {
     stage.value = step04(`${txHashes[0]}#0`);
 
     // Fresh adapter: no captured body or in-memory cursor survives the crash.
-    const secondProcess = createProductionMissingSignatureWorkflowAdapterV1({
+    const secondProcess = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -192,7 +192,7 @@ describe("production missing-signature adapter V1", () => {
     confirmed.add(txHashes[1]!);
     stage.value = step04(`${txHashes[1]}#1`);
 
-    const thirdProcess = createProductionMissingSignatureWorkflowAdapterV1({
+    const thirdProcess = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -213,7 +213,7 @@ describe("production missing-signature adapter V1", () => {
     const capture = vi.fn(async () => ({
       transaction: transaction(hash("42")),
     }));
-    const adapter = createProductionMissingSignatureWorkflowAdapterV1({
+    const adapter = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: leaseCoordinator,
@@ -232,7 +232,7 @@ describe("production missing-signature adapter V1", () => {
     ).rejects.toThrow("differs from authenticated current L1 state");
     expect(capture).not.toHaveBeenCalled();
 
-    const inline = createProductionMissingSignatureWorkflowAdapterV1({
+    const inline = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(async () => ({
         transaction: transaction(hash("42"), {
@@ -245,7 +245,7 @@ describe("production missing-signature adapter V1", () => {
       inline.preflight({ ...context, action: observation.action }),
     ).rejects.toThrow("embeds inline script witnesses");
 
-    const forged = createProductionMissingSignatureWorkflowAdapterV1({
+    const forged = createMissingSignatureWorkflowAdapter({
       l1: l1(stage, confirmed),
       transactions: port(async () => ({
         transaction: transaction(hash("42"), {
@@ -266,7 +266,7 @@ describe("production missing-signature adapter V1", () => {
     const stage = { value: step04(outRef("41")) };
     const confirmed = new Set<string>();
     expect(() =>
-      createProductionMissingSignatureWorkflowAdapterV1({
+      createMissingSignatureWorkflowAdapter({
         l1: { ...l1(stage, confirmed), category: "invalidSignature" } as never,
         transactions: port(async () => ({
           transaction: transaction(hash("42")),

@@ -1,4 +1,4 @@
-import { decodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
+import { decodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { Constr } from "@lucid-evolution/lucid";
 
 export const sortTxOutRefHexes = (outRefHexes: Iterable<string>): string[] =>
@@ -10,7 +10,7 @@ export const sortTxOutRefHexes = (outRefHexes: Iterable<string>): string[] =>
  * and is not a shape a Cardano decoder should be asked to rule on.
  */
 export const txOutRefData = (outRefHex: string): Constr<unknown> => {
-  const decoded = decodeMidgardSpendInputItemV1(Buffer.from(outRefHex, "hex"));
+  const decoded = decodeMidgardSpendInputItem(Buffer.from(outRefHex, "hex"));
   return new Constr(0, [
     Buffer.from(decoded.txId).toString("hex"),
     BigInt(decoded.outputIndex),

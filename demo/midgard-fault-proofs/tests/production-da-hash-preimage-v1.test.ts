@@ -1,45 +1,45 @@
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { type EvidenceProvenanceV1, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import { type EvidenceProvenance, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { prepareDaHashPreimageFromCommittedLeavesV1 } from "../src/prepare-da-hash-preimage.js";
+import { prepareDaHashPreimageFromCommittedLeaves } from "../src/prepare-da-hash-preimage.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
-  type FraudProofFamilyL1ObservationPortV1,
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation-v1.js";
 import {
-  type FraudProofWorkflowIdentityV1,
-  MemoryFraudProofWorkflowJournalStoreV1,
+  type FraudProofWorkflowIdentity,
+  MemoryFraudProofWorkflowJournalStore,
 } from "../src/workflow/journal-v1.js";
 import {
-  createFraudProofWorkflowRegistryV1,
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  runDaHashPreimageWorkflowFromRetainedDaV1,
+  createFraudProofWorkflowRegistry,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofFamilyWorkflowAdapter,
+  runDaHashPreimageWorkflowFromRetainedDa,
 } from "../src/workflow/orchestrator-v1.js";
 import {
-  admitProductionDaHashPreimageArtifactV1,
-  productionDaHashPreimageArtifactV1,
+  admitDaHashPreimageArtifact,
+  daHashPreimageArtifact,
   unsafeCreateDaHashPreimageTransactionPortForTest,
 } from "../src/workflow/production-da-hash-preimage-v1.js";
-import { createProductionLinearFamilyWorkflowAdapterV1 } from "../src/workflow/production-linear-family-adapter-v1.js";
-import type { FraudProofRawL1FamilyStageV1 } from "../src/workflow/raw-l1-family-derivation-v1.js";
+import { createLinearFamilyWorkflowAdapter } from "../src/workflow/production-linear-family-adapter-v1.js";
+import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation-v1.js";
 import {
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy-v1.js";
-import type { LocallyEvaluatedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  buildFixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
@@ -51,7 +51,7 @@ const outRef = (byte: string, index = 0): string => `${hash(byte)}#${index}`;
 const txHash = hash("44");
 const referenceOutRef = outRef("55");
 
-const provenance: EvidenceProvenanceV1 = {
+const provenance: EvidenceProvenance = {
   trustClass: "authenticated_cardano_l1",
   sourceId: "local-kupmios/kupo+ogmios",
   grade: "security",
@@ -64,7 +64,7 @@ const plan = async () => {
       value: Buffer.from(committedLeafValueCbor, "hex"),
     },
   ]);
-  return await prepareDaHashPreimageFromCommittedLeavesV1({
+  return await prepareDaHashPreimageFromCommittedLeaves({
     headerHash,
     committedTransactionsRoot: counted.root,
     l2TransactionCount: 1n,
@@ -73,9 +73,9 @@ const plan = async () => {
 };
 
 const routedQ44Fixture = async () => {
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [
-      buildFixtureTransactionV1({
+      buildFixtureTransaction({
         spendInputs: [outRefCbor(0x21, 0n)],
         fee: 1_000_000n,
       }),
@@ -86,14 +86,14 @@ const routedQ44Fixture = async () => {
   const counted = await buildCountedRoot(ROOT_DOMAINS.transactionsV1, [
     { key: Buffer.from(committedTxId, "hex"), value: sourceValue },
   ]);
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     ...fixture.header,
     transactionsRoot: counted.root,
   };
   const observedHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(header),
+    SDK.hashBlockHeader(header),
   );
-  const payload: SDK.DaPayloadV1 = {
+  const payload: SDK.DaPayload = {
     ...fixture.payload,
     block_body: {
       ...fixture.payload.block_body,
@@ -102,8 +102,8 @@ const routedQ44Fixture = async () => {
       transactions: [[committedTxId, sourceValue.toString("hex")]],
     },
   };
-  const payloadEnvelopeCbor = await wrapDaPayloadV1(
-    SDK.encodeDaPayloadV1(payload),
+  const payloadEnvelopeCbor = await wrapDaPayload(
+    SDK.encodeDaPayload(payload),
     { mode: "identity" },
   );
   const source: RetainedDaPayloadSource = {
@@ -122,7 +122,7 @@ const routedQ44Fixture = async () => {
     }),
   };
   return {
-    observation: authenticatedHeaderObservationV1({
+    observation: authenticatedHeaderObservation({
       ...fixture,
       header,
       headerHash: observedHeaderHash,
@@ -132,7 +132,7 @@ const routedQ44Fixture = async () => {
   };
 };
 
-const signed = (): LocallyEvaluatedTransactionV1["signed"] => {
+const signed = (): LocallyEvaluatedTransaction["signed"] => {
   const [referenceTxHash, referenceIndex] = referenceOutRef.split("#");
   return {
     toHash: () => txHash,
@@ -156,10 +156,10 @@ const signed = (): LocallyEvaluatedTransactionV1["signed"] => {
         }),
       }),
     }),
-  } as unknown as LocallyEvaluatedTransactionV1["signed"];
+  } as unknown as LocallyEvaluatedTransaction["signed"];
 };
 
-const transaction = (): LocallyEvaluatedTransactionV1 => ({
+const transaction = (): LocallyEvaluatedTransaction => ({
   txHash,
   signed: signed(),
   referenceScripts: [
@@ -172,9 +172,9 @@ const transaction = (): LocallyEvaluatedTransactionV1 => ({
 });
 
 const l1 = (stage: {
-  value: FraudProofRawL1FamilyStageV1;
-}): FraudProofFamilyL1ObservationPortV1<"daHashPreimage"> => ({
-  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT_V1,
+  value: FraudProofRawL1FamilyStage;
+}): FraudProofFamilyL1ObservationPort<"daHashPreimage"> => ({
+  portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   category: "daHashPreimage",
   publications: {} as never,
   observeHeader: async () => {
@@ -184,7 +184,7 @@ const l1 = (stage: {
   observe: async () => ({ provenance, stage: stage.value }),
 });
 
-const identity: FraudProofWorkflowIdentityV1 = {
+const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: hash("aa"),
   category: "daHashPreimage",
@@ -194,7 +194,7 @@ const identity: FraudProofWorkflowIdentityV1 = {
 describe("production da-hash-preimage workflow V1", () => {
   it("persists only raw leaves and re-derives the exact Q44 proof on reload", async () => {
     const prepared = await plan();
-    const artifact = await productionDaHashPreimageArtifactV1(prepared);
+    const artifact = await daHashPreimageArtifact(prepared);
     expect(Object.keys(artifact).sort()).toEqual(
       [
         "committedTransactionsRoot",
@@ -205,28 +205,28 @@ describe("production da-hash-preimage workflow V1", () => {
         "schemaVersion",
       ].sort(),
     );
-    const admitted = await admitProductionDaHashPreimageArtifactV1(artifact);
+    const admitted = await admitDaHashPreimageArtifact(artifact);
     expect(admitted.txInclusion).toEqual(prepared.txInclusion);
     expect(admitted.step02State).toEqual({ verdict: "MalformedSource" });
   });
 
   it("rejects forged roots, extra claim fields, and file-backed plans", async () => {
     const prepared = await plan();
-    const artifact = await productionDaHashPreimageArtifactV1(prepared);
+    const artifact = await daHashPreimageArtifact(prepared);
     await expect(
-      admitProductionDaHashPreimageArtifactV1({
+      admitDaHashPreimageArtifact({
         ...artifact,
         committedTransactionsRoot: hash("88"),
       }),
     ).rejects.toThrow("transactions_root_mismatch");
     await expect(
-      admitProductionDaHashPreimageArtifactV1({
+      admitDaHashPreimageArtifact({
         ...artifact,
         claimedVerdict: "MalformedSource",
       }),
     ).rejects.toThrow("unknown or missing fields");
     await expect(
-      productionDaHashPreimageArtifactV1({
+      daHashPreimageArtifact({
         ...prepared,
         files: { txInclusionPath: "/tmp/proof", planPath: "/tmp/plan" },
       }),
@@ -234,14 +234,14 @@ describe("production da-hash-preimage workflow V1", () => {
   });
 
   it("captures the real step boundary, journals the exact body, and reconciles from raw L1", async () => {
-    const artifact = await productionDaHashPreimageArtifactV1(await plan());
+    const artifact = await daHashPreimageArtifact(await plan());
     const stage = {
       value: {
         kind: "step",
         step: 1,
         threadOutRef: outRef("11"),
         stateQueueBlockOutRef: outRef("10"),
-      } as FraudProofRawL1FamilyStageV1,
+      } as FraudProofRawL1FamilyStage,
     };
     const step01 = vi.fn(async (input: { preSubmitBoundary?: Function }) => {
       await input.preSubmitBoundary?.(transaction());
@@ -282,7 +282,7 @@ describe("production da-hash-preimage workflow V1", () => {
         remove: vi.fn() as never,
       },
     });
-    const adapter = createProductionLinearFamilyWorkflowAdapterV1({
+    const adapter = createLinearFamilyWorkflowAdapter({
       category: "daHashPreimage",
       l1: l1(stage),
       transactions,
@@ -386,10 +386,10 @@ describe("production da-hash-preimage workflow V1", () => {
     const prepare = vi.fn(async () => {
       throw new Error("canonical adapter prepare must not be called for Q44");
     });
-    const adapter: FraudProofFamilyWorkflowAdapterV1 = {
-      adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+    const adapter: FraudProofFamilyWorkflowAdapter = {
+      adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
       category: "daHashPreimage",
-      safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+      safety: FRAUD_PROOF_WORKFLOW_SAFETY,
       prepare,
       observe: async ({ artifact, entries }) => {
         expect(artifact.schemaVersion).toBe(
@@ -438,28 +438,28 @@ describe("production da-hash-preimage workflow V1", () => {
       automaticRecoveryMaxDepth: 2160,
       deepRollbackPolicy: "automated_rewind_replay_incident-v1",
     } as const;
-    const journal = new MemoryFraudProofWorkflowJournalStoreV1();
-    const result = await runDaHashPreimageWorkflowFromRetainedDaV1({
+    const journal = new MemoryFraudProofWorkflowJournalStore();
+    const result = await runDaHashPreimageWorkflowFromRetainedDa({
       deploymentFingerprint,
       observation: routed.observation,
       sources: [routed.source],
-      registry: createFraudProofWorkflowRegistryV1({
+      registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["daHashPreimage"],
       }),
       journal,
       terminalVerifier: {
-        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER_V1,
+        verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
         verify: async ({ candidate }) => candidate,
       },
       releaseFinalityAuthority: {
-        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
         verifyForWorkflow: async () => ({
-          schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+          schemaVersion: FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
           deploymentIdentityDigest: deploymentFingerprint,
           releaseIdentityDigest: hash("e1"),
           policyDigest:
-            computeFraudProofReleaseFinalityPolicyDigestV1(finalityPolicy),
+            computeFraudProofReleaseFinalityPolicyDigest(finalityPolicy),
           policy: finalityPolicy,
         }),
       },

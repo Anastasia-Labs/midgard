@@ -7,16 +7,16 @@ import {
   ProofSchema,
 } from "../common.js";
 import {
+  type Header,
   type HeaderHash,
   HeaderHashSchema,
-  type HeaderV1,
-  HeaderV1Schema,
+  HeaderSchema,
   type WithdrawalValidity,
   WithdrawalValiditySchema,
 } from "../ledger-state.js";
 import {
-  type OperatorVerdictV1,
-  OperatorVerdictV1Schema,
+  type OperatorVerdict,
+  OperatorVerdictSchema,
 } from "../rejection-reason-v1.js";
 import {
   type AdjacentTraceProof,
@@ -50,8 +50,8 @@ import {
   faultProofStepRedeemerSchema,
 } from "./native.js";
 import {
-  type ValidationClaimWitnessV1,
-  ValidationClaimWitnessV1Schema,
+  type ValidationClaimWitness,
+  ValidationClaimWitnessSchema,
 } from "./validation-dispute.js";
 
 export const TraceBoundarySideSchema = Data.Enum([
@@ -372,7 +372,7 @@ export const OmittedDueL1EventWitnessSchema = Data.Enum([
     OmittedDueForcedTransaction: Data.Object({
       event_ref_input_index: Data.Integer(),
       event_asset_name: Data.Bytes(),
-      validity_override: OperatorVerdictV1Schema,
+      validity_override: OperatorVerdictSchema,
       source_non_membership: ForcedTransactionSourceNonMembershipProofSchema,
     }),
   }),
@@ -396,7 +396,7 @@ export type OmittedDueL1EventWitness =
       readonly OmittedDueForcedTransaction: {
         readonly event_ref_input_index: bigint;
         readonly event_asset_name: string;
-        readonly validity_override: OperatorVerdictV1;
+        readonly validity_override: OperatorVerdict;
         readonly source_non_membership: ForcedTransactionSourceNonMembershipProof;
       };
     };
@@ -423,7 +423,7 @@ export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
     OutOfWindowForcedTransaction: Data.Object({
       event_ref_input_index: Data.Integer(),
       event_asset_name: Data.Bytes(),
-      validity_override: OperatorVerdictV1Schema,
+      validity_override: OperatorVerdictSchema,
       source_membership: ForcedTransactionSourceMembershipProofSchema,
     }),
   }),
@@ -448,7 +448,7 @@ export type OutOfWindowSourceEventWitness =
       readonly OutOfWindowForcedTransaction: {
         readonly event_ref_input_index: bigint;
         readonly event_asset_name: string;
-        readonly validity_override: OperatorVerdictV1;
+        readonly validity_override: OperatorVerdict;
         readonly source_membership: ForcedTransactionSourceMembershipProof;
       };
     };
@@ -533,7 +533,7 @@ export const TransitionFaultSchema = Data.Enum([
   Data.Object({
     AcceptedTransactionTransitionMismatch: Data.Object({
       witness: Data.Object({
-        claim: ValidationClaimWitnessV1Schema,
+        claim: ValidationClaimWitnessSchema,
         terminal_acceptance_witness_cbor: Data.Bytes(),
       }),
     }),
@@ -583,7 +583,7 @@ export type TransitionFault =
   | {
       readonly AcceptedTransactionTransitionMismatch: {
         readonly witness: {
-          readonly claim: ValidationClaimWitnessV1;
+          readonly claim: ValidationClaimWitness;
           readonly terminal_acceptance_witness_cbor: string;
         };
       };
@@ -593,12 +593,12 @@ export const TransitionFault =
 
 export const TransitionFaultProofSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
-  header: HeaderV1Schema,
+  header: HeaderSchema,
   fault: TransitionFaultSchema,
 });
 export type TransitionFaultProof = {
   readonly challenged_header_hash: HeaderHash;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly fault: TransitionFault;
 };
 export const TransitionFaultProof =
@@ -661,7 +661,7 @@ export const makeTransitionFaultProof = ({
   fault,
 }: {
   readonly challengedHeaderHash: HeaderHash;
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly fault: TransitionFault;
 }): TransitionFaultProof => ({
   challenged_header_hash: challengedHeaderHash,
@@ -752,7 +752,7 @@ export const acceptedTransactionTransitionMismatchFault = ({
   claim,
   terminalAcceptanceWitnessCbor,
 }: {
-  readonly claim: ValidationClaimWitnessV1;
+  readonly claim: ValidationClaimWitness;
   readonly terminalAcceptanceWitnessCbor: string;
 }): TransitionFault => ({
   AcceptedTransactionTransitionMismatch: {

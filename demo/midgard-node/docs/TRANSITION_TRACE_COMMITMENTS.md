@@ -10,7 +10,7 @@ applying the committed withdrawals, forced-inclusion transactions, normal L2
 transactions, and deposits to `prev_utxos_root`.
 
 This is the canonical V1 protocol shape. The serialized fields are the
-`HeaderV1` commitment surface described here. Any other header shape fails
+`Header` commitment surface described here. Any other header shape fails
 closed.
 
 ## Executive Summary
@@ -111,7 +111,7 @@ Datum = linked_list.Element<ConfirmedState, StateQueueNode>
 ```
 
 The transition-trace roots live in the queued block's state commitment, meaning
-the `HeaderV1` embedded in `StateQueueNode.header`. They are not only off-chain DA
+the `Header` embedded in `StateQueueNode.header`. They are not only off-chain DA
 metadata and they are not stored only in the node database.
 
 Current compact header shape:
@@ -150,7 +150,7 @@ HeaderV1 {
 }
 ```
 
-The header hash is computed over the full `HeaderV1`, including all roots,
+The header hash is computed over the full `Header`, including all roots,
 counts, and validation-context metadata. Deploying this shape requires a clean
 redeploy because all state-queue header hashes, node asset names, DA attestations,
 proof inputs, settlement proofs, and downstream SDK codecs change.
@@ -188,7 +188,7 @@ The header carries compact roots. Public challengers still need the data those
 roots authenticate.
 
 The launch-gate implementation uses DA committee retention as the production
-source for challenger payloads. A challenger fetches retained `DaPayloadV1` by
+source for challenger payloads. A challenger fetches retained `DaPayload` by
 `header_hash` from DA committee endpoints such as:
 
 ```text
@@ -216,7 +216,7 @@ The DA/proof-data network must publish, retain, replicate, and attest:
   versions.
 
 This does not mean the Midgard producer must submit a separate witness bundle
-for every possible proof. The retained `DaPayloadV1` contains the header, final
+for every possible proof. The retained `DaPayload` contains the header, final
 UTxO members, source entries, transition trace entries, event-to-step entries,
 and counts. Challengers derive membership, non-membership, boundary, link, count,
 and one-step witnesses from that retained data.
@@ -356,8 +356,8 @@ from the verdict by the leaf encoder (`ForcedTxValid` ⇔ code 0,
 forced-arm claim predicate re-checks on-chain. `verdict`
 is the operator's claim about how that ordered transaction processed
 against the block state, and is challengeable by one-step fraud proofs. Since
-the #640 format wave it is an `OperatorVerdictV1` — `ForcedTxValid`, or
-`ForcedTxInvalid` naming one of the 47 `RejectionReasonV1` arms together with
+the #640 format wave it is an `OperatorVerdict` — `ForcedTxValid`, or
+`ForcedTxInvalid` naming one of the 47 `RejectionReason` arms together with
 that reason's subject coordinates — so a wrong rejection is refutable against
 the named subject rather than against a coarse bucket.
 
@@ -650,9 +650,9 @@ Together:
 ### Trace Boundary Invariants
 
 - If `transition_step_count > 0`, the first trace leaf's `pre_utxos_root` equals
-  `HeaderV1.prev_utxos_root`.
+  `Header.prev_utxos_root`.
 - If `transition_step_count > 0`, the last trace leaf's `post_utxos_root` equals
-  `HeaderV1.utxos_root`.
+  `Header.utxos_root`.
 
 ### Trace Link Invariants
 
@@ -714,7 +714,7 @@ not end at the committed current root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `0` or step `transition_step_count - 1`;
 - opened trace leaf.
 
@@ -731,7 +731,7 @@ Purpose: prove two adjacent trace steps do not connect.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - trace leaf membership proof for step `i + 1`;
 - opened trace leaves.
@@ -748,7 +748,7 @@ Purpose: prove a trace step does not bind to the event mapped to that step.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for `trace.event_key`;
 - opened trace leaf and opened event-to-step leaf.
@@ -768,7 +768,7 @@ Purpose: prove a mapped event key does not exist in the matching source root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for `trace.event_key`;
 - source-root non-membership proof for the event key's source id.
@@ -787,7 +787,7 @@ source event to its pre-state root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for the trace step's event key;
 - source-root membership proof for the event;
@@ -822,7 +822,7 @@ was omitted from its source root.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - L1 evidence for the deposit, withdrawal, or forced transaction order UTxO and
   datum;
 - proof that the event is due in the block interval. For forced transaction
@@ -844,7 +844,7 @@ Purpose: prove a committed source-root member has no corresponding trace step.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - source-root membership proof for the event;
 - `event_to_step_root` non-membership proof for the event key.
 
@@ -880,7 +880,7 @@ validity range does not require processing in the block interval.
 
 Evidence:
 
-- state-queue reference input containing `HeaderV1`;
+- state-queue reference input containing `Header`;
 - source-root membership proof for the event;
 - opened source member or L1 event evidence.
 
@@ -898,7 +898,7 @@ Evidence:
 
 - root metadata proof or count opening for one source root, `event_to_step_root`,
   or `transition_trace_root`;
-- state-queue reference input containing `HeaderV1`.
+- state-queue reference input containing `Header`.
 
 Checks:
 
@@ -1111,7 +1111,7 @@ MidgardTransitionStepV1
 
 ## Launch-Gate State
 
-- The current `HeaderV1` ABI includes its nine ordered roots, seven ordered
+- The current `Header` ABI includes its nine ordered roots, seven ordered
   counts (including `validation_trace_count`), and nine metadata fields; the
   exact constructor-0 order is the registry contract above.
 - Block production builds deterministic source roots, event-to-step members, and

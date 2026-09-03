@@ -13,12 +13,12 @@
  * Each asserts the door actually crossed into the RawUtxo window and then
  * that the on-chain door accepts the published preimage end to end.
  */
-import { midgardFieldCarriageBoundsV1 } from "@al-ft/midgard-core";
+import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_FIELD_INDEX_V1 } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpeningV1 } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
 import {
   submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
@@ -29,13 +29,13 @@ import {
   submitMintAuthorizationStep05,
 } from "../src/mint-authorization/index.js";
 import {
-  buildMintAuthorizationSubjectV1,
-  directionBNativeScriptV1,
-  largeAddressWitnessItemCborsV1,
-  largeMintItemCborsV1,
-  makeMintAuthorizationEmulatorHarnessV1,
-  publishMintAuthorizationReferenceScriptsV1,
-  setupMintAuthorizationScenarioV1,
+  buildMintAuthorizationSubject,
+  directionBNativeScript,
+  largeAddressWitnessItemCbors,
+  largeMintItemCbors,
+  makeMintAuthorizationEmulatorHarness,
+  publishMintAuthorizationReferenceScripts,
+  setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator-v1.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
@@ -43,7 +43,7 @@ const ACCUSED_POLICY_INDEX = 0n;
 
 describe("mint-authorization size-forced tier-2 carriage", () => {
   it("forces the field-5 mint door onto RawUtxo carriage by size and finalizes direction A", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1();
+    const harness = await makeMintAuthorizationEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -54,17 +54,17 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       category,
     } = harness;
 
-    const largeMint = largeMintItemCborsV1();
+    const largeMint = largeMintItemCbors();
     expect(largeMint.preimageByteLength).toBeGreaterThan(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
     expect(largeMint.preimageByteLength).toBeLessThanOrEqual(
-      midgardFieldCarriageBoundsV1.maxPublishableCarriageBytes,
+      midgardFieldCarriageBounds.maxPublishableCarriageBytes,
     );
-    const subject = buildMintAuthorizationSubjectV1({
+    const subject = buildMintAuthorizationSubject({
       mintItemCbors: largeMint.itemCbors,
     });
-    const scenario = await setupMintAuthorizationScenarioV1({
+    const scenario = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -74,8 +74,8 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
     }
 
     // The planner selects the tier purely from the mint field's own length.
-    const plannedMint = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.mint,
+    const plannedMint = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.mint,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       itemCbors: largeMint.itemCbors.map((hex) => Buffer.from(hex, "hex")),
@@ -85,7 +85,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
     expect(plannedMint.plan.tier).toBe("RawUtxo");
 
     const [step01Ref, step02Ref, step03Ref, step04Ref, step05Ref] =
-      await publishMintAuthorizationReferenceScriptsV1({
+      await publishMintAuthorizationReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -126,7 +126,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       threadOutRef: step01.nextThreadOutRef,
       reconstruction: block.reconstruction,
       policyIndex: ACCUSED_POLICY_INDEX,
-      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: step02Ref,
@@ -172,7 +172,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
   }, 600_000);
 
   it("forces the field-7 address-witness door onto RawUtxo carriage by size and finalizes direction B", async () => {
-    const harness = await makeMintAuthorizationEmulatorHarnessV1();
+    const harness = await makeMintAuthorizationEmulatorHarness();
     const {
       realBlueprint,
       funderLucid,
@@ -183,19 +183,19 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       category,
     } = harness;
 
-    const largeWitnesses = largeAddressWitnessItemCborsV1();
+    const largeWitnesses = largeAddressWitnessItemCbors();
     expect(largeWitnesses.preimageByteLength).toBeGreaterThan(
-      midgardFieldCarriageBoundsV1.maxTier1RedeemerPreimageBytes,
+      midgardFieldCarriageBounds.maxTier1RedeemerPreimageBytes,
     );
     expect(largeWitnesses.preimageByteLength).toBeLessThanOrEqual(
-      midgardFieldCarriageBoundsV1.maxPublishableCarriageBytes,
+      midgardFieldCarriageBounds.maxPublishableCarriageBytes,
     );
-    const directionB = directionBNativeScriptV1();
-    const subject = buildMintAuthorizationSubjectV1({
+    const directionB = directionBNativeScript();
+    const subject = buildMintAuthorizationSubject({
       mintItemCbors: [directionB.mintItemCbor],
       addrWitnessItemCbors: largeWitnesses.itemCbors,
     });
-    const scenario = await setupMintAuthorizationScenarioV1({
+    const scenario = await setupMintAuthorizationScenario({
       harness,
       subject,
     });
@@ -205,7 +205,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
     }
 
     const [step01Ref, step02Ref, step03Ref, , step05Ref] =
-      await publishMintAuthorizationReferenceScriptsV1({
+      await publishMintAuthorizationReferenceScripts({
         lucid: funderLucid,
         contracts: family,
       });
@@ -246,15 +246,15 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
       threadOutRef: step01.nextThreadOutRef,
       reconstruction: block.reconstruction,
       policyIndex: ACCUSED_POLICY_INDEX,
-      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED_V1,
+      direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: step02Ref,
     });
 
     // The field-7 door's tier follows the address-witness field's own length.
-    const plannedField07 = planFaultProofFieldOpeningV1({
-      fieldIndex: MIDGARD_FIELD_INDEX_V1.addressWitnesses,
+    const plannedField07 = planFaultProofFieldOpening({
+      fieldIndex: MIDGARD_FIELD_INDEX.addressWitnesses,
       anchorTxId: block.nativeTxId,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       itemCbors: subject.addrWitnessItemCbors.map((hex) =>

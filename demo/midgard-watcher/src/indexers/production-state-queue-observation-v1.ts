@@ -1,17 +1,17 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import {
-  computeFraudProofRawL1PointIdV1,
-  type FraudProofRawL1TransactionV1,
-  type FraudProofRawL1UtxoV1,
-  LocalKupmiosExactPointNotCanonicalV1Error,
-  type LocalKupmiosFraudProofRawSourceV1,
-  localKupmiosHttpOgmiosRawSourceDetailsV1,
-  type LocalKupmiosRawBlockAtPointV1,
-  readAdmittedLocalKupmiosAddressUtxosAtPointV1,
-  readAdmittedLocalKupmiosBoundaryV1,
-  readAdmittedLocalKupmiosRawBlockAtPointV1,
-  readAdmittedLocalKupmiosRawTransactionV1,
-  readAdmittedLocalKupmiosUnitHistoryAtPointV1,
+  computeFraudProofRawL1PointId,
+  type FraudProofRawL1Transaction,
+  type FraudProofRawL1Utxo,
+  LocalKupmiosExactPointNotCanonicalError,
+  type LocalKupmiosFraudProofRawSource,
+  localKupmiosHttpOgmiosRawSourceDetails,
+  type LocalKupmiosRawBlockAtPoint,
+  readAdmittedLocalKupmiosAddressUtxosAtPoint,
+  readAdmittedLocalKupmiosBoundary,
+  readAdmittedLocalKupmiosRawBlockAtPoint,
+  readAdmittedLocalKupmiosRawTransaction,
+  readAdmittedLocalKupmiosUnitHistoryAtPoint,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -22,24 +22,24 @@ import {
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
-import { watcherL1TransportAttestationDetailsV1 } from "../l1/l1-adapter.js";
+import { watcherL1TransportAttestationDetails } from "../l1/l1-adapter.js";
 import {
-  assertWatcherLocalKupmiosNativeObservationV1,
-  type WatcherLocalKupmiosNativeObservationV1,
+  assertWatcherLocalKupmiosNativeObservation,
+  type WatcherLocalKupmiosNativeObservation,
 } from "../l1/local-kupmios-native-observation-v1.js";
-import type { WatcherNativeBlockAdmissionV1 } from "../l1/native-block-admission-v1.js";
+import type { WatcherNativeBlockAdmission } from "../l1/native-block-admission-v1.js";
 import {
-  assertVerifiedWatcherDeploymentIdentityV1,
-  assertWatcherDeploymentProtocolScriptAuthorityV1,
-  type VerifiedWatcherDeploymentIdentityV1,
-  watcherDeploymentProtocolScriptAuthorityV1,
+  assertVerifiedWatcherDeploymentIdentity,
+  assertWatcherDeploymentProtocolScriptAuthority,
+  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
 import {
-  watcherSameCanonicalJsonV1,
-  watcherSha256CanonicalJsonV1,
+  watcherSameCanonicalJson,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 
-export const WATCHER_PRODUCTION_STATE_QUEUE_OBSERVATION_V1_SCHEMA_VERSION =
+export const WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-production-state-queue-observation-v1" as const;
 
 const RELEASE_FINALITY_DEPTH = 30;
@@ -49,13 +49,13 @@ const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-type QueueNode = SDK.StateQueueTransitionNodeV1;
+type QueueNode = SDK.StateQueueTransitionNode;
 type DecodedQueueHeader = Readonly<{
   headerHash: string;
   headerCborHex: string;
   stateQueueNodeCborHex: string;
   linkedListDatumCborHex: string;
-  daAvailability: SDK.DaAvailabilityStateQueueStatusV1;
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
 }>;
 type QueueOutput = Readonly<{
   node: QueueNode;
@@ -67,8 +67,8 @@ type LockOutput = Readonly<{
   datum: SDK.CorrectionLockDatum;
 }>;
 
-export type WatcherProductionStateQueueObservationV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_STATE_QUEUE_OBSERVATION_V1_SCHEMA_VERSION;
+export type WatcherAuthenticatedStateQueueObservation = Readonly<{
+  schemaVersion: typeof WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION;
   deploymentIdentityDigest: string;
   protocolScriptAuthorityDigest: string;
   stateQueuePolicyId: string;
@@ -83,15 +83,15 @@ export type WatcherProductionStateQueueObservationV1 = Readonly<{
   }>;
   sourceId: string;
   previousObservationDigest: string | null;
-  checkpoints: readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[];
+  checkpoints: readonly SDK.StateQueueAuthenticatedReplayCheckpoint[];
   finalizedQueue: readonly QueueNode[];
-  finalizedHeaders: readonly WatcherProductionStateQueueHeaderObservationV1[];
-  finalizedCorrectionLock: WatcherProductionCorrectionLockObservationV1 | null;
-  correctionLockWitnesses: readonly SDK.StateQueueCorrectionLockWitnessV1[];
+  finalizedHeaders: readonly WatcherStateQueueHeaderObservation[];
+  finalizedCorrectionLock: WatcherCorrectionLockObservation | null;
+  correctionLockWitnesses: readonly SDK.StateQueueCorrectionLockWitness[];
   observationDigest: string;
 }>;
 
-export type WatcherProductionCorrectionLockObservationV1 = Readonly<{
+export type WatcherCorrectionLockObservation = Readonly<{
   outRef: string;
   datum: SDK.CorrectionLockDatum;
   observedTransactionHash: string;
@@ -102,12 +102,12 @@ export type WatcherProductionCorrectionLockObservationV1 = Readonly<{
   finalityDepth: string;
 }>;
 
-export type WatcherProductionStateQueueHeaderObservationV1 = Readonly<{
+export type WatcherStateQueueHeaderObservation = Readonly<{
   headerHash: string;
   headerCborHex: string;
   stateQueueNodeCborHex: string;
   linkedListDatumCborHex: string;
-  daAvailability: SDK.DaAvailabilityStateQueueStatusV1;
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
   queueOutRef: string;
   nextHeaderHash: string | null;
   observedTransactionHash: string;
@@ -118,27 +118,27 @@ export type WatcherProductionStateQueueHeaderObservationV1 = Readonly<{
   finalityDepth: string;
 }>;
 
-export type WatcherProductionStateQueueObservationSourceV1 = Readonly<{
+export type WatcherStateQueueObservationSource = Readonly<{
   observe(
     input: Readonly<{
-      nativeBlock: WatcherNativeBlockAdmissionV1;
-      localObservation: WatcherLocalKupmiosNativeObservationV1;
-      previous: WatcherProductionStateQueueObservationV1 | null;
+      nativeBlock: WatcherNativeBlockAdmission;
+      localObservation: WatcherLocalKupmiosNativeObservation;
+      previous: WatcherAuthenticatedStateQueueObservation | null;
     }>,
-  ): Promise<WatcherProductionStateQueueObservationV1 | null>;
-  bootstrap(): Promise<WatcherProductionStateQueueRecoveryV1>;
+  ): Promise<WatcherAuthenticatedStateQueueObservation | null>;
+  bootstrap(): Promise<WatcherStateQueueRecovery>;
   restore(
     input: Readonly<{
       persistedObservations: readonly unknown[];
     }>,
-  ): Promise<WatcherProductionStateQueueRecoveryV1>;
+  ): Promise<WatcherStateQueueRecovery>;
   resolveRetainedHeader(
     input: Readonly<{ headerHash: string }>,
-  ): Promise<WatcherProductionStateQueueHeaderObservationV1>;
+  ): Promise<WatcherStateQueueHeaderObservation>;
 }>;
 
-export type WatcherProductionStateQueueRecoveryV1 = Readonly<{
-  previous: WatcherProductionStateQueueObservationV1;
+export type WatcherStateQueueRecovery = Readonly<{
+  previous: WatcherAuthenticatedStateQueueObservation;
   /** Newest durable records rejected by raw-L1 prefix re-admission. */
   discardedObservationCount: number;
   replayIntersection: Readonly<{
@@ -161,8 +161,8 @@ const admittedObservations = new WeakSet<object>();
 const admittedHeaders = new WeakSet<object>();
 const admittedSources = new WeakSet<object>();
 
-export const assertWatcherProductionStateQueueObservationV1 = (
-  observation: WatcherProductionStateQueueObservationV1,
+export const assertWatcherStateQueueObservation = (
+  observation: WatcherAuthenticatedStateQueueObservation,
 ): void => {
   if (!admittedObservations.has(observation)) {
     throw new Error(
@@ -171,8 +171,8 @@ export const assertWatcherProductionStateQueueObservationV1 = (
   }
 };
 
-export const assertWatcherProductionStateQueueHeaderObservationV1 = (
-  header: WatcherProductionStateQueueHeaderObservationV1,
+export const assertWatcherStateQueueHeaderObservation = (
+  header: WatcherStateQueueHeaderObservation,
 ): void => {
   if (!admittedHeaders.has(header)) {
     throw new Error(
@@ -232,7 +232,7 @@ const parseQueueNodes = (value: unknown): readonly QueueNode[] | null => {
 
 const parsePersistedHeader = (
   value: unknown,
-): WatcherProductionStateQueueHeaderObservationV1 | null => {
+): WatcherStateQueueHeaderObservation | null => {
   const record = exactRecord(value, [
     "headerHash",
     "headerCborHex",
@@ -281,21 +281,18 @@ const parsePersistedHeader = (
   }
   try {
     const encoded = Data.to(
-      record.daAvailability as SDK.DaAvailabilityStateQueueStatusV1,
-      SDK.DaAvailabilityStateQueueStatusV1,
+      record.daAvailability as SDK.DaAvailabilityStateQueueStatus,
+      SDK.DaAvailabilityStateQueueStatus,
     );
     const daAvailability = Data.from(
       encoded,
-      SDK.DaAvailabilityStateQueueStatusV1,
+      SDK.DaAvailabilityStateQueueStatus,
     );
-    if (!watcherSameCanonicalJsonV1(record.daAvailability, daAvailability)) {
+    if (!watcherSameCanonicalJson(record.daAvailability, daAvailability)) {
       return null;
     }
     return Object.freeze({
-      ...(record as Omit<
-        WatcherProductionStateQueueHeaderObservationV1,
-        "daAvailability"
-      >),
+      ...(record as Omit<WatcherStateQueueHeaderObservation, "daAvailability">),
       daAvailability,
     });
   } catch {
@@ -305,7 +302,7 @@ const parsePersistedHeader = (
 
 const parsePersistedLock = (
   value: unknown,
-): WatcherProductionCorrectionLockObservationV1 | null => {
+): WatcherCorrectionLockObservation | null => {
   const record = exactRecord(value, [
     "outRef",
     "datum",
@@ -316,7 +313,7 @@ const parsePersistedLock = (
     "observedChainPointId",
     "finalityDepth",
   ]);
-  const datum = SDK.parseStateQueueCorrectionLockDatumV1(record?.datum);
+  const datum = SDK.parseStateQueueCorrectionLockDatum(record?.datum);
   if (
     record === null ||
     typeof record.outRef !== "string" ||
@@ -352,7 +349,7 @@ const parsePersistedLock = (
 
 const parsePersistedObservation = (
   value: unknown,
-): WatcherProductionStateQueueObservationV1 | null => {
+): WatcherAuthenticatedStateQueueObservation | null => {
   const record = exactRecord(value, [
     "schemaVersion",
     "deploymentIdentityDigest",
@@ -378,7 +375,7 @@ const parsePersistedObservation = (
     "finalityDepth",
   ]);
   const checkpoints = Array.isArray(record?.checkpoints)
-    ? record.checkpoints.map(SDK.parseStateQueueAuthenticatedReplayCheckpointV1)
+    ? record.checkpoints.map(SDK.parseStateQueueAuthenticatedReplayCheckpoint)
     : null;
   const queue = parseQueueNodes(record?.finalizedQueue);
   const headers = Array.isArray(record?.finalizedHeaders)
@@ -390,14 +387,14 @@ const parsePersistedObservation = (
       : parsePersistedLock(record?.finalizedCorrectionLock);
   const witnesses = Array.isArray(record?.correctionLockWitnesses)
     ? record.correctionLockWitnesses.map(
-        SDK.parseStateQueueCorrectionLockWitnessV1,
+        SDK.parseStateQueueCorrectionLockWitness,
       )
     : null;
   if (
     record === null ||
     nativePoint === null ||
     record.schemaVersion !==
-      WATCHER_PRODUCTION_STATE_QUEUE_OBSERVATION_V1_SCHEMA_VERSION ||
+      WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION ||
     typeof record.deploymentIdentityDigest !== "string" ||
     !HEX_32.test(record.deploymentIdentityDigest) ||
     typeof record.protocolScriptAuthorityDigest !== "string" ||
@@ -457,19 +454,19 @@ const parsePersistedObservation = (
       | string
       | null,
     checkpoints: Object.freeze(
-      checkpoints as SDK.StateQueueAuthenticatedReplayCheckpointV1[],
+      checkpoints as SDK.StateQueueAuthenticatedReplayCheckpoint[],
     ),
     finalizedQueue: queue,
     finalizedHeaders: Object.freeze(
-      headers as WatcherProductionStateQueueHeaderObservationV1[],
+      headers as WatcherStateQueueHeaderObservation[],
     ),
     finalizedCorrectionLock: lock,
     correctionLockWitnesses: Object.freeze(
-      witnesses as SDK.StateQueueCorrectionLockWitnessV1[],
+      witnesses as SDK.StateQueueCorrectionLockWitness[],
     ),
   };
-  return watcherSha256CanonicalJsonV1(canonical) === record.observationDigest &&
-    watcherSameCanonicalJsonV1(
+  return watcherSha256CanonicalJson(canonical) === record.observationDigest &&
+    watcherSameCanonicalJson(
       canonical.correctionLockWitnesses,
       canonical.checkpoints.map(
         ({ correctionLockWitness }) => correctionLockWitness,
@@ -483,47 +480,48 @@ const parsePersistedObservation = (
 };
 
 /** Pure structural parser only; it never grants production observation authority. */
-export const unsafeParsePersistedWatcherProductionStateQueueObservationForTest =
+export const unsafeParsePersistedWatcherStateQueueObservationForTest =
   parsePersistedObservation;
 
 /**
  * Narrow test-only opaque admission. It first runs the exact persisted parser,
- * then independently re-derives every contained HeaderV1 hash and queue link.
+ * then independently re-derives every contained Header hash and queue link.
  * Production code cannot call this helper and no structural clone is admitted.
  */
-export const unsafeAdmitWatcherProductionStateQueueObservationForReplayTestV1 =
-  (value: unknown): WatcherProductionStateQueueObservationV1 => {
-    if (process.env.NODE_ENV !== "test") {
-      throw new Error("unsafe state-queue replay admission is test-only");
+export const unsafeAdmitWatcherStateQueueObservationForReplayTest = (
+  value: unknown,
+): WatcherAuthenticatedStateQueueObservation => {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("unsafe state-queue replay admission is test-only");
+  }
+  const parsed = parsePersistedObservation(value);
+  if (parsed === null) {
+    throw new Error("test state-queue replay observation is not canonical");
+  }
+  for (const header of parsed.finalizedHeaders) {
+    const decoded = Data.from(header.headerCborHex, SDK.Header);
+    if (
+      Data.to(decoded, SDK.Header) !== header.headerCborHex ||
+      computeHash28(Buffer.from(header.headerCborHex, "hex")).toString(
+        "hex",
+      ) !== header.headerHash ||
+      !parsed.finalizedQueue.some(
+        (node) =>
+          node.headerHash === header.headerHash &&
+          node.outRef === header.queueOutRef,
+      ) ||
+      header.observedBlockHash !== parsed.nativePoint.blockHash ||
+      header.observedSlot !== parsed.nativePoint.slot ||
+      header.observedBlockNo !== parsed.nativePoint.blockNo ||
+      header.observedChainPointId !== parsed.nativePoint.chainPointId
+    ) {
+      throw new Error(
+        "test state-queue replay HeaderV1 differs from its observation",
+      );
     }
-    const parsed = parsePersistedObservation(value);
-    if (parsed === null) {
-      throw new Error("test state-queue replay observation is not canonical");
-    }
-    for (const header of parsed.finalizedHeaders) {
-      const decoded = Data.from(header.headerCborHex, SDK.HeaderV1);
-      if (
-        Data.to(decoded, SDK.HeaderV1) !== header.headerCborHex ||
-        computeHash28(Buffer.from(header.headerCborHex, "hex")).toString(
-          "hex",
-        ) !== header.headerHash ||
-        !parsed.finalizedQueue.some(
-          (node) =>
-            node.headerHash === header.headerHash &&
-            node.outRef === header.queueOutRef,
-        ) ||
-        header.observedBlockHash !== parsed.nativePoint.blockHash ||
-        header.observedSlot !== parsed.nativePoint.slot ||
-        header.observedBlockNo !== parsed.nativePoint.blockNo ||
-        header.observedChainPointId !== parsed.nativePoint.chainPointId
-      ) {
-        throw new Error(
-          "test state-queue replay HeaderV1 differs from its observation",
-        );
-      }
-    }
-    return admitObservation(parsed);
-  };
+  }
+  return admitObservation(parsed);
+};
 
 const outputReferences = (
   inputs: CML.TransactionInputList | undefined,
@@ -571,9 +569,9 @@ const candidateRawBlockTransactions = ({
   stateQueuePolicyId,
   hubOraclePolicyId,
 }: {
-  rawBlock: LocalKupmiosRawBlockAtPointV1;
+  rawBlock: LocalKupmiosRawBlockAtPoint;
   queue: readonly QueueNode[];
-  currentLock: WatcherProductionCorrectionLockObservationV1 | null;
+  currentLock: WatcherCorrectionLockObservation | null;
   stateQueuePolicyId: string;
   hubOraclePolicyId: string;
 }): readonly Readonly<{ txHash: string; transactionIndex: number }>[] => {
@@ -665,10 +663,10 @@ const queueOutput = ({
   if (headerHash !== null) {
     const stateQueueNode = Data.castFrom(
       view.data,
-      SDK.StateQueueNodeV1,
-    ) as SDK.StateQueueNodeV1;
-    const stateQueueNodeCborHex = Data.to(stateQueueNode, SDK.StateQueueNodeV1);
-    const headerCborHex = Data.to(stateQueueNode.header, SDK.HeaderV1);
+      SDK.StateQueueNode,
+    ) as SDK.StateQueueNode;
+    const stateQueueNodeCborHex = Data.to(stateQueueNode, SDK.StateQueueNode);
+    const headerCborHex = Data.to(stateQueueNode.header, SDK.Header);
     const computedHeaderHash = computeHash28(
       Buffer.from(headerCborHex, "hex"),
     ).toString("hex");
@@ -722,7 +720,7 @@ const lockOutput = ({
       "CorrectionLock output has invalid address/value/datum topology",
     );
   }
-  const parsed = SDK.parseStateQueueCorrectionLockDatumV1(
+  const parsed = SDK.parseStateQueueCorrectionLockDatum(
     Data.from(datum.to_canonical_cbor_hex(), SDK.CorrectionLockDatum),
   );
   if (parsed === null) throw new Error("CorrectionLock datum is non-canonical");
@@ -730,8 +728,8 @@ const lockOutput = ({
 };
 
 const admitObservation = (
-  observation: WatcherProductionStateQueueObservationV1,
-): WatcherProductionStateQueueObservationV1 => {
+  observation: WatcherAuthenticatedStateQueueObservation,
+): WatcherAuthenticatedStateQueueObservation => {
   admittedObservations.add(observation);
   for (const header of observation.finalizedHeaders) {
     admittedHeaders.add(header);
@@ -782,7 +780,7 @@ const reconstructQueue = ({
   previousQueue: readonly QueueNode[];
   transactionHash: string;
   spentInputOutRefs: readonly string[];
-  resolvedInputs: FraudProofRawL1TransactionV1["resolvedInputs"];
+  resolvedInputs: FraudProofRawL1Transaction["resolvedInputs"];
   outputs: readonly QueueOutput[];
   stateQueueAddress: string;
   stateQueuePolicyId: string;
@@ -904,8 +902,8 @@ const decodeLockOutputs = ({
 
 const orderedResolved = (
   labels: readonly string[],
-  values: FraudProofRawL1TransactionV1["resolvedInputs"],
-): readonly FraudProofRawL1TransactionV1["resolvedInputs"][number][] => {
+  values: FraudProofRawL1Transaction["resolvedInputs"],
+): readonly FraudProofRawL1Transaction["resolvedInputs"][number][] => {
   const byRef = new Map(values.map((value) => [value.outRef, value]));
   return labels.map((label) => {
     const value = byRef.get(label);
@@ -921,7 +919,7 @@ const fraudProofIdentity = ({
   fraudProofAddress,
   targetHeaderHash,
 }: {
-  proof: FraudProofRawL1TransactionV1["resolvedReferenceInputs"][number];
+  proof: FraudProofRawL1Transaction["resolvedReferenceInputs"][number];
   fraudProofPolicyId: string;
   fraudProofAddress: string;
   targetHeaderHash: string;
@@ -972,16 +970,16 @@ const correctionLockWitness = ({
   fraudProofPolicyId,
   fraudProofAddress,
 }: {
-  raw: FraudProofRawL1TransactionV1;
+  raw: FraudProofRawL1Transaction;
   body: CML.TransactionBody;
   mintPolicies: readonly string[];
-  redeemers: readonly SDK.StateQueueTransitionRedeemerV1[];
+  redeemers: readonly SDK.StateQueueTransitionRedeemer[];
   stateQueuePolicyId: string;
   correctionLockAddress: string;
   hubOraclePolicyId: string;
   fraudProofPolicyId: string;
   fraudProofAddress: string;
-}): SDK.StateQueueCorrectionLockWitnessV1 => {
+}): SDK.StateQueueCorrectionLockWitness => {
   const spentRefs = outputReferences(body.inputs());
   const referenceRefs = outputReferences(body.reference_inputs());
   const spentResolved = orderedResolved(spentRefs, raw.resolvedInputs);
@@ -1157,13 +1155,13 @@ const advanceCurrentLock = ({
   chainPointId,
   finalityDepth,
 }: {
-  current: WatcherProductionCorrectionLockObservationV1 | null;
-  witness: SDK.StateQueueCorrectionLockWitnessV1;
+  current: WatcherCorrectionLockObservation | null;
+  witness: SDK.StateQueueCorrectionLockWitness;
   transactionHash: string;
   point: Readonly<{ blockHash: string; blockNo: string; slot: string }>;
   chainPointId: string;
   finalityDepth: string;
-}): WatcherProductionCorrectionLockObservationV1 | null => {
+}): WatcherCorrectionLockObservation | null => {
   if (witness.kind === "none") return current;
   if (witness.kind === "genesis") {
     if (current !== null)
@@ -1221,13 +1219,13 @@ const deriveObservation = ({
   previous,
   rawTransactions,
 }: {
-  nativeBlock: WatcherNativeBlockAdmissionV1;
-  localObservation: WatcherLocalKupmiosNativeObservationV1;
-  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthorityV1>;
+  nativeBlock: WatcherNativeBlockAdmission;
+  localObservation: WatcherLocalKupmiosNativeObservation;
+  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
   sourceId: string;
-  previous: WatcherProductionStateQueueObservationV1 | null;
-  rawTransactions: readonly FraudProofRawL1TransactionV1[];
-}): WatcherProductionStateQueueObservationV1 => {
+  previous: WatcherAuthenticatedStateQueueObservation | null;
+  rawTransactions: readonly FraudProofRawL1Transaction[];
+}): WatcherAuthenticatedStateQueueObservation => {
   if (
     localObservation.block.chainPoint.blockHash !== nativeBlock.blockHash ||
     localObservation.block.chainPoint.slot !== nativeBlock.slot ||
@@ -1240,7 +1238,7 @@ const deriveObservation = ({
       "state-queue source chain point/finality differs from native admission",
     );
   }
-  const authenticatedChainPointId = computeFraudProofRawL1PointIdV1({
+  const authenticatedChainPointId = computeFraudProofRawL1PointId({
     blockHash: nativeBlock.blockHash,
     blockNo: nativeBlock.blockNo,
     slot: nativeBlock.slot,
@@ -1263,7 +1261,7 @@ const deriveObservation = ({
   let queue = previous?.finalizedQueue ?? Object.freeze([] as QueueNode[]);
   let finalizedHeaders = previous?.finalizedHeaders ?? Object.freeze([]);
   let finalizedCorrectionLock = previous?.finalizedCorrectionLock ?? null;
-  const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpointV1[] = [];
+  const checkpoints: SDK.StateQueueAuthenticatedReplayCheckpoint[] = [];
   const seenTransactionIndexes = new Set<number>();
   for (const raw of rawTransactions) {
     const transactionIndex = nativeBlock.transactionIds.indexOf(raw.txHash);
@@ -1367,7 +1365,7 @@ const deriveObservation = ({
       fraudProofPolicyId,
       fraudProofAddress,
     });
-    const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpointV1({
+    const checkpoint = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
       deploymentIdentityDigest: authority.deploymentFingerprint,
       stateQueuePolicyId,
       transactionHash: raw.txHash,
@@ -1452,7 +1450,7 @@ const deriveObservation = ({
     finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
   });
   const canonical = {
-    schemaVersion: WATCHER_PRODUCTION_STATE_QUEUE_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
     deploymentIdentityDigest: authority.deploymentFingerprint,
     protocolScriptAuthorityDigest: authority.authorityDigest,
     stateQueuePolicyId,
@@ -1470,7 +1468,7 @@ const deriveObservation = ({
   };
   return Object.freeze({
     ...canonical,
-    observationDigest: watcherSha256CanonicalJsonV1(canonical),
+    observationDigest: watcherSha256CanonicalJson(canonical),
   });
 };
 
@@ -1482,18 +1480,18 @@ const normalizedEndpoint = (value: string): string => {
   return parsed.toString().replace(/\/$/u, "");
 };
 
-export const createWatcherProductionStateQueueObservationSourceV1 = ({
+export const createWatcherStateQueueObservationSource = ({
   deploymentIdentity,
   rawSource,
 }: {
-  deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
-  rawSource: LocalKupmiosFraudProofRawSourceV1;
-}): WatcherProductionStateQueueObservationSourceV1 => {
-  assertVerifiedWatcherDeploymentIdentityV1(deploymentIdentity);
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+  rawSource: LocalKupmiosFraudProofRawSource;
+}): WatcherStateQueueObservationSource => {
+  assertVerifiedWatcherDeploymentIdentity(deploymentIdentity);
   const authority =
-    watcherDeploymentProtocolScriptAuthorityV1(deploymentIdentity);
-  assertWatcherDeploymentProtocolScriptAuthorityV1(authority);
-  const sourceDetails = localKupmiosHttpOgmiosRawSourceDetailsV1(rawSource);
+    watcherDeploymentProtocolScriptAuthority(deploymentIdentity);
+  assertWatcherDeploymentProtocolScriptAuthority(authority);
+  const sourceDetails = localKupmiosHttpOgmiosRawSourceDetails(rawSource);
   if (
     sourceDetails === null ||
     sourceDetails.deploymentIdentityDigest !== deploymentIdentity.manifestId ||
@@ -1506,25 +1504,25 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
   }
   const readers: PersistedRestoreReaders = {
     readBlock: (point) =>
-      readAdmittedLocalKupmiosRawBlockAtPointV1({
+      readAdmittedLocalKupmiosRawBlockAtPoint({
         source: rawSource,
         point,
       }),
     readTransaction: (txHash, point) =>
-      readAdmittedLocalKupmiosRawTransactionV1({
+      readAdmittedLocalKupmiosRawTransaction({
         source: rawSource,
         txHash,
         expectedInclusionPoint: point,
         minimumConfirmationDepth: RELEASE_FINALITY_DEPTH,
       }),
     readAddress: (address, point) =>
-      readAdmittedLocalKupmiosAddressUtxosAtPointV1({
+      readAdmittedLocalKupmiosAddressUtxosAtPoint({
         source: rawSource,
         address,
         point,
       }),
     readUnitHistory: (unit, point) =>
-      readAdmittedLocalKupmiosUnitHistoryAtPointV1({
+      readAdmittedLocalKupmiosUnitHistoryAtPoint({
         source: rawSource,
         unit,
         point,
@@ -1535,12 +1533,9 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
       if (!admittedSources.has(source)) {
         throw new Error("state-queue observation source is not admitted");
       }
-      assertWatcherLocalKupmiosNativeObservationV1(
-        localObservation,
-        nativeBlock,
-      );
+      assertWatcherLocalKupmiosNativeObservation(localObservation, nativeBlock);
       if (previous !== null) {
-        assertWatcherProductionStateQueueObservationV1(previous);
+        assertWatcherStateQueueObservation(previous);
         if (
           previous.deploymentIdentityDigest !== deploymentIdentity.manifestId ||
           previous.protocolScriptAuthorityDigest !==
@@ -1553,7 +1548,7 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
         }
       }
       const transportDetails = localObservation.transportAttestations
-        .map(watcherL1TransportAttestationDetailsV1)
+        .map(watcherL1TransportAttestationDetails)
         .filter((value) => value !== null);
       const kupo = transportDetails.find(
         ({ provider }) =>
@@ -1580,13 +1575,13 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
         blockHash: nativeBlock.blockHash,
         blockNo: nativeBlock.blockNo,
         slot: nativeBlock.slot,
-        pointId: computeFraudProofRawL1PointIdV1({
+        pointId: computeFraudProofRawL1PointId({
           blockHash: nativeBlock.blockHash,
           blockNo: nativeBlock.blockNo,
           slot: nativeBlock.slot,
         }),
       });
-      const rawBlock = await readAdmittedLocalKupmiosRawBlockAtPointV1({
+      const rawBlock = await readAdmittedLocalKupmiosRawBlockAtPoint({
         source: rawSource,
         point,
       });
@@ -1611,7 +1606,7 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
       });
       const rawTransactions = await Promise.all(
         candidates.map(({ txHash }) =>
-          readAdmittedLocalKupmiosRawTransactionV1({
+          readAdmittedLocalKupmiosRawTransaction({
             source: rawSource,
             txHash,
             expectedInclusionPoint: point,
@@ -1634,7 +1629,7 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
       if (!admittedSources.has(source)) {
         throw new Error("state-queue observation source is not admitted");
       }
-      const admittedBoundary = await readAdmittedLocalKupmiosBoundaryV1({
+      const admittedBoundary = await readAdmittedLocalKupmiosBoundary({
         source: rawSource,
       });
       const intersection = Object.freeze({
@@ -1671,7 +1666,7 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
       if (!admittedSources.has(source)) {
         throw new Error("state-queue observation source is not admitted");
       }
-      const boundary = await readAdmittedLocalKupmiosBoundaryV1({
+      const boundary = await readAdmittedLocalKupmiosBoundary({
         source: rawSource,
       });
       const intersection = Object.freeze({
@@ -1704,15 +1699,15 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
         authority,
         readers: {
           readBoundary: () =>
-            readAdmittedLocalKupmiosBoundaryV1({ source: rawSource }),
+            readAdmittedLocalKupmiosBoundary({ source: rawSource }),
           readHistory: (unit, point) =>
-            readAdmittedLocalKupmiosUnitHistoryAtPointV1({
+            readAdmittedLocalKupmiosUnitHistoryAtPoint({
               source: rawSource,
               unit,
               point,
             }),
           readTransaction: (txHash, point) =>
-            readAdmittedLocalKupmiosRawTransactionV1({
+            readAdmittedLocalKupmiosRawTransaction({
               source: rawSource,
               txHash,
               expectedInclusionPoint: point,
@@ -1723,22 +1718,22 @@ export const createWatcherProductionStateQueueObservationSourceV1 = ({
       admittedHeaders.add(header);
       return header;
     },
-  } satisfies WatcherProductionStateQueueObservationSourceV1);
+  } satisfies WatcherStateQueueObservationSource);
   admittedSources.add(source);
   return source;
 };
 
 /** Pure semantic test seam. It never admits the returned structural value. */
-export const unsafeDeriveWatcherProductionStateQueueObservationForTest =
+export const unsafeDeriveWatcherStateQueueObservationForTest =
   deriveObservation;
 
 const rawRedeemers = (
   witnessSetCbor: string,
-): readonly SDK.StateQueueTransitionRedeemerV1[] => {
+): readonly SDK.StateQueueTransitionRedeemer[] => {
   const witnessSet = CML.TransactionWitnessSet.from_cbor_hex(witnessSetCbor);
   const flat = witnessSet.redeemers()?.to_flat_format();
   if (flat === undefined) return Object.freeze([]);
-  const result: SDK.StateQueueTransitionRedeemerV1[] = [];
+  const result: SDK.StateQueueTransitionRedeemer[] = [];
   for (let index = 0; index < flat.len(); index += 1) {
     const redeemer = flat.get(index);
     const purpose = (() => {
@@ -1780,7 +1775,7 @@ type PersistedRestoreReaders = Readonly<{
       slot: string;
       pointId: string;
     }>,
-  ): Promise<LocalKupmiosRawBlockAtPointV1>;
+  ): Promise<LocalKupmiosRawBlockAtPoint>;
   readTransaction(
     txHash: string,
     point: Readonly<{
@@ -1789,7 +1784,7 @@ type PersistedRestoreReaders = Readonly<{
       slot: string;
       pointId: string;
     }>,
-  ): Promise<FraudProofRawL1TransactionV1>;
+  ): Promise<FraudProofRawL1Transaction>;
   readAddress(
     address: string,
     point: Readonly<{
@@ -1798,7 +1793,7 @@ type PersistedRestoreReaders = Readonly<{
       slot: string;
       pointId: string;
     }>,
-  ): Promise<readonly FraudProofRawL1UtxoV1[]>;
+  ): Promise<readonly FraudProofRawL1Utxo[]>;
   readUnitHistory?(
     unit: string,
     point: Readonly<{
@@ -1807,7 +1802,7 @@ type PersistedRestoreReaders = Readonly<{
       slot: string;
       pointId: string;
     }>,
-  ): ReturnType<typeof readAdmittedLocalKupmiosUnitHistoryAtPointV1>;
+  ): ReturnType<typeof readAdmittedLocalKupmiosUnitHistoryAtPoint>;
 }>;
 
 const snapshotObservationAtBoundary = async ({
@@ -1821,13 +1816,13 @@ const snapshotObservationAtBoundary = async ({
     blockNo: string;
     slot: string;
   }>;
-  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthorityV1>;
+  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
   sourceId: string;
   readers: PersistedRestoreReaders;
-}): Promise<WatcherProductionStateQueueObservationV1> => {
+}): Promise<WatcherAuthenticatedStateQueueObservation> => {
   const intersectionPoint = Object.freeze({
     ...intersection,
-    pointId: computeFraudProofRawL1PointIdV1(intersection),
+    pointId: computeFraudProofRawL1PointId(intersection),
   });
   const rawBlock = await readers.readBlock(intersectionPoint);
   if (
@@ -1847,7 +1842,7 @@ const snapshotObservationAtBoundary = async ({
     unit: string;
     outRef: string;
     expectedOutput: CML.TransactionOutput;
-  }): Promise<FraudProofRawL1TransactionV1> => {
+  }): Promise<FraudProofRawL1Transaction> => {
     const [txHash, outputIndexText] = outRef.split("#") as [string, string];
     const history = await readers.readUnitHistory!(unit, intersectionPoint);
     const creation = history.transactions.find(
@@ -1961,8 +1956,7 @@ const snapshotObservationAtBoundary = async ({
         }),
       )
     ).filter(
-      (header): header is WatcherProductionStateQueueHeaderObservationV1 =>
-        header !== null,
+      (header): header is WatcherStateQueueHeaderObservation => header !== null,
     ),
   );
   const liveLockOutput = CML.TransactionOutput.from_cbor_hex(
@@ -1982,7 +1976,7 @@ const snapshotObservationAtBoundary = async ({
     finalityDepth: RELEASE_FINALITY_DEPTH.toString(),
   });
   const canonical = {
-    schemaVersion: WATCHER_PRODUCTION_STATE_QUEUE_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION,
     deploymentIdentityDigest: authority.deploymentFingerprint,
     protocolScriptAuthorityDigest: authority.authorityDigest,
     stateQueuePolicyId,
@@ -2007,7 +2001,7 @@ const snapshotObservationAtBoundary = async ({
   };
   return Object.freeze({
     ...canonical,
-    observationDigest: watcherSha256CanonicalJsonV1(canonical),
+    observationDigest: watcherSha256CanonicalJson(canonical),
   });
 };
 
@@ -2017,23 +2011,23 @@ const resolveRetainedHeaderAtBoundary = async ({
   readers,
 }: {
   headerHash: string;
-  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthorityV1>;
+  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
   readers: Readonly<{
-    readBoundary(): ReturnType<typeof readAdmittedLocalKupmiosBoundaryV1>;
+    readBoundary(): ReturnType<typeof readAdmittedLocalKupmiosBoundary>;
     readHistory(
       unit: string,
       point: Parameters<
-        typeof readAdmittedLocalKupmiosUnitHistoryAtPointV1
+        typeof readAdmittedLocalKupmiosUnitHistoryAtPoint
       >[0]["point"],
-    ): ReturnType<typeof readAdmittedLocalKupmiosUnitHistoryAtPointV1>;
+    ): ReturnType<typeof readAdmittedLocalKupmiosUnitHistoryAtPoint>;
     readTransaction(
       txHash: string,
       point: Parameters<
-        typeof readAdmittedLocalKupmiosRawTransactionV1
+        typeof readAdmittedLocalKupmiosRawTransaction
       >[0]["expectedInclusionPoint"],
-    ): Promise<FraudProofRawL1TransactionV1>;
+    ): Promise<FraudProofRawL1Transaction>;
   }>;
-}): Promise<WatcherProductionStateQueueHeaderObservationV1> => {
+}): Promise<WatcherStateQueueHeaderObservation> => {
   if (!HEX_28.test(headerHash)) {
     throw new Error("retained HeaderV1 lookup requires a 28-byte header hash");
   }
@@ -2045,7 +2039,7 @@ const resolveRetainedHeaderAtBoundary = async ({
   );
   const unit = `${stateQueuePolicyId}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;
   const history = await readers.readHistory(unit, boundary.kupoCheckpoint);
-  const candidates: WatcherProductionStateQueueHeaderObservationV1[] = [];
+  const candidates: WatcherStateQueueHeaderObservation[] = [];
   for (const entry of history.transactions) {
     const raw = await readers.readTransaction(
       entry.txHash,
@@ -2130,14 +2124,14 @@ const authenticatePersistedBootstrapTopology = async ({
   authority,
   readers,
 }: {
-  persisted: WatcherProductionStateQueueObservationV1;
+  persisted: WatcherAuthenticatedStateQueueObservation;
   throughPoint: Readonly<{
     blockHash: string;
     blockNo: string;
     slot: string;
     pointId: string;
   }>;
-  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthorityV1>;
+  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
   readers: PersistedRestoreReaders;
 }): Promise<void> => {
   const stateQueuePolicyId = authority.protocolScriptHashes.stateQueueMint;
@@ -2151,7 +2145,7 @@ const authenticatePersistedBootstrapTopology = async ({
   );
   const transactionCache = new Map<
     string,
-    Promise<FraudProofRawL1TransactionV1>
+    Promise<FraudProofRawL1Transaction>
   >();
   if (readers.readUnitHistory === undefined) {
     throw new Error(
@@ -2167,7 +2161,7 @@ const authenticatePersistedBootstrapTopology = async ({
       slot: string;
       pointId: string;
     }>,
-  ): Promise<FraudProofRawL1TransactionV1> => {
+  ): Promise<FraudProofRawL1Transaction> => {
     const cached = transactionCache.get(txHash);
     if (cached !== undefined) return cached;
     const read = readers.readTransaction(txHash, point);
@@ -2183,7 +2177,7 @@ const authenticatePersistedBootstrapTopology = async ({
   }): Promise<
     Readonly<{
       output: CML.TransactionOutput;
-      creation: FraudProofRawL1TransactionV1;
+      creation: FraudProofRawL1Transaction;
     }>
   > => {
     if (!OUT_REF.test(outRef)) {
@@ -2266,7 +2260,7 @@ const authenticatePersistedBootstrapTopology = async ({
         header.stateQueueNodeCborHex !== decoded.header.stateQueueNodeCborHex ||
         header.linkedListDatumCborHex !==
           decoded.header.linkedListDatumCborHex ||
-        !watcherSameCanonicalJsonV1(
+        !watcherSameCanonicalJson(
           header.daAvailability,
           decoded.header.daAvailability,
         ) ||
@@ -2349,11 +2343,11 @@ const restorePersistedObservationChain = async ({
     slot: string;
   }>;
   ogmiosTipBlockNo: string;
-  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthorityV1>;
+  authority: ReturnType<typeof watcherDeploymentProtocolScriptAuthority>;
   sourceId: string;
   maximumObservations: number;
   readers: PersistedRestoreReaders;
-}): Promise<WatcherProductionStateQueueRecoveryV1> => {
+}): Promise<WatcherStateQueueRecovery> => {
   if (
     !HEX_32.test(intersection.blockHash) ||
     !NATURAL.test(intersection.blockNo) ||
@@ -2370,7 +2364,7 @@ const restorePersistedObservationChain = async ({
   if (parsed.some((observation) => observation === null)) {
     throw new Error("state-queue restore contains a non-canonical observation");
   }
-  const chain = parsed as readonly WatcherProductionStateQueueObservationV1[];
+  const chain = parsed as readonly WatcherAuthenticatedStateQueueObservation[];
   const atOrBefore = chain.filter(
     ({ nativePoint }) =>
       BigInt(nativePoint.blockNo) < BigInt(intersection.blockNo) ||
@@ -2393,7 +2387,7 @@ const restorePersistedObservationChain = async ({
   }
   const intersectionPoint = Object.freeze({
     ...intersection,
-    pointId: computeFraudProofRawL1PointIdV1(intersection),
+    pointId: computeFraudProofRawL1PointId(intersection),
   });
   const stateQueuePolicyId = authority.protocolScriptHashes.stateQueueMint;
   const hubOraclePolicyId = authority.protocolScriptHashes.hubOracleMint;
@@ -2409,12 +2403,12 @@ const restorePersistedObservationChain = async ({
     authority.network,
     scriptHashToCredential(authority.protocolScriptHashes.fraudProofSpend),
   );
-  let prior: WatcherProductionStateQueueObservationV1 | null = null;
+  let prior: WatcherAuthenticatedStateQueueObservation | null = null;
   let replayedHeaders = Object.freeze(
-    [] as WatcherProductionStateQueueHeaderObservationV1[],
+    [] as WatcherStateQueueHeaderObservation[],
   );
-  let replayedLock: WatcherProductionCorrectionLockObservationV1 | null = null;
-  let previousCheckpoint: SDK.StateQueueAuthenticatedReplayCheckpointV1 | null =
+  let replayedLock: WatcherCorrectionLockObservation | null = null;
+  let previousCheckpoint: SDK.StateQueueAuthenticatedReplayCheckpoint | null =
     null;
   for (const persisted of chain) {
     const isAuthenticatedBase = prior === null;
@@ -2440,7 +2434,7 @@ const restorePersistedObservationChain = async ({
       blockHash: persisted.nativePoint.blockHash,
       blockNo: persisted.nativePoint.blockNo,
       slot: persisted.nativePoint.slot,
-      pointId: computeFraudProofRawL1PointIdV1({
+      pointId: computeFraudProofRawL1PointId({
         blockHash: persisted.nativePoint.blockHash,
         blockNo: persisted.nativePoint.blockNo,
         slot: persisted.nativePoint.slot,
@@ -2534,7 +2528,7 @@ const restorePersistedObservationChain = async ({
         fraudProofPolicyId: authority.protocolScriptHashes.fraudProofMint,
         fraudProofAddress,
       });
-      const rederived = SDK.deriveStateQueueAuthenticatedReplayCheckpointV1({
+      const rederived = SDK.deriveStateQueueAuthenticatedReplayCheckpoint({
         deploymentIdentityDigest: authority.deploymentFingerprint,
         stateQueuePolicyId,
         transactionHash: raw.txHash,
@@ -2554,7 +2548,7 @@ const restorePersistedObservationChain = async ({
       });
       if (
         rederived === null ||
-        !watcherSameCanonicalJsonV1(rederived, checkpoint)
+        !watcherSameCanonicalJson(rederived, checkpoint)
       ) {
         throw new Error(
           "state-queue persisted checkpoint differs from authenticated L1 replay",
@@ -2614,14 +2608,8 @@ const restorePersistedObservationChain = async ({
             previousCheckpoint.nextQueue,
             persisted.finalizedQueue,
           ))) ||
-      !watcherSameCanonicalJsonV1(
-        replayedHeaders,
-        persisted.finalizedHeaders,
-      ) ||
-      !watcherSameCanonicalJsonV1(
-        replayedLock,
-        persisted.finalizedCorrectionLock,
-      )
+      !watcherSameCanonicalJson(replayedHeaders, persisted.finalizedHeaders) ||
+      !watcherSameCanonicalJson(replayedLock, persisted.finalizedCorrectionLock)
     ) {
       throw new Error(
         "state-queue persisted cursor differs from checkpoint replay",
@@ -2661,7 +2649,7 @@ const restorePersistedObservationChain = async ({
 
 const restoreLongestPersistedObservationChain = async (
   input: Parameters<typeof restorePersistedObservationChain>[0],
-): Promise<WatcherProductionStateQueueRecoveryV1> => {
+): Promise<WatcherStateQueueRecovery> => {
   if (
     input.persistedObservations.length === 0 ||
     input.persistedObservations.length > input.maximumObservations
@@ -2671,7 +2659,7 @@ const restoreLongestPersistedObservationChain = async (
   try {
     return await restorePersistedObservationChain(input);
   } catch (fullError) {
-    if (!(fullError instanceof LocalKupmiosExactPointNotCanonicalV1Error)) {
+    if (!(fullError instanceof LocalKupmiosExactPointNotCanonicalError)) {
       throw fullError;
     }
     for (
@@ -2691,12 +2679,12 @@ const restoreLongestPersistedObservationChain = async (
         blockHash: candidate.nativePoint.blockHash,
         blockNo: candidate.nativePoint.blockNo,
         slot: candidate.nativePoint.slot,
-        pointId: computeFraudProofRawL1PointIdV1(candidate.nativePoint),
+        pointId: computeFraudProofRawL1PointId(candidate.nativePoint),
       });
       try {
         await input.readers.readBlock(candidatePoint);
       } catch (error) {
-        if (error instanceof LocalKupmiosExactPointNotCanonicalV1Error) {
+        if (error instanceof LocalKupmiosExactPointNotCanonicalError) {
           continue;
         }
         throw error;
@@ -2719,15 +2707,15 @@ const restoreLongestPersistedObservationChain = async (
 };
 
 /** Pure replay test seam; unlike the production source, it grants no authority. */
-export const unsafeRestorePersistedWatcherProductionStateQueueObservationForTest =
+export const unsafeRestorePersistedWatcherStateQueueObservationForTest =
   restorePersistedObservationChain;
 
 /** Pure rollback-prefix selection test seam; it grants no source authority. */
-export const unsafeRestoreLongestWatcherProductionStateQueuePrefixForTest =
+export const unsafeRestoreLongestWatcherStateQueuePrefixForTest =
   restoreLongestPersistedObservationChain;
 
 /** Pure bootstrap test seam; it grants no source admission authority. */
-export const unsafeSnapshotWatcherProductionStateQueueAtBoundaryForTest =
+export const unsafeSnapshotWatcherStateQueueAtBoundaryForTest =
   snapshotObservationAtBoundary;
 
 /** Pure retained-header test seam; it grants no source admission authority. */

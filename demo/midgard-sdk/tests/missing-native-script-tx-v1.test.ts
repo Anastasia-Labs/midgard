@@ -6,18 +6,18 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  missingNativeScriptIsAbsentV1,
+  missingNativeScriptIsAbsent,
   MissingNativeScriptTxStep02State,
-  missingNativeScriptTxStep02StateFromBadTxV1,
+  missingNativeScriptTxStep02StateFromBadTx,
   MissingNativeScriptTxStep03State,
-  missingNativeScriptTxStep03StateV1,
+  missingNativeScriptTxStep03State,
   MissingNativeScriptTxStep04State,
-  missingNativeScriptTxStep04StateV1,
+  missingNativeScriptTxStep04State,
   MissingNativeScriptTxStep05State,
-  missingNativeScriptTxStep05StateV1,
-  missingNativeScriptTxStep06ReadyStateV1,
+  missingNativeScriptTxStep05State,
+  missingNativeScriptTxStep06ReadyState,
   MissingNativeScriptTxStep06State,
-  missingNativeScriptTxVersionedScriptHashV1,
+  missingNativeScriptTxVersionedScriptHash,
 } from "../src/fraud-proof/missing-native-script-tx-v1.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
@@ -37,7 +37,7 @@ const versionedScriptItem = encodeMidgardVersionedScript({
 
 describe("missing-native-script-tx V1 twins", () => {
   it("round-trips every forwarded state in on-chain field order", () => {
-    const step02 = missingNativeScriptTxStep02StateFromBadTxV1({
+    const step02 = missingNativeScriptTxStep02StateFromBadTx({
       badTxId: h32("a"),
       badTxWitnessSetHash: h32("b"),
     });
@@ -48,7 +48,7 @@ describe("missing-native-script-tx V1 twins", () => {
       ),
     ).toStrictEqual(step02);
 
-    const step03 = missingNativeScriptTxStep03StateV1({
+    const step03 = missingNativeScriptTxStep03State({
       inputWithMissingScript: { tx_id: h32("c"), output_index: 2n },
       badTxId: step02.bad_tx_id,
       badTxWitnessSetHash: step02.bad_tx_witness_set_hash,
@@ -60,7 +60,7 @@ describe("missing-native-script-tx V1 twins", () => {
       ),
     ).toStrictEqual(step03);
 
-    const step04 = missingNativeScriptTxStep04StateV1({
+    const step04 = missingNativeScriptTxStep04State({
       producingTxId: step03.input_with_missing_script.tx_id,
       badInputOutputIndex: step03.input_with_missing_script.output_index,
       badTxId: step03.bad_tx_id,
@@ -73,7 +73,7 @@ describe("missing-native-script-tx V1 twins", () => {
       ),
     ).toStrictEqual(step04);
 
-    const step05 = missingNativeScriptTxStep05StateV1({
+    const step05 = missingNativeScriptTxStep05State({
       expectedMissingScriptHash: h28("d"),
       badTxId: step04.bad_tx_id,
       badTxWitnessSetHash: step04.bad_tx_witness_set_hash,
@@ -85,7 +85,7 @@ describe("missing-native-script-tx V1 twins", () => {
       ),
     ).toStrictEqual(step05);
 
-    const step06 = missingNativeScriptTxStep06ReadyStateV1(step05);
+    const step06 = missingNativeScriptTxStep06ReadyState(step05);
     expect(
       Data.from(
         Data.to(step06, MissingNativeScriptTxStep06State),
@@ -96,16 +96,16 @@ describe("missing-native-script-tx V1 twins", () => {
 
   it("hashes tag-0 native scripts and distinguishes absence from presence", () => {
     const expectedMissingScriptHash =
-      missingNativeScriptTxVersionedScriptHashV1(nativeScriptBytes);
+      missingNativeScriptTxVersionedScriptHash(nativeScriptBytes);
     expect(expectedMissingScriptHash).toHaveLength(56);
     expect(
-      missingNativeScriptIsAbsentV1({
+      missingNativeScriptIsAbsent({
         scriptTxWitsItems: [],
         expectedMissingScriptHash,
       }),
     ).toBe(true);
     expect(
-      missingNativeScriptIsAbsentV1({
+      missingNativeScriptIsAbsent({
         scriptTxWitsItems: [versionedScriptItem],
         expectedMissingScriptHash,
       }),
@@ -114,7 +114,7 @@ describe("missing-native-script-tx V1 twins", () => {
 
   it("refuses a non-canonical field-6 item", () => {
     expect(() =>
-      missingNativeScriptIsAbsentV1({
+      missingNativeScriptIsAbsent({
         scriptTxWitsItems: [
           Buffer.concat([versionedScriptItem, Buffer.from([0])]),
         ],

@@ -2,7 +2,7 @@ import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  hashBlockHeaderV1,
+  hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -48,13 +48,13 @@ import {
 } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
 import { transitionTraceError } from "./errors.js";
 
@@ -68,7 +68,7 @@ export type SubmitTransitionTraceProofConfig = {
   readonly proof: TransitionFaultProof;
   readonly additionalReferenceInputs?: readonly UTxO[];
   /** Required published shared minting witnesses for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -110,7 +110,7 @@ export type SubmitTransitionTraceProofResult = {
   readonly awaitedConfirmation: boolean;
 };
 
-export type SubmitTransitionTraceRouteResultV1 = Readonly<{
+export type SubmitTransitionTraceRouteResult = Readonly<{
   txHash: string;
   routeOutRef: string;
   fraudulentHeaderHash: string;
@@ -118,7 +118,7 @@ export type SubmitTransitionTraceRouteResultV1 = Readonly<{
   awaitedConfirmation: boolean;
 }>;
 
-export type SubmitTransitionTraceFinalResultV1 = Readonly<{
+export type SubmitTransitionTraceFinalResult = Readonly<{
   txHash: string;
   fraudProofOutRef: string;
   fraudulentHeaderHash: string;
@@ -410,7 +410,7 @@ export const submitTransitionTraceProof = async ({
     requireFraudProofSpend: true,
   });
   const computedHeaderHash = await Effect.runPromise(
-    hashBlockHeaderV1(proof.header),
+    hashBlockHeader(proof.header),
   );
   if (computedHeaderHash !== proof.challenged_header_hash) {
     throw transitionTraceError(
@@ -555,12 +555,12 @@ export const submitTransitionTraceProof = async ({
   };
   let spendLayout: TransitionTraceFinalSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "transition-trace computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "transition-trace fraud-proof mint",
@@ -673,7 +673,7 @@ export const submitTransitionTraceProof = async ({
  * Journal-visible router transaction. It never submits before the signed body
  * has crossed the shared local-evaluation boundary.
  */
-export const submitTransitionTraceRouteV1 = async ({
+export const submitTransitionTraceRoute = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -687,8 +687,8 @@ export const submitTransitionTraceRouteV1 = async ({
   SubmitTransitionTraceProofConfig,
   "additionalReferenceInputs" | "witnessReferenceScripts"
 > & {
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-}): Promise<SubmitTransitionTraceRouteResultV1> => {
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+}): Promise<SubmitTransitionTraceRouteResult> => {
   const {
     deploymentInfo: parsedDeploymentInfo,
     transitionTraceCategory,
@@ -700,7 +700,7 @@ export const submitTransitionTraceRouteV1 = async ({
     requireFraudProofSpend: true,
   });
   const computedHeaderHash = await Effect.runPromise(
-    hashBlockHeaderV1(proof.header),
+    hashBlockHeader(proof.header),
   );
   if (computedHeaderHash !== proof.challenged_header_hash) {
     throw transitionTraceError(
@@ -784,9 +784,9 @@ export const submitTransitionTraceRouteV1 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -818,7 +818,7 @@ export const submitTransitionTraceRouteV1 = async ({
 };
 
 /** Exact terminal selected by the authenticated router output. */
-export const submitTransitionTraceFinalV1 = async ({
+export const submitTransitionTraceFinal = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -831,8 +831,8 @@ export const submitTransitionTraceFinalV1 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: SubmitTransitionTraceProofConfig & {
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-}): Promise<SubmitTransitionTraceFinalResultV1> => {
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+}): Promise<SubmitTransitionTraceFinalResult> => {
   const {
     deploymentInfo: parsedDeploymentInfo,
     transitionTraceCategory,
@@ -845,7 +845,7 @@ export const submitTransitionTraceFinalV1 = async ({
     requireFraudProofSpend: true,
   });
   const computedHeaderHash = await Effect.runPromise(
-    hashBlockHeaderV1(proof.header),
+    hashBlockHeader(proof.header),
   );
   if (computedHeaderHash !== proof.challenged_header_hash) {
     throw transitionTraceError(
@@ -923,12 +923,12 @@ export const submitTransitionTraceFinalV1 = async ({
   );
   let spendLayout: TransitionTraceFinalSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "transition-trace computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "transition-trace fraud-proof mint",
@@ -998,9 +998,9 @@ export const submitTransitionTraceFinalV1 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

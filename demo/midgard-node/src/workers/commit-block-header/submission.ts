@@ -1,14 +1,14 @@
 import {
-  encodeMidgardCekProgramMaterialDaValueV1,
-  mergeMidgardCekProgramMaterialSidecarsV1,
+  encodeMidgardCekProgramMaterialDaValue,
+  mergeMidgardCekProgramMaterialSidecars,
 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   type DaPayloadEmissionMode,
-  maxDaPayloadV1InnerBytes,
-  projectDaPayloadV1Sizes,
+  maxDaPayloadInnerBytes,
+  projectDaPayloadSizes,
 } from "@al-ft/midgard-core/da-payload-sizing";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -93,8 +93,8 @@ import {
   revalidateStateQueueLease,
 } from "./pending-journal.js";
 import {
-  getHeaderV1FromStateQueueDatumLocal,
-  hashBlockHeaderV1Local,
+  getHeaderFromStateQueueDatumLocal,
+  hashBlockHeaderLocal,
   stateQueueOutRef,
 } from "./state-queue.js";
 import { makeEventCommitments } from "./transition-commitments.js";
@@ -125,10 +125,10 @@ const forcedProgramMaterialSidecars = (
 const daProgramMaterialFromSidecars = (
   sidecars: Iterable<Uint8Array>,
 ): readonly SDK.DaPayloadEntry[] =>
-  mergeMidgardCekProgramMaterialSidecarsV1(sidecars).map((entry) =>
+  mergeMidgardCekProgramMaterialSidecars(sidecars).map((entry) =>
     daEntry(
       Buffer.from(entry.root),
-      encodeMidgardCekProgramMaterialDaValueV1(entry),
+      encodeMidgardCekProgramMaterialDaValue(entry),
     ),
   );
 
@@ -147,7 +147,7 @@ export const assertPreSubmitDaPayloadSize = ({
   envelopeMode = readDaHardeningConfig().envelopeMode,
 }: {
   readonly headerHash: string;
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
@@ -167,7 +167,7 @@ export const assertPreSubmitDaPayloadSize = ({
             entry[TxColumns.TX_ID],
             encodeTransactionRootValue(
               entry[TxColumns.TX],
-              MIDGARD_CONSENSUS_PROFILE_V1,
+              MIDGARD_CONSENSUS_PROFILE,
             ),
           ),
         ),
@@ -230,9 +230,9 @@ export const assertPreSubmitDaPayloadSize = ({
         (entry) => entry.witnesses,
       ),
     };
-    const encodedBytes = SDK.daPayloadV1EncodedSizeFromUtxoAggregate(
+    const encodedBytes = SDK.daPayloadEncodedSizeFromUtxoAggregate(
       {
-        version: SDK.DA_PAYLOAD_V1_VERSION,
+        version: SDK.DA_PAYLOAD_VERSION,
         block_body: {
           ...commonBody,
           header,
@@ -257,25 +257,24 @@ export const assertPreSubmitDaPayloadSize = ({
       },
       utxoPayloadAggregate,
     );
-    const projection = projectDaPayloadV1Sizes(encodedBytes, envelopeMode);
-    const effectiveInnerLimit = maxDaPayloadV1InnerBytes(envelopeMode);
+    const projection = projectDaPayloadSizes(encodedBytes, envelopeMode);
+    const effectiveInnerLimit = maxDaPayloadInnerBytes(envelopeMode);
     if (
       encodedBytes > effectiveInnerLimit ||
-      projection.storedBytesUpperBound >
-        DA_TRANSPORT_LIMITS_V1.maxPayloadBytes ||
-      projection.requestBytesUpperBound > DA_TRANSPORT_LIMITS_V1.maxPayloadBytes
+      projection.storedBytesUpperBound > DA_TRANSPORT_LIMITS.maxPayloadBytes ||
+      projection.requestBytesUpperBound > DA_TRANSPORT_LIMITS.maxPayloadBytes
     ) {
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
           message:
             "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame",
-          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS_V1.maxPayloadBytes.toString()},utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()},utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()},utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()},utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
         }),
       );
     }
     yield* Effect.logInfo(
-      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS_V1.maxPayloadBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
     );
     return encodedBytes;
   });
@@ -1739,10 +1738,10 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
           "Confirmed block datum does not contain a recoverable header for local finalization",
       } satisfies WorkerOutput;
     }
-    const confirmedHeader = yield* getHeaderV1FromStateQueueDatumLocal(
+    const confirmedHeader = yield* getHeaderFromStateQueueDatumLocal(
       latestBlock.datum,
     );
-    const confirmedHeaderHash = yield* hashBlockHeaderV1Local(confirmedHeader);
+    const confirmedHeaderHash = yield* hashBlockHeaderLocal(confirmedHeader);
     const pendingRecord =
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
         Buffer.from(fromHex(confirmedHeaderHash)),

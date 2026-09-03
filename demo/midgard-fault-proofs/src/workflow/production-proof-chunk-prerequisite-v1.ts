@@ -11,140 +11,140 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PublishedProofChunkV1,
-  publishProofChunksV1,
-  resolvePublishedProofChunksV1,
+  type PublishedProofChunk,
+  publishProofChunks,
+  resolvePublishedProofChunks,
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type {
-  FraudProofWorkflowJournalEntryV1,
-  JournalJsonObjectV1,
+  FraudProofWorkflowJournalEntry,
+  JournalJsonObject,
 } from "./journal-v1.js";
 import type {
-  FraudProofFamilyWorkflowAdapterV1,
-  FraudProofWorkflowActionV1,
-  FraudProofWorkflowPreflightV1,
-  FraudProofWorkflowReconcileResultV1,
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowReconcileResult,
 } from "./orchestrator-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
 } from "./orchestrator-v1.js";
 import {
-  FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1,
-  type FraudProofAuthenticatedPublicationObserverV1,
+  FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+  type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation-v1.js";
 import {
-  bindProductionWorkflowPreflightTransactionV1,
-  captureLocallyEvaluatedTransactionV1,
-  copyProductionWorkflowPreflightTransactionV1,
-  LOCAL_UPLC_EVALUATOR_V1,
-  type LocallyEvaluatedTransactionV1,
-  requireReferenceOnlyScriptWitnessesV1,
-  submitCapturedTransactionV1,
+  bindWorkflowPreflightTransaction,
+  captureLocallyEvaluatedTransaction,
+  copyWorkflowPreflightTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
 } from "./transaction-boundary-v1.js";
 
-export const PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1 =
+export const PROOF_CHUNK_PREREQUISITE =
   "midgard-production-proof-chunk-prerequisite-v1" as const;
-export const PRODUCTION_PROOF_CHUNK_PUBLICATION_RECOVERY_V1 =
+export const PROOF_CHUNK_PUBLICATION_RECOVERY =
   "midgard-production-proof-chunk-publication-recovery-v1" as const;
-export const PRODUCTION_PROOF_CARRIAGE_RECOVERY_V1 =
+export const PROOF_CARRIAGE_RECOVERY =
   "midgard-production-proof-carriage-recovery-v1" as const;
 
 const TX_HASH = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u;
 
-type ProofChunkRequirementV1 = Readonly<{
+type ProofChunkRequirement = Readonly<{
   proofCbor: string;
   proofCborSha256: string;
   chunkDatums: readonly string[];
   chunkDatumSha256s: readonly string[];
 }>;
 
-type ProofChunkPublicationRecoveryV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_PROOF_CHUNK_PUBLICATION_RECOVERY_V1;
+type ProofChunkPublicationRecovery = Readonly<{
+  schemaVersion: typeof PROOF_CHUNK_PUBLICATION_RECOVERY;
   proofCborSha256: string;
   outputs: readonly Readonly<{ outRef: string; datumCbor: string }>[];
 }>;
 
-type DirectCapacityFailureV1 = Readonly<{
+type DirectCapacityFailure = Readonly<{
   kind: "max_tx_size";
   maximumTransactionBytes: number;
   actualTransactionBytes: number;
   errorSha256: string;
 }>;
 
-type ProofCarriageRecoveryV1 = Readonly<{
-  schemaVersion: typeof PRODUCTION_PROOF_CARRIAGE_RECOVERY_V1;
+type ProofCarriageRecovery = Readonly<{
+  schemaVersion: typeof PROOF_CARRIAGE_RECOVERY;
   route: "direct" | "publication";
-  baseAction: FraudProofWorkflowActionV1;
+  baseAction: FraudProofWorkflowAction;
   proofCborSha256: string;
-  directCapacityFailure?: DirectCapacityFailureV1;
-  baseDurableRecovery?: JournalJsonObjectV1;
-  publicationDurableRecovery?: JournalJsonObjectV1;
+  directCapacityFailure?: DirectCapacityFailure;
+  baseDurableRecovery?: JournalJsonObject;
+  publicationDurableRecovery?: JournalJsonObject;
 }>;
 
-export interface ProductionProofChunkPrerequisitePortV1<
+export interface ProofChunkPrerequisitePort<
   Category extends FraudProofCatalogueCategoryName,
 > {
-  readonly portVersion: typeof PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1;
+  readonly portVersion: typeof PROOF_CHUNK_PREREQUISITE;
   readonly category: Category;
-  classifyDirectCapacityFailure(cause: unknown): DirectCapacityFailureV1;
+  classifyDirectCapacityFailure(cause: unknown): DirectCapacityFailure;
   inspect(input: {
     readonly headerHash: string;
-    readonly baseAction: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-    readonly entries: readonly FraudProofWorkflowJournalEntryV1[];
+    readonly baseAction: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<
     | { readonly kind: "not_required" | "satisfied" }
     | { readonly kind: "pending"; readonly reason: string }
-    | { readonly kind: "required"; readonly action: FraudProofWorkflowActionV1 }
+    | { readonly kind: "required"; readonly action: FraudProofWorkflowAction }
   >;
   capture(input: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }): Promise<{
-    readonly transaction: LocallyEvaluatedTransactionV1;
-    readonly durableRecovery: JournalJsonObjectV1;
+    readonly transaction: LocallyEvaluatedTransaction;
+    readonly durableRecovery: JournalJsonObject;
   }>;
   reconcile(input: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
     readonly txHash?: string;
-    readonly durableRecovery?: JournalJsonObjectV1;
-  }): Promise<FraudProofWorkflowReconcileResultV1>;
+    readonly durableRecovery?: JournalJsonObject;
+  }): Promise<FraudProofWorkflowReconcileResult>;
 }
 
 const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
-type DirectFirstProofCarriageRouteV1 = "direct" | "publication";
+type DirectFirstProofCarriageRoute = "direct" | "publication";
 
-const directFirstProofCarriageRouteByActionV1 = new WeakMap<
+const directFirstProofCarriageRouteByAction = new WeakMap<
   object,
-  DirectFirstProofCarriageRouteV1
+  DirectFirstProofCarriageRoute
 >();
 
-const withDirectFirstProofCarriageRouteV1 = async <Result>({
+const withDirectFirstProofCarriageRoute = async <Result>({
   action,
   route,
   run,
 }: {
-  readonly action: FraudProofWorkflowActionV1;
-  readonly route: DirectFirstProofCarriageRouteV1;
+  readonly action: FraudProofWorkflowAction;
+  readonly route: DirectFirstProofCarriageRoute;
   readonly run: () => Promise<Result>;
 }): Promise<Result> => {
-  if (directFirstProofCarriageRouteByActionV1.has(action)) {
+  if (directFirstProofCarriageRouteByAction.has(action)) {
     throw new Error("proof-carriage action already has an active route");
   }
-  directFirstProofCarriageRouteByActionV1.set(action, route);
+  directFirstProofCarriageRouteByAction.set(action, route);
   try {
     return await run();
   } finally {
-    directFirstProofCarriageRouteByActionV1.delete(action);
+    directFirstProofCarriageRouteByAction.delete(action);
   }
 };
 
@@ -154,25 +154,25 @@ const withDirectFirstProofCarriageRouteV1 = async <Result>({
  * direct route: the outer adapter will only revisit this after an exact
  * release-bound capacity refusal and a journal-confirmed publication.
  */
-export const resolveDirectFirstProofChunksV1 = async ({
+export const resolveDirectFirstProofChunks = async ({
   action,
   lucid,
   address,
   proofCbor,
 }: {
-  readonly action: FraudProofWorkflowActionV1;
+  readonly action: FraudProofWorkflowAction;
   readonly lucid: LucidEvolution;
   readonly address: string;
   readonly proofCbor: string;
-}): Promise<readonly PublishedProofChunkV1[]> => {
-  const route = directFirstProofCarriageRouteByActionV1.get(action);
+}): Promise<readonly PublishedProofChunk[]> => {
+  const route = directFirstProofCarriageRouteByAction.get(action);
   if (route === undefined) {
     throw new Error(
       "proof chunks were requested outside an admitted direct-first route",
     );
   }
   if (route === "direct") return [];
-  const chunks = await resolvePublishedProofChunksV1({
+  const chunks = await resolvePublishedProofChunks({
     lucid,
     address,
     proofCbor,
@@ -227,7 +227,7 @@ const requirementFor = ({
 }: {
   readonly proofCbor: string;
   readonly label: string;
-}): ProofChunkRequirementV1 => {
+}): ProofChunkRequirement => {
   if (typeof proofCbor !== "string" || proofCbor.length === 0) {
     throw new Error(`${label} omitted its canonical MPF proof`);
   }
@@ -257,9 +257,9 @@ const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
   requirement,
 }: {
   readonly category: Category;
-  readonly baseAction: FraudProofWorkflowActionV1;
-  readonly requirement: ProofChunkRequirementV1;
-}): FraudProofWorkflowActionV1 => {
+  readonly baseAction: FraudProofWorkflowAction;
+  readonly requirement: ProofChunkRequirement;
+}): FraudProofWorkflowAction => {
   const frozenBaseAction = Object.freeze({
     actionId: baseAction.actionId,
     input: Object.freeze({ ...baseAction.input }),
@@ -267,7 +267,7 @@ const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
   return Object.freeze({
     actionId: `publish-proof-chunks:${baseAction.actionId}:${requirement.proofCborSha256}`,
     input: Object.freeze({
-      schemaVersion: PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1,
+      schemaVersion: PROOF_CHUNK_PREREQUISITE,
       category,
       stage: "direct_or_publish_proof",
       forAction: frozenBaseAction,
@@ -277,15 +277,15 @@ const publicationAction = <Category extends FraudProofCatalogueCategoryName>({
   });
 };
 
-const isPublicationAction = (action: FraudProofWorkflowActionV1): boolean =>
-  action.input.schemaVersion === PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1 &&
+const isPublicationAction = (action: FraudProofWorkflowAction): boolean =>
+  action.input.schemaVersion === PROOF_CHUNK_PREREQUISITE &&
   action.input.stage === "direct_or_publish_proof";
 
 const routeActionIdentity = (
-  action: FraudProofWorkflowActionV1,
+  action: FraudProofWorkflowAction,
 ): Readonly<{
-  baseAction: FraudProofWorkflowActionV1;
-  requirement: ProofChunkRequirementV1;
+  baseAction: FraudProofWorkflowAction;
+  requirement: ProofChunkRequirement;
 }> => {
   const input = exact(
     action.input,
@@ -300,7 +300,7 @@ const routeActionIdentity = (
     "proof-carriage route action",
   );
   if (
-    input.schemaVersion !== PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1 ||
+    input.schemaVersion !== PROOF_CHUNK_PREREQUISITE ||
     input.stage !== "direct_or_publish_proof" ||
     typeof input.proofCborSha256 !== "string" ||
     !TX_HASH.test(input.proofCborSha256) ||
@@ -325,7 +325,7 @@ const routeActionIdentity = (
       input: record(
         rawAction.input,
         "proof-carriage route base action input",
-      ) as JournalJsonObjectV1,
+      ) as JournalJsonObject,
     }),
     requirement: Object.freeze({
       proofCbor: "",
@@ -346,16 +346,16 @@ const proofCarriageRecovery = ({
   baseDurableRecovery,
   publicationDurableRecovery,
 }: {
-  readonly route: ProofCarriageRecoveryV1["route"];
-  readonly baseAction: FraudProofWorkflowActionV1;
-  readonly requirement: ProofChunkRequirementV1;
-  readonly directCapacityFailure?: DirectCapacityFailureV1;
-  readonly baseDurableRecovery?: JournalJsonObjectV1;
-  readonly publicationDurableRecovery?: JournalJsonObjectV1;
-}): JournalJsonObjectV1 =>
+  readonly route: ProofCarriageRecovery["route"];
+  readonly baseAction: FraudProofWorkflowAction;
+  readonly requirement: ProofChunkRequirement;
+  readonly directCapacityFailure?: DirectCapacityFailure;
+  readonly baseDurableRecovery?: JournalJsonObject;
+  readonly publicationDurableRecovery?: JournalJsonObject;
+}): JournalJsonObject =>
   Object.freeze({
     proofCarriage: Object.freeze({
-      schemaVersion: PRODUCTION_PROOF_CARRIAGE_RECOVERY_V1,
+      schemaVersion: PROOF_CARRIAGE_RECOVERY,
       route,
       baseAction: Object.freeze({
         actionId: baseAction.actionId,
@@ -374,9 +374,9 @@ const parseProofCarriageRecovery = ({
   value,
   requirement,
 }: {
-  readonly value: JournalJsonObjectV1 | undefined;
-  readonly requirement: ProofChunkRequirementV1;
-}): ProofCarriageRecoveryV1 => {
+  readonly value: JournalJsonObject | undefined;
+  readonly requirement: ProofChunkRequirement;
+}): ProofCarriageRecovery => {
   const outer = exact(value, ["proofCarriage"], "proof-carriage recovery");
   const raw = record(outer.proofCarriage, "proof-carriage recovery payload");
   const route = raw.route;
@@ -397,7 +397,7 @@ const parseProofCarriageRecovery = ({
   ];
   exact(raw, expectedKeys, "proof-carriage recovery payload");
   if (
-    raw.schemaVersion !== PRODUCTION_PROOF_CARRIAGE_RECOVERY_V1 ||
+    raw.schemaVersion !== PROOF_CARRIAGE_RECOVERY ||
     raw.proofCborSha256 !== requirement.proofCborSha256
   ) {
     throw new Error("proof-carriage recovery changed its proof identity");
@@ -410,16 +410,16 @@ const parseProofCarriageRecovery = ({
   if (typeof rawAction.actionId !== "string") {
     throw new Error("proof-carriage recovery has an invalid base action");
   }
-  const baseAction: FraudProofWorkflowActionV1 = Object.freeze({
+  const baseAction: FraudProofWorkflowAction = Object.freeze({
     actionId: rawAction.actionId,
     input: record(
       rawAction.input,
       "proof-carriage recovery base action input",
-    ) as JournalJsonObjectV1,
+    ) as JournalJsonObject,
   });
   if (route === "direct") {
     return Object.freeze({
-      schemaVersion: PRODUCTION_PROOF_CARRIAGE_RECOVERY_V1,
+      schemaVersion: PROOF_CARRIAGE_RECOVERY,
       route,
       baseAction,
       proofCborSha256: requirement.proofCborSha256,
@@ -429,7 +429,7 @@ const parseProofCarriageRecovery = ({
             baseDurableRecovery: record(
               raw.baseDurableRecovery,
               "direct proof-carriage base recovery",
-            ) as JournalJsonObjectV1,
+            ) as JournalJsonObject,
           }),
     });
   }
@@ -456,7 +456,7 @@ const parseProofCarriageRecovery = ({
     throw new Error("proof-carriage direct capacity failure is invalid");
   }
   return Object.freeze({
-    schemaVersion: PRODUCTION_PROOF_CARRIAGE_RECOVERY_V1,
+    schemaVersion: PROOF_CARRIAGE_RECOVERY,
     route,
     baseAction,
     proofCborSha256: requirement.proofCborSha256,
@@ -469,7 +469,7 @@ const parseProofCarriageRecovery = ({
     publicationDurableRecovery: record(
       raw.publicationDurableRecovery,
       "proof-carriage publication recovery",
-    ) as JournalJsonObjectV1,
+    ) as JournalJsonObject,
   });
 };
 
@@ -478,10 +478,10 @@ const parseRecovery = ({
   requirement,
   txHash,
 }: {
-  readonly value: JournalJsonObjectV1 | undefined;
-  readonly requirement: ProofChunkRequirementV1;
+  readonly value: JournalJsonObject | undefined;
+  readonly requirement: ProofChunkRequirement;
   readonly txHash?: string;
-}): ProofChunkPublicationRecoveryV1 => {
+}): ProofChunkPublicationRecovery => {
   const outer = exact(
     value,
     ["proofChunkPublication"],
@@ -493,7 +493,7 @@ const parseRecovery = ({
     "proof-chunk durable recovery payload",
   );
   if (
-    parsed.schemaVersion !== PRODUCTION_PROOF_CHUNK_PUBLICATION_RECOVERY_V1 ||
+    parsed.schemaVersion !== PROOF_CHUNK_PUBLICATION_RECOVERY ||
     parsed.proofCborSha256 !== requirement.proofCborSha256 ||
     !Array.isArray(parsed.outputs) ||
     parsed.outputs.length !== requirement.chunkDatums.length
@@ -523,7 +523,7 @@ const parseRecovery = ({
     });
   });
   return Object.freeze({
-    schemaVersion: PRODUCTION_PROOF_CHUNK_PUBLICATION_RECOVERY_V1,
+    schemaVersion: PROOF_CHUNK_PUBLICATION_RECOVERY,
     proofCborSha256: requirement.proofCborSha256,
     outputs: Object.freeze(outputs),
   });
@@ -543,9 +543,9 @@ const requirementFromJournaledAction = <
   durableRecovery,
 }: {
   readonly category: Category;
-  readonly action: FraudProofWorkflowActionV1;
-  readonly durableRecovery: JournalJsonObjectV1 | undefined;
-}): ProofChunkRequirementV1 => {
+  readonly action: FraudProofWorkflowAction;
+  readonly durableRecovery: JournalJsonObject | undefined;
+}): ProofChunkRequirement => {
   const input = exact(
     action.input,
     [
@@ -559,7 +559,7 @@ const requirementFromJournaledAction = <
     `${category} journaled proof-chunk action`,
   );
   if (
-    input.schemaVersion !== PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1 ||
+    input.schemaVersion !== PROOF_CHUNK_PREREQUISITE ||
     input.category !== category ||
     input.stage !== "direct_or_publish_proof" ||
     typeof input.proofCborSha256 !== "string" ||
@@ -592,7 +592,7 @@ const requirementFromJournaledAction = <
     "proof-chunk durable recovery payload",
   );
   if (
-    recovery.schemaVersion !== PRODUCTION_PROOF_CHUNK_PUBLICATION_RECOVERY_V1 ||
+    recovery.schemaVersion !== PROOF_CHUNK_PUBLICATION_RECOVERY ||
     recovery.proofCborSha256 !== input.proofCborSha256 ||
     !Array.isArray(recovery.outputs) ||
     recovery.outputs.length !== input.chunkDatumSha256s.length
@@ -641,14 +641,14 @@ const recoveryForTransaction = ({
   requirement,
   address,
 }: {
-  readonly transaction: LocallyEvaluatedTransactionV1;
-  readonly requirement: ProofChunkRequirementV1;
+  readonly transaction: LocallyEvaluatedTransaction;
+  readonly requirement: ProofChunkRequirement;
   readonly address: string;
-}): JournalJsonObjectV1 => {
+}): JournalJsonObject => {
   if (transaction.referenceScripts.length !== 0) {
     throw new Error("proof-chunk publication unexpectedly used a script");
   }
-  requireReferenceOnlyScriptWitnessesV1({
+  requireReferenceOnlyScriptWitnesses({
     transaction,
     label: "proof-chunk publication",
   });
@@ -686,7 +686,7 @@ const recoveryForTransaction = ({
   });
   return Object.freeze({
     proofChunkPublication: Object.freeze({
-      schemaVersion: PRODUCTION_PROOF_CHUNK_PUBLICATION_RECOVERY_V1,
+      schemaVersion: PROOF_CHUNK_PUBLICATION_RECOVERY,
       proofCborSha256: requirement.proofCborSha256,
       outputs: Object.freeze(recovered),
     }),
@@ -698,7 +698,7 @@ const recoveryForTransaction = ({
  * candidate UTxOs; release-final admission is always performed by the raw-L1
  * publication observer.
  */
-export const createAuthenticatedProofChunkPrerequisitePortV1 = <
+export const createAuthenticatedProofChunkPrerequisitePort = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
@@ -714,11 +714,11 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
-  readonly publications: FraudProofAuthenticatedPublicationObserverV1;
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
   readonly proofCborForAction: (input: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
   }) => string | null | Promise<string | null>;
   /** Exact `cardanoProtocolParameters.snapshot.maxTxSize` from the manifest. */
   readonly maximumTransactionBytes?: string | number;
@@ -726,10 +726,10 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
     readonly headerHash: string;
     readonly txHash: string;
   }) => Promise<boolean>;
-}): ProductionProofChunkPrerequisitePortV1<Category> => {
+}): ProofChunkPrerequisitePort<Category> => {
   if (
     publications.observerVersion !==
-    FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER_V1
+    FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER
   ) {
     throw new Error(`${category} proof chunks require a raw-L1 observer`);
   }
@@ -756,9 +756,9 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
     artifact,
   }: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-  }): Promise<ProofChunkRequirementV1 | null> => {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<ProofChunkRequirement | null> => {
     const proofCbor = await proofCborForAction({
       headerHash,
       action,
@@ -774,9 +774,9 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
     artifact,
   }: {
     readonly headerHash: string;
-    readonly action: FraudProofWorkflowActionV1;
-    readonly artifact: JournalJsonObjectV1;
-  }): Promise<{ readonly requirement: ProofChunkRequirementV1 }> => {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: JournalJsonObject;
+  }): Promise<{ readonly requirement: ProofChunkRequirement }> => {
     const input = exact(
       action.input,
       [
@@ -790,7 +790,7 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
       `${category} proof-chunk publication action`,
     );
     if (
-      input.schemaVersion !== PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1 ||
+      input.schemaVersion !== PROOF_CHUNK_PREREQUISITE ||
       input.category !== category ||
       input.stage !== "direct_or_publish_proof"
     ) {
@@ -804,12 +804,12 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
     if (typeof parsedBaseAction.actionId !== "string") {
       throw new Error(`${category} proof-chunk base action changed identity`);
     }
-    const baseAction: FraudProofWorkflowActionV1 = {
+    const baseAction: FraudProofWorkflowAction = {
       actionId: parsedBaseAction.actionId,
       input: record(
         parsedBaseAction.input,
         `${category} proof-chunk base action input`,
-      ) as JournalJsonObjectV1,
+      ) as JournalJsonObject,
     };
     const required = await requirement({
       headerHash,
@@ -853,8 +853,8 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
           ).kind === "confirmed",
       ),
     );
-  const port: ProductionProofChunkPrerequisitePortV1<Category> = {
-    portVersion: PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1,
+  const port: ProofChunkPrerequisitePort<Category> = {
+    portVersion: PROOF_CHUNK_PREREQUISITE,
     category,
     classifyDirectCapacityFailure: (cause) => {
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -929,7 +929,7 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
       if (!publicationAuthorized) {
         return { kind: "required", action: routeAction };
       }
-      const chunks = await resolvePublishedProofChunksV1({
+      const chunks = await resolvePublishedProofChunks({
         lucid,
         address: signer.address,
         proofCbor: required.proofCbor,
@@ -957,9 +957,9 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
     capture: async ({ headerHash, action, artifact }) => {
       const required = (await exactAction({ headerHash, action, artifact }))
         .requirement;
-      const transaction = await captureLocallyEvaluatedTransactionV1(
+      const transaction = await captureLocallyEvaluatedTransaction(
         async (boundary) => {
-          await publishProofChunksV1({
+          await publishProofChunks({
             lucid,
             network,
             signer,
@@ -979,7 +979,7 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
       };
     },
     reconcile: async ({ headerHash, action, txHash, durableRecovery }) => {
-      let required: ProofChunkRequirementV1;
+      let required: ProofChunkRequirement;
       try {
         required = requirementFromJournaledAction({
           category,
@@ -995,7 +995,7 @@ export const createAuthenticatedProofChunkPrerequisitePortV1 = <
           reason: `${category} proof-chunk intent omitted its exact transaction hash`,
         };
       }
-      let recovery: ProofChunkPublicationRecoveryV1;
+      let recovery: ProofChunkPublicationRecovery;
       try {
         recovery = parseRecovery({
           value: durableRecovery,
@@ -1034,7 +1034,7 @@ const cacheKey = (workflowId: string, actionId: string): string =>
  * complete direct transaction. It may publish proof chunks only when that
  * exact attempt fails with the release-bound CML max-transaction-size error.
  */
-export const withProductionProofChunkPrerequisiteV1 = <
+export const withProofChunkPrerequisite = <
   Category extends FraudProofCatalogueCategoryName,
 >({
   category,
@@ -1042,42 +1042,40 @@ export const withProductionProofChunkPrerequisiteV1 = <
   prerequisite,
 }: {
   readonly category: Category;
-  readonly base: FraudProofFamilyWorkflowAdapterV1;
-  readonly prerequisite: ProductionProofChunkPrerequisitePortV1<Category>;
-}): FraudProofFamilyWorkflowAdapterV1 => {
+  readonly base: FraudProofFamilyWorkflowAdapter;
+  readonly prerequisite: ProofChunkPrerequisitePort<Category>;
+}): FraudProofFamilyWorkflowAdapter => {
   if (
-    base.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER_V1 ||
+    base.adapterVersion !== FRAUD_PROOF_WORKFLOW_ADAPTER ||
     base.category !== category ||
-    base.safety.evidenceSource !==
-      FRAUD_PROOF_WORKFLOW_SAFETY_V1.evidenceSource ||
-    base.safety.scriptCarriage !==
-      FRAUD_PROOF_WORKFLOW_SAFETY_V1.scriptCarriage ||
+    base.safety.evidenceSource !== FRAUD_PROOF_WORKFLOW_SAFETY.evidenceSource ||
+    base.safety.scriptCarriage !== FRAUD_PROOF_WORKFLOW_SAFETY.scriptCarriage ||
     base.safety.localEvaluation !==
-      FRAUD_PROOF_WORKFLOW_SAFETY_V1.localEvaluation ||
-    prerequisite.portVersion !== PRODUCTION_PROOF_CHUNK_PREREQUISITE_V1 ||
+      FRAUD_PROOF_WORKFLOW_SAFETY.localEvaluation ||
+    prerequisite.portVersion !== PROOF_CHUNK_PREREQUISITE ||
     prerequisite.category !== category
   ) {
     throw new Error(
       `${category} proof-chunk prerequisite ports changed identity`,
     );
   }
-  type PreparedRouteV1 =
+  type PreparedRoute =
     | Readonly<{
         kind: "direct";
-        baseAction: FraudProofWorkflowActionV1;
-        basePreflight: FraudProofWorkflowPreflightV1;
-        durableRecovery: JournalJsonObjectV1;
+        baseAction: FraudProofWorkflowAction;
+        basePreflight: FraudProofWorkflowPreflight;
+        durableRecovery: JournalJsonObject;
       }>
     | Readonly<{
         kind: "publication";
-        transaction: LocallyEvaluatedTransactionV1;
-        durableRecovery: JournalJsonObjectV1;
+        transaction: LocallyEvaluatedTransaction;
+        durableRecovery: JournalJsonObject;
       }>;
-  const prepared = new Map<string, PreparedRouteV1>();
-  const adapter: FraudProofFamilyWorkflowAdapterV1 = {
-    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+  const prepared = new Map<string, PreparedRoute>();
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
     category,
-    safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
     prepare: async (input) => await base.prepare(input),
     observe: async (context) => {
       const observed = await base.observe(context);
@@ -1119,7 +1117,7 @@ export const withProductionProofChunkPrerequisiteV1 = <
             `${category} proof step cannot bypass its direct-first carriage decision`,
           );
         }
-        return await withDirectFirstProofCarriageRouteV1({
+        return await withDirectFirstProofCarriageRoute({
           action: context.action,
           route: inspection.kind === "satisfied" ? "publication" : "direct",
           run: async () => await base.preflight(context),
@@ -1159,9 +1157,9 @@ export const withProductionProofChunkPrerequisiteV1 = <
       if (!sameJson(route.baseAction, observed.action)) {
         throw new Error(`${category} proof carriage changed its base action`);
       }
-      let direct: FraudProofWorkflowPreflightV1;
+      let direct: FraudProofWorkflowPreflight;
       try {
-        direct = await withDirectFirstProofCarriageRouteV1({
+        direct = await withDirectFirstProofCarriageRoute({
           action: observed.action,
           route: "direct",
           run: async () =>
@@ -1185,7 +1183,7 @@ export const withProductionProofChunkPrerequisiteV1 = <
         ) {
           throw new Error(`${category} proof publication body hash is invalid`);
         }
-        requireReferenceOnlyScriptWitnessesV1({
+        requireReferenceOnlyScriptWitnesses({
           transaction: captured.transaction,
           label: `${category} proof publication`,
         });
@@ -1204,18 +1202,18 @@ export const withProductionProofChunkPrerequisiteV1 = <
             durableRecovery,
           }),
         );
-        return bindProductionWorkflowPreflightTransactionV1(
+        return bindWorkflowPreflightTransaction(
           {
             actionId: context.action.actionId,
             txHash: captured.transaction.txHash,
             scriptExecution: "none",
             localUplcEvaluation: {
               status: "passed",
-              evaluator: LOCAL_UPLC_EVALUATOR_V1,
+              evaluator: LOCAL_UPLC_EVALUATOR,
             },
             referenceScripts: [],
             durableRecovery,
-          } satisfies FraudProofWorkflowPreflightV1,
+          } satisfies FraudProofWorkflowPreflight,
           captured.transaction.signed,
         );
       }
@@ -1236,13 +1234,13 @@ export const withProductionProofChunkPrerequisiteV1 = <
           durableRecovery,
         }),
       );
-      return copyProductionWorkflowPreflightTransactionV1({
+      return copyWorkflowPreflightTransaction({
         from: direct,
         to: {
           ...direct,
           actionId: context.action.actionId,
           durableRecovery,
-        } satisfies FraudProofWorkflowPreflightV1,
+        } satisfies FraudProofWorkflowPreflight,
       });
     },
     submit: async (context) => {
@@ -1279,7 +1277,7 @@ export const withProductionProofChunkPrerequisiteV1 = <
         }
         return {
           kind: "submitted",
-          txHash: await submitCapturedTransactionV1(captured.transaction),
+          txHash: await submitCapturedTransaction(captured.transaction),
         };
       } finally {
         prepared.delete(key);
@@ -1296,7 +1294,7 @@ export const withProductionProofChunkPrerequisiteV1 = <
         };
       }
       let route: ReturnType<typeof routeActionIdentity>;
-      let recovery: ProofCarriageRecoveryV1;
+      let recovery: ProofCarriageRecovery;
       try {
         route = routeActionIdentity(context.action);
         if (context.action.input.category !== category) {

@@ -4,18 +4,18 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyZeroInputScriptsV1,
-  ZERO_INPUT_BLUEPRINT_TITLES_V1,
+  applyZeroInputScripts,
+  ZERO_INPUT_BLUEPRINT_TITLES,
 } from "../src/zero-input/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = ZERO_INPUT_BLUEPRINT_TITLES_V1.every((title) =>
+const hasFamily = ZERO_INPUT_BLUEPRINT_TITLES.every((title) =>
   blueprint.validators.some((validator) => validator.title === title),
 );
 
@@ -23,13 +23,13 @@ describe.runIf(hasFamily)(
   "zeroInput direction-complete signed publication fit",
   () => {
     it("publishes both applied scripts below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const proofAddressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyZeroInputScriptsV1({
+      const steps = applyZeroInputScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

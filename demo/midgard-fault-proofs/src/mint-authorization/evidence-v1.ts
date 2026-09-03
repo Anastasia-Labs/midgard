@@ -19,7 +19,7 @@
  * whose root is not the thread's `prior_ledger_root`, an outpoint tx id that
  * is not 32 bytes.
  */
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -41,7 +41,7 @@ const evidenceError = (message: string): Error =>
  * item IS the ledger trie's key for the outpoint, and field 1's items are
  * spelled in exactly that shape.
  */
-export const mintAuthorizationOutpointKeyV1 = ({
+export const mintAuthorizationOutpointKey = ({
   txIdHex,
   outputIndex,
 }: {
@@ -53,7 +53,7 @@ export const mintAuthorizationOutpointKeyV1 = ({
       "reference-input outpoint tx id must be 32 bytes of lowercase hex",
     );
   }
-  return encodeMidgardSpendInputItemV1({
+  return encodeMidgardSpendInputItem({
     txId: Buffer.from(txIdHex, "hex"),
     outputIndex,
   });
@@ -67,7 +67,7 @@ export const mintAuthorizationOutpointKeyV1 = ({
  * caller (the watcher's block replay, or a test's hand-built trie) — the
  * handle is structural precisely so this package depends on neither.
  */
-export type MintAuthorizationLedgerTrieHandleV1 = {
+export type MintAuthorizationLedgerTrieHandle = {
   /** The trie's current root, 32 bytes of hex. */
   readonly rootHex: string;
   /** MPF membership-proof CBOR for the key; must throw when absent. */
@@ -80,12 +80,12 @@ export type MintAuthorizationLedgerTrieHandleV1 = {
  * `prior_ledger_root`. Refuses a trie whose root is not that commitment — a
  * proof from any other tree would abort on-chain.
  */
-export const buildMintAuthorizationLedgerMembershipV1 = async ({
+export const buildMintAuthorizationLedgerMembership = async ({
   trie,
   outpointKey,
   priorLedgerRootHex,
 }: {
-  readonly trie: MintAuthorizationLedgerTrieHandleV1;
+  readonly trie: MintAuthorizationLedgerTrieHandle;
   readonly outpointKey: Buffer;
   readonly priorLedgerRootHex: string;
 }): Promise<SDK.Proof> => {
@@ -109,14 +109,14 @@ export const buildMintAuthorizationLedgerMembershipV1 = async ({
  * different steps. Only accepted L2 transaction events reach this family —
  * the on-chain step re-checks the leaf's `validity_code`.
  */
-export const buildMintAuthorizationStep02EvidenceV1 = async ({
+export const buildMintAuthorizationStep02Evidence = async ({
   reconstruction,
   eventKey,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
 }): Promise<{
-  readonly header: SDK.HeaderV1;
+  readonly header: SDK.Header;
   readonly eventToStepMembership: SDK.EventToStepMembershipProof;
   readonly transitionStepMembership: SDK.IndexedTraceProof;
 }> => {

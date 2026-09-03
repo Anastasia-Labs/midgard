@@ -1,9 +1,9 @@
 import {
-  acceptedVerdictSubjectV1,
-  type FieldCarriageV1,
-  type ForcedInclusionTxV1,
-  forcedVerdictSubjectV1,
-  type HeaderV1,
+  acceptedVerdictSubject,
+  type FieldCarriage,
+  type ForcedInclusionTx,
+  forcedVerdictSubject,
+  type Header,
   type NativeTxWitnessSetCompact,
   type OutputReference,
   type RootMembershipProof,
@@ -15,39 +15,39 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { requireLinearFaultThreadUtxo } from "../linear-fault-family-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ScriptIntegrityHashMissingContractsV1 } from "./contracts-v1.js";
-import type { ScriptIntegrityHashMissingEvidenceV1 } from "./family-v1.js";
-import { prepareScriptIntegrityHashMissingEvidenceV1 } from "./family-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ScriptIntegrityHashMissingContracts } from "./contracts-v1.js";
+import type { ScriptIntegrityHashMissingEvidence } from "./family-v1.js";
+import { prepareScriptIntegrityHashMissingEvidence } from "./family-v1.js";
 import {
-  ScriptIntegritySpendRedeemersV1,
-  ScriptIntegrityStep02DatumV1Schema,
-  ScriptIntegrityStep03DatumV1Schema,
-  ScriptIntegrityStep04DatumV1Schema,
+  ScriptIntegritySpendRedeemers,
+  ScriptIntegrityStep02DatumSchema,
+  ScriptIntegrityStep03DatumSchema,
+  ScriptIntegrityStep04DatumSchema,
 } from "./schemas-v1.js";
 import {
-  submitScriptIntegrityHashMissingStep01V1,
-  submitScriptIntegrityHashMissingStep02V1,
-  submitScriptIntegrityHashMissingStep03V1,
+  submitScriptIntegrityHashMissingStep01,
+  submitScriptIntegrityHashMissingStep02,
+  submitScriptIntegrityHashMissingStep03,
 } from "./submitters-v1.js";
 
 type Common = {
   readonly lucid: LucidEvolution;
-  readonly contracts: ScriptIntegrityHashMissingContractsV1;
+  readonly contracts: ScriptIntegrityHashMissingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 };
 
-export const submitScriptIntegrityHashMissingStep01AcceptedV1 = async ({
+export const submitScriptIntegrityHashMissingStep01Accepted = async ({
   blueprint,
   network,
   stateQueueBlockOutRef,
@@ -59,9 +59,9 @@ export const submitScriptIntegrityHashMissingStep01AcceptedV1 = async ({
   readonly network: Network;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
 }) => {
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid: common.lucid,
     contracts: common.contracts,
     categoryId: common.categoryId,
@@ -74,14 +74,14 @@ export const submitScriptIntegrityHashMissingStep01AcceptedV1 = async ({
       fraud_prover: common.signer.paymentKeyHash,
       data: {
         BoundAccepted: {
-          subject: acceptedVerdictSubjectV1(txInclusion.nativeTxId),
+          subject: acceptedVerdictSubject(txInclusion.nativeTxId),
           witness_set_hash: txInclusion.nativeTx.witness_set_hash,
         },
       },
     } as never,
-    ScriptIntegrityStep02DatumV1Schema as never,
+    ScriptIntegrityStep02DatumSchema as never,
   );
-  return await submitMissingNativeScriptTxBindingV1({
+  return await submitMissingNativeScriptTxBinding({
     lucid: common.lucid,
     blueprint,
     network,
@@ -93,7 +93,7 @@ export const submitScriptIntegrityHashMissingStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum,
-    spendRedeemerSchema: ScriptIntegritySpendRedeemersV1[0],
+    spendRedeemerSchema: ScriptIntegritySpendRedeemers[0],
     wrapInclusionArgs: (inclusion) => ({
       BindAccepted: { carriage: { RedeemerCarriedInclusion: [inclusion] } },
     }),
@@ -104,7 +104,7 @@ export const submitScriptIntegrityHashMissingStep01AcceptedV1 = async ({
   });
 };
 
-export const submitScriptIntegrityHashMissingStep01ForcedV1 = async (
+export const submitScriptIntegrityHashMissingStep01Forced = async (
   args: Common & { readonly direction: 0n | 1n },
 ) => {
   const nextDatum = Data.to(
@@ -114,9 +114,9 @@ export const submitScriptIntegrityHashMissingStep01ForcedV1 = async (
         PendingForced: { direction: args.direction },
       },
     } as never,
-    ScriptIntegrityStep02DatumV1Schema as never,
+    ScriptIntegrityStep02DatumSchema as never,
   );
-  return await submitScriptIntegrityHashMissingStep01V1({
+  return await submitScriptIntegrityHashMissingStep01({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
@@ -125,16 +125,16 @@ export const submitScriptIntegrityHashMissingStep01ForcedV1 = async (
   });
 };
 
-export const submitScriptIntegrityHashMissingStep02BindingV1 = async ({
+export const submitScriptIntegrityHashMissingStep02Binding = async ({
   header,
   forcedMembership,
   witnessSetHash,
   ...args
 }: Common & {
-  readonly header: HeaderV1;
+  readonly header: Header;
   readonly forcedMembership: RootMembershipProof<
     OutputReference,
-    ForcedInclusionTxV1
+    ForcedInclusionTx
   > | null;
   readonly witnessSetHash: string;
 }) => {
@@ -145,7 +145,7 @@ export const submitScriptIntegrityHashMissingStep02BindingV1 = async ({
             "accepted step-02 requires subject supplied by use of accepted helper",
           );
         })()
-      : forcedVerdictSubjectV1({
+      : forcedVerdictSubject({
           transactionId: forcedMembership.value.tx_id,
           sourceKey: forcedMembership.key,
           rejectionReason:
@@ -158,9 +158,9 @@ export const submitScriptIntegrityHashMissingStep02BindingV1 = async ({
       fraud_prover: args.signer.paymentKeyHash,
       data: { subject, witness_set_hash: witnessSetHash },
     } as never,
-    ScriptIntegrityStep03DatumV1Schema as never,
+    ScriptIntegrityStep03DatumSchema as never,
   );
-  return await submitScriptIntegrityHashMissingStep02V1({
+  return await submitScriptIntegrityHashMissingStep02({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
@@ -172,14 +172,14 @@ export const submitScriptIntegrityHashMissingStep02BindingV1 = async ({
   });
 };
 
-export const submitScriptIntegrityHashMissingStep02AcceptedV1 = async ({
+export const submitScriptIntegrityHashMissingStep02Accepted = async ({
   header,
   subject,
   witnessSetHash,
   ...args
 }: Common & {
-  readonly header: HeaderV1;
-  readonly subject: ReturnType<typeof acceptedVerdictSubjectV1>;
+  readonly header: Header;
+  readonly subject: ReturnType<typeof acceptedVerdictSubject>;
   readonly witnessSetHash: string;
 }) => {
   const nextDatum = Data.to(
@@ -187,9 +187,9 @@ export const submitScriptIntegrityHashMissingStep02AcceptedV1 = async ({
       fraud_prover: args.signer.paymentKeyHash,
       data: { subject, witness_set_hash: witnessSetHash },
     } as never,
-    ScriptIntegrityStep03DatumV1Schema as never,
+    ScriptIntegrityStep03DatumSchema as never,
   );
-  return await submitScriptIntegrityHashMissingStep02V1({
+  return await submitScriptIntegrityHashMissingStep02({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
@@ -201,17 +201,17 @@ export const submitScriptIntegrityHashMissingStep02AcceptedV1 = async ({
   });
 };
 
-export const submitScriptIntegrityHashMissingStep03DirectV1 = async ({
+export const submitScriptIntegrityHashMissingStep03Direct = async ({
   evidence: rawEvidence,
   nativeTxCompactCbor,
   witnessSet,
   ...args
 }: Common & {
-  readonly evidence: ScriptIntegrityHashMissingEvidenceV1;
+  readonly evidence: ScriptIntegrityHashMissingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSet: NativeTxWitnessSetCompact;
 }) => {
-  const evidence = prepareScriptIntegrityHashMissingEvidenceV1(rawEvidence);
+  const evidence = prepareScriptIntegrityHashMissingEvidence(rawEvidence);
   const nextDatum = Data.to(
     {
       fraud_prover: args.signer.paymentKeyHash,
@@ -224,15 +224,15 @@ export const submitScriptIntegrityHashMissingStep03DirectV1 = async ({
         has_redeemers: evidence.redeemerCount > 0,
       },
     } as never,
-    ScriptIntegrityStep04DatumV1Schema as never,
+    ScriptIntegrityStep04DatumSchema as never,
   );
-  const scriptCarriage: FieldCarriageV1 = {
+  const scriptCarriage: FieldCarriage = {
     Inline: { preimage: evidence.scriptWitnessesPreimageCbor },
   };
-  const redeemerCarriage: FieldCarriageV1 = {
+  const redeemerCarriage: FieldCarriage = {
     Inline: { preimage: evidence.redeemersPreimageCbor },
   };
-  return await submitScriptIntegrityHashMissingStep03V1({
+  return await submitScriptIntegrityHashMissingStep03({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({

@@ -12,42 +12,42 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
-import { submitMissingNativeScriptTxBindingV1 } from "../missing-native-script-tx/submit-native-binding-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { submitMissingNativeScriptTxBinding } from "../missing-native-script-tx/submit-native-binding-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../submit-step-01.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ObserversForbiddenContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ObserversForbiddenContracts } from "./contracts-v1.js";
 import {
-  classifyObserversForbiddenFindingV1,
-  type ObserversForbiddenFindingV1,
+  classifyObserversForbiddenFinding,
+  type ObserversForbiddenFinding,
 } from "./family-v1.js";
 import {
-  ObserversForbiddenStep01RedeemerV1Schema,
-  ObserversForbiddenStep02DatumV1Schema,
+  ObserversForbiddenStep01RedeemerSchema,
+  ObserversForbiddenStep02DatumSchema,
 } from "./schemas-v1.js";
 
 const nextDatum = (
-  finding: ObserversForbiddenFindingV1,
+  finding: ObserversForbiddenFinding,
   signer: ResolvedProverSigner,
 ): string => {
-  const exact = classifyObserversForbiddenFindingV1(finding);
+  const exact = classifyObserversForbiddenFinding(finding);
   return Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: { subject: exact.subject, network_id: BigInt(exact.networkId) },
     } as never,
-    ObserversForbiddenStep02DatumV1Schema as never,
+    ObserversForbiddenStep02DatumSchema as never,
   );
 };
 
-export const submitObserversForbiddenStep01AcceptedV1 = async ({
+export const submitObserversForbiddenStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -66,9 +66,9 @@ export const submitObserversForbiddenStep01AcceptedV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: ObserversForbiddenContractsV1;
+  readonly contracts: ObserversForbiddenContracts;
   readonly signer: ResolvedProverSigner;
-  readonly finding: ObserversForbiddenFindingV1;
+  readonly finding: ObserversForbiddenFinding;
   readonly threadUtxo: UTxO;
   readonly threadToken: {
     readonly unit: string;
@@ -77,11 +77,11 @@ export const submitObserversForbiddenStep01AcceptedV1 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) =>
-  await submitMissingNativeScriptTxBindingV1({
+  await submitMissingNativeScriptTxBinding({
     lucid,
     blueprint,
     network,
@@ -93,7 +93,7 @@ export const submitObserversForbiddenStep01AcceptedV1 = async ({
     stateQueueBlockOutRef,
     txInclusion,
     nextDatum: nextDatum(finding, signer),
-    spendRedeemerSchema: ObserversForbiddenStep01RedeemerV1Schema,
+    spendRedeemerSchema: ObserversForbiddenStep01RedeemerSchema,
     wrapInclusionArgs: (inclusion) => ({
       source: {
         AcceptedSource: {
@@ -107,7 +107,7 @@ export const submitObserversForbiddenStep01AcceptedV1 = async ({
     awaitConfirmation,
   });
 
-export const submitObserversForbiddenStep01ForcedV1 = async ({
+export const submitObserversForbiddenStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -120,18 +120,18 @@ export const submitObserversForbiddenStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ObserversForbiddenContractsV1;
+  readonly contracts: ObserversForbiddenContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: ObserversForbiddenFindingV1;
+  readonly finding: ObserversForbiddenFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyObserversForbiddenFindingV1(finding);
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const exact = classifyObserversForbiddenFinding(finding);
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -141,7 +141,7 @@ export const submitObserversForbiddenStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "observers-forbidden-on-untagged-network",
@@ -183,10 +183,10 @@ export const submitObserversForbiddenStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      ObserversForbiddenStep01RedeemerV1Schema as never,
+      ObserversForbiddenStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

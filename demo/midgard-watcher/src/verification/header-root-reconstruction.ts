@@ -11,22 +11,22 @@
  * 1. REUSE, NEVER RE-DERIVE. The reconstruction itself is the canonical one:
  *    `reconstructDaPayloadV1` from `@al-ft/midgard-fault-proofs`, reached
  *    through the Q03 evidence core
- *    `canonicalBlockEvidenceFromVerifiedPayloadV1`. The watcher owns no second
+ *    `canonicalBlockEvidenceFromVerifiedPayload`. The watcher owns no second
  *    root algorithm, so there is no watcher-vs-producer differential to keep in
  *    agreement: an agreement test here is an identity, not a comparison. The
  *    mismatch vocabulary is likewise the canonical one - the eight
  *    `rootMismatches` names and the seven `countMismatches` names - re-declared
- *    here only as a fixed total order (`WATCHER_HEADER_ROOT_FIELDS_V1`,
- *    `WATCHER_HEADER_COUNT_FIELDS_V1`) so the reported lists are stable
+ *    here only as a fixed total order (`WATCHER_HEADER_ROOT_FIELDS`,
+ *    `WATCHER_HEADER_COUNT_FIELDS`) so the reported lists are stable
  *    regardless of the order the producer emits them in.
  *
  * 2. NON-CIRCULAR BINDING. The expected root/count set comes from ONE place:
  *    the W14 authenticated state-queue index record
- *    (`WatcherStateQueueHeaderV1`, read from the L1 state-queue UTxO datum).
- *    `makeWatcherAuthenticatedHeaderObservationV1` rebuilds the `HeaderV1`
+ *    (`WatcherStateQueueHeader`, read from the L1 state-queue UTxO datum).
+ *    `makeWatcherAuthenticatedHeaderObservation` rebuilds the `Header`
  *    struct from that record's fields only, re-encodes it and requires the
  *    bytes to equal the datum's own `headerCborHex`, and then hands it to
- *    `admitAuthenticatedStateQueueHeaderObservationV1`, which re-derives the
+ *    `admitAuthenticatedStateQueueHeaderObservation`, which re-derives the
  *    header hash with the canonical SDK hasher. A caller therefore cannot pair
  *    an arbitrary header with a real header hash, and cannot introduce a header
  *    field that L1 did not commit.
@@ -57,32 +57,32 @@ import {
   encodeCborBytes,
   encodeCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import {
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
+  canonicalBlockEvidenceFromVerifiedPayload,
   TransitionTraceChallengerError,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  admitAuthenticatedStateQueueHeaderObservationV1,
-  type AuthenticatedL1ChainPointV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
-  CanonicalEvidenceRejectionV1,
-  type EvidenceProvenanceV1,
-  HeaderV1,
-  type L1SourceModeV1,
+  admitAuthenticatedStateQueueHeaderObservation,
+  type AuthenticatedL1ChainPoint,
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+  CanonicalEvidenceRejection,
+  type EvidenceProvenance,
+  Header,
+  type L1SourceMode,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import type { WatcherStateQueueHeaderV1 } from "../indexers/state-queue-indexer.js";
+import type { WatcherStateQueueHeader } from "../indexers/state-queue-indexer.js";
 import {
-  makeWatcherDurablePayloadV1,
-  type WatcherReconstructedStateV1,
-  watcherSha256CanonicalJsonV1,
+  makeWatcherDurablePayload,
+  type WatcherReconstructedState,
+  watcherSha256CanonicalJson,
 } from "../storage/durable-store.js";
 
-export const WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION =
+export const WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION =
   "midgard-watcher-header-root-reconstruction-v1" as const;
 
 /**
@@ -90,7 +90,7 @@ export const WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION =
  * `rootMismatches` (demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts)
  * emits.
  */
-export const WATCHER_HEADER_ROOT_FIELDS_V1 = [
+export const WATCHER_HEADER_ROOT_FIELDS = [
   "utxos_root",
   "withdrawals_root",
   "forced_transactions_root",
@@ -102,7 +102,7 @@ export const WATCHER_HEADER_ROOT_FIELDS_V1 = [
 ] as const;
 
 /** The seven header-bound counts, in `countMismatches` order and naming. */
-export const WATCHER_HEADER_COUNT_FIELDS_V1 = [
+export const WATCHER_HEADER_COUNT_FIELDS = [
   "withdrawal_count",
   "forced_transaction_count",
   "l2_transaction_count",
@@ -112,17 +112,17 @@ export const WATCHER_HEADER_COUNT_FIELDS_V1 = [
   "validation_trace_count",
 ] as const;
 
-export type WatcherHeaderRootFieldV1 =
-  (typeof WATCHER_HEADER_ROOT_FIELDS_V1)[number];
-export type WatcherHeaderCountFieldV1 =
-  (typeof WATCHER_HEADER_COUNT_FIELDS_V1)[number];
+export type WatcherHeaderRootField =
+  (typeof WATCHER_HEADER_ROOT_FIELDS)[number];
+export type WatcherHeaderCountField =
+  (typeof WATCHER_HEADER_COUNT_FIELDS)[number];
 
-export type WatcherHeaderRootSetV1 = Readonly<
-  Record<WatcherHeaderRootFieldV1, string>
+export type WatcherHeaderRootSet = Readonly<
+  Record<WatcherHeaderRootField, string>
 >;
 /** Counts as canonical decimal strings, so the record is plain JSON. */
-export type WatcherHeaderCountSetV1 = Readonly<
-  Record<WatcherHeaderCountFieldV1, string>
+export type WatcherHeaderCountSet = Readonly<
+  Record<WatcherHeaderCountField, string>
 >;
 
 /**
@@ -131,7 +131,7 @@ export type WatcherHeaderCountSetV1 = Readonly<
  * unchanged so an admission failure keeps its canonical name; the rest are the
  * reconstruction outcomes.
  */
-export const WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES_V1 = [
+export const WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES = [
   "unknown_trust_class",
   "prohibited_trust_class",
   "diagnostic_grade_not_admitted",
@@ -161,23 +161,23 @@ export const WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES_V1 = [
   "unexpected_reconstruction_failure",
 ] as const;
 
-export type WatcherHeaderRootReconstructionReasonCodeV1 =
-  (typeof WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES_V1)[number];
+export type WatcherHeaderRootReconstructionReasonCode =
+  (typeof WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES)[number];
 
-export type WatcherHeaderRootReconstructionResultV1 = Readonly<{
-  schemaVersion: typeof WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION;
+export type WatcherHeaderRootReconstructionResult = Readonly<{
+  schemaVersion: typeof WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION;
   action: "accept" | "reject";
-  reasonCodes: readonly WatcherHeaderRootReconstructionReasonCodeV1[];
-  /** Diverging root field names, ordered by `WATCHER_HEADER_ROOT_FIELDS_V1`. */
-  rootMismatches: readonly WatcherHeaderRootFieldV1[];
-  /** Diverging count field names, ordered by `WATCHER_HEADER_COUNT_FIELDS_V1`. */
-  countMismatches: readonly WatcherHeaderCountFieldV1[];
+  reasonCodes: readonly WatcherHeaderRootReconstructionReasonCode[];
+  /** Diverging root field names, ordered by `WATCHER_HEADER_ROOT_FIELDS`. */
+  rootMismatches: readonly WatcherHeaderRootField[];
+  /** Diverging count field names, ordered by `WATCHER_HEADER_COUNT_FIELDS`. */
+  countMismatches: readonly WatcherHeaderCountField[];
   /** Null when the canonical reconstruction did not reach a root set. */
-  reconstructedRoots: WatcherHeaderRootSetV1 | null;
-  reconstructedCounts: WatcherHeaderCountSetV1 | null;
+  reconstructedRoots: WatcherHeaderRootSet | null;
+  reconstructedCounts: WatcherHeaderCountSet | null;
   /** Always the L1-observed header's own values - never the payload's. */
-  headerRoots: WatcherHeaderRootSetV1;
-  headerCounts: WatcherHeaderCountSetV1;
+  headerRoots: WatcherHeaderRootSet;
+  headerCounts: WatcherHeaderCountSet;
   headerHash: string;
   headerPrevUtxosRoot: string;
   payloadEnvelopeSha256: string;
@@ -246,25 +246,25 @@ const natural = (value: string, path: string): bigint => {
 // ---------------------------------------------------------------------------
 
 /**
- * Rebuilds the canonical `HeaderV1` struct from a W14 state-queue index record
+ * Rebuilds the canonical `Header` struct from a W14 state-queue index record
  * and admits it as an authenticated L1 observation.
  *
  * Provenance of every field: `header` is the decoded L1 state-queue node datum
- * (`state-queue-indexer.ts` `WatcherStateQueueHeaderV1`); `chainPoint`,
+ * (`state-queue-indexer.ts` `WatcherStateQueueHeader`); `chainPoint`,
  * `confirmationDepth`, and `sourceMode` describe the L1 read that produced it;
  * `provenance` must be `authenticated_cardano_l1` (enforced by the SDK
  * admission). No argument of this function may originate from a DA payload.
  */
-export const makeWatcherAuthenticatedHeaderObservationV1 = async (input: {
-  readonly header: WatcherStateQueueHeaderV1;
-  readonly chainPoint: AuthenticatedL1ChainPointV1;
+export const makeWatcherAuthenticatedHeaderObservation = async (input: {
+  readonly header: WatcherStateQueueHeader;
+  readonly chainPoint: AuthenticatedL1ChainPoint;
   readonly confirmationDepth: number;
-  readonly sourceMode: L1SourceModeV1;
-  readonly provenance: EvidenceProvenanceV1;
+  readonly sourceMode: L1SourceMode;
+  readonly provenance: EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
-}): Promise<AuthenticatedStateQueueHeaderObservationV1> => {
+}): Promise<AuthenticatedStateQueueHeaderObservation> => {
   const record = input.header;
-  const header: HeaderV1 = {
+  const header: Header = {
     prevUtxosRoot: hex32(record.prevUtxosRoot, "$.header.prevUtxosRoot"),
     utxosRoot: hex32(record.utxosRoot, "$.header.utxosRoot"),
     withdrawalsRoot: hex32(record.withdrawalsRoot, "$.header.withdrawalsRoot"),
@@ -333,15 +333,15 @@ export const makeWatcherAuthenticatedHeaderObservationV1 = async (input: {
   // The rebuilt struct must re-encode to the exact datum bytes the W14 indexer
   // read from L1. Field-level drift between the record and the struct handed to
   // the canonical hasher is impossible past this point.
-  if (Data.to(header, HeaderV1) !== record.headerCborHex) {
+  if (Data.to(header, Header) !== record.headerCborHex) {
     fail("header_cbor_mismatch", "$.header.headerCborHex");
   }
   // `admit...` re-derives the header hash canonically and rejects a
   // caller-supplied `headerHash` that does not match, an unknown source mode, a
   // non-L1 trust class, a malformed chain point, and insufficient depth.
-  return await admitAuthenticatedStateQueueHeaderObservationV1({
+  return await admitAuthenticatedStateQueueHeaderObservation({
     observation: {
-      schemaVersion: CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+      schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
       sourceMode: input.sourceMode,
       provenance: input.provenance,
       chainPoint: input.chainPoint,
@@ -359,7 +359,7 @@ export const makeWatcherAuthenticatedHeaderObservationV1 = async (input: {
 // Deterministic mismatch reporting
 // ---------------------------------------------------------------------------
 
-const rootSetFromHeader = (header: HeaderV1): WatcherHeaderRootSetV1 => ({
+const rootSetFromHeader = (header: Header): WatcherHeaderRootSet => ({
   utxos_root: header.utxosRoot,
   withdrawals_root: header.withdrawalsRoot,
   forced_transactions_root: header.forcedTransactionsRoot,
@@ -370,7 +370,7 @@ const rootSetFromHeader = (header: HeaderV1): WatcherHeaderRootSetV1 => ({
   validation_traces_root: header.validationTracesRoot,
 });
 
-const countSetFromHeader = (header: HeaderV1): WatcherHeaderCountSetV1 => ({
+const countSetFromHeader = (header: Header): WatcherHeaderCountSet => ({
   withdrawal_count: header.withdrawalCount.toString(),
   forced_transaction_count: header.forcedTransactionCount.toString(),
   l2_transaction_count: header.l2TransactionCount.toString(),
@@ -404,7 +404,7 @@ type CanonicalCountSet = {
 
 const rootSetFromCanonical = (
   roots: CanonicalRootSet,
-): WatcherHeaderRootSetV1 => ({
+): WatcherHeaderRootSet => ({
   utxos_root: roots.utxosRoot,
   withdrawals_root: roots.withdrawalsRoot,
   forced_transactions_root: roots.forcedTransactionsRoot,
@@ -417,7 +417,7 @@ const rootSetFromCanonical = (
 
 const countSetFromCanonical = (
   counts: CanonicalCountSet,
-): WatcherHeaderCountSetV1 => ({
+): WatcherHeaderCountSet => ({
   withdrawal_count: counts.withdrawalCount.toString(),
   forced_transaction_count: counts.forcedTransactionCount.toString(),
   l2_transaction_count: counts.l2TransactionCount.toString(),
@@ -474,21 +474,21 @@ const COUNT_MISMATCH_PREFIXES = [
 
 const orderReasonCodes = (
   codes: readonly string[],
-): readonly WatcherHeaderRootReconstructionReasonCodeV1[] => {
+): readonly WatcherHeaderRootReconstructionReasonCode[] => {
   const present = new Set(codes);
-  return WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES_V1.filter((code) =>
+  return WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES.filter((code) =>
     present.has(code),
   );
 };
 
 type Classification = {
   readonly reasonCodes: readonly string[];
-  readonly rootMismatches: readonly WatcherHeaderRootFieldV1[];
-  readonly countMismatches: readonly WatcherHeaderCountFieldV1[];
+  readonly rootMismatches: readonly WatcherHeaderRootField[];
+  readonly countMismatches: readonly WatcherHeaderCountField[];
 };
 
 const classifyFailure = (error: unknown): Classification => {
-  if (error instanceof CanonicalEvidenceRejectionV1) {
+  if (error instanceof CanonicalEvidenceRejection) {
     return {
       reasonCodes: [error.code],
       rootMismatches: [],
@@ -535,7 +535,7 @@ const classifyFailure = (error: unknown): Classification => {
         const fields = parseCanonicalFieldList(
           error.message,
           ROOT_MISMATCH_PREFIXES,
-          WATCHER_HEADER_ROOT_FIELDS_V1,
+          WATCHER_HEADER_ROOT_FIELDS,
         );
         return fields === null
           ? {
@@ -557,7 +557,7 @@ const classifyFailure = (error: unknown): Classification => {
         const fields = parseCanonicalFieldList(
           error.message,
           COUNT_MISMATCH_PREFIXES,
-          WATCHER_HEADER_COUNT_FIELDS_V1,
+          WATCHER_HEADER_COUNT_FIELDS,
         );
         return fields === null
           ? {
@@ -587,43 +587,43 @@ const classifyFailure = (error: unknown): Classification => {
 };
 
 const digestResult = (
-  result: Omit<WatcherHeaderRootReconstructionResultV1, "resultDigest">,
-): WatcherHeaderRootReconstructionResultV1 =>
+  result: Omit<WatcherHeaderRootReconstructionResult, "resultDigest">,
+): WatcherHeaderRootReconstructionResult =>
   Object.freeze({
     ...result,
-    resultDigest: watcherSha256CanonicalJsonV1(result),
+    resultDigest: watcherSha256CanonicalJson(result),
   });
 
 // ---------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------
 
-export type EvaluateWatcherHeaderRootReconstructionInputV1 = {
+export type EvaluateWatcherHeaderRootReconstructionInput = {
   /**
    * An L1-authenticated header observation, ideally produced by
-   * `makeWatcherAuthenticatedHeaderObservationV1`. It is re-admitted here, so a
+   * `makeWatcherAuthenticatedHeaderObservation`. It is re-admitted here, so a
    * hand-built observation whose header does not hash to its `headerHash` is
    * rejected rather than trusted.
    */
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   /** Exact public `DaPayloadEnvelopeV1` bytes, from the W21 store. */
   readonly payloadEnvelopeCbor: Uint8Array;
   /** Provenance of those bytes; must be public/permissionless DA. */
-  readonly daProvenance: EvidenceProvenanceV1;
+  readonly daProvenance: EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 };
 
-export const evaluateWatcherHeaderRootReconstructionV1 = async (
-  input: EvaluateWatcherHeaderRootReconstructionInputV1,
-): Promise<WatcherHeaderRootReconstructionResultV1> => {
+export const evaluateWatcherHeaderRootReconstruction = async (
+  input: EvaluateWatcherHeaderRootReconstructionInput,
+): Promise<WatcherHeaderRootReconstructionResult> => {
   const payloadEnvelopeSha256 = sha256Hex(input.payloadEnvelopeCbor);
   // Digest-only unwrap. The authoritative decode happens inside the canonical
   // reconstruction; this exists so a rejected block still records which inner
   // byte string was examined.
   let payloadSha256: string | null = null;
   try {
-    const unwrapped = await unwrapDaPayloadV1(input.payloadEnvelopeCbor, {
-      maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    const unwrapped = await unwrapDaPayload(input.payloadEnvelopeCbor, {
+      maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
     payloadSha256 = sha256Hex(unwrapped.innerBytes);
   } catch {
@@ -634,7 +634,7 @@ export const evaluateWatcherHeaderRootReconstructionV1 = async (
   const headerRoots = rootSetFromHeader(header);
   const headerCounts = countSetFromHeader(header);
   const common = {
-    schemaVersion: WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION,
     headerRoots,
     headerCounts,
     headerHash: input.observation.headerHash,
@@ -644,7 +644,7 @@ export const evaluateWatcherHeaderRootReconstructionV1 = async (
   } as const;
 
   try {
-    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
       observation: input.observation,
       payloadEnvelopeCbor: input.payloadEnvelopeCbor,
       daProvenance: input.daProvenance,
@@ -693,38 +693,37 @@ export const evaluateWatcherHeaderRootReconstructionV1 = async (
  * agree on, so the record is reproducible from the same bytes.
  */
 const reconstructedStateBytes = (
-  result: WatcherHeaderRootReconstructionResultV1,
-  roots: WatcherHeaderRootSetV1,
-  counts: WatcherHeaderCountSetV1,
+  result: WatcherHeaderRootReconstructionResult,
+  roots: WatcherHeaderRootSet,
+  counts: WatcherHeaderCountSet,
 ): Buffer =>
   encodeCborArrayRaw([
     encodeCborBytes(Buffer.from(result.headerHash, "hex")),
     encodeCborArrayRaw(
-      WATCHER_HEADER_ROOT_FIELDS_V1.map((field) =>
+      WATCHER_HEADER_ROOT_FIELDS.map((field) =>
         encodeCborBytes(Buffer.from(roots[field], "hex")),
       ),
     ),
     encodeCborArrayRaw(
-      WATCHER_HEADER_COUNT_FIELDS_V1.map((field) =>
+      WATCHER_HEADER_COUNT_FIELDS.map((field) =>
         encodeCborUnsigned(BigInt(counts[field])),
       ),
     ),
   ]);
 
 /**
- * Builds the W03-reserved `WatcherReconstructedStateV1` record for an accepted
+ * Builds the W03-reserved `WatcherReconstructedState` record for an accepted
  * reconstruction. `inputIds` must be the exact W21 canonical-store input ids
  * whose bytes were reconstructed; nothing else is accepted as a source.
  */
-export const makeWatcherHeaderRootReconstructedStateV1 = (input: {
-  readonly result: WatcherHeaderRootReconstructionResultV1;
+export const makeWatcherHeaderRootReconstructedState = (input: {
+  readonly result: WatcherHeaderRootReconstructionResult;
   readonly chainPointId: string;
   readonly inputIds: readonly string[];
-}): WatcherReconstructedStateV1 => {
+}): WatcherReconstructedState => {
   const result = input.result;
   if (
-    result.schemaVersion !==
-    WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION
+    result.schemaVersion !== WATCHER_HEADER_ROOT_RECONSTRUCTION_SCHEMA_VERSION
   ) {
     fail("unsupported_schema", "$.result.schemaVersion");
   }
@@ -735,8 +734,8 @@ export const makeWatcherHeaderRootReconstructedStateV1 = (input: {
   ) {
     fail("result_not_accepted", "$.result.action");
   }
-  const roots = result.reconstructedRoots as WatcherHeaderRootSetV1;
-  const counts = result.reconstructedCounts as WatcherHeaderCountSetV1;
+  const roots = result.reconstructedRoots as WatcherHeaderRootSet;
+  const counts = result.reconstructedCounts as WatcherHeaderCountSet;
   if (typeof input.chainPointId !== "string" || input.chainPointId === "") {
     fail("invalid_input_ids", "$.chainPointId");
   }
@@ -756,7 +755,7 @@ export const makeWatcherHeaderRootReconstructedStateV1 = (input: {
     priorStateRoot: result.headerPrevUtxosRoot,
     postStateRoot: roots.utxos_root,
     inputIds: Object.freeze([...input.inputIds]),
-    state: makeWatcherDurablePayloadV1(
+    state: makeWatcherDurablePayload(
       reconstructedStateBytes(result, roots, counts).toString("hex"),
     ),
   });

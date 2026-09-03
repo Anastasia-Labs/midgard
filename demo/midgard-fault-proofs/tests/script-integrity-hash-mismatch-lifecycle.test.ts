@@ -1,18 +1,18 @@
 import {
   buildMidgardValidationTraceTree,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxBodyCompactV1,
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxBodyCompact,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   MidgardRedeemerTag,
-  validationAuxiliaryWitnessDataV1,
+  validationAuxiliaryWitnessData,
 } from "@al-ft/midgard-validation";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
   encodeByteList,
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -34,30 +34,30 @@ import {
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
-  applyScriptIntegrityHashMismatchScriptsV1,
-  type ScriptIntegrityHashMismatchContractsV1,
+  applyScriptIntegrityHashMismatchScripts,
+  type ScriptIntegrityHashMismatchContracts,
 } from "../src/script-integrity-hash-mismatch/contracts-v1.js";
 import {
-  prepareScriptIntegrityHashMismatchEvidenceV1,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID_V1,
+  prepareScriptIntegrityHashMismatchEvidence,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID,
 } from "../src/script-integrity-hash-mismatch/family-v1.js";
-import { buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1 } from "../src/script-integrity-hash-mismatch/retained-stage-three-v1.js";
+import { buildScriptIntegrityStageThreeAuthenticationFromRetainedDa } from "../src/script-integrity-hash-mismatch/retained-stage-three-v1.js";
 import {
-  submitScriptIntegrityHashMismatchCancelV1,
-  submitScriptIntegrityHashMismatchStep01AcceptedV1,
-  submitScriptIntegrityHashMismatchStep02V1,
-  submitScriptIntegrityHashMismatchStep03V1,
-  submitScriptIntegrityHashMismatchStep04V1,
-  submitScriptIntegrityHashMismatchStep05V1,
+  submitScriptIntegrityHashMismatchCancel,
+  submitScriptIntegrityHashMismatchStep01Accepted,
+  submitScriptIntegrityHashMismatchStep02,
+  submitScriptIntegrityHashMismatchStep03,
+  submitScriptIntegrityHashMismatchStep04,
+  submitScriptIntegrityHashMismatchStep05,
 } from "../src/script-integrity-hash-mismatch/submit-v1.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixtureV1 } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
@@ -68,7 +68,7 @@ const network = "Custom" as const;
 
 describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
   it("restarts by out-ref, cancels every nonterminal step, mints and records signed ExUnits", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const addressData = Data.from(
@@ -81,7 +81,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         SDK.AddressData,
       ),
     );
-    const applied = applyScriptIntegrityHashMismatchScriptsV1({
+    const applied = applyScriptIntegrityHashMismatchScripts({
       blueprint: harness.realBlueprint,
       network,
       computationThreadPolicyId: harness.contracts.computationThread.policyId,
@@ -89,12 +89,12 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
       fraudProofTokenAddressData: addressData,
       hubOracleScriptHash: harness.contracts.hubOracle.policyId,
     });
-    const contracts: ScriptIntegrityHashMismatchContractsV1 = {
+    const contracts: ScriptIntegrityHashMismatchContracts = {
       steps: applied.map((step, index) => ({
         ...step,
         blueprintTitle: applied[index]!.blueprintTitle,
         referenceOutRef: `${"00".repeat(32)}#${index}`,
-      })) as unknown as ScriptIntegrityHashMismatchContractsV1["steps"],
+      })) as unknown as ScriptIntegrityHashMismatchContracts["steps"],
       computationThread: harness.contracts.computationThread,
       fraudProof: harness.contracts.fraudProof,
       hubOraclePolicyId: harness.contracts.hubOracle.policyId,
@@ -109,7 +109,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     });
     const category = catalogue.categories.scriptIntegrityHashMismatch!;
     expect(category.categoryId).toBe(
-      SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID_V1,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID,
     );
 
     const spent = outRefFromByte(0x61);
@@ -122,9 +122,9 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     );
     const spentOutput = makeProtectedScriptOutput(
       hashScriptWitness(script),
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
     );
-    const producedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const producedOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const correct = makeNativeTx({
       spendInputs: [spent],
       outputs: [producedOutput],
@@ -139,9 +139,9 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
       ...correct.tx.body,
       scriptIntegrityHash: Buffer.alloc(32, 0xff),
     };
-    const signedBodyHash = computeMidgardNativeTxIdV1({
+    const signedBodyHash = computeMidgardNativeTxId({
       version: correct.tx.version,
-      transactionBody: deriveMidgardNativeTxBodyCompactV1(malformedBody),
+      transactionBody: deriveMidgardNativeTxBodyCompact(malformedBody),
       transactionWitnessSetHash: Buffer.alloc(32),
       validity: correct.tx.validity,
     });
@@ -163,7 +163,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     const mutations = await buildValidationMachineLedgerMutationSteps({
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: [
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(malformed.txId),
           outputCbor: producedOutput,
         }),
@@ -174,7 +174,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     } as const;
     const trace = await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         eventKeyCbor: Buffer.from(
           Data.to(eventKey as never, SDK.EventKeySchema as never),
           "hex",
@@ -211,11 +211,11 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     expect(stateIndex).toBeGreaterThanOrEqual(0);
     const witness = trace.witnesses[stateIndex]!;
     const claimedTree = buildMidgardValidationTraceTree(
-      trace.states.map(hashMidgardValidationMachineStateV1),
+      trace.states.map(hashMidgardValidationMachineState),
       "accepted",
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
     );
-    const descriptor: SDK.ValidationTraceDescriptorV1 = {
+    const descriptor: SDK.ValidationTraceDescriptor = {
       schema_version: BigInt(claimedTree.descriptor.schemaVersion),
       machine_version: BigInt(claimedTree.descriptor.machineVersion),
       trace_root: claimedTree.descriptor.traceRoot.toString("hex"),
@@ -235,7 +235,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     const descriptorCbor = Buffer.from(
       Data.to(
         descriptor as never,
-        SDK.ValidationTraceDescriptorV1Schema as never,
+        SDK.ValidationTraceDescriptorSchema as never,
       ),
       "hex",
     );
@@ -244,10 +244,10 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
       [{ key: eventKeyCbor, value: descriptorCbor }],
     );
     const auxiliary = Data.from(
-      Data.to(validationAuxiliaryWitnessDataV1(witness.auxiliary) as never),
-      SDK.ValidationAuxiliaryWitnessV1Schema,
-    ) as unknown as SDK.ValidationAuxiliaryWitnessV1;
-    const retained: SDK.RetainedValidationWitnessV1 = {
+      Data.to(validationAuxiliaryWitnessData(witness.auxiliary) as never),
+      SDK.ValidationAuxiliaryWitnessSchema,
+    ) as unknown as SDK.ValidationAuxiliaryWitness;
+    const retained: SDK.RetainedValidationWitness = {
       machine_state: SDK.validationMachineStateDataFromCore(
         trace.states[stateIndex]!,
       ),
@@ -259,27 +259,27 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
       witness_cbor: witness.cbor.toString("hex"),
       auxiliary,
     };
-    const retainedKey: SDK.RetainedValidationWitnessKeyV1 = {
+    const retainedKey: SDK.RetainedValidationWitnessKey = {
       event_key: eventKey,
       execution_index: -1n,
     };
     const authentication =
-      await buildScriptIntegrityStageThreeAuthenticationFromRetainedDaV1({
+      await buildScriptIntegrityStageThreeAuthenticationFromRetainedDa({
         eventKey,
         authenticatedValidationTraceEntries: [
           { key: eventKeyCbor, value: descriptorCbor },
         ],
         retainedValidationWitnessEntries: [
           {
-            key: SDK.encodeRetainedValidationWitnessKeyV1(retainedKey),
-            value: SDK.encodeRetainedValidationWitnessV1(retained),
+            key: SDK.encodeRetainedValidationWitnessKey(retainedKey),
+            value: SDK.encodeRetainedValidationWitness(retained),
           },
         ],
         expectedValidationTracesRoot: traceRoot.root,
       });
-    const evidence = prepareScriptIntegrityHashMismatchEvidenceV1({
+    const evidence = prepareScriptIntegrityHashMismatchEvidence({
       finding: {
-        subject: SDK.acceptedVerdictSubjectV1(malformed.txId.toString("hex")),
+        subject: SDK.acceptedVerdictSubject(malformed.txId.toString("hex")),
       },
       scriptIntegrityHash: authentication.scriptIntegrityHash,
       redeemerWitnessHash: authentication.redeemerWitnessHash,
@@ -291,7 +291,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
       executionCount: authentication.control.execution_count,
     });
 
-    const block = await buildDecodingBlockFixtureV1({
+    const block = await buildDecodingBlockFixture({
       operatorVkey: await funderPaymentKeyHash(harness.funderLucid),
       startTime: BigInt(
         alignUnixTimeToEmulatorSlotBoundary(
@@ -367,7 +367,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step01 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMismatchStep01AcceptedV1({
+      submitScriptIntegrityHashMismatchStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -383,7 +383,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step02 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMismatchStep02V1({
+      submitScriptIntegrityHashMismatchStep02({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -394,7 +394,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         referenceScriptUtxo: references[1]!,
       });
     const step03 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMismatchStep03V1({
+      submitScriptIntegrityHashMismatchStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -403,7 +403,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         referenceScriptUtxo: references[2]!,
       });
     const step04 = (threadOutRef: string) =>
-      submitScriptIntegrityHashMismatchStep04V1({
+      submitScriptIntegrityHashMismatchStep04({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -413,7 +413,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
         referenceScriptUtxo: references[3]!,
       });
     const cancel = (threadOutRef: string, index: number) =>
-      submitScriptIntegrityHashMismatchCancelV1({
+      submitScriptIntegrityHashMismatchCancel({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -461,7 +461,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
     );
     expect(fourB.terminal).toBe(true);
     const five = await measured("step05", () =>
-      submitScriptIntegrityHashMismatchStep05V1({
+      submitScriptIntegrityHashMismatchStep05({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

@@ -1,13 +1,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.js";
+import { encodeForcedInclusionValue } from "../src/database/forcedTransactions.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "../src/mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
@@ -74,7 +74,7 @@ const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(effect);
 
 const assertSourceFields = (
-  decoded: SDK.L2TransactionSourceV1 | SDK.ForcedInclusionTxV1,
+  decoded: SDK.L2TransactionSource | SDK.ForcedInclusionTx,
   entry: GoldenEntry,
 ) => {
   expect(decoded.tx_id).toBe(entry.txIdHex);
@@ -93,14 +93,14 @@ describe("RF-031 transaction and forced root V1 golden contract", () => {
       const canonical = Buffer.from(entry.canonicalTransactionCborHex, "hex");
       const encoded = encodeProductionTransactionRootValue(
         canonical,
-        MIDGARD_CONSENSUS_PROFILE_V1,
+        MIDGARD_CONSENSUS_PROFILE,
       );
       expect(encoded.toString("hex")).toBe(entry.valueCborHex);
       const decoded = Data.from(
         entry.valueCborHex,
-        SDK.L2TransactionSourceV1,
-      ) as SDK.L2TransactionSourceV1;
-      expect(Data.to(decoded, SDK.L2TransactionSourceV1)).toBe(
+        SDK.L2TransactionSource,
+      ) as SDK.L2TransactionSource;
+      expect(Data.to(decoded, SDK.L2TransactionSource)).toBe(
         entry.valueCborHex,
       );
       assertSourceFields(decoded, entry);
@@ -122,11 +122,9 @@ describe("RF-031 transaction and forced root V1 golden contract", () => {
     for (const entry of fixture.forcedOrders) {
       const decoded = Data.from(
         entry.valueCborHex,
-        SDK.ForcedInclusionTxV1,
-      ) as SDK.ForcedInclusionTxV1;
-      expect(Data.to(decoded, SDK.ForcedInclusionTxV1)).toBe(
-        entry.valueCborHex,
-      );
+        SDK.ForcedInclusionTx,
+      ) as SDK.ForcedInclusionTx;
+      expect(Data.to(decoded, SDK.ForcedInclusionTx)).toBe(entry.valueCborHex);
       assertSourceFields(decoded, entry);
       // The leaf's own constructor tags must spell the verdict the canonical
       // input named — the fixture's arm name is checked against the decoded
@@ -137,10 +135,10 @@ describe("RF-031 transaction and forced root V1 golden contract", () => {
           : SDK.rejectionReasonArmOf(decoded.verdict.ForcedTxInvalid.reason),
       ).toBe(entry.verdict);
       const encoded = await run(
-        encodeForcedInclusionValueV1({
+        encodeForcedInclusionValue({
           nativeTxCbor: Buffer.from(entry.canonicalTransactionCborHex, "hex"),
           verdict: decoded.verdict,
-          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         }),
       );
       expect(encoded.value.toString("hex")).toBe(entry.valueCborHex);
@@ -212,7 +210,7 @@ describe("RF-031 transaction and forced root V1 golden contract", () => {
   it("does not allow a forced source to masquerade as a normal source", () => {
     const forced = fixture.forcedOrders[0]!;
     expect(() =>
-      Data.from(forced.valueCborHex, SDK.L2TransactionSourceV1),
+      Data.from(forced.valueCborHex, SDK.L2TransactionSource),
     ).toThrow();
     expect(ForcedTransactionsDB.Columns.TX_ORDER_ID).toBe("tx_order_id");
   });

@@ -1,34 +1,34 @@
 import { createHash } from "node:crypto";
 
 import { computeHash28 } from "@al-ft/midgard-core";
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekProgramMaterialPreimageV1,
+  encodeMidgardCekTermNode,
+  hashMidgardCekProgramMaterialPreimage,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxBodyCompactV1,
-  deriveMidgardNativeTxCompactV1,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxCanonical,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxBodyCanonicalV1,
-  type MidgardNativeTxCanonicalV1,
-  type MidgardNativeTxFullV1,
-  type MidgardNativeTxWitnessSetCanonicalV1,
+  type MidgardNativeTxBodyCanonical,
+  type MidgardNativeTxCanonical,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
-  buildValidationMachineLedgerInsertOpV1,
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   RejectCodes,
 } from "@al-ft/midgard-validation";
@@ -38,7 +38,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   encodeRecomputedNativeTx,
-  FUNDED_OUTPUT_LOVELACE_V1,
+  FUNDED_OUTPUT_LOVELACE,
   makeMintPreimageCbor,
   makeNativeTx,
   makeOutput as makeValidationOutput,
@@ -53,13 +53,13 @@ import {
 import { publishedProgramMaterialEntries } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 import {
   buildDeterministicValidationTraceMembers,
-  classifyForcedTransactionsV1,
+  classifyForcedTransactions,
 } from "../src/mpf/index.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const canonicalTransaction = (
-  version: bigint = MIDGARD_NATIVE_TX_V1_VERSION,
-): MidgardNativeTxCanonicalV1 => ({
+  version: bigint = MIDGARD_NATIVE_TX_VERSION,
+): MidgardNativeTxCanonical => ({
   version,
   validity: "TxIsValid",
   body: {
@@ -84,8 +84,8 @@ const canonicalTransaction = (
 });
 
 const encodedTransaction = (version?: bigint): Buffer =>
-  encodeMidgardNativeTxCanonicalV1(
-    materializeMidgardNativeTxFromCanonicalV1(canonicalTransaction(version)),
+  encodeMidgardNativeTxCanonical(
+    materializeMidgardNativeTxFromCanonical(canonicalTransaction(version)),
   );
 
 const TEST_PRIVATE_KEY = CML.PrivateKey.generate_ed25519();
@@ -119,11 +119,11 @@ const makeSignedEffectfulTransaction = (
   spendInput: Buffer,
   output: Buffer,
 ): {
-  readonly transaction: MidgardNativeTxFullV1;
+  readonly transaction: MidgardNativeTxFull;
   readonly transactionId: Buffer;
   readonly canonicalCbor: Buffer;
 } => {
-  const body: MidgardNativeTxBodyCanonicalV1 = {
+  const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor: encodeByteList([spendInput]),
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
     outputsPreimageCbor: encodeByteList([output]),
@@ -137,13 +137,13 @@ const makeSignedEffectfulTransaction = (
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
   };
-  const bodyHash = computeMidgardNativeTxIdV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
-    transactionBody: deriveMidgardNativeTxBodyCompactV1(body),
+  const bodyHash = computeMidgardNativeTxId({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    transactionBody: deriveMidgardNativeTxBodyCompact(body),
     transactionWitnessSetHash: Buffer.alloc(32),
     validity: "TxIsValid",
   });
-  const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
+  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor: encodeByteList([
       Buffer.from(
         CML.make_vkey_witness(
@@ -155,22 +155,22 @@ const makeSignedEffectfulTransaction = (
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
-  const transaction: MidgardNativeTxFullV1 = {
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  const transaction: MidgardNativeTxFull = {
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity: "TxIsValid",
-    compact: deriveMidgardNativeTxCompactV1(
+    compact: deriveMidgardNativeTxCompact(
       body,
       witnessSet,
       "TxIsValid",
-      MIDGARD_NATIVE_TX_V1_VERSION,
+      MIDGARD_NATIVE_TX_VERSION,
     ),
     body,
     witnessSet,
   };
   return {
     transaction,
-    transactionId: computeMidgardNativeTxIdV1(transaction),
-    canonicalCbor: encodeMidgardNativeTxCanonicalV1(transaction),
+    transactionId: computeMidgardNativeTxId(transaction),
+    canonicalCbor: encodeMidgardNativeTxCanonical(transaction),
   };
 };
 
@@ -186,17 +186,17 @@ const forcedEntry = async ({
   // happens at classification, which overwrites the leaf value and the
   // validity projection but never the submitted identity.
   const encoded = await Effect.runPromise(
-    ForcedTransactionsDB.encodeForcedInclusionValueV1({
+    ForcedTransactionsDB.encodeForcedInclusionValue({
       nativeTxCbor: transaction.canonicalCbor,
       verdict: "ForcedTxValid",
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     }),
   );
   const txOrderId: SDK.OutputReference = {
     transactionId: Buffer.alloc(32, label).toString("hex"),
     outputIndex: 0n,
   };
-  const sidecarCbor = encodeMidgardCekProgramMaterialSidecarV1([]);
+  const sidecarCbor = encodeMidgardCekProgramMaterialSidecar([]);
   return {
     [ForcedTransactionsDB.Columns.TX_ORDER_ID]: Buffer.from(
       Data.to(txOrderId, SDK.OutputReference),
@@ -211,7 +211,7 @@ const forcedEntry = async ({
     [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]: encoded.value,
     [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsValid",
     [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
-      MIDGARD_CONSENSUS_PROFILE_V1.profileId,
+      MIDGARD_CONSENSUS_PROFILE.profileId,
     [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]: transaction.canonicalCbor,
     [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
       encoded.transactionCommitment,
@@ -229,9 +229,9 @@ const forcedEntry = async ({
 
 describe("V1 forced transaction material", () => {
   it("accepts only exact self-authenticating material from the immutable L1 address", () => {
-    const preimage = encodeMidgardCekTermNodeV1({ kind: "error" });
-    const root = hashMidgardCekProgramMaterialPreimageV1("term", preimage);
-    const [publication] = SDK.deriveCekProgramMaterialPublicationsV1([
+    const preimage = encodeMidgardCekTermNode({ kind: "error" });
+    const root = hashMidgardCekProgramMaterialPreimage("term", preimage);
+    const [publication] = SDK.deriveCekProgramMaterialPublications([
       { kind: "term", root, preimage },
     ]);
     const utxo = (datum: string | undefined, outputIndex: number): UTxO =>
@@ -247,7 +247,7 @@ describe("V1 forced transaction material", () => {
       utxo(
         Data.to(
           { ...publication!.datum, root: "ff".repeat(32) },
-          SDK.CekProgramMaterialDatumV1,
+          SDK.CekProgramMaterialDatum,
         ),
         1,
       ),
@@ -261,23 +261,23 @@ describe("V1 forced transaction material", () => {
   it("binds the transaction's body identity while stamping the leaf's validity scalar from the verdict", async () => {
     const nativeTxCbor = encodedTransaction();
     const accepted = await Effect.runPromise(
-      ForcedTransactionsDB.encodeForcedInclusionValueV1({
+      ForcedTransactionsDB.encodeForcedInclusionValue({
         nativeTxCbor,
         verdict: "ForcedTxValid",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     );
     const rejected = await Effect.runPromise(
-      ForcedTransactionsDB.encodeForcedInclusionValueV1({
+      ForcedTransactionsDB.encodeForcedInclusionValue({
         nativeTxCbor,
         verdict: { ForcedTxInvalid: { reason: "FeeBelowMinimum" } },
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     );
     const decoded = Data.from(
       accepted.value.toString("hex"),
-      SDK.ForcedInclusionTxV1,
-    ) as SDK.ForcedInclusionTxV1;
+      SDK.ForcedInclusionTx,
+    ) as SDK.ForcedInclusionTx;
 
     // `tx_id` hashes the body only, so the operator's adjudication never
     // moves the transaction's identity …
@@ -307,42 +307,36 @@ describe("V1 forced transaction material", () => {
       verdict: "ForcedTxValid",
     });
     const journalMember =
-      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1({
+      ForcedTransactionsDB.encodeForcedTransactionJournalMember({
         sourceValueCbor: accepted.value,
         canonicalTransactionCbor: nativeTxCbor,
-        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
-          [],
-        ),
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
       });
     expect(
-      ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
-        journalMember,
-      ),
+      ForcedTransactionsDB.decodeForcedTransactionJournalMember(journalMember),
     ).toEqual({
       sourceValueCbor: accepted.value,
       canonicalTransactionCbor: nativeTxCbor,
-      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
     });
   });
 
   it("encodes the sole canonical ForcedTransactionJournalMemberV1 four-field CBOR form", () => {
-    expect(
-      ForcedTransactionsDB.FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION,
-    ).toBe(1n);
-    expect(MIDGARD_CONSENSUS_PROFILE_V1.forcedTransactionJournalVersion).toBe(
-      1,
+    expect(ForcedTransactionsDB.FORCED_TRANSACTION_JOURNAL_MEMBER_VERSION).toBe(
+      1n,
     );
+    expect(MIDGARD_CONSENSUS_PROFILE.forcedTransactionJournalVersion).toBe(1);
     const value = {
       sourceValueCbor: Buffer.from("aa", "hex"),
       canonicalTransactionCbor: Buffer.from("bbcc", "hex"),
       programMaterialSidecarCbor: Buffer.from("ddeeff", "hex"),
     };
     const encoded =
-      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1(value);
+      ForcedTransactionsDB.encodeForcedTransactionJournalMember(value);
 
     expect(encoded.toString("hex")).toBe("840141aa42bbcc43ddeeff");
     expect(
-      ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(encoded),
+      ForcedTransactionsDB.decodeForcedTransactionJournalMember(encoded),
     ).toEqual(value);
   });
 
@@ -350,12 +344,13 @@ describe("V1 forced transaction material", () => {
     const source = Buffer.from("aa", "hex");
     const transaction = Buffer.from("bbcc", "hex");
     const sidecar = Buffer.from("ddeeff", "hex");
-    const canonical =
-      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1({
+    const canonical = ForcedTransactionsDB.encodeForcedTransactionJournalMember(
+      {
         sourceValueCbor: source,
         canonicalTransactionCbor: transaction,
         programMaterialSidecarCbor: sidecar,
-      });
+      },
+    );
     const invalidEncodings: readonly (readonly [string, Buffer])[] = [
       ["legacy version zero", encodeCbor([0n, source, transaction, sidecar])],
       ["successor version two", encodeCbor([2n, source, transaction, sidecar])],
@@ -394,7 +389,7 @@ describe("V1 forced transaction material", () => {
     for (const [name, encoded] of invalidEncodings) {
       expect(
         () =>
-          ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(encoded),
+          ForcedTransactionsDB.decodeForcedTransactionJournalMember(encoded),
         name,
       ).toThrow();
     }
@@ -405,7 +400,7 @@ describe("V1 forced transaction material", () => {
     const canonicalTransactionCbor = Buffer.from("bb", "hex");
     const programMaterialSidecarCbor = Buffer.from("cc", "hex");
     const encode =
-      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1 as (
+      ForcedTransactionsDB.encodeForcedTransactionJournalMember as (
         value: unknown,
       ) => Buffer;
     const symbolExtra = Object.assign(
@@ -478,7 +473,7 @@ describe("V1 forced transaction material", () => {
     const headerHash = Buffer.alloc(28, 0x11);
     const memberId = Buffer.alloc(34, 0x22);
     const canonicalPayload =
-      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1({
+      ForcedTransactionsDB.encodeForcedTransactionJournalMember({
         sourceValueCbor: Buffer.from("aa", "hex"),
         canonicalTransactionCbor: Buffer.from("bb", "hex"),
         programMaterialSidecarCbor: Buffer.from("cc", "hex"),
@@ -507,7 +502,7 @@ describe("V1 forced transaction material", () => {
 
     await expect(
       Effect.runPromise(
-        PendingBlockFinalizationsDB.validateForcedTransactionJournalMembersV1(
+        PendingBlockFinalizationsDB.validateForcedTransactionJournalMembers(
           [member(canonicalPayload)],
           headerHash,
         ),
@@ -568,7 +563,7 @@ describe("V1 forced transaction material", () => {
     for (const [name, invalid] of invalidMembers) {
       const result = await Effect.runPromise(
         Effect.either(
-          PendingBlockFinalizationsDB.validateForcedTransactionJournalMembersV1(
+          PendingBlockFinalizationsDB.validateForcedTransactionJournalMembers(
             [invalid],
             headerHash,
           ),
@@ -580,8 +575,8 @@ describe("V1 forced transaction material", () => {
 
   it("builds a deterministic forced rejection descriptor from the same Phase A/B replay", async () => {
     const nativeTxCbor = encodedTransaction();
-    const txId = computeMidgardNativeTxIdV1(
-      materializeMidgardNativeTxFromCanonicalV1(canonicalTransaction()),
+    const txId = computeMidgardNativeTxId(
+      materializeMidgardNativeTxFromCanonical(canonicalTransaction()),
     );
     const eventKey: SDK.EventKey = {
       ForcedTransactionEventKey: {
@@ -593,7 +588,7 @@ describe("V1 forced transaction material", () => {
     };
     const members = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
         expectedNetworkId: 0n,
         minFeeA: 0n,
@@ -604,8 +599,9 @@ describe("V1 forced transaction material", () => {
             eventKey,
             transactionId: txId,
             canonicalTransactionCbor: nativeTxCbor,
-            programMaterialSidecarCbor:
-              encodeMidgardCekProgramMaterialSidecarV1([]),
+            programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
+              [],
+            ),
             sourceKind: "forced",
             priorUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
             postUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -628,14 +624,14 @@ describe("V1 forced transaction material", () => {
     expect(
       Data.from(
         members[0]!.valueCbor.toString("hex"),
-        SDK.ValidationTraceDescriptorV1,
+        SDK.ValidationTraceDescriptor,
       ),
     ).toEqual(members[0]!.value);
   });
 
   it("retains the complete ScriptSources frontier and canonical native execution witness", async () => {
     const spent = outRefFromByte(0x7a);
-    const spentOutput = makeValidationOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const spentOutput = makeValidationOutput(FUNDED_OUTPUT_LOVELACE);
     const malformedPayload = Buffer.from("820700", "hex");
     const malformedItem = Buffer.from("820043820700", "hex");
     const policyId = computeHash28(
@@ -643,7 +639,7 @@ describe("V1 forced transaction material", () => {
     );
     const assetName = Buffer.from("31", "hex");
     const output = makeValidationOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       undefined,
       new Map([
         [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
@@ -668,7 +664,7 @@ describe("V1 forced transaction material", () => {
       initialEntries: [{ outRef: spent, output: spentOutput }],
       operations: [
         { type: "delete", key: spent },
-        buildValidationMachineLedgerInsertOpV1({
+        buildValidationMachineLedgerInsertOp({
           key: outRefFromTxId(malformed.txId),
           outputCbor: output,
         }),
@@ -684,7 +680,7 @@ describe("V1 forced transaction material", () => {
     };
     const [member] = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
         expectedNetworkId: 0n,
         minFeeA: 0n,
@@ -695,8 +691,9 @@ describe("V1 forced transaction material", () => {
             eventKey,
             transactionId: malformed.txId,
             canonicalTransactionCbor: malformed.txCbor,
-            programMaterialSidecarCbor:
-              encodeMidgardCekProgramMaterialSidecarV1([]),
+            programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
+              [],
+            ),
             sourceKind: "forced",
             priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
             postUtxosRoot: mutations[0]!.preRoot.toString("hex"),
@@ -711,10 +708,8 @@ describe("V1 forced transaction material", () => {
     );
     expect(member).toBeDefined();
     const retainedEntries = member!.witnesses.map(([keyHex, valueHex]) => ({
-      key: SDK.decodeRetainedValidationWitnessKeyV1(Buffer.from(keyHex, "hex")),
-      value: SDK.decodeRetainedValidationWitnessV1(
-        Buffer.from(valueHex, "hex"),
-      ),
+      key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
+      value: SDK.decodeRetainedValidationWitness(Buffer.from(valueHex, "hex")),
     }));
     const scriptSources = retainedEntries.filter(
       ({ value }) => value.phase === 8n,
@@ -764,12 +759,12 @@ describe("V1 forced transaction material", () => {
     const initialInput = outputReferenceFromHash(Buffer.alloc(32, 0x31));
     // Phase B enforces MIN-ADA-TX on every produced output, so a 10-lovelace
     // output is classified `TxIsInvalid` on `E_MIN_ADA` before the sequential
-    // forced-delta semantics under test are reached. `FUNDED_OUTPUT_LOVELACE_V1`
+    // forced-delta semantics under test are reached. `FUNDED_OUTPUT_LOVELACE`
     // is the shared fixture amount that clears the floor with headroom, and
     // using it for both the pre-state entry and the produced output keeps this
     // two-step chain value-conserving at fee 0.
     const output = makeOutput(
-      FUNDED_OUTPUT_LOVELACE_V1,
+      FUNDED_OUTPUT_LOVELACE,
       new Map([["ab".repeat(28), new Map([["01", 7n]])]]),
     );
     const firstTransaction = makeSignedEffectfulTransaction(
@@ -787,11 +782,11 @@ describe("V1 forced transaction material", () => {
     ];
     const resolverCalls: string[][] = [];
     const classified = await Effect.runPromise(
-      classifyForcedTransactionsV1({
+      classifyForcedTransactions({
         entries,
         initialState: new Map([[initialInput.toString("hex"), output]]),
         effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           expectedNetworkId: 0n,
           minFeeA: 0n,
@@ -805,7 +800,7 @@ describe("V1 forced transaction material", () => {
               Buffer.from(envelope.termRoot).toString("hex"),
             ),
           );
-          return Effect.succeed(encodeMidgardCekProgramMaterialSidecarV1([]));
+          return Effect.succeed(encodeMidgardCekProgramMaterialSidecar([]));
         },
       }),
     );
@@ -823,7 +818,7 @@ describe("V1 forced transaction material", () => {
       expect(result.ledgerWitnessEntries).toHaveLength(1);
     }
     const firstOutputDescriptor =
-      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      buildCanonicalMidgardLedgerEntryOutputMaterial({
         outRef: firstOutput,
         outputCbor: output,
       }).descriptorCbor;
@@ -857,7 +852,7 @@ describe("V1 forced transaction material", () => {
     });
     const members = await Effect.runPromise(
       buildDeterministicValidationTraceMembers({
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         blockEndTime: new Date("2026-07-23T12:01:00.000Z"),
         expectedNetworkId: 0n,
         minFeeA: 0n,
@@ -893,10 +888,8 @@ describe("V1 forced transaction material", () => {
     ).toBe(true);
     for (const member of members) {
       const retained = member.witnesses.map(([keyHex, valueHex]) => ({
-        key: SDK.decodeRetainedValidationWitnessKeyV1(
-          Buffer.from(keyHex, "hex"),
-        ),
-        value: SDK.decodeRetainedValidationWitnessV1(
+        key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
+        value: SDK.decodeRetainedValidationWitness(
           Buffer.from(valueHex, "hex"),
         ),
       }));
@@ -948,11 +941,11 @@ describe("V1 forced transaction material", () => {
       makeOutput(10n),
     );
     const [classified] = await Effect.runPromise(
-      classifyForcedTransactionsV1({
+      classifyForcedTransactions({
         entries: [await forcedEntry({ label: 3, transaction })],
         initialState: new Map(),
         effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           expectedNetworkId: 0n,
           minFeeA: 0n,
@@ -961,7 +954,7 @@ describe("V1 forced transaction material", () => {
           slotForUnixTime: () => 100n,
         },
         resolveProgramMaterialSidecar: () =>
-          Effect.succeed(encodeMidgardCekProgramMaterialSidecarV1([])),
+          Effect.succeed(encodeMidgardCekProgramMaterialSidecar([])),
       }),
     );
 
@@ -976,8 +969,8 @@ describe("V1 forced transaction material", () => {
           classified!.entry[
             ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE
           ].toString("hex"),
-          SDK.ForcedInclusionTxV1,
-        ) as SDK.ForcedInclusionTxV1
+          SDK.ForcedInclusionTx,
+        ) as SDK.ForcedInclusionTx
       ).verdict,
     ).toEqual({
       ForcedTxInvalid: {

@@ -1,6 +1,6 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
-  assertMidgardPlutusDataWellFormedV1,
+  assertMidgardPlutusDataWellFormed,
 } from "../plutus-data-cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
@@ -20,7 +20,7 @@ const fail = (message: string, detail?: string): never => {
 /**
  * Validates the exact Cardano Plutus-Data encoding used by Aiken's
  * `cbor.serialise`. Well-formedness is checked with the recursion-free
- * `assertMidgardPlutusDataWellFormedV1` pass, which is verdict-equivalent to
+ * `assertMidgardPlutusDataWellFormed` pass, which is verdict-equivalent to
  * the recursive Lucid/CML `Data.from` probe it replaced once the canonicity
  * gate below is composed in, and — unlike CML's wasm build, which traps near
  * 1,522 nested nodes — admits every depth a maximal 16,384-byte Cardano
@@ -36,7 +36,7 @@ export const decodeMidgardDatum = (bytes: Uint8Array): MidgardDatum => {
     return fail("PlutusData datum must not be empty");
   }
   try {
-    assertMidgardPlutusDataWellFormedV1(source);
+    assertMidgardPlutusDataWellFormed(source);
   } catch (cause) {
     return fail("Invalid PlutusData datum CBOR", String(cause));
   }

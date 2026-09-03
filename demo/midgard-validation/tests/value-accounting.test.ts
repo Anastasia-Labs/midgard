@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { RejectCodes, validatePhaseASingle } from "../src/index.js";
 import {
   isZeroValueDelta,
-  MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1,
-  minAdaLovelaceV1,
+  MIN_ADA_OUTPUT_OVERHEAD_BYTES,
+  minAdaLovelace,
   mintToValueDelta,
-  outputMeetsMinAdaV1,
+  outputMeetsMinAda,
   valuePreservationDelta,
 } from "../src/value-accounting.js";
 import { makeNativeTx, makeOutput, makeQueued } from "./validation-fixtures.js";
@@ -157,24 +157,22 @@ describe("minimum-Ada boundary (target-snapshot parameterized)", () => {
   it("pins the parameterized min-Ada floor at coinsPerUtxoByte=4_310, its +/-1 legs, and the 689_600 zero-byte floor", () => {
     const coinsPerUtxoByte = 4_310n;
     const outputBytes = BigInt(makeOutput(2_000_000n).length);
-    const floor = minAdaLovelaceV1(coinsPerUtxoByte, outputBytes);
+    const floor = minAdaLovelace(coinsPerUtxoByte, outputBytes);
 
     expect(floor).toBe(
-      coinsPerUtxoByte * (MIN_ADA_OUTPUT_OVERHEAD_BYTES_V1 + outputBytes),
+      coinsPerUtxoByte * (MIN_ADA_OUTPUT_OVERHEAD_BYTES + outputBytes),
     );
-    expect(outputMeetsMinAdaV1(coinsPerUtxoByte, outputBytes, floor)).toBe(
-      true,
-    );
-    expect(outputMeetsMinAdaV1(coinsPerUtxoByte, outputBytes, floor - 1n)).toBe(
+    expect(outputMeetsMinAda(coinsPerUtxoByte, outputBytes, floor)).toBe(true);
+    expect(outputMeetsMinAda(coinsPerUtxoByte, outputBytes, floor - 1n)).toBe(
       false,
     );
-    expect(outputMeetsMinAdaV1(coinsPerUtxoByte, outputBytes, floor + 1n)).toBe(
+    expect(outputMeetsMinAda(coinsPerUtxoByte, outputBytes, floor + 1n)).toBe(
       true,
     );
     // +1 output byte moves the floor by exactly `coinsPerUtxoByte`.
-    expect(minAdaLovelaceV1(coinsPerUtxoByte, outputBytes + 1n) - floor).toBe(
+    expect(minAdaLovelace(coinsPerUtxoByte, outputBytes + 1n) - floor).toBe(
       coinsPerUtxoByte,
     );
-    expect(minAdaLovelaceV1(coinsPerUtxoByte, 0n)).toBe(689_600n);
+    expect(minAdaLovelace(coinsPerUtxoByte, 0n)).toBe(689_600n);
   });
 });

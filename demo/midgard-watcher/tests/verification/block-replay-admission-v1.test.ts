@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assertWatcherFullBlockReplayResultV1,
-  evaluateWatcherBlockReplayV1,
+  assertWatcherFullBlockReplayResult,
+  evaluateWatcherBlockReplay,
 } from "../../src/verification/block-replay.js";
 
 describe("watcher full block-replay admission V1", () => {
@@ -10,14 +10,14 @@ describe("watcher full block-replay admission V1", () => {
     // Deliberately malformed at the authenticated observation boundary. The
     // full entry point still mints the fail-closed result; this keeps the
     // authority test bounded without constructing a complete ledger fixture.
-    const result = await evaluateWatcherBlockReplayV1({} as never);
+    const result = await evaluateWatcherBlockReplay({} as never);
 
     expect(result).toMatchObject({
       action: "error",
       reasonCodes: ["canonical_reconstruction_failed"],
     });
-    expect(() => assertWatcherFullBlockReplayResultV1(result)).not.toThrow();
-    expect(() => assertWatcherFullBlockReplayResultV1({ ...result })).toThrow(
+    expect(() => assertWatcherFullBlockReplayResult(result)).not.toThrow();
+    expect(() => assertWatcherFullBlockReplayResult({ ...result })).toThrow(
       "watcher full block-replay result is not admitted",
     );
   });

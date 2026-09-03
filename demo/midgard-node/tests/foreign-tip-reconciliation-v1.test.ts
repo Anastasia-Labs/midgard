@@ -1,5 +1,5 @@
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -8,16 +8,16 @@ import { sha256 } from "../src/sha256.js";
 
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const NONEMPTY_ROOT = "11".repeat(32);
-const MARKER = makeDeploymentMarkerV1("ab".repeat(32));
-const OTHER_MARKER = makeDeploymentMarkerV1("cd".repeat(32));
+const MARKER = makeDeploymentMarker("ab".repeat(32));
+const OTHER_MARKER = makeDeploymentMarker("cd".repeat(32));
 const FOREIGN_HEADER_HASH = Buffer.alloc(28, 0x31);
 const REPLACED_HEADER_HASH = Buffer.alloc(28, 0x32);
 const PAYLOAD_A = Buffer.from("d8799f4101ff", "hex");
 const PAYLOAD_B = Buffer.from("d8799f4102ff", "hex");
-const pending = (): ForeignTipReconciliationsDB.ForeignTipReconciliationV1 => ({
-  version: ForeignTipReconciliationsDB.FOREIGN_TIP_RECONCILIATION_V1_VERSION,
+const pending = (): ForeignTipReconciliationsDB.ForeignTipReconciliation => ({
+  version: ForeignTipReconciliationsDB.FOREIGN_TIP_RECONCILIATION_VERSION,
   deploymentMarker: MARKER,
-  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
   foreignHeaderHash: FOREIGN_HEADER_HASH,
   replacedBaseHeaderHash: REPLACED_HEADER_HASH,
   foreignHeaderCbor: Buffer.from("d87980", "hex"),
@@ -39,7 +39,7 @@ const pending = (): ForeignTipReconciliationsDB.ForeignTipReconciliationV1 => ({
 });
 
 const verifiedEmpty =
-  (): ForeignTipReconciliationsDB.ForeignTipReconciliationV1 => ({
+  (): ForeignTipReconciliationsDB.ForeignTipReconciliation => ({
     ...pending(),
     commitments: {
       depositsRoot: EMPTY_ROOT,
@@ -56,7 +56,7 @@ const verifiedEmpty =
   });
 
 const verifiedDa =
-  (): ForeignTipReconciliationsDB.ForeignTipReconciliationV1 => ({
+  (): ForeignTipReconciliationsDB.ForeignTipReconciliation => ({
     ...pending(),
     evidence: {
       kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
@@ -70,7 +70,7 @@ const verifiedDa =
 const daIdentity = (payload = PAYLOAD_A) => ({
   headerHash: FOREIGN_HEADER_HASH,
   schemaVersion: 1,
-  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
   payloadCbor: payload,
   payloadSha256: sha256(payload),
 });
@@ -78,13 +78,13 @@ const daIdentity = (payload = PAYLOAD_A) => ({
 describe("ForeignTipReconciliationV1 exact evidence", () => {
   it("accepts the sole pending, verified-empty, and verified-DA V1 shapes", () => {
     const pendingResult =
-      ForeignTipReconciliationsDB.parseForeignTipReconciliationV1(pending());
+      ForeignTipReconciliationsDB.parseForeignTipReconciliation(pending());
     const emptyResult =
-      ForeignTipReconciliationsDB.parseForeignTipReconciliationV1(
+      ForeignTipReconciliationsDB.parseForeignTipReconciliation(
         verifiedEmpty(),
       );
     const daResult =
-      ForeignTipReconciliationsDB.parseForeignTipReconciliationV1(verifiedDa());
+      ForeignTipReconciliationsDB.parseForeignTipReconciliation(verifiedDa());
 
     expect(pendingResult.evidence.kind).toBe("pending_v1");
     expect(emptyResult.evidence.kind).toBe("verified_empty_v1");
@@ -94,7 +94,7 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
 
   it("authenticates new DA against deployment, profile, header, and digest", () => {
     const authenticated =
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: pending(),
         deploymentMarker: MARKER,
         evidence: daIdentity(),
@@ -106,7 +106,7 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
 
   it("accepts only an exact replay of retained verified DA evidence", () => {
     const authenticated =
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: verifiedDa(),
         deploymentMarker: MARKER,
         evidence: daIdentity(),
@@ -114,7 +114,7 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
 
     expect(authenticated.payloadCbor).toEqual(PAYLOAD_A);
     expect(() =>
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: verifiedDa(),
         deploymentMarker: MARKER,
         evidence: daIdentity(PAYLOAD_B),
@@ -232,20 +232,20 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
     ],
   ])("rejects %s", (_label, candidate) => {
     expect(() =>
-      ForeignTipReconciliationsDB.parseForeignTipReconciliationV1(candidate()),
+      ForeignTipReconciliationsDB.parseForeignTipReconciliation(candidate()),
     ).toThrow();
   });
 
   it("rejects deployment, header, profile, digest, and empty-evidence replay substitutions", () => {
     expect(() =>
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: pending(),
         deploymentMarker: OTHER_MARKER,
         evidence: daIdentity(),
       }),
     ).toThrow();
     expect(() =>
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: pending(),
         deploymentMarker: MARKER,
         evidence: {
@@ -255,7 +255,7 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
       }),
     ).toThrow(/header\/profile/u);
     expect(() =>
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: pending(),
         deploymentMarker: MARKER,
         evidence: {
@@ -265,7 +265,7 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
       }),
     ).toThrow();
     expect(() =>
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: pending(),
         deploymentMarker: MARKER,
         evidence: {
@@ -275,7 +275,7 @@ describe("ForeignTipReconciliationV1 exact evidence", () => {
       }),
     ).toThrow(/digest/u);
     expect(() =>
-      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+      ForeignTipReconciliationsDB.authenticateForeignTipDaEvidence({
         reconciliation: verifiedEmpty(),
         deploymentMarker: MARKER,
         evidence: daIdentity(),

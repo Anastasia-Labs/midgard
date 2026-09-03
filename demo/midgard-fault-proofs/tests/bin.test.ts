@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -26,7 +26,7 @@ const makeEmptyTransitionTraceEnvelope = async () => {
     transitionStepCount: 0n,
     validationTraceCount: 0n,
   };
-  const header: SDK.HeaderV1 = {
+  const header: SDK.Header = {
     prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -47,9 +47,9 @@ const makeEmptyTransitionTraceEnvelope = async () => {
     operatorVkey: "22".repeat(28),
     protocolVersion: 1n,
   };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  const payload: SDK.DaPayloadV1 = {
-    version: SDK.DA_PAYLOAD_V1_VERSION,
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const payload: SDK.DaPayload = {
+    version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -71,7 +71,7 @@ const makeEmptyTransitionTraceEnvelope = async () => {
   return {
     header,
     headerHash,
-    envelope: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+    envelope: await wrapDaPayload(SDK.encodeDaPayload(payload), {
       mode: "identity",
     }),
   };

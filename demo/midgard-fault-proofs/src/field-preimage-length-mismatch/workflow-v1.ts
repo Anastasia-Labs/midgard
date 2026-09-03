@@ -1,22 +1,22 @@
 import { createHash } from "node:crypto";
 
 import {
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  selectMidgardFieldCarriageTierV1,
+  decodeMidgardNativeTxProofFieldLengths,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 
-export const FIELD_PREIMAGE_LENGTH_WORKFLOW_V1 =
+export const FIELD_PREIMAGE_LENGTH_WORKFLOW =
   "midgard-field-preimage-length-mismatch-workflow-v1" as const;
 
-export type FieldPreimageLengthDirectionV1 =
+export type FieldPreimageLengthDirection =
   | "wrongfulAcceptance"
   | "wrongfulRejection";
 
-export type PreparedFieldPreimageLengthWorkflowV1 = Readonly<{
-  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_WORKFLOW_V1;
+export type PreparedFieldPreimageLengthWorkflow = Readonly<{
+  schemaVersion: typeof FIELD_PREIMAGE_LENGTH_WORKFLOW;
   headerHash: string;
   transactionId: string;
-  direction: FieldPreimageLengthDirectionV1;
+  direction: FieldPreimageLengthDirection;
   fieldIndex: number;
   declaredLength: number;
   actualLength: number;
@@ -32,7 +32,7 @@ const exactHex = (value: string, bytes: number, label: string): string => {
   return value;
 };
 
-export const prepareFieldPreimageLengthWorkflowV1 = ({
+export const prepareFieldPreimageLengthWorkflow = ({
   headerHash,
   transactionId,
   direction,
@@ -43,16 +43,16 @@ export const prepareFieldPreimageLengthWorkflowV1 = ({
 }: {
   readonly headerHash: string;
   readonly transactionId: string;
-  readonly direction: FieldPreimageLengthDirectionV1;
+  readonly direction: FieldPreimageLengthDirection;
   readonly fieldIndex: number;
   readonly fieldPreimageLengthsCbor: Uint8Array;
   readonly fieldPreimage: Uint8Array;
   readonly forcedRejectionReason?: unknown;
-}): PreparedFieldPreimageLengthWorkflowV1 => {
+}): PreparedFieldPreimageLengthWorkflow => {
   if (!Number.isInteger(fieldIndex) || fieldIndex < 0 || fieldIndex >= 9) {
     throw new Error("field index is outside 0..8");
   }
-  const declaredLength = decodeMidgardNativeTxProofFieldLengthsV1(
+  const declaredLength = decodeMidgardNativeTxProofFieldLengths(
     fieldPreimageLengthsCbor,
   )[fieldIndex]!;
   const actualLength = fieldPreimage.length;
@@ -101,7 +101,7 @@ export const prepareFieldPreimageLengthWorkflowV1 = ({
   const normalizedHeader = exactHex(headerHash, 28, "header hash");
   const normalizedTx = exactHex(transactionId, 32, "transaction id");
   const evidenceDigest = createHash("sha256")
-    .update(FIELD_PREIMAGE_LENGTH_WORKFLOW_V1)
+    .update(FIELD_PREIMAGE_LENGTH_WORKFLOW)
     .update(direction)
     .update(normalizedHeader, "hex")
     .update(normalizedTx, "hex")
@@ -110,7 +110,7 @@ export const prepareFieldPreimageLengthWorkflowV1 = ({
     .update(Buffer.from(fieldPreimage))
     .digest("hex");
   return Object.freeze({
-    schemaVersion: FIELD_PREIMAGE_LENGTH_WORKFLOW_V1,
+    schemaVersion: FIELD_PREIMAGE_LENGTH_WORKFLOW,
     headerHash: normalizedHeader,
     transactionId: normalizedTx,
     direction,
@@ -118,12 +118,12 @@ export const prepareFieldPreimageLengthWorkflowV1 = ({
     declaredLength,
     actualLength,
     preimageHex,
-    carriage: selectMidgardFieldCarriageTierV1(actualLength),
+    carriage: selectMidgardFieldCarriageTier(actualLength),
     evidenceDigest,
   });
 };
 
-export type FieldPreimageLengthActionV1 =
+export type FieldPreimageLengthAction =
   | "init"
   | "dispatch"
   | "authenticate"
@@ -131,7 +131,7 @@ export type FieldPreimageLengthActionV1 =
   | "remove"
   | "complete";
 
-export const FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS_V1 = Object.freeze([
+export const FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS = Object.freeze([
   {
     role: "firstStep",
     title: "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
@@ -173,21 +173,19 @@ export const FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS_V1 = Object.freeze([
   },
 ] as const);
 
-export type FieldPreimageLengthSubmissionKindV1 =
-  | Exclude<FieldPreimageLengthActionV1, "complete">
+export type FieldPreimageLengthSubmissionKind =
+  | Exclude<FieldPreimageLengthAction, "complete">
   | "cancelDispatch"
   | "cancelAuthentication"
   | "cancelTerminal";
 
-export type FieldPreimageLengthJournalV1 = Readonly<{
-  prepared: PreparedFieldPreimageLengthWorkflowV1;
-  confirmed: readonly Exclude<FieldPreimageLengthActionV1, "complete">[];
-  transactionIds: Readonly<
-    Partial<Record<FieldPreimageLengthActionV1, string>>
-  >;
+export type FieldPreimageLengthJournal = Readonly<{
+  prepared: PreparedFieldPreimageLengthWorkflow;
+  confirmed: readonly Exclude<FieldPreimageLengthAction, "complete">[];
+  transactionIds: Readonly<Partial<Record<FieldPreimageLengthAction, string>>>;
 }>;
 
-const ORDER: readonly Exclude<FieldPreimageLengthActionV1, "complete">[] = [
+const ORDER: readonly Exclude<FieldPreimageLengthAction, "complete">[] = [
   "init",
   "dispatch",
   "authenticate",
@@ -195,27 +193,27 @@ const ORDER: readonly Exclude<FieldPreimageLengthActionV1, "complete">[] = [
   "remove",
 ];
 
-export const nextFieldPreimageLengthActionV1 = (
-  journal: FieldPreimageLengthJournalV1,
-): FieldPreimageLengthActionV1 => {
+export const nextFieldPreimageLengthAction = (
+  journal: FieldPreimageLengthJournal,
+): FieldPreimageLengthAction => {
   for (const action of ORDER) {
     if (!journal.confirmed.includes(action)) return action;
   }
   return "complete";
 };
 
-export const reconcileFieldPreimageLengthJournalV1 = ({
+export const reconcileFieldPreimageLengthJournal = ({
   journal,
   action,
   transactionId,
   confirmedOnChain,
 }: {
-  readonly journal: FieldPreimageLengthJournalV1;
-  readonly action: Exclude<FieldPreimageLengthActionV1, "complete">;
+  readonly journal: FieldPreimageLengthJournal;
+  readonly action: Exclude<FieldPreimageLengthAction, "complete">;
   readonly transactionId: string;
   readonly confirmedOnChain: boolean;
-}): FieldPreimageLengthJournalV1 => {
-  if (action !== nextFieldPreimageLengthActionV1(journal)) {
+}): FieldPreimageLengthJournal => {
+  if (action !== nextFieldPreimageLengthAction(journal)) {
     throw new Error("journal action differs from authenticated chain state");
   }
   const txId = exactHex(transactionId, 32, "submitted transaction id");
@@ -236,30 +234,30 @@ export const reconcileFieldPreimageLengthJournalV1 = ({
 };
 
 /** Durable runner boundary: the store is flushed after every captured identity. */
-export const runFieldPreimageLengthWorkflowV1 = async ({
+export const runFieldPreimageLengthWorkflow = async ({
   load,
   save,
   submit,
   observeConfirmed,
 }: {
-  readonly load: () => Promise<FieldPreimageLengthJournalV1>;
-  readonly save: (journal: FieldPreimageLengthJournalV1) => Promise<void>;
+  readonly load: () => Promise<FieldPreimageLengthJournal>;
+  readonly save: (journal: FieldPreimageLengthJournal) => Promise<void>;
   readonly submit: (
-    action: Exclude<FieldPreimageLengthActionV1, "complete">,
-    prepared: PreparedFieldPreimageLengthWorkflowV1,
+    action: Exclude<FieldPreimageLengthAction, "complete">,
+    prepared: PreparedFieldPreimageLengthWorkflow,
   ) => Promise<string>;
   readonly observeConfirmed: (
-    action: Exclude<FieldPreimageLengthActionV1, "complete">,
+    action: Exclude<FieldPreimageLengthAction, "complete">,
     transactionId: string,
   ) => Promise<boolean>;
-}): Promise<FieldPreimageLengthJournalV1> => {
+}): Promise<FieldPreimageLengthJournal> => {
   let journal = await load();
   while (true) {
-    const action = nextFieldPreimageLengthActionV1(journal);
+    const action = nextFieldPreimageLengthAction(journal);
     if (action === "complete") return journal;
     const known = journal.transactionIds[action];
     const txId = known ?? (await submit(action, journal.prepared));
-    journal = reconcileFieldPreimageLengthJournalV1({
+    journal = reconcileFieldPreimageLengthJournal({
       journal,
       action,
       transactionId: txId,

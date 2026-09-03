@@ -1,25 +1,25 @@
 import {
-  createProductionWorkflowFundingRequirementsV1,
-  productionWorkflowFundingRequirementsForRunnerV1,
-  unsafeCreateMeasuredProductionWorkflowRunnerForTestV1,
+  createWorkflowFundingRequirements,
+  unsafeCreateMeasuredWorkflowRunnerForTest,
+  workflowFundingRequirementsForRunner,
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  aggregateWatcherProductionProverFundingSweepV1,
-  assertWatcherProductionProverFundingCalculationV1,
-  calculateWatcherProductionProverFundingV1,
+  aggregateWatcherProverFundingSweep,
+  assertWatcherProverFundingCalculation,
+  calculateWatcherProverFunding,
 } from "../../src/funding/production-prover-funding-calculation-v1.js";
 import {
-  assertWatcherProductionProverFundingReservationPlanV1,
-  planWatcherProductionProverFundingReservationV1,
+  assertWatcherProverFundingReservationPlan,
+  planWatcherProverFundingReservation,
 } from "../../src/funding/production-prover-funding-reservation-v1.js";
-import { unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1 } from "../../src/funding/production-prover-funding-v1.js";
-import { watcherDeploymentReleaseEconomicsAuthorityV1 } from "../../src/runtime/deployment-identity.js";
+import { unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest } from "../../src/funding/production-prover-funding-v1.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
 import {
-  makeWatcherDeploymentAuthorityFixtureV1,
-  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+  makeWatcherDeploymentAuthorityFixture,
+  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
 } from "../support/deployment-authority-fixture.js";
 
 const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x44));
@@ -126,7 +126,7 @@ const fundingFlow = (fee: bigint, withCustody: boolean) => {
   };
 };
 
-type CollateralBodyFixtureV1 = Readonly<{
+type CollateralBodyFixture = Readonly<{
   inputCount: number;
   totalCollateral: bigint | null;
   returnLovelace?: bigint | null;
@@ -136,7 +136,7 @@ type CollateralBodyFixtureV1 = Readonly<{
 const transactionCbor = (
   fee: bigint,
   collateralRequired = false,
-  collateralBody?: CollateralBodyFixtureV1 | null,
+  collateralBody?: CollateralBodyFixture | null,
   withCustody = false,
   referenceScriptBytes = 0,
 ): string => {
@@ -310,35 +310,33 @@ const ogmiosParameters = () => ({
 
 const runtimeAuthority = async (
   deploymentIdentity: ReturnType<
-    typeof makeWatcherDeploymentAuthorityFixtureV1
+    typeof makeWatcherDeploymentAuthorityFixture
   >["result"],
 ) =>
-  await unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1(
-    {
-      deploymentIdentity,
-      ogmiosUrl: "http://127.0.0.1:1337",
-      timeoutMs: 10_000,
-      fetchImpl: vi.fn(async (_url, init) => {
-        const request = JSON.parse(String(init?.body)) as {
-          readonly id: string;
-        };
-        return new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: request.id,
-            result: ogmiosParameters(),
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }) as unknown as typeof fetch,
-    },
-  );
+  await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+    deploymentIdentity,
+    ogmiosUrl: "http://127.0.0.1:1337",
+    timeoutMs: 10_000,
+    fetchImpl: vi.fn(async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        readonly id: string;
+      };
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: ogmiosParameters(),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch,
+  });
 
 describe("production prover funding calculation V1", () => {
   it("derives tiered fees, retry headroom, min-Ada, and one collateral reserve", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const protocolParameters = await runtimeAuthority(deploymentIdentity);
-    const economics = await watcherDeploymentReleaseEconomicsAuthorityV1(
+    const economics = await watcherDeploymentReleaseEconomicsAuthority(
       deploymentIdentity,
     ).verifyForWorkflow({
       deploymentFingerprint: deploymentIdentity.manifestId,
@@ -349,7 +347,7 @@ describe("production prover funding calculation V1", () => {
       ["ref-25601", 25_601, 1_000_000n, false, 0],
       ["ref-51200", 51_200, 1_200_000n, false, 0],
     ] as const;
-    const profile = createProductionWorkflowFundingRequirementsV1({
+    const profile = createWorkflowFundingRequirements({
       scope: { kind: "fraud_proof_category", category: "doubleSpend" },
       deploymentFingerprint: deploymentIdentity.manifestId,
       blueprintSha256: "22".repeat(32),
@@ -397,16 +395,16 @@ describe("production prover funding calculation V1", () => {
         }),
       ),
     });
-    const runner = unsafeCreateMeasuredProductionWorkflowRunnerForTestV1({
+    const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
       category: "doubleSpend",
       fundingRequirements: profile,
     });
-    const admitted = productionWorkflowFundingRequirementsForRunnerV1({
+    const admitted = workflowFundingRequirementsForRunner({
       category: "doubleSpend",
       runner,
     });
 
-    const calculation = await calculateWatcherProductionProverFundingV1({
+    const calculation = await calculateWatcherProverFunding({
       deploymentIdentity,
       protocolParameters,
       requirements: admitted,
@@ -456,7 +454,7 @@ describe("production prover funding calculation V1", () => {
       outputs: [{ address: walletAddress, lovelace: 7_000_000n }],
       fee: 1_000_000n,
     });
-    const reusableProfile = createProductionWorkflowFundingRequirementsV1({
+    const reusableProfile = createWorkflowFundingRequirements({
       scope: { kind: "fraud_proof_category", category: "doubleSpend" },
       deploymentFingerprint: deploymentIdentity.manifestId,
       blueprintSha256: "22".repeat(32),
@@ -561,21 +559,18 @@ describe("production prover funding calculation V1", () => {
         },
       ],
     });
-    const reusableRunner =
-      unsafeCreateMeasuredProductionWorkflowRunnerForTestV1({
+    const reusableRunner = unsafeCreateMeasuredWorkflowRunnerForTest({
+      category: "doubleSpend",
+      fundingRequirements: reusableProfile,
+    });
+    const reusableCalculation = await calculateWatcherProverFunding({
+      deploymentIdentity,
+      protocolParameters,
+      requirements: workflowFundingRequirementsForRunner({
         category: "doubleSpend",
-        fundingRequirements: reusableProfile,
-      });
-    const reusableCalculation = await calculateWatcherProductionProverFundingV1(
-      {
-        deploymentIdentity,
-        protocolParameters,
-        requirements: productionWorkflowFundingRequirementsForRunnerV1({
-          category: "doubleSpend",
-          runner: reusableRunner,
-        }),
-      },
-    );
+        runner: reusableRunner,
+      }),
+    });
     expect(reusableCalculation.totals).toMatchObject({
       feeHeadroomLovelace: "2000000",
       peakCapitalLovelace: "7000000",
@@ -583,25 +578,25 @@ describe("production prover funding calculation V1", () => {
       requiredLovelace: "7000000",
     });
     expect(() =>
-      assertWatcherProductionProverFundingCalculationV1(calculation),
+      assertWatcherProverFundingCalculation(calculation),
     ).not.toThrow();
     expect(() =>
-      assertWatcherProductionProverFundingCalculationV1({ ...calculation }),
+      assertWatcherProverFundingCalculation({ ...calculation }),
     ).toThrow("not admitted");
-    expect(() =>
-      aggregateWatcherProductionProverFundingSweepV1([calculation]),
-    ).toThrow("exact canonical 32-category order");
+    expect(() => aggregateWatcherProverFundingSweep([calculation])).toThrow(
+      "exact canonical 32-category order",
+    );
   });
 
   it("rejects a structural funding profile before calculation", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const protocolParameters = await runtimeAuthority(deploymentIdentity);
-    const economics = await watcherDeploymentReleaseEconomicsAuthorityV1(
+    const economics = await watcherDeploymentReleaseEconomicsAuthority(
       deploymentIdentity,
     ).verifyForWorkflow({
       deploymentFingerprint: deploymentIdentity.manifestId,
     });
-    const profile = createProductionWorkflowFundingRequirementsV1({
+    const profile = createWorkflowFundingRequirements({
       scope: { kind: "fraud_proof_category", category: "doubleSpend" },
       deploymentFingerprint: deploymentIdentity.manifestId,
       blueprintSha256: "22".repeat(32),
@@ -627,21 +622,21 @@ describe("production prover funding calculation V1", () => {
     });
 
     await expect(
-      calculateWatcherProductionProverFundingV1({
+      calculateWatcherProverFunding({
         deploymentIdentity,
         protocolParameters,
         requirements: profile,
       }),
     ).rejects.toThrow("not factory-admitted");
     expect(protocolParameters.snapshot).toEqual(
-      WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+      WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
     );
   });
 
   it("rejects collateral body shapes outside the signed release bounds", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const protocolParameters = await runtimeAuthority(deploymentIdentity);
-    const economics = await watcherDeploymentReleaseEconomicsAuthorityV1(
+    const economics = await watcherDeploymentReleaseEconomicsAuthority(
       deploymentIdentity,
     ).verifyForWorkflow({
       deploymentFingerprint: deploymentIdentity.manifestId,
@@ -650,7 +645,7 @@ describe("production prover funding calculation V1", () => {
       signedTransactionCborHex: string,
       collateralRequired: boolean,
     ) => {
-      const profile = createProductionWorkflowFundingRequirementsV1({
+      const profile = createWorkflowFundingRequirements({
         scope: { kind: "fraud_proof_category", category: "doubleSpend" },
         deploymentFingerprint: deploymentIdentity.manifestId,
         blueprintSha256: "22".repeat(32),
@@ -679,14 +674,14 @@ describe("production prover funding calculation V1", () => {
           },
         ],
       });
-      const runner = unsafeCreateMeasuredProductionWorkflowRunnerForTestV1({
+      const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
         category: "doubleSpend",
         fundingRequirements: profile,
       });
-      return calculateWatcherProductionProverFundingV1({
+      return calculateWatcherProverFunding({
         deploymentIdentity,
         protocolParameters,
-        requirements: productionWorkflowFundingRequirementsForRunnerV1({
+        requirements: workflowFundingRequirementsForRunner({
           category: "doubleSpend",
           runner,
         }),
@@ -761,14 +756,14 @@ describe("production prover funding calculation V1", () => {
   });
 
   it("selects one deterministic disjoint live reservation plan", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
     const protocolParameters = await runtimeAuthority(deploymentIdentity);
-    const economics = await watcherDeploymentReleaseEconomicsAuthorityV1(
+    const economics = await watcherDeploymentReleaseEconomicsAuthority(
       deploymentIdentity,
     ).verifyForWorkflow({
       deploymentFingerprint: deploymentIdentity.manifestId,
     });
-    const profile = createProductionWorkflowFundingRequirementsV1({
+    const profile = createWorkflowFundingRequirements({
       scope: { kind: "fraud_proof_category", category: "doubleSpend" },
       deploymentFingerprint: deploymentIdentity.manifestId,
       blueprintSha256: "22".repeat(32),
@@ -797,14 +792,14 @@ describe("production prover funding calculation V1", () => {
         },
       ],
     });
-    const runner = unsafeCreateMeasuredProductionWorkflowRunnerForTestV1({
+    const runner = unsafeCreateMeasuredWorkflowRunnerForTest({
       category: "doubleSpend",
       fundingRequirements: profile,
     });
-    const calculation = await calculateWatcherProductionProverFundingV1({
+    const calculation = await calculateWatcherProverFunding({
       deploymentIdentity,
       protocolParameters,
-      requirements: productionWorkflowFundingRequirementsForRunnerV1({
+      requirements: workflowFundingRequirementsForRunner({
         category: "doubleSpend",
         runner,
       }),
@@ -829,14 +824,14 @@ describe("production prover funding calculation V1", () => {
         assets: { lovelace: 6_000_000n },
       },
     ];
-    const first = planWatcherProductionProverFundingReservationV1({
+    const first = planWatcherProverFundingReservation({
       deploymentIdentity,
       calculation,
       decisionDigest: "77".repeat(32),
       walletAddress,
       utxos: candidates,
     });
-    const repeated = planWatcherProductionProverFundingReservationV1({
+    const repeated = planWatcherProverFundingReservation({
       deploymentIdentity,
       calculation,
       decisionDigest: "77".repeat(32),
@@ -861,7 +856,7 @@ describe("production prover funding calculation V1", () => {
     ]);
 
     expect(() =>
-      planWatcherProductionProverFundingReservationV1({
+      planWatcherProverFundingReservation({
         deploymentIdentity,
         calculation,
         decisionDigest: "77".repeat(32),
@@ -887,13 +882,13 @@ describe("production prover funding calculation V1", () => {
       }),
     ).toThrow("measured ordinary input bound");
     expect(() =>
-      assertWatcherProductionProverFundingReservationPlanV1(first),
+      assertWatcherProverFundingReservationPlan(first),
     ).not.toThrow();
     expect(() =>
-      assertWatcherProductionProverFundingReservationPlanV1({ ...first }),
+      assertWatcherProverFundingReservationPlan({ ...first }),
     ).toThrow("not admitted");
     expect(
-      planWatcherProductionProverFundingReservationV1({
+      planWatcherProverFundingReservation({
         deploymentIdentity,
         calculation,
         decisionDigest: "88".repeat(32),
@@ -902,7 +897,7 @@ describe("production prover funding calculation V1", () => {
       }).reservationId,
     ).not.toBe(first.reservationId);
     expect(() =>
-      planWatcherProductionProverFundingReservationV1({
+      planWatcherProverFundingReservation({
         deploymentIdentity,
         calculation,
         decisionDigest: "77".repeat(32),

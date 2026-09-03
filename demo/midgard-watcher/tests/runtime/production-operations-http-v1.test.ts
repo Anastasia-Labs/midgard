@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { startWatcherProductionOperationsHttpServerV1 } from "../../src/runtime/production-operations-http-v1.js";
-import type { WatcherProductionOperationsObservabilityV1 } from "../../src/runtime/production-operations-observability-v1.js";
+import { startWatcherOperationsHttpServer } from "../../src/runtime/production-operations-http-v1.js";
+import type { WatcherOperationsObservability } from "../../src/runtime/production-operations-observability-v1.js";
 
 describe("production operations HTTP V1", () => {
   it("mounts only the bounded read-only loopback handler and closes cleanly", async () => {
@@ -17,8 +17,8 @@ describe("production operations HTTP V1", () => {
           },
         });
       },
-    }) as unknown as WatcherProductionOperationsObservabilityV1;
-    const server = await startWatcherProductionOperationsHttpServerV1({
+    }) as unknown as WatcherOperationsObservability;
+    const server = await startWatcherOperationsHttpServer({
       endpoint: "http://127.0.0.1:0",
       observability,
       unsafeAllowEphemeralPortForTest: true,
@@ -47,15 +47,15 @@ describe("production operations HTTP V1", () => {
   it("rejects non-loopback and production ephemeral endpoints", async () => {
     const observability = Object.freeze({
       handleHttpRequest: async () => new Response(null, { status: 204 }),
-    }) as unknown as WatcherProductionOperationsObservabilityV1;
+    }) as unknown as WatcherOperationsObservability;
     await expect(
-      startWatcherProductionOperationsHttpServerV1({
+      startWatcherOperationsHttpServer({
         endpoint: "http://0.0.0.0:3000",
         observability,
       }),
     ).rejects.toThrow("fixed loopback HTTP");
     await expect(
-      startWatcherProductionOperationsHttpServerV1({
+      startWatcherOperationsHttpServer({
         endpoint: "http://127.0.0.1:0",
         observability,
       }),

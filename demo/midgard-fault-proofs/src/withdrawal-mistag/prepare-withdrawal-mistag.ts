@@ -4,10 +4,10 @@ import { computeHash32 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -143,7 +143,7 @@ const signatureIsValid = (info: SDK.WithdrawalInfo): boolean => {
     const message = computeHash32(
       Buffer.concat([
         domain,
-        Buffer.from(SDK.withdrawalBodyBytesV1(info.body), "hex"),
+        Buffer.from(SDK.withdrawalBodyBytes(info.body), "hex"),
       ]),
     );
     return publicKey.verify(
@@ -156,15 +156,15 @@ const signatureIsValid = (info: SDK.WithdrawalInfo): boolean => {
 };
 
 const infoHash = (info: SDK.WithdrawalInfo): string =>
-  computeHash32(Buffer.from(SDK.withdrawalInfoBytesV1(info), "hex")).toString(
+  computeHash32(Buffer.from(SDK.withdrawalInfoBytes(info), "hex")).toString(
     "hex",
   );
 const bodyHash = (body: SDK.WithdrawalBody): string =>
-  computeHash32(Buffer.from(SDK.withdrawalBodyBytesV1(body), "hex")).toString(
+  computeHash32(Buffer.from(SDK.withdrawalBodyBytes(body), "hex")).toString(
     "hex",
   );
 
-export type PrepareWithdrawalMistagV1Args = {
+export type PrepareWithdrawalMistagArgs = {
   readonly challengedHeaderHash: string;
   readonly committedWithdrawal: SDK.WithdrawalSourceMembershipProof;
   readonly eventToStep: SDK.EventToStepMembershipProof;
@@ -187,13 +187,13 @@ export type PrepareWithdrawalMistagV1Args = {
  * Authenticates every retained opening, recomputes the exact predicate, and
  * refuses honestly tagged evidence before any L1 transaction is submitted.
  */
-export const prepareWithdrawalMistagV1 = async ({
+export const prepareWithdrawalMistag = async ({
   challengedHeaderHash,
   committedWithdrawal,
   eventToStep,
   transitionStep,
   ledgerEvidence,
-}: PrepareWithdrawalMistagV1Args): Promise<SDK.WithdrawalMistagPreparedEvidenceV1> => {
+}: PrepareWithdrawalMistagArgs): Promise<SDK.WithdrawalMistagPreparedEvidence> => {
   if (!/^[0-9a-f]{56}$/u.test(challengedHeaderHash)) {
     throw new Error(
       "withdrawal-mistag challenged header hash must be 28-byte hex",
@@ -202,8 +202,8 @@ export const prepareWithdrawalMistagV1 = async ({
   await verifyCountedMembership({
     witness: committedWithdrawal,
     expectedDomain: "WithdrawalsRootDomain",
-    keyCbor: SDK.committedWithdrawalKeyBytesV1(committedWithdrawal.key),
-    valueCbor: SDK.committedWithdrawalValueBytesV1(committedWithdrawal.value),
+    keyCbor: SDK.committedWithdrawalKeyBytes(committedWithdrawal.key),
+    valueCbor: SDK.committedWithdrawalValueBytes(committedWithdrawal.value),
     label: "withdrawal source",
   });
   await verifyCountedMembership({
@@ -246,8 +246,8 @@ export const prepareWithdrawalMistagV1 = async ({
   let outputPresent = false;
   let coreValid = false;
   let cardanoValueSize = 0n;
-  let authenticatedLedgerEvidence: SDK.WithdrawalMistagLedgerEvidenceV1;
-  const outrefKey = encodeMidgardSpendInputItemV1({
+  let authenticatedLedgerEvidence: SDK.WithdrawalMistagLedgerEvidence;
+  const outrefKey = encodeMidgardSpendInputItem({
     txId: Buffer.from(info.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(info.body.l2_outref.outputIndex),
   });
@@ -257,7 +257,7 @@ export const prepareWithdrawalMistagV1 = async ({
       ledgerEvidence.PresentLedgerOutput.output_cbor,
       "hex",
     );
-    const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+    const material = buildCanonicalMidgardLedgerOutputMaterial({
       outputIndex: Number(info.body.l2_outref.outputIndex),
       outputCbor,
     });
@@ -282,7 +282,7 @@ export const prepareWithdrawalMistagV1 = async ({
       address.paymentCredential.kind === "PubKey" &&
       address.paymentCredential.hash.toString("hex") === info.body.l2_owner &&
       valuesEqual(output.value, info.body.l2_value) &&
-      assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT_V1 &&
+      assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT &&
       signatureIsValid(info);
     authenticatedLedgerEvidence = {
       PresentLedgerOutput: {
@@ -302,13 +302,13 @@ export const prepareWithdrawalMistagV1 = async ({
     authenticatedLedgerEvidence = ledgerEvidence;
   }
 
-  const payable = SDK.withdrawalMistagPayableV1({
+  const payable = SDK.withdrawalMistagPayable({
     body: info.body,
     cardanoValueSize,
   });
   const actualValid = outputPresent && coreValid && payable;
-  const claimedValid = SDK.withdrawalClaimsValidV1(info);
-  const exactOutputBytes = SDK.withdrawalMistagExactPayoutOutputBytesV1({
+  const claimedValid = SDK.withdrawalClaimsValid(info);
+  const exactOutputBytes = SDK.withdrawalMistagExactPayoutOutputBytes({
     body: info.body,
     cardanoValueSize,
   });
@@ -327,10 +327,10 @@ export const prepareWithdrawalMistagV1 = async ({
     payable,
     actualValid,
     exactOutputBytes,
-    requiredLovelace: SDK.withdrawalMistagMinimumLovelaceV1({
+    requiredLovelace: SDK.withdrawalMistagMinimumLovelace({
       body: info.body,
       cardanoValueSize,
     }),
-    direction: SDK.withdrawalMistagDirectionV1({ claimedValid, actualValid }),
+    direction: SDK.withdrawalMistagDirection({ claimedValid, actualValid }),
   };
 };

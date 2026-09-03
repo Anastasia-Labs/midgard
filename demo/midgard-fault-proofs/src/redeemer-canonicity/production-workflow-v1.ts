@@ -1,53 +1,53 @@
 import {
-  decodeMidgardFieldPreimageV1,
-  deriveMidgardNativeTxFaultEvidenceMaterialV1,
-  midgardFieldCommitmentV1,
+  decodeMidgardFieldPreimage,
+  deriveMidgardNativeTxFaultEvidenceMaterial,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  type AuthenticatedStateQueueHeaderObservation,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 
 import {
-  type CanonicalBlockEvidenceV1,
-  fetchCanonicalBlockEvidenceV1,
+  type CanonicalBlockEvidence,
+  fetchCanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence-v1.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  prepareRedeemerCanonicityEvidenceV1,
-  REDEEMER_CANONICITY_FIELD_INDEX_V1,
-  redeemerCanonicityEvidenceClosesV1,
-  type RedeemerCanonicityEvidenceV1,
+  prepareRedeemerCanonicityEvidence,
+  REDEEMER_CANONICITY_FIELD_INDEX,
+  type RedeemerCanonicityEvidence,
+  redeemerCanonicityEvidenceCloses,
 } from "./family-v1.js";
 
-export const REDEEMER_CANONICITY_PRODUCTION_WORKFLOW_V1 =
+export const REDEEMER_CANONICITY_WORKFLOW =
   "midgard-redeemer-canonicity-production-workflow-v1" as const;
 
-export type RedeemerCanonicityDetectionV1 = Readonly<{
+export type RedeemerCanonicityDetection = Readonly<{
   detectionId: string;
   headerHash: string;
   position: bigint;
   source: "accepted" | "forced";
-  evidence: RedeemerCanonicityEvidenceV1;
+  evidence: RedeemerCanonicityEvidence;
 }>;
 
 /** Callback-free replay over authenticated L1 plus retained public DA bytes. */
-export const detectRedeemerCanonicityFromCanonicalBlockV1 = (
-  block: CanonicalBlockEvidenceV1,
-): readonly RedeemerCanonicityDetectionV1[] => {
-  const found: RedeemerCanonicityDetectionV1[] = [];
+export const detectRedeemerCanonicityFromCanonicalBlock = (
+  block: CanonicalBlockEvidence,
+): readonly RedeemerCanonicityDetection[] => {
+  const found: RedeemerCanonicityDetection[] = [];
   block.transactions.forEach((transaction, transactionIndex) => {
-    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+    const material = deriveMidgardNativeTxFaultEvidenceMaterial(
       Buffer.from(transaction.txCbor, "hex"),
     );
     if (material.canonical.validity !== "TxIsValid") return;
-    const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX_V1];
+    const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX];
     if (field === undefined) return;
     const items = (() => {
       try {
         return prepareAll({
-          subject: acceptedVerdictSubjectV1(transaction.nodeTxId),
+          subject: acceptedVerdictSubject(transaction.nodeTxId),
           field,
         });
       } catch {
@@ -55,7 +55,7 @@ export const detectRedeemerCanonicityFromCanonicalBlockV1 = (
       }
     })();
     items.forEach((evidence) => {
-      if (!redeemerCanonicityEvidenceClosesV1(evidence)) return;
+      if (!redeemerCanonicityEvidenceCloses(evidence)) return;
       found.push(
         Object.freeze({
           detectionId: `redeemer-malformed:accepted:${transactionIndex.toString()}:${evidence.redeemerIndex.toString()}:${transaction.nodeTxId}`,
@@ -79,14 +79,14 @@ export const detectRedeemerCanonicityFromCanonicalBlockV1 = (
       const redeemerIndex = Number(
         verdict.ForcedTxInvalid.reason.RedeemerMalformed.redeemer_index,
       );
-      const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
         transaction.fullTransactionCbor,
       );
-      const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX_V1];
+      const field = material.fieldPreimages[REDEEMER_CANONICITY_FIELD_INDEX];
       if (field === undefined) return;
-      const evidence = prepareRedeemerCanonicityEvidenceV1({
+      const evidence = prepareRedeemerCanonicityEvidence({
         finding: {
-          subject: forcedVerdictSubjectV1({
+          subject: forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -94,9 +94,9 @@ export const detectRedeemerCanonicityFromCanonicalBlockV1 = (
           redeemerIndex,
         },
         fieldPreimage: field,
-        committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+        committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       });
-      if (!redeemerCanonicityEvidenceClosesV1(evidence)) return;
+      if (!redeemerCanonicityEvidenceCloses(evidence)) return;
       found.push(
         Object.freeze({
           detectionId: `redeemer-malformed:forced:${forcedIndex.toString()}:${redeemerIndex.toString()}:${transaction.value.tx_id}`,
@@ -115,34 +115,34 @@ const prepareAll = ({
   subject,
   field,
 }: {
-  readonly subject: ReturnType<typeof acceptedVerdictSubjectV1>;
+  readonly subject: ReturnType<typeof acceptedVerdictSubject>;
   readonly field: Uint8Array;
 }) => {
-  return decodeMidgardFieldPreimageV1(field).map((_item, redeemerIndex) =>
-    prepareRedeemerCanonicityEvidenceV1({
+  return decodeMidgardFieldPreimage(field).map((_item, redeemerIndex) =>
+    prepareRedeemerCanonicityEvidence({
       finding: { subject, redeemerIndex },
       fieldPreimage: field,
-      committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+      committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
     }),
   );
 };
 
-export const detectRedeemerCanonicityFromRetainedDaV1 = async ({
+export const detectRedeemerCanonicityFromRetainedDa = async ({
   observation,
   sources,
 }: {
-  readonly observation: AuthenticatedStateQueueHeaderObservationV1;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
-}): Promise<readonly RedeemerCanonicityDetectionV1[]> =>
-  detectRedeemerCanonicityFromCanonicalBlockV1(
-    await fetchCanonicalBlockEvidenceV1({ observation, sources }),
+}): Promise<readonly RedeemerCanonicityDetection[]> =>
+  detectRedeemerCanonicityFromCanonicalBlock(
+    await fetchCanonicalBlockEvidence({ observation, sources }),
   );
 
 /** Canonical all-detections adapter consumed by complete replay registries. */
-export const detectRedeemerCanonicityCompleteReplayV1 =
-  detectRedeemerCanonicityFromCanonicalBlockV1;
+export const detectRedeemerCanonicityCompleteReplay =
+  detectRedeemerCanonicityFromCanonicalBlock;
 
-export type RedeemerCanonicityWorkflowStageV1 =
+export type RedeemerCanonicityWorkflowStage =
   | "none"
   | "step01"
   | "step02"
@@ -151,8 +151,8 @@ export type RedeemerCanonicityWorkflowStageV1 =
   | "removed"
   | "cancelled";
 
-export const nextRedeemerCanonicityActionV1 = (
-  stage: RedeemerCanonicityWorkflowStageV1,
+export const nextRedeemerCanonicityAction = (
+  stage: RedeemerCanonicityWorkflowStage,
 ):
   | "submitInit"
   | "submitStep01"

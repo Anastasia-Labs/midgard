@@ -1,43 +1,43 @@
 import {
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  materializeMidgardNativeTxFromCanonicalV1,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardTxValidity,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
-  authenticateTransactionsInclusionRootsV1,
-  canonicalBlockEvidenceFromVerifiedPayloadV1,
+  authenticateTransactionsInclusionRoots,
+  canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
 import {
-  findNetworkIdFaultsV1,
-  networkIdOutputsOpeningV1,
-  requireNetworkIdFaultV1,
-  type RetainedDaNetworkIdEvidenceV1,
+  findNetworkIdFaults,
+  networkIdOutputsOpening,
+  requireNetworkIdFault,
+  type RetainedDaNetworkIdEvidence,
 } from "../src/network-id/evidence-v1.js";
 import {
-  planNetworkIdOutputsOpeningV1,
-  prepareNetworkIdFromCanonicalEvidenceV1,
-  prepareNetworkIdPostUtxoFromCanonicalEvidenceV1,
+  planNetworkIdOutputsOpening,
+  prepareNetworkIdFromCanonicalEvidence,
+  prepareNetworkIdPostUtxoFromCanonicalEvidence,
 } from "../src/network-id/prepare-v1.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
-  authenticatedHeaderObservationV1,
-  buildCanonicalBlockFixtureV1,
-  type FixtureTransactionV1,
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  type FixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture-v1.js";
 
 const nativeTx = ({
@@ -51,8 +51,8 @@ const nativeTx = ({
   readonly protectedOutputIndexes?: readonly number[];
   readonly validity?: MidgardTxValidity;
 }) =>
-  materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+  materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity,
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -91,22 +91,22 @@ const nativeTx = ({
 
 const retained = (
   tx = nativeTx({}),
-  patch: Partial<RetainedDaNetworkIdEvidenceV1> = {},
-): RetainedDaNetworkIdEvidenceV1 => ({
+  patch: Partial<RetainedDaNetworkIdEvidence> = {},
+): RetainedDaNetworkIdEvidence => ({
   source: "retained-da",
   evidenceSourceId: "retained-da-peer",
-  nativeTxCanonicalCbor: encodeMidgardNativeTxCanonicalV1(tx).toString("hex"),
+  nativeTxCanonicalCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
   ...patch,
 });
 
 const fixtureTransaction = (
   tx: ReturnType<typeof nativeTx>,
-): FixtureTransactionV1 => {
-  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(tx);
+): FixtureTransaction => {
+  const canonicalCbor = encodeMidgardNativeTxCanonical(tx);
   const sourceMaterial =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
-  const txId = computeMidgardNativeTxIdV1(tx).toString("hex");
-  const source: SDK.L2TransactionSourceV1 = {
+    deriveMidgardNativeTxProofSourceFromCanonicalCbor(canonicalCbor);
+  const txId = computeMidgardNativeTxId(tx).toString("hex");
+  const source: SDK.L2TransactionSource = {
     tx_id: txId,
     source: {
       compact_cbor: sourceMaterial.compactCbor.toString("hex"),
@@ -121,21 +121,21 @@ const fixtureTransaction = (
     canonicalCbor,
     compactCbor: sourceMaterial.compactCbor,
     source,
-    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceV1Schema),
+    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceSchema),
   };
 };
 
 const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
   const transaction = fixtureTransaction(tx);
   // The header's normative transactions MPF commits
-  // `Data(L2TransactionSourceV1)` per transaction id — the same values the DA
+  // `Data(L2TransactionSource)` per transaction id — the same values the DA
   // payload's `transactions` map carries — so the payload-source fixture is
   // the one whose header re-commits to the retained evidence.
-  const fixture = await buildCanonicalBlockFixtureV1({
+  const fixture = await buildCanonicalBlockFixture({
     transactions: [transaction],
   });
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
     payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: {
       trustClass: "public_or_permissionless_da",
@@ -145,13 +145,11 @@ const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
   });
   return {
     ...evidence,
-    inclusionRootAuthentication: await authenticateTransactionsInclusionRootsV1(
-      {
-        header: fixture.header,
-        reconstruction: evidence.reconstruction,
-        transactions: evidence.transactions,
-      },
-    ),
+    inclusionRootAuthentication: await authenticateTransactionsInclusionRoots({
+      header: fixture.header,
+      reconstruction: evidence.reconstruction,
+      transactions: evidence.transactions,
+    }),
   };
 };
 
@@ -169,7 +167,7 @@ const evidenceWithUtxo = async ({
   readonly prevUtxosRoot?: string;
 }) => {
   const base = await canonicalEvidence(nativeTx({}));
-  const key = encodeMidgardSpendInputItemV1({
+  const key = encodeMidgardSpendInputItem({
     txId: Buffer.alloc(32, 0x55),
     outputIndex: 0,
   });
@@ -180,7 +178,7 @@ const evidenceWithUtxo = async ({
     ]),
     value: { lovelace: 2_000_000n, assets: new Map() },
   });
-  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: key,
     outputCbor: output,
   }).descriptorCbor;
@@ -207,7 +205,7 @@ const evidenceWithUtxo = async ({
 describe("Q35 network-id DA-first evidence", () => {
   it("orders a body mismatch before output mismatches", () => {
     expect(
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(
           nativeTx({
             transactionNetworkId: 1n,
@@ -225,7 +223,7 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("treats absent body network as honest while still checking outputs", () => {
     expect(
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(
           nativeTx({
             transactionNetworkId: 255n,
@@ -239,7 +237,7 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("decodes the protected-address bit separately from the network id", () => {
     expect(
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(
           nativeTx({
             outputNetworkIds: [0n, 1n],
@@ -253,7 +251,7 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("classifies foreign raw network nibbles instead of rejecting evidence", () => {
     expect(
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(
           nativeTx({
             // Raw nibble 2 is unprotected. Raw nibble 15 carries the reserved
@@ -269,7 +267,7 @@ describe("Q35 network-id DA-first evidence", () => {
     ]);
 
     expect(
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(
           nativeTx({
             outputNetworkIds: [2n, 7n],
@@ -286,7 +284,7 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("keeps deployment expected-network validation restricted to 0 or 1", () => {
     expect(() =>
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(nativeTx({ outputNetworkIds: [2n] })),
         expectedNetworkId: 2n,
       }),
@@ -295,7 +293,7 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("never challenges an honestly rejected no-op", () => {
     expect(
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(
           nativeTx({
             validity: "TxIsInvalid",
@@ -310,13 +308,13 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("rejects honest transactions and malformed canonical CBOR", () => {
     expect(() =>
-      requireNetworkIdFaultV1({
+      requireNetworkIdFault({
         evidence: retained(),
         expectedNetworkId: 0n,
       }),
     ).toThrow("no network-id fault");
     expect(() =>
-      findNetworkIdFaultsV1({
+      findNetworkIdFaults({
         evidence: retained(undefined, { nativeTxCanonicalCbor: "80" }),
         expectedNetworkId: 0n,
       }),
@@ -327,20 +325,20 @@ describe("Q35 network-id DA-first evidence", () => {
     const tx = nativeTx({});
     const preimage = tx.body.outputsPreimageCbor.toString("hex");
     expect(
-      networkIdOutputsOpeningV1({
+      networkIdOutputsOpening({
         evidence: retained(tx),
         carriage: { Inline: { preimage } },
       }),
     ).toEqual({
       BodyFieldOpening: {
-        native_tx_compact_cbor: encodeMidgardNativeTxCompactV1(
+        native_tx_compact_cbor: encodeMidgardNativeTxCompact(
           tx.compact,
         ).toString("hex"),
         carriage: { Inline: { preimage } },
       },
     });
     expect(() =>
-      networkIdOutputsOpeningV1({
+      networkIdOutputsOpening({
         evidence: retained(tx),
         carriage: { Inline: { preimage: "80" } },
       }),
@@ -352,7 +350,7 @@ describe("Q35 network-id DA-first evidence", () => {
       index === 11 ? 1n : 0n,
     );
     expect(
-      requireNetworkIdFaultV1({
+      requireNetworkIdFault({
         evidence: retained(nativeTx({ outputNetworkIds: ids })),
         expectedNetworkId: 0n,
       }),
@@ -360,7 +358,7 @@ describe("Q35 network-id DA-first evidence", () => {
   });
 
   it("prepares an authenticated native inclusion and exact field-2 opening", async () => {
-    const prepared = await prepareNetworkIdFromCanonicalEvidenceV1({
+    const prepared = await prepareNetworkIdFromCanonicalEvidence({
       evidence: await canonicalEvidence(
         nativeTx({
           outputNetworkIds: [0n, 1n],
@@ -375,7 +373,7 @@ describe("Q35 network-id DA-first evidence", () => {
     });
     expect(prepared.txInclusion.nativeTxId).toBe(prepared.badTxId);
     expect(prepared.txInclusion.transactionsPhasRoot).toHaveLength(64);
-    const plan = planNetworkIdOutputsOpeningV1({
+    const plan = planNetworkIdOutputsOpening({
       prepared,
       owner: "11".repeat(28),
     });
@@ -387,7 +385,7 @@ describe("Q35 network-id DA-first evidence", () => {
 
   it("refuses to prepare a valid accepted block", async () => {
     await expect(
-      prepareNetworkIdFromCanonicalEvidenceV1({
+      prepareNetworkIdFromCanonicalEvidence({
         evidence: await canonicalEvidence(
           nativeTx({
             outputNetworkIds: [0n],
@@ -403,7 +401,7 @@ describe("Q35 network-id DA-first evidence", () => {
     const { evidence, outRef } = await evidenceWithUtxo({
       outputNetworkId: 2,
     });
-    const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidenceV1({
+    const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
       evidence,
       expectedNetworkId: 0n,
       outRef,
@@ -427,7 +425,7 @@ describe("Q35 network-id DA-first evidence", () => {
       prevHeaderHash: previous.evidence.headerHash,
       prevUtxosRoot: previous.evidence.header.utxosRoot,
     });
-    const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidenceV1({
+    const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
       evidence: challenged.evidence,
       previousBlockEvidence: previous.evidence,
       expectedNetworkId: 0n,
@@ -448,7 +446,7 @@ describe("Q35 network-id DA-first evidence", () => {
       prevUtxosRoot: previous.evidence.header.utxosRoot,
     });
     await expect(
-      prepareNetworkIdPostUtxoFromCanonicalEvidenceV1({
+      prepareNetworkIdPostUtxoFromCanonicalEvidence({
         evidence: challenged.evidence,
         previousBlockEvidence: previous.evidence,
         expectedNetworkId: 0n,

@@ -1,14 +1,14 @@
 import {
-  MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
-  midgardCarriagePublicationBytesV1,
-  type MidgardFieldCarriagePlanV1,
-  type MidgardFieldPublicationV1,
+  MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
+  midgardCarriagePublicationBytes,
+  type MidgardFieldCarriagePlan,
+  type MidgardFieldPublication,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
-  MIDGARD_MAX_TIER3_CHUNK_COUNT_V1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-  type MidgardFieldCarriageV1,
-  type MidgardFieldPreimageCertificateV1,
+  MIDGARD_MAX_TIER3_CHUNK_COUNT,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+  type MidgardFieldCarriage,
+  type MidgardFieldPreimageCertificate,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import {
@@ -24,9 +24,9 @@ import {
 import { Effect } from "effect";
 
 import {
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
-  FieldPreimageCertificateMintRedeemerV1,
-  FieldPreimageCertificateV1,
+  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  FieldPreimageCertificate,
+  FieldPreimageCertificateMintRedeemer,
 } from "../native-tx-field-access-v1.js";
 
 /**
@@ -52,7 +52,7 @@ import {
  * an honest §8.4 split now produces chunks that all publish, a 15,148-byte chunk
  * measuring 15,872 signed bytes against a 16,384-byte `maxTxSize`. The guard
  * stays because the frontier is a *measurement*, not an invariant of the split:
- * {@link buildUnsignedFieldPreimagePublicationV1Program} checks every publication
+ * {@link buildUnsignedFieldPreimagePublicationProgram} checks every publication
  * against it before building, so a hand-assembled chunk list, a plan produced by
  * an older chunker, or a deliberately raised limit is refused rather than handed
  * back as a transaction the ledger will reject. Before the repair the guard
@@ -129,12 +129,11 @@ const stabilizedMinimumLovelace = ({
  * `raw_chunk_bytes` reads back through `un_b_data`. Any wrapper at all, however
  * harmless it looked, would make the datum undecodable to every consumer.
  */
-export const fieldPreimagePublicationDatumCborV1 = (
-  bytes: Uint8Array,
-): string => Data.to(Buffer.from(bytes).toString("hex"));
+export const fieldPreimagePublicationDatumCbor = (bytes: Uint8Array): string =>
+  Data.to(Buffer.from(bytes).toString("hex"));
 
 /**
- * The read-back twin of {@link fieldPreimagePublicationDatumCborV1} — the
+ * The read-back twin of {@link fieldPreimagePublicationDatumCbor} — the
  * off-chain counterpart of the on-chain `un_b_data` on a raw carriage
  * reference input.
  *
@@ -144,7 +143,7 @@ export const fieldPreimagePublicationDatumCborV1 = (
  * wrong bytes reach a hash check that would then merely fail later and less
  * informatively.
  */
-export const fieldPreimagePublicationBytesV1 = (datumCbor: string): Buffer => {
+export const fieldPreimagePublicationBytes = (datumCbor: string): Buffer => {
   const decoded = Data.from(datumCbor);
   if (typeof decoded !== "string") {
     throw new Error(
@@ -155,7 +154,7 @@ export const fieldPreimagePublicationBytesV1 = (datumCbor: string): Buffer => {
 };
 
 /** One raw carriage output, ready to pay to the publisher's own key address. */
-export type FieldPreimagePublicationOutputV1 = {
+export type FieldPreimagePublicationOutput = {
   /** §8.4 chunk index; `0` for a tier-2 whole-preimage publication. */
   readonly chunkIndex: number;
   readonly datumCbor: string;
@@ -168,23 +167,23 @@ export type FieldPreimagePublicationOutputV1 = {
  * The raw carriage a plan requires. Empty under tier 1, which carries its
  * preimage in the step's own redeemer and publishes nothing.
  */
-export const fieldPreimagePublicationOutputsV1 = (
-  plan: MidgardFieldCarriagePlanV1,
-): readonly FieldPreimagePublicationOutputV1[] =>
-  plan.publications.map((publication: MidgardFieldPublicationV1) => ({
+export const fieldPreimagePublicationOutputs = (
+  plan: MidgardFieldCarriagePlan,
+): readonly FieldPreimagePublicationOutput[] =>
+  plan.publications.map((publication: MidgardFieldPublication) => ({
     chunkIndex: publication.chunkIndex,
-    datumCbor: fieldPreimagePublicationDatumCborV1(publication.bytes),
+    datumCbor: fieldPreimagePublicationDatumCbor(publication.bytes),
     byteLength: publication.bytes.length,
     digestHex: publication.digest.toString("hex"),
   }));
 
-export const minimumLovelaceForFieldPreimagePublicationV1 = ({
+export const minimumLovelaceForFieldPreimagePublication = ({
   publisherAddress,
   output,
   coinsPerUtxoByte,
 }: {
   readonly publisherAddress: string;
-  readonly output: FieldPreimagePublicationOutputV1;
+  readonly output: FieldPreimagePublicationOutput;
   readonly coinsPerUtxoByte: bigint;
 }): bigint =>
   stabilizedMinimumLovelace({
@@ -200,7 +199,7 @@ export const minimumLovelaceForFieldPreimagePublicationV1 = ({
  *
  * `maxPublicationBytes` is a bound on the **payload**, because that is what a
  * caller holds and can act on; it defaults to
- * {@link MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1}, the largest payload whose
+ * {@link MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES}, the largest payload whose
  * signed publication clears `maxTxSize` with the 512-byte reserve. The refusal
  * quotes the *transaction* size that payload would produce, so the message says
  * why rather than only what: this many payload bytes publish as a transaction
@@ -210,34 +209,34 @@ export const minimumLovelaceForFieldPreimagePublicationV1 = ({
  * field cap, so raising it can reach the far side of the frontier and cannot
  * turn the guard off.
  */
-export const assertFieldPreimagePublicationFitsV1 = ({
+export const assertFieldPreimagePublicationFits = ({
   publication,
-  maxPublicationBytes = MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1,
+  maxPublicationBytes = MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
 }: {
-  readonly publication: FieldPreimagePublicationOutputV1;
+  readonly publication: FieldPreimagePublicationOutput;
   readonly maxPublicationBytes?: number;
 }): void => {
   // The override is bounded, because an unbounded one is not a measurement
   // affordance but a way to switch the guard off from a caller's argument list.
   // §5.4 caps a whole transaction's field bytes at
-  // `MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1`, so no admissible
+  // `MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES`, so no admissible
   // publication is ever larger than that at any value of `K`; a caller asking
   // for more is not measuring the ladder's frontier, it is leaving the ladder.
   if (
     !Number.isSafeInteger(maxPublicationBytes) ||
     maxPublicationBytes < 1 ||
-    maxPublicationBytes > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1
+    maxPublicationBytes > MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES
   ) {
     throw new Error(
       `maxPublicationBytes must be between 1 and the §5.4 aggregate field cap ` +
-        `(${MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1.toString()}); got ` +
+        `(${MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES.toString()}); got ` +
         `${maxPublicationBytes.toString()}`,
     );
   }
   if (publication.byteLength <= maxPublicationBytes) {
     return;
   }
-  const transactionBytes = midgardCarriagePublicationBytesV1(
+  const transactionBytes = midgardCarriagePublicationBytes(
     publication.byteLength,
   );
   throw new Error(
@@ -260,7 +259,7 @@ export const assertFieldPreimagePublicationFitsV1 = ({
  * leaves exactly the 512-byte reliability reserve and no room for a second chunk.
  * A builder that tried to share a transaction would fail at exactly the sizes
  * tier 3 exists for. A caller publishes a tier-3 plan by
- * iterating {@link fieldPreimagePublicationOutputsV1}; the publications are
+ * iterating {@link fieldPreimagePublicationOutputs}; the publications are
  * independent, so a run interrupted half-way is resumed by publishing whatever
  * is missing, and §8.7's content addressing means it does not matter who
  * publishes which.
@@ -273,21 +272,21 @@ export const assertFieldPreimagePublicationFitsV1 = ({
  * submission. `maxPublicationBytes` exists for the frontier measurement and for
  * nothing else.
  */
-export const buildUnsignedFieldPreimagePublicationV1Program = (
+export const buildUnsignedFieldPreimagePublicationProgram = (
   lucid: LucidEvolution,
   {
     publication,
     publisherAddress,
     maxPublicationBytes,
   }: {
-    readonly publication: FieldPreimagePublicationOutputV1;
+    readonly publication: FieldPreimagePublicationOutput;
     readonly publisherAddress: string;
     readonly maxPublicationBytes?: number;
   },
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
     try: async () => {
-      assertFieldPreimagePublicationFitsV1({
+      assertFieldPreimagePublicationFits({
         publication,
         ...(maxPublicationBytes === undefined ? {} : { maxPublicationBytes }),
       });
@@ -298,7 +297,7 @@ export const buildUnsignedFieldPreimagePublicationV1Program = (
           publisherAddress,
           { kind: "inline", value: publication.datumCbor },
           {
-            lovelace: minimumLovelaceForFieldPreimagePublicationV1({
+            lovelace: minimumLovelaceForFieldPreimagePublication({
               publisherAddress,
               output: publication,
               coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
@@ -316,7 +315,7 @@ export const buildUnsignedFieldPreimagePublicationV1Program = (
   });
 
 const certificateDatumCbor = (
-  certificate: MidgardFieldPreimageCertificateV1,
+  certificate: MidgardFieldPreimageCertificate,
 ): string =>
   Data.to(
     {
@@ -329,11 +328,11 @@ const certificateDatumCbor = (
         digest.toString("hex"),
       ),
     },
-    FieldPreimageCertificateV1,
+    FieldPreimageCertificate,
   );
 
 /** The §8.6 manifest a tier-3 plan mints, as the datum and token a builder needs. */
-export type FieldPreimageCertificationV1 = {
+export type FieldPreimageCertification = {
   readonly datumCbor: string;
   readonly assetNameHex: string;
   readonly chunkCount: number;
@@ -344,35 +343,35 @@ export type FieldPreimageCertificationV1 = {
  * field hash authenticates the whole preimage directly (§8.2) — so this refuses
  * rather than inventing a manifest for them.
  */
-export const deriveFieldPreimageCertificationV1 = (
-  plan: MidgardFieldCarriagePlanV1,
-): FieldPreimageCertificationV1 => {
+export const deriveFieldPreimageCertification = (
+  plan: MidgardFieldCarriagePlan,
+): FieldPreimageCertification => {
   const certificate = plan.certificate;
   if (certificate === null) {
     throw new Error(
       "only tier-3 carriage is certified — tiers 1–2 authenticate against the flat field hash",
     );
   }
-  if (certificate.chunkDigests.length > MIDGARD_MAX_TIER3_CHUNK_COUNT_V1) {
+  if (certificate.chunkDigests.length > MIDGARD_MAX_TIER3_CHUNK_COUNT) {
     throw new Error("§8.3 bounds tier-3 carriage at three chunks");
   }
   return {
     datumCbor: certificateDatumCbor(certificate),
     // #606: one constant name for every certificate of the policy; the datum
     // (including the mint-welded `field_hash`) is where identity lives.
-    assetNameHex: FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
+    assetNameHex: FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
     chunkCount: certificate.chunkDigests.length,
   };
 };
 
-export const minimumLovelaceForFieldPreimageCertificateV1 = ({
+export const minimumLovelaceForFieldPreimageCertificate = ({
   certificateAddress,
   certification,
   certificatePolicyId,
   coinsPerUtxoByte,
 }: {
   readonly certificateAddress: string;
-  readonly certification: FieldPreimageCertificationV1;
+  readonly certification: FieldPreimageCertification;
   readonly certificatePolicyId: string;
   readonly coinsPerUtxoByte: bigint;
 }): bigint => {
@@ -396,11 +395,11 @@ export const minimumLovelaceForFieldPreimageCertificateV1 = ({
 
 /**
  * §8.6's `Certify` redeemer. `chunk_ref_input_indices` is all-chunks-positional
- * and must be derived by {@link resolveChunkReferenceIndicesV1}, which orders
+ * and must be derived by {@link resolveChunkReferenceIndices}, which orders
  * the reference inputs the way the ledger does; this function only bounds and
  * validates what it is given.
  */
-export const certifyFieldPreimageRedeemerV1 = ({
+export const certifyFieldPreimageRedeemer = ({
   compactCbor,
   witnessSetCompactCbor,
   chunkRefInputIndices,
@@ -411,7 +410,7 @@ export const certifyFieldPreimageRedeemerV1 = ({
   readonly chunkRefInputIndices: readonly number[];
   readonly outputIndex: number;
 }): string => {
-  if (chunkRefInputIndices.length > MIDGARD_MAX_TIER3_CHUNK_COUNT_V1) {
+  if (chunkRefInputIndices.length > MIDGARD_MAX_TIER3_CHUNK_COUNT) {
     throw new Error("§8.3 bounds tier-3 carriage at three chunks");
   }
   if (
@@ -432,13 +431,13 @@ export const certifyFieldPreimageRedeemerV1 = ({
         output_index: BigInt(outputIndex),
       },
     },
-    FieldPreimageCertificateMintRedeemerV1,
+    FieldPreimageCertificateMintRedeemer,
   );
 };
 
 /** §8.6's `Retire` redeemer — the burn path; the spend handler holds authority. */
-export const retireFieldPreimageCertificateRedeemerV1 = (): string =>
-  Data.to("Retire", FieldPreimageCertificateMintRedeemerV1);
+export const retireFieldPreimageCertificateRedeemer = (): string =>
+  Data.to("Retire", FieldPreimageCertificateMintRedeemer);
 
 /**
  * Locates each of a plan's chunks in a resolved reference-input set by
@@ -451,11 +450,11 @@ export const retireFieldPreimageCertificateRedeemerV1 = (): string =>
  * transaction id and the same content, and this function cannot tell the
  * difference, which is the point.
  */
-export const resolveChunkReferenceIndicesV1 = ({
+export const resolveChunkReferenceIndices = ({
   plan,
   referenceInputs,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly referenceInputs: readonly UTxO[];
 }): readonly number[] => {
   // Positional indices are indices into the **ledger's** reference-input list,
@@ -481,7 +480,7 @@ export const resolveChunkReferenceIndicesV1 = ({
   // over a *list* means.
   const claimed = new Set<number>();
   return plan.publications.map((publication) => {
-    const expected = fieldPreimagePublicationDatumCborV1(publication.bytes);
+    const expected = fieldPreimagePublicationDatumCbor(publication.bytes);
     const index = ordered.findIndex(
       (utxo, position) => !claimed.has(position) && utxo.datum === expected,
     );
@@ -521,7 +520,7 @@ export const resolveChunkReferenceIndicesV1 = ({
  * one, and against a single candidate a token-only resolver and this one are
  * indistinguishable.
  */
-export const resolveCertificateReferenceIndexV1 = ({
+export const resolveCertificateReferenceIndex = ({
   certificatePolicyId,
   txIdHex,
   fieldIndex,
@@ -536,13 +535,13 @@ export const resolveCertificateReferenceIndexV1 = ({
   readonly referenceInputs: readonly UTxO[];
   readonly label: string;
 }): number => {
-  const unit = `${certificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1}`;
+  const unit = `${certificatePolicyId}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
   const matchesDatum = (datum: string | null | undefined): boolean => {
     if (datum === null || datum === undefined) {
       return false;
     }
     try {
-      const certificate = Data.from(datum, FieldPreimageCertificateV1);
+      const certificate = Data.from(datum, FieldPreimageCertificate);
       return (
         certificate.tx_id === txIdHex &&
         certificate.field_index === BigInt(fieldIndex) &&
@@ -553,7 +552,7 @@ export const resolveCertificateReferenceIndexV1 = ({
     }
   };
   // Canonical `(txHash, outputIndex)` order, for the same reason
-  // `resolveChunkReferenceIndicesV1` sorts: positional indices are indices into
+  // `resolveChunkReferenceIndices` sorts: positional indices are indices into
   // the ledger's reference-input list, not into the order a builder collected.
   const index = [...referenceInputs]
     .sort(compareOutRefs)
@@ -590,15 +589,15 @@ export const resolveCertificateReferenceIndexV1 = ({
  * reference-input set at build time and puts the result on the observe wire,
  * so no earlier transaction's index survives to disagree with it.
  */
-export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
+export const resolveMidgardFieldCarriageAgainstReferenceInputs = ({
   plan,
   referenceInputs,
   certificatePolicyId,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly referenceInputs: readonly UTxO[];
   readonly certificatePolicyId?: string;
-}): MidgardFieldCarriageV1 => {
+}): MidgardFieldCarriage => {
   if (plan.tier === "Inline") {
     if (plan.inlinePreimage === null) {
       throw new Error(
@@ -607,7 +606,7 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
     }
     return { carriage: "Inline", preimage: plan.inlinePreimage };
   }
-  const chunkIndices = resolveChunkReferenceIndicesV1({
+  const chunkIndices = resolveChunkReferenceIndices({
     plan,
     referenceInputs,
   });
@@ -632,7 +631,7 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
   }
   return {
     carriage: "Certified",
-    certRefInputIndex: resolveCertificateReferenceIndexV1({
+    certRefInputIndex: resolveCertificateReferenceIndex({
       certificatePolicyId,
       txIdHex: plan.txId.toString("hex"),
       fieldIndex: plan.fieldIndex,
@@ -657,7 +656,7 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
  * transition-only and the production builder
  * (`submitValidationDisputeSemanticResolution` in
  * `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`) calls
- * {@link resolveMidgardFieldCarriageAgainstReferenceInputsV1} at build time
+ * {@link resolveMidgardFieldCarriageAgainstReferenceInputs} at build time
  * and puts the freshly-resolved carriage on the observe wire itself — there
  * is no committed index left to re-check, so this guard is no longer on the
  * production path.
@@ -670,15 +669,15 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputsV1 = ({
  * which submits the same door transaction the guard admits and the one it
  * refuses.
  */
-export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
+export const assertMidgardFieldCarriageResolvesAtDoor = ({
   carriage,
   plan,
   doorReferenceInputs,
   certificatePolicyId,
   label,
 }: {
-  readonly carriage: MidgardFieldCarriageV1;
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly carriage: MidgardFieldCarriage;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly doorReferenceInputs: readonly UTxO[];
   readonly certificatePolicyId?: string;
   readonly label: string;
@@ -687,7 +686,7 @@ export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
     // Tier 1 indexes nothing, so there is nothing that can drift.
     return;
   }
-  const atDoor = resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+  const atDoor = resolveMidgardFieldCarriageAgainstReferenceInputs({
     plan,
     referenceInputs: doorReferenceInputs,
     ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
@@ -730,7 +729,7 @@ export const assertMidgardFieldCarriageResolvesAtDoorV1 = ({
  * certification. The UTxO's own reference script is the witness: a matching
  * policy id supplied beside a substituted script is rejected before building.
  */
-export const requireFieldPreimageCertificateReferenceScriptV1 = ({
+export const requireFieldPreimageCertificateReferenceScript = ({
   certificatePolicyId,
   referenceUtxo,
 }: {
@@ -756,29 +755,29 @@ export const requireFieldPreimageCertificateReferenceScriptV1 = ({
   return referenceUtxo;
 };
 
-export type FieldPreimageCertificationReferenceLayoutV1 = {
+export type FieldPreimageCertificationReferenceLayout = {
   /** Complete reference-input set used by the certification transaction. */
   readonly referenceInputs: readonly UTxO[];
   /** Indices into that complete, ledger-sorted set for the Certify redeemer. */
   readonly chunkRefInputIndices: readonly number[];
 };
 
-export const resolveFieldPreimageCertificationReferenceLayoutV1 = ({
+export const resolveFieldPreimageCertificationReferenceLayout = ({
   plan,
   certificatePolicyId,
   certificatePolicyReferenceUtxo,
   chunkUtxos,
 }: {
-  readonly plan: MidgardFieldCarriagePlanV1;
+  readonly plan: MidgardFieldCarriagePlan;
   readonly certificatePolicyId: string;
   readonly certificatePolicyReferenceUtxo: UTxO;
   readonly chunkUtxos: readonly UTxO[];
-}): FieldPreimageCertificationReferenceLayoutV1 => {
-  const certification = deriveFieldPreimageCertificationV1(plan);
+}): FieldPreimageCertificationReferenceLayout => {
+  const certification = deriveFieldPreimageCertification(plan);
   if (chunkUtxos.length !== certification.chunkCount) {
     throw new Error("certification must reference exactly the plan's chunks");
   }
-  const policyReference = requireFieldPreimageCertificateReferenceScriptV1({
+  const policyReference = requireFieldPreimageCertificateReferenceScript({
     certificatePolicyId,
     referenceUtxo: certificatePolicyReferenceUtxo,
   });
@@ -795,7 +794,7 @@ export const resolveFieldPreimageCertificationReferenceLayoutV1 = ({
   }
   return {
     referenceInputs,
-    chunkRefInputIndices: resolveChunkReferenceIndicesV1({
+    chunkRefInputIndices: resolveChunkReferenceIndices({
       plan,
       referenceInputs,
     }),
@@ -815,7 +814,7 @@ export const resolveFieldPreimageCertificationReferenceLayoutV1 = ({
  * verified `chunk_digests` and which the §8.8 door then holds against the
  * commitment it anchored itself. So a consumer of a certificate reads the
  * datum; the token only says which policy minted it (see
- * {@link resolveCertificateReferenceIndexV1}).
+ * {@link resolveCertificateReferenceIndex}).
  *
  * The chunk UTxOs must already exist. That is not a builder limitation but a
  * ledger one, and it is worth stating because it is the reason last-chunk
@@ -823,7 +822,7 @@ export const resolveFieldPreimageCertificationReferenceLayoutV1 = ({
  * are resolved against the UTxO set as it stands *before* the transaction, so
  * an output the same transaction creates is not available to it.
  */
-export const buildUnsignedFieldPreimageCertificationV1Program = (
+export const buildUnsignedFieldPreimageCertificationProgram = (
   lucid: LucidEvolution,
   {
     plan,
@@ -834,7 +833,7 @@ export const buildUnsignedFieldPreimageCertificationV1Program = (
     compactCbor,
     witnessSetCompactCbor,
   }: {
-    readonly plan: MidgardFieldCarriagePlanV1;
+    readonly plan: MidgardFieldCarriagePlan;
     readonly certificatePolicyId: string;
     readonly certificateAddress: string;
     readonly certificateWitness:
@@ -854,7 +853,7 @@ export const buildUnsignedFieldPreimageCertificationV1Program = (
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
     try: async () => {
-      const certification = deriveFieldPreimageCertificationV1(plan);
+      const certification = deriveFieldPreimageCertification(plan);
       if (chunkUtxos.length !== certification.chunkCount) {
         throw new Error(
           "certification must reference exactly the plan's chunks",
@@ -862,7 +861,7 @@ export const buildUnsignedFieldPreimageCertificationV1Program = (
       }
       const strictLayout =
         certificateWitness.kind === "reference_script"
-          ? resolveFieldPreimageCertificationReferenceLayoutV1({
+          ? resolveFieldPreimageCertificationReferenceLayout({
               plan,
               certificatePolicyId,
               certificatePolicyReferenceUtxo: certificateWitness.referenceUtxo,
@@ -872,9 +871,9 @@ export const buildUnsignedFieldPreimageCertificationV1Program = (
       const referenceInputs = strictLayout?.referenceInputs ?? chunkUtxos;
       const chunkRefInputIndices =
         strictLayout?.chunkRefInputIndices ??
-        resolveChunkReferenceIndicesV1({ plan, referenceInputs });
+        resolveChunkReferenceIndices({ plan, referenceInputs });
       const protocolParameters = await resolveProtocolParameters(lucid);
-      const lovelace = minimumLovelaceForFieldPreimageCertificateV1({
+      const lovelace = minimumLovelaceForFieldPreimageCertificate({
         certificateAddress,
         certification,
         certificatePolicyId,
@@ -886,7 +885,7 @@ export const buildUnsignedFieldPreimageCertificationV1Program = (
         .readFrom([...referenceInputs])
         .mintAssets(
           { [unit]: 1n },
-          certifyFieldPreimageRedeemerV1({
+          certifyFieldPreimageRedeemer({
             compactCbor,
             witnessSetCompactCbor,
             chunkRefInputIndices,

@@ -39,8 +39,8 @@ import {
   buildWithdrawnReferenceInputFaultProofContracts,
   buildWitnessScriptDecodingFaultProofContracts,
   buildZeroInputFaultProofContracts,
-  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
-  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+  FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
+  FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
   FAULT_PROOF_SHARED_TITLES,
   type FaultProofContractChains,
   fraudProofContractsToFirstSteps,
@@ -62,67 +62,67 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import {
-  CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1,
-  type CanonicalDecodabilityContractsV1,
+  CANONICAL_DECODABILITY_BLUEPRINT_TITLES,
+  type CanonicalDecodabilityContracts,
 } from "../../../src/canonical-decodability/contracts-v1.js";
 import {
-  COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES_V1,
-  type CommittedFieldShapeContractsV1,
+  COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES,
+  type CommittedFieldShapeContracts,
 } from "../../../src/committed-field-shape/contracts-v1.js";
 import {
-  CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES_V1,
-  type CrossBlockDuplicateEventContractsV1,
+  CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES,
+  type CrossBlockDuplicateEventContracts,
 } from "../../../src/cross-block-duplicate-event/index.js";
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1,
-  type DistinctAssetAccumulationContractsV1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
+  type DistinctAssetAccumulationContracts,
 } from "../../../src/distinct-asset-accumulation-limit/contracts-v1.js";
 import {
-  DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1,
-  type DoubleWithdrawContractsV1,
+  DOUBLE_WITHDRAW_BLUEPRINT_TITLES,
+  type DoubleWithdrawContracts,
 } from "../../../src/double-withdraw/contracts-v1.js";
 import {
-  INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1,
-  type InputSetUniquenessContractsV1,
+  INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES,
+  type InputSetUniquenessContracts,
 } from "../../../src/input-set-uniqueness/contracts-v1.js";
-import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/contracts-v1.js";
-import { type MinAdaContractsV1 } from "../../../src/min-ada/contracts-v1.js";
-import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
+import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts-v1.js";
+import { type MinAdaContracts } from "../../../src/min-ada/contracts-v1.js";
+import { type MinFeeContracts } from "../../../src/min-fee-contracts-v1.js";
 import {
-  MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1,
-  type MintAuthorizationContractsV1,
+  MINT_AUTHORIZATION_BLUEPRINT_TITLES,
+  type MintAuthorizationContracts,
 } from "../../../src/mint-authorization/contracts-v1.js";
 import {
-  MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
-  type MissingNativeScriptTxContractsV1,
+  MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES,
+  type MissingNativeScriptTxContracts,
 } from "../../../src/missing-native-script-tx/contracts-v1.js";
-import { type MissingNativeScriptUtxoContractsV1 } from "../../../src/missing-native-script-utxo/contracts-v1.js";
+import { type MissingNativeScriptUtxoContracts } from "../../../src/missing-native-script-utxo/contracts-v1.js";
 import {
-  MISSING_SIGNATURE_BLUEPRINT_TITLES_V1,
-  type MissingSignatureContractsV1,
+  MISSING_SIGNATURE_BLUEPRINT_TITLES,
+  type MissingSignatureContracts,
 } from "../../../src/missing-signature/contracts-v1.js";
 import {
-  NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
-  type NativeScriptDecodingContractsV1,
+  NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES,
+  type NativeScriptDecodingContracts,
 } from "../../../src/native-script-decoding/contracts-v1.js";
-import { type NativeScriptInvalidContractsV1 } from "../../../src/native-script-invalid/contracts-v1.js";
-import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
-import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
+import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts-v1.js";
+import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
+import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import {
-  VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1,
-  type ValueNotPreservedContractsV1,
+  VALUE_NOT_PRESERVED_BLUEPRINT_TITLES,
+  type ValueNotPreservedContracts,
 } from "../../../src/value-not-preserved/contracts-v1.js";
 import {
-  WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1,
-  type WithdrawalMistagContractsV1,
+  WITHDRAWAL_MISTAG_BLUEPRINT_TITLES,
+  type WithdrawalMistagContracts,
 } from "../../../src/withdrawal-mistag/contracts-v1.js";
 import {
-  WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1,
-  type WithdrawnInputContractsV1,
+  WITHDRAWN_INPUT_BLUEPRINT_TITLES,
+  type WithdrawnInputContracts,
 } from "../../../src/withdrawn-input/contracts-v1.js";
 import {
-  WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1,
-  type WithdrawnReferenceInputContractsV1,
+  WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES,
+  type WithdrawnReferenceInputContracts,
 } from "../../../src/withdrawn-reference-input/contracts-v1.js";
 import {
   applyCompiledScript,
@@ -160,7 +160,7 @@ const chainFromSteps = <const Steps extends EmulatorStepTuple>(
 };
 
 /** Applies step 02 first, then pins its hash into step 01 in blueprint order. */
-export const buildCommittedFieldShapeChainV1 = ({
+export const buildCommittedFieldShapeChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -178,7 +178,7 @@ export const buildCommittedFieldShapeChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES_V1.step02,
+      COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES.step02,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -189,7 +189,7 @@ export const buildCommittedFieldShapeChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES_V1.step01,
+      COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES.step01,
       [
         step02.spendingScriptHash,
         computationThreadPolicyId,
@@ -202,7 +202,7 @@ export const buildCommittedFieldShapeChainV1 = ({
 };
 
 /** Applies the two-step `double-withdraw` chain backwards. */
-export const buildDoubleWithdrawChainV1 = ({
+export const buildDoubleWithdrawChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -218,7 +218,7 @@ export const buildDoubleWithdrawChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1.step02,
+      DOUBLE_WITHDRAW_BLUEPRINT_TITLES.step02,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -230,7 +230,7 @@ export const buildDoubleWithdrawChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      DOUBLE_WITHDRAW_BLUEPRINT_TITLES_V1.step01,
+      DOUBLE_WITHDRAW_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -238,7 +238,7 @@ export const buildDoubleWithdrawChainV1 = ({
 };
 
 /** Apply the missing-signature chain backwards in blueprint parameter order. */
-export const buildMissingSignatureChainV1 = ({
+export const buildMissingSignatureChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -252,11 +252,11 @@ export const buildMissingSignatureChainV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOraclePolicyId: string;
-}): MissingSignatureContractsV1["steps"] => {
+}): MissingSignatureContracts["steps"] => {
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_SIGNATURE_BLUEPRINT_TITLES_V1.step04,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.step04,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -268,14 +268,14 @@ export const buildMissingSignatureChainV1 = ({
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_SIGNATURE_BLUEPRINT_TITLES_V1.step03,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.step03,
       [step04.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_SIGNATURE_BLUEPRINT_TITLES_V1.step02,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.step02,
       [
         step03.spendingScriptHash,
         computationThreadPolicyId,
@@ -286,7 +286,7 @@ export const buildMissingSignatureChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_SIGNATURE_BLUEPRINT_TITLES_V1.step01,
+      MISSING_SIGNATURE_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -298,7 +298,7 @@ export const buildMissingSignatureChainV1 = ({
  * blueprint-declared parameter order. It is built backwards because every
  * custody step is parameterized by its successor's script hash.
  */
-export const buildNativeScriptDecodingChainV1 = ({
+export const buildNativeScriptDecodingChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -323,7 +323,7 @@ export const buildNativeScriptDecodingChainV1 = ({
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step04,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES.step04,
       [
         computationThreadPolicyId,
         fraudProofPolicyId,
@@ -334,14 +334,14 @@ export const buildNativeScriptDecodingChainV1 = ({
   const step03AdvanceOrClose = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03AdvanceOrClose,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES.step03AdvanceOrClose,
       [step04.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step03BindDescriptor = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03BindDescriptor,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES.step03BindDescriptor,
       [
         step03AdvanceOrClose.spendingScriptHash,
         step04.spendingScriptHash,
@@ -352,7 +352,7 @@ export const buildNativeScriptDecodingChainV1 = ({
   const step03OpenSubject = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step03OpenSubject,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES.step03OpenSubject,
       [
         step03BindDescriptor.spendingScriptHash,
         step04.spendingScriptHash,
@@ -364,14 +364,14 @@ export const buildNativeScriptDecodingChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step02,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES.step02,
       [step03OpenSubject.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1.step01,
+      NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -386,7 +386,7 @@ export const buildNativeScriptDecodingChainV1 = ({
 };
 
 /** Applies the eight validators backwards in their blueprint-declared order. */
-export const buildMissingNativeScriptTxChainV1 = ({
+export const buildMissingNativeScriptTxChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -413,7 +413,7 @@ export const buildMissingNativeScriptTxChainV1 = ({
   const step08 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step08,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step08,
       [
         computationThreadPolicyId,
         fraudProofPolicyId,
@@ -425,7 +425,7 @@ export const buildMissingNativeScriptTxChainV1 = ({
   const step07 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step07,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step07,
       [
         step08.spendingScriptHash,
         computationThreadPolicyId,
@@ -436,7 +436,7 @@ export const buildMissingNativeScriptTxChainV1 = ({
   const step06 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step06,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step06,
       [
         step07.spendingScriptHash,
         computationThreadPolicyId,
@@ -449,14 +449,14 @@ export const buildMissingNativeScriptTxChainV1 = ({
   const step05 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step05,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step05,
       [step06.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step04,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step04,
       [
         step05.spendingScriptHash,
         computationThreadPolicyId,
@@ -467,14 +467,14 @@ export const buildMissingNativeScriptTxChainV1 = ({
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step03,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step03,
       [step04.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step02,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step02,
       [
         step03.spendingScriptHash,
         computationThreadPolicyId,
@@ -485,7 +485,7 @@ export const buildMissingNativeScriptTxChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step01,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -493,7 +493,7 @@ export const buildMissingNativeScriptTxChainV1 = ({
 };
 
 /** Applies the two-step canonical-decodability family backwards. */
-export const buildCanonicalDecodabilityChainV1 = ({
+export const buildCanonicalDecodabilityChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -511,7 +511,7 @@ export const buildCanonicalDecodabilityChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1.step02,
+      CANONICAL_DECODABILITY_BLUEPRINT_TITLES.step02,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -522,7 +522,7 @@ export const buildCanonicalDecodabilityChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      CANONICAL_DECODABILITY_BLUEPRINT_TITLES_V1.step01,
+      CANONICAL_DECODABILITY_BLUEPRINT_TITLES.step01,
       [
         step02.spendingScriptHash,
         computationThreadPolicyId,
@@ -534,7 +534,7 @@ export const buildCanonicalDecodabilityChainV1 = ({
   return [step01, step02];
 };
 
-export const buildCrossBlockDuplicateEventChainV1 = ({
+export const buildCrossBlockDuplicateEventChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -550,7 +550,7 @@ export const buildCrossBlockDuplicateEventChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES_V1.step02,
+      CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES.step02,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -561,7 +561,7 @@ export const buildCrossBlockDuplicateEventChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES_V1.step01,
+      CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -569,7 +569,7 @@ export const buildCrossBlockDuplicateEventChainV1 = ({
 };
 
 /** Applies the three withdrawn-reference-input validators back-to-front. */
-export const buildWithdrawnReferenceInputChainV1 = ({
+export const buildWithdrawnReferenceInputChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -591,7 +591,7 @@ export const buildWithdrawnReferenceInputChainV1 = ({
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1.step03,
+      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES.step03,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -602,7 +602,7 @@ export const buildWithdrawnReferenceInputChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1.step02,
+      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES.step02,
       [
         step03.spendingScriptHash,
         computationThreadPolicyId,
@@ -613,7 +613,7 @@ export const buildWithdrawnReferenceInputChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES_V1.step01,
+      WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -621,7 +621,7 @@ export const buildWithdrawnReferenceInputChainV1 = ({
 };
 
 /** Applies the three-step withdrawn-input chain backwards. */
-export const buildWithdrawnInputChainV1 = ({
+export const buildWithdrawnInputChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -635,11 +635,11 @@ export const buildWithdrawnInputChainV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOraclePolicyId: string;
-}): WithdrawnInputContractsV1["steps"] => {
+}): WithdrawnInputContracts["steps"] => {
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1.step03,
+      WITHDRAWN_INPUT_BLUEPRINT_TITLES.step03,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -650,7 +650,7 @@ export const buildWithdrawnInputChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1.step02,
+      WITHDRAWN_INPUT_BLUEPRINT_TITLES.step02,
       [
         step03.spendingScriptHash,
         computationThreadPolicyId,
@@ -661,7 +661,7 @@ export const buildWithdrawnInputChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWN_INPUT_BLUEPRINT_TITLES_V1.step01,
+      WITHDRAWN_INPUT_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -669,7 +669,7 @@ export const buildWithdrawnInputChainV1 = ({
 };
 
 /** Applies the reserved five-step withdrawal-mistag chain backwards. */
-export const buildWithdrawalMistagChainV1 = ({
+export const buildWithdrawalMistagChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -681,11 +681,11 @@ export const buildWithdrawalMistagChainV1 = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofTokenAddressData: Data;
   readonly hubOraclePolicyId: string;
-}): WithdrawalMistagContractsV1["steps"] => {
+}): WithdrawalMistagContracts["steps"] => {
   const step05 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1.step05,
+      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES.step05,
       [
         computationThreadPolicyId,
         fraudProofPolicyId,
@@ -696,28 +696,28 @@ export const buildWithdrawalMistagChainV1 = ({
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1.step04,
+      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES.step04,
       [step05.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1.step03,
+      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES.step03,
       [step04.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1.step02,
+      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES.step02,
       [step03.spendingScriptHash, computationThreadPolicyId],
     ),
   );
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES_V1.step01,
+      WITHDRAWAL_MISTAG_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -727,12 +727,12 @@ export const buildWithdrawalMistagChainV1 = ({
 /**
  * Applies the four-step `input-set-uniqueness` chain in blueprint-declared
  * parameter order (the order note lives on
- * `INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1`). Applied backwards because
+ * `INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES`). Applied backwards because
  * steps 01 and 03 are parameterized by successor script hashes. All steps
  * deploy as reference scripts in production per the standing
  * reference-script ruling.
  */
-export const buildInputSetUniquenessChainV1 = ({
+export const buildInputSetUniquenessChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -755,7 +755,7 @@ export const buildInputSetUniquenessChainV1 = ({
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1.step04,
+      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES.step04,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -767,7 +767,7 @@ export const buildInputSetUniquenessChainV1 = ({
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1.step03,
+      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES.step03,
       [
         step04.spendingScriptHash,
         computationThreadPolicyId,
@@ -778,7 +778,7 @@ export const buildInputSetUniquenessChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1.step02,
+      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES.step02,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -790,7 +790,7 @@ export const buildInputSetUniquenessChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1.step01,
+      INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES.step01,
       [
         step02.spendingScriptHash,
         step03.spendingScriptHash,
@@ -804,7 +804,7 @@ export const buildInputSetUniquenessChainV1 = ({
 
 /**
  * Applies the four-step `value-not-preserved` chain in blueprint-declared
- * parameter order (pinned on `VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1`).
+ * parameter order (pinned on `VALUE_NOT_PRESERVED_BLUEPRINT_TITLES`).
  * Applied backwards — step 04 first — because each step is parameterized by
  * its successor's script hash. Steps 02 and 03 both take the §8.6
  * field-preimage certificate policy (each opens committed fields through the
@@ -812,7 +812,7 @@ export const buildInputSetUniquenessChainV1 = ({
  * deploy as reference scripts in production per the standing
  * reference-script ruling.
  */
-export const buildValueNotPreservedChainV1 = ({
+export const buildValueNotPreservedChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -826,11 +826,11 @@ export const buildValueNotPreservedChainV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOraclePolicyId: string;
-}): ValueNotPreservedContractsV1["steps"] => {
+}): ValueNotPreservedContracts["steps"] => {
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step04,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.step04,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -841,7 +841,7 @@ export const buildValueNotPreservedChainV1 = ({
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step03,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.step03,
       [
         step04.spendingScriptHash,
         computationThreadPolicyId,
@@ -852,7 +852,7 @@ export const buildValueNotPreservedChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step02,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.step02,
       [
         step03.spendingScriptHash,
         computationThreadPolicyId,
@@ -863,7 +863,7 @@ export const buildValueNotPreservedChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES_V1.step01,
+      VALUE_NOT_PRESERVED_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -872,14 +872,14 @@ export const buildValueNotPreservedChainV1 = ({
 
 /**
  * Applies the five-step `mint-authorization` chain in blueprint-declared
- * parameter order (see `MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1` and the order
- * note on `MintAuthorizationContractsV1`). Applied backwards, step 05 first,
+ * parameter order (see `MINT_AUTHORIZATION_BLUEPRINT_TITLES` and the order
+ * note on `MintAuthorizationContracts`). Applied backwards, step 05 first,
  * because every earlier step is parameterized by a successor's script hash —
  * and step 03 uniquely by TWO downstream hashes (step 04's reference-input
  * scan and step 05's direct close). Every step deploys as a reference script
  * in production per the standing reference-script ruling.
  */
-export const buildMintAuthorizationChainV1 = ({
+export const buildMintAuthorizationChain = ({
   realBlueprint,
   computationThreadPolicyId,
   fraudProofPolicyId,
@@ -893,11 +893,11 @@ export const buildMintAuthorizationChainV1 = ({
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly hubOraclePolicyId: string;
-}): MintAuthorizationContractsV1["steps"] => {
+}): MintAuthorizationContracts["steps"] => {
   const step05 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1.step05,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.step05,
       [
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -908,7 +908,7 @@ export const buildMintAuthorizationChainV1 = ({
   const step04 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1.step04,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.step04,
       [
         step05.spendingScriptHash,
         computationThreadPolicyId,
@@ -919,7 +919,7 @@ export const buildMintAuthorizationChainV1 = ({
   const step03 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1.step03,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.step03,
       [
         step04.spendingScriptHash,
         step05.spendingScriptHash,
@@ -931,7 +931,7 @@ export const buildMintAuthorizationChainV1 = ({
   const step02 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1.step02,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.step02,
       [
         step03.spendingScriptHash,
         computationThreadPolicyId,
@@ -942,7 +942,7 @@ export const buildMintAuthorizationChainV1 = ({
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
-      MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1.step01,
+      MINT_AUTHORIZATION_BLUEPRINT_TITLES.step01,
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
@@ -1043,27 +1043,27 @@ export const buildMinimalFaultProofContracts = async (
 ): Promise<
   MidgardValidators & {
     readonly computationThread: SdkMintingValidator;
-    readonly fabricatedDeposit?: FabricatedDepositContractsV1;
-    readonly fabricatedWithdrawal?: FabricatedWithdrawalContractsV1;
-    readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
-    readonly missingSignature?: MissingSignatureContractsV1;
-    readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
-    readonly missingNativeScriptUtxo?: MissingNativeScriptUtxoContractsV1;
-    readonly nativeScriptInvalid?: NativeScriptInvalidContractsV1;
-    readonly minAda?: MinAdaContractsV1;
-    readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
-    readonly committedFieldShape?: CommittedFieldShapeContractsV1;
-    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
-    readonly minFee?: MinFeeContractsV1;
-    readonly doubleWithdraw?: DoubleWithdrawContractsV1;
-    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContractsV1;
-    readonly l2TxMistag?: L2TxMistagContractsV1;
-    readonly withdrawnInput?: WithdrawnInputContractsV1;
-    readonly withdrawalMistag?: WithdrawalMistagContractsV1;
-    readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
-    readonly valueNotPreserved?: ValueNotPreservedContractsV1;
-    readonly mintAuthorization?: MintAuthorizationContractsV1;
-    readonly distinctAssetAccumulationLimit?: DistinctAssetAccumulationContractsV1;
+    readonly fabricatedDeposit?: FabricatedDepositContracts;
+    readonly fabricatedWithdrawal?: FabricatedWithdrawalContracts;
+    readonly nativeScriptDecoding?: NativeScriptDecodingContracts;
+    readonly missingSignature?: MissingSignatureContracts;
+    readonly missingNativeScriptTx?: MissingNativeScriptTxContracts;
+    readonly missingNativeScriptUtxo?: MissingNativeScriptUtxoContracts;
+    readonly nativeScriptInvalid?: NativeScriptInvalidContracts;
+    readonly minAda?: MinAdaContracts;
+    readonly canonicalDecodability?: CanonicalDecodabilityContracts;
+    readonly committedFieldShape?: CommittedFieldShapeContracts;
+    readonly withdrawnReferenceInput?: WithdrawnReferenceInputContracts;
+    readonly minFee?: MinFeeContracts;
+    readonly doubleWithdraw?: DoubleWithdrawContracts;
+    readonly crossBlockDuplicateEvent?: CrossBlockDuplicateEventContracts;
+    readonly l2TxMistag?: L2TxMistagContracts;
+    readonly withdrawnInput?: WithdrawnInputContracts;
+    readonly withdrawalMistag?: WithdrawalMistagContracts;
+    readonly inputSetUniqueness?: InputSetUniquenessContracts;
+    readonly valueNotPreserved?: ValueNotPreservedContracts;
+    readonly mintAuthorization?: MintAuthorizationContracts;
+    readonly distinctAssetAccumulationLimit?: DistinctAssetAccumulationContracts;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -1509,7 +1509,7 @@ export const buildMinimalFaultProofContracts = async (
   // The Q39/Q40 submitters take an explicit focused contracts record. Assemble
   // it from the same parameterized chains whose step-01 hashes occupy their
   // canonical production catalogue categories.
-  const fabricatedDeposit: FabricatedDepositContractsV1 | undefined =
+  const fabricatedDeposit: FabricatedDepositContracts | undefined =
     fabricatedDepositContracts === undefined
       ? undefined
       : {
@@ -1518,7 +1518,7 @@ export const buildMinimalFaultProofContracts = async (
           fraudProof: fabricatedDepositContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
-          categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
+          categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
         };
   const fieldPreimageCertificateMinting = makeMintingValidator(
     getCompiledScript(
@@ -1533,7 +1533,7 @@ export const buildMinimalFaultProofContracts = async (
   // now come from the same canonical SDK builders used for production
   // deployment. This keeps catalogue and removal hashes identical without
   // reintroducing pre-registration sidecars.
-  const nativeScriptDecoding: NativeScriptDecodingContractsV1 | undefined =
+  const nativeScriptDecoding: NativeScriptDecodingContracts | undefined =
     nativeScriptDecodingContracts === undefined
       ? undefined
       : {
@@ -1544,7 +1544,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingSignature: MissingSignatureContractsV1 | undefined =
+  const missingSignature: MissingSignatureContracts | undefined =
     missingSignatureContracts === undefined
       ? undefined
       : {
@@ -1555,7 +1555,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingNativeScriptTx: MissingNativeScriptTxContractsV1 | undefined =
+  const missingNativeScriptTx: MissingNativeScriptTxContracts | undefined =
     missingNativeScriptTxContracts === undefined
       ? undefined
       : {
@@ -1566,9 +1566,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const missingNativeScriptUtxo:
-    | MissingNativeScriptUtxoContractsV1
-    | undefined =
+  const missingNativeScriptUtxo: MissingNativeScriptUtxoContracts | undefined =
     missingNativeScriptUtxoContracts === undefined
       ? undefined
       : {
@@ -1579,7 +1577,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const nativeScriptInvalid: NativeScriptInvalidContractsV1 | undefined =
+  const nativeScriptInvalid: NativeScriptInvalidContracts | undefined =
     nativeScriptInvalidContracts === undefined
       ? undefined
       : {
@@ -1590,7 +1588,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const minAda: MinAdaContractsV1 | undefined =
+  const minAda: MinAdaContracts | undefined =
     minAdaContracts === undefined
       ? undefined
       : {
@@ -1604,7 +1602,7 @@ export const buildMinimalFaultProofContracts = async (
           referenceScriptAuthPolicyId:
             referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
         };
-  const canonicalDecodability: CanonicalDecodabilityContractsV1 | undefined =
+  const canonicalDecodability: CanonicalDecodabilityContracts | undefined =
     canonicalDecodabilityContracts === undefined
       ? undefined
       : {
@@ -1615,7 +1613,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const committedFieldShape: CommittedFieldShapeContractsV1 | undefined =
+  const committedFieldShape: CommittedFieldShapeContracts | undefined =
     committedFieldShapeContracts === undefined
       ? undefined
       : {
@@ -1626,9 +1624,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const withdrawnReferenceInput:
-    | WithdrawnReferenceInputContractsV1
-    | undefined =
+  const withdrawnReferenceInput: WithdrawnReferenceInputContracts | undefined =
     withdrawnReferenceInputContracts === undefined
       ? undefined
       : {
@@ -1639,7 +1635,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const minFee: MinFeeContractsV1 | undefined = realMinFee
+  const minFee: MinFeeContracts | undefined = realMinFee
     ? {
         steps: minFeeContracts!.minFee.steps,
         computationThread: minFeeContracts!.computationThread,
@@ -1649,7 +1645,7 @@ export const buildMinimalFaultProofContracts = async (
         fieldPreimageCertificatePolicyId,
       }
     : undefined;
-  const doubleWithdraw: DoubleWithdrawContractsV1 | undefined =
+  const doubleWithdraw: DoubleWithdrawContracts | undefined =
     doubleWithdrawContracts === undefined
       ? undefined
       : {
@@ -1660,7 +1656,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
   const crossBlockDuplicateEvent:
-    | CrossBlockDuplicateEventContractsV1
+    | CrossBlockDuplicateEventContracts
     | undefined =
     crossBlockDuplicateEventContracts === undefined
       ? undefined
@@ -1673,7 +1669,7 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-  const l2TxMistag: L2TxMistagContractsV1 | undefined =
+  const l2TxMistag: L2TxMistagContracts | undefined =
     l2TxMistagContracts === undefined
       ? undefined
       : {
@@ -1683,7 +1679,7 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-  const withdrawnInput: WithdrawnInputContractsV1 | undefined =
+  const withdrawnInput: WithdrawnInputContracts | undefined =
     withdrawnInputContracts === undefined
       ? undefined
       : {
@@ -1694,7 +1690,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const withdrawalMistag: WithdrawalMistagContractsV1 | undefined =
+  const withdrawalMistag: WithdrawalMistagContracts | undefined =
     withdrawalMistagContracts === undefined
       ? undefined
       : {
@@ -1704,7 +1700,7 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-  const valueNotPreserved: ValueNotPreservedContractsV1 | undefined =
+  const valueNotPreserved: ValueNotPreservedContracts | undefined =
     valueNotPreservedContracts === undefined
       ? undefined
       : {
@@ -1715,7 +1711,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const inputSetUniqueness: InputSetUniquenessContractsV1 | undefined =
+  const inputSetUniqueness: InputSetUniquenessContracts | undefined =
     inputSetUniquenessContracts === undefined
       ? undefined
       : {
@@ -1726,7 +1722,7 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const mintAuthorization: MintAuthorizationContractsV1 | undefined =
+  const mintAuthorization: MintAuthorizationContracts | undefined =
     mintAuthorizationContracts === undefined
       ? undefined
       : {
@@ -1738,7 +1734,7 @@ export const buildMinimalFaultProofContracts = async (
           fieldPreimageCertificatePolicyId,
         };
   const distinctAssetAccumulationLimit:
-    | DistinctAssetAccumulationContractsV1
+    | DistinctAssetAccumulationContracts
     | undefined =
     distinctAssetAccumulationLimitContracts === undefined
       ? undefined
@@ -1748,16 +1744,16 @@ export const buildMinimalFaultProofContracts = async (
               (step, index) => ({
                 ...step,
                 blueprintTitle:
-                  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES_V1[index]!,
+                  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES[index]!,
               }),
-            ) as unknown as DistinctAssetAccumulationContractsV1["steps"],
+            ) as unknown as DistinctAssetAccumulationContracts["steps"],
           computationThread:
             distinctAssetAccumulationLimitContracts.computationThread,
           fraudProof: distinctAssetAccumulationLimitContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
-  const fabricatedWithdrawal: FabricatedWithdrawalContractsV1 | undefined =
+  const fabricatedWithdrawal: FabricatedWithdrawalContracts | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
       : {
@@ -1766,7 +1762,7 @@ export const buildMinimalFaultProofContracts = async (
           fraudProof: fabricatedWithdrawalContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueue.policyId,
-          categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+          categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
         };
   const fraudProofContracts: FaultProofContractChains = {
     ...withActiveOperators.fraudProofContracts,

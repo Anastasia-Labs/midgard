@@ -4,12 +4,12 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyExecutionNativeScriptInvalidScriptsV1,
-  EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1,
-  EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES_V1,
+  applyExecutionNativeScriptInvalidScripts,
+  EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES,
+  EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES,
 } from "../src/execution-native-script-invalid/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -17,8 +17,8 @@ import {
 
 const blueprint = readBlueprint(realBlueprintPath);
 const hasFamily = [
-  ...EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES_V1,
-  ...EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES_V1,
+  ...EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES,
+  ...EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES,
 ].every((title) =>
   blueprint.validators.some((validator) => validator.title === title),
 );
@@ -27,13 +27,13 @@ describe.runIf(hasFamily)(
   "executionNativeScriptInvalid signed publication fit",
   () => {
     it("publishes every logical and accepted-reconstruction script below the reliability reserve", async () => {
-      const harness = await makeFaultProofEmulatorHarnessV1();
+      const harness = await makeFaultProofEmulatorHarness();
       const addressData = await Effect.runPromise(
         addressDataFromBech32(
           harness.contracts.fraudProof.spendingScriptAddress,
         ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
       );
-      const steps = applyExecutionNativeScriptInvalidScriptsV1({
+      const steps = applyExecutionNativeScriptInvalidScripts({
         blueprint,
         network: "Preprod",
         computationThreadPolicyId: harness.contracts.computationThread.policyId,

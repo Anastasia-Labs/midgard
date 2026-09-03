@@ -9,24 +9,24 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  admitAuthenticatedL1ObservationV1,
-  admitAuthenticatedStateQueueHeaderObservationV1,
-  admitEvidenceProvenanceV1,
-  ADMITTED_EVIDENCE_TRUST_CLASSES_V1,
-  assertSecurityGradeEvidenceV1,
-  assertTransactionSourceInclusionRootAuthenticatedV1,
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
-  CanonicalEvidenceRejectionV1,
-  combineEvidenceGradeV1,
-  type EvidenceProvenanceV1,
-  type EvidenceTrustClassV1,
-  hashBlockHeaderV1,
-  type HeaderV1,
-  isAdmittedEvidenceTrustClassV1,
-  type L1SourceModeV1,
-  PROHIBITED_EVIDENCE_TRUST_CLASSES_V1,
-  type TransactionsInclusionRootAuthenticationV1,
+  admitAuthenticatedL1Observation,
+  admitAuthenticatedStateQueueHeaderObservation,
+  admitEvidenceProvenance,
+  ADMITTED_EVIDENCE_TRUST_CLASSES,
+  assertSecurityGradeEvidence,
+  assertTransactionSourceInclusionRootAuthenticated,
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+  CanonicalEvidenceRejection,
+  combineEvidenceGrade,
+  type EvidenceProvenance,
+  type EvidenceTrustClass,
+  hashBlockHeader,
+  type Header,
+  isAdmittedEvidenceTrustClass,
+  type L1SourceMode,
+  PROHIBITED_EVIDENCE_TRUST_CLASSES,
+  type TransactionsInclusionRootAuthentication,
 } from "@/index.js";
 
 const h = (byte: number, size: number): string =>
@@ -34,7 +34,7 @@ const h = (byte: number, size: number): string =>
 
 const EMPTY_ROOT = h(0, 32);
 
-const header: HeaderV1 = {
+const header: Header = {
   prevUtxosRoot: EMPTY_ROOT,
   utxosRoot: EMPTY_ROOT,
   withdrawalsRoot: EMPTY_ROOT,
@@ -63,9 +63,9 @@ const header: HeaderV1 = {
 };
 
 const observation = async (
-  overrides: Partial<AuthenticatedStateQueueHeaderObservationV1> = {},
-): Promise<AuthenticatedStateQueueHeaderObservationV1> => ({
-  schemaVersion: CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  overrides: Partial<AuthenticatedStateQueueHeaderObservation> = {},
+): Promise<AuthenticatedStateQueueHeaderObservation> => ({
+  schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -74,7 +74,7 @@ const observation = async (
   },
   chainPoint: { slot: 10n, blockHash: h(0x07, 32) },
   confirmationDepth: 8,
-  headerHash: await Effect.runPromise(hashBlockHeaderV1(header)),
+  headerHash: await Effect.runPromise(hashBlockHeader(header)),
   header,
   ...overrides,
 });
@@ -83,7 +83,7 @@ const code = async (run: () => Promise<unknown> | unknown): Promise<string> => {
   try {
     await run();
   } catch (error) {
-    return error instanceof CanonicalEvidenceRejectionV1
+    return error instanceof CanonicalEvidenceRejection
       ? error.code
       : `unexpected:${String(error)}`;
   }
@@ -92,29 +92,29 @@ const code = async (run: () => Promise<unknown> | unknown): Promise<string> => {
 
 describe("canonical evidence provenance", () => {
   it("enumerates disjoint admitted and prohibited class sets", () => {
-    for (const trustClass of ADMITTED_EVIDENCE_TRUST_CLASSES_V1) {
-      expect(isAdmittedEvidenceTrustClassV1(trustClass)).toBe(true);
+    for (const trustClass of ADMITTED_EVIDENCE_TRUST_CLASSES) {
+      expect(isAdmittedEvidenceTrustClass(trustClass)).toBe(true);
     }
-    for (const trustClass of PROHIBITED_EVIDENCE_TRUST_CLASSES_V1) {
-      expect(isAdmittedEvidenceTrustClassV1(trustClass)).toBe(false);
+    for (const trustClass of PROHIBITED_EVIDENCE_TRUST_CLASSES) {
+      expect(isAdmittedEvidenceTrustClass(trustClass)).toBe(false);
     }
-    expect(isAdmittedEvidenceTrustClassV1("anything_else")).toBe(false);
+    expect(isAdmittedEvidenceTrustClass("anything_else")).toBe(false);
   });
 
   it("admits public classes and rejects operator-private ones", async () => {
-    for (const trustClass of ADMITTED_EVIDENCE_TRUST_CLASSES_V1) {
+    for (const trustClass of ADMITTED_EVIDENCE_TRUST_CLASSES) {
       expect(
-        assertSecurityGradeEvidenceV1({
+        assertSecurityGradeEvidence({
           trustClass,
           sourceId: "src",
           grade: "security",
         }).trustClass,
       ).toBe(trustClass);
     }
-    for (const trustClass of PROHIBITED_EVIDENCE_TRUST_CLASSES_V1) {
+    for (const trustClass of PROHIBITED_EVIDENCE_TRUST_CLASSES) {
       expect(
         await code(() =>
-          assertSecurityGradeEvidenceV1({
+          assertSecurityGradeEvidence({
             trustClass,
             sourceId: "src",
             grade: "security",
@@ -127,8 +127,8 @@ describe("canonical evidence provenance", () => {
   it("fails closed on unknown classes, empty ids, and unknown grades", async () => {
     expect(
       await code(() =>
-        assertSecurityGradeEvidenceV1({
-          trustClass: "future_source" as EvidenceTrustClassV1,
+        assertSecurityGradeEvidence({
+          trustClass: "future_source" as EvidenceTrustClass,
           sourceId: "src",
           grade: "security",
         }),
@@ -136,7 +136,7 @@ describe("canonical evidence provenance", () => {
     ).toBe("unknown_trust_class");
     expect(
       await code(() =>
-        assertSecurityGradeEvidenceV1({
+        assertSecurityGradeEvidence({
           trustClass: "authenticated_cardano_l1",
           sourceId: "   ",
           grade: "security",
@@ -145,31 +145,31 @@ describe("canonical evidence provenance", () => {
     ).toBe("empty_source_id");
     expect(
       await code(() =>
-        assertSecurityGradeEvidenceV1({
+        assertSecurityGradeEvidence({
           trustClass: "authenticated_cardano_l1",
           sourceId: "src",
-          grade: "trusted" as EvidenceProvenanceV1["grade"],
+          grade: "trusted" as EvidenceProvenance["grade"],
         }),
       ),
     ).toBe("evidence_grade_mismatch");
   });
 
   it("requires an explicit opt-in and a label for diagnostics", async () => {
-    const provenance: EvidenceProvenanceV1 = {
+    const provenance: EvidenceProvenance = {
       trustClass: "operator_only_diagnostic_endpoint",
       sourceId: "node-diagnostics",
       grade: "diagnostic",
       diagnosticLabel: "operator diagnostics endpoint",
     };
-    expect(await code(() => assertSecurityGradeEvidenceV1(provenance))).toBe(
+    expect(await code(() => assertSecurityGradeEvidence(provenance))).toBe(
       "prohibited_trust_class",
     );
     expect(
-      admitEvidenceProvenanceV1({ provenance, allowDiagnostic: true }).grade,
+      admitEvidenceProvenance({ provenance, allowDiagnostic: true }).grade,
     ).toBe("diagnostic");
     expect(
       await code(() =>
-        admitEvidenceProvenanceV1({
+        admitEvidenceProvenance({
           provenance: { ...provenance, diagnosticLabel: undefined },
           allowDiagnostic: true,
         }),
@@ -180,7 +180,7 @@ describe("canonical evidence provenance", () => {
   it("refuses to launder a diagnostic label onto security evidence", async () => {
     expect(
       await code(() =>
-        assertSecurityGradeEvidenceV1({
+        assertSecurityGradeEvidence({
           trustClass: "public_or_permissionless_da",
           sourceId: "peer",
           grade: "security",
@@ -192,7 +192,7 @@ describe("canonical evidence provenance", () => {
 
   it("computes bundle grade as the weakest contributing record", () => {
     expect(
-      combineEvidenceGradeV1([
+      combineEvidenceGrade([
         {
           trustClass: "authenticated_cardano_l1",
           sourceId: "a",
@@ -206,7 +206,7 @@ describe("canonical evidence provenance", () => {
       ]),
     ).toBe("security");
     expect(
-      combineEvidenceGradeV1([
+      combineEvidenceGrade([
         {
           trustClass: "authenticated_cardano_l1",
           sourceId: "a",
@@ -225,7 +225,7 @@ describe("canonical evidence provenance", () => {
 
 describe("authenticated L1 observations", () => {
   it("admits a valid observation and rebinds the header hash", async () => {
-    const admitted = await admitAuthenticatedStateQueueHeaderObservationV1({
+    const admitted = await admitAuthenticatedStateQueueHeaderObservation({
       observation: await observation(),
     });
     expect(admitted.header).toEqual(header);
@@ -235,16 +235,16 @@ describe("authenticated L1 observations", () => {
   it("rejects unknown source modes, bad chain points, and shallow depth", async () => {
     expect(
       await code(async () =>
-        admitAuthenticatedL1ObservationV1({
+        admitAuthenticatedL1Observation({
           observation: await observation({
-            sourceMode: "operator_api" as L1SourceModeV1,
+            sourceMode: "operator_api" as L1SourceMode,
           }),
         }),
       ),
     ).toBe("unknown_l1_source_mode");
     expect(
       await code(async () =>
-        admitAuthenticatedL1ObservationV1({
+        admitAuthenticatedL1Observation({
           observation: await observation({
             chainPoint: { slot: 1n, blockHash: "not-hex" },
           }),
@@ -253,7 +253,7 @@ describe("authenticated L1 observations", () => {
     ).toBe("malformed_chain_point");
     expect(
       await code(async () =>
-        admitAuthenticatedL1ObservationV1({
+        admitAuthenticatedL1Observation({
           observation: await observation({ confirmationDepth: 0 }),
           minimumConfirmationDepth: 1,
         }),
@@ -271,7 +271,7 @@ describe("authenticated L1 observations", () => {
     ]) {
       expect(
         await code(async () =>
-          admitAuthenticatedL1ObservationV1({
+          admitAuthenticatedL1Observation({
             observation: await observation({ confirmationDepth: 2 }),
             minimumConfirmationDepth,
           }),
@@ -281,7 +281,7 @@ describe("authenticated L1 observations", () => {
   });
 
   it("accepts an observation at the exact minimum confirmation depth", async () => {
-    const admitted = admitAuthenticatedL1ObservationV1({
+    const admitted = admitAuthenticatedL1Observation({
       observation: await observation({ confirmationDepth: 1 }),
       minimumConfirmationDepth: 1,
     });
@@ -291,7 +291,7 @@ describe("authenticated L1 observations", () => {
   it("rejects a header hash that the canonical hasher does not reproduce", async () => {
     expect(
       await code(async () =>
-        admitAuthenticatedStateQueueHeaderObservationV1({
+        admitAuthenticatedStateQueueHeaderObservation({
           observation: await observation({ headerHash: h(0x0c, 28) }),
         }),
       ),
@@ -301,7 +301,7 @@ describe("authenticated L1 observations", () => {
   it("rejects a malformed header hash", async () => {
     expect(
       await code(async () =>
-        admitAuthenticatedStateQueueHeaderObservationV1({
+        admitAuthenticatedStateQueueHeaderObservation({
           observation: await observation({ headerHash: h(0x0c, 32) }),
         }),
       ),
@@ -312,7 +312,7 @@ describe("authenticated L1 observations", () => {
 describe("transaction-source inclusion-root gate", () => {
   const authentication = (
     sourceInclusionAuthenticated: boolean,
-  ): TransactionsInclusionRootAuthenticationV1 => ({
+  ): TransactionsInclusionRootAuthentication => ({
     headerTransactionsRoot: h(0xaa, 32),
     l2TransactionCount: 2n,
     sourceValuePhasRoot: h(0xbb, 32),
@@ -325,7 +325,7 @@ describe("transaction-source inclusion-root gate", () => {
 
   it("passes an authenticated transaction-source root through unchanged", () => {
     const value = authentication(true);
-    expect(assertTransactionSourceInclusionRootAuthenticatedV1(value)).toEqual(
+    expect(assertTransactionSourceInclusionRootAuthenticated(value)).toEqual(
       value,
     );
   });
@@ -334,16 +334,16 @@ describe("transaction-source inclusion-root gate", () => {
     const value = authentication(false);
     expect(
       await code(() =>
-        assertTransactionSourceInclusionRootAuthenticatedV1(value),
+        assertTransactionSourceInclusionRootAuthenticated(value),
       ),
     ).toBe("transaction_source_inclusion_root_unauthenticated");
     try {
-      assertTransactionSourceInclusionRootAuthenticatedV1(value);
+      assertTransactionSourceInclusionRootAuthenticated(value);
     } catch (error) {
-      expect((error as CanonicalEvidenceRejectionV1).detail).toContain(
+      expect((error as CanonicalEvidenceRejection).detail).toContain(
         "header_transactions_root=",
       );
-      expect((error as CanonicalEvidenceRejectionV1).detail).toContain(
+      expect((error as CanonicalEvidenceRejection).detail).toContain(
         "source_value_counted_root=",
       );
     }

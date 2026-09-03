@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
-import { encodeValidationAuxiliaryWitnessCborV1 } from "../dist/index.js";
+import { encodeValidationAuxiliaryWitnessCbor } from "../dist/index.js";
 import { canonicalValidationAuxiliaryWitnesses } from "../tests/fixtures/validation-auxiliary-witness-v1-canonical.ts";
 
 const jsonPath = new URL(
@@ -33,7 +33,7 @@ const constructors = canonicalValidationAuxiliaryWitnesses.map(
     if (tag !== index) {
       fail(`canonical constructor ${index} declares tag ${tag}`);
     }
-    const cbor = encodeValidationAuxiliaryWitnessCborV1(value).toString("hex");
+    const cbor = encodeValidationAuxiliaryWitnessCbor(value).toString("hex");
     const decoded = Data.from(cbor);
     if (!(decoded instanceof Constr)) {
       fail(`constructor ${tag} did not encode as a Plutus constructor`);

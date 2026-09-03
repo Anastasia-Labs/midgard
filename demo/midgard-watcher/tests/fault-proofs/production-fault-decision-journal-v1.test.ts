@@ -4,15 +4,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  openWatcherProductionFaultDecisionJournalV1,
-  unsafeOpenWatcherProductionFaultDecisionJournalForTestV1,
+  openWatcherFaultDecisionJournal,
+  unsafeOpenWatcherFaultDecisionJournalForTest,
 } from "../../src/fault-proofs/production-fault-decision-journal-v1.js";
-import { WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1 } from "../../src/fault-proofs/production-fault-proof-application-v1.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/production-fault-proof-application-v1.js";
 import {
-  enqueueWatcherProductionFaultDecisionV1,
-  unsafeCreateWatcherProductionFaultProofSupervisorForTestV1,
+  enqueueWatcherFaultDecision,
+  unsafeCreateWatcherFaultProofSupervisorForTest,
 } from "../../src/fault-proofs/production-fault-proof-supervisor-v1.js";
-import { watcherSha256CanonicalJsonV1 } from "../../src/storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
 
 const directories: string[] = [];
 const DEPLOYMENT = "dd".repeat(32);
@@ -28,7 +28,7 @@ const directory = async (): Promise<string> => {
 const faultDecision = (
   overrides: Readonly<Record<string, unknown>> = {},
 ): Readonly<Record<string, unknown>> => {
-  const launchScope = [...WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1];
+  const launchScope = [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES];
   const content = {
     schemaVersion: "midgard-production-header-decision-v1",
     classifierVersion: "midgard-production-header-classifier-v1",
@@ -40,7 +40,7 @@ const faultDecision = (
     replayVersion: "midgard-complete-canonical-replay-v1",
     replayDigest: "44".repeat(32),
     launchScope,
-    launchScopeDigest: watcherSha256CanonicalJsonV1(launchScope),
+    launchScopeDigest: watcherSha256CanonicalJson(launchScope),
     classificationDigest: "55".repeat(32),
     decision: "fault_detected",
     category: "doubleSpend",
@@ -51,7 +51,7 @@ const faultDecision = (
   };
   return Object.freeze({
     ...content,
-    decisionDigest: watcherSha256CanonicalJsonV1(content),
+    decisionDigest: watcherSha256CanonicalJson(content),
   });
 };
 
@@ -68,7 +68,7 @@ const healthyDecision = (): Readonly<Record<string, unknown>> => {
   const content = { ...common, decision: "healthy" };
   return Object.freeze({
     ...content,
-    decisionDigest: watcherSha256CanonicalJsonV1(content),
+    decisionDigest: watcherSha256CanonicalJson(content),
   });
 };
 
@@ -83,12 +83,11 @@ afterEach(async () => {
 describe("production fault decision journal", () => {
   it("persists exact envelopes but never recreates runnable authority", async () => {
     const root = await directory();
-    const journal =
-      await unsafeOpenWatcherProductionFaultDecisionJournalForTestV1({
-        directory: root,
-        deploymentFingerprint: DEPLOYMENT,
-        launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-      });
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
+      directory: root,
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    });
     const first =
       await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
     const duplicate =
@@ -96,10 +95,10 @@ describe("production fault decision journal", () => {
     expect(first.revision).toBe("0");
     expect(duplicate).toEqual(first);
 
-    const reopened = await openWatcherProductionFaultDecisionJournalV1({
+    const reopened = await openWatcherFaultDecisionJournal({
       directory: root,
       deploymentFingerprint: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
     });
     const [persisted] = await reopened.readAll();
     expect(persisted?.decision.decision).toBe("fault_detected");
@@ -108,17 +107,16 @@ describe("production fault decision journal", () => {
     ).rejects.toThrow("was not module-admitted");
 
     let calls = 0;
-    const supervisor =
-      unsafeCreateWatcherProductionFaultProofSupervisorForTestV1({
-        journalRoot: root,
-        deploymentFingerprint: DEPLOYMENT,
-        run: async () => {
-          calls += 1;
-        },
-      });
+    const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
+      journalRoot: root,
+      deploymentFingerprint: DEPLOYMENT,
+      run: async () => {
+        calls += 1;
+      },
+    });
     await supervisor.recoverExisting(null);
     await expect(
-      enqueueWatcherProductionFaultDecisionV1({
+      enqueueWatcherFaultDecision({
         supervisor,
         decision: persisted!.decision,
         actuationPermit: Object.freeze({
@@ -139,12 +137,11 @@ describe("production fault decision journal", () => {
 
   it("serializes concurrent decisions into one contiguous hash chain", async () => {
     const root = await directory();
-    const journal =
-      await unsafeOpenWatcherProductionFaultDecisionJournalForTestV1({
-        directory: root,
-        deploymentFingerprint: DEPLOYMENT,
-        launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-      });
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
+      directory: root,
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    });
     await Promise.all([
       journal.unsafeAppendDecisionEnvelopeForTest(faultDecision()),
       journal.unsafeAppendDecisionEnvelopeForTest(healthyDecision()),
@@ -168,21 +165,18 @@ describe("production fault decision journal", () => {
 
   it("rejects scope, category, digest, and record-layout substitutions", async () => {
     const root = await directory();
-    const journal =
-      await unsafeOpenWatcherProductionFaultDecisionJournalForTestV1({
-        directory: root,
-        deploymentFingerprint: DEPLOYMENT,
-        launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-      });
-    const swappedScope = [
-      ...WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-    ];
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
+      directory: root,
+      deploymentFingerprint: DEPLOYMENT,
+      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+    });
+    const swappedScope = [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES];
     [swappedScope[0], swappedScope[1]] = [swappedScope[1]!, swappedScope[0]!];
     await expect(
       journal.unsafeAppendDecisionEnvelopeForTest(
         faultDecision({
           launchScope: swappedScope,
-          launchScopeDigest: watcherSha256CanonicalJsonV1(swappedScope),
+          launchScopeDigest: watcherSha256CanonicalJson(swappedScope),
         }),
       ),
     ).rejects.toThrow("launch scope differs");
@@ -215,43 +209,42 @@ describe("production fault decision journal", () => {
     let writeCalls = 0;
     let syncCalls = 0;
     const root = "/var/lib/midgard/test-fault-decision-scale";
-    const journal =
-      await unsafeOpenWatcherProductionFaultDecisionJournalForTestV1(
-        {
-          directory: root,
-          deploymentFingerprint: DEPLOYMENT,
-          launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      {
+        directory: root,
+        deploymentFingerprint: DEPLOYMENT,
+        launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      },
+      Object.freeze({
+        prepare: async () => undefined,
+        list: async (directory) => {
+          listCalls += 1;
+          const prefix = `${directory}/`;
+          return [...files.keys()]
+            .filter((path) => path.startsWith(prefix))
+            .map((path) =>
+              Object.freeze({
+                name: path.slice(prefix.length),
+                isFile: true,
+              }),
+            );
         },
-        Object.freeze({
-          prepare: async () => undefined,
-          list: async (directory) => {
-            listCalls += 1;
-            const prefix = `${directory}/`;
-            return [...files.keys()]
-              .filter((path) => path.startsWith(prefix))
-              .map((path) =>
-                Object.freeze({
-                  name: path.slice(prefix.length),
-                  isFile: true,
-                }),
-              );
-          },
-          read: async (path) => {
-            readCalls += 1;
-            const bytes = files.get(path);
-            if (bytes === undefined) throw new Error("missing test record");
-            return Uint8Array.from(bytes);
-          },
-          writeExclusive: async (path, bytes) => {
-            writeCalls += 1;
-            if (files.has(path)) throw new Error("exclusive create conflict");
-            files.set(path, Uint8Array.from(bytes));
-          },
-          syncDirectory: async () => {
-            syncCalls += 1;
-          },
-        }),
-      );
+        read: async (path) => {
+          readCalls += 1;
+          const bytes = files.get(path);
+          if (bytes === undefined) throw new Error("missing test record");
+          return Uint8Array.from(bytes);
+        },
+        writeExclusive: async (path, bytes) => {
+          writeCalls += 1;
+          if (files.has(path)) throw new Error("exclusive create conflict");
+          files.set(path, Uint8Array.from(bytes));
+        },
+        syncDirectory: async () => {
+          syncCalls += 1;
+        },
+      }),
+    );
     for (let index = 0; index < 10_000; index += 1) {
       await journal.unsafeAppendDecisionEnvelopeForTest(
         faultDecision({
@@ -280,37 +273,36 @@ describe("production fault decision journal", () => {
       releaseWrite = resolve;
     });
     const root = "/var/lib/midgard/test-fault-decision-concurrency";
-    const journal =
-      await unsafeOpenWatcherProductionFaultDecisionJournalForTestV1(
-        {
-          directory: root,
-          deploymentFingerprint: DEPLOYMENT,
-          launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
+      {
+        directory: root,
+        deploymentFingerprint: DEPLOYMENT,
+        launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+      },
+      Object.freeze({
+        prepare: async () => undefined,
+        list: async (directory) => {
+          const prefix = `${directory}/`;
+          return [...files.keys()]
+            .filter((path) => path.startsWith(prefix))
+            .map((path) => ({
+              name: path.slice(prefix.length),
+              isFile: true,
+            }));
         },
-        Object.freeze({
-          prepare: async () => undefined,
-          list: async (directory) => {
-            const prefix = `${directory}/`;
-            return [...files.keys()]
-              .filter((path) => path.startsWith(prefix))
-              .map((path) => ({
-                name: path.slice(prefix.length),
-                isFile: true,
-              }));
-          },
-          read: async (path) => {
-            const bytes = files.get(path);
-            if (bytes === undefined) throw new Error("missing test record");
-            return bytes;
-          },
-          writeExclusive: async (path, bytes) => {
-            files.set(path, Uint8Array.from(bytes));
-            markWriteStarted();
-            await writeGate;
-          },
-          syncDirectory: async () => undefined,
-        }),
-      );
+        read: async (path) => {
+          const bytes = files.get(path);
+          if (bytes === undefined) throw new Error("missing test record");
+          return bytes;
+        },
+        writeExclusive: async (path, bytes) => {
+          files.set(path, Uint8Array.from(bytes));
+          markWriteStarted();
+          await writeGate;
+        },
+        syncDirectory: async () => undefined,
+      }),
+    );
     const appending =
       journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
     await writeStarted;

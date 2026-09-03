@@ -318,8 +318,8 @@ export type CanonicalMergeCandidateReadiness =
       readonly status: "candidate";
       readonly confirmedUTxO: SDK.StateQueueUTxO;
       readonly firstBlockUTxO: SDK.StateQueueUTxO;
-      readonly blockHeader: SDK.HeaderV1;
-      readonly firstBlockNode: SDK.StateQueueNodeV1;
+      readonly blockHeader: SDK.Header;
+      readonly firstBlockNode: SDK.StateQueueNode;
       readonly readiness: OldestQueuedBlockCandidateReadiness;
     }
   | {
@@ -439,13 +439,13 @@ export const fetchCanonicalMergeCandidateReadiness = (
     }
 
     const headerNodeKey = firstBlockUTxO.datum.key.Key.key;
-    const firstBlockNode = yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
+    const firstBlockNode = yield* SDK.getStateQueueNodeFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const blockHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
+    const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(blockHeader);
+    const recomputedHeaderHash = yield* SDK.hashBlockHeader(blockHeader);
     if (recomputedHeaderHash !== headerNodeKey) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -1131,20 +1131,19 @@ export const buildAndSubmitMergeTx = (
         `🔸 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for merge tx (known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}).`,
       );
 
-      const builtMerge =
-        yield* SDK.buildProductionMergeToConfirmedStateTxProgram({
-          lucid,
-          fetchConfig,
-          contracts,
-          confirmedUTxO,
-          firstBlockUTxO,
-          validFrom: mergeMaturity.validFromUnixTime,
-          presetWalletInputs,
-          hubOracleRefInput,
-          correctionLockRefInput,
-          stateQueueMergeYieldRefInput,
-          referenceScripts,
-        }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
+      const builtMerge = yield* SDK.buildMergeToConfirmedStateTxProgram({
+        lucid,
+        fetchConfig,
+        contracts,
+        confirmedUTxO,
+        firstBlockUTxO,
+        validFrom: mergeMaturity.validFromUnixTime,
+        presetWalletInputs,
+        hubOracleRefInput,
+        correctionLockRefInput,
+        stateQueueMergeYieldRefInput,
+        referenceScripts,
+      }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
       const txBuilder = builtMerge.tx;
 
       // Submit the transaction

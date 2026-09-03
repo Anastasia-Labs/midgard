@@ -1,7 +1,7 @@
 import {
-  cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import { it } from "@effect/vitest";
 import { Effect, Metric } from "effect";
@@ -19,11 +19,11 @@ import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixt
 describe("resolveTxDeltaForCommit", () => {
   it.effect("positively decodes valid canonical CBOR after a cache miss", (_) =>
     Effect.gen(function* () {
-      const txCbor = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      const txCbor = cardanoTxBytesToMidgardNativeTxCanonicalCbor(
         makeCardanoSignedMapOutputTxBytes(),
       );
-      const txId = computeMidgardNativeTxIdV1(
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(txCbor),
+      const txId = computeMidgardNativeTxId(
+        decodeMidgardNativeTxFullFromCanonicalCbor(txCbor),
       );
       const before = yield* Metric.value(commitTxDeltaFallbackDecodedCounter);
       const result = yield* resolveTxDeltaForCommit(

@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  advanceMidgardCekDataIntegerV1,
-  buildMidgardCekDataIntegerTraceV1,
-  commitMidgardCekBlobV1,
-  encodeMidgardCekDataIntegerControlV1,
-  finalizeMidgardCekDataIntegerV1,
-  hashMidgardCekDataNodeV1,
-  initialMidgardCekDataIntegerControlV1,
+  advanceMidgardCekDataInteger,
+  buildMidgardCekDataIntegerTrace,
+  commitMidgardCekBlob,
+  encodeMidgardCekDataIntegerControl,
+  finalizeMidgardCekDataInteger,
+  hashMidgardCekDataNode,
+  initialMidgardCekDataIntegerControl,
   MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES,
-  MIDGARD_CEK_SOURCE_BLOB_V1_VERSION,
-  MidgardCekDataIntegerStagesV1,
-  nextMidgardCekDataIntegerSpanV1,
-  parseMidgardCekDataIntegerSyntaxV1,
-  parseMidgardCekDataLargeConstructorSyntaxV1,
+  MIDGARD_CEK_SOURCE_BLOB_VERSION,
+  MidgardCekDataIntegerStages,
+  nextMidgardCekDataIntegerSpan,
+  parseMidgardCekDataIntegerSyntax,
+  parseMidgardCekDataLargeConstructorSyntax,
 } from "../src/index.js";
 
 const integerCases = [
@@ -53,17 +53,17 @@ describe("authenticated CEK Data integer V1", () => {
   it.each(integerCases)(
     "proves canonical $name encoding",
     ({ source, memory }) => {
-      const trace = buildMidgardCekDataIntegerTraceV1({
+      const trace = buildMidgardCekDataIntegerTrace({
         sourceStart: 91,
         source,
       });
-      const summary = finalizeMidgardCekDataIntegerV1(trace.terminal)!;
-      const cborRoot = commitMidgardCekBlobV1(source).root;
+      const summary = finalizeMidgardCekDataInteger(trace.terminal)!;
+      const cborRoot = commitMidgardCekBlob(source).root;
 
-      expect(trace.terminal.stage).toBe(MidgardCekDataIntegerStagesV1.Terminal);
+      expect(trace.terminal.stage).toBe(MidgardCekDataIntegerStages.Terminal);
       expect(summary).toStrictEqual({
         root: Buffer.from(
-          hashMidgardCekDataNodeV1({
+          hashMidgardCekDataNode({
             kind: "integer",
             cborRoot,
             cborLength: BigInt(source.length),
@@ -74,7 +74,7 @@ describe("authenticated CEK Data integer V1", () => {
         memory,
       });
       expect(
-        parseMidgardCekDataIntegerSyntaxV1({
+        parseMidgardCekDataIntegerSyntax({
           syntaxBytes: source,
           sourceLength: source.length,
         }),
@@ -89,13 +89,13 @@ describe("authenticated CEK Data integer V1", () => {
       Buffer.from([0xc2, 0x59, 0x3f, 0xfc]),
       magnitude,
     ]);
-    const trace = buildMidgardCekDataIntegerTraceV1({
+    const trace = buildMidgardCekDataIntegerTrace({
       sourceStart: 17,
       source,
     });
     const blobReveals = Buffer.concat(
       trace.steps.flatMap(({ control, sourceBytes }) =>
-        control.stage === MidgardCekDataIntegerStagesV1.Blob &&
+        control.stage === MidgardCekDataIntegerStages.Blob &&
         sourceBytes !== null
           ? [sourceBytes]
           : [],
@@ -104,7 +104,7 @@ describe("authenticated CEK Data integer V1", () => {
 
     expect(source).toHaveLength(16_384);
     expect(blobReveals).toStrictEqual(source);
-    expect(finalizeMidgardCekDataIntegerV1(trace.terminal)).toMatchObject({
+    expect(finalizeMidgardCekDataInteger(trace.terminal)).toMatchObject({
       cborLength: 16_384n,
       memory: 16_384n,
     });
@@ -117,7 +117,7 @@ describe("authenticated CEK Data integer V1", () => {
 
   it("binds the source range in every nested state", () => {
     const source = Buffer.from("c349010000000000000000", "hex");
-    const trace = buildMidgardCekDataIntegerTraceV1({
+    const trace = buildMidgardCekDataIntegerTrace({
       sourceStart: 17,
       source,
     });
@@ -127,18 +127,18 @@ describe("authenticated CEK Data integer V1", () => {
         .filter(({ next }) => next.blob !== null)
         .every(
           ({ next }) =>
-            next.blob!.version === MIDGARD_CEK_SOURCE_BLOB_V1_VERSION &&
+            next.blob!.version === MIDGARD_CEK_SOURCE_BLOB_VERSION &&
             next.blob!.sourceStart === 17 &&
             next.blob!.sourceLength === source.length,
         ),
     ).toBe(true);
     expect(
-      encodeMidgardCekDataIntegerControlV1(trace.terminal).toString("hex"),
+      encodeMidgardCekDataIntegerControl(trace.terminal).toString("hex"),
     ).toBe(
       "860102110b0dd8799f860101110b8401010b8183005820529618b73f1e990ed364ce58c08a76518a3f4ddaf2397ea92207a760422764840bd87a80ff",
     );
     expect(
-      finalizeMidgardCekDataIntegerV1(trace.terminal)!.root.toString("hex"),
+      finalizeMidgardCekDataInteger(trace.terminal)!.root.toString("hex"),
     ).toBe("720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691");
   });
 
@@ -157,7 +157,7 @@ describe("authenticated CEK Data integer V1", () => {
 
     for (const source of accepted) {
       expect(
-        parseMidgardCekDataLargeConstructorSyntaxV1({
+        parseMidgardCekDataLargeConstructorSyntax({
           syntaxBytes: source,
           sourceLength: source.length,
         }),
@@ -165,7 +165,7 @@ describe("authenticated CEK Data integer V1", () => {
     }
     for (const source of rejected) {
       expect(
-        parseMidgardCekDataLargeConstructorSyntaxV1({
+        parseMidgardCekDataLargeConstructorSyntax({
           syntaxBytes: source,
           sourceLength: source.length,
         }),
@@ -182,7 +182,7 @@ describe("authenticated CEK Data integer V1", () => {
     Buffer.from("40", "hex"),
   ])("rejects malformed or noncanonical integer CBOR %#", (source) => {
     expect(() =>
-      buildMidgardCekDataIntegerTraceV1({
+      buildMidgardCekDataIntegerTrace({
         sourceStart: 0,
         source,
       }),
@@ -190,36 +190,36 @@ describe("authenticated CEK Data integer V1", () => {
   });
 
   it("fails closed for missing, short, and surplus authenticated windows", () => {
-    const initial = initialMidgardCekDataIntegerControlV1({
+    const initial = initialMidgardCekDataIntegerControl({
       sourceStart: 9,
       sourceLength: 11,
     });
-    const span = nextMidgardCekDataIntegerSpanV1(initial)!;
+    const span = nextMidgardCekDataIntegerSpan(initial)!;
 
     expect(span).toStrictEqual({
       absoluteStart: 9,
       length: 11,
     });
     expect(
-      advanceMidgardCekDataIntegerV1({
+      advanceMidgardCekDataInteger({
         control: initial,
         sourceBytes: null,
       }),
     ).toBeNull();
     expect(
-      advanceMidgardCekDataIntegerV1({
+      advanceMidgardCekDataInteger({
         control: initial,
         sourceBytes: Buffer.alloc(span.length - 1),
       }),
     ).toBeNull();
     expect(
-      advanceMidgardCekDataIntegerV1({
+      advanceMidgardCekDataInteger({
         control: initial,
         sourceBytes: Buffer.alloc(span.length + 1),
       }),
     ).toBeNull();
     expect(() =>
-      initialMidgardCekDataIntegerControlV1({
+      initialMidgardCekDataIntegerControl({
         sourceStart: 0,
         sourceLength: 0,
       }),

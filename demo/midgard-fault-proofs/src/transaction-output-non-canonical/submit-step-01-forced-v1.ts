@@ -11,25 +11,25 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { TransactionOutputNonCanonicalContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { TransactionOutputNonCanonicalContracts } from "./contracts-v1.js";
 import {
-  TransactionOutputStep01RedeemerV1Schema,
-  TransactionOutputStep02DatumV1Schema,
+  TransactionOutputStep01RedeemerSchema,
+  TransactionOutputStep02DatumSchema,
 } from "./schemas-v1.js";
 import {
-  classifyTransactionOutputFindingV1,
-  type TransactionOutputFindingV1,
+  classifyTransactionOutputFinding,
+  type TransactionOutputFinding,
 } from "./transaction-output-non-canonical-v1.js";
 
-export const submitTransactionOutputNonCanonicalStep01ForcedV1 = async ({
+export const submitTransactionOutputNonCanonicalStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -42,19 +42,19 @@ export const submitTransactionOutputNonCanonicalStep01ForcedV1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: TransactionOutputNonCanonicalContractsV1;
+  readonly contracts: TransactionOutputNonCanonicalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly finding: TransactionOutputFindingV1;
+  readonly finding: TransactionOutputFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  const exact = classifyTransactionOutputFindingV1(finding);
+  const exact = classifyTransactionOutputFinding(finding);
   const stepIndex = 0;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -64,7 +64,7 @@ export const submitTransactionOutputNonCanonicalStep01ForcedV1 = async ({
   });
   requireInitialStepDatum({ threadUtxo, signer });
   signer.selectWallet(lucid);
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     family: "transaction-output-non-canonical",
@@ -78,7 +78,7 @@ export const submitTransactionOutputNonCanonicalStep01ForcedV1 = async ({
         output_index: BigInt(exact.itemIndex),
       },
     } as never,
-    TransactionOutputStep02DatumV1Schema as never,
+    TransactionOutputStep02DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[1].spendingScriptAddress,
@@ -117,10 +117,10 @@ export const submitTransactionOutputNonCanonicalStep01ForcedV1 = async ({
           },
         ],
       } as never,
-      TransactionOutputStep01RedeemerV1Schema as never,
+      TransactionOutputStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

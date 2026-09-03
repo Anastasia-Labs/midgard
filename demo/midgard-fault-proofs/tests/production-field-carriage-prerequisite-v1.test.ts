@@ -1,23 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { FraudProofWorkflowIdentityV1 } from "../src/workflow/journal-v1.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/journal-v1.js";
 import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
-  FRAUD_PROOF_WORKFLOW_SAFETY_V1,
-  type FraudProofFamilyWorkflowAdapterV1,
-  type FraudProofWorkflowActionV1,
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator-v1.js";
 import {
-  PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
-  type ProductionFieldCarriagePrerequisitePortV1,
-  withProductionFieldCarriagePrerequisiteV1,
+  FIELD_CARRIAGE_PREREQUISITE,
+  type FieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
 } from "../src/workflow/production-field-carriage-prerequisite-v1.js";
-import type { LocallyEvaluatedTransactionV1 } from "../src/workflow/transaction-boundary-v1.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary-v1.js";
 
 const txHash = "11".repeat(32);
 const headerHash = "22".repeat(28);
 const requirementSha256 = "33".repeat(32);
-const baseAction: FraudProofWorkflowActionV1 = Object.freeze({
+const baseAction: FraudProofWorkflowAction = Object.freeze({
   actionId: `step_02:${"44".repeat(32)}#0:${"55".repeat(32)}#0`,
   input: Object.freeze({
     schemaVersion: "midgard-production-linear-family-action-v1",
@@ -28,10 +28,10 @@ const baseAction: FraudProofWorkflowActionV1 = Object.freeze({
     stateQueueBlockOutRef: `${"55".repeat(32)}#0`,
   }),
 });
-const publicationAction: FraudProofWorkflowActionV1 = Object.freeze({
+const publicationAction: FraudProofWorkflowAction = Object.freeze({
   actionId: `publish-field-carriage:${baseAction.actionId}:${requirementSha256}:0`,
   input: Object.freeze({
-    schemaVersion: PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
+    schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
     category: "nonExistentInput",
     stage: "publish_field_carriage",
     forAction: baseAction,
@@ -41,10 +41,10 @@ const publicationAction: FraudProofWorkflowActionV1 = Object.freeze({
     datumCborSha256: "77".repeat(32),
   }),
 });
-const certificateAction: FraudProofWorkflowActionV1 = Object.freeze({
+const certificateAction: FraudProofWorkflowAction = Object.freeze({
   actionId: `certify-field-carriage:${baseAction.actionId}:${requirementSha256}`,
   input: Object.freeze({
-    schemaVersion: PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
+    schemaVersion: FIELD_CARRIAGE_PREREQUISITE,
     category: "nonExistentInput",
     stage: "certify_field_carriage",
     forAction: baseAction,
@@ -54,7 +54,7 @@ const certificateAction: FraudProofWorkflowActionV1 = Object.freeze({
   }),
 });
 
-const identity: FraudProofWorkflowIdentityV1 = {
+const identity: FraudProofWorkflowIdentity = {
   schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
   deploymentFingerprint: "ab".repeat(32),
   category: "nonExistentInput",
@@ -67,7 +67,7 @@ const context = {
   entries: [],
 } as const;
 
-const signed = (): LocallyEvaluatedTransactionV1["signed"] =>
+const signed = (): LocallyEvaluatedTransaction["signed"] =>
   ({
     toHash: () => txHash,
     submit: async () => txHash,
@@ -79,18 +79,18 @@ const signed = (): LocallyEvaluatedTransactionV1["signed"] =>
         plutus_v3_scripts: () => undefined,
       }),
     }),
-  }) as unknown as LocallyEvaluatedTransactionV1["signed"];
+  }) as unknown as LocallyEvaluatedTransaction["signed"];
 
-const transaction = (): LocallyEvaluatedTransactionV1 => ({
+const transaction = (): LocallyEvaluatedTransaction => ({
   txHash,
   signed: signed(),
   referenceScripts: [],
 });
 
-const base = (): FraudProofFamilyWorkflowAdapterV1 => ({
-  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER_V1,
+const base = (): FraudProofFamilyWorkflowAdapter => ({
+  adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
   category: "nonExistentInput",
-  safety: FRAUD_PROOF_WORKFLOW_SAFETY_V1,
+  safety: FRAUD_PROOF_WORKFLOW_SAFETY,
   prepare: vi.fn(async () => ({ source: "public-da" })),
   observe: vi.fn(async () => ({
     kind: "action_required" as const,
@@ -127,9 +127,9 @@ const prerequisite = ({
   reconcile = async () => ({ kind: "confirmed" as const, txHash }),
 }: {
   readonly phase?: "publication" | "certificate" | "satisfied";
-  readonly reconcile?: ProductionFieldCarriagePrerequisitePortV1<"nonExistentInput">["reconcile"];
-} = {}): ProductionFieldCarriagePrerequisitePortV1<"nonExistentInput"> => ({
-  portVersion: PRODUCTION_FIELD_CARRIAGE_PREREQUISITE_V1,
+  readonly reconcile?: FieldCarriagePrerequisitePort<"nonExistentInput">["reconcile"];
+} = {}): FieldCarriagePrerequisitePort<"nonExistentInput"> => ({
+  portVersion: FIELD_CARRIAGE_PREREQUISITE,
   category: "nonExistentInput",
   resolveAuthenticated: vi.fn(async () => ({
     publications: [],
@@ -164,7 +164,7 @@ describe("production field-carriage prerequisite V1", () => {
   it("journals the first raw publication and forbids direct step bypass", async () => {
     const underlying = base();
     const port = prerequisite();
-    const adapter = withProductionFieldCarriagePrerequisiteV1({
+    const adapter = withFieldCarriagePrerequisite({
       category: "nonExistentInput",
       base: underlying,
       prerequisite: port,
@@ -197,7 +197,7 @@ describe("production field-carriage prerequisite V1", () => {
   });
 
   it("makes tier-3 certification another distinct action", async () => {
-    const adapter = withProductionFieldCarriagePrerequisiteV1({
+    const adapter = withFieldCarriagePrerequisite({
       category: "nonExistentInput",
       base: base(),
       prerequisite: prerequisite({ phase: "certificate" }),
@@ -213,7 +213,7 @@ describe("production field-carriage prerequisite V1", () => {
 
   it("delegates the proof step only after all field carriage is authenticated", async () => {
     const underlying = base();
-    const adapter = withProductionFieldCarriagePrerequisiteV1({
+    const adapter = withFieldCarriagePrerequisite({
       category: "nonExistentInput",
       base: underlying,
       prerequisite: prerequisite({ phase: "satisfied" }),
@@ -232,7 +232,7 @@ describe("production field-carriage prerequisite V1", () => {
       txHash,
     }));
     const port = prerequisite({ reconcile });
-    const adapter = withProductionFieldCarriagePrerequisiteV1({
+    const adapter = withFieldCarriagePrerequisite({
       category: "nonExistentInput",
       base: base(),
       prerequisite: port,

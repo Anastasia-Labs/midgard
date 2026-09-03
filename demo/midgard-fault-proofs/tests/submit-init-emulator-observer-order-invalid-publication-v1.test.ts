@@ -4,30 +4,30 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  applyObserverOrderInvalidScriptsV1,
-  OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1,
+  applyObserverOrderInvalidScripts,
+  OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES,
 } from "../src/observer-order-invalid/contracts-v1.js";
 import {
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
-const hasFamily = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES_V1.every((title) =>
+const hasFamily = OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES.every((title) =>
   blueprint.validators.some((validator) => validator.title === title),
 );
 
 describe.runIf(hasFamily)("observerOrderInvalid signed publication fit", () => {
   it("publishes all four applied scripts below the reliability reserve", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1();
+    const harness = await makeFaultProofEmulatorHarness();
     const proofAddressData = await Effect.runPromise(
       addressDataFromBech32(
         harness.contracts.fraudProof.spendingScriptAddress,
       ).pipe(Effect.map((value) => Data.from(Data.to(value, AddressData)))),
     );
-    const steps = applyObserverOrderInvalidScriptsV1({
+    const steps = applyObserverOrderInvalidScripts({
       blueprint,
       network: "Preprod",
       computationThreadPolicyId: harness.contracts.computationThread.policyId,

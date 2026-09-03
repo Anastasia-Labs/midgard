@@ -1,20 +1,20 @@
-import { acceptedVerdictSubjectV1 } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import type {
-  SpendInputSignerActuatorV1,
-  SpendInputSignerJournalEntryV1,
-  SpendInputSignerJournalV1,
-  SpendInputSignerMissingEvidenceV1,
-  SpendInputSignerStageV1,
+  SpendInputSignerActuator,
+  SpendInputSignerJournal,
+  SpendInputSignerJournalEntry,
+  SpendInputSignerMissingEvidence,
+  SpendInputSignerStage,
 } from "../src/spend-input-signer-missing/index.js";
 import {
-  runSpendInputSignerMissingWorkflowV1,
-  spendInputSignerWorkflowEvidenceIdentityV1,
+  runSpendInputSignerMissingWorkflow,
+  spendInputSignerWorkflowEvidenceIdentity,
 } from "../src/spend-input-signer-missing/index.js";
 
-const evidence: SpendInputSignerMissingEvidenceV1 = Object.freeze({
-  subject: acceptedVerdictSubjectV1("11".repeat(32)),
+const evidence: SpendInputSignerMissingEvidence = Object.freeze({
+  subject: acceptedVerdictSubject("11".repeat(32)),
   inputIndex: 0,
   canonicalTransactionCborHex: "80",
   inputFieldPreimageHex: "80",
@@ -38,8 +38,8 @@ const evidence: SpendInputSignerMissingEvidenceV1 = Object.freeze({
 });
 
 const memoryJournal = () => {
-  const entries: SpendInputSignerJournalEntryV1[] = [];
-  const journal: SpendInputSignerJournalV1 = {
+  const entries: SpendInputSignerJournalEntry[] = [];
+  const journal: SpendInputSignerJournal = {
     load: async () => entries,
     append: async (entry) => {
       entries.push(entry);
@@ -50,7 +50,7 @@ const memoryJournal = () => {
 
 describe("spendInputSignerMissing durable workflow", () => {
   it("reconciles an exact intent after a fresh-process restart", async () => {
-    const identity = spendInputSignerWorkflowEvidenceIdentityV1(evidence);
+    const identity = spendInputSignerWorkflowEvidenceIdentity(evidence);
     const { entries, journal } = memoryJournal();
     entries.push({
       sequence: 0,
@@ -61,8 +61,8 @@ describe("spendInputSignerMissing durable workflow", () => {
       phase: "intent",
       txHash: "66".repeat(32),
     });
-    let stage: SpendInputSignerStageV1 = "scanning";
-    const actuator: SpendInputSignerActuatorV1 = {
+    let stage: SpendInputSignerStage = "scanning";
+    const actuator: SpendInputSignerActuator = {
       observe: async () => stage,
       transactionConfirmed: async (hash) =>
         hash === "66".repeat(32) || hash === "77".repeat(32),
@@ -78,7 +78,7 @@ describe("spendInputSignerMissing durable workflow", () => {
       },
     };
     await expect(
-      runSpendInputSignerMissingWorkflowV1({ evidence, journal, actuator }),
+      runSpendInputSignerMissingWorkflow({ evidence, journal, actuator }),
     ).rejects.toThrow(/removal requires/u);
     expect(entries[1]).toMatchObject({
       phase: "confirmed",
@@ -87,7 +87,7 @@ describe("spendInputSignerMissing durable workflow", () => {
   });
 
   it("refuses confirmed-hash stage substitution", async () => {
-    const identity = spendInputSignerWorkflowEvidenceIdentityV1(evidence);
+    const identity = spendInputSignerWorkflowEvidenceIdentity(evidence);
     const { entries, journal } = memoryJournal();
     entries.push({
       sequence: 0,
@@ -99,7 +99,7 @@ describe("spendInputSignerMissing durable workflow", () => {
       txHash: "88".repeat(32),
     });
     await expect(
-      runSpendInputSignerMissingWorkflowV1({
+      runSpendInputSignerMissingWorkflow({
         evidence,
         journal,
         actuator: {
@@ -116,7 +116,7 @@ describe("spendInputSignerMissing durable workflow", () => {
   it("writes intent before submit and refuses tx-hash substitution", async () => {
     const { entries, journal } = memoryJournal();
     await expect(
-      runSpendInputSignerMissingWorkflowV1({
+      runSpendInputSignerMissingWorkflow({
         evidence,
         journal,
         actuator: {
@@ -138,7 +138,7 @@ describe("spendInputSignerMissing durable workflow", () => {
     "selects cancel from nonterminal %s when the production actuator requests it",
     async (sourceStage) => {
       const { entries, journal } = memoryJournal();
-      const actuator: SpendInputSignerActuatorV1 = {
+      const actuator: SpendInputSignerActuator = {
         observe: async () => "cancelled",
         transactionConfirmed: async () => true,
         build: async () => {
@@ -147,9 +147,9 @@ describe("spendInputSignerMissing durable workflow", () => {
       };
       // The deterministic happy-path selector cannot invent cancellation;
       // cancellation is a concrete actuator choice and is journaled identically.
-      const cancelledIntent: SpendInputSignerJournalEntryV1 = {
+      const cancelledIntent: SpendInputSignerJournalEntry = {
         sequence: 0,
-        identity: spendInputSignerWorkflowEvidenceIdentityV1(evidence),
+        identity: spendInputSignerWorkflowEvidenceIdentity(evidence),
         sourceStage,
         targetStage: "cancelled",
         action: "cancel",
@@ -158,7 +158,7 @@ describe("spendInputSignerMissing durable workflow", () => {
       };
       entries.push(cancelledIntent);
       await expect(
-        runSpendInputSignerMissingWorkflowV1({ evidence, journal, actuator }),
+        runSpendInputSignerMissingWorkflow({ evidence, journal, actuator }),
       ).resolves.toBe("cancelled");
     },
   );

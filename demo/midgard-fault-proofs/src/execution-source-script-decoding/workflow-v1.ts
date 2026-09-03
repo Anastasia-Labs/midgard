@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { ExecutionSourceScriptDecodingEvidenceV1 } from "./family-v1.js";
-import { executionSourceScriptDecodingEvidenceIdentityV1 } from "./family-v1.js";
+import type { ExecutionSourceScriptDecodingEvidence } from "./family-v1.js";
+import { executionSourceScriptDecodingEvidenceIdentity } from "./family-v1.js";
 
-export const EXECUTION_SOURCE_SCRIPT_DECODING_WORKFLOW_STAGES_V1 = [
+export const EXECUTION_SOURCE_SCRIPT_DECODING_WORKFLOW_STAGES = [
   "none",
   "step01",
   "step02",
@@ -13,9 +13,9 @@ export const EXECUTION_SOURCE_SCRIPT_DECODING_WORKFLOW_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type ExecutionSourceScriptDecodingWorkflowStageV1 =
-  (typeof EXECUTION_SOURCE_SCRIPT_DECODING_WORKFLOW_STAGES_V1)[number];
-export type ExecutionSourceScriptDecodingWorkflowActionV1 =
+export type ExecutionSourceScriptDecodingWorkflowStage =
+  (typeof EXECUTION_SOURCE_SCRIPT_DECODING_WORKFLOW_STAGES)[number];
+export type ExecutionSourceScriptDecodingWorkflowAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -25,40 +25,40 @@ export type ExecutionSourceScriptDecodingWorkflowActionV1 =
   | "removeDescendants"
   | "cancel";
 
-export type ExecutionSourceScriptDecodingCursorV1 = Readonly<{
-  stage: ExecutionSourceScriptDecodingWorkflowStageV1;
+export type ExecutionSourceScriptDecodingCursor = Readonly<{
+  stage: ExecutionSourceScriptDecodingWorkflowStage;
   threadOutRef: string;
   checkpointHash: string;
   controlCbor: string;
 }>;
 
-export type ExecutionSourceScriptDecodingJournalEntryV1 = Readonly<{
+export type ExecutionSourceScriptDecodingJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  action: ExecutionSourceScriptDecodingWorkflowActionV1;
+  action: ExecutionSourceScriptDecodingWorkflowAction;
   phase: "intent" | "submitted" | "confirmed";
-  source: ExecutionSourceScriptDecodingCursorV1;
-  target: ExecutionSourceScriptDecodingCursorV1;
+  source: ExecutionSourceScriptDecodingCursor;
+  target: ExecutionSourceScriptDecodingCursor;
   txHash: string;
 }>;
 
-export interface ExecutionSourceScriptDecodingJournalV1 {
+export interface ExecutionSourceScriptDecodingJournal {
   load(
     identity: string,
-  ): Promise<readonly ExecutionSourceScriptDecodingJournalEntryV1[]>;
-  append(entry: ExecutionSourceScriptDecodingJournalEntryV1): Promise<void>;
+  ): Promise<readonly ExecutionSourceScriptDecodingJournalEntry[]>;
+  append(entry: ExecutionSourceScriptDecodingJournalEntry): Promise<void>;
 }
 
-export interface ExecutionSourceScriptDecodingTransactionPortV1 {
-  observe(identity: string): Promise<ExecutionSourceScriptDecodingCursorV1>;
+export interface ExecutionSourceScriptDecodingTransactionPort {
+  observe(identity: string): Promise<ExecutionSourceScriptDecodingCursor>;
   capture(input: {
-    action: ExecutionSourceScriptDecodingWorkflowActionV1;
-    evidence: ExecutionSourceScriptDecodingEvidenceV1;
-    source: ExecutionSourceScriptDecodingCursorV1;
+    action: ExecutionSourceScriptDecodingWorkflowAction;
+    evidence: ExecutionSourceScriptDecodingEvidence;
+    source: ExecutionSourceScriptDecodingCursor;
   }): Promise<
     Readonly<{
       txHash: string;
-      target: ExecutionSourceScriptDecodingCursorV1;
+      target: ExecutionSourceScriptDecodingCursor;
       submit: () => Promise<string>;
     }>
   >;
@@ -66,8 +66,8 @@ export interface ExecutionSourceScriptDecodingTransactionPortV1 {
 }
 
 const actionFor = (
-  stage: ExecutionSourceScriptDecodingWorkflowStageV1,
-): ExecutionSourceScriptDecodingWorkflowActionV1 | "done" =>
+  stage: ExecutionSourceScriptDecodingWorkflowStage,
+): ExecutionSourceScriptDecodingWorkflowAction | "done" =>
   ({
     none: "submitInit",
     step01: "submitStep01",
@@ -77,13 +77,13 @@ const actionFor = (
     proven: "removeDescendants",
     removed: "done",
     cancelled: "done",
-  })[stage] as ExecutionSourceScriptDecodingWorkflowActionV1 | "done";
+  })[stage] as ExecutionSourceScriptDecodingWorkflowAction | "done";
 
-const cursorDigest = (cursor: ExecutionSourceScriptDecodingCursorV1): string =>
+const cursorDigest = (cursor: ExecutionSourceScriptDecodingCursor): string =>
   createHash("sha256").update(JSON.stringify(cursor)).digest("hex");
 
 const validate = (
-  entries: readonly ExecutionSourceScriptDecodingJournalEntryV1[],
+  entries: readonly ExecutionSourceScriptDecodingJournalEntry[],
   identity: string,
 ): void => {
   entries.forEach((entry, sequence) => {
@@ -99,7 +99,7 @@ const validate = (
 };
 
 const unresolved = (
-  entries: readonly ExecutionSourceScriptDecodingJournalEntryV1[],
+  entries: readonly ExecutionSourceScriptDecodingJournalEntry[],
 ) =>
   [...entries]
     .reverse()
@@ -115,16 +115,16 @@ const unresolved = (
     );
 
 /** Durable family loop. The production factory owns both supplied ports. */
-export const runExecutionSourceScriptDecodingWorkflowV1 = async ({
+export const runExecutionSourceScriptDecodingWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: ExecutionSourceScriptDecodingEvidenceV1;
-  journal: ExecutionSourceScriptDecodingJournalV1;
-  transactions: ExecutionSourceScriptDecodingTransactionPortV1;
-}): Promise<ExecutionSourceScriptDecodingWorkflowStageV1> => {
-  const identity = executionSourceScriptDecodingEvidenceIdentityV1(evidence);
+  evidence: ExecutionSourceScriptDecodingEvidence;
+  journal: ExecutionSourceScriptDecodingJournal;
+  transactions: ExecutionSourceScriptDecodingTransactionPort;
+}): Promise<ExecutionSourceScriptDecodingWorkflowStage> => {
+  const identity = executionSourceScriptDecodingEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
     validate(entries, identity);
@@ -155,7 +155,7 @@ export const runExecutionSourceScriptDecodingWorkflowV1 = async ({
         "executionSourceScriptDecoding captured transaction is malformed",
       );
     const nextSequence = entries.length;
-    const intent: ExecutionSourceScriptDecodingJournalEntryV1 = {
+    const intent: ExecutionSourceScriptDecodingJournalEntry = {
       sequence: nextSequence,
       identity,
       action,
@@ -178,16 +178,16 @@ export const runExecutionSourceScriptDecodingWorkflowV1 = async ({
   }
 };
 
-export const cancelExecutionSourceScriptDecodingWorkflowV1 = async ({
+export const cancelExecutionSourceScriptDecodingWorkflow = async ({
   evidence,
   journal,
   transactions,
 }: {
-  evidence: ExecutionSourceScriptDecodingEvidenceV1;
-  journal: ExecutionSourceScriptDecodingJournalV1;
-  transactions: ExecutionSourceScriptDecodingTransactionPortV1;
+  evidence: ExecutionSourceScriptDecodingEvidence;
+  journal: ExecutionSourceScriptDecodingJournal;
+  transactions: ExecutionSourceScriptDecodingTransactionPort;
 }): Promise<"cancelled"> => {
-  const identity = executionSourceScriptDecodingEvidenceIdentityV1(evidence);
+  const identity = executionSourceScriptDecodingEvidenceIdentity(evidence);
   const entries = await journal.load(identity);
   validate(entries, identity);
   if (unresolved(entries) !== undefined)
@@ -207,7 +207,7 @@ export const cancelExecutionSourceScriptDecodingWorkflowV1 = async ({
       "executionSourceScriptDecoding cancellation target changed",
     );
   const nextSequence = entries.length;
-  const intent: ExecutionSourceScriptDecodingJournalEntryV1 = {
+  const intent: ExecutionSourceScriptDecodingJournalEntry = {
     sequence: nextSequence,
     identity,
     action: "cancel",

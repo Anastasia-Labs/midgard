@@ -3,8 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  decodeMidgardSpendInputItemV1,
-  encodeMidgardSpendInputItemV1,
+  decodeMidgardSpendInputItem,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import { midgardOutRefToCbor } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
@@ -86,7 +86,7 @@ describe("ledger out-ref key (§5.3 field-0/1 item)", () => {
       // And the core twin they all reach, so a future refactor that stops
       // delegating still has to produce these bytes.
       expect(
-        encodeMidgardSpendInputItemV1({
+        encodeMidgardSpendInputItem({
           txId: Buffer.from(txIdHex, "hex"),
           outputIndex,
         }),
@@ -97,7 +97,7 @@ describe("ledger out-ref key (§5.3 field-0/1 item)", () => {
   it.each(vectors)(
     "round-trips the on-chain key at output index $outputIndex",
     ({ txIdHex, outputIndex, keyHex }) => {
-      const decoded = decodeMidgardSpendInputItemV1(Buffer.from(keyHex, "hex"));
+      const decoded = decodeMidgardSpendInputItem(Buffer.from(keyHex, "hex"));
       expect(Buffer.from(decoded.txId).toString("hex")).toBe(txIdHex);
       expect(decoded.outputIndex).toBe(outputIndex);
     },
@@ -115,7 +115,7 @@ describe("ledger out-ref key (§5.3 field-0/1 item)", () => {
       Buffer.from([0x07]),
     ]);
     expect(minimal.length).toBe(36);
-    expect(() => decodeMidgardSpendInputItemV1(minimal)).toThrow();
+    expect(() => decodeMidgardSpendInputItem(minimal)).toThrow();
   });
 
   it("refuses an output index outside the uint16 domain", () => {

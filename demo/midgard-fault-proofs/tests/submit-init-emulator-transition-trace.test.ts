@@ -29,8 +29,8 @@ import {
   submitTransitionTraceProof,
 } from "../src/index.js";
 import {
-  publishFaultProofWitnessReferenceScriptsV1,
-  publishOperatorLifecycleReferenceScriptsV1,
+  publishFaultProofWitnessReferenceScripts,
+  publishOperatorLifecycleReferenceScripts,
 } from "./support/emulator/reference-scripts.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
@@ -107,14 +107,14 @@ describe("fault-proof emulator integration", () => {
     const contracts = {
       ...baseContracts,
       operatorLifecycleReferenceScripts:
-        await publishOperatorLifecycleReferenceScriptsV1({
+        await publishOperatorLifecycleReferenceScripts({
           lucid: proverLucid,
           contracts: baseContracts,
         }),
     };
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
     const witnessReferenceScripts =
-      await publishFaultProofWitnessReferenceScriptsV1({
+      await publishFaultProofWitnessReferenceScripts({
         lucid: proverLucid,
         realBlueprint,
         computationThreadMintingScript:

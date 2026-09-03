@@ -18,11 +18,11 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "../ledger-state.js";
-import { FieldCarriageV1Schema } from "../native-tx-field-access-v1.js";
-import { RejectionReasonV1Schema } from "../rejection-reason-v1.js";
+import { ForcedInclusionTxSchema, HeaderSchema } from "../ledger-state.js";
+import { FieldCarriageSchema } from "../native-tx-field-access-v1.js";
+import { RejectionReasonSchema } from "../rejection-reason-v1.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
-import { FieldOpeningV1Schema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
@@ -46,10 +46,10 @@ export const InputSetUniquenessStep01SourceSchema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
     }),
   }),
@@ -104,7 +104,7 @@ export const InputSetUniquenessStep02ArgsSchema = Data.Enum([
       fraud_proof_mint_redeemer_index: Data.Integer(),
       first_index: Data.Integer(),
       second_index: Data.Integer(),
-      spend_inputs_opening: FieldOpeningV1Schema,
+      spend_inputs_opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({
@@ -114,7 +114,7 @@ export const InputSetUniquenessStep02ArgsSchema = Data.Enum([
       fraud_proof_mint_redeemer_index: Data.Integer(),
       first_index: Data.Integer(),
       second_index: Data.Integer(),
-      reference_inputs_opening: FieldOpeningV1Schema,
+      reference_inputs_opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({
@@ -125,8 +125,8 @@ export const InputSetUniquenessStep02ArgsSchema = Data.Enum([
       spend_index: Data.Integer(),
       reference_index: Data.Integer(),
       native_tx_compact_cbor: Data.Bytes(),
-      spend_inputs_carriage: FieldCarriageV1Schema,
-      reference_inputs_carriage: FieldCarriageV1Schema,
+      spend_inputs_carriage: FieldCarriageSchema,
+      reference_inputs_carriage: FieldCarriageSchema,
     }),
   }),
 ]);
@@ -150,7 +150,7 @@ export const InputSetUniquenessVerdictSubjectSchema = Data.Object({
   source_kind: Data.Integer(),
   transaction_id: H32Schema,
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
 
 export const InputSetUniquenessBoundDuplicateInputSchema = Data.Object({
@@ -177,8 +177,8 @@ export const InputSetUniquenessStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   native_tx_compact_cbor: Data.Bytes(),
-  spend_inputs_carriage: FieldCarriageV1Schema,
-  reference_inputs_carriage: FieldCarriageV1Schema,
+  spend_inputs_carriage: FieldCarriageSchema,
+  reference_inputs_carriage: FieldCarriageSchema,
 });
 export const InputSetUniquenessStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InputSetUniquenessStep03ArgsSchema);
@@ -206,7 +206,7 @@ export const InputSetUniquenessStep04ArgsSchema = Data.Enum([
     Advance: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      field_opening: FieldOpeningV1Schema,
+      field_opening: FieldOpeningSchema,
     }),
   }),
   Data.Object({

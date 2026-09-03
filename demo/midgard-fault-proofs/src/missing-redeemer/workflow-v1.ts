@@ -1,9 +1,9 @@
 import {
-  missingRedeemerEvidenceIdentityV1,
-  type MissingRedeemerEvidenceV1,
+  type MissingRedeemerEvidence,
+  missingRedeemerEvidenceIdentity,
 } from "./family-v1.js";
 
-export type MissingRedeemerStageV1 =
+export type MissingRedeemerStage =
   | "none"
   | "step01"
   | "step02"
@@ -15,22 +15,22 @@ export type MissingRedeemerStageV1 =
   | "proven"
   | "removed"
   | "cancelled";
-export type MissingRedeemerDurableStateV1 = Readonly<{
-  stage: MissingRedeemerStageV1;
+export type MissingRedeemerDurableState = Readonly<{
+  stage: MissingRedeemerStage;
   scanCursor: number;
   txHash: string;
   outputReference: string | null;
 }>;
-export type MissingRedeemerJournalV1 = Readonly<{
-  load: (identity: string) => Promise<readonly MissingRedeemerDurableStateV1[]>;
+export type MissingRedeemerJournal = Readonly<{
+  load: (identity: string) => Promise<readonly MissingRedeemerDurableState[]>;
   append: (
     identity: string,
     expectedLength: number,
-    state: MissingRedeemerDurableStateV1,
+    state: MissingRedeemerDurableState,
   ) => Promise<void>;
 }>;
-export type MissingRedeemerActuatorV1 = Readonly<{
-  observe: (identity: string) => Promise<MissingRedeemerDurableStateV1>;
+export type MissingRedeemerActuator = Readonly<{
+  observe: (identity: string) => Promise<MissingRedeemerDurableState>;
   submit: (
     input: Readonly<{
       identity: string;
@@ -45,12 +45,12 @@ export type MissingRedeemerActuatorV1 = Readonly<{
         | "finalize"
         | "remove";
       scanCursor: number;
-      evidence: MissingRedeemerEvidenceV1;
+      evidence: MissingRedeemerEvidence;
     }>,
-  ) => Promise<MissingRedeemerDurableStateV1>;
+  ) => Promise<MissingRedeemerDurableState>;
 }>;
 
-const order: readonly MissingRedeemerStageV1[] = [
+const order: readonly MissingRedeemerStage[] = [
   "none",
   "step01",
   "step02",
@@ -63,10 +63,10 @@ const order: readonly MissingRedeemerStageV1[] = [
   "removed",
   "cancelled",
 ];
-export const reconcileMissingRedeemerStateV1 = (
-  journal: readonly MissingRedeemerDurableStateV1[],
-  observed: MissingRedeemerDurableStateV1,
-): MissingRedeemerDurableStateV1 => {
+export const reconcileMissingRedeemerState = (
+  journal: readonly MissingRedeemerDurableState[],
+  observed: MissingRedeemerDurableState,
+): MissingRedeemerDurableState => {
   const prior = journal.at(-1);
   if (prior === undefined) return observed;
   if (order.indexOf(observed.stage) < order.indexOf(prior.stage))
@@ -78,19 +78,19 @@ export const reconcileMissingRedeemerStateV1 = (
   return observed;
 };
 
-export const runMissingRedeemerWorkflowV1 = async ({
+export const runMissingRedeemerWorkflow = async ({
   evidence,
   journal,
   actuator,
 }: {
-  readonly evidence: MissingRedeemerEvidenceV1;
-  readonly journal: MissingRedeemerJournalV1;
-  readonly actuator: MissingRedeemerActuatorV1;
+  readonly evidence: MissingRedeemerEvidence;
+  readonly journal: MissingRedeemerJournal;
+  readonly actuator: MissingRedeemerActuator;
 }): Promise<"removed" | "cancelled"> => {
-  const identity = missingRedeemerEvidenceIdentityV1(evidence);
+  const identity = missingRedeemerEvidenceIdentity(evidence);
   for (;;) {
     const entries = await journal.load(identity);
-    const state = reconcileMissingRedeemerStateV1(
+    const state = reconcileMissingRedeemerState(
       entries,
       await actuator.observe(identity),
     );

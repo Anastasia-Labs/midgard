@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary-v1.js";
 
 const sizeBalancedFixture = JSON.parse(
   readFileSync(
@@ -23,7 +23,7 @@ const sizeBalancedFixture = JSON.parse(
 
 describe("canonical V1 retained-DA boundary harness", () => {
   it("reconstructs the same large canonical transaction from normal and forced retention", async () => {
-    const measurement = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+    const measurement = await exerciseMidgardRetainedDaCanonicalBoundary({
       canonicalTransactionCbor: Buffer.from(
         sizeBalancedFixture.fullTxCborHex,
         "hex",
@@ -58,7 +58,7 @@ describe("canonical V1 retained-DA boundary harness", () => {
       measurement.innerPayloadBytes,
     );
     expect(measurement.storedPayloadBytes).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
     );
   });
 });

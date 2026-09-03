@@ -15,12 +15,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  encodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardNativeTxCompact,
   formatUnknownError,
-  type MidgardNativeTxFullV1,
+  type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
@@ -43,7 +43,7 @@ import {
 import { type NeInputPreimageEntry } from "./ne-submit-step-02.js";
 import { ledgerKeyBytesHex } from "./ne-submit-step-03.js";
 import {
-  deriveL2TransactionSourceCborV1,
+  deriveL2TransactionSourceCbor,
   type FetchLike,
   fetchNodeBlockTransactions,
   type NodeTransactionPayload,
@@ -52,7 +52,7 @@ import {
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
-import { reconstructDaPayloadV1 } from "./transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "./transition-trace/reconstruct.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
@@ -130,9 +130,9 @@ type DecodedTx = {
 const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
   const txCbor = parseHex(payload.txCbor, `tx ${nodeTxId} CBOR`);
-  let nativeTx: MidgardNativeTxFullV1;
+  let nativeTx: MidgardNativeTxFull;
   try {
-    nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(
       Buffer.from(txCbor, "hex"),
     );
   } catch (cause) {
@@ -140,7 +140,7 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
       `Failed to decode native Midgard tx ${nodeTxId}: ${formatUnknownError(cause)}`,
     );
   }
-  const computed = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+  const computed = computeMidgardNativeTxId(nativeTx).toString("hex");
   if (computed !== nodeTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computed}.`,
@@ -153,10 +153,10 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   return {
     nodeTxId,
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
-    nativeCompactCbor: encodeMidgardNativeTxCompactV1(
-      nativeTx.compact,
-    ).toString("hex"),
-    l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+    nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
+      "hex",
+    ),
+    l2TransactionSourceCbor: deriveL2TransactionSourceCbor(
       Buffer.from(txCbor, "hex"),
     ),
     inputs: spendInputsWitnessFromCbors(spendInputCbors, "spend_inputs").inputs,
@@ -215,7 +215,7 @@ const resolveLedgerNonMembershipProof = async ({
         "proof built. (Only the empty-genesis first block needs no payload.)",
     );
   }
-  const reconstruction = await reconstructDaPayloadV1({
+  const reconstruction = await reconstructDaPayload({
     payloadEnvelopeCbor: prevBlockPayloadEnvelopeCbor,
   });
   if (reconstruction.roots.utxosRoot !== prevUtxosRoot) {

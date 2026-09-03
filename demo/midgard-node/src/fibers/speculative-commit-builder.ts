@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";
@@ -145,7 +145,7 @@ type SubmitSpeculativeCandidateInstruction = Extract<
 
 const authenticateForeignTipEvidence = (
   liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"],
-  _consensusProfile: MidgardConsensusProfileV1,
+  _consensusProfile: MidgardConsensusProfile,
 ) =>
   Effect.gen(function* () {
     const tail = yield* deserializeStateQueueUTxO(liveTail);
@@ -159,8 +159,8 @@ const authenticateForeignTipEvidence = (
         }),
       );
     }
-    const header = yield* SDK.getHeaderV1FromStateQueueDatum(tail.datum);
-    const recomputedHeaderHash = yield* SDK.hashBlockHeaderV1(header);
+    const header = yield* SDK.getHeaderFromStateQueueDatum(tail.datum);
+    const recomputedHeaderHash = yield* SDK.hashBlockHeader(header);
     if (recomputedHeaderHash !== headerHash) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -187,7 +187,7 @@ export const persistAuthenticatedForeignTipMismatch = ({
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly assertedForeignHeaderHash?: string;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
 }) =>
   Effect.gen(function* () {
     const deploymentIdentity = yield* ContractDeploymentIdentity;
@@ -243,7 +243,7 @@ export const recordForeignTipMismatchBeforeInvalidation = <E, R>({
   readonly expectedHeaderHash: string;
   readonly confirmedHeaderHash: string;
   readonly confirmedTip: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
   readonly invalidateCandidate: Effect.Effect<void, E, R>;
 }) =>
   Effect.gen(function* () {
@@ -279,7 +279,7 @@ export const decideSpeculativeInstructionForLiveTip = ({
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly submitInstruction: SubmitSpeculativeCandidateInstruction;
-  readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfile;
 }) =>
   Effect.gen(function* () {
     const mismatchRecorded = yield* persistAuthenticatedForeignTipMismatch({

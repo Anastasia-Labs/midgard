@@ -10,7 +10,7 @@
  * was skipped.
  */
 
-import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import {
   type MidgardTxInput,
   NonExistentInputStep03Datum,
@@ -32,12 +32,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
 import {
   chunkedNonMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
   derivedChunkReferenceIndices,
-  type PublishedProofChunkV1,
+  type PublishedProofChunk,
   requireBuiltChunkReferenceIndices,
   walletInputsExcludingChunks,
 } from "./proof-chunk-carriage.js";
@@ -62,14 +62,14 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
@@ -84,7 +84,7 @@ export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
  * `cbor.serialise(OutputReference)`.
  */
 export const ledgerKeyBytesHex = (input: MidgardTxInput): string =>
-  encodeMidgardSpendInputItemV1({
+  encodeMidgardSpendInputItem({
     txId: Buffer.from(input.tx_id, "hex"),
     outputIndex: Number(input.output_index),
   }).toString("hex");
@@ -170,12 +170,12 @@ export const neSubmitStep03 = async ({
   readonly threadOutRef: string;
   readonly ledgerNonMembershipProofCbor: string;
   /** Authenticated proof chunks, in proof order, for the bounded L1 route. */
-  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep03Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -229,18 +229,18 @@ export const neSubmitStep03 = async ({
     network,
     chunkedVerifyScript,
   );
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: steps[2].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "non-existent-input step 03 validator",
   });
   const nonMembershipCarriage = carriedByChunks
-    ? witnessWithdrawalValidatorCarriageV1({
+    ? witnessWithdrawalValidatorCarriage({
         script: chunkedVerifyScript,
         referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
         label: "non-existent-input step 03 chunked verify",
       })
-    : witnessWithdrawalValidatorCarriageV1({
+    : witnessWithdrawalValidatorCarriage({
         script: pexcludesScript,
         referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
         label: "non-existent-input step 03 pexcludes exclusion",
@@ -380,9 +380,9 @@ export const neSubmitStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -442,7 +442,7 @@ export const neSubmitStep03 = async ({
 export const neSubmitStep03FromFiles = async (
   config: NeSubmitStep03CliConfig,
 ): Promise<NeSubmitStep03Result> => {
-  rejectRetiredUnauthenticatedSubmissionRouteV1({
+  rejectRetiredUnauthenticatedSubmissionRoute({
     command: "submit-non-existent-input-step-03",
   });
   const [blueprint, deploymentInfo, proofJson, lucid] = await Promise.all([

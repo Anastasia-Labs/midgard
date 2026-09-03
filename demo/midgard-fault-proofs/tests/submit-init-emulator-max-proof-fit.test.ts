@@ -59,13 +59,13 @@ import {
   parseSubmitStep01TxInclusion,
   submitInit,
   submitInvalidRangeStep01,
-  submitInvalidRangeStep02,
+  submitInvalidRangeStep02V1,
   submitStep01,
   submitStep02,
   submitStep03,
   submitStep04,
   submitZeroInputStep01,
-  submitZeroInputStep02,
+  submitZeroInputStep02V1,
 } from "./support/legacy-submit-emulator.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
@@ -89,13 +89,13 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
   EXECUTION_RESERVE_FRACTION,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
-  printProofFitV1,
+  printProofFit as printProofFitV1,
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
@@ -187,7 +187,7 @@ const printProofFit = (
 
 describe("fault-proof maximum proof fit", () => {
   it("fits a maximum-depth double-spend proof inside the L1 envelope", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { alwaysFraudProofCatalogue: true },
     });
     const {
@@ -411,7 +411,7 @@ describe("fault-proof maximum proof fit", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `double-spend maximum ${stage}`,
         measurement,
         maxTxExMem,
@@ -419,7 +419,7 @@ describe("fault-proof maximum proof fit", () => {
       });
     }
     for (const measurement of removeCapture.measurements) {
-      expectProofFitV1({
+      expectProofFit({
         stage: "double-spend maximum removal transaction",
         measurement,
         maxTxExMem,
@@ -454,7 +454,7 @@ describe("fault-proof maximum proof fit", () => {
   }, 300_000);
 
   it("fits a maximum-depth non-existent-input proof inside the L1 envelope", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realNonExistentInput: true,
         alwaysFraudProofCatalogue: true,
@@ -657,7 +657,7 @@ describe("fault-proof maximum proof fit", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `non-existent-input maximum ${stage}`,
         measurement,
         maxTxExMem,
@@ -693,7 +693,7 @@ describe("fault-proof maximum proof fit", () => {
   // bytes AND in execution units, which is what turns "it fits at depth N"
   // into a bound.
   const runInvalidRangeJourney = async (branchLevels: number) => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realInvalidRange: true,
         alwaysFraudProofCatalogue: true,
@@ -792,7 +792,7 @@ describe("fault-proof maximum proof fit", () => {
       initResult.computationThreadUnit,
     );
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitInvalidRangeStep02({
+      submitInvalidRangeStep02V1({
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!.utxo,
@@ -852,7 +852,7 @@ describe("fault-proof maximum proof fit", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `invalid-range branch-levels-${branchLevels.toString()} ${stage}`,
         measurement,
         maxTxExMem,
@@ -883,7 +883,7 @@ describe("fault-proof maximum proof fit", () => {
   }, 300_000);
 
   it("fits a maximum-depth zero-input proof inside the L1 envelope", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
     });
     const {
@@ -982,7 +982,7 @@ describe("fault-proof maximum proof fit", () => {
       initResult.computationThreadUnit,
     );
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitZeroInputStep02({
+      submitZeroInputStep02V1({
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
@@ -1034,7 +1034,7 @@ describe("fault-proof maximum proof fit", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `zero-input maximum ${stage}`,
         measurement,
         maxTxExMem,

@@ -1,61 +1,61 @@
 import {
-  advanceMidgardRedeemerItemProofV1,
+  advanceMidgardRedeemerItemProof,
   asArray,
   asBytes,
   canOpenMidgardValidationDisputeBeforeMaturity,
   computeHash32,
-  decodeMidgardCekProgramMaterialSidecarV1,
-  decodeMidgardNativeTxProofFieldLengthsV1,
+  decodeMidgardCekProgramMaterialSidecar,
+  decodeMidgardNativeTxProofFieldLengths,
   decodeSingleCbor,
   encodeCbor,
   encodeCborArrayRaw,
-  encodeMidgardCekDataTraverseControlV1,
-  encodeMidgardRedeemerItemProofControlV1,
-  hashMidgardRedeemerItemProofControlV1,
-  type MidgardCekDataFrameV1,
-  type MidgardCekDataSummaryV1,
-  type MidgardCekDataTraverseActionV1,
-  type MidgardCekDataTraverseControlV1,
-  type MidgardRedeemerItemProofControlV1,
-  type MidgardValidationTraceProofV1,
+  encodeMidgardCekDataTraverseControl,
+  encodeMidgardRedeemerItemProofControl,
+  hashMidgardRedeemerItemProofControl,
+  type MidgardCekDataFrame,
+  type MidgardCekDataSummary,
+  type MidgardCekDataTraverseAction,
+  type MidgardCekDataTraverseControl,
+  type MidgardRedeemerItemProofControl,
+  type MidgardValidationTraceProof,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
   revealMidgardValidationOperatorMidpoint,
   timeoutMidgardValidationDispute,
-  verifyMidgardNativeTxProofSourceV1,
+  verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
-import type { MidgardFieldCarriagePlanV1 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import type { MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
-  decodeMidgardFieldPreimageV1,
-  type MidgardFieldCarriageV1,
-  midgardFieldCommitmentV1,
+  decodeMidgardFieldPreimage,
+  type MidgardFieldCarriage,
+  midgardFieldCommitment,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
+import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
-  AuthenticatedCanonicalDecodeItemDatumV1,
-  buildUnsignedValidationProofItemPublicationV1Program,
-  deriveCekProgramMaterialPublicationsV1,
-  deriveCekSinglePublicationV1,
-  deriveValidationProofItemPublicationV1,
-  deriveValidationTraceDeploymentIdV1,
+  AuthenticatedCanonicalDecodeItemDatum,
+  buildUnsignedValidationProofItemPublicationProgram,
+  deriveCekProgramMaterialPublications,
+  deriveCekSinglePublication,
+  deriveValidationProofItemPublication,
+  deriveValidationTraceDeploymentId,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  getHeaderV1FromStateQueueDatum,
+  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  hashBlockHeaderV1,
+  hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
-  ObservedCanonicalDecodeItemDatumV1,
-  PendingValidationClaimDatumV1,
-  type PendingValidationClaimDatumV1 as PendingValidationClaimDatumV1Data,
-  PreparedCanonicalDecodeItemDatumV1,
-  PreparedValidationResolutionDatumV1,
-  type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
-  PreparedValidationResolutionStateV1,
+  ObservedCanonicalDecodeItemDatum,
+  PendingValidationClaimDatum,
+  type PendingValidationClaimDatum as PendingValidationClaimDatumData,
+  PreparedCanonicalDecodeItemDatum,
+  PreparedValidationResolutionDatum,
+  type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
+  PreparedValidationResolutionState,
   referenceScriptAuthUnit,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -63,44 +63,44 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
-  ValidationAuxiliaryWitnessV1,
-  type ValidationAuxiliaryWitnessV1 as ValidationAuxiliaryWitnessV1Data,
-  ValidationAwardSpendRedeemerV1,
-  ValidationBoundarySpendRedeemerV1,
-  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
-  type ValidationCekMaterialRouteV1,
-  ValidationCekMaterialRouteV1Schema,
-  type ValidationClaimWitnessV1,
+  resolveMidgardFieldCarriageAgainstReferenceInputs,
+  ValidationAuxiliaryWitness,
+  type ValidationAuxiliaryWitness as ValidationAuxiliaryWitnessData,
+  ValidationAwardSpendRedeemer,
+  ValidationBoundarySpendRedeemer,
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
+  type ValidationCekMaterialRoute,
+  ValidationCekMaterialRouteSchema,
+  type ValidationClaimWitness,
   validationDisputeCoreFromData,
   validationDisputeDataFromCore,
-  ValidationDisputeDatumV1,
-  type ValidationDisputeDatumV1 as ValidationDisputeDatumV1Data,
-  ValidationDisputeOpenSpendRedeemerV1,
-  ValidationGameSpendRedeemerV1,
-  type ValidationMachineStateV1,
-  ValidationOneStepWitnessV1,
-  ValidationPrepareSelectedSpendRedeemerV1Schema,
-  ValidationProofItemDatumV1,
-  ValidationResolutionDatumV1,
-  type ValidationResolutionDatumV1 as ValidationResolutionDatumV1Data,
-  ValidationSourceSpendRedeemerV1,
-  ValidationTimeoutSpendRedeemerV1,
+  ValidationDisputeDatum,
+  type ValidationDisputeDatum as ValidationDisputeDatumData,
+  ValidationDisputeOpenSpendRedeemer,
+  ValidationGameSpendRedeemer,
+  type ValidationMachineState,
+  ValidationOneStepWitness,
+  ValidationPrepareSelectedSpendRedeemerSchema,
+  ValidationProofItemDatum,
+  ValidationResolutionDatum,
+  type ValidationResolutionDatum as ValidationResolutionDatumData,
+  ValidationSourceSpendRedeemer,
+  ValidationTimeoutSpendRedeemer,
+  type ValidationTraceDescriptor,
   validationTraceDescriptorCoreFromData,
   validationTraceDescriptorDataFromCore,
-  type ValidationTraceDescriptorV1,
+  type ValidationTraceProof,
   validationTraceProofCoreFromData,
   validationTraceProofDataFromCore,
-  type ValidationTraceProofV1,
-  VerifiedCanonicalDecodeItemDatumV1,
-  WinningValidationResolutionDatumV1,
-  type WinningValidationResolutionDatumV1 as WinningValidationResolutionDatumV1Data,
+  VerifiedCanonicalDecodeItemDatum,
+  WinningValidationResolutionDatum,
+  type WinningValidationResolutionDatum as WinningValidationResolutionDatumData,
 } from "@al-ft/midgard-sdk";
 import {
-  type CekProgramMaterialNecessityReceiptSetV1,
-  type CekRouteMaterialV1,
-  parseCekProgramMaterialNecessityReceiptSetV1,
-  validateCekRouteMaterialV1,
+  type CekProgramMaterialNecessityReceiptSet,
+  type CekRouteMaterial,
+  parseCekProgramMaterialNecessityReceiptSet,
+  validateCekRouteMaterial,
 } from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
@@ -141,9 +141,9 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessMintingPolicyCarriageV1,
-  witnessSpendingValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessMintingPolicyCarriage,
+  witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
@@ -163,21 +163,20 @@ const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE = "V1 validation-trace dispute";
  * measurement; re-measuring the direct frontier and rebinding this heuristic
  * is #622's owner table, so the number is read here and never changed here.
  */
-export const selectValidationCompleteItemCarriageV1 = (
+export const selectValidationCompleteItemCarriage = (
   itemBytes: number,
 ): "direct" | "reference" => {
   if (
     !Number.isSafeInteger(itemBytes) ||
     itemBytes < 0 ||
-    itemBytes >
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes
+    itemBytes > MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes
   ) {
     throw new Error(
       "Complete validation proof item exceeds the measured single-publication envelope",
     );
   }
   return itemBytes <=
-    MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes
+    MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes
     ? "direct"
     : "reference";
 };
@@ -316,7 +315,7 @@ export const openValidationDisputeAfterSourceVerification = ({
     !canOpenMidgardValidationDisputeBeforeMaturity({
       currentTimeUpper: sourceTimeUpper,
       challengedBlockEndTime: authenticatedBlockEndTime,
-      maturityDuration: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs,
+      maturityDuration: MIDGARD_CONSENSUS_LIMITS.blockMaturityMs,
     })
   ) {
     throw new Error(
@@ -374,7 +373,7 @@ const PROJECTION_PLACEHOLDER_VKEY_BECH32 =
  * on the actually-signed bytes afterwards, so a projection defect can never
  * ship an oversized transaction; the projection only decides routing.
  */
-export const projectSignedL1ProofTransactionBytesV1 = (
+export const projectSignedL1ProofTransactionBytes = (
   unsignedTransactionCbor: string,
 ): number => {
   const transaction = CML.Transaction.from_cbor_hex(unsignedTransactionCbor);
@@ -402,7 +401,7 @@ export const projectSignedL1ProofTransactionBytesV1 = (
  * catches exactly this error to fall back to the reference route, so it is a
  * distinct class rather than a message pattern.
  */
-export class ValidationInlineDeliveryEnvelopeRefusedErrorV1 extends Error {
+export class ValidationInlineDeliveryEnvelopeRefusedError extends Error {
   readonly projectedSignedBytes: number;
   readonly maxTransactionBytes: number;
 
@@ -427,7 +426,7 @@ export class ValidationInlineDeliveryEnvelopeRefusedErrorV1 extends Error {
 }
 
 /** How a tier-1 complete item's preimage reaches the §8.8 door (#621). */
-export type ValidationProofItemDeliveryV1 = "inline" | "reference";
+export type ValidationProofItemDelivery = "inline" | "reference";
 
 /**
  * Resolves the delivery route for the CanonicalDecode complete-item path at
@@ -439,26 +438,26 @@ export type ValidationProofItemDeliveryV1 = "inline" | "reference";
  * of which the door authenticates by content. The choice is therefore a
  * builder-local cost decision, resolved here in precedence order — an
  * explicit `proofItemDelivery` request, then a supplied publication out-ref,
- * then the measured `selectValidationCompleteItemCarriageV1` heuristic.
+ * then the measured `selectValidationCompleteItemCarriage` heuristic.
  *
  * The routing choice exists only inside tier 1. Above §8.3's tier-1 cap the
  * §8.4 partition already names reference inputs of its own, so a delivery
  * request there is a refusal, not a preference — and no routing input can
  * brick an in-flight dispute: an inline build that outgrows the L1 envelope
  * falls back to the reference route pre-sign
- * ({@link ValidationInlineDeliveryEnvelopeRefusedErrorV1}).
+ * ({@link ValidationInlineDeliveryEnvelopeRefusedError}).
  *
  * Returns the tier-1 route, or `undefined` when the argument is not a tier-1
  * complete item (tiers 2-3 and every other resolver path, where no such route
  * exists).
  */
-export const resolveValidationProofItemDeliveryRouteV1 = ({
+export const resolveValidationProofItemDeliveryRoute = ({
   requestedDelivery,
   hasProofItemReferenceOutRef,
   committedCarriage,
   preimageByteLength,
 }: {
-  readonly requestedDelivery: ValidationProofItemDeliveryV1 | undefined;
+  readonly requestedDelivery: ValidationProofItemDelivery | undefined;
   readonly hasProofItemReferenceOutRef: boolean;
   /**
    * The staged auxiliary's §8.1 carriage constructor on the complete-item
@@ -467,7 +466,7 @@ export const resolveValidationProofItemDeliveryRouteV1 = ({
   readonly committedCarriage: "Inline" | "RawUtxo" | "Certified" | undefined;
   /** The tier-1 preimage's byte length; required when the carriage is `Inline`. */
   readonly preimageByteLength?: number;
-}): ValidationProofItemDeliveryV1 | undefined => {
+}): ValidationProofItemDelivery | undefined => {
   if (committedCarriage === undefined) {
     if (requestedDelivery !== undefined) {
       throw new Error(
@@ -507,7 +506,7 @@ export const resolveValidationProofItemDeliveryRouteV1 = ({
         "measured cost heuristic",
     );
   }
-  return selectValidationCompleteItemCarriageV1(preimageByteLength) === "direct"
+  return selectValidationCompleteItemCarriage(preimageByteLength) === "direct"
     ? "inline"
     : "reference";
 };
@@ -812,22 +811,22 @@ const requireValidationCanonicalDecodePrepareReferenceScriptUtxo = async ({
  * `validationTraceDisputeItemSemantic` is (hash-checked against the applied
  * contract, no auth-role token).
  */
-export const VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1 = {
+export const VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES = {
   1: "validationTraceDisputeCekExecutionSelectionSemantic",
   2: "validationTraceDisputeCekContextStepSemantic",
   3: "validationTraceDisputeCekCoreStepSemantic",
 } as const satisfies Partial<Record<number, string>>;
 
-export type ValidationCekSemanticReferenceScriptIndexV1 =
-  keyof typeof VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1;
+export type ValidationCekSemanticReferenceScriptIndex =
+  keyof typeof VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES;
 
-export const validationCekSemanticReferenceScriptDeploymentEntryV1 = (
+export const validationCekSemanticReferenceScriptDeploymentEntry = (
   semanticResolverIndex: number,
 ): string | undefined =>
   semanticResolverIndex === 1 ||
   semanticResolverIndex === 2 ||
   semanticResolverIndex === 3
-    ? VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
+    ? VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
         semanticResolverIndex
       ]
     : undefined;
@@ -841,7 +840,7 @@ export const requireValidationCekSemanticReferenceScriptOutRef = ({
   readonly semanticResolverIndex: number;
   readonly expectedScriptHash: string;
 }): { readonly txHash: string; readonly outputIndex: number } => {
-  const entryName = validationCekSemanticReferenceScriptDeploymentEntryV1(
+  const entryName = validationCekSemanticReferenceScriptDeploymentEntry(
     semanticResolverIndex,
   );
   if (entryName === undefined) {
@@ -930,12 +929,12 @@ export const requireValidationCekSemanticReferenceScriptUtxo = async ({
  * deployment role is a property of the resolver, so every ValueAndMint
  * semantic is *deployable* by reference and the submit path picks the route
  * from what the deployment info actually carries (see
- * `validationValueAndMintSemanticReferenceScriptDeploymentEntryV1`'s call site
+ * `validationValueAndMintSemanticReferenceScriptDeploymentEntry`'s call site
  * in the semantic-resolution builder). These entries are consumed the way
  * `validationTraceDisputeItemSemantic` and the CEK entries are: hash-checked
  * against the applied contract, no auth-role token.
  */
-export const VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1 =
+export const VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES =
   {
     0: "validationTraceDisputeValueAndMintBeginSemantic",
     1: "validationTraceDisputeValueAndMintReplayBeginSemantic",
@@ -950,20 +949,20 @@ export const VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTR
     10: "validationTraceDisputeValueAndMintFinalizeSemantic",
   } as const satisfies Partial<Record<number, string>>;
 
-export type ValidationValueAndMintSemanticReferenceScriptIndexV1 =
-  keyof typeof VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1;
+export type ValidationValueAndMintSemanticReferenceScriptIndex =
+  keyof typeof VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES;
 
 /** The ValueAndMint phase's resolver index (`VALUE_AND_MINT` = 12). */
-export const VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1 = 12;
+export const VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX = 12;
 
-export const validationValueAndMintSemanticReferenceScriptDeploymentEntryV1 = (
+export const validationValueAndMintSemanticReferenceScriptDeploymentEntry = (
   semanticResolverIndex: number,
 ): string | undefined =>
   Number.isInteger(semanticResolverIndex) &&
   semanticResolverIndex >= 0 &&
   semanticResolverIndex <= 10
-    ? VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[
-        semanticResolverIndex as ValidationValueAndMintSemanticReferenceScriptIndexV1
+    ? VALIDATION_VALUE_AND_MINT_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES[
+        semanticResolverIndex as ValidationValueAndMintSemanticReferenceScriptIndex
       ]
     : undefined;
 
@@ -977,7 +976,7 @@ export const requireValidationValueAndMintSemanticReferenceScriptOutRef = ({
   readonly expectedScriptHash: string;
 }): { readonly txHash: string; readonly outputIndex: number } => {
   const entryName =
-    validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+    validationValueAndMintSemanticReferenceScriptDeploymentEntry(
       semanticResolverIndex,
     );
   if (entryName === undefined) {
@@ -1039,7 +1038,7 @@ export const requireValidationValueAndMintSemanticReferenceScriptUtxo = async ({
   return utxo;
 };
 
-const VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1 = Buffer.from(
+const VALIDATION_ONE_STEP_EVIDENCE_DOMAIN = Buffer.from(
   "MidgardValidationOneStepEvidenceV1",
   "ascii",
 );
@@ -1060,12 +1059,12 @@ type RuntimeSchemaEncoder = (
  * declaration mismatch at this runtime-schema boundary.
  */
 const encodeWithRuntimeSchema = Data.to as unknown as RuntimeSchemaEncoder;
-const validationCekMaterialRouteV1RuntimeSchema =
-  ValidationCekMaterialRouteV1Schema as unknown as PlutusDataSchema;
-const validationPrepareSelectedSpendRedeemerV1RuntimeSchema =
-  ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
-const validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema =
-  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
+const validationCekMaterialRouteRuntimeSchema =
+  ValidationCekMaterialRouteSchema as unknown as PlutusDataSchema;
+const validationPrepareSelectedSpendRedeemerRuntimeSchema =
+  ValidationPrepareSelectedSpendRedeemerSchema as unknown as PlutusDataSchema;
+const validationCanonicalDecodePrepareSelectedSpendRedeemerRuntimeSchema =
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema as unknown as PlutusDataSchema;
 
 /**
  * The `material_route` field of the CEK execution-selection semantic action
@@ -1073,26 +1072,26 @@ const validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema =
  * data. The route is resolver evidence — it names the consuming transaction's
  * own reference inputs — so it is never part of the committed evidence hash.
  */
-export const validationCekMaterialRouteDataV1 = (
-  route: ValidationCekMaterialRouteV1,
+export const validationCekMaterialRouteData = (
+  route: ValidationCekMaterialRoute,
 ): PlutusDataValue =>
   Data.from(
-    encodeWithRuntimeSchema(route, validationCekMaterialRouteV1RuntimeSchema),
+    encodeWithRuntimeSchema(route, validationCekMaterialRouteRuntimeSchema),
   );
 
-export type ValidationOneStepSubmissionArgumentV1 = {
+export type ValidationOneStepSubmissionArgument = {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
   readonly transitionCbor: Uint8Array;
   readonly auxiliaryCbor: Uint8Array;
-  readonly cekRouteMaterial?: CekRouteMaterialV1;
+  readonly cekRouteMaterial?: CekRouteMaterial;
   /** Presence selects the receipt-justified incremental route. */
-  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
 };
 
-export type ValidatedCekSubmissionEvidenceV1 = {
-  readonly cekRouteMaterial?: CekRouteMaterialV1;
-  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
+export type ValidatedCekSubmissionEvidence = {
+  readonly cekRouteMaterial?: CekRouteMaterial;
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
 };
 
 /**
@@ -1113,8 +1112,8 @@ export type ValidatedCekSubmissionEvidenceV1 = {
  * reference-input set at build time and puts *that* carriage on the wire —
  * the plan is the content source the resolution works from.
  */
-export type ValidationFieldCarriageMaterialV1 = {
-  readonly plan: MidgardFieldCarriagePlanV1;
+export type ValidationFieldCarriageMaterial = {
+  readonly plan: MidgardFieldCarriagePlan;
   /**
    * The carriage UTxOs the door transaction must read: the plan's publications
    * under tier 2, and the publications plus the §8.6 certificate under tier 3.
@@ -1126,7 +1125,7 @@ export type ValidationFieldCarriageMaterialV1 = {
 
 /**
  * The staged auxiliary's carriage, read back out as the
- * `MidgardFieldCarriageV1` the SDK resolvers speak.
+ * `MidgardFieldCarriage` the SDK resolvers speak.
  *
  * Constructor order is the frozen §8.1 one — `Inline` 0, `RawUtxo` 1,
  * `Certified` 2 — and every arm is checked for arity rather than
@@ -1134,10 +1133,10 @@ export type ValidationFieldCarriageMaterialV1 = {
  * this value; what a misread would silently corrupt is the §8.4 tier the
  * builder routes by and, at tier 1, the preimage bytes the delivery carries.
  */
-const midgardFieldCarriageFromDataV1 = (
+const midgardFieldCarriageFromData = (
   value: PlutusDataValue,
   label: string,
-): MidgardFieldCarriageV1 => {
+): MidgardFieldCarriage => {
   if (!(value instanceof Constr)) {
     throw new Error(`${label} is not a §8 FieldCarriageV1 constructor`);
   }
@@ -1179,16 +1178,16 @@ const midgardFieldCarriageFromDataV1 = (
 };
 
 /**
- * Encodes a resolved `MidgardFieldCarriageV1` back onto the frozen §8.1 wire —
+ * Encodes a resolved `MidgardFieldCarriage` back onto the frozen §8.1 wire —
  * `Inline` 0, `RawUtxo` 1, `Certified` 2, mirroring
  * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak:168` — for the
  * observe redeemer. Since Option B the carriage on the wire is the one the
  * builder resolved against the door transaction's own reference inputs at
  * build time (#621), not a value replayed from the staged auxiliary, so the
- * encoder is the inverse of {@link midgardFieldCarriageFromDataV1} above.
+ * encoder is the inverse of {@link midgardFieldCarriageFromData} above.
  */
-const midgardFieldCarriageToDataV1 = (
-  carriage: MidgardFieldCarriageV1,
+const midgardFieldCarriageToData = (
+  carriage: MidgardFieldCarriage,
 ): PlutusDataValue => {
   switch (carriage.carriage) {
     case "Inline":
@@ -1231,16 +1230,16 @@ const exactPlutusDataFromCbor = (
  * later CEK steps, ValueAndMint, and every other staged phase must not carry
  * it.
  */
-export const validateCekSubmissionEvidenceV1 = (
-  argument: ValidationOneStepSubmissionArgumentV1,
-): ValidatedCekSubmissionEvidenceV1 => {
+export const validateCekSubmissionEvidence = (
+  argument: ValidationOneStepSubmissionArgument,
+): ValidatedCekSubmissionEvidence => {
   exactPlutusDataFromCbor(
     argument.auxiliaryCbor,
     "validation auxiliary witness",
   );
   const auxiliaryWitness = Data.from(
     Buffer.from(argument.auxiliaryCbor).toString("hex"),
-    ValidationAuxiliaryWitnessV1,
+    ValidationAuxiliaryWitness,
   );
   const selection =
     typeof auxiliaryWitness === "object" &&
@@ -1269,7 +1268,7 @@ export const validateCekSubmissionEvidenceV1 = (
       "Plutus/Midgard CEK selection requires complete route material",
     );
   }
-  const cekRouteMaterial = validateCekRouteMaterialV1({
+  const cekRouteMaterial = validateCekRouteMaterial({
     value: argument.cekRouteMaterial,
     firstSourceChunk: Buffer.from(selection.first_chunk_proof.chunk, "hex"),
     languageTag: Number(selection.language_tag) as 3 | 128,
@@ -1278,7 +1277,7 @@ export const validateCekSubmissionEvidenceV1 = (
     return Object.freeze({ cekRouteMaterial });
   }
   const cekIncrementalNecessityReceiptSet =
-    parseCekProgramMaterialNecessityReceiptSetV1(
+    parseCekProgramMaterialNecessityReceiptSet(
       argument.cekIncrementalNecessityReceiptSet,
     );
   if (
@@ -1318,36 +1317,36 @@ const requireConstr = ({
   return value;
 };
 
-const validationOneStepEvidenceHashFromDataV1 = (
+const validationOneStepEvidenceHashFromData = (
   transition: PlutusDataValue,
   auxiliary: PlutusDataValue,
 ): string => {
   const evidencePayload = Buffer.from(Data.to([transition, auxiliary]), "hex");
   return computeHash32(
-    Buffer.concat([VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1, evidencePayload]),
+    Buffer.concat([VALIDATION_ONE_STEP_EVIDENCE_DOMAIN, evidencePayload]),
   ).toString("hex");
 };
 
-export const validationOneStepEvidenceHashV1 = ({
+export const validationOneStepEvidenceHash = ({
   transitionCbor,
   auxiliaryCbor,
 }: Pick<
-  ValidationOneStepSubmissionArgumentV1,
+  ValidationOneStepSubmissionArgument,
   "transitionCbor" | "auxiliaryCbor"
 >): string =>
-  validationOneStepEvidenceHashFromDataV1(
+  validationOneStepEvidenceHashFromData(
     exactPlutusDataFromCbor(transitionCbor, "validation transition"),
     exactPlutusDataFromCbor(auxiliaryCbor, "validation auxiliary witness"),
   );
 
-const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
+const VALIDATION_SEMANTIC_RESOLVER_COUNTS = [
   2, 1, 1, 2, 4, 14, 2, 6, 29, 3, 4, 4, 11, 8,
 ] as const;
-const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
+const VALIDATION_SEMANTIC_RESOLVER_OFFSETS = [
   0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, 67, 71, 82,
 ] as const;
 
-const VALIDATION_AUXILIARY_SHAPES_V1 = {
+const VALIDATION_AUXILIARY_SHAPES = {
   none: [0, 0],
   // #597: the four §8-door constructors carry a `FieldCarriageV1` where they
   // used to carry counted openings. `TransactionFieldChunkWitness` is
@@ -1407,21 +1406,21 @@ const VALIDATION_AUXILIARY_SHAPES_V1 = {
  * auxiliary and branches inside `verify_cek_context_step_semantics_v1`, so the
  * builder pins the family rather than one shape.
  */
-const VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1 = [
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
-  VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
-  VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekResolvedContextItem,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekOutputContextItem,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekSignerContextItem,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekMintContextItem,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekRedeemerContextSelect,
-  VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekContextFinalize,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekContextFinalizeSpend,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekContextAssemble,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekTxInfoFinalize,
-  VALIDATION_AUXILIARY_SHAPES_V1.cekContextSeed,
+const VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES = [
+  VALIDATION_AUXILIARY_SHAPES.none,
+  VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk,
+  VALIDATION_AUXILIARY_SHAPES.redeemerScanBegin,
+  VALIDATION_AUXILIARY_SHAPES.cekResolvedContextItem,
+  VALIDATION_AUXILIARY_SHAPES.cekOutputContextItem,
+  VALIDATION_AUXILIARY_SHAPES.cekSignerContextItem,
+  VALIDATION_AUXILIARY_SHAPES.cekMintContextItem,
+  VALIDATION_AUXILIARY_SHAPES.cekRedeemerContextSelect,
+  VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
+  VALIDATION_AUXILIARY_SHAPES.cekContextFinalize,
+  VALIDATION_AUXILIARY_SHAPES.cekContextFinalizeSpend,
+  VALIDATION_AUXILIARY_SHAPES.cekContextAssemble,
+  VALIDATION_AUXILIARY_SHAPES.cekTxInfoFinalize,
+  VALIDATION_AUXILIARY_SHAPES.cekContextSeed,
 ] as const;
 
 /**
@@ -1430,27 +1429,27 @@ const VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1 = [
  * output-finish, mint-finish and finalize resolvers step with no auxiliary;
  * the item resolvers carry the stage body's witness.
  */
-const VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1 = [
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
-  VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay,
-  VALIDATION_AUXILIARY_SHAPES_V1.valueInputAsset,
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
-  VALIDATION_AUXILIARY_SHAPES_V1.valueOutputDescriptor,
-  VALIDATION_AUXILIARY_SHAPES_V1.valueOutputAsset,
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
-  VALIDATION_AUXILIARY_SHAPES_V1.valueMintAsset,
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
-  VALIDATION_AUXILIARY_SHAPES_V1.none,
+const VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES = [
+  VALIDATION_AUXILIARY_SHAPES.none,
+  VALIDATION_AUXILIARY_SHAPES.none,
+  VALIDATION_AUXILIARY_SHAPES.resolvedInputReplay,
+  VALIDATION_AUXILIARY_SHAPES.valueInputAsset,
+  VALIDATION_AUXILIARY_SHAPES.none,
+  VALIDATION_AUXILIARY_SHAPES.valueOutputDescriptor,
+  VALIDATION_AUXILIARY_SHAPES.valueOutputAsset,
+  VALIDATION_AUXILIARY_SHAPES.none,
+  VALIDATION_AUXILIARY_SHAPES.valueMintAsset,
+  VALIDATION_AUXILIARY_SHAPES.none,
+  VALIDATION_AUXILIARY_SHAPES.none,
 ] as const;
 
-const hasValidationAuxiliaryShapeV1 = (
+const hasValidationAuxiliaryShape = (
   auxiliary: Constr<PlutusDataValue>,
   shape: readonly [number, number],
 ): boolean =>
   auxiliary.index === shape[0] && auxiliary.fields.length === shape[1];
 
-const auxiliaryShapeV1 = ({
+const auxiliaryShape = ({
   resolverIndex,
   semanticResolverIndex,
   auxiliary,
@@ -1463,20 +1462,20 @@ const auxiliaryShapeV1 = ({
     if (semanticResolverIndex === 0) {
       return requireConstr({
         value: auxiliary,
-        index: VALIDATION_AUXILIARY_SHAPES_V1.none[0],
-        fields: VALIDATION_AUXILIARY_SHAPES_V1.none[1],
+        index: VALIDATION_AUXILIARY_SHAPES.none[0],
+        fields: VALIDATION_AUXILIARY_SHAPES.none[1],
         label: "validation CanonicalDecode empty auxiliary witness",
       });
     }
     if (
       auxiliary instanceof Constr &&
-      (hasValidationAuxiliaryShapeV1(
+      (hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+        VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk,
       ) ||
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+          VALIDATION_AUXILIARY_SHAPES.transactionFieldItem,
         ))
     ) {
       return auxiliary;
@@ -1491,14 +1490,14 @@ const auxiliaryShapeV1 = ({
       semanticResolverIndex === 4 ||
       semanticResolverIndex === 6 ||
       semanticResolverIndex === 7
-        ? VALIDATION_AUXILIARY_SHAPES_V1.none
+        ? VALIDATION_AUXILIARY_SHAPES.none
         : semanticResolverIndex === 0
-          ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOperation
+          ? VALIDATION_AUXILIARY_SHAPES.ledgerDeltaOperation
           : semanticResolverIndex === 1
-            ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaReplay
+            ? VALIDATION_AUXILIARY_SHAPES.ledgerDeltaReplay
             : semanticResolverIndex === 3
-              ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOutput
-              : VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaProofFrame;
+              ? VALIDATION_AUXILIARY_SHAPES.ledgerDeltaOutput
+              : VALIDATION_AUXILIARY_SHAPES.ledgerDeltaProofFrame;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -1509,16 +1508,16 @@ const auxiliaryShapeV1 = ({
   if (resolverIndex === 7) {
     const expected =
       semanticResolverIndex === 0 || semanticResolverIndex === 1
-        ? VALIDATION_AUXILIARY_SHAPES_V1.none
+        ? VALIDATION_AUXILIARY_SHAPES.none
         : semanticResolverIndex === 2
-          ? VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerMembership
+          ? VALIDATION_AUXILIARY_SHAPES.scheduledLedgerMembership
           : semanticResolverIndex === 3
-            ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep
+            ? VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep
             : semanticResolverIndex === 4
-              ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize
+              ? VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize
               : semanticResolverIndex === 5
-                ? VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerNonMembership
-                : VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay;
+                ? VALIDATION_AUXILIARY_SHAPES.scheduledLedgerNonMembership
+                : VALIDATION_AUXILIARY_SHAPES.resolvedInputReplay;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -1530,9 +1529,9 @@ const auxiliaryShapeV1 = ({
     if (!(auxiliary instanceof Constr)) {
       throw new Error("validation auxiliary witness must be a constructor");
     }
-    const isRedeemerItemStage = hasValidationAuxiliaryShapeV1(
+    const isRedeemerItemStage = hasValidationAuxiliaryShape(
       auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+      VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
     );
     if (semanticResolverIndex === 28 && !isRedeemerItemStage) {
       throw new Error(
@@ -1542,9 +1541,9 @@ const auxiliaryShapeV1 = ({
     if (
       semanticResolverIndex === 15 &&
       !(
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.transactionRedeemerItemBegin,
+          VALIDATION_AUXILIARY_SHAPES.transactionRedeemerItemBegin,
         ) || isRedeemerItemStage
       )
     ) {
@@ -1557,9 +1556,9 @@ const auxiliaryShapeV1 = ({
         semanticResolverIndex === 21 ||
         semanticResolverIndex === 22) &&
       !(
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+          VALIDATION_AUXILIARY_SHAPES.redeemerScanBegin,
         ) || isRedeemerItemStage
       )
     ) {
@@ -1571,34 +1570,34 @@ const auxiliaryShapeV1 = ({
       semanticResolverIndex === 0
         ? null
         : semanticResolverIndex === 1
-          ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofBegin
+          ? VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofBegin
           : semanticResolverIndex === 2
-            ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep
+            ? VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep
             : semanticResolverIndex === 3
-              ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize
+              ? VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize
               : semanticResolverIndex === 5
-                ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+                ? VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk
                 : semanticResolverIndex === 7
-                  ? VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceHashBlock
+                  ? VALIDATION_AUXILIARY_SHAPES.scriptSourceHashBlock
                   : semanticResolverIndex >= 10 && semanticResolverIndex <= 12
-                    ? VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan
+                    ? VALIDATION_AUXILIARY_SHAPES.scriptSourceScan
                     : semanticResolverIndex === 17
-                      ? VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan
+                      ? VALIDATION_AUXILIARY_SHAPES.scriptSourceScan
                       : semanticResolverIndex === 19
                         ? null
                         : semanticResolverIndex === 21 ||
                             semanticResolverIndex === 22
                           ? null
                           : semanticResolverIndex === 24
-                            ? VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan
+                            ? VALIDATION_AUXILIARY_SHAPES.scriptPurposeScan
                             : semanticResolverIndex === 25
-                              ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+                              ? VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk
                               : semanticResolverIndex === 26
-                                ? VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan
+                                ? VALIDATION_AUXILIARY_SHAPES.scriptPurposeScan
                                 : semanticResolverIndex === 15 ||
                                     semanticResolverIndex === 28
                                   ? null
-                                  : VALIDATION_AUXILIARY_SHAPES_V1.none;
+                                  : VALIDATION_AUXILIARY_SHAPES.none;
     const outputAuxiliary = auxiliary;
     if (
       outputExpected !== null &&
@@ -1615,8 +1614,8 @@ const auxiliaryShapeV1 = ({
     if (semanticResolverIndex === 2) {
       if (
         auxiliary instanceof Constr &&
-        VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1.some((shape) =>
-          hasValidationAuxiliaryShapeV1(auxiliary, shape),
+        VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES.some((shape) =>
+          hasValidationAuxiliaryShape(auxiliary, shape),
         )
       ) {
         return auxiliary;
@@ -1627,10 +1626,10 @@ const auxiliaryShapeV1 = ({
     }
     const expected =
       semanticResolverIndex === 0
-        ? VALIDATION_AUXILIARY_SHAPES_V1.none
+        ? VALIDATION_AUXILIARY_SHAPES.none
         : semanticResolverIndex === 1
-          ? VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionScan
-          : VALIDATION_AUXILIARY_SHAPES_V1.cekCoreStep;
+          ? VALIDATION_AUXILIARY_SHAPES.nativeExecutionScan
+          : VALIDATION_AUXILIARY_SHAPES.cekCoreStep;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -1640,7 +1639,7 @@ const auxiliaryShapeV1 = ({
   }
   if (resolverIndex === 12) {
     const expected =
-      VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1[semanticResolverIndex];
+      VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES[semanticResolverIndex];
     if (expected === undefined) {
       throw new Error(
         "validation ValueAndMint semantic resolver index is out of range",
@@ -1656,8 +1655,8 @@ const auxiliaryShapeV1 = ({
   if (resolverIndex === 9) {
     const expected =
       semanticResolverIndex === 0
-        ? VALIDATION_AUXILIARY_SHAPES_V1.none
-        : VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionDescriptor;
+        ? VALIDATION_AUXILIARY_SHAPES.none
+        : VALIDATION_AUXILIARY_SHAPES.nativeExecutionDescriptor;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -1667,29 +1666,29 @@ const auxiliaryShapeV1 = ({
   }
   const expected =
     resolverIndex === 1 || resolverIndex === 2 || resolverIndex === 10
-      ? VALIDATION_AUXILIARY_SHAPES_V1.none
+      ? VALIDATION_AUXILIARY_SHAPES.none
       : resolverIndex === 3
         ? semanticResolverIndex === 0
-          ? VALIDATION_AUXILIARY_SHAPES_V1.none
-          : VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+          ? VALIDATION_AUXILIARY_SHAPES.none
+          : VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk
         : resolverIndex === 4
           ? semanticResolverIndex === 0 || semanticResolverIndex === 3
-            ? VALIDATION_AUXILIARY_SHAPES_V1.none
+            ? VALIDATION_AUXILIARY_SHAPES.none
             : semanticResolverIndex === 1
-              ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
-              : VALIDATION_AUXILIARY_SHAPES_V1.requiredSignerItem
+              ? VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk
+              : VALIDATION_AUXILIARY_SHAPES.requiredSignerItem
           : resolverIndex === 5
             ? semanticResolverIndex === 0
-              ? VALIDATION_AUXILIARY_SHAPES_V1.none
+              ? VALIDATION_AUXILIARY_SHAPES.none
               : semanticResolverIndex === 1
-                ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+                ? VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk
                 : semanticResolverIndex === 13
-                  ? VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptFrame
-                  : VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken
+                  ? VALIDATION_AUXILIARY_SHAPES.nativeScriptFrame
+                  : VALIDATION_AUXILIARY_SHAPES.nativeScriptToken
             : resolverIndex === 6
               ? semanticResolverIndex === 0
-                ? VALIDATION_AUXILIARY_SHAPES_V1.none
-                : VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+                ? VALIDATION_AUXILIARY_SHAPES.none
+                : VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk
               : null;
   if (expected === null) {
     throw new Error(
@@ -1704,25 +1703,25 @@ const auxiliaryShapeV1 = ({
   });
 };
 
-const requireStagedOneStepArgumentV1 = (
-  argument: ValidationOneStepSubmissionArgumentV1,
+const requireStagedOneStepArgument = (
+  argument: ValidationOneStepSubmissionArgument,
 ): {
-  readonly transition: ValidationOneStepWitnessV1;
+  readonly transition: ValidationOneStepWitness;
   readonly transitionData: PlutusDataValue;
   readonly auxiliaryData: PlutusDataValue;
-  readonly auxiliaryWitness: ValidationAuxiliaryWitnessV1Data;
+  readonly auxiliaryWitness: ValidationAuxiliaryWitnessData;
   readonly auxiliary: Constr<PlutusDataValue>;
   readonly semanticResolverIndex: number;
   readonly semanticResolverGlobalIndex: number;
   readonly evidenceHash: string;
-  readonly cekRouteMaterial?: CekRouteMaterialV1;
-  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
+  readonly cekRouteMaterial?: CekRouteMaterial;
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSet;
 } => {
-  const validatedCekEvidence = validateCekSubmissionEvidenceV1(argument);
+  const validatedCekEvidence = validateCekSubmissionEvidence(argument);
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 0 ||
-    argument.resolverIndex >= VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
+    argument.resolverIndex >= VALIDATION_SEMANTIC_RESOLVER_COUNTS.length
   ) {
     throw new Error(
       "Staged validation one-step argument must select a prepare resolver",
@@ -1730,7 +1729,7 @@ const requireStagedOneStepArgumentV1 = (
   }
   const semanticResolverIndex = argument.semanticResolverIndex;
   const semanticResolverCount =
-    VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1[argument.resolverIndex]!;
+    VALIDATION_SEMANTIC_RESOLVER_COUNTS[argument.resolverIndex]!;
   if (
     !Number.isSafeInteger(semanticResolverIndex) ||
     semanticResolverIndex < 0 ||
@@ -1750,13 +1749,13 @@ const requireStagedOneStepArgumentV1 = (
   );
   const auxiliaryWitness = Data.from(
     Buffer.from(argument.auxiliaryCbor).toString("hex"),
-    ValidationAuxiliaryWitnessV1,
+    ValidationAuxiliaryWitness,
   );
   const transition = Data.from(
     Buffer.from(argument.transitionCbor).toString("hex"),
-    ValidationOneStepWitnessV1,
+    ValidationOneStepWitness,
   );
-  const auxiliary = auxiliaryShapeV1({
+  const auxiliary = auxiliaryShape({
     resolverIndex: argument.resolverIndex,
     semanticResolverIndex,
     auxiliary: auxiliaryData,
@@ -1768,7 +1767,7 @@ const requireStagedOneStepArgumentV1 = (
     auxiliaryWitness,
     auxiliary,
     semanticResolverIndex,
-    semanticResolverGlobalIndex: validationSemanticResolverGlobalIndexV1(
+    semanticResolverGlobalIndex: validationSemanticResolverGlobalIndex(
       argument.resolverIndex,
       semanticResolverIndex,
     ),
@@ -1777,7 +1776,7 @@ const requireStagedOneStepArgumentV1 = (
     // whatever carriage the auxiliary witness names, because the carriage is
     // dereferenced (and content-checked) only at the observe stage's §8.8 door.
     // Every other resolver still freezes its auxiliary into the commitment.
-    evidenceHash: validationOneStepEvidenceHashFromDataV1(
+    evidenceHash: validationOneStepEvidenceHashFromData(
       transitionData,
       argument.resolverIndex === 0 ? new Constr(0, []) : auxiliaryData,
     ),
@@ -1785,16 +1784,16 @@ const requireStagedOneStepArgumentV1 = (
   };
 };
 
-export const validationSemanticResolverGlobalIndexV1 = (
+export const validationSemanticResolverGlobalIndex = (
   resolverIndex: number,
   semanticResolverIndex: number,
 ): number =>
   resolverIndex === 8 && semanticResolverIndex === 28
     ? 90
-    : VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1[resolverIndex]! +
+    : VALIDATION_SEMANTIC_RESOLVER_OFFSETS[resolverIndex]! +
       semanticResolverIndex;
 
-export const encodeScriptSourcesStageOneSpendRedeemerV1 = ({
+export const encodeScriptSourcesStageOneSpendRedeemer = ({
   stage,
   inputIndex,
   outputIndex,
@@ -1898,8 +1897,8 @@ const makeOpenRedeemer = ({
   readonly outputAddress: string;
   readonly outputDatum: string;
   readonly threadUnit: string;
-  readonly claim: ValidationClaimWitnessV1;
-  readonly challengerDescriptor: ValidationTraceDescriptorV1;
+  readonly claim: ValidationClaimWitness;
+  readonly challengerDescriptor: ValidationTraceDescriptor;
   readonly onLayout: (layout: OpenLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -1941,7 +1940,7 @@ const makeOpenRedeemer = ({
           },
         ],
       },
-      ValidationDisputeOpenSpendRedeemerV1,
+      ValidationDisputeOpenSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
 
@@ -1986,7 +1985,7 @@ const makeVerifySourceRedeemer = ({
           },
         ],
       },
-      ValidationSourceSpendRedeemerV1,
+      ValidationSourceSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
 
@@ -2004,7 +2003,7 @@ const makeRevealRedeemer = ({
   readonly outputDatum: string;
   readonly threadUnit: string;
   readonly role: "operator" | "challenger";
-  readonly proof: ValidationTraceProofV1;
+  readonly proof: ValidationTraceProof;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -2046,7 +2045,7 @@ const makeRevealRedeemer = ({
               proof,
             },
           };
-    return Data.to({ Continue: [action] }, ValidationGameSpendRedeemerV1);
+    return Data.to({ Continue: [action] }, ValidationGameSpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
 
 const makeGameHandoffRedeemer = ({
@@ -2094,7 +2093,7 @@ const makeGameHandoffRedeemer = ({
               output_index: layout.outputIndex,
             },
           };
-    return Data.to({ Continue: [action] }, ValidationGameSpendRedeemerV1);
+    return Data.to({ Continue: [action] }, ValidationGameSpendRedeemer);
   }) satisfies BuildTxWithRedeemer;
 
 export type SubmitValidationDisputeOpenResult = {
@@ -2118,8 +2117,8 @@ export type BuildValidationDisputeOpenParams = {
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly claim: ValidationClaimWitnessV1;
-  readonly challengerDescriptor: ValidationTraceDescriptorV1;
+  readonly claim: ValidationClaimWitness;
+  readonly challengerDescriptor: ValidationTraceDescriptor;
   readonly validityRange?: ValidationDisputeValidityRange;
 };
 
@@ -2232,9 +2231,9 @@ export const buildValidationDisputeOpen = async ({
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
   const header = await Effect.runPromise(
-    getHeaderV1FromStateQueueDatum(stateQueueNodeView),
+    getHeaderFromStateQueueDatum(stateQueueNodeView),
   );
-  const computedHeaderHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const computedHeaderHash = await Effect.runPromise(hashBlockHeader(header));
   if (computedHeaderHash !== fraudulentHeaderHash) {
     throw new Error(
       `State-queue datum header hashes to ${computedHeaderHash}, expected ${fraudulentHeaderHash}`,
@@ -2258,7 +2257,7 @@ export const buildValidationDisputeOpen = async ({
         header.endTime,
         "header.endTime",
       ),
-      maturityDuration: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs,
+      maturityDuration: MIDGARD_CONSENSUS_LIMITS.blockMaturityMs,
     })
   ) {
     throw new Error(
@@ -2276,7 +2275,7 @@ export const buildValidationDisputeOpen = async ({
         open_time_upper: BigInt(currentTimeUpper),
       },
     },
-    PendingValidationClaimDatumV1,
+    PendingValidationClaimDatum,
   );
   let layout: OpenLayout | undefined;
   signer.selectWallet(lucid);
@@ -2357,22 +2356,22 @@ export const submitValidationDisputeOpen = async ({
 
 const requirePendingClaimDatum = (
   threadUtxo: UTxO,
-): PendingValidationClaimDatumV1Data & {
-  readonly data: NonNullable<PendingValidationClaimDatumV1Data["data"]>;
+): PendingValidationClaimDatumData & {
+  readonly data: NonNullable<PendingValidationClaimDatumData["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
       `Validation-dispute source UTxO ${outRefLabel(threadUtxo)} is missing datum`,
     );
   }
-  const datum = Data.from(threadUtxo.datum, PendingValidationClaimDatumV1);
+  const datum = Data.from(threadUtxo.datum, PendingValidationClaimDatum);
   if (datum.data === null) {
     throw new Error(
       "Validation-dispute source verification requires pending claim state",
     );
   }
-  return datum as PendingValidationClaimDatumV1Data & {
-    readonly data: NonNullable<PendingValidationClaimDatumV1Data["data"]>;
+  return datum as PendingValidationClaimDatumData & {
+    readonly data: NonNullable<PendingValidationClaimDatumData["data"]>;
   };
 };
 
@@ -2460,12 +2459,12 @@ export const submitValidationDisputeVerifySource = async ({
         dispute: validationDisputeDataFromCore(dispute),
       },
     },
-    ValidationDisputeDatumV1,
+    ValidationDisputeDatum,
   );
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const sourceScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const sourceScriptCarriage = witnessSpendingValidatorCarriage({
     script: sourceContract.spendingScript,
     referenceUtxo: sourceReferenceScriptUtxo,
     label: "validation-dispute source validator",
@@ -2592,7 +2591,7 @@ const makeTimeoutSpendRedeemer = ({
           },
         ],
       },
-      ValidationTimeoutSpendRedeemerV1,
+      ValidationTimeoutSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
 
@@ -2652,20 +2651,20 @@ const makeComputationThreadSuccessRedeemer = ({
 
 const requireDisputeDatum = (
   threadUtxo: UTxO,
-): ValidationDisputeDatumV1Data & {
-  readonly data: NonNullable<ValidationDisputeDatumV1Data["data"]>;
+): ValidationDisputeDatumData & {
+  readonly data: NonNullable<ValidationDisputeDatumData["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
       `Validation-dispute thread UTxO ${outRefLabel(threadUtxo)} is missing datum`,
     );
   }
-  const datum = Data.from(threadUtxo.datum, ValidationDisputeDatumV1);
+  const datum = Data.from(threadUtxo.datum, ValidationDisputeDatum);
   if (datum.data === null) {
     throw new Error("Validation-dispute reveal requires initialized state");
   }
-  return datum as ValidationDisputeDatumV1Data & {
-    readonly data: NonNullable<ValidationDisputeDatumV1Data["data"]>;
+  return datum as ValidationDisputeDatumData & {
+    readonly data: NonNullable<ValidationDisputeDatumData["data"]>;
   };
 };
 
@@ -2689,7 +2688,7 @@ export const submitValidationDisputeReveal = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly role: "operator" | "challenger";
-  readonly proof: MidgardValidationTraceProofV1;
+  readonly proof: MidgardValidationTraceProof;
   /** The mandatory published V1 validation-trace game script. */
   readonly gameReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
@@ -2752,7 +2751,7 @@ export const submitValidationDisputeReveal = async ({
         dispute: validationDisputeDataFromCore(nextDispute),
       },
     },
-    ValidationDisputeDatumV1,
+    ValidationDisputeDatum,
   );
   const proofData = validationTraceProofDataFromCore(proof);
   // Round-trip before construction so non-canonical or out-of-range proof
@@ -2761,7 +2760,7 @@ export const submitValidationDisputeReveal = async ({
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const gameScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const gameScriptCarriage = witnessSpendingValidatorCarriage({
     script: disputeContract.spendingScript,
     referenceUtxo: gameReferenceScriptUtxo,
     label: "validation-dispute game validator",
@@ -2897,11 +2896,11 @@ export const submitValidationDisputeEnterTimeout = async ({
       "Validation-dispute timeout does not award the fraud proof to the challenger",
     );
   }
-  const outputDatum = Data.to(inputDatum, ValidationDisputeDatumV1);
+  const outputDatum = Data.to(inputDatum, ValidationDisputeDatum);
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const gameScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const gameScriptCarriage = witnessSpendingValidatorCarriage({
     script: gameContract.spendingScript,
     referenceUtxo: gameReferenceScriptUtxo,
     label: "validation-dispute game validator",
@@ -2992,7 +2991,7 @@ export const submitValidationDisputeTimeout = async ({
   /** The mandatory published V1 validation-trace timeout script. */
   readonly timeoutReferenceScriptUtxo?: UTxO;
   /** Required published shared minting witnesses for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
   readonly awaitConfirmation?: boolean;
@@ -3048,17 +3047,17 @@ export const submitValidationDisputeTimeout = async ({
   let computationThreadMintRedeemerIndex: bigint | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const timeoutScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const timeoutScriptCarriage = witnessSpendingValidatorCarriage({
     script: disputeContract.spendingScript,
     referenceUtxo: timeoutReferenceScriptUtxo,
     label: "validation-dispute timeout validator",
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: "validation-dispute timeout computation-thread mint",
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "validation-dispute timeout fraud-proof mint",
@@ -3169,9 +3168,9 @@ const makePrepareResolutionRedeemer = ({
   readonly outputDatum: string;
   readonly threadUnit: string;
   readonly resolverIndex: bigint;
-  readonly preState: ValidationMachineStateV1;
-  readonly operatorPost: ValidationTraceProofV1;
-  readonly challengerPost: ValidationTraceProofV1;
+  readonly preState: ValidationMachineState;
+  readonly operatorPost: ValidationTraceProof;
+  readonly challengerPost: ValidationTraceProof;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -3212,7 +3211,7 @@ const makePrepareResolutionRedeemer = ({
           },
         ],
       },
-      ValidationBoundarySpendRedeemerV1,
+      ValidationBoundarySpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
 
@@ -3283,11 +3282,11 @@ export const submitValidationDisputeEnterResolution = async ({
       `Validation-dispute resolution handoff requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
     );
   }
-  const outputDatum = Data.to(inputDatum, ValidationDisputeDatumV1);
+  const outputDatum = Data.to(inputDatum, ValidationDisputeDatum);
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const gameScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const gameScriptCarriage = witnessSpendingValidatorCarriage({
     script: gameContract.spendingScript,
     referenceUtxo: gameReferenceScriptUtxo,
     label: "validation-dispute game validator",
@@ -3347,7 +3346,7 @@ export const submitValidationDisputeEnterResolution = async ({
   };
 };
 
-const VALIDATION_RESOLVER_PHASES_V1 = [
+const VALIDATION_RESOLVER_PHASES = [
   "CanonicalDecode",
   "CompactBinding",
   "StaticLedgerRules",
@@ -3362,13 +3361,13 @@ const VALIDATION_RESOLVER_PHASES_V1 = [
   "Cek",
   "ValueAndMint",
   "LedgerDelta",
-] as const satisfies readonly ValidationMachineStateV1["phase"][];
+] as const satisfies readonly ValidationMachineState["phase"][];
 
-export const validationResolverIndexV1 = (
-  phase: ValidationMachineStateV1["phase"],
+export const validationResolverIndex = (
+  phase: ValidationMachineState["phase"],
 ): number => {
-  const resolverIndex = VALIDATION_RESOLVER_PHASES_V1.indexOf(
-    phase as (typeof VALIDATION_RESOLVER_PHASES_V1)[number],
+  const resolverIndex = VALIDATION_RESOLVER_PHASES.indexOf(
+    phase as (typeof VALIDATION_RESOLVER_PHASES)[number],
   );
   if (resolverIndex < 0) {
     throw new Error(`Validation phase ${phase} has no one-step resolver`);
@@ -3381,12 +3380,12 @@ export const validationResolverIndexV1 = (
  * validator since R5 item 1 split the cek and ValueAndMint direct resolvers,
  * so the prepare-resolver deployment order is the resolver order itself.
  */
-const validationPrepareResolverDeploymentIndexV1 = (
+const validationPrepareResolverDeploymentIndex = (
   resolverIndex: number,
 ): number => {
   if (
     resolverIndex >= 0 &&
-    resolverIndex < VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
+    resolverIndex < VALIDATION_SEMANTIC_RESOLVER_COUNTS.length
   ) {
     return resolverIndex;
   }
@@ -3425,9 +3424,9 @@ export const submitValidationDisputePrepareResolution = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly preState: ValidationMachineStateV1;
-  readonly operatorPost: ValidationTraceProofV1;
-  readonly challengerPost: ValidationTraceProofV1;
+  readonly preState: ValidationMachineState;
+  readonly operatorPost: ValidationTraceProof;
+  readonly challengerPost: ValidationTraceProof;
   /** The mandatory published V1 validation-trace boundary script. */
   readonly boundaryReferenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
@@ -3469,7 +3468,7 @@ export const submitValidationDisputePrepareResolution = async ({
       "Validation dispute must finish bisection before boundary preparation",
     );
   }
-  const resolverIndex = validationResolverIndexV1(preState.phase);
+  const resolverIndex = validationResolverIndex(preState.phase);
   const resolverContract =
     contracts.validationTraceDispute.resolvers[resolverIndex];
   if (resolverContract === undefined) {
@@ -3495,12 +3494,12 @@ export const submitValidationDisputePrepareResolution = async ({
         challenger_successor_hash: challengerPost.state_hash,
       },
     },
-    ValidationResolutionDatumV1,
+    ValidationResolutionDatum,
   );
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const boundaryScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const boundaryScriptCarriage = witnessSpendingValidatorCarriage({
     script: boundaryContract.spendingScript,
     referenceUtxo: boundaryReferenceScriptUtxo,
     label: "validation-dispute boundary validator",
@@ -3565,65 +3564,62 @@ export const submitValidationDisputePrepareResolution = async ({
 
 const requireResolutionDatum = (
   threadUtxo: UTxO,
-): ValidationResolutionDatumV1Data & {
-  readonly data: NonNullable<ValidationResolutionDatumV1Data["data"]>;
+): ValidationResolutionDatumData & {
+  readonly data: NonNullable<ValidationResolutionDatumData["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
       `Validation resolution UTxO ${outRefLabel(threadUtxo)} is missing datum`,
     );
   }
-  const datum = Data.from(threadUtxo.datum, ValidationResolutionDatumV1);
+  const datum = Data.from(threadUtxo.datum, ValidationResolutionDatum);
   if (datum.data === null) {
     throw new Error("Validation resolution requires initialized V1 state");
   }
-  return datum as ValidationResolutionDatumV1Data & {
-    readonly data: NonNullable<ValidationResolutionDatumV1Data["data"]>;
+  return datum as ValidationResolutionDatumData & {
+    readonly data: NonNullable<ValidationResolutionDatumData["data"]>;
   };
 };
 
 const requirePreparedResolutionDatum = (
   threadUtxo: UTxO,
-): PreparedValidationResolutionDatumV1Data & {
-  readonly data: NonNullable<PreparedValidationResolutionDatumV1Data["data"]>;
+): PreparedValidationResolutionDatumData & {
+  readonly data: NonNullable<PreparedValidationResolutionDatumData["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
       `Prepared validation resolution UTxO ${outRefLabel(threadUtxo)} is missing datum`,
     );
   }
-  const datum = Data.from(
-    threadUtxo.datum,
-    PreparedValidationResolutionDatumV1,
-  );
+  const datum = Data.from(threadUtxo.datum, PreparedValidationResolutionDatum);
   if (datum.data === null) {
     throw new Error(
       "Prepared validation resolution requires initialized V1 state",
     );
   }
-  return datum as PreparedValidationResolutionDatumV1Data & {
-    readonly data: NonNullable<PreparedValidationResolutionDatumV1Data["data"]>;
+  return datum as PreparedValidationResolutionDatumData & {
+    readonly data: NonNullable<PreparedValidationResolutionDatumData["data"]>;
   };
 };
 
 const requireWinningResolutionDatum = (
   threadUtxo: UTxO,
-): WinningValidationResolutionDatumV1Data & {
-  readonly data: NonNullable<WinningValidationResolutionDatumV1Data["data"]>;
+): WinningValidationResolutionDatumData & {
+  readonly data: NonNullable<WinningValidationResolutionDatumData["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
       `Winning validation resolution UTxO ${outRefLabel(threadUtxo)} is missing datum`,
     );
   }
-  const datum = Data.from(threadUtxo.datum, WinningValidationResolutionDatumV1);
+  const datum = Data.from(threadUtxo.datum, WinningValidationResolutionDatum);
   if (datum.data === null || datum.data.version !== 1n) {
     throw new Error(
       "Winning validation resolution requires canonical V1 state",
     );
   }
-  return datum as WinningValidationResolutionDatumV1Data & {
-    readonly data: NonNullable<WinningValidationResolutionDatumV1Data["data"]>;
+  return datum as WinningValidationResolutionDatumData & {
+    readonly data: NonNullable<WinningValidationResolutionDatumData["data"]>;
   };
 };
 
@@ -3644,8 +3640,8 @@ const makePrepareSelectedRedeemer = ({
   readonly threadUnit: string;
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
-  readonly transition: ValidationOneStepWitnessV1;
-  readonly auxiliary: ValidationAuxiliaryWitnessV1Data;
+  readonly transition: ValidationOneStepWitness;
+  readonly auxiliary: ValidationAuxiliaryWitnessData;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -3685,15 +3681,15 @@ const makePrepareSelectedRedeemer = ({
     return resolverIndex === 0
       ? encodeWithRuntimeSchema(
           { Continue: [base] },
-          validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema,
+          validationCanonicalDecodePrepareSelectedSpendRedeemerRuntimeSchema,
         )
       : encodeWithRuntimeSchema(
           { Continue: [{ ...base, auxiliary }] },
-          validationPrepareSelectedSpendRedeemerV1RuntimeSchema,
+          validationPrepareSelectedSpendRedeemerRuntimeSchema,
         );
   }) satisfies BuildTxWithRedeemer;
 
-const semanticActionFieldsV1 = ({
+const semanticActionFields = ({
   resolverIndex,
   semanticResolverIndex,
   inputIndex,
@@ -3710,7 +3706,7 @@ const semanticActionFieldsV1 = ({
   readonly auxiliary: Constr<PlutusDataValue>;
   /**
    * The CEK execution-selection material route
-   * (`validationCekMaterialRouteDataV1`); required by, and only by, resolver
+   * (`validationCekMaterialRouteData`); required by, and only by, resolver
    * 11 semantic resolver 1.
    */
   readonly materialRoute?: PlutusDataValue;
@@ -3734,18 +3730,15 @@ const semanticActionFieldsV1 = ({
     // (`VerifyCoreStep { …, step }`).
     if (
       semanticResolverIndex === 0 &&
-      hasValidationAuxiliaryShapeV1(
-        auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.none,
-      )
+      hasValidationAuxiliaryShape(auxiliary, VALIDATION_AUXILIARY_SHAPES.none)
     ) {
       return base;
     }
     if (
       semanticResolverIndex === 1 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionScan,
+        VALIDATION_AUXILIARY_SHAPES.nativeExecutionScan,
       )
     ) {
       if (materialRoute === undefined) {
@@ -3757,17 +3750,17 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 2 &&
-      VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES_V1.some((shape) =>
-        hasValidationAuxiliaryShapeV1(auxiliary, shape),
+      VALIDATION_CEK_CONTEXT_STEP_AUXILIARY_SHAPES.some((shape) =>
+        hasValidationAuxiliaryShape(auxiliary, shape),
       )
     ) {
       return [...base, auxiliary];
     }
     if (
       semanticResolverIndex === 3 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.cekCoreStep,
+        VALIDATION_AUXILIARY_SHAPES.cekCoreStep,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -3782,10 +3775,10 @@ const semanticActionFieldsV1 = ({
     // witness's `output_index` on the output-descriptor and output-asset
     // actions, which is a field rename on the wire-identical position).
     const expected =
-      VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1[semanticResolverIndex];
+      VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES[semanticResolverIndex];
     if (
       expected !== undefined &&
-      hasValidationAuxiliaryShapeV1(auxiliary, expected)
+      hasValidationAuxiliaryShape(auxiliary, expected)
     ) {
       return expected[0] === 0 ? base : [...base, ...auxiliary.fields];
     }
@@ -3796,10 +3789,7 @@ const semanticActionFieldsV1 = ({
   if (resolverIndex === 0) {
     if (
       semanticResolverIndex === 0 &&
-      hasValidationAuxiliaryShapeV1(
-        auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.none,
-      )
+      hasValidationAuxiliaryShape(auxiliary, VALIDATION_AUXILIARY_SHAPES.none)
     ) {
       return base;
     }
@@ -3810,9 +3800,9 @@ const semanticActionFieldsV1 = ({
     // ever have ridden, so a chunk here is now a refusal, not a route.
     if (
       semanticResolverIndex === 1 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+        VALIDATION_AUXILIARY_SHAPES.transactionFieldItem,
       )
     ) {
       return base;
@@ -3834,24 +3824,24 @@ const semanticActionFieldsV1 = ({
     }
     if (
       (semanticResolverIndex === 0 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOperation,
+          VALIDATION_AUXILIARY_SHAPES.ledgerDeltaOperation,
         )) ||
       (semanticResolverIndex === 1 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaReplay,
+          VALIDATION_AUXILIARY_SHAPES.ledgerDeltaReplay,
         )) ||
       (semanticResolverIndex === 3 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOutput,
+          VALIDATION_AUXILIARY_SHAPES.ledgerDeltaOutput,
         )) ||
       (semanticResolverIndex === 5 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaProofFrame,
+          VALIDATION_AUXILIARY_SHAPES.ledgerDeltaProofFrame,
         ))
     ) {
       return [...base, ...auxiliary.fields];
@@ -3870,24 +3860,24 @@ const semanticActionFieldsV1 = ({
     }
     if (
       (semanticResolverIndex === 2 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerMembership,
+          VALIDATION_AUXILIARY_SHAPES.scheduledLedgerMembership,
         )) ||
       (semanticResolverIndex === 3 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep,
+          VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep,
         )) ||
       (semanticResolverIndex === 4 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize,
+          VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize,
         )) ||
       (semanticResolverIndex === 5 &&
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerNonMembership,
+          VALIDATION_AUXILIARY_SHAPES.scheduledLedgerNonMembership,
         ))
     ) {
       return [...base, ...auxiliary.fields];
@@ -3902,27 +3892,27 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 1 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofBegin,
+        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofBegin,
       )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 2 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep,
+        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofStep,
       )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 3 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize,
+        VALIDATION_AUXILIARY_SHAPES.ledgerOutputProofFinalize,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -3936,9 +3926,9 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 5 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+        VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -3952,9 +3942,9 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 7 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceHashBlock,
+        VALIDATION_AUXILIARY_SHAPES.scriptSourceHashBlock,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -3968,18 +3958,18 @@ const semanticActionFieldsV1 = ({
     }
     if (
       (semanticResolverIndex === 10 || semanticResolverIndex === 12) &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan,
+        VALIDATION_AUXILIARY_SHAPES.scriptSourceScan,
       )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 11 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan,
+        VALIDATION_AUXILIARY_SHAPES.scriptSourceScan,
       )
     ) {
       return [
@@ -4009,13 +3999,13 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 15 &&
-      (hasValidationAuxiliaryShapeV1(
+      (hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionRedeemerItemBegin,
+        VALIDATION_AUXILIARY_SHAPES.transactionRedeemerItemBegin,
       ) ||
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+          VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
         ))
     ) {
       return [...base, auxiliary];
@@ -4029,9 +4019,9 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 17 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan,
+        VALIDATION_AUXILIARY_SHAPES.scriptSourceScan,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -4045,13 +4035,13 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 19 &&
-      (hasValidationAuxiliaryShapeV1(
+      (hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+        VALIDATION_AUXILIARY_SHAPES.redeemerScanBegin,
       ) ||
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+          VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
         ))
     ) {
       return [...base, auxiliary];
@@ -4065,13 +4055,13 @@ const semanticActionFieldsV1 = ({
     }
     if (
       (semanticResolverIndex === 21 || semanticResolverIndex === 22) &&
-      (hasValidationAuxiliaryShapeV1(
+      (hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+        VALIDATION_AUXILIARY_SHAPES.redeemerScanBegin,
       ) ||
-        hasValidationAuxiliaryShapeV1(
+        hasValidationAuxiliaryShape(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+          VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
         ))
     ) {
       return [...base, auxiliary];
@@ -4085,27 +4075,27 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 24 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan,
+        VALIDATION_AUXILIARY_SHAPES.scriptPurposeScan,
       )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 25 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+        VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk,
       )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 26 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan,
+        VALIDATION_AUXILIARY_SHAPES.scriptPurposeScan,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -4130,9 +4120,9 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionDescriptor,
+        VALIDATION_AUXILIARY_SHAPES.nativeExecutionDescriptor,
       )
     ) {
       if (semanticResolverIndex === 1) {
@@ -4182,25 +4172,22 @@ const semanticActionFieldsV1 = ({
     );
   }
   if (
-    hasValidationAuxiliaryShapeV1(
-      auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.none,
-    )
+    hasValidationAuxiliaryShape(auxiliary, VALIDATION_AUXILIARY_SHAPES.none)
   ) {
     return base;
   }
   if (
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+      VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk,
     )
   ) {
     return [...base, ...auxiliary.fields];
   }
   if (
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.requiredSignerItem,
+      VALIDATION_AUXILIARY_SHAPES.requiredSignerItem,
     )
   ) {
     return [...base, ...auxiliary.fields];
@@ -4209,9 +4196,9 @@ const semanticActionFieldsV1 = ({
     resolverIndex === 5 &&
     semanticResolverIndex >= 2 &&
     semanticResolverIndex <= 7 &&
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken,
+      VALIDATION_AUXILIARY_SHAPES.nativeScriptToken,
     )
   ) {
     return [...base, auxiliary.fields[0]!, auxiliary.fields[1]!];
@@ -4220,9 +4207,9 @@ const semanticActionFieldsV1 = ({
     resolverIndex === 5 &&
     semanticResolverIndex >= 8 &&
     semanticResolverIndex <= 12 &&
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken,
+      VALIDATION_AUXILIARY_SHAPES.nativeScriptToken,
     )
   ) {
     return [...base, ...auxiliary.fields];
@@ -4230,9 +4217,9 @@ const semanticActionFieldsV1 = ({
   if (
     resolverIndex === 5 &&
     semanticResolverIndex === 13 &&
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptFrame,
+      VALIDATION_AUXILIARY_SHAPES.nativeScriptFrame,
     )
   ) {
     return [...base, auxiliary.fields[0]!];
@@ -4240,18 +4227,15 @@ const semanticActionFieldsV1 = ({
   if (resolverIndex === 6) {
     if (
       semanticResolverIndex === 0 &&
-      hasValidationAuxiliaryShapeV1(
-        auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.none,
-      )
+      hasValidationAuxiliaryShape(auxiliary, VALIDATION_AUXILIARY_SHAPES.none)
     ) {
       return base;
     }
     if (
       semanticResolverIndex === 1 &&
-      hasValidationAuxiliaryShapeV1(
+      hasValidationAuxiliaryShape(
         auxiliary,
-        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+        VALIDATION_AUXILIARY_SHAPES.transactionFieldChunk,
       )
     ) {
       return [...base, ...auxiliary.fields];
@@ -4262,17 +4246,17 @@ const semanticActionFieldsV1 = ({
   );
 };
 
-export const encodeValidationSemanticResolutionRedeemerV1 = ({
+export const encodeValidationSemanticResolutionRedeemer = ({
   oneStepArgument,
   inputIndex,
   outputIndex,
   materialRoute,
 }: {
-  readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
   /** Required by, and only by, the CEK execution-selection resolver (11/1). */
-  readonly materialRoute?: ValidationCekMaterialRouteV1;
+  readonly materialRoute?: ValidationCekMaterialRoute;
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
@@ -4281,10 +4265,10 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
   }
   // Option B (#620): the item-semantic `Verify` is transition-only — no
   // carriage field and no retired `VerifyReference` arm — so the CanonicalDecode
-  // complete item flows through the generic `semanticActionFieldsV1` shape like
+  // complete item flows through the generic `semanticActionFields` shape like
   // every other semantic action.
-  const staged = requireStagedOneStepArgumentV1(oneStepArgument);
-  const fields = semanticActionFieldsV1({
+  const staged = requireStagedOneStepArgument(oneStepArgument);
+  const fields = semanticActionFields({
     resolverIndex: oneStepArgument.resolverIndex,
     semanticResolverIndex: staged.semanticResolverIndex,
     inputIndex,
@@ -4293,7 +4277,7 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
     auxiliary: staged.auxiliary,
     ...(materialRoute === undefined
       ? {}
-      : { materialRoute: validationCekMaterialRouteDataV1(materialRoute) }),
+      : { materialRoute: validationCekMaterialRouteData(materialRoute) }),
   });
   return Buffer.from(
     Data.to(new Constr(1, [new Constr(0, [...fields])])),
@@ -4336,7 +4320,7 @@ const makeSemanticResolutionRedeemer = ({
   /** Builds the CEK material route once the reference-input indices are known. */
   readonly materialRoute?: (
     layout: SemanticResolutionLayout,
-  ) => ValidationCekMaterialRouteV1;
+  ) => ValidationCekMaterialRoute;
   readonly onLayout: (layout: SemanticResolutionLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -4372,7 +4356,7 @@ const makeSemanticResolutionRedeemer = ({
     // Option B (#620): the item-semantic `Verify` is transition-only, so the
     // CanonicalDecode complete item takes the generic shape below and the
     // retired proof-item reference route has no arm to target.
-    const fields = semanticActionFieldsV1({
+    const fields = semanticActionFields({
       resolverIndex,
       semanticResolverIndex,
       inputIndex: layout.inputIndex,
@@ -4382,7 +4366,7 @@ const makeSemanticResolutionRedeemer = ({
       ...(materialRoute === undefined
         ? {}
         : {
-            materialRoute: validationCekMaterialRouteDataV1(
+            materialRoute: validationCekMaterialRouteData(
               materialRoute(layout),
             ),
           }),
@@ -4534,7 +4518,7 @@ type ValidationFinalizationTransactionParams = {
    */
   readonly spendingScriptReferenceUtxo?: UTxO;
   /** Required published shared minting witnesses for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly spendLabel: string;
   readonly encodeSpendRedeemer: (
     layout: ValidationFinalizingSpendLayout,
@@ -4581,17 +4565,17 @@ const prepareValidationFinalizationTransaction = async ({
   if (new Set(materialOutRefs).size !== materialOutRefs.length) {
     throw new Error(`${spendLabel} CEK material references must be unique`);
   }
-  const spendingScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const spendingScriptCarriage = witnessSpendingValidatorCarriage({
     script: spendingScript.spendingScript,
     referenceUtxo: spendingScriptReferenceUtxo,
     label: `${spendLabel} spending validator`,
   });
-  const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
+  const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
     label: `${spendLabel} computation-thread mint`,
   });
-  const fraudProofMintCarriage = witnessMintingPolicyCarriageV1({
+  const fraudProofMintCarriage = witnessMintingPolicyCarriage({
     script: contracts.fraudProof.mintingScript,
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${spendLabel} fraud-proof mint`,
@@ -4753,7 +4737,7 @@ export const submitValidationDisputePrepareSelected = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   /** Explicit prepare-resolver reference; otherwise resolved from deployment info. */
   readonly referenceScriptUtxo?: UTxO;
   readonly validityRange?: ValidationDisputeValidityRange;
@@ -4786,7 +4770,7 @@ export const submitValidationDisputePrepareSelected = async ({
       `Validation semantic preparation requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
     );
   }
-  const resolverIndex = validationResolverIndexV1(
+  const resolverIndex = validationResolverIndex(
     inputDatum.data.pre_state.phase,
   );
   if (resolverIndex !== oneStepArgument.resolverIndex) {
@@ -4794,13 +4778,13 @@ export const submitValidationDisputePrepareSelected = async ({
       "Validation one-step argument does not match the authenticated phase resolver",
     );
   }
-  const staged = requireStagedOneStepArgumentV1(oneStepArgument);
+  const staged = requireStagedOneStepArgument(oneStepArgument);
   const isPrepareCompleteCanonicalItem =
     oneStepArgument.resolverIndex === 0 &&
     staged.semanticResolverIndex === 1 &&
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       staged.auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+      VALIDATION_AUXILIARY_SHAPES.transactionFieldItem,
     );
   // Option B (#620): the prepare-selected redeemer never carries the auxiliary
   // — the canonical-decode validator computes the transition-only evidence hash
@@ -4809,7 +4793,7 @@ export const submitValidationDisputePrepareSelected = async ({
   // relieve.
   const prepareContract =
     contracts.validationTraceDispute.prepareResolvers[
-      validationPrepareResolverDeploymentIndexV1(resolverIndex)
+      validationPrepareResolverDeploymentIndex(resolverIndex)
     ];
   const semanticContract =
     contracts.validationTraceDispute.semanticResolvers[
@@ -4846,12 +4830,12 @@ export const submitValidationDisputePrepareSelected = async ({
         evidence_hash: staged.evidenceHash,
       },
     },
-    PreparedValidationResolutionDatumV1,
+    PreparedValidationResolutionDatum,
   );
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const prepareScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const prepareScriptCarriage = witnessSpendingValidatorCarriage({
     script: prepareContract.spendingScript,
     referenceUtxo: prepareReferenceScriptUtxo,
     label: "validation-dispute prepare-resolver validator",
@@ -4913,7 +4897,7 @@ export const submitValidationDisputePrepareSelected = async ({
   };
 };
 
-export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
+export type ValidationCekProgramMaterialReferenceOutRefs = {
   /** Exact immutable complete-material datum outref. */
   readonly singlePublication?: string;
   /** Exact entry datums in strict material-root order. */
@@ -4925,7 +4909,7 @@ export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
  * routes. Keys mirror the deployed validation-dispute stage names; every
  * stage selected by a route must have a published entry.
  */
-export type ValidationDisputeStageReferenceScriptUtxosV1 = {
+export type ValidationDisputeStageReferenceScriptUtxos = {
   readonly scriptSourcesEnvelope?: UTxO;
   readonly scriptSourcesTraversalNormalizer?: UTxO;
   readonly scriptSourcesOuterNormalizer?: UTxO;
@@ -4937,7 +4921,7 @@ export type ValidationDisputeStageReferenceScriptUtxosV1 = {
   readonly canonicalDecodeItemSettlement?: UTxO;
 };
 
-export type ValidationCekRejectedLocalRouteAttemptV1 = {
+export type ValidationCekRejectedLocalRouteAttempt = {
   readonly route:
     | "directProof"
     | "completeSinglePublicationReference"
@@ -4945,11 +4929,11 @@ export type ValidationCekRejectedLocalRouteAttemptV1 = {
   readonly failure: string;
 };
 
-const errorMessageV1 = (cause: unknown): string =>
+const errorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
-const isDeterministicLocalCekFitFailureV1 = (cause: unknown): boolean => {
-  const message = errorMessageV1(cause);
+const isDeterministicLocalCekFitFailure = (cause: unknown): boolean => {
+  const message = errorMessage(cause);
   return /(?:complete signed L1 proof transaction must be no larger|maximum transaction size|maxTxSize|transaction.{0,24}(?:too large|too big)|maxValueSize|maximum value size|value.{0,24}(?:too large|too big)|maximum execution|execution (?:memory|cpu|units).{0,24}(?:exceed|too (?:large|big))|ExUnitsTooBig)/iu.test(
     message,
   );
@@ -5051,13 +5035,13 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
    * every local route attempt refused pre-sign for a deterministic fit
    * failure before the selected route fit.
    */
-  readonly cekRoute?: ValidationCekSelectedRouteV1;
+  readonly cekRoute?: ValidationCekSelectedRoute;
   readonly cekMaterialReferenceInputOutRefs?: readonly string[];
   readonly cekMaterialReferenceInputIndices?: readonly number[];
-  readonly cekRejectedLocalRouteAttempts?: readonly ValidationCekRejectedLocalRouteAttemptV1[];
+  readonly cekRejectedLocalRouteAttempts?: readonly ValidationCekRejectedLocalRouteAttempt[];
 };
 
-export type ValidationCekSelectedRouteV1 =
+export type ValidationCekSelectedRoute =
   | "noCekMaterial"
   | "directProof"
   | "completeSinglePublicationReference"
@@ -5080,7 +5064,7 @@ const exactSafeCborInteger = (value: unknown, label: string): number => {
   return Number(integer);
 };
 
-const SCRIPT_SOURCES_REDEEMER_DOMAINS_V1 = {
+const SCRIPT_SOURCES_REDEEMER_DOMAINS = {
   envelope: Buffer.from("MidgardScriptSourcesRedeemerEnvelopeV1", "ascii"),
   traversal: Buffer.from("MidgardScriptSourcesTraversalNormalizedV1", "ascii"),
   outer: Buffer.from("MidgardScriptSourcesOuterNormalizedV1", "ascii"),
@@ -5118,7 +5102,7 @@ const SCRIPT_SOURCES_REDEEMER_DOMAINS_V1 = {
 const plutusDataCbor = (value: PlutusDataValue): Buffer =>
   Buffer.from(Data.to(value as never), "hex");
 
-const exactCborBigIntV1 = (
+const exactCborBigInt = (
   value: PlutusDataValue | undefined,
   label: string,
 ): bigint => {
@@ -5128,12 +5112,12 @@ const exactCborBigIntV1 = (
   return value;
 };
 
-const hashDomainDataV1 = (domain: Uint8Array, value: PlutusDataValue): string =>
+const hashDomainData = (domain: Uint8Array, value: PlutusDataValue): string =>
   computeHash32(
     Buffer.concat([Buffer.from(domain), plutusDataCbor(value)]),
   ).toString("hex");
 
-const requireOptionDataV1 = (
+const requireOptionData = (
   value: PlutusDataValue,
   label: string,
 ): PlutusDataValue | null => {
@@ -5145,25 +5129,25 @@ const requireOptionDataV1 = (
   throw new Error(`${label} must be an exact Some or None`);
 };
 
-const dataSummaryCoreV1 = (
+const dataSummaryCore = (
   value: PlutusDataValue,
   label: string,
-): MidgardCekDataSummaryV1 => {
+): MidgardCekDataSummary => {
   const summary = requireConstr({ value, index: 0, fields: 3, label });
   if (typeof summary.fields[0] !== "string") {
     throw new Error(`${label}.root must be bytes`);
   }
   return {
     root: Buffer.from(summary.fields[0], "hex"),
-    cborLength: exactCborBigIntV1(summary.fields[1], `${label}.cbor_length`),
-    memory: exactCborBigIntV1(summary.fields[2], `${label}.memory`),
+    cborLength: exactCborBigInt(summary.fields[1], `${label}.cbor_length`),
+    memory: exactCborBigInt(summary.fields[2], `${label}.memory`),
   };
 };
 
-const dataFrameCoreV1 = (
+const dataFrameCore = (
   value: PlutusDataValue,
   label: string,
-): MidgardCekDataFrameV1 => {
+): MidgardCekDataFrame => {
   const frame = requireConstr({ value, index: 0, fields: 11, label });
   const bytes = (index: number, field: string): Buffer => {
     const selected = frame.fields[index];
@@ -5173,7 +5157,7 @@ const dataFrameCoreV1 = (
     return Buffer.from(selected, "hex");
   };
   const integer = (index: number, field: string): bigint =>
-    exactCborBigIntV1(frame.fields[index], `${label}.${field}`);
+    exactCborBigInt(frame.fields[index], `${label}.${field}`);
   const frontier = frame.fields[8];
   if (!Array.isArray(frontier)) {
     throw new Error(`${label}.child_peaks must be a frontier`);
@@ -5216,12 +5200,12 @@ const dataFrameCoreV1 = (
     foldCursor: exactSafeCborInteger(frame.fields[9], `${label}.fold_cursor`),
     sequence: {
       root: Buffer.from(sequence.fields[0], "hex"),
-      length: exactCborBigIntV1(sequence.fields[1], `${label}.sequence.length`),
-      payloadCborLength: exactCborBigIntV1(
+      length: exactCborBigInt(sequence.fields[1], `${label}.sequence.length`),
+      payloadCborLength: exactCborBigInt(
         sequence.fields[2],
         `${label}.sequence.payload_cbor_length`,
       ),
-      memory: exactCborBigIntV1(sequence.fields[3], `${label}.sequence.memory`),
+      memory: exactCborBigInt(sequence.fields[3], `${label}.sequence.memory`),
     },
   } as const;
   const kind = exactSafeCborInteger(frame.fields[0], `${label}.kind`);
@@ -5245,13 +5229,13 @@ const dataFrameCoreV1 = (
   throw new Error(`${label}.kind is not a supported data frame`);
 };
 
-const stageOneActionCoreV1 = ({
+const stageOneActionCore = ({
   value,
   family,
 }: {
   readonly value: PlutusDataValue;
   readonly family: number;
-}): MidgardCekDataTraverseActionV1 => {
+}): MidgardCekDataTraverseAction => {
   const action = requireConstr({
     value,
     index: family === 0 ? 7 : 8,
@@ -5271,16 +5255,13 @@ const stageOneActionCoreV1 = ({
     }
     return {
       kind: "foldMap",
-      frame: dataFrameCoreV1(action.fields[0]!, "ScriptSources FoldMap frame"),
+      frame: dataFrameCore(action.fields[0]!, "ScriptSources FoldMap frame"),
       pairIndex: exactSafeCborInteger(
         action.fields[1],
         "ScriptSources FoldMap pair index",
       ),
-      key: dataSummaryCoreV1(action.fields[2]!, "ScriptSources FoldMap key"),
-      value: dataSummaryCoreV1(
-        action.fields[3]!,
-        "ScriptSources FoldMap value",
-      ),
+      key: dataSummaryCore(action.fields[2]!, "ScriptSources FoldMap key"),
+      value: dataSummaryCore(action.fields[3]!, "ScriptSources FoldMap value"),
       keySiblings: keySiblings.map((sibling) =>
         Buffer.from(sibling as string, "hex"),
       ),
@@ -5289,26 +5270,26 @@ const stageOneActionCoreV1 = ({
       ),
     };
   }
-  const parent = requireOptionDataV1(
+  const parent = requireOptionData(
     action.fields[1]!,
     "ScriptSources FinalizeFrame parent",
   );
   return {
     kind: "finalizeFrame",
-    frame: dataFrameCoreV1(
+    frame: dataFrameCore(
       action.fields[0]!,
       "ScriptSources FinalizeFrame frame",
     ),
     parent:
       parent === null
         ? null
-        : dataFrameCoreV1(parent, "ScriptSources FinalizeFrame parent frame"),
+        : dataFrameCore(parent, "ScriptSources FinalizeFrame parent frame"),
   };
 };
 
-const stageOneControlCoreV1 = (
+const stageOneControlCore = (
   value: PlutusDataValue,
-): MidgardRedeemerItemProofControlV1 => {
+): MidgardRedeemerItemProofControl => {
   const control = requireConstr({
     value,
     index: 0,
@@ -5324,7 +5305,7 @@ const stageOneControlCoreV1 = (
     }
     return Buffer.from(selected, "hex");
   };
-  const traversalData = requireOptionDataV1(
+  const traversalData = requireOptionData(
     control.fields[15]!,
     "ScriptSources item traversal",
   );
@@ -5343,7 +5324,7 @@ const stageOneControlCoreV1 = (
     [8, "bytes"],
   ] as const) {
     if (
-      requireOptionDataV1(
+      requireOptionData(
         traversal.fields[index]!,
         `ScriptSources traversal ${label}`,
       ) !== null
@@ -5353,28 +5334,28 @@ const stageOneControlCoreV1 = (
       );
     }
   }
-  const resultData = requireOptionDataV1(
+  const resultData = requireOptionData(
     traversal.fields[9]!,
     "ScriptSources traversal result",
   );
-  const traversalCore: MidgardCekDataTraverseControlV1 = {
-    version: integerFromDataV1(
+  const traversalCore: MidgardCekDataTraverseControl = {
+    version: integerFromData(
       traversal.fields[0],
       "ScriptSources traversal version",
     ) as 1,
-    stage: integerFromDataV1(
+    stage: integerFromData(
       traversal.fields[1],
       "ScriptSources traversal stage",
-    ) as MidgardCekDataTraverseControlV1["stage"],
-    sourceStart: integerFromDataV1(
+    ) as MidgardCekDataTraverseControl["stage"],
+    sourceStart: integerFromData(
       traversal.fields[2],
       "ScriptSources traversal source start",
     ),
-    sourceLength: integerFromDataV1(
+    sourceLength: integerFromData(
       traversal.fields[3],
       "ScriptSources traversal source length",
     ),
-    offset: integerFromDataV1(
+    offset: integerFromData(
       traversal.fields[4],
       "ScriptSources traversal offset",
     ),
@@ -5389,12 +5370,12 @@ const stageOneControlCoreV1 = (
     result:
       resultData === null
         ? null
-        : dataSummaryCoreV1(resultData, "ScriptSources traversal result"),
+        : dataSummaryCore(resultData, "ScriptSources traversal result"),
   };
   return {
     version: integer(0, "version") as 1,
-    mode: integer(1, "mode") as MidgardRedeemerItemProofControlV1["mode"],
-    stage: integer(2, "stage") as MidgardRedeemerItemProofControlV1["stage"],
+    mode: integer(1, "mode") as MidgardRedeemerItemProofControl["mode"],
+    stage: integer(2, "stage") as MidgardRedeemerItemProofControl["stage"],
     itemIndex: integer(3, "index"),
     itemCount: integer(4, "count"),
     totalLength: integer(5, "total length"),
@@ -5405,11 +5386,11 @@ const stageOneControlCoreV1 = (
     pointerIndex: integer(10, "pointer index"),
     dataOffset: integer(11, "data offset"),
     dataLength: integer(12, "data length"),
-    executionMemory: exactCborBigIntV1(
+    executionMemory: exactCborBigInt(
       control.fields[13],
       "ScriptSources item execution memory",
     ),
-    executionSteps: exactCborBigIntV1(
+    executionSteps: exactCborBigInt(
       control.fields[14],
       "ScriptSources item execution steps",
     ),
@@ -5417,12 +5398,12 @@ const stageOneControlCoreV1 = (
   };
 };
 
-const integerFromDataV1 = (
+const integerFromData = (
   value: PlutusDataValue | undefined,
   label: string,
 ): number => exactSafeCborInteger(value, label);
 
-const deriveScriptSourcesStageOneRouteDataV1 = ({
+const deriveScriptSourcesStageOneRouteData = ({
   preparedResolution,
   fraudProver,
   auxiliary,
@@ -5435,7 +5416,7 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   settlementScriptHash,
 }: {
   readonly preparedResolution: NonNullable<
-    PreparedValidationResolutionDatumV1Data["data"]
+    PreparedValidationResolutionDatumData["data"]
   >;
   readonly fraudProver: string;
   readonly auxiliary: Constr<PlutusDataValue>;
@@ -5449,12 +5430,12 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
 }) => {
   const exactAuxiliary = requireConstr({
     value: auxiliary,
-    index: VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep[0],
-    fields: VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep[1],
+    index: VALIDATION_AUXILIARY_SHAPES.redeemerItemStep[0],
+    fields: VALIDATION_AUXILIARY_SHAPES.redeemerItemStep[1],
     label: "ScriptSources split stage-one auxiliary witness",
   });
   if (
-    requireOptionDataV1(
+    requireOptionData(
       exactAuxiliary.fields[0]!,
       "ScriptSources stage-one redeemer control",
     ) !== null
@@ -5477,11 +5458,11 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     label: "ScriptSources stage-one item action",
   });
   if (
-    requireOptionDataV1(
+    requireOptionData(
       itemWitness.fields[1]!,
       "ScriptSources stage-one chunk proof",
     ) !== null ||
-    requireOptionDataV1(
+    requireOptionData(
       itemWitness.fields[2]!,
       "ScriptSources stage-one next chunk proof",
     ) !== null
@@ -5507,12 +5488,12 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
       "ScriptSources split stage-one route only accepts FoldMap or FinalizeFrame",
     );
   }
-  const currentControl = stageOneControlCoreV1(currentControlData);
-  const traversalAction = stageOneActionCoreV1({
+  const currentControl = stageOneControlCore(currentControlData);
+  const traversalAction = stageOneActionCore({
     value: traversalActionData,
     family,
   });
-  const nextControl = advanceMidgardRedeemerItemProofV1({
+  const nextControl = advanceMidgardRedeemerItemProof({
     control: currentControl,
     witness: {
       action: { kind: "traverseData", action: traversalAction },
@@ -5530,18 +5511,18 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     );
   }
   const currentPendingItemControlHash =
-    hashMidgardRedeemerItemProofControlV1(currentControl).toString("hex");
+    hashMidgardRedeemerItemProofControl(currentControl).toString("hex");
   const expectedNextItemControlHash =
-    hashMidgardRedeemerItemProofControlV1(nextControl).toString("hex");
-  const checkedTraversalControlCbor = encodeMidgardCekDataTraverseControlV1(
+    hashMidgardRedeemerItemProofControl(nextControl).toString("hex");
+  const checkedTraversalControlCbor = encodeMidgardCekDataTraverseControl(
     currentControl.traversal,
   );
-  const checkedNextTraversalControlCbor = encodeMidgardCekDataTraverseControlV1(
+  const checkedNextTraversalControlCbor = encodeMidgardCekDataTraverseControl(
     nextControl.traversal,
   );
   const baseData = exactPlutusDataFromCbor(
     Buffer.from(
-      Data.to(preparedResolution, PreparedValidationResolutionStateV1),
+      Data.to(preparedResolution, PreparedValidationResolutionState),
       "hex",
     ),
     "ScriptSources prepared resolution state",
@@ -5552,16 +5533,16 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     fields: 3,
     label: "ScriptSources prepared resolution state",
   });
-  const resolutionIdentity = hashDomainDataV1(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.resolutionIdentity,
+  const resolutionIdentity = hashDomainData(
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.resolutionIdentity,
     baseRecord.fields[1]!,
   );
-  const canonicalAuxiliaryHash = hashDomainDataV1(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.auxiliaryIdentity,
+  const canonicalAuxiliaryHash = hashDomainData(
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.auxiliaryIdentity,
     exactAuxiliary,
   );
-  const canonicalActionHash = hashDomainDataV1(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.narrowActionIdentity,
+  const canonicalActionHash = hashDomainData(
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.narrowActionIdentity,
     [currentControlData, traversalActionData],
   );
   const semanticExecutorScriptHash =
@@ -5598,13 +5579,13 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   ];
   const envelopeCommitment = computeHash32(
     Buffer.concat([
-      SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.envelopeCommitment,
+      SCRIPT_SOURCES_REDEEMER_DOMAINS.envelopeCommitment,
       encodeCborArrayRaw(commitmentItems),
     ]),
   ).toString("hex");
   const envelopeData = new Constr(0, [
     1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.envelope.toString("hex"),
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.envelope.toString("hex"),
     deploymentId,
     baseData,
     resolutionIdentity,
@@ -5624,7 +5605,7 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   ]);
   const baseProvenanceIdentity = computeHash32(
     Buffer.concat([
-      SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.baseProvenanceIdentity,
+      SCRIPT_SOURCES_REDEEMER_DOMAINS.baseProvenanceIdentity,
       encodeCborArrayRaw([
         encodeCbor(Buffer.from(preparedResolution.evidence_hash, "hex")),
         encodeCbor(Buffer.from(resolutionIdentity, "hex")),
@@ -5632,8 +5613,8 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
       ]),
     ]),
   ).toString("hex");
-  const traversalActionIdentity = hashDomainDataV1(
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.traversalActionIdentity,
+  const traversalActionIdentity = hashDomainData(
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.traversalActionIdentity,
     traversalActionData,
   );
   const currentControlRecord = requireConstr({
@@ -5655,7 +5636,7 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   );
   const traversalData = new Constr(0, [
     1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.traversal.toString("hex"),
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.traversal.toString("hex"),
     deploymentId,
     baseProvenanceIdentity,
     envelopeScriptHash,
@@ -5675,9 +5656,9 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     checkedTraversalControlCbor.toString("hex"),
   ]);
   const encodedCurrentControl =
-    encodeMidgardRedeemerItemProofControlV1(currentControl);
+    encodeMidgardRedeemerItemProofControl(currentControl);
   const nextItemControlHashPrefix = Buffer.concat([
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.itemControl,
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.itemControl,
     encodedCurrentControl.subarray(
       0,
       encodedCurrentControl.length - checkedTraversalControlCbor.length - 1,
@@ -5707,7 +5688,7 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
         ]);
   const outerData = new Constr(0, [
     1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.outer.toString("hex"),
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.outer.toString("hex"),
     deploymentId,
     baseProvenanceIdentity,
     envelopeScriptHash,
@@ -5728,7 +5709,7 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   ]);
   const attestedData = new Constr(0, [
     1n,
-    SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.attested.toString("hex"),
+    SCRIPT_SOURCES_REDEEMER_DOMAINS.attested.toString("hex"),
     deploymentId,
     baseProvenanceIdentity,
     envelopeScriptHash,
@@ -5796,15 +5777,15 @@ const canonicalFieldItemEncodedLength = ({
  * a slice. The retired `collectionProof`/`itemCbor` pair claimed both, and §4
  * left the claim nothing to be checked against.
  */
-export const deriveCanonicalDecodeItemStageDataV1 = ({
+export const deriveCanonicalDecodeItemStageData = ({
   preparedResolution,
   transition,
   fieldPreimage,
 }: {
   readonly preparedResolution: NonNullable<
-    PreparedValidationResolutionDatumV1Data["data"]
+    PreparedValidationResolutionDatumData["data"]
   >;
-  readonly transition: ValidationOneStepWitnessV1;
+  readonly transition: ValidationOneStepWitness;
   readonly fieldPreimage: string;
 }) => {
   const control = asArray(
@@ -5850,21 +5831,21 @@ export const deriveCanonicalDecodeItemStageDataV1 = ({
   };
   // Called for its verification, not its value: it binds these compact structures
   // to the disputed transaction id, which the positional extraction below does not.
-  verifyMidgardNativeTxProofSourceV1({
+  verifyMidgardNativeTxProofSource({
     transactionId: Buffer.from(
       preparedResolution.resolution.pre_state.transaction_id,
       "hex",
     ),
     source: proofSource,
   });
-  const lengths = decodeMidgardNativeTxProofFieldLengthsV1(
+  const lengths = decodeMidgardNativeTxProofFieldLengths(
     fieldPreimageLengthsCbor,
   );
   // The §4 positional extraction, taken from the one implementation of it rather
-  // than hand-copied for a third time. `verifyMidgardNativeTxProofSourceV1` above
+  // than hand-copied for a third time. `verifyMidgardNativeTxProofSource` above
   // stays: the helper deliberately does not authenticate the source, and binding
   // these structures to `pre_state.transaction_id` is what that call is for.
-  const fieldCommitments = midgardV1TxFieldCommitmentsFromSourceV1(proofSource);
+  const fieldCommitments = midgardTxFieldCommitmentsFromSource(proofSource);
   const expectedFieldCommitment = fieldCommitments[fieldIndex];
   const expectedFieldLength = lengths[fieldIndex];
   if (
@@ -5877,7 +5858,7 @@ export const deriveCanonicalDecodeItemStageDataV1 = ({
   // commitment, so the item count and the item's bytes are *derived* here rather
   // than claimed. Authenticating first is what makes the derivation meaningful.
   const fieldPreimageBytes = Buffer.from(fieldPreimage, "hex");
-  const actualFieldCommitment = midgardFieldCommitmentV1(fieldPreimageBytes);
+  const actualFieldCommitment = midgardFieldCommitment(fieldPreimageBytes);
   if (!actualFieldCommitment.equals(Buffer.from(expectedFieldCommitment))) {
     throw new Error(
       "Canonical decode item carriage preimage does not hash to the committed field",
@@ -5888,7 +5869,7 @@ export const deriveCanonicalDecodeItemStageDataV1 = ({
       "Canonical decode item carriage preimage contradicts its declared field length",
     );
   }
-  const fieldItems = decodeMidgardFieldPreimageV1(fieldPreimageBytes);
+  const fieldItems = decodeMidgardFieldPreimage(fieldPreimageBytes);
   const itemBytes = fieldItems[itemIndex];
   if (itemBytes === undefined) {
     throw new Error("Canonical decode item index is outside the field");
@@ -5976,30 +5957,30 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  readonly oneStepArgument: ValidationOneStepSubmissionArgument;
   /**
    * Already-confirmed CEK program-material publications for the
    * execution-selection route ladder (resolver 11, semantic resolver 1):
    * consulted only after the direct-proof route is refused for size.
    */
-  readonly cekProgramMaterialReferenceOutRefs?: ValidationCekProgramMaterialReferenceOutRefsV1;
+  readonly cekProgramMaterialReferenceOutRefs?: ValidationCekProgramMaterialReferenceOutRefs;
   readonly proofItemReferenceOutRef?: string;
   /**
    * Tier-1 complete-item delivery preference (#621): "inline" carries the
    * §5.1 preimage in the observe redeemer, "reference" routes it through a
    * §8 proof-item publication. Omitted, the builder routes by
-   * {@link selectValidationCompleteItemCarriageV1}'s measured cost heuristic
+   * {@link selectValidationCompleteItemCarriage}'s measured cost heuristic
    * (a supplied `proofItemReferenceOutRef` implies "reference"). A
    * preference steers cost, never liveness: an inline build over the L1
    * envelope is refused pre-sign and falls back to the reference route.
    */
-  readonly proofItemDelivery?: ValidationProofItemDeliveryV1;
+  readonly proofItemDelivery?: ValidationProofItemDelivery;
   /** Required when the staged carriage is tier 2 or tier 3 (#600). */
-  readonly carriageMaterial?: ValidationFieldCarriageMaterialV1;
+  readonly carriageMaterial?: ValidationFieldCarriageMaterial;
   /** Explicit semantic-resolver reference; otherwise resolved from deployment info. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published scripts for any multi-stage semantic route selected. */
-  readonly stageReferenceScriptUtxos?: ValidationDisputeStageReferenceScriptUtxosV1;
+  readonly stageReferenceScriptUtxos?: ValidationDisputeStageReferenceScriptUtxos;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
@@ -6030,7 +6011,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       `Validation semantic resolution requires fraud prover ${inputDatum.fraud_prover}, got ${signer.paymentKeyHash}`,
     );
   }
-  const resolverIndex = validationResolverIndexV1(
+  const resolverIndex = validationResolverIndex(
     inputDatum.data.resolution.pre_state.phase,
   );
   if (resolverIndex !== oneStepArgument.resolverIndex) {
@@ -6038,7 +6019,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       "Validation one-step argument does not match the prepared phase resolver",
     );
   }
-  const staged = requireStagedOneStepArgumentV1(oneStepArgument);
+  const staged = requireStagedOneStepArgument(oneStepArgument);
   if (staged.evidenceHash !== inputDatum.data.evidence_hash) {
     throw new Error(
       "Validation one-step argument does not match the prepared evidence hash",
@@ -6063,7 +6044,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   const cekSemanticReferenceScriptUtxo =
     referenceScriptUtxo === undefined &&
     resolverIndex === 11 &&
-    validationCekSemanticReferenceScriptDeploymentEntryV1(
+    validationCekSemanticReferenceScriptDeploymentEntry(
       staged.semanticResolverIndex,
     ) !== undefined
       ? await requireValidationCekSemanticReferenceScriptUtxo({
@@ -6083,8 +6064,8 @@ export const submitValidationDisputeSemanticResolution = async ({
   // the honest failure is a precise "publish it" instead of Lucid's
   // "Max transaction size of 16384 exceeded" from deep inside `complete()`.
   const valueAndMintSemanticReferenceEntryName =
-    resolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX_V1
-      ? validationValueAndMintSemanticReferenceScriptDeploymentEntryV1(
+    resolverIndex === VALIDATION_VALUE_AND_MINT_RESOLVER_INDEX
+      ? validationValueAndMintSemanticReferenceScriptDeploymentEntry(
           staged.semanticResolverIndex,
         )
       : undefined;
@@ -6132,9 +6113,9 @@ export const submitValidationDisputeSemanticResolution = async ({
   const isCompleteCanonicalItem =
     oneStepArgument.resolverIndex === 0 &&
     staged.semanticResolverIndex === 1 &&
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       staged.auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+      VALIDATION_AUXILIARY_SHAPES.transactionFieldItem,
     );
   // #597/#600. `TransactionFieldItemWitness` carries one field — a
   // `FieldCarriageV1` — and the bytes it stands for are the field's whole §5.1
@@ -6149,13 +6130,13 @@ export const submitValidationDisputeSemanticResolution = async ({
   // `carriageMaterial` is, and its absence is a refusal rather than a
   // transaction that references nothing.
   const stagedItemCarriage = isCompleteCanonicalItem
-    ? midgardFieldCarriageFromDataV1(
+    ? midgardFieldCarriageFromData(
         staged.auxiliary.fields[0]!,
         "Validation complete proof-item §8 carriage",
       )
     : undefined;
   const completeItemCarriageMaterial = (():
-    | ValidationFieldCarriageMaterialV1
+    | ValidationFieldCarriageMaterial
     | undefined => {
     if (
       stagedItemCarriage === undefined ||
@@ -6229,7 +6210,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   // publication out-ref, then the measured cost heuristic. The committed
   // evidence is transition-only, so this is a routing decision and nothing
   // staged on chain can disagree with it.
-  const proofItemDeliveryRoute = resolveValidationProofItemDeliveryRouteV1({
+  const proofItemDeliveryRoute = resolveValidationProofItemDeliveryRoute({
     requestedDelivery: proofItemDelivery,
     hasProofItemReferenceOutRef: proofItemReferenceOutRef !== undefined,
     committedCarriage: stagedItemCarriage?.carriage,
@@ -6282,7 +6263,7 @@ export const submitValidationDisputeSemanticResolution = async ({
   // through it: the up-front reference route, and the observe stage's
   // pre-sign fallback when an inline build outgrows the L1 envelope (#621).
   const publishProofItemPublication = async (): Promise<UTxO> => {
-    const publication = deriveValidationProofItemPublicationV1({
+    const publication = deriveValidationProofItemPublication({
       transactionId: inputDatum.data.resolution.pre_state.transaction_id,
       transactionCommitment:
         inputDatum.data.resolution.pre_state.transaction_commitment,
@@ -6290,7 +6271,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     });
     signer.selectWallet(lucid);
     const publicationUnsigned = await Effect.runPromise(
-      buildUnsignedValidationProofItemPublicationV1Program(
+      buildUnsignedValidationProofItemPublicationProgram(
         lucid,
         contracts,
         publication,
@@ -6368,7 +6349,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       field_preimage: completeFieldPreimage as string,
     };
     if (
-      Data.to(expectedDatum, ValidationProofItemDatumV1) !==
+      Data.to(expectedDatum, ValidationProofItemDatum) !==
       proofItemReferenceUtxo.datum
     ) {
       throw new Error(
@@ -6384,14 +6365,14 @@ export const submitValidationDisputeSemanticResolution = async ({
       fraud_prover: inputDatum.fraud_prover,
       data: { version: 1n },
     },
-    WinningValidationResolutionDatumV1,
+    WinningValidationResolutionDatum,
   );
   const isSplitScriptSourcesStageOne =
     resolverIndex === 8 &&
     staged.semanticResolverIndex === 28 &&
-    hasValidationAuxiliaryShapeV1(
+    hasValidationAuxiliaryShape(
       staged.auxiliary,
-      VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+      VALIDATION_AUXILIARY_SHAPES.redeemerItemStep,
     );
   if (isSplitScriptSourcesStageOne) {
     if (proofItemReferenceUtxo !== undefined) {
@@ -6411,11 +6392,11 @@ export const submitValidationDisputeSemanticResolution = async ({
         "ScriptSources split stage-one semantic resolver is not the deployed envelope validator",
       );
     }
-    const route = deriveScriptSourcesStageOneRouteDataV1({
+    const route = deriveScriptSourcesStageOneRouteData({
       preparedResolution: inputDatum.data,
       fraudProver: inputDatum.fraud_prover,
       auxiliary: staged.auxiliary,
-      deploymentId: deriveValidationTraceDeploymentIdV1(
+      deploymentId: deriveValidationTraceDeploymentId(
         fraudProofCataloguePolicyId,
       ),
       envelopeScriptHash: stages.envelope.spendingScriptHash,
@@ -6471,7 +6452,7 @@ export const submitValidationDisputeSemanticResolution = async ({
               range,
               currentLedgerTime,
             });
-      const scriptCarriage = witnessSpendingValidatorCarriageV1({
+      const scriptCarriage = witnessSpendingValidatorCarriage({
         script: inputContract.spendingScript,
         referenceUtxo: scriptReference,
         label: `${label} spending validator`,
@@ -6552,7 +6533,7 @@ export const submitValidationDisputeSemanticResolution = async ({
         referenceScriptUtxo ?? stageReferenceScriptUtxos?.scriptSourcesEnvelope,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemerV1({
+        encodeScriptSourcesStageOneSpendRedeemer({
           stage: "envelope",
           inputIndex,
           outputIndex,
@@ -6572,7 +6553,7 @@ export const submitValidationDisputeSemanticResolution = async ({
         stageReferenceScriptUtxos?.scriptSourcesTraversalNormalizer,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemerV1({
+        encodeScriptSourcesStageOneSpendRedeemer({
           stage: "traversal",
           inputIndex,
           outputIndex,
@@ -6593,7 +6574,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       scriptReference: stageReferenceScriptUtxos?.scriptSourcesOuterNormalizer,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemerV1({
+        encodeScriptSourcesStageOneSpendRedeemer({
           stage: "outer",
           inputIndex,
           outputIndex,
@@ -6617,7 +6598,7 @@ export const submitValidationDisputeSemanticResolution = async ({
           : stageReferenceScriptUtxos?.scriptSourcesFinalizeFrameExecutor,
       awaitStage: true,
       encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemerV1({
+        encodeScriptSourcesStageOneSpendRedeemer({
           stage: "executor",
           inputIndex,
           outputIndex,
@@ -6633,7 +6614,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       scriptReference: stageReferenceScriptUtxos?.scriptSourcesSettlement,
       awaitStage: awaitConfirmation,
       encode: ({ inputIndex, outputIndex }) =>
-        encodeScriptSourcesStageOneSpendRedeemerV1({
+        encodeScriptSourcesStageOneSpendRedeemer({
           stage: "settlement",
           inputIndex,
           outputIndex,
@@ -6673,7 +6654,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     };
   }
   if (isCompleteCanonicalItem) {
-    const stageData = deriveCanonicalDecodeItemStageDataV1({
+    const stageData = deriveCanonicalDecodeItemStageData({
       preparedResolution: inputDatum.data,
       transition: staged.transition,
       fieldPreimage: completeFieldPreimage as string,
@@ -6683,28 +6664,28 @@ export const submitValidationDisputeSemanticResolution = async ({
         fraud_prover: inputDatum.fraud_prover,
         data: stageData.authenticated,
       },
-      AuthenticatedCanonicalDecodeItemDatumV1,
+      AuthenticatedCanonicalDecodeItemDatum,
     );
     const preparedDatum = Data.to(
       {
         fraud_prover: inputDatum.fraud_prover,
         data: stageData.prepared,
       },
-      PreparedCanonicalDecodeItemDatumV1,
+      PreparedCanonicalDecodeItemDatum,
     );
     const observedDatum = Data.to(
       {
         fraud_prover: inputDatum.fraud_prover,
         data: stageData.observed,
       },
-      ObservedCanonicalDecodeItemDatumV1,
+      ObservedCanonicalDecodeItemDatum,
     );
     const verifiedDatum = Data.to(
       {
         fraud_prover: inputDatum.fraud_prover,
         data: stageData.verified,
       },
-      VerifiedCanonicalDecodeItemDatumV1,
+      VerifiedCanonicalDecodeItemDatum,
     );
     type StageContract = {
       readonly spendingScriptAddress: string;
@@ -6744,7 +6725,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       /**
        * Inline delivery's pre-sign envelope gate (#621): project the signed
        * byte length before signing and throw
-       * {@link ValidationInlineDeliveryEnvelopeRefusedErrorV1} — signing and
+       * {@link ValidationInlineDeliveryEnvelopeRefusedError} — signing and
        * submitting nothing — when it exceeds the L1 proof envelope, so the
        * caller can fall back to the reference route.
        */
@@ -6758,7 +6739,7 @@ export const submitValidationDisputeSemanticResolution = async ({
       let stageLayout: ContinueLayout | undefined;
       signer.selectWallet(lucid);
       const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-      const scriptCarriage = witnessSpendingValidatorCarriageV1({
+      const scriptCarriage = witnessSpendingValidatorCarriage({
         script: inputContract.spendingScript,
         referenceUtxo: scriptReference,
         label: `${label} spending validator`,
@@ -6829,7 +6810,7 @@ export const submitValidationDisputeSemanticResolution = async ({
             )
           : null;
         if (builderCeiling !== null) {
-          throw new ValidationInlineDeliveryEnvelopeRefusedErrorV1({
+          throw new ValidationInlineDeliveryEnvelopeRefusedError({
             label,
             projectedSignedBytes: Number(builderCeiling[2]),
             maxTransactionBytes: Number(builderCeiling[1]),
@@ -6843,11 +6824,11 @@ export const submitValidationDisputeSemanticResolution = async ({
       const resolvedLayout = stageLayout as ContinueLayout;
       let projectedSignedBytes: number | undefined;
       if (projectEnvelopePreSign) {
-        projectedSignedBytes = projectSignedL1ProofTransactionBytesV1(
+        projectedSignedBytes = projectSignedL1ProofTransactionBytes(
           unsigned.toCBOR(),
         );
         if (projectedSignedBytes > MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES) {
-          throw new ValidationInlineDeliveryEnvelopeRefusedErrorV1({
+          throw new ValidationInlineDeliveryEnvelopeRefusedError({
             label,
             projectedSignedBytes,
             maxTransactionBytes: MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES,
@@ -6897,8 +6878,8 @@ export const submitValidationDisputeSemanticResolution = async ({
         : completeItemCarriageMaterial.referenceUtxos;
     const observeCarriageData: PlutusDataValue =
       completeItemCarriageMaterial !== undefined
-        ? midgardFieldCarriageToDataV1(
-            resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+        ? midgardFieldCarriageToData(
+            resolveMidgardFieldCarriageAgainstReferenceInputs({
               plan: completeItemCarriageMaterial.plan,
               referenceInputs: [
                 ...(observeReferenceScriptUtxo === undefined
@@ -7003,9 +6984,7 @@ export const submitValidationDisputeSemanticResolution = async ({
             ),
         });
       } catch (cause) {
-        if (
-          !(cause instanceof ValidationInlineDeliveryEnvelopeRefusedErrorV1)
-        ) {
+        if (!(cause instanceof ValidationInlineDeliveryEnvelopeRefusedError)) {
           throw cause;
         }
         // The refused build was never signed; the same staged thread and
@@ -7098,7 +7077,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     readonly materialReferenceUtxos?: readonly UTxO[];
     readonly materialRoute?: (
       layout: SemanticResolutionLayout,
-    ) => ValidationCekMaterialRouteV1;
+    ) => ValidationCekMaterialRoute;
   }): Promise<{
     readonly signed: TxSigned;
     readonly layout: SemanticResolutionLayout;
@@ -7106,7 +7085,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     let layout: SemanticResolutionLayout | undefined;
     signer.selectWallet(lucid);
     const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-    const semanticScriptCarriage = witnessSpendingValidatorCarriageV1({
+    const semanticScriptCarriage = witnessSpendingValidatorCarriage({
       script: semanticContract.spendingScript,
       referenceUtxo: semanticValidatorReferenceScriptUtxo,
       label: "validation-dispute semantic-resolver validator",
@@ -7164,9 +7143,9 @@ export const submitValidationDisputeSemanticResolution = async ({
   const submitPreparedSemanticResolution = async (
     prepared: Awaited<ReturnType<typeof prepareSemanticResolution>>,
     cekRoute?: {
-      readonly route: ValidationCekSelectedRouteV1;
+      readonly route: ValidationCekSelectedRoute;
       readonly materialReferenceUtxos: readonly UTxO[];
-      readonly rejectedLocalRouteAttempts: readonly ValidationCekRejectedLocalRouteAttemptV1[];
+      readonly rejectedLocalRouteAttempts: readonly ValidationCekRejectedLocalRouteAttempt[];
     },
   ): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
     const txHash = await prepared.signed.submit();
@@ -7234,18 +7213,18 @@ export const submitValidationDisputeSemanticResolution = async ({
       },
     );
   }
-  const rejectedLocalRouteAttempts: ValidationCekRejectedLocalRouteAttemptV1[] =
+  const rejectedLocalRouteAttempts: ValidationCekRejectedLocalRouteAttempt[] =
     [];
   const prepareCekRoute = async ({
     route,
     materialReferenceUtxos = [],
     materialRoute,
   }: {
-    readonly route: ValidationCekRejectedLocalRouteAttemptV1["route"];
+    readonly route: ValidationCekRejectedLocalRouteAttempt["route"];
     readonly materialReferenceUtxos?: readonly UTxO[];
     readonly materialRoute: (
       layout: SemanticResolutionLayout,
-    ) => ValidationCekMaterialRouteV1;
+    ) => ValidationCekMaterialRoute;
   }): Promise<
     Awaited<ReturnType<typeof prepareSemanticResolution>> | undefined
   > => {
@@ -7256,19 +7235,19 @@ export const submitValidationDisputeSemanticResolution = async ({
         materialRoute,
       });
     } catch (cause) {
-      if (!isDeterministicLocalCekFitFailureV1(cause)) {
+      if (!isDeterministicLocalCekFitFailure(cause)) {
         throw cause;
       }
       rejectedLocalRouteAttempts.push({
         route,
-        failure: errorMessageV1(cause),
+        failure: errorMessage(cause),
       });
       return undefined;
     }
   };
   const submitSelectedRoute = (
     prepared: Awaited<ReturnType<typeof prepareSemanticResolution>>,
-    route: ValidationCekSelectedRouteV1,
+    route: ValidationCekSelectedRoute,
     materialReferenceUtxos: readonly UTxO[],
   ): Promise<SubmitValidationDisputeSemanticResolutionResult> =>
     submitPreparedSemanticResolution(prepared, {
@@ -7292,7 +7271,7 @@ export const submitValidationDisputeSemanticResolution = async ({
 
   const materialAddress =
     contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
-  const singlePublication = deriveCekSinglePublicationV1({
+  const singlePublication = deriveCekSinglePublication({
     envelopeCbor: routeMaterial.envelopeCbor,
     sidecarCbor: routeMaterial.programMaterialSidecarCbor,
   });
@@ -7335,11 +7314,11 @@ export const submitValidationDisputeSemanticResolution = async ({
     );
   }
 
-  const entries = decodeMidgardCekProgramMaterialSidecarV1(
+  const entries = decodeMidgardCekProgramMaterialSidecar(
     routeMaterial.programMaterialSidecarCbor,
   );
   const expectedMultiPublications =
-    deriveCekProgramMaterialPublicationsV1(entries);
+    deriveCekProgramMaterialPublications(entries);
   const multiOutRefs = cekProgramMaterialReferenceOutRefs?.minimumMultiOutput;
   if (multiOutRefs === undefined) {
     throw new Error(
@@ -7427,7 +7406,7 @@ export const submitValidationDisputeAward = async ({
   /** The mandatory published V1 validation-trace award script. */
   readonly awardReferenceScriptUtxo?: UTxO;
   /** Required published shared minting witnesses for this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeAwardResult> => {
@@ -7488,7 +7467,7 @@ export const submitValidationDisputeAward = async ({
             },
           ],
         },
-        ValidationAwardSpendRedeemerV1,
+        ValidationAwardSpendRedeemer,
       ),
     validityRange: range,
     awaitConfirmation,

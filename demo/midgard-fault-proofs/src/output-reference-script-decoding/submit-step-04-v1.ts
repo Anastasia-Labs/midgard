@@ -1,6 +1,6 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
-  type FieldOpeningV1,
+  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -13,36 +13,36 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriageV1,
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  certifyFaultProofFieldCarriage,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
-  type OutputReferenceScriptDecodingContractsV1,
+  type OutputReferenceScriptDecodingContracts,
 } from "./contracts-v1.js";
 import {
-  outputReferenceScriptCheckpointV1,
-  type OutputReferenceScriptDecodingEvidenceV1,
-  OutputReferenceScriptResultClassesV1,
+  outputReferenceScriptCheckpoint,
+  type OutputReferenceScriptDecodingEvidence,
+  OutputReferenceScriptResultClasses,
 } from "./output-reference-script-decoding-v1.js";
 import {
-  OutputReferenceStep04DatumV1Schema,
-  OutputReferenceStep04RedeemerV1Schema,
-  OutputReferenceStep05DatumV1Schema,
+  OutputReferenceStep04DatumSchema,
+  OutputReferenceStep04RedeemerSchema,
+  OutputReferenceStep05DatumSchema,
 } from "./schemas-v1.js";
 
-export const submitOutputReferenceScriptDecodingStep04V1 = async ({
+export const submitOutputReferenceScriptDecodingStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -62,11 +62,11 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: OutputReferenceScriptDecodingContractsV1;
+  readonly contracts: OutputReferenceScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: OutputReferenceScriptDecodingEvidenceV1;
+  readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor?: string;
   readonly publishCarriage?: boolean;
@@ -74,13 +74,13 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -88,7 +88,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     bound: {
       subject: typeof evidence.subject;
       output_index: bigint;
@@ -100,7 +100,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: OutputReferenceStep04DatumV1Schema as never,
+    schema: OutputReferenceStep04DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -110,10 +110,10 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
     state.bound.output_index !== BigInt(evidence.outputIndex)
   )
     throw new Error(`${FAMILY}: canonical output binding changed`);
-  const items = decodeMidgardFieldPreimageV1(
+  const items = decodeMidgardFieldPreimage(
     Buffer.from(evidence.outputFieldPreimageHex, "hex"),
   );
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 2,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
@@ -122,7 +122,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
     publish: publishCarriage || publishedCarriageUtxos.length > 0,
     label: `${FAMILY} reference bind`,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,
     family: FAMILY,
@@ -132,7 +132,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
   const carriageUtxos =
     publishedCarriageUtxos.length > 0
       ? publishedCarriageUtxos
-      : await publishFaultProofFieldCarriageV1({
+      : await publishFaultProofFieldCarriage({
           lucid,
           signer,
           planned,
@@ -144,7 +144,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
     certificateUtxo ??
     (planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriageV1({
+          await certifyFaultProofFieldCarriage({
             lucid,
             network: lucid.config().network!,
             signer,
@@ -166,7 +166,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
           })
         ).certificateUtxo
       : undefined);
-  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const opening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -178,7 +178,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
   });
   const initialResult =
     evidence.initialControlCbor.length > 0
-      ? OutputReferenceScriptResultClassesV1.Pending
+      ? OutputReferenceScriptResultClasses.Pending
       : evidence.resultClass;
   const nextHash = contracts.steps[4].spendingScriptHash;
   const nextState = {
@@ -189,7 +189,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
     item_commitment: evidence.referenceScriptItemCommitmentHex,
     control_cbor: evidence.initialControlCbor,
     next_expected_script_hash: nextHash,
-    checkpoint_hash: outputReferenceScriptCheckpointV1({
+    checkpoint_hash: outputReferenceScriptCheckpoint({
       evidence,
       controlCbor: evidence.initialControlCbor,
       nextExpectedScriptHash: nextHash,
@@ -198,7 +198,7 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
   };
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
-    OutputReferenceStep05DatumV1Schema as never,
+    OutputReferenceStep05DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[4].spendingScriptAddress,
@@ -220,10 +220,10 @@ export const submitOutputReferenceScriptDecodingStep04V1 = async ({
           { input_index: inputIndex, output_index: outputIndex, opening },
         ],
       } as never,
-      OutputReferenceStep04RedeemerV1Schema as never,
+      OutputReferenceStep04RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

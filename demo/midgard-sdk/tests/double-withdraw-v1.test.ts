@@ -4,17 +4,17 @@ import { describe, expect, it } from "vitest";
 
 import type { OutputReference } from "../src/common.js";
 import {
-  committedWithdrawalKeyBytesV1,
-  committedWithdrawalValueBytesV1,
-  type DoubleWithdrawSourceProofV1,
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+  type DoubleWithdrawSourceProof,
   type DoubleWithdrawStep02Args,
   DoubleWithdrawStep02Args as DoubleWithdrawStep02ArgsSchema,
   type DoubleWithdrawStep02State,
   DoubleWithdrawStep02State as DoubleWithdrawStep02StateSchema,
-  doubleWithdrawStep02StateV1,
-  doubleWithdrawThreadTokenAssetNameV1,
-  isDoubleWithdrawFaultV1,
-  isPayableWithdrawalLeafV1,
+  doubleWithdrawStep02State,
+  doubleWithdrawThreadTokenAssetName,
+  isDoubleWithdrawFault,
+  isPayableWithdrawalLeaf,
 } from "../src/fraud-proof/double-withdraw-v1.js";
 import type { WithdrawalInfo } from "../src/ledger-state.js";
 import { ROOT_DOMAINS } from "../src/transition-trace.js";
@@ -54,7 +54,7 @@ const PAYABLE_INFO: WithdrawalInfo = {
 const proof = (
   key: OutputReference,
   value: WithdrawalInfo,
-): DoubleWithdrawSourceProofV1 => ({
+): DoubleWithdrawSourceProof => ({
   domain: ROOT_DOMAINS.withdrawals,
   root: "11".repeat(32),
   phas_root: "22".repeat(32),
@@ -65,7 +65,7 @@ const proof = (
 });
 
 const HEADER_HASH = "73".repeat(28);
-const STATE: DoubleWithdrawStep02State = doubleWithdrawStep02StateV1({
+const STATE: DoubleWithdrawStep02State = doubleWithdrawStep02State({
   challengedHeaderHash: HEADER_HASH,
   committedWithdrawal: proof(FIRST_ID, PAYABLE_INFO),
 });
@@ -96,16 +96,16 @@ describe("double-withdraw v1 codec twin", () => {
   });
 
   it("uses the canonical serialiseData withdrawal leaf bytes", () => {
-    expect(committedWithdrawalKeyBytesV1(FIRST_ID)).toBe(
+    expect(committedWithdrawalKeyBytes(FIRST_ID)).toBe(
       `d8799f5820${FIRST_ID.transactionId}02ff`,
     );
-    const canonical = committedWithdrawalValueBytesV1(PAYABLE_INFO);
+    const canonical = committedWithdrawalValueBytes(PAYABLE_INFO);
     expect(canonical).toMatch(/^d8799f/u);
     expect(canonical).not.toBe("");
   });
 
   it("keeps the unregistered category id caller-supplied", () => {
-    expect(doubleWithdrawThreadTokenAssetNameV1("a1b2c3d4", HEADER_HASH)).toBe(
+    expect(doubleWithdrawThreadTokenAssetName("a1b2c3d4", HEADER_HASH)).toBe(
       `a1b2c3d4${HEADER_HASH}`,
     );
   });
@@ -113,21 +113,21 @@ describe("double-withdraw v1 codec twin", () => {
 
 describe("double-withdraw v1 rule twin", () => {
   it("accepts exactly two distinct payable leaves draining one L2 outref", () => {
-    expect(isPayableWithdrawalLeafV1(PAYABLE_INFO)).toBe(true);
-    expect(isDoubleWithdrawFaultV1(STATE, proof(SECOND_ID, PAYABLE_INFO))).toBe(
+    expect(isPayableWithdrawalLeaf(PAYABLE_INFO)).toBe(true);
+    expect(isDoubleWithdrawFault(STATE, proof(SECOND_ID, PAYABLE_INFO))).toBe(
       true,
     );
   });
 
   it("refuses the same leaf twice", () => {
-    expect(isDoubleWithdrawFaultV1(STATE, proof(FIRST_ID, PAYABLE_INFO))).toBe(
+    expect(isDoubleWithdrawFault(STATE, proof(FIRST_ID, PAYABLE_INFO))).toBe(
       false,
     );
   });
 
   it("refuses distinct L2 outrefs", () => {
     expect(
-      isDoubleWithdrawFaultV1(
+      isDoubleWithdrawFault(
         STATE,
         proof(SECOND_ID, {
           ...PAYABLE_INFO,
@@ -142,9 +142,9 @@ describe("double-withdraw v1 rule twin", () => {
       ...PAYABLE_INFO,
       validity: { SpentWithdrawalUtxo: { l2_tx_id: "5a".repeat(32) } },
     };
-    expect(isPayableWithdrawalLeafV1(honestDuplicate)).toBe(false);
+    expect(isPayableWithdrawalLeaf(honestDuplicate)).toBe(false);
     expect(
-      isDoubleWithdrawFaultV1(STATE, proof(SECOND_ID, honestDuplicate)),
+      isDoubleWithdrawFault(STATE, proof(SECOND_ID, honestDuplicate)),
     ).toBe(false);
   });
 });

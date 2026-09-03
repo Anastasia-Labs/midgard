@@ -1,27 +1,27 @@
 import {
-  encodeMidgardAddressWitnessItemV1,
+  encodeMidgardAddressWitnessItem,
   encodeMidgardNativeScript,
   type MidgardNativeScript,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHashV1 } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertNativeScriptInvalidDirectRouteV1,
-  NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1,
-  NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
-  NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1,
-  NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1,
-  NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1,
-  nativeScriptInvalidPushdownStepV1,
-  nativeScriptInvalidSignerScanStateV1,
-  nativeScriptInvalidSignerSetV1,
-  nativeScriptInvalidUsesDirectRouteV1,
-  resolveNativeScriptInvalidPushdownResumeV1,
+  assertNativeScriptInvalidDirectRoute,
+  NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT,
+  NATIVE_SCRIPT_INVALID_NODE_BATCH,
+  NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH,
+  NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH,
+  NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH,
+  nativeScriptInvalidPushdownStep,
+  nativeScriptInvalidSignerScanState,
+  nativeScriptInvalidSignerSet,
+  nativeScriptInvalidUsesDirectRoute,
+  resolveNativeScriptInvalidPushdownResume,
 } from "../src/native-script-invalid/evidence-machine-v1.js";
 
 const witnessItem = (verificationKey: Uint8Array): Buffer =>
-  encodeMidgardAddressWitnessItemV1({
+  encodeMidgardAddressWitnessItem({
     verificationKey,
     signature: Buffer.alloc(64, 0x55),
   });
@@ -32,7 +32,7 @@ const sortedWitnessItems = (count: number): readonly Buffer[] =>
     key.writeUInt32BE(index, 28);
     return {
       key,
-      hash: Buffer.from(missingSignatureVkeyHashV1(key.toString("hex")), "hex"),
+      hash: Buffer.from(missingSignatureVkeyHash(key.toString("hex")), "hex"),
     };
   })
     .sort((left, right) => Buffer.compare(left.hash, right.hash))
@@ -42,7 +42,7 @@ describe("native-script-invalid staged evidence machine", () => {
   it("advances the exact field-7 signer checkpoint and frontier in batches", () => {
     const items = sortedWitnessItems(318);
     const totalLength = 3 + items.length * 103;
-    const first = nativeScriptInvalidSignerScanStateV1({
+    const first = nativeScriptInvalidSignerScanState({
       txId: "11".repeat(32),
       addressWitnessItems: items,
       totalLength,
@@ -53,7 +53,7 @@ describe("native-script-invalid staged evidence machine", () => {
     expect(first.signerCount).toBe(16n);
     expect(first.complete).toBe(false);
 
-    const second = nativeScriptInvalidSignerScanStateV1({
+    const second = nativeScriptInvalidSignerScanState({
       txId: "11".repeat(32),
       addressWitnessItems: items,
       totalLength,
@@ -65,7 +65,7 @@ describe("native-script-invalid staged evidence machine", () => {
   });
 
   it("builds exact membership and ordered nonmembership proof shapes", () => {
-    const signerSet = nativeScriptInvalidSignerSetV1(sortedWitnessItems(4));
+    const signerSet = nativeScriptInvalidSignerSet(sortedWitnessItems(4));
     const member = signerSet.hashes[1]!;
     expect(signerSet.proofFor(member)).toHaveProperty("SignerMembershipProof");
     expect(signerSet.proofFor(Buffer.alloc(28, 0))).toHaveProperty(
@@ -74,14 +74,14 @@ describe("native-script-invalid staged evidence machine", () => {
     expect(signerSet.proofFor(Buffer.alloc(28, 0xff))).toHaveProperty(
       "SignerAboveLastProof",
     );
-    const empty = nativeScriptInvalidSignerSetV1([]);
+    const empty = nativeScriptInvalidSignerSet([]);
     expect(empty.proofFor(Buffer.alloc(28, 0x77))).toEqual({
       EmptySignerSetProof: { peaks: [] },
     });
   });
 
   it("resumes the 87-byte semantic cursor and reaches the recursive verdict", () => {
-    const signerSet = nativeScriptInvalidSignerSetV1([]);
+    const signerSet = nativeScriptInvalidSignerSet([]);
     const script: MidgardNativeScript = {
       type: "all",
       scripts: Array.from({ length: 31 }, (_, index) => ({
@@ -90,7 +90,7 @@ describe("native-script-invalid staged evidence machine", () => {
       })),
     };
     const scriptBytes = encodeMidgardNativeScript(script);
-    const first = nativeScriptInvalidPushdownStepV1({
+    const first = nativeScriptInvalidPushdownStep({
       scriptBytes,
       validityIntervalStart: 0n,
       validityIntervalEnd: 100n,
@@ -102,7 +102,7 @@ describe("native-script-invalid staged evidence machine", () => {
 
     let terminal = first;
     while (!terminal.complete) {
-      terminal = nativeScriptInvalidPushdownStepV1({
+      terminal = nativeScriptInvalidPushdownStep({
         scriptBytes,
         validityIntervalStart: 0n,
         validityIntervalEnd: 100n,
@@ -114,7 +114,7 @@ describe("native-script-invalid staged evidence machine", () => {
     }
     expect(terminal.satisfied).toBe(false);
     expect(terminal.nextFrames).toEqual([]);
-    const reconstructed = resolveNativeScriptInvalidPushdownResumeV1({
+    const reconstructed = resolveNativeScriptInvalidPushdownResume({
       scriptBytes,
       validityIntervalStart: 0n,
       validityIntervalEnd: 100n,
@@ -128,19 +128,19 @@ describe("native-script-invalid staged evidence machine", () => {
   });
 
   it("pins the direct and independently governed staged frontiers", () => {
-    expect(NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1).toBe(28);
-    expect(NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1).toBe(16);
-    expect(NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1).toBe(16);
-    expect(NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1).toBe(16);
-    expect(NATIVE_SCRIPT_INVALID_NODE_BATCH_V1).toBe(16);
+    expect(NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT).toBe(28);
+    expect(NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH).toBe(16);
+    expect(NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH).toBe(16);
+    expect(NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH).toBe(16);
+    expect(NATIVE_SCRIPT_INVALID_NODE_BATCH).toBe(16);
     expect(
-      nativeScriptInvalidUsesDirectRouteV1({
+      nativeScriptInvalidUsesDirectRoute({
         signerCount: 28,
         scriptBytes: 1_024,
       }),
     ).toBe(true);
     expect(
-      nativeScriptInvalidUsesDirectRouteV1({
+      nativeScriptInvalidUsesDirectRoute({
         signerCount: 29,
         scriptBytes: 1_024,
       }),
@@ -148,14 +148,14 @@ describe("native-script-invalid staged evidence machine", () => {
   });
 
   it("rejects a forced direct builder above the 28-signer frontier", () => {
-    expect(() => assertNativeScriptInvalidDirectRouteV1(28)).not.toThrow();
-    expect(() => assertNativeScriptInvalidDirectRouteV1(29)).toThrow(
+    expect(() => assertNativeScriptInvalidDirectRoute(28)).not.toThrow();
+    expect(() => assertNativeScriptInvalidDirectRoute(29)).toThrow(
       /direct signer limit is 28; use the staged route/u,
     );
   });
 
   it("rejects cursor mutation before producing a resumed action", () => {
-    const signerSet = nativeScriptInvalidSignerSetV1([]);
+    const signerSet = nativeScriptInvalidSignerSet([]);
     const scriptBytes = encodeMidgardNativeScript({
       type: "all",
       scripts: Array.from({ length: 31 }, () => ({
@@ -163,7 +163,7 @@ describe("native-script-invalid staged evidence machine", () => {
         keyHash: Buffer.alloc(28, 0x22),
       })),
     });
-    const first = nativeScriptInvalidPushdownStepV1({
+    const first = nativeScriptInvalidPushdownStep({
       scriptBytes,
       validityIntervalStart: 0n,
       validityIntervalEnd: 0n,
@@ -172,7 +172,7 @@ describe("native-script-invalid staged evidence machine", () => {
     const mutated = Buffer.from(first.nextCursorBytes, "hex");
     mutated[75] ^= 1;
     expect(() =>
-      nativeScriptInvalidPushdownStepV1({
+      nativeScriptInvalidPushdownStep({
         scriptBytes,
         validityIntervalStart: 0n,
         validityIntervalEnd: 0n,
@@ -185,21 +185,21 @@ describe("native-script-invalid staged evidence machine", () => {
   });
 
   it("reports a satisfied-script negative instead of an invalidity verdict", () => {
-    const transition = nativeScriptInvalidPushdownStepV1({
+    const transition = nativeScriptInvalidPushdownStep({
       scriptBytes: encodeMidgardNativeScript({ type: "all", scripts: [] }),
       validityIntervalStart: 0n,
       validityIntervalEnd: 100n,
-      signerSet: nativeScriptInvalidSignerSetV1([]),
+      signerSet: nativeScriptInvalidSignerSet([]),
     });
     expect(transition.complete).toBe(true);
     expect(transition.satisfied).toBe(true);
   });
 
   it("bounds the maximum wide and deep evaluator frontiers across batches", () => {
-    const signerSet = nativeScriptInvalidSignerSetV1([]);
+    const signerSet = nativeScriptInvalidSignerSet([]);
     const walk = (script: MidgardNativeScript) => {
       const scriptBytes = encodeMidgardNativeScript(script);
-      let transition = nativeScriptInvalidPushdownStepV1({
+      let transition = nativeScriptInvalidPushdownStep({
         scriptBytes,
         validityIntervalStart: 0n,
         validityIntervalEnd: 100n,
@@ -207,7 +207,7 @@ describe("native-script-invalid staged evidence machine", () => {
       });
       let batches = 1;
       while (!transition.complete) {
-        transition = nativeScriptInvalidPushdownStepV1({
+        transition = nativeScriptInvalidPushdownStep({
           scriptBytes,
           validityIntervalStart: 0n,
           validityIntervalEnd: 100n,

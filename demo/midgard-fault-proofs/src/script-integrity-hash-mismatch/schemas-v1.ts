@@ -2,52 +2,52 @@ import {
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  ForcedInclusionTxV1Schema,
-  HeaderV1Schema,
+  ForcedInclusionTxSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
-  ValidationMachineStateV1Schema,
-  ValidationTraceDescriptorV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceDescriptorSchema,
+  ValidationTraceProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { NativeScriptsControlV1Schema } from "../execution-source-script-decoding/schemas-v1.js";
+import { NativeScriptsControlSchema } from "../execution-source-script-decoding/schemas-v1.js";
 
-export const IntegrityVerdictSubjectV1Schema = Data.Object({
+export const IntegrityVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const BoundIntegrityV1Schema = Data.Object({
-  subject: IntegrityVerdictSubjectV1Schema,
+export const BoundIntegritySchema = Data.Object({
+  subject: IntegrityVerdictSubjectSchema,
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
   script_integrity_hash: Data.Bytes(),
 });
-export const AuthenticatedIntegrityV1Schema = Data.Object({
-  bound: BoundIntegrityV1Schema,
+export const AuthenticatedIntegritySchema = Data.Object({
+  bound: BoundIntegritySchema,
   prior_ledger_root: Data.Bytes(),
   redeemer_witness_hash: Data.Bytes(),
   selected_language_bitmap: Data.Integer(),
   execution_count: Data.Integer(),
 });
-export const IntegrityLanguageFoldV1Schema = Data.Object({
-  authenticated: AuthenticatedIntegrityV1Schema,
+export const IntegrityLanguageFoldSchema = Data.Object({
+  authenticated: AuthenticatedIntegritySchema,
   cursor: Data.Integer(),
   rebuilt_language_bitmap: Data.Integer(),
   selected_language_count: Data.Integer(),
 });
-export const IntegrityDecisionV1Schema = Data.Object({
-  authenticated: AuthenticatedIntegrityV1Schema,
+export const IntegrityDecisionSchema = Data.Object({
+  authenticated: AuthenticatedIntegritySchema,
   expected_hash: Data.Bytes(),
 });
-export const IntegrityStep01SourceV1Schema = Data.Enum([
+export const IntegrityStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -55,32 +55,31 @@ export const IntegrityStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const IntegrityStep01RedeemerV1Schema = faultProofStepRedeemerSchema(
-  Data.Object({ source: IntegrityStep01SourceV1Schema }),
+export const IntegrityStep01RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({ source: IntegrityStep01SourceSchema }),
 );
-export const IntegrityStep02DatumV1Schema = faultProofStepDatumSchema(
-  BoundIntegrityV1Schema,
-);
-export const IntegrityStep02RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const IntegrityStep02DatumSchema =
+  faultProofStepDatumSchema(BoundIntegritySchema);
+export const IntegrityStep02RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),
     trace_membership: rootMembershipProofSchema(
       EventKeySchema,
-      ValidationTraceDescriptorV1Schema,
+      ValidationTraceDescriptorSchema,
     ),
-    machine_state: ValidationMachineStateV1Schema,
-    trace_proof: ValidationTraceProofV1Schema,
-    control: NativeScriptsControlV1Schema,
+    machine_state: ValidationMachineStateSchema,
+    trace_proof: ValidationTraceProofSchema,
+    control: NativeScriptsControlSchema,
     redeemer_witness_hash: Data.Bytes(),
   }),
 );
@@ -88,20 +87,20 @@ const continuation = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
 });
-export const IntegrityStep03DatumV1Schema = faultProofStepDatumSchema(
-  AuthenticatedIntegrityV1Schema,
+export const IntegrityStep03DatumSchema = faultProofStepDatumSchema(
+  AuthenticatedIntegritySchema,
 );
-export const IntegrityStep03RedeemerV1Schema =
+export const IntegrityStep03RedeemerSchema =
   faultProofStepRedeemerSchema(continuation);
-export const IntegrityStep04DatumV1Schema = faultProofStepDatumSchema(
-  IntegrityLanguageFoldV1Schema,
+export const IntegrityStep04DatumSchema = faultProofStepDatumSchema(
+  IntegrityLanguageFoldSchema,
 );
-export const IntegrityStep04RedeemerV1Schema =
+export const IntegrityStep04RedeemerSchema =
   faultProofStepRedeemerSchema(continuation);
-export const IntegrityStep05DatumV1Schema = faultProofStepDatumSchema(
-  IntegrityDecisionV1Schema,
+export const IntegrityStep05DatumSchema = faultProofStepDatumSchema(
+  IntegrityDecisionSchema,
 );
-export const IntegrityStep05RedeemerV1Schema = faultProofStepRedeemerSchema(
+export const IntegrityStep05RedeemerSchema = faultProofStepRedeemerSchema(
   Data.Object({
     input_index: Data.Integer(),
     output_index: Data.Integer(),

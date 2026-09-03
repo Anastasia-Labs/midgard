@@ -2,34 +2,34 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  buildMidgardBoundedItemV1,
-  commitMidgardBoundedItemV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  buildMidgardBoundedItem,
+  commitMidgardBoundedItem,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import {
-  type MidgardFieldCarriagePlanV1,
-  planMidgardFieldCarriageV1,
+  type MidgardFieldCarriagePlan,
+  planMidgardFieldCarriage,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
-  selectMidgardFieldCarriageTierV1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  encodeValidationSemanticResolutionRedeemerV1,
+  encodeValidationSemanticResolutionRedeemer,
   parseExactAikenDataCbor,
-  selectValidationCompleteItemCarriageV1,
-  validationOneStepEvidenceHashV1,
+  selectValidationCompleteItemCarriage,
+  validationOneStepEvidenceHash,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  deriveFieldPreimageCertificationV1,
-  deriveValidationProofItemPublicationV1,
-  fieldPreimagePublicationDatumCborV1,
-  resolveMidgardFieldCarriageAgainstReferenceInputsV1,
+  deriveFieldPreimageCertification,
+  deriveValidationProofItemPublication,
+  fieldPreimagePublicationDatumCbor,
+  resolveMidgardFieldCarriageAgainstReferenceInputs,
 } from "@al-ft/midgard-sdk";
 import { CML, Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -37,18 +37,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgumentV1,
+  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
-  ValidationMachineCarriageResolutionRequiredErrorV1,
-  type ValidationMachineFieldCarriagePlanInputV1,
-  type ValidationMachineFieldCarriageResolverV1,
+  ValidationMachineCarriageResolutionRequiredError,
+  type ValidationMachineFieldCarriagePlanInput,
+  type ValidationMachineFieldCarriageResolver,
   type ValidationMachineWorkWitness,
 } from "../src/index.js";
 import {
-  fundingLovelaceForOutputsV1,
-  makeMinAdaFundedExactSizeOutputItemV1,
+  fundingLovelaceForOutputs,
+  makeMinAdaFundedExactSizeOutputItem,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
@@ -63,7 +63,7 @@ const validationDisputeBlueprint = JSON.parse(
 ) as unknown;
 
 const traceContext = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: Buffer.from("d8799f4100ff", "hex"),
   sourceKind: "normal" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -73,7 +73,7 @@ const traceContext = {
   blockSlot: 100n,
 };
 
-const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
+const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItem;
 
 const buildTraceWithOutputs = async (
   outputs: readonly Buffer[],
@@ -83,7 +83,7 @@ const buildTraceWithOutputs = async (
   // funded at its own minimum-Ada floor, or stage five would convict this
   // trace with `E_VALUE_NOT_PRESERVED` instead of accepting it. The fee is
   // zero, so the sum is exact.
-  const spentOutput = makeOutput(fundingLovelaceForOutputsV1(outputs));
+  const spentOutput = makeOutput(fundingLovelaceForOutputs(outputs));
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],
@@ -92,7 +92,7 @@ const buildTraceWithOutputs = async (
   const expectedLedgerOps = [
     { type: "delete" as const, key: spent },
     ...outputs.map((output, index) =>
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId, BigInt(index)),
         outputCbor: output,
       }),
@@ -125,9 +125,9 @@ const findFieldItemStep = (
 ): {
   readonly stateIndex: number;
   readonly witness: ValidationMachineWorkWitness;
-  readonly planInput: ValidationMachineFieldCarriagePlanInputV1;
+  readonly planInput: ValidationMachineFieldCarriagePlanInput;
 } => {
-  const expectedPreimageBytes = encodeMidgardFieldPreimageV1([
+  const expectedPreimageBytes = encodeMidgardFieldPreimage([
     Buffer.alloc(itemBytes),
   ]).length;
   for (let index = 0; index < trace.witnesses.length; index += 1) {
@@ -227,11 +227,11 @@ const carriageUtxo = ({
  * The §8 carriage a dispute submitter would resolve for one field, together with
  * the reference-input set it resolved against (#600).
  *
- * Everything here comes from producers: `planMidgardFieldCarriageV1` decides the
+ * Everything here comes from producers: `planMidgardFieldCarriage` decides the
  * tier by §8.4's partition over the preimage's length, the chunk datums are
- * `fieldPreimagePublicationDatumCborV1`'s bytes, the manifest is
- * `deriveFieldPreimageCertificationV1`'s, and the indices come back from
- * `resolveMidgardFieldCarriageAgainstReferenceInputsV1`, which locates each one
+ * `fieldPreimagePublicationDatumCbor`'s bytes, the manifest is
+ * `deriveFieldPreimageCertification`'s, and the indices come back from
+ * `resolveMidgardFieldCarriageAgainstReferenceInputs`, which locates each one
  * **by content** against the canonically-sorted list (§8.7). No index is written
  * down anywhere in this file.
  *
@@ -243,10 +243,10 @@ const carriageUtxo = ({
  * (ruling D3-A).
  */
 const resolveCarriageForPlan = (
-  plan: MidgardFieldCarriagePlanV1,
+  plan: MidgardFieldCarriagePlan,
 ): {
   readonly carriage: ReturnType<
-    typeof resolveMidgardFieldCarriageAgainstReferenceInputsV1
+    typeof resolveMidgardFieldCarriageAgainstReferenceInputs
   >;
   readonly referenceInputs: readonly UTxO[];
 } => {
@@ -261,14 +261,14 @@ const resolveCarriageForPlan = (
       txHash: `${(offset + 3).toString(16).padStart(2, "0")}`.repeat(32),
       outputIndex: offset,
       address: PROVER_KEY_ADDRESS,
-      datum: fieldPreimagePublicationDatumCborV1(publication.bytes),
+      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }),
   );
   const certificate =
     plan.tier === "Certified"
       ? [
           ((): UTxO => {
-            const certification = deriveFieldPreimageCertificationV1(plan);
+            const certification = deriveFieldPreimageCertification(plan);
             return carriageUtxo({
               txHash: "f1".repeat(32),
               outputIndex: 0,
@@ -283,7 +283,7 @@ const resolveCarriageForPlan = (
       : [];
   const referenceInputs = [scriptReference, ...publications, ...certificate];
   return {
-    carriage: resolveMidgardFieldCarriageAgainstReferenceInputsV1({
+    carriage: resolveMidgardFieldCarriageAgainstReferenceInputs({
       plan,
       referenceInputs,
       certificatePolicyId: CERTIFICATE_POLICY_ID,
@@ -293,16 +293,16 @@ const resolveCarriageForPlan = (
 };
 
 /**
- * The resolver a submitter hands `buildValidationOneStepArgumentV1` — #600's
+ * The resolver a submitter hands `buildValidationOneStepArgument` — #600's
  * seam, as the dispute path uses it.
  */
 const carriageResolverForTrace = (
   trace: DeterministicValidationMachineTrace,
-): ValidationMachineFieldCarriageResolverV1 => {
+): ValidationMachineFieldCarriageResolver => {
   const txId = Buffer.from(trace.states[0]!.transactionId);
   return ({ fieldIndex, fieldPreimage }) =>
     resolveCarriageForPlan(
-      planMidgardFieldCarriageV1({
+      planMidgardFieldCarriage({
         owner: CARRIAGE_OWNER,
         txId,
         fieldIndex,
@@ -325,7 +325,7 @@ describe("complete-item proof fit V1", () => {
     // the tier is resolved at evidence commitment, so the producer builds across
     // the whole admissible range and the threshold above the tier-1 cap is
     // reachable again.
-    const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 - 4;
+    const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES - 4;
     const atCap = makeExactSizeOutputItem(largestTier1Item);
     expect(atCap.length).toBe(largestTier1Item);
 
@@ -351,7 +351,7 @@ describe("complete-item proof fit V1", () => {
     const above = findFieldItemStep(aboveCapTrace, largestTier1Item + 1);
     expect(above.witness.auxiliary?.kind).toBe("transactionFieldItem");
     expect(
-      selectMidgardFieldCarriageTierV1(above.planInput.fieldPreimage.length),
+      selectMidgardFieldCarriageTier(above.planInput.fieldPreimage.length),
     ).toBe("RawUtxo");
 
     // The chunked fallback, reachable again (#597's Deviation retired). An item
@@ -359,7 +359,7 @@ describe("complete-item proof fit V1", () => {
     // chunked route, which needs a preimage §8.4 carries above tier 1 — exactly
     // the domain the named refusal used to remove. Exercised, not scanned for.
     const chunkedItem =
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes + 1;
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes + 1;
     expect(chunkedItem).toBeGreaterThan(largestTier1Item);
     const chunkedTrace = await buildTraceWithOutputs([
       makeExactSizeOutputItem(chunkedItem),
@@ -395,7 +395,7 @@ describe("complete-item proof fit V1", () => {
     // So this row asserts the plain thing the narrowing broke: the trace builds.
     // It deliberately uses no resolver and no L1 context, because the block-build
     // caller has none and never will.
-    const itemBytes = MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes;
+    const itemBytes = MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes;
     const trace = await buildTraceWithOutputs([
       makeExactSizeOutputItem(itemBytes),
     ]);
@@ -403,10 +403,10 @@ describe("complete-item proof fit V1", () => {
 
     // Field 2's preimage is the whole point: §8.4 puts these bytes at tier 3,
     // and the producer neither knows nor cares.
-    const expectedPreimageBytes = encodeMidgardFieldPreimageV1([
+    const expectedPreimageBytes = encodeMidgardFieldPreimage([
       Buffer.alloc(itemBytes),
     ]).length;
-    expect(selectMidgardFieldCarriageTierV1(expectedPreimageBytes)).toBe(
+    expect(selectMidgardFieldCarriageTier(expectedPreimageBytes)).toBe(
       "Certified",
     );
     const fieldTwoSteps = trace.witnesses.filter(
@@ -427,24 +427,23 @@ describe("complete-item proof fit V1", () => {
     const { stateIndex } = findFieldItemStep(trace, itemBytes, "scriptSources");
     let thrown: unknown = null;
     try {
-      buildValidationOneStepArgumentV1({ trace, stateIndex });
+      buildValidationOneStepArgument({ trace, stateIndex });
     } catch (error) {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(
-      ValidationMachineCarriageResolutionRequiredErrorV1,
+      ValidationMachineCarriageResolutionRequiredError,
     );
-    const refusal =
-      thrown as ValidationMachineCarriageResolutionRequiredErrorV1;
+    const refusal = thrown as ValidationMachineCarriageResolutionRequiredError;
     expect(refusal.fieldIndex).toBe(2);
     expect(refusal.preimageLength).toBe(expectedPreimageBytes);
     expect(refusal.selectedTier).toBe("Certified");
     expect(refusal.maxTier1PreimageBytes).toBe(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
     );
     // The same step with the submitter's resolver commits without complaint.
     expect(() =>
-      buildValidationOneStepArgumentV1({
+      buildValidationOneStepArgument({
         trace,
         stateIndex,
         resolveFieldCarriage: carriageResolverForTrace(trace),
@@ -478,7 +477,7 @@ describe("complete-item proof fit V1", () => {
     //     property C21-STAGE4 protects: carriage plus Plutus-data segment
     //     framing and nothing else — no per-item opening, frontier or sibling
     //     path, and no second copy of the item.
-    const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 - 4;
+    const largestTier1Item = MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES - 4;
 
     const probe = async (
       itemBytes: number,
@@ -497,7 +496,7 @@ describe("complete-item proof fit V1", () => {
       if (auxiliary?.kind !== "transactionRedeemerItemBegin") {
         throw new Error("stage-4 step is not the carriage-only witness");
       }
-      const argument = buildValidationOneStepArgumentV1({
+      const argument = buildValidationOneStepArgument({
         trace,
         stateIndex: step.stateIndex,
         resolveFieldCarriage: carriageResolverForTrace(trace),
@@ -506,7 +505,7 @@ describe("complete-item proof fit V1", () => {
         auxiliaryBytes: argument.auxiliaryCbor.length,
         evidenceBytes: argument.evidenceCbor.length,
         preimageBytes: auxiliary.fieldPreimage.length,
-        tier: selectMidgardFieldCarriageTierV1(auxiliary.fieldPreimage.length),
+        tier: selectMidgardFieldCarriageTier(auxiliary.fieldPreimage.length),
       };
     };
 
@@ -530,7 +529,7 @@ describe("complete-item proof fit V1", () => {
     const overheadAtCap = atTier1Cap.auxiliaryBytes - atTier1Cap.preimageBytes;
     const overheadSmall = small.auxiliaryBytes - small.preimageBytes;
     expect(atTier1Cap.evidenceBytes).toBeLessThan(
-      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
     );
 
     // (a) Above the cap: the two probes the C21 closure used to cover, built
@@ -544,20 +543,20 @@ describe("complete-item proof fit V1", () => {
       { itemBytes: 14_774, tier: "RawUtxo" as const },
       // The exact maximum admissible output: tier 3.
       {
-        itemBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes,
+        itemBytes: MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
         tier: "Certified" as const,
       },
     ]) {
       const measured = await probe(itemBytes);
       expect(measured.tier).toBe(tier);
       expect(measured.preimageBytes).toBeGreaterThan(
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
+        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       );
       // O(1): the auxiliary carries indices, never the preimage, so it is a
       // small constant rather than a function of the output.
       expect(measured.auxiliaryBytes).toBeLessThan(128);
       expect(measured.evidenceBytes).toBeLessThan(
-        MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+        MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes,
       );
       aboveCap.push(measured);
     }
@@ -586,24 +585,24 @@ describe("complete-item proof fit V1", () => {
 
   it("encodes ABI-exact transition-only and observe complete-item redeemers for the maximum shapes", async () => {
     const directMax =
-      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+      MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
     const item = makeExactSizeOutputItem(directMax);
     const trace = await buildTraceWithOutputs([item]);
     const { stateIndex } = findFieldItemStep(trace, directMax);
-    const oneStepArgument = buildValidationOneStepArgumentV1({
+    const oneStepArgument = buildValidationOneStepArgument({
       trace,
       stateIndex,
     });
     expect(oneStepArgument.resolverIndex).toBe(0);
     expect(oneStepArgument.semanticResolverIndex).toBe(1);
-    expect(selectValidationCompleteItemCarriageV1(directMax)).toBe("direct");
+    expect(selectValidationCompleteItemCarriage(directMax)).toBe("direct");
 
     const observeRedeemer = encodeInlineCompleteItemObserveRedeemer({
       auxiliaryCbor: oneStepArgument.auxiliaryCbor,
       inputIndex: 1n,
       outputIndex: 0n,
     });
-    const semanticRedeemer = encodeValidationSemanticResolutionRedeemerV1({
+    const semanticRedeemer = encodeValidationSemanticResolutionRedeemer({
       oneStepArgument,
       inputIndex: 1n,
       outputIndex: 0n,
@@ -670,19 +669,19 @@ describe("complete-item proof fit V1", () => {
     // Option B: the staged commitment is transition-only —
     // `hash_one_step_evidence(transition, NoAuxiliaryWitness)`.
     expect(
-      validationOneStepEvidenceHashV1({
+      validationOneStepEvidenceHash({
         transitionCbor: oneStepArgument.transitionCbor,
         auxiliaryCbor: Buffer.from(Data.to(new Constr(0, [])), "hex"),
       }),
     ).toMatch(/^[0-9a-f]{64}$/u);
 
-    const bounded = buildMidgardBoundedItemV1({
+    const bounded = buildMidgardBoundedItem({
       fieldIndex: 2,
       itemIndex: 0,
       bytes: item,
     });
     expect(
-      commitMidgardBoundedItemV1({
+      commitMidgardBoundedItem({
         fieldIndex: 2,
         itemIndex: 0,
         totalLength: item.length,
@@ -700,10 +699,10 @@ describe("complete-item proof fit V1", () => {
     // is the smallest genuine field that could carry it, making the overshoot a
     // lower bound rather than an inflated one.
     const measurePublicationTransaction = (itemBytes: number): number => {
-      const publication = deriveValidationProofItemPublicationV1({
+      const publication = deriveValidationProofItemPublication({
         transactionId: "44".repeat(32),
         transactionCommitment: "55".repeat(32),
-        fieldPreimage: encodeMidgardFieldPreimageV1([
+        fieldPreimage: encodeMidgardFieldPreimage([
           Buffer.alloc(itemBytes, 0xa5),
         ]).toString("hex"),
       });
@@ -763,16 +762,16 @@ describe("complete-item proof fit V1", () => {
     };
 
     const maxOutputItem = measurePublicationTransaction(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
     );
     expect(maxOutputItem).toBeGreaterThan(16 * 1024);
     const maxAggregateItem = measurePublicationTransaction(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTransactionAggregateFieldBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes,
     );
     expect(maxAggregateItem).toBeGreaterThan(16 * 1024);
     // The exact publication-threshold shape still fits the same framing.
     const thresholdItem = measurePublicationTransaction(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+      MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
     );
     expect(thresholdItem).toBeLessThanOrEqual(16 * 1024);
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
@@ -780,13 +779,13 @@ describe("complete-item proof fit V1", () => {
         JSON.stringify({
           oversizedCompletePublicationOvershootV1: {
             maxLedgerOutputPreimageBytes:
-              MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes,
+              MIDGARD_CONSENSUS_LIMITS.maxLedgerOutputPreimageBytes,
             maxLedgerOutputPublicationTransactionBytes: maxOutputItem,
             maxAggregateFieldItemBytes:
-              MIDGARD_CONSENSUS_LIMITS_V1.maxTransactionAggregateFieldBytes,
+              MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes,
             maxAggregatePublicationTransactionBytes: maxAggregateItem,
             thresholdItemBytes:
-              MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+              MIDGARD_CONSENSUS_LIMITS.maxSinglePublicationCompleteItemBytes,
             thresholdPublicationTransactionBytes: thresholdItem,
             maxTxSizeBytes: 16 * 1024,
           },

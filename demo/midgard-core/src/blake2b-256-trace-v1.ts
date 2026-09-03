@@ -1,23 +1,23 @@
 import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { aikenSerialisedPlutusDataBytes } from "./plutus-data-cbor.js";
 
-export const MIDGARD_BLAKE2B_256_TRACE_V1_VERSION = 1 as const;
+export const MIDGARD_BLAKE2B_256_TRACE_VERSION = 1 as const;
 export const MIDGARD_BLAKE2B_256_BLOCK_BYTES = 128;
 export const MIDGARD_BLAKE2B_256_ROUNDS = 12;
 export const MIDGARD_BLAKE2B_256_DIGEST_BYTES = 32;
 
-export const MidgardBlake2b256TraceStagesV1 = Object.freeze({
+export const MidgardBlake2b256TraceStages = Object.freeze({
   Ready: 0,
   Round: 1,
   Finish: 2,
   Terminal: 3,
 } as const);
 
-export type MidgardBlake2b256TraceStageV1 =
-  (typeof MidgardBlake2b256TraceStagesV1)[keyof typeof MidgardBlake2b256TraceStagesV1];
+export type MidgardBlake2b256TraceStage =
+  (typeof MidgardBlake2b256TraceStages)[keyof typeof MidgardBlake2b256TraceStages];
 
 const WORD_MASK = 0xffff_ffff_ffff_ffffn;
-const PARAMETER_BLOCK_V1 = 0x0101_0020n;
+const PARAMETER_BLOCK = 0x0101_0020n;
 
 const IV = Object.freeze([
   0x6a09_e667_f3bc_c908n,
@@ -43,9 +43,9 @@ const SIGMA = Object.freeze([
   [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
 ]);
 
-export type MidgardBlake2b256TraceControlV1 = {
-  readonly version: typeof MIDGARD_BLAKE2B_256_TRACE_V1_VERSION;
-  readonly stage: MidgardBlake2b256TraceStageV1;
+export type MidgardBlake2b256TraceControl = {
+  readonly version: typeof MIDGARD_BLAKE2B_256_TRACE_VERSION;
+  readonly stage: MidgardBlake2b256TraceStage;
   readonly cursor: number;
   readonly totalLength: number;
   readonly chainingValue: Buffer;
@@ -55,10 +55,10 @@ export type MidgardBlake2b256TraceControlV1 = {
   readonly round: number;
 };
 
-export type MidgardBlake2b256TraceStepV1 = {
-  readonly control: MidgardBlake2b256TraceControlV1;
+export type MidgardBlake2b256TraceStep = {
+  readonly control: MidgardBlake2b256TraceControl;
   readonly block: Buffer | null;
-  readonly next: MidgardBlake2b256TraceControlV1;
+  readonly next: MidgardBlake2b256TraceControl;
 };
 
 // Callers bind a non-empty domain/framing prefix before any streamed content.
@@ -119,7 +119,7 @@ const encodeWordsLe = (words: readonly bigint[]): Buffer => {
 
 const initialChainingValue = (): Buffer => {
   const words = [...IV];
-  words[0] = words[0]! ^ PARAMETER_BLOCK_V1;
+  words[0] = words[0]! ^ PARAMETER_BLOCK;
   return encodeWordsLe(words);
 };
 
@@ -249,14 +249,14 @@ const emptyActiveState = {
   round: 0,
 } as const;
 
-export const isWellFormedMidgardBlake2b256TraceControlV1 = (
-  control: MidgardBlake2b256TraceControlV1,
+export const isWellFormedMidgardBlake2b256TraceControl = (
+  control: MidgardBlake2b256TraceControl,
 ): boolean => {
   if (
-    control.version !== MIDGARD_BLAKE2B_256_TRACE_V1_VERSION ||
+    control.version !== MIDGARD_BLAKE2B_256_TRACE_VERSION ||
     !Number.isSafeInteger(control.stage) ||
-    control.stage < MidgardBlake2b256TraceStagesV1.Ready ||
-    control.stage > MidgardBlake2b256TraceStagesV1.Terminal ||
+    control.stage < MidgardBlake2b256TraceStages.Ready ||
+    control.stage > MidgardBlake2b256TraceStages.Terminal ||
     !Number.isSafeInteger(control.cursor) ||
     control.cursor < 0 ||
     !Number.isSafeInteger(control.totalLength) ||
@@ -275,15 +275,15 @@ export const isWellFormedMidgardBlake2b256TraceControlV1 = (
     return false;
   }
   if (
-    control.stage === MidgardBlake2b256TraceStagesV1.Ready ||
-    control.stage === MidgardBlake2b256TraceStagesV1.Terminal
+    control.stage === MidgardBlake2b256TraceStages.Ready ||
+    control.stage === MidgardBlake2b256TraceStages.Terminal
   ) {
     return (
       control.activeBlock.length === 0 &&
       control.activeBlockLength === 0 &&
       control.workingValue.length === 0 &&
       control.round === 0 &&
-      (control.stage === MidgardBlake2b256TraceStagesV1.Ready
+      (control.stage === MidgardBlake2b256TraceStages.Ready
         ? control.cursor < control.totalLength &&
           control.cursor % MIDGARD_BLAKE2B_256_BLOCK_BYTES === 0
         : control.cursor === control.totalLength)
@@ -303,33 +303,33 @@ export const isWellFormedMidgardBlake2b256TraceControlV1 = (
         .subarray(control.activeBlockLength)
         .every((byte) => byte === 0)) &&
     control.workingValue.length === 128 &&
-    (control.stage === MidgardBlake2b256TraceStagesV1.Round
+    (control.stage === MidgardBlake2b256TraceStages.Round
       ? control.round >= 0 && control.round < MIDGARD_BLAKE2B_256_ROUNDS
       : control.round === MIDGARD_BLAKE2B_256_ROUNDS)
   );
 };
 
-export const initialMidgardBlake2b256TraceControlV1 = (
+export const initialMidgardBlake2b256TraceControl = (
   totalLength: number,
-): MidgardBlake2b256TraceControlV1 => {
+): MidgardBlake2b256TraceControl => {
   const control = {
-    version: MIDGARD_BLAKE2B_256_TRACE_V1_VERSION,
-    stage: MidgardBlake2b256TraceStagesV1.Ready,
+    version: MIDGARD_BLAKE2B_256_TRACE_VERSION,
+    stage: MidgardBlake2b256TraceStages.Ready,
     cursor: 0,
     totalLength,
     chainingValue: initialChainingValue(),
     ...emptyActiveState,
-  } satisfies MidgardBlake2b256TraceControlV1;
-  if (!isWellFormedMidgardBlake2b256TraceControlV1(control)) {
+  } satisfies MidgardBlake2b256TraceControl;
+  if (!isWellFormedMidgardBlake2b256TraceControl(control)) {
     throw new Error("Invalid V1 BLAKE2b-256 trace total length");
   }
   return control;
 };
 
-export const encodeMidgardBlake2b256TraceControlV1 = (
-  control: MidgardBlake2b256TraceControlV1,
+export const encodeMidgardBlake2b256TraceControl = (
+  control: MidgardBlake2b256TraceControl,
 ): Buffer => {
-  if (!isWellFormedMidgardBlake2b256TraceControlV1(control)) {
+  if (!isWellFormedMidgardBlake2b256TraceControl(control)) {
     throw new Error("Invalid V1 BLAKE2b-256 trace control");
   }
   return encodeCborArrayRaw([
@@ -345,16 +345,16 @@ export const encodeMidgardBlake2b256TraceControlV1 = (
   ]);
 };
 
-export const advanceMidgardBlake2b256TraceV1 = ({
+export const advanceMidgardBlake2b256Trace = ({
   control,
   block,
 }: {
-  readonly control: MidgardBlake2b256TraceControlV1;
+  readonly control: MidgardBlake2b256TraceControl;
   readonly block?: Uint8Array | null;
-}): MidgardBlake2b256TraceControlV1 | null => {
+}): MidgardBlake2b256TraceControl | null => {
   try {
-    if (!isWellFormedMidgardBlake2b256TraceControlV1(control)) return null;
-    if (control.stage === MidgardBlake2b256TraceStagesV1.Ready) {
+    if (!isWellFormedMidgardBlake2b256TraceControl(control)) return null;
+    if (control.stage === MidgardBlake2b256TraceStages.Ready) {
       const expectedLength = Math.min(
         MIDGARD_BLAKE2B_256_BLOCK_BYTES,
         control.totalLength - control.cursor,
@@ -371,7 +371,7 @@ export const advanceMidgardBlake2b256TraceV1 = ({
       const bytesCompressed = control.cursor + expectedLength;
       const next = {
         ...control,
-        stage: MidgardBlake2b256TraceStagesV1.Round,
+        stage: MidgardBlake2b256TraceStages.Round,
         activeBlock,
         activeBlockLength: expectedLength,
         workingValue: initializeWorkingValue({
@@ -381,17 +381,17 @@ export const advanceMidgardBlake2b256TraceV1 = ({
         }),
         round: 0,
       };
-      return isWellFormedMidgardBlake2b256TraceControlV1(next) ? next : null;
+      return isWellFormedMidgardBlake2b256TraceControl(next) ? next : null;
     }
     if (block !== null && block !== undefined) return null;
-    if (control.stage === MidgardBlake2b256TraceStagesV1.Round) {
+    if (control.stage === MidgardBlake2b256TraceStages.Round) {
       const round = control.round + 1;
       const next = {
         ...control,
         stage:
           round === MIDGARD_BLAKE2B_256_ROUNDS
-            ? MidgardBlake2b256TraceStagesV1.Finish
-            : MidgardBlake2b256TraceStagesV1.Round,
+            ? MidgardBlake2b256TraceStages.Finish
+            : MidgardBlake2b256TraceStages.Round,
         workingValue: applyRound({
           workingValue: control.workingValue,
           activeBlock: control.activeBlock,
@@ -399,16 +399,16 @@ export const advanceMidgardBlake2b256TraceV1 = ({
         }),
         round,
       };
-      return isWellFormedMidgardBlake2b256TraceControlV1(next) ? next : null;
+      return isWellFormedMidgardBlake2b256TraceControl(next) ? next : null;
     }
-    if (control.stage === MidgardBlake2b256TraceStagesV1.Finish) {
+    if (control.stage === MidgardBlake2b256TraceStages.Finish) {
       const cursor = control.cursor + control.activeBlockLength;
       const next = {
         ...control,
         stage:
           cursor === control.totalLength
-            ? MidgardBlake2b256TraceStagesV1.Terminal
-            : MidgardBlake2b256TraceStagesV1.Ready,
+            ? MidgardBlake2b256TraceStages.Terminal
+            : MidgardBlake2b256TraceStages.Ready,
         cursor,
         chainingValue: finishBlock({
           chainingValue: control.chainingValue,
@@ -416,7 +416,7 @@ export const advanceMidgardBlake2b256TraceV1 = ({
         }),
         ...emptyActiveState,
       };
-      return isWellFormedMidgardBlake2b256TraceControlV1(next) ? next : null;
+      return isWellFormedMidgardBlake2b256TraceControl(next) ? next : null;
     }
     return null;
   } catch {
@@ -424,30 +424,30 @@ export const advanceMidgardBlake2b256TraceV1 = ({
   }
 };
 
-export const digestMidgardBlake2b256TraceV1 = (
-  control: MidgardBlake2b256TraceControlV1,
+export const digestMidgardBlake2b256Trace = (
+  control: MidgardBlake2b256TraceControl,
 ): Buffer | null =>
-  isWellFormedMidgardBlake2b256TraceControlV1(control) &&
-  control.stage === MidgardBlake2b256TraceStagesV1.Terminal
+  isWellFormedMidgardBlake2b256TraceControl(control) &&
+  control.stage === MidgardBlake2b256TraceStages.Terminal
     ? control.chainingValue.subarray(0, MIDGARD_BLAKE2B_256_DIGEST_BYTES)
     : null;
 
-export const buildMidgardBlake2b256TraceV1 = (
+export const buildMidgardBlake2b256Trace = (
   message: Uint8Array,
-): readonly MidgardBlake2b256TraceStepV1[] => {
+): readonly MidgardBlake2b256TraceStep[] => {
   const bytes = Buffer.from(message);
-  let control = initialMidgardBlake2b256TraceControlV1(bytes.length);
-  const steps: MidgardBlake2b256TraceStepV1[] = [];
-  while (control.stage !== MidgardBlake2b256TraceStagesV1.Terminal) {
+  let control = initialMidgardBlake2b256TraceControl(bytes.length);
+  const steps: MidgardBlake2b256TraceStep[] = [];
+  while (control.stage !== MidgardBlake2b256TraceStages.Terminal) {
     const block =
-      control.stage === MidgardBlake2b256TraceStagesV1.Ready
+      control.stage === MidgardBlake2b256TraceStages.Ready
         ? bytes.subarray(
             control.cursor,
             control.cursor + MIDGARD_BLAKE2B_256_BLOCK_BYTES,
           )
         : null;
-    const next = advanceMidgardBlake2b256TraceV1({ control, block });
-    if (next === null || !isWellFormedMidgardBlake2b256TraceControlV1(next)) {
+    const next = advanceMidgardBlake2b256Trace({ control, block });
+    if (next === null || !isWellFormedMidgardBlake2b256TraceControl(next)) {
       throw new Error("V1 BLAKE2b-256 trace failed closed");
     }
     steps.push({ control, block, next });

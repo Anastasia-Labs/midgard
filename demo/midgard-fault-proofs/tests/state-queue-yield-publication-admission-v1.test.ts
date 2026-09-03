@@ -15,7 +15,7 @@ import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.js
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import {
   publishPlainReferenceScriptUtxo,
-  publishStateQueueYieldReferenceScriptV1,
+  publishStateQueueYieldReferenceScript,
 } from "./support/emulator/reference-scripts.js";
 
 describe("state-queue withdraw-zero publication admission V1", () => {
@@ -56,7 +56,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       "fraudRemoval",
       "merge",
     ] as const) {
-      const publication = await publishStateQueueYieldReferenceScriptV1({
+      const publication = await publishStateQueueYieldReferenceScript({
         lucid,
         contracts,
         arm,

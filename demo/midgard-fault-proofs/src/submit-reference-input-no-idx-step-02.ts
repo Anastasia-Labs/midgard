@@ -8,7 +8,7 @@
  * while stale, because #576 rebound it (`b824ad6ea`) one day after
  * `docs/fault-proofs/offchain-builder-staleness-575.md` listed it as an
  * exclusion. Thread state carries `verified_tx_id`, the §2.5 anchor; the
- * redeemer carries a `FieldOpeningV1` rather than a reproduced
+ * redeemer carries a `FieldOpening` rather than a reproduced
  * `reference_inputs_preimage`.
  *
  * **Position, not encoding, is what separates field 1 from field 0.** The header
@@ -16,7 +16,7 @@
  * because the items were committed under a different `from_items` index; §4
  * removed field-index domain separation, so identical items commit identically
  * in both slots and it is the index named at the door — mirrored here by
- * {@link planFaultProofFieldOpeningV1} — that refuses the substitution.
+ * {@link planFaultProofFieldOpening} — that refuses the substitution.
  *
  * This family's on-chain step 02 takes a single flat `Args` record: there is no
  * `Complete`/`CompletePublished`/`FoldStart`/`FoldNext` sum, hence no fold to
@@ -24,14 +24,14 @@
  * chooses it from the preimage's own length.
  */
 import {
-  encodeMidgardTxInputCanonicalV1,
-  type FieldOpeningV1,
-  MIDGARD_FIELD_INDEX_V1,
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   ReferenceInputNoIdxStep02Datum,
   ReferenceInputNoIdxStep02SpendRedeemer,
   ReferenceInputNoIdxStep03Datum,
-  referenceInputNoIdxStep03StateFromBadInputV1,
+  referenceInputNoIdxStep03StateFromBadInput,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -45,10 +45,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  parseNativeTxCompactCborV1,
-  planFaultProofFieldOpeningV1,
-  publishFaultProofFieldCarriageV1,
+  faultProofFieldOpening,
+  parseNativeTxCompactCbor,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
 } from "./field-opening-v1.js";
 import {
   parseHex,
@@ -72,11 +72,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared reference-inputs preimage produced by `prepare-reference-input-no-idx`. */
@@ -247,8 +247,8 @@ export const submitReferenceInputNoIdxStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep02Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -281,12 +281,12 @@ export const submitReferenceInputNoIdxStep02 = async ({
   // Re-run the door off-chain: these items must be the §5.1 preimage the
   // anchored transaction committed *at field 1*, and the compact bytes must
   // re-derive to the anchor the thread carries.
-  const planned = planFaultProofFieldOpeningV1({
-    fieldIndex: MIDGARD_FIELD_INDEX_V1.referenceInputs,
+  const planned = planFaultProofFieldOpening({
+    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
     anchorTxId: verifiedTxId,
     nativeTxCompactCbor,
     itemCbors: referenceInputsPreimage.referenceInputsPreimage.map(
-      encodeMidgardTxInputCanonicalV1,
+      encodeMidgardTxInputCanonical,
     ),
     owner: signer.paymentKeyHash,
     label: "Reference-input-no-idx step 02 reference-inputs",
@@ -298,7 +298,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   // resolving indices into the complete reference-input set.
   const published =
     publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriageV1({
+    (await publishFaultProofFieldCarriage({
       lucid,
       signer,
       planned,
@@ -306,7 +306,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
       label: "Reference-input-no-idx step 02 reference-inputs field",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
+  const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "reference-input-no-idx step 02 validator",
@@ -318,7 +318,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
-  const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
+  const referenceInputsOpening: FieldOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
@@ -345,7 +345,7 @@ export const submitReferenceInputNoIdxStep02 = async ({
   const step03Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: referenceInputNoIdxStep03StateFromBadInputV1(badReferenceInput),
+      data: referenceInputNoIdxStep03StateFromBadInput(badReferenceInput),
     },
     ReferenceInputNoIdxStep03Datum,
   );
@@ -418,9 +418,9 @@ export const submitReferenceInputNoIdxStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -499,7 +499,7 @@ export const submitReferenceInputNoIdxStep02FromFiles = async (
           ? {}
           : { badReferenceInputIndex: config.badReferenceInputIndex }),
       }),
-    nativeTxCompactCbor: parseNativeTxCompactCborV1(
+    nativeTxCompactCbor: parseNativeTxCompactCbor(
       nativeTxCompactJson,
       "--native-tx-compact",
     ),

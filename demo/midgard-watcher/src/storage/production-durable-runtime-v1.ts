@@ -1,81 +1,81 @@
 import {
-  makeWatcherFinalityBootstrapStateV1,
-  type WatcherFinalityPolicyV1,
+  makeWatcherFinalityBootstrapState,
+  type WatcherFinalityPolicy,
 } from "../l1/finality-engine.js";
 import type {
-  WatcherL1TransportAttestationContextV1,
-  WatcherNormalizedL1BlockV1,
+  WatcherL1TransportAttestationContext,
+  WatcherNormalizedL1Block,
 } from "../l1/l1-adapter.js";
-import type { WatcherMultiProviderConsistencyV1 } from "../l1/multi-provider-consistency.js";
+import type { WatcherMultiProviderConsistency } from "../l1/multi-provider-consistency.js";
 import {
-  evaluateAndPersistWatcherPostFinalityRecoveryV1,
-  evaluateAndPersistWatcherRollbackV1,
-  initializeWatcherRollbackDurableAuthorityV1,
-  loadWatcherRollbackDurableAuthorityV1,
-  persistWatcherRollbackDurableCanonicalProgressV1,
-  persistWatcherRollbackDurableObservationV1,
-  prepareWatcherRollbackDurableTrustedHeadReconciliationV1,
-  readWatcherRollbackDurableAuthorityV1,
-  type WatcherRollbackDurableAuthorityReadV1,
-  type WatcherRollbackDurableAuthorityV1,
-  type WatcherRollbackDurableCanonicalProgressResultV1,
-  type WatcherRollbackDurableEvaluationResultV1,
-  type WatcherRollbackDurableObservationResultV1,
-  type WatcherRollbackDurableRecoveryResultV1,
-  type WatcherRollbackDurableTrustedHeadV1,
+  evaluateAndPersistWatcherPostFinalityRecovery,
+  evaluateAndPersistWatcherRollback,
+  initializeWatcherRollbackDurableAuthority,
+  loadWatcherRollbackDurableAuthority,
+  persistWatcherRollbackDurableCanonicalProgress,
+  persistWatcherRollbackDurableObservation,
+  prepareWatcherRollbackDurableTrustedHeadReconciliation,
+  readWatcherRollbackDurableAuthority,
+  type WatcherRollbackDurableAuthority,
+  type WatcherRollbackDurableAuthorityRead,
+  type WatcherRollbackDurableCanonicalProgressResult,
+  type WatcherRollbackDurableEvaluationResult,
+  type WatcherRollbackDurableObservationResult,
+  type WatcherRollbackDurableRecoveryResult,
+  type WatcherRollbackDurableTrustedHead,
 } from "../l1/rollback-engine.js";
-import type { WatcherTrustedHeadAuthorityClientV1 } from "../runtime/trusted-head-authority-v1.js";
+import type { WatcherTrustedHeadAuthorityClient } from "../runtime/trusted-head-authority-v1.js";
 import {
-  makeEmptyWatcherDurableStoreV1,
+  makeEmptyWatcherDurableStore,
   type WatcherDurableAtomicBackend,
 } from "./durable-store.js";
 
-export const WATCHER_PRODUCTION_DURABLE_RUNTIME_V1_SCHEMA_VERSION =
+export const WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION =
   "midgard-watcher-production-durable-runtime-v1" as const;
 
-export type WatcherProductionDurableRuntimeV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_DURABLE_RUNTIME_V1_SCHEMA_VERSION;
-  read(): WatcherRollbackDurableAuthorityReadV1;
+export type WatcherDurableRuntime = Readonly<{
+  schemaVersion: typeof WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION;
+  read(): WatcherRollbackDurableAuthorityRead;
   persistObservation(input: {
-    readonly block: WatcherNormalizedL1BlockV1;
-    readonly observations: readonly WatcherNormalizedL1BlockV1[];
-    readonly consistency: WatcherMultiProviderConsistencyV1;
-    readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-  }): Promise<WatcherRollbackDurableObservationResultV1>;
+    readonly block: WatcherNormalizedL1Block;
+    readonly observations: readonly WatcherNormalizedL1Block[];
+    readonly consistency: WatcherMultiProviderConsistency;
+    readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  }): Promise<WatcherRollbackDurableObservationResult>;
   persistCanonicalProgress(input: {
-    readonly block: WatcherNormalizedL1BlockV1;
-    readonly observations: readonly WatcherNormalizedL1BlockV1[];
-    readonly consistency: WatcherMultiProviderConsistencyV1;
-    readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-  }): Promise<WatcherRollbackDurableCanonicalProgressResultV1>;
+    readonly block: WatcherNormalizedL1Block;
+    readonly observations: readonly WatcherNormalizedL1Block[];
+    readonly consistency: WatcherMultiProviderConsistency;
+    readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  }): Promise<WatcherRollbackDurableCanonicalProgressResult>;
   persistRollback(input: {
     readonly previousFinalityState: unknown;
     readonly consistency: unknown;
     readonly finalityResult: unknown;
-    readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-  }): Promise<WatcherRollbackDurableEvaluationResultV1>;
+    readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  }): Promise<WatcherRollbackDurableEvaluationResult>;
   persistPostFinalityRecovery(input: {
     readonly previousCanonicalPath: unknown;
     readonly replacementCanonicalPath: unknown;
-    readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
-  }): Promise<WatcherRollbackDurableRecoveryResultV1>;
+    readonly transportAttestations: readonly WatcherL1TransportAttestationContext[];
+  }): Promise<WatcherRollbackDurableRecoveryResult>;
 }>;
 
 const sameHead = (
-  left: WatcherRollbackDurableTrustedHeadV1 | null,
-  right: WatcherRollbackDurableTrustedHeadV1 | null,
+  left: WatcherRollbackDurableTrustedHead | null,
+  right: WatcherRollbackDurableTrustedHead | null,
 ): boolean => JSON.stringify(left) === JSON.stringify(right);
 
 const loadPublishedAuthority = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly policy: WatcherFinalityPolicyV1;
+  readonly policy: WatcherFinalityPolicy;
   readonly authenticationKey: Uint8Array;
-  readonly client: WatcherTrustedHeadAuthorityClientV1;
-  readonly expectedHead: WatcherRollbackDurableTrustedHeadV1;
+  readonly client: WatcherTrustedHeadAuthorityClient;
+  readonly expectedHead: WatcherRollbackDurableTrustedHead;
 }): Promise<
   Readonly<{
-    authority: WatcherRollbackDurableAuthorityV1;
-    trustedHead: WatcherRollbackDurableTrustedHeadV1;
+    authority: WatcherRollbackDurableAuthority;
+    trustedHead: WatcherRollbackDurableTrustedHead;
   }>
 > => {
   const readBack = await input.client.readCurrent();
@@ -84,7 +84,7 @@ const loadPublishedAuthority = async (input: {
       "watcher trusted-head read-back differs from the durable snapshot",
     );
   }
-  const authority = await loadWatcherRollbackDurableAuthorityV1({
+  const authority = await loadWatcherRollbackDurableAuthority({
     backend: input.backend,
     policy: input.policy,
     authenticationKey: input.authenticationKey,
@@ -95,15 +95,15 @@ const loadPublishedAuthority = async (input: {
 
 const publishDirectSuccessor = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly policy: WatcherFinalityPolicyV1;
+  readonly policy: WatcherFinalityPolicy;
   readonly authenticationKey: Uint8Array;
-  readonly client: WatcherTrustedHeadAuthorityClientV1;
-  readonly expectedHead: WatcherRollbackDurableTrustedHeadV1 | null;
-  readonly nextHead: WatcherRollbackDurableTrustedHeadV1;
+  readonly client: WatcherTrustedHeadAuthorityClient;
+  readonly expectedHead: WatcherRollbackDurableTrustedHead | null;
+  readonly nextHead: WatcherRollbackDurableTrustedHead;
 }): Promise<
   Readonly<{
-    authority: WatcherRollbackDurableAuthorityV1;
-    trustedHead: WatcherRollbackDurableTrustedHeadV1;
+    authority: WatcherRollbackDurableAuthority;
+    trustedHead: WatcherRollbackDurableTrustedHead;
   }>
 > => {
   if (
@@ -128,14 +128,14 @@ const publishDirectSuccessor = async (input: {
  * returning any actionable capability. The only crash recovery admitted is
  * the authenticated revision-zero head or one exact direct successor.
  */
-export const createWatcherProductionDurableRuntimeV1 = async (input: {
+export const createWatcherDurableRuntime = async (input: {
   readonly backend: WatcherDurableAtomicBackend;
-  readonly policy: WatcherFinalityPolicyV1;
+  readonly policy: WatcherFinalityPolicy;
   readonly authenticationKey: Uint8Array;
-  readonly client: WatcherTrustedHeadAuthorityClientV1;
-}): Promise<WatcherProductionDurableRuntimeV1> => {
+  readonly client: WatcherTrustedHeadAuthorityClient;
+}): Promise<WatcherDurableRuntime> => {
   let externallyProtectedHead = await input.client.readCurrent();
-  let authority: WatcherRollbackDurableAuthorityV1;
+  let authority: WatcherRollbackDurableAuthority;
   const stored = await input.backend.read();
   if (stored === null) {
     if (externallyProtectedHead !== null) {
@@ -143,16 +143,16 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
         "watcher SQLite snapshot is absent while trusted authority is nonempty",
       );
     }
-    const bootstrapFinalityState = makeWatcherFinalityBootstrapStateV1(
+    const bootstrapFinalityState = makeWatcherFinalityBootstrapState(
       input.policy,
     );
     if (bootstrapFinalityState === null) {
       throw new Error("watcher production finality bootstrap is invalid");
     }
-    const initialized = await initializeWatcherRollbackDurableAuthorityV1({
+    const initialized = await initializeWatcherRollbackDurableAuthority({
       backend: input.backend,
       policy: input.policy,
-      bootstrapStore: makeEmptyWatcherDurableStoreV1(
+      bootstrapStore: makeEmptyWatcherDurableStore(
         input.policy.deploymentMarker,
       ),
       bootstrapFinalityState,
@@ -168,7 +168,7 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
     externallyProtectedHead = published.trustedHead;
   } else {
     const reconciliation =
-      await prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
+      await prepareWatcherRollbackDurableTrustedHeadReconciliation({
         backend: input.backend,
         policy: input.policy,
         authenticationKey: input.authenticationKey,
@@ -195,7 +195,7 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
   if (externallyProtectedHead === null) {
     throw new Error("watcher trusted-head authority remained empty");
   }
-  let publishedHead: WatcherRollbackDurableTrustedHeadV1 =
+  let publishedHead: WatcherRollbackDurableTrustedHead =
     externallyProtectedHead;
 
   let serial = Promise.resolve();
@@ -215,10 +215,10 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
 
   const admitResult = async <
     Result extends
-      | WatcherRollbackDurableCanonicalProgressResultV1
-      | WatcherRollbackDurableObservationResultV1
-      | WatcherRollbackDurableEvaluationResultV1
-      | WatcherRollbackDurableRecoveryResultV1,
+      | WatcherRollbackDurableCanonicalProgressResult
+      | WatcherRollbackDurableObservationResult
+      | WatcherRollbackDurableEvaluationResult
+      | WatcherRollbackDurableRecoveryResult,
   >(
     result: Result,
   ): Promise<Result> => {
@@ -245,13 +245,13 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
   };
 
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_DURABLE_RUNTIME_V1_SCHEMA_VERSION,
-    read: () => readWatcherRollbackDurableAuthorityV1(authority),
+    schemaVersion: WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION,
+    read: () => readWatcherRollbackDurableAuthority(authority),
     persistObservation: async (operationInput) =>
       await serialized(
         async () =>
           await admitResult(
-            await persistWatcherRollbackDurableObservationV1({
+            await persistWatcherRollbackDurableObservation({
               authority,
               ...operationInput,
             }),
@@ -261,7 +261,7 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
       await serialized(
         async () =>
           await admitResult(
-            await persistWatcherRollbackDurableCanonicalProgressV1({
+            await persistWatcherRollbackDurableCanonicalProgress({
               authority,
               ...operationInput,
             }),
@@ -271,7 +271,7 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
       await serialized(
         async () =>
           await admitResult(
-            await evaluateAndPersistWatcherRollbackV1({
+            await evaluateAndPersistWatcherRollback({
               authority,
               ...operationInput,
             }),
@@ -281,7 +281,7 @@ export const createWatcherProductionDurableRuntimeV1 = async (input: {
       await serialized(
         async () =>
           await admitResult(
-            await evaluateAndPersistWatcherPostFinalityRecoveryV1({
+            await evaluateAndPersistWatcherPostFinalityRecovery({
               authority,
               ...operationInput,
             }),

@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { submitWithdrawnInputStep03 } from "../src/index.js";
 import {
-  advanceWithdrawnInputToStep03V1,
-  makeWithdrawnInputEmulatorScenarioV1,
+  advanceWithdrawnInputToStep03,
+  makeWithdrawnInputEmulatorScenario,
 } from "./support/withdrawn-input-emulator-v1.js";
 
 describe("withdrawn-input honest-block refusal", () => {
   it("refuses on-chain when the withdrawals root commits a different out-ref", async () => {
-    const scenario = await makeWithdrawnInputEmulatorScenarioV1(
+    const scenario = await makeWithdrawnInputEmulatorScenario(
       "honestDifferentWithdrawal",
     );
-    const { step02 } = await advanceWithdrawnInputToStep03V1(scenario);
+    const { step02 } = await advanceWithdrawnInputToStep03(scenario);
     await expect(
       submitWithdrawnInputStep03({
         lucid: scenario.harness.proverLucid,

@@ -2,36 +2,36 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  hashMidgardValidationMachineStateV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
+  hashMidgardValidationMachineState,
+  MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import {
-  encodeMidgardFieldPreimageV1,
-  selectMidgardFieldCarriageTierV1,
+  encodeMidgardFieldPreimage,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  deriveCanonicalDecodeItemStageDataV1,
-  validationOneStepEvidenceHashV1,
+  deriveCanonicalDecodeItemStageData,
+  validationOneStepEvidenceHash,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  AuthenticatedCanonicalDecodeItemDatumV1,
-  buildUnsignedValidationProofItemPublicationV1Program,
+  AuthenticatedCanonicalDecodeItemDatum,
+  buildUnsignedValidationProofItemPublicationProgram,
   buildValidationTraceDisputeFaultProofContracts,
-  deriveValidationProofItemPublicationV1,
-  ObservedCanonicalDecodeItemDatumV1,
+  deriveValidationProofItemPublication,
+  ObservedCanonicalDecodeItemDatum,
   parseFaultProofBlueprint,
-  PreparedCanonicalDecodeItemDatumV1,
-  PreparedValidationResolutionDatumV1,
-  type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
+  PreparedCanonicalDecodeItemDatum,
+  PreparedValidationResolutionDatum,
+  type PreparedValidationResolutionDatum as PreparedValidationResolutionDatumData,
   requireInputIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   validationMachineStateDataFromCore,
-  ValidationOneStepWitnessV1,
-  type ValidationOneStepWitnessV1 as ValidationOneStepWitnessV1Data,
+  ValidationOneStepWitness,
+  type ValidationOneStepWitness as ValidationOneStepWitnessData,
   type ValidationTraceDisputeFaultProofContracts,
-  VerifiedCanonicalDecodeItemDatumV1,
+  VerifiedCanonicalDecodeItemDatum,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -53,15 +53,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  buildValidationOneStepArgumentV1,
+  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
-  encodeValidationOneStepWitnessCborV1,
+  encodeValidationOneStepWitnessCbor,
 } from "../src/index.js";
 import {
-  fundingLovelaceForOutputsV1,
-  makeMinAdaFundedExactSizeOutputItemV1,
+  fundingLovelaceForOutputs,
+  makeMinAdaFundedExactSizeOutputItem,
   makeNativeTx,
   makeOutput,
   outRefFromByte,
@@ -161,7 +161,7 @@ const THIRD_PARTY_HASH = Buffer.from(
   THIRD_PARTY_KEY.to_public().hash().to_raw_bytes(),
 ).toString("hex");
 
-const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const MAX_L1_TX_BYTES = MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes;
 
 /** §2.5 field 2 — the outputs field these traces read one complete item of. */
 const OUTPUT_FIELD_INDEX = 2;
@@ -178,7 +178,7 @@ const FIELD_TWO_PREIMAGE_BYTES = 2_000;
  * floor without moving its length, so every carriage measurement below
  * measures the same number of bytes it did before the wiring.
  */
-const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItemV1;
+const makeExactSizeOutputItem = makeMinAdaFundedExactSizeOutputItem;
 
 const outputsForFieldTwoPreimageBytes = (
   targetBytes: number,
@@ -189,7 +189,7 @@ const outputsForFieldTwoPreimageBytes = (
     makeExactSizeOutputItem(first),
     makeExactSizeOutputItem(payload - first),
   ];
-  const measured = encodeMidgardFieldPreimageV1(outputs).length;
+  const measured = encodeMidgardFieldPreimage(outputs).length;
   if (measured !== targetBytes) {
     throw new Error(
       `two-output field-2 envelope measured ${measured.toString()} bytes, wanted ${targetBytes.toString()}`,
@@ -199,7 +199,7 @@ const outputsForFieldTwoPreimageBytes = (
 };
 
 const traceContext = {
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   eventKeyCbor: Buffer.from("d8799f4100ff", "hex"),
   sourceKind: "normal" as const,
   blockEndTimeMs: 1_750_000_000_000,
@@ -217,7 +217,7 @@ const buildTraceWithOutputs = async (
   // funded at its own minimum-Ada floor, or stage five would convict this
   // trace with `E_VALUE_NOT_PRESERVED` instead of accepting it. The fee is
   // zero, so the sum is exact.
-  const spentOutput = makeOutput(fundingLovelaceForOutputsV1(outputs));
+  const spentOutput = makeOutput(fundingLovelaceForOutputs(outputs));
   const transaction = makeNativeTx({
     version: 1n,
     spendInputs: [spent],
@@ -226,7 +226,7 @@ const buildTraceWithOutputs = async (
   const expectedLedgerOps = [
     { type: "delete" as const, key: spent },
     ...outputs.map((output, index) =>
-      buildValidationMachineLedgerInsertOpV1({
+      buildValidationMachineLedgerInsertOp({
         key: outRefFromTxId(transaction.txId, BigInt(index)),
         outputCbor: output,
       }),
@@ -541,10 +541,10 @@ describe.skipIf(!blueprintSpeaksOptionB)(
         trace,
         FIELD_TWO_PREIMAGE_BYTES,
       );
-      expect(selectMidgardFieldCarriageTierV1(fieldPreimage.length)).toBe(
+      expect(selectMidgardFieldCarriageTier(fieldPreimage.length)).toBe(
         "Inline",
       );
-      const argument = buildValidationOneStepArgumentV1({ trace, stateIndex });
+      const argument = buildValidationOneStepArgument({ trace, stateIndex });
       expect(argument.resolverIndex).toBe(0);
       expect(argument.semanticResolverIndex).toBe(1);
       const auxiliary = Data.from(argument.auxiliaryCbor.toString("hex"));
@@ -561,17 +561,17 @@ describe.skipIf(!blueprintSpeaksOptionB)(
       const transitionData = Data.from(argument.transitionCbor.toString("hex"));
       const transition = Data.from(
         argument.transitionCbor.toString("hex"),
-        ValidationOneStepWitnessV1,
-      ) as ValidationOneStepWitnessV1Data;
+        ValidationOneStepWitness,
+      ) as ValidationOneStepWitnessData;
 
       // Option B: the committed evidence is `(transition, NoAuxiliaryWitness)`.
-      const evidenceHash = validationOneStepEvidenceHashV1({
+      const evidenceHash = validationOneStepEvidenceHash({
         transitionCbor: argument.transitionCbor,
         auxiliaryCbor: NO_AUXILIARY_WITNESS_CBOR,
       });
       // The retired two-part commitment over the same evidence — genuinely
       // different bytes, or the replay below would be vacuous.
-      const retiredEvidenceHash = validationOneStepEvidenceHashV1({
+      const retiredEvidenceHash = validationOneStepEvidenceHash({
         transitionCbor: argument.transitionCbor,
         auxiliaryCbor: argument.auxiliaryCbor,
       });
@@ -579,7 +579,7 @@ describe.skipIf(!blueprintSpeaksOptionB)(
 
       // A well-formed transition that is not the committed one: same work
       // witness, wrong claimed successor (the pre-state itself).
-      const wrongTransitionCbor = encodeValidationOneStepWitnessCborV1({
+      const wrongTransitionCbor = encodeValidationOneStepWitnessCbor({
         witness: trace.witnesses[stateIndex]!,
         claimedSuccessor: trace.states[stateIndex]!,
       });
@@ -591,13 +591,13 @@ describe.skipIf(!blueprintSpeaksOptionB)(
       );
       const wrongTransition = Data.from(
         wrongTransitionCbor.toString("hex"),
-        ValidationOneStepWitnessV1,
-      ) as ValidationOneStepWitnessV1Data;
+        ValidationOneStepWitness,
+      ) as ValidationOneStepWitnessData;
 
       const preState = validationMachineStateDataFromCore(
         trace.states[stateIndex]!,
       );
-      const claimedSuccessorHash = hashMidgardValidationMachineStateV1(
+      const claimedSuccessorHash = hashMidgardValidationMachineState(
         trace.states[stateIndex + 1]!,
       ).toString("hex");
       const preparedThreadDatumWith = (hash: string): string =>
@@ -615,7 +615,7 @@ describe.skipIf(!blueprintSpeaksOptionB)(
               evidence_hash: hash,
             },
           },
-          PreparedValidationResolutionDatumV1,
+          PreparedValidationResolutionDatum,
         );
       const preparedThreadDatum = preparedThreadDatumWith(evidenceHash);
       const retiredHashThreadDatum =
@@ -625,34 +625,34 @@ describe.skipIf(!blueprintSpeaksOptionB)(
         const parsed = (
           Data.from(
             datum,
-            PreparedValidationResolutionDatumV1,
-          ) as PreparedValidationResolutionDatumV1Data
+            PreparedValidationResolutionDatum,
+          ) as PreparedValidationResolutionDatumData
         ).data;
         if (parsed === null) {
           throw new Error("prepared thread datum is missing its state");
         }
         return parsed;
       };
-      const stageData = deriveCanonicalDecodeItemStageDataV1({
+      const stageData = deriveCanonicalDecodeItemStageData({
         preparedResolution: preparedResolutionOf(preparedThreadDatum),
         transition,
         fieldPreimage: fieldPreimage.toString("hex"),
       });
       const authenticatedDatum = Data.to(
         { fraud_prover: PROVER_HASH, data: stageData.authenticated },
-        AuthenticatedCanonicalDecodeItemDatumV1,
+        AuthenticatedCanonicalDecodeItemDatum,
       );
       const preparedDatum = Data.to(
         { fraud_prover: PROVER_HASH, data: stageData.prepared },
-        PreparedCanonicalDecodeItemDatumV1,
+        PreparedCanonicalDecodeItemDatum,
       );
       const observedDatum = Data.to(
         { fraud_prover: PROVER_HASH, data: stageData.observed },
-        ObservedCanonicalDecodeItemDatumV1,
+        ObservedCanonicalDecodeItemDatum,
       );
       const verifiedDatum = Data.to(
         { fraud_prover: PROVER_HASH, data: stageData.verified },
-        VerifiedCanonicalDecodeItemDatumV1,
+        VerifiedCanonicalDecodeItemDatum,
       );
       // The hostile authenticate replays keep their own datums consistent
       // with their own redeemers, so the one disagreement each probe stages
@@ -661,25 +661,25 @@ describe.skipIf(!blueprintSpeaksOptionB)(
         {
           fraud_prover: PROVER_HASH,
           data: {
-            ...deriveCanonicalDecodeItemStageDataV1({
+            ...deriveCanonicalDecodeItemStageData({
               preparedResolution: preparedResolutionOf(retiredHashThreadDatum),
               transition,
               fieldPreimage: fieldPreimage.toString("hex"),
             }).authenticated,
           },
         },
-        AuthenticatedCanonicalDecodeItemDatumV1,
+        AuthenticatedCanonicalDecodeItemDatum,
       );
       const wrongTransitionAuthenticatedDatum = Data.to(
         {
           fraud_prover: PROVER_HASH,
-          data: deriveCanonicalDecodeItemStageDataV1({
+          data: deriveCanonicalDecodeItemStageData({
             preparedResolution: preparedResolutionOf(preparedThreadDatum),
             transition: wrongTransition,
             fieldPreimage: fieldPreimage.toString("hex"),
           }).authenticated,
         },
-        AuthenticatedCanonicalDecodeItemDatumV1,
+        AuthenticatedCanonicalDecodeItemDatum,
       );
 
       // ### Ledger
@@ -834,11 +834,11 @@ describe.skipIf(!blueprintSpeaksOptionB)(
         readonly datumCbor: string;
       }): Promise<UTxO> => {
         const unsigned = await Effect.runPromise(
-          buildUnsignedValidationProofItemPublicationV1Program(
+          buildUnsignedValidationProofItemPublicationProgram(
             harness.proverLucid,
             harness.contracts,
             publication as Parameters<
-              typeof buildUnsignedValidationProofItemPublicationV1Program
+              typeof buildUnsignedValidationProofItemPublicationProgram
             >[2],
           ),
         );
@@ -855,7 +855,7 @@ describe.skipIf(!blueprintSpeaksOptionB)(
         return published;
       };
       const honestPublication = await publishProofItem(
-        deriveValidationProofItemPublicationV1({
+        deriveValidationProofItemPublication({
           transactionId: preState.transaction_id,
           transactionCommitment: preState.transaction_commitment,
           fieldPreimage: fieldPreimage.toString("hex"),
@@ -864,7 +864,7 @@ describe.skipIf(!blueprintSpeaksOptionB)(
       // Hostile: right bytes, wrong dispute — the commitment binding names a
       // different transaction commitment (§8.7's anti-fungibility pin).
       const wrongCommitmentPublication = await publishProofItem(
-        deriveValidationProofItemPublicationV1({
+        deriveValidationProofItemPublication({
           transactionId: preState.transaction_id,
           transactionCommitment: preState.transaction_id,
           fieldPreimage: fieldPreimage.toString("hex"),
@@ -875,7 +875,7 @@ describe.skipIf(!blueprintSpeaksOptionB)(
       const perturbedPreimage = Buffer.from(fieldPreimage);
       perturbedPreimage[perturbedPreimage.length - 1]! ^= 0x01;
       const wrongPreimagePublication = await publishProofItem(
-        deriveValidationProofItemPublicationV1({
+        deriveValidationProofItemPublication({
           transactionId: preState.transaction_id,
           transactionCommitment: preState.transaction_commitment,
           fieldPreimage: perturbedPreimage.toString("hex"),

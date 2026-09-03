@@ -1,18 +1,18 @@
 import {
-  acceptedVerdictSubjectV1,
-  type CommittedFieldClaimV1,
-  FieldPreimageLengthStep01DatumV1Schema,
-  FieldPreimageLengthStep01RedeemerV1Schema,
-  FieldPreimageLengthStep02DatumV1Schema,
-  FieldPreimageLengthStep02RedeemerV1Schema,
-  FieldPreimageLengthStep03DatumV1Schema,
-  FieldPreimageLengthStep03RedeemerV1Schema,
-  type ForcedInclusionTxV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  type CommittedFieldClaim,
+  FieldPreimageLengthStep01DatumSchema,
+  FieldPreimageLengthStep01RedeemerSchema,
+  FieldPreimageLengthStep02DatumSchema,
+  FieldPreimageLengthStep02RedeemerSchema,
+  FieldPreimageLengthStep03DatumSchema,
+  FieldPreimageLengthStep03RedeemerSchema,
+  type ForcedInclusionTx,
+  forcedVerdictSubject,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
-  type HeaderV1,
+  type Header,
   HUB_ORACLE_ASSET_NAME,
   type OutputReference,
   requireInputIndex,
@@ -61,21 +61,21 @@ import {
   outputWithDatumAndUnitPredicate,
 } from "../tx-layout.js";
 import {
-  witnessMintingPolicyCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  witnessMintingPolicyCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
 import {
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ManifestBoundFieldPreimageLengthConfigV1 } from "./production-config-v1.js";
-import type { PreparedFieldPreimageLengthWorkflowV1 } from "./workflow-v1.js";
+import type { ManifestBoundFieldPreimageLengthConfig } from "./production-config-v1.js";
+import type { PreparedFieldPreimageLengthWorkflow } from "./workflow-v1.js";
 
 const LABEL = "field-preimage-length-mismatch";
 
 const initAdapterContracts = (
-  config: ManifestBoundFieldPreimageLengthConfigV1,
+  config: ManifestBoundFieldPreimageLengthConfig,
 ) => {
   const chain = config.contracts.fieldPreimageLengthMismatch;
   return {
@@ -90,15 +90,15 @@ const initAdapterContracts = (
 };
 
 /** Generic registered-category Init, specialized to this family's first step. */
-export const submitFieldPreimageLengthInitV1 = async ({
+export const submitFieldPreimageLengthInit = async ({
   config,
   fraudulentBlockOutRef,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly fraudulentBlockOutRef: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) =>
   await submitCommittedFieldShapeInit({
@@ -117,17 +117,17 @@ export const submitFieldPreimageLengthInitV1 = async ({
   });
 
 /** Real generic cancel, adapted to one of the four physical validators. */
-export const submitFieldPreimageLengthCancelV1 = async ({
+export const submitFieldPreimageLengthCancel = async ({
   config,
   threadOutRef,
   stepIndex,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
   readonly stepIndex: 0 | 1 | 2 | 3;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const step = config.contracts.fieldPreimageLengthMismatch.steps[stepIndex];
@@ -182,7 +182,7 @@ const requireThread = async ({
   threadOutRef,
   stepIndex,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
   readonly stepIndex: 0 | 1 | 2 | 3;
 }) => {
@@ -208,7 +208,7 @@ const requireThread = async ({
   return { threadUtxo, threadToken, step };
 };
 
-export type SubmitFieldPreimageLengthForcedDispatchV1Result = Readonly<{
+export type SubmitFieldPreimageLengthForcedDispatchResult = Readonly<{
   txHash: string;
   nextThreadOutRef: string;
   computationThreadUnit: string;
@@ -216,12 +216,12 @@ export type SubmitFieldPreimageLengthForcedDispatchV1Result = Readonly<{
   outputIndex: number;
 }>;
 
-export type FieldPreimageLengthClaimResolverV1 = (
+export type FieldPreimageLengthClaimResolver = (
   completeReferenceInputs: readonly UTxO[],
-) => CommittedFieldClaimV1;
+) => CommittedFieldClaim;
 
 /** Real accepted-source dispatch with an authenticated PHAS inclusion. */
-export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
+export const submitFieldPreimageLengthAcceptedDispatch = async ({
   config,
   threadOutRef,
   stateQueueBlockOutRef,
@@ -232,16 +232,16 @@ export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly inclusion: SubmitStep01TxInclusion;
-  readonly claim?: CommittedFieldClaimV1;
-  readonly claimResolver?: FieldPreimageLengthClaimResolverV1;
+  readonly claim?: CommittedFieldClaim;
+  readonly claimResolver?: FieldPreimageLengthClaimResolver;
   readonly carriageReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchV1Result> => {
+}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
@@ -288,7 +288,7 @@ export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
     config.binding.network,
     phasScript,
   );
-  const carriage = witnessWithdrawalValidatorCarriageV1({
+  const carriage = witnessWithdrawalValidatorCarriage({
     script: phasScript,
     referenceUtxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
     label: `${LABEL} PHAS membership`,
@@ -317,12 +317,12 @@ export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
       fraud_prover: config.signer.paymentKeyHash,
       data: {
         BoundSource: {
-          subject: acceptedVerdictSubjectV1(txInclusion.nativeTxId),
+          subject: acceptedVerdictSubject(txInclusion.nativeTxId),
           source_cbor: txInclusion.l2TransactionSourceCbor,
         },
       },
     } as never,
-    FieldPreimageLengthStep02DatumV1Schema as never,
+    FieldPreimageLengthStep02DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: next.spendingScriptAddress,
@@ -374,7 +374,7 @@ export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
       {
         Continue: [{ BindAccepted: { inclusion, claim: resolvedClaim } }],
       } as never,
-      FieldPreimageLengthStep01RedeemerV1Schema as never,
+      FieldPreimageLengthStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   config.signer.selectWallet(config.lucid);
@@ -409,9 +409,9 @@ export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -445,19 +445,19 @@ export const submitFieldPreimageLengthAcceptedDispatchV1 = async ({
 };
 
 /** Real Lucid step-01 forced dispatch; the direction comes from admitted evidence. */
-export const submitFieldPreimageLengthForcedDispatchV1 = async ({
+export const submitFieldPreimageLengthForcedDispatch = async ({
   config,
   threadOutRef,
   direction,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
   readonly direction: 0n | 1n;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchV1Result> => {
+}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
@@ -472,7 +472,7 @@ export const submitFieldPreimageLengthForcedDispatchV1 = async ({
       fraud_prover: config.signer.paymentKeyHash,
       data: { PendingForced: { direction } },
     } as never,
-    FieldPreimageLengthStep02DatumV1Schema as never,
+    FieldPreimageLengthStep02DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: next.spendingScriptAddress,
@@ -504,7 +504,7 @@ export const submitFieldPreimageLengthForcedDispatchV1 = async ({
           },
         ],
       } as never,
-      FieldPreimageLengthStep01RedeemerV1Schema as never,
+      FieldPreimageLengthStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   const reference = requireReference({
@@ -532,9 +532,9 @@ export const submitFieldPreimageLengthForcedDispatchV1 = async ({
   }
   const resolvedLayout = layout;
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -563,7 +563,7 @@ export const submitFieldPreimageLengthForcedDispatchV1 = async ({
 };
 
 /** Authenticates an accepted source's inline field opening into terminal state. */
-export const submitFieldPreimageLengthAcceptedAuthenticationV1 = async ({
+export const submitFieldPreimageLengthAcceptedAuthentication = async ({
   config,
   threadOutRef,
   claim,
@@ -573,15 +573,15 @@ export const submitFieldPreimageLengthAcceptedAuthenticationV1 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly claim?: CommittedFieldClaimV1;
-  readonly claimResolver?: FieldPreimageLengthClaimResolverV1;
-  readonly prepared: PreparedFieldPreimageLengthWorkflowV1;
+  readonly claim?: CommittedFieldClaim;
+  readonly claimResolver?: FieldPreimageLengthClaimResolver;
+  readonly prepared: PreparedFieldPreimageLengthWorkflow;
   readonly carriageReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchV1Result> => {
+}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
   if (prepared.direction !== "wrongfulAcceptance") {
     throw new Error(
       `${LABEL}: accepted authenticator received forced evidence`,
@@ -594,14 +594,14 @@ export const submitFieldPreimageLengthAcceptedAuthenticationV1 = async ({
   });
   const terminal = config.contracts.fieldPreimageLengthMismatch.steps[3];
   const state = {
-    subject: acceptedVerdictSubjectV1(prepared.transactionId),
+    subject: acceptedVerdictSubject(prepared.transactionId),
     field_index: BigInt(prepared.fieldIndex),
     declared_length: BigInt(prepared.declaredLength),
     actual_length: BigInt(prepared.actualLength),
   };
   const datum = Data.to(
     { fraud_prover: config.signer.paymentKeyHash, data: state } as never,
-    FieldPreimageLengthStep03DatumV1Schema as never,
+    FieldPreimageLengthStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: terminal.spendingScriptAddress,
@@ -633,7 +633,7 @@ export const submitFieldPreimageLengthAcceptedAuthenticationV1 = async ({
           },
         ],
       } as never,
-      FieldPreimageLengthStep02RedeemerV1Schema as never,
+      FieldPreimageLengthStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   const reference = requireReference({
@@ -668,9 +668,9 @@ export const submitFieldPreimageLengthAcceptedAuthenticationV1 = async ({
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -698,7 +698,7 @@ export const submitFieldPreimageLengthAcceptedAuthenticationV1 = async ({
   };
 };
 
-export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
+export const submitFieldPreimageLengthForcedAuthentication = async ({
   config,
   threadOutRef,
   header,
@@ -710,20 +710,17 @@ export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly header: HeaderV1;
-  readonly membership: RootMembershipProof<
-    OutputReference,
-    ForcedInclusionTxV1
-  >;
-  readonly claim?: CommittedFieldClaimV1;
-  readonly claimResolver?: FieldPreimageLengthClaimResolverV1;
-  readonly prepared: PreparedFieldPreimageLengthWorkflowV1;
+  readonly header: Header;
+  readonly membership: RootMembershipProof<OutputReference, ForcedInclusionTx>;
+  readonly claim?: CommittedFieldClaim;
+  readonly claimResolver?: FieldPreimageLengthClaimResolver;
+  readonly prepared: PreparedFieldPreimageLengthWorkflow;
   readonly carriageReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchV1Result> => {
+}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
@@ -739,7 +736,7 @@ export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
   ) {
     throw new Error(`${LABEL}: forced leaf differs from admitted evidence`);
   }
-  const subject = forcedVerdictSubjectV1({
+  const subject = forcedVerdictSubject({
     transactionId: membership.value.tx_id,
     sourceKey: membership.key,
     rejectionReason,
@@ -755,7 +752,7 @@ export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
         actual_length: BigInt(prepared.actualLength),
       },
     } as never,
-    FieldPreimageLengthStep03DatumV1Schema as never,
+    FieldPreimageLengthStep03DatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
     address: terminal.spendingScriptAddress,
@@ -789,7 +786,7 @@ export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
           },
         ],
       } as never,
-      FieldPreimageLengthStep02RedeemerV1Schema as never,
+      FieldPreimageLengthStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   const reference = requireReference({
@@ -821,9 +818,9 @@ export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -849,15 +846,15 @@ export const submitFieldPreimageLengthForcedAuthenticationV1 = async ({
   };
 };
 
-export const submitFieldPreimageLengthTerminalV1 = async ({
+export const submitFieldPreimageLengthTerminal = async ({
   config,
   threadOutRef,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
-  readonly config: ManifestBoundFieldPreimageLengthConfigV1;
+  readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   const { threadUtxo, threadToken, step } = await requireThread({
@@ -913,7 +910,7 @@ export const submitFieldPreimageLengthTerminalV1 = async ({
           },
         ],
       } as never,
-      FieldPreimageLengthStep03RedeemerV1Schema as never,
+      FieldPreimageLengthStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   const burn = ((ctx) => {
@@ -946,12 +943,12 @@ export const submitFieldPreimageLengthTerminalV1 = async ({
       FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const ctCarriage = witnessMintingPolicyCarriageV1({
+  const ctCarriage = witnessMintingPolicyCarriage({
     script: config.contracts.computationThread.mintingScript,
     referenceUtxo: config.referenceScripts.witnesses.computationThreadMint,
     label: `${LABEL} thread mint`,
   });
-  const proofCarriage = witnessMintingPolicyCarriageV1({
+  const proofCarriage = witnessMintingPolicyCarriage({
     script: config.contracts.fraudProof.mintingScript,
     referenceUtxo: config.referenceScripts.witnesses.fraudProofMint,
     label: `${LABEL} proof mint`,
@@ -985,9 +982,9 @@ export const submitFieldPreimageLengthTerminalV1 = async ({
     throw new Error(`${LABEL}: terminal layout did not resolve`);
   const resolved = layout;
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {
@@ -1024,5 +1021,5 @@ export const submitFieldPreimageLengthTerminalV1 = async ({
 // Keep the initial datum schema live in this production module. It prevents a
 // future ABI-only import cleanup from accidentally dropping the generic Init
 // schema used by the bound builder set.
-export const FIELD_PREIMAGE_LENGTH_INIT_DATUM_SCHEMA_V1 =
-  FieldPreimageLengthStep01DatumV1Schema;
+export const FIELD_PREIMAGE_LENGTH_INIT_DATUM_SCHEMA =
+  FieldPreimageLengthStep01DatumSchema;

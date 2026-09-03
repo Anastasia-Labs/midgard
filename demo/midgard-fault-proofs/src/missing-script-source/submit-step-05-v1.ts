@@ -1,4 +1,4 @@
-import { buildMidgardBoundedItemV1 } from "@al-ft/midgard-core";
+import { buildMidgardBoundedItem } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -12,32 +12,32 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingScriptSourceContractsV1 } from "./contracts-v1.js";
-import type { MissingScriptSourceEvidenceV1 } from "./family-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { MissingScriptSourceContracts } from "./contracts-v1.js";
+import type { MissingScriptSourceEvidence } from "./family-v1.js";
 import {
-  ExecutionSourceScanStateV1Schema,
-  ExecutionSourceStep05DatumV1Schema,
-  ExecutionSourceStep05RedeemerV1Schema,
-  ExecutionSourceStep06DatumV1Schema,
-  SourceDescriptorV1Schema,
+  ExecutionSourceScanStateSchema,
+  ExecutionSourceStep05DatumSchema,
+  ExecutionSourceStep05RedeemerSchema,
+  ExecutionSourceStep06DatumSchema,
+  SourceDescriptorSchema,
 } from "./schemas-v1.js";
 import {
-  MISSING_SCRIPT_SOURCE_SCAN_BUDGET_V1,
-  missingScriptSourceOnchainCheckpointV1,
+  MISSING_SCRIPT_SOURCE_SCAN_BUDGET,
+  missingScriptSourceOnchainCheckpoint,
 } from "./universe-scan-v1.js";
 
 const FAMILY = "missing-script-source";
 
 /** Advances one bounded universal-source batch, self-looping until complete. */
-export const submitMissingScriptSourceStep05V1 = async ({
+export const submitMissingScriptSourceStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -49,17 +49,17 @@ export const submitMissingScriptSourceStep05V1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: MissingScriptSourceContractsV1;
+  contracts: MissingScriptSourceContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
-  evidence: MissingScriptSourceEvidenceV1;
+  evidence: MissingScriptSourceEvidence;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -67,12 +67,12 @@ export const submitMissingScriptSourceStep05V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<
-    Data.Static<typeof ExecutionSourceScanStateV1Schema>
+  const state = requireLinearFaultStepState<
+    Data.Static<typeof ExecutionSourceScanStateSchema>
   >({
     threadUtxo,
     signer,
-    schema: ExecutionSourceStep05DatumV1Schema as never,
+    schema: ExecutionSourceStep05DatumSchema as never,
     family: FAMILY,
     stepIndex,
   });
@@ -86,9 +86,9 @@ export const submitMissingScriptSourceStep05V1 = async ({
     throw new Error(`${FAMILY}: scan cursor/source frontier changed`);
   const batch = evidence.sources.slice(
     cursor,
-    cursor + MISSING_SCRIPT_SOURCE_SCAN_BUDGET_V1,
+    cursor + MISSING_SCRIPT_SOURCE_SCAN_BUDGET,
   );
-  const sources: Data.Static<typeof SourceDescriptorV1Schema>[] = batch.map(
+  const sources: Data.Static<typeof SourceDescriptorSchema>[] = batch.map(
     (source, offset) => {
       if (source.sourceIndex !== cursor + offset)
         throw new Error(`${FAMILY}: scan batch is not consensus ordered`);
@@ -100,7 +100,7 @@ export const submitMissingScriptSourceStep05V1 = async ({
       const bounded =
         itemBytes.length === 0
           ? null
-          : buildMidgardBoundedItemV1({
+          : buildMidgardBoundedItem({
               fieldIndex: source.originKind === 0 ? 6 : 2,
               itemIndex,
               bytes: itemBytes,
@@ -141,12 +141,12 @@ export const submitMissingScriptSourceStep05V1 = async ({
     throw new Error(`${FAMILY}: empty scan batch cannot make progress`);
   const nextExpectedScriptHash =
     contracts.steps[closed ? 5 : 4].spendingScriptHash;
-  const nextState: Data.Static<typeof ExecutionSourceScanStateV1Schema> = {
+  const nextState: Data.Static<typeof ExecutionSourceScanStateSchema> = {
     ...state,
     cursor: BigInt(nextCursor),
     found,
     next_expected_script_hash: nextExpectedScriptHash,
-    checkpoint_hash: missingScriptSourceOnchainCheckpointV1({
+    checkpoint_hash: missingScriptSourceOnchainCheckpoint({
       sourceIdentityHex: state.authenticated.source_identity_hash,
       cursor: BigInt(nextCursor),
       found,
@@ -154,8 +154,8 @@ export const submitMissingScriptSourceStep05V1 = async ({
     }),
   };
   const nextSchema = closed
-    ? ExecutionSourceStep06DatumV1Schema
-    : ExecutionSourceStep05DatumV1Schema;
+    ? ExecutionSourceStep06DatumSchema
+    : ExecutionSourceStep05DatumSchema;
   const nextDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: nextState } as never,
     nextSchema as never,
@@ -165,7 +165,7 @@ export const submitMissingScriptSourceStep05V1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
     family: FAMILY,
@@ -187,15 +187,15 @@ export const submitMissingScriptSourceStep05V1 = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             sources,
-            item_budget: BigInt(MISSING_SCRIPT_SOURCE_SCAN_BUDGET_V1),
+            item_budget: BigInt(MISSING_SCRIPT_SOURCE_SCAN_BUDGET),
           },
         ],
       } as never,
-      ExecutionSourceStep05RedeemerV1Schema as never,
+      ExecutionSourceStep05RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

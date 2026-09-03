@@ -11,19 +11,19 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { UnusedRedeemerContractsV1 } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { UnusedRedeemerContracts } from "./contracts-v1.js";
 
 const FAMILY = "unused-redeemer";
 
-export const submitUnusedRedeemerLinearSplitV1 = async ({
+export const submitUnusedRedeemerLinearSplit = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,7 +40,7 @@ export const submitUnusedRedeemerLinearSplitV1 = async ({
   awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
-  contracts: UnusedRedeemerContractsV1;
+  contracts: UnusedRedeemerContracts;
   categoryId: string;
   signer: ResolvedProverSigner;
   threadOutRef: string;
@@ -51,10 +51,10 @@ export const submitUnusedRedeemerLinearSplitV1 = async ({
   redeemerSchema: unknown;
   redeemerFields: Readonly<Record<string, unknown>>;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  preSubmitBoundary?: FraudProofPreSubmitBoundary;
   awaitConfirmation?: boolean;
 }) => {
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -62,7 +62,7 @@ export const submitUnusedRedeemerLinearSplitV1 = async ({
     stepIndex,
     threadOutRef,
   });
-  requireLinearFaultStepStateV1({
+  requireLinearFaultStepState({
     threadUtxo,
     signer,
     schema: sourceDatumSchema as never,
@@ -81,7 +81,7 @@ export const submitUnusedRedeemerLinearSplitV1 = async ({
     datum: nextDatum,
     unit: threadToken.unit,
   });
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex]?.spendingScriptHash ?? "",
     family: FAMILY,
@@ -114,7 +114,7 @@ export const submitUnusedRedeemerLinearSplitV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinueV1({
+  const txHash = await submitLinearFaultContinue({
     lucid,
     signerPaymentKeyHash: signer.paymentKeyHash,
     threadUtxo,

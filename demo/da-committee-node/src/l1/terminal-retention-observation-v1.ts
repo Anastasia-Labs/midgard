@@ -1,15 +1,15 @@
 import {
-  replayStateQueueAuthenticatedCheckpointsV1,
-  type StateQueueAuthenticatedReplayCheckpointV1,
-  type StateQueueAuthenticatedTransitionV1,
+  replayStateQueueAuthenticatedCheckpoints,
+  type StateQueueAuthenticatedReplayCheckpoint,
+  type StateQueueAuthenticatedTransition,
 } from "@al-ft/midgard-sdk";
 
 import type {
-  ObservedStateQueueSnapshotV1,
+  ObservedStateQueueSnapshot,
   StateQueueHeaderRecord,
 } from "../domain.js";
 
-export type TerminalRetentionObservationConfigV1 = {
+export type TerminalRetentionObservationConfig = {
   readonly deploymentFingerprint: string;
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
@@ -22,7 +22,7 @@ export type TerminalRetentionObservationConfigV1 = {
   readonly replayAnchor?: {
     readonly deploymentIdentityDigest: string;
     readonly stateQueuePolicyId: string;
-    readonly queue: StateQueueAuthenticatedReplayCheckpointV1["previousQueue"];
+    readonly queue: StateQueueAuthenticatedReplayCheckpoint["previousQueue"];
     readonly blockNo: string;
     readonly transactionIndex: string;
   };
@@ -33,12 +33,12 @@ export type TerminalRetentionObservationConfigV1 = {
  * The final root snapshot is only a replay consistency check; disappearance is
  * never classified as merge/removal.
  */
-export const terminalRetentionOutcomesV1 = (
+export const terminalRetentionOutcomes = (
   previous: readonly StateQueueHeaderRecord[],
   current: readonly StateQueueHeaderRecord[],
-  checkpointInputs: readonly StateQueueAuthenticatedReplayCheckpointV1[],
-  snapshot: ObservedStateQueueSnapshotV1 | undefined,
-  config: TerminalRetentionObservationConfigV1,
+  checkpointInputs: readonly StateQueueAuthenticatedReplayCheckpoint[],
+  snapshot: ObservedStateQueueSnapshot | undefined,
+  config: TerminalRetentionObservationConfig,
 ): readonly StateQueueHeaderRecord[] => {
   const previousByHash = new Map(
     previous.map((record) => [record.headerHash, record]),
@@ -82,7 +82,7 @@ export const terminalRetentionOutcomesV1 = (
   const replay =
     config.replayAnchor === undefined || checkpointInputs.length === 0
       ? null
-      : replayStateQueueAuthenticatedCheckpointsV1({
+      : replayStateQueueAuthenticatedCheckpoints({
           deploymentIdentityDigest: config.deploymentIdentityDigest,
           stateQueuePolicyId: config.stateQueuePolicyId,
           minimumFinalityDepth: BigInt(config.finalityDepth),
@@ -94,7 +94,7 @@ export const terminalRetentionOutcomesV1 = (
       "state-queue checkpoint history is non-canonical or does not extend the durable cursor",
     );
   }
-  const transitions: readonly StateQueueAuthenticatedTransitionV1[] =
+  const transitions: readonly StateQueueAuthenticatedTransition[] =
     replay?.terminals ?? [];
   let latestMergedHeaderHash: string | undefined;
   const seenHeaders = new Set<string>();

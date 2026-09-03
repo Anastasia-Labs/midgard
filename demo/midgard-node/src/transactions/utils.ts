@@ -1446,10 +1446,10 @@ export const fetchFirstBlockTxs = (
   Database
 > =>
   Effect.gen(function* () {
-    const blockHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
+    const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const headerHash: Buffer = yield* SDK.hashBlockHeaderV1(blockHeader).pipe(
+    const headerHash: Buffer = yield* SDK.hashBlockHeader(blockHeader).pipe(
       Effect.map((hh) => Buffer.from(fromHex(hh))),
     );
     const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);

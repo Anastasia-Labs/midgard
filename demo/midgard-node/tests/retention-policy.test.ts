@@ -1,11 +1,11 @@
 import {
-  MIDGARD_RETENTION_WINDOW_V1,
-  RETENTION_MS_PER_DAY_V1,
+  MIDGARD_RETENTION_WINDOW,
+  RETENTION_MS_PER_DAY,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertRetentionDaysMatchesDeploymentV1,
+  assertRetentionDaysMatchesDeployment,
   computeChallengeableCutoff,
   computeRetentionCutoff,
   MIN_DA_PAYLOAD_RETENTION_DAYS,
@@ -21,14 +21,14 @@ describe("retention policy", () => {
   it("derives the minimum retention floor from the canonical V1 window", () => {
     expect(MIN_DA_PAYLOAD_RETENTION_DAYS).toBe(15);
     expect(MIN_DA_PAYLOAD_RETENTION_DAYS).toBe(
-      MIDGARD_RETENTION_WINDOW_V1.retentionDays,
+      MIDGARD_RETENTION_WINDOW.retentionDays,
     );
     // Mutation guard: lowering the floor below the derived deployment window
     // must fail this test.
     expect(
-      MIN_DA_PAYLOAD_RETENTION_DAYS * RETENTION_MS_PER_DAY_V1,
-    ).toBeGreaterThanOrEqual(MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs);
-    expect(MIN_DA_PAYLOAD_RETENTION_DAYS * RETENTION_MS_PER_DAY_V1).toBe(
+      MIN_DA_PAYLOAD_RETENTION_DAYS * RETENTION_MS_PER_DAY,
+    ).toBeGreaterThanOrEqual(MIDGARD_RETENTION_WINDOW.requiredRetentionMs);
+    expect(MIN_DA_PAYLOAD_RETENTION_DAYS * RETENTION_MS_PER_DAY).toBe(
       1_296_000_000,
     );
   });
@@ -83,34 +83,34 @@ describe("retention policy", () => {
     const cutoff = computeChallengeableCutoff(now);
     expect(now.getTime() - cutoff.getTime()).toBe(907_200_000);
     expect(now.getTime() - cutoff.getTime()).toBe(
-      MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+      MIDGARD_RETENTION_WINDOW.requiredRetentionMs,
     );
     // Never the measured 11h dispute schedule.
     expect(now.getTime() - cutoff.getTime()).not.toBe(
-      MIDGARD_RETENTION_WINDOW_V1.measuredValidationDisputeScheduleMs,
+      MIDGARD_RETENTION_WINDOW.measuredValidationDisputeScheduleMs,
     );
   });
 });
 
 describe("assertRetentionDaysMatchesDeploymentV1", () => {
   it("accepts an env window at or above the manifest window", () => {
-    expect(assertRetentionDaysMatchesDeploymentV1(15, 15)).toBe(15);
-    expect(assertRetentionDaysMatchesDeploymentV1(30, 15)).toBe(30);
+    expect(assertRetentionDaysMatchesDeployment(15, 15)).toBe(15);
+    expect(assertRetentionDaysMatchesDeployment(30, 15)).toBe(30);
   });
 
   it("throws when the env window is shorter than the manifest window", () => {
-    expect(() => assertRetentionDaysMatchesDeploymentV1(15, 16)).toThrow(
+    expect(() => assertRetentionDaysMatchesDeployment(15, 16)).toThrow(
       /shorter than the deployment manifest/u,
     );
   });
 
   it("accepts retentionDays=0 because pruning is disabled entirely", () => {
-    expect(assertRetentionDaysMatchesDeploymentV1(0, 15)).toBe(0);
+    expect(assertRetentionDaysMatchesDeployment(0, 15)).toBe(0);
   });
 
   it("defaults the manifest window to the derived deployment value", () => {
-    expect(assertRetentionDaysMatchesDeploymentV1(15)).toBe(15);
-    expect(() => assertRetentionDaysMatchesDeploymentV1(14)).toThrow(
+    expect(assertRetentionDaysMatchesDeployment(15)).toBe(15);
+    expect(() => assertRetentionDaysMatchesDeployment(14)).toThrow(
       "RETENTION_DAYS must be 0 or at least 15 days",
     );
   });
@@ -123,7 +123,7 @@ describe("assertRetentionDaysMatchesDeploymentV1", () => {
       "15" as unknown as number,
       null as unknown as number,
     ]) {
-      expect(() => assertRetentionDaysMatchesDeploymentV1(15, bad)).toThrow(
+      expect(() => assertRetentionDaysMatchesDeployment(15, bad)).toThrow(
         /Deployment manifest da\.transportProfile\.retentionDays/u,
       );
     }

@@ -59,32 +59,32 @@ import {
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
+  type FaultProofWitnessReferenceScripts,
+  witnessSpendingValidatorCarriage,
+  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts-v1.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
+import type { ValueNotPreservedContracts } from "./contracts-v1.js";
 import {
-  claimedAssetIsWellFormedV1,
-  type ClaimedAssetV1,
-  type ClaimedImbalanceDirectionV1,
+  type ClaimedAsset,
+  claimedAssetIsWellFormed,
+  type ClaimedImbalanceDirection,
   ValueNotPreservedStep01SpendRedeemer,
   ValueNotPreservedStep02Datum,
   type ValueNotPreservedStep02State,
 } from "./schemas-v1.js";
 import {
-  requireValueNotPreservedReferenceScriptV1,
-  requireValueNotPreservedThreadUtxoV1,
-  valueNotPreservedStepLabelV1,
+  requireValueNotPreservedReferenceScript,
+  requireValueNotPreservedThreadUtxo,
+  valueNotPreservedStepLabel,
   valueNotPreservedSubmitError,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = valueNotPreservedStepLabelV1(0);
+const STEP_LABEL = valueNotPreservedStepLabel(0);
 
 export type SubmitValueNotPreservedStep01Result = {
   readonly txHash: string;
@@ -123,7 +123,7 @@ export const submitValueNotPreservedStep01 = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly contracts: ValueNotPreservedContractsV1;
+  readonly contracts: ValueNotPreservedContracts;
   readonly categoryId: string;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
@@ -131,8 +131,8 @@ export const submitValueNotPreservedStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
   /** The single asset the thread accuses the transaction of not conserving. */
-  readonly claimedAsset: ClaimedAssetV1;
-  readonly claimedDirection: ClaimedImbalanceDirectionV1;
+  readonly claimedAsset: ClaimedAsset;
+  readonly claimedDirection: ClaimedImbalanceDirection;
   /**
    * The challenged header's `prev_utxos_root`, hex. The validator freezes
    * the header's own value; a divergent one here would only build an
@@ -143,18 +143,17 @@ export const submitValueNotPreservedStep01 = async ({
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
-  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep01Result> => {
-  const { threadUtxo, threadToken } =
-    await requireValueNotPreservedThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId,
-      stepIndex: 0,
-      threadOutRef,
-    });
+  const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    stepIndex: 0,
+    threadOutRef,
+  });
   requireInitialStepDatum({ threadUtxo, signer });
   const stateQueueBlockUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -189,7 +188,7 @@ export const submitValueNotPreservedStep01 = async ({
       `--tx-inclusion.nativeTx carries validity code ${txInclusion.nativeTx.validity_code.toString()}, so the committed leaf is an honest no-op recording — outside this family's domain.`,
     );
   }
-  if (!claimedAssetIsWellFormedV1(claimedAsset)) {
+  if (!claimedAssetIsWellFormed(claimedAsset)) {
     throw valueNotPreservedSubmitError(
       "claimed asset is outside the committed-leaf domain (policy id must be 28 bytes, asset name at most 32).",
     );
@@ -215,7 +214,7 @@ export const submitValueNotPreservedStep01 = async ({
     network,
     phasMembershipScript,
   );
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
+  const phasMembershipCarriage = witnessWithdrawalValidatorCarriage({
     script: phasMembershipScript,
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${STEP_LABEL} PHAS membership`,
@@ -223,12 +222,12 @@ export const submitValueNotPreservedStep01 = async ({
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
-      : requireValueNotPreservedReferenceScriptV1({
+      : requireValueNotPreservedReferenceScript({
           utxo: referenceScriptUtxo,
           expectedScriptHash: contracts.steps[0].spendingScriptHash,
           stepIndex: 0,
         });
-  const stepCarriage = witnessSpendingValidatorCarriageV1({
+  const stepCarriage = witnessSpendingValidatorCarriage({
     script: contracts.steps[0].spendingScript,
     referenceUtxo: stepReference,
     label: `${STEP_LABEL} spending validator`,
@@ -333,9 +332,9 @@ export const submitValueNotPreservedStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

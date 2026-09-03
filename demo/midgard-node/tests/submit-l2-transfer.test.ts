@@ -1,21 +1,21 @@
 import "./utils.js";
 
 import {
-  decodeMidgardProofSubmissionV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
+  decodeMidgardProofSubmission,
+  encodeMidgardCekProgramMaterialSidecar,
 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  decodeMidgardSpendInputItemV1,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
   midgardAddressFromText,
   midgardValueToCmlValue,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   type QueuedTx,
   runPhaseAValidation,
@@ -75,13 +75,13 @@ const unusedWriteBehind: WriteBehindService = {
 };
 const launchDeploymentIdentity = ContractDeploymentIdentity.make({
   kind: "derived" as const,
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 });
 
 const mkQueued = (txId: Buffer, txCbor: Buffer): QueuedTx => ({
   txId,
   txCbor,
-  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar([]),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });
@@ -151,7 +151,7 @@ const unusedSqlClient = new Proxy(
 describe("submit-l2-transfer config helpers", () => {
   it("preserves a bounded lower submit cap in the static provider", async () => {
     const maxSubmitTxCborBytes =
-      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1;
+      MIDGARD_CONSENSUS_PROFILE.limits.maxTxCanonicalCborBytes - 1;
     const provider = makeStaticMidgardProvider({
       address: "addr_test1static",
       utxos: [],
@@ -250,7 +250,7 @@ describe("submit-l2-transfer tx building", () => {
     expect(queued.txId).toBe(txId);
     expect(queued.txCbor).toBe(txCbor);
     expect(queued.programMaterialSidecarCbor).toEqual(
-      encodeMidgardCekProgramMaterialSidecarV1([]),
+      encodeMidgardCekProgramMaterialSidecar([]),
     );
   });
 
@@ -302,14 +302,14 @@ describe("submit-l2-transfer tx building", () => {
       lovelace: 3_500_000n,
     });
 
-    const nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(built.txCbor);
+    const nativeTx = decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor);
     // Field-0 items are §5.3's fixed-index form, so they must be read with the
     // field-item decoder — CML's `TransactionInput` decoder tolerates the
     // non-minimal `19 0000` index but is not the contract these bytes obey.
     const spendInputs = decodeMidgardNativeByteListPreimage(
       nativeTx.body.spendInputsPreimageCbor,
     ).map((bytes) => {
-      const input = decodeMidgardSpendInputItemV1(bytes);
+      const input = decodeMidgardSpendInputItem(bytes);
       return `${Buffer.from(input.txId).toString("hex")}#${input.outputIndex.toString()}`;
     });
     expect(spendInputs).toEqual([
@@ -435,11 +435,11 @@ describe("submit-l2-transfer tx building", () => {
       networkId: 0n,
       minFeeA: 44n,
       minFeeB: 155_381n,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     });
 
     expect(
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(built.txCbor).version,
+      decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor).version,
     ).toBe(1n);
     const phaseA = await Effect.runPromise(
       runPhaseAValidation([mkQueued(built.txId, built.txCbor)], {
@@ -448,7 +448,7 @@ describe("submit-l2-transfer tx building", () => {
         minFeeB: 155_381n,
         concurrency: 1,
         strictnessProfile: "phase1_midgard",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       }),
     );
     expect(phaseA.rejected).toHaveLength(0);
@@ -496,7 +496,7 @@ describe("submit-l2-transfer tx building", () => {
     expect(built.fee).toBeGreaterThanOrEqual(
       minFeeA * BigInt(built.txCbor.length) + minFeeB,
     );
-    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(built.txCbor);
+    const decoded = decodeMidgardNativeTxFullFromCanonicalCbor(built.txCbor);
     const outputs = decodeMidgardNativeByteListPreimage(
       decoded.body.outputsPreimageCbor,
     );
@@ -726,11 +726,11 @@ describe("submit-l2-transfer program", () => {
           init?.body instanceof Uint8Array
             ? Buffer.from(init.body)
             : Buffer.from(await new Response(init?.body).arrayBuffer());
-        const submission = decodeMidgardProofSubmissionV1(body);
-        const built = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        const submission = decodeMidgardProofSubmission(body);
+        const built = decodeMidgardNativeTxFullFromCanonicalCbor(
           submission.transactionCbor,
         );
-        expectedTxId = computeMidgardNativeTxIdV1(built).toString("hex");
+        expectedTxId = computeMidgardNativeTxId(built).toString("hex");
         return {
           ok: true,
           status: 200,
@@ -814,7 +814,7 @@ describe("submit-l2-transfer program", () => {
     fetchMock: ReturnType<typeof vi.fn<typeof fetch>>,
   ): readonly string[] =>
     fetchMock.mock.calls.map(([, init]) =>
-      decodeMidgardProofSubmissionV1(
+      decodeMidgardProofSubmission(
         Buffer.from(init?.body as Uint8Array),
       ).transactionCbor.toString("hex"),
     );

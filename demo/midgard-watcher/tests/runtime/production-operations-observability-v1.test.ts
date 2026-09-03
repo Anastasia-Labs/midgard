@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import type {
-  WatcherProductionFaultProofSupervisorStatusV1,
-  WatcherProductionFaultProofSupervisorV1,
+  WatcherFaultProofSupervisor,
+  WatcherFaultProofSupervisorStatus,
 } from "../../src/fault-proofs/production-fault-proof-supervisor-v1.js";
 import {
-  createWatcherProductionOperationsObservabilityV1,
-  type WatcherProductionOperationsStatusV1,
+  createWatcherOperationsObservability,
+  type WatcherOperationsStatus,
 } from "../../src/runtime/production-operations-observability-v1.js";
 
 const supervisor = () => {
-  let status: WatcherProductionFaultProofSupervisorStatusV1 = Object.freeze({
+  let status: WatcherFaultProofSupervisorStatus = Object.freeze({
     phase: "accepting",
     recovered: true,
     queuedJobCount: 1,
@@ -23,10 +23,8 @@ const supervisor = () => {
   return {
     runtime: Object.freeze({
       status: () => status,
-    }) as unknown as WatcherProductionFaultProofSupervisorV1,
-    setStatus: (
-      next: Partial<WatcherProductionFaultProofSupervisorStatusV1>,
-    ) => {
+    }) as unknown as WatcherFaultProofSupervisor,
+    setStatus: (next: Partial<WatcherFaultProofSupervisorStatus>) => {
       status = Object.freeze({ ...status, ...next });
     },
   };
@@ -36,7 +34,7 @@ describe("production operations observability V1", () => {
   it("reports bounded secret-safe W38 status, metrics, and alerts", async () => {
     const proofSupervisor = supervisor();
     let now = 100_000n;
-    const observability = createWatcherProductionOperationsObservabilityV1({
+    const observability = createWatcherOperationsObservability({
       deploymentFingerprint: "11".repeat(32),
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
@@ -105,7 +103,7 @@ describe("production operations observability V1", () => {
         requiredCategoryCount: "32",
         complete: true,
       },
-    } satisfies Partial<WatcherProductionOperationsStatusV1>);
+    } satisfies Partial<WatcherOperationsStatus>);
     expect(observability.api.metrics()).toMatchObject({
       queuedProofCount: "1",
       oldestQueuedProofAgeMs: "3000",
@@ -199,7 +197,7 @@ describe("production operations observability V1", () => {
 
   it("rejects unbounded pages and secret-shaped diagnostic labels", () => {
     const proofSupervisor = supervisor();
-    const observability = createWatcherProductionOperationsObservabilityV1({
+    const observability = createWatcherOperationsObservability({
       deploymentFingerprint: "11".repeat(32),
       supervisor: proofSupervisor.runtime,
       launchScopeStatus: () => ({
@@ -250,7 +248,7 @@ describe("production operations observability V1", () => {
       }),
     ).toThrow("is in the future");
     expect(() =>
-      createWatcherProductionOperationsObservabilityV1({
+      createWatcherOperationsObservability({
         deploymentFingerprint: "11".repeat(32),
         supervisor: proofSupervisor.runtime,
         launchScopeStatus: () => ({

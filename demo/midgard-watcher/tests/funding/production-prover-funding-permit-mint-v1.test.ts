@@ -2,20 +2,20 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
-  ProductionWorkflowActuationPermitV1,
-  ProductionWorkflowAdapterRunnerV1,
+  WorkflowActuationPermit,
+  WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  createWatcherProductionProverFundingAuthorityFactoryV1,
-  type WatcherProductionProverFundingAuthorityFactoryV1,
+  createWatcherProverFundingAuthorityFactory,
+  type WatcherProverFundingAuthorityFactory,
 } from "../../src/funding/production-prover-funding-authority-v1.js";
-import { unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1 } from "../../src/funding/production-prover-funding-v1.js";
-import type { WatcherProductionWorkflowFundingProfileOverlayV1 } from "../../src/funding/production-workflow-funding-profile-overlay-v1.js";
-import { openWatcherSqliteProverFundingReservationStoreV1 } from "../../src/funding/sqlite-prover-funding-reservation-store-v1.js";
-import { mintWatcherProductionProverFundingReservationPermitV1 } from "../../src/runtime/production-watcher-runtime-v1.js";
-import { makeWatcherDeploymentAuthorityFixtureV1 } from "../support/deployment-authority-fixture.js";
+import { unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest } from "../../src/funding/production-prover-funding-v1.js";
+import type { WatcherWorkflowFundingProfileOverlay } from "../../src/funding/production-workflow-funding-profile-overlay-v1.js";
+import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store-v1.js";
+import { mintWatcherProverFundingReservationPermit } from "../../src/runtime/production-watcher-runtime-v1.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 
 const directories: string[] = [];
 
@@ -71,18 +71,18 @@ const structuralOverlay = Object.freeze({
   releaseEvidenceDigest: "22".repeat(32),
   bundlePath: "/etc/midgard/funding-profiles.json",
   profiles: Object.freeze({}),
-}) as unknown as WatcherProductionWorkflowFundingProfileOverlayV1;
+}) as unknown as WatcherWorkflowFundingProfileOverlay;
 
 const structuralRunner = Object.freeze({
   runnerVersion: "midgard-production-workflow-adapter-runner-v1",
   runOrResume: async () => {
     throw new Error("test runner must not execute");
   },
-}) as unknown as ProductionWorkflowAdapterRunnerV1;
+}) as unknown as WorkflowAdapterRunner;
 
 const structuralActuationPermit = Object.freeze({
   permitVersion: "midgard-production-workflow-actuation-permit-v1",
-}) as ProductionWorkflowActuationPermitV1;
+}) as WorkflowActuationPermit;
 
 const provider = Object.freeze({
   getUtxos: async () => [],
@@ -90,10 +90,10 @@ const provider = Object.freeze({
 });
 
 const mint = (input: {
-  readonly factory: WatcherProductionProverFundingAuthorityFactoryV1;
-  readonly overlay?: WatcherProductionWorkflowFundingProfileOverlayV1;
+  readonly factory: WatcherProverFundingAuthorityFactory;
+  readonly overlay?: WatcherWorkflowFundingProfileOverlay;
 }) =>
-  mintWatcherProductionProverFundingReservationPermitV1({
+  mintWatcherProverFundingReservationPermit({
     category: "doubleSpend",
     runner: structuralRunner,
     fundingProfileOverlay: input.overlay ?? structuralOverlay,
@@ -108,42 +108,37 @@ const mint = (input: {
 
 describe("watcher production prover funding permit mint V1", () => {
   it("refuses a structural funding authority factory", async () => {
-    const admitted = createWatcherProductionProverFundingAuthorityFactoryV1({
-      deploymentIdentity: makeWatcherDeploymentAuthorityFixtureV1().result,
+    const admitted = createWatcherProverFundingAuthorityFactory({
+      deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
       protocolParameters:
-        await unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1(
-          {
-            deploymentIdentity:
-              makeWatcherDeploymentAuthorityFixtureV1().result,
-            ogmiosUrl: "http://127.0.0.1:1337",
-            timeoutMs: 10_000,
-            fetchImpl,
-          },
-        ),
+        await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+          deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
+          ogmiosUrl: "http://127.0.0.1:1337",
+          timeoutMs: 10_000,
+          fetchImpl,
+        }),
       store: (await openStore()).store,
     });
     await expect(
       mint({
         factory: {
           ...admitted,
-        } as WatcherProductionProverFundingAuthorityFactoryV1,
+        } as WatcherProverFundingAuthorityFactory,
       }),
     ).rejects.toThrow("prover funding authority factory is not admitted");
   });
 
   it("refuses a funding profile overlay that was not admitted from signed release evidence", async () => {
-    const deploymentIdentity = makeWatcherDeploymentAuthorityFixtureV1().result;
-    const factory = createWatcherProductionProverFundingAuthorityFactoryV1({
+    const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
+    const factory = createWatcherProverFundingAuthorityFactory({
       deploymentIdentity,
       protocolParameters:
-        await unsafeCreateWatcherProductionProtocolParameterRuntimeAuthorityForTestV1(
-          {
-            deploymentIdentity,
-            ogmiosUrl: "http://127.0.0.1:1337",
-            timeoutMs: 10_000,
-            fetchImpl,
-          },
-        ),
+        await unsafeCreateWatcherProtocolParameterRuntimeAuthorityForTest({
+          deploymentIdentity,
+          ogmiosUrl: "http://127.0.0.1:1337",
+          timeoutMs: 10_000,
+          fetchImpl,
+        }),
       store: (await openStore()).store,
     });
     await expect(mint({ factory })).rejects.toThrow(
@@ -157,7 +152,7 @@ const openStore = async () => {
     join(process.cwd(), ".watcher-funding-permit-mint-test-"),
   );
   directories.push(directory);
-  return await openWatcherSqliteProverFundingReservationStoreV1({
+  return await openWatcherSqliteProverFundingReservationStore({
     path: join(directory, "watcher.sqlite"),
   });
 };

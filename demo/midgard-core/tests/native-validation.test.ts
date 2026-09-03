@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { decodeSingleCbor } from "../src/codec/cbor.js";
 import {
-  decodeMidgardNativeTxCanonicalV1,
-  decodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxCanonical,
+  decodeMidgardNativeTxCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardNativeTxCanonicalV1,
-  encodeMidgardNativeTxCompactV1,
-  materializeMidgardNativeTxFromCanonicalV1,
+  encodeMidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  type MidgardNativeTxCanonicalV1,
+  type MidgardNativeTxCanonical,
 } from "../src/codec/native.js";
 import {
   decodeValidityCode,
@@ -28,8 +28,8 @@ const VALIDITY_VECTORS = [
 
 const makeCanonical = (
   validity: MidgardTxValidity,
-): MidgardNativeTxCanonicalV1 => ({
-  version: MIDGARD_NATIVE_TX_V1_VERSION,
+): MidgardNativeTxCanonical => ({
+  version: MIDGARD_NATIVE_TX_VERSION,
   validity,
   body: {
     spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -68,11 +68,11 @@ describe("Midgard native V1 validity language", () => {
     );
 
     for (const [meaning, code, plutusDataCbor] of VALIDITY_VECTORS) {
-      const full = materializeMidgardNativeTxFromCanonicalV1(
+      const full = materializeMidgardNativeTxFromCanonical(
         makeCanonical(meaning),
       );
-      const compactCbor = encodeMidgardNativeTxCompactV1(full.compact);
-      const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+      const compactCbor = encodeMidgardNativeTxCompact(full.compact);
+      const canonicalCbor = encodeMidgardNativeTxCanonical(full);
 
       expect(MidgardTxValidityCodes[meaning]).toBe(code);
       expect(encodeValidityCode(meaning)).toBe(code);
@@ -83,10 +83,8 @@ describe("Midgard native V1 validity language", () => {
       expect(canonicalCbor.subarray(-1).toString("hex")).toBe(
         code.toString(16).padStart(2, "0"),
       );
-      expect(decodeMidgardNativeTxCompactV1(compactCbor).validity).toBe(
-        meaning,
-      );
-      expect(decodeMidgardNativeTxCanonicalV1(canonicalCbor).validity).toBe(
+      expect(decodeMidgardNativeTxCompact(compactCbor).validity).toBe(meaning);
+      expect(decodeMidgardNativeTxCanonical(canonicalCbor).validity).toBe(
         meaning,
       );
       expect(plutusDataCbor).toBe(`d8${(0x79 + Number(code)).toString(16)}80`);
@@ -117,32 +115,32 @@ describe("Midgard native V1 validity language", () => {
   });
 
   it("rejects non-minimal and out-of-range compact and canonical codes", () => {
-    const txIsInvalid = materializeMidgardNativeTxFromCanonicalV1(
+    const txIsInvalid = materializeMidgardNativeTxFromCanonical(
       makeCanonical("TxIsInvalid"),
     );
-    const compact = encodeMidgardNativeTxCompactV1(txIsInvalid.compact);
-    const canonical = encodeMidgardNativeTxCanonicalV1(txIsInvalid);
+    const compact = encodeMidgardNativeTxCompact(txIsInvalid.compact);
+    const canonical = encodeMidgardNativeTxCanonical(txIsInvalid);
 
     expect(() => decodeSingleCbor(Buffer.from("1801", "hex"))).toThrow(
       /Non-minimal CBOR integer/u,
     );
     expect(() =>
-      decodeMidgardNativeTxCompactV1(
+      decodeMidgardNativeTxCompact(
         replaceFinalValidityCode(compact, Buffer.from("1801", "hex")),
       ),
     ).toThrow(/Non-minimal CBOR integer/u);
     expect(() =>
-      decodeMidgardNativeTxCanonicalV1(
+      decodeMidgardNativeTxCanonical(
         replaceFinalValidityCode(canonical, Buffer.from("1801", "hex")),
       ),
     ).toThrow(/Non-minimal CBOR integer/u);
     expect(() =>
-      decodeMidgardNativeTxCompactV1(
+      decodeMidgardNativeTxCompact(
         replaceFinalValidityCode(compact, Buffer.from([2])),
       ),
     ).toThrow(/Unsupported Midgard tx validity code/u);
     expect(() =>
-      decodeMidgardNativeTxCanonicalV1(
+      decodeMidgardNativeTxCanonical(
         replaceFinalValidityCode(canonical, Buffer.from([2])),
       ),
     ).toThrow(/Unsupported Midgard tx validity code/u);

@@ -1,78 +1,78 @@
 import {
-  authenticatedStateQueueObservationDigestV1,
-  createProductionWorkflowActuationPermitControllerV1,
-  type ProductionHeaderDecisionV1,
-  type ProductionWorkflowActuationPermitControllerV1,
-  type ProductionWorkflowActuationPermitV1,
+  authenticatedStateQueueObservationDigest,
+  createWorkflowActuationPermitController,
+  type HeaderDecision,
+  type WorkflowActuationPermit,
+  type WorkflowActuationPermitController,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  type AuthenticatedStateQueueHeaderObservationV1,
-  CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  HeaderV1,
+  Header,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  assertWatcherProductionStateQueueObservationV1,
-  type WatcherProductionCorrectionLockObservationV1,
-  type WatcherProductionStateQueueHeaderObservationV1,
-  type WatcherProductionStateQueueObservationSourceV1,
-  type WatcherProductionStateQueueObservationV1,
+  assertWatcherStateQueueObservation,
+  type WatcherAuthenticatedStateQueueObservation,
+  type WatcherCorrectionLockObservation,
+  type WatcherStateQueueHeaderObservation,
+  type WatcherStateQueueObservationSource,
 } from "../indexers/production-state-queue-observation-v1.js";
-import type { WatcherProductionOperationsSinkV1 } from "../runtime/production-operations-observability-v1.js";
+import type { WatcherOperationsSink } from "../runtime/production-operations-observability-v1.js";
 import {
-  openWatcherProductionFaultDecisionJournalV1,
-  type WatcherPersistedProductionFaultDecisionRecordV1,
+  openWatcherFaultDecisionJournal,
+  type WatcherPersistedFaultDecisionRecord,
 } from "./production-fault-decision-journal-v1.js";
 import {
-  assertWatcherFaultProofProductionApplicationV1,
-  WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
-  type WatcherFaultProofProductionApplicationV1,
-  type WatcherInstalledProductionWorkflowCategoryV1,
+  assertWatcherFaultProofApplication,
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+  type WatcherFaultProofApplication,
+  type WatcherInstalledWorkflowCategory,
 } from "./production-fault-proof-application-v1.js";
 import {
-  enqueueWatcherProductionFaultDecisionV1,
-  type WatcherProductionFaultProofDeadlineV1,
-  watcherProductionFaultProofDeadlineV1,
-  type WatcherProductionFaultProofJobV1,
-  type WatcherProductionFaultProofSupervisorV1,
+  enqueueWatcherFaultDecision,
+  type WatcherFaultProofDeadline,
+  watcherFaultProofDeadline,
+  type WatcherFaultProofJob,
+  type WatcherFaultProofSupervisor,
 } from "./production-fault-proof-supervisor-v1.js";
 
-export const WATCHER_PRODUCTION_FAULT_DECISION_BRIDGE_V1_SCHEMA_VERSION =
+export const WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION =
   "midgard-watcher-production-fault-decision-bridge-v1" as const;
 
 const RELEASE_CONFIRMATION_DEPTH = 30;
 const MAXIMUM_CLASSIFICATION_CONCURRENCY = 64;
 
-export type WatcherProductionFaultDecisionTargetV1 = Readonly<{
-  category: WatcherInstalledProductionWorkflowCategoryV1;
+export type WatcherFaultDecisionTarget = Readonly<{
+  category: WatcherInstalledWorkflowCategory;
   headerHash: string;
   decisionDigest: string;
 }>;
 
-export type WatcherProductionFaultDecisionBridgeResultV1 = Readonly<{
+export type WatcherFaultDecisionBridgeResult = Readonly<{
   observationDigest: string;
   decisionDigests: readonly string[];
-  target: WatcherProductionFaultDecisionTargetV1 | null;
+  target: WatcherFaultDecisionTarget | null;
 }>;
 
-export type WatcherProductionFaultDecisionBridgeV1 = Readonly<{
-  schemaVersion: typeof WATCHER_PRODUCTION_FAULT_DECISION_BRIDGE_V1_SCHEMA_VERSION;
+export type WatcherFaultDecisionBridge = Readonly<{
+  schemaVersion: typeof WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION;
   /**
    * Re-authenticates and journals the current queue without starting work.
    * Startup uses this before scanning existing workflow journals.
    */
   prepareForRecovery(
-    observation: WatcherProductionStateQueueObservationV1,
-  ): Promise<WatcherProductionFaultDecisionBridgeResultV1>;
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<WatcherFaultDecisionBridgeResult>;
   /** Scans durable workflows only after a fresh opaque decision is prepared. */
   recoverExisting(): Promise<number>;
   /** Reconciles one finalized queue cursor and schedules its one allowed fault. */
   reconcileAndDispatch(
-    observation: WatcherProductionStateQueueObservationV1,
-  ): Promise<WatcherProductionFaultDecisionBridgeResultV1>;
+    observation: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<WatcherFaultDecisionBridgeResult>;
   /** Schedules the target selected by the most recent successful prepare. */
   dispatchPrepared(): Promise<unknown> | null;
   /** Invalidates all runnable authority synchronously on native rollback. */
@@ -82,7 +82,7 @@ export type WatcherProductionFaultDecisionBridgeV1 = Readonly<{
   /** Called immediately before any new or resumed workflow may execute. */
   isJobPermitted(
     job: Pick<
-      WatcherProductionFaultProofJobV1,
+      WatcherFaultProofJob,
       | "mode"
       | "category"
       | "headerHash"
@@ -92,73 +92,67 @@ export type WatcherProductionFaultDecisionBridgeV1 = Readonly<{
   ): boolean;
   status(): Readonly<{
     observationDigest: string | null;
-    target: WatcherProductionFaultDecisionTargetV1 | null;
+    target: WatcherFaultDecisionTarget | null;
   }>;
 }>;
 
-type BridgeApplicationV1 = Pick<
-  WatcherFaultProofProductionApplicationV1,
+type BridgeApplication = Pick<
+  WatcherFaultProofApplication,
   "classifyHeader" | "deploymentFingerprint" | "installedCategories"
 >;
 
-type BridgeDependenciesV1 = Readonly<{
+type BridgeDependencies = Readonly<{
   assertObservation(
-    observation: WatcherProductionStateQueueObservationV1,
+    observation: WatcherAuthenticatedStateQueueObservation,
   ): void;
   observationDigest(
-    observation: AuthenticatedStateQueueHeaderObservationV1,
+    observation: AuthenticatedStateQueueHeaderObservation,
   ): Promise<string>;
-  readRecords(): Promise<
-    readonly WatcherPersistedProductionFaultDecisionRecordV1[]
-  >;
+  readRecords(): Promise<readonly WatcherPersistedFaultDecisionRecord[]>;
   append(
-    decision: ProductionHeaderDecisionV1,
-  ): Promise<WatcherPersistedProductionFaultDecisionRecordV1>;
+    decision: HeaderDecision,
+  ): Promise<WatcherPersistedFaultDecisionRecord>;
   createActuationController(
-    decision: Extract<
-      ProductionHeaderDecisionV1,
-      { readonly decision: "fault_detected" }
-    >,
+    decision: Extract<HeaderDecision, { readonly decision: "fault_detected" }>,
     rollbackGeneration: string,
-  ): ProductionWorkflowActuationPermitControllerV1;
+  ): WorkflowActuationPermitController;
   deadlineForHeader(
-    header: WatcherProductionStateQueueHeaderObservationV1,
-  ): WatcherProductionFaultProofDeadlineV1;
+    header: WatcherStateQueueHeaderObservation,
+  ): WatcherFaultProofDeadline;
   resolvePredecessorHeader?(
-    header: WatcherProductionStateQueueHeaderObservationV1,
-  ): Promise<WatcherProductionStateQueueHeaderObservationV1 | undefined>;
-  operationsSink?: WatcherProductionOperationsSinkV1;
+    header: WatcherStateQueueHeaderObservation,
+  ): Promise<WatcherStateQueueHeaderObservation | undefined>;
+  operationsSink?: WatcherOperationsSink;
   nowMs?(): bigint;
   enqueue(
-    decision: ProductionHeaderDecisionV1,
-    actuationPermit: ProductionWorkflowActuationPermitV1,
-    deadline: WatcherProductionFaultProofDeadlineV1,
+    decision: HeaderDecision,
+    actuationPermit: WorkflowActuationPermit,
+    deadline: WatcherFaultProofDeadline,
     rollbackGeneration: string,
   ): Promise<unknown>;
   recover(
-    decision: ProductionHeaderDecisionV1 | null,
-    actuationPermit: ProductionWorkflowActuationPermitV1 | null,
-    deadline: WatcherProductionFaultProofDeadlineV1 | null,
+    decision: HeaderDecision | null,
+    actuationPermit: WorkflowActuationPermit | null,
+    deadline: WatcherFaultProofDeadline | null,
     rollbackGeneration: string,
   ): Promise<number>;
 }>;
 
 const exactInstalledScope = (
   categories: readonly string[],
-): readonly WatcherInstalledProductionWorkflowCategoryV1[] => {
+): readonly WatcherInstalledWorkflowCategory[] => {
   if (
-    categories.length !==
-      WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1.length ||
+    categories.length !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
     categories.some(
       (category, index) =>
-        category !== WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1[index],
+        category !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES[index],
     )
   ) {
     throw new Error(
       "fault decision bridge application scope differs from the installed application",
     );
   }
-  return WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1;
+  return WATCHER_INSTALLED_WORKFLOW_CATEGORIES;
 };
 
 const confirmationDepth = (value: string): number => {
@@ -178,15 +172,15 @@ const confirmationDepth = (value: string): number => {
 };
 
 const authenticatedHeaderObservation = (
-  source: WatcherProductionStateQueueObservationV1,
-  header: WatcherProductionStateQueueHeaderObservationV1,
-): AuthenticatedStateQueueHeaderObservationV1 => {
-  const decoded = Data.from(header.headerCborHex, HeaderV1);
-  if (Data.to(decoded, HeaderV1) !== header.headerCborHex) {
+  source: WatcherAuthenticatedStateQueueObservation,
+  header: WatcherStateQueueHeaderObservation,
+): AuthenticatedStateQueueHeaderObservation => {
+  const decoded = Data.from(header.headerCborHex, Header);
+  if (Data.to(decoded, Header) !== header.headerCborHex) {
     throw new Error("authenticated state-queue HeaderV1 CBOR is noncanonical");
   }
   return Object.freeze({
-    schemaVersion: CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+    schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
     sourceMode: "local_node" as const,
     provenance: Object.freeze({
       trustClass: "authenticated_cardano_l1" as const,
@@ -204,7 +198,7 @@ const authenticatedHeaderObservation = (
 };
 
 const assertExactFinalizedHeaderOrder = (
-  observation: WatcherProductionStateQueueObservationV1,
+  observation: WatcherAuthenticatedStateQueueObservation,
 ): void => {
   const queued = observation.finalizedQueue.filter(
     (node): node is typeof node & { readonly headerHash: string } =>
@@ -230,7 +224,7 @@ const assertExactFinalizedHeaderOrder = (
 };
 
 const exactLockedFraudProof = (
-  lock: WatcherProductionCorrectionLockObservationV1,
+  lock: WatcherCorrectionLockObservation,
 ): Readonly<{ headerHash: string; fraudProofAssetName: string }> | null => {
   if (lock.datum === "Idle") return null;
   const identity = lock.datum.Locked.correction_identity;
@@ -248,9 +242,9 @@ const exactLockedFraudProof = (
 };
 
 const selectedTarget = (input: {
-  readonly observation: WatcherProductionStateQueueObservationV1;
-  readonly decisions: readonly ProductionHeaderDecisionV1[];
-}): WatcherProductionFaultDecisionTargetV1 | null => {
+  readonly observation: WatcherAuthenticatedStateQueueObservation;
+  readonly decisions: readonly HeaderDecision[];
+}): WatcherFaultDecisionTarget | null => {
   const lock = input.observation.finalizedCorrectionLock;
   if (lock === null) {
     throw new Error(
@@ -261,7 +255,7 @@ const selectedTarget = (input: {
     (
       decision,
     ): decision is Extract<
-      ProductionHeaderDecisionV1,
+      HeaderDecision,
       { readonly decision: "fault_detected" }
     > => decision.decision === "fault_detected",
   );
@@ -270,8 +264,7 @@ const selectedTarget = (input: {
     return first === undefined
       ? null
       : Object.freeze({
-          category:
-            first.category as WatcherInstalledProductionWorkflowCategoryV1,
+          category: first.category as WatcherInstalledWorkflowCategory,
           headerHash: first.headerHash,
           decisionDigest: first.decisionDigest,
         });
@@ -290,15 +283,15 @@ const selectedTarget = (input: {
     );
   }
   return Object.freeze({
-    category: match.category as WatcherInstalledProductionWorkflowCategoryV1,
+    category: match.category as WatcherInstalledWorkflowCategory,
     headerHash: match.headerHash,
     decisionDigest: match.decisionDigest,
   });
 };
 
 const observationPreservesTarget = (
-  observation: WatcherProductionStateQueueObservationV1,
-  target: WatcherProductionFaultDecisionTargetV1,
+  observation: WatcherAuthenticatedStateQueueObservation,
+  target: WatcherFaultDecisionTarget,
 ): boolean => {
   if (
     !observation.finalizedHeaders.some(
@@ -320,11 +313,11 @@ const observationPreservesTarget = (
 };
 
 const createBridge = (input: {
-  readonly application: BridgeApplicationV1;
+  readonly application: BridgeApplication;
   readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
-  readonly dependencies: BridgeDependenciesV1;
-}): WatcherProductionFaultDecisionBridgeV1 => {
+  readonly dependencies: BridgeDependencies;
+}): WatcherFaultDecisionBridge => {
   const scope = exactInstalledScope(input.application.installedCategories);
   if (
     !Number.isSafeInteger(input.maximumClassificationConcurrency) ||
@@ -338,14 +331,12 @@ const createBridge = (input: {
   const deploymentFingerprint = input.application.deploymentFingerprint;
   let classificationEpoch = 0;
   let rollbackGeneration = 0;
-  let observation: WatcherProductionStateQueueObservationV1 | null = null;
-  let target: WatcherProductionFaultDecisionTargetV1 | null = null;
-  let targetDecision: ProductionHeaderDecisionV1 | null = null;
-  let targetDeadline: WatcherProductionFaultProofDeadlineV1 | null = null;
-  let actuationController: ProductionWorkflowActuationPermitControllerV1 | null =
-    null;
-  let preparedResult: WatcherProductionFaultDecisionBridgeResultV1 | null =
-    null;
+  let observation: WatcherAuthenticatedStateQueueObservation | null = null;
+  let target: WatcherFaultDecisionTarget | null = null;
+  let targetDecision: HeaderDecision | null = null;
+  let targetDeadline: WatcherFaultProofDeadline | null = null;
+  let actuationController: WorkflowActuationPermitController | null = null;
+  let preparedResult: WatcherFaultDecisionBridgeResult | null = null;
   let serial: Promise<void> = Promise.resolve();
 
   const invalidate = (reason: string): void => {
@@ -361,8 +352,8 @@ const createBridge = (input: {
   };
 
   const prepare = async (
-    candidate: WatcherProductionStateQueueObservationV1,
-  ): Promise<WatcherProductionFaultDecisionBridgeResultV1> => {
+    candidate: WatcherAuthenticatedStateQueueObservation,
+  ): Promise<WatcherFaultDecisionBridgeResult> => {
     input.dependencies.assertObservation(candidate);
     if (candidate.deploymentIdentityDigest !== deploymentFingerprint) {
       throw new Error(
@@ -394,7 +385,7 @@ const createBridge = (input: {
     const persisted = await input.dependencies.readRecords();
     const persistedByObservation = new Map<
       string,
-      WatcherPersistedProductionFaultDecisionRecordV1
+      WatcherPersistedFaultDecisionRecord
     >();
     for (const record of persisted) {
       const key = `${record.decision.headerHash}\u0000${record.decision.authenticatedObservationDigest}`;
@@ -405,7 +396,7 @@ const createBridge = (input: {
       }
       persistedByObservation.set(key, record);
     }
-    const decisions = new Array<ProductionHeaderDecisionV1>(
+    const decisions = new Array<HeaderDecision>(
       candidate.finalizedHeaders.length,
     );
     let nextHeaderIndex = 0;
@@ -525,7 +516,7 @@ const createBridge = (input: {
             (
               decision,
             ): decision is Extract<
-              ProductionHeaderDecisionV1,
+              HeaderDecision,
               { readonly decision: "fault_detected" }
             > =>
               decision.decision === "fault_detected" &&
@@ -590,9 +581,9 @@ const createBridge = (input: {
   };
 
   const serializedPrepare = (
-    candidate: WatcherProductionStateQueueObservationV1,
+    candidate: WatcherAuthenticatedStateQueueObservation,
     dispatch: boolean,
-  ): Promise<WatcherProductionFaultDecisionBridgeResultV1> => {
+  ): Promise<WatcherFaultDecisionBridgeResult> => {
     const result = serial.then(async () => {
       const prepared = await prepare(candidate);
       // Keep reconciliation and its exact selected decision inside the same
@@ -646,7 +637,7 @@ const createBridge = (input: {
   };
 
   return Object.freeze({
-    schemaVersion: WATCHER_PRODUCTION_FAULT_DECISION_BRIDGE_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
     prepareForRecovery: async (candidate) =>
       await serializedPrepare(candidate, false),
     recoverExisting: async () => {
@@ -694,43 +685,43 @@ const createBridge = (input: {
   });
 };
 
-export const createWatcherProductionFaultDecisionBridgeV1 = async (input: {
-  readonly application: WatcherFaultProofProductionApplicationV1;
-  readonly supervisor: WatcherProductionFaultProofSupervisorV1;
-  readonly stateQueueSource: WatcherProductionStateQueueObservationSourceV1;
+export const createWatcherFaultDecisionBridge = async (input: {
+  readonly application: WatcherFaultProofApplication;
+  readonly supervisor: WatcherFaultProofSupervisor;
+  readonly stateQueueSource: WatcherStateQueueObservationSource;
   readonly journalDirectory: string;
   readonly runtimeConfigPath: string;
   readonly maximumClassificationConcurrency: number;
-  readonly operationsSink?: WatcherProductionOperationsSinkV1;
+  readonly operationsSink?: WatcherOperationsSink;
   readonly nowMs?: () => bigint;
-}): Promise<WatcherProductionFaultDecisionBridgeV1> => {
-  assertWatcherFaultProofProductionApplicationV1(input.application);
-  const journal = await openWatcherProductionFaultDecisionJournalV1({
+}): Promise<WatcherFaultDecisionBridge> => {
+  assertWatcherFaultProofApplication(input.application);
+  const journal = await openWatcherFaultDecisionJournal({
     directory: input.journalDirectory,
     deploymentFingerprint: input.application.deploymentFingerprint,
-    launchScope: WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+    launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   });
   return createBridge({
     application: input.application,
     runtimeConfigPath: input.runtimeConfigPath,
     maximumClassificationConcurrency: input.maximumClassificationConcurrency,
     dependencies: Object.freeze({
-      assertObservation: assertWatcherProductionStateQueueObservationV1,
+      assertObservation: assertWatcherStateQueueObservation,
       observationDigest: async (candidate) =>
-        await authenticatedStateQueueObservationDigestV1({
+        await authenticatedStateQueueObservationDigest({
           observation: candidate,
           minimumConfirmationDepth: RELEASE_CONFIRMATION_DEPTH,
         }),
       readRecords: journal.readAll,
       append: journal.appendLiveDecision,
       createActuationController: (decision, rollbackGeneration) =>
-        createProductionWorkflowActuationPermitControllerV1({
+        createWorkflowActuationPermitController({
           decision,
           rollbackGeneration,
         }),
-      deadlineForHeader: watcherProductionFaultProofDeadlineV1,
+      deadlineForHeader: watcherFaultProofDeadline,
       resolvePredecessorHeader: async (header) => {
-        const decoded = Data.from(header.headerCborHex, HeaderV1);
+        const decoded = Data.from(header.headerCborHex, Header);
         if (decoded.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT) return undefined;
         return await input.stateQueueSource.resolveRetainedHeader({
           headerHash: decoded.prevHeaderHash,
@@ -746,7 +737,7 @@ export const createWatcherProductionFaultDecisionBridgeV1 = async (input: {
         deadline,
         rollbackGeneration,
       ) =>
-        await enqueueWatcherProductionFaultDecisionV1({
+        await enqueueWatcherFaultDecision({
           supervisor: input.supervisor,
           decision,
           actuationPermit,
@@ -770,11 +761,11 @@ export const createWatcherProductionFaultDecisionBridgeV1 = async (input: {
 };
 
 /** Test-only dependency seam; it never mints production application authority. */
-export const unsafeCreateWatcherProductionFaultDecisionBridgeForTestV1 = (
+export const unsafeCreateWatcherFaultDecisionBridgeForTest = (
   input: Readonly<{
-    application: BridgeApplicationV1;
+    application: BridgeApplication;
     runtimeConfigPath: string;
     maximumClassificationConcurrency: number;
-    dependencies: BridgeDependenciesV1;
+    dependencies: BridgeDependencies;
   }>,
-): WatcherProductionFaultDecisionBridgeV1 => createBridge(input);
+): WatcherFaultDecisionBridge => createBridge(input);

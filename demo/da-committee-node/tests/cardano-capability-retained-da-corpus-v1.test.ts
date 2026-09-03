@@ -2,30 +2,30 @@ import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import {
-  collectMidgardV1AttachedProgramEnvelopes,
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  collectMidgardAttachedProgramEnvelopes,
+  decodeMidgardCekProgramMaterialDaEntry,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  encodeMidgardCekProgramMaterialDaValueV1,
-  encodeMidgardCekTermNodeV1,
+  encodeMidgardCekProgramMaterialDaValue,
+  encodeMidgardCekTermNode,
   encodeMidgardTxOutput,
-  hashMidgardCekTermNodeV1,
+  hashMidgardCekTermNode,
   hashMidgardVersionedScript,
-  verifyMidgardCekProgramMaterialBundleV1,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
-import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { buildStrictRetainedDaPairFixtureV1 } from "../../midgard-fault-proofs/tests/helpers/cardano-capability-retained-da-v1.js";
+import { buildStrictRetainedDaPairFixture } from "../../midgard-fault-proofs/tests/helpers/cardano-capability-retained-da-v1.js";
 import {
   DaPayloadValidationError,
-  decodeDaPayloadV1Strict,
-  verifyDaPayloadV1AgainstHeader,
+  decodeDaPayloadStrict,
+  verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 
-type CapabilityCorpusEntryV1 = {
+type CapabilityCorpusEntry = {
   readonly label: string;
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
@@ -61,10 +61,10 @@ const boundaryCorpusInput = (): string | URL => {
 };
 
 const corpus = JSON.parse(readFileSync(boundaryCorpusInput(), "utf8")) as {
-  readonly entries: readonly CapabilityCorpusEntryV1[];
+  readonly entries: readonly CapabilityCorpusEntry[];
 };
 
-const corpusEntryFor = (label: string): CapabilityCorpusEntryV1 => {
+const corpusEntryFor = (label: string): CapabilityCorpusEntry => {
   const matches = corpus.entries.filter((entry) => entry.label === label);
   if (matches.length !== 1) {
     throw new Error(`expected exactly one capability corpus row for ${label}`);
@@ -72,9 +72,9 @@ const corpusEntryFor = (label: string): CapabilityCorpusEntryV1 => {
   return matches[0]!;
 };
 
-const materialFor = (payload: SDK.DaPayloadV1) =>
+const materialFor = (payload: SDK.DaPayload) =>
   payload.block_body.cek_program_material.map(([rootHex, valueHex]) =>
-    decodeMidgardCekProgramMaterialDaEntryV1(
+    decodeMidgardCekProgramMaterialDaEntry(
       Buffer.from(rootHex, "hex"),
       Buffer.from(valueHex, "hex"),
     ),
@@ -89,7 +89,7 @@ describe("Cardano capability corpus production DA admission", () => {
         boundary.canonicalMaterialSidecarCborHex === undefined
           ? undefined
           : Buffer.from(boundary.canonicalMaterialSidecarCborHex, "hex");
-      const fixture = await buildStrictRetainedDaPairFixtureV1({
+      const fixture = await buildStrictRetainedDaPairFixture({
         canonicalTransactionCbor: canonicalCbor,
         canonicalMaterialSidecarCbor: materialSidecar,
         resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
@@ -101,7 +101,7 @@ describe("Cardano capability corpus production DA admission", () => {
         expect(label).toBe("mixed-size-balanced");
         let rejection: unknown;
         try {
-          decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(fixture.payload));
+          decodeDaPayloadStrict(SDK.encodeDaPayload(fixture.payload));
         } catch (cause) {
           rejection = cause;
         }
@@ -114,7 +114,7 @@ describe("Cardano capability corpus production DA admission", () => {
       }
 
       expect(boundary.productionAdmission).toBe("required");
-      const admitted = await verifyDaPayloadV1AgainstHeader(
+      const admitted = await verifyDaPayloadAgainstHeader(
         fixture.payloadEnvelopeCbor,
         fixture.headerHash,
         fixture.header,
@@ -133,9 +133,9 @@ describe("Cardano capability corpus production DA admission", () => {
       });
 
       const transaction =
-        decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
-      const envelopes = collectMidgardV1AttachedProgramEnvelopes(transaction);
-      const verification = verifyMidgardCekProgramMaterialBundleV1(
+        decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
+      const envelopes = collectMidgardAttachedProgramEnvelopes(transaction);
+      const verification = verifyMidgardCekProgramMaterialBundle(
         envelopes,
         materialFor(admitted.payload),
       );
@@ -170,7 +170,7 @@ describe("Cardano capability corpus production DA admission", () => {
       boundary.canonicalMaterialSidecarCborHex!,
       "hex",
     );
-    const fixture = await buildStrictRetainedDaPairFixtureV1({
+    const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
       canonicalMaterialSidecarCbor: materialSidecar,
     });
@@ -185,7 +185,7 @@ describe("Cardano capability corpus production DA admission", () => {
     let extraIndex = 0xffff_ffffn;
     while (
       existingRoots.has(
-        hashMidgardCekTermNodeV1({
+        hashMidgardCekTermNode({
           kind: "variable",
           index: extraIndex,
         }).toString("hex"),
@@ -194,10 +194,10 @@ describe("Cardano capability corpus production DA admission", () => {
       extraIndex -= 1n;
     }
     const extraNode = { kind: "variable" as const, index: extraIndex };
-    const extraRoot = hashMidgardCekTermNodeV1(extraNode).toString("hex");
-    const extraValue = encodeMidgardCekProgramMaterialDaValueV1({
+    const extraRoot = hashMidgardCekTermNode(extraNode).toString("hex");
+    const extraValue = encodeMidgardCekProgramMaterialDaValue({
       kind: "term",
-      preimage: encodeMidgardCekTermNodeV1(extraNode),
+      preimage: encodeMidgardCekTermNode(extraNode),
     }).toString("hex");
 
     const malformedMaterialSets: readonly SDK.DaPayloadEntry[][] = [
@@ -209,7 +209,7 @@ describe("Cardano capability corpus production DA admission", () => {
       [
         [
           rootHex,
-          encodeMidgardCekProgramMaterialDaValueV1({
+          encodeMidgardCekProgramMaterialDaValue({
             kind: entry!.kind,
             preimage: mutatedPreimage,
           }).toString("hex"),
@@ -223,7 +223,7 @@ describe("Cardano capability corpus production DA admission", () => {
     ];
 
     for (const cekProgramMaterial of malformedMaterialSets) {
-      const malformed: SDK.DaPayloadV1 = {
+      const malformed: SDK.DaPayload = {
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -232,7 +232,7 @@ describe("Cardano capability corpus production DA admission", () => {
       };
       let rejection: unknown;
       try {
-        decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(malformed));
+        decodeDaPayloadStrict(SDK.encodeDaPayload(malformed));
       } catch (cause) {
         rejection = cause;
       }
@@ -247,20 +247,18 @@ describe("Cardano capability corpus production DA admission", () => {
   it("rejects missing or substituted resolved reference UTxO material", async () => {
     const boundary = corpusEntryFor("maximum-reference-inputs");
     const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
-    const fixture = await buildStrictRetainedDaPairFixtureV1({
+    const fixture = await buildStrictRetainedDaPairFixture({
       canonicalTransactionCbor: canonicalCbor,
       resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
     });
-    const missing: SDK.DaPayloadV1 = {
+    const missing: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
         utxos: [],
       },
     };
-    expect(() =>
-      decodeDaPayloadV1Strict(SDK.encodeDaPayloadV1(missing)),
-    ).toThrow(
+    expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(missing))).toThrow(
       expect.objectContaining({
         code: "malformed_transaction",
       }),
@@ -276,7 +274,7 @@ describe("Cardano capability corpus production DA admission", () => {
         lovelace: decodedOutput.value.lovelace + 1n,
       },
     });
-    const substituted: SDK.DaPayloadV1 = {
+    const substituted: SDK.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -284,8 +282,8 @@ describe("Cardano capability corpus production DA admission", () => {
       },
     };
     await expect(
-      verifyDaPayloadV1AgainstHeader(
-        await wrapDaPayloadV1(SDK.encodeDaPayloadV1(substituted), {
+      verifyDaPayloadAgainstHeader(
+        await wrapDaPayload(SDK.encodeDaPayload(substituted), {
           mode: "identity",
         }),
         fixture.headerHash,

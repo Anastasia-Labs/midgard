@@ -13,30 +13,30 @@
  * doors the five steps open reproduce the committed commitments exactly.
  *
  * The subject preimages of the four doors the steps consume are always spelt
- * with {@link encodeMidgardFieldPreimageV1} — byte-for-byte what the planner
+ * with {@link encodeMidgardFieldPreimage} — byte-for-byte what the planner
  * re-envelopes — so a door's carriage tier is only ever selected by the
  * preimage's own length, never forced.
  */
 import {
-  deriveMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  encodeMidgardAddressWitnessItemV1,
-  encodeMidgardFieldPreimageV1,
-  encodeMidgardMintPolicyItemV1,
+  encodeMidgardAddressWitnessItem,
+  encodeMidgardFieldPreimage,
+  encodeMidgardMintPolicyItem,
   encodeMidgardNativeScript,
-  encodeMidgardSpendInputItemV1,
+  encodeMidgardSpendInputItem,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
-  materializeMidgardNativeTxFromCanonicalV1,
+  materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  midgardFieldCarriageBoundsV1,
-  type MidgardMintPolicyItemV1,
+  midgardFieldCarriageBounds,
+  type MidgardMintPolicyItem,
   type MidgardNativeScript,
-  type MidgardNativeTxFullV1,
-  sortMidgardMintItemsV1,
+  type MidgardNativeTxFull,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -48,12 +48,12 @@ import {
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
 
-import type { MintAuthorizationContractsV1 } from "../../src/mint-authorization/contracts-v1.js";
-import { buildMintAuthorizationStep02EvidenceV1 } from "../../src/mint-authorization/evidence-v1.js";
+import type { MintAuthorizationContracts } from "../../src/mint-authorization/contracts-v1.js";
+import { buildMintAuthorizationStep02Evidence } from "../../src/mint-authorization/evidence-v1.js";
 import {
-  requireMintAuthorizationReferenceScriptV1,
-  requireMintAuthorizationStepStateV1,
-  requireMintAuthorizationThreadUtxoV1,
+  requireMintAuthorizationReferenceScript,
+  requireMintAuthorizationStepState,
+  requireMintAuthorizationThreadUtxo,
 } from "../../src/mint-authorization/submit-common-v1.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import {
@@ -63,24 +63,24 @@ import {
 } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../../src/witness-reference-scripts-v1.js";
-import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
+import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts-v1.js";
+import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
 import {
-  buildDecodingBlockFixtureV1,
-  buildDecodingLedgerFixtureV1,
-  type DecodingBlockFixtureV1,
-  type DecodingLedgerFixtureV1,
+  buildDecodingBlockFixture,
+  buildDecodingLedgerFixture,
+  type DecodingBlockFixture,
+  type DecodingLedgerFixture,
 } from "./native-script-decoding-emulator-v1.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   network,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
 
-export { expectOnchainRefusalV1 } from "./native-script-decoding-emulator-v1.js";
+export { expectOnchainRefusal } from "./native-script-decoding-emulator-v1.js";
 
 // ---------------------------------------------------------------------------
 // §5.6 mint items and §5.5 native scripts
@@ -97,17 +97,17 @@ export const mintItemCborV1 = ({
   readonly quantity?: bigint;
 }): string =>
   Buffer.from(
-    encodeMidgardMintPolicyItemV1({
+    encodeMidgardMintPolicyItem({
       policyId,
       assets: [{ assetName, quantity }],
     }),
   ).toString("hex");
 
 /** A readable 28-byte policy id: `byte` repeated. */
-export const policyIdByteV1 = (byte: number): Buffer => Buffer.alloc(28, byte);
+export const policyIdByte = (byte: number): Buffer => Buffer.alloc(28, byte);
 
 /** A distinct ascending 28-byte policy id: `index` in the trailing four bytes. */
-const ascendingPolicyIdV1 = (index: number): Buffer => {
+const ascendingPolicyId = (index: number): Buffer => {
   const buffer = Buffer.alloc(28);
   buffer.writeUInt32BE(index >>> 0, 24);
   return buffer;
@@ -119,7 +119,7 @@ const ascendingPolicyIdV1 = (index: number): Buffer => {
  * signer set is unsatisfied. Returns the policy id it hashes to, the mint
  * item that spends under it, and the canonical payload bytes step-03 pins.
  */
-export const directionBNativeScriptV1 = (
+export const directionBNativeScript = (
   keyByte = 0xcd,
 ): {
   readonly script: MidgardNativeScript;
@@ -153,7 +153,7 @@ export const directionBNativeScriptV1 = (
  * false-fault: its machine-twin evaluates SATISFIED, so no fault exists. Used
  * to drive step-03's EvaluateUnsatisfied local refusal.
  */
-export const directionBSatisfiedNativeScriptV1 = (): {
+export const directionBSatisfiedNativeScript = (): {
   readonly scriptBytesHex: string;
   readonly policyIdHex: string;
   readonly mintItemCbor: string;
@@ -181,7 +181,7 @@ export const directionBSatisfiedNativeScriptV1 = (): {
       assetName: Buffer.from("beef", "hex"),
     }),
     addrWitnessItemCbor: Buffer.from(
-      encodeMidgardAddressWitnessItemV1({
+      encodeMidgardAddressWitnessItem({
         verificationKey,
         signature: Buffer.alloc(64, 0x09),
       }),
@@ -194,7 +194,7 @@ export const directionBSatisfiedNativeScriptV1 = (): {
  * honest false-fault for direction A: a script the operator DID consult, so
  * the absence claim is false. Returns the item bytes and the policy id.
  */
-export const directionAPresentScriptV1 = (): {
+export const directionAPresentScript = (): {
   readonly scriptWitnessItemCbor: string;
   readonly policyIdHex: string;
   readonly mintItemCbor: string;
@@ -222,9 +222,9 @@ export const directionAPresentScriptV1 = (): {
 };
 
 /** A small single-policy tier-1 mint field: one absent policy, one asset. */
-export const smallMintItemCborsV1 = (): readonly string[] => [
+export const smallMintItemCbors = (): readonly string[] => [
   mintItemCborV1({
-    policyId: policyIdByteV1(0xab),
+    policyId: policyIdByte(0xab),
     assetName: Buffer.from("beef", "hex"),
   }),
 ];
@@ -236,29 +236,29 @@ export const smallMintItemCborsV1 = (): readonly string[] => [
  * names, computed at build time from the encoded bytes rather than hard-coded.
  * Every policy is absent, so the whole field is direction-A convictable.
  */
-export const largeMintItemCborsV1 = (): {
+export const largeMintItemCbors = (): {
   readonly itemCbors: readonly string[];
   readonly preimageByteLength: number;
 } => {
   const { maxTier1RedeemerPreimageBytes, maxPublishableCarriageBytes } =
-    midgardFieldCarriageBoundsV1;
+    midgardFieldCarriageBounds;
   const assetName = Buffer.alloc(32, 0x11);
-  const items: MidgardMintPolicyItemV1[] = [];
+  const items: MidgardMintPolicyItem[] = [];
   let count = 0;
   let preimageByteLength = 0;
   // Grow the field one policy at a time until its own preimage crosses the
   // tier-1 ceiling; the loop stops the instant tier-2 is selected by size.
   for (;;) {
     items.push({
-      policyId: ascendingPolicyIdV1(count),
+      policyId: ascendingPolicyId(count),
       assets: [{ assetName, quantity: 1n }],
     });
     count += 1;
-    const sorted = sortMidgardMintItemsV1(items);
+    const sorted = sortMidgardMintItems(items);
     const itemBuffers = sorted.map((item) =>
-      Buffer.from(encodeMidgardMintPolicyItemV1(item)),
+      Buffer.from(encodeMidgardMintPolicyItem(item)),
     );
-    preimageByteLength = encodeMidgardFieldPreimageV1(itemBuffers).length;
+    preimageByteLength = encodeMidgardFieldPreimage(itemBuffers).length;
     if (preimageByteLength > maxTier1RedeemerPreimageBytes) {
       if (preimageByteLength > maxPublishableCarriageBytes) {
         throw new Error(
@@ -274,12 +274,12 @@ export const largeMintItemCborsV1 = (): {
 };
 
 /** N §5.3 address-witness items (fixed 101 bytes each), distinct decoy vkeys. */
-export const addressWitnessItemCborsV1 = (count: number): readonly string[] =>
+export const addressWitnessItemCbors = (count: number): readonly string[] =>
   Array.from({ length: count }, (_unused, index) => {
     const verificationKey = Buffer.alloc(32);
     verificationKey.writeUInt32BE(index + 1, 28);
     return Buffer.from(
-      encodeMidgardAddressWitnessItemV1({
+      encodeMidgardAddressWitnessItem({
         verificationKey,
         signature: Buffer.alloc(64, (index % 254) + 1),
       }),
@@ -291,17 +291,17 @@ export const addressWitnessItemCborsV1 = (count: number): readonly string[] =>
  * (103-byte per-item stride), forced by count alone. None of the decoy signers
  * matches a direction-B `sig` key hash, so the policy stays unsatisfied.
  */
-export const largeAddressWitnessItemCborsV1 = (): {
+export const largeAddressWitnessItemCbors = (): {
   readonly itemCbors: readonly string[];
   readonly preimageByteLength: number;
 } => {
   const { maxTier1RedeemerPreimageBytes, maxPublishableCarriageBytes } =
-    midgardFieldCarriageBoundsV1;
+    midgardFieldCarriageBounds;
   let count = 0;
   for (;;) {
     count += 1;
-    const itemCbors = addressWitnessItemCborsV1(count);
-    const preimageByteLength = encodeMidgardFieldPreimageV1(
+    const itemCbors = addressWitnessItemCbors(count);
+    const preimageByteLength = encodeMidgardFieldPreimage(
       itemCbors.map((hex) => Buffer.from(hex, "hex")),
     ).length;
     if (preimageByteLength > maxTier1RedeemerPreimageBytes) {
@@ -316,7 +316,7 @@ export const largeAddressWitnessItemCborsV1 = (): {
 };
 
 /** One §5.3 reference-input out-ref item's canonical bytes, hex. */
-export const referenceInputItemCborV1 = ({
+export const referenceInputItemCbor = ({
   txIdHex,
   outputIndex,
 }: {
@@ -324,7 +324,7 @@ export const referenceInputItemCborV1 = ({
   readonly outputIndex: number;
 }): string =>
   Buffer.from(
-    encodeMidgardSpendInputItemV1({
+    encodeMidgardSpendInputItem({
       txId: Buffer.from(txIdHex, "hex"),
       outputIndex,
     }),
@@ -337,12 +337,12 @@ export const referenceInputItemCborV1 = ({
 const fieldPreimageOf = (itemCbors: readonly string[]): Buffer =>
   itemCbors.length === 0
     ? Buffer.from(EMPTY_CBOR_LIST)
-    : encodeMidgardFieldPreimageV1(
+    : encodeMidgardFieldPreimage(
         itemCbors.map((hex) => Buffer.from(hex, "hex")),
       );
 
-export type MintAuthorizationSubjectV1 = {
-  readonly nativeTx: MidgardNativeTxFullV1;
+export type MintAuthorizationSubject = {
+  readonly nativeTx: MidgardNativeTxFull;
   readonly witnessSetCompact: SDK.NativeTxWitnessSetCompact;
   readonly mintItemCbors: readonly string[];
   readonly scriptWitnessItemCbors: readonly string[];
@@ -355,7 +355,7 @@ export type MintAuthorizationSubjectV1 = {
  * `validity: "TxIsInvalid"` builds the §2.4.3(d) negative — an honestly
  * recorded no-op the family must never convict.
  */
-export const buildMintAuthorizationSubjectV1 = ({
+export const buildMintAuthorizationSubject = ({
   mintItemCbors,
   scriptWitnessItemCbors = [],
   addrWitnessItemCbors = [],
@@ -367,9 +367,9 @@ export const buildMintAuthorizationSubjectV1 = ({
   readonly addrWitnessItemCbors?: readonly string[];
   readonly referenceInputItemCbors?: readonly string[];
   readonly validity?: "TxIsValid" | "TxIsInvalid";
-}): MintAuthorizationSubjectV1 => {
-  const nativeTx = materializeMidgardNativeTxFromCanonicalV1({
-    version: MIDGARD_NATIVE_TX_V1_VERSION,
+}): MintAuthorizationSubject => {
+  const nativeTx = materializeMidgardNativeTxFromCanonical({
+    version: MIDGARD_NATIVE_TX_VERSION,
     validity,
     body: {
       spendInputsPreimageCbor: EMPTY_CBOR_LIST,
@@ -391,7 +391,7 @@ export const buildMintAuthorizationSubjectV1 = ({
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
   });
-  const compact = deriveMidgardNativeTxWitnessSetCompactV1(nativeTx.witnessSet);
+  const compact = deriveMidgardNativeTxWitnessSetCompact(nativeTx.witnessSet);
   return {
     nativeTx,
     witnessSetCompact: {
@@ -410,7 +410,7 @@ export const buildMintAuthorizationSubjectV1 = ({
 // Harness, committed header, reference scripts, removal category
 // ---------------------------------------------------------------------------
 
-export const makeMintAuthorizationEmulatorHarnessV1 = async ({
+export const makeMintAuthorizationEmulatorHarness = async ({
   useScalusEvaluator = true,
 }: {
   /**
@@ -420,7 +420,7 @@ export const makeMintAuthorizationEmulatorHarnessV1 = async ({
    */
   readonly useScalusEvaluator?: boolean;
 } = {}) => {
-  const harness = await makeFaultProofEmulatorHarnessV1({
+  const harness = await makeFaultProofEmulatorHarness({
     contractOptions: {
       realMintAuthorization: true,
       alwaysFraudProofCatalogue: true,
@@ -445,15 +445,15 @@ export const makeMintAuthorizationEmulatorHarnessV1 = async ({
   return { ...harness, family, category };
 };
 
-export type MintAuthorizationHarnessV1 = Awaited<
-  ReturnType<typeof makeMintAuthorizationEmulatorHarnessV1>
+export type MintAuthorizationHarness = Awaited<
+  ReturnType<typeof makeMintAuthorizationEmulatorHarness>
 >;
 
-export type MintAuthorizationScenarioV1 = {
-  readonly subject: MintAuthorizationSubjectV1;
-  readonly block: DecodingBlockFixtureV1;
+export type MintAuthorizationScenario = {
+  readonly subject: MintAuthorizationSubject;
+  readonly block: DecodingBlockFixture;
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>> & {
-    readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+    readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   };
 };
 
@@ -461,18 +461,18 @@ export type MintAuthorizationScenarioV1 = {
  * Commits a header whose transition trace carries the accused transaction as
  * an accepted L2 event and its dense transition step, ready for Init.
  */
-export const setupMintAuthorizationScenarioV1 = async ({
+export const setupMintAuthorizationScenario = async ({
   harness,
   subject,
   priorLedgerRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
 }: {
-  readonly harness: MintAuthorizationHarnessV1;
-  readonly subject: MintAuthorizationSubjectV1;
+  readonly harness: MintAuthorizationHarness;
+  readonly subject: MintAuthorizationSubject;
   /** The block's pre-state ledger root; the step-04 ResolveNext trie root. */
   readonly priorLedgerRoot?: string;
-}): Promise<MintAuthorizationScenarioV1> => {
+}): Promise<MintAuthorizationScenario> => {
   const witnessReferenceScripts =
-    await publishFaultProofWitnessReferenceScriptsV1({
+    await publishFaultProofWitnessReferenceScripts({
       lucid: harness.proverLucid,
       realBlueprint: harness.realBlueprint,
       computationThreadMintingScript:
@@ -486,7 +486,7 @@ export const setupMintAuthorizationScenarioV1 = async ({
       harness.emulator.now() + 120_000,
     ) - 1,
   );
-  const block = await buildDecodingBlockFixtureV1({
+  const block = await buildDecodingBlockFixture({
     operatorVkey,
     startTime,
     priorLedgerRoot,
@@ -507,14 +507,14 @@ export const setupMintAuthorizationScenarioV1 = async ({
 };
 
 /** Publishes all five step validators as reference scripts (deployment shape). */
-export const publishMintAuthorizationReferenceScriptsV1 = async ({
+export const publishMintAuthorizationReferenceScripts = async ({
   lucid,
   contracts,
 }: {
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly contracts: MintAuthorizationContractsV1;
+  readonly contracts: MintAuthorizationContracts;
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
@@ -539,14 +539,14 @@ export const publishMintAuthorizationReferenceScriptsV1 = async ({
  * accused policy so the absence claim holds. The block's `priorLedgerRoot`
  * must be set to the returned `rootHex`.
  */
-export const buildMintAuthorizationLedgerFixtureV1 = async ({
+export const buildMintAuthorizationLedgerFixture = async ({
   txIdHex,
   outputIndex,
 }: {
   readonly txIdHex: string;
   readonly outputIndex: number;
-}): Promise<DecodingLedgerFixtureV1> =>
-  buildDecodingLedgerFixtureV1({
+}): Promise<DecodingLedgerFixture> =>
+  buildDecodingLedgerFixture({
     txIdHex,
     outputIndex,
     referenceScriptItemBytes: Buffer.from("a1b2c3d4", "hex"),
@@ -561,7 +561,7 @@ export const buildMintAuthorizationLedgerFixtureV1 = async ({
 // ---------------------------------------------------------------------------
 
 /** Flips one byte of a field preimage — a publication the door must reject. */
-export const tamperFieldPreimageBytesV1 = (preimage: Buffer): Buffer => {
+export const tamperFieldPreimageBytes = (preimage: Buffer): Buffer => {
   const tampered = Buffer.from(preimage);
   const index = tampered.length - 1;
   tampered[index] = tampered[index]! ^ 0xff;
@@ -573,17 +573,17 @@ export const tamperFieldPreimageBytesV1 = (preimage: Buffer): Buffer => {
  * own address, in the exact §8 publication datum shape the door reads, and
  * returns the confirmed UTxO. Used only to plant TAMPERED carriage.
  */
-export const publishRawFieldPreimageCarriageV1 = async ({
+export const publishRawFieldPreimageCarriage = async ({
   lucid,
   signer,
   bytes,
 }: {
-  readonly lucid: MintAuthorizationHarnessV1["proverLucid"];
+  readonly lucid: MintAuthorizationHarness["proverLucid"];
   readonly signer: ResolvedProverSigner;
   readonly bytes: Buffer;
 }): Promise<UTxO> => {
   signer.selectWallet(lucid);
-  const datum = SDK.fieldPreimagePublicationDatumCborV1(bytes);
+  const datum = SDK.fieldPreimagePublicationDatumCbor(bytes);
   const { coinsPerUtxoByte } = await resolveProtocolParameters(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const unsigned = await lucid
@@ -620,56 +620,55 @@ export const publishRawFieldPreimageCarriageV1 = async ({
  * the recomputed §8.8 field commitment reaches the validator, which aborts
  * when it disagrees with the anchored committed slot.
  */
-export const submitRawMintAuthorizationStep02TamperedMintV1 = async ({
+export const submitRawMintAuthorizationStep02TamperedMint = async ({
   harness,
   threadOutRef,
   block,
   tamperedPreimageBytes,
   referenceScriptUtxo,
 }: {
-  readonly harness: MintAuthorizationHarnessV1;
+  readonly harness: MintAuthorizationHarness;
   readonly threadOutRef: string;
-  readonly block: DecodingBlockFixtureV1;
+  readonly block: DecodingBlockFixture;
   readonly tamperedPreimageBytes: Buffer;
   readonly referenceScriptUtxo: UTxO;
 }): Promise<string> => {
   const lucid = harness.proverLucid;
   const signer = harness.proverSigner;
   const contracts = harness.family;
-  const { threadUtxo, threadToken } =
-    await requireMintAuthorizationThreadUtxoV1({
-      lucid,
-      contracts,
-      categoryId: harness.category.categoryId,
-      stepIndex: 1,
-      threadOutRef,
-    });
-  const anchorState = requireMintAuthorizationStepStateV1({
+  const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
+    lucid,
+    contracts,
+    categoryId: harness.category.categoryId,
+    stepIndex: 1,
+    threadOutRef,
+  });
+  const anchorState = requireMintAuthorizationStepState({
     threadUtxo,
     signer,
     schema: SDK.MintAuthorizationStep02Datum,
     stepIndex: 1,
   });
-  const evidence = await buildMintAuthorizationStep02EvidenceV1({
+  const evidence = await buildMintAuthorizationStep02Evidence({
     reconstruction: block.reconstruction,
     eventKey: { L2TransactionEventKey: { tx_id: anchorState.bad_tx_id } },
   });
-  const tamperedUtxo = await publishRawFieldPreimageCarriageV1({
+  const tamperedUtxo = await publishRawFieldPreimageCarriage({
     lucid,
     signer,
     bytes: tamperedPreimageBytes,
   });
   const referenceInputs = [
     tamperedUtxo,
-    requireMintAuthorizationReferenceScriptV1({
+    requireMintAuthorizationReferenceScript({
       utxo: referenceScriptUtxo,
       expectedScriptHash: contracts.steps[1].spendingScriptHash,
       stepIndex: 1,
     }),
   ];
-  const step03State: SDK.MintAuthorizationStep03StateV1 = {
+  const step03State: SDK.MintAuthorizationStep03State = {
     policy_id: "ab".repeat(28),
-    direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+    direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
     bad_tx_id: anchorState.bad_tx_id,
     bad_tx_witness_set_hash: anchorState.bad_tx_witness_set_hash,
     validity_interval_start: anchorState.validity_interval_start,
@@ -700,8 +699,8 @@ export const submitRawMintAuthorizationStep02TamperedMintV1 = async ({
       tamperedUtxo,
       "raw mint-authorization tampered publication",
     );
-    const mintOpening = SDK.fieldOpeningV1ForField({
-      fieldIndex: SDK.MIDGARD_FIELD_INDEX_V1.mint,
+    const mintOpening = SDK.fieldOpeningForField({
+      fieldIndex: SDK.MIDGARD_FIELD_INDEX.mint,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       carriage: { RawUtxo: { ref_input_index: refIndex } },
     });
@@ -723,7 +722,7 @@ export const submitRawMintAuthorizationStep02TamperedMintV1 = async ({
             event_to_step_membership: evidence.eventToStepMembership,
             transition_step_membership: evidence.transitionStepMembership,
             policy_index: 0n,
-            direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT_V1,
+            direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
             mint_opening: mintOpening,
           },
         ],

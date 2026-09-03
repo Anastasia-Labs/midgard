@@ -1,10 +1,10 @@
 import { encodeCbor } from "@al-ft/midgard-core";
 import {
-  encodeVerdictSubjectV1,
+  encodeVerdictSubject,
   hashHexWithBlake2b,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  PROOF_THREAD_SOURCE_KIND_FORCED_V1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  PROOF_THREAD_SOURCE_KIND_FORCED,
+  type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -13,16 +13,16 @@ const DOMAIN = Buffer.from(
   "utf8",
 );
 
-export type BoundDuplicateInputV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type BoundDuplicateInput = Readonly<{
+  subject: VerdictSubject;
   first_field_index: bigint;
   first_item_index: bigint;
   second_field_index: bigint;
   second_item_index: bigint;
 }>;
 
-export type InputSetUniqueScanStateV1 = Readonly<{
-  bound: BoundDuplicateInputV1;
+export type InputSetUniqueScanState = Readonly<{
+  bound: BoundDuplicateInput;
   spend_count: bigint;
   reference_count: bigint;
   cursor: bigint;
@@ -38,12 +38,12 @@ const canonicalItem = (value: string, label: string): string => {
   return value;
 };
 
-export const bindForcedDuplicateInputV1 = (
-  subject: VerdictSubjectV1,
-): BoundDuplicateInputV1 => {
+export const bindForcedDuplicateInput = (
+  subject: VerdictSubject,
+): BoundDuplicateInput => {
   if (
-    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1 ||
-    subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED_V1 ||
+    subject.direction !== PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION ||
+    subject.source_kind !== PROOF_THREAD_SOURCE_KIND_FORCED ||
     subject.rejection_reason === null ||
     typeof subject.rejection_reason !== "object" ||
     !("DuplicateInput" in subject.rejection_reason)
@@ -55,7 +55,7 @@ export const bindForcedDuplicateInputV1 = (
   return Object.freeze({ subject, ...subject.rejection_reason.DuplicateInput });
 };
 
-export const inputSetUnionIsStrictlyIncreasingV1 = ({
+export const inputSetUnionIsStrictlyIncreasing = ({
   spendInputItemCbors,
   referenceInputItemCbors,
 }: {
@@ -82,7 +82,7 @@ const cborBytes = (hex: string): Buffer => {
   return Buffer.concat([head, bytes]);
 };
 
-export const inputSetUniquenessCheckpointV1 = ({
+export const inputSetUniquenessCheckpoint = ({
   bound,
   spendCount,
   referenceCount,
@@ -90,7 +90,7 @@ export const inputSetUniquenessCheckpointV1 = ({
   previousItem,
   nextExpectedScriptHash,
 }: {
-  readonly bound: BoundDuplicateInputV1;
+  readonly bound: BoundDuplicateInput;
   readonly spendCount: bigint;
   readonly referenceCount: bigint;
   readonly cursor: bigint;
@@ -112,7 +112,7 @@ export const inputSetUniquenessCheckpointV1 = ({
   ].map((value) => Buffer.from(encodeCbor(value)));
   const material = Buffer.concat([
     DOMAIN,
-    encodeVerdictSubjectV1(bound.subject),
+    encodeVerdictSubject(bound.subject),
     ...integers,
     cborBytes(previousItem),
     cborBytes(nextExpectedScriptHash),

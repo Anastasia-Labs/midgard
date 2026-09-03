@@ -3,8 +3,8 @@ import {
   MissingNativeScriptTxStep05SpendRedeemer,
   type MissingNativeScriptTxStep05State,
   MissingNativeScriptTxStep06Datum,
-  missingNativeScriptTxStep06ReadyStateV1,
-  missingNativeScriptTxVersionedScriptHashV1,
+  missingNativeScriptTxStep06ReadyState,
+  missingNativeScriptTxVersionedScriptHash,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -23,20 +23,20 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundaryV1,
-  reachFraudProofPreSubmitBoundaryV1,
-  workflowReferenceScriptsUsedByTransactionV1,
+  type FraudProofPreSubmitBoundary,
+  reachFraudProofPreSubmitBoundary,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
+import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
 import {
-  missingNativeScriptTxStepLabelV1,
+  missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
-  requireMissingNativeScriptTxReferenceScriptV1,
-  requireMissingNativeScriptTxStepStateV1,
-  requireMissingNativeScriptTxThreadUtxoV1,
+  requireMissingNativeScriptTxReferenceScript,
+  requireMissingNativeScriptTxStepState,
+  requireMissingNativeScriptTxThreadUtxo,
 } from "./submit-common-v1.js";
 
-const STEP_LABEL = missingNativeScriptTxStepLabelV1(4);
+const STEP_LABEL = missingNativeScriptTxStepLabel(4);
 
 export type SubmitMissingNativeScriptTxStep05Result = {
   readonly txHash: string;
@@ -59,17 +59,17 @@ export const submitMissingNativeScriptTxStep05 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: MissingNativeScriptTxContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly missingNativeScriptBytes: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep05Result> => {
   const { threadUtxo, threadToken } =
-    await requireMissingNativeScriptTxThreadUtxoV1({
+    await requireMissingNativeScriptTxThreadUtxo({
       lucid,
       contracts,
       categoryId,
@@ -77,13 +77,13 @@ export const submitMissingNativeScriptTxStep05 = async ({
       threadOutRef,
     });
   const state: MissingNativeScriptTxStep05State =
-    requireMissingNativeScriptTxStepStateV1({
+    requireMissingNativeScriptTxStepState({
       threadUtxo,
       signer,
       schema: MissingNativeScriptTxStep05Datum,
       stepIndex: 4,
     });
-  const derived = missingNativeScriptTxVersionedScriptHashV1(
+  const derived = missingNativeScriptTxVersionedScriptHash(
     missingNativeScriptBytes,
   );
   if (derived !== state.expected_missing_script_hash) {
@@ -94,7 +94,7 @@ export const submitMissingNativeScriptTxStep05 = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: missingNativeScriptTxStep06ReadyStateV1(state),
+      data: missingNativeScriptTxStep06ReadyState(state),
     },
     MissingNativeScriptTxStep06Datum,
   );
@@ -137,7 +137,7 @@ export const submitMissingNativeScriptTxStep05 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([
-      requireMissingNativeScriptTxReferenceScriptV1({
+      requireMissingNativeScriptTxReferenceScript({
         utxo: referenceScriptUtxo,
         expectedScriptHash: contracts.steps[4].spendingScriptHash,
         stepIndex: 4,
@@ -159,9 +159,9 @@ export const submitMissingNativeScriptTxStep05 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
     signed,
-    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+    referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
         {

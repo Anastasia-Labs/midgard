@@ -1,57 +1,57 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
+import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence-v1.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
 import {
-  assertManifestBoundWorkflowSignerV1,
-  bindFraudProofWorkflowDeploymentV1,
-  type FraudProofWorkflowDeploymentBindingV1,
-  requireManifestBoundReferenceScriptUtxoV1,
+  assertManifestBoundWorkflowSigner,
+  bindFraudProofWorkflowDeployment,
+  type FraudProofWorkflowDeploymentBinding,
+  requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding-v1.js";
-import { createFraudProofFamilyLocalKupmiosL1ObservationPortV1 } from "../workflow/family-l1-observation-v1.js";
+import { createFraudProofFamilyLocalKupmiosL1ObservationPort } from "../workflow/family-l1-observation-v1.js";
 import {
-  computeFraudProofWorkflowIdV1,
-  DirectoryFraudProofWorkflowJournalStoreV1,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
-  type FraudProofWorkflowIdentityV1,
-  type FraudProofWorkflowJournalEventV1,
-  type FraudProofWorkflowJournalStoreV1,
+  computeFraudProofWorkflowId,
+  DirectoryFraudProofWorkflowJournalStore,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEvent,
+  type FraudProofWorkflowJournalStore,
 } from "../workflow/journal-v1.js";
-import type { LocalKupmiosHttpOgmiosSourceConfigV1 } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
-import { bindProductionWorkflowActuationJournalV1 } from "../workflow/production-actuation-permit-v1.js";
+import type { LocalKupmiosHttpOgmiosSourceConfig } from "../workflow/local-kupmios-http-ogmios-source-v1.js";
+import { bindWorkflowActuationJournal } from "../workflow/production-actuation-permit-v1.js";
 import {
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
-  type ProductionWorkflowAdapterReadinessInputV1,
-  type ProductionWorkflowAdapterRunnerV1,
+  WORKFLOW_ADAPTER_RUNNER,
+  type WorkflowAdapterReadinessInput,
+  type WorkflowAdapterRunner,
 } from "../workflow/production-adapters-v1.js";
-import { bindProductionWorkflowFundingReservationJournalV1 } from "../workflow/production-funding-reservation-permit-v1.js";
-import { submitCapturedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
+import { bindWorkflowFundingReservationJournal } from "../workflow/production-funding-reservation-permit-v1.js";
+import { submitCapturedTransaction } from "../workflow/transaction-boundary-v1.js";
 import {
-  UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1,
-  type UnusedScriptWitnessContractsV1,
+  UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES,
+  type UnusedScriptWitnessContracts,
 } from "./contracts-v1.js";
 import {
-  createUnusedScriptWitnessActuatorV1,
-  type UnusedScriptWitnessWorkflowReferencesV1 as ActuatorReferencesV1,
+  createUnusedScriptWitnessActuator,
+  type UnusedScriptWitnessWorkflowReferences as ActuatorReferences,
 } from "./production-actuator-v1.js";
-import { prepareProductionUnusedScriptWitnessArtifactV1 } from "./production-replay-v1.js";
+import { prepareUnusedScriptWitnessArtifact } from "./production-replay-v1.js";
 import {
-  UnusedScriptStep02DatumV1Schema,
-  UnusedScriptStep03DatumV1Schema,
-  UnusedScriptStep04DatumV1Schema,
-  UnusedScriptStep05DatumV1Schema,
-  UnusedScriptStep06DatumV1Schema,
+  UnusedScriptStep02DatumSchema,
+  UnusedScriptStep03DatumSchema,
+  UnusedScriptStep04DatumSchema,
+  UnusedScriptStep05DatumSchema,
+  UnusedScriptStep06DatumSchema,
 } from "./schemas-v1.js";
 
-export const UNUSED_SCRIPT_WITNESS_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze([
+export const UNUSED_SCRIPT_WITNESS_CONFIG_KEYS = Object.freeze([
   "manifest",
   "blueprintJson",
   "deploymentInfo",
@@ -64,16 +64,16 @@ export const UNUSED_SCRIPT_WITNESS_PRODUCTION_CONFIG_KEYS_V1 = Object.freeze([
   "referenceScripts",
 ] as const);
 
-export const UNUSED_SCRIPT_WITNESS_STEP_DATUM_SCHEMAS_V1 = Object.freeze([
+export const UNUSED_SCRIPT_WITNESS_STEP_DATUM_SCHEMAS = Object.freeze([
   FraudProofComputationThreadStepDatum,
-  UnusedScriptStep02DatumV1Schema,
-  UnusedScriptStep03DatumV1Schema,
-  UnusedScriptStep04DatumV1Schema,
-  UnusedScriptStep05DatumV1Schema,
-  UnusedScriptStep06DatumV1Schema,
+  UnusedScriptStep02DatumSchema,
+  UnusedScriptStep03DatumSchema,
+  UnusedScriptStep04DatumSchema,
+  UnusedScriptStep05DatumSchema,
+  UnusedScriptStep06DatumSchema,
 ] as const);
 
-export type UnusedScriptWitnessRemovalReferenceScriptsV1 = Readonly<{
+export type UnusedScriptWitnessRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
   stateQueueMint: UTxO;
@@ -85,32 +85,32 @@ export type UnusedScriptWitnessRemovalReferenceScriptsV1 = Readonly<{
   schedulerSpend: UTxO;
 }>;
 
-export type UnusedScriptWitnessWorkflowReferenceScriptsV1 = Readonly<{
+export type UnusedScriptWitnessWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
-  witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
-  removal: UnusedScriptWitnessRemovalReferenceScriptsV1;
+  witnesses: Required<FaultProofWitnessReferenceScripts>;
+  removal: UnusedScriptWitnessRemovalReferenceScripts;
 }>;
 
-export type ManifestBoundUnusedScriptWitnessWorkflowConfigV1 = Readonly<{
+export type ManifestBoundUnusedScriptWitnessWorkflowConfig = Readonly<{
   manifest: unknown;
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
   lucid: LucidEvolution;
   signer: ResolvedProverSigner;
-  source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
+  source: Omit<LocalKupmiosHttpOgmiosSourceConfig, "releaseFinality">;
   decisionDigest: string;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  referenceScripts: UnusedScriptWitnessWorkflowReferenceScriptsV1;
+  referenceScripts: UnusedScriptWitnessWorkflowReferenceScripts;
 }>;
 
-export type ManifestBoundUnusedScriptWitnessWorkflowV1 = Readonly<{
-  binding: FraudProofWorkflowDeploymentBindingV1<"unusedScriptWitness">;
+export type ManifestBoundUnusedScriptWitnessWorkflow = Readonly<{
+  binding: FraudProofWorkflowDeploymentBinding<"unusedScriptWitness">;
   lucid: LucidEvolution;
   decisionDigest: string;
-  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPortV1>;
+  l1: ReturnType<typeof createFraudProofFamilyLocalKupmiosL1ObservationPort>;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
-  actuator: ReturnType<typeof createUnusedScriptWitnessActuatorV1>;
+  actuator: ReturnType<typeof createUnusedScriptWitnessActuator>;
 }>;
 
 const contracts = Object.freeze({
@@ -143,28 +143,28 @@ const contracts = Object.freeze({
 } as const);
 
 /** Strict infrastructure-only manifest/reference binding. */
-export const createManifestBoundUnusedScriptWitnessWorkflowV1 = async (
-  config: ManifestBoundUnusedScriptWitnessWorkflowConfigV1,
-): Promise<ManifestBoundUnusedScriptWitnessWorkflowV1> => {
+export const createManifestBoundUnusedScriptWitnessWorkflow = async (
+  config: ManifestBoundUnusedScriptWitnessWorkflowConfig,
+): Promise<ManifestBoundUnusedScriptWitnessWorkflow> => {
   if (
     Object.keys(config).sort().join("\0") !==
-    [...UNUSED_SCRIPT_WITNESS_PRODUCTION_CONFIG_KEYS_V1].sort().join("\0")
+    [...UNUSED_SCRIPT_WITNESS_CONFIG_KEYS].sort().join("\0")
   )
     throw new Error(
       "unusedScriptWitness production config contains callback authority",
     );
   if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
     throw new Error("unusedScriptWitness decision digest is malformed");
-  const binding = await bindFraudProofWorkflowDeploymentV1({
+  const binding = await bindFraudProofWorkflowDeployment({
     manifest: config.manifest,
     blueprintJson: config.blueprintJson,
     deploymentInfo: config.deploymentInfo,
     category: "unusedScriptWitness",
     headerHash: config.headerHash,
     proverCredential: config.signer.paymentKeyHash,
-    stepDatumSchemas: UNUSED_SCRIPT_WITNESS_STEP_DATUM_SCHEMAS_V1,
+    stepDatumSchemas: UNUSED_SCRIPT_WITNESS_STEP_DATUM_SCHEMAS,
   });
-  assertManifestBoundWorkflowSignerV1({
+  assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
     paymentKeyHash: config.signer.paymentKeyHash,
@@ -173,47 +173,47 @@ export const createManifestBoundUnusedScriptWitnessWorkflowV1 = async (
   if (chain === undefined || chain.steps.length !== 6)
     throw new Error("unusedScriptWitness manifest omitted six-step chain");
   const bind = (name: string, utxo: UTxO) =>
-    requireManifestBoundReferenceScriptUtxoV1({
+    requireManifestBoundReferenceScriptUtxo({
       binding,
       contractName: name,
       utxo,
     });
   const steps = contracts.steps.map((name, index) =>
     bind(name, config.referenceScripts.steps[index]!),
-  ) as unknown as ActuatorReferencesV1["steps"];
+  ) as unknown as ActuatorReferences["steps"];
   const witnesses = Object.fromEntries(
     Object.entries(contracts.witnesses).map(([role, name]) => [
       role,
       bind(
         name,
         config.referenceScripts.witnesses[
-          role as keyof FaultProofWitnessReferenceScriptsV1
+          role as keyof FaultProofWitnessReferenceScripts
         ],
       ),
     ]),
-  ) as Required<FaultProofWitnessReferenceScriptsV1>;
+  ) as Required<FaultProofWitnessReferenceScripts>;
   Object.entries(contracts.removal).forEach(([role, name]) =>
     bind(
       name,
       config.referenceScripts.removal[
-        role as keyof UnusedScriptWitnessRemovalReferenceScriptsV1
+        role as keyof UnusedScriptWitnessRemovalReferenceScripts
       ],
     ),
   );
   const hubOraclePolicyId = binding.deploymentInfo.hubOracleMint?.scriptHash;
   if (hubOraclePolicyId === undefined)
     throw new Error("unusedScriptWitness manifest omitted hub oracle");
-  const familyContracts: UnusedScriptWitnessContractsV1 = {
+  const familyContracts: UnusedScriptWitnessContracts = {
     steps: chain.steps.map((step, index) => ({
       ...step,
-      blueprintTitle: UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES_V1[index]!,
+      blueprintTitle: UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES[index]!,
       referenceOutRef: `${steps[index]!.txHash}#${steps[index]!.outputIndex.toString()}`,
-    })) as unknown as UnusedScriptWitnessContractsV1["steps"],
+    })) as unknown as UnusedScriptWitnessContracts["steps"],
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: binding.resolvedContracts.contracts.fraudProof,
     hubOraclePolicyId,
   };
-  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
+  const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPort({
     source: config.source,
     releaseFinality: binding.releaseFinality,
     releaseEconomics: binding.releaseEconomics,
@@ -224,7 +224,7 @@ export const createManifestBoundUnusedScriptWitnessWorkflowV1 = async (
     lucid: config.lucid,
     decisionDigest: config.decisionDigest,
     l1,
-    actuator: createUnusedScriptWitnessActuatorV1({
+    actuator: createUnusedScriptWitnessActuator({
       binding,
       lucid: config.lucid,
       signer: config.signer,
@@ -238,28 +238,28 @@ export const createManifestBoundUnusedScriptWitnessWorkflowV1 = async (
   });
 };
 
-export type LoadedUnusedScriptWitnessProductionWorkflowV1 = Readonly<{
+export type LoadedUnusedScriptWitnessWorkflow = Readonly<{
   schemaVersion: "midgard-production-fraud-proof-runtime-config-v1";
-  config: ManifestBoundUnusedScriptWitnessWorkflowConfigV1;
+  config: ManifestBoundUnusedScriptWitnessWorkflowConfig;
   retainedDaSources: readonly DaLibp2pRetainedDaSource[];
   close: () => Promise<void>;
 }>;
 
-export type LoadUnusedScriptWitnessProductionWorkflowV1 = (input: {
+export type LoadUnusedScriptWitnessWorkflow = (input: {
   runtimeConfigPath: string;
-  invocation: ProductionWorkflowAdapterReadinessInputV1;
-}) => Promise<LoadedUnusedScriptWitnessProductionWorkflowV1>;
+  invocation: WorkflowAdapterReadinessInput;
+}) => Promise<LoadedUnusedScriptWitnessWorkflow>;
 
 const append = async (
-  journal: FraudProofWorkflowJournalStoreV1,
+  journal: FraudProofWorkflowJournalStore,
   workflowId: string,
-  identity: FraudProofWorkflowIdentityV1,
-  event: FraudProofWorkflowJournalEventV1,
+  identity: FraudProofWorkflowIdentity,
+  event: FraudProofWorkflowJournalEvent,
 ) => {
   const sequence = (await journal.load(workflowId)).length;
   await journal.append(
     {
-      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_V1_SCHEMA_VERSION,
+      schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
       workflowId,
       identity,
       sequence,
@@ -271,7 +271,7 @@ const append = async (
 };
 
 const actionFor = async (
-  workflow: ManifestBoundUnusedScriptWitnessWorkflowV1,
+  workflow: ManifestBoundUnusedScriptWitnessWorkflow,
 ) => {
   const stage = (
     await workflow.l1.observe({
@@ -304,29 +304,29 @@ const actionFor = async (
     : { stage: selected, threadOutRef: stage.threadOutRef };
 };
 
-export const executeManifestBoundUnusedScriptWitnessWorkflowV1 = async ({
+export const executeManifestBoundUnusedScriptWitnessWorkflow = async ({
   workflow,
   sources,
   journal,
 }: {
-  workflow: ManifestBoundUnusedScriptWitnessWorkflowV1;
+  workflow: ManifestBoundUnusedScriptWitnessWorkflow;
   sources: readonly RetainedDaPayloadSource[];
-  journal: FraudProofWorkflowJournalStoreV1;
+  journal: FraudProofWorkflowJournalStore;
 }) => {
   const headerHash = workflow.binding.definition.headerHash;
-  const block = await fetchCanonicalBlockEvidenceV1({
+  const block = await fetchCanonicalBlockEvidence({
     observation: await workflow.l1.observeHeader({ headerHash }),
     sources,
   });
-  const artifact = await prepareProductionUnusedScriptWitnessArtifactV1(block);
-  const identity: FraudProofWorkflowIdentityV1 = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION,
+  const artifact = await prepareUnusedScriptWitnessArtifact(block);
+  const identity: FraudProofWorkflowIdentity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
     category: "unusedScriptWitness",
     target: { kind: "state_queue_header", headerHash },
     decisionDigest: workflow.decisionDigest,
   };
-  const workflowId = computeFraudProofWorkflowIdV1(identity);
+  const workflowId = computeFraudProofWorkflowId(identity);
   let entries = await journal.load(workflowId);
   if (entries.length === 0) {
     await append(journal, workflowId, identity, { kind: "started" });
@@ -379,7 +379,7 @@ export const executeManifestBoundUnusedScriptWitnessWorkflowV1 = async ({
     attempt: 1,
     txHash: captured.transaction.txHash,
   });
-  const submitted = await submitCapturedTransactionV1(captured.transaction);
+  const submitted = await submitCapturedTransaction(captured.transaction);
   if (submitted !== captured.transaction.txHash)
     throw new Error("unusedScriptWitness provider substituted transaction");
   await append(journal, workflowId, identity, {
@@ -392,13 +392,13 @@ export const executeManifestBoundUnusedScriptWitnessWorkflowV1 = async ({
 };
 
 /** Central-loader-compatible, callback-free production surface. */
-export const createUnusedScriptWitnessProductionWorkflowRunnerSurfaceV1 = ({
+export const createUnusedScriptWitnessWorkflowRunnerSurface = ({
   loadRuntimeConfig,
 }: {
-  loadRuntimeConfig: LoadUnusedScriptWitnessProductionWorkflowV1;
-}): ProductionWorkflowAdapterRunnerV1 =>
+  loadRuntimeConfig: LoadUnusedScriptWitnessWorkflow;
+}): WorkflowAdapterRunner =>
   Object.freeze({
-    runnerVersion: PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+    runnerVersion: WORKFLOW_ADAPTER_RUNNER,
     runOrResume: async (invocation) => {
       if (String(invocation.category) !== "unusedScriptWitness")
         throw new Error("unusedScriptWitness runner category changed");
@@ -416,7 +416,7 @@ export const createUnusedScriptWitnessProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "unusedScriptWitness requires concrete public retained DA",
           );
-        const workflow = await createManifestBoundUnusedScriptWitnessWorkflowV1(
+        const workflow = await createManifestBoundUnusedScriptWitnessWorkflow(
           loaded.config,
         );
         if (
@@ -428,10 +428,10 @@ export const createUnusedScriptWitnessProductionWorkflowRunnerSurfaceV1 = ({
           throw new Error(
             "unusedScriptWitness runtime binding changed invocation",
           );
-        const journal = bindProductionWorkflowFundingReservationJournalV1({
+        const journal = bindWorkflowFundingReservationJournal({
           permit: invocation.fundingReservationPermit,
-          journal: bindProductionWorkflowActuationJournalV1({
-            journal: new DirectoryFraudProofWorkflowJournalStoreV1(
+          journal: bindWorkflowActuationJournal({
+            journal: new DirectoryFraudProofWorkflowJournalStore(
               invocation.journalDirectory,
             ),
             permit: invocation.actuationPermit,
@@ -441,7 +441,7 @@ export const createUnusedScriptWitnessProductionWorkflowRunnerSurfaceV1 = ({
             headerHash: invocation.headerHash,
           }),
         });
-        return await executeManifestBoundUnusedScriptWitnessWorkflowV1({
+        return await executeManifestBoundUnusedScriptWitnessWorkflow({
           workflow,
           sources: loaded.retainedDaSources,
           journal,

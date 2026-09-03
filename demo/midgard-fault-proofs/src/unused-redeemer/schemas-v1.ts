@@ -1,38 +1,38 @@
 import {
-  BoundedItemChunkProofV1Schema,
+  BoundedItemChunkProofSchema,
   EventKeySchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  ForcedInclusionTxV1Schema,
-  FrontierPeakV1Schema,
-  HeaderV1Schema,
+  ForcedInclusionTxSchema,
+  FrontierPeakSchema,
+  HeaderSchema,
   NativeTxInclusionCarriageSchema,
   OutputReferenceSchema,
-  RejectionReasonV1Schema,
+  RejectionReasonSchema,
   rootMembershipProofSchema,
-  ValidationMachineStateV1Schema,
-  ValidationTraceDescriptorV1Schema,
-  ValidationTraceProofV1Schema,
+  ValidationMachineStateSchema,
+  ValidationTraceDescriptorSchema,
+  ValidationTraceProofSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-const UnusedRedeemerFrontierV1Schema = Data.Array(
+const UnusedRedeemerFrontierSchema = Data.Array(
   Data.Object({ height: Data.Integer(), hash: Data.Bytes() }),
 );
-const UnusedRedeemerReceiveControlV1Schema = Data.Object({
+const UnusedRedeemerReceiveControlSchema = Data.Object({
   source_count: Data.Integer(),
-  source_peaks: Data.Array(FrontierPeakV1Schema),
+  source_peaks: Data.Array(FrontierPeakSchema),
   receive_count: Data.Integer(),
   previous_hash: Data.Bytes(),
   candidate_hash: Data.Bytes(),
-  descriptor_peaks: Data.Array(FrontierPeakV1Schema),
+  descriptor_peaks: Data.Array(FrontierPeakSchema),
 });
-const UnusedRedeemerObserverControlV1Schema = Data.Object({
+const UnusedRedeemerObserverControlSchema = Data.Object({
   total_count: Data.Integer(),
   seen: Data.Integer(),
   previous_hash: Data.Bytes(),
 });
-const UnusedRedeemerDiscoveryControlV1Schema = Data.Object({
+const UnusedRedeemerDiscoveryControlSchema = Data.Object({
   purpose_cursor: Data.Integer(),
   source_cursor: Data.Integer(),
   redeemer_cursor: Data.Integer(),
@@ -47,9 +47,9 @@ const UnusedRedeemerDiscoveryControlV1Schema = Data.Object({
   used_redeemer_bitmap: Data.Integer(),
   redeemer_item_control_hash: Data.Bytes(),
   execution_count: Data.Integer(),
-  execution_peaks: Data.Array(FrontierPeakV1Schema),
+  execution_peaks: Data.Array(FrontierPeakSchema),
 });
-const UnusedRedeemerMintFoldControlV1Schema = Data.Object({
+const UnusedRedeemerMintFoldControlSchema = Data.Object({
   policy_count: Data.Integer(),
   policy_cursor: Data.Integer(),
   previous_policy: Data.Bytes(),
@@ -61,9 +61,9 @@ const UnusedRedeemerMintFoldControlV1Schema = Data.Object({
   policy_asset_cursor: Data.Integer(),
   previous_asset: Data.Bytes(),
   asset_count: Data.Integer(),
-  asset_peaks: Data.Array(FrontierPeakV1Schema),
+  asset_peaks: Data.Array(FrontierPeakSchema),
 });
-export const UnusedRedeemerScriptSourcesControlV1Schema = Data.Object({
+export const UnusedRedeemerScriptSourcesControlSchema = Data.Object({
   compact_cbor: Data.Bytes(),
   witness_set_compact_cbor: Data.Bytes(),
   field_preimage_lengths_cbor: Data.Bytes(),
@@ -72,33 +72,33 @@ export const UnusedRedeemerScriptSourcesControlV1Schema = Data.Object({
   resolved_inputs_accumulator: Data.Bytes(),
   signer_count: Data.Integer(),
   signer_frontier_commitment: Data.Bytes(),
-  resolved_item_peaks: Data.Array(FrontierPeakV1Schema),
+  resolved_item_peaks: Data.Array(FrontierPeakSchema),
   stage: Data.Integer(),
   source_count: Data.Integer(),
-  source_peaks: Data.Array(FrontierPeakV1Schema),
+  source_peaks: Data.Array(FrontierPeakSchema),
   redeemer_count: Data.Integer(),
-  redeemer_peaks: Data.Array(FrontierPeakV1Schema),
+  redeemer_peaks: Data.Array(FrontierPeakSchema),
   replay_cursor: Data.Integer(),
   replay_accumulator: Data.Bytes(),
   replay_remaining_schedule_hash: Data.Bytes(),
   spend_index: Data.Integer(),
   purpose_count: Data.Integer(),
-  purpose_peaks: Data.Array(FrontierPeakV1Schema),
+  purpose_peaks: Data.Array(FrontierPeakSchema),
   output_cursor: Data.Integer(),
   output_count: Data.Integer(),
-  output_peaks: Data.Array(FrontierPeakV1Schema),
+  output_peaks: Data.Array(FrontierPeakSchema),
   output_total_count: Data.Integer(),
-  receive_scan: UnusedRedeemerReceiveControlV1Schema,
+  receive_scan: UnusedRedeemerReceiveControlSchema,
   source_total_count: Data.Integer(),
   redeemer_total_count: Data.Integer(),
-  observer_scan: UnusedRedeemerObserverControlV1Schema,
-  discovery: UnusedRedeemerDiscoveryControlV1Schema,
+  observer_scan: UnusedRedeemerObserverControlSchema,
+  discovery: UnusedRedeemerDiscoveryControlSchema,
   output_proof: Data.Nullable(Data.Any()),
   pending_source_cbor: Data.Bytes(),
-  mint_fold: UnusedRedeemerMintFoldControlV1Schema,
+  mint_fold: UnusedRedeemerMintFoldControlSchema,
   resolution_schedule_hash: Data.Bytes(),
 });
-export const UnusedRedeemerItemControlV1Schema = Data.Object({
+export const UnusedRedeemerItemControlSchema = Data.Object({
   version: Data.Integer(),
   mode: Data.Integer(),
   stage: Data.Integer(),
@@ -116,27 +116,27 @@ export const UnusedRedeemerItemControlV1Schema = Data.Object({
   execution_steps: Data.Integer(),
   traversal: Data.Nullable(Data.Any()),
 });
-export const UnusedRedeemerSubjectV1Schema = Data.Object({
+export const UnusedRedeemerSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const UnusedRedeemerBoundV1Schema = Data.Object({
-  subject: UnusedRedeemerSubjectV1Schema,
+export const UnusedRedeemerBoundSchema = Data.Object({
+  subject: UnusedRedeemerSubjectSchema,
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
   redeemer_index: Data.Integer(),
 });
-export const UnusedRedeemerAuthenticatedDescriptorV1Schema = Data.Object({
-  bound: UnusedRedeemerBoundV1Schema,
+export const UnusedRedeemerAuthenticatedDescriptorSchema = Data.Object({
+  bound: UnusedRedeemerBoundSchema,
   event_key_hash: Data.Bytes(),
-  descriptor: ValidationTraceDescriptorV1Schema,
+  descriptor: ValidationTraceDescriptorSchema,
 });
-export const UnusedRedeemerAuthenticatedControlV1Schema = Data.Object({
-  bound: UnusedRedeemerBoundV1Schema,
+export const UnusedRedeemerAuthenticatedControlSchema = Data.Object({
+  bound: UnusedRedeemerBoundSchema,
   program_counter: Data.Integer(),
   stage: Data.Integer(),
   expected_item_control_hash: Data.Bytes(),
@@ -145,12 +145,12 @@ export const UnusedRedeemerAuthenticatedControlV1Schema = Data.Object({
   current_purpose_index: Data.Integer(),
   redeemer_count: Data.Integer(),
   purpose_count: Data.Integer(),
-  purpose_peaks: UnusedRedeemerFrontierV1Schema,
+  purpose_peaks: UnusedRedeemerFrontierSchema,
   execution_count: Data.Integer(),
-  execution_peaks: UnusedRedeemerFrontierV1Schema,
+  execution_peaks: UnusedRedeemerFrontierSchema,
 });
-export const UnusedRedeemerAuthenticatedItemHeaderV1Schema = Data.Object({
-  authenticated: UnusedRedeemerAuthenticatedControlV1Schema,
+export const UnusedRedeemerAuthenticatedItemHeaderSchema = Data.Object({
+  authenticated: UnusedRedeemerAuthenticatedControlSchema,
   item_index: Data.Integer(),
   item_count: Data.Integer(),
   total_length: Data.Integer(),
@@ -160,8 +160,8 @@ export const UnusedRedeemerAuthenticatedItemHeaderV1Schema = Data.Object({
   data_offset: Data.Integer(),
   data_length: Data.Integer(),
 });
-export const UnusedRedeemerAuthenticatedV1Schema = Data.Object({
-  bound: UnusedRedeemerBoundV1Schema,
+export const UnusedRedeemerAuthenticatedSchema = Data.Object({
+  bound: UnusedRedeemerBoundSchema,
   purpose_tag: Data.Integer(),
   pointer_index: Data.Integer(),
   item_count: Data.Integer(),
@@ -169,89 +169,83 @@ export const UnusedRedeemerAuthenticatedV1Schema = Data.Object({
   item_commitment: Data.Bytes(),
   redeemer_leaf: Data.Bytes(),
   purpose_count: Data.Integer(),
-  purpose_peaks: UnusedRedeemerFrontierV1Schema,
+  purpose_peaks: UnusedRedeemerFrontierSchema,
   execution_count: Data.Integer(),
-  execution_peaks: UnusedRedeemerFrontierV1Schema,
+  execution_peaks: UnusedRedeemerFrontierSchema,
 });
-export const UnusedRedeemerReverseScanV1Schema = Data.Object({
-  authenticated: UnusedRedeemerAuthenticatedV1Schema,
+export const UnusedRedeemerReverseScanSchema = Data.Object({
+  authenticated: UnusedRedeemerAuthenticatedSchema,
   cursor: Data.Integer(),
   used: Data.Boolean(),
   checkpoint_hash: Data.Bytes(),
 });
-export const UnusedRedeemerDecisionV1Schema = Data.Object({
-  subject: UnusedRedeemerSubjectV1Schema,
+export const UnusedRedeemerDecisionSchema = Data.Object({
+  subject: UnusedRedeemerSubjectSchema,
   redeemer_index: Data.Integer(),
   unused: Data.Boolean(),
 });
-export const UnusedRedeemerStep02DatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerBoundV1Schema,
+export const UnusedRedeemerStep02DatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerBoundSchema,
 );
-export const UnusedRedeemerStep02aDatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerAuthenticatedDescriptorV1Schema,
+export const UnusedRedeemerStep02aDatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerAuthenticatedDescriptorSchema,
 );
-export const UnusedRedeemerStep02bDatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerAuthenticatedControlV1Schema,
+export const UnusedRedeemerStep02bDatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerAuthenticatedControlSchema,
 );
-export const UnusedRedeemerStep02cDatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerAuthenticatedItemHeaderV1Schema,
+export const UnusedRedeemerStep02cDatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerAuthenticatedItemHeaderSchema,
 );
-export const UnusedRedeemerStep03DatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerAuthenticatedV1Schema,
+export const UnusedRedeemerStep03DatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerAuthenticatedSchema,
 );
-export const UnusedRedeemerStep04DatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerReverseScanV1Schema,
+export const UnusedRedeemerStep04DatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerReverseScanSchema,
 );
-export const UnusedRedeemerStep05DatumV1Schema =
-  UnusedRedeemerStep04DatumV1Schema;
-export const UnusedRedeemerStep06DatumV1Schema = faultProofStepDatumSchema(
-  UnusedRedeemerDecisionV1Schema,
+export const UnusedRedeemerStep05DatumSchema = UnusedRedeemerStep04DatumSchema;
+export const UnusedRedeemerStep06DatumSchema = faultProofStepDatumSchema(
+  UnusedRedeemerDecisionSchema,
 );
-export const UnusedRedeemerStep02RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      trace_membership: rootMembershipProofSchema(
-        EventKeySchema,
-        ValidationTraceDescriptorV1Schema,
-      ),
-    }),
-  );
-export const UnusedRedeemerStep02aRedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      machine_state: ValidationMachineStateV1Schema,
-      trace_proof: ValidationTraceProofV1Schema,
-      control: UnusedRedeemerScriptSourcesControlV1Schema,
-    }),
-  );
-export const UnusedRedeemerStep02bRedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      item_control: UnusedRedeemerItemControlV1Schema,
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-    }),
-  );
-export const UnusedRedeemerStep02cRedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      chunk_proof: BoundedItemChunkProofV1Schema,
-      next_chunk_proof: Data.Nullable(BoundedItemChunkProofV1Schema),
-    }),
-  );
-export const UnusedRedeemerStep03RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({ input_index: Data.Integer(), output_index: Data.Integer() }),
-  );
-export const UnusedRedeemerSelectionOpeningV1Schema = Data.Object({
+export const UnusedRedeemerStep02RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    trace_membership: rootMembershipProofSchema(
+      EventKeySchema,
+      ValidationTraceDescriptorSchema,
+    ),
+  }),
+);
+export const UnusedRedeemerStep02aRedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    machine_state: ValidationMachineStateSchema,
+    trace_proof: ValidationTraceProofSchema,
+    control: UnusedRedeemerScriptSourcesControlSchema,
+  }),
+);
+export const UnusedRedeemerStep02bRedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    item_control: UnusedRedeemerItemControlSchema,
+    chunk_proof: BoundedItemChunkProofSchema,
+    next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+  }),
+);
+export const UnusedRedeemerStep02cRedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    chunk_proof: BoundedItemChunkProofSchema,
+    next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+  }),
+);
+export const UnusedRedeemerStep03RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({ input_index: Data.Integer(), output_index: Data.Integer() }),
+);
+export const UnusedRedeemerSelectionOpeningSchema = Data.Object({
   frontier_index: Data.Integer(),
   purpose_kind: Data.Integer(),
   purpose_index: Data.Integer(),
@@ -263,70 +257,68 @@ export const UnusedRedeemerSelectionOpeningV1Schema = Data.Object({
   redeemer_leaf: Data.Bytes(),
   execution_siblings: Data.Array(Data.Bytes()),
 });
-export const UnusedRedeemerStep04RedeemerV1Schema =
-  UnusedRedeemerStep03RedeemerV1Schema;
-export const UnusedRedeemerStep05RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      openings: Data.Array(UnusedRedeemerSelectionOpeningV1Schema),
-      item_budget: Data.Integer(),
-    }),
-  );
-export const UnusedRedeemerStep06RedeemerV1Schema =
-  faultProofStepRedeemerSchema(
-    Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      fraud_proof_mint_redeemer_index: Data.Integer(),
-    }),
-  );
+export const UnusedRedeemerStep04RedeemerSchema =
+  UnusedRedeemerStep03RedeemerSchema;
+export const UnusedRedeemerStep05RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    openings: Data.Array(UnusedRedeemerSelectionOpeningSchema),
+    item_budget: Data.Integer(),
+  }),
+);
+export const UnusedRedeemerStep06RedeemerSchema = faultProofStepRedeemerSchema(
+  Data.Object({
+    input_index: Data.Integer(),
+    output_index: Data.Integer(),
+    fraud_proof_mint_redeemer_index: Data.Integer(),
+  }),
+);
 
-export const LegacyUnusedRedeemerVerdictSubjectV1Schema = Data.Object({
+export const LegacyUnusedRedeemerVerdictSubjectSchema = Data.Object({
   version: Data.Integer(),
   direction: Data.Integer(),
   source_kind: Data.Integer(),
   transaction_id: Data.Bytes(),
   source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
 });
-export const LegacyUnusedRedeemerBoundWitnessV1Schema = Data.Object({
-  subject: LegacyUnusedRedeemerVerdictSubjectV1Schema,
+export const LegacyUnusedRedeemerBoundWitnessSchema = Data.Object({
+  subject: LegacyUnusedRedeemerVerdictSubjectSchema,
   validation_traces_root: Data.Bytes(),
   validation_trace_count: Data.Integer(),
   redeemer_index: Data.Integer(),
 });
-const LegacyUnusedRedeemerFrontierPeakV1Schema = Data.Object({
+const LegacyUnusedRedeemerFrontierPeakSchema = Data.Object({
   height: Data.Integer(),
   hash: Data.Bytes(),
 });
-export const LegacyUnusedRedeemerAuthenticatedWitnessV1Schema = Data.Object({
-  bound: LegacyUnusedRedeemerBoundWitnessV1Schema,
+export const LegacyUnusedRedeemerAuthenticatedWitnessSchema = Data.Object({
+  bound: LegacyUnusedRedeemerBoundWitnessSchema,
   prior_ledger_root: Data.Bytes(),
   language_tag: Data.Integer(),
   script_hash: Data.Bytes(),
   script_total_length: Data.Integer(),
   item_commitment: Data.Bytes(),
   source_count: Data.Integer(),
-  source_peaks: Data.Array(LegacyUnusedRedeemerFrontierPeakV1Schema),
+  source_peaks: Data.Array(LegacyUnusedRedeemerFrontierPeakSchema),
   purpose_count: Data.Integer(),
-  purpose_peaks: Data.Array(LegacyUnusedRedeemerFrontierPeakV1Schema),
+  purpose_peaks: Data.Array(LegacyUnusedRedeemerFrontierPeakSchema),
 });
-export const LegacyUnusedRedeemerReverseScanV1Schema = Data.Object({
-  witness: LegacyUnusedRedeemerAuthenticatedWitnessV1Schema,
+export const LegacyUnusedRedeemerReverseScanSchema = Data.Object({
+  witness: LegacyUnusedRedeemerAuthenticatedWitnessSchema,
   alternate_cursor: Data.Integer(),
   purpose_cursor: Data.Integer(),
   shadowed: Data.Boolean(),
   used: Data.Boolean(),
   checkpoint_hash: Data.Bytes(),
 });
-export const LegacyUnusedRedeemerDecisionV1Schema = Data.Object({
-  subject: LegacyUnusedRedeemerVerdictSubjectV1Schema,
+export const LegacyUnusedRedeemerDecisionSchema = Data.Object({
+  subject: LegacyUnusedRedeemerVerdictSubjectSchema,
   redeemer_index: Data.Integer(),
   unused: Data.Boolean(),
 });
-export const LegacyUnusedRedeemerSourceOpeningV1Schema = Data.Object({
+export const LegacyUnusedRedeemerSourceOpeningSchema = Data.Object({
   source_index: Data.Integer(),
   language_tag: Data.Integer(),
   script_hash: Data.Bytes(),
@@ -334,7 +326,7 @@ export const LegacyUnusedRedeemerSourceOpeningV1Schema = Data.Object({
   item_commitment: Data.Bytes(),
   siblings: Data.Array(Data.Bytes()),
 });
-export const LegacyUnusedRedeemerPurposeOpeningV1Schema = Data.Object({
+export const LegacyUnusedRedeemerPurposeOpeningSchema = Data.Object({
   frontier_index: Data.Integer(),
   purpose_kind: Data.Integer(),
   purpose_index: Data.Integer(),
@@ -342,11 +334,11 @@ export const LegacyUnusedRedeemerPurposeOpeningV1Schema = Data.Object({
   purpose_subject: Data.Bytes(),
   siblings: Data.Array(Data.Bytes()),
 });
-export const LegacyUnusedRedeemerTerminalScriptSourcesWitnessV1Schema =
+export const LegacyUnusedRedeemerTerminalScriptSourcesWitnessSchema =
   Data.Object({
     witness_cbor: Data.Bytes(),
   });
-export const LegacyUnusedRedeemerStep01SourceV1Schema = Data.Enum([
+export const LegacyUnusedRedeemerStep01SourceSchema = Data.Enum([
   Data.Object({
     AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
   }),
@@ -354,36 +346,37 @@ export const LegacyUnusedRedeemerStep01SourceV1Schema = Data.Enum([
     ForcedSource: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      header: HeaderV1Schema,
+      header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
+        ForcedInclusionTxSchema,
       ),
       direction: Data.Integer(),
     }),
   }),
 ]);
-export const LegacyUnusedRedeemerStep01RedeemerV1Schema =
+export const LegacyUnusedRedeemerStep01RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
-      source: LegacyUnusedRedeemerStep01SourceV1Schema,
+      source: LegacyUnusedRedeemerStep01SourceSchema,
       redeemer_index: Data.Integer(),
     }),
   );
-export const LegacyUnusedRedeemerStep02DatumV1Schema =
-  faultProofStepDatumSchema(LegacyUnusedRedeemerBoundWitnessV1Schema);
-export const LegacyUnusedRedeemerStep02RedeemerV1Schema =
+export const LegacyUnusedRedeemerStep02DatumSchema = faultProofStepDatumSchema(
+  LegacyUnusedRedeemerBoundWitnessSchema,
+);
+export const LegacyUnusedRedeemerStep02RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
       trace_membership: rootMembershipProofSchema(
         EventKeySchema,
-        ValidationTraceDescriptorV1Schema,
+        ValidationTraceDescriptorSchema,
       ),
-      machine_state: ValidationMachineStateV1Schema,
-      trace_proof: ValidationTraceProofV1Schema,
-      control: LegacyUnusedRedeemerTerminalScriptSourcesWitnessV1Schema,
+      machine_state: ValidationMachineStateSchema,
+      trace_proof: ValidationTraceProofSchema,
+      control: LegacyUnusedRedeemerTerminalScriptSourcesWitnessSchema,
       language_tag: Data.Integer(),
       script_hash: Data.Bytes(),
       total_length: Data.Integer(),
@@ -391,36 +384,39 @@ export const LegacyUnusedRedeemerStep02RedeemerV1Schema =
       source_siblings: Data.Array(Data.Bytes()),
     }),
   );
-export const LegacyUnusedRedeemerStep03DatumV1Schema =
-  faultProofStepDatumSchema(LegacyUnusedRedeemerAuthenticatedWitnessV1Schema);
-export const LegacyUnusedRedeemerStep03RedeemerV1Schema =
+export const LegacyUnusedRedeemerStep03DatumSchema = faultProofStepDatumSchema(
+  LegacyUnusedRedeemerAuthenticatedWitnessSchema,
+);
+export const LegacyUnusedRedeemerStep03RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({ input_index: Data.Integer(), output_index: Data.Integer() }),
   );
-export const LegacyUnusedRedeemerStep04DatumV1Schema =
-  faultProofStepDatumSchema(LegacyUnusedRedeemerReverseScanV1Schema);
-export const LegacyUnusedRedeemerStep04RedeemerV1Schema =
+export const LegacyUnusedRedeemerStep04DatumSchema = faultProofStepDatumSchema(
+  LegacyUnusedRedeemerReverseScanSchema,
+);
+export const LegacyUnusedRedeemerStep04RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      openings: Data.Array(LegacyUnusedRedeemerSourceOpeningV1Schema),
+      openings: Data.Array(LegacyUnusedRedeemerSourceOpeningSchema),
     }),
   );
-export const LegacyUnusedRedeemerStep05DatumV1Schema =
-  LegacyUnusedRedeemerStep04DatumV1Schema;
-export const LegacyUnusedRedeemerStep05RedeemerV1Schema =
+export const LegacyUnusedRedeemerStep05DatumSchema =
+  LegacyUnusedRedeemerStep04DatumSchema;
+export const LegacyUnusedRedeemerStep05RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      openings: Data.Array(LegacyUnusedRedeemerPurposeOpeningV1Schema),
+      openings: Data.Array(LegacyUnusedRedeemerPurposeOpeningSchema),
       item_budget: Data.Integer(),
     }),
   );
-export const LegacyUnusedRedeemerStep06DatumV1Schema =
-  faultProofStepDatumSchema(LegacyUnusedRedeemerDecisionV1Schema);
-export const LegacyUnusedRedeemerStep06RedeemerV1Schema =
+export const LegacyUnusedRedeemerStep06DatumSchema = faultProofStepDatumSchema(
+  LegacyUnusedRedeemerDecisionSchema,
+);
+export const LegacyUnusedRedeemerStep06RedeemerSchema =
   faultProofStepRedeemerSchema(
     Data.Object({
       input_index: Data.Integer(),

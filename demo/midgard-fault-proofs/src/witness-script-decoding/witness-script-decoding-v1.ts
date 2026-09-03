@@ -1,34 +1,34 @@
 import {
-  buildMidgardBoundedItemChunkProofV1,
-  buildMidgardBoundedItemV1,
-  buildMidgardNativeScriptDecodingTraceV1,
-  decodeMidgardFieldPreimageV1,
-  encodeMidgardNativeScriptStructureControlV1,
-  midgardBoundedItemChunkCountV1,
-  midgardFieldCommitmentV1,
-  MidgardNativeScriptDecodingBindKindsV1,
-  MidgardNativeScriptDecodingRefusalClassesV1,
-  MidgardNativeScriptDecodingTraceOutcomeKindsV1,
-  parseMidgardVersionedScriptHeaderV1,
-  selectMidgardFieldCarriageTierV1,
+  buildMidgardBoundedItem,
+  buildMidgardBoundedItemChunkProof,
+  buildMidgardNativeScriptDecodingTrace,
+  decodeMidgardFieldPreimage,
+  encodeMidgardNativeScriptStructureControl,
+  midgardBoundedItemChunkCount,
+  midgardFieldCommitment,
+  MidgardNativeScriptDecodingBindKinds,
+  MidgardNativeScriptDecodingRefusalClasses,
+  MidgardNativeScriptDecodingTraceOutcomeKinds,
+  parseMidgardVersionedScriptHeader,
+  selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  encodeVerdictSubjectV1,
+  encodeVerdictSubject,
   hashHexWithBlake2b,
-  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1,
-  type RejectionReasonV1,
-  verdictSubjectIsCanonicalV1,
-  type VerdictSubjectV1,
+  PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+  type RejectionReason,
+  type VerdictSubject,
+  verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-export const WITNESS_SCRIPT_DECODING_CATEGORY_V1 =
+export const WITNESS_SCRIPT_DECODING_CATEGORY =
   "witnessScriptDecoding" as const;
-export const WITNESS_SCRIPT_DECODING_PROPOSED_ID_V1 = "00000022" as const;
-export const WITNESS_SCRIPT_DECODING_FIELD_INDEX_V1 = 6 as const;
+export const WITNESS_SCRIPT_DECODING_PROPOSED_ID = "00000022" as const;
+export const WITNESS_SCRIPT_DECODING_FIELD_INDEX = 6 as const;
 
-export const WitnessScriptDecodingResultClassesV1 = Object.freeze({
+export const WitnessScriptDecodingResultClasses = Object.freeze({
   Pending: -1,
   NoFault: -2,
   HeaderMalformed: 0,
@@ -36,11 +36,11 @@ export const WitnessScriptDecodingResultClassesV1 = Object.freeze({
   NodeLimit: 2,
   DepthLimit: 3,
 } as const);
-export type WitnessScriptDecodingResultClassV1 =
-  (typeof WitnessScriptDecodingResultClassesV1)[keyof typeof WitnessScriptDecodingResultClassesV1];
+export type WitnessScriptDecodingResultClass =
+  (typeof WitnessScriptDecodingResultClasses)[keyof typeof WitnessScriptDecodingResultClasses];
 
 const fail = (message: string): never => {
-  throw new Error(`${WITNESS_SCRIPT_DECODING_CATEGORY_V1}: ${message}`);
+  throw new Error(`${WITNESS_SCRIPT_DECODING_CATEGORY}: ${message}`);
 };
 
 const exactHex = (value: string, bytes: number, label: string): string => {
@@ -58,26 +58,26 @@ const exactIndex = (value: number): number => {
 };
 
 const accusedClassV1 = (
-  reason: RejectionReasonV1,
+  reason: RejectionReason,
   scriptIndex: number,
-): WitnessScriptDecodingResultClassV1 => {
+): WitnessScriptDecodingResultClass => {
   if (typeof reason === "string") return fail("typed reason is outside family");
-  const entries: readonly [string, WitnessScriptDecodingResultClassV1][] = [
+  const entries: readonly [string, WitnessScriptDecodingResultClass][] = [
     [
       "WitnessScriptHeaderMalformed",
-      WitnessScriptDecodingResultClassesV1.HeaderMalformed,
+      WitnessScriptDecodingResultClasses.HeaderMalformed,
     ],
     [
       "WitnessNativeScriptMalformed",
-      WitnessScriptDecodingResultClassesV1.NativeMalformed,
+      WitnessScriptDecodingResultClasses.NativeMalformed,
     ],
     [
       "WitnessNativeScriptNodeLimit",
-      WitnessScriptDecodingResultClassesV1.NodeLimit,
+      WitnessScriptDecodingResultClasses.NodeLimit,
     ],
     [
       "WitnessNativeScriptDepthLimit",
-      WitnessScriptDecodingResultClassesV1.DepthLimit,
+      WitnessScriptDecodingResultClasses.DepthLimit,
     ],
   ];
   for (const [constructor, resultClass] of entries) {
@@ -97,143 +97,142 @@ const accusedClassV1 = (
   return fail("typed reason is outside witness-script-decoding");
 };
 
-export type WitnessScriptDecodingFindingV1 = Readonly<{
-  subject: VerdictSubjectV1;
+export type WitnessScriptDecodingFinding = Readonly<{
+  subject: VerdictSubject;
   witnessSetHash: string;
   scriptIndex: number;
 }>;
 
-export const classifyWitnessScriptDecodingFindingV1 = (
-  finding: WitnessScriptDecodingFindingV1,
-): WitnessScriptDecodingFindingV1 & {
-  readonly accusedClass: WitnessScriptDecodingResultClassV1;
+export const classifyWitnessScriptDecodingFinding = (
+  finding: WitnessScriptDecodingFinding,
+): WitnessScriptDecodingFinding & {
+  readonly accusedClass: WitnessScriptDecodingResultClass;
 } => {
-  if (!verdictSubjectIsCanonicalV1(finding.subject)) {
+  if (!verdictSubjectIsCanonical(finding.subject)) {
     return fail("verdict subject is not canonical");
   }
   exactIndex(finding.scriptIndex);
   exactHex(finding.witnessSetHash, 32, "witness set hash");
   const accusedClass =
-    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION_V1
+    finding.subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
       ? finding.subject.rejection_reason === null
         ? fail("wrongful rejection carries no typed reason")
         : accusedClassV1(finding.subject.rejection_reason, finding.scriptIndex)
       : finding.subject.direction ===
-            PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 &&
+            PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE &&
           finding.subject.rejection_reason === null
-        ? WitnessScriptDecodingResultClassesV1.Pending
+        ? WitnessScriptDecodingResultClasses.Pending
         : fail("direction/reason polarity is invalid");
   return Object.freeze({ ...finding, accusedClass });
 };
 
-const resultClassOfItemV1 = (
+const resultClassOfItem = (
   item: Uint8Array,
 ): {
-  readonly resultClass: WitnessScriptDecodingResultClassV1;
+  readonly resultClass: WitnessScriptDecodingResultClass;
   readonly initialControlCbor: string;
 } => {
-  const header = parseMidgardVersionedScriptHeaderV1(item, item.length);
+  const header = parseMidgardVersionedScriptHeader(item, item.length);
   if (header === null) {
     return {
-      resultClass: WitnessScriptDecodingResultClassesV1.HeaderMalformed,
+      resultClass: WitnessScriptDecodingResultClasses.HeaderMalformed,
       initialControlCbor: "",
     };
   }
   if (header.languageTag !== 0) {
     return {
-      resultClass: WitnessScriptDecodingResultClassesV1.NoFault,
+      resultClass: WitnessScriptDecodingResultClasses.NoFault,
       initialControlCbor: "",
     };
   }
-  const trace = buildMidgardNativeScriptDecodingTraceV1(item);
-  if (trace.bind.kind === MidgardNativeScriptDecodingBindKindsV1.Malformed) {
+  const trace = buildMidgardNativeScriptDecodingTrace(item);
+  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.Malformed) {
     // A parsed tag-0 wrapper can only land here for the empty payload. That is
     // a payload structural failure, not a header failure.
     return {
-      resultClass: WitnessScriptDecodingResultClassesV1.NativeMalformed,
+      resultClass: WitnessScriptDecodingResultClasses.NativeMalformed,
       initialControlCbor: "",
     };
   }
-  if (trace.bind.kind !== MidgardNativeScriptDecodingBindKindsV1.Bound) {
+  if (trace.bind.kind !== MidgardNativeScriptDecodingBindKinds.Bound) {
     return fail("native header produced an impossible non-native trace");
   }
-  const initialControlCbor = encodeMidgardNativeScriptStructureControlV1(
+  const initialControlCbor = encodeMidgardNativeScriptStructureControl(
     trace.bind.control,
   ).toString("hex");
   if (trace.outcome === null)
     return fail("native scan has no terminal outcome");
   if (
-    trace.outcome.kind ===
-    MidgardNativeScriptDecodingTraceOutcomeKindsV1.Terminal
+    trace.outcome.kind === MidgardNativeScriptDecodingTraceOutcomeKinds.Terminal
   ) {
     return {
-      resultClass: WitnessScriptDecodingResultClassesV1.NoFault,
+      resultClass: WitnessScriptDecodingResultClasses.NoFault,
       initialControlCbor,
     };
   }
   const resultClass =
     trace.outcome.refusalClass ===
-    MidgardNativeScriptDecodingRefusalClassesV1.Malformed
-      ? WitnessScriptDecodingResultClassesV1.NativeMalformed
+    MidgardNativeScriptDecodingRefusalClasses.Malformed
+      ? WitnessScriptDecodingResultClasses.NativeMalformed
       : trace.outcome.refusalClass ===
-          MidgardNativeScriptDecodingRefusalClassesV1.NodeLimit
-        ? WitnessScriptDecodingResultClassesV1.NodeLimit
-        : WitnessScriptDecodingResultClassesV1.DepthLimit;
+          MidgardNativeScriptDecodingRefusalClasses.NodeLimit
+        ? WitnessScriptDecodingResultClasses.NodeLimit
+        : WitnessScriptDecodingResultClasses.DepthLimit;
   return { resultClass, initialControlCbor };
 };
 
-export type WitnessScriptDecodingEvidenceV1 = Readonly<{
-  finding: ReturnType<typeof classifyWitnessScriptDecodingFindingV1>;
+export type WitnessScriptDecodingEvidence = Readonly<{
+  finding: ReturnType<typeof classifyWitnessScriptDecodingFinding>;
   fieldPreimageHex: string;
   fieldCommitmentHex: string;
   itemHex: string;
   itemCommitmentHex: string;
   itemLength: number;
   /** Class step-02 can authenticate from the wrapper alone. */
-  initialResultClass: WitnessScriptDecodingResultClassV1;
+  initialResultClass: WitnessScriptDecodingResultClass;
   /** Whole-item prediction the resumable scan must eventually establish. */
-  resultClass: WitnessScriptDecodingResultClassV1;
+  resultClass: WitnessScriptDecodingResultClass;
   initialControlCbor: string;
   carriage: "Inline" | "RawUtxo" | "Certified";
   chunkProofCount: number;
 }>;
 
-export const prepareWitnessScriptDecodingEvidenceV1 = ({
+export const prepareWitnessScriptDecodingEvidence = ({
   finding: rawFinding,
   fieldPreimage,
   committedFieldHashHex,
 }: {
-  readonly finding: WitnessScriptDecodingFindingV1;
+  readonly finding: WitnessScriptDecodingFinding;
   readonly fieldPreimage: Uint8Array;
   readonly committedFieldHashHex: string;
-}): WitnessScriptDecodingEvidenceV1 => {
-  const finding = classifyWitnessScriptDecodingFindingV1(rawFinding);
-  const commitment = midgardFieldCommitmentV1(fieldPreimage).toString("hex");
+}): WitnessScriptDecodingEvidence => {
+  const finding = classifyWitnessScriptDecodingFinding(rawFinding);
+  const commitment = midgardFieldCommitment(fieldPreimage).toString("hex");
   if (
     commitment !== exactHex(committedFieldHashHex, 32, "committed field hash")
   ) {
     return fail("retained field preimage differs from committed field hash");
   }
-  const item = decodeMidgardFieldPreimageV1(fieldPreimage)[finding.scriptIndex];
+  const item = decodeMidgardFieldPreimage(fieldPreimage)[finding.scriptIndex];
   if (item === undefined) return fail("script coordinate is outside field 6");
-  const bounded = buildMidgardBoundedItemV1({
-    fieldIndex: WITNESS_SCRIPT_DECODING_FIELD_INDEX_V1,
+  const bounded = buildMidgardBoundedItem({
+    fieldIndex: WITNESS_SCRIPT_DECODING_FIELD_INDEX,
     itemIndex: finding.scriptIndex,
     bytes: item,
   });
-  const decoded = resultClassOfItemV1(item);
-  const header = parseMidgardVersionedScriptHeaderV1(item, item.length);
+  const decoded = resultClassOfItem(item);
+  const header = parseMidgardVersionedScriptHeader(item, item.length);
   const initialResultClass =
     header === null
-      ? WitnessScriptDecodingResultClassesV1.HeaderMalformed
+      ? WitnessScriptDecodingResultClasses.HeaderMalformed
       : header.languageTag === 0
-        ? WitnessScriptDecodingResultClassesV1.Pending
-        : WitnessScriptDecodingResultClassesV1.NoFault;
+        ? WitnessScriptDecodingResultClasses.Pending
+        : WitnessScriptDecodingResultClasses.NoFault;
   // Materialize all proofs here from retained bytes; submission selects only
   // the cursor and optional adjacent proof needed by each resume transaction.
-  const chunkProofCount = midgardBoundedItemChunkCountV1(item.length);
+  const chunkProofCount = midgardBoundedItemChunkCount(item.length);
   for (let index = 0; index < chunkProofCount; index += 1) {
-    buildMidgardBoundedItemChunkProofV1(bounded, index);
+    buildMidgardBoundedItemChunkProof(bounded, index);
   }
   return Object.freeze({
     finding,
@@ -245,17 +244,17 @@ export const prepareWitnessScriptDecodingEvidenceV1 = ({
     initialResultClass,
     resultClass: decoded.resultClass,
     initialControlCbor: decoded.initialControlCbor,
-    carriage: selectMidgardFieldCarriageTierV1(fieldPreimage.length),
+    carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
     chunkProofCount,
   });
 };
 
-export const witnessScriptDecodingEvidenceClosesV1 = (
-  evidence: WitnessScriptDecodingEvidenceV1,
+export const witnessScriptDecodingEvidenceCloses = (
+  evidence: WitnessScriptDecodingEvidence,
 ): boolean => {
   const { subject, accusedClass } = evidence.finding;
   const faultHolds = evidence.resultClass >= 0;
-  return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1
+  return subject.direction === PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
     ? faultHolds
     : evidence.resultClass !== accusedClass;
 };
@@ -278,12 +277,12 @@ const cborBytes = (value: Buffer): Buffer =>
   Buffer.concat([cborHead(2, value.length), value]);
 
 /** Exact twin of Aiken `checkpoint_v1`. */
-export const witnessScriptDecodingCheckpointV1 = ({
+export const witnessScriptDecodingCheckpoint = ({
   evidence,
   controlCbor,
   nextExpectedScriptHash,
 }: {
-  readonly evidence: WitnessScriptDecodingEvidenceV1;
+  readonly evidence: WitnessScriptDecodingEvidence;
   readonly controlCbor: string;
   readonly nextExpectedScriptHash: string;
 }): string => {
@@ -293,7 +292,7 @@ export const witnessScriptDecodingCheckpointV1 = ({
       "midgard/fraud-proofs/witness-script-decoding/checkpoint-v1",
       "ascii",
     ),
-    encodeVerdictSubjectV1(evidence.finding.subject),
+    encodeVerdictSubject(evidence.finding.subject),
     cborHead(0, evidence.finding.scriptIndex),
     cborHead(0, evidence.itemLength),
     cborBytes(Buffer.from(evidence.itemCommitmentHex, "hex")),
@@ -303,7 +302,7 @@ export const witnessScriptDecodingCheckpointV1 = ({
   return Effect.runSync(hashHexWithBlake2b(bytes.toString("hex"), 32));
 };
 
-export const WITNESS_SCRIPT_DECODING_STAGES_V1 = [
+export const WITNESS_SCRIPT_DECODING_STAGES = [
   "none",
   "step01",
   "step02",
@@ -313,9 +312,9 @@ export const WITNESS_SCRIPT_DECODING_STAGES_V1 = [
   "removed",
   "cancelled",
 ] as const;
-export type WitnessScriptDecodingStageV1 =
-  (typeof WITNESS_SCRIPT_DECODING_STAGES_V1)[number];
-export type WitnessScriptDecodingActionV1 =
+export type WitnessScriptDecodingStage =
+  (typeof WITNESS_SCRIPT_DECODING_STAGES)[number];
+export type WitnessScriptDecodingAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
@@ -324,9 +323,9 @@ export type WitnessScriptDecodingActionV1 =
   | "removeDescendants"
   | "done";
 
-export const nextWitnessScriptDecodingActionV1 = (
-  stage: WitnessScriptDecodingStageV1,
-): WitnessScriptDecodingActionV1 => {
+export const nextWitnessScriptDecodingAction = (
+  stage: WitnessScriptDecodingStage,
+): WitnessScriptDecodingAction => {
   switch (stage) {
     case "none":
       return "submitInit";
@@ -346,17 +345,17 @@ export const nextWitnessScriptDecodingActionV1 = (
   }
 };
 
-export type WitnessScriptDecodingJournalEntryV1 = Readonly<{
+export type WitnessScriptDecodingJournalEntry = Readonly<{
   sequence: number;
   identity: string;
-  stage: WitnessScriptDecodingStageV1;
+  stage: WitnessScriptDecodingStage;
   transactionId: string;
   outputReference: string | null;
   checkpointHash: string | null;
 }>;
 
-export const witnessScriptDecodingEvidenceIdentityV1 = (
-  evidence: WitnessScriptDecodingEvidenceV1,
+export const witnessScriptDecodingEvidenceIdentity = (
+  evidence: WitnessScriptDecodingEvidence,
 ): string =>
   [
     evidence.finding.subject.transaction_id,
@@ -366,18 +365,18 @@ export const witnessScriptDecodingEvidenceIdentityV1 = (
     evidence.itemCommitmentHex,
   ].join(":");
 
-export const reconcileWitnessScriptDecodingJournalV1 = ({
+export const reconcileWitnessScriptDecodingJournal = ({
   identity,
   entries,
   observed,
 }: {
   readonly identity: string;
-  readonly entries: readonly WitnessScriptDecodingJournalEntryV1[];
+  readonly entries: readonly WitnessScriptDecodingJournalEntry[];
   readonly observed: Pick<
-    WitnessScriptDecodingJournalEntryV1,
+    WitnessScriptDecodingJournalEntry,
     "stage" | "transactionId" | "outputReference" | "checkpointHash"
   >;
-}): WitnessScriptDecodingStageV1 => {
+}): WitnessScriptDecodingStage => {
   let previous = -1;
   for (const entry of entries) {
     if (entry.identity !== identity) return fail("journal identity mismatch");
@@ -399,63 +398,61 @@ export const reconcileWitnessScriptDecodingJournalV1 = ({
   return observed.stage;
 };
 
-export type WitnessScriptDecodingSubmissionV1 = Readonly<{
+export type WitnessScriptDecodingSubmission = Readonly<{
   observe: (
     identity: string,
   ) => Promise<
     Pick<
-      WitnessScriptDecodingJournalEntryV1,
+      WitnessScriptDecodingJournalEntry,
       "stage" | "transactionId" | "outputReference" | "checkpointHash"
     >
   >;
   submit: (
-    action: Exclude<WitnessScriptDecodingActionV1, "done">,
-    evidence: WitnessScriptDecodingEvidenceV1,
+    action: Exclude<WitnessScriptDecodingAction, "done">,
+    evidence: WitnessScriptDecodingEvidence,
   ) => Promise<
     Pick<
-      WitnessScriptDecodingJournalEntryV1,
+      WitnessScriptDecodingJournalEntry,
       "stage" | "transactionId" | "outputReference" | "checkpointHash"
     >
   >;
   cancel: (
     stage: "step01" | "step02" | "scan" | "step04",
-    evidence: WitnessScriptDecodingEvidenceV1,
+    evidence: WitnessScriptDecodingEvidence,
   ) => Promise<
     Pick<
-      WitnessScriptDecodingJournalEntryV1,
+      WitnessScriptDecodingJournalEntry,
       "stage" | "transactionId" | "outputReference" | "checkpointHash"
     >
   >;
 }>;
 
-export const runWitnessScriptDecodingProofV1 = async ({
+export const runWitnessScriptDecodingProof = async ({
   evidence,
   load,
   append,
   submission,
 }: {
-  readonly evidence: WitnessScriptDecodingEvidenceV1;
+  readonly evidence: WitnessScriptDecodingEvidence;
   readonly load: (
     identity: string,
-  ) => Promise<readonly WitnessScriptDecodingJournalEntryV1[]>;
-  readonly append: (
-    entry: WitnessScriptDecodingJournalEntryV1,
-  ) => Promise<void>;
-  readonly submission: WitnessScriptDecodingSubmissionV1;
-}): Promise<WitnessScriptDecodingStageV1> => {
-  if (!witnessScriptDecodingEvidenceClosesV1(evidence)) {
+  ) => Promise<readonly WitnessScriptDecodingJournalEntry[]>;
+  readonly append: (entry: WitnessScriptDecodingJournalEntry) => Promise<void>;
+  readonly submission: WitnessScriptDecodingSubmission;
+}): Promise<WitnessScriptDecodingStage> => {
+  if (!witnessScriptDecodingEvidenceCloses(evidence)) {
     return fail("honest verdict cannot start a proof thread");
   }
-  const identity = witnessScriptDecodingEvidenceIdentityV1(evidence);
+  const identity = witnessScriptDecodingEvidenceIdentity(evidence);
   for (;;) {
     const entries = await load(identity);
     const observed = await submission.observe(identity);
-    const stage = reconcileWitnessScriptDecodingJournalV1({
+    const stage = reconcileWitnessScriptDecodingJournal({
       identity,
       entries,
       observed,
     });
-    const action = nextWitnessScriptDecodingActionV1(stage);
+    const action = nextWitnessScriptDecodingAction(stage);
     if (action === "done") return stage;
     const result = await submission.submit(action, evidence);
     await append({ sequence: entries.length, identity, ...result });

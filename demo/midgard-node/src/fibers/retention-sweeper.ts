@@ -1,4 +1,4 @@
-import { MIDGARD_RETENTION_WINDOW_V1 } from "@al-ft/midgard-core";
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric, Schedule } from "effect";
 
@@ -52,9 +52,9 @@ const publishDaPayloadRetentionDeadline = (
     const oldest = rows[0]?.oldest_block_end_time ?? null;
     const remainingMs =
       oldest === null
-        ? MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs
+        ? MIDGARD_RETENTION_WINDOW.requiredRetentionMs
         : oldest.getTime() +
-          MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs -
+          MIDGARD_RETENTION_WINDOW.requiredRetentionMs -
           now.getTime();
     yield* daPayloadRetentionDeadlineRemainingGauge(
       Effect.succeed(remainingMs),

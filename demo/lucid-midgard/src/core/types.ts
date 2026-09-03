@@ -1,4 +1,4 @@
-import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
+import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import type { LedgerEntry } from "@al-ft/midgard-validation";
 
 import type { ProtocolScriptLanguage } from "../provider.js";
@@ -82,7 +82,7 @@ export type LocalValidationPreStateSource =
 export type CompleteOptions = {
   readonly fee?: bigint | number;
   /** Exact canonical V1 material for already-enveloped reference scripts. */
-  readonly programMaterial?: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly programMaterial?: readonly MidgardCekProgramMaterialEntry[];
   readonly changeAddress?: Address;
   readonly presetWalletInputs?: readonly MidgardUtxo[];
   readonly localValidation?: "none" | "phase-a" | "phase-b";

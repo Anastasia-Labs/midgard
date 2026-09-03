@@ -3,13 +3,13 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
-  deriveStateQueueAuthenticatedReplayCheckpointV1,
-  parseStateQueueAuthenticatedTransitionV1,
-  replayStateQueueAuthenticatedCheckpointsV1,
-  type StateQueueAuthenticatedReplayCheckpointV1,
-  type StateQueueAuthenticatedTransitionV1,
-  type StateQueueTransitionNodeV1,
-  withStateQueueAuthenticatedTransitionFinalityDepthV1,
+  deriveStateQueueAuthenticatedReplayCheckpoint,
+  parseStateQueueAuthenticatedTransition,
+  replayStateQueueAuthenticatedCheckpoints,
+  type StateQueueAuthenticatedReplayCheckpoint,
+  type StateQueueAuthenticatedTransition,
+  type StateQueueTransitionNode,
+  withStateQueueAuthenticatedTransitionFinalityDepth,
 } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -18,44 +18,44 @@ import { Effect } from "effect";
 
 import * as DaPayloadTerminalOutcomesDB from "../database/daPayloadTerminalOutcomes.js";
 import {
-  fetchKupoAncestorPointV1,
-  fetchKupoSpendV1,
+  fetchKupoAncestorPoint,
+  fetchKupoSpend,
   type FetchLike,
-  type KupoSpendV1,
+  type KupoSpend,
   normalizeKupoHttpUrl,
-  type ObservedL1TransactionAtPointV1,
-  readOgmiosBlockTransactionV1,
+  type ObservedL1TransactionAtPoint,
+  readOgmiosBlockTransaction,
   type WebSocketFactory,
 } from "../l1-tx-order-carriage-v1.js";
 import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
 
-export const STATE_QUEUE_CORRECTION_OBSERVER_V1_SCHEMA_VERSION =
+export const STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION =
   "midgard-node-state-queue-correction-observer-v1" as const;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-type TipV1 = Readonly<{ blockHash: string; slot: number; blockNo: number }>;
+type Tip = Readonly<{ blockHash: string; slot: number; blockNo: number }>;
 
-export type StateQueueCorrectionObserverSourceV1 = Readonly<{
-  readQueue: () => Promise<readonly StateQueueTransitionNodeV1[]>;
+export type StateQueueCorrectionObserverSource = Readonly<{
+  readQueue: () => Promise<readonly StateQueueTransitionNode[]>;
   observeTransitions: (
-    previousQueue: readonly StateQueueTransitionNodeV1[],
-    nextQueue: readonly StateQueueTransitionNodeV1[],
-  ) => Promise<readonly StateQueueAuthenticatedReplayCheckpointV1[]>;
+    previousQueue: readonly StateQueueTransitionNode[],
+    nextQueue: readonly StateQueueTransitionNode[],
+  ) => Promise<readonly StateQueueAuthenticatedReplayCheckpoint[]>;
   canonicalDepth: (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ) => Promise<bigint | null>;
 }>;
 
-export type StateQueueCorrectionObserverStateV1 = Readonly<{
-  schemaVersion: typeof STATE_QUEUE_CORRECTION_OBSERVER_V1_SCHEMA_VERSION;
+export type StateQueueCorrectionObserverState = Readonly<{
+  schemaVersion: typeof STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION;
   deploymentIdentityDigest: string;
   stateQueuePolicyId: string;
-  cursorQueue: readonly StateQueueTransitionNodeV1[];
-  pending: readonly StateQueueAuthenticatedTransitionV1[];
-  admitted: readonly StateQueueAuthenticatedTransitionV1[];
+  cursorQueue: readonly StateQueueTransitionNode[];
+  pending: readonly StateQueueAuthenticatedTransition[];
+  admitted: readonly StateQueueAuthenticatedTransition[];
   retractedTransactionHashes: readonly string[];
   postFinalityRollbackIncidents: readonly Readonly<{
     transactionHash: string;
@@ -65,16 +65,16 @@ export type StateQueueCorrectionObserverStateV1 = Readonly<{
 }>;
 
 type ObserverStateWithoutDigest = Omit<
-  StateQueueCorrectionObserverStateV1,
+  StateQueueCorrectionObserverState,
   "stateDigest"
 >;
 
-export type StateQueueCorrectionObserverStoreV1 = Readonly<{
+export type StateQueueCorrectionObserverStore = Readonly<{
   load: () => Promise<unknown | null>;
-  save: (state: StateQueueCorrectionObserverStateV1) => Promise<void>;
+  save: (state: StateQueueCorrectionObserverState) => Promise<void>;
 }>;
 
-export type StateQueueCorrectionObserverResultV1 = Readonly<{
+export type StateQueueCorrectionObserverResult = Readonly<{
   status: "bootstrapped" | "reconciled";
   admittedTransactionHashes: readonly string[];
   retractedTransactionHashes: readonly string[];
@@ -113,7 +113,7 @@ const exactRecord = (
 
 const parseQueue = (
   value: unknown,
-): readonly StateQueueTransitionNodeV1[] | null => {
+): readonly StateQueueTransitionNode[] | null => {
   if (!Array.isArray(value) || value.length === 0) return null;
   const queue = value.map((candidate) => {
     const node = exactRecord(candidate, ["headerHash", "outRef"]);
@@ -126,7 +126,7 @@ const parseQueue = (
       ? ({
           headerHash: node.headerHash as string | null,
           outRef: node.outRef,
-        } satisfies StateQueueTransitionNodeV1)
+        } satisfies StateQueueTransitionNode)
       : null;
   });
   return queue.some((node) => node === null) ||
@@ -134,17 +134,17 @@ const parseQueue = (
     new Set(queue.map((node) => node!.headerHash)).size !== queue.length ||
     new Set(queue.map((node) => node!.outRef)).size !== queue.length
     ? null
-    : Object.freeze(queue as StateQueueTransitionNodeV1[]);
+    : Object.freeze(queue as StateQueueTransitionNode[]);
 };
 
 const makeState = (
   state: ObserverStateWithoutDigest,
-): StateQueueCorrectionObserverStateV1 =>
+): StateQueueCorrectionObserverState =>
   Object.freeze({ ...state, stateDigest: digest(state) });
 
-export const parseStateQueueCorrectionObserverStateV1 = (
+export const parseStateQueueCorrectionObserverState = (
   input: unknown,
-): StateQueueCorrectionObserverStateV1 | null => {
+): StateQueueCorrectionObserverState | null => {
   const record = exactRecord(input, [
     "schemaVersion",
     "deploymentIdentityDigest",
@@ -158,10 +158,10 @@ export const parseStateQueueCorrectionObserverStateV1 = (
   ]);
   const cursorQueue = parseQueue(record?.cursorQueue);
   const pending = Array.isArray(record?.pending)
-    ? record.pending.map(parseStateQueueAuthenticatedTransitionV1)
+    ? record.pending.map(parseStateQueueAuthenticatedTransition)
     : null;
   const admitted = Array.isArray(record?.admitted)
-    ? record.admitted.map(parseStateQueueAuthenticatedTransitionV1)
+    ? record.admitted.map(parseStateQueueAuthenticatedTransition)
     : null;
   const incidents = Array.isArray(record?.postFinalityRollbackIncidents)
     ? record.postFinalityRollbackIncidents.map((candidate) =>
@@ -170,8 +170,7 @@ export const parseStateQueueCorrectionObserverStateV1 = (
     : null;
   if (
     record === null ||
-    record.schemaVersion !==
-      STATE_QUEUE_CORRECTION_OBSERVER_V1_SCHEMA_VERSION ||
+    record.schemaVersion !== STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION ||
     typeof record.deploymentIdentityDigest !== "string" ||
     !HEX_32.test(record.deploymentIdentityDigest) ||
     typeof record.stateQueuePolicyId !== "string" ||
@@ -204,8 +203,8 @@ export const parseStateQueueCorrectionObserverStateV1 = (
     deploymentIdentityDigest: record.deploymentIdentityDigest,
     stateQueuePolicyId: record.stateQueuePolicyId,
     cursorQueue,
-    pending: pending as StateQueueAuthenticatedTransitionV1[],
-    admitted: admitted as StateQueueAuthenticatedTransitionV1[],
+    pending: pending as StateQueueAuthenticatedTransition[],
+    admitted: admitted as StateQueueAuthenticatedTransition[],
     retractedTransactionHashes: record.retractedTransactionHashes as string[],
     postFinalityRollbackIncidents: incidents.map((incident) => ({
       transactionHash: incident!.transactionHash as string,
@@ -231,9 +230,9 @@ export const parseStateQueueCorrectionObserverStateV1 = (
   return Object.freeze({ ...state, stateDigest: record.stateDigest });
 };
 
-export const createFileStateQueueCorrectionObserverStoreV1 = (
+export const createFileStateQueueCorrectionObserverStore = (
   path: string,
-): StateQueueCorrectionObserverStoreV1 => ({
+): StateQueueCorrectionObserverStore => ({
   load: async () => {
     try {
       return JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -259,16 +258,16 @@ export const createFileStateQueueCorrectionObserverStoreV1 = (
  * admitted deletion authority without its durable observer state (or retain a
  * revoked authority after the replacement cursor commits).
  */
-export const createDatabaseStateQueueCorrectionObserverStoreV1 = ({
+export const createDatabaseStateQueueCorrectionObserverStore = ({
   sql,
   deploymentManifest,
 }: {
   readonly sql: SqlClient.SqlClient;
   readonly deploymentManifest: unknown;
-}): StateQueueCorrectionObserverStoreV1 => ({
+}): StateQueueCorrectionObserverStore => ({
   load: async () => {
     const authority =
-      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthorityV1(
+      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
         deploymentManifest,
       );
     if (authority === null) {
@@ -284,9 +283,9 @@ export const createDatabaseStateQueueCorrectionObserverStoreV1 = ({
     return rows[0]?.state_record ?? null;
   },
   save: async (stateInput) => {
-    const state = parseStateQueueCorrectionObserverStateV1(stateInput);
+    const state = parseStateQueueCorrectionObserverState(stateInput);
     const authority =
-      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthorityV1(
+      DaPayloadTerminalOutcomesDB.admitDaPayloadRetentionReleaseAuthority(
         deploymentManifest,
       );
     if (
@@ -307,7 +306,7 @@ export const createDatabaseStateQueueCorrectionObserverStoreV1 = ({
           DELETE FROM da_payload_terminal_outcomes
           WHERE deployment_identity_digest = ${authority.deploymentIdentityDigest}`;
         for (const transition of state.admitted) {
-          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransitionV1(
+          yield* DaPayloadTerminalOutcomesDB.recordAuthenticatedTransition(
             transition,
             deploymentManifest,
           );
@@ -349,8 +348,8 @@ export const createDatabaseStateQueueCorrectionObserverStoreV1 = ({
 });
 
 const sameQueue = (
-  left: readonly StateQueueTransitionNodeV1[],
-  right: readonly StateQueueTransitionNodeV1[],
+  left: readonly StateQueueTransitionNode[],
+  right: readonly StateQueueTransitionNode[],
 ): boolean =>
   left.length === right.length &&
   left.every(
@@ -364,7 +363,7 @@ const sameQueue = (
  * `restoreAfterRollback` are idempotent database transactions; persisting after
  * them is therefore crash-safe (a retry can repeat the exact mutation).
  */
-export const reconcileStateQueueCorrectionObserverV1 = async ({
+export const reconcileStateQueueCorrectionObserver = async ({
   deploymentIdentityDigest,
   stateQueuePolicyId,
   requiredFinalityDepth,
@@ -378,21 +377,21 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
   readonly deploymentIdentityDigest: string;
   readonly stateQueuePolicyId: string;
   readonly requiredFinalityDepth: bigint;
-  readonly source: StateQueueCorrectionObserverSourceV1;
-  readonly store: StateQueueCorrectionObserverStoreV1;
+  readonly source: StateQueueCorrectionObserverSource;
+  readonly store: StateQueueCorrectionObserverStore;
   readonly reinclude: (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
   readonly restoreAfterRollback: (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
   readonly persistTerminal?: (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
   readonly revokeTerminal?: (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ) => Promise<void>;
-}): Promise<StateQueueCorrectionObserverResultV1> => {
+}): Promise<StateQueueCorrectionObserverResult> => {
   if (
     !HEX_32.test(deploymentIdentityDigest) ||
     !HEX_28.test(stateQueuePolicyId) ||
@@ -410,7 +409,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
   if (loaded === null) {
     await store.save(
       makeState({
-        schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_V1_SCHEMA_VERSION,
+        schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
         deploymentIdentityDigest,
         stateQueuePolicyId,
         cursorQueue: queue,
@@ -427,7 +426,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
       postFinalityRollbackTransactionHashes: [],
     };
   }
-  const state = parseStateQueueCorrectionObserverStateV1(loaded);
+  const state = parseStateQueueCorrectionObserverState(loaded);
   if (
     state === null ||
     state.deploymentIdentityDigest !== deploymentIdentityDigest ||
@@ -450,7 +449,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
 
   const depthByTransaction = new Map<string, bigint | null>();
   const depthOf = async (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ): Promise<bigint | null> => {
     if (depthByTransaction.has(transition.transactionHash)) {
       return depthByTransaction.get(transition.transactionHash)!;
@@ -459,9 +458,9 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
     depthByTransaction.set(transition.transactionHash, depth);
     return depth;
   };
-  let rollbackAnchor: readonly StateQueueTransitionNodeV1[] | null = null;
+  let rollbackAnchor: readonly StateQueueTransitionNode[] | null = null;
   const bindRollbackAnchor = (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ): void => {
     if (
       rollbackAnchor !== null &&
@@ -474,7 +473,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
     rollbackAnchor = transition.previousQueue;
   };
 
-  const pendingAfterRollback: StateQueueAuthenticatedTransitionV1[] = [];
+  const pendingAfterRollback: StateQueueAuthenticatedTransition[] = [];
   for (const transition of pending) {
     const depth = await depthOf(transition);
     if (depth === null) {
@@ -492,7 +491,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
   }
   pending = pendingAfterRollback;
 
-  const admittedAfterRollback: StateQueueAuthenticatedTransitionV1[] = [];
+  const admittedAfterRollback: StateQueueAuthenticatedTransition[] = [];
   for (const transition of admitted) {
     const depth = await depthOf(transition);
     if (depth === null) {
@@ -532,7 +531,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
   const replayAnchor = rollbackAnchor ?? state.cursorQueue;
   if (!sameQueue(replayAnchor, queue)) {
     const observed = await source.observeTransitions(replayAnchor, queue);
-    const replay = replayStateQueueAuthenticatedCheckpointsV1({
+    const replay = replayStateQueueAuthenticatedCheckpoints({
       deploymentIdentityDigest,
       stateQueuePolicyId,
       minimumFinalityDepth: 1n,
@@ -565,7 +564,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
     }
   }
 
-  const stillPending: StateQueueAuthenticatedTransitionV1[] = [];
+  const stillPending: StateQueueAuthenticatedTransition[] = [];
   for (const transition of pending) {
     const depth = await depthOf(transition);
     if (depth === null) {
@@ -576,7 +575,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
       stillPending.push(transition);
       continue;
     }
-    const finalized = withStateQueueAuthenticatedTransitionFinalityDepthV1(
+    const finalized = withStateQueueAuthenticatedTransitionFinalityDepth(
       transition,
       depth.toString(),
     );
@@ -597,7 +596,7 @@ export const reconcileStateQueueCorrectionObserverV1 = async ({
 
   await store.save(
     makeState({
-      schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_V1_SCHEMA_VERSION,
+      schemaVersion: STATE_QUEUE_CORRECTION_OBSERVER_SCHEMA_VERSION,
       deploymentIdentityDigest,
       stateQueuePolicyId,
       cursorQueue: queue,
@@ -625,7 +624,7 @@ const outRef = (label: string): { txHash: string; outputIndex: number } => {
 const fetchTip = async (
   ogmiosUrl: string,
   fetchImpl: FetchLike,
-): Promise<TipV1> => {
+): Promise<Tip> => {
   const response = await fetchImpl(normalizeOgmiosHttpUrl(ogmiosUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -661,22 +660,22 @@ const fetchTip = async (
   return { blockHash: point.id, slot: point.slot, blockNo: point.height };
 };
 
-const sameSpend = (left: KupoSpendV1, right: KupoSpendV1): boolean =>
+const sameSpend = (left: KupoSpend, right: KupoSpend): boolean =>
   left.transactionId === right.transactionId &&
   left.point.headerHash === right.point.headerHash &&
   left.point.slot === right.point.slot;
 
-type HistoricalQueueOutputV1 = Readonly<{
-  node: StateQueueTransitionNodeV1;
+type HistoricalQueueOutput = Readonly<{
+  node: StateQueueTransitionNode;
   nextHeaderHash: string | null;
 }>;
 
-type HistoricalCorrectionLockOutputV1 = Readonly<{
+type HistoricalCorrectionLockOutput = Readonly<{
   outRef: string;
   datum: SDK.CorrectionLockDatum;
 }>;
 
-const decodeKupoCorrectionLockMatchV1 = ({
+const decodeKupoCorrectionLockMatch = ({
   candidate,
   expectedTransactionHash,
   expectedOutputIndex,
@@ -688,7 +687,7 @@ const decodeKupoCorrectionLockMatchV1 = ({
   readonly expectedOutputIndex: number;
   readonly correctionLockAddress: string;
   readonly hubOraclePolicyId: string;
-}): HistoricalCorrectionLockOutputV1 | null => {
+}): HistoricalCorrectionLockOutput | null => {
   const match = candidate as {
     transaction_id?: unknown;
     output_index?: unknown;
@@ -734,7 +733,7 @@ const decodeKupoCorrectionLockMatchV1 = ({
   }
 };
 
-const fetchKupoResolvedOutputV1 = async ({
+const fetchKupoResolvedOutput = async ({
   kupoUrl,
   reference,
   fetchImpl,
@@ -777,7 +776,7 @@ const fetchKupoResolvedOutputV1 = async ({
   return matches[0];
 };
 
-const fetchKupoTransactionCorrectionLockOutputsV1 = async ({
+const fetchKupoTransactionCorrectionLockOutputs = async ({
   kupoUrl,
   transactionHash,
   correctionLockAddress,
@@ -789,7 +788,7 @@ const fetchKupoTransactionCorrectionLockOutputsV1 = async ({
   readonly correctionLockAddress: string;
   readonly hubOraclePolicyId: string;
   readonly fetchImpl: FetchLike;
-}): Promise<readonly HistoricalCorrectionLockOutputV1[]> => {
+}): Promise<readonly HistoricalCorrectionLockOutput[]> => {
   const url = `${normalizeKupoHttpUrl(kupoUrl).replace(/\/+$/u, "")}/matches/*@${transactionHash}?resolve_hashes`;
   const response = await fetchImpl(url);
   const body = await response.text();
@@ -821,7 +820,7 @@ const fetchKupoTransactionCorrectionLockOutputsV1 = async ({
     ) {
       return [];
     }
-    const lock = decodeKupoCorrectionLockMatchV1({
+    const lock = decodeKupoCorrectionLockMatch({
       candidate,
       expectedTransactionHash: transactionHash,
       expectedOutputIndex: index,
@@ -832,7 +831,7 @@ const fetchKupoTransactionCorrectionLockOutputsV1 = async ({
   });
 };
 
-const fraudProofAssetNameFromResolvedMatchV1 = ({
+const fraudProofAssetNameFromResolvedMatch = ({
   candidate,
   fraudProofAddress,
   fraudProofPolicyId,
@@ -880,7 +879,7 @@ const fraudProofAssetNameFromResolvedMatchV1 = ({
   return proofAssets.length === 1 ? proofAssets[0] : null;
 };
 
-const deriveCorrectionLockWitnessFromRawV1 = async ({
+const deriveCorrectionLockWitnessFromRaw = async ({
   transaction,
   transactionOutputs,
   stateQueuePolicyId,
@@ -891,8 +890,8 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
   kupoUrl,
   fetchImpl,
 }: {
-  readonly transaction: ObservedL1TransactionAtPointV1;
-  readonly transactionOutputs: readonly HistoricalCorrectionLockOutputV1[];
+  readonly transaction: ObservedL1TransactionAtPoint;
+  readonly transactionOutputs: readonly HistoricalCorrectionLockOutput[];
   readonly stateQueuePolicyId: string;
   readonly correctionLockAddress: string;
   readonly hubOraclePolicyId: string;
@@ -900,12 +899,12 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
   readonly fraudProofPolicyId: string;
   readonly kupoUrl: string;
   readonly fetchImpl: FetchLike;
-}): Promise<SDK.StateQueueCorrectionLockWitnessV1> => {
+}): Promise<SDK.StateQueueCorrectionLockWitness> => {
   const spentReferences = transaction.spentInputs ?? [];
   const spentResolved = await Promise.all(
     spentReferences.map(async (reference) => ({
       reference,
-      match: await fetchKupoResolvedOutputV1({
+      match: await fetchKupoResolvedOutput({
         kupoUrl,
         reference,
         fetchImpl,
@@ -915,7 +914,7 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
   const referenceResolved = await Promise.all(
     transaction.referenceInputs.map(async (reference) => ({
       reference,
-      match: await fetchKupoResolvedOutputV1({
+      match: await fetchKupoResolvedOutput({
         kupoUrl,
         reference,
         fetchImpl,
@@ -923,7 +922,7 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
     })),
   );
   const locksIn = spentResolved.flatMap(({ reference, match }) => {
-    const lock = decodeKupoCorrectionLockMatchV1({
+    const lock = decodeKupoCorrectionLockMatch({
       candidate: match,
       expectedTransactionHash: reference.txHash,
       expectedOutputIndex: reference.outputIndex,
@@ -933,7 +932,7 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
     return lock === null ? [] : [lock];
   });
   const locksReferenced = referenceResolved.flatMap(({ reference, match }) => {
-    const lock = decodeKupoCorrectionLockMatchV1({
+    const lock = decodeKupoCorrectionLockMatch({
       candidate: match,
       expectedTransactionHash: reference.txHash,
       expectedOutputIndex: reference.outputIndex,
@@ -1054,7 +1053,7 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
                 "Fraud correction proof reference index is out of bounds",
               );
             }
-            const assetName = fraudProofAssetNameFromResolvedMatchV1({
+            const assetName = fraudProofAssetNameFromResolvedMatch({
               candidate: proof.match,
               fraudProofAddress,
               fraudProofPolicyId,
@@ -1082,7 +1081,7 @@ const deriveCorrectionLockWitnessFromRawV1 = async ({
   throw new Error("State-queue mint redeemer has no CorrectionLock topology");
 };
 
-const fetchKupoTransactionQueueOutputsV1 = async ({
+const fetchKupoTransactionQueueOutputs = async ({
   kupoUrl,
   transactionHash,
   stateQueueAddress,
@@ -1094,7 +1093,7 @@ const fetchKupoTransactionQueueOutputsV1 = async ({
   readonly stateQueueAddress: string;
   readonly stateQueuePolicyId: string;
   readonly fetchImpl: FetchLike;
-}): Promise<readonly HistoricalQueueOutputV1[]> => {
+}): Promise<readonly HistoricalQueueOutput[]> => {
   const url = `${normalizeKupoHttpUrl(kupoUrl).replace(/\/+$/u, "")}/matches/*@${transactionHash}?resolve_hashes`;
   const response = await fetchImpl(url);
   const body = await response.text();
@@ -1114,7 +1113,7 @@ const fetchKupoTransactionQueueOutputsV1 = async ({
   if (!Array.isArray(decodedBody)) {
     throw new Error("Kupo transaction-output query did not return an array");
   }
-  const queueOutputs: HistoricalQueueOutputV1[] = [];
+  const queueOutputs: HistoricalQueueOutput[] = [];
   for (const [matchIndex, candidate] of decodedBody.entries()) {
     const match = candidate as {
       transaction_id?: unknown;
@@ -1214,17 +1213,17 @@ const fetchKupoTransactionQueueOutputsV1 = async ({
   return queueOutputs;
 };
 
-const reconstructQueueAfterTransactionV1 = ({
+const reconstructQueueAfterTransaction = ({
   previousQueue,
   transactionHash,
   spentInputOutRefs,
   outputs,
 }: {
-  readonly previousQueue: readonly StateQueueTransitionNodeV1[];
+  readonly previousQueue: readonly StateQueueTransitionNode[];
   readonly transactionHash: string;
   readonly spentInputOutRefs: readonly string[];
-  readonly outputs: readonly HistoricalQueueOutputV1[];
-}): readonly StateQueueTransitionNodeV1[] => {
+  readonly outputs: readonly HistoricalQueueOutput[];
+}): readonly StateQueueTransitionNode[] => {
   const spent = new Set(spentInputOutRefs);
   const previousIdentities = new Set(
     previousQueue.map(({ headerHash }) => headerHash),
@@ -1293,7 +1292,7 @@ const reconstructQueueAfterTransactionV1 = ({
 };
 
 /** Node-owned local Kupmios/Ogmios source; no watcher process is consulted. */
-export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
+export const makeLocalKupmiosStateQueueCorrectionSource = ({
   deploymentIdentityDigest,
   stateQueuePolicyId,
   stateQueueAddress,
@@ -1316,16 +1315,16 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
   readonly fraudProofAddress: string;
   readonly kupoUrl: string;
   readonly ogmiosUrl: string;
-  readonly readQueue: () => Promise<readonly StateQueueTransitionNodeV1[]>;
+  readonly readQueue: () => Promise<readonly StateQueueTransitionNode[]>;
   readonly fetchImpl?: FetchLike;
   readonly webSocketFactory?: WebSocketFactory;
-}): StateQueueCorrectionObserverSourceV1 => {
+}): StateQueueCorrectionObserverSource => {
   const canonicalDepth = async (
-    transition: StateQueueAuthenticatedTransitionV1,
+    transition: StateQueueAuthenticatedTransition,
   ): Promise<bigint | null> => {
     const spends = await Promise.all(
       transition.consumedQueueOutRefs.map((label) =>
-        fetchKupoSpendV1({ kupoUrl, outRef: outRef(label), fetchImpl }),
+        fetchKupoSpend({ kupoUrl, outRef: outRef(label), fetchImpl }),
       ),
     );
     if (
@@ -1349,16 +1348,16 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
     canonicalDepth,
     observeTransitions: async (previousQueue, nextQueue) => {
       let workingQueue = previousQueue;
-      const observations: StateQueueAuthenticatedReplayCheckpointV1[] = [];
+      const observations: StateQueueAuthenticatedReplayCheckpoint[] = [];
       const tip = await fetchTip(ogmiosUrl, fetchImpl);
       for (let replayed = 0; replayed < 1_000; replayed += 1) {
         if (sameQueue(workingQueue, nextQueue)) return observations;
         const spends = await Promise.all(
           workingQueue.map(({ outRef: label }) =>
-            fetchKupoSpendV1({ kupoUrl, outRef: outRef(label), fetchImpl }),
+            fetchKupoSpend({ kupoUrl, outRef: outRef(label), fetchImpl }),
           ),
         );
-        const uniqueSpends = new Map<string, KupoSpendV1>();
+        const uniqueSpends = new Map<string, KupoSpend>();
         for (const spend of spends) {
           if (spend === null) continue;
           const prior = uniqueSpends.get(spend.transactionId);
@@ -1376,12 +1375,12 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
         }
         const transactions = await Promise.all(
           [...uniqueSpends.values()].map(async (spend) => {
-            const ancestor = await fetchKupoAncestorPointV1({
+            const ancestor = await fetchKupoAncestorPoint({
               kupoUrl,
               slot: spend.point.slot,
               fetchImpl,
             });
-            const transaction = await readOgmiosBlockTransactionV1({
+            const transaction = await readOgmiosBlockTransaction({
               ogmiosUrl,
               intersection: ancestor,
               blockPoint: spend.point,
@@ -1409,7 +1408,7 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
         const spentInputOutRefs = (transaction.spentInputs ?? []).map(
           ({ txHash, outputIndex }) => `${txHash}#${outputIndex.toString()}`,
         );
-        const historicalOutputs = await fetchKupoTransactionQueueOutputsV1({
+        const historicalOutputs = await fetchKupoTransactionQueueOutputs({
           kupoUrl,
           transactionHash: transaction.txHash,
           stateQueueAddress,
@@ -1417,14 +1416,14 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
           fetchImpl,
         });
         const correctionLockOutputs =
-          await fetchKupoTransactionCorrectionLockOutputsV1({
+          await fetchKupoTransactionCorrectionLockOutputs({
             kupoUrl,
             transactionHash: transaction.txHash,
             correctionLockAddress,
             hubOraclePolicyId,
             fetchImpl,
           });
-        const intermediateQueue = reconstructQueueAfterTransactionV1({
+        const intermediateQueue = reconstructQueueAfterTransaction({
           previousQueue: workingQueue,
           transactionHash: transaction.txHash,
           spentInputOutRefs,
@@ -1443,18 +1442,17 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
           blockNo: transaction.blockPoint.blockNo,
           transactionIndex: transaction.transactionIndex,
         });
-        const correctionLockWitness =
-          await deriveCorrectionLockWitnessFromRawV1({
-            transaction,
-            transactionOutputs: correctionLockOutputs,
-            stateQueuePolicyId,
-            correctionLockAddress,
-            hubOraclePolicyId,
-            fraudProofPolicyId,
-            fraudProofAddress,
-            kupoUrl,
-            fetchImpl,
-          });
+        const correctionLockWitness = await deriveCorrectionLockWitnessFromRaw({
+          transaction,
+          transactionOutputs: correctionLockOutputs,
+          stateQueuePolicyId,
+          correctionLockAddress,
+          hubOraclePolicyId,
+          fraudProofPolicyId,
+          fraudProofAddress,
+          kupoUrl,
+          fetchImpl,
+        });
         const transitionInput = {
           deploymentIdentityDigest,
           stateQueuePolicyId,
@@ -1480,7 +1478,7 @@ export const makeLocalKupmiosStateQueueCorrectionSourceV1 = ({
           nextQueue: intermediateQueue,
         } as const;
         const checkpoint =
-          deriveStateQueueAuthenticatedReplayCheckpointV1(transitionInput);
+          deriveStateQueueAuthenticatedReplayCheckpoint(transitionInput);
         if (checkpoint === null) {
           throw new Error(
             "State-queue transaction failed exact authenticated checkpoint derivation",

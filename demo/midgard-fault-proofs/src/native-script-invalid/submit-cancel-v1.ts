@@ -1,16 +1,16 @@
-import { submitLinearFaultCancelV1 } from "../linear-fault-cancel-v1.js";
+import { submitLinearFaultCancel } from "../linear-fault-cancel-v1.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL,
-  type NativeScriptInvalidContractsV1,
+  type NativeScriptInvalidContracts,
 } from "./contracts-v1.js";
 
-type Base = Parameters<typeof submitLinearFaultCancelV1>[0];
+type Base = Parameters<typeof submitLinearFaultCancel>[0];
 export const submitNativeScriptInvalidCancel = async (
   params: Omit<Base, "family" | "steps" | "computationThread"> & {
-    readonly contracts: NativeScriptInvalidContractsV1;
+    readonly contracts: NativeScriptInvalidContracts;
   },
 ) =>
-  await submitLinearFaultCancelV1({
+  await submitLinearFaultCancel({
     ...params,
     family: NATIVE_SCRIPT_INVALID_CATEGORY_LABEL,
     steps: params.contracts.steps,

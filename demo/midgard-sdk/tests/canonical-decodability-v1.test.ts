@@ -2,28 +2,28 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  encodeMidgardFieldPreimageV1,
-  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
+  encodeMidgardFieldPreimage,
+  MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  CANONICAL_DECODABILITY_VIOLATION_ID_V1,
-  canonicalDecodabilityEvidenceFromCommittedFieldV1,
+  CANONICAL_DECODABILITY_VIOLATION_ID,
+  canonicalDecodabilityEvidenceFromCommittedField,
   CanonicalDecodabilityStep02State,
-  canonicalDecodabilityStep02StateFromEvidenceV1,
+  canonicalDecodabilityStep02StateFromEvidence,
   CanonicalDecodabilityStep02StateSchema,
-  CommittedFieldClaimV1,
-  isCanonicalDecodabilityViolationV1,
-  MIDGARD_COMMITTED_FIELD_COUNT_V1,
-  MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1,
-  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
-  MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER_V1,
-  MIDGARD_ENVELOPE_VERDICT_NAMES_V1,
-  MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES_V1,
-  midgardEnvelopeVerdictV1,
-  miscountedMidgardFieldPreimageV1,
+  CommittedFieldClaim,
+  isCanonicalDecodabilityViolation,
+  MIDGARD_COMMITTED_FIELD_COUNT,
+  MIDGARD_ENVELOPE_VERDICT_CODE_COUNT,
+  MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
+  MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER,
+  MIDGARD_ENVELOPE_VERDICT_NAMES,
+  MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES,
+  midgardEnvelopeVerdict,
+  miscountedMidgardFieldPreimage,
 } from "../src/fraud-proof/canonical-decodability-v1.js";
 
 /**
@@ -77,10 +77,8 @@ describe("§12.7 canonical-decodability golden channel", () => {
     expect(golden.schema).toBe("midgard-canonical-decodability-golden");
     expect(golden.version).toBe(1);
     expect(golden.specDocument).toBe("docs/spec/midgard-tx.md");
-    expect(golden.verdictCodeCount).toBe(
-      MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1,
-    );
-    expect(golden.verdictNames).toEqual([...MIDGARD_ENVELOPE_VERDICT_NAMES_V1]);
+    expect(golden.verdictCodeCount).toBe(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT);
+    expect(golden.verdictNames).toEqual([...MIDGARD_ENVELOPE_VERDICT_NAMES]);
   });
 
   it("recomputes every vector's verdict from src", () => {
@@ -88,8 +86,8 @@ describe("§12.7 canonical-decodability golden channel", () => {
     for (const vector of golden.vectors) {
       const preimage = bytes(vector.preimage);
       expect(preimage.length).toBe(vector.byteCount);
-      expect(midgardEnvelopeVerdictV1(preimage)).toBe(vector.verdict);
-      expect(MIDGARD_ENVELOPE_VERDICT_NAMES_V1[vector.verdict]).toBe(
+      expect(midgardEnvelopeVerdict(preimage)).toBe(vector.verdict);
+      expect(MIDGARD_ENVELOPE_VERDICT_NAMES[vector.verdict]).toBe(
         vector.verdictName,
       );
     }
@@ -97,10 +95,10 @@ describe("§12.7 canonical-decodability golden channel", () => {
 
   it("reaches every verdict code, and no code outside the space", () => {
     const reached = new Set(golden.vectors.map((vector) => vector.verdict));
-    expect(reached.size).toBe(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1);
+    expect(reached.size).toBe(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT);
     for (const code of reached) {
       expect(code).toBeGreaterThanOrEqual(0);
-      expect(code).toBeLessThan(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1);
+      expect(code).toBeLessThan(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT);
     }
   });
 
@@ -110,7 +108,7 @@ describe("§12.7 canonical-decodability golden channel", () => {
       const schema =
         vector.aikenType === "State"
           ? CanonicalDecodabilityStep02State
-          : CommittedFieldClaimV1;
+          : CommittedFieldClaim;
       const decoded = Data.from(vector.cborHex, schema);
       expect(Data.to(decoded, schema)).toBe(vector.cborHex);
     }
@@ -133,11 +131,11 @@ describe("§12.7 canonical-decodability golden channel", () => {
 
 describe("§12.7 envelope verdict", () => {
   it("calls the empty field grammatical and one byte less ungrammatical", () => {
-    expect(midgardEnvelopeVerdictV1(Buffer.from([0x80]))).toBe(
-      MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
+    expect(midgardEnvelopeVerdict(Buffer.from([0x80]))).toBe(
+      MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
     );
-    expect(midgardEnvelopeVerdictV1(Buffer.alloc(0))).toBe(
-      MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER_V1,
+    expect(midgardEnvelopeVerdict(Buffer.alloc(0))).toBe(
+      MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER,
     );
   });
 
@@ -146,12 +144,12 @@ describe("§12.7 envelope verdict", () => {
       const items = Array.from({ length: count }, () =>
         Buffer.from([0xde, 0xad]),
       );
-      expect(
-        midgardEnvelopeVerdictV1(encodeMidgardFieldPreimageV1(items)),
-      ).toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1);
+      expect(midgardEnvelopeVerdict(encodeMidgardFieldPreimage(items))).toBe(
+        MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
+      );
       // The deliberately-wrong producer is only wrong when it is asked to be.
-      expect(miscountedMidgardFieldPreimageV1(count, items)).toEqual(
-        encodeMidgardFieldPreimageV1(items),
+      expect(miscountedMidgardFieldPreimage(count, items)).toEqual(
+        encodeMidgardFieldPreimage(items),
       );
     }
   });
@@ -159,13 +157,11 @@ describe("§12.7 envelope verdict", () => {
   it("refuses a declared count in either direction", () => {
     const item = Buffer.from([0xde, 0xad]);
     expect(
-      midgardEnvelopeVerdictV1(miscountedMidgardFieldPreimageV1(2, [item])),
-    ).not.toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1);
+      midgardEnvelopeVerdict(miscountedMidgardFieldPreimage(2, [item])),
+    ).not.toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL);
     expect(
-      midgardEnvelopeVerdictV1(
-        miscountedMidgardFieldPreimageV1(1, [item, item]),
-      ),
-    ).toBe(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES_V1);
+      midgardEnvelopeVerdict(miscountedMidgardFieldPreimage(1, [item, item])),
+    ).toBe(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES);
   });
 
   it("refuses a count or a length §5.1 cannot spell", () => {
@@ -173,12 +169,12 @@ describe("§12.7 envelope verdict", () => {
     // twin aborts in `from_int_big_endian(_, 2)` above it. The producer must
     // not instead truncate to the low sixteen bits and hand back an envelope
     // declaring a number nobody asked for.
-    expect(() => miscountedMidgardFieldPreimageV1(0x1_0000, [])).toThrow();
+    expect(() => miscountedMidgardFieldPreimage(0x1_0000, [])).toThrow();
     expect(() =>
-      miscountedMidgardFieldPreimageV1(1, [Buffer.alloc(0x1_0000)]),
+      miscountedMidgardFieldPreimage(1, [Buffer.alloc(0x1_0000)]),
     ).toThrow();
     // The boundary itself is still writable.
-    expect(miscountedMidgardFieldPreimageV1(0xffff, [])).toEqual(
+    expect(miscountedMidgardFieldPreimage(0xffff, [])).toEqual(
       Buffer.from([0x99, 0xff, 0xff]),
     );
   });
@@ -191,10 +187,10 @@ describe("§12.7 envelope verdict", () => {
     for (const vector of golden.vectors) {
       const preimage = bytes(vector.preimage);
       for (let length = 0; length <= preimage.length; length += 1) {
-        const verdict = midgardEnvelopeVerdictV1(preimage.subarray(0, length));
+        const verdict = midgardEnvelopeVerdict(preimage.subarray(0, length));
         expect(Number.isInteger(verdict)).toBe(true);
         expect(verdict).toBeGreaterThanOrEqual(0);
-        expect(verdict).toBeLessThan(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1);
+        expect(verdict).toBeLessThan(MIDGARD_ENVELOPE_VERDICT_CODE_COUNT);
       }
     }
   });
@@ -208,14 +204,12 @@ describe("§12.7 envelope verdict", () => {
     // family exists to remove, reintroduced off chain.
     const items = Array.from({ length: 32_764 }, () => Buffer.alloc(0));
     const preimage = Buffer.concat([
-      encodeMidgardFieldPreimageV1(items),
+      encodeMidgardFieldPreimage(items),
       Buffer.from([0x41]),
     ]);
-    expect(preimage.length).toBe(
-      MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES_V1,
-    );
-    expect(midgardEnvelopeVerdictV1(preimage)).toBe(
-      MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES_V1,
+    expect(preimage.length).toBe(MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES);
+    expect(midgardEnvelopeVerdict(preimage)).toBe(
+      MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES,
     );
   });
 });
@@ -224,46 +218,46 @@ describe("§12.7 adjudication predicate", () => {
   it("convicts every in-range non-zero code and no grammatical one", () => {
     for (
       let fieldIndex = 0;
-      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT_V1;
+      fieldIndex < MIDGARD_COMMITTED_FIELD_COUNT;
       fieldIndex += 1
     ) {
       expect(
-        isCanonicalDecodabilityViolationV1({
+        isCanonicalDecodabilityViolation({
           fieldIndex,
-          verdict: MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1,
+          verdict: MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
         }),
       ).toBe(false);
       for (
         let verdict = 1;
-        verdict < MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1;
+        verdict < MIDGARD_ENVELOPE_VERDICT_CODE_COUNT;
         verdict += 1
       ) {
-        expect(
-          isCanonicalDecodabilityViolationV1({ fieldIndex, verdict }),
-        ).toBe(true);
+        expect(isCanonicalDecodabilityViolation({ fieldIndex, verdict })).toBe(
+          true,
+        );
       }
     }
   });
 
   it("refuses a state no step 01 could have written", () => {
-    const verdict = MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES_V1;
+    const verdict = MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES;
+    expect(isCanonicalDecodabilityViolation({ fieldIndex: -1, verdict })).toBe(
+      false,
+    );
     expect(
-      isCanonicalDecodabilityViolationV1({ fieldIndex: -1, verdict }),
-    ).toBe(false);
-    expect(
-      isCanonicalDecodabilityViolationV1({
-        fieldIndex: MIDGARD_COMMITTED_FIELD_COUNT_V1,
+      isCanonicalDecodabilityViolation({
+        fieldIndex: MIDGARD_COMMITTED_FIELD_COUNT,
         verdict,
       }),
     ).toBe(false);
     expect(
-      isCanonicalDecodabilityViolationV1({
+      isCanonicalDecodabilityViolation({
         fieldIndex: 0,
-        verdict: MIDGARD_ENVELOPE_VERDICT_CODE_COUNT_V1,
+        verdict: MIDGARD_ENVELOPE_VERDICT_CODE_COUNT,
       }),
     ).toBe(false);
     expect(
-      isCanonicalDecodabilityViolationV1({ fieldIndex: 0, verdict: -1 }),
+      isCanonicalDecodabilityViolation({ fieldIndex: 0, verdict: -1 }),
     ).toBe(false);
   });
 });
@@ -272,26 +266,26 @@ describe("§12.7 evidence", () => {
   const badTxId = "22".repeat(32);
 
   it("builds the step-02 state the on-chain step 01 derives", () => {
-    const preimage = miscountedMidgardFieldPreimageV1(1, [
+    const preimage = miscountedMidgardFieldPreimage(1, [
       Buffer.from([0xde, 0xad]),
       Buffer.from([0xbe, 0xef]),
     ]);
-    const evidence = canonicalDecodabilityEvidenceFromCommittedFieldV1({
+    const evidence = canonicalDecodabilityEvidenceFromCommittedField({
       badTxId,
       fieldIndex: 2,
       committedPreimage: preimage,
     });
-    expect(evidence.violationId).toBe(CANONICAL_DECODABILITY_VIOLATION_ID_V1);
-    expect(evidence.verdict).toBe(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES_V1);
+    expect(evidence.violationId).toBe(CANONICAL_DECODABILITY_VIOLATION_ID);
+    expect(evidence.verdict).toBe(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES);
     expect(evidence.verdictName).toBe("trailing_bytes");
     expect(evidence.isViolation).toBe(true);
     expect(evidence.committedPreimageByteCount).toBe(preimage.length);
 
-    const state = canonicalDecodabilityStep02StateFromEvidenceV1(evidence);
+    const state = canonicalDecodabilityStep02StateFromEvidence(evidence);
     expect(state).toEqual({
       bad_tx_id: badTxId,
       field_index: 2n,
-      verdict: BigInt(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES_V1),
+      verdict: BigInt(MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES),
     });
     // The state is a datum, so it has to survive the encoder a builder uses.
     expect(
@@ -304,14 +298,14 @@ describe("§12.7 evidence", () => {
   });
 
   it("never convicts an honest field", () => {
-    const evidence = canonicalDecodabilityEvidenceFromCommittedFieldV1({
+    const evidence = canonicalDecodabilityEvidenceFromCommittedField({
       badTxId,
       fieldIndex: 7,
-      committedPreimage: encodeMidgardFieldPreimageV1([
+      committedPreimage: encodeMidgardFieldPreimage([
         Buffer.from([0xde, 0xad]),
       ]),
     });
-    expect(evidence.verdict).toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL_V1);
+    expect(evidence.verdict).toBe(MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL);
     expect(evidence.verdictName).toBe("grammatical");
     expect(evidence.isViolation).toBe(false);
   });

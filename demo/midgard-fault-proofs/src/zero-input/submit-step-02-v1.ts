@@ -1,29 +1,29 @@
-import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpeningV1,
-  planFaultProofFieldOpeningV1,
-  resolveFaultProofFieldCarriagePublicationsV1,
-  resolveFaultProofFieldPreimageCertificateV1,
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+  resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening-v1.js";
 import {
-  requireLinearFaultReferenceScriptV1,
-  requireLinearFaultStepStateV1,
-  requireLinearFaultThreadUtxoV1,
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultFinalizeV1 } from "../linear-fault-finalize-v1.js";
+import { submitLinearFaultFinalize } from "../linear-fault-finalize-v1.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
-import type { ZeroInputContractsV1 } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { ZeroInputContracts } from "./contracts-v1.js";
 import {
-  zeroInputEvidenceClosesV1,
-  type ZeroInputEvidenceV1,
+  type ZeroInputEvidence,
+  zeroInputEvidenceCloses,
 } from "./family-v1.js";
 import {
-  ZeroInputStep02DatumV1Schema,
-  ZeroInputStep02RedeemerV1Schema,
+  ZeroInputStep02DatumSchema,
+  ZeroInputStep02RedeemerSchema,
 } from "./schemas-v1.js";
 
 export const submitZeroInputStep02V1 = async ({
@@ -40,21 +40,21 @@ export const submitZeroInputStep02V1 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ZeroInputContractsV1;
+  readonly contracts: ZeroInputContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ZeroInputEvidenceV1;
+  readonly evidence: ZeroInputEvidence;
   readonly nativeTxCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!zeroInputEvidenceClosesV1(evidence))
+  if (!zeroInputEvidenceCloses(evidence))
     throw new Error("zeroInput: terminal evidence is honest");
   const stepIndex = 1;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
@@ -62,29 +62,29 @@ export const submitZeroInputStep02V1 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepStateV1<{
+  const state = requireLinearFaultStepState<{
     subject: { transaction_id: string };
   }>({
     threadUtxo,
     signer,
-    schema: ZeroInputStep02DatumV1Schema as never,
+    schema: ZeroInputStep02DatumSchema as never,
     family: "zero-input",
     stepIndex,
   });
   if (state.subject.transaction_id !== evidence.subject.transaction_id)
     throw new Error("zeroInput: bound transaction changed");
-  const planned = planFaultProofFieldOpeningV1({
+  const planned = planFaultProofFieldOpening({
     fieldIndex: 0,
     anchorTxId: evidence.subject.transaction_id,
     nativeTxCompactCbor,
-    itemCbors: decodeMidgardFieldPreimageV1(
+    itemCbors: decodeMidgardFieldPreimage(
       Buffer.from(evidence.inputFieldPreimageCbor, "hex"),
     ),
     owner: signer.paymentKeyHash,
     publish: true,
     label: "zero input field 0",
   });
-  const carriageUtxos = await resolveFaultProofFieldCarriagePublicationsV1({
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     lucid,
     publisherAddress: signer.address,
     planned,
@@ -95,7 +95,7 @@ export const submitZeroInputStep02V1 = async ({
     );
   const certificateUtxo =
     planned.plan.tier === "Certified"
-      ? await resolveFaultProofFieldPreimageCertificateV1({
+      ? await resolveFaultProofFieldPreimageCertificate({
           lucid,
           network: lucid.config().network!,
           planned,
@@ -104,13 +104,13 @@ export const submitZeroInputStep02V1 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("zeroInput: field certificate disappeared");
-  const stepReference = requireLinearFaultReferenceScriptV1({
+  const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
     family: "zero-input",
     stepIndex,
   });
-  const opening = faultProofFieldOpeningV1({
+  const opening = faultProofFieldOpening({
     planned,
     referenceInputs: [
       ...carriageUtxos,
@@ -126,7 +126,7 @@ export const submitZeroInputStep02V1 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "zero input field 0",
   });
-  return await submitLinearFaultFinalizeV1({
+  return await submitLinearFaultFinalize({
     lucid,
     family: "zero-input",
     stepIndex,
@@ -136,7 +136,7 @@ export const submitZeroInputStep02V1 = async ({
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ZeroInputStep02RedeemerV1Schema,
+    spendRedeemerSchema: ZeroInputStep02RedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

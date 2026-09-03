@@ -2,7 +2,7 @@ import type { Assets, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertReferenceScriptRawBodiesFitL1EnvelopeV1,
+  assertReferenceScriptRawBodiesFitL1Envelope,
   createReferenceScriptAuthPolicy,
   hasReferenceScriptAuthRole,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -43,7 +43,7 @@ const utxo = ({
 describe("reference-script SDK boundary", () => {
   it("rejects a reference script whose raw body alone cannot fit the L1 transaction envelope", () => {
     expect(() =>
-      assertReferenceScriptRawBodiesFitL1EnvelopeV1([
+      assertReferenceScriptRawBodiesFitL1Envelope([
         {
           name: "availability-challenge minting",
           script: {
@@ -59,7 +59,7 @@ describe("reference-script SDK boundary", () => {
 
   it("admits only the raw-body lower bound and leaves complete signed fit to the publisher", () => {
     expect(() =>
-      assertReferenceScriptRawBodiesFitL1EnvelopeV1([
+      assertReferenceScriptRawBodiesFitL1Envelope([
         {
           name: "boundary",
           script: { type: "PlutusV3", script: "00".repeat(16_383) },
@@ -67,7 +67,7 @@ describe("reference-script SDK boundary", () => {
       ]),
     ).not.toThrow();
     expect(() =>
-      assertReferenceScriptRawBodiesFitL1EnvelopeV1([
+      assertReferenceScriptRawBodiesFitL1Envelope([
         {
           name: "exact-envelope",
           script: { type: "PlutusV3", script: "00".repeat(16_384) },

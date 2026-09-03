@@ -4,21 +4,21 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-import type { ProductionWorkflowActuationPermitV1 } from "./production-actuation-permit-v1.js";
-import type { ProductionWorkflowFundingReservationPermitV1 } from "./production-funding-reservation-permit-v1.js";
+import type { WorkflowActuationPermit } from "./production-actuation-permit-v1.js";
+import type { WorkflowFundingReservationPermit } from "./production-funding-reservation-permit-v1.js";
 import {
-  isAdmittedProductionWorkflowRunnerV1,
-  PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1,
+  isAdmittedWorkflowRunner,
+  WORKFLOW_ADAPTER_RUNNER,
 } from "./production-runner-admission-v1.js";
 
-export { PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1 } from "./production-runner-admission-v1.js";
+export { WORKFLOW_ADAPTER_RUNNER } from "./production-runner-admission-v1.js";
 
-export const PRODUCTION_WORKFLOW_ADAPTER_REGISTRY_V1_SCHEMA_VERSION =
+export const WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION =
   "midgard-production-fraud-proof-workflow-adapters-v1" as const;
-export const PRODUCTION_WORKFLOW_APPLICATION_REGISTRY_V1_SCHEMA_VERSION =
+export const WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION =
   "midgard-production-fraud-proof-application-registry-v1" as const;
 /** Permit-free identity/configuration used only for startup readiness. */
-export type ProductionWorkflowAdapterReadinessInputV1 = {
+export type WorkflowAdapterReadinessInput = {
   readonly mode: "run" | "resume";
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
@@ -28,24 +28,21 @@ export type ProductionWorkflowAdapterReadinessInputV1 = {
   readonly runtimeConfigPath: string;
 };
 
-export type ProductionWorkflowAdapterRunnerInputV1 =
-  ProductionWorkflowAdapterReadinessInputV1 & {
-    /** Exact admitted classifier decision; forms part of the durable run key. */
-    readonly decisionDigest: string;
-    /** Live, revocable authority for this decision and rollback generation. */
-    readonly actuationPermit: ProductionWorkflowActuationPermitV1;
-    /** Durable, exact-input funding authority for this decision/generation. */
-    readonly fundingReservationPermit: ProductionWorkflowFundingReservationPermitV1;
-  };
-
-export type ProductionWorkflowAdapterRunnerV1 = {
-  readonly runnerVersion: typeof PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1;
-  readonly runOrResume: (
-    input: ProductionWorkflowAdapterRunnerInputV1,
-  ) => Promise<unknown>;
+export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
+  /** Exact admitted classifier decision; forms part of the durable run key. */
+  readonly decisionDigest: string;
+  /** Live, revocable authority for this decision and rollback generation. */
+  readonly actuationPermit: WorkflowActuationPermit;
+  /** Durable, exact-input funding authority for this decision/generation. */
+  readonly fundingReservationPermit: WorkflowFundingReservationPermit;
 };
 
-export type MissingProductionWorkflowAdapterReasonV1 =
+export type WorkflowAdapterRunner = {
+  readonly runnerVersion: typeof WORKFLOW_ADAPTER_RUNNER;
+  readonly runOrResume: (input: WorkflowAdapterRunnerInput) => Promise<unknown>;
+};
+
+export type MissingWorkflowAdapterReason =
   | "manual_step_chain_has_no_atomic_driver"
   | "one_shot_prover_has_no_pre_submit_journal_hook"
   | "prover_is_not_chain_state_resumable"
@@ -53,45 +50,45 @@ export type MissingProductionWorkflowAdapterReasonV1 =
   | "detector_or_scanner_only"
   | "constrained_adapter_is_not_launch_scope_complete";
 
-export type MissingProductionWorkflowAdapterRegistrationV1 = {
+export type MissingWorkflowAdapterRegistration = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly status: "missing";
-  readonly reason: MissingProductionWorkflowAdapterReasonV1;
+  readonly reason: MissingWorkflowAdapterReason;
   readonly existingSurface: readonly string[];
   readonly requiredClosure: string;
 };
 
-export type ReadyProductionWorkflowAdapterRegistrationV1 = {
+export type ReadyWorkflowAdapterRegistration = {
   readonly category: FraudProofCatalogueCategoryName;
   readonly status: "ready";
   readonly adapterVersion: string;
-  readonly runner: ProductionWorkflowAdapterRunnerV1;
+  readonly runner: WorkflowAdapterRunner;
   readonly existingSurface: readonly string[];
   readonly guarantees: readonly string[];
 };
 
-export type ProductionWorkflowAdapterRegistrationV1 =
-  | ReadyProductionWorkflowAdapterRegistrationV1
-  | MissingProductionWorkflowAdapterRegistrationV1;
+export type WorkflowAdapterRegistration =
+  | ReadyWorkflowAdapterRegistration
+  | MissingWorkflowAdapterRegistration;
 
-export type ProductionWorkflowApplicationRunnerInstallationV1 = Readonly<{
+export type WorkflowApplicationRunnerInstallation = Readonly<{
   readonly category: FraudProofCatalogueCategoryName;
   readonly deploymentFingerprint: string;
-  readonly runner: ProductionWorkflowAdapterRunnerV1;
+  readonly runner: WorkflowAdapterRunner;
 }>;
 
-export type ProductionWorkflowApplicationRegistryV1 = Readonly<{
-  readonly schemaVersion: typeof PRODUCTION_WORKFLOW_APPLICATION_REGISTRY_V1_SCHEMA_VERSION;
+export type WorkflowApplicationRegistry = Readonly<{
+  readonly schemaVersion: typeof WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION;
   readonly deploymentFingerprint: string;
   readonly installedCategories: readonly FraudProofCatalogueCategoryName[];
   /** Exact full-catalogue overlay; static rows remain unchanged. */
-  readonly registrations: readonly ProductionWorkflowAdapterRegistrationV1[];
+  readonly registrations: readonly WorkflowAdapterRegistration[];
 }>;
 
 const manual = (
   category: FraudProofCatalogueCategoryName,
   existingSurface: readonly string[],
-): ProductionWorkflowAdapterRegistrationV1 => ({
+): WorkflowAdapterRegistration => ({
   category,
   status: "missing",
   reason: "manual_step_chain_has_no_atomic_driver",
@@ -100,9 +97,9 @@ const manual = (
     "add a chain-state cursor plus build/local-evaluate, pre-submit-intent, submit, and authenticated reconcile hooks for every transaction",
 });
 
-const freezeRegistrationV1 = (
-  registration: ProductionWorkflowAdapterRegistrationV1,
-): ProductionWorkflowAdapterRegistrationV1 =>
+const freezeRegistration = (
+  registration: WorkflowAdapterRegistration,
+): WorkflowAdapterRegistration =>
   registration.status === "ready"
     ? Object.freeze({
         ...registration,
@@ -124,7 +121,7 @@ const freezeRegistrationV1 = (
  * chain-state resume. This list names the concrete gap for every family rather
  * than installing a permissive generic adapter.
  */
-const productionWorkflowAdapterRegistrationRowsV1 = [
+const workflowAdapterRegistrationRows = [
   {
     category: "doubleSpend",
     status: "missing",
@@ -733,13 +730,13 @@ const productionWorkflowAdapterRegistrationRowsV1 = [
     requiredClosure:
       "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
   },
-] as const satisfies readonly ProductionWorkflowAdapterRegistrationV1[];
+] as const satisfies readonly WorkflowAdapterRegistration[];
 
-export const PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1 = Object.freeze(
-  productionWorkflowAdapterRegistrationRowsV1.map(freezeRegistrationV1),
+export const WORKFLOW_ADAPTER_REGISTRATIONS = Object.freeze(
+  workflowAdapterRegistrationRows.map(freezeRegistration),
 );
 
-export const validateProductionWorkflowAdapterCoverageV1 = (
+export const validateWorkflowAdapterCoverage = (
   registrations: readonly {
     readonly category: unknown;
     readonly status?: unknown;
@@ -776,10 +773,9 @@ export const validateProductionWorkflowAdapterCoverageV1 = (
     }
     if (
       registration.status === "ready" &&
-      (registration.runner?.runnerVersion !==
-        PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1 ||
+      (registration.runner?.runnerVersion !== WORKFLOW_ADAPTER_RUNNER ||
         typeof registration.runner.runOrResume !== "function" ||
-        !isAdmittedProductionWorkflowRunnerV1({
+        !isAdmittedWorkflowRunner({
           category: expected!,
           runner: registration.runner,
         }))
@@ -791,13 +787,11 @@ export const validateProductionWorkflowAdapterCoverageV1 = (
   }
 };
 
-validateProductionWorkflowAdapterCoverageV1(
-  PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1,
-);
+validateWorkflowAdapterCoverage(WORKFLOW_ADAPTER_REGISTRATIONS);
 
-const admittedApplicationRegistriesV1 = new WeakSet<object>();
+const admittedApplicationRegistries = new WeakSet<object>();
 
-const assertCanonicalLaunchScopeV1 = (
+const assertCanonicalLaunchScope = (
   launchScope: readonly FraudProofCatalogueCategoryName[],
   label: string,
 ): void => {
@@ -825,15 +819,15 @@ const assertCanonicalLaunchScopeV1 = (
  * the identity; runner admission and exact category coverage are rechecked
  * here so metadata alone can never become ready.
  */
-export const installProductionWorkflowApplicationRegistryV1 = ({
+export const installWorkflowApplicationRegistry = ({
   deploymentFingerprint,
   requiredInstalledCategories,
   installations,
 }: {
   readonly deploymentFingerprint: string;
   readonly requiredInstalledCategories: readonly FraudProofCatalogueCategoryName[];
-  readonly installations: readonly ProductionWorkflowApplicationRunnerInstallationV1[];
-}): ProductionWorkflowApplicationRegistryV1 => {
+  readonly installations: readonly WorkflowApplicationRunnerInstallation[];
+}): WorkflowApplicationRegistry => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
@@ -842,7 +836,7 @@ export const installProductionWorkflowApplicationRegistryV1 = ({
       "production workflow application deployment fingerprint is not canonical",
     );
   }
-  assertCanonicalLaunchScopeV1(
+  assertCanonicalLaunchScope(
     requiredInstalledCategories,
     "production workflow application installation scope",
   );
@@ -858,7 +852,7 @@ export const installProductionWorkflowApplicationRegistryV1 = ({
   }
   const installationByCategory = new Map<
     FraudProofCatalogueCategoryName,
-    ProductionWorkflowApplicationRunnerInstallationV1
+    WorkflowApplicationRunnerInstallation
   >();
   for (const [index, installation] of installations.entries()) {
     const expected = requiredInstalledCategories[index];
@@ -878,10 +872,9 @@ export const installProductionWorkflowApplicationRegistryV1 = ({
       );
     }
     if (
-      installation.runner.runnerVersion !==
-        PRODUCTION_WORKFLOW_ADAPTER_RUNNER_V1 ||
+      installation.runner.runnerVersion !== WORKFLOW_ADAPTER_RUNNER ||
       typeof installation.runner.runOrResume !== "function" ||
-      !isAdmittedProductionWorkflowRunnerV1({
+      !isAdmittedWorkflowRunner({
         category: installation.category,
         runner: installation.runner,
       })
@@ -893,14 +886,13 @@ export const installProductionWorkflowApplicationRegistryV1 = ({
     installationByCategory.set(installation.category, installation);
   }
   const registrations = Object.freeze(
-    PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1.map((registration) => {
+    WORKFLOW_ADAPTER_REGISTRATIONS.map((registration) => {
       const installation = installationByCategory.get(registration.category);
       if (installation === undefined) return registration;
-      return freezeRegistrationV1({
+      return freezeRegistration({
         category: registration.category,
         status: "ready",
-        adapterVersion:
-          PRODUCTION_WORKFLOW_APPLICATION_REGISTRY_V1_SCHEMA_VERSION,
+        adapterVersion: WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION,
         runner: installation.runner,
         existingSurface: registration.existingSurface,
         guarantees: [
@@ -911,65 +903,59 @@ export const installProductionWorkflowApplicationRegistryV1 = ({
       });
     }),
   );
-  validateProductionWorkflowAdapterCoverageV1(registrations);
+  validateWorkflowAdapterCoverage(registrations);
   const registry = Object.freeze({
-    schemaVersion: PRODUCTION_WORKFLOW_APPLICATION_REGISTRY_V1_SCHEMA_VERSION,
+    schemaVersion: WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION,
     deploymentFingerprint,
     installedCategories: Object.freeze([...requiredInstalledCategories]),
     registrations,
   });
-  admittedApplicationRegistriesV1.add(registry);
+  admittedApplicationRegistries.add(registry);
   return registry;
 };
 
-export const assertProductionWorkflowApplicationRegistryV1 = (
-  registry: ProductionWorkflowApplicationRegistryV1,
+export const assertWorkflowApplicationRegistry = (
+  registry: WorkflowApplicationRegistry,
 ): void => {
   if (
-    !admittedApplicationRegistriesV1.has(registry) ||
-    registry.schemaVersion !==
-      PRODUCTION_WORKFLOW_APPLICATION_REGISTRY_V1_SCHEMA_VERSION
+    !admittedApplicationRegistries.has(registry) ||
+    registry.schemaVersion !== WORKFLOW_APPLICATION_REGISTRY_SCHEMA_VERSION
   ) {
     throw new Error(
       "production workflow application registry was not installed through the authenticated immutable boundary",
     );
   }
-  validateProductionWorkflowAdapterCoverageV1(registry.registrations);
+  validateWorkflowAdapterCoverage(registry.registrations);
 };
 
-const resolveProductionWorkflowRegistrationsV1 = (
-  applicationRegistry?: ProductionWorkflowApplicationRegistryV1,
-): readonly ProductionWorkflowAdapterRegistrationV1[] => {
+const resolveWorkflowRegistrations = (
+  applicationRegistry?: WorkflowApplicationRegistry,
+): readonly WorkflowAdapterRegistration[] => {
   if (applicationRegistry === undefined) {
-    return PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1;
+    return WORKFLOW_ADAPTER_REGISTRATIONS;
   }
-  assertProductionWorkflowApplicationRegistryV1(applicationRegistry);
+  assertWorkflowApplicationRegistry(applicationRegistry);
   return applicationRegistry.registrations;
 };
 
-export const missingProductionWorkflowAdaptersV1 = (
+export const missingWorkflowAdapters = (
   launchScope: readonly FraudProofCatalogueCategoryName[] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  applicationRegistry?: ProductionWorkflowApplicationRegistryV1,
-): readonly MissingProductionWorkflowAdapterRegistrationV1[] => {
-  const registrations =
-    resolveProductionWorkflowRegistrationsV1(applicationRegistry);
-  validateProductionWorkflowAdapterCoverageV1(registrations);
-  assertCanonicalLaunchScopeV1(launchScope, "production workflow launch scope");
+  applicationRegistry?: WorkflowApplicationRegistry,
+): readonly MissingWorkflowAdapterRegistration[] => {
+  const registrations = resolveWorkflowRegistrations(applicationRegistry);
+  validateWorkflowAdapterCoverage(registrations);
+  assertCanonicalLaunchScope(launchScope, "production workflow launch scope");
   const scope = new Set(launchScope);
   return registrations.filter(
-    (
-      registration,
-    ): registration is MissingProductionWorkflowAdapterRegistrationV1 =>
+    (registration): registration is MissingWorkflowAdapterRegistration =>
       registration.status === "missing" && scope.has(registration.category),
   );
 };
 
-export class MissingProductionWorkflowAdaptersErrorV1 extends Error {
-  readonly missing: readonly MissingProductionWorkflowAdapterRegistrationV1[];
+export class MissingWorkflowAdaptersError extends Error {
+  readonly missing: readonly MissingWorkflowAdapterRegistration[];
 
-  constructor(
-    missing: readonly MissingProductionWorkflowAdapterRegistrationV1[],
-  ) {
+  constructor(missing: readonly MissingWorkflowAdapterRegistration[]) {
     super(
       `production fraud-proof workflow adapters are unavailable: ${missing
         .map((entry) => `${entry.category}(${entry.reason})`)
@@ -981,31 +967,27 @@ export class MissingProductionWorkflowAdaptersErrorV1 extends Error {
 }
 
 /** Refuses production startup until the requested launch scope is concrete. */
-export const assertProductionWorkflowAdaptersReadyV1 = (
+export const assertWorkflowAdaptersReady = (
   launchScope: readonly FraudProofCatalogueCategoryName[] = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  applicationRegistry?: ProductionWorkflowApplicationRegistryV1,
+  applicationRegistry?: WorkflowApplicationRegistry,
 ): void => {
-  const missing = missingProductionWorkflowAdaptersV1(
-    launchScope,
-    applicationRegistry,
-  );
+  const missing = missingWorkflowAdapters(launchScope, applicationRegistry);
   if (missing.length > 0) {
-    throw new MissingProductionWorkflowAdaptersErrorV1(missing);
+    throw new MissingWorkflowAdaptersError(missing);
   }
 };
 
-export const productionWorkflowAdapterRunnerV1 = (
+export const workflowAdapterRunner = (
   category: FraudProofCatalogueCategoryName,
-  applicationRegistry?: ProductionWorkflowApplicationRegistryV1,
-): ProductionWorkflowAdapterRunnerV1 => {
-  const registrations =
-    resolveProductionWorkflowRegistrationsV1(applicationRegistry);
-  validateProductionWorkflowAdapterCoverageV1(registrations);
+  applicationRegistry?: WorkflowApplicationRegistry,
+): WorkflowAdapterRunner => {
+  const registrations = resolveWorkflowRegistrations(applicationRegistry);
+  validateWorkflowAdapterCoverage(registrations);
   const registration = registrations.find(
     (candidate) => candidate.category === category,
   );
   if (registration === undefined || registration.status !== "ready") {
-    assertProductionWorkflowAdaptersReadyV1([category], applicationRegistry);
+    assertWorkflowAdaptersReady([category], applicationRegistry);
     throw new Error(
       `production workflow registry invariant: ${category} has no ready registration`,
     );

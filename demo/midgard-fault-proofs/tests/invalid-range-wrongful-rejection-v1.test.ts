@@ -1,37 +1,37 @@
 import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  computeMidgardNativeTxIdV1,
-  deriveMidgardNativeTxProofSourceV1,
+  adjudicateMidgardNativeTxFullValidity,
+  computeMidgardNativeTxId,
+  deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
-  forcedVerdictSubjectV1,
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
-  invalidRangeEvidenceClosesV1,
-  type InvalidRangeEvidenceV1,
-  invalidRangeFaultForReasonV1,
+  type InvalidRangeEvidence,
+  invalidRangeEvidenceCloses,
+  invalidRangeFaultForReason,
 } from "../src/invalid-range/family-v1.js";
-import type { InvalidRangeForcedProductionInputV1 } from "../src/invalid-range/production-v1.js";
-import { detectInvalidRangeForcedReplayV1 } from "../src/invalid-range/replay-v1.js";
-import { INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1 } from "../src/workflow/complete-replay-v1.js";
+import type { InvalidRangeForcedInput } from "../src/invalid-range/production-v1.js";
+import { detectInvalidRangeForcedReplay } from "../src/invalid-range/replay-v1.js";
+import { INVALID_RANGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay-v1.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const tx = "11".repeat(32);
 const subject = (
   reason: "ValidityIntervalMalformed" | "ValidityIntervalExcludesBlockSlot",
 ) =>
-  forcedVerdictSubjectV1({
+  forcedVerdictSubject({
     transactionId: tx,
     sourceKey: { transactionId: "22".repeat(32), outputIndex: 0n },
     rejectionReason: reason,
   });
 const evidence = (
   reason: Parameters<typeof subject>[0],
-  normalizedRange: InvalidRangeEvidenceV1["normalizedRange"],
-): InvalidRangeEvidenceV1 => ({
+  normalizedRange: InvalidRangeEvidence["normalizedRange"],
+): InvalidRangeEvidence => ({
   subject: subject(reason),
   blockSlot: 10n,
   normalizedRange,
@@ -39,7 +39,7 @@ const evidence = (
 describe("invalidRange wrongful rejection V1", () => {
   it("refuses malformed conviction when the interval is well formed", () =>
     expect(
-      invalidRangeEvidenceClosesV1(
+      invalidRangeEvidenceCloses(
         evidence("ValidityIntervalMalformed", {
           ClosedRange: { lower: 10n, upper: 10n },
         }),
@@ -47,20 +47,20 @@ describe("invalidRange wrongful rejection V1", () => {
     ).toBe(true));
   it("keeps malformed rejection honest for InvalidRange", () =>
     expect(
-      invalidRangeEvidenceClosesV1(
+      invalidRangeEvidenceCloses(
         evidence("ValidityIntervalMalformed", "InvalidRange"),
       ),
     ).toBe(false));
   it("treats both exact boundaries as included", () => {
     expect(
-      invalidRangeFaultForReasonV1(
+      invalidRangeFaultForReason(
         "ValidityIntervalExcludesBlockSlot",
         { ClosedRange: { lower: 10n, upper: 12n } },
         10n,
       ),
     ).toBe(false);
     expect(
-      invalidRangeFaultForReasonV1(
+      invalidRangeFaultForReason(
         "ValidityIntervalExcludesBlockSlot",
         { ClosedRange: { lower: 8n, upper: 10n } },
         10n,
@@ -69,27 +69,25 @@ describe("invalidRange wrongful rejection V1", () => {
   });
   it("preserves accepted malformed and excluded behavior", () => {
     expect(
-      invalidRangeEvidenceClosesV1({
+      invalidRangeEvidenceCloses({
         ...evidence("ValidityIntervalMalformed", "InvalidRange"),
-        subject: acceptedVerdictSubjectV1(tx),
+        subject: acceptedVerdictSubject(tx),
       }),
     ).toBe(true);
     expect(
-      invalidRangeEvidenceClosesV1({
+      invalidRangeEvidenceCloses({
         ...evidence("ValidityIntervalExcludesBlockSlot", {
           ClosedRange: { lower: 11n, upper: 12n },
         }),
-        subject: acceptedVerdictSubjectV1(tx),
+        subject: acceptedVerdictSubject(tx),
       }),
     ).toBe(true);
   });
   it("keeps production authority callback-free", () =>
-    expectTypeOf<
-      keyof InvalidRangeForcedProductionInputV1
-    >().toEqualTypeOf<"block">());
+    expectTypeOf<keyof InvalidRangeForcedInput>().toEqualTypeOf<"block">());
 
   it("discovers authenticated wrongful rejections through complete replay", async () => {
-    const invalid = adjudicateMidgardNativeTxFullV1Validity(
+    const invalid = adjudicateMidgardNativeTxFullValidity(
       makeNativeTx({
         spendInputCbors: [],
         fee: 0n,
@@ -98,8 +96,8 @@ describe("invalidRange wrongful rejection V1", () => {
       }),
       "TxIsInvalid",
     );
-    const transactionId = computeMidgardNativeTxIdV1(invalid).toString("hex");
-    const source = deriveMidgardNativeTxProofSourceV1(invalid);
+    const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
+    const source = deriveMidgardNativeTxProofSource(invalid);
     const block = {
       headerHash: "33".repeat(32),
       payloadEnvelopeSha256: "44".repeat(32),
@@ -130,9 +128,9 @@ describe("invalidRange wrongful rejection V1", () => {
       },
     } as never;
 
-    expect(detectInvalidRangeForcedReplayV1(block)).toHaveLength(1);
+    expect(detectInvalidRangeForcedReplay(block)).toHaveLength(1);
     await expect(
-      INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1.replay(block),
+      INVALID_RANGE_COMPLETE_CANONICAL_REPLAY.replay(block),
     ).resolves.toMatchObject({
       detections: [
         {

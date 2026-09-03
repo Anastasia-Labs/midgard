@@ -28,77 +28,77 @@ import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  evaluateWatcherSettlementIndexerV1 as evaluateWatcherSettlementIndexerV1Raw,
-  makeWatcherSettlementIndexerPolicyV1,
-  makeWatcherSettlementObservationV1,
-  makeWatcherSettlementResourceFromProtocolUtxoV1,
-  makeWatcherSettlementSnapshotV1,
-  makeWatcherSettlementSubjectV1,
-  parseWatcherSettlementIndexerResultV1 as parseWatcherSettlementIndexerResultV1Raw,
-  parseWatcherSettlementIndexerStateV1 as parseWatcherSettlementIndexerStateV1Raw,
-  WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS,
-  WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-  type WatcherSettlementIndexerPolicyV1,
-  type WatcherSettlementIndexerStateV1,
-  type WatcherSettlementObservationV1,
-  type WatcherSettlementPublicContextV1,
-  type WatcherSettlementSnapshotV1,
-  type WatcherSettlementSubjectV1,
-  type WatcherSettlementTransitionKindV1,
-  type WatcherSettlementTransitionV1,
+  evaluateWatcherSettlementIndexer as evaluateWatcherSettlementIndexerRaw,
+  makeWatcherSettlementIndexerPolicy,
+  makeWatcherSettlementObservation,
+  makeWatcherSettlementResourceFromProtocolUtxo,
+  makeWatcherSettlementSnapshot,
+  makeWatcherSettlementSubject,
+  parseWatcherSettlementIndexerResult as parseWatcherSettlementIndexerResultRaw,
+  parseWatcherSettlementIndexerState as parseWatcherSettlementIndexerStateRaw,
+  WATCHER_SETTLEMENT_INDEXER_BOUNDS,
+  WATCHER_SETTLEMENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
+  type WatcherSettlementIndexerPolicy,
+  type WatcherSettlementIndexerState,
+  type WatcherSettlementObservation,
+  type WatcherSettlementPublicContext,
+  type WatcherSettlementSnapshot,
+  type WatcherSettlementSubject,
+  type WatcherSettlementTransition,
+  type WatcherSettlementTransitionKind,
 } from "../../src/indexers/settlement-indexer.js";
 import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
+  evaluateWatcherFinality,
+  makeWatcherFinalityPolicy,
 } from "../../src/l1/finality-engine.js";
 import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherNormalizedL1BlockV1,
+  closeWatcherL1TransportAttestationContext,
+  encodeWatcherNormalizedL1Block,
+  establishWatcherExternalProviderTransport,
+  makeWatcherL1PublicBytes,
+  normalizeWatcherL1Block as normalizeWatcherL1BlockRaw,
+  WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
+  WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1Provider,
+  type WatcherL1TransportAttestationContext,
+  watcherL1TransportAttestationDetails,
+  type WatcherNormalizedL1Block,
 } from "../../src/l1/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistency as evaluateWatcherMultiProviderConsistencyRaw } from "../../src/l1/multi-provider-consistency.js";
 import {
-  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
-  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
-  makeWatcherRollbackBootstrapStateV1,
-  type WatcherPostFinalityRecoveryInputV1,
+  evaluateWatcherPostFinalityRecovery as evaluateWatcherPostFinalityRecoveryRaw,
+  evaluateWatcherRollback as evaluateWatcherRollbackRaw,
+  makeWatcherRollbackBootstrapState,
+  type WatcherPostFinalityRecoveryInput,
 } from "../../src/l1/rollback-engine.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
 import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
+  encodeWatcherDurableStore,
+  journalWatcherProtocolUtxoTransition,
+  makeWatcherDurablePayload,
+  makeWatcherDurableStore,
+  type WatcherDurableStore,
   watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  type WatcherProtocolUtxoV1,
+  type WatcherProtocolUtxo,
 } from "../../src/storage/durable-store.js";
 import {
   h28,
   h32,
   makeDeploymentAuthority,
-  WATCHER_AUTHORITY_RELEASE_DIGEST_V1 as RELEASE_DIGEST,
-  WATCHER_AUTHORITY_RULE_BUNDLE_COMMITMENT_V1 as RULE_BUNDLE_COMMITMENT,
+  WATCHER_AUTHORITY_RELEASE_DIGEST as RELEASE_DIGEST,
+  WATCHER_AUTHORITY_RULE_BUNDLE_COMMITMENT as RULE_BUNDLE_COMMITMENT,
 } from "../support/deployment-authority-fixture.js";
-import { makeWatcherTlsTransportFixtureV1 } from "../support/tls-transport-fixture.js";
+import { makeWatcherTlsTransportFixture } from "../support/tls-transport-fixture.js";
 
 type Mutable = Record<string, any>;
-const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const transportContexts: WatcherL1TransportAttestationContext[] = [];
 const tlsServers: Server[] = [];
 const tlsIdentityByProviderId = new Map<string, string>();
 const transportEndpointByProviderId = new Map<string, string>();
 let transportFixtureDirectory = "";
 
 const makeTlsTransportFixture = async (providerId: string) =>
-  await makeWatcherTlsTransportFixtureV1(
+  await makeWatcherTlsTransportFixture(
     transportFixtureDirectory,
     tlsServers,
     providerId,
@@ -106,9 +106,9 @@ const makeTlsTransportFixture = async (providerId: string) =>
 
 const transportFor = (
   authenticatedProvider: unknown,
-): WatcherL1TransportAttestationContextV1 => {
+): WatcherL1TransportAttestationContext => {
   const matching = transportContexts.filter((context) => {
-    const details = watcherL1TransportAttestationDetailsV1(context);
+    const details = watcherL1TransportAttestationDetails(context);
     return (
       details !== null &&
       isDeepStrictEqual(details.provider, authenticatedProvider)
@@ -120,36 +120,36 @@ const transportFor = (
   return matching[0]!;
 };
 
-const normalizeWatcherL1BlockV1 = (
+const normalizeWatcherL1Block = (
   authenticatedProvider: unknown,
   observation: unknown,
-  session?: Parameters<typeof normalizeWatcherL1BlockV1Raw>[2],
+  session?: Parameters<typeof normalizeWatcherL1BlockRaw>[2],
 ) =>
-  normalizeWatcherL1BlockV1Raw(
+  normalizeWatcherL1BlockRaw(
     transportFor(authenticatedProvider),
     observation,
     session,
   );
 
-const evaluateWatcherMultiProviderConsistencyV1 = (
+const evaluateWatcherMultiProviderConsistency = (
   configuredSource: unknown,
   observations: unknown,
 ) =>
-  evaluateWatcherMultiProviderConsistencyV1Raw(
+  evaluateWatcherMultiProviderConsistencyRaw(
     configuredSource,
     observations,
     transportContexts,
   );
 
-const parseWatcherSettlementIndexerStateV1 = (
+const parseWatcherSettlementIndexerState = (
   value: unknown,
   policyValue: unknown,
-  restartContexts: readonly WatcherSettlementPublicContextV1["restartContexts"][number][] = [],
+  restartContexts: readonly WatcherSettlementPublicContext["restartContexts"][number][] = [],
   restartRollbackContexts: Parameters<
-    typeof parseWatcherSettlementIndexerStateV1Raw
+    typeof parseWatcherSettlementIndexerStateRaw
   >[4] = [],
 ) =>
-  parseWatcherSettlementIndexerStateV1Raw(
+  parseWatcherSettlementIndexerStateRaw(
     value,
     policyValue,
     transportContexts,
@@ -157,13 +157,13 @@ const parseWatcherSettlementIndexerStateV1 = (
     restartRollbackContexts,
   );
 
-const evaluateWatcherSettlementIndexerV1 = (
+const evaluateWatcherSettlementIndexer = (
   policyValue: unknown,
   previousStateValue: unknown,
   observationValue: unknown,
   publicContextValue: unknown,
 ) =>
-  evaluateWatcherSettlementIndexerV1Raw(
+  evaluateWatcherSettlementIndexerRaw(
     policyValue,
     previousStateValue,
     observationValue,
@@ -171,7 +171,7 @@ const evaluateWatcherSettlementIndexerV1 = (
     transportContexts,
   );
 
-const evaluateWatcherRollbackV1 = (
+const evaluateWatcherRollback = (
   policyInput: unknown,
   storeInput: unknown,
   previousFinalityStateInput: unknown,
@@ -181,7 +181,7 @@ const evaluateWatcherRollbackV1 = (
   rollbackBootstrapStateInput: unknown,
   trustedCheckpointAuthorityInput?: unknown,
 ) =>
-  evaluateWatcherRollbackV1Raw(
+  evaluateWatcherRollbackRaw(
     policyInput,
     storeInput,
     previousFinalityStateInput,
@@ -193,22 +193,22 @@ const evaluateWatcherRollbackV1 = (
     transportContexts,
   );
 
-const evaluateWatcherPostFinalityRecoveryV1 = (
-  input: WatcherPostFinalityRecoveryInputV1,
+const evaluateWatcherPostFinalityRecovery = (
+  input: WatcherPostFinalityRecoveryInput,
 ) =>
-  evaluateWatcherPostFinalityRecoveryV1Raw({
+  evaluateWatcherPostFinalityRecoveryRaw({
     ...input,
     transportAttestations: transportContexts,
   });
 
-const parseWatcherSettlementIndexerResultV1 = (
+const parseWatcherSettlementIndexerResult = (
   value: unknown,
   context: Omit<
-    Parameters<typeof parseWatcherSettlementIndexerResultV1Raw>[1],
+    Parameters<typeof parseWatcherSettlementIndexerResultRaw>[1],
     "transportAttestations"
   >,
 ) =>
-  parseWatcherSettlementIndexerResultV1Raw(value, {
+  parseWatcherSettlementIndexerResultRaw(value, {
     ...context,
     transportAttestations: transportContexts,
   });
@@ -263,14 +263,14 @@ const hubReferenceOutputHex = CML.TransactionOutput.new(
   null,
   null,
 ).to_canonical_cbor_hex();
-const hubReferenceUtxo: WatcherProtocolUtxoV1 = {
+const hubReferenceUtxo: WatcherProtocolUtxo = {
   outRef: HUB_REFERENCE_OUT_REF,
   role: "hub_oracle",
   chainPointId: h32("00"),
-  output: makeWatcherDurablePayloadV1(hubReferenceOutputHex),
+  output: makeWatcherDurablePayload(hubReferenceOutputHex),
 };
 
-const bootstrapStore = makeWatcherDurableStoreV1({
+const bootstrapStore = makeWatcherDurableStore({
   deploymentMarker: deploymentAuthorityFixture.marker,
   revision: "0",
   records: {
@@ -298,7 +298,7 @@ const bootstrapStore = makeWatcherDurableStoreV1({
   },
 });
 
-const policy = makeWatcherSettlementIndexerPolicyV1({
+const policy = makeWatcherSettlementIndexerPolicy({
   network: "Preprod",
   releaseEvidenceDigest: RELEASE_DIGEST,
   deploymentMarker: deploymentAuthorityFixture.marker,
@@ -319,17 +319,17 @@ const policy = makeWatcherSettlementIndexerPolicyV1({
   payoutAddressHex: enterpriseScriptAddress(payoutSpendScriptHash),
   withdrawalAddressHex: enterpriseScriptAddress(withdrawalSpendScriptHash),
   bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-    encodeWatcherDurableStoreV1(bootstrapStore),
+    encodeWatcherDurableStore(bootstrapStore),
   ),
   deploymentTrustRootId: deploymentAuthorityFixture.result.trustRootId,
   requiredFinalityDepth: "2",
   maximumHistoryEntries: "32",
   maximumRollbackEntries: "16",
   maximumRetryAttempts: "2",
-}) as WatcherSettlementIndexerPolicyV1;
+}) as WatcherSettlementIndexerPolicy;
 
 const makeExternalFinalityPolicy = () =>
-  makeWatcherFinalityPolicyV1(
+  makeWatcherFinalityPolicy(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
       mode: "development",
@@ -408,7 +408,7 @@ const makeExternalFinalityPolicy = () =>
     },
   )!;
 
-let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicy>>;
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -594,12 +594,12 @@ const settlementRedeemerTag = (purpose: string): CML.RedeemerTag => {
 
 const settlementSubject = (
   outRef: string | null,
-  status: WatcherSettlementSubjectV1["status"],
+  status: WatcherSettlementSubject["status"],
   attempt = "0",
   failureCode: string | null = null,
   terminalTransactionHash: string | null = null,
-): WatcherSettlementSubjectV1 =>
-  makeWatcherSettlementSubjectV1({
+): WatcherSettlementSubject =>
+  makeWatcherSettlementSubject({
     subjectId: settlementAsset,
     subjectKind: "settlement",
     status,
@@ -612,11 +612,11 @@ const settlementSubject = (
     failureCode,
   })!;
 
-const emptySnapshot = (): WatcherSettlementSnapshotV1 =>
-  makeWatcherSettlementSnapshotV1({ resources: [], subjects: [] })!;
+const emptySnapshot = (): WatcherSettlementSnapshot =>
+  makeWatcherSettlementSnapshot({ resources: [], subjects: [] })!;
 
 const provider = {
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   network: "Preprod",
   providerId: "provider-a",
   source: {
@@ -649,8 +649,8 @@ const externalSource = {
 const rollbackProvider = (
   providerId: string,
   identityByte: string,
-): WatcherAuthenticatedL1ProviderV1 => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+): WatcherAuthenticatedL1Provider => ({
+  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION,
   network: "Preprod",
   providerId,
   source: {
@@ -689,7 +689,7 @@ beforeAll(async () => {
         fixture.identitySha256;
     }
     transportContexts.push(
-      await establishWatcherExternalProviderTransportV1({
+      await establishWatcherExternalProviderTransport({
         network: "Preprod",
         providerId,
         operatorIdentitySha256,
@@ -705,7 +705,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const context of transportContexts) {
-    closeWatcherL1TransportAttestationContextV1(context);
+    closeWatcherL1TransportAttestationContext(context);
   }
   for (const server of tlsServers) server.close();
   await rm(transportFixtureDirectory, { recursive: true, force: true });
@@ -720,34 +720,31 @@ type RollbackPoint = Readonly<{
 }>;
 
 const rawBlock = (
-  authenticatedProvider: WatcherAuthenticatedL1ProviderV1,
+  authenticatedProvider: WatcherAuthenticatedL1Provider,
   point: RollbackPoint,
   transaction: Mutable,
 ): Mutable => ({
-  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
   network: "Preprod",
   providerId: authenticatedProvider.providerId,
   chainPoint: point,
   transactions: [transaction],
 });
 
-const persistedObservation = (value: WatcherNormalizedL1BlockV1) => ({
+const persistedObservation = (value: WatcherNormalizedL1Block) => ({
   observationId: value.observationDigest,
   providerId: value.provider.providerId,
   chainPointId: value.chainPoint.chainPointId,
-  payload: makeWatcherDurablePayloadV1(
-    encodeWatcherNormalizedL1BlockV1(value).toString("hex"),
+  payload: makeWatcherDurablePayload(
+    encodeWatcherNormalizedL1Block(value).toString("hex"),
   ),
 });
 
 const persistedChainPoints = (
-  values: readonly WatcherNormalizedL1BlockV1[],
+  values: readonly WatcherNormalizedL1Block[],
   preferredProviderId = "provider-a",
 ) => {
-  const points = new Map<
-    string,
-    WatcherDurableStoreV1["chainPoints"][number]
-  >();
+  const points = new Map<string, WatcherDurableStore["chainPoints"][number]>();
   for (const value of values) {
     if (
       !points.has(value.chainPoint.chainPointId) ||
@@ -772,7 +769,7 @@ const persistedChainPoints = (
  * the newest point has to be selected by (blockNo, slot) the same way
  * `compareChainPointOrder` does inside the durable store.
  */
-const latestChainPoint = (store: WatcherDurableStoreV1) =>
+const latestChainPoint = (store: WatcherDurableStore) =>
   store.chainPoints.reduce((latest, candidate) =>
     BigInt(candidate.blockNo) > BigInt(latest.blockNo) ||
     (BigInt(candidate.blockNo) === BigInt(latest.blockNo) &&
@@ -784,16 +781,16 @@ const latestChainPoint = (store: WatcherDurableStoreV1) =>
 let serial = 0;
 
 type Bundle = Readonly<{
-  observation: WatcherSettlementObservationV1;
-  context: WatcherSettlementPublicContextV1;
-  restartBinding: WatcherSettlementPublicContextV1["restartContexts"][number];
-  store: ReturnType<typeof makeWatcherDurableStoreV1>;
-  finalityState: ReturnType<typeof evaluateWatcherFinalityV1>["state"];
-  finalityResult: ReturnType<typeof evaluateWatcherFinalityV1>;
+  observation: WatcherSettlementObservation;
+  context: WatcherSettlementPublicContext;
+  restartBinding: WatcherSettlementPublicContext["restartContexts"][number];
+  store: ReturnType<typeof makeWatcherDurableStore>;
+  finalityState: ReturnType<typeof evaluateWatcherFinality>["state"];
+  finalityResult: ReturnType<typeof evaluateWatcherFinality>;
 }>;
 
 type SettlementFinalityLineage = NonNullable<
-  WatcherSettlementPublicContextV1["finalityAuthority"]
+  WatcherSettlementPublicContext["finalityAuthority"]
 >["lineage"];
 
 const settlementFinalityLineageByStateDigest = new Map<
@@ -802,10 +799,10 @@ const settlementFinalityLineageByStateDigest = new Map<
 >();
 
 const bundle = (input: {
-  policyOverride?: WatcherSettlementIndexerPolicyV1;
-  kind: WatcherSettlementTransitionKindV1;
-  previousState: WatcherSettlementIndexerStateV1 | null;
-  snapshot: WatcherSettlementSnapshotV1;
+  policyOverride?: WatcherSettlementIndexerPolicy;
+  kind: WatcherSettlementTransitionKind;
+  previousState: WatcherSettlementIndexerState | null;
+  snapshot: WatcherSettlementSnapshot;
   inputs?: readonly string[];
   outputHexes?: readonly string[];
   redeemers?: readonly {
@@ -818,17 +815,17 @@ const bundle = (input: {
     assetName: string;
     quantity: bigint;
   }[];
-  transition?: Partial<WatcherSettlementTransitionV1>;
-  restartBindings?: readonly WatcherSettlementPublicContextV1["restartContexts"][number][];
-  restartRollbackBindings?: readonly WatcherSettlementPublicContextV1["restartRollbackContexts"][number][];
-  protocolUtxos?: readonly WatcherProtocolUtxoV1[];
-  authenticatedProvider?: WatcherAuthenticatedL1ProviderV1;
+  transition?: Partial<WatcherSettlementTransition>;
+  restartBindings?: readonly WatcherSettlementPublicContext["restartContexts"][number][];
+  restartRollbackBindings?: readonly WatcherSettlementPublicContext["restartRollbackContexts"][number][];
+  protocolUtxos?: readonly WatcherProtocolUtxo[];
+  authenticatedProvider?: WatcherAuthenticatedL1Provider;
   l1Observation?: Mutable;
-  sourceDurableStore?: WatcherDurableStoreV1;
-  durableStore?: WatcherDurableStoreV1;
+  sourceDurableStore?: WatcherDurableStore;
+  durableStore?: WatcherDurableStore;
   journalSpentAtChainPointId?: string;
   previousFinalityState?: unknown;
-  rollbackAuthority?: WatcherSettlementPublicContextV1["rollbackAuthority"];
+  rollbackAuthority?: WatcherSettlementPublicContext["rollbackAuthority"];
   predecessorStateDigest?: string;
   chainPointOffset?: bigint;
   parentBlockHash?: string | null;
@@ -862,7 +859,7 @@ const bundle = (input: {
     return {
       outRef: `${transactionHash}#${outputIndex.toString()}`,
       outputIndex: outputIndex.toString(),
-      output: makeWatcherL1PublicBytesV1(canonicalOutputHex),
+      output: makeWatcherL1PublicBytes(canonicalOutputHex),
       datum:
         datumHex === undefined
           ? null
@@ -870,14 +867,14 @@ const bundle = (input: {
               datumHash: computeHash32(Buffer.from(datumHex, "hex")).toString(
                 "hex",
               ),
-              bytes: makeWatcherL1PublicBytesV1(datumHex),
+              bytes: makeWatcherL1PublicBytes(datumHex),
             },
       referenceScript: null,
     };
   });
   const authenticatedProvider = input.authenticatedProvider ?? provider;
   const previousStore = input.restartBindings?.at(-1)?.durableStore as
-    | WatcherDurableStoreV1
+    | WatcherDurableStore
     | undefined;
   const sourceStore =
     input.sourceDurableStore ?? previousStore ?? bootstrapStore;
@@ -895,7 +892,7 @@ const bundle = (input: {
   const canonicalRedeemers = (input.redeemers ?? []).map((redeemer) => ({
     purpose: redeemer.purpose,
     index: redeemer.index,
-    bytes: makeWatcherL1PublicBytesV1(
+    bytes: makeWatcherL1PublicBytes(
       CML.PlutusData.from_cbor_hex(redeemer.cborHex).to_canonical_cbor_hex(),
     ),
   }));
@@ -923,7 +920,7 @@ const bundle = (input: {
   const l1Observation: Mutable =
     input.l1Observation ??
     ({
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
       network: "Preprod",
       providerId: authenticatedProvider.providerId,
       chainPoint: {
@@ -944,11 +941,11 @@ const bundle = (input: {
             {
               txHash: transactionHash,
               transactionIndex: "0",
-              fullTransaction: makeWatcherL1PublicBytesV1(
+              fullTransaction: makeWatcherL1PublicBytes(
                 fullTransaction.to_canonical_cbor_hex(),
               ),
-              body: makeWatcherL1PublicBytesV1(bodyHex),
-              witnessSet: makeWatcherL1PublicBytesV1(
+              body: makeWatcherL1PublicBytes(bodyHex),
+              witnessSet: makeWatcherL1PublicBytes(
                 witnessSet.to_canonical_cbor_hex(),
               ),
               utxos: input.transactionIsValid === false ? [] : utxos,
@@ -959,7 +956,7 @@ const bundle = (input: {
           ]
         : [],
     } satisfies Mutable);
-  const normalized = normalizeWatcherL1BlockV1(
+  const normalized = normalizeWatcherL1Block(
     authenticatedProvider,
     l1Observation,
   );
@@ -980,8 +977,8 @@ const bundle = (input: {
     observationId: normalized.observationDigest,
     providerId: normalized.provider.providerId,
     chainPointId: normalized.chainPoint.chainPointId,
-    payload: makeWatcherDurablePayloadV1(
-      encodeWatcherNormalizedL1BlockV1(normalized).toString("hex"),
+    payload: makeWatcherDurablePayload(
+      encodeWatcherNormalizedL1Block(normalized).toString("hex"),
     ),
   };
   const chainPointRecord = {
@@ -1008,7 +1005,7 @@ const bundle = (input: {
       ? []
       : [chainPointRecord]),
   ];
-  const protocolJournal = journalWatcherProtocolUtxoTransitionV1({
+  const protocolJournal = journalWatcherProtocolUtxoTransition({
     sourceStore,
     nextChainPoints,
     nextProtocolUtxos: protocolUtxos,
@@ -1017,7 +1014,7 @@ const bundle = (input: {
   });
   const store =
     input.durableStore ??
-    makeWatcherDurableStoreV1({
+    makeWatcherDurableStore({
       deploymentMarker: activePolicy.deploymentMarker,
       revision: (BigInt(sourceStore.revision) + 1n).toString(),
       records: {
@@ -1036,7 +1033,7 @@ const bundle = (input: {
         correctionResults: sourceStore.correctionResults,
       },
     });
-  const transition: WatcherSettlementTransitionV1 = {
+  const transition: WatcherSettlementTransition = {
     kind: input.kind,
     subjectId: null,
     relatedSubjectId: null,
@@ -1048,7 +1045,7 @@ const bundle = (input: {
     retryAttempt: null,
     ...input.transition,
   };
-  const observation = makeWatcherSettlementObservationV1({
+  const observation = makeWatcherSettlementObservation({
     policyDigest: activePolicy.policyDigest,
     network: activePolicy.network,
     releaseEvidenceDigest: activePolicy.releaseEvidenceDigest,
@@ -1064,7 +1061,7 @@ const bundle = (input: {
       : null,
     sourceObservationDigest: normalized.observationDigest,
     durableStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     predecessorStateDigest:
       input.predecessorStateDigest ?? input.previousState?.stateDigest ?? null,
@@ -1084,10 +1081,10 @@ const bundle = (input: {
   ];
   const configuredSource = externalSource;
   const activeFinalityPolicy = finalityPolicy;
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     configuredSource,
     finalityObservations.map(({ authenticatedProvider, l1Observation }) =>
-      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      normalizeWatcherL1Block(authenticatedProvider, l1Observation),
     ),
   );
   const previousFinalityState = input.previousFinalityState ?? null;
@@ -1102,7 +1099,7 @@ const bundle = (input: {
     previousStateDigest === null
       ? []
       : (settlementFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
-  const finalityResult = evaluateWatcherFinalityV1(
+  const finalityResult = evaluateWatcherFinality(
     activeFinalityPolicy,
     previousFinalityState,
     consistency,
@@ -1131,8 +1128,8 @@ const bundle = (input: {
           consistency,
           result: finalityResult,
         };
-  const context: WatcherSettlementPublicContextV1 = {
-    schemaVersion: WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  const context: WatcherSettlementPublicContext = {
+    schemaVersion: WATCHER_SETTLEMENT_PUBLIC_CONTEXT_SCHEMA_VERSION,
     authenticatedProvider,
     l1Observation,
     sourceDurableStore: sourceStore,
@@ -1148,10 +1145,10 @@ const bundle = (input: {
     observationDigest: observation!.observationDigest,
     normalizedObservationDigest: normalized.observationDigest,
     sourceStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(sourceStore),
+      encodeWatcherDurableStore(sourceStore),
     ),
     storeDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
     deploymentAuthorityDigest: sha256CanonicalForTest(deploymentAuthority),
     finalityResultDigest: finalityAuthority?.result.resultDigest ?? null,
@@ -1195,11 +1192,11 @@ const sha256CanonicalForTest = (value: unknown): string => {
 };
 
 const accepted = (
-  state: WatcherSettlementIndexerStateV1 | null,
+  state: WatcherSettlementIndexerState | null,
   evidence: Bundle,
-  activePolicy: WatcherSettlementIndexerPolicyV1 = policy,
-): WatcherSettlementIndexerStateV1 => {
-  const result = evaluateWatcherSettlementIndexerV1(
+  activePolicy: WatcherSettlementIndexerPolicy = policy,
+): WatcherSettlementIndexerState => {
+  const result = evaluateWatcherSettlementIndexer(
     activePolicy,
     state,
     evidence.observation,
@@ -1208,7 +1205,7 @@ const accepted = (
   expect(result.action, JSON.stringify(result)).toBe("accept");
   expect(result.state).not.toBeNull();
   expect(
-    parseWatcherSettlementIndexerResultV1(result, {
+    parseWatcherSettlementIndexerResult(result, {
       policy: activePolicy,
       previousState: state,
       observation: evidence.observation,
@@ -1221,21 +1218,21 @@ const accepted = (
 const protocolUtxo = (
   outRef: string,
   outputHex: string,
-): WatcherProtocolUtxoV1 => ({
+): WatcherProtocolUtxo => ({
   outRef,
   role: "settlement",
   chainPointId: h32("00"),
-  output: makeWatcherDurablePayloadV1(outputHex),
+  output: makeWatcherDurablePayload(outputHex),
 });
 
 const scenarioBootstrap = (
-  protocolUtxos: readonly WatcherProtocolUtxoV1[],
-  spentProtocolUtxos: WatcherDurableStoreV1["spentProtocolUtxos"] = [],
+  protocolUtxos: readonly WatcherProtocolUtxo[],
+  spentProtocolUtxos: WatcherDurableStore["spentProtocolUtxos"] = [],
 ): Readonly<{
-  policy: WatcherSettlementIndexerPolicyV1;
-  store: WatcherDurableStoreV1;
+  policy: WatcherSettlementIndexerPolicy;
+  store: WatcherDurableStore;
 }> => {
-  const store = makeWatcherDurableStoreV1({
+  const store = makeWatcherDurableStore({
     deploymentMarker: policy.deploymentMarker,
     revision: "0",
     records: {
@@ -1266,10 +1263,10 @@ const scenarioBootstrap = (
       correctionResults: [],
     },
   });
-  const scenarioPolicy = makeWatcherSettlementIndexerPolicyV1({
+  const scenarioPolicy = makeWatcherSettlementIndexerPolicy({
     ...policy,
     bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-      encodeWatcherDurableStoreV1(store),
+      encodeWatcherDurableStore(store),
     ),
   });
   expect(scenarioPolicy).not.toBeNull();
@@ -1330,11 +1327,11 @@ const spawnSequence = (
   );
   const outRef = `${transactionHash}#0`;
   const durable = protocolUtxo(outRef, outputHex);
-  const resource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+  const resource = makeWatcherSettlementResourceFromProtocolUtxo(
     policy,
     durable,
   )!;
-  const snapshot = makeWatcherSettlementSnapshotV1({
+  const snapshot = makeWatcherSettlementSnapshot({
     resources: [resource],
     subjects: [settlementSubject(outRef, "open")],
   })!;
@@ -1427,13 +1424,13 @@ const postFinalitySettlementEvidence = (
     },
   };
   const observations = [
-    normalizeWatcherL1BlockV1(primaryProvider, primaryRaw),
-    normalizeWatcherL1BlockV1(rollbackProvider("provider-b", "78"), {
+    normalizeWatcherL1Block(primaryProvider, primaryRaw),
+    normalizeWatcherL1Block(rollbackProvider("provider-b", "78"), {
       ...structuredClone(primaryRaw),
       providerId: "provider-b",
     }),
   ];
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+  const consistency = evaluateWatcherMultiProviderConsistency(
     externalSource,
     observations,
   );
@@ -1460,7 +1457,7 @@ const postFinalitySettlementRecoveryBundle = (
   );
   const replacementProvider = provider;
   const replacementRaw: Mutable = {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_SCHEMA_VERSION,
     network: "Preprod",
     providerId: replacementProvider.providerId,
     chainPoint: {
@@ -1499,19 +1496,19 @@ const postFinalitySettlementRecoveryBundle = (
       evidence: postFinalitySettlementEvidence(raw, "0"),
     };
   });
-  const pending = evaluateWatcherFinalityV1(
+  const pending = evaluateWatcherFinality(
     selectedFinalityPolicy,
     null,
     orphanPending.consistency,
   );
   expect(pending.action).toBe("observe_pending");
-  const finalized = evaluateWatcherFinalityV1(
+  const finalized = evaluateWatcherFinality(
     selectedFinalityPolicy,
     pending.state,
     orphanFinalized.consistency,
   );
   expect(finalized.action).toBe("finalize");
-  const contradiction = evaluateWatcherFinalityV1(
+  const contradiction = evaluateWatcherFinality(
     selectedFinalityPolicy,
     finalized.state,
     replacementTail.at(-1)!.evidence.consistency,
@@ -1526,7 +1523,7 @@ const postFinalitySettlementRecoveryBundle = (
     ...replacement.observations,
     ...replacementTail.flatMap(({ evidence }) => evidence.observations),
   ];
-  const sourceStore = makeWatcherDurableStoreV1({
+  const sourceStore = makeWatcherDurableStore({
     deploymentMarker: baseStore.deploymentMarker,
     revision: (BigInt(baseStore.revision) + 1n).toString(),
     records: {
@@ -1549,12 +1546,12 @@ const postFinalitySettlementRecoveryBundle = (
       ],
     },
   });
-  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapState(
     selectedFinalityPolicy,
     sourceStore,
     finalized.state,
   )!;
-  const incident = evaluateWatcherRollbackV1(
+  const incident = evaluateWatcherRollback(
     selectedFinalityPolicy,
     sourceStore,
     finalized.state,
@@ -1567,7 +1564,7 @@ const postFinalitySettlementRecoveryBundle = (
     action: "quarantine_incident",
     protocolDecision: "quarantined",
   });
-  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+  const recoveryInput: WatcherPostFinalityRecoveryInput = {
     policy: selectedFinalityPolicy,
     sourceStore: incident.nextStore,
     currentStore: incident.nextStore,
@@ -1581,7 +1578,7 @@ const postFinalitySettlementRecoveryBundle = (
     ],
     previousRecoveryState: null,
   };
-  const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  const recovery = evaluateWatcherPostFinalityRecovery(recoveryInput);
   expect(recovery).toMatchObject({
     action: "rewind_and_replay",
     protocolDecision: "resume_replay",
@@ -1644,11 +1641,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
   it("preserves an existing foreign role but rejects inserting an ordinary output under it", () => {
     const outputHex = stateQueueOutput();
-    const retainedForeign: WatcherProtocolUtxoV1 = {
+    const retainedForeign: WatcherProtocolUtxo = {
       outRef: `${h32("7e")}#0`,
       role: "state_queue",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(outputHex),
+      output: makeWatcherDurablePayload(outputHex),
     };
     const scenario = scenarioBootstrap([retainedForeign]);
     const retained = bundle({
@@ -1667,11 +1664,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const transactionHash = computeHash32(Buffer.from(bodyHex, "hex")).toString(
       "hex",
     );
-    const wrongRole: WatcherProtocolUtxoV1 = {
+    const wrongRole: WatcherProtocolUtxo = {
       outRef: `${transactionHash}#0`,
       role: "state_queue",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(outputHex),
+      output: makeWatcherDurablePayload(outputHex),
     };
     const evidence = bundle({
       kind: "bootstrap",
@@ -1681,7 +1678,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [wrongRole],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         evidence.observation,
@@ -1708,7 +1705,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       structuredClone(authority.observations[0]),
     );
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         initial.observation,
@@ -1721,7 +1718,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const cyclic = structuredClone(initial.context) as Mutable;
     cyclic.finalityAuthority.lineage = [cyclic.finalityAuthority];
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         initial.observation,
@@ -1734,10 +1731,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const oversizedSparse = structuredClone(initial.context) as Mutable;
     const sparseLineage: unknown[] = [];
     sparseLineage.length =
-      WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.evidenceContainerEntries + 1;
+      WATCHER_SETTLEMENT_INDEXER_BOUNDS.evidenceContainerEntries + 1;
     oversizedSparse.finalityAuthority.lineage = sparseLineage;
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         initial.observation,
@@ -1752,13 +1749,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       Array.from(
         {
           length:
-            WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.evidenceContainerEntries + 1,
+            WATCHER_SETTLEMENT_INDEXER_BOUNDS.evidenceContainerEntries + 1,
         },
         (_, index) => [`field_${index.toString()}`, "x"],
       ),
     );
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         initial.observation,
@@ -1786,13 +1783,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       transactionIsValid: false,
     });
     expect(
-      normalizeWatcherL1BlockV1(
+      normalizeWatcherL1Block(
         authenticatedProvider,
         invalid.context.l1Observation,
       ).transactions[0],
     ).toMatchObject({ isValid: false, utxos: [] });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         invalid.observation,
@@ -1814,7 +1811,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       chainPointOffset: 2n,
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         state,
         twoStepFork.observation,
@@ -1887,7 +1884,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       transactionPosition: 0,
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         bootstrapState,
         reversed.observation,
@@ -1905,7 +1902,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       candidate.l1Observation.transactions[1].transactionIndex = "7";
     }
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         bootstrapState,
         sameBlock.observation,
@@ -1929,7 +1926,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     expect(accepted(null, pending).snapshot).toEqual(emptySnapshot());
 
-    const forgedPolicy = makeWatcherSettlementIndexerPolicyV1({
+    const forgedPolicy = makeWatcherSettlementIndexerPolicy({
       ...policy,
       settlementPolicyId: h28("f0"),
       settlementSpendScriptHash: h28("f1"),
@@ -1942,7 +1939,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       snapshot: emptySnapshot(),
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         forgedPolicy,
         null,
         forged.observation,
@@ -1958,23 +1955,23 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       [];
     const disagreementBlocks = disagreement.finalityAuthority.observations.map(
       (candidate: Mutable) =>
-        normalizeWatcherL1BlockV1(
+        normalizeWatcherL1Block(
           candidate.authenticatedProvider,
           candidate.l1Observation,
         ),
     );
     disagreement.finalityAuthority.consistency =
-      evaluateWatcherMultiProviderConsistencyV1(
+      evaluateWatcherMultiProviderConsistency(
         externalSource,
         disagreementBlocks,
       );
-    disagreement.finalityAuthority.result = evaluateWatcherFinalityV1(
+    disagreement.finalityAuthority.result = evaluateWatcherFinality(
       finalityPolicy,
       null,
       disagreement.finalityAuthority.consistency,
     );
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         pending.observation,
@@ -2022,7 +2019,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolDecision: "quarantined",
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         null,
         contradiction.observation,
@@ -2063,12 +2060,12 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const txHash = computeHash32(Buffer.from(bodyHex, "hex")).toString("hex");
     const outRef = `${txHash}#0`;
     const durable = protocolUtxo(outRef, outputHex);
-    const resource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const resource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       durable,
     );
     expect(resource).not.toBeNull();
-    const snapshot = makeWatcherSettlementSnapshotV1({
+    const snapshot = makeWatcherSettlementSnapshot({
       resources: [resource!],
       subjects: [settlementSubject(outRef, "open")],
     })!;
@@ -2153,9 +2150,9 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ).to_canonical_cbor_hex();
     const unauthenticatedHub = {
       ...hubReferenceUtxo,
-      output: makeWatcherDurablePayloadV1(unauthenticatedHubOutput),
+      output: makeWatcherDurablePayload(unauthenticatedHubOutput),
     };
-    const unauthenticatedHubStore = makeWatcherDurableStoreV1({
+    const unauthenticatedHubStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: bootstrapStore.revision,
       records: {
@@ -2163,10 +2160,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         protocolUtxos: [unauthenticatedHub],
       },
     });
-    const unauthenticatedHubPolicy = makeWatcherSettlementIndexerPolicyV1({
+    const unauthenticatedHubPolicy = makeWatcherSettlementIndexerPolicy({
       ...policy,
       bootstrapStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(unauthenticatedHubStore),
+        encodeWatcherDurableStore(unauthenticatedHubStore),
       ),
     })!;
     const badBootstrap = bundle({
@@ -2213,7 +2210,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [durable],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         unauthenticatedHubPolicy,
         badBootstrapState,
         badHubEvidence.observation,
@@ -2228,7 +2225,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
   it("rejects a watcher-only/non-Cardano output and a malformed adjacent datum", () => {
     const fake = protocolUtxo(h32("83") + "#0", "7b7d");
     expect(
-      makeWatcherSettlementResourceFromProtocolUtxoV1(policy, fake),
+      makeWatcherSettlementResourceFromProtocolUtxo(policy, fake),
     ).toBeNull();
     const adjacentDatum = Data.to(new Constr(1, []));
     const malformed = protocolUtxo(
@@ -2247,7 +2244,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     );
     expect(
-      makeWatcherSettlementResourceFromProtocolUtxoV1(policy, malformed),
+      makeWatcherSettlementResourceFromProtocolUtxo(policy, malformed),
     ).toBeNull();
   });
 
@@ -2275,7 +2272,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       outRef: h32("a1") + "#0",
       role: "payout" as const,
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.payoutAddressHex,
           7_000_000n,
@@ -2317,7 +2314,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       outRef: h32("a2") + "#0",
       role: "withdrawal" as const,
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.withdrawalAddressHex,
           3_000_000n,
@@ -2336,7 +2333,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       outRef: h32("a3") + "#0",
       role: "reserve" as const,
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.reserveAddressHex,
           20_000_000n,
@@ -2346,13 +2343,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     };
     expect(
-      makeWatcherSettlementResourceFromProtocolUtxoV1(policy, payout),
+      makeWatcherSettlementResourceFromProtocolUtxo(policy, payout),
     ).toMatchObject({ datumKind: "payout", identityAssetName: payoutAsset });
     expect(
-      makeWatcherSettlementResourceFromProtocolUtxoV1(policy, withdrawal),
+      makeWatcherSettlementResourceFromProtocolUtxo(policy, withdrawal),
     ).toMatchObject({ datumKind: "withdrawal", identityAssetName: "ac" });
     expect(
-      makeWatcherSettlementResourceFromProtocolUtxoV1(policy, reserve),
+      makeWatcherSettlementResourceFromProtocolUtxo(policy, reserve),
     ).toMatchObject({ datumKind: "no_datum", role: "reserve" });
   });
 
@@ -2372,11 +2369,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ],
       null,
     );
-    const depositDurable: WatcherProtocolUtxoV1 = {
+    const depositDurable: WatcherProtocolUtxo = {
       outRef: depositOutRef,
       role: "deposit",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(depositOutput),
+      output: makeWatcherDurablePayload(depositOutput),
     };
     const scenario = scenarioBootstrap([depositDurable]);
     const initial = bundle({
@@ -2406,17 +2403,17 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       "hex",
     );
     const reserveOutRef = `${transactionHash}#0`;
-    const reserveDurable: WatcherProtocolUtxoV1 = {
+    const reserveDurable: WatcherProtocolUtxo = {
       outRef: reserveOutRef,
       role: "reserve",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(reserveOutput),
+      output: makeWatcherDurablePayload(reserveOutput),
     };
-    const reserveResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const reserveResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       reserveDurable,
     )!;
-    const reserveSubject = makeWatcherSettlementSubjectV1({
+    const reserveSubject = makeWatcherSettlementSubject({
       subjectId: "reserve-deposit-af",
       subjectKind: "reserve",
       status: "reserve_active",
@@ -2428,7 +2425,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: null,
       failureCode: null,
     })!;
-    const snapshot = makeWatcherSettlementSnapshotV1({
+    const snapshot = makeWatcherSettlementSnapshot({
       resources: [reserveResource],
       subjects: [reserveSubject],
     })!;
@@ -2567,11 +2564,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       WithdrawalOrderDatum,
     );
     const withdrawalOutRef = h32("da") + "#0";
-    const withdrawalDurable: WatcherProtocolUtxoV1 = {
+    const withdrawalDurable: WatcherProtocolUtxo = {
       outRef: withdrawalOutRef,
       role: "withdrawal",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.withdrawalAddressHex,
           3_000_000n,
@@ -2586,11 +2583,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         ),
       ),
     };
-    const withdrawalResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const withdrawalResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       withdrawalDurable,
     )!;
-    const pendingSubject = makeWatcherSettlementSubjectV1({
+    const pendingSubject = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "withdrawal",
       status: "withdrawal_pending",
@@ -2602,7 +2599,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: null,
       failureCode: null,
     })!;
-    const initialSnapshot = makeWatcherSettlementSnapshotV1({
+    const initialSnapshot = makeWatcherSettlementSnapshot({
       resources: [withdrawalResource],
       subjects: [pendingSubject],
     })!;
@@ -2633,7 +2630,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const transactionHash = computeHash32(Buffer.from(body, "hex")).toString(
       "hex",
     );
-    const refundedSubject = makeWatcherSettlementSubjectV1({
+    const refundedSubject = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "withdrawal",
       status: "refunded",
@@ -2645,7 +2642,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: transactionHash,
       failureCode: null,
     })!;
-    const terminalSnapshot = makeWatcherSettlementSnapshotV1({
+    const terminalSnapshot = makeWatcherSettlementSnapshot({
       resources: [],
       subjects: [refundedSubject],
     })!;
@@ -2764,7 +2761,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const underpaidHash = computeHash32(
       Buffer.from(underpaidBody, "hex"),
     ).toString("hex");
-    const underpaidSubject = makeWatcherSettlementSubjectV1({
+    const underpaidSubject = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "withdrawal",
       status: "refunded",
@@ -2780,7 +2777,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       policyOverride: scenario.policy,
       kind: "refund_withdrawal",
       previousState: initialState,
-      snapshot: makeWatcherSettlementSnapshotV1({
+      snapshot: makeWatcherSettlementSnapshot({
         resources: [],
         subjects: [underpaidSubject],
       })!,
@@ -2798,7 +2795,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         initialState,
         underpaid.observation,
@@ -2843,11 +2840,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       WithdrawalOrderDatum,
     );
     const withdrawalOutRef = h32("c7") + "#0";
-    const withdrawalDurable: WatcherProtocolUtxoV1 = {
+    const withdrawalDurable: WatcherProtocolUtxo = {
       outRef: withdrawalOutRef,
       role: "withdrawal",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.withdrawalAddressHex,
           2_000_000n,
@@ -2863,23 +2860,23 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     };
     const reserveOutRef = h32("c8") + "#0";
-    const reserveDurable: WatcherProtocolUtxoV1 = {
+    const reserveDurable: WatcherProtocolUtxo = {
       outRef: reserveOutRef,
       role: "reserve",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(policy.reserveAddressHex, 20_000_000n, [], null),
       ),
     };
-    const withdrawalResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const withdrawalResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       withdrawalDurable,
     )!;
-    const reserveResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const reserveResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       reserveDurable,
     )!;
-    const withdrawalPending = makeWatcherSettlementSubjectV1({
+    const withdrawalPending = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "withdrawal",
       status: "withdrawal_pending",
@@ -2891,8 +2888,8 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: null,
       failureCode: null,
     })!;
-    const reserveSubject = (outRef: string): WatcherSettlementSubjectV1 =>
-      makeWatcherSettlementSubjectV1({
+    const reserveSubject = (outRef: string): WatcherSettlementSubject =>
+      makeWatcherSettlementSubject({
         subjectId: "reserve-main",
         subjectKind: "reserve",
         status: "reserve_active",
@@ -2904,7 +2901,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         terminalTransactionHash: null,
         failureCode: null,
       })!;
-    const sourceSnapshot = makeWatcherSettlementSnapshotV1({
+    const sourceSnapshot = makeWatcherSettlementSnapshot({
       resources: [withdrawalResource, reserveResource],
       subjects: [withdrawalPending, reserveSubject(reserveOutRef)],
     })!;
@@ -2960,18 +2957,17 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       Buffer.from(initializeBody, "hex"),
     ).toString("hex");
     const initialPayoutOutRef = `${initializeHash}#0`;
-    const initialPayoutDurable: WatcherProtocolUtxoV1 = {
+    const initialPayoutDurable: WatcherProtocolUtxo = {
       outRef: initialPayoutOutRef,
       role: "payout",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(initialPayoutOutput),
+      output: makeWatcherDurablePayload(initialPayoutOutput),
     };
-    const initialPayoutResource =
-      makeWatcherSettlementResourceFromProtocolUtxoV1(
-        policy,
-        initialPayoutDurable,
-      )!;
-    const resolvedWithdrawal = makeWatcherSettlementSubjectV1({
+    const initialPayoutResource = makeWatcherSettlementResourceFromProtocolUtxo(
+      policy,
+      initialPayoutDurable,
+    )!;
+    const resolvedWithdrawal = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "withdrawal",
       status: "resolved",
@@ -2983,7 +2979,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: initializeHash,
       failureCode: null,
     })!;
-    const payoutInitializing = makeWatcherSettlementSubjectV1({
+    const payoutInitializing = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "payout",
       status: "payout_initializing",
@@ -2995,7 +2991,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: null,
       failureCode: null,
     })!;
-    const initializedSnapshot = makeWatcherSettlementSnapshotV1({
+    const initializedSnapshot = makeWatcherSettlementSnapshot({
       resources: [initialPayoutResource, reserveResource],
       subjects: [
         payoutInitializing,
@@ -3173,29 +3169,27 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     );
     const fundedPayoutOutRef = `${fundingHash}#0`;
     const reserveChangeOutRef = `${fundingHash}#1`;
-    const fundedPayoutDurable: WatcherProtocolUtxoV1 = {
+    const fundedPayoutDurable: WatcherProtocolUtxo = {
       outRef: fundedPayoutOutRef,
       role: "payout",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(fundedPayoutOutput),
+      output: makeWatcherDurablePayload(fundedPayoutOutput),
     };
-    const reserveChangeDurable: WatcherProtocolUtxoV1 = {
+    const reserveChangeDurable: WatcherProtocolUtxo = {
       outRef: reserveChangeOutRef,
       role: "reserve",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(reserveChangeOutput),
+      output: makeWatcherDurablePayload(reserveChangeOutput),
     };
-    const fundedPayoutResource =
-      makeWatcherSettlementResourceFromProtocolUtxoV1(
-        policy,
-        fundedPayoutDurable,
-      )!;
-    const reserveChangeResource =
-      makeWatcherSettlementResourceFromProtocolUtxoV1(
-        policy,
-        reserveChangeDurable,
-      )!;
-    const fundedPayoutSubject = makeWatcherSettlementSubjectV1({
+    const fundedPayoutResource = makeWatcherSettlementResourceFromProtocolUtxo(
+      policy,
+      fundedPayoutDurable,
+    )!;
+    const reserveChangeResource = makeWatcherSettlementResourceFromProtocolUtxo(
+      policy,
+      reserveChangeDurable,
+    )!;
+    const fundedPayoutSubject = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "payout",
       status: "payout_funded",
@@ -3207,7 +3201,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: null,
       failureCode: null,
     })!;
-    const fundedSnapshot = makeWatcherSettlementSnapshotV1({
+    const fundedSnapshot = makeWatcherSettlementSnapshot({
       resources: [fundedPayoutResource, reserveChangeResource],
       subjects: [
         fundedPayoutSubject,
@@ -3325,7 +3319,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [fundedPayoutDurable, reserveChangeDurable],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         initializedState,
         wrongSiblingIndex.observation,
@@ -3352,31 +3346,31 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ).toString("hex");
     const unbalancedPayoutOutRef = `${unbalancedHash}#0`;
     const unbalancedReserveOutRef = `${unbalancedHash}#1`;
-    const unbalancedPayoutDurable: WatcherProtocolUtxoV1 = {
+    const unbalancedPayoutDurable: WatcherProtocolUtxo = {
       outRef: unbalancedPayoutOutRef,
       role: "payout",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(fundedPayoutOutput),
+      output: makeWatcherDurablePayload(fundedPayoutOutput),
     };
-    const unbalancedReserveDurable: WatcherProtocolUtxoV1 = {
+    const unbalancedReserveDurable: WatcherProtocolUtxo = {
       outRef: unbalancedReserveOutRef,
       role: "reserve",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(unbalancedReserveOutput),
+      output: makeWatcherDurablePayload(unbalancedReserveOutput),
     };
-    const unbalancedSnapshot = makeWatcherSettlementSnapshotV1({
+    const unbalancedSnapshot = makeWatcherSettlementSnapshot({
       resources: [
-        makeWatcherSettlementResourceFromProtocolUtxoV1(
+        makeWatcherSettlementResourceFromProtocolUtxo(
           policy,
           unbalancedPayoutDurable,
         )!,
-        makeWatcherSettlementResourceFromProtocolUtxoV1(
+        makeWatcherSettlementResourceFromProtocolUtxo(
           policy,
           unbalancedReserveDurable,
         )!,
       ],
       subjects: [
-        makeWatcherSettlementSubjectV1({
+        makeWatcherSettlementSubject({
           subjectId: fundedPayoutSubject.subjectId,
           subjectKind: fundedPayoutSubject.subjectKind,
           status: fundedPayoutSubject.status,
@@ -3414,7 +3408,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [unbalancedPayoutDurable, unbalancedReserveDurable],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         initializedState,
         unbalanced.observation,
@@ -3446,7 +3440,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const concludeHash = computeHash32(
       Buffer.from(concludeBody, "hex"),
     ).toString("hex");
-    const paidPayoutSubject = makeWatcherSettlementSubjectV1({
+    const paidPayoutSubject = makeWatcherSettlementSubject({
       subjectId: withdrawalAsset,
       subjectKind: "payout",
       status: "paid",
@@ -3458,7 +3452,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: concludeHash,
       failureCode: null,
     })!;
-    const terminalSnapshot = makeWatcherSettlementSnapshotV1({
+    const terminalSnapshot = makeWatcherSettlementSnapshot({
       resources: [reserveChangeResource],
       subjects: [
         paidPayoutSubject,
@@ -3582,17 +3576,17 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       payoutDatum,
     );
     const payoutOutRef = h32("b1") + "#0";
-    const payoutDurable: WatcherProtocolUtxoV1 = {
+    const payoutDurable: WatcherProtocolUtxo = {
       outRef: payoutOutRef,
       role: "payout",
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(payoutOutputHex),
+      output: makeWatcherDurablePayload(payoutOutputHex),
     };
-    const payoutResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const payoutResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       payoutDurable,
     )!;
-    const payoutSubject = makeWatcherSettlementSubjectV1({
+    const payoutSubject = makeWatcherSettlementSubject({
       subjectId: payoutAsset,
       subjectKind: "payout",
       status: "payout_funded",
@@ -3604,7 +3598,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: null,
       failureCode: null,
     })!;
-    const fundedSnapshot = makeWatcherSettlementSnapshotV1({
+    const fundedSnapshot = makeWatcherSettlementSnapshot({
       resources: [payoutResource],
       subjects: [payoutSubject],
     })!;
@@ -3612,7 +3606,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       outRef: `${h32("b4")}#1`,
       role: "state_queue" as const,
       chainPointId: h32("00"),
-      output: makeWatcherDurablePayloadV1(stateQueueOutput()),
+      output: makeWatcherDurablePayload(stateQueueOutput()),
       spentAtChainPointId: h32("00"),
     };
     const scenario = scenarioBootstrap(
@@ -3649,7 +3643,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const transactionHash = computeHash32(Buffer.from(bodyHex, "hex")).toString(
       "hex",
     );
-    const paidSubject = makeWatcherSettlementSubjectV1({
+    const paidSubject = makeWatcherSettlementSubject({
       subjectId: payoutAsset,
       subjectKind: "payout",
       status: "paid",
@@ -3661,7 +3655,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: transactionHash,
       failureCode: null,
     })!;
-    const terminalSnapshot = makeWatcherSettlementSnapshotV1({
+    const terminalSnapshot = makeWatcherSettlementSnapshot({
       resources: [],
       subjects: [paidSubject],
     })!;
@@ -3741,7 +3735,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const underpaidHash = computeHash32(
       Buffer.from(underpaidBody, "hex"),
     ).toString("hex");
-    const underpaidSubject = makeWatcherSettlementSubjectV1({
+    const underpaidSubject = makeWatcherSettlementSubject({
       subjectId: paidSubject.subjectId,
       subjectKind: paidSubject.subjectKind,
       status: paidSubject.status,
@@ -3753,7 +3747,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: underpaidHash,
       failureCode: paidSubject.failureCode,
     })!;
-    const underpaidSnapshot = makeWatcherSettlementSnapshotV1({
+    const underpaidSnapshot = makeWatcherSettlementSnapshot({
       resources: [],
       subjects: [underpaidSubject],
     })!;
@@ -3798,7 +3792,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         fundedState,
         underpaid.observation,
@@ -3839,13 +3833,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     };
     const replacementRawB = structuredClone(replacementRawA) as Mutable;
     replacementRawB.providerId = rollbackProviderB.providerId;
-    const oldA = normalizeWatcherL1BlockV1(rollbackProviderA, oldRawA);
-    const oldB = normalizeWatcherL1BlockV1(rollbackProviderB, oldRawB);
-    const replacementA = normalizeWatcherL1BlockV1(
+    const oldA = normalizeWatcherL1Block(rollbackProviderA, oldRawA);
+    const oldB = normalizeWatcherL1Block(rollbackProviderB, oldRawB);
+    const replacementA = normalizeWatcherL1Block(
       rollbackProviderA,
       replacementRawA,
     );
-    const replacementB = normalizeWatcherL1BlockV1(
+    const replacementB = normalizeWatcherL1Block(
       rollbackProviderB,
       replacementRawB,
     );
@@ -3854,7 +3848,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ...initial.store.chainPoints,
       ...persistedChainPoints(rollbackBlocks),
     ];
-    const terminalJournal = journalWatcherProtocolUtxoTransitionV1({
+    const terminalJournal = journalWatcherProtocolUtxoTransition({
       sourceStore: initial.store,
       nextChainPoints: rollbackChainPoints,
       nextProtocolUtxos: initial.store.protocolUtxos.filter(
@@ -3862,7 +3856,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
       spentAtChainPointId: oldA.chainPoint.chainPointId,
     });
-    const rollbackSourceStore = makeWatcherDurableStoreV1({
+    const rollbackSourceStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: (BigInt(initial.store.revision) + 1n).toString(),
       records: {
@@ -3907,7 +3901,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalForRollback,
       scenario.policy,
     );
-    const omittedArchiveStore = makeWatcherDurableStoreV1({
+    const omittedArchiveStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: rollbackSourceStore.revision,
       records: {
@@ -3934,7 +3928,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       durableStore: omittedArchiveStore,
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         fundedState,
         omittedArchive.observation,
@@ -3946,7 +3940,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     const substitutedArchiveEntry = {
       ...terminalJournal.spentProtocolUtxos[0]!,
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.payoutAddressHex,
           6_000_000n,
@@ -3961,7 +3955,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         ),
       ),
     };
-    const substitutedArchiveStore = makeWatcherDurableStoreV1({
+    const substitutedArchiveStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: rollbackSourceStore.revision,
       records: {
@@ -3988,7 +3982,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       durableStore: substitutedArchiveStore,
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         fundedState,
         substitutedArchive.observation,
@@ -3999,17 +3993,17 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       reasonCodes: ["malformed_public_context"],
     });
     const priorFinalityState = terminalForRollback.finalityState!;
-    const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const replacementConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       [replacementA, replacementB],
     );
-    const replacementFinality = evaluateWatcherFinalityV1(
+    const replacementFinality = evaluateWatcherFinality(
       finalityPolicy,
       priorFinalityState,
       replacementConsistency,
     );
     expect(replacementFinality.action).toBe("rewind_pending");
-    const rollbackBootstrap = makeWatcherRollbackBootstrapStateV1(
+    const rollbackBootstrap = makeWatcherRollbackBootstrapState(
       finalityPolicy,
       rollbackSourceStore,
       priorFinalityState,
@@ -4023,7 +4017,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       previousRollbackState: rollbackBootstrap,
       rollbackBootstrapState: rollbackBootstrap,
     };
-    const authoritativeRollback = evaluateWatcherRollbackV1(
+    const authoritativeRollback = evaluateWatcherRollback(
       finalityPolicy,
       rollbackSourceStore,
       priorFinalityState,
@@ -4043,7 +4037,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const retainedPayout = initial.store.protocolUtxos.find(
       ({ outRef }) => outRef === payoutOutRef,
     )!;
-    const restoredStore = makeWatcherDurableStoreV1({
+    const restoredStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: authoritativeRollback.nextStore!.revision,
       records: {
@@ -4087,7 +4081,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       context: rollbackVerificationContext,
     };
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         JSON.parse(JSON.stringify(restoredState)),
         scenario.policy,
         [
@@ -4099,7 +4093,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toEqual(restoredState);
 
-    const omittedRestoredStore = makeWatcherDurableStoreV1({
+    const omittedRestoredStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: authoritativeRollback.nextStore!.revision,
       records: {
@@ -4127,7 +4121,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       },
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         terminalRollbackState,
         omittedRestoration.observation,
@@ -4135,9 +4129,9 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toMatchObject({ action: "reject" });
 
-    const substitutedPayout: WatcherProtocolUtxoV1 = {
+    const substitutedPayout: WatcherProtocolUtxo = {
       ...retainedPayout,
-      output: makeWatcherDurablePayloadV1(
+      output: makeWatcherDurablePayload(
         cardanoOutput(
           policy.payoutAddressHex,
           6_000_000n,
@@ -4152,7 +4146,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         ),
       ),
     };
-    const substitutedStore = makeWatcherDurableStoreV1({
+    const substitutedStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: authoritativeRollback.nextStore!.revision,
       records: {
@@ -4183,7 +4177,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       },
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         scenario.policy,
         terminalRollbackState,
         substitutedRestoration.observation,
@@ -4191,7 +4185,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toMatchObject({ action: "reject" });
 
-    const reIncludedJournal = journalWatcherProtocolUtxoTransitionV1({
+    const reIncludedJournal = journalWatcherProtocolUtxoTransition({
       sourceStore: restoredStore,
       nextChainPoints: restoredStore.chainPoints,
       nextProtocolUtxos: restoredStore.protocolUtxos.filter(
@@ -4199,7 +4193,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
       spentAtChainPointId: replacementA.chainPoint.chainPointId,
     });
-    const reIncludedStore = makeWatcherDurableStoreV1({
+    const reIncludedStore = makeWatcherDurableStore({
       deploymentMarker: scenario.policy.deploymentMarker,
       revision: (BigInt(restoredStore.revision) + 1n).toString(),
       records: {
@@ -4260,7 +4254,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       restartBindings: [initial.restartBinding],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         state,
         bad.observation,
@@ -4272,10 +4266,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
   it("rejects a self-consistent W03 subset that drops retained durable lineage", () => {
     const spawned = spawnSequence();
     const source = spawned.spawnEvidence.context
-      .sourceDurableStore as WatcherDurableStoreV1;
+      .sourceDurableStore as WatcherDurableStore;
     const currentObservationId =
       spawned.spawnEvidence.observation.sourceObservationDigest;
-    const subsetStore = makeWatcherDurableStoreV1({
+    const subsetStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: spawned.spawnEvidence.store.revision,
       records: {
@@ -4305,10 +4299,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       observationDigest: _observationDigest,
       ...observationFields
     } = spawned.spawnEvidence.observation;
-    const forgedObservation = makeWatcherSettlementObservationV1({
+    const forgedObservation = makeWatcherSettlementObservation({
       ...observationFields,
       durableStoreDigest: watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(subsetStore),
+        encodeWatcherDurableStore(subsetStore),
       ),
     })!;
     const forgedContext = {
@@ -4316,7 +4310,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       durableStore: subsetStore,
     };
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         accepted(null, spawned.bootstrapEvidence),
         forgedObservation,
@@ -4348,11 +4342,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ).toString("hex");
     const claimedOutRef = `${attachTransactionHash}#0`;
     const claimedDurable = protocolUtxo(claimedOutRef, claimedOutputHex);
-    const claimedResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const claimedResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       claimedDurable,
     )!;
-    const claimedSnapshot = makeWatcherSettlementSnapshotV1({
+    const claimedSnapshot = makeWatcherSettlementSnapshot({
       resources: [claimedResource],
       subjects: [settlementSubject(claimedOutRef, "claimed")],
     })!;
@@ -4420,7 +4414,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [claimedDurable],
     });
     const claimedState = accepted(spawned.spawnState, attachEvidence);
-    const retryOneSnapshot = makeWatcherSettlementSnapshotV1({
+    const retryOneSnapshot = makeWatcherSettlementSnapshot({
       resources: [claimedResource],
       subjects: [
         settlementSubject(claimedOutRef, "retrying", "1", "provider_timeout"),
@@ -4443,7 +4437,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [claimedDurable],
     });
     const retryOneState = accepted(claimedState, retryOne);
-    const retryTwoSnapshot = makeWatcherSettlementSnapshotV1({
+    const retryTwoSnapshot = makeWatcherSettlementSnapshot({
       resources: [claimedResource],
       subjects: [
         settlementSubject(claimedOutRef, "retrying", "2", "provider_timeout"),
@@ -4467,7 +4461,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       protocolUtxos: [claimedDurable],
     });
     const retryTwoState = accepted(retryOneState, retryTwo);
-    const stuckSnapshot = makeWatcherSettlementSnapshotV1({
+    const stuckSnapshot = makeWatcherSettlementSnapshot({
       resources: [claimedResource],
       subjects: [
         settlementSubject(claimedOutRef, "stuck", "2", "stuck_retry_exhausted"),
@@ -4497,7 +4491,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       attempt: "2",
       failureCode: "stuck_retry_exhausted",
     });
-    const invalidSnapshot = makeWatcherSettlementSnapshotV1({
+    const invalidSnapshot = makeWatcherSettlementSnapshot({
       resources: [claimedResource],
       subjects: [
         settlementSubject(
@@ -4563,12 +4557,12 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ).toString("hex");
     const disprovedOutRef = `${disproveTransactionHash}#0`;
     const disprovedDurable = protocolUtxo(disprovedOutRef, disprovedOutputHex);
-    const disprovedResource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const disprovedResource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       disprovedDurable,
     )!;
     const claimSubjectId = "resolution-claim-aa";
-    const claimSubject = makeWatcherSettlementSubjectV1({
+    const claimSubject = makeWatcherSettlementSubject({
       subjectId: claimSubjectId,
       subjectKind: "resolution_claim",
       status: "disproved",
@@ -4580,7 +4574,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       terminalTransactionHash: disproveTransactionHash,
       failureCode: null,
     })!;
-    const disprovedSnapshot = makeWatcherSettlementSnapshotV1({
+    const disprovedSnapshot = makeWatcherSettlementSnapshot({
       resources: [disprovedResource],
       subjects: [settlementSubject(disprovedOutRef, "open"), claimSubject],
     })!;
@@ -4738,7 +4732,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const resolveTransactionHash = computeHash32(
       Buffer.from(resolveBodyHex, "hex"),
     ).toString("hex");
-    const resolvedSnapshot = makeWatcherSettlementSnapshotV1({
+    const resolvedSnapshot = makeWatcherSettlementSnapshot({
       resources: [],
       subjects: [
         settlementSubject(null, "resolved", "0", null, resolveTransactionHash),
@@ -4819,7 +4813,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       snapshot: emptySnapshot(),
     });
     const state = accepted(null, initial);
-    const collision = makeWatcherSettlementObservationV1({
+    const collision = makeWatcherSettlementObservation({
       policyDigest: initial.observation.policyDigest,
       network: initial.observation.network,
       releaseEvidenceDigest: initial.observation.releaseEvidenceDigest,
@@ -4836,16 +4830,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       transition: initial.observation.transition,
       snapshot: initial.observation.snapshot,
     })!;
-    const result = evaluateWatcherSettlementIndexerV1(
-      policy,
-      state,
-      collision,
-      {
-        ...initial.context,
-        sourceDurableStore: initial.store,
-        restartContexts: [initial.restartBinding],
-      },
-    );
+    const result = evaluateWatcherSettlementIndexer(policy, state, collision, {
+      ...initial.context,
+      sourceDurableStore: initial.store,
+      restartContexts: [initial.restartBinding],
+    });
     expect(result).toMatchObject({
       action: "reject",
       reasonCodes: ["identity_collision"],
@@ -4860,7 +4849,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     expect(recovery.recovery.removedRecords.protocolUtxoOutRefs).toContain(
       sparseSequence.outRef,
     );
-    const result = evaluateWatcherSettlementIndexerV1(
+    const result = evaluateWatcherSettlementIndexer(
       policy,
       sparseSequence.spawnState,
       recovery.recoveryEvidence.observation,
@@ -4886,18 +4875,23 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     expect(result.state?.rollbackHistory).toHaveLength(1);
     expect(result.state?.durableStoreDigest).toBe(
       watcherDurableStoreBytesSha256(
-        encodeWatcherDurableStoreV1(recovery.recovery.nextStore!),
+        encodeWatcherDurableStore(recovery.recovery.nextStore!),
       ),
     );
-    const w16Roles = new Set(["settlement", "reserve", "payout", "withdrawal"]);
+    const settlementRoles = new Set([
+      "settlement",
+      "reserve",
+      "payout",
+      "withdrawal",
+    ]);
     for (const collection of ["protocolUtxos", "spentProtocolUtxos"] as const) {
       expect(
         recovery.recovery.nextStore![collection].filter(
-          ({ role }) => !w16Roles.has(role),
+          ({ role }) => !settlementRoles.has(role),
         ),
       ).toEqual(
         recovery.incident.nextStore![collection].filter(
-          ({ role }) => !w16Roles.has(role),
+          ({ role }) => !settlementRoles.has(role),
         ),
       );
     }
@@ -4910,7 +4904,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       sparseSequence.spawnEvidence.restartBinding,
       recovery.recoveryEvidence.restartBinding,
     ];
-    const restarted = parseWatcherSettlementIndexerStateV1(
+    const restarted = parseWatcherSettlementIndexerState(
       JSON.parse(JSON.stringify(result.state)),
       policy,
       restartBindings,
@@ -4918,13 +4912,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     );
     expect(restarted).toEqual(result.state);
 
-    const duplicateContext: WatcherSettlementPublicContextV1 = {
+    const duplicateContext: WatcherSettlementPublicContext = {
       ...recovery.recoveryEvidence.context,
       restartContexts: restartBindings,
       restartRollbackContexts: [recoveryBinding],
     };
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         restarted,
         recovery.recoveryEvidence.observation,
@@ -4979,7 +4973,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         context: recovery.recoveryInput,
       },
     });
-    const result = evaluateWatcherSettlementIndexerV1(
+    const result = evaluateWatcherSettlementIndexer(
       policy,
       sequence.bootstrapState,
       evidence.observation,
@@ -4995,7 +4989,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       },
     });
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         structuredClone(result.state),
         policy,
         [sequence.bootstrapEvidence.restartBinding, evidence.restartBinding],
@@ -5013,10 +5007,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const sequence = spawnSequence();
     const recovery = postFinalitySettlementRecoveryBundle(sequence);
     const evaluate = (
-      observation: WatcherSettlementObservationV1,
-      context: WatcherSettlementPublicContextV1,
+      observation: WatcherSettlementObservation,
+      context: WatcherSettlementPublicContext,
     ) =>
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         sequence.spawnState,
         observation,
@@ -5025,7 +5019,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const forgedContext = structuredClone(
       recovery.recoveryEvidence.context,
-    ) as WatcherSettlementPublicContextV1;
+    ) as WatcherSettlementPublicContext;
     const forgedResult = forgedContext.rollbackAuthority!.result as Mutable;
     forgedResult.nextStoreDigest = h32("ff");
     delete forgedResult.resultDigest;
@@ -5039,7 +5033,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const mismatchedContext = structuredClone(
       recovery.recoveryEvidence.context,
-    ) as WatcherSettlementPublicContextV1;
+    ) as WatcherSettlementPublicContext;
     (
       mismatchedContext.rollbackAuthority!.context as unknown as Mutable
     ).replacementCanonicalPath = recovery.recoveryInput.previousCanonicalPath;
@@ -5052,7 +5046,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const wrongModeContext = structuredClone(
       recovery.recoveryEvidence.context,
-    ) as WatcherSettlementPublicContextV1;
+    ) as WatcherSettlementPublicContext;
     (wrongModeContext.rollbackAuthority!.context as unknown as Mutable).policy =
       {
         ...finalityPolicy,
@@ -5065,7 +5059,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       reasonCodes: ["rollback_authority_mismatch"],
     });
 
-    const wrongTarget = makeWatcherSettlementObservationV1({
+    const wrongTarget = makeWatcherSettlementObservation({
       ...recovery.recoveryEvidence.observation,
       predecessorStateDigest: sequence.bootstrapState.stateDigest,
     })!;
@@ -5076,13 +5070,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       reasonCodes: ["stale_state"],
     });
 
-    const duplicateRecovery = evaluateWatcherPostFinalityRecoveryV1({
+    const duplicateRecovery = evaluateWatcherPostFinalityRecovery({
       ...recovery.recoveryInput,
       currentStore: recovery.recovery.nextStore,
       previousRecoveryState: recovery.recovery.recoveryState,
     });
     expect(duplicateRecovery.action).toBe("duplicate_recovery");
-    const duplicateOnlyContext: WatcherSettlementPublicContextV1 = {
+    const duplicateOnlyContext: WatcherSettlementPublicContext = {
       ...recovery.recoveryEvidence.context,
       sourceDurableStore: recovery.recovery.nextStore,
       rollbackAuthority: {
@@ -5107,7 +5101,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     );
     expect(acceptedRecovery.action).toBe("accept");
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         acceptedRecovery.state,
         policy,
         [
@@ -5197,18 +5191,16 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const publicTransaction = () => ({
       txHash: transactionHash,
       transactionIndex: "0",
-      fullTransaction: makeWatcherL1PublicBytesV1(
+      fullTransaction: makeWatcherL1PublicBytes(
         fullTransaction.to_canonical_cbor_hex(),
       ),
-      body: makeWatcherL1PublicBytesV1(bodyHex),
-      witnessSet: makeWatcherL1PublicBytesV1(
-        witnessSet.to_canonical_cbor_hex(),
-      ),
+      body: makeWatcherL1PublicBytes(bodyHex),
+      witnessSet: makeWatcherL1PublicBytes(witnessSet.to_canonical_cbor_hex()),
       utxos: [
         {
           outRef,
           outputIndex: "0",
-          output: makeWatcherL1PublicBytesV1(
+          output: makeWatcherL1PublicBytes(
             CML.TransactionOutput.from_cbor_hex(
               outputHex,
             ).to_canonical_cbor_hex(),
@@ -5217,14 +5209,14 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
             datumHash: computeHash32(Buffer.from(datumHex!, "hex")).toString(
               "hex",
             ),
-            bytes: makeWatcherL1PublicBytesV1(datumHex!),
+            bytes: makeWatcherL1PublicBytes(datumHex!),
           },
           referenceScript: null,
         },
         {
           outRef: `${transactionHash}#1`,
           outputIndex: "1",
-          output: makeWatcherL1PublicBytesV1(
+          output: makeWatcherL1PublicBytes(
             CML.TransactionOutput.from_cbor_hex(
               queueOutputHex,
             ).to_canonical_cbor_hex(),
@@ -5239,12 +5231,12 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         {
           purpose: "mint",
           index: "0",
-          bytes: makeWatcherL1PublicBytesV1(canonicalSpawnRedeemer),
+          bytes: makeWatcherL1PublicBytes(canonicalSpawnRedeemer),
         },
         {
           purpose: "mint",
           index: "1",
-          bytes: makeWatcherL1PublicBytesV1(canonicalMergeRedeemer),
+          bytes: makeWatcherL1PublicBytes(canonicalMergeRedeemer),
         },
       ],
     });
@@ -5279,18 +5271,18 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       replacementPoint,
       replacementTransaction,
     );
-    const oldA = normalizeWatcherL1BlockV1(providerA, oldRawA);
-    const oldB = normalizeWatcherL1BlockV1(providerB, oldRawB);
-    const replacementA = normalizeWatcherL1BlockV1(providerA, replacementRawA);
-    const replacementB = normalizeWatcherL1BlockV1(providerB, replacementRawB);
+    const oldA = normalizeWatcherL1Block(providerA, oldRawA);
+    const oldB = normalizeWatcherL1Block(providerB, oldRawB);
+    const replacementA = normalizeWatcherL1Block(providerA, replacementRawA);
+    const replacementB = normalizeWatcherL1Block(providerB, replacementRawB);
     const persisted = [oldA, oldB, replacementA, replacementB];
-    const oldDurable: WatcherProtocolUtxoV1 = {
+    const oldDurable: WatcherProtocolUtxo = {
       outRef,
       role: "settlement",
       chainPointId: oldA.chainPoint.chainPointId,
-      output: makeWatcherDurablePayloadV1(outputHex),
+      output: makeWatcherDurablePayload(outputHex),
     };
-    const sourceStore = makeWatcherDurableStoreV1({
+    const sourceStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: (BigInt(bootstrapEvidence.store.revision) + 1n).toString(),
       records: {
@@ -5315,11 +5307,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         correctionResults: bootstrapEvidence.store.correctionResults,
       },
     });
-    const resource = makeWatcherSettlementResourceFromProtocolUtxoV1(
+    const resource = makeWatcherSettlementResourceFromProtocolUtxo(
       policy,
       oldDurable,
     )!;
-    const spawnedSnapshot = makeWatcherSettlementSnapshotV1({
+    const spawnedSnapshot = makeWatcherSettlementSnapshot({
       resources: [resource],
       subjects: [settlementSubject(outRef, "open")],
     })!;
@@ -5376,7 +5368,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     const spawnedState = accepted(bootstrapState, spawnEvidence);
 
-    const rollbackFinalityPolicy = makeWatcherFinalityPolicyV1(
+    const rollbackFinalityPolicy = makeWatcherFinalityPolicy(
       {
         schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
         mode: "development",
@@ -5450,28 +5442,28 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         durableMarker: policy.deploymentMarker,
       },
     )!;
-    const oldConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const oldConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       [oldA, oldB],
     );
-    const priorFinalityResult = evaluateWatcherFinalityV1(
+    const priorFinalityResult = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       null,
       oldConsistency,
     );
     expect(priorFinalityResult.action).toBe("observe_pending");
     const priorFinalityState = priorFinalityResult.state!;
-    const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const replacementConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       [replacementA, replacementB],
     );
-    const finalityResult = evaluateWatcherFinalityV1(
+    const finalityResult = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       priorFinalityState,
       replacementConsistency,
     );
     expect(finalityResult.action).toBe("rewind_pending");
-    const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+    const rollbackBootstrapState = makeWatcherRollbackBootstrapState(
       rollbackFinalityPolicy,
       sourceStore,
       priorFinalityState,
@@ -5485,7 +5477,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       previousRollbackState: rollbackBootstrapState,
       rollbackBootstrapState,
     };
-    const authoritative = evaluateWatcherRollbackV1(
+    const authoritative = evaluateWatcherRollback(
       rollbackFinalityPolicy,
       sourceStore,
       priorFinalityState,
@@ -5524,11 +5516,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       spawnedState.activeHistory.at(-1)!.stateDigest,
     );
     const retainedAnchorProvider = bootstrapEvidence.context
-      .authenticatedProvider as WatcherAuthenticatedL1ProviderV1;
+      .authenticatedProvider as WatcherAuthenticatedL1Provider;
     const retainedAnchorRaw = structuredClone(
       bootstrapEvidence.context.l1Observation,
     ) as Mutable;
-    const retainedAnchor = normalizeWatcherL1BlockV1(
+    const retainedAnchor = normalizeWatcherL1Block(
       retainedAnchorProvider,
       retainedAnchorRaw,
     );
@@ -5573,7 +5565,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       rollbackEvidence.restartBinding.publicContextDigest,
     );
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         spawnedState,
         retainedAnchorForgery.observation,
@@ -5588,7 +5580,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       context: rollbackVerificationContext,
     };
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         JSON.parse(JSON.stringify(rollbackState)),
         policy,
         [
@@ -5600,7 +5592,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toEqual(rollbackState);
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         rollbackState,
         policy,
         [bootstrapEvidence.restartBinding],
@@ -5608,7 +5600,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toBeNull();
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         rollbackState,
         policy,
         [
@@ -5624,14 +5616,14 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     delete forgedState.stateDigest;
     forgedState.stateDigest = sha256CanonicalForTest(forgedState);
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         forgedState,
         policy,
         [bootstrapEvidence.restartBinding, rollbackEvidence.restartBinding],
         [restartRollbackBinding],
       ),
     ).toBeNull();
-    const authenticRollbackResult = evaluateWatcherSettlementIndexerV1(
+    const authenticRollbackResult = evaluateWatcherSettlementIndexer(
       policy,
       spawnedState,
       rollbackEvidence.observation,
@@ -5644,7 +5636,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     delete forgedResult.resultDigest;
     forgedResult.resultDigest = sha256CanonicalForTest(forgedResult);
     expect(
-      parseWatcherSettlementIndexerResultV1(forgedResult, {
+      parseWatcherSettlementIndexerResult(forgedResult, {
         policy,
         previousState: spawnedState,
         observation: rollbackEvidence.observation,
@@ -5656,9 +5648,9 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const unrelatedSentinel = {
       inputId: h32("ed"),
       kind: "proof_input" as const,
-      payload: makeWatcherDurablePayloadV1("81"),
+      payload: makeWatcherDurablePayload("81"),
     };
-    const extendedSourceStore = makeWatcherDurableStoreV1({
+    const extendedSourceStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: (BigInt(nextStore.revision) + 1n).toString(),
       records: {
@@ -5666,7 +5658,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         daProofInputs: [...nextStore.daProofInputs, unrelatedSentinel],
       },
     });
-    const deletedPriorRecordSource = makeWatcherDurableStoreV1({
+    const deletedPriorRecordSource = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: extendedSourceStore.revision,
       records: {
@@ -5674,7 +5666,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         l1Observations: extendedSourceStore.l1Observations.slice(1),
       },
     });
-    const mutatedPriorRecordSource = makeWatcherDurableStoreV1({
+    const mutatedPriorRecordSource = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: extendedSourceStore.revision,
       records: {
@@ -5689,11 +5681,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         ),
       },
     });
-    const reIncludedDurable: WatcherProtocolUtxoV1 = {
+    const reIncludedDurable: WatcherProtocolUtxo = {
       ...oldDurable,
       chainPointId: replacementA.chainPoint.chainPointId,
     };
-    const reIncludedStore = makeWatcherDurableStoreV1({
+    const reIncludedStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: (BigInt(extendedSourceStore.revision) + 1n).toString(),
       records: {
@@ -5754,7 +5746,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         sourceDurableStore: divergentSource,
       });
       expect(
-        evaluateWatcherSettlementIndexerV1(
+        evaluateWatcherSettlementIndexer(
           policy,
           rollbackState,
           divergent.observation,
@@ -5783,15 +5775,15 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       secondReplacementPoint,
       publicTransaction(),
     );
-    const secondReplacementA = normalizeWatcherL1BlockV1(
+    const secondReplacementA = normalizeWatcherL1Block(
       providerA,
       secondReplacementRawA,
     );
-    const secondReplacementB = normalizeWatcherL1BlockV1(
+    const secondReplacementB = normalizeWatcherL1Block(
       providerB,
       secondReplacementRawB,
     );
-    const secondSourceStore = makeWatcherDurableStoreV1({
+    const secondSourceStore = makeWatcherDurableStore({
       deploymentMarker: policy.deploymentMarker,
       revision: (BigInt(reIncludedStore.revision) + 1n).toString(),
       records: {
@@ -5807,17 +5799,17 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         ],
       },
     });
-    const secondConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    const secondConsistency = evaluateWatcherMultiProviderConsistency(
       externalSource,
       [secondReplacementA, secondReplacementB],
     );
-    const secondFinalityResult = evaluateWatcherFinalityV1(
+    const secondFinalityResult = evaluateWatcherFinality(
       rollbackFinalityPolicy,
       finalityResult.state,
       secondConsistency,
     );
     expect(secondFinalityResult.action).toBe("rewind_pending");
-    const secondRollbackBootstrap = makeWatcherRollbackBootstrapStateV1(
+    const secondRollbackBootstrap = makeWatcherRollbackBootstrapState(
       rollbackFinalityPolicy,
       secondSourceStore,
       finalityResult.state,
@@ -5831,7 +5823,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       previousRollbackState: secondRollbackBootstrap,
       rollbackBootstrapState: secondRollbackBootstrap,
     };
-    const secondAuthoritative = evaluateWatcherRollbackV1(
+    const secondAuthoritative = evaluateWatcherRollback(
       rollbackFinalityPolicy,
       secondSourceStore,
       finalityResult.state,
@@ -5881,7 +5873,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ];
     const allRollbackBindings = [restartRollbackBinding, secondRollbackBinding];
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         JSON.parse(JSON.stringify(twiceRolledBack)),
         policy,
         allRestartBindings,
@@ -5903,7 +5895,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     forgedOrphanLineage.orphanAuditDigests = [h32("f1")];
     forgedOrphanLineage.orphanLineageDigest = h32("f2");
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         rehashState(forgedOrphanLineage),
         policy,
         allRestartBindings,
@@ -5930,7 +5922,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       swappedRollbackOrder.transitionHistory[firstRollback],
     ];
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         rehashState(swappedRollbackOrder),
         policy,
         allRestartBindings,
@@ -5946,7 +5938,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         (_entry: unknown, index: number) => index !== 1,
       );
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         rehashState(truncatedRecombined),
         policy,
         allRestartBindings,
@@ -5969,7 +5961,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       restartBindings: [initial.restartBinding],
     });
     expect(
-      evaluateWatcherSettlementIndexerV1(
+      evaluateWatcherSettlementIndexer(
         policy,
         state,
         rollback.observation,
@@ -5989,7 +5981,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     const state = accepted(null, initial);
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         state,
         policy,
         [initial.restartBinding],
@@ -5997,7 +5989,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toEqual(state);
     expect(
-      parseWatcherSettlementIndexerStateV1(state, policy, [], []),
+      parseWatcherSettlementIndexerState(state, policy, [], []),
     ).toBeNull();
   });
 
@@ -6009,7 +6001,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     const state = accepted(null, initial);
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         state,
         policy,
         [initial.restartBinding],
@@ -6019,12 +6011,12 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const individuallyBoundedButAggregateOversized = Array.from(
       {
-        length: WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.transitionHistoryEntries,
+        length: WATCHER_SETTLEMENT_INDEXER_BOUNDS.transitionHistoryEntries,
       },
       () => initial.restartBinding,
     );
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         state,
         policy,
         individuallyBoundedButAggregateOversized,
@@ -6035,10 +6027,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const cyclicRestartEvidence: unknown[] = [initial.restartBinding];
     cyclicRestartEvidence.push(cyclicRestartEvidence);
     expect(
-      parseWatcherSettlementIndexerStateV1(
+      parseWatcherSettlementIndexerState(
         state,
         policy,
-        cyclicRestartEvidence as unknown as WatcherSettlementPublicContextV1["restartContexts"],
+        cyclicRestartEvidence as unknown as WatcherSettlementPublicContext["restartContexts"],
         [],
       ),
     ).toBeNull();
@@ -6055,9 +6047,9 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       rollbackProvider("provider-b", "78"),
     );
     const evaluateRaw = (
-      attestations: readonly WatcherL1TransportAttestationContextV1[],
+      attestations: readonly WatcherL1TransportAttestationContext[],
     ) =>
-      evaluateWatcherSettlementIndexerV1Raw(
+      evaluateWatcherSettlementIndexerRaw(
         policy,
         null,
         initial.observation,
@@ -6073,7 +6065,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       evaluateRaw(
         structuredClone(
           transportContexts,
-        ) as WatcherL1TransportAttestationContextV1[],
+        ) as WatcherL1TransportAttestationContext[],
       ),
     ).toMatchObject({
       action: "reject",
@@ -6084,7 +6076,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       reasonCodes: ["malformed_public_context"],
     });
 
-    closeWatcherL1TransportAttestationContextV1(providerATransport);
+    closeWatcherL1TransportAttestationContext(providerATransport);
     expect(evaluateRaw(transportContexts)).toMatchObject({
       action: "reject",
       reasonCodes: ["malformed_public_context"],

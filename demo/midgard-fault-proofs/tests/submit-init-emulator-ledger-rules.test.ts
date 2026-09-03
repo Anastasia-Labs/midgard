@@ -9,7 +9,7 @@
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubjectV1,
+  acceptedVerdictSubject,
   FraudProofTokenDatum,
   InvalidRangeStep02Datum,
   ZeroInputStep02Datum,
@@ -26,9 +26,9 @@ import {
   parseSubmitStep01TxInclusion,
   submitInit,
   submitInvalidRangeStep01,
-  submitInvalidRangeStep02,
+  submitInvalidRangeStep02V1,
   submitZeroInputStep01,
-  submitZeroInputStep02,
+  submitZeroInputStep02V1,
 } from "./support/legacy-submit-emulator.js";
 import {
   buildInvalidRangeTransactionInclusionFixture,
@@ -44,10 +44,10 @@ import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  expectProofFitV1,
+  expectProofFit,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarnessV1,
+  makeFaultProofEmulatorHarness,
   makeHeader,
   network,
   publishRemovalReferenceScripts,
@@ -56,7 +56,7 @@ import {
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a tail invalid-range block end to end", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realInvalidRange: true,
         alwaysFraudProofCatalogue: true,
@@ -214,9 +214,7 @@ describe("fault-proof emulator integration", () => {
     expect(step02Datum).toEqual({
       fraud_prover: proverPaymentKeyHash,
       data: {
-        subject: acceptedVerdictSubjectV1(
-          invalidRangeInclusion.badTx.nativeTxId,
-        ),
+        subject: acceptedVerdictSubject(invalidRangeInclusion.badTx.nativeTxId),
         block_slot: fraudulentHeader.blockSlot,
         bad_tx_normalized_validity_range:
           invalidRangeInclusion.normalizedValidityRange,
@@ -226,7 +224,7 @@ describe("fault-proof emulator integration", () => {
     const step02ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        submitInvalidRangeStep02({
+        submitInvalidRangeStep02V1({
           lucid: proverLucid,
           referenceScriptUtxo:
             harness.faultProofReferenceScripts.fraudProofInvalidRangeStep02!
@@ -343,7 +341,7 @@ describe("fault-proof emulator integration", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `invalid-range ${stage}`,
         measurement,
         maxTxExMem,
@@ -372,7 +370,7 @@ describe("fault-proof emulator integration", () => {
   }, 180_000);
 
   it("proves and removes a tail zero-input block end to end", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
     });
     const {
@@ -524,7 +522,7 @@ describe("fault-proof emulator integration", () => {
       zeroInputInclusion.badTx.nativeTxId,
     );
     await expect(
-      submitZeroInputStep02({
+      submitZeroInputStep02V1({
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
@@ -548,7 +546,7 @@ describe("fault-proof emulator integration", () => {
     ).resolves.toHaveLength(1);
 
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitZeroInputStep02({
+      submitZeroInputStep02V1({
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts.fraudProofZeroInputStep02!.utxo,
@@ -657,7 +655,7 @@ describe("fault-proof emulator integration", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `zero-input ${stage}`,
         measurement,
         maxTxExMem,
@@ -686,7 +684,7 @@ describe("fault-proof emulator integration", () => {
   }, 180_000);
 
   it("rejects a spending transaction before a zero-input thread can advance", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realZeroInput: true, alwaysFraudProofCatalogue: true },
     });
     const {
@@ -780,7 +778,7 @@ describe("fault-proof emulator integration", () => {
   }, 180_000);
 
   it("proves and removes a tail non-existent-input block end to end", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realNonExistentInput: true,
         alwaysFraudProofCatalogue: true,
@@ -1066,7 +1064,7 @@ describe("fault-proof emulator integration", () => {
       "remove",
     ]);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      expectProofFitV1({
+      expectProofFit({
         stage: `non-existent-input ${stage}`,
         measurement,
         maxTxExMem,

@@ -19,9 +19,9 @@ import {
   EventKeySchema,
   type EventToStepValue,
   EventToStepValueSchema,
-  type ForcedInclusionTxV1,
-  ForcedInclusionTxV1Schema,
-  TRANSITION_STEP_V1_SCHEMA_VERSION,
+  type ForcedInclusionTx,
+  ForcedInclusionTxSchema,
+  TRANSITION_STEP_SCHEMA_VERSION,
   type TransitionStep,
   TransitionStepSchema,
   TransitionStepV1,
@@ -106,21 +106,21 @@ export const commitCountedRootProgram = ({
   );
 };
 
-export const encodeTransitionStepV1Cbor = (step: TransitionStepV1): Buffer => {
-  if (step.schema_version !== TRANSITION_STEP_V1_SCHEMA_VERSION) {
+export const encodeTransitionStepCbor = (step: TransitionStepV1): Buffer => {
+  if (step.schema_version !== TRANSITION_STEP_SCHEMA_VERSION) {
     throw new Error(
-      `TransitionStepV1 schema_version must equal ${TRANSITION_STEP_V1_SCHEMA_VERSION.toString()}`,
+      `TransitionStepV1 schema_version must equal ${TRANSITION_STEP_SCHEMA_VERSION.toString()}`,
     );
   }
   return Buffer.from(Data.to(step, TransitionStepV1), "hex");
 };
 
-export const decodeTransitionStepV1Cbor = (
+export const decodeTransitionStepCbor = (
   bytes: Uint8Array,
 ): TransitionStepV1 => {
   const input = Buffer.from(bytes);
   const step = Data.from(input.toString("hex"), TransitionStepV1);
-  const canonical = encodeTransitionStepV1Cbor(step);
+  const canonical = encodeTransitionStepCbor(step);
   if (!canonical.equals(input)) {
     throw new Error(
       "TransitionStepV1 CBOR must use its exact canonical encoding",
@@ -129,10 +129,10 @@ export const decodeTransitionStepV1Cbor = (
   return step;
 };
 
-export const hashTransitionStepV1 = (
+export const hashTransitionStep = (
   step: TransitionStepV1,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(encodeTransitionStepV1Cbor(step).toString("hex"), 32);
+  hashHexWithBlake2b(encodeTransitionStepCbor(step).toString("hex"), 32);
 
 export type RootMembershipProof<K, V> = RootCountProof & {
   readonly key: K;
@@ -205,10 +205,10 @@ export const WithdrawalSourceMembershipProof =
   WithdrawalSourceMembershipProofSchema as unknown as WithdrawalSourceMembershipProof;
 
 export const ForcedTransactionSourceMembershipProofSchema =
-  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
+  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxSchema);
 export type ForcedTransactionSourceMembershipProof = RootMembershipProof<
   OutputReference,
-  ForcedInclusionTxV1
+  ForcedInclusionTx
 >;
 export const ForcedTransactionSourceMembershipProof =
   ForcedTransactionSourceMembershipProofSchema as unknown as ForcedTransactionSourceMembershipProof;

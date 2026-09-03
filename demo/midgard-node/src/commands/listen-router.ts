@@ -4,23 +4,23 @@
  * delegating startup checks and response shaping to narrower modules.
  */
 import {
-  decodeMidgardCekProgramMaterialSidecarV1,
-  decodeMidgardProofSubmissionV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  verifyMidgardCekProgramMaterialBundleV1,
+  decodeMidgardCekProgramMaterialSidecar,
+  decodeMidgardProofSubmission,
+  encodeMidgardCekProgramMaterialSidecar,
+  verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  type MidgardConsensusProfileV1,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusV1TxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
-import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   HttpIncomingMessage,
@@ -727,7 +727,7 @@ const submitQueueOfferFailureCounter = Metric.counter(
 
 const V1_SUBMISSION_MEDIA_TYPE = "application/vnd.midgard.v1+cbor";
 export const SUBMIT_HTTP_BODY_MAX_BYTES =
-  MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes;
+  MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes;
 
 type SubmitIngressPool = {
   readonly concurrency: Effect.Semaphore;
@@ -2431,14 +2431,14 @@ const getStateQueueHandler = Effect.gen(function* () {
     oldestQueuedBlock === undefined
       ? null
       : yield* Effect.gen(function* () {
-          const blockHeader = yield* SDK.getHeaderV1FromStateQueueDatum(
+          const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
             oldestQueuedBlock.datum,
           );
           const stateQueueNode =
-            yield* SDK.getStateQueueNodeV1FromStateQueueDatum(
+            yield* SDK.getStateQueueNodeFromStateQueueDatum(
               oldestQueuedBlock.datum,
             );
-          const headerHash = yield* SDK.hashBlockHeaderV1(blockHeader);
+          const headerHash = yield* SDK.hashBlockHeader(blockHeader);
           const maturity = mergeMaturityWindow(
             lucid.api,
             Number(blockHeader.endTime),
@@ -2810,7 +2810,7 @@ const postSubmitHandler = <R>(
           }
           const decodedSubmission = yield* Effect.either(
             Effect.try({
-              try: () => decodeMidgardProofSubmissionV1(requestBody),
+              try: () => decodeMidgardProofSubmission(requestBody),
               catch: (cause) => cause,
             }),
           );
@@ -2827,17 +2827,17 @@ const postSubmitHandler = <R>(
           const transactionBytes = decodedSubmission.right.transactionCbor;
           const programMaterial = decodedSubmission.right.programMaterial;
           const programMaterialSidecarCbor =
-            encodeMidgardCekProgramMaterialSidecarV1(programMaterial);
+            encodeMidgardCekProgramMaterialSidecar(programMaterial);
           // Re-decode the independently stored representation at the admission
           // boundary; database replay must never depend on the HTTP wrapper.
-          decodeMidgardCekProgramMaterialSidecarV1(programMaterialSidecarCbor);
+          decodeMidgardCekProgramMaterialSidecar(programMaterialSidecarCbor);
 
           const normalizeStartedAt = Date.now();
           const validation = validateSubmitTxCanonicalCbor(
             transactionBytes,
             Math.min(
               nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
-              MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+              MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
             ),
           );
           if (!validation.ok) {
@@ -2867,7 +2867,7 @@ const postSubmitHandler = <R>(
               { status: 400 },
             );
           }
-          const proofViolation = validateMidgardConsensusV1TxCbor(
+          const proofViolation = validateMidgardConsensusTxCbor(
             normalized.txCanonicalCbor,
           );
           if (proofViolation !== null) {
@@ -2887,10 +2887,10 @@ const postSubmitHandler = <R>(
           const materialValidation = yield* Effect.either(
             Effect.try({
               try: () => {
-                const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+                const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
                   normalized.txCanonicalCbor,
                 );
-                const envelopes = collectMidgardV1AttachedProgramEnvelopes(tx);
+                const envelopes = collectMidgardAttachedProgramEnvelopes(tx);
                 const hasUnresolvedReferenceInputs =
                   decodeMidgardNativeByteListPreimage(
                     tx.body.referenceInputsPreimageCbor,
@@ -2899,7 +2899,7 @@ const postSubmitHandler = <R>(
                 // Reference-input program envelopes are ledger-state dependent and
                 // become authoritative in Phase B. The one bundle traversal still
                 // proves every attached envelope and preserves envelope position.
-                verifyMidgardCekProgramMaterialBundleV1(
+                verifyMidgardCekProgramMaterialBundle(
                   envelopes,
                   programMaterial,
                   hasUnresolvedReferenceInputs
@@ -3104,7 +3104,7 @@ const postSubmitHandler = <R>(
 export const buildSubmitRouter = <R>(
   wakeTxQueueProcessor: Effect.Effect<void, never, R>,
   withMonitoring?: boolean,
-  consensusProfile: MidgardConsensusProfileV1 = MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
 ) =>
   HttpRouter.empty.pipe(
     HttpRouter.post(

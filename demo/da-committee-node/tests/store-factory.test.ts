@@ -3,9 +3,9 @@ import { join } from "node:path";
 
 import {
   computeDaSha256Hash,
-  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -13,7 +13,7 @@ import type {
   DaPayloadRecord,
   DaSignatureRecord,
   DaSignatureRecordV1,
-  DaStoredConflictEvidenceRecordV1,
+  DaStoredConflictEvidenceRecord,
 } from "../src/domain.js";
 import {
   DECISION_EFFECT_PENDING_LEASE_MS,
@@ -107,7 +107,7 @@ describe("openWatcherStore", () => {
   it("persists only the exact final DeploymentMarkerV1", async () => {
     const dir = await tempDir();
     const store = await JsonFileWatcherStore.open(dir);
-    const marker = makeDeploymentMarkerV1("11".repeat(32));
+    const marker = makeDeploymentMarker("11".repeat(32));
     await store.initDeployment({
       marker,
       manifestSha256: "22".repeat(32),
@@ -117,7 +117,7 @@ describe("openWatcherStore", () => {
     await expect(store.getDeployment()).resolves.toMatchObject({ marker });
     await expect(
       store.initDeployment({
-        marker: makeDeploymentMarkerV1("44".repeat(32)),
+        marker: makeDeploymentMarker("44".repeat(32)),
         manifestSha256: "55".repeat(32),
         contractDeploymentInfoSha256: "66".repeat(32),
         manifestRaw: "{}",
@@ -360,7 +360,7 @@ describe("openWatcherStore", () => {
     for (const record of invalidRecords) {
       await expect(
         reopenedEvidenceStore.saveDaConflictEvidence(
-          record as DaStoredConflictEvidenceRecordV1,
+          record as DaStoredConflictEvidenceRecord,
         ),
       ).rejects.toThrow(/DA stored conflict evidence record V1/u);
     }
@@ -701,18 +701,18 @@ const daPayloadRecord = (): DaPayloadRecord => ({
 });
 
 const availabilityCommitment = (headerHash: string, bondOwner: string) => {
-  const commitment = SDK.buildDaAvailabilityCommitmentV1({
+  const commitment = SDK.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash,
     payload: Buffer.from("public retained DA"),
     bondOwner,
-    responseGeometry: SDK.availabilityResponseGeometryV1({
+    responseGeometry: SDK.availabilityResponseGeometry({
       chunkByteLength: 4_096,
       trancheByteLength: 4 * 1_024 * 1_024,
       maxTrancheCount: 16,
     }),
   });
-  const cbor = SDK.encodeDaAvailabilityCommitmentV1(commitment);
+  const cbor = SDK.encodeDaAvailabilityCommitment(commitment);
   return {
     commitment,
     cbor,
@@ -779,10 +779,10 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
   },
 });
 
-const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
+const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecord => {
   const lower = availabilityCommitment("11".repeat(28), "44".repeat(28));
   const upper = availabilityCommitment("22".repeat(28), "55".repeat(28));
-  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceCbor({
     signerIndex: 0,
     daVkey: Buffer.alloc(32, 0x44),
     lowerHeaderHash: Buffer.alloc(28, 0x11),

@@ -1,12 +1,12 @@
 import { submitNativeScriptDecodingInit } from "../native-script-decoding/submit-native-script-decoding-init.js";
-import type { MissingScriptSourceContractsV1 } from "./contracts-v1.js";
+import type { MissingScriptSourceContracts } from "./contracts-v1.js";
 
-export const submitMissingScriptSourceInitV1 = async (
+export const submitMissingScriptSourceInit = async (
   args: Omit<
     Parameters<typeof submitNativeScriptDecodingInit>[0],
     "contracts"
   > & {
-    readonly contracts: MissingScriptSourceContractsV1;
+    readonly contracts: MissingScriptSourceContracts;
   },
 ) =>
   await submitNativeScriptDecodingInit(

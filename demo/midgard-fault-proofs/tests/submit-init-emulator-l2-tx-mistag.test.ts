@@ -12,22 +12,22 @@ import {
 } from "../src/index.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
-import { makeFaultProofEmulatorHarnessV1 } from "./support/emulator/harness.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
-  buildL2TxMistagBlockFixtureV1,
-  l2TxMistagCategoryV1,
-  publishL2TxMistagReferenceScriptsV1,
+  buildL2TxMistagBlockFixture,
+  l2TxMistagCategory,
+  publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator-v1.js";
 import {
   expectStateQueueHeaderOrder,
-  setupFraudulentBlockV1,
+  setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 
 describe("l2-tx-mistag emulator lifecycle", () => {
   it("mints permanent evidence for a committed code-1 normal leaf and removes the fraudulent block", async () => {
-    const harness = await makeFaultProofEmulatorHarnessV1({
+    const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realL2TxMistag: true,
         alwaysFraudProofCatalogue: true,
@@ -37,17 +37,17 @@ describe("l2-tx-mistag emulator lifecycle", () => {
     if (contracts === undefined) {
       throw new Error("l2-tx-mistag contracts missing");
     }
-    const category = l2TxMistagCategoryV1(harness);
-    const [step01Ref, step02Ref] = await publishL2TxMistagReferenceScriptsV1({
+    const category = l2TxMistagCategory(harness);
+    const [step01Ref, step02Ref] = await publishL2TxMistagReferenceScripts({
       harness,
     });
     const removalRefs = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,
       contracts: harness.contracts,
     });
-    const fixture = await buildL2TxMistagBlockFixtureV1("TxIsInvalid");
+    const fixture = await buildL2TxMistagBlockFixture("TxIsInvalid");
     expect(fixture.inclusion.nativeTx.validity_code).toBe(1n);
-    const setup = await setupFraudulentBlockV1({
+    const setup = await setupFraudulentBlock({
       funderLucid: harness.funderLucid,
       emulator: harness.emulator,
       contracts: harness.contracts,

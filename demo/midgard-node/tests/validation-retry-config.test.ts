@@ -1,6 +1,6 @@
 import "./utils.js";
 
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,7 +48,7 @@ describe("durable admission byte backlog configuration", () => {
   it("defaults to one full V1 DA envelope", async () => {
     await expect(loadNodeConfig()).resolves.toMatchObject({
       MAX_DURABLE_ADMISSION_BACKLOG_BYTES:
-        MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
     });
   });
 
@@ -76,7 +76,7 @@ describe("submit ingress resource configuration", () => {
     await expect(loadNodeConfig()).resolves.toMatchObject({
       SUBMIT_INGRESS_MAX_CONCURRENCY: 4,
       SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
-        MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes,
     });
   });
 
@@ -84,12 +84,12 @@ describe("submit ingress resource configuration", () => {
     vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "8");
     vi.stubEnv(
       "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
-      String(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes * 2),
+      String(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes * 2),
     );
     await expect(loadNodeConfig()).resolves.toMatchObject({
       SUBMIT_INGRESS_MAX_CONCURRENCY: 8,
       SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
-        MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes * 2,
+        MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes * 2,
     });
   });
 
@@ -102,7 +102,7 @@ describe("submit ingress resource configuration", () => {
     vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "4");
     vi.stubEnv(
       "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
-      String(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes - 1),
+      String(MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes - 1),
     );
     await expect(loadNodeConfig()).rejects.toThrow(
       "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least",
